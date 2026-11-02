@@ -1,0 +1,46 @@
+; Experimental test-mode boot driver. Not a production package.
+[Version]
+Signature = "$WINDOWS NT$"
+Class = SCSIAdapter
+ClassGuid = {4d36e97b-e325-11ce-bfc1-08002be10318}
+Provider = %Provider%
+CatalogFile = a04msdcprobe.cat
+DriverVer = 11/03/2026,0.0.1.0
+
+[Manufacturer]
+%Provider% = Models,NTarm
+
+[Models.NTarm]
+%DeviceDescription% = Install, ACPI\MOU0001
+
+[Install.NT]
+CopyFiles = DriverCopy
+
+[Install.NT.Services]
+AddService = a04msdcboot,0x00000002,Service
+
+[DestinationDirs]
+DriverCopy = 12
+
+[DriverCopy]
+a04msdcprobe.sys
+
+[Service]
+DisplayName = %ServiceDescription%
+ServiceType = 1
+StartType = 0
+ErrorControl = 1
+ServiceBinary = %12%\a04msdcprobe.sys
+LoadOrderGroup = SCSI Miniport
+
+[SourceDisksNames]
+1 = %DiskName%,,,
+
+[SourceDisksFiles]
+a04msdcprobe.sys = 1
+
+[Strings]
+Provider = "TAB-A04-BR3 development"
+DeviceDescription = "MT8167 eMMC experimental boot storage"
+ServiceDescription = "MT8167 eMMC experimental boot storage"
+DiskName = "TAB-A04-BR3 experimental boot files"

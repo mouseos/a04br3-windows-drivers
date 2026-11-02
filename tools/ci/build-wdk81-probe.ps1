@@ -16,6 +16,7 @@ if ($env:A04_DMA_WRITE_TEST -eq '1') {
 }
 if ($env:A04_VIRTUAL_BOUNCE_EXPERIMENT -eq '1' -and $env:A04_DMA_DISK_PROBE -ne '1') { throw 'A04_VIRTUAL_BOUNCE_EXPERIMENT requires A04_DMA_DISK_PROBE=1' }
 if ($env:A04_ENABLE_WRITES -eq '1' -and $env:A04_DMA_DISK_PROBE -ne '1') { throw 'A04_ENABLE_WRITES requires A04_DMA_DISK_PROBE=1' }
+if ($env:A04_BOOT_EXPERIMENT -eq '1' -and ($env:A04_ENABLE_WRITES -ne '1' -or $env:A04_VIRTUAL_BOUNCE_EXPERIMENT -ne '1')) { throw 'Boot experiment requires guarded writes and the diagnostic virtual path' }
 if ($env:A04_DMA_DISK_PROBE -eq '1' -and $env:A04_DMA_PROBE -ne '1') { throw 'A04_DMA_DISK_PROBE requires A04_DMA_PROBE=1' }
 if ($env:A04_DMA_PROBE -eq '1' -and $env:A04_READONLY_DISK_PROBE -ne '1') { throw 'A04_DMA_PROBE requires A04_READONLY_DISK_PROBE=1' }
 if ($env:A04_READONLY_DISK_PROBE -eq '1') {
@@ -48,7 +49,8 @@ if ($LASTEXITCODE -ne 0) { throw 'PE inspection failed' }
 $package = Join-Path $output 'package'
 New-Item -ItemType Directory -Force -Path $package | Out-Null
 Copy-Item $driver (Join-Path $package 'a04msdcprobe.sys')
-Copy-Item (Join-Path $PSScriptRoot '..\..\drivers\storage\mt8167-msdc\a04-msdc-probe.inf') $package
+$inf = if ($env:A04_BOOT_EXPERIMENT -eq '1') { 'a04-msdc-boot-experiment.inf' } else { 'a04-msdc-probe.inf' }
+Copy-Item (Join-Path $PSScriptRoot "..\..\drivers\storage\mt8167-msdc\$inf") (Join-Path $package 'a04-msdc-probe.inf')
 $inf2cat = Join-Path $kit 'bin\x86\Inf2Cat.exe'
 & $inf2cat "/driver:$package" /os:6_3_ARM /uselocaltime
 if ($LASTEXITCODE -ne 0) { throw 'ARM32 probe catalog generation failed' }
