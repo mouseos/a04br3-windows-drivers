@@ -146,6 +146,13 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
     config->MaximumTransferLength = 4096;
     config->NumberOfPhysicalBreaks = 2;
     config->MapBuffers = STOR_MAP_NON_READ_WRITE_BUFFERS;
+    {
+        ULONG alignment = KeGetRecommendedSharedDataAlignment();
+        A04Trace("A04WIN alignment recommended="); A04TraceHex(alignment);
+        A04Trace(" initial-mask="); A04TraceHex(config->AlignmentMask); A04Trace("\n");
+        if (!alignment || (alignment & (alignment - 1))) return SP_RETURN_BAD_CONFIG;
+        if (config->AlignmentMask < alignment - 1) config->AlignmentMask = alignment - 1;
+    }
 #else
     config->MaximumTransferLength = 512;
     config->NumberOfPhysicalBreaks = 1;
