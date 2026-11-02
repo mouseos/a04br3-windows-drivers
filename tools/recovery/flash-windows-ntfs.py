@@ -50,7 +50,7 @@ with a.flash_log.open('a+b') as log:
     producer = subprocess.Popen(['pigz', '-1', '-p', '4', '-c', str(a.image)], stdout=subprocess.PIPE, stderr=log)
     assert producer.stdout is not None
     receiver = subprocess.Popen(['adb', 'shell', '-T',
-        'sh -c "set -o pipefail; gzip -dc | dd of=/dev/block/by-name/Windows bs=1048576 conv=fsync"'],
+        'sh -c "set -o pipefail; gzip -dc | tee /dev/block/by-name/Windows | wc -c && sync"'],
         stdin=producer.stdout, stdout=log, stderr=log)
     producer.stdout.close()
     receiver_status = receiver.wait()
@@ -58,6 +58,6 @@ with a.flash_log.open('a+b') as log:
     log.flush()
     log.seek(offset)
     output = log.read().decode('utf-8', errors='replace')
-if producer_status or receiver_status or f'{size} bytes' not in output:
+if producer_status or receiver_status or not re.search(rf'(?m)^\s*{size}\s*$', output):
     raise SystemExit('転送または書込みが未完了です。ログを確認してください')
 print('Windows領域への書込み完了。通常書込み後の生デバイス読戻しは行っていません。')
