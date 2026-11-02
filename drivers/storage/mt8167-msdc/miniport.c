@@ -126,7 +126,7 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
     }
     config->MaximumTransferLength = 512;
 #ifdef A04_READONLY_DISK_PROBE
-    config->MapBuffers = TRUE;
+    config->MapBuffers = STOR_MAP_NON_READ_WRITE_BUFFERS;
 #endif
     config->NumberOfPhysicalBreaks = 1;
     config->NumberOfBuses = 1;
@@ -204,6 +204,27 @@ static BOOLEAN A04Initialize(PVOID extension)
 }
 
 #ifdef A04_READONLY_DISK_PROBE
+struct a04_request_extension { PVOID read_buffer; };
+
+/* BuildIo runs at DISPATCH_LEVEL without the StartIo lock. Only this SRB's
+ * extension is touched. The returned mapping belongs to the request. */
+static BOOLEAN A04BuildIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
+{
+    struct a04_request_extension *r = (struct a04_request_extension *)request->SrbExtension;
+    if (!r) {
+        request->SrbStatus = SRB_STATUS_ERROR;
+        StorPortNotification(RequestComplete, extension, request);
+        return FALSE;
+    }
+    r->read_buffer = NULL;
+    if (request->Function == SRB_FUNCTION_EXECUTE_SCSI && request->CdbLength &&
+        (request->Cdb[0] == 0x28 || request->Cdb[0] == 0x88) && request->DataTransferLength) {
+        if (StorPortGetSystemAddress(extension, request, &r->read_buffer) != STOR_STATUS_SUCCESS)
+            r->read_buffer = NULL;
+    }
+    return TRUE;
+}
+
 /* Research only. StorPort serializes HwStartIo with the default half-duplex
  * synchronization model. This probe never writes to the card. On PIO failure
  * it remains failed until reboot because controller recovery is not proven. */
@@ -225,6 +246,7 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 {
     struct a04_probe_extension *probe = (struct a04_probe_extension *)extension;
     UCHAR *data = (UCHAR *)request->DataBuffer;
+    struct a04_request_extension *r = (struct a04_request_extension *)request->SrbExtension;
     ULONG available = request->DataTransferLength, count = 0, i;
     UCHAR opcode = request->Cdb[0];
     request->SrbStatus = SRB_STATUS_SUCCESS;
@@ -255,10 +277,13 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
                !request->Cdb[8] && available >= 8 && data) {
         if (!a04_scsi_capacity10(probe->sectors, data, available)) A04Sense(request, 5, 0x24);
         else request->DataTransferLength = 8;
-    } else if ((opcode == 0x28 || opcode == 0x88) && data) {
+    } else if (opcode == 0x28 || opcode == 0x88) {
+        data = r ? (UCHAR *)r->read_buffer : NULL;
         struct a04_block_request block;
         enum a04_cdb_status status = a04_decode_block_cdb(request->Cdb, request->CdbLength, probe->sectors, &block);
-        if (status != A04_CDB_OK || request->Cdb[1] || block.block_count != 1 || available < 512) {
+        if (status == A04_CDB_OK && !request->Cdb[1] && !block.block_count) {
+            request->DataTransferLength = 0;
+        } else if (status != A04_CDB_OK || request->Cdb[1] || block.block_count != 1 || available < 512 || !data) {
             A04Sense(request, 5, status == A04_CDB_OUT_OF_RANGE ? 0x21 : 0x24);
         } else {
             struct a04_msdc_io io = {probe, A04Read32, A04Read8, A04Write32};
@@ -320,6 +345,10 @@ ULONG DriverEntry(PVOID driver, PVOID registry)
     A04SetMarker((PUNICODE_STRING)registry, &entryMarker, 1);
     init.HwInitializationDataSize = sizeof(init);
     init.AdapterInterfaceType = ACPIBus;
+#ifdef A04_READONLY_DISK_PROBE
+    init.HwBuildIo = A04BuildIo;
+    init.SrbExtensionSize = sizeof(struct a04_request_extension);
+#endif
     init.HwFindAdapter = A04FindAdapter;
     init.HwInitialize = A04Initialize;
     init.HwStartIo = A04StartIo;
