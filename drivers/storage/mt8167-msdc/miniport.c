@@ -303,8 +303,15 @@ static BOOLEAN A04WriteTest(struct a04_probe_extension *probe, ULONG sectors)
         A04Le32(probe->dma_buffer + 80) != 128 || A04Le32(probe->dma_buffer + 84) != 128)
         { A04Trace("A04WIN WRITE_TEST GPT header rejected\n"); return FALSE; }
     for (block = 2; block < 34; ++block) {
+        for (i = 0; i < 512; ++i) probe->dma_buffer[i] = 0x5a;
         status = a04_msdc_dma_read_sector(&io, block, probe->dma_bus, probe->dma_alignment, 200000);
         if (status != A04_DMA_OK) { A04Trace("A04WIN WRITE_TEST GPT read failed\n"); return FALSE; }
+        if (block <= 6) {
+            A04Trace("A04WIN WRITE_TEST block="); A04TraceHex(block);
+            A04Trace(" word0="); A04TraceHex(A04Le32(probe->dma_buffer));
+            A04Trace(" slot3_first="); A04TraceHex(A04Le32(probe->dma_buffer + 3 * 128 + 32));
+            A04Trace("\n");
+        }
         for (slot = 0; slot < 4; ++slot) {
             UCHAR *e = probe->dma_buffer + slot * 128;
             if (block == 6 && slot == 3) {
