@@ -11,6 +11,7 @@ $pioSource = Join-Path $PSScriptRoot '..\..\drivers\storage\mt8167-msdc\pio.c'
 $driver = Join-Path $output 'miniport.sys'
 $extraObjects = @()
 $probeDefines = @()
+if ($env:A04_VIRTUAL_BOUNCE_EXPERIMENT -eq '1' -and $env:A04_DMA_DISK_PROBE -ne '1') { throw 'A04_VIRTUAL_BOUNCE_EXPERIMENT requires A04_DMA_DISK_PROBE=1' }
 if ($env:A04_ENABLE_WRITES -eq '1' -and $env:A04_DMA_DISK_PROBE -ne '1') { throw 'A04_ENABLE_WRITES requires A04_DMA_DISK_PROBE=1' }
 if ($env:A04_DMA_DISK_PROBE -eq '1' -and $env:A04_DMA_PROBE -ne '1') { throw 'A04_DMA_DISK_PROBE requires A04_DMA_PROBE=1' }
 if ($env:A04_DMA_PROBE -eq '1' -and $env:A04_READONLY_DISK_PROBE -ne '1') { throw 'A04_DMA_PROBE requires A04_READONLY_DISK_PROBE=1' }
@@ -20,6 +21,7 @@ if ($env:A04_READONLY_DISK_PROBE -eq '1') {
     if ($env:A04_DMA_PROBE -eq '1') { $probeDefines += '-DA04_DMA_PROBE'; $sources += 'dma' }
     if ($env:A04_DMA_DISK_PROBE -eq '1') { $probeDefines += '-DA04_DMA_DISK_PROBE' }
     if ($env:A04_ENABLE_WRITES -eq '1') { $probeDefines += '-DA04_ENABLE_WRITES' }
+    if ($env:A04_VIRTUAL_BOUNCE_EXPERIMENT -eq '1') { $probeDefines += '-DA04_VIRTUAL_BOUNCE_EXPERIMENT' }
     foreach ($name in $sources) {
         $obj = Join-Path $output "$name.obj"
         $src = Join-Path $PSScriptRoot "..\..\drivers\storage\mt8167-msdc\$name.c"

@@ -267,6 +267,13 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
         A04Trace("A04WIN DMA buffer mapped bytes="); A04TraceHex(bytes); A04Trace("\n");
     }
 #endif
+#ifdef A04_VIRTUAL_BOUNCE_EXPERIMENT
+    /* Diagnostic only: ask StorPort for its virtual request path after a
+     * physical common buffer has been allocated. Direct hardware access from
+     * a virtual miniport is unsupported; never use this as a product driver. */
+    config->VirtualDevice = TRUE;
+    A04Trace("A04WIN unsupported virtual-bounce experiment enabled\n");
+#endif
     A04Trace("A04WIN FindAdapter accepts validated resources\n");
     return SP_RETURN_FOUND;
 }
