@@ -16,7 +16,7 @@
  * Bound every wait and never transmit while the UART divisor latch is active. */
 static volatile ULONG *A04Uart;
 struct a04_probe_extension {
-    volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; BOOLEAN failed; BOOLEAN write_ready;
+    volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; BOOLEAN failed; BOOLEAN write_ready; BOOLEAN cache_disabled;
 #ifdef A04_DMA_PROBE
     UCHAR *dma_buffer; ULONG dma_bus; ULONG dma_alignment;
 #endif
@@ -279,6 +279,68 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
     return SP_RETURN_FOUND;
 }
 
+#ifdef A04_DMA_WRITE_TEST
+static ULONG A04Le32(const UCHAR *p)
+{ return (ULONG)p[0] | ((ULONG)p[1] << 8) | ((ULONG)p[2] << 16) | ((ULONG)p[3] << 24); }
+
+/* One explicitly selected sector is backed up by the host before this test.
+ * Confirm the current GPT independently names it as the Windows partition,
+ * require the original sector to be zero, then write/compare/restore/compare.
+ * On error, the host must restore the saved sector through recovery. */
+static BOOLEAN A04WriteTest(struct a04_probe_extension *probe, ULONG sectors)
+{
+    struct a04_msdc_io io = {probe, A04Read32, A04Read8, A04Write32};
+    ULONG block, slot, i, matches = 0, first = 0;
+    enum a04_dma_result status;
+    static const UCHAR label[16] = {'W',0,'i',0,'n',0,'d',0,'o',0,'w',0,'s',0,0,0};
+    static const UCHAR basic_data[16] = {0xa2,0xa0,0xd0,0xeb,0xe5,0xb9,0x33,0x44,
+                                         0x87,0xc0,0x68,0xb6,0xb7,0x26,0x99,0xc7};
+    if (!probe->cache_disabled || A04_DMA_TEST_LBA >= sectors) return FALSE;
+    /* GPT header is still in the DMA buffer from the preceding read. */
+    if (A04Le32(probe->dma_buffer + 72) != 2 || A04Le32(probe->dma_buffer + 76) != 0 ||
+        A04Le32(probe->dma_buffer + 80) != 128 || A04Le32(probe->dma_buffer + 84) != 128)
+        return FALSE;
+    for (block = 2; block < 34; ++block) {
+        status = a04_msdc_dma_read_sector(&io, block, probe->dma_bus, probe->dma_alignment, 200000);
+        if (status != A04_DMA_OK) return FALSE;
+        for (slot = 0; slot < 4; ++slot) {
+            UCHAR *e = probe->dma_buffer + slot * 128;
+            for (i = 0; i < sizeof(label) && e[56 + i] == label[i]; ++i) { }
+            if (i != sizeof(label)) continue;
+            for (i = 0; i < sizeof(basic_data) && e[i] == basic_data[i]; ++i) { }
+            if (i != sizeof(basic_data)) return FALSE;
+            if (A04Le32(e + 36) || A04Le32(e + 44) || A04Le32(e + 32) < 34 ||
+                A04Le32(e + 40) < A04Le32(e + 32) || A04Le32(e + 40) >= sectors) return FALSE;
+            first = A04Le32(e + 32); ++matches;
+        }
+    }
+    if (matches != 1 || first != A04_DMA_TEST_LBA) return FALSE;
+    status = a04_msdc_dma_read_sector(&io, first, probe->dma_bus, probe->dma_alignment, 200000);
+    if (status != A04_DMA_OK) return FALSE;
+    for (i = 0; i < 512; ++i) {
+        probe->sector[i] = probe->dma_buffer[i];
+        if (probe->sector[i]) return FALSE;
+    }
+    for (i = 0; i < 512; ++i) probe->dma_buffer[i] = (UCHAR)(0xa5u ^ (i & 0xffu));
+    A04Trace("A04WIN WRITE_TEST starting lba="); A04TraceHex(first); A04Trace("\n");
+    status = a04_msdc_dma_write_sector(&io, first, probe->dma_bus, probe->dma_alignment, 200000, 1);
+    if (status != A04_DMA_OK) { A04Trace("A04WIN WRITE_TEST write error="); A04TraceHex((ULONG)status); A04Trace("\n"); return FALSE; }
+    status = a04_msdc_dma_read_sector(&io, first, probe->dma_bus, probe->dma_alignment, 200000);
+    if (status != A04_DMA_OK) return FALSE;
+    for (i = 0; i < 512; ++i)
+        if (probe->dma_buffer[i] != (UCHAR)(0xa5u ^ (i & 0xffu))) return FALSE;
+    for (i = 0; i < 512; ++i) probe->dma_buffer[i] = probe->sector[i];
+    status = a04_msdc_dma_write_sector(&io, first, probe->dma_bus, probe->dma_alignment, 200000, 1);
+    if (status != A04_DMA_OK) return FALSE;
+    status = a04_msdc_dma_read_sector(&io, first, probe->dma_bus, probe->dma_alignment, 200000);
+    if (status != A04_DMA_OK) return FALSE;
+    for (i = 0; i < 512; ++i)
+        if (probe->dma_buffer[i] != probe->sector[i]) return FALSE;
+    A04Trace("A04WIN WRITE_TEST pattern verified and original restored\n");
+    return TRUE;
+}
+#endif
+
 static BOOLEAN A04Initialize(PVOID extension)
 {
     struct a04_probe_extension *probe = (struct a04_probe_extension *)extension;
@@ -323,9 +385,10 @@ static BOOLEAN A04Initialize(PVOID extension)
                                            sizeof(probe->sector), 200000);
             A04Write32(probe, 0x010, interruptEnable);
             if (result == A04_MSDC_OK) {
+                probe->cache_disabled = (probe->sector[33] & 1u) == 0;
 #ifdef A04_ENABLE_WRITES
                 /* No cache flush implementation: writable only with eMMC cache off. */
-                probe->write_ready = (probe->sector[33] & 1u) == 0;
+                probe->write_ready = probe->cache_disabled;
 #else
                 probe->write_ready = FALSE;
 #endif
@@ -356,6 +419,12 @@ static BOOLEAN A04Initialize(PVOID extension)
                     probe->dma_buffer[7] == 'T';
                 A04Trace("A04WIN DMA GPT result="); A04TraceHex((ULONG)dr);
                 A04Trace(" signature="); A04TraceHex(match ? 1u : 0u); A04Trace("\n");
+#ifdef A04_DMA_WRITE_TEST
+                A04Write32(probe, 0x010, old_enable & ~0x0000d700u);
+                if (!match || !A04WriteTest(probe, sectors)) A04Trace("A04WIN WRITE_TEST failed; host restoration required\n");
+                A04Write32(probe, 0x010, old_enable);
+                return FALSE;
+#endif
 #ifdef A04_DMA_DISK_PROBE
                 if (!match) return FALSE;
 #else
