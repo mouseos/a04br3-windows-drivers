@@ -165,6 +165,25 @@ static BOOLEAN A04Initialize(PVOID extension)
         A04Trace(" signature=");
         A04TraceHex(signature ? 1u : 0u);
         A04Trace("\n");
+        if (result == A04_MSDC_OK) {
+            ULONG sectors = 0;
+            interruptEnable = A04Read32(probe, 0x010);
+            A04Write32(probe, 0x010, interruptEnable & ~0x0000d700u);
+            result = a04_msdc_read_ext_csd(&io, probe->sector,
+                                           sizeof(probe->sector), 200000);
+            A04Write32(probe, 0x010, interruptEnable);
+            if (result == A04_MSDC_OK) {
+                sectors = (ULONG)probe->sector[212] |
+                          ((ULONG)probe->sector[213] << 8) |
+                          ((ULONG)probe->sector[214] << 16) |
+                          ((ULONG)probe->sector[215] << 24);
+            }
+            A04Trace("A04WIN EXT_CSD result=");
+            A04TraceHex((ULONG)result);
+            A04Trace(" sectors=");
+            A04TraceHex(sectors);
+            A04Trace("\n");
+        }
     }
     A04Trace("A04WIN HwInitialize entered; diagnostic refuses start\n");
     return FALSE;
