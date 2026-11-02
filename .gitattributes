@@ -1,0 +1,2 @@
+# Windows driver INF bytes must agree with the catalog produced on Windows.
+*.inf text eol=crlf

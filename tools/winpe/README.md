@@ -25,3 +25,5 @@ wimupdateのコマンド形式には空白を含まない作業パスを使う�
 `tools/ci/build-wdk81-probe.ps1` をWDK 8.1 ARMとClang/LLDのあるWindows環境で実行すると、`$env:RUNNER_TEMP/a04br3-wdk81-probe/package` にSYS・INF・Windows 8.1 ARM用の未署名CATを作成する。前述のWIM更新で使用する `startnet.cmd` をこの診断版に替え、同ディレクトリの3ファイルをWIMの `/a04br3/` に追加してESPを作成する。ファイルの抽出比較とWIM・FATの検証を行う。媒体・イメージは配布しない。
 
 未署名カタログとの比較試験には、同じランナーで `tools/ci/sign-probe-test.ps1` を実行する。診断用に一時自己署名証明書を作りCATを署名し、公開証明書だけをパッケージへ出力する。秘密鍵はランナー上に留まり、作業終了時に失われる。証明書を信頼済みとして登録する処理は含まず、Windows RTがロードを許可する保証もない。元の未署名パッケージを保存してから比較する。
+
+INFは改行コードが変わるだけでCAT内のハッシュと一致しなくなる。**Windows上でCAT生成したパッケージのINF・SYS・CATを一組で回収し、変更せずに使う。** `prepare-driver-probe-wim.py --source-wim ORIGINAL --package PACKAGE_DIR --output OUTPUT` はその3ファイルを一組で追加し、WIMの検証と抽出後のバイト一致を確認する。別checkoutのINFを組み合わせない。
