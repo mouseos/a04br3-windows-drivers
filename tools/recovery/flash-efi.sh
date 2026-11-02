@@ -32,5 +32,5 @@ done
 [[ $ready == 1 ]] || { echo 'Recovery ADB root unavailable' >&2; exit 1; }
 adb -s "$serial" push "$image" /tmp/a04-recovery-esp.img
 # Avoid reading the written device. The staging file is verified before dd.
-adb -s "$serial" shell "set -e; test \"\$(id -u)\" = 0; test \"\$(readlink -f /dev/block/by-name/EFI)\" = /dev/block/mmcblk0p18; test \"\$(cat /sys/class/block/mmcblk0p18/start)\" = 360448; test \"\$(cat /sys/class/block/mmcblk0p18/size)\" = 524288; ! grep -q ' /dev/block/mmcblk0p18 ' /proc/mounts; test \"\$(sha256sum /tmp/a04-recovery-esp.img | cut -d ' ' -f 1)\" = $image_sha; dd if=/tmp/a04-recovery-esp.img of=/dev/block/by-name/EFI bs=1048576 conv=fsync; sync"
+adb -s "$serial" shell "set -e; test \"\$(id -u)\" = 0; test \"\$(readlink -f /dev/block/by-name/EFI)\" = /dev/block/mmcblk0p18; test \"\$(cat /sys/class/block/mmcblk0p18/start)\" = 360448; test \"\$(cat /sys/class/block/mmcblk0p18/size)\" = 524288; ! grep -qE '^(/dev/block/mmcblk0p18|/dev/block/by-name/EFI) ' /proc/mounts; test \"\$(sha256sum /tmp/a04-recovery-esp.img | cut -d ' ' -f 1)\" = $image_sha; dd if=/tmp/a04-recovery-esp.img of=/dev/block/by-name/EFI bs=1048576 conv=fsync; sync"
 adb -s "$serial" reboot
