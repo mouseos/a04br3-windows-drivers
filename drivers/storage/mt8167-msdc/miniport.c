@@ -124,11 +124,14 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
     } else {
         A04Trace("A04WIN resource map succeeded\n");
     }
-    config->MaximumTransferLength = 512;
 #ifdef A04_READONLY_DISK_PROBE
+    config->MaximumTransferLength = 4096;
+    config->NumberOfPhysicalBreaks = 2;
     config->MapBuffers = STOR_MAP_NON_READ_WRITE_BUFFERS;
-#endif
+#else
+    config->MaximumTransferLength = 512;
     config->NumberOfPhysicalBreaks = 1;
+#endif
     config->NumberOfBuses = 1;
 #ifdef A04_READONLY_DISK_PROBE
     A04Trace("A04WIN incoming initiator="); A04TraceHex((UCHAR)config->InitiatorBusId[0]); A04Trace("\n");
@@ -297,20 +300,24 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         enum a04_cdb_status status = a04_decode_block_cdb(request->Cdb, request->CdbLength, probe->sectors, &block);
         if (status == A04_CDB_OK && !request->Cdb[1] && !block.block_count) {
             request->DataTransferLength = 0;
-        } else if (status != A04_CDB_OK || request->Cdb[1] || block.block_count != 1 || available < 512 || !data) {
+        } else if (status != A04_CDB_OK || request->Cdb[1] || block.block_count > 8 || available < block.block_count * 512 || !data) {
             A04Sense(request, 5, status == A04_CDB_OUT_OF_RANGE ? 0x21 : 0x24);
         } else {
             struct a04_msdc_io io = {probe, A04Read32, A04Read8, A04Write32};
             ULONG interrupts = A04Read32(probe, 0x010);
             enum a04_msdc_result result;
             A04Write32(probe, 0x010, interrupts & ~0x0000d700u);
-            result = a04_msdc_read_sector(&io, block.lba, data, 512, 200000);
+            result = A04_MSDC_OK;
+            for (i = 0; i < block.block_count; ++i) {
+                result = a04_msdc_read_sector(&io, block.lba + i, data + i * 512, 512, 200000);
+                if (result != A04_MSDC_OK) break;
+            }
             A04Write32(probe, 0x010, interrupts);
             if (result != A04_MSDC_OK) {
                 probe->failed = TRUE;
                 A04Trace("A04WIN read failed result="); A04TraceHex((ULONG)result); A04Trace("\n");
                 A04Sense(request, 3, 0x11);
-            } else request->DataTransferLength = 512;
+            } else request->DataTransferLength = block.block_count * 512;
         }
     } else if (opcode == 0x2a || opcode == 0x8a) {
         A04Sense(request, 7, 0x27); /* DATA PROTECT / WRITE PROTECTED */
