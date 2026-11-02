@@ -2,13 +2,13 @@
 
 TAB-A04-BR3のWindows RT 8.1 ARM32向けドライバをまとめるリポジトリです。ストレージ、入力、USBなどを機能別のディレクトリに置き、ドライバごとにリポジトリは分けません。UEFIの共通コードやWindowsのバイナリは含めません。
 
-現在、WinREは表示できますが、本端末のeMMCとタッチはWindowsに認識されていません。このリポジトリに動作するドライバはまだありません。まず `drivers/storage/mt8167-msdc` で、ストレージ要求を検証するOS非依存コードとホストテストを実装しています。ハードウェア操作、PnP、割込み、DMA、StorPortへの接続、Windows 8.1 ARM WDKでのビルド、署名、WinREへの導入と実機試験は未実装です。
+現在、WinREは表示できますが、本端末のeMMCとタッチはWindowsのデバイスとして利用できません。`drivers/storage/mt8167-msdc` の診断用StorPortドライバは、テスト署名したWinRE上で起動し、eMMCのGPT先頭をPIOで読み取るところまで実機で確認しました。実用ドライバとしてのディスク公開、書込み、電源管理、DMA、割込みや通常の署名は未完成です。
 
 ## ローカル検証
 
 C11コンパイラとmakeで `make test` を実行します。Clangがある場合、`make arm-coff` はARM32 Windows用COFFオブジェクトの生成を確認します。これらはWindowsドライバのビルドやロード成功を意味しません。
 
-Microsoftは `SdPortInitialize` の対象をWindows 10以降と記載しています。そのAPIをWindows RT 8.1で利用できると仮定せず、Windows 8.1 WDKと実際のOSにあるインターフェースを調査します。Linux上のClang/LLDによるARM PE生成は形式を確認済みですが、WDK 8.1のARMヘッダー・ライブラリはWindows Actionsへのインストールと存在を確認済みですが、実ドライバのWDKビルド、コード署名、Windows RT固有のロード条件は未確認です。必要に応じてこの同じリポジトリでWindows GitHub Actionsを利用します。
+Microsoftは `SdPortInitialize` の対象をWindows 10以降と記載しています。そのAPIをWindows RT 8.1で利用できると仮定せず、Windows 8.1 WDKと実際のOSにあるインターフェースを調査しています。Windows Actions上のWDK 8.1とClang/LLDでARM32診断ドライバをビルドし、テスト署名とテストモードでのロードを確認しました。
 
 - [Microsoft: SdPortInitialize](https://learn.microsoft.com/en-us/previous-versions/mt715818%28v%3Dvs.85%29)
 - [Microsoft: Windows 8.1のテスト署名](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/test-signing)
@@ -16,6 +16,6 @@ Microsoftは `SdPortInitialize` の対象をWindows 10以降と記載してい�
 
 ## WDK 8.1でのインターフェース検証
 
-`drivers/storage/mt8167-msdc/miniport.c` はStorPortの型とリンクを確認するための未完成コードです。指定したACPI資源だけを受け入れた後、コントローラーの状態を読んでから初期化を意図的に失敗させ、ディスクデータは読み書きしません。Windowsドライバとして導入したり起動ディスクに使用したりしないでください。Windows Actionsの手動ワークフローはWDK 8.1とClang/LLDでこのコードをARM32向けにビルドします。Windows RTのテストモードでDriverEntryとFindAdapterへの到達、ACPI資源の取得を実機で確認しました。通常の署名環境でのロードと実機I/Oは未検証です。
+`drivers/storage/mt8167-msdc/miniport.c` は未完成の診断コードです。Windows RTのテストモードでDriverEntry、FindAdapter、HwInitializeへの到達とACPI資源の取得を確認しました。診断用の直接MMIOマッピングでGPTのLBA 1を読み、`EFI PART`シグネチャに一致しました。診断後は初期化を意図的に失敗させ、カードには書き込みません。StorPortの通常の資源マッピングや配布用署名は未解決です。
 
-PIO読取りの基礎処理 `pio.c` は、初期化済み・排他制御済みのMSDCから単一セクターを読む実験コードです。MMIO模擬テストとARM32オブジェクト生成はホストで実行できますが、初期化・StorPort接続・電源・DMA・割込み・実機動作は未実装または未検証です。
+PIO読取りの基礎処理 `pio.c` は、先行ファームウェアが初期化したMSDCから単一セクターを読む実験コードです。MMIO模擬テストとARM32オブジェクト生成はホストで実行できます。独立した初期化と同期、エラー復旧は未完成です。
