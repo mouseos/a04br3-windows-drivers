@@ -13,7 +13,9 @@ $extraObjects = @()
 $probeDefines = @()
 if ($env:A04_READONLY_DISK_PROBE -eq '1') {
     $probeDefines += '-DA04_READONLY_DISK_PROBE'
-    foreach ($name in @('cdb', 'scsi_capacity')) {
+    $sources = @('cdb', 'scsi_capacity')
+    if ($env:A04_DMA_PROBE -eq '1') { $probeDefines += '-DA04_DMA_PROBE'; $sources += 'dma' }
+    foreach ($name in $sources) {
         $obj = Join-Path $output "$name.obj"
         $src = Join-Path $PSScriptRoot "..\..\drivers\storage\mt8167-msdc\$name.c"
         & clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c $src -o $obj

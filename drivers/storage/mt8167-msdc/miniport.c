@@ -6,12 +6,20 @@
 #ifdef A04_READONLY_DISK_PROBE
 #include "cdb.h"
 #include "scsi_capacity.h"
+#ifdef A04_DMA_PROBE
+#include "dma.h"
+#endif
 #endif
 
 /* Diagnostic UART mapping: only this non-production probe uses UART0.
  * Bound every wait and never transmit while the UART divisor latch is active. */
 static volatile ULONG *A04Uart;
-struct a04_probe_extension { volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; BOOLEAN failed; };
+struct a04_probe_extension {
+    volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; BOOLEAN failed;
+#ifdef A04_DMA_PROBE
+    UCHAR *dma_buffer; ULONG dma_bus; ULONG dma_alignment;
+#endif
+};
 
 static void A04Trace(const char *text)
 {
@@ -167,6 +175,29 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
     config->MaximumNumberOfTargets = 1;
 #endif
     config->MaximumNumberOfLogicalUnits = 1;
+#ifdef A04_DMA_PROBE
+    {
+        ULONG bytes = 0, alignment = KeGetRecommendedSharedDataAlignment();
+        ULONG_PTR aligned;
+        PVOID allocation;
+        STOR_PHYSICAL_ADDRESS physical;
+        if (!alignment || alignment > 4096 || (alignment & (alignment - 1))) return SP_RETURN_BAD_CONFIG;
+        allocation = StorPortGetUncachedExtension(extension, config, 512 + alignment - 1);
+        if (!allocation) { A04Trace("A04WIN DMA buffer allocation failed\n"); return SP_RETURN_ERROR; }
+        aligned = ((ULONG_PTR)allocation + alignment - 1) & ~((ULONG_PTR)alignment - 1);
+        probe->dma_buffer = (UCHAR *)aligned;
+        physical = StorPortGetPhysicalAddress(extension, NULL, probe->dma_buffer, &bytes);
+        if (physical.HighPart || bytes < 512 || (physical.LowPart & (alignment - 1)) ||
+            physical.LowPart > 0xfffffe00u) {
+            A04Trace("A04WIN DMA buffer mapping rejected bytes="); A04TraceHex(bytes);
+            A04Trace(" physical-high="); A04TraceHex((ULONG)physical.HighPart);
+            A04Trace(" physical-low="); A04TraceHex(physical.LowPart); A04Trace("\n");
+            return SP_RETURN_BAD_CONFIG;
+        }
+        probe->dma_bus = physical.LowPart; probe->dma_alignment = alignment;
+        A04Trace("A04WIN DMA buffer mapped bytes="); A04TraceHex(bytes); A04Trace("\n");
+    }
+#endif
     A04Trace("A04WIN FindAdapter accepts validated resources\n");
     return SP_RETURN_FOUND;
 }
@@ -227,6 +258,23 @@ static BOOLEAN A04Initialize(PVOID extension)
             A04Trace("\n");
 #ifdef A04_READONLY_DISK_PROBE
             if (result == A04_MSDC_OK && sectors && signature) {
+#ifdef A04_DMA_PROBE
+                struct a04_msdc_io dma_io = {probe, A04Read32, A04Read8, A04Write32};
+                enum a04_dma_result dr;
+                ULONG old_enable = A04Read32(probe, 0x010);
+                BOOLEAN match;
+                A04Write32(probe, 0x010, old_enable & ~0x0000d700u);
+                dr = a04_msdc_dma_read_sector(&dma_io, 1, probe->dma_bus, probe->dma_alignment, 200000);
+                A04Write32(probe, 0x010, old_enable);
+                match = dr == A04_DMA_OK && probe->dma_buffer[0] == 'E' &&
+                    probe->dma_buffer[1] == 'F' && probe->dma_buffer[2] == 'I' &&
+                    probe->dma_buffer[3] == ' ' && probe->dma_buffer[4] == 'P' &&
+                    probe->dma_buffer[5] == 'A' && probe->dma_buffer[6] == 'R' &&
+                    probe->dma_buffer[7] == 'T';
+                A04Trace("A04WIN DMA GPT result="); A04TraceHex((ULONG)dr);
+                A04Trace(" signature="); A04TraceHex(match ? 1u : 0u); A04Trace("\n");
+                return FALSE; /* A single read, followed by deliberate stop. */
+#endif
                 probe->sectors = sectors;
                 A04Trace("A04WIN interrupts enable="); A04TraceHex(A04Read32(probe, 0x010));
                 A04Trace(" pending="); A04TraceHex(A04Read32(probe, 0x00c)); A04Trace("\n");
