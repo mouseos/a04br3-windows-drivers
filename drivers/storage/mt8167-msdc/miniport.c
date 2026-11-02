@@ -211,6 +211,8 @@ struct a04_request_extension { PVOID read_buffer; };
 static BOOLEAN A04BuildIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 {
     struct a04_request_extension *r = (struct a04_request_extension *)request->SrbExtension;
+    A04Trace("A04WIN BuildIo fn="); A04TraceHex(request->Function);
+    A04Trace(" opcode="); A04TraceHex(request->Cdb[0]); A04Trace("\n");
     if (!r) {
         request->SrbStatus = SRB_STATUS_ERROR;
         StorPortNotification(RequestComplete, extension, request);
@@ -222,6 +224,7 @@ static BOOLEAN A04BuildIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         if (StorPortGetSystemAddress(extension, request, &r->read_buffer) != STOR_STATUS_SUCCESS)
             r->read_buffer = NULL;
     }
+    A04Trace("A04WIN BuildIo ready\n");
     return TRUE;
 }
 
@@ -249,6 +252,8 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
     struct a04_request_extension *r = (struct a04_request_extension *)request->SrbExtension;
     ULONG available = request->DataTransferLength, count = 0, i;
     UCHAR opcode = request->Cdb[0];
+    A04Trace("A04WIN StartIo fn="); A04TraceHex(request->Function);
+    A04Trace(" opcode="); A04TraceHex(opcode); A04Trace("\n");
     request->SrbStatus = SRB_STATUS_SUCCESS;
     request->ScsiStatus = 0;
     if (request->PathId || request->TargetId || request->Lun) {
