@@ -13,3 +13,7 @@ Microsoftは `SdPortInitialize` の対象をWindows 10以降と記載してい�
 - [Microsoft: SdPortInitialize](https://learn.microsoft.com/en-us/previous-versions/mt715818%28v%3Dvs.85%29)
 - [Microsoft: Windows 8.1のテスト署名](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/test-signing)
 - UEFI開発元: https://github.com/mouseos/edk2-mtk （公開ブランチ `windows-rt/arm32`）
+
+## WDK 8.1でのインターフェース検証
+
+`drivers/storage/mt8167-msdc/miniport.c` はStorPortの型とリンクを確認するための未完成コードです。アダプターを常に拒否し、ストレージにアクセスしません。Windowsドライバとして導入したり起動ディスクに使用したりしないでください。Windows Actionsの手動ワークフローはWDK 8.1とClang/LLDでこのコードをARM32向けにビルドします。Windows RTでのロード、署名、PnPおよび実機I/Oは未検証です。

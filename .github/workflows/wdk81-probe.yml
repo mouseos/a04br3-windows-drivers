@@ -52,6 +52,9 @@ jobs:
             Write-Host "$path : $(Test-Path $full)"
             if (-not (Test-Path $full)) { throw "Missing required ARM32 WDK component: $path" }
           }
+      - name: Compile non-operational Storport interface probe
+        shell: pwsh
+        run: ./tools/ci/build-wdk81-probe.ps1
       - name: Open restricted SSH for intervention
         id: remote
         if: ${{ always() && inputs.ssh_debug }}
