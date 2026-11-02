@@ -1,0 +1,32 @@
+name: ARM32 storage foundation
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make test arm-coff
+  windows-format:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ARM32 COFF and native PE format probe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force build | Out-Null
+          $clang = (Get-Command clang.exe -ErrorAction Stop).Source
+          $link = (Get-Command lld-link.exe -ErrorAction Stop).Source
+          $readobj = (Get-Command llvm-readobj.exe -ErrorAction Stop).Source
+          & $clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/storage/mt8167-msdc/cdb.c -o build/cdb-arm.obj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -c tests/pe_probe.c -o build/pe-probe.obj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $link /machine:arm /subsystem:native /driver /entry:DriverEntry /nodefaultlib /out:build/pe-probe.sys build/pe-probe.obj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $header = & $readobj --file-headers build/pe-probe.sys
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (($header -join "`n") -notmatch 'IMAGE_FILE_MACHINE_ARMNT') { throw 'ARM32 PE machine mismatch' }
