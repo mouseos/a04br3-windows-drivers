@@ -3,6 +3,20 @@
 #include <ntddk.h>
 #include <storport.h>
 
+/* These markers are for the WinPE test image only. */
+static void A04SetMarker(PUNICODE_STRING path, PUNICODE_STRING name, ULONG value)
+{
+    OBJECT_ATTRIBUTES attributes;
+    HANDLE key;
+    InitializeObjectAttributes(&attributes, path,
+                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+                               NULL, NULL);
+    if (NT_SUCCESS(ZwOpenKey(&key, KEY_SET_VALUE, &attributes))) {
+        (void)ZwSetValueKey(key, name, 0, REG_DWORD, &value, sizeof(value));
+        ZwClose(key);
+    }
+}
+
 static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
                             PCHAR arguments, PPORT_CONFIGURATION_INFORMATION config,
                             PBOOLEAN again)
@@ -12,7 +26,10 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
     UNREFERENCED_PARAMETER(bus);
     UNREFERENCED_PARAMETER(arguments);
     UNREFERENCED_PARAMETER(config);
+    UNICODE_STRING path = RTL_CONSTANT_STRING(L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\a04msdcprobe");
+    UNICODE_STRING marker = RTL_CONSTANT_STRING(L"FindAdapterSeen");
     UNREFERENCED_PARAMETER(again);
+    A04SetMarker(&path, &marker, 1);
     return SP_RETURN_NOT_FOUND;
 }
 
@@ -45,20 +62,11 @@ static BOOLEAN A04ResetBus(PVOID extension, ULONG path)
 ULONG DriverEntry(PVOID driver, PVOID registry)
 {
     HW_INITIALIZATION_DATA init = {0};
-    OBJECT_ATTRIBUTES attributes;
-    UNICODE_STRING marker = RTL_CONSTANT_STRING(L"DriverEntrySeen");
-    HANDLE key;
-    ULONG value = 1;
+    UNICODE_STRING entryMarker = RTL_CONSTANT_STRING(L"DriverEntrySeen");
+    UNICODE_STRING statusMarker = RTL_CONSTANT_STRING(L"StorPortStatus");
+    ULONG status;
 
-    /* Diagnostic marker in the volatile WinPE service key. The caller's
-     * RegistryPath is supplied by the OS; failure must not prevent loading. */
-    InitializeObjectAttributes(&attributes, (PUNICODE_STRING)registry,
-                               OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-                               NULL, NULL);
-    if (NT_SUCCESS(ZwOpenKey(&key, KEY_SET_VALUE, &attributes))) {
-        (void)ZwSetValueKey(key, &marker, 0, REG_DWORD, &value, sizeof(value));
-        ZwClose(key);
-    }
+    A04SetMarker((PUNICODE_STRING)registry, &entryMarker, 1);
     init.HwInitializationDataSize = sizeof(init);
     init.AdapterInterfaceType = Internal;
     init.HwFindAdapter = A04FindAdapter;
@@ -67,5 +75,7 @@ ULONG DriverEntry(PVOID driver, PVOID registry)
     init.HwInterrupt = A04Interrupt;
     init.HwResetBus = A04ResetBus;
     init.DeviceExtensionSize = 1;
-    return StorPortInitialize(driver, registry, &init, NULL);
+    status = StorPortInitialize(driver, registry, &init, NULL);
+    A04SetMarker((PUNICODE_STRING)registry, &statusMarker, status);
+    return status;
 }
