@@ -21,6 +21,17 @@ static void A04Trace(const char *text)
     }
 }
 
+static void A04TraceHex(ULONG value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    char text[9];
+    unsigned i;
+    for (i = 0; i < 8; ++i)
+        text[i] = digits[(value >> (28 - i * 4)) & 15u];
+    text[8] = 0;
+    A04Trace(text);
+}
+
 /* These markers are for the WinPE test image only. */
 static void A04SetMarker(PUNICODE_STRING path, PUNICODE_STRING name, ULONG value)
 {
@@ -44,8 +55,28 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
     UNREFERENCED_PARAMETER(context);
     UNREFERENCED_PARAMETER(bus);
     UNREFERENCED_PARAMETER(arguments);
-    UNREFERENCED_PARAMETER(config);
     UNREFERENCED_PARAMETER(again);
+    if (config) {
+        A04Trace("A04WIN ranges=");
+        A04TraceHex(config->NumberOfAccessRanges);
+        A04Trace(" irq=");
+        A04TraceHex(config->BusInterruptVector);
+        A04Trace(" level=");
+        A04TraceHex(config->BusInterruptLevel);
+        A04Trace("\n");
+        if (config->AccessRanges && config->NumberOfAccessRanges) {
+            PACCESS_RANGE range = &(*config->AccessRanges)[0];
+            A04Trace("A04WIN range0 hi=");
+            A04TraceHex((ULONG)range->RangeStart.HighPart);
+            A04Trace(" lo=");
+            A04TraceHex(range->RangeStart.LowPart);
+            A04Trace(" size=");
+            A04TraceHex(range->RangeLength);
+            A04Trace(" mem=");
+            A04TraceHex(range->RangeInMemory);
+            A04Trace("\n");
+        }
+    }
     A04Trace("A04WIN FindAdapter rejects adapter\n");
     return SP_RETURN_NOT_FOUND;
 }
@@ -96,6 +127,7 @@ ULONG DriverEntry(PVOID driver, PVOID registry)
     init.HwInterrupt = A04Interrupt;
     init.HwResetBus = A04ResetBus;
     init.DeviceExtensionSize = 1;
+    init.NumberOfAccessRanges = 1;
     status = StorPortInitialize(driver, registry, &init, NULL);
     A04SetMarker((PUNICODE_STRING)registry, &statusMarker, status);
     A04Trace("A04WIN StorPortInitialize returned\n");
