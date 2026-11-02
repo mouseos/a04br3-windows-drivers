@@ -307,6 +307,13 @@ static BOOLEAN A04WriteTest(struct a04_probe_extension *probe, ULONG sectors)
         if (status != A04_DMA_OK) { A04Trace("A04WIN WRITE_TEST GPT read failed\n"); return FALSE; }
         for (slot = 0; slot < 4; ++slot) {
             UCHAR *e = probe->dma_buffer + slot * 128;
+            if (block == 6 && slot == 3) {
+                A04Trace("A04WIN WRITE_TEST slot type="); A04TraceHex(A04Le32(e));
+                A04Trace(" first="); A04TraceHex(A04Le32(e + 32));
+                A04Trace(" name="); A04TraceHex(A04Le32(e + 56));
+                A04Trace(" "); A04TraceHex(A04Le32(e + 60));
+                A04Trace("\n");
+            }
             for (i = 0; i < sizeof(label) && e[56 + i] == label[i]; ++i) { }
             if (i != sizeof(label)) continue;
             for (i = 0; i < sizeof(basic_data) && e[i] == basic_data[i]; ++i) { }
