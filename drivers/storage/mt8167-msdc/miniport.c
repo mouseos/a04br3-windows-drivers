@@ -664,6 +664,9 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         result = a04_scsi_process(request->Cdb, request->CdbLength, probe->sectors,
                                   probe->write_ready, data, available);
         if (result.action == A04_SCSI_ERROR) {
+            A04Trace("A04WIN SCSI rejected opcode="); A04TraceHex(opcode);
+            A04Trace(" sense="); A04TraceHex(result.sense_key);
+            A04Trace(" asc="); A04TraceHex(result.asc); A04Trace("\n");
             A04Sense(request, result.sense_key, result.asc);
         } else if (result.action == A04_SCSI_REPLY) {
             request->DataTransferLength = result.transfer_length;
@@ -671,6 +674,9 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         } else if (result.action == A04_SCSI_WRITE &&
                    !a04_gpt_guard_range(probe->write_first, probe->write_last,
                                         result.blocks.lba, result.blocks.block_count)) {
+            A04Trace("A04WIN write range rejected lba-hi="); A04TraceHex((ULONG)(result.blocks.lba >> 32));
+            A04Trace(" lba-lo="); A04TraceHex((ULONG)result.blocks.lba);
+            A04Trace(" count="); A04TraceHex(result.blocks.block_count); A04Trace("\n");
             A04Sense(request, 7, 0x27);
 #endif
         } else {
