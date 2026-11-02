@@ -6,6 +6,7 @@
 /* Diagnostic UART mapping: only this non-production probe uses UART0.
  * Bound every wait and never transmit while the UART divisor latch is active. */
 static volatile ULONG *A04Uart;
+struct a04_probe_extension { volatile ULONG *registers; };
 
 static void A04Trace(const char *text)
 {
@@ -51,7 +52,7 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
                             PBOOLEAN again)
 {
     A04Trace("\nA04WIN FindAdapter entered\n");
-    UNREFERENCED_PARAMETER(extension);
+    struct a04_probe_extension *probe = (struct a04_probe_extension *)extension;
     UNREFERENCED_PARAMETER(context);
     UNREFERENCED_PARAMETER(bus);
     UNREFERENCED_PARAMETER(arguments);
@@ -85,6 +86,14 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
         A04Trace("A04WIN resource mismatch\n");
         return SP_RETURN_NOT_FOUND;
     }
+    probe->registers = (volatile ULONG *)StorPortGetDeviceBase(
+        extension, config->AdapterInterfaceType, config->SystemIoBusNumber,
+        (*config->AccessRanges)[0].RangeStart, 0x1000, FALSE);
+    if (!probe->registers) {
+        A04Trace("A04WIN resource map failed\n");
+        return SP_RETURN_NOT_FOUND;
+    }
+    A04Trace("A04WIN resource map succeeded\n");
     config->MaximumTransferLength = 512;
     config->NumberOfPhysicalBreaks = 1;
     config->NumberOfBuses = 1;
@@ -96,8 +105,16 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
 
 static BOOLEAN A04Initialize(PVOID extension)
 {
-    UNREFERENCED_PARAMETER(extension);
-    A04Trace("A04WIN HwInitialize entered; diagnostic refuses start\n");
+    struct a04_probe_extension *probe = (struct a04_probe_extension *)extension;
+    A04Trace("A04WIN HwInitialize registers cfg=");
+    A04TraceHex(READ_REGISTER_ULONG(probe->registers + (0x000 / 4)));
+    A04Trace(" sdc_cfg=");
+    A04TraceHex(READ_REGISTER_ULONG(probe->registers + (0x030 / 4)));
+    A04Trace(" sdc_sts=");
+    A04TraceHex(READ_REGISTER_ULONG(probe->registers + (0x03c / 4)));
+    A04Trace(" ps=");
+    A04TraceHex(READ_REGISTER_ULONG(probe->registers + (0x008 / 4)));
+    A04Trace("\nA04WIN HwInitialize entered; diagnostic refuses start\n");
     return FALSE;
 }
 
@@ -140,7 +157,7 @@ ULONG DriverEntry(PVOID driver, PVOID registry)
     init.HwStartIo = A04StartIo;
     init.HwInterrupt = A04Interrupt;
     init.HwResetBus = A04ResetBus;
-    init.DeviceExtensionSize = 1;
+    init.DeviceExtensionSize = sizeof(struct a04_probe_extension);
     init.NumberOfAccessRanges = 1;
     status = StorPortInitialize(driver, registry, &init, NULL);
     A04SetMarker((PUNICODE_STRING)registry, &statusMarker, status);
