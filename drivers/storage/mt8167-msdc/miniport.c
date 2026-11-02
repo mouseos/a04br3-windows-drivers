@@ -6,6 +6,7 @@
 #ifdef A04_READONLY_DISK_PROBE
 #include "cdb.h"
 #include "scsi_capacity.h"
+#include "scsi.h"
 #ifdef A04_DMA_PROBE
 #include "dma.h"
 #endif
@@ -15,7 +16,7 @@
  * Bound every wait and never transmit while the UART divisor latch is active. */
 static volatile ULONG *A04Uart;
 struct a04_probe_extension {
-    volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; BOOLEAN failed;
+    volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; BOOLEAN failed; BOOLEAN write_ready;
 #ifdef A04_DMA_PROBE
     UCHAR *dma_buffer; ULONG dma_bus; ULONG dma_alignment;
 #endif
@@ -246,6 +247,12 @@ static BOOLEAN A04Initialize(PVOID extension)
                                            sizeof(probe->sector), 200000);
             A04Write32(probe, 0x010, interruptEnable);
             if (result == A04_MSDC_OK) {
+#ifdef A04_ENABLE_WRITES
+                /* No cache flush implementation: writable only with eMMC cache off. */
+                probe->write_ready = (probe->sector[33] & 1u) == 0;
+#else
+                probe->write_ready = FALSE;
+#endif
                 sectors = (ULONG)probe->sector[212] |
                           ((ULONG)probe->sector[213] << 8) |
                           ((ULONG)probe->sector[214] << 16) |
@@ -351,6 +358,7 @@ static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControl(PVOID extension,
 static BOOLEAN A04BuildIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 {
     struct a04_request_extension *r = (struct a04_request_extension *)request->SrbExtension;
+    struct a04_probe_extension *probe = (struct a04_probe_extension *)extension;
     A04Trace("A04WIN BuildIo fn="); A04TraceHex(request->Function);
     A04Trace(" opcode="); A04TraceHex(request->Cdb[0]); A04Trace("\n");
     if (!r) {
@@ -360,7 +368,9 @@ static BOOLEAN A04BuildIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
     }
     r->read_buffer = NULL;
     if (request->Function == SRB_FUNCTION_EXECUTE_SCSI && request->CdbLength &&
-        (request->Cdb[0] == 0x28 || request->Cdb[0] == 0x88) && request->DataTransferLength) {
+        (request->Cdb[0] == 0x28 || request->Cdb[0] == 0x88 ||
+         (probe->write_ready && (request->Cdb[0] == 0x2a || request->Cdb[0] == 0x8a))) &&
+        request->DataTransferLength) {
         if (StorPortGetSystemAddress(extension, request, &r->read_buffer) != STOR_STATUS_SUCCESS)
             r->read_buffer = NULL;
     }
@@ -390,7 +400,7 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
     struct a04_probe_extension *probe = (struct a04_probe_extension *)extension;
     UCHAR *data = (UCHAR *)request->DataBuffer;
     struct a04_request_extension *r = (struct a04_request_extension *)request->SrbExtension;
-    ULONG available = request->DataTransferLength, count = 0, i;
+    ULONG available = request->DataTransferLength, i;
     UCHAR opcode = request->Cdb[0];
     A04Trace("A04WIN StartIo fn="); A04TraceHex(request->Function);
     A04Trace(" opcode="); A04TraceHex(opcode); A04Trace("\n");
@@ -404,61 +414,50 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         request->DataTransferLength = 0;
     } else if (probe->failed) {
         A04Sense(request, 2, 4); /* NOT READY */
-    } else if (opcode == 0x00 && request->CdbLength >= 6) {
-        request->DataTransferLength = 0; /* TEST UNIT READY */
-    } else if (opcode == 0x12 && request->CdbLength >= 6 &&
-               !(request->Cdb[1] & 1) && !request->Cdb[2]) {
-        static const UCHAR inquiry[36] = {
-            0, 0, 5, 2, 31, 0, 0, 0,
-            'A','0','4','B','R','3',' ',' ',
-            'e','M','M','C',' ','R','E','A','D','O','N','L','Y',' ',' ',' ',
-            '0','0','0','1'
-        };
-        count = request->Cdb[4] < sizeof(inquiry) ? request->Cdb[4] : sizeof(inquiry);
-        if (count > available) count = available;
-        if (count && !data) A04Sense(request, 5, 0x24);
-        else { for (i = 0; i < count; ++i) data[i] = inquiry[i]; request->DataTransferLength = count; }
-    } else if (opcode == 0x25 && request->CdbLength >= 10 &&
-               !request->Cdb[8] && available >= 8 && data) {
-        if (!a04_scsi_capacity10(probe->sectors, data, available)) A04Sense(request, 5, 0x24);
-        else request->DataTransferLength = 8;
-    } else if (opcode == 0x28 || opcode == 0x88) {
-        data = r ? (UCHAR *)r->read_buffer : NULL;
-        struct a04_block_request block;
-        enum a04_cdb_status status = a04_decode_block_cdb(request->Cdb, request->CdbLength, probe->sectors, &block);
-        if (status == A04_CDB_OK && !request->Cdb[1] && !block.block_count) {
-            request->DataTransferLength = 0;
-        } else if (status != A04_CDB_OK || request->Cdb[1] || block.block_count > 8 || available < block.block_count * 512 || !data) {
-            A04Sense(request, 5, status == A04_CDB_OUT_OF_RANGE ? 0x21 : 0x24);
+    } else {
+        struct a04_scsi_reply result;
+        if (opcode == 0x28 || opcode == 0x88 || opcode == 0x2a || opcode == 0x8a)
+            data = r ? (UCHAR *)r->read_buffer : NULL;
+        result = a04_scsi_process(request->Cdb, request->CdbLength, probe->sectors,
+                                  probe->write_ready, data, available);
+        if (result.action == A04_SCSI_ERROR) {
+            A04Sense(request, result.sense_key, result.asc);
+        } else if (result.action == A04_SCSI_REPLY) {
+            request->DataTransferLength = result.transfer_length;
         } else {
             struct a04_msdc_io io = {probe, A04Read32, A04Read8, A04Write32};
-            ULONG interrupts = A04Read32(probe, 0x010);
-            ULONG failure = 0;
+            ULONG interrupts = A04Read32(probe, 0x010), failure = 0, j;
             A04Write32(probe, 0x010, interrupts & ~0x0000d700u);
-            for (i = 0; i < block.block_count; ++i) {
+            for (i = 0; i < result.blocks.block_count; ++i) {
 #ifdef A04_DMA_DISK_PROBE
-                ULONG j;
-                enum a04_dma_result result = a04_msdc_dma_read_sector(
-                    &io, block.lba + i, probe->dma_bus, probe->dma_alignment, 200000);
-                if (result != A04_DMA_OK) { failure = (ULONG)result; break; }
-                for (j = 0; j < 512; ++j) data[i * 512 + j] = probe->dma_buffer[j];
+                enum a04_dma_result dr;
+                if (result.action == A04_SCSI_WRITE) {
+                    for (j = 0; j < 512; ++j) probe->dma_buffer[j] = data[i * 512 + j];
+                    /* UEFI's card selection explicitly sets RCA 1. */
+                    dr = a04_msdc_dma_write_sector(&io, result.blocks.lba + i,
+                              probe->dma_bus, probe->dma_alignment, 200000, 1);
+                } else {
+                    dr = a04_msdc_dma_read_sector(&io, result.blocks.lba + i,
+                              probe->dma_bus, probe->dma_alignment, 200000);
+                    if (dr == A04_DMA_OK)
+                        for (j = 0; j < 512; ++j) data[i * 512 + j] = probe->dma_buffer[j];
+                }
+                if (dr != A04_DMA_OK) { failure = (ULONG)dr; break; }
 #else
-                enum a04_msdc_result result = a04_msdc_read_sector(
-                    &io, block.lba + i, data + i * 512, 512, 200000);
-                if (result != A04_MSDC_OK) { failure = (ULONG)result; break; }
+                enum a04_msdc_result pr;
+                UNREFERENCED_PARAMETER(j);
+                if (result.action == A04_SCSI_WRITE) { failure = 1; break; }
+                pr = a04_msdc_read_sector(&io, result.blocks.lba + i, data + i * 512, 512, 200000);
+                if (pr != A04_MSDC_OK) { failure = (ULONG)pr; break; }
 #endif
             }
             A04Write32(probe, 0x010, interrupts);
             if (failure) {
                 probe->failed = TRUE;
-                A04Trace("A04WIN read failed result="); A04TraceHex(failure); A04Trace("\n");
-                A04Sense(request, 3, 0x11);
-            } else request->DataTransferLength = block.block_count * 512;
+                A04Trace("A04WIN transfer failed result="); A04TraceHex(failure); A04Trace("\n");
+                A04Sense(request, 3, result.action == A04_SCSI_WRITE ? 0x0c : 0x11);
+            } else request->DataTransferLength = result.transfer_length;
         }
-    } else if (opcode == 0x2a || opcode == 0x8a) {
-        A04Sense(request, 7, 0x27); /* DATA PROTECT / WRITE PROTECTED */
-    } else {
-        A04Sense(request, 5, 0x20); /* INVALID COMMAND */
     }
     A04Trace("A04WIN CDB="); A04TraceHex(opcode);
     A04Trace(" status="); A04TraceHex(request->SrbStatus); A04Trace("\n");

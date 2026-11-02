@@ -4,7 +4,7 @@
 #include <string.h>
 #include "dma.h"
 
-struct fake { uint32_t regs[64]; int command_error, data_error, no_stop, started; };
+struct fake { uint32_t regs[64]; int command_error, data_error, no_stop, started; uint32_t first_command; };
 static uint32_t rd(void *p, uint32_t off)
 {
     struct fake *f = p;
@@ -17,7 +17,11 @@ static void wr(void *p, uint32_t off, uint32_t val)
     else if (off == 0x014) f->regs[off / 4] = val & ~(1u << 31);
     else {
         f->regs[off / 4] = val;
-        if (off == 0x034) f->regs[0x00c / 4] |= f->command_error ? 1u << 9 : 1u << 8;
+        if (off == 0x034) {
+            if (!f->first_command) f->first_command = val;
+            if ((val & 0x3f) == 13) f->regs[0x040/4] = (1u << 8) | (4u << 9);
+            f->regs[0x00c / 4] |= f->command_error ? 1u << 9 : 1u << 8;
+        }
         if (off == 0x098 && (val & 1)) {
             f->started = 1;
             f->regs[0x09c / 4] |= 1;
@@ -29,7 +33,7 @@ static void wr(void *p, uint32_t off, uint32_t val)
 static struct a04_msdc_io init(struct fake *f)
 {
     struct a04_msdc_io io = {f, rd, 0, wr};
-    memset(f, 0, sizeof(*f)); f->regs[0] = 9;
+    memset(f, 0, sizeof(*f)); f->regs[0] = 9; f->regs[0x008/4] = 1u << 16;
     return io;
 }
 int main(void)
@@ -41,6 +45,11 @@ int main(void)
     io = init(&f);
     assert(a04_msdc_dma_read_sector(&io, 0, 0x100008, 64, 10) == A04_DMA_INVALID && !f.started);
     assert(a04_msdc_dma_read_sector(&io, 0, 0x100000000ULL, 64, 10) == A04_DMA_INVALID);
+    io = init(&f);
+    assert(a04_msdc_dma_write_sector(&io, 5, 0x100040, 64, 10, 1) == A04_DMA_OK);
+    assert((f.first_command & 0x3f) == 24 && (f.first_command & (1u << 13)));
+    io = init(&f); f.regs[0x008/4] = 0;
+    assert(a04_msdc_dma_write_sector(&io, 5, 0x100040, 64, 10, 1) == A04_DMA_CARD_BUSY_TIMEOUT);
     io = init(&f); f.command_error = 1;
     assert(a04_msdc_dma_read_sector(&io, 0, 0x100040, 64, 10) == A04_DMA_COMMAND_TIMEOUT && !f.started);
     io = init(&f); f.data_error = 1;

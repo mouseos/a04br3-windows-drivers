@@ -12,8 +12,14 @@
 enum a04_dma_result {
     A04_DMA_OK = 0, A04_DMA_INVALID, A04_DMA_BUSY,
     A04_DMA_COMMAND_TIMEOUT, A04_DMA_COMMAND_CRC, A04_DMA_CARD_ERROR,
-    A04_DMA_DATA_TIMEOUT, A04_DMA_DATA_CRC, A04_DMA_STOP_TIMEOUT
+    A04_DMA_DATA_TIMEOUT, A04_DMA_DATA_CRC, A04_DMA_STOP_TIMEOUT,
+    A04_DMA_CARD_BUSY_TIMEOUT
 };
 enum a04_dma_result a04_msdc_dma_read_sector(const struct a04_msdc_io *io,
         uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t poll_limit);
+/* Write is experimental and requires an OS-owned, cache-synchronized DMA
+ * buffer plus a caller-enforced cache/flush policy. A timeout or error leaves
+ * on-media contents indeterminate; never automatically retry a write. */
+enum a04_dma_result a04_msdc_dma_write_sector(const struct a04_msdc_io *io,
+        uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t poll_limit, uint16_t rca);
 #endif
