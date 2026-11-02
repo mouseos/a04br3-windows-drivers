@@ -89,6 +89,10 @@ static void A04BugCallback(PVOID buffer, ULONG length)
         A04Trace(" "); A04TraceHex((ULONG)high);
         A04Trace(" sp="); A04TraceHex((ULONG)here); A04Trace("\n");
         address = (here + sizeof(ULONG) - 1) & ~((ULONG_PTR)sizeof(ULONG) - 1);
+        /* IoGetStackLimits can report a broad kernel range on this ARM build;
+         * never cross the already-accessible page containing the callback. */
+        if (high > (here & ~(ULONG_PTR)0xfff) + 0x1000)
+            high = (here & ~(ULONG_PTR)0xfff) + 0x1000;
         if (address >= low && address < high) {
             while (address <= high - sizeof(ULONG) && count < 1536) {
                 if ((count & 7u) == 0) { A04Trace("A04STK "); A04TraceHex((ULONG)address); }
@@ -100,6 +104,50 @@ static void A04BugCallback(PVOID buffer, ULONG length)
         }
         A04Trace("A04WIN ENDSTACK\n");
     }
+}
+#endif
+
+#ifdef A04_READONLY_DISK_PROBE
+/* Diagnostic only: snapshot loaded kernel-module ranges at PASSIVE_LEVEL so
+ * raw callback stack values can be correlated after reset. */
+struct a04_system_module {
+    ULONG reserved[2]; PVOID base; ULONG size; ULONG flags;
+    USHORT load_order, init_order, load_count, name_offset;
+    CHAR path[256];
+};
+typedef NTSTATUS (*A04QuerySystemInformation)(ULONG, PVOID, ULONG, PULONG);
+static void A04TraceModules(void)
+{
+    UNICODE_STRING name = RTL_CONSTANT_STRING(L"ZwQuerySystemInformation");
+    A04QuerySystemInformation query = (A04QuerySystemInformation)MmGetSystemRoutineAddress(&name);
+    ULONG needed = 0, bytes, n, i;
+    UCHAR *buffer;
+    if (!query) return;
+    (void)query(11, NULL, 0, &needed);
+    if (needed < sizeof(ULONG) || needed > 1024 * 1024) return;
+    bytes = needed + 4096;
+    buffer = (UCHAR *)ExAllocatePoolWithTag(NonPagedPool, bytes, '4AaA');
+    if (!buffer) return;
+    if (NT_SUCCESS(query(11, buffer, bytes, &needed))) {
+        struct a04_system_module *modules = (struct a04_system_module *)(buffer + sizeof(ULONG));
+        n = *(ULONG *)buffer;
+        if (n > (bytes - sizeof(ULONG)) / sizeof(*modules)) n = (bytes - sizeof(ULONG)) / sizeof(*modules);
+        for (i = 0; i < n; ++i) {
+            ULONG off = modules[i].name_offset;
+            CHAR *namepart = off < sizeof(modules[i].path) ? modules[i].path + off : NULL;
+            if (namepart && ((namepart[0] | 32) == 's' || (namepart[0] | 32) == 'n' ||
+                             (namepart[0] | 32) == 'h')) {
+                ULONG j; int terminated = 0;
+                for (j = off; j < sizeof(modules[i].path); ++j)
+                    if (!modules[i].path[j]) { terminated = 1; break; }
+                if (!terminated) continue;
+                A04Trace("A04WIN MODULE "); A04Trace(namepart);
+                A04Trace(" base="); A04TraceHex((ULONG)(ULONG_PTR)modules[i].base);
+                A04Trace(" size="); A04TraceHex(modules[i].size); A04Trace("\n");
+            }
+        }
+    }
+    ExFreePoolWithTag(buffer, '4AaA');
 }
 #endif
 
@@ -541,6 +589,7 @@ ULONG DriverEntry(PVOID driver, PVOID registry)
         if (lookup) (void)lookup((PVOID)&StorPortInitialize, &base);
         A04Trace(" base="); A04TraceHex((ULONG)(ULONG_PTR)base); A04Trace("\n");
         A04BugData = (volatile ULONG_PTR *)MmGetSystemRoutineAddress(&name);
+        A04TraceModules();
         KeInitializeCallbackRecord(&A04BugRecord);
         if (KeRegisterBugCheckCallback(&A04BugRecord, A04BugCallback, NULL, 0,
                                        (PUCHAR)"A04WIN"))
