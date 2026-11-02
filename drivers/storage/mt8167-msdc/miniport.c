@@ -16,7 +16,7 @@
  * Bound every wait and never transmit while the UART divisor latch is active. */
 static volatile ULONG *A04Uart;
 struct a04_probe_extension {
-    volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; BOOLEAN failed; BOOLEAN write_ready; BOOLEAN cache_disabled;
+    volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; ULONG requests; BOOLEAN failed; BOOLEAN write_ready; BOOLEAN cache_disabled;
 #ifdef A04_DMA_PROBE
     UCHAR *dma_buffer; ULONG dma_bus; ULONG dma_alignment;
 #endif
@@ -594,8 +594,9 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
     struct a04_request_extension *r = (struct a04_request_extension *)request->SrbExtension;
     ULONG available = request->DataTransferLength, i;
     UCHAR opcode = request->Cdb[0];
-    A04Trace("A04WIN StartIo fn="); A04TraceHex(request->Function);
-    A04Trace(" opcode="); A04TraceHex(opcode); A04Trace("\n");
+    BOOLEAN trace = ++probe->requests <= 96 || (probe->requests & 127u) == 0;
+    if (trace) { A04Trace("A04WIN StartIo fn="); A04TraceHex(request->Function);
+        A04Trace(" opcode="); A04TraceHex(opcode); A04Trace("\n"); }
     request->SrbStatus = SRB_STATUS_SUCCESS;
     request->ScsiStatus = 0;
     if (request->PathId || request->TargetId || request->Lun) {
@@ -623,6 +624,8 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         } else {
             struct a04_msdc_io io = {probe, A04Read32, A04Read8, A04Write32};
             ULONG interrupts = A04Read32(probe, 0x010), failure = 0, j;
+            if (trace) { A04Trace("A04WIN blocks lba="); A04TraceHex((ULONG)result.blocks.lba);
+                A04Trace(" count="); A04TraceHex(result.blocks.block_count); A04Trace("\n"); }
             A04Write32(probe, 0x010, interrupts & ~0x0000d700u);
             for (i = 0; i < result.blocks.block_count; ++i) {
 #ifdef A04_DMA_DISK_PROBE
@@ -646,6 +649,12 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 #endif
             }
             A04Write32(probe, 0x010, interrupts);
+            if (!failure && result.action == A04_SCSI_READ && result.blocks.lba == 1 &&
+                result.blocks.block_count && data) {
+                A04Trace("A04WIN SCSI GPT signature=");
+                A04TraceHex((ULONG)data[0] | ((ULONG)data[1] << 8) |
+                    ((ULONG)data[2] << 16) | ((ULONG)data[3] << 24)); A04Trace("\n");
+            }
             if (failure) {
                 probe->failed = TRUE;
                 A04Trace("A04WIN transfer failed result="); A04TraceHex(failure); A04Trace("\n");
@@ -653,8 +662,10 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
             } else request->DataTransferLength = result.transfer_length;
         }
     }
-    A04Trace("A04WIN CDB="); A04TraceHex(opcode);
-    A04Trace(" status="); A04TraceHex(request->SrbStatus); A04Trace("\n");
+    if (trace || request->SrbStatus != SRB_STATUS_SUCCESS) {
+        A04Trace("A04WIN CDB="); A04TraceHex(opcode);
+        A04Trace(" status="); A04TraceHex(request->SrbStatus); A04Trace("\n");
+    }
     StorPortNotification(RequestComplete, extension, request);
     StorPortNotification(NextRequest, extension, NULL);
     return TRUE;
