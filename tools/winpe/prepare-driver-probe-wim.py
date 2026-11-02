@@ -13,6 +13,7 @@ p.add_argument('--package', type=Path, required=True)
 p.add_argument('--output', type=Path, required=True)
 p.add_argument('--startnet', type=Path, help='Override the default diagnostic startnet script')
 p.add_argument('--guarded-test', type=Path, help='Optional ARM32 guarded-write diagnostic executable')
+p.add_argument('--bcd-export', type=Path, help='Optional ARM32 guarded BCD export executable')
 a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
 startnet = a.startnet or root / 'tools/winpe/startnet-driver-probe.cmd'
@@ -22,6 +23,8 @@ files = {'/Windows/System32/startnet.cmd': startnet,
          '/a04br3/a04msdcprobe.cat': a.package / 'a04msdcprobe.cat'}
 if a.guarded_test:
     files['/a04br3/guarded-write-test.exe'] = a.guarded_test
+if a.bcd_export:
+    files['/a04br3/guarded-bcd-export.exe'] = a.bcd_export
 for source in [a.source_wim, *files.values()]:
     if not source.is_file():
         raise SystemExit(f'Missing input: {source}')
