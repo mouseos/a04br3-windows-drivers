@@ -15,3 +15,12 @@ if ($LASTEXITCODE -ne 0) { throw 'ARM32 interface probe compilation failed' }
 if ($LASTEXITCODE -ne 0) { throw 'ARM32 interface probe link failed' }
 & llvm-readobj --file-headers --coff-imports $driver
 if ($LASTEXITCODE -ne 0) { throw 'PE inspection failed' }
+
+$package = Join-Path $output 'package'
+New-Item -ItemType Directory -Force -Path $package | Out-Null
+Copy-Item $driver (Join-Path $package 'a04msdcprobe.sys')
+Copy-Item (Join-Path $PSScriptRoot '..\..\drivers\storage\mt8167-msdc\a04-msdc-probe.inf') $package
+$inf2cat = Join-Path $kit 'bin\x86\Inf2Cat.exe'
+& $inf2cat "/driver:$package" /os:6_3_ARM /uselocaltime
+if ($LASTEXITCODE -ne 0) { throw 'ARM32 probe catalog generation failed' }
+Write-Host "Unsigned probe package: $package"
