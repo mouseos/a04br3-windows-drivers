@@ -5,10 +5,11 @@ SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test arm-coff clean
 
-test: build/cdb_test build/pio_test build/scsi_capacity_test
+test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test
 	./build/cdb_test
 	./build/pio_test
 	./build/scsi_capacity_test
+	./build/dma_test
 
 build/cdb_test: $(SRC)/cdb.c $(SRC)/cdb.h tests/cdb_test.c
 	mkdir -p build
@@ -17,6 +18,10 @@ build/cdb_test: $(SRC)/cdb.c $(SRC)/cdb.h tests/cdb_test.c
 build/scsi_capacity_test: $(SRC)/scsi_capacity.c $(SRC)/scsi_capacity.h tests/scsi_capacity_test.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -I$(SRC) $(SRC)/scsi_capacity.c tests/scsi_capacity_test.c -o $@
+
+build/dma_test: $(SRC)/dma.c $(SRC)/dma.h $(SRC)/pio.h tests/dma_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -I$(SRC) $(SRC)/dma.c tests/dma_test.c -o $@
 
 build/pio_test: $(SRC)/pio.c $(SRC)/pio.h tests/pio_test.c
 	mkdir -p build
