@@ -308,9 +308,14 @@ static BOOLEAN A04WriteTest(struct a04_probe_extension *probe, ULONG sectors)
         A04Le32(probe->dma_buffer + 80) != 128 || A04Le32(probe->dma_buffer + 84) != 128)
         { A04Trace("A04WIN WRITE_TEST GPT header rejected\n"); return FALSE; }
     for (block = 2; block < 34; ++block) {
-        ULONG offset = 512 * (1 + ((block - 2) % 5));
-        UCHAR *read_buffer = probe->dma_buffer + offset;
-        status = a04_msdc_dma_read_sector(&io, block, probe->dma_bus + offset, probe->dma_alignment, 200000);
+        UCHAR *read_buffer = probe->dma_buffer;
+        PMDL mdl = IoAllocateMdl(read_buffer, 512, FALSE, FALSE, NULL);
+        if (!mdl) { A04Trace("A04WIN WRITE_TEST MDL allocation failed\n"); return FALSE; }
+        MmBuildMdlForNonPagedPool(mdl);
+        for (i = 0; i < 512; ++i) read_buffer[i] = 0x5a;
+        KeFlushIoBuffers(mdl, TRUE, TRUE);
+        status = a04_msdc_dma_read_sector(&io, block, probe->dma_bus, probe->dma_alignment, 200000);
+        IoFreeMdl(mdl);
         if (status != A04_DMA_OK) { A04Trace("A04WIN WRITE_TEST GPT read failed\n"); return FALSE; }
         if (block <= 6) {
             A04Trace("A04WIN WRITE_TEST block="); A04TraceHex(block);
