@@ -12,7 +12,6 @@ echo.
 echo === Driver service state ===
 reg query HKLM\SYSTEM\CurrentControlSet\Services\a04msdcprobe /v DriverEntrySeen
 reg query HKLM\SYSTEM\CurrentControlSet\Services\a04msdcprobe /v StorPortStatus
-reg query HKLM\SYSTEM\CurrentControlSet\Services\a04msdcprobe /v FindAdapterSeen
 echo.
 echo === Recent device installation log ===
 if exist X:\Windows\inf\setupapi.dev.log find /i "!!!" X:\Windows\inf\setupapi.dev.log

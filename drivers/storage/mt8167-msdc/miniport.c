@@ -26,10 +26,7 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
     UNREFERENCED_PARAMETER(bus);
     UNREFERENCED_PARAMETER(arguments);
     UNREFERENCED_PARAMETER(config);
-    UNICODE_STRING path = RTL_CONSTANT_STRING(L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\a04msdcprobe");
-    UNICODE_STRING marker = RTL_CONSTANT_STRING(L"FindAdapterSeen");
     UNREFERENCED_PARAMETER(again);
-    A04SetMarker(&path, &marker, 1);
     return SP_RETURN_NOT_FOUND;
 }
 
