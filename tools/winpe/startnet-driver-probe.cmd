@@ -3,7 +3,7 @@ title TAB-A04-BR3 WinPE driver probe
 echo Starting Windows PE device initialization...
 wpeinit
 echo.
-echo === Attempt to load unsigned diagnostic driver ===
+echo === Attempt to load diagnostic driver ===
 echo This probe rejects the adapter and cannot expose a disk.
 drvload X:\a04br3\a04-msdc-probe.inf
 set "DRIVER_EXIT=%errorlevel%"
