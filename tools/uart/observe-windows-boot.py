@@ -57,10 +57,10 @@ with a.log.open('rb') as source, a.output.open('xb') as out:
                 output = f'{a.snapshot_prefix}-layer{layer}.pbm'
                 subprocess.run(['python3', str(capture), '--log', str(a.log), '--uart', a.uart,
                                 '--output', output, '--layer', layer, '--timeout', '15'], check=False)
-            # The collector stayed active during framebuffer capture; preserve its new bytes too.
-            out.write(source.read())
-            out.flush()
             if not a.continue_after_snapshot:
+                # Preserve bytes received while framebuffer capture was running.
+                out.write(source.read())
+                out.flush()
                 raise SystemExit(0)
             snapshot_done = True
         time.sleep(1)
