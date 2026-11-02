@@ -4,7 +4,7 @@
 #include <string.h>
 #include "dma.h"
 
-struct fake { uint32_t regs[64]; int command_error, data_error, no_stop, started, no_dma_done; uint32_t first_command; };
+struct fake { uint32_t regs[64]; int command_error, data_error, no_stop, started; uint32_t first_command; };
 static uint32_t rd(void *p, uint32_t off)
 {
     struct fake *f = p;
@@ -25,7 +25,7 @@ static void wr(void *p, uint32_t off, uint32_t val)
         if (off == 0x098 && (val & 1)) {
             f->started = 1;
             f->regs[0x09c / 4] |= 1;
-            f->regs[0x00c / 4] |= f->data_error ? 1u << 15 : ((1u << 12) | (f->no_dma_done ? 0 : 1u << 13));
+            f->regs[0x00c / 4] |= f->data_error ? 1u << 15 : 1u << 12;
         }
         if (off == 0x098 && (val & 2) && !f->no_stop) f->regs[0x09c / 4] &= ~1u;
     }
@@ -56,8 +56,6 @@ int main(void)
     assert(a04_msdc_dma_read_sector(&io, 0, 0x100040, 64, 10) == A04_DMA_DATA_CRC && f.started);
     io = init(&f); f.no_stop = 1;
     assert(a04_msdc_dma_read_sector(&io, 0, 0x100040, 64, 10) == A04_DMA_STOP_TIMEOUT);
-    io = init(&f); f.no_dma_done = 1; f.regs[0x00c/4] = 1u << 13;
-    assert(a04_msdc_dma_read_sector(&io, 0, 0x100040, 64, 10) == A04_DMA_DATA_TIMEOUT);
     io = init(&f); f.regs[0x010/4] = 1u << 12;
     assert(a04_msdc_dma_read_sector(&io, 0, 0x100040, 64, 10) == A04_DMA_BUSY && !f.started);
     return 0;

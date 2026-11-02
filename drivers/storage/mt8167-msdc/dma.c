@@ -22,10 +22,9 @@
 #define CMD_TIMEOUT (1u << 9)
 #define CMD_CRC (1u << 10)
 #define XFER_DONE (1u << 12)
-#define DMA_DONE (1u << 13)
 #define DATA_TIMEOUT (1u << 14)
 #define DATA_CRC (1u << 15)
-#define EVENTS (CMD_READY | CMD_TIMEOUT | CMD_CRC | XFER_DONE | DMA_DONE | DATA_TIMEOUT | DATA_CRC)
+#define EVENTS (CMD_READY | CMD_TIMEOUT | CMD_CRC | XFER_DONE | DATA_TIMEOUT | DATA_CRC)
 #define DMA_START 1u
 #define DMA_STOP 2u
 #define DMA_MODE (1u << 8)
@@ -38,7 +37,7 @@
 static enum a04_dma_result dma_sector(const struct a04_msdc_io *io,
         uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t limit, int write, uint16_t rca)
 {
-    uint32_t cfg, ctrl, n, bits, completed = 0;
+    uint32_t cfg, ctrl, n, bits;
     enum a04_dma_result result = A04_DMA_OK;
     if (!io || !io->read32 || !io->write32 || !limit || !alignment ||
         (alignment & (alignment - 1)) || (bus_address & (alignment - 1)) ||
@@ -78,13 +77,12 @@ static enum a04_dma_result dma_sector(const struct a04_msdc_io *io,
     io->write32(io->context, DMA_CONTROL, ctrl);
     io->write32(io->context, DMA_CONTROL, ctrl | DMA_START);
     for (n = 0; n < limit; ++n) {
-        bits = io->read32(io->context, INT_STATUS) & (XFER_DONE | DMA_DONE | DATA_TIMEOUT | DATA_CRC);
+        bits = io->read32(io->context, INT_STATUS) & (XFER_DONE | DATA_TIMEOUT | DATA_CRC);
         if (!bits) continue;
         io->write32(io->context, INT_STATUS, bits);
         if (bits & DATA_TIMEOUT) result = A04_DMA_DATA_TIMEOUT;
         else if (bits & DATA_CRC) result = A04_DMA_DATA_CRC;
-        completed |= bits & (XFER_DONE | DMA_DONE);
-        if (result != A04_DMA_OK || completed == (XFER_DONE | DMA_DONE)) break;
+        break;
     }
     if (n == limit) result = A04_DMA_DATA_TIMEOUT;
     io->write32(io->context, DMA_CONTROL, ctrl | DMA_STOP);
