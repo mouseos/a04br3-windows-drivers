@@ -56,6 +56,24 @@ static void A04TraceHex(ULONG value)
     A04Trace(text);
 }
 
+#ifdef A04_READONLY_DISK_PROBE
+/* Optional development-only bugcheck capture. The exported KiBugCheckData is
+ * resolved on this kernel at DriverEntry, never read on normal I/O paths. */
+static KBUGCHECK_CALLBACK_RECORD A04BugRecord;
+static volatile ULONG_PTR *A04BugData;
+static void A04BugCallback(PVOID buffer, ULONG length)
+{
+    ULONG i;
+    UNREFERENCED_PARAMETER(buffer);
+    UNREFERENCED_PARAMETER(length);
+    A04Trace("\nA04WIN BUGCHECK");
+    if (A04BugData) {
+        for (i = 0; i < 5; ++i) { A04Trace(" "); A04TraceHex((ULONG)A04BugData[i]); }
+    } else A04Trace(" data unavailable");
+    A04Trace("\n");
+}
+#endif
+
 /* These markers are for the WinPE test image only. */
 static void A04SetMarker(PUNICODE_STRING path, PUNICODE_STRING name, ULONG value)
 {
@@ -422,6 +440,18 @@ ULONG DriverEntry(PVOID driver, PVOID registry)
     uartAddress.QuadPart = 0x11005000;
     A04Uart = (volatile ULONG *)MmMapIoSpace(uartAddress, 0x1000, MmNonCached);
     A04Trace("\nA04WIN DriverEntry entered\n");
+#ifdef A04_READONLY_DISK_PROBE
+    {
+        UNICODE_STRING name = RTL_CONSTANT_STRING(L"KiBugCheckData");
+        A04BugData = (volatile ULONG_PTR *)MmGetSystemRoutineAddress(&name);
+        KeInitializeCallbackRecord(&A04BugRecord);
+        if (KeRegisterBugCheckCallback(&A04BugRecord, A04BugCallback, NULL, 0,
+                                       (PUCHAR)"A04WIN"))
+            A04Trace(A04BugData ? "A04WIN bugcheck capture registered\n" :
+                                  "A04WIN bugcheck data unavailable\n");
+        else A04Trace("A04WIN bugcheck registration failed\n");
+    }
+#endif
     A04SetMarker((PUNICODE_STRING)registry, &entryMarker, 1);
     init.HwInitializationDataSize = sizeof(init);
     init.AdapterInterfaceType = ACPIBus;
