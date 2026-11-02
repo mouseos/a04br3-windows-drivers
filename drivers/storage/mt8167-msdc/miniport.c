@@ -10,6 +10,9 @@
 #ifdef A04_DMA_PROBE
 #include "dma.h"
 #endif
+#ifdef A04_ENABLE_WRITES
+#include "gpt_guard.h"
+#endif
 #endif
 
 /* Diagnostic UART mapping: only this non-production probe uses UART0.
@@ -17,6 +20,9 @@
 static volatile ULONG *A04Uart;
 struct a04_probe_extension {
     volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; ULONG requests; BOOLEAN failed; BOOLEAN write_ready; BOOLEAN cache_disabled;
+#ifdef A04_ENABLE_WRITES
+    ULONG write_first, write_last;
+#endif
 #ifdef A04_DMA_PROBE
     UCHAR *dma_buffer; ULONG dma_bus; ULONG dma_alignment;
 #endif
@@ -82,6 +88,26 @@ static enum a04_dma_result A04DmaSector(struct a04_probe_extension *probe,
                        probe->dma_alignment, 200000);
     IoFreeMdl(mdl);
     return result;
+}
+#endif
+
+#ifdef A04_ENABLE_WRITES
+/* A failed parse never enables writes. GPT is rescanned from the live medium;
+ * all nonempty entries must be bounded and non-overlapping. */
+static BOOLEAN A04ValidateWindowsRange(struct a04_probe_extension *probe,
+                                       struct a04_msdc_io *io, ULONG sectors)
+{
+    struct a04_gpt_guard guard; uint32_t first, last; ULONG block;
+    if (!probe->cache_disabled || !a04_gpt_guard_begin(&guard, probe->dma_buffer, sectors)) return FALSE;
+    for (block=2; block<34; ++block) {
+        if (A04DmaSector(probe, io, block, FALSE) != A04_DMA_OK ||
+            !a04_gpt_guard_feed(&guard, probe->dma_buffer)) return FALSE;
+    }
+    if (!a04_gpt_guard_finish(&guard, &first, &last)) return FALSE;
+    probe->write_first=first; probe->write_last=last;
+    A04Trace("A04WIN guarded Windows range="); A04TraceHex(first);
+    A04Trace(".."); A04TraceHex(last); A04Trace("\n");
+    return TRUE;
 }
 #endif
 
@@ -433,12 +459,7 @@ static BOOLEAN A04Initialize(PVOID extension)
             A04Write32(probe, 0x010, interruptEnable);
             if (result == A04_MSDC_OK) {
                 probe->cache_disabled = (probe->sector[33] & 1u) == 0;
-#ifdef A04_ENABLE_WRITES
-                /* No cache flush implementation: writable only with eMMC cache off. */
-                probe->write_ready = probe->cache_disabled;
-#else
                 probe->write_ready = FALSE;
-#endif
                 sectors = (ULONG)probe->sector[212] |
                           ((ULONG)probe->sector[213] << 8) |
                           ((ULONG)probe->sector[214] << 16) |
@@ -474,6 +495,12 @@ static BOOLEAN A04Initialize(PVOID extension)
 #endif
 #ifdef A04_DMA_DISK_PROBE
                 if (!match) return FALSE;
+#ifdef A04_ENABLE_WRITES
+                A04Write32(probe, 0x010, old_enable & ~0x0000d700u);
+                probe->write_ready = A04ValidateWindowsRange(probe, &dma_io, sectors);
+                A04Write32(probe, 0x010, old_enable);
+                if (!probe->write_ready) { A04Trace("A04WIN write range rejected\n"); return FALSE; }
+#endif
 #else
                 return FALSE; /* A single read, followed by deliberate stop. */
 #endif
@@ -621,6 +648,12 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
             A04Sense(request, result.sense_key, result.asc);
         } else if (result.action == A04_SCSI_REPLY) {
             request->DataTransferLength = result.transfer_length;
+#ifdef A04_ENABLE_WRITES
+        } else if (result.action == A04_SCSI_WRITE &&
+                   !a04_gpt_guard_range(probe->write_first, probe->write_last,
+                                        result.blocks.lba, result.blocks.block_count)) {
+            A04Sense(request, 7, 0x27);
+#endif
         } else {
             struct a04_msdc_io io = {probe, A04Read32, A04Read8, A04Write32};
             ULONG interrupts = A04Read32(probe, 0x010), failure = 0, j;

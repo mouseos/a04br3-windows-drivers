@@ -5,12 +5,17 @@ SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test arm-coff clean
 
-test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test
+test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test
 	./build/cdb_test
 	./build/pio_test
 	./build/scsi_capacity_test
 	./build/dma_test
 	./build/scsi_test
+	python3 tests/gpt_guard_fixtures.py
+
+build/gpt_guard_test: $(SRC)/gpt_guard.c $(SRC)/gpt_guard.h tests/gpt_guard_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -I$(SRC) $(SRC)/gpt_guard.c tests/gpt_guard_test.c -o $@
 
 build/cdb_test: $(SRC)/cdb.c $(SRC)/cdb.h tests/cdb_test.c
 	mkdir -p build

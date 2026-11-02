@@ -23,7 +23,7 @@ if ($env:A04_READONLY_DISK_PROBE -eq '1') {
     $sources = @('cdb', 'scsi_capacity', 'scsi')
     if ($env:A04_DMA_PROBE -eq '1') { $probeDefines += '-DA04_DMA_PROBE'; $sources += 'dma' }
     if ($env:A04_DMA_DISK_PROBE -eq '1') { $probeDefines += '-DA04_DMA_DISK_PROBE' }
-    if ($env:A04_ENABLE_WRITES -eq '1') { $probeDefines += '-DA04_ENABLE_WRITES' }
+    if ($env:A04_ENABLE_WRITES -eq '1') { $probeDefines += '-DA04_ENABLE_WRITES'; $sources += 'gpt_guard' }
     if ($env:A04_DMA_WRITE_TEST -eq '1') { $probeDefines += '-DA04_DMA_WRITE_TEST'; $probeDefines += ('-DA04_DMA_TEST_LBA=' + $env:A04_DMA_TEST_LBA) }
     if ($env:A04_VIRTUAL_BOUNCE_EXPERIMENT -eq '1') { $probeDefines += '-DA04_VIRTUAL_BOUNCE_EXPERIMENT' }
     foreach ($name in $sources) {
