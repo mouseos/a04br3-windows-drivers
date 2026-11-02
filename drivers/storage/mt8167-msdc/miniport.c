@@ -72,6 +72,11 @@ static void A04TraceHex(ULONG value)
 }
 
 #ifdef A04_DMA_PROBE
+static uint64_t A04ClockNow(void *context)
+{
+    UNREFERENCED_PARAMETER(context);
+    return (uint64_t)KeQueryPerformanceCounter(NULL).QuadPart;
+}
 /* Diagnostic synchronization for the resident common buffer. This does not
  * resolve the unexpected cacheability of the Windows mapping. */
 static enum a04_dma_result A04DmaSector(struct a04_probe_extension *probe,
@@ -79,13 +84,29 @@ static enum a04_dma_result A04DmaSector(struct a04_probe_extension *probe,
 {
     PMDL mdl = IoAllocateMdl(probe->dma_buffer, 512, FALSE, FALSE, NULL);
     enum a04_dma_result result;
+    LARGE_INTEGER frequency;
+    uint64_t start;
+    struct a04_dma_clock clock;
     if (!mdl) return A04_DMA_INVALID;
     MmBuildMdlForNonPagedPool(mdl);
     KeFlushIoBuffers(mdl, write ? FALSE : TRUE, TRUE);
-    result = write ? a04_msdc_dma_write_sector(io, lba, probe->dma_bus,
-                       probe->dma_alignment, 200000, 1) :
-                     a04_msdc_dma_read_sector(io, lba, probe->dma_bus,
-                       probe->dma_alignment, 200000);
+    KeQueryPerformanceCounter(&frequency);
+    clock.context = NULL; clock.now = A04ClockNow;
+    clock.ticks = frequency.QuadPart > 0 ? (uint64_t)frequency.QuadPart * 10u : 0;
+    start = A04ClockNow(NULL);
+    result = a04_msdc_dma_sector_timed(io, lba, probe->dma_bus,
+                       probe->dma_alignment, 100000000u, write, 1, &clock);
+    if (result != A04_DMA_OK) {
+        uint64_t elapsed = A04ClockNow(NULL) - start;
+        A04Trace("A04WIN dma failure lba="); A04TraceHex(lba);
+        A04Trace(" write="); A04TraceHex(write);
+        A04Trace(" result="); A04TraceHex(result);
+        A04Trace(" ticks-low="); A04TraceHex((ULONG)elapsed);
+        A04Trace(" frequency="); A04TraceHex((ULONG)frequency.QuadPart);
+        A04Trace(" int="); A04TraceHex(A04Read32(probe, 0x00c));
+        A04Trace(" status="); A04TraceHex(A04Read32(probe, 0x03c));
+        A04Trace(" dma="); A04TraceHex(A04Read32(probe, 0x09c)); A04Trace("\n");
+    }
     IoFreeMdl(mdl);
     return result;
 }

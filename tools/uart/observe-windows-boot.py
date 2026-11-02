@@ -44,7 +44,8 @@ with a.log.open('rb') as source, a.output.open('xb') as out:
                     reported.add(marker)
                     if marker == markers[0]:
                         ebs_at = time.monotonic()
-            if b'A04WIN BUGCHECK' in tail or b'A04WIN write range rejected' in tail:
+            if any(marker in tail for marker in (b'A04WIN BUGCHECK', b'A04WIN write range rejected',
+                                                  b'A04WIN transfer failed', b'A04WIN dma failure')):
                 print('停止または書込み範囲検証失敗を検出、UARTでリセットします', flush=True)
                 reset()
                 raise SystemExit(2)

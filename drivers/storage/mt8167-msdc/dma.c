@@ -34,14 +34,17 @@
 
 /* Register meanings and command order checked against the platform's Linux
  * MT8167 host driver; this implementation is independently written. */
-static enum a04_dma_result dma_sector(const struct a04_msdc_io *io,
-        uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t limit, int write, uint16_t rca)
+enum a04_dma_result a04_msdc_dma_sector_timed(const struct a04_msdc_io *io,
+        uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t limit, int write, uint16_t rca,
+        const struct a04_dma_clock *clock)
 {
     uint32_t cfg, ctrl, n, bits;
+    uint64_t start = 0;
     enum a04_dma_result result = A04_DMA_OK;
     if (!io || !io->read32 || !io->write32 || !limit || !alignment ||
         (alignment & (alignment - 1)) || (bus_address & (alignment - 1)) ||
-        bus_address > UINT32_MAX - 511u || (write && !rca))
+        bus_address > UINT32_MAX - 511u || (write && !rca) ||
+        (clock && (!clock->now || !clock->ticks)))
         return A04_DMA_INVALID;
     if ((io->read32(io->context, INT_ENABLE) & EVENTS) ||
         (io->read32(io->context, STATUS) & 1u) ||
@@ -76,15 +79,20 @@ static enum a04_dma_result dma_sector(const struct a04_msdc_io *io,
     ctrl = (ctrl & ~(DMA_MODE | DMA_BURST)) | DMA_LAST | (6u << 12);
     io->write32(io->context, DMA_CONTROL, ctrl);
     io->write32(io->context, DMA_CONTROL, ctrl | DMA_START);
+    if (clock) start = clock->now(clock->context);
     for (n = 0; n < limit; ++n) {
         bits = io->read32(io->context, INT_STATUS) & (XFER_DONE | DATA_TIMEOUT | DATA_CRC);
-        if (!bits) continue;
+        if (!bits) {
+            if (clock && !(n & 1023u) && clock->now(clock->context) - start >= clock->ticks)
+                break;
+            continue;
+        }
         io->write32(io->context, INT_STATUS, bits);
         if (bits & DATA_TIMEOUT) result = A04_DMA_DATA_TIMEOUT;
         else if (bits & DATA_CRC) result = A04_DMA_DATA_CRC;
         break;
     }
-    if (n == limit) result = A04_DMA_DATA_TIMEOUT;
+    if (!bits) result = A04_DMA_DATA_POLL_TIMEOUT;
     io->write32(io->context, DMA_CONTROL, ctrl | DMA_STOP);
     for (n = 0; n < limit; ++n)
         if (!(io->read32(io->context, DMA_CONFIG) & DMA_ACTIVE)) break;
@@ -122,8 +130,8 @@ static enum a04_dma_result dma_sector(const struct a04_msdc_io *io,
 
 enum a04_dma_result a04_msdc_dma_read_sector(const struct a04_msdc_io *io,
         uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t limit)
-{ return dma_sector(io, lba, bus_address, alignment, limit, 0, 0); }
+{ return a04_msdc_dma_sector_timed(io, lba, bus_address, alignment, limit, 0, 0, 0); }
 
 enum a04_dma_result a04_msdc_dma_write_sector(const struct a04_msdc_io *io,
         uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t limit, uint16_t rca)
-{ return dma_sector(io, lba, bus_address, alignment, limit, 1, rca); }
+{ return a04_msdc_dma_sector_timed(io, lba, bus_address, alignment, limit, 1, rca, 0); }

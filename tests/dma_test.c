@@ -4,10 +4,12 @@
 #include <string.h>
 #include "dma.h"
 
-struct fake { uint32_t regs[64]; int command_error, data_error, no_stop, started; uint32_t first_command; };
+struct fake { uint32_t regs[64]; int command_error, data_error, no_stop, started; uint32_t first_command, delay, reads; uint64_t time; };
 static uint32_t rd(void *p, uint32_t off)
 {
     struct fake *f = p;
+    if (off == 0x00c && f->started && f->delay && ++f->reads == f->delay)
+        f->regs[off / 4] |= 1u << 12;
     return f->regs[off / 4];
 }
 static void wr(void *p, uint32_t off, uint32_t val)
@@ -25,11 +27,12 @@ static void wr(void *p, uint32_t off, uint32_t val)
         if (off == 0x098 && (val & 1)) {
             f->started = 1;
             f->regs[0x09c / 4] |= 1;
-            f->regs[0x00c / 4] |= f->data_error ? 1u << 15 : 1u << 12;
+            if (!f->delay) f->regs[0x00c / 4] |= f->data_error == 2 ? 1u << 14 : f->data_error ? 1u << 15 : 1u << 12;
         }
         if (off == 0x098 && (val & 2) && !f->no_stop) f->regs[0x09c / 4] &= ~1u;
     }
 }
+static uint64_t now(void *p) { struct fake *f = p; return f->time++; }
 static struct a04_msdc_io init(struct fake *f)
 {
     struct a04_msdc_io io = {f, rd, 0, wr};
@@ -58,5 +61,14 @@ int main(void)
     assert(a04_msdc_dma_read_sector(&io, 0, 0x100040, 64, 10) == A04_DMA_STOP_TIMEOUT);
     io = init(&f); f.regs[0x010/4] = 1u << 12;
     assert(a04_msdc_dma_read_sector(&io, 0, 0x100040, 64, 10) == A04_DMA_BUSY && !f.started);
+    {
+        struct a04_dma_clock clock = { &f, now, 3 };
+        io = init(&f); f.delay = 1500;
+        assert(a04_msdc_dma_sector_timed(&io, 0, 0x100040, 64, 5000, 0, 0, &clock) == A04_DMA_OK);
+        io = init(&f); f.delay = 99999;
+        assert(a04_msdc_dma_sector_timed(&io, 0, 0x100040, 64, 10000, 0, 0, &clock) == A04_DMA_DATA_POLL_TIMEOUT);
+        io = init(&f); f.data_error = 2;
+        assert(a04_msdc_dma_sector_timed(&io, 0, 0x100040, 64, 10000, 0, 0, &clock) == A04_DMA_DATA_TIMEOUT);
+    }
     return 0;
 }
