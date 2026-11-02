@@ -273,7 +273,11 @@ static BOOLEAN A04Initialize(PVOID extension)
                     probe->dma_buffer[7] == 'T';
                 A04Trace("A04WIN DMA GPT result="); A04TraceHex((ULONG)dr);
                 A04Trace(" signature="); A04TraceHex(match ? 1u : 0u); A04Trace("\n");
+#ifdef A04_DMA_DISK_PROBE
+                if (!match) return FALSE;
+#else
                 return FALSE; /* A single read, followed by deliberate stop. */
+#endif
 #endif
                 probe->sectors = sectors;
                 A04Trace("A04WIN interrupts enable="); A04TraceHex(A04Read32(probe, 0x010));
@@ -429,17 +433,25 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         } else {
             struct a04_msdc_io io = {probe, A04Read32, A04Read8, A04Write32};
             ULONG interrupts = A04Read32(probe, 0x010);
-            enum a04_msdc_result result;
+            ULONG failure = 0;
             A04Write32(probe, 0x010, interrupts & ~0x0000d700u);
-            result = A04_MSDC_OK;
             for (i = 0; i < block.block_count; ++i) {
-                result = a04_msdc_read_sector(&io, block.lba + i, data + i * 512, 512, 200000);
-                if (result != A04_MSDC_OK) break;
+#ifdef A04_DMA_DISK_PROBE
+                ULONG j;
+                enum a04_dma_result result = a04_msdc_dma_read_sector(
+                    &io, block.lba + i, probe->dma_bus, probe->dma_alignment, 200000);
+                if (result != A04_DMA_OK) { failure = (ULONG)result; break; }
+                for (j = 0; j < 512; ++j) data[i * 512 + j] = probe->dma_buffer[j];
+#else
+                enum a04_msdc_result result = a04_msdc_read_sector(
+                    &io, block.lba + i, data + i * 512, 512, 200000);
+                if (result != A04_MSDC_OK) { failure = (ULONG)result; break; }
+#endif
             }
             A04Write32(probe, 0x010, interrupts);
-            if (result != A04_MSDC_OK) {
+            if (failure) {
                 probe->failed = TRUE;
-                A04Trace("A04WIN read failed result="); A04TraceHex((ULONG)result); A04Trace("\n");
+                A04Trace("A04WIN read failed result="); A04TraceHex(failure); A04Trace("\n");
                 A04Sense(request, 3, 0x11);
             } else request->DataTransferLength = block.block_count * 512;
         }
