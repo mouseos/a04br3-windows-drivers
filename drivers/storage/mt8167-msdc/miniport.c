@@ -65,6 +65,26 @@ static void A04TraceHex(ULONG value)
     A04Trace(text);
 }
 
+#ifdef A04_DMA_PROBE
+/* Diagnostic synchronization for the resident common buffer. This does not
+ * resolve the unexpected cacheability of the Windows mapping. */
+static enum a04_dma_result A04DmaSector(struct a04_probe_extension *probe,
+        struct a04_msdc_io *io, ULONG lba, BOOLEAN write)
+{
+    PMDL mdl = IoAllocateMdl(probe->dma_buffer, 512, FALSE, FALSE, NULL);
+    enum a04_dma_result result;
+    if (!mdl) return A04_DMA_INVALID;
+    MmBuildMdlForNonPagedPool(mdl);
+    KeFlushIoBuffers(mdl, write ? FALSE : TRUE, TRUE);
+    result = write ? a04_msdc_dma_write_sector(io, lba, probe->dma_bus,
+                       probe->dma_alignment, 200000, 1) :
+                     a04_msdc_dma_read_sector(io, lba, probe->dma_bus,
+                       probe->dma_alignment, 200000);
+    IoFreeMdl(mdl);
+    return result;
+}
+#endif
+
 #ifdef A04_READONLY_DISK_PROBE
 /* Optional development-only bugcheck capture. The exported KiBugCheckData is
  * resolved on this kernel at DriverEntry, never read on normal I/O paths. */
@@ -309,13 +329,8 @@ static BOOLEAN A04WriteTest(struct a04_probe_extension *probe, ULONG sectors)
         { A04Trace("A04WIN WRITE_TEST GPT header rejected\n"); return FALSE; }
     for (block = 2; block < 34; ++block) {
         UCHAR *read_buffer = probe->dma_buffer;
-        PMDL mdl = IoAllocateMdl(read_buffer, 512, FALSE, FALSE, NULL);
-        if (!mdl) { A04Trace("A04WIN WRITE_TEST MDL allocation failed\n"); return FALSE; }
-        MmBuildMdlForNonPagedPool(mdl);
         for (i = 0; i < 512; ++i) read_buffer[i] = 0x5a;
-        KeFlushIoBuffers(mdl, TRUE, TRUE);
-        status = a04_msdc_dma_read_sector(&io, block, probe->dma_bus, probe->dma_alignment, 200000);
-        IoFreeMdl(mdl);
+        status = A04DmaSector(probe, &io, block, FALSE);
         if (status != A04_DMA_OK) { A04Trace("A04WIN WRITE_TEST GPT read failed\n"); return FALSE; }
         if (block <= 6) {
             A04Trace("A04WIN WRITE_TEST block="); A04TraceHex(block);
@@ -346,10 +361,8 @@ static BOOLEAN A04WriteTest(struct a04_probe_extension *probe, ULONG sectors)
         }
     }
     A04Trace("A04WIN WRITE_TEST matches="); A04TraceHex(matches); A04Trace(" first="); A04TraceHex(first); A04Trace("\n");
-    A04Trace("A04WIN WRITE_TEST read-only comparison complete\n");
-    return FALSE; /* Never write while diagnosing DMA buffer visibility. */
     if (matches != 1 || first != A04_DMA_TEST_LBA) return FALSE;
-    status = a04_msdc_dma_read_sector(&io, first, probe->dma_bus, probe->dma_alignment, 200000);
+    status = A04DmaSector(probe, &io, first, FALSE);
     if (status != A04_DMA_OK) { A04Trace("A04WIN WRITE_TEST original read failed\n"); return FALSE; }
     for (i = 0; i < 512; ++i) {
         probe->sector[i] = probe->dma_buffer[i];
@@ -357,16 +370,16 @@ static BOOLEAN A04WriteTest(struct a04_probe_extension *probe, ULONG sectors)
     }
     for (i = 0; i < 512; ++i) probe->dma_buffer[i] = (UCHAR)(0xa5u ^ (i & 0xffu));
     A04Trace("A04WIN WRITE_TEST starting lba="); A04TraceHex(first); A04Trace("\n");
-    status = a04_msdc_dma_write_sector(&io, first, probe->dma_bus, probe->dma_alignment, 200000, 1);
+    status = A04DmaSector(probe, &io, first, TRUE);
     if (status != A04_DMA_OK) { A04Trace("A04WIN WRITE_TEST write error="); A04TraceHex((ULONG)status); A04Trace("\n"); return FALSE; }
-    status = a04_msdc_dma_read_sector(&io, first, probe->dma_bus, probe->dma_alignment, 200000);
+    status = A04DmaSector(probe, &io, first, FALSE);
     if (status != A04_DMA_OK) return FALSE;
     for (i = 0; i < 512; ++i)
         if (probe->dma_buffer[i] != (UCHAR)(0xa5u ^ (i & 0xffu))) return FALSE;
     for (i = 0; i < 512; ++i) probe->dma_buffer[i] = probe->sector[i];
-    status = a04_msdc_dma_write_sector(&io, first, probe->dma_bus, probe->dma_alignment, 200000, 1);
+    status = A04DmaSector(probe, &io, first, TRUE);
     if (status != A04_DMA_OK) return FALSE;
-    status = a04_msdc_dma_read_sector(&io, first, probe->dma_bus, probe->dma_alignment, 200000);
+    status = A04DmaSector(probe, &io, first, FALSE);
     if (status != A04_DMA_OK) return FALSE;
     for (i = 0; i < 512; ++i)
         if (probe->dma_buffer[i] != probe->sector[i]) return FALSE;
@@ -444,7 +457,7 @@ static BOOLEAN A04Initialize(PVOID extension)
                 ULONG old_enable = A04Read32(probe, 0x010);
                 BOOLEAN match;
                 A04Write32(probe, 0x010, old_enable & ~0x0000d700u);
-                dr = a04_msdc_dma_read_sector(&dma_io, 1, probe->dma_bus, probe->dma_alignment, 200000);
+                dr = A04DmaSector(probe, &dma_io, 1, FALSE);
                 A04Write32(probe, 0x010, old_enable);
                 match = dr == A04_DMA_OK && probe->dma_buffer[0] == 'E' &&
                     probe->dma_buffer[1] == 'F' && probe->dma_buffer[2] == 'I' &&
@@ -617,11 +630,9 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
                 if (result.action == A04_SCSI_WRITE) {
                     for (j = 0; j < 512; ++j) probe->dma_buffer[j] = data[i * 512 + j];
                     /* UEFI's card selection explicitly sets RCA 1. */
-                    dr = a04_msdc_dma_write_sector(&io, result.blocks.lba + i,
-                              probe->dma_bus, probe->dma_alignment, 200000, 1);
+                    dr = A04DmaSector(probe, &io, result.blocks.lba + i, TRUE);
                 } else {
-                    dr = a04_msdc_dma_read_sector(&io, result.blocks.lba + i,
-                              probe->dma_bus, probe->dma_alignment, 200000);
+                    dr = A04DmaSector(probe, &io, result.blocks.lba + i, FALSE);
                     if (dr == A04_DMA_OK)
                         for (j = 0; j < 512; ++j) data[i * 512 + j] = probe->dma_buffer[j];
                 }
