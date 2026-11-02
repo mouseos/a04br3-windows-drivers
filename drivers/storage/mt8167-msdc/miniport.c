@@ -228,9 +228,11 @@ static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControl(PVOID extension,
     if (type == ScsiQuerySupportedControlTypes && parameters) {
         PSCSI_SUPPORTED_CONTROL_TYPE_LIST list = (PSCSI_SUPPORTED_CONTROL_TYPE_LIST)parameters;
         ULONG i;
+        A04Trace("A04WIN AdapterControl max="); A04TraceHex(list->MaxControlType); A04Trace("\n");
         for (i = 0; i < list->MaxControlType; ++i) list->SupportedTypeList[i] = FALSE;
         if ((ULONG)ScsiQuerySupportedControlTypes < list->MaxControlType)
             list->SupportedTypeList[ScsiQuerySupportedControlTypes] = TRUE;
+        A04Trace("A04WIN AdapterControl query complete\n");
         return ScsiAdapterControlSuccess;
     }
     return ScsiAdapterControlUnsuccessful;
