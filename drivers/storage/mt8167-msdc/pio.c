@@ -22,13 +22,14 @@
 #define COMMAND_BITS (COMMAND_READY | COMMAND_TIMEOUT | RESPONSE_CRC)
 #define DATA_BITS (TRANSFER_COMPLETE | DATA_TIMEOUT | DATA_CRC)
 #define CARD_R1_ERRORS 0xffff0000u
-#define CMD17_SINGLE_R1_512 (17u | (1u << 7) | (1u << 11) | (512u << 16))
+#define SINGLE_R1_512(opcode) ((opcode) | (1u << 7) | (1u << 11) | (512u << 16))
 
 /* One command at a time; DMA, concurrent requests and ISR ownership are not
  * supported. The wrapper must serialize and quiesce them before calling. */
-enum a04_msdc_result a04_msdc_read_sector(const struct a04_msdc_io *io,
-                                          uint32_t lba, uint8_t *buffer,
-                                          size_t length, uint32_t poll_limit)
+static enum a04_msdc_result a04_msdc_read_data(const struct a04_msdc_io *io,
+                                               uint32_t opcode, uint32_t argument,
+                                               uint8_t *buffer, size_t length,
+                                               uint32_t poll_limit)
 {
     uint32_t n, bits, count, val;
     size_t offset = 0;
@@ -47,8 +48,8 @@ enum a04_msdc_result a04_msdc_read_sector(const struct a04_msdc_io *io,
     if (n == poll_limit) return A04_MSDC_FIFO_TIMEOUT;
     bits = io->read32(io->context, INT_STATUS) & (COMMAND_BITS | DATA_BITS);
     if (bits) io->write32(io->context, INT_STATUS, bits);
-    io->write32(io->context, ARGUMENT, lba);
-    io->write32(io->context, COMMAND, CMD17_SINGLE_R1_512);
+    io->write32(io->context, ARGUMENT, argument);
+    io->write32(io->context, COMMAND, SINGLE_R1_512(opcode));
     for (n = 0; n < poll_limit; ++n) {
         bits = io->read32(io->context, INT_STATUS) & COMMAND_BITS;
         if (!bits) continue;
@@ -83,4 +84,19 @@ enum a04_msdc_result a04_msdc_read_sector(const struct a04_msdc_io *io,
         if (done && offset == 512) return A04_MSDC_OK;
     }
     return done ? A04_MSDC_DATA_ERROR : A04_MSDC_DATA_TIMEOUT;
+}
+
+
+enum a04_msdc_result a04_msdc_read_sector(const struct a04_msdc_io *io,
+                                          uint32_t lba, uint8_t *buffer,
+                                          size_t length, uint32_t poll_limit)
+{
+    return a04_msdc_read_data(io, 17u, lba, buffer, length, poll_limit);
+}
+
+enum a04_msdc_result a04_msdc_read_ext_csd(const struct a04_msdc_io *io,
+                                           uint8_t *buffer, size_t length,
+                                           uint32_t poll_limit)
+{
+    return a04_msdc_read_data(io, 8u, 0, buffer, length, poll_limit);
 }

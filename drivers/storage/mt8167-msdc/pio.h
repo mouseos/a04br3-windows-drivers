@@ -33,4 +33,9 @@ enum a04_msdc_result {
 enum a04_msdc_result a04_msdc_read_sector(const struct a04_msdc_io *io,
                                           uint32_t lba, uint8_t *buffer,
                                           size_t length, uint32_t poll_limit);
+/* eMMC CMD8, 512 bytes of EXT_CSD. The same ownership and failure rules
+ * apply as for CMD17; this is not the SD-card SEND_IF_COND command. */
+enum a04_msdc_result a04_msdc_read_ext_csd(const struct a04_msdc_io *io,
+                                           uint8_t *buffer, size_t length,
+                                           uint32_t poll_limit);
 #endif

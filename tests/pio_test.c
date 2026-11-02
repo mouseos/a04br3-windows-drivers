@@ -49,6 +49,10 @@ int main(void)
     assert(f.lba == 0x12345678 && f.command == (17u | (1u << 7) | (1u << 11) | (512u << 16)));
     assert(f.regs[0x50 / 4] == 1 && f.consumed == 512 && f.fifo_clears == 1);
     for (i = 0; i < sizeof(data); ++i) assert(data[i] == (uint8_t)i);
+    memset(&f, 0, sizeof(f));
+    assert(a04_msdc_read_ext_csd(&io, data, sizeof(data), 100) == A04_MSDC_OK);
+    assert(f.lba == 0 && f.command == (8u | (1u << 7) | (1u << 11) | (512u << 16)));
+    for (i = 0; i < sizeof(data); ++i) assert(data[i] == (uint8_t)i);
     for (i = 1; i <= 6; ++i) {
         enum a04_msdc_result expected[] = {A04_MSDC_OK, A04_MSDC_BUSY_TIMEOUT,
             A04_MSDC_FIFO_TIMEOUT, A04_MSDC_COMMAND_TIMEOUT, A04_MSDC_COMMAND_CRC,
