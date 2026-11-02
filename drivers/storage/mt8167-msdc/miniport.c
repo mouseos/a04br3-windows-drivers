@@ -80,6 +80,26 @@ static void A04BugCallback(PVOID buffer, ULONG length)
         for (i = 0; i < 5; ++i) { A04Trace(" "); A04TraceHex((ULONG)A04BugData[i]); }
     } else A04Trace(" data unavailable");
     A04Trace("\n");
+    {
+        ULONG_PTR low = 0, high = 0, here = (ULONG_PTR)&i;
+        ULONG_PTR address;
+        ULONG count = 0;
+        IoGetStackLimits(&low, &high);
+        A04Trace("A04WIN STACK bounds="); A04TraceHex((ULONG)low);
+        A04Trace(" "); A04TraceHex((ULONG)high);
+        A04Trace(" sp="); A04TraceHex((ULONG)here); A04Trace("\n");
+        address = (here + sizeof(ULONG) - 1) & ~((ULONG_PTR)sizeof(ULONG) - 1);
+        if (address >= low && address < high) {
+            while (address <= high - sizeof(ULONG) && count < 1536) {
+                if ((count & 7u) == 0) { A04Trace("A04STK "); A04TraceHex((ULONG)address); }
+                A04Trace(" "); A04TraceHex(*(volatile ULONG *)address);
+                if ((count & 7u) == 7u) A04Trace("\n");
+                address += sizeof(ULONG); ++count;
+            }
+            if ((count & 7u) != 0) A04Trace("\n");
+        }
+        A04Trace("A04WIN ENDSTACK\n");
+    }
 }
 #endif
 
@@ -509,6 +529,17 @@ ULONG DriverEntry(PVOID driver, PVOID registry)
 #ifdef A04_READONLY_DISK_PROBE
     {
         UNICODE_STRING name = RTL_CONSTANT_STRING(L"KiBugCheckData");
+        UNICODE_STRING pcname = RTL_CONSTANT_STRING(L"RtlPcToFileHeader");
+        typedef PVOID (*A04PcToFileHeader)(PVOID, PVOID *);
+        A04PcToFileHeader lookup = (A04PcToFileHeader)MmGetSystemRoutineAddress(&pcname);
+        PVOID base = NULL;
+        A04Trace("A04WIN kernel function="); A04TraceHex((ULONG)(ULONG_PTR)&KeBugCheckEx);
+        if (lookup) (void)lookup((PVOID)&KeBugCheckEx, &base);
+        A04Trace(" base="); A04TraceHex((ULONG)(ULONG_PTR)base); A04Trace("\n");
+        base = NULL;
+        A04Trace("A04WIN storport function="); A04TraceHex((ULONG)(ULONG_PTR)&StorPortInitialize);
+        if (lookup) (void)lookup((PVOID)&StorPortInitialize, &base);
+        A04Trace(" base="); A04TraceHex((ULONG)(ULONG_PTR)base); A04Trace("\n");
         A04BugData = (volatile ULONG_PTR *)MmGetSystemRoutineAddress(&name);
         KeInitializeCallbackRecord(&A04BugRecord);
         if (KeRegisterBugCheckCallback(&A04BugRecord, A04BugCallback, NULL, 0,
