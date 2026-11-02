@@ -247,17 +247,22 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
 #ifdef A04_DMA_PROBE
     {
         ULONG bytes = 0, alignment = KeGetRecommendedSharedDataAlignment();
+        ULONG needed = 512;
         ULONG_PTR aligned;
         PVOID allocation;
         STOR_PHYSICAL_ADDRESS physical;
         if (!alignment || alignment > 4096 || (alignment & (alignment - 1))) return SP_RETURN_BAD_CONFIG;
-        allocation = StorPortGetUncachedExtension(extension, config, 512 + alignment - 1);
+#ifdef A04_DMA_WRITE_TEST
+        if (alignment > 512) return SP_RETURN_BAD_CONFIG;
+        needed = 6 * 512;
+#endif
+        allocation = StorPortGetUncachedExtension(extension, config, needed + alignment - 1);
         if (!allocation) { A04Trace("A04WIN DMA buffer allocation failed\n"); return SP_RETURN_ERROR; }
         aligned = ((ULONG_PTR)allocation + alignment - 1) & ~((ULONG_PTR)alignment - 1);
         probe->dma_buffer = (UCHAR *)aligned;
         physical = StorPortGetPhysicalAddress(extension, NULL, probe->dma_buffer, &bytes);
-        if (physical.HighPart || bytes < 512 || (physical.LowPart & (alignment - 1)) ||
-            physical.LowPart > 0xfffffe00u) {
+        if (physical.HighPart || bytes < needed || (physical.LowPart & (alignment - 1)) ||
+            physical.LowPart > 0xffffffffu - (needed - 1)) {
             A04Trace("A04WIN DMA buffer mapping rejected bytes="); A04TraceHex(bytes);
             A04Trace(" physical-high="); A04TraceHex((ULONG)physical.HighPart);
             A04Trace(" physical-low="); A04TraceHex(physical.LowPart); A04Trace("\n");
@@ -303,13 +308,14 @@ static BOOLEAN A04WriteTest(struct a04_probe_extension *probe, ULONG sectors)
         A04Le32(probe->dma_buffer + 80) != 128 || A04Le32(probe->dma_buffer + 84) != 128)
         { A04Trace("A04WIN WRITE_TEST GPT header rejected\n"); return FALSE; }
     for (block = 2; block < 34; ++block) {
-        for (i = 0; i < 512; ++i) probe->dma_buffer[i] = 0x5a;
-        status = a04_msdc_dma_read_sector(&io, block, probe->dma_bus, probe->dma_alignment, 200000);
+        ULONG offset = 512 * (1 + ((block - 2) % 5));
+        UCHAR *read_buffer = probe->dma_buffer + offset;
+        status = a04_msdc_dma_read_sector(&io, block, probe->dma_bus + offset, probe->dma_alignment, 200000);
         if (status != A04_DMA_OK) { A04Trace("A04WIN WRITE_TEST GPT read failed\n"); return FALSE; }
         if (block <= 6) {
             A04Trace("A04WIN WRITE_TEST block="); A04TraceHex(block);
-            A04Trace(" word0="); A04TraceHex(A04Le32(probe->dma_buffer));
-            A04Trace(" slot3_first="); A04TraceHex(A04Le32(probe->dma_buffer + 3 * 128 + 32));
+            A04Trace(" word0="); A04TraceHex(A04Le32(read_buffer));
+            A04Trace(" slot3_first="); A04TraceHex(A04Le32(read_buffer + 3 * 128 + 32));
             A04Trace(" dma_sa="); A04TraceHex(A04Read32(probe, 0x090));
             A04Trace(" dma_ctrl="); A04TraceHex(A04Read32(probe, 0x098));
             A04Trace(" dma_cfg="); A04TraceHex(A04Read32(probe, 0x09c));
@@ -317,7 +323,7 @@ static BOOLEAN A04WriteTest(struct a04_probe_extension *probe, ULONG sectors)
             A04Trace("\n");
         }
         for (slot = 0; slot < 4; ++slot) {
-            UCHAR *e = probe->dma_buffer + slot * 128;
+            UCHAR *e = read_buffer + slot * 128;
             if (block == 6 && slot == 3) {
                 A04Trace("A04WIN WRITE_TEST slot type="); A04TraceHex(A04Le32(e));
                 A04Trace(" first="); A04TraceHex(A04Le32(e + 32));
@@ -335,6 +341,8 @@ static BOOLEAN A04WriteTest(struct a04_probe_extension *probe, ULONG sectors)
         }
     }
     A04Trace("A04WIN WRITE_TEST matches="); A04TraceHex(matches); A04Trace(" first="); A04TraceHex(first); A04Trace("\n");
+    A04Trace("A04WIN WRITE_TEST read-only comparison complete\n");
+    return FALSE; /* Never write while diagnosing DMA buffer visibility. */
     if (matches != 1 || first != A04_DMA_TEST_LBA) return FALSE;
     status = a04_msdc_dma_read_sector(&io, first, probe->dma_bus, probe->dma_alignment, 200000);
     if (status != A04_DMA_OK) { A04Trace("A04WIN WRITE_TEST original read failed\n"); return FALSE; }
