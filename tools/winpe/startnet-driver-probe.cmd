@@ -13,7 +13,7 @@ echo === Driver service state ===
 reg query HKLM\SYSTEM\CurrentControlSet\Services\a04msdcprobe
 echo.
 echo === Recent device installation log ===
-if exist X:\Windows\inf\setupapi.dev.log findstr /i /c:"a04msdc" /c:"a04-msdc" X:\Windows\inf\setupapi.dev.log
+if exist X:\Windows\inf\setupapi.dev.log find /i "!!!" X:\Windows\inf\setupapi.dev.log
 echo.
 echo drvload exit code: %DRIVER_EXIT%
 echo Probe finished. No disk write commands were issued.
