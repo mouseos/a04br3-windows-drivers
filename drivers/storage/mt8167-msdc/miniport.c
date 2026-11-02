@@ -149,10 +149,14 @@ static BOOLEAN A04Initialize(PVOID extension)
         /* The matched controller is in inherited PIO mode. Mask the command
          * and data interrupts while this one diagnostic read is in flight. */
         A04Write32(probe, 0x010, interruptEnable & ~0x0000d700u);
-        result = a04_msdc_read_sector(&io, 1, probe->sector,
-                                      sizeof(probe->sector), 200000);
+        if ((A04Read32(probe, 0x000) & 0x9u) == 0x9u &&
+            (A04Read32(probe, 0x030) & 0x00030000u) == 0x00020000u)
+            result = a04_msdc_read_sector(&io, 1, probe->sector,
+                                          sizeof(probe->sector), 200000);
+        else
+            result = A04_MSDC_INVALID;
         A04Write32(probe, 0x010, interruptEnable);
-        signature = probe->sector[0] == 'E' && probe->sector[1] == 'F' &&
+        signature = result == A04_MSDC_OK && probe->sector[0] == 'E' && probe->sector[1] == 'F' &&
                     probe->sector[2] == 'I' && probe->sector[3] == ' ' &&
                     probe->sector[4] == 'P' && probe->sector[5] == 'A' &&
                     probe->sector[6] == 'R' && probe->sector[7] == 'T';
