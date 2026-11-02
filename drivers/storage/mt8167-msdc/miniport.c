@@ -90,10 +90,17 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
         extension, config->AdapterInterfaceType, config->SystemIoBusNumber,
         (*config->AccessRanges)[0].RangeStart, 0x1000, FALSE);
     if (!probe->registers) {
-        A04Trace("A04WIN resource map failed\n");
-        return SP_RETURN_NOT_FOUND;
+        A04Trace("A04WIN StorPortGetDeviceBase failed; trying diagnostic MmMapIoSpace\n");
+        probe->registers = (volatile ULONG *)MmMapIoSpace(
+            (*config->AccessRanges)[0].RangeStart, 0x1000, MmNonCached);
+        if (!probe->registers) {
+            A04Trace("A04WIN resource map failed\n");
+            return SP_RETURN_NOT_FOUND;
+        }
+        A04Trace("A04WIN direct diagnostic mapping succeeded\n");
+    } else {
+        A04Trace("A04WIN resource map succeeded\n");
     }
-    A04Trace("A04WIN resource map succeeded\n");
     config->MaximumTransferLength = 512;
     config->NumberOfPhysicalBreaks = 1;
     config->NumberOfBuses = 1;
