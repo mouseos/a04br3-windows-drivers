@@ -218,6 +218,24 @@ static BOOLEAN A04Initialize(PVOID extension)
 #ifdef A04_READONLY_DISK_PROBE
 struct a04_request_extension { PVOID read_buffer; };
 
+/* The probe cannot safely stop/restart the controller yet. Advertise only
+ * this query; this intentionally remains noncompliant for production PnP. */
+static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControl(PVOID extension,
+    SCSI_ADAPTER_CONTROL_TYPE type, PVOID parameters)
+{
+    UNREFERENCED_PARAMETER(extension);
+    A04Trace("A04WIN AdapterControl type="); A04TraceHex((ULONG)type); A04Trace("\n");
+    if (type == ScsiQuerySupportedControlTypes && parameters) {
+        PSCSI_SUPPORTED_CONTROL_TYPE_LIST list = (PSCSI_SUPPORTED_CONTROL_TYPE_LIST)parameters;
+        ULONG i;
+        for (i = 0; i < list->MaxControlType; ++i) list->SupportedTypeList[i] = FALSE;
+        if ((ULONG)ScsiQuerySupportedControlTypes < list->MaxControlType)
+            list->SupportedTypeList[ScsiQuerySupportedControlTypes] = TRUE;
+        return ScsiAdapterControlSuccess;
+    }
+    return ScsiAdapterControlUnsuccessful;
+}
+
 /* BuildIo runs at DISPATCH_LEVEL without the StartIo lock. Only this SRB's
  * extension is touched. The returned mapping belongs to the request. */
 static BOOLEAN A04BuildIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
@@ -375,6 +393,7 @@ ULONG DriverEntry(PVOID driver, PVOID registry)
     init.HwInitializationDataSize = sizeof(init);
     init.AdapterInterfaceType = ACPIBus;
 #ifdef A04_READONLY_DISK_PROBE
+    init.HwAdapterControl = A04AdapterControl;
     init.HwBuildIo = A04BuildIo;
     init.SrbExtensionSize = sizeof(struct a04_request_extension);
 #endif
