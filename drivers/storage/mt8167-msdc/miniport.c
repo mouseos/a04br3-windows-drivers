@@ -640,8 +640,7 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
     struct a04_request_extension *r = (struct a04_request_extension *)request->SrbExtension;
     ULONG available = request->DataTransferLength, i;
     UCHAR opcode = request->Cdb[0];
-    BOOLEAN trace = ++probe->requests <= 96 || (probe->requests & 127u) == 0 ||
-                    opcode == 0x2a || opcode == 0x8a;
+    BOOLEAN trace = ++probe->requests <= 96 || (probe->requests & 127u) == 0;
     if (trace) { A04Trace("A04WIN StartIo fn="); A04TraceHex(request->Function);
         A04Trace(" opcode="); A04TraceHex(opcode); A04Trace("\n"); }
     request->SrbStatus = SRB_STATUS_SUCCESS;
