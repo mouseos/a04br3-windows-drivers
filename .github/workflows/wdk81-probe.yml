@@ -1,0 +1,49 @@
+name: Windows 8.1 WDK availability
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect installed Windows SDK and ARM compilers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits" -ErrorAction SilentlyContinue | Select-Object Name
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vswhere) { & $vswhere -all -products '*' -property installationPath }
+          Get-Command clang.exe,lld-link.exe -ErrorAction SilentlyContinue | Select-Object Name,Source
+      - name: Download and verify official Windows 8.1 installers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sdk = Join-Path $env:RUNNER_TEMP 'sdk81-setup.exe'
+          $wdk = Join-Path $env:RUNNER_TEMP 'wdk81-setup.exe'
+          Invoke-WebRequest -Uri 'https://download.microsoft.com/download/B/0/C/B0C80BA3-8AD6-4958-810B-6882485230B5/standalonesdk/sdksetup.exe' -OutFile $sdk
+          Invoke-WebRequest -Uri 'https://download.microsoft.com/download/8/6/9/86925F0F-D57A-4BA4-8278-861B6876D78E/wdk/wdksetup.exe' -OutFile $wdk
+          foreach ($file in @($sdk, $wdk)) {
+            $sig = Get-AuthenticodeSignature $file
+            Write-Host "$(Split-Path $file -Leaf): $($sig.Status), $($sig.SignerCertificate.Subject)"
+            if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Microsoft') { throw 'Installer signature verification failed' }
+          }
+      - name: Install official SDK and WDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('sdk81-setup.exe', 'wdk81-setup.exe')) {
+            $process = Start-Process -FilePath (Join-Path $env:RUNNER_TEMP $name) -ArgumentList '/quiet','/norestart' -Wait -PassThru
+            Write-Host "$name exit code $($process.ExitCode)"
+            if ($process.ExitCode -ne 0) { throw "$name installation failed or requires reboot" }
+          }
+      - name: Inspect ARM32 WDK headers and import libraries
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
+          foreach ($path in @('Include\km\ntddk.h','Include\km\storport.h','Lib\winv6.3\km\arm\ntoskrnl.lib','Lib\winv6.3\km\arm\storport.lib')) {
+            $full = Join-Path $kit $path
+            Write-Host "$path : $(Test-Path $full)"
+            if (-not (Test-Path $full)) { throw "Missing required ARM32 WDK component: $path" }
+          }
