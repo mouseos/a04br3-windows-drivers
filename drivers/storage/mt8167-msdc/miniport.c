@@ -295,31 +295,34 @@ static BOOLEAN A04WriteTest(struct a04_probe_extension *probe, ULONG sectors)
     static const UCHAR label[16] = {'W',0,'i',0,'n',0,'d',0,'o',0,'w',0,'s',0,0,0};
     static const UCHAR basic_data[16] = {0xa2,0xa0,0xd0,0xeb,0xe5,0xb9,0x33,0x44,
                                          0x87,0xc0,0x68,0xb6,0xb7,0x26,0x99,0xc7};
+    A04Trace("A04WIN WRITE_TEST cache_disabled="); A04TraceHex(probe->cache_disabled);
+    A04Trace(" requested_lba="); A04TraceHex(A04_DMA_TEST_LBA); A04Trace("\n");
     if (!probe->cache_disabled || A04_DMA_TEST_LBA >= sectors) return FALSE;
     /* GPT header is still in the DMA buffer from the preceding read. */
     if (A04Le32(probe->dma_buffer + 72) != 2 || A04Le32(probe->dma_buffer + 76) != 0 ||
         A04Le32(probe->dma_buffer + 80) != 128 || A04Le32(probe->dma_buffer + 84) != 128)
-        return FALSE;
+        { A04Trace("A04WIN WRITE_TEST GPT header rejected\n"); return FALSE; }
     for (block = 2; block < 34; ++block) {
         status = a04_msdc_dma_read_sector(&io, block, probe->dma_bus, probe->dma_alignment, 200000);
-        if (status != A04_DMA_OK) return FALSE;
+        if (status != A04_DMA_OK) { A04Trace("A04WIN WRITE_TEST GPT read failed\n"); return FALSE; }
         for (slot = 0; slot < 4; ++slot) {
             UCHAR *e = probe->dma_buffer + slot * 128;
             for (i = 0; i < sizeof(label) && e[56 + i] == label[i]; ++i) { }
             if (i != sizeof(label)) continue;
             for (i = 0; i < sizeof(basic_data) && e[i] == basic_data[i]; ++i) { }
-            if (i != sizeof(basic_data)) return FALSE;
+            if (i != sizeof(basic_data)) { A04Trace("A04WIN WRITE_TEST type rejected\n"); return FALSE; }
             if (A04Le32(e + 36) || A04Le32(e + 44) || A04Le32(e + 32) < 34 ||
-                A04Le32(e + 40) < A04Le32(e + 32) || A04Le32(e + 40) >= sectors) return FALSE;
+                A04Le32(e + 40) < A04Le32(e + 32) || A04Le32(e + 40) >= sectors) { A04Trace("A04WIN WRITE_TEST bounds rejected\n"); return FALSE; }
             first = A04Le32(e + 32); ++matches;
         }
     }
+    A04Trace("A04WIN WRITE_TEST matches="); A04TraceHex(matches); A04Trace(" first="); A04TraceHex(first); A04Trace("\n");
     if (matches != 1 || first != A04_DMA_TEST_LBA) return FALSE;
     status = a04_msdc_dma_read_sector(&io, first, probe->dma_bus, probe->dma_alignment, 200000);
-    if (status != A04_DMA_OK) return FALSE;
+    if (status != A04_DMA_OK) { A04Trace("A04WIN WRITE_TEST original read failed\n"); return FALSE; }
     for (i = 0; i < 512; ++i) {
         probe->sector[i] = probe->dma_buffer[i];
-        if (probe->sector[i]) return FALSE;
+        if (probe->sector[i]) { A04Trace("A04WIN WRITE_TEST original not zero\n"); return FALSE; }
     }
     for (i = 0; i < 512; ++i) probe->dma_buffer[i] = (UCHAR)(0xa5u ^ (i & 0xffu));
     A04Trace("A04WIN WRITE_TEST starting lba="); A04TraceHex(first); A04Trace("\n");
