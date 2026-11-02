@@ -12,8 +12,7 @@ static void A04Trace(const char *text)
     ULONG budget;
     if (!A04Uart) return;
     while (*text) {
-        budget = 100000;
-        while (budget--) {
+        for (budget = 100000; budget > 0; --budget) {
             if ((READ_REGISTER_ULONG(A04Uart + 3) & 0x80u) == 0 &&
                 (READ_REGISTER_ULONG(A04Uart + 5) & 0x20u) != 0) break;
         }
