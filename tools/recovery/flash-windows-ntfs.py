@@ -34,7 +34,11 @@ if (adb('shell', 'readlink', '/dev/block/by-name/Windows') != '/dev/block/mmcblk
         adb('shell', 'cat', '/sys/class/block/mmcblk0p20/start') != str(start) or
         adb('shell', 'cat', '/sys/class/block/mmcblk0p20/size') != str(sectors)):
     raise SystemExit('Windows領域の名前または範囲が一致しません')
-if '/dev/block/mmcblk0p20 ' in adb('shell', 'cat', '/proc/mounts'):
+device_id = adb('shell', 'cat', '/sys/class/block/mmcblk0p20/dev')
+if not re.fullmatch(r'\d+:\d+', device_id):
+    raise SystemExit('Windows領域のデバイス番号を取得できません')
+if any(len(fields) > 2 and fields[2] == device_id
+       for fields in (line.split() for line in adb('shell', 'cat', '/proc/self/mountinfo').splitlines())):
     raise SystemExit('Windows領域がマウントされています')
 
 a.flash_log.parent.mkdir(parents=True, exist_ok=True)
