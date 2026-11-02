@@ -11,6 +11,7 @@ $pioSource = Join-Path $PSScriptRoot '..\..\drivers\storage\mt8167-msdc\pio.c'
 $driver = Join-Path $output 'miniport.sys'
 $extraObjects = @()
 $probeDefines = @()
+if ($env:A04_DMA_PROBE -eq '1' -and $env:A04_READONLY_DISK_PROBE -ne '1') { throw 'A04_DMA_PROBE requires A04_READONLY_DISK_PROBE=1' }
 if ($env:A04_READONLY_DISK_PROBE -eq '1') {
     $probeDefines += '-DA04_READONLY_DISK_PROBE'
     $sources = @('cdb', 'scsi_capacity')
