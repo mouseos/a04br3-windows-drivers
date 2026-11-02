@@ -11,9 +11,4 @@ jobs:
         uses: ./.github/actions/open-ssh
         with:
           authorized-key: ${{ secrets.A04BR3_RUNNER_SSH_PUBLIC_KEY }}
-      - name: Keep runner for connection test
-        shell: pwsh
-        run: |
-          $until = (Get-Date).AddMinutes(6)
-          $stop = Join-Path $env:GITHUB_WORKSPACE 'end-ssh'
-          while ((Get-Date) -lt $until -and -not (Test-Path $stop)) { Start-Sleep -Seconds 5 }
+          keep-minutes: 6

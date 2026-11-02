@@ -12,12 +12,6 @@ jobs:
     timeout-minutes: 210
     steps:
       - uses: actions/checkout@v4
-      - name: Open restricted SSH for intervention
-        id: remote
-        if: ${{ inputs.ssh_debug }}
-        uses: ./.github/actions/open-ssh
-        with:
-          authorized-key: ${{ secrets.A04BR3_RUNNER_SSH_PUBLIC_KEY }}
       - name: Inspect installed Windows SDK and ARM compilers
         shell: pwsh
         run: |
@@ -58,11 +52,9 @@ jobs:
             Write-Host "$path : $(Test-Path $full)"
             if (-not (Test-Path $full)) { throw "Missing required ARM32 WDK component: $path" }
           }
-      - name: Keep runner for SSH diagnosis
-        if: ${{ always() && inputs.ssh_debug && steps.remote.outcome == 'success' }}
-        shell: pwsh
-        run: |
-          $until = (Get-Date).AddHours(3)
-          $stop = Join-Path $env:GITHUB_WORKSPACE 'end-ssh'
-          Write-Host "Runner available until $until; create end-ssh in the checkout to stop waiting."
-          while ((Get-Date) -lt $until -and -not (Test-Path $stop)) { Start-Sleep -Seconds 15 }
+      - name: Open restricted SSH for intervention
+        id: remote
+        if: ${{ always() && inputs.ssh_debug }}
+        uses: ./.github/actions/open-ssh
+        with:
+          authorized-key: ${{ secrets.A04BR3_RUNNER_SSH_PUBLIC_KEY }}

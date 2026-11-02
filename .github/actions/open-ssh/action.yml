@@ -3,6 +3,10 @@ inputs:
   authorized-key:
     description: Public key for the development machine
     required: true
+  keep-minutes:
+    description: Minutes to keep the runner available
+    required: false
+    default: '180'
 runs:
   using: composite
   steps:
@@ -13,12 +17,28 @@ runs:
         port: '2222'
         authorized-keys: ${{ inputs.authorized-key }}
         use-actor-ssh-keys: 'true'
-    - name: Start SSH jump tunnel
+    - name: Save connection details
+      shell: pwsh
+      env:
+        SERVER_USER: ${{ steps.server.outputs.username }}
+        SERVER_HOST_KEYS: ${{ steps.server.outputs.host-keys }}
+      run: |
+        $data = [ordered]@{jump_host='ssh-j.com'; jump_user="a04br3-$env:GITHUB_RUN_ID"; alias="wdk-$env:GITHUB_RUN_ID"; port=2222; user=$env:SERVER_USER; host_keys=$env:SERVER_HOST_KEYS; run_id=$env:GITHUB_RUN_ID}
+        $data | ConvertTo-Json -Depth 3 | Set-Content -Encoding utf8 (Join-Path $env:RUNNER_TEMP 'a04br3-ssh.json')
+    - name: Publish ephemeral connection details
+      uses: actions/upload-artifact@v4
+      with:
+        name: a04br3-ssh-${{ github.run_id }}
+        path: ${{ runner.temp }}/a04br3-ssh.json
+        retention-days: 1
+        if-no-files-found: error
+    - name: Keep SSH jump tunnel open
       shell: pwsh
       env:
         SERVER_USER: ${{ steps.server.outputs.username }}
         SERVER_HOST_KEYS: ${{ steps.server.outputs.host-keys }}
         ACTION_PATH: ${{ github.action_path }}
+        KEEP_MINUTES: ${{ inputs.keep-minutes }}
       run: |
         $ErrorActionPreference = 'Stop'
         $jumpUser = "a04br3-$env:GITHUB_RUN_ID"
@@ -34,13 +54,12 @@ runs:
           if ((Test-Path $tunnelLog) -and ((Get-Content $tunnelLog -Raw) -match 'remote forward success')) { $ready = $true; break }
         }
         if (-not $ready) { if (Test-Path $tunnelLog) { Get-Content $tunnelLog }; throw 'SSH jump tunnel did not start' }
-        $data = [ordered]@{jump_host='ssh-j.com'; jump_user=$jumpUser; alias=$alias; port=2222; user=$env:SERVER_USER; host_keys=$env:SERVER_HOST_KEYS; run_id=$env:GITHUB_RUN_ID}
-        $data | ConvertTo-Json -Depth 3 | Set-Content -Encoding utf8 (Join-Path $env:RUNNER_TEMP 'a04br3-ssh.json')
         Write-Host "SSH tunnel ready. Download a04br3-ssh-$env:GITHUB_RUN_ID for connection details."
-    - name: Publish ephemeral connection details
-      uses: actions/upload-artifact@v4
-      with:
-        name: a04br3-ssh-${{ github.run_id }}
-        path: ${{ runner.temp }}/a04br3-ssh.json
-        retention-days: 1
-        if-no-files-found: error
+        $until = (Get-Date).AddMinutes([int]$env:KEEP_MINUTES)
+        $stop = Join-Path $env:GITHUB_WORKSPACE 'end-ssh'
+        while ((Get-Date) -lt $until -and -not (Test-Path $stop)) {
+          Start-Sleep -Seconds 5
+          $process.Refresh()
+          if ($process.HasExited) { Get-Content $tunnelLog; throw 'SSH tunnel exited unexpectedly' }
+        }
+        Stop-Process -Id $process.Id -ErrorAction SilentlyContinue
