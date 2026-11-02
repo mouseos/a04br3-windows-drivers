@@ -218,12 +218,13 @@ static BOOLEAN A04Initialize(PVOID extension)
 #ifdef A04_READONLY_DISK_PROBE
 struct a04_request_extension { PVOID read_buffer; };
 
-/* The probe cannot safely stop/restart the controller yet. Advertise only
- * this query; this intentionally remains noncompliant for production PnP. */
+/* Experimental PnP callbacks. Restart only succeeds if the inherited PIO
+ * state survives and both GPT and EXT_CSD can be read again. Full clock,
+ * power and card initialization remain unimplemented. */
 static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControl(PVOID extension,
     SCSI_ADAPTER_CONTROL_TYPE type, PVOID parameters)
 {
-    UNREFERENCED_PARAMETER(extension);
+    struct a04_probe_extension *probe = (struct a04_probe_extension *)extension;
     A04Trace("A04WIN AdapterControl type="); A04TraceHex((ULONG)type); A04Trace("\n");
     if (type == ScsiQuerySupportedControlTypes && parameters) {
         PSCSI_SUPPORTED_CONTROL_TYPE_LIST list = (PSCSI_SUPPORTED_CONTROL_TYPE_LIST)parameters;
@@ -232,7 +233,37 @@ static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControl(PVOID extension,
         for (i = 0; i < list->MaxControlType; ++i) list->SupportedTypeList[i] = FALSE;
         if ((ULONG)ScsiQuerySupportedControlTypes < list->MaxControlType)
             list->SupportedTypeList[ScsiQuerySupportedControlTypes] = TRUE;
+        if ((ULONG)ScsiStopAdapter < list->MaxControlType)
+            list->SupportedTypeList[ScsiStopAdapter] = TRUE;
+        if ((ULONG)ScsiRestartAdapter < list->MaxControlType)
+            list->SupportedTypeList[ScsiRestartAdapter] = TRUE;
         A04Trace("A04WIN AdapterControl query complete\n");
+        return ScsiAdapterControlSuccess;
+    }
+    if (type == ScsiStopAdapter) {
+        A04Write32(probe, 0x010, 0);
+        probe->failed = TRUE;
+        return ScsiAdapterControlSuccess;
+    }
+    if (type == ScsiRestartAdapter) {
+        struct a04_msdc_io io = {probe, A04Read32, A04Read8, A04Write32};
+        enum a04_msdc_result result;
+        ULONG sectors;
+        if ((A04Read32(probe, 0x000) & 0x9u) != 0x9u ||
+            (A04Read32(probe, 0x030) & 0x00030000u) != 0x00020000u)
+            return ScsiAdapterControlUnsuccessful;
+        A04Write32(probe, 0x010, 0);
+        result = a04_msdc_read_sector(&io, 1, probe->sector, 512, 200000);
+        if (result != A04_MSDC_OK || probe->sector[0] != 'E' || probe->sector[1] != 'F' ||
+            probe->sector[2] != 'I' || probe->sector[3] != ' ' || probe->sector[4] != 'P' ||
+            probe->sector[5] != 'A' || probe->sector[6] != 'R' || probe->sector[7] != 'T')
+            return ScsiAdapterControlUnsuccessful;
+        result = a04_msdc_read_ext_csd(&io, probe->sector, 512, 200000);
+        if (result != A04_MSDC_OK) return ScsiAdapterControlUnsuccessful;
+        sectors = (ULONG)probe->sector[212] | ((ULONG)probe->sector[213] << 8) |
+                  ((ULONG)probe->sector[214] << 16) | ((ULONG)probe->sector[215] << 24);
+        if (!sectors || sectors != probe->sectors) return ScsiAdapterControlUnsuccessful;
+        probe->failed = FALSE;
         return ScsiAdapterControlSuccess;
     }
     return ScsiAdapterControlUnsuccessful;
