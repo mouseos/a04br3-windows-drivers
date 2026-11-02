@@ -27,3 +27,5 @@ wimupdateのコマンド形式には空白を含まない作業パスを使う�
 未署名カタログとの比較試験には、同じランナーで `tools/ci/sign-probe-test.ps1` を実行する。診断用に一時自己署名証明書を作りSYSを署名してからCATを再生成・署名し、公開証明書だけを別のテスト用パッケージへ出力する。秘密鍵はランナー上に留まり、作業終了時に失われる。証明書を信頼済みとして登録する処理は含まず、Windows RTがロードを許可する保証もない。元の未署名パッケージを保存してから比較する。
 
 INFは改行コードが変わるだけでCAT内のハッシュと一致しなくなる。**Windows上でCAT生成したパッケージのINF・SYS・CATを一組で回収し、変更せずに使う。** `prepare-driver-probe-wim.py --source-wim ORIGINAL --package PACKAGE_DIR --output OUTPUT` はその3ファイルを一組で追加し、WIMの検証と抽出後のバイト一致を確認する。別checkoutのINFを組み合わせない。
+
+テスト署名の比較では、Windows上で `tools/ci/prepare-test-bcd.ps1 -Source ORIGINAL_BCD -Output BCD_COPY` を使い、既定WinPEローダーの `testsigning` を有効にしたコピーを生成できる。元のBCDは変更しない。対象BCDの構成によっては `{default}` を使えないため、生成後の出力を確認する。テストモードは実機での受理や証明書の信頼を保証しない。
