@@ -130,7 +130,14 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
 #endif
     config->NumberOfPhysicalBreaks = 1;
     config->NumberOfBuses = 1;
+#ifdef A04_READONLY_DISK_PROBE
+    A04Trace("A04WIN incoming initiator="); A04TraceHex((UCHAR)config->InitiatorBusId[0]); A04Trace("\n");
+    /* Reserve target 1 for the initiator so target 0 can be scanned. */
+    config->MaximumNumberOfTargets = 2;
+    config->InitiatorBusId[0] = 1;
+#else
     config->MaximumNumberOfTargets = 1;
+#endif
     config->MaximumNumberOfLogicalUnits = 1;
     A04Trace("A04WIN FindAdapter accepts validated resources\n");
     return SP_RETURN_FOUND;
