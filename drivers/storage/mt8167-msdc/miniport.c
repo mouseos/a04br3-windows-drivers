@@ -68,7 +68,7 @@ ULONG DriverEntry(PVOID driver, PVOID registry)
 
     A04SetMarker((PUNICODE_STRING)registry, &entryMarker, 1);
     init.HwInitializationDataSize = sizeof(init);
-    init.AdapterInterfaceType = Internal;
+    init.AdapterInterfaceType = ACPIBus;
     init.HwFindAdapter = A04FindAdapter;
     init.HwInitialize = A04Initialize;
     init.HwStartIo = A04StartIo;
