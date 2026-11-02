@@ -1,0 +1,46 @@
+name: Open restricted Windows runner SSH
+inputs:
+  authorized-key:
+    description: Public key for the development machine
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Start key-only SSH server
+      id: server
+      uses: lexbritvin/ssh-server-action@35c4dac5bfee99ffde7c2f8886bcd054a8bdb47e
+      with:
+        port: '2222'
+        authorized-keys: ${{ inputs.authorized-key }}
+        use-actor-ssh-keys: 'true'
+    - name: Start SSH jump tunnel
+      shell: pwsh
+      env:
+        SERVER_USER: ${{ steps.server.outputs.username }}
+        SERVER_HOST_KEYS: ${{ steps.server.outputs.host-keys }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $jumpUser = "a04br3-$env:GITHUB_RUN_ID"
+        $alias = "wdk-$env:GITHUB_RUN_ID"
+        $known = Join-Path $env:ACTION_PATH 'ssh-j-known-hosts'
+        $tunnelLog = Join-Path $env:RUNNER_TEMP 'a04br3-ssh-tunnel.log'
+        $args = @('-v','-N','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o',"UserKnownHostsFile=$known",'-o','ExitOnForwardFailure=yes','-o','ServerAliveInterval=20','-R',"${alias}:2222:127.0.0.1:2222","${jumpUser}@ssh-j.com")
+        $process = Start-Process -FilePath 'ssh.exe' -ArgumentList $args -RedirectStandardError $tunnelLog -PassThru -NoNewWindow
+        $ready = $false
+        for ($i = 0; $i -lt 40; $i++) {
+          Start-Sleep -Milliseconds 500
+          if ($process.HasExited) { break }
+          if ((Test-Path $tunnelLog) -and ((Get-Content $tunnelLog -Raw) -match 'remote forward success')) { $ready = $true; break }
+        }
+        if (-not $ready) { if (Test-Path $tunnelLog) { Get-Content $tunnelLog }; throw 'SSH jump tunnel did not start' }
+        $data = [ordered]@{jump_host='ssh-j.com'; jump_user=$jumpUser; alias=$alias; port=2222; user=$env:SERVER_USER; host_keys=$env:SERVER_HOST_KEYS; run_id=$env:GITHUB_RUN_ID}
+        $data | ConvertTo-Json -Depth 3 | Set-Content -Encoding utf8 (Join-Path $env:RUNNER_TEMP 'a04br3-ssh.json')
+        Write-Host "SSH tunnel ready. Download a04br3-ssh-$env:GITHUB_RUN_ID for connection details."
+    - name: Publish ephemeral connection details
+      uses: actions/upload-artifact@v4
+      with:
+        name: a04br3-ssh-${{ github.run_id }}
+        path: ${{ runner.temp }}/a04br3-ssh.json
+        retention-days: 1
+        if-no-files-found: error
