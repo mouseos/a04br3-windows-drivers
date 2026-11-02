@@ -5,7 +5,7 @@ Class = SCSIAdapter
 ClassGuid = {4d36e97b-e325-11ce-bfc1-08002be10318}
 Provider = %Provider%
 CatalogFile = a04msdcprobe.cat
-DriverVer = 11/03/2026,0.0.1.0
+DriverVer = 11/02/2026,0.0.1.0
 
 [Manufacturer]
 %Provider% = Models,NTarm
