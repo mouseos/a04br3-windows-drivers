@@ -10,16 +10,17 @@ p = argparse.ArgumentParser()
 p.add_argument('--log', type=Path, required=True, help='existing UART collector log')
 p.add_argument('--uart', default='/dev/ttyUSB0')
 p.add_argument('--output', type=Path, required=True)
+p.add_argument('--layer', type=int, choices=(0, 3), default=0)
 p.add_argument('--timeout', type=float, default=45)
 a = p.parse_args()
 if a.output.exists():
     raise SystemExit('Output already exists')
-marker = b'A04FBHEX 800 1280 '
+marker = b'A04FBHEX 800 1280 ' if a.layer == 0 else b'A04FB3HEX 800 1280 '
 with a.log.open('rb') as stream:
     stream.seek(0, os.SEEK_END)
     subprocess.run(['stty', '-F', a.uart, '921600', 'cs8', '-cstopb', '-parenb', 'raw', '-echo', 'clocal'], check=True)
     with open(a.uart, 'wb', buffering=0) as uart:
-        uart.write(b'\nA04BR3!FB!\n')
+        uart.write(b'\nA04BR3!FB!\n' if a.layer == 0 else b'\nA04BR3!F3!\n')
     end = time.monotonic() + a.timeout
     data = bytearray()
     while time.monotonic() < end:
