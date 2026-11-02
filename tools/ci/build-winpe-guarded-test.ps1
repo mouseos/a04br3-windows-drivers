@@ -11,6 +11,9 @@ if ($LASTEXITCODE -ne 0) { throw 'ARM32 WinPE test compilation failed' }
 if ($LASTEXITCODE -ne 0) { throw 'ARM32 GPT guard compilation failed' }
 & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\test.obj" "$out\gpt.obj" $lib "/out:$out\guarded-write-test.exe"
 if ($LASTEXITCODE -ne 0) { throw 'ARM32 WinPE test link failed' }
+$cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=A04BR3 WinPE Test' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
+& (Join-Path $kit 'bin\x86\signtool.exe') sign /fd SHA256 /sha1 $cert.Thumbprint /s My "$out\guarded-write-test.exe"
+if ($LASTEXITCODE -ne 0) { throw 'ARM32 WinPE test signing failed' }
 & llvm-readobj --file-headers --coff-imports "$out\guarded-write-test.exe"
 if ($LASTEXITCODE -ne 0) { throw 'ARM32 WinPE test inspection failed' }
 Write-Host "Experimental executable: $out\guarded-write-test.exe"
