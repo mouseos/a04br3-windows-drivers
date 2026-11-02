@@ -272,6 +272,7 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
      * physical common buffer has been allocated. Direct hardware access from
      * a virtual miniport is unsupported; never use this as a product driver. */
     config->VirtualDevice = TRUE;
+    config->MapBuffers = STOR_MAP_ALL_BUFFERS_INCLUDING_READ_WRITE;
     A04Trace("A04WIN unsupported virtual-bounce experiment enabled\n");
 #endif
     A04Trace("A04WIN FindAdapter accepts validated resources\n");
@@ -491,8 +492,12 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         A04Sense(request, 2, 4); /* NOT READY */
     } else {
         struct a04_scsi_reply result;
+#ifndef A04_VIRTUAL_BOUNCE_EXPERIMENT
         if (opcode == 0x28 || opcode == 0x88 || opcode == 0x2a || opcode == 0x8a)
             data = r ? (UCHAR *)r->read_buffer : NULL;
+#else
+        UNREFERENCED_PARAMETER(r); /* Virtual miniports do not receive BuildIo. */
+#endif
         result = a04_scsi_process(request->Cdb, request->CdbLength, probe->sectors,
                                   probe->write_ready, data, available);
         if (result.action == A04_SCSI_ERROR) {
