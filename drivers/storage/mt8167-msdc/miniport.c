@@ -2,11 +2,12 @@
 /* Non-operational Storport probe; initialization deliberately refuses start. */
 #include <ntddk.h>
 #include <storport.h>
+#include "pio.h"
 
 /* Diagnostic UART mapping: only this non-production probe uses UART0.
  * Bound every wait and never transmit while the UART divisor latch is active. */
 static volatile ULONG *A04Uart;
-struct a04_probe_extension { volatile ULONG *registers; };
+struct a04_probe_extension { volatile ULONG *registers; UCHAR sector[512]; };
 
 static void A04Trace(const char *text)
 {
@@ -20,6 +21,24 @@ static void A04Trace(const char *text)
         if (!budget) return;
         WRITE_REGISTER_ULONG(A04Uart, (ULONG)(unsigned char)*text++);
     }
+}
+
+static uint32_t A04Read32(void *context, uint32_t offset)
+{
+    struct a04_probe_extension *probe = (struct a04_probe_extension *)context;
+    return READ_REGISTER_ULONG(probe->registers + offset / 4);
+}
+
+static uint8_t A04Read8(void *context, uint32_t offset)
+{
+    struct a04_probe_extension *probe = (struct a04_probe_extension *)context;
+    return READ_REGISTER_UCHAR((volatile UCHAR *)probe->registers + offset);
+}
+
+static void A04Write32(void *context, uint32_t offset, uint32_t value)
+{
+    struct a04_probe_extension *probe = (struct a04_probe_extension *)context;
+    WRITE_REGISTER_ULONG(probe->registers + offset / 4, value);
 }
 
 static void A04TraceHex(ULONG value)
@@ -121,7 +140,29 @@ static BOOLEAN A04Initialize(PVOID extension)
     A04TraceHex(READ_REGISTER_ULONG(probe->registers + (0x03c / 4)));
     A04Trace(" ps=");
     A04TraceHex(READ_REGISTER_ULONG(probe->registers + (0x008 / 4)));
-    A04Trace("\nA04WIN HwInitialize entered; diagnostic refuses start\n");
+    A04Trace("\n");
+    {
+        struct a04_msdc_io io = {probe, A04Read32, A04Read8, A04Write32};
+        ULONG interruptEnable = A04Read32(probe, 0x010);
+        enum a04_msdc_result result;
+        BOOLEAN signature;
+        /* The matched controller is in inherited PIO mode. Mask the command
+         * and data interrupts while this one diagnostic read is in flight. */
+        A04Write32(probe, 0x010, interruptEnable & ~0x0000d700u);
+        result = a04_msdc_read_sector(&io, 1, probe->sector,
+                                      sizeof(probe->sector), 200000);
+        A04Write32(probe, 0x010, interruptEnable);
+        signature = probe->sector[0] == 'E' && probe->sector[1] == 'F' &&
+                    probe->sector[2] == 'I' && probe->sector[3] == ' ' &&
+                    probe->sector[4] == 'P' && probe->sector[5] == 'A' &&
+                    probe->sector[6] == 'R' && probe->sector[7] == 'T';
+        A04Trace("A04WIN PIO GPT result=");
+        A04TraceHex((ULONG)result);
+        A04Trace(" signature=");
+        A04TraceHex(signature ? 1u : 0u);
+        A04Trace("\n");
+    }
+    A04Trace("A04WIN HwInitialize entered; diagnostic refuses start\n");
     return FALSE;
 }
 
