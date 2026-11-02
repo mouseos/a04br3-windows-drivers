@@ -1,0 +1,46 @@
+; Experimental probe only: the driver deliberately declines every adapter.
+; No disk I/O. Not a boot storage driver.
+[Version]
+Signature = "$WINDOWS NT$"
+Class = SCSIAdapter
+ClassGuid = {4d36e97b-e325-11ce-bfc1-08002be10318}
+Provider = %Provider%
+DriverVer = 11/02/2026,0.0.1.0
+
+[Manufacturer]
+%Provider% = Models,NTarm
+
+[Models.NTarm]
+%DeviceDescription% = Install, ACPI\MOU0001
+
+[Install.NT]
+CopyFiles = DriverCopy
+
+[Install.NT.Services]
+AddService = a04msdcprobe,0x00000002,Service
+
+[DestinationDirs]
+DriverCopy = 12
+
+[DriverCopy]
+a04msdcprobe.sys
+
+[Service]
+DisplayName = %ServiceDescription%
+ServiceType = 1
+StartType = 3
+ErrorControl = 1
+ServiceBinary = %12%\a04msdcprobe.sys
+LoadOrderGroup = SCSI Miniport
+
+[SourceDisksNames]
+1 = %DiskName%,,,
+
+[SourceDisksFiles]
+a04msdcprobe.sys = 1
+
+[Strings]
+Provider = "TAB-A04-BR3 development"
+DeviceDescription = "MT8167 eMMC non-operational probe"
+ServiceDescription = "MT8167 eMMC diagnostic probe"
+DiskName = "TAB-A04-BR3 diagnostic files"
