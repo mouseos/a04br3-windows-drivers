@@ -381,7 +381,7 @@ static BOOLEAN A04Initialize(PVOID extension)
         BOOLEAN signature;
         /* The matched controller is in inherited PIO mode. Mask the command
          * and data interrupts while this one diagnostic read is in flight. */
-        A04Write32(probe, 0x010, interruptEnable & ~0x0000d700u);
+        A04Write32(probe, 0x010, interruptEnable & ~0x0000f700u);
         if ((A04Read32(probe, 0x000) & 0x9u) == 0x9u &&
             (A04Read32(probe, 0x030) & 0x00030000u) == 0x00020000u)
             result = a04_msdc_read_sector(&io, 1, probe->sector,
@@ -401,7 +401,7 @@ static BOOLEAN A04Initialize(PVOID extension)
         if (result == A04_MSDC_OK) {
             ULONG sectors = 0;
             interruptEnable = A04Read32(probe, 0x010);
-            A04Write32(probe, 0x010, interruptEnable & ~0x0000d700u);
+            A04Write32(probe, 0x010, interruptEnable & ~0x0000f700u);
             result = a04_msdc_read_ext_csd(&io, probe->sector,
                                            sizeof(probe->sector), 200000);
             A04Write32(probe, 0x010, interruptEnable);
@@ -430,7 +430,7 @@ static BOOLEAN A04Initialize(PVOID extension)
                 enum a04_dma_result dr;
                 ULONG old_enable = A04Read32(probe, 0x010);
                 BOOLEAN match;
-                A04Write32(probe, 0x010, old_enable & ~0x0000d700u);
+                A04Write32(probe, 0x010, old_enable & ~0x0000f700u);
                 dr = a04_msdc_dma_read_sector(&dma_io, 1, probe->dma_bus, probe->dma_alignment, 200000);
                 A04Write32(probe, 0x010, old_enable);
                 match = dr == A04_DMA_OK && probe->dma_buffer[0] == 'E' &&
@@ -441,7 +441,7 @@ static BOOLEAN A04Initialize(PVOID extension)
                 A04Trace("A04WIN DMA GPT result="); A04TraceHex((ULONG)dr);
                 A04Trace(" signature="); A04TraceHex(match ? 1u : 0u); A04Trace("\n");
 #ifdef A04_DMA_WRITE_TEST
-                A04Write32(probe, 0x010, old_enable & ~0x0000d700u);
+                A04Write32(probe, 0x010, old_enable & ~0x0000f700u);
                 if (!match || !A04WriteTest(probe, sectors)) A04Trace("A04WIN WRITE_TEST failed; host restoration required\n");
                 A04Write32(probe, 0x010, old_enable);
                 return FALSE;
@@ -597,7 +597,7 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         } else {
             struct a04_msdc_io io = {probe, A04Read32, A04Read8, A04Write32};
             ULONG interrupts = A04Read32(probe, 0x010), failure = 0, j;
-            A04Write32(probe, 0x010, interrupts & ~0x0000d700u);
+            A04Write32(probe, 0x010, interrupts & ~0x0000f700u);
             for (i = 0; i < result.blocks.block_count; ++i) {
 #ifdef A04_DMA_DISK_PROBE
                 enum a04_dma_result dr;
