@@ -11,9 +11,10 @@ p.add_argument('--wimlib', default='wimlib-imagex')
 p.add_argument('--source-wim', type=Path, required=True)
 p.add_argument('--package', type=Path, required=True)
 p.add_argument('--output', type=Path, required=True)
+p.add_argument('--startnet', type=Path, help='Override the default diagnostic startnet script')
 a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
-startnet = root / 'tools/winpe/startnet-driver-probe.cmd'
+startnet = a.startnet or root / 'tools/winpe/startnet-driver-probe.cmd'
 files = {'/Windows/System32/startnet.cmd': startnet,
          '/a04br3/a04-msdc-probe.inf': a.package / 'a04-msdc-probe.inf',
          '/a04br3/a04msdcprobe.sys': a.package / 'a04msdcprobe.sys',
