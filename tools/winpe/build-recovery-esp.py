@@ -13,6 +13,8 @@ parser.add_argument('--files', type=Path, required=True)
 parser.add_argument('--boot-wim', type=Path, required=True)
 parser.add_argument('--output', type=Path, required=True)
 parser.add_argument('--expected-wim-size', type=int, default=213536655)
+parser.add_argument('--expected-files-bytes', type=int, default=22748650,
+                    help='Expected total size of the 87 input files; override for an explicitly replaced BCD')
 parser.add_argument('--description', default='Original Microsoft recovery environment')
 args = parser.parse_args()
 required = [
@@ -26,7 +28,7 @@ for name in required:
     if not (args.files / name).is_file():
         raise SystemExit(f'Missing input: {name}')
 inputs = sorted(p for p in args.files.rglob('*') if p.is_file())
-if len(inputs) != 87 or sum(p.stat().st_size for p in inputs) != 22748650:
+if len(inputs) != 87 or sum(p.stat().st_size for p in inputs) != args.expected_files_bytes:
     raise SystemExit('Recovery file set is incomplete')
 sources = [(p, p.relative_to(args.files).as_posix()) for p in inputs]
 sources.append((args.boot_wim, 'sources/boot.wim'))
