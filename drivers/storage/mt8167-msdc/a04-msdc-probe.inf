@@ -1,4 +1,4 @@
-; Experimental probe only: the driver deliberately declines every adapter.
+; Experimental probe only: initialization deliberately fails.
 ; No disk I/O. Not a boot storage driver.
 [Version]
 Signature = "$WINDOWS NT$"

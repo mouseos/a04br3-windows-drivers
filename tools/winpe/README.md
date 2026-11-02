@@ -20,7 +20,7 @@ wimupdateのコマンド形式には空白を含まない作業パスを使う�
 
 ## 署名・読込み診断（未完成ドライバ）
 
-別の診断 `startnet-driver-probe.cmd` は `/a04br3/a04-msdc-probe.inf` を `drvload` し、終了コードとサービスの登録結果を画面に表示する。ドライバは常にアダプターの検出を拒否し、ディスクI/Oは行わない。WinPEがドライバを受理するかの調査用で、成功してもストレージが動くことは意味しない。現時点のSYS・CATは未署名であり、署名ポリシーによる拒否があり得る。
+別の診断 `startnet-driver-probe.cmd` は `/a04br3/a04-msdc-probe.inf` を `drvload` し、終了コードとサービスの登録結果を画面に表示する。ドライバはACPI資源を検証した後、初期化を意図的に失敗させ、ディスクI/Oは行わない。WinPEがドライバを受理するかの調査用で、成功してもストレージが動くことは意味しない。未署名または自己署名のSYS・CATを使う実験であり、署名ポリシーによる拒否があり得る。
 
 `tools/ci/build-wdk81-probe.ps1` をWDK 8.1 ARMとClang/LLDのあるWindows環境で実行すると、`$env:RUNNER_TEMP/a04br3-wdk81-probe/package` にSYS・INF・Windows 8.1 ARM用の未署名CATを作成する。前述のWIM更新で使用する `startnet.cmd` をこの診断版に替え、同ディレクトリの3ファイルをWIMの `/a04br3/` に追加してESPを作成する。ファイルの抽出比較とWIM・FATの検証を行う。媒体・イメージは配布しない。
 

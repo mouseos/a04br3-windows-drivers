@@ -16,6 +16,6 @@ Microsoftは `SdPortInitialize` の対象をWindows 10以降と記載してい�
 
 ## WDK 8.1でのインターフェース検証
 
-`drivers/storage/mt8167-msdc/miniport.c` はStorPortの型とリンクを確認するための未完成コードです。アダプターを常に拒否し、ストレージにアクセスしません。Windowsドライバとして導入したり起動ディスクに使用したりしないでください。Windows Actionsの手動ワークフローはWDK 8.1とClang/LLDでこのコードをARM32向けにビルドします。Windows RTでのロード、署名、PnPおよび実機I/Oは未検証です。
+`drivers/storage/mt8167-msdc/miniport.c` はStorPortの型とリンクを確認するための未完成コードです。指定したACPI資源だけを受け入れた後、初期化を意図的に失敗させ、ストレージにアクセスしません。Windowsドライバとして導入したり起動ディスクに使用したりしないでください。Windows Actionsの手動ワークフローはWDK 8.1とClang/LLDでこのコードをARM32向けにビルドします。Windows RTのテストモードでDriverEntryとFindAdapterへの到達、ACPI資源の取得を実機で確認しました。通常の署名環境でのロードと実機I/Oは未検証です。
 
 PIO読取りの基礎処理 `pio.c` は、初期化済み・排他制御済みのMSDCから単一セクターを読む実験コードです。MMIO模擬テストとARM32オブジェクト生成はホストで実行できますが、初期化・StorPort接続・電源・DMA・割込み・実機動作は未実装または未検証です。
