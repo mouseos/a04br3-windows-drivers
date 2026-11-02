@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
-/* Deliberately non-operational Storport interface probe. No device is claimed. */
+/* Non-operational Storport probe; initialization deliberately refuses start. */
 #include <ntddk.h>
 #include <storport.h>
 
@@ -77,13 +77,27 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
             A04Trace("\n");
         }
     }
-    A04Trace("A04WIN FindAdapter rejects adapter\n");
-    return SP_RETURN_NOT_FOUND;
+    if (!config || !config->AccessRanges || !config->NumberOfAccessRanges ||
+        (*config->AccessRanges)[0].RangeStart.HighPart != 0 ||
+        (*config->AccessRanges)[0].RangeStart.LowPart != 0x11120000u ||
+        (*config->AccessRanges)[0].RangeLength < 0x1000u ||
+        !(*config->AccessRanges)[0].RangeInMemory) {
+        A04Trace("A04WIN resource mismatch\n");
+        return SP_RETURN_NOT_FOUND;
+    }
+    config->MaximumTransferLength = 512;
+    config->NumberOfPhysicalBreaks = 1;
+    config->NumberOfBuses = 1;
+    config->MaximumNumberOfTargets = 1;
+    config->MaximumNumberOfLogicalUnits = 1;
+    A04Trace("A04WIN FindAdapter accepts validated resources\n");
+    return SP_RETURN_FOUND;
 }
 
 static BOOLEAN A04Initialize(PVOID extension)
 {
     UNREFERENCED_PARAMETER(extension);
+    A04Trace("A04WIN HwInitialize entered; diagnostic refuses start\n");
     return FALSE;
 }
 
