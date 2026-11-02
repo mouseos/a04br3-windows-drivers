@@ -6,4 +6,6 @@ GitHub CLIでリポジトリに認証し、実行IDを確認した上で `python
 
 接続情報とランナーの一時ホスト公開鍵は、その実行のGitHub Actions artifactから取得します。中継サービスのホスト鍵はリポジトリで固定し、ランナー自身のホスト鍵もartifactに照合します。公開中継 `ssh-j.com` を使うため、中継の可用性に依存し、接続先を外部に公開します。ランナーは公開鍵認証に限定します。公開リポジトリのActionsには機密データを置かず、信頼できる起動者・鍵のみを許可してください。`ssh_debug=false` が既定です。
 
+大きなファイルは標準入力ではなく、同じホスト鍵照合を行う `python3 tools/ci/copy-runner.py RUN_ID upload LOCAL D:/path/file` または `download` でSFTP転送できます。ダウンロードは一時ファイルへ保存後に名前を確定します。転送元・転送先のハッシュは別途照合し、権利を確認して非公開の一時領域だけで扱ってください。
+
 `Windows runner SSH smoke test` は同様の接続を6分間検証する専用ワークフローです。
