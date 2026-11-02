@@ -15,5 +15,8 @@ echo.
 echo === Recent device installation log ===
 if exist X:\Windows\inf\setupapi.dev.log find /i "!!!" X:\Windows\inf\setupapi.dev.log
 echo.
+echo.
+echo === ACPI enumeration ===
+reg query HKLM\SYSTEM\CurrentControlSet\Enum\ACPI\MOU0001
 echo drvload exit code: %DRIVER_EXIT%
 echo Probe finished. No disk write commands were issued.
