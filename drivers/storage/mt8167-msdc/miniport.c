@@ -310,6 +310,10 @@ static BOOLEAN A04WriteTest(struct a04_probe_extension *probe, ULONG sectors)
             A04Trace("A04WIN WRITE_TEST block="); A04TraceHex(block);
             A04Trace(" word0="); A04TraceHex(A04Le32(probe->dma_buffer));
             A04Trace(" slot3_first="); A04TraceHex(A04Le32(probe->dma_buffer + 3 * 128 + 32));
+            A04Trace(" dma_sa="); A04TraceHex(A04Read32(probe, 0x090));
+            A04Trace(" dma_ctrl="); A04TraceHex(A04Read32(probe, 0x098));
+            A04Trace(" dma_cfg="); A04TraceHex(A04Read32(probe, 0x09c));
+            A04Trace(" arg="); A04TraceHex(A04Read32(probe, 0x038));
             A04Trace("\n");
         }
         for (slot = 0; slot < 4; ++slot) {
