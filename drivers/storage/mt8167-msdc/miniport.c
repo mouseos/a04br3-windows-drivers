@@ -193,6 +193,8 @@ static BOOLEAN A04Initialize(PVOID extension)
 #ifdef A04_READONLY_DISK_PROBE
             if (result == A04_MSDC_OK && sectors && signature) {
                 probe->sectors = sectors;
+                A04Trace("A04WIN interrupts enable="); A04TraceHex(A04Read32(probe, 0x010));
+                A04Trace(" pending="); A04TraceHex(A04Read32(probe, 0x00c)); A04Trace("\n");
                 A04Trace("A04WIN read-only disk probe starts\n");
                 return TRUE;
             }
@@ -325,7 +327,15 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 
 static BOOLEAN A04Interrupt(PVOID extension)
 {
+#ifdef A04_READONLY_DISK_PROBE
+    static volatile LONG count;
+    if (InterlockedIncrement(&count) <= 4) {
+        struct a04_probe_extension *probe = (struct a04_probe_extension *)extension;
+        A04Trace("A04WIN interrupt pending="); A04TraceHex(A04Read32(probe, 0x00c)); A04Trace("\n");
+    }
+#else
     UNREFERENCED_PARAMETER(extension);
+#endif
     return FALSE;
 }
 
