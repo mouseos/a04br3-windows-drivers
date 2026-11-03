@@ -9,7 +9,7 @@ X:\a04br3\guard-windows-volume.exe
 if errorlevel 1 goto guardfail
 X:\a04br3\compare-files.exe C:\Windows\System32\drivers\mt8167-toprgu.sys X:\a04br3\toprgu-original.sys
 if errorlevel 1 goto reject
-if exist C:\Windows\Temp\a04br3-toprgu-upgrade-v3-dism.log goto reject
+if exist C:\Windows\Temp\a04br3-toprgu-upgrade-v4-dism.log goto reject
 drvload X:\a04br3\toprgu\mt8167-toprgu.inf
 if errorlevel 1 goto providerfail
 X:\a04br3\toprgu-provider-status.exe
@@ -17,7 +17,7 @@ if errorlevel 1 goto providerfail
 echo TOPRGU_UPGRADE_WINPE_STARTED
 dism.exe /Image:C:\ /Add-Driver /Driver:X:\a04br3\toprgu\mt8167-toprgu.inf /ForceUnsigned /ScratchDir:X:\Windows\Temp > X:\a04br3\toprgu-upgrade.log 2>&1
 set "A04_RESULT=%errorlevel%"
-copy /b X:\a04br3\toprgu-upgrade.log C:\Windows\Temp\a04br3-toprgu-upgrade-v3-dism.log >nul
+copy /b X:\a04br3\toprgu-upgrade.log C:\Windows\Temp\a04br3-toprgu-upgrade-v4-dism.log >nul
 if errorlevel 1 goto logfail
 echo TOPRGU_UPGRADE_DISM_EXIT=%A04_RESULT%
 if not "%A04_RESULT%"=="0" goto dismfail
