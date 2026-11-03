@@ -39,7 +39,7 @@ try {
     [IO.File]::WriteAllText("$base\upgrade.cmd",(PrepareBatch 'startnet-upgrade-toprgu.cmd'),[Text.Encoding]::ASCII)
     $out=& cmd.exe /c "$base\upgrade.cmd"
     if (-not ($out -match 'TOPRGU_UPGRADE_WINDOWS_STAGED') -or -not ($out -match 'TOPRGU_UPGRADE_DISM_EXIT=0')) { throw ($out -join ' ') }
-    Remove-Item "$base\Windows\Temp\a04br3-toprgu-upgrade-v3-dism.log"
+    Remove-Item "$base\Windows\Temp\a04br3-toprgu-upgrade-v6-dism.log"
     [IO.File]::WriteAllText("$base\src\toprgu-original.sys",'different')
     $out=& cmd.exe /c "$base\upgrade.cmd"
     if (-not ($out -match 'TOPRGU_UPGRADE_PRECONDITION_REJECTED')) { throw 'mismatched TOPRGU was accepted' }
@@ -54,6 +54,15 @@ try {
     & reg load HKLM\A04TEMP $hive | Out-Null
     & reg add HKLM\A04TEMP\ControlSet001\Services\a04msdcboot /v ImagePath /t REG_EXPAND_SZ /d 'System32\drivers\mt8167-msdc.sys' /f | Out-Null
     & reg unload HKLM\A04TEMP | Out-Null
+    [IO.File]::WriteAllText("$base\Windows\System32\drivers\mt8167-msdc.sys",'current-msdc')
+    [IO.File]::WriteAllText("$base\src\msdc-original.sys",'current-msdc')
+    [IO.File]::WriteAllText("$base\upgrade-msdc.cmd",(PrepareBatch 'startnet-upgrade-msdc.cmd'),[Text.Encoding]::ASCII)
+    $out=& cmd.exe /c "$base\upgrade-msdc.cmd"
+    if (-not ($out -match 'MSDC_UPDATE_WINDOWS_STAGED') -or -not ($out -match 'MSDC_UPDATE_DISM_EXIT=0')) { throw ($out -join ' ') }
+    Remove-Item "$base\Windows\Temp\a04br3-msdc-update-v2-dism.log"
+    [IO.File]::WriteAllText("$base\src\msdc-original.sys",'different')
+    $out=& cmd.exe /c "$base\upgrade-msdc.cmd"
+    if (-not ($out -match 'MSDC_UPDATE_PRECONDITION_REJECTED')) { throw 'mismatched MSDC was accepted' }
     [IO.File]::WriteAllText("$base\rollback.cmd",(PrepareBatch 'startnet-rollback-named-storage.cmd'),[Text.Encoding]::ASCII)
     $out=& cmd.exe /c "$base\rollback.cmd"
     if (-not ($out -match 'NAMED_STORAGE_ROLLBACK_SERVICE_RESTORED')) { throw ($out -join ' ') }
