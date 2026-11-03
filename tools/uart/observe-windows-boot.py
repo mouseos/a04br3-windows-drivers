@@ -21,6 +21,8 @@ capture = Path(__file__).with_name('capture-framebuffer.py')
 deadline = time.monotonic() + a.timeout
 ebs_at = None
 snapshot_done = False
+snapshot_process = None
+snapshot_layer = None
 reported = set()
 def reset():
     subprocess.run(['stty', '-F', a.uart, '921600', 'cs8', '-cstopb', '-parenb',
@@ -49,21 +51,30 @@ with a.log.open('rb') as source, a.output.open('xb') as out:
             if any(marker in tail for marker in (b'A04WIN BUGCHECK', b'A04WIN write range rejected',
                                                   b'A04WIN transfer failed', b'A04WIN dma failure')):
                 print('停止または書込み範囲検証失敗を検出、UARTでリセットします', flush=True)
+                if snapshot_process is not None and snapshot_process.poll() is None:
+                    snapshot_process.terminate()
                 reset()
                 raise SystemExit(2)
-        if not snapshot_done and ebs_at is not None and time.monotonic() - ebs_at >= a.snapshot_after:
+        if (not snapshot_done and snapshot_layer is None and ebs_at is not None and
+                time.monotonic() - ebs_at >= a.snapshot_after):
             print('フレームバッファを取得します', flush=True)
-            for layer in ('0', '3'):
-                output = f'{a.snapshot_prefix}-layer{layer}.pbm'
-                subprocess.run(['python3', str(capture), '--log', str(a.log), '--uart', a.uart,
-                                '--output', output, '--layer', layer, '--timeout', '45'], check=False)
-            if not a.continue_after_snapshot:
-                # Preserve bytes received while framebuffer capture was running.
-                out.write(source.read())
-                out.flush()
-                raise SystemExit(0)
+            snapshot_layer = '0'
+        if snapshot_layer is not None and snapshot_process is None:
+            output = f'{a.snapshot_prefix}-layer{snapshot_layer}.pbm'
+            snapshot_process = subprocess.Popen(['python3', str(capture), '--log', str(a.log),
+                '--uart', a.uart, '--output', output, '--layer', snapshot_layer, '--timeout', '45'])
+        elif snapshot_process is not None and snapshot_process.poll() is not None:
+            snapshot_process = None
+            if snapshot_layer == '0':
+                snapshot_layer = '3'
+                continue
             snapshot_done = True
+            snapshot_layer = None
+            if not a.continue_after_snapshot:
+                raise SystemExit(0)
         time.sleep(1)
+if snapshot_process is not None and snapshot_process.poll() is None:
+    snapshot_process.terminate()
 print('観測期限に到達したため、UARTでリセットします', flush=True)
 reset()
 raise SystemExit(1)
