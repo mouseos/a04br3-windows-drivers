@@ -14,6 +14,9 @@
 #if defined(A04_SCRATCH_IO) && (!defined(A04_DMA_DISK_PROBE) || !defined(A04_VIRTUAL_BOUNCE_EXPERIMENT) || A04_SCRATCH_LBA > 0xfffffff8u)
 #error A04_SCRATCH_IO requires the diagnostic DMA path and an in-range LBA
 #endif
+#if defined(A04_SERIAL_QUEUE_EXPERIMENT) && !defined(A04_SCRATCH_IO)
+#error A04_SERIAL_QUEUE_EXPERIMENT is restricted to the scratch diagnostic
+#endif
 #ifdef A04_READONLY_DISK_PROBE
 #include "cdb.h"
 #include "scsi_capacity.h"
@@ -36,6 +39,9 @@ static BOOLEAN A04EmmcIdentityValid;
 struct a04_probe_extension {
     volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; ULONG requests; BOOLEAN failed; BOOLEAN write_ready; BOOLEAN cache_disabled;
     a04_msdc_gate ioBusy;
+#ifdef A04_SERIAL_QUEUE_EXPERIMENT
+    volatile LONG busyCount;
+#endif
 #ifdef A04_ENABLE_WRITES
     ULONG write_first, write_last, esp_first, esp_last;
 #endif
@@ -369,6 +375,13 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
     config->MaximumNumberOfTargets = 1;
 #endif
     config->MaximumNumberOfLogicalUnits = 1;
+#ifdef A04_SERIAL_QUEUE_EXPERIMENT
+    /* One shared controller and DMA buffer permit one outstanding request. */
+    config->MaxNumberOfIO = 1;
+    config->MaxIOsPerLun = 1;
+    config->InitialLunQueueDepth = 1;
+    A04Trace("A04WIN single-request queue configured\n");
+#endif
 #ifdef A04_DMA_PROBE
     {
         ULONG bytes = 0, alignment = KeGetRecommendedSharedDataAlignment();
@@ -831,8 +844,12 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
                 /* Temporary WinPE read-stress sentinels; no writes. */
 #ifdef A04_SCRATCH_IO
                 if (result.action == A04_SCSI_READ && result.blocks.block_count == 8 &&
-                    result.blocks.lba == (uint64_t)A04_SCRATCH_LBA + 8u)
+                    result.blocks.lba == (uint64_t)A04_SCRATCH_LBA + 8u) {
+#ifdef A04_SERIAL_QUEUE_EXPERIMENT
+                    A04Trace("A04WIN queue busy count="); A04TraceHex((ULONG)probe->busyCount); A04Trace("\n");
+#endif
                     A04Trace("A04WIN scratch verification sentinel complete\n");
+                }
 #else
                 if (result.action == A04_SCSI_READ && result.blocks.block_count == 8 &&
                     result.blocks.lba == 0x000e0100u)
@@ -879,6 +896,9 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 release:
     a04_msdc_gate_release(&probe->ioBusy);
 busy:
+#ifdef A04_SERIAL_QUEUE_EXPERIMENT
+    InterlockedIncrement(&probe->busyCount);
+#endif
     request->SrbStatus=SRB_STATUS_BUSY;
     StorPortNotification(RequestComplete,extension,request);
     return TRUE;
