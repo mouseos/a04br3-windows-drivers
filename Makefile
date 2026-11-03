@@ -5,7 +5,7 @@ SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test test-ntfs-root arm-coff clean
 
-test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test
+test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test
 	./build/cdb_test
 	./build/pio_test
 	./build/scsi_capacity_test
@@ -22,6 +22,11 @@ test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test buil
 	python3 tests/touch_hid_descriptor_test.py
 	./build/touch_pipeline_test
 	./build/touch_device_test
+	./build/check_chkdsk_test
+
+build/check_chkdsk_test: tools/winpe/check-chkdsk.c tools/winpe/check-chkdsk.h tests/check_chkdsk_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Itools/winpe tools/winpe/check-chkdsk.c tests/check_chkdsk_test.c -o $@
 
 build/touch_device_test: drivers/input/bu21025/device.c drivers/input/bu21025/bu21025.c drivers/input/bu21025/pipeline.c drivers/input/bu21025/contact.c drivers/input/bu21025/coordinates.c drivers/input/bu21025/touch_hid.c tests/touch_device_test.c
 	mkdir -p build

@@ -10,13 +10,8 @@ chkdsk C: >X:\a04br3\check-before.txt 2>&1
 set "A04_CHECK=%errorlevel%"
 type X:\a04br3\check-before.txt
 if not "%A04_CHECK%"=="3" goto unexpected
-findstr /L /C:"Error detected in index $I30 for file 14634." X:\a04br3\check-before.txt >nul
+X:\a04br3\guard-windows-volume.exe --check-chkdsk
 if errorlevel 1 goto unexpected
-set "A04_COUNT="
-for /f "tokens=*" %%A in ('find /c /i "Error detected" ^< X:\a04br3\check-before.txt') do set "A04_COUNT=%%A"
-if not "%A04_COUNT%"=="1" goto unexpected
-findstr /i /c:"incorrect information" /c:"corrupt" X:\a04br3\check-before.txt >nul
-if not errorlevel 1 goto unexpected
 X:\a04br3\guard-windows-volume.exe
 if errorlevel 1 goto guardfail
 echo REPAIRING_KNOWN_INDEX_AFTER_BACKUP
@@ -39,7 +34,7 @@ if errorlevel 1 goto probecopyfail
 reg load HKLM\A04TEMP C:\Windows\System32\config\SYSTEM
 if errorlevel 1 goto regloadfail
 set "A04_CURRENT="
-for /f "tokens=3" %%A in ('reg query HKLM\A04TEMP\Select /v Current 2^>nul ^| find "Current"') do set "A04_CURRENT=%%A"
+for /f "tokens=1,2,3" %%A in ('reg query HKLM\A04TEMP\Select /v Current 2^>nul') do if /i "%%A"=="Current" set "A04_CURRENT=%%C"
 if not "%A04_CURRENT%"=="0x1" goto regprecondition
 reg query HKLM\A04TEMP\ControlSet001\Services\A04ButtonProbe >nul 2>&1
 if not errorlevel 1 goto regexists
