@@ -21,5 +21,8 @@ if ($LASTEXITCODE -ne 0) { throw 'TOPRGU PnP status signing failed' }
 $model = Join-Path $tempRoot 'read-emmc-model\read-emmc-model.exe'
 & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My $model
 if ($LASTEXITCODE -ne 0) { throw 'eMMC model utility signing failed' }
+$compare = Join-Path $tempRoot 'a04-compare-arm\compare-files.exe'
+& $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My $compare
+if ($LASTEXITCODE -ne 0) { throw 'File comparison utility signing failed' }
 Get-FileHash -Algorithm SHA256 (Join-Path $package 'mt8167-toprgu.sys'),(Join-Path $package 'mt8167-toprgu.cat'),(Join-Path $package 'mt8167-toprgu.inf') | Format-Table -AutoSize
 Write-Host 'Test-signed TOPRGU prototype; recovery ownership and sleep remain unverified.'
