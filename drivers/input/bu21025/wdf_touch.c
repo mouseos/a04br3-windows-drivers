@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent
  * Experimental A04BR3 HID lower filter. It requires the opt-in MOU0004 ACPI
  * device and exclusive ownership of the declared MMIO ranges. Polling only;
- * does not support wake or recovery from a controller fault.
+ * does not support wake. Recovery resets only the exclusively owned I2C0.
  */
 #include <ntddk.h>
 #include <wdf.h>
@@ -31,6 +31,8 @@ typedef struct {
     size_t descriptor_length;
     volatile LONG enabled;
     BOOLEAN faulted;
+    BOOLEAN recovering;
+    unsigned recovery_attempts;
 #if A04_TOUCH_TRACE
     volatile ULONG *uart;
     ULONG reports;
@@ -159,6 +161,7 @@ NTSTATUS TouchD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
         Trace(c,"A04TOUCH hardware init failed\n");
         c->faulted=TRUE; return STATUS_DEVICE_HARDWARE_ERROR;
     }
+    c->recovering=FALSE; c->recovery_attempts=0;
     Trace(c,"A04TOUCH hardware init success\n");
     InterlockedExchange(&c->enabled,1);
     WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(20));
@@ -190,8 +193,37 @@ void TouchTimer(WDFTIMER timer)
     UCHAR report[A04_TOUCH_REPORT_SIZE];
     enum a04_touch_poll_result result;
     int down;
+    ULONG delay=20;
     ULONGLONG ticks, quotient=0, remainder=0; unsigned bit;
     if (!InterlockedCompareExchange(&c->enabled,1,1)) return;
+    if (c->recovering) {
+        struct a04_touch_board_io board={device,BoardUpdate,BoardWrite,BoardI2cWrite};
+        struct a04_touch_calibration cal={0,4095,0,4095,0,0,0};
+        struct a04_touch_pressure_policy pressure={730,305,5,900000};
+        if (c->recovery_attempts>=3) {
+            c->faulted=TRUE; InterlockedExchange(&c->enabled,0);
+            Trace(c,"A04TOUCH recover exhausted\n");
+            goto rearm;
+        }
+        a04_touch_set_board_orientation(&cal);
+        ++c->recovery_attempts;
+        Trace(c,"A04TOUCH recover attempt\n");
+        if (!a04_touch_i2c_reset(&board)) {
+            c->adapter.faulted=0;
+            if (!a04_bu21025_mt8167_bind(&c->adapter,&c->io) &&
+                !a04_touch_device_init(&c->touch,&c->io,&cal,&pressure)) {
+                c->recovering=FALSE;
+                Trace(c,"A04TOUCH recover success\n");
+                goto rearm;
+            }
+        }
+        if (c->recovery_attempts>=3) {
+            c->faulted=TRUE; InterlockedExchange(&c->enabled,0);
+            Trace(c,"A04TOUCH recover exhausted\n");
+        }
+        delay=250;
+        goto rearm;
+    }
     /* Do not advance contact state unless a HID read can consume the report. */
     if (!NT_SUCCESS(WdfIoQueueRetrieveNextRequest(c->reads,&request))) goto rearm;
     down=(READ_REGISTER_ULONG((volatile ULONG *)(c->mmio[GPIO]+0x200)) & (1u<<8)) == 0;
@@ -213,17 +245,22 @@ void TouchTimer(WDFTIMER timer)
         }
 #endif
         WdfRequestComplete(request,status);
-    } else if (result==A04_POLL_FAULT) WdfRequestComplete(request,STATUS_DEVICE_HARDWARE_ERROR);
-    else {
+        if (!NT_SUCCESS(status)) {
+            c->faulted=TRUE; InterlockedExchange(&c->enabled,0);
+            Trace(c,"A04TOUCH report delivery failed\n");
+            goto rearm;
+        }
+        if (result==A04_POLL_REPORT) c->recovery_attempts=0;
+    } else {
         NTSTATUS status=WdfRequestForwardToIoQueue(request,c->reads);
         if (!NT_SUCCESS(status)) WdfRequestComplete(request,status);
     }
     if (result==A04_POLL_FAULT || result==A04_POLL_FAULT_REPORT) {
         Trace(c,"A04TOUCH poll fault\n");
-        c->faulted=TRUE; InterlockedExchange(&c->enabled,0);
+        c->recovering=TRUE; delay=250;
     }
 rearm:
-    if (InterlockedCompareExchange(&c->enabled,1,1)) WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(20));
+    if (InterlockedCompareExchange(&c->enabled,1,1)) WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(delay));
 }
 void TouchIoctl(WDFQUEUE queue, WDFREQUEST request, size_t outlen, size_t inlen, ULONG code)
 {

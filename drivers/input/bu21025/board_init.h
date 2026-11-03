@@ -17,4 +17,8 @@ struct a04_touch_board_io {
     int (*write_i2c16)(void *context, unsigned offset, uint16_t value);
 };
 int a04_touch_board_init(const struct a04_touch_board_io *io);
+/* Reinitialize only the exclusively owned I2C0 controller after a failed
+ * transfer. The owner must stop all other transfers and reinitialize the
+ * BU21025 afterwards; it must not call this while another client owns I2C0. */
+int a04_touch_i2c_reset(const struct a04_touch_board_io *io);
 #endif

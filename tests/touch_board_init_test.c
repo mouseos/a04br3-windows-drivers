@@ -38,6 +38,13 @@ int main(void)
         c.count = 0; c.fail_at = n;
         assert(a04_touch_board_init(&io) != 0 && c.count == n);
     }
+    c.count = 7; c.fail_at = 0;
+    assert(a04_touch_i2c_reset(&io) == 0 && c.count == sizeof(expected)/sizeof(expected[0]));
+    for (n = 8; n <= sizeof(expected)/sizeof(expected[0]); ++n) {
+        c.count = 7; c.fail_at = n;
+        assert(a04_touch_i2c_reset(&io) != 0 && c.count == n);
+    }
+    assert(a04_touch_i2c_reset(NULL) != 0);
     assert(a04_touch_board_init(NULL) != 0);
     puts("touch board setup tests passed");
     return 0;

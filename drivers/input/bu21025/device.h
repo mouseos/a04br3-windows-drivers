@@ -18,7 +18,8 @@ int a04_touch_device_init(struct a04_touch_device *device,
                           const struct a04_bu21025_io *io,
                           const struct a04_touch_calibration *calibration,
                           const struct a04_touch_pressure_policy *pressure);
-/* pen_down is obtained by the caller from the active-low pen GPIO. A transport
+/* pen_down is obtained by the caller from the active-low pen GPIO. It gates
+ * only initial sampling; an existing contact is released from ADC Z. A transport
  * fault permanently stops polling until recovery. FAULT_REPORT means the
  * release must be delivered before recovering; FAULT means no report. */
 enum a04_touch_poll_result a04_touch_device_poll(struct a04_touch_device *device,

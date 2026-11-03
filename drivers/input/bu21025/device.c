@@ -23,7 +23,10 @@ enum a04_touch_poll_result a04_touch_device_poll(struct a04_touch_device *device
     int result;
     if (!device || !out || !device->ready || (pen_down != 0 && pen_down != 1))
         return A04_POLL_FAULT;
-    if (!pen_down) {
+    /* The pen interrupt gates initial sampling only. Its deassertion does
+     * not establish release during a contact: keep sampling Z until the ADC
+     * reports release, as in the board Linux and XNU implementations. */
+    if (!pen_down && !device->pipeline.report.down) {
         sample = (struct a04_bu21025_sample){0,0,0};
     } else if (a04_bu21025_sample(&device->io, &sample)) {
         result = a04_touch_pipeline_fault(&device->pipeline, scan_time, out);
