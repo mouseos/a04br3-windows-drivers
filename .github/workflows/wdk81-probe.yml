@@ -64,6 +64,9 @@ jobs:
       - name: Compile experimental button interface probe
         shell: pwsh
         run: ./tools/ci/build-button-kernel-probe.ps1
+      - name: Compile experimental KMDF button provider
+        shell: pwsh
+        run: ./tools/ci/build-button-provider.ps1
       - name: Compile WinPE file comparison tool
         shell: pwsh
         run: ./tools/ci/build-compare-files.ps1 -Arch arm
