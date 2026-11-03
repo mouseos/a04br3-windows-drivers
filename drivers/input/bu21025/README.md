@@ -20,3 +20,8 @@ This is not a Windows HID driver. Windows PnP resources, an I2C controller or
 SPB transport, pen interrupts, pressure/contact filtering, calibration and
 HID reports remain to be implemented and tested. Host and ARM32 compilation
 tests do not demonstrate device operation or wake from sleep.
+
+`tools/ci/build-touch-link-probe.ps1` builds a deliberately non-operational
+ARM32 SYS using Windows 8.1 WDK, Clang and LLD. Its entry point always returns
+`STATUS_NOT_SUPPORTED`: it only checks that the shared components link in a
+kernel image, and must not be installed or treated as a working driver.

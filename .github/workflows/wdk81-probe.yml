@@ -55,6 +55,9 @@ jobs:
       - name: Compile non-operational Storport interface probe
         shell: pwsh
         run: ./tools/ci/build-wdk81-probe.ps1
+      - name: Compile non-operational ARM32 touch link probe
+        shell: pwsh
+        run: ./tools/ci/build-touch-link-probe.ps1
       - name: Open restricted SSH for intervention
         id: remote
         if: ${{ always() && inputs.ssh_debug }}
