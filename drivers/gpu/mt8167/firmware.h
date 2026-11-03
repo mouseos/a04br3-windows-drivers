@@ -51,4 +51,18 @@ struct a04_pvr_runtime {
 enum a04_pvr_fw_result a04_pvr_runtime_prepare(const struct a04_pvr_fw_plan *plan,
         uint8_t *heap, size_t heap_size, uint64_t heap_physical, uint32_t core_hz,
         struct a04_pvr_runtime *runtime);
+/* MMIO callbacks must provide the hardware's required 64-bit register access
+ * semantics, ordering and readback barriers; delay is in microseconds. */
+struct a04_pvr_register_io {
+    void *context;
+    uint32_t (*read32)(void *, uint32_t);
+    uint64_t (*read64)(void *, uint32_t);
+    void (*write32)(void *, uint32_t, uint32_t);
+    void (*write64)(void *, uint32_t, uint64_t);
+    void (*delay_us)(void *, unsigned);
+};
+/* Release the MIPS processor only after the caller has synchronized all
+ * firmware heap and page-table writes for the GPU. */
+enum a04_pvr_fw_result a04_pvr_mips_start(const struct a04_pvr_register_io *io,
+        uint64_t core_bvnc, const struct a04_pvr_mips_addresses *addresses);
 #endif

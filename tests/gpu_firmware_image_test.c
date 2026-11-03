@@ -4,9 +4,25 @@
 #include <string.h>
 #include "firmware.h"
 #include "pvr_rogue_fwif.h"
+#include "pvr_rogue_defs.h"
+struct mock { unsigned writes, delays; uint64_t last_reset, remap1, remap2, remap3; };
+static uint32_t read32(void *ctx,uint32_t off) { (void)ctx; (void)off; return 0; }
+static uint64_t read64(void *ctx,uint32_t off) { (void)ctx; (void)off; return 0; }
+static void write32(void *ctx,uint32_t off,uint32_t value)
+{ struct mock *m=ctx; (void)off; (void)value; ++m->writes; }
+static void write64(void *ctx,uint32_t off,uint64_t value)
+{
+    struct mock *m=ctx; ++m->writes;
+    if(off==ROGUE_CR_SOFT_RESET) m->last_reset=value;
+    if(off==ROGUE_CR_MIPS_ADDR_REMAP1_CONFIG2) m->remap1=value;
+    if(off==ROGUE_CR_MIPS_ADDR_REMAP2_CONFIG2) m->remap2=value;
+    if(off==ROGUE_CR_MIPS_ADDR_REMAP3_CONFIG2) m->remap3=value;
+}
+static void delay(void *ctx,unsigned usec) { struct mock *m=ctx; if(usec==3) ++m->delays; }
 int main(int argc,char **argv) {
     FILE *f; long n; uint8_t *b,*heap; struct a04_pvr_fw_plan p; int r;
     uint32_t *pt; struct a04_pvr_mips_addresses a; struct a04_pvr_runtime runtime;
+    struct mock mock={0}; struct a04_pvr_register_io io={&mock,read32,read64,write32,write64,delay};
     if(argc!=2 || !(f=fopen(argv[1],"rb"))) return 2;
     if(fseek(f,0,SEEK_END) || (n=ftell(f))<=0 || fseek(f,0,SEEK_SET)) return 3;
     b=malloc((size_t)n); heap=malloc(A04_PVR_HEAP_SIZE); pt=malloc(4u*4096u);
@@ -28,6 +44,9 @@ int main(int argc,char **argv) {
     if(r!=A04_PVR_FW_OK || pt[0]!=0x02000017u || pt[4095]!=0x0203ffd7u) return 11;
     if(heap[a.boot_data-0x80000000u+8]!=0 || heap[a.boot_data-0x80000000u+11]!=0x13 ||
        heap[a.boot_data-0x80000000u+48]!=12 || heap[a.boot_data-0x80000000u+52]!=4) return 12;
+    if(a04_pvr_mips_start(&io,0,&a)!=A04_PVR_FW_INVALID || mock.writes) return 16;
+    if(a04_pvr_mips_start(&io,A04_PVR_BVNC,&a)!=A04_PVR_FW_OK || !mock.writes || mock.last_reset ||
+       mock.delays!=2 || !mock.remap1 || !mock.remap2 || !mock.remap3) return 17;
     pt[0]=0xa5a5a5a5u;
     r=a04_pvr_mips_prepare(&p,heap,A04_PVR_HEAP_SIZE,0x80000000u,pt,4u*4096u,0x80000000u,&a);
     if(r!=A04_PVR_FW_OUTPUT || pt[0]!=0xa5a5a5a5u) return 13;

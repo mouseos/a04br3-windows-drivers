@@ -37,9 +37,14 @@ the prepared data has not been used to start the GPU on Windows.
 OS initialization data. Its ABI structures come from the unchanged upstream
 MIT-licensed FWIF headers listed in `fwif/SOURCE`; the Linux compatibility shim
 is derived from UniXNU and adjusts `GENMASK` for 32-bit `unsigned long`.
+`firmware_start.c` expresses the board's MIPS reset and remap sequence through
+MMIO callbacks; returning success only means the sequence was issued. Correct
+64-bit MMIO semantics and barriers on ARM32, cache synchronization, resource
+ownership and firmware startup polling remain to be implemented and verified.
+This sequence must not be connected to live MMIO before those are resolved.
 For a host check with that exact firmware:
 
 ```
-cc -std=c11 -Wall -Wextra -Werror -I drivers/gpu/mt8167 -I drivers/gpu/mt8167/compat -I drivers/gpu/mt8167/fwif tests/gpu_firmware_image_test.c drivers/gpu/mt8167/firmware.c drivers/gpu/mt8167/firmware_runtime.c -o /tmp/a04-gpu-fw-test
+cc -std=c11 -Wall -Wextra -Werror -I drivers/gpu/mt8167 -I drivers/gpu/mt8167/compat -I drivers/gpu/mt8167/fwif tests/gpu_firmware_image_test.c drivers/gpu/mt8167/firmware.c drivers/gpu/mt8167/firmware_runtime.c drivers/gpu/mt8167/firmware_start.c -o /tmp/a04-gpu-fw-test
 /tmp/a04-gpu-fw-test /path/to/rogue_22.67.54.30_v1.fw
 ```
