@@ -65,6 +65,21 @@ void mainCRTStartup(void)
         say(" TYPE="); hex(propertyType); say(" NTSTATUS="); hex(problemStatus); say("\r\n");
     }
     if (result == CR_SUCCESS && (status & DN_STARTED) && problem == 0) {
+#ifdef A04_TOUCH_PROVIDER_STATUS
+        DEVINST child;
+        if (CM_Get_Child(&child, node, 0) == CR_SUCCESS) {
+            for (i=0; i<16; ++i) {
+                CHAR childId[512]; ULONG childStatus=0, childProblem=0;
+                CONFIGRET childResult=CM_Get_Device_IDA(child, childId, sizeof(childId), 0);
+                say("TOUCH_CHILD_ID=");
+                if (childResult == CR_SUCCESS) say(childId); else say("UNAVAILABLE");
+                childResult=CM_Get_DevNode_Status(&childStatus,&childProblem,child,0);
+                say(" RESULT="); hex(childResult); say(" STATUS="); hex(childStatus);
+                say(" PROBLEM="); hex(childProblem); say("\r\n");
+                if (CM_Get_Sibling(&child,child,0) != CR_SUCCESS) break;
+            }
+        } else say("TOUCH_CHILD_NONE\r\n");
+#endif
         say(PROVIDER_PREFIX "_STARTED\r\n"); ExitProcess(0);
     }
     say(PROVIDER_PREFIX "_NOT_STARTED\r\n"); ExitProcess(1);
