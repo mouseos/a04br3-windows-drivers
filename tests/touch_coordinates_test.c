@@ -26,6 +26,12 @@ int main(void)
     assert(a04_touch_map(&c, 100, 2200, &p) == 0 && p.x == 0 && p.y == 65535);
     assert(a04_touch_map(&c, 1100, 2200, &p) == 0 && p.x == 0 && p.y == 0);
     a04_touch_set_board_orientation(NULL);
+    /* A common physical inset expands a uniformly compressed active area. */
+    assert(a04_touch_set_nominal_inset(&c, 535, 856, 39) == 0);
+    assert(c.x_min == 186 && c.x_max == 3909 && c.y_min == 298 && c.y_max == 3797);
+    assert(a04_touch_map(&c, c.x_min, c.y_min, &p) == 0 && p.x == 65535 && p.y == 65535);
+    assert(a04_touch_map(&c, c.x_max, c.y_max, &p) == 0 && p.x == 0 && p.y == 0);
+    assert(a04_touch_set_nominal_inset(&c, 535, 856, 300) != 0 && c.x_min == 186);
     c = (struct a04_touch_calibration){0, 4095, 0, 4095, 0, 0, 0};
     for (max = 1; max <= 4095; max += 17) {
         c.x_max = (uint16_t)max;

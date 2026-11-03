@@ -17,6 +17,11 @@
 enum { TOP, INFRA, GPIO, I2C, RANGE_COUNT };
 static const ULONG addresses[RANGE_COUNT] = {0x10000000,0x10001000,0x10005000,0x11009000};
 #define RANGE_SIZE 0x1000u
+/* Provisional model-wide geometry: 10.1-inch 16:10 display and the user's
+ * reported approximately 10-mm inset. Not per-unit factory calibration. */
+#define A04_PANEL_WIDTH_HUNDREDTH_IN 535u
+#define A04_PANEL_HEIGHT_HUNDREDTH_IN 856u
+#define A04_NOMINAL_INSET_HUNDREDTH_IN 39u
 
 typedef struct {
     WDFDEVICE device;
@@ -156,6 +161,9 @@ NTSTATUS TouchD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     c->bus.context=device; c->bus.read16=I2cRead; c->bus.write16=I2cWrite; c->bus.delay_us=Delay;
     c->adapter.bus=&c->bus; c->adapter.address=0x48; c->adapter.faulted=0;
     a04_touch_set_board_orientation(&cal);
+    if (a04_touch_set_nominal_inset(&cal,A04_PANEL_WIDTH_HUNDREDTH_IN,
+                                     A04_PANEL_HEIGHT_HUNDREDTH_IN,A04_NOMINAL_INSET_HUNDREDTH_IN))
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
     if (a04_touch_board_init(&board) || a04_bu21025_mt8167_bind(&c->adapter,&c->io) ||
         a04_touch_device_init(&c->touch,&c->io,&cal,&pressure)) {
         Trace(c,"A04TOUCH hardware init failed\n");
@@ -206,6 +214,10 @@ void TouchTimer(WDFTIMER timer)
             goto rearm;
         }
         a04_touch_set_board_orientation(&cal);
+        if (a04_touch_set_nominal_inset(&cal,A04_PANEL_WIDTH_HUNDREDTH_IN,
+                                        A04_PANEL_HEIGHT_HUNDREDTH_IN,A04_NOMINAL_INSET_HUNDREDTH_IN)) {
+            c->faulted=TRUE; InterlockedExchange(&c->enabled,0); goto rearm;
+        }
         ++c->recovery_attempts;
         Trace(c,"A04TOUCH recover attempt\n");
         if (!a04_touch_i2c_reset(&board)) {
@@ -309,7 +321,8 @@ NTSTATUS TouchAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     status=WdfDeviceCreate(&init,&attr,&device); if (!NT_SUCCESS(status)) return status;
     c=TouchGetContext(device); c->device=device;
     /* Approximate 10.1-inch 16:10 panel dimensions; replace when verified. */
-    if (a04_touch_descriptor(535,856,c->descriptor,sizeof(c->descriptor),&c->descriptor_length))
+    if (a04_touch_descriptor(A04_PANEL_WIDTH_HUNDREDTH_IN,A04_PANEL_HEIGHT_HUNDREDTH_IN,
+                             c->descriptor,sizeof(c->descriptor),&c->descriptor_length))
         return STATUS_DEVICE_CONFIGURATION_ERROR;
     WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel);
     q.EvtIoInternalDeviceControl=TouchIoctl;

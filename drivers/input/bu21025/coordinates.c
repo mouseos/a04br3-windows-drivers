@@ -24,6 +24,20 @@ static uint32_t divide_u32(uint32_t numerator, uint32_t denominator)
     return quotient;
 }
 
+int a04_touch_set_nominal_inset(struct a04_touch_calibration *cal,
+                                uint16_t width, uint16_t height, uint16_t inset)
+{
+    uint16_t x_inset, y_inset;
+    if (!cal || !width || !height || !inset ||
+        (uint32_t)inset * 2 >= width || (uint32_t)inset * 2 >= height) return -1;
+    /* ADC X maps to display Y, ADC Y maps to display X. */
+    x_inset = (uint16_t)divide_u32((uint32_t)inset * 4095u, height);
+    y_inset = (uint16_t)divide_u32((uint32_t)inset * 4095u, width);
+    cal->x_min = x_inset; cal->x_max = (uint16_t)(4095u - x_inset);
+    cal->y_min = y_inset; cal->y_max = (uint16_t)(4095u - y_inset);
+    return 0;
+}
+
 static uint16_t normalize(uint16_t value, uint16_t min, uint16_t max)
 {
     uint32_t scaled;
