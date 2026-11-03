@@ -42,6 +42,11 @@ MMIO callbacks; returning success only means the sequence was issued. Correct
 64-bit MMIO semantics and barriers on ARM32, cache synchronization, resource
 ownership and firmware startup polling remain to be implemented and verified.
 This sequence must not be connected to live MMIO before those are resolved.
+`windows_hw.c` provides an experimental Windows ARM32 adapter: common DMA
+buffers use the device adapter's logical addresses, and split 32-bit MMIO
+writes follow the low-then-high order in this device's released Linux source.
+The Windows PnP/WDDM owner, DMA adapter setup, GPU quiescence before free and
+real-device behavior are not yet implemented or verified.
 For a host check with that exact firmware:
 
 ```
