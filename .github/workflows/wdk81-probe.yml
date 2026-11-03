@@ -61,6 +61,12 @@ jobs:
       - name: Compile non-operational ARM32 KMDF probe
         shell: pwsh
         run: ./tools/ci/build-kmdf-touch-probe.ps1
+      - name: Compile experimental button interface probe
+        shell: pwsh
+        run: ./tools/ci/build-button-kernel-probe.ps1
+      - name: Compile WinPE file comparison tool
+        shell: pwsh
+        run: ./tools/ci/build-compare-files.ps1 -Arch arm
       - name: Open restricted SSH for intervention
         id: remote
         if: ${{ always() && inputs.ssh_debug }}
