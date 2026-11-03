@@ -45,7 +45,7 @@ if ($env:A04_READONLY_DISK_PROBE -eq '1') {
 if ($LASTEXITCODE -ne 0) { throw 'ARM32 interface probe compilation failed' }
 & clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c $pioSource -o $pioObject
 if ($LASTEXITCODE -ne 0) { throw 'ARM32 PIO compilation failed' }
-& lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib $object $pioObject @extraObjects (Join-Path $lib 'storport.lib') (Join-Path $lib 'ntoskrnl.lib') "/out:$driver"
+& lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib $object $pioObject @extraObjects (Join-Path $lib 'storport.lib') (Join-Path $lib 'ntoskrnl.lib') (Join-Path $lib 'hal.lib') "/out:$driver"
 if ($LASTEXITCODE -ne 0) { throw 'ARM32 interface probe link failed' }
 & llvm-readobj --file-headers --coff-imports $driver
 if ($LASTEXITCODE -ne 0) { throw 'PE inspection failed' }
