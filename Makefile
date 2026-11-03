@@ -3,7 +3,7 @@ CLANG ?= clang
 CFLAGS ?= -O2 -Wall -Wextra -Werror -std=c11
 SRC := drivers/storage/mt8167-msdc
 
-.PHONY: test arm-coff clean
+.PHONY: test test-ntfs-root arm-coff clean
 
 test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test
 	./build/cdb_test
@@ -13,6 +13,9 @@ test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test buil
 	./build/scsi_test
 	python3 tests/gpt_guard_fixtures.py
 	./build/button_state_test
+
+test-ntfs-root:
+	python3 tests/ntfs_root_test.py
 
 build/button_state_test: drivers/input/a04br3-buttons/button_state.c drivers/input/a04br3-buttons/button_state.h tests/button_state_test.c
 	mkdir -p build

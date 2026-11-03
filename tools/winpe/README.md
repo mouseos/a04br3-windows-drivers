@@ -29,3 +29,5 @@ wimupdateのコマンド形式には空白を含まない作業パスを使う�
 INFは改行コードが変わるだけでCAT内のハッシュと一致しなくなる。**Windows上でCAT生成したパッケージのINF・SYS・CATを一組で回収し、変更せずに使う。** `prepare-driver-probe-wim.py --source-wim ORIGINAL --package PACKAGE_DIR --output OUTPUT` はその3ファイルを一組で追加し、WIMの検証と抽出後のバイト一致を確認する。別checkoutのINFを組み合わせない。
 
 テスト署名の比較では、Windows上で `tools/ci/prepare-test-bcd.ps1 -Source ORIGINAL_BCD -Output BCD_COPY` を使い、既定WinPEローダーの `testsigning` を有効にしたコピーを生成できる。元のBCDは変更しない。対象BCDの構成によっては `{default}` を使えないため、生成後の出力を確認する。テストモードは実機での受理や証明書の信頼を保証しない。
+
+`build-windows-ntfs.py` は新規作成する通常ファイルのNTFSイメージに限り、ルートのHIDDEN・SYSTEM属性を確認し不足分を補う。WIM適用後に属性がゼロになった場合、WindowsのCHKDSKがファイル記録5を不正と判定する現象を、別の小容量NTFSとWindows上の対照試験で確認したため。ホストには `libntfs-3g`、`mkntfs`、`ntfsfix` と `wimlib-imagex` が必要。イメージサイズ・NTFSの開始位置・属性の想定値が一致しない場合は中止する。この処理を実機のブロックデバイスや既存イメージの修復に使ってはならない。
