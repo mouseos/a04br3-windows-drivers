@@ -5,6 +5,14 @@
 #include <initguid.h>
 #include <devpkey.h>
 
+#ifdef A04_TOUCH_PROVIDER_STATUS
+#define PROVIDER_ID L"ACPI\\MOU0004"
+#define PROVIDER_PREFIX "TOUCH_PROVIDER"
+#else
+#define PROVIDER_ID L"ACPI\\MOU0003"
+#define PROVIDER_PREFIX "BUTTON_PROVIDER"
+#endif
+
 static void say(const char *text)
 {
     DWORD done, length=0;
@@ -28,11 +36,11 @@ void mainCRTStartup(void)
     WCHAR ids[1024];
     for (i=0; i<30; ++i) {
         length=0;
-        result=CM_Get_Device_ID_List_SizeW(&length,L"ACPI\\MOU0003",
+        result=CM_Get_Device_ID_List_SizeW(&length,PROVIDER_ID,
                                            CM_GETIDLIST_FILTER_ENUMERATOR | CM_GETIDLIST_FILTER_PRESENT);
         if (result == CR_SUCCESS && length > 1 && length <= 1024) {
             ULONG end=0;
-            result=CM_Get_Device_ID_ListW(L"ACPI\\MOU0003",ids,1024,
+            result=CM_Get_Device_ID_ListW(PROVIDER_ID,ids,1024,
                                          CM_GETIDLIST_FILTER_ENUMERATOR | CM_GETIDLIST_FILTER_PRESENT);
             if (result == CR_SUCCESS) {
                 while (end < length && ids[end]) ++end;
@@ -47,17 +55,17 @@ void mainCRTStartup(void)
         }
         Sleep(1000);
     }
-    say("BUTTON_PROVIDER_CM_RESULT="); hex(result);
+    say(PROVIDER_PREFIX "_CM_RESULT="); hex(result);
     say(" STATUS="); hex(status); say(" PROBLEM="); hex(problem); say("\r\n");
     if (result == CR_SUCCESS) {
         length=sizeof(problemStatus);
         propertyResult=CM_Get_DevNode_PropertyW(node,&DEVPKEY_Device_ProblemStatus,
                          &propertyType,(PBYTE)&problemStatus,&length,0);
-        say("BUTTON_PROVIDER_PROPERTY_RESULT="); hex(propertyResult);
+        say(PROVIDER_PREFIX "_PROPERTY_RESULT="); hex(propertyResult);
         say(" TYPE="); hex(propertyType); say(" NTSTATUS="); hex(problemStatus); say("\r\n");
     }
     if (result == CR_SUCCESS && (status & DN_STARTED) && problem == 0) {
-        say("BUTTON_PROVIDER_STARTED\r\n"); ExitProcess(0);
+        say(PROVIDER_PREFIX "_STARTED\r\n"); ExitProcess(0);
     }
-    say("BUTTON_PROVIDER_NOT_STARTED\r\n"); ExitProcess(1);
+    say(PROVIDER_PREFIX "_NOT_STARTED\r\n"); ExitProcess(1);
 }

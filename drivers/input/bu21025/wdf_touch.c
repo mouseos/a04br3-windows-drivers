@@ -177,7 +177,7 @@ void TouchIoctl(WDFQUEUE queue, WDFREQUEST request, size_t outlen, size_t inlen,
 {
     TOUCH_CONTEXT *c=TouchGetContext(WdfIoQueueGetDevice(queue));
     HID_DESCRIPTOR hid={0}; HID_DEVICE_ATTRIBUTES attr={0}; NTSTATUS status=STATUS_NOT_SUPPORTED;
-    UNREFERENCED_PARAMETER(outlen); UNREFERENCED_PARAMETER(inlen);
+    UNREFERENCED_PARAMETER(inlen);
     switch (code) {
     case IOCTL_HID_GET_DEVICE_DESCRIPTOR:
         hid.bLength=sizeof(hid); hid.bDescriptorType=HID_HID_DESCRIPTOR_TYPE;
@@ -197,7 +197,7 @@ void TouchIoctl(WDFQUEUE queue, WDFREQUEST request, size_t outlen, size_t inlen,
     case IOCTL_HID_GET_FEATURE: {
         PIRP irp=WdfRequestWdmGetIrp(request);
         PHID_XFER_PACKET packet=(PHID_XFER_PACKET)irp->UserBuffer;
-        if (packet && packet->reportId==2 && packet->reportBuffer && packet->reportBufferLen>=A04_TOUCH_FEATURE_SIZE) {
+        if (outlen>=sizeof(*packet) && packet && packet->reportId==2 && packet->reportBuffer && packet->reportBufferLen>=A04_TOUCH_FEATURE_SIZE) {
             a04_touch_max_contacts(packet->reportBuffer);
             WdfRequestSetInformation(request,A04_TOUCH_FEATURE_SIZE); status=STATUS_SUCCESS;
         } else status=STATUS_INVALID_PARAMETER;

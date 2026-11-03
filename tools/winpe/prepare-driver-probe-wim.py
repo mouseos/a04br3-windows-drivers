@@ -25,6 +25,8 @@ p.add_argument('--button-kernel-probe', type=Path, help='Optional one-shot kerne
 p.add_argument('--flush-probe-reference', type=Path, help='Expected diagnostic file content for guarded cleanup')
 p.add_argument('--button-provider-package', type=Path, help='Optional experimental provider INF, SYS and CAT')
 p.add_argument('--button-provider-status', type=Path, help='Optional read-only provider PnP status executable')
+p.add_argument('--touch-provider-package', type=Path, help='Optional experimental touch provider INF, SYS and CAT')
+p.add_argument('--touch-provider-status', type=Path, help='Optional read-only touch PnP status executable')
 a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
 startnet = a.startnet or root / 'tools/winpe/startnet-driver-probe.cmd'
@@ -60,6 +62,11 @@ if a.button_provider_package:
         files[f'/a04br3/button-provider/{name}'] = a.button_provider_package / name
 if a.button_provider_status:
     files['/a04br3/button-provider-status.exe'] = a.button_provider_status
+if a.touch_provider_package:
+    for name in ('a04-touch.inf', 'a04touch.sys', 'a04touch.cat'):
+        files[f'/a04br3/touch-provider/{name}'] = a.touch_provider_package / name
+if a.touch_provider_status:
+    files['/a04br3/touch-provider-status.exe'] = a.touch_provider_status
 for source in [a.source_wim, *files.values()]:
     if not source.is_file():
         raise SystemExit(f'Missing input: {source}')
