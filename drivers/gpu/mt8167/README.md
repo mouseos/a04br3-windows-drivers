@@ -33,9 +33,13 @@ It can also prepare the MIPS boot configuration and the four-page GPU page
 table from separately allocated, page-aligned physical heap and table memory
 below 4 GiB. The Windows caller must provide and synchronize those allocations;
 the prepared data has not been used to start the GPU on Windows.
+`firmware_runtime.c` also constructs the firmware queues and shared system and
+OS initialization data. Its ABI structures come from the unchanged upstream
+MIT-licensed FWIF headers listed in `fwif/SOURCE`; the Linux compatibility shim
+is derived from UniXNU and adjusts `GENMASK` for 32-bit `unsigned long`.
 For a host check with that exact firmware:
 
 ```
-cc -std=c11 -Wall -Wextra -Werror -I drivers/gpu/mt8167 tests/gpu_firmware_image_test.c drivers/gpu/mt8167/firmware.c -o /tmp/a04-gpu-fw-test
+cc -std=c11 -Wall -Wextra -Werror -I drivers/gpu/mt8167 -I drivers/gpu/mt8167/compat -I drivers/gpu/mt8167/fwif tests/gpu_firmware_image_test.c drivers/gpu/mt8167/firmware.c drivers/gpu/mt8167/firmware_runtime.c -o /tmp/a04-gpu-fw-test
 /tmp/a04-gpu-fw-test /path/to/rogue_22.67.54.30_v1.fw
 ```

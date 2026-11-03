@@ -3,9 +3,10 @@
 #include <stdint.h>
 #include <string.h>
 #include "firmware.h"
+#include "pvr_rogue_fwif.h"
 int main(int argc,char **argv) {
     FILE *f; long n; uint8_t *b,*heap; struct a04_pvr_fw_plan p; int r;
-    uint32_t *pt; struct a04_pvr_mips_addresses a;
+    uint32_t *pt; struct a04_pvr_mips_addresses a; struct a04_pvr_runtime runtime;
     if(argc!=2 || !(f=fopen(argv[1],"rb"))) return 2;
     if(fseek(f,0,SEEK_END) || (n=ftell(f))<=0 || fseek(f,0,SEEK_SET)) return 3;
     b=malloc((size_t)n); heap=malloc(A04_PVR_HEAP_SIZE); pt=malloc(4u*4096u);
@@ -30,6 +31,17 @@ int main(int argc,char **argv) {
     pt[0]=0xa5a5a5a5u;
     r=a04_pvr_mips_prepare(&p,heap,A04_PVR_HEAP_SIZE,0x80000000u,pt,4u*4096u,0x80000000u,&a);
     if(r!=A04_PVR_FW_OUTPUT || pt[0]!=0xa5a5a5a5u) return 13;
+    r=a04_pvr_runtime_prepare(&p,heap,A04_PVR_HEAP_SIZE,0x80000000u,26000000u,&runtime);
+    printf("firmware shared queues: %d kccb=%08x osinit=%08x sysinit=%08x\n",r,runtime.kernel_ccb,runtime.os_init,runtime.system_init);
+    if(r!=A04_PVR_FW_OK || runtime.next_free>=0x00ed0000u) return 14;
+    {
+        const struct rogue_fwif_ccb_ctl *q=(void *)(heap+runtime.kernel_ccb_control);
+        const struct rogue_fwif_osinit *os=(void *)(heap+runtime.os_init);
+        const struct rogue_fwif_sysinit *sys=(void *)(heap+runtime.system_init);
+        if(q->wrap_mask!=127 || q->cmd_size!=sizeof(struct rogue_fwif_kccb_cmd) ||
+           os->kernel_ccb_fw_addr!=(0xc0000000u|runtime.kernel_ccb) ||
+           sys->initial_core_clock_speed!=26000000u || sys->marker_val!=1) return 15;
+    }
     b[0]=0; r=a04_pvr_fw_plan(b,(size_t)n,A04_PVR_BVNC,1,&p); b[0]=0x7f;
     if(r!=A04_PVR_FW_ELF) return 10;
     b[n-4096]=0; r=a04_pvr_fw_plan(b,(size_t)n,A04_PVR_BVNC,1,&p);

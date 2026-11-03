@@ -150,6 +150,7 @@ build/pio_test: $(SRC)/pio.c $(SRC)/pio.h tests/pio_test.c
 arm-coff: $(SRC)/cdb.c $(SRC)/cdb.h
 	mkdir -p build
 	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/gpu/mt8167/firmware.c -o build/ge8300-firmware-arm.obj
+	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif -c drivers/gpu/mt8167/firmware_runtime.c -o build/ge8300-runtime-arm.obj
 	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c $(SRC)/cdb.c -o build/cdb-arm.obj
 	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c $(SRC)/pio.c -o build/pio-arm.obj
 	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/input/bu21025/bu21025.c -o build/bu21025-arm.obj

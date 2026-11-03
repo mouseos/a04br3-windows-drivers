@@ -40,4 +40,15 @@ enum a04_pvr_fw_result a04_pvr_mips_prepare(const struct a04_pvr_fw_plan *plan,
         uint8_t *heap, size_t heap_size, uint64_t heap_physical,
         uint32_t *page_table, size_t page_table_bytes, uint64_t page_table_physical,
         struct a04_pvr_mips_addresses *addresses);
+struct a04_pvr_runtime {
+    uint32_t kernel_ccb_control, kernel_ccb, kernel_return_slots;
+    uint32_t firmware_ccb_control, firmware_ccb, os_data, system_data;
+    uint32_t mmu_sync, trace_control, trace[2];
+    uint32_t os_init, system_init, next_free;
+};
+/* Construct firmware-shared queues and initialization objects in the heap.
+ * The caller must synchronize the heap for DMA before starting firmware. */
+enum a04_pvr_fw_result a04_pvr_runtime_prepare(const struct a04_pvr_fw_plan *plan,
+        uint8_t *heap, size_t heap_size, uint64_t heap_physical, uint32_t core_hz,
+        struct a04_pvr_runtime *runtime);
 #endif
