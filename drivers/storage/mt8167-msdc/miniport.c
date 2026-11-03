@@ -4,6 +4,7 @@
 #include <storport.h>
 #include <ntddscsi.h>
 #include "pio.h"
+#include "io_gate.h"
 #if defined(A04_PASSIVE_IO) && (!defined(A04_READONLY_DISK_PROBE) || defined(A04_ENABLE_WRITES))
 #error A04_PASSIVE_IO is restricted to the read-only diagnostic package
 #endif
@@ -28,9 +29,7 @@ static BOOLEAN A04EmmcIdentityValid;
 #endif
 struct a04_probe_extension {
     volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; ULONG requests; BOOLEAN failed; BOOLEAN write_ready; BOOLEAN cache_disabled;
-#ifdef A04_PASSIVE_IO
-    volatile LONG passiveBusy;
-#endif
+    a04_msdc_gate ioBusy;
 #ifdef A04_ENABLE_WRITES
     ULONG write_first, write_last, esp_first, esp_last;
 #endif
@@ -332,9 +331,8 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
     config->MaximumTransferLength = 4096;
     config->NumberOfPhysicalBreaks = 2;
     config->MapBuffers = STOR_MAP_NON_READ_WRITE_BUFFERS;
-    /* The polled path must not hold the interrupt spin lock for an entire
-     * transfer. StartIo remains serialized by Storport's StartIo lock; our
-     * interrupt callback does not access the controller or shared buffer. */
+    /* Physical mode uses a StartIo lock at DISPATCH_LEVEL. Virtual mode does
+     * not: A04StartIo's own gate protects the single shared controller/buffer. */
     config->SynchronizationModel = StorSynchronizeFullDuplex;
     {
         ULONG alignment = KeGetRecommendedSharedDataAlignment();
@@ -591,7 +589,7 @@ struct a04_request_extension { PVOID read_buffer; };
 /* Experimental PnP callbacks. Restart only succeeds if the inherited PIO
  * state survives and both GPT and EXT_CSD can be read again. Full clock,
  * power and card initialization remain unimplemented. */
-static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControl(PVOID extension,
+static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControlOwned(PVOID extension,
     SCSI_ADAPTER_CONTROL_TYPE type, PVOID parameters)
 {
     struct a04_probe_extension *probe = (struct a04_probe_extension *)extension;
@@ -611,11 +609,6 @@ static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControl(PVOID extension,
         return ScsiAdapterControlSuccess;
     }
     if (type == ScsiStopAdapter) {
-#ifdef A04_PASSIVE_IO
-        /* Refuse stop while a worker owns a request or the DMA buffer. */
-        if (InterlockedCompareExchange(&probe->passiveBusy,0,0))
-            return ScsiAdapterControlUnsuccessful;
-#endif
         A04Write32(probe, 0x010, 0);
         probe->failed = TRUE;
         return ScsiAdapterControlSuccess;
@@ -644,6 +637,19 @@ static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControl(PVOID extension,
     return ScsiAdapterControlUnsuccessful;
 }
 
+static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControl(PVOID extension,
+    SCSI_ADAPTER_CONTROL_TYPE type, PVOID parameters)
+{
+    struct a04_probe_extension *probe=(struct a04_probe_extension *)extension;
+    SCSI_ADAPTER_CONTROL_STATUS status;
+    BOOLEAN owns=(type==ScsiStopAdapter || type==ScsiRestartAdapter);
+    if (owns && !a04_msdc_gate_acquire(&probe->ioBusy))
+        return ScsiAdapterControlUnsuccessful;
+    status=A04AdapterControlOwned(extension,type,parameters);
+    if (owns) a04_msdc_gate_release(&probe->ioBusy);
+    return status;
+}
+
 /* BuildIo runs at DISPATCH_LEVEL without the StartIo lock. Only this SRB's
  * extension is touched. The returned mapping belongs to the request. */
 static BOOLEAN A04BuildIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
@@ -669,8 +675,8 @@ static BOOLEAN A04BuildIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
     return TRUE;
 }
 
-/* Storport serializes StartIo with the full-duplex StartIo lock. On transfer
- * failure the controller remains failed until recovery is proven. */
+/* One StartIo owner at a time protects controller state and the DMA buffer.
+ * On transfer failure the controller remains failed until recovery is proven. */
 static void A04Sense(PSCSI_REQUEST_BLOCK request, UCHAR key, UCHAR asc)
 {
     UCHAR *sense = (UCHAR *)request->SenseInfoBuffer;
@@ -823,7 +829,7 @@ static VOID A04PassiveWorker(PVOID extension, PVOID context, PVOID worker)
     PSCSI_REQUEST_BLOCK request=(PSCSI_REQUEST_BLOCK)context;
     (void)A04RunIo(extension,request);
     (void)StorPortFreeWorker(extension,worker);
-    InterlockedExchange(&probe->passiveBusy,0);
+    a04_msdc_gate_release(&probe->ioBusy);
     StorPortNotification(RequestComplete,extension,request);
 }
 
@@ -832,14 +838,14 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
     struct a04_probe_extension *probe=(struct a04_probe_extension *)extension;
     PVOID worker=NULL;
     ULONG status;
-    if (InterlockedCompareExchange(&probe->passiveBusy,1,0)!=0) goto busy;
+    if (!a04_msdc_gate_acquire(&probe->ioBusy)) goto busy;
     status=StorPortInitializeWorker(extension,&worker);
     if (status != STOR_STATUS_SUCCESS) goto release;
     status=StorPortQueueWorkItem(extension,A04PassiveWorker,worker,request);
     if (status == STOR_STATUS_SUCCESS) return TRUE;
     (void)StorPortFreeWorker(extension,worker);
 release:
-    InterlockedExchange(&probe->passiveBusy,0);
+    a04_msdc_gate_release(&probe->ioBusy);
 busy:
     request->SrbStatus=SRB_STATUS_BUSY;
     StorPortNotification(RequestComplete,extension,request);
@@ -848,7 +854,17 @@ busy:
 #else
 static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 {
-    BOOLEAN result=A04RunIo(extension,request);
+    struct a04_probe_extension *probe=(struct a04_probe_extension *)extension;
+    BOOLEAN result;
+    /* Virtual miniports are not serialized by Storport. Never let two SRBs
+     * use the shared DMA bounce buffer or program the controller concurrently. */
+    if (!a04_msdc_gate_acquire(&probe->ioBusy)) {
+        request->SrbStatus=SRB_STATUS_BUSY;
+        StorPortNotification(RequestComplete,extension,request);
+        return TRUE;
+    }
+    result=A04RunIo(extension,request);
+    a04_msdc_gate_release(&probe->ioBusy);
     StorPortNotification(RequestComplete,extension,request);
     StorPortNotification(NextRequest,extension,NULL);
     return result;
