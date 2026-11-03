@@ -4,6 +4,9 @@
 #include <storport.h>
 #include <ntddscsi.h>
 #include "pio.h"
+#if defined(A04_PASSIVE_IO) && (!defined(A04_READONLY_DISK_PROBE) || defined(A04_ENABLE_WRITES))
+#error A04_PASSIVE_IO is restricted to the read-only diagnostic package
+#endif
 #ifdef A04_READONLY_DISK_PROBE
 #include "cdb.h"
 #include "scsi_capacity.h"
@@ -25,6 +28,9 @@ static BOOLEAN A04EmmcIdentityValid;
 #endif
 struct a04_probe_extension {
     volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; ULONG requests; BOOLEAN failed; BOOLEAN write_ready; BOOLEAN cache_disabled;
+#ifdef A04_PASSIVE_IO
+    volatile LONG passiveBusy;
+#endif
 #ifdef A04_ENABLE_WRITES
     ULONG write_first, write_last, esp_first, esp_last;
 #endif
@@ -605,6 +611,11 @@ static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControl(PVOID extension,
         return ScsiAdapterControlSuccess;
     }
     if (type == ScsiStopAdapter) {
+#ifdef A04_PASSIVE_IO
+        /* Refuse stop while a worker owns a request or the DMA buffer. */
+        if (InterlockedCompareExchange(&probe->passiveBusy,0,0))
+            return ScsiAdapterControlUnsuccessful;
+#endif
         A04Write32(probe, 0x010, 0);
         probe->failed = TRUE;
         return ScsiAdapterControlSuccess;
@@ -674,7 +685,7 @@ static void A04Sense(PSCSI_REQUEST_BLOCK request, UCHAR key, UCHAR asc)
     request->DataTransferLength = 0;
 }
 
-static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
+static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 {
     struct a04_probe_extension *probe = (struct a04_probe_extension *)extension;
     UCHAR *data = (UCHAR *)request->DataBuffer;
@@ -800,10 +811,49 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         A04Trace("A04WIN CDB="); A04TraceHex(opcode);
         A04Trace(" status="); A04TraceHex(request->SrbStatus); A04Trace("\n");
     }
-    StorPortNotification(RequestComplete, extension, request);
-    StorPortNotification(NextRequest, extension, NULL);
     return TRUE;
 }
+
+#ifdef A04_PASSIVE_IO
+/* Diagnostic read-only path. Request abort and surprise-removal races still
+ * require qualification; never use this build as the Windows boot driver. */
+static VOID A04PassiveWorker(PVOID extension, PVOID context, PVOID worker)
+{
+    struct a04_probe_extension *probe=(struct a04_probe_extension *)extension;
+    PSCSI_REQUEST_BLOCK request=(PSCSI_REQUEST_BLOCK)context;
+    (void)A04RunIo(extension,request);
+    (void)StorPortFreeWorker(extension,worker);
+    InterlockedExchange(&probe->passiveBusy,0);
+    StorPortNotification(RequestComplete,extension,request);
+}
+
+static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
+{
+    struct a04_probe_extension *probe=(struct a04_probe_extension *)extension;
+    PVOID worker=NULL;
+    ULONG status;
+    if (InterlockedCompareExchange(&probe->passiveBusy,1,0)!=0) goto busy;
+    status=StorPortInitializeWorker(extension,&worker);
+    if (status != STOR_STATUS_SUCCESS) goto release;
+    status=StorPortQueueWorkItem(extension,A04PassiveWorker,worker,request);
+    if (status == STOR_STATUS_SUCCESS) return TRUE;
+    (void)StorPortFreeWorker(extension,worker);
+release:
+    InterlockedExchange(&probe->passiveBusy,0);
+busy:
+    request->SrbStatus=SRB_STATUS_BUSY;
+    StorPortNotification(RequestComplete,extension,request);
+    return TRUE;
+}
+#else
+static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
+{
+    BOOLEAN result=A04RunIo(extension,request);
+    StorPortNotification(RequestComplete,extension,request);
+    StorPortNotification(NextRequest,extension,NULL);
+    return result;
+}
+#endif
 #else
 static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 {

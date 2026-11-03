@@ -11,6 +11,10 @@ $pioSource = Join-Path $PSScriptRoot '..\..\drivers\storage\mt8167-msdc\pio.c'
 $driver = Join-Path $output 'miniport.sys'
 $extraObjects = @()
 $probeDefines = @()
+if ($env:A04_PASSIVE_IO -eq '1') {
+    if ($env:A04_READONLY_DISK_PROBE -ne '1' -or $env:A04_ENABLE_WRITES -eq '1' -or $env:A04_BOOT_EXPERIMENT -eq '1') { throw 'Passive I/O is restricted to the read-only diagnostic package' }
+    $probeDefines += '-DA04_PASSIVE_IO'
+}
 if ($env:A04_EMMC_IDENTITY_HANDOFF -eq '1') {
     if ($env:A04_READONLY_DISK_PROBE -ne '1') { throw 'eMMC identity handoff requires the disk probe' }
     $probeDefines += '-DA04_EMMC_IDENTITY_HANDOFF'
