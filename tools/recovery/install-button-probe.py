@@ -108,6 +108,10 @@ try:
         raise RuntimeError('候補ハイブの転送ハッシュが不一致です')
     shell(f'{remote}/ntfs-3g /dev/block/by-name/Windows {mount}')
     mounted = True
+    matches = [line.split() for line in adb('shell', 'cat', '/proc/mounts').splitlines()
+               if len(line.split()) >= 4 and line.split()[1] == mount]
+    if len(matches) != 1 or 'rw' not in matches[0][3].split(','):
+        raise RuntimeError('Windows領域が読取り専用です。休止状態や未クリーン状態を解除せず中止します')
     shell(f'set -e; cp {remote}/probe.exe {mount}/Windows/System32/a04-button-probe.exe; '
           f'cp {remote}/SYSTEM.candidate {mount}/Windows/System32/config/SYSTEM; sync')
     shell(f'umount {mount}')
