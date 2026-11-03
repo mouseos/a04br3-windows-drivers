@@ -5,13 +5,18 @@ SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test arm-coff clean
 
-test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test
+test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test
 	./build/cdb_test
 	./build/pio_test
 	./build/scsi_capacity_test
 	./build/dma_test
 	./build/scsi_test
 	python3 tests/gpt_guard_fixtures.py
+	./build/button_state_test
+
+build/button_state_test: drivers/input/a04br3-buttons/button_state.c drivers/input/a04br3-buttons/button_state.h tests/button_state_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/input/a04br3-buttons drivers/input/a04br3-buttons/button_state.c tests/button_state_test.c -o $@
 
 build/gpt_guard_test: $(SRC)/gpt_guard.c $(SRC)/gpt_guard.h tests/gpt_guard_test.c
 	mkdir -p build
