@@ -42,6 +42,22 @@ static void Trace(TOPRGU_CONTEXT *c, const char *s)
     }
 }
 
+static void TraceTimer(TOPRGU_CONTEXT *c, ULONG ticks, ULONGLONG elapsed)
+{
+    static const char hex[]="0123456789ABCDEF";
+    char message[]="A04RGU tick=00000000 cpu=00000000 elapsed_ms=00000000\n";
+    ULONG values[3], i, j;
+    values[0]=ticks;
+    values[1]=KeGetCurrentProcessorNumber();
+    /* Low 32 bits wrap after about 429 seconds; the deadline uses full time. */
+    values[2]=(ULONG)elapsed/10000u;
+    for (i=0; i<3; ++i) {
+        ULONG offset=i==0 ? 12 : (i==1 ? 25 : 45);
+        for (j=0; j<8; ++j) message[offset+j]=hex[(values[i] >> (28-4*j)) & 15u];
+    }
+    Trace(c,message);
+}
+
 NTSTATUS ToprguPrepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translated)
 {
     TOPRGU_CONTEXT *c = ToprguGetContext(device);
@@ -123,11 +139,13 @@ VOID ToprguTimer(WDFTIMER timer)
     TOPRGU_CONTEXT *c=ToprguGetContext((WDFDEVICE)WdfTimerGetParentObject(timer));
     ULONG i;
     BOOLEAN four, feed;
+    ULONGLONG elapsed;
     if (InterlockedCompareExchange(&c->busy,1,0) != 0) return;
     if (InterlockedCompareExchange(&c->running,1,1) && c->wdt && c->uart) {
         ++c->ticks;
         four=KeQueryActiveProcessorCount(NULL) >= 4;
-        feed=mt8167_watchdog_should_feed(KeQueryInterruptTime()-c->started,
+        elapsed=KeQueryInterruptTime()-c->started;
+        feed=mt8167_watchdog_should_feed(elapsed,
                                         A04_TOPRGU_DEADLINE_SECONDS);
         if (feed)
             WRITE_REGISTER_ULONG(c->wdt + 2,0x1971u);
@@ -137,6 +155,9 @@ VOID ToprguTimer(WDFTIMER timer)
         }
         if (four && feed && (c->ticks <= 3 || c->ticks % 500u == 0))
             Trace(c,"A04RGU timer kick\n");
+        if (four && feed && (c->ticks==10 || c->ticks==25 || c->ticks==50 ||
+                             c->ticks==100 || c->ticks==250 || c->ticks==500))
+            TraceTimer(c,c->ticks,elapsed);
         /* CPU1 owns UART until all four OS processors are online. */
         if (four) {
             InterlockedExchange(&c->ownedFour,1);
