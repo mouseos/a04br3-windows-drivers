@@ -80,3 +80,6 @@ On Windows with the Windows 8.1 WDK, LLVM and `lld-link` on PATH,
 `tools/ci/build-button-provider.ps1` builds the ARM32 SYS, INF and unsigned
 catalog. It defaults to the non-sending configuration. Signing and Windows
 installation remain separate development steps.
+`A04_BUTTON_TRACE=1` additionally maps the shared board UART and logs endpoint,
+sampling and notification status for temporary diagnostics. It is off by
+default, shares the UART with firmware, and is not a production logging design.

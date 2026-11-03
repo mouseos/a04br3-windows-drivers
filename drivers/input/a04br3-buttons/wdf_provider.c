@@ -14,6 +14,9 @@
 #ifndef A04_ASSUME_PRISTINE_BUTTON_QUEUE
 #define A04_ASSUME_PRISTINE_BUTTON_QUEUE 0
 #endif
+#ifndef A04_BUTTON_TRACE
+#define A04_BUTTON_TRACE 0
+#endif
 
 static const GUID ButtonInterface =
     {0x30ebfbf8,0xdf5f,0x4d4d,{0x9f,0xc5,0xa2,0x6c,0x7f,0xd1,0xdf,0x4a}};
@@ -30,6 +33,12 @@ typedef struct {
     BOOLEAN permanentlyDisabled;
     BOOLEAN awaitingReleased;
     UCHAR baseline[5];
+#if A04_BUTTON_TRACE
+    volatile ULONG *uart;
+    ULONG ticks;
+    USHORT lastKeypad;
+    USHORT lastPmic;
+#endif
 } A04_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_CONTEXT, A04GetContext)
 EVT_WDF_DRIVER_DEVICE_ADD A04DeviceAdd;
@@ -39,10 +48,37 @@ EVT_WDF_DEVICE_D0_ENTRY A04D0Entry;
 EVT_WDF_DEVICE_D0_EXIT A04D0Exit;
 EVT_WDF_TIMER A04Timer;
 
+#if A04_BUTTON_TRACE
+/* Temporary diagnostics only: shares the board UART with the monitor. */
+static void Trace(A04_CONTEXT *c, const char *s)
+{
+    ULONG budget;
+    if (!c->uart) return;
+    while (*s) {
+        for (budget=100000; budget; --budget)
+            if (!(READ_REGISTER_ULONG(c->uart + 3) & 0x80u) &&
+                (READ_REGISTER_ULONG(c->uart + 5) & 0x20u)) break;
+        if (!budget) return;
+        WRITE_REGISTER_ULONG(c->uart, (ULONG)(UCHAR)*s++);
+    }
+}
+static void TraceHex(A04_CONTEXT *c, ULONG value)
+{
+    static const char digits[]="0123456789ABCDEF";
+    char s[9]; unsigned i;
+    for (i=0; i<8; ++i) s[i]=digits[(value >> (28-4*i)) & 15u];
+    s[8]=0; Trace(c,s);
+}
+#endif
+
 static uint32_t PwrapRead(void *context, unsigned offset)
 {
     A04_CONTEXT *c = context;
-    return READ_REGISTER_ULONG((volatile ULONG *)(c->pwrap + offset));
+    ULONG value = READ_REGISTER_ULONG((volatile ULONG *)(c->pwrap + offset));
+#if A04_BUTTON_TRACE
+    if (offset == 0xa4u && ((value >> 16) & 7u) == 6u) c->lastPmic = (USHORT)value;
+#endif
+    return value;
 }
 static void PwrapWrite(void *context, unsigned offset, uint32_t value)
 {
@@ -59,6 +95,9 @@ static int KeypadRead(void *context, unsigned offset, uint16_t *value)
     A04_CONTEXT *c = context;
     if (!c->keypad || offset != 4) return -1;
     *value = READ_REGISTER_USHORT((volatile USHORT *)(c->keypad + offset));
+#if A04_BUTTON_TRACE
+    c->lastKeypad = *value;
+#endif
     return 0;
 }
 static int Notify(void *context, uint8_t button)
@@ -69,6 +108,11 @@ static int Notify(void *context, uint8_t button)
     if (!c->endpoint) return 1;
     io.Status = STATUS_UNSUCCESSFUL; io.Information = 0;
     status = ZwWriteFile(c->endpoint, NULL, NULL, NULL, &io, &button, 1, NULL, NULL);
+#if A04_BUTTON_TRACE
+    Trace(c,"A04BTP notify button="); TraceHex(c,button);
+    Trace(c," status="); TraceHex(c,(ULONG)status);
+    Trace(c," bytes="); TraceHex(c,(ULONG)io.Information); Trace(c,"\n");
+#endif
     if (NT_SUCCESS(status) && io.Information == 1) return 0;
     /* A failed or short write may already have toggled state. */
     c->permanentlyDisabled = TRUE;
@@ -95,10 +139,19 @@ static void TryEndpoint(A04_CONTEXT *c)
                           &attributes, &io, NULL, FILE_ATTRIBUTE_NORMAL, 0, FILE_OPEN,
                           FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0);
     ExFreePool(links);
+#if A04_BUTTON_TRACE
+    Trace(c,"A04BTP endpoint open status="); TraceHex(c,(ULONG)status); Trace(c,"\n");
+#endif
     if (!NT_SUCCESS(status)) { c->endpoint = NULL; return; }
     c->attemptedSync = TRUE;
     io.Status = STATUS_UNSUCCESSFUL; io.Information = 0;
     status = ZwReadFile(c->endpoint, NULL, NULL, NULL, &io, state, sizeof(state), NULL, NULL);
+#if A04_BUTTON_TRACE
+    Trace(c,"A04BTP endpoint read status="); TraceHex(c,(ULONG)status);
+    Trace(c," bytes="); TraceHex(c,(ULONG)io.Information); Trace(c," state=");
+    for (i=0; i<sizeof(state); ++i) { TraceHex(c,state[i]); Trace(c," "); }
+    Trace(c,"\n");
+#endif
     if (!NT_SUCCESS(status) || io.Information != sizeof(state)) goto reject;
     /* Only the controlled test boot permits the explicitly unproven queue
      * assumption. Nonzero/special state or later D0 entries fail closed. */
@@ -149,6 +202,11 @@ NTSTATUS A04Prepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translated)
     c->hardware.pmic.delay = PwrapDelay;
     c->hardware.pmic.attempts = 1000;
     a04_button_hardware_init(&c->hardware);
+#if A04_BUTTON_TRACE
+    { PHYSICAL_ADDRESS uart; uart.QuadPart=0x11005000u;
+      c->uart=(volatile ULONG *)MmMapIoSpace(uart,A04_RANGE_SIZE,MmNonCached);
+      Trace(c,"A04BTP prepare complete\n"); }
+#endif
     return STATUS_SUCCESS;
 }
 
@@ -163,6 +221,10 @@ NTSTATUS A04Release(WDFDEVICE device, WDFCMRESLIST translated)
     WdfTimerStop(c->timer, TRUE);
     a04_button_device_disconnect(&c->hardware.device);
     if (c->endpoint) { ZwClose(c->endpoint); c->endpoint = NULL; }
+#if A04_BUTTON_TRACE
+    Trace(c,"A04BTP release\n");
+    if (c->uart) { MmUnmapIoSpace((PVOID)c->uart,A04_RANGE_SIZE); c->uart=NULL; }
+#endif
     if (c->pwrap) { MmUnmapIoSpace((PVOID)c->pwrap, A04_RANGE_SIZE); c->pwrap = NULL; }
     if (c->keypad) { MmUnmapIoSpace((PVOID)c->keypad, A04_RANGE_SIZE); c->keypad = NULL; }
     return STATUS_SUCCESS;
@@ -171,6 +233,9 @@ NTSTATUS A04D0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
 {
     A04_CONTEXT *c = A04GetContext(device);
     UNREFERENCED_PARAMETER(previous);
+#if A04_BUTTON_TRACE
+    Trace(c,"A04BTP D0 entry\n");
+#endif
     if (!c->attemptedSync && !c->permanentlyDisabled) {
         InterlockedExchange(&c->timerEnabled, 1);
         WdfTimerStart(c->timer, WDF_REL_TIMEOUT_IN_MS(30));
@@ -181,6 +246,9 @@ NTSTATUS A04D0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
 {
     A04_CONTEXT *c = A04GetContext(device);
     UNREFERENCED_PARAMETER(target);
+#if A04_BUTTON_TRACE
+    Trace(c,"A04BTP D0 exit\n");
+#endif
     InterlockedExchange(&c->timerEnabled, 0);
     WdfTimerStop(c->timer, TRUE);
     WdfTimerStop(c->timer, TRUE);
@@ -206,9 +274,22 @@ void A04Timer(WDFTIMER timer)
                 if (a04_button_device_sync_report(&c->hardware.device, c->baseline,
                                                    sizeof(c->baseline), TRUE) != 0)
                     c->permanentlyDisabled = TRUE;
+#if A04_BUTTON_TRACE
+                Trace(c,"A04BTP baseline synchronized\n");
+#endif
             }
         }
     }
+#if A04_BUTTON_TRACE
+    if ((++c->ticks % 33u) == 1u) {
+        Trace(c,"A04BTP sample keypad="); TraceHex(c,c->lastKeypad);
+        Trace(c," pmic="); TraceHex(c,c->lastPmic);
+        Trace(c," known="); TraceHex(c,c->hardware.device.pipeline.known);
+        Trace(c," stable="); TraceHex(c,c->hardware.device.pipeline.stable);
+        Trace(c," sync="); TraceHex(c,c->hardware.device.pipeline.synchronized);
+        Trace(c," poisoned="); TraceHex(c,(ULONG)c->hardware.pmic.poisoned); Trace(c,"\n");
+    }
+#endif
     if (InterlockedCompareExchange(&c->timerEnabled, 1, 1) && !c->permanentlyDisabled)
         WdfTimerStart(timer, WDF_REL_TIMEOUT_IN_MS(30));
     InterlockedExchange(&c->timerBusy, 0);
