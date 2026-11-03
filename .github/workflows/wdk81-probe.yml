@@ -67,6 +67,30 @@ jobs:
       - name: Compile WinPE file comparison tool
         shell: pwsh
         run: ./tools/ci/build-compare-files.ps1 -Arch arm
+      - name: Sign and stage experimental button probe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
+          $driver = Join-Path $env:RUNNER_TEMP 'a04-button-kernel-probe\button-interface-probe.sys'
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=A04BR3 Button Kernel Test' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
+          & (Join-Path $kit 'bin\x86\signtool.exe') sign /fd SHA256 /sha1 $cert.Thumbprint /s My $driver
+          if ($LASTEXITCODE -ne 0) { throw 'Kernel probe test signing failed' }
+          $output = Join-Path $env:RUNNER_TEMP 'a04-button-artifact'
+          New-Item -ItemType Directory -Force $output | Out-Null
+          Copy-Item $driver $output
+          [ordered]@{ source_commit = (git rev-parse HEAD); sha256 = (Get-FileHash $driver -Algorithm SHA256).Hash; note = 'Experimental test-signed diagnostic; not a production driver.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $output 'manifest.json')
+      - name: Upload experimental button probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: a04-button-kernel-probe
+          path: ${{ runner.temp }}\a04-button-artifact
+          if-no-files-found: error
+      - name: Test guarded cleanup with a missing driver file
+        shell: pwsh
+        run: |
+          ./tools/ci/build-compare-files.ps1 -Arch x64
+          ./tools/ci/test-button-kernel-missing.ps1
       - name: Open restricted SSH for intervention
         id: remote
         if: ${{ always() && inputs.ssh_debug }}
