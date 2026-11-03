@@ -688,6 +688,12 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         } else {
             struct a04_msdc_io io = {probe, A04Read32, A04Read8, A04Write32};
             ULONG interrupts = A04Read32(probe, 0x010), failure = 0, j;
+#ifdef A04_ENABLE_WRITES
+            if (result.action == A04_SCSI_WRITE &&
+                a04_gpt_guard_range(probe->esp_first, probe->esp_last,
+                                    result.blocks.lba, result.blocks.block_count))
+                { trace = TRUE; A04Trace("A04WIN ESP write\n"); }
+#endif
             if (trace) { A04Trace("A04WIN blocks lba="); A04TraceHex((ULONG)result.blocks.lba);
                 A04Trace(" count="); A04TraceHex(result.blocks.block_count); A04Trace("\n"); }
             A04Write32(probe, 0x010, interrupts & ~0x0000d700u);
