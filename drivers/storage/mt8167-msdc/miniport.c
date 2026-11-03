@@ -326,6 +326,10 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
     config->MaximumTransferLength = 4096;
     config->NumberOfPhysicalBreaks = 2;
     config->MapBuffers = STOR_MAP_NON_READ_WRITE_BUFFERS;
+    /* The polled path must not hold the interrupt spin lock for an entire
+     * transfer. StartIo remains serialized by Storport's StartIo lock; our
+     * interrupt callback does not access the controller or shared buffer. */
+    config->SynchronizationModel = StorSynchronizeFullDuplex;
     {
         ULONG alignment = KeGetRecommendedSharedDataAlignment();
         A04Trace("A04WIN alignment recommended="); A04TraceHex(alignment);
@@ -654,9 +658,8 @@ static BOOLEAN A04BuildIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
     return TRUE;
 }
 
-/* Research only. StorPort serializes HwStartIo with the default half-duplex
- * synchronization model. This probe never writes to the card. On PIO failure
- * it remains failed until reboot because controller recovery is not proven. */
+/* Storport serializes StartIo with the full-duplex StartIo lock. On transfer
+ * failure the controller remains failed until recovery is proven. */
 static void A04Sense(PSCSI_REQUEST_BLOCK request, UCHAR key, UCHAR asc)
 {
     UCHAR *sense = (UCHAR *)request->SenseInfoBuffer;
@@ -812,15 +815,8 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 
 static BOOLEAN A04Interrupt(PVOID extension)
 {
-#ifdef A04_READONLY_DISK_PROBE
-    static volatile LONG count;
-    if (InterlockedIncrement(&count) <= 4) {
-        struct a04_probe_extension *probe = (struct a04_probe_extension *)extension;
-        A04Trace("A04WIN interrupt pending="); A04TraceHex(A04Read32(probe, 0x00c)); A04Trace("\n");
-    }
-#else
     UNREFERENCED_PARAMETER(extension);
-#endif
+    /* Hardware interrupts remain masked; no shared controller state here. */
     return FALSE;
 }
 
