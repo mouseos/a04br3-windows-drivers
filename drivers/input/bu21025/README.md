@@ -23,6 +23,11 @@ and host tests do not establish Windows 8.1 HID acceptance or certification;
 the dimension source, contact detection, Windows HID/PnP driver and actual
 device behavior remain to be verified.
 
+`contact` evaluates the pressure equation used by the existing iOS port, but
+requires a runtime policy for plate resistances and noise threshold. It does
+not choose device-specific values, implement debouncing, or prove that the
+policy accurately detects touch on this panel.
+
 This is not a Windows HID driver. Windows PnP resources, an I2C controller or
 SPB transport, pen interrupts, pressure/contact filtering, calibration and
 HID reports remain to be implemented and tested. Host and ARM32 compilation

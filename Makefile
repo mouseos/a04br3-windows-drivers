@@ -5,7 +5,7 @@ SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test test-ntfs-root arm-coff clean
 
-test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_coordinates_test build/touch_hid_test build/touch_hid_dump
+test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump
 	./build/cdb_test
 	./build/pio_test
 	./build/scsi_capacity_test
@@ -17,8 +17,13 @@ test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test buil
 	./build/i2c_pio_test
 	./build/bu21025_bus_test
 	./build/touch_coordinates_test
+	./build/touch_contact_test
 	./build/touch_hid_test
 	python3 tests/touch_hid_descriptor_test.py
+
+build/touch_contact_test: drivers/input/bu21025/contact.c drivers/input/bu21025/contact.h tests/touch_contact_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/input/bu21025 drivers/input/bu21025/contact.c tests/touch_contact_test.c -o $@
 
 build/touch_hid_dump: drivers/input/bu21025/touch_hid.c drivers/input/bu21025/touch_hid.h tests/touch_hid_dump.c
 	mkdir -p build
@@ -85,6 +90,7 @@ arm-coff: $(SRC)/cdb.c $(SRC)/cdb.h
 	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/input/bu21025/mt8167_adapter.c -o build/bu21025-mt8167-arm.obj
 	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/input/bu21025/coordinates.c -o build/touch-coordinates-arm.obj
 	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/input/bu21025/touch_hid.c -o build/touch-hid-arm.obj
+	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/input/bu21025/contact.c -o build/touch-contact-arm.obj
 
 clean:
 	rm -rf build
