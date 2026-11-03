@@ -28,6 +28,12 @@ requires a runtime policy for plate resistances and noise threshold. It does
 not choose device-specific values, implement debouncing, or prove that the
 policy accurately detects touch on this panel.
 
+`pipeline` connects filtering, calibration and HID report encoding. It holds
+position across noisy samples and can emit a release on a transport fault;
+the eventual driver must serialize calls and retain reports until delivered.
+It requires valid platform-provided calibration and pressure policy and does
+not provide automatic retrieval of those values.
+
 This is not a Windows HID driver. Windows PnP resources, an I2C controller or
 SPB transport, pen interrupts, pressure/contact filtering, calibration and
 HID reports remain to be implemented and tested. Host and ARM32 compilation
