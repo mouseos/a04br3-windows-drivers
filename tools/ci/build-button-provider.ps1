@@ -9,9 +9,10 @@ $out = Join-Path $env:RUNNER_TEMP 'a04-button-provider'
 New-Item -ItemType Directory -Force $out | Out-Null
 $dir = Join-Path $root 'drivers\input\a04br3-buttons'
 $objects = @()
+$assumePristine = if ($env:A04_ASSUME_PRISTINE_BUTTON_QUEUE -eq '1') { '1' } else { '0' }
 foreach ($name in @('wdf_provider','button_hardware','pmic_read','button_device','button_pipeline','button_state')) {
     $obj = Join-Path $out "$name.obj"
-    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$dir" -c (Join-Path $dir "$name.c") -o $obj
+    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_ASSUME_PRISTINE_BUTTON_QUEUE=$assumePristine" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$dir" -c (Join-Path $dir "$name.c") -o $obj
     if ($LASTEXITCODE -ne 0) { throw "ARM32 button provider compilation failed: $name" }
     $objects += $obj
 }
@@ -20,4 +21,4 @@ $driver = Join-Path $out 'a04buttonprovider.sys'
 if ($LASTEXITCODE -ne 0) { throw 'ARM32 button provider link failed' }
 $headers = & llvm-readobj --file-headers $driver
 if ($LASTEXITCODE -ne 0 -or ($headers -join "`n") -notmatch 'IMAGE_FILE_MACHINE_ARMNT') { throw 'Unexpected provider PE format' }
-Write-Host 'Experimental PnP provider built; polling and notification are deliberately disabled.'
+Write-Host "Experimental PnP provider built; assume pristine queue: $assumePristine. Wake is not implemented."

@@ -62,4 +62,14 @@ that condition itself; no working queue-empty detector is implemented yet.
 pipeline. Its simulated integration test checks a power press/release while
 the keypad source fails independently. The platform must still establish
 clocks, exclusive ownership and synchronized endpoint state; no MMIO is
-accessed without platform callbacks and no PnP or wake driver is supplied.
+accessed without platform callbacks and this component does not provide wake.
+
+`wdf_provider.c` is an experimental KMDF PnP provider that requires the
+exact keypad and PWRAP memory resources, opens the exclusive inbox interface,
+and reads five state bytes. In the default build it refuses synchronization
+because the inbox queue has no proven empty-state query, so it emits no input.
+`A04_ASSUME_PRISTINE_BUTTON_QUEUE=1` builds a strictly controlled initial-boot
+experiment that assumes an all-zero report means no earlier queued events.
+That assumption is not verified and is unsuitable for production. Both modes
+stop on ambiguous delivery and disable input across power transitions. They do
+not implement interrupts, wake, clock setup or PMIC sharing with other owners.

@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent
  * Experimental polling provider. PnP assigns the only MMIO ranges used here.
  * It does not implement interrupts, power-button wake or production recovery.
- * Delivery remains disabled unless a separate platform integration establishes
- * a quiescent notification endpoint and calls the synchronization API. */
+ * Delivery is disabled by default. A controlled, first-boot-only experiment
+ * can opt into an explicit assumption that the endpoint queue is pristine;
+ * this is not a general way to establish queue quiescence. */
 #include <ntddk.h>
 #include <wdf.h>
 #include "button_hardware.h"
@@ -10,12 +11,22 @@
 #define A04_KEYPAD_BASE 0x10002000u
 #define A04_PWRAP_BASE  0x1000f000u
 #define A04_RANGE_SIZE  0x1000u
+#ifndef A04_ASSUME_PRISTINE_BUTTON_QUEUE
+#define A04_ASSUME_PRISTINE_BUTTON_QUEUE 0
+#endif
+
+static const GUID ButtonInterface =
+    {0x30ebfbf8,0xdf5f,0x4d4d,{0x9f,0xc5,0xa2,0x6c,0x7f,0xd1,0xdf,0x4a}};
 
 typedef struct {
     WDFTIMER timer;
     volatile UCHAR *keypad;
     volatile UCHAR *pwrap;
     struct a04_button_hardware hardware;
+    HANDLE endpoint;
+    volatile LONG timerBusy;
+    BOOLEAN attemptedSync;
+    BOOLEAN permanentlyDisabled;
 } A04_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_CONTEXT, A04GetContext)
 EVT_WDF_DRIVER_DEVICE_ADD A04DeviceAdd;
@@ -47,12 +58,52 @@ static int KeypadRead(void *context, unsigned offset, uint16_t *value)
     *value = READ_REGISTER_USHORT((volatile USHORT *)(c->keypad + offset));
     return 0;
 }
-static int NoEndpoint(void *context, uint8_t button)
+static int Notify(void *context, uint8_t button)
 {
-    UNREFERENCED_PARAMETER(context);
-    UNREFERENCED_PARAMETER(button);
-    /* No attempted write: there is no endpoint or synchronization yet. */
-    return 1;
+    A04_CONTEXT *c = context;
+    IO_STATUS_BLOCK io;
+    NTSTATUS status;
+    if (!c->endpoint) return 1;
+    io.Status = STATUS_UNSUCCESSFUL; io.Information = 0;
+    status = ZwWriteFile(c->endpoint, NULL, NULL, NULL, &io, &button, 1, NULL, NULL);
+    if (NT_SUCCESS(status) && io.Information == 1) return 0;
+    /* A failed or short write may already have toggled state. */
+    c->permanentlyDisabled = TRUE;
+    return -1;
+}
+
+static void TryEndpoint(A04_CONTEXT *c)
+{
+    PWSTR links = NULL;
+    UNICODE_STRING path;
+    OBJECT_ATTRIBUTES attributes;
+    IO_STATUS_BLOCK io;
+    UCHAR state[5] = {0};
+    NTSTATUS status;
+    unsigned i;
+    if (c->endpoint || c->permanentlyDisabled || c->attemptedSync) return;
+    status = IoGetDeviceInterfaces(&ButtonInterface, NULL, 0, &links);
+    if (!NT_SUCCESS(status) || !links) { if (links) ExFreePool(links); return; }
+    if (!links[0]) { ExFreePool(links); return; }
+    RtlInitUnicodeString(&path, links);
+    InitializeObjectAttributes(&attributes, &path, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
+                               NULL, NULL);
+    status = ZwCreateFile(&c->endpoint, FILE_READ_DATA | FILE_WRITE_DATA | SYNCHRONIZE,
+                          &attributes, &io, NULL, FILE_ATTRIBUTE_NORMAL, 0, FILE_OPEN,
+                          FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0);
+    ExFreePool(links);
+    if (!NT_SUCCESS(status)) { c->endpoint = NULL; return; }
+    c->attemptedSync = TRUE;
+    io.Status = STATUS_UNSUCCESSFUL; io.Information = 0;
+    status = ZwReadFile(c->endpoint, NULL, NULL, NULL, &io, state, sizeof(state), NULL, NULL);
+    if (!NT_SUCCESS(status) || io.Information != sizeof(state)) goto reject;
+    /* Only the controlled test boot permits the explicitly unproven queue
+     * assumption. Nonzero/special state or later D0 entries fail closed. */
+    for (i = 0; i < sizeof(state); ++i) if (state[i] != 0) goto reject;
+    if (a04_button_device_sync_report(&c->hardware.device, state, sizeof(state),
+                                      A04_ASSUME_PRISTINE_BUTTON_QUEUE) == 0) return;
+reject:
+    ZwClose(c->endpoint); c->endpoint = NULL; c->permanentlyDisabled = TRUE;
 }
 
 NTSTATUS A04Prepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translated)
@@ -83,13 +134,12 @@ NTSTATUS A04Prepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translated)
     }
     c->hardware.context = c;
     c->hardware.keypad_read16 = KeypadRead;
-    c->hardware.notify = NoEndpoint;
+    c->hardware.notify = Notify;
     c->hardware.pmic.context = c;
     c->hardware.pmic.read32 = PwrapRead;
     c->hardware.pmic.write32 = PwrapWrite;
     c->hardware.pmic.delay = PwrapDelay;
     c->hardware.pmic.attempts = 1000;
-    c->hardware.pmic.poisoned = 0;
     a04_button_hardware_init(&c->hardware);
     return STATUS_SUCCESS;
 }
@@ -100,6 +150,7 @@ NTSTATUS A04Release(WDFDEVICE device, WDFCMRESLIST translated)
     UNREFERENCED_PARAMETER(translated);
     WdfTimerStop(c->timer, TRUE);
     a04_button_device_disconnect(&c->hardware.device);
+    if (c->endpoint) { ZwClose(c->endpoint); c->endpoint = NULL; }
     if (c->pwrap) { MmUnmapIoSpace((PVOID)c->pwrap, A04_RANGE_SIZE); c->pwrap = NULL; }
     if (c->keypad) { MmUnmapIoSpace((PVOID)c->keypad, A04_RANGE_SIZE); c->keypad = NULL; }
     return STATUS_SUCCESS;
@@ -108,8 +159,8 @@ NTSTATUS A04D0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
 {
     A04_CONTEXT *c = A04GetContext(device);
     UNREFERENCED_PARAMETER(previous);
-    /* Disabled until endpoint synchronization and safe ownership are solved. */
-    UNREFERENCED_PARAMETER(c);
+    if (!c->attemptedSync && !c->permanentlyDisabled)
+        WdfTimerStart(c->timer, WDF_REL_TIMEOUT_IN_MS(30));
     return STATUS_SUCCESS;
 }
 NTSTATUS A04D0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
@@ -118,13 +169,22 @@ NTSTATUS A04D0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
     UNREFERENCED_PARAMETER(target);
     WdfTimerStop(c->timer, TRUE);
     a04_button_device_disconnect(&c->hardware.device);
+    if (c->endpoint) { ZwClose(c->endpoint); c->endpoint = NULL; }
+    /* Do not assume the endpoint remains synchronized across power changes. */
+    if (c->attemptedSync) c->permanentlyDisabled = TRUE;
     return STATUS_SUCCESS;
 }
 void A04Timer(WDFTIMER timer)
 {
     WDFDEVICE device = (WDFDEVICE)WdfTimerGetParentObject(timer);
     A04_CONTEXT *c = A04GetContext(device);
-    if (c->keypad && c->pwrap) (void)a04_button_device_poll(&c->hardware.device);
+    if (InterlockedCompareExchange(&c->timerBusy, 1, 0) != 0) return;
+    if (c->keypad && c->pwrap) {
+        TryEndpoint(c);
+        if (c->endpoint && !c->permanentlyDisabled)
+            (void)a04_button_device_poll(&c->hardware.device);
+    }
+    InterlockedExchange(&c->timerBusy, 0);
 }
 
 NTSTATUS A04DeviceAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
