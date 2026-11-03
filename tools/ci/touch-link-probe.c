@@ -8,6 +8,7 @@
 #include "../../drivers/input/bu21025/touch_hid.h"
 #include "../../drivers/input/bu21025/contact.h"
 #include "../../drivers/input/bu21025/pipeline.h"
+#include "../../drivers/input/bu21025/device.h"
 
 static volatile int probe_result;
 static uint16_t read16(void *context, unsigned offset)
@@ -34,6 +35,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING path)
     struct a04_touch_report_state state = {0};
     struct a04_touch_pressure_policy pressure = {1, 1, 0, 1};
     struct a04_touch_pipeline pipeline;
+    struct a04_touch_device device;
     uint8_t report[A04_TOUCH_REPORT_SIZE], descriptor[A04_TOUCH_DESCRIPTOR_CAPACITY];
     uint8_t feature[A04_TOUCH_FEATURE_SIZE];
     size_t descriptor_length;
@@ -49,5 +51,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING path)
     probe_result = a04_touch_pipeline_init(&pipeline, &calibration, &pressure);
     probe_result = a04_touch_pipeline_sample(&pipeline, &sample, 0, report);
     probe_result = a04_touch_pipeline_fault(&pipeline, 0, report);
+    probe_result = a04_touch_device_init(&device, &io, &calibration, &pressure);
+    probe_result = a04_touch_device_poll(&device, 1, 0, report);
     return STATUS_NOT_SUPPORTED;
 }

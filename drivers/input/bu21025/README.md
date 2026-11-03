@@ -34,6 +34,12 @@ the eventual driver must serialize calls and retain reports until delivered.
 It requires valid platform-provided calibration and pressure policy and does
 not provide automatic retrieval of those values.
 
+`device` connects controller sampling and the pipeline using a caller-supplied
+pen state. When the pen is up it avoids I2C transfers; on a transfer failure it
+latches the fault and produces a release when one was pending. The owner must
+deliver reports in order and recover the bus before reinitializing. These
+interfaces have only been exercised against host-side mocks.
+
 This is not a Windows HID driver. Windows PnP resources, an I2C controller or
 SPB transport, pen interrupts, pressure/contact filtering, calibration and
 HID reports remain to be implemented and tested. Host and ARM32 compilation

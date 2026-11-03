@@ -17,6 +17,7 @@ foreach ($item in @(
     @('touchhid','drivers\input\bu21025\touch_hid.c'),
     @('contact','drivers\input\bu21025\contact.c'),
     @('pipeline','drivers\input\bu21025\pipeline.c'),
+    @('touchdevice','drivers\input\bu21025\device.c'),
     @('i2c','drivers\bus\mt8167-i2c\pio.c')
 )) {
     $obj = Join-Path $output ($item[0] + '.obj')
