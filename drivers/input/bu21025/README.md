@@ -16,6 +16,13 @@ exercises the combined path; this is not a Windows transport implementation.
 does not define a calibration source or require a user to supply values;
 retrieving device-specific data automatically remains unimplemented.
 
+`touch_hid` prepares an experimental single-contact HID descriptor and report
+encoding. It requires the caller to supply accurate physical dimensions and
+keeps the last contact position for the release report. Independent parsing
+and host tests do not establish Windows 8.1 HID acceptance or certification;
+the dimension source, contact detection, Windows HID/PnP driver and actual
+device behavior remain to be verified.
+
 This is not a Windows HID driver. Windows PnP resources, an I2C controller or
 SPB transport, pen interrupts, pressure/contact filtering, calibration and
 HID reports remain to be implemented and tested. Host and ARM32 compilation

@@ -5,6 +5,7 @@
 #include "../../drivers/input/bu21025/bu21025.h"
 #include "../../drivers/input/bu21025/coordinates.h"
 #include "../../drivers/input/bu21025/mt8167_adapter.h"
+#include "../../drivers/input/bu21025/touch_hid.h"
 
 static volatile int probe_result;
 static uint16_t read16(void *context, unsigned offset)
@@ -27,11 +28,18 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING path)
     struct a04_bu21025_io io;
     struct a04_bu21025_sample sample = {0};
     struct a04_touch_calibration calibration = {0, 4095, 0, 4095, 0, 0, 0};
-    struct a04_touch_position position;
+    struct a04_touch_position position = {0};
+    struct a04_touch_report_state state = {0};
+    uint8_t report[A04_TOUCH_REPORT_SIZE], descriptor[A04_TOUCH_DESCRIPTOR_CAPACITY];
+    uint8_t feature[A04_TOUCH_FEATURE_SIZE];
+    size_t descriptor_length;
     UNREFERENCED_PARAMETER(driver); UNREFERENCED_PARAMETER(path);
     probe_result = a04_bu21025_mt8167_bind(&adapter, &io);
     probe_result = a04_bu21025_init(&io);
     probe_result = a04_bu21025_sample(&io, &sample);
     probe_result = a04_touch_map(&calibration, sample.x, sample.y, &position);
+    probe_result = a04_touch_descriptor(1, 1, descriptor, sizeof(descriptor), &descriptor_length);
+    probe_result = a04_touch_report(&state, 1, position.x, position.y, 0, report);
+    probe_result = a04_touch_max_contacts(feature);
     return STATUS_NOT_SUPPORTED;
 }
