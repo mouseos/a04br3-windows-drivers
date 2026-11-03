@@ -29,6 +29,10 @@ The actual board core is 22.40.54.30. A mismatch is rejected by default and
 can only be allowed explicitly; successful image loading does not establish
 that the firmware is compatible. This portable code does not allocate DMA
 memory, start the firmware, register a Windows device or implement WDDM.
+It can also prepare the MIPS boot configuration and the four-page GPU page
+table from separately allocated, page-aligned physical heap and table memory
+below 4 GiB. The Windows caller must provide and synchronize those allocations;
+the prepared data has not been used to start the GPU on Windows.
 For a host check with that exact firmware:
 
 ```

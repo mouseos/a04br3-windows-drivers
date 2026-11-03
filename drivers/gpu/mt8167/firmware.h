@@ -30,4 +30,14 @@ enum a04_pvr_fw_result a04_pvr_fw_plan(const uint8_t *image, size_t length,
 enum a04_pvr_fw_result a04_pvr_fw_load(const uint8_t *image, size_t length,
         uint64_t actual_bvnc, int allow_mismatch, uint8_t *heap, size_t heap_size,
         struct a04_pvr_fw_plan *plan);
+struct a04_pvr_mips_addresses {
+    uint32_t boot_code, boot_data, exception_code;
+};
+/* Prepare the 4-page MIPS page table and boot data for two distinct,
+ * physically contiguous and page-aligned allocations below 4 GiB.
+ * The caller owns DMA allocation, cache synchronization and GPU startup. */
+enum a04_pvr_fw_result a04_pvr_mips_prepare(const struct a04_pvr_fw_plan *plan,
+        uint8_t *heap, size_t heap_size, uint64_t heap_physical,
+        uint32_t *page_table, size_t page_table_bytes, uint64_t page_table_physical,
+        struct a04_pvr_mips_addresses *addresses);
 #endif

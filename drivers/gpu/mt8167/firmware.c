@@ -103,3 +103,66 @@ enum a04_pvr_fw_result a04_pvr_fw_load(const uint8_t *image, size_t length,
     }
     *plan=tmp; return A04_PVR_FW_OK;
 }
+
+/* Linux pvr_rogue_mips.h: 4096 4 KiB PTEs, four 4 KiB page-table
+ * pages, 32-bit physical PFN, uncached, dirty, valid and global. */
+#define MIPS_EXCEPTION_CODE 5u
+#define MIPS_BOOT_CODE 6u
+#define MIPS_BOOT_DATA 8u
+#define MIPS_STACK 9u
+#define MIPS_TABLE_BYTES (4u * PAGE_SIZE)
+#define MIPS_BOOT_BYTES 64u
+static void put32(uint8_t *p, uint32_t n)
+{ p[0]=(uint8_t)n; p[1]=(uint8_t)(n>>8); p[2]=(uint8_t)(n>>16); p[3]=(uint8_t)(n>>24); }
+static void put64(uint8_t *p, uint64_t n) { put32(p,(uint32_t)n); put32(p+4,(uint32_t)(n>>32)); }
+static const struct a04_pvr_section *find_section(const struct a04_pvr_fw_plan *p, uint32_t id)
+{
+    const struct a04_pvr_section *found=0; uint32_t i;
+    for (i=0;i<p->section_count;++i) if (p->section[i].id==id) {
+        if (found) return 0;
+        found=&p->section[i];
+    }
+    return found;
+}
+static int section_inside(const struct a04_pvr_section *s, uint32_t type,
+                          uint32_t limit, uint32_t min_size)
+{
+    return s && s->type==type && s->size>=min_size && within(s->offset,s->size,limit);
+}
+enum a04_pvr_fw_result a04_pvr_mips_prepare(const struct a04_pvr_fw_plan *p,
+        uint8_t *heap, size_t heap_size, uint64_t heap_pa,
+        uint32_t *table, size_t table_size, uint64_t table_pa,
+        struct a04_pvr_mips_addresses *addresses)
+{
+    const struct a04_pvr_section *boot, *data, *exc, *stack;
+    struct a04_pvr_mips_addresses result; uint8_t *config; uint32_t i;
+    if (!p || !heap || !table || !addresses || p->section_count>A04_PVR_MAX_LAYOUT ||
+        heap_size<A04_PVR_HEAP_SIZE || table_size<MIPS_TABLE_BYTES || ((uintptr_t)table&3u) ||
+        (heap_pa&(PAGE_SIZE-1u)) || (table_pa&(PAGE_SIZE-1u)) ||
+        heap_pa>UINT64_C(0x100000000)-A04_PVR_HEAP_SIZE ||
+        table_pa>UINT64_C(0x100000000)-MIPS_TABLE_BYTES ||
+        (heap_pa<table_pa+MIPS_TABLE_BYTES && table_pa<heap_pa+A04_PVR_HEAP_SIZE) ||
+        p->code_size>p->data_offset || !within(p->data_offset,p->data_size,A04_PVR_HEAP_SIZE))
+        return A04_PVR_FW_OUTPUT;
+    /* The CPU mappings must also be distinct. */
+    if ((uintptr_t)heap <= (uintptr_t)table ? (uintptr_t)table-(uintptr_t)heap<A04_PVR_HEAP_SIZE
+        : (uintptr_t)heap-(uintptr_t)table<MIPS_TABLE_BYTES) return A04_PVR_FW_OUTPUT;
+    boot=find_section(p,MIPS_BOOT_CODE); data=find_section(p,MIPS_BOOT_DATA);
+    exc=find_section(p,MIPS_EXCEPTION_CODE); stack=find_section(p,MIPS_STACK);
+    if (!section_inside(boot,FW_CODE,p->code_size,1) || !section_inside(exc,FW_CODE,p->code_size,1) ||
+        !section_inside(data,FW_DATA,p->data_size,MIPS_BOOT_BYTES) ||
+        !section_inside(stack,FW_DATA,p->data_size,1)) return A04_PVR_FW_LAYOUT;
+    result.boot_code=(uint32_t)(heap_pa+boot->offset);
+    result.boot_data=(uint32_t)(heap_pa+p->data_offset+data->offset);
+    result.exception_code=(uint32_t)(heap_pa+exc->offset);
+    config=heap+p->data_offset+data->offset;
+    for (i=0;i<A04_PVR_HEAP_SIZE/PAGE_SIZE;++i) {
+        uint64_t pa=heap_pa+(uint64_t)i*PAGE_SIZE;
+        table[i]=(uint32_t)((pa>>12)<<6) | 0x17u;
+    }
+    put64(config,heap_pa+p->data_offset+stack->offset);
+    put64(config+8,UINT64_C(0x13000000));
+    for (i=0;i<4;++i) put64(config+16+i*8,table_pa+(uint64_t)i*PAGE_SIZE);
+    put32(config+48,12); put32(config+52,4); put32(config+56,0); put32(config+60,0);
+    *addresses=result; return A04_PVR_FW_OK;
+}
