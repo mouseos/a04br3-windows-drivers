@@ -54,7 +54,16 @@ try {
   Write-Output 'MISSING_FILE_REMOVAL_TEST_OK'
 } finally {
   & cmd.exe /c 'reg query HKLM\A04TEMP >nul 2>&1'
-  if ($LASTEXITCODE -eq 0) { & reg unload HKLM\A04TEMP }
+  if ($LASTEXITCODE -eq 0) {
+    & reg unload HKLM\A04TEMP
+    if ($LASTEXITCODE -ne 0) { throw 'cleanup hive unload failed' }
+  }
   & cmd.exe /c 'reg query HKLM\SOFTWARE\A04KTEST2 >nul 2>&1'
-  if ($LASTEXITCODE -eq 0) { & reg delete HKLM\SOFTWARE\A04KTEST2 /f }
+  if ($LASTEXITCODE -eq 0) {
+    & reg delete HKLM\SOFTWARE\A04KTEST2 /f
+    if ($LASTEXITCODE -ne 0) { throw 'cleanup test key removal failed' }
+  }
 }
+# The absence checks above intentionally leave reg.exe with exit code 1.
+# Do not let that expected result mark an otherwise successful CI step failed.
+$global:LASTEXITCODE = 0
