@@ -20,9 +20,23 @@ void mainCRTStartup(void)
 {
     DEVINST node = 0;
     CONFIGRET result = CR_FAILURE;
-    ULONG status = 0, problem = 0, i;
+    ULONG status = 0, problem = 0, i, length;
+    WCHAR ids[1024];
     for (i=0; i<30; ++i) {
-        result=CM_Locate_DevNodeW(&node,L"ACPI\\MOU0003\\0",CM_LOCATE_DEVNODE_NORMAL);
+        length=0;
+        result=CM_Get_Device_ID_List_SizeW(&length,L"ACPI\\MOU0003",
+                                           CM_GETIDLIST_FILTER_ENUMERATOR | CM_GETIDLIST_FILTER_PRESENT);
+        if (result == CR_SUCCESS && length > 1 && length <= 1024) {
+            ULONG end=0;
+            result=CM_Get_Device_ID_ListW(L"ACPI\\MOU0003",ids,1024,
+                                         CM_GETIDLIST_FILTER_ENUMERATOR | CM_GETIDLIST_FILTER_PRESENT);
+            if (result == CR_SUCCESS) {
+                while (end < length && ids[end]) ++end;
+                /* Refuse ambiguous multiple instances. */
+                if (end + 1 >= length || ids[end+1] != 0) result=CR_FAILURE;
+                else result=CM_Locate_DevNodeW(&node,ids,CM_LOCATE_DEVNODE_NORMAL);
+            }
+        } else if (result == CR_SUCCESS) result=CR_FAILURE;
         if (result == CR_SUCCESS) {
             result=CM_Get_DevNode_Status(&status,&problem,node,0);
             if (result == CR_SUCCESS && (status & DN_STARTED) && problem == 0) break;
