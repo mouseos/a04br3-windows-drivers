@@ -17,7 +17,7 @@ static int same(const unsigned char *a,const unsigned char *b) {
     DWORD i; for(i=0;i<BYTES;++i) if(a[i]!=b[i]) return 0; return 1;
 }
 void mainCRTStartup(void) {
-    HANDLE h=INVALID_HANDLE_VALUE; unsigned char *original=NULL,*pattern=NULL,*readback=NULL;
+    HANDLE h=INVALID_HANDLE_VALUE, backup=INVALID_HANDLE_VALUE; unsigned char *original=NULL,*pattern=NULL,*readback=NULL;
     GET_LENGTH_INFORMATION length; DWORD got=0,i,j; int modified=0,ok=0,restored=0;
     h=CreateFileW(L"\\\\.\\PhysicalDrive0",GENERIC_READ|GENERIC_WRITE,
         FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_FLAG_NO_BUFFERING,NULL);
@@ -28,6 +28,13 @@ void mainCRTStartup(void) {
     pattern=VirtualAlloc(NULL,BYTES,MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE);
     readback=VirtualAlloc(NULL,BYTES,MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE);
     if(!original || !pattern || !readback || !io(h,A04_SCRATCH_LBA,original,0)) goto done;
+    /* Refuse to write unless this is the exact sector image captured by the
+     * host immediately before building this disposable diagnostic WinPE. */
+    backup=CreateFileW(L"X:\\a04br3\\scratch-original.bin",GENERIC_READ,FILE_SHARE_READ,
+                       NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
+    if(backup==INVALID_HANDLE_VALUE || GetFileSize(backup,NULL)!=BYTES ||
+       !ReadFile(backup,readback,BYTES,&got,NULL) || got!=BYTES || !same(original,readback)) goto done;
+    CloseHandle(backup); backup=INVALID_HANDLE_VALUE;
     say("MSDC_SCRATCH_STRESS_STARTED\r\n");
     for(i=0;i<128u;++i) {
         for(j=0;j<BYTES;++j) pattern[j]=(unsigned char)((j*37u+i*73u)^(j>>5));
@@ -46,6 +53,7 @@ done:
     if(original) VirtualFree(original,0,MEM_RELEASE);
     if(pattern) VirtualFree(pattern,0,MEM_RELEASE);
     if(readback) VirtualFree(readback,0,MEM_RELEASE);
+    if(backup!=INVALID_HANDLE_VALUE) CloseHandle(backup);
     if(h!=INVALID_HANDLE_VALUE) CloseHandle(h);
     ExitProcess(ok?0:1);
 }
