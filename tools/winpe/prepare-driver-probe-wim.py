@@ -16,6 +16,7 @@ p.add_argument('--guarded-test', type=Path, help='Optional ARM32 guarded-write d
 p.add_argument('--bcd-export', type=Path, help='Optional ARM32 guarded BCD export executable')
 p.add_argument('--button-inject', type=Path, help='Optional ARM32 button notification diagnostic')
 p.add_argument('--button-driver', type=Path, help='Optional directory with original RT msgpiowin32 INF and SYS')
+p.add_argument('--root-repair', type=Path, help='Optional guarded NTFS root-attribute repair executable')
 a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
 startnet = a.startnet or root / 'tools/winpe/startnet-driver-probe.cmd'
@@ -32,6 +33,8 @@ if a.button_inject:
 if a.button_driver:
     for name in ('msgpiowin32.inf', 'msgpiowin32.sys'):
         files[f'/a04br3/button-driver/{name}'] = a.button_driver / name
+if a.root_repair:
+    files['/a04br3/repair-root.exe'] = a.root_repair
 for source in [a.source_wim, *files.values()]:
     if not source.is_file():
         raise SystemExit(f'Missing input: {source}')
