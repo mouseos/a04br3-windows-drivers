@@ -609,7 +609,8 @@ static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControlOwned(PVOID extension,
         return ScsiAdapterControlSuccess;
     }
     if (type == ScsiStopAdapter) {
-        A04Write32(probe, 0x010, 0);
+        /* Storport may stop an adapter after surprise removal; touching
+         * its registers here is unsafe even to mask interrupts. */
         probe->failed = TRUE;
         return ScsiAdapterControlSuccess;
     }
