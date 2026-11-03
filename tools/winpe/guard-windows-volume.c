@@ -27,6 +27,20 @@ static void say(const char *s)
     DWORD n=0, done; while (s[n]) ++n;
     WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), s, n, &done, NULL);
 }
+static void say_hex(DWORD value)
+{
+    static const char digits[]="0123456789ABCDEF";
+    char out[9]; unsigned i;
+    for (i=0; i<8; ++i) out[i]=digits[(value >> (28-4*i)) & 15u];
+    out[8]=0; say(out);
+}
+static void say_wide_ascii(const WCHAR *s, unsigned limit)
+{
+    char out[65]; unsigned i;
+    for (i=0; i<limit && i<64 && s[i]; ++i)
+        out[i]=(s[i]>=0x20 && s[i]<=0x7e) ? (char)s[i] : '?';
+    out[i]=0; say(out);
+}
 static int has_option(const WCHAR *s, const WCHAR *needle)
 {
     unsigned i, j;
@@ -72,6 +86,16 @@ void mainCRTStartup(void)
         Sleep(1000);
     }
     if (attempt==60) {
+        DWORD markerAttrs=GetFileAttributesW(marker);
+        BOOL volumeOk=GetVolumeInformationW(root,label,64,NULL,NULL,&flags,fs,32);
+        DWORD volumeError=volumeOk ? 0 : GetLastError();
+        say("VOLUME_GUARD volume_error="); say_hex(volumeError);
+        say(" marker_attributes="); say_hex(markerAttrs);
+        if (volumeOk) {
+            say(" label="); say_wide_ascii(label,64);
+            say(" fs="); say_wide_ascii(fs,32);
+        }
+        say("\r\n");
         say("VOLUME_GUARD label, filesystem or marker rejected\r\n"); ExitProcess(2);
     }
     attrs=GetFileAttributesW(root);
