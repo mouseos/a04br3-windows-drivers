@@ -41,7 +41,8 @@ void mainCRTStartup(void)
     if (h == INVALID_HANDLE_VALUE) { say("ROOT_REPAIR volume open failed\r\n"); ExitProcess(2); }
     if (!DeviceIoControl(h, IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, NULL, 0,
                          &extents, sizeof(extents), &size, NULL) ||
-        extents.NumberOfDiskExtents != 1 || extents.Extents[0].DiskNumber != A04_REPAIR_DISK ||
+        size < sizeof(extents) || extents.NumberOfDiskExtents != 1 ||
+        extents.Extents[0].DiskNumber != A04_REPAIR_DISK ||
         extents.Extents[0].StartingOffset.QuadPart != A04_REPAIR_OFFSET ||
         extents.Extents[0].ExtentLength.QuadPart != A04_REPAIR_LENGTH) {
         CloseHandle(h); say("ROOT_REPAIR disk extent rejected\r\n"); ExitProcess(2);
