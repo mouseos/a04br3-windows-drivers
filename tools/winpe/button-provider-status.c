@@ -5,7 +5,10 @@
 #include <initguid.h>
 #include <devpkey.h>
 
-#ifdef A04_TOUCH_PROVIDER_STATUS
+#ifdef A04_TOPRGU_PROVIDER_STATUS
+#define PROVIDER_ID L"ACPI\\MOU0005"
+#define PROVIDER_PREFIX "TOPRGU_PROVIDER"
+#elif defined(A04_TOUCH_PROVIDER_STATUS)
 #define PROVIDER_ID L"ACPI\\MOU0004"
 #define PROVIDER_PREFIX "TOUCH_PROVIDER"
 #else

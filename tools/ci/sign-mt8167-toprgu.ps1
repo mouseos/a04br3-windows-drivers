@@ -15,5 +15,8 @@ Remove-Item (Join-Path $package 'mt8167-toprgu.cat')
 if ($LASTEXITCODE -ne 0) { throw 'TOPRGU catalog generation failed' }
 & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $package 'mt8167-toprgu.cat')
 if ($LASTEXITCODE -ne 0) { throw 'TOPRGU catalog signing failed' }
+$status = Join-Path $tempRoot 'toprgu-provider-status\toprgu-provider-status.exe'
+& $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My $status
+if ($LASTEXITCODE -ne 0) { throw 'TOPRGU PnP status signing failed' }
 Get-FileHash -Algorithm SHA256 (Join-Path $package 'mt8167-toprgu.sys'),(Join-Path $package 'mt8167-toprgu.cat'),(Join-Path $package 'mt8167-toprgu.inf') | Format-Table -AutoSize
 Write-Host 'Test-signed TOPRGU prototype; recovery ownership and sleep remain unverified.'
