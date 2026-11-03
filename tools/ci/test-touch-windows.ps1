@@ -6,13 +6,13 @@ New-Item -ItemType Directory -Force -Path $output | Out-Null
 $include = Join-Path $root 'drivers/input/bu21025'
 $eintInclude = Join-Path $root 'drivers/bus/mt8167-eint'
 $sources = @(
-    'drivers/input/bu21025/bu21025.c', 'drivers/input/bu21025/mt8167_adapter.c',
+    'drivers/input/bu21025/bu21025.c', 'drivers/input/bu21025/mt8167_adapter.c', 'drivers/input/bu21025/board_init.c',
     'drivers/bus/mt8167-i2c/pio.c', 'drivers/input/bu21025/coordinates.c',
     'drivers/input/bu21025/contact.c', 'drivers/input/bu21025/touch_hid.c',
     'drivers/input/bu21025/pipeline.c', 'drivers/input/bu21025/device.c',
     'drivers/bus/mt8167-eint/eint.c'
 ) | ForEach-Object { Join-Path $root $_ }
-foreach ($name in @('bu21025_test', 'bu21025_bus_test', 'touch_coordinates_test',
+foreach ($name in @('bu21025_test', 'bu21025_bus_test', 'touch_board_init_test', 'touch_coordinates_test',
                     'touch_contact_test', 'touch_hid_test', 'touch_pipeline_test',
                     'touch_device_test', 'eint_test')) {
     $exe = Join-Path $output ($name + '.exe')

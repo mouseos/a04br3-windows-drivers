@@ -12,6 +12,7 @@ if ($LASTEXITCODE -ne 0) { throw 'ARM32 WDK probe compilation failed' }
 $objects = @($probe)
 foreach ($item in @(
     @('bu21025','drivers\input\bu21025\bu21025.c'),
+    @('boardinit','drivers\input\bu21025\board_init.c'),
     @('adapter','drivers\input\bu21025\mt8167_adapter.c'),
     @('coordinates','drivers\input\bu21025\coordinates.c'),
     @('touchhid','drivers\input\bu21025\touch_hid.c'),
