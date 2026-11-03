@@ -9,7 +9,7 @@ X:\a04br3\guard-windows-volume.exe
 if errorlevel 1 goto guardfail
 X:\a04br3\compare-files.exe C:\Windows\System32\drivers\mt8167-msdc.sys X:\a04br3\msdc-original.sys
 if errorlevel 1 goto reject
-if exist C:\Windows\Temp\a04br3-msdc-update-v2-dism.log goto reject
+if exist C:\Windows\Temp\a04br3-msdc-update-v3-dism.log goto reject
 reg load HKLM\A04TEMP C:\Windows\System32\config\SYSTEM
 if errorlevel 1 goto hivefail
 set "A04_CURRENT="
@@ -22,7 +22,7 @@ if not "%A04_CURRENT%"=="0x1" goto reject
 if /i not "%A04_STORAGE_PATH%"=="System32\drivers\mt8167-msdc.sys" goto reject
 dism.exe /Image:C:\ /Add-Driver /Driver:X:\a04br3\storage-upgrade\mt8167-msdc.inf /ForceUnsigned /ScratchDir:X:\Windows\Temp > X:\a04br3\msdc-update.log 2>&1
 set "A04_RESULT=%errorlevel%"
-copy /b X:\a04br3\msdc-update.log C:\Windows\Temp\a04br3-msdc-update-v2-dism.log >nul
+copy /b X:\a04br3\msdc-update.log C:\Windows\Temp\a04br3-msdc-update-v3-dism.log >nul
 if errorlevel 1 goto logfail
 echo MSDC_UPDATE_DISM_EXIT=%A04_RESULT%
 if not "%A04_RESULT%"=="0" goto dismfail

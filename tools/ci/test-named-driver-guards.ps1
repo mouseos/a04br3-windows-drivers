@@ -59,7 +59,7 @@ try {
     [IO.File]::WriteAllText("$base\upgrade-msdc.cmd",(PrepareBatch 'startnet-upgrade-msdc.cmd'),[Text.Encoding]::ASCII)
     $out=& cmd.exe /c "$base\upgrade-msdc.cmd"
     if (-not ($out -match 'MSDC_UPDATE_WINDOWS_STAGED') -or -not ($out -match 'MSDC_UPDATE_DISM_EXIT=0')) { throw ($out -join ' ') }
-    Remove-Item "$base\Windows\Temp\a04br3-msdc-update-v2-dism.log"
+    Remove-Item "$base\Windows\Temp\a04br3-msdc-update-v3-dism.log"
     [IO.File]::WriteAllText("$base\src\msdc-original.sys",'different')
     $out=& cmd.exe /c "$base\upgrade-msdc.cmd"
     if (-not ($out -match 'MSDC_UPDATE_PRECONDITION_REJECTED')) { throw 'mismatched MSDC was accepted' }

@@ -77,10 +77,27 @@ static void A04TraceHex(ULONG value)
 }
 
 #ifdef A04_DMA_PROBE
+struct a04_clock_context {
+    struct a04_probe_extension *probe;
+    uint64_t first;
+    ULONG calls, reports;
+    BOOLEAN four;
+};
 static uint64_t A04ClockNow(void *context)
 {
-    UNREFERENCED_PARAMETER(context);
-    return (uint64_t)KeQueryPerformanceCounter(NULL).QuadPart;
+    struct a04_clock_context *c=(struct a04_clock_context *)context;
+    uint64_t now=(uint64_t)KeQueryPerformanceCounter(NULL).QuadPart;
+    if (!c->calls) c->first=now;
+    ++c->calls;
+    if (c->four && c->reports<3 && (c->calls % 256u)==0) {
+        ++c->reports;
+        A04Trace("A04WIN dma poll cpu="); A04TraceHex(KeGetCurrentProcessorNumber());
+        A04Trace(" irql="); A04TraceHex((ULONG)KeGetCurrentIrql());
+        A04Trace(" elapsed-low="); A04TraceHex((ULONG)(now-c->first));
+        A04Trace(" int="); A04TraceHex(A04Read32(c->probe,0x00c));
+        A04Trace(" dma="); A04TraceHex(A04Read32(c->probe,0x09c)); A04Trace("\n");
+    }
+    return now;
 }
 /* Diagnostic synchronization for the resident common buffer. This does not
  * resolve the unexpected cacheability of the Windows mapping. */
@@ -91,19 +108,22 @@ static enum a04_dma_result A04DmaSector(struct a04_probe_extension *probe,
     enum a04_dma_result result;
     uint64_t start;
     LARGE_INTEGER frequency;
+    struct a04_clock_context clockContext = {0};
     struct a04_dma_clock clock;
     if (!mdl) return A04_DMA_INVALID;
     MmBuildMdlForNonPagedPool(mdl);
     KeFlushIoBuffers(mdl, write ? FALSE : TRUE, TRUE);
     KeQueryPerformanceCounter(&frequency);
     if (frequency.QuadPart <= 0) { IoFreeMdl(mdl); return A04_DMA_INVALID; }
-    clock.context = NULL; clock.now = A04ClockNow;
+    clockContext.probe=probe;
+    clockContext.four=KeQueryActiveProcessorCount(NULL)>=4;
+    clock.context = &clockContext; clock.now = A04ClockNow;
     clock.ticks = (uint64_t)frequency.QuadPart * 10u;
-    start = A04ClockNow(NULL);
+    start = A04ClockNow(&clockContext);
     result = a04_msdc_dma_sector_timed(io, lba, probe->dma_bus,
                        probe->dma_alignment, 100000000u, write, 1, &clock);
     if (result != A04_DMA_OK) {
-        uint64_t elapsed = A04ClockNow(NULL) - start;
+        uint64_t elapsed = A04ClockNow(&clockContext) - start;
         A04Trace("A04WIN dma failure lba="); A04TraceHex(lba);
         A04Trace(" write="); A04TraceHex(write);
         A04Trace(" result="); A04TraceHex(result);
