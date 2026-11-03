@@ -10,11 +10,16 @@ int main(void)
 {
     struct mock m = {3, 6, 0, 0, 0, 0, 0};
     struct a04_button_device d = { {0}, &m, keys, pmic, notify };
+    uint8_t report[5] = {0,0,0,0,0};
     a04_button_device_init(&d);
     m.keypad=2; /* volume up pressed, but endpoint state not yet known */
     assert(!a04_button_device_poll(&d)); assert(!a04_button_device_poll(&d));
     assert(!a04_button_device_poll(&d) && !m.count);
-    a04_button_device_sync(&d, 0);
+    assert(a04_button_device_sync_report(&d, report, 5, 0) == -1);
+    assert(a04_button_device_sync_report(&d, report, 4, 1) == -1);
+    report[4]=2; assert(a04_button_device_sync_report(&d, report, 5, 1) == -1);
+    report[4]=0; assert(a04_button_device_sync_report(&d, report, 5, 1) == 0);
+    assert(!a04_button_device_poll(&d)); assert(!a04_button_device_poll(&d));
     m.result=1; assert(!a04_button_device_poll(&d) && m.count==1 && m.last==2);
     m.result=0; assert(a04_button_device_poll(&d)==1 && m.count==2);
     m.keypad=3; m.key_fail=1;

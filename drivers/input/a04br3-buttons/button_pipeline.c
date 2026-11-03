@@ -16,7 +16,10 @@ void a04_button_pipeline_sync(struct a04_button_pipeline *p, uint8_t delivered)
 
 void a04_button_pipeline_invalidate(struct a04_button_pipeline *p)
 {
+    unsigned i;
     p->synchronized = 0;
+    p->known = 0;
+    for (i = 0; i < 4; ++i) p->samples[i] = 0;
 }
 
 int a04_button_pipeline_sample(struct a04_button_pipeline *p, uint16_t keypad,

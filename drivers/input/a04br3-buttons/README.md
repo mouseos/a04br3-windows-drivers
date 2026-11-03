@@ -54,3 +54,6 @@ five state bytes; its event queue can update those bytes later and can also
 produce the value 2. Do not blindly convert a read to a synchronized mask or
 assume a successful notification has already been consumed. Quiescence and
 the meaning of non-binary states need runtime verification before integration.
+`a04_button_device_sync_report` rejects reports other than five binary bytes
+and requires an independently established empty queue. It does not establish
+that condition itself; no working queue-empty detector is implemented yet.

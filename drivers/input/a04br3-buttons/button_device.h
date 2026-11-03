@@ -15,6 +15,12 @@ struct a04_button_device {
 void a04_button_device_init(struct a04_button_device *device);
 /* The owner must establish the endpoint's state before calling sync. */
 void a04_button_device_sync(struct a04_button_device *device, uint8_t state);
+/* A report is usable only after the owner independently establishes that no
+ * old notification remains queued. Unknown, malformed and special states
+ * invalidate synchronization and are never interpreted as released. */
+int a04_button_device_sync_report(struct a04_button_device *device,
+                                  const uint8_t *report, unsigned length,
+                                  int queue_quiescent);
 void a04_button_device_disconnect(struct a04_button_device *device);
 /* Returns 1 when delivered, 0 when no event/retry-safe failure, -1 for an
  * unknown delivery outcome or invalid interface. Never implies wake support. */

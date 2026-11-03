@@ -9,6 +9,22 @@ void a04_button_device_sync(struct a04_button_device *device, uint8_t state)
 {
     a04_button_pipeline_sync(&device->pipeline, state);
 }
+int a04_button_device_sync_report(struct a04_button_device *device,
+                                  const uint8_t *report, unsigned length,
+                                  int queue_quiescent)
+{
+    uint8_t state = 0;
+    unsigned i;
+    if (!device) return -1;
+    a04_button_pipeline_invalidate(&device->pipeline);
+    if (!report || length != 5 || !queue_quiescent) return -1;
+    for (i = 0; i < 5; ++i) {
+        if (report[i] > 1) return -1;
+        if (i < 4 && report[i]) state |= (uint8_t)(1u << i);
+    }
+    a04_button_pipeline_sync(&device->pipeline, state);
+    return 0;
+}
 void a04_button_device_disconnect(struct a04_button_device *device)
 {
     a04_button_pipeline_invalidate(&device->pipeline);
