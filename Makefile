@@ -36,6 +36,7 @@ build/bu21025_test: drivers/input/bu21025/bu21025.c drivers/input/bu21025/bu2102
 
 test-ntfs-root:
 	python3 tests/ntfs_root_test.py
+	python3 tests/ntfs_index_bitmap_test.py
 
 build/button_state_test: drivers/input/a04br3-buttons/button_state.c drivers/input/a04br3-buttons/button_state.h tests/button_state_test.c
 	mkdir -p build

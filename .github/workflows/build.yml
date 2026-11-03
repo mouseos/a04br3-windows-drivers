@@ -9,6 +9,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: make test arm-coff
+      - name: Install NTFS image test tools
+        run: sudo apt-get update && sudo apt-get install -y ntfs-3g
+      - run: make test-ntfs-root
   windows-format:
     runs-on: windows-latest
     steps:
