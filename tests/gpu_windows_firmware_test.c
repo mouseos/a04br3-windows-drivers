@@ -5,7 +5,7 @@
 #include "pvr_rogue_fwif.h"
 #include "pvr_rogue_defs.h"
 static struct a04_gpu_firmware_state state;
-static unsigned allocations, releases, signal_start;
+static unsigned allocations, releases, signal_start, commands_completed, command_error;
 static void *allocate(PDMA_ADAPTER adapter,ULONG size,PHYSICAL_ADDRESS *pa,BOOLEAN cache)
 {
     (void)adapter; (void)cache;
@@ -22,6 +22,21 @@ NTSTATUS KeDelayExecutionThread(int mode,BOOLEAN alertable,const LARGE_INTEGER *
     if(signal_start) {
         struct rogue_fwif_sysinit *sys=(void *)((uint8_t *)state.memory.heap+state.runtime.system_init);
         sys->firmware_started=1;
+        if(state.firmware_started) {
+            uint8_t *heap=state.memory.heap;
+            struct rogue_fwif_ccb_ctl *ctl=(void *)(heap+state.runtime.kernel_ccb_control);
+            struct rogue_fwif_kccb_cmd *cmds=(void *)(heap+state.runtime.kernel_ccb);
+            volatile uint32_t *ret=(void *)(heap+state.runtime.kernel_return_slots);
+            volatile uint32_t *power=(void *)(heap+state.runtime.power_sync);
+            uint32_t slot=ctl->read_offset;
+            if(slot!=ctl->write_offset) {
+                if(commands_completed==0 && cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_HEALTH_CHECK) command_error=1;
+                if(commands_completed==1 && (cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_POW || cmds[slot].cmd_data.pow_data.pow_type!=ROGUE_FWIF_POW_FORCED_IDLE_REQ)) command_error=1;
+                if(commands_completed==2 && (cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_POW || cmds[slot].cmd_data.pow_data.pow_type!=ROGUE_FWIF_POW_OFF_REQ)) command_error=1;
+                ret[slot]=ROGUE_FWIF_KCCB_RTN_SLOT_CMD_EXECUTED; *power=1;
+                ctl->read_offset=ctl->write_offset; ++commands_completed;
+            }
+        }
     }
     return STATUS_SUCCESS;
 }
@@ -39,8 +54,9 @@ int main(int argc,char **argv)
     signal_start=1;
     status=a04_gpu_firmware_boot(&state,&adapter,regs,0x80000,image,(size_t)n,A04_PVR_BVNC,TRUE,26000000);
     if(status!=STATUS_SUCCESS || !state.processor_released || !state.firmware_started || allocations!=2 || releases) return 5;
+    if(a04_gpu_firmware_health(&state)!=STATUS_SUCCESS || commands_completed!=1 || command_error) return 10;
     if(a04_gpu_firmware_stop(&state,FALSE)!=STATUS_DEVICE_BUSY || releases || !state.processor_released) return 7;
-    if(a04_gpu_firmware_stop(&state,TRUE)!=STATUS_IO_TIMEOUT || releases || !state.processor_released) return 8;
+    if(a04_gpu_firmware_shutdown(&state)!=STATUS_IO_TIMEOUT || commands_completed!=3 || command_error || releases || !state.processor_released) return 8;
     *(uint32_t *)(void *)(regs+ROGUE_CR_SIDEKICK_IDLE)=(uint32_t)ROGUE_CR_SIDEKICK_IDLE_MASKFULL;
     *(uint32_t *)(void *)(regs+ROGUE_CR_SLC_IDLE)=(uint32_t)ROGUE_CR_SLC_IDLE_MASKFULL;
     if(a04_gpu_firmware_stop(&state,TRUE)!=STATUS_SUCCESS || releases!=2 || state.processor_released) return 9;

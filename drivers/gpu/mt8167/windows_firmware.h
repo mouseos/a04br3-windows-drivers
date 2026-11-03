@@ -11,6 +11,7 @@ struct a04_gpu_firmware_state {
     struct a04_pvr_mips_addresses remap;
     BOOLEAN processor_released;
     BOOLEAN firmware_started;
+    BOOLEAN queue_faulted;
 };
 /* PASSIVE_LEVEL only. The caller owns the PnP resources and DMA adapter.
  * Input state must be zeroed. The firmware image must remain accessible for
@@ -26,4 +27,8 @@ NTSTATUS a04_gpu_firmware_boot(struct a04_gpu_firmware_state *state,
  * acknowledgement. Retains all allocations if quiescence checks fail. */
 NTSTATUS a04_gpu_firmware_stop(struct a04_gpu_firmware_state *state,
         BOOLEAN poweroff_acknowledged);
+/* Caller serializes all firmware commands and prevents new GPU work during
+ * shutdown. Any error leaves the DMA buffers allocated. */
+NTSTATUS a04_gpu_firmware_health(struct a04_gpu_firmware_state *state);
+NTSTATUS a04_gpu_firmware_shutdown(struct a04_gpu_firmware_state *state);
 #endif

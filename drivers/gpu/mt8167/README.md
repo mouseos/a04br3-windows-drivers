@@ -51,10 +51,11 @@ real-device behavior are not yet implemented or verified.
 flag. It is not called by a PnP driver and has not been run on the device.
 After issuing hardware writes it retains DMA memory even on timeout: a caller
 must first establish that GPU DMA is quiescent before releasing that memory.
-The stop helper checks GPU idle and outstanding transactions before reset and
-frees allocations only after a successful reset readback. A firmware
-power-off acknowledgement is required first; generating that request and
-the Windows PnP power lifecycle still need implementation and device testing.
+The shutdown helper sends firmware idle and power-off requests, then checks
+GPU idle and outstanding transactions before reset. It frees allocations only
+after a successful reset readback. A timed-out command poisons the queue and
+retains DMA memory. The Windows PnP power lifecycle and all hardware behavior
+still need implementation and device testing.
 For a host check with that exact firmware:
 
 ```

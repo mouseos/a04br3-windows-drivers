@@ -42,7 +42,7 @@ enum a04_pvr_fw_result a04_pvr_mips_prepare(const struct a04_pvr_fw_plan *plan,
         struct a04_pvr_mips_addresses *addresses);
 struct a04_pvr_runtime {
     uint32_t kernel_ccb_control, kernel_ccb, kernel_return_slots;
-    uint32_t firmware_ccb_control, firmware_ccb, os_data, system_data;
+    uint32_t firmware_ccb_control, firmware_ccb, os_data, system_data, power_sync;
     uint32_t mmu_sync, trace_control, trace[2];
     uint32_t os_init, system_init, next_free;
 };

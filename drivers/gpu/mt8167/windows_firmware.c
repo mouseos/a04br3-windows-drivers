@@ -61,6 +61,76 @@ NTSTATUS a04_gpu_firmware_stop(struct a04_gpu_firmware_state *s,BOOLEAN acknowle
     if (r!=A04_PVR_FW_OK) return STATUS_IO_TIMEOUT;
     a04_gpu_dma_barrier();
     a04_gpu_free_memory(&s->memory);
-    s->processor_released=FALSE; s->firmware_started=FALSE;
+    s->processor_released=FALSE; s->firmware_started=FALSE; s->queue_faulted=FALSE;
     return STATUS_SUCCESS;
+}
+
+/* The single-queue operations below require the caller's device lock. */
+#include "pvr_rogue_defs.h"
+#define A04_GPU_CONFIG_OFFSET (A04_PVR_HEAP_SIZE-3u*65536u)
+#define A04_GPU_KCCB_COUNT 128u
+static int heap_range(uint32_t off,size_t size)
+{ return off<=A04_PVR_HEAP_SIZE && size<=A04_PVR_HEAP_SIZE-off; }
+static NTSTATUS send_command(struct a04_gpu_firmware_state *s,unsigned kind)
+{
+    uint8_t *heap; volatile struct rogue_fwif_ccb_ctl *ctl;
+    struct rogue_fwif_kccb_cmd *commands, *cmd;
+    volatile uint32_t *returns,*power; struct rogue_fwif_connection_ctl *conn;
+    uint32_t slot,next,value; LARGE_INTEGER interval; unsigned i; NTSTATUS status;
+    if (!s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !s->processor_released || !s->firmware_started ||
+        !s->memory.heap || !s->io.write32 || kind>2) return STATUS_INVALID_PARAMETER;
+    if (s->queue_faulted) return STATUS_INVALID_DEVICE_STATE;
+    if (!heap_range(s->runtime.kernel_ccb_control,sizeof(*ctl)) ||
+        !heap_range(s->runtime.kernel_ccb,A04_GPU_KCCB_COUNT*sizeof(*cmd)) ||
+        !heap_range(s->runtime.kernel_return_slots,A04_GPU_KCCB_COUNT*sizeof(*returns)) ||
+        !heap_range(s->runtime.power_sync,sizeof(*power))) return STATUS_DEVICE_CONFIGURATION_ERROR;
+    heap=s->memory.heap;
+    ctl=(volatile struct rogue_fwif_ccb_ctl *)(void *)(heap+s->runtime.kernel_ccb_control);
+    commands=(struct rogue_fwif_kccb_cmd *)(void *)(heap+s->runtime.kernel_ccb);
+    returns=(volatile uint32_t *)(void *)(heap+s->runtime.kernel_return_slots);
+    power=(volatile uint32_t *)(void *)(heap+s->runtime.power_sync);
+    conn=(struct rogue_fwif_connection_ctl *)(void *)(heap+A04_GPU_CONFIG_OFFSET);
+    a04_gpu_dma_barrier();
+    slot=ctl->write_offset;
+    if (ctl->wrap_mask!=A04_GPU_KCCB_COUNT-1u || slot>=A04_GPU_KCCB_COUNT ||
+        ctl->read_offset>=A04_GPU_KCCB_COUNT) return STATUS_DEVICE_CONFIGURATION_ERROR;
+    next=(slot+1u)&(A04_GPU_KCCB_COUNT-1u);
+    if (next==ctl->read_offset) return STATUS_DEVICE_BUSY;
+    cmd=&commands[slot]; RtlZeroMemory(cmd,sizeof(*cmd)); returns[slot]=ROGUE_FWIF_KCCB_RTN_SLOT_NO_RESPONSE;
+    if (kind==0) cmd->cmd_type=ROGUE_FWIF_KCCB_CMD_HEALTH_CHECK;
+    else {
+        *power=0; cmd->cmd_type=ROGUE_FWIF_KCCB_CMD_POW;
+        if (kind==1) {
+            cmd->cmd_data.pow_data.pow_type=ROGUE_FWIF_POW_FORCED_IDLE_REQ;
+            cmd->cmd_data.pow_data.power_req_data.pow_request_type=ROGUE_FWIF_POWER_FORCE_IDLE;
+        } else {
+            cmd->cmd_data.pow_data.pow_type=ROGUE_FWIF_POW_OFF_REQ;
+            cmd->cmd_data.pow_data.power_req_data.forced=TRUE;
+        }
+    }
+    conn->connection_os_state=ROGUE_FW_CONNECTION_OS_ACTIVE;
+    a04_gpu_dma_barrier(); ctl->write_offset=next; a04_gpu_dma_barrier();
+    /* MT8167 vendor DDK uses a counted GP kick for this MIPS firmware. */
+    s->io.write32(s->io.context,ROGUE_CR_MTS_SCHEDULE,
+        (PVR_FWIF_DM_GP & ~ROGUE_CR_MTS_SCHEDULE_DM_CLRMSK)|ROGUE_CR_MTS_SCHEDULE_TASK_COUNTED);
+    interval.QuadPart=-100000;
+    for (i=0;i<100u;++i) {
+        a04_gpu_dma_barrier(); value=kind==0 ? returns[slot] : *power;
+        if (kind==0 && (value&ROGUE_FWIF_KCCB_RTN_SLOT_POLL_FAILURE)) {
+            s->queue_faulted=TRUE; return STATUS_DEVICE_CONFIGURATION_ERROR;
+        }
+        if ((kind==0 && (value&ROGUE_FWIF_KCCB_RTN_SLOT_CMD_EXECUTED)) || (kind!=0 && value!=0)) return STATUS_SUCCESS;
+        status=KeDelayExecutionThread(KernelMode,FALSE,&interval);
+        if (!NT_SUCCESS(status)) { s->queue_faulted=TRUE; return status; }
+    }
+    s->queue_faulted=TRUE; return STATUS_IO_TIMEOUT;
+}
+NTSTATUS a04_gpu_firmware_health(struct a04_gpu_firmware_state *s) { return send_command(s,0); }
+NTSTATUS a04_gpu_firmware_shutdown(struct a04_gpu_firmware_state *s)
+{
+    NTSTATUS status=send_command(s,1);
+    if (!NT_SUCCESS(status)) return status;
+    status=send_command(s,2);
+    if (!NT_SUCCESS(status)) return status;
+    return a04_gpu_firmware_stop(s,TRUE);
 }
