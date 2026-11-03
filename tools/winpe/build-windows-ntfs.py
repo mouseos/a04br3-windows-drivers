@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import struct
 import subprocess
+from ntfs_root_attributes import normalize_root
 
 p = argparse.ArgumentParser()
 p.add_argument('--wim', type=Path, required=True)
@@ -39,6 +40,7 @@ with partial.open('xb') as stream:
 subprocess.run(['mkntfs', '-F', '-Q', '-L', 'Windows', '-s', '512', '-p', str(start),
                 '-H', '255', '-S', '63', str(partial), str(sectors)], check=True)
 subprocess.run([a.wimlib, 'apply', str(a.wim), '1', str(partial), '--strict-acls'], check=True)
+root_before, root_after = normalize_root(partial, sectors * sector_bytes, start)
 subprocess.run(['ntfsfix', '-n', str(partial)], check=True)
 with partial.open('rb') as stream:
     boot = stream.read(512)
@@ -50,7 +52,8 @@ partial.rename(a.output)
 manifest.write_text(json.dumps({'image': str(a.output), 'size_bytes': sectors * sector_bytes,
     'sha256': image_hash, 'partition_start_lba': start, 'sector_bytes': sector_bytes,
     'source_wim_sha256': source_hash, 'image_index': 1,
+    'ntfs_root_attributes_before': root_before, 'ntfs_root_attributes_after': root_after,
     'driver_source_commit': a.driver_source_commit,
-    'validation': 'wimlib verify; strict ACL apply; ntfsfix -n; NTFS boot geometry',
+    'validation': 'wimlib verify; strict ACL apply; normalized root attributes; ntfsfix -n; NTFS boot geometry',
     'limitations': 'experimental; OS boot and production driver signing are not established'}, indent=2) + '\n')
 print('NTFS image built and verified:', a.output)
