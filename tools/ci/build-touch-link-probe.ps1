@@ -3,7 +3,8 @@ $root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
 $include = Join-Path $kit 'Include'
 $lib = Join-Path $kit 'Lib\winv6.3\km\arm\ntoskrnl.lib'
-$output = Join-Path $env:RUNNER_TEMP 'a04-touch-link-probe'
+$tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
+$output = Join-Path $tempRoot 'a04-touch-link-probe'
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 $probe = Join-Path $output 'probe.obj'
 & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -D_ARM_ -DARM -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$include\km" "-I$include\shared" "-I$include\um" -c (Join-Path $root 'tools\ci\touch-link-probe.c') -o $probe
