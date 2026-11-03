@@ -12,6 +12,8 @@
 typedef struct {
     volatile ULONG *wdt, *uart;
     WDFTIMER timer;
+    KTIMER backupTimer;
+    KDPC backupDpc;
     volatile LONG running, busy;
     volatile LONG ownedFour;
     BOOLEAN suspendedWatchdog;
@@ -19,6 +21,7 @@ typedef struct {
     ULONG ticks;
     ULONGLONG started;
     BOOLEAN deadlineReported;
+    ULONG backupCalls;
     struct mt8167_reset_parser parser;
 } TOPRGU_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(TOPRGU_CONTEXT, ToprguGetContext)
@@ -28,6 +31,7 @@ EVT_WDF_DEVICE_RELEASE_HARDWARE ToprguRelease;
 EVT_WDF_DEVICE_D0_ENTRY ToprguD0Entry;
 EVT_WDF_DEVICE_D0_EXIT ToprguD0Exit;
 EVT_WDF_TIMER ToprguTimer;
+KDEFERRED_ROUTINE ToprguBackupDpc;
 
 static void Trace(TOPRGU_CONTEXT *c, const char *s)
 {
@@ -106,6 +110,7 @@ NTSTATUS ToprguD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     WRITE_REGISTER_ULONG(c->wdt + 2,0x1971u);
     c->parser.matched=0; c->ticks=0;
     c->started=KeQueryInterruptTime(); c->deadlineReported=FALSE;
+    c->backupCalls=0;
     InterlockedExchange(&c->running,1);
     Trace(c, KeQueryActiveProcessorCount(NULL) >= 4 ?
           "A04RGU D0 active CPUs>=4\n" : "A04RGU D0 active CPUs<4\n");
@@ -113,6 +118,12 @@ NTSTATUS ToprguD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     Trace(c,"A04RGU bounded watchdog test enabled\n");
 #endif
     WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(20));
+    if (KeQueryActiveProcessorCount(NULL) >= 4) {
+        LARGE_INTEGER due;
+        due.QuadPart=-200000; /* 20 ms in 100 ns units. */
+        KeSetTargetProcessorDpc(&c->backupDpc,2);
+        KeSetTimerEx(&c->backupTimer,due,20,&c->backupDpc);
+    }
     return STATUS_SUCCESS;
 }
 
@@ -122,6 +133,8 @@ NTSTATUS ToprguD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
     POWER_ACTION action=WdfDeviceGetSystemPowerAction(device);
     UNREFERENCED_PARAMETER(target);
     InterlockedExchange(&c->running,0);
+    KeCancelTimer(&c->backupTimer);
+    KeFlushQueuedDpcs();
     WdfTimerStop(c->timer,TRUE);
     if (InterlockedCompareExchange(&c->ownedFour,1,1) && c->wdt &&
         (action==PowerActionSleep || action==PowerActionHibernate ||
@@ -134,14 +147,15 @@ NTSTATUS ToprguD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
     return STATUS_SUCCESS;
 }
 
-VOID ToprguTimer(WDFTIMER timer)
+static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
 {
-    TOPRGU_CONTEXT *c=ToprguGetContext((WDFDEVICE)WdfTimerGetParentObject(timer));
     ULONG i;
     BOOLEAN four, feed;
     ULONGLONG elapsed;
     if (InterlockedCompareExchange(&c->busy,1,0) != 0) return;
     if (InterlockedCompareExchange(&c->running,1,1) && c->wdt && c->uart) {
+        if (backup && ++c->backupCalls <= 3)
+            Trace(c,"A04RGU backup DPC active\n");
         ++c->ticks;
         four=KeQueryActiveProcessorCount(NULL) >= 4;
         elapsed=KeQueryInterruptTime()-c->started;
@@ -174,6 +188,19 @@ VOID ToprguTimer(WDFTIMER timer)
     InterlockedExchange(&c->busy,0);
 }
 
+VOID ToprguTimer(WDFTIMER timer)
+{
+    ToprguPoll(ToprguGetContext((WDFDEVICE)WdfTimerGetParentObject(timer)),FALSE);
+}
+
+VOID ToprguBackupDpc(PKDPC dpc, PVOID context, PVOID arg1, PVOID arg2)
+{
+    UNREFERENCED_PARAMETER(dpc);
+    UNREFERENCED_PARAMETER(arg1);
+    UNREFERENCED_PARAMETER(arg2);
+    ToprguPoll((TOPRGU_CONTEXT *)context,TRUE);
+}
+
 NTSTATUS ToprguAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
 {
     WDF_PNPPOWER_EVENT_CALLBACKS pnp;
@@ -191,6 +218,8 @@ NTSTATUS ToprguAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     status=WdfDeviceCreate(&init,&attr,&device);
     if (!NT_SUCCESS(status)) return status;
     c=ToprguGetContext(device);
+    KeInitializeTimer(&c->backupTimer);
+    KeInitializeDpc(&c->backupDpc,ToprguBackupDpc,c);
     WDF_TIMER_CONFIG_INIT_PERIODIC(&timerConfig,ToprguTimer,20);
     timerConfig.AutomaticSerialization=FALSE;
     WDF_OBJECT_ATTRIBUTES_INIT(&timerAttr); timerAttr.ParentObject=device;
