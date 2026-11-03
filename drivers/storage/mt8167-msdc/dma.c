@@ -32,6 +32,13 @@
 #define DMA_BURST (7u << 12)
 #define DMA_ACTIVE 1u
 
+/* Bound every MMIO polling phase by both iterations and a monotonic clock.
+ * The clock must advance even when the caller runs above timer interrupt IRQL. */
+static int a04_dma_expired(const struct a04_dma_clock *clock, uint64_t start, uint32_t n)
+{
+    return clock && !(n & 1023u) && clock->now(clock->context) - start >= clock->ticks;
+}
+
 /* Register meanings and command order checked against the platform's Linux
  * MT8167 host driver; this implementation is independently written. */
 enum a04_dma_result a04_msdc_dma_sector_timed(const struct a04_msdc_io *io,
@@ -54,8 +61,11 @@ enum a04_dma_result a04_msdc_dma_sector_timed(const struct a04_msdc_io *io,
     ctrl = io->read32(io->context, DMA_CONTROL) & ~(DMA_START | DMA_STOP);
     io->write32(io->context, CFG, cfg & ~CFG_PIO);
     io->write32(io->context, FIFO_STATUS, io->read32(io->context, FIFO_STATUS) | FIFO_CLEAR);
-    for (n = 0; n < limit; ++n)
+    if (clock) start = clock->now(clock->context);
+    for (n = 0; n < limit; ++n) {
         if (!(io->read32(io->context, FIFO_STATUS) & FIFO_CLEAR)) break;
+        if (a04_dma_expired(clock,start,n)) return A04_DMA_BUSY;
+    }
     if (n == limit) return A04_DMA_BUSY;
     bits = io->read32(io->context, INT_STATUS) & EVENTS;
     if (bits) io->write32(io->context, INT_STATUS, bits);
@@ -63,9 +73,13 @@ enum a04_dma_result a04_msdc_dma_sector_timed(const struct a04_msdc_io *io,
     io->write32(io->context, ARGUMENT, lba);
     io->write32(io->context, COMMAND, (write ? 24u : 17u) | (1u << 7) |
                 (1u << 11) | (write ? 1u << 13 : 0u) | (512u << 16));
+    if (clock) start = clock->now(clock->context);
     for (n = 0; n < limit; ++n) {
         bits = io->read32(io->context, INT_STATUS) & (CMD_READY | CMD_TIMEOUT | CMD_CRC);
-        if (!bits) continue;
+        if (!bits) {
+            if (a04_dma_expired(clock,start,n)) return A04_DMA_COMMAND_TIMEOUT;
+            continue;
+        }
         io->write32(io->context, INT_STATUS, bits);
         if (bits & CMD_TIMEOUT) return A04_DMA_COMMAND_TIMEOUT;
         if (bits & CMD_CRC) return A04_DMA_COMMAND_CRC;
@@ -83,7 +97,7 @@ enum a04_dma_result a04_msdc_dma_sector_timed(const struct a04_msdc_io *io,
     for (n = 0; n < limit; ++n) {
         bits = io->read32(io->context, INT_STATUS) & (XFER_DONE | DATA_TIMEOUT | DATA_CRC);
         if (!bits) {
-            if (clock && !(n & 1023u) && clock->now(clock->context) - start >= clock->ticks)
+            if (a04_dma_expired(clock,start,n))
                 break;
             continue;
         }
@@ -94,26 +108,39 @@ enum a04_dma_result a04_msdc_dma_sector_timed(const struct a04_msdc_io *io,
     }
     if (!bits) result = A04_DMA_DATA_POLL_TIMEOUT;
     io->write32(io->context, DMA_CONTROL, ctrl | DMA_STOP);
-    for (n = 0; n < limit; ++n)
+    if (clock) start = clock->now(clock->context);
+    for (n = 0; n < limit; ++n) {
         if (!(io->read32(io->context, DMA_CONFIG) & DMA_ACTIVE)) break;
+        if (a04_dma_expired(clock,start,n)) return A04_DMA_STOP_TIMEOUT;
+    }
     if (n == limit) return A04_DMA_STOP_TIMEOUT;
     if (result == A04_DMA_OK && write) {
         /* DAT0 remains low while eMMC is programming the data. */
-        for (n = 0; n < limit; ++n)
+        if (clock) start = clock->now(clock->context);
+        for (n = 0; n < limit; ++n) {
             if (io->read32(io->context, PIN_STATUS) & DAT0_HIGH) break;
+            if (a04_dma_expired(clock,start,n)) return A04_DMA_CARD_BUSY_TIMEOUT;
+        }
         if (n == limit) return A04_DMA_CARD_BUSY_TIMEOUT;
         /* CMD13: require READY_FOR_DATA and transfer state; failures are not
          * retried because the write may already have reached the card. */
-        for (n = 0; n < limit; ++n)
+        if (clock) start = clock->now(clock->context);
+        for (n = 0; n < limit; ++n) {
             if (!(io->read32(io->context, STATUS) & 1u)) break;
+            if (a04_dma_expired(clock,start,n)) return A04_DMA_CARD_BUSY_TIMEOUT;
+        }
         if (n == limit) return A04_DMA_CARD_BUSY_TIMEOUT;
         bits = io->read32(io->context, INT_STATUS) & (CMD_READY | CMD_TIMEOUT | CMD_CRC);
         if (bits) io->write32(io->context, INT_STATUS, bits);
         io->write32(io->context, ARGUMENT, (uint32_t)rca << 16);
         io->write32(io->context, COMMAND, 13u | (1u << 7));
+        if (clock) start = clock->now(clock->context);
         for (n = 0; n < limit; ++n) {
             bits = io->read32(io->context, INT_STATUS) & (CMD_READY | CMD_TIMEOUT | CMD_CRC);
-            if (!bits) continue;
+            if (!bits) {
+                if (a04_dma_expired(clock,start,n)) return A04_DMA_COMMAND_TIMEOUT;
+                continue;
+            }
             io->write32(io->context, INT_STATUS, bits);
             if (bits & CMD_TIMEOUT) return A04_DMA_COMMAND_TIMEOUT;
             if (bits & CMD_CRC) return A04_DMA_COMMAND_CRC;

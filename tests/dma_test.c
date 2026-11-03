@@ -4,7 +4,7 @@
 #include <string.h>
 #include "dma.h"
 
-struct fake { uint32_t regs[64]; int command_error, data_error, no_stop, started; uint32_t first_command, delay, reads; uint64_t time; };
+struct fake { uint32_t regs[64]; int command_error, data_error, no_stop, no_command, fifo_stuck, started; uint32_t first_command, delay, reads; uint64_t time; };
 static uint32_t rd(void *p, uint32_t off)
 {
     struct fake *f = p;
@@ -16,13 +16,13 @@ static void wr(void *p, uint32_t off, uint32_t val)
 {
     struct fake *f = p;
     if (off == 0x00c) f->regs[off / 4] &= ~val;
-    else if (off == 0x014) f->regs[off / 4] = val & ~(1u << 31);
+    else if (off == 0x014) f->regs[off / 4] = f->fifo_stuck ? val : val & ~(1u << 31);
     else {
         f->regs[off / 4] = val;
         if (off == 0x034) {
             if (!f->first_command) f->first_command = val;
             if ((val & 0x3f) == 13) f->regs[0x040/4] = (1u << 8) | (4u << 9);
-            f->regs[0x00c / 4] |= f->command_error ? 1u << 9 : 1u << 8;
+            if (!f->no_command) f->regs[0x00c / 4] |= f->command_error ? 1u << 9 : 1u << 8;
         }
         if (off == 0x098 && (val & 1)) {
             f->started = 1;
@@ -69,6 +69,15 @@ int main(void)
         assert(a04_msdc_dma_sector_timed(&io, 0, 0x100040, 64, 10000, 0, 0, &clock) == A04_DMA_DATA_POLL_TIMEOUT);
         io = init(&f); f.data_error = 2;
         assert(a04_msdc_dma_sector_timed(&io, 0, 0x100040, 64, 10000, 0, 0, &clock) == A04_DMA_DATA_TIMEOUT);
+        io = init(&f); f.fifo_stuck = 1;
+        assert(a04_msdc_dma_sector_timed(&io, 0, 0x100040, 64, 100000000, 0, 0, &clock) == A04_DMA_BUSY);
+        assert(f.time >= 3 && f.time < 10);
+        io = init(&f); f.no_command = 1;
+        assert(a04_msdc_dma_sector_timed(&io, 0, 0x100040, 64, 100000000, 0, 0, &clock) == A04_DMA_COMMAND_TIMEOUT);
+        assert(f.time >= 3 && f.time < 10);
+        io = init(&f); f.no_stop = 1;
+        assert(a04_msdc_dma_sector_timed(&io, 0, 0x100040, 64, 100000000, 0, 0, &clock) == A04_DMA_STOP_TIMEOUT);
+        assert(f.time >= 3 && f.time < 10);
     }
     return 0;
 }
