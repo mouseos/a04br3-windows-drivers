@@ -17,7 +17,7 @@ static void say(const char *message)
 void mainCRTStartup(void)
 {
     HDEVINFO devices = INVALID_HANDLE_VALUE;
-    SP_DEVICE_INTERFACE_DATA iface;
+    PSP_DEVICE_INTERFACE_DATA iface = NULL;
     PSP_DEVICE_INTERFACE_DETAIL_DATA_W detail = NULL;
     DWORD needed = 0, written = 0;
     HANDLE file = INVALID_HANDLE_VALUE;
@@ -34,14 +34,16 @@ void mainCRTStartup(void)
     button = (BYTE)(cmd[0] - L'0');
     devices = SetupDiGetClassDevsW(&button_interface, NULL, NULL, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
     if (devices == INVALID_HANDLE_VALUE) goto done;
-    ZeroMemory(&iface, sizeof(iface)); iface.cbSize = sizeof(iface);
-    if (!SetupDiEnumDeviceInterfaces(devices, NULL, &button_interface, 0, &iface)) goto done;
-    SetupDiGetDeviceInterfaceDetailW(devices, &iface, NULL, 0, &needed, NULL);
+    iface = (PSP_DEVICE_INTERFACE_DATA)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*iface));
+    if (!iface) goto done;
+    iface->cbSize = sizeof(*iface);
+    if (!SetupDiEnumDeviceInterfaces(devices, NULL, &button_interface, 0, iface)) goto done;
+    SetupDiGetDeviceInterfaceDetailW(devices, iface, NULL, 0, &needed, NULL);
     if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || needed < sizeof(*detail)) goto done;
     detail = (PSP_DEVICE_INTERFACE_DETAIL_DATA_W)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, needed);
     if (!detail) goto done;
     detail->cbSize = sizeof(*detail);
-    if (!SetupDiGetDeviceInterfaceDetailW(devices, &iface, detail, needed, NULL, NULL)) goto done;
+    if (!SetupDiGetDeviceInterfaceDetailW(devices, iface, detail, needed, NULL, NULL)) goto done;
     file = CreateFileW(detail->DevicePath, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
     if (file == INVALID_HANDLE_VALUE) goto done;
     if (!WriteFile(file, &button, 1, &written, NULL) || written != 1) goto done;
@@ -54,6 +56,7 @@ done:
     if (result) say("BUTTON_TEST failed\r\n");
     if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
     if (detail) HeapFree(GetProcessHeap(), 0, detail);
+    if (iface) HeapFree(GetProcessHeap(), 0, iface);
     if (devices != INVALID_HANDLE_VALUE) SetupDiDestroyDeviceInfoList(devices);
     ExitProcess(result);
 }
