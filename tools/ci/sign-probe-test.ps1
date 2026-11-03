@@ -8,8 +8,9 @@ $source = Join-Path $base 'package'
 $package = Join-Path $base 'package-test-signed'
 $bootPackage = Test-Path (Join-Path $source 'mt8167-msdc.inf')
 $passivePackage = Test-Path (Join-Path $source 'mt8167-msdc-readonly.inf')
-$sysName = if ($bootPackage -or $passivePackage) { 'mt8167-msdc.sys' } else { 'a04msdcprobe.sys' }
-$catName = if ($bootPackage) { 'mt8167-msdc.cat' } elseif ($passivePackage) { 'mt8167-msdc-readonly.cat' } else { 'a04msdcprobe.cat' }
+$scratchPackage = Test-Path (Join-Path $source 'mt8167-msdc-scratch.inf')
+$sysName = if ($bootPackage -or $passivePackage -or $scratchPackage) { 'mt8167-msdc.sys' } else { 'a04msdcprobe.sys' }
+$catName = if ($bootPackage) { 'mt8167-msdc.cat' } elseif ($scratchPackage) { 'mt8167-msdc-scratch.cat' } elseif ($passivePackage) { 'mt8167-msdc-readonly.cat' } else { 'a04msdcprobe.cat' }
 if (-not (Test-Path (Join-Path $source $catName))) { throw 'Build the storage package first' }
 if (Test-Path $package) { throw 'Test package directory already exists' }
 Copy-Item -Recurse $source $package

@@ -6,7 +6,7 @@
 #include "pio.h"
 #include "io_gate.h"
 #if defined(A04_PASSIVE_IO) && (!defined(A04_READONLY_DISK_PROBE) || (defined(A04_ENABLE_WRITES) && !defined(A04_SCRATCH_IO)))
-#error A04_PASSIVE_IO is restricted to the read-only diagnostic package
+#error A04_PASSIVE_IO requires a diagnostic disk and only allows bounded scratch writes
 #endif
 #if defined(A04_SCRATCH_IO) && (!defined(A04_PASSIVE_IO) || !defined(A04_ENABLE_WRITES) || !defined(A04_SCRATCH_LBA))
 #error A04_SCRATCH_IO requires passive I/O, guarded writes and a selected scratch LBA
@@ -853,7 +853,7 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 }
 
 #ifdef A04_PASSIVE_IO
-/* Diagnostic read-only path. Request abort and surprise-removal races still
+/* Diagnostic passive path. Request abort and surprise-removal races still
  * require qualification; never use this build as the Windows boot driver. */
 static VOID A04PassiveWorker(PVOID extension, PVOID context, PVOID worker)
 {
