@@ -17,6 +17,9 @@
 #if defined(A04_SERIAL_QUEUE_EXPERIMENT) && !defined(A04_SCRATCH_IO)
 #error A04_SERIAL_QUEUE_EXPERIMENT is restricted to the scratch diagnostic
 #endif
+#if defined(A04_ISOLATED_REQUEST_EXPERIMENT) && !defined(A04_SCRATCH_IO)
+#error A04_ISOLATED_REQUEST_EXPERIMENT is restricted to the scratch diagnostic
+#endif
 #ifdef A04_READONLY_DISK_PROBE
 #include "cdb.h"
 #include "scsi_capacity.h"
@@ -41,6 +44,12 @@ struct a04_probe_extension {
     a04_msdc_gate ioBusy;
 #ifdef A04_SERIAL_QUEUE_EXPERIMENT
     volatile LONG busyCount, gateBusyCount, workerInitFailCount, workerQueueFailCount;
+#endif
+#ifdef A04_ISOLATED_REQUEST_EXPERIMENT
+    SCSI_REQUEST_BLOCK isolatedRequest;
+    UCHAR isolatedData[4096], isolatedSense[256];
+    PSCSI_REQUEST_BLOCK pendingRequest;
+    volatile LONG cancelled;
 #endif
 #ifdef A04_ENABLE_WRITES
     ULONG write_first, write_last, esp_first, esp_last;
@@ -807,6 +816,9 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
                 A04Trace(" count="); A04TraceHex(result.blocks.block_count); A04Trace("\n"); }
             A04Write32(probe, 0x010, interrupts & ~0x0000d700u);
             for (i = 0; i < result.blocks.block_count; ++i) {
+#ifdef A04_ISOLATED_REQUEST_EXPERIMENT
+                if (InterlockedCompareExchange(&probe->cancelled,0,0)) { failure=1; break; }
+#endif
 #ifdef A04_DMA_DISK_PROBE
                 enum a04_dma_result dr;
                 if (result.action == A04_SCSI_WRITE) {
@@ -872,7 +884,104 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
     return TRUE;
 }
 
-#ifdef A04_PASSIVE_IO
+#if defined(A04_PASSIVE_IO) && defined(A04_ISOLATED_REQUEST_EXPERIMENT)
+/* A worker never dereferences Storport's request after reset can complete it.
+ * This diagnostic does not yet establish adapter-removal or DMA reset safety. */
+static VOID A04IsolatedWorker(PVOID extension, PVOID context, PVOID worker)
+{
+    struct a04_probe_extension *probe=(struct a04_probe_extension *)extension;
+    PSCSI_REQUEST_BLOCK original;
+    STOR_LOCK_HANDLE lock;
+    ULONG i, count;
+    BOOLEAN run;
+    UNREFERENCED_PARAMETER(context);
+    StorPortAcquireSpinLock(extension,StartIoLock,NULL,&lock);
+    run=probe->pendingRequest != NULL && !probe->cancelled;
+    StorPortReleaseSpinLock(extension,&lock);
+    if (run) (void)A04RunIo(extension,&probe->isolatedRequest);
+    StorPortAcquireSpinLock(extension,StartIoLock,NULL,&lock);
+    original=probe->pendingRequest;
+    if (original) {
+        count=probe->isolatedRequest.DataTransferLength;
+        if (count>original->DataTransferLength) count=original->DataTransferLength;
+        if (count>sizeof(probe->isolatedData)) count=sizeof(probe->isolatedData);
+        if (original->DataBuffer && probe->isolatedRequest.DataBuffer)
+            for (i=0;i<count;++i) ((UCHAR *)original->DataBuffer)[i]=probe->isolatedData[i];
+        if (original->SenseInfoBuffer && (probe->isolatedRequest.SrbStatus & SRB_STATUS_AUTOSENSE_VALID)) {
+            count=original->SenseInfoBufferLength;
+            if (count>sizeof(probe->isolatedSense)) count=sizeof(probe->isolatedSense);
+            for (i=0;i<count;++i) ((UCHAR *)original->SenseInfoBuffer)[i]=probe->isolatedSense[i];
+        }
+        original->DataTransferLength=probe->isolatedRequest.DataTransferLength;
+        original->SrbStatus=probe->isolatedRequest.SrbStatus;
+        original->ScsiStatus=probe->isolatedRequest.ScsiStatus;
+        probe->pendingRequest=NULL;
+        StorPortNotification(RequestComplete,extension,original);
+    }
+    StorPortReleaseSpinLock(extension,&lock);
+    (void)StorPortFreeWorker(extension,worker);
+    a04_msdc_gate_release(&probe->ioBusy);
+}
+
+static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
+{
+    struct a04_probe_extension *probe=(struct a04_probe_extension *)extension;
+    STOR_LOCK_HANDLE lock;
+    PVOID worker=NULL;
+    ULONG status,i;
+    UCHAR *dst=(UCHAR *)&probe->isolatedRequest, *src=(UCHAR *)request;
+    StorPortAcquireSpinLock(extension,StartIoLock,NULL,&lock);
+    if (!a04_msdc_gate_acquire(&probe->ioBusy)) {
+#ifdef A04_SERIAL_QUEUE_EXPERIMENT
+        InterlockedIncrement(&probe->gateBusyCount); InterlockedIncrement(&probe->busyCount);
+#endif
+        request->SrbStatus=SRB_STATUS_BUSY;
+        StorPortNotification(RequestComplete,extension,request);
+        StorPortReleaseSpinLock(extension,&lock);
+        return TRUE;
+    }
+    if (request->DataTransferLength>sizeof(probe->isolatedData) ||
+        (request->DataTransferLength && !request->DataBuffer)) {
+        request->SrbStatus=SRB_STATUS_INVALID_REQUEST;
+        a04_msdc_gate_release(&probe->ioBusy);
+        StorPortNotification(RequestComplete,extension,request);
+        StorPortReleaseSpinLock(extension,&lock);
+        return TRUE;
+    }
+    status=StorPortInitializeWorker(extension,&worker);
+    if (status != STOR_STATUS_SUCCESS) {
+#ifdef A04_SERIAL_QUEUE_EXPERIMENT
+        InterlockedIncrement(&probe->workerInitFailCount); InterlockedIncrement(&probe->busyCount);
+#endif
+        request->SrbStatus=SRB_STATUS_BUSY;
+        a04_msdc_gate_release(&probe->ioBusy);
+        StorPortNotification(RequestComplete,extension,request);
+        StorPortReleaseSpinLock(extension,&lock);
+        return TRUE;
+    }
+    for (i=0;i<sizeof(probe->isolatedRequest);++i) dst[i]=src[i];
+    for (i=0;i<request->DataTransferLength;++i)
+        probe->isolatedData[i]=((UCHAR *)request->DataBuffer)[i];
+    for (i=0;i<sizeof(probe->isolatedSense);++i) probe->isolatedSense[i]=0;
+    probe->isolatedRequest.DataBuffer=request->DataBuffer ? probe->isolatedData : NULL;
+    probe->isolatedRequest.SenseInfoBuffer=request->SenseInfoBuffer ? probe->isolatedSense : NULL;
+    InterlockedExchange(&probe->cancelled,0);
+    probe->pendingRequest=request;
+    status=StorPortQueueWorkItem(extension,A04IsolatedWorker,worker,NULL);
+    if (status != STOR_STATUS_SUCCESS) {
+        probe->pendingRequest=NULL;
+        (void)StorPortFreeWorker(extension,worker);
+#ifdef A04_SERIAL_QUEUE_EXPERIMENT
+        InterlockedIncrement(&probe->workerQueueFailCount); InterlockedIncrement(&probe->busyCount);
+#endif
+        request->SrbStatus=SRB_STATUS_BUSY;
+        a04_msdc_gate_release(&probe->ioBusy);
+        StorPortNotification(RequestComplete,extension,request);
+    }
+    StorPortReleaseSpinLock(extension,&lock);
+    return TRUE;
+}
+#elif defined(A04_PASSIVE_IO)
 /* Diagnostic passive path. Request abort and surprise-removal races still
  * require qualification; never use this build as the Windows boot driver. */
 static VOID A04PassiveWorker(PVOID extension, PVOID context, PVOID worker)
@@ -956,8 +1065,26 @@ static BOOLEAN A04Interrupt(PVOID extension)
 
 static BOOLEAN A04ResetBus(PVOID extension, ULONG path)
 {
+#ifdef A04_ISOLATED_REQUEST_EXPERIMENT
+    struct a04_probe_extension *probe=(struct a04_probe_extension *)extension;
+    PSCSI_REQUEST_BLOCK original=probe->pendingRequest;
+    /* Storport calls this with its StartIo lock held. Mark the controller
+     * failed and detach the OS request; the worker owns only private data.
+     * FALSE deliberately reports that hardware reset is not implemented. */
+    if (path==0) {
+        InterlockedExchange(&probe->cancelled,1);
+        probe->failed=TRUE;
+        if (original) {
+            probe->pendingRequest=NULL;
+            original->SrbStatus=SRB_STATUS_BUS_RESET;
+            original->DataTransferLength=0;
+            StorPortNotification(RequestComplete,extension,original);
+        }
+    }
+#else
     UNREFERENCED_PARAMETER(extension);
     UNREFERENCED_PARAMETER(path);
+#endif
     return FALSE;
 }
 
