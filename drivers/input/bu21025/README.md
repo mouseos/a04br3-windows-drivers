@@ -48,10 +48,14 @@ latches the fault and produces a release when one was pending. The owner must
 deliver reports in order and recover the bus before reinitializing. These
 interfaces have only been exercised against host-side mocks.
 
-This is not a Windows HID driver. Windows PnP resources, an I2C controller or
-SPB transport, pen interrupts, pressure/contact filtering, calibration and
-HID reports remain to be implemented and tested. Host and ARM32 compilation
-tests do not demonstrate device operation or wake from sleep.
+`wdf_touch.c` is an experimental Windows 8.1 KMDF HID lower filter combining
+these pieces. It uses the opt-in MOU0004 ACPI resources, an exclusive polling
+I2C0 owner and the VGP1 power handoff in the board firmware. It does not
+implement shared-controller arbitration, interrupts or wake. Its default ADC
+range is uncalibrated and its physical dimensions are provisional estimates.
+The WinPE PnP device started on the test tablet, but Windows input, positioning,
+display dimensions and power transitions are not yet validated. Host and
+ARM32 compilation tests do not establish device operation.
 
 `tools/ci/build-touch-link-probe.ps1` builds a deliberately non-operational
 ARM32 SYS using Windows 8.1 WDK, Clang and LLD. Its entry point always returns
