@@ -124,6 +124,7 @@ static uint64_t A04ClockNow(void *context)
     uint64_t now=(uint64_t)KeQueryPerformanceCounter(NULL).QuadPart;
     return now;
 }
+#ifdef A04_DMA_POLL_TRACE
 static void A04ClockObserve(void *context, uint32_t polls)
 {
     struct a04_clock_context *c=(struct a04_clock_context *)context;
@@ -138,6 +139,7 @@ static void A04ClockObserve(void *context, uint32_t polls)
         A04Trace(" dma="); A04TraceHex(A04Read32(c->probe,0x09c)); A04Trace("\n");
     }
 }
+#endif
 /* Diagnostic synchronization for the resident common buffer. This does not
  * resolve the unexpected cacheability of the Windows mapping. */
 static enum a04_dma_result A04DmaSector(struct a04_probe_extension *probe,
@@ -155,9 +157,15 @@ static enum a04_dma_result A04DmaSector(struct a04_probe_extension *probe,
     KeQueryPerformanceCounter(&frequency);
     if (frequency.QuadPart <= 0) { IoFreeMdl(mdl); return A04_DMA_INVALID; }
     clockContext.probe=probe;
+#ifdef A04_DMA_POLL_TRACE
     clockContext.four=KeQueryActiveProcessorCount(NULL)>=4;
+#endif
     clock.context = &clockContext; clock.now = A04ClockNow;
+#ifdef A04_DMA_POLL_TRACE
     clock.observe = A04ClockObserve;
+#else
+    clock.observe = NULL;
+#endif
     clock.ticks = (uint64_t)frequency.QuadPart * 10u;
     start = A04ClockNow(&clockContext);
     clockContext.first = start;

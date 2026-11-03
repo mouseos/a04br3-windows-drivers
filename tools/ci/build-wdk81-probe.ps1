@@ -11,6 +11,10 @@ $pioSource = Join-Path $PSScriptRoot '..\..\drivers\storage\mt8167-msdc\pio.c'
 $driver = Join-Path $output 'miniport.sys'
 $extraObjects = @()
 $probeDefines = @()
+if ($env:A04_DMA_POLL_TRACE -eq '1') {
+    if ($env:A04_DMA_PROBE -ne '1') { throw 'DMA poll tracing requires A04_DMA_PROBE=1' }
+    $probeDefines += '-DA04_DMA_POLL_TRACE'
+}
 if ($env:A04_PASSIVE_IO -eq '1') {
     if ($env:A04_READONLY_DISK_PROBE -ne '1' -or ($env:A04_BOOT_EXPERIMENT -eq '1' -and $env:A04_BOOT_PASSIVE_EXPERIMENT -ne '1') -or ($env:A04_ENABLE_WRITES -eq '1' -and $env:A04_SCRATCH_IO -ne '1' -and $env:A04_BOOT_PASSIVE_EXPERIMENT -ne '1')) { throw 'Passive I/O requires an explicit diagnostic configuration' }
     $probeDefines += '-DA04_PASSIVE_IO'
