@@ -14,6 +14,7 @@ p.add_argument('--uart', default='/dev/ttyUSB0')
 p.add_argument('--timeout', type=int, default=300)
 p.add_argument('--snapshot-after', type=int, default=120, help='EBS後の画面取得までの秒数')
 p.add_argument('--continue-after-snapshot', action='store_true', help='画面取得後も期限まで失敗を監視する')
+p.add_argument('--no-reset-on-timeout', action='store_true', help='観測期限だけではリセットしない')
 a = p.parse_args()
 if a.offset < 0 or a.timeout < 1 or a.snapshot_after < 1 or a.output.exists():
     raise SystemExit('オフセット・時間または出力先が不正です')
@@ -75,6 +76,9 @@ with a.log.open('rb') as source, a.output.open('xb') as out:
         time.sleep(1)
 if snapshot_process is not None and snapshot_process.poll() is None:
     snapshot_process.terminate()
+if a.no_reset_on_timeout:
+    print('観測期限に到達しました。リセットは行いません', flush=True)
+    raise SystemExit(0)
 print('観測期限に到達したため、UARTでリセットします', flush=True)
 reset()
 raise SystemExit(1)
