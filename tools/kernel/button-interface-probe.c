@@ -66,11 +66,24 @@ static void probe_file_flush(void)
     ZwClose(file);
 }
 
+static void probe_hive_flush(PUNICODE_STRING path, const char *label)
+{
+    OBJECT_ATTRIBUTES attributes;
+    HANDLE key = NULL;
+    NTSTATUS status;
+    InitializeObjectAttributes(&attributes, path,
+                               OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+    status = ZwOpenKey(&key, KEY_QUERY_VALUE, &attributes);
+    if (NT_SUCCESS(status)) { status = ZwFlushKey(key); ZwClose(key); }
+    trace(label); trace_hex((ULONG)status); trace("\n");
+}
+
 static void probe_thread(PVOID context)
 {
     LARGE_INTEGER interval;
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     NTSTATUS open_status = STATUS_UNSUCCESSFUL;
+    UNICODE_STRING software_path;
     unsigned i;
     BOOLEAN found = FALSE, saw_success = FALSE, saw_error = FALSE;
     UNREFERENCED_PARAMETER(context);
@@ -114,16 +127,15 @@ static void probe_thread(PVOID context)
           "A04BUTTON interface NOT_FOUND\n");
     if (!found && (saw_error || !saw_success)) { trace_hex((ULONG)status); trace("\n"); }
     if (found) { trace("A04BUTTON interface open status="); trace_hex((ULONG)open_status); trace("\n"); }
-    {
-        OBJECT_ATTRIBUTES attributes;
-        HANDLE key = NULL;
-        InitializeObjectAttributes(&attributes, &saved_registry_path,
-                                   OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
-        status = ZwOpenKey(&key, KEY_QUERY_VALUE, &attributes);
-        if (NT_SUCCESS(status)) { status = ZwFlushKey(key); ZwClose(key); }
-        trace("A04BUTTON disable flush status="); trace_hex((ULONG)status); trace("\n");
-    }
+    RtlInitUnicodeString(&software_path, L"\\Registry\\Machine\\SOFTWARE");
+    probe_hive_flush(&saved_registry_path, "A04BUTTON system early flush status=");
+    probe_hive_flush(&software_path, "A04BUTTON software early flush status=");
     probe_file_flush();
+    trace("A04BUTTON waiting 120 seconds for late hive check\n");
+    interval.QuadPart = -120 * 1000 * 10000LL;
+    KeDelayExecutionThread(KernelMode, FALSE, &interval);
+    probe_hive_flush(&saved_registry_path, "A04BUTTON system late flush status=");
+    probe_hive_flush(&software_path, "A04BUTTON software late flush status=");
     MmUnmapIoSpace((PVOID)uart, 0x1000);
     uart = NULL;
     PsTerminateSystemThread(STATUS_SUCCESS);
