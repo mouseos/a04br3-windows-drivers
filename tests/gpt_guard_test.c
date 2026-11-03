@@ -8,8 +8,10 @@ int main(int argc, char **argv)
     FILE *f;
     if (argc!=2 || !(f=fopen(argv[1],"rb"))) return 2;
     if (fread(block,1,512,f)!=512 || !a04_gpt_guard_begin(&g,block,4096)) return 1;
-    for (i=0;i<32;++i)
+    for (i=0;i<32;++i) {
+        if (a04_gpt_guard_unallocated(&g,256,1)) return 1;
         if (fread(block,1,512,f)!=512 || !a04_gpt_guard_feed(&g,block)) return 1;
+    }
     fclose(f);
     if (!a04_gpt_guard_finish(&g,&first,&last) || first!=512 || last!=2047 ||
         !a04_gpt_guard_esp(&g,&esp_first,&esp_last) || esp_first!=128 || esp_last!=255) return 1;
@@ -18,5 +20,13 @@ int main(int argc, char **argv)
         a04_gpt_guard_range(first,last,UINT64_MAX,2) || a04_gpt_guard_range(first,last,512,0) ||
         !a04_gpt_guard_range(esp_first,esp_last,128,128) ||
         a04_gpt_guard_range(esp_first,esp_last,255,2)) return 1;
+    if (!a04_gpt_guard_unallocated(&g,256,256) ||
+        a04_gpt_guard_unallocated(&g,255,2) ||
+        a04_gpt_guard_unallocated(&g,511,2) ||
+        a04_gpt_guard_unallocated(&g,0,1) ||
+        a04_gpt_guard_unallocated(&g,UINT64_MAX,2) ||
+        a04_gpt_guard_unallocated(&g,256,0)) return 1;
+    g.expected_crc ^= 1;
+    if (a04_gpt_guard_unallocated(&g,256,1)) return 1;
     return 0;
 }

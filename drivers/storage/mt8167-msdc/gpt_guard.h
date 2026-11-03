@@ -15,4 +15,6 @@ int a04_gpt_guard_feed(struct a04_gpt_guard *, const uint8_t entries[512]);
 int a04_gpt_guard_finish(const struct a04_gpt_guard *, uint32_t *first, uint32_t *last);
 int a04_gpt_guard_esp(const struct a04_gpt_guard *, uint32_t *first, uint32_t *last);
 int a04_gpt_guard_range(uint32_t first, uint32_t last, uint64_t lba, uint32_t count);
+/* Checks GPT allocation only; callers must separately preserve existing data. */
+int a04_gpt_guard_unallocated(const struct a04_gpt_guard *, uint64_t lba, uint32_t count);
 #endif

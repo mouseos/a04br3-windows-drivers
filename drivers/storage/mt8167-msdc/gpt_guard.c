@@ -84,3 +84,14 @@ int a04_gpt_guard_range(uint32_t first, uint32_t last, uint64_t lba, uint32_t co
 {
     return count && first<=last && lba>=first && lba<=last && (uint64_t)count-1u<=last-lba;
 }
+int a04_gpt_guard_unallocated(const struct a04_gpt_guard *g, uint64_t lba, uint32_t count)
+{
+    uint64_t last; uint32_t i;
+    if (!g || !g->valid || g->blocks!=32 || g->range_count>128 ||
+        (g->crc^0xffffffffu)!=g->expected_crc ||
+        !a04_gpt_guard_range(g->usable_first,g->usable_last,lba,count)) return 0;
+    last=lba+count-1u;
+    for (i=0;i<g->range_count;++i)
+        if (lba<=g->range_last[i] && g->range_first[i]<=last) return 0;
+    return 1;
+}
