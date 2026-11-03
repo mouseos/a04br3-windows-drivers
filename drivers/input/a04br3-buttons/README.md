@@ -41,3 +41,10 @@ delay appropriate to its execution context, and recover hardware after a
 timeout before clearing the poison flag. It does not claim resources, handle
 interrupts, power or wake, or establish that Windows can share the wrapper.
 Host tests simulate the state sequence; actual PMIC access is not verified.
+
+`button_device` connects input callbacks to the state pipeline and a byte
+notification callback. The owner must establish the inbox endpoint state
+before synchronization and serialize all callbacks. A confirmed write
+advances state; a definitely undelivered write can be retried; an ambiguous
+result invalidates synchronization to avoid double toggles. It does not
+implement a Windows device, hardware resources, interrupts, or wake.
