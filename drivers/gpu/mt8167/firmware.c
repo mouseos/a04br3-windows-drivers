@@ -1,0 +1,105 @@
+/* SPDX-License-Identifier: BSD-2-Clause-Patent
+ * Derived from the upstream PowerVR firmware format and the UniXNU-a04br3
+ * NativePowerVR MIPS loading sequence. See README.md for provenance. */
+#include "firmware.h"
+#define PAGE_SIZE 4096u
+#define FW_CODE 1u
+#define FW_DATA 2u
+#define MIPS_PRIVATE_DATA 7u
+#define PT_LOAD 1u
+#define INFO_SIZE 48u
+#define ENTRY_SIZE 24u
+#define ELF_HEADER 52u
+#define ELF_PROGRAM 32u
+static uint16_t u16(const uint8_t *p) { return (uint16_t)(p[0] | (uint16_t)p[1] << 8); }
+static uint32_t u32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1]<<8 | (uint32_t)p[2]<<16 | (uint32_t)p[3]<<24; }
+static uint64_t u64(const uint8_t *p) { return (uint64_t)u32(p) | (uint64_t)u32(p+4)<<32; }
+static void zero_bytes(uint8_t *p, size_t n) { size_t i; for (i=0;i<n;++i) p[i]=0; }
+static void copy_bytes(uint8_t *dst, const uint8_t *src, size_t n) { size_t i; for (i=0;i<n;++i) dst[i]=src[i]; }
+static int within(size_t offset, size_t size, size_t limit) { return offset <= limit && size <= limit-offset; }
+static uint32_t rounded(uint32_t n) { return (n + PAGE_SIZE-1u) & ~(PAGE_SIZE-1u); }
+static int segment(const struct a04_pvr_fw_plan *p, uint32_t address, uint32_t length,
+                   uint32_t *destination)
+{
+    uint32_t i, matches=0, target=0;
+    for (i=0; i<p->section_count; ++i) {
+        const struct a04_pvr_section *s=&p->section[i];
+        uint32_t delta, base, limit;
+        if ((s->type!=FW_CODE && s->type!=FW_DATA) || address<s->base) continue;
+        delta=address-s->base;
+        if (!within(delta,length,s->size)) continue;
+        base=s->type==FW_CODE ? 0 : p->data_offset;
+        limit=s->type==FW_CODE ? p->code_size : p->data_size;
+        if (!within(s->offset,delta,limit) || !within(s->offset+delta,length,limit)) return 0;
+        target=base+s->offset+delta; ++matches;
+    }
+    if (matches!=1 || !within(target,length,A04_PVR_HEAP_SIZE)) return 0;
+    *destination=target;
+    return 1;
+}
+enum a04_pvr_fw_result a04_pvr_fw_plan(const uint8_t *image, size_t length,
+        uint64_t actual_bvnc, int allow_mismatch, struct a04_pvr_fw_plan *plan)
+{
+    struct a04_pvr_fw_plan tmp={0};
+    const uint8_t *h; uint32_t i, code=0, data=0, private_count=0, nload=0;
+    size_t info, payload_limit;
+    if (!image || !plan || length<PAGE_SIZE || length%PAGE_SIZE) return A04_PVR_FW_INVALID;
+    info=length-PAGE_SIZE; h=image+info;
+    if (u32(h)!=3 || u32(h+4)!=INFO_SIZE || u32(h+12)!=ENTRY_SIZE ||
+        u32(h+8)>A04_PVR_MAX_LAYOUT || u32(h+24)!=PAGE_SIZE || !(u32(h+28)&1u) ||
+        !within(INFO_SIZE,(size_t)u32(h+8)*ENTRY_SIZE,PAGE_SIZE) ||
+        u32(h+40)>info) return A04_PVR_FW_INVALID;
+    payload_limit=info-u32(h+40);
+    tmp.firmware_bvnc=u64(h+16); tmp.section_count=u32(h+8);
+    if (tmp.firmware_bvnc!=actual_bvnc && !allow_mismatch) return A04_PVR_FW_INCOMPATIBLE;
+    for (i=0; i<tmp.section_count; ++i) {
+        const uint8_t *e=h+INFO_SIZE+i*ENTRY_SIZE; struct a04_pvr_section *s=&tmp.section[i];
+        s->id=u32(e); s->type=u32(e+4); s->base=u32(e+8); s->max_size=u32(e+12); s->size=u32(e+16); s->offset=u32(e+20);
+        if (s->size>s->max_size || !within(s->offset,s->size,A04_PVR_HEAP_SIZE) ||
+            (uint64_t)s->base+s->size>UINT64_C(0x100000000)) return A04_PVR_FW_LAYOUT;
+        if (s->type==FW_CODE && code<s->offset+s->size) code=s->offset+s->size;
+        if (s->type==FW_DATA && data<s->offset+s->size) data=s->offset+s->size;
+        if (s->id==MIPS_PRIVATE_DATA) {
+            if (s->type!=FW_DATA) return A04_PVR_FW_LAYOUT;
+            tmp.data_offset=s->base&(A04_PVR_HEAP_SIZE-1u); ++private_count;
+        }
+    }
+    if (private_count!=1 || !code || !data) return A04_PVR_FW_LAYOUT;
+    tmp.code_size=rounded(code); tmp.data_size=rounded(data);
+    if (tmp.code_size>tmp.data_offset || !within(tmp.data_offset,tmp.data_size,A04_PVR_HEAP_SIZE)) return A04_PVR_FW_LAYOUT;
+    if (payload_limit<ELF_HEADER || image[0]!=0x7f || image[1]!='E' || image[2]!='L' || image[3]!='F' ||
+        image[4]!=1 || image[5]!=1 || image[6]!=1 ||
+        u16(image+18)!=8 || u32(image+20)!=1 || u16(image+40)!=ELF_HEADER || u16(image+42)!=ELF_PROGRAM)
+        return A04_PVR_FW_ELF;
+    tmp.program_offset=u32(image+28); tmp.program_size=u16(image+42); tmp.program_count=u16(image+44);
+    if (!within(tmp.program_offset,(size_t)tmp.program_size*tmp.program_count,payload_limit)) return A04_PVR_FW_ELF;
+    for (i=0; i<tmp.program_count; ++i) {
+        const uint8_t *ph=image+tmp.program_offset+i*tmp.program_size; uint32_t dst, file, mem;
+        if (u32(ph)!=PT_LOAD) continue;
+        file=u32(ph+16); mem=u32(ph+20);
+        if (file>mem || !within(u32(ph+4),file,payload_limit) || !segment(&tmp,u32(ph+8),mem,&dst)) return A04_PVR_FW_ELF;
+        ++nload;
+    }
+    if (!nload) return A04_PVR_FW_ELF;
+    *plan=tmp; return A04_PVR_FW_OK;
+}
+enum a04_pvr_fw_result a04_pvr_fw_load(const uint8_t *image, size_t length,
+        uint64_t actual_bvnc, int allow_mismatch, uint8_t *heap, size_t heap_size,
+        struct a04_pvr_fw_plan *plan)
+{
+    struct a04_pvr_fw_plan tmp; enum a04_pvr_fw_result r; uint32_t i;
+    if (!heap || !plan || heap_size<A04_PVR_HEAP_SIZE) return A04_PVR_FW_OUTPUT;
+    /* Prevent an overlapping input/output from corrupting later ELF segments. */
+    if ((uintptr_t)heap <= (uintptr_t)image ? (uintptr_t)image-(uintptr_t)heap<A04_PVR_HEAP_SIZE
+        : (uintptr_t)heap-(uintptr_t)image<length) return A04_PVR_FW_OUTPUT;
+    r=a04_pvr_fw_plan(image,length,actual_bvnc,allow_mismatch,&tmp);
+    if (r!=A04_PVR_FW_OK) return r;
+    zero_bytes(heap,A04_PVR_HEAP_SIZE);
+    for (i=0; i<tmp.program_count; ++i) {
+        const uint8_t *ph=image+tmp.program_offset+i*tmp.program_size; uint32_t dst;
+        if (u32(ph)!=PT_LOAD) continue;
+        if (!segment(&tmp,u32(ph+8),u32(ph+20),&dst)) return A04_PVR_FW_ELF;
+        copy_bytes(heap+dst,image+u32(ph+4),u32(ph+16));
+    }
+    *plan=tmp; return A04_PVR_FW_OK;
+}

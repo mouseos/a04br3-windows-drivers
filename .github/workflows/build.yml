@@ -27,6 +27,8 @@ jobs:
           $clang = (Get-Command clang.exe -ErrorAction Stop).Source
           $link = (Get-Command lld-link.exe -ErrorAction Stop).Source
           $readobj = (Get-Command llvm-readobj.exe -ErrorAction Stop).Source
+          & $clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/gpu/mt8167/firmware.c -o build/ge8300-firmware-arm.obj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/storage/mt8167-msdc/cdb.c -o build/cdb-arm.obj
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -c tests/pe_probe.c -o build/pe-probe.obj
