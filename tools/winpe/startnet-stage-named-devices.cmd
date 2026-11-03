@@ -11,6 +11,16 @@ X:\a04br3\compare-files.exe C:\Windows\System32\drivers\a04touch.sys X:\a04br3\t
 if errorlevel 1 goto reject
 X:\a04br3\compare-files.exe C:\Windows\System32\drivers\a04msdcprobe.sys X:\a04br3\storage-original.sys
 if errorlevel 1 goto reject
+reg load HKLM\A04TEMP C:\Windows\System32\config\SYSTEM
+if errorlevel 1 goto hivefail
+set "A04_CURRENT="
+set "A04_STORAGE_PATH="
+for /f "tokens=1,2,3" %%A in ('reg query HKLM\A04TEMP\Select /v Current 2^>nul') do if /i "%%A"=="Current" set "A04_CURRENT=%%C"
+for /f "tokens=1,2,*" %%A in ('reg query HKLM\A04TEMP\ControlSet001\Services\a04msdcboot /v ImagePath 2^>nul') do if /i "%%A"=="ImagePath" set "A04_STORAGE_PATH=%%C"
+reg unload HKLM\A04TEMP
+if errorlevel 1 goto unloadfail
+if not "%A04_CURRENT%"=="0x1" goto reject
+if /i not "%A04_STORAGE_PATH%"=="System32\drivers\a04msdcprobe.sys" goto reject
 if exist C:\Windows\System32\drivers\bu21025.sys goto reject
 if exist C:\Windows\Temp\a04br3-named-touch-dism.log goto reject
 if exist C:\Windows\Temp\a04br3-named-toprgu-dism.log goto reject
@@ -61,6 +71,12 @@ goto dismount
 :logfail
 echo NAMED_DEVICE_LOG_SAVE_FAILED
 goto dismount
+:hivefail
+echo NAMED_DEVICE_HIVE_LOAD_FAILED
+goto dismount
+:unloadfail
+echo NAMED_DEVICE_HIVE_UNLOAD_FAILED
+goto finish
 :dismfail
 echo NAMED_DEVICE_DISM_FAILED
 goto dismount
