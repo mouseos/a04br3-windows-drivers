@@ -15,6 +15,8 @@ if exist C:\Windows\System32\drivers\bu21025.sys goto reject
 if exist C:\Windows\Temp\a04br3-named-touch-dism.log goto reject
 if exist C:\Windows\Temp\a04br3-named-toprgu-dism.log goto reject
 if exist C:\Windows\Temp\a04br3-named-storage-dism.log goto reject
+X:\a04br3\read-emmc-model.exe
+if errorlevel 1 goto modelfail
 drvload X:\a04br3\touch-provider\bu21025.inf
 if errorlevel 1 goto touchfail
 X:\a04br3\touch-provider-status.exe
@@ -52,6 +54,9 @@ echo NAMED_TOUCH_WINPE_FAILED
 goto dismount
 :toprgufail
 echo NAMED_TOPRGU_WINPE_FAILED
+goto dismount
+:modelfail
+echo NAMED_EMMC_MODEL_FAILED
 goto dismount
 :logfail
 echo NAMED_DEVICE_LOG_SAVE_FAILED

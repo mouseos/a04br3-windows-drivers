@@ -33,6 +33,7 @@ p.add_argument('--storage-upgrade-package', type=Path, help='MT8167 MSDC boot pa
 p.add_argument('--storage-original', type=Path, help='Expected active legacy storage SYS for guarded replacement')
 p.add_argument('--toprgu-package', type=Path, help='MT8167 TOPRGU watchdog test package')
 p.add_argument('--toprgu-provider-status', type=Path, help='Read-only TOPRGU PnP status executable')
+p.add_argument('--read-emmc-model', type=Path, help='Read-only volatile eMMC model utility')
 p.add_argument('--disable-quickedit', type=Path, help='Optional signed console selection control executable')
 a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
@@ -92,6 +93,8 @@ if a.toprgu_package:
         files[f'/a04br3/toprgu/{name}'] = a.toprgu_package / name
 if a.toprgu_provider_status:
     files['/a04br3/toprgu-provider-status.exe'] = a.toprgu_provider_status
+if a.read_emmc_model:
+    files['/a04br3/read-emmc-model.exe'] = a.read_emmc_model
 if a.disable_quickedit:
     files['/a04br3/disable-quickedit.exe'] = a.disable_quickedit
 for source in [a.source_wim, *files.values()]:
