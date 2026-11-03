@@ -21,6 +21,7 @@ NTSTATUS a04_gpu_allocate_memory(PDMA_ADAPTER adapter, struct a04_gpu_dma_memory
 {
     if (!adapter || !m || !adapter->DmaOperations || !adapter->DmaOperations->AllocateCommonBuffer ||
         !adapter->DmaOperations->FreeCommonBuffer || KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_INVALID_PARAMETER;
+    if (m->adapter || m->heap || m->table) return STATUS_INVALID_DEVICE_STATE;
     RtlZeroMemory(m,sizeof(*m)); m->adapter=adapter;
     m->heap=adapter->DmaOperations->AllocateCommonBuffer(adapter,A04_PVR_HEAP_SIZE,&m->heap_logical,FALSE);
     if (!m->heap || !valid_address(m->heap_logical,A04_PVR_HEAP_SIZE)) goto fail;
@@ -61,4 +62,15 @@ NTSTATUS a04_gpu_register_io_init(struct a04_gpu_register_context *context,
     io->write32=write32; io->write64=write64; io->delay_us=delay_us;
     return STATUS_SUCCESS;
 }
-void a04_gpu_dma_barrier(void) { KeMemoryBarrier(); }
+void a04_gpu_dma_barrier(void)
+{
+#if defined(__clang__) && defined(_ARM_)
+    /* WDK 8.1's _ReadWriteBarrier is not provided as a linkable symbol by
+     * clang; use the ARM full-system DMB intrinsic with compiler barriers. */
+    __asm__ volatile ("" ::: "memory");
+    __builtin_arm_dmb(15);
+    __asm__ volatile ("" ::: "memory");
+#else
+    KeMemoryBarrier();
+#endif
+}

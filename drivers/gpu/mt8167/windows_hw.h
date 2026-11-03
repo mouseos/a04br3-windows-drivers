@@ -9,7 +9,8 @@ struct a04_gpu_dma_memory {
     PHYSICAL_ADDRESS heap_logical, table_logical;
 };
 struct a04_gpu_register_context { volatile UCHAR *base; ULONG length; };
-/* The adapter must be the device's bus-master DMA adapter. Call at PASSIVE.
+/* The adapter must be the device's bus-master DMA adapter; memory must be
+ * zero-initialized and not already own allocations. Call at PASSIVE.
  * Stop the GPU and quiesce DMA before freeing its allocations. */
 NTSTATUS a04_gpu_allocate_memory(PDMA_ADAPTER adapter, struct a04_gpu_dma_memory *memory);
 void a04_gpu_free_memory(struct a04_gpu_dma_memory *memory);
