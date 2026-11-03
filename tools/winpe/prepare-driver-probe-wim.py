@@ -32,6 +32,7 @@ p.add_argument('--touch-provider-original-inf', type=Path, help='Exact currently
 p.add_argument('--storage-upgrade-package', type=Path, help='MT8167 MSDC boot package to stage, without replacing WinPE storage')
 p.add_argument('--storage-original', type=Path, help='Expected active legacy storage SYS for guarded replacement')
 p.add_argument('--toprgu-package', type=Path, help='MT8167 TOPRGU watchdog test package')
+p.add_argument('--toprgu-original', type=Path, help='Expected installed TOPRGU SYS for guarded upgrade')
 p.add_argument('--toprgu-provider-status', type=Path, help='Read-only TOPRGU PnP status executable')
 p.add_argument('--read-emmc-model', type=Path, help='Read-only volatile eMMC model utility')
 p.add_argument('--disable-quickedit', type=Path, help='Optional signed console selection control executable')
@@ -91,6 +92,8 @@ if a.storage_original:
 if a.toprgu_package:
     for name in ('mt8167-toprgu.inf', 'mt8167-toprgu.sys', 'mt8167-toprgu.cat'):
         files[f'/a04br3/toprgu/{name}'] = a.toprgu_package / name
+if a.toprgu_original:
+    files['/a04br3/toprgu-original.sys'] = a.toprgu_original
 if a.toprgu_provider_status:
     files['/a04br3/toprgu-provider-status.exe'] = a.toprgu_provider_status
 if a.read_emmc_model:

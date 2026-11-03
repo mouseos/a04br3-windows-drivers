@@ -33,6 +33,15 @@ try {
     $out=& cmd.exe /c "$base\stage.cmd"
     if (-not ($out -match 'NAMED_DEVICE_PRECONDITION_REJECTED')) { throw 'mismatched storage was accepted' }
     [IO.File]::WriteAllText("$base\src\storage-original.sys",'storage')
+    [IO.File]::WriteAllText("$base\Windows\System32\drivers\mt8167-toprgu.sys",'watchdog')
+    [IO.File]::WriteAllText("$base\src\toprgu-original.sys",'watchdog')
+    [IO.File]::WriteAllText("$base\upgrade.cmd",(PrepareBatch 'startnet-upgrade-toprgu.cmd'),[Text.Encoding]::ASCII)
+    $out=& cmd.exe /c "$base\upgrade.cmd"
+    if (-not ($out -match 'TOPRGU_UPGRADE_WINDOWS_STAGED') -or -not ($out -match 'TOPRGU_UPGRADE_DISM_EXIT=0')) { throw ($out -join ' ') }
+    Remove-Item "$base\Windows\Temp\a04br3-toprgu-upgrade-dism.log"
+    [IO.File]::WriteAllText("$base\src\toprgu-original.sys",'different')
+    $out=& cmd.exe /c "$base\upgrade.cmd"
+    if (-not ($out -match 'TOPRGU_UPGRADE_PRECONDITION_REJECTED')) { throw 'mismatched TOPRGU was accepted' }
     & reg load HKLM\A04TEMP $hive | Out-Null
     & reg add HKLM\A04TEMP\ControlSet001\Services\a04msdcboot /v ImagePath /t REG_EXPAND_SZ /d 'System32\drivers\mt8167-msdc.sys' /f | Out-Null
     & reg unload HKLM\A04TEMP | Out-Null

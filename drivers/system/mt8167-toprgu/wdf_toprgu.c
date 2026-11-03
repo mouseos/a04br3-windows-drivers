@@ -4,6 +4,10 @@
 #include <ntddk.h>
 #include <wdf.h>
 #include "reset_command.h"
+#include "watchdog_policy.h"
+#ifndef A04_TOPRGU_DEADLINE_SECONDS
+#define A04_TOPRGU_DEADLINE_SECONDS 0
+#endif
 
 typedef struct {
     volatile ULONG *wdt, *uart;
@@ -74,6 +78,9 @@ NTSTATUS ToprguD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     InterlockedExchange(&c->running,1);
     Trace(c, KeQueryActiveProcessorCount(NULL) >= 4 ?
           "A04RGU D0 active CPUs>=4\n" : "A04RGU D0 active CPUs<4\n");
+#if A04_TOPRGU_DEADLINE_SECONDS > 0
+    Trace(c,"A04RGU bounded watchdog test enabled\n");
+#endif
     WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(20));
     return STATUS_SUCCESS;
 }
@@ -94,7 +101,13 @@ VOID ToprguTimer(WDFTIMER timer)
     ULONG i;
     if (InterlockedCompareExchange(&c->busy,1,0) != 0) return;
     if (InterlockedCompareExchange(&c->running,1,1) && c->wdt && c->uart) {
-        if ((++c->ticks % 50u) == 0) WRITE_REGISTER_ULONG(c->wdt + 2,0x1971u);
+        ++c->ticks;
+#if A04_TOPRGU_DEADLINE_SECONDS > 0
+        if (c->ticks == A04_TOPRGU_DEADLINE_SECONDS * 50u)
+            Trace(c,"A04RGU bounded watchdog deadline reached\n");
+#endif
+        if (mt8167_watchdog_should_feed(c->ticks,A04_TOPRGU_DEADLINE_SECONDS))
+            WRITE_REGISTER_ULONG(c->wdt + 2,0x1971u);
         /* CPU1 owns UART until all four OS processors are online. */
         if (KeQueryActiveProcessorCount(NULL) >= 4) {
             for (i=0; i<16; ++i) {
