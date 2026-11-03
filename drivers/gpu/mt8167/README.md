@@ -47,6 +47,10 @@ buffers use the device adapter's logical addresses, and split 32-bit MMIO
 writes follow the low-then-high order in this device's released Linux source.
 The Windows PnP/WDDM owner, DMA adapter setup, GPU quiescence before free and
 real-device behavior are not yet implemented or verified.
+`windows_firmware.c` composes these steps and waits for the firmware-started
+flag. It is not called by a PnP driver and has not been run on the device.
+After issuing hardware writes it retains DMA memory even on timeout: a caller
+must first establish that GPU DMA is quiescent before releasing that memory.
 For a host check with that exact firmware:
 
 ```
