@@ -14,6 +14,7 @@ p.add_argument('--output', type=Path, required=True)
 p.add_argument('--startnet', type=Path, help='Override the default diagnostic startnet script')
 p.add_argument('--guarded-test', type=Path, help='Optional ARM32 guarded-write diagnostic executable')
 p.add_argument('--bcd-export', type=Path, help='Optional ARM32 guarded BCD export executable')
+p.add_argument('--button-inject', type=Path, help='Optional ARM32 button notification diagnostic')
 a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
 startnet = a.startnet or root / 'tools/winpe/startnet-driver-probe.cmd'
@@ -25,6 +26,8 @@ if a.guarded_test:
     files['/a04br3/guarded-write-test.exe'] = a.guarded_test
 if a.bcd_export:
     files['/a04br3/guarded-bcd-export.exe'] = a.bcd_export
+if a.button_inject:
+    files['/a04br3/button-inject.exe'] = a.button_inject
 for source in [a.source_wim, *files.values()]:
     if not source.is_file():
         raise SystemExit(f'Missing input: {source}')
