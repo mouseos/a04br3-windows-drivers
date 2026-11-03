@@ -23,6 +23,8 @@ p.add_argument('--button-probe-original', type=Path, help='Expected existing dia
 p.add_argument('--compare-files', type=Path, help='Self-contained file comparison executable')
 p.add_argument('--button-kernel-probe', type=Path, help='Optional one-shot kernel interface probe')
 p.add_argument('--flush-probe-reference', type=Path, help='Expected diagnostic file content for guarded cleanup')
+p.add_argument('--button-provider-package', type=Path, help='Optional experimental provider INF, SYS and CAT')
+p.add_argument('--button-provider-status', type=Path, help='Optional read-only provider PnP status executable')
 a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
 startnet = a.startnet or root / 'tools/winpe/startnet-driver-probe.cmd'
@@ -53,6 +55,11 @@ if a.button_kernel_probe:
     files['/a04br3/button-kernel-probe.sys'] = a.button_kernel_probe
 if a.flush_probe_reference:
     files['/a04br3/flush-probe-reference.txt'] = a.flush_probe_reference
+if a.button_provider_package:
+    for name in ('a04-button-provider.inf', 'a04buttonprovider.sys', 'a04buttonprovider.cat'):
+        files[f'/a04br3/button-provider/{name}'] = a.button_provider_package / name
+if a.button_provider_status:
+    files['/a04br3/button-provider-status.exe'] = a.button_provider_status
 for source in [a.source_wim, *files.values()]:
     if not source.is_file():
         raise SystemExit(f'Missing input: {source}')

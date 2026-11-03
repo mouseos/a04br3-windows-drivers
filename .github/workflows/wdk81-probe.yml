@@ -67,6 +67,9 @@ jobs:
       - name: Compile experimental KMDF button provider
         shell: pwsh
         run: ./tools/ci/build-button-provider.ps1
+      - name: Compile button provider PnP status tool
+        shell: pwsh
+        run: ./tools/ci/build-button-provider-status.ps1
       - name: Compile WinPE file comparison tool
         shell: pwsh
         run: ./tools/ci/build-compare-files.ps1 -Arch arm
