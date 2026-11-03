@@ -55,6 +55,15 @@ static void probe_thread(PVOID context)
                 OBJECT_ATTRIBUTES attributes;
                 IO_STATUS_BLOCK io_status;
                 HANDLE file = NULL;
+                unsigned j;
+                trace("A04BUTTON interface path=");
+                for (j = 0; j < 512 && links[j]; ++j) {
+                    char text[2];
+                    text[0] = links[j] < 0x80 ? (char)links[j] : '?';
+                    text[1] = 0;
+                    trace(text);
+                }
+                trace("\n");
                 RtlInitUnicodeString(&path, links);
                 InitializeObjectAttributes(&attributes, &path,
                     OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
