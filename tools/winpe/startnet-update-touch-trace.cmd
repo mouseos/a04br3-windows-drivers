@@ -30,7 +30,7 @@ if not "%A04_DISM_RESULT%"=="0" goto dismfail
 echo TOUCH_TRACE_WINDOWS_STAGED
 goto dismount
 :match
-X:\a04br3\compare-files.exe "%~1" X:\a04br3\touch-provider\bu21025.inf >nul 2>&1
+X:\a04br3\compare-files.exe "%~1" X:\a04br3\touch-provider-original.inf >nul 2>&1
 if errorlevel 1 exit /b 0
 set /a A04_MATCH_COUNT+=1
 set "A04_DRIVER_ID=%~2"
