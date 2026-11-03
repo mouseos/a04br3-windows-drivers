@@ -97,6 +97,9 @@ jobs:
         run: |
           ./tools/ci/build-compare-files.ps1 -Arch x64
           ./tools/ci/test-button-kernel-missing.ps1
+      - name: Test button provider staging guards
+        shell: pwsh
+        run: ./tools/ci/test-button-provider-stage.ps1
       - name: Open restricted SSH for intervention
         id: remote
         if: ${{ always() && inputs.ssh_debug }}
