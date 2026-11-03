@@ -2,6 +2,7 @@
 /* Non-operational Storport probe; initialization deliberately refuses start. */
 #include <ntddk.h>
 #include <storport.h>
+#include <ntddscsi.h>
 #include "pio.h"
 #ifdef A04_READONLY_DISK_PROBE
 #include "cdb.h"
