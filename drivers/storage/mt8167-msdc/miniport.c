@@ -682,6 +682,18 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
             A04Trace("A04WIN SCSI rejected opcode="); A04TraceHex(opcode);
             A04Trace(" sense="); A04TraceHex(result.sense_key);
             A04Trace(" asc="); A04TraceHex(result.asc); A04Trace("\n");
+            /* MODE SENSE rejection depends on page/control fields, not just
+             * the opcode. Log the bounded command bytes for diagnosis. */
+            if (opcode == 0x1a || opcode == 0x5a) {
+                ULONG length = request->CdbLength;
+                if (length > sizeof(request->Cdb)) length = sizeof(request->Cdb);
+                A04Trace("A04WIN rejected MODE SENSE cdb length=");
+                A04TraceHex(length); A04Trace(" bytes=");
+                for (i = 0; i < length; ++i) {
+                    A04TraceHex(request->Cdb[i]); A04Trace(" ");
+                }
+                A04Trace("\n");
+            }
             A04Sense(request, result.sense_key, result.asc);
         } else if (result.action == A04_SCSI_REPLY) {
             request->DataTransferLength = result.transfer_length;
