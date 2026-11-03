@@ -17,6 +17,10 @@
 #define A04_REPAIR_LENGTH 15147204608LL
 #endif
 
+static WCHAR root[] = L"C:\\";
+static WCHAR volume[] = L"\\\\.\\C:";
+static WCHAR marker[] = L"C:\\Windows\\System32\\config\\SYSTEM";
+
 static void say(const char *text)
 {
     DWORD n = 0, written;
@@ -26,7 +30,6 @@ static void say(const char *text)
 
 void mainCRTStartup(void)
 {
-    WCHAR root[] = L"C:\\", volume[] = L"\\\\.\\C:", marker[] = L"C:\\Windows\\System32\\config\\SYSTEM";
     WCHAR label[64];
     VOLUME_DISK_EXTENTS extents;
     DWORD size = 0, flags, before, after;
