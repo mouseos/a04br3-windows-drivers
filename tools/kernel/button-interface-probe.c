@@ -105,6 +105,7 @@ static void probe_thread(PVOID context)
                 OBJECT_ATTRIBUTES attributes;
                 IO_STATUS_BLOCK io_status;
                 HANDLE file = NULL;
+                UCHAR state[5] = {0};
                 unsigned j;
                 trace("A04BUTTON interface path=");
                 for (j = 0; j < 512 && links[j]; ++j) {
@@ -117,10 +118,25 @@ static void probe_thread(PVOID context)
                 RtlInitUnicodeString(&path, links);
                 InitializeObjectAttributes(&attributes, &path,
                     OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
-                open_status = ZwCreateFile(&file, FILE_WRITE_DATA | SYNCHRONIZE,
+                open_status = ZwCreateFile(&file, FILE_READ_DATA | FILE_WRITE_DATA | SYNCHRONIZE,
                     &attributes, &io_status, NULL, FILE_ATTRIBUTE_NORMAL, 0,
                     FILE_OPEN, FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0);
-                if (NT_SUCCESS(open_status)) ZwClose(file);
+                if (NT_SUCCESS(open_status)) {
+                    NTSTATUS read_status;
+                    io_status.Status = STATUS_UNSUCCESSFUL; io_status.Information = 0;
+                    read_status = ZwReadFile(file, NULL, NULL, NULL, &io_status,
+                                             state, sizeof(state), NULL, NULL);
+                    trace("A04BUTTON interface read status="); trace_hex((ULONG)read_status);
+                    trace(" bytes="); trace_hex((ULONG)io_status.Information); trace("\n");
+                    if (NT_SUCCESS(read_status) && io_status.Information == sizeof(state)) {
+                        trace("A04BUTTON interface state=");
+                        for (j = 0; j < sizeof(state); ++j) {
+                            trace_hex(state[j]); trace(" ");
+                        }
+                        trace("\n");
+                    }
+                    ZwClose(file);
+                }
             }
         } else saw_error = TRUE;
         if (links) ExFreePool(links);
