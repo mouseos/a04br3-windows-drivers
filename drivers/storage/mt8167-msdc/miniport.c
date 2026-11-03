@@ -40,7 +40,7 @@ struct a04_probe_extension {
     volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; ULONG requests; BOOLEAN failed; BOOLEAN write_ready; BOOLEAN cache_disabled;
     a04_msdc_gate ioBusy;
 #ifdef A04_SERIAL_QUEUE_EXPERIMENT
-    volatile LONG busyCount;
+    volatile LONG busyCount, gateBusyCount, workerInitFailCount, workerQueueFailCount;
 #endif
 #ifdef A04_ENABLE_WRITES
     ULONG write_first, write_last, esp_first, esp_last;
@@ -847,6 +847,9 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
                     result.blocks.lba == (uint64_t)A04_SCRATCH_LBA + 8u) {
 #ifdef A04_SERIAL_QUEUE_EXPERIMENT
                     A04Trace("A04WIN queue busy count="); A04TraceHex((ULONG)probe->busyCount); A04Trace("\n");
+                    A04Trace("A04WIN queue gate/init/submit="); A04TraceHex((ULONG)probe->gateBusyCount);
+                    A04Trace("/"); A04TraceHex((ULONG)probe->workerInitFailCount);
+                    A04Trace("/"); A04TraceHex((ULONG)probe->workerQueueFailCount); A04Trace("\n");
 #endif
                     A04Trace("A04WIN scratch verification sentinel complete\n");
                 }
@@ -887,11 +890,24 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
     struct a04_probe_extension *probe=(struct a04_probe_extension *)extension;
     PVOID worker=NULL;
     ULONG status;
-    if (!a04_msdc_gate_acquire(&probe->ioBusy)) goto busy;
+    if (!a04_msdc_gate_acquire(&probe->ioBusy)) {
+#ifdef A04_SERIAL_QUEUE_EXPERIMENT
+        InterlockedIncrement(&probe->gateBusyCount);
+#endif
+        goto busy;
+    }
     status=StorPortInitializeWorker(extension,&worker);
-    if (status != STOR_STATUS_SUCCESS) goto release;
+    if (status != STOR_STATUS_SUCCESS) {
+#ifdef A04_SERIAL_QUEUE_EXPERIMENT
+        InterlockedIncrement(&probe->workerInitFailCount);
+#endif
+        goto release;
+    }
     status=StorPortQueueWorkItem(extension,A04PassiveWorker,worker,request);
     if (status == STOR_STATUS_SUCCESS) return TRUE;
+#ifdef A04_SERIAL_QUEUE_EXPERIMENT
+    InterlockedIncrement(&probe->workerQueueFailCount);
+#endif
     (void)StorPortFreeWorker(extension,worker);
 release:
     a04_msdc_gate_release(&probe->ioBusy);
