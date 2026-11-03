@@ -21,7 +21,7 @@ try {
         $batch=$batch -replace '(?m)^wpeinit\r?\n','' -replace '(?m)^drvload .*$', 'cmd /c exit 0'
         $batch=$batch -replace '(?m)^.*\\(disable-quickedit|guard-windows-volume|read-emmc-model|touch-provider-status|toprgu-provider-status)\.exe.*$', 'cmd /c exit 0'
         $batch=$batch -replace '(?m)^.*\\compare-files\.exe ', 'fc /b '
-        $batch=$batch -replace '(?m)^dism.exe .* > (.+) 2>&1$', 'cmd /c echo MOCK_DISM > $1'
+        $batch=$batch -replace '(?m)^dism.exe .* > (.+?) 2>&1\r?$', 'cmd /c echo MOCK_DISM > $1'
         $batch=$batch -replace '(?m)^mountvol C: /p\r?\n',''
         return $batch
     }
