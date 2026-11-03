@@ -39,7 +39,7 @@ try {
     [IO.File]::WriteAllText("$base\upgrade.cmd",(PrepareBatch 'startnet-upgrade-toprgu.cmd'),[Text.Encoding]::ASCII)
     $out=& cmd.exe /c "$base\upgrade.cmd"
     if (-not ($out -match 'TOPRGU_UPGRADE_WINDOWS_STAGED') -or -not ($out -match 'TOPRGU_UPGRADE_DISM_EXIT=0')) { throw ($out -join ' ') }
-    Remove-Item "$base\Windows\Temp\a04br3-toprgu-upgrade-v6-dism.log"
+    Remove-Item "$base\Windows\Temp\a04br3-toprgu-upgrade-v7-dism.log"
     [IO.File]::WriteAllText("$base\src\toprgu-original.sys",'different')
     $out=& cmd.exe /c "$base\upgrade.cmd"
     if (-not ($out -match 'TOPRGU_UPGRADE_PRECONDITION_REJECTED')) { throw 'mismatched TOPRGU was accepted' }
