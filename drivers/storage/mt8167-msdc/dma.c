@@ -36,6 +36,8 @@
  * The clock must advance even when the caller runs above timer interrupt IRQL. */
 static int a04_dma_expired(const struct a04_dma_clock *clock, uint64_t start, uint32_t n)
 {
+    if (clock && clock->observe && (n & 4095u)==4095u)
+        clock->observe(clock->context,n+1);
     return clock && !(n & 1023u) && clock->now(clock->context) - start >= clock->ticks;
 }
 

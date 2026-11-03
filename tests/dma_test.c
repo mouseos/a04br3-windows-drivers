@@ -4,7 +4,7 @@
 #include <string.h>
 #include "dma.h"
 
-struct fake { uint32_t regs[64]; int command_error, data_error, no_stop, no_command, fifo_stuck, started; uint32_t first_command, delay, reads; uint64_t time; };
+struct fake { uint32_t regs[64]; int command_error, data_error, no_stop, no_command, fifo_stuck, started; uint32_t first_command, delay, reads, observed; uint64_t time; };
 static uint32_t rd(void *p, uint32_t off)
 {
     struct fake *f = p;
@@ -33,6 +33,7 @@ static void wr(void *p, uint32_t off, uint32_t val)
     }
 }
 static uint64_t now(void *p) { struct fake *f = p; return f->time++; }
+static void observe(void *p, uint32_t polls) { struct fake *f=p; assert(polls == 4096); ++f->observed; }
 static struct a04_msdc_io init(struct fake *f)
 {
     struct a04_msdc_io io = {f, rd, 0, wr};
@@ -62,7 +63,7 @@ int main(void)
     io = init(&f); f.regs[0x010/4] = 1u << 12;
     assert(a04_msdc_dma_read_sector(&io, 0, 0x100040, 64, 10) == A04_DMA_BUSY && !f.started);
     {
-        struct a04_dma_clock clock = { &f, now, 3 };
+        struct a04_dma_clock clock = { &f, now, 3, 0 };
         io = init(&f); f.delay = 1500;
         assert(a04_msdc_dma_sector_timed(&io, 0, 0x100040, 64, 5000, 0, 0, &clock) == A04_DMA_OK);
         io = init(&f); f.delay = 99999;
@@ -72,6 +73,10 @@ int main(void)
         io = init(&f); f.fifo_stuck = 1;
         assert(a04_msdc_dma_sector_timed(&io, 0, 0x100040, 64, 100000000, 0, 0, &clock) == A04_DMA_BUSY);
         assert(f.time >= 3 && f.time < 10);
+        io = init(&f); f.no_command = 1; clock.ticks=6; clock.observe=observe;
+        assert(a04_msdc_dma_sector_timed(&io, 0, 0x100040, 64, 100000000, 0, 0, &clock) == A04_DMA_COMMAND_TIMEOUT);
+        assert(f.observed == 1);
+        clock.ticks=3; clock.observe=0;
         io = init(&f); f.no_command = 1;
         assert(a04_msdc_dma_sector_timed(&io, 0, 0x100040, 64, 100000000, 0, 0, &clock) == A04_DMA_COMMAND_TIMEOUT);
         assert(f.time >= 3 && f.time < 10);

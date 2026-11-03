@@ -80,24 +80,28 @@ static void A04TraceHex(ULONG value)
 struct a04_clock_context {
     struct a04_probe_extension *probe;
     uint64_t first;
-    ULONG calls, reports;
+    ULONG reports;
     BOOLEAN four;
 };
 static uint64_t A04ClockNow(void *context)
 {
+    UNREFERENCED_PARAMETER(context);
+    uint64_t now=(uint64_t)KeQueryPerformanceCounter(NULL).QuadPart;
+    return now;
+}
+static void A04ClockObserve(void *context, uint32_t polls)
+{
     struct a04_clock_context *c=(struct a04_clock_context *)context;
     uint64_t now=(uint64_t)KeQueryPerformanceCounter(NULL).QuadPart;
-    if (!c->calls) c->first=now;
-    ++c->calls;
-    if (c->four && c->reports<3 && (c->calls % 256u)==0) {
+    if (c->four && c->reports<3) {
         ++c->reports;
         A04Trace("A04WIN dma poll cpu="); A04TraceHex(KeGetCurrentProcessorNumber());
         A04Trace(" irql="); A04TraceHex((ULONG)KeGetCurrentIrql());
+        A04Trace(" polls="); A04TraceHex(polls);
         A04Trace(" elapsed-low="); A04TraceHex((ULONG)(now-c->first));
         A04Trace(" int="); A04TraceHex(A04Read32(c->probe,0x00c));
         A04Trace(" dma="); A04TraceHex(A04Read32(c->probe,0x09c)); A04Trace("\n");
     }
-    return now;
 }
 /* Diagnostic synchronization for the resident common buffer. This does not
  * resolve the unexpected cacheability of the Windows mapping. */
@@ -118,8 +122,10 @@ static enum a04_dma_result A04DmaSector(struct a04_probe_extension *probe,
     clockContext.probe=probe;
     clockContext.four=KeQueryActiveProcessorCount(NULL)>=4;
     clock.context = &clockContext; clock.now = A04ClockNow;
+    clock.observe = A04ClockObserve;
     clock.ticks = (uint64_t)frequency.QuadPart * 10u;
     start = A04ClockNow(&clockContext);
+    clockContext.first = start;
     result = a04_msdc_dma_sector_timed(io, lba, probe->dma_bus,
                        probe->dma_alignment, 100000000u, write, 1, &clock);
     if (result != A04_DMA_OK) {
