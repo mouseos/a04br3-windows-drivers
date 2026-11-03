@@ -55,15 +55,23 @@ static int check_chkdsk(void)
 void mainCRTStartup(void)
 {
     WCHAR label[64], fs[32]; VOLUME_DISK_EXTENTS extents;
-    DWORD size=0, flags, attrs; HANDLE h;
+    DWORD size=0, flags, attrs, attempt; HANDLE h;
     if (has_option(GetCommandLineW(),L"--check-chkdsk")) {
         if (check_chkdsk()) { say("CHKDSK_EXPECTED_INDEX_ONLY\r\n"); ExitProcess(0); }
         say("CHKDSK_OUTPUT_REJECTED\r\n"); ExitProcess(2);
     }
     root[0]=A04_GUARD_DRIVE; volume[4]=A04_GUARD_DRIVE; marker[0]=A04_GUARD_DRIVE;
-    if (!GetVolumeInformationW(root,label,64,NULL,NULL,&flags,fs,32) ||
-        lstrcmpiW(label,L"Windows") || lstrcmpiW(fs,L"NTFS") ||
-        GetFileAttributesW(marker)==INVALID_FILE_ATTRIBUTES) {
+    /* drvload may return before PnP mounts the Windows volume, especially
+     * when multiple CPUs enumerate devices concurrently. Retry only these
+     * read-only identity checks; retain all final checks below. */
+    for (attempt=0; attempt<60; ++attempt) {
+        if (GetVolumeInformationW(root,label,64,NULL,NULL,&flags,fs,32) &&
+            !lstrcmpiW(label,L"Windows") && !lstrcmpiW(fs,L"NTFS") &&
+            GetFileAttributesW(marker)!=INVALID_FILE_ATTRIBUTES) break;
+        if (attempt==0) say("VOLUME_GUARD_WAITING_FOR_WINDOWS\r\n");
+        Sleep(1000);
+    }
+    if (attempt==60) {
         say("VOLUME_GUARD label, filesystem or marker rejected\r\n"); ExitProcess(2);
     }
     attrs=GetFileAttributesW(root);
