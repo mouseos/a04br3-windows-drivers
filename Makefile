@@ -5,7 +5,7 @@ SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test test-ntfs-root arm-coff clean
 
-test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test build/eint_test
+test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/button_pipeline_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test build/eint_test
 	./build/cdb_test
 	./build/pio_test
 	./build/scsi_capacity_test
@@ -13,6 +13,7 @@ test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test buil
 	./build/scsi_test
 	python3 tests/gpt_guard_fixtures.py
 	./build/button_state_test
+	./build/button_pipeline_test
 	./build/bu21025_test
 	./build/i2c_pio_test
 	./build/bu21025_bus_test
@@ -77,6 +78,10 @@ build/button_state_test: drivers/input/a04br3-buttons/button_state.c drivers/inp
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/input/a04br3-buttons drivers/input/a04br3-buttons/button_state.c tests/button_state_test.c -o $@
 
+build/button_pipeline_test: drivers/input/a04br3-buttons/button_pipeline.c drivers/input/a04br3-buttons/button_pipeline.h drivers/input/a04br3-buttons/button_state.c drivers/input/a04br3-buttons/button_state.h tests/button_pipeline_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/input/a04br3-buttons drivers/input/a04br3-buttons/button_pipeline.c drivers/input/a04br3-buttons/button_state.c tests/button_pipeline_test.c -o $@
+
 build/gpt_guard_test: $(SRC)/gpt_guard.c $(SRC)/gpt_guard.h tests/gpt_guard_test.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -I$(SRC) $(SRC)/gpt_guard.c tests/gpt_guard_test.c -o $@
@@ -114,6 +119,7 @@ arm-coff: $(SRC)/cdb.c $(SRC)/cdb.h
 	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/input/bu21025/pipeline.c -o build/touch-pipeline-arm.obj
 	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/input/bu21025/device.c -o build/touch-device-arm.obj
 	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/bus/mt8167-eint/eint.c -o build/eint-arm.obj
+	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/input/a04br3-buttons/button_pipeline.c -o build/button-pipeline-arm.obj
 
 clean:
 	rm -rf build

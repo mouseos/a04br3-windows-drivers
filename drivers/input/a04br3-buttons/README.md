@@ -22,3 +22,12 @@ and device verification.
 
 Run `make test` from the repository root.  The tests do not demonstrate hardware
 behavior or Windows integration.
+
+`button_pipeline` tracks each button independently using three consecutive
+valid samples, and proposes one notification at a time. Failed source reads
+pause that source until fresh samples stabilize; successful notifications must
+be acknowledged explicitly. An endpoint disconnect invalidates synchronization
+and stops notifications until its state is established again. The caller must
+serialize sampling, writes and acknowledgements. This component does not read
+registers, open the Windows interface, provide a synchronization mechanism, or
+guarantee detection of a complete press between samples.
