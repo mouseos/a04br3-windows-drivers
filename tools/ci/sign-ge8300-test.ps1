@@ -5,8 +5,9 @@ $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
 $tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
 $source = Join-Path $tempRoot 'mt8167-ge8300-provider\package'
 $sourceStatus = Join-Path $tempRoot 'mt8167-ge8300-status\ge8300-status.exe'
+$sourcePnp = Join-Path $tempRoot 'mt8167-ge8300-status\ge8300-pnp-status.exe'
 $package = Join-Path $tempRoot 'mt8167-ge8300-test-signed'
-if (-not (Test-Path (Join-Path $source 'mt8167-ge8300.cat')) -or -not (Test-Path $sourceStatus)) { throw 'Build provider and status tool first' }
+if (-not (Test-Path (Join-Path $source 'mt8167-ge8300.cat')) -or -not (Test-Path $sourceStatus) -or -not (Test-Path $sourcePnp)) { throw 'Build provider and status tools first' }
 if (Test-Path $package) { throw 'Test package directory already exists' }
 Copy-Item -Recurse $source $package
 $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=MT8167 GE8300 Development' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
@@ -23,4 +24,7 @@ if ($LASTEXITCODE -ne 0) { throw 'GE8300 catalog signing failed' }
 Copy-Item $sourceStatus (Join-Path $package 'ge8300-status.exe')
 & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $package 'ge8300-status.exe')
 if ($LASTEXITCODE -ne 0) { throw 'GE8300 status signing failed' }
+Copy-Item $sourcePnp (Join-Path $package 'ge8300-pnp-status.exe')
+& $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $package 'ge8300-pnp-status.exe')
+if ($LASTEXITCODE -ne 0) { throw 'GE8300 PnP status signing failed' }
 Write-Host "Test-signed GE8300 package: $package. The private key remains on this runner."

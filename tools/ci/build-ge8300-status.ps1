@@ -10,3 +10,7 @@ New-Item -ItemType Directory -Force $out | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'ARM GE8300 status compilation failed' }
 & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib (Join-Path $out 'status.obj') (Join-Path $lib 'kernel32.lib') "/out:$out\ge8300-status.exe"
 if ($LASTEXITCODE -ne 0) { throw 'ARM GE8300 status link failed' }
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DA04_GE8300_PROVIDER_STATUS "-I$inc\um" "-I$inc\shared" -c (Join-Path $root 'tools\winpe\button-provider-status.c') -o (Join-Path $out 'pnp.obj')
+if ($LASTEXITCODE -ne 0) { throw 'ARM GE8300 PnP status compilation failed' }
+& lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib (Join-Path $out 'pnp.obj') (Join-Path $lib 'kernel32.lib') (Join-Path $lib 'cfgmgr32.lib') "/out:$out\ge8300-pnp-status.exe"
+if ($LASTEXITCODE -ne 0) { throw 'ARM GE8300 PnP status link failed' }
