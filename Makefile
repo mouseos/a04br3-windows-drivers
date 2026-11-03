@@ -14,6 +14,7 @@ test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test buil
 	python3 tests/gpt_guard_fixtures.py
 	./build/button_state_test
 	./build/button_pipeline_test
+	python3 tests/update_driver_ntfs_test.py
 	./build/bu21025_test
 	./build/i2c_pio_test
 	./build/bu21025_bus_test

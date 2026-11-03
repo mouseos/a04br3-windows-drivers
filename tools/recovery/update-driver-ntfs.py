@@ -9,6 +9,7 @@ import subprocess
 import sys
 
 p = argparse.ArgumentParser()
+p.add_argument('--serial', required=True, help='対象端末のADBシリアル')
 p.add_argument('--package', type=Path, required=True)
 p.add_argument('--ntfs3g', type=Path, required=True, help='端末で実行できる静的ntfs-3g')
 p.add_argument('--backup-dir', type=Path, required=True, help='新規作成するバックアップ先')
@@ -21,7 +22,7 @@ def run(*args, capture=False):
     return subprocess.run(args, check=True, text=True, stdout=subprocess.PIPE if capture else None).stdout
 
 def adb(*args):
-    return run('adb', *args, capture=True).strip()
+    return run('adb', '-s', a.serial, *args, capture=True).strip()
 
 def shell(command):
     return adb('shell', '-T', command)
@@ -29,7 +30,8 @@ def shell(command):
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
-if adb('get-state') != 'recovery' or adb('shell', 'id', '-u') != '0':
+if (adb('get-state') != 'recovery' or adb('shell', 'id', '-u') != '0' or
+        adb('shell', 'getprop', 'ro.product.device') != 'a04br3'):
     raise SystemExit('rootのAndroid recoveryが必要です')
 if (adb('shell', 'readlink', '/dev/block/by-name/Windows') != '/dev/block/mmcblk0p20' or
     adb('shell', 'cat', '/sys/class/block/mmcblk0p20/start') != '917504' or
@@ -50,11 +52,11 @@ targets = [('active.sys', 'Windows/System32/Drivers/a04msdcprobe.sys', 'a04msdcp
            ('store.cat', f'{repo}/a04msdcprobe.cat', 'a04msdcprobe.cat'),
            ('catroot.cat', f'{catroot}/oem32.cat', 'a04msdcprobe.cat')]
 shell(f'mkdir -p {remote} {mount}')
-run('adb', 'push', str(a.ntfs3g), f'{remote}/ntfs-3g')
+run('adb', '-s', a.serial, 'push', str(a.ntfs3g), f'{remote}/ntfs-3g')
 if shell(f'sha256sum {remote}/ntfs-3g').split()[0] != digest(a.ntfs3g):
     raise SystemExit('転送されたntfs-3gのハッシュが不一致です')
 for n in files:
-    run('adb', 'push', str(a.package / n), f'{remote}/{n}')
+    run('adb', '-s', a.serial, 'push', str(a.package / n), f'{remote}/{n}')
 for n in files:
     if shell(f'sha256sum {remote}/{n}').split()[0] != digest(a.package / n):
         raise SystemExit(f'転送された {n} のハッシュが不一致です')
@@ -69,7 +71,11 @@ try:
             raise RuntimeError('インストール済みINFがパッケージと異なります')
     a.backup_dir.mkdir(parents=True)
     for name, target, _ in targets:
-        run('adb', 'pull', f'{mount}/{target}', str(a.backup_dir / name))
+        run('adb', '-s', a.serial, 'pull', f'{mount}/{target}', str(a.backup_dir / name))
+    for name, _, _ in targets:
+        run('adb', '-s', a.serial, 'push', str(a.backup_dir / name), f'{remote}/{name}')
+        if shell(f'sha256sum {remote}/{name}').split()[0] != digest(a.backup_dir / name):
+            raise RuntimeError('バックアップの端末側ハッシュが不一致です')
     (a.backup_dir / 'manifest.json').write_text(json.dumps({
         'package_sha256': {n: digest(a.package / n) for n in files},
         'backup_sha256': {n: digest(a.backup_dir / n) for n, _, _ in targets},
@@ -79,9 +85,24 @@ try:
     mounted = False
     shell(f'{remote}/ntfs-3g /dev/block/by-name/Windows {mount}')
     mounted = True
+    matches = [line.split() for line in adb('shell', 'cat', '/proc/mounts').splitlines()
+               if len(line.split()) >= 4 and line.split()[1] == mount]
+    if len(matches) != 1 or 'rw' not in matches[0][3].split(','):
+        raise RuntimeError('Windows領域が読取り専用です。未クリーン状態を強制解除せず中止します')
     # Preserve existing file security metadata; the host backup permits recovery.
     commands = [f'cp "{remote}/{source}" "{mount}/{target}"' for _, target, source in targets]
-    shell('set -e; ' + '; '.join(commands) + '; sync')
+    try:
+        shell('set -e; ' + '; '.join(commands) + '; sync')
+        for _, target, source in targets:
+            if shell(f'sha256sum "{mount}/{target}"').split()[0] != digest(a.package / source):
+                raise RuntimeError(f'更新ファイルのハッシュが不一致です: {target}')
+    except (subprocess.CalledProcessError, RuntimeError):
+        restore = [f'cp "{remote}/{name}" "{mount}/{target}"' for name, target, _ in targets]
+        shell('set -e; ' + '; '.join(restore) + '; sync')
+        for name, target, _ in targets:
+            if shell(f'sha256sum "{mount}/{target}"').split()[0] != digest(a.backup_dir / name):
+                raise RuntimeError(f'復元ファイルのハッシュが不一致です: {target}')
+        raise
     shell(f'umount {mount}')
     mounted = False
     print(f'更新完了。バックアップ: {a.backup_dir}。Windowsの署名受理と起動は未検証です。')
@@ -90,4 +111,4 @@ except (subprocess.CalledProcessError, OSError, RuntimeError) as exc:
     raise
 finally:
     if mounted:
-        subprocess.run(['adb', 'shell', '-T', f'umount {mount}'], check=False)
+        subprocess.run(['adb', '-s', a.serial, 'shell', '-T', f'umount {mount}'], check=False)
