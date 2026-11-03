@@ -33,10 +33,14 @@ p.add_argument('--disable-quickedit', type=Path, help='Optional signed console s
 a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
 startnet = a.startnet or root / 'tools/winpe/startnet-driver-probe.cmd'
+storage_boot = (a.package / 'mt8167-msdc.inf').is_file()
+inf_name = 'mt8167-msdc.inf' if storage_boot else 'a04-msdc-probe.inf'
+sys_name = 'mt8167-msdc.sys' if storage_boot else 'a04msdcprobe.sys'
+cat_name = 'mt8167-msdc.cat' if storage_boot else 'a04msdcprobe.cat'
 files = {'/Windows/System32/startnet.cmd': startnet,
-         '/a04br3/a04-msdc-probe.inf': a.package / 'a04-msdc-probe.inf',
-         '/a04br3/a04msdcprobe.sys': a.package / 'a04msdcprobe.sys',
-         '/a04br3/a04msdcprobe.cat': a.package / 'a04msdcprobe.cat'}
+         '/a04br3/a04-msdc-probe.inf': a.package / inf_name,
+         f'/a04br3/{sys_name}': a.package / sys_name,
+         f'/a04br3/{cat_name}': a.package / cat_name}
 if a.guarded_test:
     files['/a04br3/guarded-write-test.exe'] = a.guarded_test
 if a.bcd_export:

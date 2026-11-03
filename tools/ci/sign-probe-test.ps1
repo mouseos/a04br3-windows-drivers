@@ -6,14 +6,17 @@ $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
 $base = Join-Path $env:RUNNER_TEMP 'a04br3-wdk81-probe'
 $source = Join-Path $base 'package'
 $package = Join-Path $base 'package-test-signed'
-if (-not (Test-Path (Join-Path $source 'a04msdcprobe.cat'))) { throw 'Build the diagnostic package first' }
+$bootPackage = Test-Path (Join-Path $source 'mt8167-msdc.inf')
+$sysName = if ($bootPackage) { 'mt8167-msdc.sys' } else { 'a04msdcprobe.sys' }
+$catName = if ($bootPackage) { 'mt8167-msdc.cat' } else { 'a04msdcprobe.cat' }
+if (-not (Test-Path (Join-Path $source $catName))) { throw 'Build the storage package first' }
 if (Test-Path $package) { throw 'Test package directory already exists' }
 Copy-Item -Recurse $source $package
 $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=A04BR3 Development Test' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
 Export-Certificate -Cert $cert -FilePath (Join-Path $package 'a04test.cer') | Out-Null
 $signtool = Join-Path $kit 'bin\x86\signtool.exe'
-$driver = Join-Path $package 'a04msdcprobe.sys'
-$catalog = Join-Path $package 'a04msdcprobe.cat'
+$driver = Join-Path $package $sysName
+$catalog = Join-Path $package $catName
 & $signtool sign /fd SHA256 /sha1 $cert.Thumbprint /s My $driver
 if ($LASTEXITCODE -ne 0) { throw 'Test driver signing failed' }
 Remove-Item $catalog

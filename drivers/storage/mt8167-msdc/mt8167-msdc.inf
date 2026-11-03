@@ -4,7 +4,7 @@ Signature = "$WINDOWS NT$"
 Class = SCSIAdapter
 ClassGuid = {4d36e97b-e325-11ce-bfc1-08002be10318}
 Provider = %Provider%
-CatalogFile = a04msdcprobe.cat
+CatalogFile = mt8167-msdc.cat
 DriverVer = 11/03/2026,0.0.1.1
 
 [Manufacturer]
@@ -23,21 +23,21 @@ AddService = a04msdcboot,0x00000002,Service
 DriverCopy = 12
 
 [DriverCopy]
-a04msdcprobe.sys
+mt8167-msdc.sys
 
 [Service]
 DisplayName = %ServiceDescription%
 ServiceType = 1
 StartType = 0
 ErrorControl = 1
-ServiceBinary = %12%\a04msdcprobe.sys
+ServiceBinary = %12%\mt8167-msdc.sys
 LoadOrderGroup = SCSI Miniport
 
 [SourceDisksNames]
 1 = %DiskName%,,,
 
 [SourceDisksFiles]
-a04msdcprobe.sys = 1
+mt8167-msdc.sys = 1
 
 [Strings]
 Provider = "TAB-A04-BR3 development"
