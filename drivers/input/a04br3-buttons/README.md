@@ -70,7 +70,10 @@ and reads five state bytes. In the default build it refuses synchronization
 because the inbox queue has no proven empty-state query, so it emits no input.
 `A04_ASSUME_PRISTINE_BUTTON_QUEUE=1` builds a strictly controlled initial-boot
 experiment that assumes an all-zero report means no earlier queued events.
-That assumption is not verified and is unsuitable for production. Both modes
+It additionally requires three valid samples showing all physical keys
+released before synchronizing; this prevents an uninitialized or failed input
+source from creating a synthetic press. The queue assumption is not verified
+and is unsuitable for production. Both modes
 stop on ambiguous delivery and disable input across power transitions. They do
 not implement interrupts, wake, clock setup or PMIC sharing with other owners.
 On Windows with the Windows 8.1 WDK, LLVM and `lld-link` on PATH,

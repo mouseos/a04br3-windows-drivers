@@ -28,6 +28,8 @@ typedef struct {
     volatile LONG timerEnabled;
     BOOLEAN attemptedSync;
     BOOLEAN permanentlyDisabled;
+    BOOLEAN awaitingReleased;
+    UCHAR baseline[5];
 } A04_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_CONTEXT, A04GetContext)
 EVT_WDF_DRIVER_DEVICE_ADD A04DeviceAdd;
@@ -101,8 +103,13 @@ static void TryEndpoint(A04_CONTEXT *c)
     /* Only the controlled test boot permits the explicitly unproven queue
      * assumption. Nonzero/special state or later D0 entries fail closed. */
     for (i = 0; i < sizeof(state); ++i) if (state[i] != 0) goto reject;
-    if (a04_button_device_sync_report(&c->hardware.device, state, sizeof(state),
-                                      A04_ASSUME_PRISTINE_BUTTON_QUEUE) == 0) return;
+    if (A04_ASSUME_PRISTINE_BUTTON_QUEUE) {
+        RtlCopyMemory(c->baseline, state, sizeof(state));
+        /* Sample both physical sources while unsynchronized. Never infer
+         * release from a failed source or emit ghost presses at startup. */
+        c->awaitingReleased = TRUE;
+        return;
+    }
 reject:
     ZwClose(c->endpoint); c->endpoint = NULL; c->permanentlyDisabled = TRUE;
 }
@@ -190,8 +197,17 @@ void A04Timer(WDFTIMER timer)
     if (InterlockedCompareExchange(&c->timerBusy, 1, 0) != 0) return;
     if (c->keypad && c->pwrap) {
         TryEndpoint(c);
-        if (c->endpoint && !c->permanentlyDisabled)
+        if (c->endpoint && !c->permanentlyDisabled) {
             (void)a04_button_device_poll(&c->hardware.device);
+            if (c->awaitingReleased &&
+                (c->hardware.device.pipeline.known & 0x0f) == 0x0f &&
+                (c->hardware.device.pipeline.stable & 0x0f) == 0) {
+                c->awaitingReleased = FALSE;
+                if (a04_button_device_sync_report(&c->hardware.device, c->baseline,
+                                                   sizeof(c->baseline), TRUE) != 0)
+                    c->permanentlyDisabled = TRUE;
+            }
+        }
     }
     if (InterlockedCompareExchange(&c->timerEnabled, 1, 1) && !c->permanentlyDisabled)
         WdfTimerStart(timer, WDF_REL_TIMEOUT_IN_MS(30));
