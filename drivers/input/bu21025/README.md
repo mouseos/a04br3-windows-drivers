@@ -7,6 +7,14 @@ The caller must serialize transfers and provide I2C, power, GPIO and error
 recovery. The existing board description identifies I2C address 0x48; no
 address or per-device touch calibration is embedded here.
 
+`board_init` expresses the XNU port's GPIO, clock and I2C0 setup sequence.
+It assumes power is already enabled and requires the caller to own I2C0 and
+serialize shared GPIO and infrastructure register updates. It does not map
+resources or implement that lock. Failures stop the sequence but can leave
+partial changes; the owner must handle recovery. It is not hardware-tested
+on Windows. The board orientation helper follows XNU's 800x1280 coordinate
+space; Windows display orientation and actual touch positions remain untested.
+
 The optional `mt8167_adapter` connects this protocol to the experimental PIO
 helper. A transfer failure latches the adapter in a failed state and no more
 commands are sent until its owner has recovered the hardware. A mock test
