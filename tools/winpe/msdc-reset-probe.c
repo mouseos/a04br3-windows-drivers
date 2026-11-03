@@ -5,10 +5,14 @@
 #include <winioctl.h>
 #include <ntddstor.h>
 #include <ntddscsi.h>
+#include <setupapi.h>
 #ifndef A04_SCRATCH_LBA
 #error Select the same scratch LBA as the diagnostic miniport
 #endif
 static HANDLE ready;
+static const GUID storagePortGuid={0x2accfe60,0xc130,0x11d2,{0xb0,0x82,0x00,0xa0,0xc9,0x1e,0xfb,0x8b}};
+static union { void *align; unsigned char bytes[4096]; } interfaceDetail;
+static WCHAR hardwareIds[512];
 static void say(const char *s) { DWORD n=0,w; while(s[n]) ++n; WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),s,n,&w,NULL); }
 static void hex(DWORD value) {
     static const char digits[]="0123456789ABCDEF"; char text[11]; int i;
@@ -21,6 +25,44 @@ static void adapter_name(WCHAR out[32], UCHAR port) {
     while(prefix[i]) { out[i]=prefix[i]; ++i; }
     do { rev[n++]=(WCHAR)(L'0'+port%10u); port=(UCHAR)(port/10u); } while(port);
     while(n) out[i++]=rev[--n]; out[i++]=L':'; out[i]=0;
+}
+static int matching_hardware_id(const WCHAR *ids, DWORD count) {
+    static const WCHAR wanted[]=L"ACPI\\MOU0001"; DWORD i=0,j; WCHAR c;
+    while(i<count && ids[i]) {
+        j=0;
+        while(i+j<count && wanted[j] && ids[i+j]) {
+            c=ids[i+j]; if(c>=L'a' && c<=L'z') c=(WCHAR)(c-L'a'+L'A');
+            if(c!=wanted[j]) break;
+            ++j;
+        }
+        if(!wanted[j] && i+j<count && !ids[i+j]) return 1;
+        while(i<count && ids[i]) ++i;
+        ++i;
+    }
+    return 0;
+}
+/* Not every storage port publishes the legacy \\.\ScsiN: symbolic link.
+ * Match the board's ACPI hardware ID before opening an enumerated interface. */
+static HANDLE enumerate_adapter(void) {
+    HDEVINFO set; SP_DEVICE_INTERFACE_DATA iface; SP_DEVINFO_DATA info;
+    PSP_DEVICE_INTERFACE_DETAIL_DATA_W detail=(PSP_DEVICE_INTERFACE_DETAIL_DATA_W)interfaceDetail.bytes;
+    HANDLE h=INVALID_HANDLE_VALUE; DWORD index,needed,type,bytes;
+    set=SetupDiGetClassDevsW(&storagePortGuid,NULL,NULL,DIGCF_PRESENT|DIGCF_DEVICEINTERFACE);
+    if(set==INVALID_HANDLE_VALUE) return h;
+    for(index=0;;++index) {
+        iface.cbSize=sizeof(iface);
+        if(!SetupDiEnumDeviceInterfaces(set,NULL,&storagePortGuid,index,&iface)) break;
+        info.cbSize=sizeof(info); detail->cbSize=sizeof(*detail); needed=0;
+        if(!SetupDiGetDeviceInterfaceDetailW(set,&iface,detail,sizeof(interfaceDetail.bytes),&needed,&info)) continue;
+        bytes=0; type=0;
+        if(!SetupDiGetDeviceRegistryPropertyW(set,&info,SPDRP_HARDWAREID,&type,
+            (PBYTE)hardwareIds,sizeof(hardwareIds),&bytes) || type!=REG_MULTI_SZ ||
+            !matching_hardware_id(hardwareIds,bytes/sizeof(WCHAR))) continue;
+        h=CreateFileW(detail->DevicePath,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,
+                      NULL,OPEN_EXISTING,0,NULL);
+        if(h!=INVALID_HANDLE_VALUE) break;
+    }
+    SetupDiDestroyDeviceInfoList(set); return h;
 }
 static DWORD WINAPI reader(void *unused) {
     HANDLE h; LARGE_INTEGER off; DWORD n=0; unsigned char *buf; BOOL ok;
@@ -56,6 +98,7 @@ void mainCRTStartup(void) {
     adapter_name(adapterPath,address.PortNumber);
     adapter=CreateFileW(adapterPath,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,
                         NULL,OPEN_EXISTING,0,NULL);
+    if(adapter==INVALID_HANDLE_VALUE) adapter=enumerate_adapter();
     if(adapter==INVALID_HANDLE_VALUE) { say("MSDC_RESET_ADAPTER_ERROR="); hex(GetLastError()); goto fail; }
     thread=CreateThread(NULL,0,reader,NULL,0,NULL);
     if(!thread || WaitForSingleObject(ready,10000)!=WAIT_OBJECT_0) goto fail;
