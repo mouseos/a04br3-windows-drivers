@@ -1,5 +1,7 @@
 # recoveryからの実験用ドライバ更新
 
+`install-button-probe.py` は別の一回限りの実験です。WindowsのSYSTEMハイブを事前退避し、診断サービスの5値以外の変更がないことを `python-registry` で比較してから、診断EXEと候補ハイブをファイル単位で書きます。ホストに `python-registry` と `reged` が必要です。Windowsが診断を実行できることやサービスの自動無効化は実機で確認する必要があります。導入失敗時には保存した元ハイブを保持し、原因を調べます。
+
 `update-driver-ntfs.py` は同一INFのテスト署名済みブートドライバを、全Windowsイメージを書き直さずに更新する実験手順です。既存の正しいインストールとrootのAOSP recovery、端末で動く静的NTFS-3Gが必要です。指定のWindows領域位置、未マウント状態、転送ハッシュ、既存INFとの一致を確認し、変更前のSYSとCATを指定先へ保存してから、既存ファイルの内容を更新します。GPTや他領域は書きません。
 
 ```sh
