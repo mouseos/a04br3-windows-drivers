@@ -10,6 +10,10 @@
 #include "device.h"
 #include "mt8167_adapter.h"
 
+#ifndef A04_TOUCH_TRACE
+#define A04_TOUCH_TRACE 0
+#endif
+
 enum { TOP, INFRA, GPIO, I2C, RANGE_COUNT };
 static const ULONG addresses[RANGE_COUNT] = {0x10000000,0x10001000,0x10005000,0x11009000};
 #define RANGE_SIZE 0x1000u
@@ -27,6 +31,10 @@ typedef struct {
     size_t descriptor_length;
     volatile LONG enabled;
     BOOLEAN faulted;
+#if A04_TOUCH_TRACE
+    volatile ULONG *uart;
+    ULONG reports;
+#endif
 } TOUCH_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(TOUCH_CONTEXT, TouchGetContext)
 EVT_WDF_DRIVER_DEVICE_ADD TouchAdd;
@@ -36,6 +44,29 @@ EVT_WDF_DEVICE_D0_ENTRY TouchD0Entry;
 EVT_WDF_DEVICE_D0_EXIT TouchD0Exit;
 EVT_WDF_IO_QUEUE_IO_INTERNAL_DEVICE_CONTROL TouchIoctl;
 EVT_WDF_TIMER TouchTimer;
+
+#if A04_TOUCH_TRACE
+/* Diagnostic builds only; shares the UART with the existing monitor. */
+static void Trace(TOUCH_CONTEXT *c, const char *s)
+{
+    ULONG n;
+    if (!c->uart) return;
+    while (*s) {
+        for (n=100000;n;--n)
+            if (!(READ_REGISTER_ULONG(c->uart+3)&0x80u) && (READ_REGISTER_ULONG(c->uart+5)&0x20u)) break;
+        if (!n) return;
+        WRITE_REGISTER_ULONG(c->uart,(ULONG)(UCHAR)*s++);
+    }
+}
+static void TraceHex(TOUCH_CONTEXT *c, ULONG value)
+{
+    static const char digits[]="0123456789ABCDEF"; char s[9]; unsigned i;
+    for (i=0;i<8;++i) s[i]=digits[(value>>(28-4*i))&15u];
+    s[8]=0; Trace(c,s);
+}
+#else
+#define Trace(c,s) ((void)0)
+#endif
 
 static uint16_t I2cRead(void *p, unsigned off)
 { return READ_REGISTER_USHORT((volatile USHORT *)(TouchGetContext((WDFDEVICE)p)->mmio[I2C]+off)); }
@@ -89,6 +120,11 @@ NTSTATUS TouchPrepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translate
             return STATUS_INSUFFICIENT_RESOURCES;
         }
     }
+#if A04_TOUCH_TRACE
+    { PHYSICAL_ADDRESS uart; uart.QuadPart=0x11005000u;
+      c->uart=MmMapIoSpace(uart,RANGE_SIZE,MmNonCached); }
+#endif
+    Trace(c,"A04TOUCH prepare complete\n");
     return STATUS_SUCCESS;
 }
 NTSTATUS TouchRelease(WDFDEVICE device, WDFCMRESLIST translated)
@@ -100,6 +136,10 @@ NTSTATUS TouchRelease(WDFDEVICE device, WDFCMRESLIST translated)
     for (i=0;i<RANGE_COUNT;++i) if (c->mmio[i]) {
         MmUnmapIoSpace((PVOID)c->mmio[i],RANGE_SIZE); c->mmio[i]=NULL;
     }
+#if A04_TOUCH_TRACE
+    Trace(c,"A04TOUCH release\n");
+    if (c->uart) { MmUnmapIoSpace((PVOID)c->uart,RANGE_SIZE); c->uart=NULL; }
+#endif
     return STATUS_SUCCESS;
 }
 NTSTATUS TouchD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
@@ -110,13 +150,16 @@ NTSTATUS TouchD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     struct a04_touch_pressure_policy pressure={730,305,5,900000};
     UNREFERENCED_PARAMETER(previous);
     if (c->faulted) return STATUS_DEVICE_HARDWARE_ERROR;
+    Trace(c,"A04TOUCH D0 entry\n");
     c->bus.context=device; c->bus.read16=I2cRead; c->bus.write16=I2cWrite; c->bus.delay_us=Delay;
     c->adapter.bus=&c->bus; c->adapter.address=0x48; c->adapter.faulted=0;
     a04_touch_set_board_orientation(&cal);
     if (a04_touch_board_init(&board) || a04_bu21025_mt8167_bind(&c->adapter,&c->io) ||
         a04_touch_device_init(&c->touch,&c->io,&cal,&pressure)) {
+        Trace(c,"A04TOUCH hardware init failed\n");
         c->faulted=TRUE; return STATUS_DEVICE_HARDWARE_ERROR;
     }
+    Trace(c,"A04TOUCH hardware init success\n");
     InterlockedExchange(&c->enabled,1);
     WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(20));
     return STATUS_SUCCESS;
@@ -161,6 +204,14 @@ void TouchTimer(WDFTIMER timer)
     result=a04_touch_device_poll(&c->touch,down,(uint16_t)quotient,report);
     if (result==A04_POLL_REPORT || result==A04_POLL_FAULT_REPORT) {
         NTSTATUS status=CopyReport(request,report,sizeof(report));
+#if A04_TOUCH_TRACE
+        if (c->reports++<32) {
+            Trace(c,"A04TOUCH report down="); TraceHex(c,report[1]);
+            Trace(c," x="); TraceHex(c,report[3]|((ULONG)report[4]<<8));
+            Trace(c," y="); TraceHex(c,report[5]|((ULONG)report[6]<<8));
+            Trace(c," status="); TraceHex(c,(ULONG)status); Trace(c,"\n");
+        }
+#endif
         WdfRequestComplete(request,status);
     } else if (result==A04_POLL_FAULT) WdfRequestComplete(request,STATUS_DEVICE_HARDWARE_ERROR);
     else {
@@ -168,6 +219,7 @@ void TouchTimer(WDFTIMER timer)
         if (!NT_SUCCESS(status)) WdfRequestComplete(request,status);
     }
     if (result==A04_POLL_FAULT || result==A04_POLL_FAULT_REPORT) {
+        Trace(c,"A04TOUCH poll fault\n");
         c->faulted=TRUE; InterlockedExchange(&c->enabled,0);
     }
 rearm:
