@@ -31,3 +31,5 @@ INFは改行コードが変わるだけでCAT内のハッシュと一致しな�
 テスト署名の比較では、Windows上で `tools/ci/prepare-test-bcd.ps1 -Source ORIGINAL_BCD -Output BCD_COPY` を使い、既定WinPEローダーの `testsigning` を有効にしたコピーを生成できる。元のBCDは変更しない。対象BCDの構成によっては `{default}` を使えないため、生成後の出力を確認する。テストモードは実機での受理や証明書の信頼を保証しない。
 
 `build-windows-ntfs.py` は新規作成する通常ファイルのNTFSイメージに限り、ルートのHIDDEN・SYSTEM属性を確認し不足分を補う。WIM適用後に属性がゼロになった場合、WindowsのCHKDSKがファイル記録5を不正と判定する現象を、別の小容量NTFSとWindows上の対照試験で確認したため。ホストには `libntfs-3g`、`mkntfs`、`ntfsfix` と `wimlib-imagex` が必要。イメージサイズ・NTFSの開始位置・属性の想定値が一致しない場合は中止する。この処理を実機のブロックデバイスや既存イメージの修復に使ってはならない。
+
+実機向けの `repair-root-attributes.c` は別の実験ツールであり、対象のWindowsボリュームをディスク番号、開始位置、長さ、ラベル、システムファイルで確認してからWindows APIでルートの属性のみを設定する。実行前に現在のWindows領域のバックアップが必要。異なる位置のボリュームは拒否する。Windows Server上の使い捨てVHDでは修復前のCHKDSKエラーが修復後に解消したが、Windows RT実機での動作は別途検証する。
