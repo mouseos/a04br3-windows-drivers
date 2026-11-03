@@ -21,6 +21,7 @@
 static WCHAR root[] = L"C:\\";
 static WCHAR volume[] = L"\\\\.\\C:";
 static WCHAR marker[] = L"C:\\Windows\\System32\\config\\SYSTEM";
+static WCHAR check_path[] = L"X:\\a04br3\\check-before.txt";
 static void say(const char *s)
 {
     DWORD n=0, done; while (s[n]) ++n;
@@ -38,9 +39,8 @@ static int has_option(const WCHAR *s, const WCHAR *needle)
 static int check_chkdsk(void)
 {
     HANDLE h; char *data; DWORD size, got=0; int ok;
-    WCHAR path[]=L"X:\\a04br3\\check-before.txt";
-    path[0]=A04_CHECK_DRIVE;
-    h=CreateFileW(path,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,0,NULL);
+    check_path[0]=A04_CHECK_DRIVE;
+    h=CreateFileW(check_path,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,0,NULL);
     if (h==INVALID_HANDLE_VALUE) return 0;
     size=GetFileSize(h,NULL);
     if (size==INVALID_FILE_SIZE || !size || size>1048576) { CloseHandle(h); return 0; }
