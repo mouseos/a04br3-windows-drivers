@@ -31,8 +31,11 @@ with tempfile.TemporaryDirectory(prefix='a04-bcd-') as d:
     patch = d / 'patch.reg'
     patch.write_text('Windows Registry Editor Version 5.00\n\n' + header +
                      '"System"=dword:00000001\n', encoding='ascii')
-    subprocess.run(['reged', '-C', '-I', str(candidate), prefix, str(patch)], check=True,
-                   stdout=subprocess.DEVNULL)
+    # chntpw reged returns 2 after successfully writing a changed hive.
+    result = subprocess.run(['reged', '-C', '-I', str(candidate), prefix, str(patch)],
+                            stdout=subprocess.DEVNULL)
+    if result.returncode not in (0, 2):
+        raise SystemExit('BCDへの値追加に失敗しました')
     new = export(candidate, new_export)
     # reged may order new values after existing values in the same key.
     if new.replace('"System"=dword:00000001\n', '', 1) != old or new.count('"System"=dword:00000001\n') != 1:
