@@ -21,4 +21,7 @@ $driver = Join-Path $out 'a04buttonprovider.sys'
 if ($LASTEXITCODE -ne 0) { throw 'ARM32 button provider link failed' }
 $headers = & llvm-readobj --file-headers $driver
 if ($LASTEXITCODE -ne 0 -or ($headers -join "`n") -notmatch 'IMAGE_FILE_MACHINE_ARMNT') { throw 'Unexpected provider PE format' }
+Copy-Item (Join-Path $dir 'a04-button-provider.inf') (Join-Path $out 'a04-button-provider.inf')
+& (Join-Path $kit 'bin\x86\Inf2Cat.exe') "/driver:$out" /os:6_3_ARM /uselocaltime
+if ($LASTEXITCODE -ne 0) { throw 'Button provider catalog generation failed' }
 Write-Host "Experimental PnP provider built; assume pristine queue: $assumePristine. Wake is not implemented."
