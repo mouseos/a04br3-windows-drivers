@@ -2,7 +2,7 @@
  * Experimental one-shot interface enumeration. No input events are sent.
  * The UART mapping is shared diagnostic hardware and is not a production
  * resource-management or wake implementation. */
-#include <ntddk.h>
+#include <ntifs.h>
 
 static const GUID button_interface =
     {0x30ebfbf8, 0xdf5f, 0x4d4d, {0x9f,0xc5,0xa2,0x6c,0x7f,0xd1,0xdf,0x4a}};
