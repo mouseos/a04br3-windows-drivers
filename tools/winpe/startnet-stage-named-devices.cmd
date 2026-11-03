@@ -9,6 +9,8 @@ X:\a04br3\guard-windows-volume.exe
 if errorlevel 1 goto guardfail
 X:\a04br3\compare-files.exe C:\Windows\System32\drivers\a04touch.sys X:\a04br3\touch-provider-original.sys
 if errorlevel 1 goto reject
+X:\a04br3\compare-files.exe C:\Windows\System32\drivers\a04msdcprobe.sys X:\a04br3\storage-original.sys
+if errorlevel 1 goto reject
 if exist C:\Windows\System32\drivers\bu21025.sys goto reject
 if exist C:\Windows\Temp\a04br3-named-touch-dism.log goto reject
 if exist C:\Windows\Temp\a04br3-named-toprgu-dism.log goto reject

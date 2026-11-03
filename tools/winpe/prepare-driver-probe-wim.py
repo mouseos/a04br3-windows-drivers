@@ -30,6 +30,7 @@ p.add_argument('--touch-provider-status', type=Path, help='Optional read-only to
 p.add_argument('--touch-provider-original', type=Path, help='Expected active touch SYS for guarded replacement')
 p.add_argument('--touch-provider-original-inf', type=Path, help='Exact currently installed touch INF for guarded replacement')
 p.add_argument('--storage-upgrade-package', type=Path, help='MT8167 MSDC boot package to stage, without replacing WinPE storage')
+p.add_argument('--storage-original', type=Path, help='Expected active legacy storage SYS for guarded replacement')
 p.add_argument('--toprgu-package', type=Path, help='MT8167 TOPRGU watchdog test package')
 p.add_argument('--toprgu-provider-status', type=Path, help='Read-only TOPRGU PnP status executable')
 p.add_argument('--disable-quickedit', type=Path, help='Optional signed console selection control executable')
@@ -84,6 +85,8 @@ if a.touch_provider_original_inf:
 if a.storage_upgrade_package:
     for name in ('mt8167-msdc.inf', 'mt8167-msdc.sys', 'mt8167-msdc.cat'):
         files[f'/a04br3/storage-upgrade/{name}'] = a.storage_upgrade_package / name
+if a.storage_original:
+    files['/a04br3/storage-original.sys'] = a.storage_original
 if a.toprgu_package:
     for name in ('mt8167-toprgu.inf', 'mt8167-toprgu.sys', 'mt8167-toprgu.cat'):
         files[f'/a04br3/toprgu/{name}'] = a.toprgu_package / name
