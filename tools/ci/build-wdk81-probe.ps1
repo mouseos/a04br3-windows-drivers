@@ -12,7 +12,7 @@ $driver = Join-Path $output 'miniport.sys'
 $extraObjects = @()
 $probeDefines = @()
 if ($env:A04_PASSIVE_IO -eq '1') {
-    if ($env:A04_READONLY_DISK_PROBE -ne '1' -or $env:A04_BOOT_EXPERIMENT -eq '1' -or ($env:A04_ENABLE_WRITES -eq '1' -and $env:A04_SCRATCH_IO -ne '1')) { throw 'Passive I/O is restricted to WinPE diagnostic packages' }
+    if ($env:A04_READONLY_DISK_PROBE -ne '1' -or ($env:A04_BOOT_EXPERIMENT -eq '1' -and $env:A04_BOOT_PASSIVE_EXPERIMENT -ne '1') -or ($env:A04_ENABLE_WRITES -eq '1' -and $env:A04_SCRATCH_IO -ne '1' -and $env:A04_BOOT_PASSIVE_EXPERIMENT -ne '1')) { throw 'Passive I/O requires an explicit diagnostic configuration' }
     $probeDefines += '-DA04_PASSIVE_IO'
 }
 if ($env:A04_SCRATCH_IO -eq '1') {
@@ -23,16 +23,20 @@ if ($env:A04_SCRATCH_IO -eq '1') {
     $probeDefines += ('-DA04_SCRATCH_LBA=' + $scratchLba)
 }
 if ($env:A04_SERIAL_QUEUE_EXPERIMENT -eq '1') {
-    if ($env:A04_SCRATCH_IO -ne '1') { throw 'Serial queue experiment requires the scratch diagnostic' }
+    if ($env:A04_SCRATCH_IO -ne '1' -and $env:A04_BOOT_PASSIVE_EXPERIMENT -ne '1') { throw 'Serial queue experiment requires an explicit diagnostic configuration' }
     $probeDefines += '-DA04_SERIAL_QUEUE_EXPERIMENT'
 }
 if ($env:A04_ISOLATED_REQUEST_EXPERIMENT -eq '1') {
-    if ($env:A04_SCRATCH_IO -ne '1') { throw 'Isolated requests require the scratch diagnostic' }
+    if ($env:A04_SCRATCH_IO -ne '1' -and $env:A04_BOOT_PASSIVE_EXPERIMENT -ne '1') { throw 'Isolated requests require an explicit diagnostic configuration' }
     $probeDefines += '-DA04_ISOLATED_REQUEST_EXPERIMENT'
 }
 if ($env:A04_ISOLATED_RESET_TEST -eq '1') {
     if ($env:A04_ISOLATED_REQUEST_EXPERIMENT -ne '1') { throw 'Reset test requires isolated requests' }
     $probeDefines += '-DA04_ISOLATED_RESET_TEST'
+}
+if ($env:A04_BOOT_PASSIVE_EXPERIMENT -eq '1') {
+    if ($env:A04_BOOT_EXPERIMENT -ne '1' -or $env:A04_PASSIVE_IO -ne '1' -or $env:A04_ENABLE_WRITES -ne '1' -or $env:A04_DMA_DISK_PROBE -ne '1' -or $env:A04_VIRTUAL_BOUNCE_EXPERIMENT -ne '1' -or $env:A04_SERIAL_QUEUE_EXPERIMENT -ne '1' -or $env:A04_ISOLATED_REQUEST_EXPERIMENT -ne '1' -or $env:A04_SCRATCH_IO -eq '1' -or $env:A04_ISOLATED_RESET_TEST -eq '1') { throw 'Passive boot experiment requires guarded isolated boot settings' }
+    $probeDefines += '-DA04_BOOT_PASSIVE_EXPERIMENT'
 }
 if ($env:A04_EMMC_IDENTITY_HANDOFF -eq '1') {
     if ($env:A04_READONLY_DISK_PROBE -ne '1') { throw 'eMMC identity handoff requires the disk probe' }

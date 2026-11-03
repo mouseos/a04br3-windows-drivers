@@ -5,7 +5,7 @@
 #include <ntddscsi.h>
 #include "pio.h"
 #include "io_gate.h"
-#if defined(A04_PASSIVE_IO) && (!defined(A04_READONLY_DISK_PROBE) || (defined(A04_ENABLE_WRITES) && !defined(A04_SCRATCH_IO)))
+#if defined(A04_PASSIVE_IO) && (!defined(A04_READONLY_DISK_PROBE) || (defined(A04_ENABLE_WRITES) && !defined(A04_SCRATCH_IO) && !defined(A04_BOOT_PASSIVE_EXPERIMENT)))
 #error A04_PASSIVE_IO requires a diagnostic disk and only allows bounded scratch writes
 #endif
 #if defined(A04_SCRATCH_IO) && (!defined(A04_PASSIVE_IO) || !defined(A04_ENABLE_WRITES) || !defined(A04_SCRATCH_LBA))
@@ -14,11 +14,14 @@
 #if defined(A04_SCRATCH_IO) && (!defined(A04_DMA_DISK_PROBE) || !defined(A04_VIRTUAL_BOUNCE_EXPERIMENT) || A04_SCRATCH_LBA > 0xfffffff8u)
 #error A04_SCRATCH_IO requires the diagnostic DMA path and an in-range LBA
 #endif
-#if defined(A04_SERIAL_QUEUE_EXPERIMENT) && !defined(A04_SCRATCH_IO)
-#error A04_SERIAL_QUEUE_EXPERIMENT is restricted to the scratch diagnostic
+#if defined(A04_SERIAL_QUEUE_EXPERIMENT) && !defined(A04_SCRATCH_IO) && !defined(A04_BOOT_PASSIVE_EXPERIMENT)
+#error A04_SERIAL_QUEUE_EXPERIMENT requires an explicit diagnostic configuration
 #endif
-#if defined(A04_ISOLATED_REQUEST_EXPERIMENT) && !defined(A04_SCRATCH_IO)
-#error A04_ISOLATED_REQUEST_EXPERIMENT is restricted to the scratch diagnostic
+#if defined(A04_ISOLATED_REQUEST_EXPERIMENT) && !defined(A04_SCRATCH_IO) && !defined(A04_BOOT_PASSIVE_EXPERIMENT)
+#error A04_ISOLATED_REQUEST_EXPERIMENT requires an explicit diagnostic configuration
+#endif
+#if defined(A04_BOOT_PASSIVE_EXPERIMENT) && (!defined(A04_PASSIVE_IO) || !defined(A04_ENABLE_WRITES) || !defined(A04_DMA_DISK_PROBE) || !defined(A04_VIRTUAL_BOUNCE_EXPERIMENT) || !defined(A04_SERIAL_QUEUE_EXPERIMENT) || !defined(A04_ISOLATED_REQUEST_EXPERIMENT) || defined(A04_SCRATCH_IO) || defined(A04_ISOLATED_RESET_TEST))
+#error A04_BOOT_PASSIVE_EXPERIMENT requires the guarded isolated boot configuration
 #endif
 #if defined(A04_ISOLATED_RESET_TEST) && !defined(A04_ISOLATED_REQUEST_EXPERIMENT)
 #error A04_ISOLATED_RESET_TEST requires isolated diagnostic requests
