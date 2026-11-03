@@ -810,7 +810,18 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
                 probe->failed = TRUE;
                 A04Trace("A04WIN transfer failed result="); A04TraceHex(failure); A04Trace("\n");
                 A04Sense(request, 3, result.action == A04_SCSI_WRITE ? 0x0c : 0x11);
-            } else request->DataTransferLength = result.transfer_length;
+            } else {
+                request->DataTransferLength = result.transfer_length;
+#ifdef A04_PASSIVE_IO
+                /* Temporary WinPE read-stress sentinels; no writes. */
+                if (result.action == A04_SCSI_READ && result.blocks.block_count == 8 &&
+                    result.blocks.lba == 0x000e0100u)
+                    A04Trace("A04WIN passive stress start read complete\n");
+                if (result.action == A04_SCSI_READ && result.blocks.block_count == 8 &&
+                    result.blocks.lba == 0x000e0200u)
+                    A04Trace("A04WIN passive stress end read complete\n");
+#endif
+            }
         }
     }
     if (trace || request->SrbStatus != SRB_STATUS_SUCCESS) {

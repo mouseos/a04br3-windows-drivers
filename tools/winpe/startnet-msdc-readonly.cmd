@@ -17,6 +17,9 @@ if errorlevel 1 goto storagefail
 echo MSDC_READONLY_DRVLOAD_OK
 diskpart /s X:\a04br3\list-disks.txt
 echo MSDC_READONLY_DISKPART_EXIT=%errorlevel%
+if errorlevel 1 goto finish
+X:\a04br3\msdc-read-stress.exe
+echo MSDC_READ_STRESS_EXIT=%errorlevel%
 goto finish
 :consolefail
 echo MSDC_READONLY_CONSOLE_FAILED
