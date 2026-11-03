@@ -34,6 +34,38 @@ static void trace_hex(ULONG n)
     trace(text);
 }
 
+/* Create only a previously absent, diagnostic-specific ordinary file. The
+ * file is left for inspection and guarded cleanup after this boot. */
+static void probe_file_flush(void)
+{
+    static const char contents[] = "A04BR3-FLUSH-PROBE-v1";
+    UNICODE_STRING path;
+    OBJECT_ATTRIBUTES attributes;
+    IO_STATUS_BLOCK io;
+    HANDLE file = NULL;
+    NTSTATUS status;
+    RtlInitUnicodeString(&path, L"\\??\\C:\\Windows\\Temp\\a04br3-flush-probe-v1.tmp");
+    InitializeObjectAttributes(&attributes, &path,
+                               OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+    io.Status = STATUS_UNSUCCESSFUL; io.Information = 0;
+    status = ZwCreateFile(&file, FILE_WRITE_DATA | SYNCHRONIZE, &attributes, &io, NULL,
+                          FILE_ATTRIBUTE_NORMAL, 0, FILE_CREATE,
+                          FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT,
+                          NULL, 0);
+    trace("A04BUTTON file create status="); trace_hex((ULONG)status); trace("\n");
+    if (!NT_SUCCESS(status)) return;
+    io.Status = STATUS_UNSUCCESSFUL; io.Information = 0;
+    status = ZwWriteFile(file, NULL, NULL, NULL, &io, (PVOID)contents,
+                         sizeof(contents) - 1, NULL, NULL);
+    trace("A04BUTTON file write status="); trace_hex((ULONG)status);
+    trace(" bytes="); trace_hex((ULONG)io.Information); trace("\n");
+    if (NT_SUCCESS(status)) {
+        status = ZwFlushBuffersFile(file, &io);
+        trace("A04BUTTON file flush status="); trace_hex((ULONG)status); trace("\n");
+    }
+    ZwClose(file);
+}
+
 static void probe_thread(PVOID context)
 {
     LARGE_INTEGER interval;
@@ -91,6 +123,7 @@ static void probe_thread(PVOID context)
         if (NT_SUCCESS(status)) { status = ZwFlushKey(key); ZwClose(key); }
         trace("A04BUTTON disable flush status="); trace_hex((ULONG)status); trace("\n");
     }
+    probe_file_flush();
     MmUnmapIoSpace((PVOID)uart, 0x1000);
     uart = NULL;
     PsTerminateSystemThread(STATUS_SUCCESS);

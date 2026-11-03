@@ -655,6 +655,14 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
     } else if (request->Function != SRB_FUNCTION_EXECUTE_SCSI) {
         A04Trace("A04WIN unsupported SRB function="); A04TraceHex(request->Function);
         A04Trace("\n");
+        if (request->Function == SRB_FUNCTION_IO_CONTROL && request->DataBuffer &&
+            request->DataTransferLength >= sizeof(SRB_IO_CONTROL)) {
+            PSRB_IO_CONTROL control = (PSRB_IO_CONTROL)request->DataBuffer;
+            A04Trace("A04WIN IO_CONTROL code="); A04TraceHex(control->ControlCode);
+            A04Trace(" header="); A04TraceHex(control->HeaderLength);
+            A04Trace(" length="); A04TraceHex(control->Length);
+            A04Trace("\n");
+        }
         request->SrbStatus = SRB_STATUS_INVALID_REQUEST;
         request->DataTransferLength = 0;
     } else if (probe->failed) {

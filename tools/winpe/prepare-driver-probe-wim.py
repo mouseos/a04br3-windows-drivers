@@ -22,6 +22,7 @@ p.add_argument('--button-probe-service', type=Path, help='Optional one-shot Wind
 p.add_argument('--button-probe-original', type=Path, help='Expected existing diagnostic executable for guarded replacement')
 p.add_argument('--compare-files', type=Path, help='Self-contained file comparison executable')
 p.add_argument('--button-kernel-probe', type=Path, help='Optional one-shot kernel interface probe')
+p.add_argument('--flush-probe-reference', type=Path, help='Expected diagnostic file content for guarded cleanup')
 a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
 startnet = a.startnet or root / 'tools/winpe/startnet-driver-probe.cmd'
@@ -50,6 +51,8 @@ if a.compare_files:
     files['/a04br3/compare-files.exe'] = a.compare_files
 if a.button_kernel_probe:
     files['/a04br3/button-kernel-probe.sys'] = a.button_kernel_probe
+if a.flush_probe_reference:
+    files['/a04br3/flush-probe-reference.txt'] = a.flush_probe_reference
 for source in [a.source_wim, *files.values()]:
     if not source.is_file():
         raise SystemExit(f'Missing input: {source}')

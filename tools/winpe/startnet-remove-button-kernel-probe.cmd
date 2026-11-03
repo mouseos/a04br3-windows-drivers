@@ -38,6 +38,16 @@ del C:\Windows\System32\drivers\a04buttonprobe.sys
 if errorlevel 1 goto deletefail
 :removed
 echo BUTTON_KERNEL_PROBE_REMOVED
+if not exist C:\Windows\Temp\a04br3-flush-probe-v1.tmp goto dismount
+if not exist X:\a04br3\flush-probe-reference.txt goto filepreserved
+X:\a04br3\compare-files.exe C:\Windows\Temp\a04br3-flush-probe-v1.tmp X:\a04br3\flush-probe-reference.txt
+if errorlevel 1 goto filepreserved
+del C:\Windows\Temp\a04br3-flush-probe-v1.tmp
+if errorlevel 1 goto filepreserved
+echo BUTTON_FLUSH_PROBE_FILE_REMOVED
+goto dismount
+:filepreserved
+echo BUTTON_FLUSH_PROBE_FILE_PRESERVED
 goto dismount
 :regreject
 reg unload HKLM\A04TEMP
