@@ -104,16 +104,21 @@ try:
         'system_candidate_sha256': digest(hive), 'exe_sha256': digest(a.exe),
         'note': 'One-shot diagnostic; Windows execution and self-disable are unverified.'}, indent=2) + '\n')
     run('adb', 'push', str(hive), f'{remote}/SYSTEM.candidate')
-    if shell(f'sha256sum {remote}/SYSTEM.candidate').split()[0] != digest(hive):
-        raise RuntimeError('候補ハイブの転送ハッシュが不一致です')
+    run('adb', 'push', str(a.backup_dir / 'SYSTEM.original'), f'{remote}/SYSTEM.original')
+    for local, name in ((hive, 'SYSTEM.candidate'), (a.backup_dir / 'SYSTEM.original', 'SYSTEM.original')):
+        if shell(f'sha256sum {remote}/{name}').split()[0] != digest(local):
+            raise RuntimeError('ハイブの転送ハッシュが不一致です')
     shell(f'{remote}/ntfs-3g /dev/block/by-name/Windows {mount}')
     mounted = True
     matches = [line.split() for line in adb('shell', 'cat', '/proc/mounts').splitlines()
                if len(line.split()) >= 4 and line.split()[1] == mount]
     if len(matches) != 1 or 'rw' not in matches[0][3].split(','):
         raise RuntimeError('Windows領域が読取り専用です。休止状態や未クリーン状態を解除せず中止します')
-    shell(f'set -e; cp {remote}/probe.exe {mount}/Windows/System32/a04-button-probe.exe; '
-          f'cp {remote}/SYSTEM.candidate {mount}/Windows/System32/config/SYSTEM; sync')
+    shell(f'set -e; if ! cp {remote}/probe.exe {mount}/Windows/System32/a04-button-probe.exe; then '
+          f'rm -f {mount}/Windows/System32/a04-button-probe.exe; sync; exit 1; fi; '
+          f'if ! cp {remote}/SYSTEM.candidate {mount}/Windows/System32/config/SYSTEM; then '
+          f'cp {remote}/SYSTEM.original {mount}/Windows/System32/config/SYSTEM; '
+          f'rm -f {mount}/Windows/System32/a04-button-probe.exe; sync; exit 1; fi; sync')
     shell(f'umount {mount}')
     mounted = False
     print('診断サービスを導入しました。起動・自己無効化は未検証です。')
