@@ -17,6 +17,8 @@ typedef struct {
     BOOLEAN suspendedWatchdog;
     ULONG savedMode;
     ULONG ticks;
+    ULONGLONG started;
+    BOOLEAN deadlineReported;
     struct mt8167_reset_parser parser;
 } TOPRGU_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(TOPRGU_CONTEXT, ToprguGetContext)
@@ -87,6 +89,7 @@ NTSTATUS ToprguD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     if (!(READ_REGISTER_ULONG(c->wdt) & 1u)) return STATUS_DEVICE_NOT_READY;
     WRITE_REGISTER_ULONG(c->wdt + 2,0x1971u);
     c->parser.matched=0; c->ticks=0;
+    c->started=KeQueryInterruptTime(); c->deadlineReported=FALSE;
     InterlockedExchange(&c->running,1);
     Trace(c, KeQueryActiveProcessorCount(NULL) >= 4 ?
           "A04RGU D0 active CPUs>=4\n" : "A04RGU D0 active CPUs<4\n");
@@ -119,17 +122,23 @@ VOID ToprguTimer(WDFTIMER timer)
 {
     TOPRGU_CONTEXT *c=ToprguGetContext((WDFDEVICE)WdfTimerGetParentObject(timer));
     ULONG i;
+    BOOLEAN four, feed;
     if (InterlockedCompareExchange(&c->busy,1,0) != 0) return;
     if (InterlockedCompareExchange(&c->running,1,1) && c->wdt && c->uart) {
         ++c->ticks;
-#if A04_TOPRGU_DEADLINE_SECONDS > 0
-        if (c->ticks == A04_TOPRGU_DEADLINE_SECONDS * 50u)
-            Trace(c,"A04RGU bounded watchdog deadline reached\n");
-#endif
-        if (mt8167_watchdog_should_feed(c->ticks,A04_TOPRGU_DEADLINE_SECONDS))
+        four=KeQueryActiveProcessorCount(NULL) >= 4;
+        feed=mt8167_watchdog_should_feed(KeQueryInterruptTime()-c->started,
+                                        A04_TOPRGU_DEADLINE_SECONDS);
+        if (feed)
             WRITE_REGISTER_ULONG(c->wdt + 2,0x1971u);
+        if (four && !feed && !c->deadlineReported) {
+            c->deadlineReported=TRUE;
+            Trace(c,"A04RGU bounded watchdog deadline reached\n");
+        }
+        if (four && feed && (c->ticks <= 3 || c->ticks % 500u == 0))
+            Trace(c,"A04RGU timer kick\n");
         /* CPU1 owns UART until all four OS processors are online. */
-        if (KeQueryActiveProcessorCount(NULL) >= 4) {
+        if (four) {
             InterlockedExchange(&c->ownedFour,1);
             for (i=0; i<16; ++i) {
                 if ((READ_REGISTER_ULONG(c->uart + 3) & 0x80u) ||
