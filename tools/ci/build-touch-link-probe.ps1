@@ -18,7 +18,8 @@ foreach ($item in @(
     @('contact','drivers\input\bu21025\contact.c'),
     @('pipeline','drivers\input\bu21025\pipeline.c'),
     @('touchdevice','drivers\input\bu21025\device.c'),
-    @('i2c','drivers\bus\mt8167-i2c\pio.c')
+    @('i2c','drivers\bus\mt8167-i2c\pio.c'),
+    @('eint','drivers\bus\mt8167-eint\eint.c')
 )) {
     $obj = Join-Path $output ($item[0] + '.obj')
     & clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c (Join-Path $root $item[1]) -o $obj

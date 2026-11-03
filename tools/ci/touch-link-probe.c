@@ -9,6 +9,7 @@
 #include "../../drivers/input/bu21025/contact.h"
 #include "../../drivers/input/bu21025/pipeline.h"
 #include "../../drivers/input/bu21025/device.h"
+#include "../../drivers/bus/mt8167-eint/eint.h"
 
 static volatile int probe_result;
 static uint16_t read16(void *context, unsigned offset)
@@ -24,6 +25,14 @@ static void delay_us(void *context, unsigned delay)
 {
     UNREFERENCED_PARAMETER(context); UNREFERENCED_PARAMETER(delay);
 }
+static uint32_t read32(void *context, unsigned offset)
+{
+    UNREFERENCED_PARAMETER(context); UNREFERENCED_PARAMETER(offset); return 0;
+}
+static void write32(void *context, unsigned offset, uint32_t value)
+{
+    UNREFERENCED_PARAMETER(context); UNREFERENCED_PARAMETER(offset); UNREFERENCED_PARAMETER(value);
+}
 NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING path)
 {
     struct a04_i2c_io bus = {NULL, read16, write16, delay_us};
@@ -36,6 +45,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING path)
     struct a04_touch_pressure_policy pressure = {1, 1, 0, 1};
     struct a04_touch_pipeline pipeline;
     struct a04_touch_device device;
+    struct a04_eint_io eint = {NULL, read32, write32};
+    uint32_t pending;
     uint8_t report[A04_TOUCH_REPORT_SIZE], descriptor[A04_TOUCH_DESCRIPTOR_CAPACITY];
     uint8_t feature[A04_TOUCH_FEATURE_SIZE];
     size_t descriptor_length;
@@ -53,5 +64,9 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING path)
     probe_result = a04_touch_pipeline_fault(&pipeline, 0, report);
     probe_result = a04_touch_device_init(&device, &io, &calibration, &pressure);
     probe_result = a04_touch_device_poll(&device, 1, 0, report);
+    probe_result = a04_eint_configure(&eint, 8, A04_EDGE_FALLING);
+    probe_result = a04_eint_mask(&eint, 8, 1);
+    probe_result = a04_eint_ack(&eint, 8);
+    probe_result = a04_eint_pending(&eint, 0, 0x100, &pending);
     return STATUS_NOT_SUPPORTED;
 }
