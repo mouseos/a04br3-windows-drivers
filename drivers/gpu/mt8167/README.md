@@ -56,4 +56,6 @@ For a host check with that exact firmware:
 ```
 cc -std=c11 -Wall -Wextra -Werror -I drivers/gpu/mt8167 -I drivers/gpu/mt8167/compat -I drivers/gpu/mt8167/fwif tests/gpu_firmware_image_test.c drivers/gpu/mt8167/firmware.c drivers/gpu/mt8167/firmware_runtime.c drivers/gpu/mt8167/firmware_start.c -o /tmp/a04-gpu-fw-test
 /tmp/a04-gpu-fw-test /path/to/rogue_22.67.54.30_v1.fw
+cc -std=c11 -Wall -Wextra -Werror -I tests/gpu_windows_stubs -I drivers/gpu/mt8167 -I drivers/gpu/mt8167/compat -I drivers/gpu/mt8167/fwif tests/gpu_windows_firmware_test.c drivers/gpu/mt8167/firmware.c drivers/gpu/mt8167/firmware_runtime.c drivers/gpu/mt8167/firmware_start.c drivers/gpu/mt8167/windows_hw.c drivers/gpu/mt8167/windows_firmware.c -o /tmp/a04-gpu-win-test
+/tmp/a04-gpu-win-test /path/to/rogue_22.67.54.30_v1.fw
 ```
