@@ -21,6 +21,7 @@ int a04_gpt_guard_begin(struct a04_gpt_guard *g, const uint8_t h[512], uint32_t 
     uint32_t crc=0xffffffffu, n, size;
     if (!g || !h || sectors<68) return 0;
     g->valid=0; g->matches=0; g->blocks=0; g->first=g->last=0; g->range_count=0;
+    g->esp_matches=0; g->esp_first=g->esp_last=0;
     size=le32(h+12);
     if (!equal(h,sig,8) || le32(h+8)!=0x10000 || size<92 || size>512 ||
         le64(h+24)!=1 || le64(h+32)!=(uint64_t)sectors-1 ||
@@ -37,6 +38,8 @@ int a04_gpt_guard_feed(struct a04_gpt_guard *g, const uint8_t p[512])
 {
     static const uint8_t type[16]={0xa2,0xa0,0xd0,0xeb,0xe5,0xb9,0x33,0x44,0x87,0xc0,0x68,0xb6,0xb7,0x26,0x99,0xc7};
     static const uint8_t name[16]={'W',0,'i',0,'n',0,'d',0,'o',0,'w',0,'s',0,0,0};
+    static const uint8_t esp_type[16]={0x28,0x73,0x2a,0xc1,0x1f,0xf8,0xd2,0x11,0xba,0x4b,0x00,0xa0,0xc9,0x3e,0xc9,0x3b};
+    static const uint8_t esp_name[8]={'E',0,'F',0,'I',0,0,0};
     static const uint8_t zero[16]={0};
     unsigned i,s,j;
     if (!g || !g->valid || !p || g->blocks>=32) return 0;
@@ -52,12 +55,24 @@ int a04_gpt_guard_feed(struct a04_gpt_guard *g, const uint8_t p[512])
             if (first<=g->range_last[j] && g->range_first[j]<=last) { g->valid=0; return 0; }
         g->range_first[g->range_count]=(uint32_t)first;
         g->range_last[g->range_count++]=(uint32_t)last;
+        if (equal(e+56,esp_name,8) || equal(e,esp_type,16)) {
+            if (!equal(e+56,esp_name,8)) { g->valid=0; return 0; }
+            for (i=8;i<72;++i) if (e[56+i]) { g->valid=0; return 0; }
+            if (!equal(e,esp_type,16)) { g->valid=0; return 0; }
+            g->esp_first=(uint32_t)first; g->esp_last=(uint32_t)last; ++g->esp_matches;
+        }
         if (!equal(e+56,name,16)) continue;
         for (i=16;i<72;++i) if (e[56+i]) { g->valid=0; return 0; }
         if (!equal(e,type,16)) { g->valid=0; return 0; }
         g->first=(uint32_t)first; g->last=(uint32_t)last; ++g->matches;
     }
     ++g->blocks; return 1;
+}
+int a04_gpt_guard_esp(const struct a04_gpt_guard *g, uint32_t *first, uint32_t *last)
+{
+    if (!g || !g->valid || !first || !last || g->blocks!=32 || g->esp_matches!=1 ||
+        (g->crc^0xffffffffu)!=g->expected_crc) return 0;
+    *first=g->esp_first; *last=g->esp_last; return 1;
 }
 int a04_gpt_guard_finish(const struct a04_gpt_guard *g, uint32_t *first, uint32_t *last)
 {

@@ -21,7 +21,7 @@ static volatile ULONG *A04Uart;
 struct a04_probe_extension {
     volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; ULONG requests; BOOLEAN failed; BOOLEAN write_ready; BOOLEAN cache_disabled;
 #ifdef A04_ENABLE_WRITES
-    ULONG write_first, write_last;
+    ULONG write_first, write_last, esp_first, esp_last;
 #endif
 #ifdef A04_DMA_PROBE
     UCHAR *dma_buffer; ULONG dma_bus; ULONG dma_alignment;
@@ -116,16 +116,20 @@ static enum a04_dma_result A04DmaSector(struct a04_probe_extension *probe,
 static BOOLEAN A04ValidateWindowsRange(struct a04_probe_extension *probe,
                                        struct a04_msdc_io *io, ULONG sectors)
 {
-    struct a04_gpt_guard guard; uint32_t first, last; ULONG block;
+    struct a04_gpt_guard guard; uint32_t first, last, esp_first, esp_last; ULONG block;
     if (!probe->cache_disabled || !a04_gpt_guard_begin(&guard, probe->dma_buffer, sectors)) return FALSE;
     for (block=2; block<34; ++block) {
         if (A04DmaSector(probe, io, block, FALSE) != A04_DMA_OK ||
             !a04_gpt_guard_feed(&guard, probe->dma_buffer)) return FALSE;
     }
-    if (!a04_gpt_guard_finish(&guard, &first, &last)) return FALSE;
+    if (!a04_gpt_guard_finish(&guard, &first, &last) ||
+        !a04_gpt_guard_esp(&guard, &esp_first, &esp_last)) return FALSE;
     probe->write_first=first; probe->write_last=last;
+    probe->esp_first=esp_first; probe->esp_last=esp_last;
     A04Trace("A04WIN guarded Windows range="); A04TraceHex(first);
     A04Trace(".."); A04TraceHex(last); A04Trace("\n");
+    A04Trace("A04WIN guarded ESP range="); A04TraceHex(probe->esp_first);
+    A04Trace(".."); A04TraceHex(probe->esp_last); A04Trace("\n");
     return TRUE;
 }
 #endif
@@ -673,6 +677,8 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 #ifdef A04_ENABLE_WRITES
         } else if (result.action == A04_SCSI_WRITE &&
                    !a04_gpt_guard_range(probe->write_first, probe->write_last,
+                                        result.blocks.lba, result.blocks.block_count) &&
+                   !a04_gpt_guard_range(probe->esp_first, probe->esp_last,
                                         result.blocks.lba, result.blocks.block_count)) {
             A04Trace("A04WIN write range rejected lba-hi="); A04TraceHex((ULONG)(result.blocks.lba >> 32));
             A04Trace(" lba-lo="); A04TraceHex((ULONG)result.blocks.lba);
