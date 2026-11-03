@@ -4,7 +4,7 @@ Class=System
 ClassGuid={4D36E97D-E325-11CE-BFC1-08002BE10318}
 Provider=%Provider%
 DriverVer=11/03/2026,0.0.1.1
-CatalogFile=a04buttonprovider.cat
+CatalogFile=mt8167-mt6392-buttons.cat
 
 [Manufacturer]
 %Provider%=Models,NTARM
@@ -19,13 +19,13 @@ DriverCopy=12
 1=%Disk%,,,
 
 [SourceDisksFiles]
-a04buttonprovider.sys=1
+mt8167-mt6392-buttons.sys=1
 
 [Install.NT]
 CopyFiles=DriverCopy
 
 [DriverCopy]
-a04buttonprovider.sys
+mt8167-mt6392-buttons.sys
 
 [Install.NT.Services]
 AddService=A04ButtonProvider,0x00000002,Service
@@ -35,7 +35,7 @@ DisplayName=%Device%
 ServiceType=1
 StartType=3
 ErrorControl=1
-ServiceBinary=%12%\a04buttonprovider.sys
+ServiceBinary=%12%\mt8167-mt6392-buttons.sys
 
 [Install.NT.Wdf]
 KmdfService=A04ButtonProvider,Wdf

@@ -18,7 +18,7 @@ foreach ($name in @('wdf_provider','button_hardware','pmic_read','button_device'
     if ($LASTEXITCODE -ne 0) { throw "ARM32 button provider compilation failed: $name" }
     $objects += $obj
 }
-$driver = Join-Path $out 'a04buttonprovider.sys'
+$driver = Join-Path $out 'mt8167-mt6392-buttons.sys'
 & lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib @objects (Join-Path $wdfLib 'wdfdriverentry.lib') (Join-Path $wdfLib 'wdfldr.lib') (Join-Path $kmLib 'ntoskrnl.lib') (Join-Path $kmLib 'hal.lib') (Join-Path $kmLib 'bufferoverflowfastfailk.lib') "/out:$driver"
 if ($LASTEXITCODE -ne 0) { throw 'ARM32 button provider link failed' }
 $headers = & llvm-readobj --file-headers $driver

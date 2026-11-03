@@ -60,12 +60,12 @@ if a.button_kernel_probe:
 if a.flush_probe_reference:
     files['/a04br3/flush-probe-reference.txt'] = a.flush_probe_reference
 if a.button_provider_package:
-    for name in ('mt8167-mt6392-buttons.inf', 'a04buttonprovider.sys', 'a04buttonprovider.cat'):
+    for name in ('mt8167-mt6392-buttons.inf', 'mt8167-mt6392-buttons.sys', 'mt8167-mt6392-buttons.cat'):
         files[f'/a04br3/button-provider/{name}'] = a.button_provider_package / name
 if a.button_provider_status:
     files['/a04br3/button-provider-status.exe'] = a.button_provider_status
 if a.touch_provider_package:
-    for name in ('bu21025.inf', 'a04touch.sys', 'a04touch.cat'):
+    for name in ('bu21025.inf', 'bu21025.sys', 'bu21025.cat'):
         files[f'/a04br3/touch-provider/{name}'] = a.touch_provider_package / name
 if a.touch_provider_status:
     files['/a04br3/touch-provider-status.exe'] = a.touch_provider_status

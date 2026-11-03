@@ -21,7 +21,7 @@ $i2cObj = Join-Path $out 'i2c.obj'
 & clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c (Join-Path $root 'drivers\bus\mt8167-i2c\pio.c') -o $i2cObj
 if ($LASTEXITCODE -ne 0) { throw 'ARM32 I2C compilation failed' }
 $objects += $i2cObj
-$driver = Join-Path $out 'a04touch.sys'
+$driver = Join-Path $out 'bu21025.sys'
 & lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib @objects (Join-Path $wdfLib 'wdfdriverentry.lib') (Join-Path $wdfLib 'wdfldr.lib') (Join-Path $kmLib 'ntoskrnl.lib') (Join-Path $kmLib 'hal.lib') (Join-Path $kmLib 'bufferoverflowfastfailk.lib') "/out:$driver"
 if ($LASTEXITCODE -ne 0) { throw 'ARM32 touch link failed' }
 & llvm-readobj --file-headers $driver

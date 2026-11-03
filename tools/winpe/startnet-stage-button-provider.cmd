@@ -6,6 +6,7 @@ if errorlevel 1 goto storagefail
 X:\a04br3\guard-windows-volume.exe
 if errorlevel 1 goto guardfail
 if exist C:\Windows\System32\drivers\a04buttonprovider.sys goto reject
+if exist C:\Windows\System32\drivers\mt8167-mt6392-buttons.sys goto reject
 if exist C:\Windows\Temp\a04br3-button-provider-dism.log goto reject
 reg load HKLM\A04TEMP C:\Windows\System32\config\SYSTEM
 if errorlevel 1 goto regfail
