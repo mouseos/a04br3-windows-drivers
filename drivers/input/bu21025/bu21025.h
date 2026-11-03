@@ -21,8 +21,9 @@ struct a04_bu21025_sample {
 /* These routines do not configure clocks, I2C, GPIO, power or Windows HID.
  * Call init after the controller is powered, then serialize all sampling.
  * sample is changed only when every measurement and the final standby command
- * succeed. A failed transfer still attempts standby, but bus recovery belongs
- * to the caller. Raw coordinates are not per-device calibration values. */
+ * succeed. After a transfer failure no further command is issued; bus and
+ * controller recovery belongs to the caller. Raw coordinates are not
+ * per-device calibration values. */
 int a04_bu21025_init(const struct a04_bu21025_io *io);
 int a04_bu21025_sample(const struct a04_bu21025_io *io,
                        struct a04_bu21025_sample *sample);

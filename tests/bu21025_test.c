@@ -55,7 +55,8 @@ int main(void)
         sample = (struct a04_bu21025_sample){1, 2, 3};
         assert(a04_bu21025_sample(&io, &sample) != 0);
         assert(sample.x == 1 && sample.y == 2 && sample.z == 3);
-        assert(m.events[m.count - 1] == 0x100);
+        assert(m.transfers == i); /* no command after a failed transfer */
+        if (i == 10) assert(m.events[m.count - 1] == 0x100);
     }
     assert(a04_bu21025_sample(NULL, &sample) != 0);
     assert(a04_bu21025_sample(&io, NULL) != 0);
