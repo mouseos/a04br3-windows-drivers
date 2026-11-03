@@ -56,7 +56,7 @@ with a.log.open('rb') as source, a.output.open('xb') as out:
             for layer in ('0', '3'):
                 output = f'{a.snapshot_prefix}-layer{layer}.pbm'
                 subprocess.run(['python3', str(capture), '--log', str(a.log), '--uart', a.uart,
-                                '--output', output, '--layer', layer, '--timeout', '15'], check=False)
+                                '--output', output, '--layer', layer, '--timeout', '45'], check=False)
             if not a.continue_after_snapshot:
                 # Preserve bytes received while framebuffer capture was running.
                 out.write(source.read())
