@@ -12,6 +12,10 @@ helper. A transfer failure latches the adapter in a failed state and no more
 commands are sent until its owner has recovered the hardware. A mock test
 exercises the combined path; this is not a Windows transport implementation.
 
+`coordinates` maps 12-bit ADC values using bounds supplied at runtime. It
+does not define a calibration source or require a user to supply values;
+retrieving device-specific data automatically remains unimplemented.
+
 This is not a Windows HID driver. Windows PnP resources, an I2C controller or
 SPB transport, pen interrupts, pressure/contact filtering, calibration and
 HID reports remain to be implemented and tested. Host and ARM32 compilation
