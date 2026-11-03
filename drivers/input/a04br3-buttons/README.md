@@ -57,3 +57,9 @@ the meaning of non-binary states need runtime verification before integration.
 `a04_button_device_sync_report` rejects reports other than five binary bytes
 and requires an independently established empty queue. It does not establish
 that condition itself; no working queue-empty detector is implemented yet.
+
+`button_hardware` joins the keypad MEM1 callback and `pmic_read` to that
+pipeline. Its simulated integration test checks a power press/release while
+the keypad source fails independently. The platform must still establish
+clocks, exclusive ownership and synchronized endpoint state; no MMIO is
+accessed without platform callbacks and no PnP or wake driver is supplied.

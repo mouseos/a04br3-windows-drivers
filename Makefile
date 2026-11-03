@@ -5,7 +5,7 @@ SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test test-ntfs-root arm-coff clean
 
-test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/button_pipeline_test build/button_device_test build/pmic_read_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test build/eint_test
+test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/button_pipeline_test build/button_device_test build/button_hardware_test build/pmic_read_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test build/eint_test
 	./build/cdb_test
 	./build/pio_test
 	./build/scsi_capacity_test
@@ -15,6 +15,7 @@ test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test buil
 	./build/button_state_test
 	./build/button_pipeline_test
 	./build/button_device_test
+	./build/button_hardware_test
 	./build/pmic_read_test
 	python3 tests/update_driver_ntfs_test.py
 	./build/bu21025_test
@@ -81,6 +82,10 @@ build/button_state_test: drivers/input/a04br3-buttons/button_state.c drivers/inp
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/input/a04br3-buttons drivers/input/a04br3-buttons/button_state.c tests/button_state_test.c -o $@
 
+build/button_hardware_test: drivers/input/a04br3-buttons/button_hardware.c drivers/input/a04br3-buttons/button_hardware.h drivers/input/a04br3-buttons/pmic_read.c drivers/input/a04br3-buttons/button_device.c drivers/input/a04br3-buttons/button_pipeline.c drivers/input/a04br3-buttons/button_state.c tests/button_hardware_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/input/a04br3-buttons drivers/input/a04br3-buttons/button_hardware.c drivers/input/a04br3-buttons/pmic_read.c drivers/input/a04br3-buttons/button_device.c drivers/input/a04br3-buttons/button_pipeline.c drivers/input/a04br3-buttons/button_state.c tests/button_hardware_test.c -o $@
+
 build/button_device_test: drivers/input/a04br3-buttons/button_device.c drivers/input/a04br3-buttons/button_device.h drivers/input/a04br3-buttons/button_pipeline.c drivers/input/a04br3-buttons/button_state.c tests/button_device_test.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/input/a04br3-buttons drivers/input/a04br3-buttons/button_device.c drivers/input/a04br3-buttons/button_pipeline.c drivers/input/a04br3-buttons/button_state.c tests/button_device_test.c -o $@
@@ -133,6 +138,7 @@ arm-coff: $(SRC)/cdb.c $(SRC)/cdb.h
 	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/input/a04br3-buttons/button_pipeline.c -o build/button-pipeline-arm.obj
 	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/input/a04br3-buttons/pmic_read.c -o build/pmic-read-arm.obj
 	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/input/a04br3-buttons/button_device.c -o build/button-device-arm.obj
+	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/input/a04br3-buttons/button_hardware.c -o build/button-hardware-arm.obj
 
 clean:
 	rm -rf build
