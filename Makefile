@@ -5,7 +5,7 @@ SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test test-ntfs-root arm-coff clean
 
-test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_coordinates_test build/touch_hid_test
+test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_coordinates_test build/touch_hid_test build/touch_hid_dump
 	./build/cdb_test
 	./build/pio_test
 	./build/scsi_capacity_test
@@ -18,6 +18,11 @@ test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test buil
 	./build/bu21025_bus_test
 	./build/touch_coordinates_test
 	./build/touch_hid_test
+	python3 tests/touch_hid_descriptor_test.py
+
+build/touch_hid_dump: drivers/input/bu21025/touch_hid.c drivers/input/bu21025/touch_hid.h tests/touch_hid_dump.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/input/bu21025 drivers/input/bu21025/touch_hid.c tests/touch_hid_dump.c -o $@
 
 build/touch_hid_test: drivers/input/bu21025/touch_hid.c drivers/input/bu21025/touch_hid.h tests/touch_hid_test.c
 	mkdir -p build
