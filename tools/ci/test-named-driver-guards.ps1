@@ -8,6 +8,7 @@ $hive="$base\Windows\System32\config\SYSTEM"
 try {
     & reg add HKLM\SOFTWARE\A04NAMEDTEST\Select /v Current /t REG_DWORD /d 1 /f | Out-Null
     & reg add HKLM\SOFTWARE\A04NAMEDTEST\ControlSet001\Services\a04msdcboot /v ImagePath /t REG_EXPAND_SZ /d 'System32\drivers\a04msdcprobe.sys' /f | Out-Null
+    & reg add HKLM\SOFTWARE\A04NAMEDTEST\ControlSet001\Services\Mt8167Toprgu /v Start /t REG_DWORD /d 0 /f | Out-Null
     & reg save HKLM\SOFTWARE\A04NAMEDTEST $hive /y | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'test hive save failed' }
     & reg delete HKLM\SOFTWARE\A04NAMEDTEST /f | Out-Null
@@ -42,6 +43,14 @@ try {
     [IO.File]::WriteAllText("$base\src\toprgu-original.sys",'different')
     $out=& cmd.exe /c "$base\upgrade.cmd"
     if (-not ($out -match 'TOPRGU_UPGRADE_PRECONDITION_REJECTED')) { throw 'mismatched TOPRGU was accepted' }
+    New-Item -ItemType Directory -Force "$base\src\toprgu" | Out-Null
+    [IO.File]::WriteAllText("$base\src\toprgu\mt8167-toprgu.sys",'also-different')
+    [IO.File]::WriteAllText("$base\disable-toprgu.cmd",(PrepareBatch 'startnet-disable-toprgu.cmd'),[Text.Encoding]::ASCII)
+    $out=& cmd.exe /c "$base\disable-toprgu.cmd"
+    if (-not ($out -match 'TOPRGU_RECOVERY_PRECONDITION_REJECTED')) { throw 'mismatched TOPRGU recovery was accepted' }
+    [IO.File]::WriteAllText("$base\src\toprgu-original.sys",'watchdog')
+    $out=& cmd.exe /c "$base\disable-toprgu.cmd"
+    if (-not ($out -match 'TOPRGU_RECOVERY_SERVICE_DISABLED')) { throw ($out -join ' ') }
     & reg load HKLM\A04TEMP $hive | Out-Null
     & reg add HKLM\A04TEMP\ControlSet001\Services\a04msdcboot /v ImagePath /t REG_EXPAND_SZ /d 'System32\drivers\mt8167-msdc.sys' /f | Out-Null
     & reg unload HKLM\A04TEMP | Out-Null
@@ -50,8 +59,10 @@ try {
     if (-not ($out -match 'NAMED_STORAGE_ROLLBACK_SERVICE_RESTORED')) { throw ($out -join ' ') }
     & reg load HKLM\A04TEMP $hive | Out-Null
     $value=(Get-ItemProperty 'HKLM:\A04TEMP\ControlSet001\Services\a04msdcboot').ImagePath
+    $watchdogStart=(Get-ItemProperty 'HKLM:\A04TEMP\ControlSet001\Services\Mt8167Toprgu').Start
     & reg unload HKLM\A04TEMP | Out-Null
     if ($value -ne 'System32\drivers\a04msdcprobe.sys') { throw "incorrect rollback path: $value" }
+    if ($watchdogStart -ne 4) { throw "incorrect watchdog recovery start: $watchdogStart" }
     Write-Output 'NAMED_DRIVER_GUARD_TEST_OK'
 } finally {
     & cmd.exe /c 'reg query HKLM\A04TEMP >nul 2>&1'
