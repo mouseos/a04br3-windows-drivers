@@ -72,6 +72,11 @@ jobs:
       - name: Compile button provider PnP status tool
         shell: pwsh
         run: ./tools/ci/build-button-provider-status.ps1
+      - name: Compile GE8300 firmware provider and status tool
+        shell: pwsh
+        run: |
+          ./tools/ci/build-ge8300-provider.ps1
+          ./tools/ci/build-ge8300-status.ps1
       - name: Compile WinPE file comparison tool
         shell: pwsh
         run: ./tools/ci/build-compare-files.ps1 -Arch arm
