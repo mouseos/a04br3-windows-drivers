@@ -15,4 +15,7 @@ struct a04_scsi_reply {
  * A disabled write path reports DATA PROTECT. No hardware access occurs here. */
 struct a04_scsi_reply a04_scsi_process(const uint8_t *cdb, size_t cdb_len,
     uint64_t capacity_blocks, int writable, uint8_t *buffer, size_t buffer_len);
+/* Apply a volatile firmware-supplied eMMC MID and six CID product bytes to a
+ * standard SCSI INQUIRY response. Invalid identities leave it unchanged. */
+int a04_scsi_set_emmc_identity(uint8_t *inquiry, size_t length, const uint8_t identity[7]);
 #endif

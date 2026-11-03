@@ -19,6 +19,10 @@
 /* Diagnostic UART mapping: only this non-production probe uses UART0.
  * Bound every wait and never transmit while the UART divisor latch is active. */
 static volatile ULONG *A04Uart;
+#if defined(A04_READONLY_DISK_PROBE) && defined(A04_EMMC_IDENTITY_HANDOFF)
+static UCHAR A04EmmcIdentity[7];
+static BOOLEAN A04EmmcIdentityValid;
+#endif
 struct a04_probe_extension {
     volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; ULONG requests; BOOLEAN failed; BOOLEAN write_ready; BOOLEAN cache_disabled;
 #ifdef A04_ENABLE_WRITES
@@ -678,6 +682,11 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 #endif
         result = a04_scsi_process(request->Cdb, request->CdbLength, probe->sectors,
                                   probe->write_ready, data, available);
+#ifdef A04_EMMC_IDENTITY_HANDOFF
+        if (A04EmmcIdentityValid && opcode == 0x12 && !(request->Cdb[1] & 1u) &&
+            result.action == A04_SCSI_REPLY)
+            (void)a04_scsi_set_emmc_identity(data, result.transfer_length, A04EmmcIdentity);
+#endif
         if (result.action == A04_SCSI_ERROR) {
             A04Trace("A04WIN SCSI rejected opcode="); A04TraceHex(opcode);
             A04Trace(" sense="); A04TraceHex(result.sense_key);
@@ -804,6 +813,19 @@ ULONG DriverEntry(PVOID driver, PVOID registry)
     uartAddress.QuadPart = 0x11005000;
     A04Uart = (volatile ULONG *)MmMapIoSpace(uartAddress, 0x1000, MmNonCached);
     A04Trace("\nA04WIN DriverEntry entered\n");
+#if defined(A04_READONLY_DISK_PROBE) && defined(A04_EMMC_IDENTITY_HANDOFF)
+    {
+        UNICODE_STRING variable = RTL_CONSTANT_STRING(L"A04EmmcModel");
+        GUID vendor = {0x689e5e54,0x214e,0x4df7,{0xa8,0x71,0x8f,0x31,0xe1,0x55,0x9a,0x21}};
+        ULONG length = sizeof(A04EmmcIdentity), attributes = 0;
+        NTSTATUS identityStatus = ExGetFirmwareEnvironmentVariable(&variable, &vendor,
+                                  A04EmmcIdentity, &length, &attributes);
+        A04EmmcIdentityValid = NT_SUCCESS(identityStatus) && length == sizeof(A04EmmcIdentity) &&
+                               (attributes & 4u) != 0;
+        A04Trace("A04WIN eMMC identity status="); A04TraceHex((ULONG)identityStatus);
+        A04Trace(" valid="); A04TraceHex(A04EmmcIdentityValid ? 1u : 0u); A04Trace("\n");
+    }
+#endif
 #ifdef A04_READONLY_DISK_PROBE
     {
         UNICODE_STRING name = RTL_CONSTANT_STRING(L"KiBugCheckData");

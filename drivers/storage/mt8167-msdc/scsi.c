@@ -18,6 +18,23 @@ static struct a04_scsi_reply reply(const uint8_t *src, size_t n, uint32_t alloc,
     for (i=0;i<n;++i) out[i]=src[i];
     r.action=A04_SCSI_REPLY; r.transfer_length=(uint32_t)n; return r;
 }
+int a04_scsi_set_emmc_identity(uint8_t *inquiry, size_t length, const uint8_t identity[7])
+{
+    static const char hex[] = "0123456789ABCDEF";
+    size_t i; int nonspace = 0;
+    if (!inquiry || !identity || length < 36 || !identity[0] || identity[0] == 0xff)
+        return 0;
+    for (i = 1; i < 7; ++i) {
+        if (identity[i] < 0x20 || identity[i] > 0x7e) return 0;
+        if (identity[i] != 0x20) nonspace = 1;
+    }
+    if (!nonspace) return 0;
+    for (i = 8; i < 32; ++i) inquiry[i] = ' ';
+    inquiry[8]='J'; inquiry[9]='E'; inquiry[10]='D'; inquiry[11]='E'; inquiry[12]='C';
+    inquiry[13]=(uint8_t)hex[identity[0] >> 4]; inquiry[14]=(uint8_t)hex[identity[0] & 15];
+    for (i = 0; i < 6; ++i) inquiry[16 + i] = identity[1 + i];
+    return 1;
+}
 struct a04_scsi_reply a04_scsi_process(const uint8_t *c, size_t len,
     uint64_t capacity, int writable, uint8_t *out, size_t size)
 {

@@ -11,6 +11,10 @@ $pioSource = Join-Path $PSScriptRoot '..\..\drivers\storage\mt8167-msdc\pio.c'
 $driver = Join-Path $output 'miniport.sys'
 $extraObjects = @()
 $probeDefines = @()
+if ($env:A04_EMMC_IDENTITY_HANDOFF -eq '1') {
+    if ($env:A04_READONLY_DISK_PROBE -ne '1') { throw 'eMMC identity handoff requires the disk probe' }
+    $probeDefines += '-DA04_EMMC_IDENTITY_HANDOFF'
+}
 if ($env:A04_DMA_WRITE_TEST -eq '1') {
     if ($env:A04_DMA_PROBE -ne '1' -or $env:A04_DMA_DISK_PROBE -eq '1' -or $env:A04_DMA_TEST_LBA -notmatch '^\d+$') { throw 'DMA write test requires DMA probe, no disk probe, and a decimal A04_DMA_TEST_LBA' }
 }
