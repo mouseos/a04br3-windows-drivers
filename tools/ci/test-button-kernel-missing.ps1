@@ -22,14 +22,14 @@ try {
   if (-not ($out -match 'BUTTON_KERNEL_PROBE_REMOVED')) { throw ($out -join ' ') }
   & reg load HKLM\A04TEMP $hive | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'load failed' }
-  & reg query HKLM\A04TEMP\ControlSet001\Services\A04ButtonKernelProbe 2>$null | Out-Null
+  & cmd.exe /c 'reg query HKLM\A04TEMP\ControlSet001\Services\A04ButtonKernelProbe >nul 2>&1'
   if ($LASTEXITCODE -eq 0) { throw 'service remains' }
   & reg unload HKLM\A04TEMP | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'unload failed' }
   Write-Output 'MISSING_FILE_REMOVAL_TEST_OK'
 } finally {
-  & reg query HKLM\A04TEMP 2>$null | Out-Null
+  & cmd.exe /c 'reg query HKLM\A04TEMP >nul 2>&1'
   if ($LASTEXITCODE -eq 0) { & reg unload HKLM\A04TEMP }
-  & reg query HKLM\SOFTWARE\A04KTEST2 2>$null | Out-Null
+  & cmd.exe /c 'reg query HKLM\SOFTWARE\A04KTEST2 >nul 2>&1'
   if ($LASTEXITCODE -eq 0) { & reg delete HKLM\SOFTWARE\A04KTEST2 /f }
 }
