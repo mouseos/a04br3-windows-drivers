@@ -36,6 +36,7 @@ static void probe_thread(PVOID context)
 {
     LARGE_INTEGER interval;
     NTSTATUS status = STATUS_UNSUCCESSFUL;
+    NTSTATUS open_status = STATUS_UNSUCCESSFUL;
     unsigned i;
     BOOLEAN found = FALSE, saw_success = FALSE, saw_error = FALSE;
     UNREFERENCED_PARAMETER(context);
@@ -47,6 +48,19 @@ static void probe_thread(PVOID context)
         if (NT_SUCCESS(status) && links) {
             saw_success = TRUE;
             found = links[0] != L'\0';
+            if (found) {
+                UNICODE_STRING path;
+                OBJECT_ATTRIBUTES attributes;
+                IO_STATUS_BLOCK io_status;
+                HANDLE file = NULL;
+                RtlInitUnicodeString(&path, links);
+                InitializeObjectAttributes(&attributes, &path,
+                    OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+                open_status = ZwCreateFile(&file, FILE_WRITE_DATA | SYNCHRONIZE,
+                    &attributes, &io_status, NULL, FILE_ATTRIBUTE_NORMAL, 0,
+                    FILE_OPEN, FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0);
+                if (NT_SUCCESS(open_status)) ZwClose(file);
+            }
         } else saw_error = TRUE;
         if (links) ExFreePool(links);
         if (found) break;
@@ -56,6 +70,7 @@ static void probe_thread(PVOID context)
           saw_error || !saw_success ? "A04BUTTON interface ENUM_ERROR status=" :
           "A04BUTTON interface NOT_FOUND\n");
     if (!found && (saw_error || !saw_success)) { trace_hex((ULONG)status); trace("\n"); }
+    if (found) { trace("A04BUTTON interface open status="); trace_hex((ULONG)open_status); trace("\n"); }
     MmUnmapIoSpace((PVOID)uart, 0x1000);
     uart = NULL;
     PsTerminateSystemThread(STATUS_SUCCESS);
