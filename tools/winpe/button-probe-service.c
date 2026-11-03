@@ -4,6 +4,10 @@
 #include <windows.h>
 #include <setupapi.h>
 
+#ifndef A04_PROBE_SECONDS
+#define A04_PROBE_SECONDS 120
+#endif
+
 static const GUID button_interface =
     {0x30ebfbf8, 0xdf5f, 0x4d4d, {0x9f,0xc5,0xa2,0x6c,0x7f,0xd1,0xdf,0x4a}};
 static SERVICE_STATUS_HANDLE service_handle;
@@ -50,7 +54,7 @@ static void WINAPI service_main(DWORD argc, WCHAR **argv)
     service_status.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
     service_status.dwCurrentState = SERVICE_RUNNING;
     SetServiceStatus(service_handle, &service_status);
-    for (i = 0; i < 120; ++i) {
+    for (i = 0; i < A04_PROBE_SECONDS; ++i) {
         HDEVINFO list = SetupDiGetClassDevsW(&button_interface, NULL, NULL,
                                              DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
         if (list != INVALID_HANDLE_VALUE) {
