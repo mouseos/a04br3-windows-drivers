@@ -1,0 +1,36 @@
+/* SPDX-License-Identifier: BSD-2-Clause-Patent */
+#include "pmic_read.h"
+
+#define INIT_DONE2 0x9cu
+#define WACS2_CMD 0xa0u
+#define WACS2_RDATA 0xa4u
+#define WACS2_VLDCLR 0xa8u
+#define MT6392_CHRSTATUS 0x0142u
+
+static int wait_fsm(struct a04_pmic_read *bus, unsigned state, uint32_t *last)
+{
+    unsigned i;
+    for (i = 0; i < bus->attempts; ++i) {
+        *last = bus->read32(bus->context, WACS2_RDATA);
+        if (((*last >> 16) & 7u) == state) return 0;
+        bus->delay(bus->context);
+    }
+    return -1;
+}
+
+int a04_pmic_chrstatus(struct a04_pmic_read *bus, uint16_t *value)
+{
+    uint32_t data;
+    uint16_t response;
+    if (!bus || !value || !bus->read32 || !bus->write32 || !bus->delay ||
+        !bus->attempts || bus->poisoned) return -1;
+    if (!(bus->read32(bus->context, INIT_DONE2) & 1u)) return -1;
+    if (wait_fsm(bus, 0, &data)) { bus->poisoned = 1; return -1; }
+    bus->write32(bus->context, WACS2_CMD, (MT6392_CHRSTATUS >> 1) << 16);
+    if (wait_fsm(bus, 6, &data)) { bus->poisoned = 1; return -1; }
+    response = (uint16_t)data;
+    bus->write32(bus->context, WACS2_VLDCLR, 1);
+    if (wait_fsm(bus, 0, &data)) { bus->poisoned = 1; return -1; }
+    *value = response;
+    return 0;
+}

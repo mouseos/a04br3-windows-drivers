@@ -5,7 +5,7 @@ SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test test-ntfs-root arm-coff clean
 
-test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/button_pipeline_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test build/eint_test
+test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/button_pipeline_test build/pmic_read_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test build/eint_test
 	./build/cdb_test
 	./build/pio_test
 	./build/scsi_capacity_test
@@ -14,6 +14,7 @@ test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test buil
 	python3 tests/gpt_guard_fixtures.py
 	./build/button_state_test
 	./build/button_pipeline_test
+	./build/pmic_read_test
 	python3 tests/update_driver_ntfs_test.py
 	./build/bu21025_test
 	./build/i2c_pio_test
@@ -78,6 +79,10 @@ test-ntfs-root:
 build/button_state_test: drivers/input/a04br3-buttons/button_state.c drivers/input/a04br3-buttons/button_state.h tests/button_state_test.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/input/a04br3-buttons drivers/input/a04br3-buttons/button_state.c tests/button_state_test.c -o $@
+
+build/pmic_read_test: drivers/input/a04br3-buttons/pmic_read.c drivers/input/a04br3-buttons/pmic_read.h tests/pmic_read_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/input/a04br3-buttons drivers/input/a04br3-buttons/pmic_read.c tests/pmic_read_test.c -o $@
 
 build/button_pipeline_test: drivers/input/a04br3-buttons/button_pipeline.c drivers/input/a04br3-buttons/button_pipeline.h drivers/input/a04br3-buttons/button_state.c drivers/input/a04br3-buttons/button_state.h tests/button_pipeline_test.c
 	mkdir -p build

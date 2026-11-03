@@ -31,3 +31,13 @@ and stops notifications until its state is established again. The caller must
 serialize sampling, writes and acknowledgements. This component does not read
 registers, open the Windows interface, provide a synchronization mechanism, or
 guarantee detection of a complete press between samples.
+
+`pmic_read` is a bounded, read-only WACS2 transaction for MT6392 CHRSTATUS
+(0x142), using the MT8167/MT8516 wrapper offsets. Register descriptions are
+cross-checked against Linux `mtk-pmic-wrap.c`, `mtk-pmic-keys.c`, and the
+MT6392 register header in the board's Linux sources; it does not copy Linux
+code. Its caller must own and serialize WACS2, provide ordered MMIO and a
+delay appropriate to its execution context, and recover hardware after a
+timeout before clearing the poison flag. It does not claim resources, handle
+interrupts, power or wake, or establish that Windows can share the wrapper.
+Host tests simulate the state sequence; actual PMIC access is not verified.
