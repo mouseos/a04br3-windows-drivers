@@ -16,6 +16,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Run touch component tests on Windows x64
+        shell: pwsh
+        run: ./tools/ci/test-touch-windows.ps1
       - name: Build ARM32 COFF and native PE format probe
         shell: pwsh
         run: |
