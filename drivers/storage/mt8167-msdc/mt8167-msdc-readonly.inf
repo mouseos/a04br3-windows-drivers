@@ -1,0 +1,44 @@
+[Version]
+Signature = "$WINDOWS NT$"
+Class = SCSIAdapter
+ClassGuid = {4d36e97b-e325-11ce-bfc1-08002be10318}
+Provider = %Provider%
+CatalogFile = mt8167-msdc-readonly.cat
+DriverVer = 11/03/2026,0.0.1.0
+
+[Manufacturer]
+%Provider% = Models,NTarm
+
+[Models.NTarm]
+%Device% = Install, ACPI\MOU0001
+
+[Install.NT]
+CopyFiles = DriverCopy
+
+[Install.NT.Services]
+AddService = Mt8167MsdcReadonly,0x00000002,Service
+
+[DestinationDirs]
+DriverCopy = 12
+
+[DriverCopy]
+mt8167-msdc.sys
+
+[Service]
+DisplayName = %Device%
+ServiceType = 1
+StartType = 3
+ErrorControl = 1
+ServiceBinary = %12%\mt8167-msdc.sys
+LoadOrderGroup = SCSI Miniport
+
+[SourceDisksNames]
+1 = %Disk%,,,
+
+[SourceDisksFiles]
+mt8167-msdc.sys = 1
+
+[Strings]
+Provider = "TAB-A04-BR3 development"
+Device = "MediaTek MT8167 MSDC eMMC Host Controller"
+Disk = "MediaTek MT8167 MSDC eMMC Driver"

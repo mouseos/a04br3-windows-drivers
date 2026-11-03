@@ -57,8 +57,9 @@ if ($LASTEXITCODE -ne 0) { throw 'PE inspection failed' }
 $package = Join-Path $output 'package'
 New-Item -ItemType Directory -Force -Path $package | Out-Null
 $bootPackage = $env:A04_BOOT_EXPERIMENT -eq '1'
-$inf = if ($bootPackage) { 'mt8167-msdc.inf' } else { 'a04-msdc-probe.inf' }
-$sys = if ($bootPackage) { 'mt8167-msdc.sys' } else { 'a04msdcprobe.sys' }
+$passivePackage = $env:A04_PASSIVE_IO -eq '1'
+$inf = if ($bootPackage) { 'mt8167-msdc.inf' } elseif ($passivePackage) { 'mt8167-msdc-readonly.inf' } else { 'a04-msdc-probe.inf' }
+$sys = if ($bootPackage -or $passivePackage) { 'mt8167-msdc.sys' } else { 'a04msdcprobe.sys' }
 Copy-Item $driver (Join-Path $package $sys)
 Copy-Item (Join-Path $PSScriptRoot "..\..\drivers\storage\mt8167-msdc\$inf") (Join-Path $package $inf)
 $inf2cat = Join-Path $kit 'bin\x86\Inf2Cat.exe'
