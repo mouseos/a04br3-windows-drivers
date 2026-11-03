@@ -7,6 +7,8 @@
 static const GUID button_interface =
     {0x30ebfbf8, 0xdf5f, 0x4d4d, {0x9f,0xc5,0xa2,0x6c,0x7f,0xd1,0xdf,0x4a}};
 static volatile ULONG *uart;
+static WCHAR registry_buffer[512];
+static UNICODE_STRING saved_registry_path;
 
 static void trace(const char *s)
 {
@@ -71,6 +73,15 @@ static void probe_thread(PVOID context)
           "A04BUTTON interface NOT_FOUND\n");
     if (!found && (saw_error || !saw_success)) { trace_hex((ULONG)status); trace("\n"); }
     if (found) { trace("A04BUTTON interface open status="); trace_hex((ULONG)open_status); trace("\n"); }
+    {
+        OBJECT_ATTRIBUTES attributes;
+        HANDLE key = NULL;
+        InitializeObjectAttributes(&attributes, &saved_registry_path,
+                                   OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+        status = ZwOpenKey(&key, KEY_QUERY_VALUE, &attributes);
+        if (NT_SUCCESS(status)) { status = ZwFlushKey(key); ZwClose(key); }
+        trace("A04BUTTON disable flush status="); trace_hex((ULONG)status); trace("\n");
+    }
     MmUnmapIoSpace((PVOID)uart, 0x1000);
     uart = NULL;
     PsTerminateSystemThread(STATUS_SUCCESS);
@@ -86,6 +97,11 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING registry_path)
     NTSTATUS status;
     UNREFERENCED_PARAMETER(driver);
     address.QuadPart = 0x11005000;
+    if (!registry_path || registry_path->Length >= sizeof(registry_buffer))
+        return STATUS_INVALID_PARAMETER;
+    RtlCopyMemory(registry_buffer, registry_path->Buffer, registry_path->Length);
+    registry_buffer[registry_path->Length / sizeof(WCHAR)] = L'\0';
+    RtlInitUnicodeString(&saved_registry_path, registry_buffer);
     uart = (volatile ULONG *)MmMapIoSpace(address, 0x1000, MmNonCached);
     if (!uart) return STATUS_INSUFFICIENT_RESOURCES;
     trace("\nA04BUTTON kernel DriverEntry\n");
