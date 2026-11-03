@@ -47,13 +47,14 @@ static void disable_self(void)
 static void WINAPI service_main(DWORD argc, WCHAR **argv)
 {
     DWORD i;
-    int found = 0;
+    int found = 0, enumeration_error = 0;
     (void)argc; (void)argv;
     service_handle = RegisterServiceCtrlHandlerW(L"A04ButtonProbe", control);
     if (!service_handle) return;
     service_status.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
     service_status.dwCurrentState = SERVICE_RUNNING;
     SetServiceStatus(service_handle, &service_status);
+    log_result("A04_BUTTON_PROBE_STARTED\r\n");
     for (i = 0; i < A04_PROBE_SECONDS; ++i) {
         HDEVINFO list = SetupDiGetClassDevsW(&button_interface, NULL, NULL,
                                              DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
@@ -62,14 +63,18 @@ static void WINAPI service_main(DWORD argc, WCHAR **argv)
             if (data) {
                 data->cbSize = sizeof(*data);
                 found = SetupDiEnumDeviceInterfaces(list, NULL, &button_interface, 0, data) != 0;
+                if (!found && GetLastError() != ERROR_NO_MORE_ITEMS)
+                    enumeration_error = 1;
                 HeapFree(GetProcessHeap(), 0, data);
-            }
+            } else enumeration_error = 1;
             SetupDiDestroyDeviceInfoList(list);
             if (found) break;
-        }
+        } else enumeration_error = 1;
         Sleep(1000);
     }
-    log_result(found ? "A04_BUTTON_INTERFACE_PRESENT\r\n" : "A04_BUTTON_INTERFACE_NOT_FOUND\r\n");
+    log_result(found ? "A04_BUTTON_INTERFACE_PRESENT\r\n" :
+               enumeration_error ? "A04_BUTTON_ENUMERATION_ERROR\r\n" :
+               "A04_BUTTON_INTERFACE_NOT_FOUND\r\n");
     disable_self();
     service_status.dwCurrentState = SERVICE_STOPPED;
     service_status.dwWin32ExitCode = found ? NO_ERROR : ERROR_NOT_FOUND;
