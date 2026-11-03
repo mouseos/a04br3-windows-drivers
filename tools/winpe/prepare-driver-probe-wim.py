@@ -28,6 +28,7 @@ p.add_argument('--button-provider-status', type=Path, help='Optional read-only p
 p.add_argument('--touch-provider-package', type=Path, help='Optional experimental touch provider INF, SYS and CAT')
 p.add_argument('--touch-provider-status', type=Path, help='Optional read-only touch PnP status executable')
 p.add_argument('--touch-provider-original', type=Path, help='Expected active touch SYS for guarded replacement')
+p.add_argument('--disable-quickedit', type=Path, help='Optional signed console selection control executable')
 a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
 startnet = a.startnet or root / 'tools/winpe/startnet-driver-probe.cmd'
@@ -70,6 +71,8 @@ if a.touch_provider_status:
     files['/a04br3/touch-provider-status.exe'] = a.touch_provider_status
 if a.touch_provider_original:
     files['/a04br3/touch-provider-original.sys'] = a.touch_provider_original
+if a.disable_quickedit:
+    files['/a04br3/disable-quickedit.exe'] = a.disable_quickedit
 for source in [a.source_wim, *files.values()]:
     if not source.is_file():
         raise SystemExit(f'Missing input: {source}')

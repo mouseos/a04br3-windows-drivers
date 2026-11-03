@@ -1,5 +1,7 @@
 @echo off
 title TAB-A04BR3 guarded touch range update
+X:\a04br3\disable-quickedit.exe
+if errorlevel 1 goto consolefail
 wpeinit
 drvload X:\a04br3\a04-msdc-probe.inf
 if errorlevel 1 goto storagefail
@@ -56,6 +58,9 @@ echo VOLUME_GUARD_REJECTED
 goto finish
 :storagefail
 echo STORAGE_DRIVER_FAILED
+goto finish
+:consolefail
+echo QUICKEDIT_DISABLE_FAILED
 goto finish
 :dismount
 mountvol C: /p
