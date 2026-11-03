@@ -921,6 +921,9 @@ static VOID A04IsolatedWorker(PVOID extension, PVOID context, PVOID worker)
     if (run) (void)A04RunIo(extension,&probe->isolatedRequest);
     if (InterlockedCompareExchange(&probe->cancelled,0,0))
         A04Trace("A04WIN isolated cancelled worker drained\n");
+    /* No worker context is needed after the transfer; release it before
+     * making the shared shadow available to the next StartIo. */
+    (void)StorPortFreeWorker(extension,worker);
     StorPortAcquireSpinLock(extension,StartIoLock,NULL,&lock);
     original=probe->pendingRequest;
     if (original) {
@@ -938,11 +941,15 @@ static VOID A04IsolatedWorker(PVOID extension, PVOID context, PVOID worker)
         original->SrbStatus=probe->isolatedRequest.SrbStatus;
         original->ScsiStatus=probe->isolatedRequest.ScsiStatus;
         probe->pendingRequest=NULL;
+    }
+    /* The StartIo lock prevents the next request from reusing the shadow
+     * until the old completion is published. Keeping ioBusy set through the
+     * notification can unnecessarily return BUSY to the next request. */
+    a04_msdc_gate_release(&probe->ioBusy);
+    if (original) {
         StorPortNotification(RequestComplete,extension,original);
     }
     StorPortReleaseSpinLock(extension,&lock);
-    (void)StorPortFreeWorker(extension,worker);
-    a04_msdc_gate_release(&probe->ioBusy);
 }
 
 static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
