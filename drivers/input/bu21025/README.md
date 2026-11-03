@@ -49,3 +49,6 @@ tests do not demonstrate device operation or wake from sleep.
 ARM32 SYS using Windows 8.1 WDK, Clang and LLD. Its entry point always returns
 `STATUS_NOT_SUPPORTED`: it only checks that the shared components link in a
 kernel image, and must not be installed or treated as a working driver.
+`tools/ci/build-kmdf-touch-probe.ps1` independently checks the Windows 8.1
+KMDF 1.13 ARM entry and linking path. Its AddDevice callback rejects all
+devices; it is unsigned, untested on hardware and not a HID implementation.
