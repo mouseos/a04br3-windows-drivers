@@ -48,3 +48,9 @@ before synchronization and serialize all callbacks. A confirmed write
 advances state; a definitely undelivered write can be retried; an ambiguous
 result invalidates synchronization to avoid double toggles. It does not
 implement a Windows device, hardware resources, interrupts, or wake.
+
+The Windows RT 8.1 inbox driver's read handler statically appears to return
+five state bytes; its event queue can update those bytes later and can also
+produce the value 2. Do not blindly convert a read to a synchronized mask or
+assume a successful notification has already been consumed. Quiescence and
+the meaning of non-binary states need runtime verification before integration.
