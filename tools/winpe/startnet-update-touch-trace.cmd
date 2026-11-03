@@ -12,7 +12,7 @@ set "A04_MATCH_COUNT=0"
 set "A04_DRIVER_ID="
 for %%F in (C:\Windows\inf\oem*.inf) do if exist "%%~fF" call :match "%%~fF" "%%~nxF"
 if not "%A04_MATCH_COUNT%"=="1" goto reject
-drvload X:\a04br3\touch-provider\a04-touch.inf
+drvload X:\a04br3\touch-provider\bu21025.inf
 if errorlevel 1 goto providerfail
 X:\a04br3\touch-provider-status.exe
 if errorlevel 1 goto providerfail
@@ -20,7 +20,7 @@ echo TOUCH_TRACE_WINPE_STARTED
 dism.exe /Image:C:\ /Remove-Driver "/Driver:%A04_DRIVER_ID%" /ScratchDir:X:\Windows\Temp > X:\a04br3\touch-remove.log 2>&1
 if errorlevel 1 goto removefail
 echo TOUCH_TRACE_OLD_REMOVED
-dism.exe /Image:C:\ /Add-Driver /Driver:X:\a04br3\touch-provider\a04-touch.inf /ForceUnsigned /ScratchDir:X:\Windows\Temp > X:\a04br3\touch-add.log 2>&1
+dism.exe /Image:C:\ /Add-Driver /Driver:X:\a04br3\touch-provider\bu21025.inf /ForceUnsigned /ScratchDir:X:\Windows\Temp > X:\a04br3\touch-add.log 2>&1
 set A04_DISM_RESULT=%errorlevel%
 copy /b X:\a04br3\touch-add.log C:\Windows\Temp\a04br3-touch-trace-dism.log >nul
 if errorlevel 1 goto logfail
@@ -30,7 +30,7 @@ if not "%A04_DISM_RESULT%"=="0" goto dismfail
 echo TOUCH_TRACE_WINDOWS_STAGED
 goto dismount
 :match
-X:\a04br3\compare-files.exe "%~1" X:\a04br3\touch-provider\a04-touch.inf >nul 2>&1
+X:\a04br3\compare-files.exe "%~1" X:\a04br3\touch-provider\bu21025.inf >nul 2>&1
 if errorlevel 1 exit /b 0
 set /a A04_MATCH_COUNT+=1
 set "A04_DRIVER_ID=%~2"

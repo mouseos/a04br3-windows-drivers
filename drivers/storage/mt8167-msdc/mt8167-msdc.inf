@@ -41,6 +41,6 @@ a04msdcprobe.sys = 1
 
 [Strings]
 Provider = "TAB-A04-BR3 development"
-DeviceDescription = "MT8167 eMMC experimental boot storage"
-ServiceDescription = "MT8167 eMMC experimental boot storage"
-DiskName = "TAB-A04-BR3 experimental boot files"
+DeviceDescription = "MediaTek MT8167 MSDC eMMC Host Controller"
+ServiceDescription = "MediaTek MT8167 MSDC eMMC Host Controller"
+DiskName = "MediaTek MT8167 MSDC eMMC Driver"

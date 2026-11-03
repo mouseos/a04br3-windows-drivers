@@ -45,5 +45,5 @@ KmdfLibraryVersion=1.13
 
 [Strings]
 Provider="mouseos"
-Device="TAB-A04-BR3 experimental button provider"
-Disk="Experimental button provider"
+Device="MediaTek MT8167 and MT6392 Hardware Buttons"
+Disk="MediaTek MT8167 and MT6392 Button Driver"

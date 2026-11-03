@@ -18,12 +18,12 @@ reg query HKLM\A04TEMP\ControlSet001\Services\A04Touch >nul 2>&1
 if not errorlevel 1 goto serviceexists
 reg unload HKLM\A04TEMP
 if errorlevel 1 goto unloadfail
-drvload X:\a04br3\touch-provider\a04-touch.inf
+drvload X:\a04br3\touch-provider\bu21025.inf
 if errorlevel 1 goto providerfail
 X:\a04br3\touch-provider-status.exe
 if errorlevel 1 goto providerfail
 echo TOUCH_RESTORE_WINPE_STARTED
-dism.exe /Image:C:\ /Add-Driver /Driver:X:\a04br3\touch-provider\a04-touch.inf /ForceUnsigned /ScratchDir:X:\Windows\Temp > X:\a04br3\touch-provider-dism.log 2>&1
+dism.exe /Image:C:\ /Add-Driver /Driver:X:\a04br3\touch-provider\bu21025.inf /ForceUnsigned /ScratchDir:X:\Windows\Temp > X:\a04br3\touch-provider-dism.log 2>&1
 set A04_DISM_RESULT=%errorlevel%
 copy /b X:\a04br3\touch-provider-dism.log C:\Windows\Temp\a04br3-touch-range-dism.log >nul
 if errorlevel 1 goto logfail

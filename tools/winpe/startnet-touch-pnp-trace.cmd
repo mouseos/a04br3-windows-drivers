@@ -1,7 +1,7 @@
 @echo off
 title TAB-A04BR3 experimental touch trace
 wpeinit
-drvload X:\a04br3\touch-provider\a04-touch.inf
+drvload X:\a04br3\touch-provider\bu21025.inf
 if errorlevel 1 goto failed
 echo TOUCH_TRACE_DRVLOAD_OK
 X:\a04br3\touch-provider-status.exe

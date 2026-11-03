@@ -18,5 +18,5 @@ if ($LASTEXITCODE -ne 0) { throw 'Touch catalog signing failed' }
 $status = Join-Path $tempRoot 'a04-touch-provider-status\touch-provider-status.exe'
 & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My $status
 if ($LASTEXITCODE -ne 0) { throw 'Touch PnP status signing failed' }
-Get-FileHash -Algorithm SHA256 (Join-Path $package 'a04touch.sys'),(Join-Path $package 'a04touch.cat'),(Join-Path $package 'a04-touch.inf') | Format-Table -AutoSize
+Get-FileHash -Algorithm SHA256 (Join-Path $package 'a04touch.sys'),(Join-Path $package 'a04touch.cat'),(Join-Path $package 'bu21025.inf') | Format-Table -AutoSize
 Write-Host 'Experimental test-signed package only; not a production certificate.'

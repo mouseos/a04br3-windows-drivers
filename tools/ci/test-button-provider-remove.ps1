@@ -4,7 +4,7 @@ $base=Join-Path $tempRoot 'a04-provider-remove-test'
 $root=Resolve-Path (Join-Path $PSScriptRoot '..\..')
 New-Item -ItemType Directory -Force "$base\Windows\inf","$base\src\button-provider" | Out-Null
 Copy-Item "$tempRoot\a04-compare-x64\compare-files.exe" "$base\src\compare-files.exe" -Force
-[IO.File]::WriteAllText("$base\src\button-provider\a04-button-provider.inf",'exact package',[Text.Encoding]::ASCII)
+[IO.File]::WriteAllText("$base\src\button-provider\mt8167-mt6392-buttons.inf",'exact package',[Text.Encoding]::ASCII)
 [IO.File]::WriteAllText("$base\Windows\inf\oem1.inf",'exact package',[Text.Encoding]::ASCII)
 [IO.File]::WriteAllText("$base\Windows\inf\oem2.inf",'exact package',[Text.Encoding]::ASCII)
 $batch=Get-Content (Join-Path $root 'tools\winpe\startnet-remove-button-provider.cmd') -Raw

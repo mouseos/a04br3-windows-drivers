@@ -16,12 +16,12 @@ reg query HKLM\A04TEMP\ControlSet001\Services\A04ButtonProvider >nul 2>&1
 if not errorlevel 1 goto serviceexists
 reg unload HKLM\A04TEMP
 if errorlevel 1 goto unloadfail
-drvload X:\a04br3\button-provider\a04-button-provider.inf
+drvload X:\a04br3\button-provider\mt8167-mt6392-buttons.inf
 if errorlevel 1 goto providerfail
 X:\a04br3\button-provider-status.exe
 if errorlevel 1 goto providerfail
 echo BUTTON_PROVIDER_WINPE_STARTED
-dism.exe /Image:C:\ /Add-Driver /Driver:X:\a04br3\button-provider\a04-button-provider.inf /ForceUnsigned /ScratchDir:X:\Windows\Temp > X:\a04br3\button-provider-dism.log 2>&1
+dism.exe /Image:C:\ /Add-Driver /Driver:X:\a04br3\button-provider\mt8167-mt6392-buttons.inf /ForceUnsigned /ScratchDir:X:\Windows\Temp > X:\a04br3\button-provider-dism.log 2>&1
 set A04_DISM_RESULT=%errorlevel%
 copy /b X:\a04br3\button-provider-dism.log C:\Windows\Temp\a04br3-button-provider-dism.log >nul
 if errorlevel 1 goto logfail

@@ -58,5 +58,5 @@ KmdfLibraryVersion=1.13
 
 [Strings]
 Provider="mouseos"
-Device="TAB-A04-BR3 experimental touch"
-Disk="Experimental touch driver"
+Device="ROHM BU21025 Touchscreen"
+Disk="ROHM BU21025 Touchscreen Driver"

@@ -26,7 +26,7 @@ $driver = Join-Path $out 'a04touch.sys'
 if ($LASTEXITCODE -ne 0) { throw 'ARM32 touch link failed' }
 & llvm-readobj --file-headers $driver
 if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect output' }
-Copy-Item (Join-Path $dir 'a04-touch.inf') (Join-Path $out 'a04-touch.inf')
+Copy-Item (Join-Path $dir 'bu21025.inf') (Join-Path $out 'bu21025.inf')
 & (Join-Path $kit 'bin\x86\Inf2Cat.exe') "/driver:$out" /os:6_3_ARM /uselocaltime
 if ($LASTEXITCODE -ne 0) { throw 'Touch catalog generation failed' }
 Write-Host 'Experimental touch SYS built; PnP, HID, power and physical dimensions are unverified.'

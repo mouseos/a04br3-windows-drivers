@@ -18,7 +18,7 @@ if not "%A04_DISM_RESULT%"=="0" goto dismfail
 echo BUTTON_PROVIDER_WINDOWS_REMOVED
 goto dismount
 :match
-X:\a04br3\compare-files.exe "%~1" X:\a04br3\button-provider\a04-button-provider.inf >nul 2>&1
+X:\a04br3\compare-files.exe "%~1" X:\a04br3\button-provider\mt8167-mt6392-buttons.inf >nul 2>&1
 if errorlevel 1 exit /b 0
 set /a A04_MATCH_COUNT+=1
 set "A04_DRIVER_ID=%~2"
