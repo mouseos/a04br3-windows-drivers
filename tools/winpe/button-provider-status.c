@@ -2,6 +2,8 @@
  * Read-only WinPE check of the specific ACPI provider's PnP state. */
 #include <windows.h>
 #include <cfgmgr32.h>
+#include <initguid.h>
+#include <devpkey.h>
 
 static void say(const char *text)
 {
@@ -20,7 +22,9 @@ void mainCRTStartup(void)
 {
     DEVINST node = 0;
     CONFIGRET result = CR_FAILURE;
-    ULONG status = 0, problem = 0, i, length;
+    ULONG status = 0, problem = 0, i, length, problemStatus = 0;
+    DEVPROPTYPE propertyType = 0;
+    CONFIGRET propertyResult = CR_FAILURE;
     WCHAR ids[1024];
     for (i=0; i<30; ++i) {
         length=0;
@@ -45,6 +49,13 @@ void mainCRTStartup(void)
     }
     say("BUTTON_PROVIDER_CM_RESULT="); hex(result);
     say(" STATUS="); hex(status); say(" PROBLEM="); hex(problem); say("\r\n");
+    if (result == CR_SUCCESS) {
+        length=sizeof(problemStatus);
+        propertyResult=CM_Get_DevNode_PropertyW(node,&DEVPKEY_Device_ProblemStatus,
+                         &propertyType,(PBYTE)&problemStatus,&length,0);
+        say("BUTTON_PROVIDER_PROPERTY_RESULT="); hex(propertyResult);
+        say(" TYPE="); hex(propertyType); say(" NTSTATUS="); hex(problemStatus); say("\r\n");
+    }
     if (result == CR_SUCCESS && (status & DN_STARTED) && problem == 0) {
         say("BUTTON_PROVIDER_STARTED\r\n"); ExitProcess(0);
     }

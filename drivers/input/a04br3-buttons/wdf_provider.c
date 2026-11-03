@@ -25,6 +25,7 @@ typedef struct {
     struct a04_button_hardware hardware;
     HANDLE endpoint;
     volatile LONG timerBusy;
+    volatile LONG timerEnabled;
     BOOLEAN attemptedSync;
     BOOLEAN permanentlyDisabled;
 } A04_CONTEXT;
@@ -148,6 +149,10 @@ NTSTATUS A04Release(WDFDEVICE device, WDFCMRESLIST translated)
 {
     A04_CONTEXT *c = A04GetContext(device);
     UNREFERENCED_PARAMETER(translated);
+    InterlockedExchange(&c->timerEnabled, 0);
+    WdfTimerStop(c->timer, TRUE);
+    /* A callback that was already running may have rearmed before it saw
+     * timerEnabled change; cancel that last one-shot after it has exited. */
     WdfTimerStop(c->timer, TRUE);
     a04_button_device_disconnect(&c->hardware.device);
     if (c->endpoint) { ZwClose(c->endpoint); c->endpoint = NULL; }
@@ -159,14 +164,18 @@ NTSTATUS A04D0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
 {
     A04_CONTEXT *c = A04GetContext(device);
     UNREFERENCED_PARAMETER(previous);
-    if (!c->attemptedSync && !c->permanentlyDisabled)
+    if (!c->attemptedSync && !c->permanentlyDisabled) {
+        InterlockedExchange(&c->timerEnabled, 1);
         WdfTimerStart(c->timer, WDF_REL_TIMEOUT_IN_MS(30));
+    }
     return STATUS_SUCCESS;
 }
 NTSTATUS A04D0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
 {
     A04_CONTEXT *c = A04GetContext(device);
     UNREFERENCED_PARAMETER(target);
+    InterlockedExchange(&c->timerEnabled, 0);
+    WdfTimerStop(c->timer, TRUE);
     WdfTimerStop(c->timer, TRUE);
     a04_button_device_disconnect(&c->hardware.device);
     if (c->endpoint) { ZwClose(c->endpoint); c->endpoint = NULL; }
@@ -184,6 +193,8 @@ void A04Timer(WDFTIMER timer)
         if (c->endpoint && !c->permanentlyDisabled)
             (void)a04_button_device_poll(&c->hardware.device);
     }
+    if (InterlockedCompareExchange(&c->timerEnabled, 1, 1) && !c->permanentlyDisabled)
+        WdfTimerStart(timer, WDF_REL_TIMEOUT_IN_MS(30));
     InterlockedExchange(&c->timerBusy, 0);
 }
 
@@ -206,7 +217,8 @@ NTSTATUS A04DeviceAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     status = WdfDeviceCreate(&init, &attr, &device);
     if (!NT_SUCCESS(status)) return status;
     c = A04GetContext(device);
-    WDF_TIMER_CONFIG_INIT_PERIODIC(&timerConfig, A04Timer, 30);
+    /* KMDF does not support periodic timers at PASSIVE_LEVEL. */
+    WDF_TIMER_CONFIG_INIT(&timerConfig, A04Timer);
     timerConfig.AutomaticSerialization = FALSE;
     WDF_OBJECT_ATTRIBUTES_INIT(&timerAttr);
     timerAttr.ParentObject = device;
