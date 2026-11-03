@@ -1,6 +1,14 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "coordinates.h"
 
+void a04_touch_set_board_orientation(struct a04_touch_calibration *cal)
+{
+    if (!cal) return;
+    cal->swap_axes = 1;
+    cal->invert_x = 1;
+    cal->invert_y = 1;
+}
+
 /* Avoid depending on an ARM compiler division runtime in kernel builds.
  * The caller bounds denominator to 1..4095 and numerator below 2^28. */
 static uint32_t divide_u32(uint32_t numerator, uint32_t denominator)

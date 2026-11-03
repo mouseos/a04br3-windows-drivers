@@ -12,6 +12,11 @@ struct a04_touch_calibration {
 };
 struct a04_touch_position { uint16_t x, y; };
 
+/* Board orientation in the landscape display coordinate system used by the
+ * existing A04BR3 XNU port: display X decreases with ADC Y and display Y
+ * decreases with ADC X. Bounds remain the caller's independent calibration. */
+void a04_touch_set_board_orientation(struct a04_touch_calibration *cal);
+
 /* Produces the full inclusive 0..65535 range. Out-of-bounds readings clamp to
  * the nearest calibrated edge. Reject invalid ADC values/configuration and
  * leave output unchanged. Caller owns calibration lifetime and synchronization. */
