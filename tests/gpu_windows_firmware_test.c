@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include "windows_firmware.h"
 #include "pvr_rogue_fwif.h"
+#include "pvr_rogue_defs.h"
 static struct a04_gpu_firmware_state state;
 static unsigned allocations, releases, signal_start;
 static void *allocate(PDMA_ADAPTER adapter,ULONG size,PHYSICAL_ADDRESS *pa,BOOLEAN cache)
@@ -38,8 +39,12 @@ int main(int argc,char **argv)
     signal_start=1;
     status=a04_gpu_firmware_boot(&state,&adapter,regs,0x80000,image,(size_t)n,A04_PVR_BVNC,TRUE,26000000);
     if(status!=STATUS_SUCCESS || !state.processor_released || !state.firmware_started || allocations!=2 || releases) return 5;
-    /* Test process tears down its fake device only after the fake GPU is stopped. */
-    a04_gpu_free_memory(&state.memory); memset(&state,0,sizeof(state)); allocations=releases=0; signal_start=0;
+    if(a04_gpu_firmware_stop(&state,FALSE)!=STATUS_DEVICE_BUSY || releases || !state.processor_released) return 7;
+    if(a04_gpu_firmware_stop(&state,TRUE)!=STATUS_IO_TIMEOUT || releases || !state.processor_released) return 8;
+    *(uint32_t *)(void *)(regs+ROGUE_CR_SIDEKICK_IDLE)=(uint32_t)ROGUE_CR_SIDEKICK_IDLE_MASKFULL;
+    *(uint32_t *)(void *)(regs+ROGUE_CR_SLC_IDLE)=(uint32_t)ROGUE_CR_SLC_IDLE_MASKFULL;
+    if(a04_gpu_firmware_stop(&state,TRUE)!=STATUS_SUCCESS || releases!=2 || state.processor_released) return 9;
+    memset(regs,0,0x80000); memset(&state,0,sizeof(state)); allocations=releases=0; signal_start=0;
     status=a04_gpu_firmware_boot(&state,&adapter,regs,0x80000,image,(size_t)n,A04_PVR_BVNC,TRUE,26000000);
     if(status!=STATUS_IO_TIMEOUT || !state.processor_released || state.firmware_started || allocations!=2 || releases) return 6;
     a04_gpu_free_memory(&state.memory); free(regs); free(image);

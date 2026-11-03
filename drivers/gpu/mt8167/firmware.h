@@ -21,7 +21,7 @@ struct a04_pvr_fw_plan {
 enum a04_pvr_fw_result {
     A04_PVR_FW_OK = 0, A04_PVR_FW_INVALID = 1,
     A04_PVR_FW_INCOMPATIBLE = 2, A04_PVR_FW_LAYOUT = 3,
-    A04_PVR_FW_ELF = 4, A04_PVR_FW_OUTPUT = 5
+    A04_PVR_FW_ELF = 4, A04_PVR_FW_OUTPUT = 5, A04_PVR_FW_TIMEOUT = 6
 };
 /* The BVNC mismatch is rejected unless explicitly allowed by the caller. */
 enum a04_pvr_fw_result a04_pvr_fw_plan(const uint8_t *image, size_t length,
@@ -65,4 +65,8 @@ struct a04_pvr_register_io {
  * firmware heap and page-table writes for the GPU. */
 enum a04_pvr_fw_result a04_pvr_mips_start(const struct a04_pvr_register_io *io,
         uint64_t core_bvnc, const struct a04_pvr_mips_addresses *addresses);
+/* Caller must first request firmware shutdown and stop submitting work.
+ * A timeout never authorizes releasing any DMA allocation. */
+enum a04_pvr_fw_result a04_pvr_mips_stop(const struct a04_pvr_register_io *io,
+        uint64_t core_bvnc);
 #endif

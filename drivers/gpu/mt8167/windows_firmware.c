@@ -51,3 +51,16 @@ fail_before_release:
     a04_gpu_free_memory(&s->memory);
     return status;
 }
+NTSTATUS a04_gpu_firmware_stop(struct a04_gpu_firmware_state *s,BOOLEAN acknowledged)
+{
+    enum a04_pvr_fw_result r;
+    if (!s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !s->memory.adapter || !s->processor_released)
+        return STATUS_INVALID_PARAMETER;
+    if (!acknowledged) return STATUS_DEVICE_BUSY;
+    r=a04_pvr_mips_stop(&s->io,A04_PVR_BVNC);
+    if (r!=A04_PVR_FW_OK) return STATUS_IO_TIMEOUT;
+    a04_gpu_dma_barrier();
+    a04_gpu_free_memory(&s->memory);
+    s->processor_released=FALSE; s->firmware_started=FALSE;
+    return STATUS_SUCCESS;
+}

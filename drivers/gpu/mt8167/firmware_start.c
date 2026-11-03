@@ -53,3 +53,49 @@ enum a04_pvr_fw_result a04_pvr_mips_start(const struct a04_pvr_register_io *io,
     io->delay_us(io->context,3);
     return A04_PVR_FW_OK;
 }
+
+/* Based on pvr_fw_stop() in the upstream MIT-licensed Linux source. The
+ * firmware must already have received a power-off request. Timeout leaves
+ * the processor and all allocations owned by the caller. */
+static int poll32(const struct a04_pvr_register_io *io,uint32_t reg,uint32_t mask,uint32_t want)
+{
+    unsigned i;
+    for (i=0;i<10000u;++i) {
+        if ((R32(reg)&mask)==want) return 1;
+        io->delay_us(io->context,100);
+    }
+    return 0;
+}
+static int poll64(const struct a04_pvr_register_io *io,uint32_t reg,uint64_t mask,uint64_t want)
+{
+    unsigned i;
+    for (i=0;i<10000u;++i) {
+        if ((R64(reg)&mask)==want) return 1;
+        io->delay_us(io->context,100);
+    }
+    return 0;
+}
+enum a04_pvr_fw_result a04_pvr_mips_stop(const struct a04_pvr_register_io *io,uint64_t bvnc)
+{
+    const uint32_t idle=(uint32_t)ROGUE_CR_SIDEKICK_IDLE_MASKFULL &
+        ~(ROGUE_CR_SIDEKICK_IDLE_GARTEN_EN|ROGUE_CR_SIDEKICK_IDLE_SOCIF_EN|ROGUE_CR_SIDEKICK_IDLE_HOSTIF_EN);
+    uint64_t reset=ROGUE_CR_SOFT_RESET__PBE2_XE__MASKFULL;
+    if (!io || !io->read32 || !io->read64 || !io->write32 || !io->write64 || !io->delay_us || bvnc!=A04_PVR_BVNC)
+        return A04_PVR_FW_INVALID;
+    if (!poll32(io,ROGUE_CR_SIDEKICK_IDLE,idle,idle) ||
+        !poll32(io,ROGUE_CR_SLC_IDLE,(uint32_t)ROGUE_CR_SLC_IDLE_MASKFULL,(uint32_t)ROGUE_CR_SLC_IDLE_MASKFULL))
+        return A04_PVR_FW_TIMEOUT;
+    W32(ROGUE_CR_MTS_INTCTX_THREAD0_DM_ASSOC,(uint32_t)(ROGUE_CR_MTS_INTCTX_THREAD0_DM_ASSOC_MASKFULL & ROGUE_CR_MTS_INTCTX_THREAD0_DM_ASSOC_DM_ASSOC_CLRMSK));
+    W32(ROGUE_CR_MTS_BGCTX_THREAD0_DM_ASSOC,(uint32_t)(ROGUE_CR_MTS_BGCTX_THREAD0_DM_ASSOC_MASKFULL & ROGUE_CR_MTS_BGCTX_THREAD0_DM_ASSOC_DM_ASSOC_CLRMSK));
+    if (!poll32(io,ROGUE_CR_BIF_STATUS_MMU,(uint32_t)ROGUE_CR_BIF_STATUS_MMU_MASKFULL,0) ||
+        !poll32(io,ROGUE_CR_BIFPM_STATUS_MMU,(uint32_t)ROGUE_CR_BIFPM_STATUS_MMU_MASKFULL,0) ||
+        !poll32(io,ROGUE_CR_BIF_READS_EXT_STATUS,(uint32_t)ROGUE_CR_BIF_READS_EXT_STATUS_MASKFULL,0) ||
+        !poll32(io,ROGUE_CR_BIFPM_READS_EXT_STATUS,(uint32_t)ROGUE_CR_BIFPM_READS_EXT_STATUS_MASKFULL,0) ||
+        !poll64(io,ROGUE_CR_SLC_STATUS1,ROGUE_CR_SLC_STATUS1_MASKFULL,0) ||
+        !poll32(io,ROGUE_CR_SLC_IDLE,(uint32_t)ROGUE_CR_SLC_IDLE_MASKFULL,(uint32_t)ROGUE_CR_SLC_IDLE_MASKFULL) ||
+        !poll32(io,ROGUE_CR_SIDEKICK_IDLE,idle,idle) ||
+        !poll32(io,ROGUE_CR_SIDEKICK_IDLE,ROGUE_CR_SIDEKICK_IDLE_GARTEN_EN,ROGUE_CR_SIDEKICK_IDLE_GARTEN_EN))
+        return A04_PVR_FW_TIMEOUT;
+    W64(ROGUE_CR_SOFT_RESET,reset);
+    return (R64(ROGUE_CR_SOFT_RESET)&reset)==reset ? A04_PVR_FW_OK : A04_PVR_FW_TIMEOUT;
+}

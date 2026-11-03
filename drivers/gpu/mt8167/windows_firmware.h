@@ -22,4 +22,8 @@ NTSTATUS a04_gpu_firmware_boot(struct a04_gpu_firmware_state *state,
         PDMA_ADAPTER adapter, volatile void *registers, ULONG register_length,
         const uint8_t *image, size_t image_size, uint64_t actual_bvnc,
         BOOLEAN allow_mismatch, ULONG core_hz);
+/* Caller must have stopped new jobs and received a firmware power-off
+ * acknowledgement. Retains all allocations if quiescence checks fail. */
+NTSTATUS a04_gpu_firmware_stop(struct a04_gpu_firmware_state *state,
+        BOOLEAN poweroff_acknowledged);
 #endif
