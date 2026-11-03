@@ -953,6 +953,14 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
     ULONG status,i;
     UCHAR *dst=(UCHAR *)&probe->isolatedRequest, *src=(UCHAR *)request;
     StorPortAcquireSpinLock(extension,StartIoLock,NULL,&lock);
+    /* PnP and other SRB formats do not have the SCSI request layout. Never
+     * copy or interpret them as a full SCSI_REQUEST_BLOCK. */
+    if (request->Function!=SRB_FUNCTION_EXECUTE_SCSI || request->Length<sizeof(SCSI_REQUEST_BLOCK)) {
+        request->SrbStatus=SRB_STATUS_INVALID_REQUEST;
+        StorPortNotification(RequestComplete,extension,request);
+        StorPortReleaseSpinLock(extension,&lock);
+        return TRUE;
+    }
     if (!a04_msdc_gate_acquire(&probe->ioBusy)) {
 #ifdef A04_SERIAL_QUEUE_EXPERIMENT
         InterlockedIncrement(&probe->gateBusyCount); InterlockedIncrement(&probe->busyCount);
