@@ -7,6 +7,7 @@ from pathlib import Path
 import struct
 import subprocess
 from ntfs_root_attributes import normalize_root
+from ntfs_index_bitmap import normalize_index_bitmap
 
 p = argparse.ArgumentParser()
 p.add_argument('--wim', type=Path, required=True)
@@ -41,6 +42,8 @@ subprocess.run(['mkntfs', '-F', '-Q', '-L', 'Windows', '-s', '512', '-p', str(st
                 '-H', '255', '-S', '63', str(partial), str(sectors)], check=True)
 subprocess.run([a.wimlib, 'apply', str(a.wim), '1', str(partial), '--strict-acls'], check=True)
 root_before, root_after = normalize_root(partial, sectors * sector_bytes, start)
+bitmap_size, bitmap_before, bitmap_after = normalize_index_bitmap(
+    partial, sectors * sector_bytes, start, '/Windows/WinSxS/Manifests')
 subprocess.run(['ntfsfix', '-n', str(partial)], check=True)
 with partial.open('rb') as stream:
     boot = stream.read(512)
@@ -53,7 +56,9 @@ manifest.write_text(json.dumps({'image': str(a.output), 'size_bytes': sectors * 
     'sha256': image_hash, 'partition_start_lba': start, 'sector_bytes': sector_bytes,
     'source_wim_sha256': source_hash, 'image_index': 1,
     'ntfs_root_attributes_before': root_before, 'ntfs_root_attributes_after': root_after,
+    'manifests_index_bitmap': {'size': bitmap_size, 'initialized_before': bitmap_before,
+                               'initialized_after': bitmap_after},
     'driver_source_commit': a.driver_source_commit,
-    'validation': 'wimlib verify; strict ACL apply; normalized root attributes; ntfsfix -n; NTFS boot geometry',
+    'validation': 'wimlib verify; strict ACL apply; normalized root attributes and Manifests index bitmap; ntfsfix -n; NTFS boot geometry',
     'limitations': 'experimental; OS boot and production driver signing are not established'}, indent=2) + '\n')
 print('NTFS image built and verified:', a.output)

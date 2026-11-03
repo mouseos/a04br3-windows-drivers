@@ -8,6 +8,8 @@ TAB-A04-BR3のWindows RT 8.1 ARM32向けドライバをまとめるリポジト�
 
 C11コンパイラとmakeで `make test` を実行します。Clangがある場合、`make arm-coff` はARM32 Windows用COFFオブジェクトの生成を確認します。これらはWindowsドライバのビルドやロード成功を意味しません。
 
+`tools/winpe/build-windows-ntfs.py` は新規のNTFSイメージに限り、ルート属性と `Windows/WinSxS/Manifests` の索引ビットマップを正規化します。メタデータだけの使い捨て画像では、ビットマップの内容を変えずに初期化済み長を補うとWindows Server 2022の読み取り専用CHKDSKが正常終了しました。Windows RT実機での修復や、生成イメージ全体の実機検証は未実施です。この処理を実機ブロックデバイスや既存インストールには使用しません。
+
 Microsoftは `SdPortInitialize` の対象をWindows 10以降と記載しています。そのAPIをWindows RT 8.1で利用できると仮定せず、Windows 8.1 WDKと実際のOSにあるインターフェースを調査しています。Windows Actions上のWDK 8.1とClang/LLDでARM32診断ドライバをビルドし、テスト署名とテストモードでのロードを確認しました。
 
 - [Microsoft: SdPortInitialize](https://learn.microsoft.com/en-us/previous-versions/mt715818%28v%3Dvs.85%29)
