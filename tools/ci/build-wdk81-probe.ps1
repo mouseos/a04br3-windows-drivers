@@ -30,6 +30,10 @@ if ($env:A04_ISOLATED_REQUEST_EXPERIMENT -eq '1') {
     if ($env:A04_SCRATCH_IO -ne '1') { throw 'Isolated requests require the scratch diagnostic' }
     $probeDefines += '-DA04_ISOLATED_REQUEST_EXPERIMENT'
 }
+if ($env:A04_ISOLATED_RESET_TEST -eq '1') {
+    if ($env:A04_ISOLATED_REQUEST_EXPERIMENT -ne '1') { throw 'Reset test requires isolated requests' }
+    $probeDefines += '-DA04_ISOLATED_RESET_TEST'
+}
 if ($env:A04_EMMC_IDENTITY_HANDOFF -eq '1') {
     if ($env:A04_READONLY_DISK_PROBE -ne '1') { throw 'eMMC identity handoff requires the disk probe' }
     $probeDefines += '-DA04_EMMC_IDENTITY_HANDOFF'

@@ -20,6 +20,12 @@
 #if defined(A04_ISOLATED_REQUEST_EXPERIMENT) && !defined(A04_SCRATCH_IO)
 #error A04_ISOLATED_REQUEST_EXPERIMENT is restricted to the scratch diagnostic
 #endif
+#if defined(A04_ISOLATED_RESET_TEST) && !defined(A04_ISOLATED_REQUEST_EXPERIMENT)
+#error A04_ISOLATED_RESET_TEST requires isolated diagnostic requests
+#endif
+#if defined(A04_ISOLATED_RESET_TEST) && A04_SCRATCH_LBA > 0xffffffe8u
+#error A04_ISOLATED_RESET_TEST sentinel exceeds the 32-bit sector range
+#endif
 #ifdef A04_READONLY_DISK_PROBE
 #include "cdb.h"
 #include "scsi_capacity.h"
@@ -895,10 +901,26 @@ static VOID A04IsolatedWorker(PVOID extension, PVOID context, PVOID worker)
     ULONG i, count;
     BOOLEAN run;
     UNREFERENCED_PARAMETER(context);
+#ifdef A04_ISOLATED_RESET_TEST
+    {
+        struct a04_block_request blocks;
+        if (probe->isolatedRequest.Function==SRB_FUNCTION_EXECUTE_SCSI &&
+            a04_decode_block_cdb(probe->isolatedRequest.Cdb,probe->isolatedRequest.CdbLength,
+                                 probe->sectors,&blocks)==A04_CDB_OK &&
+            !blocks.write && blocks.lba==(uint64_t)A04_SCRATCH_LBA+16u && blocks.block_count==8) {
+            LARGE_INTEGER delay;
+            delay.QuadPart=-20000000; /* diagnostic 2 s, PASSIVE_LEVEL */
+            A04Trace("A04WIN isolated reset delay entered\n");
+            (void)KeDelayExecutionThread(KernelMode,FALSE,&delay);
+        }
+    }
+#endif
     StorPortAcquireSpinLock(extension,StartIoLock,NULL,&lock);
     run=probe->pendingRequest != NULL && !probe->cancelled;
     StorPortReleaseSpinLock(extension,&lock);
     if (run) (void)A04RunIo(extension,&probe->isolatedRequest);
+    if (InterlockedCompareExchange(&probe->cancelled,0,0))
+        A04Trace("A04WIN isolated cancelled worker drained\n");
     StorPortAcquireSpinLock(extension,StartIoLock,NULL,&lock);
     original=probe->pendingRequest;
     if (original) {
@@ -1072,6 +1094,8 @@ static BOOLEAN A04ResetBus(PVOID extension, ULONG path)
      * failed and detach the OS request; the worker owns only private data.
      * FALSE deliberately reports that hardware reset is not implemented. */
     if (path==0) {
+        A04Trace(original ? "A04WIN reset detached pending request\n" :
+                            "A04WIN reset had no pending request\n");
         InterlockedExchange(&probe->cancelled,1);
         probe->failed=TRUE;
         if (original) {
