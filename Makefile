@@ -5,7 +5,8 @@ SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test test-ntfs-root arm-coff clean
 
-test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/button_pipeline_test build/button_device_test build/button_hardware_test build/pmic_read_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_board_init_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test build/eint_test build/gpu_power_test
+test: build/toprgu_reset_command_test build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/button_pipeline_test build/button_device_test build/button_hardware_test build/pmic_read_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_board_init_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test build/eint_test build/gpu_power_test
+	./build/toprgu_reset_command_test
 	./build/cdb_test
 	./build/pio_test
 	./build/scsi_capacity_test
@@ -31,6 +32,10 @@ test: build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test buil
 	./build/check_chkdsk_test
 	./build/eint_test
 	./build/gpu_power_test
+
+build/toprgu_reset_command_test: drivers/system/mt8167-toprgu/reset_command.c drivers/system/mt8167-toprgu/reset_command.h tests/toprgu_reset_command_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/system/mt8167-toprgu drivers/system/mt8167-toprgu/reset_command.c tests/toprgu_reset_command_test.c -o $@
 
 build/gpu_power_test: drivers/gpu/mt8167/rogue_power.h tests/gpu_power_test.c
 	mkdir -p build
