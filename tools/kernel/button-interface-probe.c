@@ -64,14 +64,25 @@ static void probe_thread(PVOID context)
 NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING registry_path)
 {
     PHYSICAL_ADDRESS address;
-    HANDLE thread = NULL;
+    HANDLE thread = NULL, key = NULL;
+    OBJECT_ATTRIBUTES attributes;
+    UNICODE_STRING start_name;
+    ULONG disabled = 4;
     NTSTATUS status;
     UNREFERENCED_PARAMETER(driver);
-    UNREFERENCED_PARAMETER(registry_path);
     address.QuadPart = 0x11005000;
     uart = (volatile ULONG *)MmMapIoSpace(address, 0x1000, MmNonCached);
     if (!uart) return STATUS_INSUFFICIENT_RESOURCES;
     trace("\nA04BUTTON kernel DriverEntry\n");
+    InitializeObjectAttributes(&attributes, registry_path, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
+                               NULL, NULL);
+    status = ZwOpenKey(&key, KEY_SET_VALUE, &attributes);
+    if (NT_SUCCESS(status)) {
+        RtlInitUnicodeString(&start_name, L"Start");
+        status = ZwSetValueKey(key, &start_name, 0, REG_DWORD, &disabled, sizeof(disabled));
+        ZwClose(key);
+    }
+    trace("A04BUTTON disable status="); trace_hex((ULONG)status); trace("\n");
     status = PsCreateSystemThread(&thread, THREAD_ALL_ACCESS, NULL, NULL, NULL,
                                   probe_thread, NULL);
     if (!NT_SUCCESS(status)) {

@@ -21,6 +21,7 @@ p.add_argument('--volume-guard', type=Path, help='Optional read-only Windows-vol
 p.add_argument('--button-probe-service', type=Path, help='Optional one-shot Windows interface probe service')
 p.add_argument('--button-probe-original', type=Path, help='Expected existing diagnostic executable for guarded replacement')
 p.add_argument('--compare-files', type=Path, help='Self-contained file comparison executable')
+p.add_argument('--button-kernel-probe', type=Path, help='Optional one-shot kernel interface probe')
 a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
 startnet = a.startnet or root / 'tools/winpe/startnet-driver-probe.cmd'
@@ -47,6 +48,8 @@ if a.button_probe_original:
     files['/a04br3/button-probe-original.exe'] = a.button_probe_original
 if a.compare_files:
     files['/a04br3/compare-files.exe'] = a.compare_files
+if a.button_kernel_probe:
+    files['/a04br3/button-kernel-probe.sys'] = a.button_kernel_probe
 for source in [a.source_wim, *files.values()]:
     if not source.is_file():
         raise SystemExit(f'Missing input: {source}')
