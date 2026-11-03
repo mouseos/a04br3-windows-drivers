@@ -5,8 +5,14 @@
 #include <ntddscsi.h>
 #include "pio.h"
 #include "io_gate.h"
-#if defined(A04_PASSIVE_IO) && (!defined(A04_READONLY_DISK_PROBE) || defined(A04_ENABLE_WRITES))
+#if defined(A04_PASSIVE_IO) && (!defined(A04_READONLY_DISK_PROBE) || (defined(A04_ENABLE_WRITES) && !defined(A04_SCRATCH_IO)))
 #error A04_PASSIVE_IO is restricted to the read-only diagnostic package
+#endif
+#if defined(A04_SCRATCH_IO) && (!defined(A04_PASSIVE_IO) || !defined(A04_ENABLE_WRITES) || !defined(A04_SCRATCH_LBA))
+#error A04_SCRATCH_IO requires passive I/O, guarded writes and a selected scratch LBA
+#endif
+#if defined(A04_SCRATCH_IO) && (!defined(A04_DMA_DISK_PROBE) || !defined(A04_VIRTUAL_BOUNCE_EXPERIMENT) || A04_SCRATCH_LBA > 0xfffffff8u)
+#error A04_SCRATCH_IO requires the diagnostic DMA path and an in-range LBA
 #endif
 #ifdef A04_READONLY_DISK_PROBE
 #include "cdb.h"
@@ -163,8 +169,16 @@ static BOOLEAN A04ValidateWindowsRange(struct a04_probe_extension *probe,
     }
     if (!a04_gpt_guard_finish(&guard, &first, &last) ||
         !a04_gpt_guard_esp(&guard, &esp_first, &esp_last)) return FALSE;
+#ifdef A04_SCRATCH_IO
+    /* GPT allocation says nothing about old data in the gap. The host must
+     * save and restore these eight sectors even if the trial fails. */
+    if (!a04_gpt_guard_unallocated(&guard, A04_SCRATCH_LBA, 8)) return FALSE;
+    probe->write_first=A04_SCRATCH_LBA; probe->write_last=A04_SCRATCH_LBA+7;
+    probe->esp_first=1; probe->esp_last=0; /* An empty range rejects every write. */
+#else
     probe->write_first=first; probe->write_last=last;
     probe->esp_first=esp_first; probe->esp_last=esp_last;
+#endif
     A04Trace("A04WIN guarded Windows range="); A04TraceHex(first);
     A04Trace(".."); A04TraceHex(last); A04Trace("\n");
     A04Trace("A04WIN guarded ESP range="); A04TraceHex(probe->esp_first);
@@ -815,12 +829,18 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
                 request->DataTransferLength = result.transfer_length;
 #ifdef A04_PASSIVE_IO
                 /* Temporary WinPE read-stress sentinels; no writes. */
+#ifdef A04_SCRATCH_IO
+                if (result.action == A04_SCSI_READ && result.blocks.block_count == 8 &&
+                    result.blocks.lba == (uint64_t)A04_SCRATCH_LBA + 8u)
+                    A04Trace("A04WIN scratch verification sentinel complete\n");
+#else
                 if (result.action == A04_SCSI_READ && result.blocks.block_count == 8 &&
                     result.blocks.lba == 0x000e0100u)
                     A04Trace("A04WIN passive stress start read complete\n");
                 if (result.action == A04_SCSI_READ && result.blocks.block_count == 8 &&
                     result.blocks.lba == 0x000e0200u)
                     A04Trace("A04WIN passive stress end read complete\n");
+#endif
 #endif
             }
         }

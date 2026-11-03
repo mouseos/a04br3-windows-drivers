@@ -12,8 +12,15 @@ $driver = Join-Path $output 'miniport.sys'
 $extraObjects = @()
 $probeDefines = @()
 if ($env:A04_PASSIVE_IO -eq '1') {
-    if ($env:A04_READONLY_DISK_PROBE -ne '1' -or $env:A04_ENABLE_WRITES -eq '1' -or $env:A04_BOOT_EXPERIMENT -eq '1') { throw 'Passive I/O is restricted to the read-only diagnostic package' }
+    if ($env:A04_READONLY_DISK_PROBE -ne '1' -or $env:A04_BOOT_EXPERIMENT -eq '1' -or ($env:A04_ENABLE_WRITES -eq '1' -and $env:A04_SCRATCH_IO -ne '1')) { throw 'Passive I/O is restricted to WinPE diagnostic packages' }
     $probeDefines += '-DA04_PASSIVE_IO'
+}
+if ($env:A04_SCRATCH_IO -eq '1') {
+    if ($env:A04_PASSIVE_IO -ne '1' -or $env:A04_ENABLE_WRITES -ne '1' -or $env:A04_BOOT_EXPERIMENT -eq '1' -or $env:A04_SCRATCH_LBA -notmatch '^\d+$') { throw 'Scratch I/O requires passive guarded writes, a decimal LBA and a non-boot package' }
+    $scratchLba = [uint64]$env:A04_SCRATCH_LBA
+    if ($scratchLba -gt 4294967288) { throw 'Scratch range exceeds 32-bit sectors' }
+    $probeDefines += '-DA04_SCRATCH_IO'
+    $probeDefines += ('-DA04_SCRATCH_LBA=' + $scratchLba)
 }
 if ($env:A04_EMMC_IDENTITY_HANDOFF -eq '1') {
     if ($env:A04_READONLY_DISK_PROBE -ne '1') { throw 'eMMC identity handoff requires the disk probe' }
@@ -58,7 +65,7 @@ $package = Join-Path $output 'package'
 New-Item -ItemType Directory -Force -Path $package | Out-Null
 $bootPackage = $env:A04_BOOT_EXPERIMENT -eq '1'
 $passivePackage = $env:A04_PASSIVE_IO -eq '1'
-$inf = if ($bootPackage) { 'mt8167-msdc.inf' } elseif ($passivePackage) { 'mt8167-msdc-readonly.inf' } else { 'a04-msdc-probe.inf' }
+$inf = if ($bootPackage) { 'mt8167-msdc.inf' } elseif ($env:A04_SCRATCH_IO -eq '1') { 'mt8167-msdc-scratch.inf' } elseif ($passivePackage) { 'mt8167-msdc-readonly.inf' } else { 'a04-msdc-probe.inf' }
 $sys = if ($bootPackage -or $passivePackage) { 'mt8167-msdc.sys' } else { 'a04msdcprobe.sys' }
 Copy-Item $driver (Join-Path $package $sys)
 Copy-Item (Join-Path $PSScriptRoot "..\..\drivers\storage\mt8167-msdc\$inf") (Join-Path $package $inf)
