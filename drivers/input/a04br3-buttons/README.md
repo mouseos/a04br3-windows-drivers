@@ -73,3 +73,7 @@ experiment that assumes an all-zero report means no earlier queued events.
 That assumption is not verified and is unsuitable for production. Both modes
 stop on ambiguous delivery and disable input across power transitions. They do
 not implement interrupts, wake, clock setup or PMIC sharing with other owners.
+On Windows with the Windows 8.1 WDK, LLVM and `lld-link` on PATH,
+`tools/ci/build-button-provider.ps1` builds the ARM32 SYS, INF and unsigned
+catalog. It defaults to the non-sending configuration. Signing and Windows
+installation remain separate development steps.

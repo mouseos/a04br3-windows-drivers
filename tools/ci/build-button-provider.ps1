@@ -5,7 +5,8 @@ $inc = Join-Path $kit 'Include'
 $wdfInc = Join-Path $inc 'wdf\kmdf\1.13'
 $wdfLib = Join-Path $kit 'Lib\wdf\kmdf\arm\1.13'
 $kmLib = Join-Path $kit 'Lib\winv6.3\km\arm'
-$out = Join-Path $env:RUNNER_TEMP 'a04-button-provider'
+$tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
+$out = Join-Path $tempRoot 'a04-button-provider'
 New-Item -ItemType Directory -Force $out | Out-Null
 $dir = Join-Path $root 'drivers\input\a04br3-buttons'
 $objects = @()
