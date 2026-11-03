@@ -126,6 +126,7 @@ arm-coff: $(SRC)/cdb.c $(SRC)/cdb.h
 	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/input/bu21025/device.c -o build/touch-device-arm.obj
 	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/bus/mt8167-eint/eint.c -o build/eint-arm.obj
 	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/input/a04br3-buttons/button_pipeline.c -o build/button-pipeline-arm.obj
+	$(CLANG) --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/input/a04br3-buttons/pmic_read.c -o build/pmic-read-arm.obj
 
 clean:
 	rm -rf build
