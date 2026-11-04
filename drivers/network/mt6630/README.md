@@ -117,3 +117,8 @@ WLANのEthernet HIF送受信部品は既存Linux gen3実装を参考にしたロ
 は802.11 packetと無線OOB情報を要求するため、このEthernet viewを直接NDISへ
 渡さない。MPDU形式とPHY/RSSI等の実情報、NET_BUFFER_LIST寿命、暗号処理の
 対応確認が必要。現段階はNDIS送受信や実IRQ/PnPに接続していない。
+
+`native_tx.c` はNative 802.11送信のうち、非QoS・非断片のToDSデータと
+RFC1042 LLC/SNAPを、接続中AP・ローカルMACを確認してEthernet HIFへ変換する。
+それ以外の形式は拒否する。NDISのNET_BUFFER_LIST・送信OOB・鍵設定には
+未接続であり、WPAやQoSを含むNative 802.11送信全体の実装ではない。

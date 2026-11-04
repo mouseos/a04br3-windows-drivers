@@ -44,6 +44,10 @@ int a04_wmt_bridge_scan_fail(struct a04_wmt_bridge *,int reason);
 int a04_wmt_bridge_tx_ethernet(struct a04_wmt_bridge *,const struct a04_wlan_station *,
  struct a04_wlan_security *,struct a04_wlan_data_state *,const uint8_t *,unsigned,
  a04_wlan_mic_verify,void *,uint64_t,uint64_t);
+/* Caller owns disjoint scratch and supplies a validated associated station. */
+int a04_wmt_bridge_tx_mpdu(struct a04_wmt_bridge *,const struct a04_wlan_station *,
+ struct a04_wlan_security *,struct a04_wlan_data_state *,const uint8_t *,unsigned,
+ uint8_t *,size_t,a04_wlan_mic_verify,void *,uint64_t,uint64_t);
 int a04_wmt_bridge_rx_ethernet(struct a04_wmt_bridge *,const struct a04_wlan_station *,
  struct a04_wlan_security *,const uint8_t *,unsigned,struct a04_wlan_ethernet *);
 int a04_wmt_bridge_tx_event(struct a04_wmt_bridge *,const struct a04_wlan_station *,

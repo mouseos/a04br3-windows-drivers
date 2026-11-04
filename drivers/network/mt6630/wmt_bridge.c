@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "wmt_bridge.h"
+#include "native_tx.h"
 static int alive(const struct a04_wmt_bridge *b)
 { return b && b->life && b->life->state==A04_WIFI_LIFE_IO && b->life->owner &&
  b->life->owner->active && !b->life->owner->poisoned &&
@@ -108,6 +109,14 @@ int a04_wmt_bridge_tx_ethernet(struct a04_wmt_bridge *b,const struct a04_wlan_st
  e=a04_wlan_ethernet_send(&b->wlan,station,security,data,frame,length,verify,context,now,deadline);
  if(e && (b->wlan.failed||b->transport.failed))return fault(b,e);
  return e;
+}
+int a04_wmt_bridge_tx_mpdu(struct a04_wmt_bridge *b,const struct a04_wlan_station *station,
+ struct a04_wlan_security *security,struct a04_wlan_data_state *data,const uint8_t *mpdu,unsigned length,
+ uint8_t *scratch,size_t capacity,a04_wlan_mic_verify verify,void *context,uint64_t now,uint64_t deadline)
+{
+ size_t bytes;
+ if(!alive(b)||!station||!mpdu||!scratch||a04_native_tx_to_ethernet(mpdu,length,station->ap.mac,station->local.mac,scratch,capacity,&bytes))return -1;
+ return a04_wmt_bridge_tx_ethernet(b,station,security,data,scratch,(unsigned)bytes,verify,context,now,deadline);
 }
 int a04_wmt_bridge_rx_ethernet(struct a04_wmt_bridge *b,const struct a04_wlan_station *station,
  struct a04_wlan_security *security,const uint8_t *packet,unsigned length,struct a04_wlan_ethernet *out)
