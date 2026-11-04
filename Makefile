@@ -586,3 +586,10 @@ build/mt6630_identity_test: drivers/network/mt6630/identity.c drivers/network/mt
 build/mt6630_sdio_args_test: drivers/network/mt6630/sdio_args.h tests/mt6630_sdio_args_test.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/network/mt6630 tests/mt6630_sdio_args_test.c -o $@
+
+.PHONY: test-mt6630
+test-mt6630: build/mt6630_identity_test build/mt6630_sdio_args_test
+	./build/mt6630_identity_test
+	./build/mt6630_sdio_args_test
+
+test: test-mt6630
