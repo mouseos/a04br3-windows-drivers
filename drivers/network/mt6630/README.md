@@ -49,3 +49,11 @@ ARMクロスコンパイルとASan/UBSanはホスト模擬で、無線操作・�
 割込み、電源・32kとBluetooth等の共同所有、firmware／校正の動的取得、NDIS無線
 miniport、電源／PnP停止と安全な復旧、署名・実機検証が残る。条件が揃うまでSTAや
 PrepareHardwareの安全ゲートを外さない。無線設定・MAC・国別RF設定を推測しない。
+
+`direct.c` は直列化済みの所有リースと同期callbackを前提にCMD52・R5を扱う。
+世代変更・通信失敗・R5エラーでは所有状態をpoisonし、以後の要求を拒否する。
+callbackの期限内完了、実際の排他と中断処理は呼び出し側の責務であり、
+モック検証はWindowsバス接続や実機上の安全性を保証しない。
+`power_plan.c` は許可された操作を呼ぶ前提の状態計画のみで、電源を操作しない。
+`ndis_candidate.c` はWDK 8.1向け登録のビルド足場で、初期化を必ず拒否し、
+Native 802.11・firmware・送受信機能を持たない。INFもない。
