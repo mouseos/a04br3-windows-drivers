@@ -11,10 +11,11 @@ static VOID oid_worker(PVOID context,NDIS_HANDLE work)
  NdisAcquireSpinLock(&q->lock);request=q->request;adapter=q->adapter;cancelled=q->cancelled;q->started=1;NdisReleaseSpinLock(&q->lock);
  status=cancelled?NDIS_STATUS_REQUEST_ABORTED:a04_native_oid_dispatch(q->oid,request);
  NdisFreeIoWorkItem(work);
- /* Once the request is detached, only local copies are used after releasing
-  * the lock. NDIS must keep the adapter alive for the still-pending OID. */
- NdisAcquireSpinLock(&q->lock);q->request=NULL;q->busy=0;q->started=0;q->cancelled=0;NdisSetEvent(&q->idle);NdisReleaseSpinLock(&q->lock);
+ /* Completion can reenter the miniport. Detach the request first, but keep
+  * rundown active until NDIS has returned from the completion callback. */
+ NdisAcquireSpinLock(&q->lock);q->request=NULL;q->busy=0;q->started=0;q->cancelled=0;q->completing++;NdisReleaseSpinLock(&q->lock);
  NdisMOidRequestComplete(adapter,request,status);
+ NdisAcquireSpinLock(&q->lock);q->completing--;if(!q->busy&&!q->completing)NdisSetEvent(&q->idle);NdisReleaseSpinLock(&q->lock);
 }
 NDIS_STATUS a04_native_oid_async_init(struct a04_native_oid_async *q,NDIS_HANDLE adapter,struct a04_native_oid_context *oid)
 {
@@ -50,6 +51,6 @@ NDIS_STATUS a04_native_oid_async_close(struct a04_native_oid_async *q,unsigned t
  NdisAcquireSpinLock(&q->lock);q->closing=1;if(q->busy&&!q->started)q->cancelled=1;NdisReleaseSpinLock(&q->lock);
  if(!NdisWaitEvent(&q->idle,timeout_ms))return NDIS_STATUS_PENDING;
  /* Waiter reacquires the lock after the worker signalled under that lock. */
- NdisAcquireSpinLock(&q->lock);if(q->busy){NdisReleaseSpinLock(&q->lock);return NDIS_STATUS_PENDING;}
+ NdisAcquireSpinLock(&q->lock);if(q->busy||q->completing){NdisReleaseSpinLock(&q->lock);return NDIS_STATUS_PENDING;}
  q->initialized=0;NdisReleaseSpinLock(&q->lock);NdisFreeSpinLock(&q->lock);return NDIS_STATUS_SUCCESS;
 }

@@ -11,7 +11,7 @@ struct a04_native_oid_async {
  NDIS_SPIN_LOCK lock;
  NDIS_EVENT idle;
  PNDIS_OID_REQUEST request;
- unsigned busy,started,cancelled,closing,initialized;
+ unsigned busy,started,cancelled,closing,initialized,completing;
 };
 NDIS_STATUS a04_native_oid_async_init(struct a04_native_oid_async *,NDIS_HANDLE,struct a04_native_oid_context *);
 NDIS_STATUS a04_native_oid_async_submit(struct a04_native_oid_async *,PNDIS_OID_REQUEST);
