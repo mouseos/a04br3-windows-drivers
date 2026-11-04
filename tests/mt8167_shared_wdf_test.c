@@ -3,10 +3,14 @@
 /* Compile actual parent in this test translation unit to inspect its context. */
 #include "../drivers/bus/mt8167-shared/wdf_parent_probe.c"
 #include "../drivers/audio/mt8167-afe/audio_parent_client.h"
-static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;static A04_SHARED_EMMC_INTERFACE emmc;
+static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,currentIrql;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;static A04_SHARED_EMMC_INTERFACE emmc;
 static A04_CHILD_CONTEXT children[4];static unsigned child_count,forward_count,appended,deleted;static int fail_step;static IO_RESOURCE_DESCRIPTOR descriptor;
 A04_CHILD_CONTEXT *ChildContext(WDFDEVICE d){return (A04_CHILD_CONTEXT *)d;}
 A04_PARENT_CONTEXT *ParentContext(WDFDEVICE d){(void)d;return &testContext;}
+static FAST_MUTEX mockWaitLock;
+NTSTATUS WdfWaitLockCreate(WDF_OBJECT_ATTRIBUTES *a,WDFWAITLOCK *l){assert(a->ParentObject);*l=&mockWaitLock;ExInitializeFastMutex(*l);return 0;}
+NTSTATUS WdfWaitLockAcquire(WDFWAITLOCK l,void *timeout){assert(!timeout);ExAcquireFastMutex(l);return 0;}
+void WdfWaitLockRelease(WDFWAITLOCK l){ExReleaseFastMutex(l);}
 void ExInitializeFastMutex(FAST_MUTEX *m){assert(!pthread_mutex_init(&m->mutex,NULL));m->held=0;}
 void ExAcquireFastMutex(FAST_MUTEX *m){assert(!pthread_mutex_lock(&m->mutex));assert(!m->held);m->held=1;}
 void ExReleaseFastMutex(FAST_MUTEX *m){assert(m->held);m->held=0;assert(!pthread_mutex_unlock(&m->mutex));}
@@ -18,7 +22,7 @@ static void *QueuedAdmission(void *p) {
 PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,int c){(void)n;(void)c;maps++;return (PVOID)(uintptr_t)a.QuadPart;}
 void MmUnmapIoSpace(PVOID p,ULONG n){(void)p;(void)n;unmaps++;}
 ULONG READ_REGISTER_ULONG(volatile ULONG *p){(void)p;reads++;return 0;}void WRITE_REGISTER_ULONG(volatile ULONG *p,ULONG x){(void)p;(void)x;writes++;}
-void KeStallExecutionProcessor(ULONG n){(void)n;}int KeGetCurrentIrql(void){return 0;}
+void KeStallExecutionProcessor(ULONG n){(void)n;}int KeGetCurrentIrql(void){return currentIrql;}
 ULONG WdfCmResourceListGetCount(WDFCMRESLIST l){return l->count;}PCM_PARTIAL_RESOURCE_DESCRIPTOR WdfCmResourceListGetDescriptor(WDFCMRESLIST l,ULONG i){return &l->entries[i];}
 void WdfDeviceInitSetPnpPowerEventCallbacks(PWDFDEVICE_INIT i,WDF_PNPPOWER_EVENT_CALLBACKS *p){(void)i;(void)p;}
 NTSTATUS WdfDeviceCreate(PWDFDEVICE_INIT *i,WDF_OBJECT_ATTRIBUTES *a,WDFDEVICE *d){(void)a;if(*i){assert(child_count<4);*d=&children[child_count++];*i=NULL;}else *d=&testContext;return 0;}
@@ -44,6 +48,7 @@ int main(void){
  entries[0].u.Memory.Start.QuadPart=0x10000000;entries[1].u.Memory.Start.QuadPart=0x10001000;entries[2].u.Memory.Start.QuadPart=0x10005000;entries[3].u.Memory.Start.QuadPart=0x1000f000;
  entries[0].u.Memory.Length=entries[1].u.Memory.Length=entries[2].u.Memory.Length=entries[3].u.Memory.Length=0x1000;
  assert(!ParentAdd(NULL,NULL));
+ currentIrql=1;assert(ParentLock(&testContext)!=0 && !testContext.pwrapLock->held);currentIrql=0;
  assert(child_count==4 && forward_count==9);
  assert(ChildRequirements(&children[3],NULL)==STATUS_DEVICE_CONFIGURATION_ERROR && appended==0);
  assert(ChildRequirements(&children[2],NULL)==STATUS_DEVICE_CONFIGURATION_ERROR && appended==0);
@@ -81,18 +86,18 @@ int main(void){
  /* A caller queued behind an existing operation must recheck after stop's
   * admission close, even when it was waiting before the close. */
  {struct waiter w={PTHREAD_MUTEX_INITIALIZER,PTHREAD_COND_INITIALIZER,0,0};pthread_t thread;
-  InterlockedExchange(&testContext.admissionClosed,0);ExAcquireFastMutex(&testContext.pwrapLock);
+  InterlockedExchange(&testContext.admissionClosed,0);WdfWaitLockAcquire(testContext.pwrapLock,NULL);
   assert(!pthread_create(&thread,NULL,QueuedAdmission,&w));assert(!pthread_mutex_lock(&w.sync));
   while(!w.started)assert(!pthread_cond_wait(&w.cond,&w.sync));
   InterlockedExchange(&testContext.admissionClosed,1);assert(!pthread_mutex_unlock(&w.sync));
-  ExReleaseFastMutex(&testContext.pwrapLock);assert(!pthread_join(thread,NULL));assert(w.result!=0);
+  WdfWaitLockRelease(testContext.pwrapLock);assert(!pthread_join(thread,NULL));assert(w.result!=0);
   assert(!pthread_cond_destroy(&w.cond));assert(!pthread_mutex_destroy(&w.sync));}
  /* Simulate admitted owners only in the mock, then verify surprise revokes
   * both under one lock before any unmap. D0 does not enable either in reality. */
  testContext.regs.online=1;testContext.pmic.online=1;testContext.admissionClosed=0;
  ParentSurprise(&testContext);assert(!testContext.regs.online && !testContext.pmic.online && unmaps==0);
  assert(testContext.admissionClosed && testContext.removed);
- assert(ParentLock(&testContext)!=0 && !testContext.pwrapLock.held);
+ assert(ParentLock(&testContext)!=0 && !testContext.pwrapLock->held);
  assert(ParentPrepare(&testContext,NULL,&list)==STATUS_DEVICE_NOT_READY && maps==4);
  assert(!ParentD0Exit(&testContext,0));
  assert(!ParentRelease(&testContext,&list) && unmaps==4);

@@ -11,7 +11,11 @@ typedef NTSTATUS EVT_WDF_DEVICE_D0_ENTRY(WDFDEVICE,WDF_POWER_DEVICE_STATE);
 typedef NTSTATUS EVT_WDF_DEVICE_D0_EXIT(WDFDEVICE,WDF_POWER_DEVICE_STATE);
 typedef VOID EVT_WDF_DEVICE_SURPRISE_REMOVAL(WDFDEVICE);
 typedef struct { EVT_WDF_DEVICE_PREPARE_HARDWARE *EvtDevicePrepareHardware;EVT_WDF_DEVICE_RELEASE_HARDWARE *EvtDeviceReleaseHardware;EVT_WDF_DEVICE_D0_ENTRY *EvtDeviceD0Entry;EVT_WDF_DEVICE_D0_EXIT *EvtDeviceD0Exit;EVT_WDF_DEVICE_SURPRISE_REMOVAL *EvtDeviceSurpriseRemoval; } WDF_PNPPOWER_EVENT_CALLBACKS;
-typedef struct {int ExecutionLevel;} WDF_OBJECT_ATTRIBUTES;
+typedef FAST_MUTEX *WDFWAITLOCK;
+typedef struct {int ExecutionLevel; void *ParentObject;} WDF_OBJECT_ATTRIBUTES;
+NTSTATUS WdfWaitLockCreate(WDF_OBJECT_ATTRIBUTES *,WDFWAITLOCK *);
+NTSTATUS WdfWaitLockAcquire(WDFWAITLOCK,void *);
+void WdfWaitLockRelease(WDFWAITLOCK);
 typedef struct {int unused;} WDF_DRIVER_CONFIG;
 typedef void *WDFIORESREQLIST;typedef void *WDFIORESLIST;
 typedef NTSTATUS EVT_WDF_DEVICE_RESOURCE_REQUIREMENTS_QUERY(WDFDEVICE,WDFIORESREQLIST);
@@ -31,6 +35,7 @@ NTSTATUS WdfFdoAddStaticChild(WDFDEVICE,WDFDEVICE);void WdfObjectDelete(void *);
 #define WDF_NO_OBJECT_ATTRIBUTES NULL
 #define WDF_NO_HANDLE NULL
 #define WDF_PNPPOWER_EVENT_CALLBACKS_INIT(p) memset((p),0,sizeof(*(p)))
+#define WDF_OBJECT_ATTRIBUTES_INIT(p) memset((p),0,sizeof(*(p)))
 #define WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(p,t) memset((p),0,sizeof(*(p)))
 #define WDF_DRIVER_CONFIG_INIT(p,f) ((void)(p),(void)(f))
 #define WDF_QUERY_INTERFACE_CONFIG_INIT(p,i,g,f) (memset((p),0,sizeof(*(p))),(p)->Interface=(i),(p)->Guid=(g),(void)(f))

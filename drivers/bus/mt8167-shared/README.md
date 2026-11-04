@@ -57,7 +57,7 @@ and eMMC startup gates is provided here.
 
 The parent probe optionally publishes a versioned, reference-counted kernel
 query interface when `A04_SHARED_QUERY_EXPERIMENTAL=1`; the interface currently
-exposes only the fixed MT6392 button-status read under a parent-owned FAST_MUTEX.
+exposes only the fixed MT6392 button-status read under a parent-owned WDFWAITLOCK.
 The mutex and callbacks exist before interface publication, and ReleaseHardware
 sets the PWRAP owner offline under that same mutex before unmapping. D0 still
 always fails and never starts the owner, so calls fail without MMIO. No production client,
@@ -179,3 +179,9 @@ an offline fixture with demand-start services, not a boot package. On Windows it
 remains unverified whether Storport receives the intended range and IRQ, or
 whether this topology can meet boot, rundown, power and other-client ownership
 requirements. Do not install or deploy it.
+
+The parent wait lock is created as a device child and is acquired only at
+PASSIVE_LEVEL. Stop closes admission before waiting for the current holder;
+queued callers recheck admission after acquisition. This does not make an
+in-flight MMIO access safe against physical removal. D0 stays gated, and the
+eMMC preparation prototype is not connected to this lock or to Storport.

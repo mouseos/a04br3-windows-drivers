@@ -3,6 +3,10 @@
 #include "../drivers/bus/mt8167-shared/wdf_parent_probe.c"
 static A04_PARENT_CONTEXT ctx;static int filter,maps,unmaps,access;
 A04_PARENT_CONTEXT *ParentContext(WDFDEVICE d){(void)d;return &ctx;}
+static FAST_MUTEX mockWaitLock;
+NTSTATUS WdfWaitLockCreate(WDF_OBJECT_ATTRIBUTES *a,WDFWAITLOCK *l){assert(a->ParentObject);*l=&mockWaitLock;ExInitializeFastMutex(*l);return 0;}
+NTSTATUS WdfWaitLockAcquire(WDFWAITLOCK l,void *timeout){assert(!timeout);ExAcquireFastMutex(l);return 0;}
+void WdfWaitLockRelease(WDFWAITLOCK l){ExReleaseFastMutex(l);}
 void ExInitializeFastMutex(FAST_MUTEX *m){assert(!pthread_mutex_init(&m->mutex,NULL));m->held=0;}
 void ExAcquireFastMutex(FAST_MUTEX *m){assert(!pthread_mutex_lock(&m->mutex));m->held=1;}
 void ExReleaseFastMutex(FAST_MUTEX *m){assert(m->held);m->held=0;assert(!pthread_mutex_unlock(&m->mutex));}

@@ -18,7 +18,7 @@
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
-typedef struct { PVOID topck,infra,gpio,pwrap; FAST_MUTEX pwrapLock; struct a04_pwrap_owner pmic; struct a04_register_owner regs; volatile LONG admissionClosed,removed; } A04_PARENT_CONTEXT;
+typedef struct { PVOID topck,infra,gpio,pwrap; WDFWAITLOCK pwrapLock; struct a04_pwrap_owner pmic; struct a04_register_owner regs; volatile LONG admissionClosed,removed; } A04_PARENT_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_PARENT_CONTEXT,ParentContext)
 EVT_WDF_DRIVER_DEVICE_ADD ParentAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE ParentPrepare;
@@ -29,13 +29,13 @@ EVT_WDF_DEVICE_SURPRISE_REMOVAL ParentSurprise;
 static int ParentLock(void *context)
 {
     A04_PARENT_CONTEXT *c=(A04_PARENT_CONTEXT *)context;
-    ExAcquireFastMutex(&c->pwrapLock);
+    if (KeGetCurrentIrql()!=PASSIVE_LEVEL || !NT_SUCCESS(WdfWaitLockAcquire(c->pwrapLock,NULL))) return -1;
     if(InterlockedCompareExchange(&c->admissionClosed,0,0)) {
-        ExReleaseFastMutex(&c->pwrapLock);return -1;
+        WdfWaitLockRelease(c->pwrapLock);return -1;
     }
     return 0;
 }
-static void ParentUnlock(void *context) { ExReleaseFastMutex(&((A04_PARENT_CONTEXT *)context)->pwrapLock); }
+static void ParentUnlock(void *context) { WdfWaitLockRelease(((A04_PARENT_CONTEXT *)context)->pwrapLock); }
 static uint32_t ParentPwrapRead(void *context,unsigned offset) {
     A04_PARENT_CONTEXT *c=(A04_PARENT_CONTEXT *)context;
     return READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->pwrap+offset));
@@ -120,10 +120,10 @@ static void ParentStop(A04_PARENT_CONTEXT *c,int removed)
     if(removed)InterlockedExchange(&c->removed,1);
     /* Both owners share this mutex. Close admission in one critical section
      * before any mapping is released; neither client can enter in between. */
-    ExAcquireFastMutex(&c->pwrapLock);
+    (void)WdfWaitLockAcquire(c->pwrapLock,NULL);
     c->regs.online=0;
     c->pmic.online=0;
-    ExReleaseFastMutex(&c->pwrapLock);
+    WdfWaitLockRelease(c->pwrapLock);
 }
 static void ParentUnmap(A04_PARENT_CONTEXT *c)
 {
@@ -298,7 +298,10 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     if(!NT_SUCCESS(status))return status;
     {
         A04_PARENT_CONTEXT *c=ParentContext(dev);
-        ExInitializeFastMutex(&c->pwrapLock);
+        WDF_OBJECT_ATTRIBUTES lockAttr;
+        WDF_OBJECT_ATTRIBUTES_INIT(&lockAttr);lockAttr.ParentObject=dev;
+        status=WdfWaitLockCreate(&lockAttr,&c->pwrapLock);
+        if(!NT_SUCCESS(status))return status;
         InterlockedExchange(&c->admissionClosed,1);
         c->pmic.lock_context=c;c->pmic.lock=ParentLock;c->pmic.unlock=ParentUnlock;
         c->pmic.bus.context=c;c->pmic.bus.read32=ParentPwrapRead;c->pmic.bus.write32=ParentPwrapWrite;
