@@ -43,8 +43,8 @@ static int a04_dma_expired(const struct a04_dma_clock *clock, uint64_t start, ui
 
 /* Register meanings and command order checked against the platform's Linux
  * MT8167 host driver; this implementation is independently written. */
-enum a04_dma_result a04_msdc_dma_sector_timed(const struct a04_msdc_io *io,
-        uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t limit, int write, uint16_t rca,
+static enum a04_dma_result a04_dma_transfer(const struct a04_msdc_io *io,
+        uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t limit, int write, uint16_t rca, uint32_t blocks,
         const struct a04_dma_clock *clock)
 {
     uint32_t cfg, ctrl, n, bits;
@@ -52,7 +52,9 @@ enum a04_dma_result a04_msdc_dma_sector_timed(const struct a04_msdc_io *io,
     enum a04_dma_result result = A04_DMA_OK;
     if (!io || !io->read32 || !io->write32 || !limit || !alignment ||
         (alignment & (alignment - 1)) || (bus_address & (alignment - 1)) ||
-        bus_address > UINT32_MAX - 511u || (write && !rca) ||
+        !blocks || blocks > 8 || (write && blocks != 1) ||
+        lba > UINT32_MAX - (blocks - 1) ||
+        bus_address > UINT32_MAX - (blocks * 512u - 1u) || (write && !rca) ||
         (clock && (!clock->now || !clock->ticks)))
         return A04_DMA_INVALID;
     if ((io->read32(io->context, INT_ENABLE) & EVENTS) ||
@@ -71,10 +73,10 @@ enum a04_dma_result a04_msdc_dma_sector_timed(const struct a04_msdc_io *io,
     if (n == limit) return A04_DMA_BUSY;
     bits = io->read32(io->context, INT_STATUS) & EVENTS;
     if (bits) io->write32(io->context, INT_STATUS, bits);
-    io->write32(io->context, BLOCK_COUNT, 1);
+    io->write32(io->context, BLOCK_COUNT, blocks);
     io->write32(io->context, ARGUMENT, lba);
-    io->write32(io->context, COMMAND, (write ? 24u : 17u) | (1u << 7) |
-                (1u << 11) | (write ? 1u << 13 : 0u) | (512u << 16));
+    io->write32(io->context, COMMAND, (write ? 24u : blocks > 1 ? 18u : 17u) | (1u << 7) |
+                ((blocks > 1 ? 2u : 1u) << 11) | (write ? 1u << 13 : 0u) | (512u << 16));
     if (clock) start = clock->now(clock->context);
     for (n = 0; n < limit; ++n) {
         bits = io->read32(io->context, INT_STATUS) & (CMD_READY | CMD_TIMEOUT | CMD_CRC);
@@ -91,7 +93,7 @@ enum a04_dma_result a04_msdc_dma_sector_timed(const struct a04_msdc_io *io,
     if (io->read32(io->context, RESPONSE0) & 0xffff0000u) return A04_DMA_CARD_ERROR;
     io->write32(io->context, DMA_HIGH, 0);
     io->write32(io->context, DMA_ADDRESS, (uint32_t)bus_address);
-    io->write32(io->context, DMA_LENGTH, 512);
+    io->write32(io->context, DMA_LENGTH, blocks * 512u);
     ctrl = (ctrl & ~(DMA_MODE | DMA_BURST)) | DMA_LAST | (6u << 12);
     io->write32(io->context, DMA_CONTROL, ctrl);
     io->write32(io->context, DMA_CONTROL, ctrl | DMA_START);
@@ -116,6 +118,36 @@ enum a04_dma_result a04_msdc_dma_sector_timed(const struct a04_msdc_io *io,
         if (a04_dma_expired(clock,start,n)) return A04_DMA_STOP_TIMEOUT;
     }
     if (n == limit) return A04_DMA_STOP_TIMEOUT;
+    if (blocks > 1) {
+        /* CMD18 is open-ended. Stop it even after a data error, but never
+         * treat a failed stop as recoverable or copy partial data to the SRB. */
+        if (clock) start = clock->now(clock->context);
+        for (n = 0; n < limit; ++n) {
+            if (!(io->read32(io->context, STATUS) & 1u)) break;
+            if (a04_dma_expired(clock,start,n)) return A04_DMA_STOP_TIMEOUT;
+        }
+        if (n == limit) return A04_DMA_STOP_TIMEOUT;
+        bits = io->read32(io->context, INT_STATUS) & (CMD_READY | CMD_TIMEOUT | CMD_CRC);
+        if (bits) io->write32(io->context, INT_STATUS, bits);
+        io->write32(io->context, ARGUMENT, 0);
+        io->write32(io->context, COMMAND, 12u | (7u << 7) | (1u << 14));
+        if (clock) start = clock->now(clock->context);
+        for (n = 0; n < limit; ++n) {
+            bits = io->read32(io->context, INT_STATUS) & (CMD_READY | CMD_TIMEOUT | CMD_CRC);
+            if (bits) break;
+            if (a04_dma_expired(clock,start,n)) return A04_DMA_STOP_TIMEOUT;
+        }
+        if (n == limit) return A04_DMA_STOP_TIMEOUT;
+        io->write32(io->context, INT_STATUS, bits);
+        if ((bits & (CMD_TIMEOUT | CMD_CRC)) || !(bits & CMD_READY) ||
+            (io->read32(io->context, RESPONSE0) & 0xffff0000u)) return A04_DMA_STOP_ERROR;
+        if (clock) start = clock->now(clock->context);
+        for (n = 0; n < limit; ++n) {
+            if (io->read32(io->context, PIN_STATUS) & DAT0_HIGH) break;
+            if (a04_dma_expired(clock,start,n)) return A04_DMA_STOP_TIMEOUT;
+        }
+        if (n == limit) return A04_DMA_STOP_TIMEOUT;
+    }
     if (result == A04_DMA_OK && write) {
         /* DAT0 remains low while eMMC is programming the data. */
         if (clock) start = clock->now(clock->context);
@@ -156,6 +188,16 @@ enum a04_dma_result a04_msdc_dma_sector_timed(const struct a04_msdc_io *io,
     if (result == A04_DMA_OK) io->write32(io->context, CFG, cfg);
     return result;
 }
+
+enum a04_dma_result a04_msdc_dma_sector_timed(const struct a04_msdc_io *io,
+        uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t limit, int write, uint16_t rca,
+        const struct a04_dma_clock *clock)
+{ return a04_dma_transfer(io, lba, bus_address, alignment, limit, write, rca, 1, clock); }
+
+enum a04_dma_result a04_msdc_dma_read_blocks_timed(const struct a04_msdc_io *io,
+        uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t limit,
+        uint32_t blocks, const struct a04_dma_clock *clock)
+{ return a04_dma_transfer(io, lba, bus_address, alignment, limit, 0, 0, blocks, clock); }
 
 enum a04_dma_result a04_msdc_dma_read_sector(const struct a04_msdc_io *io,
         uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t limit)

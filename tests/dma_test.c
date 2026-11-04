@@ -4,7 +4,7 @@
 #include <string.h>
 #include "dma.h"
 
-struct fake { uint32_t regs[64]; int command_error, data_error, no_stop, no_command, fifo_stuck, started; uint32_t first_command, delay, reads, observed; uint64_t time; };
+struct fake { uint32_t regs[64]; int command_error, data_error, no_stop, no_command, fifo_stuck, started; uint32_t first_command, delay, reads, observed; uint64_t time; uint32_t commands[4], command_count; int stop_error, stop_silent; };
 static uint32_t rd(void *p, uint32_t off)
 {
     struct fake *f = p;
@@ -21,6 +21,13 @@ static void wr(void *p, uint32_t off, uint32_t val)
         f->regs[off / 4] = val;
         if (off == 0x034) {
             if (!f->first_command) f->first_command = val;
+            if (f->command_count < 4) f->commands[f->command_count] = val;
+            ++f->command_count;
+            if ((val & 0x3f) == 12 && f->stop_silent) return;
+            if ((val & 0x3f) == 12 && f->stop_error) {
+                f->regs[0x00c / 4] |= 1u << 10;
+                return;
+            }
             if ((val & 0x3f) == 13) f->regs[0x040/4] = (1u << 8) | (4u << 9);
             if (!f->no_command) f->regs[0x00c / 4] |= f->command_error ? 1u << 9 : 1u << 8;
         }
@@ -62,6 +69,37 @@ int main(void)
     assert(a04_msdc_dma_read_sector(&io, 0, 0x100040, 64, 10) == A04_DMA_STOP_TIMEOUT);
     io = init(&f); f.regs[0x010/4] = 1u << 12;
     assert(a04_msdc_dma_read_sector(&io, 0, 0x100040, 64, 10) == A04_DMA_BUSY && !f.started);
+    /* Multi-block CMD18 must be followed by explicit R1b CMD12, including
+     * on data errors. No hardware effects on invalid ranges. */
+    io = init(&f);
+    for (uint32_t sector = 0; sector < 8; ++sector)
+        assert(a04_msdc_dma_read_sector(&io, 100 + sector, 0x100000, 64, 10) == A04_DMA_OK);
+    assert(f.command_count == 8);
+    io = init(&f);
+    assert(a04_msdc_dma_read_blocks_timed(&io, 100, 0x100000, 64, 10, 8, 0) == A04_DMA_OK);
+    assert(f.command_count == 2 && (f.commands[0] & 63) == 18);
+    assert(((f.commands[0] >> 11) & 3) == 2 && (f.commands[1] & 63) == 12);
+    assert((f.commands[1] & (1u << 14)) && ((f.commands[1] >> 7) & 7) == 7);
+    assert(f.regs[0x050/4] == 8 && f.regs[0x0a8/4] == 4096 && f.regs[0] == 9);
+    io = init(&f); f.data_error = 1;
+    assert(a04_msdc_dma_read_blocks_timed(&io, 100, 0x100000, 64, 10, 2, 0) == A04_DMA_DATA_CRC);
+    assert(f.command_count == 2 && (f.commands[1] & 63) == 12 && f.regs[0] != 9);
+    io = init(&f); f.stop_error = 1;
+    assert(a04_msdc_dma_read_blocks_timed(&io, 100, 0x100000, 64, 10, 2, 0) == A04_DMA_STOP_ERROR);
+    io = init(&f); f.regs[0x008/4] = 0;
+    assert(a04_msdc_dma_read_blocks_timed(&io, 100, 0x100000, 64, 10, 2, 0) == A04_DMA_STOP_TIMEOUT);
+    assert(f.command_count == 2);
+    io = init(&f); f.stop_silent = 1;
+    assert(a04_msdc_dma_read_blocks_timed(&io, 100, 0x100000, 64, 10, 2, 0) == A04_DMA_STOP_TIMEOUT);
+    io = init(&f); f.no_stop = 1;
+    assert(a04_msdc_dma_read_blocks_timed(&io, 100, 0x100000, 64, 10, 2, 0) == A04_DMA_STOP_TIMEOUT);
+    assert(f.command_count == 1);
+    io = init(&f);
+    assert(a04_msdc_dma_read_blocks_timed(&io, 0, 0x100000, 64, 10, 0, 0) == A04_DMA_INVALID);
+    assert(a04_msdc_dma_read_blocks_timed(&io, 0, 0x100000, 64, 10, 9, 0) == A04_DMA_INVALID);
+    assert(a04_msdc_dma_read_blocks_timed(&io, UINT32_MAX, 0x100000, 64, 10, 2, 0) == A04_DMA_INVALID);
+    assert(a04_msdc_dma_read_blocks_timed(&io, 0, 0xfffffe00u, 64, 10, 2, 0) == A04_DMA_INVALID);
+    assert(!f.command_count);
     {
         struct a04_dma_clock clock = { &f, now, 3, 0 };
         io = init(&f); f.delay = 1500;

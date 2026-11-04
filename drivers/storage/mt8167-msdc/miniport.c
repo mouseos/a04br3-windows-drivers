@@ -5,6 +5,12 @@
 #include <ntddscsi.h>
 #include "pio.h"
 #include "io_gate.h"
+#include "multiblock_config.h"
+/* Optional compiler flag: A04_DMA_MULTIBLOCK_EXPERIMENT. Read-only
+ * diagnostic builds only; the default continues to use one sector at a time. */
+#if A04_DMA_MULTIBLOCK_EXPERIMENT && (!defined(A04_DMA_PROBE) || !defined(A04_DMA_DISK_PROBE) || !defined(A04_READONLY_DISK_PROBE) || defined(A04_ENABLE_WRITES) || defined(A04_DMA_WRITE_TEST))
+#error A04_DMA_MULTIBLOCK_EXPERIMENT requires a read-only DMA disk probe
+#endif
 #if defined(A04_PASSIVE_IO) && (!defined(A04_READONLY_DISK_PROBE) || (defined(A04_ENABLE_WRITES) && !defined(A04_SCRATCH_IO) && !defined(A04_BOOT_PASSIVE_EXPERIMENT)))
 #error A04_PASSIVE_IO requires a diagnostic disk and only allows bounded scratch writes
 #endif
@@ -142,10 +148,10 @@ static void A04ClockObserve(void *context, uint32_t polls)
 #endif
 /* Diagnostic synchronization for the resident common buffer. This does not
  * resolve the unexpected cacheability of the Windows mapping. */
-static enum a04_dma_result A04DmaSector(struct a04_probe_extension *probe,
-        struct a04_msdc_io *io, ULONG lba, BOOLEAN write)
+static enum a04_dma_result A04DmaTransfer(struct a04_probe_extension *probe,
+        struct a04_msdc_io *io, ULONG lba, BOOLEAN write, ULONG blocks)
 {
-    PMDL mdl = IoAllocateMdl(probe->dma_buffer, 512, FALSE, FALSE, NULL);
+    PMDL mdl = IoAllocateMdl(probe->dma_buffer, blocks * 512, FALSE, FALSE, NULL);
     enum a04_dma_result result;
     uint64_t start;
     LARGE_INTEGER frequency;
@@ -169,8 +175,12 @@ static enum a04_dma_result A04DmaSector(struct a04_probe_extension *probe,
     clock.ticks = (uint64_t)frequency.QuadPart * 10u;
     start = A04ClockNow(&clockContext);
     clockContext.first = start;
-    result = a04_msdc_dma_sector_timed(io, lba, probe->dma_bus,
-                       probe->dma_alignment, 100000000u, write, 1, &clock);
+    if (blocks == 1)
+        result = a04_msdc_dma_sector_timed(io, lba, probe->dma_bus,
+                           probe->dma_alignment, 100000000u, write, 1, &clock);
+    else
+        result = a04_msdc_dma_read_blocks_timed(io, lba, probe->dma_bus,
+                           probe->dma_alignment, 100000000u, blocks, &clock);
     if (result != A04_DMA_OK) {
         uint64_t elapsed = A04ClockNow(&clockContext) - start;
         A04Trace("A04WIN dma failure lba="); A04TraceHex(lba);
@@ -185,6 +195,9 @@ static enum a04_dma_result A04DmaSector(struct a04_probe_extension *probe,
     IoFreeMdl(mdl);
     return result;
 }
+static enum a04_dma_result A04DmaSector(struct a04_probe_extension *probe,
+        struct a04_msdc_io *io, ULONG lba, BOOLEAN write)
+{ return A04DmaTransfer(probe, io, lba, write, 1); }
 #endif
 
 #ifdef A04_ENABLE_WRITES
@@ -412,6 +425,9 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
     {
         ULONG bytes = 0, alignment = KeGetRecommendedSharedDataAlignment();
         ULONG needed = 512;
+#if A04_DMA_MULTIBLOCK_EXPERIMENT
+        needed = 4096;
+#endif
         ULONG_PTR aligned;
         PVOID allocation;
         STOR_PHYSICAL_ADDRESS physical;
@@ -843,9 +859,19 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
                     /* UEFI's card selection explicitly sets RCA 1. */
                     dr = A04DmaSector(probe, &io, result.blocks.lba + i, TRUE);
                 } else {
+#if A04_DMA_MULTIBLOCK_EXPERIMENT
+                    ULONG chunk = result.blocks.block_count - i;
+                    if (chunk > 8) chunk = 8;
+                    dr = A04DmaTransfer(probe, &io, (ULONG)(result.blocks.lba + i), FALSE, chunk);
+                    if (dr == A04_DMA_OK) {
+                        for (j = 0; j < chunk * 512; ++j) data[i * 512 + j] = probe->dma_buffer[j];
+                        i += chunk - 1;
+                    }
+#else
                     dr = A04DmaSector(probe, &io, result.blocks.lba + i, FALSE);
                     if (dr == A04_DMA_OK)
                         for (j = 0; j < 512; ++j) data[i * 512 + j] = probe->dma_buffer[j];
+#endif
                 }
                 if (dr != A04_DMA_OK) { failure = (ULONG)dr; break; }
 #else
