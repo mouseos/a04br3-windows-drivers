@@ -12,6 +12,9 @@
 #include "client_interface.h"
 #include "audio_interface.h"
 #include "emmc_interface.h"
+#if defined(A04_SHARED_EMMC_FILTER_PROBE) && A04_SHARED_EMMC_FILTER_PROBE && defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE
+#error Filter probe cannot enumerate shared parent children
+#endif
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
@@ -134,17 +137,39 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
     A04_PARENT_CONTEXT *c=ParentContext(dev);struct a04_parent_resource r[4];
     struct a04_parent_mapping mapping;ULONG i,n=0;PHYSICAL_ADDRESS pa;
+#if defined(A04_SHARED_EMMC_FILTER_PROBE) && A04_SHARED_EMMC_FILTER_PROBE
+    unsigned controller=0,interrupt=0;
+#endif
     UNREFERENCED_PARAMETER(raw);
     if(InterlockedCompareExchange(&c->removed,0,0))return STATUS_DEVICE_NOT_READY;
     if(c->topck||c->infra||c->gpio||c->pwrap)return STATUS_INVALID_DEVICE_STATE;
     for(i=0;i<WdfCmResourceListGetCount(translated);++i) {
         PCM_PARTIAL_RESOURCE_DESCRIPTOR d=WdfCmResourceListGetDescriptor(translated,i);
         if(!d)return STATUS_DEVICE_CONFIGURATION_ERROR;
+#if defined(A04_SHARED_EMMC_FILTER_PROBE) && A04_SHARED_EMMC_FILTER_PROBE
+        if(d->Type==CmResourceTypeInterrupt) {
+            if(interrupt || d->ShareDisposition!=CmResourceShareDeviceExclusive ||
+               (d->Flags&(CM_RESOURCE_INTERRUPT_LATCHED|CM_RESOURCE_INTERRUPT_MESSAGE)))
+                return STATUS_DEVICE_CONFIGURATION_ERROR;
+            interrupt=1;continue;
+        }
+#endif
         if(d->Type!=CmResourceTypeMemory)continue;
+#if defined(A04_SHARED_EMMC_FILTER_PROBE) && A04_SHARED_EMMC_FILTER_PROBE
+        /* Same ACPI stack: Storport owns this range; this filter must not map it. */
+        if(d->u.Memory.Start.QuadPart==0x11120000u) {
+            if(controller || d->u.Memory.Length!=0x1000u || d->ShareDisposition!=CmResourceShareDeviceExclusive)
+                return STATUS_DEVICE_CONFIGURATION_ERROR;
+            controller=1;continue;
+        }
+#endif
         if(n>=4)return STATUS_DEVICE_CONFIGURATION_ERROR;
         r[n].base=(uint64_t)d->u.Memory.Start.QuadPart;r[n].length=d->u.Memory.Length;
         r[n].exclusive=d->ShareDisposition==CmResourceShareDeviceExclusive ? 1u:0u;++n;
     }
+#if defined(A04_SHARED_EMMC_FILTER_PROBE) && A04_SHARED_EMMC_FILTER_PROBE
+    if(!controller || !interrupt)return STATUS_DEVICE_CONFIGURATION_ERROR;
+#endif
     if(a04_parent_validate_resources(r,n,&mapping))return STATUS_DEVICE_CONFIGURATION_ERROR;
     pa.QuadPart=(LONGLONG)mapping.topck;c->topck=MmMapIoSpace(pa,0x1000,MmNonCached);
     if(!c->topck)goto fail;
@@ -260,6 +285,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     A04_SHARED_EMMC_INTERFACE emmcIface;
 #endif
     UNREFERENCED_PARAMETER(driver);
+#if defined(A04_SHARED_EMMC_FILTER_PROBE) && A04_SHARED_EMMC_FILTER_PROBE
+    WdfFdoInitSetFilter(init);
+#endif
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
     pnp.EvtDevicePrepareHardware=ParentPrepare;pnp.EvtDeviceReleaseHardware=ParentRelease;pnp.EvtDeviceD0Entry=ParentD0;
     pnp.EvtDeviceD0Exit=ParentD0Exit;pnp.EvtDeviceSurpriseRemoval=ParentSurprise;

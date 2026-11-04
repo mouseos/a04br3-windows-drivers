@@ -167,3 +167,15 @@ reached the PMIC and must not be retried or rolled back blindly. Tests simulate
 WACS2 and cannot demonstrate real PMIC behavior, exclusive ownership, physical
 rail voltage or bus-abort safety. There is no caller from the WDF parent, D0,
 Storport or eMMC code; it must remain so until those guarantees exist.
+
+An alternative compile-only `A04_SHARED_EMMC_FILTER_PROBE=1` uses a KMDF lower
+filter in the existing ACPI eMMC device stack instead of synthesizing an IRQ
+on a new bus. Its exclusive ACPI controller range is recognized but never
+mapped by the filter; four separate shared ranges are mapped. Resource lists
+and IRQ are not modified. A board-only firmware option supplies the controller
+range first and preserves the existing ACPI active-low GIC descriptor unchanged.
+The filter still refuses D0 and has no operational power/clock lease; its INF is
+an offline fixture with demand-start services, not a boot package. On Windows it
+remains unverified whether Storport receives the intended range and IRQ, or
+whether this topology can meet boot, rundown, power and other-client ownership
+requirements. Do not install or deploy it.

@@ -10,7 +10,7 @@ test: test-mma8652 build/msdc_resume_check_test build/msdc_resume_capture_test
 test: build/bq24160_owner_broker_test
 test: test-mt8167-pnp-backend test-mt8167-audio-adapter-pnp test-mt8167-common-dma test-mt8167-dma-adapter test-mt8167-clock-owner test-mt8167-stream-transport
 test: build/gpu_render_shared_size_test test-toprgu-handoff build/gpu_render_context_pds_test
-test: test-mt8167-shared-wdf test-mt8167-shared-audio test-mt8167-shared-transport
+test: build/mt8167_shared_filter_test test-mt8167-shared-wdf test-mt8167-shared-audio test-mt8167-shared-transport
 
 .PHONY: test-toprgu-handoff
 test-toprgu-handoff: build/toprgu_handoff_test
@@ -59,6 +59,7 @@ test: build/msdc_emmc_prepare_test build/msdc_vemc_restore_test build/msdc_share
 	./build/lc709203f_i2c_test
 	./build/msdc_io_gate_test
 	./build/msdc_lifetime_test
+	./build/mt8167_shared_filter_test
 	./build/msdc_emmc_prepare_test
 	./build/msdc_vemc_restore_test
 	./build/msdc_shared_drain_test
@@ -588,3 +589,7 @@ build/msdc_vemc_restore_test: drivers/bus/mt8167-shared/vemc_restore.c drivers/b
 build/msdc_emmc_prepare_test: drivers/storage/mt8167-msdc/emmc_prepare.c drivers/storage/mt8167-msdc/emmc_prepare.h drivers/storage/mt8167-msdc/board_owner.c drivers/storage/mt8167-msdc/board_owner.h drivers/storage/mt8167-msdc/pinmux.c drivers/storage/mt8167-msdc/pinmux.h drivers/storage/mt8167-msdc/cold_init.c drivers/storage/mt8167-msdc/cold_init.h drivers/storage/mt8167-msdc/resume_capture.c drivers/storage/mt8167-msdc/resume_capture.h drivers/bus/mt8167-shared/vemc_restore.c drivers/bus/mt8167-shared/vemc_restore.h tests/msdc_emmc_prepare_test.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/storage/mt8167-msdc drivers/storage/mt8167-msdc/emmc_prepare.c drivers/storage/mt8167-msdc/board_owner.c drivers/storage/mt8167-msdc/pinmux.c drivers/storage/mt8167-msdc/cold_init.c drivers/storage/mt8167-msdc/resume_capture.c drivers/bus/mt8167-shared/vemc_restore.c tests/msdc_emmc_prepare_test.c -o $@
+
+build/mt8167_shared_filter_test: tests/mt8167_shared_filter_test.c tests/shared_wdf_stubs/ntddk.h tests/shared_wdf_stubs/wdf.h drivers/bus/mt8167-shared/wdf_parent_probe.c drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/input/a04br3-buttons/pmic_read.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -pthread -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_EMMC_FILTER_PROBE=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/input/a04br3-buttons/pmic_read.c tests/mt8167_shared_filter_test.c -o $@

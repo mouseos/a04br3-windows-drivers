@@ -22,6 +22,9 @@ typedef struct {pthread_mutex_t mutex;int held;} FAST_MUTEX;
 #define PASSIVE_LEVEL 0
 #define TRUE 1
 #define CmResourceTypeMemory 1
+#define CmResourceTypeInterrupt 2
+#define CM_RESOURCE_INTERRUPT_LATCHED 1
+#define CM_RESOURCE_INTERRUPT_MESSAGE 2
 #define CmResourceShareDeviceExclusive 1
 #define MmNonCached 0
 #define CM_RESOURCE_MEMORY_READ_WRITE 0
@@ -36,7 +39,7 @@ void RtlInitUnicodeString(PUNICODE_STRING,PCWSTR);
 typedef void (*PINTERFACE_REFERENCE)(PVOID);
 typedef PINTERFACE_REFERENCE PINTERFACE_DEREFERENCE;
 typedef struct {USHORT Size,Version;PVOID Context;PINTERFACE_REFERENCE InterfaceReference,InterfaceDereference;} INTERFACE,*PINTERFACE;
-typedef struct {UCHAR Type,ShareDisposition;struct {struct {PHYSICAL_ADDRESS Start;ULONG Length;} Memory;} u;} CM_PARTIAL_RESOURCE_DESCRIPTOR,*PCM_PARTIAL_RESOURCE_DESCRIPTOR;
+typedef struct {UCHAR Type,ShareDisposition;USHORT Flags;struct {struct {PHYSICAL_ADDRESS Start;ULONG Length;} Memory;} u;} CM_PARTIAL_RESOURCE_DESCRIPTOR,*PCM_PARTIAL_RESOURCE_DESCRIPTOR;
 void ExInitializeFastMutex(FAST_MUTEX *);void ExAcquireFastMutex(FAST_MUTEX *);void ExReleaseFastMutex(FAST_MUTEX *);
 PVOID MmMapIoSpace(PHYSICAL_ADDRESS,ULONG,int);void MmUnmapIoSpace(PVOID,ULONG);
 ULONG READ_REGISTER_ULONG(volatile ULONG *);void WRITE_REGISTER_ULONG(volatile ULONG *,ULONG);
