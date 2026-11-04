@@ -11,8 +11,12 @@ handoff built from UEFI commit `b8ca32e` loaded the test-signed driver and
 started its PnP provider. A HID read returned one stationary sample of
 X=-0.01 g, Y=0.01 g and Z=0.99 g. This confirms that particular test path;
 axis motion, sustained operation, sleep/resume and installation in the
-Windows system are not yet verified. A separate four-CPU WinPE attempt reset
-after ExitBootServices before the test could run.
+Windows system are not yet verified. An initial four-CPU WinPE attempt reset
+after ExitBootServices before the test could run. A later four-CPU WinPE run
+with the opt-in early TOPRGU handoff started the sensor provider and returned
+the same stationary sample. The full-resolution screen was captured over UART
+and validated with per-chunk and whole-frame CRCs. This is one sample, not a
+demonstration of axis movement, resume or long-term stability.
 
 The companion UEFI branch `windows-rt/mma8652-handoff` allocates a per-boot
 ACPI NVS page and publishes SSDT `MOU0010` with exclusive I2C1 and handoff
