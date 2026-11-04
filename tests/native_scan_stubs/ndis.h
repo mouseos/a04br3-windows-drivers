@@ -2,7 +2,7 @@
 #define A04_NATIVE_SCAN_TEST_NDIS_H
 #include <stdint.h>
 #include <string.h>
-typedef void *NDIS_HANDLE;
+typedef void *NDIS_HANDLE;typedef void *PVOID;
 typedef uint32_t ULONG;typedef int32_t LONG;typedef uint16_t USHORT;typedef uint8_t UCHAR;typedef uint8_t BOOLEAN;typedef int32_t NDIS_STATUS;
 #define NDIS_STATUS_SUCCESS 0
 #define NDIS_STATUS_INVALID_DATA (-1)
@@ -13,10 +13,20 @@ typedef uint32_t ULONG;typedef int32_t LONG;typedef uint16_t USHORT;typedef uint
 #define NDIS_STATUS_RESOURCES (-6)
 #define NDIS_STATUS_PENDING 1
 #define NDIS_STATUS_REQUEST_ABORTED (-7)
+#define NDIS_STATUS_ADAPTER_NOT_READY (-8)
+typedef void VOID;
+typedef struct {int held;} NDIS_SPIN_LOCK;
+typedef struct {int signaled;} NDIS_EVENT;
+typedef VOID (NDIS_IO_WORKITEM_FUNCTION)(PVOID,NDIS_HANDLE);
+void NdisAllocateSpinLock(NDIS_SPIN_LOCK *);void NdisFreeSpinLock(NDIS_SPIN_LOCK *);
+void NdisAcquireSpinLock(NDIS_SPIN_LOCK *);void NdisReleaseSpinLock(NDIS_SPIN_LOCK *);
+void NdisInitializeEvent(NDIS_EVENT *);void NdisSetEvent(NDIS_EVENT *);void NdisResetEvent(NDIS_EVENT *);int NdisWaitEvent(NDIS_EVENT *,unsigned);
+NDIS_HANDLE NdisAllocateIoWorkItem(NDIS_HANDLE);void NdisFreeIoWorkItem(NDIS_HANDLE);
+void NdisQueueIoWorkItem(NDIS_HANDLE,NDIS_IO_WORKITEM_FUNCTION *,PVOID);
 #define OID_DOT11_SCAN_REQUEST 0x0d01020bu
 #define NdisRequestSetInformation 1
-typedef struct {int RequestType;union {struct {ULONG Oid;void *InformationBuffer;ULONG InformationBufferLength,BytesRead,BytesNeeded;} SET_INFORMATION;} DATA;} NDIS_OID_REQUEST,*PNDIS_OID_REQUEST;
-typedef void *PVOID;
+typedef struct {int RequestType;PVOID RequestId;union {struct {ULONG Oid;void *InformationBuffer;ULONG InformationBufferLength,BytesRead,BytesNeeded;} SET_INFORMATION;} DATA;} NDIS_OID_REQUEST,*PNDIS_OID_REQUEST;
+void NdisMOidRequestComplete(NDIS_HANDLE,PNDIS_OID_REQUEST,NDIS_STATUS);
 typedef struct _NET_BUFFER {struct _NET_BUFFER *next;ULONG length;UCHAR *data;int fragmented;} NET_BUFFER,*PNET_BUFFER;
 typedef struct _NET_BUFFER_LIST {struct _NET_BUFFER_LIST *next;PNET_BUFFER first;NDIS_STATUS status;void *info;} NET_BUFFER_LIST,*PNET_BUFFER_LIST;
 #define NET_BUFFER_LIST_NEXT_NBL(x) ((x)->next)

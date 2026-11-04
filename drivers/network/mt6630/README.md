@@ -138,5 +138,7 @@ Linux構造体比較は `A04BR3_GEN3_SOURCE` に端末gen3ソースのディレ�
 `OID_DOT11_SCAN_REQUEST` をSDIO scan処理へ渡す。入力長不足のBytesNeededを返し、
 送信成功後にOIDを完了し、別途firmwareのSCAN_DONEでSCAN_CONFIRMを通知する。
 統合リンク確認では `A04_NDIS_OID_BRIDGE=1` によりMiniportOidRequestへ配線するが、
-MiniportInitializeは従来どおり必ず失敗する。DPC/高IRQLから使うwork itemの生成・
-寿命管理は未実装で、その呼出しは拒否される。他のOIDは未実装。
+MiniportInitializeは従来どおり必ず失敗する。他のOIDは未実装。
+`native_oid_async.c` は高IRQLのOIDをNDIS work itemでPASSIVE_LEVELに送り、
+実行前の取消と終了時の排出を扱う。NDISのMiniportHalt/D0の実接続、
+デバイス全体の排他・rundown、実機での競合検証は未実施。

@@ -3,7 +3,7 @@
 #include <ntddk.h>
 #include <ndis.h>
 #if defined(A04_NDIS_OID_BRIDGE) && A04_NDIS_OID_BRIDGE
-#include "native_oid.h"
+#include "native_oid_async.h"
 #endif
 static NDIS_HANDLE g_driver;
 /* Future adapter contexts must retain the NDIS miniport handle until all
@@ -11,6 +11,7 @@ static NDIS_HANDLE g_driver;
 struct a04_ndis_context { NDIS_HANDLE adapter;
 #if defined(A04_NDIS_OID_BRIDGE) && A04_NDIS_OID_BRIDGE
  struct a04_native_oid_context oid;
+ struct a04_native_oid_async oid_async;
 #endif
 };
 MINIPORT_INITIALIZE A04MiniportInitialize;
@@ -34,7 +35,7 @@ NDIS_STATUS A04MiniportOid(NDIS_HANDLE ctx,PNDIS_OID_REQUEST request)
 #if defined(A04_NDIS_OID_BRIDGE) && A04_NDIS_OID_BRIDGE
  struct a04_ndis_context *adapter=(struct a04_ndis_context *)ctx;
  if(!adapter)return NDIS_STATUS_INVALID_DATA;
- return a04_native_oid_dispatch(&adapter->oid,request);
+ return a04_native_oid_async_submit(&adapter->oid_async,request);
 #else
  UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(request);return NDIS_STATUS_NOT_SUPPORTED;
 #endif
@@ -52,7 +53,15 @@ VOID A04MiniportSend(NDIS_HANDLE ctx,PNET_BUFFER_LIST list,NDIS_PORT_NUMBER port
 VOID A04MiniportReturn(NDIS_HANDLE ctx,PNET_BUFFER_LIST list,ULONG flags) {UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(list);UNREFERENCED_PARAMETER(flags);}
 VOID A04MiniportCancelSend(NDIS_HANDLE ctx,PVOID id) {UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(id);}
 VOID A04MiniportShutdown(NDIS_HANDLE ctx,NDIS_SHUTDOWN_ACTION action) {UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(action);}
-VOID A04MiniportCancelOid(NDIS_HANDLE ctx,PVOID id) {UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(id);}
+VOID A04MiniportCancelOid(NDIS_HANDLE ctx,PVOID id)
+{
+#if defined(A04_NDIS_OID_BRIDGE) && A04_NDIS_OID_BRIDGE
+ struct a04_ndis_context *adapter=(struct a04_ndis_context *)ctx;
+ if(adapter)a04_native_oid_async_cancel(&adapter->oid_async,id);
+#else
+ UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(id);
+#endif
+}
 VOID A04MiniportUnload(PDRIVER_OBJECT obj) {UNREFERENCED_PARAMETER(obj);if(g_driver)NdisMDeregisterMiniportDriver(g_driver);}
 NTSTATUS DriverEntry(PDRIVER_OBJECT obj,PUNICODE_STRING path)
 {
