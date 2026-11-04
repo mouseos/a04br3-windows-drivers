@@ -7,4 +7,8 @@ static int mt8167_watchdog_should_feed(uint64_t elapsed, uint32_t deadline_secon
 {
     return !deadline_seconds || elapsed < (uint64_t)deadline_seconds * 10000000u;
 }
+static int mt8167_watchdog_thermal_may_feed(int emergency, uint64_t elapsed, uint32_t deadline_seconds)
+{
+    return !emergency && mt8167_watchdog_should_feed(elapsed, deadline_seconds);
+}
 #endif

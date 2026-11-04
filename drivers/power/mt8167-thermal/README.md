@@ -40,3 +40,25 @@ LIMIT/HALTは呼出し側への要求であり、実際に周波数を下げた�
 `drivers/misc/mediatek/thermal/mt8167/mtk_ts_cpu.c`、同devinfo.c、
 `arch/arm64/boot/dts/mediatek/mt8167.dtsi`。このディレクトリおよび対応テストは
 GPL-2.0-onlyで、同梱COPYINGを適用します。リポジトリ全体のライセンスとは区別します。
+
+## 起動時校正とKMDF診断の追加
+
+既定OFFのUEFI機種構成はLKの起動引数をFDT候補として検査し、現在起動の
+`atag,devinfo` から60〜62をvolatile firmware variableへ渡す。候補がFDTでない、
+プロパティが欠落または不正なら値を作らない。LKの実際の引数、Windows RTが
+変数を読めるか、校正値と実機の一致は未検証。KMDF `wdf_thermal.c` は
+MOU0009のACPI資源とUEFI変数の版・属性・校正を確認する診断だけを行う。
+MMIOをマップせず、センサーを起動せず、測温・停止・熱保護を提供しない。
+起動時にTOPRGU試作の内部照会を行い、失敗すれば開始を拒否する。
+WDK 8.1用ビルドスクリプトはあるが、この変更の実機試験は未実施。
+
+`freshness.c` は各センサー値が時間内に変化したかを判定し、不変なら古いものと
+して拒否する。一定温度でも拒否され得る診断用の保守的条件であり、値の変化は
+AUXADCの正確な完了や温度の正しさを証明しない。欠測中は安全な電力状態を
+保証する外部機構が必要。
+
+TOPRGUの `A04_TOPRGU_THERMAL_STOP=1` はkernel専用内部要求を受ける試作で、
+停止要求時にwatchdogの給餌を抑制し、既存のTOPRGUソフトリセットを要求する。
+四CPU所有状態の照会もある。リセット完了、要求処理中の競合、CPU1の引継ぎ、
+watchdog/UEFI復帰は実機未検証。温度KMDFから内部照会・停止要求を送る関数は用意したが、温度監視から
+停止要求を呼ぶ接続はまだない。

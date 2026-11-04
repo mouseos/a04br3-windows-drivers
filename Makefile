@@ -300,10 +300,12 @@ clean:
 	rm -rf build
 
 # Linux-derived MT8167 thermal components are separately GPL-2.0-only.
-test-thermal: build/thermal_test build/thermal_devinfo_test build/thermal_hardware_test
+test-thermal: build/thermal_test build/thermal_devinfo_test build/thermal_hardware_test build/thermal_freshness_test
 	./build/thermal_test
 	./build/thermal_devinfo_test
 	./build/thermal_hardware_test
+	./build/thermal_freshness_test
+	python3 tests/thermal_fdt_test.py
 
 build/thermal_test: drivers/power/mt8167-thermal/thermal.c drivers/power/mt8167-thermal/thermal.h drivers/power/mt8167-thermal/manager.c drivers/power/mt8167-thermal/manager.h tests/thermal_test.c
 	mkdir -p build
@@ -361,3 +363,7 @@ test-mt8167-wavert-dma: build/mt8167_wavert_dma_test
 build/mt8167_wavert_dma_test: drivers/audio/mt8167-afe/wavert_dma.cpp drivers/audio/mt8167-afe/wavert_dma.h tests/mt8167_wavert_dma_test.cpp tests/audio_windows_stubs/portcls.h
 	mkdir -p build
 	$(CXX) -O2 -Wall -Wextra -Werror -std=c++11 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/wavert_dma.cpp tests/mt8167_wavert_dma_test.cpp -o $@
+
+build/thermal_freshness_test: drivers/power/mt8167-thermal/freshness.c drivers/power/mt8167-thermal/freshness.h tests/thermal_freshness_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal drivers/power/mt8167-thermal/freshness.c tests/thermal_freshness_test.c -o $@
