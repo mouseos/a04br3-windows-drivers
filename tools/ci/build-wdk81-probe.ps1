@@ -3,7 +3,8 @@ $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
 $include = Join-Path $kit 'Include'
 $lib = Join-Path $kit 'Lib\winv6.3\km\arm'
 $source = Join-Path $PSScriptRoot '..\..\drivers\storage\mt8167-msdc\miniport.c'
-$output = Join-Path $env:RUNNER_TEMP 'a04br3-wdk81-probe'
+$tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
+$output = Join-Path $tempRoot 'a04br3-wdk81-probe'
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 $object = Join-Path $output 'miniport.obj'
 $pioObject = Join-Path $output 'pio.obj'
