@@ -179,3 +179,5 @@ context switchのpersistent PDSは `pvr_pds_generate_stream_out_terminate_progra
 ソース上、例えばサイズ１（16 DWORD）は両ループで固定量減算後に符号なしで周回し、ゼロへ到達しない。storeはサイズが64の倍数、loadは16の倍数なら有限回で終了し、サイズ256までなら確保された16384バイトのstate本体内に収まる計算になる。MesaのLLS定義は本体16384バイトと先頭予約48バイトを割り当てるが、GE8300の特殊レジスタがこの粒度・上限を必ず満たすこと、保存済み値が改変されないことは未証明。したがって少なくとも非整列値・範囲外値の扱いを解決するまでUSC候補を実行可能にしない。モデルはソースレベルの演算検査であり、GPU実行を模擬しない。
 
 `build-context-shared-bounded.py --source MESA_SOURCE --build MESA_BUILD --output NEW_PRIVATE_DIR` は、独立した一時 `common.cl` に限りサイズ256超を０にし、残量を飽和減算する診断版を生成する。Mesa checkoutは変更せず、MesaのOpenCLコンパイラとPCOを使ってSPIR-VとUSC候補を２回生成・一致検査し、ソースと生成物のハッシュをmanifestへ記録する。ソースレベルモデルでは入力０〜256について両ループは有限回で終了し、範囲外は０として扱う。最適化後NIRにも上限比較と飽和減算が残ることを確認した。ただし範囲外を０にするとcontext復元は不完全であり、実行結果やGPU上のメモリ安全を保証しない。未検証の診断版で、Windowsドライバへ組み込まず、実機投入は禁止する。
+
+`check-context-usc-ir.py --source MESA_SOURCE --build MESA_BUILD` は固定Mesaコンパイラを非公開の一時ディレクトリで再実行し、通常ビルドと対象USC配列の一致を確認した後、最適化後NIRの定数とメモリ操作を検査する。store／loadのアドレスはPDSが設定するvertex inputから、storeのサイズはISA上の特殊レジスタ番号103 `sh_alloc_size`、loadのサイズはGPUがstate先頭に書いた値から来る。NIR上の定数はregister index、ループ幅、アドレス増分、減算値に限定される。ただしNIRと機械語の完全な意味対応、機械語の全即値、実機での特殊レジスタの値域と粒度を証明しない。非公開の生IRは保存・出力しない。実機操作は行っていない。
