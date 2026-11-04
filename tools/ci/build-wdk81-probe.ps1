@@ -13,7 +13,7 @@ $driver = Join-Path $output 'miniport.sys'
 $extraObjects = @()
 $probeDefines = @()
 if ($env:A04_DMA_MULTIBLOCK_EXPERIMENT -eq '1') {
-    if ($env:A04_DMA_PROBE -ne '1' -or $env:A04_DMA_DISK_PROBE -ne '1' -or $env:A04_READONLY_DISK_PROBE -ne '1' -or $env:A04_ENABLE_WRITES -eq '1' -or $env:A04_DMA_WRITE_TEST -eq '1' -or $env:A04_BOOT_EXPERIMENT -eq '1') { throw 'Multiblock experiment requires a read-only non-boot DMA disk probe' }
+    if ($env:A04_DMA_PROBE -ne '1' -or $env:A04_DMA_DISK_PROBE -ne '1' -or $env:A04_READONLY_DISK_PROBE -ne '1' -or $env:A04_VIRTUAL_BOUNCE_EXPERIMENT -ne '1' -or $env:A04_ENABLE_WRITES -eq '1' -or $env:A04_DMA_WRITE_TEST -eq '1' -or $env:A04_BOOT_EXPERIMENT -eq '1') { throw 'Multiblock experiment requires a read-only non-boot virtual-bounce DMA disk probe' }
     $probeDefines += '-DA04_DMA_MULTIBLOCK_EXPERIMENT=1'
 }
 if ($env:A04_DMA_POLL_TRACE -eq '1') {

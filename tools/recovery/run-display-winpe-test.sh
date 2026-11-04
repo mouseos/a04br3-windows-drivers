@@ -84,7 +84,7 @@ for ((i=0;i<35;i++)); do
   if [[ -n ${A04_WINPE_FAILURE_MARKER:-} ]] && grep -Fq "$A04_WINPE_FAILURE_MARKER" "$out/current-uart.log"; then break; fi
   # CAPTURE READY is registration, not a bugcheck. Match only the callback's
   # emitted bugcheck data and preserve the first failure boot in the log.
-  if grep -qE 'A04GPU BUGCHECK (DATA_UNAVAILABLE|[0-9A-F]{8})|A04GPU DISPLAY COPY FAILED|A04GPU DISPLAY PNP FAILED|Kernel panic' "$out/current-uart.log"; then break; fi
+  if grep -qE 'A04GPU BUGCHECK (DATA_UNAVAILABLE|[0-9A-F]{8})|A04WIN BUGCHECK|A04GPU DISPLAY COPY FAILED|A04GPU DISPLAY PNP FAILED|Kernel panic' "$out/current-uart.log"; then break; fi
   # The opt-in service cannot restart after D0 exit. Further waiting cannot
   # produce a GPU copy in this boot, so capture and restore promptly.
   if grep -q 'A04GPU D0EXIT TARGET=' "$out/current-uart.log"; then break; fi

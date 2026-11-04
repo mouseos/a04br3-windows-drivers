@@ -8,8 +8,8 @@
 #include "multiblock_config.h"
 /* Optional compiler flag: A04_DMA_MULTIBLOCK_EXPERIMENT. Read-only
  * diagnostic builds only; the default continues to use one sector at a time. */
-#if A04_DMA_MULTIBLOCK_EXPERIMENT && (!defined(A04_DMA_PROBE) || !defined(A04_DMA_DISK_PROBE) || !defined(A04_READONLY_DISK_PROBE) || defined(A04_ENABLE_WRITES) || defined(A04_DMA_WRITE_TEST))
-#error A04_DMA_MULTIBLOCK_EXPERIMENT requires a read-only DMA disk probe
+#if A04_DMA_MULTIBLOCK_EXPERIMENT && (!defined(A04_DMA_PROBE) || !defined(A04_DMA_DISK_PROBE) || !defined(A04_READONLY_DISK_PROBE) || !defined(A04_VIRTUAL_BOUNCE_EXPERIMENT) || defined(A04_ENABLE_WRITES) || defined(A04_DMA_WRITE_TEST))
+#error A04_DMA_MULTIBLOCK_EXPERIMENT requires a read-only virtual-bounce DMA disk probe
 #endif
 #if defined(A04_PASSIVE_IO) && (!defined(A04_READONLY_DISK_PROBE) || (defined(A04_ENABLE_WRITES) && !defined(A04_SCRATCH_IO) && !defined(A04_BOOT_PASSIVE_EXPERIMENT)))
 #error A04_PASSIVE_IO requires a diagnostic disk and only allows bounded scratch writes
