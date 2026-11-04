@@ -262,7 +262,9 @@ NTSTATUS GpuD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
     status=a04_windows_linear_context_free(&c->linear,&c->firmware);
     if (!NT_SUCCESS(status)) return status;
     if (c->referenced) { WdfObjectDereference(c->dma); c->referenced=FALSE; }
-    c->attempted=FALSE;
+    /* Do not restart firmware on resume until the SoC power, clocks and
+     * display ownership have a validated reinitialization sequence. The
+     * display client falls back to CPU while this device remains present. */
 #endif
     return c->firmware.processor_released ? STATUS_DEVICE_BUSY : STATUS_SUCCESS;
 }

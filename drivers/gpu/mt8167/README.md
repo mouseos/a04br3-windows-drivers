@@ -196,8 +196,9 @@ An opt-in `A04_GE8300_COPY_SERVICE` path provides one synchronous buffered
 It explicitly requires the test firmware's BVNC-mismatch opt-in and is off
 by default. The sequential power-managed WDF queue drains requests before D0
 exit; the provider then requests GPU shutdown and only releases its DMA on a
-successful stop. An unsuccessful shutdown retains the allocations. This is a
-work-in-progress interface: it is not connected to the display miniport, is
-not verified on a device, and must not be treated as a supported driver. The
+successful stop. An unsuccessful shutdown retains the allocations. After D0
+exit it stays unavailable on resume until a fresh PnP device instance starts;
+SoC power restoration is not implemented. The optional display miniport client
+is not verified on a device and must not be treated as a supported driver. The
 initial WinPE test path remains separate. See Microsoft's [power-managed
 queues](https://learn.microsoft.com/en-us/windows-hardware/drivers/wdf/using-power-managed-i-o-queues).
