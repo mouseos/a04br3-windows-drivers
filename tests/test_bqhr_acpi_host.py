@@ -15,6 +15,7 @@ typedef uint8_t UCHAR; typedef int32_t NTSTATUS; typedef void *WDFDEVICE;
 #define NT_SUCCESS(s) ((s)>=0)
 #define FIELD_OFFSET(t,f) ((ULONG)offsetof(t,f))
 #define RtlZeroMemory(p,n) memset(p,0,n)
+#define RtlCopyMemory(d,s,n) memcpy(d,s,n)
 typedef struct { void *buffer; size_t length; } WDF_MEMORY_DESCRIPTOR;
 typedef struct { int flags; int64_t timeout; } WDF_REQUEST_SEND_OPTIONS;
 #define WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(d,p,n) do{(d)->buffer=(p);(d)->length=(n);}while(0)
@@ -41,6 +42,7 @@ harness=r'''
 #include <ntddk.h>
 #include <acpiioct.h>
 #include "bqhr_acpi.h"
+#include "charger.h"
 static int mode;
 static void put(UCHAR *p,uint64_t x){unsigned i;for(i=0;i<8;++i)p[i]=(UCHAR)(x>>(i*8));}
 static void seal(UCHAR *p){uint64_t h=14695981039346656037ULL;unsigned i;for(i=0;i<120;++i){h^=p[i];h*=1099511628211ULL;}put(p+120,h);}
@@ -52,14 +54,29 @@ NTSTATUS WdfIoTargetSendIoctlSynchronously(void *target,void *request,ULONG code
  put(p,0x314f524147484334ULL);put(p+8,128);put(p+16,2);put(p+96,6);seal(p);*ret=o->Length;
  if(mode==2)*ret=off-1; if(mode==3)o->Argument[0].DataLength=127;if(mode==4)o->Length=off+127;
  if(mode==5)p[0]^=1;if(mode==6){put(p+16,1);seal(p);}if(mode==7)o->Count=2;
- if(mode==8)*ret=out->length+1;return 0;
+ if(mode==8)*ret=out->length+1;
+ if(mode==9){put(p+16,1);put(p+24,130000000);put(p+32,13000000);put(p+40,143000000);put(p+48,1);put(p+56,1);put(p+64,255);put(p+72,0x28005140a40c0030ULL);put(p+80,255);put(p+88,0x28005140a40c0030ULL);put(p+96,0);seal(p);}
+ return 0;
 }
-int main(void){NTSTATUS status;enum a04_bqhr_acpi_result expected[]={A04_BQHR_ACPI_STOPPED,A04_BQHR_ACPI_IOCTL_ERROR,A04_BQHR_ACPI_INVALID_OUTPUT,A04_BQHR_ACPI_INVALID_OUTPUT,A04_BQHR_ACPI_INVALID_OUTPUT,A04_BQHR_ACPI_INVALID_RECORD,A04_BQHR_ACPI_OTHER_STATE,A04_BQHR_ACPI_INVALID_OUTPUT,A04_BQHR_ACPI_INVALID_OUTPUT};
- for(mode=0;mode<9;++mode)assert(a04_bqhr_evaluate((void*)1,&status)==expected[mode]);return 0;}
+int main(void){NTSTATUS status;UCHAR record[128];unsigned i;enum a04_bqhr_acpi_result expected[]={A04_BQHR_ACPI_STOPPED,A04_BQHR_ACPI_IOCTL_ERROR,A04_BQHR_ACPI_INVALID_OUTPUT,A04_BQHR_ACPI_INVALID_OUTPUT,A04_BQHR_ACPI_INVALID_OUTPUT,A04_BQHR_ACPI_INVALID_RECORD,A04_BQHR_ACPI_OTHER_STATE,A04_BQHR_ACPI_INVALID_OUTPUT,A04_BQHR_ACPI_INVALID_OUTPUT};
+ for(mode=0;mode<9;++mode){memset(record,0xaa,sizeof(record));assert(a04_bqhr_receive((void*)1,&status,record)==expected[mode]);
+  if(mode==0||mode==6){assert(record[0]==0x34&&record[16]==(mode==0?2:1));}
+  else for(i=0;i<sizeof(record);++i)assert(!record[i]);
+  assert(a04_bqhr_evaluate((void*)1,&status)==expected[mode]);}
+ {struct a04_bq_owner owner={0}, expired={0}, stopped={0};mode=0;
+  assert(a04_bqhr_receive((void*)1,&status,record)==A04_BQHR_ACPI_STOPPED);
+  assert(a04_bq_adopt_handoff(&stopped,record,128,1000000000ULL,156000000,13000000));
+  assert(stopped.stopped&&!stopped.handoff_pending);mode=9;
+  assert(a04_bqhr_receive((void*)1,&status,record)==A04_BQHR_ACPI_OTHER_STATE);
+  assert(!a04_bq_adopt_handoff(&owner,record,128,1000000000ULL,156000000,13000000));
+  assert(owner.handoff_pending&&owner.handoff_deadline==19000000000ULL);
+  assert(a04_bq_adopt_handoff(&expired,record,128,1000000000ULL,390000000,13000000));
+  assert(expired.stopped&&!expired.handoff_pending);}
+ return 0;}
 '''
 with tempfile.TemporaryDirectory(prefix='a04-bqhr-wdf-') as td:
  p=Path(td);(p/'ntddk.h').write_text(mock);(p/'wdf.h').write_text('#include <ntddk.h>\n');(p/'acpiioct.h').write_text(acpi);(p/'test.c').write_text(harness)
  src=root/'drivers/power/bq24160'
- subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-Wno-misleading-indentation','-I'+str(p),'-I'+str(src),str(src/'bqhr_acpi.c'),str(src/'bqhr_diagnostic.c'),str(p/'test.c'),'-o',str(p/'test')],check=True)
+ subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-Wno-misleading-indentation','-I'+str(p),'-I'+str(src),str(src/'bqhr_acpi.c'),str(src/'bqhr_diagnostic.c'),str(src/'charger.c'),str(p/'test.c'),'-o',str(p/'test')],check=True)
  subprocess.run([str(p/'test')],check=True)
 print('BQHR ACPI IOCTL, length/type checks and non-adoption: PASS (host mock)')

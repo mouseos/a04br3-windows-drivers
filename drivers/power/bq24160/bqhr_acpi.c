@@ -6,7 +6,8 @@
 #include <acpiioct.h>
 #include "bqhr_diagnostic.h"
 #include "bqhr_acpi.h"
-enum a04_bqhr_acpi_result a04_bqhr_evaluate(WDFDEVICE device, NTSTATUS *io_status)
+enum a04_bqhr_acpi_result a04_bqhr_receive(WDFDEVICE device, NTSTATUS *io_status,
+                                           UCHAR record[128])
 {
     ACPI_EVAL_INPUT_BUFFER input;
     union { ULONGLONG alignment; UCHAR bytes[sizeof(ACPI_EVAL_OUTPUT_BUFFER) + 128]; } storage;
@@ -19,6 +20,7 @@ enum a04_bqhr_acpi_result a04_bqhr_evaluate(WDFDEVICE device, NTSTATUS *io_statu
     NTSTATUS status;
     struct a04_bqhr_info info;
     enum a04_bqhr_result result;
+    if (record) RtlZeroMemory(record, 128);
     RtlZeroMemory(&input, sizeof(input)); RtlZeroMemory(&storage, sizeof(storage));
     input.Signature = ACPI_EVAL_INPUT_BUFFER_SIGNATURE;
     input.MethodNameAsUlong = 0x52485142u; /* BQHR, little endian */
@@ -37,7 +39,13 @@ enum a04_bqhr_acpi_result a04_bqhr_evaluate(WDFDEVICE device, NTSTATUS *io_statu
         output->Argument[0].DataLength != 128 || output->Length - data_offset < 128)
         return A04_BQHR_ACPI_INVALID_OUTPUT;
     result = a04_bqhr_classify(output->Argument[0].Data, 128, &info);
+    if (record && (result == A04_BQHR_STOPPED || result == A04_BQHR_OTHER_STATE))
+        RtlCopyMemory(record, output->Argument[0].Data, 128);
     if (result == A04_BQHR_STOPPED) return A04_BQHR_ACPI_STOPPED;
     if (result == A04_BQHR_OTHER_STATE) return A04_BQHR_ACPI_OTHER_STATE;
     return A04_BQHR_ACPI_INVALID_RECORD;
+}
+enum a04_bqhr_acpi_result a04_bqhr_evaluate(WDFDEVICE device, NTSTATUS *io_status)
+{
+    return a04_bqhr_receive(device, io_status, NULL);
 }
