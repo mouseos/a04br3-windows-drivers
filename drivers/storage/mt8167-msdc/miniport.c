@@ -73,6 +73,7 @@ struct a04_probe_extension {
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
     volatile LONG transfer_poisoned; /* Restart cannot establish DMA/card recovery. */
     a04_lifetime lifetime;
+    PMDL retained_dma_mdl; /* Retained if a live DMA transfer cannot be drained. */
 #endif
 #ifdef A04_SERIAL_QUEUE_EXPERIMENT
     volatile LONG busyCount, gateBusyCount, workerInitFailCount, workerQueueFailCount;
@@ -262,7 +263,14 @@ static enum a04_dma_result A04DmaTransfer(struct a04_probe_extension *probe,
         A04Trace(" status="); A04TraceHex(A04Read32(probe, 0x03c));
         A04Trace(" dma="); A04TraceHex(A04Read32(probe, 0x09c)); A04Trace("\n");
     }
-    IoFreeMdl(mdl);
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+    if (tracked && (a04_life_load(&probe->lifetime) & A04_LIFE_DMA)) {
+        /* Keep the descriptor together with the quarantined transfer. This
+         * does not pin the port-owned underlying allocation across removal. */
+        probe->retained_dma_mdl=mdl;
+    } else
+#endif
+        IoFreeMdl(mdl);
     return result;
 }
 static enum a04_dma_result A04DmaSector(struct a04_probe_extension *probe,

@@ -33,3 +33,7 @@ DMA 状態を保持し poison とする。受付閉鎖前に既に始まった M
 Microsoft の [HwStorAdapterControl](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/storport/nc-storport-hw_adapter_control)
 では停止・再開は同期処理であり、ScsiStopAdapter/ScsiRestartAdapter は DIRQL と
 InterruptLock の下で呼ばれる。失敗値の返却だけで削除を阻止できるとみなさない。
+
+試作の tracked DMA が停止を証明できず保持される場合、当該転送の MDL も解放
+しない。MDL の保持だけで Storport 所有バッファや adapter、worker、SRB の PnP
+寿命が延びるわけではない。これらの実所有が実装されるまで起動を拒否する。
