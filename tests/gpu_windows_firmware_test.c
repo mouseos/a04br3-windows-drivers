@@ -44,8 +44,9 @@ NTSTATUS KeDelayExecutionThread(int mode,BOOLEAN alertable,const LARGE_INTEGER *
                        !cmds[slot].cmd_data.mmu_cache_data.mmu_cache_sync_update_value) command_error=1;
                     if(!no_mmu_ack) *mmu=cmds[slot].cmd_data.mmu_cache_data.mmu_cache_sync_update_value;
                 }
-                if(commands_completed==2 && (cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_POW || cmds[slot].cmd_data.pow_data.pow_type!=ROGUE_FWIF_POW_FORCED_IDLE_REQ)) command_error=1;
-                if(commands_completed==3 && (cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_POW || cmds[slot].cmd_data.pow_data.pow_type!=ROGUE_FWIF_POW_OFF_REQ)) command_error=1;
+                if(commands_completed==2 && cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_KICK) command_error=1;
+                if(commands_completed==3 && (cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_POW || cmds[slot].cmd_data.pow_data.pow_type!=ROGUE_FWIF_POW_FORCED_IDLE_REQ)) command_error=1;
+                if(commands_completed==4 && (cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_POW || cmds[slot].cmd_data.pow_data.pow_type!=ROGUE_FWIF_POW_OFF_REQ)) command_error=1;
                 /* The MT8167 firmware can advance the execution counter
                  * without writing the health command's return slot. */
                 if(commands_completed!=0) ret[slot]=ROGUE_FWIF_KCCB_RTN_SLOT_CMD_EXECUTED;
@@ -58,7 +59,7 @@ NTSTATUS KeDelayExecutionThread(int mode,BOOLEAN alertable,const LARGE_INTEGER *
 }
 int main(int argc,char **argv)
 {
-    FILE *f; long n; uint8_t *image,*regs; NTSTATUS status;
+    FILE *f; long n; uint8_t *image,*regs; NTSTATUS status; struct rogue_fwif_kccb_cmd kick={0};
     DMA_OPERATIONS ops={allocate,release}; struct fake_adapter adapter={&ops};
     if(argc!=2 || !(f=fopen(argv[1],"rb"))) return 1;
     if(fseek(f,0,SEEK_END) || (n=ftell(f))<=0 || fseek(f,0,SEEK_SET)) return 2;
@@ -72,8 +73,11 @@ int main(int argc,char **argv)
     if(status!=STATUS_SUCCESS || !state.processor_released || !state.firmware_started || allocations!=2 || releases || !sync_read || sync_write<2) return 5;
     if(a04_gpu_firmware_health(&state)!=STATUS_SUCCESS || commands_completed!=1 || command_error) return 10;
     if(a04_gpu_firmware_invalidate_mmu(&state)!=STATUS_SUCCESS || commands_completed!=2 || command_error) return 11;
+    if(a04_gpu_firmware_submit_kick(&state,&kick)!=STATUS_INVALID_PARAMETER || commands_completed!=2) return 13;
+    kick.cmd_type=ROGUE_FWIF_KCCB_CMD_KICK;
+    if(a04_gpu_firmware_submit_kick(&state,&kick)!=STATUS_SUCCESS || commands_completed!=3 || command_error) return 14;
     if(a04_gpu_firmware_stop(&state,FALSE)!=STATUS_DEVICE_BUSY || releases || !state.processor_released) return 7;
-    if(a04_gpu_firmware_shutdown(&state)!=STATUS_IO_TIMEOUT || commands_completed!=4 || command_error || releases || !state.processor_released) return 8;
+    if(a04_gpu_firmware_shutdown(&state)!=STATUS_IO_TIMEOUT || commands_completed!=5 || command_error || releases || !state.processor_released) return 8;
     *(uint32_t *)(void *)(regs+ROGUE_CR_SIDEKICK_IDLE)=(uint32_t)ROGUE_CR_SIDEKICK_IDLE_MASKFULL;
     *(uint32_t *)(void *)(regs+ROGUE_CR_SLC_IDLE)=(uint32_t)ROGUE_CR_SLC_IDLE_MASKFULL;
     if(a04_gpu_firmware_stop(&state,TRUE)!=STATUS_SUCCESS || releases!=2 || state.processor_released) return 9;

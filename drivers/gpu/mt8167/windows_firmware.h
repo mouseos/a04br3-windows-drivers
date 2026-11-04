@@ -2,6 +2,7 @@
 #ifndef A04_GE8300_WINDOWS_FIRMWARE_H
 #define A04_GE8300_WINDOWS_FIRMWARE_H
 #include "windows_hw.h"
+struct rogue_fwif_kccb_cmd;
 struct a04_gpu_firmware_state {
     struct a04_gpu_dma_memory memory;
     struct a04_gpu_register_context registers;
@@ -35,5 +36,9 @@ NTSTATUS a04_gpu_firmware_health(struct a04_gpu_firmware_state *state);
 /* Caller synchronizes changed GPU page tables before issuing this command.
  * Completion requires both firmware execution and the MMU sync token. */
 NTSTATUS a04_gpu_firmware_invalidate_mmu(struct a04_gpu_firmware_state *state);
+/* The caller has synchronized and owns every referenced firmware object.
+ * This waits for the KCCB command, not for client work or its fence. */
+NTSTATUS a04_gpu_firmware_submit_kick(struct a04_gpu_firmware_state *state,
+        const struct rogue_fwif_kccb_cmd *kick);
 NTSTATUS a04_gpu_firmware_shutdown(struct a04_gpu_firmware_state *state);
 #endif
