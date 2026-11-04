@@ -7,12 +7,17 @@ KCCB health要求後の実行カウンターの進行を確認しました。実
 22.40.54.30、試験に使用したfirmwareは22.67.54.30です。互換性は
 確立しておらず、不一致の許可は試験ビルドだけに限定します。
 
+`141466c` の3コアWinPE一括試験では表示miniportのPnP開始と、GE8300を
+経由した16 KiB表示コピー2回の完了（失敗0回）を確認しました。Windowsの
+画面表示もフレームバッファで確認しました。転送はCPU側のステージングを
+含み、直接フレームバッファへGPUが書く方式ではありません。3D、速度改善、
+長期安定性、スリープ復帰、および搭載Windowsへの統合は未確認です。
+
 30d0088のWinPE実機試験では、idle・power-off応答、未処理転送の確認、
 ファームウェアプロセッサのreset読戻しを通り、DMA割当を解放しました。
 独立したバス測定や長期安定性は未確認です。失敗時の共有メモリは保持して
 リセットします。GPUによる固定画像のクリアは下記のWinPE試験で成功しました。
-画面への描画、WDDM、PnP電源遷移、
-スリープ復帰は未完成です。共通DMAバッファのキャッシュ整合性、特に異なる
+完全なWDDM/3D、PnP電源遷移、スリープ復帰は未完成です。共通DMAバッファのキャッシュ整合性、特に異なる
 所有者が同じキャッシュラインを共有する場合の安全性も未検証です。
 
 `gpu_mmu.c` はGE8300の３段ページテーブルへ4 KiB単位の連続または散在する
@@ -181,8 +186,8 @@ test; this integration has not yet been verified on the device.
 firmware objects, first queue submission and initial fence into a reusable
 context. The host simulator exercises initialization, a later transfer and
 the retained-allocation path on timeout. The command remains a diagnostic
-fixed-size fixture with the BVNC mismatch described below. The context is not
-connected to WDDM and is not yet validated on hardware. Do not ship it as a
+fixed-size fixture with the BVNC mismatch described below. The optional WDDM
+display-only client was exercised in WinPE as described above. Do not ship it as a
 graphics driver; firmware compatibility, PnP and power management remain open.
 The opt-in linear WinPE diagnostic now initializes through this context and
 retains its DMA allocation until the existing firmware shutdown sequence.
@@ -199,6 +204,6 @@ exit; the provider then requests GPU shutdown and only releases its DMA on a
 successful stop. An unsuccessful shutdown retains the allocations. After D0
 exit it stays unavailable on resume until a fresh PnP device instance starts;
 SoC power restoration is not implemented. The optional display miniport client
-is not verified on a device and must not be treated as a supported driver. The
+is tested only in WinPE and must not be treated as a supported driver. The
 initial WinPE test path remains separate. See Microsoft's [power-managed
 queues](https://learn.microsoft.com/en-us/windows-hardware/drivers/wdf/using-power-managed-i-o-queues).
