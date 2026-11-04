@@ -12,7 +12,7 @@
 #error Synchronous PIO multiread is restricted to a physical read-only non-worker probe
 #endif
 #endif
-#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT || defined(A04_SYNC_PIO_MULTIREAD)
 #include "lifetime.h"
 #endif
 /* Optional compiler flag: A04_DMA_MULTIBLOCK_EXPERIMENT. Read-only
@@ -68,6 +68,7 @@ struct a04_probe_extension {
     a04_msdc_gate ioBusy;
 #ifdef A04_SYNC_PIO_MULTIREAD
     UCHAR sync_staging[4096];
+    a04_lifetime sync_lifetime;
 #endif
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
     volatile LONG transfer_poisoned; /* Restart cannot establish DMA/card recovery. */
@@ -107,6 +108,9 @@ static void A04Trace(const char *text)
 static uint32_t A04Read32(void *context, uint32_t offset)
 {
     struct a04_probe_extension *probe = (struct a04_probe_extension *)context;
+#ifdef A04_SYNC_PIO_MULTIREAD
+    if (a04_life_load(&probe->sync_lifetime) & A04_LIFE_CLOSED) return 0xffffffffu;
+#endif
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
     if (a04_life_load(&probe->lifetime) & A04_LIFE_REMOVED) return 0xffffffffu;
 #endif
@@ -116,6 +120,9 @@ static uint32_t A04Read32(void *context, uint32_t offset)
 static uint8_t A04Read8(void *context, uint32_t offset)
 {
     struct a04_probe_extension *probe = (struct a04_probe_extension *)context;
+#ifdef A04_SYNC_PIO_MULTIREAD
+    if (a04_life_load(&probe->sync_lifetime) & A04_LIFE_CLOSED) return 0xffu;
+#endif
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
     if (a04_life_load(&probe->lifetime) & A04_LIFE_REMOVED) return 0xffu;
 #endif
@@ -125,6 +132,9 @@ static uint8_t A04Read8(void *context, uint32_t offset)
 static void A04Write32(void *context, uint32_t offset, uint32_t value)
 {
     struct a04_probe_extension *probe = (struct a04_probe_extension *)context;
+#ifdef A04_SYNC_PIO_MULTIREAD
+    if (a04_life_load(&probe->sync_lifetime) & A04_LIFE_CLOSED) return;
+#endif
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
     if (a04_life_load(&probe->lifetime) & A04_LIFE_REMOVED) return;
 #endif
@@ -731,6 +741,10 @@ static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControlOwned(PVOID extension,
         return ScsiAdapterControlSuccess;
     }
     if (type == ScsiRestartAdapter) {
+#ifdef A04_SYNC_PIO_MULTIREAD
+        /* No power-up/card reinitialization is implemented yet. */
+        return ScsiAdapterControlUnsuccessful;
+#endif
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
         if (InterlockedCompareExchange(&probe->transfer_poisoned,0,0))
             return ScsiAdapterControlUnsuccessful;
@@ -764,6 +778,9 @@ static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControl(PVOID extension,
     struct a04_probe_extension *probe=(struct a04_probe_extension *)extension;
     SCSI_ADAPTER_CONTROL_STATUS status;
     BOOLEAN owns=(type==ScsiStopAdapter || type==ScsiRestartAdapter);
+#ifdef A04_SYNC_PIO_MULTIREAD
+    if (type==ScsiStopAdapter) a04_life_close(&probe->sync_lifetime,0);
+#endif
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
     if (type==ScsiStopAdapter) {
         /* Close before testing ownership, including when a worker is busy. */
@@ -783,10 +800,18 @@ static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControl(PVOID extension,
  * extension is touched. The returned mapping belongs to the request. */
 static BOOLEAN A04BuildIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 {
-    struct a04_request_extension *r = (struct a04_request_extension *)request->SrbExtension;
+    struct a04_request_extension *r;
     struct a04_probe_extension *probe = (struct a04_probe_extension *)extension;
+#ifdef A04_SYNC_PIO_MULTIREAD
+    if (request->Function != SRB_FUNCTION_EXECUTE_SCSI || request->Length < sizeof(SCSI_REQUEST_BLOCK))
+        return TRUE;
+#endif
+    r = (struct a04_request_extension *)request->SrbExtension;
     A04Trace("A04WIN BuildIo fn="); A04TraceHex(request->Function);
-    A04Trace(" opcode="); A04TraceHex(request->Cdb[0]); A04Trace("\n");
+    if (request->Function==SRB_FUNCTION_EXECUTE_SCSI && request->Length>=sizeof(SCSI_REQUEST_BLOCK) && request->CdbLength) {
+        A04Trace(" opcode="); A04TraceHex(request->Cdb[0]);
+    }
+    A04Trace("\n");
     if (!r) {
         request->SrbStatus = SRB_STATUS_ERROR;
         StorPortNotification(RequestComplete, extension, request);
@@ -821,6 +846,11 @@ static void A04Sense(PSCSI_REQUEST_BLOCK request, UCHAR key, UCHAR asc)
 }
 
 #ifdef A04_SYNC_PIO_MULTIREAD
+static int A04SyncCancelled(void *context)
+{
+    struct a04_probe_extension *probe=(struct a04_probe_extension *)context;
+    return (a04_life_load(&probe->sync_lifetime)&A04_LIFE_CLOSED)!=0;
+}
 static uint64_t A04SyncClock(void *context)
 {
     UNREFERENCED_PARAMETER(context);
@@ -950,7 +980,8 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
                 UNREFERENCED_PARAMETER(j);
                 KeQueryPerformanceCounter(&frequency);
                 if (frequency.HighPart != 0 || frequency.LowPart < 10 || result.action!=A04_SCSI_READ) { failure=1; break; }
-                clock.context=NULL; clock.now=A04SyncClock; clock.ticks=frequency.LowPart/10u;
+                clock.context=probe; clock.now=A04SyncClock; clock.ticks=frequency.LowPart/10u;
+                clock.cancelled=A04SyncCancelled;
                 pr=a04_sync_pio_read(&io,(ULONG)(result.blocks.lba+i),chunk,
                     probe->sync_staging,sizeof(probe->sync_staging),data+i*512,
                     available-i*512,200000,&clock);
@@ -1248,6 +1279,15 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 {
     struct a04_probe_extension *probe=(struct a04_probe_extension *)extension;
     BOOLEAN result;
+#ifdef A04_SYNC_PIO_MULTIREAD
+    /* PnP must close admission even if another callback owns the gate. */
+    if (request->Function==SRB_FUNCTION_PNP && request->Length>=sizeof(SCSI_PNP_REQUEST_BLOCK)) {
+        PSCSI_PNP_REQUEST_BLOCK pnp=(PSCSI_PNP_REQUEST_BLOCK)request;
+        if ((pnp->SrbPnPFlags & SRB_PNP_FLAGS_ADAPTER_REQUEST) &&
+            (pnp->PnPAction==StorSurpriseRemoval || pnp->PnPAction==StorRemoveDevice || pnp->PnPAction==StorStopDevice))
+            a04_life_close(&probe->sync_lifetime,pnp->PnPAction!=StorStopDevice);
+    }
+#endif
     /* Virtual miniports are not serialized by Storport. Never let two SRBs
      * use the shared DMA bounce buffer or program the controller concurrently. */
     if (!a04_msdc_gate_acquire(&probe->ioBusy)) {
@@ -1255,7 +1295,45 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         StorPortNotification(RequestComplete,extension,request);
         return TRUE;
     }
+#ifdef A04_SYNC_PIO_MULTIREAD
+    /* This physical synchronous path has no queued worker or DMA buffer. */
+    if (request->Function==SRB_FUNCTION_PNP && request->Length>=sizeof(SCSI_PNP_REQUEST_BLOCK)) {
+        PSCSI_PNP_REQUEST_BLOCK pnp=(PSCSI_PNP_REQUEST_BLOCK)request;
+        if ((pnp->SrbPnPFlags & SRB_PNP_FLAGS_ADAPTER_REQUEST) &&
+            (pnp->PnPAction==StorSurpriseRemoval || pnp->PnPAction==StorRemoveDevice || pnp->PnPAction==StorStopDevice)) {
+            a04_life_close(&probe->sync_lifetime,pnp->PnPAction!=StorStopDevice);
+        }
+        /* PnP teardown is not certified merely because I/O is synchronous. */
+        pnp->SrbStatus=SRB_STATUS_INVALID_REQUEST;
+        a04_msdc_gate_release(&probe->ioBusy);
+        StorPortNotification(RequestComplete,extension,request);
+        return TRUE;
+    }
+    if (request->Function==SRB_FUNCTION_FLUSH || request->Function==SRB_FUNCTION_SHUTDOWN) {
+        /* Read-only PIO has no pending writes or device cache to flush. */
+        request->SrbStatus=SRB_STATUS_SUCCESS;
+        a04_msdc_gate_release(&probe->ioBusy);
+        StorPortNotification(RequestComplete,extension,request);
+        return TRUE;
+    }
+    if (request->Function!=SRB_FUNCTION_EXECUTE_SCSI || request->Length<sizeof(SCSI_REQUEST_BLOCK)) {
+        request->SrbStatus=SRB_STATUS_INVALID_REQUEST;
+        a04_msdc_gate_release(&probe->ioBusy);
+        StorPortNotification(RequestComplete,extension,request);
+        return TRUE;
+    }
+    if (!a04_life_enter(&probe->sync_lifetime)) {
+        request->SrbStatus=SRB_STATUS_NO_DEVICE;
+        request->DataTransferLength=0;
+        a04_msdc_gate_release(&probe->ioBusy);
+        StorPortNotification(RequestComplete,extension,request);
+        return TRUE;
+    }
+#endif
     result=A04RunIo(extension,request);
+#ifdef A04_SYNC_PIO_MULTIREAD
+    a04_life_leave(&probe->sync_lifetime);
+#endif
     a04_msdc_gate_release(&probe->ioBusy);
     StorPortNotification(RequestComplete,extension,request);
     StorPortNotification(NextRequest,extension,NULL);
@@ -1280,7 +1358,11 @@ static BOOLEAN A04Interrupt(PVOID extension)
 
 static BOOLEAN A04ResetBus(PVOID extension, ULONG path)
 {
-#ifdef A04_ISOLATED_REQUEST_EXPERIMENT
+#ifdef A04_SYNC_PIO_MULTIREAD
+    struct a04_probe_extension *probe=(struct a04_probe_extension *)extension;
+    if (path==0) a04_life_close(&probe->sync_lifetime,0);
+    return FALSE; /* hardware reset remains unimplemented */
+#elif defined(A04_ISOLATED_REQUEST_EXPERIMENT)
     struct a04_probe_extension *probe=(struct a04_probe_extension *)extension;
     PSCSI_REQUEST_BLOCK original=probe->pendingRequest;
     /* Storport calls this with its StartIo lock held. Mark the controller

@@ -25,6 +25,7 @@ static void write32(void *ctx,uint32_t off,uint32_t val)
         f->ints=(f->current==12 && f->fail_stop) ? 0x400u : 0x100u;
     } else { f->regs[off/4]=val; if(off==0x050) f->total=val*512u; }
 }
+static int is_cancelled(void *ctx) { struct fake *f=ctx; return f->bytes>=64; }
 static uint64_t now(void *ctx) { struct fake *f=ctx; return f->ticks++; }
 static void init(struct fake *f) { memset(f,0,sizeof(*f));f->regs[0]=9;f->inactive=1; }
 int main(void)
@@ -47,9 +48,14 @@ int main(void)
     init(&f); assert(a04_sync_pio_read(&io,3,1,tmp,sizeof(tmp),out,sizeof(out),200,0)==A04_SYNC_OK);
     assert(f.count==1 && (f.commands[0]&63)==17);
     init(&f); f.no_data=1; memset(out,0xcc,sizeof(out));
-    { struct a04_sync_clock clock={&f,now,3};
+    { struct a04_sync_clock clock={&f,now,3,0};
       assert(a04_sync_pio_read(&io,1,8,tmp,sizeof(tmp),out,sizeof(out),1000000,&clock)==A04_SYNC_TIMEOUT);
       assert(f.ticks<20 && f.count==3 && (f.commands[2]&63)==12);
+      for(i=0;i<sizeof(out);++i) assert(out[i]==0xcc); }
+    init(&f); memset(out,0xcc,sizeof(out));
+    { struct a04_sync_clock clock={&f,now,100,is_cancelled};
+      assert(a04_sync_pio_read(&io,1,8,tmp,sizeof(tmp),out,sizeof(out),200,&clock)==A04_SYNC_CANCELLED);
+      assert(f.count==2 && f.bytes==64);
       for(i=0;i<sizeof(out);++i) assert(out[i]==0xcc); }
     return 0;
 }

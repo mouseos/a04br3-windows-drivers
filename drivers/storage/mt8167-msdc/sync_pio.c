@@ -23,6 +23,8 @@
 struct timer { const struct a04_sync_clock *c; uint64_t start; };
 static int expired(const struct timer *t,uint32_t n)
 { return t->c && !(n & 63u) && t->c->now(t->c->context)-t->start>=t->c->ticks; }
+static int cancelled(const struct timer *t)
+{ return t->c && t->c->cancelled && t->c->cancelled(t->c->context); }
 static void reset_timer(struct timer *t)
 { if(t->c) t->start=t->c->now(t->c->context); }
 static enum a04_sync_result command(const struct a04_msdc_io *io,
@@ -31,15 +33,18 @@ static enum a04_sync_result command(const struct a04_msdc_io *io,
     uint32_t n,b;
     reset_timer(t);
     for(n=0;n<limit;++n) {
+        if(cancelled(t)) return A04_SYNC_CANCELLED;
         if(!(io->read32(io->context,STS)&1u)) break;
         if(expired(t,n)) return A04_SYNC_TIMEOUT;
     }
     if(n==limit) return A04_SYNC_TIMEOUT;
+    if(cancelled(t)) return A04_SYNC_CANCELLED;
     b=io->read32(io->context,INT)&CMD_BITS;
     if(b) io->write32(io->context,INT,b);
     io->write32(io->context,ARG,arg); io->write32(io->context,CMD,word);
     reset_timer(t);
     for(n=0;n<limit;++n) {
+        if(cancelled(t)) return A04_SYNC_CANCELLED;
         b=io->read32(io->context,INT)&CMD_BITS;
         if(b) {
             io->write32(io->context,INT,b);
@@ -57,6 +62,7 @@ static int stop(const struct a04_msdc_io *io,uint32_t limit,struct timer *t)
     if(command(io,12u|(7u<<7)|(1u<<14),0,limit,t)!=A04_SYNC_OK) return 0;
     reset_timer(t);
     for(n=0;n<limit;++n) {
+        if(cancelled(t)) return 0;
         if(io->read32(io->context,PIN)&DAT0) return 1;
         if(expired(t,n)) return 0;
     }
@@ -76,36 +82,43 @@ enum a04_sync_result a04_sync_pio_read(const struct a04_msdc_io *io,
     /* Pointer addition can overflow; use differences to reject all overlap. */
     if (((uintptr_t)staging <= (uintptr_t)output && (uintptr_t)output-(uintptr_t)staging<total) ||
         ((uintptr_t)output < (uintptr_t)staging && (uintptr_t)staging-(uintptr_t)output<total)) return A04_SYNC_INVALID;
+    if(cancelled(&t)) return A04_SYNC_CANCELLED;
     if(!(io->read32(io->context,CFG)&8u) || (io->read32(io->context,DMACFG)&1u) ||
        (io->read32(io->context,INTEN)&EVENTS)) return A04_SYNC_BUSY;
     if(blocks>1) { r=command(io,23u|(1u<<7),blocks,limit,&t); if(r!=A04_SYNC_OK) return r; }
+    if(cancelled(&t)) return A04_SYNC_CANCELLED;
     io->write32(io->context,BLK,blocks);
     io->write32(io->context,FIFO,io->read32(io->context,FIFO)|CLEAR);
     reset_timer(&t);
-    for(n=0;n<limit;++n) { if(!(io->read32(io->context,FIFO)&CLEAR)) break; if(expired(&t,n)) return A04_SYNC_TIMEOUT; }
+    for(n=0;n<limit;++n) { if(cancelled(&t)) return A04_SYNC_CANCELLED; if(!(io->read32(io->context,FIFO)&CLEAR)) break; if(expired(&t,n)) return A04_SYNC_TIMEOUT; }
     if(n==limit) return A04_SYNC_TIMEOUT;
+    if(cancelled(&t)) return A04_SYNC_CANCELLED;
     b=io->read32(io->context,INT)&DATA_BITS; if(b) io->write32(io->context,INT,b);
     started=1;
     r=command(io,(blocks>1?18u:17u)|(1u<<7)|((blocks>1?2u:1u)<<11)|(512u<<16),lba,limit,&t);
     if(r!=A04_SYNC_OK) goto failed;
     reset_timer(&t);
     for(n=0;n<limit;++n) {
+        if(cancelled(&t)) return A04_SYNC_CANCELLED;
         b=io->read32(io->context,INT)&DATA_BITS; if(b) io->write32(io->context,INT,b);
         if(b&DATA_ERR) { r=A04_SYNC_DATA_ERROR; goto failed; }
         if(b&DONE) done=1;
         count=io->read32(io->context,FIFO)&0xffu;
         while(count && offset<total) {
+            if(cancelled(&t)) return A04_SYNC_CANCELLED;
             if(count>=4 && total-offset>=4) {
                 val=io->read32(io->context,RX);
                 staging[offset++]=(uint8_t)val; staging[offset++]=(uint8_t)(val>>8);
                 staging[offset++]=(uint8_t)(val>>16); staging[offset++]=(uint8_t)(val>>24); count-=4;
             } else { staging[offset++]=io->read8(io->context,RX); --count; }
         }
-        if(done && offset==total) { for(offset=0;offset<total;++offset) output[offset]=staging[offset]; return A04_SYNC_OK; }
+        if(done && offset==total) { if(cancelled(&t)) return A04_SYNC_CANCELLED; for(offset=0;offset<total;++offset) output[offset]=staging[offset]; return A04_SYNC_OK; }
         if(expired(&t,n)) break;
     }
     r=A04_SYNC_TIMEOUT;
 failed:
-    if(started && blocks>1 && !stop(io,limit,&t)) return A04_SYNC_STOP_ERROR;
+    if(cancelled(&t) || r==A04_SYNC_CANCELLED) return A04_SYNC_CANCELLED;
+    if(started && blocks>1 && !stop(io,limit,&t))
+        return cancelled(&t) ? A04_SYNC_CANCELLED : A04_SYNC_STOP_ERROR;
     return r;
 }
