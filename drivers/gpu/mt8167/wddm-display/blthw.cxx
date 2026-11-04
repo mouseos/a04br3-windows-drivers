@@ -365,11 +365,9 @@ BDD_HWBLT::ExecutePresentDisplayOnly(
         return Status;
     }
 
-    // Alternate between synch and asynch execution, for demonstrating
-    // that a real hardware implementation can do either
-    m_SynchExecution = !m_SynchExecution;
-
-    ctx->SynchExecution   = m_SynchExecution;
+    // The current path is CPU-only. Complete it before returning instead of
+    // leaving an asynchronous worker holding the framebuffer mapping.
+    ctx->SynchExecution   = TRUE;
 
     {
         // Map Source into kernel space, as Blt will be executed by system worker thread
@@ -415,24 +413,8 @@ BDD_HWBLT::ExecutePresentDisplayOnly(
         ctx->Mdl = mdl;
     }
 
-    if (m_SynchExecution)
-    {
-        HwExecutePresentDisplayOnly((PVOID)ctx);
-        return STATUS_SUCCESS;
-    }
-    else
-    {
-        // Create a worker thread to perform the present asynchronously
-        // Ctx will be deleted in worker thread (on exit)
-        Status = StartHwBltPresentWorkerThread(HwContextWorkerThread,(PVOID)ctx);
-        if (!NT_SUCCESS(Status))
-        {
-            MmUnlockPages(ctx->Mdl);
-            IoFreeMdl(ctx->Mdl);
-            delete [] reinterpret_cast<BYTE*>(ctx);
-        }
-        return Status;
-    }
+    HwExecutePresentDisplayOnly((PVOID)ctx);
+    return STATUS_SUCCESS;
 }
 
 
