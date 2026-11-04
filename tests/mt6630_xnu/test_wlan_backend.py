@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: MIT
 """New backend only; frozen CPP/codec and parent-owned boot helpers untouched."""
 from pathlib import Path
+import os
 import re
 import unittest
 import test_wmt_protocol as codecs
 from test_wlan_host import FAKE
 
-NATIVE_FIXTURE = Path(__file__).resolve().parent/'fixtures/mt6630_native/nic_cmd_event_fixture.h'
+NATIVE_FIXTURE = Path(os.environ.get('A04BR3_GEN3_SOURCE', '/nonexistent')) / 'include/nic_cmd_event.h'
 SETUP = FAKE + r'''
 #include "A04BR3WLANData.h"
 static inline void local_profile(struct a04_wlan_local *l){

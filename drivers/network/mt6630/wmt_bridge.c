@@ -101,6 +101,34 @@ int a04_wmt_bridge_scan_fail(struct a04_wmt_bridge *b,int reason)
     (b->life->state!=A04_WIFI_LIFE_IO && b->life->state!=A04_WIFI_LIFE_FAILED))return -1;
  b->scan.pending=0;b->scan.failed=reason;fault(b,reason);return 0;
 }
+static int bridge_runtime(const struct a04_wmt_bridge *b)
+{ return alive(b) && b->wlan_ready && !b->failed && b->wlan.runtime; }
+static int bridge_error(struct a04_wmt_bridge *b,int e)
+{ if(e && (b->wlan.failed || b->transport.failed))return fault(b,e);return e; }
+int a04_wmt_bridge_station_setup(struct a04_wmt_bridge *b,struct a04_wlan_station *s,const struct a04_wlan_local *l)
+{ if(!bridge_runtime(b))return -1;return bridge_error(b,a04_wlan_station_setup(s,&b->wlan,l)); }
+int a04_wmt_bridge_station_select(struct a04_wmt_bridge *b,struct a04_wlan_station *s,const struct a04_wlan_ap *ap,unsigned secured,unsigned token,unsigned interval,uint64_t now,uint64_t deadline)
+{ if(!bridge_runtime(b))return -1;return bridge_error(b,a04_wlan_station_select(s,&b->wlan,ap,secured,token,interval,now,deadline)); }
+int a04_wmt_bridge_station_event(struct a04_wmt_bridge *b,struct a04_wlan_station *s,const uint8_t *p,unsigned n,uint64_t now)
+{ struct a04_wlan_event event;int e;if(!bridge_runtime(b))return -1;e=a04_wlan_event_parse(p,n,&event);if(e)return fault(b,e);return bridge_error(b,a04_wlan_station_event(s,&b->wlan,&event,now)); }
+int a04_wmt_bridge_station_auth(struct a04_wmt_bridge *b,struct a04_wlan_station *s,uint64_t now)
+{ if(!bridge_runtime(b))return -1;return bridge_error(b,a04_wlan_station_auth(s,&b->wlan,now)); }
+int a04_wmt_bridge_station_auth_rx(struct a04_wmt_bridge *b,struct a04_wlan_station *s,const uint8_t *p,unsigned n,uint64_t now)
+{ if(!bridge_runtime(b))return -1;return bridge_error(b,a04_wlan_station_auth_rx(s,&b->wlan,p,n,now)); }
+int a04_wmt_bridge_station_assoc(struct a04_wmt_bridge *b,struct a04_wlan_station *s,unsigned capability,unsigned listen,const uint8_t *ie,unsigned length,uint64_t now)
+{ if(!bridge_runtime(b))return -1;return bridge_error(b,a04_wlan_station_assoc(s,&b->wlan,capability,listen,ie,length,now)); }
+int a04_wmt_bridge_station_assoc_rx(struct a04_wmt_bridge *b,struct a04_wlan_station *s,const uint8_t *p,unsigned n,unsigned secured,uint64_t now)
+{ if(!bridge_runtime(b))return -1;return bridge_error(b,a04_wlan_station_assoc_rx(s,&b->wlan,p,n,secured,now)); }
+int a04_wmt_bridge_security_begin(struct a04_wmt_bridge *b,struct a04_wlan_security *sec,const struct a04_wlan_station *s,uint64_t now,uint64_t deadline)
+{ if(!bridge_runtime(b))return -1;return a04_wlan_security_begin(sec,s,now,deadline); }
+int a04_wmt_bridge_security_rx(struct a04_wmt_bridge *b,struct a04_wlan_security *sec,const uint8_t *p,unsigned n,a04_wlan_mic_verify verify,void *ctx,uint64_t now)
+{ if(!bridge_runtime(b))return -1;return a04_wlan_security_rx(sec,p,n,verify,ctx,now); }
+int a04_wmt_bridge_key_install(struct a04_wmt_bridge *b,struct a04_wlan_security *sec,struct a04_wlan_station *s,unsigned pairwise,unsigned id,const uint8_t key[16],const uint8_t rsc[8],uint64_t now)
+{ if(!bridge_runtime(b))return -1;return bridge_error(b,a04_wlan_security_install(sec,s,&b->wlan,pairwise,id,key,rsc,now)); }
+int a04_wmt_bridge_key_event(struct a04_wmt_bridge *b,struct a04_wlan_security *sec,const struct a04_wlan_station *s,const uint8_t *p,unsigned n,uint64_t now)
+{ struct a04_wlan_event event;int e;if(!bridge_runtime(b))return -1;e=a04_wlan_event_parse(p,n,&event);if(e)return fault(b,e);return a04_wlan_security_key_event(sec,s,&event,now); }
+int a04_wmt_bridge_authorize(struct a04_wmt_bridge *b,struct a04_wlan_security *sec,int result,uint64_t now)
+{ if(!bridge_runtime(b))return -1;return a04_wlan_security_authorize(sec,result,now); }
 int a04_wmt_bridge_tx_ethernet(struct a04_wmt_bridge *b,const struct a04_wlan_station *station,
  struct a04_wlan_security *security,struct a04_wlan_data_state *data,const uint8_t *frame,unsigned length,
  a04_wlan_mic_verify verify,void *context,uint64_t now,uint64_t deadline)

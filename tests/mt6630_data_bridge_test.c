@@ -32,6 +32,11 @@ int main(void)
  mpdu[0]=0x88;assert(a04_wmt_bridge_tx_mpdu(&b,&sta,&sec,&state,mpdu,sizeof(mpdu),scratch,sizeof(scratch),NULL,NULL,50,100)<0 && f.sends==2);
  rx[0]=30;rx[3]=0x40;rx[6]=0x8e;rx[8]=3;memcpy(rx+16,mac,6);rx[28]=8;
  assert(!a04_wmt_bridge_rx_ethernet(&b,&sta,&sec,rx,sizeof(rx),&view) && view.length==14 && view.data==rx+16);
- sta.sta_active=0;assert(a04_wmt_bridge_rx_ethernet(&b,&sta,&sec,rx,sizeof(rx),&view)==A04_WLAN_SECURITY);
+ {uint8_t keyevent[16]={16,0,0,0xe0,0x24,0,0,0,1,0};
+  memset(&sec,0,sizeof(sec));sta.secured=1;sta.local.bss=1;sec.enabled=1;sec.phase=3;sec.ptk_pending=1;sec.deadline_us=100;
+  memcpy(keyevent+10,sta.ap.mac,6);assert(!a04_wmt_bridge_key_event(&b,&sec,&sta,keyevent,sizeof(keyevent),50));
+  assert(sec.ptk_confirmed && a04_wmt_bridge_authorize(&b,&sec,0,50)==A04_WLAN_STATE && !sec.authorized);
+ }
+ memset(&sec,0,sizeof(sec));sta.secured=0;sta.sta_active=0;assert(a04_wmt_bridge_rx_ethernet(&b,&sta,&sec,rx,sizeof(rx),&view)==A04_WLAN_SECURITY);
  puts("WLAN data packet and completion fixture: OK");return 0;
 }

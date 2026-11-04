@@ -122,3 +122,14 @@ WLANのEthernet HIF送受信部品は既存Linux gen3実装を参考にしたロ
 RFC1042 LLC/SNAPを、接続中AP・ローカルMACを確認してEthernet HIFへ変換する。
 それ以外の形式は拒否する。NDISのNET_BUFFER_LIST・送信OOB・鍵設定には
 未接続であり、WPAやQoSを含むNative 802.11送信全体の実装ではない。
+
+`native_nbl.c` は単一NET_BUFFERの送信を安全なスナップショットへ取り込み、
+実TX_DONEでのみ成功完了する。取消時は排出済みを前提に失敗完了し世代をpoisonする。
+`native_receive.c` は実MPDUと同じ受信のPHY・周波数・RSSI・速度等が揃った場合だけ
+ExtSTA OOB付きで同期通知する。現在のHIFはEthernet表示でありMPDU/OOBを供給しない。
+両者とも実NDIS handler未接続。station/auth/CCMP key bridgeは実状態・実イベント・
+信頼できるsupplicantを前提とし、ACKや鍵の成功を合成しない。実運用の鍵配送、
+再鍵、OS認証接続は未実装。
+
+Linux構造体比較は `A04BR3_GEN3_SOURCE` に端末gen3ソースのディレクトリを指定して
+行う。指定しない場合は当該一次資料照合テストのみskipする。

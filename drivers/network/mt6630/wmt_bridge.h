@@ -39,6 +39,20 @@ int a04_wmt_bridge_scan_event(struct a04_wmt_bridge *,const uint8_t *,unsigned);
 int a04_wmt_bridge_scan_consume(struct a04_wmt_bridge *);
 /* Timeout/cancellation poisons the session: a late SCAN_DONE is ambiguous. */
 int a04_wmt_bridge_scan_fail(struct a04_wmt_bridge *,int reason);
+/* Association and key calls require a real calibrated runtime and a real
+ * supplicant. Callers retain state and serialize each event with SDIO. */
+int a04_wmt_bridge_station_setup(struct a04_wmt_bridge *,struct a04_wlan_station *,const struct a04_wlan_local *);
+int a04_wmt_bridge_station_select(struct a04_wmt_bridge *,struct a04_wlan_station *,const struct a04_wlan_ap *,unsigned,unsigned,unsigned,uint64_t,uint64_t);
+int a04_wmt_bridge_station_event(struct a04_wmt_bridge *,struct a04_wlan_station *,const uint8_t *,unsigned,uint64_t);
+int a04_wmt_bridge_station_auth(struct a04_wmt_bridge *,struct a04_wlan_station *,uint64_t);
+int a04_wmt_bridge_station_auth_rx(struct a04_wmt_bridge *,struct a04_wlan_station *,const uint8_t *,unsigned,uint64_t);
+int a04_wmt_bridge_station_assoc(struct a04_wmt_bridge *,struct a04_wlan_station *,unsigned,unsigned,const uint8_t *,unsigned,uint64_t);
+int a04_wmt_bridge_station_assoc_rx(struct a04_wmt_bridge *,struct a04_wlan_station *,const uint8_t *,unsigned,unsigned,uint64_t);
+int a04_wmt_bridge_security_begin(struct a04_wmt_bridge *,struct a04_wlan_security *,const struct a04_wlan_station *,uint64_t,uint64_t);
+int a04_wmt_bridge_security_rx(struct a04_wmt_bridge *,struct a04_wlan_security *,const uint8_t *,unsigned,a04_wlan_mic_verify,void *,uint64_t);
+int a04_wmt_bridge_key_install(struct a04_wmt_bridge *,struct a04_wlan_security *,struct a04_wlan_station *,unsigned,unsigned,const uint8_t [16],const uint8_t [8],uint64_t);
+int a04_wmt_bridge_key_event(struct a04_wmt_bridge *,struct a04_wlan_security *,const struct a04_wlan_station *,const uint8_t *,unsigned,uint64_t);
+int a04_wmt_bridge_authorize(struct a04_wmt_bridge *,struct a04_wlan_security *,int,uint64_t);
 /* Station/security state is owned and serialized by the real association and
  * key manager; no link, keys, MIC result or firmware completion is synthesized. */
 int a04_wmt_bridge_tx_ethernet(struct a04_wmt_bridge *,const struct a04_wlan_station *,

@@ -3,13 +3,32 @@
 #include <stdint.h>
 #include <string.h>
 typedef void *NDIS_HANDLE;
-typedef uint32_t ULONG;typedef uint8_t UCHAR;typedef uint8_t BOOLEAN;typedef int32_t NDIS_STATUS;
+typedef uint32_t ULONG;typedef int32_t LONG;typedef uint16_t USHORT;typedef uint8_t UCHAR;typedef uint8_t BOOLEAN;typedef int32_t NDIS_STATUS;
 #define NDIS_STATUS_SUCCESS 0
 #define NDIS_STATUS_INVALID_DATA (-1)
 #define NDIS_STATUS_INVALID_LENGTH (-2)
 #define NDIS_STATUS_NOT_SUPPORTED (-3)
 #define NDIS_STATUS_FAILURE (-4)
 #define NDIS_STATUS_DOT11_MEDIA_IN_USE (-5)
+#define NDIS_STATUS_RESOURCES (-6)
+#define NDIS_STATUS_PENDING 1
+#define NDIS_STATUS_REQUEST_ABORTED (-7)
+typedef void *PVOID;
+typedef struct _NET_BUFFER {struct _NET_BUFFER *next;ULONG length;UCHAR *data;int fragmented;} NET_BUFFER,*PNET_BUFFER;
+typedef struct _NET_BUFFER_LIST {struct _NET_BUFFER_LIST *next;PNET_BUFFER first;NDIS_STATUS status;void *info;} NET_BUFFER_LIST,*PNET_BUFFER_LIST;
+#define NET_BUFFER_LIST_NEXT_NBL(x) ((x)->next)
+#define NET_BUFFER_LIST_FIRST_NB(x) ((x)->first)
+#define NET_BUFFER_NEXT_NB(x) ((x)->next)
+#define NET_BUFFER_DATA_LENGTH(x) ((x)->length)
+#define NET_BUFFER_LIST_STATUS(x) ((x)->status)
+#define NET_BUFFER_LIST_INFO(x,id) ((x)->info)
+#define MediaSpecificInformation 0
+#define DOT11_MAX_NUM_OF_FRAGMENTS 16
+#define DOT11_EXTSTA_RECV_CONTEXT_REVISION_1 1
+#define NDIS_OBJECT_TYPE_DEFAULT 0x80
+#define NDIS_RECEIVE_FLAGS_RESOURCES 1
+void *NdisGetDataBuffer(PNET_BUFFER,ULONG,void *,ULONG,ULONG);
+void NdisMSendNetBufferListsComplete(NDIS_HANDLE,PNET_BUFFER_LIST,ULONG);
 #define NDIS_STATUS_DOT11_SCAN_CONFIRM 0x1234
 #define NDIS_OBJECT_TYPE_STATUS_INDICATION 0x80
 #define NDIS_STATUS_INDICATION_REVISION_1 1
@@ -17,6 +36,8 @@ typedef uint32_t ULONG;typedef uint8_t UCHAR;typedef uint8_t BOOLEAN;typedef int
 typedef struct {UCHAR Type,Revision;uint16_t Size;} NDIS_OBJECT_HEADER;
 typedef struct {NDIS_OBJECT_HEADER Header;NDIS_HANDLE SourceHandle;NDIS_STATUS StatusCode;void *StatusBuffer;ULONG StatusBufferSize;} NDIS_STATUS_INDICATION;
 void NdisMIndicateStatusEx(NDIS_HANDLE,NDIS_STATUS_INDICATION *);
+typedef struct {NDIS_OBJECT_HEADER Header;ULONG uReceiveFlags,uPhyId,uChCenterFrequency;USHORT usNumberOfMPDUsReceived;LONG lRSSI;UCHAR ucDataRate;ULONG uSizeMediaSpecificInfo;void *pvMediaSpecificInfo;uint64_t ullTimestamp;} DOT11_EXTSTA_RECV_CONTEXT;
+void NdisMIndicateReceiveNetBufferLists(NDIS_HANDLE,PNET_BUFFER_LIST,ULONG,ULONG,ULONG);
 #define NdisZeroMemory(a,b) memset((a),0,(b))
 #define NdisMoveMemory(a,b,c) memmove((a),(b),(c))
 enum {dot11_BSS_type_infrastructure=1,dot11_BSS_type_independent=2,dot11_BSS_type_any=3};
