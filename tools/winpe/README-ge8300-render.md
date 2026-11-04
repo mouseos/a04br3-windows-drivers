@@ -28,7 +28,7 @@ WIM全データ検証、追加ファイル抽出・元ファイル照合、boot 
 
 ## 観測と復旧
 
-試験前に連続UART収集を維持し、**今回の起動前**のログオフセットを記録する。試験後、次の起動が混ざる前の終端オフセットを固定して `python3 tools/uart/analyze-ge8300-render.py --log "$UART_LOG" --offset "$START" --end "$END"` を使う。単一EBS・単一完全なrender行・bugcheckなし・STATUS=0・STAGE=32・指定ヒストグラムと全4096画素の一致を満たしても `histogram_match_only` であり、位置、向き、context switch、GPU安全停止を証明しない。複数起動・複数行・不完全行・無出力は不明。`BOUNDED=0` はcontext switchの証拠ではない。画面は既存 `tools/uart/decode-windows-screen.py` で全断片とCRCを検証する。画面送信失敗やUART競合の可能性は残る。デコードできない時のみ画面監視の別手段を使う。
+試験前に連続UART収集を維持し、**今回の起動前**のログオフセットを記録する。試験後、次の起動が混ざる前の終端オフセットを固定して `python3 tools/uart/analyze-ge8300-render.py --log "$UART_LOG" --offset "$START" --end "$END"` を使う。現行の解析ツールは位置マスクのない751df54のUARTを不明として扱う。旧版のヒストグラム一致は位置、向き、context switch、GPU安全停止を証明しない。複数起動・複数行・不完全行・無出力は不明。`BOUNDED=0` はcontext switchの証拠ではない。画面は既存 `tools/uart/decode-windows-screen.py` で全断片とCRCを検証する。画面送信失敗やUART競合の可能性は残る。デコードできない時のみ画面監視の別手段を使う。
 
 試験前に `check-ge8300-render-inputs.py --test-boot "$TEST_BOOT" --test-esp "$TEST_ESP" --restore-boot "$RESTORE_BOOT" --restore-esp "$RESTORE_ESP"` で４入力の固定ハッシュを検証する。復元候補はboot `7d03e814b3f156c4a03ef48c48ededd130916c5aa78df118d425f6ef40ea2ee3`、ESP `c2c1d2bfcf37b8422e9db9429b70fa98ffb7f995a6d24c8a5de3804d9b007176`。過去の全画面試験の入力記録と復元コマンド成功記録に一致する。続くUARTにはA04RGU給餌とMSDC CDBがあるが、複数の再起動が間に入り、ログだけでは復元直後の正確なboot・ESP組合せを確定できない。正しい対象・復旧方法・外部reset排他を主担当が確認する。既存 `run-display-winpe-test.sh` は終了時に自動reset・書戻しを試みるため、GPU DMAが停止した証拠のないこの試験にそのまま適用しない。watchdog期限やUART reset要求、fastboot復帰だけではGPU DMA停止・メモリ整合性は証明できない。タイムアウト、送信不明、cleanup失敗ではドライバはDMAを保持し、再送・アンロードを避ける。完全な電源断またはGPUを含む確実なハードウェアリセットと、復旧後の所有状態を主担当が確認してから復元する。未確認のまま成功扱い・再起動ループ・自動書戻しを行わない。通常の書込み後の実機読戻しは禁止。
 
