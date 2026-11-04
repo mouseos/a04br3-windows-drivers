@@ -363,6 +363,14 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
                 GpuPrint(" PARTIAL=");GpuHex(d->memory.kick_partial);
                 GpuPrint(" SUBMITTED=");GpuHex(d->memory.kick_submitted);
                 GpuPrint(" POISONED=");GpuHex(d->memory.poisoned);GpuPrint("\n");
+                GpuPrint("A04GPU RENDER FENCES VALID=");GpuHex(d->memory.fence_snapshot_valid);
+                GpuPrint(" GEOM=");GpuHex(d->memory.geom_fence_snapshot);
+                GpuPrint(" FRAG=");GpuHex(d->memory.frag_fence_snapshot);
+                GpuPrint(" FRAG_EXPECT=");GpuHex(d->memory.frag_fence_expected);
+                GpuPrint(" GEOM_READ=");GpuHex(d->memory.geom_read_snapshot);
+                GpuPrint(" GEOM_END=");GpuHex(d->memory.geom_end_expected);
+                GpuPrint(" FRAG_READ=");GpuHex(d->memory.frag_read_snapshot);
+                GpuPrint(" FRAG_END=");GpuHex(d->memory.frag_end_expected);GpuPrint("\n");
                 GpuRenderPixels(d);
             }
 #endif

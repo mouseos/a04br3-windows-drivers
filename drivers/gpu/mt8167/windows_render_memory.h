@@ -47,6 +47,9 @@ struct a04_windows_render_memory {
     BOOLEAN target_prepared;
     BOOLEAN cleanup_complete;
     BOOLEAN completion_observed,bounded_states_checked;
+    BOOLEAN fence_snapshot_valid;
+    uint32_t geom_fence_snapshot,frag_fence_snapshot,geom_read_snapshot,frag_read_snapshot;
+    uint32_t geom_end_expected,frag_end_expected,frag_fence_expected;
     struct { uint64_t gpu_va;uint32_t blocks;BOOLEAN valid; } bounded_states[2];
     size_t bounded_state_count;
     BOOLEAN kick_prepared,kick_submitted,kick_partial;

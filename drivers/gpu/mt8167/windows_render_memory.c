@@ -1460,6 +1460,7 @@ NTSTATUS a04_windows_render_collect_pair(struct a04_windows_render_memory *m)
         KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_INVALID_PARAMETER;
     frag_end=base_frag_end+(m->kick_partial?(uint32_t)(2u*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(struct rogue_fwif_cmd_frag)+sizeof(struct rogue_fwif_ufo)):0u);
     frag_fence=m->kick_partial?2u:1u;
+    m->geom_end_expected=geom_end;m->frag_end_expected=frag_end;m->frag_fence_expected=frag_fence;
     if (m->render.frag_end!=frag_end) return STATUS_INVALID_PARAMETER;
     s=m->firmware;
     if (!s->processor_released || !s->firmware_started || s->queue_faulted ||
@@ -1480,6 +1481,11 @@ NTSTATUS a04_windows_render_collect_pair(struct a04_windows_render_memory *m)
         status=a04_gpu_dma_sync(fc,(ULONG)m->render.frag_control.size,TRUE);if(!NT_SUCCESS(status)) return status;
         status=a04_gpu_dma_sync(m->render.geom_fence.cpu,sizeof(uint32_t),TRUE);if(!NT_SUCCESS(status)) return status;
         status=a04_gpu_dma_sync(m->render.frag_fence.cpu,sizeof(uint32_t),TRUE);if(!NT_SUCCESS(status)) return status;
+        m->geom_fence_snapshot=*(volatile uint32_t *)m->render.geom_fence.cpu;
+        m->frag_fence_snapshot=*(volatile uint32_t *)m->render.frag_fence.cpu;
+        m->geom_read_snapshot=*(volatile uint32_t *)&gc->read_offset;
+        m->frag_read_snapshot=*(volatile uint32_t *)&fc->read_offset;
+        m->fence_snapshot_valid=TRUE;
         if (*(volatile uint32_t *)m->render.geom_fence.cpu==1 && *(volatile uint32_t *)m->render.frag_fence.cpu==frag_fence &&
             *(volatile uint32_t *)&gc->read_offset==geom_end && *(volatile uint32_t *)&fc->read_offset==frag_end) break;
         status=KeDelayExecutionThread(KernelMode,FALSE,&delay);if(!NT_SUCCESS(status)) return status;
