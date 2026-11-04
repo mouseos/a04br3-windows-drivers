@@ -146,6 +146,8 @@ NTSTATUS GaugeD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
     UNREFERENCED_PARAMETER(target);
     InterlockedExchange(&c->online, 0);
     WdfTimerStop(c->timer, TRUE);
+    /* The callback may have rearmed immediately before observing offline. */
+    WdfTimerStop(c->timer, FALSE);
     if (a04_battery_invalidate(&c->battery)) notify(c);
     return STATUS_SUCCESS;
 }
@@ -153,6 +155,7 @@ VOID GaugePoll(WDFTIMER timer)
 {
     GAUGE_CONTEXT *c = GaugeContext((WDFDEVICE)WdfTimerGetParentObject(timer));
     poll(c);
+    if (c->online) WdfTimerStart(timer, WDF_REL_TIMEOUT_IN_MS(30000));
 }
 NTSTATUS GaugeClassInit(WDFDEVICE device)
 {
@@ -223,7 +226,8 @@ NTSTATUS GaugeAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     if (!NT_SUCCESS(status)) return status;
     status = WdfWaitLockCreate(&child, &c->battery.lock);
     if (!NT_SUCCESS(status)) return status;
-    WDF_TIMER_CONFIG_INIT_PERIODIC(&timer, GaugePoll, 30000);
+    /* KMDF passive-level timers cannot be periodic. */
+    WDF_TIMER_CONFIG_INIT(&timer, GaugePoll);
     /* D0Exit synchronously stops this timer; do not serialize it under a
      * device callback lock that D0Exit may already hold. */
     timer.AutomaticSerialization = FALSE;
