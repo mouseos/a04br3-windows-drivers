@@ -279,3 +279,5 @@ UART画素取得は、既存のgeometry fence=1・partial/final fragment fence=2
 141233b実機ではBRN63142用region header VA `0xdbf0000000` と初期RGBA `a5 5a c3 7e` を使い、CRC-32 `c6b33b52`・SHA-256 `c9c3d77ebb62c4b81916a71b531e17ec2a5043ac06dfd7e6205eca1b341bf09f` の全画素を取得した。背景448、前景576、sentinel3072で、sentinel以外は左上32×32だけ。旧c1b2f9eの色分布と一致し、BRN63142配置単独では観測上改善しなかった。sentinel残存は未書込みと整合するが、同値書込みやCPU可視性の不具合を除外できない。geom fence 1・fragment fence 2、両CCB read=endとcleanup・FW shutdownはソフトウェア上の完了であり、FW HWRや独立したDMA停止の証明ではない。
 
 追加した `A04GPU FW_EVIDENCE` はrender前後にFW所有HWRカウンタとFWCCBの未処理通知種別の個数を非破壊で取得する。生アドレスは出さず、同期失敗・不正な範囲／キュー形式はERRORとして扱う。WとW_AFTERが違うときは通知の走査中に書込みが発生した可能性がある。ゼロカウンタや空キューはHWR・故障・DMA停止がなかった証明ではない。この診断は観測欠落を補うものであり、141233bの矩形化を修正するものではない。
+
+`A04GPU TILE_SLOTS` は両fence後・全DMA同期後・cleanup前に、固定SIPF1のregion header 16個（各５バイト）とtail pointer 16個（各８バイト）を確認し、生値を出さず非ゼロの生スロット番号だけをビット集合で記録する。割当範囲と所有マップを検査できない場合はVALID=0。スロット順と画面タイルの対応、ゼロが未書込みを意味すること、FW終了やキャッシュ可視性は保証しない。
