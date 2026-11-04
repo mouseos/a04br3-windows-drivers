@@ -5,7 +5,8 @@ param(
  [Parameter(Mandatory=$true)][string]$MountDirectory,
  [Parameter(Mandatory=$true)][string]$SourceSha256,
  [Parameter(Mandatory=$true)][string]$SysSha256,
- [Parameter(Mandatory=$true)][string]$ExeSha256
+ [Parameter(Mandatory=$true)][string]$ExeSha256,
+ [switch]$FullResolution
 )
 $ErrorActionPreference='Stop'
 $exe=Join-Path $DriverPackage 'uart-screen.exe'
@@ -27,7 +28,8 @@ try {
  $start=Join-Path $MountDirectory 'Windows\System32\startnet.cmd'
  $text=[IO.File]::ReadAllText($start,[Text.Encoding]::ASCII)
  if(([regex]::Matches($text,'(?m)^echo MMA8652_TEST_FINISHED\s*$')).Count -ne 1) { throw 'unexpected startnet; refusing modification' }
- $append="`r`necho UART_SCREEN_CAPTURE_START`r`nX:\a04br3\uart-screen.exe`r`necho UART_SCREEN_CAPTURE_EXIT=%errorlevel%`r`n"
+ $mode=if($FullResolution) { " -f" } else { "" }
+ $append="`r`necho UART_SCREEN_CAPTURE_START`r`nX:\a04br3\uart-screen.exe$mode`r`necho UART_SCREEN_CAPTURE_EXIT=%errorlevel%`r`n"
  [IO.File]::WriteAllText($start,$text+$append,[Text.Encoding]::ASCII)
  & dism.exe /Unmount-Image "/MountDir:$MountDirectory" /Commit | Out-Host
  if($LASTEXITCODE) { throw 'WIM commit failed' };$mounted=$false
