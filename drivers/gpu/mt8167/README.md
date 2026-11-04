@@ -1,5 +1,17 @@
 # MT8167 PowerVR power sequencing foundation
 
+## 実機試験の状況（2026-11-04）
+
+WinPEで試験版KMDF providerの読込み、GPU firmwareの起動フラグ、および
+KCCB health要求後の実行カウンターの進行を確認しました。実ハードは
+22.40.54.30、試験に使用したfirmwareは22.67.54.30です。互換性は
+確立しておらず、不一致の許可は試験ビルドだけに限定します。
+
+idle要求後のpower-off要求はタイムアウトし、GPU停止とDMA停止は未確認です。
+失敗時の共有メモリを保持してリセットしています。GPU描画、WDDM、PnP電源遷移、
+スリープ復帰は未完成です。共通DMAバッファのキャッシュ整合性、特に異なる
+所有者が同じキャッシュラインを共有する場合の安全性も未検証です。
+
 `rogue_power.h` is derived from the BSD-2-Clause-Patent
 [UniXNU A04BR3 implementation](https://github.com/mouseos/UniXNU-a04br3/blob/main/package/A04BR3RoguePower.h),
 which in turn identifies the board Linux clock and power sources. Its callback
@@ -32,7 +44,7 @@ memory, start the firmware, register a Windows device or implement WDDM.
 It can also prepare the MIPS boot configuration and the four-page GPU page
 table from separately allocated, page-aligned physical heap and table memory
 below 4 GiB. The Windows caller must provide and synchronize those allocations;
-the prepared data has not been used to start the GPU on Windows.
+the prepared data is used by the opt-in firmware boot test described below.
 The optional KMDF provider `mt8167-ge8300.inf` binds the ACPI resource and
 offers a status query. Its normal build does not start firmware. The explicitly
 enabled `A04_GE8300_BOOT_TEST=1` WinPE build attempts one firmware boot,
@@ -47,20 +59,21 @@ OS initialization data. Its ABI structures come from the unchanged upstream
 MIT-licensed FWIF headers listed in `fwif/SOURCE`; the Linux compatibility shim
 is derived from UniXNU and adjusts `GENMASK` for 32-bit `unsigned long`.
 `firmware_start.c` expresses the board's MIPS reset and remap sequence through
-MMIO callbacks; returning success only means the sequence was issued. Correct
-64-bit MMIO semantics and barriers on ARM32, cache synchronization, resource
-ownership and firmware startup polling remain to be implemented and verified.
-This sequence must not be connected to live MMIO before those are resolved.
+MMIO callbacks; returning success only means the sequence was issued. The
+experimental Windows adapter uses split MMIO and barriers, and the opt-in
+test has observed the firmware-started flag. Cache synchronization, power
+transitions and long-term resource ownership still require verification.
 `windows_hw.c` provides an experimental Windows ARM32 adapter: common DMA
 buffers use the device adapter's logical addresses, and split 32-bit MMIO
 writes follow the low-then-high order in this device's released Linux source.
 Common-buffer cache policy is selected by Windows, so the firmware boot and
 queue paths explicitly synchronize device reads and writes with MDLs and
 `KeFlushIoBuffers`; that behavior still needs verification on this hardware.
-The Windows PnP/WDDM owner, DMA adapter setup, GPU quiescence before free and
-real-device behavior are not yet implemented or verified.
+The experimental KMDF provider acquires the device resources and DMA adapter;
+WDDM ownership, GPU quiescence before free and production power management
+are not implemented or verified.
 `windows_firmware.c` composes these steps and waits for the firmware-started
-flag. It is not called by a PnP driver and has not been run on the device.
+flag. The opt-in KMDF WinPE test invokes it on the device as described above.
 After issuing hardware writes it retains DMA memory even on timeout: a caller
 must first establish that GPU DMA is quiescent before releasing that memory.
 The shutdown helper sends firmware idle and power-off requests, then checks
