@@ -5,6 +5,10 @@
 #include <wdf.h>
 #include "reset_command.h"
 #include "watchdog_policy.h"
+#include "thermal_stop.h"
+#ifndef A04_TOPRGU_THERMAL_STOP
+#define A04_TOPRGU_THERMAL_STOP 0
+#endif
 #ifndef A04_TOPRGU_DEADLINE_SECONDS
 #define A04_TOPRGU_DEADLINE_SECONDS 0
 #endif
@@ -16,6 +20,9 @@ typedef struct {
     KDPC backupDpc;
     volatile LONG running, busy;
     volatile LONG ownedFour;
+#if A04_TOPRGU_THERMAL_STOP
+    volatile LONG thermalHalt;
+#endif
     BOOLEAN suspendedWatchdog;
     ULONG savedMode;
     ULONG ticks;
@@ -32,6 +39,9 @@ EVT_WDF_DEVICE_D0_ENTRY ToprguD0Entry;
 EVT_WDF_DEVICE_D0_EXIT ToprguD0Exit;
 EVT_WDF_TIMER ToprguTimer;
 KDEFERRED_ROUTINE ToprguBackupDpc;
+#if A04_TOPRGU_THERMAL_STOP
+EVT_WDF_IO_QUEUE_IO_INTERNAL_DEVICE_CONTROL ToprguThermalControl;
+#endif
 
 static void Trace(TOPRGU_CONTEXT *c, const char *s)
 {
@@ -98,6 +108,9 @@ NTSTATUS ToprguD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     TOPRGU_CONTEXT *c=ToprguGetContext(device);
     UNREFERENCED_PARAMETER(previous);
     if (!c->wdt) return STATUS_DEVICE_NOT_READY;
+#if A04_TOPRGU_THERMAL_STOP
+    if (InterlockedCompareExchange(&c->thermalHalt,0,0)) return STATUS_DEVICE_NOT_READY;
+#endif
     if (c->suspendedWatchdog) {
         WRITE_REGISTER_ULONG(c->wdt + 1,(31u << 11) | 0x08u);
         WRITE_REGISTER_ULONG(c->wdt + 2,0x1971u);
@@ -137,6 +150,9 @@ NTSTATUS ToprguD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
     KeFlushQueuedDpcs();
     WdfTimerStop(c->timer,TRUE);
     if (InterlockedCompareExchange(&c->ownedFour,1,1) && c->wdt &&
+#if A04_TOPRGU_THERMAL_STOP
+        !InterlockedCompareExchange(&c->thermalHalt,0,0) &&
+#endif
         (action==PowerActionSleep || action==PowerActionHibernate ||
          action==PowerActionShutdown || action==PowerActionShutdownOff)) {
         c->savedMode=READ_REGISTER_ULONG(c->wdt) & 0x00ffffffu;
@@ -159,8 +175,13 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
         ++c->ticks;
         four=KeQueryActiveProcessorCount(NULL) >= 4;
         elapsed=KeQueryInterruptTime()-c->started;
-        feed=mt8167_watchdog_should_feed(elapsed,
-                                        A04_TOPRGU_DEADLINE_SECONDS);
+        feed=mt8167_watchdog_thermal_may_feed(
+#if A04_TOPRGU_THERMAL_STOP
+                 InterlockedCompareExchange(&c->thermalHalt,0,0),
+#else
+                 0,
+#endif
+                 elapsed,A04_TOPRGU_DEADLINE_SECONDS);
         if (feed)
             WRITE_REGISTER_ULONG(c->wdt + 2,0x1971u);
         if (four && !feed && !c->deadlineReported) {
@@ -201,6 +222,28 @@ VOID ToprguBackupDpc(PKDPC dpc, PVOID context, PVOID arg1, PVOID arg2)
     ToprguPoll((TOPRGU_CONTEXT *)context,TRUE);
 }
 
+#if A04_TOPRGU_THERMAL_STOP
+VOID ToprguThermalControl(WDFQUEUE queue, WDFREQUEST request, size_t outputLength, size_t inputLength, ULONG code)
+{
+    TOPRGU_CONTEXT *c=ToprguGetContext(WdfIoQueueGetDevice(queue));
+    PIRP irp=WdfRequestWdmGetIrp(request);
+    NTSTATUS status=STATUS_INVALID_DEVICE_REQUEST;
+    UNREFERENCED_PARAMETER(outputLength); UNREFERENCED_PARAMETER(inputLength);
+    if (irp->RequestorMode != KernelMode) status=STATUS_ACCESS_DENIED;
+    else if (code==A04_TOPRGU_THERMAL_QUERY) {
+        status=(c->wdt && InterlockedCompareExchange(&c->running,0,0) &&
+                InterlockedCompareExchange(&c->ownedFour,0,0) &&
+                !InterlockedCompareExchange(&c->thermalHalt,0,0)) ? STATUS_SUCCESS : STATUS_DEVICE_NOT_READY;
+    } else if (code==A04_TOPRGU_THERMAL_HALT) {
+        InterlockedExchange(&c->thermalHalt,1);
+        if (c->wdt && InterlockedCompareExchange(&c->running,0,0)) {
+            WRITE_REGISTER_ULONG(c->wdt+5,0x1209u);
+            status=STATUS_SUCCESS; /* request sent; reset is not verified */
+        } else status=STATUS_DEVICE_NOT_READY;
+    }
+    WdfRequestComplete(request,status);
+}
+#endif
 NTSTATUS ToprguAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
 {
     WDF_PNPPOWER_EVENT_CALLBACKS pnp;
@@ -210,6 +253,10 @@ NTSTATUS ToprguAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     TOPRGU_CONTEXT *c;
     NTSTATUS status;
     UNREFERENCED_PARAMETER(driver);
+#if A04_TOPRGU_THERMAL_STOP
+    { DECLARE_CONST_UNICODE_STRING(name,A04_TOPRGU_THERMAL_NAME);
+      status=WdfDeviceInitAssignName(init,&name); if (!NT_SUCCESS(status)) return status; }
+#endif
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
     pnp.EvtDevicePrepareHardware=ToprguPrepare; pnp.EvtDeviceReleaseHardware=ToprguRelease;
     pnp.EvtDeviceD0Entry=ToprguD0Entry; pnp.EvtDeviceD0Exit=ToprguD0Exit;
@@ -218,6 +265,13 @@ NTSTATUS ToprguAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     status=WdfDeviceCreate(&init,&attr,&device);
     if (!NT_SUCCESS(status)) return status;
     c=ToprguGetContext(device);
+#if A04_TOPRGU_THERMAL_STOP
+    { WDF_IO_QUEUE_CONFIG q;
+      WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel);
+      q.PowerManaged=WdfTrue; q.EvtIoInternalDeviceControl=ToprguThermalControl;
+      status=WdfIoQueueCreate(device,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);
+      if (!NT_SUCCESS(status)) return status; }
+#endif
     KeInitializeTimer(&c->backupTimer);
     KeInitializeDpc(&c->backupDpc,ToprguBackupDpc,c);
     WDF_TIMER_CONFIG_INIT_PERIODIC(&timerConfig,ToprguTimer,20);

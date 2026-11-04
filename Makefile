@@ -253,10 +253,12 @@ clean:
 	rm -rf build
 
 # Linux-derived MT8167 thermal components are separately GPL-2.0-only.
-test-thermal: build/thermal_test build/thermal_devinfo_test build/thermal_hardware_test
+test-thermal: build/thermal_test build/thermal_devinfo_test build/thermal_hardware_test build/thermal_freshness_test
 	./build/thermal_test
 	./build/thermal_devinfo_test
 	./build/thermal_hardware_test
+	./build/thermal_freshness_test
+	python3 tests/thermal_fdt_test.py
 
 build/thermal_test: drivers/power/mt8167-thermal/thermal.c drivers/power/mt8167-thermal/thermal.h drivers/power/mt8167-thermal/manager.c drivers/power/mt8167-thermal/manager.h tests/thermal_test.c
 	mkdir -p build
@@ -269,3 +271,7 @@ build/thermal_devinfo_test: drivers/power/mt8167-thermal/devinfo.c drivers/power
 build/thermal_hardware_test: drivers/power/mt8167-thermal/hardware.c drivers/power/mt8167-thermal/hardware.h drivers/power/mt8167-thermal/thermal.c tests/thermal_hardware_test.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal drivers/power/mt8167-thermal/hardware.c drivers/power/mt8167-thermal/thermal.c tests/thermal_hardware_test.c -o $@
+
+build/thermal_freshness_test: drivers/power/mt8167-thermal/freshness.c drivers/power/mt8167-thermal/freshness.h tests/thermal_freshness_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal drivers/power/mt8167-thermal/freshness.c tests/thermal_freshness_test.c -o $@
