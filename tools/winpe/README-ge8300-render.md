@@ -4,7 +4,7 @@
 
 WIMのstartnetは `wpeinit` の後、GPU firmwareをRAMディスクへコピーし、751df54 INFを`drvload`で一回だけ要求する。続いてPnPとstatusを表示し、戻った場合だけ既存の画面送信EXEを `-f` で一回実行する。描画はdrvloadの終了コードではなく、ドライバのD0 entry内で起動される。PnP未一致、署名拒否、firmware準備失敗、初期化失敗、実行中の停止はいずれも描画成功ではない。`drvload` が戻らなければ後段の画面送信には進まない。ディスク書込み、再試行、サービスのアンロードは行わない。
 
-テンプレートWIMにはこのGPUパッケージの新しい自己署名証明書は信頼登録されていない。`.cer` をWIM内に含めるだけでは登録・読み込み許可にならず、testsigningのBCDも受理を保証しない。署名済みファイルの一致と暗号学的検証はホストで行ったが、Windows RTのロードは未検証。信頼済み証明書のオフライン組込みと署名ポリシーを主担当が確定するまで、試験可能と断定できない。
+WIM派生物の `boot-trusted.wim` は、751df54の公開テスト証明書をオフラインSOFTWARE hiveのRootとTrustedPublisherへ登録し、両BlobをWIMから再抽出して照合済み。テスト証明書を信頼する実験専用イメージである。`.cer` を配置するだけの `boot.wim` は登録しない中間成果物。BCDのtestsigning設定、Windows RTの署名ポリシーとドライバ受理は未検証である。
 
 ## 再生成
 
@@ -12,13 +12,16 @@ WIMのstartnetは `wpeinit` の後、GPU firmwareをRAMディスクへコピー�
 
 ```sh
 python3 tools/winpe/prepare-ge8300-render-wim.py --source "$SOURCE_WIM" --package "$PACKAGE" --output "$OUT/boot.wim"
+python3 tools/winpe/add-ge8300-render-cert.py --source "$OUT/boot.wim" --source-sha256 "$(sha256sum "$OUT/boot.wim" | cut -d' ' -f1)" --serialized-cert "$SERIALIZED_CERT" --output "$OUT/boot-trusted.wim"
 python3 - "$OUT" <<'PY'
 import json, pathlib, secrets, sys
-p = pathlib.Path(sys.argv[1]); w = json.loads((p / 'boot.wim.json').read_text())
+p = pathlib.Path(sys.argv[1]); w = json.loads((p / 'boot-trusted.wim.json').read_text())
 (p / 'stage.json').write_text(json.dumps({'version': 1, 'token': secrets.token_hex(16), 'wim_sha256': w['wim_sha256']}) + '\n')
 PY
-python3 tools/winpe/prepare-mma8652-esp.py --source-esp "$TEMPLATE_ESP" --source-sha256 ed92f50a7ba5464226e9781be6613135ed02bada702d3eb23300d85b902bd26e --verified-winpe-bcd-sha256 65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d --wim "$OUT/boot.wim" --stage-manifest "$OUT/stage.json" --output "$OUT/recovery-esp.img"
+python3 tools/winpe/prepare-mma8652-esp.py --source-esp "$TEMPLATE_ESP" --source-sha256 ed92f50a7ba5464226e9781be6613135ed02bada702d3eb23300d85b902bd26e --verified-winpe-bcd-sha256 65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d --wim "$OUT/boot-trusted.wim" --stage-manifest "$OUT/stage.json" --output "$OUT/recovery-esp-trusted.img"
 ```
+
+`SERIALIZED_CERT` は751df54パッケージの `.cer` をWindows上で `[System.Security.Cryptography.X509Certificates.X509Certificate2]` として読み込み、`Export([System.Security.Cryptography.X509Certificates.X509ContentType]::SerializedCert)` で作成する。公開証明書のみで秘密鍵は不要。スクリプトは固定SHA-256を検査する。
 
 WIM全データ検証、追加ファイル抽出・元ファイル照合、boot index、BCD等の保持、FATのWIM読戻し・fsckを行う。ツールバージョンや作成時刻で派生物のバイト列は変わり得るため、今回の固定成果物はmanifestのハッシュで区別する。既存テンプレートのboot index修正版も実機未検証であり、スクリプト引数名の `verified` はその証明ではない。
 

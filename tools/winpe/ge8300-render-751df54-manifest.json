@@ -32,9 +32,22 @@
   "candidate_boot_status": "existing four-CPU handoff and framebuffer build; watchdog and signature acceptance unproven",
   "limitations": [
     "GPU PBE access and command semantics unverified",
-    "new test certificate copied, not imported into trust stores",
     "template TOPRGU starts early and UART/watchdog ownership unverified",
     "no verified restoration boot/ESP pair identified",
-    "host-only; no physical operation"
-  ]
+    "host-only; no physical operation",
+    "public test certificate inserted offline in Root and TrustedPublisher; Windows RT load policy unverified"
+  ],
+  "trusted_wim_sha256": "7185e9e0faea9a54dc1eeeb08c8bc498a33b791a2a77032880e2bcf9f92ab649",
+  "trusted_esp_sha256": "eeed4f060fd06e674770c7d24727dc4ae3171c8ea5d37c38c02e04ffaa5f7188",
+  "certificate": {
+    "source_sha256": "24be92f93b311ebe058a71c3f52625b7d8c6d9acf03859e97e480484302a676d",
+    "wim_sha256": "7185e9e0faea9a54dc1eeeb08c8bc498a33b791a2a77032880e2bcf9f92ab649",
+    "serialized_cert_sha256": "a3efab078af1ec6409f208fb92d3149fbf243cd2d33a2590f5264ecec0554ce4",
+    "thumbprint_sha1": "A1ECCE0C274189362E44AD66C32FDD2716450D4F",
+    "stores": [
+      "Root",
+      "TrustedPublisher"
+    ],
+    "note": "offline trust entries verified; signature acceptance and boot policy unverified"
+  }
 }
