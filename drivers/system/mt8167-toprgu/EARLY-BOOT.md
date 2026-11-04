@@ -41,3 +41,8 @@ D0外の無効化と復帰は既存試作であり、スリープや復旧の安
 ドライバストアへ追加した。ただし一覧のBoot CriticalはNo。オフライン追加の成功は
 起動時のデバイスバインドや31秒以内のD0到達を意味しない。生成WIMは未署名
 ドライバを含み、対象RTが受理するか未確認。変更前WIMとは別ファイルとして保管する。
+回収したWIMの展開結果では`Windows/System32/Drivers/mt8167-toprgu.sys`が
+固定SYSとSHA-256一致し、SYSTEMのControlSet001でサービスStart=0、Groupは
+System Bus Extenderだった。元の `a04br3/toprgu/` には旧診断パッケージが残るが、
+元startnet.cmdはこれをロードしない。これはファイルと設定の確認でありロードの証拠
+ではない。WIMとSYSは未署名のため、そのまま実機起動用とは扱わない。
