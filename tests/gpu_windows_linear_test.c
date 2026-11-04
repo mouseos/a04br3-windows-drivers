@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "windows_queue_test.h"
+#include "windows_linear_context.h"
 #include "linear_copy_fixture.h"
 #include "pvr_rogue_fwif.h"
 #include "pvr_rogue_fwif_common.h"
@@ -84,5 +85,33 @@ int main(void)
        a04_gpu_queue_test_free(&s,&m)!=STATUS_DEVICE_BUSY) return 8;
     s.processor_released=FALSE;
     if(a04_gpu_queue_test_free(&s,&m)!=STATUS_SUCCESS || releases!=3) return 9;
-    free(heap); puts("GE8300 repeated linear transfers, remaps, wrap and timeout lifetime simulated"); return 0;
+    {
+        struct a04_windows_linear_context c={0}; uint64_t src[6],dst[6];
+        uint8_t *input,*output; struct a04_transfer_range protect[2];
+        s.processor_released=TRUE; s.queue_faulted=FALSE; submits=0; fail_after=0;
+        if(a04_windows_linear_context_start(&c,&s) || submits!=1 || !c.memory.cpu ||
+           a04_windows_linear_context_free(&c,&s)!=STATUS_DEVICE_BUSY) return 10;
+        input=test_dma+(14u+A04_GPU_LINEAR_COPY_PAGES)*4096u;
+        output=test_dma+(20u+A04_GPU_LINEAR_COPY_PAGES)*4096u;
+        for(size_t i=0;i<6u;++i) {
+            src[i]=UINT64_C(0x90000000)+(14u+A04_GPU_LINEAR_COPY_PAGES+i)*4096u;
+            dst[i]=UINT64_C(0x90000000)+(20u+A04_GPU_LINEAR_COPY_PAGES+i)*4096u;
+        }
+        for(size_t i=0;i<6u*4096u;++i) input[i]=(uint8_t)(i*17u+(i>>8));
+        memset(output,0xa5,6u*4096u);
+        protect[0].address=0x90000000; protect[0].length=(14u+A04_GPU_LINEAR_COPY_PAGES)*4096u;
+        protect[1].address=0x80000000; protect[1].length=A04_PVR_HEAP_SIZE;
+        if(a04_windows_linear_transfer(&c.mapping,&c.command,2,src,dst,input,output,protect,2) ||
+           submits!=2 || memcmp(input+4096u,output+4096u,4u*4096u) ||
+           output[0]!=0xa5 || output[5u*4096u]!=0xa5 || c.mapping.mapping.state!=A04_TRANSFER_SCRATCH)
+            return 11;
+        s.processor_released=FALSE;
+        if(a04_windows_linear_context_free(&c,&s)!=STATUS_SUCCESS || releases!=4) return 12;
+        s.processor_released=TRUE; s.queue_faulted=FALSE; submits=0; fail_after=1;
+        if(a04_windows_linear_context_start(&c,&s)!=STATUS_IO_TIMEOUT || !s.queue_faulted ||
+           !c.memory.cpu || a04_windows_linear_context_free(&c,&s)!=STATUS_DEVICE_BUSY) return 13;
+        s.processor_released=FALSE;
+        if(a04_windows_linear_context_free(&c,&s)!=STATUS_SUCCESS || releases!=5) return 14;
+    }
+    free(heap); puts("GE8300 repeated transfers and reusable context lifetime simulated"); return 0;
 }

@@ -176,3 +176,11 @@ jobs, implement power management or connect the WDDM presentation path.
 
 The existing linear diagnostic now exercises these helpers in the simulated
 test; this integration has not yet been verified on the device.
+
+`windows_linear_context` packages the isolated page tables, fixed command,
+firmware objects, first queue submission and initial fence into a reusable
+context. The host simulator exercises initialization, a later transfer and
+the retained-allocation path on timeout. The command remains a diagnostic
+fixed-size fixture with the BVNC mismatch described below. The context is not
+connected to WDDM and is not yet validated on hardware. Do not ship it as a
+graphics driver; firmware compatibility, PnP and power management remain open.
