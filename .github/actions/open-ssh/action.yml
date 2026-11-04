@@ -51,7 +51,15 @@ runs:
         $known = Join-Path $env:ACTION_PATH 'ssh-j-known-hosts'
         $tunnelLog = Join-Path $env:RUNNER_TEMP 'a04br3-ssh-tunnel.log'
         $args = @('-v','-N','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o',"UserKnownHostsFile=$known",'-o','ExitOnForwardFailure=yes','-o','ServerAliveInterval=20','-R',"${alias}:2222:127.0.0.1:2222","${jumpUser}@ssh-j.com")
-        $process = Start-Process -FilePath 'ssh.exe' -ArgumentList $args -RedirectStandardError $tunnelLog -PassThru -NoNewWindow
+        # The runner cleans up processes tagged with the step's tracking ID.
+        # A detached tunnel must survive into the installer and build steps.
+        $previousTracking = $env:RUNNER_TRACKING_ID
+        if ($env:BACKGROUND -eq 'true') { $env:RUNNER_TRACKING_ID = "a04br3-ssh-$env:GITHUB_RUN_ID" }
+        try {
+          $process = Start-Process -FilePath 'ssh.exe' -ArgumentList $args -RedirectStandardError $tunnelLog -PassThru -NoNewWindow
+        } finally {
+          $env:RUNNER_TRACKING_ID = $previousTracking
+        }
         $ready = $false
         for ($i = 0; $i -lt 40; $i++) {
           Start-Sleep -Milliseconds 500
