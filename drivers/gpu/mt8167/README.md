@@ -21,6 +21,9 @@ DMA領域の確保とテーブルのキャッシュ同期があります。汎�
 firmwareへのMMUキャッシュ無効化要求は実行カウンターと専用同期値の両方で
 完了を判定し、a0416c9のWinPE実機試験で成功しました。aea6083の固定画像クリアで
 GPUによるページ変換と書込みを確認しました。ページの実行中解除は未検証です。
+`a04_gpu_mmu_replace_pages_4k` は既存のleaf範囲と新DMAページを全て検査してから
+置換します。ジョブ終了、旧DMAの保持、テーブル同期とMMU無効化完了は呼出し側の
+責任です。置換自体のGPU実機検証とWDDM DMA連携は未実施です。
 
 12ccaeeのWinPE実機試験では、BRN65273向け２領域を含むGPUページテーブルと
 firmware VMを準備し、compute NULL/update queueのフェンス応答、power-offと

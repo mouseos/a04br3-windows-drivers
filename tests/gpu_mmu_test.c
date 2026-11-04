@@ -26,6 +26,18 @@ int main(void)
     { uint64_t pages[]={0x80000000,0xa0000000,0x90000000};
       if(a04_gpu_mmu_map_pages_4k(pc,pd,pt,0x12345000,0x6789a000,0,pages,3,0) ||
          pt[0]!=UINT64_C(0x80000001) || pt[1]!=UINT64_C(0xa0000001) || pt[2]!=UINT64_C(0x90000001)) return 11;
+      { uint64_t replacement[]={0xb0000000,0xc0000001,0xd0000000,0xe0000000};
+        if(!a04_gpu_mmu_replace_pages_4k(pt,0,replacement,3,0) ||
+           pt[0]!=UINT64_C(0x80000001) || pt[1]!=UINT64_C(0xa0000001) || pt[2]!=UINT64_C(0x90000001)) return 18;
+        replacement[1]=0xc0000000;
+        if(a04_gpu_mmu_replace_pages_4k(pt,0,replacement,3,A04_GPU_MMU_READ_ONLY) ||
+           pt[0]!=UINT64_C(0xb0000003) || pt[1]!=UINT64_C(0xc0000003) || pt[2]!=UINT64_C(0xd0000003)) return 19;
+        if(!a04_gpu_mmu_replace_pages_4k(pt,0,replacement,4,0) ||
+           !a04_gpu_mmu_replace_pages_4k(pt,0,pt,3,0) ||
+           !a04_gpu_mmu_replace_pages_4k(pt,0x1ff000,replacement,2,0) ||
+           !a04_gpu_mmu_replace_pages_4k(pt,0,replacement,3,0x10) ||
+           pt[0]!=UINT64_C(0xb0000003) || pt[2]!=UINT64_C(0xd0000003)) return 20;
+      }
       if(!a04_gpu_mmu_unmap_4k(pt,0,4) || !pt[0] || !pt[2]) return 14;
       if(a04_gpu_mmu_unmap_4k(pt,0,3) || pt[0] || pt[1] || pt[2] || !pc[0] || !pd[0]) return 15;
       memset(pc,0,sizeof(pc)); memset(pd,0,sizeof(pd)); memset(pt,0,sizeof(pt)); pages[2]++;

@@ -23,6 +23,14 @@ int a04_gpu_mmu_map_4k(uint32_t *pc,uint64_t *pd,uint64_t *pt,
 int a04_gpu_mmu_map_pages_4k(uint32_t *pc,uint64_t *pd,uint64_t *pt,
     uint64_t pd_dma,uint64_t pt_dma,uint64_t gpu_va,const uint64_t *pages,
     size_t page_count,uint64_t flags);
+/* Replace an entirely present range in one leaf table with adapter DMA pages.
+ * All entries and input addresses are validated before any are changed.
+ * The caller serializes access, waits for all jobs using the old mapping,
+ * cleans the changed table and waits for GPU MMU invalidation; retain both
+ * old and new DMA mappings until the invalidate succeeds. The input array
+ * must not overlap the leaf table. This does not acquire or pin DMA pages. */
+int a04_gpu_mmu_replace_pages_4k(uint64_t *pt,uint64_t gpu_va,
+    const uint64_t *pages,size_t page_count,uint64_t flags);
 /* Quiesce GPU jobs before unmapping. The caller synchronizes the changed
  * table and waits for MMU invalidation before freeing or reusing memory. */
 int a04_gpu_mmu_unmap_4k(uint64_t *pt,uint64_t gpu_va,size_t page_count);
