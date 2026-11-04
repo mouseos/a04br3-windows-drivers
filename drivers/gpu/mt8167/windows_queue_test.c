@@ -18,7 +18,7 @@
 #endif
 #if A04_GE8300_LINEAR_TEST
 #include "linear_copy_fixture.h"
-#define TEST_PAGES (14u+A04_GPU_LINEAR_COPY_PAGES)
+#define TEST_PAGES (14u+A04_GPU_LINEAR_COPY_PAGES+12u)
 #elif A04_GE8300_COPY_TEST
 #include "copy_fixture.h"
 #define TEST_PAGES (14u+A04_GPU_COPY_PAGES)
@@ -44,17 +44,16 @@ static NTSTATUS linear_validate(const uint8_t *source,const uint8_t *image,unsig
     return STATUS_SUCCESS;
 }
 static NTSTATUS linear_repeat(struct a04_gpu_firmware_state *s,struct a04_gpu_fw_queue *q,
-    const struct rogue_fwif_cmd_transfer *transfer,uint8_t *source,uint8_t *image)
+    const struct rogue_fwif_cmd_transfer *transfer,uint8_t *pages,uint64_t dma)
 {
     LARGE_INTEGER delay; NTSTATUS status; struct rogue_fwif_kccb_cmd kick;
     struct rogue_fwif_cccb_ctl *ctl=q->control.cpu; delay.QuadPart=-100000;
+    uint8_t *source=pages+(14u+A04_GPU_LINEAR_SOURCE_PAGE)*4096u;
+    uint8_t *image=pages+(14u+A04_GPU_LINEAR_DEST_PAGE)*4096u;
+    unsigned alternate=0;
     for (unsigned round=1;round<=145u;++round) {
         unsigned poll;
         if (s->trace && (round==1u || !(round%32u) || round==145u)) s->trace(s->trace_context,0x200u+round);
-        for (size_t n=0;n<6u*4096u;++n) source[n]=linear_pattern(n,round);
-        RtlFillMemory(image,6u*4096u,0xa5);
-        status=a04_gpu_dma_sync(source,6u*4096u,FALSE); if (!NT_SUCCESS(status)) return status;
-        status=a04_gpu_dma_sync(image,6u*4096u,FALSE); if (!NT_SUCCESS(status)) return status;
         for (poll=0;poll<200u;++poll) {
             status=a04_gpu_dma_sync(q->control.cpu,(ULONG)q->control.size,TRUE);
             if (!NT_SUCCESS(status)) return status;
@@ -64,6 +63,24 @@ static NTSTATUS linear_repeat(struct a04_gpu_firmware_state *s,struct a04_gpu_fw
         if (poll==200u) { s->queue_faulted=TRUE; return STATUS_IO_TIMEOUT; }
         status=a04_gpu_dma_sync(q->fence.cpu,(ULONG)q->fence.size,TRUE);
         if (!NT_SUCCESS(status)) return status;
+        if (round==1u || round==32u || round==64u || round==128u || round==145u) {
+            uint64_t src_pages[6],dst_pages[6]; size_t src_first,dst_first;
+            alternate=!alternate;
+            src_first=alternate ? 14u+A04_GPU_LINEAR_COPY_PAGES : 14u+A04_GPU_LINEAR_SOURCE_PAGE;
+            dst_first=alternate ? 20u+A04_GPU_LINEAR_COPY_PAGES : 14u+A04_GPU_LINEAR_DEST_PAGE;
+            for (size_t n=0;n<6u;++n) { src_pages[n]=dma+(src_first+n)*4096u; dst_pages[n]=dma+(dst_first+n)*4096u; }
+            if (a04_gpu_mmu_replace_pages_4k((uint64_t *)(void *)(pages+7u*4096u),
+                    UINT64_C(0x80000b6000),src_pages,6,0) ||
+                a04_gpu_mmu_replace_pages_4k((uint64_t *)(void *)(pages+7u*4096u),
+                    UINT64_C(0x80000bc000),dst_pages,6,0)) return STATUS_DEVICE_CONFIGURATION_ERROR;
+            status=a04_gpu_dma_sync(pages+7u*4096u,4096u,FALSE); if (!NT_SUCCESS(status)) return status;
+            status=a04_gpu_firmware_invalidate_mmu(s); if (!NT_SUCCESS(status)) return status;
+            source=pages+src_first*4096u; image=pages+dst_first*4096u;
+        }
+        for (size_t n=0;n<6u*4096u;++n) source[n]=linear_pattern(n,round);
+        RtlFillMemory(image,6u*4096u,0xa5);
+        status=a04_gpu_dma_sync(source,6u*4096u,FALSE); if (!NT_SUCCESS(status)) return status;
+        status=a04_gpu_dma_sync(image,6u*4096u,FALSE); if (!NT_SUCCESS(status)) return status;
         if (a04_gpu_fw_append_transfer(q,transfer,100u+round,round,&kick)) return STATUS_INVALID_DEVICE_STATE;
         status=a04_gpu_dma_sync(q->ring.cpu,(ULONG)q->ring.size,FALSE); if (!NT_SUCCESS(status)) return status;
         status=a04_gpu_firmware_submit_kick(s,&kick); if (!NT_SUCCESS(status)) return status;
@@ -201,7 +218,7 @@ NTSTATUS a04_gpu_queue_test(struct a04_gpu_firmware_state *s,struct a04_gpu_queu
             status=a04_gpu_dma_sync((void *)source,6u*4096u,TRUE);
             if (!NT_SUCCESS(status)) { s->queue_faulted=TRUE; return status; }
             status=linear_validate(source,image,0); if (!NT_SUCCESS(status)) return status;
-            status=linear_repeat(s,&q,&transfer,source,image); if (!NT_SUCCESS(status)) return status;
+            status=linear_repeat(s,&q,&transfer,pages,dma); if (!NT_SUCCESS(status)) return status;
 #else
 #if A04_GE8300_COPY_TEST
             const uint8_t *image=pages+(14u+A04_GPU_COPY_DEST_PAGE)*4096u;

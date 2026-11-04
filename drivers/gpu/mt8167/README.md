@@ -121,6 +121,9 @@ copies with varying payloads and fence values, crossing the ring boundary.
 Each result and guard is checked. One WinPE run of 150e569 passed all 146
 transfers and clean shutdown. Concurrent jobs, cancellation, display output
 and long-term operation remain unverified.
+The current test also switches both buffers between two sets of pages in a
+retained DMA allocation five times, synchronizes the leaf table and waits for firmware MMU invalidation at
+each switch. The remapping sequence has only been simulated on the host.
 The internal transfer queue can also append another command after the caller
 has synchronized and observed both the previous fence and an empty queue.
 It handles ring padding at wrap and increments the fence; the caller must

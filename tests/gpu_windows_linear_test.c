@@ -8,7 +8,7 @@
 #include "linear_copy_fixture.h"
 #include "pvr_rogue_fwif.h"
 #include "pvr_rogue_fwif_common.h"
-static unsigned submits, releases, fail_after, wraps;
+static unsigned submits, releases, fail_after, wraps, invalidations;
 static uint8_t *test_dma;
 static void *allocate(PDMA_ADAPTER adapter,ULONG size,PHYSICAL_ADDRESS *logical,BOOLEAN cache)
 {
@@ -22,7 +22,7 @@ NTSTATUS KeDelayExecutionThread(int mode,BOOLEAN alertable,const LARGE_INTEGER *
 NTSTATUS a04_gpu_dma_sync(void *address,ULONG length,BOOLEAN device_writes)
 { (void)device_writes; return address && length ? STATUS_SUCCESS : STATUS_INVALID_PARAMETER; }
 NTSTATUS a04_gpu_firmware_invalidate_mmu(struct a04_gpu_firmware_state *state)
-{ return state ? STATUS_SUCCESS : STATUS_INVALID_PARAMETER; }
+{ if (!state) return STATUS_INVALID_PARAMETER; ++invalidations; return STATUS_SUCCESS; }
 NTSTATUS a04_gpu_firmware_submit_kick(struct a04_gpu_firmware_state *s,const struct rogue_fwif_kccb_cmd *kick)
 {
     uint8_t *heap=s->memory.heap,*ring; struct rogue_fwif_fwcommoncontext *ctx;
@@ -41,8 +41,16 @@ NTSTATUS a04_gpu_firmware_submit_kick(struct a04_gpu_firmware_state *s,const str
     if(hdr->cmd_type!=ROGUE_FWIF_CCB_CMD_TYPE_UPDATE) return STATUS_DATA_ERROR;
     ufo=(void *)((uint8_t *)hdr+sizeof(*hdr));
     if(ufo->value!=submits || offset+sizeof(*hdr)+sizeof(*ufo)!=woff) return STATUS_DATA_ERROR;
-    memcpy(test_dma+(14u+A04_GPU_LINEAR_DEST_PAGE)*4096u+4096u,
-           test_dma+(14u+A04_GPU_LINEAR_SOURCE_PAGE)*4096u+4096u,4u*4096u);
+    {
+        uint64_t *pt=(void *)(test_dma+7u*4096u);
+        size_t src=(size_t)((UINT64_C(0x80000b7000)>>12)&511u);
+        size_t dst=(size_t)((UINT64_C(0x80000bd000)>>12)&511u);
+        uint64_t src_dma=pt[src]&~UINT64_C(0xfff),dst_dma=pt[dst]&~UINT64_C(0xfff);
+        const uint64_t limit=0x90000000u+(14u+A04_GPU_LINEAR_COPY_PAGES+12u)*4096u-4u*4096u;
+        if(src_dma<0x90000000u || dst_dma<0x90000000u || src_dma>limit || dst_dma>limit) return STATUS_DATA_ERROR;
+        memcpy(test_dma+(size_t)(dst_dma-0x90000000u),
+               test_dma+(size_t)(src_dma-0x90000000u),4u*4096u);
+    }
     *(uint32_t *)(void *)(heap+(ufo->addr&0xffffffu))=ufo->value; ctl->read_offset=woff;
     return STATUS_SUCCESS;
 }
@@ -55,9 +63,9 @@ int main(void)
     s.processor_released=TRUE; s.firmware_started=TRUE; s.memory.adapter=&adapter;
     s.memory.heap=heap; s.memory.heap_logical.QuadPart=0x80000000; s.runtime.next_free=0x20000;
     status=a04_gpu_queue_test(&s,&m);
-    if(status!=STATUS_SUCCESS || submits!=146 || !wraps || !m.cpu || releases) {
-        fprintf(stderr,"linear status=%08x submits=%u wraps=%u memory=%d releases=%u\n",
-                (unsigned)status,submits,wraps,m.cpu!=NULL,releases); return 2;
+    if(status!=STATUS_SUCCESS || submits!=146 || !wraps || invalidations!=6 || !m.cpu || releases) {
+        fprintf(stderr,"linear status=%08x submits=%u wraps=%u invalidations=%u memory=%d releases=%u\n",
+                (unsigned)status,submits,wraps,invalidations,m.cpu!=NULL,releases); return 2;
     }
     if(a04_gpu_queue_test_free(&s,&m)!=STATUS_DEVICE_BUSY) return 3;
     s.processor_released=FALSE;
@@ -68,5 +76,5 @@ int main(void)
        a04_gpu_queue_test_free(&s,&m)!=STATUS_DEVICE_BUSY) return 5;
     s.processor_released=FALSE;
     if(a04_gpu_queue_test_free(&s,&m)!=STATUS_SUCCESS || releases!=2) return 6;
-    free(heap); puts("GE8300 repeated linear transfers, ring wrap and timeout lifetime simulated"); return 0;
+    free(heap); puts("GE8300 repeated linear transfers, remaps, wrap and timeout lifetime simulated"); return 0;
 }
