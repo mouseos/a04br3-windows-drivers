@@ -23,4 +23,7 @@ int a04_gpu_mmu_map_4k(uint32_t *pc,uint64_t *pd,uint64_t *pt,
 int a04_gpu_mmu_map_pages_4k(uint32_t *pc,uint64_t *pd,uint64_t *pt,
     uint64_t pd_dma,uint64_t pt_dma,uint64_t gpu_va,const uint64_t *pages,
     size_t page_count,uint64_t flags);
+/* Quiesce GPU jobs before unmapping. The caller synchronizes the changed
+ * table and waits for MMU invalidation before freeing or reusing memory. */
+int a04_gpu_mmu_unmap_4k(uint64_t *pt,uint64_t gpu_va,size_t page_count);
 #endif

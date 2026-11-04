@@ -26,6 +26,8 @@ int main(void)
     { uint64_t pages[]={0x80000000,0xa0000000,0x90000000};
       if(a04_gpu_mmu_map_pages_4k(pc,pd,pt,0x12345000,0x6789a000,0,pages,3,0) ||
          pt[0]!=UINT64_C(0x80000001) || pt[1]!=UINT64_C(0xa0000001) || pt[2]!=UINT64_C(0x90000001)) return 11;
+      if(!a04_gpu_mmu_unmap_4k(pt,0,4) || !pt[0] || !pt[2]) return 14;
+      if(a04_gpu_mmu_unmap_4k(pt,0,3) || pt[0] || pt[1] || pt[2] || !pc[0] || !pd[0]) return 15;
       memset(pc,0,sizeof(pc)); memset(pd,0,sizeof(pd)); memset(pt,0,sizeof(pt)); pages[2]++;
       if(!a04_gpu_mmu_map_pages_4k(pc,pd,pt,0x12345000,0x6789a000,0,pages,3,0) || pc[0] || pd[0] || pt[0]) return 12;
       if(!a04_gpu_mmu_map_pages_4k(pc,pd,pt,0x12345000,0x6789a000,0,pt,3,0)) return 13; }

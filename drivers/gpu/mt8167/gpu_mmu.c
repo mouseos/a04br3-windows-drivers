@@ -47,3 +47,14 @@ int a04_gpu_mmu_map_4k(uint32_t *pc,uint64_t *pd,uint64_t *pt,
 int a04_gpu_mmu_map_pages_4k(uint32_t *pc,uint64_t *pd,uint64_t *pt,
     uint64_t pd_dma,uint64_t pt_dma,uint64_t gpu_va,const uint64_t *pages,size_t page_count,uint64_t flags)
 { return pages ? map_4k(pc,pd,pt,pd_dma,pt_dma,gpu_va,0,pages,page_count,flags) : -1; }
+int a04_gpu_mmu_unmap_4k(uint64_t *pt,uint64_t gpu_va,size_t page_count)
+{
+    size_t i,index;
+    if (!pt || ((uintptr_t)pt&7u) || !aligned_address(gpu_va) || !page_count || page_count>512u ||
+        page_count>(ADDRESS_LIMIT-gpu_va)/A04_GPU_PAGE_SIZE) return -1;
+    index=(size_t)((gpu_va>>12)&511u);
+    if (page_count>512u-index) return -1;
+    for (i=0;i<page_count;++i) if (!(pt[index+i]&1u)) return -1;
+    for (i=0;i<page_count;++i) pt[index+i]=0;
+    return 0;
+}
