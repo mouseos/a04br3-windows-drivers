@@ -64,3 +64,11 @@ only unbounded-watchdog build so far came from the separate edk2-mtk tree,
 not the required canonical unixnu/uefi-a04br3 source. The canonical build and
 its watchdog behavior remain unverified. Do not use the older generated WIMs
 or ESPs to perform offline servicing.
+
+`tools/recovery/audit-mma8652-reset-sources.py` is a read-only snapshot of
+known user services and matching processes. It deliberately returns 2 and
+never authorizes servicing: it cannot rule out future starts, system services,
+other hosts or hardware reset. In particular, an inactive but enabled recovery
+guardian can restart and must be treated as a hazard. The runner remains
+unconditionally disabled pending canonical ARM32 build provenance and device
+evidence; this audit does not release that gate.
