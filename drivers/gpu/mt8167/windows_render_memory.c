@@ -3,6 +3,7 @@
 #if A04_GE8300_RENDER_EXPERIMENT
 #include "gpu_mmu.h"
 #include "render_pds_data.h"
+#include "pvr_rogue_fwif.h"
 #define PAGE 4096u
 #define TABLE_PAGES 14u
 #define MAX_PAYLOAD_PAGES 4096u
@@ -60,6 +61,50 @@ NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
     m->map_count=count;m->ready=TRUE;
     return STATUS_SUCCESS;
 }
+NTSTATUS a04_windows_render_memory_bind_vm(struct a04_windows_render_memory *m)
+{
+    struct a04_gpu_fw_arena arena={0};struct a04_gpu_fw_object vm={0};
+    struct a04_gpu_firmware_state *s;size_t first;
+    if (!m || !m->ready || !m->cpu || !m->firmware || !m->adapter || m->published || m->poisoned ||
+        m->vm.cpu || KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_INVALID_PARAMETER;
+    s=m->firmware;
+    if (!s->processor_released || !s->firmware_started || s->queue_faulted || !s->memory.heap ||
+        s->memory.adapter!=m->adapter || s->runtime.next_free>A04_PVR_HEAP_SIZE-PAGE)
+        return STATUS_INVALID_DEVICE_STATE;
+    first=(s->runtime.next_free+PAGE-1u)&~(size_t)(PAGE-1u);
+    if (a04_gpu_fw_arena_init(&arena,s->memory.heap,A04_PVR_HEAP_SIZE,
+        (uint64_t)s->memory.heap_logical.QuadPart,first) ||
+        a04_gpu_fw_memory_context(&arena,(uint64_t)m->logical.QuadPart,&vm)) return STATUS_INSUFFICIENT_RESOURCES;
+    s->runtime.next_free=(uint32_t)arena.next;m->vm=vm;
+    return STATUS_SUCCESS;
+}
+NTSTATUS a04_windows_render_prepare_context(struct a04_windows_render_memory *m,
+    uint32_t context_id,uint64_t callstack,unsigned isp_count,
+    const struct rogue_fwif_geom_registers_caswitch *static_state)
+{
+    struct a04_gpu_fw_arena arena={0};struct a04_gpu_render_context ctx={0};
+    struct a04_gpu_firmware_state *s;size_t first,i;int owned=0;
+    if (!m || !m->ready || !m->cpu || !m->vm.cpu || !m->firmware || !m->adapter ||
+        m->published || m->poisoned || m->render_prepared || !static_state || !context_id ||
+        !callstack || (callstack&15u) || !m->map_count || m->map_count>A04_RENDER_MAX_MAPS ||
+        KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_INVALID_PARAMETER;
+    s=m->firmware;
+    if (!s->processor_released || !s->firmware_started || s->queue_faulted || !s->memory.heap ||
+        s->memory.adapter!=m->adapter || s->runtime.next_free>A04_PVR_HEAP_SIZE-PAGE)
+        return STATUS_INVALID_DEVICE_STATE;
+    for (i=0;i<m->map_count;++i) {
+        const struct a04_windows_render_map *r=&m->maps[i];uint64_t n=(uint64_t)r->pages*PAGE;
+        if (!(r->mmu_flags&A04_GPU_MMU_READ_ONLY) && callstack>=r->gpu_va && n>=8u && callstack-r->gpu_va<=n-8u) ++owned;
+    }
+    if (owned!=1) return STATUS_INVALID_PARAMETER;
+    first=(s->runtime.next_free+PAGE-1u)&~(size_t)(PAGE-1u);
+    if (a04_gpu_fw_arena_init(&arena,s->memory.heap,A04_PVR_HEAP_SIZE,
+        (uint64_t)s->memory.heap_logical.QuadPart,first) ||
+        a04_gpu_prepare_render_context(&arena,&m->vm,context_id,callstack,isp_count,static_state,&ctx))
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+    s->runtime.next_free=(uint32_t)arena.next;m->render=ctx;m->render_prepared=TRUE;
+    return STATUS_SUCCESS;
+}
 NTSTATUS a04_windows_render_stage_fragment_pds(struct a04_windows_render_memory *m,
     uint64_t pds_gpu,uint64_t shader_gpu,uint64_t doutu_control)
 {
@@ -87,17 +132,81 @@ NTSTATUS a04_windows_render_stage_fragment_pds(struct a04_windows_render_memory 
     for (i=0;i<sizeof(data);++i) ((uint8_t *)m->cpu)[off+i]=data[i];
     return STATUS_SUCCESS;
 }
-NTSTATUS a04_windows_render_memory_publish(struct a04_windows_render_memory *m)
+static NTSTATUS render_memory_publish(struct a04_windows_render_memory *m,BOOLEAN context_synced)
 {
-    NTSTATUS status;
-    if (!m || !m->firmware || !m->cpu || !m->adapter || !m->ready || m->published || m->poisoned ||
+    NTSTATUS status;size_t off;struct rogue_fwif_fwmemcontext *vm;
+    if (!m || !m->firmware || !m->cpu || !m->adapter || !m->ready || !m->vm.cpu || m->published || m->poisoned ||
+        (m->render_prepared && !context_synced) ||
         KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_INVALID_PARAMETER;
+    off=(size_t)(m->vm.fw_addr&0x00ffffffu);
+    if (!m->firmware->processor_released || !m->firmware->firmware_started || m->firmware->queue_faulted ||
+        !m->firmware->memory.heap || m->firmware->memory.adapter!=m->adapter ||
+        m->firmware->runtime.next_free>A04_PVR_HEAP_SIZE ||
+        (m->vm.fw_addr&0xff00003fu)!=0xc0000000u || m->vm.size!=sizeof(*vm) ||
+        off>m->firmware->runtime.next_free || m->vm.size>m->firmware->runtime.next_free-off ||
+        m->vm.cpu!=(uint8_t *)m->firmware->memory.heap+off ||
+        m->vm.dma!=(uint64_t)m->firmware->memory.heap_logical.QuadPart+off) return STATUS_INVALID_DEVICE_STATE;
+    vm=m->vm.cpu;
+    if (vm->pc_dev_paddr!=(uint64_t)m->logical.QuadPart || vm->page_cat_base_reg_set!=ROGUE_FW_BIF_INVALID_PCSET)
+        return STATUS_INVALID_DEVICE_STATE;
     m->poisoned=TRUE;
     status=a04_gpu_dma_sync(m->cpu,m->length,FALSE);
+    if (!NT_SUCCESS(status)) return status;
+    status=a04_gpu_dma_sync(m->vm.cpu,(ULONG)m->vm.size,FALSE);
     if (!NT_SUCCESS(status)) return status;
     status=a04_gpu_firmware_invalidate_mmu(m->firmware);
     if (!NT_SUCCESS(status)) return status;
     m->published=TRUE;m->poisoned=FALSE;return STATUS_SUCCESS;
+}
+NTSTATUS a04_windows_render_memory_publish(struct a04_windows_render_memory *m)
+{
+    return render_memory_publish(m,FALSE);
+}
+NTSTATUS a04_windows_render_publish_context(struct a04_windows_render_memory *m)
+{
+    struct a04_gpu_fw_object *objects[9];struct rogue_fwif_fwrendercontext *ctx;
+    struct rogue_fwif_geom_ctx_state *geom;uint64_t callstack;int owned=0;size_t i,j;NTSTATUS status;
+    if (!m || !m->render_prepared || !m->ready || !m->firmware || !m->cpu || !m->vm.cpu ||
+        m->published || m->poisoned || KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_INVALID_PARAMETER;
+    objects[0]=&m->render.context;objects[1]=&m->render.geom_control;objects[2]=&m->render.geom_ring;
+    objects[3]=&m->render.geom_state;objects[4]=&m->render.geom_fence;objects[5]=&m->render.frag_control;
+    objects[6]=&m->render.frag_ring;objects[7]=&m->render.frag_state;objects[8]=&m->render.frag_fence;
+    for (i=0;i<9;++i) {
+        struct a04_gpu_fw_object *o=objects[i];size_t off=(size_t)(o->fw_addr&0x00ffffffu);
+        if (!m->firmware->memory.heap || m->firmware->runtime.next_free>A04_PVR_HEAP_SIZE ||
+            (o->fw_addr&0xff00003fu)!=0xc0000000u || !o->size || o->size>UINT32_MAX ||
+            off>m->firmware->runtime.next_free || o->size>m->firmware->runtime.next_free-off ||
+            o->cpu!=(uint8_t *)m->firmware->memory.heap+off ||
+            o->dma!=(uint64_t)m->firmware->memory.heap_logical.QuadPart+off) return STATUS_INVALID_DEVICE_STATE;
+        for (j=0;j<i;++j) if (overlap(o->dma,o->size,objects[j]->dma,objects[j]->size)) return STATUS_INVALID_DEVICE_STATE;
+    }
+    if (m->render.context.size!=sizeof(*ctx) || m->render.geom_ring.size!=(1u<<15) ||
+        m->render.frag_ring.size!=(1u<<15) || m->render.geom_control.size!=sizeof(struct rogue_fwif_cccb_ctl) ||
+        m->render.frag_control.size!=sizeof(struct rogue_fwif_cccb_ctl) ||
+        m->render.geom_state.size!=sizeof(*geom) || m->render.geom_fence.size!=sizeof(uint32_t) ||
+        m->render.frag_fence.size!=sizeof(uint32_t) || m->render.frag_state.size<sizeof(struct rogue_fwif_frag_ctx_state)+4u ||
+        m->render.frag_state.size>sizeof(struct rogue_fwif_frag_ctx_state)+64u*4u ||
+        (m->render.frag_state.size-sizeof(struct rogue_fwif_frag_ctx_state))%4u) return STATUS_INVALID_DEVICE_STATE;
+    ctx=m->render.context.cpu;
+    if (ctx->geom_context.dm!=PVR_FWIF_DM_GEOM || ctx->frag_context.dm!=PVR_FWIF_DM_FRAG ||
+        ctx->geom_context.fw_mem_context_fw_addr!=m->vm.fw_addr || ctx->frag_context.fw_mem_context_fw_addr!=m->vm.fw_addr ||
+        ctx->geom_context.ccb_fw_addr!=m->render.geom_ring.fw_addr || ctx->frag_context.ccb_fw_addr!=m->render.frag_ring.fw_addr ||
+        ctx->geom_context.ccbctl_fw_addr!=m->render.geom_control.fw_addr || ctx->frag_context.ccbctl_fw_addr!=m->render.frag_control.fw_addr ||
+        ctx->geom_context.context_state_addr!=m->render.geom_state.fw_addr || ctx->frag_context.context_state_addr!=m->render.frag_state.fw_addr ||
+        m->render.geom_context_fw!=m->render.context.fw_addr+offsetof(struct rogue_fwif_fwrendercontext,geom_context) ||
+        m->render.frag_context_fw!=m->render.context.fw_addr+offsetof(struct rogue_fwif_fwrendercontext,frag_context)) return STATUS_INVALID_DEVICE_STATE;
+    geom=m->render.geom_state.cpu;callstack=geom->geom_core[0].geom_reg_vdm_call_stack_pointer_init;
+    if (!callstack || (callstack&15u) || !m->map_count || m->map_count>A04_RENDER_MAX_MAPS) return STATUS_INVALID_DEVICE_STATE;
+    for (i=0;i<m->map_count;++i) {
+        const struct a04_windows_render_map *r=&m->maps[i];uint64_t n=(uint64_t)r->pages*PAGE;
+        if (!(r->mmu_flags&A04_GPU_MMU_READ_ONLY) && callstack>=r->gpu_va && n>=8u && callstack-r->gpu_va<=n-8u) ++owned;
+    }
+    if (owned!=1) return STATUS_INVALID_DEVICE_STATE;
+    for (i=0;i<9;++i) {
+        status=a04_gpu_dma_sync(objects[i]->cpu,(ULONG)objects[i]->size,FALSE);
+        if (!NT_SUCCESS(status)) { m->poisoned=TRUE;return status; }
+    }
+    return render_memory_publish(m,TRUE);
 }
 NTSTATUS a04_windows_render_memory_free(struct a04_windows_render_memory *m, BOOLEAN gpu_dma_quiesced)
 {
