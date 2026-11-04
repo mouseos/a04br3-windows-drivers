@@ -3,7 +3,8 @@
 #define A04_GE8300_RENDER_HWRT_H
 #include <stdint.h>
 #include "pvr_rogue_fwif.h"
-/* GE8300 SIPF1, 16x16 tile, one sample and one layer only. All GPU buffers
+/* GE8300 SIPF1, 16x16 tile, one sample and one layer only. TPC stride, RTC
+ * and macrotile array may be zero for this configuration. All GPU buffers
  * must be independently range-checked, owned and synchronized by the caller. */
 struct a04_render_hwrt_params {
     uint32_t width,height,tpc_stride,tpc_size,region_header_size;

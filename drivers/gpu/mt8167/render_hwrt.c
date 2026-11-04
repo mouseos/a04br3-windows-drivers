@@ -5,6 +5,7 @@
 #include "render_hwrt.h"
 #define GPU_ADDR_LIMIT UINT64_C(0x10000000000)
 static int gpu_pointer(uint64_t value) { return value && value<GPU_ADDR_LIMIT && !(value&15u); }
+static int gpu_optional_pointer(uint64_t value) { return !value || gpu_pointer(value); }
 static int fw_pointer(uint32_t value) { return value && !(value&63u); }
 int a04_gpu_init_render_hwrt(const struct a04_render_hwrt_params *p,
     struct rogue_fwif_hwrtdata_common *common,struct rogue_fwif_hwrtdata *data)
@@ -12,11 +13,11 @@ int a04_gpu_init_render_hwrt(const struct a04_render_hwrt_params *p,
     struct rogue_fwif_hwrtdata_common c={0}; struct rogue_fwif_hwrtdata d={0};
     uint32_t x,y;
     if (!p || !common || !data || !p->width || !p->height ||
-        p->width>8192u || p->height>8192u || !p->tpc_stride || !p->tpc_size ||
+        p->width>8192u || p->height>8192u || !p->tpc_size ||
         !p->region_header_size || !fw_pointer(p->common_fw_address) ||
         !fw_pointer(p->freelist_fw_address[0]) || !fw_pointer(p->freelist_fw_address[1]) ||
-        !gpu_pointer(p->tpc_gpu) || !gpu_pointer(p->vheap_gpu) || !gpu_pointer(p->rtc_gpu) ||
-        !gpu_pointer(p->pm_mlist_gpu) || !gpu_pointer(p->macrotile_gpu) || !gpu_pointer(p->region_gpu)) return -1;
+        !gpu_pointer(p->tpc_gpu) || !gpu_pointer(p->vheap_gpu) || !gpu_optional_pointer(p->rtc_gpu) ||
+        !gpu_pointer(p->pm_mlist_gpu) || !gpu_optional_pointer(p->macrotile_gpu) || !gpu_pointer(p->region_gpu)) return -1;
     x=(p->width+15u)/16u; y=(p->height+15u)/16u;
     if (x>511u || y>511u) return -1;
     c.screen_pixel_max=((p->height-1u)<<16)|(p->width-1u);
