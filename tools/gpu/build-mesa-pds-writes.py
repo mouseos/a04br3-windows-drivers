@@ -17,17 +17,19 @@ def main():
  original=src/'src/imagination/vulkan/pvr_arch_cmd_buffer.c';text=original.read_text()
  hook='''#include <stdio.h>
 #include <stdlib.h>
-static void a04_pds_construct(const char *kind,unsigned long long gpu,unsigned long long size,unsigned entries)
+static void a04_pds_construct(const char *kind,unsigned long long gpu,unsigned long long size,unsigned entries,const void *buffer)
 {
+ const unsigned char *bytes=buffer; unsigned long long hash=14695981039346656037ULL;
+ for (unsigned long long i=0;i<size;i++) { hash^=bytes[i]; hash*=1099511628211ULL; }
  const char *name=getenv("A04_CAPTURE_JSONL"); FILE *f=name ? fopen(name,"a") : NULL;
  if (!f) abort();
- if (fprintf(f,"{\\"event\\":\\"pds_construct\\",\\"kind\\":\\"%s\\",\\"gpu_va\\":%llu,\\"size\\":%llu,\\"entries\\":%u}\\n",kind,gpu,size,entries)<0 || fclose(f)) abort();
+ if (fprintf(f,"{\\"event\\":\\"pds_construct\\",\\"kind\\":\\"%s\\",\\"gpu_va\\":%llu,\\"size\\":%llu,\\"entries\\":%u,\\"fnv64\\":%llu}\\n",kind,gpu,size,entries,hash)<0 || fclose(f)) abort();
 }
-static void a04_pds_entry(const char *kind,unsigned long long gpu,unsigned ordinal,unsigned type,unsigned offset,unsigned subtype)
+static void a04_pds_entry(const char *kind,unsigned long long gpu,unsigned ordinal,unsigned type,unsigned offset,unsigned subtype,unsigned long long value)
 {
  const char *name=getenv("A04_CAPTURE_JSONL"); FILE *f=name ? fopen(name,"a") : NULL;
  if (!f) abort();
- if (fprintf(f,"{\\\"event\\\":\\\"pds_entry\\\",\\\"kind\\\":\\\"%s\\\",\\\"gpu_va\\\":%llu,\\\"ordinal\\\":%u,\\\"entry_type\\\":%u,\\\"const_offset\\\":%u,\\\"subtype\\\":%u}\\n",kind,gpu,ordinal,type,offset,subtype)<0 || fclose(f)) abort();
+ if (fprintf(f,"{\\\"event\\\":\\\"pds_entry\\\",\\\"kind\\\":\\\"%s\\\",\\\"gpu_va\\\":%llu,\\\"ordinal\\\":%u,\\\"entry_type\\\":%u,\\\"const_offset\\\":%u,\\\"subtype\\\":%u,\\\"value\\\":%llu}\\n",kind,gpu,ordinal,type,offset,subtype,value)<0 || fclose(f)) abort();
 }
 
 static void a04_pds_dep(const char *kind,unsigned long long parent,unsigned offset,unsigned long long info,unsigned long long buffer,unsigned long long size,unsigned block)
@@ -43,12 +45,19 @@ static void a04_pds_shader(unsigned long long parent,unsigned offset,unsigned lo
  if (!f) abort();
  if (fprintf(f,"{\\"event\\":\\"pds_shader\\",\\"parent_gpu\\":%llu,\\"offset\\":%u,\\"shader_gpu\\":%llu,\\"entry_gpu\\":%llu,\\"size\\":%u}\\n",parent,offset,shader,entry,size)<0 || fclose(f)) abort();
 }
+
+static void a04_fragment_link(unsigned long long data,unsigned data_size,unsigned long long code,unsigned code_size,unsigned long long shader,unsigned long long entry,unsigned shader_size,unsigned doutu_offset)
+{
+ const char *name=getenv("A04_CAPTURE_JSONL"); FILE *f=name ? fopen(name,"a") : NULL;
+ if (!f) abort();
+ if (fprintf(f,"{\\"event\\":\\"fragment_shader_link\\",\\"pds_data_gpu\\":%llu,\\"pds_data_size\\":%u,\\"pds_code_gpu\\":%llu,\\"pds_code_size\\":%u,\\"shader_gpu\\":%llu,\\"entry_gpu\\":%llu,\\"shader_size\\":%u,\\"doutu_offset\\":%u}\\n",data,data_size,code,code_size,shader,entry,shader_size,doutu_offset)<0 || fclose(f)) abort();
+}
 '''
  pairs=[('''   state->pds_vertex_attrib_offset =
-      pvr_bo->dev_addr.addr -''','''   a04_pds_construct("vertex_attributes",pvr_bo->dev_addr.addr,PVR_DW_TO_BYTES(pds_info->data_size_in_dwords),pds_info->entry_count);
+      pvr_bo->dev_addr.addr -''','''   a04_pds_construct("vertex_attributes",pvr_bo->dev_addr.addr,PVR_DW_TO_BYTES(pds_info->data_size_in_dwords),pds_info->entry_count,dword_buffer);
    state->pds_vertex_attrib_offset =
       pvr_bo->dev_addr.addr -'''),('''   *descriptor_data_offset_out =
-      pvr_bo->dev_addr.addr -''','''   a04_pds_construct("descriptor_mappings",pvr_bo->dev_addr.addr,PVR_DW_TO_BYTES(pds_info->data_size_in_dwords),pds_info->entry_count);
+      pvr_bo->dev_addr.addr -''','''   a04_pds_construct("descriptor_mappings",pvr_bo->dev_addr.addr,PVR_DW_TO_BYTES(pds_info->data_size_in_dwords),pds_info->entry_count,dword_buffer);
    *descriptor_data_offset_out =
       pvr_bo->dev_addr.addr -''')]
  for before,after in pairs:
@@ -60,6 +69,41 @@ static void a04_pds_shader(unsigned long long parent,unsigned offset,unsigned lo
 '''
  if text.count(target)!=1:raise SystemExit('unexpected vertex shader encoding')
  text=text.replace(target,insert+target)
+ frag_start=text.index('setup_pds_fragment_program(')
+ frag_end=text.index('setup_pds_coeff_program(',frag_start)
+ fragment=text[frag_start:frag_end]
+ target='''   return pvr_arch_cmd_buffer_upload_pds(
+      cmd_buffer,
+      &pds_fragment_program_buffer[0],
+      program->data_size,
+      16,
+      &pds_fragment_program_buffer[program->data_size],
+      program->code_size,
+      16,
+      16,
+      pds_fragment_program);'''
+ replacement='''   VkResult capture_result=pvr_arch_cmd_buffer_upload_pds(
+      cmd_buffer,
+      &pds_fragment_program_buffer[0],
+      program->data_size,
+      16,
+      &pds_fragment_program_buffer[program->data_size],
+      program->code_size,
+      16,
+      16,
+      pds_fragment_program);
+   if (capture_result==VK_SUCCESS && fragment_shader_state->shader_bo) {
+      a04_fragment_link(cmd_buffer->device->heaps.pds_heap->base_addr.addr+pds_fragment_program->data_offset,
+                        pds_fragment_program->data_size*4u,
+                        cmd_buffer->device->heaps.pds_heap->base_addr.addr+pds_fragment_program->code_offset,
+                        pds_fragment_program->code_size*4u,
+                        fragment_shader_state->shader_bo->dev_addr.addr,
+                        fragment_shader_state->shader_bo->dev_addr.addr+state->gfx_pipeline->fs_data.common.entry_offset,
+                        fragment_shader_state->shader_bo->size,program->doutu_offset);
+   }
+   return capture_result;'''
+ if fragment.count(target)!=1:raise SystemExit('unexpected fragment program')
+ text=text[:frag_start]+fragment.replace(target,replacement)+text[frag_end:]
  for kind in ('spill','scratch'):
   target='''            PVR_WRITE(qword_buffer,
                       %s_info_bo->dev_addr.addr,
@@ -74,11 +118,11 @@ static void a04_pds_shader(unsigned long long parent,unsigned offset,unsigned lo
          (struct pvr_const_map_entry *)entries;
 '''
  if text.count(entry)!=2:raise SystemExit('unexpected constant-map loops')
- text=text.replace(entry,entry+'''      a04_pds_entry("vertex_attributes",pvr_bo->dev_addr.addr,i,entry_header->type,entry_header->const_offset,0);
+ text=text.replace(entry,entry+'''      a04_pds_entry("vertex_attributes",pvr_bo->dev_addr.addr,i,entry_header->type,entry_header->const_offset,0,entry_header->type==PVR_PDS_CONST_MAP_ENTRY_TYPE_LITERAL32 ? ((const struct pvr_const_map_entry_literal32 *)entry_header)->literal_value : entry_header->type==PVR_PDS_CONST_MAP_ENTRY_TYPE_DOUTU_ADDRESS ? ((const struct pvr_const_map_entry_doutu_address *)entry_header)->doutu_control : 0);
 ''',1)
  second=text.find(entry,text.find('static VkResult pvr_setup_descriptor_mappings('))
  if second<0:raise SystemExit('descriptor loop missing')
- text=text[:second]+text[second:].replace(entry,entry+'''      a04_pds_entry("descriptor_mappings",pvr_bo->dev_addr.addr,i,entry_header->type,entry_header->const_offset,entry_header->type==PVR_PDS_CONST_MAP_ENTRY_TYPE_SPECIAL_BUFFER ? ((const struct pvr_const_map_entry_special_buffer *)entry_header)->buffer_type : 0);
+ text=text[:second]+text[second:].replace(entry,entry+'''      a04_pds_entry("descriptor_mappings",pvr_bo->dev_addr.addr,i,entry_header->type,entry_header->const_offset,entry_header->type==PVR_PDS_CONST_MAP_ENTRY_TYPE_SPECIAL_BUFFER ? ((const struct pvr_const_map_entry_special_buffer *)entry_header)->buffer_type : 0,entry_header->type==PVR_PDS_CONST_MAP_ENTRY_TYPE_LITERAL32 ? ((const struct pvr_const_map_entry_literal32 *)entry_header)->literal_value : 0);
 ''',1)
  out.mkdir(mode=0o700,parents=True,exist_ok=False);modified=out/'pvr_arch_cmd_buffer.c';modified.write_text(hook+text)
  target='src/imagination/vulkan/libvulkan_powervr_mesa.so'
