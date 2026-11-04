@@ -4,6 +4,7 @@
 #include <ndis.h>
 #if defined(A04_NDIS_OID_BRIDGE) && A04_NDIS_OID_BRIDGE
 #include "native_oid_async.h"
+#include "../../bus/mt8167-shared/wifi_interface.h"
 #endif
 static NDIS_HANDLE g_driver;
 /* The context retains the miniport handle until asynchronous OIDs drain.
@@ -13,9 +14,42 @@ struct a04_ndis_context { NDIS_HANDLE adapter;
  struct a04_wmt_bridge bridge;
  struct a04_native_oid_context oid;
  struct a04_native_oid_async oid_async;
+ A04_SHARED_WIFI_INTERFACE parent;
 #endif
 };
 #define A04_NDIS_TAG 'n40A'
+#if defined(A04_NDIS_OID_BRIDGE) && A04_NDIS_OID_BRIDGE
+/* Query the PDO below NDIS, never the top of our own device stack. The bus
+ * owns the returned interface reference. This query does not acquire a lease
+ * or touch MMIO, clocks or power. */
+static NTSTATUS a04_query_parent(struct a04_ndis_context *a)
+{
+ PDEVICE_OBJECT pdo=NULL;PIRP irp;PIO_STACK_LOCATION sp;KEVENT event;
+ IO_STATUS_BLOCK ios;NTSTATUS status;
+ NdisMGetDeviceProperty(a->adapter,&pdo,NULL,NULL,NULL,NULL);
+ if(!pdo)return STATUS_NO_SUCH_DEVICE;
+ KeInitializeEvent(&event,NotificationEvent,FALSE);
+ RtlZeroMemory(&ios,sizeof(ios));
+ irp=IoBuildSynchronousFsdRequest(IRP_MJ_PNP,pdo,NULL,0,NULL,&event,&ios);
+ if(!irp)return STATUS_INSUFFICIENT_RESOURCES;
+ irp->IoStatus.Status=STATUS_NOT_SUPPORTED;
+ sp=IoGetNextIrpStackLocation(irp);sp->MinorFunction=IRP_MN_QUERY_INTERFACE;
+ sp->Parameters.QueryInterface.InterfaceType=&A04SharedWifiInterfaceGuid;
+ sp->Parameters.QueryInterface.Size=sizeof(a->parent);
+ sp->Parameters.QueryInterface.Version=A04_SHARED_WIFI_INTERFACE_VERSION;
+ sp->Parameters.QueryInterface.Interface=(PINTERFACE)&a->parent;
+ sp->Parameters.QueryInterface.InterfaceSpecificData=NULL;
+ status=IoCallDriver(pdo,irp);
+ if(status==STATUS_PENDING){KeWaitForSingleObject(&event,Executive,KernelMode,FALSE,NULL);status=ios.Status;}
+ if(!NT_SUCCESS(status))return status;
+ if(a->parent.Header.Size!=sizeof(a->parent) || a->parent.Header.Version!=A04_SHARED_WIFI_INTERFACE_VERSION ||
+    !a->parent.Header.InterfaceDereference || !a->parent.Acquire || !a->parent.ReleaseQuiescent) {
+  if(a->parent.Header.InterfaceDereference)a->parent.Header.InterfaceDereference(a->parent.Header.Context);
+  RtlZeroMemory(&a->parent,sizeof(a->parent));return STATUS_INVALID_DEVICE_STATE;
+ }
+ return STATUS_SUCCESS;
+}
+#endif
 /* Called at PASSIVE_LEVEL after NDIS has stopped issuing callbacks. An OID
  * completion can reenter NDIS: retain the entire context until it returns. */
 static void a04_adapter_free(struct a04_ndis_context *a)
@@ -25,6 +59,8 @@ static void a04_adapter_free(struct a04_ndis_context *a)
  if(a->oid_async.initialized) {
   while(a04_native_oid_async_close(&a->oid_async,1000)==NDIS_STATUS_PENDING) { }
  }
+ if(a->parent.Header.InterfaceDereference)
+  a->parent.Header.InterfaceDereference(a->parent.Header.Context);
 #endif
  NdisFreeMemory(a,0,0);
 }
@@ -57,6 +93,7 @@ NDIS_STATUS A04MiniportInitialize(NDIS_HANDLE adapter,NDIS_HANDLE context,PNDIS_
  a->oid.bridge=&a->bridge;
  status=a04_native_oid_async_init(&a->oid_async,adapter,&a->oid);
  if(status!=NDIS_STATUS_SUCCESS)goto failed;
+ if(!NT_SUCCESS(a04_query_parent(a))) {status=NDIS_STATUS_ADAPTER_NOT_READY;goto failed;}
 #endif
  /* No general/native-802.11 attributes or initialized hardware exist yet.
   * NDIS requires full network-I/O readiness before initialization succeeds. */

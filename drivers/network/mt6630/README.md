@@ -151,6 +151,12 @@ Native 802.11属性、共有親からの所有権取得、ハードウェア起�
 この処理はMicrosoftのMiniportInitializeExとMiniportHaltExの資源寿命規約に
 従い、端末Linux gen3の `os/linux/gl_init.c` のprobe失敗時の後始末を参照した。
 
+統合ビルドでは初期化時にNDISからPDOを取得し、既存の共有親Wi-Fi
+インターフェイスを `IRP_MN_QUERY_INTERFACE` で問い合わせる。取得できた参照は
+失敗時・停止時に返す。問い合わせはリース取得や電源・MMIO操作を行わず、
+親PDO接続と実機上の応答は未検証である。一般属性・ExtSTA属性の正しい
+能力値と必須OIDが揃うまで、問い合わせの成功を初期化成功とは扱わない。
+
 `native_hif_rx.c` はLinux gen3の受信記述子から、未変換・未暗号化・非QoS・
 非断片の2.4GHzユニキャストFromDS MPDUに限り、実RCPIとchannelを抽出して
 ExtSTA OOB通知へ渡す。PHY/rate indexは実際にadvertiseされた表を呼出側から
