@@ -26,9 +26,15 @@ def make_sr(state,shader,control):
         raise ValueError('invalid shared state')
     return struct.pack('<16I',state>>32,state&0xffffffff,2,0,(state+48)>>32,(state+48)&0xffffffff,
                        0x80004002,0,(shader&0xfffffffc)|(control&0xffffffff),control>>32,*([0]*6))
+def make_code(kind):
+    words={'pt_store_code':(0xd0800000,0xd0800001,0xd0800002,0xd1000000,0xd3000000),
+           'pt_resume_code':(0xd3800010,0xd0000000,0xd0000001,0xd0000002,0xd1000000,0xd3000000),
+           'sr_code':(0xf0020001,0xf0060201,0xf4000402)}
+    if kind not in words:raise ValueError('unknown code')
+    return struct.pack('<%dI'%len(words[kind]),*words[kind])
 def check(root):
     root=pathlib.Path(root);m=json.loads((root/'run-manifest.json').read_text());raw=(root/'events.jsonl').read_bytes();diag=m.get('diagnostic_manifest') or {}
-    if not diag.get('context_pt_data_hash') or not diag.get('context_sr_data_hash') or hashlib.sha256(raw).hexdigest()!=m['events_sha256']:raise ValueError('invalid provenance')
+    if not diag.get('context_pt_data_hash') or not diag.get('context_sr_data_hash') or not diag.get('context_pds_code_hash') or hashlib.sha256(raw).hexdigest()!=m['events_sha256']:raise ValueError('invalid provenance')
     spec=importlib.util.spec_from_file_location('context',pathlib.Path(__file__).with_name('check-render-context.py'))
     ctx=importlib.util.module_from_spec(spec);spec.loader.exec_module(ctx);ctx.check(root)
     e=[json.loads(x) for x in raw.splitlines()];hashes=[x for x in e if x['event']=='ctx_pds_data_hash']
@@ -48,8 +54,15 @@ def check(root):
         shader=[x for x in e if x['event']=='ctx_component' and x['kind']==shader_kind and x['index']==c['index'] and x['gpu_va']==item['shader_gpu']]
         if len(state)!=1 or len(shader)!=1 or fnv(make_sr(item['state_gpu'],item['shader_gpu'],item['control']))!=item['fnv64']:
             raise ValueError('shared constants mismatch')
-    return {'verified_constant_ranges':8,'gpu_execution_allowed':False,
-            'limitations':['FNV is not collision-resistant','PDS code and all other dependencies are not verified']}
+    code=[x for x in e if x['event']=='ctx_pds_code_hash']
+    if len(code)!=8:raise ValueError('unexpected code count')
+    for item in code:
+        kinds=('sr_store_code','sr_load_code') if item['kind']=='sr_code' else (item['kind'],)
+        matches=[c for c in e if c['event']=='ctx_component' and c['kind'] in kinds and c['gpu_va']==item['gpu_va'] and c['size']>=item['size']]
+        expected=make_code(item['kind'])
+        if len(matches)!=1 or len(expected)!=item['size'] or fnv(expected)!=item['fnv64']:raise ValueError('code mismatch')
+    return {'verified_constant_ranges':8,'verified_code_ranges':8,'gpu_execution_allowed':False,
+            'limitations':['FNV is not collision-resistant','USC and remaining dependencies are not verified']}
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('capture');a=p.parse_args()
     try:print(json.dumps(check(a.capture),indent=2))

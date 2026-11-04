@@ -8,6 +8,12 @@ int main(void)
 {
     struct a04_render_owned_range r={UINT64_C(0xda00001000),0x100000,4096,3};
     struct a04_render_context_pt_data data,old;uint64_t a=r.gpu_va+0x100;
+    struct a04_render_context_pds_code code;
+    assert(a04_render_make_context_pds_code(0));assert(!a04_render_make_context_pds_code(&code));
+    assert(get64(code.pt_store)==UINT64_C(0xd0800001d0800000));
+    assert(get64(code.pt_resume)==UINT64_C(0xd0000000d3800010));
+    assert(get64(code.sr)==UINT64_C(0xf0060201f0020001));
+    assert(!get64(code.pt_store+24) && !get64(code.pt_resume+24) && !code.sr[12] && !code.sr[15]);
     assert(!a04_render_make_context_pt_data(a,&r,1,&data));
     assert(get64(data.store)==(a|(UINT64_C(15)<<40)|(UINT64_C(32)<<46)));
     assert(get64(data.store+16)==((a+120)|(UINT64_C(2)<<40)|(UINT64_C(62)<<46)));
