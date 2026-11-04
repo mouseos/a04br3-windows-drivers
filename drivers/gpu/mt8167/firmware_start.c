@@ -103,7 +103,10 @@ enum a04_pvr_fw_result a04_pvr_mips_stop_report(const struct a04_pvr_register_io
         return A04_PVR_FW_TIMEOUT;
     W64(ROGUE_CR_SOFT_RESET,reset);
     { uint64_t value=R64(ROGUE_CR_SOFT_RESET);
-      if ((value&reset)==reset) return A04_PVR_FW_OK;
+      /* MASKFULL includes blocks absent on GE8300, whose reset bits read
+       * zero. The idle and outstanding-transaction polls above succeeded;
+       * require the firmware processor's implemented reset bit to stick. */
+      if (value&ROGUE_CR_SOFT_RESET_GARTEN_EN) return A04_PVR_FW_OK;
       if (failure) { failure->reg=ROGUE_CR_SOFT_RESET; failure->value=value; }
       return A04_PVR_FW_TIMEOUT; }
 }

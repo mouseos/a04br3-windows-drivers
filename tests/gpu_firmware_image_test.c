@@ -5,7 +5,7 @@
 #include "firmware.h"
 #include "pvr_rogue_fwif.h"
 #include "pvr_rogue_defs.h"
-struct mock { unsigned writes, delays, idle; uint64_t last_reset, remap1, remap2, remap3; };
+struct mock { unsigned writes, delays, idle, filter_reset; uint64_t last_reset, reset_read_mask, remap1, remap2, remap3; };
 static uint32_t read32(void *ctx,uint32_t off)
 {
     struct mock *m=ctx;
@@ -14,7 +14,7 @@ static uint32_t read32(void *ctx,uint32_t off)
     return 0;
 }
 static uint64_t read64(void *ctx,uint32_t off)
-{ struct mock *m=ctx; return off==ROGUE_CR_SOFT_RESET ? m->last_reset : 0; }
+{ struct mock *m=ctx; return off==ROGUE_CR_SOFT_RESET ? (m->filter_reset ? m->last_reset&m->reset_read_mask : m->last_reset) : 0; }
 static void write32(void *ctx,uint32_t off,uint32_t value)
 { struct mock *m=ctx; (void)off; (void)value; ++m->writes; }
 static void write64(void *ctx,uint32_t off,uint64_t value)
@@ -58,7 +58,12 @@ int main(int argc,char **argv) {
       if(a04_pvr_mips_stop_report(&io,A04_PVR_BVNC,&failure)!=A04_PVR_FW_TIMEOUT ||
          mock.last_reset || failure.reg!=ROGUE_CR_SIDEKICK_IDLE || failure.value!=0) return 18; }
     mock.idle=1;
+    mock.filter_reset=1; mock.reset_read_mask=ROGUE_CR_SOFT_RESET_GARTEN_EN;
     if(a04_pvr_mips_stop(&io,A04_PVR_BVNC)!=A04_PVR_FW_OK || !mock.last_reset) return 19;
+    mock.reset_read_mask=0;
+    { struct a04_pvr_stop_failure failure={0};
+      if(a04_pvr_mips_stop_report(&io,A04_PVR_BVNC,&failure)!=A04_PVR_FW_TIMEOUT ||
+         failure.reg!=ROGUE_CR_SOFT_RESET || failure.value!=0) return 20; }
     pt[0]=0xa5a5a5a5u;
     r=a04_pvr_mips_prepare(&p,heap,A04_PVR_HEAP_SIZE,0x80000000u,pt,4u*4096u,0x80000000u,&a);
     if(r!=A04_PVR_FW_OUTPUT || pt[0]!=0xa5a5a5a5u) return 13;
