@@ -3,6 +3,7 @@
 #define A04_GE8300_FIRMWARE_QUEUE_H
 #include "firmware_objects.h"
 #include "pvr_rogue_fwif.h"
+#include "pvr_rogue_fwif_client.h"
 struct a04_gpu_fw_queue {
     struct a04_gpu_fw_object control, ring, state, fence, context;
     uint32_t write_offset, wrap_mask;
@@ -14,5 +15,11 @@ struct a04_gpu_fw_queue {
  * execution alone does not mean the client command completed. */
 int a04_gpu_fw_prepare_null_queue(struct a04_gpu_fw_arena *arena,const struct a04_gpu_fw_object *mem_context,
     uint32_t context_id,uint32_t job_id,struct a04_gpu_fw_queue *queue,
+    struct rogue_fwif_kccb_cmd *kick);
+/* The caller must validate all GPU addresses and command contents and obtain
+ * isp_store_count from verified hardware features before this is used. */
+int a04_gpu_fw_prepare_transfer_queue(struct a04_gpu_fw_arena *arena,const struct a04_gpu_fw_object *mem_context,
+    uint32_t context_id,uint32_t job_id,unsigned isp_store_count,
+    const struct rogue_fwif_cmd_transfer *transfer,struct a04_gpu_fw_queue *queue,
     struct rogue_fwif_kccb_cmd *kick);
 #endif

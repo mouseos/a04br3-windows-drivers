@@ -30,6 +30,15 @@ int main(void)
         cmd.cmd_data.cmd_kick_data.context_fw_addr!=q.context.fw_addr ||
         cmd.cmd_data.cmd_kick_data.client_woff_update!=q.write_offset ||
         cmd.cmd_data.cmd_kick_data.client_wrap_mask_update!=32767) return 6;
+    { struct rogue_fwif_cmd_transfer transfer={0}; struct rogue_fwif_fwtransfercontext *tctx;
+      transfer.regs.isp_ctl=0x12345678; before=arena.next;
+      if(!a04_gpu_fw_prepare_transfer_queue(&arena,&vm,2,8,0,&transfer,&q,&cmd) || arena.next!=before) return 8;
+      if(a04_gpu_fw_prepare_transfer_queue(&arena,&vm,2,8,1,&transfer,&q,&cmd)) return 9;
+      tctx=q.context.cpu; hdr=q.ring.cpu;
+      if(tctx->tq_context.dm!=PVR_FWIF_DM_FRAG || hdr->cmd_type!=ROGUE_FWIF_CCB_CMD_TYPE_TQ_3D ||
+         hdr->cmd_size!=sizeof(transfer) || ((struct rogue_fwif_cmd_transfer *)(void *)((uint8_t *)hdr+sizeof(*hdr)))->regs.isp_ctl!=0x12345678) return 10;
+      hdr=(void *)((uint8_t *)hdr+sizeof(*hdr)+sizeof(transfer)); ufo=(void *)((uint8_t *)hdr+sizeof(*hdr));
+      if(hdr->cmd_type!=ROGUE_FWIF_CCB_CMD_TYPE_UPDATE || ufo->addr!=q.fence.fw_addr || ufo->value!=1) return 11; }
     before=arena.next; arena.next=arena.limit-64;
     if (!a04_gpu_fw_prepare_null_queue(&arena,&vm,2,8,&q,&cmd) || arena.next!=arena.limit-64) return 7;
     arena.next=before; free(heap); puts("GE8300 firmware NULL queue construction passed"); return 0;
