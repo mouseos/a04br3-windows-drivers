@@ -6,6 +6,7 @@
 #include "render_context_pds.h"
 #include "render_freelist.h"
 #include "pvr_rogue_fwif.h"
+#include "pvr_rogue_fwif_client.h"
 #define PAGE 4096u
 #define TABLE_PAGES 14u
 #define MAX_PAYLOAD_PAGES 4096u
@@ -553,6 +554,48 @@ NTSTATUS a04_windows_render_publish_context(struct a04_windows_render_memory *m)
         if (!NT_SUCCESS(status)) { m->poisoned=TRUE;return status; }
     }
     return render_memory_publish(m,TRUE);
+}
+NTSTATUS a04_windows_render_collect_pair(struct a04_windows_render_memory *m)
+{
+    struct a04_gpu_firmware_state *s;struct rogue_fwif_cccb_ctl *gc,*fc;
+    NTSTATUS status;LARGE_INTEGER delay;unsigned i;
+    const uint32_t geom_end=(uint32_t)(2u*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(struct rogue_fwif_cmd_geom)+sizeof(struct rogue_fwif_ufo));
+    const uint32_t frag_end=(uint32_t)(3u*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(struct rogue_fwif_cmd_frag)+2u*sizeof(struct rogue_fwif_ufo));
+    if (!m || !m->firmware || !m->published || m->poisoned || m->cleanup_complete || !m->target_prepared ||
+        !m->freelists_prepared || !m->render_prepared || m->render.pair_prepared!=1 ||
+        m->render.hwrt_fw!=m->target.data.fw_addr || m->render.frag_end!=frag_end ||
+        KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_INVALID_PARAMETER;
+    s=m->firmware;
+    if (!s->processor_released || !s->firmware_started || s->queue_faulted ||
+        !owned_fw(m,&m->render.context,sizeof(struct rogue_fwif_fwrendercontext)) ||
+        !owned_fw(m,&m->render.geom_control,sizeof(struct rogue_fwif_cccb_ctl)) ||
+        !owned_fw(m,&m->render.frag_control,sizeof(struct rogue_fwif_cccb_ctl)) ||
+        !owned_fw(m,&m->render.geom_fence,sizeof(uint32_t)) || !owned_fw(m,&m->render.frag_fence,sizeof(uint32_t)) ||
+        !owned_fw(m,&m->target.data,sizeof(struct rogue_fwif_hwrtdata)) ||
+        !owned_fw(m,&m->freelists[0],sizeof(struct rogue_fwif_freelist)) ||
+        !owned_fw(m,&m->freelists[1],sizeof(struct rogue_fwif_freelist)) ||
+        m->render.geom_context_fw!=m->render.context.fw_addr+offsetof(struct rogue_fwif_fwrendercontext,geom_context) ||
+        m->render.frag_context_fw!=m->render.context.fw_addr+offsetof(struct rogue_fwif_fwrendercontext,frag_context)) return STATUS_INVALID_DEVICE_STATE;
+    gc=m->render.geom_control.cpu;fc=m->render.frag_control.cpu;delay.QuadPart=-100000;
+    /* After observing a possibly submitted job, any failure is ambiguous. */
+    m->poisoned=TRUE;
+    for(i=0;i<200u;++i) {
+        status=a04_gpu_dma_sync(gc,(ULONG)m->render.geom_control.size,TRUE);if(!NT_SUCCESS(status)) return status;
+        status=a04_gpu_dma_sync(fc,(ULONG)m->render.frag_control.size,TRUE);if(!NT_SUCCESS(status)) return status;
+        status=a04_gpu_dma_sync(m->render.geom_fence.cpu,sizeof(uint32_t),TRUE);if(!NT_SUCCESS(status)) return status;
+        status=a04_gpu_dma_sync(m->render.frag_fence.cpu,sizeof(uint32_t),TRUE);if(!NT_SUCCESS(status)) return status;
+        if (*(volatile uint32_t *)m->render.geom_fence.cpu==1 && *(volatile uint32_t *)m->render.frag_fence.cpu==1 &&
+            *(volatile uint32_t *)&gc->read_offset==geom_end && *(volatile uint32_t *)&fc->read_offset==frag_end) break;
+        status=KeDelayExecutionThread(KernelMode,FALSE,&delay);if(!NT_SUCCESS(status)) return status;
+    }
+    if(i==200u) return STATUS_IO_TIMEOUT;
+    status=a04_gpu_dma_sync(m->cpu,m->length,TRUE);if(!NT_SUCCESS(status)) return status;
+    status=a04_gpu_firmware_cleanup(s,ROGUE_FWIF_CLEANUP_FWCOMMONCONTEXT,m->render.geom_context_fw);if(!NT_SUCCESS(status)) return status;
+    status=a04_gpu_firmware_cleanup(s,ROGUE_FWIF_CLEANUP_FWCOMMONCONTEXT,m->render.frag_context_fw);if(!NT_SUCCESS(status)) return status;
+    status=a04_gpu_firmware_cleanup(s,ROGUE_FWIF_CLEANUP_HWRTDATA,m->target.data.fw_addr);if(!NT_SUCCESS(status)) return status;
+    status=a04_gpu_firmware_cleanup(s,ROGUE_FWIF_CLEANUP_FREELIST,m->freelists[0].fw_addr);if(!NT_SUCCESS(status)) return status;
+    status=a04_gpu_firmware_cleanup(s,ROGUE_FWIF_CLEANUP_FREELIST,m->freelists[1].fw_addr);if(!NT_SUCCESS(status)) return status;
+    m->cleanup_complete=TRUE;m->poisoned=FALSE;return STATUS_SUCCESS;
 }
 NTSTATUS a04_windows_render_memory_free(struct a04_windows_render_memory *m, BOOLEAN gpu_dma_quiesced)
 {

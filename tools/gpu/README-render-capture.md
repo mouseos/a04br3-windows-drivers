@@ -186,4 +186,8 @@ context switchのpersistent PDSは `pvr_pds_generate_stream_out_terminate_progra
 
 `a04_windows_render_stage_context_sr` は、公開前の所有DMAにshared store／load用PDS定数と命令を配置する。16432バイトの書込み可能state、store 544バイト・load 488バイトの読み取り専用USC範囲、４出力範囲の所有・重複・実PTEを検査し、出力先がすべてゼロの場合だけ書込む。USCの内容・由来と他の後続配置との重複は呼出し側の責任であり、USCコピー、contextレジスタ、fixture、kickには接続していない。これは部分配置のホスト検証で、GPU実行や `sh_alloc_size` の実測を証明しない。
 
+`a04_windows_render_collect_pair` は、別途投入済みの非partial pairに対し、geometry／fragment両fence値と両リングのread offsetが期待値になるまでCPU同期しながら待ち、payloadをCPU同期してからgeometry context、fragment context、HWRT、両freelistのfirmware cleanupを順に要求する実験部品。timeout、同期失敗、cleanup BUSY／失敗時はpoison状態で保持し、後続のcleanupを行わない。成功もMMU退役やGPU DMA停止の証明ではなく、allocationの解放には別途停止とDMA quiescenceが必要。入力pairの安全性を検証せず、kickも発行しない。ホストmockでのみ検証している。
+
+`summarize-shared-size-log.py PRIVATE_FIRMWARE_LOG` は、既に収集された `TA context shared alloc size store 0x..., load 0x...` 形式のfirmware traceだけを集計する。実機へ接続せず、元ログや他の内容を出力しない。ログの出自、記録フィールドと特殊レジスタ103の同一性、未観測値の範囲は証明できない。実機操作と採取は主担当が担当する。
+
 fragment PDS、persistent PDS、shared PDSの各配置は、成功した出力範囲をDMA allocationの寿命中に予約する。別の配置がpaddingを含む予約範囲と重なれば、書込み前に拒否する。未追跡のCPU書込みや別の方法による配置は呼出し側で防ぐ必要があり、この検査はfixture全体の参照閉包やGPU投入を保証しない。

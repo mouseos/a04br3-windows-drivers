@@ -5,18 +5,24 @@
 #include "windows_render_memory.h"
 #include "gpu_mmu.h"
 #include "pvr_rogue_fwif.h"
+#include "pvr_rogue_fwif_client.h"
 static unsigned allocated,freed,cleans,invalidations,fail_sync,fail_sync_at,fail_inv,expect_staged;
+static unsigned cleanup_calls,cleanup_fail_at;
 static void *alloc_buf(PDMA_ADAPTER a,ULONG n,PHYSICAL_ADDRESS *pa,BOOLEAN cache)
 { (void)a;(void)cache;pa->QuadPart=0x10000000u;++allocated;return aligned_alloc(4096,n); }
 static void free_buf(PDMA_ADAPTER a,ULONG n,PHYSICAL_ADDRESS pa,void *p,BOOLEAN cache)
 { (void)a;(void)n;(void)pa;(void)cache;++freed;free(p); }
 unsigned KeGetCurrentIrql(void) { return PASSIVE_LEVEL; }
 NTSTATUS a04_gpu_dma_sync(void *p,ULONG n,BOOLEAN rd)
-{ assert(p && n && !rd);if(expect_staged && n==20u*4096u) { const unsigned char *b=(const unsigned char *)p+A04_RENDER_PAYLOAD_OFFSET+4u*4096u;
+{ assert(p && n);if(expect_staged && !rd && n==20u*4096u) { const unsigned char *b=(const unsigned char *)p+A04_RENDER_PAYLOAD_OFFSET+4u*4096u;
   assert(b[0]==0x40 && b[1]==0x50 && b[4]==8 && b[32]==2 && b[35]==0xf4); }
   ++cleans;return (fail_sync || cleans==fail_sync_at) ? STATUS_DEVICE_CONFIGURATION_ERROR : STATUS_SUCCESS; }
 NTSTATUS a04_gpu_firmware_invalidate_mmu(struct a04_gpu_firmware_state *s)
 { assert(s);++invalidations;return fail_inv ? STATUS_IO_TIMEOUT : STATUS_SUCCESS; }
+NTSTATUS KeDelayExecutionThread(int mode,BOOLEAN alert,const LARGE_INTEGER *delay)
+{ (void)mode;(void)alert;(void)delay;return STATUS_SUCCESS; }
+NTSTATUS a04_gpu_firmware_cleanup(struct a04_gpu_firmware_state *s,unsigned type,uint32_t address)
+{ (void)type;assert(s && address);++cleanup_calls;return cleanup_calls==cleanup_fail_at ? STATUS_DEVICE_BUSY : STATUS_SUCCESS; }
 int main(void)
 {
     DMA_OPERATIONS ops={alloc_buf,free_buf};struct fake_adapter adapter={&ops};
@@ -183,6 +189,19 @@ int main(void)
       before=cleans;inv_before=invalidations;
       assert(a04_windows_render_publish_context(&m)==STATUS_SUCCESS && cleans==before+15 && invalidations==inv_before+1 && m.published);
       assert(a04_windows_render_prepare_freelists(&m,fl)==STATUS_INVALID_PARAMETER);
+      m.render.pair_prepared=1;m.render.hwrt_fw=m.target.data.fw_addr;
+      m.render.frag_end=(uint32_t)(3u*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(struct rogue_fwif_cmd_frag)+2u*sizeof(struct rogue_fwif_ufo));
+      { struct a04_windows_render_memory copy=m;
+        assert(a04_windows_render_collect_pair(&copy)==STATUS_IO_TIMEOUT && copy.poisoned && !cleanup_calls);
+        assert(a04_windows_render_memory_free(&copy,TRUE)==STATUS_DEVICE_BUSY); }
+      *(uint32_t *)m.render.geom_fence.cpu=1;*(uint32_t *)m.render.frag_fence.cpu=1;
+      ((struct rogue_fwif_cccb_ctl *)m.render.geom_control.cpu)->read_offset=(uint32_t)(2u*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(struct rogue_fwif_cmd_geom)+sizeof(struct rogue_fwif_ufo));
+      ((struct rogue_fwif_cccb_ctl *)m.render.frag_control.cpu)->read_offset=m.render.frag_end;
+      { struct a04_windows_render_memory copy=m;cleanup_fail_at=3;
+        assert(a04_windows_render_collect_pair(&copy)==STATUS_DEVICE_BUSY && copy.poisoned && !copy.cleanup_complete && cleanup_calls==3);
+        assert(a04_windows_render_memory_free(&copy,TRUE)==STATUS_DEVICE_BUSY);cleanup_calls=0;cleanup_fail_at=0; }
+      assert(a04_windows_render_collect_pair(&m)==STATUS_SUCCESS && m.cleanup_complete && cleanup_calls==5 && !m.poisoned);
+      assert(a04_windows_render_collect_pair(&m)==STATUS_INVALID_PARAMETER);
       s.processor_released=FALSE;assert(a04_windows_render_memory_free(&m,TRUE)==STATUS_SUCCESS);
     }
     {

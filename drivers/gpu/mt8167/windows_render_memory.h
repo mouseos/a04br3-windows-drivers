@@ -38,6 +38,7 @@ struct a04_windows_render_memory {
     struct a04_gpu_render_target target;
     struct a04_render_hwrt_params target_params;
     BOOLEAN target_prepared;
+    BOOLEAN cleanup_complete;
     struct { uint64_t gpu_va,size; } staged[A04_RENDER_MAX_STAGED];
     size_t staged_count;
 };
@@ -65,6 +66,10 @@ NTSTATUS a04_windows_render_prepare_target(struct a04_windows_render_memory *m,
     const struct a04_render_hwrt_params *params);
 /* Synchronize render objects and publish the VM; never submits a kick. */
 NTSTATUS a04_windows_render_publish_context(struct a04_windows_render_memory *m);
+/* Collect one previously submitted, non-partial pair. Both fence values and
+ * ring read offsets must reach their exact expected values before cleanup.
+ * Serialized caller; this does not submit, retire the MMU, or free memory. */
+NTSTATUS a04_windows_render_collect_pair(struct a04_windows_render_memory *m);
 /* Clean all pages and the bound firmware VM object, then wait for MMU
  * invalidation. Binding does not submit a render context or kick. On failure after the
  * attempt begins keep the allocation and mark it poisoned. */
