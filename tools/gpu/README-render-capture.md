@@ -106,3 +106,13 @@ python3 tools/gpu/summarize-render-csb.py NEW_PRIVATE_CAPTURE_DIR
 `pvr_setup_vertex_buffers` と `pvr_setup_descriptor_mappings` は `pvr_arch_cmd_buffer_alloc_mem` でPDS suballocationを取得し、そのmapped先へconstant-mapに従って直接書く。このため `pvr_gpu_upload_pds` の計測だけでは記録されない。診断では構築先GPUアドレス・範囲・entry種別とオフセット、spill/scratchの情報BOと実バッファのGPU範囲、vertex DOUTUのshader範囲を記録する。host pointerやBOのバイト列はイベントに含めない。control stream dump自体は機密を含み得るので非公開とする。
 
 固定試験の２組で、VDMの `vs_pds_data_base_addr` はvertex属性の直接構築、PDS stateの `pds_data_addr` はdescriptorの直接構築に対応した。観測したvertex entryはliteral32とDOUTU、descriptor entryはliteral32とspecial bufferで、後者にはspillおよびscratchが含まれる。今回のdescriptor各組についてspill領域8192バイト、scratch領域49152バイトの記録があり、それぞれの情報BOとバッファの範囲は記録時点で同じVMのマップ内だった。これは一時診断の結果で、shader命令、全参照の寿命、CPUによる他の書込み、fragment側の完全性を証明しない。固定fixtureは引き続きGPU投入不可。
+
+## PDS定数の再構成
+
+`reconstruct-pds-data.py` は固定試験のvertex属性とdescriptorの２種類のconstant mapについて、型付きentryとGPUアドレスだけからバイト列を組み立てる。生BOは読み込まない。対象以外のentryやサイズ、範囲外のアドレス、重複、記録時点でマップされない依存先、元の構築範囲のFNV値との不一致を拒否する。FNVは衝突耐性のある安全性証明ではなく、literalの由来や全GPU参照の完全性も証明しない。記録と生成物には機密値が含まれる可能性があるため非公開で扱う。
+
+```sh
+python3 tools/gpu/reconstruct-pds-data.py PRIVATE_CAPTURE --index 0 --output NEW_PRIVATE_DIR --experimental-incomplete
+```
+
+`--index 0` と `--index 1` は観測された２組を選ぶ。独立した２回のshimキャプチャで各組を再構成し、構築時のFNV値との一致を確認した。`render_pds_data.c` は対応する配置を、呼出し元が所有するGPU範囲とアクセス権を検査した上で組み立てるホスト検証済み部品で、GPUドライバの実行経路には接続していない。shader命令・fragment・VDM/PPPの全間接参照、固定payload、DMA/kickとの統合、実機検証は未完了であり、出力はGPU投入禁止。
