@@ -1,0 +1,20 @@
+#ifndef MT8167_STREAM_BACKEND_H
+#define MT8167_STREAM_BACKEND_H
+#include <portcls.h>
+/* Internal kernel-only interface. PnP owner supplies a live, referenced
+ * backend; it owns DMA, synchronization, IRQ, clocks and shutdown. Callbacks
+ * are PASSIVE_LEVEL and externally serialized by the adapter. Failed or
+ * ambiguous hardware stop must retain all resources. Failure from allocate
+ * must clean up its own partial allocation. No provider exists yet. */
+struct Mt8167StreamBackend {
+    void *context;
+    void (*reference)(void *);
+    void (*dereference)(void *);
+    NTSTATUS (*allocate)(void *, ULONG, PMDL *, PULONG, PULONG, MEMORY_CACHING_TYPE *);
+    void (*freeBuffer)(void *, PMDL, ULONG);
+    NTSTATUS (*start)(void *);
+    NTSTATUS (*stop)(void *);
+    NTSTATUS (*position)(void *, PKSAUDIO_POSITION);
+    NTSTATUS (*getDeviceDescription)(void *, PDEVICE_DESCRIPTION);
+};
+#endif

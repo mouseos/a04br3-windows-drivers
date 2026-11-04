@@ -31,9 +31,28 @@ class Stream : public IMiniportWaveRTStream {
     volatile LONG refs;
     PPORTWAVERTSTREAM port;
     Mt8167WaveBuffer buffer;
+    Mt8167StreamBackend backend;
+    bool useBackend;
+    PMDL backendMdl;
+    ULONG backendBytes;
+    bool started;
+    bool everStarted;
 public:
-    explicit Stream(PPORTWAVERTSTREAM p): refs(1),port(p),buffer{} { port->AddRef(); }
-    ~Stream() { if (buffer.mdl && !buffer.handedToDevice) Mt8167ReleaseUnpublishedBuffer(&buffer); port->Release(); }
+    explicit Stream(PPORTWAVERTSTREAM p, const Mt8167StreamBackend *b): refs(1),port(p),buffer{},backend{},useBackend(b!=NULL),backendMdl(NULL),backendBytes(0),started(false),everStarted(false) {
+        port->AddRef(); if (b) { backend=*b; backend.reference(backend.context); }
+    }
+    ~Stream() {
+        if (useBackend) {
+            if (started) (void)backend.stop(backend.context);
+            /* No drain proof exists. Retain the backend reference and buffer
+             * after any attempted start, including an ambiguous failure. */
+            if (!everStarted) {
+                if (backendMdl) backend.freeBuffer(backend.context,backendMdl,backendBytes);
+                backend.dereference(backend.context);
+            }
+        } else if (buffer.mdl && !buffer.handedToDevice) Mt8167ReleaseUnpublishedBuffer(&buffer);
+        port->Release();
+    }
     STDMETHODIMP_(NTSTATUS) QueryInterface(REFIID id, PVOID *out) override {
         if (!out) return STATUS_INVALID_PARAMETER; *out=NULL;
         if (IsEqualGUIDAligned(id,IID_IUnknown) || IsEqualGUIDAligned(id,IID_IMiniportWaveRTStream)) {
@@ -44,18 +63,41 @@ public:
     STDMETHODIMP_(ULONG) Release() override { LONG n=InterlockedDecrement(&refs); if(!n) { this->~Stream(); ExFreePoolWithTag(this,AUDIO_TAG); } return (ULONG)n; }
     STDMETHODIMP_(NTSTATUS) SetFormat(PKSDATAFORMAT f) override { return ValidFormat(f)?STATUS_SUCCESS:STATUS_NO_MATCH; }
     STDMETHODIMP_(NTSTATUS) SetState(KSSTATE s) override {
-        if (s==KSSTATE_RUN) return STATUS_DEVICE_NOT_READY;
-        return s==KSSTATE_STOP || s==KSSTATE_ACQUIRE || s==KSSTATE_PAUSE ? STATUS_SUCCESS : STATUS_INVALID_PARAMETER;
+        if (s==KSSTATE_RUN) {
+            if (!useBackend || !backendMdl || started || everStarted) return STATUS_DEVICE_NOT_READY;
+            everStarted=true;
+            NTSTATUS result=backend.start(backend.context); if (NT_SUCCESS(result)) started=true;
+            return result;
+        }
+        if (s!=KSSTATE_STOP && s!=KSSTATE_ACQUIRE && s!=KSSTATE_PAUSE) return STATUS_INVALID_PARAMETER;
+        if (started) { NTSTATUS result=backend.stop(backend.context); started=false; if (!NT_SUCCESS(result)) return result; }
+        return STATUS_SUCCESS;
     }
-    STDMETHODIMP_(NTSTATUS) GetPosition(PKSAUDIO_POSITION p) override { if(!p)return STATUS_INVALID_PARAMETER; p->PlayOffset=0;p->WriteOffset=0;return STATUS_SUCCESS; }
+    STDMETHODIMP_(NTSTATUS) GetPosition(PKSAUDIO_POSITION p) override { if(!p)return STATUS_INVALID_PARAMETER; if(useBackend && started)return backend.position(backend.context,p); p->PlayOffset=0;p->WriteOffset=0;return STATUS_SUCCESS; }
     STDMETHODIMP_(NTSTATUS) AllocateAudioBuffer(ULONG size,PMDL *mdl,PULONG actual,PULONG offset,MEMORY_CACHING_TYPE *cache) override {
         if(!mdl || !actual || !offset || !cache) return STATUS_INVALID_PARAMETER;
         *mdl=NULL;*actual=0;*offset=0;
+        if (useBackend) {
+            if (backendMdl) return STATUS_DEVICE_BUSY;
+            NTSTATUS result=backend.allocate(backend.context,size,mdl,actual,offset,cache);
+            if (NT_SUCCESS(result)) {
+                if (!*mdl || *actual < PAGE_SIZE || *actual > 1048576 || *actual > size ||
+                    (*actual & (PAGE_SIZE - 1)) || *offset || *cache != MmNonCached) {
+                    if (*mdl) backend.freeBuffer(backend.context,*mdl,*actual);
+                    *mdl=NULL; *actual=0; *offset=0;
+                    return STATUS_DEVICE_CONFIGURATION_ERROR;
+                }
+                backendMdl=*mdl;backendBytes=*actual;
+            }
+            return result;
+        }
         NTSTATUS status=Mt8167AllocateBuffer(port,size,&buffer); if(!NT_SUCCESS(status)) return status;
         *mdl=buffer.mdl;*actual=buffer.bytes;*cache=MmNonCached;return STATUS_SUCCESS;
     }
     STDMETHODIMP_(VOID) FreeAudioBuffer(PMDL mdl,ULONG size) override {
-        if (mdl && mdl==buffer.mdl && size==buffer.bytes) (void)Mt8167ReleaseUnpublishedBuffer(&buffer);
+        if (useBackend) {
+            if (mdl && mdl==backendMdl && size==backendBytes && !everStarted) { backend.freeBuffer(backend.context,mdl,size); backendMdl=NULL;backendBytes=0; }
+        } else if (mdl && mdl==buffer.mdl && size==buffer.bytes) (void)Mt8167ReleaseUnpublishedBuffer(&buffer);
     }
     STDMETHODIMP_(VOID) GetHWLatency(KSRTAUDIO_HWLATENCY *p) override { if(p) RtlZeroMemory(p,sizeof(*p)); }
     STDMETHODIMP_(NTSTATUS) GetPositionRegister(KSRTAUDIO_HWREGISTER *) override { return STATUS_NOT_SUPPORTED; }
@@ -63,8 +105,11 @@ public:
 };
 class Miniport : public IMiniportWaveRT {
     volatile LONG refs;
+    Mt8167StreamBackend backend;
+    bool useBackend;
 public:
-    Miniport():refs(1) {}
+    explicit Miniport(const Mt8167StreamBackend *b):refs(1),backend{},useBackend(b!=NULL) { if(b) { backend=*b;backend.reference(backend.context); } }
+    ~Miniport() { if(useBackend) backend.dereference(backend.context); }
     STDMETHODIMP_(NTSTATUS) QueryInterface(REFIID id, PVOID *out) override {
         if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;
         if(IsEqualGUIDAligned(id,IID_IUnknown)||IsEqualGUIDAligned(id,IID_IMiniport)||IsEqualGUIDAligned(id,IID_IMiniportWaveRT)) {
@@ -117,13 +162,18 @@ public:
         if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;
         if(!port || pin!=0 || capture || !ValidFormat(format))return STATUS_NO_MATCH;
         void *mem=ExAllocatePoolWithTag(NonPagedPool,sizeof(Stream),AUDIO_TAG);if(!mem)return STATUS_INSUFFICIENT_RESOURCES;
-        *out=new(mem) Stream(port);return STATUS_SUCCESS;
+        *out=new(mem) Stream(port,useBackend?&backend:NULL);return STATUS_SUCCESS;
     }
-    STDMETHODIMP_(NTSTATUS) GetDeviceDescription(PDEVICE_DESCRIPTION) override { return STATUS_DEVICE_NOT_READY; }
+    STDMETHODIMP_(NTSTATUS) GetDeviceDescription(PDEVICE_DESCRIPTION d) override {
+        if (!d) return STATUS_INVALID_PARAMETER;
+        return useBackend ? backend.getDeviceDescription(backend.context,d) : STATUS_DEVICE_NOT_READY;
+    }
 };
-NTSTATUS Mt8167NewMiniport(PMINIPORTWAVERT *out) {
+NTSTATUS Mt8167NewMiniportWithBackend(PMINIPORTWAVERT *out, const Mt8167StreamBackend *b) {
     if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;
+    if(b && (!b->reference || !b->dereference || !b->allocate || !b->freeBuffer || !b->start || !b->stop || !b->position || !b->getDeviceDescription)) return STATUS_INVALID_PARAMETER;
     void *mem=ExAllocatePoolWithTag(NonPagedPool,sizeof(Miniport),AUDIO_TAG);if(!mem)return STATUS_INSUFFICIENT_RESOURCES;
-    *out=new(mem) Miniport();return STATUS_SUCCESS;
+    *out=new(mem) Miniport(b);return STATUS_SUCCESS;
 }
+NTSTATUS Mt8167NewMiniport(PMINIPORTWAVERT *out) { return Mt8167NewMiniportWithBackend(out,NULL); }
 #endif

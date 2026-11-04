@@ -13,6 +13,15 @@ struct Port : IPortWaveRTStream {
  void FreePagesFromMdl(PMDL) override{freed++;}
  ULONG AddRef() override{return ++refs;} ULONG Release() override{return --refs;}
 };
+struct Back { int refs, frees, starts, stops; bool fail; MDL mdl; };
+static void ref(void *c){((Back*)c)->refs++;}
+static void deref(void *c){((Back*)c)->refs--;}
+static NTSTATUS allocate(void *c,ULONG,PMDL *m,PULONG n,PULONG o,MEMORY_CACHING_TYPE *cache){Back*b=(Back*)c;*m=&b->mdl;*n=8192;*o=0;*cache=MmNonCached;return STATUS_SUCCESS;}
+static void releasebuf(void *c,PMDL,ULONG){((Back*)c)->frees++;}
+static NTSTATUS start(void *c){Back*b=(Back*)c;b->starts++;return b->fail?STATUS_DEVICE_NOT_READY:STATUS_SUCCESS;}
+static NTSTATUS stop(void *c){Back*b=(Back*)c;b->stops++;return b->fail?STATUS_DEVICE_NOT_READY:STATUS_SUCCESS;}
+static NTSTATUS device(void *,PDEVICE_DESCRIPTION d){return d?STATUS_SUCCESS:STATUS_INVALID_PARAMETER;}
+static NTSTATUS pos(void *,PKSAUDIO_POSITION p){p->PlayOffset=4;p->WriteOffset=4;return STATUS_SUCCESS;}
 int main(){
  PMINIPORTWAVERT m=nullptr; assert(!Mt8167NewMiniport(&m) && m);
  PPCFILTER_DESCRIPTOR d=nullptr;assert(!m->GetDescription(&d) && d->pinCount==2);
@@ -26,4 +35,20 @@ int main(){
  PMDL mdl=nullptr;ULONG actual=0,off=0;MEMORY_CACHING_TYPE cache;assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache) && actual==8192 && mdl);
  st->FreeAudioBuffer(mdl,actual); assert(p.freed==1);st->Release();assert(p.refs==1);
  fmt.WaveFormatEx.nChannels=1; assert(m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat)==STATUS_NO_MATCH && !st);m->Release();
+ fmt.WaveFormatEx.nChannels=2; Back b{};Mt8167StreamBackend backend{&b,ref,deref,allocate,releasebuf,start,stop,pos,device};
+ assert(!Mt8167NewMiniportWithBackend(&m,&backend) && b.refs==1);assert(!m->GetDeviceDescription(&b));
+ assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat) && b.refs==2);
+ assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
+ assert(!st->SetState(KSSTATE_RUN));KSAUDIO_POSITION position{};assert(!st->GetPosition(&position) && position.PlayOffset==4);
+ assert(!st->SetState(KSSTATE_STOP));st->FreeAudioBuffer(mdl,actual);assert(!b.frees);
+ assert(st->SetState(KSSTATE_RUN)==STATUS_DEVICE_NOT_READY);st->Release();m->Release();
+ assert(b.refs==1 && b.starts==1 && b.stops==1 && !b.frees);
+ Back b2{};b2.fail=true;backend.context=&b2;assert(!Mt8167NewMiniportWithBackend(&m,&backend));
+ assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat));assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
+ assert(st->SetState(KSSTATE_RUN)==STATUS_DEVICE_NOT_READY);st->FreeAudioBuffer(mdl,actual);st->Release();m->Release();
+ assert(b2.refs==1 && !b2.frees);
+ Back b3{};backend.context=&b3;assert(!Mt8167NewMiniportWithBackend(&m,&backend));
+ assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat));assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
+ assert(!st->SetState(KSSTATE_RUN));b3.fail=true;assert(st->SetState(KSSTATE_STOP)==STATUS_DEVICE_NOT_READY);
+ st->Release();m->Release();assert(b3.stops==1 && b3.refs==1 && !b3.frees);
 }

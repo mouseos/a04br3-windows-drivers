@@ -85,3 +85,15 @@ KeSynchronizeExecution and accumulates serviced IRQ notifications across DPC
 coalescing. This count is only ISR calls serviced by software, not proof of
 elapsed hardware periods. Fault notification is sticky. Both transport and
 IRQ paths are experimental, unconnected and untested in Windows on this SoC.
+
+The miniport now accepts an optional internal `Mt8167StreamBackend` supplied by
+an owning PnP provider. It forwards allocation, format-independent start/stop,
+position and device-description requests and retains a backend reference for
+stream lifetime. The current adapter never supplies one. In its absence the
+diagnostic stream still refuses RUN. After any attempted start, the stream
+intentionally retains the backend reference and does not release its buffer,
+even if stop succeeds: the platform has no proven DMA drain procedure. A failed
+stop is not retried. This is a quarantine/leak, not a finished PnP removal or
+power-management solution. A future provider must enforce serialization,
+resource ownership and stop/failure recovery; the interface itself does not
+prove any of them.
