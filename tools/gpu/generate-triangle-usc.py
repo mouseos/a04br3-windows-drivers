@@ -18,7 +18,8 @@ def generate(ir,ones,out):
     sources=ir/'private-compiler-candidates'
     capture=json.loads((ir/'run-manifest.json').read_text())
     pieces={}
-    for src,name,size,padded in (('0-0.bin','vertex-usc.bin',312,384),('4-1.bin','fragment-usc.bin',360,448)):
+    vsize,vpadded=(176,256) if capture.get('scratchless_vertex') else (312,384)
+    for src,name,size,padded in (('0-0.bin','vertex-usc.bin',vsize,vpadded),('4-1.bin','fragment-usc.bin',360,448)):
         data=(sources/src).read_bytes()
         if len(data)!=size or hashlib.sha256(data).hexdigest()!=capture['private_compiler_sha256'][src]:
             raise ValueError('unexpected candidate size or digest')

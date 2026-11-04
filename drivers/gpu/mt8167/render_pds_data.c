@@ -27,6 +27,29 @@ void a04_render_make_vertex_pds_code(uint8_t vertex[16],uint8_t descriptor[16])
     put32(vertex+8,UINT32_C(0xd3000000));
     put32(descriptor,UINT32_C(0xf0040000));put32(descriptor+4,UINT32_C(0xf4050100));
 }
+void a04_render_make_scratchless_pds_code(uint8_t vertex[16],uint8_t descriptor[16])
+{
+    a04_render_make_vertex_pds_code(vertex,descriptor);
+    put32(descriptor,UINT32_C(0xf4020000));put32(descriptor+4,0);
+}
+int a04_render_make_scratchless_pds_data(const struct a04_render_pds_input *p,
+    const struct a04_render_owned_range *r,size_t n,struct a04_render_pds_data *out)
+{
+    struct a04_render_pds_data result={{0},{0},{0},{0}};
+    if (!p || !out || p->scratch_info_gpu || p->scratch_buffer_gpu || p->descriptor_literal1 ||
+        a04_render_validate_owned_ranges(r,n) || (p->doutu_control&~DOUTU_CONTROL_MASK) ||
+        (p->shader_gpu&3u) || (p->spill_info_gpu&7u) || (p->shader_gpu>>32)!=UINT64_C(0xe0) ||
+        !owned(r,n,p->shader_gpu,176,A04_RENDER_RANGE_READ|A04_RENDER_RANGE_EXEC) ||
+        !owned(r,n,p->spill_info_gpu,12,A04_RENDER_RANGE_READ) ||
+        !owned(r,n,p->spill_buffer_gpu,8192,A04_RENDER_RANGE_READ|A04_RENDER_RANGE_WRITE) ||
+        overlap(p->shader_gpu,176,p->spill_info_gpu,12) || overlap(p->shader_gpu,176,p->spill_buffer_gpu,8192) ||
+        overlap(p->spill_info_gpu,12,p->spill_buffer_gpu,8192)) return -1;
+    put64(result.vertex,p->doutu_control|((uint32_t)p->shader_gpu&UINT32_C(0xfffffffc)));
+    put32(result.vertex+8,p->vertex_literal);put64(result.descriptor,p->spill_info_gpu);
+    put32(result.descriptor+8,p->descriptor_literal0);
+    put64(result.spill_info,p->spill_buffer_gpu);put32(result.spill_info+8,4);
+    *out=result;return 0;
+}
 int a04_render_make_pds_data(const struct a04_render_pds_input *p,
     const struct a04_render_owned_range *r,size_t n,struct a04_render_pds_data *out)
 {

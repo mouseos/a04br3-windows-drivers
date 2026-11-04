@@ -18,20 +18,21 @@ def compare(zero,ones):
     root=pathlib.Path(__file__).parent
     spec=importlib.util.spec_from_file_location('usc_check',root/'check-render-usc.py')
     checker=importlib.util.module_from_spec(spec);spec.loader.exec_module(checker)
-    checker.compare(zero,ones)
+    report=checker.compare(zero,ones)
+    expected=tuple((name,stage,report['vertex_bytes'] if stage==0 else size) for name,stage,size in EXPECTED)
     captures=[]
     for path in (zero,ones):
         path=pathlib.Path(path);m=json.loads((path/'run-manifest.json').read_text())
         if not (m.get('diagnostic_manifest') or {}).get('private_compiler_candidates'):raise ValueError('not private compiler capture')
         recorded=m.get('private_compiler_sha256') or {}
-        if set(recorded)!={x[0] for x in EXPECTED}:raise ValueError('unexpected candidate list')
+        if set(recorded)!={x[0] for x in expected}:raise ValueError('unexpected candidate list')
         actual={p.name for p in (path/'private-compiler-candidates').iterdir()}
         if actual!=set(recorded):raise ValueError('unexpected candidate directory')
         events=[json.loads(x) for x in (path/'events.jsonl').read_bytes().splitlines()]
         pco=[x for x in events if x['event']=='pco_binary' and x['internal']==0 and x['stage'] in (0,4)]
         if len(pco)!=4:raise ValueError('unexpected compiler output count')
         files=[]
-        for (name,stage,size),event in zip(EXPECTED,pco):
+        for (name,stage,size),event in zip(expected,pco):
             p=path/'private-compiler-candidates'/name
             if p.is_symlink() or not p.is_file():raise ValueError('invalid candidate file')
             data=p.read_bytes();digest=hashlib.sha256(data).hexdigest()
@@ -41,7 +42,7 @@ def compare(zero,ones):
         captures.append(files)
     if captures[0]!=captures[1]:raise ValueError('compiler output differs across fill patterns')
     if captures[0][0]!=captures[0][2] or captures[0][1]!=captures[0][3]:raise ValueError('draw shaders differ')
-    return {'compiler_outputs':4,'vertex_bytes':312,'fragment_bytes':360,'gpu_execution_allowed':False,
+    return {'compiler_outputs':4,'vertex_bytes':report['vertex_bytes'],'fragment_bytes':360,'gpu_execution_allowed':False,
             'limitations':['candidate files are private and may contain unverified immediates',
                            'dynamic scratch accesses and full shader semantics are not validated',
                            'matching output is not proof of safe execution or complete reference ownership']}

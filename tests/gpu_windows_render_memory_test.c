@@ -316,6 +316,15 @@ int main(void)
       assert(out[0x93]==0xf0 && out[0x94]==0 && out[0x95]==1 && out[0x97]==0xf4);
       for(unsigned i=0x98;i<0xa0;++i) assert(!out[i]);
       assert(a04_windows_render_stage_vertex_pds_code(&m,0xda00010080ULL,0xda00010090ULL)==STATUS_INVALID_PARAMETER);
+      p.scratch_info_gpu=0;p.scratch_buffer_gpu=0;p.descriptor_literal1=0;p.spill_info_gpu=0xda000100c0ULL;
+      assert(a04_windows_render_stage_scratchless_pds(&m,&p,0xda000100a0ULL,0xda000100b0ULL)==STATUS_SUCCESS);
+      assert(out[0xa0]==0x40 && out[0xa1]==0x50 && out[0xb0]==0xc0 && out[0xb4]==0xda && out[0xb8]==4);
+      assert(out[0xc1]==0x10 && out[0xc8]==4);
+      for(unsigned i=0xbc;i<0xc0;++i) assert(!out[i]);
+      assert(a04_windows_render_stage_scratchless_pds_code(&m,0xda000100d0ULL,0xda000100e0ULL)==STATUS_SUCCESS);
+      assert(out[0xd0]==1 && out[0xd3]==0xf0 && out[0xe0]==0 && out[0xe2]==2 && out[0xe3]==0xf4);
+      for(unsigned i=0xe4;i<0xf0;++i) assert(!out[i]);
+      assert(m.staged_count==11);
       s.processor_released=FALSE;assert(a04_windows_render_memory_free(&m,TRUE)==STATUS_SUCCESS);
     }
     free(s.memory.heap);

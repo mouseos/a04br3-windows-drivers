@@ -34,4 +34,10 @@ int a04_render_make_fragment_pds(uint64_t shader_gpu,uint64_t doutu_control,
 /* Fixed probe: vertex ID DOUTW, DOUTU, HALT; and two descriptor DOUTDs.
  * Sixteen-byte allocations include zero padding. These encode no addresses. */
 void a04_render_make_vertex_pds_code(uint8_t vertex[16],uint8_t descriptor[16]);
+/* Alternate fixed shader with no NIR scratch access. Descriptor contains one
+ * spill-info pointer and one literal; unused output bytes remain zero. */
+int a04_render_make_scratchless_pds_data(const struct a04_render_pds_input *input,
+    const struct a04_render_owned_range *ranges,size_t range_count,
+    struct a04_render_pds_data *out);
+void a04_render_make_scratchless_pds_code(uint8_t vertex[16],uint8_t descriptor[16]);
 #endif

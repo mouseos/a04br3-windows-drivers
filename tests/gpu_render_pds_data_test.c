@@ -37,6 +37,16 @@ int main(void)
     assert(a04_render_make_fragment_pds(0xe000005040ULL,UINT64_C(1)<<33,ranges,4,frag));
     assert(!memcmp(frag,previous,sizeof(frag)));
     assert(a04_render_make_fragment_pds(0x8000001000ULL,0,ranges,4,frag));
+    p.shader_gpu=0xe000005040ULL;p.spill_info_gpu=0x8000001000ULL;p.scratch_info_gpu=0;
+    p.spill_buffer_gpu=0x8000002000ULL;p.scratch_buffer_gpu=0;p.descriptor_literal1=0;
+    assert(!a04_render_make_scratchless_pds_data(&p,ranges,4,&out));
+    assert(word(out.vertex)==0x5040 && word(out.descriptor)==0x1000 && word(out.descriptor+8)==4);
+    assert(word(out.descriptor+12)==0 && word(out.spill_info+8)==4);
+    old=out;p.scratch_buffer_gpu=0x8000004000ULL;
+    assert(a04_render_make_scratchless_pds_data(&p,ranges,4,&out) && !memcmp(&out,&old,sizeof(out)));
+    { uint8_t v[16],d[16];a04_render_make_scratchless_pds_code(v,d);
+      assert(word(v)==0xf0024001 && word(v+4)==0xfc000002 && word(v+8)==0xd3000000 && !word(v+12));
+      assert(word(d)==0xf4020000 && !word(d+4) && !word(d+8) && !word(d+12)); }
     assert(!memcmp(frag,previous,sizeof(frag)));
     return 0;
 }

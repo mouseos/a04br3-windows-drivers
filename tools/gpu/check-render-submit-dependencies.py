@@ -17,7 +17,7 @@ def load(name):
     spec.loader.exec_module(mod)
     return mod
 
-def analyze(events, text):
+def analyze(events, text, scratchless=False):
     def fields(name):
         values=[int(x,16) for x in re.findall(r'^\s*'+name+r'\s*:\s*(0x[0-9a-fA-F]+)',text,re.M)]
         if len(values)!=2: raise ValueError('unsupported control stream')
@@ -54,15 +54,17 @@ def analyze(events, text):
             c=contexts.get(e['context']); link=links[checked]
             if not c or c['type']!=0: raise ValueError('render context unavailable')
             vm=c['vm'];v=vertex[checked];d=descriptor[checked]
-            if not mapped(vm,v,16) or not mapped(vm,d,32) or not active(vm,v,12,'vertex_attributes') or not active(vm,d,24,'descriptor_mappings'):
+            desc_size=12 if scratchless else 24;desc_fetch=16 if scratchless else 32
+            if not mapped(vm,v,16) or not mapped(vm,d,desc_fetch) or not active(vm,v,12,'vertex_attributes') or not active(vm,d,desc_size,'descriptor_mappings'):
                 raise ValueError('PDS data not live')
             for addr in (vertex_code[checked],descriptor_code[checked]):
                 if sum(u[0][0]==vm and u[1]==addr and u[3]=='pds_code' and u[2]>0 for u in uploads)!=1:
                     raise ValueError('PDS code not live')
             shader=shaders.get(v)
-            if not shader or shader['size']!=384 or shader['entry_gpu']!=shader['shader_gpu'] or not mapped(vm,shader['shader_gpu'],384) or not active(vm,shader['shader_gpu'],312,'usc_code'):
+            alloc,code=(256,176) if scratchless else (384,312)
+            if not shader or shader['size']!=alloc or shader['entry_gpu']!=shader['shader_gpu'] or not mapped(vm,shader['shader_gpu'],alloc) or not active(vm,shader['shader_gpu'],code,'usc_code'):
                 raise ValueError('vertex USC not live')
-            for kind,size,block in (('spill',8192,4),('scratch',49152,24)):
+            for kind,size,block in ((('spill',8192,4),) if scratchless else (('spill',8192,4),('scratch',49152,24))):
                 dep=dependencies.get((d,kind))
                 if not dep or dep['buffer_size']!=size or dep['block_size']!=block or not mapped(vm,dep['info_gpu'],12) or not mapped(vm,dep['buffer_gpu'],size):
                     raise ValueError('special buffer not live')
@@ -86,7 +88,7 @@ def check(root):
         raise ValueError('capture hash mismatch')
     load('check-render-vdm-pds').check(root)
     load('check-render-fragment').check(root)
-    return analyze([json.loads(x) for x in events.splitlines()],log.decode('utf-8','replace'))
+    return analyze([json.loads(x) for x in events.splitlines()],log.decode('utf-8','replace'),bool(m.get('scratchless_vertex')))
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('capture');a=p.parse_args()

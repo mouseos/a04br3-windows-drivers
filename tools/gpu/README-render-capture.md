@@ -215,3 +215,9 @@ fragment PDS、persistent PDS、shared PDSの各配置は、成功した出力�
 同診断の `--pco-ir` はNIRを非公開probe.logに記録する。`audit-triangle-nir.py IR_CAPTURE ONES_CAPTURE` は固定probeのsource commit・SHA-256とshader候補の比較に加え、２組の最適化後NIRのintrinsicと定数、scratch格納位置、vertex IDの８倍を使う８バイト読込み、３頂点の非index描画を検査する。固定probeの `vkCmdDraw(...,3,1,0,0)` とVDM挙動を前提とすると読込みは24バイト以内。NIRと実機械語の完全な意味対応、実機のVDM挙動、context switchや他のGPU参照は未証明。`generate-triangle-usc.py --ir IR_CAPTURE --ones ONES_CAPTURE --output NEW_PRIVATE_DIR --experimental-incomplete` は上記検査後のPCO出力をvertex 384バイト・fragment 448バイトへゼロpaddingして非公開出力するが、manifestはGPU実行禁止のままにする。
 
 NIR上の24バイト検査は、物理scratch allocation全体の境界を単独で証明しない。Mesa `pco_trans_nir.c` の `trans_scratch` はshared registerからscratch基底とblock sizeを読み、`local_addr_inst_num` 特殊レジスタをblock sizeに掛けた後にNIR offsetを加える。固定captureのblock size 24・allocation 49152はMesa `rogue_get_total_instance_count` の2048インスタンス分だが、GE8300で特殊レジスタが実際に常に0〜2047となることは未実測。したがって候補を実行可能とせず、値域の根拠を持たない小さいallocationへも接続しない。
+
+`scratchless` 固定probeは `tools/gpu/shaders/triangle-scratchless.vert` を使い、頂点IDの条件式で同じ３頂点を生成する。`run-render-capture.py` に `--scratchless-vertex --pco-ir --pco-fill 00` または `ff` とprivate compiler diagnosticを指定すると、固定probeのsourceとshader headerを新規非公開ディレクトリへ複製し、glslangValidator・spirv-valで新しいvertex SPIR-Vを生成してからshim実行する。元のprobe checkoutは変更しない。manifestにはshader source・SPIR-V・両ツールのハッシュを記録する。
+
+独立した２captureでは、各２描画の最適化後NIRは元と同じ頂点座標・深度を示し、vertex shaderのscratch intrinsicはなかった。grouped PCOも限定された頂点演算と出力命令だけで、vertexのload／storeは観測されなかった。vertex USCは176バイト（256バイト確保）、descriptorはspill情報１件の12バイト（16バイト取得）であり、scratch情報・scratch bufferを参照しない。vertex PDSコード12バイトとdescriptor PDSコード４バイトは、２captureでMesa uploadのFNVと一致した。`a04_windows_render_stage_scratchless_pds` と `_code` はこの別レイアウトを所有DMAへゼロpaddingして配置するが、shaderそのものの信頼性や他の参照を判定せず、既定OFFのまま実行入口には接続していない。元のscratch使用版とデータ・命令を混用しない。
+
+この変更でvertex NIR上のscratch参照は除けるが、spill allocation、context switchのshared state、fragmentやVDM／PPPの全アクセス、USC機械語との意味対応、実機動作は未証明。captureはGPUを実行せず、非公開生成USCは引き続きGPU投入禁止。

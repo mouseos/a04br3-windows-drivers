@@ -16,7 +16,7 @@ def fnv(data):
     for b in data:h=((h^b)*1099511628211)&MASK
     return h
 
-def build(events, text, index=0):
+def build(events, text, index=0, scratchless=False):
     if index not in (0,1):raise ValueError('unsupported index')
     keys=('vs_pds_data_base_addr','pds_data_addr')
     addresses=[]
@@ -54,13 +54,16 @@ def build(events, text, index=0):
         if len(covered)!=size or fnv(out)!=cs[0]['fnv64']:raise ValueError('typed reconstruction mismatch')
         return bytes(out),deps
     vertex,_=construct(addresses[0],'vertex_attributes',12,[(2,2,0),(6,0,0)])
-    descriptor,deps=construct(addresses[1],'descriptor_mappings',24,[(5,0,12),(5,2,13),(2,4,0),(2,5,0)])
-    if set(deps)!= {'spill','scratch'}:raise ValueError('incomplete special buffers')
+    descriptor,deps=construct(addresses[1],'descriptor_mappings',12 if scratchless else 24,
+        [(5,0,12),(2,2,0)] if scratchless else [(5,0,12),(5,2,13),(2,4,0),(2,5,0)])
+    if set(deps)!= ({'spill'} if scratchless else {'spill','scratch'}):raise ValueError('incomplete special buffers')
     # VDM fetches aligned ranges larger than the typed construction. Never
     # copy the unobserved padding from a BO or a host allocation.
-    return {'vertex-pds.bin':vertex,'descriptor-pds.bin':descriptor,
-            'vertex-pds-fetch.bin':vertex+bytes(4),'descriptor-pds-fetch.bin':descriptor+bytes(8),
-            'spill-info.bin':deps['spill'],'scratch-info.bin':deps['scratch']}
+    result={'vertex-pds.bin':vertex,'descriptor-pds.bin':descriptor,
+            'vertex-pds-fetch.bin':vertex+bytes(4),'descriptor-pds-fetch.bin':descriptor+bytes(4 if scratchless else 8),
+            'spill-info.bin':deps['spill']}
+    if not scratchless:result['scratch-info.bin']=deps['scratch']
+    return result
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('capture',type=pathlib.Path);p.add_argument('--output',required=True,type=pathlib.Path);p.add_argument('--index',type=int,default=0);p.add_argument('--experimental-incomplete',action='store_true');a=p.parse_args()
@@ -75,7 +78,7 @@ def main():
     if result['pds_dependency_unmapped'] or result['pds_shader_unmapped'] or result['uploads_ambiguous_vm'] or result['uploads_unmapped_at_observation']:raise SystemExit('GPU mappings incomplete')
     spec=importlib.util.spec_from_file_location('submit',pathlib.Path(__file__).with_name('check-render-submit-dependencies.py'))
     submit=importlib.util.module_from_spec(spec);spec.loader.exec_module(submit);submit.check(a.capture)
-    files=build([json.loads(x) for x in events.splitlines()],log.decode('utf-8','replace'),a.index)
+    files=build([json.loads(x) for x in events.splitlines()],log.decode('utf-8','replace'),a.index,bool(manifest.get('scratchless_vertex')))
     a.output.mkdir(mode=0o700,parents=True,exist_ok=False)
     for name,data in files.items():(a.output/name).write_bytes(data)
     (a.output/'manifest.json').write_text(json.dumps({'gpu_execution_allowed':False,'capture_index':a.index,'files':{k:hashlib.sha256(v).hexdigest() for k,v in files.items()},'limitations':['no shader code','no fragment command stream','FNV is not a cryptographic proof','no hardware validation']},indent=2)+'\n')

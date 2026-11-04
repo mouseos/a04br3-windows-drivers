@@ -35,4 +35,13 @@ class TestPds(unittest.TestCase):
   with self.assertRaises(ValueError):m.build(e,self.text)
   e=copy.deepcopy(self.e);e[2]['value']=4
   with self.assertRaises(ValueError):m.build(e,self.text)
+ def test_scratchless_reconstruction(self):
+  e=copy.deepcopy(self.e[:5]);desc=struct.pack('<QI',0x8000001000,4)
+  e[4].update(size=12,entries=2,fnv64=m.fnv(desc))
+  e += [self.e[5],dict(self.e[7],const_offset=2),self.e[9]]
+  f=m.build(e,self.text,scratchless=True)
+  self.assertEqual(f['descriptor-pds-fetch.bin'],desc+bytes(4))
+  self.assertNotIn('scratch-info.bin',f)
+  e[-1]=dict(e[-1],buffer_size=8191)
+  with self.assertRaises(ValueError):m.build(e,self.text,scratchless=True)
 if __name__=='__main__':unittest.main()

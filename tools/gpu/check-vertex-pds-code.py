@@ -26,12 +26,17 @@ def check(root):
     if hashlib.sha256(data).hexdigest()!=manifest.get('pds_code_hashes_sha256') or hashlib.sha256(log).hexdigest()!=manifest.get('probe_log_sha256'):
         raise ValueError('capture hash')
     rows=[json.loads(x) for x in data.splitlines()];text=log.decode('utf-8','replace')
-    for field,words in CODE.items():
+    codes=dict(CODE)
+    if manifest.get('scratchless_vertex'):
+        shader=pathlib.Path(__file__).with_name('shaders')/'triangle-scratchless.vert'
+        if manifest['scratchless_vertex'].get('source_sha256')!=hashlib.sha256(shader.read_bytes()).hexdigest():raise ValueError('variant source')
+        codes['pds_code_addr']=(0xf4020000,)
+    for field,words in codes.items():
         values=[int(x,16) for x in re.findall(r'^\s*'+field+r'\s*:\s*(0x[0-9a-fA-F]+)',text,re.M)]
         raw=struct.pack('<%dI'%len(words),*words); expected=fnv(raw)
         if len(values)!=2 or any(sum(r['gpu_va']==v and r['size']==len(raw) and r['fnv64']==expected for r in rows)!=1 for v in values):
             raise ValueError('fixed PDS code mismatch')
-    return {'draws':2,'vertex_code_bytes':12,'descriptor_code_bytes':8,'gpu_execution_allowed':False,
+    return {'draws':2,'vertex_code_bytes':12,'descriptor_code_bytes':4 if manifest.get('scratchless_vertex') else 8,'gpu_execution_allowed':False,
             'limitations':['FNV is not collision resistant','shader and indirect GPU references remain unverified',
                            'capture is metadata only and does not execute GPU work']}
 
