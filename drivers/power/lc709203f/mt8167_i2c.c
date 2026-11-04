@@ -10,9 +10,10 @@ int a04_gauge_mt8167_read(void *context, uint8_t address, uint8_t command,
     const struct a04_i2c_io *io;
     uint8_t data[3];
     uint16_t status;
+    uint64_t start, now;
     unsigned n, i;
     if (!adapter || !(io = adapter->io) || !io->read16 || !io->write16 ||
-        !io->delay_us || !response || address != 0x0b || adapter->faulted)
+        !io->delay_us || !adapter->monotonic_ns || !response || address != 0x0b || adapter->faulted)
         return -1;
     /* Caller owns I2C2 and holds its shared controller lock throughout. */
     if (io->read16(io->context, 0x24) & 1u) return -1;
@@ -27,8 +28,13 @@ int a04_gauge_mt8167_read(void *context, uint8_t address, uint8_t command,
     io->write16(io->context, 0x18, 2);
     io->write16(io->context, 0x00, command);
     io->write16(io->context, 0x24, 1);
+    start = adapter->monotonic_ns(io->context);
     for (n = 0; n < 2000; ++n) {
+        now = adapter->monotonic_ns(io->context);
+        if (now < start || now - start >= 10000000u) break;
         status = io->read16(io->context, 0x0c);
+        now = adapter->monotonic_ns(io->context);
+        if (now < start || now - start >= 10000000u) break;
         if (status & 6u) break;
         if (status & 1u) {
             if (((io->read16(io->context, 0x30) >> 4) & 15u) != 3u) break;

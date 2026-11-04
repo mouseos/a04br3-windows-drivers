@@ -5,6 +5,7 @@
 #include "../../bus/mt8167-i2c/pio.h"
 struct a04_gauge_mt8167 {
     const struct a04_i2c_io *io;
+    uint64_t (*monotonic_ns)(void *context);
     int faulted;
 };
 /* Exclusive ownership of initialized I2C2 and a lock shared with charger

@@ -17,11 +17,12 @@ static void wr(void *p, unsigned reg, uint16_t value)
     struct mock *m = p; m->regs[reg / 2] = value;
 }
 static void delay(void *p, unsigned us) { struct mock *m = p; assert(us == 5); ++m->delays; }
+static uint64_t now_ns(void *p) { struct mock *m = p; return (uint64_t)m->delays * 5000; }
 int main(void)
 {
     struct mock m = {{0}, 0, 0, 0};
     struct a04_i2c_io io = {&m, rd, wr, delay};
-    struct a04_gauge_mt8167 a = {&io, 0};
+    struct a04_gauge_mt8167 a = {&io, now_ns, 0};
     uint8_t out[3] = {1, 2, 3};
     assert(!a04_gauge_mt8167_read(&a, 0x0b, 0x09, out));
     assert(out[0] == 0xa0 && out[1] == 0xa1 && out[2] == 0xa2);
