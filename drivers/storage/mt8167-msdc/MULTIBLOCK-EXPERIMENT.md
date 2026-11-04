@@ -2,7 +2,7 @@
 
 この経路は既定OFFで、実機未検証。既存の診断用StorPort実装と同じ制約があり、製品用ドライバではない。書込み、起動用構成、DMA書込みテストとは併用できない。既存の単一セクタ経路を対照として残す。
 
-専用の試験用checkoutで `multiblock_config.h` の `A04_DMA_MULTIBLOCK_EXPERIMENT` の既定値を一時的に `1` にし、`tools/ci/build-wdk81-probe.ps1` に `A04_READONLY_DISK_PROBE=1`、`A04_DMA_PROBE=1`、`A04_DMA_DISK_PROBE=1` を指定してビルドする。必要な既存の診断設定は対象環境に合わせる。あるいは miniport.c のコンパイル時に `-DA04_DMA_MULTIBLOCK_EXPERIMENT=1` を明示する。OFF版とON版は設定・ソース・成果物ハッシュを記録する。設定値1は既定値としてコミットしない。
+`tools/ci/build-wdk81-probe.ps1` に環境変数 `A04_DMA_MULTIBLOCK_EXPERIMENT=1`、`A04_READONLY_DISK_PROBE=1`、`A04_DMA_PROBE=1`、`A04_DMA_DISK_PROBE=1` を指定してビルドする。必要な既存の診断設定は対象環境に合わせる。OFF版とON版は設定・ソース・成果物ハッシュを記録する。設定値1は既定値としてコミットしない。
 
 最大8セクタの読取りを基本DMAでまとめ、CMD18の後にCMD12/R1bとDAT0の完了を待つ。単一セクタは従来どおりCMD17を使う。DMAバッファは4 KiBを確保し、物理連続長・32ビットアドレス範囲を検査する。エラー時は要求を失敗させ、同じコントローラを自動再試行しない。途中まで読んだデータは成功として返さない。DMA停止に失敗した場合はCMD12も送らず、コントローラを失敗状態にする。
 
