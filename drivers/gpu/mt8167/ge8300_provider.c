@@ -93,6 +93,55 @@ static void GpuHex(ULONG value)
     text[8]=0; GpuPrint(text);
 }
 #if A04_GE8300_RENDER_DIAGNOSTIC
+/* Observe firmware-owned counters and pending notifications without consuming
+ * the ring or printing firmware addresses. Firmware may update concurrently. */
+static void GpuRenderFirmwareEvidence(struct a04_gpu_firmware_state *s,ULONG phase)
+{
+    uint8_t *heap;struct rogue_fwif_osinit *os;struct rogue_fwif_hwrinfobuf *hwr;
+    struct rogue_fwif_ccb_ctl *ctl;struct rogue_fwif_fwccb_cmd *ring;
+    uint32_t fw,off,rd,wr,wr_after,idx,reset=0,grow=0,rebuild=0,restart=0,pf=0,other=0;
+    NTSTATUS status=STATUS_INVALID_DEVICE_STATE;
+    if(!s || !s->processor_released || !s->memory.heap || s->runtime.next_free>A04_PVR_HEAP_SIZE ||
+       s->runtime.os_init>A04_PVR_HEAP_SIZE-sizeof(*os) ||
+       s->runtime.firmware_ccb_control>s->runtime.next_free ||
+       sizeof(*ctl)>s->runtime.next_free-s->runtime.firmware_ccb_control ||
+       s->runtime.firmware_ccb>s->runtime.next_free ||
+       32u*sizeof(*ring)>s->runtime.next_free-s->runtime.firmware_ccb) goto fail;
+    heap=s->memory.heap;os=(void *)(heap+s->runtime.os_init);
+    fw=os->rogue_fwif_hwr_info_buf_ctl_fw_addr;off=fw&0x00ffffffu;
+    if((fw&0xff000000u)!=0xc0000000u || off>s->runtime.next_free || sizeof(*hwr)>s->runtime.next_free-off) goto fail;
+    hwr=(void *)(heap+off);ctl=(void *)(heap+s->runtime.firmware_ccb_control);ring=(void *)(heap+s->runtime.firmware_ccb);
+    status=a04_gpu_dma_sync(hwr,sizeof(*hwr),TRUE);if(!NT_SUCCESS(status)) goto fail;
+    status=a04_gpu_dma_sync(ctl,sizeof(*ctl),TRUE);if(!NT_SUCCESS(status)) goto fail;
+    rd=*(volatile uint32_t *)&ctl->read_offset;wr=*(volatile uint32_t *)&ctl->write_offset;
+    if(ctl->wrap_mask!=31u || ctl->cmd_size!=sizeof(*ring) || rd>=32u || wr>=32u) { status=STATUS_DATA_ERROR;goto fail; }
+    status=a04_gpu_dma_sync(ring,32u*sizeof(*ring),TRUE);if(!NT_SUCCESS(status)) goto fail;
+    for(idx=rd;idx!=wr;idx=(idx+1u)&31u) {
+        uint32_t type=*(volatile uint32_t *)&ring[idx].cmd_type;
+        if(type==ROGUE_FWIF_FWCCB_CMD_CONTEXT_RESET_NOTIFICATION) ++reset;
+        else if(type==ROGUE_FWIF_FWCCB_CMD_FREELIST_GROW) ++grow;
+        else if(type==ROGUE_FWIF_FWCCB_CMD_FREELISTS_RECONSTRUCTION) ++rebuild;
+        else if(type==ROGUE_FWIF_FWCCB_CMD_REQUEST_GPU_RESTART) ++restart;
+        else if(type==ROGUE_FWIF_FWCCB_CMD_CONTEXT_FW_PF_NOTIFICATION) ++pf;
+        else ++other;
+    }
+    status=a04_gpu_dma_sync(ctl,sizeof(*ctl),TRUE);if(!NT_SUCCESS(status)) goto fail;
+    wr_after=*(volatile uint32_t *)&ctl->write_offset;
+    GpuPrint("A04GPU FW_EVIDENCE PHASE=");GpuHex(phase);
+    GpuPrint(" HWR=");GpuHex(hwr->hwr_counter);
+    GpuPrint(" GEOM_LOCK=");GpuHex(hwr->hwr_dm_locked_up_count[PVR_FWIF_DM_GEOM]);
+    GpuPrint(" FRAG_LOCK=");GpuHex(hwr->hwr_dm_locked_up_count[PVR_FWIF_DM_FRAG]);
+    GpuPrint(" GEOM_RECOVER=");GpuHex(hwr->hwr_dm_recovered_count[PVR_FWIF_DM_GEOM]);
+    GpuPrint(" FRAG_RECOVER=");GpuHex(hwr->hwr_dm_recovered_count[PVR_FWIF_DM_FRAG]);
+    GpuPrint(" R=");GpuHex(rd);GpuPrint(" W=");GpuHex(wr);
+    GpuPrint(" W_AFTER=");GpuHex(wr_after);GpuPrint(" RESET=");GpuHex(reset);
+    GpuPrint(" GROW=");GpuHex(grow);GpuPrint(" REBUILD=");GpuHex(rebuild);
+    GpuPrint(" RESTART=");GpuHex(restart);GpuPrint(" FW_PF=");GpuHex(pf);
+    GpuPrint(" OTHER=");GpuHex(other);GpuPrint("\n");return;
+fail:
+    GpuPrint("A04GPU FW_EVIDENCE PHASE=");GpuHex(phase);
+    GpuPrint(" ERROR=");GpuHex((ULONG)status);GpuPrint("\n");
+}
 /* CRC-32/ISO-HDLC over bytes in linear framebuffer order. */
 static ULONG GpuCrc32(const UCHAR *p,ULONG length)
 {
@@ -332,7 +381,9 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 #if A04_GE8300_RENDER_DIAGNOSTIC
             if(NT_SUCCESS(c->status.mmu_status) && NT_SUCCESS(c->status.queue_status)) {
                 struct a04_windows_render_diagnostic *d=&c->render_diagnostic;
+                GpuRenderFirmwareEvidence(&c->firmware,0);
                 status=a04_windows_render_diagnostic_run(d,&c->firmware);
+                GpuRenderFirmwareEvidence(&c->firmware,1);
                 if(d->stage==32) {
                     ULONG y;
                     for(y=0;y<64;++y) {
