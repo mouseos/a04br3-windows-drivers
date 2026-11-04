@@ -49,9 +49,9 @@ test: build/gpu_render_context_test build/gpu_render_hwrt_test build/gpu_render_
 	./build/gpu_dma_pages_test
 	./build/gpu_transfer_mapping_test
 
-build/gpu_render_context_test: drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_context.h drivers/gpu/mt8167/render_stream.c drivers/gpu/mt8167/firmware_objects.c tests/gpu_render_context_test.c tests/gpu_render_mesa_fixture.h
+build/gpu_render_context_test: drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_context.h drivers/gpu/mt8167/render_pair.c drivers/gpu/mt8167/render_pair.h drivers/gpu/mt8167/render_stream.c drivers/gpu/mt8167/firmware_objects.c tests/gpu_render_context_test.c tests/gpu_render_mesa_fixture.h
 	mkdir -p build
-	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_stream.c drivers/gpu/mt8167/firmware_objects.c tests/gpu_render_context_test.c -o $@
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_pair.c drivers/gpu/mt8167/render_stream.c drivers/gpu/mt8167/firmware_objects.c tests/gpu_render_context_test.c -o $@
 
 build/gpu_render_hwrt_test: drivers/gpu/mt8167/render_hwrt.c drivers/gpu/mt8167/render_hwrt.h tests/gpu_render_hwrt_test.c
 	mkdir -p build
