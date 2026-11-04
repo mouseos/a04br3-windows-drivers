@@ -7,8 +7,8 @@
 #define MAX_BYTES (512u*1024u)
 static void hex(char *s,uint32_t v,unsigned n) { static const char h[]="0123456789ABCDEF"; while(n) { s[--n]=h[v&15];v>>=4; } }
 static uint32_t crc32(const unsigned char *p,unsigned n) { uint32_t c=~0u;unsigned j;while(n--) { c^=*p++;for(j=0;j<8;j++)c=(c>>1)^(0xedb88320u & (0u-(c&1u))); }return ~c; }
-static int send(HANDLE h,const char *p,DWORD n,DWORD start) { DWORD got; while(GetTickCount()-start<900000u) { if(DeviceIoControl(h,A04_UART_SCREEN_SEND,(void*)p,n,NULL,0,&got,NULL)) return 1; if(GetLastError()!=ERROR_BUSY)return 0;Sleep(5); }return 0; }
-static int send2(HANDLE h,const char *p,DWORD n,DWORD start) { return send(h,p,n,start) && send(h,p,n,start); }
+static int screen_send(HANDLE h,const char *p,DWORD n,DWORD start) { DWORD got; while(GetTickCount()-start<900000u) { if(DeviceIoControl(h,A04_UART_SCREEN_SEND,(void*)p,n,NULL,0,&got,NULL)) return 1; if(GetLastError()!=ERROR_BUSY)return 0;Sleep(5); }return 0; }
+static int send2(HANDLE h,const char *p,DWORD n,DWORD start) { return screen_send(h,p,n,start) && screen_send(h,p,n,start); }
 int main(void)
 {
  HDC screen=NULL,mem=NULL;HBITMAP bitmap=NULL,old=NULL;BITMAPINFO bi;void *pixels=NULL;
