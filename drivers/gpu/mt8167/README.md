@@ -23,7 +23,8 @@ firmwareへのMMUキャッシュ無効化要求は実行カウンターと専用
 GPUによるページ変換と書込みを確認しました。ページの実行中解除は未検証です。
 `a04_gpu_mmu_replace_pages_4k` は既存のleaf範囲と新DMAページを全て検査してから
 置換します。ジョブ終了、旧DMAの保持、テーブル同期とMMU無効化完了は呼出し側の
-責任です。置換自体のGPU実機検証とWDDM DMA連携は未実施です。
+責任です。184c8d6のWinPE試験で保持済みDMAページ間の置換を５回検証しました。
+OSのscatter/gather DMA mappingとWDDM DMA連携は未実施です。
 `dma_pages.c` はOSから取得済みのscatter/gather DMA範囲を4 KiBページ列に
 検証・変換する部品です。OSのDMA取得・解放、ページ固定、キャッシュ同期、
 GPUジョブ寿命の管理は行わず、WDDMにはまだ接続していません。
@@ -125,8 +126,9 @@ Each result and guard is checked. One WinPE run of 150e569 passed all 146
 transfers and clean shutdown. Concurrent jobs, cancellation, display output
 and long-term operation remain unverified.
 The current test also switches both buffers between two sets of pages in a
-retained DMA allocation five times, synchronizes the leaf table and waits for firmware MMU invalidation at
-each switch. The remapping sequence has only been simulated on the host.
+retained DMA allocation five times, synchronizes the leaf table and waits for
+firmware MMU invalidation at each switch. One WinPE run of 184c8d6 passed
+this sequence. Real OS scatter/gather mappings and concurrent use remain untested.
 The internal transfer queue can also append another command after the caller
 has synchronized and observed both the previous fence and an empty queue.
 It handles ring padding at wrap and increments the fence; the caller must
