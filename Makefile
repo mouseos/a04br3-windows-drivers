@@ -271,6 +271,6 @@ build/thermal_devinfo_test: drivers/power/mt8167-thermal/devinfo.c drivers/power
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal drivers/power/mt8167-thermal/devinfo.c tests/thermal_devinfo_test.c -o $@
 
-build/thermal_hardware_test: drivers/power/mt8167-thermal/hardware.c drivers/power/mt8167-thermal/hardware.h tests/thermal_hardware_test.c
+build/thermal_hardware_test: drivers/power/mt8167-thermal/hardware.c drivers/power/mt8167-thermal/hardware.h drivers/power/mt8167-thermal/thermal.c tests/thermal_hardware_test.c
 	mkdir -p build
-	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal drivers/power/mt8167-thermal/hardware.c tests/thermal_hardware_test.c -o $@
+	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal drivers/power/mt8167-thermal/hardware.c drivers/power/mt8167-thermal/thermal.c tests/thermal_hardware_test.c -o $@
