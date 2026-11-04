@@ -18,4 +18,9 @@
 int a04_gpu_mmu_map_4k(uint32_t *pc,uint64_t *pd,uint64_t *pt,
     uint64_t pd_dma,uint64_t pt_dma,uint64_t gpu_va,uint64_t dma,
     size_t page_count,uint64_t flags);
+/* As above, but each GPU page uses a separately supplied DMA address.
+ * The DMA-address array must not overlap any destination page table. */
+int a04_gpu_mmu_map_pages_4k(uint32_t *pc,uint64_t *pd,uint64_t *pt,
+    uint64_t pd_dma,uint64_t pt_dma,uint64_t gpu_va,const uint64_t *pages,
+    size_t page_count,uint64_t flags);
 #endif

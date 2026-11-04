@@ -22,6 +22,13 @@ int main(void)
     if(!a04_gpu_mmu_map_4k(pc,pd,pt,0x12345000,0x6789a000,0,0x80000000,2,0) || pc[0] || pd[0] || pt[0]) return 8;
     if(!a04_gpu_mmu_map_4k(pc,(uint64_t *)(void *)pc,pt,0x12345000,0x6789a000,0,0x80000000,1,0)) return 9;
     if(!a04_gpu_mmu_map_4k(pc,pd,pt,0x12345000,0x12345000,0,0x80000000,1,0)) return 10;
+    memset(pt,0,sizeof(pt));
+    { uint64_t pages[]={0x80000000,0xa0000000,0x90000000};
+      if(a04_gpu_mmu_map_pages_4k(pc,pd,pt,0x12345000,0x6789a000,0,pages,3,0) ||
+         pt[0]!=UINT64_C(0x80000001) || pt[1]!=UINT64_C(0xa0000001) || pt[2]!=UINT64_C(0x90000001)) return 11;
+      memset(pc,0,sizeof(pc)); memset(pd,0,sizeof(pd)); memset(pt,0,sizeof(pt)); pages[2]++;
+      if(!a04_gpu_mmu_map_pages_4k(pc,pd,pt,0x12345000,0x6789a000,0,pages,3,0) || pc[0] || pd[0] || pt[0]) return 12;
+      if(!a04_gpu_mmu_map_pages_4k(pc,pd,pt,0x12345000,0x6789a000,0,pt,3,0)) return 13; }
     puts("GE8300 GPU page table encoding and rejected mappings passed");
     return 0;
 }

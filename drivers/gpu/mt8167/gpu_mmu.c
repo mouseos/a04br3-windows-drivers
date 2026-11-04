@@ -6,29 +6,44 @@
 #define ALLOWED_FLAGS (A04_GPU_MMU_READ_ONLY|A04_GPU_MMU_COHERENT|A04_GPU_MMU_SLC_BYPASS)
 static int aligned_address(uint64_t address)
 { return address<ADDRESS_LIMIT && !(address&(A04_GPU_PAGE_SIZE-1u)); }
-static int overlaps(const void *a,const void *b)
+static int overlaps(const void *a,size_t a_size,const void *b,size_t b_size)
 {
     uintptr_t x=(uintptr_t)a,y=(uintptr_t)b;
-    return x<=y ? y-x<A04_GPU_PAGE_SIZE : x-y<A04_GPU_PAGE_SIZE;
+    return x<=y ? y-x<a_size : x-y<b_size;
 }
-int a04_gpu_mmu_map_4k(uint32_t *pc,uint64_t *pd,uint64_t *pt,
+static int map_4k(uint32_t *pc,uint64_t *pd,uint64_t *pt,
     uint64_t pd_dma,uint64_t pt_dma,uint64_t gpu_va,uint64_t dma,
-    size_t page_count,uint64_t flags)
+    const uint64_t *pages,size_t page_count,uint64_t flags)
 {
     size_t i,pc_index,pd_index,pt_index; uint32_t pc_entry; uint64_t pd_entry;
     if (!pc || !pd || !pt || ((uintptr_t)pc&3u) || ((uintptr_t)pd&7u) || ((uintptr_t)pt&7u) ||
-        overlaps(pc,pd) || overlaps(pc,pt) || overlaps(pd,pt) ||
+        overlaps(pc,A04_GPU_PAGE_SIZE,pd,A04_GPU_PAGE_SIZE) ||
+        overlaps(pc,A04_GPU_PAGE_SIZE,pt,A04_GPU_PAGE_SIZE) ||
+        overlaps(pd,A04_GPU_PAGE_SIZE,pt,A04_GPU_PAGE_SIZE) ||
         !aligned_address(pd_dma) || !aligned_address(pt_dma) || pd_dma==pt_dma ||
-        !aligned_address(gpu_va) || !aligned_address(dma) || !page_count || page_count>512u ||
-        (flags&~ALLOWED_FLAGS) || page_count>(ADDRESS_LIMIT-dma)/A04_GPU_PAGE_SIZE ||
+        !aligned_address(gpu_va) || !page_count || page_count>512u ||
+        (pages && ((uintptr_t)pages&7u)) ||
+        (!pages && (!aligned_address(dma) || page_count>(ADDRESS_LIMIT-dma)/A04_GPU_PAGE_SIZE)) ||
+        (flags&~ALLOWED_FLAGS) ||
         page_count>(ADDRESS_LIMIT-gpu_va)/A04_GPU_PAGE_SIZE) return -1;
+    if (pages && (overlaps(pages,page_count*sizeof(*pages),pc,A04_GPU_PAGE_SIZE) ||
+                  overlaps(pages,page_count*sizeof(*pages),pd,A04_GPU_PAGE_SIZE) ||
+                  overlaps(pages,page_count*sizeof(*pages),pt,A04_GPU_PAGE_SIZE))) return -1;
     pc_index=(size_t)(gpu_va>>30); pd_index=(size_t)((gpu_va>>21)&511u);
     pt_index=(size_t)((gpu_va>>12)&511u);
     if (page_count>512u-pt_index) return -1;
     pc_entry=(uint32_t)(pd_dma>>8)|1u; pd_entry=pt_dma|1u;
     if ((pc[pc_index] && pc[pc_index]!=pc_entry) || (pd[pd_index] && pd[pd_index]!=pd_entry)) return -1;
-    for (i=0;i<page_count;++i) if (pt[pt_index+i]) return -1;
-    for (i=0;i<page_count;++i) pt[pt_index+i]=(dma+i*(uint64_t)A04_GPU_PAGE_SIZE)|flags|1u;
+    for (i=0;i<page_count;++i)
+        if (pt[pt_index+i] || (pages && !aligned_address(pages[i]))) return -1;
+    for (i=0;i<page_count;++i)
+        pt[pt_index+i]=(pages ? pages[i] : dma+i*(uint64_t)A04_GPU_PAGE_SIZE)|flags|1u;
     pd[pd_index]=pd_entry; pc[pc_index]=pc_entry;
     return 0;
 }
+int a04_gpu_mmu_map_4k(uint32_t *pc,uint64_t *pd,uint64_t *pt,
+    uint64_t pd_dma,uint64_t pt_dma,uint64_t gpu_va,uint64_t dma,size_t page_count,uint64_t flags)
+{ return map_4k(pc,pd,pt,pd_dma,pt_dma,gpu_va,dma,0,page_count,flags); }
+int a04_gpu_mmu_map_pages_4k(uint32_t *pc,uint64_t *pd,uint64_t *pt,
+    uint64_t pd_dma,uint64_t pt_dma,uint64_t gpu_va,const uint64_t *pages,size_t page_count,uint64_t flags)
+{ return pages ? map_4k(pc,pd,pt,pd_dma,pt_dma,gpu_va,0,pages,page_count,flags) : -1; }
