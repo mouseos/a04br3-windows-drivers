@@ -38,6 +38,8 @@ MT6630向けの利用可能なWindows RT ARM32ドライバは今回の一次資�
 
 `identity.c` は供給されたCISのMANFID tupleを境界・重複検査し037a:6630を判定する。
 `sdio_args.h` はCMD52/53引数とR5エラーを純粋な計算として扱い、送信はしない。
+`transport.c` はcallbackに対してCMD53を分割し、範囲外・FIFO非整列を拒否、
+転送失敗後はpoisonする。Windowsバス・MMIO・firmwareに接続していない。
 `ownership.h` はhost、共有clock/GPIO、コンボ機能、firmware、IRQの各条件と障害後の
 poisonを管理する部品であり、真の排他やpower lifetimeの証明ではない。
 `make build/mt6630_identity_test build/mt6630_sdio_args_test` の後に両テストを実行する。

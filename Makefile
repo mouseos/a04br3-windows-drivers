@@ -588,8 +588,13 @@ build/mt6630_sdio_args_test: drivers/network/mt6630/sdio_args.h tests/mt6630_sdi
 	$(CC) $(CFLAGS) -Idrivers/network/mt6630 tests/mt6630_sdio_args_test.c -o $@
 
 .PHONY: test-mt6630
-test-mt6630: build/mt6630_identity_test build/mt6630_sdio_args_test
+test-mt6630: build/mt6630_identity_test build/mt6630_sdio_args_test build/mt6630_transport_test
 	./build/mt6630_identity_test
 	./build/mt6630_sdio_args_test
+	./build/mt6630_transport_test
 
 test: test-mt6630
+
+build/mt6630_transport_test: drivers/network/mt6630/transport.c drivers/network/mt6630/transport.h drivers/network/mt6630/sdio_args.h tests/mt6630_transport_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/transport.c tests/mt6630_transport_test.c -o $@
