@@ -24,6 +24,9 @@ GPUによるページ変換と書込みを確認しました。ページの実�
 `a04_gpu_mmu_replace_pages_4k` は既存のleaf範囲と新DMAページを全て検査してから
 置換します。ジョブ終了、旧DMAの保持、テーブル同期とMMU無効化完了は呼出し側の
 責任です。置換自体のGPU実機検証とWDDM DMA連携は未実施です。
+`dma_pages.c` はOSから取得済みのscatter/gather DMA範囲を4 KiBページ列に
+検証・変換する部品です。OSのDMA取得・解放、ページ固定、キャッシュ同期、
+GPUジョブ寿命の管理は行わず、WDDMにはまだ接続していません。
 
 12ccaeeのWinPE実機試験では、BRN65273向け２領域を含むGPUページテーブルと
 firmware VMを準備し、compute NULL/update queueのフェンス応答、power-offと
