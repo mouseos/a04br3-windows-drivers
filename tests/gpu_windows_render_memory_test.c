@@ -41,6 +41,8 @@ NTSTATUS a04_gpu_firmware_submit_kick(struct a04_gpu_firmware_state *s,const str
     uint8_t *p=(uint8_t *)m->cpu+A04_RENDER_PAYLOAD_OFFSET+65u*4096u;unsigned x,y,i;
     assert(m->target_params.region_gpu==UINT64_C(0xdbf0000000));
     assert(((struct rogue_fwif_hwrtdata *)m->target.data.cpu)->rgn_header_dev_addr==UINT64_C(0xdbf0000000));
+    ((uint8_t *)m->cpu)[A04_RENDER_PAYLOAD_OFFSET+1179u*4096u+3u*5u+4u]=1;
+    ((uint8_t *)m->cpu)[A04_RENDER_PAYLOAD_OFFSET+70u*4096u+7u*8u+7u]=1;
     for(i=0;i<4096u;++i) assert(p[4*i]==0xa5 && p[4*i+1]==0x5a && p[4*i+2]==0xc3 && p[4*i+3]==0x7e);
     *(uint32_t *)m->render.geom_fence.cpu=1;*(uint32_t *)m->render.frag_fence.cpu=2;
     ((struct rogue_fwif_cccb_ctl *)m->render.geom_control.cpu)->read_offset=(uint32_t)(2u*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(struct rogue_fwif_cmd_geom)+sizeof(struct rogue_fwif_ufo));
@@ -570,6 +572,7 @@ int main(void)
       assert(a04_windows_render_diagnostic_run(&d,&s)==STATUS_SUCCESS);
       assert(d.stage==32 && d.background_pixels==2989 && d.triangle_pixels==1107 && !d.other_pixels && !d.spatial_mismatch);
       assert(d.memory.cleanup_complete && d.memory.bounded_states_checked && cleanup_calls==5 && kick_calls==2);
+      assert(d.memory.tile_evidence_valid && d.memory.region_nonzero_slots==8u && d.memory.tpc_nonzero_slots==128u);
       assert(a04_windows_render_diagnostic_run(&d,&s)==STATUS_INVALID_PARAMETER);
       diagnostic_mock=NULL;s.processor_released=FALSE;assert(a04_windows_render_memory_free(&d.memory,TRUE)==STATUS_SUCCESS); }
     { struct a04_windows_render_diagnostic d={0};s.processor_released=TRUE;cleanup_calls=0;kick_calls=0;kick_fail_at=1;diagnostic_mock=&d;

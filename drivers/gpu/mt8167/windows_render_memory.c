@@ -1446,6 +1446,26 @@ NTSTATUS a04_windows_render_submit_pair(struct a04_windows_render_memory *m)
     m->kick_submitted=TRUE;m->poisoned=FALSE;
     return STATUS_SUCCESS;
 }
+/* The fixed SIPF1 capture allocates 16 five-byte headers and 16 eight-byte
+ * tail pointers. Record only which raw slots are nonzero; their ordering and
+ * interpretation are not asserted and no GPU address is exposed. */
+static int render_nonzero_slots(const struct a04_windows_render_memory *m,uint64_t gpu,
+    size_t width,uint32_t *mask)
+{
+    size_t i,j,k,len=width*16u;uint64_t off=0;unsigned found=0;uint32_t bits=0;
+    if (!mask || !writable_range(m,gpu,len,0)) return 0;
+    for(i=0;i<m->map_count;++i) {
+        const struct a04_windows_render_map *r=&m->maps[i];uint64_t bytes=(uint64_t)r->pages*PAGE;
+        if (!(r->mmu_flags&(A04_GPU_MMU_READ_ONLY|A04_GPU_MMU_PM_FW_PROTECT)) &&
+            gpu>=r->gpu_va && len<=bytes && gpu-r->gpu_va<=bytes-len) {
+            off=A04_RENDER_PAYLOAD_OFFSET+(uint64_t)r->payload_page*PAGE+gpu-r->gpu_va;++found;
+        }
+    }
+    if(found!=1 || off>m->length || len>m->length-off) return 0;
+    for(j=0;j<16u;++j) for(k=0;k<width;++k)
+        if(((const uint8_t *)m->cpu)[off+j*width+k]) { bits|=1u<<j;break; }
+    *mask=bits;return 1;
+}
 NTSTATUS a04_windows_render_collect_pair(struct a04_windows_render_memory *m)
 {
     struct a04_gpu_firmware_state *s;struct rogue_fwif_cccb_ctl *gc,*fc;
@@ -1494,6 +1514,11 @@ NTSTATUS a04_windows_render_collect_pair(struct a04_windows_render_memory *m)
     if(i==200u) return STATUS_IO_TIMEOUT;
     status=a04_gpu_dma_sync(m->cpu,m->length,TRUE);if(!NT_SUCCESS(status)) return status;
     m->completion_observed=TRUE;
+    if(m->target_params.width==64u && m->target_params.height==64u &&
+       m->target_params.region_header_size==16u && m->target_params.tpc_size==128u &&
+       render_nonzero_slots(m,m->target_params.region_gpu,5u,&m->region_nonzero_slots) &&
+       render_nonzero_slots(m,m->target_params.tpc_gpu,8u,&m->tpc_nonzero_slots))
+        m->tile_evidence_valid=TRUE;
     observed=a04_windows_render_check_bounded_states(m);
     status=a04_gpu_firmware_cleanup(s,ROGUE_FWIF_CLEANUP_FWCOMMONCONTEXT,m->render.geom_context_fw);if(!NT_SUCCESS(status)) return status;
     status=a04_gpu_firmware_cleanup(s,ROGUE_FWIF_CLEANUP_FWCOMMONCONTEXT,m->render.frag_context_fw);if(!NT_SUCCESS(status)) return status;

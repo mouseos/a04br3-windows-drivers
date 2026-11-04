@@ -423,6 +423,9 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
                 GpuPrint(" GEOM_END=");GpuHex(d->memory.geom_end_expected);
                 GpuPrint(" FRAG_READ=");GpuHex(d->memory.frag_read_snapshot);
                 GpuPrint(" FRAG_END=");GpuHex(d->memory.frag_end_expected);GpuPrint("\n");
+                GpuPrint("A04GPU TILE_SLOTS VALID=");GpuHex(d->memory.tile_evidence_valid);
+                GpuPrint(" REGION_NONZERO=");GpuHex(d->memory.region_nonzero_slots);
+                GpuPrint(" TPC_NONZERO=");GpuHex(d->memory.tpc_nonzero_slots);GpuPrint("\n");
                 GpuRenderPixels(d);
             }
 #endif

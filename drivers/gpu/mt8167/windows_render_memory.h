@@ -47,6 +47,8 @@ struct a04_windows_render_memory {
     BOOLEAN target_prepared;
     BOOLEAN cleanup_complete;
     BOOLEAN completion_observed,bounded_states_checked;
+    BOOLEAN tile_evidence_valid;
+    uint32_t region_nonzero_slots,tpc_nonzero_slots;
     BOOLEAN fence_snapshot_valid;
     uint32_t geom_fence_snapshot,frag_fence_snapshot,geom_read_snapshot,frag_read_snapshot;
     uint32_t geom_end_expected,frag_end_expected,frag_fence_expected;
