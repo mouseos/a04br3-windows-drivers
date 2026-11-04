@@ -107,12 +107,13 @@ NTSTATUS a04_windows_render_diagnostic_run(struct a04_windows_render_diagnostic 
     pixels=(const uint8_t *)m->cpu+Z+65u*4096u;
     /* Mesa pvr_memlayout layout=1 is linear, stride=64 pixels. */
     for(y=0;y<64;++y) for(x=0;x<64;++x) {
-        int bg,tri,edge,inside;const uint8_t *p=pixels+4u*(y*64u+x);
+        int bg,tri,zero,edge,inside;const uint8_t *p=pixels+4u*(y*64u+x);
         bg=p[0]==0x22 && p[1]==0x44 && p[2]==0x66 && p[3]==0xff;
         tri=p[0]==0xff && p[1]==0 && p[2]==0xff && p[3]==0xff;
+        zero=p[0]==0 && p[1]==0 && p[2]==0 && p[3]==0;
         if(bg) { ++d->background_pixels;d->background_rows[y][x/32u]|=1u<<(x%32u); }
         else if(tri) { ++d->triangle_pixels;d->triangle_rows[y][x/32u]|=1u<<(x%32u); }
-        else ++d->other_pixels;
+        else { ++d->other_pixels; if(zero) { ++d->zero_pixels;d->zero_rows[y][x/32u]|=1u<<(x%32u); } }
         edge=x>=8u && x<49u && y>=8u && x+y==63u;
         inside=x>=8u && x<49u && y>=8u && x+y<63u;
         if(!edge && ((inside && !tri) || (!inside && !bg))) ++d->spatial_mismatch;

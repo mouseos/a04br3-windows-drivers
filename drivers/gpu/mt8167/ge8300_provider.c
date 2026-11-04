@@ -312,7 +312,9 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
                         GpuPrint(" LO=");GpuHex(d->triangle_rows[y][0]);
                         GpuPrint(" HI=");GpuHex(d->triangle_rows[y][1]);
                         GpuPrint(" BGLO=");GpuHex(d->background_rows[y][0]);
-                        GpuPrint(" BGHI=");GpuHex(d->background_rows[y][1]);GpuPrint("\n");
+                        GpuPrint(" BGHI=");GpuHex(d->background_rows[y][1]);
+                        GpuPrint(" ZLO=");GpuHex(d->zero_rows[y][0]);
+                        GpuPrint(" ZHI=");GpuHex(d->zero_rows[y][1]);GpuPrint("\n");
                     }
                 }
                 GpuPrint("A04GPU RENDER STATUS=");GpuHex((ULONG)status);
@@ -320,6 +322,7 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
                 GpuPrint(" BG=");GpuHex(d->background_pixels);
                 GpuPrint(" TRI=");GpuHex(d->triangle_pixels);
                 GpuPrint(" OTHER=");GpuHex(d->other_pixels);
+                GpuPrint(" ZERO=");GpuHex(d->zero_pixels);
                 GpuPrint(" MISMATCH=");GpuHex(d->spatial_mismatch);
                 GpuPrint(" BOUNDED=");GpuHex(d->memory.bounded_states_checked);
                 GpuPrint(" B0_VALID=");GpuHex(d->memory.bounded_states[0].valid);
