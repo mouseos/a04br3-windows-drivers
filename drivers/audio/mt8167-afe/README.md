@@ -97,3 +97,33 @@ stop is not retried. This is a quarantine/leak, not a finished PnP removal or
 power-management solution. A future provider must enforce serialization,
 resource ownership and stop/failure recovery; the interface itself does not
 prove any of them.
+
+With all three diagnostic flags (`A04_MT8167_WAVERT_EXPERIMENTAL`,
+`A04_MT8167_WAVERT_DIAGNOSTIC`, `A04_MT8167_OWNER_DIAGNOSTIC`) set to 1,
+the adapter gets its PDO via PortCls, creates a referenced backend with a Windows
+DMA adapter and passes it to the WaveRT miniport. The backend allocates only
+unexposed common buffers and always rejects RUN and device-description requests.
+PnP stop, surprise removal and remove revoke the owner and drop the adapter's
+reference before forwarding the IRP to PortCls; outstanding stream references
+keep the owner and DMA adapter alive. This is untested diagnostic code, not a
+verified Windows PnP/remove/power implementation. It has no INF, its ACPI node
+is disabled, and it never maps AFE, connects IRQ, starts DMA or programs power.
+Default builds compile the owner path out.
+
+The board Linux driver disables DL1 and then disables/clears IRQ on STOP, but
+its code does not explain when outstanding bus transfers have completed.
+The mainline [MT8365 AFE driver](https://github.com/torvalds/linux/blob/master/sound/soc/mediatek/mt8365/mt8365-afe-pcm.c)
+is another SoC and cannot establish MT8167 drain semantics. Neither a cleared
+bit nor a stationary CUR is accepted as a drain proof. No backend release of a
+hardware-exposed common buffer has been added.
+
+The diagnostic PnP backend copies only one exclusive, level-sensitive
+translated IRQ descriptor (vector, level and affinity); it refuses access after
+revocation. It does **not** connect that IRQ. The observed descriptor alone is
+not proof of the correct route or ownership of shared clock/PWRAP resources.
+The MT8167 board driver's STOP path clears the DL1 enable and disables IRQ;
+its source does not document drain or outstanding bus transactions. The
+[mainline MediaTek common FE STOP implementation at 5542791](https://github.com/torvalds/linux/blob/5542791d509d07d5e2e9d089f6e0b805c755eee8/sound/soc/mediatek/common/mtk-afe-fe-dai.c)
+also clears a memif enable bit, but neither its source nor the MT8365 driver
+establishes the MT8167 drain contract. Do not use this as evidence for
+freeing exposed DMA or unmapping registers.

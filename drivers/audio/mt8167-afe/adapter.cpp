@@ -2,6 +2,20 @@
 #include <portcls.h>
 #include "wavert_miniport.h"
 #include "wavert_registration.h"
+#if defined(A04_MT8167_OWNER_DIAGNOSTIC) && A04_MT8167_OWNER_DIAGNOSTIC && defined(A04_MT8167_WAVERT_DIAGNOSTIC) && A04_MT8167_WAVERT_DIAGNOSTIC && defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
+#include "pnp_backend.h"
+struct Mt8167DeviceExtension { ULONG_PTR portclsReserved[PORT_CLASS_DEVICE_EXTENSION_SIZE / sizeof(ULONG_PTR)]; Mt8167PnpBackend *owner; };
+static NTSTATUS Mt8167PnpDispatch(PDEVICE_OBJECT device,PIRP irp)
+{
+    PIO_STACK_LOCATION stack=IoGetCurrentIrpStackLocation(irp);
+    if (stack->MinorFunction==IRP_MN_STOP_DEVICE || stack->MinorFunction==IRP_MN_SURPRISE_REMOVAL || stack->MinorFunction==IRP_MN_REMOVE_DEVICE) {
+        Mt8167DeviceExtension *ext=static_cast<Mt8167DeviceExtension *>(device->DeviceExtension);
+        Mt8167PnpBackend *owner=static_cast<Mt8167PnpBackend *>(InterlockedExchangePointer(reinterpret_cast<PVOID volatile *>(&ext->owner),NULL));
+        if (owner) { Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner); }
+    }
+    return PcDispatchIrp(device,irp);
+}
+#endif
 #if defined(A04_MT8167_WAVERT_DIAGNOSTIC) && A04_MT8167_WAVERT_DIAGNOSTIC && defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
 #include "resource_check.h"
 #endif
@@ -28,11 +42,28 @@ static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device, PIRP irp,
 #if defined(A04_MT8167_WAVERT_DIAGNOSTIC) && A04_MT8167_WAVERT_DIAGNOSTIC && defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
     if (!Mt8167ResourcesValid(resources)) return STATUS_DEVICE_CONFIGURATION_ERROR;
     PMINIPORTWAVERT miniport = NULL;
-    NTSTATUS status = Mt8167NewMiniport(&miniport);
+    NTSTATUS status;
+#if defined(A04_MT8167_OWNER_DIAGNOSTIC) && A04_MT8167_OWNER_DIAGNOSTIC
+    Mt8167DeviceExtension *ext=static_cast<Mt8167DeviceExtension *>(device->DeviceExtension);
+    PDEVICE_OBJECT pdo=NULL;
+    Mt8167PnpBackend *owner=NULL;
+    if (ext->owner) return STATUS_DEVICE_BUSY;
+    status=PcGetPhysicalDeviceObject(device,&pdo);
+    if (!NT_SUCCESS(status) || !pdo) return NT_SUCCESS(status)?STATUS_DEVICE_CONFIGURATION_ERROR:status;
+    status=Mt8167PnpBackendCreate(pdo,resources,&owner);
+    if (!NT_SUCCESS(status)) return status;
+    status=Mt8167NewMiniportWithBackend(&miniport,Mt8167PnpBackendInterface(owner));
+    if (NT_SUCCESS(status)) { status=Mt8167RegisterWaveRt(device,irp,resources,miniport);miniport->Release(); }
+    if (!NT_SUCCESS(status)) { Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);return status; }
+    ext->owner=owner;
+    return status;
+#else
+    status = Mt8167NewMiniport(&miniport);
     if (!NT_SUCCESS(status)) return status;
     status = Mt8167RegisterWaveRt(device, irp, resources, miniport);
     miniport->Release();
     return status;
+#endif
 #else
     UNREFERENCED_PARAMETER(device);
     UNREFERENCED_PARAMETER(irp);
@@ -43,10 +74,17 @@ static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device, PIRP irp,
 }
 NTSTATUS Mt8167AddDevice(PDRIVER_OBJECT driver, PDEVICE_OBJECT pdo)
 {
-    return PcAddAdapterDevice(driver, pdo, PCPFNSTARTDEVICE(Mt8167StartDevice),
-                              1, 0);
+#if defined(A04_MT8167_OWNER_DIAGNOSTIC) && A04_MT8167_OWNER_DIAGNOSTIC && defined(A04_MT8167_WAVERT_DIAGNOSTIC) && A04_MT8167_WAVERT_DIAGNOSTIC && defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
+    return PcAddAdapterDevice(driver,pdo,PCPFNSTARTDEVICE(Mt8167StartDevice),1,sizeof(Mt8167DeviceExtension));
+#else
+    return PcAddAdapterDevice(driver, pdo, PCPFNSTARTDEVICE(Mt8167StartDevice),1,0);
+#endif
 }
 extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING path)
 {
-    return PcInitializeAdapterDriver(driver, path, Mt8167AddDevice);
+    NTSTATUS status=PcInitializeAdapterDriver(driver, path, Mt8167AddDevice);
+#if defined(A04_MT8167_OWNER_DIAGNOSTIC) && A04_MT8167_OWNER_DIAGNOSTIC && defined(A04_MT8167_WAVERT_DIAGNOSTIC) && A04_MT8167_WAVERT_DIAGNOSTIC && defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
+    if (NT_SUCCESS(status)) driver->MajorFunction[IRP_MJ_PNP]=Mt8167PnpDispatch;
+#endif
+    return status;
 }

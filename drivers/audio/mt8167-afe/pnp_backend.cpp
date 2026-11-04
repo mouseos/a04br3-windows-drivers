@@ -1,0 +1,101 @@
+#include "pnp_backend.h"
+#if defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
+#include "common_dma.h"
+#include "dma_adapter.h"
+#define OWNER_TAG 'OwnA'
+struct Mt8167PnpBackend {
+    Mt8167StreamBackend iface;
+    volatile LONG refs;
+    FAST_MUTEX mutex;
+    BOOLEAN online;
+    PDEVICE_OBJECT pdo;
+    PDMA_ADAPTER adapter;
+    Mt8167CommonDma buffer;
+    Mt8167PnpInterrupt interrupt;
+};
+static void OwnerReference(void *ctx) { Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx); InterlockedIncrement(&o->refs); }
+static void OwnerDereference(void *ctx)
+{
+    Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
+    if (InterlockedDecrement(&o->refs)) return;
+    /* RUN is always refused, so all buffers allocated here remain unexposed. */
+    if (o->buffer.mdl && !NT_SUCCESS(Mt8167CommonReleaseUnexposed(&o->buffer))) {
+        /* Never release DMA adapter/PDO when buffer lifetime is uncertain. */
+        return;
+    }
+    o->adapter->DmaOperations->PutDmaAdapter(o->adapter);
+    ObDereferenceObject(o->pdo);
+    ExFreePoolWithTag(o,OWNER_TAG);
+}
+static NTSTATUS OwnerAllocate(void *ctx,ULONG bytes,PMDL *mdl,PULONG actual,PULONG offset,MEMORY_CACHING_TYPE *cache)
+{
+    Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
+    NTSTATUS status;
+    if (!mdl || !actual || !offset || !cache) return STATUS_INVALID_PARAMETER;
+    *mdl=NULL;*actual=0;*offset=0;
+    ExAcquireFastMutex(&o->mutex);
+    if (!o->online) status=STATUS_DEVICE_NOT_READY;
+    else if (o->buffer.mdl) status=STATUS_DEVICE_BUSY;
+    else {
+        status=Mt8167CommonAllocate(o->adapter,bytes,&o->buffer);
+        if (NT_SUCCESS(status)) { *mdl=o->buffer.mdl;*actual=o->buffer.size;*cache=MmNonCached; }
+    }
+    ExReleaseFastMutex(&o->mutex);
+    return status;
+}
+static void OwnerFree(void *ctx,PMDL mdl,ULONG bytes)
+{
+    Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
+    ExAcquireFastMutex(&o->mutex);
+    if (mdl && mdl==o->buffer.mdl && bytes==o->buffer.size)
+        (void)Mt8167CommonReleaseUnexposed(&o->buffer);
+    ExReleaseFastMutex(&o->mutex);
+}
+/* The owner has no proven PWRAP/clock/IRQ ownership or DMA drain path. */
+static NTSTATUS OwnerStart(void *) { return STATUS_DEVICE_NOT_READY; }
+static NTSTATUS OwnerStop(void *) { return STATUS_DEVICE_NOT_READY; }
+static NTSTATUS OwnerPosition(void *,PKSAUDIO_POSITION) { return STATUS_DEVICE_NOT_READY; }
+static NTSTATUS OwnerDescription(void *,PDEVICE_DESCRIPTION) { return STATUS_DEVICE_NOT_READY; }
+NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt8167PnpBackend **out)
+{
+    ULONG mapRegisters=0;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR irq;
+    Mt8167PnpBackend *o;
+    NTSTATUS status;
+    if (!pdo || !resources || !out) return STATUS_INVALID_PARAMETER;
+    *out=NULL;
+    if (resources->NumberOfEntriesOfType(CmResourceTypeInterrupt)!=1) return STATUS_DEVICE_CONFIGURATION_ERROR;
+    irq=resources->FindTranslatedEntry(CmResourceTypeInterrupt,0);
+    if (!irq || irq->ShareDisposition!=CmResourceShareDeviceExclusive ||
+        (irq->Flags & CM_RESOURCE_INTERRUPT_LATCHED) || !irq->u.Interrupt.Affinity ||
+        irq->u.Interrupt.Level > 0xff) return STATUS_DEVICE_CONFIGURATION_ERROR;
+    o=static_cast<Mt8167PnpBackend *>(ExAllocatePoolWithTag(NonPagedPool,sizeof(*o),OWNER_TAG));
+    if (!o) return STATUS_INSUFFICIENT_RESOURCES;
+    RtlZeroMemory(o,sizeof(*o));
+    ExInitializeFastMutex(&o->mutex);
+    status=Mt8167GetDmaAdapter(pdo,&o->adapter,&mapRegisters);
+    if (!NT_SUCCESS(status)) { ExFreePoolWithTag(o,OWNER_TAG);return status; }
+    ObReferenceObject(pdo);o->pdo=pdo;o->refs=1;o->online=TRUE;
+    o->interrupt.vector=irq->u.Interrupt.Vector;
+    o->interrupt.level=(KIRQL)irq->u.Interrupt.Level;
+    o->interrupt.affinity=irq->u.Interrupt.Affinity;
+    o->interrupt.mode=LevelSensitive;
+    o->iface.context=o;o->iface.reference=OwnerReference;o->iface.dereference=OwnerDereference;
+    o->iface.allocate=OwnerAllocate;o->iface.freeBuffer=OwnerFree;
+    o->iface.start=OwnerStart;o->iface.stop=OwnerStop;o->iface.position=OwnerPosition;o->iface.getDeviceDescription=OwnerDescription;
+    *out=o;return STATUS_SUCCESS;
+}
+NTSTATUS Mt8167PnpBackendInterrupt(Mt8167PnpBackend *o,Mt8167PnpInterrupt *interrupt)
+{
+    NTSTATUS status;
+    if (!o || !interrupt) return STATUS_INVALID_PARAMETER;
+    ExAcquireFastMutex(&o->mutex);
+    if (!o->online) status=STATUS_DEVICE_NOT_READY;
+    else { *interrupt=o->interrupt;status=STATUS_SUCCESS; }
+    ExReleaseFastMutex(&o->mutex);
+    return status;
+}
+const Mt8167StreamBackend *Mt8167PnpBackendInterface(Mt8167PnpBackend *o) { return o?&o->iface:NULL; }
+void Mt8167PnpBackendRevoke(Mt8167PnpBackend *o) { if (!o)return;ExAcquireFastMutex(&o->mutex);o->online=FALSE;ExReleaseFastMutex(&o->mutex); }
+void Mt8167PnpBackendRelease(Mt8167PnpBackend *o) { if(o)OwnerDereference(o); }
+#endif

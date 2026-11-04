@@ -19,6 +19,10 @@ struct _KINTERRUPT { ISR_FUNC fn; PVOID ctx; };
 extern _KINTERRUPT test_interrupt;
 inline LONG InterlockedCompareExchange(volatile LONG *p,LONG a,LONG b) { LONG o=*p;if(o==b)*p=a;return o; }
 inline LONG InterlockedExchange(volatile LONG *p,LONG a) { LONG o=*p;*p=a;return o; }
+#ifdef A04_TEST_PNP_BACKEND
+inline LONG InterlockedIncrement(volatile LONG *p) { return ++*p; }
+inline LONG InterlockedDecrement(volatile LONG *p) { return --*p; }
+#endif
 inline void KeInitializeDpc(PKDPC d,DPC_FUNC f,PVOID c) { d->fn=f;d->ctx=c;d->queued=0; }
 inline BOOLEAN KeInsertQueueDpc(PKDPC d,PVOID,PVOID) { if(d->queued)return FALSE;d->queued=1;return TRUE; }
 inline BOOLEAN KeRemoveQueueDpc(PKDPC d) { int q=d->queued;d->queued=0;return q; }
@@ -60,5 +64,19 @@ inline void MmBuildMdlForNonPagedPool(PMDL) {}
 inline void IoFreeMdl(PMDL m) {test_mdl_frees++;free(m);}
 inline void KeMemoryBarrier() {test_barriers++;}
 inline void KeFlushIoBuffers(PMDL,BOOLEAN read,BOOLEAN dma) { if (!read && dma) test_flushes++; }
+#ifdef A04_TEST_PNP_BACKEND
+#include <assert.h>
+typedef struct { int held; } FAST_MUTEX;
+inline void ExInitializeFastMutex(FAST_MUTEX *m){m->held=0;}
+inline void ExAcquireFastMutex(FAST_MUTEX *m){assert(!m->held);m->held=1;}
+inline void ExReleaseFastMutex(FAST_MUTEX *m){assert(m->held);m->held=0;}
+#define NonPagedPool 0
+inline PVOID ExAllocatePoolWithTag(int,size_t n,ULONG){return malloc(n);}
+inline void ExFreePoolWithTag(PVOID p,ULONG){free(p);}
+extern int test_pdo_refs;
+inline void ObReferenceObject(PDEVICE_OBJECT){test_pdo_refs++;}
+inline void ObDereferenceObject(PDEVICE_OBJECT){test_pdo_refs--;}
+#define STATUS_DEVICE_NOT_READY (-6)
+#endif
 #endif
 #endif
