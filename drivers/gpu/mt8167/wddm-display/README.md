@@ -3,7 +3,7 @@
 This is a Windows 8.1 ARM32 adaptation of Microsoft's KMDOD sample, with the
 upstream source and MS-PL license identified in `SOURCE`. Run
 `tools/ci/build-wddm-display-arm.ps1` with Windows SDK/WDK 8.1, an ARM32 MSVC
-compiler, Windows UCRT headers, and LLVM linker installed. The default script
+compiler, Windows UCRT headers, and the matching MSVC linker installed. The default script
 builds a link check. A separate `tools/ci/build-wddm-display-package-arm.ps1`
 creates an experimental catalog and INF for ACPI `MOU0007`; this package is
 not ready to install until PnP, power, teardown and recovery are verified.
