@@ -113,6 +113,10 @@ been connected to WDDM. On TAB-A04-BR3, 86b3031 completed one WinPE test
 with QUEUE=0 and SHUTDOWN=0: all copied bytes matched and both the source and
 destination guard regions remained unchanged. This is one fixed transfer,
 not a general WDDM submission interface or a long-term stability result.
+The current linear test additionally reuses the same queue for 145 further
+copies with varying payloads and fence values, crossing the ring boundary.
+Each result and guard is checked. This extended diagnostic is not yet
+device-verified.
 The internal transfer queue can also append another command after the caller
 has synchronized and observed both the previous fence and an empty queue.
 It handles ring padding at wrap and increments the fence; the caller must

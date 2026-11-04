@@ -29,6 +29,59 @@
 #define TEST_PAGES 6u
 #endif
 #define TEST_SIZE (TEST_PAGES*4096u)
+#if A04_GE8300_LINEAR_TEST
+/* Exercise reuse and CCCB wrap in one WinPE boot. The fixed 16 KiB transfer
+ * is surrounded by guards; all mappings remain owned until shutdown. */
+static uint8_t linear_pattern(size_t n,unsigned round)
+{ return (uint8_t)((n*73u)^(n>>8)^(n>>16)^0x3du^(round*29u)); }
+static NTSTATUS linear_validate(const uint8_t *source,const uint8_t *image,unsigned round)
+{
+    for (size_t n=0;n<6u*4096u;++n) {
+        uint8_t pattern=linear_pattern(n,round);
+        uint8_t expected=(n>=4096u && n<5u*4096u) ? pattern : 0xa5;
+        if (source[n]!=pattern || image[n]!=expected) return STATUS_DATA_ERROR;
+    }
+    return STATUS_SUCCESS;
+}
+static NTSTATUS linear_repeat(struct a04_gpu_firmware_state *s,struct a04_gpu_fw_queue *q,
+    const struct rogue_fwif_cmd_transfer *transfer,uint8_t *source,uint8_t *image)
+{
+    LARGE_INTEGER delay; NTSTATUS status; struct rogue_fwif_kccb_cmd kick;
+    struct rogue_fwif_cccb_ctl *ctl=q->control.cpu; delay.QuadPart=-100000;
+    for (unsigned round=1;round<=145u;++round) {
+        unsigned poll;
+        if (s->trace && (round==1u || !(round%32u) || round==145u)) s->trace(s->trace_context,0x200u+round);
+        for (size_t n=0;n<6u*4096u;++n) source[n]=linear_pattern(n,round);
+        RtlFillMemory(image,6u*4096u,0xa5);
+        status=a04_gpu_dma_sync(source,6u*4096u,FALSE); if (!NT_SUCCESS(status)) return status;
+        status=a04_gpu_dma_sync(image,6u*4096u,FALSE); if (!NT_SUCCESS(status)) return status;
+        for (poll=0;poll<200u;++poll) {
+            status=a04_gpu_dma_sync(q->control.cpu,(ULONG)q->control.size,TRUE);
+            if (!NT_SUCCESS(status)) return status;
+            if (*(volatile uint32_t *)&ctl->read_offset==q->write_offset) break;
+            status=KeDelayExecutionThread(KernelMode,FALSE,&delay); if (!NT_SUCCESS(status)) return status;
+        }
+        if (poll==200u) { s->queue_faulted=TRUE; return STATUS_IO_TIMEOUT; }
+        status=a04_gpu_dma_sync(q->fence.cpu,(ULONG)q->fence.size,TRUE);
+        if (!NT_SUCCESS(status)) return status;
+        if (a04_gpu_fw_append_transfer(q,transfer,100u+round,round,&kick)) return STATUS_INVALID_DEVICE_STATE;
+        status=a04_gpu_dma_sync(q->ring.cpu,(ULONG)q->ring.size,FALSE); if (!NT_SUCCESS(status)) return status;
+        status=a04_gpu_firmware_submit_kick(s,&kick); if (!NT_SUCCESS(status)) return status;
+        for (poll=0;poll<200u;++poll) {
+            status=a04_gpu_dma_sync(q->fence.cpu,(ULONG)q->fence.size,TRUE);
+            if (!NT_SUCCESS(status)) { s->queue_faulted=TRUE; return status; }
+            if (*(volatile uint32_t *)q->fence.cpu==round+1u) break;
+            status=KeDelayExecutionThread(KernelMode,FALSE,&delay);
+            if (!NT_SUCCESS(status)) { s->queue_faulted=TRUE; return status; }
+        }
+        if (poll==200u) { s->queue_faulted=TRUE; return STATUS_IO_TIMEOUT; }
+        status=a04_gpu_dma_sync(image,6u*4096u,TRUE); if (!NT_SUCCESS(status)) return status;
+        status=a04_gpu_dma_sync(source,6u*4096u,TRUE); if (!NT_SUCCESS(status)) return status;
+        status=linear_validate(source,image,round); if (!NT_SUCCESS(status)) return status;
+    }
+    return STATUS_SUCCESS;
+}
+#endif
 NTSTATUS a04_gpu_queue_test_free(struct a04_gpu_firmware_state *s,struct a04_gpu_queue_test_memory *m)
 {
     if (!s || !m) return STATUS_INVALID_PARAMETER;
@@ -87,7 +140,7 @@ NTSTATUS a04_gpu_queue_test(struct a04_gpu_firmware_state *s,struct a04_gpu_queu
         return STATUS_DEVICE_CONFIGURATION_ERROR;
     {
         uint8_t *source=pages+(14u+A04_GPU_LINEAR_SOURCE_PAGE)*4096u;
-        for (size_t i=0;i<6u*4096u;++i) source[i]=(uint8_t)((i*73u)^(i>>8)^(i>>16)^0x3du);
+        for (size_t i=0;i<6u*4096u;++i) source[i]=linear_pattern(i,0);
         RtlFillMemory(pages+(14u+A04_GPU_LINEAR_DEST_PAGE)*4096u,6u*4096u,0xa5);
     }
 #else
@@ -141,17 +194,14 @@ NTSTATUS a04_gpu_queue_test(struct a04_gpu_firmware_state *s,struct a04_gpu_queu
         if (*(volatile uint32_t *)q.fence.cpu==1u) {
 #if A04_GE8300_CLEAR_TEST || A04_GE8300_COPY_TEST || A04_GE8300_LINEAR_TEST
 #if A04_GE8300_LINEAR_TEST
-            const uint8_t *image=pages+(14u+A04_GPU_LINEAR_DEST_PAGE)*4096u;
-            const uint8_t *source=pages+(14u+A04_GPU_LINEAR_SOURCE_PAGE)*4096u;
+            uint8_t *image=pages+(14u+A04_GPU_LINEAR_DEST_PAGE)*4096u;
+            uint8_t *source=pages+(14u+A04_GPU_LINEAR_SOURCE_PAGE)*4096u;
             status=a04_gpu_dma_sync((void *)image,6u*4096u,TRUE);
             if (!NT_SUCCESS(status)) { s->queue_faulted=TRUE; return status; }
             status=a04_gpu_dma_sync((void *)source,6u*4096u,TRUE);
             if (!NT_SUCCESS(status)) { s->queue_faulted=TRUE; return status; }
-            for (size_t n=0;n<6u*4096u;++n) {
-                uint8_t pattern=(uint8_t)((n*73u)^(n>>8)^(n>>16)^0x3du);
-                uint8_t expected=(n>=4096u && n<5u*4096u) ? pattern : 0xa5;
-                if (source[n]!=pattern || image[n]!=expected) return STATUS_DATA_ERROR;
-            }
+            status=linear_validate(source,image,0); if (!NT_SUCCESS(status)) return status;
+            status=linear_repeat(s,&q,&transfer,source,image); if (!NT_SUCCESS(status)) return status;
 #else
 #if A04_GE8300_COPY_TEST
             const uint8_t *image=pages+(14u+A04_GPU_COPY_DEST_PAGE)*4096u;

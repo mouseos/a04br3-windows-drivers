@@ -17,6 +17,7 @@ typedef struct {
 struct fake_adapter { DMA_OPERATIONS *DmaOperations; };
 #define STATUS_SUCCESS ((NTSTATUS)0)
 #define STATUS_INVALID_PARAMETER ((NTSTATUS)0xc000000d)
+#define STATUS_DATA_ERROR ((NTSTATUS)0xc000003e)
 #define STATUS_INVALID_DEVICE_STATE ((NTSTATUS)0xc0000184)
 #define STATUS_INSUFFICIENT_RESOURCES ((NTSTATUS)0xc000009a)
 #define STATUS_NOT_SUPPORTED ((NTSTATUS)0xc00000bb)
@@ -32,6 +33,7 @@ struct fake_adapter { DMA_OPERATIONS *DmaOperations; };
 #define KernelMode 0
 #define UNREFERENCED_PARAMETER(x) ((void)(x))
 #define RtlZeroMemory(p,n) memset((p),0,(n))
+#define RtlFillMemory(p,n,v) memset((p),(v),(n))
 #define READ_REGISTER_ULONG(p) (*(p))
 #define WRITE_REGISTER_ULONG(p,v) (*(p)=(v))
 #define KeMemoryBarrier() ((void)0)
