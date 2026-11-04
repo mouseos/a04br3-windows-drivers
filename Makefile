@@ -17,6 +17,7 @@ test: build/gpu_render_execution_test test-thermal build/bq24160_handoff_test bu
 	python3 tests/gpu_render_capture_audit_test.py
 	python3 tests/gpu_render_fixture_plan_test.py
 	python3 tests/gpu_render_trace_test.py
+	python3 tests/gpu_render_upload_trace_test.py
 	./build/lc709203f_test
 	./build/lc709203f_i2c_test
 	./build/msdc_io_gate_test
