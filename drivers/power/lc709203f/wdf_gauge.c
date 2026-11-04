@@ -24,7 +24,7 @@ typedef struct {
     struct a04_gauge_mt8167 adapter;
     struct a04_gauge_bus bus;
     struct a04_battery_class battery;
-    BOOLEAN online;
+    volatile LONG online;
     BOOLEAN faulted;
 #if A04_LC709203F_TRACE
     volatile ULONG *uart;
@@ -81,7 +81,7 @@ static void poll(GAUGE_CONTEXT *c)
         trace(c, "A04BAT SAMPLE FAILED\n");
         changed = a04_battery_invalidate(&c->battery);
         c->faulted = TRUE;
-        c->online = FALSE; /* No reset/retry of shared I2C2 after failure. */
+        InterlockedExchange(&c->online, 0); /* No reset/retry of shared I2C2 after failure. */
     } else { trace(c, "A04BAT SAMPLE VALID\n"); changed = a04_battery_publish(&c->battery, &sample); }
     if (changed) notify(c);
 }
@@ -134,7 +134,7 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
         trace(c, "A04BAT I2C NOT READY\n"); return STATUS_DEVICE_NOT_READY;
     }
     trace(c, "A04BAT I2C READY\n");
-    c->online = TRUE;
+    InterlockedExchange(&c->online, 1);
     poll(c);
     if (!c->online) return STATUS_DEVICE_HARDWARE_ERROR;
     WdfTimerStart(c->timer, WDF_REL_TIMEOUT_IN_MS(30000));
@@ -144,8 +144,8 @@ NTSTATUS GaugeD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
 {
     GAUGE_CONTEXT *c = GaugeContext(device);
     UNREFERENCED_PARAMETER(target);
+    InterlockedExchange(&c->online, 0);
     WdfTimerStop(c->timer, TRUE);
-    c->online = FALSE;
     if (a04_battery_invalidate(&c->battery)) notify(c);
     return STATUS_SUCCESS;
 }
@@ -153,7 +153,6 @@ VOID GaugePoll(WDFTIMER timer)
 {
     GAUGE_CONTEXT *c = GaugeContext((WDFDEVICE)WdfTimerGetParentObject(timer));
     poll(c);
-    if (c->online) WdfTimerStart(timer, WDF_REL_TIMEOUT_IN_MS(30000));
 }
 NTSTATUS GaugeClassInit(WDFDEVICE device)
 {
@@ -224,7 +223,10 @@ NTSTATUS GaugeAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     if (!NT_SUCCESS(status)) return status;
     status = WdfWaitLockCreate(&child, &c->battery.lock);
     if (!NT_SUCCESS(status)) return status;
-    WDF_TIMER_CONFIG_INIT(&timer, GaugePoll);
+    WDF_TIMER_CONFIG_INIT_PERIODIC(&timer, GaugePoll, 30000);
+    /* D0Exit synchronously stops this timer; do not serialize it under a
+     * device callback lock that D0Exit may already hold. */
+    timer.AutomaticSerialization = FALSE;
     WDF_OBJECT_ATTRIBUTES_INIT(&child); child.ParentObject = device; child.ExecutionLevel = WdfExecutionLevelPassive;
     return WdfTimerCreate(&timer, &child, &c->timer);
 }
