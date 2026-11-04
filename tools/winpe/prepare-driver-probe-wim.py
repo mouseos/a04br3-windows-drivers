@@ -118,7 +118,7 @@ if a.output.exists():
 a.output.parent.mkdir(parents=True, exist_ok=True)
 with a.source_wim.open('rb') as source, a.output.open('xb') as target:
     shutil.copyfileobj(source, target, 1024 * 1024)
-commands = ['delete /Windows/System32/winpeshl.ini']
+commands = ['delete --force /Windows/System32/winpeshl.ini']
 commands.extend(f'add {source.resolve()} {dest}' for dest, source in files.items())
 subprocess.run([a.wimlib, 'update', str(a.output), '1'], input='\n'.join(commands) + '\n', text=True, check=True)
 subprocess.run([a.wimlib, 'verify', str(a.output)], check=True)
