@@ -128,7 +128,17 @@ enum a04_capture_result a04_resume_capture(const struct a04_msdc_io *io,
     if(tmp.host_width!=tmp.card_width || (ext[179]&7u) || ext[33]) return A04_CAPTURE_MODE;
     tmp.sectors=(uint32_t)ext[212]|((uint32_t)ext[213]<<8)|((uint32_t)ext[214]<<16)|((uint32_t)ext[215]<<24);
     if(!tmp.sectors) return A04_CAPTURE_IDENTITY;
+    /* The admission callback is a software lease, not evidence of powered
+     * rails. Recheck the controller at the end, but leave power_owned false
+     * until a real power owner supplies independent, generation-bound proof. */
+    if(!allowed(&c)) return A04_CAPTURE_REVOKED;
+    cfg=io->read32(io->context,CFG);
+    if(!allowed(&c)) return A04_CAPTURE_REVOKED;
+    if((cfg&0x89u)!=0x89u || ((io->read32(io->context,SDCCFG)>>16)&3u)!=host ||
+       (io->read32(io->context,DMACFG)&1u) || (io->read32(io->context,INTEN)&EV))
+        return A04_CAPTURE_UNSAFE;
+    if(!allowed(&c)) return A04_CAPTURE_REVOKED;
     tmp.generation=a->generation;tmp.rca=a->rca;tmp.partition=ext[179]&7u;tmp.cache_ctrl=ext[33];
-    tmp.power_owned=tmp.clock_stable=tmp.pio_mode=tmp.dma_idle=tmp.events_masked=1;
+    tmp.clock_stable=tmp.pio_mode=tmp.dma_idle=tmp.events_masked=1;
     *out=tmp;return A04_CAPTURE_OK;
 }

@@ -8,7 +8,9 @@
  * on stop/removal; it is not itself proof of a functioning power provider.
  * Only CMD13, CMD10, CMD8 are sent. No reset, CMD6 or card-data write.
  * Failure leaves *out unchanged and the controller/card must not be reused
- * until recovered. This is not wired to a Windows resume callback. */
+ * until recovered. power_owned is always zero: permission alone is not proof
+ * of powered rails. A capture cannot pass resume_validate as-is. This is not
+ * wired to a Windows resume callback. */
 struct a04_capture_authority {
     void *context;
     int (*permitted)(void *, uint32_t);
