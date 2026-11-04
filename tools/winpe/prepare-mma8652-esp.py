@@ -32,18 +32,22 @@ with PyFatFS(str(a.source_esp), preserve_case=True, read_only=True) as fat:
     for name in key_paths:
         with fat.openbin(name, 'r') as f:
             before[name] = digest(f)
+    matches = [name for name in fat.listdir('/sources') if name.lower() == 'boot.wim']
+    if len(matches) != 1:
+        raise SystemExit('Expected exactly one boot.wim in /sources')
+    wim_path = '/sources/' + matches[0]
 a.output.parent.mkdir(parents=True, exist_ok=True)
 shutil.copyfile(a.source_esp, a.output)
 with PyFatFS(str(a.output), preserve_case=True) as fat:
-    fat.remove('/sources/boot.wim')
-    with a.wim.open('rb') as src, fat.openbin('/sources/boot.wim', 'w') as dst:
+    fat.remove(wim_path)
+    with a.wim.open('rb') as src, fat.openbin(wim_path, 'w') as dst:
         shutil.copyfileobj(src, dst, 1024 * 1024)
 with PyFatFS(str(a.output), preserve_case=True, read_only=True) as fat:
     for name, expected in before.items():
         with fat.openbin(name, 'r') as f:
             if digest(f) != expected:
                 raise SystemExit(f'Preserved file mismatch: {name}')
-    with fat.openbin('/sources/boot.wim', 'r') as f:
+    with fat.openbin(wim_path, 'r') as f:
         if digest(f) != filehash(a.wim):
             raise SystemExit('WIM mismatch')
 repair = subprocess.run(['fsck.vfat', '-a', str(a.output)])
