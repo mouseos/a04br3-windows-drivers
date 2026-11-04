@@ -12,6 +12,7 @@ static void *enter_thread(void *p)
     if (a04_life_enter(&state)) {
         atomic_fetch_add(&entered,1);
         if (a04_life_dma_begin(&state)) a04_life_dma_end(&state,1);
+        if (a04_life_mmio_begin(&state)) a04_life_mmio_end(&state);
         a04_life_leave(&state);
     }
     return 0;
@@ -19,6 +20,15 @@ static void *enter_thread(void *p)
 int main(void)
 {
     pthread_t t[8]; int n,i;
+    assert(a04_life_mmio_begin(&state));
+    assert(!a04_life_mmio_begin(&state));
+    a04_life_close(&state,1);
+    assert(!a04_life_mmio_begin(&state));
+    assert(!a04_life_releasable(&state));
+    a04_life_mmio_end(&state);
+    assert(a04_life_releasable(&state));
+    assert(!a04_life_mmio_begin(&state));
+    atomic_store(&state,0);
     assert(a04_life_enter(&state));
     assert(a04_life_dma_begin(&state));
     a04_life_close(&state,1);
@@ -36,6 +46,7 @@ int main(void)
         for (i=0;i<8;++i) assert(!pthread_join(t[i],0));
         assert(a04_life_releasable(&state));
         assert(!a04_life_enter(&state));
+        assert(!a04_life_mmio_begin(&state));
     }
     return 0;
 }

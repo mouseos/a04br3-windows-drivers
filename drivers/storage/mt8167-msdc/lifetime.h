@@ -18,6 +18,7 @@ static int a04_life_cas(a04_lifetime *s,int n,int o) { atomic_compare_exchange_s
 #define A04_LIFE_DMA 4
 #define A04_LIFE_POISON 8
 #define A04_LIFE_REMOVED 16
+#define A04_LIFE_MMIO 32
 static int a04_life_enter(a04_lifetime *s)
 {
     int old=a04_life_load(s);
@@ -45,6 +46,23 @@ static void a04_life_dma_end(a04_lifetime *s,int stopped)
     int old=a04_life_load(s),next;
     do { next=a04_life_cas(s,stopped ? old & ~A04_LIFE_DMA : old | A04_LIFE_POISON|A04_LIFE_CLOSED,old); if(next==old) return; old=next; } while(1);
 }
+/* A lease records an access which began before close. It is not a bus
+ * presence guarantee and cannot prevent an asynchronous external abort. */
+static int a04_life_mmio_begin(a04_lifetime *s)
+{
+    int old=a04_life_load(s),next;
+    for (;;) {
+        if (old & (A04_LIFE_CLOSED|A04_LIFE_MMIO|A04_LIFE_POISON)) return 0;
+        next=a04_life_cas(s,old|A04_LIFE_MMIO,old);
+        if(next==old) return 1;
+        old=next;
+    }
+}
+static void a04_life_mmio_end(a04_lifetime *s)
+{
+    int old=a04_life_load(s),next;
+    do { next=a04_life_cas(s,old&~A04_LIFE_MMIO,old); if(next==old) return; old=next; } while(1);
+}
 static void a04_life_close(a04_lifetime *s,int removed)
 {
     int old=a04_life_load(s),next;
@@ -58,6 +76,6 @@ static void a04_life_leave(a04_lifetime *s)
 static int a04_life_releasable(a04_lifetime *s)
 {
     int state=a04_life_load(s);
-    return (state&A04_LIFE_CLOSED) && !(state&(A04_LIFE_WORKER|A04_LIFE_DMA|A04_LIFE_POISON));
+    return (state&A04_LIFE_CLOSED) && !(state&(A04_LIFE_WORKER|A04_LIFE_DMA|A04_LIFE_POISON|A04_LIFE_MMIO));
 }
 #endif

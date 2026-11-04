@@ -109,7 +109,11 @@ static uint32_t A04Read32(void *context, uint32_t offset)
 {
     struct a04_probe_extension *probe = (struct a04_probe_extension *)context;
 #ifdef A04_SYNC_PIO_MULTIREAD
-    if (a04_life_load(&probe->sync_lifetime) & A04_LIFE_CLOSED) return 0xffffffffu;
+    ULONG value;
+    if (!a04_life_mmio_begin(&probe->sync_lifetime)) return 0xffffffffu;
+    value=READ_REGISTER_ULONG(probe->registers + offset / 4);
+    a04_life_mmio_end(&probe->sync_lifetime);
+    return value;
 #endif
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
     if (a04_life_load(&probe->lifetime) & A04_LIFE_REMOVED) return 0xffffffffu;
@@ -121,7 +125,11 @@ static uint8_t A04Read8(void *context, uint32_t offset)
 {
     struct a04_probe_extension *probe = (struct a04_probe_extension *)context;
 #ifdef A04_SYNC_PIO_MULTIREAD
-    if (a04_life_load(&probe->sync_lifetime) & A04_LIFE_CLOSED) return 0xffu;
+    UCHAR value;
+    if (!a04_life_mmio_begin(&probe->sync_lifetime)) return 0xffu;
+    value=READ_REGISTER_UCHAR((volatile UCHAR *)probe->registers + offset);
+    a04_life_mmio_end(&probe->sync_lifetime);
+    return value;
 #endif
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
     if (a04_life_load(&probe->lifetime) & A04_LIFE_REMOVED) return 0xffu;
@@ -133,7 +141,10 @@ static void A04Write32(void *context, uint32_t offset, uint32_t value)
 {
     struct a04_probe_extension *probe = (struct a04_probe_extension *)context;
 #ifdef A04_SYNC_PIO_MULTIREAD
-    if (a04_life_load(&probe->sync_lifetime) & A04_LIFE_CLOSED) return;
+    if (!a04_life_mmio_begin(&probe->sync_lifetime)) return;
+    WRITE_REGISTER_ULONG(probe->registers + offset / 4, value);
+    a04_life_mmio_end(&probe->sync_lifetime);
+    return;
 #endif
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
     if (a04_life_load(&probe->lifetime) & A04_LIFE_REMOVED) return;
