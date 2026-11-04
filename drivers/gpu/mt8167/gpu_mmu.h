@@ -26,4 +26,10 @@ int a04_gpu_mmu_map_pages_4k(uint32_t *pc,uint64_t *pd,uint64_t *pt,
 /* Quiesce GPU jobs before unmapping. The caller synchronizes the changed
  * table and waits for MMU invalidation before freeing or reusing memory. */
 int a04_gpu_mmu_unmap_4k(uint64_t *pt,uint64_t gpu_va,size_t page_count);
+/* HWBRN65273: map the same zeroed DMA page at both reserved addresses.
+ * The caller must zero and synchronize the page and all five table pages,
+ * then wait for MMU invalidation before using this context. */
+int a04_gpu_mmu_map_brn65273(uint32_t *pc,uint64_t *pd_a,uint64_t *pt_a,
+    uint64_t *pd_b,uint64_t *pt_b,uint64_t pd_a_dma,uint64_t pt_a_dma,
+    uint64_t pd_b_dma,uint64_t pt_b_dma,uint64_t zero_dma);
 #endif

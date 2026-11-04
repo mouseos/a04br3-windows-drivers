@@ -4,7 +4,7 @@
 #include <string.h>
 #include "gpu_mmu.h"
 static uint32_t pc[1024];
-static uint64_t pd[512], pt[512];
+static uint64_t pd[512], pt[512], pd_b[512], pt_b[512];
 int main(void)
 {
     uint64_t va=UINT64_C(0x12345000), flags=A04_GPU_MMU_READ_ONLY|A04_GPU_MMU_SLC_BYPASS;
@@ -31,6 +31,14 @@ int main(void)
       memset(pc,0,sizeof(pc)); memset(pd,0,sizeof(pd)); memset(pt,0,sizeof(pt)); pages[2]++;
       if(!a04_gpu_mmu_map_pages_4k(pc,pd,pt,0x12345000,0x6789a000,0,pages,3,0) || pc[0] || pd[0] || pt[0]) return 12;
       if(!a04_gpu_mmu_map_pages_4k(pc,pd,pt,0x12345000,0x6789a000,0,pt,3,0)) return 13; }
+    memset(pc,0,sizeof(pc)); memset(pd,0,sizeof(pd)); memset(pt,0,sizeof(pt));
+    if(a04_gpu_mmu_map_brn65273(pc,pd,pt,pd_b,pt_b,0x10000000,0x10001000,0x10002000,0x10003000,0x20000000) ||
+       pc[992]!=0x00100001 || pc[996]!=0x00100021 || pd[0]!=0x10001001 ||
+       pd_b[0]!=0x10003001 || pt[0]!=0x20000001 || pt_b[0]!=0x20000001) return 16;
+    memset(pc,0,sizeof(pc)); memset(pd,0,sizeof(pd)); memset(pt,0,sizeof(pt));
+    memset(pd_b,0,sizeof(pd_b)); memset(pt_b,0,sizeof(pt_b)); pt_b[0]=1;
+    if(!a04_gpu_mmu_map_brn65273(pc,pd,pt,pd_b,pt_b,0x10000000,0x10001000,0x10002000,0x10003000,0x20000000) ||
+       pc[992] || pd[0] || pt[0]) return 17;
     puts("GE8300 GPU page table encoding and rejected mappings passed");
     return 0;
 }
