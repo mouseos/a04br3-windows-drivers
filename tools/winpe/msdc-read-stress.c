@@ -2,10 +2,12 @@
  * WinPE-only physical-disk read test. Never opens a device for writing. */
 #include <windows.h>
 #include <winioctl.h>
+#include <bcrypt.h>
 #define BLOCK_BYTES 4096u
 #define BASE_LBA 0x000e1000u
 #define START_LBA 0x000e0100u
 #define END_LBA 0x000e0200u
+static int read_block(HANDLE h, DWORD lba, unsigned char *buffer);
 static void say(const char *s) {
     DWORD n=0, done=0; while (s[n]) ++n;
     WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),s,n,&done,NULL);
@@ -14,6 +16,29 @@ static void number(DWORD value) {
     char digits[11]; unsigned n=0; DWORD written;
     do { digits[n++]=(char)('0'+value%10); value/=10; } while (value);
     while (n) { --n; WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),digits+n,1,&written,NULL); }
+}
+/* Independently compare this digest with a recovery-side raw read; computing
+ * it after the timed loop keeps crypto overhead out of the throughput result. */
+static int reference_hash(HANDLE h, unsigned char *buffer) {
+    BCRYPT_ALG_HANDLE alg=NULL; BCRYPT_HASH_HANDLE hash=NULL;
+    unsigned char *object=NULL, digest[32]; DWORD object_size=0, returned=0, i;
+    static const char hex[]="0123456789abcdef"; char text[65]; int ok=0;
+    if (BCryptOpenAlgorithmProvider(&alg,BCRYPT_SHA256_ALGORITHM,NULL,0)<0) goto done;
+    if (BCryptGetProperty(alg,BCRYPT_OBJECT_LENGTH,(PUCHAR)&object_size,sizeof(object_size),&returned,0)<0 ||
+        returned!=sizeof(object_size) || !object_size || object_size>65536u) goto done;
+    object=(unsigned char *)VirtualAlloc(NULL,object_size,MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE);
+    if (!object || BCryptCreateHash(alg,&hash,object,object_size,NULL,0,0)<0) goto done;
+    for (i=0;i<4096u;++i) {
+        if (!read_block(h,BASE_LBA+i*8u,buffer) || BCryptHashData(hash,buffer,BLOCK_BYTES,0)<0) goto done;
+    }
+    if (BCryptFinishHash(hash,digest,sizeof(digest),0)<0) goto done;
+    for (i=0;i<32;++i) { text[i*2]=hex[digest[i]>>4]; text[i*2+1]=hex[digest[i]&15]; }
+    text[64]=0; say("MSDC_REFERENCE_SHA256="); say(text); say("\r\n"); ok=1;
+done:
+    if (hash) BCryptDestroyHash(hash);
+    if (alg) BCryptCloseAlgorithmProvider(alg,0);
+    if (object) VirtualFree(object,0,MEM_RELEASE);
+    return ok;
 }
 static int read_block(HANDLE h, DWORD lba, unsigned char *buffer) {
     LARGE_INTEGER offset; DWORD got=0;
@@ -45,6 +70,7 @@ void mainCRTStartup(void) {
     if (i<128u || !read_block(h,END_LBA,a)) goto fail;
     say("MSDC_READ_STRESS_PAIRS="); number(i);
     say(" ELAPSED_MS="); number((DWORD)(GetTickCount()-start)); say("\r\n");
+    if (!reference_hash(h,a)) goto fail;
     say("MSDC_READ_STRESS_PASSED\r\n");
     VirtualFree(a,0,MEM_RELEASE); VirtualFree(b,0,MEM_RELEASE); CloseHandle(h); ExitProcess(0);
 fail:
