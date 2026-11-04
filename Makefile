@@ -9,7 +9,7 @@ test: test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registr
 test: test-mma8652 build/msdc_resume_check_test build/msdc_resume_capture_test
 test: build/bq24160_owner_broker_test
 test: test-mt8167-pnp-backend test-mt8167-audio-adapter-pnp test-mt8167-common-dma test-mt8167-dma-adapter test-mt8167-clock-owner test-mt8167-stream-transport
-test: test-toprgu-handoff build/gpu_render_context_pds_test
+test: build/gpu_render_shared_size_test test-toprgu-handoff build/gpu_render_context_pds_test
 test: test-mt8167-shared-wdf test-mt8167-shared-audio test-mt8167-shared-transport
 
 .PHONY: test-toprgu-handoff
@@ -21,6 +21,7 @@ test-mma8652:
 	$(MAKE) -C drivers/sensors/mma8652 test test-hid
 
 test: build/msdc_shared_drain_test build/msdc_touch_shared_test build/msdc_pin_uhs_test build/msdc_parent_resources_test build/msdc_pinmux_test build/msdc_cold_init_test build/msdc_board_owner_test build/msdc_rails_owner_test test-mt8167-pwrap-owner build/msdc_sync_pio_test build/gpu_render_pds_data_test test-mt8167-dl1-engine test-mt8167-wavert-dma build/gpu_windows_render_memory_test build/msdc_lifetime_test build/bqhr_diagnostic_test test-mt8167-audio-broker test-mt8167-audio-ring test-mt8167-audio-irq build/gpu_render_kick_off build/gpu_render_kick_on build/gpu_windows_render_command_test test-mt8167-dl1 build/gpu_render_execution_test test-thermal build/bq24160_handoff_test build/bq24160_charger_test build/bq24160_i2c_test build/gpu_render_context_test build/gpu_render_hwrt_test build/gpu_render_freelist_test build/gpu_render_stream_test build/lc709203f_test build/lc709203f_i2c_test build/msdc_io_gate_test build/toprgu_watchdog_policy_test build/toprgu_reset_command_test build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/button_pipeline_test build/button_device_test build/button_hardware_test build/pmic_read_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_board_init_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test build/eint_test build/gpu_power_test build/gpu_mmu_test build/gpu_fw_objects_test build/gpu_fw_queue_test build/gpu_transfer_stream_test build/gpu_windows_linear_test build/gpu_present_bounds_test build/gpu_dma_pages_test build/gpu_transfer_mapping_test
+	./build/gpu_render_shared_size_test
 	./build/gpu_render_context_pds_test
 	./build/gpu_render_pds_data_test
 	python3 tests/gpu_render_pds_reconstruct_test.py
@@ -144,6 +145,10 @@ build/gpu_render_kick_on: tests/gpu_render_kick_policy_test.c drivers/gpu/mt8167
 build/gpu_windows_render_command_test: tests/gpu_windows_render_command_test.c tests/gpu_windows_stubs/ntddk.h drivers/gpu/mt8167/windows_firmware.c drivers/gpu/mt8167/windows_firmware.h drivers/gpu/mt8167/render_kick_policy.h
 	mkdir -p build
 	$(CC) $(CFLAGS) -ffunction-sections -fdata-sections -DA04_GE8300_RENDER_EXPERIMENT=1 -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif tests/gpu_windows_render_command_test.c drivers/gpu/mt8167/windows_firmware.c -Wl,--gc-sections -o $@
+
+build/gpu_render_shared_size_test: drivers/gpu/mt8167/render_shared_size.c drivers/gpu/mt8167/render_shared_size.h tests/gpu_render_shared_size_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167 drivers/gpu/mt8167/render_shared_size.c tests/gpu_render_shared_size_test.c -o $@
 
 build/gpu_render_context_pds_test: drivers/gpu/mt8167/render_context_pds.c drivers/gpu/mt8167/render_context_pds.h drivers/gpu/mt8167/render_execution.c tests/gpu_render_context_pds_test.c
 	mkdir -p build
