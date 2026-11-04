@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "state": "host-built-fw-evidence-device-untested",
+  "driver_commit": "dafd822791072dfb3b92cdd13b02124a98cebda8",
+  "driver_flags": [
+    "BOOT_TEST=1",
+    "ALLOW_MISMATCH=1",
+    "RENDER_EXPERIMENT=1",
+    "RENDER_DIAGNOSTIC=1"
+  ],
+  "source_esp_sha256": "80e78974e86c709f0961d4f80db5dcaeff3dade8bf2ab5c86b7102aad4035871",
+  "source_wim_sha256": "f3808bb5fe590af7e21549312adf2f903dd5e5449b1d357967c270f3ae1a7648",
+  "derived_wim_sha256": "cc9a459636cf7bc6daac17a8211da620c3748f5b53424bdd8c155159138d0f2d",
+  "boot_index": 1,
+  "preserved_files": {
+    "/EFI/Boot/bootarm.efi": "5dcf001e5be0bf252d303f0377c4dad67a070aed307b0f6153d1125bf346b397",
+    "/EFI/Microsoft/Boot/BCD": "65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d",
+    "/Boot/boot.sdi": "cd2c00ce027687ce4a8bdc967f26a8ab82f651c9becd703658ba282ec49702bd"
+  },
+  "startnet_sha256": "93cdee4cd2c756f735b4984039f1e04cb1aefaff5f6078a63860dad3936e9e22",
+  "package_sha256": {
+    "ge8300-mips.fw": "cfe6f58db2ad604b1729349629510c5a3434b266c99ea886d2959887bff4fed8",
+    "ge8300-pnp-status.exe": "d7ceafb3e1401427117f934e03af0303842625d9f0e4f15c4325ed7df1f70935",
+    "ge8300-status.exe": "303e7a978877fe1ffdd9fbc1a1f8133c765c6ba6c1073a21dd7f4521b3e722f3",
+    "ge8300-test.cer": "da83977fda091ecb059d13629d15fd77b383d99b36e88bd309b8fbd9bf0b6ff6",
+    "mt8167-ge8300.cat": "627b0d95411ea9caa50469565ef701c6b8c8bc167e38d571d041205c4964c616",
+    "mt8167-ge8300.inf": "73afb7f2e63469d577317b68ed505c01340a81b36373eda416883ce5ae4edc0b",
+    "mt8167-ge8300.sys": "fd39767773aac1b32d0929433bbc941730b99c69fe6879ab740b60b0bb66f7b6"
+  },
+  "candidate_boot_sha256": "2813f8cb42651bb54374bf7b7b1bdd33eaf2198db6afd008c70574f337b190ab",
+  "candidate_boot_status": "previously used in full-screen WinPE run; GPU fixed render not tested",
+  "limitations": [
+    "diagnostic-only, drawing commands unchanged from 141233b; no proven rendering fix",
+    "FW snapshots are non-atomic and zero counters do not prove absence of faults",
+    "raw nonzero slot masks do not establish slot-to-tile mapping",
+    "device boot, signature acceptance, UART completeness, GPU DMA quiescence unverified",
+    "host UART receipt and CRC cannot be confirmed by target; screen fallback only on returned startup failure",
+    "drvload hang prevents later screen fallback"
+  ],
+  "trusted_wim_sha256": "70fdf04e1af8f040aa8f88cd8ad6435c69f8caff4c534199422e6c90cec5aa87",
+  "trusted_esp_sha256": "54780bfc5f468386059004eb050d011187c16132507f9c5ec42f650678f6bf7b",
+  "certificate": {
+    "source_sha256": "cc9a459636cf7bc6daac17a8211da620c3748f5b53424bdd8c155159138d0f2d",
+    "wim_sha256": "70fdf04e1af8f040aa8f88cd8ad6435c69f8caff4c534199422e6c90cec5aa87",
+    "serialized_cert_sha256": "89287c2d169b4090111b94cf386b18b4a6d72ef51ac88606eab272b9ec844383",
+    "thumbprint_sha1": "09D28942CA58A061B9E9B6F9BFC330BFA25A3A7C",
+    "stores": [
+      "Root",
+      "TrustedPublisher"
+    ],
+    "note": "offline trust entries verified; signature acceptance and boot policy unverified"
+  },
+  "restore_boot_sha256": "7d03e814b3f156c4a03ef48c48ededd130916c5aa78df118d425f6ef40ea2ee3",
+  "restore_esp_sha256": "c2c1d2bfcf37b8422e9db9429b70fa98ffb7f995a6d24c8a5de3804d9b007176",
+  "successful_full_screen_evidence": {
+    "test_boot_sha256": "2813f8cb42651bb54374bf7b7b1bdd33eaf2198db6afd008c70574f337b190ab",
+    "test_esp_sha256": "80e78974e86c709f0961d4f80db5dcaeff3dade8bf2ab5c86b7102aad4035871",
+    "uart_sha256": "4078132753b808e8013f2c89afb1482d41a5f4cce5c6639407a1d4575373d81f",
+    "screen_pbm_sha256": "9c792a39c30fadbe86c9465c29314c2b5157c4b536700f991cf77cee63d095aa",
+    "inputs_sha256": "25cfd5cf360c3a86c1af7a7c8fdab6d3c513ee6bd785624c9a314a28018c44bc",
+    "observed": "CPU1 ownership and watchdog kicks; full 800x600 screen with per-part and aggregate CRC; no 3D render",
+    "restore": "matching restore input hashes and RESTORE_COMMANDS_SUCCEEDED; no physical readback; immediate restored combination boot not conclusively attributed"
+  },
+  "base_components_sha256": {
+    "SYSTEM": "cc151bf339dd2683b313e95d42179cfe571f6392c7a294b9a98f19a8a83e5214",
+    "mt8167-toprgu.sys": "52a1a1cb0cd66821099a87db9aca5bd82797061ab0e99a047d495d7fe06c2b3e",
+    "uart-screen.exe": "655bfc0fa4ae4369b7aa487a747dbe9b41780b3078bc335261fa9c83e53236d7"
+  },
+  "scissor_words": [
+    49,
+    64
+  ],
+  "triangle_interior_pixels": 1107,
+  "diagonal_edge_pixels": 41,
+  "transpose_interior_difference": 42,
+  "observed_09c630d": {
+    "status": "C000003E",
+    "stage": 32,
+    "background": 448,
+    "foreground": 576,
+    "other": 3072,
+    "old_morton_mismatch": 3547,
+    "foreground_linear_rectangle": "x=8..31,y=8..31",
+    "background_and_zero_spatial_unknown": true,
+    "old_decoder_wrong": true,
+    "screen_size": [
+      800,
+      1280
+    ],
+    "screen_aggregate_crc_complete": false
+  },
+  "signed_zip_sha256": "844aa167192280302201fc24339520f41be40f3bbb65cb67eb90c2183b6f29db",
+  "sentinel_rgba": "a55ac37e",
+  "region_header_gpu_va": "0xdbf0000000",
+  "screen_policy": "skip on drvload, PnP and lifecycle success; screen fallback on returned startup failure; no host CRC acknowledgement"
+}
