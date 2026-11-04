@@ -31,6 +31,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c drivers/gpu/mt8167/gpu_mmu.c -o build/ge8300-mmu-arm.obj
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif -c drivers/gpu/mt8167/firmware_objects.c -o build/ge8300-fw-objects-arm.obj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif -c drivers/gpu/mt8167/firmware_runtime.c -o build/ge8300-runtime-arm.obj
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif -c drivers/gpu/mt8167/firmware_start.c -o build/ge8300-start-arm.obj
