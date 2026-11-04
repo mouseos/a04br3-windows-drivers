@@ -25,6 +25,11 @@ int main(void)
  assert(!a04_wmt_bridge_poll_wlan_status(&b,&status)&&status==3&&f.requests==1);
  assert(a04_wmt_bridge_poll_wlan_status(&b,&status)<0&&f.requests==1);
  assert(a04_wmt_bridge_ack_wlan_status(&b,1)<0);assert(!a04_wmt_bridge_ack_wlan_status(&b,3));
+ {uint8_t event[12]={12,0,0,0xe0,0x0d,0,0,0,7,0,0,0};
+  b.scan.pending=1;b.scan.sequence=7;
+  assert(!a04_wmt_bridge_scan_event(&b,event,sizeof(event)) && b.scan.complete);
+  assert(!a04_wmt_bridge_scan_consume(&b) && !b.scan.complete);
+ }
  f.status=0x40;assert(a04_wmt_bridge_poll_wlan_status(&b,&status)!=0);
  assert(b.failed && owner.poisoned && life.state==A04_WIFI_LIFE_FAILED && f.requests==3);
  puts("WLAN read-clear status accounting and poison: OK");return 0;

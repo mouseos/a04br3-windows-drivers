@@ -603,6 +603,9 @@ test-mt6630: build/mt6630_identity_test build/mt6630_sdio_args_test build/mt6630
 	./build/mt6630_enumerate_test
 	./build/mt6630_control_start_test
 	./build/mt6630_wmt_bridge_test
+	./build/mt6630_native_scan_test
+	./build/mt6630_native_bridge_test
+	./build/mt6630_data_bridge_test
 
 test: test-mt6630
 
@@ -677,3 +680,21 @@ test-mt6630: build/mt6630_wmt_bridge_test
 .PHONY: test-mt6630-firmware
 test-mt6630-firmware:
 	python3 -m unittest discover -s tests/mt6630_xnu -p 'test_*.py'
+
+build/mt6630_native_scan_test: drivers/network/mt6630/native_scan.c drivers/network/mt6630/native_scan.h tests/native_scan_stubs/ndis.h tests/mt6630_native_scan_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Itests/native_scan_stubs -Idrivers/network/mt6630 drivers/network/mt6630/native_scan.c tests/mt6630_native_scan_test.c -o $@
+
+test-mt6630: build/mt6630_native_scan_test
+
+build/mt6630_native_bridge_test: tests/mt6630_native_bridge_test.c drivers/network/mt6630/native_scan.c drivers/network/mt6630/native_scan_bridge.c drivers/network/mt6630/wmt_bridge.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Itests/native_scan_stubs -Idrivers/network/mt6630 tests/mt6630_native_bridge_test.c drivers/network/mt6630/native_scan.c drivers/network/mt6630/native_scan_bridge.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c -o $@
+
+test-mt6630: build/mt6630_native_bridge_test
+
+build/mt6630_data_bridge_test: tests/mt6630_data_bridge_test.c drivers/network/mt6630/wmt_bridge.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 tests/mt6630_data_bridge_test.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c -o $@
+
+test-mt6630: build/mt6630_data_bridge_test

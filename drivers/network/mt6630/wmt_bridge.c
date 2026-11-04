@@ -73,6 +73,57 @@ int a04_wmt_bridge_boot_wlan(struct a04_wmt_bridge *b,const void *data,unsigned 
  b->wlan_ready=b->wlan_state.ready;return b->wlan_ready?0:fault(b,-1);
 }
 
+int a04_wmt_bridge_scan_begin(struct a04_wmt_bridge *b,const struct a04_wlan_scan *request)
+{
+ int e;if(!alive(b)||!b->wlan_ready||b->failed||!b->wlan.runtime||!request)return -1;
+ e=a04_wlan_scan_begin(&b->wlan,&b->scan,request);
+ if(e && (b->scan.failed||b->wlan.failed||b->transport.failed))return fault(b,e);
+ return e;
+}
+int a04_wmt_bridge_scan_event(struct a04_wmt_bridge *b,const uint8_t *packet,unsigned length)
+{
+ struct a04_wlan_event event;int e;
+ if(!alive(b)||!b->wlan_ready||b->failed||!b->scan.pending||!packet)return -1;
+ e=a04_wlan_event_parse(packet,length,&event);if(e)return fault(b,e);
+ e=a04_wlan_scan_done(&b->scan,&event);
+ if(e && e!=A04_WLAN_UNSUPPORTED)return fault(b,e);
+ return e;
+}
+int a04_wmt_bridge_scan_consume(struct a04_wmt_bridge *b)
+{
+ if(!alive(b)||!b->scan.complete||b->scan.failed||b->scan.pending)return -1;
+ b->scan.complete=0;return 0;
+}
+int a04_wmt_bridge_scan_fail(struct a04_wmt_bridge *b,int reason)
+{
+ if(!b||!b->life||!reason||!b->scan.pending||
+    (b->life->state!=A04_WIFI_LIFE_IO && b->life->state!=A04_WIFI_LIFE_FAILED))return -1;
+ b->scan.pending=0;b->scan.failed=reason;fault(b,reason);return 0;
+}
+int a04_wmt_bridge_tx_ethernet(struct a04_wmt_bridge *b,const struct a04_wlan_station *station,
+ struct a04_wlan_security *security,struct a04_wlan_data_state *data,const uint8_t *frame,unsigned length,
+ a04_wlan_mic_verify verify,void *context,uint64_t now,uint64_t deadline)
+{
+ int e;if(!alive(b)||!b->wlan_ready||b->failed||!b->wlan.runtime)return -1;
+ e=a04_wlan_ethernet_send(&b->wlan,station,security,data,frame,length,verify,context,now,deadline);
+ if(e && (b->wlan.failed||b->transport.failed))return fault(b,e);
+ return e;
+}
+int a04_wmt_bridge_rx_ethernet(struct a04_wmt_bridge *b,const struct a04_wlan_station *station,
+ struct a04_wlan_security *security,const uint8_t *packet,unsigned length,struct a04_wlan_ethernet *out)
+{
+ if(!alive(b)||!b->wlan_ready||b->failed||!b->wlan.runtime)return -1;
+ return a04_wlan_ethernet_rx(station,security,packet,length,out);
+}
+int a04_wmt_bridge_tx_event(struct a04_wmt_bridge *b,const struct a04_wlan_station *station,
+ struct a04_wlan_security *security,struct a04_wlan_data_state *data,const uint8_t *packet,unsigned length,uint64_t now)
+{
+ struct a04_wlan_event event;int e;if(!alive(b)||!b->wlan_ready||b->failed||!b->wlan.runtime)return -1;
+ e=a04_wlan_event_parse(packet,length,&event);if(e)return fault(b,e);
+ e=a04_wlan_data_tx_event(&b->wlan,station,security,data,&event,now);
+ if(e && (b->wlan.failed||b->transport.failed))return fault(b,e);
+ return e;
+}
 int a04_wmt_bridge_poll_wlan_status(struct a04_wmt_bridge *b,uint32_t *status)
 {
  uint32_t observed;int e;

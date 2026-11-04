@@ -13,3 +13,10 @@ if($LASTEXITCODE) { throw 'NDIS compile failed' }
 & lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib "$out\ndis.obj" "$km\ndis.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\bufferoverflowfastfailk.lib" "/out:$out\mt6630-ndis-candidate.sys"
 if($LASTEXITCODE) { throw 'NDIS link failed' }
 Write-Host 'Build-only NDIS candidate: initialize always fails; no INF or hardware access.'
+
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_scan.c" -o "$out\native_scan.obj"
+if($LASTEXITCODE) { throw 'Native 802.11 scan parser compile failed' }
+Write-Host 'Native scan request parser compiled; not attached to OID handler.'
+
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_scan_bridge.c" -o "$out\native_scan_bridge.obj"
+if($LASTEXITCODE) { throw 'Native scan bridge compile failed' }

@@ -104,3 +104,16 @@ FIFO受信を扱う。bundleの所有・SHA-256と起動設定は呼出側の責
 `vendor_xnu/provenance.json` に固定した。`make test-mt6630-firmware` の
 Linuxソース照合は `A04BR3_BOARD_SOURCE` 指定時に実行される。
 統合リンク確認SYSは開始を常に拒否し、未署名・INFなしで配備できない。
+
+`native_scan.c` は `DOT11_SCAN_REQUEST_V2` の可変長配列を境界検証してコピーし、
+`native_scan_bridge.c` は外部から与えられた実際の規制・channel方針を使って
+firmware scanを開始する。対応するSCAN_DONEが届いた後だけSCAN_CONFIRMを
+通知する。対象は単一SSID・wildcard BSSID等の限定された部分集合で、現在の
+NDIS OID handlerやWindowsのwork itemには未接続。SCAN timeout/中断時の失敗通知も提供するが、BSS一覧は未実装である。
+
+WLANのEthernet HIF送受信部品は既存Linux gen3実装を参考にしたローカルXNU由来で、
+認証・鍵・暗号・リプレイ検証を行う状態所有者が別途必要。Microsoftの
+[Native 802.11受信規約](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/windot11/ns-windot11-dot11_extsta_recv_context)
+は802.11 packetと無線OOB情報を要求するため、このEthernet viewを直接NDISへ
+渡さない。MPDU形式とPHY/RSSI等の実情報、NET_BUFFER_LIST寿命、暗号処理の
+対応確認が必要。現段階はNDIS送受信や実IRQ/PnPに接続していない。
