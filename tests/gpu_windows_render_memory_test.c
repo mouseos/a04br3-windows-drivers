@@ -40,8 +40,11 @@ int main(void)
     assert(a04_windows_render_memory_create(&m,&s,6,maps,3)==STATUS_SUCCESS);
     assert(allocated==1 && m.cpu && m.length==20u*4096u);
     for (unsigned i=A04_RENDER_PAYLOAD_OFFSET;i<m.length;++i) assert(!((unsigned char *)m.cpu)[i]);
-    assert(a04_windows_render_stage_fragment_pds(&m,0xda00002000ULL,0xe000005040ULL,UINT64_C(1)<<35)==STATUS_SUCCESS);
     unsigned char *p=(unsigned char *)m.cpu+A04_RENDER_PAYLOAD_OFFSET+4u*4096u;
+    p[47]=1;
+    assert(a04_windows_render_stage_fragment_pds(&m,0xda00002000ULL,0xe000005040ULL,UINT64_C(1)<<35)==STATUS_INVALID_DEVICE_STATE);
+    assert(!p[0] && !m.staged_count);p[47]=0;
+    assert(a04_windows_render_stage_fragment_pds(&m,0xda00002000ULL,0xe000005040ULL,UINT64_C(1)<<35)==STATUS_SUCCESS);
     assert(p[0]==0x40 && p[1]==0x50 && p[4]==8 && p[32]==2 && p[35]==0xf4);
     for (unsigned i=8;i<32;++i) assert(!p[i]);
     for (unsigned i=36;i<48;++i) assert(!p[i]);
@@ -498,6 +501,36 @@ int main(void)
       assert(out[15u*4096u+0x300]==0x38 && out[0x650]==0 && out[0x651]==0x53 &&
              out[0x654]==0 && out[0x670]==2 && out[0x673]==0xf4 && m.staged_count==29);
       assert(a04_windows_render_stage_background_shader(&m,0xe000005300ULL,0xda00010650ULL)==STATUS_INVALID_PARAMETER);
+      { uint8_t *sh=out+15u*4096u;
+        assert(a04_windows_render_stage_triangle_usc(&m,0xe000005700ULL,0xe0000057c0ULL)==STATUS_INVALID_PARAMETER);
+        sh[0x9bf]=1;
+        assert(a04_windows_render_stage_triangle_usc(&m,0xe000005700ULL,0xe000005800ULL)==STATUS_INVALID_DEVICE_STATE);
+        assert(m.staged_count==29 && !m.triangle_usc_staged);sh[0x9bf]=0;
+        assert(a04_windows_render_stage_triangle_usc(&m,0xe000005700ULL,0xe000005800ULL)==STATUS_SUCCESS);
+        assert(sh[0x700]==0x99 && sh[0x800]==0x44 && m.staged_count==31 && m.triangle_usc_staged);
+        for(unsigned i=176;i<256;++i) assert(!sh[0x700+i]);
+        for(unsigned i=360;i<448;++i) assert(!sh[0x800+i]);
+        sh[0x700]^=1;
+        assert(a04_windows_render_stage_triangle_vertex_pds(&m,0xda00010690ULL,0xda00011000ULL,0xda000106a0ULL,0xda000106b0ULL)==STATUS_INVALID_DEVICE_STATE);
+        sh[0x700]^=1;
+        out[4096]=1;
+        assert(a04_windows_render_stage_triangle_vertex_pds(&m,0xda00010690ULL,0xda00011000ULL,0xda000106a0ULL,0xda000106b0ULL)==STATUS_INVALID_DEVICE_STATE);
+        out[4096]=0;
+        assert(a04_windows_render_stage_triangle_vertex_pds(&m,0xda00010690ULL,0xda00011000ULL,0xda000106a0ULL,0xda000106b0ULL)==STATUS_SUCCESS);
+        assert(a04_windows_render_stage_triangle_fragment_pds(&m,0xda000106c0ULL)==STATUS_SUCCESS);
+        assert(out[0x6a1]==0x57 && out[0x6a4]==8 && out[0x6c1]==0x58 && out[0x6c4]==0x10 && m.staged_count==35);
+        assert(a04_windows_render_stage_triangle_uniform(&m,0xda00010720ULL,0xda00011000ULL,0xda00010730ULL,0xda00010700ULL,0xda00010740ULL)==STATUS_INVALID_DEVICE_STATE);
+        assert(a04_windows_render_stage_triangle_uniform(&m,0xda00010720ULL,0xda00013000ULL,0xda00010730ULL,0xda00010700ULL,0xda00010740ULL)==STATUS_SUCCESS);
+        assert(a04_windows_render_stage_triangle_vertex_code(&m,0xda00010750ULL,0xda00010760ULL)==STATUS_SUCCESS);
+        assert(m.triangle_vertex_pds_staged && m.triangle_vertex_code_staged && m.triangle_fragment_pds_staged && m.triangle_uniform_staged && m.writable_count==2 && m.staged_count==41);
+        assert(a04_windows_render_memory_bind_vm(&m)==STATUS_SUCCESS);
+        assert(a04_windows_render_prepare_context(&m,9,0xda00016000ULL,4,&static_state)==STATUS_SUCCESS);
+        out[0x6a0]^=1;
+        assert(a04_windows_render_publish_context(&m)==STATUS_INVALID_DEVICE_STATE && !m.published);
+        out[0x6a0]^=1;out[4096]=1;
+        assert(a04_windows_render_publish_context(&m)==STATUS_INVALID_DEVICE_STATE && !m.published);
+        out[4096]=0;
+        assert(a04_windows_render_publish_context(&m)==STATUS_SUCCESS && m.published); }
       s.processor_released=FALSE;assert(a04_windows_render_memory_free(&m,TRUE)==STATUS_SUCCESS);
     }
     free(s.memory.heap);

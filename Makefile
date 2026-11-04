@@ -18,6 +18,7 @@ test: build/gpu_render_context_static_test build/gpu_render_shared_size_test bui
 	python3 tests/gpu_render_submit_dependencies_test.py
 	python3 tests/gpu_render_vertex_pds_code_test.py
 	python3 tests/gpu_triangle_nir_audit_test.py
+	python3 tests/gpu_render_triangle_fixture_test.py
 	python3 tests/gpu_render_fixed_vdm_test.py
 	python3 tests/gpu_render_fixed_ppp_test.py
 	python3 tests/gpu_render_background_test.py
@@ -97,7 +98,7 @@ build/gpu_render_context_test: drivers/gpu/mt8167/render_context.c drivers/gpu/m
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_pair.c drivers/gpu/mt8167/render_stream.c drivers/gpu/mt8167/firmware_objects.c tests/gpu_render_context_test.c -o $@
 
-build/gpu_windows_render_memory_test: tests/gpu_windows_render_memory_test.c tests/gpu_windows_stubs/ntddk.h drivers/gpu/mt8167/render_fixed_ppp.c drivers/gpu/mt8167/render_fixed_vdm.c drivers/gpu/mt8167/render_pair.c drivers/gpu/mt8167/windows_render_memory.c drivers/gpu/mt8167/windows_render_memory.h drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/render_pds_data.c drivers/gpu/mt8167/render_context_pds.c drivers/gpu/mt8167/render_context_static.c drivers/gpu/mt8167/render_context_bounded_usc.h drivers/gpu/mt8167/render_shared_size.c drivers/gpu/mt8167/render_shared_size.h drivers/gpu/mt8167/render_execution.c drivers/gpu/mt8167/firmware_objects.c drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_freelist.c drivers/gpu/mt8167/render_target.c drivers/gpu/mt8167/render_hwrt.c
+build/gpu_windows_render_memory_test: tests/gpu_windows_render_memory_test.c tests/gpu_windows_stubs/ntddk.h drivers/gpu/mt8167/render_fixed_ppp.c drivers/gpu/mt8167/render_fixed_vdm.c drivers/gpu/mt8167/render_pair.c drivers/gpu/mt8167/windows_render_memory.c drivers/gpu/mt8167/windows_render_memory.h drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/render_pds_data.c drivers/gpu/mt8167/render_context_pds.c drivers/gpu/mt8167/render_context_static.c drivers/gpu/mt8167/render_context_bounded_usc.h drivers/gpu/mt8167/render_triangle_usc.h drivers/gpu/mt8167/render_shared_size.c drivers/gpu/mt8167/render_shared_size.h drivers/gpu/mt8167/render_execution.c drivers/gpu/mt8167/firmware_objects.c drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_freelist.c drivers/gpu/mt8167/render_target.c drivers/gpu/mt8167/render_hwrt.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -DA04_GE8300_RENDER_EXPERIMENT=1 -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif tests/gpu_windows_render_memory_test.c drivers/gpu/mt8167/render_fixed_ppp.c drivers/gpu/mt8167/render_fixed_vdm.c drivers/gpu/mt8167/render_pair.c drivers/gpu/mt8167/windows_render_memory.c drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/render_pds_data.c drivers/gpu/mt8167/render_context_pds.c drivers/gpu/mt8167/render_context_static.c drivers/gpu/mt8167/render_shared_size.c drivers/gpu/mt8167/render_execution.c drivers/gpu/mt8167/firmware_objects.c drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_freelist.c drivers/gpu/mt8167/render_target.c drivers/gpu/mt8167/render_hwrt.c -o $@
 

@@ -255,3 +255,7 @@ persistent／shared context stateとHWRT、freelist表、callstackの書込み�
 `build-mesa-context-static-diagnostic.py` は独立Mesaライブラリでrender contextの静的レジスタ値を型付きで非公開記録する。`check-context-static.py` は２slotそれぞれのstate base、store／resumeのPDS state、persistent PDSのdataとcodeの連続配置を生成点のmetadataと照合する。00／ffの２captureで一致した。MesaのLLS定義ではVDM stateが92バイト、TA stateが484バイトである。
 
 `a04_render_make_context_static` は上記の固定レイアウトを所有範囲のGPUアドレスから生成する。`a04_windows_render_make_bounded_static` は先に配置された２組のbounded shared USC、shared PDS、persistent PDSと一致する場合に限り、ゼロ初期化されたSLC bypassのVDM／TA stateを予約してstatic registerを生成する。context生成にはその値をそのまま渡し、公開時にも固定値・shader・PDS・stateの予約と初期状態を再確認する。各部品はホストmockで検証した。機械語の意味、特殊レジスタの実機値、GPU cache動作、描画job全体やcleanup後のDMA停止を証明するものではなく、描画fixture・利用者向け実行入口は未完成である。
+
+`generate-triangle-fixture.py` はscratchなし固定頂点shaderとfragment shaderについて、独立した00／ff capture、SPIR-V／NIRの固定probe検査、PCO出力SHA-256を照合する。fragmentのgrouped PCOは27命令群、固定したopcode集合、`sh0` と `sr53` のみを受け入れる。比較対象はMesa compiler出力であり、生BOは読まない。生成した `render_triangle_usc.h` は実験用コードで、GPU上の命令意味や特殊レジスタ値の証明ではない。
+
+`a04_windows_render_stage_triangle_usc` と専用PDS／uniform配置関数は、生成shaderの所有DMAへの配置、検査済みshaderへのPDS接続、vertex／fragmentの各spill領域の別々の所有・ゼロ初期化・寿命予約を行う。公開時には固定shader、PDS、spill情報、FS metadataとspill領域を再確認し、不完全または改変された場合は拒否する。この検査もVDM／PPP、背景、PBE、partial renderの全依存やrender kickの安全性を保証せず、実機描画の入口には接続されていない。

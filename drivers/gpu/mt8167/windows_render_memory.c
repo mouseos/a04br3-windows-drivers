@@ -5,6 +5,7 @@
 #include "render_pds_data.h"
 #include "render_context_pds.h"
 #include "render_context_bounded_usc.h"
+#include "render_triangle_usc.h"
 #include "render_shared_size.h"
 #include "render_freelist.h"
 #include "render_pair.h"
@@ -86,6 +87,20 @@ static int reservations_valid(const struct a04_windows_render_memory *m)
         for(j=0;j<i;++j) if(overlap(a,n,m->writable[j].gpu_va,m->writable[j].size)) return 0;
         for(j=0;j<m->staged_count;++j) if(overlap(a,n,m->staged[j].gpu_va,m->staged[j].size)) return 0;
     }
+    return 1;
+}
+static int writable_zero(const struct a04_windows_render_memory *m,uint64_t addr,size_t len)
+{
+    size_t i,j;unsigned matches=0;uint64_t off=0;
+    for(i=0;i<m->map_count && i<A04_RENDER_MAX_MAPS;++i) {
+        const struct a04_windows_render_map *r=&m->maps[i];uint64_t size=(uint64_t)r->pages*PAGE;
+        if (!(r->mmu_flags&(A04_GPU_MMU_READ_ONLY|A04_GPU_MMU_PM_FW_PROTECT)) &&
+            addr>=r->gpu_va && len<=size && addr-r->gpu_va<=size-len) {
+            off=A04_RENDER_PAYLOAD_OFFSET+(uint64_t)r->payload_page*PAGE+addr-r->gpu_va;++matches;
+        }
+    }
+    if (matches!=1 || off>m->length || len>m->length-off) return 0;
+    for(j=0;j<len;++j) if (((const uint8_t *)m->cpu)[off+j]) return 0;
     return 1;
 }
 /* Match the actual DMA page tables, not just the saved mapping description. */
@@ -410,6 +425,7 @@ NTSTATUS a04_windows_render_stage_fragment_pds(struct a04_windows_render_memory 
     range.gpu_va=shader->gpu_va;range.dma=(uint64_t)m->logical.QuadPart+shader_off;
     range.size=(uint64_t)shader->pages*PAGE;range.access=A04_RENDER_RANGE_READ|A04_RENDER_RANGE_EXEC;
     if (a04_render_make_fragment_pds(shader_gpu,doutu_control,&range,1,data)) return STATUS_INVALID_PARAMETER;
+    for (i=0;i<sizeof(data);++i) if (((const uint8_t *)m->cpu)[off+i]) return STATUS_INVALID_DEVICE_STATE;
     for (i=0;i<sizeof(data);++i) ((uint8_t *)m->cpu)[off+i]=data[i];
     staged_commit(m,&pds_gpu,&sz,1);
     return STATUS_SUCCESS;
@@ -815,6 +831,31 @@ NTSTATUS a04_windows_render_stage_bounded_context_usc(struct a04_windows_render_
     for(i=0;i<2;++i) RtlCopyMemory((uint8_t *)m->cpu+off[i],code[i],code_size[i]);
     staged_commit(m,addr,len,2);return STATUS_SUCCESS;
 }
+NTSTATUS a04_windows_render_stage_triangle_usc(struct a04_windows_render_memory *m,uint64_t vertex,uint64_t fragment)
+{
+    uint64_t addr[2]={vertex,fragment},len[2]={256,448},off[2];size_t i,j,k;
+    const uint8_t *code[2]={a04_triangle_vertex_usc,a04_triangle_fragment_usc};
+    const size_t used[2]={sizeof(a04_triangle_vertex_usc),sizeof(a04_triangle_fragment_usc)};
+    if (!m || !m->ready || !m->cpu || !m->adapter || !m->firmware || m->published || m->poisoned || m->triangle_usc_staged ||
+        !m->map_count || m->map_count>A04_RENDER_MAX_MAPS || KeGetCurrentIrql()!=PASSIVE_LEVEL ||
+        !render_ptes_valid(m) || !staged_available(m,addr,len,2)) return STATUS_INVALID_PARAMETER;
+    for(i=0;i<2;++i) {
+        unsigned matches=0;
+        if ((addr[i]>>32)!=UINT64_C(0xe0) || (addr[i]&63u)) return STATUS_INVALID_PARAMETER;
+        for(j=0;j<m->map_count;++j) {
+            const struct a04_windows_render_map *r=&m->maps[j];uint64_t bytes=(uint64_t)r->pages*PAGE;
+            if ((r->mmu_flags&A04_GPU_MMU_READ_ONLY) && !(r->mmu_flags&A04_GPU_MMU_PM_FW_PROTECT) &&
+                addr[i]>=r->gpu_va && len[i]<=bytes && addr[i]-r->gpu_va<=bytes-len[i]) {
+                off[i]=A04_RENDER_PAYLOAD_OFFSET+(uint64_t)r->payload_page*PAGE+addr[i]-r->gpu_va;++matches;
+            }
+        }
+        if (matches!=1 || off[i]>m->length || len[i]>m->length-off[i]) return STATUS_INVALID_PARAMETER;
+        for(k=0;k<len[i];++k) if (((const uint8_t *)m->cpu)[off[i]+k]) return STATUS_INVALID_DEVICE_STATE;
+    }
+    for(i=0;i<2;++i) RtlCopyMemory((uint8_t *)m->cpu+off[i],code[i],used[i]);
+    staged_commit(m,addr,len,2);m->triangle_vertex_usc=vertex;m->triangle_fragment_usc=fragment;m->triangle_usc_staged=TRUE;
+    return STATUS_SUCCESS;
+}
 static NTSTATUS render_stage_context_sr(struct a04_windows_render_memory *m,
     uint64_t state,uint64_t store_shader,uint64_t load_shader,uint64_t store_ctl,uint64_t load_ctl,
     uint64_t store_data,uint64_t store_code,uint64_t load_data,uint64_t load_code,BOOLEAN bounded)
@@ -956,6 +997,57 @@ static int staged_bytes_equal(const struct a04_windows_render_memory *m,uint64_t
     for(j=0;j<reserved;++j) if (((const uint8_t *)m->cpu)[off+j]!=(j<used?expected[j]:0)) return 0;
     return 1;
 }
+NTSTATUS a04_windows_render_stage_triangle_vertex_pds(struct a04_windows_render_memory *m,
+    uint64_t spill_info,uint64_t spill_buffer,uint64_t vertex_pds,uint64_t descriptor_pds)
+{
+    struct a04_render_pds_input input={0};uint64_t size=8192;NTSTATUS status;
+    if (!m || !m->triangle_usc_staged || m->triangle_vertex_pds_staged || !m->cpu || !m->map_count || m->map_count>A04_RENDER_MAX_MAPS ||
+        !writable_available(m,&spill_buffer,&size,1) || !writable_zero(m,spill_buffer,8192) ||
+        !staged_bytes_equal(m,m->triangle_vertex_usc,256,a04_triangle_vertex_usc,sizeof(a04_triangle_vertex_usc)))
+        return STATUS_INVALID_DEVICE_STATE;
+    input.shader_gpu=m->triangle_vertex_usc;input.spill_info_gpu=spill_info;input.spill_buffer_gpu=spill_buffer;
+    input.doutu_control=UINT64_C(0x800000000);input.vertex_literal=UINT32_C(0x80000000);input.descriptor_literal0=UINT32_C(0x90000003);
+    status=a04_windows_render_stage_scratchless_pds(m,&input,vertex_pds,descriptor_pds);
+    if (NT_SUCCESS(status)) {
+        writable_commit(m,&spill_buffer,&size,1);m->triangle_vertex_spill=spill_buffer;m->triangle_vertex_spill_info=spill_info;
+        m->triangle_vertex_pds=vertex_pds;m->triangle_descriptor_pds=descriptor_pds;m->triangle_vertex_pds_staged=TRUE;
+    }
+    return status;
+}
+NTSTATUS a04_windows_render_stage_triangle_vertex_code(struct a04_windows_render_memory *m,uint64_t vertex,uint64_t descriptor)
+{
+    NTSTATUS status;
+    if (!m || !m->triangle_usc_staged || !m->triangle_vertex_pds_staged || m->triangle_vertex_code_staged ||
+        !m->cpu || !staged_bytes_equal(m,m->triangle_vertex_usc,256,a04_triangle_vertex_usc,sizeof(a04_triangle_vertex_usc)))
+        return STATUS_INVALID_DEVICE_STATE;
+    status=a04_windows_render_stage_scratchless_pds_code(m,vertex,descriptor);
+    if (NT_SUCCESS(status)) { m->triangle_vertex_code=vertex;m->triangle_descriptor_code=descriptor;m->triangle_vertex_code_staged=TRUE; }
+    return status;
+}
+NTSTATUS a04_windows_render_stage_triangle_fragment_pds(struct a04_windows_render_memory *m,uint64_t pds)
+{
+    NTSTATUS status;
+    if (!m || !m->triangle_usc_staged || m->triangle_fragment_pds_staged || !m->cpu || !m->map_count || m->map_count>A04_RENDER_MAX_MAPS ||
+        !staged_bytes_equal(m,m->triangle_fragment_usc,448,a04_triangle_fragment_usc,sizeof(a04_triangle_fragment_usc)))
+        return STATUS_INVALID_DEVICE_STATE;
+    status=a04_windows_render_stage_fragment_pds(m,pds,m->triangle_fragment_usc,UINT64_C(0x1000000000));
+    if (NT_SUCCESS(status)) { m->triangle_fragment_pds=pds;m->triangle_fragment_pds_staged=TRUE; }
+    return status;
+}
+NTSTATUS a04_windows_render_stage_triangle_uniform(struct a04_windows_render_memory *m,
+    uint64_t info,uint64_t buffer,uint64_t meta,uint64_t data,uint64_t code)
+{
+    struct a04_render_fragment_uniform_input input;uint64_t size=8192;NTSTATUS status;
+    if (!m || !m->triangle_usc_staged || m->triangle_uniform_staged || !m->cpu || !writable_available(m,&buffer,&size,1) || !writable_zero(m,buffer,8192))
+        return STATUS_INVALID_DEVICE_STATE;
+    input.spill_info_gpu=info;input.spill_buffer_gpu=buffer;input.fs_meta_gpu=meta;
+    status=a04_windows_render_stage_fragment_uniform(m,&input,data,code);
+    if (NT_SUCCESS(status)) {
+        writable_commit(m,&buffer,&size,1);m->triangle_fragment_spill=buffer;m->triangle_fragment_spill_info=info;m->triangle_fs_meta=meta;m->triangle_uniform=data;
+        m->triangle_uniform_code=code;m->triangle_uniform_staged=TRUE;
+    }
+    return status;
+}
 static int bounded_programs_valid(const struct a04_windows_render_memory *m,
     const struct a04_render_owned_range *ranges)
 {
@@ -997,6 +1089,40 @@ static int bounded_state_zero(const struct a04_windows_render_memory *m,uint64_t
     if (matches!=1 || records!=1 || off>m->length || len>m->length-off) return 0;
     for(j=0;j<len;++j) if (((const uint8_t *)m->cpu)[off+j]) return 0;
     return 1;
+}
+static int triangle_live_valid(const struct a04_windows_render_memory *m)
+{
+    struct a04_render_owned_range ranges[A04_RENDER_MAX_MAPS];struct a04_render_pds_input p={0};
+    struct a04_render_pds_data data;struct a04_render_fragment_uniform_input u;
+    struct a04_render_fragment_uniform_data uniform;uint8_t frag[48],vc[16],dc[16];size_t i;
+    if (!m->triangle_usc_staged || !m->triangle_vertex_pds_staged || !m->triangle_vertex_code_staged ||
+        !m->triangle_fragment_pds_staged || !m->triangle_uniform_staged || !m->map_count || m->map_count>A04_RENDER_MAX_MAPS ||
+        !bounded_state_zero(m,m->triangle_vertex_spill,8192,0) || !bounded_state_zero(m,m->triangle_fragment_spill,8192,0)) return 0;
+    for(i=0;i<m->map_count;++i) {
+        const struct a04_windows_render_map *r=&m->maps[i];
+        ranges[i].gpu_va=r->gpu_va;ranges[i].dma=(uint64_t)m->logical.QuadPart+A04_RENDER_PAYLOAD_OFFSET+(uint64_t)r->payload_page*PAGE;
+        ranges[i].size=(uint64_t)r->pages*PAGE;ranges[i].access=A04_RENDER_RANGE_READ;
+        if (!(r->mmu_flags&(A04_GPU_MMU_READ_ONLY|A04_GPU_MMU_PM_FW_PROTECT))) ranges[i].access|=A04_RENDER_RANGE_WRITE;
+        if ((r->mmu_flags&A04_GPU_MMU_READ_ONLY) && !(r->mmu_flags&A04_GPU_MMU_PM_FW_PROTECT) && (r->gpu_va>>32)==UINT64_C(0xe0)) ranges[i].access|=A04_RENDER_RANGE_EXEC;
+    }
+    p.shader_gpu=m->triangle_vertex_usc;p.spill_info_gpu=m->triangle_vertex_spill_info;p.spill_buffer_gpu=m->triangle_vertex_spill;
+    p.doutu_control=UINT64_C(0x800000000);p.vertex_literal=UINT32_C(0x80000000);p.descriptor_literal0=UINT32_C(0x90000003);
+    u.spill_info_gpu=m->triangle_fragment_spill_info;u.spill_buffer_gpu=m->triangle_fragment_spill;u.fs_meta_gpu=m->triangle_fs_meta;
+    if (a04_render_make_scratchless_pds_data(&p,ranges,m->map_count,&data) ||
+        a04_render_make_fragment_uniform(&u,ranges,m->map_count,&uniform) ||
+        a04_render_make_fragment_pds(m->triangle_fragment_usc,UINT64_C(0x1000000000),ranges,m->map_count,frag)) return 0;
+    a04_render_make_scratchless_pds_code(vc,dc);
+    return staged_bytes_equal(m,m->triangle_vertex_usc,256,a04_triangle_vertex_usc,sizeof(a04_triangle_vertex_usc)) &&
+        staged_bytes_equal(m,m->triangle_fragment_usc,448,a04_triangle_fragment_usc,sizeof(a04_triangle_fragment_usc)) &&
+        staged_bytes_equal(m,m->triangle_vertex_pds,16,data.vertex,12) &&
+        staged_bytes_equal(m,m->triangle_descriptor_pds,16,data.descriptor,12) &&
+        staged_bytes_equal(m,m->triangle_vertex_spill_info,12,data.spill_info,12) &&
+        staged_bytes_equal(m,m->triangle_vertex_code,16,vc,16) && staged_bytes_equal(m,m->triangle_descriptor_code,16,dc,16) &&
+        staged_bytes_equal(m,m->triangle_fragment_pds,48,frag,48) &&
+        staged_bytes_equal(m,m->triangle_uniform,32,uniform.descriptor,24) &&
+        staged_bytes_equal(m,m->triangle_fragment_spill_info,12,uniform.spill_info,12) &&
+        staged_bytes_equal(m,m->triangle_fs_meta,4,uniform.fs_meta,4) &&
+        staged_bytes_equal(m,m->triangle_uniform_code,16,uniform.code,16);
 }
 static int bounded_live_valid(const struct a04_windows_render_memory *m)
 {
@@ -1135,6 +1261,7 @@ NTSTATUS a04_windows_render_publish_context(struct a04_windows_render_memory *m)
         (!bytes_equal(&ctx->static_render_context_state.ctxswitch_regs[0],&m->bounded_static_state,sizeof(m->bounded_static_state)) ||
          !bounded_live_valid(m)))
         return STATUS_INVALID_DEVICE_STATE;
+    if (m->triangle_usc_staged && !triangle_live_valid(m)) return STATUS_INVALID_DEVICE_STATE;
     if (ctx->geom_context.dm!=PVR_FWIF_DM_GEOM || ctx->frag_context.dm!=PVR_FWIF_DM_FRAG ||
         ctx->geom_context.fw_mem_context_fw_addr!=m->vm.fw_addr || ctx->frag_context.fw_mem_context_fw_addr!=m->vm.fw_addr ||
         ctx->geom_context.ccb_fw_addr!=m->render.geom_ring.fw_addr || ctx->frag_context.ccb_fw_addr!=m->render.frag_ring.fw_addr ||

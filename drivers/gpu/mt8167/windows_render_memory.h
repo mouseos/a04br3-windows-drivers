@@ -15,7 +15,7 @@
 /* A private DMA allocation and its GPU page tables. Call at PASSIVE_LEVEL;
  * the caller serializes firmware access and prevents untracked CPU writes. */
 #define A04_RENDER_MAX_MAPS 32u
-#define A04_RENDER_MAX_STAGED 32u
+#define A04_RENDER_MAX_STAGED 64u
 #define A04_RENDER_MAX_WRITABLE 16u
 #define A04_RENDER_PAYLOAD_OFFSET (14u*4096u)
 struct a04_windows_render_map {
@@ -66,6 +66,12 @@ struct a04_windows_render_memory {
     size_t pt_slot_count,sr_slot_count;
     BOOLEAN bounded_static_prepared;
     struct rogue_fwif_geom_registers_caswitch bounded_static_state;
+    BOOLEAN triangle_usc_staged;
+    uint64_t triangle_vertex_usc,triangle_fragment_usc;
+    BOOLEAN triangle_vertex_pds_staged,triangle_vertex_code_staged,triangle_fragment_pds_staged,triangle_uniform_staged;
+    uint64_t triangle_vertex_pds,triangle_descriptor_pds,triangle_fragment_pds,triangle_vertex_spill;
+    uint64_t triangle_vertex_spill_info,triangle_vertex_code,triangle_descriptor_code;
+    uint64_t triangle_uniform,triangle_uniform_code,triangle_fragment_spill,triangle_fragment_spill_info,triangle_fs_meta;
 };
 NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
     struct a04_gpu_firmware_state *s,ULONG payload_pages,
@@ -179,6 +185,16 @@ NTSTATUS a04_windows_render_stage_context_sr(struct a04_windows_render_memory *m
  * unverified on GPU. Both code and PDS must be staged before publication. */
 NTSTATUS a04_windows_render_stage_bounded_context_usc(struct a04_windows_render_memory *m,
     uint64_t store_shader_gpu,uint64_t load_shader_gpu);
+/* Fixed probe shaders; input is GPU VA only, with no captured BO bytes. */
+NTSTATUS a04_windows_render_stage_triangle_usc(struct a04_windows_render_memory *m,
+    uint64_t vertex_shader_gpu,uint64_t fragment_shader_gpu);
+NTSTATUS a04_windows_render_stage_triangle_vertex_pds(struct a04_windows_render_memory *m,
+    uint64_t spill_info_gpu,uint64_t spill_buffer_gpu,uint64_t vertex_pds_gpu,uint64_t descriptor_pds_gpu);
+NTSTATUS a04_windows_render_stage_triangle_fragment_pds(struct a04_windows_render_memory *m,uint64_t pds_gpu);
+NTSTATUS a04_windows_render_stage_triangle_vertex_code(struct a04_windows_render_memory *m,
+    uint64_t vertex_code_gpu,uint64_t descriptor_code_gpu);
+NTSTATUS a04_windows_render_stage_triangle_uniform(struct a04_windows_render_memory *m,
+    uint64_t spill_info_gpu,uint64_t spill_buffer_gpu,uint64_t fs_meta_gpu,uint64_t data_gpu,uint64_t code_gpu);
 NTSTATUS a04_windows_render_stage_bounded_context_sr(struct a04_windows_render_memory *m,
     uint64_t state_gpu,uint64_t store_shader_gpu,uint64_t load_shader_gpu,
     uint64_t store_data_gpu,uint64_t store_code_gpu,uint64_t load_data_gpu,uint64_t load_code_gpu);
