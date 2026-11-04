@@ -127,9 +127,9 @@ build/bq24160_handoff_test: drivers/power/bq24160/charger.c drivers/power/bq2416
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/power/bq24160 drivers/power/bq24160/charger.c tests/bq24160_handoff_test.c -o $@
 
-build/bq24160_owner_broker_test: drivers/power/bq24160/owner_broker.c drivers/power/bq24160/owner_broker.h drivers/power/bq24160/charger.c drivers/power/lc709203f/gauge.c tests/bq24160_owner_broker_test.c
+build/bq24160_owner_broker_test: drivers/power/bq24160/owner_broker.c drivers/power/bq24160/owner_broker.h drivers/power/bq24160/broker_mailbox.c drivers/power/bq24160/broker_mailbox.h drivers/power/bq24160/charger.c drivers/power/lc709203f/gauge.c tests/bq24160_owner_broker_test.c
 	mkdir -p build
-	$(CC) $(CFLAGS) -Idrivers/power/bq24160 drivers/power/bq24160/owner_broker.c drivers/power/bq24160/charger.c drivers/power/lc709203f/gauge.c tests/bq24160_owner_broker_test.c -o $@
+	$(CC) $(CFLAGS) -Idrivers/power/bq24160 drivers/power/bq24160/owner_broker.c drivers/power/bq24160/broker_mailbox.c drivers/power/bq24160/charger.c drivers/power/lc709203f/gauge.c tests/bq24160_owner_broker_test.c -o $@
 
 build/bq24160_charger_test: drivers/power/bq24160/charger.c drivers/power/bq24160/charger.h tests/bq24160_charger_test.c
 	mkdir -p build

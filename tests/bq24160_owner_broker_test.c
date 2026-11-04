@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <string.h>
 #include "owner_broker.h"
+#include "broker_mailbox.h"
 #define NS 1000000000ULL
 struct fake { uint64_t now, gauge_delay; int reads, writes, gauge_reads, bad_gauge, bad_bq; };
 static uint64_t clock_ns(void *p) { return ((struct fake *)p)->now; }
@@ -51,5 +52,30 @@ int main(void) {
     f.now=0;assert(a04_bq_broker_run(&b,0,0,0)==A04_BROKER_STOPPED&&o.stopped);
     setup(&f,&o,&b,&c,&g);a04_bq_broker_stop(&b);
     assert(a04_bq_broker_init(&b,&o,&c,&g,0,40*NS));
+    {
+        struct a04_broker_endpoint e={0};
+        struct a04_broker_request q={7,1,5*NS};
+        struct a04_broker_response r;
+        setup(&f,&o,&b,&c,&g);assert(!a04_broker_endpoint_init(&e,&b,7));
+        q.epoch=8;memset(&r,0xaa,sizeof(r));
+        assert(a04_broker_endpoint_dispatch(&e,&q,&r)&&!f.reads&&!r.epoch);
+        q.epoch=7;assert(!a04_broker_endpoint_dispatch(&e,&q,&r));
+        assert(r.epoch==7&&r.sequence==1&&r.result==A04_BROKER_OK&&r.sample.voltage_mv==4000);
+        assert(a04_broker_endpoint_dispatch(&e,&q,&r)&&!r.epoch&&f.gauge_reads==3);
+        q.sequence=2;f.bad_gauge=1;
+        assert(!a04_broker_endpoint_dispatch(&e,&q,&r)&&r.result==A04_BROKER_STOPPED);
+        assert(e.closed&&o.stopped&&!r.sample.voltage_mv);
+        q.sequence=3;assert(a04_broker_endpoint_dispatch(&e,&q,&r)&&!r.epoch);
+        assert(a04_broker_endpoint_init(&e,&b,9));
+    }
+    {
+        struct a04_broker_endpoint e={0};struct a04_broker_request q={1,1,5*NS};
+        struct a04_broker_response r;
+        setup(&f,&o,&b,&c,&g);assert(!a04_broker_endpoint_init(&e,&b,1));
+        assert(!a04_broker_endpoint_maintain(&e)&&f.writes==1);
+        a04_broker_endpoint_close(&e);
+        assert(o.stopped&&a04_broker_endpoint_dispatch(&e,&q,&r)&&f.reads==8);
+        assert(a04_broker_endpoint_maintain(&e)&&f.writes==1);
+    }
     return 0;
 }
