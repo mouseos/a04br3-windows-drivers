@@ -169,6 +169,14 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
   if(!NT_SUCCESS(status)) { WdfIoTargetClose(c->touch); WdfIoTargetClose(c->watchdog); return status; }
   c->lease_owned=TRUE; c->ownership.touch_lease=1;
   DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"A04THERM touch lease acquired; no clock or reset writes\n");
+#if !A04_THERMAL_MONITOR_TEST
+  /* A calibration-only diagnostic must not retain the shared lease for D0. */
+  status=TouchRequest(c,A04_TOUCH_THERMAL_RELEASE);
+  c->lease_owned=FALSE; c->ownership.touch_lease=0;
+  WdfIoTargetClose(c->touch);
+  if(!NT_SUCCESS(status)) { WdfIoTargetClose(c->watchdog); return status; }
+  DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"A04THERM touch lease released\n");
+#endif
  }
 #endif
  /* Firmware/EL3 handoff has not been proven: the monitor remains blocked.
@@ -212,7 +220,9 @@ NTSTATUS ThermalExit(WDFDEVICE dev,WDF_POWER_DEVICE_STATE next)
 #endif
 #if A04_THERMAL_LEASE_DIAG
  if(c->lease_owned) { (VOID)TouchRequest(c,A04_TOUCH_THERMAL_RELEASE); c->lease_owned=FALSE; }
+#if A04_THERMAL_MONITOR_TEST
  WdfIoTargetClose(c->touch);
+#endif
 #endif
  WdfIoTargetClose(c->watchdog); a04_owner_revoke(&c->ownership); RtlSecureZeroMemory(&c->cal,sizeof(c->cal)); c->calibrated=FALSE;return STATUS_SUCCESS;
 }
