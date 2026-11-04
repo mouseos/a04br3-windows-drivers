@@ -2,6 +2,7 @@
 """Capture one boot, preserve the first crash, and request UART reset on failure."""
 import argparse
 from pathlib import Path
+import re
 import subprocess
 import time
 
@@ -49,8 +50,9 @@ with a.log.open('rb') as source, a.output.open('xb') as out:
                     reported.add(marker)
                     if marker == markers[0]:
                         ebs_at = time.monotonic()
-            if any(marker in tail for marker in (b'A04WIN BUGCHECK', b'A04WIN write range rejected',
-                                                  b'A04WIN transfer failed', b'A04WIN dma failure')):
+            if (any(marker in tail for marker in (b'A04WIN BUGCHECK', b'A04WIN write range rejected',
+                                                   b'A04WIN transfer failed', b'A04WIN dma failure')) or
+                    re.search(rb'A04GPU BUGCHECK (?:(?:[0-9A-F]{8} ?){5}|DATA_UNAVAILABLE)\r?\n', tail)):
                 print('停止または書込み範囲検証失敗を検出、UARTでリセットします', flush=True)
                 if snapshot_process is not None and snapshot_process.poll() is None:
                     snapshot_process.terminate()
