@@ -596,6 +596,8 @@ test-mt6630: build/mt6630_identity_test build/mt6630_sdio_args_test build/mt6630
 	./build/mt6630_direct_test
 	./build/mt6630_msdc2_pio_test
 	./build/mt6630_power_bridge_test
+	./build/mt6630_nvram_test
+	./build/mt6630_wlan_firmware_test
 
 test: test-mt6630
 
@@ -624,3 +626,15 @@ build/mt6630_power_bridge_test: drivers/network/mt6630/power_bridge.c drivers/ne
 	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/power_bridge.c drivers/network/mt6630/power_plan.c tests/mt6630_power_bridge_test.c -o $@
 
 test-mt6630: build/mt6630_power_bridge_test
+
+build/mt6630_nvram_test: drivers/network/mt6630/nvram.h drivers/network/mt6630/calibration.c tests/mt6630_nvram_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/calibration.c tests/mt6630_nvram_test.c -o $@
+
+test-mt6630: build/mt6630_nvram_test
+
+build/mt6630_wlan_firmware_test: drivers/network/mt6630/wlan_firmware.c drivers/network/mt6630/wlan_firmware.h tests/mt6630_wlan_firmware_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/wlan_firmware.c tests/mt6630_wlan_firmware_test.c -o $@
+
+test-mt6630: build/mt6630_wlan_firmware_test

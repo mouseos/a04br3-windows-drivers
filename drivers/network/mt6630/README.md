@@ -67,3 +67,14 @@ CMD52/53部品で、順序保証付きI/Oと事前設定済みコントローラ
 reset解除前に再確認する。電圧・レール・クロックは操作せずbrokerも未実装。
 NDISのsendは将来の初期化変更時に要求が宙に残らないよう失敗完了するが、
 有効なコンテキストの生成も送受信もなく、初期化は引き続き常時失敗する。
+
+`calibration.c` と `nvram.h` は、起動時に供給される端末のNVRAM領域から
+境界・bitmap・全体およびレコードのチェックサムを検証してWIFIレコードを読む。
+Windowsの領域探索・読取providerは未実装で、実端末の校正値は同梱しない。
+`wlan_firmware.c` は候補の実測revision、SHA-256 callback、MTKW形式とCRCを
+検証する。SHA-256 provider、ファイル取得とfirmware転送は未実装。テストの
+ハッシュcallbackは合成データ用で、署名や真正性の検証ではない。
+`windows_msdc2.c` は独占資源と有効リースを前提とするWindows MMIO写像の
+未接続部品。排他broker、IRQ停止、D0と取り外しの直列化が必要であり、
+現行の `WifiPrepare` は呼ばず、常時失敗を維持する。物理的なsurprise removalと
+並行するMMIOの安全性は保証されない。NDISとWindowsバスには未接続。
