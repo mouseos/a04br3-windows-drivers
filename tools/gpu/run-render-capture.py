@@ -47,6 +47,7 @@ def main():
     p.add_argument('--pco-fill',choices=('00','ff'))
     p.add_argument('--pco-ir',action='store_true',help='record private compiler IR in probe.log')
     p.add_argument('--scratchless-vertex',action='store_true',help='use isolated scratchless triangle shader')
+    p.add_argument('--asymmetric-scissor',action='store_true',help='use private fixed 49x64 scissor in scratchless probe')
     a=p.parse_args(); src=a.probe_source.resolve(); mesa=a.mesa_source.resolve(); build=a.mesa_build.resolve(); shim=a.shim.resolve(); out=a.output.resolve()
     if git(src,'rev-parse','HEAD') != PROBE_PIN or git(src,'status','--porcelain','--untracked-files=all'):
         raise SystemExit('probe source must be clean pinned commit')
@@ -73,6 +74,15 @@ def main():
         if not diagnostic or not diagnostic.get('private_compiler_candidates') or not a.pco_fill:
             raise SystemExit('scratchless variant requires private compiler diagnostic')
         probe_src,header,variant=prepare_scratchless(src,out)
+    if a.asymmetric_scissor:
+        if not variant:raise SystemExit('asymmetric scissor requires scratchless probe')
+        text=probe_src.read_text()
+        original='const VkRect2D scissor = {{0, 0}, {kWidth, kHeight}};'
+        if text.count(original)!=1:raise SystemExit('unexpected probe scissor')
+        text=text.replace(original,'const VkRect2D scissor = {{0, 0}, {49, kHeight}};')
+        probe_src.write_text(text)
+        variant['scissor_width']=49;variant['scissor_height']=64
+        variant['private_probe_sha256']=sha(probe_src)
     binary=out/'probe'
     subprocess.run(['cc','-std=gnu11','-Wall','-Wextra','-Werror','-I'+str(mesa/'include'),str(HERE/'vulkan-capture-probe.c'),str(probe_src),'-ldl','-o',str(binary)],check=True)
     env=os.environ.copy()

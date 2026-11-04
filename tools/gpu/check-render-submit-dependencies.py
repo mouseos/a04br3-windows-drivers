@@ -18,7 +18,7 @@ def load(name):
     spec.loader.exec_module(mod)
     return mod
 
-def analyze(events, text, scratchless=False, fs_meta_traced=False, scissor_traced=False):
+def analyze(events, text, scratchless=False, fs_meta_traced=False, scissor_traced=False, scissor_width=64):
     def fields(name):
         values=[int(x,16) for x in re.findall(r'^\s*'+name+r'\s*:\s*(0x[0-9a-fA-F]+)',text,re.M)]
         if len(values)!=2: raise ValueError('unsupported control stream')
@@ -92,7 +92,7 @@ def analyze(events, text, scratchless=False, fs_meta_traced=False, scissor_trace
             if len(raw)<16 or e['stream_length']!=len(raw):raise ValueError('missing fragment command')
             addr=struct.unpack_from('<Q',raw,8)[0];table=scissors.get(addr)
             h=14695981039346656037
-            for byte in struct.pack('<II',64,64):h=((h^byte)*1099511628211)&((1<<64)-1)
+            for byte in struct.pack('<II',scissor_width,64):h=((h^byte)*1099511628211)&((1<<64)-1)
             if not table or table['size']!=8 or table['fnv64']!=h or not mapped(vm,addr,8):raise ValueError('scissor table not live')
             frag_checked+=1
     if checked!=2 or len(links)!=2 or (scissor_traced and frag_checked!=4): raise ValueError('missing fixed-probe jobs')
@@ -110,9 +110,23 @@ def check(root):
         raise ValueError('capture hash mismatch')
     load('check-render-vdm-pds').check(root)
     load('check-render-fragment').check(root)
+    variant=m.get('scratchless_vertex') or {}
+    width=variant.get('scissor_width',64)
+    if width!=64:
+        source=root/'private-probe-source/powervrprobed_vulkan.c'
+        raw_source=source.read_bytes()
+        changed=b'const VkRect2D scissor = {{0, 0}, {49, kHeight}};'
+        original=b'const VkRect2D scissor = {{0, 0}, {kWidth, kHeight}};'
+        if (width!=49 or variant.get('scissor_height')!=64 or
+            raw_source.count(changed)!=1 or
+            hashlib.sha256(raw_source.replace(changed,original)).hexdigest()!=
+                'e9da24b42baea04c55d8f30fd8d9c6574c078a6899840c5cc3fb0481b897f63b' or
+            hashlib.sha256(raw_source).hexdigest()!=variant.get('private_probe_sha256') or
+            variant.get('private_probe_sha256')!=m.get('probe_source_sha256')):
+            raise ValueError('asymmetric probe provenance')
     return analyze([json.loads(x) for x in events.splitlines()],log.decode('utf-8','replace'),bool(m.get('scratchless_vertex')),
                    bool((m.get('diagnostic_manifest') or {}).get('pds_fs_meta_metadata_only')),
-                   bool((m.get('diagnostic_manifest') or {}).get('scissor_metadata_only')))
+                   bool((m.get('diagnostic_manifest') or {}).get('scissor_metadata_only')),width)
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('capture');a=p.parse_args()
