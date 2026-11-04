@@ -47,3 +47,10 @@ D0外の無効化と復帰は既存試作であり、スリープや復旧の安
 System Bus Extenderだった。元の `a04br3/toprgu/` には旧診断パッケージが残るが、
 元startnet.cmdはこれをロードしない。これはファイルと設定の確認でありロードの証拠
 ではない。WIMとSYSは未署名のため、そのまま実機起動用とは扱わない。
+
+署名とWinPE作成は `A04_TOPRGU_CPU1_HANDOFF=1` でWDKビルドし、
+`tools/ci/sign-toprgu-early.ps1` と `tools/ci/prepare-toprgu-early-wim.ps1` を使用。
+後者はコピーのWIMだけにテスト証明書をRootとTrustedPublisherへ登録する。
+元ESPのBCD `testsigning Yes`、WinPE loaderの`ramdisk`参照は別途確認する。
+証明書とCAT/SYSの整合、展開後の証明書・SYSハッシュ・Start=0を照合しても、
+RT端末側での署名の受理や31秒以内のデバイス開始は実機試験まで不明。
