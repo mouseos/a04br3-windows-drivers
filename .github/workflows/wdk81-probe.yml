@@ -69,6 +69,9 @@ jobs:
       - name: Compile experimental KMDF button provider
         shell: pwsh
         run: ./tools/ci/build-button-provider.ps1
+      - name: Compile LC709203F battery components
+        shell: pwsh
+        run: ./tools/ci/build-lc709203f-probe.ps1
       - name: Compile button provider PnP status tool
         shell: pwsh
         run: ./tools/ci/build-button-provider-status.ps1
