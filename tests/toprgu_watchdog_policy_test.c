@@ -22,5 +22,9 @@ int main(void)
     assert(mt8167_thermal_must_stop(1,0,1,0,3000));
     assert(!mt8167_thermal_must_stop(1,1,3000,0,3000));
     assert(mt8167_thermal_must_stop(1,1,3001,0,3000));
+    assert(!mt8167_thermal_deadline_expired(30000000u,0,30000000u));
+    assert(mt8167_thermal_deadline_expired(30000001u,0,30000000u));
+    assert(!mt8167_thermal_deadline_expired(10000000u,0xff000000u,30000000u));
+    assert(mt8167_thermal_deadline_expired(20000000u,0xff000000u,30000000u));
     return 0;
 }

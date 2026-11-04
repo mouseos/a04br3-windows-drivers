@@ -21,7 +21,7 @@ typedef struct {
     volatile LONG running, busy;
     volatile LONG ownedFour;
 #if A04_TOPRGU_THERMAL_STOP
-    volatile LONG thermalHalt, thermalArmed, thermalLastMs;
+    volatile LONG thermalHalt, thermalArmed, thermalLastTicks;
 #endif
     BOOLEAN suspendedWatchdog;
     ULONG savedMode;
@@ -178,8 +178,8 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
         elapsed=KeQueryInterruptTime()-c->started;
 #if A04_TOPRGU_THERMAL_STOP
         if (mt8167_thermal_must_stop(InterlockedCompareExchange(&c->thermalArmed,0,0),four,
-                (ULONG)(KeQueryInterruptTime()/10000u),
-                (ULONG)InterlockedCompareExchange(&c->thermalLastMs,0,0),3000u)) {
+                (ULONG)KeQueryInterruptTime(),
+                (ULONG)InterlockedCompareExchange(&c->thermalLastTicks,0,0),30000000u)) {
             InterlockedExchange(&c->thermalHalt,1);
             WRITE_REGISTER_ULONG(c->wdt+5,0x1209u);
         }
@@ -248,14 +248,14 @@ VOID ToprguThermalControl(WDFQUEUE queue, WDFREQUEST request, size_t outputLengt
            InterlockedCompareExchange(&c->ownedFour,0,0) &&
            !InterlockedCompareExchange(&c->thermalHalt,0,0) &&
            !InterlockedCompareExchange(&c->thermalArmed,0,0)) {
-            InterlockedExchange(&c->thermalLastMs,(LONG)(ULONG)(KeQueryInterruptTime()/10000u));
+            InterlockedExchange(&c->thermalLastTicks,(LONG)(ULONG)KeQueryInterruptTime());
             InterlockedExchange(&c->thermalArmed,1); status=STATUS_SUCCESS;
         } else status=STATUS_DEVICE_NOT_READY;
     } else if (code==A04_TOPRGU_THERMAL_PING) {
         if(InterlockedCompareExchange(&c->thermalArmed,0,0) &&
            KeQueryActiveProcessorCount(NULL)>=4 &&
            !InterlockedCompareExchange(&c->thermalHalt,0,0)) {
-            InterlockedExchange(&c->thermalLastMs,(LONG)(ULONG)(KeQueryInterruptTime()/10000u));
+            InterlockedExchange(&c->thermalLastTicks,(LONG)(ULONG)KeQueryInterruptTime());
             status=STATUS_SUCCESS;
         } else status=STATUS_DEVICE_NOT_READY;
     } else if (code==A04_TOPRGU_THERMAL_HALT) {

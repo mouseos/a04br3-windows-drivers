@@ -7,7 +7,7 @@ static int mt8167_watchdog_should_feed(uint64_t elapsed, uint32_t deadline_secon
 {
     return !deadline_seconds || elapsed < (uint64_t)deadline_seconds * 10000000u;
 }
-/* 32-bit monotonic milliseconds, modular subtraction; timeout < 2^31. */
+/* Low 32 bits of monotonic 100 ns ticks; modular subtraction, timeout < 2^31. */
 static inline int mt8167_thermal_deadline_expired(uint32_t now,uint32_t last,uint32_t timeout)
 { return timeout && timeout<0x80000000u && (uint32_t)(now-last)>timeout; }
 static inline int mt8167_thermal_must_stop(int armed,int four,uint32_t now,uint32_t last,uint32_t timeout)
