@@ -12,6 +12,8 @@ struct a04_gpu_firmware_state {
     BOOLEAN processor_released;
     BOOLEAN firmware_started;
     BOOLEAN queue_faulted;
+    void (*trace)(void *context, ULONG stage);
+    void *trace_context;
 };
 /* PASSIVE_LEVEL only. The caller owns the PnP resources and DMA adapter.
  * Input state must be zeroed. The firmware image must remain accessible for

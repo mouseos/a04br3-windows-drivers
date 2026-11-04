@@ -25,6 +25,41 @@ typedef struct {
     struct a04_ge8300_status status;
     BOOLEAN referenced, attempted;
 } GPU_CONTEXT;
+#if A04_GE8300_BOOT_TEST
+/* WinPE-only crash diagnostics. UART TX is shared with the existing monitor;
+ * writes are bounded and never change its configuration. */
+static volatile ULONG *GpuUart;
+static KBUGCHECK_CALLBACK_RECORD GpuBugRecord;
+static volatile ULONG_PTR *GpuBugData;
+static BOOLEAN GpuBugRegistered;
+static void GpuPrint(const char *s)
+{
+    ULONG budget;
+    if (!GpuUart) return;
+    while (*s) {
+        for (budget=100000;budget;--budget)
+            if (!(READ_REGISTER_ULONG(GpuUart+3)&0x80u) && (READ_REGISTER_ULONG(GpuUart+5)&0x20u)) break;
+        if (!budget) return;
+        WRITE_REGISTER_ULONG(GpuUart,(ULONG)(UCHAR)*s++);
+    }
+}
+static void GpuHex(ULONG value)
+{
+    static const char digits[]="0123456789ABCDEF"; char text[9]; unsigned i;
+    for(i=0;i<8;++i) text[i]=digits[(value>>(28-4*i))&15u];
+    text[8]=0; GpuPrint(text);
+}
+static void GpuTraceStage(void *context,ULONG stage)
+{ UNREFERENCED_PARAMETER(context); GpuPrint("A04GPU STEP="); GpuHex(stage); GpuPrint("\n"); }
+static void GpuBugCallback(PVOID buffer,ULONG length)
+{
+    unsigned i; UNREFERENCED_PARAMETER(buffer); UNREFERENCED_PARAMETER(length);
+    GpuPrint("\nA04GPU BUGCHECK");
+    if (GpuBugData) for(i=0;i<5;++i) { GpuPrint(" "); GpuHex((ULONG)GpuBugData[i]); }
+    else GpuPrint(" DATA_UNAVAILABLE");
+    GpuPrint("\n");
+}
+#endif
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(GPU_CONTEXT,GpuContext)
 EVT_WDF_DRIVER_DEVICE_ADD GpuAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE GpuPrepare;
@@ -99,13 +134,35 @@ NTSTATUS GpuPrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
     }
     if(!have_core || !have_mfg) return STATUS_DEVICE_CONFIGURATION_ERROR;
     c->core=MmMapIoSpace(core,CORE_SIZE,MmNonCached);
-    return c->core ? STATUS_SUCCESS : STATUS_INSUFFICIENT_RESOURCES;
+    if(!c->core) return STATUS_INSUFFICIENT_RESOURCES;
+#if A04_GE8300_BOOT_TEST
+    {
+        PHYSICAL_ADDRESS uart; UNICODE_STRING name=RTL_CONSTANT_STRING(L"KiBugCheckData");
+        uart.QuadPart=0x11005000u;
+        GpuUart=MmMapIoSpace(uart,0x1000u,MmNonCached);
+        if (!GpuUart) { MmUnmapIoSpace((PVOID)c->core,CORE_SIZE); c->core=NULL; return STATUS_INSUFFICIENT_RESOURCES; }
+        GpuBugData=(volatile ULONG_PTR *)MmGetSystemRoutineAddress(&name);
+        KeInitializeCallbackRecord(&GpuBugRecord);
+        GpuBugRegistered=KeRegisterBugCheckCallback(&GpuBugRecord,GpuBugCallback,NULL,0,(PUCHAR)"A04GPU");
+        if (!GpuBugRegistered) {
+            MmUnmapIoSpace((PVOID)GpuUart,0x1000u); GpuUart=NULL;
+            MmUnmapIoSpace((PVOID)c->core,CORE_SIZE); c->core=NULL; return STATUS_UNSUCCESSFUL;
+        }
+        c->firmware.trace=GpuTraceStage; c->firmware.trace_context=c;
+        GpuPrint(GpuBugData ? "A04GPU BUGCHECK CAPTURE READY\n" : "A04GPU BUGCHECK DATA UNAVAILABLE\n");
+    }
+#endif
+    return STATUS_SUCCESS;
 }
 NTSTATUS GpuRelease(WDFDEVICE device,WDFCMRESLIST translated)
 {
     GPU_CONTEXT *c=GpuContext(device); UNREFERENCED_PARAMETER(translated);
     /* Never detach mappings or DMA ownership while the GPU might master RAM. */
     if(c->firmware.processor_released) return STATUS_DEVICE_BUSY;
+#if A04_GE8300_BOOT_TEST
+    if(GpuBugRegistered) { KeDeregisterBugCheckCallback(&GpuBugRecord); GpuBugRegistered=FALSE; }
+    if(GpuUart) { MmUnmapIoSpace((PVOID)GpuUart,0x1000u); GpuUart=NULL; }
+#endif
     if(c->core) { MmUnmapIoSpace((PVOID)c->core,CORE_SIZE); c->core=NULL; }
     return STATUS_SUCCESS;
 }
@@ -121,6 +178,7 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     return STATUS_SUCCESS;
 #else
     c->status.attempted=1;
+    GpuTraceStage(c,0x100);
     if(!c->core || !c->dma) { c->status.boot_status=STATUS_DEVICE_NOT_READY; return STATUS_SUCCESS; }
     status=read_firmware(&image,&bytes);
     if(!NT_SUCCESS(status)) { c->status.boot_status=status; return STATUS_SUCCESS; }
@@ -135,9 +193,11 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
                                    ((uint64_t)hi<<32)|lo,A04_GE8300_ALLOW_MISMATCH,26000000u);
     }
     c->status.boot_status=status;
+    GpuTraceStage(c,0x101);
     ExFreePoolWithTag(image,'0XGA');
     if(NT_SUCCESS(status)) {
         c->status.health_status=a04_gpu_firmware_health(&c->firmware);
+        GpuTraceStage(c,0x102);
         GpuSnapshot(c);
         if(NT_SUCCESS(c->status.health_status)) c->status.shutdown_status=a04_gpu_firmware_shutdown(&c->firmware);
     } else if(c->firmware.processor_released && c->firmware.runtime.system_init) GpuSnapshot(c);

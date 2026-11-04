@@ -3,6 +3,7 @@
 #include "windows_firmware.h"
 #include "pvr_rogue_fwif.h"
 #define BOOT_TIMEOUT_STEPS 1000u
+#define TRACE(s,n) do { if ((s)->trace) (s)->trace((s)->trace_context,(n)); } while (0)
 static NTSTATUS fw_status(enum a04_pvr_fw_result r)
 {
     return r==A04_PVR_FW_INCOMPATIBLE ? STATUS_NOT_SUPPORTED : STATUS_INVALID_IMAGE_FORMAT;
@@ -17,36 +18,44 @@ NTSTATUS a04_gpu_firmware_boot(struct a04_gpu_firmware_state *s,
     if (!s || !adapter || !image || !clock_hz || KeGetCurrentIrql()!=PASSIVE_LEVEL ||
         s->memory.adapter || s->processor_released) return STATUS_INVALID_PARAMETER;
     if (bvnc!=A04_PVR_BVNC) return STATUS_NOT_SUPPORTED;
+    TRACE(s,1);
     r=a04_pvr_fw_plan(image,image_size,bvnc,allow_mismatch,&s->plan);
     if (r!=A04_PVR_FW_OK) return fw_status(r);
     status=a04_gpu_register_io_init(&s->registers,regs,regs_length,&s->io);
     if (!NT_SUCCESS(status)) return status;
     status=a04_gpu_allocate_memory(adapter,&s->memory);
     if (!NT_SUCCESS(status)) return status;
+    TRACE(s,2);
     r=a04_pvr_fw_load(image,image_size,bvnc,allow_mismatch,s->memory.heap,
                       A04_PVR_HEAP_SIZE,&s->plan);
     if (r!=A04_PVR_FW_OK) { status=fw_status(r); goto fail_before_release; }
+    TRACE(s,3);
     r=a04_pvr_mips_prepare(&s->plan,s->memory.heap,A04_PVR_HEAP_SIZE,
         (uint64_t)s->memory.heap_logical.QuadPart,s->memory.table,0x4000u,
         (uint64_t)s->memory.table_logical.QuadPart,&s->remap);
     if (r!=A04_PVR_FW_OK) { status=STATUS_DEVICE_CONFIGURATION_ERROR; goto fail_before_release; }
+    TRACE(s,4);
     r=a04_pvr_runtime_prepare(&s->plan,s->memory.heap,A04_PVR_HEAP_SIZE,
         (uint64_t)s->memory.heap_logical.QuadPart,clock_hz,&s->runtime);
     if (r!=A04_PVR_FW_OK) { status=STATUS_DEVICE_CONFIGURATION_ERROR; goto fail_before_release; }
+    TRACE(s,5);
     status=a04_gpu_dma_sync(s->memory.heap,A04_PVR_HEAP_SIZE,FALSE);
     if (!NT_SUCCESS(status)) goto fail_before_release;
+    TRACE(s,6);
     status=a04_gpu_dma_sync(s->memory.table,0x4000u,FALSE);
     if (!NT_SUCCESS(status)) goto fail_before_release;
+    TRACE(s,7);
     /* Mark the allocation as owned by the GPU before the first MMIO write. */
     s->processor_released=TRUE;
     r=a04_pvr_mips_start(&s->io,bvnc,&s->remap);
     if (r!=A04_PVR_FW_OK) return STATUS_DEVICE_CONFIGURATION_ERROR;
+    TRACE(s,8);
     sys=(volatile struct rogue_fwif_sysinit *)(void *)((uint8_t *)s->memory.heap+s->runtime.system_init);
     interval.QuadPart=-100000; /* 10 ms, relative */
     for (i=0;i<BOOT_TIMEOUT_STEPS;++i) {
         status=a04_gpu_dma_sync((void *)sys,sizeof(*sys),TRUE);
         if (!NT_SUCCESS(status)) return status;
-        if (sys->firmware_started) { s->firmware_started=TRUE; return STATUS_SUCCESS; }
+        if (sys->firmware_started) { s->firmware_started=TRUE; TRACE(s,9); return STATUS_SUCCESS; }
         status=KeDelayExecutionThread(KernelMode,FALSE,&interval);
         if (!NT_SUCCESS(status)) return status;
     }
@@ -94,6 +103,7 @@ static NTSTATUS send_command(struct a04_gpu_firmware_state *s,unsigned kind)
     returns=(volatile uint32_t *)(void *)(heap+s->runtime.kernel_return_slots);
     power=(volatile uint32_t *)(void *)(heap+s->runtime.power_sync);
     conn=(struct rogue_fwif_connection_ctl *)(void *)(heap+A04_GPU_CONFIG_OFFSET);
+    TRACE(s,0x20u+kind*0x10u);
     status=a04_gpu_dma_sync((void *)ctl,sizeof(*ctl),TRUE);
     if (!NT_SUCCESS(status)) return status;
     slot=ctl->write_offset;
@@ -114,17 +124,20 @@ static NTSTATUS send_command(struct a04_gpu_firmware_state *s,unsigned kind)
         }
     }
     conn->connection_os_state=ROGUE_FW_CONNECTION_OS_ACTIVE;
+    TRACE(s,0x21u+kind*0x10u);
     status=a04_gpu_dma_sync(cmd,sizeof(*cmd),FALSE);
     if (NT_SUCCESS(status)) status=a04_gpu_dma_sync((void *)&returns[slot],sizeof(*returns),FALSE);
     if (NT_SUCCESS(status) && kind!=0) status=a04_gpu_dma_sync((void *)power,sizeof(*power),FALSE);
     if (NT_SUCCESS(status)) status=a04_gpu_dma_sync(conn,sizeof(*conn),FALSE);
     if (!NT_SUCCESS(status)) return status;
     ctl->write_offset=next;
+    TRACE(s,0x22u+kind*0x10u);
     status=a04_gpu_dma_sync((void *)ctl,sizeof(*ctl),FALSE);
     if (!NT_SUCCESS(status)) { s->queue_faulted=TRUE; return status; }
     /* MT8167 vendor DDK uses a counted GP kick for this MIPS firmware. */
     s->io.write32(s->io.context,ROGUE_CR_MTS_SCHEDULE,
         (PVR_FWIF_DM_GP & ~ROGUE_CR_MTS_SCHEDULE_DM_CLRMSK)|ROGUE_CR_MTS_SCHEDULE_TASK_COUNTED);
+    TRACE(s,0x23u+kind*0x10u);
     interval.QuadPart=-100000;
     for (i=0;i<100u;++i) {
         status=kind==0 ? a04_gpu_dma_sync((void *)&returns[slot],sizeof(*returns),TRUE)
