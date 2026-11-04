@@ -9,3 +9,18 @@
 既存の3コア WinPE の 4 KiB × 32768 回、13.485 秒の対読一致は読取り専用・非起動の仮想バッファ構成の結果で、この起動試作の検証ではない。ホスト試験も実機のキャッシュ整合性や電源・PnP を検証しない。
 
 参考: Linux v6.6 の [`mtk-sd.c`](https://github.com/torvalds/linux/blob/v6.6/drivers/mmc/host/mtk-sd.c) は DMA map/unmap と停止完了確認を行い、複数ブロックは CMD23 の有無に応じ停止コマンドを選ぶ。Linux の DMA API は Windows の同期保証を代替しない。
+
+停止競合の保守的な試作では reset 時に実行中の SRB を先に完了せず、worker に
+完了を委ねる。worker は DMA の停止を証明できなかった場合、SRB と要求ゲートを
+保持したまま戻り、新しい読取りや書込みを受け付けない。これは Storport が所有する
+extension と共通バッファの寿命を延ばす API ではなく、PnP 削除に対する安全性を
+証明しない。現在の bounce は依然 Storport 所有で、独立した DMA adapter と
+ドライバ所有バッファへの移行は未実装。起動拒否を維持し、実機に投入しない。
+
+Windows の `IoGetDmaAdapter` は物理 PDO を用い、デバイスが使うアドレスは
+`AllocateCommonBuffer` の logical address として取得する。CPU 物理アドレスを
+そのまま DMA バスアドレスと仮定しない。PnP 開始・削除、DMA 停止不能時の
+adapter と割当ての寿命を実装する前に、単なる contiguous pool への置換で
+所有権が解決したと扱わない。
+参照: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iogetdmaadapter
+および https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_common_buffer

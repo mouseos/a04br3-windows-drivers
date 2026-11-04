@@ -1114,6 +1114,16 @@ static VOID A04IsolatedWorker(PVOID extension, PVOID context, PVOID worker)
     StorPortAcquireSpinLock(extension,StartIoLock,NULL,&lock);
     original=probe->pendingRequest;
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+    /* DMA ownership is sticky after any unproven stop. Retain the SRB and
+     * gate; neither completion nor a later write can reuse the bounce buffer.
+     * This does not extend Storport's adapter/extension lifetime: startup
+     * remains gated until a separate owner solves PnP rundown. */
+    if (a04_life_load(&probe->lifetime) & A04_LIFE_DMA) {
+        probe->failed=TRUE;
+        InterlockedExchange(&probe->transfer_poisoned,1);
+        StorPortReleaseSpinLock(extension,&lock);
+        return;
+    }
     if (original && InterlockedCompareExchange(&probe->cancelled,0,0)) {
         probe->isolatedRequest.SrbStatus=SRB_STATUS_BUS_RESET;
         probe->isolatedRequest.DataTransferLength=0;
@@ -1406,12 +1416,18 @@ static BOOLEAN A04ResetBus(PVOID extension, ULONG path)
         InterlockedExchange(&probe->transfer_poisoned,1);
 #endif
         probe->failed=TRUE;
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+        /* A queued/running worker owns the SRB until it has observed DMA
+         * inactive. If not, it deliberately leaves the request pending. */
+        UNREFERENCED_PARAMETER(original);
+#else
         if (original) {
             probe->pendingRequest=NULL;
             original->SrbStatus=SRB_STATUS_BUS_RESET;
             original->DataTransferLength=0;
             StorPortNotification(RequestComplete,extension,original);
         }
+#endif
     }
 #else
     UNREFERENCED_PARAMETER(extension);
