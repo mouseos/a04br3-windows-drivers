@@ -4,6 +4,7 @@
 #include <ntddk.h>
 #include <wdf.h>
 #include "thermal.h"
+#include "manager.h"
 #include "../../system/mt8167-toprgu/thermal_stop.h"
 #define THERMAL_VAR_NAME L"A04BR3ThermalCalibration"
 typedef struct { ULONG version, d60, d61, d62; } BOOT_CAL;
@@ -39,6 +40,14 @@ static NTSTATUS WatchdogRequest(THERMAL_CONTEXT *c,ULONG code)
 /* For the eventual monitor; a success means reset was requested, not observed. */
 NTSTATUS A04ThermalRequestStop(WDFDEVICE dev)
 { THERMAL_CONTEXT *c=ThermalContext(dev); return c->watchdog ? WatchdogRequest(c,A04_TOPRGU_THERMAL_HALT) : STATUS_DEVICE_NOT_READY; }
+/* LIMIT fails safe to reset until a validated frequency-limiting backend exists.
+ * This callback is not started by the calibration-only diagnostic. */
+int A04ThermalApply(void *context,enum a04_thermal_action action)
+{
+ if(action==A04_TEMP_NORMAL) return 0;
+ if(action!=A04_TEMP_LIMIT && action!=A04_TEMP_HALT) return -1;
+ return NT_SUCCESS(A04ThermalRequestStop((WDFDEVICE)context)) ? 0 : -1;
+}
 NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
 {
  THERMAL_CONTEXT *c=ThermalContext(dev); BOOT_CAL v; ULONG size=sizeof(v),attributes=0;
