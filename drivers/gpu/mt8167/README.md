@@ -14,6 +14,11 @@ KCCB health要求後の実行カウンターの進行を確認しました。実
 スリープ復帰は未完成です。共通DMAバッファのキャッシュ整合性、特に異なる
 所有者が同じキャッシュラインを共有する場合の安全性も未検証です。
 
+`gpu_mmu.c` はGE8300の３段ページテーブルへ4 KiB単位の連続したDMA範囲を
+設定する部品です。範囲・重複を設定前に検査します。呼出し側によるDMA領域の
+確保、テーブルのキャッシュ同期、GPU側MMUの無効化、実行中ジョブとの同期、
+WDDM連携は未実装です。ホスト試験とARM32コンパイルは実機動作を意味しません。
+
 `rogue_power.h` is derived from the BSD-2-Clause-Patent
 [UniXNU A04BR3 implementation](https://github.com/mouseos/UniXNU-a04br3/blob/main/package/A04BR3RoguePower.h),
 which in turn identifies the board Linux clock and power sources. Its callback

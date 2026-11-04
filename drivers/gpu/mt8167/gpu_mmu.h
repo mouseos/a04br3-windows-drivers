@@ -1,0 +1,21 @@
+/* SPDX-License-Identifier: MIT
+ * GE8300 GPU virtual-address page table encoding, based on Imagination's
+ * pvr_mmu.c and pvr_rogue_mmu_defs.h (GPL-2.0-only OR MIT). */
+#ifndef A04_GE8300_GPU_MMU_H
+#define A04_GE8300_GPU_MMU_H
+#include <stdint.h>
+#include <stddef.h>
+#define A04_GPU_PAGE_SIZE 4096u
+#define A04_GPU_MMU_READ_ONLY UINT64_C(0x2)
+#define A04_GPU_MMU_COHERENT UINT64_C(0x4)
+#define A04_GPU_MMU_SLC_BYPASS UINT64_C(0x8)
+/* The caller owns three 4 KiB, zero-initialized DMA-visible table pages.
+ * A call maps a physically contiguous, page-aligned range within one 2 MiB
+ * leaf table. DMA addresses are the adapter logical addresses, not CPU VAs.
+ * The caller serializes access, synchronizes all changed tables to the GPU,
+ * and invalidates the GPU MMU before using or reusing any mapping. Never
+ * alter or free a live mapping until in-flight GPU work has been quiesced. */
+int a04_gpu_mmu_map_4k(uint32_t *pc,uint64_t *pd,uint64_t *pt,
+    uint64_t pd_dma,uint64_t pt_dma,uint64_t gpu_va,uint64_t dma,
+    size_t page_count,uint64_t flags);
+#endif
