@@ -10,6 +10,7 @@
 #include "pwrap_owner.h"
 #include "register_owner.h"
 #include "client_interface.h"
+#include "audio_interface.h"
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
@@ -81,6 +82,10 @@ static int ParentButtonRead(PVOID context,USHORT *value)
     if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
     return a04_pwrap_owner_read_buttons(&ParentContext((WDFDEVICE)context)->pmic,value);
 }
+/* No evidence for codec power/mute and clock ownership exists. These
+ * callbacks never touch MMIO and cannot grant an audio lease. */
+static int ParentAudioAcquire(PVOID context,ULONG rate) { UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(rate);return -1; }
+static int ParentAudioRelease(PVOID context) { UNREFERENCED_PARAMETER(context);return -1; }
 static VOID ParentInterfaceReference(PVOID context) { WdfObjectReference((WDFDEVICE)context); }
 static VOID ParentInterfaceDereference(PVOID context) { WdfObjectDereference((WDFDEVICE)context); }
 static NTSTATUS ParentReadButtons(PVOID context,USHORT *value) {
@@ -201,6 +206,10 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
     if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedAudioInterfaceGuid,NULL);
+    query.SendQueryToParentStack=TRUE;
+    status=WdfDeviceAddQueryInterface(child,&query);
+    if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
     status=WdfFdoAddStaticChild(parent,child);
     if(!NT_SUCCESS(status))WdfObjectDelete(child);
     return status;
@@ -215,6 +224,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
     A04_LEGACY_SHARED_INTERFACE iface;WDF_QUERY_INTERFACE_CONFIG query;
     A04_SHARED_INTERFACE inputIface;
+    A04_SHARED_AUDIO_INTERFACE audioIface;
 #endif
     UNREFERENCED_PARAMETER(driver);
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
@@ -249,12 +259,23 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     inputIface.TouchPen=ParentTouchPen;inputIface.ButtonPmicRead=ParentButtonRead;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&inputIface,&A04SharedInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
+    if(!NT_SUCCESS(status))return status;
+    RtlZeroMemory(&audioIface,sizeof(audioIface));
+    audioIface.Header.Size=sizeof(audioIface);audioIface.Header.Version=A04_SHARED_AUDIO_INTERFACE_VERSION;
+    audioIface.Header.Context=dev;audioIface.Header.InterfaceReference=ParentInterfaceReference;
+    audioIface.Header.InterfaceDereference=ParentInterfaceDereference;
+    audioIface.AcquireMuted=ParentAudioAcquire;audioIface.ReleaseQuiescent=ParentAudioRelease;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&audioIface,&A04SharedAudioInterfaceGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);
 #endif
 #if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE
     if(!NT_SUCCESS(status))return status;
     status=ParentAddProbeChild(dev,L"A04BR3\\SharedButtonsProbe",L"0",0x10002000u);
     if(!NT_SUCCESS(status))return status;
     status=ParentAddProbeChild(dev,L"A04BR3\\SharedTouchProbe",L"0",0x11009000u);
+    if(!NT_SUCCESS(status))return status;
+    /* No guessed AFE resources: ChildRequirements rejects base zero. */
+    status=ParentAddProbeChild(dev,L"A04BR3\\SharedAudioProbe",L"0",0);
 #endif
     return status;
 }

@@ -88,7 +88,7 @@ The parent still never starts the owners and always rejects D0. A physical
 removal concurrent with an MMIO operation can still cause a bus abort, which a
 software lock cannot prevent. Do not infer safe removal or power ownership.
 
-The compile-only `A04_SHARED_CHILD_PROBE` creates two static synthetic PDOs and
+The compile-only `A04_SHARED_CHILD_PROBE` creates two input and one audio static synthetic PDOs and
 forwards input interface queries to their actual parent stack. These PDOs have
 probe-only IDs and advertise exclusive fixed keypad (0x10002000) and I2C0
 (0x11009000) resource requirements. PnP assignment and translation of these
@@ -101,3 +101,10 @@ no verified firmware resource migration, and no physical-removal guarantee;
 parent D0 continues to fail. The source-level fixture checks cannot establish
 that ACPI descriptors are exclusive on the target or that every firmware or
 Windows driver has ceased bypassing the owner.
+
+With `A04_SHARED_QUERY_EXPERIMENTAL=1`, the prototype additionally publishes a
+separate versioned audio interface; its codec/clock acquire and release always
+fail without MMIO. With `A04_SHARED_CHILD_PROBE=1`, a third experimental audio
+child forwards that GUID to its parent. The child has no AFE resources, INF or
+audio FDO binding and its requirements callback refuses to start. Parent D0
+still fails. This does not establish ownership or codec safety.

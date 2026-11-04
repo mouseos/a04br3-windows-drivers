@@ -160,3 +160,14 @@ before attempting any transport work; no drain proof or release path exists.
 Neither this composition nor a successful callback proves the provider owns
 hardware. No actual IRQ is connected by the present PnP backend; RUN remains
 refused, and this code is not a safe device trial.
+
+`audio_parent_client.c` bridges a successfully queried, referenced
+`A04_SHARED_AUDIO_INTERFACE` to the internal audio shared-service contract.
+Binding transfers the query reference, attachment holds an additional parent
+reference, and close is refused while any clients remain. The caller must
+serialize lifecycle calls and supply a real PnP query result; the adapter does
+not yet send a query IRP or attach this object to its PnP backend. The parent
+prototype publishes and forwards the same versioned GUID to a gated audio
+child, but its audio callbacks always fail and never touch codec or clock.
+The child has no assigned AFE resources or driver binding. No actual audio
+clock/PWRAP lease, DMA start, interrupt connection or playback is enabled.
