@@ -7,6 +7,12 @@
 #include "watchdog_policy.h"
 #include "handoff_policy.h"
 #include "thermal_stop.h"
+#ifndef A04_TOPRGU_CPU1_HANDOFF
+#define A04_TOPRGU_CPU1_HANDOFF 0
+#endif
+#if A04_TOPRGU_CPU1_HANDOFF != 0 && A04_TOPRGU_CPU1_HANDOFF != 1
+#error invalid CPU1 handoff option
+#endif
 #ifndef A04_TOPRGU_THERMAL_STOP
 #define A04_TOPRGU_THERMAL_STOP 0
 #endif
@@ -19,7 +25,10 @@ typedef struct {
     WDFTIMER timer;
     KTIMER backupTimer;
     KDPC backupDpc;
-    volatile LONG running, busy, backupStarted;
+    volatile LONG running, busy;
+#if A04_TOPRGU_CPU1_HANDOFF
+    volatile LONG backupStarted;
+#endif
     volatile LONG ownedFour;
 #if A04_TOPRGU_THERMAL_STOP
     volatile LONG thermalHalt;
@@ -104,6 +113,7 @@ NTSTATUS ToprguRelease(WDFDEVICE device, WDFCMRESLIST translated)
     return STATUS_SUCCESS;
 }
 
+#if A04_TOPRGU_CPU1_HANDOFF
 NTSTATUS ToprguD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
 {
     TOPRGU_CONTEXT *c=ToprguGetContext(device);
@@ -224,6 +234,115 @@ done:
     InterlockedExchange(&c->busy,0);
 }
 
+#else
+NTSTATUS ToprguD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
+{
+    TOPRGU_CONTEXT *c=ToprguGetContext(device);
+    UNREFERENCED_PARAMETER(previous);
+    if (!c->wdt) return STATUS_DEVICE_NOT_READY;
+#if A04_TOPRGU_THERMAL_STOP
+    if (InterlockedCompareExchange(&c->thermalHalt,0,0)) return STATUS_DEVICE_NOT_READY;
+#endif
+    if (c->suspendedWatchdog) {
+        WRITE_REGISTER_ULONG(c->wdt + 1,(31u << 11) | 0x08u);
+        WRITE_REGISTER_ULONG(c->wdt + 2,0x1971u);
+        WRITE_REGISTER_ULONG(c->wdt,(c->savedMode & 0x00ffffffu & ~0x48u) | 0x22000015u);
+        if (!(READ_REGISTER_ULONG(c->wdt) & 1u)) return STATUS_DEVICE_NOT_READY;
+        c->suspendedWatchdog=FALSE;
+        Trace(c,"A04RGU watchdog rearmed after power transition\n");
+    }
+    if (!(READ_REGISTER_ULONG(c->wdt) & 1u)) return STATUS_DEVICE_NOT_READY;
+    WRITE_REGISTER_ULONG(c->wdt + 2,0x1971u);
+    c->parser.matched=0; c->ticks=0;
+    c->started=KeQueryInterruptTime(); c->deadlineReported=FALSE;
+    c->backupCalls=0;
+    InterlockedExchange(&c->running,1);
+    Trace(c, KeQueryActiveProcessorCount(NULL) >= 4 ?
+          "A04RGU D0 active CPUs>=4\n" : "A04RGU D0 active CPUs<4\n");
+#if A04_TOPRGU_DEADLINE_SECONDS > 0
+    Trace(c,"A04RGU bounded watchdog test enabled\n");
+#endif
+    WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(20));
+    if (KeQueryActiveProcessorCount(NULL) >= 4) {
+        LARGE_INTEGER due;
+        due.QuadPart=-200000; /* 20 ms in 100 ns units. */
+        KeSetTargetProcessorDpc(&c->backupDpc,2);
+        KeSetTimerEx(&c->backupTimer,due,20,&c->backupDpc);
+    }
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS ToprguD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
+{
+    TOPRGU_CONTEXT *c=ToprguGetContext(device);
+    POWER_ACTION action=WdfDeviceGetSystemPowerAction(device);
+    UNREFERENCED_PARAMETER(target);
+    InterlockedExchange(&c->running,0);
+    KeCancelTimer(&c->backupTimer);
+    KeFlushQueuedDpcs();
+    WdfTimerStop(c->timer,TRUE);
+    if (InterlockedCompareExchange(&c->ownedFour,1,1) && c->wdt &&
+#if A04_TOPRGU_THERMAL_STOP
+        !InterlockedCompareExchange(&c->thermalHalt,0,0) &&
+#endif
+        (action==PowerActionSleep || action==PowerActionHibernate ||
+         action==PowerActionShutdown || action==PowerActionShutdownOff)) {
+        c->savedMode=READ_REGISTER_ULONG(c->wdt) & 0x00ffffffu;
+        WRITE_REGISTER_ULONG(c->wdt,(c->savedMode & ~1u) | 0x22000000u);
+        c->suspendedWatchdog=TRUE;
+        Trace(c,"A04RGU watchdog disabled for system power transition\n");
+    }
+    return STATUS_SUCCESS;
+}
+
+static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
+{
+    ULONG i;
+    BOOLEAN four, feed;
+    ULONGLONG elapsed;
+    if (InterlockedCompareExchange(&c->busy,1,0) != 0) return;
+    if (InterlockedCompareExchange(&c->running,1,1) && c->wdt && c->uart) {
+        if (backup && ++c->backupCalls <= 3)
+            Trace(c,"A04RGU backup DPC active\n");
+        ++c->ticks;
+        four=KeQueryActiveProcessorCount(NULL) >= 4;
+        elapsed=KeQueryInterruptTime()-c->started;
+        feed=mt8167_watchdog_thermal_may_feed(
+#if A04_TOPRGU_THERMAL_STOP
+                 InterlockedCompareExchange(&c->thermalHalt,0,0),
+#else
+                 0,
+#endif
+                 elapsed,A04_TOPRGU_DEADLINE_SECONDS);
+        if (feed)
+            WRITE_REGISTER_ULONG(c->wdt + 2,0x1971u);
+        if (four && !feed && !c->deadlineReported) {
+            c->deadlineReported=TRUE;
+            Trace(c,"A04RGU bounded watchdog deadline reached\n");
+        }
+        if (four && feed && (c->ticks <= 3 || c->ticks % 500u == 0))
+            Trace(c,"A04RGU timer kick\n");
+        if (four && feed && (c->ticks==10 || c->ticks==25 || c->ticks==50 ||
+                             c->ticks==100 || c->ticks==250 || c->ticks==500))
+            TraceTimer(c,c->ticks,elapsed);
+        /* CPU1 owns UART until all four OS processors are online. */
+        if (four) {
+            InterlockedExchange(&c->ownedFour,1);
+            for (i=0; i<16; ++i) {
+                if ((READ_REGISTER_ULONG(c->uart + 3) & 0x80u) ||
+                    !(READ_REGISTER_ULONG(c->uart + 5) & 1u)) break;
+                if (mt8167_reset_consume(&c->parser,(UCHAR)READ_REGISTER_ULONG(c->uart))) {
+                    WRITE_REGISTER_ULONG(c->wdt + 5,0x1209u);
+                    break;
+                }
+            }
+        }
+    }
+    InterlockedExchange(&c->busy,0);
+}
+
+#endif
+
 VOID ToprguTimer(WDFTIMER timer)
 {
     ToprguPoll(ToprguGetContext((WDFDEVICE)WdfTimerGetParentObject(timer)),FALSE);
@@ -251,8 +370,12 @@ VOID ToprguThermalControl(WDFQUEUE queue, WDFREQUEST request, size_t outputLengt
                 !InterlockedCompareExchange(&c->thermalHalt,0,0)) ? STATUS_SUCCESS : STATUS_DEVICE_NOT_READY;
     } else if (code==A04_TOPRGU_THERMAL_HALT) {
         InterlockedExchange(&c->thermalHalt,1);
+        #if A04_TOPRGU_CPU1_HANDOFF
         if (c->wdt && KeQueryActiveProcessorCount(NULL)==4 &&
             InterlockedCompareExchange(&c->ownedFour,0,0) && InterlockedCompareExchange(&c->running,0,0)) {
+#else
+        if (c->wdt && InterlockedCompareExchange(&c->running,0,0)) {
+#endif
             WRITE_REGISTER_ULONG(c->wdt+5,0x1209u);
             status=STATUS_SUCCESS; /* request sent; reset is not verified */
         } else status=STATUS_DEVICE_NOT_READY;
