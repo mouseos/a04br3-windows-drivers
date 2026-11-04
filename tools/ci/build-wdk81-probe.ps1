@@ -20,6 +20,10 @@ if ($env:A04_BOOT_MULTIBLOCK_EXPERIMENT -eq '1') {
     if ($env:A04_BOOT_PASSIVE_EXPERIMENT -ne '1' -or $env:A04_DMA_PROBE -ne '1' -or $env:A04_READONLY_DISK_PROBE -ne '1' -or $env:A04_DMA_MULTIBLOCK_EXPERIMENT -eq '1' -or $env:A04_DMA_WRITE_TEST -eq '1') { throw 'Boot multiblock requires the isolated passive boot configuration and excludes the read-only experiment' }
     $probeDefines += '-DA04_BOOT_MULTIBLOCK_EXPERIMENT=1'
 }
+if ($env:A04_SCRATCH_MULTIBLOCK_EXPERIMENT -eq '1') {
+    if ($env:A04_SCRATCH_IO -ne '1' -or $env:A04_PASSIVE_IO -ne '1' -or $env:A04_DMA_PROBE -ne '1' -or $env:A04_DMA_DISK_PROBE -ne '1' -or $env:A04_VIRTUAL_BOUNCE_EXPERIMENT -ne '1' -or $env:A04_SERIAL_QUEUE_EXPERIMENT -ne '1' -or $env:A04_ISOLATED_REQUEST_EXPERIMENT -ne '1' -or $env:A04_BOOT_EXPERIMENT -eq '1' -or $env:A04_DMA_MULTIBLOCK_EXPERIMENT -eq '1' -or $env:A04_BOOT_MULTIBLOCK_EXPERIMENT -eq '1' -or $env:A04_DMA_WRITE_TEST -eq '1') { throw 'Scratch multiblock requires isolated bounded scratch settings' }
+    $probeDefines += '-DA04_SCRATCH_MULTIBLOCK_EXPERIMENT=1'
+}
 if ($env:A04_DMA_POLL_TRACE -eq '1') {
     if ($env:A04_DMA_PROBE -ne '1') { throw 'DMA poll tracing requires A04_DMA_PROBE=1' }
     $probeDefines += '-DA04_DMA_POLL_TRACE'

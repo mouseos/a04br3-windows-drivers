@@ -57,7 +57,7 @@ static BOOLEAN A04EmmcIdentityValid;
 struct a04_probe_extension {
     volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; ULONG requests; BOOLEAN failed; BOOLEAN write_ready; BOOLEAN cache_disabled;
     a04_msdc_gate ioBusy;
-#if A04_BOOT_MULTIBLOCK_EXPERIMENT
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
     volatile LONG transfer_poisoned; /* Restart cannot establish DMA/card recovery. */
 #endif
 #ifdef A04_SERIAL_QUEUE_EXPERIMENT
@@ -570,7 +570,7 @@ static BOOLEAN A04Initialize(PVOID extension)
         BOOLEAN signature;
         /* The matched controller is in inherited PIO mode. Mask the command
          * and data interrupts while this one diagnostic read is in flight. */
-        A04Write32(probe, 0x010, interruptEnable & ~0x0000d700u);
+        A04Write32(probe, 0x010, interruptEnable & ~0x000ed700u);
         if ((A04Read32(probe, 0x000) & 0x9u) == 0x9u &&
             (A04Read32(probe, 0x030) & 0x00030000u) == 0x00020000u)
             result = a04_msdc_read_sector(&io, 1, probe->sector,
@@ -590,7 +590,7 @@ static BOOLEAN A04Initialize(PVOID extension)
         if (result == A04_MSDC_OK) {
             ULONG sectors = 0;
             interruptEnable = A04Read32(probe, 0x010);
-            A04Write32(probe, 0x010, interruptEnable & ~0x0000d700u);
+            A04Write32(probe, 0x010, interruptEnable & ~0x000ed700u);
             result = a04_msdc_read_ext_csd(&io, probe->sector,
                                            sizeof(probe->sector), 200000);
             A04Write32(probe, 0x010, interruptEnable);
@@ -614,7 +614,7 @@ static BOOLEAN A04Initialize(PVOID extension)
                 enum a04_dma_result dr;
                 ULONG old_enable = A04Read32(probe, 0x010);
                 BOOLEAN match;
-                A04Write32(probe, 0x010, old_enable & ~0x0000d700u);
+                A04Write32(probe, 0x010, old_enable & ~0x000ed700u);
                 dr = A04DmaSector(probe, &dma_io, 1, FALSE);
                 A04Write32(probe, 0x010, old_enable);
                 match = dr == A04_DMA_OK && probe->dma_buffer[0] == 'E' &&
@@ -625,7 +625,7 @@ static BOOLEAN A04Initialize(PVOID extension)
                 A04Trace("A04WIN DMA GPT result="); A04TraceHex((ULONG)dr);
                 A04Trace(" signature="); A04TraceHex(match ? 1u : 0u); A04Trace("\n");
 #ifdef A04_DMA_WRITE_TEST
-                A04Write32(probe, 0x010, old_enable & ~0x0000d700u);
+                A04Write32(probe, 0x010, old_enable & ~0x000ed700u);
                 if (!match || !A04WriteTest(probe, sectors)) A04Trace("A04WIN WRITE_TEST failed; host restoration required\n");
                 A04Write32(probe, 0x010, old_enable);
                 return FALSE;
@@ -633,7 +633,7 @@ static BOOLEAN A04Initialize(PVOID extension)
 #ifdef A04_DMA_DISK_PROBE
                 if (!match) return FALSE;
 #ifdef A04_ENABLE_WRITES
-                A04Write32(probe, 0x010, old_enable & ~0x0000d700u);
+                A04Write32(probe, 0x010, old_enable & ~0x000ed700u);
                 probe->write_ready = A04ValidateWindowsRange(probe, &dma_io, sectors);
                 A04Write32(probe, 0x010, old_enable);
                 if (!probe->write_ready) { A04Trace("A04WIN write range rejected\n"); return FALSE; }
@@ -687,7 +687,7 @@ static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControlOwned(PVOID extension,
         return ScsiAdapterControlSuccess;
     }
     if (type == ScsiRestartAdapter) {
-#if A04_BOOT_MULTIBLOCK_EXPERIMENT
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
         if (InterlockedCompareExchange(&probe->transfer_poisoned,0,0))
             return ScsiAdapterControlUnsuccessful;
 #endif
@@ -854,7 +854,7 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 #endif
             if (trace) { A04Trace("A04WIN blocks lba="); A04TraceHex((ULONG)result.blocks.lba);
                 A04Trace(" count="); A04TraceHex(result.blocks.block_count); A04Trace("\n"); }
-            A04Write32(probe, 0x010, interrupts & ~0x0000d700u);
+            A04Write32(probe, 0x010, interrupts & ~0x000ed700u);
             for (i = 0; i < result.blocks.block_count; ++i) {
 #ifdef A04_ISOLATED_REQUEST_EXPERIMENT
                 if (InterlockedCompareExchange(&probe->cancelled,0,0)) { failure=1; break; }
@@ -889,7 +889,9 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
                 if (pr != A04_MSDC_OK) { failure = (ULONG)pr; break; }
 #endif
             }
-            A04Write32(probe, 0x010, interrupts);
+            /* A failed transfer may still own the controller/DMA. Do not
+             * re-enable its events before a proven hardware recovery. */
+            if (!failure) A04Write32(probe, 0x010, interrupts);
             if (!failure && result.action == A04_SCSI_READ && result.blocks.lba == 1 &&
                 result.blocks.block_count && data) {
                 A04Trace("A04WIN SCSI GPT signature=");
@@ -897,7 +899,7 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
                     ((ULONG)data[2] << 16) | ((ULONG)data[3] << 24)); A04Trace("\n");
             }
             if (failure) {
-#if A04_BOOT_MULTIBLOCK_EXPERIMENT
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
                 InterlockedExchange(&probe->transfer_poisoned,1);
 #endif
                 probe->failed = TRUE;
@@ -1159,7 +1161,7 @@ static BOOLEAN A04ResetBus(PVOID extension, ULONG path)
         A04Trace(original ? "A04WIN reset detached pending request\n" :
                             "A04WIN reset had no pending request\n");
         InterlockedExchange(&probe->cancelled,1);
-#if A04_BOOT_MULTIBLOCK_EXPERIMENT
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
         InterlockedExchange(&probe->transfer_poisoned,1);
 #endif
         probe->failed=TRUE;

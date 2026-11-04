@@ -24,7 +24,8 @@
 #define XFER_DONE (1u << 12)
 #define DATA_TIMEOUT (1u << 14)
 #define DATA_CRC (1u << 15)
-#define EVENTS (CMD_READY | CMD_TIMEOUT | CMD_CRC | XFER_DONE | DATA_TIMEOUT | DATA_CRC)
+#define DMA_BUS_ERRORS (7u << 17)
+#define EVENTS (CMD_READY | CMD_TIMEOUT | CMD_CRC | XFER_DONE | DATA_TIMEOUT | DATA_CRC | DMA_BUS_ERRORS)
 #define DMA_START 1u
 #define DMA_STOP 2u
 #define DMA_MODE (1u << 8)
@@ -99,14 +100,15 @@ static enum a04_dma_result a04_dma_transfer(const struct a04_msdc_io *io,
     io->write32(io->context, DMA_CONTROL, ctrl | DMA_START);
     if (clock) start = clock->now(clock->context);
     for (n = 0; n < limit; ++n) {
-        bits = io->read32(io->context, INT_STATUS) & (XFER_DONE | DATA_TIMEOUT | DATA_CRC);
+        bits = io->read32(io->context, INT_STATUS) & (XFER_DONE | DATA_TIMEOUT | DATA_CRC | DMA_BUS_ERRORS);
         if (!bits) {
             if (a04_dma_expired(clock,start,n))
                 break;
             continue;
         }
         io->write32(io->context, INT_STATUS, bits);
-        if (bits & DATA_TIMEOUT) result = A04_DMA_DATA_TIMEOUT;
+        if (bits & DMA_BUS_ERRORS) result = A04_DMA_BUS_ERROR;
+        else if (bits & DATA_TIMEOUT) result = A04_DMA_DATA_TIMEOUT;
         else if (bits & DATA_CRC) result = A04_DMA_DATA_CRC;
         break;
     }

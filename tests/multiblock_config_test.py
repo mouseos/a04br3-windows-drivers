@@ -9,6 +9,12 @@ cases = [([], True), (['A04_BOOT_MULTIBLOCK_EXPERIMENT=1'], False),
          (base + ['A04_BOOT_MULTIBLOCK_EXPERIMENT=1'], True),
          (base + ['A04_BOOT_MULTIBLOCK_EXPERIMENT=1', 'A04_DMA_MULTIBLOCK_EXPERIMENT=1'], False),
          (base + ['A04_BOOT_MULTIBLOCK_EXPERIMENT=1', 'A04_DMA_WRITE_TEST'], False)]
+scratch = ['A04_SCRATCH_IO', 'A04_PASSIVE_IO', 'A04_DMA_PROBE', 'A04_DMA_DISK_PROBE',
+           'A04_VIRTUAL_BOUNCE_EXPERIMENT', 'A04_SERIAL_QUEUE_EXPERIMENT',
+           'A04_ISOLATED_REQUEST_EXPERIMENT']
+cases += [(['A04_SCRATCH_MULTIBLOCK_EXPERIMENT=1'], False),
+          (scratch + ['A04_SCRATCH_MULTIBLOCK_EXPERIMENT=1'], True),
+          (scratch + ['A04_SCRATCH_MULTIBLOCK_EXPERIMENT=1', 'A04_BOOT_PASSIVE_EXPERIMENT'], False)]
 for defines, expected in cases:
     result = subprocess.run(['cc', '-x', 'c', '-fsyntax-only', '-I', str(include),
                              *['-D' + d for d in defines], '-'],

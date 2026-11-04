@@ -34,7 +34,7 @@ static void wr(void *p, uint32_t off, uint32_t val)
         if (off == 0x098 && (val & 1)) {
             f->started = 1;
             f->regs[0x09c / 4] |= 1;
-            if (!f->delay) f->regs[0x00c / 4] |= f->data_error == 2 ? 1u << 14 : f->data_error ? 1u << 15 : 1u << 12;
+            if (!f->delay) f->regs[0x00c / 4] |= f->data_error == 3 ? (1u << 19) | (1u << 12) : f->data_error == 2 ? 1u << 14 : f->data_error ? 1u << 15 : 1u << 12;
         }
         if (off == 0x098 && (val & 2) && !f->no_stop) f->regs[0x09c / 4] &= ~1u;
     }
@@ -84,6 +84,11 @@ int main(void)
     io = init(&f); f.data_error = 1;
     assert(a04_msdc_dma_read_blocks_timed(&io, 100, 0x100000, 64, 10, 2, 0) == A04_DMA_DATA_CRC);
     assert(f.command_count == 2 && (f.commands[1] & 63) == 12 && f.regs[0] != 9);
+    io = init(&f); f.data_error = 3;
+    assert(a04_msdc_dma_read_blocks_timed(&io, 100, 0x100000, 64, 10, 2, 0) == A04_DMA_BUS_ERROR);
+    assert(f.command_count == 2 && (f.commands[1] & 63) == 12 && f.regs[0] != 9);
+    io = init(&f); f.regs[0x010/4] = 1u << 19;
+    assert(a04_msdc_dma_read_sector(&io, 0, 0x100040, 64, 10) == A04_DMA_BUSY && !f.started);
     io = init(&f); f.stop_error = 1;
     assert(a04_msdc_dma_read_blocks_timed(&io, 100, 0x100000, 64, 10, 2, 0) == A04_DMA_STOP_ERROR);
     io = init(&f); f.regs[0x008/4] = 0;
