@@ -58,7 +58,7 @@ int main(void)
 {
     DMA_OPERATIONS ops={allocate,release}; struct fake_adapter adapter={&ops};
     struct a04_gpu_firmware_state s={0}; struct a04_gpu_queue_test_memory m={0};
-    void *heap=aligned_alloc(4096,A04_PVR_HEAP_SIZE); NTSTATUS status;
+    void *heap=aligned_alloc(4096,A04_PVR_HEAP_SIZE); NTSTATUS status; uint32_t first_end;
     if(!heap) return 1;
     s.processor_released=TRUE; s.firmware_started=TRUE; s.memory.adapter=&adapter;
     s.memory.heap=heap; s.memory.heap_logical.QuadPart=0x80000000; s.runtime.next_free=0x20000;
@@ -67,12 +67,14 @@ int main(void)
         fprintf(stderr,"linear status=%08x submits=%u wraps=%u invalidations=%u memory=%d releases=%u\n",
                 (unsigned)status,submits,wraps,invalidations,m.cpu!=NULL,releases); return 2;
     }
+    first_end=s.runtime.next_free;
+    if(first_end<=0x20000u) return 7;
     if(a04_gpu_queue_test_free(&s,&m)!=STATUS_DEVICE_BUSY) return 3;
     s.processor_released=FALSE;
     if(a04_gpu_queue_test_free(&s,&m)!=STATUS_SUCCESS || releases!=1) return 4;
     s.processor_released=TRUE; submits=0; fail_after=5;
     status=a04_gpu_queue_test(&s,&m);
-    if(status!=STATUS_IO_TIMEOUT || !s.queue_faulted || !m.cpu || releases!=1 ||
+    if(status!=STATUS_IO_TIMEOUT || !s.queue_faulted || !m.cpu || releases!=1 || s.runtime.next_free<=first_end ||
        a04_gpu_queue_test_free(&s,&m)!=STATUS_DEVICE_BUSY) return 5;
     s.processor_released=FALSE;
     if(a04_gpu_queue_test_free(&s,&m)!=STATUS_SUCCESS || releases!=2) return 6;

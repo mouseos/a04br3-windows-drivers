@@ -197,6 +197,9 @@ NTSTATUS a04_gpu_queue_test(struct a04_gpu_firmware_state *s,struct a04_gpu_queu
         a04_gpu_fw_prepare_null_queue(&arena,&vm,1,1,&q,&kick))
 #endif
         return STATUS_INSUFFICIENT_RESOURCES;
+    /* Firmware objects remain live until GPU shutdown. Reserve their heap
+     * range even if a later sync or submission fails. */
+    s->runtime.next_free=(uint32_t)arena.next;
 #define SYNC_OBJECT(o) do { status=a04_gpu_dma_sync((o).cpu,(ULONG)(o).size,FALSE); if (!NT_SUCCESS(status)) return status; } while (0)
     status=a04_gpu_dma_sync(pages,TEST_SIZE,FALSE); if (!NT_SUCCESS(status)) return status;
     SYNC_OBJECT(vm); SYNC_OBJECT(q.control); SYNC_OBJECT(q.ring); SYNC_OBJECT(q.state);
