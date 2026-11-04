@@ -20,7 +20,8 @@ Windowsのboot-startはドライバのロードを早めるが、PnPデバイス
 既存 `tools/ci/install-toprgu-wim.ps1` は入力WIMとSYSのハッシュを検査し別WIMへ
 DISM注入する。ドライバストアへの追加はD0到達や署名信頼の証拠ではない。
 
-この試作はD0直後や3 CPU構成でTOPRGU/UARTを触らない。4 CPUがオンラインなら
+`A04_TOPRGU_CPU1_HANDOFF=1` の明示指定時だけこの試作を有効にする。既定値0では
+既存のD0・給餌・停止処理をそのまま使用する。試作はD0直後や3 CPU構成でTOPRGU/UARTを触らない。4 CPUがオンラインなら
 論理CPU1を対象とするDPCを予約し、そのDPCがCPU1のMPIDR affinity 1上で実際に
 動いて初めてWindowsの所有を確定する。元の4 CPU BootShimでは物理CPU1は最後の
 給餌後にworkerへ戻らずWindows parkingへ移るため、この機種固有前提の下で同じ
