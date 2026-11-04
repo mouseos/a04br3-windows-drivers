@@ -15,15 +15,25 @@ rem WinPEのRAM起動では /S がESPを特定できない場合がある。
 rem ボリュームGUIDの実ファイルを確認してからドライブ文字を割り当てる。
 for /f "tokens=*" %%G in ('mountvol') do if exist "%%Ga04-ge8300\mt8167-ge8300.inf" mountvol V: "%%G"
 :check_external
-if not exist V:\a04-ge8300\mt8167-ge8300.inf goto load_driver
-if not exist V:\a04-ge8300\mt8167-ge8300.sys goto packagefail
-if not exist V:\a04-ge8300\mt8167-ge8300.cat goto packagefail
-if not exist V:\a04-ge8300\ge8300-mips.fw goto packagefail
-if not exist V:\a04-ge8300\ge8300-status.exe goto packagefail
-if not exist V:\a04-ge8300\ge8300-pnp-status.exe goto packagefail
-copy /Y V:\a04-ge8300\ge8300-mips.fw X:\Windows\System32\drivers\ge8300-mips.fw >nul
+set GE8300_EXTERNAL=V:\a04-ge8300
+if exist %GE8300_EXTERNAL%\mt8167-ge8300.inf goto external_found
+rem この開発用イメージのESPはGPT第18領域。内容も検査してから使う。
+echo select disk 0 > X:\a04br3\ge8300-esp-diskpart.txt
+echo select partition 18 >> X:\a04br3\ge8300-esp-diskpart.txt
+echo assign letter=Y >> X:\a04br3\ge8300-esp-diskpart.txt
+echo exit >> X:\a04br3\ge8300-esp-diskpart.txt
+diskpart /s X:\a04br3\ge8300-esp-diskpart.txt
+set GE8300_EXTERNAL=Y:\a04-ge8300
+:external_found
+if not exist %GE8300_EXTERNAL%\mt8167-ge8300.inf goto load_driver
+if not exist %GE8300_EXTERNAL%\mt8167-ge8300.sys goto packagefail
+if not exist %GE8300_EXTERNAL%\mt8167-ge8300.cat goto packagefail
+if not exist %GE8300_EXTERNAL%\ge8300-mips.fw goto packagefail
+if not exist %GE8300_EXTERNAL%\ge8300-status.exe goto packagefail
+if not exist %GE8300_EXTERNAL%\ge8300-pnp-status.exe goto packagefail
+copy /Y %GE8300_EXTERNAL%\ge8300-mips.fw X:\Windows\System32\drivers\ge8300-mips.fw >nul
 if errorlevel 1 goto packagefail
-set GE8300_PACKAGE=V:\a04-ge8300
+set GE8300_PACKAGE=%GE8300_EXTERNAL%
 :load_driver
 echo GE8300_PACKAGE=%GE8300_PACKAGE%
 drvload %GE8300_PACKAGE%\mt8167-ge8300.inf
