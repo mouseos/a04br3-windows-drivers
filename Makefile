@@ -347,3 +347,17 @@ test-mt8167-audio-broker: build/mt8167_audio_broker_test
 build/mt8167_audio_broker_test: drivers/audio/mt8167-afe/broker_policy.c drivers/audio/mt8167-afe/broker_policy.h tests/mt8167_audio_broker_test.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/broker_policy.c tests/mt8167_audio_broker_test.c -o $@
+
+.PHONY: test-mt8167-dl1-engine
+test-mt8167-dl1-engine: build/mt8167_dl1_engine_test
+	./build/mt8167_dl1_engine_test
+build/mt8167_dl1_engine_test: drivers/audio/mt8167-afe/dl1_engine.c drivers/audio/mt8167-afe/dl1.c tests/mt8167_dl1_engine_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/dl1_engine.c drivers/audio/mt8167-afe/dl1.c tests/mt8167_dl1_engine_test.c -o $@
+
+.PHONY: test-mt8167-wavert-dma
+test-mt8167-wavert-dma: build/mt8167_wavert_dma_test
+	./build/mt8167_wavert_dma_test
+build/mt8167_wavert_dma_test: drivers/audio/mt8167-afe/wavert_dma.cpp drivers/audio/mt8167-afe/wavert_dma.h tests/mt8167_wavert_dma_test.cpp tests/audio_windows_stubs/portcls.h
+	mkdir -p build
+	$(CXX) -O2 -Wall -Wextra -Werror -std=c++11 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/wavert_dma.cpp tests/mt8167_wavert_dma_test.cpp -o $@

@@ -23,3 +23,18 @@ Clock dependencies include top audio, APLL1/APLL2, audio engine selectors and di
 Future work: agree a shared PMIC/clock ownership interface; determine the exact board route and safe power/volume/trim; implement Windows 8.1 PortCls/WaveRT or another supported audio path, DMA and cache coherency, interrupts, power transitions, ACPI/INF and signing; then validate under an explicitly authorized hardware session.
 
 `ring.c` plans frame-aligned wraparound spans without accessing DMA memory; `irq.c` classifies DL1 status without reading or acknowledging hardware. No caller connects either to the PortCls skeleton. See [ownership.md](ownership.md) for required single-owner arbitration. The A04BR3 Linux defconfig enables CONFIG_MTK_SPEAKER and its machine driver contains an internal MT6392 speaker route from AU_LOL, but these facts do not establish the physical speaker wiring or safe gain.
+
+`dl1_engine.c` implements a callback-based DL1 register sequence and IRQ1
+classification/acknowledgment, currently exercised only with mock MMIO. Its
+caller must provide exclusive, ordered and serialized ownership, a coherent
+mapped DMA buffer, interrupt synchronization, clocks and a muted codec. Errors
+poison the engine; neither a successful stop nor enable-bit readback proves
+DMA drained. The adapter has no callback transport and cannot start it.
+
+`wavert_dma.cpp` uses the PortCls stream to allocate physically contiguous,
+noncached pages, checks the 32-bit range and refuses to release a buffer once
+handed to hardware. Physical addresses are not assumed to be DMA device
+addresses: Windows DMA mapping/coherency and the conditions for safe drain
+and release remain unresolved. It is not a WaveRT miniport or a registered
+subdevice. The owner of shared PWRAP/clock resources is not implemented;
+no caller may enable these paths based on this code alone.
