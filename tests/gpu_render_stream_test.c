@@ -21,6 +21,7 @@ int main(void)
     assert(geom.regs.vdm_ctrl_stream_base==0x123456789abcdef0ULL && geom.regs.ppp_ctrl==11 && geom.regs.view_idx==44);
     sentinel=geom; assert(a04_gpu_decode_geometry(data,n-1,0,&geom)); assert(!memcmp(&sentinel,&geom,sizeof(geom)));
     assert(a04_gpu_decode_geometry(data,n,A04_RENDER_QUIRK_49927,&geom));
+    assert(a04_gpu_decode_geometry(data,n,A04_RENDER_QUIRK_47217,&geom));
     put32(data,&n,1); put32(data,&n,0x11223344);
     assert(!a04_gpu_decode_geometry(data,n,A04_RENDER_QUIRK_49927,&geom));
     assert(geom.regs.tpu==0x11223344);

@@ -14,11 +14,12 @@
 #define A04_RENDER_ZLS_SUBTILE (1u << 7)
 #define A04_RENDER_ZLS_D24S8 (1u << 8)
 #define A04_RENDER_QUIRK_49927 (1u << 9)
+#define A04_RENDER_QUIRK_47217 (1u << 10)
 /* Parse upstream command-stream layouts only; this does not validate GPU
  * addresses or make commands safe for submission. Feature and quirk bits must
  * come from the selected GPU/firmware, not user input. Supports only canonical
  * streams with no extension or one BRN49927 extension; devices requiring
- * other extensions, including BRN47217, must not call this parser. Output is
+ * other extensions are rejected. BRN47217 is explicitly rejected. Output is
  * atomic on malformed input. */
 int a04_gpu_decode_geometry(const void *stream, size_t size, uint32_t capabilities,
                             struct rogue_fwif_cmd_geom *out);
