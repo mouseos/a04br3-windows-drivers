@@ -351,7 +351,6 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
                 GpuPrint(" TRI=");GpuHex(d->triangle_pixels);
                 GpuPrint(" OTHER=");GpuHex(d->other_pixels);
                 GpuPrint(" ZERO=");GpuHex(d->zero_pixels);
-                GpuPrint(" SENTINEL=");GpuHex(d->sentinel_pixels);
                 GpuPrint(" MISMATCH=");GpuHex(d->spatial_mismatch);
                 GpuPrint(" BOUNDED=");GpuHex(d->memory.bounded_states_checked);
                 GpuPrint(" B0_VALID=");GpuHex(d->memory.bounded_states[0].valid);
@@ -359,6 +358,7 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
                 GpuPrint(" B1_VALID=");GpuHex(d->memory.bounded_states[1].valid);
                 GpuPrint(" B1=");GpuHex(d->memory.bounded_states[1].blocks);
                 GpuPrint("\n");
+                GpuPrint("A04GPU RENDER SENTINEL=");GpuHex(d->sentinel_pixels);GpuPrint("\n");
                 GpuPrint("A04GPU RENDER LIFETIME COMPLETED=");GpuHex(d->memory.completion_observed);
                 GpuPrint(" CLEANUP=");GpuHex(d->memory.cleanup_complete);
                 GpuPrint(" PARTIAL=");GpuHex(d->memory.kick_partial);
