@@ -1,0 +1,18 @@
+/* SPDX-License-Identifier: MIT */
+#ifndef A04_GE8300_FIRMWARE_QUEUE_H
+#define A04_GE8300_FIRMWARE_QUEUE_H
+#include "firmware_objects.h"
+#include "pvr_rogue_fwif.h"
+struct a04_gpu_fw_queue {
+    struct a04_gpu_fw_object control, ring, state, fence, context;
+    uint32_t write_offset, wrap_mask;
+};
+/* Prepare one compute-context NULL command and a fence update. No command is
+ * submitted here. Caller must synchronize every object, install the associated
+ * VM and BRN65273 workaround, and retain objects until firmware cleanup and
+ * GPU quiescence have been confirmed. fence must be observed separately: KCCB
+ * execution alone does not mean the client command completed. */
+int a04_gpu_fw_prepare_null_queue(struct a04_gpu_fw_arena *arena,const struct a04_gpu_fw_object *mem_context,
+    uint32_t context_id,uint32_t job_id,struct a04_gpu_fw_queue *queue,
+    struct rogue_fwif_kccb_cmd *kick);
+#endif
