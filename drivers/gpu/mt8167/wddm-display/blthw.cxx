@@ -9,6 +9,7 @@
 \**************************************************************************/
 
 #include "BDD.hxx"
+#include "present_bounds.h"
 
 typedef struct
 {
@@ -277,9 +278,18 @@ BDD_HWBLT::ExecutePresentDisplayOnly(
 
     NTSTATUS Status = STATUS_SUCCESS;
 
-    SIZE_T sizeMoves = NumMoves*sizeof(D3DKMT_MOVE_RECT);
-    SIZE_T sizeRects = NumDirtyRects*sizeof(RECT);
-    SIZE_T size = sizeof(DoPresentMemory) + sizeMoves + sizeRects;
+    const CURRENT_BDD_MODE* pModeCur = m_DevExt->GetCurrentMode(m_SourceId);
+    SIZE_T size = 0;
+    uint32_t sizeToMap = 0;
+    if (!SrcAddr || (NumMoves && !Moves) || (NumDirtyRects && !DirtyRect) ||
+        a04_present_bounds(pModeCur->SrcModeWidth,pModeCur->SrcModeHeight,SrcBytesPerPixel,
+                           SrcPitch,NumMoves,sizeof(D3DKMT_MOVE_RECT),NumDirtyRects,sizeof(RECT),
+                           sizeof(DoPresentMemory),&size,&sizeToMap))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+    SIZE_T sizeMoves = (SIZE_T)NumMoves*sizeof(D3DKMT_MOVE_RECT);
+    SIZE_T sizeRects = (SIZE_T)NumDirtyRects*sizeof(RECT);
 
     DoPresentMemory* ctx = reinterpret_cast<DoPresentMemory*>
                                 (new (BDD_POOL_TYPE::Paged) BYTE[size]);
@@ -290,8 +300,6 @@ BDD_HWBLT::ExecutePresentDisplayOnly(
     }
 
     RtlZeroMemory(ctx,size);
-
-    const CURRENT_BDD_MODE* pModeCur = m_DevExt->GetCurrentMode(m_SourceId);
 
     ctx->DstAddr          = DstAddr;
     ctx->DstBitPerPixel   = DstBitPerPixel;
@@ -318,11 +326,10 @@ BDD_HWBLT::ExecutePresentDisplayOnly(
 
     {
         // Map Source into kernel space, as Blt will be executed by system worker thread
-        UINT sizeToMap = SrcBytesPerPixel*pModeCur->SrcModeWidth*pModeCur->SrcModeHeight;
-
         PMDL mdl = IoAllocateMdl((PVOID)SrcAddr, sizeToMap,  FALSE, FALSE, NULL);
         if(!mdl)
         {
+            delete [] reinterpret_cast<BYTE*>(ctx);
             return STATUS_INSUFFICIENT_RESOURCES;
         }
 
@@ -339,6 +346,7 @@ BDD_HWBLT::ExecutePresentDisplayOnly(
         {
             Status = GetExceptionCode();
             IoFreeMdl(mdl);
+            delete [] reinterpret_cast<BYTE*>(ctx);
             return Status;
         }
 
@@ -352,6 +360,7 @@ BDD_HWBLT::ExecutePresentDisplayOnly(
             Status = STATUS_INSUFFICIENT_RESOURCES;
             MmUnlockPages(mdl);
             IoFreeMdl(mdl);
+            delete [] reinterpret_cast<BYTE*>(ctx);
             return Status;
         }
 
@@ -386,7 +395,14 @@ BDD_HWBLT::ExecutePresentDisplayOnly(
     {
         // Create a worker thread to perform the present asynchronously
         // Ctx will be deleted in worker thread (on exit)
-        return StartHwBltPresentWorkerThread(HwContextWorkerThread,(PVOID)ctx);
+        Status = StartHwBltPresentWorkerThread(HwContextWorkerThread,(PVOID)ctx);
+        if (!NT_SUCCESS(Status))
+        {
+            MmUnlockPages(ctx->Mdl);
+            IoFreeMdl(ctx->Mdl);
+            delete [] reinterpret_cast<BYTE*>(ctx);
+        }
+        return Status;
     }
 }
 
