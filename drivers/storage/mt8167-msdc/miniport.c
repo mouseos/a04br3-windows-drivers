@@ -6,6 +6,9 @@
 #include "pio.h"
 #include "io_gate.h"
 #include "multiblock_config.h"
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+#include "lifetime.h"
+#endif
 /* Optional compiler flag: A04_DMA_MULTIBLOCK_EXPERIMENT. Read-only
  * diagnostic builds only; the default continues to use one sector at a time. */
 #if A04_DMA_MULTIBLOCK_EXPERIMENT && (!defined(A04_DMA_PROBE) || !defined(A04_DMA_DISK_PROBE) || !defined(A04_READONLY_DISK_PROBE) || !defined(A04_VIRTUAL_BOUNCE_EXPERIMENT) || defined(A04_ENABLE_WRITES) || defined(A04_DMA_WRITE_TEST))
@@ -59,6 +62,7 @@ struct a04_probe_extension {
     a04_msdc_gate ioBusy;
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
     volatile LONG transfer_poisoned; /* Restart cannot establish DMA/card recovery. */
+    a04_lifetime lifetime;
 #endif
 #ifdef A04_SERIAL_QUEUE_EXPERIMENT
     volatile LONG busyCount, gateBusyCount, workerInitFailCount, workerQueueFailCount;
@@ -94,18 +98,27 @@ static void A04Trace(const char *text)
 static uint32_t A04Read32(void *context, uint32_t offset)
 {
     struct a04_probe_extension *probe = (struct a04_probe_extension *)context;
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+    if (a04_life_load(&probe->lifetime) & A04_LIFE_REMOVED) return 0xffffffffu;
+#endif
     return READ_REGISTER_ULONG(probe->registers + offset / 4);
 }
 
 static uint8_t A04Read8(void *context, uint32_t offset)
 {
     struct a04_probe_extension *probe = (struct a04_probe_extension *)context;
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+    if (a04_life_load(&probe->lifetime) & A04_LIFE_REMOVED) return 0xffu;
+#endif
     return READ_REGISTER_UCHAR((volatile UCHAR *)probe->registers + offset);
 }
 
 static void A04Write32(void *context, uint32_t offset, uint32_t value)
 {
     struct a04_probe_extension *probe = (struct a04_probe_extension *)context;
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+    if (a04_life_load(&probe->lifetime) & A04_LIFE_REMOVED) return;
+#endif
     WRITE_REGISTER_ULONG(probe->registers + offset / 4, value);
 }
 
@@ -176,6 +189,15 @@ static enum a04_dma_result A04DmaTransfer(struct a04_probe_extension *probe,
     clock.observe = NULL;
 #endif
     clock.ticks = (uint64_t)frequency.QuadPart * 10u;
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+    /* Initial probing occurs before request admission; only a live worker
+     * enters this rundown protocol. Stop closes admission atomically. */
+    BOOLEAN tracked = (a04_life_load(&probe->lifetime) & A04_LIFE_WORKER) != 0;
+    if (tracked && !a04_life_dma_begin(&probe->lifetime)) {
+        IoFreeMdl(mdl);
+        return A04_DMA_INVALID;
+    }
+#endif
     start = A04ClockNow(&clockContext);
     clockContext.first = start;
     if (blocks == 1)
@@ -184,6 +206,10 @@ static enum a04_dma_result A04DmaTransfer(struct a04_probe_extension *probe,
     else
         result = a04_msdc_dma_read_blocks_timed(io, lba, probe->dma_bus,
                            probe->dma_alignment, 100000000u, blocks, &clock);
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+    /* Only complete success proves this path observed DMA inactive. */
+    if (tracked) a04_life_dma_end(&probe->lifetime, result == A04_DMA_OK);
+#endif
     if (result != A04_DMA_OK) {
         uint64_t elapsed = A04ClockNow(&clockContext) - start;
         A04Trace("A04WIN dma failure lba="); A04TraceHex(lba);
@@ -554,6 +580,15 @@ static BOOLEAN A04WriteTest(struct a04_probe_extension *probe, ULONG sectors)
 static BOOLEAN A04Initialize(PVOID extension)
 {
     struct a04_probe_extension *probe = (struct a04_probe_extension *)extension;
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+    /* Storport owns and can free the extension/common buffer on removal.
+     * The current reset path can complete an SRB before its worker exits, so
+     * the local lifetime word cannot guarantee rundown. Never start this
+     * configuration until port-level resource lifetime is actually solved. */
+    UNREFERENCED_PARAMETER(probe);
+    A04Trace("A04WIN multiblock lifetime gate refuses start\n");
+    return FALSE;
+#endif
     A04Trace("A04WIN HwInitialize registers cfg=");
     A04TraceHex(READ_REGISTER_ULONG(probe->registers + (0x000 / 4)));
     A04Trace(" sdc_cfg=");
@@ -720,6 +755,14 @@ static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControl(PVOID extension,
     struct a04_probe_extension *probe=(struct a04_probe_extension *)extension;
     SCSI_ADAPTER_CONTROL_STATUS status;
     BOOLEAN owns=(type==ScsiStopAdapter || type==ScsiRestartAdapter);
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+    if (type==ScsiStopAdapter) {
+        /* Close before testing ownership, including when a worker is busy. */
+        a04_life_close(&probe->lifetime,0);
+        InterlockedExchange(&probe->cancelled,1);
+        InterlockedExchange(&probe->transfer_poisoned,1);
+    }
+#endif
     if (owns && !a04_msdc_gate_acquire(&probe->ioBusy))
         return ScsiAdapterControlUnsuccessful;
     status=A04AdapterControlOwned(extension,type,parameters);
@@ -889,6 +932,9 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
                 if (pr != A04_MSDC_OK) { failure = (ULONG)pr; break; }
 #endif
             }
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+            if (InterlockedCompareExchange(&probe->cancelled,0,0)) failure=1;
+#endif
             /* A failed transfer may still own the controller/DMA. Do not
              * re-enable its events before a proven hardware recovery. */
             if (!failure) A04Write32(probe, 0x010, interrupts);
@@ -975,6 +1021,12 @@ static VOID A04IsolatedWorker(PVOID extension, PVOID context, PVOID worker)
     (void)StorPortFreeWorker(extension,worker);
     StorPortAcquireSpinLock(extension,StartIoLock,NULL,&lock);
     original=probe->pendingRequest;
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+    if (original && InterlockedCompareExchange(&probe->cancelled,0,0)) {
+        probe->isolatedRequest.SrbStatus=SRB_STATUS_BUS_RESET;
+        probe->isolatedRequest.DataTransferLength=0;
+    }
+#endif
     if (original) {
         count=probe->isolatedRequest.DataTransferLength;
         if (count>original->DataTransferLength) count=original->DataTransferLength;
@@ -994,6 +1046,9 @@ static VOID A04IsolatedWorker(PVOID extension, PVOID context, PVOID worker)
     /* The StartIo lock prevents the next request from reusing the shadow
      * until the old completion is published. Keeping ioBusy set through the
      * notification can unnecessarily return BUSY to the next request. */
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+    a04_life_leave(&probe->lifetime);
+#endif
     a04_msdc_gate_release(&probe->ioBusy);
     if (original) {
         StorPortNotification(RequestComplete,extension,original);
@@ -1009,6 +1064,25 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
     ULONG status,i;
     UCHAR *dst=(UCHAR *)&probe->isolatedRequest, *src=(UCHAR *)request;
     StorPortAcquireSpinLock(extension,StartIoLock,NULL,&lock);
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+    /* PnP SRBs have a different layout. Close admission before observing the
+     * owner, and never touch controller MMIO on notification of removal. */
+    if (request->Function==SRB_FUNCTION_PNP && request->Length>=sizeof(SCSI_PNP_REQUEST_BLOCK)) {
+        PSCSI_PNP_REQUEST_BLOCK pnp=(PSCSI_PNP_REQUEST_BLOCK)request;
+        if ((pnp->SrbPnPFlags & SRB_PNP_FLAGS_ADAPTER_REQUEST) &&
+            (pnp->PnPAction==StorSupriseRemoval || pnp->PnPAction==StorRemoveDevice || pnp->PnPAction==StorStopDevice)) {
+            a04_life_close(&probe->lifetime,pnp->PnPAction!=StorStopDevice);
+            InterlockedExchange(&probe->cancelled,1);
+            InterlockedExchange(&probe->transfer_poisoned,1);
+            /* The local state cannot pin port-owned memory; do not claim
+             * PnP rundown even if the atomic owner appears idle. */
+            pnp->SrbStatus=SRB_STATUS_ERROR;
+        } else pnp->SrbStatus=SRB_STATUS_INVALID_REQUEST;
+        StorPortNotification(RequestComplete,extension,request);
+        StorPortReleaseSpinLock(extension,&lock);
+        return TRUE;
+    }
+#endif
     /* PnP and other SRB formats do not have the SCSI request layout. Never
      * copy or interpret them as a full SCSI_REQUEST_BLOCK. */
     if (request->Function!=SRB_FUNCTION_EXECUTE_SCSI || request->Length<sizeof(SCSI_REQUEST_BLOCK)) {
@@ -1026,9 +1100,24 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         StorPortReleaseSpinLock(extension,&lock);
         return TRUE;
     }
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+    /* Clear before admission: a concurrent close must not be overwritten. */
+    InterlockedExchange(&probe->cancelled,0);
+    if (!a04_life_enter(&probe->lifetime)) {
+        request->SrbStatus=SRB_STATUS_NO_DEVICE;
+        request->DataTransferLength=0;
+        a04_msdc_gate_release(&probe->ioBusy);
+        StorPortNotification(RequestComplete,extension,request);
+        StorPortReleaseSpinLock(extension,&lock);
+        return TRUE;
+    }
+#endif
     if (request->DataTransferLength>sizeof(probe->isolatedData) ||
         (request->DataTransferLength && !request->DataBuffer)) {
         request->SrbStatus=SRB_STATUS_INVALID_REQUEST;
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+        a04_life_leave(&probe->lifetime);
+#endif
         a04_msdc_gate_release(&probe->ioBusy);
         StorPortNotification(RequestComplete,extension,request);
         StorPortReleaseSpinLock(extension,&lock);
@@ -1040,6 +1129,9 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         InterlockedIncrement(&probe->workerInitFailCount); InterlockedIncrement(&probe->busyCount);
 #endif
         request->SrbStatus=SRB_STATUS_BUSY;
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+        a04_life_leave(&probe->lifetime);
+#endif
         a04_msdc_gate_release(&probe->ioBusy);
         StorPortNotification(RequestComplete,extension,request);
         StorPortReleaseSpinLock(extension,&lock);
@@ -1051,7 +1143,9 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
     for (i=0;i<sizeof(probe->isolatedSense);++i) probe->isolatedSense[i]=0;
     probe->isolatedRequest.DataBuffer=request->DataBuffer ? probe->isolatedData : NULL;
     probe->isolatedRequest.SenseInfoBuffer=request->SenseInfoBuffer ? probe->isolatedSense : NULL;
+#if !A04_BOOT_MULTIBLOCK_EXPERIMENT && !A04_SCRATCH_MULTIBLOCK_EXPERIMENT
     InterlockedExchange(&probe->cancelled,0);
+#endif
     probe->pendingRequest=request;
     status=StorPortQueueWorkItem(extension,A04IsolatedWorker,worker,NULL);
     if (status != STOR_STATUS_SUCCESS) {
@@ -1061,6 +1155,9 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         InterlockedIncrement(&probe->workerQueueFailCount); InterlockedIncrement(&probe->busyCount);
 #endif
         request->SrbStatus=SRB_STATUS_BUSY;
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+        a04_life_leave(&probe->lifetime);
+#endif
         a04_msdc_gate_release(&probe->ioBusy);
         StorPortNotification(RequestComplete,extension,request);
     }
@@ -1162,6 +1259,7 @@ static BOOLEAN A04ResetBus(PVOID extension, ULONG path)
                             "A04WIN reset had no pending request\n");
         InterlockedExchange(&probe->cancelled,1);
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+        a04_life_close(&probe->lifetime,0);
         InterlockedExchange(&probe->transfer_poisoned,1);
 #endif
         probe->failed=TRUE;
