@@ -52,8 +52,8 @@ offers a status query. Its normal build does not start firmware. The explicitly
 enabled `A04_GE8300_BOOT_TEST=1` WinPE build attempts one firmware boot,
 health check and shutdown; `A04_GE8300_ALLOW_MISMATCH=1` separately permits
 the known firmware/core mismatch. It is not WDDM and is not intended for the
-installed Windows system. GPU shutdown, surprise removal, sleep and retained
-DMA allocations after failure are not yet verified on real hardware.
+installed Windows system. Firmware shutdown reached the successful path once;
+surprise removal, sleep and the long-term safety of DMA handling remain unverified.
 `tools/ci/build-ge8300-provider.ps1` fetches the pinned firmware or accepts
 `A04_GE8300_FIRMWARE`; in both cases it verifies the SHA-256 before packaging.
 `firmware_runtime.c` also constructs the firmware queues and shared system and
