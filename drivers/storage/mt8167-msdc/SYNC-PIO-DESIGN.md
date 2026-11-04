@@ -61,3 +61,12 @@ VIO18 は常時有効、両 rail の enable-ramp-delay は 264 µs である。�
 Linux の記述とレジスタ観測であり、実電圧・電源の持続・Windows での排他
 所有の証拠ではない。VIO18 の無効化、VEMC の切替や再有効化は、他クライアント
 と card の状態・保護順序を確立するまで行わない。
+
+`a04_emmc_prepare` は未接続の一括復帰試作で、同一世代の排他 lease の下に
+VEMC 再有効化、MSDC pin mode、clock 選択・ゲートの readback、機種側の reset／
+400 kHz host 設定、CMD0/1/2/3/9/7/16 と card 状態取得を順にまとめる。
+途中失敗では lease を解放せず poison にし、結果を公開しない。最終観測でも
+実レール所有・共有 clock 安定の証拠はゼロのため、boot／resume の許可にはならない。
+この関数は PASSIVE_LEVEL を保つロックと非取消 lease を必要とし、現行親の
+FAST_MUTEX は IRQL を上げるためそのまま使えない。親、Storport、IRQ や実電源
+への配線は未実装であり、ホスト模擬試験はハードウェア動作を保証しない。

@@ -14,13 +14,18 @@ static int valid(const struct a04_board_ops *o)
 { return o && o->acquire && o->owned && o->read_rails && o->read_pin_mode && o->read_clock && o->write_clock && o->quiescent && o->release; }
 static enum a04_board_result fail(struct a04_board_owner *s,enum a04_board_result r)
 { s->poisoned=1; return r; }
-enum a04_board_result a04_board_acquire_clocks(struct a04_board_owner *s,const struct a04_board_ops *o,uint32_t generation)
+enum a04_board_result a04_board_begin(struct a04_board_owner *s,const struct a04_board_ops *o,uint32_t generation)
 {
-    struct a04_emmc_rails_raw rails; unsigned pin,mode; uint32_t v;
     if(!s || !valid(o) || !generation) return A04_BOARD_INVALID;
     if(s->active || s->poisoned || generation<=s->generation) return A04_BOARD_BUSY;
     if(o->acquire(o->context,generation)!=1) return A04_BOARD_BUSY;
-    s->active=1;s->generation=generation;
+    s->active=1;s->generation=generation;return A04_BOARD_OK;
+}
+enum a04_board_result a04_board_finish_clocks(struct a04_board_owner *s,const struct a04_board_ops *o,uint32_t generation)
+{
+    struct a04_emmc_rails_raw rails; unsigned pin,mode; uint32_t v;
+    if(!s || !valid(o) || !generation) return A04_BOARD_INVALID;
+    if(!s->active || s->poisoned || s->generation!=generation) return A04_BOARD_BUSY;
     if(o->owned(o->context,generation)!=1) return fail(s,A04_BOARD_OWNER_LOST);
     if(o->read_rails(o->context,&rails)!=0 ||
        (rails.vemc_enable&(ENABLE|GOOD))!=(ENABLE|GOOD) ||
@@ -45,6 +50,11 @@ enum a04_board_result a04_board_acquire_clocks(struct a04_board_owner *s,const s
     if(o->owned(o->context,generation)!=1) return fail(s,A04_BOARD_OWNER_LOST);
     if(o->read_clock(o->context,TOP2_STATUS,&v)!=0 || !(v&INFRA)) return fail(s,A04_BOARD_CLOCK);
     return A04_BOARD_OK;
+}
+enum a04_board_result a04_board_acquire_clocks(struct a04_board_owner *s,const struct a04_board_ops *o,uint32_t generation)
+{
+    enum a04_board_result r=a04_board_begin(s,o,generation);
+    return r==A04_BOARD_OK ? a04_board_finish_clocks(s,o,generation) : r;
 }
 enum a04_board_result a04_board_release(struct a04_board_owner *s,const struct a04_board_ops *o)
 {
