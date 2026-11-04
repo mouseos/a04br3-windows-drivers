@@ -6,14 +6,20 @@ from pathlib import Path
 p=argparse.ArgumentParser()
 p.add_argument('--log',type=Path,required=True)
 p.add_argument('--output',type=Path,required=True)
+p.add_argument('--expected-size',help='require WIDTHxHEIGHT')
 a=p.parse_args()
+expected=None
+if a.expected_size:
+    m=re.fullmatch(r'([1-9][0-9]{0,3})x([1-9][0-9]{0,3})',a.expected_size)
+    if not m: p.error('invalid expected size')
+    expected=tuple(map(int,m.groups()))
 if a.output.exists(): raise SystemExit('output already exists')
 frames={}
 for line in a.log.read_bytes().splitlines():
     m=re.search(rb'A04SC0 ([0-9A-F]{8}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4})$',line)
     if m:
         ident=m[1];w,h,total=(int(x,16) for x in m.groups()[1:]);size=((w+7)//8)*h
-        if 0<w<=2048 and 0<h<=2048 and 0<size<=512*1024 and total==(size+23)//24:
+        if 0<w<=2048 and 0<h<=2048 and 0<size<=512*1024 and total==(size+23)//24 and (expected is None or expected==(w,h)):
             frames[ident]={'w':w,'h':h,'total':total,'size':size,'parts':{},'bad':False}
         continue
     m=re.search(rb'A04SC1 ([0-9A-F]{8}) ([0-9A-F]{4}) ([0-9A-F]{2}) ([0-9A-F]+) ([0-9A-F]{8})$',line)

@@ -68,7 +68,14 @@ A04_SERIAL="$serial" "$root/tools/recovery/flash-efi.sh" "$test_esp" >> "$flash_
 echo TEST_BOOT_STARTED
 found=0
 attempts=35
-if [[ ${A04_WINPE_UART_SCREEN:-0} == 1 ]]; then attempts=250; fi
+screen_args=()
+if [[ ${A04_WINPE_UART_SCREEN:-0} == 1 ]]; then
+  attempts=350
+  if [[ -n ${A04_WINPE_SCREEN_SIZE:-} ]]; then
+    [[ $A04_WINPE_SCREEN_SIZE =~ ^[1-9][0-9]{0,3}x[1-9][0-9]{0,3}$ ]] || { echo INVALID_SCREEN_SIZE >&2; exit 2; }
+    screen_args=(--expected-size "$A04_WINPE_SCREEN_SIZE")
+  fi
+fi
 battery_entry_seen=-1
 for ((i=0;i<attempts;i++)); do
   tail -c +$((start+1)) "$uart_log" > "$out/current-uart.log"
@@ -84,7 +91,7 @@ for ((i=0;i<attempts;i++)); do
   fi
   if grep -Fq "${A04_WINPE_SUCCESS_MARKER:-A04GPU DISPLAY COPY COMPLETE}" "$out/current-uart.log"; then
     if [[ ${A04_WINPE_UART_SCREEN:-0} == 1 ]]; then
-      if python3 "$root/tools/uart/decode-windows-screen.py" --log "$out/current-uart.log" --output "$out/windows-screen.pbm" >/dev/null 2>&1; then
+      if python3 "$root/tools/uart/decode-windows-screen.py" --log "$out/current-uart.log" --output "$out/windows-screen.pbm" "${screen_args[@]}" >/dev/null 2>&1; then
         found=1; echo WINDOWS_SCREEN_CRC_VERIFIED; break
       fi
     else
@@ -103,9 +110,11 @@ for ((i=0;i<attempts;i++)); do
   if (( i > 5 )) && is_fastboot; then break; fi
   sleep 4
 done
-if (( found )); then echo WINPE_SUCCESS_MARKER_OBSERVED; sleep 25; else echo WINPE_SUCCESS_MARKER_NOT_OBSERVED; fi
+if (( found )); then echo WINPE_SUCCESS_MARKER_OBSERVED; if [[ ${A04_WINPE_UART_SCREEN:-0} != 1 ]]; then sleep 25; fi; else echo WINPE_SUCCESS_MARKER_NOT_OBSERVED; fi
 tail -c +$((start+1)) "$uart_log" > "$out/first-boot-uart.log"
-if ! python3 "$root/tools/uart/capture-framebuffer.py" --log "$uart_log" --uart "$uart" --output "$out/framebuffer.pbm" --timeout 20; then
+if [[ ${A04_WINPE_UART_SCREEN:-0} == 1 && $found == 1 ]]; then
+  echo WINDOWS_SCREEN_CAPTURE_COMPLETE
+elif ! python3 "$root/tools/uart/capture-framebuffer.py" --log "$uart_log" --uart "$uart" --output "$out/framebuffer.pbm" --timeout 20; then
   ffmpeg -hide_banner -loglevel error -f v4l2 -input_format mjpeg -video_size 1920x1080 -i /dev/video0 -frames:v 1 "$out/camera.jpg" || true
 fi
 echo TEST_CAPTURE_FINISHED
