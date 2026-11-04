@@ -116,3 +116,13 @@ python3 tools/gpu/reconstruct-pds-data.py PRIVATE_CAPTURE --index 0 --output NEW
 ```
 
 `--index 0` と `--index 1` は観測された２組を選ぶ。独立した２回のshimキャプチャで各組を再構成し、構築時のFNV値との一致を確認した。`render_pds_data.c` は対応する配置を、呼出し元が所有するGPU範囲とアクセス権を検査した上で組み立てるホスト検証済み部品で、GPUドライバの実行経路には接続していない。shader命令・fragment・VDM/PPPの全間接参照、固定payload、DMA/kickとの統合、実機検証は未完了であり、出力はGPU投入禁止。
+
+## fragmentとPPPの対応
+
+再構築した診断ライブラリによる新しい非公開キャプチャでは、`check-render-trace.py` がfragmentのPDSデータ・コードとUSC shaderの確保範囲が同じVMに存在すること、書込みが追跡された範囲にentryが入ること、重なる後続uploadがあれば旧uploadを無効にすることを検査する。`check-render-fragment.py PRIVATE_CAPTURE` は固定probeの２件のPPP `shaderbase` とfragment PDSデータ先頭を順に照合し、コード先頭がデータ確保範囲の直後であることを確認する。Mesaの `pvr_arch_cmd_buffer.c` と `csbgen/rogue/ppp.xml` ではshaderbaseはコードではなくデータ先頭を指す。
+
+観測した２件はそれぞれPDSデータ書込み32バイト、コード書込み4バイト、コード確保16バイト、USC書込み360バイト、USC確保448バイトだった。確保領域の残りをMesaが書き込んだと解釈してはいけない。記録時点の対応と固定probe固有の順序による照合であり、ジョブ投入時の全寿命、全CPU書込み、VDM/PPPの残る参照、命令の安全な生成は証明しない。非公開ログにはホスト情報が混入し得る。両検査器はGPU実行を許可しない。
+
+さらに `pvr_arch_pipeline.c` の `pvr_pds_fragment_program_create` はstaging bufferを `vk_alloc2` で取得し、`pvr_pds.c` の `pvr_pds_kick_usc` は32バイトのデータ領域のうちDOUTUの８バイトだけを明示的に書く。`setup_pds_fragment_program` は後でその８バイトを更新するが、uploadはデータ領域32バイトをコピーする。従って残り24バイトの由来は未確認であり、ゼロ初期化を保証しない元のstaging bytesやそのままのBOをfixtureに使用しない。GPUに必要なDOUTUを型付き情報から生成し、残りをゼロから作る必要がある。
+
+`reconstruct-fragment-pds.py PRIVATE_CAPTURE --index 0 --output NEW_PRIVATE_DIR --experimental-incomplete` は、検証した単一sampleのGPU shader entryとDOUTU制御値、Mesaの単一DOUTU命令から48バイトを生成する。データ内24バイトとコード確保内12バイトの未使用部はゼロとする。DOUTU先頭８バイトと命令４バイトについて、独立した２回のキャプチャでMesa生成結果のFNV値と一致した。`a04_render_make_fragment_pds` は同じ構成を所有済み実行可能GPU範囲を検査して生成するホスト側部品で、GPU投入経路には接続していない。FNVは非暗号学的照合であり、shader自体の内容や残る間接参照は検証しない。

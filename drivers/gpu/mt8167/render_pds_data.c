@@ -44,3 +44,16 @@ int a04_render_make_pds_data(const struct a04_render_pds_input *p,
     put64(result.scratch_info,p->scratch_buffer_gpu);put32(result.scratch_info+8,24);
     *out=result;return 0;
 }
+int a04_render_make_fragment_pds(uint64_t shader_gpu,uint64_t control,
+    const struct a04_render_owned_range *r,size_t n,uint8_t out[48])
+{
+    uint8_t result[48]={0};size_t i;
+    if (!out || a04_render_validate_owned_ranges(r,n) ||
+        (control&~DOUTU_CONTROL_MASK) || (control&(UINT64_C(3)<<33)) ||
+        (shader_gpu&3u) || (shader_gpu>>32)!=UINT64_C(0xe0) ||
+        !owned(r,n,shader_gpu,4,A04_RENDER_RANGE_READ|A04_RENDER_RANGE_EXEC)) return -1;
+    put64(result,control|((uint32_t)shader_gpu&UINT32_C(0xfffffffc)));
+    put32(result+32,UINT32_C(0xf4000002));
+    for(i=0;i<sizeof(result);++i) out[i]=result[i];
+    return 0;
+}
