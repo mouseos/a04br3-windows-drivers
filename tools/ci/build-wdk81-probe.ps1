@@ -74,7 +74,7 @@ if ($env:A04_DMA_PROBE -eq '1' -and $env:A04_READONLY_DISK_PROBE -ne '1') { thro
 if ($env:A04_READONLY_DISK_PROBE -eq '1') {
     $probeDefines += '-DA04_READONLY_DISK_PROBE'
     $sources = @('cdb', 'scsi_capacity', 'scsi')
-    if ($env:A04_SYNC_PIO_MULTIREAD -eq '1') { $sources += @('sync_pio', 'resume_check') }
+    if ($env:A04_SYNC_PIO_MULTIREAD -eq '1') { $sources += @('sync_pio', 'resume_check', 'resume_capture') }
     if ($env:A04_DMA_PROBE -eq '1') { $probeDefines += '-DA04_DMA_PROBE'; $sources += 'dma' }
     if ($env:A04_DMA_DISK_PROBE -eq '1') { $probeDefines += '-DA04_DMA_DISK_PROBE' }
     if ($env:A04_ENABLE_WRITES -eq '1') { $probeDefines += '-DA04_ENABLE_WRITES'; $sources += 'gpt_guard' }
