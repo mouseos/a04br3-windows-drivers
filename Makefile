@@ -25,6 +25,7 @@ test: build/gpu_windows_render_memory_test build/msdc_lifetime_test build/bqhr_d
 	python3 tests/gpu_render_trace_test.py
 	python3 tests/gpu_render_upload_trace_test.py
 	python3 tests/gpu_render_upload_candidates_test.py
+	python3 tests/gpu_render_csb_summary_test.py
 	./build/lc709203f_test
 	./build/lc709203f_i2c_test
 	./build/msdc_io_gate_test
