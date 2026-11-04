@@ -269,3 +269,5 @@ UARTの `A04GPU RENDER STATUS=... STAGE=... BG=... TRI=... OTHER=... BOUNDED=...
 固定描画診断は64×64の出力について、Morton配置を仮定して各行の前景マスクを `A04GPU ROW Y=... LO=... HI=...` として出す。個々のRGBやGPU／ホストアドレスは出力しない。内部領域 `x>=8,y>=8,x+y<63` は前景、それ以外は背景と照合し、対角線 `x+y=63` の境界画素のみ両色を許容する。合計色数・不明色と位置違反数 `MISMATCH` も検査する。この並びはPBEの実機出力で未検証であり、失敗は配置仮定の誤りでも起きる。転置対称の図形なのでx/y入替えは識別できない。正常でもGPU停止・メモリ安全・context switchの証明にはならない。
 
 非対称試験は同じMesa生成三角形とVDM/PPP/PDS/USCを使用し、IPF scissorだけを `xmin=0,xmax=49,ymin=0,ymax=64` にする。Mesa `ef11349e8e` のIPF scissor XMLとscissor生成式に基づく派生値であり、元の２キャプチャの64×64 scissor FNVと、領域clipの16／32画素単位で49と64が同じ末端を示すことを `check-asymmetric-scissor.py` で照合できる。非対称版のMesa再キャプチャや実GPU結果ではない。対角辺を除く前景は `8<=x<49, y>=8, x+y<63`。x/y転置と左右反転を元画像と区別するが、出力面のMorton解釈は未検証。
+
+09c630d実機の初回記録ではPBE metadata `layout=1` を誤ってMortonとして読んだ。Mesa `pvr_common.h` の値１は `PVR_MEMLAYOUT_LINEAR` で、対象は64画素stride。記録済み64行の前景マスクを `analyze-09c630d-rows.py` で元の物理順へ戻すと、前景は線形座標x=8..31、y=8..31の576画素の矩形。元の記録には背景マスクがないため、残りの位置が背景か未知色かは復元できない。背景448・未知3072という合計だけから、処理済み領域を32×32と断定しない。Mesa/LinuxのHWRT値およびcaptured PBEクリップを照合したが、描画欠落の根本原因は未特定。修正版は線形strideで判定し、前景と背景それぞれの１bitマスクを出す。未知色はマスクのいずれにも含まれず、合計と座標を独立に照合できる。これはGPU修正の成功や次の実機試験の根拠にはならない。

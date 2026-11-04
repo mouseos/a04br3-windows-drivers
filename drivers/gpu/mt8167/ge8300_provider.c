@@ -310,7 +310,9 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
                     for(y=0;y<64;++y) {
                         GpuPrint("A04GPU ROW Y=");GpuHex(y);
                         GpuPrint(" LO=");GpuHex(d->triangle_rows[y][0]);
-                        GpuPrint(" HI=");GpuHex(d->triangle_rows[y][1]);GpuPrint("\n");
+                        GpuPrint(" HI=");GpuHex(d->triangle_rows[y][1]);
+                        GpuPrint(" BGLO=");GpuHex(d->background_rows[y][0]);
+                        GpuPrint(" BGHI=");GpuHex(d->background_rows[y][1]);GpuPrint("\n");
                     }
                 }
                 GpuPrint("A04GPU RENDER STATUS=");GpuHex((ULONG)status);

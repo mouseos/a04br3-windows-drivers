@@ -31,12 +31,11 @@ NTSTATUS a04_gpu_firmware_submit_kick(struct a04_gpu_firmware_state *s,const str
 { assert(s && kick && (kick->cmd_type==ROGUE_FWIF_KCCB_CMD_COMBINED_GEOM_FRAG_KICK || kick->cmd_type==ROGUE_FWIF_KCCB_CMD_KICK));++kick_calls;
   if (diagnostic_mock && kick->cmd_type==ROGUE_FWIF_KCCB_CMD_KICK) {
     struct a04_windows_render_memory *m=&diagnostic_mock->memory;
-    uint8_t *p=(uint8_t *)m->cpu+A04_RENDER_PAYLOAD_OFFSET+65u*4096u;unsigned x,y,bit,i;
+    uint8_t *p=(uint8_t *)m->cpu+A04_RENDER_PAYLOAD_OFFSET+65u*4096u;unsigned x,y,i;
     *(uint32_t *)m->render.geom_fence.cpu=1;*(uint32_t *)m->render.frag_fence.cpu=2;
     ((struct rogue_fwif_cccb_ctl *)m->render.geom_control.cpu)->read_offset=(uint32_t)(2u*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(struct rogue_fwif_cmd_geom)+sizeof(struct rogue_fwif_ufo));
     ((struct rogue_fwif_cccb_ctl *)m->render.frag_control.cpu)->read_offset=m->render.frag_end;
-    for(y=0;y<64;++y) for(x=0;x<64;++x) { unsigned tx=diagnostic_wrong_pixels==2 ? 63-x : diagnostic_wrong_pixels==3 ? y : x; unsigned ty=diagnostic_wrong_pixels==3 ? x : y; int inside=tx>=8 && tx<49 && ty>=8 && tx+ty<63; i=0;
-      for(bit=0;bit<6;++bit) i|=((x>>bit)&1u)<<(2u*bit) | ((y>>bit)&1u)<<(2u*bit+1u);
+    for(y=0;y<64;++y) for(x=0;x<64;++x) { unsigned tx=diagnostic_wrong_pixels==2 ? 63-x : diagnostic_wrong_pixels==3 ? y : x; unsigned ty=diagnostic_wrong_pixels==3 ? x : y; int inside=tx>=8 && tx<49 && ty>=8 && tx+ty<63; i=y*64u+x;
       p[4*i]=diagnostic_wrong_pixels==1?0:(inside?0xff:0x22);p[4*i+1]=inside?0:0x44;p[4*i+2]=inside?0xff:0x66;p[4*i+3]=0xff; }
   }
   return kick_fail || kick_calls==kick_fail_at ? STATUS_IO_TIMEOUT : STATUS_SUCCESS; }

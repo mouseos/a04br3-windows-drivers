@@ -105,14 +105,12 @@ NTSTATUS a04_windows_render_diagnostic_run(struct a04_windows_render_diagnostic 
     STEP(30,a04_windows_render_submit_pair(m));
     STEP(31,a04_windows_render_collect_pair(m));
     pixels=(const uint8_t *)m->cpu+Z+65u*4096u;
-    /* 64x64 PBE twiddled surface: Morton-order hypothesis, not hardware proof. */
+    /* Mesa pvr_memlayout layout=1 is linear, stride=64 pixels. */
     for(y=0;y<64;++y) for(x=0;x<64;++x) {
-        unsigned bit,index=0;int bg,tri,edge,inside;const uint8_t *p;
-        for(bit=0;bit<6;++bit) index|=((x>>bit)&1u)<<(2u*bit) | ((y>>bit)&1u)<<(2u*bit+1u);
-        p=pixels+4u*index;
+        int bg,tri,edge,inside;const uint8_t *p=pixels+4u*(y*64u+x);
         bg=p[0]==0x22 && p[1]==0x44 && p[2]==0x66 && p[3]==0xff;
         tri=p[0]==0xff && p[1]==0 && p[2]==0xff && p[3]==0xff;
-        if(bg) ++d->background_pixels;
+        if(bg) { ++d->background_pixels;d->background_rows[y][x/32u]|=1u<<(x%32u); }
         else if(tri) { ++d->triangle_pixels;d->triangle_rows[y][x/32u]|=1u<<(x%32u); }
         else ++d->other_pixels;
         edge=x>=8u && x<49u && y>=8u && x+y==63u;
