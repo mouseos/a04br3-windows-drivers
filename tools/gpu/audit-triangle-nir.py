@@ -50,6 +50,7 @@ def audit(text):
             'vertex_scratch_formula':'vertex_id * 8, 8-byte load',
             'gpu_execution_allowed':False,
             'limitations':['bounds depend on fixed non-indexed three-vertex draw and VDM behavior',
+              'physical scratch address also depends on special register local_addr_inst_num; its device bound is not measured',
               'NIR is not machine-code decoding or proof of every USC immediate',
               'context switch shared-state access and other indirect GPU references remain unverified']}
 
