@@ -33,6 +33,14 @@ static void a04_upload_range(const char *kind, unsigned long long gpu, unsigned 
    if (!f) abort();
    if (fprintf(f,"{\\\"event\\\":\\\"upload\\\",\\\"kind\\\":\\\"%s\\\",\\\"gpu_va\\\":%llu,\\\"size\\\":%llu}\\n",kind,gpu,size)<0 || fclose(f)) abort();
 }
+static void a04_usc_hash(unsigned long long gpu, const void *data, unsigned size)
+{
+   const unsigned char *p=data; unsigned long long h=14695981039346656037ULL;
+   for (unsigned i=0;i<size;i++) { h^=p[i]; h*=1099511628211ULL; }
+   const char *name=getenv("A04_CAPTURE_JSONL"); FILE *f=name ? fopen(name,"a") : NULL;
+   if (!f) abort();
+   if (fprintf(f,"{\\"event\\":\\"usc_upload_hash\\",\\"gpu_va\\":%llu,\\"size\\":%u,\\"fnv64\\":%llu}\\n",gpu,size,h)<0 || fclose(f)) abort();
+}
 '''
     # Only report the explicitly uploaded code/data extents. No source or CPU
     # destination pointers, bytes, or full BOs enter the trace.
@@ -41,6 +49,7 @@ static void a04_upload_range(const char *kind, unsigned long long gpu, unsigned 
    *pvr_bo_out = suballoc_bo;'''
     uc='''   memcpy(map, code, code_size);
    a04_upload_range("usc_code", (unsigned long long)suballoc_bo->dev_addr.addr, code_size);
+   a04_usc_hash((unsigned long long)suballoc_bo->dev_addr.addr, code, code_size);
 
    *pvr_bo_out = suballoc_bo;'''
     d='''      memcpy(map, data, data_size);
@@ -70,6 +79,6 @@ static void a04_upload_range(const char *kind, unsigned long long gpu, unsigned 
     args=shlex.split(link);args[args.index('-o')+1]=str(out/'libvulkan_powervr_mesa.so')
     args=[str(diag/'libpowervr_rogue.a') if x=='src/imagination/vulkan/libpowervr_rogue.a' else str(out/'pvr_device.c.o') if x=='src/imagination/vulkan/libvulkan_powervr_mesa.so.p/pvr_device.c.o' else x for x in args]
     subprocess.run(args,cwd=build,check=True)
-    meta.update(upload_metadata_only=True,upload_source_sha256=sha(out/'pvr_device.c'),library_sha256=sha(out/'libvulkan_powervr_mesa.so'))
+    meta.update(upload_metadata_only=True,upload_source_sha256=sha(out/'pvr_device.c'),upload_object_sha256=sha(out/'pvr_device.c.o'),library_sha256=sha(out/'libvulkan_powervr_mesa.so'))
     (out/'diagnostic-manifest.json').write_text(json.dumps(meta,indent=2)+'\n')
 if __name__=='__main__':main()
