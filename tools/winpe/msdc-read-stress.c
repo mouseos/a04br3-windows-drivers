@@ -10,6 +10,11 @@ static void say(const char *s) {
     DWORD n=0, done=0; while (s[n]) ++n;
     WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),s,n,&done,NULL);
 }
+static void number(DWORD value) {
+    char digits[11]; unsigned n=0; DWORD written;
+    do { digits[n++]=(char)('0'+value%10); value/=10; } while (value);
+    while (n) { --n; WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),digits+n,1,&written,NULL); }
+}
 static int read_block(HANDLE h, DWORD lba, unsigned char *buffer) {
     LARGE_INTEGER offset; DWORD got=0;
     offset.QuadPart=((LONGLONG)lba)<<9;
@@ -38,6 +43,8 @@ void mainCRTStartup(void) {
         for (j=0; j<BLOCK_BYTES; ++j) if (a[j]!=b[j]) goto fail;
     }
     if (i<128u || !read_block(h,END_LBA,a)) goto fail;
+    say("MSDC_READ_STRESS_PAIRS="); number(i);
+    say(" ELAPSED_MS="); number((DWORD)(GetTickCount()-start)); say("\r\n");
     say("MSDC_READ_STRESS_PASSED\r\n");
     VirtualFree(a,0,MEM_RELEASE); VirtualFree(b,0,MEM_RELEASE); CloseHandle(h); ExitProcess(0);
 fail:
