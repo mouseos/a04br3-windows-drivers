@@ -55,4 +55,19 @@ static inline int a04_present_layout(uint32_t width,uint32_t height,uint32_t fb_
     if (total>UINT32_MAX || end>total || start>UINT32_MAX) return -1;
     *physical_width=w; *physical_height=h; *offset=(uint32_t)start; return 0;
 }
+/* GPU staging only accepts full-width, tightly packed, unrotated rows. */
+static inline int a04_present_gpu_span(uint32_t width,uint32_t height,uint32_t dst_width,
+    uint32_t dst_height,uint32_t src_pitch,uint32_t dst_pitch,int32_t left,int32_t top,
+    int32_t right,int32_t bottom,uint32_t *offset,uint32_t *bytes)
+{
+    uint64_t start,length;
+    if (!offset || !bytes || !width || !height || !src_pitch || src_pitch!=dst_pitch ||
+        (uint64_t)width*4u!=src_pitch || dst_width<width || dst_height<height ||
+        left!=0 || top<0 || right<=0 || (uint32_t)right!=width || bottom<=top ||
+        (uint32_t)bottom>height) return -1;
+    start=(uint64_t)(uint32_t)top*src_pitch;
+    length=(uint64_t)(uint32_t)(bottom-top)*src_pitch;
+    if (length<16384u || start+length>UINT32_MAX) return -1;
+    *offset=(uint32_t)start; *bytes=(uint32_t)length; return 0;
+}
 #endif
