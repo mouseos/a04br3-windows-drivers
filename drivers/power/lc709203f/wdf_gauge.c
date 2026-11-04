@@ -130,6 +130,7 @@ static void poll(GAUGE_CONTEXT *c)
          * Keep the already-armed charger owner alive; do not publish the gauge.
          * A busy controller, NACK or timeout latches the shared bus fault. */
         if (c->adapter.faulted) {
+            c->charger.stopped = 1;
             c->faulted = TRUE;
             InterlockedExchange(&c->online, 0);
         }
@@ -231,7 +232,10 @@ NTSTATUS GaugeD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
     WdfWaitLockAcquire(c->bus_lock, NULL);
 #if A04_BQ24160_EXPERIMENTAL
     /* Do not pretend the charger was restored or restart after D0 loss. */
-    if (c->charger.attempts) c->faulted = TRUE;
+    if (c->charger.attempts || c->charger.kicks || c->charger.handoff_pending) {
+        c->charger.stopped = 1;
+        c->faulted = TRUE;
+    }
 #endif
     WdfWaitLockRelease(c->bus_lock);
     if (a04_battery_invalidate(&c->battery)) notify(c);

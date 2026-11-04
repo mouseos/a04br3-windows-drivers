@@ -38,8 +38,14 @@ enum a04_bq_result a04_bq_step(struct a04_bq_owner *o, const struct a04_bq_bus *
     if (o->stopped) return A04_BQ_STOPPED;
     s.at = b->now_ns(b->context);
     if (late(o, s.at, deadline)) { o->stopped = 1; return A04_BQ_DEADLINE; }
-    first = o->attempts++ == 0;
+    first = o->attempts == 0;
     for (reg = 0; reg < 8; ++reg) {
+        end = b->now_ns(b->context);
+        if (end < s.at || end - s.at >= SECOND_NS || late(o, end, deadline)) {
+            o->latest = s; if (first && o->attempts) o->first = s;
+            o->stopped = 1; return A04_BQ_DEADLINE;
+        }
+        if (!reg) ++o->attempts;
         if (b->read(b->context, (uint8_t)reg, &s.raw[reg])) {
             o->latest = s; if (first) o->first = s;
             o->stopped = 1; return A04_BQ_READ_ERROR;
@@ -82,6 +88,35 @@ static void handoff_snapshot(struct a04_bq_snapshot *s, uint64_t word, unsigned 
 {
     unsigned i; s->valid=valid; s->at=0;
     for (i=0;i<8;++i) s->raw[i]=(uint8_t)(word >> (8u*i));
+}
+static void handoff_put64(uint8_t *p, uint64_t value)
+{
+    unsigned i; for (i=0;i<8;++i) p[i]=(uint8_t)(value >> (8u*i));
+}
+static uint64_t handoff_raw(const struct a04_bq_snapshot *s)
+{
+    uint64_t value=0; unsigned i;
+    for (i=0;i<8;++i) value |= (uint64_t)s->raw[i] << (8u*i);
+    return value;
+}
+int a04_bq_publish_handoff(uint8_t *p, unsigned size, const struct a04_bq_owner *o,
+                           uint64_t last, uint64_t exited, uint64_t freq)
+{
+    unsigned i;
+    if (!p || size != 128) return -1;
+    for (i=0;i<128;++i) p[i]=0;
+    if (!o || o->stopped || o->handoff_pending || !o->kicks ||
+        !freq || freq > UINT64_MAX/1000000000ULL || last>exited ||
+        exited-last>=20ULL*freq || (o->fault_history & ~1u) ||
+        o->first.valid!=255 || (o->first.raw[0]&7u) || policy(&o->latest)!=A04_BQ_OK)
+        return -1;
+    handoff_put64(p,0x314f524147484334ULL); handoff_put64(p+8,128);
+    handoff_put64(p+16,1); handoff_put64(p+24,last); handoff_put64(p+32,freq);
+    handoff_put64(p+40,exited); handoff_put64(p+48,o->kicks);
+    handoff_put64(p+56,o->fault_history); handoff_put64(p+64,o->first.valid);
+    handoff_put64(p+72,handoff_raw(&o->first)); handoff_put64(p+80,o->latest.valid);
+    handoff_put64(p+88,handoff_raw(&o->latest)); handoff_put64(p+120,handoff_seal(p));
+    return 0;
 }
 int a04_bq_adopt_handoff(struct a04_bq_owner *o, const uint8_t *p,
                          unsigned size, uint64_t now_ns, uint64_t counter, uint64_t freq)

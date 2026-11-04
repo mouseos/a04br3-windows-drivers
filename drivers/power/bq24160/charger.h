@@ -26,6 +26,15 @@ enum a04_bq_result {
     A04_BQ_OK, A04_BQ_INVALID, A04_BQ_STOPPED, A04_BQ_DEADLINE,
     A04_BQ_READ_ERROR, A04_BQ_POLICY, A04_BQ_FAULT, A04_BQ_WRITE_ERROR
 };
+/* Serialize a boot-local UniXNU v1 handoff after firmware ownership stops.
+ * Caller serializes publisher against firmware I2C and exit; last_tick must
+ * be captured for the same owner's most recent successful watchdog write.
+ * A zeroed output is never a valid record. This routine does not create or
+ * authenticate a Windows-visible transport or an out-of-D0 maintainer. */
+int a04_bq_publish_handoff(uint8_t *out, unsigned size,
+                           const struct a04_bq_owner *owner,
+                           uint64_t last_tick, uint64_t exit_tick,
+                           uint64_t frequency);
 /* Decode the UniXNU v1 record as an offline contract, not proof of trust.
  * Caller must authenticate boot-local origin and ownership transfer separately.
  * now_ns is sampled BEFORE physical_counter, on a monotonic clock; this
