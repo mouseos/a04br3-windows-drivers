@@ -402,3 +402,17 @@ test-mt8167-wavert-registration: build/mt8167_wavert_registration_test
 build/mt8167_wavert_registration_test: drivers/audio/mt8167-afe/wavert_registration.cpp drivers/audio/mt8167-afe/wavert_registration.h tests/mt8167_wavert_registration_test.cpp tests/audio_windows_stubs/portcls.h
 	mkdir -p build
 	$(CXX) -O2 -Wall -Wextra -Werror -std=c++11 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_TEST_REGISTRATION=1 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/wavert_registration.cpp tests/mt8167_wavert_registration_test.cpp -o $@
+
+.PHONY: test-mt8167-wavert-miniport
+test-mt8167-wavert-miniport: build/mt8167_wavert_miniport_test
+	./build/mt8167_wavert_miniport_test
+build/mt8167_wavert_miniport_test: drivers/audio/mt8167-afe/wavert_miniport.cpp drivers/audio/mt8167-afe/wavert_dma.cpp tests/mt8167_wavert_miniport_test.cpp tests/audio_windows_stubs/portcls.h
+	mkdir -p build
+	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -Wno-misleading-indentation -std=c++11 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_TEST_MINIPORT=1 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/wavert_miniport.cpp drivers/audio/mt8167-afe/wavert_dma.cpp tests/mt8167_wavert_miniport_test.cpp -o $@
+
+.PHONY: test-mt8167-audio-resource
+test-mt8167-audio-resource: build/mt8167_audio_resource_test
+	./build/mt8167_audio_resource_test
+build/mt8167_audio_resource_test: drivers/audio/mt8167-afe/resource_check.h tests/mt8167_audio_resource_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/audio/mt8167-afe tests/mt8167_audio_resource_test.c -o $@

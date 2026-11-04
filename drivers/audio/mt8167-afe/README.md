@@ -1,6 +1,6 @@
 # MT8167 AFE / MT6392 audio preparation
 
-This directory contains offline DL1 helpers and a disabled PortCls adapter skeleton, not a functioning audio driver. The adapter connects to PortCls but StartDevice always fails. It registers no audio subdevices and has no hardware access, DMA allocation, interrupt handler, power management, codec sequence or playback path. No INF is supplied. The standalone ACPI resource proposal is not integrated into firmware and has _STA=0. A WDK-linked SYS does not establish playback or device validation.
+This directory contains a software-only WaveRT miniport experiment, not a functioning audio driver. The default adapter refuses StartDevice. A separate diagnostic build can validate resources and attempt to register the miniport, but its stream rejects RUN and it performs no hardware access. No INF is supplied; the standalone ACPI resource proposal remains unintegrated and has _STA=0. A WDK-linked SYS does not establish playback or device validation.
 
 `dl1.c` checks a restricted stereo S16_LE buffer, period and sample rate and
 returns candidate DL1 register values, with an inclusive end. Failure leaves
@@ -35,17 +35,24 @@ DMA drained. The adapter has no callback transport and cannot start it.
 noncached pages, checks the 32-bit range and refuses to release a buffer once
 handed to hardware. Physical addresses are not assumed to be DMA device
 addresses: Windows DMA mapping/coherency and the conditions for safe drain
-and release remain unresolved. It is not a WaveRT miniport or a registered
-subdevice. The owner of shared PWRAP/clock resources is not implemented;
+and release remain unresolved. The diagnostic WaveRT stream uses this for allocations
+which have not been exposed to hardware. The owner of shared PWRAP/clock resources is not implemented;
 no caller may enable these paths based on this code alone.
 
 The optional `wavert_registration.cpp` wraps PcNewPort/Init/
-PcRegisterSubdevice, but takes a miniport supplied by a caller; this repository
-has no implemented WaveRT miniport or registration caller. The experimental
+PcRegisterSubdevice. A diagnostic-only adapter creates a minimal WaveRT
+miniport and attempts registration after validating resource descriptors. The experimental
 `irq_windows.cpp` connects an exclusive translated interrupt and dispatches
 DL1 events via a DPC, then disconnects and flushes DPCs. It is not connected
 to PnP, DMA, clocks or a miniport; DPC coalescing and failure/interrupt-storm
 recovery require a real stream design. The caller must use interrupt
 synchronization for all concurrent engine access and hold resources alive.
-Both helpers are compiled out unless A04_MT8167_WAVERT_EXPERIMENTAL=1. The
-build-only SYS still unconditionally fails StartDevice, and has no valid INF.
+Both helpers are compiled out unless A04_MT8167_WAVERT_EXPERIMENTAL=1.
+The adapter additionally requires A04_MT8167_WAVERT_DIAGNOSTIC=1 to attempt
+registration; the default build always rejects StartDevice. The diagnostic
+miniport supports only stereo 16-bit 48 kHz PCM, refuses KSSTATE_RUN, and
+returns STATUS_DEVICE_NOT_READY for GetDeviceDescription. It has no hardware
+DMA, interrupts, topology registration, synchronized teardown or power path.
+Registration and stream behavior have not been tested in Windows. The ACPI
+resource check does not establish exclusive ownership, or validate the
+translated interrupt vector and affinity. There is no valid INF.
