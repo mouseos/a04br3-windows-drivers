@@ -8,7 +8,7 @@ static int safe(void *v,uint32_t g) {struct fake *f=v;assert(g==1);return f->saf
 static unsigned idx(unsigned off) {assert(off==0x460 || off==0x470 || off==0x480);return (off-0x460)/0x10;}
 static int read32(void *v,unsigned off,uint32_t *x) {struct fake *f=v;f->reads++;*x=f->r[idx(off)];return 0;}
 static int update(void *v,unsigned off,uint32_t mask,uint32_t value) {struct fake *f=v;unsigned i=idx(off);f->writes++;assert((i<2 && mask==0x7fff && value==0x1249)||(i==2 && mask==7 && value==1));if(f->fail_at && f->writes==(unsigned)f->fail_at)return -1;f->r[i]=(f->r[i]&~mask)|(f->corrupt?0:value);return 0;}
-static struct a04_pinmux_ops ops(struct fake *f) {struct a04_pinmux_ops o={f,held,safe,read32,update};return o;}
+static struct a04_pinmux_ops ops(struct fake *f) {struct a04_pinmux_ops o={f,held,safe,read32,update,0};return o;}
 int main(void)
 {
     struct fake f={0};struct a04_pinmux_state s={0};struct a04_pinmux_ops o=ops(&f);

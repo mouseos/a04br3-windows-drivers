@@ -28,10 +28,29 @@ lifetime are still unimplemented; no current client may bypass the existing
 button driver's direct PWRAP ownership to use this core.
 
 `wdf_parent_probe.c` is a non-installable KMDF PnP ABI prototype. It validates
-three exclusive translated memory ranges before mapping and unmaps partial
+four exclusive translated memory ranges (TOPCKGEN, INFRA, GPIO and PWRAP)
+before mapping and unmaps partial
 acquisitions; D0 always fails and it publishes no interface or child. No INF or
 ACPI binding is provided. The current button and touch providers already claim
 parts of these ranges. Exclusive descriptors alone do not prove that firmware
 or existing direct owners have been migrated. Boot ordering, shared leases,
 client teardown, rail/pin/clock operations and actual Storport integration are
 not implemented. Never deploy this prototype alongside those drivers.
+
+`register_owner` and the touch `shared_board` adapter are host-tested policy
+components, not a Windows interface. They limit touch register operations and
+serialize each operation under a parent-supplied lock; I2C remains client-owned.
+They do not hold a lifetime reference, atomically reserve the entire touch
+initialization sequence, or connect the existing WDF driver. The eMMC UHS pin
+profile similarly requires an exclusive powered, quiescent parent and readback;
+it is not invoked by the boot driver. All partial failures must leave the
+affected state unavailable until a verified recovery, not retry blindly.
+
+The existing ACPI touch and button devices are separate stacks. A query from
+one does not automatically reach an unrelated shared owner. A future bus must
+establish actual child PDOs and forward their query to the parent stack, with
+client reference and removal ordering, before replacing the direct mappings.
+See Microsoft documentation for [WDF_QUERY_INTERFACE_CONFIG](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdfqueryinterface/ns-wdfqueryinterface-_wdf_query_interface_config)
+and [WdfFdoQueryForInterface](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdffdo/nf-wdffdo-wdffdoqueryforinterface).
+No interface, binding, INF, direct-MMIO fallback or release of the existing D0
+and eMMC startup gates is provided here.

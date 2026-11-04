@@ -12,6 +12,8 @@ struct a04_pinmux_ops {
     int (*quiescent_and_powered)(void *,uint32_t);
     int (*read32)(void *,unsigned,uint32_t *);
     int (*update_masked)(void *,unsigned,uint32_t mask,uint32_t value);
+    /* Atomic hardware SET/CLR alias: set=1 writes base+4, set=0 base+8. */
+    int (*write_alias)(void *,unsigned base,uint32_t mask,int set);
 };
 struct a04_pinmux_state { unsigned poisoned; };
 enum a04_pinmux_result { A04_PINMUX_OK,A04_PINMUX_INVALID,A04_PINMUX_UNOWNED,
@@ -19,5 +21,9 @@ enum a04_pinmux_result { A04_PINMUX_OK,A04_PINMUX_INVALID,A04_PINMUX_UNOWNED,
 /* Sets only the mode fields of GPIO110..120 to 1; does not set pull, drive,
  * clock, or power. Failure poisons the state; partial updates are not undone. */
 enum a04_pinmux_result a04_msdc_pinmux_mode(struct a04_pinmux_state *,
+    const struct a04_pinmux_ops *,uint32_t generation);
+/* Explicit UHS profile from the board DTS. GPIO114 reset bias is deliberately
+ * untouched because its resistor selection was not specified. */
+enum a04_pinmux_result a04_msdc_pinmux_uhs(struct a04_pinmux_state *,
     const struct a04_pinmux_ops *,uint32_t generation);
 #endif
