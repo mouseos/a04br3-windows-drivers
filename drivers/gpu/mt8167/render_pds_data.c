@@ -67,6 +67,16 @@ int a04_render_make_fragment_uniform(const struct a04_render_fragment_uniform_in
     put32(result.code,UINT32_C(0xf0040000));put32(result.code+4,UINT32_C(0xf4050100));
     *out=result;return 0;
 }
+int a04_render_make_pixel_event(uint64_t shader_gpu,const struct a04_render_owned_range *r,
+    size_t n,uint8_t out[16])
+{
+    uint8_t result[16]={0};size_t i;
+    if (!out || a04_render_validate_owned_ranges(r,n) || (shader_gpu&3u) || (shader_gpu>>32)!=UINT64_C(0xe0) ||
+        !owned(r,n,shader_gpu,128,A04_RENDER_RANGE_READ|A04_RENDER_RANGE_EXEC)) return -1;
+    put64(result,UINT64_C(0x800000000)|((uint32_t)shader_gpu&UINT32_C(0xfffffffc)));
+    for(i=0;i<sizeof(result);++i) out[i]=result[i];
+    return 0;
+}
 int a04_render_make_pds_data(const struct a04_render_pds_input *p,
     const struct a04_render_owned_range *r,size_t n,struct a04_render_pds_data *out)
 {

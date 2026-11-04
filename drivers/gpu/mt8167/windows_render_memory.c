@@ -549,6 +549,30 @@ NTSTATUS a04_windows_render_stage_fixed_ppp(struct a04_windows_render_memory *m,
     RtlCopyMemory((uint8_t *)m->cpu+off[1],data.finish,sizeof(data.finish));
     staged_commit(m,addr,len,2);return STATUS_SUCCESS;
 }
+NTSTATUS a04_windows_render_stage_pixel_event(struct a04_windows_render_memory *m,uint64_t pds,uint64_t shader)
+{
+    struct a04_render_owned_range ranges[A04_RENDER_MAX_MAPS];uint64_t len=16,off=0;uint8_t data[16];size_t i;unsigned matches=0;
+    if (!m || !m->ready || !m->cpu || !m->adapter || !m->firmware || m->published || m->poisoned ||
+        !m->map_count || m->map_count>A04_RENDER_MAX_MAPS || (pds&15u) || (pds>>32)!=UINT64_C(0xda) ||
+        KeGetCurrentIrql()!=PASSIVE_LEVEL || !render_ptes_valid(m) || !staged_available(m,&pds,&len,1) ||
+        overlap(pds,len,shader,128)) return STATUS_INVALID_PARAMETER;
+    for(i=0;i<m->map_count;++i) {
+        const struct a04_windows_render_map *r=&m->maps[i];uint64_t bytes=(uint64_t)r->pages*PAGE;
+        ranges[i].gpu_va=r->gpu_va;ranges[i].dma=(uint64_t)m->logical.QuadPart+A04_RENDER_PAYLOAD_OFFSET+(uint64_t)r->payload_page*PAGE;
+        ranges[i].size=bytes;ranges[i].access=A04_RENDER_RANGE_READ;
+        if (!(r->mmu_flags&(A04_GPU_MMU_READ_ONLY|A04_GPU_MMU_PM_FW_PROTECT))) ranges[i].access|=A04_RENDER_RANGE_WRITE;
+        if ((r->mmu_flags&A04_GPU_MMU_READ_ONLY) && !(r->mmu_flags&A04_GPU_MMU_PM_FW_PROTECT) && (r->gpu_va>>32)==UINT64_C(0xe0))
+            ranges[i].access|=A04_RENDER_RANGE_EXEC;
+        if ((r->mmu_flags&A04_GPU_MMU_READ_ONLY) && !(r->mmu_flags&A04_GPU_MMU_PM_FW_PROTECT) &&
+            pds>=r->gpu_va && bytes>=len && pds-r->gpu_va<=bytes-len) {
+            off=A04_RENDER_PAYLOAD_OFFSET+(uint64_t)r->payload_page*PAGE+pds-r->gpu_va;++matches;
+        }
+    }
+    if (matches!=1 || off>m->length || len>m->length-off || a04_render_make_pixel_event(shader,ranges,m->map_count,data))
+        return STATUS_INVALID_PARAMETER;
+    for(i=0;i<len;++i) if (((const uint8_t *)m->cpu)[off+i]) return STATUS_INVALID_DEVICE_STATE;
+    RtlCopyMemory((uint8_t *)m->cpu+off,data,sizeof(data));staged_commit(m,&pds,&len,1);return STATUS_SUCCESS;
+}
 NTSTATUS a04_windows_render_stage_fixed_scissor(struct a04_windows_render_memory *m,uint64_t gpu)
 {
     uint64_t len=8,off=0;size_t i;unsigned matches=0;

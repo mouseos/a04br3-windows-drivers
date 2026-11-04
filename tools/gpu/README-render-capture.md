@@ -229,3 +229,7 @@ scratchless三角形のVDMは、Mesa `vdm.xml` に従うPDS state・PPP state・
 PPPは固定probeの100バイト状態と12バイトterminateを `a04_render_make_fixed_ppp` で構成する。fragment PDS、fragment uniform code/dataは型付きGPUアドレスから埋め込み、その他はMesaのPPPパケット定義と固定probe条件から生成する。`a04_windows_render_stage_fixed_ppp` は所有DMAへ両状態を配置する。診断用Mesaは参照されたPPP範囲のGPUアドレス・長さ・FNVだけを非公開記録し、`check-fixed-ppp.py` で２回のcaptureについて一致を確認した。生BOをfixtureとしてコピーしない。
 
 PPPのfragment uniformはspill情報と４バイトFS_METAを読み、固定captureのFS_META値は `0x01fffffe`、scissorは `(xmin,ymin)=(0,0)`・`(xmax,ymax)=(64,64)` の８バイト。Mesaの生成箇所から出力範囲とFNV／型付き値を診断記録し、２回のcaptureでpartial・最終fragment双方のscissor参照が対象VMに存在することを検査した。`a04_windows_render_stage_fragment_uniform` と `_fixed_scissor` はこれらをゼロ初期化DMAへ構成する。FNVは衝突耐性を持たず、これらの一致はジョブ完了までの寿命、render target・背景プログラム・shader全体・context switchの安全性や実機描画を証明しない。実行入口は未接続でGPU実行は禁止。
+
+`check-fragment-background.py PRIVATE_CAPTURE` はscratchless固定probeのgeometry後の４fragmentについて、通常／partial両方の背景shader PDSデータ・コード、texture PDSデータ・コード、およびpixel event PDSデータが、記録されたfragment job時に同一VMに残ることを検査する。背景ごとの32バイトPDSデータ＋４バイトコード、８バイトtextureコード、12バイトtextureデータと16バイト取得範囲を照合する。pixel eventはMesaの生成点でデータ長・DOUTU制御値・USC範囲・FNVを非公開の構造化情報として記録し、16バイト取得範囲、128バイトUSC確保範囲と40バイトuploadの存続を検査する。２回の独立captureで各４fragmentの上記条件が一致した。`a04_windows_render_stage_pixel_event` は型付きUSC GPUアドレスと固定DOUTU制御から16バイトを所有DMAに生成し、後半８バイトをゼロにする。
+
+これは背景textureの内部descriptor、EOT USC中のPBE状態、partial renderのSPM scratch、render target書込み範囲、全GPU実行中の所有・同期を検証しない。既存のfragment commandの値をそのまま実機投入することはできず、上記部品も実行入口に接続されていない。

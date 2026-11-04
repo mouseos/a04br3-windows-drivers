@@ -50,4 +50,8 @@ struct a04_render_fragment_uniform_data {
  * from a BO. Shader, PPP and remaining references are not validated. */
 int a04_render_make_fragment_uniform(const struct a04_render_fragment_uniform_input *input,
     const struct a04_render_owned_range *ranges,size_t count,struct a04_render_fragment_uniform_data *out);
+/* Fixed EOT DOUTU only. Generated 16-byte data has eight zero padding bytes.
+ * Caller must validate the shader and PBE state independently. */
+int a04_render_make_pixel_event(uint64_t shader_gpu,const struct a04_render_owned_range *ranges,
+    size_t count,uint8_t out[16]);
 #endif

@@ -368,6 +368,12 @@ int main(void)
       out[0x600]=1;assert(a04_windows_render_stage_fixed_scissor(&m,0xda00010600ULL)==STATUS_INVALID_DEVICE_STATE);
       out[0x600]=0;assert(a04_windows_render_stage_fixed_scissor(&m,0xda00010600ULL)==STATUS_SUCCESS);
       assert(out[0x600]==64 && out[0x604]==64 && m.staged_count==21);
+      assert(a04_windows_render_stage_pixel_event(&m,0xda00010610ULL,0xe000005ff0ULL)==STATUS_INVALID_PARAMETER);
+      out[0x61f]=1;assert(a04_windows_render_stage_pixel_event(&m,0xda00010610ULL,0xe000005100ULL)==STATUS_INVALID_DEVICE_STATE);
+      assert(m.staged_count==21 && !out[0x610]);out[0x61f]=0;
+      assert(a04_windows_render_stage_pixel_event(&m,0xda00010610ULL,0xe000005100ULL)==STATUS_SUCCESS);
+      assert(out[0x610]==0 && out[0x611]==0x51 && out[0x614]==8 && m.staged_count==22);
+      for(unsigned i=0x618;i<0x620;++i) assert(!out[i]);
       s.processor_released=FALSE;assert(a04_windows_render_memory_free(&m,TRUE)==STATUS_SUCCESS);
     }
     free(s.memory.heap);

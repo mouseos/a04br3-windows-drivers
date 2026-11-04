@@ -134,6 +134,10 @@ NTSTATUS a04_windows_render_stage_fixed_ppp(struct a04_windows_render_memory *m,
     const struct a04_render_fixed_ppp_input *input,uint64_t ppp_gpu,uint64_t finish_gpu);
 /* One fixed 64x64 scissor entry; does not validate the fragment command. */
 NTSTATUS a04_windows_render_stage_fixed_scissor(struct a04_windows_render_memory *m,uint64_t gpu);
+/* Stage fixed EOT DOUTU data. Shader provenance and PBE state remain
+ * independent prerequisites for any GPU submission. */
+NTSTATUS a04_windows_render_stage_pixel_event(struct a04_windows_render_memory *m,
+    uint64_t pds_gpu,uint64_t shader_gpu);
 /* One context-switch slot's persistent PDS data and code. Inputs must name
  * unique owned mappings: writable state, read-only PDS output, no aliases.
  * Before publication only. Shared PDS/USC and kick remain separate. */

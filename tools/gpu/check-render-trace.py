@@ -105,6 +105,11 @@ def check(path):
                     matches = [u for u in live_uploads if u[0][0] == vm and u[1] == addr and u[3] == kind and (u[2] == written if written else u[2] <= size)]
                     if len(matches) != 1 or (kind == 'usc_code' and not addr <= e['entry_gpu'] < addr+matches[0][2]):
                         fragment_missing_uploads += 1
+        elif op == 'render_pixel_event':
+            data,shader=e['data_gpu'],e['shader_gpu']
+            if (data<=0 or data>=GPU_LIMIT or shader<=0 or shader>=GPU_LIMIT or e['data_size']<=0 or
+                e['data_size']>GPU_LIMIT-data or e['shader_size']<=0 or e['shader_size']>GPU_LIMIT-shader or
+                not 0<=e['control']<1<<64 or not 0<=e['fnv64']<1<<64):raise ValueError('invalid render pixel event')
         elif op == 'scissor_table':
             addr,size=e['gpu_va'],e['size']
             if addr<=0 or addr>=GPU_LIMIT or size<=0 or size>GPU_LIMIT-addr or not 0<=e['fnv64']<1<<64:
