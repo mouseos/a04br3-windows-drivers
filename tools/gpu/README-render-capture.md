@@ -149,3 +149,7 @@ python3 tools/gpu/check-render-usc.py PRIVATE_ZERO PRIVATE_ONES
 固定probeのGLSLでは、vertexは `gl_VertexIndex` で３点 `(-0.75,-0.75)`、`(0.75,-0.75)`、`(-0.75,0.75)` を選び、z=0.5、w=1.0を出力する。fragmentは `(1,0,1,1)` を出力し、probeは64×64背景 `(0x22,0x44,0x66,0xff)` と比較する。頂点バッファやアプリケーションdescriptorは使用しないが、Mesa生成のspill/scratch等のPDS参照は別に必要。固定したprobe checkoutの `shaders/gen_triangle.py --check` が、GLSLから生成したSPIR-Vと同梱headerの一致を検証した。これはPCO出力の全即値や実行時参照を証明しない。
 
 実験フラグ下の `a04_windows_render_stage_fragment_pds` は、取得済みDMAメモリ内の読み取り専用PDS/USC mappingを確認し、fragment PDSを公開前に生成する。USCは固定probeで観測した先頭entryと360バイトがmappingに収まることだけを確認し、命令の内容は確認しない。公開前の変更だけを許可し、既存の全域同期とMMU無効化へ渡す。ホストmockとARM向けの型チェックで検証した段階で、実際のWDKビルド、実機のDMA、shader投入、fence・cleanup・kickとの結合は未実施。GPU投入の許可にはならない。
+
+`a04_windows_render_memory_bind_vm` は新規DMAページ表のルートを、そのfirmwareのheapに確保したメモリcontextに結び付ける。`a04_windows_render_prepare_context` は同じVMをgeometry／fragment contextに設定し、Mesaの最大深度１に対応する８バイトのVDM callstackが所有済み書込み可能範囲にあることを検査する。`a04_windows_render_publish_context` はcontextとリング、状態、fenceを同期した後、ページ表とVMを同期し、MMU無効化を待つ。VMルート、所有範囲やcontext間の参照不一致を拒否し、同期・無効化の失敗時は資源を保持する。呼出し側はfirmware arenaとcontextへのアクセスを直列化する必要がある。
+
+この接続はkickを発行しない。Mesaのcontext switch用静的レジスタはVDM状態・geometry状態とstore/resume用のPDS/USCを参照し、その完全な生成・所有検証は未実装である。HWRT、freelist、固定三角形コマンドとshader、完了fence、firmware cleanupもこの接続から実行できない。ホストmockとARMターゲットのスタブによるコンパイルのみで、WDK・実機では検証していない。
