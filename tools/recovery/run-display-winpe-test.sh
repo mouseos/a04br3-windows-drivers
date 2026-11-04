@@ -80,7 +80,8 @@ for ((i=0;i<35;i++)); do
       echo BATTERY_I2C_CHECK_STALLED; break
     fi
   fi
-  if grep -q 'A04GPU DISPLAY COPY COMPLETE' "$out/current-uart.log"; then found=1; break; fi
+  if grep -Fq "${A04_WINPE_SUCCESS_MARKER:-A04GPU DISPLAY COPY COMPLETE}" "$out/current-uart.log"; then found=1; break; fi
+  if [[ -n ${A04_WINPE_FAILURE_MARKER:-} ]] && grep -Fq "$A04_WINPE_FAILURE_MARKER" "$out/current-uart.log"; then break; fi
   # CAPTURE READY is registration, not a bugcheck. Match only the callback's
   # emitted bugcheck data and preserve the first failure boot in the log.
   if grep -qE 'A04GPU BUGCHECK (DATA_UNAVAILABLE|[0-9A-F]{8})|A04GPU DISPLAY COPY FAILED|A04GPU DISPLAY PNP FAILED|Kernel panic' "$out/current-uart.log"; then break; fi
@@ -92,7 +93,7 @@ for ((i=0;i<35;i++)); do
   if (( i > 5 )) && is_fastboot; then break; fi
   sleep 4
 done
-if (( found )); then echo GPU_COPY_UART_OBSERVED; sleep 25; else echo GPU_COPY_UART_NOT_OBSERVED; fi
+if (( found )); then echo WINPE_SUCCESS_MARKER_OBSERVED; sleep 25; else echo WINPE_SUCCESS_MARKER_NOT_OBSERVED; fi
 tail -c +$((start+1)) "$uart_log" > "$out/first-boot-uart.log"
 if ! python3 "$root/tools/uart/capture-framebuffer.py" --log "$uart_log" --uart "$uart" --output "$out/framebuffer.pbm" --timeout 20; then
   ffmpeg -hide_banner -loglevel error -f v4l2 -input_format mjpeg -video_size 1920x1080 -i /dev/video0 -frames:v 1 "$out/camera.jpg" || true
