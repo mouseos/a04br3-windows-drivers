@@ -15,7 +15,7 @@ try {
     $env:RUNNER_TEMP=Join-Path $OutputRoot $profile
     New-Item -ItemType Directory -Path $env:RUNNER_TEMP | Out-Null
     $env:A04_READONLY_DISK_PROBE='1'; $env:A04_DMA_PROBE='1'; $env:A04_DMA_DISK_PROBE='1'; $env:A04_VIRTUAL_BOUNCE_EXPERIMENT='1'
-    if ($profile -eq 'readonly') { $env:A04_DMA_MULTIBLOCK_EXPERIMENT='1' }
+    if ($profile -eq 'readonly') { $env:A04_PASSIVE_IO='1'; $env:A04_DMA_MULTIBLOCK_EXPERIMENT='1' }
     else {
       $env:A04_PASSIVE_IO='1'; $env:A04_ENABLE_WRITES='1'; $env:A04_SERIAL_QUEUE_EXPERIMENT='1'; $env:A04_ISOLATED_REQUEST_EXPERIMENT='1'
       if ($profile -eq 'scratch-compile-only') { $env:A04_SCRATCH_IO='1'; $env:A04_SCRATCH_LBA='0'; $env:A04_SCRATCH_MULTIBLOCK_EXPERIMENT='1' }
