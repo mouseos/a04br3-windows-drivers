@@ -10,5 +10,6 @@ struct a04_ge8300_status {
     unsigned long mts_enable, mts_bg, mts_int, mts_count_low, mts_count_high;
     unsigned long trace_pointer, trace_words[4];
     unsigned long mmu_status;
+    unsigned long queue_status;
 };
 #endif

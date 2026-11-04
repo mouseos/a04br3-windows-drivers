@@ -4,6 +4,7 @@
 #include <ntddk.h>
 #include <wdf.h>
 #include "windows_firmware.h"
+#include "windows_queue_test.h"
 #include "ge8300_status.h"
 #include "pvr_rogue_fwif.h"
 #include "pvr_rogue_defs.h"
@@ -22,6 +23,7 @@ typedef struct {
     WDFDMAENABLER dma;
     volatile UCHAR *core;
     struct a04_gpu_firmware_state firmware;
+    struct a04_gpu_queue_test_memory queue_memory;
     struct a04_ge8300_status status;
     BOOLEAN referenced, attempted;
 } GPU_CONTEXT;
@@ -173,13 +175,14 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     PDMA_ADAPTER adapter;
     UNREFERENCED_PARAMETER(previous);
     if(c->attempted) return STATUS_SUCCESS;
-    c->attempted=TRUE; c->status.version=3;
+    c->attempted=TRUE; c->status.version=4;
 #if !A04_GE8300_BOOT_TEST
     c->status.boot_status=STATUS_NOT_SUPPORTED;
     return STATUS_SUCCESS;
 #else
     c->status.attempted=1;
     c->status.mmu_status=STATUS_NOT_SUPPORTED;
+    c->status.queue_status=STATUS_NOT_SUPPORTED;
     c->status.shutdown_status=STATUS_NOT_SUPPORTED;
     GpuTraceStage(c,0x100);
     if(!c->core || !c->dma) { c->status.boot_status=STATUS_DEVICE_NOT_READY; return STATUS_SUCCESS; }
@@ -205,8 +208,14 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         if(NT_SUCCESS(c->status.health_status)) {
             c->status.mmu_status=a04_gpu_firmware_invalidate_mmu(&c->firmware);
             GpuTraceStage(c,0x103);
-            if(NT_SUCCESS(c->status.mmu_status))
+            if(NT_SUCCESS(c->status.mmu_status)) {
+                c->status.queue_status=a04_gpu_queue_test(&c->firmware,&c->queue_memory);
+                GpuTraceStage(c,0x104);
+            }
+            if(NT_SUCCESS(c->status.mmu_status) && NT_SUCCESS(c->status.queue_status))
                 c->status.shutdown_status=a04_gpu_firmware_shutdown(&c->firmware);
+            if(NT_SUCCESS(c->status.shutdown_status))
+                c->status.shutdown_status=a04_gpu_queue_test_free(&c->firmware,&c->queue_memory);
             /* Power-off may have gated MMIO; only inspect retained memory. */
             if(!NT_SUCCESS(c->status.shutdown_status) && c->firmware.processor_released)
                 GpuSnapshot(c,FALSE);

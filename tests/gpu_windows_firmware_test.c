@@ -2,15 +2,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "windows_firmware.h"
+#include "windows_queue_test.h"
 #include "pvr_rogue_fwif.h"
 #include "pvr_rogue_defs.h"
 static struct a04_gpu_firmware_state state;
-static unsigned allocations, releases, signal_start, commands_completed, command_error, sync_read, sync_write, no_mmu_ack;
+static unsigned allocations, releases, signal_start, commands_completed, command_error, sync_read, sync_write, no_mmu_ack, no_fence;
 static void *allocate(PDMA_ADAPTER adapter,ULONG size,PHYSICAL_ADDRESS *pa,BOOLEAN cache)
 {
     (void)adapter; (void)cache;
-    pa->QuadPart=allocations++ ? 0x90000000 : 0x80000000;
-    return aligned_alloc(64,size);
+    pa->QuadPart=0x80000000u+(uint64_t)allocations++*0x10000000u;
+    return aligned_alloc(4096,size);
 }
 static void release(PDMA_ADAPTER a,ULONG size,PHYSICAL_ADDRESS pa,void *memory,BOOLEAN cache)
 { (void)a; (void)size; (void)pa; (void)cache; ++releases; free(memory); }
@@ -38,15 +39,24 @@ NTSTATUS KeDelayExecutionThread(int mode,BOOLEAN alertable,const LARGE_INTEGER *
             uint32_t slot=ctl->read_offset;
             if(slot!=ctl->write_offset) {
                 if(commands_completed==0 && cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_HEALTH_CHECK) command_error=1;
-                if(commands_completed==1) {
+                if(commands_completed==1 || commands_completed==2) {
                     if(cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_MMUCACHE ||
                        cmds[slot].cmd_data.mmu_cache_data.mmu_cache_sync_fw_addr!=(0xc0000000u|state.runtime.mmu_sync) ||
                        !cmds[slot].cmd_data.mmu_cache_data.mmu_cache_sync_update_value) command_error=1;
                     if(!no_mmu_ack) *mmu=cmds[slot].cmd_data.mmu_cache_data.mmu_cache_sync_update_value;
                 }
-                if(commands_completed==2 && cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_KICK) command_error=1;
-                if(commands_completed==3 && (cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_POW || cmds[slot].cmd_data.pow_data.pow_type!=ROGUE_FWIF_POW_FORCED_IDLE_REQ)) command_error=1;
-                if(commands_completed==4 && (cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_POW || cmds[slot].cmd_data.pow_data.pow_type!=ROGUE_FWIF_POW_OFF_REQ)) command_error=1;
+                if(commands_completed==3) {
+                    struct rogue_fwif_fwcommoncontext *ctx;
+                    struct rogue_fwif_ccb_cmd_header *hdr; struct rogue_fwif_ufo *ufo;
+                    if(cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_KICK) command_error=1;
+                    ctx=(void *)(heap+(cmds[slot].cmd_data.cmd_kick_data.context_fw_addr&0xffffffu));
+                    hdr=(void *)(heap+(ctx->ccb_fw_addr&0xffffffu)+sizeof(*hdr));
+                    ufo=(void *)((uint8_t *)hdr+sizeof(*hdr));
+                    if(hdr->cmd_type!=ROGUE_FWIF_CCB_CMD_TYPE_UPDATE || ufo->value!=1) command_error=1;
+                    if(!no_fence) *(uint32_t *)(void *)(heap+(ufo->addr&0xffffffu))=ufo->value;
+                }
+                if(commands_completed==4 && (cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_POW || cmds[slot].cmd_data.pow_data.pow_type!=ROGUE_FWIF_POW_FORCED_IDLE_REQ)) command_error=1;
+                if(commands_completed==5 && (cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_POW || cmds[slot].cmd_data.pow_data.pow_type!=ROGUE_FWIF_POW_OFF_REQ)) command_error=1;
                 /* The MT8167 firmware can advance the execution counter
                  * without writing the health command's return slot. */
                 if(commands_completed!=0) ret[slot]=ROGUE_FWIF_KCCB_RTN_SLOT_CMD_EXECUTED;
@@ -60,6 +70,7 @@ NTSTATUS KeDelayExecutionThread(int mode,BOOLEAN alertable,const LARGE_INTEGER *
 int main(int argc,char **argv)
 {
     FILE *f; long n; uint8_t *image,*regs; NTSTATUS status; struct rogue_fwif_kccb_cmd kick={0};
+    struct a04_gpu_queue_test_memory queue_memory={0};
     DMA_OPERATIONS ops={allocate,release}; struct fake_adapter adapter={&ops};
     if(argc!=2 || !(f=fopen(argv[1],"rb"))) return 1;
     if(fseek(f,0,SEEK_END) || (n=ftell(f))<=0 || fseek(f,0,SEEK_SET)) return 2;
@@ -74,13 +85,22 @@ int main(int argc,char **argv)
     if(a04_gpu_firmware_health(&state)!=STATUS_SUCCESS || commands_completed!=1 || command_error) return 10;
     if(a04_gpu_firmware_invalidate_mmu(&state)!=STATUS_SUCCESS || commands_completed!=2 || command_error) return 11;
     if(a04_gpu_firmware_submit_kick(&state,&kick)!=STATUS_INVALID_PARAMETER || commands_completed!=2) return 13;
-    kick.cmd_type=ROGUE_FWIF_KCCB_CMD_KICK;
-    if(a04_gpu_firmware_submit_kick(&state,&kick)!=STATUS_SUCCESS || commands_completed!=3 || command_error) return 14;
+    if(a04_gpu_queue_test(&state,&queue_memory)!=STATUS_SUCCESS || commands_completed!=4 || command_error) return 14;
+    if(a04_gpu_queue_test_free(&state,&queue_memory)!=STATUS_DEVICE_BUSY || releases) return 15;
     if(a04_gpu_firmware_stop(&state,FALSE)!=STATUS_DEVICE_BUSY || releases || !state.processor_released) return 7;
-    if(a04_gpu_firmware_shutdown(&state)!=STATUS_IO_TIMEOUT || commands_completed!=5 || command_error || releases || !state.processor_released) return 8;
+    if(a04_gpu_firmware_shutdown(&state)!=STATUS_IO_TIMEOUT || commands_completed!=6 || command_error || releases || !state.processor_released) return 8;
     *(uint32_t *)(void *)(regs+ROGUE_CR_SIDEKICK_IDLE)=(uint32_t)ROGUE_CR_SIDEKICK_IDLE_MASKFULL;
     *(uint32_t *)(void *)(regs+ROGUE_CR_SLC_IDLE)=(uint32_t)ROGUE_CR_SLC_IDLE_MASKFULL;
     if(a04_gpu_firmware_stop(&state,TRUE)!=STATUS_SUCCESS || releases!=2 || state.processor_released) return 9;
+    if(a04_gpu_queue_test_free(&state,&queue_memory)!=STATUS_SUCCESS || releases!=3) return 16;
+    memset(regs,0,0x80000); memset(&state,0,sizeof(state)); allocations=releases=0; signal_start=1; commands_completed=2; no_fence=1;
+    status=a04_gpu_firmware_boot(&state,&adapter,regs,0x80000,image,(size_t)n,A04_PVR_BVNC,TRUE,26000000);
+    if(status!=STATUS_SUCCESS || a04_gpu_queue_test(&state,&queue_memory)!=STATUS_IO_TIMEOUT ||
+       !state.queue_faulted || a04_gpu_queue_test_free(&state,&queue_memory)!=STATUS_DEVICE_BUSY || releases) return 17;
+    /* Host mock only: simulate a hardware reset before releasing buffers. */
+    state.processor_released=FALSE; a04_gpu_free_memory(&state.memory);
+    if(a04_gpu_queue_test_free(&state,&queue_memory)!=STATUS_SUCCESS) return 18;
+    no_fence=0;
     memset(regs,0,0x80000); memset(&state,0,sizeof(state)); allocations=releases=0; signal_start=1; commands_completed=1; no_mmu_ack=1;
     status=a04_gpu_firmware_boot(&state,&adapter,regs,0x80000,image,(size_t)n,A04_PVR_BVNC,TRUE,26000000);
     if(status!=STATUS_SUCCESS || a04_gpu_firmware_invalidate_mmu(&state)!=STATUS_IO_TIMEOUT ||
