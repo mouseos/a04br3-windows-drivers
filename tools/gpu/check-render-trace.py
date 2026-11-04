@@ -12,6 +12,7 @@ GPU_LIMIT = 1 << 40
 def check(path):
     vms, bos, maps, contexts, freelists, hwrts = set(), {}, {}, {}, {}, {}
     jobs = submits = refs = unresolved = full_checks = start_checks = zeroed_bos = 0
+    uploads = unmapped_uploads = ambiguous_uploads = 0
     open_submit = None
     for line in pathlib.Path(path).read_text(encoding='utf-8').splitlines():
         e = json.loads(line); op = e['event']
@@ -59,6 +60,14 @@ def check(path):
             hwrts[e['handle']] = e
         elif op == 'hwrt_destroy':
             del hwrts[e['handle']]
+        elif op == 'upload':
+            addr, size = e['gpu_va'], e['size']
+            if e['kind'] not in ('pds_data','pds_code','usc_code') or addr <= 0 or size <= 0 or addr >= GPU_LIMIT or size > GPU_LIMIT-addr:
+                raise ValueError('invalid upload')
+            matches=[k for k,v in maps.items() if addr >= k[1] and size <= v and addr-k[1] <= v-size]
+            uploads += 1
+            if not matches: unmapped_uploads += 1
+            elif len(matches) > 1: ambiguous_uploads += 1
         elif op == 'submit_begin':
             if open_submit is not None: raise ValueError('nested submit')
             open_submit = [e['count'],0]; submits += 1
@@ -95,7 +104,8 @@ def check(path):
             raise ValueError('unknown event')
     if open_submit is not None or not submits: raise ValueError('incomplete trace')
     return {'submits':submits, 'jobs':jobs, 'live_bos_at_end':len(bos),
-            'zeroed_bo_allocations':zeroed_bos, 'full_extent_checks':full_checks,
+            'zeroed_bo_allocations':zeroed_bos, 'uploads_seen':uploads,
+            'uploads_unmapped_at_observation':unmapped_uploads, 'uploads_ambiguous_vm':ambiguous_uploads, 'full_extent_checks':full_checks,
             'start_only_checks':start_checks, 'unresolved_address_checks':unresolved,
             'fixture_exportable':False,
             'reasons':['CPU writes and byte-level BO origin are untracked',

@@ -83,3 +83,7 @@ python3 tools/gpu/check-render-uploads.py NEW_PRIVATE_CAPTURE_DIR
 `render_execution.c` は、所有範囲のページ整列・VA/DMA範囲・重複を検査し、同期、MMU反映、送信、両フェンス、CPU同期、firmware cleanup、MMU解除の順をコールバックで表すホスト検査用の基礎部品。Windows側に接続されておらず、ハードウェアに送信しない。失敗がMMU反映以降に起きた場合、状態をpoisonedにし、独立したリセット・停止確認なしでDMAを解放できると判断しない。フェンス通知単体でcleanupが完了したとみなさない。
 
 実GPU用のfixture・Windows側のDMA確保と同期、完了・cleanup処理は未完成。特に固定テストに必要なVDM/PPP、PDS/USCの全到達範囲と生成元、fragmentの埋め込みアドレス、freelist用PMページ、エラー時の停止と回収を確定する必要がある。
+
+アップロード診断は、PDS/USCの範囲をVMイベントと同じ非公開JSONLにも記録する。`check-render-trace.py` は記録時点のマップに範囲が収まるか、複数VMに曖昧に一致するかを数える。`render-upload-candidates.py EVENTS_JSONL` は各geometry/fragmentジョブ時点で残るアップロードを候補として数える。上書きが観測された候補は除外するが、計測対象外のCPU書込みや間接参照は追跡しないため、候補は到達証明ではない。並列イベントの厳密な順序も未保証。
+
+Windowsの `A04_GE8300_RENDER_EXPERIMENT=1` は、診断用の結合geometry/fragment kickとfirmware cleanupを許可するコンパイル時スイッチで、既定は0。cleanupはreturn slotの応答のみを使い、execution counterの変化だけでは成功にしない。BUSY、応答なし、poll failureでは資源を保持する。ホストmockのみで検証しており、実GPUの結果ではない。VAの完全な所有確認、DMA取得・同期、固定fixture、cleanup後の解放をつなぐ実行パスは未完成。

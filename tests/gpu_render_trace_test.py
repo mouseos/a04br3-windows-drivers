@@ -38,6 +38,15 @@ class TraceTest(unittest.TestCase):
         self.events.insert(3,dict(event='bo_close',fd=11,handle=2))
         self.events.insert(4,dict(event='bo_create',fd=11,handle=2,size=32,initial_origin='zeroed_by_shim'))
         self.assertFalse(self.runtrace()['fixture_exportable'])
+    def test_upload_liveness_and_vm_ambiguity(self):
+        upload=dict(event='upload',kind='pds_code',gpu_va=4096,size=16)
+        self.events.insert(3,upload)
+        r=self.runtrace();self.assertEqual(r['uploads_seen'],1);self.assertEqual(r['uploads_unmapped_at_observation'],0)
+        self.events.insert(3,dict(event='vm_create',handle=12))
+        self.events.insert(4,dict(event='vm_map',fd=10,vm=12,handle=2,va=4096,offset=0,size=4096))
+        self.assertEqual(self.runtrace()['uploads_ambiguous_vm'],1)
+        upload['gpu_va']=999999
+        self.assertEqual(self.runtrace()['uploads_unmapped_at_observation'],1)
     def test_missing_hwrt(self):
         self.events[8]['hwrt']=99
         with self.assertRaises(ValueError): self.runtrace()

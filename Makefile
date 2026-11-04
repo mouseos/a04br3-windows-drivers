@@ -5,7 +5,10 @@ SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test test-thermal test-ntfs-root arm-coff clean
 
-test: build/gpu_render_execution_test test-thermal build/bq24160_handoff_test build/bq24160_charger_test build/bq24160_i2c_test build/gpu_render_context_test build/gpu_render_hwrt_test build/gpu_render_freelist_test build/gpu_render_stream_test build/lc709203f_test build/lc709203f_i2c_test build/msdc_io_gate_test build/toprgu_watchdog_policy_test build/toprgu_reset_command_test build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/button_pipeline_test build/button_device_test build/button_hardware_test build/pmic_read_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_board_init_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test build/eint_test build/gpu_power_test build/gpu_mmu_test build/gpu_fw_objects_test build/gpu_fw_queue_test build/gpu_transfer_stream_test build/gpu_windows_linear_test build/gpu_present_bounds_test build/gpu_dma_pages_test build/gpu_transfer_mapping_test
+test: build/gpu_render_kick_off build/gpu_render_kick_on build/gpu_windows_render_command_test build/gpu_render_execution_test test-thermal build/bq24160_handoff_test build/bq24160_charger_test build/bq24160_i2c_test build/gpu_render_context_test build/gpu_render_hwrt_test build/gpu_render_freelist_test build/gpu_render_stream_test build/lc709203f_test build/lc709203f_i2c_test build/msdc_io_gate_test build/toprgu_watchdog_policy_test build/toprgu_reset_command_test build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/button_pipeline_test build/button_device_test build/button_hardware_test build/pmic_read_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_board_init_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test build/eint_test build/gpu_power_test build/gpu_mmu_test build/gpu_fw_objects_test build/gpu_fw_queue_test build/gpu_transfer_stream_test build/gpu_windows_linear_test build/gpu_present_bounds_test build/gpu_dma_pages_test build/gpu_transfer_mapping_test
+	./build/gpu_render_kick_off
+	./build/gpu_render_kick_on
+	./build/gpu_windows_render_command_test
 	./build/gpu_render_execution_test
 	./build/bq24160_handoff_test
 	./build/bq24160_charger_test
@@ -68,6 +71,18 @@ build/bq24160_i2c_test: drivers/power/bq24160/mt8167_i2c.c drivers/power/bq24160
 build/gpu_render_context_test: drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_context.h drivers/gpu/mt8167/render_pair.c drivers/gpu/mt8167/render_pair.h drivers/gpu/mt8167/render_stream.c drivers/gpu/mt8167/firmware_objects.c tests/gpu_render_context_test.c tests/gpu_render_mesa_fixture.h
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_pair.c drivers/gpu/mt8167/render_stream.c drivers/gpu/mt8167/firmware_objects.c tests/gpu_render_context_test.c -o $@
+
+build/gpu_render_kick_off: tests/gpu_render_kick_policy_test.c drivers/gpu/mt8167/render_kick_policy.h
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif tests/gpu_render_kick_policy_test.c -o $@
+
+build/gpu_render_kick_on: tests/gpu_render_kick_policy_test.c drivers/gpu/mt8167/render_kick_policy.h
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_GE8300_RENDER_EXPERIMENT=1 -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif tests/gpu_render_kick_policy_test.c -o $@
+
+build/gpu_windows_render_command_test: tests/gpu_windows_render_command_test.c tests/gpu_windows_stubs/ntddk.h drivers/gpu/mt8167/windows_firmware.c drivers/gpu/mt8167/windows_firmware.h drivers/gpu/mt8167/render_kick_policy.h
+	mkdir -p build
+	$(CC) $(CFLAGS) -ffunction-sections -fdata-sections -DA04_GE8300_RENDER_EXPERIMENT=1 -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif tests/gpu_windows_render_command_test.c drivers/gpu/mt8167/windows_firmware.c -Wl,--gc-sections -o $@
 
 build/gpu_render_execution_test: drivers/gpu/mt8167/render_execution.c drivers/gpu/mt8167/render_execution.h tests/gpu_render_execution_test.c
 	mkdir -p build

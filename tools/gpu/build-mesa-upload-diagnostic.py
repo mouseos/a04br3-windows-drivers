@@ -28,6 +28,10 @@ static void a04_upload_range(const char *kind, unsigned long long gpu, unsigned 
    FILE *f=name ? fopen(name,"a") : NULL;
    if (!f) abort();
    if (fprintf(f,"{\\\"kind\\\":\\\"%s\\\",\\\"gpu_va\\\":%llu,\\\"size\\\":%llu}\\n",kind,gpu,size)<0 || fclose(f)) abort();
+   name=getenv("A04_CAPTURE_JSONL");
+   f=name ? fopen(name,"a") : NULL;
+   if (!f) abort();
+   if (fprintf(f,"{\\\"event\\\":\\\"upload\\\",\\\"kind\\\":\\\"%s\\\",\\\"gpu_va\\\":%llu,\\\"size\\\":%llu}\\n",kind,gpu,size)<0 || fclose(f)) abort();
 }
 '''
     # Only report the explicitly uploaded code/data extents. No source or CPU

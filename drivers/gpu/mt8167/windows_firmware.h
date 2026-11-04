@@ -2,6 +2,9 @@
 #ifndef A04_GE8300_WINDOWS_FIRMWARE_H
 #define A04_GE8300_WINDOWS_FIRMWARE_H
 #include "windows_hw.h"
+#ifndef A04_GE8300_RENDER_EXPERIMENT
+#define A04_GE8300_RENDER_EXPERIMENT 0
+#endif
 struct rogue_fwif_kccb_cmd;
 struct a04_gpu_firmware_state {
     struct a04_gpu_dma_memory memory;
@@ -40,5 +43,10 @@ NTSTATUS a04_gpu_firmware_invalidate_mmu(struct a04_gpu_firmware_state *state);
  * This waits for the KCCB command, not for client work or its fence. */
 NTSTATUS a04_gpu_firmware_submit_kick(struct a04_gpu_firmware_state *state,
         const struct rogue_fwif_kccb_cmd *kick);
+#if A04_GE8300_RENDER_EXPERIMENT
+/* Caller must prove arena ownership, both fences, serialization and object
+ * lifetime. BUSY or any failure requires retaining resources. */
+NTSTATUS a04_gpu_firmware_cleanup(struct a04_gpu_firmware_state *state,unsigned type,uint32_t fw_addr);
+#endif
 NTSTATUS a04_gpu_firmware_shutdown(struct a04_gpu_firmware_state *state);
 #endif
