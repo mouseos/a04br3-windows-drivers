@@ -7,6 +7,10 @@
 struct a04_button_hardware {
     struct a04_button_device device;
     struct a04_pmic_read pmic;
+    /* Explicit selection: shared mode never falls back to direct WACS2. */
+    int shared_pmic;
+    void *shared_pmic_context;
+    int (*shared_pmic_read)(void *, uint16_t *);
     void *context;
     int (*keypad_read16)(void *, unsigned, uint16_t *);
     int (*notify)(void *, uint8_t);

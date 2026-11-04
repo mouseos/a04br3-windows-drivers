@@ -9,6 +9,8 @@ static int keypad_read(void *context, uint16_t *value)
 static int pmic_read(void *context, uint16_t *value)
 {
     struct a04_button_hardware *h = context;
+    if (h->shared_pmic)
+        return h->shared_pmic_read ? h->shared_pmic_read(h->shared_pmic_context, value) : -1;
     return a04_pmic_chrstatus(&h->pmic, value);
 }
 static int notify(void *context, uint8_t button)

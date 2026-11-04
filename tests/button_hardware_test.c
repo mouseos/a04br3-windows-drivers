@@ -23,6 +23,10 @@ static int keypad(void *p, unsigned reg, uint16_t *value)
     struct mock *m=p;
     assert(reg==4); *value=m->keys; return m->fail;
 }
+static int shared_read(void *p, uint16_t *value)
+{
+    struct mock *m=p; *value=m->status; return 0;
+}
 static int send(void *p, uint8_t button)
 {
     struct mock *m=p; ++m->sent; m->last=button; return 0;
@@ -46,6 +50,10 @@ int main(void)
     assert(a04_button_device_poll(&h.device)==0);
     assert(a04_button_device_poll(&h.device)==1 && m.sent==2 && m.last==0);
     assert(m.writes==12);
+    h.shared_pmic=1; h.shared_pmic_context=&m; h.shared_pmic_read=shared_read;
+    assert(a04_button_device_poll(&h.device)==0 && m.writes==12);
+    h.shared_pmic_read=0;
+    assert(a04_button_device_poll(&h.device)==0 && m.writes==12);
     puts("Combined keypad and PMIC sampling verified");
     return 0;
 }
