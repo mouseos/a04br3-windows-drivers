@@ -11,11 +11,13 @@ New-Item -ItemType Directory -Force $out | Out-Null
 $gpu = Join-Path $root 'drivers\gpu\mt8167'
 $boot = if ($env:A04_GE8300_BOOT_TEST -eq '1') { '1' } else { '0' }
 $mismatch = if ($env:A04_GE8300_ALLOW_MISMATCH -eq '1') { '1' } else { '0' }
+$clear = if ($env:A04_GE8300_CLEAR_TEST -eq '1') { '1' } else { '0' }
 if ($mismatch -eq '1' -and $boot -ne '1') { throw 'Mismatch opt-in requires the isolated firmware boot test' }
+if ($clear -eq '1' -and ($boot -ne '1' -or $mismatch -ne '1')) { throw 'The isolated GE8300 clear test requires boot and mismatch opt-ins' }
 $objects = @()
-foreach ($name in @('ge8300_provider','firmware','firmware_runtime','firmware_start','windows_hw','windows_firmware','gpu_mmu','firmware_objects','firmware_queue','windows_queue_test')) {
+foreach ($name in @('ge8300_provider','firmware','firmware_runtime','firmware_start','windows_hw','windows_firmware','gpu_mmu','firmware_objects','firmware_queue','transfer_stream','clear_fixture','windows_queue_test')) {
     $obj = Join-Path $out "$name.obj"
-    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_GE8300_BOOT_TEST=$boot" "-DA04_GE8300_ALLOW_MISMATCH=$mismatch" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$gpu\compat" "-I$gpu\fwif" -c (Join-Path $gpu "$name.c") -o $obj
+    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_GE8300_BOOT_TEST=$boot" "-DA04_GE8300_ALLOW_MISMATCH=$mismatch" "-DA04_GE8300_CLEAR_TEST=$clear" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$gpu\compat" "-I$gpu\fwif" -c (Join-Path $gpu "$name.c") -o $obj
     if ($LASTEXITCODE -ne 0) { throw "ARM GE8300 provider compilation failed: $name" }
     $objects += $obj
 }
@@ -32,4 +34,4 @@ if ((Get-FileHash $firmware -Algorithm SHA256).Hash -ne 'CFE6F58DB2AD604B1729349
 Copy-Item (Join-Path $gpu 'mt8167-ge8300.inf') $package -Force
 & (Join-Path $kit 'bin\x86\Inf2Cat.exe') "/driver:$package" /os:6_3_ARM /uselocaltime
 if ($LASTEXITCODE -ne 0) { throw 'GE8300 provider catalog generation failed' }
-Write-Host "GE8300 provider built: boot=$boot mismatch=$mismatch. Not a WDDM driver."
+Write-Host "GE8300 provider built: boot=$boot mismatch=$mismatch clear=$clear. Not a WDDM driver."
