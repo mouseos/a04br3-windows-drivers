@@ -190,3 +190,14 @@ Its fixed 16 KiB staging-copy API copies through private DMA common buffers,
 checks protected ranges, and does not expose the caller's buffer to the GPU.
 The output is left untouched on error. This CPU-staged path is an integration
 building block, not evidence of faster display or direct framebuffer DMA.
+
+An opt-in `A04_GE8300_COPY_SERVICE` path provides one synchronous buffered
+16 KiB copy request to kernel callers through the existing GE8300 provider.
+It explicitly requires the test firmware's BVNC-mismatch opt-in and is off
+by default. The sequential power-managed WDF queue drains requests before D0
+exit; the provider then requests GPU shutdown and only releases its DMA on a
+successful stop. An unsuccessful shutdown retains the allocations. This is a
+work-in-progress interface: it is not connected to the display miniport, is
+not verified on a device, and must not be treated as a supported driver. The
+initial WinPE test path remains separate. See Microsoft's [power-managed
+queues](https://learn.microsoft.com/en-us/windows-hardware/drivers/wdf/using-power-managed-i-o-queues).

@@ -5,6 +5,7 @@
 #include <wdf.h>
 #include "windows_firmware.h"
 #include "windows_queue_test.h"
+#include "windows_linear_context.h"
 #include "ge8300_status.h"
 #include "pvr_rogue_fwif.h"
 #include "pvr_rogue_defs.h"
@@ -13,6 +14,12 @@
 #endif
 #ifndef A04_GE8300_ALLOW_MISMATCH
 #define A04_GE8300_ALLOW_MISMATCH 0
+#endif
+#ifndef A04_GE8300_COPY_SERVICE
+#define A04_GE8300_COPY_SERVICE 0
+#endif
+#if A04_GE8300_COPY_SERVICE && (!A04_GE8300_BOOT_TEST || !A04_GE8300_ALLOW_MISMATCH)
+#error The experimental copy service requires explicit firmware boot and BVNC mismatch opt-ins
 #endif
 #define CORE_BASE 0x13000000u
 #define CORE_SIZE 0x80000u
@@ -24,6 +31,10 @@ typedef struct {
     volatile UCHAR *core;
     struct a04_gpu_firmware_state firmware;
     struct a04_gpu_queue_test_memory queue_memory;
+#if A04_GE8300_COPY_SERVICE
+    struct a04_windows_linear_context linear;
+    BOOLEAN copy_online;
+#endif
     struct a04_ge8300_status status;
     BOOLEAN referenced, attempted;
 } GPU_CONTEXT;
@@ -162,6 +173,9 @@ NTSTATUS GpuRelease(WDFDEVICE device,WDFCMRESLIST translated)
     GPU_CONTEXT *c=GpuContext(device); UNREFERENCED_PARAMETER(translated);
     /* Never detach mappings or DMA ownership while the GPU might master RAM. */
     if(c->firmware.processor_released) return STATUS_DEVICE_BUSY;
+#if A04_GE8300_COPY_SERVICE
+    if(c->linear.memory.cpu || c->linear.memory.adapter || c->referenced) return STATUS_DEVICE_BUSY;
+#endif
 #if A04_GE8300_BOOT_TEST
     if(GpuBugRegistered) { KeDeregisterBugCheckCallback(&GpuBugRecord); GpuBugRegistered=FALSE; }
     if(GpuUart) { MmUnmapIoSpace((PVOID)GpuUart,0x1000u); GpuUart=NULL; }
@@ -206,6 +220,10 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         GpuTraceStage(c,0x102);
         GpuSnapshot(c,TRUE);
         if(NT_SUCCESS(c->status.health_status)) {
+#if A04_GE8300_COPY_SERVICE
+            c->status.queue_status=a04_windows_linear_context_start(&c->linear,&c->firmware);
+            c->copy_online=NT_SUCCESS(c->status.queue_status);
+#else
             c->status.mmu_status=a04_gpu_firmware_invalidate_mmu(&c->firmware);
             GpuTraceStage(c,0x103);
             if(NT_SUCCESS(c->status.mmu_status)) {
@@ -219,6 +237,7 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             /* Power-off may have gated MMIO; only inspect retained memory. */
             if(!NT_SUCCESS(c->status.shutdown_status) && c->firmware.processor_released)
                 GpuSnapshot(c,FALSE);
+#endif
         }
     } else if(c->firmware.processor_released && c->firmware.runtime.system_init) GpuSnapshot(c,TRUE);
     c->status.processor_released=c->firmware.processor_released;
@@ -233,12 +252,41 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 NTSTATUS GpuD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
 {
     GPU_CONTEXT *c=GpuContext(device); UNREFERENCED_PARAMETER(target);
+#if A04_GE8300_COPY_SERVICE
+    NTSTATUS status;
+    c->copy_online=FALSE;
+    if (c->firmware.processor_released) {
+        status=a04_gpu_firmware_shutdown(&c->firmware);
+        if (!NT_SUCCESS(status)) return status;
+    }
+    status=a04_windows_linear_context_free(&c->linear,&c->firmware);
+    if (!NT_SUCCESS(status)) return status;
+    if (c->referenced) { WdfObjectDereference(c->dma); c->referenced=FALSE; }
+    c->attempted=FALSE;
+#endif
     return c->firmware.processor_released ? STATUS_DEVICE_BUSY : STATUS_SUCCESS;
 }
 void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,ULONG control)
 {
     WDFDEVICE device=WdfIoQueueGetDevice(queue); GPU_CONTEXT *c=GpuContext(device);
     struct a04_ge8300_status *out; NTSTATUS status; size_t size;
+#if A04_GE8300_COPY_SERVICE
+    if (control==A04_GE8300_IOCTL_COPY) {
+        void *src,*dst; size_t in_size,out_size;
+        if (WdfRequestGetRequestorMode(request)!=KernelMode) {
+            WdfRequestComplete(request,STATUS_ACCESS_DENIED); return;
+        }
+        if (!c->copy_online || input!=A04_GE8300_COPY_BYTES || output!=A04_GE8300_COPY_BYTES) {
+            WdfRequestComplete(request,STATUS_INVALID_PARAMETER); return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,A04_GE8300_COPY_BYTES,&src,&in_size);
+        if (NT_SUCCESS(status)) status=WdfRequestRetrieveOutputBuffer(request,A04_GE8300_COPY_BYTES,&dst,&out_size);
+        if (NT_SUCCESS(status)) status=a04_windows_linear_context_copy(&c->linear,src,dst);
+        if (!NT_SUCCESS(status)) c->copy_online=FALSE;
+        WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status) ? A04_GE8300_COPY_BYTES : 0);
+        return;
+    }
+#endif
     UNREFERENCED_PARAMETER(output); UNREFERENCED_PARAMETER(input);
     if(control!=A04_GE8300_IOCTL_QUERY) { WdfRequestComplete(request,STATUS_INVALID_DEVICE_REQUEST); return; }
     status=WdfRequestRetrieveOutputBuffer(request,sizeof(*out),(PVOID *)&out,&size);
@@ -266,6 +314,9 @@ NTSTATUS GpuAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     WDF_DMA_ENABLER_CONFIG_INIT(&dma_config,WdfDmaProfileScatterGatherDuplex,A04_PVR_HEAP_SIZE);
     status=WdfDmaEnablerCreate(device,&dma_config,WDF_NO_OBJECT_ATTRIBUTES,&c->dma); if(!NT_SUCCESS(status)) return status;
     WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&queue_config,WdfIoQueueDispatchSequential);
+    /* The framework drains delivered requests before D0 exit. Each transfer
+     * is synchronous and bounded; no request is held for later completion. */
+    queue_config.PowerManaged=WdfTrue;
     queue_config.EvtIoDeviceControl=GpuIoControl;
     return WdfIoQueueCreate(device,&queue_config,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);
 }
