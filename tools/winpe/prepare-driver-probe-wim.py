@@ -2,6 +2,8 @@
 """Create a WinPE copy using one intact, already-built driver package."""
 import argparse
 import hashlib
+import json
+import secrets
 from pathlib import Path
 import shutil
 import subprocess
@@ -38,6 +40,7 @@ p.add_argument('--toprgu-provider-status', type=Path, help='Read-only TOPRGU PnP
 p.add_argument('--read-emmc-model', type=Path, help='Read-only volatile eMMC model utility')
 p.add_argument('--disable-quickedit', type=Path, help='Optional signed console selection control executable')
 p.add_argument('--lc709203f-test', type=Path, help='Signed LC709203F test package directory')
+p.add_argument('--mma8652-signal', type=Path, help='Signed QR completion viewer')
 p.add_argument('--mma8652-clean-cert', type=Path, help='Certificate accompanying the clean-check helper')
 p.add_argument('--mma8652-clean-check', type=Path, help='Signed NTFS dirty-bit check executable')
 p.add_argument('--mma8652-package', type=Path, help='Test-signed MMA8652 diagnostic package')
@@ -129,9 +132,10 @@ if a.mma8652_package:
         with (a.mma8652_tested / name).open('rb') as stream:
             if hashlib.file_digest(stream, 'sha256').hexdigest() != expected[name]:
                 raise SystemExit(f'Not the run3 tested reference: {name}')
-    if not a.volume_guard or not a.compare_files or not a.mma8652_clean_check or not a.mma8652_clean_cert:
+    if not a.volume_guard or not a.compare_files or not a.mma8652_clean_check or not a.mma8652_clean_cert or not a.mma8652_signal:
         raise SystemExit('MMA8652 offline staging needs volume guard and comparison tool')
     files['/a04br3/check-volume-clean.exe'] = a.mma8652_clean_check
+    files['/a04br3/mma8652/mma8652-signal.exe'] = a.mma8652_signal
     files['/a04br3/check-volume-clean.cer'] = a.mma8652_clean_cert
     files['/a04br3/mma8652/verify-installed.cmd'] = root / 'tools/winpe/verify-mma8652-installed.cmd'
     for name in ('mma8652.inf', 'mma8652.sys', 'mma8652.cat', 'mma8652-status.exe', 'mma8652-read.exe'):
@@ -150,8 +154,15 @@ for source in [a.source_wim, *files.values()]:
         raise SystemExit(f'Missing input: {source}')
     if any(c.isspace() or c in '"\'' for c in str(source.resolve())):
         raise SystemExit('wimlib update inputs must have paths without whitespace or quotes')
-if a.output.exists():
-    raise SystemExit('Output already exists')
+if a.output.exists() or a.output.with_suffix(a.output.suffix + '.stage.json').exists():
+    raise SystemExit('Output or stage manifest already exists')
+if a.mma8652_package:
+    from mma8652_signal import make_image
+    stage_token = secrets.token_hex(16)
+    stage_image_dir = tempfile.TemporaryDirectory(prefix='a04-mma-qr-')
+    stage_image = Path(stage_image_dir.name) / 'completion.bmp'
+    make_image(stage_token, stage_image)
+    files['/a04br3/mma8652/completion.bmp'] = stage_image
 a.output.parent.mkdir(parents=True, exist_ok=True)
 with a.source_wim.open('rb') as source, a.output.open('xb') as target:
     shutil.copyfileobj(source, target, 1024 * 1024)
@@ -166,4 +177,11 @@ with tempfile.TemporaryDirectory(prefix='a04br3-wim-check-') as tmp:
         extracted = Path(tmp) / ('a04br3' if dest.startswith('/a04br3/') else '') / rel
         if extracted.read_bytes() != original.read_bytes():
             raise SystemExit(f'WIM comparison failed: {dest}')
+if a.mma8652_package:
+    with a.output.open('rb') as stream:
+        stage_hash = hashlib.file_digest(stream, 'sha256').hexdigest()
+    a.output.with_suffix(a.output.suffix + '.stage.json').write_text(json.dumps({
+        'version': 1, 'token': stage_token, 'wim_sha256': stage_hash,
+        'note': 'One-use offline staging signal; target and signature acceptance unverified.'
+    }, indent=2) + '\n')
 print(f'Created and verified {a.output}')

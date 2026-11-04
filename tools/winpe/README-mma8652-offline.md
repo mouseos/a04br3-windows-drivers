@@ -33,8 +33,34 @@ this intentionally rejects rebuilt or re-signed binaries until revalidated.
 The evidence image `sensor-result.png` shows PnP started and raw HID values
 (-0.01, 0.01, 0.99 g), not Windows installed-OS Sensor API operation.
 The clean-check helper only queries FSCTL_IS_VOLUME_DIRTY and never repairs.
-`verify-mma8652-installed.cmd` checks the installed OS service, PnP status and
-one raw HID report; it rejects WinPE and does not test the Sensor API.
+`verify-installed.cmd` and the two tested utilities are copied into the new
+preinstall directory. From the installed OS, that script checks service, PnP
+and one raw HID report; it rejects WinPE and does not test the Sensor API.
 `tools/ci/test-mma8652-offline-stage.ps1` runs the batch in a disposable mock
 folder with registry, device access and DISM replaced by mocks. No real disk,
 filesystem or installed OS is touched by that test.
+
+The offline operation uses a persistent, newly created
+`C:\Windows\Temp\a04br3-mma8652-servicing-lock` before any completion QR can
+be displayed. A later boot of the same image refuses to run DISM and does not
+display completion if that lock exists. Do not delete it while this image can
+boot. Even precondition failure can create the lock. The finished QR reports
+only that the script reached successful dismount; inspect the saved DISM log
+and verification results to establish staging success. It is not a success
+marker for DISM. Completion QR and its viewer, UART framebuffer capture, and
+the unbounded-watchdog UEFI have not been tested on target.
+
+The host monitor requires two separate captures decoding the exact per-image
+nonce and both completion strings, and rejects changed UART log or reboot
+between captures. The runner claims the nonce in a persistent host ledger and
+refuses an active or unknown reset guard. Timeout, launch errors and signals
+never trigger a reset or restore. These controls do not prevent power loss,
+hardware failure, external resets, other reset services, or prove that the
+system is safe from all concurrent reset sources. Verify the complete external
+backup and recovery path before the main operator runs this experiment.
+
+The recovery runner is deliberately disabled before any device action: the
+only unbounded-watchdog build so far came from the separate edk2-mtk tree,
+not the required canonical unixnu/uefi-a04br3 source. The canonical build and
+its watchdog behavior remain unverified. Do not use the older generated WIMs
+or ESPs to perform offline servicing.

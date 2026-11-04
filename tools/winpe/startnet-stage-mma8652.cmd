@@ -4,10 +4,17 @@ title TAB-A04-BR3 MMA8652 offline staging
 rem This is a one-shot experimental WinPE operation, not a rollback.
 wpeinit
 if errorlevel 1 goto initfail
+cls
+echo MMA8652_OFFLINE_STAGING_STARTED
 drvload X:\a04br3\a04-msdc-probe.inf
 if errorlevel 1 goto storagefail
 X:\a04br3\guard-windows-volume.exe
 if errorlevel 1 goto guardfail
+rem Persistent one-shot lock precedes every path that may display completion.
+rem A reboot of this same WIM must never launch DISM for a second time.
+if exist C:\Windows\Temp\a04br3-mma8652-servicing-lock goto finish
+mkdir C:\Windows\Temp\a04br3-mma8652-servicing-lock
+if errorlevel 1 goto finish
 rem Require the exact package used in the prior WinPE test, supplied separately.
 for %%F in (mma8652.inf mma8652.sys mma8652.cat) do (
   X:\a04br3\compare-files.exe X:\a04br3\mma8652\%%F X:\a04br3\mma8652-tested\%%F
@@ -49,6 +56,13 @@ for %%H in (SYSTEM SOFTWARE COMPONENTS) do (
     X:\a04br3\compare-files.exe C:\Windows\System32\config\%%H%%E C:\Windows\Temp\a04br3-mma8652-preinstall\%%H%%E
     if errorlevel 1 goto backupfail
   )
+)
+rem Stage read-only verification tools in the newly created backup directory.
+for %%F in (mma8652-status.exe mma8652-read.exe verify-installed.cmd) do (
+  copy /b X:\a04br3\mma8652\%%F C:\Windows\Temp\a04br3-mma8652-preinstall\%%F >nul
+  if errorlevel 1 goto backupfail
+  X:\a04br3\compare-files.exe X:\a04br3\mma8652\%%F C:\Windows\Temp\a04br3-mma8652-preinstall\%%F
+  if errorlevel 1 goto backupfail
 )
 reg load HKLM\A04TEMP C:\Windows\System32\config\SYSTEM
 if errorlevel 1 goto hivefail
@@ -127,7 +141,17 @@ echo WINPE_INIT_FAILED
 goto finish
 :dismount
 mountvol C: /p
-echo MOUNTVOL_EXIT=!errorlevel!
-:finish
+if errorlevel 1 goto dismountfail
+rem Only a successful dismount may produce this pair. Clear stale console text.
+cls
+echo MOUNTVOL_EXIT=0
 echo MMA8652_OFFLINE_STAGING_FINISHED
+rem Display a one-time image-bound QR only after both conditions.
+start "" X:\a04br3\mma8652\mma8652-signal.exe
+goto done
+:dismountfail
+echo MMA8652_DISMOUNT_FAILED_NO_RESTORE
+:finish
+echo MMA8652_OFFLINE_STAGING_INCOMPLETE
+:done
 endlocal

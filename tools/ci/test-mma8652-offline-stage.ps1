@@ -13,6 +13,7 @@ try {
     [IO.File]::WriteAllText("$src\mma8652\$f", "fixture-$f")
     Copy-Item "$src\mma8652\$f" "$src\mma8652-tested\$f"
   }
+  foreach($f in @('mma8652-status.exe','mma8652-read.exe','verify-installed.cmd')) { [IO.File]::WriteAllText("$src\mma8652\$f", "fixture-$f") }
   $mockReg=@'
 @echo off
 if /i "%1"=="load" exit /b 0
@@ -41,6 +42,7 @@ exit /b 0
   [IO.File]::WriteAllText("$base\mock-dism.cmd",$mockDism,[Text.Encoding]::ASCII)
   $batch=Get-Content (Join-Path $root 'tools\winpe\startnet-stage-mma8652.cmd') -Raw
   $batch=$batch.Replace('C:\Windows',$win).Replace('X:\a04br3',$src).Replace('reg ',"call `"$base\mock-reg.cmd`" ")
+  $batch=$batch -replace '(?m)^ping 127\.0\.0\.1 -n 31 >nul\r?$', 'ver >nul'
   $batch=$batch -replace '(?m)^wpeinit\r?$',"call `"$base\mock-control.cmd`" init"
   $batch=$batch -replace '(?m)^drvload .*$',"call `"$base\mock-control.cmd`" provider"
   $batch=$batch.Replace("$src\guard-windows-volume.exe", "call `"$base\mock-control.cmd`" guard")
@@ -65,7 +67,7 @@ exit /b 0
     $did=Test-Path "$win\Temp\a04br3-mma8652-dism.log"
     if ($did -ne $dismExpected) { throw "Unexpected DISM execution: $result" }
   }
-  Reset-Fixture; Run-Case 'MMA8652_OFFLINE_PACKAGE_VERIFIED' $true
+  Reset-Fixture; Run-Case 'MMA8652_OFFLINE_STAGING_FINISHED' $true
   Reset-Fixture; New-Item "$base\service-exists" -ItemType File | Out-Null; Run-Case 'MMA8652_PRECONDITION_REJECTED' $false
   Reset-Fixture; New-Item "$base\fail-hivequery" -ItemType File | Out-Null; Run-Case 'MMA8652_HIVE_QUERY_FAILED' $false
   Reset-Fixture; New-Item "$base\fail-guard" -ItemType File | Out-Null; Run-Case 'VOLUME_GUARD_REJECTED' $false

@@ -16,3 +16,11 @@ Export-Certificate -Cert $cert -FilePath (Join-Path $out 'check-volume-clean.cer
 if ($LASTEXITCODE -ne 0) { throw 'Clean-check signing failed' }
 Get-FileHash -Algorithm SHA256 (Join-Path $out 'check-volume-clean.exe')
 Write-Host 'Test signature only; Windows RT acceptance and target filesystem checks unverified.'
+
+$signalObj=Join-Path $out 'signal.obj'
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 "-I$inc\um" "-I$inc\shared" -c (Join-Path $root 'tools\winpe\mma8652-signal.c') -o $signalObj
+if ($LASTEXITCODE -ne 0) { throw 'Signal compile failed' }
+& lld-link /subsystem:windows /machine:arm /entry:WinMainCRTStartup /nodefaultlib $signalObj (Join-Path $lib 'kernel32.lib') (Join-Path $lib 'user32.lib') (Join-Path $lib 'gdi32.lib') "/out:$out\mma8652-signal.exe"
+if ($LASTEXITCODE -ne 0) { throw 'Signal link failed' }
+& (Join-Path $kit 'bin\x86\signtool.exe') sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $out 'mma8652-signal.exe')
+if ($LASTEXITCODE -ne 0) { throw 'Signal signing failed' }

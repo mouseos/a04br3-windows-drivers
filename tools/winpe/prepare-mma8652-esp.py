@@ -15,6 +15,7 @@ p.add_argument('--verified-winpe-bcd-sha256', required=True,
                help='BCD hash from a template already proven to boot WinPE on this device')
 p.add_argument('--wim', type=Path, required=True)
 p.add_argument('--output', type=Path, required=True)
+p.add_argument('--stage-manifest', type=Path, required=True)
 a = p.parse_args()
 def digest(stream):
     h = hashlib.sha256()
@@ -28,6 +29,10 @@ if a.output.exists() or a.output.with_suffix(a.output.suffix+'.json').exists():
     raise SystemExit('Refusing to overwrite output or manifest')
 if filehash(a.source_esp) != a.source_sha256.lower():
     raise SystemExit('Source ESP hash mismatch')
+stage = json.loads(a.stage_manifest.read_text())
+import re
+if stage.get('version') != 1 or not re.fullmatch(r'[0-9a-f]{32}', stage.get('token', '')) or stage.get('wim_sha256') != filehash(a.wim):
+    raise SystemExit('Invalid stage manifest or WIM mismatch')
 key_paths = ('/EFI/Boot/bootarm.efi', '/EFI/Microsoft/Boot/BCD', '/Boot/boot.sdi')
 with PyFatFS(str(a.source_esp), preserve_case=True, read_only=True) as fat:
     before = {}
@@ -58,7 +63,7 @@ repair = subprocess.run(['fsck.vfat', '-a', str(a.output)])
 if repair.returncode not in (0, 1):
     raise SystemExit('FAT repair failed')
 subprocess.run(['fsck.vfat', '-n', str(a.output)], check=True)
-result = {'source_esp_sha256': a.source_sha256.lower(), 'wim_sha256': filehash(a.wim),
+result = {'version': 1, 'token': stage['token'], 'source_esp_sha256': a.source_sha256.lower(), 'wim_sha256': filehash(a.wim),
           'image_sha256': filehash(a.output), 'preserved_file_sha256': before,
           'note': 'Local derivative only; target boot, PnP, signatures and sensor data unverified.'}
 a.output.with_suffix(a.output.suffix+'.json').write_text(json.dumps(result, indent=2)+'\n')
