@@ -25,6 +25,8 @@ X:\a04br3\guard-windows-volume.exe
 if errorlevel 1 goto guardfail
 X:\a04br3\check-volume-clean.exe
 if errorlevel 1 goto dirtyfail
+if exist X:\a04br3\mma8652-services-before.txt goto reject
+if exist X:\a04br3\mma8652-dism.log goto reject
 if exist C:\Windows\System32\drivers\mma8652.sys goto reject
 if exist C:\Windows\System32\DriverStore\FileRepository\mma8652.inf_* goto reject
 if exist C:\Windows\Temp\a04br3-mma8652-preinstall goto reject

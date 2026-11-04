@@ -53,6 +53,7 @@ exit /b 0
   [IO.File]::WriteAllText("$base\stage.cmd",$batch,[Text.Encoding]::ASCII)
   $env:A04_TEST_BASE=$base
   function Reset-Fixture {
+    foreach($n in @('mma8652-services-before.txt','mma8652-dism.log')) { if (Test-Path "$src\$n") { Remove-Item "$src\$n" } }
     Get-ChildItem "$win\Temp" -Force | Remove-Item -Force -Recurse
     Get-ChildItem "$win\System32\DriverStore\FileRepository" -Force | Remove-Item -Force -Recurse
     Get-ChildItem $base -Filter 'fail-*' | Remove-Item -Force
