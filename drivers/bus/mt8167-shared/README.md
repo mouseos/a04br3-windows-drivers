@@ -60,8 +60,21 @@ query interface when `A04_SHARED_QUERY_EXPERIMENTAL=1`; the interface currently
 exposes only the fixed MT6392 button-status read under a parent-owned FAST_MUTEX.
 The mutex and callbacks exist before interface publication, and ReleaseHardware
 sets the PWRAP owner offline under that same mutex before unmapping. D0 still
-always fails and never starts the owner, so calls fail without MMIO. No client,
+always fails and never starts the owner, so calls fail without MMIO. No production client,
 INF, ACPI parent/child topology, audio clock lease or PMIC audio operation is
 connected. WDF interface references retain the device object but do not make its
 hardware resources active. Windows PnP behavior and transition to an online
 owner remain unverified; never deploy next to existing direct PWRAP users.
+
+The button and touch WDF sources have opt-in client paths selected at build
+time by `A04_BUTTON_SHARED_PARENT=1` and `A04_TOUCH_SHARED_PARENT=1`.
+Their build scripts produce a SYS for compile-only checking and deliberately
+skip INF and catalog packaging in these modes. Button expects only keypad MMIO;
+touch expects only I2C0 MMIO. Each obtains the prototype query interface in
+PrepareHardware, stops and drains its timer before dereferencing in Release,
+and fails rather than mapping shared ranges when the interface is absent.
+These clients require actual child stacks and a provider that maintains the
+documented lifetime and power contract. No online provider or child PDO currently
+exists, and interface references alone cannot keep physical hardware present
+or powered. The remaining local keypad and I2C accesses also need a verified
+surprise-removal design. These compile-only clients are not installable builds.

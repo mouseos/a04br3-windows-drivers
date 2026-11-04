@@ -11,9 +11,10 @@ New-Item -ItemType Directory -Force $out | Out-Null
 $dir = Join-Path $root 'drivers\input\bu21025'
 $objects = @()
 $trace = if ($env:A04_TOUCH_TRACE -eq '1') { '1' } else { '0' }
+$sharedParent = if ($env:A04_TOUCH_SHARED_PARENT -eq '1') { '1' } else { '0' }
 foreach ($source in @('wdf_touch','board_init','bu21025','mt8167_adapter','device','pipeline','contact','coordinates','touch_hid')) {
     $obj = Join-Path $out "$source.obj"
-    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_TOUCH_TRACE=$trace" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$dir" -c (Join-Path $dir "$source.c") -o $obj
+    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_TOUCH_TRACE=$trace" "-DA04_TOUCH_SHARED_PARENT=$sharedParent" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$dir" -c (Join-Path $dir "$source.c") -o $obj
     if ($LASTEXITCODE -ne 0) { throw "ARM32 touch compilation failed: $source" }
     $objects += $obj
 }
@@ -26,6 +27,7 @@ $driver = Join-Path $out 'bu21025.sys'
 if ($LASTEXITCODE -ne 0) { throw 'ARM32 touch link failed' }
 & llvm-readobj --file-headers $driver
 if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect output' }
+if ($sharedParent -eq '1') { Write-Host 'Shared-parent compile-only build; do not install.'; return }
 Copy-Item (Join-Path $dir 'bu21025.inf') (Join-Path $out 'bu21025.inf')
 & (Join-Path $kit 'bin\x86\Inf2Cat.exe') "/driver:$out" /os:6_3_ARM /uselocaltime
 if ($LASTEXITCODE -ne 0) { throw 'Touch catalog generation failed' }

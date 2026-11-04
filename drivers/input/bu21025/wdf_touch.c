@@ -9,6 +9,12 @@
 #include "board_init.h"
 #include "device.h"
 #include "mt8167_adapter.h"
+#ifndef A04_TOUCH_SHARED_PARENT
+#define A04_TOUCH_SHARED_PARENT 0
+#endif
+#if A04_TOUCH_SHARED_PARENT
+#include "../../bus/mt8167-shared/client_interface.h"
+#endif
 
 #ifndef A04_TOUCH_TRACE
 #define A04_TOUCH_TRACE 0
@@ -25,6 +31,9 @@ static const ULONG addresses[RANGE_COUNT] = {0x10000000,0x10001000,0x10005000,0x
 
 typedef struct {
     WDFDEVICE device;
+#if A04_TOUCH_SHARED_PARENT
+    A04_SHARED_INTERFACE shared;
+#endif
     WDFQUEUE reads;
     WDFTIMER timer;
     volatile UCHAR *mmio[RANGE_COUNT];
@@ -84,6 +93,9 @@ static void Delay(void *p, unsigned us)
 static int BoardUpdate(void *p, enum a04_touch_register_bank bank, unsigned off, uint32_t mask, uint32_t bits)
 {
     TOUCH_CONTEXT *c = TouchGetContext((WDFDEVICE)p);
+#if A04_TOUCH_SHARED_PARENT
+    return c->shared.TouchUpdate(c->shared.Context,(unsigned)bank,off,mask,bits);
+#else
     unsigned i = bank == A04_TOUCH_GPIO ? GPIO : bank == A04_TOUCH_INFRA ? INFRA : TOP;
     volatile ULONG *reg;
     ULONG value;
@@ -92,14 +104,19 @@ static int BoardUpdate(void *p, enum a04_touch_register_bank bank, unsigned off,
     value = READ_REGISTER_ULONG(reg);
     WRITE_REGISTER_ULONG(reg, (value & ~mask) | bits);
     return (READ_REGISTER_ULONG(reg) & mask) == bits ? 0 : -1;
+#endif
 }
 static int BoardWrite(void *p, enum a04_touch_register_bank bank, unsigned off, uint32_t value)
 {
     TOUCH_CONTEXT *c = TouchGetContext((WDFDEVICE)p);
+#if A04_TOUCH_SHARED_PARENT
+    return c->shared.TouchWrite(c->shared.Context,(unsigned)bank,off,value);
+#else
     unsigned i = bank == A04_TOUCH_GPIO ? GPIO : TOP;
     if (!c->mmio[i] || off > RANGE_SIZE-4) return -1;
     WRITE_REGISTER_ULONG((volatile ULONG *)(c->mmio[i]+off), value);
     return 0;
+#endif
 }
 static int BoardI2cWrite(void *p, unsigned off, uint16_t value)
 { I2cWrite(p,off,value); return 0; }
@@ -119,11 +136,30 @@ NTSTATUS TouchPrepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translate
         if (j==RANGE_COUNT) return STATUS_DEVICE_CONFIGURATION_ERROR;
         seen[j]=TRUE; found[j]=d->u.Memory.Start;
     }
+#if A04_TOUCH_SHARED_PARENT
+    if (seen[TOP] || seen[INFRA] || seen[GPIO] || !seen[I2C]) return STATUS_DEVICE_CONFIGURATION_ERROR;
+    {
+        NTSTATUS status=WdfFdoQueryForInterface(device,&A04SharedInterfaceGuid,
+            (PINTERFACE)&c->shared,sizeof(c->shared),A04_SHARED_INTERFACE_VERSION,NULL);
+        if (!NT_SUCCESS(status)) return status;
+        if (!c->shared.InterfaceDereference || !c->shared.TouchUpdate || !c->shared.TouchWrite || !c->shared.TouchPen) {
+            if(c->shared.InterfaceDereference)c->shared.InterfaceDereference(c->shared.Context);
+            RtlZeroMemory(&c->shared,sizeof(c->shared));return STATUS_NOINTERFACE;
+        }
+    }
+#else
     for (i=0;i<RANGE_COUNT;++i) if (!seen[i]) return STATUS_DEVICE_CONFIGURATION_ERROR;
+#endif
     for (i=0;i<RANGE_COUNT;++i) {
+#if A04_TOUCH_SHARED_PARENT
+        if (i!=I2C) continue;
+#endif
         c->mmio[i]=MmMapIoSpace(found[i],RANGE_SIZE,MmNonCached);
         if (!c->mmio[i]) {
-            while (i) { --i; MmUnmapIoSpace((PVOID)c->mmio[i],RANGE_SIZE); c->mmio[i]=NULL; }
+            while (i) { --i; if(c->mmio[i]) MmUnmapIoSpace((PVOID)c->mmio[i],RANGE_SIZE); c->mmio[i]=NULL; }
+#if A04_TOUCH_SHARED_PARENT
+            c->shared.InterfaceDereference(c->shared.Context); RtlZeroMemory(&c->shared,sizeof(c->shared));
+#endif
             return STATUS_INSUFFICIENT_RESOURCES;
         }
     }
@@ -143,6 +179,9 @@ NTSTATUS TouchRelease(WDFDEVICE device, WDFCMRESLIST translated)
     for (i=0;i<RANGE_COUNT;++i) if (c->mmio[i]) {
         MmUnmapIoSpace((PVOID)c->mmio[i],RANGE_SIZE); c->mmio[i]=NULL;
     }
+#if A04_TOUCH_SHARED_PARENT
+    if(c->shared.InterfaceDereference) { c->shared.InterfaceDereference(c->shared.Context); RtlZeroMemory(&c->shared,sizeof(c->shared)); }
+#endif
 #if A04_TOUCH_TRACE
     Trace(c,"A04TOUCH release\n");
     if (c->uart) { MmUnmapIoSpace((PVOID)c->uart,RANGE_SIZE); c->uart=NULL; }
@@ -238,7 +277,14 @@ void TouchTimer(WDFTIMER timer)
     }
     /* Do not advance contact state unless a HID read can consume the report. */
     if (!NT_SUCCESS(WdfIoQueueRetrieveNextRequest(c->reads,&request))) goto rearm;
+#if A04_TOUCH_SHARED_PARENT
+    if (c->shared.TouchPen(c->shared.Context,&down)) {
+        WdfRequestComplete(request,STATUS_DEVICE_NOT_READY);
+        c->faulted=TRUE; InterlockedExchange(&c->enabled,0); goto rearm;
+    }
+#else
     down=(READ_REGISTER_ULONG((volatile ULONG *)(c->mmio[GPIO]+0x200)) & (1u<<8)) == 0;
+#endif
     ticks=KeQueryInterruptTime();
     /* 100 ns ticks -> 100 us HID scan units, avoiding ARM runtime division. */
     for (bit=0;bit<64;++bit) {

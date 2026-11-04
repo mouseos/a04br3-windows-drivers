@@ -7,6 +7,12 @@
 #include <ntddk.h>
 #include <wdf.h>
 #include "button_hardware.h"
+#ifndef A04_BUTTON_SHARED_PARENT
+#define A04_BUTTON_SHARED_PARENT 0
+#endif
+#if A04_BUTTON_SHARED_PARENT
+#include "../../bus/mt8167-shared/client_interface.h"
+#endif
 
 #define A04_KEYPAD_BASE 0x10002000u
 #define A04_PWRAP_BASE  0x1000f000u
@@ -23,6 +29,9 @@ static const GUID ButtonInterface =
 
 typedef struct {
     WDFTIMER timer;
+#if A04_BUTTON_SHARED_PARENT
+    A04_SHARED_INTERFACE shared;
+#endif
     volatile UCHAR *keypad;
     volatile UCHAR *pwrap;
     struct a04_button_hardware hardware;
@@ -90,6 +99,10 @@ static void PwrapDelay(void *context)
     UNREFERENCED_PARAMETER(context);
     KeStallExecutionProcessor(10);
 }
+#if A04_BUTTON_SHARED_PARENT
+static int SharedPmicRead(void *p, uint16_t *v)
+{ A04_CONTEXT *c=p; return c->shared.ButtonPmicRead(c->shared.Context,v); }
+#endif
 static int KeypadRead(void *context, unsigned offset, uint16_t *value)
 {
     A04_CONTEXT *c = context;
@@ -185,14 +198,40 @@ NTSTATUS A04Prepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translated)
             pwrap = d->u.Memory.Start; havePwrap = TRUE;
         } else return STATUS_DEVICE_CONFIGURATION_ERROR;
     }
+#if A04_BUTTON_SHARED_PARENT
+    if (!haveKeypad || havePwrap) return STATUS_DEVICE_CONFIGURATION_ERROR;
+    {
+        NTSTATUS status = WdfFdoQueryForInterface(device, &A04SharedInterfaceGuid,
+            (PINTERFACE)&c->shared, sizeof(c->shared), A04_SHARED_INTERFACE_VERSION, NULL);
+        if (!NT_SUCCESS(status)) return status;
+        if (!c->shared.InterfaceDereference || !c->shared.ButtonPmicRead) {
+            if (c->shared.InterfaceDereference) c->shared.InterfaceDereference(c->shared.Context);
+            RtlZeroMemory(&c->shared, sizeof(c->shared));
+            return STATUS_NOINTERFACE;
+        }
+    }
+#else
     if (!haveKeypad || !havePwrap) return STATUS_DEVICE_CONFIGURATION_ERROR;
+#endif
     c->keypad = MmMapIoSpace(keypad, A04_RANGE_SIZE, MmNonCached);
-    if (!c->keypad) return STATUS_INSUFFICIENT_RESOURCES;
+    if (!c->keypad) {
+#if A04_BUTTON_SHARED_PARENT
+        c->shared.InterfaceDereference(c->shared.Context); RtlZeroMemory(&c->shared,sizeof(c->shared));
+#endif
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+#if !A04_BUTTON_SHARED_PARENT
     c->pwrap = MmMapIoSpace(pwrap, A04_RANGE_SIZE, MmNonCached);
     if (!c->pwrap) {
         MmUnmapIoSpace((PVOID)c->keypad, A04_RANGE_SIZE); c->keypad = NULL;
         return STATUS_INSUFFICIENT_RESOURCES;
     }
+#endif
+#if A04_BUTTON_SHARED_PARENT
+    c->hardware.shared_pmic=1;
+    c->hardware.shared_pmic_context=c;
+    c->hardware.shared_pmic_read=SharedPmicRead;
+#endif
     c->hardware.context = c;
     c->hardware.keypad_read16 = KeypadRead;
     c->hardware.notify = Notify;
@@ -227,6 +266,9 @@ NTSTATUS A04Release(WDFDEVICE device, WDFCMRESLIST translated)
 #endif
     if (c->pwrap) { MmUnmapIoSpace((PVOID)c->pwrap, A04_RANGE_SIZE); c->pwrap = NULL; }
     if (c->keypad) { MmUnmapIoSpace((PVOID)c->keypad, A04_RANGE_SIZE); c->keypad = NULL; }
+#if A04_BUTTON_SHARED_PARENT
+    if (c->shared.InterfaceDereference) { c->shared.InterfaceDereference(c->shared.Context); RtlZeroMemory(&c->shared,sizeof(c->shared)); }
+#endif
     return STATUS_SUCCESS;
 }
 NTSTATUS A04D0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
@@ -263,7 +305,11 @@ void A04Timer(WDFTIMER timer)
     WDFDEVICE device = (WDFDEVICE)WdfTimerGetParentObject(timer);
     A04_CONTEXT *c = A04GetContext(device);
     if (InterlockedCompareExchange(&c->timerBusy, 1, 0) != 0) return;
-    if (c->keypad && c->pwrap) {
+    if (c->keypad && (c->pwrap
+#if A04_BUTTON_SHARED_PARENT
+        || c->shared.ButtonPmicRead
+#endif
+        )) {
         TryEndpoint(c);
         if (c->endpoint && !c->permanentlyDisabled) {
             (void)a04_button_device_poll(&c->hardware.device);
