@@ -3,8 +3,11 @@
 #include <portcls.h>
 /* Internal kernel-only interface. PnP owner supplies a live, referenced
  * backend; it owns DMA, synchronization, IRQ, clocks and shutdown. Callbacks
- * are PASSIVE_LEVEL and externally serialized by the adapter. Failed or
- * ambiguous hardware stop must retain all resources. Failure from allocate
+ * except position are PASSIVE_LEVEL and serialized by the adapter. Position
+ * may run at DISPATCH_LEVEL concurrently with stop/removal: its implementation
+ * and data must be nonpaged, nonblocking, and synchronized with the ISR and
+ * teardown. Failed or ambiguous hardware stop must retain all resources.
+ * Failure from allocate
  * must clean up its own partial allocation. No provider exists yet. */
 struct Mt8167StreamBackend {
     void *context;

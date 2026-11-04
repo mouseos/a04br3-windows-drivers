@@ -15,7 +15,14 @@ int main(){
  _DMA_OPERATIONS ops{put,alloc,freebuf};_DMA_ADAPTER adapter{&ops};test_dma_adapter=&adapter;
  Resources resources;Mt8167PnpBackend *owner=nullptr;
  resources.irq.Flags=CM_RESOURCE_INTERRUPT_LATCHED;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner);
- resources.irq.Flags=0;assert(!Mt8167PnpBackendCreate(&adapter,&resources,&owner) && owner && test_pdo_refs==1);
+ resources.irq.Flags=CM_RESOURCE_INTERRUPT_MESSAGE;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner);
+ resources.irq.Flags=0;resources.irq.u.Interrupt.Vector=0;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner);
+ resources.irq.u.Interrupt.Vector=152;resources.irq.u.Interrupt.Level=32;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner);
+ resources.irq.u.Interrupt.Level=5;
+#ifdef NT_PROCESSOR_GROUPS
+ resources.irq.u.Interrupt.Group=1;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner);resources.irq.u.Interrupt.Group=0;
+#endif
+ assert(!Mt8167PnpBackendCreate(&adapter,&resources,&owner) && owner && test_pdo_refs==1);
  Mt8167PnpInterrupt irq{};assert(!Mt8167PnpBackendInterrupt(owner,&irq) && irq.vector==152 && irq.level==5 && irq.affinity==1);
  const Mt8167StreamBackend *api=Mt8167PnpBackendInterface(owner);api->reference(api->context);
  PMDL mdl=nullptr;ULONG n=0,offset=9;MEMORY_CACHING_TYPE cache;

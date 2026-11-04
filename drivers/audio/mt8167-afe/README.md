@@ -127,3 +127,23 @@ its source does not document drain or outstanding bus transactions. The
 also clears a memif enable bit, but neither its source nor the MT8365 driver
 establishes the MT8167 drain contract. Do not use this as evidence for
 freeing exposed DMA or unmapping registers.
+
+PnP IRQ parsing rejects message-signaled and edge-triggered descriptors,
+zero vector or affinity, levels above HIGH_LEVEL, and (where processor groups
+are enabled) a nonzero group that IoConnectInterrupt's group-zero affinity
+cannot represent. A translated Windows vector is not assumed to equal the raw
+ACPI GSI. This only validates the descriptor shape; the owner still does not
+connect the interrupt. The existing button provider continues to directly own
+PWRAP, while the shared clock owner remains a non-PnP policy component.
+
+WaveRT GetPosition may run at DISPATCH_LEVEL according to the
+[Microsoft GetPosition contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/portcls/nf-portcls-iminiportwavertstream-getposition).
+A future backend position callback must therefore be nonpaged, nonblocking,
+and synchronized with ISR and teardown. Atomic stream state alone does not
+protect a callback already in flight or establish hardware ownership.
+
+The board Linux driver names AFE_MEMIF_MON0..3 and dumps those registers but
+provides no bit definitions proving DMA bus drain. The common offload
+`AUDIO_DRAIN_*` names describe an audio-offload operation and are not evidence
+for the DL1 memory-interface bus transaction completion. Do not turn either
+into a release criterion without a device-specific specification or validation.

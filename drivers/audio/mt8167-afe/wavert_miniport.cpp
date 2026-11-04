@@ -35,7 +35,7 @@ class Stream : public IMiniportWaveRTStream {
     bool useBackend;
     PMDL backendMdl;
     ULONG backendBytes;
-    bool started;
+    volatile LONG started;
     bool everStarted;
 public:
     explicit Stream(PPORTWAVERTSTREAM p, const Mt8167StreamBackend *b): refs(1),port(p),buffer{},backend{},useBackend(b!=NULL),backendMdl(NULL),backendBytes(0),started(false),everStarted(false) {
@@ -43,7 +43,7 @@ public:
     }
     ~Stream() {
         if (useBackend) {
-            if (started) (void)backend.stop(backend.context);
+            if (InterlockedExchange(&started,0)) (void)backend.stop(backend.context);
             /* No drain proof exists. Retain the backend reference and buffer
              * after any attempted start, including an ambiguous failure. */
             if (!everStarted) {
@@ -64,16 +64,16 @@ public:
     STDMETHODIMP_(NTSTATUS) SetFormat(PKSDATAFORMAT f) override { return ValidFormat(f)?STATUS_SUCCESS:STATUS_NO_MATCH; }
     STDMETHODIMP_(NTSTATUS) SetState(KSSTATE s) override {
         if (s==KSSTATE_RUN) {
-            if (!useBackend || !backendMdl || started || everStarted) return STATUS_DEVICE_NOT_READY;
+            if (!useBackend || !backendMdl || InterlockedCompareExchange(&started,0,0) || everStarted) return STATUS_DEVICE_NOT_READY;
             everStarted=true;
-            NTSTATUS result=backend.start(backend.context); if (NT_SUCCESS(result)) started=true;
+            NTSTATUS result=backend.start(backend.context); if (NT_SUCCESS(result)) InterlockedExchange(&started,1);
             return result;
         }
         if (s!=KSSTATE_STOP && s!=KSSTATE_ACQUIRE && s!=KSSTATE_PAUSE) return STATUS_INVALID_PARAMETER;
-        if (started) { NTSTATUS result=backend.stop(backend.context); started=false; if (!NT_SUCCESS(result)) return result; }
+        if (InterlockedExchange(&started,0)) { NTSTATUS result=backend.stop(backend.context); if (!NT_SUCCESS(result)) return result; }
         return STATUS_SUCCESS;
     }
-    STDMETHODIMP_(NTSTATUS) GetPosition(PKSAUDIO_POSITION p) override { if(!p)return STATUS_INVALID_PARAMETER; if(useBackend && started)return backend.position(backend.context,p); p->PlayOffset=0;p->WriteOffset=0;return STATUS_SUCCESS; }
+    STDMETHODIMP_(NTSTATUS) GetPosition(PKSAUDIO_POSITION p) override { if(!p)return STATUS_INVALID_PARAMETER; if(useBackend && InterlockedCompareExchange(&started,0,0))return backend.position(backend.context,p); p->PlayOffset=0;p->WriteOffset=0;return STATUS_SUCCESS; }
     STDMETHODIMP_(NTSTATUS) AllocateAudioBuffer(ULONG size,PMDL *mdl,PULONG actual,PULONG offset,MEMORY_CACHING_TYPE *cache) override {
         if(!mdl || !actual || !offset || !cache) return STATUS_INVALID_PARAMETER;
         *mdl=NULL;*actual=0;*offset=0;

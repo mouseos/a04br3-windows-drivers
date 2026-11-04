@@ -67,8 +67,13 @@ NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt816
     if (resources->NumberOfEntriesOfType(CmResourceTypeInterrupt)!=1) return STATUS_DEVICE_CONFIGURATION_ERROR;
     irq=resources->FindTranslatedEntry(CmResourceTypeInterrupt,0);
     if (!irq || irq->ShareDisposition!=CmResourceShareDeviceExclusive ||
-        (irq->Flags & CM_RESOURCE_INTERRUPT_LATCHED) || !irq->u.Interrupt.Affinity ||
-        irq->u.Interrupt.Level > 0xff) return STATUS_DEVICE_CONFIGURATION_ERROR;
+        (irq->Flags & (CM_RESOURCE_INTERRUPT_LATCHED | CM_RESOURCE_INTERRUPT_MESSAGE)) ||
+        !irq->u.Interrupt.Vector || !irq->u.Interrupt.Affinity ||
+        irq->u.Interrupt.Level > HIGH_LEVEL) return STATUS_DEVICE_CONFIGURATION_ERROR;
+#if defined(NT_PROCESSOR_GROUPS)
+    /* IoConnectInterrupt uses a group-zero KAFFINITY; never discard a group. */
+    if (irq->u.Interrupt.Group != 0) return STATUS_DEVICE_CONFIGURATION_ERROR;
+#endif
     o=static_cast<Mt8167PnpBackend *>(ExAllocatePoolWithTag(NonPagedPool,sizeof(*o),OWNER_TAG));
     if (!o) return STATUS_INSUFFICIENT_RESOURCES;
     RtlZeroMemory(o,sizeof(*o));

@@ -77,6 +77,8 @@ inline void *ExAllocatePoolWithTag(int,size_t n,ULONG) {return malloc(n);}
 inline void ExFreePoolWithTag(void *p,ULONG) {free(p);}
 inline LONG InterlockedIncrement(volatile LONG *p) { return ++*p; }
 inline LONG InterlockedDecrement(volatile LONG *p) { return --*p; }
+inline LONG InterlockedCompareExchange(volatile LONG *p,LONG v,LONG c) { LONG old=*p;if(old==c)*p=v;return old; }
+inline LONG InterlockedExchange(volatile LONG *p,LONG v) { LONG old=*p;*p=v;return old; }
 typedef struct { ULONG FormatSize,Flags,SampleSize,Reserved; GUID MajorFormat,SubFormat,Specifier; } KSDATAFORMAT,*PKSDATAFORMAT,*PKSDATARANGE;
 typedef struct { unsigned short wFormatTag,nChannels; ULONG nSamplesPerSec,nAvgBytesPerSec; unsigned short nBlockAlign,wBitsPerSample,cbSize; } WAVEFORMATEX;
 typedef struct {KSDATAFORMAT DataFormat;WAVEFORMATEX WaveFormatEx;} KSDATAFORMAT_WAVEFORMATEX,*PKSDATAFORMAT_WAVEFORMATEX;
