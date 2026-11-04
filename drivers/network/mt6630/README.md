@@ -140,8 +140,16 @@ Linux構造体比較は `A04BR3_GEN3_SOURCE` に端末gen3ソースのディレ�
 統合リンク確認では `A04_NDIS_OID_BRIDGE=1` によりMiniportOidRequestへ配線するが、
 MiniportInitializeは従来どおり必ず失敗する。他のOIDは未実装。
 `native_oid_async.c` は高IRQLのOIDをNDIS work itemでPASSIVE_LEVELに送り、
-実行前の取消と終了時の排出を扱う。NDISのMiniportHalt/D0の実接続、
-デバイス全体の排他・rundown、実機での競合検証は未実施。
+実行前の取消と終了時の排出を扱う。D0とデバイス全体の排他・rundown、
+実機での競合検証は未実施。
+
+`ndis_candidate.c` の初期化はNDIS adapter contextの確保・登録属性の設定と、
+統合ビルドでのOID work item状態の初期化を行う。初期化失敗時とHaltでは
+OID完了通知の復帰まで排出した後にcontextを解放する。ただし一般属性・
+Native 802.11属性、共有親からの所有権取得、ハードウェア起動は未実装であり、
+初期化は引き続き失敗する。NDIS送受信・D0・IRQの接続も未完成である。
+この処理はMicrosoftのMiniportInitializeExとMiniportHaltExの資源寿命規約に
+従い、端末Linux gen3の `os/linux/gl_init.c` のprobe失敗時の後始末を参照した。
 
 `native_hif_rx.c` はLinux gen3の受信記述子から、未変換・未暗号化・非QoS・
 非断片の2.4GHzユニキャストFromDS MPDUに限り、実RCPIとchannelを抽出して

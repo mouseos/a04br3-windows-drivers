@@ -1,19 +1,33 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent
- * NDIS integration scaffold only. No adapter or radio can be started. */
+ * NDIS adapter initialization and rundown. Hardware startup is not ready. */
 #include <ntddk.h>
 #include <ndis.h>
 #if defined(A04_NDIS_OID_BRIDGE) && A04_NDIS_OID_BRIDGE
 #include "native_oid_async.h"
 #endif
 static NDIS_HANDLE g_driver;
-/* Future adapter contexts must retain the NDIS miniport handle until all
- * sends are completed. Initialize currently always fails and creates none. */
+/* The context retains the miniport handle until asynchronous OIDs drain.
+ * Initialize currently fails before registering a usable adapter. */
 struct a04_ndis_context { NDIS_HANDLE adapter;
 #if defined(A04_NDIS_OID_BRIDGE) && A04_NDIS_OID_BRIDGE
+ struct a04_wmt_bridge bridge;
  struct a04_native_oid_context oid;
  struct a04_native_oid_async oid_async;
 #endif
 };
+#define A04_NDIS_TAG 'n40A'
+/* Called at PASSIVE_LEVEL after NDIS has stopped issuing callbacks. An OID
+ * completion can reenter NDIS: retain the entire context until it returns. */
+static void a04_adapter_free(struct a04_ndis_context *a)
+{
+ if(!a)return;
+#if defined(A04_NDIS_OID_BRIDGE) && A04_NDIS_OID_BRIDGE
+ if(a->oid_async.initialized) {
+  while(a04_native_oid_async_close(&a->oid_async,1000)==NDIS_STATUS_PENDING) { }
+ }
+#endif
+ NdisFreeMemory(a,0,0);
+}
 MINIPORT_INITIALIZE A04MiniportInitialize;
 MINIPORT_HALT A04MiniportHalt;
 MINIPORT_PAUSE A04MiniportPause;
@@ -26,8 +40,33 @@ MINIPORT_SHUTDOWN A04MiniportShutdown;
 MINIPORT_CANCEL_OID_REQUEST A04MiniportCancelOid;
 DRIVER_UNLOAD A04MiniportUnload;
 NDIS_STATUS A04MiniportInitialize(NDIS_HANDLE adapter,NDIS_HANDLE context,PNDIS_MINIPORT_INIT_PARAMETERS params)
-{ UNREFERENCED_PARAMETER(adapter);UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(params);return NDIS_STATUS_FAILURE; }
-VOID A04MiniportHalt(NDIS_HANDLE ctx,NDIS_HALT_ACTION action) {UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(action);}
+{
+ struct a04_ndis_context *a;NDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES attr;NDIS_STATUS status;
+ UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(params);
+ a=NdisAllocateMemoryWithTagPriority(adapter,sizeof(*a),A04_NDIS_TAG,NormalPoolPriority);
+ if(!a)return NDIS_STATUS_RESOURCES;
+ NdisZeroMemory(a,sizeof(*a));a->adapter=adapter;
+ NdisZeroMemory(&attr,sizeof(attr));
+ attr.Header.Type=NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES;
+ attr.Header.Revision=NDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES_REVISION_1;
+ attr.Header.Size=NDIS_SIZEOF_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES_REVISION_1;
+ attr.MiniportAdapterContext=a;attr.InterfaceType=NdisInterfaceInternal;
+ status=NdisMSetMiniportAttributes(adapter,(PNDIS_MINIPORT_ADAPTER_ATTRIBUTES)&attr);
+ if(status!=NDIS_STATUS_SUCCESS)goto failed;
+#if defined(A04_NDIS_OID_BRIDGE) && A04_NDIS_OID_BRIDGE
+ a->oid.bridge=&a->bridge;
+ status=a04_native_oid_async_init(&a->oid_async,adapter,&a->oid);
+ if(status!=NDIS_STATUS_SUCCESS)goto failed;
+#endif
+ /* No general/native-802.11 attributes or initialized hardware exist yet.
+  * NDIS requires full network-I/O readiness before initialization succeeds. */
+ status=NDIS_STATUS_ADAPTER_NOT_READY;
+failed:
+ a04_adapter_free(a);
+ return status;
+}
+VOID A04MiniportHalt(NDIS_HANDLE ctx,NDIS_HALT_ACTION action)
+{UNREFERENCED_PARAMETER(action);a04_adapter_free((struct a04_ndis_context *)ctx);}
 NDIS_STATUS A04MiniportPause(NDIS_HANDLE ctx,PNDIS_MINIPORT_PAUSE_PARAMETERS params) {UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(params);return NDIS_STATUS_FAILURE;}
 NDIS_STATUS A04MiniportRestart(NDIS_HANDLE ctx,PNDIS_MINIPORT_RESTART_PARAMETERS params) {UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(params);return NDIS_STATUS_FAILURE;}
 NDIS_STATUS A04MiniportOid(NDIS_HANDLE ctx,PNDIS_OID_REQUEST request)
