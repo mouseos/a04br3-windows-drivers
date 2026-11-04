@@ -281,3 +281,7 @@ UART画素取得は、既存のgeometry fence=1・partial/final fragment fence=2
 追加した `A04GPU FW_EVIDENCE` はrender前後にFW所有HWRカウンタとFWCCBの未処理通知種別の個数を非破壊で取得する。生アドレスは出さず、同期失敗・不正な範囲／キュー形式はERRORとして扱う。WとW_AFTERが違うときは通知の走査中に書込みが発生した可能性がある。ゼロカウンタや空キューはHWR・故障・DMA停止がなかった証明ではない。この診断は観測欠落を補うものであり、141233bの矩形化を修正するものではない。
 
 `A04GPU TILE_SLOTS` は両fence後・全DMA同期後・cleanup前に、固定SIPF1のregion header 16個（各５バイト）とtail pointer 16個（各８バイト）を確認し、生値を出さず非ゼロの生スロット番号だけをビット集合で記録する。割当範囲と所有マップを検査できない場合はVALID=0。スロット順と画面タイルの対応、ゼロが未書込みを意味すること、FW終了やキャッシュ可視性は保証しない。
+
+実機dafd822のUARTは各断片・全体CRC `c6b33b52`、RGBA SHA-256 `c9c3d77ebb62c4b81916a71b531e17ec2a5043ac06dfd7e6205eca1b341bf09f`。背景448・前景576・sentinel3072、HWRカウンタと未処理通知は前後とも０、非ゼロregion生スロット `ffff`・TPC生スロット `0000`、geom／fragment fenceは1／2、両CCB read=end、cleanup=1、shutdown=0。これは141233bと同じ画素であり、region maskだけで各タイルの描画完了はわからない。
+
+Mesa `csbgen/rogue/cr.xml` の `TE_PSG.completeonterminate` はterminate時にregion headerを書き、streamを終了し、tail pointer cache entryを無効化する。固定geometryのTE_PSG `0x20000` はこのbitを立てているため、fence後に全TPCがゼロという結果はgeometry未実行を意味しない。HWRカウンタと未処理通知がゼロでもサンプルは非原子的で、GPU fault不在やDMA停止を完全には証明しない。現時点でこの結果から次の描画設定変更を特定できず、同一jobの観測のみを根拠なく再投入しない。
