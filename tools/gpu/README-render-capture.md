@@ -166,4 +166,6 @@ Mesaのfreelist BOはSLCバイパスとPM/FW保護を要求する。Windowsペ�
 
 公開前のページ表検査は、指定外のPC・PD・PTエントリとBRN65273のゼロページの改変も拒否する。４組のPD/PTを使う現在の実装では、同じ組は同じ2 MiB領域内に限定し、同一1 GiB領域に別の組を割り当てない。これにより共有leafを別領域へリンクした予期しないaliasを作らない。同期・MMU無効化のホストmockは通過したが、GPUのページ権限動作、WDKビルド、実機検証は行っていない。
 
-context switchのpersistent PDSは `pvr_pds_generate_stream_out_terminate_program`／`pvr_pds_generate_stream_out_init_program` が生成し、persistent stateのGPUアドレスをLD/ST定数へ埋め込む。shared-register用PDSは `pvr_pds_generate_shared_storing_program` が生成し、shared状態の２アドレスとstore/load USCへのDOUTUを含む。対応USCは `pco_usclib_common` の事前コンパイル済み `CS_STORE_SR_1024_COMMON`／`CS_LOAD_SR_256_COMMON` からuploadされる。２回のshimキャプチャで26領域の種類・サイズが一致したが、これらのPDS定数とUSC命令を安全な固定データとして再生成する実装、残りの参照閉包、kickとcleanupは未完成。
+context switchのpersistent PDSは `pvr_pds_generate_stream_out_terminate_program`／`pvr_pds_generate_stream_out_init_program` が生成し、persistent stateのGPUアドレスをLD/ST定数へ埋め込む。shared-register用PDSは `pvr_pds_generate_shared_storing_program` が生成し、shared状態の２アドレスとstore/load USCへのDOUTUを含む。対応USCは `pco_usclib_common` の事前コンパイル済み `CS_STORE_SR_1024_COMMON`／`CS_LOAD_SR_256_COMMON` からuploadされる。２回のshimキャプチャで26領域の種類・サイズが一致したが、PDS命令とUSC命令の固定化、残りの参照閉包、kickとcleanupは未完成。
+
+`render_context_pds.c` はGE8300用persistent state 128バイトのstore／resume定数（各32バイト）と、shared state 16432バイト・USC entryを参照する定数（64バイト）を、所有GPU範囲を検査した上で生成する。unused部分はゼロで、BOをコピーしない。追加診断で２組のpersistent store／resumeおよびshared store／loadの各４範囲について、２回の独立キャプチャでMesa生成時のFNV値と一致した。`check-context-pt-data.py PRIVATE_CAPTURE` で照合できる。FNVは衝突耐性がなく、これらのPDS命令、USC命令、他の間接参照やGPU実行を検証しない。これらの生成部品はDMA／kickへ接続していない。
