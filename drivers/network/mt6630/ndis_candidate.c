@@ -3,6 +3,9 @@
 #include <ntddk.h>
 #include <ndis.h>
 static NDIS_HANDLE g_driver;
+/* Future adapter contexts must retain the NDIS miniport handle until all
+ * sends are completed. Initialize currently always fails and creates none. */
+struct a04_ndis_context { NDIS_HANDLE adapter; };
 MINIPORT_INITIALIZE A04MiniportInitialize;
 MINIPORT_HALT A04MiniportHalt;
 MINIPORT_PAUSE A04MiniportPause;
@@ -21,7 +24,15 @@ NDIS_STATUS A04MiniportPause(NDIS_HANDLE ctx,PNDIS_MINIPORT_PAUSE_PARAMETERS par
 NDIS_STATUS A04MiniportRestart(NDIS_HANDLE ctx,PNDIS_MINIPORT_RESTART_PARAMETERS params) {UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(params);return NDIS_STATUS_FAILURE;}
 NDIS_STATUS A04MiniportOid(NDIS_HANDLE ctx,PNDIS_OID_REQUEST request) {UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(request);return NDIS_STATUS_NOT_SUPPORTED;}
 VOID A04MiniportSend(NDIS_HANDLE ctx,PNET_BUFFER_LIST list,NDIS_PORT_NUMBER port,ULONG flags)
-{UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(list);UNREFERENCED_PARAMETER(port);UNREFERENCED_PARAMETER(flags);}
+{
+ struct a04_ndis_context *adapter=(struct a04_ndis_context *)ctx;
+ PNET_BUFFER_LIST current;
+ UNREFERENCED_PARAMETER(port);
+ for(current=list;current;current=NET_BUFFER_LIST_NEXT_NBL(current))
+  NET_BUFFER_LIST_STATUS(current)=NDIS_STATUS_FAILURE;
+ NdisMSendNetBufferListsComplete(adapter->adapter,list,
+  (flags & NDIS_SEND_FLAGS_DISPATCH_LEVEL) ? NDIS_SEND_COMPLETE_FLAGS_DISPATCH_LEVEL : 0);
+}
 VOID A04MiniportReturn(NDIS_HANDLE ctx,PNET_BUFFER_LIST list,ULONG flags) {UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(list);UNREFERENCED_PARAMETER(flags);}
 VOID A04MiniportCancelSend(NDIS_HANDLE ctx,PVOID id) {UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(id);}
 VOID A04MiniportShutdown(NDIS_HANDLE ctx,NDIS_SHUTDOWN_ACTION action) {UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(action);}
