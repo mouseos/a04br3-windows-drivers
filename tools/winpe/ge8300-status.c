@@ -12,8 +12,14 @@ void mainCRTStartup(void)
         Sleep(1000);
     }
     if(h==INVALID_HANDLE_VALUE) { say("GE8300_OPEN_ERROR="); hex(GetLastError()); say("\r\n"); ExitProcess(1); }
-    if(!DeviceIoControl(h,A04_GE8300_IOCTL_QUERY,NULL,0,&s,sizeof(s),&got,NULL) || got!=sizeof(s) || s.version!=5) {
-        say("GE8300_IOCTL_ERROR="); hex(GetLastError()); say("\r\n"); CloseHandle(h); ExitProcess(2);
+    for(i=0;i<16;++i) {
+        if(!DeviceIoControl(h,A04_GE8300_IOCTL_QUERY,NULL,0,&s,sizeof(s),&got,NULL) || got!=sizeof(s) || s.version!=5) {
+            say("GE8300_IOCTL_ERROR="); hex(GetLastError()); say("\r\n"); CloseHandle(h); ExitProcess(2);
+        }
+#ifdef A04_GE8300_COPY_STATUS
+        if(!s.copy_completed && !s.copy_failed && !s.queue_faulted && i<15) { Sleep(1000); continue; }
+#endif
+        break;
     }
     CloseHandle(h); say("GE8300_ATTEMPT="); hex(s.attempted); say(" BOOT="); hex(s.boot_status);
     say(" HEALTH="); hex(s.health_status); say(" SHUTDOWN="); hex(s.shutdown_status);
