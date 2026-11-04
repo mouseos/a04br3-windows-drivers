@@ -2,6 +2,12 @@
 #if defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
 #include "common_dma.h"
 #include "dma_adapter.h"
+#if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
+#if !defined(A04_AUDIO_QUERY_SHARED) || !A04_AUDIO_QUERY_SHARED
+#error A04_AUDIO_MAP_AFE requires the shared parent query
+#endif
+#include "afe_mapping.h"
+#endif
 #if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
 #include "audio_parent_query.h"
 #endif
@@ -16,6 +22,9 @@ struct Mt8167PnpBackend {
     Mt8167CommonDma buffer;
     Mt8167PnpInterrupt interrupt;
     struct mt8167_audio_shared_client shared;
+#if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
+    Mt8167AfeMapping afe;
+#endif
 #if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
     struct Mt8167AudioParentClient parentClient;
 #endif
@@ -30,6 +39,9 @@ static void OwnerDereference(void *ctx)
         /* Never release DMA adapter/PDO when buffer lifetime is uncertain. */
         return;
     }
+#if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
+    Mt8167UnmapAssignedAfe(&o->afe);
+#endif
     if (o->shared.referenced && mt8167_audio_shared_detach(&o->shared)) return;
 #if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
     if (o->parentClient.bound && Mt8167AudioParentClose(&o->parentClient)) return;
@@ -106,6 +118,14 @@ NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt816
         }
     }
 #endif
+#if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
+    status=Mt8167MapAssignedAfe(resources,&o->afe);
+    if (!NT_SUCCESS(status)) {
+        (void)mt8167_audio_shared_detach(&o->shared);
+        (void)Mt8167AudioParentClose(&o->parentClient);
+        o->adapter->DmaOperations->PutDmaAdapter(o->adapter);ExFreePoolWithTag(o,OWNER_TAG);return status;
+    }
+#endif
     ObReferenceObject(pdo);o->pdo=pdo;o->refs=1;o->online=TRUE;
     o->interrupt.vector=irq->u.Interrupt.Vector;
     o->interrupt.level=(KIRQL)irq->u.Interrupt.Level;
@@ -136,6 +156,14 @@ NTSTATUS Mt8167PnpBackendAttachShared(Mt8167PnpBackend *o,const struct mt8167_au
     return result;
 }
 const Mt8167StreamBackend *Mt8167PnpBackendInterface(Mt8167PnpBackend *o) { return o?&o->iface:NULL; }
-void Mt8167PnpBackendRevoke(Mt8167PnpBackend *o) { if (!o)return;ExAcquireFastMutex(&o->mutex);o->online=FALSE;ExReleaseFastMutex(&o->mutex); }
+void Mt8167PnpBackendRevoke(Mt8167PnpBackend *o) {
+    if (!o)return;
+    ExAcquireFastMutex(&o->mutex);o->online=FALSE;
+#if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
+    /* No IRQ, DMA, register access, or asynchronous mapping user exists. */
+    Mt8167UnmapAssignedAfe(&o->afe);
+#endif
+    ExReleaseFastMutex(&o->mutex);
+}
 void Mt8167PnpBackendRelease(Mt8167PnpBackend *o) { if(o)OwnerDereference(o); }
 #endif

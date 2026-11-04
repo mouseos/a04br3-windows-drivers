@@ -22,13 +22,18 @@ static void shared_deref(void *){shared_refs--;}
 static int shared_acquire(void *,uint32_t){return -1;}
 static int shared_release(void *){return 0;}
 static int freed,puts; static unsigned char data[8192];
+#if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
+static int maps,unmaps,mapfail;static unsigned char mmio[4096];
+PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,MEMORY_CACHING_TYPE cache) { assert(a.QuadPart==0x11140000 && n==4096 && cache==MmNonCached);maps++;return mapfail?nullptr:mmio; }
+void MmUnmapIoSpace(PVOID p,ULONG n) { assert(p==mmio && n==4096);unmaps++; }
+#endif
 static void put(PDMA_ADAPTER){puts++;}
 static PVOID alloc(PDMA_ADAPTER,ULONG n,PHYSICAL_ADDRESS *l,BOOLEAN){assert(n==8192);l->QuadPart=0x100000;return data;}
 static void freebuf(PDMA_ADAPTER,ULONG,PHYSICAL_ADDRESS,PVOID,BOOLEAN){freed++;}
-struct Resources : IResourceList { _CM_PARTIAL_RESOURCE_DESCRIPTOR irq{};
- Resources(){irq.ShareDisposition=CmResourceShareDeviceExclusive;irq.u.Interrupt.Vector=152;irq.u.Interrupt.Level=5;irq.u.Interrupt.Affinity=1;}
- ULONG NumberOfEntriesOfType(int) override{return 1;}
- PCM_PARTIAL_RESOURCE_DESCRIPTOR FindTranslatedEntry(int,ULONG) override{return &irq;}
+struct Resources : IResourceList { _CM_PARTIAL_RESOURCE_DESCRIPTOR irq{},mem[2]{};
+ Resources(){irq.ShareDisposition=CmResourceShareDeviceExclusive;irq.u.Interrupt.Vector=152;irq.u.Interrupt.Level=5;irq.u.Interrupt.Affinity=1;mem[0].ShareDisposition=mem[1].ShareDisposition=CmResourceShareDeviceExclusive;mem[0].u.Memory.Start.QuadPart=0x11140000;mem[0].u.Memory.Length=0x1000;mem[1].u.Memory.Start.QuadPart=0x11141000;mem[1].u.Memory.Length=0x9000;}
+ ULONG NumberOfEntriesOfType(int type) override{return type==CmResourceTypeMemory?2:1;}
+ PCM_PARTIAL_RESOURCE_DESCRIPTOR FindTranslatedEntry(int type,ULONG index) override{return type==CmResourceTypeMemory?(index<2?&mem[index]:nullptr):&irq;}
 };
 int main(){
  _DMA_OPERATIONS ops{put,alloc,freebuf};_DMA_ADAPTER adapter{&ops};test_dma_adapter=&adapter;
@@ -46,6 +51,13 @@ int main(){
  query_failure=0;malformed=1;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner && puts==2 && !parent_refs);
  malformed=0;puts=0;
 #endif
+#if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
+ resources.mem[0].ShareDisposition=0;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner && !maps && !parent_refs);
+ resources.mem[0].ShareDisposition=CmResourceShareDeviceExclusive;
+ resources.mem[1].u.Memory.Length=0x8000;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner && !maps && !parent_refs);
+ resources.mem[1].u.Memory.Length=0x9000;mapfail=1;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_INSUFFICIENT_RESOURCES && !owner && maps==1 && !unmaps && !parent_refs);mapfail=0;puts=0;
+ _CM_PARTIAL_RESOURCE_DESCRIPTOR swap=resources.mem[0];resources.mem[0]=resources.mem[1];resources.mem[1]=swap;
+#endif
  assert(!Mt8167PnpBackendCreate(&adapter,&resources,&owner) && owner && test_pdo_refs==1);
  Mt8167PnpInterrupt irq{};assert(!Mt8167PnpBackendInterrupt(owner,&irq) && irq.vector==152 && irq.level==5 && irq.affinity==1);
  mt8167_audio_shared shared{sizeof(shared),1,&adapter,shared_ref,shared_deref,shared_acquire,shared_release};
@@ -61,11 +73,17 @@ int main(){
  assert(!api->allocate(api->context,8192,&mdl,&n,&offset,&cache) && mdl && n==8192 && !offset);
  assert(api->start(api->context)==STATUS_DEVICE_NOT_READY);
  Mt8167PnpBackendRevoke(owner);assert(Mt8167PnpBackendAttachShared(owner,&shared)==STATUS_DEVICE_NOT_READY);assert(Mt8167PnpBackendInterrupt(owner,&irq)==STATUS_DEVICE_NOT_READY);Mt8167PnpBackendRelease(owner);
+#if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
+ assert(maps==2 && unmaps==1);
+#endif
  PMDL second=nullptr;assert(api->allocate(api->context,8192,&second,&n,&offset,&cache)==STATUS_DEVICE_NOT_READY && !second);
  assert(!freed && !puts && test_pdo_refs==1);
  api->freeBuffer(api->context,mdl,8192);assert(freed==1 && test_mdl_frees==1);
  api->dereference(api->context);assert(puts==1 && test_pdo_refs==0);
 #if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
  assert(!parent_refs);
+#endif
+#if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
+ assert(unmaps==1);
 #endif
 }
