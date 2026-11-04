@@ -4,6 +4,10 @@ X:\a04br3\disable-quickedit.exe
 if errorlevel 1 goto consolefail
 wpeinit
 set GE8300_PACKAGE=X:\a04br3\ge8300
+rem ESPをWindowsから参照する前に、既存WinPEのMSDCドライバを開始する。
+if not exist X:\a04br3\a04-msdc-probe.inf goto load_driver
+drvload X:\a04br3\a04-msdc-probe.inf
+if errorlevel 1 goto load_driver
 rem 試験用ESPにパッケージがある場合は小さなドライバ更新だけで再試験する。
 mountvol V: /S
 if not errorlevel 1 goto check_external
