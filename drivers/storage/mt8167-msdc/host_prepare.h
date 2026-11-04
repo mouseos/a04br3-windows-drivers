@@ -14,6 +14,8 @@ struct a04_host_prepare_ops {
     void *context;
     int (*owned_and_quiescent)(void *,uint32_t);
     int (*gate_clock)(void *,uint32_t,int);
+    /* Verify current selected parent and a conservative frequency bound. */
+    int (*verify_source)(void *,uint32_t,uint32_t);
     uint64_t (*now)(void *);
     uint64_t timeout_ticks;
     uint32_t source_hz_max;

@@ -37,7 +37,7 @@ enum a04_host_prepare_result a04_host_prepare(struct a04_host_prepare_state *s,
 {
     const struct a04_msdc_io *io;uint32_t div,v;enum a04_host_prepare_result r;
     if(!s||!o||!o->io||!o->io->read32||!o->io->write32||!o->owned_and_quiescent||
-       !o->gate_clock||!o->now||!o->timeout_ticks||!o->source_hz_max||!g||!limit)
+       !o->gate_clock||!o->verify_source||!o->now||!o->timeout_ticks||!o->source_hz_max||!g||!limit)
         return A04_HOST_INVALID;
     if(s->poisoned)return A04_HOST_POISONED;
     /* ceil(source/(4*260k)); div=0 has different hardware semantics. */
@@ -45,6 +45,8 @@ enum a04_host_prepare_result a04_host_prepare(struct a04_host_prepare_state *s,
     if(o->source_hz_max%(4u*TARGET_HZ))++div;
     if(!div||div>0xfffu)return A04_HOST_INVALID;
     io=o->io;
+    if(!owner(o,g))return A04_HOST_UNOWNED;
+    if(o->verify_source(o->context,g,o->source_hz_max)!=1)return A04_HOST_CLOCK;
     if(!owner(o,g))return A04_HOST_UNOWNED;
     if(io->read32(io->context,DMA_CFG)&DMA_ACTIVE)return A04_HOST_DMA_ACTIVE;
     if(!owner(o,g))return A04_HOST_UNOWNED;
@@ -63,6 +65,7 @@ enum a04_host_prepare_result a04_host_prepare(struct a04_host_prepare_state *s,
     io->write32(io->context,CFG,v);
     if(!owner(o,g)||o->gate_clock(o->context,g,0)!=1)return fail(s,A04_HOST_CLOCK);
     r=wait_bits(o,g,CFG,STABLE,1,limit);if(r!=A04_HOST_OK)return fail(s,r);
+    if(!owner(o,g)||o->verify_source(o->context,g,o->source_hz_max)!=1)return fail(s,A04_HOST_CLOCK);
     if(!owner(o,g))return fail(s,A04_HOST_UNOWNED);
     v=io->read32(io->context,SDC_CFG);io->write32(io->context,SDC_CFG,v&~WIDTH_MASK);
     if(!owner(o,g))return fail(s,A04_HOST_UNOWNED);

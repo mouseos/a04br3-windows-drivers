@@ -56,6 +56,18 @@ enum a04_board_result a04_board_acquire_clocks(struct a04_board_owner *s,const s
     enum a04_board_result r=a04_board_begin(s,o,generation);
     return r==A04_BOARD_OK ? a04_board_finish_clocks(s,o,generation) : r;
 }
+enum a04_board_result a04_board_verify_emmc_mux(struct a04_board_owner *s,
+    const struct a04_board_ops *o,uint32_t generation)
+{
+    uint32_t v;
+    if(!s || !valid(o) || !generation)return A04_BOARD_INVALID;
+    if(!s->active || s->poisoned || !s->prepared || s->generation!=generation)return A04_BOARD_BUSY;
+    if(o->owned(o->context,generation)!=1)return fail(s,A04_BOARD_OWNER_LOST);
+    /* Board UEFI selects 0x2 in CLK_CFG at TOPCKGEN + 0x0. */
+    if(o->read_clock(o->context,0,&v)!=0 || (v&(7u<<11))!=(2u<<11))return fail(s,A04_BOARD_CLOCK);
+    if(o->owned(o->context,generation)!=1)return fail(s,A04_BOARD_OWNER_LOST);
+    return A04_BOARD_OK;
+}
 enum a04_board_result a04_board_release(struct a04_board_owner *s,const struct a04_board_ops *o)
 {
     if(!s || !valid(o)) return A04_BOARD_INVALID;

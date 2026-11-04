@@ -30,6 +30,11 @@ enum a04_board_result a04_board_finish_clocks(struct a04_board_owner *,const str
 /* Success retains the parent lease. It is not a power or card-ready proof. */
 enum a04_board_result a04_board_acquire_clocks(struct a04_board_owner *,
     const struct a04_board_ops *,uint32_t generation);
+/* Observe the board firmware's 188 MHz selector under the same retained
+ * lease. This checks the mux bits only; it does not prove the PLL frequency,
+ * rate bound, power or stability. Failure poisons and retains the lease. */
+enum a04_board_result a04_board_verify_emmc_mux(struct a04_board_owner *,
+    const struct a04_board_ops *,uint32_t generation);
 /* Refuse to release while I/O, DMA or MMIO may still be active. No clock or
  * regulator is disabled here. Failed preparation may have modified clocks;
  * it stays poisoned and the lease is kept for an external recovery owner.

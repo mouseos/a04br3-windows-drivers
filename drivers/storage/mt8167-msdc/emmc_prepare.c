@@ -26,7 +26,7 @@ enum a04_emmc_prepare_result a04_emmc_prepare(struct a04_emmc_prepare_state *s,
        overlap(out,sizeof(*out),o->pins,sizeof(*o->pins)) || overlap(out,sizeof(*out),o->cold,sizeof(*o->cold)) ||
        overlap(out,sizeof(*out),o->host,sizeof(*o->host))) return A04_PREPARE_INVALID;
     if(o->host_prepare && (o->host_prepare->io!=o->host || o->host_prepare->context!=o->board->context ||
-       !o->host_prepare->owned_and_quiescent || !o->host_prepare->gate_clock || !o->host_prepare->now ||
+       !o->host_prepare->owned_and_quiescent || !o->host_prepare->gate_clock || !o->host_prepare->verify_source || !o->host_prepare->now ||
        !o->host_prepare->timeout_ticks || !o->host_prepare->source_hz_max ||
        o->host_prepare->source_hz_max > 4258800000u ||
        overlap(scratch,512u,o->host_prepare,sizeof(*o->host_prepare)) ||
@@ -43,6 +43,8 @@ enum a04_emmc_prepare_result a04_emmc_prepare(struct a04_emmc_prepare_state *s,
     if(a04_board_finish_clocks(&s->board,o->board,gen)!=A04_BOARD_OK)
         return poison(s,A04_PREPARE_CLOCK);
     if(o->board->owned(ctx,gen)!=1)return poison(s,A04_PREPARE_HOST);
+    if(o->host_prepare && a04_board_verify_emmc_mux(&s->board,o->board,gen)!=A04_BOARD_OK)
+        return poison(s,A04_PREPARE_CLOCK);
     if(o->host_prepare ? a04_host_prepare(&s->host,o->host_prepare,gen,limit)!=A04_HOST_OK :
        o->reset_and_prepare_host(ctx,gen)!=1)return poison(s,A04_PREPARE_HOST);
     if(o->board->owned(ctx,gen)!=1)return poison(s,A04_PREPARE_HOST);
