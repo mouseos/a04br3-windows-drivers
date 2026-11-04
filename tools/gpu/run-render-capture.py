@@ -19,6 +19,7 @@ def main():
     p.add_argument('--diagnostic',type=pathlib.Path)
     p.add_argument('--dump-control-stream',action='store_true')
     p.add_argument('--pco-fill',choices=('00','ff'))
+    p.add_argument('--pco-ir',action='store_true',help='record private compiler IR in probe.log')
     a=p.parse_args(); src=a.probe_source.resolve(); mesa=a.mesa_source.resolve(); build=a.mesa_build.resolve(); shim=a.shim.resolve(); out=a.output.resolve()
     if git(src,'rev-parse','HEAD') != PROBE_PIN or git(src,'status','--porcelain','--untracked-files=all'):
         raise SystemExit('probe source must be clean pinned commit')
@@ -43,7 +44,16 @@ def main():
     binary=out/'probe'
     subprocess.run(['cc','-std=gnu11','-Wall','-Wextra','-Werror','-I'+str(mesa/'include'),str(HERE/'vulkan-capture-probe.c'),str(probe_src),'-ldl','-o',str(binary)],check=True)
     env=os.environ.copy()
+    env.pop('PCO_DEBUG_PRINT',None)
+    if a.pco_ir:
+        if not diagnostic or not diagnostic.get('private_compiler_candidates') or not a.pco_fill:
+            raise SystemExit('PCO IR requires the private compiler diagnostic')
+        env['PCO_DEBUG_PRINT']='vs,fs,nir,passes'
     env.pop('A04_PCO_FILL',None)
+    env.pop('A04_PCO_CANDIDATE_DIR',None)
+    if diagnostic and diagnostic.get('private_compiler_candidates'):
+        (out/'private-compiler-candidates').mkdir(mode=0o700)
+        env['A04_PCO_CANDIDATE_DIR']=str(out/'private-compiler-candidates')
     if a.pco_fill:
         if not diagnostic or not diagnostic.get('usc_compiler_metadata_only'):
             raise SystemExit('PCO fill requires compiler diagnostic')
@@ -72,6 +82,9 @@ def main():
               'events_sha256':sha(event),'probe_log_sha256':sha(out/'probe.log'), 'control_stream_dump':a.dump_control_stream, 'probe_exit_code':result.returncode, 'shim_bvnc':'22.67.54.30',
               'note':'The shim does not execute GPU work; probe success is not expected.'}
     if a.pco_fill: manifest['pco_fill']=a.pco_fill
+    if a.pco_ir: manifest['private_pco_ir']=True
+    if diagnostic and diagnostic.get('private_compiler_candidates'):
+        manifest['private_compiler_sha256']={p.name:sha(p) for p in sorted((out/'private-compiler-candidates').glob('*.bin'))}
     if diagnostic and diagnostic.get('upload_metadata_only'):
         manifest['uploads_sha256']=sha(out/'uploads.jsonl')
     if diagnostic and diagnostic.get('pds_code_hash_metadata_only'):

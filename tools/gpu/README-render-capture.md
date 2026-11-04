@@ -209,3 +209,7 @@ fragment PDS、persistent PDS、shared PDSの各配置は、成功した出力�
 固定probeのvertex／descriptor PDS命令は、Mesa `pvr_pipeline_pds.c` と `pvr_rogue_pds_encode.h` の式から生成する。vertexは頂点IDのDOUTW、DOUTU、HALTの12バイト、descriptorはspill／scratch用DOUTD２命令の８バイトで、両16バイト配置の余りはゼロ。`a04_windows_render_stage_vertex_pds_code` は公開前の所有済み読取り専用DMAへ配置し、既存の予約範囲との重複とゼロ初期化を検査する。
 
 新しいupload診断はPDSコードについてもGPUアドレス・サイズ・FNVだけを非公開captureに記録する。`check-vertex-pds-code.py PRIVATE_CAPTURE` はVDMの２参照とこれらの生成命令を照合し、アドレスや命令バイトを出力しない。独立した２回のshim captureの各２描画で両命令列のFNVが一致した。FNVは衝突耐性を持たず、これはUSCやVDM／PPP、実機の動作、全メモリ参照の証明ではない。GPU実行は引き続き禁止。
+
+固定三角形shaderのコンパイラ出力候補は、Mesa診断ライブラリを `build-mesa-usc-diagnostic.py` に `--private-compiler-candidates` を付けて構築し、通常のshim captureで取得できる。これはPCOコンパイラの出力バッファのみを非公開の新規ディレクトリへ書く経路で、生BOをコピーしない。`run-render-capture.py` の `--pco-fill 00`／`ff` の２captureを `check-triangle-usc-candidates.py ZERO ONES` で比較し、各shaderのSHA-256、PCOイベントのFNV、２初期化条件と２描画のバイト一致を検査する。候補はホスト由来即値の混入を完全には排除できないため、非公開で保持しGPUには投入しない。
+
+同診断の `--pco-ir` はNIRを非公開probe.logに記録する。`audit-triangle-nir.py IR_CAPTURE ONES_CAPTURE` は固定probeのsource commit・SHA-256とshader候補の比較に加え、２組の最適化後NIRのintrinsicと定数、scratch格納位置、vertex IDの８倍を使う８バイト読込み、３頂点の非index描画を検査する。固定probeの `vkCmdDraw(...,3,1,0,0)` とVDM挙動を前提とすると読込みは24バイト以内。NIRと実機械語の完全な意味対応、実機のVDM挙動、context switchや他のGPU参照は未証明。`generate-triangle-usc.py --ir IR_CAPTURE --ones ONES_CAPTURE --output NEW_PRIVATE_DIR --experimental-incomplete` は上記検査後のPCO出力をvertex 384バイト・fragment 448バイトへゼロpaddingして非公開出力するが、manifestはGPU実行禁止のままにする。
