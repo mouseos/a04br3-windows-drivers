@@ -2,6 +2,11 @@
 #include "pnp_backend.h"
 int test_mdl_fail=0,test_mdl_frees=0,test_barriers=0,test_flushes=0,test_pdo_refs=0;
 _KINTERRUPT test_interrupt{};PDMA_ADAPTER test_dma_adapter=nullptr;DEVICE_DESCRIPTION test_dma_description{};
+static int shared_refs;
+static int shared_ref(void *){shared_refs++;return 0;}
+static void shared_deref(void *){shared_refs--;}
+static int shared_acquire(void *,uint32_t){return -1;}
+static int shared_release(void *){return 0;}
 static int freed,puts; static unsigned char data[8192];
 static void put(PDMA_ADAPTER){puts++;}
 static PVOID alloc(PDMA_ADAPTER,ULONG n,PHYSICAL_ADDRESS *l,BOOLEAN){assert(n==8192);l->QuadPart=0x100000;return data;}
@@ -24,11 +29,14 @@ int main(){
 #endif
  assert(!Mt8167PnpBackendCreate(&adapter,&resources,&owner) && owner && test_pdo_refs==1);
  Mt8167PnpInterrupt irq{};assert(!Mt8167PnpBackendInterrupt(owner,&irq) && irq.vector==152 && irq.level==5 && irq.affinity==1);
+ mt8167_audio_shared shared{sizeof(shared),1,&adapter,shared_ref,shared_deref,shared_acquire,shared_release};
+ assert(!Mt8167PnpBackendAttachShared(owner,&shared) && shared_refs==1);
+ assert(Mt8167PnpBackendAttachShared(owner,&shared)==STATUS_DEVICE_NOT_READY);
  const Mt8167StreamBackend *api=Mt8167PnpBackendInterface(owner);api->reference(api->context);
  PMDL mdl=nullptr;ULONG n=0,offset=9;MEMORY_CACHING_TYPE cache;
  assert(!api->allocate(api->context,8192,&mdl,&n,&offset,&cache) && mdl && n==8192 && !offset);
  assert(api->start(api->context)==STATUS_DEVICE_NOT_READY);
- Mt8167PnpBackendRevoke(owner);assert(Mt8167PnpBackendInterrupt(owner,&irq)==STATUS_DEVICE_NOT_READY);Mt8167PnpBackendRelease(owner);
+ Mt8167PnpBackendRevoke(owner);assert(Mt8167PnpBackendAttachShared(owner,&shared)==STATUS_DEVICE_NOT_READY);assert(Mt8167PnpBackendInterrupt(owner,&irq)==STATUS_DEVICE_NOT_READY);Mt8167PnpBackendRelease(owner);
  PMDL second=nullptr;assert(api->allocate(api->context,8192,&second,&n,&offset,&cache)==STATUS_DEVICE_NOT_READY && !second);
  assert(!freed && !puts && test_pdo_refs==1);
  api->freeBuffer(api->context,mdl,8192);assert(freed==1 && test_mdl_frees==1);

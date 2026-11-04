@@ -147,3 +147,16 @@ provides no bit definitions proving DMA bus drain. The common offload
 `AUDIO_DRAIN_*` names describe an audio-offload operation and are not evidence
 for the DL1 memory-interface bus transaction completion. Do not turn either
 into a release criterion without a device-specific specification or validation.
+
+`shared_audio.c` defines an internal, versioned client contract for a future
+single parent that owns the audio clocks and PMIC/codec mute together. PnP
+backend can retain that contract and refuses attachment after revocation. The
+existing input-client and offline parent interfaces do not implement this
+contract and are not assumed to be the same interface. There is no query IRP,
+child-PDO binding, provider, PWRAP codec write, or shared clock implementation.
+`shared_transport.cpp` joins that hypothetical lease to the existing DL1/IRQ
+transport but has no caller. It quarantines the shared reference and lease
+before attempting any transport work; no drain proof or release path exists.
+Neither this composition nor a successful callback proves the provider owns
+hardware. No actual IRQ is connected by the present PnP backend; RUN remains
+refused, and this code is not a safe device trial.

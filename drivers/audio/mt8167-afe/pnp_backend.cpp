@@ -12,6 +12,7 @@ struct Mt8167PnpBackend {
     PDMA_ADAPTER adapter;
     Mt8167CommonDma buffer;
     Mt8167PnpInterrupt interrupt;
+    struct mt8167_audio_shared_client shared;
 };
 static void OwnerReference(void *ctx) { Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx); InterlockedIncrement(&o->refs); }
 static void OwnerDereference(void *ctx)
@@ -23,6 +24,7 @@ static void OwnerDereference(void *ctx)
         /* Never release DMA adapter/PDO when buffer lifetime is uncertain. */
         return;
     }
+    if (o->shared.referenced && mt8167_audio_shared_detach(&o->shared)) return;
     o->adapter->DmaOperations->PutDmaAdapter(o->adapter);
     ObDereferenceObject(o->pdo);
     ExFreePoolWithTag(o,OWNER_TAG);
@@ -99,6 +101,15 @@ NTSTATUS Mt8167PnpBackendInterrupt(Mt8167PnpBackend *o,Mt8167PnpInterrupt *inter
     else { *interrupt=o->interrupt;status=STATUS_SUCCESS; }
     ExReleaseFastMutex(&o->mutex);
     return status;
+}
+NTSTATUS Mt8167PnpBackendAttachShared(Mt8167PnpBackend *o,const struct mt8167_audio_shared *shared)
+{
+    NTSTATUS result=STATUS_DEVICE_NOT_READY;
+    if (!o || !shared) return STATUS_INVALID_PARAMETER;
+    ExAcquireFastMutex(&o->mutex);
+    if (o->online && !mt8167_audio_shared_attach(&o->shared,shared)) result=STATUS_SUCCESS;
+    ExReleaseFastMutex(&o->mutex);
+    return result;
 }
 const Mt8167StreamBackend *Mt8167PnpBackendInterface(Mt8167PnpBackend *o) { return o?&o->iface:NULL; }
 void Mt8167PnpBackendRevoke(Mt8167PnpBackend *o) { if (!o)return;ExAcquireFastMutex(&o->mutex);o->online=FALSE;ExReleaseFastMutex(&o->mutex); }

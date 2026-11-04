@@ -9,7 +9,7 @@ test: test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registr
 test: test-mma8652 build/msdc_resume_check_test build/msdc_resume_capture_test
 test: test-mt8167-pnp-backend test-mt8167-audio-adapter-pnp test-mt8167-common-dma test-mt8167-dma-adapter test-mt8167-clock-owner test-mt8167-stream-transport
 test: test-toprgu-handoff build/gpu_render_context_pds_test
-test: test-mt8167-shared-wdf
+test: test-mt8167-shared-wdf test-mt8167-shared-audio test-mt8167-shared-transport
 
 .PHONY: test-toprgu-handoff
 test-toprgu-handoff: build/toprgu_handoff_test
@@ -522,7 +522,7 @@ test-mt8167-pnp-backend: build/mt8167_pnp_backend_test
 	./build/mt8167_pnp_backend_test
 build/mt8167_pnp_backend_test: drivers/audio/mt8167-afe/pnp_backend.cpp drivers/audio/mt8167-afe/pnp_backend.h drivers/audio/mt8167-afe/common_dma.cpp drivers/audio/mt8167-afe/dma_adapter.cpp tests/mt8167_pnp_backend_test.cpp tests/audio_owner_stubs/portcls.h
 	mkdir -p build
-	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_TEST_PNP_BACKEND=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -Itests/audio_owner_stubs -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/pnp_backend.cpp drivers/audio/mt8167-afe/common_dma.cpp drivers/audio/mt8167-afe/dma_adapter.cpp tests/mt8167_pnp_backend_test.cpp -o $@
+	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_TEST_PNP_BACKEND=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -Itests/audio_owner_stubs -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/pnp_backend.cpp drivers/audio/mt8167-afe/common_dma.cpp drivers/audio/mt8167-afe/dma_adapter.cpp drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_pnp_backend_test.cpp -o $@
 
 .PHONY: test-mt8167-audio-adapter-pnp
 test-mt8167-audio-adapter-pnp: build/mt8167_audio_adapter_pnp_test
@@ -541,3 +541,18 @@ build/mt8167_shared_wdf_test: tests/mt8167_shared_wdf_test.c tests/shared_wdf_st
 build/msdc_shared_drain_test: drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/register_owner.h tests/msdc_shared_drain_test.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -pthread -Idrivers/bus/mt8167-shared drivers/bus/mt8167-shared/register_owner.c tests/msdc_shared_drain_test.c -o $@
+
+.PHONY: test-mt8167-shared-audio
+test-mt8167-shared-audio: build/mt8167_shared_audio_test
+	./build/mt8167_shared_audio_test
+build/mt8167_shared_audio_test: drivers/audio/mt8167-afe/shared_audio.c drivers/audio/mt8167-afe/shared_audio.h tests/mt8167_shared_audio_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_shared_audio_test.c -o $@
+
+.PHONY: test-mt8167-shared-transport
+test-mt8167-shared-transport: build/mt8167_shared_transport_test
+	./build/mt8167_shared_transport_test
+build/mt8167_shared_transport_test: drivers/audio/mt8167-afe/shared_transport.cpp drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_shared_transport_test.cpp
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/audio/mt8167-afe -c drivers/audio/mt8167-afe/shared_audio.c -o build/mt8167_shared_audio_host.o
+	$(CXX) -O2 -Wall -Wextra -Werror -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/shared_transport.cpp tests/mt8167_shared_transport_test.cpp build/mt8167_shared_audio_host.o -o $@
