@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "render_stream.h"
+#include "gpu_render_mesa_fixture.h"
 static void put32(uint8_t *data,size_t *offset,uint32_t value)
 { *offset=(*offset+3u)&~(size_t)3u; memcpy(data+*offset,&value,4); *offset+=4; }
 static void put64(uint8_t *data,size_t *offset,uint64_t value)
@@ -38,5 +39,8 @@ int main(void)
     assert(frag.regs.isp_scissor_base==100 && frag.regs.tpu_border_colour_table==0x8877665544332211ULL);
     assert(frag.regs.usc_pixel_output_ctrl==1 && frag.regs.event_pixel_pds_data==8 && frag.zls_stride==9 && frag.sls_stride==10);
     assert(a04_gpu_decode_fragment(data,n-1,0,&frag));
+    assert(!a04_gpu_decode_geometry(mesa_geometry,sizeof(mesa_geometry),A04_RENDER_QUIRK_49927,&geom));
+    assert(!a04_gpu_decode_fragment(mesa_fragment,sizeof(mesa_fragment),A04_RENDER_QUIRK_49927,&frag));
+    assert(geom.regs.vdm_ctrl_stream_base != 0);
     return 0;
 }

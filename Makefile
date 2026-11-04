@@ -56,7 +56,7 @@ build/gpu_render_freelist_test: drivers/gpu/mt8167/render_freelist.c drivers/gpu
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif drivers/gpu/mt8167/render_freelist.c tests/gpu_render_freelist_test.c -o $@
 
-build/gpu_render_stream_test: drivers/gpu/mt8167/render_stream.c drivers/gpu/mt8167/render_stream.h tests/gpu_render_stream_test.c
+build/gpu_render_stream_test: drivers/gpu/mt8167/render_stream.c drivers/gpu/mt8167/render_stream.h tests/gpu_render_stream_test.c tests/gpu_render_mesa_fixture.h
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif drivers/gpu/mt8167/render_stream.c tests/gpu_render_stream_test.c -o $@
 
