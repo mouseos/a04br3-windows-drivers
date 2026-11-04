@@ -35,3 +35,6 @@ if($LASTEXITCODE) { throw 'Native OID dispatcher compile failed' }
 
 & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_oid_async.c" -o "$out\native_oid_async.obj"
 if($LASTEXITCODE) { throw 'Native OID work item compile failed' }
+
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_hif_rx.c" -o "$out\native_hif_rx.obj"
+if($LASTEXITCODE) { throw 'Native HIF RX decoder compile failed' }

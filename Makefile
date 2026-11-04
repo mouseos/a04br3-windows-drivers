@@ -609,6 +609,7 @@ test-mt6630: build/mt6630_identity_test build/mt6630_sdio_args_test build/mt6630
 	./build/mt6630_native_nbl_test
 	./build/mt6630_native_receive_test
 	./build/mt6630_native_oid_async_test
+	./build/mt6630_native_hif_rx_test
 
 test: test-mt6630
 
@@ -719,3 +720,9 @@ build/mt6630_native_oid_async_test: tests/mt6630_native_oid_async_test.c drivers
 	$(CC) $(CFLAGS) -Itests/native_scan_stubs -Idrivers/network/mt6630 tests/mt6630_native_oid_async_test.c drivers/network/mt6630/native_oid_async.c -o $@
 
 test-mt6630: build/mt6630_native_oid_async_test
+
+build/mt6630_native_hif_rx_test: drivers/network/mt6630/native_hif_rx.c drivers/network/mt6630/native_hif_rx.h drivers/network/mt6630/native_receive.h tests/mt6630_native_hif_rx_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Itests/native_scan_stubs -Idrivers/network/mt6630 drivers/network/mt6630/native_hif_rx.c tests/mt6630_native_hif_rx_test.c -o $@
+
+test-mt6630: build/mt6630_native_hif_rx_test

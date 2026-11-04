@@ -142,3 +142,9 @@ MiniportInitializeは従来どおり必ず失敗する。他のOIDは未実装�
 `native_oid_async.c` は高IRQLのOIDをNDIS work itemでPASSIVE_LEVELに送り、
 実行前の取消と終了時の排出を扱う。NDISのMiniportHalt/D0の実接続、
 デバイス全体の排他・rundown、実機での競合検証は未実施。
+
+`native_hif_rx.c` はLinux gen3の受信記述子から、未変換・未暗号化・非QoS・
+非断片の2.4GHzユニキャストFromDS MPDUに限り、実RCPIとchannelを抽出して
+ExtSTA OOB通知へ渡す。PHY/rate indexは実際にadvertiseされた表を呼出側から
+供給し、未知値や未観測値は拒否する。HIFからraw MPDUが実際に届くこと、
+規制channel・rate表、NDIS receive handlerとの接続は未検証・未完成。

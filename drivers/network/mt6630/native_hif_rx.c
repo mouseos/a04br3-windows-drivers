@@ -1,0 +1,39 @@
+/* SPDX-License-Identifier: BSD-2-Clause-Patent
+ * Board Linux gen3/include/nic/nic_rx.h: HW_MAC_RX_DESC_T, groups 4/1/2/3,
+ * RX_STATUS_HEADER_TRAN, RX_VT_RX_MODE/RATE and RX_VT_RCPI. RCPI conversion:
+ * board gen3/include/nic/mac.h RCPI_TO_dBm. */
+#include "native_hif_rx.h"
+static unsigned le16(const uint8_t *p){return (unsigned)p[0]|((unsigned)p[1]<<8);}
+static uint32_t le32(const uint8_t *p){return (uint32_t)p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
+NDIS_STATUS a04_native_hif_rx_decode(const uint8_t *p,ULONG n,unsigned allowed,
+ const uint8_t local[6],const uint8_t ap[6],void *context,a04_native_rate_lookup lookup,struct a04_native_hif_rx *out)
+{
+ struct a04_native_hif_rx temp;unsigned kind,groups,g3,offset,channel,rcpi;uint32_t vector;
+ if(!p||!out||!local||!ap||!lookup||n<16||n>4096||le16(p)!=n)return NDIS_STATUS_INVALID_DATA;
+ {unsigned i,local_any=0,ap_any=0;if((local[0]&1u)||(ap[0]&1u))return NDIS_STATUS_INVALID_DATA;
+  for(i=0;i<6;i++){local_any|=local[i];ap_any|=ap[i];}if(!local_any||!ap_any)return NDIS_STATUS_INVALID_DATA;}
+ kind=le16(p+2);groups=(kind>>9)&15u;
+ if((kind>>13)!=2u || !(groups&4u) || (p[6]&0x80u) || (p[9]&0xf0u) || (le16(p+10)&0x0ffeu))return NDIS_STATUS_NOT_SUPPORTED;
+ channel=p[5];if(!channel||channel>14||!(allowed&(1u<<channel)))return NDIS_STATUS_NOT_SUPPORTED;
+ g3=16u+((groups&8u)?16u:0u)+((groups&1u)?16u:0u)+((groups&2u)?8u:0u);
+ if(g3>n || 24u>n-g3)return NDIS_STATUS_INVALID_LENGTH;
+ offset=g3+24u+((p[6]&0x40u)?2u:0u);
+ if(offset>n || n-offset<24 || (p[6]&63u)!=24u)return NDIS_STATUS_INVALID_LENGTH;
+ if(p[offset]!=0x08u || p[offset+1]!=0x02u || (p[offset+22]&15u) || (p[offset+4]&1u))return NDIS_STATUS_NOT_SUPPORTED;
+ {unsigned i;for(i=0;i<6;i++)if(p[offset+4+i]!=local[i] || p[offset+10+i]!=ap[i])return NDIS_STATUS_NOT_SUPPORTED;}
+ vector=le32(p+g3);rcpi=p[g3+9];if(rcpi>220u)return NDIS_STATUS_NOT_SUPPORTED;
+ NdisZeroMemory(&temp,sizeof(temp));
+ if(lookup(context,(vector>>12)&7u,vector&0x7fu,&temp.info.phy,&temp.info.rate))return NDIS_STATUS_NOT_SUPPORTED;
+ temp.mpdu=p+offset;temp.length=n-offset;temp.info.observed=A04_RX_OBS_REQUIRED;
+ temp.info.frequency=channel==14?2484u:2407u+5u*channel;temp.info.fragments=1;temp.info.rssi=(LONG)(rcpi>>1)-110;
+ *out=temp;return NDIS_STATUS_SUCCESS;
+}
+
+NDIS_STATUS a04_native_hif_rx_indicate(NDIS_HANDLE adapter,PNET_BUFFER_LIST nbl,const uint8_t *p,ULONG n,unsigned allowed,
+ const uint8_t local[6],const uint8_t ap[6],void *context,a04_native_rate_lookup lookup)
+{
+ struct a04_native_hif_rx rx;NDIS_STATUS status;
+ status=a04_native_hif_rx_decode(p,n,allowed,local,ap,context,lookup,&rx);
+ if(status!=NDIS_STATUS_SUCCESS)return status;
+ return a04_native_indicate_mpdu(adapter,nbl,rx.mpdu,rx.length,&rx.info);
+}
