@@ -85,6 +85,10 @@ KeSynchronizeExecution and accumulates serviced IRQ notifications across DPC
 coalescing. This count is only ISR calls serviced by software, not proof of
 elapsed hardware periods. Fault notification is sticky. Both transport and
 IRQ paths are experimental, unconnected and untested in Windows on this SoC.
+The IRQ helper also provides a nonblocking synchronized DL1 CUR read that
+rejects non-running, faulted, out-of-range and unaligned positions without
+changing its output. Its caller must keep the mapping and interrupt alive and
+exclude disconnect; it is not yet wired to WaveRT GetPosition.
 
 The miniport now accepts an optional internal `Mt8167StreamBackend` supplied by
 an owning PnP provider. It forwards allocation, format-independent start/stop,

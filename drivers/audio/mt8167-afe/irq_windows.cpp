@@ -71,6 +71,25 @@ static BOOLEAN Mt8167StopLocked(PVOID context)
     call->result = mt8167_dl1_stop(call->irq->engine);
     return TRUE;
 }
+struct Mt8167PositionCall {
+    Mt8167Irq *irq;
+    const struct mt8167_dl1_plan *plan;
+    uint32_t offset;
+    int result;
+};
+static BOOLEAN Mt8167PositionLocked(PVOID context)
+{
+    Mt8167PositionCall *call=static_cast<Mt8167PositionCall *>(context);
+    struct mt8167_dl1_engine *engine=call->irq->engine;
+    uint32_t current;
+    if (!InterlockedCompareExchange(&call->irq->active,0,0) ||
+        InterlockedCompareExchange(&call->irq->fault,0,0) ||
+        !engine || engine->state!=MT8167_DL1_RUNNING || !engine->io.read32)
+        return FALSE;
+    if (engine->io.read32(engine->io.context,0x44u,&current) ||
+        !mt8167_dl1_position(call->plan,current,&call->offset)) return FALSE;
+    call->result=0;return TRUE;
+}
 int Mt8167SynchronizedStart(Mt8167Irq *irq, const struct mt8167_dl1_plan *plan)
 {
     if (!irq || !irq->interrupt || !irq->engine || !plan) return -1;
@@ -84,6 +103,14 @@ int Mt8167SynchronizedStop(Mt8167Irq *irq)
     Mt8167SyncCall call = {irq, NULL, -1};
     if (!KeSynchronizeExecution(irq->interrupt, Mt8167StopLocked, &call)) return -1;
     return call.result;
+}
+int Mt8167SynchronizedPosition(Mt8167Irq *irq,const struct mt8167_dl1_plan *plan,uint32_t *offset)
+{
+    if (!irq || !irq->interrupt || !irq->engine || !plan || !offset) return -1;
+    Mt8167PositionCall call={irq,plan,0,-1};
+    if (!KeSynchronizeExecution(irq->interrupt,Mt8167PositionLocked,&call)) return -1;
+    if (call.result) return -1;
+    *offset=call.offset;return 0;
 }
 void Mt8167DisconnectIrq(Mt8167Irq *irq)
 {

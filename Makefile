@@ -473,9 +473,9 @@ build/mt8167_pwrap_owner_test: drivers/bus/mt8167-shared/pwrap_owner.c drivers/b
 .PHONY: test-mt8167-irq-windows
 test-mt8167-irq-windows: build/mt8167_irq_windows_test
 	./build/mt8167_irq_windows_test
-build/mt8167_irq_windows_test: drivers/audio/mt8167-afe/irq_windows.cpp drivers/audio/mt8167-afe/irq_windows.h tests/mt8167_irq_windows_test.cpp tests/audio_windows_stubs/ntddk.h
+build/mt8167_irq_windows_test: drivers/audio/mt8167-afe/irq_windows.cpp drivers/audio/mt8167-afe/irq_windows.h drivers/audio/mt8167-afe/dl1.c tests/mt8167_irq_windows_test.cpp tests/audio_windows_stubs/ntddk.h
 	mkdir -p build
-	$(CXX) -O2 -Wall -Wextra -Werror -std=c++11 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/irq_windows.cpp tests/mt8167_irq_windows_test.cpp -o $@
+	$(CXX) -O2 -Wall -Wextra -Werror -std=c++11 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/irq_windows.cpp drivers/audio/mt8167-afe/dl1.c tests/mt8167_irq_windows_test.cpp -o $@
 
 .PHONY: test-mt8167-wavert-registration
 test-mt8167-wavert-registration: build/mt8167_wavert_registration_test
