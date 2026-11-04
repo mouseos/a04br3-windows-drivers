@@ -6,10 +6,20 @@
 #include "thermal.h"
 #include "manager.h"
 #include "ownership.h"
-#include "../../system/mt8167-toprgu/thermal_stop.h"
 #ifndef A04_THERMAL_LEASE_DIAG
 #define A04_THERMAL_LEASE_DIAG 0
 #endif
+#ifndef A04_THERMAL_MONITOR_TEST
+#define A04_THERMAL_MONITOR_TEST 0
+#endif
+#if A04_THERMAL_MONITOR_TEST && !A04_THERMAL_LEASE_DIAG
+#error monitor test requires touch lease diagnostic
+#endif
+#if A04_THERMAL_MONITOR_TEST
+#include "monitor.h"
+EVT_WDF_TIMER ThermalMonitorTimer;
+#endif
+#include "../../system/mt8167-toprgu/thermal_stop.h"
 #if A04_THERMAL_LEASE_DIAG
 #include "../../input/bu21025/thermal_broker.h"
 #endif
@@ -19,10 +29,18 @@ typedef struct { struct a04_thermal_cal cal; struct a04_thermal_owner ownership;
 #if A04_THERMAL_LEASE_DIAG
  WDFIOTARGET touch; BOOLEAN lease_owned;
 #endif
+#if A04_THERMAL_MONITOR_TEST
+ WDFDEVICE device; WDFTIMER timer; volatile UCHAR *mapped[3];
+ struct a04_monitor monitor; struct a04_thermal_hw hw; BOOLEAN hw_ready;
+ BOOLEAN reset_asserted;
+#endif
 } THERMAL_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(THERMAL_CONTEXT,ThermalContext)
 EVT_WDF_DRIVER_DEVICE_ADD ThermalAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE ThermalPrepare;
+#if A04_THERMAL_MONITOR_TEST
+EVT_WDF_DEVICE_RELEASE_HARDWARE ThermalRelease;
+#endif
 EVT_WDF_DEVICE_D0_ENTRY ThermalD0;
 EVT_WDF_DEVICE_D0_EXIT ThermalExit;
 static const GUID calGuid={0x92d56a32,0xc847,0x4fdc,{0x83,0x62,0xf2,0x77,0xc7,0x10,0xa0,0x43}};
@@ -41,7 +59,14 @@ NTSTATUS ThermalPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
   mask|=1u<<j;
  }
  if(mask!=0x0fu) return STATUS_DEVICE_CONFIGURATION_ERROR;
- c->pnp_resources=TRUE; return STATUS_SUCCESS;
+ c->pnp_resources=TRUE;
+#if A04_THERMAL_MONITOR_TEST
+ for(i=0;i<3;i++) {
+  PHYSICAL_ADDRESS a; a.QuadPart=addresses[i]; c->mapped[i]=MmMapIoSpace(a,0x1000,MmNonCached);
+  if(!c->mapped[i]) { while(i) { --i;MmUnmapIoSpace((PVOID)c->mapped[i],0x1000);c->mapped[i]=NULL; } c->pnp_resources=FALSE; return STATUS_INSUFFICIENT_RESOURCES; }
+ }
+#endif
+ return STATUS_SUCCESS;
 }
 static NTSTATUS WatchdogRequest(THERMAL_CONTEXT *c,ULONG code)
 {
@@ -70,6 +95,44 @@ int A04ThermalApply(void *context,enum a04_thermal_action action)
  if(action!=A04_TEMP_LIMIT && action!=A04_TEMP_HALT) return -1;
  return NT_SUCCESS(A04ThermalRequestStop((WDFDEVICE)context)) ? 0 : -1;
 }
+#if A04_THERMAL_MONITOR_TEST
+static int HwQualified(void *p) { THERMAL_CONTEXT *c=p; return c->ownership.active && c->lease_owned && c->mapped[0] && c->mapped[1] && c->mapped[2]; }
+static int HwReady(void *p) { return ((THERMAL_CONTEXT *)p)->hw_ready; }
+static int HwClocks(void *p) { return NT_SUCCESS(TouchRequest(p,A04_TOUCH_THERMAL_CLOCK))?0:-1; }
+static volatile ULONG *HwAddress(THERMAL_CONTEXT *c,uint32_t addr) {
+ static const uint32_t bases[]={0x1100d000u,0x11003000u,0x10018000u}; unsigned i;
+ for(i=0;i<3;i++) if(addr>=bases[i] && addr-bases[i]<=0xffcu && !(addr&3u)) return (volatile ULONG *)(c->mapped[i]+addr-bases[i]);
+ return NULL;
+}
+static int HwRead(void *p,uint32_t addr,uint32_t *value) { THERMAL_CONTEXT *c=p;volatile ULONG *r;
+ if(!HwQualified(c) || !value || !(r=HwAddress(c,addr))) return -1;*value=READ_REGISTER_ULONG(r);return 0; }
+static int HwWrite(void *p,uint32_t addr,uint32_t value) { THERMAL_CONTEXT *c=p;volatile ULONG *r;
+ if(!HwQualified(c)) return -1;
+ if(addr==0x10001120u && value==1) { if(!NT_SUCCESS(TouchRequest(c,A04_TOUCH_THERMAL_RESET)))return -1;c->reset_asserted=TRUE;return 0; }
+ if(addr==0x10001124u && value==1 && c->reset_asserted) { c->reset_asserted=FALSE;return 0; }
+ r=HwAddress(c,addr);if(!r)return -1;WRITE_REGISTER_ULONG(r,value);return 0; }
+static int HwDelay(void *p,unsigned us) { UNREFERENCED_PARAMETER(p);if(us>1000)return -1;KeStallExecutionProcessor(us);return 0; }
+NTSTATUS ThermalRelease(WDFDEVICE dev,WDFCMRESLIST translated) {
+ THERMAL_CONTEXT *c=ThermalContext(dev);unsigned i;UNREFERENCED_PARAMETER(translated);
+ c->pnp_resources=FALSE; a04_owner_revoke(&c->ownership);
+ for(i=0;i<3;i++) if(c->mapped[i]) { MmUnmapIoSpace((PVOID)c->mapped[i],0x1000);c->mapped[i]=NULL; }
+ return STATUS_SUCCESS;
+}
+VOID ThermalMonitorTimer(WDFTIMER timer) {
+ WDFDEVICE dev=(WDFDEVICE)WdfTimerGetParentObject(timer);THERMAL_CONTEXT *c=ThermalContext(dev);
+ struct a04_thermal_sample sample;int result;
+ if(!c->ownership.active)return;
+ if(!NT_SUCCESS(TouchRequest(c,A04_TOUCH_THERMAL_QUERY))) {
+  c->ownership.active=0;
+  if(!NT_SUCCESS(A04ThermalRequestStop(dev))) KeBugCheckEx(0xE2,0x41303454,1,0,0);
+  return;
+ }
+ result=a04_monitor_poll(&c->monitor,KeQueryInterruptTime()/10000u,&sample);
+ if(result==-2) { a04_owner_revoke(&c->ownership);KeBugCheckEx(0xE2,0x41303454,0,0,0);return; }
+ if(result<0) { a04_owner_revoke(&c->ownership);return; }
+ WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(250));
+}
+#endif
 NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
 {
  THERMAL_CONTEXT *c=ThermalContext(dev); BOOT_CAL v; ULONG size=sizeof(v),attributes=0;
@@ -106,6 +169,25 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
  /* Firmware/EL3 handoff has not been proven: the monitor remains blocked.
   * Never infer this flag from ACPI resource allocation or a touch lease. */
  c->ownership.firmware_handoff=0;
+#if A04_THERMAL_MONITOR_TEST
+ /* No verified firmware/EL3 release protocol exists. Buildable, but cannot
+  * touch clocks, AUXADC or controller while this qualification is false. */
+ if(a04_owner_activate(&c->ownership)) {
+   if(c->lease_owned) { (VOID)TouchRequest(c,A04_TOUCH_THERMAL_RELEASE);c->lease_owned=FALSE; }
+   WdfIoTargetClose(c->touch);WdfIoTargetClose(c->watchdog);
+   return STATUS_DEVICE_NOT_READY;
+ }
+ {
+  struct a04_thermal_policy policy={75000,65000,85000,1000,0};
+  c->hw.ctx=c;c->hw.qualified=HwQualified;c->hw.clocks_on=HwClocks;c->hw.initialized=HwReady;
+  c->hw.read32=HwRead;c->hw.write32=HwWrite;c->hw.delay_us=HwDelay;c->hw_ready=FALSE;c->reset_asserted=FALSE;
+  if(a04_monitor_start(&c->monitor,&c->hw,&c->cal,&policy,dev,A04ThermalApply,KeQueryInterruptTime()/10000u,2000)) {
+   a04_owner_revoke(&c->ownership); (VOID)TouchRequest(c,A04_TOUCH_THERMAL_RELEASE);c->lease_owned=FALSE;
+   WdfIoTargetClose(c->touch);WdfIoTargetClose(c->watchdog);return STATUS_DEVICE_HARDWARE_ERROR;
+  }
+  c->hw_ready=TRUE;WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(250));
+ }
+#endif
  c->calibrated=TRUE;
  DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"A04THERM boot calibration accepted; measurement disabled\n");
  return STATUS_SUCCESS;
@@ -113,6 +195,9 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
 NTSTATUS ThermalExit(WDFDEVICE dev,WDF_POWER_DEVICE_STATE next)
 {
  THERMAL_CONTEXT *c=ThermalContext(dev); UNREFERENCED_PARAMETER(next);
+#if A04_THERMAL_MONITOR_TEST
+ WdfTimerStop(c->timer,TRUE); c->hw_ready=FALSE;
+#endif
 #if A04_THERMAL_LEASE_DIAG
  if(c->lease_owned) { (VOID)TouchRequest(c,A04_TOUCH_THERMAL_RELEASE); c->lease_owned=FALSE; }
  WdfIoTargetClose(c->touch);
@@ -123,14 +208,24 @@ NTSTATUS ThermalAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 {
  WDF_PNPPOWER_EVENT_CALLBACKS p; WDF_OBJECT_ATTRIBUTES a;WDFDEVICE device; NTSTATUS status;
  UNREFERENCED_PARAMETER(driver);WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&p);
- p.EvtDevicePrepareHardware=ThermalPrepare;p.EvtDeviceD0Entry=ThermalD0;p.EvtDeviceD0Exit=ThermalExit;
+ p.EvtDevicePrepareHardware=ThermalPrepare;
+#if A04_THERMAL_MONITOR_TEST
+ p.EvtDeviceReleaseHardware=ThermalRelease;
+#endif
+ p.EvtDeviceD0Entry=ThermalD0;p.EvtDeviceD0Exit=ThermalExit;
  WdfDeviceInitSetPnpPowerEventCallbacks(init,&p);WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&a,THERMAL_CONTEXT);
  status=WdfDeviceCreate(&init,&a,&device); if(!NT_SUCCESS(status)) return status;
  WDF_OBJECT_ATTRIBUTES_INIT(&a); a.ParentObject=device;
  status=WdfIoTargetCreate(device,&a,&ThermalContext(device)->watchdog);
  if(!NT_SUCCESS(status)) return status;
 #if A04_THERMAL_LEASE_DIAG
- return WdfIoTargetCreate(device,&a,&ThermalContext(device)->touch);
+ status=WdfIoTargetCreate(device,&a,&ThermalContext(device)->touch); if(!NT_SUCCESS(status))return status;
+#endif
+#if A04_THERMAL_MONITOR_TEST
+ { WDF_TIMER_CONFIG t; THERMAL_CONTEXT *c=ThermalContext(device); c->device=device;
+   WDF_TIMER_CONFIG_INIT(&t,ThermalMonitorTimer);t.AutomaticSerialization=FALSE;
+   WDF_OBJECT_ATTRIBUTES_INIT(&a);a.ParentObject=device;a.ExecutionLevel=WdfExecutionLevelPassive;
+   return WdfTimerCreate(&t,&a,&c->timer); }
 #else
  return STATUS_SUCCESS;
 #endif

@@ -1,12 +1,11 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 #include "completion.h"
-#include <string.h>
 #define T 0x1100d000u
 int a04_completion_start(struct a04_completion *c,uint64_t now,uint64_t timeout)
 {
  uint32_t marker[3]={0xda1,0xda1,0xda1};
  if(!c || !timeout) return -1;
- memset(c,0,sizeof(*c));c->start_ms=now;c->timeout_ms=timeout;c->initialized=1;
+ *c=(struct a04_completion){0};c->start_ms=now;c->timeout_ms=timeout;c->initialized=1;
  (void)a04_freshness_update(&c->freshness,marker,now,timeout);return 0;
 }
 int a04_completion_poll(struct a04_completion *c,const struct a04_thermal_hw *h,uint64_t now,uint64_t max_age,uint32_t out[3])

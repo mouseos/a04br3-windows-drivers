@@ -333,7 +333,9 @@ static NTSTATUS TouchThermalRequest(TOUCH_CONTEXT *c,WDFREQUEST request,ULONG co
     if(code==A04_TOUCH_THERMAL_CLAIM) {
         status=a04_lease_claim(&c->thermal_lease,owner) ? STATUS_DEVICE_BUSY : STATUS_SUCCESS;
     } else if(a04_lease_valid(&c->thermal_lease,owner)) {
-        if(code==A04_TOUCH_THERMAL_CLOCK) {
+        if(code==A04_TOUCH_THERMAL_QUERY) {
+            status=STATUS_SUCCESS;
+        } else if(code==A04_TOUCH_THERMAL_CLOCK) {
             /* CLK_TOP_THEM bit 1 and CLK_TOP_AUX_ADC bit 30: set/clear alias. */
             WRITE_REGISTER_ULONG((volatile ULONG *)(c->mmio[TOP]+0x84),(1u<<1)|(1u<<30));
             state=READ_REGISTER_ULONG((volatile ULONG *)(c->mmio[TOP]+0x24));
@@ -359,7 +361,7 @@ void TouchIoctl(WDFQUEUE queue, WDFREQUEST request, size_t outlen, size_t inlen,
     UNREFERENCED_PARAMETER(inlen);
 #if A04_TOUCH_THERMAL_LEASE
     if(code==A04_TOUCH_THERMAL_CLAIM || code==A04_TOUCH_THERMAL_CLOCK ||
-       code==A04_TOUCH_THERMAL_RESET || code==A04_TOUCH_THERMAL_RELEASE) {
+       code==A04_TOUCH_THERMAL_RESET || code==A04_TOUCH_THERMAL_RELEASE || code==A04_TOUCH_THERMAL_QUERY) {
         WdfRequestComplete(request,TouchThermalRequest(c,request,code)); return;
     }
 #endif
