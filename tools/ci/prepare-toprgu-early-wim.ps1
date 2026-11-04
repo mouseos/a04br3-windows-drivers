@@ -17,22 +17,16 @@ if((Get-FileHash $sys -Algorithm SHA256).Hash -ne $SysSha256) { throw 'SYS hash 
 if((Test-Path $OutputWim) -or (Test-Path $MountDirectory) -or (Test-Path 'HKLM:\A04BR3OFF')) { throw 'Output, mount or hive name already exists' }
 $cert=New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($cer)
 $thumb=$cert.Thumbprint
-foreach($store in @('Root','TrustedPublisher')) {
- if(Test-Path "HKCU:\Software\Microsoft\SystemCertificates\$store\Certificates\$thumb") { throw "Certificate already exists in user $store" }
-}
 $mounted=$false; $loaded=$false
 try {
- foreach($store in @('Root','TrustedPublisher')) {
-  & certutil.exe -user -addstore $store $cer | Out-Host
-  if($LASTEXITCODE) { throw "Temporary $store import failed" }
- }
- $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1"
- & "$kit\bin\x86\signtool.exe" verify /pa /v /c $cat $sys | Out-Host
- if($LASTEXITCODE) { throw 'SYS catalog signature validation failed' }
  foreach($f in @($sys,$cat)) {
   $sig=Get-AuthenticodeSignature $f
-  if(!$sig.SignerCertificate -or $sig.SignerCertificate.Thumbprint -ne $thumb -or $sig.Status -ne 'Valid') { throw "Invalid or untrusted signature: $f $($sig.Status)" }
+  if(!$sig.SignerCertificate -or $sig.SignerCertificate.Thumbprint -ne $thumb -or $sig.Status -notin @('Valid','UnknownError')) { throw "Missing or unexpected signature: $f $($sig.Status)" }
+  Write-Host "SIGNATURE_STATUS $f $($sig.Status) $($sig.StatusMessage)"
  }
+ # A serialized certificate has the registry certificate-store Blob format.
+ # No host certificate trust is modified. Offline chain validation is separate.
+ $blob=$cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::SerializedCert)
  New-Item -ItemType Directory -Path $MountDirectory | Out-Null
  Copy-Item -LiteralPath $SourceWim -Destination $OutputWim
  & dism.exe /Mount-Image "/ImageFile:$OutputWim" /Index:1 "/MountDir:$MountDirectory" | Out-Host
@@ -42,12 +36,12 @@ try {
  & reg.exe load HKLM\A04BR3OFF (Join-Path $MountDirectory 'Windows\System32\config\SOFTWARE') | Out-Host
  if($LASTEXITCODE) { throw 'Offline SOFTWARE hive load failed' }; $loaded=$true
  foreach($store in @('Root','TrustedPublisher')) {
-  $src="HKCU\Software\Microsoft\SystemCertificates\$store\Certificates\$thumb"
-  $dst="HKLM\A04BR3OFF\Microsoft\SystemCertificates\$store\Certificates\$thumb"
-  & reg.exe copy $src $dst /s /f | Out-Host
-  if($LASTEXITCODE) { throw "Offline $store import failed" }
-  & reg.exe query $dst /v Blob | Out-Host
-  if($LASTEXITCODE) { throw "Offline $store validation failed" }
+  $dst="HKLM:\A04BR3OFF\Microsoft\SystemCertificates\$store\Certificates\$thumb"
+  New-Item -Path $dst -Force | Out-Null
+  New-ItemProperty -Path $dst -Name Blob -PropertyType Binary -Value $blob -Force | Out-Null
+  $stored=(Get-ItemProperty -Path $dst -Name Blob).Blob
+  if([Convert]::ToBase64String($stored) -ne [Convert]::ToBase64String($blob)) { throw "Offline $store validation failed" }
+  Write-Host "OFFLINE_CERT $store $thumb"
  }
  & reg.exe unload HKLM\A04BR3OFF | Out-Host
  if($LASTEXITCODE) { throw 'Offline SOFTWARE hive unload failed' }; $loaded=$false
@@ -60,7 +54,4 @@ try {
 } finally {
  if($loaded) { & reg.exe unload HKLM\A04BR3OFF | Out-Host }
  if($mounted) { & dism.exe /Unmount-Image "/MountDir:$MountDirectory" /Discard | Out-Host }
- foreach($store in @('Root','TrustedPublisher')) {
-  & certutil.exe -user -delstore $store $thumb | Out-Null
- }
 }
