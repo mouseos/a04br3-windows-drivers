@@ -351,6 +351,7 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
                 GpuPrint(" TRI=");GpuHex(d->triangle_pixels);
                 GpuPrint(" OTHER=");GpuHex(d->other_pixels);
                 GpuPrint(" ZERO=");GpuHex(d->zero_pixels);
+                GpuPrint(" SENTINEL=");GpuHex(d->sentinel_pixels);
                 GpuPrint(" MISMATCH=");GpuHex(d->spatial_mismatch);
                 GpuPrint(" BOUNDED=");GpuHex(d->memory.bounded_states_checked);
                 GpuPrint(" B0_VALID=");GpuHex(d->memory.bounded_states[0].valid);

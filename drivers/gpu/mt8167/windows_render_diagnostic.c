@@ -54,6 +54,23 @@ static NTSTATUS verify_fixed(struct a04_windows_render_memory *m,const struct a0
 #undef CHECK
     return a04_windows_render_verify_zero_target(m,G+0x41000);
 }
+/* Only the already reserved, uniquely mapped and zero-verified fixed target.
+ * The normal publish path synchronizes the entire allocation before kick. */
+static NTSTATUS initialize_target(struct a04_windows_render_memory *m)
+{
+    static const uint8_t sentinel[4]={0xa5,0x5a,0xc3,0x7e};
+    uint8_t *p;size_t i;unsigned matches=0;
+    NTSTATUS status=a04_windows_render_verify_zero_target(m,G+0x41000);
+    if (!NT_SUCCESS(status)) return status;
+    for(i=0;i<m->map_count;++i)
+        if(m->maps[i].gpu_va==G+0x41000 && m->maps[i].payload_page==65u && m->maps[i].pages==4u &&
+           m->maps[i].mmu_flags==A04_GPU_MMU_SLC_BYPASS) ++matches;
+    if(matches!=1 || m->length<Z+69u*4096u) return STATUS_INVALID_DEVICE_STATE;
+    p=(uint8_t *)m->cpu+Z+65u*4096u;
+    for(i=0;i<16384u;++i) p[i]=sentinel[i&3u];
+    for(i=0;i<16384u;++i) if(p[i]!=sentinel[i&3u]) return STATUS_DATA_ERROR;
+    return STATUS_SUCCESS;
+}
 NTSTATUS a04_windows_render_diagnostic_run(struct a04_windows_render_diagnostic *d,struct a04_gpu_firmware_state *s)
 {
     struct a04_windows_render_memory *m;struct a04_render_context_static_input cs={0};
@@ -99,6 +116,7 @@ NTSTATUS a04_windows_render_diagnostic_run(struct a04_windows_render_diagnostic 
     STEP(25,a04_windows_render_stage_fixed_vdm(m,&vd,G+0x40000));
     STEP(26,a04_windows_render_stage_fixed_scissor(m,G+0x40100));
     ranges(m,r);STEP(27,verify_fixed(m,r,&pp,&vd));
+    STEP(33,initialize_target(m));
     if (a04_render_make_fixed_commands(&ci,r,m->map_count,&geom,&frag)) { status=STATUS_INVALID_DEVICE_STATE;goto fail; }
     STEP(28,a04_windows_render_prepare_partial_pair(m,&geom,&frag,&frag,1));
     STEP(29,a04_windows_render_publish_context(m));
@@ -107,13 +125,14 @@ NTSTATUS a04_windows_render_diagnostic_run(struct a04_windows_render_diagnostic 
     pixels=(const uint8_t *)m->cpu+Z+65u*4096u;
     /* Mesa pvr_memlayout layout=1 is linear, stride=64 pixels. */
     for(y=0;y<64;++y) for(x=0;x<64;++x) {
-        int bg,tri,zero,edge,inside;const uint8_t *p=pixels+4u*(y*64u+x);
+        int bg,tri,zero,sentinel,edge,inside;const uint8_t *p=pixels+4u*(y*64u+x);
         bg=p[0]==0x22 && p[1]==0x44 && p[2]==0x66 && p[3]==0xff;
         tri=p[0]==0xff && p[1]==0 && p[2]==0xff && p[3]==0xff;
         zero=p[0]==0 && p[1]==0 && p[2]==0 && p[3]==0;
+        sentinel=p[0]==0xa5 && p[1]==0x5a && p[2]==0xc3 && p[3]==0x7e;
         if(bg) { ++d->background_pixels;d->background_rows[y][x/32u]|=1u<<(x%32u); }
         else if(tri) { ++d->triangle_pixels;d->triangle_rows[y][x/32u]|=1u<<(x%32u); }
-        else { ++d->other_pixels; if(zero) { ++d->zero_pixels;d->zero_rows[y][x/32u]|=1u<<(x%32u); } }
+        else { ++d->other_pixels; if(sentinel) ++d->sentinel_pixels; if(zero) { ++d->zero_pixels;d->zero_rows[y][x/32u]|=1u<<(x%32u); } }
         edge=x>=8u && x<49u && y>=8u && x+y==63u;
         inside=x>=8u && x<49u && y>=8u && x+y<63u;
         if(!edge && ((inside && !tri) || (!inside && !bg))) ++d->spatial_mismatch;

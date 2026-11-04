@@ -6,7 +6,7 @@
 /* Fixed single-shot diagnostic; spatial interpretation uses captured 64x64 linear PBE layout. */
 struct a04_windows_render_diagnostic {
     struct a04_windows_render_memory memory;
-    uint32_t stage,background_pixels,triangle_pixels,other_pixels,zero_pixels,spatial_mismatch;
+    uint32_t stage,background_pixels,triangle_pixels,other_pixels,zero_pixels,spatial_mismatch,sentinel_pixels;
     uint32_t triangle_rows[64][2], background_rows[64][2], zero_rows[64][2];
     NTSTATUS result;
 };
