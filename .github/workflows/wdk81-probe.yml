@@ -17,7 +17,7 @@ jobs:
         uses: ./.github/actions/open-ssh
         with:
           authorized-key: ${{ secrets.A04BR3_RUNNER_SSH_PUBLIC_KEY }}
-          background: 'true'
+          on-ready-script: tools/ci/install-wdk81.ps1
       - name: Inspect installed Windows SDK and ARM compilers
         shell: pwsh
         run: |
@@ -27,6 +27,7 @@ jobs:
           if (Test-Path $vswhere) { & $vswhere -all -products '*' -property installationPath }
           Get-Command clang.exe,lld-link.exe -ErrorAction SilentlyContinue | Select-Object Name,Source
       - name: Download and verify official Windows 8.1 installers
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -42,6 +43,7 @@ jobs:
             if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Microsoft') { throw 'Installer signature verification failed' }
           }
       - name: Install official SDK and WDK
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -139,17 +141,9 @@ jobs:
       - name: Test button provider removal guards
         shell: pwsh
         run: ./tools/ci/test-button-provider-remove.ps1
-      - name: Keep SSH available after the build
+      - name: Open restricted SSH for intervention
+        id: remote
         if: ${{ always() && inputs.ssh_debug }}
-        shell: pwsh
-        run: |
-          $pidFile = Join-Path $env:RUNNER_TEMP 'a04br3-ssh-tunnel.pid'
-          if (!(Test-Path $pidFile)) { throw 'SSH tunnel was not started' }
-          $tunnelPid = [int](Get-Content $pidFile -Raw)
-          $until = (Get-Date).AddMinutes(180)
-          $stop = Join-Path $env:GITHUB_WORKSPACE 'end-ssh'
-          while ((Get-Date) -lt $until -and !(Test-Path $stop)) {
-            if (!(Get-Process -Id $tunnelPid -ErrorAction SilentlyContinue)) { throw 'SSH tunnel exited unexpectedly' }
-            Start-Sleep -Seconds 5
-          }
-          Stop-Process -Id $tunnelPid -ErrorAction SilentlyContinue
+        uses: ./.github/actions/open-ssh
+        with:
+          authorized-key: ${{ secrets.A04BR3_RUNNER_SSH_PUBLIC_KEY }}

@@ -7,10 +7,10 @@ inputs:
     description: Minutes to keep the runner available
     required: false
     default: '180'
-  background:
-    description: Keep the tunnel running for later workflow steps
+  on-ready-script:
+    description: Optional PowerShell setup script to run while SSH stays open
     required: false
-    default: 'false'
+    default: ''
 runs:
   using: composite
   steps:
@@ -36,6 +36,7 @@ runs:
         path: ${{ runner.temp }}/a04br3-ssh.json
         retention-days: 1
         if-no-files-found: error
+        overwrite: true
     - name: Keep SSH jump tunnel open
       shell: pwsh
       env:
@@ -43,7 +44,7 @@ runs:
         SERVER_HOST_KEYS: ${{ steps.server.outputs.host-keys }}
         ACTION_PATH: ${{ github.action_path }}
         KEEP_MINUTES: ${{ inputs.keep-minutes }}
-        BACKGROUND: ${{ inputs.background }}
+        ON_READY_SCRIPT: ${{ inputs.on-ready-script }}
       run: |
         $ErrorActionPreference = 'Stop'
         $jumpUser = "a04br3-$env:GITHUB_RUN_ID"
@@ -51,15 +52,7 @@ runs:
         $known = Join-Path $env:ACTION_PATH 'ssh-j-known-hosts'
         $tunnelLog = Join-Path $env:RUNNER_TEMP 'a04br3-ssh-tunnel.log'
         $args = @('-v','-N','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o',"UserKnownHostsFile=$known",'-o','ExitOnForwardFailure=yes','-o','ServerAliveInterval=20','-R',"${alias}:2222:127.0.0.1:2222","${jumpUser}@ssh-j.com")
-        # The runner cleans up processes tagged with the step's tracking ID.
-        # A detached tunnel must survive into the installer and build steps.
-        $previousTracking = $env:RUNNER_TRACKING_ID
-        if ($env:BACKGROUND -eq 'true') { $env:RUNNER_TRACKING_ID = "a04br3-ssh-$env:GITHUB_RUN_ID" }
-        try {
-          $process = Start-Process -FilePath 'ssh.exe' -ArgumentList $args -RedirectStandardError $tunnelLog -PassThru -NoNewWindow
-        } finally {
-          $env:RUNNER_TRACKING_ID = $previousTracking
-        }
+        $process = Start-Process -FilePath 'ssh.exe' -ArgumentList $args -RedirectStandardError $tunnelLog -PassThru -NoNewWindow
         $ready = $false
         for ($i = 0; $i -lt 40; $i++) {
           Start-Sleep -Milliseconds 500
@@ -68,8 +61,21 @@ runs:
         }
         if (-not $ready) { if (Test-Path $tunnelLog) { Get-Content $tunnelLog }; throw 'SSH jump tunnel did not start' }
         Write-Host "SSH tunnel ready. Download a04br3-ssh-$env:GITHUB_RUN_ID for connection details."
-        if ($env:BACKGROUND -eq 'true') {
-          Set-Content -Path (Join-Path $env:RUNNER_TEMP 'a04br3-ssh-tunnel.pid') -Value $process.Id
+        if ($env:ON_READY_SCRIPT) {
+          $script = Join-Path $env:GITHUB_WORKSPACE $env:ON_READY_SCRIPT
+          if (!(Test-Path $script)) { throw 'SSH setup script not found' }
+          $stdout = Join-Path $env:RUNNER_TEMP 'a04br3-ssh-setup.stdout.log'
+          $stderr = Join-Path $env:RUNNER_TEMP 'a04br3-ssh-setup.stderr.log'
+          $setup = Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$script`"") -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru -NoNewWindow
+          while (!$setup.HasExited) {
+            Start-Sleep -Seconds 5
+            $setup.Refresh(); $process.Refresh()
+            if ($process.HasExited) { Get-Content $tunnelLog; Stop-Process -Id $setup.Id -ErrorAction SilentlyContinue; throw 'SSH tunnel exited during setup' }
+          }
+          if (Test-Path $stdout) { Get-Content $stdout }
+          if (Test-Path $stderr) { Get-Content $stderr }
+          Stop-Process -Id $process.Id -ErrorAction SilentlyContinue
+          if ($setup.ExitCode -ne 0) { throw "SSH setup script failed: $($setup.ExitCode)" }
           return
         }
         $until = (Get-Date).AddMinutes([int]$env:KEEP_MINUTES)
