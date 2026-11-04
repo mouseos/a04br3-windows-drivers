@@ -20,6 +20,7 @@
 #include "linear_copy_fixture.h"
 #include "windows_transfer_mapping.h"
 #include "windows_linear_transfer.h"
+#include "windows_linear_context.h"
 #define TEST_PAGES (14u+A04_GPU_LINEAR_COPY_PAGES+12u)
 #elif A04_GE8300_COPY_TEST
 #include "copy_fixture.h"
@@ -142,6 +143,14 @@ NTSTATUS a04_gpu_queue_test_free(struct a04_gpu_firmware_state *s,struct a04_gpu
 }
 NTSTATUS a04_gpu_queue_test(struct a04_gpu_firmware_state *s,struct a04_gpu_queue_test_memory *m)
 {
+#if A04_GE8300_LINEAR_TEST
+    struct a04_windows_linear_context c={0}; NTSTATUS status;
+    if (!s || !m || m->adapter || m->cpu) return STATUS_INVALID_PARAMETER;
+    status=a04_windows_linear_context_start(&c,s);
+    m->adapter=c.memory.adapter; m->cpu=c.memory.cpu; m->logical=c.memory.logical;
+    if (!NT_SUCCESS(status)) return status;
+    return linear_repeat(s,&c.queue,&c.command,c.memory.cpu,(uint64_t)c.memory.logical.QuadPart);
+#else
     struct a04_gpu_fw_arena arena={0}; struct a04_gpu_fw_object vm={0};
     struct a04_gpu_fw_queue q={0}; struct rogue_fwif_kccb_cmd kick={0};
 #if A04_GE8300_CLEAR_TEST || A04_GE8300_COPY_TEST || A04_GE8300_LINEAR_TEST
@@ -275,4 +284,5 @@ NTSTATUS a04_gpu_queue_test(struct a04_gpu_firmware_state *s,struct a04_gpu_queu
     }
     s->queue_faulted=TRUE;
     return STATUS_IO_TIMEOUT;
+#endif
 }

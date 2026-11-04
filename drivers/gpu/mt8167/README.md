@@ -184,3 +184,5 @@ the retained-allocation path on timeout. The command remains a diagnostic
 fixed-size fixture with the BVNC mismatch described below. The context is not
 connected to WDDM and is not yet validated on hardware. Do not ship it as a
 graphics driver; firmware compatibility, PnP and power management remain open.
+The opt-in linear WinPE diagnostic now initializes through this context and
+retains its DMA allocation until the existing firmware shutdown sequence.
