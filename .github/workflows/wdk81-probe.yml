@@ -12,6 +12,12 @@ jobs:
     timeout-minutes: 210
     steps:
       - uses: actions/checkout@v4
+      - name: Open SSH before SDK and WDK setup
+        if: ${{ inputs.ssh_debug }}
+        uses: ./.github/actions/open-ssh
+        with:
+          authorized-key: ${{ secrets.A04BR3_RUNNER_SSH_PUBLIC_KEY }}
+          background: 'true'
       - name: Inspect installed Windows SDK and ARM compilers
         shell: pwsh
         run: |
@@ -133,9 +139,17 @@ jobs:
       - name: Test button provider removal guards
         shell: pwsh
         run: ./tools/ci/test-button-provider-remove.ps1
-      - name: Open restricted SSH for intervention
-        id: remote
+      - name: Keep SSH available after the build
         if: ${{ always() && inputs.ssh_debug }}
-        uses: ./.github/actions/open-ssh
-        with:
-          authorized-key: ${{ secrets.A04BR3_RUNNER_SSH_PUBLIC_KEY }}
+        shell: pwsh
+        run: |
+          $pidFile = Join-Path $env:RUNNER_TEMP 'a04br3-ssh-tunnel.pid'
+          if (!(Test-Path $pidFile)) { throw 'SSH tunnel was not started' }
+          $tunnelPid = [int](Get-Content $pidFile -Raw)
+          $until = (Get-Date).AddMinutes(180)
+          $stop = Join-Path $env:GITHUB_WORKSPACE 'end-ssh'
+          while ((Get-Date) -lt $until -and !(Test-Path $stop)) {
+            if (!(Get-Process -Id $tunnelPid -ErrorAction SilentlyContinue)) { throw 'SSH tunnel exited unexpectedly' }
+            Start-Sleep -Seconds 5
+          }
+          Stop-Process -Id $tunnelPid -ErrorAction SilentlyContinue

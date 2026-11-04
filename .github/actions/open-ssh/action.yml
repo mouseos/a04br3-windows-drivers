@@ -7,6 +7,10 @@ inputs:
     description: Minutes to keep the runner available
     required: false
     default: '180'
+  background:
+    description: Keep the tunnel running for later workflow steps
+    required: false
+    default: 'false'
 runs:
   using: composite
   steps:
@@ -39,6 +43,7 @@ runs:
         SERVER_HOST_KEYS: ${{ steps.server.outputs.host-keys }}
         ACTION_PATH: ${{ github.action_path }}
         KEEP_MINUTES: ${{ inputs.keep-minutes }}
+        BACKGROUND: ${{ inputs.background }}
       run: |
         $ErrorActionPreference = 'Stop'
         $jumpUser = "a04br3-$env:GITHUB_RUN_ID"
@@ -55,6 +60,10 @@ runs:
         }
         if (-not $ready) { if (Test-Path $tunnelLog) { Get-Content $tunnelLog }; throw 'SSH jump tunnel did not start' }
         Write-Host "SSH tunnel ready. Download a04br3-ssh-$env:GITHUB_RUN_ID for connection details."
+        if ($env:BACKGROUND -eq 'true') {
+          Set-Content -Path (Join-Path $env:RUNNER_TEMP 'a04br3-ssh-tunnel.pid') -Value $process.Id
+          return
+        }
         $until = (Get-Date).AddMinutes([int]$env:KEEP_MINUTES)
         $stop = Join-Path $env:GITHUB_WORKSPACE 'end-ssh'
         while ((Get-Date) -lt $until -and -not (Test-Path $stop)) {
