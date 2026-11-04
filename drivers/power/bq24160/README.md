@@ -28,4 +28,4 @@ cc -std=c99 -Wall -Wextra -Werror -Idrivers/power/bq24160 drivers/power/bq24160/
 
 ## ARM WDKビルド経路
 
-`tools/ci/build-lc709203f-probe.ps1` はWindows 8.1 WDKとARMツールを使う既存ビルド手順。`A04_BQ24160_EXPERIMENTAL=1` でBQ側の2ソースを追加してリンクする。既定値は0。どちらも今回WDKでのビルド・リンク未確認。試験ビルドであっても `charger_handoff_is_qualified()` は常にfalseであり、ドライバはD0開始を拒否する。ゲートを単にtrueへ変更してはならない。引継ぎにはファームウェア側の所有停止と最終キック期限、D0/sleep/電源喪失・エラー時の継続責任を設計し、両端で検証する必要がある。
+`tools/ci/build-lc709203f-probe.ps1` はWindows 8.1 WDKとARMツールを使う既存ビルド手順。`A04_BQ24160_EXPERIMENTAL=1` でBQ側の2ソースを追加してリンクする。既定値は0。実験設定のWDK ARM32ビルドとリンクは確認済みで、実機では未検証。試験ビルドであっても `charger_handoff_is_qualified()` は常にfalseであり、ドライバはD0開始を拒否する。ゲートを単にtrueへ変更してはならない。引継ぎにはファームウェア側の所有停止と最終キック期限、D0/sleep/電源喪失・エラー時の継続責任を設計し、両端で検証する必要がある。
