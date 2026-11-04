@@ -3,8 +3,10 @@
 This is a Windows 8.1 ARM32 adaptation of Microsoft's KMDOD sample, with the
 upstream source and MS-PL license identified in `SOURCE`. Run
 `tools/ci/build-wddm-display-arm.ps1` with Windows SDK/WDK 8.1, an ARM32 MSVC
-compiler, Windows UCRT headers, and LLVM linker installed. It builds a link
-check with no INF and is not installable as supplied.
+compiler, Windows UCRT headers, and LLVM linker installed. The default script
+builds a link check. A separate `tools/ci/build-wddm-display-package-arm.ps1`
+creates an experimental catalog and INF for ACPI `MOU0007`; this package is
+not ready to install until PnP, power, teardown and recovery are verified.
 
 This code does not yet acquire TAB-A04-BR3 display and GE8300 resources, start
 the GPU itself or implement a full graphics driver or Direct3D UMD.

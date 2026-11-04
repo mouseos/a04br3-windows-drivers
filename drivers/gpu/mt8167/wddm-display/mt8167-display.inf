@@ -1,0 +1,46 @@
+; MT8167 display-only miniport for the A04BR3 display controller.
+; Adapted from Microsoft KMDOD sample INF (MS-PL; see LICENSE and SOURCE).
+[Version]
+Signature="$WINDOWS NT$"
+Class=Display
+ClassGuid={4D36E968-E325-11CE-BFC1-08002BE10318}
+Provider=%Provider%
+DriverVer=11/04/2026,0.0.1.0
+CatalogFile=mt8167-display.cat
+
+[Manufacturer]
+%Provider%=Models,NTARM
+
+[Models.NTARM]
+%Device%=Install,ACPI\MOU0007
+
+[DestinationDirs]
+DriverCopy=12
+
+[SourceDisksNames]
+1=%Disk%,,,
+
+[SourceDisksFiles]
+mt8167-display.sys=1
+
+[Install]
+FeatureScore=F9
+CopyFiles=DriverCopy
+
+[DriverCopy]
+mt8167-display.sys
+
+[Install.Services]
+AddService=MT8167Display,0x00000002,Service
+
+[Service]
+DisplayName=%Device%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\mt8167-display.sys
+
+[Strings]
+Provider="mouseos"
+Device="MediaTek MT8167 Display Controller"
+Disk="MediaTek MT8167 Display Controller Driver"
