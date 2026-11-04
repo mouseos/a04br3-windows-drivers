@@ -77,6 +77,9 @@ jobs:
         run: |
           ./tools/ci/build-ge8300-provider.ps1
           ./tools/ci/build-ge8300-status.ps1
+      - name: Compile non-installable ARM32 display-only build check
+        shell: pwsh
+        run: ./tools/ci/build-wddm-display-arm.ps1
       - name: Compile WinPE file comparison tool
         shell: pwsh
         run: ./tools/ci/build-compare-files.ps1 -Arch arm

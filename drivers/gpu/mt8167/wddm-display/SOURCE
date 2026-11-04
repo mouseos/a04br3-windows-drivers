@@ -1,0 +1,6 @@
+Microsoft Windows-driver-samples video/KMDOD, commit f4c1ff842b6a0001152f44cb61788b216a1c7627
+https://github.com/microsoft/Windows-driver-samples/tree/f4c1ff842b6a0001152f44cb61788b216a1c7627/video/KMDOD
+License: MS-PL; see LICENSE and retained source headers.
+This work-in-progress copy is not installable and is not an accelerated WDDM driver.
+Changes for the 8.1 ARM32 build check: the newer display-caps extension and rotation Offset0 are gated by NTDDI_VERSION; MmMapIoSpaceEx and ExAllocatePool2 were replaced by 8.1-compatible APIs, with allocation zeroing retained. No device-specific power, PnP resource or GE8300 code is connected. The upstream sample explicitly does not support sleep. Do not install or deploy this build check.
+Source whitespace was normalized.
