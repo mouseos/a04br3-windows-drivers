@@ -39,6 +39,8 @@ NTSTATUS a04_gpu_firmware_submit_kick(struct a04_gpu_firmware_state *s,const str
   if (diagnostic_mock && kick->cmd_type==ROGUE_FWIF_KCCB_CMD_KICK) {
     struct a04_windows_render_memory *m=&diagnostic_mock->memory;
     uint8_t *p=(uint8_t *)m->cpu+A04_RENDER_PAYLOAD_OFFSET+65u*4096u;unsigned x,y,i;
+    assert(m->target_params.region_gpu==UINT64_C(0xdbf0000000));
+    assert(((struct rogue_fwif_hwrtdata *)m->target.data.cpu)->rgn_header_dev_addr==UINT64_C(0xdbf0000000));
     for(i=0;i<4096u;++i) assert(p[4*i]==0xa5 && p[4*i+1]==0x5a && p[4*i+2]==0xc3 && p[4*i+3]==0x7e);
     *(uint32_t *)m->render.geom_fence.cpu=1;*(uint32_t *)m->render.frag_fence.cpu=2;
     ((struct rogue_fwif_cccb_ctl *)m->render.geom_control.cpu)->read_offset=(uint32_t)(2u*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(struct rogue_fwif_cmd_geom)+sizeof(struct rogue_fwif_ufo));

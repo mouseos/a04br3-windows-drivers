@@ -10,7 +10,8 @@
 #define G UINT64_C(0x8000000000)
 #define P UINT64_C(0xda00000000)
 #define U UINT64_C(0xe000000000)
-#define PAGES 1179u
+#define R UINT64_C(0xdbf0000000)
+#define PAGES 1180u
 #define Z (A04_RENDER_PAYLOAD_OFFSET)
 #define STEP(n,call) do { d->stage=(n);status=(call);if(!NT_SUCCESS(status)) goto fail; } while(0)
 static const struct a04_windows_render_map maps[]={
@@ -18,7 +19,9 @@ static const struct a04_windows_render_map maps[]={
     {G+0x41000,65,4,0,A04_GPU_MMU_SLC_BYPASS},{G+0x45000,69,1,0,A04_GPU_MMU_SLC_BYPASS},
     {G+0x46000,70,2,0,A04_GPU_MMU_SLC_BYPASS},{G+0x48000,72,2,0,A04_GPU_MMU_SLC_BYPASS|A04_GPU_MMU_PM_FW_PROTECT},
     {G+0x4a000,1175,4,0,0},{P,1162,1,1,A04_GPU_MMU_READ_ONLY},
-    {P+0x1000,1163,10,1,0},{P+0xb000,1173,1,1,0},{U,1174,1,2,A04_GPU_MMU_READ_ONLY}
+    {P+0x1000,1163,10,1,0},{P+0xb000,1173,1,1,0},{U,1174,1,2,A04_GPU_MMU_READ_ONLY},
+    /* BRN63142: region headers must occupy the top 256 MiB of a 16 GiB window. */
+    {R,1179,1,3,A04_GPU_MMU_SLC_BYPASS}
 };
 static void ranges(const struct a04_windows_render_memory *m,struct a04_render_owned_range *r)
 {
@@ -100,7 +103,7 @@ NTSTATUS a04_windows_render_diagnostic_run(struct a04_windows_render_diagnostic 
     STEP(11,a04_windows_render_prepare_context(m,1,G+0x45400,4,&state));
     STEP(12,a04_windows_render_prepare_freelists(m,fl));
     hw.width=64;hw.height=64;hw.tpc_size=128;hw.region_header_size=16;hw.tpc_gpu=G+0x46000;
-    hw.vheap_gpu=G+0x46100;hw.region_gpu=G+0x46700;hw.pm_mlist_gpu=G+0x47000;
+    hw.vheap_gpu=G+0x46100;hw.region_gpu=R;hw.pm_mlist_gpu=G+0x47000;
     STEP(13,a04_windows_render_prepare_target(m,&hw));
     STEP(14,a04_windows_render_reserve_zero_border(m,G));
     STEP(15,a04_windows_render_stage_triangle_usc(m,U+0xb80,U+0xc80));
