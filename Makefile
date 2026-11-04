@@ -9,6 +9,7 @@ test: test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registr
 test: test-mma8652 build/msdc_resume_check_test build/msdc_resume_capture_test
 test: test-mt8167-pnp-backend test-mt8167-audio-adapter-pnp test-mt8167-common-dma test-mt8167-dma-adapter test-mt8167-clock-owner test-mt8167-stream-transport
 test: test-toprgu-handoff
+test: test-mt8167-shared-wdf
 
 .PHONY: test-toprgu-handoff
 test-toprgu-handoff: build/toprgu_handoff_test
