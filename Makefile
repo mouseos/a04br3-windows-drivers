@@ -5,7 +5,7 @@ SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test test-thermal test-ntfs-root arm-coff clean
 
-test: test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registration test-mt8167-wavert-miniport test-mt8167-audio-resource
+test: test-mt8167-audio-parent-query test-mt8167-audio-parent-client test-mt8167-audio-child-resources test-mt8167-pnp-parent test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registration test-mt8167-wavert-miniport test-mt8167-audio-resource
 test: test-mma8652 build/msdc_resume_check_test build/msdc_resume_capture_test
 test: build/bq24160_owner_broker_test
 test: test-mt8167-pnp-backend test-mt8167-audio-adapter-pnp test-mt8167-common-dma test-mt8167-dma-adapter test-mt8167-clock-owner test-mt8167-stream-transport
@@ -585,3 +585,17 @@ test-mt8167-audio-child-resources: build/mt8167_audio_child_resources_test
 build/mt8167_audio_child_resources_test: tests/mt8167_shared_wdf_test.c drivers/bus/mt8167-shared/wdf_parent_probe.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_AUDIO_CHILD_RESOURCES=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_shared_wdf_test.c -o $@
+
+.PHONY: test-mt8167-audio-parent-query
+test-mt8167-audio-parent-query: build/mt8167_audio_parent_query_test
+	./build/mt8167_audio_parent_query_test
+build/mt8167_audio_parent_query_test: drivers/audio/mt8167-afe/audio_parent_query.c drivers/audio/mt8167-afe/audio_parent_query.h tests/mt8167_audio_parent_query_test.c tests/audio_query_stubs/ntddk.h
+	mkdir -p build
+	$(CC) $(CFLAGS) -Itests/audio_query_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/audio_parent_query.c tests/mt8167_audio_parent_query_test.c -o $@
+
+.PHONY: test-mt8167-pnp-parent
+test-mt8167-pnp-parent:
+	mkdir -p build
+	$(CC) $(CFLAGS) -Itests/audio_query_stubs -Idrivers/audio/mt8167-afe -c drivers/audio/mt8167-afe/audio_parent_client.c -o build/mt8167_parent_client_host.o
+	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_TEST_PNP_BACKEND=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_AUDIO_QUERY_SHARED=1 -Itests/audio_owner_stubs -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/pnp_backend.cpp drivers/audio/mt8167-afe/common_dma.cpp drivers/audio/mt8167-afe/dma_adapter.cpp drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_pnp_backend_test.cpp build/mt8167_parent_client_host.o -o build/mt8167_pnp_parent_test
+	./build/mt8167_pnp_parent_test

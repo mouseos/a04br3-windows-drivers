@@ -2,6 +2,12 @@
 #define AUDIO_TEST_NTDDK_H
 #include <stdint.h>
 typedef void *PVOID; typedef uint32_t ULONG; typedef unsigned char BOOLEAN,KIRQL; typedef uintptr_t KAFFINITY; typedef int32_t NTSTATUS,LONG; typedef enum { LevelSensitive, Latched } KINTERRUPT_MODE;
+#ifdef A04_AUDIO_QUERY_SHARED
+typedef uint16_t USHORT;
+typedef struct { uint32_t a; uint16_t b,c; uint8_t d[8]; } GUID;
+typedef void (*PINTERFACE_REFERENCE)(PVOID);
+typedef struct { USHORT Size,Version; PVOID Context; PINTERFACE_REFERENCE InterfaceReference,InterfaceDereference; } INTERFACE,*PINTERFACE;
+#endif
 #define FALSE 0
 #define TRUE 1
 #ifndef NULL

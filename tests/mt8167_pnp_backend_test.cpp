@@ -1,5 +1,19 @@
 #include <cassert>
 #include "pnp_backend.h"
+#if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
+#include "audio_parent_query.h"
+static int parent_refs,query_failure,malformed;
+static void parent_ref(PVOID){parent_refs++;}
+static void parent_deref(PVOID){parent_refs--;}
+static int parent_acquire(PVOID,ULONG){return -1;}
+static int parent_release(PVOID){return -1;}
+extern "C" NTSTATUS Mt8167QueryAudioParent(PDEVICE_OBJECT p,A04_SHARED_AUDIO_INTERFACE *out) {
+ if(query_failure)return STATUS_NOT_SUPPORTED;
+ *out={};out->Header.Size=sizeof(*out);out->Header.Version=1;out->Header.Context=p;
+ out->Header.InterfaceReference=parent_ref;out->Header.InterfaceDereference=parent_deref;
+ out->AcquireMuted=malformed?nullptr:parent_acquire;out->ReleaseQuiescent=parent_release;parent_refs++;return STATUS_SUCCESS;
+}
+#endif
 int test_mdl_fail=0,test_mdl_frees=0,test_barriers=0,test_flushes=0,test_pdo_refs=0;
 _KINTERRUPT test_interrupt{};PDMA_ADAPTER test_dma_adapter=nullptr;DEVICE_DESCRIPTION test_dma_description{};
 static int shared_refs;
@@ -27,10 +41,20 @@ int main(){
 #ifdef NT_PROCESSOR_GROUPS
  resources.irq.u.Interrupt.Group=1;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner);resources.irq.u.Interrupt.Group=0;
 #endif
+#if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
+ query_failure=1;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_NOT_SUPPORTED && !owner && puts==1 && !parent_refs);
+ query_failure=0;malformed=1;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner && puts==2 && !parent_refs);
+ malformed=0;puts=0;
+#endif
  assert(!Mt8167PnpBackendCreate(&adapter,&resources,&owner) && owner && test_pdo_refs==1);
  Mt8167PnpInterrupt irq{};assert(!Mt8167PnpBackendInterrupt(owner,&irq) && irq.vector==152 && irq.level==5 && irq.affinity==1);
  mt8167_audio_shared shared{sizeof(shared),1,&adapter,shared_ref,shared_deref,shared_acquire,shared_release};
+#if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
+ assert(parent_refs==2);
+ assert(Mt8167PnpBackendAttachShared(owner,&shared)==STATUS_DEVICE_NOT_READY && !shared_refs);
+#else
  assert(!Mt8167PnpBackendAttachShared(owner,&shared) && shared_refs==1);
+#endif
  assert(Mt8167PnpBackendAttachShared(owner,&shared)==STATUS_DEVICE_NOT_READY);
  const Mt8167StreamBackend *api=Mt8167PnpBackendInterface(owner);api->reference(api->context);
  PMDL mdl=nullptr;ULONG n=0,offset=9;MEMORY_CACHING_TYPE cache;
@@ -41,4 +65,7 @@ int main(){
  assert(!freed && !puts && test_pdo_refs==1);
  api->freeBuffer(api->context,mdl,8192);assert(freed==1 && test_mdl_frees==1);
  api->dereference(api->context);assert(puts==1 && test_pdo_refs==0);
+#if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
+ assert(!parent_refs);
+#endif
 }

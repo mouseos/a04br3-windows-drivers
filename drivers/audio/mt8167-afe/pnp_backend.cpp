@@ -2,6 +2,9 @@
 #if defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
 #include "common_dma.h"
 #include "dma_adapter.h"
+#if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
+#include "audio_parent_query.h"
+#endif
 #define OWNER_TAG 'OwnA'
 struct Mt8167PnpBackend {
     Mt8167StreamBackend iface;
@@ -13,6 +16,9 @@ struct Mt8167PnpBackend {
     Mt8167CommonDma buffer;
     Mt8167PnpInterrupt interrupt;
     struct mt8167_audio_shared_client shared;
+#if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
+    struct Mt8167AudioParentClient parentClient;
+#endif
 };
 static void OwnerReference(void *ctx) { Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx); InterlockedIncrement(&o->refs); }
 static void OwnerDereference(void *ctx)
@@ -25,6 +31,9 @@ static void OwnerDereference(void *ctx)
         return;
     }
     if (o->shared.referenced && mt8167_audio_shared_detach(&o->shared)) return;
+#if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
+    if (o->parentClient.bound && Mt8167AudioParentClose(&o->parentClient)) return;
+#endif
     o->adapter->DmaOperations->PutDmaAdapter(o->adapter);
     ObDereferenceObject(o->pdo);
     ExFreePoolWithTag(o,OWNER_TAG);
@@ -82,6 +91,21 @@ NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt816
     ExInitializeFastMutex(&o->mutex);
     status=Mt8167GetDmaAdapter(pdo,&o->adapter,&mapRegisters);
     if (!NT_SUCCESS(status)) { ExFreePoolWithTag(o,OWNER_TAG);return status; }
+#if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
+    {
+        A04_SHARED_AUDIO_INTERFACE queried;
+        status=Mt8167QueryAudioParent(pdo,&queried);
+        if (!NT_SUCCESS(status)) { o->adapter->DmaOperations->PutDmaAdapter(o->adapter);ExFreePoolWithTag(o,OWNER_TAG);return status; }
+        if (Mt8167AudioParentBind(&o->parentClient,&queried)) {
+            if (queried.Header.InterfaceDereference) queried.Header.InterfaceDereference(queried.Header.Context);
+            o->adapter->DmaOperations->PutDmaAdapter(o->adapter);ExFreePoolWithTag(o,OWNER_TAG);return STATUS_DEVICE_CONFIGURATION_ERROR;
+        }
+        if (mt8167_audio_shared_attach(&o->shared,Mt8167AudioParentService(&o->parentClient))) {
+            (void)Mt8167AudioParentClose(&o->parentClient);
+            o->adapter->DmaOperations->PutDmaAdapter(o->adapter);ExFreePoolWithTag(o,OWNER_TAG);return STATUS_DEVICE_NOT_READY;
+        }
+    }
+#endif
     ObReferenceObject(pdo);o->pdo=pdo;o->refs=1;o->online=TRUE;
     o->interrupt.vector=irq->u.Interrupt.Vector;
     o->interrupt.level=(KIRQL)irq->u.Interrupt.Level;
