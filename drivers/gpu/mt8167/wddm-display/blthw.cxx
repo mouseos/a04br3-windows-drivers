@@ -279,15 +279,20 @@ BDD_HWBLT::ExecutePresentDisplayOnly(
     NTSTATUS Status = STATUS_SUCCESS;
 
     const CURRENT_BDD_MODE* pModeCur = m_DevExt->GetCurrentMode(m_SourceId);
-    SIZE_T size = 0;
+    size_t allocationSize = 0;
     uint32_t sizeToMap = 0;
     if (!SrcAddr || (NumMoves && !Moves) || (NumDirtyRects && !DirtyRect) ||
         a04_present_bounds(pModeCur->SrcModeWidth,pModeCur->SrcModeHeight,SrcBytesPerPixel,
                            SrcPitch,NumMoves,sizeof(D3DKMT_MOVE_RECT),NumDirtyRects,sizeof(RECT),
-                           sizeof(DoPresentMemory),&size,&sizeToMap))
+                           sizeof(DoPresentMemory),&allocationSize,&sizeToMap))
     {
         return STATUS_INVALID_PARAMETER;
     }
+    if ((uintptr_t)SrcAddr > UINTPTR_MAX - sizeToMap)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+    SIZE_T size = (SIZE_T)allocationSize;
     SIZE_T sizeMoves = (SIZE_T)NumMoves*sizeof(D3DKMT_MOVE_RECT);
     SIZE_T sizeRects = (SIZE_T)NumDirtyRects*sizeof(RECT);
 
