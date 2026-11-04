@@ -3,7 +3,8 @@
 # make the certificate trusted and does not change the unsigned baseline.
 $ErrorActionPreference = 'Stop'
 $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
-$base = Join-Path $env:RUNNER_TEMP 'a04br3-wdk81-probe'
+$tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
+$base = Join-Path $tempRoot 'a04br3-wdk81-probe'
 $source = Join-Path $base 'package'
 $package = Join-Path $base 'package-test-signed'
 $bootPackage = Test-Path (Join-Path $source 'mt8167-msdc.inf')
