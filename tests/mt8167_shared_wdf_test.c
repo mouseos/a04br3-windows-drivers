@@ -4,7 +4,7 @@
 #include "../drivers/bus/mt8167-shared/wdf_parent_probe.c"
 #include "../drivers/audio/mt8167-afe/audio_parent_client.h"
 static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;
-static A04_CHILD_CONTEXT children[3];static unsigned child_count,forward_count,appended,deleted;static int fail_step;static IO_RESOURCE_DESCRIPTOR descriptor;
+static A04_CHILD_CONTEXT children[3];static unsigned child_count,forward_count,appended,deleted;static int fail_step;static unsigned desc_count,fail_desc;static IO_RESOURCE_DESCRIPTOR descriptor,all_desc[3];
 A04_CHILD_CONTEXT *ChildContext(WDFDEVICE d){return (A04_CHILD_CONTEXT *)d;}
 A04_PARENT_CONTEXT *ParentContext(WDFDEVICE d){(void)d;return &testContext;}
 void ExInitializeFastMutex(FAST_MUTEX *m){m->held=0;}void ExAcquireFastMutex(FAST_MUTEX *m){assert(!m->held);m->held=1;}void ExReleaseFastMutex(FAST_MUTEX *m){assert(m->held);m->held=0;}
@@ -26,7 +26,7 @@ NTSTATUS WdfPdoInitAddHardwareID(PWDFDEVICE_INIT p,PUNICODE_STRING s){(void)p;(v
 NTSTATUS WdfPdoInitAssignInstanceID(PWDFDEVICE_INIT p,PUNICODE_STRING s){(void)p;(void)s;return 0;}
 void WdfPdoInitSetEventCallbacks(PWDFDEVICE_INIT p,WDF_PDO_EVENT_CALLBACKS *c){(void)p;assert(c->EvtDeviceResourceRequirementsQuery==ChildRequirements);}
 NTSTATUS WdfIoResourceListCreate(WDFIORESREQLIST r,void *a,WDFIORESLIST *l){(void)r;(void)a;if(fail_step==1)return -1;*l=(void *)1;return 0;}
-NTSTATUS WdfIoResourceListAppendDescriptor(WDFIORESLIST l,IO_RESOURCE_DESCRIPTOR *d){(void)l;if(fail_step==2)return -1;descriptor=*d;return 0;}
+NTSTATUS WdfIoResourceListAppendDescriptor(WDFIORESLIST l,IO_RESOURCE_DESCRIPTOR *d){(void)l;if(fail_step==2 || (fail_desc && desc_count+1==fail_desc))return -1;descriptor=*d;if(desc_count<3)all_desc[desc_count]=*d;desc_count++;return 0;}
 NTSTATUS WdfIoResourceRequirementsListAppendIoResList(WDFIORESREQLIST r,WDFIORESLIST l){(void)r;(void)l;if(fail_step==3)return -1;appended++;return 0;}
 NTSTATUS WdfFdoAddStaticChild(WDFDEVICE p,WDFDEVICE c){(void)p;(void)c;return 0;}
 void WdfObjectDelete(void *p){(void)p;deleted++;}
@@ -38,7 +38,16 @@ int main(void){
  entries[0].u.Memory.Length=entries[1].u.Memory.Length=entries[2].u.Memory.Length=entries[3].u.Memory.Length=0x1000;
  assert(!ParentAdd(NULL,NULL));
  assert(child_count==3 && forward_count==6);
+#if defined(A04_AUDIO_CHILD_RESOURCES) && A04_AUDIO_CHILD_RESOURCES
+ assert(!ChildRequirements(&children[2],NULL) && appended==1 && desc_count==3);
+ assert(all_desc[0].Type==CmResourceTypeMemory && all_desc[0].ShareDisposition==CmResourceShareDeviceExclusive && all_desc[0].u.Memory.MinimumAddress.QuadPart==0x11140000 && all_desc[0].u.Memory.Length==0x1000);
+ assert(all_desc[1].Type==CmResourceTypeMemory && all_desc[1].u.Memory.MinimumAddress.QuadPart==0x11141000 && all_desc[1].u.Memory.Length==0x9000);
+ assert(all_desc[2].Type==CmResourceTypeInterrupt && all_desc[2].ShareDisposition==CmResourceShareDeviceExclusive && all_desc[2].u.Interrupt.MinimumVector==152 && all_desc[2].u.Interrupt.MaximumVector==152);
+ for(unsigned i=1;i<=3;i++){desc_count=0;fail_desc=i;assert(ChildRequirements(&children[2],NULL)!=0 && appended==1 && deleted==i);}fail_desc=0;
+ desc_count=0;fail_step=3;assert(ChildRequirements(&children[2],NULL)!=0 && appended==1 && deleted==4);fail_step=0;desc_count=0;appended=0;deleted=0;
+#else
  assert(ChildRequirements(&children[2],NULL)==STATUS_DEVICE_CONFIGURATION_ERROR && appended==0);
+#endif
  assert(!ChildRequirements(&children[0],NULL) && appended==1 && descriptor.Type==CmResourceTypeMemory && descriptor.ShareDisposition==CmResourceShareDeviceExclusive && descriptor.u.Memory.Length==0x1000 && descriptor.u.Memory.MinimumAddress.QuadPart==0x10002000 && descriptor.u.Memory.MaximumAddress.QuadPart==0x10002fff);
  assert(!ChildRequirements(&children[1],NULL) && appended==2 && descriptor.u.Memory.MinimumAddress.QuadPart==0x11009000 && descriptor.u.Memory.MaximumAddress.QuadPart==0x11009fff);
  fail_step=1;assert(ChildRequirements(&children[1],NULL)!=0 && appended==2 && deleted==0);

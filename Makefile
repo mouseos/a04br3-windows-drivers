@@ -578,3 +578,10 @@ test-mt8167-audio-parent-client: build/mt8167_audio_parent_client_test
 build/mt8167_audio_parent_client_test: drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_audio_parent_client_test.c drivers/bus/mt8167-shared/audio_interface.h
 	mkdir -p build
 	$(CC) $(CFLAGS) -Itests/shared_wdf_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_audio_parent_client_test.c -o $@
+
+.PHONY: test-mt8167-audio-child-resources
+test-mt8167-audio-child-resources: build/mt8167_audio_child_resources_test
+	./build/mt8167_audio_child_resources_test
+build/mt8167_audio_child_resources_test: tests/mt8167_shared_wdf_test.c drivers/bus/mt8167-shared/wdf_parent_probe.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_AUDIO_CHILD_RESOURCES=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_shared_wdf_test.c -o $@

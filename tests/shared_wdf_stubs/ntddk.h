@@ -18,10 +18,12 @@ typedef struct {int held;} FAST_MUTEX;
 #define PASSIVE_LEVEL 0
 #define TRUE 1
 #define CmResourceTypeMemory 1
+#define CmResourceTypeInterrupt 2
+#define CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE 0
 #define CmResourceShareDeviceExclusive 1
 #define MmNonCached 0
 #define CM_RESOURCE_MEMORY_READ_WRITE 0
-typedef struct {UCHAR Type,ShareDisposition;USHORT Flags;struct {struct {ULONG Length,Alignment;PHYSICAL_ADDRESS MinimumAddress,MaximumAddress;} Memory;} u;} IO_RESOURCE_DESCRIPTOR;
+typedef struct {UCHAR Type,ShareDisposition;USHORT Flags;union {struct {ULONG Length,Alignment;PHYSICAL_ADDRESS MinimumAddress,MaximumAddress;} Memory;struct {ULONG MinimumVector,MaximumVector;} Interrupt;} u;} IO_RESOURCE_DESCRIPTOR;
 #define UNREFERENCED_PARAMETER(x) ((void)(x))
 #define RtlZeroMemory(p,n) memset(p,0,n)
 typedef struct {uint32_t a;uint16_t b,c;uint8_t d[8];} GUID;

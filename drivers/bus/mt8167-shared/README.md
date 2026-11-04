@@ -116,3 +116,13 @@ it is released. This is a software rundown guarantee only: the prototype still
 has no mechanism that prevents the physical device disappearing while MMIO is
 already in progress, nor proof of retained rail or clock power. D0 remains
 unconditionally refused and a stop must never be interpreted as power control.
+
+`A04_AUDIO_CHILD_RESOURCES=1` is a separate, default-off diagnostic resource
+requirements prototype for the audio child. It proposes exclusive AFE MMIO
+0x11140000+0x1000, SRAM 0x11141000+0x9000, and a level-sensitive raw interrupt
+candidate 152 (DTS SPI 120 + GIC SPI base 32). The IO_RESOURCE_DESCRIPTOR
+cannot encode the DTS active-low polarity; Windows raw/translated IRQ mapping,
+controller configuration, competing legacy devices, and PnP arbitration have
+not been verified. Parent D0 and audio codec/clock callbacks still refuse to
+start. No audio INF or firmware binding is supplied. This is not permission to
+install or to connect an interrupt; the default child remains resource-less.

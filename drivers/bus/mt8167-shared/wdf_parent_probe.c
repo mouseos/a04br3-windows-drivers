@@ -174,6 +174,34 @@ NTSTATUS ChildRequirements(WDFDEVICE child,WDFIORESREQLIST requirements)
 {
     A04_CHILD_CONTEXT *c=ChildContext(child); WDFIORESLIST list;
     IO_RESOURCE_DESCRIPTOR descriptor; NTSTATUS status;
+#if defined(A04_AUDIO_CHILD_RESOURCES) && A04_AUDIO_CHILD_RESOURCES
+    if(c->base==0xffffffffu) {
+        /* Diagnostic raw GSI candidate. IO_RESOURCE_DESCRIPTOR does not
+         * carry polarity; actual controller routing is not verified. */
+        status=WdfIoResourceListCreate(requirements,WDF_NO_OBJECT_ATTRIBUTES,&list);
+        if(!NT_SUCCESS(status))return status;
+        RtlZeroMemory(&descriptor,sizeof(descriptor));
+        descriptor.Type=CmResourceTypeMemory;descriptor.ShareDisposition=CmResourceShareDeviceExclusive;
+        descriptor.Flags=CM_RESOURCE_MEMORY_READ_WRITE;descriptor.u.Memory.Alignment=1;
+        descriptor.u.Memory.Length=0x1000;descriptor.u.Memory.MinimumAddress.QuadPart=0x11140000;
+        descriptor.u.Memory.MaximumAddress.QuadPart=0x11140fff;
+        status=WdfIoResourceListAppendDescriptor(list,&descriptor);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(list);return status;}
+        descriptor.u.Memory.Length=0x9000;descriptor.u.Memory.MinimumAddress.QuadPart=0x11141000;
+        descriptor.u.Memory.MaximumAddress.QuadPart=0x11149fff;
+        status=WdfIoResourceListAppendDescriptor(list,&descriptor);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(list);return status;}
+        RtlZeroMemory(&descriptor,sizeof(descriptor));
+        descriptor.Type=CmResourceTypeInterrupt;descriptor.ShareDisposition=CmResourceShareDeviceExclusive;
+        descriptor.Flags=CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+        descriptor.u.Interrupt.MinimumVector=152;descriptor.u.Interrupt.MaximumVector=152;
+        status=WdfIoResourceListAppendDescriptor(list,&descriptor);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(list);return status;}
+        status=WdfIoResourceRequirementsListAppendIoResList(requirements,list);
+        if(!NT_SUCCESS(status))WdfObjectDelete(list);
+        return status;
+    }
+#endif
     if(c->base!=0x10002000u && c->base!=0x11009000u)return STATUS_DEVICE_CONFIGURATION_ERROR;
     status=WdfIoResourceListCreate(requirements,WDF_NO_OBJECT_ATTRIBUTES,&list);
     if(!NT_SUCCESS(status))return status;
@@ -278,8 +306,8 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     if(!NT_SUCCESS(status))return status;
     status=ParentAddProbeChild(dev,L"A04BR3\\SharedTouchProbe",L"0",0x11009000u);
     if(!NT_SUCCESS(status))return status;
-    /* No guessed AFE resources: ChildRequirements rejects base zero. */
-    status=ParentAddProbeChild(dev,L"A04BR3\\SharedAudioProbe",L"0",0);
+    /* The audio sentinel remains unavailable unless the diagnostic flag is set. */
+    status=ParentAddProbeChild(dev,L"A04BR3\\SharedAudioProbe",L"0",0xffffffffu);
 #endif
     return status;
 }
