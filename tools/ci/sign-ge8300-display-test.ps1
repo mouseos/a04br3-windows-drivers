@@ -10,7 +10,10 @@ $target = Join-Path $tempRoot 'mt8167-ge8300-display-test-signed'
 foreach ($path in @((Join-Path $provider 'mt8167-ge8300.cat'),
                     (Join-Path $display 'mt8167-display.cat'),
                     (Join-Path $status 'ge8300-status.exe'),
-                    (Join-Path $status 'ge8300-pnp-status.exe'))) {
+                    (Join-Path $status 'ge8300-pnp-status.exe'),
+                    (Join-Path $status 'ge8300-service-status.exe'),
+                    (Join-Path $status 'ge8300-copy-status.exe'),
+                    (Join-Path $status 'display-pnp-status.exe'))) {
     if (!(Test-Path $path)) { throw "Required build input missing: $path" }
 }
 if (Test-Path $target) { throw 'Test package output already exists' }
@@ -32,7 +35,7 @@ foreach ($entry in @(@($destProvider,'mt8167-ge8300'),@($destDisplay,'mt8167-dis
     & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $directory "$name.cat")
     if ($LASTEXITCODE -ne 0) { throw "Test signing failed: $name.cat" }
 }
-foreach ($name in @('ge8300-status.exe','ge8300-pnp-status.exe')) {
+foreach ($name in @('ge8300-status.exe','ge8300-pnp-status.exe','ge8300-service-status.exe','ge8300-copy-status.exe','display-pnp-status.exe')) {
     Copy-Item (Join-Path $status $name) $destProvider
     & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $destProvider $name)
     if ($LASTEXITCODE -ne 0) { throw "Test signing failed: $name" }

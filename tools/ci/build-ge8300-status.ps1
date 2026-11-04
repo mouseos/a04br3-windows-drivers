@@ -14,3 +14,15 @@ if ($LASTEXITCODE -ne 0) { throw 'ARM GE8300 status link failed' }
 if ($LASTEXITCODE -ne 0) { throw 'ARM GE8300 PnP status compilation failed' }
 & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib (Join-Path $out 'pnp.obj') (Join-Path $lib 'kernel32.lib') (Join-Path $lib 'cfgmgr32.lib') "/out:$out\ge8300-pnp-status.exe"
 if ($LASTEXITCODE -ne 0) { throw 'ARM GE8300 PnP status link failed' }
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DA04_GE8300_SERVICE_STATUS "-I$inc\um" "-I$inc\shared" -c (Join-Path $root 'tools\winpe\ge8300-status.c') -o (Join-Path $out 'service-status.obj')
+if ($LASTEXITCODE -ne 0) { throw 'ARM GE8300 service status compilation failed' }
+& lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib (Join-Path $out 'service-status.obj') (Join-Path $lib 'kernel32.lib') "/out:$out\ge8300-service-status.exe"
+if ($LASTEXITCODE -ne 0) { throw 'ARM GE8300 service status link failed' }
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DA04_GE8300_COPY_STATUS "-I$inc\um" "-I$inc\shared" -c (Join-Path $root 'tools\winpe\ge8300-status.c') -o (Join-Path $out 'copy-status.obj')
+if ($LASTEXITCODE -ne 0) { throw 'ARM GE8300 copy status compilation failed' }
+& lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib (Join-Path $out 'copy-status.obj') (Join-Path $lib 'kernel32.lib') "/out:$out\ge8300-copy-status.exe"
+if ($LASTEXITCODE -ne 0) { throw 'ARM GE8300 copy status link failed' }
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DA04_DISPLAY_PROVIDER_STATUS "-I$inc\um" "-I$inc\shared" -c (Join-Path $root 'tools\winpe\button-provider-status.c') -o (Join-Path $out 'display-pnp.obj')
+if ($LASTEXITCODE -ne 0) { throw 'ARM display PnP status compilation failed' }
+& lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib (Join-Path $out 'display-pnp.obj') (Join-Path $lib 'kernel32.lib') (Join-Path $lib 'cfgmgr32.lib') "/out:$out\display-pnp-status.exe"
+if ($LASTEXITCODE -ne 0) { throw 'ARM display PnP status link failed' }

@@ -12,7 +12,7 @@ void mainCRTStartup(void)
         Sleep(1000);
     }
     if(h==INVALID_HANDLE_VALUE) { say("GE8300_OPEN_ERROR="); hex(GetLastError()); say("\r\n"); ExitProcess(1); }
-    if(!DeviceIoControl(h,A04_GE8300_IOCTL_QUERY,NULL,0,&s,sizeof(s),&got,NULL) || got!=sizeof(s) || s.version!=4) {
+    if(!DeviceIoControl(h,A04_GE8300_IOCTL_QUERY,NULL,0,&s,sizeof(s),&got,NULL) || got!=sizeof(s) || s.version!=5) {
         say("GE8300_IOCTL_ERROR="); hex(GetLastError()); say("\r\n"); CloseHandle(h); ExitProcess(2);
     }
     CloseHandle(h); say("GE8300_ATTEMPT="); hex(s.attempted); say(" BOOT="); hex(s.boot_status);
@@ -30,5 +30,17 @@ void mainCRTStartup(void)
     say(" COUNT="); hex(s.mts_count_high); hex(s.mts_count_low); say("\r\n");
     say("GE8300_TRACE_PTR="); hex(s.trace_pointer); say(" WORDS=");
     for(i=0;i<4;++i) { hex(s.trace_words[i]); say(" "); } say("\r\n");
+    say("GE8300_COPY_COMPLETED="); hex(s.copy_completed); say(" FAILED="); hex(s.copy_failed); say("\r\n");
+#ifdef A04_GE8300_COPY_STATUS
+    ExitProcess(s.attempted && s.boot_status==0 && s.health_status==0 && s.mmu_status==0 &&
+                s.queue_status==0 && s.processor_released && s.firmware_started && !s.queue_faulted &&
+                s.copy_completed && !s.copy_failed ? 0 : 3);
+#else
+#ifdef A04_GE8300_SERVICE_STATUS
+    ExitProcess(s.attempted && s.boot_status==0 && s.health_status==0 && s.mmu_status==0 &&
+                s.queue_status==0 && s.processor_released && s.firmware_started && !s.queue_faulted ? 0 : 3);
+#else
     ExitProcess(s.attempted && s.boot_status==0 && s.health_status==0 && s.mmu_status==0 && s.queue_status==0 && s.shutdown_status==0 && !s.processor_released ? 0 : 3);
+#endif
+#endif
 }

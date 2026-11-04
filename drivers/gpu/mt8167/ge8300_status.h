@@ -15,5 +15,6 @@ struct a04_ge8300_status {
     unsigned long trace_pointer, trace_words[4];
     unsigned long mmu_status;
     unsigned long queue_status;
+    unsigned long copy_completed, copy_failed;
 };
 #endif

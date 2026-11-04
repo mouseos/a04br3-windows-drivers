@@ -189,7 +189,7 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     PDMA_ADAPTER adapter;
     UNREFERENCED_PARAMETER(previous);
     if(c->attempted) return STATUS_SUCCESS;
-    c->attempted=TRUE; c->status.version=4;
+    c->attempted=TRUE; c->status.version=5;
 #if !A04_GE8300_BOOT_TEST
     c->status.boot_status=STATUS_NOT_SUPPORTED;
     return STATUS_SUCCESS;
@@ -222,7 +222,11 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         if(NT_SUCCESS(c->status.health_status)) {
 #if A04_GE8300_COPY_SERVICE
             c->status.queue_status=a04_windows_linear_context_start(&c->linear,&c->firmware);
+            c->status.mmu_status=c->status.queue_status;
             c->copy_online=NT_SUCCESS(c->status.queue_status);
+            /* Avoid serial traffic on every display chunk; bugcheck capture
+             * stays registered and shutdown diagnostics restore tracing. */
+            if (c->copy_online) c->firmware.trace=NULL;
 #else
             c->status.mmu_status=a04_gpu_firmware_invalidate_mmu(&c->firmware);
             GpuTraceStage(c,0x103);
@@ -255,6 +259,7 @@ NTSTATUS GpuD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
 #if A04_GE8300_COPY_SERVICE
     NTSTATUS status;
     c->copy_online=FALSE;
+    c->firmware.trace=GpuTraceStage;
     if (c->firmware.processor_released) {
         status=a04_gpu_firmware_shutdown(&c->firmware);
         if (!NT_SUCCESS(status)) return status;
@@ -284,13 +289,19 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
         status=WdfRequestRetrieveInputBuffer(request,A04_GE8300_COPY_BYTES,&src,&in_size);
         if (NT_SUCCESS(status)) status=WdfRequestRetrieveOutputBuffer(request,A04_GE8300_COPY_BYTES,&dst,&out_size);
         if (NT_SUCCESS(status)) status=a04_windows_linear_context_copy(&c->linear,src,dst);
-        if (!NT_SUCCESS(status)) c->copy_online=FALSE;
+        if (NT_SUCCESS(status)) ++c->status.copy_completed;
+        else { ++c->status.copy_failed; c->copy_online=FALSE; }
         WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status) ? A04_GE8300_COPY_BYTES : 0);
         return;
     }
 #endif
     UNREFERENCED_PARAMETER(output); UNREFERENCED_PARAMETER(input);
     if(control!=A04_GE8300_IOCTL_QUERY) { WdfRequestComplete(request,STATUS_INVALID_DEVICE_REQUEST); return; }
+#if A04_GE8300_COPY_SERVICE
+    c->status.processor_released=c->firmware.processor_released;
+    c->status.firmware_started=c->firmware.firmware_started;
+    c->status.queue_faulted=c->firmware.queue_faulted;
+#endif
     status=WdfRequestRetrieveOutputBuffer(request,sizeof(*out),(PVOID *)&out,&size);
     if(NT_SUCCESS(status)) { *out=c->status; WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(*out)); }
     else WdfRequestComplete(request,status);
