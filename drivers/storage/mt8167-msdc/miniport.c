@@ -57,6 +57,9 @@ static BOOLEAN A04EmmcIdentityValid;
 struct a04_probe_extension {
     volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; ULONG requests; BOOLEAN failed; BOOLEAN write_ready; BOOLEAN cache_disabled;
     a04_msdc_gate ioBusy;
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT
+    volatile LONG transfer_poisoned; /* Restart cannot establish DMA/card recovery. */
+#endif
 #ifdef A04_SERIAL_QUEUE_EXPERIMENT
     volatile LONG busyCount, gateBusyCount, workerInitFailCount, workerQueueFailCount;
 #endif
@@ -425,7 +428,7 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
     {
         ULONG bytes = 0, alignment = KeGetRecommendedSharedDataAlignment();
         ULONG needed = 512;
-#if A04_DMA_MULTIBLOCK_EXPERIMENT
+#if A04_ANY_MULTIBLOCK
         needed = 4096;
 #endif
         ULONG_PTR aligned;
@@ -684,6 +687,10 @@ static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControlOwned(PVOID extension,
         return ScsiAdapterControlSuccess;
     }
     if (type == ScsiRestartAdapter) {
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT
+        if (InterlockedCompareExchange(&probe->transfer_poisoned,0,0))
+            return ScsiAdapterControlUnsuccessful;
+#endif
         struct a04_msdc_io io = {probe, A04Read32, A04Read8, A04Write32};
         enum a04_msdc_result result;
         ULONG sectors;
@@ -859,7 +866,7 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
                     /* UEFI's card selection explicitly sets RCA 1. */
                     dr = A04DmaSector(probe, &io, result.blocks.lba + i, TRUE);
                 } else {
-#if A04_DMA_MULTIBLOCK_EXPERIMENT
+#if A04_ANY_MULTIBLOCK
                     ULONG chunk = result.blocks.block_count - i;
                     if (chunk > 8) chunk = 8;
                     dr = A04DmaTransfer(probe, &io, (ULONG)(result.blocks.lba + i), FALSE, chunk);
@@ -890,6 +897,9 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
                     ((ULONG)data[2] << 16) | ((ULONG)data[3] << 24)); A04Trace("\n");
             }
             if (failure) {
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT
+                InterlockedExchange(&probe->transfer_poisoned,1);
+#endif
                 probe->failed = TRUE;
                 A04Trace("A04WIN transfer failed result="); A04TraceHex(failure); A04Trace("\n");
                 A04Sense(request, 3, result.action == A04_SCSI_WRITE ? 0x0c : 0x11);
@@ -1149,6 +1159,9 @@ static BOOLEAN A04ResetBus(PVOID extension, ULONG path)
         A04Trace(original ? "A04WIN reset detached pending request\n" :
                             "A04WIN reset had no pending request\n");
         InterlockedExchange(&probe->cancelled,1);
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT
+        InterlockedExchange(&probe->transfer_poisoned,1);
+#endif
         probe->failed=TRUE;
         if (original) {
             probe->pendingRequest=NULL;

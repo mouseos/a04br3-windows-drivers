@@ -57,6 +57,23 @@ jobs:
       - name: Compile non-operational Storport interface probe
         shell: pwsh
         run: ./tools/ci/build-wdk81-probe.ps1
+      - name: Compile isolated boot storage with and without multiblock reads
+        shell: pwsh
+        run: |
+          $env:A04_BOOT_EXPERIMENT='1'
+          $env:A04_BOOT_PASSIVE_EXPERIMENT='1'
+          $env:A04_PASSIVE_IO='1'
+          $env:A04_ENABLE_WRITES='1'
+          $env:A04_READONLY_DISK_PROBE='1'
+          $env:A04_DMA_PROBE='1'
+          $env:A04_DMA_DISK_PROBE='1'
+          $env:A04_VIRTUAL_BOUNCE_EXPERIMENT='1'
+          $env:A04_SERIAL_QUEUE_EXPERIMENT='1'
+          $env:A04_ISOLATED_REQUEST_EXPERIMENT='1'
+          $env:A04_BOOT_MULTIBLOCK_EXPERIMENT='0'
+          ./tools/ci/build-wdk81-probe.ps1
+          $env:A04_BOOT_MULTIBLOCK_EXPERIMENT='1'
+          ./tools/ci/build-wdk81-probe.ps1
       - name: Compile non-operational ARM32 touch link probe
         shell: pwsh
         run: ./tools/ci/build-touch-link-probe.ps1
