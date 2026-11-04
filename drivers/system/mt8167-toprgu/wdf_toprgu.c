@@ -481,7 +481,7 @@ NTSTATUS ToprguAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
       status=WdfIoQueueCreate(device,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE); if(!NT_SUCCESS(status))return status; }
     { WDF_TIMER_CONFIG screenConfig;
       WDF_TIMER_CONFIG_INIT_PERIODIC(&screenConfig,ToprguScreenTimer,1);
-      screenConfig.AutomaticSerialization=FALSE;
+      screenConfig.AutomaticSerialization=FALSE;screenConfig.UseHighResolutionTimer=TRUE;screenConfig.TolerableDelay=0;
       WDF_OBJECT_ATTRIBUTES_INIT(&timerAttr);timerAttr.ParentObject=device;timerAttr.ExecutionLevel=WdfExecutionLevelDispatch;
       status=WdfTimerCreate(&screenConfig,&timerAttr,&c->screenTimer); if(!NT_SUCCESS(status))return status; }
 #endif
