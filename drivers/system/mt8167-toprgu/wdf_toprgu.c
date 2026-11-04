@@ -457,7 +457,7 @@ NTSTATUS ToprguAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     UNREFERENCED_PARAMETER(driver);
 #if A04_TOPRGU_UART_SCREEN
     { DECLARE_CONST_UNICODE_STRING(name,A04_UART_SCREEN_DEVICE);
-      DECLARE_CONST_UNICODE_STRING(sddl,SDDL_DEVOBJ_SYS_ALL_ADM_ALL);
+      DECLARE_CONST_UNICODE_STRING(sddl,L"D:P(A;;GA;;;SY)(A;;GA;;;BA)");
       status=WdfDeviceInitAssignName(init,&name); if(!NT_SUCCESS(status)) return status;
       status=WdfDeviceInitAssignSDDLString(init,&sddl); if(!NT_SUCCESS(status)) return status; }
 #endif
