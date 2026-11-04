@@ -15,10 +15,16 @@ enum mt8167_dl1_state { MT8167_DL1_IDLE, MT8167_DL1_RUNNING,
 struct mt8167_dl1_engine { struct mt8167_dl1_io io; enum mt8167_dl1_state state; };
 /* prepare/start assumes no DMA active, a muted initialized codec and a buffer
  * already made visible to the device by its DMA owner. No clocks are changed. */
+#ifdef __cplusplus
+extern "C" {
+#endif
 int mt8167_dl1_start(struct mt8167_dl1_engine *, const struct mt8167_dl1_plan *);
 /* On failure retain DMA mapping and contents; hardware quiescence is unknown. */
 int mt8167_dl1_stop(struct mt8167_dl1_engine *);
 /* Returns 1 for own interrupt, 0 for other IRQ, -1 on error. Caller schedules
  * notification outside its interrupt lock and handles DPC lifetime. */
 int mt8167_dl1_interrupt(struct mt8167_dl1_engine *, int *notify);
+#ifdef __cplusplus
+}
+#endif
 #endif

@@ -38,3 +38,14 @@ addresses: Windows DMA mapping/coherency and the conditions for safe drain
 and release remain unresolved. It is not a WaveRT miniport or a registered
 subdevice. The owner of shared PWRAP/clock resources is not implemented;
 no caller may enable these paths based on this code alone.
+
+The optional `wavert_registration.cpp` wraps PcNewPort/Init/
+PcRegisterSubdevice, but takes a miniport supplied by a caller; this repository
+has no implemented WaveRT miniport or registration caller. The experimental
+`irq_windows.cpp` connects an exclusive translated interrupt and dispatches
+DL1 events via a DPC, then disconnects and flushes DPCs. It is not connected
+to PnP, DMA, clocks or a miniport; DPC coalescing and failure/interrupt-storm
+recovery require a real stream design. The caller must use interrupt
+synchronization for all concurrent engine access and hold resources alive.
+Both helpers are compiled out unless A04_MT8167_WAVERT_EXPERIMENTAL=1. The
+build-only SYS still unconditionally fails StartDevice, and has no valid INF.

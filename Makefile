@@ -373,3 +373,17 @@ test-mt8167-pwrap-owner: build/mt8167_pwrap_owner_test
 build/mt8167_pwrap_owner_test: drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/pwrap_owner.h drivers/input/a04br3-buttons/pmic_read.c tests/mt8167_pwrap_owner_test.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -pthread -Idrivers/bus/mt8167-shared drivers/bus/mt8167-shared/pwrap_owner.c drivers/input/a04br3-buttons/pmic_read.c tests/mt8167_pwrap_owner_test.c -o $@
+
+.PHONY: test-mt8167-irq-windows
+test-mt8167-irq-windows: build/mt8167_irq_windows_test
+	./build/mt8167_irq_windows_test
+build/mt8167_irq_windows_test: drivers/audio/mt8167-afe/irq_windows.cpp drivers/audio/mt8167-afe/irq_windows.h tests/mt8167_irq_windows_test.cpp tests/audio_windows_stubs/ntddk.h
+	mkdir -p build
+	$(CXX) -O2 -Wall -Wextra -Werror -std=c++11 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/irq_windows.cpp tests/mt8167_irq_windows_test.cpp -o $@
+
+.PHONY: test-mt8167-wavert-registration
+test-mt8167-wavert-registration: build/mt8167_wavert_registration_test
+	./build/mt8167_wavert_registration_test
+build/mt8167_wavert_registration_test: drivers/audio/mt8167-afe/wavert_registration.cpp drivers/audio/mt8167-afe/wavert_registration.h tests/mt8167_wavert_registration_test.cpp tests/audio_windows_stubs/portcls.h
+	mkdir -p build
+	$(CXX) -O2 -Wall -Wextra -Werror -std=c++11 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_TEST_REGISTRATION=1 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/wavert_registration.cpp tests/mt8167_wavert_registration_test.cpp -o $@

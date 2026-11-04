@@ -4,12 +4,16 @@ int mt8167_dl1_plan(uint64_t address, uint32_t bytes, uint32_t period,
                     uint32_t rate, struct mt8167_dl1_plan *out)
 {
     struct mt8167_dl1_plan p;
-    uint32_t code;
+    uint32_t code, remaining, periods;
     if (!out || !address || address > UINT32_MAX || bytes > 1048576 ||
         period < 256 || period > 524288 || bytes < period ||
-        bytes / period < 2 || bytes % period || (address & 3) ||
+        (address & 3) ||
         (bytes & 3) || (period & 3) || address + bytes - 1 > UINT32_MAX ||
         period / 4 > 0x3ffff) return 0;
+    /* Avoid runtime division helpers in the ARM32 kernel image. */
+    remaining = bytes; periods = 0;
+    while (remaining >= period) { remaining -= period; ++periods; }
+    if (remaining || periods < 2) return 0;
     switch (rate) {
     case 8000: code = 0; break;
     case 11025: code = 1; break;

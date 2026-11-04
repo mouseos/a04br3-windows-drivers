@@ -30,4 +30,22 @@ struct IPortWaveRTStream {
  virtual ULONG Release()=0;
 };
 typedef IPortWaveRTStream *PPORTWAVERTSTREAM;
+
+#ifdef A04_TEST_REGISTRATION
+typedef void *PDEVICE_OBJECT; typedef void *PIRP; typedef void *PRESOURCELIST;
+typedef wchar_t WCHAR; typedef const void *REFCLSID;
+#define NT_SUCCESS(s) ((s) >= 0)
+struct IUnknown { virtual ~IUnknown() {} };
+typedef IUnknown *PUNKNOWN;
+struct IMiniportWaveRT : IUnknown {};
+typedef IMiniportWaveRT *PMINIPORTWAVERT;
+struct IPort : IUnknown {
+ virtual NTSTATUS Init(PDEVICE_OBJECT,PIRP,PUNKNOWN,PUNKNOWN,PRESOURCELIST)=0;
+ virtual ULONG Release()=0;
+};
+typedef IPort *PPORT;
+extern const int CLSID_PortWaveRT;
+NTSTATUS PcNewPort(PPORT *, const int &);
+NTSTATUS PcRegisterSubdevice(PDEVICE_OBJECT,WCHAR *,PUNKNOWN);
+#endif
 #endif

@@ -16,4 +16,14 @@ foreach ($name in @('dl1','dl1_engine','ring','irq','broker_policy')) {
 }
 & clang++ --target=thumbv7-pc-windows-msvc -fms-extensions -fms-compatibility -ffreestanding -fno-exceptions -fno-rtti -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" -c (Join-Path $root 'drivers\audio\mt8167-afe\wavert_dma.cpp') -o (Join-Path $out 'wavert_dma.obj')
 if ($LASTEXITCODE -ne 0) { throw 'WaveRT buffer helper compilation failed' }
+foreach ($enabled in @('0','1')) {
+    & clang++ --target=thumbv7-pc-windows-msvc -fms-extensions -fms-compatibility -ffreestanding -fno-exceptions -fno-rtti -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_MT8167_WAVERT_EXPERIMENTAL=$enabled" "-I$inc\km" "-I$inc\shared" -c (Join-Path $root 'drivers\audio\mt8167-afe\wavert_registration.cpp') -o (Join-Path $out "wavert_registration_$enabled.obj")
+    if ($LASTEXITCODE -ne 0) { throw "WaveRT registration compile failed: $enabled" }
+}
+foreach ($enabled in @('0','1')) {
+    & clang++ --target=thumbv7-pc-windows-msvc -fms-extensions -fms-compatibility -ffreestanding -fno-exceptions -fno-rtti -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_MT8167_WAVERT_EXPERIMENTAL=$enabled" "-I$inc\km" "-I$inc\shared" -c (Join-Path $root 'drivers\audio\mt8167-afe\irq_windows.cpp') -o (Join-Path $out "irq_windows_$enabled.obj")
+    if ($LASTEXITCODE -ne 0) { throw "Windows IRQ helper compilation failed: $enabled" }
+}
+& lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib (Join-Path $out 'adapter.obj') (Join-Path $out 'dl1.obj') (Join-Path $out 'dl1_engine.obj') (Join-Path $out 'wavert_dma.obj') (Join-Path $out 'irq_windows_1.obj') (Join-Path $out 'wavert_registration_1.obj') (Join-Path $lib 'portcls.lib') (Join-Path $lib 'ntoskrnl.lib') (Join-Path $lib 'hal.lib') (Join-Path $lib 'bufferoverflowfastfailk.lib') "/out:$out\mt8167-audio-buildcheck.sys"
+if ($LASTEXITCODE -ne 0) { throw 'WaveRT and IRQ integration link failed' }
 Write-Host 'Built disabled PortCls skeleton and unconnected helper objects; StartDevice always fails.'
