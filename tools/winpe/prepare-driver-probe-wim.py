@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Create a WinPE copy using one intact, already-built driver package."""
 import argparse
+import hashlib
 from pathlib import Path
 import shutil
 import subprocess
@@ -37,6 +38,9 @@ p.add_argument('--toprgu-provider-status', type=Path, help='Read-only TOPRGU PnP
 p.add_argument('--read-emmc-model', type=Path, help='Read-only volatile eMMC model utility')
 p.add_argument('--disable-quickedit', type=Path, help='Optional signed console selection control executable')
 p.add_argument('--lc709203f-test', type=Path, help='Signed LC709203F test package directory')
+p.add_argument('--mma8652-clean-check', type=Path, help='Signed NTFS dirty-bit check executable')
+p.add_argument('--mma8652-package', type=Path, help='Test-signed MMA8652 diagnostic package')
+p.add_argument('--mma8652-tested', type=Path, help='Separately sourced, verified WinPE-tested INF/SYS/CAT')
 p.add_argument('--ge8300-display-test', type=Path, help='Paired signed GE8300 and display test package directory')
 a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
@@ -105,6 +109,32 @@ if a.disable_quickedit:
 if a.lc709203f_test:
     for name in ('lc709203f.inf', 'lc709203f.sys', 'lc709203f.cat', 'lc709203f-status.exe', 'lc709203f-pnp-status.exe'):
         files[f'/a04br3/lc709203f/{name}'] = a.lc709203f_test / name
+if bool(a.mma8652_package) != bool(a.mma8652_tested):
+    raise SystemExit('MMA8652 package and independent tested reference are both required')
+if a.mma8652_package:
+    # Byte identities extracted from the ESP used in the run3 hardware test.
+    expected = {
+        'mma8652.inf': '307031831046bb23862ddfc1d77338a0d7539551016fa2fccb27cb37ccd1a306',
+        'mma8652.sys': 'a86c199ad77e9156b80e3eda493aadebc97c55fb49e52bc14bad549ae57534c5',
+        'mma8652.cat': '67cee6946b765c57d59f2f7eedd0960ef5ad9624d49f7e8b3acaf56ebec7bfbc',
+        'mma8652-status.exe': '24908d41ddec601a0f6809c208dd0ede3edc26266a6eaf57216f513b583325b3',
+        'mma8652-read.exe': 'afc5987797c7326e37af5f429a3c833143e69f26a330ef5c70132f494cfb5b3b',
+    }
+    for name, sha in expected.items():
+        with (a.mma8652_package / name).open('rb') as stream:
+            if hashlib.file_digest(stream, 'sha256').hexdigest() != sha:
+                raise SystemExit(f'Not the run3 tested package: {name}')
+    for name in ('mma8652.inf', 'mma8652.sys', 'mma8652.cat'):
+        with (a.mma8652_tested / name).open('rb') as stream:
+            if hashlib.file_digest(stream, 'sha256').hexdigest() != expected[name]:
+                raise SystemExit(f'Not the run3 tested reference: {name}')
+    if not a.volume_guard or not a.compare_files or not a.mma8652_clean_check:
+        raise SystemExit('MMA8652 offline staging needs volume guard and comparison tool')
+    files['/a04br3/check-volume-clean.exe'] = a.mma8652_clean_check
+    for name in ('mma8652.inf', 'mma8652.sys', 'mma8652.cat', 'mma8652-status.exe', 'mma8652-read.exe'):
+        files[f'/a04br3/mma8652/{name}'] = a.mma8652_package / name
+    for name in ('mma8652.inf', 'mma8652.sys', 'mma8652.cat'):
+        files[f'/a04br3/mma8652-tested/{name}'] = a.mma8652_tested / name
 if a.ge8300_display_test:
     for name in ('mt8167-ge8300.inf', 'mt8167-ge8300.sys', 'mt8167-ge8300.cat',
                  'ge8300-mips.fw', 'ge8300-pnp-status.exe', 'ge8300-service-status.exe',
