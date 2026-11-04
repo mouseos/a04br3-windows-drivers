@@ -52,5 +52,16 @@ establish actual child PDOs and forward their query to the parent stack, with
 client reference and removal ordering, before replacing the direct mappings.
 See Microsoft documentation for [WDF_QUERY_INTERFACE_CONFIG](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdfqueryinterface/ns-wdfqueryinterface-_wdf_query_interface_config)
 and [WdfFdoQueryForInterface](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdffdo/nf-wdffdo-wdffdoqueryforinterface).
-No interface, binding, INF, direct-MMIO fallback or release of the existing D0
+No production interface, binding, INF, direct-MMIO fallback or release of the existing D0
 and eMMC startup gates is provided here.
+
+The parent probe optionally publishes a versioned, reference-counted kernel
+query interface when `A04_SHARED_QUERY_EXPERIMENTAL=1`; the interface currently
+exposes only the fixed MT6392 button-status read under a parent-owned FAST_MUTEX.
+The mutex and callbacks exist before interface publication, and ReleaseHardware
+sets the PWRAP owner offline under that same mutex before unmapping. D0 still
+always fails and never starts the owner, so calls fail without MMIO. No client,
+INF, ACPI parent/child topology, audio clock lease or PMIC audio operation is
+connected. WDF interface references retain the device object but do not make its
+hardware resources active. Windows PnP behavior and transition to an online
+owner remain unverified; never deploy next to existing direct PWRAP users.

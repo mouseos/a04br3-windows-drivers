@@ -1,0 +1,28 @@
+#ifndef A04_TEST_WDF_H
+#define A04_TEST_WDF_H
+#include "ntddk.h"
+typedef void *WDFDEVICE;typedef void *WDFDRIVER;typedef void *PWDFDEVICE_INIT;typedef int WDF_POWER_DEVICE_STATE;
+struct test_list {PCM_PARTIAL_RESOURCE_DESCRIPTOR entries;ULONG count;};typedef struct test_list *WDFCMRESLIST;
+#define WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(type,name) extern type *name(WDFDEVICE);
+typedef NTSTATUS EVT_WDF_DRIVER_DEVICE_ADD(WDFDRIVER,PWDFDEVICE_INIT);
+typedef NTSTATUS EVT_WDF_DEVICE_PREPARE_HARDWARE(WDFDEVICE,WDFCMRESLIST,WDFCMRESLIST);
+typedef NTSTATUS EVT_WDF_DEVICE_RELEASE_HARDWARE(WDFDEVICE,WDFCMRESLIST);
+typedef NTSTATUS EVT_WDF_DEVICE_D0_ENTRY(WDFDEVICE,WDF_POWER_DEVICE_STATE);
+typedef struct { EVT_WDF_DEVICE_PREPARE_HARDWARE *EvtDevicePrepareHardware;EVT_WDF_DEVICE_RELEASE_HARDWARE *EvtDeviceReleaseHardware;EVT_WDF_DEVICE_D0_ENTRY *EvtDeviceD0Entry; } WDF_PNPPOWER_EVENT_CALLBACKS;
+typedef struct {int ExecutionLevel;} WDF_OBJECT_ATTRIBUTES;
+typedef struct {int unused;} WDF_DRIVER_CONFIG;
+typedef struct {PINTERFACE Interface; const int *Guid;} WDF_QUERY_INTERFACE_CONFIG;
+#define WdfExecutionLevelPassive 0
+#define WDF_NO_OBJECT_ATTRIBUTES NULL
+#define WDF_NO_HANDLE NULL
+#define WDF_PNPPOWER_EVENT_CALLBACKS_INIT(p) memset((p),0,sizeof(*(p)))
+#define WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(p,t) memset((p),0,sizeof(*(p)))
+#define WDF_DRIVER_CONFIG_INIT(p,f) ((void)(p),(void)(f))
+#define WDF_QUERY_INTERFACE_CONFIG_INIT(p,i,g,f) ((p)->Interface=(i),(p)->Guid=(g),(void)(f))
+ULONG WdfCmResourceListGetCount(WDFCMRESLIST);PCM_PARTIAL_RESOURCE_DESCRIPTOR WdfCmResourceListGetDescriptor(WDFCMRESLIST,ULONG);
+void WdfDeviceInitSetPnpPowerEventCallbacks(PWDFDEVICE_INIT,WDF_PNPPOWER_EVENT_CALLBACKS *);
+NTSTATUS WdfDeviceCreate(PWDFDEVICE_INIT *,WDF_OBJECT_ATTRIBUTES *,WDFDEVICE *);
+NTSTATUS WdfDriverCreate(PDRIVER_OBJECT,PUNICODE_STRING,void *,WDF_DRIVER_CONFIG *,void *);
+void WdfObjectReference(WDFDEVICE);void WdfObjectDereference(WDFDEVICE);
+NTSTATUS WdfDeviceAddQueryInterface(WDFDEVICE,WDF_QUERY_INTERFACE_CONFIG *);
+#endif

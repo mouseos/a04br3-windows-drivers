@@ -522,3 +522,10 @@ test-mt8167-audio-adapter-pnp: build/mt8167_audio_adapter_pnp_test
 build/mt8167_audio_adapter_pnp_test: drivers/audio/mt8167-afe/adapter.cpp tests/mt8167_audio_adapter_pnp_test.cpp tests/audio_adapter_stubs/portcls.h
 	mkdir -p build
 	$(CXX) -O2 -Wall -Wextra -Werror -std=c++11 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_MT8167_WAVERT_DIAGNOSTIC=1 -DA04_MT8167_OWNER_DIAGNOSTIC=1 -Itests/audio_adapter_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/adapter.cpp tests/mt8167_audio_adapter_pnp_test.cpp -o $@
+
+.PHONY: test-mt8167-shared-wdf
+test-mt8167-shared-wdf: build/mt8167_shared_wdf_test
+	./build/mt8167_shared_wdf_test
+build/mt8167_shared_wdf_test: tests/mt8167_shared_wdf_test.c tests/shared_wdf_stubs/ntddk.h tests/shared_wdf_stubs/wdf.h drivers/bus/mt8167-shared/wdf_parent_probe.c drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/input/a04br3-buttons/pmic_read.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_SHARED_QUERY_EXPERIMENTAL=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/input/a04br3-buttons/pmic_read.c tests/mt8167_shared_wdf_test.c -o $@
