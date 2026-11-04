@@ -8,3 +8,4 @@ Present-source mapping now validates positive stride, the full pitched source sp
 Present rectangle and move lists are copied into driver-owned memory under SEH before validation, with 32-bit format and valid source/destination bounds required. This is still a build-only adaptation, not a fully validated WDDM driver.
 The CPU present path now completes synchronously instead of alternating with a sample worker thread. Rotation dimensions and centered framebuffer bounds are validated before copying. Device power, stop synchronization and GPU integration remain unfinished.
 An opt-in GE8300 provider client can attempt contiguous 16 KiB copies and falls back to the CPU path. The opt-in is not validated on hardware or enabled by default.
+Concurrent level-zero present calls are serialized with a kernel mutex; mode changes, stop, reset and power transitions still require separate lifecycle verification.

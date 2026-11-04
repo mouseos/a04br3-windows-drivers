@@ -13,6 +13,15 @@
 
 #pragma code_seg("PAGE")
 
+/* PresentDisplayOnly has WDDM level-zero synchronization and can be entered
+ * concurrently. A kernel mutex leaves special APCs enabled for Zw I/O. */
+class A04PresentGuard
+{
+    KMUTEX* m_Mutex;
+public:
+    explicit A04PresentGuard(KMUTEX* mutex) : m_Mutex(mutex) {}
+    ~A04PresentGuard() { KeReleaseMutex(m_Mutex,FALSE); }
+};
 
 BASIC_DISPLAY_DRIVER::BASIC_DISPLAY_DRIVER(_In_ DEVICE_OBJECT* pPhysicalDeviceObject) : m_pPhysicalDevice(pPhysicalDeviceObject),
                                                                                         m_MonitorPowerState(PowerDeviceD0),
@@ -25,6 +34,7 @@ BASIC_DISPLAY_DRIVER::BASIC_DISPLAY_DRIVER(_In_ DEVICE_OBJECT* pPhysicalDeviceOb
     RtlZeroMemory(&m_StartInfo, sizeof(m_StartInfo));
     RtlZeroMemory(m_CurrentModes, sizeof(m_CurrentModes));
     RtlZeroMemory(&m_DeviceInfo, sizeof(m_DeviceInfo));
+    KeInitializeMutex(&m_PresentMutex,0);
 
 
     for (UINT i=0;i<MAX_VIEWS;i++)
@@ -458,6 +468,10 @@ NTSTATUS BASIC_DISPLAY_DRIVER::SetPointerShape(_In_ CONST DXGKARG_SETPOINTERSHAP
 NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DISPLAYONLY* pPresentDisplayOnly)
 {
     PAGED_CODE();
+
+    NTSTATUS waitStatus=KeWaitForSingleObject(&m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+    if (!NT_SUCCESS(waitStatus)) return waitStatus;
+    A04PresentGuard guard(&m_PresentMutex);
 
     BDD_ASSERT(pPresentDisplayOnly != NULL);
     BDD_ASSERT(pPresentDisplayOnly->VidPnSourceId < MAX_VIEWS);

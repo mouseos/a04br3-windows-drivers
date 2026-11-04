@@ -187,6 +187,7 @@ private:
 
 
     BDD_HWBLT        m_HardwareBlt[MAX_VIEWS];
+    KMUTEX           m_PresentMutex;
 
     // Current monitorpower state (this needs to be changed if MAX_CHILDREN != 1)
     DEVICE_POWER_STATE m_MonitorPowerState;
