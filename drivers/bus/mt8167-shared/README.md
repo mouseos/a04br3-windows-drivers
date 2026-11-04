@@ -116,3 +116,20 @@ it is released. This is a software rundown guarantee only: the prototype still
 has no mechanism that prevents the physical device disappearing while MMIO is
 already in progress, nor proof of retained rail or clock power. D0 remains
 unconditionally refused and a stop must never be interpreted as power control.
+
+Admission is closed atomically before D0 exit, surprise-removal or release
+waits for the shared mutex. Every GPIO and PWRAP operation rechecks the closed
+flag after acquiring that mutex, so a caller already queued on it cannot enter
+behind stop. Surprise removal also latches removal permanently for that device
+object: PrepareHardware rejects before mapping and checks again after mapping.
+Normal prepare/reprepare still does not open admission, and D0 remains refused.
+These checks prevent software reuse but do not make an in-flight bus access safe
+if power or hardware disappears before the notification.
+
+The optional eMMC query interface exposes only the existing fixed raw-rail
+observation under the same PWRAP owner. It returns failure with output unchanged
+while admission is closed. It does not grant a rail, clock, pin, card or bus
+lease, change hardware, publish a child, or connect Storport; an object
+reference is not a power reference. Existing audio acquire remains fail-closed.
+Actual rail and clock control, card reinitialization, audio codec sequencing,
+PnP topology and Sx resume remain prerequisites for any operational connection.

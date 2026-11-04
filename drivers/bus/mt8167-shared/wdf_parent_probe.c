@@ -11,10 +11,11 @@
 #include "register_owner.h"
 #include "client_interface.h"
 #include "audio_interface.h"
+#include "emmc_interface.h"
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
-typedef struct { PVOID topck,infra,gpio,pwrap; FAST_MUTEX pwrapLock; struct a04_pwrap_owner pmic; struct a04_register_owner regs; } A04_PARENT_CONTEXT;
+typedef struct { PVOID topck,infra,gpio,pwrap; FAST_MUTEX pwrapLock; struct a04_pwrap_owner pmic; struct a04_register_owner regs; volatile LONG admissionClosed,removed; } A04_PARENT_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_PARENT_CONTEXT,ParentContext)
 EVT_WDF_DRIVER_DEVICE_ADD ParentAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE ParentPrepare;
@@ -22,8 +23,16 @@ EVT_WDF_DEVICE_RELEASE_HARDWARE ParentRelease;
 EVT_WDF_DEVICE_D0_ENTRY ParentD0;
 EVT_WDF_DEVICE_D0_EXIT ParentD0Exit;
 EVT_WDF_DEVICE_SURPRISE_REMOVAL ParentSurprise;
-static int ParentLock(void *context) { ExAcquireFastMutex((FAST_MUTEX *)context);return 0; }
-static void ParentUnlock(void *context) { ExReleaseFastMutex((FAST_MUTEX *)context); }
+static int ParentLock(void *context)
+{
+    A04_PARENT_CONTEXT *c=(A04_PARENT_CONTEXT *)context;
+    ExAcquireFastMutex(&c->pwrapLock);
+    if(InterlockedCompareExchange(&c->admissionClosed,0,0)) {
+        ExReleaseFastMutex(&c->pwrapLock);return -1;
+    }
+    return 0;
+}
+static void ParentUnlock(void *context) { ExReleaseFastMutex(&((A04_PARENT_CONTEXT *)context)->pwrapLock); }
 static uint32_t ParentPwrapRead(void *context,unsigned offset) {
     A04_PARENT_CONTEXT *c=(A04_PARENT_CONTEXT *)context;
     return READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->pwrap+offset));
@@ -49,8 +58,8 @@ static int ParentRegWrite(void *context,enum a04_shared_bank bank,unsigned offse
     if(!base)return -1;
     WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)base+offset),value);return 0;
 }
-static int ParentRegLock(void *context) { return ParentLock(&((A04_PARENT_CONTEXT *)context)->pwrapLock); }
-static void ParentRegUnlock(void *context) { ParentUnlock(&((A04_PARENT_CONTEXT *)context)->pwrapLock); }
+static int ParentRegLock(void *context) { return ParentLock(context); }
+static void ParentRegUnlock(void *context) { ParentUnlock(context); }
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 static int ParentBank(unsigned bank,enum a04_shared_bank *out)
 {
@@ -82,6 +91,11 @@ static int ParentButtonRead(PVOID context,USHORT *value)
     if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
     return a04_pwrap_owner_read_buttons(&ParentContext((WDFDEVICE)context)->pmic,value);
 }
+static int ParentEmmcReadRails(PVOID context,struct a04_emmc_rails_raw *value)
+{
+    if(!context || !value || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+    return a04_pwrap_owner_read_emmc_rails(&ParentContext((WDFDEVICE)context)->pmic,value);
+}
 /* No evidence for codec power/mute and clock ownership exists. These
  * callbacks never touch MMIO and cannot grant an audio lease. */
 static int ParentAudioAcquire(PVOID context,ULONG rate) { UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(rate);return -1; }
@@ -95,8 +109,12 @@ static NTSTATUS ParentReadButtons(PVOID context,USHORT *value) {
     return a04_pwrap_owner_read_buttons(&c->pmic,value)==0 ? STATUS_SUCCESS:STATUS_DEVICE_NOT_READY;
 }
 #endif
-static void ParentStop(A04_PARENT_CONTEXT *c)
+static void ParentStop(A04_PARENT_CONTEXT *c,int removed)
 {
+    /* Close admission before waiting for the current holder. Callers that
+     * queued earlier recheck after taking the mutex and cannot overtake stop. */
+    InterlockedExchange(&c->admissionClosed,1);
+    if(removed)InterlockedExchange(&c->removed,1);
     /* Both owners share this mutex. Close admission in one critical section
      * before any mapping is released; neither client can enter in between. */
     ExAcquireFastMutex(&c->pwrapLock);
@@ -106,7 +124,7 @@ static void ParentStop(A04_PARENT_CONTEXT *c)
 }
 static void ParentUnmap(A04_PARENT_CONTEXT *c)
 {
-    ParentStop(c);
+    ParentStop(c,0);
     if(c->pwrap){MmUnmapIoSpace(c->pwrap,0x1000);c->pwrap=NULL;}
     if(c->gpio){MmUnmapIoSpace(c->gpio,0x1000);c->gpio=NULL;}
     if(c->infra){MmUnmapIoSpace(c->infra,0x1000);c->infra=NULL;}
@@ -117,6 +135,7 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
     A04_PARENT_CONTEXT *c=ParentContext(dev);struct a04_parent_resource r[4];
     struct a04_parent_mapping mapping;ULONG i,n=0;PHYSICAL_ADDRESS pa;
     UNREFERENCED_PARAMETER(raw);
+    if(InterlockedCompareExchange(&c->removed,0,0))return STATUS_DEVICE_NOT_READY;
     if(c->topck||c->infra||c->gpio||c->pwrap)return STATUS_INVALID_DEVICE_STATE;
     for(i=0;i<WdfCmResourceListGetCount(translated);++i) {
         PCM_PARTIAL_RESOURCE_DESCRIPTOR d=WdfCmResourceListGetDescriptor(translated,i);
@@ -135,6 +154,9 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
     if(!c->gpio)goto fail;
     pa.QuadPart=(LONGLONG)mapping.pwrap;c->pwrap=MmMapIoSpace(pa,0x1000,MmNonCached);
     if(!c->pwrap)goto fail;
+    if(InterlockedCompareExchange(&c->removed,0,0)) {
+        ParentUnmap(c);return STATUS_DEVICE_NOT_READY;
+    }
     /* Ownership remains offline: D0 never starts it. */
     return STATUS_SUCCESS;
 fail:
@@ -150,11 +172,11 @@ VOID ParentSurprise(WDFDEVICE dev)
 {
     /* Offline admission only: this cannot prevent a bus abort from removal
      * concurrent with an already executing hardware access. */
-    ParentStop(ParentContext(dev));
+    ParentStop(ParentContext(dev),1);
 }
 NTSTATUS ParentD0Exit(WDFDEVICE dev,WDF_POWER_DEVICE_STATE target)
 {
-    UNREFERENCED_PARAMETER(target);ParentStop(ParentContext(dev));return STATUS_SUCCESS;
+    UNREFERENCED_PARAMETER(target);ParentStop(ParentContext(dev),0);return STATUS_SUCCESS;
 }
 NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
 {
@@ -229,6 +251,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     A04_LEGACY_SHARED_INTERFACE iface;WDF_QUERY_INTERFACE_CONFIG query;
     A04_SHARED_INTERFACE inputIface;
     A04_SHARED_AUDIO_INTERFACE audioIface;
+    A04_SHARED_EMMC_INTERFACE emmcIface;
 #endif
     UNREFERENCED_PARAMETER(driver);
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
@@ -242,7 +265,8 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     {
         A04_PARENT_CONTEXT *c=ParentContext(dev);
         ExInitializeFastMutex(&c->pwrapLock);
-        c->pmic.lock_context=&c->pwrapLock;c->pmic.lock=ParentLock;c->pmic.unlock=ParentUnlock;
+        InterlockedExchange(&c->admissionClosed,1);
+        c->pmic.lock_context=c;c->pmic.lock=ParentLock;c->pmic.unlock=ParentUnlock;
         c->pmic.bus.context=c;c->pmic.bus.read32=ParentPwrapRead;c->pmic.bus.write32=ParentPwrapWrite;
         c->pmic.bus.delay=ParentPwrapDelay;c->pmic.bus.attempts=1000;
         c->regs.context=c;c->regs.lock=ParentRegLock;c->regs.unlock=ParentRegUnlock;
@@ -270,6 +294,13 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     audioIface.Header.InterfaceDereference=ParentInterfaceDereference;
     audioIface.AcquireMuted=ParentAudioAcquire;audioIface.ReleaseQuiescent=ParentAudioRelease;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&audioIface,&A04SharedAudioInterfaceGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);
+    if(!NT_SUCCESS(status))return status;
+    RtlZeroMemory(&emmcIface,sizeof(emmcIface));
+    emmcIface.Header.Size=sizeof(emmcIface);emmcIface.Header.Version=A04_SHARED_EMMC_INTERFACE_VERSION;
+    emmcIface.Header.Context=dev;emmcIface.Header.InterfaceReference=ParentInterfaceReference;
+    emmcIface.Header.InterfaceDereference=ParentInterfaceDereference;emmcIface.ReadRails=ParentEmmcReadRails;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&emmcIface,&A04SharedEmmcInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
 #endif
 #if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE

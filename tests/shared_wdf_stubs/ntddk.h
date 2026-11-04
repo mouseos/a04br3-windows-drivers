@@ -4,10 +4,14 @@
 #include <stddef.h>
 #include <string.h>
 #include <wchar.h>
+#include <pthread.h>
 typedef const wchar_t *PCWSTR;
+typedef int32_t LONG;
+static inline LONG InterlockedExchange(volatile LONG *p,LONG v){return __atomic_exchange_n(p,v,__ATOMIC_SEQ_CST);}
+static inline LONG InterlockedCompareExchange(volatile LONG *p,LONG n,LONG o){__atomic_compare_exchange_n(p,&o,n,0,__ATOMIC_SEQ_CST,__ATOMIC_SEQ_CST);return o;}
 typedef void VOID;typedef void *PVOID;typedef uint8_t UCHAR;typedef uint16_t USHORT;typedef uint32_t ULONG;typedef int32_t NTSTATUS;typedef int64_t LONGLONG;
 typedef struct { int64_t QuadPart; } PHYSICAL_ADDRESS;
-typedef struct {int held;} FAST_MUTEX;
+typedef struct {pthread_mutex_t mutex;int held;} FAST_MUTEX;
 #define STATUS_SUCCESS 0
 #define STATUS_INVALID_PARAMETER (-1)
 #define STATUS_DEVICE_NOT_READY (-2)
