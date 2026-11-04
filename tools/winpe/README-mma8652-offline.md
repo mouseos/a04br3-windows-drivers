@@ -27,12 +27,14 @@ API operation. The self-signed clean-volume helper and package have not been
 verified for acceptance by the installed Windows RT policy.
 
 `prepare-driver-probe-wim.py` requires the volume guard, byte comparison tool,
-clean-check and both source/reference directories. It checks the exact SHA256
+clean-check and its certificate, and both source/reference directories. It checks the exact SHA256
 of all five package files against the package recovered from the run3 ESP;
 this intentionally rejects rebuilt or re-signed binaries until revalidated.
 The evidence image `sensor-result.png` shows PnP started and raw HID values
 (-0.01, 0.01, 0.99 g), not Windows installed-OS Sensor API operation.
 The clean-check helper only queries FSCTL_IS_VOLUME_DIRTY and never repairs.
+`verify-mma8652-installed.cmd` checks the installed OS service, PnP status and
+one raw HID report; it rejects WinPE and does not test the Sensor API.
 `tools/ci/test-mma8652-offline-stage.ps1` runs the batch in a disposable mock
 folder with registry, device access and DISM replaced by mocks. No real disk,
 filesystem or installed OS is touched by that test.

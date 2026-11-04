@@ -38,6 +38,7 @@ p.add_argument('--toprgu-provider-status', type=Path, help='Read-only TOPRGU PnP
 p.add_argument('--read-emmc-model', type=Path, help='Read-only volatile eMMC model utility')
 p.add_argument('--disable-quickedit', type=Path, help='Optional signed console selection control executable')
 p.add_argument('--lc709203f-test', type=Path, help='Signed LC709203F test package directory')
+p.add_argument('--mma8652-clean-cert', type=Path, help='Certificate accompanying the clean-check helper')
 p.add_argument('--mma8652-clean-check', type=Path, help='Signed NTFS dirty-bit check executable')
 p.add_argument('--mma8652-package', type=Path, help='Test-signed MMA8652 diagnostic package')
 p.add_argument('--mma8652-tested', type=Path, help='Separately sourced, verified WinPE-tested INF/SYS/CAT')
@@ -128,9 +129,11 @@ if a.mma8652_package:
         with (a.mma8652_tested / name).open('rb') as stream:
             if hashlib.file_digest(stream, 'sha256').hexdigest() != expected[name]:
                 raise SystemExit(f'Not the run3 tested reference: {name}')
-    if not a.volume_guard or not a.compare_files or not a.mma8652_clean_check:
+    if not a.volume_guard or not a.compare_files or not a.mma8652_clean_check or not a.mma8652_clean_cert:
         raise SystemExit('MMA8652 offline staging needs volume guard and comparison tool')
     files['/a04br3/check-volume-clean.exe'] = a.mma8652_clean_check
+    files['/a04br3/check-volume-clean.cer'] = a.mma8652_clean_cert
+    files['/a04br3/mma8652/verify-installed.cmd'] = root / 'tools/winpe/verify-mma8652-installed.cmd'
     for name in ('mma8652.inf', 'mma8652.sys', 'mma8652.cat', 'mma8652-status.exe', 'mma8652-read.exe'):
         files[f'/a04br3/mma8652/{name}'] = a.mma8652_package / name
     for name in ('mma8652.inf', 'mma8652.sys', 'mma8652.cat'):
