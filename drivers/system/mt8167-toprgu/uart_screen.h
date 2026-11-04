@@ -1,0 +1,7 @@
+/* SPDX-License-Identifier: BSD-2-Clause-Patent */
+#ifndef A04_UART_SCREEN_H
+#define A04_UART_SCREEN_H
+#define A04_UART_SCREEN_DEVICE L"\\Device\\A04BR3ScreenUart"
+#define A04_UART_SCREEN_LINK L"\\DosDevices\\A04BR3ScreenUart"
+#define A04_UART_SCREEN_SEND CTL_CODE(FILE_DEVICE_UNKNOWN,0x840,METHOD_BUFFERED,FILE_WRITE_ACCESS)
+#endif
