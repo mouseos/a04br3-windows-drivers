@@ -119,6 +119,10 @@ unconditionally refused and a stop must never be interpreted as power control.
 
 The experimental query interface now includes a Wi-Fi ownership ABI. Its
 Acquire and ReleaseQuiescent callbacks always reject, and the parent still
-rejects D0. No MSDC2 child is created and existing ACPI Wi-Fi is not a child
-of this parent. The offline Wi-Fi query probe has no INF, does not acquire
-ownership or access hardware, and cannot be used to test the radio.
+rejects D0. With the existing child-probe build flag the parent creates a
+separate `A04BR3\MT6630SDIO` PDO, gives it an exclusive MSDC2 memory
+requirement, and forwards its Wi-Fi interface queries to the parent. The
+existing ACPI Wi-Fi candidate remains independent and must not be enabled
+alongside this child. No IRQ is claimed: translating the MSDC2 interrupt and
+supplying EINT5 still require a real interrupt provider. The PDO has no bound
+NDIS driver, the lease cannot be acquired and this is not a radio test.

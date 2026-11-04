@@ -178,7 +178,7 @@ NTSTATUS ChildRequirements(WDFDEVICE child,WDFIORESREQLIST requirements)
 {
     A04_CHILD_CONTEXT *c=ChildContext(child); WDFIORESLIST list;
     IO_RESOURCE_DESCRIPTOR descriptor; NTSTATUS status;
-    if(c->base!=0x10002000u && c->base!=0x11009000u)return STATUS_DEVICE_CONFIGURATION_ERROR;
+    if(c->base!=0x10002000u && c->base!=0x11009000u && c->base!=0x11170000u)return STATUS_DEVICE_CONFIGURATION_ERROR;
     status=WdfIoResourceListCreate(requirements,WDF_NO_OBJECT_ATTRIBUTES,&list);
     if(!NT_SUCCESS(status))return status;
     RtlZeroMemory(&descriptor,sizeof(descriptor));
@@ -218,6 +218,12 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
     if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    if(base==0x11170000u) {
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedWifiInterfaceGuid,NULL);
+        query.SendQueryToParentStack=TRUE;
+        status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    }
     status=WdfFdoAddStaticChild(parent,child);
     if(!NT_SUCCESS(status))WdfObjectDelete(child);
     return status;
@@ -293,6 +299,10 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     if(!NT_SUCCESS(status))return status;
     /* No guessed AFE resources: ChildRequirements rejects base zero. */
     status=ParentAddProbeChild(dev,L"A04BR3\\SharedAudioProbe",L"0",0);
+    if(!NT_SUCCESS(status))return status;
+    /* The host MMIO range is a separate child resource. IRQ translation and
+     * the EINT5 provider are not established, so no interrupt is advertised. */
+    status=ParentAddProbeChild(dev,L"A04BR3\\MT6630SDIO",L"0",0x11170000u);
 #endif
     return status;
 }
