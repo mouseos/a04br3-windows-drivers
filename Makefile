@@ -578,3 +578,11 @@ test-mt8167-audio-parent-client: build/mt8167_audio_parent_client_test
 build/mt8167_audio_parent_client_test: drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_audio_parent_client_test.c drivers/bus/mt8167-shared/audio_interface.h
 	mkdir -p build
 	$(CC) $(CFLAGS) -Itests/shared_wdf_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_audio_parent_client_test.c -o $@
+
+build/mt6630_identity_test: drivers/network/mt6630/identity.c drivers/network/mt6630/identity.h drivers/network/mt6630/ownership.h tests/mt6630_identity_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/identity.c tests/mt6630_identity_test.c -o $@
+
+build/mt6630_sdio_args_test: drivers/network/mt6630/sdio_args.h tests/mt6630_sdio_args_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 tests/mt6630_sdio_args_test.c -o $@
