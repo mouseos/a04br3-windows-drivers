@@ -20,6 +20,7 @@ struct a04_wifi_life {
  enum a04_wifi_life_state state;
  struct a04_wifi_owner *owner;
  unsigned generation;
+ unsigned verified_block_functions;
  struct a04_sdio_direct direct;
  struct a04_sdio_transport transport;
  struct a04_wifi_life_ops ops;
@@ -30,6 +31,9 @@ int a04_wifi_life_begin(struct a04_wifi_life *,struct a04_wifi_owner *,
  const uint8_t *,size_t,const struct a04_sdio_direct *,const struct a04_sdio_bus *,
  const struct a04_wifi_life_ops *);
 int a04_wifi_life_cmd52(struct a04_wifi_life *,unsigned,unsigned,unsigned,unsigned,uint8_t *);
+/* Caller must have successfully programmed and read back the FBR block size
+ * under this same lease. This records evidence; it does not perform the I/O. */
+int a04_wifi_life_block_verified(struct a04_wifi_life *,unsigned function,unsigned size);
 int a04_wifi_life_cmd53(struct a04_wifi_life *,unsigned,unsigned,unsigned,unsigned,uint8_t *,size_t);
 /* Stop closes admission first; callback failure leaves FAILED and retains the
  * remaining resources. STOP_FAILED requires external recovery; neither it nor

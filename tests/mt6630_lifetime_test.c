@@ -17,8 +17,10 @@ int main(void)
  struct a04_wifi_life_ops ops={&f,irq,drain,unmap,release};
  assert(!a04_wifi_admit(&o));assert(!a04_wifi_life_begin(&s,&o,cis,sizeof(cis),&d,&bus,&ops));
  assert(!a04_wifi_life_cmd52(&s,0,1,0,0,&v)&&v==0x42);assert(!a04_wifi_life_cmd53(&s,0,1,1,0,&v,1));
+ {uint8_t block[512]={0};assert(a04_wifi_life_cmd53(&s,0,1,0,0,block,sizeof(block))==-1);
+  assert(!a04_wifi_life_block_verified(&s,1,512));assert(!a04_wifi_life_cmd53(&s,0,1,0,0,block,sizeof(block)));}
  assert(!a04_wifi_life_stop(&s));assert(f.irq==1&&f.drain==2&&f.unmap==3&&f.release==4);
- assert(a04_wifi_life_cmd52(&s,0,1,0,0,&v)<0 && f.requests==2);assert(a04_wifi_life_stop(&s)<0);
+ assert(a04_wifi_life_cmd52(&s,0,1,0,0,&v)<0 && f.requests==3);assert(a04_wifi_life_stop(&s)<0);
  for(int fail=1;fail<=4;fail++){
   o=(struct a04_wifi_owner){0,1,1,1,1,1,0,0};f=(struct fake){0};s=(struct a04_wifi_life){0};f.fail_at=fail;
   assert(!a04_wifi_admit(&o));assert(!a04_wifi_life_begin(&s,&o,cis,sizeof(cis),&d,&bus,&ops));

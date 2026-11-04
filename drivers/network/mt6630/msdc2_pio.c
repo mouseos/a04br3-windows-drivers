@@ -52,23 +52,33 @@ int a04_msdc2_cmd53(void *context,uint32_t arg,unsigned write,uint8_t *p,size_t 
  return fail(s);
 }
 
-/* CMD52 R5: the caller validates response status. Only owned command-status
- * bits are cleared; the owner must have masked and quiesced the ISR. */
-int a04_msdc2_cmd52(void *context,uint32_t arg,uint32_t *response)
+/* The restricted control command fields follow the local UniXNU MSDC2
+ * implementation. IRQs must already be masked and drained by the owner. */
+int a04_msdc2_command(void *context,unsigned opcode,uint32_t arg,unsigned response_type,uint32_t *response)
 {
  struct a04_msdc2_pio *s=context;unsigned n;uint32_t st;
  if(!s || !s->owner || !s->read || !s->write || !s->delay || !response ||
     s->poisoned || s->owner->poisoned || !s->owner->active ||
-    s->generation!=s->owner->generation)return -1;
+    s->generation!=s->owner->generation ||
+    !((opcode==0 && response_type==0)||(opcode==3 && response_type==1)||
+      (opcode==5 && response_type==3)||(opcode==7 && response_type==7)||
+      (opcode==52 && response_type==1)))return -1;
  for(n=0;n<10000;n++){if(!(s->read(s->context,0x3c,4)&1u))break;s->delay(s->context,10);}
  if(n==10000)return fail(s);
  st=s->read(s->context,0x0c,4)&0x700u;if(st)s->write(s->context,0x0c,st,4);
- s->write(s->context,0x38,arg,4);s->write(s->context,0x34,52u|(1u<<7),4);
+ s->write(s->context,0x38,arg,4);s->write(s->context,0x34,opcode|(response_type<<7),4);
  for(n=0;n<10000;n++){
   st=s->read(s->context,0x0c,4)&0x700u;
   if(st){s->write(s->context,0x0c,st,4);if((st&0x600u)||!(st&0x100u))return fail(s);
-   *response=s->read(s->context,0x40,4);return 0;}
+   *response=s->read(s->context,0x40,4);
+   if(response_type==7){
+    unsigned k;for(k=0;k<10000;k++){if(!(s->read(s->context,0x3c,4)&1u))break;s->delay(s->context,10);}
+    if(k==10000)return fail(s);
+   }
+   return 0;}
   s->delay(s->context,10);
  }
  return fail(s);
 }
+int a04_msdc2_cmd52(void *context,uint32_t arg,uint32_t *response)
+{ return a04_msdc2_command(context,52,arg,1,response); }

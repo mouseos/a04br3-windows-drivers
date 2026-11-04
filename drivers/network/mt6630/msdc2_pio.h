@@ -22,4 +22,7 @@ struct a04_msdc2_pio {
 int a04_msdc2_cmd53(void *, uint32_t, unsigned, uint8_t *, size_t);
 /* Callback for a04_sdio_direct.request; R5 is checked by the caller. */
 int a04_msdc2_cmd52(void *, uint32_t, uint32_t *);
+/* Restricted control commands: 0, 3, 5, 7, 52 only. */
+int a04_msdc2_command(void *, unsigned opcode, uint32_t argument,
+                      unsigned response_type, uint32_t *response);
 #endif

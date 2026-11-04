@@ -600,6 +600,8 @@ test-mt6630: build/mt6630_identity_test build/mt6630_sdio_args_test build/mt6630
 	./build/mt6630_wlan_firmware_test
 	./build/mt6630_lifetime_test
 	./build/mt6630_parent_query_test
+	./build/mt6630_enumerate_test
+	./build/mt6630_control_start_test
 
 test: test-mt6630
 
@@ -652,3 +654,15 @@ build/mt6630_parent_query_test: tests/mt6630_parent_query_test.c tests/shared_wd
 	$(CC) $(CFLAGS) -Itests/shared_wdf_stubs tests/mt6630_parent_query_test.c -o $@
 
 test-mt6630: build/mt6630_parent_query_test
+
+build/mt6630_enumerate_test: drivers/network/mt6630/enumerate.c drivers/network/mt6630/enumerate.h drivers/network/mt6630/identity.c tests/mt6630_enumerate_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/enumerate.c drivers/network/mt6630/identity.c tests/mt6630_enumerate_test.c -o $@
+
+test-mt6630: build/mt6630_enumerate_test
+
+build/mt6630_control_start_test: drivers/network/mt6630/control_start.c drivers/network/mt6630/control_start.h drivers/network/mt6630/enumerate.c drivers/network/mt6630/msdc2_pio.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c tests/mt6630_control_start_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/control_start.c drivers/network/mt6630/enumerate.c drivers/network/mt6630/msdc2_pio.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c tests/mt6630_control_start_test.c -o $@
+
+test-mt6630: build/mt6630_control_start_test

@@ -13,7 +13,15 @@ static void reg_write(void *context,unsigned off,uint32_t value,unsigned width)
  if(width==1)WRITE_REGISTER_UCHAR(m->base+off,(UCHAR)value);
  else WRITE_REGISTER_ULONG((volatile ULONG *)(m->base+off),value);
 }
-static void delay(void *context,unsigned us){UNREFERENCED_PARAMETER(context);KeStallExecutionProcessor(us);}
+static void delay(void *context,unsigned us)
+{
+ LARGE_INTEGER interval;UNREFERENCED_PARAMETER(context);
+ /* Enumeration can request 10 ms. Do not busy-stall the CPU for that long.
+  * This component is restricted to PASSIVE_LEVEL by its caller contract. */
+ if(us<1000){KeStallExecutionProcessor(us);return;}
+ interval.QuadPart=-(LONGLONG)us*10;
+ (void)KeDelayExecutionThread(KernelMode,FALSE,&interval);
+}
 NTSTATUS a04_windows_msdc2_map(struct a04_windows_msdc2 *m,
  const CM_PARTIAL_RESOURCE_DESCRIPTOR *raw,const CM_PARTIAL_RESOURCE_DESCRIPTOR *trans,
  struct a04_wifi_owner *owner,unsigned generation,int irq_quiesced)

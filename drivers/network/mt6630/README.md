@@ -88,3 +88,9 @@ Windowsの領域探索・読取providerは未実装で、実端末の校正値�
 `wdf_wifi_parent_probe.c` は共有親のWi-Fi interfaceを問い合わせて型を確認する
 オフライン試作で、取得・MMIO・IRQ登録・NDISを行わずPrepareHardwareを失敗させる。
 共有親もリースを常時拒否し、現在のACPIに親子接続はない。実機試験用SYSではない。
+
+`enumerate.c` と `control_start.c` は条件付きでCMD0/3/5/7・CMD52を実行し、
+取得したCISの037a:6630を確認してSDIO制御と停止処理へ接続する。OCRは実際の
+電源レールについて呼出元が確認した範囲との共通部分だけを使い、電圧を操作しない。
+512-byteブロック転送は機能別FBRの設定と読戻しを確認するまで拒否する。
+実際の電源・pin/clock設定、Windows PnP/D0/IRQ、NDISへの接続は未実装。

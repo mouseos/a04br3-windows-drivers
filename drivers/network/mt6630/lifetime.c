@@ -16,7 +16,7 @@ int a04_wifi_life_begin(struct a04_wifi_life *s,struct a04_wifi_owner *owner,
  !direct || direct->owner!=owner || direct->generation!=owner->generation || direct->poisoned || !direct->request ||
  !bus || !bus->request || !ops || !ops->mask_and_drain_irq || !ops->drain_io || !ops->unmap_host || !ops->release_lease ||
  a04_mt6630_cis(cis,bytes,&id))return -1;
- s->owner=owner;s->generation=owner->generation;s->direct=*direct;s->ops=*ops;
+ s->owner=owner;s->generation=owner->generation;s->verified_block_functions=0;s->direct=*direct;s->ops=*ops;
  s->transport.bus=*bus;s->transport.ready=1;s->transport.poisoned=0;s->state=A04_WIFI_LIFE_IO;return 0;
 }
 int a04_wifi_life_cmd52(struct a04_wifi_life *s,unsigned write,unsigned fn,unsigned raw,unsigned addr,uint8_t *data)
@@ -24,9 +24,14 @@ int a04_wifi_life_cmd52(struct a04_wifi_life *s,unsigned write,unsigned fn,unsig
  int r;if(!ready(s))return -1;r=a04_sdio_direct52(&s->direct,write,fn,raw,addr,data);
  if(r==-2 || !ready(s)){fault(s);return -2;}return r;
 }
+int a04_wifi_life_block_verified(struct a04_wifi_life *s,unsigned fn,unsigned size)
+{
+ if(!ready(s) || !fn || fn>7 || size!=512)return -1;
+ s->verified_block_functions|=1u<<fn;return 0;
+}
 int a04_wifi_life_cmd53(struct a04_wifi_life *s,unsigned write,unsigned fn,unsigned incr,unsigned addr,uint8_t *data,size_t length)
 {
- int r;if(!ready(s))return -1;r=a04_sdio_transfer(&s->transport,write,fn,incr,addr,data,length);
+ int r;if(!ready(s) || (!incr && length>=512 && (fn>7 || !(s->verified_block_functions&(1u<<fn)))))return -1;r=a04_sdio_transfer(&s->transport,write,fn,incr,addr,data,length);
  if(r==-2 || !ready(s)){fault(s);return -2;}return r;
 }
 int a04_wifi_life_stop(struct a04_wifi_life *s)
