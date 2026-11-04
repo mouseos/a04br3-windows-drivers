@@ -68,3 +68,20 @@ that outstanding DMA has drained. It does not handle synchronization for a
 live cyclic buffer. No hardware can be started through the current miniport.
 See [Microsoft's common-buffer procedure](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/using-common-buffer-system-dma)
 and [WaveRT AllocateAudioBuffer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/portcls/nf-portcls-iminiportwavertstream-allocateaudiobuffer).
+
+`stream_transport.cpp` is an internal experiment that joins a pre-established
+clock lease, common-buffer preparation, IRQ connection and synchronized DL1
+start/stop. It has no WaveRT or PnP caller: a real parent must establish
+exclusive ownership, clock/codec safety, cache coherency and IRQ resources. The
+initial buffer must not be modified concurrently; live cyclic cache management
+is not implemented. Once an address may have reached hardware, failed start
+and all stop outcomes retain the buffer and clock. A stopped enable bit is not
+DMA-drain evidence. On stop failure the IRQ remains connected, so its handler,
+engine, mapping and callback must remain valid; failure and interrupt-storm
+recovery remain unresolved.
+
+The Windows IRQ wrapper serializes DL1 start/stop with its ISR through
+KeSynchronizeExecution and accumulates serviced IRQ notifications across DPC
+coalescing. This count is only ISR calls serviced by software, not proof of
+elapsed hardware periods. Fault notification is sticky. Both transport and
+IRQ paths are experimental, unconnected and untested in Windows on this SoC.

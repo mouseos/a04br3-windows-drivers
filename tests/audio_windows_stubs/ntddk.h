@@ -23,6 +23,7 @@ inline void KeInitializeDpc(PKDPC d,DPC_FUNC f,PVOID c) { d->fn=f;d->ctx=c;d->qu
 inline BOOLEAN KeInsertQueueDpc(PKDPC d,PVOID,PVOID) { if(d->queued)return FALSE;d->queued=1;return TRUE; }
 inline BOOLEAN KeRemoveQueueDpc(PKDPC d) { int q=d->queued;d->queued=0;return q; }
 inline void KeFlushQueuedDpcs() { }
+inline BOOLEAN KeSynchronizeExecution(PKINTERRUPT, BOOLEAN (*fn)(PVOID), PVOID c) { return fn(c); }
 inline NTSTATUS IoConnectInterrupt(PKINTERRUPT *p,ISR_FUNC f,PVOID c,void *,ULONG,KIRQL,KIRQL,KINTERRUPT_MODE,BOOLEAN,KAFFINITY,BOOLEAN) { test_interrupt.fn=f;test_interrupt.ctx=c;*p=&test_interrupt;return 0; }
 inline void IoDisconnectInterrupt(PKINTERRUPT) { test_interrupt.fn=0; }
 #ifdef A04_TEST_COMMON_DMA

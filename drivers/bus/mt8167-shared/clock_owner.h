@@ -15,7 +15,13 @@ struct mt8167_clock_owner {
     int online;
     int poisoned;
 };
+#ifdef __cplusplus
+extern "C" {
+#endif
 int mt8167_clock_acquire(struct mt8167_clock_owner *, unsigned client, uint32_t rate);
 int mt8167_clock_release(struct mt8167_clock_owner *, unsigned client);
 int mt8167_clock_stop(struct mt8167_clock_owner *);
+#ifdef __cplusplus
+}
+#endif
 #endif
