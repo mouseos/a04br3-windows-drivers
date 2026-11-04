@@ -24,3 +24,12 @@ adapter と割当ての寿命を実装する前に、単なる contiguous pool �
 所有権が解決したと扱わない。
 参照: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iogetdmaadapter
 および https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_common_buffer
+
+boot/scratch の試作では各コントローラ MMIO を原子的な受付状態で保護する。
+stop/removal が受付を閉じた後の新しい MMIO は行わない。DMA 中に受付が閉じた
+場合、後から停止成功と見えても閉鎖後の読み値は実機の状態を証明しないため、
+DMA 状態を保持し poison とする。受付閉鎖前に既に始まった MMIO への物理的な
+バス消失は防げない。この試作も Storport extension の寿命を保証しない。
+Microsoft の [HwStorAdapterControl](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/storport/nc-storport-hw_adapter_control)
+では停止・再開は同期処理であり、ScsiStopAdapter/ScsiRestartAdapter は DIRQL と
+InterruptLock の下で呼ばれる。失敗値の返却だけで削除を阻止できるとみなさない。

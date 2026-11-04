@@ -44,7 +44,10 @@ static int a04_life_dma_begin(a04_lifetime *s)
 static void a04_life_dma_end(a04_lifetime *s,int stopped)
 {
     int old=a04_life_load(s),next;
-    do { next=a04_life_cas(s,stopped ? old & ~A04_LIFE_DMA : old | A04_LIFE_POISON|A04_LIFE_CLOSED,old); if(next==old) return; old=next; } while(1);
+    /* Closing during a transfer revokes MMIO admission. A later apparent
+     * completion could have used synthetic reads, so it cannot prove DMA
+     * stopped even when the transfer routine reports success. */
+    do { next=a04_life_cas(s,(stopped && !(old&A04_LIFE_CLOSED)) ? old & ~A04_LIFE_DMA : old | A04_LIFE_POISON|A04_LIFE_CLOSED,old); if(next==old) return; old=next; } while(1);
 }
 /* A lease records an access which began before close. It is not a bus
  * presence guarantee and cannot prevent an asynchronous external abort. */

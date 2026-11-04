@@ -116,7 +116,11 @@ static uint32_t A04Read32(void *context, uint32_t offset)
     return value;
 #endif
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
-    if (a04_life_load(&probe->lifetime) & A04_LIFE_REMOVED) return 0xffffffffu;
+    ULONG value;
+    if (!a04_life_mmio_begin(&probe->lifetime)) return 0xffffffffu;
+    value=READ_REGISTER_ULONG(probe->registers + offset / 4);
+    a04_life_mmio_end(&probe->lifetime);
+    return value;
 #endif
     return READ_REGISTER_ULONG(probe->registers + offset / 4);
 }
@@ -132,7 +136,11 @@ static uint8_t A04Read8(void *context, uint32_t offset)
     return value;
 #endif
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
-    if (a04_life_load(&probe->lifetime) & A04_LIFE_REMOVED) return 0xffu;
+    UCHAR value;
+    if (!a04_life_mmio_begin(&probe->lifetime)) return 0xffu;
+    value=READ_REGISTER_UCHAR((volatile UCHAR *)probe->registers + offset);
+    a04_life_mmio_end(&probe->lifetime);
+    return value;
 #endif
     return READ_REGISTER_UCHAR((volatile UCHAR *)probe->registers + offset);
 }
@@ -147,7 +155,10 @@ static void A04Write32(void *context, uint32_t offset, uint32_t value)
     return;
 #endif
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
-    if (a04_life_load(&probe->lifetime) & A04_LIFE_REMOVED) return;
+    if (!a04_life_mmio_begin(&probe->lifetime)) return;
+    WRITE_REGISTER_ULONG(probe->registers + offset / 4, value);
+    a04_life_mmio_end(&probe->lifetime);
+    return;
 #endif
     WRITE_REGISTER_ULONG(probe->registers + offset / 4, value);
 }
