@@ -10,13 +10,13 @@ static void *allocate(PDMA_ADAPTER adapter,ULONG size,PHYSICAL_ADDRESS *pa,BOOLE
 {
     (void)adapter; (void)cache;
     pa->QuadPart=allocations++ ? 0x90000000 : 0x80000000;
-    return malloc(size);
+    return aligned_alloc(64,size);
 }
 static void release(PDMA_ADAPTER a,ULONG size,PHYSICAL_ADDRESS pa,void *memory,BOOLEAN cache)
 { (void)a; (void)size; (void)pa; (void)cache; ++releases; free(memory); }
 unsigned KeGetCurrentIrql(void) { return PASSIVE_LEVEL; }
 void KeStallExecutionProcessor(unsigned delay) { (void)delay; }
-PMDL IoAllocateMdl(void *p,ULONG n,BOOLEAN a,BOOLEAN b,void *c) { (void)n; (void)a; (void)b; (void)c; return p; }
+PMDL IoAllocateMdl(void *p,ULONG n,BOOLEAN a,BOOLEAN b,void *c) { (void)a; (void)b; (void)c; return ((uintptr_t)p%64 || n%64) ? NULL : p; }
 void MmBuildMdlForNonPagedPool(PMDL p) { (void)p; }
 void KeFlushIoBuffers(PMDL p,BOOLEAN read,BOOLEAN dma)
 { (void)p; if(dma) { if(read) ++sync_read; else ++sync_write; } }

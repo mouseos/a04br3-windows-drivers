@@ -24,9 +24,9 @@ NTSTATUS a04_gpu_allocate_memory(PDMA_ADAPTER adapter, struct a04_gpu_dma_memory
     if (m->adapter || m->heap || m->table) return STATUS_INVALID_DEVICE_STATE;
     RtlZeroMemory(m,sizeof(*m)); m->adapter=adapter;
     m->heap=adapter->DmaOperations->AllocateCommonBuffer(adapter,A04_PVR_HEAP_SIZE,&m->heap_logical,FALSE);
-    if (!m->heap || !valid_address(m->heap_logical,A04_PVR_HEAP_SIZE)) goto fail;
+    if (!m->heap || ((ULONG_PTR)m->heap & 63u) || !valid_address(m->heap_logical,A04_PVR_HEAP_SIZE)) goto fail;
     m->table=adapter->DmaOperations->AllocateCommonBuffer(adapter,PVR_TABLE_SIZE,&m->table_logical,FALSE);
-    if (!m->table || !valid_address(m->table_logical,PVR_TABLE_SIZE)) goto fail;
+    if (!m->table || ((ULONG_PTR)m->table & 63u) || !valid_address(m->table_logical,PVR_TABLE_SIZE)) goto fail;
     if ((ULONGLONG)m->heap_logical.QuadPart < (ULONGLONG)m->table_logical.QuadPart+PVR_TABLE_SIZE &&
         (ULONGLONG)m->table_logical.QuadPart < (ULONGLONG)m->heap_logical.QuadPart+A04_PVR_HEAP_SIZE) goto fail;
     return STATUS_SUCCESS;
@@ -76,9 +76,19 @@ void a04_gpu_dma_barrier(void)
 }
 NTSTATUS a04_gpu_dma_sync(void *address,ULONG length,BOOLEAN device_writes)
 {
-    PMDL mdl;
+    PMDL mdl; ULONG_PTR start,end; ULONG aligned_length;
     if (!address || !length || KeGetCurrentIrql()>DISPATCH_LEVEL) return STATUS_INVALID_PARAMETER;
-    mdl=IoAllocateMdl(address,length,FALSE,FALSE,NULL);
+    /* MT8167 Cortex-A35 has 64-byte data cache lines. All callers must
+     * pass ranges inside 64-byte-aligned common buffers. Do not construct a
+     * partial-line DMA MDL: ARM DMA verification rejects it (E6/1F/05). */
+    start=(ULONG_PTR)address;
+    if (start > ~(ULONG_PTR)0 - length || start + length > ~(ULONG_PTR)0 - 63u)
+        return STATUS_INVALID_PARAMETER;
+    end=(start+length+63u)&~(ULONG_PTR)63u;
+    start &= ~(ULONG_PTR)63u;
+    if (end-start > UINT32_MAX) return STATUS_INVALID_PARAMETER;
+    aligned_length=(ULONG)(end-start);
+    mdl=IoAllocateMdl((void *)start,aligned_length,FALSE,FALSE,NULL);
     if (!mdl) return STATUS_INSUFFICIENT_RESOURCES;
     MmBuildMdlForNonPagedPool(mdl);
     KeFlushIoBuffers(mdl,device_writes,TRUE);
