@@ -76,6 +76,8 @@ int main(int argc,char **argv) {
         const struct rogue_fwif_sysinit *sys=(void *)(heap+runtime.system_init);
         if(q->wrap_mask!=127 || q->cmd_size!=sizeof(struct rogue_fwif_kccb_cmd) ||
            os->kernel_ccb_fw_addr!=(0xc0000000u|runtime.kernel_ccb) ||
+           os->rogue_fwif_hwr_info_buf_ctl_fw_addr!=(0xc0000000u|runtime.hwr_control) ||
+           runtime.hwr_control>runtime.next_free-sizeof(struct rogue_fwif_hwrinfobuf) ||
            sys->initial_core_clock_speed!=26000000u || sys->marker_val!=1) return 15;
     }
     b[0]=0; r=a04_pvr_fw_plan(b,(size_t)n,A04_PVR_BVNC,1,&p); b[0]=0x7f;

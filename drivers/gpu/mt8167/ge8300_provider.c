@@ -102,14 +102,15 @@ static void GpuRenderFirmwareEvidence(struct a04_gpu_firmware_state *s,ULONG pha
     uint32_t fw,off,rd,wr,wr_after,idx,reset=0,grow=0,rebuild=0,restart=0,pf=0,other=0;
     NTSTATUS status=STATUS_INVALID_DEVICE_STATE;
     if(!s || !s->processor_released || !s->memory.heap || s->runtime.next_free>A04_PVR_HEAP_SIZE ||
-       s->runtime.os_init>A04_PVR_HEAP_SIZE-sizeof(*os) ||
+       s->runtime.os_init!=A04_PVR_HEAP_SIZE-2u*65536u ||
        s->runtime.firmware_ccb_control>s->runtime.next_free ||
        sizeof(*ctl)>s->runtime.next_free-s->runtime.firmware_ccb_control ||
        s->runtime.firmware_ccb>s->runtime.next_free ||
        32u*sizeof(*ring)>s->runtime.next_free-s->runtime.firmware_ccb) goto fail;
     heap=s->memory.heap;os=(void *)(heap+s->runtime.os_init);
     fw=os->rogue_fwif_hwr_info_buf_ctl_fw_addr;off=fw&0x00ffffffu;
-    if((fw&0xff000000u)!=0xc0000000u || off>s->runtime.next_free || sizeof(*hwr)>s->runtime.next_free-off) goto fail;
+    if((fw&0xff000000u)!=0xc0000000u || off!=s->runtime.hwr_control ||
+       off>s->runtime.next_free || sizeof(*hwr)>s->runtime.next_free-off) goto fail;
     hwr=(void *)(heap+off);ctl=(void *)(heap+s->runtime.firmware_ccb_control);ring=(void *)(heap+s->runtime.firmware_ccb);
     status=a04_gpu_dma_sync(hwr,sizeof(*hwr),TRUE);if(!NT_SUCCESS(status)) goto fail;
     status=a04_gpu_dma_sync(ctl,sizeof(*ctl),TRUE);if(!NT_SUCCESS(status)) goto fail;
