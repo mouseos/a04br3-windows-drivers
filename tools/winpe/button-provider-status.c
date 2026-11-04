@@ -4,6 +4,17 @@
 #include <cfgmgr32.h>
 #include <initguid.h>
 #include <devpkey.h>
+#ifdef A04_DISPLAY_PROVIDER_STATUS
+#include "../../drivers/gpu/mt8167/ge8300_status.h"
+static void report_display(ULONG started)
+{
+    DWORD returned; HANDLE handle=CreateFileW(L"\\\\.\\A04GE8300",GENERIC_READ|GENERIC_WRITE,
+        FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,0,NULL);
+    if(handle==INVALID_HANDLE_VALUE) return;
+    DeviceIoControl(handle,A04_GE8300_IOCTL_REPORT_DISPLAY,&started,sizeof(started),NULL,0,&returned,NULL);
+    CloseHandle(handle);
+}
+#endif
 
 #ifdef A04_DISPLAY_PROVIDER_STATUS
 #define PROVIDER_ID L"ACPI\\MOU0007"
@@ -74,6 +85,9 @@ void mainCRTStartup(void)
         say(" TYPE="); hex(propertyType); say(" NTSTATUS="); hex(problemStatus); say("\r\n");
     }
     if (result == CR_SUCCESS && (status & DN_STARTED) && problem == 0) {
+#ifdef A04_DISPLAY_PROVIDER_STATUS
+        report_display(1);
+#endif
 #ifdef A04_TOUCH_PROVIDER_STATUS
         DEVINST child;
         if (CM_Get_Child(&child, node, 0) == CR_SUCCESS) {
@@ -91,5 +105,8 @@ void mainCRTStartup(void)
 #endif
         say(PROVIDER_PREFIX "_STARTED\r\n"); ExitProcess(0);
     }
+#ifdef A04_DISPLAY_PROVIDER_STATUS
+    report_display(0);
+#endif
     say(PROVIDER_PREFIX "_NOT_STARTED\r\n"); ExitProcess(1);
 }

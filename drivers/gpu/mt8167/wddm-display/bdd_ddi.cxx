@@ -8,6 +8,7 @@
 \**************************************************************************/
 
 #include "BDD.hxx"
+#include "ge8300_trace.hxx"
 
 
 #pragma code_seg(push)
@@ -25,7 +26,7 @@ DriverEntry(
     _In_  UNICODE_STRING* pRegistryPath)
 {
     PAGED_CODE();
-
+    A04DisplayTrace(1,STATUS_SUCCESS);
 
     // Initialize DDI function pointers and dxgkrnl
     KMDDOD_INITIALIZATION_DATA InitialData = {0};
@@ -62,6 +63,7 @@ DriverEntry(
     InitialData.DxgkDdiSystemDisplayWrite           = BddDdiSystemDisplayWrite;
 
     NTSTATUS Status = DxgkInitializeDisplayOnlyDriver(pDriverObject, pRegistryPath, &InitialData);
+    A04DisplayTrace(2,Status);
     if (!NT_SUCCESS(Status))
     {
         BDD_LOG_ERROR1("DxgkInitializeDisplayOnlyDriver failed with Status: 0x%I64x", Status);
@@ -93,6 +95,7 @@ BddDdiAddDevice(
     _Outptr_ PVOID*  ppDeviceContext)
 {
     PAGED_CODE();
+    A04DisplayTrace(3,STATUS_SUCCESS);
 
     if ((pPhysicalDeviceObject == NULL) ||
         (ppDeviceContext == NULL))
@@ -111,6 +114,8 @@ BddDdiAddDevice(
     }
 
     *ppDeviceContext = pBDD;
+
+    A04DisplayTrace(4,STATUS_SUCCESS);
 
     return STATUS_SUCCESS;
 }
@@ -144,7 +149,10 @@ BddDdiStartDevice(
     BDD_ASSERT_CHK(pDeviceContext != NULL);
 
     BASIC_DISPLAY_DRIVER* pBDD = reinterpret_cast<BASIC_DISPLAY_DRIVER*>(pDeviceContext);
-    return pBDD->StartDevice(pDxgkStartInfo, pDxgkInterface, pNumberOfViews, pNumberOfChildren);
+    A04DisplayTrace(5,STATUS_SUCCESS);
+    NTSTATUS status=pBDD->StartDevice(pDxgkStartInfo, pDxgkInterface, pNumberOfViews, pNumberOfChildren);
+    A04DisplayTrace(6,status);
+    return status;
 }
 
 NTSTATUS

@@ -281,6 +281,15 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
     WDFDEVICE device=WdfIoQueueGetDevice(queue); GPU_CONTEXT *c=GpuContext(device);
     struct a04_ge8300_status *out; NTSTATUS status; size_t size;
 #if A04_GE8300_COPY_SERVICE
+    if (control==A04_GE8300_IOCTL_REPORT_DISPLAY) {
+        ULONG *value; size_t bytes;
+        status=WdfRequestRetrieveInputBuffer(request,sizeof(*value),(PVOID*)&value,&bytes);
+        if (!NT_SUCCESS(status) || input!=sizeof(*value) || *value>1u) {
+            WdfRequestComplete(request,STATUS_INVALID_PARAMETER); return;
+        }
+        GpuPrint(*value ? "A04GPU DISPLAY PNP STARTED\n" : "A04GPU DISPLAY PNP FAILED\n");
+        WdfRequestComplete(request,STATUS_SUCCESS); return;
+    }
     if (control==A04_GE8300_IOCTL_COPY) {
         void *src,*dst; size_t in_size,out_size;
         if (WdfRequestGetRequestorMode(request)!=KernelMode) {

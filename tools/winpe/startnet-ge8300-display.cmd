@@ -17,6 +17,11 @@ if errorlevel 1 goto gpufail
 if errorlevel 1 goto gpufail
 %GPU%\ge8300-service-status.exe
 if errorlevel 1 goto gpufail
+rem WinPE registers dxgkrnl as demand-start; explicitly request it before
+rem loading the WDDM miniport. Continue if Windows says it is already active.
+echo DISPLAY_DXGKRNL_STARTING
+net start dxgkrnl
+echo DISPLAY_DXGKRNL_START_EXIT=%errorlevel%
 echo DISPLAY_DRVLOAD_STARTING
 drvload %DISP%\mt8167-display.inf
 if errorlevel 1 goto displayfail
@@ -45,6 +50,7 @@ echo DISPLAY_GPU_SERVICE_FAILED
 goto finish
 :displayfail
 echo DISPLAY_PNP_FAILED
+reg query HKLM\SYSTEM\CurrentControlSet\Services\MT8167Display /v ImagePath
 goto finish
 :copyfail
 echo DISPLAY_GPU_COPY_NOT_OBSERVED

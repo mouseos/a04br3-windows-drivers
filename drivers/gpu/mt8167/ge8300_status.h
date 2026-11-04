@@ -6,6 +6,8 @@
  * only; provider-side enforcement is mandatory. Experimental opt-in. */
 #define A04_GE8300_IOCTL_COPY 0x00226008u
 #define A04_GE8300_COPY_BYTES 16384u
+/* Diagnostic-only report from the administrator-owned WinPE status tool. */
+#define A04_GE8300_IOCTL_REPORT_DISPLAY 0x0022600cu
 struct a04_ge8300_status {
     unsigned long version, attempted, boot_status, health_status, shutdown_status;
     unsigned long bvnc_low, bvnc_high, processor_released, firmware_started, queue_faulted;
