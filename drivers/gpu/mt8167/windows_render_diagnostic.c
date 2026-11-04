@@ -35,7 +35,7 @@ static NTSTATUS verify_fixed(struct a04_windows_render_memory *m,const struct a0
 {
     struct a04_render_fixed_ppp ppp;uint8_t vdm[60],bg[16],data[16],code[16]={0,0,2,0xf4,0,0,0,0xd3};
     uint8_t usc[128],frag[48],eot[128],event[16],staticpds[256]={0},staticusc[128]={0};
-    static const uint8_t scissor[8]={64,0,0,0,64,0,0,0};
+    static const uint8_t scissor[8]={49,0,0,0,64,0,0,0};
     static const uint8_t nop[8]={0x44,0xa0,0x80,0x05,0,0,0,0xff};size_t i;
     if (a04_render_make_fixed_ppp(pp,r,m->map_count,&ppp) || a04_render_make_fixed_vdm(vd,r,m->map_count,vdm) ||
         a04_render_make_fixed_background(P+0x580,r,m->map_count,bg,data) ||
@@ -115,11 +115,11 @@ NTSTATUS a04_windows_render_diagnostic_run(struct a04_windows_render_diagnostic 
         if(bg) ++d->background_pixels;
         else if(tri) { ++d->triangle_pixels;d->triangle_rows[y][x/32u]|=1u<<(x%32u); }
         else ++d->other_pixels;
-        edge=x>=8u && y>=8u && x+y==63u;
-        inside=x>=8u && y>=8u && x+y<63u;
+        edge=x>=8u && x<49u && y>=8u && x+y==63u;
+        inside=x>=8u && x<49u && y>=8u && x+y<63u;
         if(!edge && ((inside && !tri) || (!inside && !bg))) ++d->spatial_mismatch;
     }
-    d->stage=32;status=(d->background_pixels && d->triangle_pixels>=1128u && d->triangle_pixels<=1176u &&
+    d->stage=32;status=(d->background_pixels && d->triangle_pixels>=1107u && d->triangle_pixels<=1148u &&
         !d->other_pixels && !d->spatial_mismatch) ? STATUS_SUCCESS : STATUS_DATA_ERROR;
 fail:
     d->result=status;return status;

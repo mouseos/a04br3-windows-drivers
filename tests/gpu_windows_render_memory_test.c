@@ -35,7 +35,7 @@ NTSTATUS a04_gpu_firmware_submit_kick(struct a04_gpu_firmware_state *s,const str
     *(uint32_t *)m->render.geom_fence.cpu=1;*(uint32_t *)m->render.frag_fence.cpu=2;
     ((struct rogue_fwif_cccb_ctl *)m->render.geom_control.cpu)->read_offset=(uint32_t)(2u*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(struct rogue_fwif_cmd_geom)+sizeof(struct rogue_fwif_ufo));
     ((struct rogue_fwif_cccb_ctl *)m->render.frag_control.cpu)->read_offset=m->render.frag_end;
-    for(y=0;y<64;++y) for(x=0;x<64;++x) { unsigned tx=diagnostic_wrong_pixels==2 ? 63-x : x; int inside=tx>=8 && y>=8 && tx+y<63; i=0;
+    for(y=0;y<64;++y) for(x=0;x<64;++x) { unsigned tx=diagnostic_wrong_pixels==2 ? 63-x : diagnostic_wrong_pixels==3 ? y : x; unsigned ty=diagnostic_wrong_pixels==3 ? x : y; int inside=tx>=8 && tx<49 && ty>=8 && tx+ty<63; i=0;
       for(bit=0;bit<6;++bit) i|=((x>>bit)&1u)<<(2u*bit) | ((y>>bit)&1u)<<(2u*bit+1u);
       p[4*i]=diagnostic_wrong_pixels==1?0:(inside?0xff:0x22);p[4*i+1]=inside?0:0x44;p[4*i+2]=inside?0xff:0x66;p[4*i+3]=0xff; }
   }
@@ -484,7 +484,7 @@ int main(void)
       assert(a04_windows_render_stage_fixed_scissor(&m,0xda00010000ULL)==STATUS_INVALID_PARAMETER);
       out[0x600]=1;assert(a04_windows_render_stage_fixed_scissor(&m,0xda00010600ULL)==STATUS_INVALID_DEVICE_STATE);
       out[0x600]=0;assert(a04_windows_render_stage_fixed_scissor(&m,0xda00010600ULL)==STATUS_SUCCESS);
-      assert(out[0x600]==64 && out[0x604]==64 && m.staged_count==21);
+      assert(out[0x600]==49 && out[0x604]==64 && m.staged_count==21);
       assert(a04_windows_render_stage_pixel_event(&m,0xda00010610ULL,0xe000005ff0ULL)==STATUS_INVALID_PARAMETER);
       out[0x61f]=1;assert(a04_windows_render_stage_pixel_event(&m,0xda00010610ULL,0xe000005100ULL)==STATUS_INVALID_DEVICE_STATE);
       assert(m.staged_count==21 && !out[0x610]);out[0x61f]=0;
@@ -557,7 +557,7 @@ int main(void)
     { struct a04_windows_render_diagnostic d={0};s.processor_released=TRUE;s.firmware_started=TRUE;s.queue_faulted=FALSE;
       cleanup_calls=0;kick_calls=0;diagnostic_mock=&d;
       assert(a04_windows_render_diagnostic_run(&d,&s)==STATUS_SUCCESS);
-      assert(d.stage==32 && d.background_pixels==2968 && d.triangle_pixels==1128 && !d.other_pixels && !d.spatial_mismatch);
+      assert(d.stage==32 && d.background_pixels==2989 && d.triangle_pixels==1107 && !d.other_pixels && !d.spatial_mismatch);
       assert(d.memory.cleanup_complete && d.memory.bounded_states_checked && cleanup_calls==5 && kick_calls==2);
       assert(a04_windows_render_diagnostic_run(&d,&s)==STATUS_INVALID_PARAMETER);
       diagnostic_mock=NULL;s.processor_released=FALSE;assert(a04_windows_render_memory_free(&d.memory,TRUE)==STATUS_SUCCESS); }
@@ -572,7 +572,10 @@ int main(void)
       assert(a04_windows_render_diagnostic_run(&d,&s)==STATUS_DATA_ERROR && d.stage==32 && d.memory.cleanup_complete && d.other_pixels==4096);
       diagnostic_mock=NULL;diagnostic_wrong_pixels=0;s.processor_released=FALSE;assert(a04_windows_render_memory_free(&d.memory,TRUE)==STATUS_SUCCESS); }
     { struct a04_windows_render_diagnostic d={0};s.processor_released=TRUE;cleanup_calls=0;kick_calls=0;diagnostic_wrong_pixels=2;diagnostic_mock=&d;
-      assert(a04_windows_render_diagnostic_run(&d,&s)==STATUS_DATA_ERROR && d.stage==32 && d.triangle_pixels==1128 && d.other_pixels==0 && d.spatial_mismatch>0);
+      assert(a04_windows_render_diagnostic_run(&d,&s)==STATUS_DATA_ERROR && d.stage==32 && d.triangle_pixels==1107 && d.other_pixels==0 && d.spatial_mismatch>0);
+      diagnostic_mock=NULL;diagnostic_wrong_pixels=0;s.processor_released=FALSE;assert(a04_windows_render_memory_free(&d.memory,TRUE)==STATUS_SUCCESS); }
+    { struct a04_windows_render_diagnostic d={0};s.processor_released=TRUE;cleanup_calls=0;kick_calls=0;diagnostic_wrong_pixels=3;diagnostic_mock=&d;
+      assert(a04_windows_render_diagnostic_run(&d,&s)==STATUS_DATA_ERROR && d.stage==32 && d.triangle_pixels==1107 && d.other_pixels==0 && d.spatial_mismatch>0);
       diagnostic_mock=NULL;diagnostic_wrong_pixels=0;s.processor_released=FALSE;assert(a04_windows_render_memory_free(&d.memory,TRUE)==STATUS_SUCCESS); }
     free(s.memory.heap);
     return 0;

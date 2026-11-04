@@ -722,7 +722,8 @@ NTSTATUS a04_windows_render_stage_background_shader(struct a04_windows_render_me
 NTSTATUS a04_windows_render_stage_fixed_scissor(struct a04_windows_render_memory *m,uint64_t gpu)
 {
     uint64_t len=8,off=0;size_t i;unsigned matches=0;
-    static const uint8_t data[8]={64,0,0,0,64,0,0,0};
+    /* Mesa IPF_SCISSOR_WORD: xmin=0, xmax=49; ymin=0, ymax=64. */
+    static const uint8_t data[8]={49,0,0,0,64,0,0,0};
     if (!m || !m->ready || !m->cpu || !m->adapter || !m->firmware || m->published || m->poisoned ||
         !m->map_count || m->map_count>A04_RENDER_MAX_MAPS || (gpu&3u) || KeGetCurrentIrql()!=PASSIVE_LEVEL ||
         !render_ptes_valid(m) || !staged_available(m,&gpu,&len,1)) return STATUS_INVALID_PARAMETER;
