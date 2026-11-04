@@ -87,6 +87,17 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StartDevice(_In_  DXGK_START_INFO*   pDxgkStartIn
         // after a pre-WDDM 1.2 driver. Since we can't draw anything, we should fail to start.
         return STATUS_UNSUCCESSFUL;
     }
+    {
+        const DXGK_DISPLAY_INFORMATION* info=&m_CurrentModes[0].DispInfo;
+        uint32_t w,h,offset;
+        /* The map, blackout and unmap paths use Pitch * Height. Reject
+         * unsupported or overflowing POST surfaces before any of them run. */
+        if (BPPFromPixelFormat(info->ColorFormat)!=32 ||
+            a04_present_layout(info->Width,info->Height,info->Width,info->Height,
+                               info->Pitch,0,0,&w,&h,&offset) ||
+            (uint64_t)info->PhysicAddress.QuadPart>UINT64_MAX-(uint64_t)info->Pitch*info->Height)
+            return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
     m_Flags.DriverStarted = TRUE;
     *pNumberOfViews = MAX_VIEWS;
     *pNumberOfChildren = MAX_CHILDREN;
