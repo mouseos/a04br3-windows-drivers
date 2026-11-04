@@ -44,3 +44,15 @@ int a04_render_make_context_sr_data(uint64_t state,uint64_t shader,uint64_t cont
     for(i=0;i<sizeof(data);++i) out[i]=data[i];
     return 0;
 }
+int a04_render_make_context_pds_code(struct a04_render_context_pds_code *out)
+{
+    struct a04_render_context_pds_code c={{0},{0},{0}};size_t i;
+    static const uint32_t st[]={0xd0800000u,0xd0800001u,0xd0800002u,0xd1000000u,0xd3000000u};
+    static const uint32_t ld[]={0xd3800010u,0xd0000000u,0xd0000001u,0xd0000002u,0xd1000000u,0xd3000000u};
+    static const uint32_t sr[]={0xf0020001u,0xf0060201u,0xf4000402u};
+    if (!out) return -1;
+    for(i=0;i<sizeof(st)/sizeof(st[0]);++i) put32(c.pt_store+i*4u,st[i]);
+    for(i=0;i<sizeof(ld)/sizeof(ld[0]);++i) put32(c.pt_resume+i*4u,ld[i]);
+    for(i=0;i<sizeof(sr)/sizeof(sr[0]);++i) put32(c.sr+i*4u,sr[i]);
+    *out=c;return 0;
+}

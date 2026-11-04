@@ -16,6 +16,9 @@ class TestContextPt(unittest.TestCase):
         shared=pt.make_sr(addr,0xe000005040,1<<35)
         self.assertEqual(len(shared),64);self.assertEqual(shared[40:],bytes(24))
         self.assertEqual(struct.unpack_from('<I',shared,24)[0],0x80004002)
+        self.assertEqual(len(pt.make_code('pt_store_code')),20)
+        self.assertEqual(len(pt.make_code('pt_resume_code')),24)
+        self.assertEqual(len(pt.make_code('sr_code')),12)
     def test_reject_invalid_range_and_kind(self):
         for addr in (0,1,(1<<40)-64):
             with self.assertRaises(ValueError):pt.make(addr,'pt_store_data')

@@ -3,6 +3,7 @@
 #if A04_GE8300_RENDER_EXPERIMENT
 #include "gpu_mmu.h"
 #include "render_pds_data.h"
+#include "render_context_pds.h"
 #include "render_freelist.h"
 #include "pvr_rogue_fwif.h"
 #define PAGE 4096u
@@ -348,6 +349,42 @@ NTSTATUS a04_windows_render_stage_fragment_pds(struct a04_windows_render_memory 
     range.size=(uint64_t)shader->pages*PAGE;range.access=A04_RENDER_RANGE_READ|A04_RENDER_RANGE_EXEC;
     if (a04_render_make_fragment_pds(shader_gpu,doutu_control,&range,1,data)) return STATUS_INVALID_PARAMETER;
     for (i=0;i<sizeof(data);++i) ((uint8_t *)m->cpu)[off+i]=data[i];
+    return STATUS_SUCCESS;
+}
+NTSTATUS a04_windows_render_stage_context_pt(struct a04_windows_render_memory *m,
+    uint64_t state,uint64_t store_data,uint64_t store_code,uint64_t resume_data,uint64_t resume_code)
+{
+    uint64_t addr[4]={store_data,store_code,resume_data,resume_code},off[4],dma;size_t i,j;
+    struct a04_render_owned_range range={0};struct a04_render_context_pt_data data;
+    struct a04_render_context_pds_code code;const uint8_t *src[4];
+    if (!m || !m->ready || !m->cpu || !m->adapter || !m->firmware || m->published || m->poisoned ||
+        !m->map_count || m->map_count>A04_RENDER_MAX_MAPS || (state>>32)!=UINT64_C(0xda) || (state&15u) ||
+        KeGetCurrentIrql()!=PASSIVE_LEVEL || !render_ptes_valid(m)) return STATUS_INVALID_PARAMETER;
+    dma=(uint64_t)m->logical.QuadPart;
+    for (i=0;i<m->map_count;++i) {
+        const struct a04_windows_render_map *r=&m->maps[i];uint64_t n=(uint64_t)r->pages*PAGE;
+        if (!(r->mmu_flags&(A04_GPU_MMU_READ_ONLY|A04_GPU_MMU_PM_FW_PROTECT)) && state>=r->gpu_va && n>=128 && state-r->gpu_va<=n-128) {
+            if (range.size) return STATUS_INVALID_PARAMETER;
+            range.gpu_va=r->gpu_va;range.size=n;range.dma=dma+A04_RENDER_PAYLOAD_OFFSET+(uint64_t)r->payload_page*PAGE;range.access=3;
+        }
+    }
+    if (!range.size || a04_render_make_context_pt_data(state,&range,1,&data) || a04_render_make_context_pds_code(&code))
+        return STATUS_INVALID_PARAMETER;
+    for (i=0;i<4;++i) {
+        unsigned matches=0;
+        if ((addr[i]>>32)!=UINT64_C(0xda) || (addr[i]&15u) || overlap(addr[i],32,state,128)) return STATUS_INVALID_PARAMETER;
+        for(j=0;j<i;++j) if(overlap(addr[i],32,addr[j],32)) return STATUS_INVALID_PARAMETER;
+        for (j=0;j<m->map_count;++j) {
+            const struct a04_windows_render_map *r=&m->maps[j];uint64_t n=(uint64_t)r->pages*PAGE;
+            if ((r->mmu_flags&A04_GPU_MMU_READ_ONLY) && !(r->mmu_flags&A04_GPU_MMU_PM_FW_PROTECT) &&
+                addr[i]>=r->gpu_va && n>=32 && addr[i]-r->gpu_va<=n-32) {
+                off[i]=A04_RENDER_PAYLOAD_OFFSET+(uint64_t)r->payload_page*PAGE+addr[i]-r->gpu_va;++matches;
+            }
+        }
+        if (matches!=1 || off[i]>m->length || 32u>m->length-off[i]) return STATUS_INVALID_PARAMETER;
+    }
+    src[0]=data.store;src[1]=code.pt_store;src[2]=data.resume;src[3]=code.pt_resume;
+    for (i=0;i<4;++i) for(j=0;j<32;++j) ((uint8_t *)m->cpu)[off[i]+j]=src[i][j];
     return STATUS_SUCCESS;
 }
 static NTSTATUS render_memory_publish(struct a04_windows_render_memory *m,BOOLEAN context_synced)

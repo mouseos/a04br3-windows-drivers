@@ -146,6 +146,9 @@ def check(path):
                 raise ValueError('invalid shared PDS hash')
             if any(a<=0 or a>=GPU_LIMIT for a in (e['gpu_va'],e['state_gpu'],e['shader_gpu'])):
                 raise ValueError('invalid shared PDS address')
+        elif op == 'ctx_pds_code_hash':
+            if e['kind'] not in ('pt_store_code','pt_resume_code','sr_code') or e['size'] not in (12,20,24) or e['gpu_va']<=0 or e['gpu_va']>=GPU_LIMIT or not 0<=e['fnv64']<1<<64:
+                raise ValueError('invalid context PDS code hash')
         elif op == 'submit_begin':
             if open_submit is not None: raise ValueError('nested submit')
             open_submit = [e['count'],0]; submits += 1

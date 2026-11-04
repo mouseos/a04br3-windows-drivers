@@ -73,6 +73,12 @@ NTSTATUS a04_windows_render_memory_publish(struct a04_windows_render_memory *m);
  * memory access and retain the DMA allocation. */
 NTSTATUS a04_windows_render_stage_fragment_pds(struct a04_windows_render_memory *m,
     uint64_t pds_gpu,uint64_t shader_gpu,uint64_t doutu_control);
+/* One context-switch slot's persistent PDS data and code. Inputs must name
+ * unique owned mappings: writable state, read-only PDS output, no aliases.
+ * Before publication only. Shared PDS/USC and kick remain separate. */
+NTSTATUS a04_windows_render_stage_context_pt(struct a04_windows_render_memory *m,
+    uint64_t state_gpu,uint64_t store_data_gpu,uint64_t store_code_gpu,
+    uint64_t resume_data_gpu,uint64_t resume_code_gpu);
 /* gpu_dma_quiesced is an independently established GPU/DMA stop, not a
  * fence alone. A false value retains memory even if the processor is stopped. */
 NTSTATUS a04_windows_render_memory_free(struct a04_windows_render_memory *m, BOOLEAN gpu_dma_quiesced);

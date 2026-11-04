@@ -14,4 +14,8 @@ int a04_render_make_context_pt_data(uint64_t state_gpu,
  * through GPU completion and cleanup; this function does not submit work. */
 int a04_render_make_context_sr_data(uint64_t state_gpu,uint64_t shader_gpu,uint64_t doutu_control,
     const struct a04_render_owned_range *ranges,size_t count,uint8_t out[64]);
+/* Fixed GE8300 context-switch PDS instructions with zeroed allocation padding.
+ * These words alone do not establish the validity of their indirect operands. */
+struct a04_render_context_pds_code { uint8_t pt_store[32],pt_resume[32],sr[16]; };
+int a04_render_make_context_pds_code(struct a04_render_context_pds_code *out);
 #endif
