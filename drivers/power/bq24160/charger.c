@@ -36,6 +36,13 @@ enum a04_bq_result a04_bq_step(struct a04_bq_owner *o, const struct a04_bq_bus *
     unsigned reg, first;
     if (!o || !b || !b->now_ns || !b->read || !b->write_watchdog) return A04_BQ_INVALID;
     if (o->stopped) return A04_BQ_STOPPED;
+    /* Windows has no safe first-access path: even a read starts the BQ
+     * watchdog. Require an adopted handoff before any bus callback. This is
+     * an additional invariant, not evidence that adoption is authorized. */
+    if (!o->firmware_kicks || (!o->handoff_pending && !o->kicks)) {
+        o->stopped = 1;
+        return A04_BQ_STOPPED;
+    }
     s.at = b->now_ns(b->context);
     if (late(o, s.at, deadline)) { o->stopped = 1; return A04_BQ_DEADLINE; }
     previous = s.at;

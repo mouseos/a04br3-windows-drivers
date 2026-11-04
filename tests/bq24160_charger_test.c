@@ -11,10 +11,18 @@ static int kick(void *p, uint8_t v) { struct fake *f=p; ++f->writes; f->written=
 static void init(struct fake *f, struct a04_bq_owner *o, struct a04_bq_bus *b) {
     static const uint8_t regs[8]={0x30,0x00,0x8c,0xa4,0x45,0x51,0x00,0x38};
     memset(f,0,sizeof(*f)); memset(o,0,sizeof(*o)); memcpy(f->r,regs,8); f->fail_read=-1;
+    /* Most tests isolate the cycle after an already accepted handoff. */
+    o->handoff_pending=1; o->handoff_deadline=UINT64_MAX; o->firmware_kicks=1;
     b->context=f; b->now_ns=clock_ns; b->read=read_reg; b->write_watchdog=kick;
 }
 int main(void) {
     struct fake f; struct a04_bq_owner o; struct a04_bq_bus b; unsigned i;
+    init(&f,&o,&b); o.handoff_pending=0;
+    assert(a04_bq_step(&o,&b,30000000000ULL)==A04_BQ_STOPPED);
+    assert(o.stopped && !f.clocks && !f.reads && !f.writes);
+    init(&f,&o,&b); o.firmware_kicks=0;
+    assert(a04_bq_step(&o,&b,30000000000ULL)==A04_BQ_STOPPED);
+    assert(o.stopped && !f.clocks && !f.reads && !f.writes);
     init(&f,&o,&b); assert(a04_bq_step(&o,&b,0)==A04_BQ_DEADLINE && !f.reads);
     init(&f,&o,&b); assert(a04_bq_step(&o,&b,30000000000ULL)==A04_BQ_OK);
     assert(f.reads==8 && f.writes==1 && f.written==0x80 && o.first.valid==255 && o.kicks==1);

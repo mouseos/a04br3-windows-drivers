@@ -20,6 +20,8 @@ int main(void) {
  assert(!a04_bq_adopt_handoff(&o,p,128,b.now,377000000,13000000));
  assert(o.handoff_pending && o.handoff_deadline==101*NS && o.firmware_kicks==2 && o.firmware_first.raw[0]==0x30);
  b.now=101*NS; assert(a04_bq_step(&o,&bus,200*NS)==A04_BQ_DEADLINE && !b.reads);
+ b.now=100*NS; assert(a04_bq_step(&o,&bus,200*NS)==A04_BQ_STOPPED && !b.reads && !b.writes);
+ assert(a04_bq_adopt_handoff(&o,p,128,b.now,143000000,13000000) && o.stopped);
  memset(&o,0,sizeof(o)); b.now=100*NS; assert(!a04_bq_adopt_handoff(&o,p,128,b.now,377000000,13000000));
  assert(a04_bq_step(&o,&bus,200*NS)==A04_BQ_OK && !o.handoff_pending && b.writes==1);
  source=o;

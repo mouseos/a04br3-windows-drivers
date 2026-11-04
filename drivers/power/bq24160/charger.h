@@ -45,6 +45,7 @@ int a04_bq_adopt_handoff(struct a04_bq_owner *owner, const uint8_t *record,
                          uint64_t physical_counter, uint64_t frequency);
 /* Caller holds the same lock used by LC709203F for the entire cycle. The
  * worker must already be armed and a valid firmware handoff established.
+ * A fresh Windows owner cannot perform even a first read without adoption.
  * Failure can leave an active watchdog and eventual hardware defaults. */
 enum a04_bq_result a04_bq_step(struct a04_bq_owner *, const struct a04_bq_bus *, uint64_t deadline_ns);
 #endif
