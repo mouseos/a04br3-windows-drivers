@@ -16,6 +16,12 @@ int main(void)
 {
     struct fake f={0};struct a04_board_owner s={0};struct a04_board_ops o=ops(&f);
     assert(a04_board_acquire_clocks(&s,&o,0)==A04_BOARD_INVALID && !f.calls);
+    f.ok=1;f.quiet=1;assert(a04_board_begin(&s,&o,1)==A04_BOARD_OK && s.active && !s.prepared);
+    assert(a04_board_release(&s,&o)==A04_BOARD_BUSY && f.leased && !f.releases);
+    assert(a04_board_finish_clocks(&s,&o,1)==A04_BOARD_OK && s.prepared);
+    assert(a04_board_finish_clocks(&s,&o,1)==A04_BOARD_BUSY);
+    assert(a04_board_release(&s,&o)==A04_BOARD_OK && !f.leased && !s.prepared);
+    memset(&f,0,sizeof f);memset(&s,0,sizeof s);
     f.ok=1;f.top1=1u<<17;assert(a04_board_acquire_clocks(&s,&o,1)==A04_BOARD_OK);
     assert(s.active && !s.poisoned && f.writes==2 && f.pins==11 && f.leased);
     assert(a04_board_acquire_clocks(&s,&o,1)==A04_BOARD_BUSY);

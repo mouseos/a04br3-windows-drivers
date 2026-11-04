@@ -18,12 +18,13 @@ struct a04_board_ops {
     int (*quiescent)(void *);
     int (*release)(void *,uint32_t generation);
 };
-struct a04_board_owner { uint32_t generation; unsigned active, poisoned; };
+struct a04_board_owner { uint32_t generation; unsigned active, poisoned, prepared; };
 enum a04_board_result { A04_BOARD_OK, A04_BOARD_INVALID, A04_BOARD_BUSY,
     A04_BOARD_OWNER_LOST, A04_BOARD_RAILS, A04_BOARD_PINS, A04_BOARD_CLOCK,
     A04_BOARD_NOT_QUIESCENT };
 /* Split form permits rail and pin preparation under the retained lease.
- * The caller must poison and retain it on any intermediate failure. */
+ * The caller must poison and retain it on any intermediate failure; release
+ * also refuses while the split operation is still incomplete. */
 enum a04_board_result a04_board_begin(struct a04_board_owner *,const struct a04_board_ops *,uint32_t);
 enum a04_board_result a04_board_finish_clocks(struct a04_board_owner *,const struct a04_board_ops *,uint32_t);
 /* Success retains the parent lease. It is not a power or card-ready proof. */

@@ -19,13 +19,13 @@ enum a04_board_result a04_board_begin(struct a04_board_owner *s,const struct a04
     if(!s || !valid(o) || !generation) return A04_BOARD_INVALID;
     if(s->active || s->poisoned || generation<=s->generation) return A04_BOARD_BUSY;
     if(o->acquire(o->context,generation)!=1) return A04_BOARD_BUSY;
-    s->active=1;s->generation=generation;return A04_BOARD_OK;
+    s->active=1;s->prepared=0;s->generation=generation;return A04_BOARD_OK;
 }
 enum a04_board_result a04_board_finish_clocks(struct a04_board_owner *s,const struct a04_board_ops *o,uint32_t generation)
 {
     struct a04_emmc_rails_raw rails; unsigned pin,mode; uint32_t v;
     if(!s || !valid(o) || !generation) return A04_BOARD_INVALID;
-    if(!s->active || s->poisoned || s->generation!=generation) return A04_BOARD_BUSY;
+    if(!s->active || s->poisoned || s->prepared || s->generation!=generation) return A04_BOARD_BUSY;
     if(o->owned(o->context,generation)!=1) return fail(s,A04_BOARD_OWNER_LOST);
     if(o->read_rails(o->context,&rails)!=0 ||
        (rails.vemc_enable&(ENABLE|GOOD))!=(ENABLE|GOOD) ||
@@ -49,7 +49,7 @@ enum a04_board_result a04_board_finish_clocks(struct a04_board_owner *s,const st
     }
     if(o->owned(o->context,generation)!=1) return fail(s,A04_BOARD_OWNER_LOST);
     if(o->read_clock(o->context,TOP2_STATUS,&v)!=0 || !(v&INFRA)) return fail(s,A04_BOARD_CLOCK);
-    return A04_BOARD_OK;
+    s->prepared=1;return A04_BOARD_OK;
 }
 enum a04_board_result a04_board_acquire_clocks(struct a04_board_owner *s,const struct a04_board_ops *o,uint32_t generation)
 {
@@ -59,10 +59,10 @@ enum a04_board_result a04_board_acquire_clocks(struct a04_board_owner *s,const s
 enum a04_board_result a04_board_release(struct a04_board_owner *s,const struct a04_board_ops *o)
 {
     if(!s || !valid(o)) return A04_BOARD_INVALID;
-    if(!s->active || s->poisoned) return A04_BOARD_BUSY;
+    if(!s->active || s->poisoned || !s->prepared) return A04_BOARD_BUSY;
     if(o->owned(o->context,s->generation)!=1) return fail(s,A04_BOARD_OWNER_LOST);
     if(o->quiescent(o->context)!=1) return A04_BOARD_NOT_QUIESCENT;
     if(o->owned(o->context,s->generation)!=1) return fail(s,A04_BOARD_OWNER_LOST);
     if(o->release(o->context,s->generation)!=1) return fail(s,A04_BOARD_OWNER_LOST);
-    s->active=0;return A04_BOARD_OK;
+    s->active=0;s->prepared=0;return A04_BOARD_OK;
 }
