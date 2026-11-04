@@ -12,6 +12,24 @@
 #define FRAGMENT_USC_BYTES 360u
 static int overlap(uint64_t a,uint64_t n,uint64_t b,uint64_t m)
 { return a<=b ? b-a<n : a-b<m; }
+/* Reservations survive until the allocation is retired. Zero bytes alone do
+ * not imply a destination is unused: padding can be part of a live program. */
+static int staged_available(const struct a04_windows_render_memory *m,
+    const uint64_t *addr,const uint64_t *len,size_t n)
+{
+    size_t i,j;
+    if (m->staged_count>A04_RENDER_MAX_STAGED || n>A04_RENDER_MAX_STAGED-m->staged_count) return 0;
+    for(i=0;i<n;++i) {
+        if (!len[i] || addr[i]>=UINT64_C(1)<<40 || len[i]>(UINT64_C(1)<<40)-addr[i]) return 0;
+        for(j=0;j<i;++j) if(overlap(addr[i],len[i],addr[j],len[j])) return 0;
+        for(j=0;j<m->staged_count;++j) if(overlap(addr[i],len[i],m->staged[j].gpu_va,m->staged[j].size)) return 0;
+    }
+    return 1;
+}
+static void staged_commit(struct a04_windows_render_memory *m,const uint64_t *addr,const uint64_t *len,size_t n)
+{
+    size_t i;for(i=0;i<n;++i) { m->staged[m->staged_count].gpu_va=addr[i];m->staged[m->staged_count].size=len[i];++m->staged_count; }
+}
 static int owned_fw(const struct a04_windows_render_memory *m,const struct a04_gpu_fw_object *o,size_t size)
 {
     size_t off;
@@ -328,17 +346,17 @@ NTSTATUS a04_windows_render_stage_fragment_pds(struct a04_windows_render_memory 
     uint64_t pds_gpu,uint64_t shader_gpu,uint64_t doutu_control)
 {
     const struct a04_windows_render_map *pds=0,*shader=0;
-    struct a04_render_owned_range range;uint8_t data[48];size_t i;uint64_t off,shader_off;
+    struct a04_render_owned_range range;uint8_t data[48];size_t i;uint64_t off,shader_off,sz=48;
     if (!m || !m->ready || !m->cpu || !m->adapter || !m->firmware || m->published || m->poisoned ||
         !m->map_count || m->map_count>A04_RENDER_MAX_MAPS || (pds_gpu&15u) ||
-        (pds_gpu>>32)!=UINT64_C(0xda) || KeGetCurrentIrql()!=PASSIVE_LEVEL)
+        (pds_gpu>>32)!=UINT64_C(0xda) || KeGetCurrentIrql()!=PASSIVE_LEVEL || !render_ptes_valid(m))
         return STATUS_INVALID_PARAMETER;
     for (i=0;i<m->map_count;++i) {
         const struct a04_windows_render_map *map=&m->maps[i];uint64_t n=(uint64_t)map->pages*PAGE;
         if (pds_gpu>=map->gpu_va && n>=sizeof(data) && pds_gpu-map->gpu_va<=n-sizeof(data)) pds=map;
         if (shader_gpu>=map->gpu_va && n>=FRAGMENT_USC_BYTES && shader_gpu-map->gpu_va<=n-FRAGMENT_USC_BYTES) shader=map;
     }
-    if (!pds || !shader || (pds->mmu_flags&A04_GPU_MMU_PM_FW_PROTECT) || (shader->mmu_flags&A04_GPU_MMU_PM_FW_PROTECT) || !(pds->mmu_flags&A04_GPU_MMU_READ_ONLY) ||
+    if (!pds || !shader || !staged_available(m,&pds_gpu,&sz,1) || (pds->mmu_flags&A04_GPU_MMU_PM_FW_PROTECT) || (shader->mmu_flags&A04_GPU_MMU_PM_FW_PROTECT) || !(pds->mmu_flags&A04_GPU_MMU_READ_ONLY) ||
         !(shader->mmu_flags&A04_GPU_MMU_READ_ONLY) || overlap(pds_gpu,sizeof(data),shader_gpu,FRAGMENT_USC_BYTES))
         return STATUS_INVALID_PARAMETER;
     off=(uint64_t)A04_RENDER_PAYLOAD_OFFSET+(uint64_t)pds->payload_page*PAGE+(pds_gpu-pds->gpu_va);
@@ -349,12 +367,13 @@ NTSTATUS a04_windows_render_stage_fragment_pds(struct a04_windows_render_memory 
     range.size=(uint64_t)shader->pages*PAGE;range.access=A04_RENDER_RANGE_READ|A04_RENDER_RANGE_EXEC;
     if (a04_render_make_fragment_pds(shader_gpu,doutu_control,&range,1,data)) return STATUS_INVALID_PARAMETER;
     for (i=0;i<sizeof(data);++i) ((uint8_t *)m->cpu)[off+i]=data[i];
+    staged_commit(m,&pds_gpu,&sz,1);
     return STATUS_SUCCESS;
 }
 NTSTATUS a04_windows_render_stage_context_pt(struct a04_windows_render_memory *m,
     uint64_t state,uint64_t store_data,uint64_t store_code,uint64_t resume_data,uint64_t resume_code)
 {
-    uint64_t addr[4]={store_data,store_code,resume_data,resume_code},off[4],dma;size_t i,j;
+    uint64_t addr[4]={store_data,store_code,resume_data,resume_code},len[4]={32,32,32,32},off[4],dma;size_t i,j;
     struct a04_render_owned_range range={0};struct a04_render_context_pt_data data;
     struct a04_render_context_pds_code code;const uint8_t *src[4];
     if (!m || !m->ready || !m->cpu || !m->adapter || !m->firmware || m->published || m->poisoned ||
@@ -368,7 +387,7 @@ NTSTATUS a04_windows_render_stage_context_pt(struct a04_windows_render_memory *m
             range.gpu_va=r->gpu_va;range.size=n;range.dma=dma+A04_RENDER_PAYLOAD_OFFSET+(uint64_t)r->payload_page*PAGE;range.access=3;
         }
     }
-    if (!range.size || a04_render_make_context_pt_data(state,&range,1,&data) || a04_render_make_context_pds_code(&code))
+    if (!range.size || !staged_available(m,addr,len,4) || a04_render_make_context_pt_data(state,&range,1,&data) || a04_render_make_context_pds_code(&code))
         return STATUS_INVALID_PARAMETER;
     for (i=0;i<4;++i) {
         unsigned matches=0;
@@ -385,6 +404,7 @@ NTSTATUS a04_windows_render_stage_context_pt(struct a04_windows_render_memory *m
     }
     src[0]=data.store;src[1]=code.pt_store;src[2]=data.resume;src[3]=code.pt_resume;
     for (i=0;i<4;++i) for(j=0;j<32;++j) ((uint8_t *)m->cpu)[off[i]+j]=src[i][j];
+    staged_commit(m,addr,len,4);
     return STATUS_SUCCESS;
 }
 NTSTATUS a04_windows_render_stage_context_sr(struct a04_windows_render_memory *m,
@@ -413,7 +433,7 @@ NTSTATUS a04_windows_render_stage_context_sr(struct a04_windows_render_memory *m
             ranges[j].size>=shsize[i] && sh[i]-ranges[j].gpu_va<=ranges[j].size-shsize[i]) ++matches;
         if (matches!=1 || (sh[i]&3u) || (sh[i]>>32)!=UINT64_C(0xe0)) return STATUS_INVALID_PARAMETER;
     }
-    if (overlap(sh[0],shsize[0],sh[1],shsize[1]) ||
+    if (!staged_available(m,addr,length,4) || overlap(sh[0],shsize[0],sh[1],shsize[1]) ||
         a04_render_make_context_sr_data(state,sh[0],store_ctl,ranges,m->map_count,sd) ||
         a04_render_make_context_sr_data(state,sh[1],load_ctl,ranges,m->map_count,ld) ||
         a04_render_make_context_pds_code(&code)) return STATUS_INVALID_PARAMETER;
@@ -433,6 +453,7 @@ NTSTATUS a04_windows_render_stage_context_sr(struct a04_windows_render_memory *m
     }
     src[0]=sd;src[1]=code.sr;src[2]=ld;src[3]=code.sr;
     for(i=0;i<4;++i) for(j=0;j<length[i];++j) ((uint8_t *)m->cpu)[off[i]+j]=src[i][j];
+    staged_commit(m,addr,length,4);
     return STATUS_SUCCESS;
 }
 static NTSTATUS render_memory_publish(struct a04_windows_render_memory *m,BOOLEAN context_synced)

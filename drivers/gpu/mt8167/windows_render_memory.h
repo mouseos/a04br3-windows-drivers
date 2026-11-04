@@ -6,9 +6,10 @@
 #include "render_context.h"
 #include "render_target.h"
 #if A04_GE8300_RENDER_EXPERIMENT
-/* A private DMA allocation and its GPU page tables. No command bytes are
- * accepted here. Call at PASSIVE_LEVEL; the caller serializes firmware access. */
+/* A private DMA allocation and its GPU page tables. Call at PASSIVE_LEVEL;
+ * the caller serializes firmware access and prevents untracked CPU writes. */
 #define A04_RENDER_MAX_MAPS 32u
+#define A04_RENDER_MAX_STAGED 32u
 #define A04_RENDER_PAYLOAD_OFFSET (14u*4096u)
 struct a04_windows_render_map {
     uint64_t gpu_va;
@@ -37,6 +38,8 @@ struct a04_windows_render_memory {
     struct a04_gpu_render_target target;
     struct a04_render_hwrt_params target_params;
     BOOLEAN target_prepared;
+    struct { uint64_t gpu_va,size; } staged[A04_RENDER_MAX_STAGED];
+    size_t staged_count;
 };
 NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
     struct a04_gpu_firmware_state *s,ULONG payload_pages,

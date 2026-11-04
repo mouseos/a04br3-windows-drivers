@@ -221,7 +221,12 @@ int main(void)
       assert(out[8]==2 && out[24]==2 && out[26]==0 && out[27]==0x80);
       assert(out[64]==1 && out[66]==2 && out[67]==0xf0 && out[76]==0);
       assert(a04_windows_render_stage_context_sr(&m,0xda00010000ULL,0xe000001000ULL,0xe000001400ULL,0,0,
-        0xda00015000ULL,0xda00015040ULL,0xda00015080ULL,0xda000150c0ULL)==STATUS_INVALID_DEVICE_STATE);
+        0xda00015000ULL,0xda00015040ULL,0xda00015080ULL,0xda000150c0ULL)==STATUS_INVALID_PARAMETER);
+      { uint8_t saved[208];memcpy(saved,out,sizeof(saved));
+        assert(a04_windows_render_stage_context_pt(&m,0xda00010000ULL,0xda00015030ULL,0xda00015100ULL,
+          0xda00015120ULL,0xda00015140ULL)==STATUS_INVALID_PARAMETER);
+        assert(!memcmp(saved,out,sizeof(saved)) && m.staged_count==4); }
+      assert(a04_windows_render_stage_fragment_pds(&m,0xda00015040ULL,0xe000001000ULL,0)==STATUS_INVALID_PARAMETER);
       s.processor_released=FALSE;assert(a04_windows_render_memory_free(&m,TRUE)==STATUS_SUCCESS);
     }
     free(s.memory.heap);
