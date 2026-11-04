@@ -289,8 +289,12 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
         status=WdfRequestRetrieveInputBuffer(request,A04_GE8300_COPY_BYTES,&src,&in_size);
         if (NT_SUCCESS(status)) status=WdfRequestRetrieveOutputBuffer(request,A04_GE8300_COPY_BYTES,&dst,&out_size);
         if (NT_SUCCESS(status)) status=a04_windows_linear_context_copy(&c->linear,src,dst);
-        if (NT_SUCCESS(status)) ++c->status.copy_completed;
-        else { ++c->status.copy_failed; c->copy_online=FALSE; }
+        if (NT_SUCCESS(status)) {
+            if (++c->status.copy_completed==1u) GpuPrint("A04GPU DISPLAY COPY COMPLETE\n");
+        } else {
+            ++c->status.copy_failed; c->copy_online=FALSE;
+            GpuPrint("A04GPU DISPLAY COPY FAILED STATUS="); GpuHex((ULONG)status); GpuPrint("\n");
+        }
         WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status) ? A04_GE8300_COPY_BYTES : 0);
         return;
     }
