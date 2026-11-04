@@ -592,9 +592,16 @@ test-mt6630: build/mt6630_identity_test build/mt6630_sdio_args_test build/mt6630
 	./build/mt6630_identity_test
 	./build/mt6630_sdio_args_test
 	./build/mt6630_transport_test
+	./build/mt6630_power_plan_test
 
 test: test-mt6630
 
 build/mt6630_transport_test: drivers/network/mt6630/transport.c drivers/network/mt6630/transport.h drivers/network/mt6630/sdio_args.h tests/mt6630_transport_test.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/transport.c tests/mt6630_transport_test.c -o $@
+
+build/mt6630_power_plan_test: drivers/network/mt6630/power_plan.c drivers/network/mt6630/power_plan.h tests/mt6630_power_plan_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/power_plan.c tests/mt6630_power_plan_test.c -o $@
+
+test-mt6630: build/mt6630_power_plan_test
