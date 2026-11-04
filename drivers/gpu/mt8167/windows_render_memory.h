@@ -52,8 +52,8 @@ NTSTATUS a04_windows_render_prepare_context(struct a04_windows_render_memory *m,
     uint32_t context_id,uint64_t callstack_gpu,unsigned isp_store_count,
     const struct rogue_fwif_geom_registers_caswitch *static_state);
 /* Two non-growing PM lists backed solely by disjoint, unmapped payload pages.
- * Layout and minimum sizes are diagnostic inputs, not hardware validation.
- * Publishing these lists is refused until PM/FW-protected PTEs are supported. */
+ * Tables require PM/FW-protected, SLC-bypassed GPU mappings. Layout and
+ * minimum sizes are diagnostic inputs, not hardware validation. */
 NTSTATUS a04_windows_render_prepare_freelists(struct a04_windows_render_memory *m,
     const struct a04_windows_render_freelist_layout layouts[2]);
 /* Prepare the fixed 64x64 SIPF1 target from disjoint owned writable ranges.

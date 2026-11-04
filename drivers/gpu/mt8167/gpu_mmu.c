@@ -3,7 +3,7 @@
  * 2023 Imagination Technologies Ltd., available under GPL-2.0-only OR MIT. */
 #include "gpu_mmu.h"
 #define ADDRESS_LIMIT (UINT64_C(1)<<40)
-#define ALLOWED_FLAGS (A04_GPU_MMU_READ_ONLY|A04_GPU_MMU_COHERENT|A04_GPU_MMU_SLC_BYPASS)
+#define ALLOWED_FLAGS (A04_GPU_MMU_READ_ONLY|A04_GPU_MMU_COHERENT|A04_GPU_MMU_SLC_BYPASS|A04_GPU_MMU_PM_FW_PROTECT)
 static int aligned_address(uint64_t address)
 { return address<ADDRESS_LIMIT && !(address&(A04_GPU_PAGE_SIZE-1u)); }
 static int overlaps(const void *a,size_t a_size,const void *b,size_t b_size)
