@@ -534,8 +534,8 @@ HwExecutePresentDisplayOnly(
     DstBltInfo.Offset.x = 0;
     DstBltInfo.Offset.y = 0;
     DstBltInfo.Rotation = ctx->Rotation;
-    DstBltInfo.Width = ctx->SrcWidth;
-    DstBltInfo.Height = ctx->SrcHeight;
+    DstBltInfo.Width = (ctx->Rotation == D3DKMDT_VPPR_ROTATE90 || ctx->Rotation == D3DKMDT_VPPR_ROTATE270) ? ctx->SrcHeight : ctx->SrcWidth;
+    DstBltInfo.Height = (ctx->Rotation == D3DKMDT_VPPR_ROTATE90 || ctx->Rotation == D3DKMDT_VPPR_ROTATE270) ? ctx->SrcWidth : ctx->SrcHeight;
 
     // Set up source blt info
     BLT_INFO SrcBltInfo;

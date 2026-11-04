@@ -9,6 +9,7 @@
 
 
 #include "BDD.hxx"
+#include "present_bounds.h"
 
 #pragma code_seg("PAGE")
 
@@ -478,14 +479,22 @@ NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DIS
                                                                  D3DKMDT_VPPR_IDENTITY;
             BYTE* pDst = (BYTE*)m_CurrentModes[pPresentDisplayOnly->VidPnSourceId].FrameBuffer.Ptr;
             UINT DstBitPerPixel = BPPFromPixelFormat(m_CurrentModes[pPresentDisplayOnly->VidPnSourceId].DispInfo.ColorFormat);
-            if (m_CurrentModes[pPresentDisplayOnly->VidPnSourceId].Scaling == D3DKMDT_VPPS_CENTERED)
-            {
-                UINT CenterShift = (m_CurrentModes[pPresentDisplayOnly->VidPnSourceId].DispInfo.Height -
-                    m_CurrentModes[pPresentDisplayOnly->VidPnSourceId].SrcModeHeight)*m_CurrentModes[pPresentDisplayOnly->VidPnSourceId].DispInfo.Pitch;
-                CenterShift += (m_CurrentModes[pPresentDisplayOnly->VidPnSourceId].DispInfo.Width -
-                    m_CurrentModes[pPresentDisplayOnly->VidPnSourceId].SrcModeWidth)*DstBitPerPixel/8;
-                pDst += (int)CenterShift/2;
+            const CURRENT_BDD_MODE* mode=&m_CurrentModes[pPresentDisplayOnly->VidPnSourceId];
+            uint32_t physicalWidth,physicalHeight,offset; unsigned turns;
+            switch (RotationNeededByFb) {
+            case D3DKMDT_VPPR_IDENTITY: turns=0; break;
+            case D3DKMDT_VPPR_ROTATE90: turns=1; break;
+            case D3DKMDT_VPPR_ROTATE180: turns=2; break;
+            case D3DKMDT_VPPR_ROTATE270: turns=3; break;
+            default: return STATUS_INVALID_PARAMETER;
             }
+            if (!pDst || DstBitPerPixel!=32 ||
+                a04_present_layout(mode->SrcModeWidth,mode->SrcModeHeight,mode->DispInfo.Width,
+                    mode->DispInfo.Height,mode->DispInfo.Pitch,turns,
+                    mode->Scaling==D3DKMDT_VPPS_CENTERED,&physicalWidth,&physicalHeight,&offset) ||
+                (uintptr_t)pDst>UINTPTR_MAX-(uint64_t)mode->DispInfo.Pitch*mode->DispInfo.Height)
+                return STATUS_INVALID_PARAMETER;
+            pDst+=offset;
             return m_HardwareBlt[pPresentDisplayOnly->VidPnSourceId].ExecutePresentDisplayOnly(pDst,
                                                                     DstBitPerPixel,
                                                                     (BYTE*)pPresentDisplayOnly->pSource,

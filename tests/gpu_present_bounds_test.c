@@ -6,6 +6,7 @@
 int main(void)
 {
     size_t allocation=0; uint32_t span=0;
+    uint32_t w=0,h=0,offset=0;
     if (a04_present_bounds(800,1280,4,3328,3,24,4,16,128,&allocation,&span) ||
         span!=1279u*3328u+3200u || allocation!=128u+3u*24u+4u*16u) return 1;
     allocation=123;span=456;
@@ -23,5 +24,12 @@ int main(void)
         !a04_present_rect(10,10,10,11,800,1280) ||
         !a04_present_move(0,0,100,200,701,1080,800,1280) ||
         !a04_present_move(0,0,100,200,-1,0,800,1280)) return 4;
-    puts("WDDM present pitched span and allocation bounds verified"); return 0;
+    if (a04_present_layout(800,1280,1280,800,5120,1,0,&w,&h,&offset) ||
+        w!=1280 || h!=800 || offset ||
+        a04_present_layout(600,1000,1280,800,5120,3,1,&w,&h,&offset) ||
+        w!=1000 || h!=600 || offset!=100u*5120u+140u*4u ||
+        !a04_present_layout(800,1280,800,1280,3200,1,0,&w,&h,&offset) ||
+        !a04_present_layout(800,1280,800,1280,3199,0,0,&w,&h,&offset) ||
+        !a04_present_layout(800,1280,800,1280,3200,4,0,&w,&h,&offset)) return 5;
+    puts("WDDM present pitched span, rectangles and rotated geometry verified"); return 0;
 }

@@ -37,4 +37,22 @@ static inline int a04_present_move(int32_t left,int32_t top,int32_t right,int32_
         (uint64_t)(uint32_t)source_y+(uint32_t)(bottom-top)>height) return -1;
     return 0;
 }
+/* Compute the physical destination extent and a centered byte offset. Turns
+ * are clockwise quarter turns; all geometry is checked before pointer use. */
+static inline int a04_present_layout(uint32_t width,uint32_t height,uint32_t fb_width,
+    uint32_t fb_height,uint32_t pitch,unsigned turns,int centered,
+    uint32_t *physical_width,uint32_t *physical_height,uint32_t *offset)
+{
+    uint32_t w,h,x,y; uint64_t total,start,end;
+    if (!width || !height || !fb_width || !fb_height || turns>3 || !physical_width ||
+        !physical_height || !offset || (uint64_t)fb_width*4u>pitch) return -1;
+    w=(turns&1u) ? height : width; h=(turns&1u) ? width : height;
+    if (w>fb_width || h>fb_height || (!centered && (w!=fb_width || h!=fb_height))) return -1;
+    x=centered ? (fb_width-w)/2u : 0; y=centered ? (fb_height-h)/2u : 0;
+    total=(uint64_t)pitch*fb_height;
+    start=(uint64_t)y*pitch+(uint64_t)x*4u;
+    end=start+(uint64_t)(h-1u)*pitch+(uint64_t)w*4u;
+    if (total>UINT32_MAX || end>total || start>UINT32_MAX) return -1;
+    *physical_width=w; *physical_height=h; *offset=(uint32_t)start; return 0;
+}
 #endif
