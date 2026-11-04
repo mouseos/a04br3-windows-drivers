@@ -53,3 +53,11 @@ WindowsのD0終了後、既存タイマーは停止し、直前に開始した�
 `a04_bq_publish_handoff` は、同一所有者が成功した最終給餌の物理カウンタとEBS時カウンタを渡す場合に、検証部品と互換の128バイト記録を生成する。部分採取、FAULT、失効、停止、保守中引継ぎなどでは有効な記録を生成しない。出力・所有者とI2C処理の排他、最終給餌時刻が実際の処理に対応すること、同一起動での保存と改ざん防止、Windowsへの伝達およびハードウェアカウンタの読取りは呼出し側の責任で、まだ実装されていない。現在のWindows用UEFIには生成部品を組み込んでおらず、Windowsには受取側のACPIリソースも用意していない。試験の往復成功は実際の引継ぎを意味しない。
 
 各レジスタ読取り直前にも期限と採取時間を確認する。期限到達後は追加の読取りや書込みを要求せず、取得済みの部分データを保持して停止する。通信障害時も停止をラッチする。D0終了時には、BQへアクセス済みの状態だけでなく、引継ぎを採用して初回給餌待ちの状態も停止・再開禁止とする。これらの措置はD0外の給餌を実現しない。OS停止中に動作する実証済みの保守主体または安全なシステム電源方針と、UEFI/Windowsの実際の排他・期限受渡しが揃うまで、安全ゲートは解除しない。
+
+## BQHR停止記録のWindows診断
+
+`A04_BQHR_DIAGNOSTIC=1` でビルドすると、MOU0008のD0開始時に、このPDOの下位I/Oターゲットへ `IOCTL_ACPI_EVAL_METHOD` を送り、直下の `BQHR` を評価する。UEFIが用意したACPI NVSのコピーを読む処理であり、BQ24160のI2C読取り・給餌は行わない。[MicrosoftのACPI評価仕様](https://learn.microsoft.com/en-us/windows-hardware/drivers/acpi/evaluating-acpi-control-methods)および[同期IOCTL](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdfiotarget/nf-wdfiotarget-wdfiotargetsendioctlsynchronously)に従う。要求は２秒のタイムアウト付きで、ACPI応答の署名、戻りサイズ、引数数、型、長さを確認し、128バイトのマジック・長さ・封印・予約欄・valid maskとstateを検査する。
+
+state 2の構造的に正しい停止記録だけ `A04BAT BQHR STOPPED VERIFIED` をデバッグ出力する。`A04_LC709203F_TRACE=1` なら同じ文字列を既存のUARTトレースにも出す。要求失敗、不正出力、壊れた記録、state 1を含む予期しない状態は `A04BAT BQHR FAILED` と診断番号・NTSTATUSを出し、記録を採用しない。いずれの結果も充電器の安全ゲートを変更しない。正常でもUEFI・Windows間の所有権、記録の真正性、watchdogの維持、D0外の動作を証明しない。診断が失敗しても既定の燃料計の開始は妨げない。
+
+`tools/ci/build-lc709203f-probe.ps1` で `A04_BQHR_DIAGNOSTIC=1`、必要に応じて `A04_LC709203F_TRACE=1` を指定する。`A04_BQ24160_EXPERIMENTAL` は診断に不要で、既定OFFのままにする。ホストの `tests/test_bqhr_acpi_host.py` は実際のIOCTL関数にWDF/ACPI模擬を渡し、タイムアウト設定・メソッド名・応答長・型・破損・停止以外の拒否を検査する。Windows WDKビルド、実際のWindowsによるBQHR評価とログ確認は別途必要。

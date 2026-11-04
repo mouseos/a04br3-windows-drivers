@@ -12,9 +12,10 @@ New-Item -ItemType Directory -Force $out | Out-Null
 $source = Join-Path $root 'drivers\power\lc709203f'
 $trace = if ($env:A04_LC709203F_TRACE -eq '1') { '1' } else { '0' }
 $charger = if ($env:A04_BQ24160_EXPERIMENTAL -eq '1') { '1' } else { '0' }
+$bqhr = if ($env:A04_BQHR_DIAGNOSTIC -eq '1') { '1' } else { '0' }
 $objects = @()
 foreach ($name in @('gauge','mt8167_i2c','battery_class','wdf_gauge')) {
-    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_LC709203F_TRACE=$trace" "-DA04_BQ24160_EXPERIMENTAL=$charger" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" -c (Join-Path $source "$name.c") -o (Join-Path $out "$name.obj")
+    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_LC709203F_TRACE=$trace" "-DA04_BQ24160_EXPERIMENTAL=$charger" "-DA04_BQHR_DIAGNOSTIC=$bqhr" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" -c (Join-Path $source "$name.c") -o (Join-Path $out "$name.obj")
     if ($LASTEXITCODE -ne 0) { throw "ARM LC709203F compilation failed: $name" }
     $objects += Join-Path $out "$name.obj"
 }
@@ -24,6 +25,15 @@ if ($charger -eq '1') {
         $obj = Join-Path $out "bq_$name.obj"
         & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" -c (Join-Path $bqSource "$name.c") -o $obj
         if ($LASTEXITCODE -ne 0) { throw "ARM BQ24160 compilation failed: $name" }
+        $objects += $obj
+    }
+}
+if ($bqhr -eq '1') {
+    $bqSource = Join-Path $root 'drivers\power\bq24160'
+    foreach ($name in @('bqhr_diagnostic','bqhr_acpi')) {
+        $obj = Join-Path $out "$name.obj"
+        & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" -c (Join-Path $bqSource "$name.c") -o $obj
+        if ($LASTEXITCODE -ne 0) { throw "ARM BQHR diagnostic compilation failed: $name" }
         $objects += $obj
     }
 }

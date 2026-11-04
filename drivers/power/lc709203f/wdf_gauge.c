@@ -12,6 +12,12 @@
 #ifndef A04_BQ24160_EXPERIMENTAL
 #define A04_BQ24160_EXPERIMENTAL 0
 #endif
+#ifndef A04_BQHR_DIAGNOSTIC
+#define A04_BQHR_DIAGNOSTIC 0
+#endif
+#if A04_BQHR_DIAGNOSTIC
+#include "../bq24160/bqhr_acpi.h"
+#endif
 #ifndef A04_LC709203F_TRACE
 #define A04_LC709203F_TRACE 0
 #endif
@@ -85,6 +91,21 @@ static uint64_t charger_now(void *context)
 {
     struct a04_gauge_mt8167 *a = context;
     return a->monotonic_ns(a->io->context);
+}
+#endif
+#if A04_BQHR_DIAGNOSTIC
+static void diagnose_bqhr(GAUGE_CONTEXT *c)
+{
+    NTSTATUS status;
+    enum a04_bqhr_acpi_result r = a04_bqhr_evaluate(c->device, &status);
+    if (r == A04_BQHR_ACPI_STOPPED) {
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "A04BAT BQHR STOPPED VERIFIED\n");
+        trace(c, "A04BAT BQHR STOPPED VERIFIED\n");
+    } else {
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
+                   "A04BAT BQHR FAILED result=%u status=%08lx\n", (unsigned)r, status);
+        trace(c, "A04BAT BQHR FAILED\n");
+    }
 }
 #endif
 static void notify(GAUGE_CONTEXT *c)
@@ -184,6 +205,9 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     GAUGE_CONTEXT *c = GaugeContext(device);
     UNREFERENCED_PARAMETER(previous);
     if (!c->i2c || c->faulted) return STATUS_DEVICE_NOT_READY;
+#if A04_BQHR_DIAGNOSTIC
+    diagnose_bqhr(c);
+#endif
 #if A04_BQ24160_EXPERIMENTAL
     if (!charger_handoff_is_qualified()) return STATUS_DEVICE_NOT_READY;
 #endif
