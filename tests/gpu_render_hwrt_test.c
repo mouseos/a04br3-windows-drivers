@@ -2,6 +2,10 @@
 #include <assert.h>
 #include <string.h>
 #include "render_hwrt.h"
+#include "render_target.h"
+#include "render_freelist.h"
+#include "firmware.h"
+#include <stdlib.h>
 int main(void)
 {
     struct a04_render_hwrt_params p={0};
@@ -24,5 +28,28 @@ int main(void)
     assert(data.hwrt_data_common_fw_addr==p.common_fw_address && data.freelists_fw_addr[1]==p.freelist_fw_address[1]);
     assert(data.rgn_header_dev_addr==p.region_gpu && data.rta_ctl.max_rts==1);
     p.width=8192; assert(a04_gpu_init_render_hwrt(&p,&common,&data));
+    {
+        uint8_t *heap=aligned_alloc(4096,A04_PVR_HEAP_SIZE);
+        uint64_t pages[52]; uint32_t local_table[52],global_table[52];
+        struct a04_gpu_fw_arena arena={0}; struct a04_gpu_fw_object local,global;
+        struct a04_gpu_render_target target={0}, old={0}; size_t saved;
+        unsigned i; assert(heap);
+        for (i=0;i<52;i++) pages[i]=0x90000000u+i*4096u;
+        assert(!a04_gpu_fw_arena_init(&arena,heap,A04_PVR_HEAP_SIZE,0x80000000,0x20000));
+        assert(!a04_gpu_fw_alloc(&arena,sizeof(struct rogue_fwif_freelist),4096,&local));
+        assert(!a04_gpu_fw_alloc(&arena,sizeof(struct rogue_fwif_freelist),4096,&global));
+        assert(!a04_gpu_init_render_freelist(local_table,52,0x8000100000ULL,pages,52,1,local.cpu));
+        assert(!a04_gpu_init_render_freelist(global_table,52,0x8000200000ULL,pages,52,2,global.cpu));
+        saved=arena.next;
+        assert(a04_gpu_prepare_render_target(&arena,&local,&global,&p,&target));
+        assert(arena.next==saved && !memcmp(&target,&old,sizeof(target)));
+        p.width=800;
+        assert(a04_gpu_prepare_render_target(&arena,&local,&local,&p,&target));
+        assert(!a04_gpu_prepare_render_target(&arena,&local,&global,&p,&target));
+        assert(((struct rogue_fwif_hwrtdata *)target.data.cpu)->hwrt_data_common_fw_addr==target.common.fw_addr);
+        assert(((struct rogue_fwif_hwrtdata *)target.data.cpu)->freelists_fw_addr[0]==local.fw_addr);
+        assert(((struct rogue_fwif_hwrtdata *)target.data.cpu)->freelists_fw_addr[1]==global.fw_addr);
+        free(heap);
+    }
     return 0;
 }
