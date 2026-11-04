@@ -9,6 +9,13 @@
 #include "board_init.h"
 #include "device.h"
 #include "mt8167_adapter.h"
+#ifndef A04_TOUCH_THERMAL_LEASE
+#define A04_TOUCH_THERMAL_LEASE 0
+#endif
+#if A04_TOUCH_THERMAL_LEASE
+#include "thermal_lease.h"
+#include "thermal_broker.h"
+#endif
 
 #ifndef A04_TOUCH_TRACE
 #define A04_TOUCH_TRACE 0
@@ -35,6 +42,10 @@ typedef struct {
     UCHAR descriptor[A04_TOUCH_DESCRIPTOR_CAPACITY];
     size_t descriptor_length;
     volatile LONG enabled;
+#if A04_TOUCH_THERMAL_LEASE
+    WDFSPINLOCK shared_lock;
+    struct a04_thermal_lease thermal_lease;
+#endif
     BOOLEAN faulted;
     BOOLEAN recovering;
     unsigned recovery_attempts;
@@ -51,6 +62,9 @@ EVT_WDF_DEVICE_D0_ENTRY TouchD0Entry;
 EVT_WDF_DEVICE_D0_EXIT TouchD0Exit;
 EVT_WDF_IO_QUEUE_IO_INTERNAL_DEVICE_CONTROL TouchIoctl;
 EVT_WDF_TIMER TouchTimer;
+#if A04_TOUCH_THERMAL_LEASE
+EVT_WDF_FILE_CLEANUP TouchThermalCleanup;
+#endif
 
 #if A04_TOUCH_TRACE
 /* Diagnostic builds only; shares the UART with the existing monitor. */
@@ -89,16 +103,29 @@ static int BoardUpdate(void *p, enum a04_touch_register_bank bank, unsigned off,
     ULONG value;
     if (!c->mmio[i] || off > RANGE_SIZE-4 || (bits & ~mask)) return -1;
     reg = (volatile ULONG *)(c->mmio[i]+off);
+#if A04_TOUCH_THERMAL_LEASE
+    WdfSpinLockAcquire(c->shared_lock);
+#endif
     value = READ_REGISTER_ULONG(reg);
     WRITE_REGISTER_ULONG(reg, (value & ~mask) | bits);
-    return (READ_REGISTER_ULONG(reg) & mask) == bits ? 0 : -1;
+    value = READ_REGISTER_ULONG(reg);
+#if A04_TOUCH_THERMAL_LEASE
+    WdfSpinLockRelease(c->shared_lock);
+#endif
+    return (value & mask) == bits ? 0 : -1;
 }
 static int BoardWrite(void *p, enum a04_touch_register_bank bank, unsigned off, uint32_t value)
 {
     TOUCH_CONTEXT *c = TouchGetContext((WDFDEVICE)p);
     unsigned i = bank == A04_TOUCH_GPIO ? GPIO : TOP;
     if (!c->mmio[i] || off > RANGE_SIZE-4) return -1;
+#if A04_TOUCH_THERMAL_LEASE
+    WdfSpinLockAcquire(c->shared_lock);
+#endif
     WRITE_REGISTER_ULONG((volatile ULONG *)(c->mmio[i]+off), value);
+#if A04_TOUCH_THERMAL_LEASE
+    WdfSpinLockRelease(c->shared_lock);
+#endif
     return 0;
 }
 static int BoardI2cWrite(void *p, unsigned off, uint16_t value)
@@ -139,6 +166,11 @@ NTSTATUS TouchRelease(WDFDEVICE device, WDFCMRESLIST translated)
     TOUCH_CONTEXT *c=TouchGetContext(device); unsigned i;
     UNREFERENCED_PARAMETER(translated);
     InterlockedExchange(&c->enabled,0);
+#if A04_TOUCH_THERMAL_LEASE
+    WdfSpinLockAcquire(c->shared_lock);
+    a04_lease_offline(&c->thermal_lease);
+    WdfSpinLockRelease(c->shared_lock);
+#endif
     WdfTimerStop(c->timer,TRUE); WdfTimerStop(c->timer,TRUE);
     for (i=0;i<RANGE_COUNT;++i) if (c->mmio[i]) {
         MmUnmapIoSpace((PVOID)c->mmio[i],RANGE_SIZE); c->mmio[i]=NULL;
@@ -171,6 +203,11 @@ NTSTATUS TouchD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     }
     c->recovering=FALSE; c->recovery_attempts=0;
     Trace(c,"A04TOUCH hardware init success\n");
+#if A04_TOUCH_THERMAL_LEASE
+    WdfSpinLockAcquire(c->shared_lock);
+    c->thermal_lease.online=1;
+    WdfSpinLockRelease(c->shared_lock);
+#endif
     InterlockedExchange(&c->enabled,1);
     WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(20));
     return STATUS_SUCCESS;
@@ -179,6 +216,11 @@ NTSTATUS TouchD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
 {
     TOUCH_CONTEXT *c=TouchGetContext(device); UNREFERENCED_PARAMETER(target);
     InterlockedExchange(&c->enabled,0);
+#if A04_TOUCH_THERMAL_LEASE
+    WdfSpinLockAcquire(c->shared_lock);
+    a04_lease_offline(&c->thermal_lease);
+    WdfSpinLockRelease(c->shared_lock);
+#endif
     WdfTimerStop(c->timer,TRUE); WdfTimerStop(c->timer,TRUE);
     return STATUS_SUCCESS;
 }
@@ -274,11 +316,53 @@ void TouchTimer(WDFTIMER timer)
 rearm:
     if (InterlockedCompareExchange(&c->enabled,1,1)) WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(delay));
 }
+#if A04_TOUCH_THERMAL_LEASE
+VOID TouchThermalCleanup(WDFFILEOBJECT file)
+{
+    TOUCH_CONTEXT *c=TouchGetContext(WdfFileObjectGetDevice(file));
+    uintptr_t owner=(uintptr_t)WdfFileObjectWdmGetFileObject(file);
+    WdfSpinLockAcquire(c->shared_lock); a04_lease_release(&c->thermal_lease,owner); WdfSpinLockRelease(c->shared_lock);
+}
+static NTSTATUS TouchThermalRequest(TOUCH_CONTEXT *c,WDFREQUEST request,ULONG code)
+{
+    PIRP irp=WdfRequestWdmGetIrp(request);
+    uintptr_t owner=(uintptr_t)IoGetCurrentIrpStackLocation(irp)->FileObject;
+    NTSTATUS status=STATUS_DEVICE_NOT_READY; ULONG state;
+    if(irp->RequestorMode!=KernelMode || !owner) return STATUS_ACCESS_DENIED;
+    WdfSpinLockAcquire(c->shared_lock);
+    if(code==A04_TOUCH_THERMAL_CLAIM) {
+        status=a04_lease_claim(&c->thermal_lease,owner) ? STATUS_DEVICE_BUSY : STATUS_SUCCESS;
+    } else if(a04_lease_valid(&c->thermal_lease,owner)) {
+        if(code==A04_TOUCH_THERMAL_CLOCK) {
+            /* CLK_TOP_THEM bit 1 and CLK_TOP_AUX_ADC bit 30: set/clear alias. */
+            WRITE_REGISTER_ULONG((volatile ULONG *)(c->mmio[TOP]+0x84),(1u<<1)|(1u<<30));
+            state=READ_REGISTER_ULONG((volatile ULONG *)(c->mmio[TOP]+0x24));
+            if(!(state & ((1u<<1)|(1u<<30)))) { c->thermal_lease.clocks_ready=1; status=STATUS_SUCCESS; }
+            else status=STATUS_DEVICE_HARDWARE_ERROR;
+        } else if(code==A04_TOUCH_THERMAL_RESET && c->thermal_lease.clocks_ready) {
+            /* Atomic set/clear bit 0 only; never reset the touch controller. */
+            WRITE_REGISTER_ULONG((volatile ULONG *)(c->mmio[INFRA]+0x120),1u);
+            WRITE_REGISTER_ULONG((volatile ULONG *)(c->mmio[INFRA]+0x124),1u);
+            state=READ_REGISTER_ULONG((volatile ULONG *)(c->mmio[INFRA]+0x128));
+            status=(state & 1u)?STATUS_DEVICE_HARDWARE_ERROR:STATUS_SUCCESS;
+        } else if(code==A04_TOUCH_THERMAL_RELEASE) {
+            a04_lease_release(&c->thermal_lease,owner); status=STATUS_SUCCESS;
+        }
+    }
+    WdfSpinLockRelease(c->shared_lock); return status;
+}
+#endif
 void TouchIoctl(WDFQUEUE queue, WDFREQUEST request, size_t outlen, size_t inlen, ULONG code)
 {
     TOUCH_CONTEXT *c=TouchGetContext(WdfIoQueueGetDevice(queue));
     HID_DESCRIPTOR hid={0}; HID_DEVICE_ATTRIBUTES attr={0}; NTSTATUS status=STATUS_NOT_SUPPORTED;
     UNREFERENCED_PARAMETER(inlen);
+#if A04_TOUCH_THERMAL_LEASE
+    if(code==A04_TOUCH_THERMAL_CLAIM || code==A04_TOUCH_THERMAL_CLOCK ||
+       code==A04_TOUCH_THERMAL_RESET || code==A04_TOUCH_THERMAL_RELEASE) {
+        WdfRequestComplete(request,TouchThermalRequest(c,request,code)); return;
+    }
+#endif
     switch (code) {
     case IOCTL_HID_GET_DEVICE_DESCRIPTOR:
         hid.bLength=sizeof(hid); hid.bDescriptorType=HID_HID_DESCRIPTOR_TYPE;
@@ -313,6 +397,12 @@ NTSTATUS TouchAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     WDF_IO_QUEUE_CONFIG q; WDF_TIMER_CONFIG t; WDFDEVICE device; TOUCH_CONTEXT *c; NTSTATUS status;
     UNREFERENCED_PARAMETER(driver);
     WdfFdoInitSetFilter(init);
+#if A04_TOUCH_THERMAL_LEASE
+    { DECLARE_CONST_UNICODE_STRING(name,A04_TOUCH_THERMAL_DEVICE); WDF_FILEOBJECT_CONFIG fc;
+      status=WdfDeviceInitAssignName(init,&name); if(!NT_SUCCESS(status)) return status;
+      WDF_FILEOBJECT_CONFIG_INIT(&fc,WDF_NO_EVENT_CALLBACK,WDF_NO_EVENT_CALLBACK,TouchThermalCleanup);
+      WdfDeviceInitSetFileObjectConfig(init,&fc,WDF_NO_OBJECT_ATTRIBUTES); }
+#endif
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
     pnp.EvtDevicePrepareHardware=TouchPrepare; pnp.EvtDeviceReleaseHardware=TouchRelease;
     pnp.EvtDeviceD0Entry=TouchD0Entry; pnp.EvtDeviceD0Exit=TouchD0Exit;
@@ -320,6 +410,10 @@ NTSTATUS TouchAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,TOUCH_CONTEXT);
     status=WdfDeviceCreate(&init,&attr,&device); if (!NT_SUCCESS(status)) return status;
     c=TouchGetContext(device); c->device=device;
+#if A04_TOUCH_THERMAL_LEASE
+    { WDF_OBJECT_ATTRIBUTES lockattr; WDF_OBJECT_ATTRIBUTES_INIT(&lockattr); lockattr.ParentObject=device;
+      status=WdfSpinLockCreate(&lockattr,&c->shared_lock); if(!NT_SUCCESS(status)) return status; }
+#endif
     /* Approximate 10.1-inch 16:10 panel dimensions; replace when verified. */
     if (a04_touch_descriptor(A04_PANEL_WIDTH_HUNDREDTH_IN,A04_PANEL_HEIGHT_HUNDREDTH_IN,
                              c->descriptor,sizeof(c->descriptor),&c->descriptor_length))

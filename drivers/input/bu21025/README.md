@@ -64,3 +64,9 @@ kernel image, and must not be installed or treated as a working driver.
 `tools/ci/build-kmdf-touch-probe.ps1` independently checks the Windows 8.1
 KMDF 1.13 ARM entry and linking path. Its AddDevice callback rejects all
 devices; it is unsigned, untested on hardware and not a HID implementation.
+
+`A04_TOUCH_THERMAL_LEASE=1` は温度試験向けのkernel内部専用の共有レジスタ
+リースを追加する実験ビルドである。リースは単一所有者に限定し、TOP clockと
+INFRA thermal resetの限定操作だけを公開し、D0退出・ファイルcleanupで破棄する。
+通常ビルドでは無効。Windows外の所有者との排他、ファイルcleanup、スリープ、
+タッチと温度の同時動作、および各レジスタ操作は実機未検証。

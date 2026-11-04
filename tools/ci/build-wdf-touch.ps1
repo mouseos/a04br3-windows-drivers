@@ -11,9 +11,10 @@ New-Item -ItemType Directory -Force $out | Out-Null
 $dir = Join-Path $root 'drivers\input\bu21025'
 $objects = @()
 $trace = if ($env:A04_TOUCH_TRACE -eq '1') { '1' } else { '0' }
+$lease = if ($env:A04_TOUCH_THERMAL_LEASE -eq '1') { '1' } else { '0' }
 foreach ($source in @('wdf_touch','board_init','bu21025','mt8167_adapter','device','pipeline','contact','coordinates','touch_hid')) {
     $obj = Join-Path $out "$source.obj"
-    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_TOUCH_TRACE=$trace" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$dir" -c (Join-Path $dir "$source.c") -o $obj
+    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_TOUCH_TRACE=$trace" "-DA04_TOUCH_THERMAL_LEASE=$lease" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$dir" -c (Join-Path $dir "$source.c") -o $obj
     if ($LASTEXITCODE -ne 0) { throw "ARM32 touch compilation failed: $source" }
     $objects += $obj
 }
