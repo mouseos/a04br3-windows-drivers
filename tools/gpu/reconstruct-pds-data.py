@@ -73,6 +73,8 @@ def main():
     spec=importlib.util.spec_from_file_location('trace',pathlib.Path(__file__).with_name('check-render-trace.py'));checker=importlib.util.module_from_spec(spec);spec.loader.exec_module(checker)
     result=checker.check(a.capture/'events.jsonl')
     if result['pds_dependency_unmapped'] or result['pds_shader_unmapped'] or result['uploads_ambiguous_vm'] or result['uploads_unmapped_at_observation']:raise SystemExit('GPU mappings incomplete')
+    spec=importlib.util.spec_from_file_location('submit',pathlib.Path(__file__).with_name('check-render-submit-dependencies.py'))
+    submit=importlib.util.module_from_spec(spec);spec.loader.exec_module(submit);submit.check(a.capture)
     files=build([json.loads(x) for x in events.splitlines()],log.decode('utf-8','replace'),a.index)
     a.output.mkdir(mode=0o700,parents=True,exist_ok=False)
     for name,data in files.items():(a.output/name).write_bytes(data)
