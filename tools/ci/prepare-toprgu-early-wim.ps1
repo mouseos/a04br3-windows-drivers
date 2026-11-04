@@ -35,12 +35,13 @@ try {
  if($LASTEXITCODE) { throw 'DISM driver injection failed' }
  & reg.exe load HKLM\A04BR3OFF (Join-Path $MountDirectory 'Windows\System32\config\SOFTWARE') | Out-Host
  if($LASTEXITCODE) { throw 'Offline SOFTWARE hive load failed' }; $loaded=$true
+ $hex=([BitConverter]::ToString($blob)).Replace("-","")
  foreach($store in @('Root','TrustedPublisher')) {
-  $dst="HKLM:\A04BR3OFF\Microsoft\SystemCertificates\$store\Certificates\$thumb"
-  New-Item -Path $dst -Force | Out-Null
-  New-ItemProperty -Path $dst -Name Blob -PropertyType Binary -Value $blob -Force | Out-Null
-  $stored=(Get-ItemProperty -Path $dst -Name Blob).Blob
-  if([Convert]::ToBase64String($stored) -ne [Convert]::ToBase64String($blob)) { throw "Offline $store validation failed" }
+  $dst="HKLM\A04BR3OFF\Microsoft\SystemCertificates\$store\Certificates\$thumb"
+  & reg.exe add $dst /v Blob /t REG_BINARY /d $hex /f | Out-Host
+  if($LASTEXITCODE) { throw "Offline $store import failed" }
+  & reg.exe query $dst /v Blob | Out-Null
+  if($LASTEXITCODE) { throw "Offline $store validation failed" }
   Write-Host "OFFLINE_CERT $store $thumb"
  }
  & reg.exe unload HKLM\A04BR3OFF | Out-Host
