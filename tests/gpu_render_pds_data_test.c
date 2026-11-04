@@ -39,8 +39,9 @@ int main(void)
     assert(a04_render_make_fragment_pds(0x8000001000ULL,0,ranges,4,frag));
     p.shader_gpu=0xe000005040ULL;p.spill_info_gpu=0x8000001000ULL;p.scratch_info_gpu=0;
     p.spill_buffer_gpu=0x8000002000ULL;p.scratch_buffer_gpu=0;p.descriptor_literal1=0;
+    p.vertex_literal=0x80000000u;p.descriptor_literal0=0x90000003u;p.doutu_control=UINT64_C(0x800000000);
     assert(!a04_render_make_scratchless_pds_data(&p,ranges,4,&out));
-    assert(word(out.vertex)==0x5040 && word(out.descriptor)==0x1000 && word(out.descriptor+8)==4);
+    assert(word(out.vertex)==0x5040 && word(out.descriptor)==0x1000 && word(out.descriptor+8)==0x90000003u);
     assert(word(out.descriptor+12)==0 && word(out.spill_info+8)==4);
     old=out;p.scratch_buffer_gpu=0x8000004000ULL;
     assert(a04_render_make_scratchless_pds_data(&p,ranges,4,&out) && !memcmp(&out,&old,sizeof(out)));

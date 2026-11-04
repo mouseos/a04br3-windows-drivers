@@ -37,7 +37,8 @@ int a04_render_make_scratchless_pds_data(const struct a04_render_pds_input *p,
 {
     struct a04_render_pds_data result={{0},{0},{0},{0}};
     if (!p || !out || p->scratch_info_gpu || p->scratch_buffer_gpu || p->descriptor_literal1 ||
-        a04_render_validate_owned_ranges(r,n) || (p->doutu_control&~DOUTU_CONTROL_MASK) ||
+        p->vertex_literal!=UINT32_C(0x80000000) || p->descriptor_literal0!=UINT32_C(0x90000003) ||
+        p->doutu_control!=UINT64_C(0x800000000) || a04_render_validate_owned_ranges(r,n) ||
         (p->shader_gpu&3u) || (p->spill_info_gpu&7u) || (p->shader_gpu>>32)!=UINT64_C(0xe0) ||
         !owned(r,n,p->shader_gpu,176,A04_RENDER_RANGE_READ|A04_RENDER_RANGE_EXEC) ||
         !owned(r,n,p->spill_info_gpu,12,A04_RENDER_RANGE_READ) ||

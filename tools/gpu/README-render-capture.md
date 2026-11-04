@@ -221,3 +221,5 @@ NIR上の24バイト検査は、物理scratch allocation全体の境界を単独
 独立した２captureでは、各２描画の最適化後NIRは元と同じ頂点座標・深度を示し、vertex shaderのscratch intrinsicはなかった。grouped PCOも限定された頂点演算と出力命令だけで、vertexのload／storeは観測されなかった。vertex USCは176バイト（256バイト確保）、descriptorはspill情報１件の12バイト（16バイト取得）であり、scratch情報・scratch bufferを参照しない。vertex PDSコード12バイトとdescriptor PDSコード４バイトは、２captureでMesa uploadのFNVと一致した。`a04_windows_render_stage_scratchless_pds` と `_code` はこの別レイアウトを所有DMAへゼロpaddingして配置するが、shaderそのものの信頼性や他の参照を判定せず、既定OFFのまま実行入口には接続していない。元のscratch使用版とデータ・命令を混用しない。
 
 この変更でvertex NIR上のscratch参照は除けるが、spill allocation、context switchのshared state、fragmentやVDM／PPPの全アクセス、USC機械語との意味対応、実機動作は未証明。captureはGPUを実行せず、非公開生成USCは引き続きGPU投入禁止。
+
+scratchless版のPDS定数は、２回のcapture・各２描画でvertex literal `0x80000000`、DOUTU制御 `0x800000000`、descriptor literal `0x90000003` が一致した。`a04_render_make_scratchless_pds_data` と再構成ツールはこの固定値とspill-only構成を要求し、別のshader／layout用の値を拒否する。

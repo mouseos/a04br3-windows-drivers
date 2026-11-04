@@ -317,8 +317,9 @@ int main(void)
       for(unsigned i=0x98;i<0xa0;++i) assert(!out[i]);
       assert(a04_windows_render_stage_vertex_pds_code(&m,0xda00010080ULL,0xda00010090ULL)==STATUS_INVALID_PARAMETER);
       p.scratch_info_gpu=0;p.scratch_buffer_gpu=0;p.descriptor_literal1=0;p.spill_info_gpu=0xda000100c0ULL;
+      p.vertex_literal=0x80000000u;p.descriptor_literal0=0x90000003u;p.doutu_control=UINT64_C(0x800000000);
       assert(a04_windows_render_stage_scratchless_pds(&m,&p,0xda000100a0ULL,0xda000100b0ULL)==STATUS_SUCCESS);
-      assert(out[0xa0]==0x40 && out[0xa1]==0x50 && out[0xb0]==0xc0 && out[0xb4]==0xda && out[0xb8]==4);
+      assert(out[0xa0]==0x40 && out[0xa1]==0x50 && out[0xb0]==0xc0 && out[0xb4]==0xda && out[0xb8]==3 && out[0xbb]==0x90);
       assert(out[0xc1]==0x10 && out[0xc8]==4);
       for(unsigned i=0xbc;i<0xc0;++i) assert(!out[i]);
       assert(a04_windows_render_stage_scratchless_pds_code(&m,0xda000100d0ULL,0xda000100e0ULL)==STATUS_SUCCESS);

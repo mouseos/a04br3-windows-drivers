@@ -29,6 +29,10 @@ def build(events, text, index=0, scratchless=False):
         entries=[e for e in events if e.get('event')=='pds_entry' and e['gpu_va']==addr and e['kind']==kind]
         if len(cs)!=1 or cs[0]['size']!=size or cs[0]['entries']!=len(entries):raise ValueError('construction metadata mismatch')
         if sorted((e['entry_type'],e['const_offset'],e['subtype']) for e in entries)!=sorted(expected):raise ValueError('unsupported constant map')
+        if scratchless:
+            fixed={(2,2):0x80000000,(6,0):0x800000000} if kind=='vertex_attributes' else {(2,2):0x90000003}
+            if any(e['value']!=fixed[(e['entry_type'],e['const_offset'])] for e in entries if (e['entry_type'],e['const_offset']) in fixed):
+                raise ValueError('unexpected scratchless fixed constant')
         out=bytearray(size);covered=set();deps={}
         for entry in entries:
             off=entry['const_offset']*4;t=entry['entry_type'];value=entry['value']
