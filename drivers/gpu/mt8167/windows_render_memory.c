@@ -555,6 +555,37 @@ NTSTATUS a04_windows_render_publish_context(struct a04_windows_render_memory *m)
     }
     return render_memory_publish(m,TRUE);
 }
+static void render_capture_trace(struct a04_windows_render_memory *m)
+{
+    struct a04_gpu_firmware_state *s=m->firmware;
+    struct rogue_fwif_tracebuf *ctl; struct a04_shared_trace_summary result={0};
+    uint32_t before[2],after[2]; size_t i,n=ROGUE_FW_TRACE_BUF_DEFAULT_SIZE_IN_DWORDS*sizeof(uint32_t);
+    NTSTATUS status=STATUS_INVALID_DEVICE_STATE;
+    m->trace_capture_valid=FALSE;
+    if (!s || !s->memory.heap || s->runtime.next_free>A04_PVR_HEAP_SIZE ||
+        !s->runtime.trace_control || !s->runtime.trace[0] || !s->runtime.trace[1] ||
+        s->runtime.trace_control>s->runtime.next_free || sizeof(*ctl)>s->runtime.next_free-s->runtime.trace_control ||
+        s->runtime.trace[0]>s->runtime.next_free || n>s->runtime.next_free-s->runtime.trace[0] ||
+        s->runtime.trace[1]>s->runtime.next_free || n>s->runtime.next_free-s->runtime.trace[1] ||
+        overlap(s->runtime.trace_control,sizeof(*ctl),s->runtime.trace[0],n) ||
+        overlap(s->runtime.trace_control,sizeof(*ctl),s->runtime.trace[1],n) ||
+        overlap(s->runtime.trace[0],n,s->runtime.trace[1],n)) goto done;
+    ctl=(void *)((uint8_t *)s->memory.heap+s->runtime.trace_control);
+    status=a04_gpu_dma_sync(ctl,sizeof(*ctl),TRUE); if (!NT_SUCCESS(status)) goto done;
+    for(i=0;i<2;++i) before[i]=ctl->tracebuf[i].trace_pointer;
+    for(i=0;i<2;++i) {
+        uint32_t *words=(void *)((uint8_t *)s->memory.heap+s->runtime.trace[i]);
+        status=a04_gpu_dma_sync(words,(ULONG)n,TRUE);if (!NT_SUCCESS(status)) goto done;
+        a04_shared_trace_scan(words,ROGUE_FW_TRACE_BUF_DEFAULT_SIZE_IN_DWORDS,&result);
+    }
+    status=a04_gpu_dma_sync(ctl,sizeof(*ctl),TRUE);if (!NT_SUCCESS(status)) goto done;
+    for(i=0;i<2;++i) after[i]=ctl->tracebuf[i].trace_pointer;
+    m->trace_summary=result;
+    m->trace_capture_changed=(before[0]!=after[0] || before[1]!=after[1]);
+    m->trace_capture_valid=TRUE;
+done:
+    m->trace_capture_status=status;
+}
 NTSTATUS a04_windows_render_collect_pair(struct a04_windows_render_memory *m)
 {
     struct a04_gpu_firmware_state *s;struct rogue_fwif_cccb_ctl *gc,*fc;
@@ -588,6 +619,7 @@ NTSTATUS a04_windows_render_collect_pair(struct a04_windows_render_memory *m)
             *(volatile uint32_t *)&gc->read_offset==geom_end && *(volatile uint32_t *)&fc->read_offset==frag_end) break;
         status=KeDelayExecutionThread(KernelMode,FALSE,&delay);if(!NT_SUCCESS(status)) return status;
     }
+    if (m->trace_capture_enabled) render_capture_trace(m);
     if(i==200u) return STATUS_IO_TIMEOUT;
     status=a04_gpu_dma_sync(m->cpu,m->length,TRUE);if(!NT_SUCCESS(status)) return status;
     status=a04_gpu_firmware_cleanup(s,ROGUE_FWIF_CLEANUP_FWCOMMONCONTEXT,m->render.geom_context_fw);if(!NT_SUCCESS(status)) return status;

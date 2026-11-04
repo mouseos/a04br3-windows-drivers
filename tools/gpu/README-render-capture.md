@@ -194,4 +194,6 @@ context switchのpersistent PDSは `pvr_pds_generate_stream_out_terminate_progra
 
 この走査はIDと引数位置だけに基づく候補検索で、レコード境界を証明せず誤検出があり得る。同期中にもfirmwareは書き込め、pointer不変でも整合したスナップショットとは限らない。既存queue testはrender context switchを発生させるものではなく、候補０件でも正常・安全・異常のいずれも判定できない。上記の値が特殊レジスタ103と同じか、対象firmwareに当該ログが実装されているかも未証明であり、fixtureやkickの有効化条件には使えない。
 
+描画用 `a04_windows_render_collect_pair` では、呼出し側が `trace_capture_enabled` を明示した場合に限り、両fenceの完了または待機タイムアウト後、cleanup前に同じ候補集計を `trace_summary` に記録する。`trace_capture_status` と `trace_capture_valid` を確認する。同期失敗や不正なtrace範囲は描画の完了判定を変更しない。タイムアウト時は従来どおりpoisonして資源を保持する。これはkickの発行、外部への診断表示、context switchの発生を実装するものではない。
+
 fragment PDS、persistent PDS、shared PDSの各配置は、成功した出力範囲をDMA allocationの寿命中に予約する。別の配置がpaddingを含む予約範囲と重なれば、書込み前に拒否する。未追跡のCPU書込みや別の方法による配置は呼出し側で防ぐ必要があり、この検査はfixture全体の参照閉包やGPU投入を保証しない。

@@ -5,6 +5,7 @@
 #include "firmware_objects.h"
 #include "render_context.h"
 #include "render_target.h"
+#include "render_trace_shared.h"
 #if A04_GE8300_RENDER_EXPERIMENT
 /* A private DMA allocation and its GPU page tables. Call at PASSIVE_LEVEL;
  * the caller serializes firmware access and prevents untracked CPU writes. */
@@ -39,6 +40,10 @@ struct a04_windows_render_memory {
     struct a04_render_hwrt_params target_params;
     BOOLEAN target_prepared;
     BOOLEAN cleanup_complete;
+    /* Optional diagnostic; candidate scan is not a GPU execution gate. */
+    BOOLEAN trace_capture_enabled,trace_capture_valid,trace_capture_changed;
+    NTSTATUS trace_capture_status;
+    struct a04_shared_trace_summary trace_summary;
     struct { uint64_t gpu_va,size; } staged[A04_RENDER_MAX_STAGED];
     size_t staged_count;
 };

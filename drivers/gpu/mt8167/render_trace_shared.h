@@ -10,7 +10,7 @@
 struct a04_shared_trace_summary {
     uint32_t candidates, store_mask, load_mask, other, different;
 };
-static void a04_shared_trace_scan(const volatile uint32_t *words, size_t count,
+static inline void a04_shared_trace_scan(const volatile uint32_t *words, size_t count,
                                   struct a04_shared_trace_summary *out)
 {
     size_t i;

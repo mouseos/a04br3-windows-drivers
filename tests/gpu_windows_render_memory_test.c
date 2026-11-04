@@ -191,6 +191,21 @@ int main(void)
       assert(a04_windows_render_prepare_freelists(&m,fl)==STATUS_INVALID_PARAMETER);
       m.render.pair_prepared=1;m.render.hwrt_fw=m.target.data.fw_addr;
       m.render.frag_end=(uint32_t)(3u*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(struct rogue_fwif_cmd_frag)+2u*sizeof(struct rogue_fwif_ufo));
+      { uint32_t saved_next=s.runtime.next_free;
+        uint32_t *trace;
+        s.runtime.trace_control=0x200000;s.runtime.trace[0]=0x201000;s.runtime.trace[1]=0x20d000;s.runtime.next_free=0x219000;
+        memset((uint8_t *)s.memory.heap+0x200000,0,0x19000);
+        trace=(uint32_t *)((uint8_t *)s.memory.heap+s.runtime.trace[0]);
+        trace[10]=A04_SHARED_TRACE_ID;trace[13]=64;trace[14]=256;
+        { struct a04_windows_render_memory copy=m;copy.trace_capture_enabled=TRUE;
+          assert(a04_windows_render_collect_pair(&copy)==STATUS_IO_TIMEOUT && copy.poisoned);
+          assert(copy.trace_capture_valid && copy.trace_capture_status==STATUS_SUCCESS && !copy.trace_capture_changed);
+          assert(copy.trace_summary.candidates==1 && copy.trace_summary.store_mask==2 && copy.trace_summary.load_mask==16); }
+        { struct a04_windows_render_memory copy=m;copy.trace_capture_enabled=TRUE;s.runtime.trace[1]=s.runtime.trace[0];
+          assert(a04_windows_render_collect_pair(&copy)==STATUS_IO_TIMEOUT && copy.poisoned);
+          assert(!copy.trace_capture_valid && copy.trace_capture_status==STATUS_INVALID_DEVICE_STATE); }
+        s.runtime.trace_control=0;s.runtime.trace[0]=s.runtime.trace[1]=0;s.runtime.next_free=saved_next;
+      }
       { struct a04_windows_render_memory copy=m;
         assert(a04_windows_render_collect_pair(&copy)==STATUS_IO_TIMEOUT && copy.poisoned && !cleanup_calls);
         assert(a04_windows_render_memory_free(&copy,TRUE)==STATUS_DEVICE_BUSY); }
