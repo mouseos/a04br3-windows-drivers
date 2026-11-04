@@ -73,6 +73,11 @@ for ((i=0;i<45;i++)); do
   # CAPTURE READY is registration, not a bugcheck. Match only the callback's
   # emitted bugcheck data and preserve the first failure boot in the log.
   if grep -qE 'A04GPU BUGCHECK (DATA_UNAVAILABLE|[0-9A-F]{8})|A04GPU DISPLAY COPY FAILED|Kernel panic' "$out/current-uart.log"; then break; fi
+  # The opt-in service cannot restart after D0 exit. Further waiting cannot
+  # produce a GPU copy in this boot, so capture and restore promptly.
+  if grep -q 'A04GPU D0EXIT TARGET=' "$out/current-uart.log"; then break; fi
+  if grep -q 'A04GPU SERVICE STATUS=' "$out/current-uart.log" &&
+     ! grep -q 'A04GPU SERVICE STATUS=00000000' "$out/current-uart.log"; then break; fi
   if (( i > 5 )) && is_fastboot; then break; fi
   sleep 4
 done
