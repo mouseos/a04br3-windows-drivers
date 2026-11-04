@@ -36,6 +36,7 @@ p.add_argument('--toprgu-original', type=Path, help='Expected installed TOPRGU S
 p.add_argument('--toprgu-provider-status', type=Path, help='Read-only TOPRGU PnP status executable')
 p.add_argument('--read-emmc-model', type=Path, help='Read-only volatile eMMC model utility')
 p.add_argument('--disable-quickedit', type=Path, help='Optional signed console selection control executable')
+p.add_argument('--ge8300-display-test', type=Path, help='Paired signed GE8300 and display test package directory')
 a = p.parse_args()
 root = Path(__file__).resolve().parents[2]
 startnet = a.startnet or root / 'tools/winpe/startnet-driver-probe.cmd'
@@ -100,6 +101,13 @@ if a.read_emmc_model:
     files['/a04br3/read-emmc-model.exe'] = a.read_emmc_model
 if a.disable_quickedit:
     files['/a04br3/disable-quickedit.exe'] = a.disable_quickedit
+if a.ge8300_display_test:
+    for name in ('mt8167-ge8300.inf', 'mt8167-ge8300.sys', 'mt8167-ge8300.cat',
+                 'ge8300-mips.fw', 'ge8300-pnp-status.exe', 'ge8300-service-status.exe',
+                 'ge8300-copy-status.exe', 'display-pnp-status.exe'):
+        files[f'/a04br3/ge8300-display/ge8300/{name}'] = a.ge8300_display_test / 'ge8300' / name
+    for name in ('mt8167-display.inf', 'mt8167-display.sys', 'mt8167-display.cat'):
+        files[f'/a04br3/ge8300-display/display/{name}'] = a.ge8300_display_test / 'display' / name
 for source in [a.source_wim, *files.values()]:
     if not source.is_file():
         raise SystemExit(f'Missing input: {source}')
