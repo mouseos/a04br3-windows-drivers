@@ -27,7 +27,7 @@ def candidates(events):
             uploads=[u for u in uploads if u['mapping'][0]!=e['handle']]
         elif kind=='context_create':contexts[e['handle']]=e['vm']
         elif kind=='context_destroy':contexts.pop(e['handle'])
-        elif kind=='upload':
+        elif kind in ('upload','pds_construct'):
             va=e['gpu_va']; size=e['size']
             if size<=0:raise ValueError('invalid upload')
             matches=[k for k,n in maps.items() if va>=k[1] and size<=n and va-k[1]<=n-size]

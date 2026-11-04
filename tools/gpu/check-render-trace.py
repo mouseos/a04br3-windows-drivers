@@ -13,6 +13,9 @@ def check(path):
     vms, bos, maps, contexts, freelists, hwrts = set(), {}, {}, {}, {}, {}
     jobs = submits = refs = unresolved = full_checks = start_checks = zeroed_bos = 0
     uploads = unmapped_uploads = ambiguous_uploads = 0
+    pds_entries = 0
+    pds_deps = unmapped_deps = 0
+    pds_shaders = unmapped_shaders = 0
     open_submit = None
     for line in pathlib.Path(path).read_text(encoding='utf-8').splitlines():
         e = json.loads(line); op = e['event']
@@ -60,14 +63,38 @@ def check(path):
             hwrts[e['handle']] = e
         elif op == 'hwrt_destroy':
             del hwrts[e['handle']]
-        elif op == 'upload':
+        elif op in ('upload','pds_construct'):
             addr, size = e['gpu_va'], e['size']
-            if e['kind'] not in ('pds_data','pds_code','usc_code') or addr <= 0 or size <= 0 or addr >= GPU_LIMIT or size > GPU_LIMIT-addr:
+            if e['kind'] not in ('pds_data','pds_code','usc_code','vertex_attributes','descriptor_mappings') or addr <= 0 or size <= 0 or addr >= GPU_LIMIT or size > GPU_LIMIT-addr:
                 raise ValueError('invalid upload')
             matches=[k for k,v in maps.items() if addr >= k[1] and size <= v and addr-k[1] <= v-size]
             uploads += 1
             if not matches: unmapped_uploads += 1
             elif len(matches) > 1: ambiguous_uploads += 1
+        elif op == 'pds_shader':
+            parent,shader,entry,size=e['parent_gpu'],e['shader_gpu'],e['entry_gpu'],e['size']
+            if parent<=0 or shader<=0 or shader>=GPU_LIMIT or size<=0 or size>GPU_LIMIT-shader or entry<shader or entry-shader>=size:
+                raise ValueError('invalid PDS shader')
+            vma={k[0] for k,v in maps.items() if parent>=k[1] and parent-k[1]<v}
+            vmb={k[0] for k,v in maps.items() if shader>=k[1] and size<=v and shader-k[1]<=v-size}
+            pds_shaders+=1
+            if len(vma & vmb)!=1: unmapped_shaders+=1
+        elif op == 'pds_dependency':
+            if e['kind'] not in ('spill','scratch') or e['buffer_size']<=0 or e['block_size']<=0 or e['offset']<0:
+                raise ValueError('invalid PDS dependency')
+            pds_deps += 1
+            ranges=((e['parent_gpu'],1),(e['info_gpu'],12),(e['buffer_gpu'],e['buffer_size']))
+            range_vms=[]
+            for addr,size in ranges:
+                if addr<=0 or addr>=GPU_LIMIT or size>GPU_LIMIT-addr:
+                    raise ValueError('invalid PDS dependency range')
+                range_vms.append({k[0] for k,v in maps.items() if addr>=k[1] and size<=v and addr-k[1]<=v-size})
+            if len(range_vms[0] & range_vms[1] & range_vms[2])!=1:
+                unmapped_deps += 1
+        elif op == 'pds_entry':
+            if e['kind'] not in ('vertex_attributes','descriptor_mappings') or e['ordinal']<0 or e['entry_type']<0:
+                raise ValueError('invalid PDS entry')
+            pds_entries += 1
         elif op == 'submit_begin':
             if open_submit is not None: raise ValueError('nested submit')
             open_submit = [e['count'],0]; submits += 1
@@ -104,7 +131,7 @@ def check(path):
             raise ValueError('unknown event')
     if open_submit is not None or not submits: raise ValueError('incomplete trace')
     return {'submits':submits, 'jobs':jobs, 'live_bos_at_end':len(bos),
-            'zeroed_bo_allocations':zeroed_bos, 'uploads_seen':uploads,
+            'zeroed_bo_allocations':zeroed_bos, 'uploads_seen':uploads, 'pds_entries_seen':pds_entries,'pds_dependencies_seen':pds_deps,'pds_dependency_unmapped':unmapped_deps,'pds_shader_links':pds_shaders,'pds_shader_unmapped':unmapped_shaders,
             'uploads_unmapped_at_observation':unmapped_uploads, 'uploads_ambiguous_vm':ambiguous_uploads, 'full_extent_checks':full_checks,
             'start_only_checks':start_checks, 'unresolved_address_checks':unresolved,
             'fixture_exportable':False,

@@ -38,5 +38,10 @@ int main(void)
     assert(a04_windows_render_memory_create(&m,&s,5,maps,2)==STATUS_INVALID_PARAMETER && allocated==2);
     maps[1].payload_page=4;maps[1].gpu_va=maps[0].gpu_va;
     assert(a04_windows_render_memory_create(&m,&s,5,maps,2)==STATUS_INVALID_PARAMETER && allocated==2);
+    maps[0].pages=513;
+    assert(a04_windows_render_memory_create(&m,&s,513,maps,1)==STATUS_DEVICE_CONFIGURATION_ERROR);
+    assert(m.cpu && !m.ready);
+    assert(a04_windows_render_memory_publish(&m)==STATUS_INVALID_PARAMETER);
+    s.processor_released=FALSE;assert(a04_windows_render_memory_free(&m,TRUE)==STATUS_SUCCESS);
     return 0;
 }

@@ -18,7 +18,7 @@ struct a04_windows_render_memory {
     void *cpu;
     PHYSICAL_ADDRESS logical;
     ULONG length;
-    BOOLEAN published, poisoned;
+    BOOLEAN ready, published, poisoned;
 };
 NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
     struct a04_gpu_firmware_state *s,ULONG payload_pages,
