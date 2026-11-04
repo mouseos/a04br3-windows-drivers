@@ -2,9 +2,11 @@
 #include "windows_render_memory.h"
 #if A04_GE8300_RENDER_EXPERIMENT
 #include "gpu_mmu.h"
+#include "render_pds_data.h"
 #define PAGE 4096u
 #define TABLE_PAGES 14u
 #define MAX_PAYLOAD_PAGES 4096u
+#define FRAGMENT_USC_BYTES 360u
 static int overlap(uint64_t a,uint64_t n,uint64_t b,uint64_t m)
 { return a<=b ? b-a<n : a-b<m; }
 NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
@@ -54,7 +56,35 @@ NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
             dma+(TABLE_PAGES+r->payload_page)*PAGE,r->pages,r->mmu_flags))
             return STATUS_DEVICE_CONFIGURATION_ERROR;
     }
-    m->ready=TRUE;
+    for (i=0;i<count;++i) m->maps[i]=maps[i];
+    m->map_count=count;m->ready=TRUE;
+    return STATUS_SUCCESS;
+}
+NTSTATUS a04_windows_render_stage_fragment_pds(struct a04_windows_render_memory *m,
+    uint64_t pds_gpu,uint64_t shader_gpu,uint64_t doutu_control)
+{
+    const struct a04_windows_render_map *pds=0,*shader=0;
+    struct a04_render_owned_range range;uint8_t data[48];size_t i;uint64_t off,shader_off;
+    if (!m || !m->ready || !m->cpu || !m->adapter || !m->firmware || m->published || m->poisoned ||
+        !m->map_count || m->map_count>A04_RENDER_MAX_MAPS || (pds_gpu&15u) ||
+        (pds_gpu>>32)!=UINT64_C(0xda) || KeGetCurrentIrql()!=PASSIVE_LEVEL)
+        return STATUS_INVALID_PARAMETER;
+    for (i=0;i<m->map_count;++i) {
+        const struct a04_windows_render_map *map=&m->maps[i];uint64_t n=(uint64_t)map->pages*PAGE;
+        if (pds_gpu>=map->gpu_va && n>=sizeof(data) && pds_gpu-map->gpu_va<=n-sizeof(data)) pds=map;
+        if (shader_gpu>=map->gpu_va && n>=FRAGMENT_USC_BYTES && shader_gpu-map->gpu_va<=n-FRAGMENT_USC_BYTES) shader=map;
+    }
+    if (!pds || !shader || !(pds->mmu_flags&A04_GPU_MMU_READ_ONLY) ||
+        !(shader->mmu_flags&A04_GPU_MMU_READ_ONLY) || overlap(pds_gpu,sizeof(data),shader_gpu,FRAGMENT_USC_BYTES))
+        return STATUS_INVALID_PARAMETER;
+    off=(uint64_t)A04_RENDER_PAYLOAD_OFFSET+(uint64_t)pds->payload_page*PAGE+(pds_gpu-pds->gpu_va);
+    shader_off=(uint64_t)A04_RENDER_PAYLOAD_OFFSET+(uint64_t)shader->payload_page*PAGE;
+    if (off>m->length || sizeof(data)>m->length-off || shader_off>=m->length ||
+        (uint64_t)shader->pages*PAGE>m->length-shader_off) return STATUS_INVALID_PARAMETER;
+    range.gpu_va=shader->gpu_va;range.dma=(uint64_t)m->logical.QuadPart+shader_off;
+    range.size=(uint64_t)shader->pages*PAGE;range.access=A04_RENDER_RANGE_READ|A04_RENDER_RANGE_EXEC;
+    if (a04_render_make_fragment_pds(shader_gpu,doutu_control,&range,1,data)) return STATUS_INVALID_PARAMETER;
+    for (i=0;i<sizeof(data);++i) ((uint8_t *)m->cpu)[off+i]=data[i];
     return STATUS_SUCCESS;
 }
 NTSTATUS a04_windows_render_memory_publish(struct a04_windows_render_memory *m)

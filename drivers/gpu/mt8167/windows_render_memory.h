@@ -19,6 +19,8 @@ struct a04_windows_render_memory {
     PHYSICAL_ADDRESS logical;
     ULONG length;
     BOOLEAN ready, published, poisoned;
+    size_t map_count;
+    struct a04_windows_render_map maps[A04_RENDER_MAX_MAPS];
 };
 NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
     struct a04_gpu_firmware_state *s,ULONG payload_pages,
@@ -26,6 +28,13 @@ NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
 /* Clean all pages and wait for MMU invalidation. On any failure after the
  * attempt begins keep the allocation and mark it poisoned. */
 NTSTATUS a04_windows_render_memory_publish(struct a04_windows_render_memory *m);
+/* Stage only the generated fragment PDS into owned, read-only GPU mappings
+ * before publication. This does not supply or validate USC code or submit a
+ * job. shader_gpu is the start and entry of the fixed 360-byte fragment USC
+ * binary; its contents remain the caller's responsibility. Callers serialize
+ * memory access and retain the DMA allocation. */
+NTSTATUS a04_windows_render_stage_fragment_pds(struct a04_windows_render_memory *m,
+    uint64_t pds_gpu,uint64_t shader_gpu,uint64_t doutu_control);
 /* gpu_dma_quiesced is an independently established GPU/DMA stop, not a
  * fence alone. A false value retains memory even if the processor is stopped. */
 NTSTATUS a04_windows_render_memory_free(struct a04_windows_render_memory *m, BOOLEAN gpu_dma_quiesced);
