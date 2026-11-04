@@ -1,6 +1,7 @@
 @echo off
 setlocal EnableExtensions
 rem Run from the installed Windows with the two tested diagnostics alongside.
+if /i "%SystemDrive%"=="X:" goto winpe
 reg query HKLM\SYSTEM\CurrentControlSet\Control\MiniNT >nul 2>&1
 if not errorlevel 1 goto winpe
 reg query HKLM\SYSTEM\CurrentControlSet\Services\A04Mma8652 >nul 2>&1
