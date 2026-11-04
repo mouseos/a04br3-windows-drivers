@@ -72,6 +72,7 @@ struct a04_windows_render_memory {
     uint64_t triangle_vertex_pds,triangle_descriptor_pds,triangle_fragment_pds,triangle_vertex_spill;
     uint64_t triangle_vertex_spill_info,triangle_vertex_code,triangle_descriptor_code;
     uint64_t triangle_uniform,triangle_uniform_code,triangle_fragment_spill,triangle_fragment_spill_info,triangle_fs_meta;
+    BOOLEAN static_heap_programs_staged;
 };
 NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
     struct a04_gpu_firmware_state *s,ULONG payload_pages,
@@ -154,6 +155,13 @@ NTSTATUS a04_windows_render_stage_fixed_ppp(struct a04_windows_render_memory *m,
     const struct a04_render_fixed_ppp_input *input,uint64_t ppp_gpu,uint64_t finish_gpu);
 /* One fixed 64x64 scissor entry; does not validate the fragment command. */
 NTSTATUS a04_windows_render_stage_fixed_scissor(struct a04_windows_render_memory *m,uint64_t gpu);
+/* Fixed no-texture probe: reserve the full Mesa-sized zero border table. */
+NTSTATUS a04_windows_render_reserve_zero_border(struct a04_windows_render_memory *m,uint64_t gpu);
+/* Firmware-fixed PDS VDM sync/EOT and USC VDM sync heap offsets. */
+NTSTATUS a04_windows_render_stage_static_heap_programs(struct a04_windows_render_memory *m);
+NTSTATUS a04_windows_render_verify_staged(struct a04_windows_render_memory *m,uint64_t gpu,
+    size_t reserved,const uint8_t *expected,size_t used);
+NTSTATUS a04_windows_render_verify_zero_target(struct a04_windows_render_memory *m,uint64_t gpu);
 /* Stage fixed EOT DOUTU data. Shader provenance and PBE state remain
  * independent prerequisites for any GPU submission. */
 NTSTATUS a04_windows_render_stage_pixel_event(struct a04_windows_render_memory *m,

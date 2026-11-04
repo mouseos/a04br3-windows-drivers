@@ -18,6 +18,24 @@
 #ifndef A04_GE8300_COPY_SERVICE
 #define A04_GE8300_COPY_SERVICE 0
 #endif
+#ifndef A04_GE8300_RENDER_DIAGNOSTIC
+#define A04_GE8300_RENDER_DIAGNOSTIC 0
+#endif
+#ifndef A04_GE8300_CLEAR_TEST
+#define A04_GE8300_CLEAR_TEST 0
+#endif
+#ifndef A04_GE8300_COPY_TEST
+#define A04_GE8300_COPY_TEST 0
+#endif
+#ifndef A04_GE8300_LINEAR_TEST
+#define A04_GE8300_LINEAR_TEST 0
+#endif
+#if A04_GE8300_RENDER_DIAGNOSTIC && (!A04_GE8300_RENDER_EXPERIMENT || !A04_GE8300_BOOT_TEST || !A04_GE8300_ALLOW_MISMATCH || A04_GE8300_COPY_SERVICE || A04_GE8300_CLEAR_TEST || A04_GE8300_COPY_TEST || A04_GE8300_LINEAR_TEST)
+#error Render diagnostic requires the isolated render/boot/mismatch build and no copy service
+#endif
+#if A04_GE8300_RENDER_DIAGNOSTIC
+#include "windows_render_diagnostic.h"
+#endif
 #ifndef A04_GE8300_SHARED_TRACE_DIAGNOSTIC
 #define A04_GE8300_SHARED_TRACE_DIAGNOSTIC 0
 #endif
@@ -40,6 +58,9 @@ typedef struct {
     volatile UCHAR *core;
     struct a04_gpu_firmware_state firmware;
     struct a04_gpu_queue_test_memory queue_memory;
+#if A04_GE8300_RENDER_DIAGNOSTIC
+    struct a04_windows_render_diagnostic render_diagnostic;
+#endif
 #if A04_GE8300_COPY_SERVICE
     struct a04_windows_linear_context linear;
     BOOLEAN copy_online;
@@ -215,6 +236,9 @@ NTSTATUS GpuRelease(WDFDEVICE device,WDFCMRESLIST translated)
     GPU_CONTEXT *c=GpuContext(device); UNREFERENCED_PARAMETER(translated);
     /* Never detach mappings or DMA ownership while the GPU might master RAM. */
     if(c->firmware.processor_released) return STATUS_DEVICE_BUSY;
+#if A04_GE8300_RENDER_DIAGNOSTIC
+    if(c->render_diagnostic.memory.cpu) return STATUS_DEVICE_BUSY;
+#endif
 #if A04_GE8300_COPY_SERVICE
     if(c->linear.memory.cpu || c->linear.memory.adapter || c->referenced) return STATUS_DEVICE_BUSY;
 #endif
@@ -277,6 +301,23 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
                 c->status.queue_status=a04_gpu_queue_test(&c->firmware,&c->queue_memory);
                 GpuTraceStage(c,0x104);
             }
+#if A04_GE8300_RENDER_DIAGNOSTIC
+            if(NT_SUCCESS(c->status.mmu_status) && NT_SUCCESS(c->status.queue_status)) {
+                struct a04_windows_render_diagnostic *d=&c->render_diagnostic;
+                status=a04_windows_render_diagnostic_run(d,&c->firmware);
+                GpuPrint("A04GPU RENDER STATUS=");GpuHex((ULONG)status);
+                GpuPrint(" STAGE=");GpuHex(d->stage);
+                GpuPrint(" BG=");GpuHex(d->background_pixels);
+                GpuPrint(" TRI=");GpuHex(d->triangle_pixels);
+                GpuPrint(" OTHER=");GpuHex(d->other_pixels);
+                GpuPrint(" BOUNDED=");GpuHex(d->memory.bounded_states_checked);
+                GpuPrint(" B0_VALID=");GpuHex(d->memory.bounded_states[0].valid);
+                GpuPrint(" B0=");GpuHex(d->memory.bounded_states[0].blocks);
+                GpuPrint(" B1_VALID=");GpuHex(d->memory.bounded_states[1].valid);
+                GpuPrint(" B1=");GpuHex(d->memory.bounded_states[1].blocks);
+                GpuPrint("\n");
+            }
+#endif
 #if A04_GE8300_SHARED_TRACE_DIAGNOSTIC
             GpuSharedTrace(c);
 #endif
@@ -284,6 +325,10 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
                 c->status.shutdown_status=a04_gpu_firmware_shutdown(&c->firmware);
             if(NT_SUCCESS(c->status.shutdown_status))
                 c->status.shutdown_status=a04_gpu_queue_test_free(&c->firmware,&c->queue_memory);
+#if A04_GE8300_RENDER_DIAGNOSTIC
+            if(NT_SUCCESS(c->status.shutdown_status))
+                c->status.shutdown_status=a04_windows_render_memory_free(&c->render_diagnostic.memory,TRUE);
+#endif
             /* Power-off may have gated MMIO; only inspect retained memory. */
             if(!NT_SUCCESS(c->status.shutdown_status) && c->firmware.processor_released)
                 GpuSnapshot(c,FALSE);
@@ -293,7 +338,11 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     c->status.processor_released=c->firmware.processor_released;
     c->status.firmware_started=c->firmware.firmware_started;
     c->status.queue_faulted=c->firmware.queue_faulted;
-    if(c->referenced && !c->firmware.processor_released && !c->queue_memory.cpu) {
+    if(c->referenced && !c->firmware.processor_released && !c->queue_memory.cpu
+#if A04_GE8300_RENDER_DIAGNOSTIC
+       && !c->render_diagnostic.memory.cpu
+#endif
+       ) {
         WdfObjectDereference(c->dma); c->referenced=FALSE;
     }
     return STATUS_SUCCESS;
@@ -318,6 +367,9 @@ NTSTATUS GpuD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
     /* Do not restart firmware on resume until the SoC power, clocks and
      * display ownership have a validated reinitialization sequence. The
      * display client falls back to CPU while this device remains present. */
+#endif
+#if A04_GE8300_RENDER_DIAGNOSTIC
+    if(c->render_diagnostic.memory.cpu) return STATUS_DEVICE_BUSY;
 #endif
     return c->firmware.processor_released ? STATUS_DEVICE_BUSY : STATUS_SUCCESS;
 }

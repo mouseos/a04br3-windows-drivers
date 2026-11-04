@@ -259,3 +259,9 @@ persistent／shared context stateとHWRT、freelist表、callstackの書込み�
 `generate-triangle-fixture.py` はscratchなし固定頂点shaderとfragment shaderについて、独立した00／ff capture、SPIR-V／NIRの固定probe検査、PCO出力SHA-256を照合する。fragmentのgrouped PCOは27命令群、固定したopcode集合、`sh0` と `sr53` のみを受け入れる。比較対象はMesa compiler出力であり、生BOは読まない。生成した `render_triangle_usc.h` は実験用コードで、GPU上の命令意味や特殊レジスタ値の証明ではない。
 
 `a04_windows_render_stage_triangle_usc` と専用PDS／uniform配置関数は、生成shaderの所有DMAへの配置、検査済みshaderへのPDS接続、vertex／fragmentの各spill領域の別々の所有・ゼロ初期化・寿命予約を行う。公開時には固定shader、PDS、spill情報、FS metadataとspill領域を再確認し、不完全または改変された場合は拒否する。この検査もVDM／PPP、背景、PBE、partial renderの全依存やrender kickの安全性を保証せず、実機描画の入口には接続されていない。
+
+`check-fixed-commands.py` はscratchless固定probeの最初の64×64描画について、geometryとpartial／最終fragmentのレジスタ列を型付きGPUアドレスと固定値から再構成し、２つのMesa captureで一致を検査する。border tableはMesaの128 format × 非圧縮／圧縮 × 16バイト × 64 entryで262144バイト。固定shaderと背景load-opにはtexture参照がないため、この診断では確保済み読取り専用tableをゼロにする。検査では投入時のmappingも確認するが、実GPUのアクセス範囲・機械語・cache動作は未証明。
+
+`A04_GE8300_RENDER_DIAGNOSTIC=1` は `A04_GE8300_RENDER_EXPERIMENT=1`、`A04_GE8300_BOOT_TEST=1`、`A04_GE8300_ALLOW_MISMATCH=1` を必要とする、D0 entryで一度だけ動く既定OFFの診断。copy serviceや他のclear/copy/linear試験とは併用しない。固定DMA配置、firmware固定heapのVDM syncとpixel eventプログラム、bounded context、freelist／HWRT、背景・EOT・triangle・VDM／PPPを生成し、公開前に型付き参照と生成データを照合してからcombined kickと最終fragment kickを送る。geometry／fragment両fenceとring read offsetを待ち、CPU同期、bounded state検査、firmware cleanupへ進む。失敗やtimeoutでGPU到達の有無が不明な場合はDMAを保持し、再送しない。firmware power-off応答、BIF／SLC idle・outstanding確認とresetの成功後にのみDMAを解放する。
+
+UARTの `A04GPU RENDER STATUS=... STAGE=... BG=... TRI=... OTHER=... BOUNDED=... B0_VALID=... B0=... B1_VALID=... B1=...` は集計値で、アドレスや生BOは出力しない。`STAGE=32` はfenceとcleanupを通った後の読戻しまで到達したことを表す。成功statusには背景・前景の両色、前景1128〜1176画素、その他０画素を要求するが、これはtwiddled bufferの色ヒストグラムであり三角形の位置や向きの検証ではない。`BOUNDED` 値０や保存サイズ０はcontext switch発生の証拠ではない。実機結果は未取得で、ビルド・host mock成功を実機成功として扱わない。
