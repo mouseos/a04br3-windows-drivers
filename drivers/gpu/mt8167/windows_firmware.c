@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent
  * Windows-side firmware boot composition. This is not a PnP or WDDM driver. */
 #include "windows_firmware.h"
+#include "render_kick_policy.h"
 #include "pvr_rogue_fwif.h"
 #define BOOT_TIMEOUT_STEPS 1000u
 #define TRACE(s,n) do { if ((s)->trace) (s)->trace((s)->trace_context,(n)); } while (0)
@@ -97,8 +98,14 @@ static NTSTATUS send_command(struct a04_gpu_firmware_state *s,unsigned kind,cons
     volatile struct rogue_fwif_osdata *os;
     uint32_t slot,next,value,executed_before,token=0; LARGE_INTEGER interval; unsigned i; NTSTATUS status;
     if (!s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !s->processor_released || !s->firmware_started ||
-        !s->memory.heap || !s->io.write32 || kind>4 ||
-        (kind==4 && (!kick || kick->cmd_type!=ROGUE_FWIF_KCCB_CMD_KICK))) return STATUS_INVALID_PARAMETER;
+        !s->memory.heap || !s->io.write32 || kind>5 ||
+        (kind==4 && (!kick || !a04_gpu_kick_type_allowed(kick->cmd_type))) ||
+#if A04_GE8300_RENDER_EXPERIMENT
+        (kind==5 && (!kick || kick->cmd_type!=ROGUE_FWIF_KCCB_CMD_CLEANUP))
+#else
+        kind==5
+#endif
+        ) return STATUS_INVALID_PARAMETER;
     if (s->queue_faulted) return STATUS_INVALID_DEVICE_STATE;
     if (!heap_range(s->runtime.kernel_ccb_control,sizeof(*ctl)) ||
         !heap_range(s->runtime.kernel_ccb,A04_GPU_KCCB_COUNT*sizeof(*cmd)) ||
@@ -133,7 +140,7 @@ static NTSTATUS send_command(struct a04_gpu_firmware_state *s,unsigned kind,cons
     }
     cmd=&commands[slot]; RtlZeroMemory(cmd,sizeof(*cmd)); returns[slot]=ROGUE_FWIF_KCCB_RTN_SLOT_NO_RESPONSE;
     if (kind==0) cmd->cmd_type=ROGUE_FWIF_KCCB_CMD_HEALTH_CHECK;
-    else if (kind==4) *cmd=*kick;
+    else if (kind==4 || kind==5) *cmd=*kick;
     else if (kind==3) {
         cmd->cmd_type=ROGUE_FWIF_KCCB_CMD_MMUCACHE;
         cmd->cmd_data.mmu_cache_data.cache_flags=ROGUE_FWIF_MMUCACHEDATA_FLAGS_PT |
@@ -168,13 +175,20 @@ static NTSTATUS send_command(struct a04_gpu_firmware_state *s,unsigned kind,cons
     TRACE(s,0x23u+kind*0x10u);
     interval.QuadPart=-100000;
     for (i=0;i<100u;++i) {
-        status=(kind==0 || kind==3 || kind==4) ? a04_gpu_dma_sync((void *)&returns[slot],sizeof(*returns),TRUE)
+        status=(kind==0 || kind==3 || kind==4 || kind==5) ? a04_gpu_dma_sync((void *)&returns[slot],sizeof(*returns),TRUE)
                                     : a04_gpu_dma_sync((void *)power,sizeof(*power),TRUE);
         if (!NT_SUCCESS(status)) { s->queue_faulted=TRUE; return status; }
-        value=(kind==0 || kind==3 || kind==4) ? returns[slot] : *power;
-        if ((kind==0 || kind==3 || kind==4) && (value&ROGUE_FWIF_KCCB_RTN_SLOT_POLL_FAILURE)) {
+        value=(kind==0 || kind==3 || kind==4 || kind==5) ? returns[slot] : *power;
+        if ((kind==0 || kind==3 || kind==4 || kind==5) && (value&ROGUE_FWIF_KCCB_RTN_SLOT_POLL_FAILURE)) {
             s->queue_faulted=TRUE; return STATUS_DEVICE_CONFIGURATION_ERROR;
         }
+#if A04_GE8300_RENDER_EXPERIMENT
+        if (kind==5) {
+            int response=a04_gpu_cleanup_return(value);
+            if (response==1) return STATUS_DEVICE_BUSY;
+            if (response==2) return STATUS_SUCCESS;
+        }
+#endif
         if (((kind==0 || kind==4) && (value&ROGUE_FWIF_KCCB_RTN_SLOT_CMD_EXECUTED)) || ((kind==1 || kind==2) && value!=0)) return STATUS_SUCCESS;
         /* This core's firmware advances the executed counter but may leave
          * the return slot at zero. Only use the counter for the health check;
@@ -197,6 +211,23 @@ static NTSTATUS send_command(struct a04_gpu_firmware_state *s,unsigned kind,cons
 NTSTATUS a04_gpu_firmware_health(struct a04_gpu_firmware_state *s) { return send_command(s,0,0); }
 NTSTATUS a04_gpu_firmware_invalidate_mmu(struct a04_gpu_firmware_state *s) { return send_command(s,3,0); }
 NTSTATUS a04_gpu_firmware_submit_kick(struct a04_gpu_firmware_state *s,const struct rogue_fwif_kccb_cmd *kick) { return send_command(s,4,kick); }
+#if A04_GE8300_RENDER_EXPERIMENT
+NTSTATUS a04_gpu_firmware_cleanup(struct a04_gpu_firmware_state *s,unsigned type,uint32_t fw_addr)
+{
+    struct rogue_fwif_kccb_cmd cmd={0};
+    if ((fw_addr & 0xff000003u) != 0xc0000000u ||
+        !heap_range(fw_addr & 0x00ffffffu,4)) return STATUS_INVALID_PARAMETER;
+    cmd.cmd_type=ROGUE_FWIF_KCCB_CMD_CLEANUP;
+    cmd.cmd_data.cleanup_data.cleanup_type=(enum rogue_fwif_cleanup_type)type;
+    switch(type) {
+    case ROGUE_FWIF_CLEANUP_FWCOMMONCONTEXT: cmd.cmd_data.cleanup_data.cleanup_data.context_fw_addr=fw_addr; break;
+    case ROGUE_FWIF_CLEANUP_HWRTDATA: cmd.cmd_data.cleanup_data.cleanup_data.hwrt_data_fw_addr=fw_addr; break;
+    case ROGUE_FWIF_CLEANUP_FREELIST: cmd.cmd_data.cleanup_data.cleanup_data.freelist_fw_addr=fw_addr; break;
+    default: return STATUS_INVALID_PARAMETER;
+    }
+    return send_command(s,5,&cmd);
+}
+#endif
 NTSTATUS a04_gpu_firmware_shutdown(struct a04_gpu_firmware_state *s)
 {
     NTSTATUS status=send_command(s,1,0);
