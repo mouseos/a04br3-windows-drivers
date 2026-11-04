@@ -598,6 +598,7 @@ test-mt6630: build/mt6630_identity_test build/mt6630_sdio_args_test build/mt6630
 	./build/mt6630_power_bridge_test
 	./build/mt6630_nvram_test
 	./build/mt6630_wlan_firmware_test
+	./build/mt6630_lifetime_test
 
 test: test-mt6630
 
@@ -615,9 +616,9 @@ build/mt6630_direct_test: drivers/network/mt6630/direct.c drivers/network/mt6630
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/direct.c tests/mt6630_direct_test.c -o $@
 
-build/mt6630_msdc2_pio_test: drivers/network/mt6630/msdc2_pio.c drivers/network/mt6630/msdc2_pio.h drivers/network/mt6630/transport.c tests/mt6630_msdc2_pio_test.c
+build/mt6630_msdc2_pio_test: drivers/network/mt6630/msdc2_pio.c drivers/network/mt6630/msdc2_pio.h drivers/network/mt6630/transport.c drivers/network/mt6630/direct.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/identity.c tests/mt6630_msdc2_pio_test.c
 	@mkdir -p build
-	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/msdc2_pio.c drivers/network/mt6630/transport.c drivers/network/mt6630/direct.c tests/mt6630_msdc2_pio_test.c -o $@
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/msdc2_pio.c drivers/network/mt6630/transport.c drivers/network/mt6630/direct.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/identity.c tests/mt6630_msdc2_pio_test.c -o $@
 
 test-mt6630: build/mt6630_msdc2_pio_test
 
@@ -638,3 +639,9 @@ build/mt6630_wlan_firmware_test: drivers/network/mt6630/wlan_firmware.c drivers/
 	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/wlan_firmware.c tests/mt6630_wlan_firmware_test.c -o $@
 
 test-mt6630: build/mt6630_wlan_firmware_test
+
+build/mt6630_lifetime_test: drivers/network/mt6630/lifetime.c drivers/network/mt6630/lifetime.h drivers/network/mt6630/identity.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c tests/mt6630_lifetime_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/lifetime.c drivers/network/mt6630/identity.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c tests/mt6630_lifetime_test.c -o $@
+
+test-mt6630: build/mt6630_lifetime_test

@@ -78,3 +78,9 @@ Windowsの領域探索・読取providerは未実装で、実端末の校正値�
 未接続部品。排他broker、IRQ停止、D0と取り外しの直列化が必要であり、
 現行の `WifiPrepare` は呼ばず、常時失敗を維持する。物理的なsurprise removalと
 並行するMMIOの安全性は保証されない。NDISとWindowsバスには未接続。
+
+`lifetime.c` はCIS確認済みのSDIO制御要求を直列化された所有者へ通し、
+停止時に要求受付を閉じてからIRQ/DPC排出、I/O排出、写像解除、リース返却を
+順に呼ぶ。失敗後に同じ後始末を自動再実行しない。呼出元は排出対象が同じ
+直列化ロックを待たないように設計する必要がある。これはWindowsのD0・IRQ
+ハンドラや実brokerへの接続ではなく、無線firmwareやNDISの準備完了も示さない。
