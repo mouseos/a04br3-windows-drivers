@@ -54,4 +54,14 @@ int a04_render_make_fragment_uniform(const struct a04_render_fragment_uniform_in
  * Caller must validate the shader and PBE state independently. */
 int a04_render_make_pixel_event(uint64_t shader_gpu,const struct a04_render_owned_range *ranges,
     size_t count,uint8_t out[16]);
+/* Fixed 64x64 single-sample EOT candidate, with a generated GPU target.
+ * This validates ownership only; PBE layout, shader semantics and job lifetime
+ * still require independent validation before hardware submission. */
+int a04_render_make_fixed_eot(uint64_t target_gpu,const struct a04_render_owned_range *ranges,
+    size_t count,uint8_t out[128]);
+/* Fixed clear-only background: four RGBA bytes and one PDS DMA descriptor.
+ * Neither background USC nor GPU completion is established here. */
+int a04_render_make_fixed_background(uint64_t constants_gpu,const struct a04_render_owned_range *ranges,
+    size_t count,uint8_t constants[16],uint8_t pds[16]);
+void a04_render_make_fixed_background_usc(uint8_t out[128]);
 #endif

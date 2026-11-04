@@ -138,6 +138,15 @@ NTSTATUS a04_windows_render_stage_fixed_scissor(struct a04_windows_render_memory
  * independent prerequisites for any GPU submission. */
 NTSTATUS a04_windows_render_stage_pixel_event(struct a04_windows_render_memory *m,
     uint64_t pds_gpu,uint64_t shader_gpu);
+/* Generate a fixed-layout EOT candidate and reserve its writable 16 KiB
+ * target. This alone does not authorize submission or validate PBE bounds. */
+NTSTATUS a04_windows_render_stage_fixed_eot(struct a04_windows_render_memory *m,
+    uint64_t shader_gpu,uint64_t target_gpu);
+/* Clear-only background constants and PDS DMA data; no texture descriptor. */
+NTSTATUS a04_windows_render_stage_fixed_background(struct a04_windows_render_memory *m,
+    uint64_t constants_gpu,uint64_t pds_gpu,uint64_t code_gpu);
+NTSTATUS a04_windows_render_stage_background_shader(struct a04_windows_render_memory *m,
+    uint64_t shader_gpu,uint64_t pds_gpu);
 /* One context-switch slot's persistent PDS data and code. Inputs must name
  * unique owned mappings: writable state, read-only PDS output, no aliases.
  * Before publication only. Shared PDS/USC and kick remain separate. */

@@ -24,6 +24,41 @@ def fixture():
         for flags in (192,128):rows.append({'event':'job','type':1,'context':1,'flags':flags,'stream_length':384,'stream_hex':command.hex()})
     return rows
 class TestBackground(unittest.TestCase):
+    def test_background_shader_and_code(self):
+        rows=fixture();base=m.BASE;shader=0xe000002000
+        def fnv(data):
+            h=14695981039346656037
+            for b in data:h=((h^b)*1099511628211)&((1<<64)-1)
+            return h
+        idx=next(i for i,e in enumerate(rows) if e['event']=='fragment_shader_link')
+        rows[idx:idx]=[{'event':'vm_map','vm':1,'va':shader,'size':4096},
+                       {'event':'upload','gpu_va':shader,'size':16,'kind':'usc_code'},
+                       {'event':'bg_frag_pds','gpu_va':base+0x1000,'size':32,'shader_gpu':shader,'control':0x2000,
+                        'fnv64':fnv(struct.pack('<Q',0x2000)+bytes(24))},
+                       {'event':'bg_shader','gpu_va':shader,'size':16,'pds_gpu':base+0x1000,'clear_mask':1,'load_mask':0}]
+        hashes=[{'gpu_va':base+0x1100,'size':8,'fnv64':fnv(struct.pack('<II',0xf4020000,0xd3000000))}]
+        self.assertEqual(m.analyze(rows,True,False,False,True,hashes)['background_shader_dependencies'],8)
+        bad=copy.deepcopy(rows);next(e for e in bad if e['event']=='bg_frag_pds')['control']^=4
+        with self.assertRaises(ValueError):m.analyze(bad,True,False,False,True,hashes)
+        bad=copy.deepcopy(hashes);bad[0]['fnv64']^=1
+        with self.assertRaises(ValueError):m.analyze(rows,True,False,False,True,bad)
+    def test_clear_dependencies(self):
+        rows=fixture();base=m.BASE;constant=base+0x2000
+        def fnv(data):
+            h=14695981039346656037
+            for b in data:h=((h^b)*1099511628211)&((1<<64)-1)
+            return h
+        idx=next(i for i,e in enumerate(rows) if e['event']=='fragment_shader_link')
+        rows[idx:idx]=[{'event':'bg_constants','gpu_va':constant,'size':4,'clears':1,'textures':0,'tiles':0,'shareds':1,
+                        'fnv64':fnv(bytes((0x22,0x44,0x66,0xff)))},
+                       {'event':'bg_pds_data','gpu_va':base+0x1200,'size':12,'constants_gpu':constant,'shareds':1,
+                        'fnv64':fnv(struct.pack('<QI',constant,0x90000001))}]
+        self.assertEqual(m.analyze(rows,True,False,True)['background_clear_dependencies'],8)
+        bad=copy.deepcopy(rows);next(e for e in bad if e['event']=='bg_constants')['textures']=1
+        with self.assertRaises(ValueError):m.analyze(bad,True,False,True)
+        bad=copy.deepcopy(rows);idx=next(i for i,e in enumerate(bad) if e['event']=='fragment_shader_link')
+        bad.insert(idx,{'event':'upload','gpu_va':constant,'size':4,'kind':'other'})
+        with self.assertRaises(ValueError):m.analyze(bad,True,False,True)
     def test_fixed(self):
         result=m.analyze(fixture(),True);self.assertEqual(result['fragment_jobs'],4);self.assertEqual(result['pixel_event_shader_jobs'],4)
         self.assertFalse(result['gpu_execution_allowed'])

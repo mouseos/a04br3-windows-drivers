@@ -285,9 +285,10 @@ int main(void)
     {
       struct a04_windows_render_map vmaps[]={{0xda00010000ULL,0,1,0,A04_GPU_MMU_READ_ONLY},
         {0xda00011000ULL,1,2,0,0},{0xda00013000ULL,3,12,0,0},
-        {0xe000005000ULL,15,1,1,A04_GPU_MMU_READ_ONLY}};
+        {0xe000005000ULL,15,1,1,A04_GPU_MMU_READ_ONLY},
+        {0x8000000000ULL,16,4,2,0}};
       struct a04_render_pds_input p={0};uint8_t *out;s.processor_released=TRUE;
-      assert(a04_windows_render_memory_create(&m,&s,16,vmaps,4)==STATUS_SUCCESS);
+      assert(a04_windows_render_memory_create(&m,&s,20,vmaps,5)==STATUS_SUCCESS);
       out=(uint8_t *)m.cpu+A04_RENDER_PAYLOAD_OFFSET;
       p.shader_gpu=0xe000005040ULL;p.spill_info_gpu=0xda00010040ULL;p.scratch_info_gpu=0xda00010050ULL;
       p.spill_buffer_gpu=0xda00011000ULL;p.scratch_buffer_gpu=0xda00013000ULL;
@@ -374,6 +375,29 @@ int main(void)
       assert(a04_windows_render_stage_pixel_event(&m,0xda00010610ULL,0xe000005100ULL)==STATUS_SUCCESS);
       assert(out[0x610]==0 && out[0x611]==0x51 && out[0x614]==8 && m.staged_count==22);
       for(unsigned i=0x618;i<0x620;++i) assert(!out[i]);
+      { uint8_t *shader=out+15u*4096u+0x200u;
+        assert(a04_windows_render_stage_fixed_eot(&m,0xe000005200ULL,0xda00010000ULL)==STATUS_INVALID_PARAMETER);
+        shader[40]=1;
+        assert(a04_windows_render_stage_fixed_eot(&m,0xe000005200ULL,0x8000000000ULL)==STATUS_INVALID_DEVICE_STATE);
+        assert(m.staged_count==22 && !shader[0]);shader[40]=0;
+        assert(a04_windows_render_stage_fixed_eot(&m,0xe000005200ULL,0x8000000000ULL)==STATUS_SUCCESS);
+        assert(shader[0]==0x86 && shader[1]==0x92 && shader[4]==0x20 && shader[16]==0 && m.staged_count==24);
+        assert(a04_windows_render_stage_fixed_eot(&m,0xe000005200ULL,0x8000000000ULL)==STATUS_INVALID_PARAMETER);
+        for(unsigned i=40;i<128;++i) assert(!shader[i]); }
+      assert(a04_windows_render_stage_fixed_background(&m,0xda00010630ULL,0xda00010630ULL,0xda00010680ULL)==STATUS_INVALID_PARAMETER);
+      out[0x640]=1;
+      assert(a04_windows_render_stage_fixed_background(&m,0xda00010630ULL,0xda00010640ULL,0xda00010680ULL)==STATUS_INVALID_DEVICE_STATE);
+      assert(!out[0x630] && m.staged_count==24);out[0x640]=0;
+      assert(a04_windows_render_stage_fixed_background(&m,0xda00010630ULL,0xda00010640ULL,0xda00010680ULL)==STATUS_SUCCESS);
+      assert(out[0x630]==0x22 && out[0x633]==0xff && out[0x640]==0x30 && out[0x641]==6 &&
+             out[0x644]==0xda && out[0x648]==1 && out[0x64b]==0x90 && out[0x683]==0xf4 && out[0x687]==0xd3 && m.staged_count==27);
+      out[0x67f]=1;
+      assert(a04_windows_render_stage_background_shader(&m,0xe000005300ULL,0xda00010650ULL)==STATUS_INVALID_DEVICE_STATE);
+      assert(m.staged_count==27);out[0x67f]=0;
+      assert(a04_windows_render_stage_background_shader(&m,0xe000005300ULL,0xda00010650ULL)==STATUS_SUCCESS);
+      assert(out[15u*4096u+0x300]==0x38 && out[0x650]==0 && out[0x651]==0x53 &&
+             out[0x654]==0 && out[0x670]==2 && out[0x673]==0xf4 && m.staged_count==29);
+      assert(a04_windows_render_stage_background_shader(&m,0xe000005300ULL,0xda00010650ULL)==STATUS_INVALID_PARAMETER);
       s.processor_released=FALSE;assert(a04_windows_render_memory_free(&m,TRUE)==STATUS_SUCCESS);
     }
     free(s.memory.heap);

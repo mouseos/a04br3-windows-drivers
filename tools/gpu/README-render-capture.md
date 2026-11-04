@@ -239,3 +239,9 @@ pixel eventのEOT USCは `pvr_usc_eot` がPBE stateの２ワードを即値と�
 `build-mesa-spm-diagnostic.py` は既存のVDM・PBE・PCO診断と同じ固定Mesaソースとbuildを照合し、別ディレクトリの `pvr_arch_spm.c` に計測を加える。SPM loadのscratch、定数、PDSデータのGPU範囲と構成値だけを非公開イベントに記録し、BO内容やCPUポインタは記録しない。`run-render-capture.py` でこの診断を指定し、`check-spm-load.py PRIVATE_CAPTURE` で範囲が構築時に同一VMへ一意にマップされていることを検査する。成功時も終了コード1でGPU実行を禁止する。
 
 scratchless固定probeの独立した00／ffの２captureでは、それぞれ３件のSPM load構築について64×64、１sample、出力レジスタ１、tile bufferなし、scratch使用・確保とも16384バイト、定数32バイト、PDSデータ16バイトだった。Mesaの `pvr_arch_cmd_buffer.c` は `barrier_load` のときにSPM背景状態をjobへ設定する。通常の背景状態と同一視できず、この検査は描画jobとの対応、GPU完了までの寿命、texture descriptorとUSCの実際の到達範囲、DMA同期を証明しない。生アドレスを含むcaptureは非公開のまま保持する。
+
+`build-mesa-eot-diagnostic.py` はSPM・VDM・PBE診断の一致を確認してから、独立したMesaライブラリに背景load-opとEOTの計測を追加する。PCOへの00／ff充填を変えた２captureの固定probeでは、背景６構築すべてがclear１ワード、画像texture０件、tile buffer０件で、clear値はRGBA `22 44 66 ff` だった。fragment jobの通常・partial各背景について、PDSがこの４バイトを同一VMから１ワード読み出すこと、背景USCとPDSが各job投入時にマップされることを検査した。生成点の記録から16バイトの背景USC、32バイトPDSデータ、４バイトPDS shader code、８バイトPDS DMA codeを照合した。FNVは暗号学的な一致証明ではない。
+
+EOTについてはcaptured PBE stateを含む基準入力の各64ビットを個別に反転したprivateなPCO出力と、２組の固定人工入力を検査した。40バイト命令列中のstate wordはbyte offset 16と4に配置され、残りが一致した。ただし一般の入力ではPCOが異なる長さの命令列を選ぶ。`check-eot-synthetic.py` は２captureのmanifest、候補SHA-256、PBEとupload、背景依存、個別ビットの結果を照合する。生のアドレスを含む候補・イベントは非公開とし、スクリプトの終了コード1は引き続きGPU実行禁止を意味する。
+
+`a04_windows_render_stage_fixed_background`、`a04_windows_render_stage_background_shader`、`a04_windows_render_stage_fixed_eot` は、上の固定条件の背景定数・PDS・USC、および指定されたGPU出力先から生成したEOTを、公開前の所有済みDMAへ配置する。各出力範囲の予約・読取り専用PTE・ゼロ初期状態を検査し、未使用の予約領域はゼロにする。EOTは書込み可能な16 KiB出力先を予約する。これらは実行入口に接続されておらず、PBEの実際の書込み範囲、context switchの動的なshared state範囲、実行中の全参照と寿命、GPU cache同期を証明しない。背景がtextureを使わないという結果も、この固定clear probeに限定される。

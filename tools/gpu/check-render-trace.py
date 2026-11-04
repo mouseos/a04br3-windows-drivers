@@ -175,6 +175,27 @@ def check(path):
         elif op == 'ctx_pds_code_hash':
             if e['kind'] not in ('pt_store_code','pt_resume_code','sr_code') or e['size'] not in (12,20,24) or e['gpu_va']<=0 or e['gpu_va']>=GPU_LIMIT or not 0<=e['fnv64']<1<<64:
                 raise ValueError('invalid context PDS code hash')
+        elif op in ('bg_shader','bg_frag_pds'):
+            if (e['gpu_va'] <= 0 or e['gpu_va'] >= GPU_LIMIT or e['size'] <= 0 or
+                e['size'] > GPU_LIMIT-e['gpu_va']):raise ValueError('invalid background shader metadata')
+            if op=='bg_shader' and (e['ordinal']<0 or not 0<e['pds_gpu']<GPU_LIMIT or e['clear_mask']<0 or e['load_mask']<0):
+                raise ValueError('invalid background shader properties')
+            if op=='bg_frag_pds' and (not 0<e['shader_gpu']<GPU_LIMIT or not 0<=e['control']<1<<64 or not 0<=e['fnv64']<1<<64):
+                raise ValueError('invalid background shader PDS')
+        elif op in ('bg_constants','bg_pds_data'):
+            if (e['gpu_va'] <= 0 or e['gpu_va'] >= GPU_LIMIT or e['size'] <= 0 or
+                e['size'] > GPU_LIMIT - e['gpu_va'] or e['shareds'] <= 0 or
+                not 0 <= e['fnv64'] < 1 << 64):
+                raise ValueError('invalid background metadata')
+            if op == 'bg_constants' and any(e[k] < 0 for k in ('clears','textures','tiles')):
+                raise ValueError('invalid background constants')
+            if op == 'bg_pds_data' and not 0 < e['constants_gpu'] < GPU_LIMIT:
+                raise ValueError('invalid background PDS source')
+        elif op == 'spm_load':
+            if (any(e[k] <= 0 or e[k] >= GPU_LIMIT for k in ('scratch_gpu','constants_gpu','pds_gpu')) or
+                any(e[k] <= 0 for k in ('scratch_size','used','constants_size','pds_size','width','height','samples','outputs')) or
+                e['used'] > e['scratch_size'] or e['tiles'] < 0):
+                raise ValueError('invalid SPM load metadata')
         elif op == 'submit_begin':
             if open_submit is not None: raise ValueError('nested submit')
             open_submit = [e['count'],0]; submits += 1

@@ -5,8 +5,9 @@ import argparse,hashlib,importlib.util,json,pathlib,struct,sys
 HERE=pathlib.Path(__file__).resolve().parent
 BASE=0xda00000000
 
-def analyze(events,event_traced=False,pbe_traced=False):
+def analyze(events,event_traced=False,pbe_traced=False,data_traced=False,shader_traced=False,code_hashes=None):
     maps={};contexts={};uploads=[];pixel_events={};targets=[];links=0;geometry=0;checked=0;refs=0;eot_checked=0;pbe_checked=0
+    constants={};pds_data={};frag_pds={};shaders={};clear_refs=0;shader_refs=0
     def mapping(vm,addr,size):
         return [k for k,n in maps.items() if k[0]==vm and addr>=k[1] and size<=n and addr-k[1]<=n-size]
     def require(vm,offset,allocation,kind,written,relative=0):
@@ -22,18 +23,35 @@ def analyze(events,event_traced=False,pbe_traced=False):
         elif op=='vm_unmap':
             key=(e['vm'],e['va']);maps.pop(key)
             uploads=[u for u in uploads if u[0]!=key]
+            constants={a:v for a,v in constants.items() if v[0]!=key}
+            pds_data={a:v for a,v in pds_data.items() if v[0]!=key}
+            frag_pds={a:v for a,v in frag_pds.items() if v[0]!=key}
+            shaders={a:v for a,v in shaders.items() if v[0]!=key}
         elif op=='vm_destroy':
             maps={k:v for k,v in maps.items() if k[0]!=e['handle']};uploads=[u for u in uploads if u[0][0]!=e['handle']]
+            constants={a:v for a,v in constants.items() if v[0][0]!=e['handle']}
+            pds_data={a:v for a,v in pds_data.items() if v[0][0]!=e['handle']}
+            frag_pds={a:v for a,v in frag_pds.items() if v[0][0]!=e['handle']}
+            shaders={a:v for a,v in shaders.items() if v[0][0]!=e['handle']}
         elif op=='context_create':contexts[e['handle']]=e
         elif op=='context_destroy':contexts.pop(e['handle'])
         elif op in ('upload','pds_construct'):
             addr,size=e['gpu_va'],e['size'];owners=[k for k,n in maps.items() if addr>=k[1] and size<=n and addr-k[1]<=n-size]
             if len(owners)!=1:raise ValueError('ambiguous upload')
             k=owners[0];uploads=[u for u in uploads if u[0][0]!=k[0] or not(addr<u[1]+u[2] and u[1]<addr+size)]
+            constants={a:v for a,v in constants.items() if v[0][0]!=k[0] or not(addr<a+v[1]['size'] and a<addr+size)}
+            pds_data={a:v for a,v in pds_data.items() if v[0][0]!=k[0] or not(addr<a+v[1]['size'] and a<addr+size)}
+            frag_pds={a:v for a,v in frag_pds.items() if v[0][0]!=k[0] or not(addr<a+v[1]['size'] and a<addr+size)}
+            shaders={a:v for a,v in shaders.items() if v[0][0]!=k[0] or not(addr<a+v[1]['size'] and a<addr+size)}
             uploads.append((k,addr,size,e['kind']))
         elif op=='fragment_shader_link':links+=1
         elif op=='render_pixel_event':pixel_events[e['data_gpu']]=e
         elif op=='render_pbe_target':targets.append(e)
+        elif op in ('bg_constants','bg_pds_data','bg_frag_pds','bg_shader'):
+            addr,size=e['gpu_va'],e['size']
+            owners=[k for k,n in maps.items() if addr>=k[1] and size<=n and addr-k[1]<=n-size]
+            if len(owners)!=1:raise ValueError('background metadata mapping')
+            {'bg_constants':constants,'bg_pds_data':pds_data,'bg_frag_pds':frag_pds,'bg_shader':shaders}[op][addr]=(owners[0],e)
         elif op=='job' and e['type']==0 and geometry<links:geometry+=1
         elif op=='job' and e['type']==1 and geometry and geometry==links:
             context=contexts.get(e['context']);vm=context['vm'] if context else None
@@ -47,8 +65,42 @@ def analyze(events,event_traced=False,pbe_traced=False):
                     raise ValueError('unsupported background state')
                 require(vm,shader,48,'pds_data',32)
                 require(vm,shader,48,'pds_code',4,32)
+                if shader_traced:
+                    pe=frag_pds.get(BASE+shader);p=pe[1] if pe and pe[0][0]==vm else None
+                    se=shaders.get(p['shader_gpu']) if p else None;s=se[1] if se and se[0][0]==vm else None
+                    if (not p or not s or p['size']!=32 or s['size']!=16 or s['clear_mask']!=1 or s['load_mask'] or
+                        s['pds_gpu']!=BASE+shader or p['control']!=(s['gpu_va']&0xfffffffc) or
+                        len(mapping(vm,s['gpu_va'],16))!=1 or
+                        sum(u[0][0]==vm and u[1]==s['gpu_va'] and u[2]==16 and u[3]=='usc_code' for u in uploads)!=1):
+                        raise ValueError('background shader dependency')
+                    h=14695981039346656037
+                    for b in struct.pack('<Q',p['control'])+bytes(24):h=((h^b)*1099511628211)&((1<<64)-1)
+                    if h!=p['fnv64']:raise ValueError('background shader PDS mismatch')
+                    shader_refs+=1
                 require(vm,texcode,16,'pds_code',8)
+                if code_hashes is not None:
+                    h=14695981039346656037
+                    for b in struct.pack('<II',0xf4020000,0xd3000000):h=((h^b)*1099511628211)&((1<<64)-1)
+                    if sum(x['gpu_va']==BASE+texcode and x['size']==8 and x['fnv64']==h for x in code_hashes)!=1:
+                        raise ValueError('background texture PDS code mismatch')
                 require(vm,texdata,16,'pds_data',12)
+                if data_traced:
+                    pd=pds_data.get(BASE+texdata)
+                    data=pd[1] if pd and pd[0][0]==vm else None
+                    ce=constants.get(data['constants_gpu']) if data else None
+                    c=ce[1] if ce and ce[0][0]==vm else None
+                    if (not data or not c or data['size']!=12 or data['shareds']!=1 or
+                        (c['size'],c['clears'],c['textures'],c['tiles'],c['shareds'])!=(4,1,0,0,1) or
+                        len(mapping(vm,c['gpu_va'],4))!=1):
+                        raise ValueError('background constant dependency')
+                    def fnv(buf):
+                        h=14695981039346656037
+                        for b in buf:h=((h^b)*1099511628211)&((1<<64)-1)
+                        return h
+                    if (c['fnv64']!=fnv(bytes((0x22,0x44,0x66,0xff))) or
+                        data['fnv64']!=fnv(struct.pack('<QI',c['gpu_va'],0x90000001))):
+                        raise ValueError('background constant or PDS mismatch')
+                    clear_refs+=1
             event_info=struct.unpack_from('<I',raw,356)[0]
             event_data=struct.unpack_from('<I',raw,364)[0]
             if event_info!=0x201 or event_data&15 or not event_data:raise ValueError('unsupported pixel event')
@@ -81,6 +133,8 @@ def analyze(events,event_traced=False,pbe_traced=False):
     if checked!=4 or geometry!=2 or links!=2:raise ValueError('incomplete render jobs')
     return {'fragment_jobs':checked,'background_pds_references':refs,'pixel_event_shader_jobs':eot_checked,
       'pbe_target_jobs':pbe_checked,'gpu_execution_allowed':False,
+      'background_clear_dependencies':clear_refs,
+      'background_shader_dependencies':shader_refs,
       'limitations':['PDS ranges are checked at submission, not through GPU completion',
         'background PDS and USC indirect references and source bytes are not reconstructed',
         'pixel event USC and PBE output or partial-render scratch are not validated',
@@ -93,8 +147,14 @@ def check(root):
         raise ValueError('capture provenance')
     spec=importlib.util.spec_from_file_location('submit',HERE/'check-render-submit-dependencies.py');dep=importlib.util.module_from_spec(spec);spec.loader.exec_module(dep)
     dep.check(root)
+    code_hashes=None
+    if diag.get('background_shader_private'):
+        code_raw=(root/'pds-code-hashes.jsonl').read_bytes()
+        if hashlib.sha256(code_raw).hexdigest()!=m.get('pds_code_hashes_sha256'):raise ValueError('PDS code provenance')
+        code_hashes=[json.loads(x) for x in code_raw.splitlines()]
     return analyze([json.loads(x) for x in raw.splitlines()],bool(diag.get('render_pixel_event_metadata_only')),
-                   bool(diag.get('pbe_target_metadata_only')))
+                   bool(diag.get('pbe_target_metadata_only')),bool(diag.get('background_constants_metadata_only')),
+                   bool(diag.get('background_shader_private')),code_hashes)
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('capture');a=p.parse_args()

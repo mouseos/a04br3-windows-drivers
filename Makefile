@@ -20,6 +20,7 @@ test: build/gpu_render_shared_size_test build/gpu_render_context_pds_test build/
 	python3 tests/gpu_render_fixed_vdm_test.py
 	python3 tests/gpu_render_fixed_ppp_test.py
 	python3 tests/gpu_render_background_test.py
+	python3 tests/gpu_render_spm_load_test.py
 	python3 tests/gpu_render_context_trace_test.py
 	python3 tests/gpu_render_context_pt_test.py
 	python3 tests/gpu_render_context_usc_test.py
