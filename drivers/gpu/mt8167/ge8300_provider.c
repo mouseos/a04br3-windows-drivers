@@ -91,7 +91,7 @@ done:
     if (data) ExFreePoolWithTag(data,'0XGA');
     ZwClose(file); return status;
 }
-static void GpuSnapshot(GPU_CONTEXT *c)
+static void GpuSnapshot(GPU_CONTEXT *c,BOOLEAN read_registers)
 {
     struct a04_gpu_firmware_state *s=&c->firmware; uint8_t *heap=s->memory.heap;
     struct rogue_fwif_ccb_ctl *ctl; struct rogue_fwif_connection_ctl *conn;
@@ -113,6 +113,7 @@ static void GpuSnapshot(GPU_CONTEXT *c)
     c->status.fw_power_state=sys->pow_state; c->status.commands_executed=os->kccb_cmds_executed;
     c->status.trace_pointer=trace->tracebuf[0].trace_pointer;
     for (i=0;i<4;++i) c->status.trace_words[i]=words[i];
+    if (!read_registers) return;
     c->status.mts_enable=s->io.read32(s->io.context,ROGUE_CR_MTS_SCHEDULE_ENABLE);
     c->status.mts_bg=s->io.read32(s->io.context,ROGUE_CR_MTS_BGCTX);
     c->status.mts_int=s->io.read32(s->io.context,ROGUE_CR_MTS_INTCTX);
@@ -198,9 +199,14 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     if(NT_SUCCESS(status)) {
         c->status.health_status=a04_gpu_firmware_health(&c->firmware);
         GpuTraceStage(c,0x102);
-        GpuSnapshot(c);
-        if(NT_SUCCESS(c->status.health_status)) c->status.shutdown_status=a04_gpu_firmware_shutdown(&c->firmware);
-    } else if(c->firmware.processor_released && c->firmware.runtime.system_init) GpuSnapshot(c);
+        GpuSnapshot(c,TRUE);
+        if(NT_SUCCESS(c->status.health_status)) {
+            c->status.shutdown_status=a04_gpu_firmware_shutdown(&c->firmware);
+            /* Power-off may have gated MMIO; only inspect retained memory. */
+            if(!NT_SUCCESS(c->status.shutdown_status) && c->firmware.processor_released)
+                GpuSnapshot(c,FALSE);
+        }
+    } else if(c->firmware.processor_released && c->firmware.runtime.system_init) GpuSnapshot(c,TRUE);
     c->status.processor_released=c->firmware.processor_released;
     c->status.firmware_started=c->firmware.firmware_started;
     c->status.queue_faulted=c->firmware.queue_faulted;

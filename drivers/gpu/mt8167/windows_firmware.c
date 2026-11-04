@@ -172,7 +172,9 @@ NTSTATUS a04_gpu_firmware_shutdown(struct a04_gpu_firmware_state *s)
 {
     NTSTATUS status=send_command(s,1);
     if (!NT_SUCCESS(status)) return status;
+    TRACE(s,0x50);
     status=send_command(s,2);
     if (!NT_SUCCESS(status)) return status;
+    TRACE(s,0x51);
     return a04_gpu_firmware_stop(s,TRUE);
 }
