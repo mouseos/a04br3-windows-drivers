@@ -37,3 +37,18 @@ InterruptLock の下で呼ばれる。失敗値の返却だけで削除を阻止
 試作の tracked DMA が停止を証明できず保持される場合、当該転送の MDL も解放
 しない。MDL の保持だけで Storport 所有バッファや adapter、worker、SRB の PnP
 寿命が延びるわけではない。これらの実所有が実装されるまで起動を拒否する。
+
+既定 OFF の `A04_OWNED_DMA_EXPERIMENT=1` は仮想 boot multiblock 試作に限り、
+`StorPortGetDeviceObjects` の PDO に `IoGetDmaAdapter` を呼び、返された adapter の
+`AllocateCommonBuffer` から DMA 用 logical address とバッファを取得する。所有者は
+非ページ pool の別オブジェクトで PDO を参照し、32-bit の範囲と CPU・DMA 両側の
+整列を検査する。起動は従来どおり拒否し、この拒否時にはまだ I/O が開始していない
+所有領域を解放する。所有 adapter が使えるか、ARM のキャッシュ処理が適切か、
+Windows RT 実機では未検証。通常構成は従来の確保経路を使う。
+
+worker は依然 Storport の extension と callback に依存し、最後の削除 callback と
+競合すると独立した bounce だけでは保護できない。`HwFreeAdapterResources` が
+存在しても、その callback から進行中 worker を排出する設計と、停止不能 DMA に対する
+adapter mapping の寿命は実装されていない。起動ゲートを維持し、実機に投入しない。
+`tools/ci/build-msdc-multiread-suite.ps1` の `owned-boot-compile-only` がこの構成を
+別々にビルド・自己署名する。証明書の信頼と署名の存在は別である。

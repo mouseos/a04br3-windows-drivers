@@ -8,9 +8,9 @@ New-Item -ItemType Directory -Path $OutputRoot | Out-Null
 $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
 $tools = $PSScriptRoot
 $oldTemp = $env:RUNNER_TEMP
-$keys = @('A04_SYNC_PIO_MULTIREAD','A04_READONLY_DISK_PROBE','A04_DMA_PROBE','A04_DMA_DISK_PROBE','A04_VIRTUAL_BOUNCE_EXPERIMENT','A04_DMA_MULTIBLOCK_EXPERIMENT','A04_SCRATCH_MULTIBLOCK_EXPERIMENT','A04_BOOT_MULTIBLOCK_EXPERIMENT','A04_PASSIVE_IO','A04_ENABLE_WRITES','A04_SCRATCH_IO','A04_SCRATCH_LBA','A04_SERIAL_QUEUE_EXPERIMENT','A04_ISOLATED_REQUEST_EXPERIMENT','A04_BOOT_EXPERIMENT','A04_BOOT_PASSIVE_EXPERIMENT','A04_DMA_WRITE_TEST','A04_ISOLATED_RESET_TEST')
+$keys = @('A04_OWNED_DMA_EXPERIMENT','A04_SYNC_PIO_MULTIREAD','A04_READONLY_DISK_PROBE','A04_DMA_PROBE','A04_DMA_DISK_PROBE','A04_VIRTUAL_BOUNCE_EXPERIMENT','A04_DMA_MULTIBLOCK_EXPERIMENT','A04_SCRATCH_MULTIBLOCK_EXPERIMENT','A04_BOOT_MULTIBLOCK_EXPERIMENT','A04_PASSIVE_IO','A04_ENABLE_WRITES','A04_SCRATCH_IO','A04_SCRATCH_LBA','A04_SERIAL_QUEUE_EXPERIMENT','A04_ISOLATED_REQUEST_EXPERIMENT','A04_BOOT_EXPERIMENT','A04_BOOT_PASSIVE_EXPERIMENT','A04_DMA_WRITE_TEST','A04_ISOLATED_RESET_TEST')
 try {
-  foreach ($profile in @('readonly','scratch-compile-only','boot-compile-only','sync-pio-compile-only')) {
+  foreach ($profile in @('readonly','scratch-compile-only','boot-compile-only','owned-boot-compile-only','sync-pio-compile-only')) {
     foreach ($key in $keys) { [Environment]::SetEnvironmentVariable($key,$null,'Process') }
     $env:RUNNER_TEMP=Join-Path $OutputRoot $profile
     New-Item -ItemType Directory -Path $env:RUNNER_TEMP | Out-Null
@@ -22,7 +22,7 @@ try {
     else {
       $env:A04_PASSIVE_IO='1'; $env:A04_ENABLE_WRITES='1'; $env:A04_SERIAL_QUEUE_EXPERIMENT='1'; $env:A04_ISOLATED_REQUEST_EXPERIMENT='1'
       if ($profile -eq 'scratch-compile-only') { $env:A04_SCRATCH_IO='1'; $env:A04_SCRATCH_LBA='0'; $env:A04_SCRATCH_MULTIBLOCK_EXPERIMENT='1' }
-      else { $env:A04_BOOT_EXPERIMENT='1'; $env:A04_BOOT_PASSIVE_EXPERIMENT='1'; $env:A04_BOOT_MULTIBLOCK_EXPERIMENT='1' }
+      else { $env:A04_BOOT_EXPERIMENT='1'; $env:A04_BOOT_PASSIVE_EXPERIMENT='1'; $env:A04_BOOT_MULTIBLOCK_EXPERIMENT='1'; if ($profile -eq 'owned-boot-compile-only') { $env:A04_OWNED_DMA_EXPERIMENT='1' } }
     }
     & "$tools\build-wdk81-probe.ps1"
     & "$tools\sign-probe-test.ps1"
