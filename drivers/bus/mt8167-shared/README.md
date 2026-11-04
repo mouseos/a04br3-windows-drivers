@@ -185,3 +185,12 @@ PASSIVE_LEVEL. Stop closes admission before waiting for the current holder;
 queued callers recheck admission after acquisition. This does not make an
 in-flight MMIO access safe against physical removal. D0 stays gated, and the
 eMMC preparation prototype is not connected to this lock or to Storport.
+
+The prototype pairs each raw descriptor with its translated descriptor by the
+PnP list index. Raw memory addresses identify the board resources; only the
+translated physical addresses are mapped, after length, exclusivity and alias
+checks. The filter validates that both interrupt descriptors are level and
+exclusive, and leaves the OS-translated IRQ untouched for Storport. This is not
+proof of the Windows interrupt polarity, translated vector, power ordering or
+safe live removal. Both D0 and the miniport startup gate remain closed.
+See https://learn.microsoft.com/en-us/windows-hardware/drivers/wdf/raw-and-translated-resources

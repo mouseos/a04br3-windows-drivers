@@ -8,8 +8,8 @@
 /* Offline sequencing prototype. PASSIVE_LEVEL, not a WDF or Storport API.
  * Every callback must refer to the same exclusive non-revocable parent lease;
  * acquire holds a PASSIVE_LEVEL-capable parent lock through all callbacks,
- * which must not reenter that lock. The existing WDF FAST_MUTEX raises IRQL and
- * cannot implement this contract; no current Windows parent implements it. A software
+ * which must not reenter that lock. The WDF parent now uses a passive wait lock, but no current Windows parent
+ * implements this full lease contract. A software
  * lease cannot protect an MMIO instruction from physical removal. */
 struct a04_emmc_prepare_ops {
     const struct a04_board_ops *board;

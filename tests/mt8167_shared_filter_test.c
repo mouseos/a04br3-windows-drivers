@@ -31,13 +31,30 @@ int main(void)
  for(i=0;i<5;i++){entries[i].Type=CmResourceTypeMemory;entries[i].ShareDisposition=CmResourceShareDeviceExclusive;entries[i].u.Memory.Start.QuadPart=address[i];entries[i].u.Memory.Length=0x1000;}
  entries[5].Type=CmResourceTypeInterrupt;entries[5].ShareDisposition=CmResourceShareDeviceExclusive;
  /* PnP interrupt passes through; filter never maps it. */
- entries[5].Flags=CM_RESOURCE_INTERRUPT_LATCHED;assert(ParentPrepare(&ctx,NULL,&list)==STATUS_DEVICE_CONFIGURATION_ERROR && !maps);entries[5].Flags=0;
- entries[5].Type=0;assert(ParentPrepare(&ctx,NULL,&list)==STATUS_DEVICE_CONFIGURATION_ERROR && !maps);entries[5].Type=CmResourceTypeInterrupt;
- entries[0].ShareDisposition=0;assert(ParentPrepare(&ctx,NULL,&list)==STATUS_DEVICE_CONFIGURATION_ERROR && !maps);entries[0].ShareDisposition=CmResourceShareDeviceExclusive;
- entries[0].u.Memory.Length=0x2000;assert(ParentPrepare(&ctx,NULL,&list)==STATUS_DEVICE_CONFIGURATION_ERROR && !maps);entries[0].u.Memory.Length=0x1000;
- entries[6]=entries[0];list.count=7;assert(ParentPrepare(&ctx,NULL,&list)==STATUS_DEVICE_CONFIGURATION_ERROR && !maps);list.count=6;
- assert(!ParentPrepare(&ctx,NULL,&list) && maps==4 && !access);
+ entries[5].Flags=CM_RESOURCE_INTERRUPT_LATCHED;assert(ParentPrepare(&ctx,&list,&list)==STATUS_DEVICE_CONFIGURATION_ERROR && !maps);entries[5].Flags=0;
+ entries[5].Type=0;assert(ParentPrepare(&ctx,&list,&list)==STATUS_DEVICE_CONFIGURATION_ERROR && !maps);entries[5].Type=CmResourceTypeInterrupt;
+ entries[0].ShareDisposition=0;assert(ParentPrepare(&ctx,&list,&list)==STATUS_DEVICE_CONFIGURATION_ERROR && !maps);entries[0].ShareDisposition=CmResourceShareDeviceExclusive;
+ entries[0].u.Memory.Length=0x2000;assert(ParentPrepare(&ctx,&list,&list)==STATUS_DEVICE_CONFIGURATION_ERROR && !maps);entries[0].u.Memory.Length=0x1000;
+ entries[6]=entries[0];list.count=7;assert(ParentPrepare(&ctx,&list,&list)==STATUS_DEVICE_CONFIGURATION_ERROR && !maps);list.count=6;
+ assert(!ParentPrepare(&ctx,&list,&list) && maps==4 && !access);
  assert(ParentD0(&ctx,0)==STATUS_DEVICE_NOT_READY && !access);
  assert(!ParentRelease(&ctx,&list) && unmaps==4 && !access);
+ /* Raw bus addresses identify roles; translated addresses alone are mapped.
+  * IRQ descriptors are checked and forwarded without inventing a GIC vector. */
+ {
+  CM_PARTIAL_RESOURCE_DESCRIPTOR translatedEntries[6];struct test_list translated={translatedEntries,6};
+  memcpy(translatedEntries,entries,sizeof translatedEntries);
+  for(i=0;i<5;i++)translatedEntries[i].u.Memory.Start.QuadPart+=0x20000000;
+  translatedEntries[5].Type=0;
+  assert(ParentPrepare(&ctx,&list,&translated)==STATUS_DEVICE_CONFIGURATION_ERROR && maps==4);
+  translatedEntries[5].Type=CmResourceTypeInterrupt;
+  translatedEntries[1].u.Memory.Start.QuadPart=translatedEntries[0].u.Memory.Start.QuadPart+1;
+  assert(ParentPrepare(&ctx,&list,&translated)==STATUS_DEVICE_CONFIGURATION_ERROR && maps==4);
+  translatedEntries[1].u.Memory.Start.QuadPart=entries[1].u.Memory.Start.QuadPart+0x20000000;
+  assert(!ParentPrepare(&ctx,&list,&translated) && maps==8);
+  assert((uintptr_t)ctx.topck==0x30000000 && (uintptr_t)ctx.infra==0x30001000 &&
+         (uintptr_t)ctx.gpio==0x30005000 && (uintptr_t)ctx.pwrap==0x3000f000);
+  assert(!ParentRelease(&ctx,&translated) && unmaps==8 && !access);
+ }
  return 0;
 }

@@ -80,7 +80,7 @@ int main(void){
  assert(input.TouchUpdate(input.Context,99,0x3b0,7u<<9,1u<<9)!=0);}
  saved.Header.InterfaceReference(saved.Header.Context);assert(refs==2);
  assert(saved.ReadButtons(saved.Header.Context,&value)==STATUS_DEVICE_NOT_READY && value==0xeeee && !reads && !writes);
- assert(!ParentPrepare(&testContext,NULL,&list) && maps==4);
+ assert(!ParentPrepare(&testContext,&list,&list) && maps==4);
  assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY);
  assert(saved.ReadButtons(saved.Header.Context,&value)==STATUS_DEVICE_NOT_READY && !reads && !writes);
  /* A caller queued behind an existing operation must recheck after stop's
@@ -98,11 +98,11 @@ int main(void){
  ParentSurprise(&testContext);assert(!testContext.regs.online && !testContext.pmic.online && unmaps==0);
  assert(testContext.admissionClosed && testContext.removed);
  assert(ParentLock(&testContext)!=0 && !testContext.pwrapLock->held);
- assert(ParentPrepare(&testContext,NULL,&list)==STATUS_DEVICE_NOT_READY && maps==4);
+ assert(ParentPrepare(&testContext,&list,&list)==STATUS_DEVICE_NOT_READY && maps==4);
  assert(!ParentD0Exit(&testContext,0));
  assert(!ParentRelease(&testContext,&list) && unmaps==4);
  assert(saved.ReadButtons(saved.Header.Context,&value)==STATUS_DEVICE_NOT_READY && !reads && !writes);
- assert(ParentPrepare(&testContext,NULL,&list)==STATUS_DEVICE_NOT_READY && maps==4);
+ assert(ParentPrepare(&testContext,&list,&list)==STATUS_DEVICE_NOT_READY && maps==4);
  {int down=7;assert(input.TouchPen(input.Context,&down)!=0 && down==7);
  assert(input.ButtonPmicRead(input.Context,&value)!=0 && value==0xeeee);}
  input.InterfaceDereference(input.Context);saved.Header.InterfaceDereference(saved.Header.Context);assert(!refs);

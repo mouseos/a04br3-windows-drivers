@@ -135,20 +135,22 @@ static void ParentUnmap(A04_PARENT_CONTEXT *c)
 }
 NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
-    A04_PARENT_CONTEXT *c=ParentContext(dev);struct a04_parent_resource r[4];
+    A04_PARENT_CONTEXT *c=ParentContext(dev);struct a04_parent_resource r[4],t[4];
     struct a04_parent_mapping mapping;ULONG i,n=0;PHYSICAL_ADDRESS pa;
 #if defined(A04_SHARED_EMMC_FILTER_PROBE) && A04_SHARED_EMMC_FILTER_PROBE
-    unsigned controller=0,interrupt=0;
+    unsigned controller=0,interrupt=0;uint64_t controllerBase=0;
 #endif
-    UNREFERENCED_PARAMETER(raw);
+    if(!raw || !translated || WdfCmResourceListGetCount(raw)!=WdfCmResourceListGetCount(translated))return STATUS_DEVICE_CONFIGURATION_ERROR;
     if(InterlockedCompareExchange(&c->removed,0,0))return STATUS_DEVICE_NOT_READY;
     if(c->topck||c->infra||c->gpio||c->pwrap)return STATUS_INVALID_DEVICE_STATE;
     for(i=0;i<WdfCmResourceListGetCount(translated);++i) {
         PCM_PARTIAL_RESOURCE_DESCRIPTOR d=WdfCmResourceListGetDescriptor(translated,i);
-        if(!d)return STATUS_DEVICE_CONFIGURATION_ERROR;
+        PCM_PARTIAL_RESOURCE_DESCRIPTOR b=WdfCmResourceListGetDescriptor(raw,i);
+        if(!d||!b||d->Type!=b->Type)return STATUS_DEVICE_CONFIGURATION_ERROR;
 #if defined(A04_SHARED_EMMC_FILTER_PROBE) && A04_SHARED_EMMC_FILTER_PROBE
         if(d->Type==CmResourceTypeInterrupt) {
-            if(interrupt || d->ShareDisposition!=CmResourceShareDeviceExclusive ||
+            if(interrupt || b->ShareDisposition!=CmResourceShareDeviceExclusive || d->ShareDisposition!=CmResourceShareDeviceExclusive ||
+               (b->Flags&(CM_RESOURCE_INTERRUPT_LATCHED|CM_RESOURCE_INTERRUPT_MESSAGE)) ||
                (d->Flags&(CM_RESOURCE_INTERRUPT_LATCHED|CM_RESOURCE_INTERRUPT_MESSAGE)))
                 return STATUS_DEVICE_CONFIGURATION_ERROR;
             interrupt=1;continue;
@@ -157,20 +159,30 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
         if(d->Type!=CmResourceTypeMemory)continue;
 #if defined(A04_SHARED_EMMC_FILTER_PROBE) && A04_SHARED_EMMC_FILTER_PROBE
         /* Same ACPI stack: Storport owns this range; this filter must not map it. */
-        if(d->u.Memory.Start.QuadPart==0x11120000u) {
-            if(controller || d->u.Memory.Length!=0x1000u || d->ShareDisposition!=CmResourceShareDeviceExclusive)
+        if(b->u.Memory.Start.QuadPart==0x11120000u) {
+            if(controller || b->u.Memory.Length!=0x1000u || d->u.Memory.Length!=0x1000u ||
+               b->ShareDisposition!=CmResourceShareDeviceExclusive || d->ShareDisposition!=CmResourceShareDeviceExclusive ||
+               d->u.Memory.Start.QuadPart<=0 || (uint64_t)d->u.Memory.Start.QuadPart>UINT64_MAX-0xfffu)
                 return STATUS_DEVICE_CONFIGURATION_ERROR;
-            controller=1;continue;
+            controller=1;controllerBase=(uint64_t)d->u.Memory.Start.QuadPart;continue;
         }
 #endif
         if(n>=4)return STATUS_DEVICE_CONFIGURATION_ERROR;
-        r[n].base=(uint64_t)d->u.Memory.Start.QuadPart;r[n].length=d->u.Memory.Length;
-        r[n].exclusive=d->ShareDisposition==CmResourceShareDeviceExclusive ? 1u:0u;++n;
+        r[n].base=(uint64_t)b->u.Memory.Start.QuadPart;r[n].length=b->u.Memory.Length;
+        r[n].exclusive=b->ShareDisposition==CmResourceShareDeviceExclusive ? 1u:0u;
+        t[n].base=(uint64_t)d->u.Memory.Start.QuadPart;t[n].length=d->u.Memory.Length;
+        t[n].exclusive=d->ShareDisposition==CmResourceShareDeviceExclusive ? 1u:0u;++n;
     }
 #if defined(A04_SHARED_EMMC_FILTER_PROBE) && A04_SHARED_EMMC_FILTER_PROBE
     if(!controller || !interrupt)return STATUS_DEVICE_CONFIGURATION_ERROR;
 #endif
-    if(a04_parent_validate_resources(r,n,&mapping))return STATUS_DEVICE_CONFIGURATION_ERROR;
+    if(a04_parent_translate_resources(r,t,n,&mapping))return STATUS_DEVICE_CONFIGURATION_ERROR;
+#if defined(A04_SHARED_EMMC_FILTER_PROBE) && A04_SHARED_EMMC_FILTER_PROBE
+    for(i=0;i<n;++i) {
+        uint64_t b=t[i].base;
+        if((b<=controllerBase ? controllerBase-b : b-controllerBase)<0x1000u)return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
+#endif
     pa.QuadPart=(LONGLONG)mapping.topck;c->topck=MmMapIoSpace(pa,0x1000,MmNonCached);
     if(!c->topck)goto fail;
     pa.QuadPart=(LONGLONG)mapping.infra;c->infra=MmMapIoSpace(pa,0x1000,MmNonCached);
