@@ -51,7 +51,7 @@ int a04_wmt_bridge_boot_wmt(struct a04_wmt_bridge *b,const void *data,unsigned b
  const struct a04_wmt_startup_options *options)
 {
  uint8_t digest[32];unsigned different=0,i;int e;
- if(!alive(b)||!b->identity_ready||b->failed||!data||!expected||!sha256||!options||b->wmt_ready)return -1;
+ if(!alive(b)||!b->identity_ready||b->failed||!data||!bytes||bytes>A04_WMT_FW_MAX_BUNDLE||!expected||!sha256||!options||b->wmt_ready)return -1;
  if(sha256(data,bytes,digest))return -1;
  for(i=0;i<32;i++)different|=digest[i]^expected[i];
  if(different)return -1;
@@ -64,7 +64,7 @@ int a04_wmt_bridge_boot_wmt(struct a04_wmt_bridge *b,const void *data,unsigned b
 int a04_wmt_bridge_boot_wlan(struct a04_wmt_bridge *b,const void *data,unsigned bytes,int (*sha256)(const uint8_t *,size_t,uint8_t[32]))
 {
  uint8_t digest[32];int e;
- if(!alive(b)||!b->wmt_ready||!b->wmt_state.function1_ready||b->failed||!data||!sha256||b->wlan_ready)return -1;
+ if(!alive(b)||!b->wmt_ready||!b->wmt_state.function1_ready||b->failed||!data||bytes!=237008u||!sha256||b->wlan_ready)return -1;
  if(sha256(data,bytes,digest))return -1;
  e=a04_wlan_firmware_select(&b->identity,data,bytes,digest,&b->wlan_fw);if(e)return e;
  e=a04_wlan_host_open(&b->wlan,&b->transport);if(e)return fault(b,e);
