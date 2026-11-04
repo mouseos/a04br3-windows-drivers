@@ -51,6 +51,22 @@ int a04_render_make_scratchless_pds_data(const struct a04_render_pds_input *p,
     put64(result.spill_info,p->spill_buffer_gpu);put32(result.spill_info+8,4);
     *out=result;return 0;
 }
+int a04_render_make_fragment_uniform(const struct a04_render_fragment_uniform_input *p,
+    const struct a04_render_owned_range *r,size_t n,struct a04_render_fragment_uniform_data *out)
+{
+    struct a04_render_fragment_uniform_data result={{0},{0},{0},{0}};
+    if (!p || !out || a04_render_validate_owned_ranges(r,n) || (p->spill_info_gpu&7u) || (p->fs_meta_gpu&3u) ||
+        !owned(r,n,p->spill_info_gpu,12,A04_RENDER_RANGE_READ) || !owned(r,n,p->fs_meta_gpu,4,A04_RENDER_RANGE_READ) ||
+        !owned(r,n,p->spill_buffer_gpu,8192,A04_RENDER_RANGE_READ|A04_RENDER_RANGE_WRITE) ||
+        overlap(p->spill_info_gpu,12,p->fs_meta_gpu,4) || overlap(p->spill_info_gpu,12,p->spill_buffer_gpu,8192) ||
+        overlap(p->fs_meta_gpu,4,p->spill_buffer_gpu,8192)) return -1;
+    put64(result.descriptor,p->spill_info_gpu);put64(result.descriptor+8,p->fs_meta_gpu);
+    put32(result.descriptor+16,UINT32_C(0x10008003));put32(result.descriptor+20,UINT32_C(0x90000001));
+    put64(result.spill_info,p->spill_buffer_gpu);put32(result.spill_info+8,4);
+    put32(result.fs_meta,UINT32_C(0x01fffffe));
+    put32(result.code,UINT32_C(0xf0040000));put32(result.code+4,UINT32_C(0xf4050100));
+    *out=result;return 0;
+}
 int a04_render_make_pds_data(const struct a04_render_pds_input *p,
     const struct a04_render_owned_range *r,size_t n,struct a04_render_pds_data *out)
 {

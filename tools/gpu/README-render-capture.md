@@ -223,3 +223,9 @@ NIR上の24バイト検査は、物理scratch allocation全体の境界を単独
 この変更でvertex NIR上のscratch参照は除けるが、spill allocation、context switchのshared state、fragmentやVDM／PPPの全アクセス、USC機械語との意味対応、実機動作は未証明。captureはGPUを実行せず、非公開生成USCは引き続きGPU投入禁止。
 
 scratchless版のPDS定数は、２回のcapture・各２描画でvertex literal `0x80000000`、DOUTU制御 `0x800000000`、descriptor literal `0x90000003` が一致した。`a04_render_make_scratchless_pds_data` と再構成ツールはこの固定値とspill-only構成を要求し、別のshader／layout用の値を拒否する。
+
+scratchless三角形のVDMは、Mesa `vdm.xml` に従うPDS state・PPP state・VDM state・３頂点index list・PPP terminate・stream terminateの計60バイトとして `a04_render_make_fixed_vdm` で生成する。PDS・PPPの６参照範囲の所有、読み取り専用属性、アドレス幅、境界と重複を検査し、`a04_windows_render_stage_fixed_vdm` が未公開DMAへ配置する。独立した２回のcaptureで各２描画の生成時VDM FNVと一致し、PPP 100／12バイトがgeometry job時に対象VMへマップされていた。
+
+PPPは固定probeの100バイト状態と12バイトterminateを `a04_render_make_fixed_ppp` で構成する。fragment PDS、fragment uniform code/dataは型付きGPUアドレスから埋め込み、その他はMesaのPPPパケット定義と固定probe条件から生成する。`a04_windows_render_stage_fixed_ppp` は所有DMAへ両状態を配置する。診断用Mesaは参照されたPPP範囲のGPUアドレス・長さ・FNVだけを非公開記録し、`check-fixed-ppp.py` で２回のcaptureについて一致を確認した。生BOをfixtureとしてコピーしない。
+
+PPPのfragment uniformはspill情報と４バイトFS_METAを読み、固定captureのFS_META値は `0x01fffffe`、scissorは `(xmin,ymin)=(0,0)`・`(xmax,ymax)=(64,64)` の８バイト。Mesaの生成箇所から出力範囲とFNV／型付き値を診断記録し、２回のcaptureでpartial・最終fragment双方のscissor参照が対象VMに存在することを検査した。`a04_windows_render_stage_fragment_uniform` と `_fixed_scissor` はこれらをゼロ初期化DMAへ構成する。FNVは衝突耐性を持たず、これらの一致はジョブ完了までの寿命、render target・背景プログラム・shader全体・context switchの安全性や実機描画を証明しない。実行入口は未接続でGPU実行は禁止。

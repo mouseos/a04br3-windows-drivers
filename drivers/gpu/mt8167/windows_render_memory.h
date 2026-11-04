@@ -8,6 +8,8 @@
 #include "pvr_rogue_fwif_client.h"
 #include "render_trace_shared.h"
 #include "render_pds_data.h"
+#include "render_fixed_vdm.h"
+#include "render_fixed_ppp.h"
 #if A04_GE8300_RENDER_EXPERIMENT
 /* A private DMA allocation and its GPU page tables. Call at PASSIVE_LEVEL;
  * the caller serializes firmware access and prevents untracked CPU writes. */
@@ -118,6 +120,20 @@ NTSTATUS a04_windows_render_stage_scratchless_pds(struct a04_windows_render_memo
     const struct a04_render_pds_input *input,uint64_t vertex_gpu,uint64_t descriptor_gpu);
 NTSTATUS a04_windows_render_stage_scratchless_pds_code(struct a04_windows_render_memory *m,
     uint64_t vertex_code_gpu,uint64_t descriptor_code_gpu);
+/* Build a fixed 60-byte VDM stream. PPP contents and all remaining GPU
+ * dependencies must be validated independently before any submission. */
+NTSTATUS a04_windows_render_stage_fixed_vdm(struct a04_windows_render_memory *m,
+    const struct a04_render_fixed_vdm_input *input,uint64_t vdm_gpu);
+/* Stage fixed fragment uniform data, spill information, FS metadata and PDS
+ * code atomically. PPP and shader contents still require validation. */
+NTSTATUS a04_windows_render_stage_fragment_uniform(struct a04_windows_render_memory *m,
+    const struct a04_render_fragment_uniform_input *input,uint64_t uniform_gpu,uint64_t code_gpu);
+/* Stage both fixed PPP state blocks. Caller validates scissor, shader and all
+ * other indirect references independently before allowing any GPU work. */
+NTSTATUS a04_windows_render_stage_fixed_ppp(struct a04_windows_render_memory *m,
+    const struct a04_render_fixed_ppp_input *input,uint64_t ppp_gpu,uint64_t finish_gpu);
+/* One fixed 64x64 scissor entry; does not validate the fragment command. */
+NTSTATUS a04_windows_render_stage_fixed_scissor(struct a04_windows_render_memory *m,uint64_t gpu);
 /* One context-switch slot's persistent PDS data and code. Inputs must name
  * unique owned mappings: writable state, read-only PDS output, no aliases.
  * Before publication only. Shared PDS/USC and kick remain separate. */

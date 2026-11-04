@@ -17,6 +17,8 @@ def check(path):
     pds_deps = unmapped_deps = 0
     pds_shaders = unmapped_shaders = 0
     fragment_links = fragment_unmapped = fragment_missing_uploads = 0
+    fs_meta_seen = fs_meta_unmapped = 0
+    scissor_seen = scissor_unmapped = 0
     live_uploads = []
     open_submit = None
     for line in pathlib.Path(path).read_text(encoding='utf-8').splitlines():
@@ -103,6 +105,20 @@ def check(path):
                     matches = [u for u in live_uploads if u[0][0] == vm and u[1] == addr and u[3] == kind and (u[2] == written if written else u[2] <= size)]
                     if len(matches) != 1 or (kind == 'usc_code' and not addr <= e['entry_gpu'] < addr+matches[0][2]):
                         fragment_missing_uploads += 1
+        elif op == 'scissor_table':
+            addr,size=e['gpu_va'],e['size']
+            if addr<=0 or addr>=GPU_LIMIT or size<=0 or size>GPU_LIMIT-addr or not 0<=e['fnv64']<1<<64:
+                raise ValueError('invalid scissor table')
+            scissor_seen+=1
+            if sum(addr>=k[1] and size<=v and addr-k[1]<=v-size for k,v in maps.items())!=1:scissor_unmapped+=1
+        elif op == 'pds_fs_meta':
+            parent,addr=e['parent_gpu'],e['gpu_va']
+            if parent<=0 or parent>=GPU_LIMIT or addr<=0 or addr>=GPU_LIMIT or 4>GPU_LIMIT-addr or e['offset']<0 or not 0<=e['value']<=0xffffffff:
+                raise ValueError('invalid fragment metadata')
+            parent_vms={k[0] for k,v in maps.items() if parent>=k[1] and parent-k[1]<v}
+            data_vms={k[0] for k,v in maps.items() if addr>=k[1] and 4<=v and addr-k[1]<=v-4}
+            fs_meta_seen+=1
+            if len(parent_vms & data_vms)!=1:fs_meta_unmapped+=1
         elif op == 'pds_shader':
             parent,shader,entry,size=e['parent_gpu'],e['shader_gpu'],e['entry_gpu'],e['size']
             if parent<=0 or shader<=0 or shader>=GPU_LIMIT or size<=0 or size>GPU_LIMIT-shader or entry<shader or entry-shader>=size:
@@ -187,6 +203,8 @@ def check(path):
     return {'submits':submits, 'jobs':jobs, 'live_bos_at_end':len(bos),
             'zeroed_bo_allocations':zeroed_bos, 'uploads_seen':uploads, 'pds_entries_seen':pds_entries,'pds_dependencies_seen':pds_deps,'pds_dependency_unmapped':unmapped_deps,'pds_shader_links':pds_shaders,'pds_shader_unmapped':unmapped_shaders,
             'fragment_links':fragment_links, 'fragment_unmapped':fragment_unmapped, 'fragment_missing_uploads':fragment_missing_uploads,
+            'fs_meta_seen':fs_meta_seen,'fs_meta_unmapped':fs_meta_unmapped,
+            'scissor_seen':scissor_seen,'scissor_unmapped':scissor_unmapped,
             'uploads_unmapped_at_observation':unmapped_uploads, 'uploads_ambiguous_vm':ambiguous_uploads, 'full_extent_checks':full_checks,
             'start_only_checks':start_checks, 'unresolved_address_checks':unresolved,
             'fixture_exportable':False,

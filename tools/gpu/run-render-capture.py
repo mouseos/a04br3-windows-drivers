@@ -104,6 +104,16 @@ def main():
     if diagnostic and diagnostic.get('pds_code_hash_metadata_only'):
         (out/'pds-code-hashes.jsonl').touch(mode=0o600,exist_ok=False)
         env['A04_PDS_CODE_HASH']=str(out/'pds-code-hashes.jsonl')
+    env.pop('A04_VDM_HASH',None)
+    if diagnostic and diagnostic.get('vdm_hash_metadata_only'):
+        if not a.dump_control_stream:raise SystemExit('VDM hash diagnostic requires control stream dump')
+        (out/'vdm-hashes.jsonl').touch(mode=0o600,exist_ok=False)
+        env['A04_VDM_HASH']=str(out/'vdm-hashes.jsonl')
+    env.pop('A04_PPP_HASH',None)
+    if diagnostic and diagnostic.get('ppp_hash_metadata_only'):
+        if not a.dump_control_stream:raise SystemExit('PPP hash diagnostic requires control stream dump')
+        (out/'ppp-hashes.jsonl').touch(mode=0o600,exist_ok=False)
+        env['A04_PPP_HASH']=str(out/'ppp-hashes.jsonl')
     with (out/'probe.log').open('w') as log:
         result=subprocess.run([str(binary),str(lib)],env=env,stdout=log,stderr=subprocess.STDOUT,timeout=120,preexec_fn=lambda:os.umask(0o077))
     event=out/'events.jsonl'
@@ -122,6 +132,10 @@ def main():
         manifest['uploads_sha256']=sha(out/'uploads.jsonl')
     if diagnostic and diagnostic.get('pds_code_hash_metadata_only'):
         manifest['pds_code_hashes_sha256']=sha(out/'pds-code-hashes.jsonl')
+    if diagnostic and diagnostic.get('vdm_hash_metadata_only'):
+        manifest['vdm_hashes_sha256']=sha(out/'vdm-hashes.jsonl')
+    if diagnostic and diagnostic.get('ppp_hash_metadata_only'):
+        manifest['ppp_hashes_sha256']=sha(out/'ppp-hashes.jsonl')
     (out/'run-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     print('capture completed; probe return code:',result.returncode)
 if __name__=='__main__': main()

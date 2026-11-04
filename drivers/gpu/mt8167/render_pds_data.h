@@ -40,4 +40,14 @@ int a04_render_make_scratchless_pds_data(const struct a04_render_pds_input *inpu
     const struct a04_render_owned_range *ranges,size_t range_count,
     struct a04_render_pds_data *out);
 void a04_render_make_scratchless_pds_code(uint8_t vertex[16],uint8_t descriptor[16]);
+struct a04_render_fragment_uniform_input {
+    uint64_t spill_info_gpu,spill_buffer_gpu,fs_meta_gpu;
+};
+struct a04_render_fragment_uniform_data {
+    uint8_t descriptor[24],spill_info[12],fs_meta[4],code[16];
+};
+/* Fixed probe fragment uniform program. Values are generated, never read
+ * from a BO. Shader, PPP and remaining references are not validated. */
+int a04_render_make_fragment_uniform(const struct a04_render_fragment_uniform_input *input,
+    const struct a04_render_owned_range *ranges,size_t count,struct a04_render_fragment_uniform_data *out);
 #endif

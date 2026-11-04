@@ -39,6 +39,12 @@ static void a04_pds_dep(const char *kind,unsigned long long parent,unsigned offs
  if (!f) abort();
  if (fprintf(f,"{\\"event\\":\\"pds_dependency\\",\\"kind\\":\\"%s\\",\\"parent_gpu\\":%llu,\\"offset\\":%u,\\"info_gpu\\":%llu,\\"buffer_gpu\\":%llu,\\"buffer_size\\":%llu,\\"block_size\\":%u}\\n",kind,parent,offset,info,buffer,size,block)<0 || fclose(f)) abort();
 }
+static void a04_pds_fs_meta(unsigned long long parent,unsigned offset,unsigned long long gpu,unsigned value)
+{
+ const char *name=getenv("A04_CAPTURE_JSONL"); FILE *f=name ? fopen(name,"a") : NULL;
+ if (!f) abort();
+ if (fprintf(f,"{\\\"event\\\":\\\"pds_fs_meta\\\",\\\"parent_gpu\\\":%llu,\\\"offset\\\":%u,\\\"gpu_va\\\":%llu,\\\"value\\\":%u}\\n",parent,offset,gpu,value)<0 || fclose(f)) abort();
+}
 
 static void a04_pds_shader(unsigned long long parent,unsigned offset,unsigned long long shader,unsigned long long entry,unsigned size)
 {
@@ -52,6 +58,12 @@ static unsigned long long a04_fragment_hash(const void *data, unsigned size)
  const unsigned char *p=data; unsigned long long h=14695981039346656037ULL;
  for (unsigned i=0;i<size;i++) { h^=p[i]; h*=1099511628211ULL; }
  return h;
+}
+static void a04_scissor_table(unsigned long long gpu,const void *data,unsigned size)
+{
+ const char *name=getenv("A04_CAPTURE_JSONL"); FILE *f=name ? fopen(name,"a") : NULL;
+ if (!f || !data || !size) abort();
+ if (fprintf(f,"{\\\"event\\\":\\\"scissor_table\\\",\\\"gpu_va\\\":%llu,\\\"size\\\":%u,\\\"fnv64\\\":%llu}\\n",gpu,size,a04_fragment_hash(data,size))<0 || fclose(f)) abort();
 }
 static void a04_fragment_link(unsigned long long data,unsigned data_size,unsigned data_written,unsigned long long code,unsigned code_size,unsigned code_written,unsigned long long shader,unsigned long long entry,unsigned shader_size,unsigned doutu_offset,const uint32_t *words)
 {
@@ -72,6 +84,19 @@ static void a04_fragment_link(unsigned long long data,unsigned data_size,unsigne
  for before,after in pairs:
   if text.count(before)!=1:raise SystemExit('unexpected Mesa command-buffer source')
   text=text.replace(before,after)
+ target='''      if (result != VK_SUCCESS)
+         goto err_free_depth_bias_bo;
+   }
+
+   util_dynarray_clear(&cmd_buffer->depth_bias_array);'''
+ insert='''      if (result != VK_SUCCESS)
+         goto err_free_depth_bias_bo;
+      a04_scissor_table(sub_cmd->scissor_bo->dev_addr.addr,util_dynarray_begin(&cmd_buffer->scissor_array),cmd_buffer->scissor_array.size);
+   }
+
+   util_dynarray_clear(&cmd_buffer->depth_bias_array);'''
+ if text.count(target)!=1:raise SystemExit('unexpected scissor upload')
+ text=text.replace(target,insert)
  target='''         pvr_set_usc_execution_address64(&addr, exec_addr.addr);
 '''
  insert='''         a04_pds_shader(pvr_bo->dev_addr.addr,doutu_addr->const_offset,vertex_state->shader_bo->dev_addr.addr,exec_addr.addr,vertex_state->shader_bo->size);
@@ -123,6 +148,13 @@ static void a04_fragment_link(unsigned long long data,unsigned data_size,unsigne
 ''' % ((kind,)*5)
   if text.count(target)!=1:raise SystemExit('unexpected special buffer branch')
   text=text.replace(target,insert+target)
+ target='''            PVR_WRITE(qword_buffer,
+                      fs_meta_bo->dev_addr.addr,
+                      special_buff_entry->const_offset,'''
+ insert='''            a04_pds_fs_meta(pvr_bo->dev_addr.addr,special_buff_entry->const_offset,fs_meta_bo->dev_addr.addr,fs_meta);
+'''
+ if text.count(target)!=1:raise SystemExit('unexpected FS metadata branch')
+ text=text.replace(target,insert+target)
  entry='''      const struct pvr_const_map_entry *const entry_header =
          (struct pvr_const_map_entry *)entries;
 '''
@@ -148,6 +180,6 @@ static void a04_fragment_link(unsigned long long data,unsigned data_size,unsigne
  args=shlex.split(link);args[args.index('-o')+1]=str(out/'libvulkan_powervr_mesa.so')
  args=[str(out/'libpowervr_rogue.a') if x=='src/imagination/vulkan/libpowervr_rogue.a' else str(uploads/'pvr_device.c.o') if x=='src/imagination/vulkan/libvulkan_powervr_mesa.so.p/pvr_device.c.o' else x for x in args]
  subprocess.run(args,cwd=build,check=True)
- meta.update(pds_construct_metadata_only=True,pds_original_sha256=sha(original),pds_source_sha256=sha(modified),pds_object_sha256=sha(out/'pvr_arch_cmd_buffer.c.o'),library_sha256=sha(out/'libvulkan_powervr_mesa.so'))
+ meta.update(pds_construct_metadata_only=True,pds_fs_meta_metadata_only=True,scissor_metadata_only=True,pds_original_sha256=sha(original),pds_source_sha256=sha(modified),pds_object_sha256=sha(out/'pvr_arch_cmd_buffer.c.o'),library_sha256=sha(out/'libvulkan_powervr_mesa.so'))
  (out/'diagnostic-manifest.json').write_text(json.dumps(meta,indent=2)+'\n')
 if __name__=='__main__':main()
