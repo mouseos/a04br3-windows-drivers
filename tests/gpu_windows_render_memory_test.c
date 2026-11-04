@@ -8,7 +8,7 @@
 #include "pvr_rogue_fwif_client.h"
 static unsigned allocated,freed,cleans,invalidations,fail_sync,fail_sync_at,fail_inv,expect_staged;
 static unsigned cleanup_calls,cleanup_fail_at;
-static unsigned kick_calls,kick_fail;
+static unsigned kick_calls,kick_fail,kick_fail_at;
 static void *alloc_buf(PDMA_ADAPTER a,ULONG n,PHYSICAL_ADDRESS *pa,BOOLEAN cache)
 { (void)a;(void)cache;pa->QuadPart=0x10000000u;++allocated;return aligned_alloc(4096,n); }
 static void free_buf(PDMA_ADAPTER a,ULONG n,PHYSICAL_ADDRESS pa,void *p,BOOLEAN cache)
@@ -25,8 +25,8 @@ NTSTATUS KeDelayExecutionThread(int mode,BOOLEAN alert,const LARGE_INTEGER *dela
 NTSTATUS a04_gpu_firmware_cleanup(struct a04_gpu_firmware_state *s,unsigned type,uint32_t address)
 { (void)type;assert(s && address);++cleanup_calls;return cleanup_calls==cleanup_fail_at ? STATUS_DEVICE_BUSY : STATUS_SUCCESS; }
 NTSTATUS a04_gpu_firmware_submit_kick(struct a04_gpu_firmware_state *s,const struct rogue_fwif_kccb_cmd *kick)
-{ assert(s && kick && kick->cmd_type==ROGUE_FWIF_KCCB_CMD_COMBINED_GEOM_FRAG_KICK);++kick_calls;
-  return kick_fail ? STATUS_IO_TIMEOUT : STATUS_SUCCESS; }
+{ assert(s && kick && (kick->cmd_type==ROGUE_FWIF_KCCB_CMD_COMBINED_GEOM_FRAG_KICK || kick->cmd_type==ROGUE_FWIF_KCCB_CMD_KICK));++kick_calls;
+  return kick_fail || kick_calls==kick_fail_at ? STATUS_IO_TIMEOUT : STATUS_SUCCESS; }
 int main(void)
 {
     DMA_OPERATIONS ops={alloc_buf,free_buf};struct fake_adapter adapter={&ops};
@@ -192,7 +192,8 @@ int main(void)
         zero[3]=0; }
       before=cleans;inv_before=invalidations;
       { struct rogue_fwif_cmd_geom geom={0};struct rogue_fwif_cmd_frag frag={0};
-        assert(a04_windows_render_prepare_pair(&m,&geom,&frag,1)==STATUS_SUCCESS);
+        assert(a04_windows_render_prepare_partial_pair(&m,&geom,&frag,NULL,1)==STATUS_INVALID_PARAMETER);
+        assert(a04_windows_render_prepare_partial_pair(&m,&geom,&frag,&frag,1)==STATUS_SUCCESS);
         assert(a04_windows_render_prepare_pair(&m,&geom,&frag,1)==STATUS_INVALID_PARAMETER);
         assert(a04_windows_render_submit_pair(&m)==STATUS_INVALID_PARAMETER && !kick_calls); }
       assert(a04_windows_render_publish_context(&m)==STATUS_SUCCESS && cleans==before+15 && invalidations==inv_before+1 && m.published);
@@ -201,8 +202,11 @@ int main(void)
       { struct a04_windows_render_memory copy=m;kick_fail=1;
         assert(a04_windows_render_submit_pair(&copy)==STATUS_IO_TIMEOUT && copy.poisoned && !copy.kick_submitted);
         assert(a04_windows_render_submit_pair(&copy)==STATUS_INVALID_PARAMETER);kick_fail=0; }
-      assert(a04_windows_render_submit_pair(&m)==STATUS_SUCCESS && m.kick_submitted && kick_calls==2);
-      assert(a04_windows_render_submit_pair(&m)==STATUS_INVALID_PARAMETER && kick_calls==2);
+      { struct a04_windows_render_memory copy=m;kick_fail_at=3;
+        assert(a04_windows_render_submit_pair(&copy)==STATUS_IO_TIMEOUT && copy.poisoned && !copy.kick_submitted);
+        assert(kick_calls==3 && a04_windows_render_submit_pair(&copy)==STATUS_INVALID_PARAMETER);kick_fail_at=0; }
+      assert(a04_windows_render_submit_pair(&m)==STATUS_SUCCESS && m.kick_submitted && kick_calls==5);
+      assert(a04_windows_render_submit_pair(&m)==STATUS_INVALID_PARAMETER && kick_calls==5);
       { uint32_t saved_next=s.runtime.next_free;
         uint32_t *trace;
         s.runtime.trace_control=0x200000;s.runtime.trace[0]=0x201000;s.runtime.trace[1]=0x20d000;s.runtime.next_free=0x219000;
@@ -224,6 +228,9 @@ int main(void)
       *(uint32_t *)m.render.geom_fence.cpu=1;*(uint32_t *)m.render.frag_fence.cpu=1;
       ((struct rogue_fwif_cccb_ctl *)m.render.geom_control.cpu)->read_offset=(uint32_t)(2u*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(struct rogue_fwif_cmd_geom)+sizeof(struct rogue_fwif_ufo));
       ((struct rogue_fwif_cccb_ctl *)m.render.frag_control.cpu)->read_offset=m.render.frag_end;
+      { struct a04_windows_render_memory copy=m;
+        assert(a04_windows_render_collect_pair(&copy)==STATUS_IO_TIMEOUT && copy.poisoned && !cleanup_calls); }
+      *(uint32_t *)m.render.frag_fence.cpu=2;
       { struct a04_windows_render_memory copy=m;cleanup_fail_at=3;
         assert(a04_windows_render_collect_pair(&copy)==STATUS_DEVICE_BUSY && copy.poisoned && !copy.cleanup_complete && cleanup_calls==3);
         assert(a04_windows_render_memory_free(&copy,TRUE)==STATUS_DEVICE_BUSY);cleanup_calls=0;cleanup_fail_at=0; }

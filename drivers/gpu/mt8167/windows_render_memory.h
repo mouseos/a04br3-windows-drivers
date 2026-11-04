@@ -42,8 +42,8 @@ struct a04_windows_render_memory {
     struct a04_render_hwrt_params target_params;
     BOOLEAN target_prepared;
     BOOLEAN cleanup_complete;
-    BOOLEAN kick_prepared,kick_submitted;
-    struct rogue_fwif_kccb_cmd kick;
+    BOOLEAN kick_prepared,kick_submitted,kick_partial;
+    struct rogue_fwif_kccb_cmd kick,final_kick;
     /* Optional diagnostic; candidate scan is not a GPU execution gate. */
     BOOLEAN trace_capture_enabled,trace_capture_valid,trace_capture_changed;
     NTSTATUS trace_capture_status;
@@ -81,12 +81,17 @@ NTSTATUS a04_windows_render_publish_context(struct a04_windows_render_memory *m)
  * Prepare before publishing; publish synchronizes rings and page tables. */
 NTSTATUS a04_windows_render_prepare_pair(struct a04_windows_render_memory *m,
     const struct rogue_fwif_cmd_geom *geom,const struct rogue_fwif_cmd_frag *frag,uint32_t job_id);
-/* Submit the prepared non-partial pair exactly once after publication. Any
- * failure after the submission attempt poisons the allocation; no retries or
- * releases without independent GPU/DMA quiescence. */
+/* Prepare both kicks and all ring commands before publishing. The first
+ * fragment is partial; final_frag is queued by the second kick. */
+NTSTATUS a04_windows_render_prepare_partial_pair(struct a04_windows_render_memory *m,
+    const struct rogue_fwif_cmd_geom *geom,const struct rogue_fwif_cmd_frag *partial_frag,
+    const struct rogue_fwif_cmd_frag *final_frag,uint32_t job_id);
+/* Submit the prepared pair exactly once after publication. For partial work,
+ * submit the final-fragment kick second. Any failure poisons the allocation;
+ * no retries or releases without independent GPU/DMA quiescence. */
 NTSTATUS a04_windows_render_submit_pair(struct a04_windows_render_memory *m);
-/* Collect one previously submitted, non-partial pair. Both fence values and
- * ring read offsets must reach their exact expected values before cleanup.
+/* Collect one submitted pair; for partial work require the final fence value.
+ * Both fences and ring read offsets must reach their expected values before cleanup.
  * Serialized caller; this does not submit, retire the MMU, or free memory. */
 NTSTATUS a04_windows_render_collect_pair(struct a04_windows_render_memory *m);
 /* Clean all pages and the bound firmware VM object, then wait for MMU

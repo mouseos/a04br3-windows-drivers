@@ -629,10 +629,11 @@ static void render_capture_trace(struct a04_windows_render_memory *m)
 done:
     m->trace_capture_status=status;
 }
-NTSTATUS a04_windows_render_prepare_pair(struct a04_windows_render_memory *m,
-    const struct rogue_fwif_cmd_geom *geom,const struct rogue_fwif_cmd_frag *frag,uint32_t job_id)
+static NTSTATUS render_prepare_pair(struct a04_windows_render_memory *m,
+    const struct rogue_fwif_cmd_geom *geom,const struct rogue_fwif_cmd_frag *frag,
+    const struct rogue_fwif_cmd_frag *final_frag,uint32_t job_id)
 {
-    struct a04_gpu_fw_arena arena={0};struct rogue_fwif_kccb_cmd kick={0};
+    struct a04_gpu_fw_arena arena={0};struct rogue_fwif_kccb_cmd kick={0},final_kick={0};
     struct a04_gpu_firmware_state *s;
     if (!m || !geom || !frag || !job_id || !m->ready || !m->firmware || !m->cpu ||
         !m->render_prepared || !m->target_prepared || !m->freelists_prepared || m->published ||
@@ -642,16 +643,27 @@ NTSTATUS a04_windows_render_prepare_pair(struct a04_windows_render_memory *m,
     if (!s->processor_released || !s->firmware_started || s->queue_faulted || !s->memory.heap ||
         s->memory.adapter!=m->adapter || a04_gpu_fw_arena_init(&arena,s->memory.heap,A04_PVR_HEAP_SIZE,
             (uint64_t)s->memory.heap_logical.QuadPart,s->runtime.next_free)) return STATUS_INVALID_DEVICE_STATE;
-    if (a04_gpu_prepare_render_pair(&arena,&m->render,&m->target.data,geom,frag,job_id,0,&kick))
+    if (a04_gpu_prepare_render_pair(&arena,&m->render,&m->target.data,geom,frag,job_id,final_frag!=NULL,&kick))
         return STATUS_INVALID_DEVICE_STATE;
-    m->kick=kick;m->kick_prepared=TRUE;
+    if (final_frag && a04_gpu_prepare_final_fragment(&arena,&m->render,&m->target.data,final_frag,job_id,&final_kick)) {
+        m->poisoned=TRUE;return STATUS_INVALID_DEVICE_STATE;
+    }
+    m->kick=kick;m->final_kick=final_kick;m->kick_partial=final_frag!=NULL;m->kick_prepared=TRUE;
     return STATUS_SUCCESS;
 }
+NTSTATUS a04_windows_render_prepare_pair(struct a04_windows_render_memory *m,
+    const struct rogue_fwif_cmd_geom *geom,const struct rogue_fwif_cmd_frag *frag,uint32_t job_id)
+{ return render_prepare_pair(m,geom,frag,NULL,job_id); }
+NTSTATUS a04_windows_render_prepare_partial_pair(struct a04_windows_render_memory *m,
+    const struct rogue_fwif_cmd_geom *geom,const struct rogue_fwif_cmd_frag *partial_frag,
+    const struct rogue_fwif_cmd_frag *final_frag,uint32_t job_id)
+{ if (!final_frag) return STATUS_INVALID_PARAMETER;return render_prepare_pair(m,geom,partial_frag,final_frag,job_id); }
 NTSTATUS a04_windows_render_submit_pair(struct a04_windows_render_memory *m)
 {
     NTSTATUS status;
     if (!m || !m->firmware || !m->published || m->poisoned || !m->kick_prepared || m->kick_submitted ||
-        m->cleanup_complete || m->render.pair_prepared!=1 || m->render.hwrt_fw!=m->target.data.fw_addr ||
+        m->cleanup_complete || m->render.pair_prepared!=(m->kick_partial?3u:1u) || m->render.hwrt_fw!=m->target.data.fw_addr ||
+        (m->kick_partial && m->final_kick.cmd_type!=ROGUE_FWIF_KCCB_CMD_KICK) ||
         m->kick.cmd_type!=ROGUE_FWIF_KCCB_CMD_COMBINED_GEOM_FRAG_KICK || KeGetCurrentIrql()!=PASSIVE_LEVEL)
         return STATUS_INVALID_PARAMETER;
     if (!m->firmware->processor_released || !m->firmware->firmware_started || m->firmware->queue_faulted)
@@ -660,6 +672,10 @@ NTSTATUS a04_windows_render_submit_pair(struct a04_windows_render_memory *m)
     m->poisoned=TRUE;
     status=a04_gpu_firmware_submit_kick(m->firmware,&m->kick);
     if (!NT_SUCCESS(status)) return status;
+    if (m->kick_partial) {
+        status=a04_gpu_firmware_submit_kick(m->firmware,&m->final_kick);
+        if (!NT_SUCCESS(status)) return status;
+    }
     m->kick_submitted=TRUE;m->poisoned=FALSE;
     return STATUS_SUCCESS;
 }
@@ -668,11 +684,16 @@ NTSTATUS a04_windows_render_collect_pair(struct a04_windows_render_memory *m)
     struct a04_gpu_firmware_state *s;struct rogue_fwif_cccb_ctl *gc,*fc;
     NTSTATUS status;LARGE_INTEGER delay;unsigned i;
     const uint32_t geom_end=(uint32_t)(2u*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(struct rogue_fwif_cmd_geom)+sizeof(struct rogue_fwif_ufo));
-    const uint32_t frag_end=(uint32_t)(3u*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(struct rogue_fwif_cmd_frag)+2u*sizeof(struct rogue_fwif_ufo));
+    const uint32_t base_frag_end=(uint32_t)(3u*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(struct rogue_fwif_cmd_frag)+2u*sizeof(struct rogue_fwif_ufo));
+    uint32_t frag_end,frag_fence;
     if (!m || !m->firmware || !m->published || m->poisoned || m->cleanup_complete || !m->target_prepared ||
-        !m->freelists_prepared || !m->render_prepared || !m->kick_submitted || m->render.pair_prepared!=1 ||
-        m->render.hwrt_fw!=m->target.data.fw_addr || m->render.frag_end!=frag_end ||
+        !m->freelists_prepared || !m->render_prepared || !m->kick_submitted ||
+        m->render.pair_prepared!=(m->kick_partial?3u:1u) ||
+        m->render.hwrt_fw!=m->target.data.fw_addr ||
         KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_INVALID_PARAMETER;
+    frag_end=base_frag_end+(m->kick_partial?(uint32_t)(2u*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(struct rogue_fwif_cmd_frag)+sizeof(struct rogue_fwif_ufo)):0u);
+    frag_fence=m->kick_partial?2u:1u;
+    if (m->render.frag_end!=frag_end) return STATUS_INVALID_PARAMETER;
     s=m->firmware;
     if (!s->processor_released || !s->firmware_started || s->queue_faulted ||
         !owned_fw(m,&m->render.context,sizeof(struct rogue_fwif_fwrendercontext)) ||
@@ -692,7 +713,7 @@ NTSTATUS a04_windows_render_collect_pair(struct a04_windows_render_memory *m)
         status=a04_gpu_dma_sync(fc,(ULONG)m->render.frag_control.size,TRUE);if(!NT_SUCCESS(status)) return status;
         status=a04_gpu_dma_sync(m->render.geom_fence.cpu,sizeof(uint32_t),TRUE);if(!NT_SUCCESS(status)) return status;
         status=a04_gpu_dma_sync(m->render.frag_fence.cpu,sizeof(uint32_t),TRUE);if(!NT_SUCCESS(status)) return status;
-        if (*(volatile uint32_t *)m->render.geom_fence.cpu==1 && *(volatile uint32_t *)m->render.frag_fence.cpu==1 &&
+        if (*(volatile uint32_t *)m->render.geom_fence.cpu==1 && *(volatile uint32_t *)m->render.frag_fence.cpu==frag_fence &&
             *(volatile uint32_t *)&gc->read_offset==geom_end && *(volatile uint32_t *)&fc->read_offset==frag_end) break;
         status=KeDelayExecutionThread(KernelMode,FALSE,&delay);if(!NT_SUCCESS(status)) return status;
     }
