@@ -105,6 +105,18 @@ int main(void)
            submits!=2 || memcmp(input+4096u,output+4096u,4u*4096u) ||
            output[0]!=0xa5 || output[5u*4096u]!=0xa5 || c.mapping.mapping.state!=A04_TRANSFER_SCRATCH)
             return 11;
+        {
+            uint8_t *a=malloc(4u*4096u),*b=malloc(4u*4096u);
+            if(!a || !b) return 15;
+            for(size_t i=0;i<4u*4096u;++i) a[i]=(uint8_t)(i^(i>>7));
+            memset(b,0x5a,4u*4096u);
+            if(a04_windows_linear_context_copy(&c,a,b) || submits!=3 || memcmp(a,b,4u*4096u)) return 16;
+            memset(b,0x5a,4u*4096u); fail_after=4;
+            if(a04_windows_linear_context_copy(&c,a,b)!=STATUS_IO_TIMEOUT || !s.queue_faulted ||
+               b[0]!=0x5a || b[4u*4096u-1u]!=0x5a || c.mapping.mapping.state!=A04_TRANSFER_POISONED)
+                return 17;
+            free(a); free(b);
+        }
         s.processor_released=FALSE;
         if(a04_windows_linear_context_free(&c,&s)!=STATUS_SUCCESS || releases!=4) return 12;
         s.processor_released=TRUE; s.queue_faulted=FALSE; submits=0; fail_after=1;

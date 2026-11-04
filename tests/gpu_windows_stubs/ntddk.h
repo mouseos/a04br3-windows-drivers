@@ -33,6 +33,7 @@ struct fake_adapter { DMA_OPERATIONS *DmaOperations; };
 #define KernelMode 0
 #define UNREFERENCED_PARAMETER(x) ((void)(x))
 #define RtlZeroMemory(p,n) memset((p),0,(n))
+#define RtlCopyMemory(d,s,n) memcpy((d),(s),(n))
 #define RtlFillMemory(p,n,v) memset((p),(v),(n))
 #define READ_REGISTER_ULONG(p) (*(p))
 #define WRITE_REGISTER_ULONG(p,v) (*(p)=(v))

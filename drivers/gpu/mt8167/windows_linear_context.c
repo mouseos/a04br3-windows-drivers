@@ -4,6 +4,48 @@
 #define PAGE 4096u
 #define PAGES (14u+A04_GPU_LINEAR_COPY_PAGES+12u)
 #define SIZE (PAGES*PAGE)
+#define PAYLOAD (4u*PAGE)
+
+static int overlaps(uintptr_t a,size_t alen,uintptr_t b,size_t blen)
+{ return a<=b ? b-a<alen : a-b<blen; }
+
+NTSTATUS a04_windows_linear_context_copy(struct a04_windows_linear_context *c,
+                                         const void *input,void *output)
+{
+    struct a04_gpu_firmware_state *s; struct a04_transfer_range ranges[3];
+    uint64_t src[6],dst[6],dma; uint8_t *source,*dest; size_t i,n=2; NTSTATUS status;
+    uintptr_t a=(uintptr_t)input,b=(uintptr_t)output,base,heap;
+    if (!c || !input || !output || !c->firmware || !c->memory.cpu ||
+        !c->memory.adapter || KeGetCurrentIrql()!=PASSIVE_LEVEL ||
+        c->mapping.mapping.state!=A04_TRANSFER_SCRATCH || !c->mapping.completed_fence ||
+        c->mapping.completed_fence==UINT32_MAX || a>UINTPTR_MAX-PAYLOAD || b>UINTPTR_MAX-PAYLOAD)
+        return STATUS_INVALID_PARAMETER;
+    s=c->firmware; base=(uintptr_t)c->memory.cpu; heap=(uintptr_t)s->memory.heap;
+    if (!heap || base>UINTPTR_MAX-SIZE || heap>UINTPTR_MAX-A04_PVR_HEAP_SIZE ||
+        overlaps(a,PAYLOAD,base,SIZE) || overlaps(b,PAYLOAD,base,SIZE) ||
+        overlaps(a,PAYLOAD,heap,A04_PVR_HEAP_SIZE) || overlaps(b,PAYLOAD,heap,A04_PVR_HEAP_SIZE))
+        return STATUS_INVALID_PARAMETER;
+    if (s->memory.table && ((uintptr_t)s->memory.table>UINTPTR_MAX-0x4000u ||
+        overlaps(a,PAYLOAD,(uintptr_t)s->memory.table,0x4000u) ||
+        overlaps(b,PAYLOAD,(uintptr_t)s->memory.table,0x4000u))) return STATUS_INVALID_PARAMETER;
+    dma=(uint64_t)c->memory.logical.QuadPart;
+    source=(uint8_t *)c->memory.cpu+(14u+A04_GPU_LINEAR_COPY_PAGES)*PAGE;
+    dest=(uint8_t *)c->memory.cpu+(20u+A04_GPU_LINEAR_COPY_PAGES)*PAGE;
+    for (i=0;i<6u;++i) {
+        src[i]=dma+(14u+A04_GPU_LINEAR_COPY_PAGES+i)*PAGE;
+        dst[i]=dma+(20u+A04_GPU_LINEAR_COPY_PAGES+i)*PAGE;
+    }
+    ranges[0].address=dma; ranges[0].length=(14u+A04_GPU_LINEAR_COPY_PAGES)*PAGE;
+    ranges[1].address=(uint64_t)s->memory.heap_logical.QuadPart; ranges[1].length=A04_PVR_HEAP_SIZE;
+    if (s->memory.table) {
+        ranges[2].address=(uint64_t)s->memory.table_logical.QuadPart; ranges[2].length=0x4000u; n=3;
+    }
+    RtlCopyMemory(source+PAGE,input,PAYLOAD);
+    status=a04_windows_linear_transfer(&c->mapping,&c->command,c->mapping.completed_fence+1u,
+                                       src,dst,source,dest,ranges,n);
+    if (!NT_SUCCESS(status)) return status;
+    RtlCopyMemory(output,dest+PAGE,PAYLOAD); return STATUS_SUCCESS;
+}
 
 NTSTATUS a04_windows_linear_context_free(struct a04_windows_linear_context *c,
                                         struct a04_gpu_firmware_state *s)

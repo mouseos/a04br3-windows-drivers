@@ -23,4 +23,13 @@ NTSTATUS a04_windows_linear_context_start(struct a04_windows_linear_context *con
                                          struct a04_gpu_firmware_state *firmware);
 NTSTATUS a04_windows_linear_context_free(struct a04_windows_linear_context *context,
                                         struct a04_gpu_firmware_state *firmware);
+/* Copy exactly 16 KiB via the two private common-buffer staging areas.
+ * Both input and output are trusted, resident kernel buffers, valid throughout
+ * the call. They may overlap each other but not the context's own DMA or the
+ * firmware heap. Caller serializes the context with all firmware commands.
+ * On failure, output is untouched and context resources remain retained until
+ * firmware stop if DMA might still be active. This is not an SG mapping or a
+ * framebuffer presentation interface. */
+NTSTATUS a04_windows_linear_context_copy(struct a04_windows_linear_context *context,
+                                         const void *input,void *output);
 #endif

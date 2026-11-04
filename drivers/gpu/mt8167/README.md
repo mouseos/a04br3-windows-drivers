@@ -186,3 +186,7 @@ connected to WDDM and is not yet validated on hardware. Do not ship it as a
 graphics driver; firmware compatibility, PnP and power management remain open.
 The opt-in linear WinPE diagnostic now initializes through this context and
 retains its DMA allocation until the existing firmware shutdown sequence.
+Its fixed 16 KiB staging-copy API copies through private DMA common buffers,
+checks protected ranges, and does not expose the caller's buffer to the GPU.
+The output is left untouched on error. This CPU-staged path is an integration
+building block, not evidence of faster display or direct framebuffer DMA.
