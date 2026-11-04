@@ -11,6 +11,8 @@ from pyfatfs.PyFatFS import PyFatFS
 p = argparse.ArgumentParser()
 p.add_argument('--source-esp', type=Path, required=True)
 p.add_argument('--source-sha256', required=True)
+p.add_argument('--verified-winpe-bcd-sha256', required=True,
+               help='BCD hash from a template already proven to boot WinPE on this device')
 p.add_argument('--wim', type=Path, required=True)
 p.add_argument('--output', type=Path, required=True)
 a = p.parse_args()
@@ -32,6 +34,8 @@ with PyFatFS(str(a.source_esp), preserve_case=True, read_only=True) as fat:
     for name in key_paths:
         with fat.openbin(name, 'r') as f:
             before[name] = digest(f)
+    if before['/EFI/Microsoft/Boot/BCD'] != a.verified_winpe_bcd_sha256.lower():
+        raise SystemExit('BCD does not match the verified WinPE template')
     matches = [name for name in fat.listdir('/sources') if name.lower() == 'boot.wim']
     if len(matches) != 1:
         raise SystemExit('Expected exactly one boot.wim in /sources')
