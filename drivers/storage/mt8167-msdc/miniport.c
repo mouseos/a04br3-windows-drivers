@@ -949,8 +949,8 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
                 if (chunk>8) chunk=8;
                 UNREFERENCED_PARAMETER(j);
                 KeQueryPerformanceCounter(&frequency);
-                if (frequency.QuadPart < 10 || result.action!=A04_SCSI_READ) { failure=1; break; }
-                clock.context=NULL; clock.now=A04SyncClock; clock.ticks=(uint64_t)frequency.QuadPart/10u;
+                if (frequency.HighPart != 0 || frequency.LowPart < 10 || result.action!=A04_SCSI_READ) { failure=1; break; }
+                clock.context=NULL; clock.now=A04SyncClock; clock.ticks=frequency.LowPart/10u;
                 pr=a04_sync_pio_read(&io,(ULONG)(result.blocks.lba+i),chunk,
                     probe->sync_staging,sizeof(probe->sync_staging),data+i*512,
                     available-i*512,200000,&clock);
