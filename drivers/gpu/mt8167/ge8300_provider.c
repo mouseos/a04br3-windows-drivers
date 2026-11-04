@@ -224,7 +224,9 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     c->status.processor_released=c->firmware.processor_released;
     c->status.firmware_started=c->firmware.firmware_started;
     c->status.queue_faulted=c->firmware.queue_faulted;
-    if(c->referenced && !c->firmware.processor_released) { WdfObjectDereference(c->dma); c->referenced=FALSE; }
+    if(c->referenced && !c->firmware.processor_released && !c->queue_memory.cpu) {
+        WdfObjectDereference(c->dma); c->referenced=FALSE;
+    }
     return STATUS_SUCCESS;
 #endif
 }
