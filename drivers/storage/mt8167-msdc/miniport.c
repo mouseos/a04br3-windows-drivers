@@ -6,6 +6,9 @@
 #include "pio.h"
 #include "io_gate.h"
 #include "multiblock_config.h"
+#if defined(A04_OWNED_DMA_EXPERIMENT) && (!A04_BOOT_MULTIBLOCK_EXPERIMENT || !defined(A04_VIRTUAL_BOUNCE_EXPERIMENT))
+#error Owned DMA experiment requires the gated virtual boot multiblock configuration
+#endif
 #ifdef A04_SYNC_PIO_MULTIREAD
 #include "sync_pio.h"
 #if !defined(A04_READONLY_DISK_PROBE) || defined(A04_DMA_PROBE) || defined(A04_DMA_DISK_PROBE) || defined(A04_PASSIVE_IO) || defined(A04_ENABLE_WRITES) || defined(A04_VIRTUAL_BOUNCE_EXPERIMENT) || A04_ANY_MULTIBLOCK
@@ -63,6 +66,18 @@ static volatile ULONG *A04Uart;
 static UCHAR A04EmmcIdentity[7];
 static BOOLEAN A04EmmcIdentityValid;
 #endif
+#ifdef A04_OWNED_DMA_EXPERIMENT
+/* Separate allocation retains the DMA adapter and common buffer if a later
+ * teardown cannot prove hardware quiescence. It does not retain Storport's
+ * extension or worker; the initialization gate below remains mandatory. */
+struct a04_owned_dma {
+    PDMA_ADAPTER adapter;
+    PDEVICE_OBJECT pdo;
+    PVOID buffer;
+    PHYSICAL_ADDRESS logical;
+    ULONG length;
+};
+#endif
 struct a04_probe_extension {
     volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; ULONG requests; BOOLEAN failed; BOOLEAN write_ready; BOOLEAN cache_disabled;
     a04_msdc_gate ioBusy;
@@ -74,6 +89,9 @@ struct a04_probe_extension {
     volatile LONG transfer_poisoned; /* Restart cannot establish DMA/card recovery. */
     a04_lifetime lifetime;
     PMDL retained_dma_mdl; /* Retained if a live DMA transfer cannot be drained. */
+#ifdef A04_OWNED_DMA_EXPERIMENT
+    struct a04_owned_dma *owned_dma;
+#endif
 #endif
 #ifdef A04_SERIAL_QUEUE_EXPERIMENT
     volatile LONG busyCount, gateBusyCount, workerInitFailCount, workerQueueFailCount;
@@ -91,6 +109,58 @@ struct a04_probe_extension {
     UCHAR *dma_buffer; ULONG dma_bus; ULONG dma_alignment;
 #endif
 };
+
+#ifdef A04_OWNED_DMA_EXPERIMENT
+/* PASSIVE_LEVEL only. Caller must prove that no worker, DMA or MMIO can
+ * use this object before freeing it; removal alone is not such proof. */
+static void A04OwnedDmaFree(struct a04_owned_dma *owner)
+{
+    if (!owner) return;
+    if (owner->buffer) owner->adapter->DmaOperations->FreeCommonBuffer(
+        owner->adapter,owner->length,owner->logical,owner->buffer,FALSE);
+    if (owner->adapter) owner->adapter->DmaOperations->PutDmaAdapter(owner->adapter);
+    if (owner->pdo) ObDereferenceObject(owner->pdo);
+    ExFreePoolWithTag(owner,'d4aA');
+}
+static int A04OwnedDmaAllocate(PVOID extension, struct a04_probe_extension *probe,
+                               PPORT_CONFIGURATION_INFORMATION config,ULONG alignment)
+{
+    PVOID fdo=NULL,pdo=NULL,lower=NULL;ULONG maps=0,offset;DEVICE_DESCRIPTION desc;
+    struct a04_owned_dma *owner;ULONGLONG address;
+    if (KeGetCurrentIrql()!=PASSIVE_LEVEL || !alignment || alignment>4096 ||
+        (alignment&(alignment-1)) || probe->owned_dma ||
+        StorPortGetDeviceObjects(extension,&fdo,&pdo,&lower)!=STOR_STATUS_SUCCESS || !pdo)
+        return 0;
+    owner=ExAllocatePoolWithTag(NonPagedPool,sizeof(*owner),'d4aA');
+    if (!owner)return 0;
+    RtlZeroMemory(owner,sizeof(*owner));owner->pdo=(PDEVICE_OBJECT)pdo;
+    ObReferenceObject(owner->pdo);
+    RtlZeroMemory(&desc,sizeof(desc));desc.Version=DEVICE_DESCRIPTION_VERSION2;
+    desc.Master=TRUE;desc.ScatterGather=FALSE;desc.Dma32BitAddresses=TRUE;
+    desc.InterfaceType=config->AdapterInterfaceType;desc.BusNumber=config->SystemIoBusNumber;
+    desc.MaximumLength=4096+alignment-1;
+    owner->adapter=IoGetDmaAdapter(owner->pdo,&desc,&maps);
+    if(!owner->adapter || !maps || !owner->adapter->DmaOperations ||
+       !owner->adapter->DmaOperations->AllocateCommonBuffer ||
+       !owner->adapter->DmaOperations->FreeCommonBuffer ||
+       !owner->adapter->DmaOperations->PutDmaAdapter) {
+        /* An adapter returned by the system is expected to supply PutDmaAdapter. */
+        if(owner->adapter && (!owner->adapter->DmaOperations || !owner->adapter->DmaOperations->PutDmaAdapter))
+            return 0; /* retain uncertain adapter and PDO rather than mis-free */
+        A04OwnedDmaFree(owner);return 0;
+    }
+    owner->length=desc.MaximumLength;
+    owner->buffer=owner->adapter->DmaOperations->AllocateCommonBuffer(owner->adapter,owner->length,&owner->logical,FALSE);
+    if(!owner->buffer){A04OwnedDmaFree(owner);return 0;}
+    address=(ULONGLONG)owner->logical.QuadPart;
+    offset=(ULONG)((0u-(ULONG)address)&(alignment-1));
+    if(address>0xffffffffULL || address+offset>0xffffffffULL-4095u ||
+       (((ULONG_PTR)owner->buffer+offset)&(alignment-1))) {A04OwnedDmaFree(owner);return 0;}
+    probe->owned_dma=owner;probe->dma_buffer=(UCHAR *)owner->buffer+offset;
+    probe->dma_bus=(ULONG)(address+offset);probe->dma_alignment=alignment;
+    return 1;
+}
+#endif
 
 static void A04Trace(const char *text)
 {
@@ -526,6 +596,11 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
         if (alignment > 512) return SP_RETURN_BAD_CONFIG;
         needed = 6 * 512;
 #endif
+#ifdef A04_OWNED_DMA_EXPERIMENT
+        UNREFERENCED_PARAMETER(bytes);UNREFERENCED_PARAMETER(needed);
+        UNREFERENCED_PARAMETER(aligned);UNREFERENCED_PARAMETER(allocation);UNREFERENCED_PARAMETER(physical);
+        if(!A04OwnedDmaAllocate(extension,probe,config,alignment))return SP_RETURN_ERROR;
+#else
         allocation = StorPortGetUncachedExtension(extension, config, needed + alignment - 1);
         if (!allocation) { A04Trace("A04WIN DMA buffer allocation failed\n"); return SP_RETURN_ERROR; }
         aligned = ((ULONG_PTR)allocation + alignment - 1) & ~((ULONG_PTR)alignment - 1);
@@ -540,6 +615,7 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
         }
         probe->dma_bus = physical.LowPart; probe->dma_alignment = alignment;
         A04Trace("A04WIN DMA buffer mapped bytes="); A04TraceHex(bytes); A04Trace("\n");
+#endif
     }
 #endif
 #ifdef A04_VIRTUAL_BOUNCE_EXPERIMENT
@@ -646,7 +722,12 @@ static BOOLEAN A04Initialize(PVOID extension)
      * The current reset path can complete an SRB before its worker exits, so
      * the local lifetime word cannot guarantee rundown. Never start this
      * configuration until port-level resource lifetime is actually solved. */
+#ifdef A04_OWNED_DMA_EXPERIMENT
+    /* No I/O has been admitted: this particular allocation is safe to free. */
+    A04OwnedDmaFree(probe->owned_dma);probe->owned_dma=NULL;probe->dma_buffer=NULL;
+#else
     UNREFERENCED_PARAMETER(probe);
+#endif
     A04Trace("A04WIN multiblock lifetime gate refuses start\n");
     return FALSE;
 #endif

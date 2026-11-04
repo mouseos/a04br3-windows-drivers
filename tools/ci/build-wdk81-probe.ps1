@@ -12,6 +12,10 @@ $pioSource = Join-Path $PSScriptRoot '..\..\drivers\storage\mt8167-msdc\pio.c'
 $driver = Join-Path $output 'miniport.sys'
 $extraObjects = @()
 $probeDefines = @()
+if ($env:A04_OWNED_DMA_EXPERIMENT -eq '1') {
+    if ($env:A04_BOOT_MULTIBLOCK_EXPERIMENT -ne '1' -or $env:A04_VIRTUAL_BOUNCE_EXPERIMENT -ne '1') { throw 'Owned DMA requires gated virtual boot multiblock configuration' }
+    $probeDefines += '-DA04_OWNED_DMA_EXPERIMENT=1'
+}
 if ($env:A04_SYNC_PIO_MULTIREAD -eq '1') {
     if ($env:A04_READONLY_DISK_PROBE -ne '1' -or $env:A04_DMA_PROBE -eq '1' -or $env:A04_DMA_DISK_PROBE -eq '1' -or $env:A04_PASSIVE_IO -eq '1' -or $env:A04_ENABLE_WRITES -eq '1' -or $env:A04_VIRTUAL_BOUNCE_EXPERIMENT -eq '1' -or $env:A04_DMA_MULTIBLOCK_EXPERIMENT -eq '1' -or $env:A04_BOOT_MULTIBLOCK_EXPERIMENT -eq '1' -or $env:A04_SCRATCH_MULTIBLOCK_EXPERIMENT -eq '1') { throw 'Synchronous PIO requires a physical read-only non-worker probe' }
     $probeDefines += '-DA04_SYNC_PIO_MULTIREAD'
