@@ -100,8 +100,11 @@ stream and its sparse GPU address-space snapshot are retained in
 resembling a host pointer was removed; GPU use of that location is unverified.
 The two image regions are
 initialized by the test itself. It maps private buffers, submits one transfer,
-and checks every destination byte. GPU copying and the safety of all captured
-indirect references are not yet established by this preparation.
+and checks every destination byte. On TAB-A04-BR3, c8559a3 completed one
+WinPE test with QUEUE=0 and SHUTDOWN=0, including comparison of all 16,384
+output bytes after the GPU fence. The source was a uniform color, so pixel
+ordering, orientation, general copy dimensions, display integration and
+long-term safety are not established by this result.
 `windows_hw.c` provides an experimental Windows ARM32 adapter: common DMA
 buffers use the device adapter's logical addresses, and split 32-bit MMIO
 writes follow the low-then-high order in this device's released Linux source.
