@@ -22,6 +22,7 @@ typedef struct {
     struct a04_gauge_bus bus;
     struct a04_battery_class battery;
     BOOLEAN online;
+    BOOLEAN faulted;
 } GAUGE_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(GAUGE_CONTEXT, GaugeContext)
 EVT_WDF_DRIVER_DEVICE_ADD GaugeAdd;
@@ -55,6 +56,7 @@ static void poll(GAUGE_CONTEXT *c)
     if (!c->online) return;
     if (a04_gauge_read_sample(&c->bus, &sample)) {
         changed = a04_battery_invalidate(&c->battery);
+        c->faulted = TRUE;
         c->online = FALSE; /* No reset/retry of shared I2C2 after failure. */
     } else changed = a04_battery_publish(&c->battery, &sample);
     if (changed) notify(c);
@@ -89,7 +91,7 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
 {
     GAUGE_CONTEXT *c = GaugeContext(device);
     UNREFERENCED_PARAMETER(previous);
-    if (!c->i2c) return STATUS_DEVICE_NOT_READY;
+    if (!c->i2c || c->faulted) return STATUS_DEVICE_NOT_READY;
     c->io.context = c; c->io.read16 = rd; c->io.write16 = wr; c->io.delay_us = delay;
     c->adapter.io = &c->io; c->adapter.monotonic_ns = now_ns; c->adapter.faulted = 0;
     c->bus.context = &c->adapter; c->bus.read_word_pec = a04_gauge_mt8167_read;
