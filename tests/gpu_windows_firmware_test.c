@@ -5,7 +5,7 @@
 #include "pvr_rogue_fwif.h"
 #include "pvr_rogue_defs.h"
 static struct a04_gpu_firmware_state state;
-static unsigned allocations, releases, signal_start, commands_completed, command_error;
+static unsigned allocations, releases, signal_start, commands_completed, command_error, sync_read, sync_write;
 static void *allocate(PDMA_ADAPTER adapter,ULONG size,PHYSICAL_ADDRESS *pa,BOOLEAN cache)
 {
     (void)adapter; (void)cache;
@@ -16,6 +16,11 @@ static void release(PDMA_ADAPTER a,ULONG size,PHYSICAL_ADDRESS pa,void *memory,B
 { (void)a; (void)size; (void)pa; (void)cache; ++releases; free(memory); }
 unsigned KeGetCurrentIrql(void) { return PASSIVE_LEVEL; }
 void KeStallExecutionProcessor(unsigned delay) { (void)delay; }
+PMDL IoAllocateMdl(void *p,ULONG n,BOOLEAN a,BOOLEAN b,void *c) { (void)n; (void)a; (void)b; (void)c; return p; }
+void MmBuildMdlForNonPagedPool(PMDL p) { (void)p; }
+void KeFlushIoBuffers(PMDL p,BOOLEAN read,BOOLEAN dma)
+{ (void)p; if(dma) { if(read) ++sync_read; else ++sync_write; } }
+void IoFreeMdl(PMDL p) { (void)p; }
 NTSTATUS KeDelayExecutionThread(int mode,BOOLEAN alertable,const LARGE_INTEGER *interval)
 {
     (void)mode; (void)alertable; (void)interval;
@@ -53,7 +58,7 @@ int main(int argc,char **argv)
     if(status!=STATUS_NOT_SUPPORTED || allocations || state.processor_released) return 4;
     signal_start=1;
     status=a04_gpu_firmware_boot(&state,&adapter,regs,0x80000,image,(size_t)n,A04_PVR_BVNC,TRUE,26000000);
-    if(status!=STATUS_SUCCESS || !state.processor_released || !state.firmware_started || allocations!=2 || releases) return 5;
+    if(status!=STATUS_SUCCESS || !state.processor_released || !state.firmware_started || allocations!=2 || releases || !sync_read || sync_write<2) return 5;
     if(a04_gpu_firmware_health(&state)!=STATUS_SUCCESS || commands_completed!=1 || command_error) return 10;
     if(a04_gpu_firmware_stop(&state,FALSE)!=STATUS_DEVICE_BUSY || releases || !state.processor_released) return 7;
     if(a04_gpu_firmware_shutdown(&state)!=STATUS_IO_TIMEOUT || commands_completed!=3 || command_error || releases || !state.processor_released) return 8;

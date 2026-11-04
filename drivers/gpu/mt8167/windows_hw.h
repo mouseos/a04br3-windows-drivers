@@ -18,4 +18,7 @@ void a04_gpu_free_memory(struct a04_gpu_dma_memory *memory);
 NTSTATUS a04_gpu_register_io_init(struct a04_gpu_register_context *context,
         volatile void *mapped_registers, ULONG length, struct a04_pvr_register_io *io);
 void a04_gpu_dma_barrier(void);
+/* device_writes=TRUE invalidates before the CPU reads; FALSE cleans before
+ * the GPU reads. The caller uses only nonpaged common-buffer ranges. */
+NTSTATUS a04_gpu_dma_sync(void *address, ULONG length, BOOLEAN device_writes);
 #endif

@@ -7,6 +7,7 @@
 #include <string.h>
 typedef uint8_t UCHAR, BOOLEAN; typedef uint32_t ULONG; typedef uintptr_t ULONG_PTR; typedef uint64_t ULONGLONG;
 typedef int32_t NTSTATUS;
+typedef void *PMDL;
 typedef union { int64_t QuadPart; } PHYSICAL_ADDRESS, LARGE_INTEGER;
 typedef struct fake_adapter *PDMA_ADAPTER;
 typedef struct {
@@ -27,6 +28,7 @@ struct fake_adapter { DMA_OPERATIONS *DmaOperations; };
 #define FALSE 0
 #define TRUE 1
 #define PASSIVE_LEVEL 0
+#define DISPATCH_LEVEL 2
 #define KernelMode 0
 #define UNREFERENCED_PARAMETER(x) ((void)(x))
 #define RtlZeroMemory(p,n) memset((p),0,(n))
@@ -36,4 +38,8 @@ struct fake_adapter { DMA_OPERATIONS *DmaOperations; };
 unsigned KeGetCurrentIrql(void);
 void KeStallExecutionProcessor(unsigned);
 NTSTATUS KeDelayExecutionThread(int,BOOLEAN,const LARGE_INTEGER *);
+PMDL IoAllocateMdl(void *,ULONG,BOOLEAN,BOOLEAN,void *);
+void MmBuildMdlForNonPagedPool(PMDL);
+void KeFlushIoBuffers(PMDL,BOOLEAN,BOOLEAN);
+void IoFreeMdl(PMDL);
 #endif

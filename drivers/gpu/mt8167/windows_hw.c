@@ -74,3 +74,15 @@ void a04_gpu_dma_barrier(void)
     KeMemoryBarrier();
 #endif
 }
+NTSTATUS a04_gpu_dma_sync(void *address,ULONG length,BOOLEAN device_writes)
+{
+    PMDL mdl;
+    if (!address || !length || KeGetCurrentIrql()>DISPATCH_LEVEL) return STATUS_INVALID_PARAMETER;
+    mdl=IoAllocateMdl(address,length,FALSE,FALSE,NULL);
+    if (!mdl) return STATUS_INSUFFICIENT_RESOURCES;
+    MmBuildMdlForNonPagedPool(mdl);
+    KeFlushIoBuffers(mdl,device_writes,TRUE);
+    IoFreeMdl(mdl);
+    a04_gpu_dma_barrier();
+    return STATUS_SUCCESS;
+}

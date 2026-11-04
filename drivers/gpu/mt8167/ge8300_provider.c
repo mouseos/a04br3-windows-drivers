@@ -5,6 +5,8 @@
 #include <wdf.h>
 #include "windows_firmware.h"
 #include "ge8300_status.h"
+#include "pvr_rogue_fwif.h"
+#include "pvr_rogue_defs.h"
 #ifndef A04_GE8300_BOOT_TEST
 #define A04_GE8300_BOOT_TEST 0
 #endif
@@ -54,6 +56,34 @@ done:
     if (data) ExFreePoolWithTag(data,'0XGA');
     ZwClose(file); return status;
 }
+static void GpuSnapshot(GPU_CONTEXT *c)
+{
+    struct a04_gpu_firmware_state *s=&c->firmware; uint8_t *heap=s->memory.heap;
+    struct rogue_fwif_ccb_ctl *ctl; struct rogue_fwif_connection_ctl *conn;
+    struct rogue_fwif_sysdata *sys; struct rogue_fwif_osdata *os; struct rogue_fwif_tracebuf *trace;
+    uint32_t *ret,*power,*words; uint64_t count; unsigned i;
+    if (!heap || !s->processor_released || !s->io.read32 || !s->io.read64) return;
+    ctl=(void *)(heap+s->runtime.kernel_ccb_control); ret=(void *)(heap+s->runtime.kernel_return_slots);
+    power=(void *)(heap+s->runtime.power_sync); sys=(void *)(heap+s->runtime.system_data);
+    os=(void *)(heap+s->runtime.os_data); trace=(void *)(heap+s->runtime.trace_control);
+    words=(void *)(heap+s->runtime.trace[0]); conn=(void *)(heap+A04_PVR_HEAP_SIZE-3u*65536u);
+#define SYNC(p,n,bit) do { if (!NT_SUCCESS(a04_gpu_dma_sync((p),(ULONG)(n),TRUE))) c->status.sync_error|=(bit); } while (0)
+    SYNC(ctl,sizeof(*ctl),1u); SYNC(ret,sizeof(*ret),2u); SYNC(power,sizeof(*power),4u);
+    SYNC(sys,sizeof(*sys),8u); SYNC(os,sizeof(*os),16u); SYNC(trace,sizeof(*trace),32u);
+    SYNC(words,4u*sizeof(*words),64u); SYNC(conn,sizeof(*conn),128u);
+#undef SYNC
+    c->status.queue_read=ctl->read_offset; c->status.queue_write=ctl->write_offset;
+    c->status.queue_return=ret[0]; c->status.power_sync=*power;
+    c->status.connection_fw=conn->connection_fw_state; c->status.connection_os=conn->connection_os_state;
+    c->status.fw_power_state=sys->pow_state; c->status.commands_executed=os->kccb_cmds_executed;
+    c->status.trace_pointer=trace->tracebuf[0].trace_pointer;
+    for (i=0;i<4;++i) c->status.trace_words[i]=words[i];
+    c->status.mts_enable=s->io.read32(s->io.context,ROGUE_CR_MTS_SCHEDULE_ENABLE);
+    c->status.mts_bg=s->io.read32(s->io.context,ROGUE_CR_MTS_BGCTX);
+    c->status.mts_int=s->io.read32(s->io.context,ROGUE_CR_MTS_INTCTX);
+    count=s->io.read64(s->io.context,ROGUE_CR_MTS_BGCTX_COUNTED_SCHEDULE);
+    c->status.mts_count_low=(ULONG)count; c->status.mts_count_high=(ULONG)(count>>32);
+}
 NTSTATUS GpuPrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
     GPU_CONTEXT *c=GpuContext(device); ULONG i, count=WdfCmResourceListGetCount(translated);
@@ -85,7 +115,7 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     PDMA_ADAPTER adapter;
     UNREFERENCED_PARAMETER(previous);
     if(c->attempted) return STATUS_SUCCESS;
-    c->attempted=TRUE; c->status.version=1;
+    c->attempted=TRUE; c->status.version=2;
 #if !A04_GE8300_BOOT_TEST
     c->status.boot_status=STATUS_NOT_SUPPORTED;
     return STATUS_SUCCESS;
@@ -108,8 +138,9 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     ExFreePoolWithTag(image,'0XGA');
     if(NT_SUCCESS(status)) {
         c->status.health_status=a04_gpu_firmware_health(&c->firmware);
+        GpuSnapshot(c);
         if(NT_SUCCESS(c->status.health_status)) c->status.shutdown_status=a04_gpu_firmware_shutdown(&c->firmware);
-    }
+    } else if(c->firmware.processor_released && c->firmware.runtime.system_init) GpuSnapshot(c);
     c->status.processor_released=c->firmware.processor_released;
     c->status.firmware_started=c->firmware.firmware_started;
     c->status.queue_faulted=c->firmware.queue_faulted;
