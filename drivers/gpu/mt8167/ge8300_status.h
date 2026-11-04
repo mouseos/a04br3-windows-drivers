@@ -9,5 +9,6 @@ struct a04_ge8300_status {
     unsigned long connection_fw, connection_os, fw_power_state, commands_executed;
     unsigned long mts_enable, mts_bg, mts_int, mts_count_low, mts_count_high;
     unsigned long trace_pointer, trace_words[4];
+    unsigned long mmu_status;
 };
 #endif

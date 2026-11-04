@@ -173,12 +173,14 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     PDMA_ADAPTER adapter;
     UNREFERENCED_PARAMETER(previous);
     if(c->attempted) return STATUS_SUCCESS;
-    c->attempted=TRUE; c->status.version=2;
+    c->attempted=TRUE; c->status.version=3;
 #if !A04_GE8300_BOOT_TEST
     c->status.boot_status=STATUS_NOT_SUPPORTED;
     return STATUS_SUCCESS;
 #else
     c->status.attempted=1;
+    c->status.mmu_status=STATUS_NOT_SUPPORTED;
+    c->status.shutdown_status=STATUS_NOT_SUPPORTED;
     GpuTraceStage(c,0x100);
     if(!c->core || !c->dma) { c->status.boot_status=STATUS_DEVICE_NOT_READY; return STATUS_SUCCESS; }
     status=read_firmware(&image,&bytes);
@@ -201,7 +203,10 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         GpuTraceStage(c,0x102);
         GpuSnapshot(c,TRUE);
         if(NT_SUCCESS(c->status.health_status)) {
-            c->status.shutdown_status=a04_gpu_firmware_shutdown(&c->firmware);
+            c->status.mmu_status=a04_gpu_firmware_invalidate_mmu(&c->firmware);
+            GpuTraceStage(c,0x103);
+            if(NT_SUCCESS(c->status.mmu_status))
+                c->status.shutdown_status=a04_gpu_firmware_shutdown(&c->firmware);
             /* Power-off may have gated MMIO; only inspect retained memory. */
             if(!NT_SUCCESS(c->status.shutdown_status) && c->firmware.processor_released)
                 GpuSnapshot(c,FALSE);
