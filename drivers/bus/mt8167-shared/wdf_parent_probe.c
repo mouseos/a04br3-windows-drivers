@@ -211,7 +211,7 @@ NTSTATUS ChildRequirements(WDFDEVICE child,WDFIORESREQLIST requirements)
     if(!NT_SUCCESS(status))WdfObjectDelete(list);
     return status;
 }
-static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance, ULONG base)
+static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance, ULONG base, int isEmmc)
 {
     PWDFDEVICE_INIT init; WDFDEVICE child; WDF_QUERY_INTERFACE_CONFIG query;
     UNICODE_STRING name; NTSTATUS status; WDF_OBJECT_ATTRIBUTES attr; WDF_PDO_EVENT_CALLBACKS callbacks;
@@ -236,6 +236,12 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
     if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    if(isEmmc) {
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedEmmcInterfaceGuid,NULL);
+        query.SendQueryToParentStack=TRUE;
+        status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    }
     status=WdfFdoAddStaticChild(parent,child);
     if(!NT_SUCCESS(status))WdfObjectDelete(child);
     return status;
@@ -305,12 +311,19 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #endif
 #if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE
     if(!NT_SUCCESS(status))return status;
-    status=ParentAddProbeChild(dev,L"A04BR3\\SharedButtonsProbe",L"0",0x10002000u);
+    status=ParentAddProbeChild(dev,L"A04BR3\\SharedButtonsProbe",L"0",0x10002000u,0);
     if(!NT_SUCCESS(status))return status;
-    status=ParentAddProbeChild(dev,L"A04BR3\\SharedTouchProbe",L"0",0x11009000u);
+    status=ParentAddProbeChild(dev,L"A04BR3\\SharedTouchProbe",L"0",0x11009000u,0);
     if(!NT_SUCCESS(status))return status;
     /* No guessed AFE resources: ChildRequirements rejects base zero. */
-    status=ParentAddProbeChild(dev,L"A04BR3\\SharedAudioProbe",L"0",0);
+    status=ParentAddProbeChild(dev,L"A04BR3\\SharedAudioProbe",L"0",0,0);
+#if defined(A04_SHARED_EMMC_CHILD_PROBE) && A04_SHARED_EMMC_CHILD_PROBE
+    if(!NT_SUCCESS(status))return status;
+    /* No controller or interrupt resources until firmware stops advertising
+     * MOU0001 and a verified bus IRQ polarity/translation contract exists.
+     * ChildRequirements intentionally rejects base zero. */
+    status=ParentAddProbeChild(dev,L"A04BR3\\SharedEmmcProbe",L"0",0,1);
+#endif
 #endif
     return status;
 }

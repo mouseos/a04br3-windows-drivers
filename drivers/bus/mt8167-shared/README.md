@@ -133,3 +133,25 @@ lease, change hardware, publish a child, or connect Storport; an object
 reference is not a power reference. Existing audio acquire remains fail-closed.
 Actual rail and clock control, card reinitialization, audio codec sequencing,
 PnP topology and Sx resume remain prerequisites for any operational connection.
+
+`A04_SHARED_EMMC_CHILD_PROBE=1` adds a fourth synthetic child and forwards
+its eMMC query to the real parent stack. The read-only INF in `prototype/`
+matches only that child. Both parent D0 and the eMMC child's resource query
+still reject startup: current firmware exposes the controller as ACPI
+`MOU0001`, and simply reporting the same address would compete with that
+owner. The original ACPI interrupt has level/active-low attributes; a software
+child's `IO_RESOURCE_DESCRIPTOR` uses bus-relative vector requirements and
+cannot be assumed to reproduce that wiring or translation. No MMIO range or
+interrupt is assigned to this child and no miniport can bind successfully.
+Firmware must select a mutually exclusive topology and a verified Windows 8.1
+interrupt/resource contract must be implemented before this changes.
+
+A physical Storport miniport must use the port/miniport contract; obtaining a
+PDO does not by itself authorize it to issue arbitrary WDM IRPs or call KMDF.
+The intended boundary is a real parent that keeps shared rails/clocks/pins
+owned through child power transitions and enumerates a dedicated controller
+PDO, with Storport receiving its private resources from PnP. The existing
+rail query is for an appropriate PASSIVE-level WDM/KMDF client and does not
+supply a working miniport connection. References:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/storage/overview-of-storage-virtual-miniport-drivers
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-_io_resource_descriptor

@@ -4,7 +4,7 @@
 #include "../drivers/bus/mt8167-shared/wdf_parent_probe.c"
 #include "../drivers/audio/mt8167-afe/audio_parent_client.h"
 static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;static A04_SHARED_EMMC_INTERFACE emmc;
-static A04_CHILD_CONTEXT children[3];static unsigned child_count,forward_count,appended,deleted;static int fail_step;static IO_RESOURCE_DESCRIPTOR descriptor;
+static A04_CHILD_CONTEXT children[4];static unsigned child_count,forward_count,appended,deleted;static int fail_step;static IO_RESOURCE_DESCRIPTOR descriptor;
 A04_CHILD_CONTEXT *ChildContext(WDFDEVICE d){return (A04_CHILD_CONTEXT *)d;}
 A04_PARENT_CONTEXT *ParentContext(WDFDEVICE d){(void)d;return &testContext;}
 void ExInitializeFastMutex(FAST_MUTEX *m){assert(!pthread_mutex_init(&m->mutex,NULL));m->held=0;}
@@ -21,7 +21,7 @@ ULONG READ_REGISTER_ULONG(volatile ULONG *p){(void)p;reads++;return 0;}void WRIT
 void KeStallExecutionProcessor(ULONG n){(void)n;}int KeGetCurrentIrql(void){return 0;}
 ULONG WdfCmResourceListGetCount(WDFCMRESLIST l){return l->count;}PCM_PARTIAL_RESOURCE_DESCRIPTOR WdfCmResourceListGetDescriptor(WDFCMRESLIST l,ULONG i){return &l->entries[i];}
 void WdfDeviceInitSetPnpPowerEventCallbacks(PWDFDEVICE_INIT i,WDF_PNPPOWER_EVENT_CALLBACKS *p){(void)i;(void)p;}
-NTSTATUS WdfDeviceCreate(PWDFDEVICE_INIT *i,WDF_OBJECT_ATTRIBUTES *a,WDFDEVICE *d){(void)a;if(*i){assert(child_count<3);*d=&children[child_count++];*i=NULL;}else *d=&testContext;return 0;}
+NTSTATUS WdfDeviceCreate(PWDFDEVICE_INIT *i,WDF_OBJECT_ATTRIBUTES *a,WDFDEVICE *d){(void)a;if(*i){assert(child_count<4);*d=&children[child_count++];*i=NULL;}else *d=&testContext;return 0;}
 NTSTATUS WdfDriverCreate(PDRIVER_OBJECT d,PUNICODE_STRING p,void *a,WDF_DRIVER_CONFIG *c,void *h){(void)d;(void)p;(void)a;(void)c;(void)h;return 0;}
 void WdfObjectReference(WDFDEVICE d){(void)d;refs++;}void WdfObjectDereference(WDFDEVICE d){(void)d;refs--;}
 NTSTATUS WdfDeviceAddQueryInterface(WDFDEVICE d,WDF_QUERY_INTERFACE_CONFIG *q){(void)d;if(!q->Interface){assert(q->SendQueryToParentStack);forward_count++;return 0;}if(!memcmp(q->Guid,&A04SharedInterfaceGuid,sizeof(GUID)))memcpy(&input,q->Interface,sizeof(input));else if(!memcmp(q->Guid,&A04SharedAudioInterfaceGuid,sizeof(GUID)))memcpy(&audio,q->Interface,sizeof(audio));else if(!memcmp(q->Guid,&A04SharedEmmcInterfaceGuid,sizeof(GUID)))memcpy(&emmc,q->Interface,sizeof(emmc));else memcpy(&saved,q->Interface,sizeof(saved));return 0;}
@@ -44,7 +44,8 @@ int main(void){
  entries[0].u.Memory.Start.QuadPart=0x10000000;entries[1].u.Memory.Start.QuadPart=0x10001000;entries[2].u.Memory.Start.QuadPart=0x10005000;entries[3].u.Memory.Start.QuadPart=0x1000f000;
  entries[0].u.Memory.Length=entries[1].u.Memory.Length=entries[2].u.Memory.Length=entries[3].u.Memory.Length=0x1000;
  assert(!ParentAdd(NULL,NULL));
- assert(child_count==3 && forward_count==6);
+ assert(child_count==4 && forward_count==9);
+ assert(ChildRequirements(&children[3],NULL)==STATUS_DEVICE_CONFIGURATION_ERROR && appended==0);
  assert(ChildRequirements(&children[2],NULL)==STATUS_DEVICE_CONFIGURATION_ERROR && appended==0);
  assert(!ChildRequirements(&children[0],NULL) && appended==1 && descriptor.Type==CmResourceTypeMemory && descriptor.ShareDisposition==CmResourceShareDeviceExclusive && descriptor.u.Memory.Length==0x1000 && descriptor.u.Memory.MinimumAddress.QuadPart==0x10002000 && descriptor.u.Memory.MaximumAddress.QuadPart==0x10002fff);
  assert(!ChildRequirements(&children[1],NULL) && appended==2 && descriptor.u.Memory.MinimumAddress.QuadPart==0x11009000 && descriptor.u.Memory.MaximumAddress.QuadPart==0x11009fff);
