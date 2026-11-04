@@ -87,3 +87,7 @@ python3 tools/gpu/check-render-uploads.py NEW_PRIVATE_CAPTURE_DIR
 アップロード診断は、PDS/USCの範囲をVMイベントと同じ非公開JSONLにも記録する。`check-render-trace.py` は記録時点のマップに範囲が収まるか、複数VMに曖昧に一致するかを数える。`render-upload-candidates.py EVENTS_JSONL` は各geometry/fragmentジョブ時点で残るアップロードを候補として数える。上書きが観測された候補は除外するが、計測対象外のCPU書込みや間接参照は追跡しないため、候補は到達証明ではない。並列イベントの厳密な順序も未保証。
 
 Windowsの `A04_GE8300_RENDER_EXPERIMENT=1` は、診断用の結合geometry/fragment kickとfirmware cleanupを許可するコンパイル時スイッチで、既定は0。cleanupはreturn slotの応答のみを使い、execution counterの変化だけでは成功にしない。BUSY、応答なし、poll failureでは資源を保持する。ホストmockのみで検証しており、実GPUの結果ではない。VAの完全な所有確認、DMA取得・同期、固定fixture、cleanup後の解放をつなぐ実行パスは未完成。
+
+`run-render-capture.py --dump-control-stream` はMesa自身のcontrol streamデコーダを有効にし、非公開の `probe.log` とmanifestのハッシュを生成する。**probe.logにはホストアドレスや生BOが含まれ得るため公開しない。** `summarize-render-csb.py CAPTURE_DIR` は内容を転載せずブロックとフィールドの件数を集計し、PDSアドレスの先頭が、いつか記録されたupload範囲内かを照合する。Mesaのdumpは最初のcontrol stream BOのみを解析し、照合はジョブ時点の生存や全到達範囲の検証ではない。
+
+`windows_render_memory.c` は既定OFFの試験用部品。DMA common bufferの取得・ゼロ初期化、所有領域の範囲と重複検査、BRN65273領域と指定VAのページテーブル生成、全域のCPU→GPU同期とMMU無効化待ちを行う。payloadの生成とキックには接続しない。失敗時もメモリを保持し、解放にはprocessor停止だけでなく、呼出し側が別途確立したGPU DMA停止の確認を要する。実行中のfree、WDDM、電源遷移、実機上の整合性は未検証。

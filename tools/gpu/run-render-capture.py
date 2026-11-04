@@ -17,6 +17,7 @@ def main():
     for name in ('mesa-source','mesa-build','shim','probe-source','output'):
         p.add_argument('--'+name,required=True,type=pathlib.Path)
     p.add_argument('--diagnostic',type=pathlib.Path)
+    p.add_argument('--dump-control-stream',action='store_true')
     a=p.parse_args(); src=a.probe_source.resolve(); mesa=a.mesa_source.resolve(); build=a.mesa_build.resolve(); shim=a.shim.resolve(); out=a.output.resolve()
     if git(src,'rev-parse','HEAD') != PROBE_PIN or git(src,'status','--porcelain','--untracked-files=all'):
         raise SystemExit('probe source must be clean pinned commit')
@@ -41,6 +42,8 @@ def main():
     binary=out/'probe'
     subprocess.run(['cc','-std=gnu11','-Wall','-Wextra','-Werror','-I'+str(mesa/'include'),str(HERE/'vulkan-capture-probe.c'),str(probe_src),'-ldl','-o',str(binary)],check=True)
     env=os.environ.copy()
+    env.pop('PVR_DEBUG',None)
+    if a.dump_control_stream: env['PVR_DEBUG']='cs'
     for key in ('PVR_SHIM_QUIRKS','PVR_SHIM_ENHANCEMENTS','PVR_SHIM_MUSTHAVE_QUIRKS'):
         env.pop(key, None)
     env.update(PVR_SHIM_DEVICE_BVNC='22.67.54.30', MESA_SHADER_CACHE_DISABLE='true', LD_PRELOAD=str(shim/'enumeration.so') + ':' + str(shim/'shim.so'), A04_CAPTURE_JSONL=str(out/'events.jsonl'), PVR_I_WANT_A_BROKEN_VULKAN_DRIVER='1')
@@ -54,7 +57,7 @@ def main():
     manifest={'mesa_build_manifest':meta,'diagnostic_manifest':diagnostic,'probe_commit':PROBE_PIN,'probe_remote':git(src,'remote','get-url','origin'),
               'probe_source_sha256':sha(probe_src),'probe_header_sha256':sha(src/'package/powervr/user/powervrprobed.h'),'shader_header_sha256':sha(header),
               'harness_sha256':sha(HERE/'vulkan-capture-probe.c'),'probe_binary_sha256':sha(binary),
-              'events_sha256':sha(event),'probe_exit_code':result.returncode, 'shim_bvnc':'22.67.54.30',
+              'events_sha256':sha(event),'probe_log_sha256':sha(out/'probe.log'), 'control_stream_dump':a.dump_control_stream, 'probe_exit_code':result.returncode, 'shim_bvnc':'22.67.54.30',
               'note':'The shim does not execute GPU work; probe success is not expected.'}
     if diagnostic and diagnostic.get('upload_metadata_only'):
         manifest['uploads_sha256']=sha(out/'uploads.jsonl')
