@@ -18,6 +18,7 @@
 #endif
 #if A04_GE8300_LINEAR_TEST
 #include "linear_copy_fixture.h"
+#include "windows_transfer_mapping.h"
 #define TEST_PAGES (14u+A04_GPU_LINEAR_COPY_PAGES+12u)
 #elif A04_GE8300_COPY_TEST
 #include "copy_fixture.h"
@@ -50,7 +51,18 @@ static NTSTATUS linear_repeat(struct a04_gpu_firmware_state *s,struct a04_gpu_fw
     struct rogue_fwif_cccb_ctl *ctl=q->control.cpu; delay.QuadPart=-100000;
     uint8_t *source=pages+(14u+A04_GPU_LINEAR_SOURCE_PAGE)*4096u;
     uint8_t *image=pages+(14u+A04_GPU_LINEAR_DEST_PAGE)*4096u;
+    struct a04_windows_transfer_mapping mapping;
+    uint64_t scratch_src[6],scratch_dst[6];
+    struct a04_transfer_range protected_ranges[2]={{dma,(14u+A04_GPU_LINEAR_COPY_PAGES)*4096u},
+        {(uint64_t)s->memory.heap_logical.QuadPart,A04_PVR_HEAP_SIZE}};
     unsigned alternate=0;
+    for (size_t n=0;n<6u;++n) {
+        scratch_src[n]=dma+(14u+A04_GPU_LINEAR_SOURCE_PAGE+n)*4096u;
+        scratch_dst[n]=dma+(14u+A04_GPU_LINEAR_DEST_PAGE+n)*4096u;
+    }
+    status=a04_windows_transfer_mapping_init(&mapping,s,q,(uint64_t *)(void *)(pages+7u*4096u),
+                                             scratch_src,scratch_dst,1u);
+    if (!NT_SUCCESS(status)) return status;
     for (unsigned round=1;round<=145u;++round) {
         unsigned poll;
         if (s->trace && (round==1u || !(round%32u) || round==145u)) s->trace(s->trace_context,0x200u+round);
@@ -69,12 +81,12 @@ static NTSTATUS linear_repeat(struct a04_gpu_firmware_state *s,struct a04_gpu_fw
             src_first=alternate ? 14u+A04_GPU_LINEAR_COPY_PAGES : 14u+A04_GPU_LINEAR_SOURCE_PAGE;
             dst_first=alternate ? 20u+A04_GPU_LINEAR_COPY_PAGES : 14u+A04_GPU_LINEAR_DEST_PAGE;
             for (size_t n=0;n<6u;++n) { src_pages[n]=dma+(src_first+n)*4096u; dst_pages[n]=dma+(dst_first+n)*4096u; }
-            if (a04_gpu_mmu_replace_pages_4k((uint64_t *)(void *)(pages+7u*4096u),
-                    UINT64_C(0x80000b6000),src_pages,6,0) ||
-                a04_gpu_mmu_replace_pages_4k((uint64_t *)(void *)(pages+7u*4096u),
-                    UINT64_C(0x80000bc000),dst_pages,6,0)) return STATUS_DEVICE_CONFIGURATION_ERROR;
-            status=a04_gpu_dma_sync(pages+7u*4096u,4096u,FALSE); if (!NT_SUCCESS(status)) return status;
-            status=a04_gpu_firmware_invalidate_mmu(s); if (!NT_SUCCESS(status)) return status;
+            mapping.completed_fence=round;
+            if (alternate ? a04_transfer_map(&mapping.mapping,src_pages,dst_pages,protected_ranges,2) :
+                            a04_transfer_restore(&mapping.mapping)) {
+                if (mapping.mapping.state==A04_TRANSFER_POISONED) s->queue_faulted=TRUE;
+                return NT_SUCCESS(mapping.last_status) ? STATUS_DEVICE_CONFIGURATION_ERROR : mapping.last_status;
+            }
             source=pages+src_first*4096u; image=pages+dst_first*4096u;
         }
         for (size_t n=0;n<6u*4096u;++n) source[n]=linear_pattern(n,round);

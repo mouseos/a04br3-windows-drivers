@@ -161,3 +161,18 @@ cc -std=c11 -Wall -Wextra -Werror -I drivers/gpu/mt8167 -I drivers/gpu/mt8167/co
 cc -std=c11 -Wall -Wextra -Werror -I tests/gpu_windows_stubs -I drivers/gpu/mt8167 -I drivers/gpu/mt8167/compat -I drivers/gpu/mt8167/fwif tests/gpu_windows_firmware_test.c drivers/gpu/mt8167/firmware.c drivers/gpu/mt8167/firmware_runtime.c drivers/gpu/mt8167/firmware_start.c drivers/gpu/mt8167/windows_hw.c drivers/gpu/mt8167/windows_firmware.c drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/firmware_objects.c drivers/gpu/mt8167/firmware_queue.c drivers/gpu/mt8167/windows_queue_test.c -o /tmp/a04-gpu-win-test
 /tmp/a04-gpu-win-test /path/to/rogue_22.67.54.30_v1.fw
 ```
+# DMA page replacement for fixed linear transfers
+
+`transfer_mapping` and `windows_transfer_mapping` encapsulate the tested
+six-page source and destination VA replacement sequence. The Windows adapter
+waits for both the fence and the queue read offset, cleans the leaf table and
+waits for firmware MMU invalidation. The caller must serialize access, supply
+OS-owned DMA mappings and exclude every GPU-owned DMA range. On an ambiguous
+failure the mapping is poisoned and old and new memory must remain allocated
+until GPU DMA has stopped. External mappings can be released only after a
+successful scratch restore and invalidate acknowledgement. The helpers do not
+acquire Windows scatter/gather mappings, synchronize external buffers, submit
+jobs, implement power management or connect the WDDM presentation path.
+
+The existing linear diagnostic now exercises these helpers in the simulated
+test; this integration has not yet been verified on the device.
