@@ -127,6 +127,12 @@ def check(path):
             if e['kind'] not in ('vertex_attributes','descriptor_mappings') or e['ordinal']<0 or e['entry_type']<0:
                 raise ValueError('invalid PDS entry')
             pds_entries += 1
+        elif op == 'pco_binary':
+            if e['stage'] < 0 or e['size'] <= 0 or e['internal'] not in (0,1) or not 0 <= e['fnv64'] < 1<<64:
+                raise ValueError('invalid compiler binary metadata')
+        elif op == 'usc_upload_hash':
+            if e['gpu_va'] <= 0 or e['gpu_va'] >= GPU_LIMIT or e['size'] <= 0 or e['size'] > GPU_LIMIT-e['gpu_va'] or not 0 <= e['fnv64'] < 1<<64:
+                raise ValueError('invalid USC upload hash')
         elif op == 'submit_begin':
             if open_submit is not None: raise ValueError('nested submit')
             open_submit = [e['count'],0]; submits += 1

@@ -126,3 +126,18 @@ python3 tools/gpu/reconstruct-pds-data.py PRIVATE_CAPTURE --index 0 --output NEW
 さらに `pvr_arch_pipeline.c` の `pvr_pds_fragment_program_create` はstaging bufferを `vk_alloc2` で取得し、`pvr_pds.c` の `pvr_pds_kick_usc` は32バイトのデータ領域のうちDOUTUの８バイトだけを明示的に書く。`setup_pds_fragment_program` は後でその８バイトを更新するが、uploadはデータ領域32バイトをコピーする。従って残り24バイトの由来は未確認であり、ゼロ初期化を保証しない元のstaging bytesやそのままのBOをfixtureに使用しない。GPUに必要なDOUTUを型付き情報から生成し、残りをゼロから作る必要がある。
 
 `reconstruct-fragment-pds.py PRIVATE_CAPTURE --index 0 --output NEW_PRIVATE_DIR --experimental-incomplete` は、検証した単一sampleのGPU shader entryとDOUTU制御値、Mesaの単一DOUTU命令から48バイトを生成する。データ内24バイトとコード確保内12バイトの未使用部はゼロとする。DOUTU先頭８バイトと命令４バイトについて、独立した２回のキャプチャでMesa生成結果のFNV値と一致した。`a04_render_make_fragment_pds` は同じ構成を所有済み実行可能GPU範囲を検査して生成するホスト側部品で、GPU投入経路には接続していない。FNVは非暗号学的照合であり、shader自体の内容や残る間接参照は検証しない。
+
+## USC compilerの由来と書込み検査
+
+Mesaの `pvr_arch_pipeline.c` は固定probeのSPIR-VからNIRとPCO IRを経て `pco_encode_ir` を呼び、vertexとfragmentの `pco_shader_binary_data` を `pvr_gpu_upload_usc` に渡す。`build-mesa-usc-diagnostic.py` は一時的なMesa診断ライブラリだけを作り、PCOの各符号化先を指定パターンで埋めてから生成し、compiler出力のstage・サイズ・FNVを記録する。upload直前にも同じ範囲のハッシュとGPUアドレスを記録する。BOや命令バイト、ホストポインタは記録しない。
+
+```sh
+python3 tools/gpu/build-mesa-upload-diagnostic.py --source MESA_SOURCE --build MESA_BUILD --sipf1 SIPF1_DIR --output NEW_UPLOAD_DIR
+python3 tools/gpu/build-mesa-pds-writes.py --source MESA_SOURCE --build MESA_BUILD --sipf1 SIPF1_DIR --uploads NEW_UPLOAD_DIR --output NEW_PDS_DIR
+python3 tools/gpu/build-mesa-usc-diagnostic.py --source MESA_SOURCE --build MESA_BUILD --sipf1 SIPF1_DIR --uploads NEW_UPLOAD_DIR --pds NEW_PDS_DIR --output NEW_USC_DIR
+python3 tools/gpu/run-render-capture.py --mesa-source MESA_SOURCE --mesa-build MESA_BUILD --shim SHIM_DIR --probe-source CLEAN_UNIXNU_SOURCE --diagnostic NEW_USC_DIR --pco-fill 00 --output PRIVATE_ZERO --dump-control-stream
+python3 tools/gpu/run-render-capture.py --mesa-source MESA_SOURCE --mesa-build MESA_BUILD --shim SHIM_DIR --probe-source CLEAN_UNIXNU_SOURCE --diagnostic NEW_USC_DIR --pco-fill ff --output PRIVATE_ONES --dump-control-stream
+python3 tools/gpu/check-render-usc.py PRIVATE_ZERO PRIVATE_ONES
+```
+
+２回の独立したshim実行では、２組のvertex 312バイトとfragment 360バイトについて、PCO生成結果とPDSから参照されたuploadのハッシュが一致し、ゼロと全ビット１の事前初期化でも一致した。これは特定probeでの上書き状況を調べる診断で、衝突耐性のある一致証明でも、shaderの即値が安全である証明でもない。upload後の未計測CPU書込み、shader実行時の間接参照、VDM/PPPの全参照、ジョブ完了までの寿命は未確定。shader fixtureの公開やGPU投入、DMA/kickへの接続は行わない。

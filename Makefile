@@ -17,6 +17,7 @@ test: build/msdc_sync_pio_test build/gpu_render_pds_data_test test-mt8167-dl1-en
 	python3 tests/gpu_render_pds_reconstruct_test.py
 	python3 tests/gpu_render_trace_test.py
 	python3 tests/gpu_render_fragment_test.py
+	python3 tests/gpu_render_usc_test.py
 	./build/gpu_windows_render_memory_test
 	./build/gpu_render_kick_off
 	./build/gpu_render_kick_on
