@@ -8,15 +8,19 @@
 #include <wdf.h>
 #include "parent_resources.h"
 #include "pwrap_owner.h"
+#include "register_owner.h"
+#include "client_interface.h"
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
-typedef struct { PVOID topck,infra,gpio,pwrap; FAST_MUTEX pwrapLock; struct a04_pwrap_owner pmic; } A04_PARENT_CONTEXT;
+typedef struct { PVOID topck,infra,gpio,pwrap; FAST_MUTEX pwrapLock; struct a04_pwrap_owner pmic; struct a04_register_owner regs; } A04_PARENT_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_PARENT_CONTEXT,ParentContext)
 EVT_WDF_DRIVER_DEVICE_ADD ParentAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE ParentPrepare;
 EVT_WDF_DEVICE_RELEASE_HARDWARE ParentRelease;
 EVT_WDF_DEVICE_D0_ENTRY ParentD0;
+EVT_WDF_DEVICE_D0_EXIT ParentD0Exit;
+EVT_WDF_DEVICE_SURPRISE_REMOVAL ParentSurprise;
 static int ParentLock(void *context) { ExAcquireFastMutex((FAST_MUTEX *)context);return 0; }
 static void ParentUnlock(void *context) { ExReleaseFastMutex((FAST_MUTEX *)context); }
 static uint32_t ParentPwrapRead(void *context,unsigned offset) {
@@ -28,7 +32,55 @@ static void ParentPwrapWrite(void *context,unsigned offset,uint32_t value) {
     WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->pwrap+offset),value);
 }
 static void ParentPwrapDelay(void *context) { UNREFERENCED_PARAMETER(context);KeStallExecutionProcessor(1); }
+static int ParentRegRead(void *context,enum a04_shared_bank bank,unsigned offset,uint32_t *value)
+{
+    A04_PARENT_CONTEXT *c=context; PVOID base;
+    if (!value || offset>0xffcu || (offset&3)) return -1;
+    base=bank==A04_SHARED_TOP?c->topck:bank==A04_SHARED_INFRA?c->infra:bank==A04_SHARED_GPIO?c->gpio:NULL;
+    if(!base)return -1;
+    *value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)base+offset));return 0;
+}
+static int ParentRegWrite(void *context,enum a04_shared_bank bank,unsigned offset,uint32_t value)
+{
+    A04_PARENT_CONTEXT *c=context; PVOID base;
+    if(offset>0xffcu || (offset&3))return -1;
+    base=bank==A04_SHARED_TOP?c->topck:bank==A04_SHARED_INFRA?c->infra:bank==A04_SHARED_GPIO?c->gpio:NULL;
+    if(!base)return -1;
+    WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)base+offset),value);return 0;
+}
+static int ParentRegLock(void *context) { return ParentLock(&((A04_PARENT_CONTEXT *)context)->pwrapLock); }
+static void ParentRegUnlock(void *context) { ParentUnlock(&((A04_PARENT_CONTEXT *)context)->pwrapLock); }
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
+static int ParentBank(unsigned bank,enum a04_shared_bank *out)
+{
+    if(bank==A04_INTERFACE_TOUCH_GPIO)*out=A04_SHARED_GPIO;
+    else if(bank==A04_INTERFACE_TOUCH_TOP)*out=A04_SHARED_TOP;
+    else if(bank==A04_INTERFACE_TOUCH_INFRA)*out=A04_SHARED_INFRA;
+    else return -1;
+    return 0;
+}
+static int ParentTouchUpdate(PVOID context,unsigned bank,unsigned off,ULONG mask,ULONG bits)
+{
+    enum a04_shared_bank b;
+    if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL || ParentBank(bank,&b))return -1;
+    return a04_register_touch_update(&ParentContext((WDFDEVICE)context)->regs,b,off,mask,bits);
+}
+static int ParentTouchWrite(PVOID context,unsigned bank,unsigned off,ULONG value)
+{
+    enum a04_shared_bank b;
+    if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL || ParentBank(bank,&b))return -1;
+    return a04_register_touch_write(&ParentContext((WDFDEVICE)context)->regs,b,off,value);
+}
+static int ParentTouchPen(PVOID context,int *down)
+{
+    if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+    return a04_register_touch_input(&ParentContext((WDFDEVICE)context)->regs,down);
+}
+static int ParentButtonRead(PVOID context,USHORT *value)
+{
+    if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+    return a04_pwrap_owner_read_buttons(&ParentContext((WDFDEVICE)context)->pmic,value);
+}
 static VOID ParentInterfaceReference(PVOID context) { WdfObjectReference((WDFDEVICE)context); }
 static VOID ParentInterfaceDereference(PVOID context) { WdfObjectDereference((WDFDEVICE)context); }
 static NTSTATUS ParentReadButtons(PVOID context,USHORT *value) {
@@ -38,9 +90,14 @@ static NTSTATUS ParentReadButtons(PVOID context,USHORT *value) {
     return a04_pwrap_owner_read_buttons(&c->pmic,value)==0 ? STATUS_SUCCESS:STATUS_DEVICE_NOT_READY;
 }
 #endif
+static void ParentStop(A04_PARENT_CONTEXT *c)
+{
+    if(c->regs.lock) (void)a04_register_owner_stop(&c->regs);
+    if(c->pmic.lock) (void)a04_pwrap_owner_stop(&c->pmic);
+}
 static void ParentUnmap(A04_PARENT_CONTEXT *c)
 {
-    if(c->pmic.lock) (void)a04_pwrap_owner_stop(&c->pmic);
+    ParentStop(c);
     if(c->pwrap){MmUnmapIoSpace(c->pwrap,0x1000);c->pwrap=NULL;}
     if(c->gpio){MmUnmapIoSpace(c->gpio,0x1000);c->gpio=NULL;}
     if(c->infra){MmUnmapIoSpace(c->infra,0x1000);c->infra=NULL;}
@@ -80,6 +137,16 @@ NTSTATUS ParentRelease(WDFDEVICE dev,WDFCMRESLIST translated)
     /* No interfaces or clients are published while D0 is gated. */
     ParentUnmap(ParentContext(dev));return STATUS_SUCCESS;
 }
+VOID ParentSurprise(WDFDEVICE dev)
+{
+    /* Offline admission only: this cannot prevent a bus abort from removal
+     * concurrent with an already executing hardware access. */
+    ParentStop(ParentContext(dev));
+}
+NTSTATUS ParentD0Exit(WDFDEVICE dev,WDF_POWER_DEVICE_STATE target)
+{
+    UNREFERENCED_PARAMETER(target);ParentStop(ParentContext(dev));return STATUS_SUCCESS;
+}
 NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
 {
     UNREFERENCED_PARAMETER(dev);UNREFERENCED_PARAMETER(previous);
@@ -87,15 +154,44 @@ NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
      * been migrated. An ACPI resource assignment alone is not ownership. */
     return STATUS_DEVICE_NOT_READY;
 }
+#if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE
+/* Compile-only synthetic topology: no INF or resource requirements are
+ * supplied. The parent still rejects D0; never bind this to real hardware. */
+static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance)
+{
+    PWDFDEVICE_INIT init; WDFDEVICE child; WDF_QUERY_INTERFACE_CONFIG query;
+    UNICODE_STRING name; NTSTATUS status;
+    init=WdfPdoInitAllocate(parent);if(!init)return STATUS_INSUFFICIENT_RESOURCES;
+    RtlInitUnicodeString(&name,id);status=WdfPdoInitAssignDeviceID(init,&name);
+    if(!NT_SUCCESS(status))goto fail;
+    status=WdfPdoInitAddHardwareID(init,&name);if(!NT_SUCCESS(status))goto fail;
+    RtlInitUnicodeString(&name,instance);status=WdfPdoInitAssignInstanceID(init,&name);
+    if(!NT_SUCCESS(status))goto fail;
+    status=WdfDeviceCreate(&init,WDF_NO_OBJECT_ATTRIBUTES,&child);
+    if(!NT_SUCCESS(status))goto fail;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedInterfaceGuid,NULL);
+    query.SendQueryToParentStack=TRUE;
+    status=WdfDeviceAddQueryInterface(child,&query);
+    if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    status=WdfFdoAddStaticChild(parent,child);
+    if(!NT_SUCCESS(status))WdfObjectDelete(child);
+    return status;
+fail:
+    if(init)WdfDeviceInitFree(init);
+    return status;
+}
+#endif
 NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 {
     WDF_PNPPOWER_EVENT_CALLBACKS pnp;WDF_OBJECT_ATTRIBUTES attr;WDFDEVICE dev;NTSTATUS status;
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
-    A04_SHARED_INTERFACE iface;WDF_QUERY_INTERFACE_CONFIG query;
+    A04_LEGACY_SHARED_INTERFACE iface;WDF_QUERY_INTERFACE_CONFIG query;
+    A04_SHARED_INTERFACE inputIface;
 #endif
     UNREFERENCED_PARAMETER(driver);
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
     pnp.EvtDevicePrepareHardware=ParentPrepare;pnp.EvtDeviceReleaseHardware=ParentRelease;pnp.EvtDeviceD0Entry=ParentD0;
+    pnp.EvtDeviceD0Exit=ParentD0Exit;pnp.EvtDeviceSurpriseRemoval=ParentSurprise;
     WdfDeviceInitSetPnpPowerEventCallbacks(init,&pnp);
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,A04_PARENT_CONTEXT);
     attr.ExecutionLevel=WdfExecutionLevelPassive;
@@ -107,6 +203,8 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
         c->pmic.lock_context=&c->pwrapLock;c->pmic.lock=ParentLock;c->pmic.unlock=ParentUnlock;
         c->pmic.bus.context=c;c->pmic.bus.read32=ParentPwrapRead;c->pmic.bus.write32=ParentPwrapWrite;
         c->pmic.bus.delay=ParentPwrapDelay;c->pmic.bus.attempts=1000;
+        c->regs.context=c;c->regs.lock=ParentRegLock;c->regs.unlock=ParentRegUnlock;
+        c->regs.read32=ParentRegRead;c->regs.write32=ParentRegWrite;
     }
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
     RtlZeroMemory(&iface,sizeof(iface));iface.Header.Size=sizeof(iface);iface.Header.Version=1;
@@ -114,6 +212,21 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     iface.Header.InterfaceDereference=ParentInterfaceDereference;iface.ReadButtons=ParentReadButtons;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&iface,&GUID_A04_MT8167_SHARED_INTERFACE,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
+    if(!NT_SUCCESS(status))return status;
+    RtlZeroMemory(&inputIface,sizeof(inputIface));
+    inputIface.Size=sizeof(inputIface);inputIface.Version=A04_SHARED_INTERFACE_VERSION;
+    inputIface.Context=dev;inputIface.InterfaceReference=ParentInterfaceReference;
+    inputIface.InterfaceDereference=ParentInterfaceDereference;
+    inputIface.TouchUpdate=ParentTouchUpdate;inputIface.TouchWrite=ParentTouchWrite;
+    inputIface.TouchPen=ParentTouchPen;inputIface.ButtonPmicRead=ParentButtonRead;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&inputIface,&A04SharedInterfaceGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);
+#endif
+#if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE
+    if(!NT_SUCCESS(status))return status;
+    status=ParentAddProbeChild(dev,L"A04BR3\\SharedButtonsProbe",L"0");
+    if(!NT_SUCCESS(status))return status;
+    status=ParentAddProbeChild(dev,L"A04BR3\\SharedTouchProbe",L"0");
 #endif
     return status;
 }

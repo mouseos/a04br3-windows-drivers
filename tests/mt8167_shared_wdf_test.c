@@ -2,7 +2,7 @@
 #include <string.h>
 /* Compile actual parent in this test translation unit to inspect its context. */
 #include "../drivers/bus/mt8167-shared/wdf_parent_probe.c"
-static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps;static A04_SHARED_INTERFACE saved;
+static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;
 A04_PARENT_CONTEXT *ParentContext(WDFDEVICE d){(void)d;return &testContext;}
 void ExInitializeFastMutex(FAST_MUTEX *m){m->held=0;}void ExAcquireFastMutex(FAST_MUTEX *m){assert(!m->held);m->held=1;}void ExReleaseFastMutex(FAST_MUTEX *m){assert(m->held);m->held=0;}
 PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,int c){(void)n;(void)c;maps++;return (PVOID)(uintptr_t)a.QuadPart;}
@@ -14,7 +14,7 @@ void WdfDeviceInitSetPnpPowerEventCallbacks(PWDFDEVICE_INIT i,WDF_PNPPOWER_EVENT
 NTSTATUS WdfDeviceCreate(PWDFDEVICE_INIT *i,WDF_OBJECT_ATTRIBUTES *a,WDFDEVICE *d){(void)i;(void)a;*d=&testContext;return 0;}
 NTSTATUS WdfDriverCreate(PDRIVER_OBJECT d,PUNICODE_STRING p,void *a,WDF_DRIVER_CONFIG *c,void *h){(void)d;(void)p;(void)a;(void)c;(void)h;return 0;}
 void WdfObjectReference(WDFDEVICE d){(void)d;refs++;}void WdfObjectDereference(WDFDEVICE d){(void)d;refs--;}
-NTSTATUS WdfDeviceAddQueryInterface(WDFDEVICE d,WDF_QUERY_INTERFACE_CONFIG *q){(void)d;memcpy(&saved,q->Interface,sizeof(saved));return 0;}
+NTSTATUS WdfDeviceAddQueryInterface(WDFDEVICE d,WDF_QUERY_INTERFACE_CONFIG *q){(void)d;if(!memcmp(q->Guid,&A04SharedInterfaceGuid,sizeof(GUID)))memcpy(&input,q->Interface,sizeof(input));else memcpy(&saved,q->Interface,sizeof(saved));return 0;}
 int main(void){
  CM_PARTIAL_RESOURCE_DESCRIPTOR entries[4]={0};struct test_list list={entries,4};USHORT value=0xeeee;
  entries[0].Type=entries[1].Type=entries[2].Type=entries[3].Type=CmResourceTypeMemory;
@@ -22,12 +22,20 @@ int main(void){
  entries[0].u.Memory.Start.QuadPart=0x10000000;entries[1].u.Memory.Start.QuadPart=0x10001000;entries[2].u.Memory.Start.QuadPart=0x10005000;entries[3].u.Memory.Start.QuadPart=0x1000f000;
  entries[0].u.Memory.Length=entries[1].u.Memory.Length=entries[2].u.Memory.Length=entries[3].u.Memory.Length=0x1000;
  assert(!ParentAdd(NULL,NULL));assert(saved.Header.Version==1 && saved.ReadButtons);
- saved.Header.InterfaceReference(saved.Header.Context);assert(refs==1);
+ assert(input.Version==1 && input.TouchPen && input.ButtonPmicRead);
+ input.InterfaceReference(input.Context);assert(refs==1);
+ {int down=7; assert(input.TouchPen(input.Context,&down)!=0 && down==7);
+ assert(input.TouchUpdate(input.Context,A04_INTERFACE_TOUCH_GPIO,0x3b0,7u<<9,1u<<9)!=0);
+ assert(input.TouchUpdate(input.Context,99,0x3b0,7u<<9,1u<<9)!=0);}
+ saved.Header.InterfaceReference(saved.Header.Context);assert(refs==2);
  assert(saved.ReadButtons(saved.Header.Context,&value)==STATUS_DEVICE_NOT_READY && value==0xeeee && !reads && !writes);
  assert(!ParentPrepare(&testContext,NULL,&list) && maps==4);
  assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY);
  assert(saved.ReadButtons(saved.Header.Context,&value)==STATUS_DEVICE_NOT_READY && !reads && !writes);
+ ParentSurprise(&testContext);assert(!ParentD0Exit(&testContext,0));
  assert(!ParentRelease(&testContext,&list) && unmaps==4);
  assert(saved.ReadButtons(saved.Header.Context,&value)==STATUS_DEVICE_NOT_READY && !reads && !writes);
- saved.Header.InterfaceDereference(saved.Header.Context);assert(!refs);
+ {int down=7;assert(input.TouchPen(input.Context,&down)!=0 && down==7);
+ assert(input.ButtonPmicRead(input.Context,&value)!=0 && value==0xeeee);}
+ input.InterfaceDereference(input.Context);saved.Header.InterfaceDereference(saved.Header.Context);assert(!refs);
 }

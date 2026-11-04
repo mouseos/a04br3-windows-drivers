@@ -19,10 +19,12 @@ typedef struct {int held;} FAST_MUTEX;
 #define MmNonCached 0
 #define UNREFERENCED_PARAMETER(x) ((void)(x))
 #define RtlZeroMemory(p,n) memset(p,0,n)
-#define DEFINE_GUID(name,...) const int name=1
+typedef struct {uint32_t a;uint16_t b,c;uint8_t d[8];} GUID;
+#define DEFINE_GUID(name,a,b,c,d,e,f,g,h,i,j,k) const GUID name={a,b,c,{d,e,f,g,h,i,j,k}}
 struct _DRIVER_OBJECT{};typedef struct _DRIVER_OBJECT *PDRIVER_OBJECT;
 struct _UNICODE_STRING{};typedef struct _UNICODE_STRING *PUNICODE_STRING;
 typedef void (*PINTERFACE_REFERENCE)(PVOID);
+typedef PINTERFACE_REFERENCE PINTERFACE_DEREFERENCE;
 typedef struct {USHORT Size,Version;PVOID Context;PINTERFACE_REFERENCE InterfaceReference,InterfaceDereference;} INTERFACE,*PINTERFACE;
 typedef struct {UCHAR Type,ShareDisposition;struct {struct {PHYSICAL_ADDRESS Start;ULONG Length;} Memory;} u;} CM_PARTIAL_RESOURCE_DESCRIPTOR,*PCM_PARTIAL_RESOURCE_DESCRIPTOR;
 void ExInitializeFastMutex(FAST_MUTEX *);void ExAcquireFastMutex(FAST_MUTEX *);void ExReleaseFastMutex(FAST_MUTEX *);

@@ -78,3 +78,19 @@ documented lifetime and power contract. No online provider or child PDO currentl
 exists, and interface references alone cannot keep physical hardware present
 or powered. The remaining local keypad and I2C accesses also need a verified
 surprise-removal design. These compile-only clients are not installable builds.
+
+The compile-only parent now publishes the input client interface as well as
+its older offline diagnostic interface. The parent translates the public touch
+bank IDs, dispatches narrow operations through the existing owners and uses one
+blocking lock for GPIO/TOP/INFRA and PWRAP. D0 exit, surprise removal and
+release close admission; stop waits for an operation already holding that lock.
+The parent still never starts the owners and always rejects D0. A physical
+removal concurrent with an MMIO operation can still cause a bus abort, which a
+software lock cannot prevent. Do not infer safe removal or power ownership.
+
+The compile-only `A04_SHARED_CHILD_PROBE` creates two static synthetic PDOs and
+forwards input interface queries to their actual parent stack. These PDOs have
+probe-only IDs, no INF and no keypad/I2C resource requirements. They cannot
+start the input clients and are not a deployment topology. Exclusive ACPI
+resource migration, actual device IDs, child resources, parent power and
+client lifetime across PnP remain necessary before any owner can be online.
