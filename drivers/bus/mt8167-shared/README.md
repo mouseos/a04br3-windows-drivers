@@ -90,7 +90,14 @@ software lock cannot prevent. Do not infer safe removal or power ownership.
 
 The compile-only `A04_SHARED_CHILD_PROBE` creates two static synthetic PDOs and
 forwards input interface queries to their actual parent stack. These PDOs have
-probe-only IDs, no INF and no keypad/I2C resource requirements. They cannot
-start the input clients and are not a deployment topology. Exclusive ACPI
-resource migration, actual device IDs, child resources, parent power and
-client lifetime across PnP remain necessary before any owner can be online.
+probe-only IDs and advertise exclusive fixed keypad (0x10002000) and I2C0
+(0x11009000) resource requirements. PnP assignment and translation of these
+requirements have not been tested on Windows. `prototype/` contains INF and
+ACPI fixtures for offline validation only: the SSDT does not disable the legacy
+MOU0003/MOU0004 ACPI devices and is not included in firmware or packaging.
+Never install it alongside them. The INF files require shared-client builds and
+have not been signed or validated on a device. There is no active power owner,
+no verified firmware resource migration, and no physical-removal guarantee;
+parent D0 continues to fail. The source-level fixture checks cannot establish
+that ACPI descriptors are exclusive on the target or that every firmware or
+Windows driver has ceased bypassing the owner.

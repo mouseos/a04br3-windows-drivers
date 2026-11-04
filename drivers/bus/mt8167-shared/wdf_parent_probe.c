@@ -155,20 +155,48 @@ NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
     return STATUS_DEVICE_NOT_READY;
 }
 #if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE
-/* Compile-only synthetic topology: no INF or resource requirements are
- * supplied. The parent still rejects D0; never bind this to real hardware. */
-static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance)
+/* Compile-only topology. PnP arbitrates these exclusive child ranges; the
+ * parent must not map them. Parent D0 remains gated, and legacy ACPI devices
+ * must be disabled in a future mutually exclusive firmware configuration. */
+typedef struct { ULONG base; } A04_CHILD_CONTEXT;
+WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_CHILD_CONTEXT,ChildContext)
+EVT_WDF_DEVICE_RESOURCE_REQUIREMENTS_QUERY ChildRequirements;
+NTSTATUS ChildRequirements(WDFDEVICE child,WDFIORESREQLIST requirements)
+{
+    A04_CHILD_CONTEXT *c=ChildContext(child); WDFIORESLIST list;
+    IO_RESOURCE_DESCRIPTOR descriptor; NTSTATUS status;
+    if(c->base!=0x10002000u && c->base!=0x11009000u)return STATUS_DEVICE_CONFIGURATION_ERROR;
+    status=WdfIoResourceListCreate(requirements,WDF_NO_OBJECT_ATTRIBUTES,&list);
+    if(!NT_SUCCESS(status))return status;
+    RtlZeroMemory(&descriptor,sizeof(descriptor));
+    descriptor.Type=CmResourceTypeMemory; descriptor.ShareDisposition=CmResourceShareDeviceExclusive;
+    descriptor.Flags=CM_RESOURCE_MEMORY_READ_WRITE;
+    descriptor.u.Memory.Length=0x1000; descriptor.u.Memory.Alignment=1;
+    descriptor.u.Memory.MinimumAddress.QuadPart=c->base;
+    descriptor.u.Memory.MaximumAddress.QuadPart=(LONGLONG)c->base+0xfff;
+    status=WdfIoResourceListAppendDescriptor(list,&descriptor);
+    if(!NT_SUCCESS(status)){WdfObjectDelete(list);return status;}
+    status=WdfIoResourceRequirementsListAppendIoResList(requirements,list);
+    if(!NT_SUCCESS(status))WdfObjectDelete(list);
+    return status;
+}
+static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance, ULONG base)
 {
     PWDFDEVICE_INIT init; WDFDEVICE child; WDF_QUERY_INTERFACE_CONFIG query;
-    UNICODE_STRING name; NTSTATUS status;
+    UNICODE_STRING name; NTSTATUS status; WDF_OBJECT_ATTRIBUTES attr; WDF_PDO_EVENT_CALLBACKS callbacks;
     init=WdfPdoInitAllocate(parent);if(!init)return STATUS_INSUFFICIENT_RESOURCES;
     RtlInitUnicodeString(&name,id);status=WdfPdoInitAssignDeviceID(init,&name);
     if(!NT_SUCCESS(status))goto fail;
     status=WdfPdoInitAddHardwareID(init,&name);if(!NT_SUCCESS(status))goto fail;
     RtlInitUnicodeString(&name,instance);status=WdfPdoInitAssignInstanceID(init,&name);
     if(!NT_SUCCESS(status))goto fail;
-    status=WdfDeviceCreate(&init,WDF_NO_OBJECT_ATTRIBUTES,&child);
+    WDF_PDO_EVENT_CALLBACKS_INIT(&callbacks);
+    callbacks.EvtDeviceResourceRequirementsQuery=ChildRequirements;
+    WdfPdoInitSetEventCallbacks(init,&callbacks);
+    WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,A04_CHILD_CONTEXT);
+    status=WdfDeviceCreate(&init,&attr,&child);
     if(!NT_SUCCESS(status))goto fail;
+    ChildContext(child)->base=base;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedInterfaceGuid,NULL);
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
@@ -224,9 +252,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #endif
 #if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE
     if(!NT_SUCCESS(status))return status;
-    status=ParentAddProbeChild(dev,L"A04BR3\\SharedButtonsProbe",L"0");
+    status=ParentAddProbeChild(dev,L"A04BR3\\SharedButtonsProbe",L"0",0x10002000u);
     if(!NT_SUCCESS(status))return status;
-    status=ParentAddProbeChild(dev,L"A04BR3\\SharedTouchProbe",L"0");
+    status=ParentAddProbeChild(dev,L"A04BR3\\SharedTouchProbe",L"0",0x11009000u);
 #endif
     return status;
 }

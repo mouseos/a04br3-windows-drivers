@@ -1,0 +1,38 @@
+; Compile-only prototype: parent D0 always fails, do not install.
+[Version]
+Signature="$WINDOWS NT$"
+Class=System
+ClassGuid={4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider=%Provider%
+DriverVer=11/04/2026,0.0.1.0
+CatalogFile=shared-parent.cat
+[Manufacturer]
+%Provider%=Models,NTARM
+[Models.NTARM]
+%Device%=Install,ACPI\BEN0001
+[DestinationDirs]
+DriverCopy=12
+[SourceDisksNames]
+1=%Disk%,,,
+[SourceDisksFiles]
+parent-probe.sys=1
+[Install.NT]
+CopyFiles=DriverCopy
+[DriverCopy]
+parent-probe.sys
+[Install.NT.Services]
+AddService=A04SharedParentProbe,0x00000002,Service
+[Service]
+DisplayName=%Device%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\parent-probe.sys
+[Install.NT.Wdf]
+KmdfService=A04SharedParentProbe,Wdf
+[Wdf]
+KmdfLibraryVersion=1.13
+[Strings]
+Provider="mouseos"
+Device="MT8167 Shared Parent Offline Prototype"
+Disk="MT8167 Shared Parent Prototype"
