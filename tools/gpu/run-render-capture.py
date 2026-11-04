@@ -44,6 +44,9 @@ def main():
     for key in ('PVR_SHIM_QUIRKS','PVR_SHIM_ENHANCEMENTS','PVR_SHIM_MUSTHAVE_QUIRKS'):
         env.pop(key, None)
     env.update(PVR_SHIM_DEVICE_BVNC='22.67.54.30', MESA_SHADER_CACHE_DISABLE='true', LD_PRELOAD=str(shim/'enumeration.so') + ':' + str(shim/'shim.so'), A04_CAPTURE_JSONL=str(out/'events.jsonl'), PVR_I_WANT_A_BROKEN_VULKAN_DRIVER='1')
+    if diagnostic and diagnostic.get('upload_metadata_only'):
+        (out/'uploads.jsonl').touch(mode=0o600,exist_ok=False)
+        env['A04_UPLOAD_TRACE']=str(out/'uploads.jsonl')
     with (out/'probe.log').open('w') as log:
         result=subprocess.run([str(binary),str(lib)],env=env,stdout=log,stderr=subprocess.STDOUT,timeout=120,preexec_fn=lambda:os.umask(0o077))
     event=out/'events.jsonl'
@@ -53,6 +56,8 @@ def main():
               'harness_sha256':sha(HERE/'vulkan-capture-probe.c'),'probe_binary_sha256':sha(binary),
               'events_sha256':sha(event),'probe_exit_code':result.returncode, 'shim_bvnc':'22.67.54.30',
               'note':'The shim does not execute GPU work; probe success is not expected.'}
+    if diagnostic and diagnostic.get('upload_metadata_only'):
+        manifest['uploads_sha256']=sha(out/'uploads.jsonl')
     (out/'run-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     print('capture completed; probe return code:',result.returncode)
 if __name__=='__main__': main()
