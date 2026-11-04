@@ -67,8 +67,19 @@ start=$(stat -c %s "$uart_log")
 A04_SERIAL="$serial" "$root/tools/recovery/flash-efi.sh" "$test_esp" >> "$flash_log" 2>&1
 echo TEST_BOOT_STARTED
 found=0
+battery_entry_seen=-1
 for ((i=0;i<35;i++)); do
   tail -c +$((start+1)) "$uart_log" > "$out/current-uart.log"
+  if [[ ${A04_BATTERY_EXPECT:-0} == 1 ]]; then
+    if grep -aE 'A04BAT UEFI I2C2 setup=' "$out/current-uart.log" | grep -avq 'setup=Success'; then
+      echo BATTERY_UEFI_SETUP_FAILED; break
+    fi
+    if grep -aq 'A04BAT D0 ENTRY' "$out/current-uart.log" && (( battery_entry_seen < 0 )); then battery_entry_seen=$i; fi
+    if (( battery_entry_seen >= 0 && i - battery_entry_seen >= 4 )) &&
+       ! grep -aqE 'A04BAT I2C (READY|NOT READY)' "$out/current-uart.log"; then
+      echo BATTERY_I2C_CHECK_STALLED; break
+    fi
+  fi
   if grep -q 'A04GPU DISPLAY COPY COMPLETE' "$out/current-uart.log"; then found=1; break; fi
   # CAPTURE READY is registration, not a bugcheck. Match only the callback's
   # emitted bugcheck data and preserve the first failure boot in the log.
