@@ -12,6 +12,10 @@ $pioSource = Join-Path $PSScriptRoot '..\..\drivers\storage\mt8167-msdc\pio.c'
 $driver = Join-Path $output 'miniport.sys'
 $extraObjects = @()
 $probeDefines = @()
+if ($env:A04_SYNC_PIO_MULTIREAD -eq '1') {
+    if ($env:A04_READONLY_DISK_PROBE -ne '1' -or $env:A04_DMA_PROBE -eq '1' -or $env:A04_DMA_DISK_PROBE -eq '1' -or $env:A04_PASSIVE_IO -eq '1' -or $env:A04_ENABLE_WRITES -eq '1' -or $env:A04_VIRTUAL_BOUNCE_EXPERIMENT -eq '1' -or $env:A04_DMA_MULTIBLOCK_EXPERIMENT -eq '1' -or $env:A04_BOOT_MULTIBLOCK_EXPERIMENT -eq '1' -or $env:A04_SCRATCH_MULTIBLOCK_EXPERIMENT -eq '1') { throw 'Synchronous PIO requires a physical read-only non-worker probe' }
+    $probeDefines += '-DA04_SYNC_PIO_MULTIREAD'
+}
 if ($env:A04_DMA_MULTIBLOCK_EXPERIMENT -eq '1') {
     if ($env:A04_DMA_PROBE -ne '1' -or $env:A04_DMA_DISK_PROBE -ne '1' -or $env:A04_READONLY_DISK_PROBE -ne '1' -or $env:A04_VIRTUAL_BOUNCE_EXPERIMENT -ne '1' -or $env:A04_ENABLE_WRITES -eq '1' -or $env:A04_DMA_WRITE_TEST -eq '1' -or $env:A04_BOOT_EXPERIMENT -eq '1') { throw 'Multiblock experiment requires a read-only non-boot virtual-bounce DMA disk probe' }
     $probeDefines += '-DA04_DMA_MULTIBLOCK_EXPERIMENT=1'
@@ -70,6 +74,7 @@ if ($env:A04_DMA_PROBE -eq '1' -and $env:A04_READONLY_DISK_PROBE -ne '1') { thro
 if ($env:A04_READONLY_DISK_PROBE -eq '1') {
     $probeDefines += '-DA04_READONLY_DISK_PROBE'
     $sources = @('cdb', 'scsi_capacity', 'scsi')
+    if ($env:A04_SYNC_PIO_MULTIREAD -eq '1') { $sources += 'sync_pio' }
     if ($env:A04_DMA_PROBE -eq '1') { $probeDefines += '-DA04_DMA_PROBE'; $sources += 'dma' }
     if ($env:A04_DMA_DISK_PROBE -eq '1') { $probeDefines += '-DA04_DMA_DISK_PROBE' }
     if ($env:A04_ENABLE_WRITES -eq '1') { $probeDefines += '-DA04_ENABLE_WRITES'; $sources += 'gpt_guard' }

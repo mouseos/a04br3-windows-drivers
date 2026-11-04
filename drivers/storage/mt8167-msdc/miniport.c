@@ -6,6 +6,12 @@
 #include "pio.h"
 #include "io_gate.h"
 #include "multiblock_config.h"
+#ifdef A04_SYNC_PIO_MULTIREAD
+#include "sync_pio.h"
+#if !defined(A04_READONLY_DISK_PROBE) || defined(A04_DMA_PROBE) || defined(A04_DMA_DISK_PROBE) || defined(A04_PASSIVE_IO) || defined(A04_ENABLE_WRITES) || defined(A04_VIRTUAL_BOUNCE_EXPERIMENT) || A04_ANY_MULTIBLOCK
+#error Synchronous PIO multiread is restricted to a physical read-only non-worker probe
+#endif
+#endif
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
 #include "lifetime.h"
 #endif
@@ -60,6 +66,9 @@ static BOOLEAN A04EmmcIdentityValid;
 struct a04_probe_extension {
     volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; ULONG requests; BOOLEAN failed; BOOLEAN write_ready; BOOLEAN cache_disabled;
     a04_msdc_gate ioBusy;
+#ifdef A04_SYNC_PIO_MULTIREAD
+    UCHAR sync_staging[4096];
+#endif
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
     volatile LONG transfer_poisoned; /* Restart cannot establish DMA/card recovery. */
     a04_lifetime lifetime;
@@ -580,7 +589,7 @@ static BOOLEAN A04WriteTest(struct a04_probe_extension *probe, ULONG sectors)
 static BOOLEAN A04Initialize(PVOID extension)
 {
     struct a04_probe_extension *probe = (struct a04_probe_extension *)extension;
-#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT || defined(A04_SYNC_PIO_MULTIREAD)
     /* Storport owns and can free the extension/common buffer on removal.
      * The current reset path can complete an SRB before its worker exits, so
      * the local lifetime word cannot guarantee rundown. Never start this
@@ -811,6 +820,14 @@ static void A04Sense(PSCSI_REQUEST_BLOCK request, UCHAR key, UCHAR asc)
     request->DataTransferLength = 0;
 }
 
+#ifdef A04_SYNC_PIO_MULTIREAD
+static uint64_t A04SyncClock(void *context)
+{
+    UNREFERENCED_PARAMETER(context);
+    return (uint64_t)KeQueryPerformanceCounter(NULL).QuadPart;
+}
+#endif
+
 static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 {
     struct a04_probe_extension *probe = (struct a04_probe_extension *)extension;
@@ -924,6 +941,21 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 #endif
                 }
                 if (dr != A04_DMA_OK) { failure = (ULONG)dr; break; }
+#elif defined(A04_SYNC_PIO_MULTIREAD)
+                enum a04_sync_result pr;
+                LARGE_INTEGER frequency;
+                struct a04_sync_clock clock;
+                ULONG chunk=result.blocks.block_count-i;
+                if (chunk>8) chunk=8;
+                UNREFERENCED_PARAMETER(j);
+                KeQueryPerformanceCounter(&frequency);
+                if (frequency.QuadPart < 10 || result.action!=A04_SCSI_READ) { failure=1; break; }
+                clock.context=NULL; clock.now=A04SyncClock; clock.ticks=(uint64_t)frequency.QuadPart/10u;
+                pr=a04_sync_pio_read(&io,(ULONG)(result.blocks.lba+i),chunk,
+                    probe->sync_staging,sizeof(probe->sync_staging),data+i*512,
+                    available-i*512,200000,&clock);
+                if (pr!=A04_SYNC_OK) { failure=(ULONG)pr; break; }
+                i+=chunk-1;
 #else
                 enum a04_msdc_result pr;
                 UNREFERENCED_PARAMETER(j);
