@@ -47,6 +47,15 @@ class TraceTest(unittest.TestCase):
         self.assertEqual(self.runtrace()['uploads_ambiguous_vm'],1)
         upload['gpu_va']=999999
         self.assertEqual(self.runtrace()['uploads_unmapped_at_observation'],1)
+    def test_pds_dependency_and_shader_ranges(self):
+        self.events.insert(7,dict(event='pds_dependency',kind='spill',parent_gpu=4096,offset=0,info_gpu=4112,buffer_gpu=4200,buffer_size=32,block_size=4))
+        self.events.insert(8,dict(event='pds_shader',parent_gpu=4096,shader_gpu=4256,entry_gpu=4260,size=32))
+        r=self.runtrace();self.assertEqual(r['pds_dependencies_seen'],1);self.assertEqual(r['pds_dependency_unmapped'],0)
+        self.assertEqual(r['pds_shader_links'],1);self.assertEqual(r['pds_shader_unmapped'],0)
+        self.events[7]['buffer_gpu']=9000
+        self.assertEqual(self.runtrace()['pds_dependency_unmapped'],1)
+        self.events[8]['entry_gpu']=9999
+        with self.assertRaises(ValueError):self.runtrace()
     def test_missing_hwrt(self):
         self.events[8]['hwrt']=99
         with self.assertRaises(ValueError): self.runtrace()

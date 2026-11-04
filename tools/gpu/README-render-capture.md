@@ -91,3 +91,18 @@ Windowsの `A04_GE8300_RENDER_EXPERIMENT=1` は、診断用の結合geometry/fra
 `run-render-capture.py --dump-control-stream` はMesa自身のcontrol streamデコーダを有効にし、非公開の `probe.log` とmanifestのハッシュを生成する。**probe.logにはホストアドレスや生BOが含まれ得るため公開しない。** `summarize-render-csb.py CAPTURE_DIR` は内容を転載せずブロックとフィールドの件数を集計し、PDSアドレスの先頭が、いつか記録されたupload範囲内かを照合する。Mesaのdumpは最初のcontrol stream BOのみを解析し、照合はジョブ時点の生存や全到達範囲の検証ではない。
 
 `windows_render_memory.c` は既定OFFの試験用部品。DMA common bufferの取得・ゼロ初期化、所有領域の範囲と重複検査、BRN65273領域と指定VAのページテーブル生成、全域のCPU→GPU同期とMMU無効化待ちを行う。payloadの生成とキックには接続しない。失敗時もメモリを保持し、解放にはprocessor停止だけでなく、呼出し側が別途確立したGPU DMA停止の確認を要する。実行中のfree、WDDM、電源遷移、実機上の整合性は未検証。
+
+## コマンドバッファ内PDS直接構築の追跡
+
+`build-mesa-pds-writes.py` は固定Mesaの `pvr_arch_cmd_buffer.c` の一時翻訳単位に計測を追加する。Mesa checkoutは変更しない。
+
+```sh
+python3 tools/gpu/build-mesa-pds-writes.py --source MESA_SOURCE --build MESA_BUILD --sipf1 SIPF1_DIAGNOSTIC_DIR --uploads UPLOAD_DIAGNOSTIC_DIR --output NEW_PDS_DIAGNOSTIC_DIR
+python3 tools/gpu/run-render-capture.py --mesa-source MESA_SOURCE --mesa-build MESA_BUILD --shim SHIM_DIR --probe-source CLEAN_UNIXNU_SOURCE --diagnostic NEW_PDS_DIAGNOSTIC_DIR --output NEW_PRIVATE_CAPTURE_DIR --dump-control-stream
+python3 tools/gpu/check-render-trace.py NEW_PRIVATE_CAPTURE_DIR/events.jsonl
+python3 tools/gpu/summarize-render-csb.py NEW_PRIVATE_CAPTURE_DIR
+```
+
+`pvr_setup_vertex_buffers` と `pvr_setup_descriptor_mappings` は `pvr_arch_cmd_buffer_alloc_mem` でPDS suballocationを取得し、そのmapped先へconstant-mapに従って直接書く。このため `pvr_gpu_upload_pds` の計測だけでは記録されない。診断では構築先GPUアドレス・範囲・entry種別とオフセット、spill/scratchの情報BOと実バッファのGPU範囲、vertex DOUTUのshader範囲を記録する。host pointerやBOのバイト列はイベントに含めない。control stream dump自体は機密を含み得るので非公開とする。
+
+固定試験の２組で、VDMの `vs_pds_data_base_addr` はvertex属性の直接構築、PDS stateの `pds_data_addr` はdescriptorの直接構築に対応した。観測したvertex entryはliteral32とDOUTU、descriptor entryはliteral32とspecial bufferで、後者にはspillおよびscratchが含まれる。今回のdescriptor各組についてspill領域8192バイト、scratch領域49152バイトの記録があり、それぞれの情報BOとバッファの範囲は記録時点で同じVMのマップ内だった。これは一時診断の結果で、shader命令、全参照の寿命、CPUによる他の書込み、fragment側の完全性を証明しない。固定fixtureは引き続きGPU投入不可。

@@ -54,12 +54,13 @@ NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
             dma+(TABLE_PAGES+r->payload_page)*PAGE,r->pages,r->mmu_flags))
             return STATUS_DEVICE_CONFIGURATION_ERROR;
     }
+    m->ready=TRUE;
     return STATUS_SUCCESS;
 }
 NTSTATUS a04_windows_render_memory_publish(struct a04_windows_render_memory *m)
 {
     NTSTATUS status;
-    if (!m || !m->firmware || !m->cpu || !m->adapter || m->published || m->poisoned ||
+    if (!m || !m->firmware || !m->cpu || !m->adapter || !m->ready || m->published || m->poisoned ||
         KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_INVALID_PARAMETER;
     m->poisoned=TRUE;
     status=a04_gpu_dma_sync(m->cpu,m->length,FALSE);

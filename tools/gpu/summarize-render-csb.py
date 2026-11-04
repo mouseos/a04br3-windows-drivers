@@ -22,7 +22,7 @@ def inspect(root):
     errors=sum(text.lower().count(x) for x in ('<unable to read buffer>','<could not decode','<out of bounds>'))
     event_bytes=(root/'events.jsonl').read_bytes()
     if hashlib.sha256(event_bytes).hexdigest()!=manifest.get('events_sha256'):raise ValueError('event digest mismatch')
-    uploads=[row for row in map(json.loads,event_bytes.splitlines()) if row.get('event')=='upload']
+    uploads=[row for row in map(json.loads,event_bytes.splitlines()) if row.get('event') in ('upload','pds_construct')]
     correlations={}
     for key in ('vs_pds_data_base_addr','vs_pds_code_base_addr','pds_data_addr','pds_code_addr'):
         values=[int(x,16) for x in re.findall(r'^\s*'+key+r'\s*:\s*(0x[0-9a-fA-F]+)',text,re.M)]
