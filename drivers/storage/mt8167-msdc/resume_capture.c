@@ -139,6 +139,8 @@ enum a04_capture_result a04_resume_capture(const struct a04_msdc_io *io,
         return A04_CAPTURE_UNSAFE;
     if(!allowed(&c)) return A04_CAPTURE_REVOKED;
     tmp.generation=a->generation;tmp.rca=a->rca;tmp.partition=ext[179]&7u;tmp.cache_ctrl=ext[33];
-    tmp.clock_stable=tmp.pio_mode=tmp.dma_idle=tmp.events_masked=1;
+    /* CKSTB observes the controller only; the shared source clock and rail
+     * are not owned or verified by this capture. */
+    tmp.pio_mode=tmp.dma_idle=tmp.events_masked=1;
     *out=tmp;return A04_CAPTURE_OK;
 }

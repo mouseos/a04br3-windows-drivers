@@ -35,7 +35,7 @@ int main(void)
     struct a04_resume_observation out,old;uint8_t scratch[512];
     init(&f);memset(&out,0xa5,sizeof(out));
     assert(a04_resume_capture(&io,&a,1000,scratch,&out)==A04_CAPTURE_OK);
-    assert(!out.power_owned && out.clock_stable==1 && out.pio_mode==1 && out.dma_idle==1 && out.events_masked==1);
+    assert(!out.power_owned && !out.clock_stable && out.pio_mode==1 && out.dma_idle==1 && out.events_masked==1);
     assert(f.ncmd==4 && (f.commands[0]&63)==13 && (f.commands[1]&63)==10 && (f.commands[2]&63)==8 && (f.commands[3]&63)==13);
     assert(f.args[0]==65536 && f.args[1]==65536 && f.args[2]==0 && f.args[3]==65536);
     assert(out.sectors==12345 && out.generation==2 && out.host_width==8 && out.card_width==8 && out.rca==1 && out.cid[0]==0x10 && out.cid[3]==0x4c);
