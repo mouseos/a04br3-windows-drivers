@@ -62,7 +62,7 @@ NTSTATUS a04_windows_render_diagnostic_run(struct a04_windows_render_diagnostic 
     struct a04_render_fixed_vdm_input vd={P+0x410,P+0x430,P+0x400,P+0x420,P+0x640,P+0x6b0};
     struct a04_render_fixed_command_input ci={G+0x40000,G,G+0x40100,G+0x41000,P+0x5c0,P+0x5a0,P+0x590,P+0x590,P+0x600};
     struct a04_render_owned_range r[A04_RENDER_MAX_MAPS];struct rogue_fwif_cmd_geom geom;struct rogue_fwif_cmd_frag frag;
-    NTSTATUS status=STATUS_INVALID_PARAMETER;unsigned i;const uint8_t *pixels;
+    NTSTATUS status=STATUS_INVALID_PARAMETER;unsigned i,x,y;const uint8_t *pixels;
     if (!d || !s || d->stage || d->memory.cpu || KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_INVALID_PARAMETER;
     m=&d->memory;d->result=STATUS_INVALID_DEVICE_STATE;
     STEP(1,a04_windows_render_memory_create(m,s,PAGES,maps,sizeof(maps)/sizeof(maps[0])));
@@ -105,13 +105,22 @@ NTSTATUS a04_windows_render_diagnostic_run(struct a04_windows_render_diagnostic 
     STEP(30,a04_windows_render_submit_pair(m));
     STEP(31,a04_windows_render_collect_pair(m));
     pixels=(const uint8_t *)m->cpu+Z+65u*4096u;
-    for(i=0;i<4096;++i) {
-        const uint8_t *p=pixels+4u*i;
-        if (p[0]==0x22 && p[1]==0x44 && p[2]==0x66 && p[3]==0xff) ++d->background_pixels;
-        else if (p[0]==0xff && p[1]==0 && p[2]==0xff && p[3]==0xff) ++d->triangle_pixels;
+    /* 64x64 PBE twiddled surface: Morton-order hypothesis, not hardware proof. */
+    for(y=0;y<64;++y) for(x=0;x<64;++x) {
+        unsigned bit,index=0;int bg,tri,edge,inside;const uint8_t *p;
+        for(bit=0;bit<6;++bit) index|=((x>>bit)&1u)<<(2u*bit) | ((y>>bit)&1u)<<(2u*bit+1u);
+        p=pixels+4u*index;
+        bg=p[0]==0x22 && p[1]==0x44 && p[2]==0x66 && p[3]==0xff;
+        tri=p[0]==0xff && p[1]==0 && p[2]==0xff && p[3]==0xff;
+        if(bg) ++d->background_pixels;
+        else if(tri) { ++d->triangle_pixels;d->triangle_rows[y][x/32u]|=1u<<(x%32u); }
         else ++d->other_pixels;
+        edge=x>=8u && y>=8u && x+y==63u;
+        inside=x>=8u && y>=8u && x+y<63u;
+        if(!edge && ((inside && !tri) || (!inside && !bg))) ++d->spatial_mismatch;
     }
-    d->stage=32;status=(d->background_pixels && d->triangle_pixels>=1128u && d->triangle_pixels<=1176u && !d->other_pixels) ? STATUS_SUCCESS : STATUS_DATA_ERROR;
+    d->stage=32;status=(d->background_pixels && d->triangle_pixels>=1128u && d->triangle_pixels<=1176u &&
+        !d->other_pixels && !d->spatial_mismatch) ? STATUS_SUCCESS : STATUS_DATA_ERROR;
 fail:
     d->result=status;return status;
 }

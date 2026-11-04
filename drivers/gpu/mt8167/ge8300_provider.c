@@ -305,11 +305,20 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             if(NT_SUCCESS(c->status.mmu_status) && NT_SUCCESS(c->status.queue_status)) {
                 struct a04_windows_render_diagnostic *d=&c->render_diagnostic;
                 status=a04_windows_render_diagnostic_run(d,&c->firmware);
+                if(d->stage==32) {
+                    ULONG y;
+                    for(y=0;y<64;++y) {
+                        GpuPrint("A04GPU ROW Y=");GpuHex(y);
+                        GpuPrint(" LO=");GpuHex(d->triangle_rows[y][0]);
+                        GpuPrint(" HI=");GpuHex(d->triangle_rows[y][1]);GpuPrint("\n");
+                    }
+                }
                 GpuPrint("A04GPU RENDER STATUS=");GpuHex((ULONG)status);
                 GpuPrint(" STAGE=");GpuHex(d->stage);
                 GpuPrint(" BG=");GpuHex(d->background_pixels);
                 GpuPrint(" TRI=");GpuHex(d->triangle_pixels);
                 GpuPrint(" OTHER=");GpuHex(d->other_pixels);
+                GpuPrint(" MISMATCH=");GpuHex(d->spatial_mismatch);
                 GpuPrint(" BOUNDED=");GpuHex(d->memory.bounded_states_checked);
                 GpuPrint(" B0_VALID=");GpuHex(d->memory.bounded_states[0].valid);
                 GpuPrint(" B0=");GpuHex(d->memory.bounded_states[0].blocks);
