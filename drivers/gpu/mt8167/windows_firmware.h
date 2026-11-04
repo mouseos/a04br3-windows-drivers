@@ -32,5 +32,8 @@ NTSTATUS a04_gpu_firmware_stop(struct a04_gpu_firmware_state *state,
 /* Caller serializes all firmware commands and prevents new GPU work during
  * shutdown. Any error leaves the DMA buffers allocated. */
 NTSTATUS a04_gpu_firmware_health(struct a04_gpu_firmware_state *state);
+/* Caller synchronizes changed GPU page tables before issuing this command.
+ * Completion requires both firmware execution and the MMU sync token. */
+NTSTATUS a04_gpu_firmware_invalidate_mmu(struct a04_gpu_firmware_state *state);
 NTSTATUS a04_gpu_firmware_shutdown(struct a04_gpu_firmware_state *state);
 #endif

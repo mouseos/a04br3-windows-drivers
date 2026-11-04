@@ -93,22 +93,24 @@ static NTSTATUS send_command(struct a04_gpu_firmware_state *s,unsigned kind)
 {
     uint8_t *heap; volatile struct rogue_fwif_ccb_ctl *ctl;
     struct rogue_fwif_kccb_cmd *commands, *cmd;
-    volatile uint32_t *returns,*power; struct rogue_fwif_connection_ctl *conn;
+    volatile uint32_t *returns,*power,*mmu; struct rogue_fwif_connection_ctl *conn;
     volatile struct rogue_fwif_osdata *os;
-    uint32_t slot,next,value,executed_before; LARGE_INTEGER interval; unsigned i; NTSTATUS status;
+    uint32_t slot,next,value,executed_before,token=0; LARGE_INTEGER interval; unsigned i; NTSTATUS status;
     if (!s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !s->processor_released || !s->firmware_started ||
-        !s->memory.heap || !s->io.write32 || kind>2) return STATUS_INVALID_PARAMETER;
+        !s->memory.heap || !s->io.write32 || kind>3) return STATUS_INVALID_PARAMETER;
     if (s->queue_faulted) return STATUS_INVALID_DEVICE_STATE;
     if (!heap_range(s->runtime.kernel_ccb_control,sizeof(*ctl)) ||
         !heap_range(s->runtime.kernel_ccb,A04_GPU_KCCB_COUNT*sizeof(*cmd)) ||
         !heap_range(s->runtime.kernel_return_slots,A04_GPU_KCCB_COUNT*sizeof(*returns)) ||
         !heap_range(s->runtime.power_sync,sizeof(*power)) ||
-        !heap_range(s->runtime.os_data,sizeof(*os))) return STATUS_DEVICE_CONFIGURATION_ERROR;
+        !heap_range(s->runtime.os_data,sizeof(*os)) ||
+        !heap_range(s->runtime.mmu_sync,sizeof(*mmu))) return STATUS_DEVICE_CONFIGURATION_ERROR;
     heap=s->memory.heap;
     ctl=(volatile struct rogue_fwif_ccb_ctl *)(void *)(heap+s->runtime.kernel_ccb_control);
     commands=(struct rogue_fwif_kccb_cmd *)(void *)(heap+s->runtime.kernel_ccb);
     returns=(volatile uint32_t *)(void *)(heap+s->runtime.kernel_return_slots);
     power=(volatile uint32_t *)(void *)(heap+s->runtime.power_sync);
+    mmu=(volatile uint32_t *)(void *)(heap+s->runtime.mmu_sync);
     conn=(struct rogue_fwif_connection_ctl *)(void *)(heap+A04_GPU_CONFIG_OFFSET);
     os=(volatile struct rogue_fwif_osdata *)(void *)(heap+s->runtime.os_data);
     TRACE(s,0x20u+kind*0x10u);
@@ -122,9 +124,22 @@ static NTSTATUS send_command(struct a04_gpu_firmware_state *s,unsigned kind)
     status=a04_gpu_dma_sync((void *)os,sizeof(*os),TRUE);
     if (!NT_SUCCESS(status)) return status;
     executed_before=os->kccb_cmds_executed;
+    if (kind==3) {
+        status=a04_gpu_dma_sync((void *)mmu,sizeof(*mmu),TRUE);
+        if (!NT_SUCCESS(status)) return status;
+        token=*mmu+1u;
+        if (!token) token=1u;
+    }
     cmd=&commands[slot]; RtlZeroMemory(cmd,sizeof(*cmd)); returns[slot]=ROGUE_FWIF_KCCB_RTN_SLOT_NO_RESPONSE;
     if (kind==0) cmd->cmd_type=ROGUE_FWIF_KCCB_CMD_HEALTH_CHECK;
-    else {
+    else if (kind==3) {
+        cmd->cmd_type=ROGUE_FWIF_KCCB_CMD_MMUCACHE;
+        cmd->cmd_data.mmu_cache_data.cache_flags=ROGUE_FWIF_MMUCACHEDATA_FLAGS_PT |
+            ROGUE_FWIF_MMUCACHEDATA_FLAGS_PD | ROGUE_FWIF_MMUCACHEDATA_FLAGS_PC |
+            ROGUE_FWIF_MMUCACHEDATA_FLAGS_TLB | ROGUE_FWIF_MMUCACHEDATA_FLAGS_CTX_ALL;
+        cmd->cmd_data.mmu_cache_data.mmu_cache_sync_fw_addr=0xc0000000u|s->runtime.mmu_sync;
+        cmd->cmd_data.mmu_cache_data.mmu_cache_sync_update_value=token;
+    } else {
         *power=0; cmd->cmd_type=ROGUE_FWIF_KCCB_CMD_POW;
         if (kind==1) {
             cmd->cmd_data.pow_data.pow_type=ROGUE_FWIF_POW_FORCED_IDLE_REQ;
@@ -138,7 +153,7 @@ static NTSTATUS send_command(struct a04_gpu_firmware_state *s,unsigned kind)
     TRACE(s,0x21u+kind*0x10u);
     status=a04_gpu_dma_sync(cmd,sizeof(*cmd),FALSE);
     if (NT_SUCCESS(status)) status=a04_gpu_dma_sync((void *)&returns[slot],sizeof(*returns),FALSE);
-    if (NT_SUCCESS(status) && kind!=0) status=a04_gpu_dma_sync((void *)power,sizeof(*power),FALSE);
+    if (NT_SUCCESS(status) && (kind==1 || kind==2)) status=a04_gpu_dma_sync((void *)power,sizeof(*power),FALSE);
     if (NT_SUCCESS(status)) status=a04_gpu_dma_sync(conn,sizeof(*conn),FALSE);
     if (!NT_SUCCESS(status)) return status;
     ctl->write_offset=next;
@@ -151,21 +166,26 @@ static NTSTATUS send_command(struct a04_gpu_firmware_state *s,unsigned kind)
     TRACE(s,0x23u+kind*0x10u);
     interval.QuadPart=-100000;
     for (i=0;i<100u;++i) {
-        status=kind==0 ? a04_gpu_dma_sync((void *)&returns[slot],sizeof(*returns),TRUE)
-                       : a04_gpu_dma_sync((void *)power,sizeof(*power),TRUE);
+        status=(kind==0 || kind==3) ? a04_gpu_dma_sync((void *)&returns[slot],sizeof(*returns),TRUE)
+                                    : a04_gpu_dma_sync((void *)power,sizeof(*power),TRUE);
         if (!NT_SUCCESS(status)) { s->queue_faulted=TRUE; return status; }
-        value=kind==0 ? returns[slot] : *power;
-        if (kind==0 && (value&ROGUE_FWIF_KCCB_RTN_SLOT_POLL_FAILURE)) {
+        value=(kind==0 || kind==3) ? returns[slot] : *power;
+        if ((kind==0 || kind==3) && (value&ROGUE_FWIF_KCCB_RTN_SLOT_POLL_FAILURE)) {
             s->queue_faulted=TRUE; return STATUS_DEVICE_CONFIGURATION_ERROR;
         }
-        if ((kind==0 && (value&ROGUE_FWIF_KCCB_RTN_SLOT_CMD_EXECUTED)) || (kind!=0 && value!=0)) return STATUS_SUCCESS;
+        if ((kind==0 && (value&ROGUE_FWIF_KCCB_RTN_SLOT_CMD_EXECUTED)) || ((kind==1 || kind==2) && value!=0)) return STATUS_SUCCESS;
         /* This core's firmware advances the executed counter but may leave
          * the return slot at zero. Only use the counter for the health check;
          * power transitions still require their explicit acknowledgement. */
-        if (kind==0) {
+        if (kind==0 || kind==3) {
             status=a04_gpu_dma_sync((void *)os,sizeof(*os),TRUE);
             if (!NT_SUCCESS(status)) { s->queue_faulted=TRUE; return status; }
-            if (os->kccb_cmds_executed!=executed_before) return STATUS_SUCCESS;
+            if (kind==0 && os->kccb_cmds_executed!=executed_before) return STATUS_SUCCESS;
+            if (kind==3) {
+                status=a04_gpu_dma_sync((void *)mmu,sizeof(*mmu),TRUE);
+                if (!NT_SUCCESS(status)) { s->queue_faulted=TRUE; return status; }
+                if (os->kccb_cmds_executed!=executed_before && *mmu==token) return STATUS_SUCCESS;
+            }
         }
         status=KeDelayExecutionThread(KernelMode,FALSE,&interval);
         if (!NT_SUCCESS(status)) { s->queue_faulted=TRUE; return status; }
@@ -173,6 +193,7 @@ static NTSTATUS send_command(struct a04_gpu_firmware_state *s,unsigned kind)
     s->queue_faulted=TRUE; return STATUS_IO_TIMEOUT;
 }
 NTSTATUS a04_gpu_firmware_health(struct a04_gpu_firmware_state *s) { return send_command(s,0); }
+NTSTATUS a04_gpu_firmware_invalidate_mmu(struct a04_gpu_firmware_state *s) { return send_command(s,3); }
 NTSTATUS a04_gpu_firmware_shutdown(struct a04_gpu_firmware_state *s)
 {
     NTSTATUS status=send_command(s,1);
