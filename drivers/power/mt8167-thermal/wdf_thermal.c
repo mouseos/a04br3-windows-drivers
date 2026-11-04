@@ -130,6 +130,11 @@ VOID ThermalMonitorTimer(WDFTIMER timer) {
  result=a04_monitor_poll(&c->monitor,KeQueryInterruptTime()/10000u,&sample);
  if(result==-2) { a04_owner_revoke(&c->ownership);KeBugCheckEx(0xE2,0x41303454,0,0,0);return; }
  if(result<0) { a04_owner_revoke(&c->ownership);return; }
+ if(result==1 && !NT_SUCCESS(WatchdogRequest(c,A04_TOPRGU_THERMAL_PING))) {
+  a04_owner_revoke(&c->ownership);
+  if(!NT_SUCCESS(A04ThermalRequestStop(dev))) KeBugCheckEx(0xE2,0x41303454,3,0,0);
+  return;
+ }
  WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(250));
 }
 #endif
@@ -179,6 +184,10 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
  }
  {
   struct a04_thermal_policy policy={75000,65000,85000,1000,0};
+  if(!NT_SUCCESS(WatchdogRequest(c,A04_TOPRGU_THERMAL_ARM))) {
+   a04_owner_revoke(&c->ownership); (VOID)TouchRequest(c,A04_TOUCH_THERMAL_RELEASE);c->lease_owned=FALSE;
+   WdfIoTargetClose(c->touch);WdfIoTargetClose(c->watchdog);return STATUS_DEVICE_NOT_READY;
+  }
   c->hw.ctx=c;c->hw.qualified=HwQualified;c->hw.clocks_on=HwClocks;c->hw.initialized=HwReady;
   c->hw.read32=HwRead;c->hw.write32=HwWrite;c->hw.delay_us=HwDelay;c->hw_ready=FALSE;c->reset_asserted=FALSE;
   int monitor_status=a04_monitor_start(&c->monitor,&c->hw,&c->cal,&policy,dev,A04ThermalApply,KeQueryInterruptTime()/10000u,2000);
@@ -199,6 +208,7 @@ NTSTATUS ThermalExit(WDFDEVICE dev,WDF_POWER_DEVICE_STATE next)
  THERMAL_CONTEXT *c=ThermalContext(dev); UNREFERENCED_PARAMETER(next);
 #if A04_THERMAL_MONITOR_TEST
  WdfTimerStop(c->timer,TRUE); c->hw_ready=FALSE;
+ if(c->ownership.active && !NT_SUCCESS(A04ThermalRequestStop(dev))) KeBugCheckEx(0xE2,0x41303454,4,0,0);
 #endif
 #if A04_THERMAL_LEASE_DIAG
  if(c->lease_owned) { (VOID)TouchRequest(c,A04_TOUCH_THERMAL_RELEASE); c->lease_owned=FALSE; }
