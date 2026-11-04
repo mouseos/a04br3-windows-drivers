@@ -3,8 +3,14 @@
 #include <string.h>
 #include "owner_broker.h"
 #include "broker_mailbox.h"
+#include "broker_client.h"
 #define NS 1000000000ULL
 struct fake { uint64_t now, gauge_delay; int reads, writes, gauge_reads, bad_gauge, bad_bq; };
+struct loopback { struct fake *fake; struct a04_broker_endpoint *endpoint; };
+static uint64_t loop_now(void *p) {return ((struct loopback *)p)->fake->now;}
+static int loop_exchange(void *p,const struct a04_broker_request *q,struct a04_broker_response *r) {
+ return a04_broker_endpoint_dispatch(((struct loopback *)p)->endpoint,q,r);
+}
 static uint64_t clock_ns(void *p) { return ((struct fake *)p)->now; }
 static int read_bq(void *p,uint8_t r,uint8_t *v) {
     static const uint8_t data[8]={0x30,0,0x8c,0xa4,0x45,0x51,0,0x38};
@@ -76,6 +82,16 @@ int main(void) {
         a04_broker_endpoint_close(&e);
         assert(o.stopped&&a04_broker_endpoint_dispatch(&e,&q,&r)&&f.reads==8);
         assert(a04_broker_endpoint_maintain(&e)&&f.writes==1);
+    }
+    {
+        struct a04_broker_endpoint e={0};struct a04_broker_client client={0};
+        struct loopback l={&f,&e};struct a04_client_transport t={&l,loop_now,loop_exchange};
+        setup(&f,&o,&b,&c,&g);assert(!a04_broker_endpoint_init(&e,&b,8));
+        assert(!a04_broker_client_init(&client,&t,8,0));
+        assert(!a04_broker_client_read(&client,5*NS,&out));
+        assert(f.writes==1&&f.gauge_reads==3&&out.voltage_mv==4000);
+        f.bad_gauge=1;assert(a04_broker_client_read(&client,5*NS,&out));
+        assert(e.closed&&client.stopped&&o.stopped);
     }
     return 0;
 }
