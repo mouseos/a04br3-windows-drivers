@@ -1070,7 +1070,7 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
     if (request->Function==SRB_FUNCTION_PNP && request->Length>=sizeof(SCSI_PNP_REQUEST_BLOCK)) {
         PSCSI_PNP_REQUEST_BLOCK pnp=(PSCSI_PNP_REQUEST_BLOCK)request;
         if ((pnp->SrbPnPFlags & SRB_PNP_FLAGS_ADAPTER_REQUEST) &&
-            (pnp->PnPAction==StorSupriseRemoval || pnp->PnPAction==StorRemoveDevice || pnp->PnPAction==StorStopDevice)) {
+            (pnp->PnPAction==StorSurpriseRemoval || pnp->PnPAction==StorRemoveDevice || pnp->PnPAction==StorStopDevice)) {
             a04_life_close(&probe->lifetime,pnp->PnPAction!=StorStopDevice);
             InterlockedExchange(&probe->cancelled,1);
             InterlockedExchange(&probe->transfer_poisoned,1);
