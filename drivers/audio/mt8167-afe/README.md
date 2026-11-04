@@ -1,10 +1,6 @@
 # MT8167 AFE / MT6392 audio preparation
 
-This directory contains an **offline** DL1 parameter and position helper, not a
-Windows audio driver. It has no registration, hardware access, DMA allocation,
-interrupt handler, power management, codec sequence or playback path. No INF or
-ACPI device is supplied, so it cannot be installed or enabled. ARM COFF object
-compilation does not constitute a WDK driver build or device validation.
+This directory contains offline DL1 helpers and a disabled PortCls adapter skeleton, not a functioning audio driver. The adapter connects to PortCls but StartDevice always fails. It registers no audio subdevices and has no hardware access, DMA allocation, interrupt handler, power management, codec sequence or playback path. No INF is supplied. The standalone ACPI resource proposal is not integrated into firmware and has _STA=0. A WDK-linked SYS does not establish playback or device validation.
 
 `dl1.c` checks a restricted stereo S16_LE buffer, period and sample rate and
 returns candidate DL1 register values, with an inclusive end. Failure leaves
@@ -25,3 +21,5 @@ The AFE DTS ranges are 0x11140000+0x1000 and 0x11141000+0x9000, GIC SPI 120 leve
 Clock dependencies include top audio, APLL1/APLL2, audio engine selectors and divisors; shared top clock registers and the AFE/audiotop overlap require a common owner. MT6392 codec uses PWRAP and APMIXED; the existing Windows button provider owns PWRAP and currently has no cross-driver PMIC sharing. UniXNU reset/input/GPU code also documents WACS2 ordering and contention, but its ownership is not a Windows arbitration service. The codec, its rails (DTS lists VAUD22/VAUD28), analog route, trim, power ordering, firmware handoff, pin state and ACPI resources must be established before enabling hardware. Linux source values and an existing VirtualAudio isolation log are not evidence of audible Windows or physical speaker playback. No new device interaction occurred.
 
 Future work: agree a shared PMIC/clock ownership interface; determine the exact board route and safe power/volume/trim; implement Windows 8.1 PortCls/WaveRT or another supported audio path, DMA and cache coherency, interrupts, power transitions, ACPI/INF and signing; then validate under an explicitly authorized hardware session.
+
+`ring.c` plans frame-aligned wraparound spans without accessing DMA memory; `irq.c` classifies DL1 status without reading or acknowledging hardware. No caller connects either to the PortCls skeleton. See [ownership.md](ownership.md) for required single-owner arbitration. The A04BR3 Linux defconfig enables CONFIG_MTK_SPEAKER and its machine driver contains an internal MT6392 speaker route from AU_LOL, but these facts do not establish the physical speaker wiring or safe gain.
