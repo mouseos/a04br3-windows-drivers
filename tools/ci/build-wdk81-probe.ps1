@@ -87,6 +87,7 @@ if ($LASTEXITCODE -ne 0) { throw 'ARM32 interface probe link failed' }
 if ($LASTEXITCODE -ne 0) { throw 'PE inspection failed' }
 
 $package = Join-Path $output 'package'
+if (Test-Path $package) { Remove-Item -Recurse -Force $package }
 New-Item -ItemType Directory -Force -Path $package | Out-Null
 $bootPackage = $env:A04_BOOT_EXPERIMENT -eq '1'
 $passivePackage = $env:A04_PASSIVE_IO -eq '1'
