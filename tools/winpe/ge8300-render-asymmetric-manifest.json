@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "state": "host-built-candidate-not-device-validated",
+  "driver_commit": "09c630d1a670185aa0eb9487ea338e8db33521a8",
+  "driver_flags": [
+    "BOOT_TEST=1",
+    "ALLOW_MISMATCH=1",
+    "RENDER_EXPERIMENT=1",
+    "RENDER_DIAGNOSTIC=1"
+  ],
+  "source_esp_sha256": "80e78974e86c709f0961d4f80db5dcaeff3dade8bf2ab5c86b7102aad4035871",
+  "source_wim_sha256": "f3808bb5fe590af7e21549312adf2f903dd5e5449b1d357967c270f3ae1a7648",
+  "derived_wim_sha256": "f1bd3b331316957bbe6b9840ef33111a66763fef602371a772423d78793ef6e2",
+  "boot_index": 1,
+  "preserved_files": {
+    "/EFI/Boot/bootarm.efi": "5dcf001e5be0bf252d303f0377c4dad67a070aed307b0f6153d1125bf346b397",
+    "/EFI/Microsoft/Boot/BCD": "65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d",
+    "/Boot/boot.sdi": "cd2c00ce027687ce4a8bdc967f26a8ab82f651c9becd703658ba282ec49702bd"
+  },
+  "startnet_sha256": "5bd90e6df82442e199449263aa7b0315251fc5f57713b909d85e7a98df48309c",
+  "package_sha256": {
+    "ge8300-mips.fw": "cfe6f58db2ad604b1729349629510c5a3434b266c99ea886d2959887bff4fed8",
+    "ge8300-pnp-status.exe": "72534d65c376e1b416cf0d0c05c05cbc843eed02d2c39b32c4442d4e8addfd3c",
+    "ge8300-status.exe": "51f95e13d5ab908372e0af5af734afe1467b1e41829a75cd523bae79278ce58a",
+    "ge8300-test.cer": "cac9bba64eb3a147755f5d1bd7a56fbb8303d4c1de1c473c6c9adb809a864cb0",
+    "mt8167-ge8300.cat": "d2c15df74185fd9547627d289939be18848f5e558fd736112d2d916684f13dc8",
+    "mt8167-ge8300.inf": "73afb7f2e63469d577317b68ed505c01340a81b36373eda416883ce5ae4edc0b",
+    "mt8167-ge8300.sys": "909e28ddfeb3a77f97b98551245237f0290faba21c85c84afccb1f9860987348"
+  },
+  "candidate_boot_sha256": "2813f8cb42651bb54374bf7b7b1bdd33eaf2198db6afd008c70574f337b190ab",
+  "candidate_boot_status": "previously used in full-screen WinPE run; GPU fixed render not tested",
+  "limitations": [
+    "GPU PBE access and command semantics unverified",
+    "GPU timeout reset and DMA master cessation unverified",
+    "restoration commands previously succeeded; exact immediate post-restore boot combination not conclusively attributed",
+    "host-built diagnostic derivative; device test not performed",
+    "public test certificate inserted offline in Root and TrustedPublisher; Windows RT load policy unverified",
+    "64x64 Morton pixel order is a device-unverified hypothesis",
+    "row bitmap and spatial match do not prove GPU shutdown",
+    "asymmetric scissor derived from existing captures and Mesa packing; not recaptured or run on GPU"
+  ],
+  "trusted_wim_sha256": "51842f682c8157f2be07431fc1126c21f4d42504aabd5d11db1b529b9374dea3",
+  "trusted_esp_sha256": "f109c1c165216f4ccbcd58e64fac623e62775f94539482f8abcfb7b37e613165",
+  "certificate": {
+    "source_sha256": "f1bd3b331316957bbe6b9840ef33111a66763fef602371a772423d78793ef6e2",
+    "wim_sha256": "51842f682c8157f2be07431fc1126c21f4d42504aabd5d11db1b529b9374dea3",
+    "serialized_cert_sha256": "e1f6dfdef79c2248f4b14e54f87aeab6374700e7dc137af3b2954a6726d8d691",
+    "thumbprint_sha1": "033D4245949168DFAF5411A03DF378705A45A373",
+    "stores": [
+      "Root",
+      "TrustedPublisher"
+    ],
+    "note": "offline trust entries verified; signature acceptance and boot policy unverified"
+  },
+  "previous_trusted_esp_sha256": "f0e41ea71ccb9b2568f4c04fc5dba1749312c9fc89b4382153330b7d08c9a86d",
+  "restore_boot_sha256": "7d03e814b3f156c4a03ef48c48ededd130916c5aa78df118d425f6ef40ea2ee3",
+  "restore_esp_sha256": "c2c1d2bfcf37b8422e9db9429b70fa98ffb7f995a6d24c8a5de3804d9b007176",
+  "successful_full_screen_evidence": {
+    "test_boot_sha256": "2813f8cb42651bb54374bf7b7b1bdd33eaf2198db6afd008c70574f337b190ab",
+    "test_esp_sha256": "80e78974e86c709f0961d4f80db5dcaeff3dade8bf2ab5c86b7102aad4035871",
+    "uart_sha256": "4078132753b808e8013f2c89afb1482d41a5f4cce5c6639407a1d4575373d81f",
+    "screen_pbm_sha256": "9c792a39c30fadbe86c9465c29314c2b5157c4b536700f991cf77cee63d095aa",
+    "inputs_sha256": "25cfd5cf360c3a86c1af7a7c8fdab6d3c513ee6bd785624c9a314a28018c44bc",
+    "observed": "CPU1 ownership and watchdog kicks; full 800x600 screen with per-part and aggregate CRC; no 3D render",
+    "restore": "matching restore input hashes and RESTORE_COMMANDS_SUCCEEDED; no physical readback; immediate restored combination boot not conclusively attributed"
+  },
+  "base_components_sha256": {
+    "SYSTEM": "cc151bf339dd2683b313e95d42179cfe571f6392c7a294b9a98f19a8a83e5214",
+    "mt8167-toprgu.sys": "52a1a1cb0cd66821099a87db9aca5bd82797061ab0e99a047d495d7fe06c2b3e",
+    "uart-screen.exe": "655bfc0fa4ae4369b7aa487a747dbe9b41780b3078bc335261fa9c83e53236d7"
+  },
+  "scissor_words": [
+    49,
+    64
+  ],
+  "triangle_interior_pixels": 1107,
+  "diagonal_edge_pixels": 41,
+  "transpose_interior_difference": 42
+}
