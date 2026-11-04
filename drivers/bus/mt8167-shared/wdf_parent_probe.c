@@ -97,8 +97,12 @@ static NTSTATUS ParentReadButtons(PVOID context,USHORT *value) {
 #endif
 static void ParentStop(A04_PARENT_CONTEXT *c)
 {
-    if(c->regs.lock) (void)a04_register_owner_stop(&c->regs);
-    if(c->pmic.lock) (void)a04_pwrap_owner_stop(&c->pmic);
+    /* Both owners share this mutex. Close admission in one critical section
+     * before any mapping is released; neither client can enter in between. */
+    ExAcquireFastMutex(&c->pwrapLock);
+    c->regs.online=0;
+    c->pmic.online=0;
+    ExReleaseFastMutex(&c->pwrapLock);
 }
 static void ParentUnmap(A04_PARENT_CONTEXT *c)
 {

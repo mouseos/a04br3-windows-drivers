@@ -66,7 +66,11 @@ int main(void){
  assert(!ParentPrepare(&testContext,NULL,&list) && maps==4);
  assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY);
  assert(saved.ReadButtons(saved.Header.Context,&value)==STATUS_DEVICE_NOT_READY && !reads && !writes);
- ParentSurprise(&testContext);assert(!ParentD0Exit(&testContext,0));
+ /* Simulate admitted owners only in the mock, then verify surprise revokes
+  * both under one lock before any unmap. D0 does not enable either in reality. */
+ testContext.regs.online=1;testContext.pmic.online=1;
+ ParentSurprise(&testContext);assert(!testContext.regs.online && !testContext.pmic.online && unmaps==0);
+ assert(!ParentD0Exit(&testContext,0));
  assert(!ParentRelease(&testContext,&list) && unmaps==4);
  assert(saved.ReadButtons(saved.Header.Context,&value)==STATUS_DEVICE_NOT_READY && !reads && !writes);
  {int down=7;assert(input.TouchPen(input.Context,&down)!=0 && down==7);

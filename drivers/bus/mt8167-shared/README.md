@@ -108,3 +108,11 @@ fail without MMIO. With `A04_SHARED_CHILD_PROBE=1`, a third experimental audio
 child forwards that GUID to its parent. The child has no AFE resources, INF or
 audio FDO binding and its requirements callback refuses to start. Parent D0
 still fails. This does not establish ownership or codec safety.
+
+The parent stop path closes both touch and PWRAP admission while holding their
+single shared mutex, before releasing any mapping. Existing operations finish
+before this lock can be acquired; no new operation can enter either owner after
+it is released. This is a software rundown guarantee only: the prototype still
+has no mechanism that prevents the physical device disappearing while MMIO is
+already in progress, nor proof of retained rail or clock power. D0 remains
+unconditionally refused and a stop must never be interpreted as power control.
