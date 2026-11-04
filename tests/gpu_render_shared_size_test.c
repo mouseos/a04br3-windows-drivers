@@ -12,6 +12,11 @@ int main(void)
             assert(!a04_render_check_saved_shared_size(state,sizeof(state),&r));
             assert(r.blocks==n && r.dwords==16*n && r.bytes==64*n);
         } else assert(a04_render_check_saved_shared_size(state,sizeof(state),&r) && !memcmp(&r,&old,sizeof(r)));
+        old=r;
+        if (n<=256) {
+            assert(!a04_render_check_bounded_shared_size(state,sizeof(state),&r));
+            assert(r.blocks==n && r.dwords==16*n && r.bytes==64*n);
+        } else assert(a04_render_check_bounded_shared_size(state,sizeof(state),&r) && !memcmp(&r,&old,sizeof(r)));
     }
     state[2]=1;old=r;
     assert(a04_render_check_saved_shared_size(state,sizeof(state),&r) && !memcmp(&r,&old,sizeof(r)));

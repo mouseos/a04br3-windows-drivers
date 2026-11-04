@@ -15,6 +15,7 @@
  * the caller serializes firmware access and prevents untracked CPU writes. */
 #define A04_RENDER_MAX_MAPS 32u
 #define A04_RENDER_MAX_STAGED 32u
+#define A04_RENDER_MAX_WRITABLE 16u
 #define A04_RENDER_PAYLOAD_OFFSET (14u*4096u)
 struct a04_windows_render_map {
     uint64_t gpu_va;
@@ -44,6 +45,9 @@ struct a04_windows_render_memory {
     struct a04_render_hwrt_params target_params;
     BOOLEAN target_prepared;
     BOOLEAN cleanup_complete;
+    BOOLEAN completion_observed,bounded_states_checked;
+    struct { uint64_t gpu_va;uint32_t blocks;BOOLEAN valid; } bounded_states[2];
+    size_t bounded_state_count;
     BOOLEAN kick_prepared,kick_submitted,kick_partial;
     struct rogue_fwif_kccb_cmd kick,final_kick;
     /* Optional diagnostic; candidate scan is not a GPU execution gate. */
@@ -52,6 +56,10 @@ struct a04_windows_render_memory {
     struct a04_shared_trace_summary trace_summary;
     struct { uint64_t gpu_va,size; } staged[A04_RENDER_MAX_STAGED];
     size_t staged_count;
+    /* Context and HWRT writable dependencies remain reserved until the
+     * whole allocation is freed after independently established DMA stop. */
+    struct { uint64_t gpu_va,size; } writable[A04_RENDER_MAX_WRITABLE];
+    size_t writable_count;
 };
 NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
     struct a04_gpu_firmware_state *s,ULONG payload_pages,
@@ -161,6 +169,16 @@ NTSTATUS a04_windows_render_stage_context_sr(struct a04_windows_render_memory *m
     uint64_t store_control,uint64_t load_control,
     uint64_t store_data_gpu,uint64_t store_code_gpu,
     uint64_t load_data_gpu,uint64_t load_code_gpu);
+/* Bounded diagnostic USC is generated from a modified Mesa loop and remains
+ * unverified on GPU. Both code and PDS must be staged before publication. */
+NTSTATUS a04_windows_render_stage_bounded_context_usc(struct a04_windows_render_memory *m,
+    uint64_t store_shader_gpu,uint64_t load_shader_gpu);
+NTSTATUS a04_windows_render_stage_bounded_context_sr(struct a04_windows_render_memory *m,
+    uint64_t state_gpu,uint64_t store_shader_gpu,uint64_t load_shader_gpu,
+    uint64_t store_data_gpu,uint64_t store_code_gpu,uint64_t load_data_gpu,uint64_t load_code_gpu);
+/* Only after fence completion and CPU synchronization. A zero state does not
+ * prove that the GPU performed a context switch. */
+NTSTATUS a04_windows_render_check_bounded_states(struct a04_windows_render_memory *m);
 /* gpu_dma_quiesced is an independently established GPU/DMA stop, not a
  * fence alone. A false value retains memory even if the processor is stopped. */
 NTSTATUS a04_windows_render_memory_free(struct a04_windows_render_memory *m, BOOLEAN gpu_dma_quiesced);

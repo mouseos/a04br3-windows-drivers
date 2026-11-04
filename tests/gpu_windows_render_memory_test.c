@@ -162,12 +162,19 @@ int main(void)
       hw.vheap_gpu=hw.tpc_gpu;
       assert(a04_windows_render_prepare_target(&m,&hw)==STATUS_INVALID_DEVICE_STATE);
       hw.vheap_gpu=0x80000b8200ULL;
+      m.staged[0].gpu_va=hw.tpc_gpu;m.staged[0].size=16;m.staged_count=1;
+      assert(a04_windows_render_prepare_target(&m,&hw)==STATUS_INVALID_DEVICE_STATE && !m.target_prepared);
+      m.staged_count=0;
       assert(a04_windows_render_prepare_target(&m,&hw)==STATUS_SUCCESS);
+      assert(m.writable_count==7);
       assert(((struct rogue_fwif_hwrtdata *)m.target.data.cpu)->freelists_fw_addr[0]==m.freelists[0].fw_addr);
       table[17]++;
       before=cleans;inv_before=invalidations;
       assert(a04_windows_render_publish_context(&m)==STATUS_INVALID_DEVICE_STATE && cleans==before && invalidations==inv_before);
       table[17]--;
+      { uint64_t saved=m.writable[0].size;m.writable[0].size=64;
+        assert(a04_windows_render_publish_context(&m)==STATUS_INVALID_DEVICE_STATE && cleans==before && invalidations==inv_before);
+        m.writable[0].size=saved; }
       { struct rogue_fwif_hwrtdata *target=m.target.data.cpu;
         target->vheap_table_dev_addr+=16;
         assert(a04_windows_render_publish_context(&m)==STATUS_INVALID_DEVICE_STATE && cleans==before && invalidations==inv_before);
@@ -234,6 +241,9 @@ int main(void)
       { struct a04_windows_render_memory copy=m;cleanup_fail_at=3;
         assert(a04_windows_render_collect_pair(&copy)==STATUS_DEVICE_BUSY && copy.poisoned && !copy.cleanup_complete && cleanup_calls==3);
         assert(a04_windows_render_memory_free(&copy,TRUE)==STATUS_DEVICE_BUSY);cleanup_calls=0;cleanup_fail_at=0; }
+      { struct a04_windows_render_memory copy=m;copy.bounded_state_count=1;copy.bounded_states[0].gpu_va=0x80000b6000ULL;
+        assert(a04_windows_render_collect_pair(&copy)==STATUS_DATA_ERROR && copy.cleanup_complete && !copy.poisoned && cleanup_calls==5);
+        assert(copy.completion_observed && copy.bounded_states_checked && !copy.bounded_states[0].valid);cleanup_calls=0; }
       assert(a04_windows_render_collect_pair(&m)==STATUS_SUCCESS && m.cleanup_complete && cleanup_calls==5 && !m.poisoned);
       assert(a04_windows_render_collect_pair(&m)==STATUS_INVALID_PARAMETER);
       s.processor_released=FALSE;assert(a04_windows_render_memory_free(&m,TRUE)==STATUS_SUCCESS);
@@ -247,8 +257,17 @@ int main(void)
       assert(a04_windows_render_stage_context_pt(&m,0xda00010000ULL,0xda00011000ULL,0xda00011020ULL,
           0xda00011040ULL,0xda00011040ULL)==STATUS_INVALID_PARAMETER);
       for(unsigned i=0;i<128;++i) assert(!output[i]);
+      output[127]=1;
+      assert(a04_windows_render_stage_context_pt(&m,0xda00010000ULL,0xda00011000ULL,0xda00011020ULL,
+          0xda00011040ULL,0xda00011060ULL)==STATUS_INVALID_DEVICE_STATE);
+      assert(!m.writable_count && !m.staged_count && !output[0]);output[127]=0;
+      ((uint8_t *)m.cpu)[A04_RENDER_PAYLOAD_OFFSET+127]=1;
+      assert(a04_windows_render_stage_context_pt(&m,0xda00010000ULL,0xda00011000ULL,0xda00011020ULL,
+          0xda00011040ULL,0xda00011060ULL)==STATUS_INVALID_DEVICE_STATE);
+      ((uint8_t *)m.cpu)[A04_RENDER_PAYLOAD_OFFSET+127]=0;
       assert(a04_windows_render_stage_context_pt(&m,0xda00010000ULL,0xda00011000ULL,0xda00011020ULL,
           0xda00011040ULL,0xda00011060ULL)==STATUS_SUCCESS);
+      assert(m.writable_count==1);
       assert(output[32]==0 && output[35]==0xd0 && output[36]==1 && output[39]==0xd0);
       assert(output[96]==0x10 && output[99]==0xd3 && output[100]==0 && output[103]==0xd0);
       for(unsigned i=52;i<64;++i) assert(!output[i]);
@@ -269,8 +288,13 @@ int main(void)
       assert(a04_windows_render_stage_context_sr(&m,0xda00010000ULL,0xe000001000ULL,0xe000001400ULL,0,0,
         0xda00015000ULL,0xda00015020ULL,0xda00015080ULL,0xda000150c0ULL)==STATUS_INVALID_PARAMETER);
       for(unsigned i=0;i<208;++i) assert(!out[i]);
+      ((uint8_t *)m.cpu)[A04_RENDER_PAYLOAD_OFFSET+16431]=1;
+      assert(a04_windows_render_stage_context_sr(&m,0xda00010000ULL,0xe000001000ULL,0xe000001400ULL,0,0,
+        0xda00015000ULL,0xda00015040ULL,0xda00015080ULL,0xda000150c0ULL)==STATUS_INVALID_DEVICE_STATE);
+      assert(!m.writable_count && !m.staged_count);((uint8_t *)m.cpu)[A04_RENDER_PAYLOAD_OFFSET+16431]=0;
       assert(a04_windows_render_stage_context_sr(&m,0xda00010000ULL,0xe000001000ULL,0xe000001400ULL,0,0,
         0xda00015000ULL,0xda00015040ULL,0xda00015080ULL,0xda000150c0ULL)==STATUS_SUCCESS);
+      assert(m.writable_count==1);
       assert(out[8]==2 && out[24]==2 && out[26]==0 && out[27]==0x80);
       assert(out[64]==1 && out[66]==2 && out[67]==0xf0 && out[76]==0);
       assert(a04_windows_render_stage_context_sr(&m,0xda00010000ULL,0xe000001000ULL,0xe000001400ULL,0,0,
@@ -280,6 +304,36 @@ int main(void)
           0xda00015120ULL,0xda00015140ULL)==STATUS_INVALID_PARAMETER);
         assert(!memcmp(saved,out,sizeof(saved)) && m.staged_count==4); }
       assert(a04_windows_render_stage_fragment_pds(&m,0xda00015040ULL,0xe000001000ULL,0)==STATUS_INVALID_PARAMETER);
+      s.processor_released=FALSE;assert(a04_windows_render_memory_free(&m,TRUE)==STATUS_SUCCESS);
+    }
+    {
+      struct a04_windows_render_map bm[]={{0xda00010000ULL,0,5,0,0},
+        {0xda00015000ULL,5,1,0,A04_GPU_MMU_READ_ONLY},
+        {0xe000001000ULL,6,1,1,A04_GPU_MMU_READ_ONLY}};
+      uint8_t *shader,*pds;s.processor_released=TRUE;
+      assert(a04_windows_render_memory_create(&m,&s,7,bm,3)==STATUS_SUCCESS);
+      shader=(uint8_t *)m.cpu+A04_RENDER_PAYLOAD_OFFSET+6u*4096u;
+      pds=(uint8_t *)m.cpu+A04_RENDER_PAYLOAD_OFFSET+5u*4096u;
+      assert(a04_windows_render_stage_bounded_context_sr(&m,0xda00010000ULL,0xe000001000ULL,0xe000001400ULL,
+        0xda00015000ULL,0xda00015040ULL,0xda00015080ULL,0xda000150c0ULL)==STATUS_INVALID_DEVICE_STATE);
+      shader[767]=1;
+      assert(a04_windows_render_stage_bounded_context_usc(&m,0xe000001000ULL,0xe000001400ULL)==STATUS_INVALID_DEVICE_STATE);
+      assert(!m.staged_count);shader[767]=0;
+      assert(a04_windows_render_stage_bounded_context_usc(&m,0xe000001000ULL,0xe000001400ULL)==STATUS_SUCCESS);
+      assert(m.staged_count==2 && !shader[767] && !shader[1024+639]);
+      shader[0]^=1;
+      assert(a04_windows_render_stage_bounded_context_sr(&m,0xda00010000ULL,0xe000001000ULL,0xe000001400ULL,
+        0xda00015000ULL,0xda00015040ULL,0xda00015080ULL,0xda000150c0ULL)==STATUS_INVALID_DEVICE_STATE);
+      shader[0]^=1;
+      assert(a04_windows_render_stage_bounded_context_sr(&m,0xda00010000ULL,0xe000001000ULL,0xe000001400ULL,
+        0xda00015000ULL,0xda00015040ULL,0xda00015080ULL,0xda000150c0ULL)==STATUS_SUCCESS);
+      assert(m.staged_count==6 && m.writable_count==1 && pds[32]==0 && pds[36]==0x18 && pds[160]==0 && pds[164]==0x18);
+      assert(a04_windows_render_check_bounded_states(&m)==STATUS_INVALID_PARAMETER);
+      { uint8_t *state=(uint8_t *)m.cpu+A04_RENDER_PAYLOAD_OFFSET;m.completion_observed=TRUE;
+        state[0]=0xff;state[1]=0xff;state[2]=0xff;state[3]=0xff;
+        assert(a04_windows_render_check_bounded_states(&m)==STATUS_DATA_ERROR && m.bounded_states_checked && !m.bounded_states[0].valid);
+        state[0]=3;state[1]=state[2]=state[3]=0;
+        assert(a04_windows_render_check_bounded_states(&m)==STATUS_SUCCESS && m.bounded_states[0].valid && m.bounded_states[0].blocks==3); }
       s.processor_released=FALSE;assert(a04_windows_render_memory_free(&m,TRUE)==STATUS_SUCCESS);
     }
     {

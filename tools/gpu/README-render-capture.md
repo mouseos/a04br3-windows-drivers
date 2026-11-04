@@ -245,3 +245,9 @@ scratchless固定probeの独立した00／ffの２captureでは、それぞれ�
 EOTについてはcaptured PBE stateを含む基準入力の各64ビットを個別に反転したprivateなPCO出力と、２組の固定人工入力を検査した。40バイト命令列中のstate wordはbyte offset 16と4に配置され、残りが一致した。ただし一般の入力ではPCOが異なる長さの命令列を選ぶ。`check-eot-synthetic.py` は２captureのmanifest、候補SHA-256、PBEとupload、背景依存、個別ビットの結果を照合する。生のアドレスを含む候補・イベントは非公開とし、スクリプトの終了コード1は引き続きGPU実行禁止を意味する。
 
 `a04_windows_render_stage_fixed_background`、`a04_windows_render_stage_background_shader`、`a04_windows_render_stage_fixed_eot` は、上の固定条件の背景定数・PDS・USC、および指定されたGPU出力先から生成したEOTを、公開前の所有済みDMAへ配置する。各出力範囲の予約・読取り専用PTE・ゼロ初期状態を検査し、未使用の予約領域はゼロにする。EOTは書込み可能な16 KiB出力先を予約する。これらは実行入口に接続されておらず、PBEの実際の書込み範囲、context switchの動的なshared state範囲、実行中の全参照と寿命、GPU cache同期を証明しない。背景がtextureを使わないという結果も、この固定clear probeに限定される。
+
+`build-context-shared-bounded.py --compiler-diagnostic USC_DIAG` は、固定Mesaからshared state診断版を生成する。保存・復元の両方でサイズが256ブロックを超えた場合はループを実行せず、保存時は `0xffffffff` をstate先頭へ書く。残数の減算は０で打ち切る。元のMesaと異なる診断用shaderであり、範囲外のstateを復元できるようにするものではない。通常PCOで２回、さらにPCO出力領域を00／ffで事前充填して再生成し、対象２shaderの一致を検査する。`check-context-bounded-ir.py` は最適化後NIRの上限判定、ループ、markerと該当バイナリの一致を検査する。これはNIRから機械語への完全な意味対応や実機の特殊レジスタ値を証明しない。
+
+`generate-context-bounded-fixture.py` は上記検査と固定SHA-256・PCO metadataを通したUSCだけから `render_context_bounded_usc.h` を再生成する。`a04_windows_render_stage_bounded_context_usc` は２shaderをゼロpaddingして所有済みDMAへ配置し、`a04_windows_render_stage_bounded_context_sr` は予約済みshaderの全バイト・paddingを再確認して、必要なtemp数からPDSのDOUTUを構成する。所有範囲、予約、実PTE、ゼロ初期化を確認するが、static context registerと固定描画への接続やGPU実行の承認は行わない。
+
+persistent／shared context stateとHWRT、freelist表、callstackの書込み範囲は、各DMA allocationが独立したGPU/DMA停止後に解放されるまで予約する。互いの重複や既存配置との重複を拒否し、公開時にHWRTの７範囲が予約と一致することを再確認する。bounded stateは両fenceとCPU同期後に読み、無効値でもfirmware cleanupを試みたうえで `STATUS_DATA_ERROR` を返す。０はcontext switch発生の証拠ではない。firmware cleanup失敗・timeout時は従来どおりpoisonして保持する。これらはhost mock検証であり、実機上の同期や全間接参照の寿命を保証しない。
