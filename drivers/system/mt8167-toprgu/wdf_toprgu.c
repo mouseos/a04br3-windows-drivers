@@ -7,6 +7,13 @@
 #include "watchdog_policy.h"
 #include "handoff_policy.h"
 #include "thermal_stop.h"
+#if A04_TOPRGU_UART_SCREEN
+#include <wdmsec.h>
+#include "uart_screen.h"
+#endif
+#ifndef A04_TOPRGU_UART_SCREEN
+#define A04_TOPRGU_UART_SCREEN 0
+#endif
 #ifndef A04_TOPRGU_CPU1_HANDOFF
 #define A04_TOPRGU_CPU1_HANDOFF 0
 #endif
@@ -16,6 +23,9 @@
 #ifndef A04_TOPRGU_THERMAL_STOP
 #define A04_TOPRGU_THERMAL_STOP 0
 #endif
+#if A04_TOPRGU_UART_SCREEN && (!A04_TOPRGU_CPU1_HANDOFF || A04_TOPRGU_THERMAL_STOP)
+#error UART screen requires CPU1 handoff and excludes thermal stop test
+#endif
 #ifndef A04_TOPRGU_DEADLINE_SECONDS
 #define A04_TOPRGU_DEADLINE_SECONDS 0
 #endif
@@ -23,6 +33,11 @@
 typedef struct {
     volatile ULONG *wdt, *uart;
     WDFTIMER timer;
+#if A04_TOPRGU_UART_SCREEN
+    WDFTIMER screenTimer;
+    ULONG screenLen, screenPos;
+    UCHAR screenBuf[96];
+#endif
     KTIMER backupTimer;
     KDPC backupDpc;
     volatile LONG running, busy;
@@ -48,6 +63,10 @@ EVT_WDF_DEVICE_RELEASE_HARDWARE ToprguRelease;
 EVT_WDF_DEVICE_D0_ENTRY ToprguD0Entry;
 EVT_WDF_DEVICE_D0_EXIT ToprguD0Exit;
 EVT_WDF_TIMER ToprguTimer;
+#if A04_TOPRGU_UART_SCREEN
+EVT_WDF_TIMER ToprguScreenTimer;
+EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL ToprguScreenIoctl;
+#endif
 KDEFERRED_ROUTINE ToprguBackupDpc;
 #if A04_TOPRGU_THERMAL_STOP
 EVT_WDF_IO_QUEUE_IO_INTERNAL_DEVICE_CONTROL ToprguThermalControl;
@@ -57,6 +76,10 @@ static void Trace(TOPRGU_CONTEXT *c, const char *s)
 {
     ULONG budget;
     if (!c->uart) return;
+#if A04_TOPRGU_UART_SCREEN
+    /* Do not splice watchdog trace text into a pending screen packet. */
+    if (c->screenLen) return;
+#endif
     while (*s) {
         for (budget=100000; budget; --budget)
             if (!(READ_REGISTER_ULONG(c->uart + 3) & 0x80u) &&
@@ -130,6 +153,9 @@ NTSTATUS ToprguD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     InterlockedExchange(&c->ownedFour,0);
     InterlockedExchange(&c->backupStarted,0);
     InterlockedExchange(&c->running,1);
+#if A04_TOPRGU_UART_SCREEN
+    c->screenPos=c->screenLen=0;
+#endif
     WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(20));
     return STATUS_SUCCESS;
 }
@@ -140,6 +166,9 @@ NTSTATUS ToprguD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
     POWER_ACTION action=WdfDeviceGetSystemPowerAction(device);
     UNREFERENCED_PARAMETER(target);
     InterlockedExchange(&c->running,0);
+#if A04_TOPRGU_UART_SCREEN
+    WdfTimerStop(c->screenTimer,TRUE);
+#endif
     WdfTimerStop(c->timer,TRUE);
     KeCancelTimer(&c->backupTimer);
     KeFlushQueuedDpcs();
@@ -356,6 +385,40 @@ VOID ToprguBackupDpc(PKDPC dpc, PVOID context, PVOID arg1, PVOID arg2)
     ToprguPoll((TOPRGU_CONTEXT *)context,TRUE);
 }
 
+#if A04_TOPRGU_UART_SCREEN
+VOID ToprguScreenTimer(WDFTIMER timer)
+{
+    TOPRGU_CONTEXT *c=ToprguGetContext((WDFDEVICE)WdfTimerGetParentObject(timer));
+    if (InterlockedCompareExchange(&c->busy,1,0)!=0) return;
+    if (InterlockedCompareExchange(&c->running,0,0) &&
+        InterlockedCompareExchange(&c->ownedFour,0,0) &&
+        KeQueryActiveProcessorCount(NULL)==4 && c->uart && c->screenPos<c->screenLen &&
+        !(READ_REGISTER_ULONG(c->uart+3)&0x80u) && (READ_REGISTER_ULONG(c->uart+5)&0x20u)) {
+        WRITE_REGISTER_ULONG(c->uart,c->screenBuf[c->screenPos++]);
+        if (c->screenPos==c->screenLen) { c->screenPos=c->screenLen=0; WdfTimerStop(timer,FALSE); }
+    }
+    InterlockedExchange(&c->busy,0);
+}
+VOID ToprguScreenIoctl(WDFQUEUE queue,WDFREQUEST request,size_t out,size_t in,ULONG code)
+{
+    TOPRGU_CONTEXT *c=ToprguGetContext(WdfIoQueueGetDevice(queue));
+    UCHAR *data; size_t length,i; NTSTATUS status=STATUS_INVALID_PARAMETER;
+    UNREFERENCED_PARAMETER(out);
+    if (code!=A04_UART_SCREEN_SEND || in==0 || in>sizeof(c->screenBuf)) goto finish;
+    status=WdfRequestRetrieveInputBuffer(request,in,(PVOID *)&data,&length);
+    if (!NT_SUCCESS(status) || length<in) goto finish;
+    for(i=0;i<in;i++) if ((data[i]<0x20 || data[i]>0x7e) && data[i]!='\n') { status=STATUS_INVALID_PARAMETER; goto finish; }
+    if (InterlockedCompareExchange(&c->busy,1,0)!=0) { status=STATUS_DEVICE_BUSY; goto finish; }
+    if (!InterlockedCompareExchange(&c->running,0,0) || !InterlockedCompareExchange(&c->ownedFour,0,0) || KeQueryActiveProcessorCount(NULL)!=4)
+        status=STATUS_DEVICE_NOT_READY;
+    else if(c->screenLen) status=STATUS_DEVICE_BUSY;
+    else { RtlCopyMemory(c->screenBuf,data,in);c->screenPos=0;c->screenLen=(ULONG)in; WdfTimerStart(c->screenTimer,WDF_REL_TIMEOUT_IN_MS(1));status=STATUS_SUCCESS; }
+    InterlockedExchange(&c->busy,0);
+finish:
+    WdfRequestComplete(request,status);
+}
+#endif
+
 #if A04_TOPRGU_THERMAL_STOP
 VOID ToprguThermalControl(WDFQUEUE queue, WDFREQUEST request, size_t outputLength, size_t inputLength, ULONG code)
 {
@@ -392,6 +455,12 @@ NTSTATUS ToprguAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     TOPRGU_CONTEXT *c;
     NTSTATUS status;
     UNREFERENCED_PARAMETER(driver);
+#if A04_TOPRGU_UART_SCREEN
+    { DECLARE_CONST_UNICODE_STRING(name,A04_UART_SCREEN_DEVICE);
+      DECLARE_CONST_UNICODE_STRING(sddl,SDDL_DEVOBJ_SYS_ALL_ADM_ALL);
+      status=WdfDeviceInitAssignName(init,&name); if(!NT_SUCCESS(status)) return status;
+      status=WdfDeviceInitAssignSDDLString(init,&sddl); if(!NT_SUCCESS(status)) return status; }
+#endif
 #if A04_TOPRGU_THERMAL_STOP
     { DECLARE_CONST_UNICODE_STRING(name,A04_TOPRGU_THERMAL_NAME);
       status=WdfDeviceInitAssignName(init,&name); if (!NT_SUCCESS(status)) return status; }
@@ -404,6 +473,18 @@ NTSTATUS ToprguAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     status=WdfDeviceCreate(&init,&attr,&device);
     if (!NT_SUCCESS(status)) return status;
     c=ToprguGetContext(device);
+#if A04_TOPRGU_UART_SCREEN
+    { DECLARE_CONST_UNICODE_STRING(link,A04_UART_SCREEN_LINK); WDF_IO_QUEUE_CONFIG q;
+      status=WdfDeviceCreateSymbolicLink(device,&link); if(!NT_SUCCESS(status))return status;
+      WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchSequential);
+      q.PowerManaged=WdfTrue;q.EvtIoDeviceControl=ToprguScreenIoctl;
+      status=WdfIoQueueCreate(device,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE); if(!NT_SUCCESS(status))return status; }
+    { WDF_TIMER_CONFIG screenConfig;
+      WDF_TIMER_CONFIG_INIT_PERIODIC(&screenConfig,ToprguScreenTimer,1);
+      screenConfig.AutomaticSerialization=FALSE;
+      WDF_OBJECT_ATTRIBUTES_INIT(&timerAttr);timerAttr.ParentObject=device;timerAttr.ExecutionLevel=WdfExecutionLevelDispatch;
+      status=WdfTimerCreate(&screenConfig,&timerAttr,&c->screenTimer); if(!NT_SUCCESS(status))return status; }
+#endif
 #if A04_TOPRGU_THERMAL_STOP
     { WDF_IO_QUEUE_CONFIG q;
       WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel);
