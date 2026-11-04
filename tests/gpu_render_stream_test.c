@@ -15,6 +15,7 @@ int main(void)
     uint8_t data[2048]={0}; size_t n=8; uint32_t len;
     struct rogue_fwif_cmd_geom geom, sentinel;
     struct rogue_fwif_cmd_frag frag;
+    struct rogue_fwif_geom_registers_caswitch static_context;
     put64(data,&n,0x123456789abcdef0ULL); put64(data,&n,0x1122334455667788ULL);
     put32(data,&n,11); put32(data,&n,22); put32(data,&n,33); put32(data,&n,44);
     len=(uint32_t)n; memcpy(data,&len,4); memset(&geom,0xa5,sizeof(geom));
@@ -42,5 +43,8 @@ int main(void)
     assert(!a04_gpu_decode_geometry(mesa_geometry,sizeof(mesa_geometry),A04_RENDER_QUIRK_49927,&geom));
     assert(!a04_gpu_decode_fragment(mesa_fragment,sizeof(mesa_fragment),A04_RENDER_QUIRK_49927,&frag));
     assert(geom.regs.vdm_ctrl_stream_base != 0);
+    assert(!a04_gpu_decode_render_static(mesa_render_static,sizeof(mesa_render_static),&static_context));
+    assert(static_context.geom_reg_vdm_context_state_base_addr != 0);
+    assert(a04_gpu_decode_render_static(mesa_render_static,sizeof(mesa_render_static)-1,&static_context));
     return 0;
 }

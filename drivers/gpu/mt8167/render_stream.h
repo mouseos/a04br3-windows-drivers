@@ -25,4 +25,6 @@ int a04_gpu_decode_geometry(const void *stream, size_t size, uint32_t capabiliti
                             struct rogue_fwif_cmd_geom *out);
 int a04_gpu_decode_fragment(const void *stream, size_t size, uint32_t capabilities,
                             struct rogue_fwif_cmd_frag *out);
+int a04_gpu_decode_render_static(const void *stream, size_t size,
+                                 struct rogue_fwif_geom_registers_caswitch *out);
 #endif

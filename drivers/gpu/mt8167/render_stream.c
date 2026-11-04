@@ -39,6 +39,17 @@ static const struct field fragment[] = {
     F(rogue_fwif_cmd_frag,zls_stride,4), F(rogue_fwif_cmd_frag,sls_stride,4),
     O(rogue_fwif_cmd_frag,execute_count,4,A04_RENDER_MULTICORE),
 };
+#define S(member) F(rogue_fwif_geom_registers_caswitch,member,8)
+#define TASKS(i) S(geom_state[i].geom_reg_vdm_context_store_task0), \
+    S(geom_state[i].geom_reg_vdm_context_store_task1), S(geom_state[i].geom_reg_vdm_context_store_task2), \
+    S(geom_state[i].geom_reg_vdm_context_store_task3), S(geom_state[i].geom_reg_vdm_context_store_task4), \
+    S(geom_state[i].geom_reg_vdm_context_resume_task0), S(geom_state[i].geom_reg_vdm_context_resume_task1), \
+    S(geom_state[i].geom_reg_vdm_context_resume_task2), S(geom_state[i].geom_reg_vdm_context_resume_task3), \
+    S(geom_state[i].geom_reg_vdm_context_resume_task4)
+static const struct field render_static[] = {
+    S(geom_reg_vdm_context_state_base_addr), S(geom_reg_vdm_context_state_resume_addr),
+    S(geom_reg_ta_context_state_base_addr), TASKS(0), TASKS(1)
+};
 static void copy(void *dst,const void *src,size_t n)
 { size_t i; for (i=0;i<n;i++) ((uint8_t *)dst)[i]=((const uint8_t *)src)[i]; }
 static int decode(const void *input,size_t size,uint32_t caps,const struct field *fields,size_t count,
@@ -77,5 +88,12 @@ int a04_gpu_decode_fragment(const void *stream,size_t size,uint32_t caps,struct 
     struct rogue_fwif_cmd_frag result={0};
     if (!out || decode(stream,size,caps,fragment,sizeof(fragment)/sizeof(fragment[0]),&result,sizeof(result),
                        offsetof(struct rogue_fwif_cmd_frag,regs.tpu),2)) return -1;
+    *out=result; return 0;
+}
+int a04_gpu_decode_render_static(const void *stream,size_t size,struct rogue_fwif_geom_registers_caswitch *out)
+{
+    struct rogue_fwif_geom_registers_caswitch result={0};
+    if (!out || decode(stream,size,0,render_static,sizeof(render_static)/sizeof(render_static[0]),
+                       &result,sizeof(result),0,0)) return -1;
     *out=result; return 0;
 }
