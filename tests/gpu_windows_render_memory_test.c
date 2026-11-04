@@ -8,6 +8,7 @@
 #include "pvr_rogue_fwif_client.h"
 static unsigned allocated,freed,cleans,invalidations,fail_sync,fail_sync_at,fail_inv,expect_staged;
 static unsigned cleanup_calls,cleanup_fail_at;
+static unsigned kick_calls,kick_fail;
 static void *alloc_buf(PDMA_ADAPTER a,ULONG n,PHYSICAL_ADDRESS *pa,BOOLEAN cache)
 { (void)a;(void)cache;pa->QuadPart=0x10000000u;++allocated;return aligned_alloc(4096,n); }
 static void free_buf(PDMA_ADAPTER a,ULONG n,PHYSICAL_ADDRESS pa,void *p,BOOLEAN cache)
@@ -23,6 +24,9 @@ NTSTATUS KeDelayExecutionThread(int mode,BOOLEAN alert,const LARGE_INTEGER *dela
 { (void)mode;(void)alert;(void)delay;return STATUS_SUCCESS; }
 NTSTATUS a04_gpu_firmware_cleanup(struct a04_gpu_firmware_state *s,unsigned type,uint32_t address)
 { (void)type;assert(s && address);++cleanup_calls;return cleanup_calls==cleanup_fail_at ? STATUS_DEVICE_BUSY : STATUS_SUCCESS; }
+NTSTATUS a04_gpu_firmware_submit_kick(struct a04_gpu_firmware_state *s,const struct rogue_fwif_kccb_cmd *kick)
+{ assert(s && kick && kick->cmd_type==ROGUE_FWIF_KCCB_CMD_COMBINED_GEOM_FRAG_KICK);++kick_calls;
+  return kick_fail ? STATUS_IO_TIMEOUT : STATUS_SUCCESS; }
 int main(void)
 {
     DMA_OPERATIONS ops={alloc_buf,free_buf};struct fake_adapter adapter={&ops};
@@ -187,10 +191,18 @@ int main(void)
         assert(a04_windows_render_publish_context(&m)==STATUS_INVALID_DEVICE_STATE && !m.published && invalidations==inv_before);
         zero[3]=0; }
       before=cleans;inv_before=invalidations;
+      { struct rogue_fwif_cmd_geom geom={0};struct rogue_fwif_cmd_frag frag={0};
+        assert(a04_windows_render_prepare_pair(&m,&geom,&frag,1)==STATUS_SUCCESS);
+        assert(a04_windows_render_prepare_pair(&m,&geom,&frag,1)==STATUS_INVALID_PARAMETER);
+        assert(a04_windows_render_submit_pair(&m)==STATUS_INVALID_PARAMETER && !kick_calls); }
       assert(a04_windows_render_publish_context(&m)==STATUS_SUCCESS && cleans==before+15 && invalidations==inv_before+1 && m.published);
       assert(a04_windows_render_prepare_freelists(&m,fl)==STATUS_INVALID_PARAMETER);
-      m.render.pair_prepared=1;m.render.hwrt_fw=m.target.data.fw_addr;
-      m.render.frag_end=(uint32_t)(3u*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(struct rogue_fwif_cmd_frag)+2u*sizeof(struct rogue_fwif_ufo));
+      assert(a04_windows_render_collect_pair(&m)==STATUS_INVALID_PARAMETER);
+      { struct a04_windows_render_memory copy=m;kick_fail=1;
+        assert(a04_windows_render_submit_pair(&copy)==STATUS_IO_TIMEOUT && copy.poisoned && !copy.kick_submitted);
+        assert(a04_windows_render_submit_pair(&copy)==STATUS_INVALID_PARAMETER);kick_fail=0; }
+      assert(a04_windows_render_submit_pair(&m)==STATUS_SUCCESS && m.kick_submitted && kick_calls==2);
+      assert(a04_windows_render_submit_pair(&m)==STATUS_INVALID_PARAMETER && kick_calls==2);
       { uint32_t saved_next=s.runtime.next_free;
         uint32_t *trace;
         s.runtime.trace_control=0x200000;s.runtime.trace[0]=0x201000;s.runtime.trace[1]=0x20d000;s.runtime.next_free=0x219000;

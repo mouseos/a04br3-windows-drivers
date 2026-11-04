@@ -5,6 +5,7 @@
 #include "render_pds_data.h"
 #include "render_context_pds.h"
 #include "render_freelist.h"
+#include "render_pair.h"
 #include "pvr_rogue_fwif.h"
 #include "pvr_rogue_fwif_client.h"
 #define PAGE 4096u
@@ -586,6 +587,40 @@ static void render_capture_trace(struct a04_windows_render_memory *m)
 done:
     m->trace_capture_status=status;
 }
+NTSTATUS a04_windows_render_prepare_pair(struct a04_windows_render_memory *m,
+    const struct rogue_fwif_cmd_geom *geom,const struct rogue_fwif_cmd_frag *frag,uint32_t job_id)
+{
+    struct a04_gpu_fw_arena arena={0};struct rogue_fwif_kccb_cmd kick={0};
+    struct a04_gpu_firmware_state *s;
+    if (!m || !geom || !frag || !job_id || !m->ready || !m->firmware || !m->cpu ||
+        !m->render_prepared || !m->target_prepared || !m->freelists_prepared || m->published ||
+        m->poisoned || m->kick_prepared || m->kick_submitted || KeGetCurrentIrql()!=PASSIVE_LEVEL)
+        return STATUS_INVALID_PARAMETER;
+    s=m->firmware;
+    if (!s->processor_released || !s->firmware_started || s->queue_faulted || !s->memory.heap ||
+        s->memory.adapter!=m->adapter || a04_gpu_fw_arena_init(&arena,s->memory.heap,A04_PVR_HEAP_SIZE,
+            (uint64_t)s->memory.heap_logical.QuadPart,s->runtime.next_free)) return STATUS_INVALID_DEVICE_STATE;
+    if (a04_gpu_prepare_render_pair(&arena,&m->render,&m->target.data,geom,frag,job_id,0,&kick))
+        return STATUS_INVALID_DEVICE_STATE;
+    m->kick=kick;m->kick_prepared=TRUE;
+    return STATUS_SUCCESS;
+}
+NTSTATUS a04_windows_render_submit_pair(struct a04_windows_render_memory *m)
+{
+    NTSTATUS status;
+    if (!m || !m->firmware || !m->published || m->poisoned || !m->kick_prepared || m->kick_submitted ||
+        m->cleanup_complete || m->render.pair_prepared!=1 || m->render.hwrt_fw!=m->target.data.fw_addr ||
+        m->kick.cmd_type!=ROGUE_FWIF_KCCB_CMD_COMBINED_GEOM_FRAG_KICK || KeGetCurrentIrql()!=PASSIVE_LEVEL)
+        return STATUS_INVALID_PARAMETER;
+    if (!m->firmware->processor_released || !m->firmware->firmware_started || m->firmware->queue_faulted)
+        return STATUS_INVALID_DEVICE_STATE;
+    /* A failed or timed-out KCCB submission may already have reached firmware. */
+    m->poisoned=TRUE;
+    status=a04_gpu_firmware_submit_kick(m->firmware,&m->kick);
+    if (!NT_SUCCESS(status)) return status;
+    m->kick_submitted=TRUE;m->poisoned=FALSE;
+    return STATUS_SUCCESS;
+}
 NTSTATUS a04_windows_render_collect_pair(struct a04_windows_render_memory *m)
 {
     struct a04_gpu_firmware_state *s;struct rogue_fwif_cccb_ctl *gc,*fc;
@@ -593,7 +628,7 @@ NTSTATUS a04_windows_render_collect_pair(struct a04_windows_render_memory *m)
     const uint32_t geom_end=(uint32_t)(2u*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(struct rogue_fwif_cmd_geom)+sizeof(struct rogue_fwif_ufo));
     const uint32_t frag_end=(uint32_t)(3u*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(struct rogue_fwif_cmd_frag)+2u*sizeof(struct rogue_fwif_ufo));
     if (!m || !m->firmware || !m->published || m->poisoned || m->cleanup_complete || !m->target_prepared ||
-        !m->freelists_prepared || !m->render_prepared || m->render.pair_prepared!=1 ||
+        !m->freelists_prepared || !m->render_prepared || !m->kick_submitted || m->render.pair_prepared!=1 ||
         m->render.hwrt_fw!=m->target.data.fw_addr || m->render.frag_end!=frag_end ||
         KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_INVALID_PARAMETER;
     s=m->firmware;

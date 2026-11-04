@@ -5,6 +5,7 @@
 #include "firmware_objects.h"
 #include "render_context.h"
 #include "render_target.h"
+#include "pvr_rogue_fwif_client.h"
 #include "render_trace_shared.h"
 #if A04_GE8300_RENDER_EXPERIMENT
 /* A private DMA allocation and its GPU page tables. Call at PASSIVE_LEVEL;
@@ -40,6 +41,8 @@ struct a04_windows_render_memory {
     struct a04_render_hwrt_params target_params;
     BOOLEAN target_prepared;
     BOOLEAN cleanup_complete;
+    BOOLEAN kick_prepared,kick_submitted;
+    struct rogue_fwif_kccb_cmd kick;
     /* Optional diagnostic; candidate scan is not a GPU execution gate. */
     BOOLEAN trace_capture_enabled,trace_capture_valid,trace_capture_changed;
     NTSTATUS trace_capture_status;
@@ -71,6 +74,16 @@ NTSTATUS a04_windows_render_prepare_target(struct a04_windows_render_memory *m,
     const struct a04_render_hwrt_params *params);
 /* Synchronize render objects and publish the VM; never submits a kick. */
 NTSTATUS a04_windows_render_publish_context(struct a04_windows_render_memory *m);
+/* Trusted internal building block, not a fixture validator or a user-facing
+ * entry point. Caller must independently establish every command dependency,
+ * shader provenance and GPU access bound, and serialize all firmware access.
+ * Prepare before publishing; publish synchronizes rings and page tables. */
+NTSTATUS a04_windows_render_prepare_pair(struct a04_windows_render_memory *m,
+    const struct rogue_fwif_cmd_geom *geom,const struct rogue_fwif_cmd_frag *frag,uint32_t job_id);
+/* Submit the prepared non-partial pair exactly once after publication. Any
+ * failure after the submission attempt poisons the allocation; no retries or
+ * releases without independent GPU/DMA quiescence. */
+NTSTATUS a04_windows_render_submit_pair(struct a04_windows_render_memory *m);
 /* Collect one previously submitted, non-partial pair. Both fence values and
  * ring read offsets must reach their exact expected values before cleanup.
  * Serialized caller; this does not submit, retire the MMU, or free memory. */

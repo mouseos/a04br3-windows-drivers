@@ -188,6 +188,8 @@ context switchのpersistent PDSは `pvr_pds_generate_stream_out_terminate_progra
 
 `a04_windows_render_collect_pair` は、別途投入済みの非partial pairに対し、geometry／fragment両fence値と両リングのread offsetが期待値になるまでCPU同期しながら待ち、payloadをCPU同期してからgeometry context、fragment context、HWRT、両freelistのfirmware cleanupを順に要求する実験部品。timeout、同期失敗、cleanup BUSY／失敗時はpoison状態で保持し、後続のcleanupを行わない。成功もMMU退役やGPU DMA停止の証明ではなく、allocationの解放には別途停止とDMA quiescenceが必要。入力pairの安全性を検証せず、kickも発行しない。ホストmockでのみ検証している。
 
+`a04_windows_render_prepare_pair` は公開前に非partialのCCCBとkickを構築し、`a04_windows_render_publish_context` によるDMA同期・MMU無効化後、`a04_windows_render_submit_pair` がkickを１回だけ送る。送信が失敗した場合は到達の有無が不明なためpoisonし、再投入・解放を禁止する。`collect_pair` は送信成功前には開始できず、完了とcleanupの後も独立したGPU/DMA停止を要求する。これらは信頼された内部呼出し向けで、geometry／fragmentのアドレスやUSCの由来・動的範囲を検証せず、ユーザー向け入口も持たない。`A04_GE8300_RENDER_EXPERIMENT=1` でこれらをWDK providerのビルドに含められるが、固定fixtureも呼出し元も未完成で、このフラグを設定するだけでは描画しない。実機投入可能な構成ではない。
+
 `summarize-shared-size-log.py PRIVATE_FIRMWARE_LOG` は、既に収集された `TA context shared alloc size store 0x..., load 0x...` 形式のfirmware traceだけを集計する。実機へ接続せず、元ログや他の内容を出力しない。ログの出自、記録フィールドと特殊レジスタ103の同一性、未観測値の範囲は証明できない。実機操作と採取は主担当が担当する。
 
 `A04_GE8300_SHARED_TRACE_DIAGNOSTIC=1` は、明示的な `A04_GE8300_BOOT_TEST=1` と組み合わせる追加診断で、既定OFF。既存のfirmware trace２本をCPU同期してCSW 15のID候補を走査し、UARTへ候補数、store/loadの値0・64・128・192・256のビット集合、それ以外の値の個数、異なる組の数、走査中にtrace pointerが変化したかを一行で出す。生のtrace、タイムスタンプ、範囲外の生値は出力しない。通常のboot testではqueue test後のshutdown前、copy serviceでは状態照会時に出力する。保存したUARTログは `python3 tools/gpu/summarize-shared-size-log.py --uart PRIVATE_UART_LOG` で構造化できる。診断実行とログ取得は主担当が行う。
