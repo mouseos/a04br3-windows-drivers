@@ -5,13 +5,8 @@ if errorlevel 1 goto consolefail
 wpeinit
 mountvol /N
 if errorlevel 1 goto automountfail
-X:\a04br3\toprgu-provider-status.exe
-if not errorlevel 1 goto watchdogready
-drvload X:\a04br3\toprgu\mt8167-toprgu.inf
-if errorlevel 1 goto watchdogfail
-X:\a04br3\toprgu-provider-status.exe
-if errorlevel 1 goto watchdogfail
-:watchdogready
+rem The three-CPU diagnostic UEFI keeps CPU1 as the UART/watchdog worker.
+rem Do not load a second TOPRGU/UART owner in this WinPE image.
 set GPU=X:\a04br3\ge8300-display\ge8300
 set DISP=X:\a04br3\ge8300-display\display
 copy /Y %GPU%\ge8300-mips.fw X:\Windows\System32\drivers\ge8300-mips.fw >nul
@@ -39,9 +34,6 @@ echo DISPLAY_CONSOLE_FAILED
 goto finish
 :automountfail
 echo DISPLAY_AUTOMOUNT_DISABLE_FAILED
-goto finish
-:watchdogfail
-echo DISPLAY_WATCHDOG_FAILED
 goto finish
 :packagefail
 echo DISPLAY_PACKAGE_FAILED
