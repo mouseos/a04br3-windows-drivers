@@ -13,7 +13,7 @@ test: test-mt8167-common-dma test-mt8167-dma-adapter test-mt8167-clock-owner tes
 test-mma8652:
 	$(MAKE) -C drivers/sensors/mma8652 test test-hid
 
-test: build/msdc_sync_pio_test build/gpu_render_pds_data_test test-mt8167-dl1-engine test-mt8167-wavert-dma build/gpu_windows_render_memory_test build/msdc_lifetime_test build/bqhr_diagnostic_test test-mt8167-audio-broker test-mt8167-audio-ring test-mt8167-audio-irq build/gpu_render_kick_off build/gpu_render_kick_on build/gpu_windows_render_command_test test-mt8167-dl1 build/gpu_render_execution_test test-thermal build/bq24160_handoff_test build/bq24160_charger_test build/bq24160_i2c_test build/gpu_render_context_test build/gpu_render_hwrt_test build/gpu_render_freelist_test build/gpu_render_stream_test build/lc709203f_test build/lc709203f_i2c_test build/msdc_io_gate_test build/toprgu_watchdog_policy_test build/toprgu_reset_command_test build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/button_pipeline_test build/button_device_test build/button_hardware_test build/pmic_read_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_board_init_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test build/eint_test build/gpu_power_test build/gpu_mmu_test build/gpu_fw_objects_test build/gpu_fw_queue_test build/gpu_transfer_stream_test build/gpu_windows_linear_test build/gpu_present_bounds_test build/gpu_dma_pages_test build/gpu_transfer_mapping_test
+test: build/msdc_board_owner_test build/msdc_rails_owner_test test-mt8167-pwrap-owner build/msdc_sync_pio_test build/gpu_render_pds_data_test test-mt8167-dl1-engine test-mt8167-wavert-dma build/gpu_windows_render_memory_test build/msdc_lifetime_test build/bqhr_diagnostic_test test-mt8167-audio-broker test-mt8167-audio-ring test-mt8167-audio-irq build/gpu_render_kick_off build/gpu_render_kick_on build/gpu_windows_render_command_test test-mt8167-dl1 build/gpu_render_execution_test test-thermal build/bq24160_handoff_test build/bq24160_charger_test build/bq24160_i2c_test build/gpu_render_context_test build/gpu_render_hwrt_test build/gpu_render_freelist_test build/gpu_render_stream_test build/lc709203f_test build/lc709203f_i2c_test build/msdc_io_gate_test build/toprgu_watchdog_policy_test build/toprgu_reset_command_test build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/button_pipeline_test build/button_device_test build/button_hardware_test build/pmic_read_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_board_init_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test build/eint_test build/gpu_power_test build/gpu_mmu_test build/gpu_fw_objects_test build/gpu_fw_queue_test build/gpu_transfer_stream_test build/gpu_windows_linear_test build/gpu_present_bounds_test build/gpu_dma_pages_test build/gpu_transfer_mapping_test
 	./build/gpu_render_pds_data_test
 	python3 tests/gpu_render_pds_reconstruct_test.py
 	python3 tests/gpu_render_trace_test.py
@@ -44,6 +44,8 @@ test: build/msdc_sync_pio_test build/gpu_render_pds_data_test test-mt8167-dl1-en
 	./build/lc709203f_i2c_test
 	./build/msdc_io_gate_test
 	./build/msdc_lifetime_test
+	./build/msdc_board_owner_test
+	./build/msdc_rails_owner_test
 	./build/msdc_sync_pio_test
 	./build/msdc_resume_check_test
 	./build/msdc_resume_capture_test
@@ -154,6 +156,14 @@ build/msdc_resume_capture_test: $(SRC)/resume_capture.c $(SRC)/resume_capture.h 
 build/msdc_resume_check_test: $(SRC)/resume_check.c $(SRC)/resume_check.h tests/msdc_resume_check_test.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -I$(SRC) $(SRC)/resume_check.c tests/msdc_resume_check_test.c -o $@
+
+build/msdc_board_owner_test: $(SRC)/board_owner.c $(SRC)/board_owner.h tests/msdc_board_owner_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -I$(SRC) $(SRC)/board_owner.c tests/msdc_board_owner_test.c -o $@
+
+build/msdc_rails_owner_test: drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/pwrap_owner.h drivers/input/a04br3-buttons/pmic_read.c drivers/input/a04br3-buttons/pmic_read.h tests/msdc_rails_owner_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared drivers/bus/mt8167-shared/pwrap_owner.c drivers/input/a04br3-buttons/pmic_read.c tests/msdc_rails_owner_test.c -o $@
 
 build/msdc_sync_pio_test: $(SRC)/sync_pio.c $(SRC)/sync_pio.h $(SRC)/pio.h tests/msdc_sync_pio_test.c
 	@mkdir -p build

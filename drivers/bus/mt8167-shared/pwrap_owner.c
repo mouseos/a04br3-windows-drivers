@@ -28,3 +28,12 @@ int a04_pwrap_owner_read_buttons(struct a04_pwrap_owner *o, uint16_t *status)
     o->unlock(o->lock_context);
     return result;
 }
+
+int a04_pwrap_owner_read_emmc_rails(struct a04_pwrap_owner *o, struct a04_emmc_rails_raw *out)
+{
+    int result=-1;
+    if (!out || enter(o)) return -1;
+    if (o->online) result=a04_pmic_emmc_rails(&o->bus,out);
+    o->unlock(o->lock_context);
+    return result;
+}

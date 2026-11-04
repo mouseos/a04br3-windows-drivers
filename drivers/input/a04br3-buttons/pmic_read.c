@@ -18,7 +18,7 @@ static int wait_fsm(struct a04_pmic_read *bus, unsigned state, uint32_t *last)
     return -1;
 }
 
-int a04_pmic_chrstatus(struct a04_pmic_read *bus, uint16_t *value)
+static int read_register(struct a04_pmic_read *bus, uint16_t address, uint16_t *value)
 {
     uint32_t data;
     uint16_t response;
@@ -26,11 +26,24 @@ int a04_pmic_chrstatus(struct a04_pmic_read *bus, uint16_t *value)
         !bus->attempts || bus->poisoned) return -1;
     if (!(bus->read32(bus->context, INIT_DONE2) & 1u)) return -1;
     if (wait_fsm(bus, 0, &data)) { bus->poisoned = 1; return -1; }
-    bus->write32(bus->context, WACS2_CMD, (MT6392_CHRSTATUS >> 1) << 16);
+    bus->write32(bus->context, WACS2_CMD, ((uint32_t)address >> 1) << 16);
     if (wait_fsm(bus, 6, &data)) { bus->poisoned = 1; return -1; }
     response = (uint16_t)data;
     bus->write32(bus->context, WACS2_VLDCLR, 1);
     if (wait_fsm(bus, 0, &data)) { bus->poisoned = 1; return -1; }
     *value = response;
+    return 0;
+}
+
+int a04_pmic_chrstatus(struct a04_pmic_read *bus, uint16_t *value)
+{ return read_register(bus, MT6392_CHRSTATUS, value); }
+
+int a04_pmic_emmc_rails(struct a04_pmic_read *bus, struct a04_emmc_rails_raw *out)
+{
+    struct a04_emmc_rails_raw tmp;
+    if (!out || read_register(bus, 0x0508u, &tmp.vemc_enable) ||
+        read_register(bus, 0x052eu, &tmp.vemc_selector) ||
+        read_register(bus, 0x0556u, &tmp.vio18_enable)) return -1;
+    *out=tmp;
     return 0;
 }

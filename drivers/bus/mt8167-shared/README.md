@@ -20,3 +20,9 @@ new leases after stop, and poisons the policy if verification fails. It neither
 claims clock registers nor changes PLLs, gates or rates. It cannot establish
 that firmware and other Windows drivers have stopped bypassing the owner; it is
 not connected to any device.
+
+The narrow eMMC rail observation reads three fixed PMIC registers under the
+same owner lock as button reads and publishes results only if all complete.
+It does not enable rails or change voltage. The parent/provider and safe PnP
+lifetime are still unimplemented; no current client may bypass the existing
+button driver's direct PWRAP ownership to use this core.
