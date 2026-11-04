@@ -33,12 +33,16 @@ NTSTATUS KeDelayExecutionThread(int mode,BOOLEAN alertable,const LARGE_INTEGER *
             struct rogue_fwif_kccb_cmd *cmds=(void *)(heap+state.runtime.kernel_ccb);
             volatile uint32_t *ret=(void *)(heap+state.runtime.kernel_return_slots);
             volatile uint32_t *power=(void *)(heap+state.runtime.power_sync);
+            volatile struct rogue_fwif_osdata *os=(void *)(heap+state.runtime.os_data);
             uint32_t slot=ctl->read_offset;
             if(slot!=ctl->write_offset) {
                 if(commands_completed==0 && cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_HEALTH_CHECK) command_error=1;
                 if(commands_completed==1 && (cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_POW || cmds[slot].cmd_data.pow_data.pow_type!=ROGUE_FWIF_POW_FORCED_IDLE_REQ)) command_error=1;
                 if(commands_completed==2 && (cmds[slot].cmd_type!=ROGUE_FWIF_KCCB_CMD_POW || cmds[slot].cmd_data.pow_data.pow_type!=ROGUE_FWIF_POW_OFF_REQ)) command_error=1;
-                ret[slot]=ROGUE_FWIF_KCCB_RTN_SLOT_CMD_EXECUTED; *power=1;
+                /* The MT8167 firmware can advance the execution counter
+                 * without writing the health command's return slot. */
+                if(commands_completed!=0) ret[slot]=ROGUE_FWIF_KCCB_RTN_SLOT_CMD_EXECUTED;
+                *power=1; ++os->kccb_cmds_executed;
                 ctl->read_offset=ctl->write_offset; ++commands_completed;
             }
         }
