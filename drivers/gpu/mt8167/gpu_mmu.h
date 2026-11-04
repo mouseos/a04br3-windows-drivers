@@ -9,6 +9,9 @@
 #define A04_GPU_MMU_READ_ONLY UINT64_C(0x2)
 #define A04_GPU_MMU_COHERENT UINT64_C(0x4)
 #define A04_GPU_MMU_SLC_BYPASS UINT64_C(0x8)
+/* Linux ROGUE_MMUCTRL_PT_DATA_PM_META_PROTECT_EN: restrict GPU access to
+ * the Parameter Manager and firmware. Does not restrict CPU access. */
+#define A04_GPU_MMU_PM_FW_PROTECT UINT64_C(0x4000000000000000)
 /* The caller owns three 4 KiB, zero-initialized DMA-visible table pages.
  * A call maps a physically contiguous, page-aligned range within one 2 MiB
  * leaf table. DMA addresses are the adapter logical addresses, not CPU VAs.

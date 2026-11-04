@@ -20,15 +20,81 @@ static int owned_fw(const struct a04_windows_render_memory *m,const struct a04_g
     return off<=m->firmware->runtime.next_free && size<=m->firmware->runtime.next_free-off &&
         o->cpu==(uint8_t *)m->firmware->memory.heap+off && o->dma==(uint64_t)m->firmware->memory.heap_logical.QuadPart+off;
 }
-static int writable_range(const struct a04_windows_render_memory *m,uint64_t addr,uint64_t len)
+static int writable_range(const struct a04_windows_render_memory *m,uint64_t addr,uint64_t len,int pm_only)
 {
     size_t i;unsigned matches=0;
     if (!addr || !len || addr>=UINT64_C(1)<<40 || len>(UINT64_C(1)<<40)-addr) return 0;
     for (i=0;i<m->map_count;++i) {
         const struct a04_windows_render_map *r=&m->maps[i];uint64_t n=(uint64_t)r->pages*PAGE;
-        if (!(r->mmu_flags&A04_GPU_MMU_READ_ONLY) && addr>=r->gpu_va && len<=n && addr-r->gpu_va<=n-len) ++matches;
+        if (!(r->mmu_flags&A04_GPU_MMU_READ_ONLY) && !!(r->mmu_flags&A04_GPU_MMU_PM_FW_PROTECT)==!!pm_only &&
+            addr>=r->gpu_va && len<=n && addr-r->gpu_va<=n-len) ++matches;
     }
     return matches==1;
+}
+/* Match the actual DMA page tables, not just the saved mapping description. */
+static int render_ptes_valid(const struct a04_windows_render_memory *m)
+{
+    const uint8_t *p=m->cpu;const uint32_t *pc=(const uint32_t *)(const void *)p;
+    uint64_t dma=(uint64_t)m->logical.QuadPart;size_t i,j,g;
+    if (!p || ((uintptr_t)p&(PAGE-1u)) || (dma&(PAGE-1u)) || !m->map_count ||
+        m->map_count>A04_RENDER_MAX_MAPS || m->length<A04_RENDER_PAYLOAD_OFFSET || dma>UINT64_C(0x100000000)-m->length) return 0;
+    for (i=0;i<m->map_count;++i) {
+        const struct a04_windows_render_map *r=&m->maps[i];const uint64_t *pd,*pt;
+        uint64_t pd_dma,pt_dma,base;size_t ci,di,ti;
+        if (r->group>=4 || !r->pages || (r->gpu_va&(PAGE-1u)) || r->gpu_va>=UINT64_C(1)<<40 ||
+            (uint64_t)r->pages*PAGE>(UINT64_C(1)<<40)-r->gpu_va ||
+            r->payload_page>=(m->length-A04_RENDER_PAYLOAD_OFFSET)/PAGE ||
+            r->pages>(m->length-A04_RENDER_PAYLOAD_OFFSET)/PAGE-r->payload_page ||
+            (r->mmu_flags&~(A04_GPU_MMU_READ_ONLY|A04_GPU_MMU_COHERENT|A04_GPU_MMU_SLC_BYPASS|A04_GPU_MMU_PM_FW_PROTECT))) return 0;
+        ci=(size_t)(r->gpu_va>>30);di=(size_t)((r->gpu_va>>21)&511u);ti=(size_t)((r->gpu_va>>12)&511u);
+        if (r->pages>512u-ti) return 0;
+        pd_dma=dma+(6u+2u*r->group)*PAGE;pt_dma=pd_dma+PAGE;
+        pd=(const uint64_t *)(const void *)(p+(6u+2u*r->group)*PAGE);pt=pd+512;
+        if (pc[ci]!=((uint32_t)(pd_dma>>8)|1u) || pd[di]!=(pt_dma|1u)) return 0;
+        base=dma+A04_RENDER_PAYLOAD_OFFSET+(uint64_t)r->payload_page*PAGE;
+        for (j=0;j<r->pages;++j) if (pt[ti+j]!=((base+(uint64_t)j*PAGE)|r->mmu_flags|1u)) return 0;
+        for (j=0;j<i;++j) {
+            const struct a04_windows_render_map *q=&m->maps[j];
+            if (overlap(q->gpu_va,(uint64_t)q->pages*PAGE,r->gpu_va,(uint64_t)r->pages*PAGE) ||
+                overlap(q->payload_page,q->pages,r->payload_page,r->pages) ||
+                (q->group==r->group && (q->gpu_va>>21)!=(r->gpu_va>>21)) ||
+                (q->group!=r->group && (q->gpu_va>>30)==(r->gpu_va>>30))) return 0;
+        }
+    }
+    /* A shared leaf table must not create unlisted aliases in another 2 MiB
+     * region; no unlisted PTEs or page-directory links may be present. */
+    for (g=0;g<4;++g) {
+        const uint64_t *pd=(const uint64_t *)(const void *)(p+(6u+2u*g)*PAGE),*pt=pd+512;
+        size_t di=512;uint64_t pt_dma=dma+(7u+2u*g)*PAGE;
+        for (i=0;i<m->map_count;++i) if (m->maps[i].group==g) di=(size_t)((m->maps[i].gpu_va>>21)&511u);
+        for (j=0;j<512;++j) {
+            int listed=0;
+            if (pd[j]!=(j==di ? (pt_dma|1u) : 0u)) return 0;
+            for (i=0;i<m->map_count;++i) if (m->maps[i].group==g) {
+                size_t ti=(size_t)((m->maps[i].gpu_va>>12)&511u);
+                if (j>=ti && j-ti<m->maps[i].pages) ++listed;
+            }
+            if (listed>1 || (!listed && pt[j])) return 0;
+        }
+    }
+    for (j=0;j<1024;++j) {
+        uint32_t expected=0;unsigned found=0;
+        if (j==992u) { expected=(uint32_t)((dma+PAGE)>>8)|1u;found=1; }
+        if (j==996u) { expected=(uint32_t)((dma+3u*PAGE)>>8)|1u;found=1; }
+        for (i=0;i<m->map_count;++i) if ((m->maps[i].gpu_va>>30)==j) {
+            uint32_t entry=(uint32_t)((dma+(6u+2u*m->maps[i].group)*PAGE)>>8)|1u;
+            if (found && expected!=entry) return 0;
+            expected=entry;found=1;
+        }
+        if (pc[j]!=expected) return 0;
+    }
+    for (g=0;g<2;++g) {
+        const uint64_t *pd=(const uint64_t *)(const void *)(p+(1u+2u*g)*PAGE),*pt=pd+512;
+        uint64_t pt_dma=dma+(2u+2u*g)*PAGE,zero=dma+5u*PAGE;
+        for (j=0;j<512;++j) if (pd[j]!=(j ? 0u : (pt_dma|1u)) || pt[j]!=(j ? 0u : (zero|1u))) return 0;
+    }
+    for (j=0;j<PAGE;++j) if (p[5u*PAGE+j]) return 0;
+    return 1;
 }
 static int freelists_valid(const struct a04_windows_render_memory *m,uint64_t callstack)
 {
@@ -52,7 +118,7 @@ static int freelists_valid(const struct a04_windows_render_memory *m,uint64_t ca
         for (j=0;j<m->map_count;++j) {
             const struct a04_windows_render_map *r=&m->maps[j];uint64_t n=(uint64_t)r->pages*PAGE;
             if (overlap(l[i].first_payload_page,l[i].page_count,r->payload_page,r->pages)) return 0;
-            if (!(r->mmu_flags&A04_GPU_MMU_READ_ONLY) && (r->mmu_flags&A04_GPU_MMU_SLC_BYPASS) && l[i].table_gpu>=r->gpu_va && bytes<=n && l[i].table_gpu-r->gpu_va<=n-bytes) {
+            if (!(r->mmu_flags&A04_GPU_MMU_READ_ONLY) && (r->mmu_flags&(A04_GPU_MMU_SLC_BYPASS|A04_GPU_MMU_PM_FW_PROTECT))==(A04_GPU_MMU_SLC_BYPASS|A04_GPU_MMU_PM_FW_PROTECT) && l[i].table_gpu>=r->gpu_va && bytes<=n && l[i].table_gpu-r->gpu_va<=n-bytes) {
                 uint64_t off=(uint64_t)A04_RENDER_PAYLOAD_OFFSET+(uint64_t)r->payload_page*PAGE+(l[i].table_gpu-r->gpu_va);
                 if (off>m->length || bytes>m->length-off) return 0;
                 table=(const uint32_t *)(const void *)((const uint8_t *)m->cpu+off);++matches;
@@ -82,12 +148,14 @@ NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
             a->pages>payload_pages-a->payload_page || (a->gpu_va&(PAGE-1)) ||
             !a->gpu_va || a->gpu_va>=UINT64_C(1)<<40 ||
             (uint64_t)a->pages*PAGE>(UINT64_C(1)<<40)-a->gpu_va ||
-            (a->mmu_flags & ~(A04_GPU_MMU_READ_ONLY|A04_GPU_MMU_COHERENT|A04_GPU_MMU_SLC_BYPASS)))
+            (a->mmu_flags & ~(A04_GPU_MMU_READ_ONLY|A04_GPU_MMU_COHERENT|A04_GPU_MMU_SLC_BYPASS|A04_GPU_MMU_PM_FW_PROTECT)))
             return STATUS_INVALID_PARAMETER;
         for (j=0;j<i;++j) {
             const struct a04_windows_render_map *b=&maps[j];
             if (overlap(a->gpu_va,(uint64_t)a->pages*PAGE,b->gpu_va,(uint64_t)b->pages*PAGE) ||
-                overlap(a->payload_page,a->pages,b->payload_page,b->pages)) return STATUS_INVALID_PARAMETER;
+                overlap(a->payload_page,a->pages,b->payload_page,b->pages) ||
+                (a->group==b->group && (a->gpu_va>>21)!=(b->gpu_va>>21)) ||
+                (a->group!=b->group && (a->gpu_va>>30)==(b->gpu_va>>30))) return STATUS_INVALID_PARAMETER;
         }
     }
     total=(TABLE_PAGES+payload_pages)*PAGE;
@@ -148,7 +216,7 @@ NTSTATUS a04_windows_render_prepare_context(struct a04_windows_render_memory *m,
         return STATUS_INVALID_DEVICE_STATE;
     for (i=0;i<m->map_count;++i) {
         const struct a04_windows_render_map *r=&m->maps[i];uint64_t n=(uint64_t)r->pages*PAGE;
-        if (!(r->mmu_flags&A04_GPU_MMU_READ_ONLY) && callstack>=r->gpu_va && n>=8u && callstack-r->gpu_va<=n-8u) ++owned;
+        if (!(r->mmu_flags&(A04_GPU_MMU_READ_ONLY|A04_GPU_MMU_PM_FW_PROTECT)) && callstack>=r->gpu_va && n>=8u && callstack-r->gpu_va<=n-8u) ++owned;
     }
     if (owned!=1) return STATUS_INVALID_PARAMETER;
     first=(s->runtime.next_free+PAGE-1u)&~(size_t)(PAGE-1u);
@@ -180,7 +248,7 @@ NTSTATUS a04_windows_render_prepare_freelists(struct a04_windows_render_memory *
         for (j=0;j<m->map_count;++j) {
             const struct a04_windows_render_map *r=&m->maps[j];uint64_t n=(uint64_t)r->pages*PAGE;
             if (overlap(l[i].first_payload_page,l[i].page_count,r->payload_page,r->pages)) return STATUS_INVALID_PARAMETER;
-            if (!(r->mmu_flags&A04_GPU_MMU_READ_ONLY) && (r->mmu_flags&A04_GPU_MMU_SLC_BYPASS) && l[i].table_gpu>=r->gpu_va && bytes<=n && l[i].table_gpu-r->gpu_va<=n-bytes) {
+            if (!(r->mmu_flags&A04_GPU_MMU_READ_ONLY) && (r->mmu_flags&(A04_GPU_MMU_SLC_BYPASS|A04_GPU_MMU_PM_FW_PROTECT))==(A04_GPU_MMU_SLC_BYPASS|A04_GPU_MMU_PM_FW_PROTECT) && l[i].table_gpu>=r->gpu_va && bytes<=n && l[i].table_gpu-r->gpu_va<=n-bytes) {
                 uint64_t off=(uint64_t)A04_RENDER_PAYLOAD_OFFSET+(uint64_t)r->payload_page*PAGE+(l[i].table_gpu-r->gpu_va);
                 if (off>m->length || bytes>m->length-off) return STATUS_INVALID_PARAMETER;
                 tables[i]=(uint32_t *)(void *)((uint8_t *)m->cpu+off);++matches;
@@ -229,7 +297,7 @@ static int target_ranges_valid(const struct a04_windows_render_memory *m,const s
     addr[5]=m->freelist_layout[1].table_gpu;len[5]=(uint64_t)m->freelist_layout[1].page_count*4u;
     addr[6]=cs;len[6]=8;
     for(i=0;i<7;++i) {
-        if (!writable_range(m,addr[i],len[i])) return 0;
+        if (!writable_range(m,addr[i],len[i],i==4 || i==5)) return 0;
         for(j=0;j<i;++j) if (overlap(addr[i],len[i],addr[j],len[j])) return 0;
     }
     return 1;
@@ -269,7 +337,7 @@ NTSTATUS a04_windows_render_stage_fragment_pds(struct a04_windows_render_memory 
         if (pds_gpu>=map->gpu_va && n>=sizeof(data) && pds_gpu-map->gpu_va<=n-sizeof(data)) pds=map;
         if (shader_gpu>=map->gpu_va && n>=FRAGMENT_USC_BYTES && shader_gpu-map->gpu_va<=n-FRAGMENT_USC_BYTES) shader=map;
     }
-    if (!pds || !shader || !(pds->mmu_flags&A04_GPU_MMU_READ_ONLY) ||
+    if (!pds || !shader || (pds->mmu_flags&A04_GPU_MMU_PM_FW_PROTECT) || (shader->mmu_flags&A04_GPU_MMU_PM_FW_PROTECT) || !(pds->mmu_flags&A04_GPU_MMU_READ_ONLY) ||
         !(shader->mmu_flags&A04_GPU_MMU_READ_ONLY) || overlap(pds_gpu,sizeof(data),shader_gpu,FRAGMENT_USC_BYTES))
         return STATUS_INVALID_PARAMETER;
     off=(uint64_t)A04_RENDER_PAYLOAD_OFFSET+(uint64_t)pds->payload_page*PAGE+(pds_gpu-pds->gpu_va);
@@ -297,7 +365,7 @@ static NTSTATUS render_memory_publish(struct a04_windows_render_memory *m,BOOLEA
         m->vm.cpu!=(uint8_t *)m->firmware->memory.heap+off ||
         m->vm.dma!=(uint64_t)m->firmware->memory.heap_logical.QuadPart+off) return STATUS_INVALID_DEVICE_STATE;
     vm=m->vm.cpu;
-    if (vm->pc_dev_paddr!=(uint64_t)m->logical.QuadPart || vm->page_cat_base_reg_set!=ROGUE_FW_BIF_INVALID_PCSET)
+    if (vm->pc_dev_paddr!=(uint64_t)m->logical.QuadPart || vm->page_cat_base_reg_set!=ROGUE_FW_BIF_INVALID_PCSET || !render_ptes_valid(m))
         return STATUS_INVALID_DEVICE_STATE;
     m->poisoned=TRUE;
     status=a04_gpu_dma_sync(m->cpu,m->length,FALSE);
@@ -354,7 +422,7 @@ NTSTATUS a04_windows_render_publish_context(struct a04_windows_render_memory *m)
     if (!callstack || (callstack&15u) || !m->map_count || m->map_count>A04_RENDER_MAX_MAPS) return STATUS_INVALID_DEVICE_STATE;
     for (i=0;i<m->map_count;++i) {
         const struct a04_windows_render_map *r=&m->maps[i];uint64_t n=(uint64_t)r->pages*PAGE;
-        if (!(r->mmu_flags&A04_GPU_MMU_READ_ONLY) && callstack>=r->gpu_va && n>=8u && callstack-r->gpu_va<=n-8u) ++owned;
+        if (!(r->mmu_flags&(A04_GPU_MMU_READ_ONLY|A04_GPU_MMU_PM_FW_PROTECT)) && callstack>=r->gpu_va && n>=8u && callstack-r->gpu_va<=n-8u) ++owned;
     }
     if (owned!=1) return STATUS_INVALID_DEVICE_STATE;
     if (m->freelists_prepared && !freelists_valid(m,callstack)) return STATUS_INVALID_DEVICE_STATE;
@@ -374,10 +442,6 @@ NTSTATUS a04_windows_render_publish_context(struct a04_windows_render_memory *m)
             c->isp_merge_upper_x || c->isp_merge_upper_y || c->isp_merge_scale_x || c->isp_merge_scale_y)
             return STATUS_INVALID_DEVICE_STATE;
     }
-    /* Mesa's freelist BOs require PM/FW-protected PTEs. The current Windows
-     * page-table encoder has no such flag, so never expose these lists to
-     * firmware until that mapping contract is implemented and verified. */
-    if (m->freelists_prepared) return STATUS_NOT_SUPPORTED;
     for (i=0;i<count;++i) {
         status=a04_gpu_dma_sync(objects[i]->cpu,(ULONG)objects[i]->size,FALSE);
         if (!NT_SUCCESS(status)) { m->poisoned=TRUE;return status; }

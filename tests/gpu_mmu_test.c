@@ -51,6 +51,18 @@ int main(void)
     memset(pd_b,0,sizeof(pd_b)); memset(pt_b,0,sizeof(pt_b)); pt_b[0]=1;
     if(!a04_gpu_mmu_map_brn65273(pc,pd,pt,pd_b,pt_b,0x10000000,0x10001000,0x10002000,0x10003000,0x20000000) ||
        pc[992] || pd[0] || pt[0]) return 17;
+    memset(pc,0,sizeof(pc));memset(pd,0,sizeof(pd));memset(pt,0,sizeof(pt));
+    if (A04_GPU_MMU_PM_FW_PROTECT!=UINT64_C(0x4000000000000000)) return 21;
+    if (a04_gpu_mmu_map_4k(pc,pd,pt,0x12345000,0x6789a000,0,0x80000000,1,
+                           A04_GPU_MMU_PM_FW_PROTECT|A04_GPU_MMU_SLC_BYPASS) ||
+        pt[0]!=UINT64_C(0x4000000080000009)) return 22;
+    { uint64_t pages[]={0x90000000};
+      if (a04_gpu_mmu_replace_pages_4k(pt,0,pages,1,A04_GPU_MMU_PM_FW_PROTECT) ||
+          pt[0]!=UINT64_C(0x4000000090000001)) return 23; }
+    memset(pc,0,sizeof(pc));memset(pd,0,sizeof(pd));memset(pt,0,sizeof(pt));
+    { uint64_t pages[]={0x81000000,0x83000000};
+      if (a04_gpu_mmu_map_pages_4k(pc,pd,pt,0x12345000,0x6789a000,0,pages,2,A04_GPU_MMU_PM_FW_PROTECT) ||
+          pt[0]!=UINT64_C(0x4000000081000001) || pt[1]!=UINT64_C(0x4000000083000001)) return 24; }
     puts("GE8300 GPU page table encoding and rejected mappings passed");
     return 0;
 }
