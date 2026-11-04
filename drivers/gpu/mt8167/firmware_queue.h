@@ -22,4 +22,13 @@ int a04_gpu_fw_prepare_transfer_queue(struct a04_gpu_fw_arena *arena,const struc
     uint32_t context_id,uint32_t job_id,unsigned isp_store_count,
     const struct rogue_fwif_cmd_transfer *transfer,struct a04_gpu_fw_queue *queue,
     struct rogue_fwif_kccb_cmd *kick);
+/* Reuse an existing transfer queue after the prior fence has completed and
+ * read_offset has caught up with write_offset. Caller first invalidates the
+ * cached control/fence, serializes submissions, validates every command and
+ * referenced GPU VA, and retains all resources. On success the caller cleans
+ * the entire ring, then submits kick and waits for the new fence value. This
+ * helper does not synchronize caches, submit work or establish DMA quiescence. */
+int a04_gpu_fw_append_transfer(struct a04_gpu_fw_queue *queue,
+    const struct rogue_fwif_cmd_transfer *transfer,uint32_t job_id,
+    uint32_t completed_fence,struct rogue_fwif_kccb_cmd *kick);
 #endif

@@ -38,7 +38,31 @@ int main(void)
       if(tctx->tq_context.dm!=PVR_FWIF_DM_FRAG || hdr->cmd_type!=ROGUE_FWIF_CCB_CMD_TYPE_TQ_3D ||
          hdr->cmd_size!=sizeof(transfer) || ((struct rogue_fwif_cmd_transfer *)(void *)((uint8_t *)hdr+sizeof(*hdr)))->regs.isp_ctl!=0x12345678) return 10;
       hdr=(void *)((uint8_t *)hdr+sizeof(*hdr)+sizeof(transfer)); ufo=(void *)((uint8_t *)hdr+sizeof(*hdr));
-      if(hdr->cmd_type!=ROGUE_FWIF_CCB_CMD_TYPE_UPDATE || ufo->addr!=q.fence.fw_addr || ufo->value!=1) return 11; }
+      if(hdr->cmd_type!=ROGUE_FWIF_CCB_CMD_TYPE_UPDATE || ufo->addr!=q.fence.fw_addr || ufo->value!=1) return 11;
+      ctl=q.control.cpu; *(uint32_t *)q.fence.cpu=1; ctl->read_offset=q.write_offset;
+      { uint32_t old=q.write_offset;
+        if(!a04_gpu_fw_append_transfer(&q,&transfer,9,2,&cmd) || q.write_offset!=old) return 12;
+        ctl->read_offset=0;
+        if(!a04_gpu_fw_append_transfer(&q,&transfer,9,1,&cmd) || q.write_offset!=old) return 13;
+        ctl->read_offset=old;
+      }
+      { int saw_wrap=0; uint32_t completed=1;
+        for(unsigned iteration=0;iteration<300;++iteration) {
+          uint32_t old=q.write_offset, pos=old;
+          if(a04_gpu_fw_append_transfer(&q,&transfer,100+iteration,completed,&cmd)) return 14;
+          hdr=(void *)((uint8_t *)q.ring.cpu+pos);
+          if(hdr->cmd_type==ROGUE_FWIF_CCB_CMD_TYPE_PADDING) { saw_wrap=1; pos=0; hdr=q.ring.cpu; }
+          if(hdr->cmd_type!=ROGUE_FWIF_CCB_CMD_TYPE_TQ_3D || hdr->int_job_ref!=100+iteration) return 15;
+          pos+=(uint32_t)(sizeof(*hdr)+sizeof(transfer)); hdr=(void *)((uint8_t *)q.ring.cpu+pos);
+          if(hdr->cmd_type==ROGUE_FWIF_CCB_CMD_TYPE_PADDING) { saw_wrap=1; pos=0; hdr=q.ring.cpu; }
+          ufo=(void *)((uint8_t *)hdr+sizeof(*hdr));
+          if(hdr->cmd_type!=ROGUE_FWIF_CCB_CMD_TYPE_UPDATE || ufo->value!=completed+1u ||
+             cmd.cmd_data.cmd_kick_data.client_woff_update!=q.write_offset) return 16;
+          ++completed; *(uint32_t *)q.fence.cpu=completed; ctl->read_offset=q.write_offset;
+        }
+        if(!saw_wrap) return 17;
+      }
+    }
     before=arena.next; arena.next=arena.limit-64;
     if (!a04_gpu_fw_prepare_null_queue(&arena,&vm,2,8,&q,&cmd) || arena.next!=arena.limit-64) return 7;
     arena.next=before; free(heap); puts("GE8300 firmware NULL queue construction passed"); return 0;

@@ -59,3 +59,61 @@ int a04_gpu_fw_prepare_transfer_queue(struct a04_gpu_fw_arena *arena,const struc
     uint32_t context_id,uint32_t job_id,unsigned isp_count,const struct rogue_fwif_cmd_transfer *transfer,
     struct a04_gpu_fw_queue *out,struct rogue_fwif_kccb_cmd *kick)
 { return transfer ? prepare(arena,mem_context,context_id,job_id,isp_count,transfer,out,kick) : -1; }
+
+/* Advance a single command while reserving a whole padding header at the end.
+ * Mirrors the CCCB wrap rule in Imagination pvr_cccb and UniXNU. */
+static int advance(uint32_t *offset,uint32_t length,uint32_t *space)
+{
+    uint32_t remaining=RING_SIZE-*offset,header=(uint32_t)sizeof(struct rogue_fwif_ccb_cmd_header);
+    if (remaining<length+header) {
+        if (remaining<header || remaining>*space) return -1;
+        *space-=remaining; *offset=0;
+    }
+    if (length>*space) return -1;
+    *space-=length; *offset+=length; return 0;
+}
+static void append_command(uint8_t *ring,uint32_t *offset,uint32_t type,
+    const void *data,uint32_t length,uint32_t job)
+{
+    struct rogue_fwif_ccb_cmd_header h; uint32_t remain=RING_SIZE-*offset;
+    uint32_t total=(uint32_t)sizeof(h)+length;
+    if (remain<total+sizeof(h)) {
+        zero(&h,sizeof(h)); h.cmd_type=ROGUE_FWIF_CCB_CMD_TYPE_PADDING;
+        h.cmd_size=remain-(uint32_t)sizeof(h); copy(ring+*offset,&h,sizeof(h)); *offset=0;
+    }
+    zero(&h,sizeof(h)); h.cmd_type=type; h.cmd_size=length;
+    h.ext_job_ref=job; h.int_job_ref=job;
+    copy(ring+*offset,&h,sizeof(h)); copy(ring+*offset+sizeof(h),data,length); *offset+=total;
+}
+int a04_gpu_fw_append_transfer(struct a04_gpu_fw_queue *q,
+    const struct rogue_fwif_cmd_transfer *transfer,uint32_t job,uint32_t completed,
+    struct rogue_fwif_kccb_cmd *kick)
+{
+    struct rogue_fwif_cccb_ctl *ctl; struct rogue_fwif_fwcommoncontext *ctx;
+    struct rogue_fwif_ufo ufo; struct rogue_fwif_kccb_cmd cmd;
+    uint32_t offset,space=RING_SIZE-1u;
+    if (!q || !transfer || !kick || !job || !completed || completed==UINT32_MAX ||
+        !q->ring.cpu || q->ring.size!=RING_SIZE || !q->control.cpu ||
+        q->control.size<sizeof(*ctl) || !q->context.cpu ||
+        q->context.size<sizeof(struct rogue_fwif_fwtransfercontext) ||
+        !q->fence.cpu || q->fence.size<sizeof(uint32_t) || !q->fence.fw_addr ||
+        !q->context.fw_addr || q->wrap_mask!=RING_SIZE-1u ||
+        q->write_offset>RING_SIZE-sizeof(struct rogue_fwif_ccb_cmd_header) ||
+        (q->write_offset&7u)) return -1;
+    ctl=q->control.cpu; ctx=q->context.cpu;
+    if (ctl->wrap_mask!=q->wrap_mask || ctx->dm!=PVR_FWIF_DM_FRAG ||
+        *(volatile uint32_t *)&ctl->read_offset!=q->write_offset ||
+        *(volatile uint32_t *)q->fence.cpu!=completed) return -1;
+    offset=q->write_offset;
+    if (advance(&offset,(uint32_t)(sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(*transfer)),&space) ||
+        advance(&offset,(uint32_t)(sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(ufo)),&space)) return -1;
+    offset=q->write_offset;
+    append_command(q->ring.cpu,&offset,ROGUE_FWIF_CCB_CMD_TYPE_TQ_3D,transfer,sizeof(*transfer),job);
+    ufo.addr=q->fence.fw_addr; ufo.value=completed+1u;
+    append_command(q->ring.cpu,&offset,ROGUE_FWIF_CCB_CMD_TYPE_UPDATE,&ufo,sizeof(ufo),job);
+    zero(&cmd,sizeof(cmd)); cmd.cmd_type=ROGUE_FWIF_KCCB_CMD_KICK;
+    cmd.cmd_data.cmd_kick_data.context_fw_addr=q->context.fw_addr;
+    cmd.cmd_data.cmd_kick_data.client_woff_update=offset;
+    cmd.cmd_data.cmd_kick_data.client_wrap_mask_update=q->wrap_mask;
+    q->write_offset=offset; *kick=cmd; return 0;
+}
