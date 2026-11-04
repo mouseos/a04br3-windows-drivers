@@ -26,3 +26,12 @@ same owner lock as button reads and publishes results only if all complete.
 It does not enable rails or change voltage. The parent/provider and safe PnP
 lifetime are still unimplemented; no current client may bypass the existing
 button driver's direct PWRAP ownership to use this core.
+
+`wdf_parent_probe.c` is a non-installable KMDF PnP ABI prototype. It validates
+three exclusive translated memory ranges before mapping and unmaps partial
+acquisitions; D0 always fails and it publishes no interface or child. No INF or
+ACPI binding is provided. The current button and touch providers already claim
+parts of these ranges. Exclusive descriptors alone do not prove that firmware
+or existing direct owners have been migrated. Boot ordering, shared leases,
+client teardown, rail/pin/clock operations and actual Storport integration are
+not implemented. Never deploy this prototype alongside those drivers.

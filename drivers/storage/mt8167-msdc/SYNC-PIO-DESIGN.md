@@ -39,3 +39,9 @@ PIO部品はDMA有効中、PIO無効、関連割込み有効中に開始しな�
 機種DTSでMSDC0に割り当てられたGPIO110〜120のmode 1を親が確認した後、TOPCKGENのMSDC0 source gateをCLR、inverted infra gateをSETし、それぞれ状態を読み直す。既に有効なら書かない。途中で所有権・アクセス・読戻しが失敗したら状態をpoisonしてリースを保持し、勝手な巻戻しや再試行をしない。正常時もリースは保持され、親がI/O・DMA・MMIOの停止を確認してはじめて返却できる。ピンのpull・drive設定、電源電圧の実測、CLK muxと周波数、カード初期化、故障後のリソース回収はいずれも未実装であり、処理の成功は再開許可を意味しない。
 
 参照した機種Linux正本は [a04br3-linux-drivers 3d2c74e](https://github.com/mouseos/a04br3-linux-drivers/tree/3d2c74e252d6f34a5980deda96bdc04064108d74) の `clock/a04br3-mt8167-msdc-clock.c` と `pmic/mt6392-regulator.c`、機種DTS `mmc0default`。Linux固有ドライバはGPL-2.0-onlyで、ここでは確認したレジスタの位置・ビット・極性を用いた独立実装とする。実機検証、Windowsの資源共有と再初期化は未完了。開始・再開ゲートは維持する。
+
+## コールド初期化・ピンモードの試作
+
+`cold_init.c` は外部の親がレール・ピン・リセットと400 kHz以下の1-bitホストを準備し、処理終了まで排他的に保持することを前提とするPASSIVE_LEVEL部品。CMD0、CMD1（sector mode）、CMD2、CMD3、CMD9、CMD7、CMD16を送り、既存の状態取得部品でCMD13/CMD10/CMD8/CMD13を実行してCIDを照合する。CMD6とカードデータ書込みは行わない。タイムアウト・取消し・状態不一致の後は自動再試行せず、部分結果を公開しない。コマンド順は機種UEFIのSdCardBlockIoDxeに基づく。実電源・クロック・ピン設定の実装や実機動作を示さず、Storportから呼ばれない。
+
+`pinmux.c` は親がGPIO、電源とコントローラを排他し静止・給電済みである場合だけ、GPIO110〜120のmode 1を共有ロック付きmasked updateで設定・読戻しする。offset 0x460/0x470/0x480と3-bit×5ピンの配置はLinux v6.6のMT8167 pinctrl、ピン番号は機種DTSに基づく。途中失敗はpoisonとしロールバックしない。pull、drive strength、入力有効や電圧は未設定。親のコールバックとWindows PnPの接続も未実装。両部品の成功だけでは起動・再開を許可しない。
