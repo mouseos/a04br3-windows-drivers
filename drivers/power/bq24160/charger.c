@@ -3,7 +3,6 @@
  * 0420ce37f0241178a7276784bbc013b0dbba4c95. No platform I/O here.
  */
 #include "charger.h"
-#include <string.h>
 #define SECOND_NS 1000000000ULL
 #define MAX_GAP_NS (20ULL * SECOND_NS)
 
@@ -30,13 +29,12 @@ static int late(const struct a04_bq_owner *o, uint64_t now, uint64_t deadline)
 }
 enum a04_bq_result a04_bq_step(struct a04_bq_owner *o, const struct a04_bq_bus *b, uint64_t deadline)
 {
-    struct a04_bq_snapshot s;
+    struct a04_bq_snapshot s = {{0}, 0, 0};
     enum a04_bq_result result;
     uint64_t end;
     unsigned reg, first;
     if (!o || !b || !b->now_ns || !b->read || !b->write_watchdog) return A04_BQ_INVALID;
     if (o->stopped) return A04_BQ_STOPPED;
-    memset(&s, 0, sizeof(s));
     s.at = b->now_ns(b->context);
     if (late(o, s.at, deadline)) { o->stopped = 1; return A04_BQ_DEADLINE; }
     first = o->attempts++ == 0;

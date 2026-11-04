@@ -7,6 +7,11 @@
 #include <batclass.h>
 #include "battery_class.h"
 #include "mt8167_i2c.h"
+#include "../bq24160/charger.h"
+#include "../bq24160/mt8167_i2c.h"
+#ifndef A04_BQ24160_EXPERIMENTAL
+#define A04_BQ24160_EXPERIMENTAL 0
+#endif
 #ifndef A04_LC709203F_TRACE
 #define A04_LC709203F_TRACE 0
 #endif
@@ -18,6 +23,11 @@ typedef struct {
     WDFDEVICE device;
     WDFTIMER timer;
     WDFWAITLOCK class_lock;
+    WDFWAITLOCK bus_lock;
+#if A04_BQ24160_EXPERIMENTAL
+    struct a04_bq_owner charger;
+    struct a04_bq_bus charger_bus;
+#endif
     PVOID class_handle;
     volatile UCHAR *i2c;
     struct a04_i2c_io io;
@@ -66,6 +76,17 @@ static void delay(void *context, unsigned us)
 { UNREFERENCED_PARAMETER(context); KeStallExecutionProcessor(us); }
 static uint64_t now_ns(void *context)
 { UNREFERENCED_PARAMETER(context); return KeQueryInterruptTime() * 100u; }
+#if A04_BQ24160_EXPERIMENTAL
+/* No Windows firmware handoff protocol exists yet. This gate is intentionally
+ * closed even for the experimental build; a compile flag is not proof that
+ * firmware stopped accessing I2C2 or that its last pet is recent. */
+static int charger_handoff_is_qualified(void) { return 0; }
+static uint64_t charger_now(void *context)
+{
+    struct a04_gauge_mt8167 *a = context;
+    return a->monotonic_ns(a->io->context);
+}
+#endif
 static void notify(GAUGE_CONTEXT *c)
 {
     WdfWaitLockAcquire(c->class_lock, NULL);
@@ -75,14 +96,42 @@ static void notify(GAUGE_CONTEXT *c)
 static void poll(GAUGE_CONTEXT *c)
 {
     struct a04_gauge_sample sample;
-    BOOLEAN changed;
-    if (!c->online) return;
+    BOOLEAN changed = FALSE;
+#if A04_BQ24160_EXPERIMENTAL
+    enum a04_bq_result result;
+    uint64_t now;
+#endif
+    WdfWaitLockAcquire(c->bus_lock, NULL);
+    if (!c->online) { WdfWaitLockRelease(c->bus_lock); return; }
+#if A04_BQ24160_EXPERIMENTAL
+    now = charger_now(&c->adapter);
+    /* The first call requires a qualified firmware ownership handoff.
+     * This experimental build has no validated handoff record, so it is
+     * never eligible for deployment. See README before any target use. */
+    result = a04_bq_step(&c->charger, &c->charger_bus,
+                          now <= UINT64_MAX - 20000000000ULL ? now + 20000000000ULL : 0);
+    if (result != A04_BQ_OK) {
+        trace(c, "A04BAT CHARGER STOPPED\n");
+        c->faulted = TRUE; InterlockedExchange(&c->online, 0);
+        changed = a04_battery_invalidate(&c->battery);
+        WdfWaitLockRelease(c->bus_lock);
+        if (changed) notify(c);
+        return;
+    }
+    /* Only accepted charger snapshots establish usable external input.
+     * A failed or ambiguous sample invalidates the battery status entirely. */
+    changed = a04_battery_set_external(&c->battery, TRUE);
+#endif
     if (a04_gauge_read_sample(&c->bus, &sample)) {
         trace(c, "A04BAT SAMPLE FAILED\n");
-        changed = a04_battery_invalidate(&c->battery);
+        changed |= a04_battery_invalidate(&c->battery);
         c->faulted = TRUE;
-        InterlockedExchange(&c->online, 0); /* No reset/retry of shared I2C2 after failure. */
-    } else { trace(c, "A04BAT SAMPLE VALID\n"); changed = a04_battery_publish(&c->battery, &sample); }
+        InterlockedExchange(&c->online, 0);
+    } else {
+        trace(c, "A04BAT SAMPLE VALID\n");
+        changed |= a04_battery_publish(&c->battery, &sample);
+    }
+    WdfWaitLockRelease(c->bus_lock);
     if (changed) notify(c);
 }
 NTSTATUS GaugePrepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translated)
@@ -124,6 +173,9 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     GAUGE_CONTEXT *c = GaugeContext(device);
     UNREFERENCED_PARAMETER(previous);
     if (!c->i2c || c->faulted) return STATUS_DEVICE_NOT_READY;
+#if A04_BQ24160_EXPERIMENTAL
+    if (!charger_handoff_is_qualified()) return STATUS_DEVICE_NOT_READY;
+#endif
     trace(c, "A04BAT D0 ENTRY\n");
     c->io.context = c; c->io.read16 = rd; c->io.write16 = wr; c->io.delay_us = delay;
     c->adapter.io = &c->io; c->adapter.monotonic_ns = now_ns; c->adapter.faulted = 0;
@@ -134,10 +186,28 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
         trace(c, "A04BAT I2C NOT READY\n"); return STATUS_DEVICE_NOT_READY;
     }
     trace(c, "A04BAT I2C READY\n");
+#if A04_BQ24160_EXPERIMENTAL
+    c->charger_bus.context = &c->adapter;
+    c->charger_bus.now_ns = charger_now;
+    c->charger_bus.read = a04_bq_mt8167_read;
+    c->charger_bus.write_watchdog = a04_bq_mt8167_kick;
+#endif
     InterlockedExchange(&c->online, 1);
+#if A04_BQ24160_EXPERIMENTAL
+    /* Arm before any charger transaction. D0Exit synchronously cancels it. */
+    WdfTimerStart(c->timer, WDF_REL_TIMEOUT_IN_MS(10000));
+#endif
     poll(c);
-    if (!c->online) return STATUS_DEVICE_HARDWARE_ERROR;
+    if (!c->online) {
+#if A04_BQ24160_EXPERIMENTAL
+        WdfTimerStop(c->timer, TRUE);
+        WdfTimerStop(c->timer, FALSE);
+#endif
+        return STATUS_DEVICE_HARDWARE_ERROR;
+    }
+#if !A04_BQ24160_EXPERIMENTAL
     WdfTimerStart(c->timer, WDF_REL_TIMEOUT_IN_MS(30000));
+#endif
     return STATUS_SUCCESS;
 }
 NTSTATUS GaugeD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
@@ -148,6 +218,12 @@ NTSTATUS GaugeD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
     WdfTimerStop(c->timer, TRUE);
     /* The callback may have rearmed immediately before observing offline. */
     WdfTimerStop(c->timer, FALSE);
+    WdfWaitLockAcquire(c->bus_lock, NULL);
+#if A04_BQ24160_EXPERIMENTAL
+    /* Do not pretend the charger was restored or restart after D0 loss. */
+    if (c->charger.attempts) c->faulted = TRUE;
+#endif
+    WdfWaitLockRelease(c->bus_lock);
     if (a04_battery_invalidate(&c->battery)) notify(c);
     return STATUS_SUCCESS;
 }
@@ -155,7 +231,11 @@ VOID GaugePoll(WDFTIMER timer)
 {
     GAUGE_CONTEXT *c = GaugeContext((WDFDEVICE)WdfTimerGetParentObject(timer));
     poll(c);
+#if A04_BQ24160_EXPERIMENTAL
+    if (c->online) WdfTimerStart(timer, WDF_REL_TIMEOUT_IN_MS(10000));
+#else
     if (c->online) WdfTimerStart(timer, WDF_REL_TIMEOUT_IN_MS(30000));
+#endif
 }
 NTSTATUS GaugeClassInit(WDFDEVICE device)
 {
@@ -223,6 +303,8 @@ NTSTATUS GaugeAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     c = GaugeContext(device); c->device = device;
     WDF_OBJECT_ATTRIBUTES_INIT(&child); child.ParentObject = device;
     status = WdfWaitLockCreate(&child, &c->class_lock);
+    if (!NT_SUCCESS(status)) return status;
+    status = WdfWaitLockCreate(&child, &c->bus_lock);
     if (!NT_SUCCESS(status)) return status;
     status = WdfWaitLockCreate(&child, &c->battery.lock);
     if (!NT_SUCCESS(status)) return status;

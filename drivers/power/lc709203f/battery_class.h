@@ -14,9 +14,11 @@ struct a04_battery_class {
     struct a04_gauge_sample sample;
     ULONG tag;
     BOOLEAN valid;
+    BOOLEAN external_power;
 };
 BOOLEAN a04_battery_publish(struct a04_battery_class *context,
                             const struct a04_gauge_sample *sample);
+BOOLEAN a04_battery_set_external(struct a04_battery_class *context, BOOLEAN online);
 BOOLEAN a04_battery_invalidate(struct a04_battery_class *context);
 BCLASS_QUERY_TAG_CALLBACK a04_battery_query_tag;
 BCLASS_QUERY_INFORMATION_CALLBACK a04_battery_query_information;

@@ -18,12 +18,22 @@ BOOLEAN a04_battery_publish(struct a04_battery_class *c,
     WdfWaitLockRelease(c->lock);
     return changed;
 }
+BOOLEAN a04_battery_set_external(struct a04_battery_class *c, BOOLEAN online)
+{
+    BOOLEAN changed;
+    WdfWaitLockAcquire(c->lock, NULL);
+    changed = c->external_power != online;
+    c->external_power = online;
+    WdfWaitLockRelease(c->lock);
+    return changed;
+}
 BOOLEAN a04_battery_invalidate(struct a04_battery_class *c)
 {
     BOOLEAN changed;
     WdfWaitLockAcquire(c->lock, NULL);
     changed = c->valid;
     c->valid = FALSE;
+    c->external_power = FALSE;
     WdfWaitLockRelease(c->lock);
     return changed;
 }
@@ -77,7 +87,7 @@ NTSTATUS a04_battery_query_status(PVOID context, ULONG tag, PBATTERY_STATUS stat
     WdfWaitLockAcquire(c->lock, NULL);
     if (!c->valid || tag != c->tag) result = STATUS_NO_SUCH_DEVICE;
     else {
-        status->PowerState = 0; /* Charging and external power are unknown. */
+        status->PowerState = c->external_power ? BATTERY_POWER_ON_LINE : 0;
         status->Capacity = c->sample.percent;
         status->Voltage = c->sample.voltage_mv;
         status->Rate = BATTERY_UNKNOWN_RATE;
