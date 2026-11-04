@@ -17,6 +17,7 @@ test: build/gpu_render_context_pds_test build/gpu_render_pds_data_test build/gpu
 	python3 tests/gpu_render_context_pt_test.py
 	python3 tests/gpu_render_context_usc_test.py
 	python3 tests/gpu_render_context_bounds_test.py
+	python3 tests/gpu_render_context_usc_ir_test.py
 	./build/gpu_windows_render_memory_test
 	./build/gpu_render_kick_off
 	./build/gpu_render_kick_on
