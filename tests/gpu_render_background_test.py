@@ -40,4 +40,17 @@ class TestBackground(unittest.TestCase):
     def test_truncated_command(self):
         rows=fixture();e=next(e for e in rows if e.get('type')==1);e['stream_hex']=e['stream_hex'][:-2]
         with self.assertRaises(ValueError):m.analyze(rows,True)
+    def test_pbe_target_extent_and_unmap(self):
+        rows=fixture();addr=0x8000000000
+        target={'event':'render_pbe_target','image_gpu':addr,'target_gpu':addr,'image_size':16384,
+                'width':64,'height':64,'stride':64,'layout':1,'state0':(addr>>2)&0xffffffff,'state1':addr>>34}
+        rows.insert(1,{'event':'vm_map','vm':1,'va':addr,'size':16384});rows.insert(2,target)
+        event=next(e for e in rows if e['event']=='render_pixel_event')
+        event['pbe_state0']=target['state0'];event['pbe_state1']=target['state1']
+        self.assertEqual(m.analyze(rows,True,True)['pbe_target_jobs'],4)
+        bad=copy.deepcopy(rows);next(e for e in bad if e['event']=='render_pbe_target')['image_size']=8192
+        with self.assertRaises(ValueError):m.analyze(bad,True,True)
+        bad=copy.deepcopy(rows);idx=next(i for i,e in enumerate(bad) if e['event']=='fragment_shader_link')
+        bad.insert(idx,{'event':'vm_unmap','vm':1,'va':addr})
+        with self.assertRaises(ValueError):m.analyze(bad,True,True)
 if __name__=='__main__':unittest.main()

@@ -66,11 +66,20 @@ static void a04_scissor_table(unsigned long long gpu,const void *data,unsigned s
  if (fprintf(f,"{\\\"event\\\":\\\"scissor_table\\\",\\\"gpu_va\\\":%llu,\\\"size\\\":%u,\\\"fnv64\\\":%llu}\\n",gpu,size,a04_fragment_hash(data,size))<0 || fclose(f)) abort();
 }
 static void a04_pixel_event(unsigned long long data_gpu,unsigned long long shader_gpu,unsigned shader_size,
-                            unsigned long long control,const void *data,unsigned data_size)
+                            unsigned long long control,const void *data,unsigned data_size,unsigned emit_count,
+                            const uint32_t *state_words)
 {
  const char *name=getenv("A04_CAPTURE_JSONL"); FILE *f=name ? fopen(name,"a") : NULL;
  if (!f || !data || !data_size) abort();
- if (fprintf(f,"{\\\"event\\\":\\\"render_pixel_event\\\",\\\"data_gpu\\\":%llu,\\\"shader_gpu\\\":%llu,\\\"shader_size\\\":%u,\\\"control\\\":%llu,\\\"data_size\\\":%u,\\\"fnv64\\\":%llu}\\n",data_gpu,shader_gpu,shader_size,control,data_size,a04_fragment_hash(data,data_size))<0 || fclose(f)) abort();
+ if (emit_count!=1 || !state_words) abort();
+ if (fprintf(f,"{\\\"event\\\":\\\"render_pixel_event\\\",\\\"data_gpu\\\":%llu,\\\"shader_gpu\\\":%llu,\\\"shader_size\\\":%u,\\\"control\\\":%llu,\\\"data_size\\\":%u,\\\"fnv64\\\":%llu,\\\"pbe_state0\\\":%u,\\\"pbe_state1\\\":%u}\\n",data_gpu,shader_gpu,shader_size,control,data_size,a04_fragment_hash(data,data_size),state_words[0],state_words[1])<0 || fclose(f)) abort();
+}
+static void a04_pbe_target(unsigned long long image,unsigned long long size,unsigned long long target,
+                           unsigned width,unsigned height,unsigned stride,unsigned layout,const uint32_t *words)
+{
+ const char *name=getenv("A04_CAPTURE_JSONL"); FILE *f=name ? fopen(name,"a") : NULL;
+ if (!f || !words) abort();
+ if (fprintf(f,"{\\\"event\\\":\\\"render_pbe_target\\\",\\\"image_gpu\\\":%llu,\\\"image_size\\\":%llu,\\\"target_gpu\\\":%llu,\\\"width\\\":%u,\\\"height\\\":%u,\\\"stride\\\":%u,\\\"layout\\\":%u,\\\"state0\\\":%u,\\\"state1\\\":%u}\\n",image,size,target,width,height,stride,layout,words[0],words[1])<0 || fclose(f)) abort();
 }
 static void a04_fragment_link(unsigned long long data,unsigned data_size,unsigned data_written,unsigned long long code,unsigned code_size,unsigned code_written,unsigned long long shader,unsigned long long entry,unsigned shader_size,unsigned doutu_offset,const uint32_t *words)
 {
@@ -110,11 +119,27 @@ static void a04_fragment_link(unsigned long long data,unsigned data_size,unsigne
  insert='''   if (result == VK_SUCCESS)
       a04_pixel_event(device->heaps.pds_heap->base_addr.addr+pds_upload_out->data_offset,
                       usc_eot_program->dev_addr.addr,usc_eot_program->size,pixel_event_program.task_control.src0,
-                      staging_buffer,cmd_buffer->device->pixel_event_data_size_in_dwords*4u);
+                      staging_buffer,cmd_buffer->device->pixel_event_data_size_in_dwords*4u,emit_count,pbe_cs_words);
    vk_free(allocator, staging_buffer);
 
    return result;'''
  if text.count(target)!=1:raise SystemExit('unexpected render pixel event upload')
+ text=text.replace(target,insert)
+ target='''   pvr_arch_pbe_pack_state(dev_info,
+                           &surface_params,
+                           &render_params,
+                           pbe_cs_words,
+                           pbe_reg_words);
+}'''
+ insert='''   pvr_arch_pbe_pack_state(dev_info,
+                           &surface_params,
+                           &render_params,
+                           pbe_cs_words,
+                           pbe_reg_words);
+   a04_pbe_target(image->dev_addr.addr,image->total_size,surface_params.addr.addr,
+                  surface_params.width,surface_params.height,surface_params.stride,surface_params.mem_layout,pbe_cs_words);
+}'''
+ if text.count(target)!=1:raise SystemExit('unexpected PBE state construction')
  text=text.replace(target,insert)
  target='''         pvr_set_usc_execution_address64(&addr, exec_addr.addr);
 '''
@@ -199,6 +224,6 @@ static void a04_fragment_link(unsigned long long data,unsigned data_size,unsigne
  args=shlex.split(link);args[args.index('-o')+1]=str(out/'libvulkan_powervr_mesa.so')
  args=[str(out/'libpowervr_rogue.a') if x=='src/imagination/vulkan/libpowervr_rogue.a' else str(uploads/'pvr_device.c.o') if x=='src/imagination/vulkan/libvulkan_powervr_mesa.so.p/pvr_device.c.o' else x for x in args]
  subprocess.run(args,cwd=build,check=True)
- meta.update(pds_construct_metadata_only=True,pds_fs_meta_metadata_only=True,scissor_metadata_only=True,render_pixel_event_metadata_only=True,pds_original_sha256=sha(original),pds_source_sha256=sha(modified),pds_object_sha256=sha(out/'pvr_arch_cmd_buffer.c.o'),library_sha256=sha(out/'libvulkan_powervr_mesa.so'))
+ meta.update(pds_construct_metadata_only=True,pds_fs_meta_metadata_only=True,scissor_metadata_only=True,render_pixel_event_metadata_only=True,pbe_target_metadata_only=True,pds_original_sha256=sha(original),pds_source_sha256=sha(modified),pds_object_sha256=sha(out/'pvr_arch_cmd_buffer.c.o'),library_sha256=sha(out/'libvulkan_powervr_mesa.so'))
  (out/'diagnostic-manifest.json').write_text(json.dumps(meta,indent=2)+'\n')
 if __name__=='__main__':main()

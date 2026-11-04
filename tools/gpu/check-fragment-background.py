@@ -5,8 +5,8 @@ import argparse,hashlib,importlib.util,json,pathlib,struct,sys
 HERE=pathlib.Path(__file__).resolve().parent
 BASE=0xda00000000
 
-def analyze(events,event_traced=False):
-    maps={};contexts={};uploads=[];pixel_events={};links=0;geometry=0;checked=0;refs=0;eot_checked=0
+def analyze(events,event_traced=False,pbe_traced=False):
+    maps={};contexts={};uploads=[];pixel_events={};targets=[];links=0;geometry=0;checked=0;refs=0;eot_checked=0;pbe_checked=0
     def mapping(vm,addr,size):
         return [k for k,n in maps.items() if k[0]==vm and addr>=k[1] and size<=n and addr-k[1]<=n-size]
     def require(vm,offset,allocation,kind,written,relative=0):
@@ -33,6 +33,7 @@ def analyze(events,event_traced=False):
             uploads.append((k,addr,size,e['kind']))
         elif op=='fragment_shader_link':links+=1
         elif op=='render_pixel_event':pixel_events[e['data_gpu']]=e
+        elif op=='render_pbe_target':targets.append(e)
         elif op=='job' and e['type']==0 and geometry<links:geometry+=1
         elif op=='job' and e['type']==1 and geometry and geometry==links:
             context=contexts.get(e['context']);vm=context['vm'] if context else None
@@ -64,9 +65,22 @@ def analyze(events,event_traced=False):
                 if h!=event['fnv64'] or len(mapping(vm,shader,128))!=1 or sum(u[0][0]==vm and u[1]==shader and u[2]==40 and u[3]=='usc_code' for u in uploads)!=1:
                     raise ValueError('pixel event shader not live')
                 eot_checked+=1
+                if pbe_traced:
+                    matches=[t for t in targets if t['state0']==event['pbe_state0'] and t['state1']==event['pbe_state1']]
+                    if not matches:raise ValueError('pixel event PBE target missing')
+                    for t in matches:
+                        addr=(t['state0']<<2)|((t['state1']&63)<<34)
+                        if ((t['width'],t['height'],t['stride'],t['image_size'])!=(64,64,64,16384) or
+                            addr!=t['target_gpu'] or addr!=t['image_gpu'] or t['layout'] not in (1,2) or
+                            len(mapping(vm,t['image_gpu'],t['image_size']))!=1):
+                            raise ValueError('unsupported PBE target extent')
+                    if len({(t['image_gpu'],t['image_size'],t['layout']) for t in matches})!=1:
+                        raise ValueError('ambiguous PBE target')
+                    pbe_checked+=1
             checked+=1
     if checked!=4 or geometry!=2 or links!=2:raise ValueError('incomplete render jobs')
-    return {'fragment_jobs':checked,'background_pds_references':refs,'pixel_event_shader_jobs':eot_checked,'gpu_execution_allowed':False,
+    return {'fragment_jobs':checked,'background_pds_references':refs,'pixel_event_shader_jobs':eot_checked,
+      'pbe_target_jobs':pbe_checked,'gpu_execution_allowed':False,
       'limitations':['PDS ranges are checked at submission, not through GPU completion',
         'background PDS and USC indirect references and source bytes are not reconstructed',
         'pixel event USC and PBE output or partial-render scratch are not validated',
@@ -79,7 +93,8 @@ def check(root):
         raise ValueError('capture provenance')
     spec=importlib.util.spec_from_file_location('submit',HERE/'check-render-submit-dependencies.py');dep=importlib.util.module_from_spec(spec);spec.loader.exec_module(dep)
     dep.check(root)
-    return analyze([json.loads(x) for x in raw.splitlines()],bool(diag.get('render_pixel_event_metadata_only')))
+    return analyze([json.loads(x) for x in raw.splitlines()],bool(diag.get('render_pixel_event_metadata_only')),
+                   bool(diag.get('pbe_target_metadata_only')))
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('capture');a=p.parse_args()

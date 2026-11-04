@@ -105,6 +105,11 @@ def check(path):
                     matches = [u for u in live_uploads if u[0][0] == vm and u[1] == addr and u[3] == kind and (u[2] == written if written else u[2] <= size)]
                     if len(matches) != 1 or (kind == 'usc_code' and not addr <= e['entry_gpu'] < addr+matches[0][2]):
                         fragment_missing_uploads += 1
+        elif op == 'render_pbe_target':
+            image,size,target=e['image_gpu'],e['image_size'],e['target_gpu']
+            if (image<=0 or image>=GPU_LIMIT or size<=0 or size>GPU_LIMIT-image or target<image or target-image>=size or
+                e['width']<=0 or e['height']<=0 or e['stride']<=0 or not 0<=e['layout']<=0xffffffff or
+                any(not 0<=e[k]<=0xffffffff for k in ('state0','state1'))):raise ValueError('invalid PBE target')
         elif op == 'render_pixel_event':
             data,shader=e['data_gpu'],e['shader_gpu']
             if (data<=0 or data>=GPU_LIMIT or shader<=0 or shader>=GPU_LIMIT or e['data_size']<=0 or
