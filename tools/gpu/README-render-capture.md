@@ -235,3 +235,7 @@ PPPのfragment uniformはspill情報と４バイトFS_METAを読み、固定capt
 これは背景textureの内部descriptor、EOT USC中のPBE状態、partial renderのSPM scratch、render target書込み範囲、全GPU実行中の所有・同期を検証しない。既存のfragment commandの値をそのまま実機投入することはできず、上記部品も実行入口に接続されていない。
 
 pixel eventのEOT USCは `pvr_usc_eot` がPBE stateの２ワードを即値として埋め込むため、shaderだけを固定して別の出力先へ流用できない。診断はPBE生成時に画像のGPU基底・確保サイズ、出力先、寸法、stride、layout、２state wordを非公開記録し、pixel eventの同２wordとの対応を検査する。`check-fragment-background.py` はstate wordから出力先を復元し、64×64、stride 64、16 KiBの画像確保範囲がfragment job時に同一VMへ存在することを確認する。独立した２captureで各４fragmentに対応した。ただしlayoutの実際の書込み範囲、USC即値の全由来と命令の意味、partial時のSPM scratch、GPU終了までのマップ寿命は証明していない。記録されたstate wordやアドレスを生のfixtureとして公開・投入しない。
+
+`build-mesa-spm-diagnostic.py` は既存のVDM・PBE・PCO診断と同じ固定Mesaソースとbuildを照合し、別ディレクトリの `pvr_arch_spm.c` に計測を加える。SPM loadのscratch、定数、PDSデータのGPU範囲と構成値だけを非公開イベントに記録し、BO内容やCPUポインタは記録しない。`run-render-capture.py` でこの診断を指定し、`check-spm-load.py PRIVATE_CAPTURE` で範囲が構築時に同一VMへ一意にマップされていることを検査する。成功時も終了コード1でGPU実行を禁止する。
+
+scratchless固定probeの独立した00／ffの２captureでは、それぞれ３件のSPM load構築について64×64、１sample、出力レジスタ１、tile bufferなし、scratch使用・確保とも16384バイト、定数32バイト、PDSデータ16バイトだった。Mesaの `pvr_arch_cmd_buffer.c` は `barrier_load` のときにSPM背景状態をjobへ設定する。通常の背景状態と同一視できず、この検査は描画jobとの対応、GPU完了までの寿命、texture descriptorとUSCの実際の到達範囲、DMA同期を証明しない。生アドレスを含むcaptureは非公開のまま保持する。
