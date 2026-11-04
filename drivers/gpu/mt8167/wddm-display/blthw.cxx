@@ -9,6 +9,7 @@
 \**************************************************************************/
 
 #include "BDD.hxx"
+#include "ge8300_present.hxx"
 #include "present_bounds.h"
 
 typedef struct
@@ -543,20 +544,16 @@ HwExecutePresentDisplayOnly(
     // Copy all the scroll rects from source image to video frame buffer.
     for (UINT i = 0; i < ctx->NumMoves; i++)
     {
-        BltBits(&DstBltInfo,
-        &SrcBltInfo,
-        1, // NumRects
-        &ctx->Moves[i].DestRect);
+        if (!A04Ge8300Present(&DstBltInfo,&SrcBltInfo,&ctx->Moves[i].DestRect))
+            BltBits(&DstBltInfo,&SrcBltInfo,1,&ctx->Moves[i].DestRect);
     }
 
     // Copy all the dirty rects from source image to video frame buffer.
     for (UINT i = 0; i < ctx->NumDirtyRects; i++)
     {
 
-        BltBits(&DstBltInfo,
-        &SrcBltInfo,
-        1, // NumRects
-        &ctx->DirtyRect[i]);
+        if (!A04Ge8300Present(&DstBltInfo,&SrcBltInfo,&ctx->DirtyRect[i]))
+            BltBits(&DstBltInfo,&SrcBltInfo,1,&ctx->DirtyRect[i]);
     }
 
     // Unmap unmap and unlock the pages.
