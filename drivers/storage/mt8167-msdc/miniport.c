@@ -802,6 +802,12 @@ static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControl(PVOID extension,
 #endif
     if (owns && !a04_msdc_gate_acquire(&probe->ioBusy))
         return ScsiAdapterControlUnsuccessful;
+#ifdef A04_SYNC_PIO_MULTIREAD
+    if (type==ScsiStopAdapter && !a04_life_releasable(&probe->sync_lifetime)) {
+        a04_msdc_gate_release(&probe->ioBusy);
+        return ScsiAdapterControlUnsuccessful;
+    }
+#endif
     status=A04AdapterControlOwned(extension,type,parameters);
     if (owns) a04_msdc_gate_release(&probe->ioBusy);
     return status;
