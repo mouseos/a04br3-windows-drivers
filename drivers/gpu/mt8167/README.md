@@ -115,14 +115,15 @@ destination guard regions remained unchanged. This is one fixed transfer,
 not a general WDDM submission interface or a long-term stability result.
 The current linear test additionally reuses the same queue for 145 further
 copies with varying payloads and fence values, crossing the ring boundary.
-Each result and guard is checked. This extended diagnostic is not yet
-device-verified.
+Each result and guard is checked. One WinPE run of 150e569 passed all 146
+transfers and clean shutdown. Concurrent jobs, cancellation, display output
+and long-term operation remain unverified.
 The internal transfer queue can also append another command after the caller
 has synchronized and observed both the previous fence and an empty queue.
 It handles ring padding at wrap and increments the fence; the caller must
 validate GPU addresses, serialize work and synchronize the ring before the
-kick. Reuse is host-tested only, not yet connected to Windows or tested on
-the GPU.
+kick. Reuse passed the fixed WinPE sequence above; it is not connected to
+Windows desktop presentation or a full graphics driver.
 `windows_hw.c` provides an experimental Windows ARM32 adapter: common DMA
 buffers use the device adapter's logical addresses, and split 32-bit MMIO
 writes follow the low-then-high order in this device's released Linux source.
