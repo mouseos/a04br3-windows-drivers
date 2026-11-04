@@ -68,5 +68,28 @@ int a04_gpu_prepare_render_pair(const struct a04_gpu_fw_arena *arena,
     gkick->num_cleanup_ctl=1; gkick->cleanup_ctl_fw_addr[0]=cleanup;
     fkick->context_fw_addr=c->frag_context_fw; fkick->client_woff_update=fo; fkick->client_wrap_mask_update=RING_SIZE-1;
     if (!partial) { fkick->num_cleanup_ctl=1; fkick->cleanup_ctl_fw_addr[0]=cleanup; }
-    c->pair_prepared=1; *out=kick; return 0;
+    c->pair_prepared=partial ? 2u : 1u; c->frag_end=fo; c->hwrt_fw=hwrt->fw_addr; *out=kick; return 0;
+}
+int a04_gpu_prepare_final_fragment(const struct a04_gpu_fw_arena *arena,
+    struct a04_gpu_render_context *c,const struct a04_gpu_fw_object *hwrt,
+    const struct rogue_fwif_cmd_frag *frag,uint32_t job,struct rogue_fwif_kccb_cmd *out)
+{
+    struct rogue_fwif_cmd_frag f; struct rogue_fwif_ufo ufo;
+    struct rogue_fwif_kccb_cmd kick={0}; struct rogue_fwif_kccb_cmd_kick_data *k;
+    uint32_t off,needed=(uint32_t)(2*sizeof(struct rogue_fwif_ccb_cmd_header)+sizeof(f)+sizeof(ufo));
+    if (!arena || !c || c->pair_prepared!=2 || !frag || !out || !job ||
+        !object_owned(arena,&c->context,sizeof(struct rogue_fwif_fwrendercontext)) ||
+        !object_owned(arena,&c->frag_ring,RING_SIZE) || !object_owned(arena,&c->frag_fence,sizeof(uint32_t)) ||
+        !object_owned(arena,hwrt,sizeof(struct rogue_fwif_hwrtdata)) || c->hwrt_fw!=hwrt->fw_addr ||
+        c->frag_context_fw!=c->context.fw_addr+offsetof(struct rogue_fwif_fwrendercontext,frag_context) ||
+        c->frag_end>RING_SIZE || needed+sizeof(struct rogue_fwif_ccb_cmd_header)>RING_SIZE-c->frag_end)
+        return -1;
+    off=c->frag_end; f=*frag; f.cmd_shared.hwrt_data_fw_addr=hwrt->fw_addr;
+    off=command(c->frag_ring.cpu,off,ROGUE_FWIF_CCB_CMD_TYPE_FRAG,&f,sizeof(f),job);
+    ufo.addr=c->frag_fence.fw_addr; ufo.value=2;
+    off=command(c->frag_ring.cpu,off,ROGUE_FWIF_CCB_CMD_TYPE_UPDATE,&ufo,sizeof(ufo),0);
+    kick.cmd_type=ROGUE_FWIF_KCCB_CMD_KICK; k=&kick.cmd_data.cmd_kick_data;
+    k->context_fw_addr=c->frag_context_fw; k->client_woff_update=off; k->client_wrap_mask_update=RING_SIZE-1;
+    k->num_cleanup_ctl=1; k->cleanup_ctl_fw_addr[0]=hwrt->fw_addr+(uint32_t)offsetof(struct rogue_fwif_hwrtdata,cleanup_state);
+    c->frag_end=off; c->pair_prepared=3; *out=kick; return 0;
 }

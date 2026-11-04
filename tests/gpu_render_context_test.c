@@ -70,6 +70,19 @@ int main(void)
         assert(header->cmd_type==ROGUE_FWIF_CCB_CMD_TYPE_FRAG_PR);
         assert(kick.cmd_data.combined_geom_frag_cmd_kick_data.geom_cmd_kick_data.num_cleanup_ctl==1);
         assert(kick.cmd_data.combined_geom_frag_cmd_kick_data.frag_cmd_kick_data.num_cleanup_ctl==0);
+        off=partial.frag_end;
+        assert(a04_gpu_prepare_final_fragment(&arena,&partial,&hwrt,&frag,0,&kick));
+        assert(partial.frag_end==off);
+        assert(!a04_gpu_prepare_final_fragment(&arena,&partial,&hwrt,&frag,4,&kick));
+        assert(kick.cmd_type==ROGUE_FWIF_KCCB_CMD_KICK);
+        assert(kick.cmd_data.cmd_kick_data.num_cleanup_ctl==1);
+        header=(void *)((uint8_t *)partial.frag_ring.cpu+off);
+        assert(header->cmd_type==ROGUE_FWIF_CCB_CMD_TYPE_FRAG);
+        off+=sizeof(*header)+header->cmd_size;
+        header=(void *)((uint8_t *)partial.frag_ring.cpu+off);
+        ufo=(void *)(header+1);
+        assert(header->cmd_type==ROGUE_FWIF_CCB_CMD_TYPE_UPDATE && ufo->value==2 && ufo->addr==partial.frag_fence.fw_addr);
+        assert(a04_gpu_prepare_final_fragment(&arena,&partial,&hwrt,&frag,5,&kick));
     }
     before=arena.next; arena.next=arena.limit-64;
     assert(a04_gpu_prepare_render_context(&arena,&vm,2,0x800006d000ULL,4,&state,&result));

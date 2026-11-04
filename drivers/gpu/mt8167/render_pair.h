@@ -13,4 +13,11 @@ int a04_gpu_prepare_render_pair(const struct a04_gpu_fw_arena *arena,
     struct a04_gpu_render_context *context,const struct a04_gpu_fw_object *hwrt,
     const struct rogue_fwif_cmd_geom *geom,const struct rogue_fwif_cmd_frag *frag,
     uint32_t job_id,int partial_render,struct rogue_fwif_kccb_cmd *kick);
+/* Before submitting either kick, append the final fragment after a partial
+ * fragment pair. Caller synchronizes the complete ring before the first kick,
+ * submits the two kicks in order, and keeps all allocations until cleanup. */
+int a04_gpu_prepare_final_fragment(const struct a04_gpu_fw_arena *arena,
+    struct a04_gpu_render_context *context,const struct a04_gpu_fw_object *hwrt,
+    const struct rogue_fwif_cmd_frag *frag,uint32_t job_id,
+    struct rogue_fwif_kccb_cmd *kick);
 #endif
