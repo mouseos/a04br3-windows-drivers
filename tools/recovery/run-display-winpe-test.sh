@@ -70,7 +70,9 @@ found=0
 for ((i=0;i<45;i++)); do
   tail -c +$((start+1)) "$uart_log" > "$out/current-uart.log"
   if grep -q 'A04GPU DISPLAY COPY COMPLETE' "$out/current-uart.log"; then found=1; break; fi
-  if grep -qE 'A04GPU BUGCHECK|A04GPU DISPLAY COPY FAILED|Kernel panic' "$out/current-uart.log"; then break; fi
+  # CAPTURE READY is registration, not a bugcheck. Match only the callback's
+  # emitted bugcheck data and preserve the first failure boot in the log.
+  if grep -qE 'A04GPU BUGCHECK (DATA_UNAVAILABLE|[0-9A-F]{8})|A04GPU DISPLAY COPY FAILED|Kernel panic' "$out/current-uart.log"; then break; fi
   if (( i > 5 )) && is_fastboot; then break; fi
   sleep 4
 done

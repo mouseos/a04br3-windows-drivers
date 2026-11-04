@@ -17,8 +17,10 @@ if errorlevel 1 goto gpufail
 if errorlevel 1 goto gpufail
 %GPU%\ge8300-service-status.exe
 if errorlevel 1 goto gpufail
+echo DISPLAY_DRVLOAD_STARTING
 drvload %DISP%\mt8167-display.inf
 if errorlevel 1 goto displayfail
+echo DISPLAY_DRVLOAD_OK
 %GPU%\display-pnp-status.exe
 if errorlevel 1 goto displayfail
 rem Force a full-screen update before checking the GPU copy counter.

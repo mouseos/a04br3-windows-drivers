@@ -224,6 +224,7 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             c->status.queue_status=a04_windows_linear_context_start(&c->linear,&c->firmware);
             c->status.mmu_status=c->status.queue_status;
             c->copy_online=NT_SUCCESS(c->status.queue_status);
+            GpuPrint("A04GPU SERVICE STATUS="); GpuHex(c->status.queue_status); GpuPrint("\n");
             /* Avoid serial traffic on every display chunk; bugcheck capture
              * stays registered and shutdown diagnostics restore tracing. */
             if (c->copy_online) c->firmware.trace=NULL;
@@ -258,6 +259,8 @@ NTSTATUS GpuD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
     GPU_CONTEXT *c=GpuContext(device); UNREFERENCED_PARAMETER(target);
 #if A04_GE8300_COPY_SERVICE
     NTSTATUS status;
+    GpuPrint("A04GPU D0EXIT TARGET="); GpuHex((ULONG)target);
+    GpuPrint(" ONLINE="); GpuHex((ULONG)c->copy_online); GpuPrint("\n");
     c->copy_online=FALSE;
     c->firmware.trace=GpuTraceStage;
     if (c->firmware.processor_released) {
