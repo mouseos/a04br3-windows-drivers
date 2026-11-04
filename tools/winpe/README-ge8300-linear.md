@@ -4,6 +4,10 @@
 
 初回UARTはSTATUS=C000003E、STAGE=20（16進）、背景448・前景576・その他3072。09c630dのMorton前提は誤りで、Mesaの `PVR_MEMLAYOUT_LINEAR=1` とPBE registerのmemlayout=0・stride field=31は線形64画素strideを示す。旧行マスクを線形へ戻すと前景は `x=8..31,y=8..31` の矩形。背景と未知色の位置は旧記録に存在しない。1024画素だけ所定色であることは32×32処理の候補を支持するが、初期値、デバイス書込み、タイル配置、DMA可視性は切り分けられていない。
 
+ソース照合では固定PBE targetが64×64・stride 64、register word1のx/y最大値が63、`ISP_CTL=0x33000` のprocess-empty bitが1。GE8300のSIPF1は16×16 tileで、64×64のLinux相当HWRTはtile最大3×3、mtile stride 16、ISP mtile 4×4で、現行生成値と一致する。これらは投入データの整合であり、実ハードでの解釈を証明しない。
+
+残る候補は、タイル／region headerの処理範囲、partialとfinalの実行・書出し、PBEアドレスや実メモリ配置、GPU側キャッシュからCPUへの可視性。既存記録だけで候補の優先順位や原因を確定できず、固定job・命令値を推測で変更しない。
+
 GPU DMAは非キャッシュ指定の共通バッファで、kick前の全ゼロ検査と送信前・fence後の同期を行う。同期要求成功は対象全体が書き込まれた証拠ではない。追加したzeroマスクも、未書込みと明示的なゼロ書込みやCPU可視性の問題を区別しない。Linux SIPF1の64×64 register値、Mesa PBE clipとprocess-empty設定を照合したが、矩形出力の原因は特定していない。timeout時のDMA保持とGPU停止未証明を維持する。
 
 受信済み断片のCRCのみ確認した未完成画面では状態ツールの終了コード0とshutdown=0を読めた。これは描画判定ではない。新媒体では `LIFECYCLE_STATUS_EXIT` と明示し、UART render結果を別に確認する。実機画面ヘッダは800×1280であり、observerの既定値を更新した。全画面CRCが完成するまでは完全画像と扱わない。
