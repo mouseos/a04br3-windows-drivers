@@ -67,7 +67,7 @@ start=$(stat -c %s "$uart_log")
 A04_SERIAL="$serial" "$root/tools/recovery/flash-efi.sh" "$test_esp" >> "$flash_log" 2>&1
 echo TEST_BOOT_STARTED
 found=0
-for ((i=0;i<45;i++)); do
+for ((i=0;i<35;i++)); do
   tail -c +$((start+1)) "$uart_log" > "$out/current-uart.log"
   if grep -q 'A04GPU DISPLAY COPY COMPLETE' "$out/current-uart.log"; then found=1; break; fi
   # CAPTURE READY is registration, not a bugcheck. Match only the callback's
