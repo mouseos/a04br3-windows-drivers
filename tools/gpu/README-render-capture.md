@@ -251,3 +251,7 @@ EOTについてはcaptured PBE stateを含む基準入力の各64ビットを個
 `generate-context-bounded-fixture.py` は上記検査と固定SHA-256・PCO metadataを通したUSCだけから `render_context_bounded_usc.h` を再生成する。`a04_windows_render_stage_bounded_context_usc` は２shaderをゼロpaddingして所有済みDMAへ配置し、`a04_windows_render_stage_bounded_context_sr` は予約済みshaderの全バイト・paddingを再確認して、必要なtemp数からPDSのDOUTUを構成する。所有範囲、予約、実PTE、ゼロ初期化を確認するが、static context registerと固定描画への接続やGPU実行の承認は行わない。
 
 persistent／shared context stateとHWRT、freelist表、callstackの書込み範囲は、各DMA allocationが独立したGPU/DMA停止後に解放されるまで予約する。互いの重複や既存配置との重複を拒否し、公開時にHWRTの７範囲が予約と一致することを再確認する。bounded stateは両fenceとCPU同期後に読み、無効値でもfirmware cleanupを試みたうえで `STATUS_DATA_ERROR` を返す。０はcontext switch発生の証拠ではない。firmware cleanup失敗・timeout時は従来どおりpoisonして保持する。これらはhost mock検証であり、実機上の同期や全間接参照の寿命を保証しない。
+
+`build-mesa-context-static-diagnostic.py` は独立Mesaライブラリでrender contextの静的レジスタ値を型付きで非公開記録する。`check-context-static.py` は２slotそれぞれのstate base、store／resumeのPDS state、persistent PDSのdataとcodeの連続配置を生成点のmetadataと照合する。00／ffの２captureで一致した。MesaのLLS定義ではVDM stateが92バイト、TA stateが484バイトである。
+
+`a04_render_make_context_static` は上記の固定レイアウトを所有範囲のGPUアドレスから生成する。`a04_windows_render_make_bounded_static` は先に配置された２組のbounded shared USC、shared PDS、persistent PDSと一致する場合に限り、ゼロ初期化されたSLC bypassのVDM／TA stateを予約してstatic registerを生成する。context生成にはその値をそのまま渡し、公開時にも固定値・shader・PDS・stateの予約と初期状態を再確認する。各部品はホストmockで検証した。機械語の意味、特殊レジスタの実機値、GPU cache動作、描画job全体やcleanup後のDMA停止を証明するものではなく、描画fixture・利用者向け実行入口は未完成である。

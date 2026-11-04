@@ -25,7 +25,7 @@ if ($service -eq '1' -and ($boot -ne '1' -or $mismatch -ne '1' -or $clear -eq '1
 if (([int]$clear + [int]$copy + [int]$linear) -gt 1) { throw 'Choose one GE8300 diagnostic' }
 $objects = @()
 $sources = @('ge8300_provider','firmware','firmware_runtime','firmware_start','windows_hw','windows_firmware','gpu_mmu','dma_pages','firmware_objects','firmware_queue','render_context','render_pair','render_hwrt','render_target','render_freelist','render_stream','transfer_stream','clear_fixture','copy_fixture','linear_copy_fixture','transfer_mapping','windows_transfer_mapping','windows_linear_transfer','windows_linear_context','windows_queue_test')
-if ($render -eq '1') { $sources += @('windows_render_memory','render_pds_data','render_context_pds','render_shared_size','render_execution','render_fixed_vdm','render_fixed_ppp') }
+if ($render -eq '1') { $sources += @('windows_render_memory','render_pds_data','render_context_pds','render_context_static','render_shared_size','render_execution','render_fixed_vdm','render_fixed_ppp') }
 foreach ($name in $sources) {
     $obj = Join-Path $out "$name.obj"
     & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_GE8300_BOOT_TEST=$boot" "-DA04_GE8300_ALLOW_MISMATCH=$mismatch" "-DA04_GE8300_CLEAR_TEST=$clear" "-DA04_GE8300_COPY_TEST=$copy" "-DA04_GE8300_LINEAR_TEST=$linear" "-DA04_GE8300_COPY_SERVICE=$service" "-DA04_GE8300_SHARED_TRACE_DIAGNOSTIC=$sharedTrace" "-DA04_GE8300_RENDER_EXPERIMENT=$render" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$gpu\compat" "-I$gpu\fwif" -c (Join-Path $gpu "$name.c") -o $obj

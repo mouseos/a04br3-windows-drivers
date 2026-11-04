@@ -175,6 +175,10 @@ def check(path):
         elif op == 'ctx_pds_code_hash':
             if e['kind'] not in ('pt_store_code','pt_resume_code','sr_code') or e['size'] not in (12,20,24) or e['gpu_va']<=0 or e['gpu_va']>=GPU_LIMIT or not 0<=e['fnv64']<1<<64:
                 raise ValueError('invalid context PDS code hash')
+        elif op == 'ctx_static':
+            if (e['index'] not in (0,1) or not 0<e['vdm']<GPU_LIMIT or not 0<e['geom']<GPU_LIMIT or
+                any(not 0<=e[k]<1<<64 for k in ('store0','store1','store2','resume0','resume1','resume2'))):
+                raise ValueError('invalid context static metadata')
         elif op in ('bg_shader','bg_frag_pds'):
             if (e['gpu_va'] <= 0 or e['gpu_va'] >= GPU_LIMIT or e['size'] <= 0 or
                 e['size'] > GPU_LIMIT-e['gpu_va']):raise ValueError('invalid background shader metadata')

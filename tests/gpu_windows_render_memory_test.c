@@ -337,6 +337,52 @@ int main(void)
       s.processor_released=FALSE;assert(a04_windows_render_memory_free(&m,TRUE)==STATUS_SUCCESS);
     }
     {
+      struct a04_windows_render_map cm[]={{0xda00010000ULL,0,10,0,0},
+        {0xda0001a000ULL,10,1,0,A04_GPU_MMU_READ_ONLY},{0xda0001b000ULL,11,1,0,0},
+        {0xe000001000ULL,12,1,1,A04_GPU_MMU_READ_ONLY},{0x8000000000ULL,13,1,2,A04_GPU_MMU_SLC_BYPASS}};
+      struct a04_render_context_static_input in={0};struct rogue_fwif_geom_registers_caswitch cs={0},saved;
+      uint8_t *states;unsigned i;s.processor_released=TRUE;
+      assert(a04_windows_render_memory_create(&m,&s,14,cm,5)==STATUS_SUCCESS);
+      in.vdm_state=0x8000000000ULL;in.geom_state=0x8000000100ULL;
+      for(i=0;i<2;++i) {
+        uint64_t pds=0xda0001a000ULL+i*0x80u,sr=0xda0001a100ULL+i*0x100u;
+        uint64_t shader=0xe000001000ULL+i*0x800u;struct a04_render_context_static_slot *q=&in.slot[i];
+        q->pt_store_data=pds;q->pt_store_code=pds+32;q->pt_resume_data=pds+64;q->pt_resume_code=pds+96;
+        q->sr_store_data=sr;q->sr_store_code=sr+64;q->sr_resume_data=sr+128;q->sr_resume_code=sr+192;
+        assert(a04_windows_render_stage_context_pt(&m,0xda0001b000ULL+i*128u,q->pt_store_data,q->pt_store_code,
+          q->pt_resume_data,q->pt_resume_code)==STATUS_SUCCESS);
+        assert(a04_windows_render_stage_bounded_context_usc(&m,shader,shader+0x400u)==STATUS_SUCCESS);
+        assert(a04_windows_render_stage_bounded_context_sr(&m,0xda00010000ULL+i*0x5000u,shader,shader+0x400u,
+          q->sr_store_data,q->sr_store_code,q->sr_resume_data,q->sr_resume_code)==STATUS_SUCCESS);
+      }
+      saved=cs;in.slot[1].pt_store_code+=16;
+      assert(a04_windows_render_make_bounded_static(&m,&in,&cs)==STATUS_INVALID_PARAMETER && !memcmp(&cs,&saved,sizeof(cs)));
+      in.slot[1].pt_store_code-=16;states=(uint8_t *)m.cpu+A04_RENDER_PAYLOAD_OFFSET+10u*4096u;
+      states[0]^=1;
+      assert(a04_windows_render_make_bounded_static(&m,&in,&cs)==STATUS_INVALID_DEVICE_STATE && !memcmp(&cs,&saved,sizeof(cs)));
+      states[0]^=1;states=(uint8_t *)m.cpu+A04_RENDER_PAYLOAD_OFFSET+13u*4096u;states[0x100]=1;
+      assert(a04_windows_render_make_bounded_static(&m,&in,&cs)==STATUS_INVALID_DEVICE_STATE && !memcmp(&cs,&saved,sizeof(cs)));
+      states[0x100]=0;
+      assert(a04_windows_render_make_bounded_static(&m,&in,&cs)==STATUS_SUCCESS && m.writable_count==6);
+      assert(cs.geom_reg_vdm_context_state_base_addr==in.vdm_state && cs.geom_reg_ta_context_state_base_addr==in.geom_state);
+      assert(a04_windows_render_make_bounded_static(&m,&in,&cs)==STATUS_INVALID_PARAMETER);
+      assert(a04_windows_render_memory_bind_vm(&m)==STATUS_SUCCESS);
+      assert(a04_windows_render_prepare_context(&m,7,in.vdm_state,4,&cs)==STATUS_INVALID_PARAMETER);
+      cs.geom_state[0].geom_reg_vdm_context_store_task0^=1;
+      assert(a04_windows_render_prepare_context(&m,7,0x8000000400ULL,4,&cs)==STATUS_INVALID_PARAMETER);
+      cs.geom_state[0].geom_reg_vdm_context_store_task0^=1;
+      assert(a04_windows_render_prepare_context(&m,7,0x8000000400ULL,4,&cs)==STATUS_SUCCESS);
+      { struct rogue_fwif_fwrendercontext *c=m.render.context.cpu;
+        c->static_render_context_state.ctxswitch_regs[0].geom_reg_ta_context_state_base_addr^=16;
+        assert(a04_windows_render_publish_context(&m)==STATUS_INVALID_DEVICE_STATE && !m.published);
+        c->static_render_context_state.ctxswitch_regs[0].geom_reg_ta_context_state_base_addr^=16;
+        states=(uint8_t *)m.cpu+A04_RENDER_PAYLOAD_OFFSET+10u*4096u;states[0]^=1;
+        assert(a04_windows_render_publish_context(&m)==STATUS_INVALID_DEVICE_STATE && !m.published);
+        states[0]^=1;
+        assert(a04_windows_render_publish_context(&m)==STATUS_SUCCESS && m.published); }
+      s.processor_released=FALSE;assert(a04_windows_render_memory_free(&m,TRUE)==STATUS_SUCCESS);
+    }
+    {
       struct a04_windows_render_map vmaps[]={{0xda00010000ULL,0,1,0,A04_GPU_MMU_READ_ONLY},
         {0xda00011000ULL,1,2,0,0},{0xda00013000ULL,3,12,0,0},
         {0xe000005000ULL,15,1,1,A04_GPU_MMU_READ_ONLY},

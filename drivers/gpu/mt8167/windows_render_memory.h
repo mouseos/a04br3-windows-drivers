@@ -10,6 +10,7 @@
 #include "render_pds_data.h"
 #include "render_fixed_vdm.h"
 #include "render_fixed_ppp.h"
+#include "render_context_static.h"
 #if A04_GE8300_RENDER_EXPERIMENT
 /* A private DMA allocation and its GPU page tables. Call at PASSIVE_LEVEL;
  * the caller serializes firmware access and prevents untracked CPU writes. */
@@ -60,6 +61,11 @@ struct a04_windows_render_memory {
      * whole allocation is freed after independently established DMA stop. */
     struct { uint64_t gpu_va,size; } writable[A04_RENDER_MAX_WRITABLE];
     size_t writable_count;
+    struct { uint64_t state,store_data,store_code,resume_data,resume_code; } pt_slots[2];
+    struct { uint64_t state,store_shader,load_shader,store_data,store_code,load_data,load_code;BOOLEAN bounded; } sr_slots[2];
+    size_t pt_slot_count,sr_slot_count;
+    BOOLEAN bounded_static_prepared;
+    struct rogue_fwif_geom_registers_caswitch bounded_static_state;
 };
 NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
     struct a04_gpu_firmware_state *s,ULONG payload_pages,
@@ -179,6 +185,10 @@ NTSTATUS a04_windows_render_stage_bounded_context_sr(struct a04_windows_render_m
 /* Only after fence completion and CPU synchronization. A zero state does not
  * prove that the GPU performed a context switch. */
 NTSTATUS a04_windows_render_check_bounded_states(struct a04_windows_render_memory *m);
+/* Form static context registers only from previously staged bounded slots.
+ * VDM and TA state ranges must be owned, zeroed and SLC-bypassed. */
+NTSTATUS a04_windows_render_make_bounded_static(struct a04_windows_render_memory *m,
+    const struct a04_render_context_static_input *input,struct rogue_fwif_geom_registers_caswitch *out);
 /* gpu_dma_quiesced is an independently established GPU/DMA stop, not a
  * fence alone. A false value retains memory even if the processor is stopped. */
 NTSTATUS a04_windows_render_memory_free(struct a04_windows_render_memory *m, BOOLEAN gpu_dma_quiesced);
