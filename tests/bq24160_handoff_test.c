@@ -16,6 +16,15 @@ static void fixture(uint8_t p[128]) {
 }
 int main(void) {
  uint8_t p[128], generated[128]; struct a04_bq_owner source; struct a04_bq_owner o; struct bus b; struct a04_bq_bus bus={&b,now,read_byte,kick}; unsigned off;
+ assert(!a04_bq_check_counter_interval(100,13000100,13000000,NS,NS));
+ assert(!a04_bq_check_counter_interval(100,101,13000000,76,77));
+ assert(a04_bq_check_counter_interval(100,101,13000000,77,77));
+ assert(a04_bq_check_counter_interval(100,100,13000000,1,NS));
+ assert(a04_bq_check_counter_interval(101,100,13000000,1,NS));
+ assert(a04_bq_check_counter_interval(100,13000100,13000000,2*NS,3*NS));
+ assert(a04_bq_check_counter_interval(100,13000100,0,1,NS));
+ assert(a04_bq_check_counter_interval(0,UINT64_MAX,1,1,UINT64_MAX));
+ assert(a04_bq_check_counter_interval(0,1,13000000,0,NS));
  memset(&o,0,sizeof(o)); memset(&b,0,sizeof(b)); fixture(p); memcpy(b.regs,p+88,8); b.now=100*NS;
  assert(!a04_bq_adopt_handoff(&o,p,128,b.now,377000000,13000000));
  assert(o.handoff_pending && o.handoff_deadline==101*NS && o.firmware_kicks==2 && o.firmware_first.raw[0]==0x30);

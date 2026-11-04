@@ -112,6 +112,22 @@ static uint64_t handoff_raw(const struct a04_bq_snapshot *s)
     for (i=0;i<8;++i) value |= (uint64_t)s->raw[i] << (8u*i);
     return value;
 }
+int a04_bq_check_counter_interval(uint64_t start, uint64_t end, uint64_t freq,
+                                  uint64_t ref_min, uint64_t ref_max)
+{
+    uint64_t delta, whole, fraction, floor_ns, ceil_ns;
+    if (!freq || freq > UINT64_MAX / SECOND_NS || end <= start ||
+        !ref_min || ref_min > ref_max) return -1;
+    delta = end - start;
+    if (delta / freq > UINT64_MAX / SECOND_NS) return -1;
+    whole = (delta / freq) * SECOND_NS;
+    fraction = (delta % freq) * SECOND_NS;
+    if (whole > UINT64_MAX - fraction / freq) return -1;
+    floor_ns = whole + fraction / freq;
+    if (fraction % freq && floor_ns == UINT64_MAX) return -1;
+    ceil_ns = floor_ns + (fraction % freq != 0);
+    return floor_ns >= ref_min && ceil_ns <= ref_max ? 0 : -1;
+}
 int a04_bq_publish_handoff(uint8_t *p, unsigned size, const struct a04_bq_owner *o,
                            uint64_t last, uint64_t exited, uint64_t freq)
 {

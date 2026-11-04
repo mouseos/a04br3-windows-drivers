@@ -43,6 +43,12 @@ int a04_bq_publish_handoff(uint8_t *out, unsigned size,
 int a04_bq_adopt_handoff(struct a04_bq_owner *owner, const uint8_t *record,
                          unsigned size, uint64_t now_ns,
                          uint64_t physical_counter, uint64_t frequency);
+/* Offline comparison against independently bounded elapsed real time.  The
+ * reference bounds must include sampling uncertainty and must not be derived
+ * from the counter under test. This detects a mismatch in this interval only;
+ * it does not authorize ownership or prove continuity in another interval. */
+int a04_bq_check_counter_interval(uint64_t start, uint64_t end, uint64_t frequency,
+                                  uint64_t reference_min_ns, uint64_t reference_max_ns);
 /* Caller holds the same lock used by LC709203F for the entire cycle. The
  * worker must already be armed and a valid firmware handoff established.
  * A fresh Windows owner cannot perform even a first read without adoption.
