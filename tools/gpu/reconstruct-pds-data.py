@@ -56,7 +56,11 @@ def build(events, text, index=0):
     vertex,_=construct(addresses[0],'vertex_attributes',12,[(2,2,0),(6,0,0)])
     descriptor,deps=construct(addresses[1],'descriptor_mappings',24,[(5,0,12),(5,2,13),(2,4,0),(2,5,0)])
     if set(deps)!= {'spill','scratch'}:raise ValueError('incomplete special buffers')
-    return {'vertex-pds.bin':vertex,'descriptor-pds.bin':descriptor,'spill-info.bin':deps['spill'],'scratch-info.bin':deps['scratch']}
+    # VDM fetches aligned ranges larger than the typed construction. Never
+    # copy the unobserved padding from a BO or a host allocation.
+    return {'vertex-pds.bin':vertex,'descriptor-pds.bin':descriptor,
+            'vertex-pds-fetch.bin':vertex+bytes(4),'descriptor-pds-fetch.bin':descriptor+bytes(8),
+            'spill-info.bin':deps['spill'],'scratch-info.bin':deps['scratch']}
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('capture',type=pathlib.Path);p.add_argument('--output',required=True,type=pathlib.Path);p.add_argument('--index',type=int,default=0);p.add_argument('--experimental-incomplete',action='store_true');a=p.parse_args()

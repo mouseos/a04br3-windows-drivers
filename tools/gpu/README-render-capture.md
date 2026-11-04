@@ -90,7 +90,7 @@ Windowsの `A04_GE8300_RENDER_EXPERIMENT=1` は、診断用の結合geometry/fra
 
 `run-render-capture.py --dump-control-stream` はMesa自身のcontrol streamデコーダを有効にし、非公開の `probe.log` とmanifestのハッシュを生成する。**probe.logにはホストアドレスや生BOが含まれ得るため公開しない。** `summarize-render-csb.py CAPTURE_DIR` は内容を転載せずブロックとフィールドの件数を集計し、PDSアドレスの先頭が、いつか記録されたupload範囲内かを照合する。Mesaのdumpは最初のcontrol stream BOのみを解析し、照合はジョブ時点の生存や全到達範囲の検証ではない。
 
-`windows_render_memory.c` は既定OFFの試験用部品。DMA common bufferの取得・ゼロ初期化、所有領域の範囲と重複検査、BRN65273領域と指定VAのページテーブル生成、全域のCPU→GPU同期とMMU無効化待ちを行う。payloadの生成とキックには接続しない。失敗時もメモリを保持し、解放にはprocessor停止だけでなく、呼出し側が別途確立したGPU DMA停止の確認を要する。実行中のfree、WDDM、電源遷移、実機上の整合性は未検証。
+`windows_render_memory.c` は既定OFFの試験用部品。DMA common bufferの取得・ゼロ初期化、所有領域の範囲と重複検査、BRN65273領域と指定VAのページテーブル生成、全域のCPU→GPU同期とMMU無効化待ちを行う。fragment PDSの部分生成のみを接続し、完成fixtureとキックには接続しない。失敗時もメモリを保持し、解放にはprocessor停止だけでなく、呼出し側が別途確立したGPU DMA停止の確認を要する。実行中のfree、WDDM、電源遷移、実機上の整合性は未検証。
 
 ## コマンドバッファ内PDS直接構築の追跡
 
@@ -141,3 +141,11 @@ python3 tools/gpu/check-render-usc.py PRIVATE_ZERO PRIVATE_ONES
 ```
 
 ２回の独立したshim実行では、２組のvertex 312バイトとfragment 360バイトについて、PCO生成結果とPDSから参照されたuploadのハッシュが一致し、ゼロと全ビット１の事前初期化でも一致した。これは特定probeでの上書き状況を調べる診断で、衝突耐性のある一致証明でも、shaderの即値が安全である証明でもない。upload後の未計測CPU書込み、shader実行時の間接参照、VDM/PPPの全参照、ジョブ完了までの寿命は未確定。shader fixtureの公開やGPU投入、DMA/kickへの接続は行わない。
+
+## VDMの取得範囲とDMAへの部分配置
+
+`check-render-vdm-pds.py PRIVATE_CAPTURE` は固定probeの２描画について、VDMの参照先と直接構築されたPDS定数の位置、生成時に取得範囲全体が一つのVM mappingに収まること、PDSコードのupload開始位置を照合する。観測上、vertex定数は12バイト生成・16バイト取得、descriptor定数は24バイト生成・32バイト取得であり、コードuploadはそれぞれ12バイトと８バイトだった。取得末尾の４バイトと８バイトは生BOから取らず、`reconstruct-pds-data.py` の `*-fetch.bin` ではゼロを追加する。コードuploadの長さはGPU命令実行範囲の証明ではない。
+
+固定probeのGLSLでは、vertexは `gl_VertexIndex` で３点 `(-0.75,-0.75)`、`(0.75,-0.75)`、`(-0.75,0.75)` を選び、z=0.5、w=1.0を出力する。fragmentは `(1,0,1,1)` を出力し、probeは64×64背景 `(0x22,0x44,0x66,0xff)` と比較する。頂点バッファやアプリケーションdescriptorは使用しないが、Mesa生成のspill/scratch等のPDS参照は別に必要。固定したprobe checkoutの `shaders/gen_triangle.py --check` が、GLSLから生成したSPIR-Vと同梱headerの一致を検証した。これはPCO出力の全即値や実行時参照を証明しない。
+
+実験フラグ下の `a04_windows_render_stage_fragment_pds` は、取得済みDMAメモリ内の読み取り専用PDS/USC mappingを確認し、fragment PDSを公開前に生成する。USCは固定probeで観測した先頭entryと360バイトがmappingに収まることだけを確認し、命令の内容は確認しない。公開前の変更だけを許可し、既存の全域同期とMMU無効化へ渡す。ホストmockとARM向けの型チェックで検証した段階で、実際のWDKビルド、実機のDMA、shader投入、fence・cleanup・kickとの結合は未実施。GPU投入の許可にはならない。

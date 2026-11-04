@@ -22,6 +22,8 @@ class TestPds(unittest.TestCase):
           dict(event='pds_dependency',parent_gpu=d,offset=2,kind='scratch',info_gpu=0x8000001010,buffer_gpu=0x8000004000,buffer_size=49152,block_size=24)]
  def test_reconstruct(self):
   f=m.build(self.e,self.text);self.assertEqual(len(f['vertex-pds.bin']),12);self.assertEqual(len(f['descriptor-pds.bin']),24)
+  self.assertEqual(f['vertex-pds-fetch.bin'],f['vertex-pds.bin']+bytes(4))
+  self.assertEqual(f['descriptor-pds-fetch.bin'],f['descriptor-pds.bin']+bytes(8))
   self.assertEqual(struct.unpack('<QI',f['spill-info.bin']),(0x8000002000,4))
  def test_reject_untrusted_pointer_and_changed_literal(self):
   e=copy.deepcopy(self.e);e[9]['buffer_gpu']=0x7fff00112233
