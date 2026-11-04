@@ -51,3 +51,12 @@ PIO部品はDMA有効中、PIO無効、関連割込み有効中に開始しな�
 コントローラの PIO・clock stable・バス幅・DMA・割込みマスクを再確認し、
 失敗時は出力を変更しない。この観測だけでは `a04_resume_validate` は成功せず、
 実電源の所有と世代を別途確立するまで起動・復帰ゲートを解除できない。
+
+機種固有の [Linux MT6392 regulator](https://github.com/mouseos/a04br3-linux-drivers/blob/68f064d50de4568049e09e5990a6e21cfa67c1b6/pmic/mt6392-regulator.c)
+では VEMC3V3 の 0x052e bit 7 の選択値 0/1 がそれぞれ 3.0/3.3 V、
+0x0508 bit 14 が enable、bit 15 が QI、VIO18 は 0x0556 bit 14 enable、
+bit 15 QI の固定 1.8 V と記述される。機種 DTS の VEMC 範囲は 3.0–3.3 V、
+VIO18 は常時有効、両 rail の enable-ramp-delay は 264 µs である。これらは
+Linux の記述とレジスタ観測であり、実電圧・電源の持続・Windows での排他
+所有の証拠ではない。VIO18 の無効化、VEMC の切替や再有効化は、他クライアント
+と card の状態・保護順序を確立するまで行わない。
