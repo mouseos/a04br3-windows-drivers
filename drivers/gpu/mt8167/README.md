@@ -21,6 +21,11 @@ firmwareへのMMUキャッシュ無効化要求は実行カウンターと専用
 完了を判定し、a0416c9のWinPE実機試験で成功しました。GPUによるページ変換、
 その解除、描画は実機未検証です。
 
+12ccaeeのWinPE実機試験では、BRN65273向け２領域を含むGPUページテーブルと
+firmware VMを準備し、compute NULL/update queueのフェンス応答、power-offと
+DMA割当解放まで確認しました。これはfirmwareのキュー処理であり、シェーダの
+実行、GPU仮想アドレスの実変換、描画、WDDMの動作を示しません。
+
 `rogue_power.h` is derived from the BSD-2-Clause-Patent
 [UniXNU A04BR3 implementation](https://github.com/mouseos/UniXNU-a04br3/blob/main/package/A04BR3RoguePower.h),
 which in turn identifies the board Linux clock and power sources. Its callback
