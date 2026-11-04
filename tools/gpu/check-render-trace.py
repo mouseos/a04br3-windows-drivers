@@ -16,6 +16,8 @@ def check(path):
     pds_entries = 0
     pds_deps = unmapped_deps = 0
     pds_shaders = unmapped_shaders = 0
+    fragment_links = fragment_unmapped = fragment_missing_uploads = 0
+    live_uploads = []
     open_submit = None
     for line in pathlib.Path(path).read_text(encoding='utf-8').splitlines():
         e = json.loads(line); op = e['event']
@@ -26,6 +28,7 @@ def check(path):
             if e['handle'] not in vms: raise ValueError('unknown vm')
             vms.remove(e['handle'])
             maps = {k:v for k,v in maps.items() if k[0] != e['handle']}
+            live_uploads = [u for u in live_uploads if u[0][0] != e['handle']]
         elif op == 'bo_create':
             if (e['fd'], e['handle']) in bos or e['size'] <= 0 or e.get('initial_origin') != 'zeroed_by_shim': raise ValueError('invalid BO')
             zeroed_bos += 1
@@ -48,6 +51,7 @@ def check(path):
             key = (e['vm'],e['va'])
             if maps.get(key) != e['size']: raise ValueError('invalid unmap')
             del maps[key]
+            live_uploads = [u for u in live_uploads if u[0] != key]
         elif op == 'context_create':
             if e['vm'] not in vms or e['handle'] in contexts: raise ValueError('invalid context')
             contexts[e['handle']] = e
@@ -71,6 +75,34 @@ def check(path):
             uploads += 1
             if not matches: unmapped_uploads += 1
             elif len(matches) > 1: ambiguous_uploads += 1
+            if len(matches) == 1:
+                key = matches[0]
+                live_uploads = [u for u in live_uploads if u[0] != key or not (addr < u[1]+u[2] and u[1] < addr+size)]
+                live_uploads.append((key,addr,size,e['kind']))
+        elif op == 'fragment_shader_link':
+            ranges = [(e['pds_data_gpu'], e['pds_data_size'], e['pds_data_written'], 'pds_data'),
+                      (e['pds_code_gpu'], e['pds_code_size'], e['pds_code_written'], 'pds_code'),
+                      (e['shader_gpu'], e['shader_size'], 0, 'usc_code')]
+            fragment_vms = []
+            for addr, size, written, kind in ranges:
+                if addr <= 0 or addr >= GPU_LIMIT or size <= 0 or size > GPU_LIMIT-addr or written < 0 or written > size:
+                    raise ValueError('invalid fragment range')
+                matches = {k[0] for k,v in maps.items() if addr >= k[1] and size <= v and addr-k[1] <= v-size}
+                fragment_vms.append(matches)
+            if not ranges[0][2] or not ranges[1][2] or e['doutu_offset'] < 0 or e['doutu_offset']*4+8 > ranges[0][2]:
+                raise ValueError('invalid fragment DOUTU')
+            if not e['shader_gpu'] <= e['entry_gpu'] < e['shader_gpu']+e['shader_size']:
+                raise ValueError('invalid fragment shader entry')
+            common = fragment_vms[0] & fragment_vms[1] & fragment_vms[2]
+            fragment_links += 1
+            if len(common) != 1:
+                fragment_unmapped += 1
+            else:
+                vm = next(iter(common))
+                for addr,size,written,kind in ranges:
+                    matches = [u for u in live_uploads if u[0][0] == vm and u[1] == addr and u[3] == kind and (u[2] == written if written else u[2] <= size)]
+                    if len(matches) != 1 or (kind == 'usc_code' and not addr <= e['entry_gpu'] < addr+matches[0][2]):
+                        fragment_missing_uploads += 1
         elif op == 'pds_shader':
             parent,shader,entry,size=e['parent_gpu'],e['shader_gpu'],e['entry_gpu'],e['size']
             if parent<=0 or shader<=0 or shader>=GPU_LIMIT or size<=0 or size>GPU_LIMIT-shader or entry<shader or entry-shader>=size:
@@ -132,6 +164,7 @@ def check(path):
     if open_submit is not None or not submits: raise ValueError('incomplete trace')
     return {'submits':submits, 'jobs':jobs, 'live_bos_at_end':len(bos),
             'zeroed_bo_allocations':zeroed_bos, 'uploads_seen':uploads, 'pds_entries_seen':pds_entries,'pds_dependencies_seen':pds_deps,'pds_dependency_unmapped':unmapped_deps,'pds_shader_links':pds_shaders,'pds_shader_unmapped':unmapped_shaders,
+            'fragment_links':fragment_links, 'fragment_unmapped':fragment_unmapped, 'fragment_missing_uploads':fragment_missing_uploads,
             'uploads_unmapped_at_observation':unmapped_uploads, 'uploads_ambiguous_vm':ambiguous_uploads, 'full_extent_checks':full_checks,
             'start_only_checks':start_checks, 'unresolved_address_checks':unresolved,
             'fixture_exportable':False,

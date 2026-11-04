@@ -12,6 +12,7 @@ int main(void)
       {0x8000002000ULL,0x102000,8192,3},
       {0x8000004000ULL,0x104000,49152,3}};
     struct a04_render_pds_input p={0}; struct a04_render_pds_data out,old;
+    uint8_t frag[48],previous[48];size_t i;
     p.shader_gpu=0xe000005040ULL;p.spill_info_gpu=0x8000001000ULL;p.scratch_info_gpu=0x8000001010ULL;
     p.spill_buffer_gpu=0x8000002000ULL;p.scratch_buffer_gpu=0x8000004000ULL;
     p.doutu_control=UINT64_C(1)<<35;p.vertex_literal=0xabc;p.descriptor_literal0=4;p.descriptor_literal1=5;
@@ -28,5 +29,14 @@ int main(void)
     assert(a04_render_make_pds_data(&p,ranges,4,&out) && !memcmp(&out,&old,sizeof(out)));
     p.doutu_control=0;p.shader_gpu=0x7fff00001000ULL;
     assert(a04_render_make_pds_data(&p,ranges,4,&out) && !memcmp(&out,&old,sizeof(out)));
+    assert(!a04_render_make_fragment_pds(0xe000005040ULL,UINT64_C(1)<<35,ranges,4,frag));
+    assert(word(frag)==0x5040 && word(frag+4)==8 && word(frag+32)==0xf4000002);
+    for(i=8;i<32;i++) assert(!frag[i]);
+    for(i=36;i<48;i++) assert(!frag[i]);
+    memcpy(previous,frag,sizeof(frag));
+    assert(a04_render_make_fragment_pds(0xe000005040ULL,UINT64_C(1)<<33,ranges,4,frag));
+    assert(!memcmp(frag,previous,sizeof(frag)));
+    assert(a04_render_make_fragment_pds(0x8000001000ULL,0,ranges,4,frag));
+    assert(!memcmp(frag,previous,sizeof(frag)));
     return 0;
 }

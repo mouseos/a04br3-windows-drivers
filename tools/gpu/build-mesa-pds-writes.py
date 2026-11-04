@@ -17,6 +17,7 @@ def main():
  original=src/'src/imagination/vulkan/pvr_arch_cmd_buffer.c';text=original.read_text()
  hook='''#include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 static void a04_pds_construct(const char *kind,unsigned long long gpu,unsigned long long size,unsigned entries,const void *buffer)
 {
  const unsigned char *bytes=buffer; unsigned long long hash=14695981039346656037ULL;
@@ -46,11 +47,19 @@ static void a04_pds_shader(unsigned long long parent,unsigned offset,unsigned lo
  if (fprintf(f,"{\\"event\\":\\"pds_shader\\",\\"parent_gpu\\":%llu,\\"offset\\":%u,\\"shader_gpu\\":%llu,\\"entry_gpu\\":%llu,\\"size\\":%u}\\n",parent,offset,shader,entry,size)<0 || fclose(f)) abort();
 }
 
-static void a04_fragment_link(unsigned long long data,unsigned data_size,unsigned long long code,unsigned code_size,unsigned long long shader,unsigned long long entry,unsigned shader_size,unsigned doutu_offset)
+static unsigned long long a04_fragment_hash(const void *data, unsigned size)
+{
+ const unsigned char *p=data; unsigned long long h=14695981039346656037ULL;
+ for (unsigned i=0;i<size;i++) { h^=p[i]; h*=1099511628211ULL; }
+ return h;
+}
+static void a04_fragment_link(unsigned long long data,unsigned data_size,unsigned data_written,unsigned long long code,unsigned code_size,unsigned code_written,unsigned long long shader,unsigned long long entry,unsigned shader_size,unsigned doutu_offset,const uint32_t *words)
 {
  const char *name=getenv("A04_CAPTURE_JSONL"); FILE *f=name ? fopen(name,"a") : NULL;
  if (!f) abort();
- if (fprintf(f,"{\\"event\\":\\"fragment_shader_link\\",\\"pds_data_gpu\\":%llu,\\"pds_data_size\\":%u,\\"pds_code_gpu\\":%llu,\\"pds_code_size\\":%u,\\"shader_gpu\\":%llu,\\"entry_gpu\\":%llu,\\"shader_size\\":%u,\\"doutu_offset\\":%u}\\n",data,data_size,code,code_size,shader,entry,shader_size,doutu_offset)<0 || fclose(f)) abort();
+ if (doutu_offset*4u+8u>data_written || code_written!=4u) abort();
+ unsigned long long control=((unsigned long long)words[doutu_offset+1]<<32)|words[doutu_offset];
+ if (fprintf(f,"{\\"event\\":\\"fragment_shader_link\\",\\"pds_data_gpu\\":%llu,\\"pds_data_size\\":%u,\\"pds_data_written\\":%u,\\"pds_code_gpu\\":%llu,\\"pds_code_size\\":%u,\\"pds_code_written\\":%u,\\"shader_gpu\\":%llu,\\"entry_gpu\\":%llu,\\"shader_size\\":%u,\\"doutu_offset\\":%u,\\"doutu_control\\":%llu,\\"doutu_fnv64\\":%llu,\\"code_fnv64\\":%llu}\\n",data,data_size,data_written,code,code_size,code_written,shader,entry,shader_size,doutu_offset,control & 0x3fe00000000ULL,a04_fragment_hash(&words[doutu_offset],8),a04_fragment_hash(&words[data_written/4u],4))<0 || fclose(f)) abort();
 }
 '''
  pairs=[('''   state->pds_vertex_attrib_offset =
@@ -94,12 +103,12 @@ static void a04_fragment_link(unsigned long long data,unsigned data_size,unsigne
       pds_fragment_program);
    if (capture_result==VK_SUCCESS && fragment_shader_state->shader_bo) {
       a04_fragment_link(cmd_buffer->device->heaps.pds_heap->base_addr.addr+pds_fragment_program->data_offset,
-                        pds_fragment_program->data_size*4u,
+                        pds_fragment_program->data_size*4u,program->data_size*4u,
                         cmd_buffer->device->heaps.pds_heap->base_addr.addr+pds_fragment_program->code_offset,
-                        pds_fragment_program->code_size*4u,
+                        pds_fragment_program->code_size*4u,program->code_size*4u,
                         fragment_shader_state->shader_bo->dev_addr.addr,
                         fragment_shader_state->shader_bo->dev_addr.addr+state->gfx_pipeline->fs_data.common.entry_offset,
-                        fragment_shader_state->shader_bo->size,program->doutu_offset);
+                        fragment_shader_state->shader_bo->size,program->doutu_offset,pds_fragment_program_buffer);
    }
    return capture_result;'''
  if fragment.count(target)!=1:raise SystemExit('unexpected fragment program')

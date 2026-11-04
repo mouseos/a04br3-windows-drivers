@@ -26,4 +26,9 @@ struct a04_render_pds_data {
 int a04_render_make_pds_data(const struct a04_render_pds_input *input,
     const struct a04_render_owned_range *ranges,size_t range_count,
     struct a04_render_pds_data *out);
+/* Fixed single-sample fragment kick: 32-byte data and 16-byte code allocation.
+ * Only a tracked executable USC GPU address and DOUTU control bits are used;
+ * all unused bytes are zero. Does not validate the shader or submit work. */
+int a04_render_make_fragment_pds(uint64_t shader_gpu,uint64_t doutu_control,
+    const struct a04_render_owned_range *ranges,size_t range_count,uint8_t out[48]);
 #endif

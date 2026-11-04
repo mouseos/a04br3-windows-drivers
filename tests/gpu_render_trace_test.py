@@ -56,6 +56,22 @@ class TraceTest(unittest.TestCase):
         self.assertEqual(self.runtrace()['pds_dependency_unmapped'],1)
         self.events[8]['entry_gpu']=9999
         with self.assertRaises(ValueError):self.runtrace()
+    def test_fragment_links_require_live_written_ranges(self):
+        rows=[dict(event='upload',kind='pds_data',gpu_va=4304,size=32),
+              dict(event='upload',kind='pds_code',gpu_va=4352,size=4),
+              dict(event='upload',kind='usc_code',gpu_va=4400,size=32),
+              dict(event='fragment_shader_link',pds_data_gpu=4304,pds_data_size=32,pds_data_written=32,
+                   pds_code_gpu=4352,pds_code_size=16,pds_code_written=4,shader_gpu=4400,shader_size=64,
+                   entry_gpu=4404,doutu_offset=0)]
+        self.events[7:7]=rows
+        r=self.runtrace();self.assertEqual(r['fragment_links'],1);self.assertEqual(r['fragment_missing_uploads'],0)
+        rows[-1]['entry_gpu']=4440
+        self.assertEqual(self.runtrace()['fragment_missing_uploads'],1)
+        rows[-1]['entry_gpu']=4404
+        self.events.insert(10,dict(event='upload',kind='pds_code',gpu_va=4352,size=8))
+        self.assertEqual(self.runtrace()['fragment_missing_uploads'],1)
+        rows[-1]['pds_code_written']=17
+        with self.assertRaises(ValueError):self.runtrace()
     def test_missing_hwrt(self):
         self.events[8]['hwrt']=99
         with self.assertRaises(ValueError): self.runtrace()
