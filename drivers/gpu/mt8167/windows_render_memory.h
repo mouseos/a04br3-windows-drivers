@@ -110,6 +110,10 @@ NTSTATUS a04_windows_render_stage_fragment_pds(struct a04_windows_render_memory 
  * references and execution authorization. No GPU work is submitted. */
 NTSTATUS a04_windows_render_stage_vertex_pds(struct a04_windows_render_memory *m,
     const struct a04_render_pds_input *input,uint64_t vertex_gpu,uint64_t descriptor_gpu);
+/* Stage the fixed probe's address-free PDS code into two owned read-only
+ * allocations. This does not validate USC or authorize GPU execution. */
+NTSTATUS a04_windows_render_stage_vertex_pds_code(struct a04_windows_render_memory *m,
+    uint64_t vertex_code_gpu,uint64_t descriptor_code_gpu);
 /* One context-switch slot's persistent PDS data and code. Inputs must name
  * unique owned mappings: writable state, read-only PDS output, no aliases.
  * Before publication only. Shared PDS/USC and kick remain separate. */

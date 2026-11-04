@@ -18,6 +18,15 @@ static int owned(const struct a04_render_owned_range *r,size_t n,uint64_t va,uin
 }
 static int overlap(uint64_t a,uint64_t n,uint64_t b,uint64_t m)
 { return a<=b ? b-a<n : a-b<m; }
+void a04_render_make_vertex_pds_code(uint8_t vertex[16],uint8_t descriptor[16])
+{
+    unsigned i;for(i=0;i<16;++i) { vertex[i]=0;descriptor[i]=0; }
+    /* Mesa pvr_pipeline_pds.c: DOUTW(c2,t0), DOUTU, HALT;
+     * DOUTD(c4,c0), DOUTD.END(c5,c1). */
+    put32(vertex,UINT32_C(0xf0024001));put32(vertex+4,UINT32_C(0xfc000002));
+    put32(vertex+8,UINT32_C(0xd3000000));
+    put32(descriptor,UINT32_C(0xf0040000));put32(descriptor+4,UINT32_C(0xf4050100));
+}
 int a04_render_make_pds_data(const struct a04_render_pds_input *p,
     const struct a04_render_owned_range *r,size_t n,struct a04_render_pds_data *out)
 {

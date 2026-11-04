@@ -307,6 +307,15 @@ int main(void)
       for(unsigned i=0x38;i<0x40;++i) assert(!out[i]);
       assert(a04_windows_render_stage_vertex_pds(&m,&p,0xda00010000ULL,0xda00010020ULL)==STATUS_INVALID_PARAMETER);
       assert(m.staged_count==4);
+      assert(a04_windows_render_stage_vertex_pds_code(&m,0xda00010080ULL,0xda00010080ULL)==STATUS_INVALID_PARAMETER);
+      out[0x90]=1;
+      assert(a04_windows_render_stage_vertex_pds_code(&m,0xda00010080ULL,0xda00010090ULL)==STATUS_INVALID_DEVICE_STATE);
+      assert(!out[0x80] && m.staged_count==4);out[0x90]=0;
+      assert(a04_windows_render_stage_vertex_pds_code(&m,0xda00010080ULL,0xda00010090ULL)==STATUS_SUCCESS);
+      assert(out[0x80]==1 && out[0x81]==0x40 && out[0x83]==0xf0 && out[0x87]==0xfc && out[0x8b]==0xd3);
+      assert(out[0x93]==0xf0 && out[0x94]==0 && out[0x95]==1 && out[0x97]==0xf4);
+      for(unsigned i=0x98;i<0xa0;++i) assert(!out[i]);
+      assert(a04_windows_render_stage_vertex_pds_code(&m,0xda00010080ULL,0xda00010090ULL)==STATUS_INVALID_PARAMETER);
       s.processor_released=FALSE;assert(a04_windows_render_memory_free(&m,TRUE)==STATUS_SUCCESS);
     }
     free(s.memory.heap);

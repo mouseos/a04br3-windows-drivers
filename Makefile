@@ -15,6 +15,7 @@ test: build/gpu_render_shared_size_test build/gpu_render_context_pds_test build/
 	python3 tests/gpu_render_usc_test.py
 	python3 tests/gpu_render_vdm_pds_test.py
 	python3 tests/gpu_render_submit_dependencies_test.py
+	python3 tests/gpu_render_vertex_pds_code_test.py
 	python3 tests/gpu_render_context_trace_test.py
 	python3 tests/gpu_render_context_pt_test.py
 	python3 tests/gpu_render_context_usc_test.py

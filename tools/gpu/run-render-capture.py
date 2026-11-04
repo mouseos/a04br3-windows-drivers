@@ -58,6 +58,10 @@ def main():
     if diagnostic and diagnostic.get('upload_metadata_only'):
         (out/'uploads.jsonl').touch(mode=0o600,exist_ok=False)
         env['A04_UPLOAD_TRACE']=str(out/'uploads.jsonl')
+    env.pop('A04_PDS_CODE_HASH',None)
+    if diagnostic and diagnostic.get('pds_code_hash_metadata_only'):
+        (out/'pds-code-hashes.jsonl').touch(mode=0o600,exist_ok=False)
+        env['A04_PDS_CODE_HASH']=str(out/'pds-code-hashes.jsonl')
     with (out/'probe.log').open('w') as log:
         result=subprocess.run([str(binary),str(lib)],env=env,stdout=log,stderr=subprocess.STDOUT,timeout=120,preexec_fn=lambda:os.umask(0o077))
     event=out/'events.jsonl'
@@ -70,6 +74,8 @@ def main():
     if a.pco_fill: manifest['pco_fill']=a.pco_fill
     if diagnostic and diagnostic.get('upload_metadata_only'):
         manifest['uploads_sha256']=sha(out/'uploads.jsonl')
+    if diagnostic and diagnostic.get('pds_code_hash_metadata_only'):
+        manifest['pds_code_hashes_sha256']=sha(out/'pds-code-hashes.jsonl')
     (out/'run-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     print('capture completed; probe return code:',result.returncode)
 if __name__=='__main__': main()

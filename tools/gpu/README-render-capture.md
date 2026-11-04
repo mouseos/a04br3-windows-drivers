@@ -205,3 +205,7 @@ fragment PDS、persistent PDS、shared PDSの各配置は、成功した出力�
 固定probeで観測されたgeometry１件・partial fragment１件・最終fragment１件の形に対応するため、`a04_windows_render_prepare_partial_pair` は公開前に２本のkickと完全なCCCBを作る。公開後はcombined kick、最終fragment kickの順に送る。どちらかの送信失敗時はpoisonし、再送や解放を許さない。完了待ちはgeometry fence値１と最終fragment fence値２、および両read offsetを要求し、partialの値１だけではcleanupを始めない。この部品もコマンドやfixtureの安全性を証明せず、実行入口には接続されていない。
 
 `check-render-submit-dependencies.py PRIVATE_CAPTURE` は、固定probeの２描画について、VDMから参照したvertex／descriptor PDSと対応コード、vertex USC、spill／scratch、PPPに対応するfragment PDSとUSCが、記録されたgeometry jobの時点でも同じVMに残り、観測済みuploadがunmapや重なる後続uploadで無効化されていないことを検査する。固定probeの記録順と２描画に限定し、アドレスや生データは出力しない。両PDS再構成ツールもこの検査に通ったcaptureだけを受け付ける。これはgeometry投入時の記録された参照のみであり、未計測のCPU書込み、GPU完了までの寿命、VDM／PPPの全参照、命令実行範囲やUSCの動的アクセスを証明しない。出力は引き続き実行禁止。
+
+固定probeのvertex／descriptor PDS命令は、Mesa `pvr_pipeline_pds.c` と `pvr_rogue_pds_encode.h` の式から生成する。vertexは頂点IDのDOUTW、DOUTU、HALTの12バイト、descriptorはspill／scratch用DOUTD２命令の８バイトで、両16バイト配置の余りはゼロ。`a04_windows_render_stage_vertex_pds_code` は公開前の所有済み読取り専用DMAへ配置し、既存の予約範囲との重複とゼロ初期化を検査する。
+
+新しいupload診断はPDSコードについてもGPUアドレス・サイズ・FNVだけを非公開captureに記録する。`check-vertex-pds-code.py PRIVATE_CAPTURE` はVDMの２参照とこれらの生成命令を照合し、アドレスや命令バイトを出力しない。独立した２回のshim captureの各２描画で両命令列のFNVが一致した。FNVは衝突耐性を持たず、これはUSCやVDM／PPP、実機の動作、全メモリ参照の証明ではない。GPU実行は引き続き禁止。
