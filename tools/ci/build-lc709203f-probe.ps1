@@ -28,4 +28,14 @@ if ($LASTEXITCODE -ne 0) { throw 'ARM LC709203F link failed' }
 Copy-Item (Join-Path $source 'lc709203f.inf') $package -Force
 & (Join-Path $kit 'bin\x86\Inf2Cat.exe') "/driver:$package" /os:6_3_ARM /uselocaltime
 if ($LASTEXITCODE -ne 0) { throw 'LC709203F catalog generation failed' }
+$umLib = Join-Path $kit 'Lib\winv6.3\um\arm'
+foreach ($entry in @(@('lc709203f-status.c','lc709203f-status',''), @('button-provider-status.c','lc709203f-pnp-status','-DA04_BATTERY_PROVIDER_STATUS'))) {
+    $src = Join-Path $root "tools\winpe\$($entry[0])"
+    $obj = Join-Path $out "$($entry[1]).obj"
+    $extra = @(); if ($entry[2]) { $extra += $entry[2] }
+    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 @extra "-I$inc\um" "-I$inc\shared" -c $src -o $obj
+    if ($LASTEXITCODE -ne 0) { throw "Battery status compilation failed: $src" }
+    & $link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib $obj (Join-Path $umLib 'kernel32.lib') (Join-Path $umLib 'cfgmgr32.lib') "/out:$package\$($entry[1]).exe"
+    if ($LASTEXITCODE -ne 0) { throw "Battery status link failed: $src" }
+}
 Write-Host 'LC709203F ARM32 test package; not device-validated.'
