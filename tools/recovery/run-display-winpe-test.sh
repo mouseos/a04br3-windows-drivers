@@ -67,8 +67,10 @@ start=$(stat -c %s "$uart_log")
 A04_SERIAL="$serial" "$root/tools/recovery/flash-efi.sh" "$test_esp" >> "$flash_log" 2>&1
 echo TEST_BOOT_STARTED
 found=0
+attempts=35
+if [[ ${A04_WINPE_UART_SCREEN:-0} == 1 ]]; then attempts=250; fi
 battery_entry_seen=-1
-for ((i=0;i<35;i++)); do
+for ((i=0;i<attempts;i++)); do
   tail -c +$((start+1)) "$uart_log" > "$out/current-uart.log"
   if [[ ${A04_BATTERY_EXPECT:-0} == 1 ]]; then
     if grep -aE 'A04BAT UEFI I2C2 setup=' "$out/current-uart.log" | grep -avq 'setup=Success'; then
@@ -80,7 +82,15 @@ for ((i=0;i<35;i++)); do
       echo BATTERY_I2C_CHECK_STALLED; break
     fi
   fi
-  if grep -Fq "${A04_WINPE_SUCCESS_MARKER:-A04GPU DISPLAY COPY COMPLETE}" "$out/current-uart.log"; then found=1; break; fi
+  if grep -Fq "${A04_WINPE_SUCCESS_MARKER:-A04GPU DISPLAY COPY COMPLETE}" "$out/current-uart.log"; then
+    if [[ ${A04_WINPE_UART_SCREEN:-0} == 1 ]]; then
+      if python3 "$root/tools/uart/decode-windows-screen.py" --log "$out/current-uart.log" --output "$out/windows-screen.pbm" >/dev/null 2>&1; then
+        found=1; echo WINDOWS_SCREEN_CRC_VERIFIED; break
+      fi
+    else
+      found=1; break
+    fi
+  fi
   if [[ -n ${A04_WINPE_FAILURE_MARKER:-} ]] && grep -Fq "$A04_WINPE_FAILURE_MARKER" "$out/current-uart.log"; then break; fi
   # CAPTURE READY is registration, not a bugcheck. Match only the callback's
   # emitted bugcheck data and preserve the first failure boot in the log.
