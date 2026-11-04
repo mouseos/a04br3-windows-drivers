@@ -14,12 +14,12 @@ KCCB health要求後の実行カウンターの進行を確認しました。実
 スリープ復帰は未完成です。共通DMAバッファのキャッシュ整合性、特に異なる
 所有者が同じキャッシュラインを共有する場合の安全性も未検証です。
 
-`gpu_mmu.c` はGE8300の３段ページテーブルへ4 KiB単位の連続したDMA範囲を
-設定する部品です。範囲・重複を設定前に検査します。呼出し側によるDMA領域の
+`gpu_mmu.c` はGE8300の３段ページテーブルへ4 KiB単位の連続または散在する
+DMAページの設定・解除を行う部品です。範囲・重複を変更前に検査します。呼出し側によるDMA領域の
 確保、テーブルのキャッシュ同期、実行中ジョブとの同期、WDDM連携は未実装です。
-firmwareへのMMUキャッシュ無効化要求は実装し、実行カウンターと専用同期値の
-両方で完了を判定しますが、実機未検証です。ホスト試験とARM32コンパイルは
-実機動作を意味しません。
+firmwareへのMMUキャッシュ無効化要求は実行カウンターと専用同期値の両方で
+完了を判定し、a0416c9のWinPE実機試験で成功しました。GPUによるページ変換、
+その解除、描画は実機未検証です。
 
 `rogue_power.h` is derived from the BSD-2-Clause-Patent
 [UniXNU A04BR3 implementation](https://github.com/mouseos/UniXNU-a04br3/blob/main/package/A04BR3RoguePower.h),
