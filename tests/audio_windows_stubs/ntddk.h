@@ -4,7 +4,9 @@
 typedef void *PVOID; typedef uint32_t ULONG; typedef unsigned char BOOLEAN,KIRQL; typedef uintptr_t KAFFINITY; typedef int32_t NTSTATUS,LONG; typedef enum { LevelSensitive, Latched } KINTERRUPT_MODE;
 #define FALSE 0
 #define TRUE 1
+#ifndef NULL
 #define NULL 0
+#endif
 #define STATUS_INVALID_PARAMETER (-1)
 #define NT_SUCCESS(s) ((s)>=0)
 #define UNREFERENCED_PARAMETER(x) ((void)(x))
@@ -23,4 +25,39 @@ inline BOOLEAN KeRemoveQueueDpc(PKDPC d) { int q=d->queued;d->queued=0;return q;
 inline void KeFlushQueuedDpcs() { }
 inline NTSTATUS IoConnectInterrupt(PKINTERRUPT *p,ISR_FUNC f,PVOID c,void *,ULONG,KIRQL,KIRQL,KINTERRUPT_MODE,BOOLEAN,KAFFINITY,BOOLEAN) { test_interrupt.fn=f;test_interrupt.ctx=c;*p=&test_interrupt;return 0; }
 inline void IoDisconnectInterrupt(PKINTERRUPT) { test_interrupt.fn=0; }
+#ifdef A04_TEST_COMMON_DMA
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
+typedef uint64_t ULONGLONG;
+typedef ULONG *PULONG; typedef void *PDEVICE_OBJECT;
+typedef struct { ULONG Version; BOOLEAN Master,ScatterGather,Dma32BitAddresses; int InterfaceType; ULONG MaximumLength; } DEVICE_DESCRIPTION;
+#define DEVICE_DESCRIPTION_VERSION 0
+#define Internal 1
+#define STATUS_NOT_SUPPORTED (-5)
+typedef struct {int64_t QuadPart;} PHYSICAL_ADDRESS;
+struct _MDL { void *address; ULONG size; }; typedef _MDL *PMDL;
+struct _DMA_ADAPTER; typedef _DMA_ADAPTER *PDMA_ADAPTER;
+struct _DMA_OPERATIONS {
+ void (*PutDmaAdapter)(PDMA_ADAPTER);
+ PVOID (*AllocateCommonBuffer)(PDMA_ADAPTER,ULONG,PHYSICAL_ADDRESS*,BOOLEAN);
+ void (*FreeCommonBuffer)(PDMA_ADAPTER,ULONG,PHYSICAL_ADDRESS,PVOID,BOOLEAN);
+};
+struct _DMA_ADAPTER { _DMA_OPERATIONS *DmaOperations; };
+#define PAGE_SIZE 4096u
+#define STATUS_INSUFFICIENT_RESOURCES (-2)
+#define STATUS_DEVICE_CONFIGURATION_ERROR (-3)
+#define STATUS_DEVICE_BUSY (-4)
+#define STATUS_SUCCESS 0
+#define RtlZeroMemory(p,n) memset(p,0,n)
+extern int test_mdl_fail, test_mdl_frees, test_barriers, test_flushes;
+extern PDMA_ADAPTER test_dma_adapter;
+extern DEVICE_DESCRIPTION test_dma_description;
+inline PDMA_ADAPTER IoGetDmaAdapter(PDEVICE_OBJECT,DEVICE_DESCRIPTION *d,PULONG n) { test_dma_description=*d;*n=4;return test_dma_adapter; }
+inline PMDL IoAllocateMdl(PVOID p,ULONG n,BOOLEAN,BOOLEAN,PVOID) { if(test_mdl_fail)return NULL; PMDL m=(PMDL)malloc(sizeof(*m)); m->address=p;m->size=n;return m; }
+inline void MmBuildMdlForNonPagedPool(PMDL) {}
+inline void IoFreeMdl(PMDL m) {test_mdl_frees++;free(m);}
+inline void KeMemoryBarrier() {test_barriers++;}
+inline void KeFlushIoBuffers(PMDL,BOOLEAN read,BOOLEAN dma) { if (!read && dma) test_flushes++; }
+#endif
 #endif

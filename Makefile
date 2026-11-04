@@ -427,3 +427,24 @@ test-mt8167-audio-resource: build/mt8167_audio_resource_test
 build/mt8167_audio_resource_test: drivers/audio/mt8167-afe/resource_check.h tests/mt8167_audio_resource_test.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/audio/mt8167-afe tests/mt8167_audio_resource_test.c -o $@
+
+.PHONY: test-mt8167-common-dma
+test-mt8167-common-dma: build/mt8167_common_dma_test
+	./build/mt8167_common_dma_test
+build/mt8167_common_dma_test: drivers/audio/mt8167-afe/common_dma.cpp drivers/audio/mt8167-afe/common_dma.h tests/mt8167_common_dma_test.cpp tests/audio_windows_stubs/ntddk.h
+	mkdir -p build
+	$(CXX) -O2 -Wall -Wextra -Werror -std=c++11 -DA04_TEST_COMMON_DMA=1 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/common_dma.cpp tests/mt8167_common_dma_test.cpp -o $@
+
+.PHONY: test-mt8167-dma-adapter
+test-mt8167-dma-adapter: build/mt8167_dma_adapter_test
+	./build/mt8167_dma_adapter_test
+build/mt8167_dma_adapter_test: drivers/audio/mt8167-afe/dma_adapter.cpp drivers/audio/mt8167-afe/dma_adapter.h tests/mt8167_dma_adapter_test.cpp tests/audio_windows_stubs/ntddk.h
+	mkdir -p build
+	$(CXX) -O2 -Wall -Wextra -Werror -std=c++11 -DA04_TEST_COMMON_DMA=1 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/dma_adapter.cpp tests/mt8167_dma_adapter_test.cpp -o $@
+
+.PHONY: test-mt8167-clock-owner
+test-mt8167-clock-owner: build/mt8167_clock_owner_test
+	./build/mt8167_clock_owner_test
+build/mt8167_clock_owner_test: drivers/bus/mt8167-shared/clock_owner.c drivers/bus/mt8167-shared/clock_owner.h tests/mt8167_clock_owner_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared drivers/bus/mt8167-shared/clock_owner.c tests/mt8167_clock_owner_test.c -o $@

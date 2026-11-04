@@ -56,3 +56,15 @@ DMA, interrupts, topology registration, synchronized teardown or power path.
 Registration and stream behavior have not been tested in Windows. The ACPI
 resource check does not establish exclusive ownership, or validate the
 translated interrupt vector and affinity. There is no valid INF.
+
+`dma_adapter.cpp` obtains a Windows bus-master DMA adapter for a caller-supplied
+PDO. `common_dma.cpp` allocates a noncached common buffer, checks the returned
+**logical** address and 32-bit bounds, builds an MDL and offers a pre-publication
+`KeFlushIoBuffers` operation. These are currently unconnected helpers. The
+caller must hold the adapter, stop concurrent CPU writes before preparation,
+confirm the platform's cache contract, and establish secure PnP/clock ownership.
+The helper never frees an exposed buffer; DL1 stop-bit readback does not prove
+that outstanding DMA has drained. It does not handle synchronization for a
+live cyclic buffer. No hardware can be started through the current miniport.
+See [Microsoft's common-buffer procedure](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/using-common-buffer-system-dma)
+and [WaveRT AllocateAudioBuffer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/portcls/nf-portcls-iminiportwavertstream-allocateaudiobuffer).

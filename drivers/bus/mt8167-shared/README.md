@@ -13,3 +13,10 @@ The button core offers an explicit shared callback path. When selected, a
 missing callback fails and cannot fall back to direct access. It is not wired
 to Windows PnP. Legacy direct access remains unchanged until a real parent
 and a verified migration can be deployed together.
+
+`clock_owner.c` is a locked lease policy for a future PnP parent. It requires
+a parent-provided clock verification callback, refuses incompatible rates and
+new leases after stop, and poisons the policy if verification fails. It neither
+claims clock registers nor changes PLLs, gates or rates. It cannot establish
+that firmware and other Windows drivers have stopped bypassing the owner; it is
+not connected to any device.
