@@ -199,3 +199,5 @@ context switchのpersistent PDSは `pvr_pds_generate_stream_out_terminate_progra
 描画用 `a04_windows_render_collect_pair` では、呼出し側が `trace_capture_enabled` を明示した場合に限り、両fenceの完了または待機タイムアウト後、cleanup前に同じ候補集計を `trace_summary` に記録する。`trace_capture_status` と `trace_capture_valid` を確認する。同期失敗や不正なtrace範囲は描画の完了判定を変更しない。タイムアウト時は従来どおりpoisonして資源を保持する。これはkickの発行、外部への診断表示、context switchの発生を実装するものではない。
 
 fragment PDS、persistent PDS、shared PDSの各配置は、成功した出力範囲をDMA allocationの寿命中に予約する。別の配置がpaddingを含む予約範囲と重なれば、書込み前に拒否する。未追跡のCPU書込みや別の方法による配置は呼出し側で防ぐ必要があり、この検査はfixture全体の参照閉包やGPU投入を保証しない。
+
+`a04_windows_render_stage_vertex_pds` は、Mesa由来の型付き値からvertex・descriptor PDS定数とspill／scratch情報を生成し、所有済みの読取り専用DMA範囲へ公開前にまとめて配置する。vertexとdescriptorの取得範囲はそれぞれ16・32バイトとして予約し、未使用部分はゼロに保つ。情報領域、312バイトのvertex USC、spill 8192バイト、scratch 49152バイトの所有と権限、出力間や依存先との重複、配置済み範囲、実PTEを検査し、検査失敗時は書き込まない。USCの内容・即値、PDSコード、VDM／PPP、他の参照は検証しない。呼出し元のない既定OFFの部品であり、描画fixtureや実行を許可するものではない。

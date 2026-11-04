@@ -372,6 +372,48 @@ NTSTATUS a04_windows_render_stage_fragment_pds(struct a04_windows_render_memory 
     staged_commit(m,&pds_gpu,&sz,1);
     return STATUS_SUCCESS;
 }
+NTSTATUS a04_windows_render_stage_vertex_pds(struct a04_windows_render_memory *m,
+    const struct a04_render_pds_input *input,uint64_t vertex,uint64_t descriptor)
+{
+    struct a04_render_owned_range ranges[A04_RENDER_MAX_MAPS];struct a04_render_pds_data data;
+    uint64_t addr[4],len[4]={16,32,12,12},off[4],dma;size_t i,j,k;const uint8_t *src[4];
+    if (!m || !input || !m->ready || !m->cpu || !m->adapter || !m->firmware || m->published || m->poisoned ||
+        !m->map_count || m->map_count>A04_RENDER_MAX_MAPS || (vertex&15u) || (descriptor&15u) ||
+        (vertex>>32)!=UINT64_C(0xda) || (descriptor>>32)!=UINT64_C(0xda) ||
+        KeGetCurrentIrql()!=PASSIVE_LEVEL || !render_ptes_valid(m)) return STATUS_INVALID_PARAMETER;
+    dma=(uint64_t)m->logical.QuadPart;
+    for(i=0;i<m->map_count;++i) {
+        const struct a04_windows_render_map *r=&m->maps[i];
+        ranges[i].gpu_va=r->gpu_va;ranges[i].dma=dma+A04_RENDER_PAYLOAD_OFFSET+(uint64_t)r->payload_page*PAGE;
+        ranges[i].size=(uint64_t)r->pages*PAGE;ranges[i].access=A04_RENDER_RANGE_READ;
+        if (!(r->mmu_flags&(A04_GPU_MMU_READ_ONLY|A04_GPU_MMU_PM_FW_PROTECT))) ranges[i].access|=A04_RENDER_RANGE_WRITE;
+        if ((r->mmu_flags&A04_GPU_MMU_READ_ONLY) && !(r->mmu_flags&A04_GPU_MMU_PM_FW_PROTECT) &&
+            (r->gpu_va>>32)==UINT64_C(0xe0)) ranges[i].access|=A04_RENDER_RANGE_EXEC;
+    }
+    { unsigned matches=0;
+      for(i=0;i<m->map_count;++i) if ((ranges[i].access&5u)==5u && input->shader_gpu>=ranges[i].gpu_va &&
+          ranges[i].size>=312 && input->shader_gpu-ranges[i].gpu_va<=ranges[i].size-312) ++matches;
+      if (matches!=1) return STATUS_INVALID_PARAMETER; }
+    addr[0]=vertex;addr[1]=descriptor;addr[2]=input->spill_info_gpu;addr[3]=input->scratch_info_gpu;
+    if (!staged_available(m,addr,len,4) || a04_render_make_pds_data(input,ranges,m->map_count,&data)) return STATUS_INVALID_PARAMETER;
+    for(i=0;i<4;++i) {
+        unsigned matches=0;
+        if (overlap(addr[i],len[i],input->shader_gpu,312) || overlap(addr[i],len[i],input->spill_buffer_gpu,8192) ||
+            overlap(addr[i],len[i],input->scratch_buffer_gpu,49152)) return STATUS_INVALID_PARAMETER;
+        for(j=0;j<m->map_count;++j) {
+            const struct a04_windows_render_map *r=&m->maps[j];uint64_t n=(uint64_t)r->pages*PAGE;
+            if ((r->mmu_flags&A04_GPU_MMU_READ_ONLY) && !(r->mmu_flags&A04_GPU_MMU_PM_FW_PROTECT) &&
+                addr[i]>=r->gpu_va && len[i]<=n && addr[i]-r->gpu_va<=n-len[i]) {
+                off[i]=A04_RENDER_PAYLOAD_OFFSET+(uint64_t)r->payload_page*PAGE+addr[i]-r->gpu_va;++matches;
+            }
+        }
+        if (matches!=1 || off[i]>m->length || len[i]>m->length-off[i]) return STATUS_INVALID_PARAMETER;
+        for(k=0;k<len[i];++k) if (((const uint8_t *)m->cpu)[off[i]+k]) return STATUS_INVALID_DEVICE_STATE;
+    }
+    src[0]=data.vertex;src[1]=data.descriptor;src[2]=data.spill_info;src[3]=data.scratch_info;
+    for(i=0;i<4;++i) RtlCopyMemory((uint8_t *)m->cpu+off[i],src[i],i==0?12:i==1?24:12);
+    staged_commit(m,addr,len,4);return STATUS_SUCCESS;
+}
 NTSTATUS a04_windows_render_stage_context_pt(struct a04_windows_render_memory *m,
     uint64_t state,uint64_t store_data,uint64_t store_code,uint64_t resume_data,uint64_t resume_code)
 {

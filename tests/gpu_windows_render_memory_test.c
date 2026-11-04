@@ -275,6 +275,33 @@ int main(void)
       assert(a04_windows_render_stage_fragment_pds(&m,0xda00015040ULL,0xe000001000ULL,0)==STATUS_INVALID_PARAMETER);
       s.processor_released=FALSE;assert(a04_windows_render_memory_free(&m,TRUE)==STATUS_SUCCESS);
     }
+    {
+      struct a04_windows_render_map vmaps[]={{0xda00010000ULL,0,1,0,A04_GPU_MMU_READ_ONLY},
+        {0xda00011000ULL,1,2,0,0},{0xda00013000ULL,3,12,0,0},
+        {0xe000005000ULL,15,1,1,A04_GPU_MMU_READ_ONLY}};
+      struct a04_render_pds_input p={0};uint8_t *out;s.processor_released=TRUE;
+      assert(a04_windows_render_memory_create(&m,&s,16,vmaps,4)==STATUS_SUCCESS);
+      out=(uint8_t *)m.cpu+A04_RENDER_PAYLOAD_OFFSET;
+      p.shader_gpu=0xe000005040ULL;p.spill_info_gpu=0xda00010040ULL;p.scratch_info_gpu=0xda00010050ULL;
+      p.spill_buffer_gpu=0xda00011000ULL;p.scratch_buffer_gpu=0xda00013000ULL;
+      p.doutu_control=UINT64_C(1)<<35;p.vertex_literal=0xabc;p.descriptor_literal0=4;p.descriptor_literal1=5;
+      p.shader_gpu=0xe000005ff0ULL;
+      assert(a04_windows_render_stage_vertex_pds(&m,&p,0xda00010000ULL,0xda00010020ULL)==STATUS_INVALID_PARAMETER);
+      p.shader_gpu=0xe000005040ULL;out[0x27]=1;
+      assert(a04_windows_render_stage_vertex_pds(&m,&p,0xda00010000ULL,0xda00010020ULL)==STATUS_INVALID_DEVICE_STATE);
+      assert(!m.staged_count && !out[0]);out[0x27]=0;
+      assert(a04_windows_render_stage_vertex_pds(&m,&p,0xda00010000ULL,0xda00010008ULL)==STATUS_INVALID_PARAMETER);
+      for(unsigned i=0;i<96;++i) assert(!out[i]);
+      assert(a04_windows_render_stage_vertex_pds(&m,&p,0xda00010000ULL,0xda00010020ULL)==STATUS_SUCCESS);
+      assert(out[0]==0x40 && out[1]==0x50 && out[4]==8 && out[8]==0xbc && out[9]==0x0a);
+      assert(out[0x20]==0x40 && out[0x24]==0xda && out[0x30]==4 && out[0x34]==5);
+      assert(out[0x40]==0 && out[0x41]==0x10 && out[0x48]==4 && out[0x58]==24);
+      for(unsigned i=12;i<16;++i) assert(!out[i]);
+      for(unsigned i=0x38;i<0x40;++i) assert(!out[i]);
+      assert(a04_windows_render_stage_vertex_pds(&m,&p,0xda00010000ULL,0xda00010020ULL)==STATUS_INVALID_PARAMETER);
+      assert(m.staged_count==4);
+      s.processor_released=FALSE;assert(a04_windows_render_memory_free(&m,TRUE)==STATUS_SUCCESS);
+    }
     free(s.memory.heap);
     return 0;
 }
