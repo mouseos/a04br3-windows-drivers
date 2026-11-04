@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import struct
 from pyfatfs.PyFatFS import PyFatFS
 
 p = argparse.ArgumentParser()
@@ -25,6 +26,18 @@ def digest(stream):
 def filehash(path):
     with path.open('rb') as f:
         return digest(f)
+def validate_boot_wim(stream):
+    header=stream.read(128)
+    if len(header)<128 or header[:8]!=b'MSWIM\0\0\0':
+        raise SystemExit('Invalid WIM header')
+    header_size,=struct.unpack_from('<I',header,8)
+    image_count,=struct.unpack_from('<I',header,44)
+    boot_index,=struct.unpack_from('<I',header,120)
+    if header_size<208 or image_count != 1 or boot_index != 1:
+        raise SystemExit(f'Expected single-image WinPE WIM with boot index 1; count={image_count}, boot={boot_index}')
+    return boot_index
+with a.wim.open('rb') as stream:
+    validate_boot_wim(stream)
 if a.output.exists() or a.output.with_suffix(a.output.suffix+'.json').exists():
     raise SystemExit('Refusing to overwrite output or manifest')
 if filehash(a.source_esp) != a.source_sha256.lower():
@@ -57,6 +70,8 @@ with PyFatFS(str(a.output), preserve_case=True, read_only=True) as fat:
             if digest(f) != expected:
                 raise SystemExit(f'Preserved file mismatch: {name}')
     with fat.openbin(wim_path, 'r') as f:
+        validate_boot_wim(f)
+        f.seek(0)
         if digest(f) != filehash(a.wim):
             raise SystemExit('WIM mismatch')
 repair = subprocess.run(['fsck.vfat', '-a', str(a.output)])
@@ -64,7 +79,7 @@ if repair.returncode not in (0, 1):
     raise SystemExit('FAT repair failed')
 subprocess.run(['fsck.vfat', '-n', str(a.output)], check=True)
 result = {'version': 1, 'token': stage['token'], 'source_esp_sha256': a.source_sha256.lower(), 'wim_sha256': filehash(a.wim),
-          'image_sha256': filehash(a.output), 'preserved_file_sha256': before,
+          'image_sha256': filehash(a.output), 'wim_boot_index': 1, 'preserved_file_sha256': before,
           'note': 'Local derivative only; target boot, PnP, signatures and sensor data unverified.'}
 a.output.with_suffix(a.output.suffix+'.json').write_text(json.dumps(result, indent=2)+'\n')
 print(json.dumps(result, indent=2))
