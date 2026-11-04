@@ -60,6 +60,17 @@ int main(void)
     assert(kick.cmd_data.combined_geom_frag_cmd_kick_data.geom_cmd_kick_data.num_cleanup_ctl==1);
     assert(kick.cmd_data.combined_geom_frag_cmd_kick_data.frag_cmd_kick_data.num_cleanup_ctl==1);
     assert(a04_gpu_prepare_render_pair(&arena,&result,&hwrt,&geom,&frag,2,0,&kick));
+    {
+        struct a04_gpu_render_context partial={0};
+        assert(!a04_gpu_prepare_render_context(&arena,&vm,2,0x800006d000ULL,4,&state,&partial));
+        assert(!a04_gpu_prepare_render_pair(&arena,&partial,&hwrt,&geom,&frag,3,1,&kick));
+        header=partial.frag_ring.cpu;
+        off=sizeof(*header)+header->cmd_size;
+        header=(void *)((uint8_t *)partial.frag_ring.cpu+off);
+        assert(header->cmd_type==ROGUE_FWIF_CCB_CMD_TYPE_FRAG_PR);
+        assert(kick.cmd_data.combined_geom_frag_cmd_kick_data.geom_cmd_kick_data.num_cleanup_ctl==1);
+        assert(kick.cmd_data.combined_geom_frag_cmd_kick_data.frag_cmd_kick_data.num_cleanup_ctl==0);
+    }
     before=arena.next; arena.next=arena.limit-64;
     assert(a04_gpu_prepare_render_context(&arena,&vm,2,0x800006d000ULL,4,&state,&result));
     assert(arena.next==arena.limit-64); arena.next=before;
