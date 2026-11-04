@@ -173,3 +173,9 @@ context switchのpersistent PDSは `pvr_pds_generate_stream_out_terminate_progra
 `a04_windows_render_stage_context_pt` はpersistent定数と命令を、公開前の所有DMAの読み取り専用PDSマップへ配置する。stateの書込み権限、４出力範囲の重複、実PTEを確認し、成功時だけ書き込む。shared用PDSとUSC、固定fixture、kick、fence・cleanupには接続していない。Mesa `usclib/common.cl` のshared store/loadは、PDSから受け取ったstate先頭に保存されたサイズを読み書きし、同領域の48バイト後から可変長のshared registerを転送する。GPUによるサイズ値と全転送範囲の正当性、対応するUSC命令の固定化は未検証。
 
 `generate-context-usc.py --source MESA_SOURCE --build MESA_BUILD --capture-zero PRIVATE_ZERO --capture-ones PRIVATE_ONES --output NEW_PRIVATE_DIR --experimental-incomplete` は、固定checkoutのMesa PCOコンパイラを同一SPIR-Vから２回起動し、生成C中のstore／load USC配列だけを抽出する。既存ビルドと２回のshimで観測した対応uploadのFNV値にも照合し、生成物とコンパイラ・SPIR-VのSHA-256を非公開manifestに記録する。生成された候補はstore 544バイト、load 488バイト。BOはコピーしないが、コンパイラ出力内の即値の全由来、GPUが生成するsharedサイズと間接アクセスは未証明なので、出力は非公開・GPU投入禁止である。これは安全な固定fixtureや実行経路ではない。
+
+`analyze-context-shared-bounds.py` は固定Mesa `common.cl` のループを32ビット符号なし演算で評価する。storeは `SH_ALLOC_SIZE` を16 DWORD単位として取得し、loadは保存済み値を読み、残量からそれぞれ毎回1024／256 DWORDを減算してゼロで終了する。Mesaの `pco_trans_nir.c` は前者を特殊レジスタ `PCO_SR_SH_ALLOC_SIZE` から読み取る。生成時の最適化後NIRでも、ゼロ比較、固定量の減算、アドレスの4096／1024バイト加算が残ることを確認した。
+
+ソース上、例えばサイズ１（16 DWORD）は両ループで固定量減算後に符号なしで周回し、ゼロへ到達しない。storeはサイズが64の倍数、loadは16の倍数なら有限回で終了し、サイズ256までなら確保された16384バイトのstate本体内に収まる計算になる。MesaのLLS定義は本体16384バイトと先頭予約48バイトを割り当てるが、GE8300の特殊レジスタがこの粒度・上限を必ず満たすこと、保存済み値が改変されないことは未証明。したがって少なくとも非整列値・範囲外値の扱いを解決するまでUSC候補を実行可能にしない。モデルはソースレベルの演算検査であり、GPU実行を模擬しない。
+
+`build-context-shared-bounded.py --source MESA_SOURCE --build MESA_BUILD --output NEW_PRIVATE_DIR` は、独立した一時 `common.cl` に限りサイズ256超を０にし、残量を飽和減算する診断版を生成する。Mesa checkoutは変更せず、MesaのOpenCLコンパイラとPCOを使ってSPIR-VとUSC候補を２回生成・一致検査し、ソースと生成物のハッシュをmanifestへ記録する。ソースレベルモデルでは入力０〜256について両ループは有限回で終了し、範囲外は０として扱う。最適化後NIRにも上限比較と飽和減算が残ることを確認した。ただし範囲外を０にするとcontext復元は不完全であり、実行結果やGPU上のメモリ安全を保証しない。未検証の診断版で、Windowsドライバへ組み込まず、実機投入は禁止する。

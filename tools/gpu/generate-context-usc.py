@@ -57,6 +57,8 @@ def main():
     if git('rev-parse','HEAD')!=PIN or git('status','--porcelain','--untracked-files=all'):raise SystemExit('Mesa checkout mismatch')
     binary=build/'src/imagination/pco/uscgen/pco_clc';spv=build/'src/imagination/pco/usclib/pco_usclib.spv';built=build/'src/imagination/pco/uscgen/pco_uscgen_programs.c'
     try:
+        for key in ('MESA_SHADER_CACHE_DISABLE','MESA_DISK_CACHE_SINGLE_FILE','PCO_DEBUG_PRINT'):
+            os.environ.pop(key,None)
         for cap in (a.capture_zero,a.capture_ones):
             m=json.loads((cap/'run-manifest.json').read_text())
             if digest(build/'build.ninja')!=m['mesa_build_manifest']['build_ninja_sha256']:
@@ -82,6 +84,7 @@ def main():
             (out/'manifest.json').write_text(json.dumps({'mesa_commit':PIN,'compiler_sha256':digest(binary),'spv_sha256':digest(spv),
                 'generated_source_sha256':digest(built),'files':files,'gpu_execution_allowed':False,
                 'limitations':['host pointers or unsafe immediates not fully excluded','FNV capture matching is not collision-resistant',
+                               'shared state loop can underflow for non-aligned size; hardware granularity unproven',
                                'GPU-generated shared-register size and all indirect accesses unverified','not tested on hardware']},indent=2)+'\n')
     except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError,json.JSONDecodeError) as e:
         raise SystemExit('candidate generation failed: '+str(e))
