@@ -86,7 +86,12 @@ and checks every output byte. A timeout or mismatch retains DMA allocations;
 this diagnostic is not a general command interface or WDDM. The device's
 released Linux BVNC table identifies four ISP IPP pipes. The firmware and
 fixture use 22.67.54.30 while the core is 22.40.54.30: hardware compatibility,
-DMA containment, cache behaviour and the image result remain to be tested.
+DMA containment, cache behaviour and long-term operation remain to be verified.
+On TAB-A04-BR3 WinPE with aea6083, one opt-in test completed with QUEUE=0,
+SHUTDOWN=0 and STATUS_EXIT=0. In this build QUEUE=0 requires a completed
+fence and an exact comparison of all 16,384 image bytes. This establishes
+one fixed GPU memory write and readback; it does not establish copy, display,
+WDDM, production DMA isolation or long-term stability.
 `windows_hw.c` provides an experimental Windows ARM32 adapter: common DMA
 buffers use the device adapter's logical addresses, and split 32-bit MMIO
 writes follow the low-then-high order in this device's released Linux source.
