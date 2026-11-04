@@ -181,7 +181,9 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
   struct a04_thermal_policy policy={75000,65000,85000,1000,0};
   c->hw.ctx=c;c->hw.qualified=HwQualified;c->hw.clocks_on=HwClocks;c->hw.initialized=HwReady;
   c->hw.read32=HwRead;c->hw.write32=HwWrite;c->hw.delay_us=HwDelay;c->hw_ready=FALSE;c->reset_asserted=FALSE;
-  if(a04_monitor_start(&c->monitor,&c->hw,&c->cal,&policy,dev,A04ThermalApply,KeQueryInterruptTime()/10000u,2000)) {
+  int monitor_status=a04_monitor_start(&c->monitor,&c->hw,&c->cal,&policy,dev,A04ThermalApply,KeQueryInterruptTime()/10000u,2000);
+  if(monitor_status) {
+   if(monitor_status==-2) KeBugCheckEx(0xE2,0x41303454,2,0,0);
    a04_owner_revoke(&c->ownership); (VOID)TouchRequest(c,A04_TOUCH_THERMAL_RELEASE);c->lease_owned=FALSE;
    WdfIoTargetClose(c->touch);WdfIoTargetClose(c->watchdog);return STATUS_DEVICE_HARDWARE_ERROR;
   }
