@@ -19,6 +19,7 @@
 #if A04_GE8300_LINEAR_TEST
 #include "linear_copy_fixture.h"
 #include "windows_transfer_mapping.h"
+#include "windows_linear_transfer.h"
 #define TEST_PAGES (14u+A04_GPU_LINEAR_COPY_PAGES+12u)
 #elif A04_GE8300_COPY_TEST
 #include "copy_fixture.h"
@@ -107,6 +108,24 @@ static NTSTATUS linear_repeat(struct a04_gpu_firmware_state *s,struct a04_gpu_fw
         status=a04_gpu_dma_sync(image,6u*4096u,TRUE); if (!NT_SUCCESS(status)) return status;
         status=a04_gpu_dma_sync(source,6u*4096u,TRUE); if (!NT_SUCCESS(status)) return status;
         status=linear_validate(source,image,round); if (!NT_SUCCESS(status)) return status;
+    }
+    /* Exercise a complete map, transfer and scratch-restore transaction. */
+    mapping.completed_fence=146u;
+    if (a04_transfer_restore(&mapping.mapping)) return STATUS_DEVICE_CONFIGURATION_ERROR;
+    source=pages+(14u+A04_GPU_LINEAR_COPY_PAGES)*4096u;
+    image=pages+(20u+A04_GPU_LINEAR_COPY_PAGES)*4096u;
+    {
+        uint64_t src_pages[6],dst_pages[6];
+        for (size_t n=0;n<6u;++n) {
+            src_pages[n]=dma+(14u+A04_GPU_LINEAR_COPY_PAGES+n)*4096u;
+            dst_pages[n]=dma+(20u+A04_GPU_LINEAR_COPY_PAGES+n)*4096u;
+        }
+        for (size_t n=0;n<6u*4096u;++n) source[n]=linear_pattern(n,146u);
+        RtlFillMemory(image,6u*4096u,0xa5);
+        status=a04_windows_linear_transfer(&mapping,transfer,246u,src_pages,dst_pages,
+                                            source,image,protected_ranges,2);
+        if (!NT_SUCCESS(status)) return status;
+        status=linear_validate(source,image,146u); if (!NT_SUCCESS(status)) return status;
     }
     return STATUS_SUCCESS;
 }

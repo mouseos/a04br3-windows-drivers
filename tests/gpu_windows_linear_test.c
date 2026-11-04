@@ -63,7 +63,7 @@ int main(void)
     s.processor_released=TRUE; s.firmware_started=TRUE; s.memory.adapter=&adapter;
     s.memory.heap=heap; s.memory.heap_logical.QuadPart=0x80000000; s.runtime.next_free=0x20000;
     status=a04_gpu_queue_test(&s,&m);
-    if(status!=STATUS_SUCCESS || submits!=146 || !wraps || invalidations!=6 || !m.cpu || releases) {
+    if(status!=STATUS_SUCCESS || submits!=147 || !wraps || invalidations!=9 || !m.cpu || releases) {
         fprintf(stderr,"linear status=%08x submits=%u wraps=%u invalidations=%u memory=%d releases=%u\n",
                 (unsigned)status,submits,wraps,invalidations,m.cpu!=NULL,releases); return 2;
     }
@@ -78,5 +78,11 @@ int main(void)
        a04_gpu_queue_test_free(&s,&m)!=STATUS_DEVICE_BUSY) return 5;
     s.processor_released=FALSE;
     if(a04_gpu_queue_test_free(&s,&m)!=STATUS_SUCCESS || releases!=2) return 6;
+    s.processor_released=TRUE; s.queue_faulted=FALSE; submits=0; fail_after=147;
+    status=a04_gpu_queue_test(&s,&m);
+    if(status!=STATUS_IO_TIMEOUT || !s.queue_faulted || !m.cpu || releases!=2 ||
+       a04_gpu_queue_test_free(&s,&m)!=STATUS_DEVICE_BUSY) return 8;
+    s.processor_released=FALSE;
+    if(a04_gpu_queue_test_free(&s,&m)!=STATUS_SUCCESS || releases!=3) return 9;
     free(heap); puts("GE8300 repeated linear transfers, remaps, wrap and timeout lifetime simulated"); return 0;
 }
