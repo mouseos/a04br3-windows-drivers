@@ -22,4 +22,19 @@ static inline int a04_present_bounds(uint32_t width,uint32_t height,uint32_t byt
     n+=(size_t)rects*rect_size;
     *allocation=n; *mapped_span=(uint32_t)span; return 0;
 }
+static inline int a04_present_rect(int32_t left,int32_t top,int32_t right,int32_t bottom,
+                                   uint32_t width,uint32_t height)
+{
+    if (left<0 || top<0 || right<=left || bottom<=top ||
+        (uint32_t)right>width || (uint32_t)bottom>height) return -1;
+    return 0;
+}
+static inline int a04_present_move(int32_t left,int32_t top,int32_t right,int32_t bottom,
+    int32_t source_x,int32_t source_y,uint32_t width,uint32_t height)
+{
+    if (a04_present_rect(left,top,right,bottom,width,height) || source_x<0 || source_y<0 ||
+        (uint64_t)(uint32_t)source_x+(uint32_t)(right-left)>width ||
+        (uint64_t)(uint32_t)source_y+(uint32_t)(bottom-top)>height) return -1;
+    return 0;
+}
 #endif

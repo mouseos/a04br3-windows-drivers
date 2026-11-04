@@ -16,5 +16,12 @@ int main(void)
         !a04_present_bounds(1,UINT32_MAX,4,INT32_MAX,0,24,0,16,128,&allocation,&span) ||
         !a04_present_bounds(1,1,4,4,2,SIZE_MAX,0,16,128,&allocation,&span) ||
         !a04_present_bounds(1,1,4,4,0,24,2,SIZE_MAX,128,&allocation,&span)) return 3;
+    if (a04_present_rect(0,0,800,1280,800,1280) ||
+        a04_present_move(0,0,100,200,700,1080,800,1280) ||
+        !a04_present_rect(-1,0,10,10,800,1280) ||
+        !a04_present_rect(0,0,801,10,800,1280) ||
+        !a04_present_rect(10,10,10,11,800,1280) ||
+        !a04_present_move(0,0,100,200,701,1080,800,1280) ||
+        !a04_present_move(0,0,100,200,-1,0,800,1280)) return 4;
     puts("WDDM present pitched span and allocation bounds verified"); return 0;
 }

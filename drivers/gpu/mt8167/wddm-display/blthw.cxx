@@ -281,7 +281,7 @@ BDD_HWBLT::ExecutePresentDisplayOnly(
     const CURRENT_BDD_MODE* pModeCur = m_DevExt->GetCurrentMode(m_SourceId);
     size_t allocationSize = 0;
     uint32_t sizeToMap = 0;
-    if (!SrcAddr || (NumMoves && !Moves) || (NumDirtyRects && !DirtyRect) ||
+    if (!SrcAddr || SrcBytesPerPixel != 4 || (NumMoves && !Moves) || (NumDirtyRects && !DirtyRect) ||
         a04_present_bounds(pModeCur->SrcModeWidth,pModeCur->SrcModeHeight,SrcBytesPerPixel,
                            SrcPitch,NumMoves,sizeof(D3DKMT_MOVE_RECT),NumDirtyRects,sizeof(RECT),
                            sizeof(DoPresentMemory),&allocationSize,&sizeToMap))
@@ -315,13 +315,55 @@ BDD_HWBLT::ExecutePresentDisplayOnly(
     ctx->SrcPitch         = SrcPitch;
     ctx->Rotation         = Rotation;
     ctx->NumMoves         = NumMoves;
-    ctx->Moves            = Moves;
+    ctx->Moves            = NULL;
     ctx->NumDirtyRects    = NumDirtyRects;
-    ctx->DirtyRect        = DirtyRect;
+    ctx->DirtyRect        = NULL;
     ctx->SourceID         = m_SourceId;
     ctx->hAdapter         = m_DevExt;
     ctx->Mdl              = NULL;
     ctx->DisplaySource    = this;
+
+    // Copy the caller's lists once, then validate only the stable copies.
+    BYTE* rects = reinterpret_cast<BYTE*>(ctx+1);
+    __try
+    {
+        if (NumMoves)
+        {
+            memcpy(rects,Moves,sizeMoves);
+            ctx->Moves=reinterpret_cast<D3DKMT_MOVE_RECT*>(rects);
+            rects+=sizeMoves;
+        }
+        if (NumDirtyRects)
+        {
+            memcpy(rects,DirtyRect,sizeRects);
+            ctx->DirtyRect=reinterpret_cast<RECT*>(rects);
+        }
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        Status=GetExceptionCode();
+    }
+    if (NT_SUCCESS(Status))
+    {
+        for (ULONG i=0;i<NumMoves;++i)
+        {
+            const D3DKMT_MOVE_RECT& m=ctx->Moves[i];
+            if (a04_present_move(m.DestRect.left,m.DestRect.top,m.DestRect.right,m.DestRect.bottom,
+                                 m.SourcePoint.x,m.SourcePoint.y,pModeCur->SrcModeWidth,pModeCur->SrcModeHeight))
+            { Status=STATUS_INVALID_PARAMETER; break; }
+        }
+        for (ULONG i=0;NT_SUCCESS(Status) && i<NumDirtyRects;++i)
+        {
+            const RECT& r=ctx->DirtyRect[i];
+            if (a04_present_rect(r.left,r.top,r.right,r.bottom,pModeCur->SrcModeWidth,pModeCur->SrcModeHeight))
+            { Status=STATUS_INVALID_PARAMETER; break; }
+        }
+    }
+    if (!NT_SUCCESS(Status))
+    {
+        delete [] reinterpret_cast<BYTE*>(ctx);
+        return Status;
+    }
 
     // Alternate between synch and asynch execution, for demonstrating
     // that a real hardware implementation can do either
@@ -372,24 +414,6 @@ BDD_HWBLT::ExecutePresentDisplayOnly(
         // Save Mdl to unmap and unlock the pages in worker thread
         ctx->Mdl = mdl;
     }
-
-    BYTE* rects = reinterpret_cast<BYTE*>(ctx+1);
-
-    // copy moves and update pointer
-    if (Moves)
-    {
-        memcpy(rects,Moves,sizeMoves);
-        ctx->Moves = reinterpret_cast<D3DKMT_MOVE_RECT*>(rects);
-        rects += sizeMoves;
-    }
-
-    // copy dirty rects and update pointer
-    if (DirtyRect)
-    {
-        memcpy(rects,DirtyRect,sizeRects);
-        ctx->DirtyRect = reinterpret_cast<RECT*>(rects);
-    }
-
 
     if (m_SynchExecution)
     {
