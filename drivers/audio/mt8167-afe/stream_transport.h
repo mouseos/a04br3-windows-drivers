@@ -27,6 +27,9 @@ struct Mt8167Transport {
 /* No caller has permission to start until the unresolved platform prerequisites
  * have independent evidence. On any exposure retain DMA and clock until reset. */
 int Mt8167TransportStart(Mt8167Transport *t, uint32_t periodBytes);
+/* The caller holds one exclusive parent lease covering this exact clock and
+ * a muted codec. This path never takes or releases a second clock lease. */
+int Mt8167TransportStartParentOwned(Mt8167Transport *t, uint32_t periodBytes);
 /* A successful stop only disables AFE and disconnects the IRQ. It does not
  * certify DMA drain; the buffer and clock lease remain quarantined. */
 int Mt8167TransportStop(Mt8167Transport *t);

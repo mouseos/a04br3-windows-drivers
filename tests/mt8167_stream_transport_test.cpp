@@ -34,4 +34,12 @@ int main(){
  Mt8167Irq irq2{};Mt8167Transport t2{};t2.dma=&dma2;t2.irq=&irq2;t2.engine=&engine;t2.clock=&clock;t2.clockRate=12288000;t2.notify=notify;t2.affinity=1;
  step=0;failat=0;assert(!Mt8167TransportStart(&t2,256));failat=step+1;
  assert(Mt8167TransportStop(&t2)==-1 && t2.state==AUDIO_QUARANTINED && irq_on && clock_held && dma2.exposed);
+ for(int fail=1;fail<=4;fail++) {
+  Mt8167CommonDma d{};_MDL m{};d.mdl=&m;d.size=8192;d.logical.QuadPart=0x100000;
+  Mt8167Irq i{};Mt8167Transport p{};p.dma=&d;p.irq=&i;p.engine=&engine;p.notify=notify;p.affinity=1;
+  step=0;failat=fail;clock_held=irq_on=0;
+  assert(Mt8167TransportStartParentOwned(&p,256)==-1 && !clock_held);
+  if(fail<4) assert(p.state==AUDIO_FAILED && !irq_on && !d.exposed);
+  else assert(p.state==AUDIO_QUARANTINED && irq_on && d.exposed);
+ }
 }

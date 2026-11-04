@@ -15,6 +15,10 @@ static BOOLEAN Mt8167Isr(PKINTERRUPT interrupt, PVOID context)
     int notify = 0, result;
     UNREFERENCED_PARAMETER(interrupt);
     if (!InterlockedCompareExchange(&irq->active, 0, 0)) return FALSE;
+    /* Delivery may start immediately after IoConnectInterrupt, before DL1
+     * is started, or after a synchronized stop. Neither is an engine fault. */
+    if (irq->engine->state == MT8167_DL1_IDLE ||
+        irq->engine->state == MT8167_DL1_STOPPED) return FALSE;
     result = mt8167_dl1_interrupt(irq->engine, &notify);
     if (result < 0) {
         InterlockedExchange(&irq->fault, 1);

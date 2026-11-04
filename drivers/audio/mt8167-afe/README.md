@@ -152,8 +152,8 @@ into a release criterion without a device-specific specification or validation.
 single parent that owns the audio clocks and PMIC/codec mute together. PnP
 backend can retain that contract and refuses attachment after revocation. The
 existing input-client and offline parent interfaces do not implement this
-contract and are not assumed to be the same interface. There is no query IRP,
-child-PDO binding, provider, PWRAP codec write, or shared clock implementation.
+contract and are not assumed to be the same interface. There is no operational
+provider, PWRAP codec write, or shared clock implementation.
 `shared_transport.cpp` joins that hypothetical lease to the existing DL1/IRQ
 transport but has no caller. It quarantines the shared reference and lease
 before attempting any transport work; no drain proof or release path exists.
@@ -165,9 +165,16 @@ refused, and this code is not a safe device trial.
 `A04_SHARED_AUDIO_INTERFACE` to the internal audio shared-service contract.
 Binding transfers the query reference, attachment holds an additional parent
 reference, and close is refused while any clients remain. The caller must
-serialize lifecycle calls and supply a real PnP query result; the adapter does
-not yet send a query IRP or attach this object to its PnP backend. The parent
+serialize lifecycle calls. With `A04_AUDIO_QUERY_SHARED=1`, the diagnostic PnP
+backend sends a query to its child PDO and attaches this object. The parent
 prototype publishes and forwards the same versioned GUID to a gated audio
 child, but its audio callbacks always fail and never touch codec or clock.
-The child has no assigned AFE resources or driver binding. No actual audio
+The child's AFE resource candidates are gated and there is no installable driver binding. No actual audio
 clock/PWRAP lease, DMA start, interrupt connection or playback is enabled.
+
+The shared transport uses the parent's combined clock/codec lease as its sole
+clock ownership; it does not acquire the separate clock policy again. This is
+still a software-only path, not a live backend. An IRQ delivered before DL1
+start or after its synchronized stop is ignored instead of poisoning the
+engine. This neither identifies nor acknowledges a pending hardware interrupt,
+so IRQ routing and source quiescence must be established before connecting it.
