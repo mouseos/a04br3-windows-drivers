@@ -6,7 +6,7 @@ SRC := drivers/storage/mt8167-msdc
 .PHONY: test test-thermal test-ntfs-root arm-coff clean
 
 test: test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registration test-mt8167-wavert-miniport test-mt8167-audio-resource
-test: test-mma8652 build/msdc_resume_check_test
+test: test-mma8652 build/msdc_resume_check_test build/msdc_resume_capture_test
 test: test-mt8167-common-dma test-mt8167-dma-adapter test-mt8167-clock-owner
 
 .PHONY: test-mma8652
