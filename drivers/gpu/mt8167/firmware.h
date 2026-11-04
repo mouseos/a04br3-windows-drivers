@@ -69,4 +69,7 @@ enum a04_pvr_fw_result a04_pvr_mips_start(const struct a04_pvr_register_io *io,
  * A timeout never authorizes releasing any DMA allocation. */
 enum a04_pvr_fw_result a04_pvr_mips_stop(const struct a04_pvr_register_io *io,
         uint64_t core_bvnc);
+struct a04_pvr_stop_failure { uint32_t reg; uint64_t value; };
+enum a04_pvr_fw_result a04_pvr_mips_stop_report(const struct a04_pvr_register_io *io,
+        uint64_t core_bvnc, struct a04_pvr_stop_failure *failure);
 #endif

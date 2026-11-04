@@ -66,12 +66,17 @@ fail_before_release:
 }
 NTSTATUS a04_gpu_firmware_stop(struct a04_gpu_firmware_state *s,BOOLEAN acknowledged)
 {
-    enum a04_pvr_fw_result r;
+    enum a04_pvr_fw_result r; struct a04_pvr_stop_failure failure={0};
     if (!s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !s->memory.adapter || !s->processor_released)
         return STATUS_INVALID_PARAMETER;
     if (!acknowledged) return STATUS_DEVICE_BUSY;
-    r=a04_pvr_mips_stop(&s->io,A04_PVR_BVNC);
-    if (r!=A04_PVR_FW_OK) return STATUS_IO_TIMEOUT;
+    r=a04_pvr_mips_stop_report(&s->io,A04_PVR_BVNC,&failure);
+    if (r!=A04_PVR_FW_OK) {
+        TRACE(s,0x20000000u|failure.reg);
+        TRACE(s,(uint32_t)failure.value);
+        TRACE(s,(uint32_t)(failure.value>>32));
+        return STATUS_IO_TIMEOUT;
+    }
     a04_gpu_dma_barrier();
     a04_gpu_free_memory(&s->memory);
     s->processor_released=FALSE; s->firmware_started=FALSE; s->queue_faulted=FALSE;

@@ -6,7 +6,11 @@ wpeinit
 set GE8300_PACKAGE=X:\a04br3\ge8300
 rem 試験用ESPにパッケージがある場合は小さなドライバ更新だけで再試験する。
 mountvol V: /S
-if errorlevel 1 goto load_driver
+if not errorlevel 1 goto check_external
+rem WinPEのRAM起動では /S がESPを特定できない場合がある。
+rem ボリュームGUIDの実ファイルを確認してからドライブ文字を割り当てる。
+for /f "tokens=*" %%G in ('mountvol') do if exist "%%Ga04-ge8300\mt8167-ge8300.inf" mountvol V: "%%G"
+:check_external
 if not exist V:\a04-ge8300\mt8167-ge8300.inf goto load_driver
 if not exist V:\a04-ge8300\mt8167-ge8300.sys goto packagefail
 if not exist V:\a04-ge8300\mt8167-ge8300.cat goto packagefail

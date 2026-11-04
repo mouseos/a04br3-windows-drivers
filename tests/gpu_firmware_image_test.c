@@ -54,7 +54,9 @@ int main(int argc,char **argv) {
     if(a04_pvr_mips_start(&io,0,&a)!=A04_PVR_FW_INVALID || mock.writes) return 16;
     if(a04_pvr_mips_start(&io,A04_PVR_BVNC,&a)!=A04_PVR_FW_OK || !mock.writes || mock.last_reset ||
        mock.delays!=2 || !mock.remap1 || !mock.remap2 || !mock.remap3) return 17;
-    if(a04_pvr_mips_stop(&io,A04_PVR_BVNC)!=A04_PVR_FW_TIMEOUT || mock.last_reset) return 18;
+    { struct a04_pvr_stop_failure failure={0};
+      if(a04_pvr_mips_stop_report(&io,A04_PVR_BVNC,&failure)!=A04_PVR_FW_TIMEOUT ||
+         mock.last_reset || failure.reg!=ROGUE_CR_SIDEKICK_IDLE || failure.value!=0) return 18; }
     mock.idle=1;
     if(a04_pvr_mips_stop(&io,A04_PVR_BVNC)!=A04_PVR_FW_OK || !mock.last_reset) return 19;
     pt[0]=0xa5a5a5a5u;
