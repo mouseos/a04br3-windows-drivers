@@ -155,3 +155,15 @@ rail query is for an appropriate PASSIVE-level WDM/KMDF client and does not
 supply a working miniport connection. References:
 https://learn.microsoft.com/en-us/windows-hardware/drivers/storage/overview-of-storage-virtual-miniport-drivers
 https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-_io_resource_descriptor
+
+`vemc_restore` is an unconnected PASSIVE-level experiment implementing the
+MT6392 WACS2 protocol for one narrow transition: VEMC enable 0->1, preserving
+its selector and never changing VIO18. It requires an already-held exclusive,
+non-revocable parent lease, all rail consumers quiescent, a separately trusted
+selector policy, a monotonic deadline and a 264-us minimum ramp wait. It checks
+VIO18 and selector before writing, then re-reads all three registers. Failure
+poisons the state and output remains unchanged; a failed command may still have
+reached the PMIC and must not be retried or rolled back blindly. Tests simulate
+WACS2 and cannot demonstrate real PMIC behavior, exclusive ownership, physical
+rail voltage or bus-abort safety. There is no caller from the WDF parent, D0,
+Storport or eMMC code; it must remain so until those guarantees exist.
