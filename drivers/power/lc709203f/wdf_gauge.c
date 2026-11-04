@@ -32,7 +32,7 @@ EVT_WDF_DEVICE_D0_EXIT GaugeD0Exit;
 EVT_WDF_DEVICE_SELF_MANAGED_IO_INIT GaugeClassInit;
 EVT_WDF_DEVICE_SELF_MANAGED_IO_CLEANUP GaugeClassCleanup;
 EVT_WDF_TIMER GaugePoll;
-EVT_WDF_DEVICE_WDM_IRP_PREPROCESS GaugeIrp;
+EVT_WDFDEVICE_WDM_IRP_PREPROCESS GaugeIrp;
 
 static uint16_t rd(void *context, unsigned offset)
 { GAUGE_CONTEXT *c = context; return READ_REGISTER_USHORT((volatile USHORT *)(c->i2c + offset)); }
