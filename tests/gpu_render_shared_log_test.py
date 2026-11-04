@@ -13,4 +13,11 @@ class TestLog(unittest.TestCase):
     def test_reject_unrelated_or_oversized_hex(self):
         for value in ('nothing','TA context shared alloc size store 0x123456789, load 0x40'):
             with self.assertRaises(ValueError):m.analyze(value)
+    def test_uart_candidates_and_validation(self):
+        line='A04GPU SHARED CANDIDATES=00000002 STORE_MASK=00000002 LOAD_MASK=00000014 OTHER=00000001 DIFFERENT=00000002 CHANGED=00000000'
+        r=m.analyze_uart(line);self.assertFalse(r['gpu_execution_allowed'])
+        self.assertEqual(r['samples'][0]['store_values'],[64])
+        self.assertEqual(r['samples'][0]['load_values'],[128,256])
+        with self.assertRaises(ValueError):m.analyze_uart(line.replace('STORE_MASK=00000002','STORE_MASK=00000020'))
+        with self.assertRaises(ValueError):m.analyze_uart(line.replace('DIFFERENT=00000002','DIFFERENT=00000003'))
 if __name__=='__main__':unittest.main()

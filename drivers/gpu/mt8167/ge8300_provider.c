@@ -18,6 +18,15 @@
 #ifndef A04_GE8300_COPY_SERVICE
 #define A04_GE8300_COPY_SERVICE 0
 #endif
+#ifndef A04_GE8300_SHARED_TRACE_DIAGNOSTIC
+#define A04_GE8300_SHARED_TRACE_DIAGNOSTIC 0
+#endif
+#if A04_GE8300_SHARED_TRACE_DIAGNOSTIC && !A04_GE8300_BOOT_TEST
+#error Shared trace diagnostic requires the explicit firmware boot test
+#endif
+#if A04_GE8300_SHARED_TRACE_DIAGNOSTIC
+#include "render_trace_shared.h"
+#endif
 #if A04_GE8300_COPY_SERVICE && (!A04_GE8300_BOOT_TEST || !A04_GE8300_ALLOW_MISMATCH)
 #error The experimental copy service requires explicit firmware boot and BVNC mismatch opt-ins
 #endif
@@ -64,6 +73,39 @@ static void GpuHex(ULONG value)
 }
 static void GpuTraceStage(void *context,ULONG stage)
 { UNREFERENCED_PARAMETER(context); GpuPrint("A04GPU STEP="); GpuHex(stage); GpuPrint("\n"); }
+#if A04_GE8300_SHARED_TRACE_DIAGNOSTIC
+/* Output only masks and counts, never raw trace words, timestamps or pointers.
+ * Firmware can write concurrently: these are candidates, not validated packets. */
+static void GpuSharedTrace(GPU_CONTEXT *c)
+{
+    struct a04_gpu_firmware_state *s=&c->firmware;
+    struct rogue_fwif_tracebuf *ctl; struct a04_shared_trace_summary result={0};
+    unsigned t; ULONG before[2],after[2]; NTSTATUS status;
+    if (!s->processor_released || !s->memory.heap) return;
+    ctl=(void *)((uint8_t *)s->memory.heap+s->runtime.trace_control);
+    status=a04_gpu_dma_sync(ctl,sizeof(*ctl),TRUE);
+    if (!NT_SUCCESS(status)) goto failure;
+    for(t=0;t<2;++t) before[t]=ctl->tracebuf[t].trace_pointer;
+    for(t=0;t<2;++t) {
+        volatile uint32_t *words=(void *)((uint8_t *)s->memory.heap+s->runtime.trace[t]);
+        status=a04_gpu_dma_sync((void *)words,ROGUE_FW_TRACE_BUF_DEFAULT_SIZE_IN_DWORDS*sizeof(*words),TRUE);
+        if (!NT_SUCCESS(status)) goto failure;
+        a04_shared_trace_scan(words,ROGUE_FW_TRACE_BUF_DEFAULT_SIZE_IN_DWORDS,&result);
+    }
+    status=a04_gpu_dma_sync(ctl,sizeof(*ctl),TRUE);
+    if (!NT_SUCCESS(status)) goto failure;
+    for(t=0;t<2;++t) after[t]=ctl->tracebuf[t].trace_pointer;
+    GpuPrint("A04GPU SHARED CANDIDATES="); GpuHex(result.candidates);
+    GpuPrint(" STORE_MASK="); GpuHex(result.store_mask);
+    GpuPrint(" LOAD_MASK="); GpuHex(result.load_mask);
+    GpuPrint(" OTHER="); GpuHex(result.other);
+    GpuPrint(" DIFFERENT="); GpuHex(result.different);
+    GpuPrint(" CHANGED="); GpuHex(before[0]!=after[0] || before[1]!=after[1]); GpuPrint("\n");
+    return;
+failure:
+    GpuPrint("A04GPU SHARED SYNC_ERROR="); GpuHex((ULONG)status); GpuPrint("\n");
+}
+#endif
 static void GpuBugCallback(PVOID buffer,ULONG length)
 {
     unsigned i; UNREFERENCED_PARAMETER(buffer); UNREFERENCED_PARAMETER(length);
@@ -235,6 +277,9 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
                 c->status.queue_status=a04_gpu_queue_test(&c->firmware,&c->queue_memory);
                 GpuTraceStage(c,0x104);
             }
+#if A04_GE8300_SHARED_TRACE_DIAGNOSTIC
+            GpuSharedTrace(c);
+#endif
             if(NT_SUCCESS(c->status.mmu_status) && NT_SUCCESS(c->status.queue_status))
                 c->status.shutdown_status=a04_gpu_firmware_shutdown(&c->firmware);
             if(NT_SUCCESS(c->status.shutdown_status))
@@ -317,6 +362,9 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
     c->status.processor_released=c->firmware.processor_released;
     c->status.firmware_started=c->firmware.firmware_started;
     c->status.queue_faulted=c->firmware.queue_faulted;
+#if A04_GE8300_SHARED_TRACE_DIAGNOSTIC
+    GpuSharedTrace(c);
+#endif
 #endif
     status=WdfRequestRetrieveOutputBuffer(request,sizeof(*out),(PVOID *)&out,&size);
     if(NT_SUCCESS(status)) { *out=c->status; WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(*out)); }

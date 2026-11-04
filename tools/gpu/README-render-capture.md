@@ -190,4 +190,8 @@ context switchのpersistent PDSは `pvr_pds_generate_stream_out_terminate_progra
 
 `summarize-shared-size-log.py PRIVATE_FIRMWARE_LOG` は、既に収集された `TA context shared alloc size store 0x..., load 0x...` 形式のfirmware traceだけを集計する。実機へ接続せず、元ログや他の内容を出力しない。ログの出自、記録フィールドと特殊レジスタ103の同一性、未観測値の範囲は証明できない。実機操作と採取は主担当が担当する。
 
+`A04_GE8300_SHARED_TRACE_DIAGNOSTIC=1` は、明示的な `A04_GE8300_BOOT_TEST=1` と組み合わせる追加診断で、既定OFF。既存のfirmware trace２本をCPU同期してCSW 15のID候補を走査し、UARTへ候補数、store/loadの値0・64・128・192・256のビット集合、それ以外の値の個数、異なる組の数、走査中にtrace pointerが変化したかを一行で出す。生のtrace、タイムスタンプ、範囲外の生値は出力しない。通常のboot testではqueue test後のshutdown前、copy serviceでは状態照会時に出力する。保存したUARTログは `python3 tools/gpu/summarize-shared-size-log.py --uart PRIVATE_UART_LOG` で構造化できる。診断実行とログ取得は主担当が行う。
+
+この走査はIDと引数位置だけに基づく候補検索で、レコード境界を証明せず誤検出があり得る。同期中にもfirmwareは書き込め、pointer不変でも整合したスナップショットとは限らない。既存queue testはrender context switchを発生させるものではなく、候補０件でも正常・安全・異常のいずれも判定できない。上記の値が特殊レジスタ103と同じか、対象firmwareに当該ログが実装されているかも未証明であり、fixtureやkickの有効化条件には使えない。
+
 fragment PDS、persistent PDS、shared PDSの各配置は、成功した出力範囲をDMA allocationの寿命中に予約する。別の配置がpaddingを含む予約範囲と重なれば、書込み前に拒否する。未追跡のCPU書込みや別の方法による配置は呼出し側で防ぐ必要があり、この検査はfixture全体の参照閉包やGPU投入を保証しない。
