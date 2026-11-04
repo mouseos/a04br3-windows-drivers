@@ -25,6 +25,7 @@ test: build/msdc_parent_resources_test build/msdc_pinmux_test build/msdc_cold_in
 	python3 tests/gpu_render_fragment_test.py
 	python3 tests/gpu_render_usc_test.py
 	python3 tests/gpu_render_vdm_pds_test.py
+	python3 tests/gpu_render_context_trace_test.py
 	./build/gpu_windows_render_memory_test
 	./build/gpu_render_kick_off
 	./build/gpu_render_kick_on
@@ -113,9 +114,9 @@ build/gpu_render_context_test: drivers/gpu/mt8167/render_context.c drivers/gpu/m
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_pair.c drivers/gpu/mt8167/render_stream.c drivers/gpu/mt8167/firmware_objects.c tests/gpu_render_context_test.c -o $@
 
-build/gpu_windows_render_memory_test: tests/gpu_windows_render_memory_test.c tests/gpu_windows_stubs/ntddk.h drivers/gpu/mt8167/windows_render_memory.c drivers/gpu/mt8167/windows_render_memory.h drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/render_pds_data.c drivers/gpu/mt8167/render_execution.c drivers/gpu/mt8167/firmware_objects.c drivers/gpu/mt8167/render_context.c
+build/gpu_windows_render_memory_test: tests/gpu_windows_render_memory_test.c tests/gpu_windows_stubs/ntddk.h drivers/gpu/mt8167/windows_render_memory.c drivers/gpu/mt8167/windows_render_memory.h drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/render_pds_data.c drivers/gpu/mt8167/render_execution.c drivers/gpu/mt8167/firmware_objects.c drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_freelist.c drivers/gpu/mt8167/render_target.c drivers/gpu/mt8167/render_hwrt.c
 	mkdir -p build
-	$(CC) $(CFLAGS) -DA04_GE8300_RENDER_EXPERIMENT=1 -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif tests/gpu_windows_render_memory_test.c drivers/gpu/mt8167/windows_render_memory.c drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/render_pds_data.c drivers/gpu/mt8167/render_execution.c drivers/gpu/mt8167/firmware_objects.c drivers/gpu/mt8167/render_context.c -o $@
+	$(CC) $(CFLAGS) -DA04_GE8300_RENDER_EXPERIMENT=1 -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif tests/gpu_windows_render_memory_test.c drivers/gpu/mt8167/windows_render_memory.c drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/render_pds_data.c drivers/gpu/mt8167/render_execution.c drivers/gpu/mt8167/firmware_objects.c drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_freelist.c drivers/gpu/mt8167/render_target.c drivers/gpu/mt8167/render_hwrt.c -o $@
 
 build/gpu_render_kick_off: tests/gpu_render_kick_policy_test.c drivers/gpu/mt8167/render_kick_policy.h
 	mkdir -p build

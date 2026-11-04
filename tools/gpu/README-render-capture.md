@@ -153,3 +153,13 @@ python3 tools/gpu/check-render-usc.py PRIVATE_ZERO PRIVATE_ONES
 `a04_windows_render_memory_bind_vm` は新規DMAページ表のルートを、そのfirmwareのheapに確保したメモリcontextに結び付ける。`a04_windows_render_prepare_context` は同じVMをgeometry／fragment contextに設定し、Mesaの最大深度１に対応する８バイトのVDM callstackが所有済み書込み可能範囲にあることを検査する。`a04_windows_render_publish_context` はcontextとリング、状態、fenceを同期した後、ページ表とVMを同期し、MMU無効化を待つ。VMルート、所有範囲やcontext間の参照不一致を拒否し、同期・無効化の失敗時は資源を保持する。呼出し側はfirmware arenaとcontextへのアクセスを直列化する必要がある。
 
 この接続はkickを発行しない。Mesaのcontext switch用静的レジスタはVDM状態・geometry状態とstore/resume用のPDS/USCを参照し、その完全な生成・所有検証は未実装である。HWRT、freelist、固定三角形コマンドとshader、完了fence、firmware cleanupもこの接続から実行できない。ホストmockとARMターゲットのスタブによるコンパイルのみで、WDK・実機では検証していない。
+
+## context switchの依存範囲とPM構築
+
+`build-mesa-context-diagnostic.py --source MESA_SOURCE --build MESA_BUILD --uploads UPLOAD_DIR --pds PDS_DIR --usc USC_DIR --output NEW_CONTEXT_DIR` は、固定Mesaの一時翻訳単位にcontext switchの範囲記録だけを追加する。通常の `run-render-capture.py` に `--diagnostic NEW_CONTEXT_DIR --pco-fill 00 --dump-control-stream` を指定し、`check-render-context.py PRIVATE_CAPTURE` で検査する。BO内容やCPUアドレスはこの追加イベントには記録しない。
+
+今回のshimでは、VDM／geometry状態２領域と２組のpersistent／shared状態・store／resume PDSデータ・コード・USCの計26領域が、render context生成時と９件のrender job記録時に同一VMへマップされていた。PDS／USCの記録されたuploadも各開始位置に存在した。これは確保範囲と書込み範囲の対応であり、命令に埋め込まれた参照、未使用padding、GPUによる後続アクセス、実機上の寿命の証明ではない。
+
+実験用の `a04_windows_render_prepare_freelists` は、所有DMAの未マップ領域から、重複しない連続PMページを２つの非成長freelistへ割り当てる。GE8300の64バイトSLCラインに合わせ表を64バイト境界、ページ数を16単位に制限し、GPU側の表マップにはSLCバイパスを要求する。`a04_windows_render_prepare_target` は64×64・単一layerのTPC、vheap、MLIST、region、freelist表、callstackの全範囲と重複を検査し、firmwareのHWRTを構築する。ホスト試験にはlocal 64ページ、global 1024ページを使うが、このサイズで描画できる保証はない。
+
+Mesaのfreelist BOはSLCバイパスに加えPM/FW保護を要求するが、現在のWindowsページ表にはPM/FW保護フラグがない。そのためfreelist作成後の `a04_windows_render_publish_context` は検査を終えても `STATUS_NOT_SUPPORTED` を返し、同期・MMU公開・kickへ進まない。PM/FW保護、context switchプログラムの全参照、HWRTとfreelistの実機整合、fenceとcleanupが未完了であり、GPU投入は禁止のままである。

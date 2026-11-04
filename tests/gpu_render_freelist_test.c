@@ -21,5 +21,10 @@ int main(void)
     for (i=0;i<52;i++) assert(table[i]==(uint32_t)(pages[i]>>12));
     assert(a04_gpu_init_render_freelist(table,52,0x8000010001ULL,pages,52,7,&fw));
     assert(a04_gpu_init_render_freelist(table,51,0x8000010000ULL,pages,52,7,&fw));
+    memset(table,0xa5,sizeof(table));old=fw;memcpy(before,table,sizeof(table));
+    assert(a04_gpu_init_render_freelist_contiguous(table,52,0x8000010000ULL,0x123400001ULL,52,7,&fw));
+    assert(!memcmp(table,before,sizeof(table)) && !memcmp(&fw,&old,sizeof(fw)));
+    assert(!a04_gpu_init_render_freelist_contiguous(table,52,0x8000010000ULL,0x123400000ULL,52,7,&fw));
+    for (i=0;i<52;i++) assert(table[i]==(uint32_t)(pages[i]>>12));
     return 0;
 }
