@@ -32,19 +32,21 @@ enum a04_bq_result a04_bq_step(struct a04_bq_owner *o, const struct a04_bq_bus *
 {
     struct a04_bq_snapshot s = {{0}, 0, 0};
     enum a04_bq_result result;
-    uint64_t end;
+    uint64_t end, previous, kick_started;
     unsigned reg, first;
     if (!o || !b || !b->now_ns || !b->read || !b->write_watchdog) return A04_BQ_INVALID;
     if (o->stopped) return A04_BQ_STOPPED;
     s.at = b->now_ns(b->context);
     if (late(o, s.at, deadline)) { o->stopped = 1; return A04_BQ_DEADLINE; }
+    previous = s.at;
     first = o->attempts == 0;
     for (reg = 0; reg < 8; ++reg) {
         end = b->now_ns(b->context);
-        if (end < s.at || end - s.at >= SECOND_NS || late(o, end, deadline)) {
+        if (end < previous || end - s.at >= SECOND_NS || late(o, end, deadline)) {
             o->latest = s; if (first && o->attempts) o->first = s;
             o->stopped = 1; return A04_BQ_DEADLINE;
         }
+        previous = end;
         if (!reg) ++o->attempts;
         if (b->read(b->context, (uint8_t)reg, &s.raw[reg])) {
             o->latest = s; if (first) o->first = s;
@@ -56,17 +58,21 @@ enum a04_bq_result a04_bq_step(struct a04_bq_owner *o, const struct a04_bq_bus *
     o->latest = s; if (first) o->first = s;
     result = policy(&s);
     end = b->now_ns(b->context);
-    if (end < s.at || end - s.at >= SECOND_NS || late(o, end, deadline)) result = A04_BQ_DEADLINE;
+    if (end < previous || end - s.at >= SECOND_NS || late(o, end, deadline)) result = A04_BQ_DEADLINE;
     if (result != A04_BQ_OK) { o->stopped = 1; return result; }
     /* Never echo status/fault bits, or write any charge configuration. */
+    /* The device may accept the write at any point in the transaction.  Use
+     * the pre-write timestamp as the conservative next-cycle origin; using
+     * completion would silently add the transfer duration to the budget. */
+    kick_started = end;
     if (b->write_watchdog(b->context, (uint8_t)(0x80u | (s.raw[0] & 8u)))) {
         o->stopped = 1; return A04_BQ_WRITE_ERROR;
     }
     end = b->now_ns(b->context);
-    if (end < s.at || end - s.at >= SECOND_NS || late(o, end, deadline)) {
+    if (end < kick_started || end - s.at >= SECOND_NS || late(o, end, deadline)) {
         o->stopped = 1; return A04_BQ_DEADLINE;
     }
-    o->last_kick = end; ++o->kicks; o->handoff_pending = 0;
+    o->last_kick = kick_started; ++o->kicks; o->handoff_pending = 0;
     return A04_BQ_OK;
 }
 

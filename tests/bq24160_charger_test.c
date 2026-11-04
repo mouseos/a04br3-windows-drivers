@@ -4,8 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 #include "charger.h"
-struct fake { uint8_t r[8], written; uint64_t now, tick, kick_delay; int reads, writes, fail_read, fail_write; };
-static uint64_t clock_ns(void *p) { struct fake *f=p; uint64_t t=f->now; f->now+=f->tick; return t; }
+struct fake { uint8_t r[8], written; uint64_t now, tick, kick_delay; int reads, writes, fail_read, fail_write, clocks, regress_at; };
+static uint64_t clock_ns(void *p) { struct fake *f=p; uint64_t t=f->now; f->now+=f->tick; if (++f->clocks==f->regress_at) t-=f->tick*2; return t; }
 static int read_reg(void *p, uint8_t reg, uint8_t *v) { struct fake *f=p; ++f->reads; if (f->fail_read == (int)reg) return -1; *v=f->r[reg]; return 0; }
 static int kick(void *p, uint8_t v) { struct fake *f=p; ++f->writes; f->written=v; f->now += f->kick_delay; return f->fail_write; }
 static void init(struct fake *f, struct a04_bq_owner *o, struct a04_bq_bus *b) {
@@ -31,12 +31,19 @@ int main(void) {
     init(&f,&o,&b); f.fail_write=1; assert(a04_bq_step(&o,&b,30000000000ULL)==A04_BQ_WRITE_ERROR && !o.kicks);
     init(&f,&o,&b); f.tick=1000000000ULL; assert(a04_bq_step(&o,&b,30000000000ULL)==A04_BQ_DEADLINE && !f.writes);
     init(&f,&o,&b); f.kick_delay=1000000000ULL; assert(a04_bq_step(&o,&b,30000000000ULL)==A04_BQ_DEADLINE && f.writes==1 && !o.kicks);
+    init(&f,&o,&b); f.now=1000000000ULL; f.kick_delay=900000000ULL;
+    assert(a04_bq_step(&o,&b,30000000000ULL)==A04_BQ_OK && o.last_kick==1000000000ULL);
+    f.now=21000000000ULL;
+    assert(a04_bq_step(&o,&b,30000000000ULL)==A04_BQ_DEADLINE && f.reads==8 && f.writes==1);
     init(&f,&o,&b); f.tick=100000000ULL;
     assert(a04_bq_step(&o,&b,500000000ULL)==A04_BQ_DEADLINE);
     assert(f.reads==4 && f.writes==0 && o.first.valid==15 && o.stopped);
     init(&f,&o,&b); f.tick=1000000000ULL;
     assert(a04_bq_step(&o,&b,30000000000ULL)==A04_BQ_DEADLINE);
     assert(f.reads==0 && o.attempts==0 && o.stopped);
+    init(&f,&o,&b); f.now=100; f.tick=10; f.regress_at=4;
+    assert(a04_bq_step(&o,&b,30000000000ULL)==A04_BQ_DEADLINE);
+    assert(f.reads==2 && !f.writes && o.stopped);
     init(&f,&o,&b); o.kicks=1; o.last_kick=100; f.now=99; assert(a04_bq_step(&o,&b,30000000000ULL)==A04_BQ_DEADLINE && !f.reads);
     puts("BQ24160 policy and watchdog fake-bus tests passed"); return 0;
 }
