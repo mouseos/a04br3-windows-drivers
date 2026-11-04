@@ -367,3 +367,9 @@ build/mt8167_wavert_dma_test: drivers/audio/mt8167-afe/wavert_dma.cpp drivers/au
 build/thermal_freshness_test: drivers/power/mt8167-thermal/freshness.c drivers/power/mt8167-thermal/freshness.h tests/thermal_freshness_test.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal drivers/power/mt8167-thermal/freshness.c tests/thermal_freshness_test.c -o $@
+.PHONY: test-mt8167-pwrap-owner
+test-mt8167-pwrap-owner: build/mt8167_pwrap_owner_test
+	./build/mt8167_pwrap_owner_test
+build/mt8167_pwrap_owner_test: drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/pwrap_owner.h drivers/input/a04br3-buttons/pmic_read.c tests/mt8167_pwrap_owner_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -pthread -Idrivers/bus/mt8167-shared drivers/bus/mt8167-shared/pwrap_owner.c drivers/input/a04br3-buttons/pmic_read.c tests/mt8167_pwrap_owner_test.c -o $@
