@@ -7,6 +7,9 @@
 #include <batclass.h>
 #include "battery_class.h"
 #include "mt8167_i2c.h"
+#ifndef A04_LC709203F_TRACE
+#define A04_LC709203F_TRACE 0
+#endif
 
 #define I2C2_BASE 0x1100b000u
 #define I2C2_SIZE 0x1000u
@@ -23,6 +26,9 @@ typedef struct {
     struct a04_battery_class battery;
     BOOLEAN online;
     BOOLEAN faulted;
+#if A04_LC709203F_TRACE
+    volatile ULONG *uart;
+#endif
 } GAUGE_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(GAUGE_CONTEXT, GaugeContext)
 EVT_WDF_DRIVER_DEVICE_ADD GaugeAdd;
@@ -34,6 +40,23 @@ EVT_WDF_DEVICE_SELF_MANAGED_IO_INIT GaugeClassInit;
 EVT_WDF_DEVICE_SELF_MANAGED_IO_CLEANUP GaugeClassCleanup;
 EVT_WDF_TIMER GaugePoll;
 EVT_WDFDEVICE_WDM_IRP_PREPROCESS GaugeIrp;
+
+#if A04_LC709203F_TRACE
+static void trace(GAUGE_CONTEXT *c, const char *message)
+{
+    ULONG n;
+    if (!c->uart) return;
+    while (*message) {
+        for (n = 100000; n; --n)
+            if (!(READ_REGISTER_ULONG(c->uart + 3) & 0x80u) &&
+                (READ_REGISTER_ULONG(c->uart + 5) & 0x20u)) break;
+        if (!n) return;
+        WRITE_REGISTER_ULONG(c->uart, (ULONG)(UCHAR)*message++);
+    }
+}
+#else
+#define trace(c, message) ((void)0)
+#endif
 
 static uint16_t rd(void *context, unsigned offset)
 { GAUGE_CONTEXT *c = context; return READ_REGISTER_USHORT((volatile USHORT *)(c->i2c + offset)); }
@@ -55,10 +78,11 @@ static void poll(GAUGE_CONTEXT *c)
     BOOLEAN changed;
     if (!c->online) return;
     if (a04_gauge_read_sample(&c->bus, &sample)) {
+        trace(c, "A04BAT SAMPLE FAILED\n");
         changed = a04_battery_invalidate(&c->battery);
         c->faulted = TRUE;
         c->online = FALSE; /* No reset/retry of shared I2C2 after failure. */
-    } else changed = a04_battery_publish(&c->battery, &sample);
+    } else { trace(c, "A04BAT SAMPLE VALID\n"); changed = a04_battery_publish(&c->battery, &sample); }
     if (changed) notify(c);
 }
 NTSTATUS GaugePrepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translated)
@@ -78,6 +102,11 @@ NTSTATUS GaugePrepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translate
     if (found != 1) return STATUS_DEVICE_CONFIGURATION_ERROR;
     c->i2c = MmMapIoSpace(address, I2C2_SIZE, MmNonCached);
     if (!c->i2c) return STATUS_INSUFFICIENT_RESOURCES;
+#if A04_LC709203F_TRACE
+    { PHYSICAL_ADDRESS uart; uart.QuadPart = 0x11005000u;
+      c->uart = MmMapIoSpace(uart, 0x1000u, MmNonCached); }
+#endif
+    trace(c, "A04BAT PREPARE\n");
     return STATUS_SUCCESS;
 }
 NTSTATUS GaugeRelease(WDFDEVICE device, WDFCMRESLIST translated)
@@ -85,6 +114,9 @@ NTSTATUS GaugeRelease(WDFDEVICE device, WDFCMRESLIST translated)
     GAUGE_CONTEXT *c = GaugeContext(device);
     UNREFERENCED_PARAMETER(translated);
     if (c->i2c) { MmUnmapIoSpace((PVOID)c->i2c, I2C2_SIZE); c->i2c = NULL; }
+#if A04_LC709203F_TRACE
+    if (c->uart) { MmUnmapIoSpace((PVOID)c->uart, 0x1000u); c->uart = NULL; }
+#endif
     return STATUS_SUCCESS;
 }
 NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
@@ -92,12 +124,16 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     GAUGE_CONTEXT *c = GaugeContext(device);
     UNREFERENCED_PARAMETER(previous);
     if (!c->i2c || c->faulted) return STATUS_DEVICE_NOT_READY;
+    trace(c, "A04BAT D0 ENTRY\n");
     c->io.context = c; c->io.read16 = rd; c->io.write16 = wr; c->io.delay_us = delay;
     c->adapter.io = &c->io; c->adapter.monotonic_ns = now_ns; c->adapter.faulted = 0;
     c->bus.context = &c->adapter; c->bus.read_word_pec = a04_gauge_mt8167_read;
     /* Only accept pre-initialized, idle polling-mode controller state. */
     if ((rd(c, 0x24) & 1u) || !rd(c, 0x20) || (rd(c, 0x48) & 1u) ||
-        rd(c, 0x40) != 3u || rd(c, 0x60) != 0u) return STATUS_DEVICE_NOT_READY;
+        rd(c, 0x40) != 3u || rd(c, 0x60) != 0u) {
+        trace(c, "A04BAT I2C NOT READY\n"); return STATUS_DEVICE_NOT_READY;
+    }
+    trace(c, "A04BAT I2C READY\n");
     c->online = TRUE;
     poll(c);
     if (!c->online) return STATUS_DEVICE_HARDWARE_ERROR;
@@ -139,6 +175,7 @@ NTSTATUS GaugeClassInit(WDFDEVICE device)
     WdfWaitLockAcquire(c->class_lock, NULL);
     status = BatteryClassInitializeDevice((PBATTERY_MINIPORT_INFO)&info, &c->class_handle);
     WdfWaitLockRelease(c->class_lock);
+    trace(c, NT_SUCCESS(status) ? "A04BAT CLASS STARTED\n" : "A04BAT CLASS FAILED\n");
     return status;
 }
 VOID GaugeClassCleanup(WDFDEVICE device)
