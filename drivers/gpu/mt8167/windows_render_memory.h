@@ -79,6 +79,14 @@ NTSTATUS a04_windows_render_stage_fragment_pds(struct a04_windows_render_memory 
 NTSTATUS a04_windows_render_stage_context_pt(struct a04_windows_render_memory *m,
     uint64_t state_gpu,uint64_t store_data_gpu,uint64_t store_code_gpu,
     uint64_t resume_data_gpu,uint64_t resume_code_gpu);
+/* Stage one shared-register store/load PDS pair. The caller must independently
+ * establish shader provenance, prevent overlapping future staging, and keep
+ * all state and shader mappings alive. This does not authorize GPU work. */
+NTSTATUS a04_windows_render_stage_context_sr(struct a04_windows_render_memory *m,
+    uint64_t state_gpu,uint64_t store_shader_gpu,uint64_t load_shader_gpu,
+    uint64_t store_control,uint64_t load_control,
+    uint64_t store_data_gpu,uint64_t store_code_gpu,
+    uint64_t load_data_gpu,uint64_t load_code_gpu);
 /* gpu_dma_quiesced is an independently established GPU/DMA stop, not a
  * fence alone. A false value retains memory even if the processor is stopped. */
 NTSTATUS a04_windows_render_memory_free(struct a04_windows_render_memory *m, BOOLEAN gpu_dma_quiesced);

@@ -387,6 +387,54 @@ NTSTATUS a04_windows_render_stage_context_pt(struct a04_windows_render_memory *m
     for (i=0;i<4;++i) for(j=0;j<32;++j) ((uint8_t *)m->cpu)[off[i]+j]=src[i][j];
     return STATUS_SUCCESS;
 }
+NTSTATUS a04_windows_render_stage_context_sr(struct a04_windows_render_memory *m,
+    uint64_t state,uint64_t store_shader,uint64_t load_shader,uint64_t store_ctl,uint64_t load_ctl,
+    uint64_t store_data,uint64_t store_code,uint64_t load_data,uint64_t load_code)
+{
+    uint64_t addr[4]={store_data,store_code,load_data,load_code},length[4]={64,16,64,16},off[4];
+    uint64_t sh[2]={store_shader,load_shader},shsize[2]={544,488},dma;size_t i,j,k;
+    struct a04_render_owned_range ranges[A04_RENDER_MAX_MAPS];struct a04_render_context_pds_code code;
+    uint8_t sd[64],ld[64];const uint8_t *src[4];
+    if (!m || !m->ready || !m->cpu || !m->adapter || !m->firmware || m->published || m->poisoned ||
+        !m->map_count || m->map_count>A04_RENDER_MAX_MAPS || (state>>32)!=UINT64_C(0xda) ||
+        (state&15u) || KeGetCurrentIrql()!=PASSIVE_LEVEL || !render_ptes_valid(m)) return STATUS_INVALID_PARAMETER;
+    dma=(uint64_t)m->logical.QuadPart;
+    for(i=0;i<m->map_count;++i) {
+        const struct a04_windows_render_map *r=&m->maps[i];
+        ranges[i].gpu_va=r->gpu_va;ranges[i].dma=dma+A04_RENDER_PAYLOAD_OFFSET+(uint64_t)r->payload_page*PAGE;
+        ranges[i].size=(uint64_t)r->pages*PAGE;
+        ranges[i].access=A04_RENDER_RANGE_READ;
+        if (!(r->mmu_flags&(A04_GPU_MMU_READ_ONLY|A04_GPU_MMU_PM_FW_PROTECT))) ranges[i].access|=A04_RENDER_RANGE_WRITE;
+        if ((r->mmu_flags&A04_GPU_MMU_READ_ONLY) && !(r->mmu_flags&A04_GPU_MMU_PM_FW_PROTECT) && (r->gpu_va>>32)==UINT64_C(0xe0)) ranges[i].access|=A04_RENDER_RANGE_EXEC;
+    }
+    for(i=0;i<2;++i) {
+        unsigned matches=0;
+        for(j=0;j<m->map_count;++j) if ((ranges[j].access&5u)==5u && sh[i]>=ranges[j].gpu_va &&
+            ranges[j].size>=shsize[i] && sh[i]-ranges[j].gpu_va<=ranges[j].size-shsize[i]) ++matches;
+        if (matches!=1 || (sh[i]&3u) || (sh[i]>>32)!=UINT64_C(0xe0)) return STATUS_INVALID_PARAMETER;
+    }
+    if (overlap(sh[0],shsize[0],sh[1],shsize[1]) ||
+        a04_render_make_context_sr_data(state,sh[0],store_ctl,ranges,m->map_count,sd) ||
+        a04_render_make_context_sr_data(state,sh[1],load_ctl,ranges,m->map_count,ld) ||
+        a04_render_make_context_pds_code(&code)) return STATUS_INVALID_PARAMETER;
+    for(i=0;i<4;++i) {
+        unsigned matches=0;
+        if ((addr[i]>>32)!=UINT64_C(0xda) || (addr[i]&15u) || overlap(addr[i],length[i],state,16432)) return STATUS_INVALID_PARAMETER;
+        for(j=0;j<i;++j) if(overlap(addr[i],length[i],addr[j],length[j])) return STATUS_INVALID_PARAMETER;
+        for(j=0;j<m->map_count;++j) {
+            const struct a04_windows_render_map *r=&m->maps[j];uint64_t n=(uint64_t)r->pages*PAGE;
+            if ((r->mmu_flags&A04_GPU_MMU_READ_ONLY) && !(r->mmu_flags&A04_GPU_MMU_PM_FW_PROTECT) &&
+                addr[i]>=r->gpu_va && length[i]<=n && addr[i]-r->gpu_va<=n-length[i]) {
+                off[i]=A04_RENDER_PAYLOAD_OFFSET+(uint64_t)r->payload_page*PAGE+addr[i]-r->gpu_va;++matches;
+            }
+        }
+        if (matches!=1 || off[i]>m->length || length[i]>m->length-off[i]) return STATUS_INVALID_PARAMETER;
+        for(k=0;k<length[i];++k) if (((const uint8_t *)m->cpu)[off[i]+k]) return STATUS_INVALID_DEVICE_STATE;
+    }
+    src[0]=sd;src[1]=code.sr;src[2]=ld;src[3]=code.sr;
+    for(i=0;i<4;++i) for(j=0;j<length[i];++j) ((uint8_t *)m->cpu)[off[i]+j]=src[i][j];
+    return STATUS_SUCCESS;
+}
 static NTSTATUS render_memory_publish(struct a04_windows_render_memory *m,BOOLEAN context_synced)
 {
     NTSTATUS status;size_t off;struct rogue_fwif_fwmemcontext *vm;

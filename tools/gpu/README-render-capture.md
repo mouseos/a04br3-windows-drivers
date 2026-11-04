@@ -183,3 +183,5 @@ context switchのpersistent PDSは `pvr_pds_generate_stream_out_terminate_progra
 `check-context-usc-ir.py --source MESA_SOURCE --build MESA_BUILD` は固定Mesaコンパイラを非公開の一時ディレクトリで再実行し、通常ビルドと対象USC配列の一致を確認した後、最適化後NIRの定数とメモリ操作を検査する。store／loadのアドレスはPDSが設定するvertex inputから、storeのサイズはISA上の特殊レジスタ番号103 `sh_alloc_size`、loadのサイズはGPUがstate先頭に書いた値から来る。NIR上の定数はregister index、ループ幅、アドレス増分、減算値に限定される。ただしNIRと機械語の完全な意味対応、機械語の全即値、実機での特殊レジスタの値域と粒度を証明しない。非公開の生IRは保存・出力しない。実機操作は行っていない。
 
 `a04_render_check_saved_shared_size` は、完了fenceとCPU同期が呼出し側で既に確立した後に、shared state先頭４バイトをlittle-endianで読み、元のMesa store／load両ループが割当内で終了する条件（０、64、128、192、256）を検査するオフライン部品である。成功時にDWORD数とバイト数を返し、失敗時は出力を変更しない。これは保存値の事後観測にすぎず、その前に発生したGPUアクセスを防がず、特殊レジスタの値域やfence・キャッシュ同期を証明しない。fixtureやkickの許可条件には接続していない。Mesa由来のfirmware文字列にはTA contextのshared alloc sizeを記録する形式があるが、今回参照した既存資料から有効な実機値は得られていない。
+
+`a04_windows_render_stage_context_sr` は、公開前の所有DMAにshared store／load用PDS定数と命令を配置する。16432バイトの書込み可能state、store 544バイト・load 488バイトの読み取り専用USC範囲、４出力範囲の所有・重複・実PTEを検査し、出力先がすべてゼロの場合だけ書込む。USCの内容・由来と他の後続配置との重複は呼出し側の責任であり、USCコピー、contextレジスタ、fixture、kickには接続していない。これは部分配置のホスト検証で、GPU実行や `sh_alloc_size` の実測を証明しない。
