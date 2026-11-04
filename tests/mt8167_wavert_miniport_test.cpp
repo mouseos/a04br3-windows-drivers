@@ -13,12 +13,12 @@ struct Port : IPortWaveRTStream {
  void FreePagesFromMdl(PMDL) override{freed++;}
  ULONG AddRef() override{return ++refs;} ULONG Release() override{return --refs;}
 };
-struct Back { int refs, frees, starts, stops; bool fail; MDL mdl; };
+struct Back { int refs, frees, starts, stops; bool fail, uncertain; MDL mdl; };
 static void ref(void *c){((Back*)c)->refs++;}
 static void deref(void *c){((Back*)c)->refs--;}
 static NTSTATUS allocate(void *c,ULONG,PMDL *m,PULONG n,PULONG o,MEMORY_CACHING_TYPE *cache){Back*b=(Back*)c;*m=&b->mdl;*n=8192;*o=0;*cache=MmNonCached;return STATUS_SUCCESS;}
 static void releasebuf(void *c,PMDL,ULONG){((Back*)c)->frees++;}
-static NTSTATUS start(void *c){Back*b=(Back*)c;b->starts++;return b->fail?STATUS_DEVICE_NOT_READY:STATUS_SUCCESS;}
+static NTSTATUS start(void *c,BOOLEAN *exposed){Back*b=(Back*)c;b->starts++;if(b->fail && !b->uncertain)*exposed=FALSE;return b->fail?STATUS_DEVICE_NOT_READY:STATUS_SUCCESS;}
 static NTSTATUS stop(void *c){Back*b=(Back*)c;b->stops++;return b->fail?STATUS_DEVICE_NOT_READY:STATUS_SUCCESS;}
 static NTSTATUS device(void *,PDEVICE_DESCRIPTION d){return d?STATUS_SUCCESS:STATUS_INVALID_PARAMETER;}
 static NTSTATUS pos(void *,PKSAUDIO_POSITION p){p->PlayOffset=4;p->WriteOffset=4;return STATUS_SUCCESS;}
@@ -46,9 +46,13 @@ int main(){
  Back b2{};b2.fail=true;backend.context=&b2;assert(!Mt8167NewMiniportWithBackend(&m,&backend));
  assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat));assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
  assert(st->SetState(KSSTATE_RUN)==STATUS_DEVICE_NOT_READY);st->FreeAudioBuffer(mdl,actual);st->Release();m->Release();
- assert(b2.refs==1 && !b2.frees);
+ assert(!b2.refs && b2.frees==1);
  Back b3{};backend.context=&b3;assert(!Mt8167NewMiniportWithBackend(&m,&backend));
  assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat));assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
  assert(!st->SetState(KSSTATE_RUN));b3.fail=true;assert(st->SetState(KSSTATE_STOP)==STATUS_DEVICE_NOT_READY);
  st->Release();m->Release();assert(b3.stops==1 && b3.refs==1 && !b3.frees);
+ Back b4{};b4.fail=true;b4.uncertain=true;backend.context=&b4;assert(!Mt8167NewMiniportWithBackend(&m,&backend));
+ assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat));assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
+ assert(st->SetState(KSSTATE_RUN)==STATUS_DEVICE_NOT_READY);st->FreeAudioBuffer(mdl,actual);st->Release();m->Release();
+ assert(b4.refs==1 && !b4.frees);
 }

@@ -75,7 +75,11 @@ static void OwnerFree(void *ctx,PMDL mdl,ULONG bytes)
     ExReleaseFastMutex(&o->mutex);
 }
 /* The owner has no proven PWRAP/clock/IRQ ownership or DMA drain path. */
-static NTSTATUS OwnerStart(void *) { return STATUS_DEVICE_NOT_READY; }
+static NTSTATUS OwnerStart(void *,BOOLEAN *possiblyExposed) {
+    if (!possiblyExposed) return STATUS_INVALID_PARAMETER;
+    /* This diagnostic owner cannot write AFE or publish a DMA address. */
+    *possiblyExposed=FALSE;return STATUS_DEVICE_NOT_READY;
+}
 static NTSTATUS OwnerStop(void *) { return STATUS_DEVICE_NOT_READY; }
 static NTSTATUS OwnerPosition(void *,PKSAUDIO_POSITION) { return STATUS_DEVICE_NOT_READY; }
 static NTSTATUS OwnerDescription(void *,PDEVICE_DESCRIPTION) { return STATUS_DEVICE_NOT_READY; }

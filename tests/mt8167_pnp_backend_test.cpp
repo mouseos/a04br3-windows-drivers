@@ -71,7 +71,7 @@ int main(){
  const Mt8167StreamBackend *api=Mt8167PnpBackendInterface(owner);api->reference(api->context);
  PMDL mdl=nullptr;ULONG n=0,offset=9;MEMORY_CACHING_TYPE cache;
  assert(!api->allocate(api->context,8192,&mdl,&n,&offset,&cache) && mdl && n==8192 && !offset);
- assert(api->start(api->context)==STATUS_DEVICE_NOT_READY);
+ BOOLEAN exposure=TRUE;assert(api->start(api->context,&exposure)==STATUS_DEVICE_NOT_READY && !exposure);
  Mt8167PnpBackendRevoke(owner);assert(Mt8167PnpBackendAttachShared(owner,&shared)==STATUS_DEVICE_NOT_READY);assert(Mt8167PnpBackendInterrupt(owner,&irq)==STATUS_DEVICE_NOT_READY);Mt8167PnpBackendRelease(owner);
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
  assert(maps==2 && unmaps==1);

@@ -94,9 +94,11 @@ The miniport now accepts an optional internal `Mt8167StreamBackend` supplied by
 an owning PnP provider. It forwards allocation, format-independent start/stop,
 position and device-description requests and retains a backend reference for
 stream lifetime. The current adapter never supplies one. In its absence the
-diagnostic stream still refuses RUN. After any attempted start, the stream
-intentionally retains the backend reference and does not release its buffer,
-even if stop succeeds: the platform has no proven DMA drain procedure. A failed
+diagnostic stream still refuses RUN. Once a start may have exposed DMA, the
+stream intentionally retains the backend reference and buffer even if stop
+succeeds: the platform has no proven DMA drain procedure. The backend can
+explicitly report a failure before any possible exposure, allowing release.
+An ambiguous failure remains quarantined. A failed
 stop is not retried. This is a quarantine/leak, not a finished PnP removal or
 power-management solution. A future provider must enforce serialization,
 resource ownership and stop/failure recovery; the interface itself does not

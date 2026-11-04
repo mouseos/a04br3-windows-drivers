@@ -45,7 +45,7 @@ public:
         if (useBackend) {
             if (InterlockedExchange(&started,0)) (void)backend.stop(backend.context);
             /* No drain proof exists. Retain the backend reference and buffer
-             * after any attempted start, including an ambiguous failure. */
+             * after any start or failure that may have exposed DMA. */
             if (!everStarted) {
                 if (backendMdl) backend.freeBuffer(backend.context,backendMdl,backendBytes);
                 backend.dereference(backend.context);
@@ -65,8 +65,10 @@ public:
     STDMETHODIMP_(NTSTATUS) SetState(KSSTATE s) override {
         if (s==KSSTATE_RUN) {
             if (!useBackend || !backendMdl || InterlockedCompareExchange(&started,0,0) || everStarted) return STATUS_DEVICE_NOT_READY;
-            everStarted=true;
-            NTSTATUS result=backend.start(backend.context); if (NT_SUCCESS(result)) InterlockedExchange(&started,1);
+            BOOLEAN possiblyExposed=TRUE;
+            NTSTATUS result=backend.start(backend.context,&possiblyExposed);
+            everStarted=NT_SUCCESS(result) || possiblyExposed;
+            if (NT_SUCCESS(result)) InterlockedExchange(&started,1);
             return result;
         }
         if (s!=KSSTATE_STOP && s!=KSSTATE_ACQUIRE && s!=KSSTATE_PAUSE) return STATUS_INVALID_PARAMETER;

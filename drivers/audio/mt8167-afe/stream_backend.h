@@ -15,7 +15,10 @@ struct Mt8167StreamBackend {
     void (*dereference)(void *);
     NTSTATUS (*allocate)(void *, ULONG, PMDL *, PULONG, PULONG, MEMORY_CACHING_TYPE *);
     void (*freeBuffer)(void *, PMDL, ULONG);
-    NTSTATUS (*start)(void *);
+    /* On entry *possiblyExposed is TRUE. Set FALSE only when failure is
+     * known to precede every DMA-address publication and hardware start;
+     * success or uncertain failure must leave it TRUE. */
+    NTSTATUS (*start)(void *,BOOLEAN *possiblyExposed);
     NTSTATUS (*stop)(void *);
     NTSTATUS (*position)(void *, PKSAUDIO_POSITION);
     NTSTATUS (*getDeviceDescription)(void *, PDEVICE_DESCRIPTION);
