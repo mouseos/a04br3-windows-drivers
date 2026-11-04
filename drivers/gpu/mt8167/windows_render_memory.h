@@ -4,6 +4,7 @@
 #include "windows_firmware.h"
 #include "firmware_objects.h"
 #include "render_context.h"
+#include "render_target.h"
 #if A04_GE8300_RENDER_EXPERIMENT
 /* A private DMA allocation and its GPU page tables. No command bytes are
  * accepted here. Call at PASSIVE_LEVEL; the caller serializes firmware access. */
@@ -13,6 +14,10 @@ struct a04_windows_render_map {
     uint64_t gpu_va;
     uint32_t payload_page, pages, group;
     uint64_t mmu_flags;
+};
+struct a04_windows_render_freelist_layout {
+    uint64_t table_gpu;
+    uint32_t first_payload_page,page_count,id;
 };
 struct a04_windows_render_memory {
     struct a04_gpu_firmware_state *firmware;
@@ -26,6 +31,12 @@ struct a04_windows_render_memory {
     struct a04_gpu_fw_object vm;
     struct a04_gpu_render_context render;
     BOOLEAN render_prepared;
+    struct a04_gpu_fw_object freelists[2];
+    struct a04_windows_render_freelist_layout freelist_layout[2];
+    BOOLEAN freelists_prepared;
+    struct a04_gpu_render_target target;
+    struct a04_render_hwrt_params target_params;
+    BOOLEAN target_prepared;
 };
 NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
     struct a04_gpu_firmware_state *s,ULONG payload_pages,
@@ -40,6 +51,15 @@ NTSTATUS a04_windows_render_memory_bind_vm(struct a04_windows_render_memory *m);
 NTSTATUS a04_windows_render_prepare_context(struct a04_windows_render_memory *m,
     uint32_t context_id,uint64_t callstack_gpu,unsigned isp_store_count,
     const struct rogue_fwif_geom_registers_caswitch *static_state);
+/* Two non-growing PM lists backed solely by disjoint, unmapped payload pages.
+ * Layout and minimum sizes are diagnostic inputs, not hardware validation.
+ * Publishing these lists is refused until PM/FW-protected PTEs are supported. */
+NTSTATUS a04_windows_render_prepare_freelists(struct a04_windows_render_memory *m,
+    const struct a04_windows_render_freelist_layout layouts[2]);
+/* Prepare the fixed 64x64 SIPF1 target from disjoint owned writable ranges.
+ * The small non-growing PM lists remain experimental and unverified on GPU. */
+NTSTATUS a04_windows_render_prepare_target(struct a04_windows_render_memory *m,
+    const struct a04_render_hwrt_params *params);
 /* Synchronize render objects and publish the VM; never submits a kick. */
 NTSTATUS a04_windows_render_publish_context(struct a04_windows_render_memory *m);
 /* Clean all pages and the bound firmware VM object, then wait for MMU

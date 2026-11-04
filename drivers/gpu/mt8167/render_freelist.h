@@ -12,4 +12,9 @@
 int a04_gpu_init_render_freelist(uint32_t *table,size_t table_entries,
     uint64_t table_gpu_address,const uint64_t *page_dma,size_t page_count,
     uint32_t freelist_id,struct rogue_fwif_freelist *firmware);
+/* As above, but PM pages are contiguous adapter DMA addresses. The caller
+ * independently proves exclusive ownership and non-overlap with mappings. */
+int a04_gpu_init_render_freelist_contiguous(uint32_t *table,size_t table_entries,
+    uint64_t table_gpu_address,uint64_t first_dma,size_t page_count,
+    uint32_t freelist_id,struct rogue_fwif_freelist *firmware);
 #endif
