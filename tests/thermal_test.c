@@ -16,6 +16,7 @@ int main(void) {
  e.words[0]=(260u<<17)|(260u<<8)|(40u<<1)|1; e.words[1]=(512u<<22)|(512u<<12)|4; e.words[2]=260u<<23;
  e.raw[0]=e.raw[1]=e.raw[2]=3610; e.timestamp=1000;
  assert(!a04_thermal_start(&m,&o,&p)); assert(e.reads==3); assert(!a04_thermal_convert(&m.cal,0,3610,&temp)); assert(temp==20000);
+ { uint16_t threshold=0; assert(!a04_thermal_threshold(&m.cal,20000,&threshold)); assert(threshold>=3608 && threshold<=3612); assert(a04_thermal_threshold(&m.cal,160000,&threshold)); }
  assert(!a04_thermal_poll(&m,&o,1000,&s)); assert(e.action==A04_TEMP_NORMAL && s.hottest_mc==20000);
  old=s; e.timestamp=1000; assert(a04_thermal_poll(&m,&o,1501,&s)); assert(e.action==A04_TEMP_HALT && !m.ready && !memcmp(&s,&old,sizeof s));
  assert(!a04_thermal_start(&m,&o,&p)); e.fail_sample=1; assert(a04_thermal_poll(&m,&o,1000,&s)); assert(e.action==A04_TEMP_HALT); e.fail_sample=0;

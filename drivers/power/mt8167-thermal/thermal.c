@@ -23,6 +23,22 @@ int a04_thermal_calibrate(struct a04_thermal_cal *out, a04_devinfo_read read, vo
     *out=c; return 0;
 }
 
+int a04_thermal_threshold(const struct a04_thermal_cal *c, int32_t mc, uint16_t *out)
+{
+    int64_t f, v; int32_t best=0; unsigned i;
+    if (!c || !out || mc<5000 || mc>150000 || c->gain<=0 || c->gain>20000 ||
+        c->degc<0 || c->degc>63 || c->slope < -63 || c->slope>63 ||
+        c->offset < -512 || c->offset>511) return -1;
+    f=-((int64_t)(mc-c->degc*500)*(165+c->slope)*18/15);
+    for(i=0;i<3;i++) {
+        if(c->room[i]<0 || c->room[i]>20000) return -1;
+        v=((f/1000+(int64_t)c->room[i]*10)*4096/10000*c->gain)/100000+c->offset;
+        if(v<1 || v>4095) return -1;
+        if(v>best) best=(int32_t)v;
+    }
+    *out=(uint16_t)best; return 0;
+}
+
 int a04_thermal_convert(const struct a04_thermal_cal *c, unsigned sensor, uint16_t raw, int32_t *out)
 {
     int32_t diff, stage, temp;

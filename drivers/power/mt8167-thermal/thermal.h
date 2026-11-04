@@ -8,6 +8,7 @@ struct a04_thermal_cal { int32_t gain, offset, room[3], degc, slope; };
 struct a04_thermal_sample { int32_t mc[3], hottest_mc; uint64_t time_ms; };
 typedef int (*a04_devinfo_read)(void *, unsigned, uint32_t *);
 int a04_thermal_calibrate(struct a04_thermal_cal *, a04_devinfo_read, void *);
+int a04_thermal_threshold(const struct a04_thermal_cal *, int32_t, uint16_t *);
 int a04_thermal_convert(const struct a04_thermal_cal *, unsigned, uint16_t, int32_t *);
 int a04_thermal_sample(const struct a04_thermal_cal *, const uint32_t[3], uint64_t,
                        int, struct a04_thermal_sample *);

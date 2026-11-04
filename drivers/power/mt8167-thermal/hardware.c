@@ -37,3 +37,17 @@ int a04_thermal_hw_init(const struct a04_thermal_hw *h)
  RD(T+0x03c,v); WR(T+0x03c,v&~0x10eu);
  return 0;
 }
+
+/* Program the vendor's candidate SPM hot threshold only after initialization;
+ * the platform must independently validate SPM routing and watchdog ownership. */
+int a04_thermal_hw_protect(const struct a04_thermal_hw *h, const struct a04_thermal_cal *cal, int32_t hot_mc)
+{
+ uint16_t hot, cold; uint32_t interrupt;
+ if(!h || !h->qualified || !h->initialized || !h->read32 || !h->write32 ||
+    !h->qualified(h->ctx) || !h->initialized(h->ctx) ||
+    a04_thermal_threshold(cal,hot_mc,&hot) || a04_thermal_threshold(cal,5000,&cold)) return -1;
+ RD(T+0x00c,interrupt);
+ WR(T+0x00c,0); WR(T+0x0c0,0x20000); WR(T+0x0c4,cold); WR(T+0x0cc,hot);
+ WR(T+0x00c,interrupt|0x80000000u);
+ return 0;
+}
