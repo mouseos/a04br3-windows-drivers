@@ -116,3 +116,9 @@ it is released. This is a software rundown guarantee only: the prototype still
 has no mechanism that prevents the physical device disappearing while MMIO is
 already in progress, nor proof of retained rail or clock power. D0 remains
 unconditionally refused and a stop must never be interpreted as power control.
+
+The experimental query interface now includes a Wi-Fi ownership ABI. Its
+Acquire and ReleaseQuiescent callbacks always reject, and the parent still
+rejects D0. No MSDC2 child is created and existing ACPI Wi-Fi is not a child
+of this parent. The offline Wi-Fi query probe has no INF, does not acquire
+ownership or access hardware, and cannot be used to test the radio.

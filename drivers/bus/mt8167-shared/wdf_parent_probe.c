@@ -11,6 +11,7 @@
 #include "register_owner.h"
 #include "client_interface.h"
 #include "audio_interface.h"
+#include "wifi_interface.h"
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
@@ -84,6 +85,9 @@ static int ParentButtonRead(PVOID context,USHORT *value)
 }
 /* No evidence for codec power/mute and clock ownership exists. These
  * callbacks never touch MMIO and cannot grant an audio lease. */
+/* No combo/firmware ownership or IRQ lifetime has been proven. */
+static NTSTATUS ParentWifiAcquire(PVOID context,ULONG *generation) { UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(generation);return STATUS_DEVICE_NOT_READY; }
+static NTSTATUS ParentWifiRelease(PVOID context,ULONG generation) { UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(generation);return STATUS_DEVICE_NOT_READY; }
 static int ParentAudioAcquire(PVOID context,ULONG rate) { UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(rate);return -1; }
 static int ParentAudioRelease(PVOID context) { UNREFERENCED_PARAMETER(context);return -1; }
 static VOID ParentInterfaceReference(PVOID context) { WdfObjectReference((WDFDEVICE)context); }
@@ -229,6 +233,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     A04_LEGACY_SHARED_INTERFACE iface;WDF_QUERY_INTERFACE_CONFIG query;
     A04_SHARED_INTERFACE inputIface;
     A04_SHARED_AUDIO_INTERFACE audioIface;
+    A04_SHARED_WIFI_INTERFACE wifiIface;
 #endif
     UNREFERENCED_PARAMETER(driver);
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
@@ -270,6 +275,14 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     audioIface.Header.InterfaceDereference=ParentInterfaceDereference;
     audioIface.AcquireMuted=ParentAudioAcquire;audioIface.ReleaseQuiescent=ParentAudioRelease;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&audioIface,&A04SharedAudioInterfaceGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);
+    if(!NT_SUCCESS(status))return status;
+    RtlZeroMemory(&wifiIface,sizeof(wifiIface));
+    wifiIface.Header.Size=sizeof(wifiIface);wifiIface.Header.Version=A04_SHARED_WIFI_INTERFACE_VERSION;
+    wifiIface.Header.Context=dev;wifiIface.Header.InterfaceReference=ParentInterfaceReference;
+    wifiIface.Header.InterfaceDereference=ParentInterfaceDereference;
+    wifiIface.Acquire=ParentWifiAcquire;wifiIface.ReleaseQuiescent=ParentWifiRelease;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&wifiIface,&A04SharedWifiInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
 #endif
 #if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE

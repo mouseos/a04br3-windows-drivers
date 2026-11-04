@@ -599,6 +599,7 @@ test-mt6630: build/mt6630_identity_test build/mt6630_sdio_args_test build/mt6630
 	./build/mt6630_nvram_test
 	./build/mt6630_wlan_firmware_test
 	./build/mt6630_lifetime_test
+	./build/mt6630_parent_query_test
 
 test: test-mt6630
 
@@ -645,3 +646,9 @@ build/mt6630_lifetime_test: drivers/network/mt6630/lifetime.c drivers/network/mt
 	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/lifetime.c drivers/network/mt6630/identity.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c tests/mt6630_lifetime_test.c -o $@
 
 test-mt6630: build/mt6630_lifetime_test
+
+build/mt6630_parent_query_test: tests/mt6630_parent_query_test.c tests/shared_wdf_stubs/ntddk.h tests/shared_wdf_stubs/wdf.h drivers/network/mt6630/wdf_wifi_parent_probe.c drivers/bus/mt8167-shared/wifi_interface.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Itests/shared_wdf_stubs tests/mt6630_parent_query_test.c -o $@
+
+test-mt6630: build/mt6630_parent_query_test

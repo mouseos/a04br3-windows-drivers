@@ -84,3 +84,7 @@ Windowsの領域探索・読取providerは未実装で、実端末の校正値�
 順に呼ぶ。失敗後に同じ後始末を自動再実行しない。呼出元は排出対象が同じ
 直列化ロックを待たないように設計する必要がある。これはWindowsのD0・IRQ
 ハンドラや実brokerへの接続ではなく、無線firmwareやNDISの準備完了も示さない。
+
+`wdf_wifi_parent_probe.c` は共有親のWi-Fi interfaceを問い合わせて型を確認する
+オフライン試作で、取得・MMIO・IRQ登録・NDISを行わずPrepareHardwareを失敗させる。
+共有親もリースを常時拒否し、現在のACPIに親子接続はない。実機試験用SYSではない。
