@@ -76,6 +76,7 @@ struct a04_owned_dma {
     PVOID buffer;
     PHYSICAL_ADDRESS logical;
     ULONG length;
+    EX_RUNDOWN_REF workers;
 };
 #endif
 struct a04_probe_extension {
@@ -133,7 +134,8 @@ static int A04OwnedDmaAllocate(PVOID extension, struct a04_probe_extension *prob
         return 0;
     owner=ExAllocatePoolWithTag(NonPagedPool,sizeof(*owner),'d4aA');
     if (!owner)return 0;
-    RtlZeroMemory(owner,sizeof(*owner));owner->pdo=(PDEVICE_OBJECT)pdo;
+    RtlZeroMemory(owner,sizeof(*owner));ExInitializeRundownProtection(&owner->workers);
+    owner->pdo=(PDEVICE_OBJECT)pdo;
     ObReferenceObject(owner->pdo);
     RtlZeroMemory(&desc,sizeof(desc));desc.Version=DEVICE_DESCRIPTION_VERSION2;
     desc.Master=TRUE;desc.ScatterGather=FALSE;desc.Dma32BitAddresses=TRUE;
@@ -1187,6 +1189,9 @@ static VOID A04IsolatedWorker(PVOID extension, PVOID context, PVOID worker)
     STOR_LOCK_HANDLE lock;
     ULONG i, count;
     BOOLEAN run;
+#ifdef A04_OWNED_DMA_EXPERIMENT
+    struct a04_owned_dma *owner=probe->owned_dma;
+#endif
     UNREFERENCED_PARAMETER(context);
 #ifdef A04_ISOLATED_RESET_TEST
     {
@@ -1222,6 +1227,9 @@ static VOID A04IsolatedWorker(PVOID extension, PVOID context, PVOID worker)
         probe->failed=TRUE;
         InterlockedExchange(&probe->transfer_poisoned,1);
         StorPortReleaseSpinLock(extension,&lock);
+#ifdef A04_OWNED_DMA_EXPERIMENT
+        ExReleaseRundownProtection(&owner->workers);
+#endif
         return;
     }
     if (original && InterlockedCompareExchange(&probe->cancelled,0,0)) {
@@ -1256,6 +1264,10 @@ static VOID A04IsolatedWorker(PVOID extension, PVOID context, PVOID worker)
         StorPortNotification(RequestComplete,extension,original);
     }
     StorPortReleaseSpinLock(extension,&lock);
+#ifdef A04_OWNED_DMA_EXPERIMENT
+    /* Last use of owner, extension, SRB and Storport APIs by this worker. */
+    ExReleaseRundownProtection(&owner->workers);
+#endif
 }
 
 static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
@@ -1325,6 +1337,16 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         StorPortReleaseSpinLock(extension,&lock);
         return TRUE;
     }
+#ifdef A04_OWNED_DMA_EXPERIMENT
+    /* Acquire before allocating/queuing the worker. The free callback starts
+     * rundown and waits until the worker's final port/extension access. */
+    if (!probe->owned_dma || !ExAcquireRundownProtection(&probe->owned_dma->workers)) {
+        request->SrbStatus=SRB_STATUS_NO_DEVICE;request->DataTransferLength=0;
+        a04_life_leave(&probe->lifetime);a04_msdc_gate_release(&probe->ioBusy);
+        StorPortNotification(RequestComplete,extension,request);
+        StorPortReleaseSpinLock(extension,&lock);return TRUE;
+    }
+#endif
     status=StorPortInitializeWorker(extension,&worker);
     if (status != STOR_STATUS_SUCCESS) {
 #ifdef A04_SERIAL_QUEUE_EXPERIMENT
@@ -1337,6 +1359,9 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         a04_msdc_gate_release(&probe->ioBusy);
         StorPortNotification(RequestComplete,extension,request);
         StorPortReleaseSpinLock(extension,&lock);
+#ifdef A04_OWNED_DMA_EXPERIMENT
+        ExReleaseRundownProtection(&probe->owned_dma->workers);
+#endif
         return TRUE;
     }
     for (i=0;i<sizeof(probe->isolatedRequest);++i) dst[i]=src[i];
@@ -1364,6 +1389,9 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         StorPortNotification(RequestComplete,extension,request);
     }
     StorPortReleaseSpinLock(extension,&lock);
+#ifdef A04_OWNED_DMA_EXPERIMENT
+    if (status != STOR_STATUS_SUCCESS) ExReleaseRundownProtection(&probe->owned_dma->workers);
+#endif
     return TRUE;
 }
 #elif defined(A04_PASSIVE_IO)
@@ -1536,6 +1564,26 @@ static BOOLEAN A04ResetBus(PVOID extension, ULONG path)
     return FALSE;
 }
 
+#ifdef A04_OWNED_DMA_EXPERIMENT
+/* Virtual miniport final callback is PASSIVE_LEVEL. Close first, then wait for
+ * every queued worker to finish its last access before inspecting the SRB or
+ * freeing the owned DMA adapter. A stuck DMA retains the owner deliberately.
+ * Storport's disposition of a still-pending SRB is not established here. */
+static VOID A04FreeAdapterResources(PVOID extension)
+{
+    struct a04_probe_extension *probe=(struct a04_probe_extension *)extension;
+    struct a04_owned_dma *owner=probe->owned_dma;
+    a04_life_close(&probe->lifetime,1);
+    InterlockedExchange(&probe->cancelled,1);
+    if (!owner)return;
+    ExWaitForRundownProtectionRelease(&owner->workers);
+    if (!a04_life_releasable(&probe->lifetime) || probe->pendingRequest || probe->retained_dma_mdl)
+        return; /* intentional quarantine: retain adapter, PDO, buffer and MDL */
+    probe->owned_dma=NULL;probe->dma_buffer=NULL;
+    A04OwnedDmaFree(owner);
+}
+#endif
+
 ULONG DriverEntry(PVOID driver, PVOID registry)
 {
     HW_INITIALIZATION_DATA init = {0};
@@ -1592,6 +1640,9 @@ ULONG DriverEntry(PVOID driver, PVOID registry)
     init.HwAdapterControl = A04AdapterControl;
     init.HwBuildIo = A04BuildIo;
     init.SrbExtensionSize = sizeof(struct a04_request_extension);
+#endif
+#ifdef A04_OWNED_DMA_EXPERIMENT
+    init.HwFreeAdapterResources = A04FreeAdapterResources;
 #endif
     init.HwFindAdapter = A04FindAdapter;
     init.HwInitialize = A04Initialize;

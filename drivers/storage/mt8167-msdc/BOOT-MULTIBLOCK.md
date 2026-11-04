@@ -52,3 +52,11 @@ worker は依然 Storport の extension と callback に依存し、最後の削
 adapter mapping の寿命は実装されていない。起動ゲートを維持し、実機に投入しない。
 `tools/ci/build-msdc-multiread-suite.ps1` の `owned-boot-compile-only` がこの構成を
 別々にビルド・自己署名する。証明書の信頼と署名の存在は別である。
+
+所有 DMA 試作は仮想 miniport の `HwFreeAdapterResources` で worker の rundown を
+開始し、queue 前に取得した rundown 参照が worker の Storport・extension・SRB への
+最後のアクセス後に返るまで PASSIVE_LEVEL で待つ。待機後も DMA 停止、保留 SRB、
+MDL のいずれかが残る場合は adapter・PDO・共通領域を解放しない。これは停止不能な
+ハードウェアのバスマッピングが PnP 削除後も有効であることや、保留 SRB の Storport
+による扱いを保証しない。最終 callback と StartIo/worker の実機上の順序、待機中の
+ロック依存、ARM DMA 同期も未検証で、起動拒否は維持する。
