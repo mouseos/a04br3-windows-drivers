@@ -3,3 +3,4 @@
 *.pdb
 *.sys
 *.cat
+__pycache__/
