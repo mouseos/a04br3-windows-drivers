@@ -42,6 +42,7 @@ test: build/msdc_sync_pio_test build/gpu_render_pds_data_test test-mt8167-dl1-en
 	./build/msdc_io_gate_test
 	./build/msdc_lifetime_test
 	./build/msdc_sync_pio_test
+	./build/msdc_resume_check_test
 	./build/toprgu_watchdog_policy_test
 	./build/toprgu_reset_command_test
 	./build/cdb_test
@@ -141,6 +142,10 @@ build/lc709203f_test: drivers/power/lc709203f/gauge.c drivers/power/lc709203f/ga
 build/lc709203f_i2c_test: drivers/power/lc709203f/mt8167_i2c.c drivers/power/lc709203f/mt8167_i2c.h drivers/bus/mt8167-i2c/pio.h tests/lc709203f_i2c_test.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/power/lc709203f drivers/power/lc709203f/mt8167_i2c.c tests/lc709203f_i2c_test.c -o $@
+
+build/msdc_resume_check_test: $(SRC)/resume_check.c $(SRC)/resume_check.h tests/msdc_resume_check_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -I$(SRC) $(SRC)/resume_check.c tests/msdc_resume_check_test.c -o $@
 
 build/msdc_sync_pio_test: $(SRC)/sync_pio.c $(SRC)/sync_pio.h $(SRC)/pio.h tests/msdc_sync_pio_test.c
 	@mkdir -p build

@@ -434,6 +434,11 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
         extension, config->AdapterInterfaceType, config->SystemIoBusNumber,
         (*config->AccessRanges)[0].RangeStart, 0x1000, FALSE);
     if (!probe->registers) {
+#ifdef A04_SYNC_PIO_MULTIREAD
+        /* The port owns only its own mappings; a direct fallback cannot be
+         * safely tied to PnP teardown or resource reconfiguration. */
+        return SP_RETURN_NOT_FOUND;
+#else
         A04Trace("A04WIN StorPortGetDeviceBase failed; trying diagnostic MmMapIoSpace\n");
         probe->registers = (volatile ULONG *)MmMapIoSpace(
             (*config->AccessRanges)[0].RangeStart, 0x1000, MmNonCached);
@@ -442,6 +447,7 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
             return SP_RETURN_NOT_FOUND;
         }
         A04Trace("A04WIN direct diagnostic mapping succeeded\n");
+#endif
     } else {
         A04Trace("A04WIN resource map succeeded\n");
     }
@@ -456,7 +462,13 @@ static ULONG A04FindAdapter(PVOID extension, PVOID context, PVOID bus,
         ULONG alignment = KeGetRecommendedSharedDataAlignment();
         A04Trace("A04WIN alignment recommended="); A04TraceHex(alignment);
         A04Trace(" initial-mask="); A04TraceHex(config->AlignmentMask); A04Trace("\n");
-        if (!alignment || (alignment & (alignment - 1))) return SP_RETURN_BAD_CONFIG;
+        if (!alignment || (alignment & (alignment - 1))) {
+#ifdef A04_SYNC_PIO_MULTIREAD
+            StorPortFreeDeviceBase(extension,(PVOID)probe->registers);
+            probe->registers=NULL;
+#endif
+            return SP_RETURN_BAD_CONFIG;
+        }
         if (config->AlignmentMask < alignment - 1) config->AlignmentMask = alignment - 1;
     }
 #else
@@ -1414,10 +1426,11 @@ ULONG DriverEntry(PVOID driver, PVOID registry)
     UNICODE_STRING entryMarker = RTL_CONSTANT_STRING(L"DriverEntrySeen");
     UNICODE_STRING statusMarker = RTL_CONSTANT_STRING(L"StorPortStatus");
     ULONG status;
+#ifndef A04_SYNC_PIO_MULTIREAD
     PHYSICAL_ADDRESS uartAddress;
-
     uartAddress.QuadPart = 0x11005000;
     A04Uart = (volatile ULONG *)MmMapIoSpace(uartAddress, 0x1000, MmNonCached);
+#endif
     A04Trace("\nA04WIN DriverEntry entered\n");
 #if defined(A04_READONLY_DISK_PROBE) && defined(A04_EMMC_IDENTITY_HANDOFF)
     {
@@ -1432,7 +1445,7 @@ ULONG DriverEntry(PVOID driver, PVOID registry)
         A04Trace(" valid="); A04TraceHex(A04EmmcIdentityValid ? 1u : 0u); A04Trace("\n");
     }
 #endif
-#ifdef A04_READONLY_DISK_PROBE
+#if defined(A04_READONLY_DISK_PROBE) && !defined(A04_SYNC_PIO_MULTIREAD)
     {
         UNICODE_STRING name = RTL_CONSTANT_STRING(L"KiBugCheckData");
         UNICODE_STRING pcname = RTL_CONSTANT_STRING(L"RtlPcToFileHeader");
