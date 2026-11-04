@@ -8,17 +8,16 @@
     "RENDER_EXPERIMENT=1",
     "RENDER_DIAGNOSTIC=1"
   ],
-  "source_esp_sha256": "ed92f50a7ba5464226e9781be6613135ed02bada702d3eb23300d85b902bd26e",
-  "source_wim_sha256": "a51a478308832713ce877af51a4fecc69acbce40c680bbe08d41e4cc453386d8",
-  "derived_wim_sha256": "24be92f93b311ebe058a71c3f52625b7d8c6d9acf03859e97e480484302a676d",
-  "derived_esp_sha256": "6e793edea6d2e666f2f3660b1097ab9386f8de16f00614af724e70283d69a38f",
+  "source_esp_sha256": "80e78974e86c709f0961d4f80db5dcaeff3dade8bf2ab5c86b7102aad4035871",
+  "source_wim_sha256": "f3808bb5fe590af7e21549312adf2f903dd5e5449b1d357967c270f3ae1a7648",
+  "derived_wim_sha256": "415f8fd07dbbaa8232f3da9ff1da4cec991bc548920cd00e5025cd8235ed1463",
   "boot_index": 1,
   "preserved_files": {
     "/EFI/Boot/bootarm.efi": "5dcf001e5be0bf252d303f0377c4dad67a070aed307b0f6153d1125bf346b397",
     "/EFI/Microsoft/Boot/BCD": "65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d",
     "/Boot/boot.sdi": "cd2c00ce027687ce4a8bdc967f26a8ab82f651c9becd703658ba282ec49702bd"
   },
-  "startnet_sha256": "1dd10ec152ea35ac4ae3699080ed926980db75a5b6768bc1d78fd381e03bfca5",
+  "startnet_sha256": "09a5110afa5923685b7c2f1c49ed98b6cfc96e97553316ff478f75105a85dcf8",
   "package_sha256": {
     "ge8300-mips.fw": "cfe6f58db2ad604b1729349629510c5a3434b266c99ea886d2959887bff4fed8",
     "ge8300-pnp-status.exe": "c2b5a375024913ba2da4fbaf7514e84c5aa78bca735fa20675401c782f9b630f",
@@ -29,19 +28,19 @@
     "mt8167-ge8300.sys": "e36f49aa1580224b6cc249f92272131e6849175608c10eb6dc7c13c66dc42866"
   },
   "candidate_boot_sha256": "2813f8cb42651bb54374bf7b7b1bdd33eaf2198db6afd008c70574f337b190ab",
-  "candidate_boot_status": "existing four-CPU handoff and framebuffer build; watchdog and signature acceptance unproven",
+  "candidate_boot_status": "previously used in full-screen WinPE run; GPU fixed render not tested",
   "limitations": [
     "GPU PBE access and command semantics unverified",
-    "template TOPRGU starts early and UART/watchdog ownership unverified",
-    "no verified restoration boot/ESP pair identified",
-    "host-only; no physical operation",
+    "GPU timeout reset and DMA master cessation unverified",
+    "restoration commands previously succeeded; exact immediate post-restore boot combination not conclusively attributed",
+    "host-built diagnostic derivative; device test not performed",
     "public test certificate inserted offline in Root and TrustedPublisher; Windows RT load policy unverified"
   ],
-  "trusted_wim_sha256": "7185e9e0faea9a54dc1eeeb08c8bc498a33b791a2a77032880e2bcf9f92ab649",
-  "trusted_esp_sha256": "eeed4f060fd06e674770c7d24727dc4ae3171c8ea5d37c38c02e04ffaa5f7188",
+  "trusted_wim_sha256": "96bb2a9135889232e99704b005616ed3c077ace7cb4f530b9a105ab32c4c88c9",
+  "trusted_esp_sha256": "7ea0b09ad1b77201c128371bd68c0765ad1eeeaa35c6a5c11d52c5a70772311a",
   "certificate": {
-    "source_sha256": "24be92f93b311ebe058a71c3f52625b7d8c6d9acf03859e97e480484302a676d",
-    "wim_sha256": "7185e9e0faea9a54dc1eeeb08c8bc498a33b791a2a77032880e2bcf9f92ab649",
+    "source_sha256": "415f8fd07dbbaa8232f3da9ff1da4cec991bc548920cd00e5025cd8235ed1463",
+    "wim_sha256": "96bb2a9135889232e99704b005616ed3c077ace7cb4f530b9a105ab32c4c88c9",
     "serialized_cert_sha256": "a3efab078af1ec6409f208fb92d3149fbf243cd2d33a2590f5264ecec0554ce4",
     "thumbprint_sha1": "A1ECCE0C274189362E44AD66C32FDD2716450D4F",
     "stores": [
@@ -49,5 +48,22 @@
       "TrustedPublisher"
     ],
     "note": "offline trust entries verified; signature acceptance and boot policy unverified"
+  },
+  "previous_trusted_esp_sha256": "eeed4f060fd06e674770c7d24727dc4ae3171c8ea5d37c38c02e04ffaa5f7188",
+  "restore_boot_sha256": "7d03e814b3f156c4a03ef48c48ededd130916c5aa78df118d425f6ef40ea2ee3",
+  "restore_esp_sha256": "c2c1d2bfcf37b8422e9db9429b70fa98ffb7f995a6d24c8a5de3804d9b007176",
+  "successful_full_screen_evidence": {
+    "test_boot_sha256": "2813f8cb42651bb54374bf7b7b1bdd33eaf2198db6afd008c70574f337b190ab",
+    "test_esp_sha256": "80e78974e86c709f0961d4f80db5dcaeff3dade8bf2ab5c86b7102aad4035871",
+    "uart_sha256": "4078132753b808e8013f2c89afb1482d41a5f4cce5c6639407a1d4575373d81f",
+    "screen_pbm_sha256": "9c792a39c30fadbe86c9465c29314c2b5157c4b536700f991cf77cee63d095aa",
+    "inputs_sha256": "25cfd5cf360c3a86c1af7a7c8fdab6d3c513ee6bd785624c9a314a28018c44bc",
+    "observed": "CPU1 ownership and watchdog kicks; full 800x600 screen with per-part and aggregate CRC; no 3D render",
+    "restore": "matching restore input hashes and RESTORE_COMMANDS_SUCCEEDED; no physical readback; immediate restored combination boot not conclusively attributed"
+  },
+  "base_components_sha256": {
+    "SYSTEM": "cc151bf339dd2683b313e95d42179cfe571f6392c7a294b9a98f19a8a83e5214",
+    "mt8167-toprgu.sys": "52a1a1cb0cd66821099a87db9aca5bd82797061ab0e99a047d495d7fe06c2b3e",
+    "uart-screen.exe": "655bfc0fa4ae4369b7aa487a747dbe9b41780b3078bc335261fa9c83e53236d7"
   }
 }
