@@ -133,3 +133,10 @@ ExtSTA OOB付きで同期通知する。現在のHIFはEthernet表示でありMP
 
 Linux構造体比較は `A04BR3_GEN3_SOURCE` に端末gen3ソースのディレクトリを指定して
 行う。指定しない場合は当該一次資料照合テストのみskipする。
+
+`native_oid.c` はPASSIVE_LEVELの直列化されたwork itemから実際の
+`OID_DOT11_SCAN_REQUEST` をSDIO scan処理へ渡す。入力長不足のBytesNeededを返し、
+送信成功後にOIDを完了し、別途firmwareのSCAN_DONEでSCAN_CONFIRMを通知する。
+統合リンク確認では `A04_NDIS_OID_BRIDGE=1` によりMiniportOidRequestへ配線するが、
+MiniportInitializeは従来どおり必ず失敗する。DPC/高IRQLから使うwork itemの生成・
+寿命管理は未実装で、その呼出しは拒否される。他のOIDは未実装。

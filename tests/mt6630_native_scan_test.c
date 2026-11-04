@@ -13,8 +13,8 @@ int main(void)
  p->uIEsOffset=1+sizeof(id);p->uIEsLength=4;b.bytes[base+p->uIEsOffset]=221;b.bytes[base+p->uIEsOffset+1]=2;
  assert(a04_native_scan_parse(b.bytes,base+p->uIEsOffset+4,&out,&needed)==NDIS_STATUS_SUCCESS);
  assert(!needed && out.ssid_length==3 && !memcmp(out.ssid,"abc",3) && out.ie_length==4);
- out.ssid_length=99;assert(a04_native_scan_parse(b.bytes,base+3,&out,&needed)==NDIS_STATUS_INVALID_LENGTH && out.ssid_length==99);
- p->udot11SSIDsOffset=0xfffffff0u;assert(a04_native_scan_parse(b.bytes,sizeof(b),&out,&needed)==NDIS_STATUS_INVALID_LENGTH);
+ out.ssid_length=99;assert(a04_native_scan_parse(b.bytes,base+3,&out,&needed)==NDIS_STATUS_INVALID_LENGTH && out.ssid_length==99 && needed==base+1+sizeof(id));
+ p->udot11SSIDsOffset=0xfffffff0u;assert(a04_native_scan_parse(b.bytes,sizeof(b),&out,&needed)==NDIS_STATUS_INVALID_LENGTH && needed==0xffffffffu);
  p->udot11SSIDsOffset=1;p->uIEsOffset=0xfffffff0u;assert(a04_native_scan_parse(b.bytes,sizeof(b),&out,&needed)==NDIS_STATUS_INVALID_LENGTH);
  p->uIEsOffset=1+sizeof(id);b.bytes[base+p->uIEsOffset+1]=5;assert(a04_native_scan_parse(b.bytes,sizeof(b),&out,&needed)==NDIS_STATUS_INVALID_DATA);
  p->uNumOfdot11SSIDs=2;assert(a04_native_scan_parse(b.bytes,sizeof(b),&out,&needed)==NDIS_STATUS_INVALID_LENGTH);

@@ -2,10 +2,17 @@
  * NDIS integration scaffold only. No adapter or radio can be started. */
 #include <ntddk.h>
 #include <ndis.h>
+#if defined(A04_NDIS_OID_BRIDGE) && A04_NDIS_OID_BRIDGE
+#include "native_oid.h"
+#endif
 static NDIS_HANDLE g_driver;
 /* Future adapter contexts must retain the NDIS miniport handle until all
  * sends are completed. Initialize currently always fails and creates none. */
-struct a04_ndis_context { NDIS_HANDLE adapter; };
+struct a04_ndis_context { NDIS_HANDLE adapter;
+#if defined(A04_NDIS_OID_BRIDGE) && A04_NDIS_OID_BRIDGE
+ struct a04_native_oid_context oid;
+#endif
+};
 MINIPORT_INITIALIZE A04MiniportInitialize;
 MINIPORT_HALT A04MiniportHalt;
 MINIPORT_PAUSE A04MiniportPause;
@@ -22,7 +29,16 @@ NDIS_STATUS A04MiniportInitialize(NDIS_HANDLE adapter,NDIS_HANDLE context,PNDIS_
 VOID A04MiniportHalt(NDIS_HANDLE ctx,NDIS_HALT_ACTION action) {UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(action);}
 NDIS_STATUS A04MiniportPause(NDIS_HANDLE ctx,PNDIS_MINIPORT_PAUSE_PARAMETERS params) {UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(params);return NDIS_STATUS_FAILURE;}
 NDIS_STATUS A04MiniportRestart(NDIS_HANDLE ctx,PNDIS_MINIPORT_RESTART_PARAMETERS params) {UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(params);return NDIS_STATUS_FAILURE;}
-NDIS_STATUS A04MiniportOid(NDIS_HANDLE ctx,PNDIS_OID_REQUEST request) {UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(request);return NDIS_STATUS_NOT_SUPPORTED;}
+NDIS_STATUS A04MiniportOid(NDIS_HANDLE ctx,PNDIS_OID_REQUEST request)
+{
+#if defined(A04_NDIS_OID_BRIDGE) && A04_NDIS_OID_BRIDGE
+ struct a04_ndis_context *adapter=(struct a04_ndis_context *)ctx;
+ if(!adapter)return NDIS_STATUS_INVALID_DATA;
+ return a04_native_oid_dispatch(&adapter->oid,request);
+#else
+ UNREFERENCED_PARAMETER(ctx);UNREFERENCED_PARAMETER(request);return NDIS_STATUS_NOT_SUPPORTED;
+#endif
+}
 VOID A04MiniportSend(NDIS_HANDLE ctx,PNET_BUFFER_LIST list,NDIS_PORT_NUMBER port,ULONG flags)
 {
  struct a04_ndis_context *adapter=(struct a04_ndis_context *)ctx;

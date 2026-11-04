@@ -4,8 +4,13 @@
  */
 #include "native_scan.h"
 #include <stddef.h>
-static int span(ULONG total,ULONG offset,ULONG bytes)
-{ return offset<=total && bytes<=total-offset; }
+static int span(ULONG total,ULONG offset,ULONG bytes,ULONG base,ULONG *needed)
+{
+ if(offset<=total && bytes<=total-offset)return 1;
+ if(offset<=0xffffffffu-base && bytes<=0xffffffffu-base-offset)*needed=base+offset+bytes;
+ else *needed=0xffffffffu;
+ return 0;
+}
 NDIS_STATUS a04_native_scan_parse(const void *buffer,ULONG length,struct a04_native_scan_request *out,ULONG *needed)
 {
  DOT11_SCAN_REQUEST_V2 h;DOT11_SSID ssid;struct a04_native_scan_request temp;
@@ -23,13 +28,13 @@ NDIS_STATUS a04_native_scan_parse(const void *buffer,ULONG length,struct a04_nat
  if(h.bRestrictedScan || h.bUseRequestIE || h.uNumOfRequestIDs || h.uNumOfPhyTypeInfos)return NDIS_STATUS_NOT_SUPPORTED;
  if(h.uNumOfdot11SSIDs>1)return NDIS_STATUS_INVALID_LENGTH;
  if(h.uNumOfdot11SSIDs){
-  if(!span(available,h.udot11SSIDsOffset,sizeof(ssid)))return NDIS_STATUS_INVALID_LENGTH;
+  if(!span(available,h.udot11SSIDsOffset,sizeof(ssid),base,needed))return NDIS_STATUS_INVALID_LENGTH;
   NdisMoveMemory(&ssid,payload+h.udot11SSIDsOffset,sizeof(ssid));
   if(ssid.uSSIDLength>sizeof(temp.ssid))return NDIS_STATUS_INVALID_DATA;
   temp.ssid_length=ssid.uSSIDLength;NdisMoveMemory(temp.ssid,ssid.ucSSID,temp.ssid_length);
  }
  if(h.uIEsLength>sizeof(temp.ie))return NDIS_STATUS_INVALID_LENGTH;
- if(h.uIEsLength && !span(available,h.uIEsOffset,h.uIEsLength))return NDIS_STATUS_INVALID_LENGTH;
+ if(h.uIEsLength && !span(available,h.uIEsOffset,h.uIEsLength,base,needed))return NDIS_STATUS_INVALID_LENGTH;
  if(h.uIEsLength){
   for(i=0;i<h.uIEsLength;){ULONG remain=h.uIEsLength-i,n;
    if(remain<2)return NDIS_STATUS_INVALID_DATA;

@@ -13,6 +13,9 @@ typedef uint32_t ULONG;typedef int32_t LONG;typedef uint16_t USHORT;typedef uint
 #define NDIS_STATUS_RESOURCES (-6)
 #define NDIS_STATUS_PENDING 1
 #define NDIS_STATUS_REQUEST_ABORTED (-7)
+#define OID_DOT11_SCAN_REQUEST 0x0d01020bu
+#define NdisRequestSetInformation 1
+typedef struct {int RequestType;union {struct {ULONG Oid;void *InformationBuffer;ULONG InformationBufferLength,BytesRead,BytesNeeded;} SET_INFORMATION;} DATA;} NDIS_OID_REQUEST,*PNDIS_OID_REQUEST;
 typedef void *PVOID;
 typedef struct _NET_BUFFER {struct _NET_BUFFER *next;ULONG length;UCHAR *data;int fragmented;} NET_BUFFER,*PNET_BUFFER;
 typedef struct _NET_BUFFER_LIST {struct _NET_BUFFER_LIST *next;PNET_BUFFER first;NDIS_STATUS status;void *info;} NET_BUFFER_LIST,*PNET_BUFFER_LIST;
