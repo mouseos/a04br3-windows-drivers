@@ -7,7 +7,16 @@
 #ifndef A04_GE8300_CLEAR_TEST
 #define A04_GE8300_CLEAR_TEST 0
 #endif
-#if A04_GE8300_CLEAR_TEST
+#ifndef A04_GE8300_COPY_TEST
+#define A04_GE8300_COPY_TEST 0
+#endif
+#if A04_GE8300_CLEAR_TEST && A04_GE8300_COPY_TEST
+#error Select only one GE8300 diagnostic
+#endif
+#if A04_GE8300_COPY_TEST
+#include "copy_fixture.h"
+#define TEST_PAGES (14u+A04_GPU_COPY_PAGES)
+#elif A04_GE8300_CLEAR_TEST
 #include "clear_fixture.h"
 #define TEST_PAGES 18u
 #else
@@ -28,7 +37,7 @@ NTSTATUS a04_gpu_queue_test(struct a04_gpu_firmware_state *s,struct a04_gpu_queu
 {
     struct a04_gpu_fw_arena arena={0}; struct a04_gpu_fw_object vm={0};
     struct a04_gpu_fw_queue q={0}; struct rogue_fwif_kccb_cmd kick={0};
-#if A04_GE8300_CLEAR_TEST
+#if A04_GE8300_CLEAR_TEST || A04_GE8300_COPY_TEST
     struct rogue_fwif_cmd_transfer transfer={0};
 #endif
     uint8_t *pages; uint64_t dma; size_t first; NTSTATUS status; LARGE_INTEGER interval; unsigned i;
@@ -45,7 +54,27 @@ NTSTATUS a04_gpu_queue_test(struct a04_gpu_firmware_state *s,struct a04_gpu_queu
     if (a04_gpu_mmu_map_brn65273((uint32_t *)(void *)pages,(uint64_t *)(void *)(pages+4096),
         (uint64_t *)(void *)(pages+8192),(uint64_t *)(void *)(pages+12288),(uint64_t *)(void *)(pages+16384),
         dma+4096,dma+8192,dma+12288,dma+16384,dma+20480)) return STATUS_DEVICE_CONFIGURATION_ERROR;
-#if A04_GE8300_CLEAR_TEST
+#if A04_GE8300_COPY_TEST
+    /* Four distinct PC/PD groups for the fixed Mesa-generated VA set.
+     * The arena contains only our own DMA pages; no caller data is mapped. */
+    for (size_t region=0;region<a04_gpu_copy_region_count;++region) {
+        const struct a04_gpu_copy_region *r=&a04_gpu_copy_regions[region];
+        size_t pd=6u+2u*r->group,pt=pd+1u,first=14u+r->page_offset;
+        if (r->group>=A04_GPU_COPY_GROUPS || first>TEST_PAGES ||
+            r->page_count>TEST_PAGES-first ||
+            a04_gpu_mmu_map_4k((uint32_t *)(void *)pages,(uint64_t *)(void *)(pages+pd*4096u),
+                (uint64_t *)(void *)(pages+pt*4096u),dma+pd*4096u,dma+pt*4096u,
+                r->va,dma+first*4096u,r->page_count,0)) return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
+    if (a04_gpu_copy_fixture(pages+14u*4096u,A04_GPU_COPY_PAGES*4096u,&transfer))
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+    {
+        uint8_t *source=pages+(14u+A04_GPU_COPY_SOURCE_PAGE)*4096u;
+        static const uint8_t pixel[4]={0x11,0x5a,0xa5,0xee};
+        for (size_t i=0;i<4u*4096u;++i) source[i]=pixel[i&3u];
+        RtlFillMemory(pages+(14u+A04_GPU_COPY_DEST_PAGE)*4096u,4u*4096u,0x5a);
+    }
+#elif A04_GE8300_CLEAR_TEST
     /* Isolated VA space: only the fixed command's PDS, USC and output pages.
      * Keep all tables and image live until firmware and GPU have stopped. */
     if (a04_gpu_mmu_map_4k((uint32_t *)(void *)pages,(uint64_t *)(void *)(pages+6u*4096u),
@@ -65,7 +94,7 @@ NTSTATUS a04_gpu_queue_test(struct a04_gpu_firmware_state *s,struct a04_gpu_queu
     if (a04_gpu_fw_arena_init(&arena,s->memory.heap,A04_PVR_HEAP_SIZE,
             (uint64_t)s->memory.heap_logical.QuadPart,first) ||
         a04_gpu_fw_memory_context(&arena,dma,&vm) ||
-#if A04_GE8300_CLEAR_TEST
+#if A04_GE8300_CLEAR_TEST || A04_GE8300_COPY_TEST
         /* Vendor MT8167 BVNC table: NUM_ISP_IPP_PIPES index 3 = 4. */
         a04_gpu_fw_prepare_transfer_queue(&arena,&vm,1,1,4,&transfer,&q,&kick))
 #else
@@ -84,8 +113,12 @@ NTSTATUS a04_gpu_queue_test(struct a04_gpu_firmware_state *s,struct a04_gpu_queu
         status=a04_gpu_dma_sync(q.fence.cpu,(ULONG)q.fence.size,TRUE);
         if (!NT_SUCCESS(status)) { s->queue_faulted=TRUE; return status; }
         if (*(volatile uint32_t *)q.fence.cpu==1u) {
-#if A04_GE8300_CLEAR_TEST
+#if A04_GE8300_CLEAR_TEST || A04_GE8300_COPY_TEST
+#if A04_GE8300_COPY_TEST
+            const uint8_t *image=pages+(14u+A04_GPU_COPY_DEST_PAGE)*4096u;
+#else
             const uint8_t *image=pages+14u*4096u;
+#endif
             static const uint8_t expected[4]={0x11,0x5a,0xa5,0xee};
             status=a04_gpu_dma_sync((void *)image,4u*4096u,TRUE);
             if (!NT_SUCCESS(status)) { s->queue_faulted=TRUE; return status; }

@@ -93,6 +93,15 @@ SHUTDOWN=0 and STATUS_EXIT=0. In this build QUEUE=0 requires a completed
 fence and an exact comparison of all 16,384 image bytes. This establishes
 one fixed GPU memory write and readback; it does not establish copy, display,
 WDDM, production DMA isolation or long-term stability.
+`A04_GE8300_COPY_TEST=1` selects a separate opt-in image-to-buffer transfer
+probe; it cannot be combined with the clear probe. A fixed Mesa-generated
+stream and its sparse GPU address-space snapshot are retained in
+`copy_fixture.c` (Mesa PowerVR ef11349e8e, MIT). A varying eight-byte value
+resembling a host pointer was removed; GPU use of that location is unverified.
+The two image regions are
+initialized by the test itself. It maps private buffers, submits one transfer,
+and checks every destination byte. GPU copying and the safety of all captured
+indirect references are not yet established by this preparation.
 `windows_hw.c` provides an experimental Windows ARM32 adapter: common DMA
 buffers use the device adapter's logical addresses, and split 32-bit MMIO
 writes follow the low-then-high order in this device's released Linux source.
