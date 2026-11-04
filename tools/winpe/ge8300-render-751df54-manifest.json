@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "state": "host-built-candidate-not-device-validated",
+  "driver_commit": "751df54",
+  "driver_flags": [
+    "BOOT_TEST=1",
+    "ALLOW_MISMATCH=1",
+    "RENDER_EXPERIMENT=1",
+    "RENDER_DIAGNOSTIC=1"
+  ],
+  "source_esp_sha256": "ed92f50a7ba5464226e9781be6613135ed02bada702d3eb23300d85b902bd26e",
+  "source_wim_sha256": "a51a478308832713ce877af51a4fecc69acbce40c680bbe08d41e4cc453386d8",
+  "derived_wim_sha256": "24be92f93b311ebe058a71c3f52625b7d8c6d9acf03859e97e480484302a676d",
+  "derived_esp_sha256": "6e793edea6d2e666f2f3660b1097ab9386f8de16f00614af724e70283d69a38f",
+  "boot_index": 1,
+  "preserved_files": {
+    "/EFI/Boot/bootarm.efi": "5dcf001e5be0bf252d303f0377c4dad67a070aed307b0f6153d1125bf346b397",
+    "/EFI/Microsoft/Boot/BCD": "65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d",
+    "/Boot/boot.sdi": "cd2c00ce027687ce4a8bdc967f26a8ab82f651c9becd703658ba282ec49702bd"
+  },
+  "startnet_sha256": "1dd10ec152ea35ac4ae3699080ed926980db75a5b6768bc1d78fd381e03bfca5",
+  "package_sha256": {
+    "ge8300-mips.fw": "cfe6f58db2ad604b1729349629510c5a3434b266c99ea886d2959887bff4fed8",
+    "ge8300-pnp-status.exe": "c2b5a375024913ba2da4fbaf7514e84c5aa78bca735fa20675401c782f9b630f",
+    "ge8300-status.exe": "b82b1679dafd12fef76ebf5a28ec3925d044e3df206892940c7420858dbc9d7f",
+    "ge8300-test.cer": "6c6989cfd169e034fcbf0ff883d84f5a03b08434667dd4ac25cd45001e25903b",
+    "mt8167-ge8300.cat": "b9cdaf616feeab3fc8f82fc715f6682aaaf280c7336d8894475057d73d55eb31",
+    "mt8167-ge8300.inf": "73afb7f2e63469d577317b68ed505c01340a81b36373eda416883ce5ae4edc0b",
+    "mt8167-ge8300.sys": "e36f49aa1580224b6cc249f92272131e6849175608c10eb6dc7c13c66dc42866"
+  },
+  "candidate_boot_sha256": "2813f8cb42651bb54374bf7b7b1bdd33eaf2198db6afd008c70574f337b190ab",
+  "candidate_boot_status": "existing four-CPU handoff and framebuffer build; watchdog and signature acceptance unproven",
+  "limitations": [
+    "GPU PBE access and command semantics unverified",
+    "new test certificate copied, not imported into trust stores",
+    "template TOPRGU starts early and UART/watchdog ownership unverified",
+    "no verified restoration boot/ESP pair identified",
+    "host-only; no physical operation"
+  ]
+}
