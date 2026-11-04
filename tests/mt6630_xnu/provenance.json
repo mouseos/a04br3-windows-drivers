@@ -1,0 +1,8 @@
+{
+  "source": "UniXNU-a04br3 local untracked fixtures; paths adapted",
+  "license": "MIT",
+  "original_sha256": {
+    "test_wmt_protocol.py": "d5804e807b84c4a8c003cdd7ffc57f4c9904f91be096e8d09e8b1af0507e6442",
+    "test_wlan_host.py": "897183868c33856be4f822c9eced57a8d6140002bd1c2fdc0031139832a20f63"
+  }
+}

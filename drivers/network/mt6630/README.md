@@ -94,3 +94,13 @@ Windowsの領域探索・読取providerは未実装で、実端末の校正値�
 電源レールについて呼出元が確認した範囲との共通部分だけを使い、電圧を操作しない。
 512-byteブロック転送は機能別FBRの設定と読戻しを確認するまで拒否する。
 実際の電源・pin/clock設定、Windows PnP/D0/IRQ、NDISへの接続は未実装。
+
+`wmt_bridge.c` はSDIO寿命管理に既存WMT/STP・WLAN HIFの処理を接続する。
+実機からのrevision照会、検証済みbundleのWMTパッチ送信とACK/credit確認、
+WLAN firmwareの形式・ハッシュ検証と送信、単一消費者によるread-clear statusと
+FIFO受信を扱う。bundleの所有・SHA-256と起動設定は呼出側の責務であり、
+校正送信、実IRQ、Windows PnP、Native 802.11/NDISには接続していない。
+実機への送信実績はない。参照元は未追跡XNUファイルでハッシュを
+`vendor_xnu/provenance.json` に固定した。`make test-mt6630-firmware` の
+Linuxソース照合は `A04BR3_BOARD_SOURCE` 指定時に実行される。
+統合リンク確認SYSは開始を常に拒否し、未署名・INFなしで配備できない。

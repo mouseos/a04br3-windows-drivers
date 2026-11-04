@@ -602,6 +602,7 @@ test-mt6630: build/mt6630_identity_test build/mt6630_sdio_args_test build/mt6630
 	./build/mt6630_parent_query_test
 	./build/mt6630_enumerate_test
 	./build/mt6630_control_start_test
+	./build/mt6630_wmt_bridge_test
 
 test: test-mt6630
 
@@ -666,3 +667,13 @@ build/mt6630_control_start_test: drivers/network/mt6630/control_start.c drivers/
 	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/control_start.c drivers/network/mt6630/enumerate.c drivers/network/mt6630/msdc2_pio.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c tests/mt6630_control_start_test.c -o $@
 
 test-mt6630: build/mt6630_control_start_test
+
+build/mt6630_wmt_bridge_test: tests/mt6630_wmt_bridge_test.c drivers/network/mt6630/wmt_bridge.c drivers/network/mt6630/wmt_bridge.h drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 tests/mt6630_wmt_bridge_test.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c -o $@
+
+test-mt6630: build/mt6630_wmt_bridge_test
+
+.PHONY: test-mt6630-firmware
+test-mt6630-firmware:
+	python3 -m unittest discover -s tests/mt6630_xnu -p 'test_*.py'
