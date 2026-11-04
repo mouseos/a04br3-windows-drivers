@@ -16,7 +16,7 @@ int a04_gauge_mt8167_read(void *context, uint8_t address, uint8_t command,
         !io->delay_us || !adapter->monotonic_ns || !response || address != 0x0b || adapter->faulted)
         return -1;
     /* Caller owns I2C2 and holds its shared controller lock throughout. */
-    if (io->read16(io->context, 0x24) & 1u) return -1;
+    if (io->read16(io->context, 0x24) & 1u) { adapter->faulted = 1; return -1; }
     io->write16(io->context, 0x08, 0);
     io->write16(io->context, 0x0c, 7);
     io->write16(io->context, 0x38, 1);

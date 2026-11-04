@@ -125,8 +125,18 @@ static void poll(GAUGE_CONTEXT *c)
     if (a04_gauge_read_sample(&c->bus, &sample)) {
         trace(c, "A04BAT SAMPLE FAILED\n");
         changed |= a04_battery_invalidate(&c->battery);
+#if A04_BQ24160_EXPERIMENTAL
+        /* A failed PEC/range check alone leaves the transport healthy.
+         * Keep the already-armed charger owner alive; do not publish the gauge.
+         * A busy controller, NACK or timeout latches the shared bus fault. */
+        if (c->adapter.faulted) {
+            c->faulted = TRUE;
+            InterlockedExchange(&c->online, 0);
+        }
+#else
         c->faulted = TRUE;
         InterlockedExchange(&c->online, 0);
+#endif
     } else {
         trace(c, "A04BAT SAMPLE VALID\n");
         changed |= a04_battery_publish(&c->battery, &sample);

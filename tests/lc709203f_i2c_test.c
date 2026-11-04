@@ -6,7 +6,7 @@ struct mock { uint16_t regs[64]; unsigned reads, delays; int outcome; };
 static uint16_t rd(void *p, unsigned reg)
 {
     struct mock *m = p;
-    if (reg == 0x24) return 0;
+    if (reg == 0x24) return m->outcome == 4 ? 1 : 0;
     if (reg == 0x0c) return m->outcome == 1 ? 2 : m->outcome == 2 ? 0 : 1;
     if (reg == 0x30) return m->outcome == 3 ? 0x20 : 0x30;
     if (reg == 0) return (uint16_t)(0xa0 + m->reads++);
@@ -35,5 +35,10 @@ int main(void)
     a.faulted = 0; m.outcome = 2;
     assert(a04_gauge_mt8167_read(&a, 0x0b, 0x09, out));
     assert(a.faulted && m.delays == 2000 && out[0] == 1);
+    a.faulted = 0; m.outcome = 4;
+    assert(a04_gauge_mt8167_read(&a, 0x0b, 0x09, out));
+    assert(a.faulted);
+    m.outcome = 0;
+    assert(a04_gauge_mt8167_read(&a, 0x0b, 0x09, out));
     return 0;
 }

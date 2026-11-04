@@ -15,6 +15,10 @@ struct a04_bq_snapshot { uint8_t raw[8]; unsigned valid; uint64_t at; };
 struct a04_bq_owner {
     struct a04_bq_snapshot first, latest;
     uint64_t last_kick;
+    uint64_t handoff_deadline;
+    uint64_t firmware_kicks;
+    struct a04_bq_snapshot firmware_first, firmware_latest;
+    int handoff_pending;
     unsigned attempts, kicks, fault_history;
     int stopped;
 };
@@ -22,6 +26,14 @@ enum a04_bq_result {
     A04_BQ_OK, A04_BQ_INVALID, A04_BQ_STOPPED, A04_BQ_DEADLINE,
     A04_BQ_READ_ERROR, A04_BQ_POLICY, A04_BQ_FAULT, A04_BQ_WRITE_ERROR
 };
+/* Decode the UniXNU v1 record as an offline contract, not proof of trust.
+ * Caller must authenticate boot-local origin and ownership transfer separately.
+ * now_ns is sampled BEFORE physical_counter, on a monotonic clock; this
+ * conservative ordering cannot add time to the firmware's 20-second budget.
+ * Failure latches stopped. The caller must be serialized and use a fresh owner. */
+int a04_bq_adopt_handoff(struct a04_bq_owner *owner, const uint8_t *record,
+                         unsigned size, uint64_t now_ns,
+                         uint64_t physical_counter, uint64_t frequency);
 /* Caller holds the same lock used by LC709203F for the entire cycle. The
  * worker must already be armed and a valid firmware handoff established.
  * Failure can leave an active watchdog and eventual hardware defaults. */

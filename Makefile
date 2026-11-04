@@ -5,7 +5,8 @@ SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test test-ntfs-root arm-coff clean
 
-test: build/bq24160_charger_test build/bq24160_i2c_test build/gpu_render_context_test build/gpu_render_hwrt_test build/gpu_render_freelist_test build/gpu_render_stream_test build/lc709203f_test build/lc709203f_i2c_test build/msdc_io_gate_test build/toprgu_watchdog_policy_test build/toprgu_reset_command_test build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/button_pipeline_test build/button_device_test build/button_hardware_test build/pmic_read_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_board_init_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test build/eint_test build/gpu_power_test build/gpu_mmu_test build/gpu_fw_objects_test build/gpu_fw_queue_test build/gpu_transfer_stream_test build/gpu_windows_linear_test build/gpu_present_bounds_test build/gpu_dma_pages_test build/gpu_transfer_mapping_test
+test: build/bq24160_handoff_test build/bq24160_charger_test build/bq24160_i2c_test build/gpu_render_context_test build/gpu_render_hwrt_test build/gpu_render_freelist_test build/gpu_render_stream_test build/lc709203f_test build/lc709203f_i2c_test build/msdc_io_gate_test build/toprgu_watchdog_policy_test build/toprgu_reset_command_test build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/button_pipeline_test build/button_device_test build/button_hardware_test build/pmic_read_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_board_init_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test build/eint_test build/gpu_power_test build/gpu_mmu_test build/gpu_fw_objects_test build/gpu_fw_queue_test build/gpu_transfer_stream_test build/gpu_windows_linear_test build/gpu_present_bounds_test build/gpu_dma_pages_test build/gpu_transfer_mapping_test
+	./build/bq24160_handoff_test
 	./build/bq24160_charger_test
 	./build/bq24160_i2c_test
 	./build/gpu_render_context_test
@@ -50,6 +51,10 @@ test: build/bq24160_charger_test build/bq24160_i2c_test build/gpu_render_context
 	./build/gpu_present_bounds_test
 	./build/gpu_dma_pages_test
 	./build/gpu_transfer_mapping_test
+
+build/bq24160_handoff_test: drivers/power/bq24160/charger.c drivers/power/bq24160/charger.h tests/bq24160_handoff_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/power/bq24160 drivers/power/bq24160/charger.c tests/bq24160_handoff_test.c -o $@
 
 build/bq24160_charger_test: drivers/power/bq24160/charger.c drivers/power/bq24160/charger.h tests/bq24160_charger_test.c
 	mkdir -p build
