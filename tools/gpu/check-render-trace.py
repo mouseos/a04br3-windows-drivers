@@ -136,6 +136,16 @@ def check(path):
         elif op == 'ctx_component':
             if e['index'] not in (0,1) or e['gpu_va']<=0 or e['gpu_va']>=GPU_LIMIT or e['size']<=0 or e['size']>GPU_LIMIT-e['gpu_va']:
                 raise ValueError('invalid context component')
+        elif op == 'ctx_pds_data_hash':
+            if e['kind'] not in ('pt_store_data','pt_resume_data') or e['size']!=32 or not 0<=e['fnv64']<1<<64:
+                raise ValueError('invalid context PDS hash')
+            if any(a<=0 or a>=GPU_LIMIT for a in (e['gpu_va'],e['state_gpu'])):
+                raise ValueError('invalid context PDS address')
+        elif op == 'ctx_sr_data_hash':
+            if e['size']!=64 or not 0<=e['fnv64']<1<<64 or not 0<=e['control']<1<<64:
+                raise ValueError('invalid shared PDS hash')
+            if any(a<=0 or a>=GPU_LIMIT for a in (e['gpu_va'],e['state_gpu'],e['shader_gpu'])):
+                raise ValueError('invalid shared PDS address')
         elif op == 'submit_begin':
             if open_submit is not None: raise ValueError('nested submit')
             open_submit = [e['count'],0]; submits += 1
