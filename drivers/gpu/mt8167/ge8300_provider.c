@@ -92,6 +92,34 @@ static void GpuHex(ULONG value)
     for(i=0;i<8;++i) text[i]=digits[(value>>(28-4*i))&15u];
     text[8]=0; GpuPrint(text);
 }
+#if A04_GE8300_RENDER_DIAGNOSTIC
+/* CRC-32/ISO-HDLC over bytes in linear framebuffer order. */
+static ULONG GpuCrc32(const UCHAR *p,ULONG length)
+{
+    ULONG crc=0xffffffffu,i,j;
+    for(i=0;i<length;++i) {
+        crc^=p[i];
+        for(j=0;j<8;++j) crc=(crc>>1)^(0xedb88320u & (0u-(crc&1u)));
+    }
+    return crc^0xffffffffu;
+}
+static void GpuRenderPixels(const struct a04_windows_render_diagnostic *d)
+{
+    const UCHAR *p;ULONG offset,i,v;
+    if(d->stage!=32 || !d->memory.cpu || !d->memory.completion_observed || !d->memory.cleanup_complete) return;
+    p=(const UCHAR *)d->memory.cpu+A04_RENDER_PAYLOAD_OFFSET+65u*4096u;
+    GpuPrint("A04GPU PIXELS BEGIN LEN=00004000 CRC=");GpuHex(GpuCrc32(p,16384));GpuPrint("\n");
+    for(offset=0;offset<16384;offset+=64) {
+        GpuPrint("A04GPU PIXELS OFF=");GpuHex(offset);GpuPrint(" CRC=");GpuHex(GpuCrc32(p+offset,64));GpuPrint(" DATA=");
+        for(i=0;i<64;i+=4) {
+            v=((ULONG)p[offset+i]<<24)|((ULONG)p[offset+i+1]<<16)|((ULONG)p[offset+i+2]<<8)|p[offset+i+3];
+            GpuHex(v);
+        }
+        GpuPrint("\n");
+    }
+    GpuPrint("A04GPU PIXELS END LEN=00004000 CRC=");GpuHex(GpuCrc32(p,16384));GpuPrint("\n");
+}
+#endif
 static void GpuTraceStage(void *context,ULONG stage)
 { UNREFERENCED_PARAMETER(context); GpuPrint("A04GPU STEP="); GpuHex(stage); GpuPrint("\n"); }
 #if A04_GE8300_SHARED_TRACE_DIAGNOSTIC
@@ -330,6 +358,12 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
                 GpuPrint(" B1_VALID=");GpuHex(d->memory.bounded_states[1].valid);
                 GpuPrint(" B1=");GpuHex(d->memory.bounded_states[1].blocks);
                 GpuPrint("\n");
+                GpuPrint("A04GPU RENDER LIFETIME COMPLETED=");GpuHex(d->memory.completion_observed);
+                GpuPrint(" CLEANUP=");GpuHex(d->memory.cleanup_complete);
+                GpuPrint(" PARTIAL=");GpuHex(d->memory.kick_partial);
+                GpuPrint(" SUBMITTED=");GpuHex(d->memory.kick_submitted);
+                GpuPrint(" POISONED=");GpuHex(d->memory.poisoned);GpuPrint("\n");
+                GpuRenderPixels(d);
             }
 #endif
 #if A04_GE8300_SHARED_TRACE_DIAGNOSTIC
@@ -342,6 +376,10 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 #if A04_GE8300_RENDER_DIAGNOSTIC
             if(NT_SUCCESS(c->status.shutdown_status))
                 c->status.shutdown_status=a04_windows_render_memory_free(&c->render_diagnostic.memory,TRUE);
+            GpuPrint("A04GPU RENDER SHUTDOWN STATUS=");GpuHex(c->status.shutdown_status);
+            GpuPrint(" RELEASED=");GpuHex(c->firmware.processor_released);
+            GpuPrint(" STARTED=");GpuHex(c->firmware.firmware_started);
+            GpuPrint(" QUEUE_FAILED=");GpuHex(c->firmware.queue_faulted);GpuPrint("\n");
 #endif
             /* Power-off may have gated MMIO; only inspect retained memory. */
             if(!NT_SUCCESS(c->status.shutdown_status) && c->firmware.processor_released)
