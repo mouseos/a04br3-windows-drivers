@@ -4,6 +4,7 @@
 #include "board_owner.h"
 #include "pinmux.h"
 #include "cold_init.h"
+#include "host_prepare.h"
 #include "../../bus/mt8167-shared/vemc_restore.h"
 /* Offline sequencing prototype. PASSIVE_LEVEL, not a WDF or Storport API.
  * Every callback must refer to the same exclusive non-revocable parent lease;
@@ -18,11 +19,14 @@ struct a04_emmc_prepare_ops {
     const struct a04_cold_authority *cold;
     const struct a04_msdc_io *host;
     int (*reset_and_prepare_host)(void *,uint32_t);
+    /* When supplied, use the concrete host sequence instead of the callback. */
+    const struct a04_host_prepare_ops *host_prepare;
 };
 struct a04_emmc_prepare_state {
     struct a04_board_owner board;
     struct a04_vemc_state vemc;
     struct a04_pinmux_state pins;
+    struct a04_host_prepare_state host;
 };
 enum a04_emmc_prepare_result { A04_PREPARE_OBSERVED,A04_PREPARE_INVALID,A04_PREPARE_CLAIM,
     A04_PREPARE_RAIL,A04_PREPARE_PIN,A04_PREPARE_CLOCK,A04_PREPARE_HOST,A04_PREPARE_CARD };
