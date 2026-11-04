@@ -67,3 +67,19 @@ GE8300のfeature表はSIPF版1・16×16 tile。機種側 `UniXNU-a04br3` のLinu
 Mesaの単一layer割当ではTPCのlayer strideは0、RTCは不要、SIPFのmacrotile配列は不要。Windowsの `render_hwrt.c` は単一sample・単一layer・SIPF1専用なので、その条件でstride 0とRTC・macrotileのアドレス0を受け入れる。指定された非ゼロの任意GPUアドレスには従来の範囲・アラインメント検査を行い、TPC・VHEAP・MLIST・regionとfirmwareアドレスは引き続き必須。メモリ範囲、同期、ハードウェアでの安全性は呼出し側の別途検証が必要。
 
 旧生成器が出力した不整合captureに基づくテンプレートやマップは使わない。生成器はSIPF1パッチと対象翻訳単位のassert有効化が記録された診断captureだけを受け入れる。manifestは自己申告の整合性記録であって、暗号学的な信頼証明ではない。
+
+## PDS/USCアップロード範囲の診断
+
+固定SIPF1診断ビルドを入力として、別ディレクトリに次の診断ライブラリを生成できる。
+
+```sh
+python3 tools/gpu/build-mesa-upload-diagnostic.py --source MESA_SOURCE --build MESA_BUILD --sipf1 SIPF1_DIAGNOSTIC_DIR --output NEW_UPLOAD_DIAGNOSTIC_DIR
+python3 tools/gpu/run-render-capture.py --mesa-source MESA_SOURCE --mesa-build MESA_BUILD --shim SHIM_DIR --probe-source CLEAN_UNIXNU_SOURCE --diagnostic NEW_UPLOAD_DIAGNOSTIC_DIR --output NEW_PRIVATE_CAPTURE_DIR
+python3 tools/gpu/check-render-uploads.py NEW_PRIVATE_CAPTURE_DIR
+```
+
+固定Mesaソースの `pvr_gpu_upload_usc` と `pvr_gpu_upload_pds` を診断用の一時翻訳単位で計測し、コード・データのGPU仮想アドレスと実際のコピー長を記録する。BO内容・CPUポインタ・機械語は記録しない。全BOや全PDS/USC生成経路を捕捉するものではなく、読み込み元の安全性、relocationや間接参照、正しいジョブとの対応を示すものでもない。範囲検査はcapture全期間内に該当マップが存在したかの確認で、ジョブ実行時点の有効性を保証しない。capture時にshimはGPU処理を実行しない。生成した情報のままGPUへ送ることは禁止する。
+
+`render_execution.c` は、所有範囲のページ整列・VA/DMA範囲・重複を検査し、同期、MMU反映、送信、両フェンス、CPU同期、firmware cleanup、MMU解除の順をコールバックで表すホスト検査用の基礎部品。Windows側に接続されておらず、ハードウェアに送信しない。失敗がMMU反映以降に起きた場合、状態をpoisonedにし、独立したリセット・停止確認なしでDMAを解放できると判断しない。フェンス通知単体でcleanupが完了したとみなさない。
+
+実GPU用のfixture・Windows側のDMA確保と同期、完了・cleanup処理は未完成。特に固定テストに必要なVDM/PPP、PDS/USCの全到達範囲と生成元、fragmentの埋め込みアドレス、freelist用PMページ、エラー時の停止と回収を確定する必要がある。
