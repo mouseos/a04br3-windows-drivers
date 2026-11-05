@@ -56,6 +56,7 @@ test: build/msdc_shared_drain_test build/msdc_touch_shared_test build/msdc_pin_u
 	./build/bq24160_handoff_test
 	./build/bq24160_owner_broker_test
 	./build/bq24160_client_transfer_test
+	python3 tests/test_bq_broker_wdf.py
 	./build/bq24160_charger_test
 	./build/bq24160_i2c_test
 	./build/gpu_render_context_test
