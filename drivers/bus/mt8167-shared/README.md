@@ -126,3 +126,12 @@ controller configuration, competing legacy devices, and PnP arbitration have
 not been verified. Parent D0 and audio codec/clock callbacks still refuse to
 start. No audio INF or firmware binding is supplied. This is not permission to
 install or to connect an interrupt; the default child remains resource-less.
+
+`a04_pwrap_owner_read_audio` reads the fixed MT6392 `SPK_CON0`, `SPK_CON9`
+and `SPK_CON11` registers (0x0052, 0x0064, 0x0068) in one locked WACS2
+transaction sequence, shared with button and eMMC observations. These
+addresses are from the board kernel's [MT6392 register definitions](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/include/linux/mfd/mt6392/registers.h).
+Output is unchanged on a partial failure and WACS timeouts poison the owner.
+This is a raw, read-only diagnostic helper, not a proof of mute, ownership,
+rail state or trim. It is not published as a client interface or invoked by
+D0/audio acquisition; the parent and RUN gates remain closed.

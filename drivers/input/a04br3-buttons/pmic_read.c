@@ -38,6 +38,16 @@ static int read_register(struct a04_pmic_read *bus, uint16_t address, uint16_t *
 int a04_pmic_chrstatus(struct a04_pmic_read *bus, uint16_t *value)
 { return read_register(bus, MT6392_CHRSTATUS, value); }
 
+int a04_pmic_audio_observe(struct a04_pmic_read *bus,struct a04_mt6392_audio_raw *out)
+{
+    struct a04_mt6392_audio_raw tmp;
+    /* MT6392 SPK_CON0/9/11 from the board kernel register definitions. */
+    if (!out || read_register(bus,0x0052u,&tmp.spk_con0) ||
+        read_register(bus,0x0064u,&tmp.spk_con9) ||
+        read_register(bus,0x0068u,&tmp.spk_con11)) return -1;
+    *out=tmp;return 0;
+}
+
 int a04_pmic_emmc_rails(struct a04_pmic_read *bus, struct a04_emmc_rails_raw *out)
 {
     struct a04_emmc_rails_raw tmp;

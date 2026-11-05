@@ -23,4 +23,6 @@ int a04_pwrap_owner_stop(struct a04_pwrap_owner *owner);
  * writes; the parent must retain power and client references for the call. */
 int a04_pwrap_owner_read_emmc_rails(struct a04_pwrap_owner *, struct a04_emmc_rails_raw *);
 int a04_pwrap_owner_read_buttons(struct a04_pwrap_owner *owner, uint16_t *status);
+/* Fixed, read-only MT6392 speaker register snapshot; not an audio lease. */
+int a04_pwrap_owner_read_audio(struct a04_pwrap_owner *,struct a04_mt6392_audio_raw *);
 #endif

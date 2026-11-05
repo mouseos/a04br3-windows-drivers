@@ -37,3 +37,11 @@ int a04_pwrap_owner_read_emmc_rails(struct a04_pwrap_owner *o, struct a04_emmc_r
     o->unlock(o->lock_context);
     return result;
 }
+
+int a04_pwrap_owner_read_audio(struct a04_pwrap_owner *o,struct a04_mt6392_audio_raw *out)
+{
+    int result=-1;
+    if (!out || enter(o)) return -1;
+    if (o->online) result=a04_pmic_audio_observe(&o->bus,out);
+    o->unlock(o->lock_context);return result;
+}

@@ -14,8 +14,12 @@ struct a04_pmic_read {
     int poisoned;
 };
 struct a04_emmc_rails_raw { uint16_t vemc_enable, vemc_selector, vio18_enable; };
+/* Raw observations only: these values do not establish mute, trim, rail
+ * safety or permission to enable a speaker. Caller serializes all reads. */
+struct a04_mt6392_audio_raw { uint16_t spk_con0,spk_con9,spk_con11; };
 /* Caller holds the same WACS2 owner lock across all three reads. Output is
  * unchanged on failure; values are register observations, not voltage proof. */
 int a04_pmic_emmc_rails(struct a04_pmic_read *bus, struct a04_emmc_rails_raw *out);
 int a04_pmic_chrstatus(struct a04_pmic_read *bus, uint16_t *value);
+int a04_pmic_audio_observe(struct a04_pmic_read *bus,struct a04_mt6392_audio_raw *out);
 #endif
