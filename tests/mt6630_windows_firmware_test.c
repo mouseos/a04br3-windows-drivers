@@ -27,5 +27,7 @@ int main(void)
  denied=1;assert(read_snapshot(L"test",sizeof(blob),&s)!=0&&!s.bytes);denied=0;
  assert(read_snapshot(L"test",sizeof(blob)-1,&s)==STATUS_INVALID_BUFFER_SIZE&&!s.bytes);
  bridge.identity_ready=1;assert(a04_windows_firmware_boot(&bridge,hash,&options)!=0&&!transfers&&!allocations);
+ assert(!a04_sha256(blob,sizeof(blob),hash));
+ assert(a04_windows_firmware_boot(&bridge,hash,&options)!=0&&!transfers&&!allocations);
  puts("Windows immutable firmware snapshot and preflight refusal: OK");return 0;
 }
