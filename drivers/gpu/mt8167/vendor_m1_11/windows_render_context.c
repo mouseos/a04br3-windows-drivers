@@ -23,7 +23,7 @@ NTSTATUS a04_vendor_render_context_command(struct a04_vendor_render_cold *r,
     volatile unsigned char *bank;volatile uint32_t *sync,*priority_word;
     uint32_t context_offset,at,next,kread,kwrite,value,sequence=0;unsigned i,dm;
     NTSTATUS status=STATUS_DEVICE_BUSY;
-    if(!r || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL || index>3 || r->cleanup_mask ||
+    if(!r || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL || index>3 || r->cleanup_started ||
        (index==2 ? priority!=0xffffffffu : priority>1u) || !r->mapped || r->poisoned ||
        !s->online || !s->memory || !s->memory->hardware_owned || r->firmware!=s->memory ||
        !(fw=s->memory->runtime) || !fw->kctl || !fw->fctl || !fw->kcommands || !s->core ||
@@ -133,6 +133,7 @@ NTSTATUS a04_vendor_render_cleanup_contexts(struct a04_vendor_render_cold *r,
         cmd.uCmdData.sCleanupData.uCleanupData.psContext.ui32Addr=0xc0080000u+off;
         cmd.uCmdData.sCleanupData.sSyncObjDevVAddr=fw->command_sync_addr;*sync=0;
         if(a04_rgx_device_write_words(&fw->kcommands[k.ui32WriteOffset],&cmd,sizeof(cmd))) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
+        r->cleanup_started=TRUE;
         a04_gpu_dma_barrier();next=(k.ui32WriteOffset+1u)&127u;
         ((volatile RGXFWIF_CCB_CTL *)fw->kctl)->ui32WriteOffset=next;
         a04_gpu_dma_barrier();WRITE_REGISTER_ULONG((volatile ULONG *)(void *)(s->core+0xb00),0x10);
