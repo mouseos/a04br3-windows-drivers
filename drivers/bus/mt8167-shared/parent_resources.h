@@ -11,7 +11,8 @@ int a04_parent_validate_resources(const struct a04_parent_resource *,size_t,
                                   struct a04_parent_mapping *);
 int a04_parent_translate_resources(const struct a04_parent_resource *raw,
     const struct a04_parent_resource *translated,size_t count,struct a04_parent_mapping *out);
-/* Optional diagnostic: exact Linux DTS APMIXED range 0x10018000+0x710.
+/* Optional diagnostic: legacy 0x710 or extended 0x714 at 0x10018000.
+ * Only the extended range contains the complete 32-bit register at 0x710.
  * It is shared with non-audio users: PnP exclusivity is necessary, not
  * proof of firmware handoff or clock ownership. Output unchanged on error. */
 int a04_parent_translate_audio_resources(const struct a04_parent_resource *,

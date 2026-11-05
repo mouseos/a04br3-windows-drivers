@@ -358,7 +358,14 @@ therefore cannot execute the sequence. Initial bit states are saved and
 restored in reverse order only after Class D quiescence; readback mismatch
 poisons and retains the lease. This is not a complete DAC-to-AU_LOL route:
 Linux also needs DL_CLK at APMIXED offset 0x710, DAC, Vref/VCM, voice amp and
-DC compensation/ramp. The present ACPI prototype allocates only 0x710 bytes,
-so offset 0x710 is not mapped. Extending the device-specific resource and
-proving calibration and shared thermal/codec ownership are prerequisites;
-no unsupported access is made.
+DC compensation/ramp. The updated ACPI diagnostic resource provides 0x714
+bytes; legacy 0x710 resources still cannot access offset 0x710. Proving
+calibration and shared thermal/codec ownership remains necessary; no access
+to that register is enabled by this resource change.
+
+APMIXED compatibility: the parent accepts legacy 0x710 and extended 0x714
+resources, mapping and unmapping exactly the assigned size. Only 0x714 includes
+the 32-bit Linux AUDIO_CODEC_CON04 at offset 0x710. Older parent builds reject
+the extended resource; update the diagnostic firmware and driver together.
+The default four-resource configuration remains unchanged. A mapping is not
+proof of ownership and does not enable access to the new register.
