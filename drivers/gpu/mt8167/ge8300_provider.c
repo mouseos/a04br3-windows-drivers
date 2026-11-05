@@ -688,6 +688,7 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         GpuPrint("A04GPU NATIVE START STATUS=");GpuHex((ULONG)status);GpuPrint("\n");
     }
     c->status.attempted=1;c->status.boot_status=status;
+    c->status.shutdown_status=STATUS_NOT_SUPPORTED;
     c->status.processor_released=c->vendor.hardware_owned;
     c->status.firmware_started=c->vendor_start.online;
     if(NT_SUCCESS(status)) {
@@ -714,7 +715,18 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             GpuPrint("A04GPU NATIVE CLEAR=");GpuHex((ULONG)clear_status);
             GpuPrint(" ZERO=");GpuHex(clear.zeros);GpuPrint(" GUARD=");GpuHex(clear.guard_errors);
             GpuPrint(" FIRST=");GpuHex(clear.first);GpuPrint(" LAST=");GpuHex(clear.last);GpuPrint("\n");
-            if(!NT_SUCCESS(clear_status))c->status.health_status=clear_status;
+            if(!NT_SUCCESS(clear_status)) {
+                struct a04_vendor_fw_debug debug;unsigned request,word;
+                c->status.health_status=clear_status;
+                if(NT_SUCCESS(a04_vendor_m1_11_fw_debug_snapshot(&c->vendor_start,&debug))) {
+                    GpuPrint("A04GPU FW REQUESTS R=");GpuHex(debug.read);GpuPrint(" W=");GpuHex(debug.write);GpuPrint("\n");
+                    for(request=0;request<debug.count;request++) {
+                        GpuPrint("A04GPU FW REQUEST ");GpuHex(request);
+                        for(word=0;word<10;word++){GpuPrint(" ");GpuHex(debug.words[request][word]);}
+                        GpuPrint("\n");
+                    }
+                }
+            }
         }
 #endif
         if(NT_SUCCESS(c->status.health_status))

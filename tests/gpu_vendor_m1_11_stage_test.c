@@ -123,10 +123,15 @@ int main(int argc,char **argv)
     {
         uint32_t done=0;BOOLEAN more=FALSE;unsigned calls=0;
         struct a04_vendor_irq_snapshot snapshot={0};
+        struct a04_vendor_fw_debug debug={0};
         RGXFWIF_FWCCB_CMD *ring=(void *)(m.runtime->main.cpu+
             m.runtime->init->psFirmwareCCB.ui32Addr-(0xc0000000u+A04_RGX_MAIN_OFFSET));
         ring[0].eCmdType=RGXFWIF_FWCCB_CMD_DEBUG_DUMP;
         m.runtime->fctl->ui32WriteOffset=1;
+        m.uncached=TRUE;
+        if(a04_vendor_m1_11_fw_debug_snapshot(&start,&debug)!=STATUS_SUCCESS || debug.count!=1 ||
+           debug.words[0][0]!=(uint32_t)RGXFWIF_FWCCB_CMD_DEBUG_DUMP || m.runtime->fctl->ui32ReadOffset!=0) return 47;
+        m.uncached=FALSE;
         m.runtime->trace->aui32InterruptCount[0]=7;
         if(a04_vendor_m1_11_windows_irq_snapshot(&start,FALSE,&snapshot)!=STATUS_NOT_SUPPORTED || snapshot.valid) return 43;
         if(a04_vendor_m1_11_windows_irq_snapshot(&start,TRUE,&snapshot)!=STATUS_DEVICE_BUSY || snapshot.valid) return 44;

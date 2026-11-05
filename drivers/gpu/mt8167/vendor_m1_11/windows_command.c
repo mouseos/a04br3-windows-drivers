@@ -129,3 +129,27 @@ NTSTATUS a04_vendor_m1_11_power_debug_snapshot(struct a04_vendor_start *s, ULONG
     values[5]=((volatile RGXFWIF_CCB_CTL *)r->fctl)->ui32WriteOffset;
     return STATUS_SUCCESS;
 }
+
+NTSTATUS a04_vendor_m1_11_fw_debug_snapshot(struct a04_vendor_start *s,struct a04_vendor_fw_debug *out)
+{
+    struct a04_rgx_fw_runtime *r;RGXFWIF_FWCCB_CMD *ring;RGXFWIF_CCB_CTL ctl;
+    unsigned n;
+    if(!out)return STATUS_INVALID_PARAMETER;
+    RtlZeroMemory(out,sizeof(*out));
+    if(!s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !s->memory || !s->memory->hardware_owned || !s->memory->uncached ||
+       !(r=s->memory->runtime) || !r->init || !r->fctl)return STATUS_INVALID_DEVICE_STATE;
+    if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
+    a04_gpu_dma_barrier();
+    if(a04_rgx_device_read_words(&ctl,r->fctl,sizeof(ctl)) || ctl.ui32WrapMask!=31 ||
+       ctl.ui32CmdSize!=sizeof(RGXFWIF_FWCCB_CMD) || ctl.ui32ReadOffset>31 || ctl.ui32WriteOffset>31)goto bad;
+    ring=(RGXFWIF_FWCCB_CMD *)a04_rgx_command_memory(r,
+        ((volatile RGXFWIF_INIT *)r->init)->psFirmwareCCB.ui32Addr,32u*sizeof(*ring));
+    if(!ring)goto bad;
+    out->read=ctl.ui32ReadOffset;out->write=ctl.ui32WriteOffset;
+    out->count=(out->write-out->read)&31u;if(out->count>2)out->count=2;
+    for(n=0;n<out->count;n++)
+        if(a04_rgx_device_read_words(out->words[n],&ring[(out->read+n)&31u],sizeof(*ring)))goto bad;
+    InterlockedExchange(&s->command_busy,0);return STATUS_SUCCESS;
+bad:
+    RtlZeroMemory(out,sizeof(*out));InterlockedExchange(&s->command_busy,0);return STATUS_IO_DEVICE_ERROR;
+}

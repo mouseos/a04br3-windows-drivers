@@ -12,4 +12,7 @@ NTSTATUS a04_vendor_m1_11_windows_power_off(struct a04_vendor_start *start,
     BOOLEAN coherent_or_uncached);
 /* Read-only diagnostics; values are a transient snapshot, not a quiescence proof. */
 NTSTATUS a04_vendor_m1_11_power_debug_snapshot(struct a04_vendor_start *start, ULONG values[6]);
+struct a04_vendor_fw_debug { ULONG read,write,count,words[2][10]; };
+/* Bounded read-only snapshot; never advances or acknowledges a FW request. */
+NTSTATUS a04_vendor_m1_11_fw_debug_snapshot(struct a04_vendor_start *start, struct a04_vendor_fw_debug *out);
 #endif
