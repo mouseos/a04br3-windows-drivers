@@ -13,6 +13,8 @@ $boot = if ($env:A04_GE8300_BOOT_TEST -eq '1') { '1' } else { '0' }
 $vendorStage = if ($env:A04_GE8300_VENDOR_STAGE -eq '1') { '1' } else { '0' }
 $uncachedStage = if ($env:A04_GE8300_VENDOR_UNCACHED_STAGE -eq '1') { '1' } else { '0' }
 $vendorIrq = if ($env:A04_GE8300_VENDOR_IRQ -eq '1') { '1' } else { '0' }
+$vendorStartDiagnostic = if ($env:A04_GE8300_VENDOR_START_DIAGNOSTIC -eq '1') { '1' } else { '0' }
+if ($vendorStartDiagnostic -eq '1' -and $vendorIrq -ne '1') { throw 'Vendor start diagnostic requires IRQ' }
 if ($vendorIrq -eq '1' -and $uncachedStage -ne '1') { throw 'Vendor IRQ requires uncached staging' }
 if ($uncachedStage -eq '1' -and $vendorStage -ne '1') { throw 'Uncached staging requires vendor staging' }
 if ($vendorStage -eq '1' -and $boot -eq '1') { throw 'Vendor staging and modern firmware boot are mutually exclusive' }
@@ -37,7 +39,7 @@ $sources += @('vendor_m1_11\windows_uncached','vendor_m1_11\windows_stage_uncach
 if ($render -eq '1') { $sources += @('windows_render_memory','windows_render_diagnostic','render_pds_data','render_context_pds','render_context_static','render_shared_size','render_execution','render_fixed_vdm','render_fixed_ppp','render_fixed_command') }
 foreach ($name in $sources) {
     $obj = Join-Path $out "$($name.Replace('\','-')).obj"
-    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_GE8300_VENDOR_STAGE=$vendorStage" "-DA04_GE8300_VENDOR_UNCACHED_STAGE=$uncachedStage" "-DA04_GE8300_VENDOR_IRQ=$vendorIrq" "-DA04_GE8300_BOOT_TEST=$boot" "-DA04_GE8300_ALLOW_MISMATCH=$mismatch" "-DA04_GE8300_CLEAR_TEST=$clear" "-DA04_GE8300_COPY_TEST=$copy" "-DA04_GE8300_LINEAR_TEST=$linear" "-DA04_GE8300_COPY_SERVICE=$service" "-DA04_GE8300_SHARED_TRACE_DIAGNOSTIC=$sharedTrace" "-DA04_GE8300_RENDER_EXPERIMENT=$render" "-DA04_GE8300_RENDER_DIAGNOSTIC=$renderDiagnostic" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$gpu\compat" "-I$gpu\fwif" -c (Join-Path $gpu "$name.c") -o $obj
+    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_GE8300_VENDOR_STAGE=$vendorStage" "-DA04_GE8300_VENDOR_UNCACHED_STAGE=$uncachedStage" "-DA04_GE8300_VENDOR_IRQ=$vendorIrq" "-DA04_GE8300_VENDOR_START_DIAGNOSTIC=$vendorStartDiagnostic" "-DA04_GE8300_BOOT_TEST=$boot" "-DA04_GE8300_ALLOW_MISMATCH=$mismatch" "-DA04_GE8300_CLEAR_TEST=$clear" "-DA04_GE8300_COPY_TEST=$copy" "-DA04_GE8300_LINEAR_TEST=$linear" "-DA04_GE8300_COPY_SERVICE=$service" "-DA04_GE8300_SHARED_TRACE_DIAGNOSTIC=$sharedTrace" "-DA04_GE8300_RENDER_EXPERIMENT=$render" "-DA04_GE8300_RENDER_DIAGNOSTIC=$renderDiagnostic" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$gpu\compat" "-I$gpu\fwif" -c (Join-Path $gpu "$name.c") -o $obj
     if ($LASTEXITCODE -ne 0) { throw "ARM GE8300 provider compilation failed: $name" }
     $objects += $obj
 }

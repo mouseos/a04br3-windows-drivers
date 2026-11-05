@@ -23,6 +23,7 @@ struct a04_vendor_power_snapshot {
     uint32_t spm_status,spm_status_2,mfg_clock_status;
     uint32_t top_mux0,top_mux1,top_slow;
 };
+int a04_vendor_m1_11_power_valid(const struct a04_vendor_power_snapshot *snapshot);
 enum a04_vendor_irq_mode {
     A04_VENDOR_IRQ_MASKED=1,
     A04_VENDOR_IRQ_HANDLER_OWNS=2

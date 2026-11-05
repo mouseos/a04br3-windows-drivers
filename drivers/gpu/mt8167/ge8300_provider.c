@@ -20,6 +20,12 @@
 #ifndef A04_GE8300_VENDOR_IRQ
 #define A04_GE8300_VENDOR_IRQ 0
 #endif
+#ifndef A04_GE8300_VENDOR_START_DIAGNOSTIC
+#define A04_GE8300_VENDOR_START_DIAGNOSTIC 0
+#endif
+#if A04_GE8300_VENDOR_START_DIAGNOSTIC && !A04_GE8300_VENDOR_IRQ
+#error Vendor firmware start diagnostic requires the IRQ and uncached staging paths
+#endif
 #if A04_GE8300_VENDOR_IRQ && !A04_GE8300_VENDOR_UNCACHED_STAGE
 #error Vendor IRQ requires uncached vendor staging
 #endif
@@ -270,6 +276,9 @@ EVT_WDF_DEVICE_PREPARE_HARDWARE GpuPrepare;
 EVT_WDF_DEVICE_RELEASE_HARDWARE GpuRelease;
 EVT_WDF_DEVICE_D0_ENTRY GpuD0Entry;
 EVT_WDF_DEVICE_D0_EXIT GpuD0Exit;
+#if A04_GE8300_VENDOR_START_DIAGNOSTIC
+EVT_WDF_DEVICE_D0_ENTRY_POST_INTERRUPTS_ENABLED GpuPostInterrupts;
+#endif
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL GpuIoControl;
 static NTSTATUS read_firmware(PVOID *buffer,ULONG *bytes)
 {
@@ -467,7 +476,9 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     else status=a04_vendor_m1_11_windows_stage(&c->vendor,adapter,image,bytes);
 #endif
     ExFreePoolWithTag(image,'0XGA');
+#if !A04_GE8300_VENDOR_START_DIAGNOSTIC
     if(NT_SUCCESS(status)) status=a04_vendor_m1_11_windows_free(&c->vendor);
+#endif
     if(c->vendor_adapter_v3 && !c->vendor.adapter) {
         c->vendor_adapter_v3->DmaOperations->PutDmaAdapter(c->vendor_adapter_v3);
         c->vendor_adapter_v3=NULL;
@@ -617,6 +628,47 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     return STATUS_SUCCESS;
 #endif
 }
+#if A04_GE8300_VENDOR_START_DIAGNOSTIC
+/* Bounded WinPE bring-up only. GPST verifies the immediate handoff state, not
+ * exclusive ownership of shared clocks; do not enable for installed Windows.
+ * Any hardware-owned allocations remain pinned even after a failed start. */
+NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
+{
+    GPU_CONTEXT *c=GpuContext(device);struct a04_vendor_power_snapshot power;
+    NTSTATUS status;uint64_t bvnc;UNREFERENCED_PARAMETER(previous);
+    if(!c->vendor.staged || !c->vendor.uncached || !c->vendor_irq) return STATUS_SUCCESS;
+    WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+    status=a04_vendor_m1_11_power_snapshot(device,c->mfg,MFG_SIZE,&power);
+    if(NT_SUCCESS(status) && !a04_vendor_m1_11_power_valid(&power)) status=STATUS_DEVICE_NOT_READY;
+    if(NT_SUCCESS(status)) {
+        bvnc=((uint64_t)c->status.bvnc_high<<32)|c->status.bvnc_low;
+        a04_vendor_irq_set_power(c->vendor_irq,TRUE);
+        status=a04_vendor_m1_11_windows_start(&c->vendor_start,&c->vendor,c->core,CORE_SIZE,
+            bvnc,&power,A04_VENDOR_IRQ_HANDLER_OWNS);
+    }
+    c->status.attempted=1;c->status.boot_status=status;
+    c->status.processor_released=c->vendor.hardware_owned;
+    c->status.firmware_started=c->vendor_start.online;
+    if(NT_SUCCESS(status)) {
+        /* GP SYNC proves execution, not merely firmware-ready. The power-off
+         * acknowledgement is not fabric quiescence; DMA stays pinned. */
+        c->status.health_status=a04_vendor_m1_11_windows_fence(&c->vendor_start,0,TRUE);
+        if(NT_SUCCESS(c->status.health_status))
+            c->status.shutdown_status=a04_vendor_m1_11_windows_power_off(&c->vendor_start,TRUE);
+    }
+    if(!c->vendor.hardware_owned) {
+        a04_vendor_irq_set_power(c->vendor_irq,FALSE);
+        if(c->vendor.adapter) (void)a04_vendor_m1_11_windows_free(&c->vendor);
+        if(c->vendor_adapter_v3 && !c->vendor.adapter) {
+            c->vendor_adapter_v3->DmaOperations->PutDmaAdapter(c->vendor_adapter_v3);
+            c->vendor_adapter_v3=NULL;
+        }
+    }
+    WdfWaitLockRelease(c->vendor_lifetime);
+    if(c->vendor.hardware_owned) a04_vendor_irq_kick(c->vendor_irq);
+    return STATUS_SUCCESS;
+}
+#endif
 NTSTATUS GpuD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
 {
     GPU_CONTEXT *c=GpuContext(device); UNREFERENCED_PARAMETER(target);
@@ -731,6 +783,9 @@ NTSTATUS GpuAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     WdfDeviceInitSetDeviceType(init,FILE_DEVICE_UNKNOWN);
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp); pnp.EvtDevicePrepareHardware=GpuPrepare;
     pnp.EvtDeviceReleaseHardware=GpuRelease; pnp.EvtDeviceD0Entry=GpuD0Entry; pnp.EvtDeviceD0Exit=GpuD0Exit;
+#if A04_GE8300_VENDOR_START_DIAGNOSTIC
+    pnp.EvtDeviceD0EntryPostInterruptsEnabled=GpuPostInterrupts;
+#endif
     WdfDeviceInitSetPnpPowerEventCallbacks(init,&pnp);
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,GPU_CONTEXT); attr.ExecutionLevel=WdfExecutionLevelPassive;
     status=WdfDeviceCreate(&init,&attr,&device); if(!NT_SUCCESS(status)) return status;

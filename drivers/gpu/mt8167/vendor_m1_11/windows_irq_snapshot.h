@@ -6,4 +6,8 @@ struct a04_vendor_irq_snapshot { uint32_t count; BOOLEAN valid; };
 /* Record a stable FW interrupt counter only while the FWCCB is empty. */
 NTSTATUS a04_vendor_m1_11_windows_irq_snapshot(struct a04_vendor_start *start,
     BOOLEAN coherent_or_uncached,struct a04_vendor_irq_snapshot *snapshot);
+NTSTATUS a04_vendor_m1_11_windows_fence(struct a04_vendor_start *start,
+    uint32_t data_master,BOOLEAN coherent_or_uncached);
+NTSTATUS a04_vendor_m1_11_windows_power_off(struct a04_vendor_start *start,
+    BOOLEAN coherent_or_uncached);
 #endif

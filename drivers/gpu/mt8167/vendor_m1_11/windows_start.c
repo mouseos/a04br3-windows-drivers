@@ -42,7 +42,7 @@ static uint32_t shared(void *ctx,uint32_t physical)
     a04_gpu_dma_barrier();
     return *(volatile uint32_t *)((unsigned char *)b->cpu+(size_t)offset);
 }
-static int power_valid(const struct a04_vendor_power_snapshot *p)
+int a04_vendor_m1_11_power_valid(const struct a04_vendor_power_snapshot *p)
 {
     const uint32_t domains=(1u<<25)|(1u<<24)|(1u<<4);
     return p && (p->spm_status&domains)==domains &&
@@ -60,7 +60,7 @@ NTSTATUS a04_vendor_m1_11_windows_start(struct a04_vendor_start *s,
     NTSTATUS status=STATUS_DEVICE_CONFIGURATION_ERROR;
     if(!s || !m || !core || KeGetCurrentIrql()!=PASSIVE_LEVEL || s->attempted ||
        s->trampoline_allocation || !m->adapter || !m->staged || m->hardware_owned ||
-       core_bytes<0xa104u || ((ULONG_PTR)core&3u) || !power_valid(power) ||
+       core_bytes<0xa104u || ((ULONG_PTR)core&3u) || !a04_vendor_m1_11_power_valid(power) ||
        (irq_mode!=A04_VENDOR_IRQ_MASKED && irq_mode!=A04_VENDOR_IRQ_HANDLER_OWNS) ||
        observed_bvnc!=0x001600280036001eULL || !m->runtime || !m->runtime->init)
         return STATUS_INVALID_DEVICE_STATE;
