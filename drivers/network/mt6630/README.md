@@ -177,3 +177,16 @@ callbackへ渡し、作業メモリを消去する。対応するSystemRootの�
 診断専用 `A04_NDIS_NVRAM_PROBE=1` ではNDIS初期化時にこの処理を実行した後、
 従来どおり初期化を拒否する。INFや署名済みパッケージはなく、実機では未検証。
 ディスク識別、非同期停止、校正反映、共有電源・SDIO・NDISの実動作を保証しない。
+
+`board_sequence.c` はローカルXNUのSDIO起動手順を移植した未接続部品。TOPCKGEN、
+GPIO4/7、GPIO68–73、pull/IES、MSDC2 reset/clockを順に扱い、呼出側による共有資源、
+combo、RTC、IRQの排他的所有確認がなければ開始しない。途中失敗はpoisonし、
+リース解除や電源復旧を推測しない。現行の共有親はD0とWi-Fiリースを拒否するため、
+本コードは実ハードへ到達しない。EINT、資源broker、FW取得・開始は未接続。
+起動手順は公開済み [mouseos/xnu_kernel_benesse_a04br3 f5d43bf](https://github.com/mouseos/xnu_kernel_benesse_a04br3/tree/f5d43bf1677955e7e367545b9bbbd6449776cdda/iokit/Kernel/arm/sdio)
+の `A04BR3SDIO.cpp` と `A04BR3SDIOPads.h` にも一致し、両ファイルの
+SPDXはBSD-2-Clause-Patent。前者の全体SHA-256は
+`baf7ed5d72055e3f6ec20034caf16314120aa223c8806075588a1d06d5d8074f`、
+後者は `884aeb21190d9689b1e8cdb6f990d378be5665939b22e780709c48eb4c131bdd`。
+最初に参照した別版の前者は
+`c7fa60811d1b44e354d538be54e0e0e8399f51cd292e550b9f39dfeeb9949de3`。

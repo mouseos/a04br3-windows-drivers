@@ -589,6 +589,7 @@ build/mt6630_sdio_args_test: drivers/network/mt6630/sdio_args.h tests/mt6630_sdi
 
 .PHONY: test-mt6630
 test-mt6630: build/mt6630_identity_test build/mt6630_sdio_args_test build/mt6630_transport_test build/mt6630_direct_test
+	./build/mt6630_board_sequence_test
 	./build/mt6630_identity_test
 	./build/mt6630_sdio_args_test
 	./build/mt6630_transport_test
@@ -726,3 +727,9 @@ build/mt6630_native_hif_rx_test: drivers/network/mt6630/native_hif_rx.c drivers/
 	$(CC) $(CFLAGS) -Itests/native_scan_stubs -Idrivers/network/mt6630 drivers/network/mt6630/native_hif_rx.c tests/mt6630_native_hif_rx_test.c -o $@
 
 test-mt6630: build/mt6630_native_hif_rx_test
+
+build/mt6630_board_sequence_test: drivers/network/mt6630/board_sequence.c drivers/network/mt6630/board_sequence.h tests/mt6630_board_sequence_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/board_sequence.c tests/mt6630_board_sequence_test.c -o $@
+
+test-mt6630: build/mt6630_board_sequence_test
