@@ -11,8 +11,7 @@ The GPL Android source `arch/arm64/boot/dts/mediatek/mt8167.dtsi` identifies
 USB0 as `mediatek,mt8167-usb20`, controller 0x11100000, PHY range
 0x11110000, GIC SPI 72, and USB1 as a separate `mt8167-usb11` at 0x11190000.
 The vendor USB20 driver is MUSB, not an EHCI or xHCI register interface.
-`sts8167_tb_n.dts` has conflicting-looking VBUS references (GPIO20 pinctrl,
-GPIO68 property); board wiring and selection are unverified. XNU's charger
+`a04br3.dts` specifies GPIO22 for VBUS drive, GPIO41 ID, GPIO21 overcurrent, GPIO34 USB detection, and the MT6392 VUSB regulator. The earlier `sts8167_tb_n.dts` GPIO20/GPIO68 values belong to a different board and must not be used here. Physical wiring and charger ownership remain unverified. XNU's charger
 code does not establish a USB host driver. Do not enable VBUS based on these
 references alone.
 
@@ -34,3 +33,5 @@ Run portable tests from repository root:
 ARM32 and verifies the COFF machine; this is not a linked driver package.
 
 The EP0 PIO adapter assumes the indexed register layout and an initialized host-mode controller. It performs FIFO I/O and CSR0 transactions through callbacks, but does not install an IRQ handler or manage power, route, cancellation or recovery. Mock tests are not hardware validation.
+
+The boot-keyboard-only path in keyboard.c parses the first configuration and selects a direct boot keyboard interrupt IN endpoint; keyboard_rx.c implements MUSB PIO endpoint operations. These routines are not yet connected to a Windows HID minidriver, power/PHY, real IRQ handling, or EP0 orchestration. No hubs, general USB devices or arbitrary HID report protocols are supported.
