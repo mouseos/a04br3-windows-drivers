@@ -13,21 +13,22 @@ static HANDLE open_uart(void)
     return CreateFileW(L"\\\\.\\A04BR3ScreenUart",GENERIC_READ|GENERIC_WRITE,
         FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
 }
-static void report(const char *message,DWORD length)
+static int report(const char *message,DWORD length)
 {
     DWORD start=GetTickCount(),got;
     while(GetTickCount()-start<30000u) {
         HANDLE h=open_uart();
         if(h!=INVALID_HANDLE_VALUE) {
             BOOL ok=DeviceIoControl(h,A04_UART_SCREEN_SEND,(void *)message,length,NULL,0,&got,NULL);
-            CloseHandle(h); if(ok)return;
+            CloseHandle(h); if(ok)return 1;
         }
         Sleep(100);
     }
+    return 0;
 }
 static int run(void)
 {
-    DWORD request=0,got,rc; BOOL ok,ready=FALSE; HANDLE h;
+    DWORD request=0,got,rc,lastReady=0; BOOL ok,ready=FALSE; HANDLE h;
     STARTUPINFOW si; PROCESS_INFORMATION pi;
     WCHAR cmd[]=L"X:\\Windows\\System32\\cmd.exe /d /c X:\\a04br3\\release-toprgu-audit-volume.cmd";
     for(;;) {
@@ -35,9 +36,9 @@ static int run(void)
         if(h!=INVALID_HANDLE_VALUE) {
             got=0;ok=DeviceIoControl(h,A04_UART_VOLUME_GET,NULL,0,&request,sizeof(request),&got,NULL);
             CloseHandle(h);
-            if(ok && got==sizeof(request) && !ready) {
+            if(ok && got==sizeof(request) && request==0 && (!ready || GetTickCount()-lastReady>=10000u)) {
                 static const char msg[]="A04VOL_LISTENER_READY\n";
-                report(msg,sizeof(msg)-1); ready=TRUE;
+                if(report(msg,sizeof(msg)-1)) { ready=TRUE; lastReady=GetTickCount(); }
             }
             if(ok && got==sizeof(request) && request==1)break;
         }
