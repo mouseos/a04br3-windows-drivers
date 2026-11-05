@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "state": "host-built-dual-render-device-untested",
+  "driver_commit": "3e5e0f77a4b80f592b74c2d19cf7d0ff7828e18d",
+  "driver_flags": [
+    "BOOT_TEST=1",
+    "ALLOW_MISMATCH=1",
+    "RENDER_EXPERIMENT=1",
+    "RENDER_DIAGNOSTIC=1"
+  ],
+  "source_esp_sha256": "80e78974e86c709f0961d4f80db5dcaeff3dade8bf2ab5c86b7102aad4035871",
+  "source_wim_sha256": "f3808bb5fe590af7e21549312adf2f903dd5e5449b1d357967c270f3ae1a7648",
+  "derived_wim_sha256": "ebbfb9cf6b3d316a1caa18abaa6646e62e404684d31c61d045e5b04d4684f422",
+  "boot_index": 1,
+  "preserved_files": {
+    "/EFI/Boot/bootarm.efi": "5dcf001e5be0bf252d303f0377c4dad67a070aed307b0f6153d1125bf346b397",
+    "/EFI/Microsoft/Boot/BCD": "65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d",
+    "/Boot/boot.sdi": "cd2c00ce027687ce4a8bdc967f26a8ab82f651c9becd703658ba282ec49702bd"
+  },
+  "startnet_sha256": "787f81a186d9731d37f06c1a7c0b6f0771e3540477cd30e3fa8256c976de4069",
+  "package_sha256": {
+    "ge8300-mips.fw": "cfe6f58db2ad604b1729349629510c5a3434b266c99ea886d2959887bff4fed8",
+    "ge8300-pnp-status.exe": "69a244fa68f1a0fa29b404e2477032a352ed72d17eb3e669ea35a96c7f65939e",
+    "ge8300-status.exe": "a7b6348f6bd404dc65bdfc38d2d5d32ab16fce551257f1c064c8b1803b580153",
+    "ge8300-test.cer": "4994e602d78de1ef899d0115b27d980b6f88872c23210a9a0defae0533dba43e",
+    "mt8167-ge8300.cat": "d059f09cf6e44941a6806469786b8ff72af596b11afb5ed9e826ed119d97b0f3",
+    "mt8167-ge8300.inf": "73afb7f2e63469d577317b68ed505c01340a81b36373eda416883ce5ae4edc0b",
+    "mt8167-ge8300.sys": "9a5a90fdc07156dfdb9803df6251cf9a7a94a7b109851446c62b2db3eae83f6b"
+  },
+  "candidate_boot_sha256": "2813f8cb42651bb54374bf7b7b1bdd33eaf2198db6afd008c70574f337b190ab",
+  "candidate_boot_status": "previously used in full-screen WinPE run; GPU fixed render not tested",
+  "limitations": [
+    "Both diagnostic cases are device untested; firmware BVNC mismatch is explicitly permitted only for this diagnostic.",
+    "FW snapshots are non-atomic; zero counters do not prove absence of faults.",
+    "Matching sentinel may also result from matching writes or visibility problems; output cannot establish the cause alone.",
+    "Firmware shutdown and cleanup are not independent proof of hardware DMA quiescence.",
+    "Host UART receipt and CRC are not known to target; screen fallback runs only on returned startup failure, not drvload hang or incomplete UART."
+  ],
+  "trusted_wim_sha256": "8bf8e567c04d6e56c0054d8be3913817b76738732d94acb268d0bce7bee1367f",
+  "trusted_esp_sha256": "e06c40cfaeeb1b081dca9f0ca210da4d6e99de0164ff875a50096e557a8bcdf8",
+  "certificate": {
+    "source_sha256": "ebbfb9cf6b3d316a1caa18abaa6646e62e404684d31c61d045e5b04d4684f422",
+    "wim_sha256": "8bf8e567c04d6e56c0054d8be3913817b76738732d94acb268d0bce7bee1367f",
+    "serialized_cert_sha256": "32c58ed0cbdd3b5e4de69cf6eed42374bdc18a8373b595be6228c35976876ff3",
+    "thumbprint_sha1": "71B11046449679BFA1C1EEB9A37FED4433266A24",
+    "stores": [
+      "Root",
+      "TrustedPublisher"
+    ],
+    "note": "offline trust entries verified; signature acceptance and boot policy unverified"
+  },
+  "restore_boot_sha256": "7d03e814b3f156c4a03ef48c48ededd130916c5aa78df118d425f6ef40ea2ee3",
+  "restore_esp_sha256": "c2c1d2bfcf37b8422e9db9429b70fa98ffb7f995a6d24c8a5de3804d9b007176",
+  "successful_full_screen_evidence": {
+    "test_boot_sha256": "2813f8cb42651bb54374bf7b7b1bdd33eaf2198db6afd008c70574f337b190ab",
+    "test_esp_sha256": "80e78974e86c709f0961d4f80db5dcaeff3dade8bf2ab5c86b7102aad4035871",
+    "uart_sha256": "4078132753b808e8013f2c89afb1482d41a5f4cce5c6639407a1d4575373d81f",
+    "screen_pbm_sha256": "9c792a39c30fadbe86c9465c29314c2b5157c4b536700f991cf77cee63d095aa",
+    "inputs_sha256": "25cfd5cf360c3a86c1af7a7c8fdab6d3c513ee6bd785624c9a314a28018c44bc",
+    "observed": "CPU1 ownership and watchdog kicks; full 800x600 screen with per-part and aggregate CRC; no 3D render",
+    "restore": "matching restore input hashes and RESTORE_COMMANDS_SUCCEEDED; no physical readback; immediate restored combination boot not conclusively attributed"
+  },
+  "base_components_sha256": {
+    "SYSTEM": "cc151bf339dd2683b313e95d42179cfe571f6392c7a294b9a98f19a8a83e5214",
+    "mt8167-toprgu.sys": "52a1a1cb0cd66821099a87db9aca5bd82797061ab0e99a047d495d7fe06c2b3e",
+    "uart-screen.exe": "655bfc0fa4ae4369b7aa487a747dbe9b41780b3078bc335261fa9c83e53236d7"
+  },
+  "scissor_words": [
+    49,
+    64
+  ],
+  "triangle_interior_pixels": 1107,
+  "diagonal_edge_pixels": 41,
+  "transpose_interior_difference": 42,
+  "observed_09c630d": {
+    "status": "C000003E",
+    "stage": 32,
+    "background": 448,
+    "foreground": 576,
+    "other": 3072,
+    "old_morton_mismatch": 3547,
+    "foreground_linear_rectangle": "x=8..31,y=8..31",
+    "background_and_zero_spatial_unknown": true,
+    "old_decoder_wrong": true,
+    "screen_size": [
+      800,
+      1280
+    ],
+    "screen_aggregate_crc_complete": false
+  },
+  "signed_zip_sha256": "e27a5e4ee6dbc71f224c80221c1f3265e039cc50ebd15117b79a4602d64624f1",
+  "sentinel_rgba": "a55ac37e",
+  "region_header_gpu_va": "0xdbf0000000",
+  "screen_policy": "skip on drvload, PnP and lifecycle success; screen fallback on returned startup failure; no host CRC acknowledgement",
+  "diagnostic_cases": [
+    "0: asymmetric triangle",
+    "1: clear only; independent DMA, VM and context; skipped on unsafe prior completion"
+  ]
+}
