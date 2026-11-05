@@ -46,10 +46,14 @@ void mainCRTStartup(void)
             p=vendor_text(p," SPM1=");p=vendor_hex(p,power.spm_status);
             p=vendor_text(p," SPM2=");p=vendor_hex(p,power.spm_status_2);
             p=vendor_text(p," MFG=");p=vendor_hex(p,power.mfg_clock_status);
+            p=vendor_text(p,"\n");*p=0;
+            if(!vendor_uart(line)) say("GE8300_POWER_UART_FAILED\r\n");
+            p=line;p=vendor_text(p,"A04GPU CLOCK");
             p=vendor_text(p," MUX0=");p=vendor_hex(p,power.top_mux0);
             p=vendor_text(p," MUX1=");p=vendor_hex(p,power.top_mux1);
             p=vendor_text(p," SLOW=");p=vendor_hex(p,power.top_slow);
-            p=vendor_text(p,"\n");*p=0;(void)vendor_uart(line);
+            p=vendor_text(p,"\n");*p=0;
+            if(!vendor_uart(line)) say("GE8300_CLOCK_UART_FAILED\r\n");
         } else (void)vendor_uart("A04GPU POWER QUERY FAILED\n");
         if(!DeviceIoControl(h,A04_GE8300_IOCTL_VENDOR_STAGE_QUERY,NULL,0,&v,sizeof(v),&got,NULL) ||
            got!=sizeof(v) || v.version!=1) {
