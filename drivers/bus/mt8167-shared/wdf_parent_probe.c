@@ -86,6 +86,8 @@ static int ParentButtonRead(PVOID context,USHORT *value)
  * callbacks never touch MMIO and cannot grant an audio lease. */
 static int ParentAudioAcquire(PVOID context,ULONG rate) { UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(rate);return -1; }
 static int ParentAudioRelease(PVOID context) { UNREFERENCED_PARAMETER(context);return -1; }
+/* The prototype does not own AFE or its clocks. Never touch the mapping. */
+static int ParentAudioPrepareIrq(PVOID context,PVOID afe,ULONG length) { UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(afe);UNREFERENCED_PARAMETER(length);return -1; }
 static VOID ParentInterfaceReference(PVOID context) { WdfObjectReference((WDFDEVICE)context); }
 static VOID ParentInterfaceDereference(PVOID context) { WdfObjectDereference((WDFDEVICE)context); }
 static NTSTATUS ParentReadButtons(PVOID context,USHORT *value) {
@@ -296,7 +298,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     audioIface.Header.Size=sizeof(audioIface);audioIface.Header.Version=A04_SHARED_AUDIO_INTERFACE_VERSION;
     audioIface.Header.Context=dev;audioIface.Header.InterfaceReference=ParentInterfaceReference;
     audioIface.Header.InterfaceDereference=ParentInterfaceDereference;
-    audioIface.AcquireMuted=ParentAudioAcquire;audioIface.ReleaseQuiescent=ParentAudioRelease;
+    audioIface.AcquireMuted=ParentAudioAcquire;audioIface.ReleaseQuiescent=ParentAudioRelease;audioIface.PrepareMaskedIrq=ParentAudioPrepareIrq;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&audioIface,&A04SharedAudioInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
 #endif

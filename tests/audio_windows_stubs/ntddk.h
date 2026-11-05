@@ -1,6 +1,9 @@
 #ifndef AUDIO_TEST_NTDDK_H
 #define AUDIO_TEST_NTDDK_H
 #include <stdint.h>
+#if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
+#include <assert.h>
+#endif
 typedef void *PVOID; typedef uint32_t ULONG; typedef unsigned char BOOLEAN,KIRQL; typedef uintptr_t KAFFINITY; typedef int32_t NTSTATUS,LONG; typedef enum { LevelSensitive, Latched } KINTERRUPT_MODE;
 #ifdef A04_AUDIO_QUERY_SHARED
 typedef uint16_t USHORT;
@@ -34,8 +37,15 @@ inline BOOLEAN KeInsertQueueDpc(PKDPC d,PVOID,PVOID) { if(d->queued)return FALSE
 inline BOOLEAN KeRemoveQueueDpc(PKDPC d) { int q=d->queued;d->queued=0;return q; }
 inline void KeFlushQueuedDpcs() { }
 inline BOOLEAN KeSynchronizeExecution(PKINTERRUPT, BOOLEAN (*fn)(PVOID), PVOID c) { return fn(c); }
+#if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
+extern int test_connect_fail,test_irq_connections,test_irq_disconnections;
+void test_before_disconnect();
+inline NTSTATUS IoConnectInterrupt(PKINTERRUPT *p,ISR_FUNC f,PVOID c,void *,ULONG v,KIRQL l,KIRQL,KINTERRUPT_MODE,BOOLEAN,KAFFINITY a,BOOLEAN) { assert(v==80 && l==5 && a==1);if(test_connect_fail)return -1;test_irq_connections++;test_interrupt.fn=f;test_interrupt.ctx=c;*p=&test_interrupt;return 0; }
+inline void IoDisconnectInterrupt(PKINTERRUPT) { test_before_disconnect();test_irq_disconnections++;test_interrupt.fn=0; }
+#else
 inline NTSTATUS IoConnectInterrupt(PKINTERRUPT *p,ISR_FUNC f,PVOID c,void *,ULONG,KIRQL,KIRQL,KINTERRUPT_MODE,BOOLEAN,KAFFINITY,BOOLEAN) { test_interrupt.fn=f;test_interrupt.ctx=c;*p=&test_interrupt;return 0; }
 inline void IoDisconnectInterrupt(PKINTERRUPT) { test_interrupt.fn=0; }
+#endif
 #ifdef A04_TEST_COMMON_DMA
 #include <stddef.h>
 #include <stdlib.h>

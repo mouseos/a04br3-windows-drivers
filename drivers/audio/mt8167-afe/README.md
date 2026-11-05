@@ -107,7 +107,18 @@ is not evidence that the actual Windows interrupt or board codec works.
 and readback for an exclusive owner with a held clock. It refuses an active DL1
 and poisons on ambiguous I/O. It deliberately leaves other IRQ sources alone;
 the shared owner must exclude those sources and keep the mask stable until
-disconnect. No current PnP caller establishes or invokes this contract.
+disconnect. It is not used directly by the PnP path.
+
+The separate `A04_AUDIO_IRQ_DIAGNOSTIC=1` path requires both the mapped child
+AFE resource and a version 2 shared-parent interface. It acquires a muted
+clock/codec lease and calls the parent's `PrepareMaskedIrq` contract, which
+must establish exclusive AFE ownership and keep all sources for the line masked
+until lease release. Only then does the backend connect the PnP-translated IRQ.
+PnP revoke drains position requests, disconnects and flushes the IRQ, releases
+the lease, then unmaps AFE. Failed lease release retains the owner, mapping and
+parent references. The prototype parent rejects both acquisition and preparation
+without MMIO, so this path cannot connect on that parent. It does not start DMA,
+unmask interrupts or allow RUN. Version 2 intentionally rejects version 1 parents.
 
 The miniport now accepts an optional internal `Mt8167StreamBackend` supplied by
 an owning PnP provider. It forwards allocation, format-independent start/stop,

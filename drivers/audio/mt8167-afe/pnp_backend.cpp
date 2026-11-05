@@ -3,6 +3,9 @@
 #include "common_dma.h"
 #include "dma_adapter.h"
 #include "stream_transport.h"
+#if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC && (!defined(A04_AUDIO_MAP_AFE) || !A04_AUDIO_MAP_AFE || !defined(A04_AUDIO_QUERY_SHARED) || !A04_AUDIO_QUERY_SHARED)
+#error A04_AUDIO_IRQ_DIAGNOSTIC requires AFE mapping and parent query
+#endif
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
 #if !defined(A04_AUDIO_QUERY_SHARED) || !A04_AUDIO_QUERY_SHARED
 #error A04_AUDIO_MAP_AFE requires the shared parent query
@@ -24,6 +27,7 @@ struct Mt8167PnpBackend {
     Mt8167CommonDma buffer;
     Mt8167PnpInterrupt interrupt;
     Mt8167Irq irq;
+    struct mt8167_dl1_engine engine;
     Mt8167Transport transport;
     struct mt8167_audio_shared_client shared;
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
@@ -38,6 +42,8 @@ static void OwnerDereference(void *ctx)
 {
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
     if (InterlockedDecrement(&o->refs)) return;
+    /* An uncertain lease release keeps the mapping and parent alive. */
+    if (o->shared.leased || o->shared.quarantined || o->irq.interrupt) return;
     /* RUN is always refused, so all buffers allocated here remain unexposed. */
     if (o->buffer.mdl && !NT_SUCCESS(Mt8167CommonReleaseUnexposed(&o->buffer))) {
         /* Never release DMA adapter/PDO when buffer lifetime is uncertain. */
@@ -98,6 +104,23 @@ static NTSTATUS OwnerPosition(void *ctx,PKSAUDIO_POSITION position)
     ExReleaseRundownProtection(&o->positions);return status;
 }
 static NTSTATUS OwnerDescription(void *,PDEVICE_DESCRIPTION) { return STATUS_DEVICE_NOT_READY; }
+#if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
+static void OwnerIrqNotify(void *,ULONG,BOOLEAN) { /* RUN remains refused. */ }
+/* Caller serializes against revoke. The parent's v2 lease excludes competing
+ * AFE/clock owners and keeps all AFE interrupt sources masked until release. */
+static NTSTATUS OwnerConnectMaskedIrq(Mt8167PnpBackend *o)
+{
+    NTSTATUS status;
+    if (mt8167_audio_shared_acquire(&o->shared,48000)) return STATUS_DEVICE_NOT_READY;
+    if (o->parentClient.parent.PrepareMaskedIrq(o->parentClient.parent.Header.Context,o->afe.base,0x1000)) {
+        (void)mt8167_audio_shared_release_unexposed(&o->shared);return STATUS_DEVICE_NOT_READY;
+    }
+    status=Mt8167ConnectIrq(&o->irq,&o->engine,o->interrupt.vector,o->interrupt.level,
+        o->interrupt.affinity,o->interrupt.mode,OwnerIrqNotify,o);
+    if (!NT_SUCCESS(status)) (void)mt8167_audio_shared_release_unexposed(&o->shared);
+    return status;
+}
+#endif
 NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt8167PnpBackend **out)
 {
     ULONG mapRegisters=0;
@@ -161,6 +184,10 @@ NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt816
     o->iface.context=o;o->iface.reference=OwnerReference;o->iface.dereference=OwnerDereference;
     o->iface.allocate=OwnerAllocate;o->iface.freeBuffer=OwnerFree;
     o->iface.start=OwnerStart;o->iface.stop=OwnerStop;o->iface.position=OwnerPosition;o->iface.getDeviceDescription=OwnerDescription;
+#if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
+    status=OwnerConnectMaskedIrq(o);
+    if (!NT_SUCCESS(status)) { o->online=FALSE;OwnerDereference(o);return status; }
+#endif
     *out=o;return STATUS_SUCCESS;
 }
 NTSTATUS Mt8167PnpBackendInterrupt(Mt8167PnpBackend *o,Mt8167PnpInterrupt *interrupt)
@@ -201,9 +228,15 @@ void Mt8167PnpBackendRevoke(Mt8167PnpBackend *o) {
      * close admission and wait at PASSIVE before releasing any mapping. */
     ExWaitForRundownProtectionRelease(&o->positions);
     ExAcquireFastMutex(&o->mutex);
+#if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
+    /* Parent keeps the source masked; disconnect and flush DPC before
+     * releasing its lease or invalidating the AFE mapping. */
+    if (o->irq.interrupt) Mt8167DisconnectIrq(&o->irq);
+    if (o->shared.leased) (void)mt8167_audio_shared_release_unexposed(&o->shared);
+#endif
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
     /* No IRQ, DMA, register access, or asynchronous mapping user exists. */
-    Mt8167UnmapAssignedAfe(&o->afe);
+    if (!o->shared.leased && !o->shared.quarantined) Mt8167UnmapAssignedAfe(&o->afe);
 #endif
     ExReleaseFastMutex(&o->mutex);
 }
