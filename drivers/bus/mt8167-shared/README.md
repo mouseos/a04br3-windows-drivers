@@ -226,3 +226,20 @@ removal, so this is not a physical power or exclusivity guarantee.
 Sources: [registers](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/include/linux/mfd/mt6392/registers.h),
 [MT6392 codec](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/sound/soc/codecs/mt6392-codec.c),
 and [MT8167 codec regmap](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/sound/soc/codecs/mt8167-codec.c).
+
+The board kernel's `snd_soc_update_bits` routes via an uncached MT8167 codec
+regmap to PWRAP: it reads the alias, computes `(old & ~mask) | (value & mask)`,
+and writes the alias only if changed. Its codec-regmap lock callbacks are
+empty. This establishes Linux software behavior, not the MT6392 hardware's
+alias readback or write-zero semantics. The board `upmu_hw.h` identifies
+TOP_CKPDN1 bits 1, 2 and 3 as speaker PWM divider, divider and speaker clock
+power-down fields. `a04_pwrap_owner_read_speaker_clocks` now observes the raw
+base register 0x0108 under the same mutex as button and codec transactions.
+It is not exposed to a client and no current path invokes it on hardware;
+it cannot establish exclusive ownership or permission to change the clocks.
+The Class D parent callback now uses a bounded kernel wait for the Linux
+2 ms/20 ms delays. Preflight, alias semantics, clock ownership, power and
+quiescence remain unresolved and the audio lease remains offline.
+Sources: [ASoC](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/sound/soc/soc-io.c),
+[regmap](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/drivers/base/regmap/regmap.c),
+and [board PMIC fields](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/drivers/misc/mediatek/include/mt-plat/mt8167/include/mach/upmu_hw.h).

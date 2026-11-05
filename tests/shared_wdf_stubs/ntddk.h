@@ -8,7 +8,7 @@ typedef const wchar_t *PCWSTR;
 typedef void VOID;typedef void *PVOID;typedef uint8_t UCHAR;typedef uint16_t USHORT;typedef uint32_t ULONG;typedef int32_t NTSTATUS,LONG;typedef int64_t LONGLONG;
 static inline LONG InterlockedExchange(volatile LONG *p,LONG v){return __atomic_exchange_n(p,v,__ATOMIC_SEQ_CST);}
 static inline LONG InterlockedCompareExchange(volatile LONG *p,LONG v,LONG old){__atomic_compare_exchange_n(p,&old,v,0,__ATOMIC_SEQ_CST,__ATOMIC_SEQ_CST);return old;}
-typedef struct { int64_t QuadPart; } PHYSICAL_ADDRESS;
+typedef struct { int64_t QuadPart; } PHYSICAL_ADDRESS;typedef PHYSICAL_ADDRESS LARGE_INTEGER;
 typedef struct {int held;} FAST_MUTEX;
 #define STATUS_SUCCESS 0
 #define STATUS_INVALID_PARAMETER (-1)
@@ -19,7 +19,10 @@ typedef struct {int held;} FAST_MUTEX;
 #define STATUS_INSUFFICIENT_RESOURCES (-5)
 #define NT_SUCCESS(x) ((x)>=0)
 #define PASSIVE_LEVEL 0
+#define APC_LEVEL 1
+#define KernelMode 0
 #define TRUE 1
+#define FALSE 0
 #define CmResourceTypeMemory 1
 #define CmResourceTypeInterrupt 2
 #define CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE 0
@@ -42,4 +45,5 @@ void ExInitializeFastMutex(FAST_MUTEX *);void ExAcquireFastMutex(FAST_MUTEX *);v
 PVOID MmMapIoSpace(PHYSICAL_ADDRESS,ULONG,int);void MmUnmapIoSpace(PVOID,ULONG);
 ULONG READ_REGISTER_ULONG(volatile ULONG *);void WRITE_REGISTER_ULONG(volatile ULONG *,ULONG);
 void KeStallExecutionProcessor(ULONG);int KeGetCurrentIrql(void);
+NTSTATUS KeDelayExecutionThread(int,int,LARGE_INTEGER *);
 #endif

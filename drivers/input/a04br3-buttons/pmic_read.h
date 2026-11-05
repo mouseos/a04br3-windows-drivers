@@ -21,6 +21,10 @@ struct a04_mt6392_audio_raw { uint16_t spk_con0,spk_con9,spk_con11; };
  * unchanged on failure; values are register observations, not voltage proof. */
 int a04_pmic_emmc_rails(struct a04_pmic_read *bus, struct a04_emmc_rails_raw *out);
 int a04_pmic_chrstatus(struct a04_pmic_read *bus, uint16_t *value);
+/* Read raw TOP_CKPDN1 only. Bits 1/2/3 are speaker PWM divider,
+ * divider and clock PDN fields in the MT8167 MT6392 board header. This is
+ * an observation, not an ownership or clock-rate guarantee. */
+int a04_pmic_spk_clock_status(struct a04_pmic_read *,uint16_t *);
 int a04_pmic_audio_observe(struct a04_pmic_read *bus,struct a04_mt6392_audio_raw *out);
 #if defined(A04_MT6392_WRITE_DIAGNOSTIC) && A04_MT6392_WRITE_DIAGNOSTIC
 /* Caller holds the common PWRAP lock; only Class D masks/values allowed.

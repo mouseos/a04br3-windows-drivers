@@ -25,6 +25,7 @@ ULONG READ_REGISTER_ULONG(volatile ULONG *p){(void)p;reads++;
 #endif
 }
 void KeStallExecutionProcessor(ULONG n){(void)n;}int KeGetCurrentIrql(void){return 0;}
+NTSTATUS KeDelayExecutionThread(int mode,int alert,LARGE_INTEGER *i){assert(mode==KernelMode && !alert && testContext.pwrapLock.held && (i->QuadPart==-20000 || i->QuadPart==-200000));return STATUS_SUCCESS;}
 ULONG WdfCmResourceListGetCount(WDFCMRESLIST l){return l->count;}PCM_PARTIAL_RESOURCE_DESCRIPTOR WdfCmResourceListGetDescriptor(WDFCMRESLIST l,ULONG i){return &l->entries[i];}
 void WdfDeviceInitSetPnpPowerEventCallbacks(PWDFDEVICE_INIT i,WDF_PNPPOWER_EVENT_CALLBACKS *p){(void)i;(void)p;}
 NTSTATUS WdfDeviceCreate(PWDFDEVICE_INIT *i,WDF_OBJECT_ATTRIBUTES *a,WDFDEVICE *d){(void)a;if(*i){assert(child_count<3);*d=&children[child_count++];*i=NULL;}else *d=&testContext;return 0;}
@@ -60,6 +61,9 @@ int main(void){
 #if A04_SHARED_MT6392_DIAGNOSTIC
  assert(testContext.audio.codec_acquire_muted && testContext.audio.codec_release_quiescent);
  assert(ParentCodecSupports(&testContext,0x10c,0xe,0xe) && !reads && !writes);
+ ExAcquireFastMutex(&testContext.pwrapLock);
+ assert(!ParentCodecDelay(&testContext,2000) && !ParentCodecDelay(&testContext,20000));
+ assert(ParentCodecDelay(&testContext,1999));ExReleaseFastMutex(&testContext.pwrapLock);
  assert(ParentCodecStart(&testContext) && !reads && !writes);
 #endif
  assert(child_count==3 && forward_count==6);

@@ -38,6 +38,9 @@ static int read_register(struct a04_pmic_read *bus, uint16_t address, uint16_t *
 int a04_pmic_chrstatus(struct a04_pmic_read *bus, uint16_t *value)
 { return read_register(bus, MT6392_CHRSTATUS, value); }
 
+int a04_pmic_spk_clock_status(struct a04_pmic_read *bus,uint16_t *value)
+{ return read_register(bus,0x0108u,value); }
+
 int a04_pmic_audio_observe(struct a04_pmic_read *bus,struct a04_mt6392_audio_raw *out)
 {
     struct a04_mt6392_audio_raw tmp;

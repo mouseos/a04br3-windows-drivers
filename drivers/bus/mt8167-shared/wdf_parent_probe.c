@@ -136,6 +136,15 @@ static int ParentCodecRead(void *context,uint16_t reg,uint16_t *value) {
     if(!c || !c->pmic.online)return -1;
     return a04_pmic_classd_read_gain(&c->pmic.bus,reg,value);
 }
+/* Bounded sleeps, not a 20 ms busy stall, while the shared transaction
+ * remains serialized. FAST_MUTEX runs the caller at APC_LEVEL. */
+static int ParentCodecDelay(void *context,uint32_t us) {
+    LARGE_INTEGER interval;NTSTATUS status;
+    if(!context || (us!=2000u && us!=20000u) || KeGetCurrentIrql()>APC_LEVEL)return -1;
+    interval.QuadPart=-(LONGLONG)us*10;
+    status=KeDelayExecutionThread(KernelMode,FALSE,&interval);
+    return status==STATUS_SUCCESS ? 0 : -1;
+}
 static int ParentCodecStart(void *context) { return a04_mt6392_classd_start_muted(&((A04_PARENT_CONTEXT *)context)->classd); }
 static int ParentCodecStop(void *context) { return a04_mt6392_classd_stop(&((A04_PARENT_CONTEXT *)context)->classd); }
 #endif
@@ -394,7 +403,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
         c->regs.context=c;c->regs.lock=ParentRegLock;c->regs.unlock=ParentRegUnlock;
         c->regs.read32=ParentRegRead;c->regs.write32=ParentRegWrite;
 #if A04_SHARED_MT6392_DIAGNOSTIC
-        c->classd.context=c;c->classd.supports=ParentCodecSupports;c->classd.update_bits=ParentCodecUpdate;c->classd.read16=ParentCodecRead;
+        c->classd.context=c;c->classd.supports=ParentCodecSupports;c->classd.update_bits=ParentCodecUpdate;c->classd.read16=ParentCodecRead;c->classd.delay_us=ParentCodecDelay;
         c->audio.context=c;c->audio.codec_acquire_muted=ParentCodecStart;
         c->audio.codec_release_quiescent=ParentCodecStop;
 #endif
