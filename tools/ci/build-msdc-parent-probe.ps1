@@ -29,8 +29,8 @@ foreach ($part in @('pwrap_owner','pmic_read','register_owner','audio_owner','mt
     & clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 "-DA04_MT6392_WRITE_DIAGNOSTIC=$codec" "-DA04_MT6392_CLK_ALIAS_EXPERIMENT=$alias" -c $file -o (Join-Path $out "$part.obj")
     if($LASTEXITCODE -ne 0){throw "Parent shared core compilation failed: $part"}
 }
-& lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib (Join-Path $out 'parent.obj') (Join-Path $out 'resources.obj') (Join-Path $out 'pwrap_owner.obj') (Join-Path $out 'pmic_read.obj') (Join-Path $out 'register_owner.obj') (Join-Path $out 'audio_owner.obj') (Join-Path $out 'mt6392_classd.obj') (Join-Path $out 'usb_owner.obj') (Join-Path $out 'gpio22.obj') (Join-Path $wdf 'wdfdriverentry.lib') (Join-Path $wdf 'wdfldr.lib') (Join-Path $lib 'ntoskrnl.lib') (Join-Path $lib 'hal.lib') (Join-Path $lib 'bufferoverflowfastfailk.lib') "/out:$out\parent-probe.sys"
+& lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib (Join-Path $out 'parent.obj') (Join-Path $out 'resources.obj') (Join-Path $out 'pwrap_owner.obj') (Join-Path $out 'pmic_read.obj') (Join-Path $out 'register_owner.obj') (Join-Path $out 'audio_owner.obj') (Join-Path $out 'mt6392_classd.obj') (Join-Path $out 'usb_owner.obj') (Join-Path $out 'gpio22.obj') (Join-Path $wdf 'wdfdriverentry.lib') (Join-Path $wdf 'wdfldr.lib') (Join-Path $lib 'ntoskrnl.lib') (Join-Path $lib 'hal.lib') (Join-Path $lib 'bufferoverflowfastfailk.lib') "/out:$out\mt8167-shared.sys"
 if($LASTEXITCODE -ne 0){throw 'Parent ARM32 link failed'}
-& llvm-readobj --file-headers --coff-imports (Join-Path $out 'parent-probe.sys')
+& llvm-readobj --file-headers --coff-imports (Join-Path $out 'mt8167-shared.sys')
 if($LASTEXITCODE -ne 0){throw 'Parent PE inspection failed'}
 Write-Host "Non-installable parent ABI probe; experimental button-only D0: $buttonD0."

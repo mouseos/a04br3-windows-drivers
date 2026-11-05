@@ -9,7 +9,7 @@ CatalogFile=mt8167-usb20.cat
 [Manufacturer]
 %Provider%=Models,NTARM
 [Models.NTARM]
-%Device%=Install,A04BR3\MT8167USB20
+%Device%=Install,MT8167\USB20
 [DestinationDirs]
 DriverCopy=12
 [SourceDisksNames]

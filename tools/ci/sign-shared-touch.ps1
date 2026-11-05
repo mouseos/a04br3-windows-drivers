@@ -11,7 +11,7 @@ $cat=Join-Path $kit 'bin\x86\Inf2Cat.exe'
 $sign=Join-Path $kit 'bin\x86\signtool.exe'
 $cert=New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=MT8167 BU21025 Development' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
 Export-Certificate -Cert $cert -FilePath (Join-Path $dest 'shared-touch-test.cer') | Out-Null
-foreach($p in @(@('parent','parent-probe.sys','shared-parent.cat'),@('touch','bu21025.sys','bu21025.cat'))) {
+foreach($p in @(@('parent','mt8167-shared.sys','shared-parent.cat'),@('touch','bu21025.sys','bu21025.cat'))) {
  $d=Join-Path $dest $p[0];$sys=Join-Path $d $p[1];$catalog=Join-Path $d $p[2]
  & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My $sys
  if($LASTEXITCODE -ne 0){throw 'SYS signing failed'}

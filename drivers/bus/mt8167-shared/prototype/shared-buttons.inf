@@ -11,7 +11,7 @@ CatalogFile=mt8167-mt6392-buttons.cat
 %Provider%=Models,NTARM
 
 [Models.NTARM]
-%Device%=Install,A04BR3\SharedButtonsProbe
+%Device%=Install,MT6392\Buttons
 
 [DestinationDirs]
 DriverCopy=12

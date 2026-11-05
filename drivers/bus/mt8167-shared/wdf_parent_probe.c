@@ -695,14 +695,14 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #endif
 #if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE
     if(!NT_SUCCESS(status))return status;
-    status=ParentAddProbeChild(dev,L"A04BR3\\SharedButtonsProbe",L"0",0x10002000u);
+    status=ParentAddProbeChild(dev,L"MT6392\\Buttons",L"0",0x10002000u);
     if(!NT_SUCCESS(status))return status;
-    status=ParentAddProbeChild(dev,L"A04BR3\\SharedTouchProbe",L"0",0x11009000u);
+    status=ParentAddProbeChild(dev,L"MT8167\\BU21025",L"0",0x11009000u);
     if(!NT_SUCCESS(status))return status;
-    status=ParentAddProbeChild(dev,L"A04BR3\\MT8167USB20",L"0",0x11100000u);
+    status=ParentAddProbeChild(dev,L"MT8167\\USB20",L"0",0x11100000u);
     if(!NT_SUCCESS(status))return status;
     /* The audio sentinel remains unavailable unless the diagnostic flag is set. */
-    status=ParentAddProbeChild(dev,L"A04BR3\\SharedAudioProbe",L"0",0xffffffffu);
+    status=ParentAddProbeChild(dev,L"MT8167\\AFE",L"0",0xffffffffu);
 #endif
     return status;
 }
