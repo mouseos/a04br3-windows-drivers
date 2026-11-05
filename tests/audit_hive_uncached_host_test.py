@@ -18,7 +18,7 @@ BOOL ReadFile(HANDLE h,void*b,DWORD n,DWORD*g,void*x){(void)x;size_t *pos=h==(HA
 BOOL CloseHandle(HANDLE h){(void)h;return 1;}void *VirtualAlloc(void*a,size_t n,DWORD x,DWORD y){(void)a;(void)x;(void)y;return malloc(n);}BOOL VirtualFree(void*p,size_t n,DWORD f){(void)n;(void)f;free(p);return 1;}
 DWORD GetLastError(void){return 0;}HANDLE GetStdHandle(DWORD n){(void)n;return (HANDLE)3;}BOOL WriteFile(HANDLE h,const void*p,DWORD n,DWORD*w,void*x){(void)h;(void)x;*w=n;return fwrite(p,1,n,stdout)==n;}
 void ExitProcess(DWORD x){code=x;longjmp(done,1);}
-int main(int argc,char **argv){if(argc!=3)return 10;mode=(unsigned)atoi(argv[2]);const char *kind=strstr(argv[1],".LOG1")?"test SYSTEM.LOG1":(strstr(argv[1],".LOG2")?"test SYSTEM.LOG2":"test SYSTEM");for(unsigned i=0;kind[i];i++)command[i]=(WCHAR)kind[i];FILE*f=fopen(argv[1],"rb");if(!f)return 11;fseek(f,0,SEEK_END);len=(size_t)ftell(f);rewind(f);source=malloc(len);copy=malloc(len);if(!source||!copy||fread(source,1,len,f)!=len)return 12;fclose(f);memcpy(copy,source,len);if(mode==3){source[0x100]^=1;copy[0x100]^=1;}if(mode==4)len--;if(!setjmp(done))mainCRTStartup();free(source);free(copy);return code;}
+int main(int argc,char **argv){if(argc!=3)return 10;mode=(unsigned)atoi(argv[2]);int sw=strstr(argv[1],"SOFTWARE")!=0;const char *kind=strstr(argv[1],".LOG1")?(sw?"test SOFTWARE.LOG1":"test SYSTEM.LOG1"):(strstr(argv[1],".LOG2")?(sw?"test SOFTWARE.LOG2":"test SYSTEM.LOG2"):(sw?"test SOFTWARE":"test SYSTEM"));for(unsigned i=0;kind[i];i++)command[i]=(WCHAR)kind[i];FILE*f=fopen(argv[1],"rb");if(!f)return 11;fseek(f,0,SEEK_END);len=(size_t)ftell(f);rewind(f);source=malloc(len);copy=malloc(len);if(!source||!copy||fread(source,1,len,f)!=len)return 12;fclose(f);memcpy(copy,source,len);if(mode==3){source[0x100]^=1;copy[0x100]^=1;}if(mode==4)len--;if(!setjmp(done))mainCRTStartup();free(source);free(copy);return code;}
 '''.replace('SOURCE',str(root/'tools/winpe/audit-hive-uncached.c'))
 (root/'build').mkdir(exist_ok=True)
 with tempfile.TemporaryDirectory(prefix='hive-uncached-',dir=root/'build/tmp') as t:
@@ -30,5 +30,9 @@ with tempfile.TemporaryDirectory(prefix='hive-uncached-',dir=root/'build/tmp') a
   if mode==0:assert b'A04_HIVE_SEQUENCE_PRIMARY=00000324' in result.stdout and b'A04_HIVE_SEQUENCE_SECONDARY=00000323' in result.stdout and b'A04_HIVE_UNCACHED_TWO_PASS_MATCH' in result.stdout
  for suffix in ('.LOG1','.LOG2'):
   result=subprocess.run([str(exe),str(fixture)+suffix,'0'],capture_output=True)
+  assert result.returncode==0 and b'A04_HIVE_UNCACHED_TWO_PASS_MATCH' in result.stdout,(suffix,result.stdout,result.stderr)
+ software=root.parents[1]/'port/xnu/out/windows-rt-names-rollback-20261105/post/SOFTWARE'
+ for suffix in ('','.LOG1','.LOG2'):
+  result=subprocess.run([str(exe),str(software)+suffix,'0'],capture_output=True)
   assert result.returncode==0 and b'A04_HIVE_UNCACHED_TWO_PASS_MATCH' in result.stdout,(suffix,result.stdout,result.stderr)
 print('actual helper: real dirty hive, uncached flag, copy/source corruption, invalid header and alignment tested')
