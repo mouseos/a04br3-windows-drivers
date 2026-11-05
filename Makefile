@@ -5,7 +5,7 @@ SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test test-thermal test-ntfs-root arm-coff clean
 
-test: test-mt8167-shared-apmixed test-mt8167-audio-owner test-mt8167-shared-button-d0 test-mt8167-button-parent-contract test-mt8167-pnp-masked-irq test-mt8167-audio-irq-integration test-mt8167-afe-mapping test-mt8167-audio-parent-query test-mt8167-audio-parent-client test-mt8167-audio-child-resources test-mt8167-pnp-parent test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registration test-mt8167-wavert-miniport test-mt8167-audio-resource
+test: test-mt6392-classd test-mt8167-shared-apmixed test-mt8167-audio-owner test-mt8167-shared-button-d0 test-mt8167-button-parent-contract test-mt8167-pnp-masked-irq test-mt8167-audio-irq-integration test-mt8167-afe-mapping test-mt8167-audio-parent-query test-mt8167-audio-parent-client test-mt8167-audio-child-resources test-mt8167-pnp-parent test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registration test-mt8167-wavert-miniport test-mt8167-audio-resource
 test: test-mma8652 build/msdc_resume_check_test build/msdc_resume_capture_test
 test: build/bq24160_owner_broker_test
 test: test-mt8167-pnp-backend test-mt8167-audio-adapter-pnp test-mt8167-common-dma test-mt8167-dma-adapter test-mt8167-clock-owner test-mt8167-stream-transport
@@ -563,7 +563,7 @@ test-mt8167-shared-wdf: build/mt8167_shared_wdf_test
 	python3 tests/shared_parent_prototype_test.py
 build/mt8167_shared_wdf_test: tests/mt8167_shared_wdf_test.c tests/shared_wdf_stubs/ntddk.h tests/shared_wdf_stubs/wdf.h drivers/bus/mt8167-shared/wdf_parent_probe.c drivers/bus/mt8167-shared/audio_owner.c drivers/bus/mt8167-shared/audio_owner.h drivers/bus/mt8167-shared/client_interface.h drivers/bus/mt8167-shared/shared_interface.h drivers/bus/mt8167-shared/audio_interface.h drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/register_owner.h drivers/input/a04br3-buttons/pmic_read.c
 	mkdir -p build
-	$(CC) $(CFLAGS) -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_shared_wdf_test.c -o $@
+	$(CC) $(CFLAGS) -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/bus/mt8167-shared/mt6392_classd.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_shared_wdf_test.c -o $@
 
 build/msdc_shared_drain_test: drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/register_owner.h tests/msdc_shared_drain_test.c
 	@mkdir -p build
@@ -596,7 +596,7 @@ test-mt8167-audio-child-resources: build/mt8167_audio_child_resources_test
 	./build/mt8167_audio_child_resources_test
 build/mt8167_audio_child_resources_test: tests/mt8167_shared_wdf_test.c drivers/bus/mt8167-shared/wdf_parent_probe.c
 	mkdir -p build
-	$(CC) $(CFLAGS) -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_AUDIO_CHILD_RESOURCES=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_shared_wdf_test.c -o $@
+	$(CC) $(CFLAGS) -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_AUDIO_CHILD_RESOURCES=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/bus/mt8167-shared/mt6392_classd.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_shared_wdf_test.c -o $@
 
 .PHONY: test-mt8167-audio-parent-query
 test-mt8167-audio-parent-query: build/mt8167_audio_parent_query_test
@@ -688,7 +688,7 @@ build/mt8167_button_parent_contract_test: tests/mt8167_button_parent_contract_te
 .PHONY: test-mt8167-shared-button-d0
 test-mt8167-shared-button-d0:
 	mkdir -p build
-	$(CC) $(CFLAGS) -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_AUDIO_CHILD_RESOURCES=1 -DA04_SHARED_BUTTON_D0_EXPERIMENT=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_shared_wdf_test.c -o build/mt8167_shared_button_d0_test
+	$(CC) $(CFLAGS) -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_AUDIO_CHILD_RESOURCES=1 -DA04_SHARED_BUTTON_D0_EXPERIMENT=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/bus/mt8167-shared/mt6392_classd.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_shared_wdf_test.c -o build/mt8167_shared_button_d0_test
 	./build/mt8167_shared_button_d0_test
 
 .PHONY: test-mt8167-audio-owner
@@ -701,5 +701,19 @@ build/mt8167_audio_owner_test: tests/mt8167_audio_owner_test.c drivers/bus/mt816
 .PHONY: test-mt8167-shared-apmixed
 test-mt8167-shared-apmixed:
 	mkdir -p build
-	$(CC) $(CFLAGS) -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_SHARED_BUTTON_D0_EXPERIMENT=1 -DA04_SHARED_APMIXED_RESOURCE=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_shared_wdf_test.c -o build/mt8167_shared_apmixed_test
+	$(CC) $(CFLAGS) -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_SHARED_BUTTON_D0_EXPERIMENT=1 -DA04_SHARED_APMIXED_RESOURCE=1 -DA04_SHARED_MT6392_DIAGNOSTIC=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/bus/mt8167-shared/mt6392_classd.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_shared_wdf_test.c -o build/mt8167_shared_apmixed_test
 	./build/mt8167_shared_apmixed_test
+
+.PHONY: test-mt6392-classd
+test-mt6392-classd: build/mt6392_classd_test
+	./build/mt6392_classd_test
+build/mt6392_classd_test: tests/mt6392_classd_test.c drivers/bus/mt8167-shared/mt6392_classd.c drivers/bus/mt8167-shared/mt6392_classd.h
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared tests/mt6392_classd_test.c drivers/bus/mt8167-shared/mt6392_classd.c -o $@
+
+.PHONY: test-mt8167-pnp-run-diagnostic
+test-mt8167-pnp-run-diagnostic:
+	mkdir -p build
+	$(CC) $(CFLAGS) -Itests/audio_query_stubs -Idrivers/audio/mt8167-afe -c drivers/audio/mt8167-afe/audio_parent_client.c -o build/mt8167_run_parent_host.o
+	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_TEST_PNP_BACKEND=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_AUDIO_QUERY_SHARED=1 -DA04_AUDIO_MAP_AFE=1 -DA04_AUDIO_IRQ_DIAGNOSTIC=1 -DA04_AUDIO_RUN_DIAGNOSTIC=1 -Itests/audio_owner_stubs -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/pnp_backend.cpp drivers/audio/mt8167-afe/afe_mapping.cpp drivers/audio/mt8167-afe/common_dma.cpp drivers/audio/mt8167-afe/dma_adapter.cpp drivers/audio/mt8167-afe/shared_audio.c drivers/audio/mt8167-afe/irq_windows.cpp drivers/audio/mt8167-afe/dl1_engine.c drivers/audio/mt8167-afe/dl1.c tests/mt8167_pnp_backend_test.cpp build/mt8167_run_parent_host.o -o build/mt8167_pnp_run_diagnostic_test
+	./build/mt8167_pnp_run_diagnostic_test

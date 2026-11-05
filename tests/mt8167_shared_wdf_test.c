@@ -57,6 +57,10 @@ int main(void){
  entries[0].u.Memory.Length=entries[1].u.Memory.Length=entries[2].u.Memory.Length=entries[3].u.Memory.Length=0x1000;
  for(unsigned i=0;i<4;i++){translated[i]=entries[i];translated[i].u.Memory.Start.QuadPart+=0x10000000;}
  assert(!ParentAdd(NULL,NULL));
+#if A04_SHARED_MT6392_DIAGNOSTIC
+ assert(testContext.audio.codec_acquire_muted && testContext.audio.codec_release_quiescent);
+ assert(ParentCodecStart(&testContext) && !reads && !writes);
+#endif
  assert(child_count==3 && forward_count==6);
 #if defined(A04_AUDIO_CHILD_RESOURCES) && A04_AUDIO_CHILD_RESOURCES
  assert(!ChildRequirements(&children[2],NULL) && appended==1 && desc_count==3);

@@ -15,6 +15,9 @@
 #if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
 #include "audio_parent_query.h"
 #endif
+#if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC && (!defined(A04_AUDIO_IRQ_DIAGNOSTIC) || !A04_AUDIO_IRQ_DIAGNOSTIC)
+#error A04_AUDIO_RUN_DIAGNOSTIC requires the masked IRQ diagnostic path
+#endif
 #define OWNER_TAG 'OwnA'
 struct Mt8167PnpBackend {
     Mt8167StreamBackend iface;
@@ -112,13 +115,43 @@ static void OwnerFree(void *ctx,PMDL mdl,ULONG bytes)
         (void)Mt8167CommonReleaseUnexposed(&o->buffer);
     ExReleaseFastMutex(&o->mutex);
 }
-/* The owner has no proven PWRAP/clock/IRQ ownership or DMA drain path. */
-static NTSTATUS OwnerStart(void *,BOOLEAN *possiblyExposed) {
-    if (!possiblyExposed) return STATUS_INVALID_PARAMETER;
-    /* This diagnostic owner cannot write AFE or publish a DMA address. */
-    *possiblyExposed=FALSE;return STATUS_DEVICE_NOT_READY;
+/* A single publish flush cannot prove live WaveRT circular-buffer coherence.
+ * This platform-specific proof must be implemented before RUN can proceed. */
+#if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
+static BOOLEAN OwnerLiveDmaVerified(Mt8167PnpBackend *o)
+{ UNREFERENCED_PARAMETER(o);return FALSE; }
+#endif
+static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
+    if (!ctx || !possiblyExposed) return STATUS_INVALID_PARAMETER;
+    *possiblyExposed=FALSE;
+#if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
+    Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
+    NTSTATUS result=STATUS_DEVICE_NOT_READY;
+    ExAcquireFastMutex(&o->mutex);
+    if (o->online && o->buffer.mdl && o->shared.leased && o->irq.interrupt &&
+        OwnerLiveDmaVerified(o)) {
+        /* The selected period is a diagnostic half-ring, not a WaveRT
+         * notification contract. No live-DMA verifier currently exists. */
+        if (!Mt8167TransportStartMaskedParent(&o->transport,o->buffer.size/2,&o->shared))
+            result=STATUS_SUCCESS;
+        *possiblyExposed=(o->buffer.exposed || o->shared.quarantined) ? TRUE : FALSE;
+    }
+    ExReleaseFastMutex(&o->mutex);return result;
+#else
+    return STATUS_DEVICE_NOT_READY;
+#endif
 }
-static NTSTATUS OwnerStop(void *) { return STATUS_DEVICE_NOT_READY; }
+static NTSTATUS OwnerStop(void *ctx) {
+#if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
+    Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);NTSTATUS result=STATUS_DEVICE_NOT_READY;
+    if (!o)return STATUS_INVALID_PARAMETER;
+    ExAcquireFastMutex(&o->mutex);
+    if (o->transport.state==AUDIO_RUNNING && !Mt8167TransportStop(&o->transport))result=STATUS_SUCCESS;
+    ExReleaseFastMutex(&o->mutex);return result;
+#else
+    UNREFERENCED_PARAMETER(ctx);return STATUS_DEVICE_NOT_READY;
+#endif
+}
 static NTSTATUS OwnerPosition(void *ctx,PKSAUDIO_POSITION position)
 {
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
@@ -263,8 +296,11 @@ void Mt8167PnpBackendRevoke(Mt8167PnpBackend *o) {
 #if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
     /* Parent keeps the source masked; disconnect and flush DPC before
      * releasing its lease or invalidating the AFE mapping. */
-    if (o->irq.interrupt) Mt8167DisconnectIrq(&o->irq);
-    if (o->shared.leased) (void)mt8167_audio_shared_release_unexposed(&o->shared);
+#if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
+    if (o->transport.state==AUDIO_RUNNING) (void)Mt8167TransportStop(&o->transport);
+#endif
+    if (o->irq.interrupt && !o->shared.quarantined) Mt8167DisconnectIrq(&o->irq);
+    if (o->shared.leased && !o->shared.quarantined) (void)mt8167_audio_shared_release_unexposed(&o->shared);
 #endif
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
     /* No IRQ, DMA, register access, or asynchronous mapping user exists. */

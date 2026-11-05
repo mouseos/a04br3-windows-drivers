@@ -247,3 +247,10 @@ engine under IRQ synchronization without reconnecting the ISR. Failures after
 the exposure boundary retain the mapping, IRQ and lease. This is host-tested
 but is not wired to backend RUN: continuous cache synchronization, clock and
 codec ownership, muted startup and a DMA drain remain unresolved.
+
+`A04_AUDIO_RUN_DIAGNOSTIC=1` connects backend start/stop to the preconnected
+parent transport, but `OwnerLiveDmaVerified` always rejects: one pre-publish
+flush does not prove live WaveRT circular-buffer coherency. The current parent
+also refuses codec/clock ownership. The hypothetical start/stop path is not
+operational or hardware-tested; do not enable it for deployment. A successful
+stop still does not prove drain or permit freeing exposed DMA.

@@ -1,0 +1,41 @@
+/* SPDX-License-Identifier: BSD-2-Clause-Patent
+ * Hardware sequence reference: MT6392 Linux board kernel mt6392-codec.c,
+ * USE_HW_TRIM_CLASS_D and mt6392_int_spk_turn_off. No gain/unmute policy is
+ * inferred. Real register operations require the shared parent's proven bus. */
+#include "mt6392_classd.h"
+#define SPK0 0x0052u
+#define SPK2 0x0056u
+#define SPK7 0x0060u
+#define SPK9 0x0064u
+#define SPK11 0x0068u
+#define SPK12 0x006au
+#define CK_CLR 0x010cu
+static int fail(struct a04_mt6392_classd *c) { c->poisoned=1;return -1; }
+static int upd(struct a04_mt6392_classd *c,uint16_t reg,uint16_t mask,uint16_t bits)
+{ return c->update_bits(c->context,reg,mask,bits); }
+int a04_mt6392_classd_start_muted(struct a04_mt6392_classd *c)
+{
+    uint16_t gain;
+    if(!c || c->active || c->poisoned || !c->verify_start || !c->verify_quiescent ||
+       !c->update_bits || !c->read16 || !c->delay_us || c->verify_start(c->context)) return -1;
+    /* Linux enumerates SPK_CON9 gain code 0 as MUTE; readback alone does not
+     * establish board-level silence, hence the separate prerequisite. */
+    if(upd(c,SPK9,0x0f00,0) || c->read16(c->context,SPK9,&gain) || (gain&0x0f00)) return fail(c);
+    if(upd(c,CK_CLR,0x000e,0x000e) || upd(c,SPK7,0xffff,0x48f4) ||
+       upd(c,SPK11,0xffff,0x0055) || upd(c,SPK9,0xf0ff,0x2018) ||
+       upd(c,SPK2,0xffff,0x0414) || upd(c,SPK0,0xffff,0x3409) ||
+       c->delay_us(c->context,20000) || upd(c,SPK0,0xffff,0x3401) ||
+       upd(c,SPK9,0xf0ff,0x2000) || c->delay_us(c->context,2000)) return fail(c);
+    if(c->read16(c->context,SPK9,&gain) || (gain&0x0f00)) return fail(c);
+    c->active=1;return 0;
+}
+int a04_mt6392_classd_stop(struct a04_mt6392_classd *c)
+{
+    uint16_t gain;
+    if(!c || !c->active || c->poisoned || !c->verify_quiescent ||
+       !c->update_bits || !c->read16 || c->verify_quiescent(c->context)) return -1;
+    if(upd(c,SPK9,0x0f00,0) || c->read16(c->context,SPK9,&gain) || (gain&0x0f00) ||
+       upd(c,SPK12,0xffff,0) || upd(c,SPK0,0xffff,0x3400) ||
+       upd(c,CK_CLR,0x000e,0)) return fail(c);
+    c->active=0;return 0;
+}

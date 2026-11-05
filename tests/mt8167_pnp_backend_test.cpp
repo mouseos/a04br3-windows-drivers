@@ -32,6 +32,10 @@ static int shared_acquire(void *,uint32_t){return -1;}
 static int shared_release(void *){return 0;}
 static int freed,puts; static unsigned char data[8192];
 static std::atomic<bool> holdPosition(false),enteredPosition(false),revokeDone(false);
+#if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
+int Mt8167TransportStartMaskedParent(Mt8167Transport *,uint32_t,mt8167_audio_shared_client *){assert(!"live DMA guard failed");return -1;}
+int Mt8167TransportStop(Mt8167Transport *){assert(!"unexpected stop");return -1;}
+#endif
 int Mt8167TransportPosition(Mt8167Transport *,uint32_t *){enteredPosition=true;while(holdPosition)std::this_thread::yield();return -1;}
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
 static int maps,unmaps,mapfail;alignas(4) static unsigned char mmio[4096];

@@ -11,6 +11,12 @@
 #include "client_interface.h"
 #include "audio_interface.h"
 #include "audio_owner.h"
+#ifndef A04_SHARED_MT6392_DIAGNOSTIC
+#define A04_SHARED_MT6392_DIAGNOSTIC 0
+#endif
+#if A04_SHARED_MT6392_DIAGNOSTIC
+#include "mt6392_classd.h"
+#endif
 #ifndef A04_SHARED_APMIXED_RESOURCE
 #define A04_SHARED_APMIXED_RESOURCE 0
 #endif
@@ -20,13 +26,20 @@
 #ifndef A04_SHARED_BUTTON_D0_EXPERIMENT
 #define A04_SHARED_BUTTON_D0_EXPERIMENT 0
 #endif
+#if A04_SHARED_MT6392_DIAGNOSTIC && (!defined(A04_SHARED_QUERY_EXPERIMENTAL) || !A04_SHARED_QUERY_EXPERIMENTAL || !A04_SHARED_APMIXED_RESOURCE || !A04_SHARED_BUTTON_D0_EXPERIMENT)
+#error A04_SHARED_MT6392_DIAGNOSTIC requires query, APMIXED and button D0 diagnostics
+#endif
 #if A04_SHARED_BUTTON_D0_EXPERIMENT && (!defined(A04_SHARED_QUERY_EXPERIMENTAL) || !A04_SHARED_QUERY_EXPERIMENTAL || !defined(A04_SHARED_CHILD_PROBE) || !A04_SHARED_CHILD_PROBE)
 #error A04_SHARED_BUTTON_D0_EXPERIMENT requires the shared query and child topology
 #endif
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
-typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; } A04_PARENT_CONTEXT;
+typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio;
+#if A04_SHARED_MT6392_DIAGNOSTIC
+struct a04_mt6392_classd classd;
+#endif
+} A04_PARENT_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_PARENT_CONTEXT,ParentContext)
 EVT_WDF_DRIVER_DEVICE_ADD ParentAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE ParentPrepare;
@@ -103,6 +116,13 @@ static int ParentButtonRead(PVOID context,USHORT *value)
 /* Audio owner operations share the PWRAP/register mutex. Platform clock,
  * power and muted-codec callbacks are deliberately unset: no resource set or
  * handoff currently proves their ownership. This path cannot grant a lease. */
+#if A04_SHARED_MT6392_DIAGNOSTIC
+/* Called under ParentLock by audio_owner; no nested PWRAP lock. The class-D
+ * prerequisites and bus callbacks are deliberately unset until a real board
+ * mute, retained power, exclusive clock and safe WACS2 writer are proven. */
+static int ParentCodecStart(void *context) { return a04_mt6392_classd_start_muted(&((A04_PARENT_CONTEXT *)context)->classd); }
+static int ParentCodecStop(void *context) { return a04_mt6392_classd_stop(&((A04_PARENT_CONTEXT *)context)->classd); }
+#endif
 static int ParentAudioAcquire(PVOID context,ULONG rate) {
     A04_PARENT_CONTEXT *c;int result;
     if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
@@ -351,6 +371,10 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
         c->pmic.bus.delay=ParentPwrapDelay;c->pmic.bus.attempts=1000;
         c->regs.context=c;c->regs.lock=ParentRegLock;c->regs.unlock=ParentRegUnlock;
         c->regs.read32=ParentRegRead;c->regs.write32=ParentRegWrite;
+#if A04_SHARED_MT6392_DIAGNOSTIC
+        c->audio.context=c;c->audio.codec_acquire_muted=ParentCodecStart;
+        c->audio.codec_release_quiescent=ParentCodecStop;
+#endif
     }
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
     RtlZeroMemory(&iface,sizeof(iface));iface.Header.Size=sizeof(iface);iface.Header.Version=1;

@@ -186,3 +186,16 @@ prove clock rates, rail retention, codec mute, or a safe DMA drain. The audio
 lease and all clock/codec writes remain disabled. Do not deploy this experiment.
 Sources: [MT8167 DTS](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/arch/arm64/boot/dts/mediatek/mt8167.dtsi),
 [A04BR3 DTS](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/arch/arm64/boot/dts/mediatek/a04br3.dts).
+
+`A04_SHARED_MT6392_DIAGNOSTIC=1` compiles a Class D codec start/stop
+implementation and binds it to the parent's existing audio owner under the
+PWRAP lock. It sets the Linux-defined gain code 0 (MUTE), checks readback,
+performs the board kernel's hardware-trim register sequence with 20 ms and
+2 ms waits, and implements its Class D stop sequence after verified quiescence.
+Any failed or ambiguous operation poisons the codec and performs no automatic
+rollback. Power, bus ownership, board-level mute, SET/CLR write semantics,
+clock and DMA/IRQ quiescence require platform callbacks. Those callbacks and
+the parent audio online transition are deliberately absent: even with the
+flag, the parent rejects before accessing hardware. A failed multi-step stop
+may already have changed some registers; it does not prove physical mute.
+Reference: [board Linux MT6392 codec](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/sound/soc/codecs/mt6392-codec.c).
