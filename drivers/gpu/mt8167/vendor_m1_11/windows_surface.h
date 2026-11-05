@@ -16,7 +16,7 @@ struct a04_vendor_surface {
  * Geometry is native 32-bit linear, pitch/height cover complete pages, maximum
  * four leaves. Logical addresses belong only to this adapter. */
 NTSTATUS a04_vendor_surface_prepare(struct a04_vendor_surface *s,PDMA_ADAPTER adapter,
-                                   ULONG width,ULONG height,ULONG pitch,uint64_t gpu_va);
+                                   ULONG width,ULONG height,ULONG pitch,uint64_t gpu_va,ULONG map_registers);
 /* Call before any submission or publication to hardware; sticky. */
 NTSTATUS a04_vendor_surface_mark_exposed(struct a04_vendor_surface *s);
 /* Only unexposed objects can currently be freed. GPU stop/scanout ownership is

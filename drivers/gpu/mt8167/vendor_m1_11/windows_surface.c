@@ -20,7 +20,7 @@ NTSTATUS a04_vendor_surface_release(struct a04_vendor_surface *s)
     return STATUS_SUCCESS;
 }
 NTSTATUS a04_vendor_surface_prepare(struct a04_vendor_surface *s,PDMA_ADAPTER adapter,
-                                   ULONG width,ULONG height,ULONG pitch,uint64_t va)
+                                   ULONG width,ULONG height,ULONG pitch,uint64_t va,ULONG map_registers)
 {
     struct a04_gpu_mmu_leaf leaves[A04_SURFACE_MAX_LEAVES];
     uint64_t bytes64,pages_count;uint64_t *pages=NULL;void *shadow=NULL;
@@ -32,6 +32,10 @@ NTSTATUS a04_vendor_surface_prepare(struct a04_vendor_surface *s,PDMA_ADAPTER ad
     bytes64=(uint64_t)pitch*height;
     if(!bytes64 || bytes64>8u*1024u*1024u || (bytes64&4095u))return status;
     pages_count=bytes64/4096u;
+    /* Common-buffer bus-master contract: each allocation must fit in the
+     * map-register count returned by IoGetDmaAdapter. All later allocations
+     * here are one page. Allocation can still fail due to shared resources. */
+    if(pages_count>map_registers)return STATUS_INSUFFICIENT_RESOURCES;
     n=(ULONG)(((va>>12)&511u)+pages_count+511u)/512u;
     if(!n || n>A04_SURFACE_MAX_LEAVES)return status;
     status=a04_vendor_uncached_allocate(&s->pixels,adapter,(ULONG)bytes64);

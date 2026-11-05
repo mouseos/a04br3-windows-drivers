@@ -339,3 +339,16 @@ command lock中に検証・コピーし、cleanup、shutdown、poison、未完�
 [PresentDisplayOnly](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkddi_presentdisplayonly)
 は同期または非同期の完了契約を定めるが、GPU側DMAの完了や異なるDMA主体間の
 アドレス共有を保証しない。
+
+
+`IoGetDmaAdapter` の返す map register 数は保存し、画面surfaceの1回の
+common-buffer割当サイズ（4,259,840 byte = 1,040ページ）がその数を超える場合は
+割当前に拒否する。[Microsoftのbus-master共通バッファ契約](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/using-common-buffer-bus-master-dma)
+に基づく上限検査であり、複数のcommon bufferの同時確保成功を保証しない。
+
+WDDMのCommitVidPnはVidPnコールバックを取得・検証後、Presentと同じmutexで
+framebufferのunmapとmap・mode更新を直列化する。mutex保有中はVidPnコールバックを
+呼ばない。visibilityとactive pathの変更も同じmutexを使い、停止後は拒否する。
+[CommitVidPn](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkddi_commitvidpn)、
+[PresentDisplayOnly](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkddi_presentdisplayonly)
+はPASSIVE_LEVELで、後者はzero-level同期。これはGPU DMAやscanoutの停止を保証しない。

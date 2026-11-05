@@ -45,7 +45,7 @@ int main(void)
     assert(!memcmp(r.buffer[10].cpu,r.clear.usc,sizeof(r.clear.usc)));
     assert(((uint32_t *)r.buffer[1].cpu)[UINT64_C(0xf800000000)>>30]);
     assert(((uint32_t *)r.buffer[1].cpu)[UINT64_C(0xf900000000)>>30]);
-    assert(a04_vendor_surface_prepare(&surface,&adapter,800,1280,3328,UINT64_C(0x8000000000))==STATUS_SUCCESS);
+    assert(a04_vendor_surface_prepare(&surface,&adapter,800,1280,3328,UINT64_C(0x8000000000),1040)==STATUS_SUCCESS);
     assert(a04_vendor_render_attach_screen(&r,&surface)==STATUS_SUCCESS);
     assert(r.screen_surface==&surface && r.clear_first==1248u*3328u+768u*4u && r.clear_row_bytes==3328u);
     assert(((uint32_t *)r.buffer[1].cpu)[512]==((uint32_t)((uint64_t)surface.pd.logical.QuadPart>>8)|1u));

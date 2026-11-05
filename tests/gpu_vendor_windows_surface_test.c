@@ -16,11 +16,13 @@ int main(void)
 {
     DMA_OPERATIONS ops={.Size=sizeof(ops),.AllocateCommonBufferEx=alloc,.FreeCommonBuffer=release};
     struct fake_adapter adapter={&ops};struct a04_vendor_surface s={0};
-    assert(a04_vendor_surface_prepare(&s,&adapter,800,1280,3328,UINT64_C(0x8000000000))==STATUS_SUCCESS);
+    assert(a04_vendor_surface_prepare(&s,&adapter,800,1280,3328,UINT64_C(0x8000000000),1039)==STATUS_INSUFFICIENT_RESOURCES);
+    assert(!allocs && !pools);
+    assert(a04_vendor_surface_prepare(&s,&adapter,800,1280,3328,UINT64_C(0x8000000000),1040)==STATUS_SUCCESS);
     assert(s.prepared && s.bytes==4259840 && s.leaves==3 && allocs==6 && !pools);
     assert(((uint64_t *)s.pt[0].cpu)[0]==((uint64_t)s.pixels.logical.QuadPart|9u));
     assert(a04_vendor_surface_release(&s)==STATUS_SUCCESS && frees==6);
-    assert(a04_vendor_surface_prepare(&s,&adapter,800,1280,3328,UINT64_C(0x8000000000))==STATUS_SUCCESS);
+    assert(a04_vendor_surface_prepare(&s,&adapter,800,1280,3328,UINT64_C(0x8000000000),1040)==STATUS_SUCCESS);
     assert(a04_vendor_surface_mark_exposed(&s)==STATUS_SUCCESS);
     assert(a04_vendor_surface_release(&s)==STATUS_DEVICE_BUSY && frees==6);
     /* Test process exits with mocked retained allocations, like the real gate. */

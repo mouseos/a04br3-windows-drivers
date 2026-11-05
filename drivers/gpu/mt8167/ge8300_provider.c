@@ -139,6 +139,7 @@ typedef struct {
 #endif
 #endif
     PDMA_ADAPTER vendor_adapter_v3;
+    ULONG vendor_map_registers;
 #if A04_GE8300_VENDOR_IRQ
     struct a04_vendor_start vendor_start;
     struct a04_vendor_irq *vendor_irq;
@@ -512,12 +513,13 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     c->status.bvnc_low=lo;c->status.bvnc_high=hi;
 #if A04_GE8300_VENDOR_UNCACHED_STAGE
     {
-        DEVICE_DESCRIPTION desc;ULONG map_registers=0;
+        DEVICE_DESCRIPTION desc;
+        c->vendor_map_registers=0;
         RtlZeroMemory(&desc,sizeof(desc));
         desc.Version=DEVICE_DESCRIPTION_VERSION3;desc.Master=TRUE;
         desc.ScatterGather=TRUE;desc.DmaAddressWidth=32;
         desc.InterfaceType=Internal;desc.MaximumLength=A04_PVR_HEAP_SIZE;
-        c->vendor_adapter_v3=IoGetDmaAdapter(WdfDeviceWdmGetPhysicalDevice(device),&desc,&map_registers);
+        c->vendor_adapter_v3=IoGetDmaAdapter(WdfDeviceWdmGetPhysicalDevice(device),&desc,&c->vendor_map_registers);
         adapter=c->vendor_adapter_v3;
     }
 #else
@@ -536,7 +538,7 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC?TRUE:FALSE,
             A04_GE8300_VENDOR_COLOR_DIAGNOSTIC?0x78563412u:0u);
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
-        if(NT_SUCCESS(status))status=a04_vendor_surface_prepare(&c->vendor_screen,adapter,800,1280,3328,UINT64_C(0x8000000000));
+        if(NT_SUCCESS(status))status=a04_vendor_surface_prepare(&c->vendor_screen,adapter,800,1280,3328,UINT64_C(0x8000000000),c->vendor_map_registers);
         if(NT_SUCCESS(status))status=a04_vendor_render_attach_screen(&c->vendor_render,&c->vendor_screen);
         if(!NT_SUCCESS(status)) {
             (void)a04_vendor_render_release_cold(&c->vendor_render);
