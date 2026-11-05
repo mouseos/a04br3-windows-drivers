@@ -14,6 +14,12 @@
 #ifndef A04_GE8300_VENDOR_STAGE
 #define A04_GE8300_VENDOR_STAGE 0
 #endif
+#ifndef A04_GE8300_VENDOR_UNCACHED_STAGE
+#define A04_GE8300_VENDOR_UNCACHED_STAGE 0
+#endif
+#if A04_GE8300_VENDOR_UNCACHED_STAGE && !A04_GE8300_VENDOR_STAGE
+#error Uncached vendor staging requires vendor staging
+#endif
 #ifndef A04_GE8300_BOOT_TEST
 #define A04_GE8300_BOOT_TEST 0
 #endif
@@ -68,6 +74,7 @@ typedef struct {
     struct a04_gpu_queue_test_memory queue_memory;
 #if A04_GE8300_VENDOR_STAGE
     struct a04_vendor_m1_11_memory vendor;
+    PDMA_ADAPTER vendor_adapter_v3;
     struct a04_ge8300_vendor_stage_status vendor_status;
     struct a04_ge8300_vendor_power_status vendor_power_status;
     volatile UCHAR *mfg;
@@ -346,6 +353,11 @@ NTSTATUS GpuRelease(WDFDEVICE device,WDFCMRESLIST translated)
     if(c->firmware.processor_released) return STATUS_DEVICE_BUSY;
 #if A04_GE8300_VENDOR_STAGE
     if(c->vendor.hardware_owned) return STATUS_DEVICE_BUSY;
+    if(c->vendor.adapter) return STATUS_DEVICE_BUSY;
+    if(c->vendor_adapter_v3) {
+        c->vendor_adapter_v3->DmaOperations->PutDmaAdapter(c->vendor_adapter_v3);
+        c->vendor_adapter_v3=NULL;
+    }
     if(c->mfg) { MmUnmapIoSpace((PVOID)c->mfg,MFG_SIZE);c->mfg=NULL; }
 #endif
 #if A04_GE8300_RENDER_DIAGNOSTIC
@@ -393,11 +405,31 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     lo=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x20));
     hi=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x24));
     c->status.bvnc_low=lo;c->status.bvnc_high=hi;
+#if A04_GE8300_VENDOR_UNCACHED_STAGE
+    {
+        DEVICE_DESCRIPTION desc;ULONG map_registers=0;
+        RtlZeroMemory(&desc,sizeof(desc));
+        desc.Version=DEVICE_DESCRIPTION_VERSION3;desc.Master=TRUE;
+        desc.ScatterGather=TRUE;desc.Dma32BitAddresses=TRUE;
+        desc.InterfaceType=Internal;desc.MaximumLength=A04_PVR_HEAP_SIZE;
+        c->vendor_adapter_v3=IoGetDmaAdapter(WdfDeviceWdmGetPhysicalDevice(device),&desc,&map_registers);
+        adapter=c->vendor_adapter_v3;
+    }
+#else
     adapter=WdfDmaEnablerWdmGetDmaAdapter(c->dma,WdfDmaDirectionReadFromDevice);
+#endif
     if(!adapter || (((uint64_t)hi<<32)|lo)!=A04_PVR_BVNC) status=STATUS_DEVICE_CONFIGURATION_ERROR;
+#if A04_GE8300_VENDOR_UNCACHED_STAGE
+    else status=a04_vendor_m1_11_windows_stage_uncached(&c->vendor,adapter,image,bytes);
+#else
     else status=a04_vendor_m1_11_windows_stage(&c->vendor,adapter,image,bytes);
+#endif
     ExFreePoolWithTag(image,'0XGA');
     if(NT_SUCCESS(status)) status=a04_vendor_m1_11_windows_free(&c->vendor);
+    if(c->vendor_adapter_v3 && !c->vendor.adapter) {
+        c->vendor_adapter_v3->DmaOperations->PutDmaAdapter(c->vendor_adapter_v3);
+        c->vendor_adapter_v3=NULL;
+    }
     c->vendor_status.stage_status=status;
 #endif
     return STATUS_SUCCESS;
