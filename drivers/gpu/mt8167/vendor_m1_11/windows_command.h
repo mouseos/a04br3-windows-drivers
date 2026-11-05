@@ -4,6 +4,11 @@
 #include "windows_start.h"
 #include "A04BR3RogueDDKABI.h"
 typedef int (*a04_vendor_request_handler)(void *,const RGXFWIF_FWCCB_CMD *);
+struct a04_vendor_irq_snapshot { uint32_t count; BOOLEAN valid; };
+/* Records a stable FW IRQ counter only if the FWCCB is empty. Pending typed
+ * requests are preserved and reported busy; this is not a request handler. */
+NTSTATUS a04_vendor_m1_11_windows_irq_snapshot(struct a04_vendor_start *start,
+    BOOLEAN coherent_or_uncached,struct a04_vendor_irq_snapshot *snapshot);
 /* PASSIVE_LEVEL, caller holds lifecycle lock. A callback returning nonzero
  * leaves that request pending. more is TRUE when the bounded budget expires.
  * The callback must not re-enter this transport or retain the command copy. */

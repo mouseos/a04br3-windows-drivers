@@ -122,12 +122,17 @@ int main(int argc,char **argv)
     if(a04_vendor_m1_11_windows_start(&start,&m,registers,0x80000,0x001600280036001eULL,&power,TRUE)!=STATUS_SUCCESS || !m.hardware_owned || !start.attempted) return 17;
     {
         uint32_t done=0;BOOLEAN more=FALSE;unsigned calls=0;
+        struct a04_vendor_irq_snapshot snapshot={0};
         RGXFWIF_FWCCB_CMD *ring=(void *)(m.runtime->main.cpu+
             m.runtime->init->psFirmwareCCB.ui32Addr-(0xc0000000u+A04_RGX_MAIN_OFFSET));
         ring[0].eCmdType=RGXFWIF_FWCCB_CMD_DEBUG_DUMP;
         m.runtime->fctl->ui32WriteOffset=1;
+        m.runtime->trace->aui32InterruptCount[0]=7;
+        if(a04_vendor_m1_11_windows_irq_snapshot(&start,FALSE,&snapshot)!=STATUS_NOT_SUPPORTED || snapshot.valid) return 43;
+        if(a04_vendor_m1_11_windows_irq_snapshot(&start,TRUE,&snapshot)!=STATUS_DEVICE_BUSY || snapshot.valid) return 44;
         if(a04_vendor_m1_11_windows_requests(&start,FALSE,request_handler,&calls,1,&done,&more)!=STATUS_NOT_SUPPORTED || calls) return 32;
         if(a04_vendor_m1_11_windows_requests(&start,TRUE,request_handler,&calls,1,&done,&more)!=STATUS_SUCCESS || calls!=1 || done!=1 || more || m.runtime->fctl->ui32ReadOffset!=1) return 33;
+        if(a04_vendor_m1_11_windows_irq_snapshot(&start,TRUE,&snapshot)!=STATUS_SUCCESS || !snapshot.valid || snapshot.count!=7) return 45;
     }
     if(a04_vendor_m1_11_windows_fence(&start,A04_RGX_DM_GP,FALSE)!=STATUS_NOT_SUPPORTED || start.command_sequence) return 26;
     simulate_fence=1;

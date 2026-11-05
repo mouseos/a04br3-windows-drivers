@@ -14,6 +14,36 @@ static void fence_kick(void *ctx,uint32_t offset,uint32_t value)
 }
 static void fence_wait(void *ctx,uint32_t usec)
 { UNREFERENCED_PARAMETER(ctx);KeStallExecutionProcessor(usec); }
+NTSTATUS a04_vendor_m1_11_windows_irq_snapshot(struct a04_vendor_start *s,
+    BOOLEAN coherent_or_uncached,struct a04_vendor_irq_snapshot *snapshot)
+{
+    struct a04_rgx_fw_runtime *r;RGXFWIF_CCB_CTL *ctl;RGXFWIF_TRACEBUF *trace;
+    uint32_t count,after,rd,wr;NTSTATUS status=STATUS_DEVICE_BUSY;unsigned i;
+    if(!snapshot) return STATUS_INVALID_PARAMETER;
+    if(!s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !s->online || !s->attempted ||
+       !s->memory || !s->memory->hardware_owned || !s->memory->runtime || !s->core)
+        return STATUS_DEVICE_NOT_READY;
+    if(coherent_or_uncached!=TRUE) return STATUS_NOT_SUPPORTED;
+    if(InterlockedCompareExchange(&s->command_busy,1,0)!=0) return STATUS_DEVICE_BUSY;
+    if(s->command_poisoned) { status=STATUS_IO_DEVICE_ERROR;goto done; }
+    r=s->memory->runtime;
+    if(!r->init) {status=STATUS_INVALID_DEVICE_STATE;goto done;}
+    ctl=(RGXFWIF_CCB_CTL *)a04_rgx_command_memory(r,r->init->psFirmwareCCBCtl.ui32Addr,sizeof(*ctl));
+    trace=(RGXFWIF_TRACEBUF *)a04_rgx_command_memory(r,r->init->sTraceBufCtl.ui32Addr,sizeof(*trace));
+    if(!ctl || ctl!=r->fctl || !trace || trace!=r->trace) {status=STATUS_INVALID_DEVICE_STATE;goto done;}
+    for(i=0;i<4;i++) {
+        a04_gpu_dma_barrier();count=trace->aui32InterruptCount[0];
+        rd=ctl->ui32ReadOffset;wr=ctl->ui32WriteOffset;
+        if(ctl->ui32WrapMask!=31 || ctl->ui32CmdSize!=sizeof(RGXFWIF_FWCCB_CMD) || rd>31 || wr>31) {
+            s->command_poisoned=TRUE;status=STATUS_IO_DEVICE_ERROR;goto done;
+        }
+        if(rd!=wr) {status=STATUS_DEVICE_BUSY;goto done;}
+        a04_gpu_dma_barrier();after=trace->aui32InterruptCount[0];
+        if(after==count) {snapshot->count=count;snapshot->valid=TRUE;status=STATUS_SUCCESS;break;}
+    }
+done:
+    InterlockedExchange(&s->command_busy,0);return status;
+}
 NTSTATUS a04_vendor_m1_11_windows_requests(struct a04_vendor_start *s,
     BOOLEAN coherent_or_uncached,a04_vendor_request_handler handler,void *context,
     uint32_t budget,uint32_t *handled,BOOLEAN *more)
