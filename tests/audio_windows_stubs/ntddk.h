@@ -72,10 +72,16 @@ inline void KeMemoryBarrier() {test_barriers++;}
 inline void KeFlushIoBuffers(PMDL,BOOLEAN read,BOOLEAN dma) { if (!read && dma) test_flushes++; }
 #ifdef A04_TEST_PNP_BACKEND
 #include <assert.h>
-typedef struct { int held; } FAST_MUTEX;
+#include <sched.h>
+typedef struct { volatile int held; } FAST_MUTEX;
+typedef struct { volatile int state; } EX_RUNDOWN_REF;
+inline void ExInitializeRundownProtection(EX_RUNDOWN_REF *r){r->state=0;}
+inline BOOLEAN ExAcquireRundownProtection(EX_RUNDOWN_REF *r){int v;do{v=__sync_fetch_and_add(&r->state,0);if(v&0x40000000)return FALSE;}while(!__sync_bool_compare_and_swap(&r->state,v,v+1));return TRUE;}
+inline void ExReleaseRundownProtection(EX_RUNDOWN_REF *r){__sync_fetch_and_sub(&r->state,1);}
+inline void ExWaitForRundownProtectionRelease(EX_RUNDOWN_REF *r){__sync_fetch_and_or(&r->state,0x40000000);while(__sync_fetch_and_add(&r->state,0)&0x3fffffff)sched_yield();}
 inline void ExInitializeFastMutex(FAST_MUTEX *m){m->held=0;}
-inline void ExAcquireFastMutex(FAST_MUTEX *m){assert(!m->held);m->held=1;}
-inline void ExReleaseFastMutex(FAST_MUTEX *m){assert(m->held);m->held=0;}
+inline void ExAcquireFastMutex(FAST_MUTEX *m){while(__sync_lock_test_and_set(&m->held,1))sched_yield();}
+inline void ExReleaseFastMutex(FAST_MUTEX *m){__sync_lock_release(&m->held);}
 #define NonPagedPool 0
 inline PVOID ExAllocatePoolWithTag(int,size_t n,ULONG){return malloc(n);}
 inline void ExFreePoolWithTag(PVOID p,ULONG){free(p);}

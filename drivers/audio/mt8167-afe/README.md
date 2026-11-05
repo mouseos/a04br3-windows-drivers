@@ -89,9 +89,13 @@ The IRQ helper also provides a nonblocking synchronized DL1 CUR read that
 rejects non-running, faulted, out-of-range and unaligned positions without
 changing its output. Its caller must keep the mapping and interrupt alive and
 exclude disconnect. The transport saves the active DMA plan and exposes this
-ring offset; it is not a monotonic elapsed-byte count and is not wired to
-WaveRT GetPosition. The PnP backend can copy its validated translated IRQ into
-an idle transport, but no operational PnP path connects or starts it.
+ring offset; it is not a monotonic elapsed-byte count. The diagnostic PnP
+backend forwards WaveRT position queries to its own transport under rundown
+protection; PnP revoke waits for these queries before unmapping AFE. Its
+transport never reaches RUNNING, so the query still returns not ready. The PnP
+backend stores the validated translated IRQ, but no operational PnP path
+connects or starts it. A future start/stop implementation must synchronize
+transport state with position readers as well as ISR and rundown.
 
 The board Linux IRQ handler reads AFE_IRQ_STATUS and AFE_DAC_CON0, reports a
 period only for an active memif, then clears pending AFE IRQ bits. The DL1

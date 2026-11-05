@@ -1,4 +1,6 @@
 #include <cassert>
+#include <atomic>
+#include <thread>
 #include "pnp_backend.h"
 #include "stream_transport.h"
 #if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
@@ -23,6 +25,8 @@ static void shared_deref(void *){shared_refs--;}
 static int shared_acquire(void *,uint32_t){return -1;}
 static int shared_release(void *){return 0;}
 static int freed,puts; static unsigned char data[8192];
+static std::atomic<bool> holdPosition(false),enteredPosition(false),revokeDone(false);
+int Mt8167TransportPosition(Mt8167Transport *,uint32_t *){enteredPosition=true;while(holdPosition)std::this_thread::yield();return -1;}
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
 static int maps,unmaps,mapfail;static unsigned char mmio[4096];
 PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,MEMORY_CACHING_TYPE cache) { assert(a.QuadPart==0x11140000 && n==4096 && cache==MmNonCached);maps++;return mapfail?nullptr:mmio; }
@@ -81,8 +85,16 @@ int main(){
  PMDL mdl=nullptr;ULONG n=0,offset=9;MEMORY_CACHING_TYPE cache;
  assert(!api->allocate(api->context,8192,&mdl,&n,&offset,&cache) && mdl && n==8192 && !offset);
  BOOLEAN exposure=TRUE;assert(api->start(api->context,&exposure)==STATUS_DEVICE_NOT_READY && !exposure);
- Mt8167PnpBackendRevoke(owner);assert(Mt8167PnpBackendAttachShared(owner,&shared)==STATUS_DEVICE_NOT_READY);assert(Mt8167PnpBackendInterrupt(owner,&irq)==STATUS_DEVICE_NOT_READY);Mt8167PnpBackendRelease(owner);
+ KSAUDIO_POSITION position{};assert(api->position(api->context,&position)==STATUS_DEVICE_NOT_READY);
+ holdPosition=true;enteredPosition=false;revokeDone=false;
+ std::thread reader([&] { KSAUDIO_POSITION p{};assert(api->position(api->context,&p)==STATUS_DEVICE_NOT_READY); });
+ while(!enteredPosition)std::this_thread::yield();
+ std::thread revoker([&] { Mt8167PnpBackendRevoke(owner);revokeDone=true; });
+ while(Mt8167PnpBackendInterrupt(owner,&irq)!=STATUS_DEVICE_NOT_READY)std::this_thread::yield();
+ assert(!revokeDone);holdPosition=false;reader.join();revoker.join();assert(revokeDone);
+ assert(Mt8167PnpBackendAttachShared(owner,&shared)==STATUS_DEVICE_NOT_READY);assert(Mt8167PnpBackendInterrupt(owner,&irq)==STATUS_DEVICE_NOT_READY);Mt8167PnpBackendRelease(owner);
  assert(Mt8167PnpBackendBindInterrupt(owner,&transport)==STATUS_DEVICE_NOT_READY);
+ assert(api->position(api->context,&position)==STATUS_DEVICE_NOT_READY);
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
  assert(maps==2 && unmaps==1);
 #endif

@@ -17,11 +17,14 @@ struct Mt8167PnpBackend {
     Mt8167StreamBackend iface;
     volatile LONG refs;
     FAST_MUTEX mutex;
+    EX_RUNDOWN_REF positions;
     BOOLEAN online;
     PDEVICE_OBJECT pdo;
     PDMA_ADAPTER adapter;
     Mt8167CommonDma buffer;
     Mt8167PnpInterrupt interrupt;
+    Mt8167Irq irq;
+    Mt8167Transport transport;
     struct mt8167_audio_shared_client shared;
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
     Mt8167AfeMapping afe;
@@ -82,7 +85,18 @@ static NTSTATUS OwnerStart(void *,BOOLEAN *possiblyExposed) {
     *possiblyExposed=FALSE;return STATUS_DEVICE_NOT_READY;
 }
 static NTSTATUS OwnerStop(void *) { return STATUS_DEVICE_NOT_READY; }
-static NTSTATUS OwnerPosition(void *,PKSAUDIO_POSITION) { return STATUS_DEVICE_NOT_READY; }
+static NTSTATUS OwnerPosition(void *ctx,PKSAUDIO_POSITION position)
+{
+    Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
+    uint32_t offset;
+    if (!o || !position) return STATUS_INVALID_PARAMETER;
+    if (!ExAcquireRundownProtection(&o->positions)) return STATUS_DEVICE_NOT_READY;
+    /* No hardware path can set AUDIO_RUNNING yet. A future start must publish
+     * the transport under a nonblocking synchronization scheme first. */
+    NTSTATUS status=Mt8167TransportPosition(&o->transport,&offset)==0 ? STATUS_SUCCESS : STATUS_DEVICE_NOT_READY;
+    if (NT_SUCCESS(status)) { position->PlayOffset=offset;position->WriteOffset=offset; }
+    ExReleaseRundownProtection(&o->positions);return status;
+}
 static NTSTATUS OwnerDescription(void *,PDEVICE_DESCRIPTION) { return STATUS_DEVICE_NOT_READY; }
 NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt8167PnpBackend **out)
 {
@@ -110,6 +124,7 @@ NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt816
     if (!o) return STATUS_INSUFFICIENT_RESOURCES;
     RtlZeroMemory(o,sizeof(*o));
     ExInitializeFastMutex(&o->mutex);
+    ExInitializeRundownProtection(&o->positions);
     status=Mt8167GetDmaAdapter(pdo,&o->adapter,&mapRegisters);
     if (!NT_SUCCESS(status)) { ExFreePoolWithTag(o,OWNER_TAG);return status; }
 #if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
@@ -140,6 +155,9 @@ NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt816
     o->interrupt.level=(KIRQL)irq->u.Interrupt.Level;
     o->interrupt.affinity=irq->u.Interrupt.Affinity;
     o->interrupt.mode=LevelSensitive;
+    o->transport.irq=&o->irq;o->transport.dma=&o->buffer;
+    o->transport.vector=o->interrupt.vector;o->transport.level=o->interrupt.level;
+    o->transport.affinity=o->interrupt.affinity;o->transport.mode=o->interrupt.mode;
     o->iface.context=o;o->iface.reference=OwnerReference;o->iface.dereference=OwnerDereference;
     o->iface.allocate=OwnerAllocate;o->iface.freeBuffer=OwnerFree;
     o->iface.start=OwnerStart;o->iface.stop=OwnerStop;o->iface.position=OwnerPosition;o->iface.getDeviceDescription=OwnerDescription;
@@ -178,7 +196,11 @@ NTSTATUS Mt8167PnpBackendAttachShared(Mt8167PnpBackend *o,const struct mt8167_au
 const Mt8167StreamBackend *Mt8167PnpBackendInterface(Mt8167PnpBackend *o) { return o?&o->iface:NULL; }
 void Mt8167PnpBackendRevoke(Mt8167PnpBackend *o) {
     if (!o)return;
-    ExAcquireFastMutex(&o->mutex);o->online=FALSE;
+    ExAcquireFastMutex(&o->mutex);o->online=FALSE;ExReleaseFastMutex(&o->mutex);
+    /* PnP stop/removal are serialized. GetPosition can execute at DISPATCH;
+     * close admission and wait at PASSIVE before releasing any mapping. */
+    ExWaitForRundownProtectionRelease(&o->positions);
+    ExAcquireFastMutex(&o->mutex);
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
     /* No IRQ, DMA, register access, or asynchronous mapping user exists. */
     Mt8167UnmapAssignedAfe(&o->afe);
