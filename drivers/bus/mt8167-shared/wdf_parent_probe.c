@@ -13,6 +13,13 @@
 #include "audio_owner.h"
 #include "usb_interface.h"
 #include "usb_owner.h"
+#ifndef A04_SHARED_THERMAL_DIAGNOSTIC
+#define A04_SHARED_THERMAL_DIAGNOSTIC 0
+#endif
+#if A04_SHARED_THERMAL_DIAGNOSTIC
+#include "thermal_interface.h"
+#include "thermal_owner.h"
+#endif
 #ifndef A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 #define A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC 0
 #endif
@@ -96,6 +103,9 @@
 typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; struct a04_usb_owner usb;
 #if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 struct a04_codec_domain codecDomain;
+#endif
+#if A04_SHARED_THERMAL_DIAGNOSTIC
+struct a04_shared_thermal_owner thermal;EX_RUNDOWN_REF thermalRundown;BOOLEAN thermalRundownClosed;
 #endif
 PVOID audioAfe;
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
@@ -420,14 +430,88 @@ static int ParentUsbVbus(PVOID p,int on) { return a04_usb_owner_vbus(&ParentCont
 static int ParentUsbHealth(PVOID p) { return a04_usb_owner_health(&ParentContext((WDFDEVICE)p)->usb); }
 static int ParentUsbRelease(PVOID p) { return a04_usb_owner_release(&ParentContext((WDFDEVICE)p)->usb); }
 #endif
+#if A04_SHARED_THERMAL_DIAGNOSTIC && defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
+static NTSTATUS ParentThermalAcquire(PVOID p,ULONG *generation)
+{
+ A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);uint32_t value=0;int result;
+ if(!generation || ParentLock(c))return STATUS_DEVICE_NOT_READY;
+ result=a04_shared_thermal_acquire(&c->thermal,&value);ParentUnlock(c);
+ if(result)return STATUS_DEVICE_NOT_READY;*generation=value;return STATUS_SUCCESS;
+}
+static NTSTATUS ParentThermalClock(PVOID p,ULONG generation)
+{
+ A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);uint32_t state;NTSTATUS result=STATUS_DEVICE_NOT_READY;
+ if(ParentLock(c))return result;
+ if(a04_shared_thermal_valid(&c->thermal,generation)) {
+  if(c->thermal.clocks_ready)result=STATUS_SUCCESS;
+  else if(ParentRegRead(c,A04_SHARED_TOP,0x24,&state)) {c->thermal.poisoned=1;result=STATUS_DEVICE_HARDWARE_ERROR;}
+  else {
+   c->thermal.restore_gated=state&((1u<<1)|(1u<<30));
+   if((!c->thermal.restore_gated || !ParentRegWrite(c,A04_SHARED_TOP,0x84,c->thermal.restore_gated)) &&
+      !ParentRegRead(c,A04_SHARED_TOP,0x24,&state) && !(state&((1u<<1)|(1u<<30)))) {
+    c->thermal.clocks_ready=1;result=STATUS_SUCCESS;
+   } else {c->thermal.poisoned=1;result=STATUS_DEVICE_HARDWARE_ERROR;}
+  }
+ }
+ ParentUnlock(c);return result;
+}
+static NTSTATUS ParentThermalReset(PVOID p,ULONG generation)
+{
+ A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);uint32_t state;NTSTATUS result=STATUS_DEVICE_NOT_READY;
+ if(ParentLock(c))return result;
+ if(a04_shared_thermal_valid(&c->thermal,generation) && c->thermal.clocks_ready) {
+  if(!ParentRegWrite(c,A04_SHARED_INFRA,0x120,1) && !ParentRegWrite(c,A04_SHARED_INFRA,0x124,1) &&
+     !ParentRegRead(c,A04_SHARED_INFRA,0x128,&state) && !(state&1))result=STATUS_SUCCESS;
+  else {c->thermal.poisoned=1;result=STATUS_DEVICE_HARDWARE_ERROR;}
+ }
+ ParentUnlock(c);return result;
+}
+static BOOLEAN ParentThermalBegin(PVOID p,ULONG generation)
+{
+ A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);int valid;
+ if(!ExAcquireRundownProtection(&c->thermalRundown))return FALSE;
+ if(ParentLock(c)){ExReleaseRundownProtection(&c->thermalRundown);return FALSE;}
+ valid=!a04_shared_thermal_begin(&c->thermal,generation);ParentUnlock(c);
+ if(!valid)ExReleaseRundownProtection(&c->thermalRundown);return valid?TRUE:FALSE;
+}
+static VOID ParentThermalEnd(PVOID p)
+{
+ A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);
+ /* End remains legal after admission closes; ParentStop waits for rundown. */
+ ExAcquireFastMutex(&c->pwrapLock);a04_shared_thermal_end(&c->thermal);ExReleaseFastMutex(&c->pwrapLock);
+ ExReleaseRundownProtection(&c->thermalRundown);
+}
+static NTSTATUS ParentThermalRelease(PVOID p,ULONG generation)
+{
+ A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);int result;
+ if(ParentLock(c))return STATUS_DEVICE_NOT_READY;
+ if(!a04_shared_thermal_valid(&c->thermal,generation) || c->thermal.inflight) {ParentUnlock(c);return STATUS_DEVICE_BUSY;}
+ if(c->thermal.clocks_ready && c->thermal.restore_gated) {
+  uint32_t state;
+  if(ParentRegWrite(c,A04_SHARED_TOP,0x54,c->thermal.restore_gated) ||
+     ParentRegRead(c,A04_SHARED_TOP,0x24,&state) ||
+     (state&c->thermal.restore_gated)!=c->thermal.restore_gated) {
+   c->thermal.poisoned=1;ParentUnlock(c);return STATUS_DEVICE_HARDWARE_ERROR;
+  }
+ }
+ result=a04_shared_thermal_release(&c->thermal,generation);ParentUnlock(c);
+ return result?STATUS_DEVICE_NOT_READY:STATUS_SUCCESS;
+}
+#endif
 static void ParentStop(A04_PARENT_CONTEXT *c,int can_access)
 {
     /* Both owners share this mutex. Close admission in one critical section
      * before any mapping is released; neither client can enter in between. */
     InterlockedExchange(&c->admissionClosed,1);
+#if A04_SHARED_THERMAL_DIAGNOSTIC
+    if(!c->thermalRundownClosed){ExWaitForRundownProtectionRelease(&c->thermalRundown);c->thermalRundownClosed=TRUE;}
+#endif
     ExAcquireFastMutex(&c->pwrapLock);
     c->regs.online=0;
     c->pmic.online=0;
+#if A04_SHARED_THERMAL_DIAGNOSTIC
+    a04_shared_thermal_stop(&c->thermal);
+#endif
     a04_audio_owner_stop(&c->audio);
     c->usb.online=0;
     /* Surprise removal may already make MMIO unsafe. On ordered D0 exit,
@@ -445,6 +529,9 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
     /* Failed/partial audio ownership cannot be interpreted as quiescent.
      * Retain mappings; this is not proof PnP retains physical resources. */
     if(c->audio.poisoned || c->audio.leased || c->audioAfe || c->usb.leased)return STATUS_DEVICE_BUSY;
+#if A04_SHARED_THERMAL_DIAGNOSTIC
+    if(c->thermal.leased || c->thermal.poisoned)return STATUS_DEVICE_BUSY;
+#endif
 #if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
     if(c->codecDomain.held || c->codecDomain.poisoned)return STATUS_DEVICE_BUSY;
 #endif
@@ -532,6 +619,9 @@ NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
     UNREFERENCED_PARAMETER(previous);
 #if A04_SHARED_BUTTON_D0_EXPERIMENT
     A04_PARENT_CONTEXT *c=ParentContext(dev);NTSTATUS result=STATUS_DEVICE_NOT_READY;ULONG init,state;
+#if A04_SHARED_THERMAL_DIAGNOSTIC
+    if(c->thermalRundownClosed){ExReInitializeRundownProtection(&c->thermalRundown);c->thermalRundownClosed=FALSE;}
+#endif
     /* 1=closed, 2=starting, 0=open. Stop can cancel a start before the
      * final compare-exchange; surprise removal prevents any later restart. */
     if (InterlockedCompareExchange(&c->removed,0,0) ||
@@ -558,6 +648,10 @@ NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
     }
 #endif
     c->pmic.online=1;
+#if A04_SHARED_THERMAL_DIAGNOSTIC
+    /* No known provider proves release by EL3 or every AUXADC consumer. */
+    c->thermal.online=1;c->thermal.firmware_released=0;c->thermal.adc_exclusive=0;
+#endif
     c->usb.online=(c->apmixed && !c->usb.poisoned) ? 1 : 0;
 #if A04_SHARED_TOUCH_D0_EXPERIMENT
     c->regs.online=c->regs.poisoned ? 0 : 1;
@@ -664,6 +758,11 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
     if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+#if A04_SHARED_THERMAL_DIAGNOSTIC
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedThermalInterfaceGuid,NULL);
+    query.SendQueryToParentStack=TRUE;status=WdfDeviceAddQueryInterface(child,&query);
+    if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+#endif
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedUsbInterfaceGuid,NULL);
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
@@ -686,6 +785,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
     A04_LEGACY_SHARED_INTERFACE iface;WDF_QUERY_INTERFACE_CONFIG query;
     A04_SHARED_INTERFACE inputIface;
+#if A04_SHARED_THERMAL_DIAGNOSTIC
+    A04_SHARED_THERMAL_INTERFACE thermalIface;
+#endif
     A04_SHARED_AUDIO_INTERFACE audioIface; A04_SHARED_USB_INTERFACE usbIface;
 #endif
     UNREFERENCED_PARAMETER(driver);
@@ -700,6 +802,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     {
         A04_PARENT_CONTEXT *c=ParentContext(dev);
         ExInitializeFastMutex(&c->pwrapLock);
+#if A04_SHARED_THERMAL_DIAGNOSTIC
+        ExInitializeRundownProtection(&c->thermalRundown);
+#endif
         c->admissionClosed=1;
         c->pmic.lock_context=c;c->pmic.lock=ParentLock;c->pmic.unlock=ParentUnlock;
         c->pmic.bus.context=c;c->pmic.bus.read32=ParentPwrapRead;c->pmic.bus.write32=ParentPwrapWrite;
@@ -741,6 +846,15 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&inputIface,&A04SharedInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
     if(!NT_SUCCESS(status))return status;
+#if A04_SHARED_THERMAL_DIAGNOSTIC
+    RtlZeroMemory(&thermalIface,sizeof(thermalIface));thermalIface.Header.Size=sizeof(thermalIface);
+    thermalIface.Header.Version=A04_SHARED_THERMAL_INTERFACE_VERSION;thermalIface.Header.Context=dev;
+    thermalIface.Header.InterfaceReference=ParentInterfaceReference;thermalIface.Header.InterfaceDereference=ParentInterfaceDereference;
+    thermalIface.Acquire=ParentThermalAcquire;thermalIface.Clock=ParentThermalClock;thermalIface.Reset=ParentThermalReset;
+    thermalIface.Begin=ParentThermalBegin;thermalIface.End=ParentThermalEnd;thermalIface.Release=ParentThermalRelease;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&thermalIface,&A04SharedThermalInterfaceGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
+#endif
     RtlZeroMemory(&audioIface,sizeof(audioIface));
     audioIface.Header.Size=sizeof(audioIface);audioIface.Header.Version=A04_SHARED_AUDIO_INTERFACE_VERSION;
     audioIface.Header.Context=dev;audioIface.Header.InterfaceReference=ParentInterfaceReference;

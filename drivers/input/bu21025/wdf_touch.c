@@ -19,7 +19,7 @@
 #define A04_TOUCH_THERMAL_LEASE 0
 #endif
 #if A04_TOUCH_SHARED_PARENT && A04_TOUCH_THERMAL_LEASE
-#error shared parent has no thermal broker; do not map its resources from touch
+#include "../../bus/mt8167-shared/thermal_interface.h"
 #endif
 #if A04_TOUCH_THERMAL_LEASE
 #include "thermal_lease.h"
@@ -58,6 +58,9 @@ typedef struct {
     WDFSPINLOCK shared_lock;
     struct a04_thermal_lease thermal_lease;
     EX_RUNDOWN_REF thermal_rundown; BOOLEAN thermal_rundown_closed;
+#if A04_TOUCH_SHARED_PARENT
+    A04_SHARED_THERMAL_INTERFACE thermal_parent;ULONG thermal_parent_generation;
+#endif
 #endif
     BOOLEAN faulted;
     BOOLEAN recovering;
@@ -77,6 +80,7 @@ EVT_WDF_IO_QUEUE_IO_INTERNAL_DEVICE_CONTROL TouchIoctl;
 EVT_WDF_TIMER TouchTimer;
 #if A04_TOUCH_THERMAL_LEASE
 EVT_WDF_FILE_CLEANUP TouchThermalCleanup;
+static void TouchThermalOffline(TOUCH_CONTEXT *);
 #endif
 
 #if A04_TOUCH_TRACE
@@ -178,6 +182,19 @@ NTSTATUS TouchPrepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translate
             RtlZeroMemory(&c->shared,sizeof(c->shared));return STATUS_NOINTERFACE;
         }
     }
+#if A04_TOUCH_THERMAL_LEASE
+    {
+        NTSTATUS status=WdfFdoQueryForInterface(device,&A04SharedThermalInterfaceGuid,
+            (PINTERFACE)&c->thermal_parent,sizeof(c->thermal_parent),A04_SHARED_THERMAL_INTERFACE_VERSION,NULL);
+        if(!NT_SUCCESS(status)) {c->shared.InterfaceDereference(c->shared.Context);RtlZeroMemory(&c->shared,sizeof(c->shared));return status;}
+        if(!c->thermal_parent.Header.InterfaceDereference || !c->thermal_parent.Acquire || !c->thermal_parent.Clock ||
+           !c->thermal_parent.Reset || !c->thermal_parent.Begin || !c->thermal_parent.End || !c->thermal_parent.Release) {
+            if(c->thermal_parent.Header.InterfaceDereference)c->thermal_parent.Header.InterfaceDereference(c->thermal_parent.Header.Context);
+            RtlZeroMemory(&c->thermal_parent,sizeof(c->thermal_parent));c->shared.InterfaceDereference(c->shared.Context);
+            RtlZeroMemory(&c->shared,sizeof(c->shared));return STATUS_NOINTERFACE;
+        }
+    }
+#endif
 #else
     for (i=0;i<RANGE_COUNT;++i) if (!seen[i]) return STATUS_DEVICE_CONFIGURATION_ERROR;
 #endif
@@ -189,6 +206,9 @@ NTSTATUS TouchPrepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translate
         if (!c->mmio[i]) {
             while (i) { --i; if(c->mmio[i]) MmUnmapIoSpace((PVOID)c->mmio[i],RANGE_SIZE); c->mmio[i]=NULL; }
 #if A04_TOUCH_SHARED_PARENT
+#if A04_TOUCH_THERMAL_LEASE
+            c->thermal_parent.Header.InterfaceDereference(c->thermal_parent.Header.Context);RtlZeroMemory(&c->thermal_parent,sizeof(c->thermal_parent));
+#endif
             c->shared.InterfaceDereference(c->shared.Context); RtlZeroMemory(&c->shared,sizeof(c->shared));
 #endif
             return STATUS_INSUFFICIENT_RESOURCES;
@@ -213,15 +233,16 @@ NTSTATUS TouchRelease(WDFDEVICE device, WDFCMRESLIST translated)
         ExWaitForRundownProtectionRelease(&c->thermal_rundown);
         c->thermal_rundown_closed=TRUE;
     }
-    WdfSpinLockAcquire(c->shared_lock);
-    a04_lease_offline(&c->thermal_lease);
-    WdfSpinLockRelease(c->shared_lock);
+    TouchThermalOffline(c);
 #endif
     WdfTimerStop(c->timer,TRUE); WdfTimerStop(c->timer,TRUE);
     for (i=0;i<RANGE_COUNT;++i) if (c->mmio[i]) {
         MmUnmapIoSpace((PVOID)c->mmio[i],RANGE_SIZE); c->mmio[i]=NULL;
     }
 #if A04_TOUCH_SHARED_PARENT
+#if A04_TOUCH_THERMAL_LEASE
+    if(c->thermal_parent.Header.InterfaceDereference) {c->thermal_parent.Header.InterfaceDereference(c->thermal_parent.Header.Context);RtlZeroMemory(&c->thermal_parent,sizeof(c->thermal_parent));}
+#endif
     if(c->shared.InterfaceDereference) { c->shared.InterfaceDereference(c->shared.Context); RtlZeroMemory(&c->shared,sizeof(c->shared)); }
 #endif
 #if A04_TOUCH_TRACE
@@ -276,9 +297,7 @@ NTSTATUS TouchD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
         ExWaitForRundownProtectionRelease(&c->thermal_rundown);
         c->thermal_rundown_closed=TRUE;
     }
-    WdfSpinLockAcquire(c->shared_lock);
-    a04_lease_offline(&c->thermal_lease);
-    WdfSpinLockRelease(c->shared_lock);
+    TouchThermalOffline(c);
 #endif
     WdfTimerStop(c->timer,TRUE); WdfTimerStop(c->timer,TRUE);
     return STATUS_SUCCESS;
@@ -383,11 +402,35 @@ rearm:
     if (InterlockedCompareExchange(&c->enabled,1,1)) WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(delay));
 }
 #if A04_TOUCH_THERMAL_LEASE
+static void TouchThermalOffline(TOUCH_CONTEXT *c)
+{
+#if A04_TOUCH_SHARED_PARENT
+    ULONG generation;
+#endif
+    WdfSpinLockAcquire(c->shared_lock);
+#if A04_TOUCH_SHARED_PARENT
+    generation=c->thermal_parent_generation;c->thermal_parent_generation=0;
+#endif
+    a04_lease_offline(&c->thermal_lease);WdfSpinLockRelease(c->shared_lock);
+#if A04_TOUCH_SHARED_PARENT
+    if(generation && c->thermal_parent.Release)(VOID)c->thermal_parent.Release(c->thermal_parent.Header.Context,generation);
+#endif
+}
 VOID TouchThermalCleanup(WDFFILEOBJECT file)
 {
     TOUCH_CONTEXT *c=TouchGetContext(WdfFileObjectGetDevice(file));
     uintptr_t owner=(uintptr_t)WdfFileObjectWdmGetFileObject(file);
-    WdfSpinLockAcquire(c->shared_lock); a04_lease_release(&c->thermal_lease,owner); WdfSpinLockRelease(c->shared_lock);
+#if A04_TOUCH_SHARED_PARENT
+    ULONG generation=0;
+#endif
+    WdfSpinLockAcquire(c->shared_lock);
+#if A04_TOUCH_SHARED_PARENT
+    if(a04_lease_valid(&c->thermal_lease,owner)){generation=c->thermal_parent_generation;c->thermal_parent_generation=0;}
+#endif
+    a04_lease_release(&c->thermal_lease,owner);WdfSpinLockRelease(c->shared_lock);
+#if A04_TOUCH_SHARED_PARENT
+    if(generation && c->thermal_parent.Release)(VOID)c->thermal_parent.Release(c->thermal_parent.Header.Context,generation);
+#endif
 }
 static BOOLEAN TouchThermalGuardBegin(PVOID context,ULONG_PTR owner,ULONG generation)
 {
@@ -396,12 +439,20 @@ static BOOLEAN TouchThermalGuardBegin(PVOID context,ULONG_PTR owner,ULONG genera
     WdfSpinLockAcquire(c->shared_lock);
     valid=a04_lease_guard_begin(&c->thermal_lease,(uintptr_t)owner,generation)?FALSE:TRUE;
     WdfSpinLockRelease(c->shared_lock);
+#if A04_TOUCH_SHARED_PARENT
+    if(valid && (!c->thermal_parent.Begin || !c->thermal_parent.Begin(c->thermal_parent.Header.Context,c->thermal_parent_generation))) {
+        WdfSpinLockAcquire(c->shared_lock);a04_lease_guard_end(&c->thermal_lease);WdfSpinLockRelease(c->shared_lock);valid=FALSE;
+    }
+#endif
     if(!valid)ExReleaseRundownProtection(&c->thermal_rundown);
     return valid;
 }
 static VOID TouchThermalGuardEnd(PVOID context)
 {
     TOUCH_CONTEXT *c=TouchGetContext((WDFDEVICE)context);
+#if A04_TOUCH_SHARED_PARENT
+    c->thermal_parent.End(c->thermal_parent.Header.Context);
+#endif
     WdfSpinLockAcquire(c->shared_lock);a04_lease_guard_end(&c->thermal_lease);WdfSpinLockRelease(c->shared_lock);
     ExReleaseRundownProtection(&c->thermal_rundown);
 }
@@ -413,6 +464,30 @@ static NTSTATUS TouchThermalRequest(TOUCH_CONTEXT *c,WDFREQUEST request,ULONG co
     uintptr_t owner=(uintptr_t)IoGetCurrentIrpStackLocation(irp)->FileObject;
     NTSTATUS status=STATUS_DEVICE_NOT_READY; ULONG state;A04_TOUCH_THERMAL_GUARD *guard;size_t output;
     if(irp->RequestorMode!=KernelMode || !owner) return STATUS_ACCESS_DENIED;
+#if A04_TOUCH_SHARED_PARENT
+    if(code==A04_TOUCH_THERMAL_CLAIM) {
+        ULONG gen=0;status=c->thermal_parent.Acquire(c->thermal_parent.Header.Context,&gen);
+        if(!NT_SUCCESS(status))return status;
+        WdfSpinLockAcquire(c->shared_lock);
+        if(a04_lease_claim(&c->thermal_lease,owner))status=STATUS_DEVICE_BUSY;
+        else {c->thermal_parent_generation=gen;status=STATUS_SUCCESS;}
+        WdfSpinLockRelease(c->shared_lock);
+        if(!NT_SUCCESS(status))(VOID)c->thermal_parent.Release(c->thermal_parent.Header.Context,gen);
+        return status;
+    }
+    if(code==A04_TOUCH_THERMAL_RELEASE || code==A04_TOUCH_THERMAL_CLOCK || code==A04_TOUCH_THERMAL_RESET) {
+        ULONG gen=0;
+        WdfSpinLockAcquire(c->shared_lock);
+        if(a04_lease_valid(&c->thermal_lease,owner)) {
+            gen=c->thermal_parent_generation;
+            if(code==A04_TOUCH_THERMAL_RELEASE){a04_lease_release(&c->thermal_lease,owner);c->thermal_parent_generation=0;}
+        }
+        WdfSpinLockRelease(c->shared_lock);if(!gen)return STATUS_DEVICE_NOT_READY;
+        if(code==A04_TOUCH_THERMAL_RELEASE)return c->thermal_parent.Release(c->thermal_parent.Header.Context,gen);
+        if(code==A04_TOUCH_THERMAL_CLOCK)return c->thermal_parent.Clock(c->thermal_parent.Header.Context,gen);
+        return c->thermal_parent.Reset(c->thermal_parent.Header.Context,gen);
+    }
+#endif
     WdfSpinLockAcquire(c->shared_lock);
     if(code==A04_TOUCH_THERMAL_CLAIM) {
         status=a04_lease_claim(&c->thermal_lease,owner) ? STATUS_DEVICE_BUSY : STATUS_SUCCESS;
@@ -517,7 +592,13 @@ NTSTATUS TouchAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
         return STATUS_DEVICE_CONFIGURATION_ERROR;
     WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel);
     q.EvtIoInternalDeviceControl=TouchIoctl;
-    status=WdfIoQueueCreate(device,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE); if (!NT_SUCCESS(status)) return status;
+#if A04_TOUCH_SHARED_PARENT && A04_TOUCH_THERMAL_LEASE
+    { WDF_OBJECT_ATTRIBUTES qa;WDF_OBJECT_ATTRIBUTES_INIT(&qa);qa.ExecutionLevel=WdfExecutionLevelPassive;
+      status=WdfIoQueueCreate(device,&q,&qa,WDF_NO_HANDLE); }
+#else
+    status=WdfIoQueueCreate(device,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);
+#endif
+    if (!NT_SUCCESS(status)) return status;
     WDF_IO_QUEUE_CONFIG_INIT(&q,WdfIoQueueDispatchManual);
     status=WdfIoQueueCreate(device,&q,WDF_NO_OBJECT_ATTRIBUTES,&c->reads); if (!NT_SUCCESS(status)) return status;
     WDF_TIMER_CONFIG_INIT(&t,TouchTimer); t.AutomaticSerialization=FALSE;
