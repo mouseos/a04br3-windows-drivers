@@ -131,3 +131,9 @@ TIデータシート SLUSAO0H §8.6.3 の02h RESET=1は全設定を既定値へ�
 UART trace付きbroker所有者の診断では、採用拒否を `A04BAT OWNER ADMISSION REFUSED` として明示する。採用後に失敗した場合、およびD0終了でRESETを要求した後には、既存取得済みのBQ snapshotのvalid mask・レジスタ値・fault履歴・給餌回数・I2C障害・停止状態を出す。`POST_RESET_CACHED` はRESET**前に取得したキャッシュ**であり、RESET後の読戻しではない。RESET送信の成否と実際のDEFAULT状態も別である。`tools/uart/analyze_bq_owner.py <uart.log>` は部分snapshotを欠損として扱い、電圧・電流の設定値とBATOVP表示を解釈する。設定値は実際の充電電流ではない。
 
 この観測も採用ゲートを解除せず、現在のUEFIは停止記録のみを生成するため、現状は採用拒否の確認に限られる。実機でBQ設定値の取得やRESETを行える入口はまだ成立していない。ARM WDKビルドやホスト試験を、実ハード所有・D0再入・充電復元の証拠と扱わない。
+
+## BATOVP解除の限定部品
+
+`a04_bq_recover_batovp` は、同一I2C排他・firmware停止・給餌worker稼働・HiZ中に電池だけでSYSを維持できる根拠・機種電池とUSB入力上限の検証をすべて呼出し側が確立した場合だけ、TI §8.6.4のHiZ切替を試行する。全レジスタを取得してBATOVPと他faultを検査し、02h読値の常時1のRESET bitを落とし、他の制御ビットとUSB上限を保持してHiZを1→0とし、01hを再読してBATOVP消失を確認する。期限・通信失敗で直ちに停止し、設定復元・CE変更・CD操作・リトライは行わない。１回目の書込み後に２回目が失敗すればHiZのまま電池給電となりうる。応答がなくても書込みが実行された可能性がある。安全を証明するコールバックやD0再入には未接続であり、フラグだけで動かない。
+
+`a04_bq_mt8167_recovery_write` は同じ共有adapter上の02h書込みを実装し、RESET bitや予約されたUSB限度コードを拒否する。これは単独ではHiZ切替・物理電源・Windows/UEFI排他の安全性を検証しない。Linuxの4.32 V・1.3 A・6時間といった設定を復元する書込みは実装しておらず、停止recordを有効な給餌記録とみなす経路もない。ホスト試験だけを実機の復帰成功と扱わない。

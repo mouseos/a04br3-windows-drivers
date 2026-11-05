@@ -16,6 +16,11 @@ int main(void) {
  memset(&f,0,sizeof(f)); assert(a04_bq_mt8167_kick(&a,0x81) && f.count==0);
  memset(&f,0,sizeof(f)); assert(!a04_bq_mt8167_reset_default(&a));
  assert(f.count==2 && f.data[0]==2 && f.data[1]==0x80 && f.regs[0x18/2]==1);
+ memset(&f,0,sizeof(f)); assert(!a04_bq_mt8167_recovery_write(&a,2,0x0d));
+ assert(f.count==2 && f.data[0]==2 && f.data[1]==0x0d);
+ memset(&f,0,sizeof(f)); assert(a04_bq_mt8167_recovery_write(&a,2,0x8c) && !f.count);
+ assert(a04_bq_mt8167_recovery_write(&a,2,0x6c) && !f.count);
+ assert(a04_bq_mt8167_recovery_write(&a,3,0x0c) && !f.count);
  for(mode=1;mode<=4;mode++){ memset(&f,0,sizeof(f)); f.mode=mode; a.faulted=0; value=0x55;
  assert(a04_bq_mt8167_read(&a,0,&value)); assert(a.faulted && value==0x55);
  assert(a.fault_reason==(unsigned)(mode==4?1:mode==1?2:mode==2?4:3)); f.mode=0;

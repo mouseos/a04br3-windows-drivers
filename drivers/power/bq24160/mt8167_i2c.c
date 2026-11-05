@@ -2,7 +2,7 @@
  * MT8167 sequence based on UniXNU-a04br3 A04BR3ChargerCore.h (MIT).
  */
 #include "mt8167_i2c.h"
-static int transfer(struct a04_gauge_mt8167 *a, int read, uint8_t reg, uint8_t *value, int reset_default)
+static int transfer(struct a04_gauge_mt8167 *a, int read, uint8_t reg, uint8_t *value, int write_kind)
 {
     const struct a04_i2c_io *io;
     uint64_t start, now, previous;
@@ -10,7 +10,8 @@ static int transfer(struct a04_gauge_mt8167 *a, int read, uint8_t reg, uint8_t *
     unsigned i;
     if (!a || !(io=a->io) || !io->read16 || !io->write16 || !io->delay_us ||
         !a->monotonic_ns || !value || a->faulted || reg > 7 ||
-        (!read && (reset_default ? (reg != 2 || *value != 0x80u) :
+        (!read && (write_kind == 1 ? (reg != 2 || *value != 0x80u) :
+                   write_kind == 2 ? (reg != 2 || (*value & 0x80u) || ((*value >> 4) & 7u) > 5u) :
                    (reg != 0 || (*value & ~0x88u) || !(*value & 0x80u))))) return -1;
     a->fault_command=reg; a->fault_reason=0; a->fault_status=0; a->fault_fifo=0;
     if (io->read16(io->context, 0x24) & 1u) { a->fault_reason=1; a->faulted=1; return -1; }
@@ -58,4 +59,10 @@ int a04_bq_mt8167_reset_default(void *context)
     uint8_t value=0x80u;
     /* Exact write only. Never read back: another access restarts watchdog. */
     return transfer(context,0,2,&value,1);
+}
+
+int a04_bq_mt8167_recovery_write(void *context,uint8_t reg,uint8_t value)
+{
+    /* Only register 02 without RESET and without reserved USB limit codes. */
+    return transfer(context,0,reg,&value,2);
 }
