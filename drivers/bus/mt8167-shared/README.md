@@ -376,3 +376,11 @@ DL_VCM2 (CON02 bit 17), saving initial bits and restoring in reverse.
 It does not enable the Left DAC or Voice Amp: Linux performs calibrated DC
 compensation and ramp around DAC transitions, and the parent does not yet
 own the ABB AFE registers or have validated board calibration.
+
+The standalone left-channel DC ramp helper follows the Linux ABB CON3/CON11
+coefficient and latch sequence, including capacitor-dependent step and delay.
+It is not yet wired to the PnP backend: no validated calibration provider or
+proof of muted output and exclusive AFE ownership is available. No zero
+calibration value is assumed. The Linux LINEOUT mux is a virtual DAPM mux;
+Voice Amp uses CON02 bit 8 with gain bits 12:9, and Left DAC uses CON01 bit 15.
+The ramp helper is not a complete DAC or playback path.
