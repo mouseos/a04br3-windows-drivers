@@ -18,7 +18,7 @@ void KeStallExecutionProcessor(unsigned us)
     if(cmd->eCmdType==RGXFWIF_KCCB_CMD_CLEANUP) {
         assert(cmd->uCmdData.sCleanupData.eCleanupType==RGXFWIF_CLEANUP_FWCOMMONCONTEXT);
         assert(cmd->eDM==(cleanups==0?2u:(cleanups==2?0u:3u)));
-        *(uint32_t *)run->command_sync=complete==3?3u:1u;
+        *(uint32_t *)run->command_sync=(complete==3 || (complete==4 && cleanups==1))?3u:1u;
         run->kctl->ui32ReadOffset=run->kctl->ui32WriteOffset;cleanups++;return;
     }
     if(cmd->eCmdType==RGXFWIF_KCCB_CMD_SLCFLUSHINVAL) {
@@ -76,7 +76,8 @@ int main(void)
     { unsigned failed=99;complete=3;
       assert(a04_vendor_render_cleanup_contexts(&r,&start,&failed)==STATUS_DEVICE_BUSY && failed==0 && !r.cleanup_mask && r.cleanup_started && !r.poisoned);
       assert(a04_vendor_render_context_command(&r,&start,2,0xffffffffu)==STATUS_INVALID_PARAMETER);
-      complete=1;cleanups=0;assert(a04_vendor_render_cleanup_contexts(&r,&start,&failed)==STATUS_SUCCESS && failed==4 && r.cleanup_mask==15u && cleanups==4);
+      complete=4;cleanups=0;assert(a04_vendor_render_cleanup_contexts(&r,&start,&failed)==STATUS_DEVICE_BUSY && failed==1 && r.cleanup_mask==1u && cleanups==2);
+      complete=1;cleanups=1;assert(a04_vendor_render_cleanup_contexts(&r,&start,&failed)==STATUS_SUCCESS && failed==4 && r.cleanup_mask==15u && cleanups==4);
       assert(a04_vendor_render_context_command(&r,&start,2,0xffffffffu)==STATUS_INVALID_PARAMETER);
       assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_INVALID_PARAMETER);
       r.cleanup_mask=0;r.cleanup_started=FALSE;
