@@ -34,7 +34,7 @@ extern "C" int Mt8167SilentDmaMiniportEnabled(void);
 struct Mt8167PnpBackend {
     Mt8167StreamBackend iface;
     volatile LONG refs;
-    FAST_MUTEX mutex;
+    KMUTEX mutex;
     EX_RUNDOWN_REF positions;
     EX_RUNDOWN_REF livePositions;
     BOOLEAN livePositionsClosed;
@@ -87,11 +87,19 @@ static int OwnerDl1Write(void *context,uint32_t offset,uint32_t value)
         static_cast<unsigned char *>(o->afe.base)+offset),value);return 0;
 }
 #endif
+/* PnP, stream state and buffer operations run at PASSIVE_LEVEL. A kernel
+ * mutex serializes them without the IRQL elevation of FAST_MUTEX: the DMA
+ * adapter's AllocateCommonBuffer and FreeCommonBuffer require PASSIVE_LEVEL. */
+static void OwnerLock(Mt8167PnpBackend *o)
+{ (void)KeWaitForSingleObject(&o->mutex,Executive,KernelMode,FALSE,NULL); }
+static void OwnerUnlock(Mt8167PnpBackend *o) { (void)KeReleaseMutex(&o->mutex,FALSE); }
 static void OwnerReference(void *ctx) { Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx); InterlockedIncrement(&o->refs); }
 static void OwnerDereference(void *ctx)
 {
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
     if (InterlockedDecrement(&o->refs)) return;
+    /* A violated caller IRQL contract cannot safely free a DMA adapter. */
+    if (KeGetCurrentIrql()!=PASSIVE_LEVEL) return;
     /* An uncertain lease release keeps the mapping and parent alive. */
     if (o->shared.leased || o->shared.quarantined || o->irq.interrupt) return;
     /* RUN is always refused, so all buffers allocated here remain unexposed. */
@@ -123,23 +131,25 @@ static NTSTATUS OwnerAllocate(void *ctx,ULONG bytes,PMDL *mdl,PULONG actual,PULO
     NTSTATUS status;
     if (!mdl || !actual || !offset || !cache) return STATUS_INVALID_PARAMETER;
     *mdl=NULL;*actual=0;*offset=0;
-    ExAcquireFastMutex(&o->mutex);
+    if (KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_DEVICE_NOT_READY;
+    OwnerLock(o);
     if (!o->online) status=STATUS_DEVICE_NOT_READY;
     else if (o->buffer.mdl) status=STATUS_DEVICE_BUSY;
     else {
         status=Mt8167CommonAllocate(o->adapter,bytes,&o->buffer);
         if (NT_SUCCESS(status)) { *mdl=o->buffer.mdl;*actual=o->buffer.size;*cache=MmNonCached; }
     }
-    ExReleaseFastMutex(&o->mutex);
+    OwnerUnlock(o);
     return status;
 }
 static void OwnerFree(void *ctx,PMDL mdl,ULONG bytes)
 {
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
-    ExAcquireFastMutex(&o->mutex);
+    if (KeGetCurrentIrql()!=PASSIVE_LEVEL) return;
+    OwnerLock(o);
     if (mdl && mdl==o->buffer.mdl && bytes==o->buffer.size)
         (void)Mt8167CommonReleaseUnexposed(&o->buffer);
-    ExReleaseFastMutex(&o->mutex);
+    OwnerUnlock(o);
 }
 /* A single publish flush cannot prove live WaveRT circular-buffer coherence.
  * This platform-specific proof must be implemented before RUN can proceed. */
@@ -165,10 +175,11 @@ static BOOLEAN OwnerLiveDmaVerified(Mt8167PnpBackend *o)
 static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
     if (!ctx || !possiblyExposed) return STATUS_INVALID_PARAMETER;
     *possiblyExposed=FALSE;
+    if (KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_DEVICE_NOT_READY;
 #if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
     NTSTATUS result=STATUS_DEVICE_NOT_READY;
-    ExAcquireFastMutex(&o->mutex);
+    OwnerLock(o);
     if (o->online && o->buffer.mdl && o->shared.leased && o->irq.interrupt &&
         OwnerLiveDmaVerified(o)) {
         /* The selected period is a diagnostic half-ring, not a WaveRT
@@ -182,14 +193,14 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
 #endif
     }
     A04_TRACE("A04AUD run result=%08lx online=%d buffer=%d lease=%d irq=%d live-dma=isolated-or-refused exposed=%d\n",(ULONG)result,o->online,o->buffer.mdl!=NULL,o->shared.leased,o->irq.interrupt!=NULL,*possiblyExposed);
-    ExReleaseFastMutex(&o->mutex);return result;
+    OwnerUnlock(o);return result;
 #else
     return STATUS_DEVICE_NOT_READY;
 #endif
 }
 #if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
-/* Caller holds the backend mutex. Mute is allowed at APC_LEVEL, as required
- * by FAST_MUTEX; stop DL1 even if mute failed, retaining resources on error. */
+/* Caller holds the passive-level backend mutex. Stop DL1 even if mute fails,
+ * retaining resources on error. */
 static NTSTATUS OwnerStopRunning(Mt8167PnpBackend *o)
 {
     /* No restart follows an exposed diagnostic run. Close position admission
@@ -207,10 +218,10 @@ static NTSTATUS OwnerStop(void *ctx) {
 #if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);NTSTATUS result=STATUS_DEVICE_NOT_READY;
     if (!o)return STATUS_INVALID_PARAMETER;
-    ExAcquireFastMutex(&o->mutex);
+    OwnerLock(o);
     if (o->transport.state==AUDIO_RUNNING)result=OwnerStopRunning(o);
     A04_TRACE("A04AUD stop result=%08lx state=%d quarantine=%d irq-events=%ld irq-faults=%ld; drain=unknown\n",(ULONG)result,(int)o->transport.state,o->shared.quarantined,o->irqEvents,o->irqFaults);
-    ExReleaseFastMutex(&o->mutex);return result;
+    OwnerUnlock(o);return result;
 #else
     UNREFERENCED_PARAMETER(ctx);return STATUS_DEVICE_NOT_READY;
 #endif
@@ -283,7 +294,7 @@ NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt816
     o=static_cast<Mt8167PnpBackend *>(ExAllocatePoolWithTag(NonPagedPool,sizeof(*o),OWNER_TAG));
     if (!o) return STATUS_INSUFFICIENT_RESOURCES;
     RtlZeroMemory(o,sizeof(*o));
-    ExInitializeFastMutex(&o->mutex);
+    KeInitializeMutex(&o->mutex,0);
     ExInitializeRundownProtection(&o->positions);
     ExInitializeRundownProtection(&o->livePositions);
     status=Mt8167GetDmaAdapter(pdo,&o->adapter,&mapRegisters);
@@ -340,40 +351,40 @@ NTSTATUS Mt8167PnpBackendInterrupt(Mt8167PnpBackend *o,Mt8167PnpInterrupt *inter
 {
     NTSTATUS status;
     if (!o || !interrupt) return STATUS_INVALID_PARAMETER;
-    ExAcquireFastMutex(&o->mutex);
+    OwnerLock(o);
     if (!o->online) status=STATUS_DEVICE_NOT_READY;
     else { *interrupt=o->interrupt;status=STATUS_SUCCESS; }
-    ExReleaseFastMutex(&o->mutex);
+    OwnerUnlock(o);
     return status;
 }
 NTSTATUS Mt8167PnpBackendBindInterrupt(Mt8167PnpBackend *o,Mt8167Transport *t)
 {
     NTSTATUS status=STATUS_DEVICE_NOT_READY;
     if (!o || !t) return STATUS_INVALID_PARAMETER;
-    ExAcquireFastMutex(&o->mutex);
+    OwnerLock(o);
     if (o->online && t->state==AUDIO_READY && t->irq && !t->irq->interrupt) {
         t->vector=o->interrupt.vector;t->level=o->interrupt.level;
         t->affinity=o->interrupt.affinity;t->mode=o->interrupt.mode;status=STATUS_SUCCESS;
     }
-    ExReleaseFastMutex(&o->mutex);return status;
+    OwnerUnlock(o);return status;
 }
 NTSTATUS Mt8167PnpBackendAttachShared(Mt8167PnpBackend *o,const struct mt8167_audio_shared *shared)
 {
     NTSTATUS result=STATUS_DEVICE_NOT_READY;
     if (!o || !shared) return STATUS_INVALID_PARAMETER;
-    ExAcquireFastMutex(&o->mutex);
+    OwnerLock(o);
     if (o->online && !mt8167_audio_shared_attach(&o->shared,shared)) result=STATUS_SUCCESS;
-    ExReleaseFastMutex(&o->mutex);
+    OwnerUnlock(o);
     return result;
 }
 const Mt8167StreamBackend *Mt8167PnpBackendInterface(Mt8167PnpBackend *o) { return o?&o->iface:NULL; }
 void Mt8167PnpBackendRevoke(Mt8167PnpBackend *o) {
     if (!o)return;
-    ExAcquireFastMutex(&o->mutex);o->online=FALSE;ExReleaseFastMutex(&o->mutex);
+    OwnerLock(o);o->online=FALSE;OwnerUnlock(o);
     /* PnP stop/removal are serialized. GetPosition can execute at DISPATCH;
      * close admission and wait at PASSIVE before releasing any mapping. */
     ExWaitForRundownProtectionRelease(&o->positions);
-    ExAcquireFastMutex(&o->mutex);
+    OwnerLock(o);
 #if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
     /* Parent keeps the source masked; disconnect and flush DPC before
      * releasing its lease or invalidating the AFE mapping. */
@@ -391,7 +402,7 @@ void Mt8167PnpBackendRevoke(Mt8167PnpBackend *o) {
         if (!o->afeBound) Mt8167UnmapAssignedAfe(&o->afe);
     }
 #endif
-    ExReleaseFastMutex(&o->mutex);
+    OwnerUnlock(o);
 }
 void Mt8167PnpBackendRelease(Mt8167PnpBackend *o) { if(o)OwnerDereference(o); }
 #endif

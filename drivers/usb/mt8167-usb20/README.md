@@ -65,3 +65,11 @@ headers. The keyboard-side SYS also linked against the WDK ARM libraries;
 the shared parent was only compiled. The INF and complete package have not
 been validated or tested on the target. It is not an installable or working
 USB host driver.
+
+The keyboard controller now validates the paired raw and translated PnP
+resources before mapping: only the board's raw MAC/PHY windows, two distinct
+exclusive translated windows and the exclusive level-sensitive GSIV 104
+interrupt are accepted. The translated addresses, which need not equal the raw
+ones, are used for MMIO. A malformed or overlapping assignment is rejected
+before mapping. This does not validate the physical IRQ route, PHY sequence,
+VBUS, connector, or operation on the tablet.

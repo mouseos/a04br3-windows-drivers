@@ -94,6 +94,15 @@ inline void KeFlushIoBuffers(PMDL,BOOLEAN read,BOOLEAN dma) { if (!read && dma) 
 #ifdef A04_TEST_PNP_BACKEND
 #include <assert.h>
 #include <sched.h>
+#define PASSIVE_LEVEL 0
+#define Executive 0
+#define KernelMode 0
+extern thread_local int test_audio_irql;
+typedef struct { volatile int held; } KMUTEX;
+inline int KeGetCurrentIrql(){return test_audio_irql;}
+inline void KeInitializeMutex(KMUTEX *m,int){m->held=0;}
+inline NTSTATUS KeWaitForSingleObject(KMUTEX *m,int,int,BOOLEAN,void *){assert(test_audio_irql==0);while(__sync_lock_test_and_set(&m->held,1))sched_yield();return STATUS_SUCCESS;}
+inline int KeReleaseMutex(KMUTEX *m,BOOLEAN){__sync_lock_release(&m->held);return 0;}
 typedef struct { volatile int held; } FAST_MUTEX;
 typedef struct { volatile int state; } EX_RUNDOWN_REF;
 inline void ExInitializeRundownProtection(EX_RUNDOWN_REF *r){r->state=0;}

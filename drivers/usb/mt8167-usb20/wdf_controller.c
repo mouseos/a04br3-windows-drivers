@@ -1,8 +1,7 @@
 /* MT8167 USB20 controller ownership is separate from the HID report shim.
  * All passive operations and session callbacks are serialized by the caller. */
 #include "wdf_controller.h"
-#define USB_BASE 0x11100000ULL
-#define PHY_BASE 0x11110000ULL
+#include "pnp_resources.h"
 #define USB_SIZE 0x10000u
 struct A04_USB_WDF {
  WDFINTERRUPT irq; WDFWORKITEM work; volatile UCHAR *mac,*phy;
@@ -58,19 +57,31 @@ NTSTATUS A04UsbWdfCreate(WDFDEVICE device,A04_USB_EVENT_CALLBACK callback,void *
  s=WdfWorkItemCreate(&wc,&a,&c->work); if(!NT_SUCCESS(s)){WdfObjectDelete(irq);return s;}
  UsbWorkContext(c->work)->owner=c; *out=c; return STATUS_SUCCESS;
 }
-NTSTATUS A04UsbWdfPrepare(A04_USB_WDF*c,WDFCMRESLIST list)
+NTSTATUS A04UsbWdfPrepare(A04_USB_WDF*c,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
- PHYSICAL_ADDRESS mac,phy; ULONG i,found=0,interrupts=0; NTSTATUS s=STATUS_DEVICE_CONFIGURATION_ERROR;
+ PHYSICAL_ADDRESS mac,phy;struct a04_usb_memory_pair mem[2];uint64_t mac64,phy64;
+ ULONG i,n=0,interrupts=0;NTSTATUS s=STATUS_DEVICE_CONFIGURATION_ERROR;
  if(!c || c->mac || c->phy)return STATUS_INVALID_DEVICE_STATE;
- for(i=0;i<WdfCmResourceListGetCount(list);++i){
-  PCM_PARTIAL_RESOURCE_DESCRIPTOR d=WdfCmResourceListGetDescriptor(list,i); if(!d)return s;
-  if(d->Type==CmResourceTypeInterrupt){++interrupts;continue;}
-  if(d->Type!=CmResourceTypeMemory || d->u.Memory.Length!=USB_SIZE)return s;
-  if(d->u.Memory.Start.QuadPart==USB_BASE && !(found&1)){mac=d->u.Memory.Start;found|=1;}
-  else if(d->u.Memory.Start.QuadPart==PHY_BASE && !(found&2)){phy=d->u.Memory.Start;found|=2;}
-  else return s;
+ if(!raw || !translated || WdfCmResourceListGetCount(raw)!=3 ||
+    WdfCmResourceListGetCount(translated)!=3)return s;
+ for(i=0;i<3;++i){
+  PCM_PARTIAL_RESOURCE_DESCRIPTOR r=WdfCmResourceListGetDescriptor(raw,i);
+  PCM_PARTIAL_RESOURCE_DESCRIPTOR t=WdfCmResourceListGetDescriptor(translated,i);
+  if(!r || !t || r->Type!=t->Type || r->ShareDisposition!=CmResourceShareDeviceExclusive ||
+     t->ShareDisposition!=CmResourceShareDeviceExclusive)return s;
+  if(r->Type==CmResourceTypeInterrupt){
+   if(++interrupts!=1 || (r->Flags&(CM_RESOURCE_INTERRUPT_LATCHED|CM_RESOURCE_INTERRUPT_MESSAGE)) ||
+      (t->Flags&(CM_RESOURCE_INTERRUPT_LATCHED|CM_RESOURCE_INTERRUPT_MESSAGE)) ||
+      r->u.Interrupt.Vector!=104 || !t->u.Interrupt.Vector || !t->u.Interrupt.Affinity)return s;
+  } else if(r->Type==CmResourceTypeMemory){
+   if(n==2 || r->u.Memory.Start.QuadPart<0 || t->u.Memory.Start.QuadPart<0 ||
+      r->u.Memory.Length!=t->u.Memory.Length)return s;
+   mem[n].raw=(uint64_t)r->u.Memory.Start.QuadPart;
+   mem[n].translated=(uint64_t)t->u.Memory.Start.QuadPart;mem[n].length=r->u.Memory.Length;++n;
+  } else return s;
  }
- if(found!=3 || interrupts!=1)return s;
+ if(n!=2 || interrupts!=1 || a04_usb_translate_memory(mem,&mac64,&phy64))return s;
+ mac.QuadPart=(LONGLONG)mac64;phy.QuadPart=(LONGLONG)phy64;
  c->mac=MmMapIoSpace(mac,USB_SIZE,MmNonCached); if(!c->mac)return STATUS_INSUFFICIENT_RESOURCES;
  c->phy=MmMapIoSpace(phy,USB_SIZE,MmNonCached);
  if(!c->phy){MmUnmapIoSpace((PVOID)c->mac,USB_SIZE);c->mac=NULL;return STATUS_INSUFFICIENT_RESOURCES;}

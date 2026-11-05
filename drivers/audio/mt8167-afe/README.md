@@ -291,3 +291,11 @@ audio playback. The shared parent still refuses acquisition on hardware, and
 the new path has only host-side checks; WDK and target execution remain
 unverified. Any buffer exposed to DMA is retained because hardware drain has
 not been established.
+
+The PnP backend serializes passive-level operations with a kernel mutex rather
+than FAST_MUTEX. AllocateCommonBuffer and FreeCommonBuffer require
+PASSIVE_LEVEL, while FAST_MUTEX raises the caller to APC_LEVEL. Unexpected
+higher-IRQL allocation or start is rejected; an unexpected high-IRQL free
+retains the allocation. GetPosition remains protected by rundown and does not
+take this blocking mutex. See [AllocateCommonBuffer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_common_buffer)
+and [FreeCommonBuffer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pfree_common_buffer).

@@ -186,8 +186,7 @@ void KbHidDeactivate(WDFDEVICE dev)
 NTSTATUS KbPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
  KB_HID_CONTEXT*c=KbHidContext(dev); NTSTATUS status;
- UNREFERENCED_PARAMETER(raw);
- status=A04UsbWdfPrepare(c->usb,translated); if(!NT_SUCCESS(status))return status;
+ status=A04UsbWdfPrepare(c->usb,raw,translated); if(!NT_SUCCESS(status))return status;
  RtlZeroMemory(&c->shared,sizeof(c->shared));
  status=WdfFdoQueryForInterface(dev,&A04SharedUsbInterfaceGuid,(PINTERFACE)&c->shared,sizeof(c->shared),A04_SHARED_USB_INTERFACE_VERSION,NULL);
  if(!NT_SUCCESS(status)){A04UsbWdfRelease(c->usb);return status;}

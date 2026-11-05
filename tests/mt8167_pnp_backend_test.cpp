@@ -29,6 +29,7 @@ extern "C" NTSTATUS Mt8167QueryAudioParent(PDEVICE_OBJECT p,A04_SHARED_AUDIO_INT
 #if defined(A04_AUDIO_DIAGNOSTIC_TRACE) && A04_AUDIO_DIAGNOSTIC_TRACE
 int a04_test_trace_count=0;
 #endif
+thread_local int test_audio_irql=0;
 int test_mdl_fail=0,test_mdl_frees=0,test_barriers=0,test_flushes=0,test_pdo_refs=0;
 _KINTERRUPT test_interrupt{};PDMA_ADAPTER test_dma_adapter=nullptr;DEVICE_DESCRIPTION test_dma_description{};
 static int shared_refs;
@@ -62,12 +63,12 @@ PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,MEMORY_CACHING_TYPE cache) { asser
 void MmUnmapIoSpace(PVOID p,ULONG n) { assert(p==mmio && n==4096);unmaps++; }
 #endif
 static void put(PDMA_ADAPTER){puts++;}
-static PVOID alloc(PDMA_ADAPTER,ULONG n,PHYSICAL_ADDRESS *l,BOOLEAN){assert(n==8192);
+static PVOID alloc(PDMA_ADAPTER,ULONG n,PHYSICAL_ADDRESS *l,BOOLEAN){assert(test_audio_irql==0 && n==8192);
 #if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
  if(allocCalls++){l->QuadPart=0x200000;return silentData;}
 #endif
  l->QuadPart=0x100000;return data;}
-static void freebuf(PDMA_ADAPTER,ULONG,PHYSICAL_ADDRESS,PVOID,BOOLEAN){freed++;}
+static void freebuf(PDMA_ADAPTER,ULONG,PHYSICAL_ADDRESS,PVOID,BOOLEAN){assert(test_audio_irql==0);freed++;}
 struct Resources : IResourceList { _CM_PARTIAL_RESOURCE_DESCRIPTOR irq{},rawIrq{},mem[2]{},rawMem[2]{};
  Resources(){irq.ShareDisposition=rawIrq.ShareDisposition=CmResourceShareDeviceExclusive;rawIrq.u.Interrupt.Vector=152;irq.u.Interrupt.Vector=80;irq.u.Interrupt.Level=5;irq.u.Interrupt.Affinity=1;rawMem[0].ShareDisposition=rawMem[1].ShareDisposition=CmResourceShareDeviceExclusive;rawMem[0].u.Memory.Start.QuadPart=0x11140000;rawMem[0].u.Memory.Length=0x1000;rawMem[1].u.Memory.Start.QuadPart=0x11141000;rawMem[1].u.Memory.Length=0x9000;mem[0]=rawMem[0];mem[1]=rawMem[1];mem[0].u.Memory.Start.QuadPart=0x21140000;mem[1].u.Memory.Start.QuadPart=0x21141000;}
  ULONG NumberOfEntriesOfType(int type) override{return type==CmResourceTypeMemory?2:1;}
@@ -143,8 +144,10 @@ int main(){
  assert(Mt8167PnpBackendAttachShared(owner,&shared)==STATUS_DEVICE_NOT_READY);
  const Mt8167StreamBackend *api=Mt8167PnpBackendInterface(owner);api->reference(api->context);
  PMDL mdl=nullptr;ULONG n=0,offset=9;MEMORY_CACHING_TYPE cache;
+ test_audio_irql=1;assert(api->allocate(api->context,8192,&mdl,&n,&offset,&cache)==STATUS_DEVICE_NOT_READY && !mdl);test_audio_irql=0;
  assert(!api->allocate(api->context,8192,&mdl,&n,&offset,&cache) && mdl && n==8192 && !offset);
  BOOLEAN exposure=TRUE;
+ test_audio_irql=1;assert(api->start(api->context,&exposure)==STATUS_DEVICE_NOT_READY && !exposure);api->freeBuffer(api->context,mdl,8192);assert(!freed);test_audio_irql=0;
 #if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
  assert(!api->start(api->context,&exposure) && exposure && allocCalls==2);
  holdPosition=true;enteredPosition=false;revokeDone=false;
