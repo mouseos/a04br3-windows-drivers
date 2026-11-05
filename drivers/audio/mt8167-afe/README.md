@@ -88,7 +88,16 @@ IRQ paths are experimental, unconnected and untested in Windows on this SoC.
 The IRQ helper also provides a nonblocking synchronized DL1 CUR read that
 rejects non-running, faulted, out-of-range and unaligned positions without
 changing its output. Its caller must keep the mapping and interrupt alive and
-exclude disconnect; it is not yet wired to WaveRT GetPosition.
+exclude disconnect. The transport saves the active DMA plan and exposes this
+ring offset; it is not a monotonic elapsed-byte count and is not wired to
+WaveRT GetPosition. The PnP backend can copy its validated translated IRQ into
+an idle transport, but no operational PnP path connects or starts it.
+
+The board Linux IRQ handler reads AFE_IRQ_STATUS and AFE_DAC_CON0, reports a
+period only for an active memif, then clears pending AFE IRQ bits. The DL1
+experiment acknowledges only IRQ1, preserving other sources. A host integration
+test joins a mock parent lease, transport, IRQ wrapper and register engine; it
+is not evidence that the actual Windows interrupt or board codec works.
 
 The miniport now accepts an optional internal `Mt8167StreamBackend` supplied by
 an owning PnP provider. It forwards allocation, format-independent start/stop,

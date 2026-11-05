@@ -1,5 +1,6 @@
 #include <cassert>
 #include "pnp_backend.h"
+#include "stream_transport.h"
 #if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
 #include "audio_parent_query.h"
 static int parent_refs,query_failure,malformed;
@@ -65,6 +66,9 @@ int main(){
 #endif
  assert(!Mt8167PnpBackendCreate(&adapter,&resources,&owner) && owner && test_pdo_refs==1);
  Mt8167PnpInterrupt irq{};assert(!Mt8167PnpBackendInterrupt(owner,&irq) && irq.vector==80 && irq.level==5 && irq.affinity==1);
+ Mt8167Irq irqo{};Mt8167Transport transport{};transport.irq=&irqo;
+ assert(!Mt8167PnpBackendBindInterrupt(owner,&transport) && transport.vector==80 && transport.level==5 && transport.affinity==1);
+ transport.state=AUDIO_RUNNING;assert(Mt8167PnpBackendBindInterrupt(owner,&transport)==STATUS_DEVICE_NOT_READY);transport.state=AUDIO_READY;
  mt8167_audio_shared shared{sizeof(shared),1,&adapter,shared_ref,shared_deref,shared_acquire,shared_release};
 #if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
  assert(parent_refs==2);
@@ -78,6 +82,7 @@ int main(){
  assert(!api->allocate(api->context,8192,&mdl,&n,&offset,&cache) && mdl && n==8192 && !offset);
  BOOLEAN exposure=TRUE;assert(api->start(api->context,&exposure)==STATUS_DEVICE_NOT_READY && !exposure);
  Mt8167PnpBackendRevoke(owner);assert(Mt8167PnpBackendAttachShared(owner,&shared)==STATUS_DEVICE_NOT_READY);assert(Mt8167PnpBackendInterrupt(owner,&irq)==STATUS_DEVICE_NOT_READY);Mt8167PnpBackendRelease(owner);
+ assert(Mt8167PnpBackendBindInterrupt(owner,&transport)==STATUS_DEVICE_NOT_READY);
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
  assert(maps==2 && unmaps==1);
 #endif

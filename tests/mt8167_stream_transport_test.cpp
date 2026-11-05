@@ -13,6 +13,7 @@ NTSTATUS Mt8167ConnectIrq(Mt8167Irq *i,mt8167_dl1_engine *e,ULONG,KIRQL,KAFFINIT
 void Mt8167DisconnectIrq(Mt8167Irq *i) {i->interrupt=nullptr;irq_on=0;disconnects++;}
 int Mt8167SynchronizedStart(Mt8167Irq *,const struct mt8167_dl1_plan *) {starts++;if(++step==failat)return -1;return 0;}
 int Mt8167SynchronizedStop(Mt8167Irq *) {stops++;if(++step==failat)return -1;return 0;}
+int Mt8167SynchronizedPosition(Mt8167Irq *,const struct mt8167_dl1_plan *p,uint32_t *out) { assert(p->base==0x100000);*out=128;return 0; }
 static void notify(void *,ULONG,BOOLEAN){}
 static int parent_refs,parent_leases;
 static int parent_ref(void *) { parent_refs++;return 0; }
@@ -34,7 +35,9 @@ int main(){
  Mt8167Transport t{};t.dma=&dma;t.irq=&irq;t.engine=&engine;t.clock=&clock;t.clockRate=12288000;t.notify=notify;t.affinity=1;
  step=0;failat=0;clock_held=irq_on=starts=stops=disconnects=0;
  assert(!Mt8167TransportStart(&t,256) && t.state==AUDIO_RUNNING && dma.exposed && irq_on && clock_held);
+ uint32_t position=0;assert(!Mt8167TransportPosition(&t,&position) && position==128);
  assert(!Mt8167TransportStop(&t) && t.state==AUDIO_QUARANTINED && dma.exposed && clock_held && !irq_on && disconnects==1);
+ assert(Mt8167TransportPosition(&t,&position)==-1);
  assert(Mt8167TransportStart(&t,256)==-1);
  Mt8167CommonDma dma2{};_MDL mdl2{};dma2.mdl=&mdl2;dma2.size=8192;dma2.logical.QuadPart=0x200000;
  Mt8167Irq irq2{};Mt8167Transport t2{};t2.dma=&dma2;t2.irq=&irq2;t2.engine=&engine;t2.clock=&clock;t2.clockRate=12288000;t2.notify=notify;t2.affinity=1;

@@ -23,6 +23,7 @@ struct Mt8167Transport {
     KINTERRUPT_MODE mode;
     MT8167_IRQ_NOTIFY notify;
     void *notifyContext;
+    struct mt8167_dl1_plan plan;
     enum Mt8167TransportState state;
 };
 /* No caller has permission to start until the unresolved platform prerequisites
@@ -32,6 +33,9 @@ int Mt8167TransportStart(Mt8167Transport *t, uint32_t periodBytes);
  * It becomes permanently quarantined before an IRQ can be connected. */
 int Mt8167TransportStartParentOwned(Mt8167Transport *t, uint32_t periodBytes,
                                    struct mt8167_audio_shared_client *shared);
+/* Returns ring offset, not a count of elapsed periods. Caller excludes stop,
+ * disconnect and PnP removal and keeps the owner and mapping referenced. */
+int Mt8167TransportPosition(Mt8167Transport *t,uint32_t *offset);
 /* A successful stop only disables AFE and disconnects the IRQ. It does not
  * certify DMA drain; the buffer and clock lease remain quarantined. */
 int Mt8167TransportStop(Mt8167Transport *t);

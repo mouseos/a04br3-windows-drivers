@@ -28,12 +28,18 @@ static int Start(Mt8167Transport *t, uint32_t periodBytes, struct mt8167_audio_s
     }
     /* Exposure precedes every register write. Failed start may have reached
      * hardware; neither mapping nor clock lease can be released. */
-    if (Mt8167SynchronizedStart(t->irq,&plan)) { t->state=AUDIO_QUARANTINED;return -1; }
+    t->plan=plan;
+    if (Mt8167SynchronizedStart(t->irq,&t->plan)) { t->state=AUDIO_QUARANTINED;return -1; }
     t->state=AUDIO_RUNNING;return 0;
 }
 int Mt8167TransportStart(Mt8167Transport *t,uint32_t periodBytes) { return Start(t,periodBytes,NULL); }
 int Mt8167TransportStartParentOwned(Mt8167Transport *t,uint32_t periodBytes,struct mt8167_audio_shared_client *shared)
 { return shared ? Start(t,periodBytes,shared) : -1; }
+int Mt8167TransportPosition(Mt8167Transport *t,uint32_t *offset)
+{
+    if (!t || !offset || t->state!=AUDIO_RUNNING || !t->irq) return -1;
+    return Mt8167SynchronizedPosition(t->irq,&t->plan,offset);
+}
 int Mt8167TransportStop(Mt8167Transport *t)
 {
     if (!t || t->state != AUDIO_RUNNING || !t->irq) return -1;

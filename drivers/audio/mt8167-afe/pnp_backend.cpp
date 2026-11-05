@@ -2,6 +2,7 @@
 #if defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
 #include "common_dma.h"
 #include "dma_adapter.h"
+#include "stream_transport.h"
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
 #if !defined(A04_AUDIO_QUERY_SHARED) || !A04_AUDIO_QUERY_SHARED
 #error A04_AUDIO_MAP_AFE requires the shared parent query
@@ -153,6 +154,17 @@ NTSTATUS Mt8167PnpBackendInterrupt(Mt8167PnpBackend *o,Mt8167PnpInterrupt *inter
     else { *interrupt=o->interrupt;status=STATUS_SUCCESS; }
     ExReleaseFastMutex(&o->mutex);
     return status;
+}
+NTSTATUS Mt8167PnpBackendBindInterrupt(Mt8167PnpBackend *o,Mt8167Transport *t)
+{
+    NTSTATUS status=STATUS_DEVICE_NOT_READY;
+    if (!o || !t) return STATUS_INVALID_PARAMETER;
+    ExAcquireFastMutex(&o->mutex);
+    if (o->online && t->state==AUDIO_READY && t->irq && !t->irq->interrupt) {
+        t->vector=o->interrupt.vector;t->level=o->interrupt.level;
+        t->affinity=o->interrupt.affinity;t->mode=o->interrupt.mode;status=STATUS_SUCCESS;
+    }
+    ExReleaseFastMutex(&o->mutex);return status;
 }
 NTSTATUS Mt8167PnpBackendAttachShared(Mt8167PnpBackend *o,const struct mt8167_audio_shared *shared)
 {
