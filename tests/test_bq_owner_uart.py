@@ -32,10 +32,10 @@ import tempfile
 import os
 with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as d:
     log = Path(d) / 'uart.log'
-    log.write_text('A04BAT STOPPED GAUGE ONLY NO BQ\nA04BAT STOPPED GAUGE mv=00000FA0 pct=00000032\nA04BAT STOPPED GAUGE ERROR reason=00000002\n')
+    log.write_text('A04BAT STOPPED GAUGE ONLY NO BQ\nA04BAT STOPPED GAUGE mv=00000FA0 pct=00000032\nA04BAT STOPPED GAUGE ERROR reason=00000002 command=0000000F status=00000002 fifo=00000000\n')
     output = subprocess.check_output([sys.executable, str(path), str(log)], text=True)
     import json
     parsed = json.loads(output)
     assert parsed['stopped_gauge_only'] and parsed['gauge_samples'][0] == {'voltage_mv':4000,'percent':50}
-    assert parsed['gauge_errors']==[2] and not parsed['default_write_completed']
+    assert parsed['gauge_errors']==[{'reason':2,'command':15,'status':2,'fifo':0}] and not parsed['default_write_completed']
 print('BQ cached UART snapshot decoding: PASS')

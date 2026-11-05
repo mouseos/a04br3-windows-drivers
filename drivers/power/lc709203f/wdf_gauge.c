@@ -302,7 +302,10 @@ static void poll(GAUGE_CONTEXT *c)
                 trace(c," pct=");trace_hex(c,(ULONG)sample.percent);trace(c,"\n");
             } else {
                 changed=a04_battery_invalidate(&c->battery);
-                trace(c,"A04BAT STOPPED GAUGE ERROR reason=");trace_hex(c,c->adapter.fault_reason);trace(c,"\n");
+                trace(c,"A04BAT STOPPED GAUGE ERROR reason=");trace_hex(c,c->adapter.fault_reason);
+                trace(c," command=");trace_hex(c,c->adapter.fault_command);
+                trace(c," status=");trace_hex(c,c->adapter.fault_status);
+                trace(c," fifo=");trace_hex(c,c->adapter.fault_fifo);trace(c,"\n");
                 if (c->adapter.faulted) {c->faulted=TRUE;InterlockedExchange(&c->online,0);}
             }
             WdfWaitLockRelease(c->bus_lock);

@@ -43,11 +43,15 @@ def main():
     args = parser.parse_args()
     log = args.uart_log.read_text(encoding='utf-8', errors='replace')
     gauge = re.findall(r'A04BAT STOPPED GAUGE mv=([0-9A-F]{8}) pct=([0-9A-F]{8})', log)
-    errors = re.findall(r'A04BAT STOPPED GAUGE ERROR reason=([0-9A-F]{8})', log)
+    errors = re.findall(r'A04BAT STOPPED GAUGE ERROR reason=([0-9A-F]{8})(?: command=([0-9A-F]{8}) status=([0-9A-F]{8}) fifo=([0-9A-F]{8}))?', log)
     result = {'stopped_gauge_only': 'A04BAT STOPPED GAUGE ONLY NO BQ' in log,
               'gauge_samples': [{'voltage_mv': int(mv, 16), 'percent': int(percent, 16)}
                                 for mv, percent in gauge],
-              'gauge_errors': [int(value, 16) for value in errors],
+              'gauge_errors': [{'reason': int(reason, 16),
+                                'command': int(command, 16) if command else None,
+                                'status': int(status, 16) if status else None,
+                                'fifo': int(fifo, 16) if fifo else None}
+                               for reason, command, status, fifo in errors],
               'admission_refused': 'A04BAT OWNER ADMISSION REFUSED' in log,
               'default_write_completed': 'A04BAT DEFAULT WRITE OK' in log,
               'default_unconfirmed': 'A04BAT DEFAULT UNCONFIRMED' in log,
