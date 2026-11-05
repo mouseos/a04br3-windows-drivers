@@ -26,37 +26,52 @@ fail:
  o->poisoned=1;
 done: o->unlock(o->context); return r;
 }
+/* Caller holds the parent lock. Stop the board switch before releasing the
+ * charger/source owner; a failed release retains both leases. */
+static int off_locked(struct a04_usb_owner *o)
+{
+ if(A04Gpio22Vbus(&o->gpio,0)){o->poisoned=1;return -1;}
+ if(o->otg_held) {
+  if(!o->otg_release || o->otg_release(o->context)){o->poisoned=1;return -1;}
+  o->otg_held=0;
+ }
+ return 0;
+}
 int a04_usb_owner_vbus(struct a04_usb_owner *o,int on)
 {
- int r=-1;if(on!=0 && on!=1)return -1;if(enter(o))return -1;
+ int r=-1,source;if(on!=0 && on!=1)return -1;if(enter(o))return -1;
  if(o->leased) {
-  /* VBUS-off remains available after a fault; never re-enable a poisoned
-   * lease. Overcurrent on an already-powered port must remove VBUS now. */
-  if(!on) { r=A04Gpio22Vbus(&o->gpio,0);if(r)o->poisoned=1; }
+  if(!on) r=off_locked(o);
   else if(o->online && !o->poisoned) {
    if(!o->verify_overcurrent || o->verify_overcurrent(o->context)) {
-    (void)A04Gpio22Vbus(&o->gpio,0);o->poisoned=1;
-   } else { r=A04Gpio22Vbus(&o->gpio,1);if(r)o->poisoned=1; }
+    (void)off_locked(o);o->poisoned=1;
+   } else if(o->otg_held) {
+    r=A04Gpio22Vbus(&o->gpio,1);if(r)o->poisoned=1;
+   } else if(o->otg_acquire && o->otg_release) {
+    source=o->otg_acquire(o->context);
+    if(source==0) {
+     o->otg_held=1;r=A04Gpio22Vbus(&o->gpio,1);if(r)o->poisoned=1;
+    } else if(source!=-1) { o->otg_held=1;o->poisoned=1; }
+   }
   }
  }
- o->unlock(o->context); return r;
+ o->unlock(o->context);return r;
 }
 int a04_usb_owner_health(struct a04_usb_owner *o)
 {
- int r=-1; if(enter(o))return -1;
+ int r=-1;if(enter(o))return -1;
  if(o->online && o->leased && !o->poisoned && o->verify_overcurrent) {
   if(!o->verify_overcurrent(o->context))r=0;
-  else { (void)A04Gpio22Vbus(&o->gpio,0); o->poisoned=1; }
+  else { (void)off_locked(o);o->poisoned=1; }
  }
- o->unlock(o->context); return r;
+ o->unlock(o->context);return r;
 }
 int a04_usb_owner_release(struct a04_usb_owner *o)
 {
- int r=-1; if(enter(o))return -1;
- if(o->leased) { r=A04Gpio22Vbus(&o->gpio,0); if(r)o->poisoned=1; else o->leased=0; }
- /* Do not gate USB clocks or VUSB: this prototype cannot account for other
-  * consumers or firmware. The real shared owner must arbitrate them first. */
- o->unlock(o->context); return r;
+ int r=-1;if(enter(o))return -1;
+ if(o->leased) {r=off_locked(o);if(!r)o->leased=0;}
+ /* Other consumers may still require the clocks and VUSB. */
+ o->unlock(o->context);return r;
 }
 int a04_usb_owner_stop(struct a04_usb_owner *o)
 {

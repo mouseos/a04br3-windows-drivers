@@ -91,3 +91,17 @@ against the ISR. The board Linux host also calls `tbl_charger_otg_vbus` in
 addition to switching GPIO22; the current parent does not own or validate that
 charger OTG path, so this code does not establish usable VBUS. GPIO, PHY and
 IRQ behavior remain unverified on the device.
+
+VBUS-on now requires a serialized OTG/source acquire and release pair from
+its actual owner before GPIO22 can go high. The switch is driven low before
+source release; failed or uncertain acquisition/release retains and poisons
+the lease. No real source provider is registered yet, so VBUS-on is rejected.
+The BQ24160 charger owner currently supports watchdog-only writes and lacks a
+qualified firmware handoff and a cross-driver OTG interface. TI specifies that
+register 0x01 OTG_LOCK blocks USB-input charging while an external OTG supply
+is present; it is not a command to generate 5 V. The board's external source
+and BQ handoff must be established before wiring a provider. The callbacks run
+under the shared-parent mutex and a future implementation must define lock
+ordering and watchdog lifetime without reentering the parent.
+Sources: [TI BQ24160 datasheet](https://www.ti.com/lit/ds/symlink/bq24160.pdf),
+[Linux USB host](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/drivers/misc/mediatek/usb20/mt8167/usb20_host.c).

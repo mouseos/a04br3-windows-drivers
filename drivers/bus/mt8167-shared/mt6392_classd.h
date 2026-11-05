@@ -18,6 +18,7 @@ struct a04_mt6392_classd {
     /* Must prove the board route, retained rails and active stream. */
     int (*verify_unmute)(void *);
 };
+int a04_mt6392_classd_preflight(struct a04_mt6392_classd *);
 int a04_mt6392_classd_start_muted(struct a04_mt6392_classd *);
 int a04_mt6392_classd_unmute_min(struct a04_mt6392_classd *);
 int a04_mt6392_classd_mute(struct a04_mt6392_classd *);

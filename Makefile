@@ -850,3 +850,9 @@ test-mt8167-usb-controller-irq:
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/usb/mt8167-usb20 tests/usb/controller_test.c drivers/usb/mt8167-usb20/controller.c -o build/mt8167_usb_irq_test
 	./build/mt8167_usb_irq_test
+
+.PHONY: test-mt8167-codec-domain
+test-mt8167-codec-domain:
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared tests/mt8167_codec_domain_test.c -o build/mt8167_codec_domain_test
+	./build/mt8167_codec_domain_test
