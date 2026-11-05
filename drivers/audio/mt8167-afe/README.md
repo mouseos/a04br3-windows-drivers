@@ -228,3 +228,13 @@ never connects the IRQ. Mapping a PnP resource is not a codec/clock lease or
 proof of safe hardware ownership. This path must remain disabled if any other
 driver or firmware can still touch AFE, and would require a new teardown
 design before adding an ISR, DMA or any asynchronous mapping user.
+
+The diagnostic PnP backend now gives the DL1 engine ordered 32-bit access to
+the PnP-translated AFE mapping. The callbacks allow only DL1/DAC/IRQ offsets
+used by the engine and deny writes to CUR and IRQ_STATUS. They are compiled
+only with `A04_AUDIO_IRQ_DIAGNOSTIC=1`, which requires parent query and AFE
+mapping; the mapping survives ISR disconnect and DPC rundown. The shared
+parent still does not grant the required clock/codec lease or masked IRQ
+contract, and backend RUN still rejects. The callbacks do not prove clock
+power, live buffer coherency, the speaker route, or a DMA drain. Host tests
+use simulated MMIO; there has been no Windows or device playback test.

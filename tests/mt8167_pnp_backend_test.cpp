@@ -34,7 +34,7 @@ static int freed,puts; static unsigned char data[8192];
 static std::atomic<bool> holdPosition(false),enteredPosition(false),revokeDone(false);
 int Mt8167TransportPosition(Mt8167Transport *,uint32_t *){enteredPosition=true;while(holdPosition)std::this_thread::yield();return -1;}
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
-static int maps,unmaps,mapfail;static unsigned char mmio[4096];
+static int maps,unmaps,mapfail;alignas(4) static unsigned char mmio[4096];
 PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,MEMORY_CACHING_TYPE cache) { assert(a.QuadPart==0x21140000 && n==4096 && cache==MmNonCached);maps++;return mapfail?nullptr:mmio; }
 void MmUnmapIoSpace(PVOID p,ULONG n) { assert(p==mmio && n==4096);unmaps++; }
 #endif
@@ -88,6 +88,19 @@ int main(){
  assert(!Mt8167PnpBackendCreate(&adapter,&resources,&owner) && owner && test_pdo_refs==1);
 #if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
  assert(test_irq_connections==1 && test_interrupt.fn && !test_interrupt.fn(&test_interrupt,test_interrupt.ctx));
+ { auto irqstate=static_cast<Mt8167Irq *>(test_interrupt.ctx);auto &io=irqstate->engine->io;uint32_t value=99;
+   assert(io.context && io.read32 && io.write32);
+   assert(!io.write32(io.context,0x40,0x12345678) && !io.read32(io.context,0x40,&value) && value==0x12345678);
+   assert(io.write32(io.context,0x44,1) && io.write32(io.context,0x3a4,1));
+   assert(io.read32(io.context,0x41,&value) && io.read32(io.context,0x1000,&value));
+   assert(io.write32(io.context,0x100,1) && !io.read32(io.context,0x3a4,&value));
+   *reinterpret_cast<uint32_t *>(mmio+0x3a4)=1;
+   *reinterpret_cast<uint32_t *>(mmio+0x10)=2;
+   irqstate->engine->state=MT8167_DL1_RUNNING;
+   assert(test_interrupt.fn(&test_interrupt,test_interrupt.ctx));
+   assert(*reinterpret_cast<uint32_t *>(mmio+0x3a8)==1 && irqstate->pending==1);
+   irqstate->engine->state=MT8167_DL1_IDLE;
+ }
 #endif
  Mt8167PnpInterrupt irq{};assert(!Mt8167PnpBackendInterrupt(owner,&irq) && irq.vector==80 && irq.level==5 && irq.affinity==1);
  Mt8167Irq irqo{};Mt8167Transport transport{};transport.irq=&irqo;

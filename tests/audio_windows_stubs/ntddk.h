@@ -4,6 +4,10 @@
 #if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
 #include <assert.h>
 #endif
+#if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
+inline uint32_t READ_REGISTER_ULONG(volatile uint32_t *p) { return *p; }
+inline void WRITE_REGISTER_ULONG(volatile uint32_t *p,uint32_t value) { *p=value; }
+#endif
 typedef void *PVOID; typedef uint32_t ULONG; typedef unsigned char BOOLEAN,KIRQL; typedef uintptr_t KAFFINITY; typedef int32_t NTSTATUS,LONG; typedef enum { LevelSensitive, Latched } KINTERRUPT_MODE;
 #ifdef A04_AUDIO_QUERY_SHARED
 typedef uint16_t USHORT;

@@ -37,6 +37,34 @@ struct Mt8167PnpBackend {
     struct Mt8167AudioParentClient parentClient;
 #endif
 };
+#if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
+/* Only the DL1 registers used by the engine are reachable. The PnP owner
+ * keeps the mapping alive through interrupt disconnect and DPC rundown.
+ * Callers serialize engine access with the IRQ synchronization lock. */
+static bool OwnerDl1Offset(uint32_t offset, bool write)
+{
+    switch (offset) {
+    case 0x10: case 0x14: case 0x40: case 0x48:
+    case 0x3a0: case 0x3a8: case 0x3ac: case 0x3d8: return true;
+    case 0x44: case 0x3a4: return !write;
+    default: return false;
+    }
+}
+static int OwnerDl1Read(void *context,uint32_t offset,uint32_t *value)
+{
+    Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(context);
+    if (!o || !o->afe.base || !value || !OwnerDl1Offset(offset,false)) return -1;
+    *value=READ_REGISTER_ULONG(reinterpret_cast<volatile ULONG *>(
+        static_cast<unsigned char *>(o->afe.base)+offset));return 0;
+}
+static int OwnerDl1Write(void *context,uint32_t offset,uint32_t value)
+{
+    Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(context);
+    if (!o || !o->afe.base || !OwnerDl1Offset(offset,true)) return -1;
+    WRITE_REGISTER_ULONG(reinterpret_cast<volatile ULONG *>(
+        static_cast<unsigned char *>(o->afe.base)+offset),value);return 0;
+}
+#endif
 static void OwnerReference(void *ctx) { Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx); InterlockedIncrement(&o->refs); }
 static void OwnerDereference(void *ctx)
 {
@@ -178,6 +206,10 @@ NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt816
     o->interrupt.level=(KIRQL)irq->u.Interrupt.Level;
     o->interrupt.affinity=irq->u.Interrupt.Affinity;
     o->interrupt.mode=LevelSensitive;
+#if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
+    o->engine.io.context=o;o->engine.io.read32=OwnerDl1Read;o->engine.io.write32=OwnerDl1Write;
+    o->transport.engine=&o->engine;
+#endif
     o->transport.irq=&o->irq;o->transport.dma=&o->buffer;
     o->transport.vector=o->interrupt.vector;o->transport.level=o->interrupt.level;
     o->transport.affinity=o->interrupt.affinity;o->transport.mode=o->interrupt.mode;
