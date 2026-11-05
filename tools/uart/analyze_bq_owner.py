@@ -42,7 +42,13 @@ def main():
     parser.add_argument('uart_log', type=Path)
     args = parser.parse_args()
     log = args.uart_log.read_text(encoding='utf-8', errors='replace')
-    result = {'admission_refused': 'A04BAT OWNER ADMISSION REFUSED' in log,
+    gauge = re.findall(r'A04BAT STOPPED GAUGE mv=([0-9A-F]{8}) pct=([0-9A-F]{8})', log)
+    errors = re.findall(r'A04BAT STOPPED GAUGE ERROR reason=([0-9A-F]{8})', log)
+    result = {'stopped_gauge_only': 'A04BAT STOPPED GAUGE ONLY NO BQ' in log,
+              'gauge_samples': [{'voltage_mv': int(mv, 16), 'percent': int(percent, 16)}
+                                for mv, percent in gauge],
+              'gauge_errors': [int(value, 16) for value in errors],
+              'admission_refused': 'A04BAT OWNER ADMISSION REFUSED' in log,
               'default_write_completed': 'A04BAT DEFAULT WRITE OK' in log,
               'default_unconfirmed': 'A04BAT DEFAULT UNCONFIRMED' in log,
               'observations': [x for line in log.splitlines() if (x := decode(line))],
