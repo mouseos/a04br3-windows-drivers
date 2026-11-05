@@ -39,7 +39,7 @@ void KeStallExecutionProcessor(unsigned us)
         ctl=(void *)(bank+sim->layout.control[3]);
         ctl->ui32ReadOffset=ctl->ui32WriteOffset=cmd->uCmdData.sCmdKickData.ui32CWoffUpdate;
         for(unsigned row=0;row<32;row++) for(unsigned col=0;col<32;col++)
-            *(uint32_t *)((unsigned char *)sim->buffer[4].cpu+sim->clear_first+row*sim->clear_row_bytes+col*4)=sim->clear.expected;
+            *(uint32_t *)((unsigned char *)(sim->screen_surface ? sim->screen_surface->pixels.cpu : sim->buffer[4].cpu)+sim->clear_first+row*sim->clear_row_bytes+col*4)=sim->clear.expected;
         *(uint32_t *)(void *)(bank+sim->layout.sync)=sim->sequence;
         run->kctl->ui32ReadOffset=run->kctl->ui32WriteOffset;return;
     }
@@ -123,5 +123,20 @@ int main(void)
     assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_IO_TIMEOUT);
     assert(clear.phase==3 && clear.kread!=clear.kwrite && clear.expected==1 && r.poisoned && start.command_poisoned);
     assert(clear.provisional && clear.zeros==1024 && !clear.guard_errors);
+    {
+        struct a04_vendor_surface screen={0};
+        unsigned char *pixels=aligned_alloc(4096,4259840u);assert(pixels);memset(pixels,0xa5,4259840u);
+        memset(&r,0,sizeof(r));memset(&kctl,0,sizeof(kctl));memset(&fctl,0,sizeof(fctl));memset(cmd,0,128*sizeof(*cmd));
+        assert(!a04_vendor_render_build(bank,65536,0x81000000,0x82000000,A04_VENDOR_RENDER_SCRATCH_VA,1,&r.layout));
+        kctl.ui32WrapMask=127;kctl.ui32CmdSize=sizeof(*cmd);fctl.ui32WrapMask=31;fctl.ui32CmdSize=sizeof(RGXFWIF_FWCCB_CMD);
+        screen.pixels.cpu=pixels;screen.bytes=4259840u;screen.hardware_exposed=TRUE;
+        r.firmware=&mem;r.buffer[0].cpu=bank;r.buffer[4].cpu=target;r.buffer[4].bytes=65536;r.mapped=TRUE;
+        r.clear_ready=TRUE;r.screen_surface=&screen;r.clear_first=1248u*3328u+768u*4u;r.clear_row_bytes=3328u;
+        assert(!a04_vendor_clear_image_build(&r.clear,A04_VENDOR_RENDER_SCRATCH_VA,0));
+        start.command_poisoned=FALSE;start.command_sequence=0;current=4;complete=1;
+        assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_SUCCESS);
+        assert(clear.zeros==1024 && !clear.guard_errors && clear.phase==4);
+        free(pixels);
+    }
     free(cmd);free(core);free(bank);free(target);return 0;
 }

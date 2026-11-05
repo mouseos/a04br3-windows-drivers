@@ -314,3 +314,14 @@ logical addressとCPUアドレスは別であり、adapterは最後まで呼出�
 主張しない。OSのcommon bufferはGPU adapterに対する権利だけで、scanoutやPOST
 framebufferへの共有は証明しない。ARMのcache属性、両DMA主体のmappingと所有、
 GPU fence/MMU invalidate、表示走査の完了、PnP停止後の解放は未実装・未検証。
+
+`A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC=1` は既定OFFで、vendor start・cold・
+zero tile診断を要し、既存multi-tileとカラー診断には併用しない。GPU未起動時に
+専用832×1280 pitchの4,259,840-byte common bufferを別GPU VAにマップし、既存
+transfer contextの未使用catalog slotへ接続する。800×1280領域の右下32×32を
+zero-clearし、fenceとSLC flush後に対象1024画素とそれ以外の全画素を比較する。
+画面走査やWDDM framebufferは使わない。GPU起動前にsurfaceを公開済みに固定し、
+起動失敗やforced-idle／FW cleanup成功後もDMAとadapterを保持し、D0 exit・releaseを
+拒否する。これらの拒否はPnP削除時のリソース寿命や物理除去を保証しない。
+高pitch、複数leaf、キャッシュ属性、デバイス停止は実機未検証。実行結果を
+画面描画・共有・DMA排出の証拠としない。

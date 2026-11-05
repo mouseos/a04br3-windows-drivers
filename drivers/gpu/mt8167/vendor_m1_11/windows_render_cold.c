@@ -30,6 +30,47 @@ NTSTATUS a04_vendor_render_release_cold(struct a04_vendor_render_cold *r)
     for(i=0;i<16;i++)a04_vendor_uncached_free(&r->buffer[i]);
     RtlZeroMemory(r,sizeof(*r));return STATUS_SUCCESS;
 }
+/* Fixed screen-sized, GPU-only diagnostic. Called before firmware start. */
+NTSTATUS a04_vendor_render_attach_screen(struct a04_vendor_render_cold *r,
+    struct a04_vendor_surface *screen)
+{
+    uint32_t pc_index,entry=0,source=0;uint64_t first,address,csr;unsigned i,j;
+    struct a04_vendor_uncached *resources[7];
+    if(!r || !screen || KeGetCurrentIrql()!=PASSIVE_LEVEL || !r->mapped ||
+       !r->clear_ready || !r->firmware || r->firmware->hardware_owned || r->screen_surface ||
+       !screen->prepared || screen->hardware_exposed || screen->gpu_va!=UINT64_C(0x8000000000) ||
+       screen->width!=800 || screen->height!=1280 || screen->pitch!=3328 || screen->bytes!=4259840u ||
+       !screen->pixels.cpu || !screen->pc.cpu || !r->buffer[1].cpu || !r->buffer[7].cpu)
+        return STATUS_INVALID_PARAMETER;
+    resources[0]=&screen->pixels;resources[1]=&screen->pc;resources[2]=&screen->pd;
+    for(i=0;i<4;i++)resources[3+i]=&screen->pt[i];
+    for(i=0;i<7;i++) if(resources[i]->cpu) {
+        for(j=0;j<16;j++) if(r->buffer[j].cpu &&
+            (a04_rgx_fw_overlap((uint64_t)resources[i]->logical.QuadPart,resources[i]->bytes,
+                (uint64_t)r->buffer[j].logical.QuadPart,r->buffer[j].bytes) ||
+             a04_rgx_fw_alias(resources[i]->cpu,resources[i]->bytes,r->buffer[j].cpu,r->buffer[j].bytes)))
+            return STATUS_DEVICE_CONFIGURATION_ERROR;
+        for(j=0;j<5;j++) if(a04_rgx_fw_overlap((uint64_t)resources[i]->logical.QuadPart,resources[i]->bytes,
+                r->firmware->buffers[j].dma,r->firmware->buffers[j].bytes) ||
+             a04_rgx_fw_alias(resources[i]->cpu,resources[i]->bytes,r->firmware->buffers[j].cpu,r->firmware->buffers[j].bytes))
+            return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
+    pc_index=(uint32_t)(screen->gpu_va>>30);
+    if(pc_index>=1024u || a04_rgx_device_read_words(&entry,(UCHAR *)r->buffer[1].cpu+pc_index*4,4) || entry ||
+       a04_rgx_device_read_words(&source,(UCHAR *)screen->pc.cpu+pc_index*4,4) ||
+       source!=((uint32_t)((uint64_t)screen->pd.logical.QuadPart>>8)|1u)) return STATUS_DEVICE_CONFIGURATION_ERROR;
+    first=(uint64_t)1248u*screen->pitch+768u*4u;address=screen->gpu_va+first;
+    if(first+31u*(uint64_t)screen->pitch+128u>screen->bytes || (address&127u))return STATUS_INVALID_PARAMETER;
+    csr=(UINT64_C(2)<<56)|((UINT64_C(831)&UINT64_C(0x1fffe))<<33)|
+        (UINT64_C(1)<<23)|(UINT64_C(2)<<26)|(UINT64_C(3)<<29);
+    r->clear.payload[32]=(uint32_t)csr;r->clear.payload[33]=(uint32_t)(csr>>32);
+    r->clear.pds[2]=(uint32_t)(address>>2);r->clear.pds[3]=(uint32_t)(address>>34)|(1u<<19);
+    for(i=0;i<screen->bytes/4u;i++)((volatile uint32_t *)screen->pixels.cpu)[i]=0xa5a5a5a5u;
+    if(a04_rgx_device_write_words(r->buffer[7].cpu,r->clear.pds,sizeof(r->clear.pds)) ||
+       a04_rgx_device_write_words((UCHAR *)r->buffer[1].cpu+pc_index*4,&source,4))return STATUS_DEVICE_CONFIGURATION_ERROR;
+    a04_gpu_dma_barrier();r->clear_first=(uint32_t)first;r->clear_row_bytes=screen->pitch;
+    r->screen_surface=screen;return STATUS_SUCCESS;
+}
 NTSTATUS a04_vendor_render_prepare_cold(struct a04_vendor_render_cold *r,
     struct a04_vendor_m1_11_memory *f,PDMA_ADAPTER adapter,BOOLEAN prepare_clear,uint32_t clear_colour)
 {
