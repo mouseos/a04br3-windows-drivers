@@ -45,8 +45,16 @@ void ExFreePoolWithTag(void *,unsigned);
 #define READ_REGISTER_ULONG(p) (*(p))
 #define WRITE_REGISTER_ULONG(p,v) (*(p)=(v))
 #define KeMemoryBarrier() ((void)0)
+#ifdef A04_TEST_INTERLOCK_HOOK
+void a04_test_interlock_hook(volatile LONG *p,LONG value,LONG expected);
+#endif
 static inline LONG InterlockedCompareExchange(volatile LONG *p,LONG value,LONG expected)
-{ return __sync_val_compare_and_swap(p,expected,value); }
+{
+#ifdef A04_TEST_INTERLOCK_HOOK
+    a04_test_interlock_hook(p,value,expected);
+#endif
+    return __sync_val_compare_and_swap(p,expected,value);
+}
 static inline LONG InterlockedExchange(volatile LONG *p,LONG value)
 { return __sync_lock_test_and_set(p,value); }
 unsigned KeGetCurrentIrql(void);

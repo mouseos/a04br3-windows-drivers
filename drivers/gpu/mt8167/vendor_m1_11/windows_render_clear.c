@@ -41,6 +41,8 @@ NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
        r->layout.commands[3]>65536u-4096u || r->layout.tq>65536u-sizeof(RGXFWIF_FWCOMMONCONTEXT) ||
        r->sequence>=0xfffffffeu || s->command_sequence>=0xfffffffeu)return STATUS_INVALID_PARAMETER;
     if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
+    /* Cleanup can begin between the optimistic check and lock acquisition. */
+    if(r->cleanup_started){status=STATUS_INVALID_DEVICE_STATE;goto done;}
     if(s->command_poisoned){status=STATUS_IO_DEVICE_ERROR;goto done;}
     status=queue_snapshot(f,&k,&q);if(!NT_SUCCESS(status))goto done;
     bank=r->buffer[0].cpu;sync=(volatile uint32_t *)(void *)(bank+r->layout.sync);

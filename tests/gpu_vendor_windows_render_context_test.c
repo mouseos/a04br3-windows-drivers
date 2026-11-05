@@ -7,7 +7,12 @@
 #include "A04BR3RogueRuntimeLayout.h"
 static struct a04_vendor_render_cold *sim;
 static struct a04_rgx_fw_runtime *run;
-static unsigned current,complete,cleanups;
+static unsigned current,complete,cleanups,inject_cleanup;
+void a04_test_interlock_hook(volatile LONG *p,LONG value,LONG expected)
+{
+    (void)p; (void)value; (void)expected;
+    if(inject_cleanup) { sim->cleanup_started=TRUE; inject_cleanup=0; }
+}
 unsigned KeGetCurrentIrql(void){return PASSIVE_LEVEL;}
 void a04_gpu_dma_barrier(void){}
 void KeStallExecutionProcessor(unsigned us)
@@ -65,6 +70,20 @@ int main(void)
     r.buffer[4].cpu=target;r.buffer[4].bytes=65536;r.clear_ready=TRUE;
     assert(!a04_vendor_clear_image_build(&r.clear,A04_VENDOR_RENDER_SCRATCH_VA,0));
     sim=&r;run=&runtime;complete=1;
+    /* Simulate cleanup winning after the caller's initial check, immediately
+     * before it acquires command_busy. Neither path may publish a command. */
+    { RGXFWIF_KCCB_CMD before; uint32_t oldwrite=kctl.ui32WriteOffset;
+      memcpy(&before,&cmd[oldwrite],sizeof(before));
+      inject_cleanup=1;
+      assert(a04_vendor_render_context_command(&r,&start,0,0)==STATUS_INVALID_DEVICE_STATE);
+      assert(!inject_cleanup && !start.command_busy && kctl.ui32WriteOffset==oldwrite &&
+             !r.client_write[0] && !memcmp(&before,&cmd[oldwrite],sizeof(before)));
+      r.cleanup_started=FALSE;inject_cleanup=1;
+      assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_INVALID_DEVICE_STATE);
+      assert(!inject_cleanup && !start.command_busy && kctl.ui32WriteOffset==oldwrite &&
+             !r.client_write[3] && !r.clear_attempted && !memcmp(&before,&cmd[oldwrite],sizeof(before)));
+      r.cleanup_started=FALSE;
+    }
     for(current=0;current<4;current++) {
         assert(a04_vendor_render_context_command(&r,&start,current,current==2?0xffffffffu:0)==STATUS_SUCCESS);
         assert(r.client_write[current]==(current==2?88u:48u));

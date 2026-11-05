@@ -32,6 +32,8 @@ NTSTATUS a04_vendor_render_context_command(struct a04_vendor_render_cold *r,
        r->layout.commands[index]>A04_VENDOR_RENDER_BANK_BYTES-A04_VENDOR_CLIENT_RING_BYTES ||
        r->layout.sync>A04_VENDOR_RENDER_BANK_BYTES-sizeof(uint32_t))return STATUS_INVALID_PARAMETER;
     if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
+    /* Cleanup can begin between the optimistic check and lock acquisition. */
+    if(r->cleanup_started) {status=STATUS_INVALID_DEVICE_STATE;goto out;}
     if(s->command_poisoned) {status=STATUS_IO_DEVICE_ERROR;goto out;}
     bank=(volatile unsigned char *)r->buffer[0].cpu;
     context_offset=index==0 ? r->layout.context+(uint32_t)offsetof(RGXFWIF_FWRENDERCONTEXT,sTAContext) :
