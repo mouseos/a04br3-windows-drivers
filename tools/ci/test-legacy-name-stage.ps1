@@ -8,13 +8,20 @@ try {
         New-Item -ItemType Directory -Force (Join-Path $base $dir) | Out-Null
     }
     foreach ($pair in @(
-        @('Windows\System32\config\SYSTEM','hive-system'), @('Windows\System32\config\SOFTWARE','hive-software'),
+        @('Windows\System32\config\SOFTWARE','hive-software'),
         @('Windows\System32\config\SYSTEM.LOG1','log-one'), @('Windows\System32\config\SYSTEM.LOG2','log-two'),
         @('Windows\System32\drivers\a04msdcprobe.sys','storage'), @('src\names\storage\a04msdcprobe.sys','storage'),
         @('Windows\System32\drivers\a04touch.sys','touch'), @('src\names\touch\a04touch.sys','touch'),
         @('Windows\INF\oem32.inf','storage-inf'), @('src\names\original-storage.inf','storage-inf'),
         @('Windows\INF\oem33.inf','touch-inf'), @('src\names\original-touch.inf','touch-inf')
     )) { [IO.File]::WriteAllText((Join-Path $base $pair[0]),$pair[1]) }
+    if ((Test-Path HKLM:\A04TEMP) -or (Test-Path HKLM:\SOFTWARE\A04LEGACYNAMETEST)) { throw 'Registry test namespace in use' }
+    & reg add HKLM\SOFTWARE\A04LEGACYNAMETEST\Select /v Current /t REG_DWORD /d 1 /f | Out-Null
+    & reg add HKLM\SOFTWARE\A04LEGACYNAMETEST\ControlSet001\Services\a04msdcboot /v ImagePath /t REG_EXPAND_SZ /d 'System32\drivers\a04msdcprobe.sys' /f | Out-Null
+    & reg add HKLM\SOFTWARE\A04LEGACYNAMETEST\ControlSet001\Services\A04Touch /v ImagePath /t REG_EXPAND_SZ /d '\SystemRoot\System32\drivers\a04touch.sys' /f | Out-Null
+    & reg save HKLM\SOFTWARE\A04LEGACYNAMETEST (Join-Path $base 'Windows\System32\config\SYSTEM') /y | Out-Null
+    if ($LASTEXITCODE) { throw 'Cannot save registry test hive' }
+    & reg delete HKLM\SOFTWARE\A04LEGACYNAMETEST /f | Out-Null
     foreach ($name in @('SYSTEM.LOG1','SYSTEM.LOG2')) {
         & attrib +H +S (Join-Path $base "Windows\System32\config\$name")
         if ($LASTEXITCODE) { throw "Cannot set hidden/system attributes: $name" }
@@ -48,10 +55,20 @@ try {
     $out = & cmd.exe /c $cmd
     if (-not ($out -match 'NAMES_ALREADY_ATTEMPTED_OR_LOCK_FAILED')) { throw 'Persistent guard failed' }
     Remove-Item -Recurse -Force (Join-Path $base 'Windows\Temp\mt8167-bu21025-names-stage-v2')
+    & reg load HKLM\A04TEMP (Join-Path $base 'Windows\System32\config\SYSTEM') | Out-Null
+    & reg add HKLM\A04TEMP\ControlSet001\Services\a04msdcboot /v ImagePath /t REG_EXPAND_SZ /d 'System32\drivers\mt8167-msdc.sys' /f | Out-Null
+    & reg unload HKLM\A04TEMP | Out-Null
+    $out = & cmd.exe /c $cmd
+    if (-not ($out -match 'NAMES_INSTALLED_PACKAGE_MISMATCH') -or ($out -match 'MOCK_DISM')) { throw 'Service path mismatch was accepted' }
+    & reg load HKLM\A04TEMP (Join-Path $base 'Windows\System32\config\SYSTEM') | Out-Null
+    & reg add HKLM\A04TEMP\ControlSet001\Services\a04msdcboot /v ImagePath /t REG_EXPAND_SZ /d 'System32\drivers\a04msdcprobe.sys' /f | Out-Null
+    & reg unload HKLM\A04TEMP | Out-Null
     [IO.File]::WriteAllText((Join-Path $base 'src\names\storage\a04msdcprobe.sys'),'different')
     $out = & cmd.exe /c $cmd
     if (-not ($out -match 'NAMES_INSTALLED_PACKAGE_MISMATCH') -or ($out -match 'MOCK_DISM')) { throw 'Mismatch guard failed' }
     Write-Output 'LEGACY_NAME_STAGE_GUARDS_OK'
 } finally {
+    if (Test-Path HKLM:\A04TEMP) { & reg unload HKLM\A04TEMP | Out-Null }
+    if (Test-Path HKLM:\SOFTWARE\A04LEGACYNAMETEST) { & reg delete HKLM\SOFTWARE\A04LEGACYNAMETEST /f | Out-Null }
     if (Test-Path $base) { Remove-Item -Recurse -Force $base }
 }

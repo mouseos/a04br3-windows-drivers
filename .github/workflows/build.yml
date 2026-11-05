@@ -24,6 +24,9 @@ jobs:
       - name: Check legacy driver name staging guards
         shell: pwsh
         run: ./tools/ci/test-legacy-name-stage.ps1
+      - name: Check pre-update service restoration guards
+        shell: pwsh
+        run: ./tools/ci/test-pre-names-service-restore.ps1
       - name: Build ARM32 COFF and native PE format probe
         shell: pwsh
         run: |
