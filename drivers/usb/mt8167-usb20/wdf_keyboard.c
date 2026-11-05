@@ -5,10 +5,11 @@
 #include <wdf.h>
 #include <hidport.h>
 #include "keyboard.h"
+#include "keyboard_session.h"
 #define REPORT_SLOTS 32u
 typedef struct {
  WDFWAITLOCK lock; WDFQUEUE reads; UCHAR reports[REPORT_SLOTS][8];
- unsigned head,count; BOOLEAN connected,overflow,draining;
+ unsigned head,count; BOOLEAN connected,overflow,draining; KB_SESSION session;
 } KB_HID_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(KB_HID_CONTEXT,KbHidContext)
 EVT_WDF_DRIVER_DEVICE_ADD KbHidAdd;
@@ -57,6 +58,22 @@ void KbHidDisconnected(WDFDEVICE dev)
  RtlCopyMemory(c->reports[0],release,8); c->count=1;
  WdfWaitLockRelease(c->lock); WdfIoQueueStart(c->reads); Drain(dev);
 }
+/* Controller callbacks run at PASSIVE_LEVEL with external serialization.
+ * They are never started by this HID filter without an owning board driver. */
+static void SessionDelay(void *p,unsigned ms)
+{ LARGE_INTEGER interval; UNREFERENCED_PARAMETER(p); interval.QuadPart=-10000LL*ms; (void)KeDelayExecutionThread(KernelMode,FALSE,&interval); }
+static int SessionReport(void *p,const unsigned char *report)
+{ return NT_SUCCESS(KbHidReport((WDFDEVICE)p,report)) ? 0 : -1; }
+int KbHidControllerStart(WDFDEVICE dev,const MT8167_USB20_IO *io,unsigned speed)
+{ return KbSessionStart(&KbHidContext(dev)->session,io,speed,dev,SessionDelay,SessionReport); }
+int KbHidControllerEp0Interrupt(WDFDEVICE dev)
+{ return KbSessionEp0Interrupt(&KbHidContext(dev)->session); }
+int KbHidControllerRequest(WDFDEVICE dev)
+{ return KbSessionRequestReport(&KbHidContext(dev)->session); }
+int KbHidControllerRxInterrupt(WDFDEVICE dev)
+{ return KbSessionRxInterrupt(&KbHidContext(dev)->session); }
+void KbHidControllerDisconnect(WDFDEVICE dev)
+{ KbHidDisconnected(dev); }
 VOID KbHidIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULONG code)
 {
  WDFDEVICE dev=WdfIoQueueGetDevice(queue); KB_HID_CONTEXT *c=KbHidContext(dev);
