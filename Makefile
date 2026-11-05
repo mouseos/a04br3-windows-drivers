@@ -114,6 +114,7 @@ test: build/msdc_shared_drain_test build/msdc_touch_shared_test build/msdc_pin_u
 	./build/gpu_transfer_stream_test
 	./build/gpu_windows_linear_test
 	./build/gpu_present_bounds_test
+	python3 tests/gpu_copy_d0_lifetime_test.py
 	./build/gpu_dma_pages_test
 	./build/gpu_transfer_mapping_test
 
