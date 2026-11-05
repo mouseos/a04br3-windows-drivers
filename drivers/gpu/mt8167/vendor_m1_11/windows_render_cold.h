@@ -25,6 +25,7 @@ NTSTATUS a04_vendor_render_context_command(struct a04_vendor_render_cold *render
 struct a04_vendor_clear_result {
     uint32_t zeros, guard_errors, first, last, phase;
     uint32_t kread,kwrite,cread,cwrite,ufo,expected;
+    uint32_t provisional,slc_status,slc_idle;
 };
 /* One bounded owned 32x32 transfer, followed by SLC flush and CPU readback. */
 NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *render,

@@ -116,6 +116,20 @@ poison:
     }
     result->ufo=result->phase>=3 ? *(volatile uint32_t *)f->command_sync : *sync;
     result->expected=result->phase>=3 ? flushseq : seq;
+    if(result->phase==3) {
+        /* Diagnostic observation only: the flush is still unconfirmed and
+         * reads may race cache/device activity. Never treat this as success. */
+        result->slc_status=READ_REGISTER_ULONG((volatile ULONG *)(void *)(s->core+0x3820));
+        result->slc_idle=READ_REGISTER_ULONG((volatile ULONG *)(void *)(s->core+0x3898));
+        result->provisional=1;
+        for(i=0;i<16384u;i++) {
+            value=output[i];
+            if(i<1024u) {if(!value)result->zeros++;}
+            else if(value!=0xa5a5a5a5u)result->guard_errors++;
+            if(i==0)result->first=value;
+            if(i==1023u)result->last=value;
+        }
+    }
     r->poisoned=TRUE;s->command_poisoned=TRUE;
 done:
     InterlockedExchange(&s->command_busy,0);return status;

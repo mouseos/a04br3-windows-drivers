@@ -719,6 +719,8 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             GpuPrint(" KREAD=");GpuHex(clear.kread);GpuPrint(" KWRITE=");GpuHex(clear.kwrite);
             GpuPrint(" CREAD=");GpuHex(clear.cread);GpuPrint(" CWRITE=");GpuHex(clear.cwrite);
             GpuPrint(" UFO=");GpuHex(clear.ufo);GpuPrint(" EXPECT=");GpuHex(clear.expected);GpuPrint("\n");
+            GpuPrint("A04GPU CLEAR OBSERVATION PROVISIONAL=");GpuHex(clear.provisional);
+            GpuPrint(" SLC=");GpuHex(clear.slc_status);GpuPrint(" IDLE=");GpuHex(clear.slc_idle);GpuPrint("\n");
             if(!NT_SUCCESS(clear_status)) {
                 struct a04_vendor_fw_debug debug;unsigned request,word;
                 c->status.health_status=clear_status;

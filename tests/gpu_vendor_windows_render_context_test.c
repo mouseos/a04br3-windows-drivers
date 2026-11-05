@@ -45,7 +45,7 @@ void KeStallExecutionProcessor(unsigned us)
 }
 int main(void)
 {
-    unsigned char *bank=aligned_alloc(4096,65536),*core=calloc(1,0x1000),*target=aligned_alloc(4096,65536);
+    unsigned char *bank=aligned_alloc(4096,65536),*core=calloc(1,0x8000),*target=aligned_alloc(4096,65536);
     uint32_t command_sync=0;struct a04_vendor_clear_result clear;
     RGXFWIF_CCB_CTL kctl={0},fctl={0};RGXFWIF_KCCB_CMD *cmd=calloc(128,sizeof(*cmd));
     struct a04_vendor_render_cold r={0};struct a04_vendor_m1_11_memory mem={0};
@@ -77,5 +77,6 @@ int main(void)
     start.command_poisoned=FALSE;start.command_sequence=0;current=4;complete=2;
     assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_IO_TIMEOUT);
     assert(clear.phase==3 && clear.kread!=clear.kwrite && clear.expected==1 && r.poisoned && start.command_poisoned);
+    assert(clear.provisional && clear.zeros==1024 && !clear.guard_errors);
     free(cmd);free(core);free(bank);free(target);return 0;
 }
