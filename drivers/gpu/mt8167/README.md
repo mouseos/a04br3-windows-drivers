@@ -239,3 +239,9 @@ m1.11向けの固定SYNCコマンド経路を追加した。GPU側のキュー�
 m1.11の停止準備として、Linux DDKの `RGXPrePowerState` に従い固定の電源オフ要求をキューへ送り、消費位置、power sync、FWのOFF状態を確認する処理を追加した。タイムアウト時はキューを使用不能にする。FW応答は割り込み排出やバスのDMA停止を証明しないため、成功後もDMAメモリを保持する。この経路はPnPに未接続で、実機検証はしていない。
 
 m1.11のRGXStopに対応するレジスタ停止処理も追加した。FWのOFF応答とIRQ排出を前提に、Sidekick・SLCのidle、BIF/MMUと外部読取りの状態を確認し、MTSの関連付けを解除する。レジスタ条件の成功はSoC外側までのDMA排出を保証しないため、DMA領域を解放しない。割り込みカウンタ排出とPnPからの呼出しは未実装で、実機検証はしていない。
+
+## m1.11 WinPE実機診断（2026-11-05）
+
+上記の未接続・未検証という記述は各追加時点の記録。端末専用UEFI `3a310ccc` と4 CPUのWinPEで、ドライバ `2d144a9` の診断経路はDMA v3アダプターの取得、非キャッシュ領域への準備、GE8300ファームウェア起動、GP SYNCの完了をUARTで確認した。`DEVICE_DESCRIPTION_VERSION3` では `Dma32BitAddresses` は無視され、`DmaAddressWidth` に非ゼロを指定する必要がある。詳細は [Microsoftの構造体仕様](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-_device_description)。
+
+続く `0f8cd0e` の実機診断では電源オフ要求後の状態は同期値1、電源状態IDLE、KCCB読取り・書込み位置とも2だった。Linux m1.11 DDKは応答後にOFFでなければ電源移行拒否として扱うため、`bb71457` はキュー消費・応答を確認した上でOFF以外ならビジーを返し、オンライン状態とDMA所有を維持する。停止後の安全なDMA解放、共有電源の所有、GPU描画および通常Windowsへの導入は未確認。WinPE専用の診断フラグは既定OFFのままであり、スナップショットは電源所有やDMA停止の証明ではない。
