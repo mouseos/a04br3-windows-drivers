@@ -60,7 +60,7 @@ NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *o,
     struct a04_vendor_render_cold *r,ULONG maps)
 {
     struct a04_vendor_uncached *b[3];struct a04_vendor_m1_11_memory *f;
-    _Alignas(8) uint64_t entries[3]={0};_Alignas(8) struct a04_vendor_copy_state_input in;
+    _Alignas(8) uint64_t entries[3]={0}, observed[3]={0};_Alignas(8) struct a04_vendor_copy_state_input in;
     _Alignas(8) struct a04_vendor_clear_image eot;
     struct a04_vendor_copy_kick_input kick={FRAGMENT_PDS_OFFSET,SECONDARY_DATA_OFFSET,SECONDARY_CODE_OFFSET,FRAGMENT_USC_OFFSET};
     uint32_t existing_usc[3];
@@ -119,8 +119,14 @@ NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *o,
     /* Claim the parent before publication. On any unexpected write failure,
      * retain everything rather than risk freeing a partially mapped page. */
     o->render=r;r->copy_owner=o;o->prepared=TRUE;a04_gpu_dma_barrier();
-    if(pds_region(o,1,0) || pds_region(o,0,0) || ptes(o,entries,1))return STATUS_IO_DEVICE_ERROR;
-    a04_gpu_dma_barrier();return STATUS_SUCCESS;
+    if(pds_region(o,1,0) || pds_region(o,0,0) || ptes(o,entries,1)) {o->exposed=TRUE;return STATUS_IO_DEVICE_ERROR;}
+    a04_gpu_dma_barrier();
+    if(ptes(o,observed,0) || observed[0]!=entries[0] || observed[1]!=entries[1] || observed[2]!=entries[2]) {
+        o->exposed=TRUE;return STATUS_IO_DEVICE_ERROR;
+    }
+    /* FUN_129f88 starts raw60=3 and changes it only for an alias mapping.
+     * Our distinct VA/allocations passed mapping and non-overlap checks. */
+    o->raw60=3u;return STATUS_SUCCESS;
 quarantine:
     /* An alias means FreeCommonBuffer could release another live object.
      * Retain every allocation and block parent teardown; no PTE is published. */

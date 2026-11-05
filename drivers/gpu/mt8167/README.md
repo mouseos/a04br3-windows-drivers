@@ -422,3 +422,8 @@ REA `FUN_0013c634` (ev_cd99ca62374bf4818b7f0bfe20c52993261ff9dd2f33e522cd8e05377
 固定32×32 ownerは、この配置と`FUN_00129f88`のheap相対値に従うtask部分値
 raw28=0x202、raw2c=96、raw30=64も保持する。残りのtaskやUSC・ISPの
 組合せは未証明のままで、これらをCCBへ渡していない。
+
+独立source／destination allocationのPTE公開後は、３つのPTEを読戻して期待した
+DMAアドレス・属性に一致しなければownerを隔離し、解放を拒否する。一致した場合、
+`FUN_00129f88` のsource／destination mapping baseが異なる限定分岐に従い
+raw60=3を候補として保持する。これは部分taskの値であり、実行承認には使わない。
