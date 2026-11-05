@@ -688,6 +688,18 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
          * acknowledgement is not fabric quiescence; DMA stays pinned. */
         c->status.health_status=a04_vendor_m1_11_windows_fence(&c->vendor_start,0,TRUE);
         GpuPrint("A04GPU NATIVE FENCE=");GpuHex(c->status.health_status);GpuPrint("\n");
+#if A04_GE8300_VENDOR_RENDER_COLD
+        if(NT_SUCCESS(c->status.health_status)) {
+            unsigned index;
+            for(index=0;index<4;index++) {
+                NTSTATUS context_status=a04_vendor_render_context_command(&c->vendor_render,
+                    &c->vendor_start,index,index==2?0xffffffffu:0u);
+                GpuPrint("A04GPU CONTEXT INDEX=");GpuHex(index);
+                GpuPrint(" STATUS=");GpuHex((ULONG)context_status);GpuPrint("\n");
+                if(!NT_SUCCESS(context_status)) {c->status.health_status=context_status;break;}
+            }
+        }
+#endif
         if(NT_SUCCESS(c->status.health_status))
             c->status.shutdown_status=a04_vendor_m1_11_windows_power_off(&c->vendor_start,TRUE);
         GpuPrint("A04GPU NATIVE OFF=");GpuHex(c->status.shutdown_status);GpuPrint("\n");
