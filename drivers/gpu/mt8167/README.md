@@ -408,3 +408,11 @@ cold leaseで、exposedは一方向。公開前の解放ではPTEの内容を照
 これはWDF/PnP削除時のowner自体の寿命、実電源、cache可視性やGPU停止を保証しない。
 既定経路・CCBには未接続。完全208-byte taskとUSCの実行契約が未確定のため、
 このownerだけではGPU scratch copy診断は実施できない。
+
+copy scratch cold owner は既存clearのPDS offset 0..63を保持したまま、未使用の
+64..127へdestination向けEOT PDS、192..255へfragment PDS、256..271へ
+secondary data、272..287へsecondary codeを配置する。各領域は書込み前に全0、
+解放前に期待値と一致することを確認し、解放時は消去・読戻しする。既存USCの
+先頭12-byte EOTと一致することも検証する。152-byte background USCはまだ
+供給・実行しない。PDSオフセットやCSRの保有は完全task、ISPまたは画像copyの
+正当性を意味しない。異常時はownerを保持し、releaseしない。

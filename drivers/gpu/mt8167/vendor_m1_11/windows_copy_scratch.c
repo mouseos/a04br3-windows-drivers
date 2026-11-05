@@ -8,6 +8,11 @@
 #include "../windows_hw.h"
 #define PAGE_BYTES 4096u
 #define COPY_PTE_INDEX 16u
+#define EOT_PDS_OFFSET 64u
+#define FRAGMENT_PDS_OFFSET 192u
+#define SECONDARY_DATA_OFFSET 256u
+#define SECONDARY_CODE_OFFSET 272u
+#define FRAGMENT_USC_OFFSET 128u
 static const ULONG fw_sizes[5]={2u*A04_VENDOR_TABLE_BYTES,A04_VENDOR_CODE_BYTES,
     A04_VENDOR_DATA_BYTES,A04_RGX_MAIN_BYTES,A04_RGX_CONFIG_BYTES};
 static int clash(const struct a04_vendor_uncached *a,const void *cpu,uint64_t dma,size_t n)
@@ -32,17 +37,40 @@ static int ptes(struct a04_vendor_copy_scratch *o,uint64_t entries[3],int write)
     void *at=(UCHAR*)o->render->buffer[3].cpu+COPY_PTE_INDEX*8u;
     return write ? a04_rgx_device_write_words(at,entries,24) : a04_rgx_device_read_words(entries,at,24);
 }
+/* Check only our reserved PDS spans. The legacy clear at offset zero is
+ * untouched. These images are partial resources, never a runnable task. */
+static int pds_region(struct a04_vendor_copy_scratch *o,int write,int clear)
+{
+    struct a04_vendor_render_cold *r=o->render;uint32_t sample[16],zero[16]={0};unsigned k;
+    struct part { unsigned offset,bytes;const uint32_t *data; } part[4]={
+        {EOT_PDS_OFFSET,64,o->eot_pds},{FRAGMENT_PDS_OFFSET,64,o->kick.pds_fragment},
+        {SECONDARY_DATA_OFFSET,16,o->state.pds_data},{SECONDARY_CODE_OFFSET,16,o->state.pds_code}};
+    if(!r || !r->buffer[7].cpu || r->buffer[7].bytes!=65536u)return 1;
+    for(k=0;k<4;k++) {
+        void *at=(UCHAR*)r->buffer[7].cpu+part[k].offset;
+        if(write) { if(a04_rgx_device_write_words(at,clear?zero:part[k].data,part[k].bytes))return 1; }
+        else {
+            unsigned i;if(a04_rgx_device_read_words(sample,at,part[k].bytes))return 1;
+            for(i=0;i<part[k].bytes/4u;i++)if(sample[i]!=(clear?0u:part[k].data[i]))return 1;
+        }
+    }
+    return 0;
+}
 NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *o,
     struct a04_vendor_render_cold *r,ULONG maps)
 {
     struct a04_vendor_uncached *b[3];struct a04_vendor_m1_11_memory *f;
     _Alignas(8) uint64_t entries[3]={0};_Alignas(8) struct a04_vendor_copy_state_input in;
+    _Alignas(8) struct a04_vendor_clear_image eot;
+    struct a04_vendor_copy_kick_input kick={FRAGMENT_PDS_OFFSET,SECONDARY_DATA_OFFSET,SECONDARY_CODE_OFFSET,FRAGMENT_USC_OFFSET};
+    uint32_t existing_usc[3];
     unsigned i,j;NTSTATUS status;
     if(!o || !r || KeGetCurrentIrql()!=PASSIVE_LEVEL || o->prepared || o->render || o->exposed ||
        o->source.cpu || o->destination.cpu || o->shared.cpu || o->source.adapter || o->destination.adapter || o->shared.adapter ||
        o->source.bytes || o->destination.bytes || o->shared.bytes || r->copy_owner || r->screen_surface ||
        !r->mapped || !r->clear_ready || !(f=r->firmware) || f->hardware_owned || f->render_owner!=r ||
-       !f->adapter || !f->staged || !f->uncached || maps<1 || !same_mapping(r))return STATUS_INVALID_DEVICE_STATE;
+       !f->adapter || !f->staged || !f->uncached || maps<1 || !same_mapping(r) ||
+       !r->buffer[7].cpu || r->buffer[7].bytes!=65536u || !r->buffer[10].cpu || r->buffer[10].bytes!=65536u)return STATUS_INVALID_DEVICE_STATE;
     if(!a04_rgx_fw_pointer(o,sizeof(*o)) || !a04_rgx_fw_pointer(r,sizeof(*r)) ||
        a04_rgx_fw_alias(o,sizeof(*o),r,sizeof(*r)) || a04_rgx_fw_alias(o,sizeof(*o),f,sizeof(*f)) ||
        (f->runtime && a04_rgx_fw_alias(o,sizeof(*o),f->runtime,sizeof(*f->runtime))))return STATUS_INVALID_PARAMETER;
@@ -65,6 +93,17 @@ NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *o,
     }
     in.source_va=A04_VENDOR_COPY_SOURCE_VA;in.destination_va=A04_VENDOR_COPY_DEST_VA;in.shared_va=A04_VENDOR_COPY_SHARED_VA;
     if(a04_vendor_copy_state_build(&o->state,&in)) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;}
+    if(a04_vendor_copy_kick_build(&o->kick,&kick) || a04_vendor_clear_image_build(&eot,A04_VENDOR_RENDER_SCRATCH_VA,0) ||
+       a04_rgx_device_read_words(existing_usc,r->buffer[10].cpu,sizeof(existing_usc))) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;}
+    for(i=0;i<3;i++)if(existing_usc[i]!=eot.usc[i]) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;}
+    for(i=0;i<16;i++)o->eot_pds[i]=eot.pds[i];
+    for(i=0;i<3;i++)o->eot_usc[i]=eot.usc[i];
+    for(i=0;i<4;i++)o->destination_csr[i]=eot.payload[32+i];
+    o->eot_pds[2]=(uint32_t)(A04_VENDOR_COPY_DEST_VA>>2);
+    o->eot_pds[3]=(uint32_t)(A04_VENDOR_COPY_DEST_VA>>34)|(1u<<19);
+    o->render=r;
+    if(pds_region(o,0,1)) {o->render=NULL;status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;}
+    o->render=NULL;
     for(i=0;i<PAGE_BYTES/4u;i++) {
         ((volatile uint32_t*)o->source.cpu)[i]=0x5a00c3a5u^(i*0x01010101u);
         ((volatile uint32_t*)o->destination.cpu)[i]=0xa5a5a5a5u;
@@ -75,7 +114,7 @@ NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *o,
     /* Claim the parent before publication. On any unexpected write failure,
      * retain everything rather than risk freeing a partially mapped page. */
     o->render=r;r->copy_owner=o;o->prepared=TRUE;a04_gpu_dma_barrier();
-    if(ptes(o,entries,1))return STATUS_IO_DEVICE_ERROR;
+    if(pds_region(o,1,0) || pds_region(o,0,0) || ptes(o,entries,1))return STATUS_IO_DEVICE_ERROR;
     a04_gpu_dma_barrier();return STATUS_SUCCESS;
 quarantine:
     /* An alias means FreeCommonBuffer could release another live object.
@@ -98,12 +137,13 @@ NTSTATUS a04_vendor_copy_scratch_release(struct a04_vendor_copy_scratch *o)
     if(!o || KeGetCurrentIrql()!=PASSIVE_LEVEL || !(r=o->render) || !o->prepared || r->copy_owner!=o ||
        !r->firmware || r->firmware->render_owner!=r)return STATUS_INVALID_DEVICE_STATE;
     if(o->exposed || r->firmware->hardware_owned)return STATUS_DEVICE_BUSY;
-    if(!r->mapped || !same_mapping(r) || ptes(o,e,0) ||
+    if(!r->mapped || !same_mapping(r) || pds_region(o,0,0) || ptes(o,e,0) ||
        e[0]!=((uint64_t)o->source.logical.QuadPart|A04_GPU_MMU_SLC_BYPASS|1u) ||
        e[1]!=((uint64_t)o->destination.logical.QuadPart|A04_GPU_MMU_SLC_BYPASS|1u) ||
        e[2]!=((uint64_t)o->shared.logical.QuadPart|A04_GPU_MMU_SLC_BYPASS|1u))return STATUS_INVALID_DEVICE_STATE;
     if(ptes(o,zero,1))return STATUS_IO_DEVICE_ERROR;
-    a04_gpu_dma_barrier();if(ptes(o,e,0) || e[0] || e[1] || e[2])return STATUS_IO_DEVICE_ERROR;
+    a04_gpu_dma_barrier();if(ptes(o,e,0) || e[0] || e[1] || e[2] || pds_region(o,1,1) || pds_region(o,0,1))return STATUS_IO_DEVICE_ERROR;
+    a04_gpu_dma_barrier();
     a04_vendor_uncached_free(&o->source);a04_vendor_uncached_free(&o->destination);a04_vendor_uncached_free(&o->shared);
     r->copy_owner=NULL;RtlZeroMemory(o,sizeof(*o));return STATUS_SUCCESS;
 }

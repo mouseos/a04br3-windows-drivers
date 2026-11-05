@@ -53,7 +53,8 @@ int main(void)
     assert(((uint32_t *)r.buffer[1].cpu)[UINT64_C(0xf900000000)>>30]);
     {
         struct a04_vendor_copy_scratch scratch={0};unsigned oldfrees=frees,oldallocs=allocs;
-        uint64_t *pt=(uint64_t*)r.buffer[3].cpu,expected;
+        uint64_t *pt=(uint64_t*)r.buffer[3].cpu,expected;uint32_t *pds=(uint32_t*)r.buffer[7].cpu;uint32_t clear_pds[16];
+        memcpy(clear_pds,pds,sizeof(clear_pds));
         assert(f.render_owner==&r && !r.copy_owner && !pt[16] && !pt[17] && !pt[18]);
         { pid_t child=fork();int code;
           assert(child>=0);
@@ -77,12 +78,23 @@ int main(void)
                pt[17]==((uint64_t)scratch.destination.logical.QuadPart|A04_GPU_MMU_SLC_BYPASS|1u) &&
                pt[18]==((uint64_t)scratch.shared.logical.QuadPart|A04_GPU_MMU_SLC_BYPASS|1u));
         assert(((uint32_t*)scratch.shared.cpu)[0]==scratch.state.shared[0]);
+        assert(!memcmp(clear_pds,pds,sizeof(clear_pds)));
+        assert(!memcmp((UCHAR*)pds+64,scratch.eot_pds,64));
+        assert(!memcmp((UCHAR*)pds+192,scratch.kick.pds_fragment,64));
+        assert(!memcmp((UCHAR*)pds+256,scratch.state.pds_data,16));
+        assert(!memcmp((UCHAR*)pds+272,scratch.state.pds_code,16));
+        assert(scratch.eot_pds[2]==(uint32_t)(A04_VENDOR_COPY_DEST_VA>>2));
+        assert(!((uint32_t*)r.buffer[10].cpu)[128/4]); /* no background USC supplied */
+        pds[64/4]^=1;
+        assert(a04_vendor_copy_scratch_release(&scratch)==STATUS_INVALID_DEVICE_STATE && frees==oldfrees);
+        pds[64/4]^=1;
         assert(((uint32_t*)scratch.source.cpu)[0]==0x5a00c3a5u && ((uint32_t*)scratch.destination.cpu)[0]==0xa5a5a5a5u);
         assert(a04_vendor_render_release_cold(&r)==STATUS_DEVICE_BUSY);
         expected=pt[17];pt[17]^=4096;
         assert(a04_vendor_copy_scratch_release(&scratch)==STATUS_INVALID_DEVICE_STATE && frees==oldfrees && r.copy_owner==&scratch);
         pt[17]=expected;
         assert(a04_vendor_copy_scratch_release(&scratch)==STATUS_SUCCESS && frees==oldfrees+3 && !pt[16] && !pt[17] && !pt[18] && !r.copy_owner);
+        assert(!memcmp(clear_pds,pds,sizeof(clear_pds)) && !pds[64/4] && !pds[192/4] && !pds[256/4] && !pds[272/4]);
     }
     assert(a04_vendor_surface_prepare(&surface,&adapter,800,1280,3328,UINT64_C(0x8000000000))==STATUS_SUCCESS);
     assert(a04_vendor_render_attach_screen(&r,&surface)==STATUS_SUCCESS);
