@@ -30,18 +30,23 @@ void MmUnmapIoSpace(PVOID p,ULONG n) { assert(p==mmio && n==4096);unmaps++; }
 static void put(PDMA_ADAPTER){puts++;}
 static PVOID alloc(PDMA_ADAPTER,ULONG n,PHYSICAL_ADDRESS *l,BOOLEAN){assert(n==8192);l->QuadPart=0x100000;return data;}
 static void freebuf(PDMA_ADAPTER,ULONG,PHYSICAL_ADDRESS,PVOID,BOOLEAN){freed++;}
-struct Resources : IResourceList { _CM_PARTIAL_RESOURCE_DESCRIPTOR irq{},mem[2]{};
- Resources(){irq.ShareDisposition=CmResourceShareDeviceExclusive;irq.u.Interrupt.Vector=152;irq.u.Interrupt.Level=5;irq.u.Interrupt.Affinity=1;mem[0].ShareDisposition=mem[1].ShareDisposition=CmResourceShareDeviceExclusive;mem[0].u.Memory.Start.QuadPart=0x11140000;mem[0].u.Memory.Length=0x1000;mem[1].u.Memory.Start.QuadPart=0x11141000;mem[1].u.Memory.Length=0x9000;}
+struct Resources : IResourceList { _CM_PARTIAL_RESOURCE_DESCRIPTOR irq{},rawIrq{},mem[2]{};
+ Resources(){irq.ShareDisposition=rawIrq.ShareDisposition=CmResourceShareDeviceExclusive;rawIrq.u.Interrupt.Vector=152;irq.u.Interrupt.Vector=80;irq.u.Interrupt.Level=5;irq.u.Interrupt.Affinity=1;mem[0].ShareDisposition=mem[1].ShareDisposition=CmResourceShareDeviceExclusive;mem[0].u.Memory.Start.QuadPart=0x11140000;mem[0].u.Memory.Length=0x1000;mem[1].u.Memory.Start.QuadPart=0x11141000;mem[1].u.Memory.Length=0x9000;}
  ULONG NumberOfEntriesOfType(int type) override{return type==CmResourceTypeMemory?2:1;}
  PCM_PARTIAL_RESOURCE_DESCRIPTOR FindTranslatedEntry(int type,ULONG index) override{return type==CmResourceTypeMemory?(index<2?&mem[index]:nullptr):&irq;}
+ PCM_PARTIAL_RESOURCE_DESCRIPTOR FindUntranslatedEntry(int type,ULONG index) override{return type==CmResourceTypeInterrupt && !index?&rawIrq:nullptr;}
 };
 int main(){
  _DMA_OPERATIONS ops{put,alloc,freebuf};_DMA_ADAPTER adapter{&ops};test_dma_adapter=&adapter;
  Resources resources;Mt8167PnpBackend *owner=nullptr;
+ resources.rawIrq.Flags=CM_RESOURCE_INTERRUPT_MESSAGE;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner);
+ resources.rawIrq.Flags=0;resources.rawIrq.ShareDisposition=0;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner);
+ resources.rawIrq.ShareDisposition=CmResourceShareDeviceExclusive;resources.rawIrq.u.Interrupt.Vector=0;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner);
+ resources.rawIrq.u.Interrupt.Vector=152;
  resources.irq.Flags=CM_RESOURCE_INTERRUPT_LATCHED;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner);
  resources.irq.Flags=CM_RESOURCE_INTERRUPT_MESSAGE;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner);
  resources.irq.Flags=0;resources.irq.u.Interrupt.Vector=0;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner);
- resources.irq.u.Interrupt.Vector=152;resources.irq.u.Interrupt.Level=32;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner);
+ resources.irq.u.Interrupt.Vector=80;resources.irq.u.Interrupt.Level=32;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner);
  resources.irq.u.Interrupt.Level=5;
 #ifdef NT_PROCESSOR_GROUPS
  resources.irq.u.Interrupt.Group=1;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner);resources.irq.u.Interrupt.Group=0;
@@ -59,7 +64,7 @@ int main(){
  _CM_PARTIAL_RESOURCE_DESCRIPTOR swap=resources.mem[0];resources.mem[0]=resources.mem[1];resources.mem[1]=swap;
 #endif
  assert(!Mt8167PnpBackendCreate(&adapter,&resources,&owner) && owner && test_pdo_refs==1);
- Mt8167PnpInterrupt irq{};assert(!Mt8167PnpBackendInterrupt(owner,&irq) && irq.vector==152 && irq.level==5 && irq.affinity==1);
+ Mt8167PnpInterrupt irq{};assert(!Mt8167PnpBackendInterrupt(owner,&irq) && irq.vector==80 && irq.level==5 && irq.affinity==1);
  mt8167_audio_shared shared{sizeof(shared),1,&adapter,shared_ref,shared_deref,shared_acquire,shared_release};
 #if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
  assert(parent_refs==2);

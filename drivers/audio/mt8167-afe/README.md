@@ -137,8 +137,10 @@ freeing exposed DMA or unmapping registers.
 PnP IRQ parsing rejects message-signaled and edge-triggered descriptors,
 zero vector or affinity, levels above HIGH_LEVEL, and (where processor groups
 are enabled) a nonzero group that IoConnectInterrupt's group-zero affinity
-cannot represent. A translated Windows vector is not assumed to equal the raw
-ACPI GSI. This only validates the descriptor shape; the owner still does not
+cannot represent. It checks both raw and translated descriptors for exclusive,
+level-triggered line interrupts and uses only the translated vector for a future
+connection. A translated Windows vector is not assumed to equal the raw ACPI
+GSI. This only validates the descriptor shape; the owner still does not
 connect the interrupt. The existing button provider continues to directly own
 PWRAP, while the shared clock owner remains a non-PnP policy component.
 

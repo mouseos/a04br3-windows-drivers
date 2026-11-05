@@ -86,14 +86,18 @@ static NTSTATUS OwnerDescription(void *,PDEVICE_DESCRIPTION) { return STATUS_DEV
 NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt8167PnpBackend **out)
 {
     ULONG mapRegisters=0;
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR irq;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR irq,rawIrq;
     Mt8167PnpBackend *o;
     NTSTATUS status;
     if (!pdo || !resources || !out) return STATUS_INVALID_PARAMETER;
     *out=NULL;
     if (resources->NumberOfEntriesOfType(CmResourceTypeInterrupt)!=1) return STATUS_DEVICE_CONFIGURATION_ERROR;
     irq=resources->FindTranslatedEntry(CmResourceTypeInterrupt,0);
-    if (!irq || irq->ShareDisposition!=CmResourceShareDeviceExclusive ||
+    rawIrq=resources->FindUntranslatedEntry(CmResourceTypeInterrupt,0);
+    if (!rawIrq || rawIrq->ShareDisposition!=CmResourceShareDeviceExclusive ||
+        (rawIrq->Flags & (CM_RESOURCE_INTERRUPT_LATCHED | CM_RESOURCE_INTERRUPT_MESSAGE)) ||
+        !rawIrq->u.Interrupt.Vector ||
+        !irq || irq->ShareDisposition!=CmResourceShareDeviceExclusive ||
         (irq->Flags & (CM_RESOURCE_INTERRUPT_LATCHED | CM_RESOURCE_INTERRUPT_MESSAGE)) ||
         !irq->u.Interrupt.Vector || !irq->u.Interrupt.Affinity ||
         irq->u.Interrupt.Level > HIGH_LEVEL) return STATUS_DEVICE_CONFIGURATION_ERROR;
