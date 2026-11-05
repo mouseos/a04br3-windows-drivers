@@ -13,3 +13,14 @@ for invalid in (head+b''.join(parts[:-1])+end,head+b''.join(parts),head+b''.join
  except ValueError:continue
  raise AssertionError('invalid frame accepted')
 print('CPU UART framing: completeness, token, chunk CRC and final CRC verified')
+import subprocess,tempfile
+(root/'build').mkdir(exist_ok=True)
+with tempfile.TemporaryDirectory(prefix='cpu-audit-monitor-',dir=root/'build') as x:
+ d=Path(x);log=d/'uart';out=d/'report';log.write_bytes(head+b''.join(parts)+end)
+ monitor=root/'tools/recovery/monitor-cpu-audit.py'
+ r=subprocess.run(['python3',str(monitor),str(log),'--offset','0','--token',t,'--output',str(out),'--timeout','1'],capture_output=True)
+ assert r.returncode==0 and out.read_bytes()==payload
+ log.write_bytes(head+parts[0]);out2=d/'incomplete'
+ r=subprocess.run(['python3',str(monitor),str(log),'--offset','0','--token',t,'--output',str(out2),'--timeout','1'],capture_output=True)
+ assert r.returncode==4 and not out2.exists() and b'No reset or restore' in r.stdout
+print('CPU UART monitor: complete frame and timeout without reset verified')
