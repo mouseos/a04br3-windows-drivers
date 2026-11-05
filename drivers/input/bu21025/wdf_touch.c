@@ -45,6 +45,7 @@ typedef struct {
 #if A04_TOUCH_THERMAL_LEASE
     WDFSPINLOCK shared_lock;
     struct a04_thermal_lease thermal_lease;
+    EX_RUNDOWN_REF thermal_rundown; BOOLEAN thermal_rundown_closed;
 #endif
     BOOLEAN faulted;
     BOOLEAN recovering;
@@ -167,6 +168,12 @@ NTSTATUS TouchRelease(WDFDEVICE device, WDFCMRESLIST translated)
     UNREFERENCED_PARAMETER(translated);
     InterlockedExchange(&c->enabled,0);
 #if A04_TOUCH_THERMAL_LEASE
+    /* Close admission and drain direct thermal MMIO before invalidating the
+     * lease or unmapping. Do not hold the shared spin lock while waiting. */
+    if(!c->thermal_rundown_closed) {
+        ExWaitForRundownProtectionRelease(&c->thermal_rundown);
+        c->thermal_rundown_closed=TRUE;
+    }
     WdfSpinLockAcquire(c->shared_lock);
     a04_lease_offline(&c->thermal_lease);
     WdfSpinLockRelease(c->shared_lock);
@@ -204,6 +211,10 @@ NTSTATUS TouchD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     c->recovering=FALSE; c->recovery_attempts=0;
     Trace(c,"A04TOUCH hardware init success\n");
 #if A04_TOUCH_THERMAL_LEASE
+    if(c->thermal_rundown_closed) {
+        ExReInitializeRundownProtection(&c->thermal_rundown);
+        c->thermal_rundown_closed=FALSE;
+    }
     WdfSpinLockAcquire(c->shared_lock);
     c->thermal_lease.online=1;
     WdfSpinLockRelease(c->shared_lock);
@@ -217,6 +228,12 @@ NTSTATUS TouchD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
     TOUCH_CONTEXT *c=TouchGetContext(device); UNREFERENCED_PARAMETER(target);
     InterlockedExchange(&c->enabled,0);
 #if A04_TOUCH_THERMAL_LEASE
+    /* Close admission and drain direct thermal MMIO before invalidating the
+     * lease or unmapping. Do not hold the shared spin lock while waiting. */
+    if(!c->thermal_rundown_closed) {
+        ExWaitForRundownProtectionRelease(&c->thermal_rundown);
+        c->thermal_rundown_closed=TRUE;
+    }
     WdfSpinLockAcquire(c->shared_lock);
     a04_lease_offline(&c->thermal_lease);
     WdfSpinLockRelease(c->shared_lock);
@@ -323,17 +340,43 @@ VOID TouchThermalCleanup(WDFFILEOBJECT file)
     uintptr_t owner=(uintptr_t)WdfFileObjectWdmGetFileObject(file);
     WdfSpinLockAcquire(c->shared_lock); a04_lease_release(&c->thermal_lease,owner); WdfSpinLockRelease(c->shared_lock);
 }
+static BOOLEAN TouchThermalGuardBegin(PVOID context,ULONG_PTR owner,ULONG generation)
+{
+    WDFDEVICE device=(WDFDEVICE)context;TOUCH_CONTEXT *c=TouchGetContext(device);BOOLEAN valid;
+    if(!ExAcquireRundownProtection(&c->thermal_rundown))return FALSE;
+    WdfSpinLockAcquire(c->shared_lock);
+    valid=a04_lease_guard_begin(&c->thermal_lease,(uintptr_t)owner,generation)?FALSE:TRUE;
+    WdfSpinLockRelease(c->shared_lock);
+    if(!valid)ExReleaseRundownProtection(&c->thermal_rundown);
+    return valid;
+}
+static VOID TouchThermalGuardEnd(PVOID context)
+{
+    TOUCH_CONTEXT *c=TouchGetContext((WDFDEVICE)context);
+    WdfSpinLockAcquire(c->shared_lock);a04_lease_guard_end(&c->thermal_lease);WdfSpinLockRelease(c->shared_lock);
+    ExReleaseRundownProtection(&c->thermal_rundown);
+}
+static VOID TouchThermalGuardRelease(PVOID context)
+{ WdfObjectDereference((WDFDEVICE)context); }
 static NTSTATUS TouchThermalRequest(TOUCH_CONTEXT *c,WDFREQUEST request,ULONG code)
 {
     PIRP irp=WdfRequestWdmGetIrp(request);
     uintptr_t owner=(uintptr_t)IoGetCurrentIrpStackLocation(irp)->FileObject;
-    NTSTATUS status=STATUS_DEVICE_NOT_READY; ULONG state;
+    NTSTATUS status=STATUS_DEVICE_NOT_READY; ULONG state;A04_TOUCH_THERMAL_GUARD *guard;size_t output;
     if(irp->RequestorMode!=KernelMode || !owner) return STATUS_ACCESS_DENIED;
     WdfSpinLockAcquire(c->shared_lock);
     if(code==A04_TOUCH_THERMAL_CLAIM) {
         status=a04_lease_claim(&c->thermal_lease,owner) ? STATUS_DEVICE_BUSY : STATUS_SUCCESS;
     } else if(a04_lease_valid(&c->thermal_lease,owner)) {
-        if(code==A04_TOUCH_THERMAL_QUERY) {
+        if(code==A04_TOUCH_THERMAL_GET_GUARD) {
+            status=WdfRequestRetrieveOutputBuffer(request,sizeof(*guard),(PVOID *)&guard,&output);
+            if(NT_SUCCESS(status)) {
+                WdfObjectReference(c->device);guard->size=sizeof(*guard);guard->version=1;
+                guard->context=c->device;guard->owner=(ULONG_PTR)owner;guard->generation=c->thermal_lease.generation;
+                guard->Begin=TouchThermalGuardBegin;guard->End=TouchThermalGuardEnd;
+                guard->Release=TouchThermalGuardRelease;WdfRequestSetInformation(request,sizeof(*guard));
+            }
+        } else if(code==A04_TOUCH_THERMAL_QUERY) {
             status=STATUS_SUCCESS;
         } else if(code==A04_TOUCH_THERMAL_CLOCK) {
             /* CLK_TOP_THEM bit 1 and CLK_TOP_AUX_ADC bit 30: set/clear alias. */
@@ -361,7 +404,7 @@ void TouchIoctl(WDFQUEUE queue, WDFREQUEST request, size_t outlen, size_t inlen,
     UNREFERENCED_PARAMETER(inlen);
 #if A04_TOUCH_THERMAL_LEASE
     if(code==A04_TOUCH_THERMAL_CLAIM || code==A04_TOUCH_THERMAL_CLOCK ||
-       code==A04_TOUCH_THERMAL_RESET || code==A04_TOUCH_THERMAL_RELEASE || code==A04_TOUCH_THERMAL_QUERY) {
+       code==A04_TOUCH_THERMAL_RESET || code==A04_TOUCH_THERMAL_RELEASE || code==A04_TOUCH_THERMAL_QUERY || code==A04_TOUCH_THERMAL_GET_GUARD) {
         WdfRequestComplete(request,TouchThermalRequest(c,request,code)); return;
     }
 #endif
@@ -412,6 +455,9 @@ NTSTATUS TouchAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,TOUCH_CONTEXT);
     status=WdfDeviceCreate(&init,&attr,&device); if (!NT_SUCCESS(status)) return status;
     c=TouchGetContext(device); c->device=device;
+#if A04_TOUCH_THERMAL_LEASE
+    ExInitializeRundownProtection(&c->thermal_rundown);
+#endif
 #if A04_TOUCH_THERMAL_LEASE
     { WDF_OBJECT_ATTRIBUTES lockattr; WDF_OBJECT_ATTRIBUTES_INIT(&lockattr); lockattr.ParentObject=device;
       status=WdfSpinLockCreate(&lockattr,&c->shared_lock); if(!NT_SUCCESS(status)) return status; }

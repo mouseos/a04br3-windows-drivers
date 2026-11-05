@@ -164,3 +164,15 @@ touch lease解放を行う。公開値は通常のIOCTLと同様に1秒で期限
 提供しないため、既存の `firmware_handoff` はfalseのまま。したがってこの旗を
 指定したビルドも実機で測温を開始できない。所有ゲートを迂回してはならない。
 合成値の変化はADC変換完了の証明ではない。実機温度・安全停止は未検証。
+
+## touch D0退出とのアクセス同期
+
+既定OFFのtouch thermal leaseにkernel専用guardを追加。温度側の各直接MMIOアクセスは
+guardを取得・返却し、touchのD0退出と資源解放は進行中アクセスの完了を待ってから
+leaseを失効させる。leaseの世代を照合し、旧guardや進行中アクセスがある状態での
+新規claimを拒否する。タイマー停止とguard返却を経て参照を解放する。
+これは単一アクセスの同期で、初期化シーケンス全体の原子性、MMIOが戻らない場合の
+D0終了、突然の物理取り外し、OS停止中の電源保持を保証しない。clock/resetは
+従来どおりtouch側のpower-managed要求でありguard保持中には呼ばない。
+ホスト模擬・WDKビルドのみで、Windows上の競合とPnP電源遷移は未検証。
+UEFIが報告する所有権は未確認で、firmware_handoffゲートは閉じたまま。

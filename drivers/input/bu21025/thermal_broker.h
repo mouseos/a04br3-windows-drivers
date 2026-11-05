@@ -7,4 +7,14 @@
 #define A04_TOUCH_THERMAL_RESET CTL_CODE(FILE_DEVICE_UNKNOWN,0x832,METHOD_BUFFERED,FILE_ANY_ACCESS)
 #define A04_TOUCH_THERMAL_QUERY CTL_CODE(FILE_DEVICE_UNKNOWN,0x834,METHOD_BUFFERED,FILE_ANY_ACCESS)
 #define A04_TOUCH_THERMAL_RELEASE CTL_CODE(FILE_DEVICE_UNKNOWN,0x833,METHOD_BUFFERED,FILE_ANY_ACCESS)
+#define A04_TOUCH_THERMAL_GET_GUARD CTL_CODE(FILE_DEVICE_UNKNOWN,0x835,METHOD_BUFFERED,FILE_ANY_ACCESS)
+/* Kernel-only, one referenced provider object. Begin/End bracket a single
+ * nonblocking MMIO access. Caller releases the interface before closing the
+ * same file; do not wait for power-managed I/O while inside Begin/End. */
+typedef struct _A04_TOUCH_THERMAL_GUARD {
+ ULONG size,version;PVOID context;ULONG_PTR owner;ULONG generation;
+ BOOLEAN (*Begin)(PVOID,ULONG_PTR,ULONG);
+ VOID (*End)(PVOID);
+ VOID (*Release)(PVOID);
+} A04_TOUCH_THERMAL_GUARD;
 #endif

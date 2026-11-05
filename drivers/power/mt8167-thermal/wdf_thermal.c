@@ -41,6 +41,9 @@ typedef struct { ULONG version, d60, d61, d62; } BOOT_CAL;
 typedef struct { struct a04_thermal_cal cal; struct a04_thermal_owner ownership; BOOLEAN calibrated, pnp_resources; WDFIOTARGET watchdog;
 #if A04_THERMAL_LEASE_DIAG
  WDFIOTARGET touch; BOOLEAN lease_owned;
+#if A04_THERMAL_MONITOR_TEST
+ A04_TOUCH_THERMAL_GUARD touch_guard;
+#endif
 #endif
 #if A04_THERMAL_MONITOR_TEST
  WDFDEVICE device; WDFTIMER timer; volatile UCHAR *mapped[3];
@@ -57,6 +60,8 @@ EVT_WDF_DEVICE_RELEASE_HARDWARE ThermalRelease;
 #endif
 EVT_WDF_DEVICE_D0_ENTRY ThermalD0;
 EVT_WDF_DEVICE_D0_EXIT ThermalExit;
+static const GUID thermalHandoffGuid={0xb2dd7543,0x9b8a,0x4580,{0xb8,0x22,0x14,0x35,0x09,0xa0,0x47,0xc1}};
+typedef struct { ULONG version,bytes,observation,ownership; } THERMAL_HANDOFF_RECORD;
 static const GUID calGuid={0x92d56a32,0xc847,0x4fdc,{0x83,0x62,0xf2,0x77,0xc7,0x10,0xa0,0x43}};
 static int read_cal(void *p,unsigned index,uint32_t *value)
 { const BOOT_CAL *v=p; if(index==60)*value=v->d60; else if(index==61)*value=v->d61; else if(index==62)*value=v->d62; else return -1; return 0; }
@@ -106,6 +111,26 @@ static NTSTATUS TouchRequest(THERMAL_CONTEXT *c,ULONG code)
  return WdfIoTargetSendInternalIoctlSynchronously(c->touch,NULL,code,NULL,NULL,&options,NULL);
 }
 #endif
+#if A04_THERMAL_MONITOR_TEST
+static NTSTATUS TouchGuardGet(THERMAL_CONTEXT *c)
+{
+ WDF_MEMORY_DESCRIPTOR output;WDF_REQUEST_SEND_OPTIONS options;ULONG_PTR got=0;NTSTATUS status;
+ RtlZeroMemory(&c->touch_guard,sizeof(c->touch_guard));
+ WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&output,&c->touch_guard,sizeof(c->touch_guard));
+ WDF_REQUEST_SEND_OPTIONS_INIT(&options,WDF_REQUEST_SEND_OPTION_TIMEOUT);
+ WDF_REQUEST_SEND_OPTIONS_SET_TIMEOUT(&options,WDF_REL_TIMEOUT_IN_SEC(1));
+ status=WdfIoTargetSendInternalIoctlSynchronously(c->touch,NULL,A04_TOUCH_THERMAL_GET_GUARD,NULL,&output,&options,&got);
+ if(!NT_SUCCESS(status))return status;
+ if(got!=sizeof(c->touch_guard)||c->touch_guard.size!=sizeof(c->touch_guard)||c->touch_guard.version!=1 ||
+    !c->touch_guard.context || !c->touch_guard.owner || !c->touch_guard.generation || !c->touch_guard.Begin || !c->touch_guard.End || !c->touch_guard.Release) {
+  if(c->touch_guard.context && c->touch_guard.Release)c->touch_guard.Release(c->touch_guard.context);
+  RtlZeroMemory(&c->touch_guard,sizeof(c->touch_guard));return STATUS_DEVICE_CONFIGURATION_ERROR;
+ }
+ return STATUS_SUCCESS;
+}
+static void TouchGuardPut(THERMAL_CONTEXT *c)
+{ if(c->touch_guard.Release)c->touch_guard.Release(c->touch_guard.context);RtlZeroMemory(&c->touch_guard,sizeof(c->touch_guard)); }
+#endif
 /* For the eventual monitor; a success means reset was requested, not observed. */
 NTSTATUS A04ThermalRequestStop(WDFDEVICE dev)
 { THERMAL_CONTEXT *c=ThermalContext(dev); return c->watchdog ? WatchdogRequest(c,A04_TOPRGU_THERMAL_HALT) : STATUS_DEVICE_NOT_READY; }
@@ -137,7 +162,7 @@ VOID ThermalReadoutIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outputSize,siz
  WdfSpinLockRelease(c->readout_lock);
  WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(value):0);
 }
-static int HwQualified(void *p) { THERMAL_CONTEXT *c=p; return c->ownership.active && c->lease_owned && c->mapped[0] && c->mapped[1] && c->mapped[2]; }
+static int HwQualified(void *p) { THERMAL_CONTEXT *c=p; return c->ownership.active && c->lease_owned && c->touch_guard.Begin && c->touch_guard.End && c->mapped[0] && c->mapped[1] && c->mapped[2]; }
 static int HwReady(void *p) { return ((THERMAL_CONTEXT *)p)->hw_ready; }
 static int HwClocks(void *p) { return NT_SUCCESS(TouchRequest(p,A04_TOUCH_THERMAL_CLOCK))?0:-1; }
 static volatile ULONG *HwAddress(THERMAL_CONTEXT *c,uint32_t addr) {
@@ -146,12 +171,16 @@ static volatile ULONG *HwAddress(THERMAL_CONTEXT *c,uint32_t addr) {
  return NULL;
 }
 static int HwRead(void *p,uint32_t addr,uint32_t *value) { THERMAL_CONTEXT *c=p;volatile ULONG *r;
- if(!HwQualified(c) || !value || !(r=HwAddress(c,addr))) return -1;*value=READ_REGISTER_ULONG(r);return 0; }
+ if(!HwQualified(c) || !value || !(r=HwAddress(c,addr))) return -1;
+ if(!c->touch_guard.Begin(c->touch_guard.context,c->touch_guard.owner,c->touch_guard.generation))return -1;
+ *value=READ_REGISTER_ULONG(r);c->touch_guard.End(c->touch_guard.context);return 0; }
 static int HwWrite(void *p,uint32_t addr,uint32_t value) { THERMAL_CONTEXT *c=p;volatile ULONG *r;
  if(!HwQualified(c)) return -1;
  if(addr==0x10001120u && value==1) { if(!NT_SUCCESS(TouchRequest(c,A04_TOUCH_THERMAL_RESET)))return -1;c->reset_asserted=TRUE;return 0; }
  if(addr==0x10001124u && value==1 && c->reset_asserted) { c->reset_asserted=FALSE;return 0; }
- r=HwAddress(c,addr);if(!r)return -1;WRITE_REGISTER_ULONG(r,value);return 0; }
+ r=HwAddress(c,addr);if(!r)return -1;
+ if(!c->touch_guard.Begin(c->touch_guard.context,c->touch_guard.owner,c->touch_guard.generation))return -1;
+ WRITE_REGISTER_ULONG(r,value);c->touch_guard.End(c->touch_guard.context);return 0; }
 static int HwDelay(void *p,unsigned us) { UNREFERENCED_PARAMETER(p);if(us>1000)return -1;KeStallExecutionProcessor(us);return 0; }
 #if A04_THERMAL_ONESHOT_TEST
 static uint64_t ThermalOneNow(void *p) { UNREFERENCED_PARAMETER(p);return KeQueryInterruptTime()/10000u; }
@@ -168,7 +197,7 @@ static int ThermalOneReport(void *p,const struct a04_thermal_sample *sample) {
 #endif
 NTSTATUS ThermalRelease(WDFDEVICE dev,WDFCMRESLIST translated) {
  THERMAL_CONTEXT *c=ThermalContext(dev);unsigned i;UNREFERENCED_PARAMETER(translated);
- c->pnp_resources=FALSE; ThermalInvalidate(c); a04_owner_revoke(&c->ownership);
+ c->pnp_resources=FALSE; ThermalInvalidate(c); a04_owner_revoke(&c->ownership);TouchGuardPut(c);
  for(i=0;i<3;i++) if(c->mapped[i]) { MmUnmapIoSpace((PVOID)c->mapped[i],0x1000);c->mapped[i]=NULL; }
  return STATUS_SUCCESS;
 }
@@ -202,6 +231,18 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
  THERMAL_CONTEXT *c=ThermalContext(dev); BOOT_CAL v; ULONG size=sizeof(v),attributes=0;
  UNICODE_STRING name=RTL_CONSTANT_STRING(THERMAL_VAR_NAME); GUID guid=calGuid; NTSTATUS status;
  UNREFERENCED_PARAMETER(prior);c->calibrated=FALSE;
+ {
+  UNICODE_STRING handoffName=RTL_CONSTANT_STRING(L"A04BR3ThermalHandoff");
+  GUID handoffGuid=thermalHandoffGuid;THERMAL_HANDOFF_RECORD handoff;
+  ULONG handoffSize=sizeof(handoff),handoffAttributes=0;NTSTATUS observed;
+  RtlZeroMemory(&handoff,sizeof(handoff));
+  observed=ExGetFirmwareEnvironmentVariable(&handoffName,&handoffGuid,&handoff,&handoffSize,&handoffAttributes);
+  if(NT_SUCCESS(observed) && handoffSize==sizeof(handoff) && handoffAttributes==6 &&
+     handoff.version==1 && handoff.bytes==sizeof(handoff) && handoff.observation==1 && handoff.ownership==0)
+   DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"A04THERM UEFI observation present; firmware and EL3 ownership unverified\n");
+  else DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"A04THERM UEFI handoff observation unavailable or invalid\n");
+  /* Observation is not a firmware or EL3 release and never opens the gate. */
+ }
 #if A04_THERMAL_MONITOR_TEST
  ThermalInvalidate(c);
 #endif
@@ -246,9 +287,17 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
   * Never infer this flag from ACPI resource allocation or a touch lease. */
  c->ownership.firmware_handoff=0;
 #if A04_THERMAL_MONITOR_TEST
+ status=TouchGuardGet(c);
+ if(!NT_SUCCESS(status)) {
+  if(c->lease_owned) { (VOID)TouchRequest(c,A04_TOUCH_THERMAL_RELEASE);c->lease_owned=FALSE; }
+  WdfIoTargetClose(c->touch);WdfIoTargetClose(c->watchdog);return status;
+ }
+#endif
+#if A04_THERMAL_MONITOR_TEST
  /* No verified firmware/EL3 release protocol exists. Buildable, but cannot
   * touch clocks, AUXADC or controller while this qualification is false. */
  if(a04_owner_activate(&c->ownership)) {
+   TouchGuardPut(c);
    if(c->lease_owned) { (VOID)TouchRequest(c,A04_TOUCH_THERMAL_RELEASE);c->lease_owned=FALSE; }
    WdfIoTargetClose(c->touch);WdfIoTargetClose(c->watchdog);
    return STATUS_DEVICE_NOT_READY;
@@ -268,6 +317,7 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
    KeBugCheckEx(0xE2,0x41303454,6,0,0);return STATUS_DEVICE_HARDWARE_ERROR;
   }
   if(measured!=A04_ONESHOT_OK)ThermalInvalidate(c);
+  TouchGuardPut(c);
   status=TouchRequest(c,A04_TOUCH_THERMAL_RELEASE);
   if(!NT_SUCCESS(status)) { ThermalInvalidate(c);a04_owner_quarantine(&c->ownership);return status; }
   c->lease_owned=FALSE;a04_owner_revoke(&c->ownership);
@@ -278,7 +328,7 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
  {
   struct a04_thermal_policy policy={75000,65000,85000,1000,0};
   if(!NT_SUCCESS(WatchdogRequest(c,A04_TOPRGU_THERMAL_ARM))) {
-   a04_owner_revoke(&c->ownership); (VOID)TouchRequest(c,A04_TOUCH_THERMAL_RELEASE);c->lease_owned=FALSE;
+   a04_owner_revoke(&c->ownership);TouchGuardPut(c); (VOID)TouchRequest(c,A04_TOUCH_THERMAL_RELEASE);c->lease_owned=FALSE;
    WdfIoTargetClose(c->touch);WdfIoTargetClose(c->watchdog);return STATUS_DEVICE_NOT_READY;
   }
   c->hw.ctx=c;c->hw.qualified=HwQualified;c->hw.clocks_on=HwClocks;c->hw.initialized=HwReady;
@@ -287,7 +337,7 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
   if(monitor_status) {
    a04_owner_quarantine(&c->ownership);
    if(monitor_status==-2) KeBugCheckEx(0xE2,0x41303454,2,0,0);
-   a04_owner_revoke(&c->ownership); (VOID)TouchRequest(c,A04_TOUCH_THERMAL_RELEASE);c->lease_owned=FALSE;
+   a04_owner_revoke(&c->ownership);TouchGuardPut(c); (VOID)TouchRequest(c,A04_TOUCH_THERMAL_RELEASE);c->lease_owned=FALSE;
    WdfIoTargetClose(c->touch);WdfIoTargetClose(c->watchdog);return STATUS_DEVICE_HARDWARE_ERROR;
   }
   c->hw_ready=TRUE;WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(250));
@@ -307,6 +357,9 @@ NTSTATUS ThermalExit(WDFDEVICE dev,WDF_POWER_DEVICE_STATE next)
   a04_owner_quarantine(&c->ownership);
   if(!NT_SUCCESS(A04ThermalRequestStop(dev))) KeBugCheckEx(0xE2,0x41303454,4,0,0);
  }
+#endif
+#if A04_THERMAL_MONITOR_TEST
+ TouchGuardPut(c);
 #endif
 #if A04_THERMAL_LEASE_DIAG
  if(c->lease_owned) { (VOID)TouchRequest(c,A04_TOUCH_THERMAL_RELEASE); c->lease_owned=FALSE; }
