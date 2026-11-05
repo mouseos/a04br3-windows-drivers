@@ -27,7 +27,8 @@ void KeStallExecutionProcessor(unsigned us)
     if(current==4) {
         ctl=(void *)(bank+sim->layout.control[3]);
         ctl->ui32ReadOffset=ctl->ui32WriteOffset=cmd->uCmdData.sCmdKickData.ui32CWoffUpdate;
-        memset(sim->buffer[4].cpu,0,4096);
+        for(unsigned row=0;row<32;row++)
+            memset((unsigned char *)sim->buffer[4].cpu+sim->clear_first+row*sim->clear_row_bytes,0,128);
         *(uint32_t *)(void *)(bank+sim->layout.sync)=sim->sequence;
         run->kctl->ui32ReadOffset=run->kctl->ui32WriteOffset;return;
     }
@@ -56,7 +57,7 @@ int main(void)
     kctl.ui32WrapMask=127;kctl.ui32CmdSize=sizeof(*cmd);fctl.ui32WrapMask=31;fctl.ui32CmdSize=sizeof(RGXFWIF_FWCCB_CMD);
     runtime.kctl=&kctl;runtime.fctl=&fctl;runtime.kcommands=cmd;runtime.command_sync=&command_sync;runtime.command_sync_addr.ui32Addr=0xc0040040;mem.runtime=&runtime;mem.hardware_owned=TRUE;
     start.memory=&mem;start.online=TRUE;start.core=core;r.firmware=&mem;r.buffer[0].cpu=bank;r.mapped=TRUE;
-    r.buffer[4].cpu=target;r.buffer[4].bytes=65536;r.clear_ready=TRUE;
+    r.buffer[4].cpu=target;r.buffer[4].bytes=65536;r.clear_ready=TRUE;r.clear_first=(64u*128u+64u)*4u;r.clear_row_bytes=512u;
     assert(!a04_vendor_clear_image_build(&r.clear,A04_VENDOR_RENDER_SCRATCH_VA,0));
     sim=&r;run=&runtime;complete=1;
     for(current=0;current<4;current++) {
@@ -73,7 +74,7 @@ int main(void)
     memset(&r,0,sizeof(r));memset(&kctl,0,sizeof(kctl));memset(&fctl,0,sizeof(fctl));memset(cmd,0,128*sizeof(*cmd));
     assert(!a04_vendor_render_build(bank,65536,0x81000000,0x82000000,A04_VENDOR_RENDER_SCRATCH_VA,1,&r.layout));
     kctl.ui32WrapMask=127;kctl.ui32CmdSize=sizeof(*cmd);fctl.ui32WrapMask=31;fctl.ui32CmdSize=sizeof(RGXFWIF_FWCCB_CMD);
-    r.firmware=&mem;r.buffer[0].cpu=bank;r.buffer[4].cpu=target;r.buffer[4].bytes=65536;r.mapped=TRUE;r.clear_ready=TRUE;
+    r.firmware=&mem;r.buffer[0].cpu=bank;r.buffer[4].cpu=target;r.buffer[4].bytes=65536;r.mapped=TRUE;r.clear_ready=TRUE;r.clear_first=(64u*128u+64u)*4u;r.clear_row_bytes=512u;
     assert(!a04_vendor_clear_image_build(&r.clear,A04_VENDOR_RENDER_SCRATCH_VA,0));
     start.command_poisoned=FALSE;start.command_sequence=0;current=4;complete=2;
     assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_IO_TIMEOUT);
