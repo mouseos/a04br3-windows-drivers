@@ -123,8 +123,13 @@ int main(int argc,char **argv)
         ULONG bad=0;uint64_t value=0;
         *(uint32_t *)(void *)(registers+0x3c8)=0x7f;
         *(uint32_t *)(void *)(registers+0x3898)=0xff;
+        *(uint32_t *)(void *)(registers+0xb40)=9;*(uint32_t *)(void *)(registers+0xb30)=9;
+        *(uint32_t *)(void *)(registers+0xb48)=9;*(uint32_t *)(void *)(registers+0xb38)=9;
         if(a04_vendor_m1_11_windows_stop(&start,FALSE,&bad,&value)!=STATUS_INVALID_DEVICE_STATE) return 32;
+        if(*(uint32_t *)(void *)(registers+0xb40)!=9) return 35;
         if(a04_vendor_m1_11_windows_stop(&start,TRUE,&bad,&value)!=STATUS_SUCCESS || !m.hardware_owned || bad) return 33;
+        if(*(uint32_t *)(void *)(registers+0xb40) || *(uint32_t *)(void *)(registers+0xb30) ||
+           *(uint32_t *)(void *)(registers+0xb48) || *(uint32_t *)(void *)(registers+0xb38)) return 36;
         *(uint32_t *)(void *)(registers+0x1358)=1;
         if(a04_vendor_m1_11_windows_stop(&start,TRUE,&bad,&value)!=STATUS_IO_TIMEOUT || bad!=0x1358 || value!=1 || !m.hardware_owned) return 34;
         *(uint32_t *)(void *)(registers+0x1358)=0;
