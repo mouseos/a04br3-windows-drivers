@@ -9,6 +9,7 @@ try {
     }
     foreach ($pair in @(
         @('Windows\System32\config\SYSTEM','hive-system'), @('Windows\System32\config\SOFTWARE','hive-software'),
+        @('Windows\System32\config\SYSTEM.LOG1','log-one'), @('Windows\System32\config\SYSTEM.LOG2','log-two'),
         @('Windows\System32\drivers\a04msdcprobe.sys','storage'), @('src\names\storage\a04msdcprobe.sys','storage'),
         @('Windows\System32\drivers\a04touch.sys','touch'), @('src\names\touch\a04touch.sys','touch'),
         @('Windows\INF\oem32.inf','storage-inf'), @('src\names\original-storage.inf','storage-inf'),
