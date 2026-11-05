@@ -33,4 +33,10 @@ if (Test-Path $vendorStatus) {
     & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $package 'ge8300-vendor-stage-status.exe')
     if ($LASTEXITCODE -ne 0) { throw 'GE8300 vendor stage status signing failed' }
 }
+$vendorStartStatus = Join-Path $tempRoot 'mt8167-ge8300-status\ge8300-vendor-start-status.exe'
+if (Test-Path $vendorStartStatus) {
+    Copy-Item $vendorStartStatus (Join-Path $package 'ge8300-vendor-start-status.exe')
+    & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $package 'ge8300-vendor-start-status.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'GE8300 vendor start status signing failed' }
+}
 Write-Host "Test-signed GE8300 package: $package. The private key remains on this runner."
