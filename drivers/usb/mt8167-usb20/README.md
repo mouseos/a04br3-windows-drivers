@@ -83,3 +83,11 @@ not guarantee that Windows PnP retains physical resources. A failed host VBUS
 start now also executes the existing session/PHY/VBUS shutdown sequence.
 These failure paths are host-tested only; real overcurrent polarity and VBUS
 switch behavior remain unverified.
+
+The controller's diagnostic IRQ arm now masks its L1 sources, disables the
+endpoint enables and clears their pending W1C status before enabling them.
+Readback failure disables the sources again. WDF serializes arm and disarm
+against the ISR. The board Linux host also calls `tbl_charger_otg_vbus` in
+addition to switching GPIO22; the current parent does not own or validate that
+charger OTG path, so this code does not establish usable VBUS. GPIO, PHY and
+IRQ behavior remain unverified on the device.

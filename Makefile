@@ -836,3 +836,17 @@ test-mt8167-usb-faults:
 	./build/mt8167_usb_board_fault_test
 	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared -Idrivers/input/a04br3-buttons -Idrivers/usb/mt8167-usb20 tests/usb/usb_owner_test.c drivers/bus/mt8167-shared/usb_owner.c drivers/input/a04br3-buttons/pmic_read.c drivers/usb/mt8167-usb20/gpio22.c -o build/mt8167_usb_owner_fault_test
 	./build/mt8167_usb_owner_fault_test
+
+.PHONY: test-mt8167-unmute-diagnostic test-mt8167-usb-controller-irq
+test-mt8167-unmute-diagnostic: test-mt8167-pnp-run-diagnostic
+	$(CC) $(CFLAGS) -DA04_MT6392_WRITE_DIAGNOSTIC=1 -DA04_MT6392_CLK_ALIAS_EXPERIMENT=1 -DA04_MT6392_UNMUTE_DIAGNOSTIC=1 -Idrivers/input/a04br3-buttons -Idrivers/bus/mt8167-shared tests/mt6392_classd_wacs_integration_test.c drivers/input/a04br3-buttons/pmic_read.c drivers/bus/mt8167-shared/mt6392_classd.c -o build/mt6392_unmute_wacs_test
+	./build/mt6392_unmute_wacs_test
+	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_TEST_PNP_BACKEND=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_AUDIO_QUERY_SHARED=1 -DA04_AUDIO_MAP_AFE=1 -DA04_AUDIO_IRQ_DIAGNOSTIC=1 -DA04_AUDIO_RUN_DIAGNOSTIC=1 -DA04_AUDIO_SILENT_DMA_DIAGNOSTIC=1 -DA04_AUDIO_PCM_PATTERN_DIAGNOSTIC=1 -DA04_AUDIO_UNMUTE_DIAGNOSTIC=1 -Itests/audio_owner_stubs -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/pnp_backend.cpp drivers/audio/mt8167-afe/afe_mapping.cpp drivers/audio/mt8167-afe/common_dma.cpp drivers/audio/mt8167-afe/dma_adapter.cpp drivers/audio/mt8167-afe/shared_audio.c drivers/audio/mt8167-afe/irq_windows.cpp drivers/audio/mt8167-afe/dl1_engine.c drivers/audio/mt8167-afe/dl1.c tests/mt8167_pnp_backend_test.cpp build/mt8167_run_parent_host.o -o build/mt8167_unmute_pnp_test
+	./build/mt8167_unmute_pnp_test
+	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_TEST_PNP_BACKEND=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_AUDIO_QUERY_SHARED=1 -DA04_AUDIO_MAP_AFE=1 -DA04_AUDIO_IRQ_DIAGNOSTIC=1 -DA04_AUDIO_RUN_DIAGNOSTIC=1 -DA04_AUDIO_SILENT_DMA_DIAGNOSTIC=1 -DA04_AUDIO_PCM_PATTERN_DIAGNOSTIC=1 -DA04_AUDIO_UNMUTE_DIAGNOSTIC=1 -DA04_TEST_UNMUTE_FAILURE=1 -Itests/audio_owner_stubs -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/pnp_backend.cpp drivers/audio/mt8167-afe/afe_mapping.cpp drivers/audio/mt8167-afe/common_dma.cpp drivers/audio/mt8167-afe/dma_adapter.cpp drivers/audio/mt8167-afe/shared_audio.c drivers/audio/mt8167-afe/irq_windows.cpp drivers/audio/mt8167-afe/dl1_engine.c drivers/audio/mt8167-afe/dl1.c tests/mt8167_pnp_backend_test.cpp build/mt8167_run_parent_host.o -o build/mt8167_unmute_failure_test
+	./build/mt8167_unmute_failure_test
+
+test-mt8167-usb-controller-irq:
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/usb/mt8167-usb20 tests/usb/controller_test.c drivers/usb/mt8167-usb20/controller.c -o build/mt8167_usb_irq_test
+	./build/mt8167_usb_irq_test

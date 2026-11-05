@@ -28,14 +28,27 @@ int Mt8167UsbFifoInit(const MT8167_USB20_CONTROLLER *c,unsigned bytes)
 int Mt8167UsbInterruptEnable(const MT8167_USB20_CONTROLLER *c)
 {
  void *p; unsigned m; if(!valid(c))return -1; p=c->io.context;
- c->io.write16(p,INTRTXE,1); c->io.write16(p,INTRRXE,2); c->io.write8(p,INTRUSBE,USB_EVENTS);
- m=c->read32(p,L1_MASK); c->write32(p,L1_MASK,m|L1_USB); return 0;
+ /* Mask our L1 sources before clearing stale enabled endpoint events. The
+  * board Linux MUSB disable path masks endpoints, then acknowledges W1C. */
+ m=c->read32(p,L1_MASK);c->write32(p,L1_MASK,m&~L1_USB);
+ c->io.write16(p,INTRTXE,0);c->io.write16(p,INTRRXE,0);c->io.write8(p,INTRUSBE,0);
+ if((c->read32(p,L1_MASK)&L1_USB) || c->io.read16(p,INTRTXE) ||
+    c->io.read16(p,INTRRXE) || c->io.read8(p,INTRUSBE))return -1;
+ c->io.write16(p,INTRTX,1);c->io.write16(p,INTRRX,2);c->io.write8(p,INTRUSB,USB_EVENTS);
+ c->io.write16(p,INTRTXE,1);c->io.write16(p,INTRRXE,2);c->io.write8(p,INTRUSBE,USB_EVENTS);
+ c->write32(p,L1_MASK,m|L1_USB);
+ if((c->io.read16(p,INTRTXE)!=1) || (c->io.read16(p,INTRRXE)!=2) ||
+    c->io.read8(p,INTRUSBE)!=USB_EVENTS || (c->read32(p,L1_MASK)&L1_USB)!=L1_USB) {
+    Mt8167UsbInterruptDisable(c);return -1;
+ }
+ return 0;
 }
 void Mt8167UsbInterruptDisable(const MT8167_USB20_CONTROLLER *c)
 {
  void *p; unsigned m; if(!valid(c))return; p=c->io.context;
  m=c->read32(p,L1_MASK); c->write32(p,L1_MASK,m&~L1_USB);
  c->io.write16(p,INTRTXE,0); c->io.write16(p,INTRRXE,0); c->io.write8(p,INTRUSBE,0);
+ c->io.write16(p,INTRTX,1);c->io.write16(p,INTRRX,2);c->io.write8(p,INTRUSB,USB_EVENTS);
 }
 int Mt8167UsbInterruptCapture(const MT8167_USB20_CONTROLLER *c,MT8167_USB20_EVENTS *e)
 {

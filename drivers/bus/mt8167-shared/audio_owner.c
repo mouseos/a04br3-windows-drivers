@@ -12,6 +12,12 @@ int a04_audio_owner_acquire(struct a04_audio_owner *o, uint32_t rate)
     if (o->codec_acquire_muted(o->context)) { o->poisoned=1; return -1; }
     o->leased=1;return 0;
 }
+int a04_audio_owner_unmute(struct a04_audio_owner *o)
+{
+    if(!o || !o->online || !o->leased || o->poisoned || !o->codec_unmute)return -1;
+    if(o->codec_unmute(o->context)){o->poisoned=1;return -1;}
+    return 0;
+}
 int a04_audio_owner_mute(struct a04_audio_owner *o)
 {
     if(!o || !o->online || !o->leased || o->poisoned || !o->codec_mute)return -1;

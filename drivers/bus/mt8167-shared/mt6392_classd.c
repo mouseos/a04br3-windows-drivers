@@ -46,6 +46,19 @@ int a04_mt6392_classd_start_muted(struct a04_mt6392_classd *c)
     if(c->read16(c->context,SPK9,&gain) || (gain&0x0f00)) return fail(c);
     c->active=1;return 0;
 }
+/* Linux MT6392 gain code 1 is +0 dB, the lowest non-mute code. No larger
+ * gain or board route is inferred. The diagnostic callback must independently
+ * establish the output route and power before any write. */
+int a04_mt6392_classd_unmute_min(struct a04_mt6392_classd *c)
+{
+    uint16_t gain;
+    if(!c || !c->active || c->poisoned || !c->verify_unmute ||
+       !c->supports || !c->update_bits || !c->read16 ||
+       c->verify_unmute(c->context) || c->supports(c->context,SPK9,0x0f00,0x0100))return -1;
+    if(upd(c,SPK9,0x0f00,0x0100) || c->read16(c->context,SPK9,&gain) ||
+       (gain&0x0f00)!=0x0100)return fail(c);
+    return 0;
+}
 /* Mute may be required while DMA drain is still unknown. This operation
  * never disables the amplifier, a rail, or either clock lease. */
 int a04_mt6392_classd_mute(struct a04_mt6392_classd *c)
