@@ -105,3 +105,10 @@ Storport が保持する StartIoLock の下で唯一の元 SRB ポインタを�
 mapping を保持できること、最終 callback と worker の内部待ちによるデッドロックが
 ないこと、また reset の非同期処理がデバイスを復旧できることは証明していない。
 起動拒否と既定 OFF を維持し、実機投入しない。
+
+所有 DMA 試作の shadow SRB、データ、sense は Storport の extension から分離し、
+共通バッファと同じドライバ所有オブジェクトに格納する。queue の context として
+所有オブジェクトを worker に渡し、shadow はその参照から取得する。従来の非所有
+構成は変更しない。ただし worker の制御状態、MMIO、元 SRB の調停、および Storport
+API は依然 extension に依存する。これは worker 全体の独立や PnP 後の安全な実行を
+保証しない。final callback の rundown と実電源所有は未解決で、起動ゲートを維持する。

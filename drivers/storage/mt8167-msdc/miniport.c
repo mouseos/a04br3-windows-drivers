@@ -77,6 +77,9 @@ struct a04_owned_dma {
     PHYSICAL_ADDRESS logical;
     ULONG length;
     EX_RUNDOWN_REF workers;
+    /* Worker shadow data has the same lifetime as the owned DMA allocation. */
+    SCSI_REQUEST_BLOCK request;
+    UCHAR data[4096],sense[256];
 };
 #endif
 struct a04_probe_extension {
@@ -98,8 +101,10 @@ struct a04_probe_extension {
     volatile LONG busyCount, gateBusyCount, workerInitFailCount, workerQueueFailCount;
 #endif
 #ifdef A04_ISOLATED_REQUEST_EXPERIMENT
+#ifndef A04_OWNED_DMA_EXPERIMENT
     SCSI_REQUEST_BLOCK isolatedRequest;
     UCHAR isolatedData[4096], isolatedSense[256];
+#endif
     PSCSI_REQUEST_BLOCK pendingRequest;
     volatile LONG cancelled;
 #endif
@@ -111,6 +116,17 @@ struct a04_probe_extension {
 #endif
 };
 
+#ifdef A04_ISOLATED_REQUEST_EXPERIMENT
+#ifdef A04_OWNED_DMA_EXPERIMENT
+#define A04_SHADOW_REQUEST(p) ((p)->owned_dma->request)
+#define A04_SHADOW_DATA(p) ((p)->owned_dma->data)
+#define A04_SHADOW_SENSE(p) ((p)->owned_dma->sense)
+#else
+#define A04_SHADOW_REQUEST(p) ((p)->isolatedRequest)
+#define A04_SHADOW_DATA(p) ((p)->isolatedData)
+#define A04_SHADOW_SENSE(p) ((p)->isolatedSense)
+#endif
+#endif
 #ifdef A04_OWNED_DMA_EXPERIMENT
 /* PASSIVE_LEVEL only. Caller must prove that no worker, DMA or MMIO can
  * use this object before freeing it; removal alone is not such proof. */
@@ -1207,14 +1223,21 @@ static VOID A04IsolatedWorker(PVOID extension, PVOID context, PVOID worker)
     ULONG i, count;
     BOOLEAN run;
 #ifdef A04_OWNED_DMA_EXPERIMENT
-    struct a04_owned_dma *owner=probe->owned_dma;
-#endif
+    struct a04_owned_dma *owner=(struct a04_owned_dma *)context;
+#define A04_WORKER_REQUEST (owner->request)
+#define A04_WORKER_DATA (owner->data)
+#define A04_WORKER_SENSE (owner->sense)
+#else
+#define A04_WORKER_REQUEST A04_SHADOW_REQUEST(probe)
+#define A04_WORKER_DATA A04_SHADOW_DATA(probe)
+#define A04_WORKER_SENSE A04_SHADOW_SENSE(probe)
     UNREFERENCED_PARAMETER(context);
+#endif
 #ifdef A04_ISOLATED_RESET_TEST
     {
         struct a04_block_request blocks;
-        if (probe->isolatedRequest.Function==SRB_FUNCTION_EXECUTE_SCSI &&
-            a04_decode_block_cdb(probe->isolatedRequest.Cdb,probe->isolatedRequest.CdbLength,
+        if (A04_WORKER_REQUEST.Function==SRB_FUNCTION_EXECUTE_SCSI &&
+            a04_decode_block_cdb(A04_WORKER_REQUEST.Cdb,A04_WORKER_REQUEST.CdbLength,
                                  probe->sectors,&blocks)==A04_CDB_OK &&
             !blocks.write && blocks.lba==(uint64_t)A04_SCRATCH_LBA+16u && blocks.block_count==8) {
             LARGE_INTEGER delay;
@@ -1227,7 +1250,7 @@ static VOID A04IsolatedWorker(PVOID extension, PVOID context, PVOID worker)
     StorPortAcquireSpinLock(extension,StartIoLock,NULL,&lock);
     run=probe->pendingRequest != NULL && !probe->cancelled;
     StorPortReleaseSpinLock(extension,&lock);
-    if (run) (void)A04RunIo(extension,&probe->isolatedRequest);
+    if (run) (void)A04RunIo(extension,&A04_WORKER_REQUEST);
     if (InterlockedCompareExchange(&probe->cancelled,0,0))
         A04Trace("A04WIN isolated cancelled worker drained\n");
     /* No worker context is needed after the transfer; release it before
@@ -1250,24 +1273,24 @@ static VOID A04IsolatedWorker(PVOID extension, PVOID context, PVOID worker)
         return;
     }
     if (original && InterlockedCompareExchange(&probe->cancelled,0,0)) {
-        probe->isolatedRequest.SrbStatus=SRB_STATUS_BUS_RESET;
-        probe->isolatedRequest.DataTransferLength=0;
+        A04_WORKER_REQUEST.SrbStatus=SRB_STATUS_BUS_RESET;
+        A04_WORKER_REQUEST.DataTransferLength=0;
     }
 #endif
     if (original) {
-        count=probe->isolatedRequest.DataTransferLength;
+        count=A04_WORKER_REQUEST.DataTransferLength;
         if (count>original->DataTransferLength) count=original->DataTransferLength;
-        if (count>sizeof(probe->isolatedData)) count=sizeof(probe->isolatedData);
-        if (original->DataBuffer && probe->isolatedRequest.DataBuffer)
-            for (i=0;i<count;++i) ((UCHAR *)original->DataBuffer)[i]=probe->isolatedData[i];
-        if (original->SenseInfoBuffer && (probe->isolatedRequest.SrbStatus & SRB_STATUS_AUTOSENSE_VALID)) {
+        if (count>sizeof(A04_WORKER_DATA)) count=sizeof(A04_WORKER_DATA);
+        if (original->DataBuffer && A04_WORKER_REQUEST.DataBuffer)
+            for (i=0;i<count;++i) ((UCHAR *)original->DataBuffer)[i]=A04_WORKER_DATA[i];
+        if (original->SenseInfoBuffer && (A04_WORKER_REQUEST.SrbStatus & SRB_STATUS_AUTOSENSE_VALID)) {
             count=original->SenseInfoBufferLength;
-            if (count>sizeof(probe->isolatedSense)) count=sizeof(probe->isolatedSense);
-            for (i=0;i<count;++i) ((UCHAR *)original->SenseInfoBuffer)[i]=probe->isolatedSense[i];
+            if (count>sizeof(A04_WORKER_SENSE)) count=sizeof(A04_WORKER_SENSE);
+            for (i=0;i<count;++i) ((UCHAR *)original->SenseInfoBuffer)[i]=A04_WORKER_SENSE[i];
         }
-        original->DataTransferLength=probe->isolatedRequest.DataTransferLength;
-        original->SrbStatus=probe->isolatedRequest.SrbStatus;
-        original->ScsiStatus=probe->isolatedRequest.ScsiStatus;
+        original->DataTransferLength=A04_WORKER_REQUEST.DataTransferLength;
+        original->SrbStatus=A04_WORKER_REQUEST.SrbStatus;
+        original->ScsiStatus=A04_WORKER_REQUEST.ScsiStatus;
         probe->pendingRequest=NULL;
     }
     /* The StartIo lock prevents the next request from reusing the shadow
@@ -1287,13 +1310,17 @@ static VOID A04IsolatedWorker(PVOID extension, PVOID context, PVOID worker)
 #endif
 }
 
+#undef A04_WORKER_REQUEST
+#undef A04_WORKER_DATA
+#undef A04_WORKER_SENSE
+
 static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 {
     struct a04_probe_extension *probe=(struct a04_probe_extension *)extension;
     STOR_LOCK_HANDLE lock;
     PVOID worker=NULL;
     ULONG status,i;
-    UCHAR *dst=(UCHAR *)&probe->isolatedRequest, *src=(UCHAR *)request;
+    UCHAR *dst, *src=(UCHAR *)request;
     StorPortAcquireSpinLock(extension,StartIoLock,NULL,&lock);
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
     /* PnP SRBs have a different layout. Close admission before observing the
@@ -1353,7 +1380,7 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         return TRUE;
     }
 #endif
-    if (request->DataTransferLength>sizeof(probe->isolatedData) ||
+    if (request->DataTransferLength>sizeof(A04_SHADOW_DATA(probe)) ||
         (request->DataTransferLength && !request->DataBuffer)) {
         request->SrbStatus=SRB_STATUS_INVALID_REQUEST;
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
@@ -1391,24 +1418,29 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 #endif
         return TRUE;
     }
-    for (i=0;i<sizeof(probe->isolatedRequest);++i) dst[i]=src[i];
+    dst=(UCHAR *)&A04_SHADOW_REQUEST(probe);
+    for (i=0;i<sizeof(A04_SHADOW_REQUEST(probe));++i) dst[i]=src[i];
 #ifdef A04_OWNED_DMA_EXPERIMENT
     /* No borrowed SRB extension, next request or original OS request may
      * survive reset completion. Data/sense are replaced with private arrays. */
-    probe->isolatedRequest.SrbExtension=NULL;
-    probe->isolatedRequest.OriginalRequest=NULL;
-    probe->isolatedRequest.NextSrb=NULL;
+    A04_SHADOW_REQUEST(probe).SrbExtension=NULL;
+    A04_SHADOW_REQUEST(probe).OriginalRequest=NULL;
+    A04_SHADOW_REQUEST(probe).NextSrb=NULL;
 #endif
     for (i=0;i<request->DataTransferLength;++i)
-        probe->isolatedData[i]=((UCHAR *)request->DataBuffer)[i];
-    for (i=0;i<sizeof(probe->isolatedSense);++i) probe->isolatedSense[i]=0;
-    probe->isolatedRequest.DataBuffer=request->DataBuffer ? probe->isolatedData : NULL;
-    probe->isolatedRequest.SenseInfoBuffer=request->SenseInfoBuffer ? probe->isolatedSense : NULL;
+        A04_SHADOW_DATA(probe)[i]=((UCHAR *)request->DataBuffer)[i];
+    for (i=0;i<sizeof(A04_SHADOW_SENSE(probe));++i) A04_SHADOW_SENSE(probe)[i]=0;
+    A04_SHADOW_REQUEST(probe).DataBuffer=request->DataBuffer ? A04_SHADOW_DATA(probe) : NULL;
+    A04_SHADOW_REQUEST(probe).SenseInfoBuffer=request->SenseInfoBuffer ? A04_SHADOW_SENSE(probe) : NULL;
 #if !A04_BOOT_MULTIBLOCK_EXPERIMENT && !A04_SCRATCH_MULTIBLOCK_EXPERIMENT
     InterlockedExchange(&probe->cancelled,0);
 #endif
     probe->pendingRequest=request;
+#ifdef A04_OWNED_DMA_EXPERIMENT
+    status=StorPortQueueWorkItem(extension,A04IsolatedWorker,worker,probe->owned_dma);
+#else
     status=StorPortQueueWorkItem(extension,A04IsolatedWorker,worker,NULL);
+#endif
     if (status != STOR_STATUS_SUCCESS) {
         probe->pendingRequest=NULL;
         (void)StorPortFreeWorker(extension,worker);
