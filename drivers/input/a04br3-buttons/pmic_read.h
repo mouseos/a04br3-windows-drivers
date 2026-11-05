@@ -18,4 +18,8 @@ struct a04_emmc_rails_raw { uint16_t vemc_enable, vemc_selector, vio18_enable; }
  * unchanged on failure; values are register observations, not voltage proof. */
 int a04_pmic_emmc_rails(struct a04_pmic_read *bus, struct a04_emmc_rails_raw *out);
 int a04_pmic_chrstatus(struct a04_pmic_read *bus, uint16_t *value);
+/* Fixed MT6392 VUSB rail, no arbitrary PMIC write; caller holds the same
+ * owner lock used by every PWRAP transaction. A failed write poisons bus. */
+int a04_pmic_vusb_get(struct a04_pmic_read *, uint16_t *);
+int a04_pmic_vusb_set(struct a04_pmic_read *, int);
 #endif

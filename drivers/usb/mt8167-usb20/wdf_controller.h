@@ -12,4 +12,6 @@ void A04UsbWdfRelease(A04_USB_WDF *);
 NTSTATUS A04UsbWdfArm(A04_USB_WDF *);
 void A04UsbWdfDisarm(A04_USB_WDF *);
 const MT8167_USB20_CONTROLLER *A04UsbWdfController(A04_USB_WDF *);
+unsigned char A04UsbWdfPhyRead(A04_USB_WDF *,unsigned);
+void A04UsbWdfPhyWrite(A04_USB_WDF *,unsigned,unsigned char);
 #endif

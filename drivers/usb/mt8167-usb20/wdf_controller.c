@@ -84,6 +84,10 @@ static BOOLEAN DisarmSynchronized(WDFINTERRUPT irq,WDFCONTEXT context)
  if(InterlockedExchange(&c->armed,0))Mt8167UsbInterruptDisable(&c->controller);
  return TRUE;
 }
+unsigned char A04UsbWdfPhyRead(A04_USB_WDF*c,unsigned off)
+{ return READ_REGISTER_UCHAR(c->phy+0x800u+off); }
+void A04UsbWdfPhyWrite(A04_USB_WDF*c,unsigned off,unsigned char value)
+{ WRITE_REGISTER_UCHAR(c->phy+0x800u+off,value); }
 NTSTATUS A04UsbWdfArm(A04_USB_WDF*c)
 {
  if(!c || !c->mac || !c->phy || InterlockedCompareExchange(&c->armed,0,0))return STATUS_INVALID_DEVICE_STATE;

@@ -11,10 +11,12 @@
 #include "register_owner.h"
 #include "client_interface.h"
 #include "audio_interface.h"
+#include "usb_interface.h"
+#include "usb_owner.h"
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
-typedef struct { PVOID topck,infra,gpio,pwrap; FAST_MUTEX pwrapLock; struct a04_pwrap_owner pmic; struct a04_register_owner regs; } A04_PARENT_CONTEXT;
+typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; FAST_MUTEX pwrapLock; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_usb_owner usb; } A04_PARENT_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_PARENT_CONTEXT,ParentContext)
 EVT_WDF_DRIVER_DEVICE_ADD ParentAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE ParentPrepare;
@@ -95,18 +97,54 @@ static NTSTATUS ParentReadButtons(PVOID context,USHORT *value) {
     return a04_pwrap_owner_read_buttons(&c->pmic,value)==0 ? STATUS_SUCCESS:STATUS_DEVICE_NOT_READY;
 }
 #endif
-static void ParentStop(A04_PARENT_CONTEXT *c)
+static int ParentUsbLock(void *p) { return ParentLock(&((A04_PARENT_CONTEXT *)p)->pwrapLock); }
+static void ParentUsbUnlock(void *p) { ParentUnlock(&((A04_PARENT_CONTEXT *)p)->pwrapLock); }
+static unsigned ParentUsbTopRead(void *p,unsigned off) { A04_PARENT_CONTEXT*c=p; return READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->topck+off)); }
+static void ParentUsbTopWrite(void *p,unsigned off,unsigned v) { A04_PARENT_CONTEXT*c=p; WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->topck+off),v); }
+static unsigned ParentUsbGpioRead(void *p,unsigned off) { A04_PARENT_CONTEXT*c=p; return READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->gpio+off)); }
+static void ParentUsbGpioWrite(void *p,unsigned off,unsigned v) { A04_PARENT_CONTEXT*c=p; WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->gpio+off),v); }
+static int ParentUsbOvercurrent(void *p) {
+ A04_PARENT_CONTEXT*c=p; unsigned mode,dir,input;
+ if(!c->gpio)return -1;
+ mode=ParentUsbGpioRead(c,0x340);dir=ParentUsbGpioRead(c,0x10);input=ParentUsbGpioRead(c,0x210);
+ /* GPIO21: Linux overcurrent IRQ starts active low. Require input and GPIO. */
+ return !(mode & (7u<<3)) && !(dir & (1u<<5)) && (input & (1u<<5)) ? 0 : -1;
+}
+static int ParentUsbVerify(void *p) {
+ A04_PARENT_CONTEXT*c=p; ULONG sel,con,pwr,rate;
+ if(!c->topck || !c->apmixed)return -1;
+ sel=ParentUsbTopRead(c,4); con=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x140));
+ pwr=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x150));
+ rate=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x144));
+ /* USB78 mux = UNIVPLL/16, PLL enabled, powered and not isolated. */
+ return ((sel>>20)&7)==2 && (con&0x30000001u)==0x30000001u && ((pwr&3)==1) && (rate&0x7fu)==48 && ((rate>>24)&7u)==0 && rate==READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x144)) ? 0 : -1;
+}
+#if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
+static int ParentUsbAcquire(PVOID p) { return a04_usb_owner_acquire(&ParentContext((WDFDEVICE)p)->usb); }
+static int ParentUsbVbus(PVOID p,int on) { return a04_usb_owner_vbus(&ParentContext((WDFDEVICE)p)->usb,on); }
+static int ParentUsbHealth(PVOID p) { return a04_usb_owner_health(&ParentContext((WDFDEVICE)p)->usb); }
+static int ParentUsbRelease(PVOID p) { return a04_usb_owner_release(&ParentContext((WDFDEVICE)p)->usb); }
+#endif
+static void ParentStop(A04_PARENT_CONTEXT *c,int can_access)
 {
     /* Both owners share this mutex. Close admission in one critical section
      * before any mapping is released; neither client can enter in between. */
     ExAcquireFastMutex(&c->pwrapLock);
     c->regs.online=0;
     c->pmic.online=0;
+    c->usb.online=0;
+    /* Surprise removal may already make MMIO unsafe. On ordered D0 exit,
+     * remove VBUS while mappings remain valid; revoke the lease in either case. */
+    if(c->usb.leased) {
+        if(can_access && c->gpio)(void)A04Gpio22Vbus(&c->usb.gpio,0);
+        c->usb.leased=0;c->usb.poisoned=1;
+    }
     ExReleaseFastMutex(&c->pwrapLock);
 }
 static void ParentUnmap(A04_PARENT_CONTEXT *c)
 {
-    ParentStop(c);
+    ParentStop(c,1);
+    if(c->apmixed){MmUnmapIoSpace(c->apmixed,0x1000);c->apmixed=NULL;}
     if(c->pwrap){MmUnmapIoSpace(c->pwrap,0x1000);c->pwrap=NULL;}
     if(c->gpio){MmUnmapIoSpace(c->gpio,0x1000);c->gpio=NULL;}
     if(c->infra){MmUnmapIoSpace(c->infra,0x1000);c->infra=NULL;}
@@ -114,7 +152,7 @@ static void ParentUnmap(A04_PARENT_CONTEXT *c)
 }
 NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
-    A04_PARENT_CONTEXT *c=ParentContext(dev);struct a04_parent_resource r[4];
+    A04_PARENT_CONTEXT *c=ParentContext(dev);struct a04_parent_resource r[5];
     struct a04_parent_mapping mapping;ULONG i,n=0;PHYSICAL_ADDRESS pa;
     UNREFERENCED_PARAMETER(raw);
     if(c->topck||c->infra||c->gpio||c->pwrap)return STATUS_INVALID_DEVICE_STATE;
@@ -122,7 +160,7 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
         PCM_PARTIAL_RESOURCE_DESCRIPTOR d=WdfCmResourceListGetDescriptor(translated,i);
         if(!d)return STATUS_DEVICE_CONFIGURATION_ERROR;
         if(d->Type!=CmResourceTypeMemory)continue;
-        if(n>=4)return STATUS_DEVICE_CONFIGURATION_ERROR;
+        if(n>=5)return STATUS_DEVICE_CONFIGURATION_ERROR;
         r[n].base=(uint64_t)d->u.Memory.Start.QuadPart;r[n].length=d->u.Memory.Length;
         r[n].exclusive=d->ShareDisposition==CmResourceShareDeviceExclusive ? 1u:0u;++n;
     }
@@ -135,6 +173,7 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
     if(!c->gpio)goto fail;
     pa.QuadPart=(LONGLONG)mapping.pwrap;c->pwrap=MmMapIoSpace(pa,0x1000,MmNonCached);
     if(!c->pwrap)goto fail;
+    if(mapping.apmixed){pa.QuadPart=(LONGLONG)mapping.apmixed;c->apmixed=MmMapIoSpace(pa,0x1000,MmNonCached);if(!c->apmixed)goto fail;}
     /* Ownership remains offline: D0 never starts it. */
     return STATUS_SUCCESS;
 fail:
@@ -150,11 +189,11 @@ VOID ParentSurprise(WDFDEVICE dev)
 {
     /* Offline admission only: this cannot prevent a bus abort from removal
      * concurrent with an already executing hardware access. */
-    ParentStop(ParentContext(dev));
+    ParentStop(ParentContext(dev),0);
 }
 NTSTATUS ParentD0Exit(WDFDEVICE dev,WDF_POWER_DEVICE_STATE target)
 {
-    UNREFERENCED_PARAMETER(target);ParentStop(ParentContext(dev));return STATUS_SUCCESS;
+    UNREFERENCED_PARAMETER(target);ParentStop(ParentContext(dev),1);return STATUS_SUCCESS;
 }
 NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
 {
@@ -174,17 +213,31 @@ NTSTATUS ChildRequirements(WDFDEVICE child,WDFIORESREQLIST requirements)
 {
     A04_CHILD_CONTEXT *c=ChildContext(child); WDFIORESLIST list;
     IO_RESOURCE_DESCRIPTOR descriptor; NTSTATUS status;
-    if(c->base!=0x10002000u && c->base!=0x11009000u)return STATUS_DEVICE_CONFIGURATION_ERROR;
+    if(c->base!=0x10002000u && c->base!=0x11009000u && c->base!=0x11100000u)return STATUS_DEVICE_CONFIGURATION_ERROR;
     status=WdfIoResourceListCreate(requirements,WDF_NO_OBJECT_ATTRIBUTES,&list);
     if(!NT_SUCCESS(status))return status;
     RtlZeroMemory(&descriptor,sizeof(descriptor));
     descriptor.Type=CmResourceTypeMemory; descriptor.ShareDisposition=CmResourceShareDeviceExclusive;
     descriptor.Flags=CM_RESOURCE_MEMORY_READ_WRITE;
-    descriptor.u.Memory.Length=0x1000; descriptor.u.Memory.Alignment=1;
+    descriptor.u.Memory.Length=c->base==0x11100000u?0x10000:0x1000; descriptor.u.Memory.Alignment=1;
     descriptor.u.Memory.MinimumAddress.QuadPart=c->base;
-    descriptor.u.Memory.MaximumAddress.QuadPart=(LONGLONG)c->base+0xfff;
+    descriptor.u.Memory.MaximumAddress.QuadPart=(LONGLONG)c->base+descriptor.u.Memory.Length-1;
     status=WdfIoResourceListAppendDescriptor(list,&descriptor);
     if(!NT_SUCCESS(status)){WdfObjectDelete(list);return status;}
+    if(c->base==0x11100000u) {
+        /* USB20 PHY plus GIC SPI72 -> GSIV104. This synthetic requirements
+         * fixture still needs target PnP polarity/routing validation. */
+        descriptor.u.Memory.MinimumAddress.QuadPart=0x11110000u;
+        descriptor.u.Memory.MaximumAddress.QuadPart=0x1111ffffu;
+        status=WdfIoResourceListAppendDescriptor(list,&descriptor);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(list);return status;}
+        RtlZeroMemory(&descriptor,sizeof(descriptor));descriptor.Type=CmResourceTypeInterrupt;
+        descriptor.ShareDisposition=CmResourceShareDeviceExclusive;
+        descriptor.Flags=CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+        descriptor.u.Interrupt.MinimumVector=104;descriptor.u.Interrupt.MaximumVector=104;
+        status=WdfIoResourceListAppendDescriptor(list,&descriptor);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(list);return status;}
+    }
     status=WdfIoResourceRequirementsListAppendIoResList(requirements,list);
     if(!NT_SUCCESS(status))WdfObjectDelete(list);
     return status;
@@ -210,6 +263,10 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
     if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedUsbInterfaceGuid,NULL);
+    query.SendQueryToParentStack=TRUE;
+    status=WdfDeviceAddQueryInterface(child,&query);
+    if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedAudioInterfaceGuid,NULL);
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
@@ -228,7 +285,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
     A04_LEGACY_SHARED_INTERFACE iface;WDF_QUERY_INTERFACE_CONFIG query;
     A04_SHARED_INTERFACE inputIface;
-    A04_SHARED_AUDIO_INTERFACE audioIface;
+    A04_SHARED_AUDIO_INTERFACE audioIface; A04_SHARED_USB_INTERFACE usbIface;
 #endif
     UNREFERENCED_PARAMETER(driver);
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
@@ -247,6 +304,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
         c->pmic.bus.delay=ParentPwrapDelay;c->pmic.bus.attempts=1000;
         c->regs.context=c;c->regs.lock=ParentRegLock;c->regs.unlock=ParentRegUnlock;
         c->regs.read32=ParentRegRead;c->regs.write32=ParentRegWrite;
+        c->usb.context=c;c->usb.lock=ParentUsbLock;c->usb.unlock=ParentUsbUnlock;
+        c->usb.verify_upstream=ParentUsbVerify;c->usb.verify_overcurrent=ParentUsbOvercurrent;c->usb.top_read=ParentUsbTopRead;c->usb.top_write=ParentUsbTopWrite;
+        c->usb.pmic=&c->pmic.bus;c->usb.gpio.context=c;c->usb.gpio.read32=ParentUsbGpioRead;c->usb.gpio.write32=ParentUsbGpioWrite;
     }
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
     RtlZeroMemory(&iface,sizeof(iface));iface.Header.Size=sizeof(iface);iface.Header.Version=1;
@@ -271,12 +331,20 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     audioIface.AcquireMuted=ParentAudioAcquire;audioIface.ReleaseQuiescent=ParentAudioRelease;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&audioIface,&A04SharedAudioInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
+    if(!NT_SUCCESS(status))return status;
+    RtlZeroMemory(&usbIface,sizeof(usbIface));usbIface.Header.Size=sizeof(usbIface);usbIface.Header.Version=A04_SHARED_USB_INTERFACE_VERSION;
+    usbIface.Header.Context=dev;usbIface.Header.InterfaceReference=ParentInterfaceReference;usbIface.Header.InterfaceDereference=ParentInterfaceDereference;
+    usbIface.Acquire=ParentUsbAcquire;usbIface.SetVbus=ParentUsbVbus;usbIface.Health=ParentUsbHealth;usbIface.Release=ParentUsbRelease;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&usbIface,&A04SharedUsbInterfaceGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);
 #endif
 #if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE
     if(!NT_SUCCESS(status))return status;
     status=ParentAddProbeChild(dev,L"A04BR3\\SharedButtonsProbe",L"0",0x10002000u);
     if(!NT_SUCCESS(status))return status;
     status=ParentAddProbeChild(dev,L"A04BR3\\SharedTouchProbe",L"0",0x11009000u);
+    if(!NT_SUCCESS(status))return status;
+    status=ParentAddProbeChild(dev,L"A04BR3\\MT8167USB20",L"0",0x11100000u);
     if(!NT_SUCCESS(status))return status;
     /* No guessed AFE resources: ChildRequirements rejects base zero. */
     status=ParentAddProbeChild(dev,L"A04BR3\\SharedAudioProbe",L"0",0);

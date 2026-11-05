@@ -52,3 +52,13 @@ such provider or ACPI wiring exists here, and nothing calls Activate. The
 BQ24160/I2C2 and MT6392/clock lifetimes remain unresolved. Consequently IRQ
 arming, GPIO control and enumeration cannot be exercised by this package,
 regardless of successful compilation. Do not install or use on hardware.
+
+The later shared-parent prototype supplies a USB ownership interface and a
+boot-keyboard INF, and connects the child D0 callback to that interface.
+It checks the Linux-derived MT8167 clock configuration, GPIO overcurrent and
+MT6392 VUSB before attempting VBUS. The parent D0 entry still deliberately
+rejects startup: existing direct owners have not been migrated, interrupt
+polarity and the GPIO/rail ownership are unverified, and BQ24160 coordination
+is incomplete. Portable owner and resource tests pass; this change has not
+been built with the WDK or tested on the target. It is not an installable
+or working USB host driver.
