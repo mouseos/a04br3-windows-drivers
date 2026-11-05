@@ -17,7 +17,7 @@ NTSTATUS a04_vendor_irq_bind(struct a04_vendor_irq *irq,volatile UCHAR *core,ULO
 NTSTATUS a04_vendor_irq_unbind(struct a04_vendor_irq *irq);
 /* The owner enables access only while core MMIO is mapped and GPU is powered.
  * Set FALSE while holding the lifecycle lock before disabling the interrupt;
- * flush work only after the framework has disconnected the ISR and DPC. */
+ * call flush at PASSIVE_LEVEL only after the framework disconnects the ISR. */
 void a04_vendor_irq_set_power(struct a04_vendor_irq *irq,BOOLEAN powered);
 void a04_vendor_irq_kick(struct a04_vendor_irq *irq);
 void a04_vendor_irq_flush(struct a04_vendor_irq *irq);

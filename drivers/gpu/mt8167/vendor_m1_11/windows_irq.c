@@ -91,4 +91,12 @@ void a04_vendor_irq_set_power(struct a04_vendor_irq *q,BOOLEAN powered)
 void a04_vendor_irq_kick(struct a04_vendor_irq *q)
 { if(q && q->work) WdfWorkItemEnqueue(q->work); }
 void a04_vendor_irq_flush(struct a04_vendor_irq *q)
-{ if(q && q->work) WdfWorkItemFlush(q->work); }
+{
+    if(q && q->work) {
+        /* After ISR disconnect no new DPC can be scheduled. Drain DPCs before
+         * flushing their work items, otherwise a late DPC can requeue work
+         * after the work-item flush returns. This is a teardown-only path. */
+        KeFlushQueuedDpcs();
+        WdfWorkItemFlush(q->work);
+    }
+}
