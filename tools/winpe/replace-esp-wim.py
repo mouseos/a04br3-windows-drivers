@@ -14,8 +14,19 @@ def digest_stream(stream):
         digest.update(chunk)
     return digest.hexdigest()
 
+def fat_path(fat, name):
+    # Short 8.3 FAT entries may be exposed in upper case by PyFatFS.
+    # Resolve each component without assuming a host-side case convention.
+    current = '/'
+    for part in (p for p in name.split('/') if p):
+        matches = [entry for entry in fat.listdir(current) if entry.casefold() == part.casefold()]
+        if len(matches) != 1:
+            raise SystemExit(f'Missing or ambiguous FAT path: {name}')
+        current = current.rstrip('/') + '/' + matches[0]
+    return current
+
 def fat_digest(fat, name):
-    with fat.openbin(name, 'r') as stream:
+    with fat.openbin(fat_path(fat, name), 'r') as stream:
         return digest_stream(stream)
 
 parser = argparse.ArgumentParser()
@@ -42,8 +53,9 @@ args.output.parent.mkdir(parents=True, exist_ok=True)
 with args.template.open('rb') as source, args.output.open('xb') as target:
     shutil.copyfileobj(source, target, 1024 * 1024)
 with PyFatFS(str(args.output), preserve_case=True) as fat:
-    fat.remove('/sources/boot.wim')
-    with args.wim.open('rb') as source, fat.openbin('/sources/boot.wim', 'w') as target:
+    wim_path = fat_path(fat, '/sources/boot.wim')
+    fat.remove(wim_path)
+    with args.wim.open('rb') as source, fat.openbin(wim_path, 'w') as target:
         shutil.copyfileobj(source, target, 1024 * 1024)
     if fat_digest(fat, '/sources/boot.wim') != new_wim or \
        fat_digest(fat, '/EFI/Microsoft/Boot/BCD') != args.template_bcd_sha256:
