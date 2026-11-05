@@ -167,20 +167,24 @@ static uint64_t charger_now(void *context)
 #if A04_BROKER_OWNER_EXPERIMENTAL && A04_LC709203F_TRACE
 /* Report only cached data already acquired by the owner. In particular this
  * does not touch BQ after RESET, which would start its watchdog again. */
-static void trace_owner(GAUGE_CONTEXT *c,const char *phase)
+static void trace_owner_values(GAUGE_CONTEXT *c,const char *phase,
+                               const struct a04_bq_owner *owner,ULONG life,ULONG fault)
 {
     unsigned i;
-    const struct a04_bq_snapshot *snapshot=&c->charger.latest;
+    const struct a04_bq_snapshot *snapshot=&owner->latest;
     trace(c,"A04BAT OWNER phase=");trace(c,phase);
-    trace(c," life=");trace_hex(c,(ULONG)c->owner_lifecycle.state);
+    trace(c," life=");trace_hex(c,life);
     trace(c," valid=");trace_hex(c,(ULONG)snapshot->valid);
     trace(c," regs=");
     for (i=0;i<8;++i) trace_hex(c,(ULONG)snapshot->raw[i]);
-    trace(c," faults=");trace_hex(c,(ULONG)c->charger.fault_history);
-    trace(c," kicks=");trace_hex(c,(ULONG)c->charger.kicks);
-    trace(c," io_fault=");trace_hex(c,(ULONG)c->adapter.fault_reason);
-    trace(c," stopped=");trace_hex(c,(ULONG)c->charger.stopped);trace(c,"\n");
+    trace(c," faults=");trace_hex(c,(ULONG)owner->fault_history);
+    trace(c," kicks=");trace_hex(c,(ULONG)owner->kicks);
+    trace(c," io_fault=");trace_hex(c,fault);
+    trace(c," stopped=");trace_hex(c,(ULONG)owner->stopped);trace(c,"\n");
 }
+static void trace_owner(GAUGE_CONTEXT *c,const char *phase)
+{ trace_owner_values(c,phase,&c->charger,(ULONG)c->owner_lifecycle.state,(ULONG)c->adapter.fault_reason); }
+
 #else
 #define trace_owner(c, phase) ((void)0)
 #endif
@@ -546,6 +550,18 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
 #endif
         return STATUS_DEVICE_HARDWARE_ERROR;
     }
+#if A04_BQ_COLD_DIAGNOSTIC && A04_LC709203F_TRACE
+    {
+        struct a04_bq_owner copy;
+        ULONG life, fault;
+        /* Copy under the I2C lock, but print outside it: slow UART must not
+         * block the watchdog worker. No additional charger transaction. */
+        WdfWaitLockAcquire(c->bus_lock,NULL);
+        copy=c->charger;life=(ULONG)c->owner_lifecycle.state;fault=(ULONG)c->adapter.fault_reason;
+        WdfWaitLockRelease(c->bus_lock);
+        trace_owner_values(c,"INITIAL_CACHED",&copy,life,fault);
+    }
+#endif
 #if !A04_BQ24160_EXPERIMENTAL || A04_BROKER_CLIENT_EXPERIMENTAL
     WdfTimerStart(c->timer, WDF_REL_TIMEOUT_IN_MS(30000));
 #endif
