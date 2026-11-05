@@ -7,7 +7,7 @@ SRC := drivers/storage/mt8167-msdc
 
 test: build/gpu_mmu_multileaf_test test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registration test-mt8167-wavert-miniport test-mt8167-audio-resource
 test: test-mma8652 build/msdc_resume_check_test build/msdc_resume_capture_test
-test: build/bq24160_owner_broker_test
+test: build/bq24160_owner_broker_test build/bq24160_recovery_test
 test: build/bq24160_client_transfer_test
 test: test-mt8167-pnp-backend test-mt8167-audio-adapter-pnp test-mt8167-common-dma test-mt8167-dma-adapter test-mt8167-clock-owner test-mt8167-stream-transport
 test: build/gpu_render_shared_size_test test-toprgu-handoff build/gpu_render_context_pds_test
@@ -55,6 +55,7 @@ test: build/msdc_shared_drain_test build/msdc_touch_shared_test build/msdc_pin_u
 	python3 tests/test_bqhr_acpi_host.py
 	./build/bq24160_handoff_test
 	./build/bq24160_owner_broker_test
+	./build/bq24160_recovery_test
 	./build/bq24160_client_transfer_test
 	python3 tests/test_bq_broker_wdf.py
 	python3 tests/test_bq_broker_queue.py
@@ -134,6 +135,10 @@ build/bq24160_client_transfer_test: drivers/power/bq24160/broker_client.c driver
 build/bq24160_handoff_test: drivers/power/bq24160/charger.c drivers/power/bq24160/charger.h tests/bq24160_handoff_test.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/power/bq24160 drivers/power/bq24160/charger.c tests/bq24160_handoff_test.c -o $@
+
+build/bq24160_recovery_test: drivers/power/bq24160/recovery.c drivers/power/bq24160/recovery.h tests/bq24160_recovery_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/power/bq24160 drivers/power/bq24160/recovery.c tests/bq24160_recovery_test.c -o $@
 
 build/bq24160_owner_broker_test: drivers/power/bq24160/owner_broker.c drivers/power/bq24160/owner_broker.h drivers/power/bq24160/broker_mailbox.c drivers/power/bq24160/broker_mailbox.h drivers/power/bq24160/broker_handoff.c drivers/power/bq24160/broker_handoff.h drivers/power/bq24160/broker_lifecycle.c drivers/power/bq24160/broker_lifecycle.h drivers/power/bq24160/owner_transfer.c drivers/power/bq24160/owner_transfer.h drivers/power/bq24160/broker_client.c drivers/power/bq24160/broker_client.h drivers/power/bq24160/broker_wire.c drivers/power/bq24160/broker_wire.h drivers/power/bq24160/charger.c drivers/power/lc709203f/gauge.c tests/bq24160_owner_broker_test.c
 	mkdir -p build

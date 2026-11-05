@@ -30,4 +30,12 @@ struct a04_bq_recovery_result {
  * it does not establish charging or guarantee that the hardware is safe. */
 int a04_bq_recover_batovp(const struct a04_bq_recovery_proof *,const struct a04_bq_recovery_io *,
                           uint64_t deadline,struct a04_bq_recovery_result *);
+/* Restore the board Linux profile only after successful recovery, under the
+ * same lock and ownership. USB code 0=100mA or 2=500mA must be verified by
+ * the caller; it is not inferred from the charger. Stage is last attempted
+ * write and does not imply that an errored write was rejected. */
+struct a04_bq_restore_result { unsigned stage; uint8_t readback[4]; };
+int a04_bq_restore_linux(const struct a04_bq_recovery_proof *,const struct a04_bq_recovery_io *,
+                         uint64_t deadline,unsigned usb_code,const struct a04_bq_recovery_result *,
+                         struct a04_bq_restore_result *);
 #endif
