@@ -358,7 +358,18 @@ source texture、sampler、９ DWORD shared data と secondary PDS data/code を
 CPU上に構築する未接続部品。REA の `FUN_0012d0bc`、`FUN_0012d28c`、
 `FUN_0013eeac`、`FUN_0013ca3c`、`FUN_0013c794` と XNU の
 `A04BR3RogueNative22State.h` を参照する。元の key8 検証例は source と
- destination が同一で、別領域を指定する copy taskの実行正当性は未確定。
+destination が同一で、別領域を指定する copy taskの実行正当性は未確定。
 仮想アドレスの範囲・重複検査は実際のGPU mappingや物理排他を証明しない。
 この部品はCCB投入せず、必要な152-byte USC、ISP/EOT、完全208-byte task、
 実機向けcopy診断も生成しない。未知のcommandやshaderを補完しない。
+REA は `libsrv_um.so` SHA-256
+`d32a4a224d06302d9bec0a66cbb7d17dec663d3985f1c8592f5bb77353ca1d4b` を対象に、
+`0x12d0bc` (ev_b30091037b1e40d3642c580c9936020cc26ab5e3ad971330788b41d81ef3862b)、
+`0x13eeac` (ev_27b7274b45e533b120b308994cebf283481ddb0941a8d1fbf7e2cf579724d394)、
+`0x13c794` (ev_99cb17f3a482728df8955d7ec0da7af543d2469ffa93bebb8cca2cab3addc688)
+を確認した。元USC `0x151ce4` の152バイトはSHA-256
+`5c68917faa051238b23674b64c6b137ef7ff75425dbde9dbc5e1e5a36e02c4a3`
+(ev_910dc555760f50405b2c4dd9760a8681757e5dfaf091954580c73f0292857078)と
+一致するが、命令の意味や異なる入出力を伴う完全taskの正当性は証明しない。
+ローカルXNUの同一source profileで36-byte shared、16-byte PDS data、16-byte
+PDS codeをそれぞれバイト比較し一致した。GPU実行・表示の検証ではない。
