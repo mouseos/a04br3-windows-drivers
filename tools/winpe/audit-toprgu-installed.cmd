@@ -18,8 +18,20 @@ mkdir X:\a04br3\toprgu-audit
 if errorlevel 1 goto failed
 copy /b C:\Windows\System32\config\SYSTEM X:\a04br3\toprgu-audit\SYSTEM >nul
 if errorlevel 1 goto failed
+X:\a04br3\compare-files.exe C:\Windows\System32\config\SYSTEM X:\a04br3\toprgu-audit\SYSTEM
+if errorlevel 1 goto failed
 copy /b C:\Windows\System32\config\SOFTWARE X:\a04br3\toprgu-audit\SOFTWARE >nul
 if errorlevel 1 goto failed
+X:\a04br3\compare-files.exe C:\Windows\System32\config\SOFTWARE X:\a04br3\toprgu-audit\SOFTWARE
+if errorlevel 1 goto failed
+rem Recovery logs belong next to the copied hive. Never load or replay C:.
+for %%H in (SYSTEM SOFTWARE) do for %%L in (LOG LOG1 LOG2) do if exist C:\Windows\System32\config\%%H.%%L (
+  copy /b C:\Windows\System32\config\%%H.%%L X:\a04br3\toprgu-audit\%%H.%%L >nul
+  if errorlevel 1 goto failed
+  X:\a04br3\compare-files.exe C:\Windows\System32\config\%%H.%%L X:\a04br3\toprgu-audit\%%H.%%L
+  if errorlevel 1 goto failed
+  echo TOPRGU_HIVE_LOG_COPIED=%%H.%%L
+)
 copy /b C:\Windows\System32\drivers\mt8167-toprgu.sys X:\a04br3\toprgu-audit\installed.sys >nul
 if errorlevel 1 goto failed
 X:\a04br3\compare-files.exe X:\a04br3\toprgu-audit\installed.sys X:\a04br3\toprgu-audit-candidate.sys
@@ -62,10 +74,10 @@ echo TOPRGU_AUDIT_HIVE_UNLOAD_FAILED
 exit /b 3
 :rejected
 echo TOPRGU_AUDIT_VOLUME_REJECTED
-exit /b 2
+exit /b 4
 :invalid
 echo TOPRGU_AUDIT_PRECONDITION_REJECTED
-exit /b 2
+exit /b 4
 :failed
 echo TOPRGU_AUDIT_FAILED
 exit /b 2

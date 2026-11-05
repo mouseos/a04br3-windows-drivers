@@ -10,8 +10,10 @@ function MakeTest([int]$storage, [int]$mount=0) {
  $s=$s.Replace('X:\a04br3',"$base").Replace('@TOKEN@',$token)
  $s=$s -replace '(?m)^wpeinit\r?$', 'cmd /c exit 0'
  $s=$s -replace '(?m)^drvload .*\r?$', "cmd /c exit $storage"
- $s=$s -replace '(?m)^mountvol C: /p (.*)$', ("cmd /c exit $mount " + '$1')
+ if($mount -eq 0) { $release="@echo off`r`necho MOUNTVOL_EXIT=0`r`necho TOPRGU_VOLUME_RELEASED`r`nexit /b 0`r`n" } else { $release="@echo off`r`necho MOUNTVOL_EXIT=$mount`r`nexit /b 3`r`n" }
+ [IO.File]::WriteAllText("$base\release.cmd",$release,[Text.Encoding]::ASCII)
  $s=$s -replace '(?m)^call .*\\audit-toprgu-installed\.cmd ', "call $base\audit.cmd "
+ $s=$s -replace '(?m)^call .*\\release-toprgu-audit-volume\.cmd ', "call $base\release.cmd "
  $s=$s -replace '(?m)^.*\\uart-cpu-report\.exe ', "call $base\report.cmd "
  return $s
 }
@@ -30,10 +32,16 @@ $out=& cmd.exe /c "$base\mountfail.cmd"
 $report=Get-Content "$base\toprgu-audit-result.txt" -Raw
 if(!($out -match "REPORT_TOKEN=$token") -or $report -notmatch 'MOUNTVOL_EXIT=5'){throw 'dismount failure not reported'}
 Remove-Item "$base\toprgu-audit-result.txt"
-[IO.File]::WriteAllText("$base\audit.cmd", "@echo off`r`necho TOPRGU_AUDIT_VOLUME_REJECTED`r`nexit /b 2`r`n",[Text.Encoding]::ASCII)
+[IO.File]::WriteAllText("$base\audit.cmd", "@echo off`r`necho TOPRGU_AUDIT_VOLUME_REJECTED`r`nexit /b 4`r`n",[Text.Encoding]::ASCII)
 [IO.File]::WriteAllText("$base\guardfail.cmd",(MakeTest 0),[Text.Encoding]::ASCII)
 $out=& cmd.exe /c "$base\guardfail.cmd"
 $report=Get-Content "$base\toprgu-audit-result.txt" -Raw
-if(!($out -match "REPORT_TOKEN=$token") -or $report -notmatch 'TOPRGU_AUDIT_VOLUME_REJECTED' -or $report -notmatch 'TOPRGU_AUDIT_EXIT=2' -or $report -match 'MOUNTVOL_EXIT='){throw 'guard rejection did not prevent dismount'}
+if(!($out -match "REPORT_TOKEN=$token") -or $report -notmatch 'TOPRGU_AUDIT_VOLUME_REJECTED' -or $report -notmatch 'TOPRGU_AUDIT_EXIT=4' -or $report -match 'MOUNTVOL_EXIT='){throw 'guard rejection did not prevent dismount'}
+Remove-Item "$base\toprgu-audit-result.txt"
+[IO.File]::WriteAllText("$base\audit.cmd", "@echo off`r`necho TOPRGU_AUDIT_FAILED`r`nexit /b 2`r`n",[Text.Encoding]::ASCII)
+[IO.File]::WriteAllText("$base\auditfail.cmd",(MakeTest 0),[Text.Encoding]::ASCII)
+$out=& cmd.exe /c "$base\auditfail.cmd"
+$report=Get-Content "$base\toprgu-audit-result.txt" -Raw
+if(!($out -match "REPORT_TOKEN=$token") -or $report -notmatch 'TOPRGU_AUDIT_EXIT=2' -or $report -notmatch 'MOUNTVOL_EXIT=0' -or $report -notmatch 'TOPRGU_RELEASE_EXIT=0'){throw 'guarded audit failure did not release'}
 Write-Output 'CPU_AUDIT_STARTNET_FIXTURE_OK'
 $global:LASTEXITCODE=0

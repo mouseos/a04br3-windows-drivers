@@ -2,7 +2,7 @@
 import importlib.util,zlib
 from pathlib import Path
 root=Path(__file__).resolve().parents[1];spec=importlib.util.spec_from_file_location('cpu',root/'tools/recovery/decode-cpu-audit-uart.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
-t='0123456789ABCDEF'; payload=b'TOPRGU_SYS_MATCH=NO\r\nTOPRGU_AUDIT_FINISHED_READ_ONLY\r\nTOPRGU_AUDIT_EXIT=0\r\nMOUNTVOL_EXIT=0\r\n'; c=zlib.crc32(payload)
+t='0123456789ABCDEF'; payload=b'TOPRGU_SYS_MATCH=NO\r\nTOPRGU_AUDIT_FINISHED_READ_ONLY\r\nTOPRGU_AUDIT_EXIT=0\r\nMOUNTVOL_EXIT=0\r\nTOPRGU_VOLUME_RELEASED\r\nTOPRGU_RELEASE_EXIT=0\r\n'; c=zlib.crc32(payload)
 head=f'A04CPU0 {t} {len(payload):08X} {c:08X}\n'.encode();end=f'A04CPUE {t} {c:08X}\n'.encode()
 parts=[]
 for i in range(0,len(payload),16):
@@ -33,4 +33,11 @@ with tempfile.TemporaryDirectory(prefix='cpu-audit-monitor-',dir=root/'build') a
  framed+=f'A04CPUE {t} {checksum:08X}\n'.encode();log.write_bytes(framed);out4=d/'mountfail'
  r=subprocess.run(['python3',str(monitor),str(log),'--offset','0','--token',t,'--output',str(out4),'--timeout','1'],capture_output=True)
  assert r.returncode==3 and out4.read_bytes()==failed and b'"volume_dismount_zero": false' in r.stdout
+ failed=payload.replace(b'TOPRGU_AUDIT_FINISHED_READ_ONLY',b'TOPRGU_AUDIT_FAILED').replace(b'TOPRGU_AUDIT_EXIT=0',b'TOPRGU_AUDIT_EXIT=2'); checksum=zlib.crc32(failed)
+ framed=f'A04CPU0 {t} {len(failed):08X} {checksum:08X}\n'.encode()
+ for i in range(0,len(failed),16):
+  chunk=failed[i:i+16];framed+=f'A04CPU1 {t} {i//16:04X} {len(chunk):02X} {chunk.hex().upper()} {zlib.crc32(chunk):08X}\n'.encode()
+ framed+=f'A04CPUE {t} {checksum:08X}\n'.encode();log.write_bytes(framed);out5=d/'auditfail-released'
+ r=subprocess.run(['python3',str(monitor),str(log),'--offset','0','--token',t,'--output',str(out5),'--timeout','1'],capture_output=True)
+ assert r.returncode==5 and out5.read_bytes()==failed and b'"volume_dismount_zero": true' in r.stdout
 print('CPU UART monitor: complete frame and timeout without reset verified')

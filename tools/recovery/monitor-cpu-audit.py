@@ -21,8 +21,10 @@ while True:
   finished=re.findall(rb'^TOPRGU_AUDIT_FINISHED_READ_ONLY\r?$',payload,re.M)
   exits=re.findall(rb'^TOPRGU_AUDIT_EXIT=([^\r\n]*)\r?$',payload,re.M)
   mounts=re.findall(rb'^MOUNTVOL_EXIT=([^\r\n]*)\r?$',payload,re.M)
+  releases=re.findall(rb'^TOPRGU_RELEASE_EXIT=([^\r\n]*)\r?$',payload,re.M)
+  released=re.findall(rb'^TOPRGU_VOLUME_RELEASED\r?$',payload,re.M)
   audit_ok=len(finished)==1 and exits==[b'0']
-  dismounted=mounts==[b'0']
-  print(json.dumps({'status':'complete-report','audit_exit_zero':audit_ok,'volume_dismount_zero':dismounted,'note':'No reset or restore was initiated.'}));raise SystemExit(0 if audit_ok and dismounted else 3)
+  dismounted=mounts==[b'0'] and releases==[b'0'] and len(released)==1
+  print(json.dumps({'status':'complete-report','audit_exit_zero':audit_ok,'volume_dismount_zero':dismounted,'note':'No reset or restore was initiated.'}));raise SystemExit(0 if audit_ok and dismounted else (5 if dismounted else 3))
  if time.monotonic()>=deadline:print(json.dumps({'status':'incomplete-timeout','note':'No reset or restore was initiated.'}));raise SystemExit(4)
  time.sleep(1)
