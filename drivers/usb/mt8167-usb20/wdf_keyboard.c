@@ -14,14 +14,15 @@ typedef struct {
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(KB_HID_CONTEXT,KbHidContext)
 EVT_WDF_DRIVER_DEVICE_ADD KbHidAdd;
 EVT_WDF_IO_QUEUE_IO_INTERNAL_DEVICE_CONTROL KbHidIoctl;
-static NTSTATUS CopyOutput(WDFREQUEST r,const void *p,size_t n)
+static NTSTATUS CopyOutput(WDFREQUEST request,const void *p,size_t n)
 {
- WDFMEMORY memory; size_t length; NTSTATUS status=WdfRequestRetrieveOutputMemory(r,&memory);
- if(!NT_SUCCESS(status))return status;
- (void)WdfMemoryGetBuffer(memory,&length); if(length<n)return STATUS_BUFFER_TOO_SMALL;
- status=WdfMemoryCopyFromBuffer(memory,0,(PVOID)p,n);
- if(NT_SUCCESS(status))WdfRequestSetInformation(r,n);
- return status;
+ PIRP irp=WdfRequestWdmGetIrp(request);
+ PIO_STACK_LOCATION stack=IoGetCurrentIrpStackLocation(irp);
+ if(!irp->UserBuffer || stack->Parameters.DeviceIoControl.OutputBufferLength<n)
+  return STATUS_BUFFER_TOO_SMALL;
+ /* HIDClass supplies a system-resident buffer for these internal IOCTLs. */
+ RtlCopyMemory(irp->UserBuffer,p,n); WdfRequestSetInformation(request,n);
+ return STATUS_SUCCESS;
 }
 static void Drain(WDFDEVICE dev)
 {
