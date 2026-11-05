@@ -665,3 +665,11 @@ test-gpu-wddm-staged-present: build/gpu_wddm_staged_present_test
 build/gpu_wddm_staged_present_test: tests/gpu_wddm_staged_present_test.cpp drivers/gpu/mt8167/wddm-display/ge8300_present.cxx drivers/gpu/mt8167/wddm-display/present_bounds.h
 	mkdir -p build
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -Wno-multichar $< -o $@
+
+.PHONY: test-gpu-vendor-native-copy-state
+test-gpu-vendor-native-copy-state: build/gpu_vendor_native_copy_state_test
+	./build/gpu_vendor_native_copy_state_test
+
+build/gpu_vendor_native_copy_state_test: tests/gpu_vendor_native_copy_state_test.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.h
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 tests/gpu_vendor_native_copy_state_test.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.c -o $@

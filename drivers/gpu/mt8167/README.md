@@ -352,3 +352,13 @@ cleanup開始・停止・異常時は再使用しない。PDS、GPU mappingとad
 FWIF手順の範囲であり、任意のsource-to-destination copy、Windows Present、
 scanout所有や停止時のDMA排出を実装・証明しない。画面サイズ版・反復版の
 実機結果は未取得。`_CCA` が制御するARM上の属性・可視性も未確認。
+
+m1.11 `native_copy_state.c` は、native22・32×32・pitch32・point samplingの
+source texture、sampler、９ DWORD shared data と secondary PDS data/code を
+CPU上に構築する未接続部品。REA の `FUN_0012d0bc`、`FUN_0012d28c`、
+`FUN_0013eeac`、`FUN_0013ca3c`、`FUN_0013c794` と XNU の
+`A04BR3RogueNative22State.h` を参照する。元の key8 検証例は source と
+ destination が同一で、別領域を指定する copy taskの実行正当性は未確定。
+仮想アドレスの範囲・重複検査は実際のGPU mappingや物理排他を証明しない。
+この部品はCCB投入せず、必要な152-byte USC、ISP/EOT、完全208-byte task、
+実機向けcopy診断も生成しない。未知のcommandやshaderを補完しない。
