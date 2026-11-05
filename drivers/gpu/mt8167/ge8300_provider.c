@@ -496,7 +496,7 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     ExFreePoolWithTag(image,'0XGA');
 #if A04_GE8300_VENDOR_RENDER_COLD
     if(NT_SUCCESS(status)) {
-        status=a04_vendor_render_prepare_cold(&c->vendor_render,&c->vendor,adapter);
+        status=a04_vendor_render_prepare_cold(&c->vendor_render,&c->vendor,adapter,FALSE);
         if(!NT_SUCCESS(status)) (void)a04_vendor_m1_11_windows_free(&c->vendor);
     }
 #endif

@@ -9,7 +9,7 @@
 #include "../gpu_mmu.h"
 #include "../windows_hw.h"
 #define TAG 0x43524741u
-static const ULONG sizes[5]={65536u,4096u,4096u,4096u,65536u};
+static const ULONG sizes[11]={65536u,4096u,4096u,4096u,65536u,4096u,4096u,65536u,4096u,4096u,65536u};
 NTSTATUS a04_vendor_render_release_cold(struct a04_vendor_render_cold *r)
 {
     unsigned i;
@@ -23,20 +23,20 @@ NTSTATUS a04_vendor_render_release_cold(struct a04_vendor_render_cold *r)
             return STATUS_INVALID_DEVICE_STATE;
         a04_gpu_dma_barrier();r->mapped=FALSE;
     }
-    for(i=0;i<5;i++)a04_vendor_uncached_free(&r->buffer[i]);
+    for(i=0;i<11;i++)a04_vendor_uncached_free(&r->buffer[i]);
     RtlZeroMemory(r,sizeof(*r));return STATUS_SUCCESS;
 }
 NTSTATUS a04_vendor_render_prepare_cold(struct a04_vendor_render_cold *r,
-    struct a04_vendor_m1_11_memory *f,PDMA_ADAPTER adapter)
+    struct a04_vendor_m1_11_memory *f,PDMA_ADAPTER adapter,BOOLEAN prepare_clear)
 {
-    void *shadow[6]={0};unsigned i,j;NTSTATUS status=STATUS_DEVICE_CONFIGURATION_ERROR;
+    void *shadow[12]={0};unsigned i,j,count=prepare_clear?11u:5u;NTSTATUS status=STATUS_DEVICE_CONFIGURATION_ERROR;
     struct a04_vendor_render_layout layout={0};
     if(!r || !f || !adapter || KeGetCurrentIrql()!=PASSIVE_LEVEL || r->firmware || r->mapped ||
        !f->staged || !f->uncached || f->hardware_owned || f->adapter!=adapter || !f->buffers[0].cpu)
         return STATUS_INVALID_PARAMETER;
-    for(i=0;i<5;i++)if(r->buffer[i].cpu || r->buffer[i].adapter)return STATUS_INVALID_PARAMETER;
+    for(i=0;i<11;i++)if(r->buffer[i].cpu || r->buffer[i].adapter)return STATUS_INVALID_PARAMETER;
     r->firmware=f;
-    for(i=0;i<5;i++) {
+    for(i=0;i<count;i++) {
         status=a04_vendor_uncached_allocate(&r->buffer[i],adapter,sizes[i]);
         if(!NT_SUCCESS(status))goto done;
         if(!a04_rgx_mips_physical_range((uint64_t)r->buffer[i].logical.QuadPart,sizes[i],4096) ||
@@ -55,30 +55,45 @@ NTSTATUS a04_vendor_render_prepare_cold(struct a04_vendor_render_cold *r,
         if(!shadow[i]){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
         RtlZeroMemory(shadow[i],sizes[i]);
     }
-    shadow[5]=ExAllocatePoolWithTag(NonPagedPoolNx,32768u,TAG);
-    if(!shadow[5]){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
-    if(a04_rgx_device_read_words(shadow[5],f->buffers[0].cpu,32768u) ||
+    shadow[11]=ExAllocatePoolWithTag(NonPagedPoolNx,32768u,TAG);
+    if(!shadow[11]){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
+    if(a04_rgx_device_read_words(shadow[11],f->buffers[0].cpu,32768u) ||
        a04_vendor_render_build(shadow[0],sizes[0],(uint64_t)r->buffer[0].logical.QuadPart,
           (uint64_t)r->buffer[1].logical.QuadPart,A04_VENDOR_RENDER_SCRATCH_VA,1,&layout) ||
        a04_gpu_mmu_map_4k(shadow[1],shadow[2],shadow[3],
           (uint64_t)r->buffer[2].logical.QuadPart,(uint64_t)r->buffer[3].logical.QuadPart,
           A04_VENDOR_RENDER_SCRATCH_VA,(uint64_t)r->buffer[4].logical.QuadPart,16,
           A04_GPU_MMU_SLC_BYPASS) ||
-       a04_vendor_render_map_cold(shadow[5],32768u,f->buffers[0].dma,
+       a04_vendor_render_map_cold(shadow[11],32768u,f->buffers[0].dma,
           shadow[0],(uint64_t)r->buffer[0].logical.QuadPart)) {
         status=STATUS_DEVICE_CONFIGURATION_ERROR;goto done;
     }
-    for(i=0;i<5;i++)if(a04_rgx_device_write_words(r->buffer[i].cpu,shadow[i],sizes[i])) {
+    if(prepare_clear) {
+        if(a04_vendor_clear_image_build(&r->clear,A04_VENDOR_RENDER_SCRATCH_VA) ||
+           a04_gpu_mmu_map_4k(shadow[1],shadow[5],shadow[6],
+               (uint64_t)r->buffer[5].logical.QuadPart,(uint64_t)r->buffer[6].logical.QuadPart,
+               UINT64_C(0xa800000000),(uint64_t)r->buffer[7].logical.QuadPart,16,A04_GPU_MMU_SLC_BYPASS) ||
+           a04_gpu_mmu_map_4k(shadow[1],shadow[8],shadow[9],
+               (uint64_t)r->buffer[8].logical.QuadPart,(uint64_t)r->buffer[9].logical.QuadPart,
+               UINT64_C(0xba00000000),(uint64_t)r->buffer[10].logical.QuadPart,16,
+               A04_GPU_MMU_SLC_BYPASS|A04_GPU_MMU_READ_ONLY)) {
+            status=STATUS_DEVICE_CONFIGURATION_ERROR;goto done;
+        }
+        RtlFillMemory(shadow[4],sizes[4],0xa5);
+        RtlCopyMemory(shadow[7],r->clear.pds,sizeof(r->clear.pds));
+        RtlCopyMemory(shadow[10],r->clear.usc,sizeof(r->clear.usc));
+    }
+    for(i=0;i<count;i++)if(a04_rgx_device_write_words(r->buffer[i].cpu,shadow[i],sizes[i])) {
         status=STATUS_DEVICE_CONFIGURATION_ERROR;goto done;
     }
     /* Publish all owned resources before making the MIPS mapping visible. */
     a04_gpu_dma_barrier();
-    if(a04_rgx_device_write_words(f->buffers[0].cpu,shadow[5],32768u)) {
+    if(a04_rgx_device_write_words(f->buffers[0].cpu,shadow[11],32768u)) {
         status=STATUS_DEVICE_CONFIGURATION_ERROR;goto done;
     }
-    a04_gpu_dma_barrier();r->mapped=TRUE;r->layout=layout;status=STATUS_SUCCESS;
+    a04_gpu_dma_barrier();r->mapped=TRUE;r->clear_ready=prepare_clear;r->layout=layout;status=STATUS_SUCCESS;
 done:
-    for(i=0;i<6;i++)if(shadow[i])ExFreePoolWithTag(shadow[i],TAG);
+    for(i=0;i<12;i++)if(shadow[i])ExFreePoolWithTag(shadow[i],TAG);
     if(!NT_SUCCESS(status))(void)a04_vendor_render_release_cold(r);
     return status;
 }
