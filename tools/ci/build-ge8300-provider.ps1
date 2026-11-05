@@ -41,11 +41,18 @@ New-Item -ItemType Directory -Force $package | Out-Null
 & lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib @objects (Join-Path $wdfLib 'wdfdriverentry.lib') (Join-Path $wdfLib 'wdfldr.lib') (Join-Path $kmLib 'ntoskrnl.lib') (Join-Path $kmLib 'hal.lib') (Join-Path $kmLib 'bufferoverflowfastfailk.lib') (Join-Path $kmLib 'libcntpr.lib') "/out:$package\mt8167-ge8300.sys"
 if ($LASTEXITCODE -ne 0) { throw 'ARM GE8300 provider link failed' }
 $firmware = Join-Path $package 'ge8300-mips.fw'
-if ($env:A04_GE8300_FIRMWARE) { Copy-Item $env:A04_GE8300_FIRMWARE $firmware -Force } else {
-    & curl.exe --fail --location --retry 3 --output $firmware 'https://gitlab.freedesktop.org/imagination/linux-firmware/-/raw/powervr/powervr/rogue_22.67.54.30_v1.fw'
-    if ($LASTEXITCODE -ne 0) { throw 'GE8300 firmware download failed' }
+if ($vendorStage -eq '1') {
+    if (-not $env:A04_GE8300_FIRMWARE) { throw 'Vendor staging requires an explicitly supplied MT8167 firmware' }
+    Copy-Item $env:A04_GE8300_FIRMWARE $firmware -Force
+    $expectedFirmware = '5C1FDFF55E8E57F8BE0C6C36B94F2167EA53ECE84308068BC79C6B9C37CD7FE1'
+} else {
+    if ($env:A04_GE8300_FIRMWARE) { Copy-Item $env:A04_GE8300_FIRMWARE $firmware -Force } else {
+        & curl.exe --fail --location --retry 3 --output $firmware 'https://gitlab.freedesktop.org/imagination/linux-firmware/-/raw/powervr/powervr/rogue_22.67.54.30_v1.fw'
+        if ($LASTEXITCODE -ne 0) { throw 'GE8300 firmware download failed' }
+    }
+    $expectedFirmware = 'CFE6F58DB2AD604B1729349629510C5A3434B266C99EA886D2959887BFF4FED8'
 }
-if ((Get-FileHash $firmware -Algorithm SHA256).Hash -ne 'CFE6F58DB2AD604B1729349629510C5A3434B266C99EA886D2959887BFF4FED8') { throw 'GE8300 firmware SHA-256 mismatch' }
+if ((Get-FileHash $firmware -Algorithm SHA256).Hash -ne $expectedFirmware) { throw 'GE8300 firmware SHA-256 mismatch' }
 Copy-Item (Join-Path $gpu 'mt8167-ge8300.inf') $package -Force
 & (Join-Path $kit 'bin\x86\Inf2Cat.exe') "/driver:$package" /os:6_3_ARM /uselocaltime
 if ($LASTEXITCODE -ne 0) { throw 'GE8300 provider catalog generation failed' }
