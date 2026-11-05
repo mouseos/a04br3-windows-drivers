@@ -100,6 +100,7 @@ int main(void){
  mockFsm=0;closeDuringLock=1;assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY && !testContext.pmic.online && testContext.admissionClosed);closeDuringLock=0;
  mockStopDuringRead=1;assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY && !testContext.pmic.online && testContext.admissionClosed);mockStopDuringRead=0;
  assert(!ParentD0(&testContext,0) && testContext.pmic.online && !testContext.admissionClosed && !testContext.regs.online && !writes);
+ { int before=reads; assert(audio.AcquireMuted(audio.Header.Context,48000)!=0 && reads==before && !writes && !testContext.audio.leased); }
  mockWacs=1;assert(!input.ButtonPmicRead(input.Context,&value) && value==0x1234 && writes==2);mockWacs=0;value=0xeeee;writes=0;
  assert(!ParentD0Exit(&testContext,0) && !testContext.pmic.online && testContext.admissionClosed);
  reads=0;

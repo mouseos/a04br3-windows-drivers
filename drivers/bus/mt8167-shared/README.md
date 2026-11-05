@@ -157,3 +157,15 @@ parent instead of legacy button and touch devices only with an explicit build
 option; the default remains legacy. Neither Windows arbitration, removal nor
 the diagnostic configuration has been verified on hardware. Do not deploy it
 alongside direct PWRAP users.
+
+The shared audio interface now invokes `audio_owner` under the same lock as
+PWRAP and the shared register owner. Its serialized contract orders exclusive
+clock acquisition before a muted codec and releases the codec before the clock,
+only after the caller independently proves DMA and IRQ quiescence. Any
+uncertain hardware operation poisons the owner instead of attempting speculative
+rollback. Stop quarantines an outstanding lease. The platform callbacks and
+online transition are deliberately absent, so the real parent still rejects
+all audio leases without hardware access. The lifecycle of mappings and parent
+references on a quarantined lease must be implemented before enabling them.
+Linux MT8167 APLL selection and MT6392 speaker sequences are evidence for
+dependencies, not proof of exclusive Windows ownership or safe board gain.

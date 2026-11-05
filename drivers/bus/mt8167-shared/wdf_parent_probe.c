@@ -10,6 +10,7 @@
 #include "register_owner.h"
 #include "client_interface.h"
 #include "audio_interface.h"
+#include "audio_owner.h"
 #ifndef A04_SHARED_BUTTON_D0_EXPERIMENT
 #define A04_SHARED_BUTTON_D0_EXPERIMENT 0
 #endif
@@ -19,7 +20,7 @@
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
-typedef struct { PVOID topck,infra,gpio,pwrap; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; } A04_PARENT_CONTEXT;
+typedef struct { PVOID topck,infra,gpio,pwrap; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; } A04_PARENT_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_PARENT_CONTEXT,ParentContext)
 EVT_WDF_DRIVER_DEVICE_ADD ParentAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE ParentPrepare;
@@ -93,10 +94,21 @@ static int ParentButtonRead(PVOID context,USHORT *value)
     if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
     return a04_pwrap_owner_read_buttons(&ParentContext((WDFDEVICE)context)->pmic,value);
 }
-/* No evidence for codec power/mute and clock ownership exists. These
- * callbacks never touch MMIO and cannot grant an audio lease. */
-static int ParentAudioAcquire(PVOID context,ULONG rate) { UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(rate);return -1; }
-static int ParentAudioRelease(PVOID context) { UNREFERENCED_PARAMETER(context);return -1; }
+/* Audio owner operations share the PWRAP/register mutex. Platform clock,
+ * power and muted-codec callbacks are deliberately unset: no resource set or
+ * handoff currently proves their ownership. This path cannot grant a lease. */
+static int ParentAudioAcquire(PVOID context,ULONG rate) {
+    A04_PARENT_CONTEXT *c;int result;
+    if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+    c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
+    result=a04_audio_owner_acquire(&c->audio,rate);ParentUnlock(c);return result;
+}
+static int ParentAudioRelease(PVOID context) {
+    A04_PARENT_CONTEXT *c;int result;
+    if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+    c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
+    result=a04_audio_owner_release(&c->audio);ParentUnlock(c);return result;
+}
 /* The prototype does not own AFE or its clocks. Never touch the mapping. */
 static int ParentAudioPrepareIrq(PVOID context,PVOID afe,ULONG length) { UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(afe);UNREFERENCED_PARAMETER(length);return -1; }
 static VOID ParentInterfaceReference(PVOID context) { WdfObjectReference((WDFDEVICE)context); }
@@ -116,6 +128,7 @@ static void ParentStop(A04_PARENT_CONTEXT *c)
     ExAcquireFastMutex(&c->pwrapLock);
     c->regs.online=0;
     c->pmic.online=0;
+    a04_audio_owner_stop(&c->audio);
     ExReleaseFastMutex(&c->pwrapLock);
 }
 static void ParentUnmap(A04_PARENT_CONTEXT *c)
