@@ -21,5 +21,17 @@ int main(void) {
     m.csr=0; assert(Mt8167Ep0Interrupt(&e)==EP0_COMPLETE);
     assert(Mt8167Ep0Start(&e,&io,req,data,10,8)==EP0_SEND_SETUP);
     m.csr=4; assert(Mt8167Ep0Interrupt(&e)==EP0_ABORT && e.transfer.stage==EP0_FAILED);
+    { unsigned char send[8]={0,1,0,0,0,0,10,0}; unsigned char payload[10]={0,1,2,3,4,5,6,7,8,9};
+      m.outpos=0; assert(Mt8167Ep0Start(&e,&io,send,payload,10,8)==EP0_SEND_SETUP);
+      m.csr=0; assert(Mt8167Ep0Interrupt(&e)==EP0_SEND_OUT && m.outpos==16);
+      assert(!memcmp(m.out+8,payload,8));
+      m.csr=0; assert(Mt8167Ep0Interrupt(&e)==EP0_SEND_OUT && m.outpos==18);
+      assert(!memcmp(m.out+16,payload+8,2));
+      m.csr=0; assert(Mt8167Ep0Interrupt(&e)==EP0_STATUS_IN && m.csr==0x60);
+      m.csr=0; assert(Mt8167Ep0Interrupt(&e)==EP0_COMPLETE);
+    }
+    assert(Mt8167Ep0Start(&e,&io,req,data,10,8)==EP0_SEND_SETUP);
+    m.csr=0; assert(Mt8167Ep0Interrupt(&e)==EP0_REQUEST_IN);
+    m.csr=1; m.count=9; assert(Mt8167Ep0Interrupt(&e)==EP0_ABORT);
     return 0;
 }
