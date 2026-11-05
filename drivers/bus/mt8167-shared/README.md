@@ -369,3 +369,10 @@ the extended resource; update the diagnostic firmware and driver together.
 The default four-resource configuration remains unchanged. A mapping is not
 proof of ownership. The gated codec-domain path enables DL_CLK only after
 preflight and refuses a legacy-length mapping before any domain writes.
+
+The gated codec domain also acquires Linux DAPM supplies DL_Vref24
+(CON02 bit 16), DAC_CLK (CON02 bit 27), DL_VCM1 (CON01 bit 13) and
+DL_VCM2 (CON02 bit 17), saving initial bits and restoring in reverse.
+It does not enable the Left DAC or Voice Amp: Linux performs calibrated DC
+compensation and ramp around DAC transitions, and the parent does not yet
+own the ABB AFE registers or have validated board calibration.
