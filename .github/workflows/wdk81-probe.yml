@@ -176,6 +176,30 @@ jobs:
           $hashes = @{}
           foreach ($file in $files) { $hashes[$file.Name] = (Get-FileHash -Algorithm SHA256 $file.FullName).Hash }
           [ordered]@{ source_commit = (git rev-parse HEAD); cpu1_handoff = 1; deadline_seconds = 0; uart_screen = 0; thermal_stop = 0; sha256 = $hashes; status = 'unsigned; host build only; not approved for installation' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+      - name: Test-sign CPU1 handoff package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./tools/ci/sign-toprgu-early.ps1 -UnsignedPackage (Join-Path $env:RUNNER_TEMP 'mt8167-toprgu') -SignedPackage (Join-Path $env:RUNNER_TEMP 'mt8167-toprgu-signed')
+          $dir = Join-Path $env:RUNNER_TEMP 'mt8167-toprgu-signed'
+          $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2((Join-Path $dir 'mt8167-toprgu.cer'))
+          foreach ($name in @('mt8167-toprgu.sys','mt8167-toprgu.cat')) {
+            $sig = Get-AuthenticodeSignature (Join-Path $dir $name)
+            if (!$sig.SignerCertificate -or $sig.SignerCertificate.Thumbprint -ne $cert.Thumbprint) { throw "Unexpected signature on $name" }
+          }
+          $hashes = @{}
+          foreach ($name in @('mt8167-toprgu.sys','mt8167-toprgu.inf','mt8167-toprgu.cat','mt8167-toprgu.cer')) { $hashes[$name] = (Get-FileHash -Algorithm SHA256 (Join-Path $dir $name)).Hash }
+          [ordered]@{ source_commit = (git rev-parse HEAD); cpu1_handoff = 1; deadline_seconds = 0; uart_screen = 0; thermal_stop = 0; cert_thumbprint = $cert.Thumbprint; sha256 = $hashes; status = 'test-signed; target trust and device operation unverified' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $dir 'signed-manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: toprgu-fourcpu-test-signed
+          path: |
+            ${{ runner.temp }}\mt8167-toprgu-signed\mt8167-toprgu.sys
+            ${{ runner.temp }}\mt8167-toprgu-signed\mt8167-toprgu.inf
+            ${{ runner.temp }}\mt8167-toprgu-signed\mt8167-toprgu.cat
+            ${{ runner.temp }}\mt8167-toprgu-signed\mt8167-toprgu.cer
+            ${{ runner.temp }}\mt8167-toprgu-signed\signed-manifest.json
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: toprgu-fourcpu-unsigned
@@ -185,3 +209,9 @@ jobs:
             ${{ runner.temp }}\mt8167-toprgu\mt8167-toprgu.cat
             ${{ runner.temp }}\mt8167-toprgu\manifest.json
           if-no-files-found: error
+      - name: Open SSH for offline WIM preparation
+        if: ${{ inputs.ssh_debug }}
+        uses: ./.github/actions/open-ssh
+        with:
+          authorized-key: ${{ secrets.A04BR3_RUNNER_SSH_PUBLIC_KEY }}
+          keep-minutes: '60'
