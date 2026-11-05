@@ -20,7 +20,7 @@ int a04_completion_poll(struct a04_completion *c,const struct a04_thermal_hw *h,
  if((ctl&7u)!=7u || (pause&0x0eu) || mux!=0x1100300cu || en!=0x11003008u ||
     valid!=0x11003040u || volt!=0x11003040u) goto fail;
  if(bus>>16) goto pending;
- for(i=0;i<3;i++) if(h->read32(h->ctx,T+0x90+4*i,&values[i]) || !(values[i]&0xfffu)) goto fail;
+ for(i=0;i<3;i++) if(h->read32(h->ctx,T+0x90+4*i,&values[i]) || values[i]==UINT32_MAX || !(values[i]&0xfffu)) goto fail;
  if(!a04_freshness_update(&c->freshness,values,now,max_age)) {
   for(i=0;i<3;i++)out[i]=values[i];
   c->start_ms=now;

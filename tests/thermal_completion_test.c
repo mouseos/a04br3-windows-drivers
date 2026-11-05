@@ -15,4 +15,8 @@ int main(void){struct env e={{0xda1,0xda1,0xda1},1,1,0,0,0};struct a04_completio
  assert(a04_completion_poll(&c,&h,137,30,out)==0);assert(a04_completion_poll(&c,&h,207,30,out)==-1);
  assert(!a04_completion_start(&c,1,50));e.paused=1;assert(a04_completion_poll(&c,&h,2,30,out)==-1);assert(!c.initialized);
  e.paused=0;assert(!a04_completion_start(&c,1,50));e.bad=1;assert(a04_completion_poll(&c,&h,2,30,out)==-1);
+ e.bad=0;e.raw[0]=UINT32_MAX;e.raw[1]=3001;e.raw[2]=3002;
+ assert(!a04_completion_start(&c,1,50));out[0]=1;out[1]=2;out[2]=3;
+ assert(a04_completion_poll(&c,&h,2,30,out)==-1 && !c.initialized);
+ assert(out[0]==1 && out[1]==2 && out[2]==3);
  puts("thermal synthetic-to-real completion evidence and stale rejection: OK");return 0;}

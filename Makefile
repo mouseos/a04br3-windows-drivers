@@ -294,7 +294,7 @@ build/thermal_monitor_test: drivers/power/mt8167-thermal/monitor.c drivers/power
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal drivers/power/mt8167-thermal/monitor.c drivers/power/mt8167-thermal/completion.c drivers/power/mt8167-thermal/freshness.c drivers/power/mt8167-thermal/hardware.c drivers/power/mt8167-thermal/thermal.c tests/thermal_monitor_test.c -o $@
 
-build/thermal_ownership_test: drivers/power/mt8167-thermal/ownership.h tests/thermal_ownership_test.c
+build/thermal_ownership_test: drivers/power/mt8167-thermal/ownership.h drivers/power/mt8167-thermal/resources.h tests/thermal_ownership_test.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal tests/thermal_ownership_test.c -o $@
 

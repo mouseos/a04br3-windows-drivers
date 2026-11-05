@@ -6,6 +6,7 @@
 #include "thermal.h"
 #include "manager.h"
 #include "ownership.h"
+#include "resources.h"
 #ifndef A04_THERMAL_LEASE_DIAG
 #define A04_THERMAL_LEASE_DIAG 0
 #endif
@@ -53,16 +54,24 @@ static int read_cal(void *p,unsigned index,uint32_t *value)
 NTSTATUS ThermalPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
  static const ULONGLONG addresses[]={0x1100d000,0x11003000,0x10018000,0x10009000};
- ULONG mask=0,i,j; THERMAL_CONTEXT *c=ThermalContext(dev); UNREFERENCED_PARAMETER(raw);
+ ULONG i;struct a04_thermal_resource resources[4]; THERMAL_CONTEXT *c=ThermalContext(dev);
  c->pnp_resources=FALSE;
- for(i=0;i<WdfCmResourceListGetCount(translated);i++) {
+ if(WdfCmResourceListGetCount(raw)!=4 || WdfCmResourceListGetCount(translated)!=4)
+  return STATUS_DEVICE_CONFIGURATION_ERROR;
+ RtlZeroMemory(resources,sizeof(resources));
+ for(i=0;i<4;i++) {
   PCM_PARTIAL_RESOURCE_DESCRIPTOR d=WdfCmResourceListGetDescriptor(translated,i);
-  if(!d || d->Type!=CmResourceTypeMemory || d->u.Memory.Length!=0x1000) return STATUS_DEVICE_CONFIGURATION_ERROR;
-  for(j=0;j<RTL_NUMBER_OF(addresses);j++) if(d->u.Memory.Start.QuadPart==addresses[j]) break;
-  if(j==RTL_NUMBER_OF(addresses) || (mask&(1u<<j))) return STATUS_DEVICE_CONFIGURATION_ERROR;
-  mask|=1u<<j;
+  PCM_PARTIAL_RESOURCE_DESCRIPTOR r=WdfCmResourceListGetDescriptor(raw,i);
+  if(!d || !r || d->Type!=CmResourceTypeMemory || r->Type!=CmResourceTypeMemory)
+   return STATUS_DEVICE_CONFIGURATION_ERROR;
+  resources[i].raw_memory=resources[i].memory=1;
+  resources[i].raw_exclusive=r->ShareDisposition==CmResourceShareDeviceExclusive;
+  resources[i].exclusive=d->ShareDisposition==CmResourceShareDeviceExclusive;
+  resources[i].raw=(uint64_t)r->u.Memory.Start.QuadPart;
+  resources[i].translated=(uint64_t)d->u.Memory.Start.QuadPart;
+  resources[i].raw_size=r->u.Memory.Length;resources[i].size=d->u.Memory.Length;
  }
- if(mask!=0x0fu) return STATUS_DEVICE_CONFIGURATION_ERROR;
+ if(a04_thermal_resources_validate(resources,4))return STATUS_DEVICE_CONFIGURATION_ERROR;
  c->pnp_resources=TRUE;
 #if A04_THERMAL_MONITOR_TEST
  for(i=0;i<3;i++) {
