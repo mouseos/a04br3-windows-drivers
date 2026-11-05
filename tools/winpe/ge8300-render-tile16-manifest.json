@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "state": "host-built-tile16-terminate-device-untested",
+  "driver_commit": "959e1c97157d68b5fd2a0a117080ab837eaf1c5d",
+  "driver_flags": [
+    "BOOT_TEST=1",
+    "ALLOW_MISMATCH=1",
+    "RENDER_EXPERIMENT=1",
+    "RENDER_DIAGNOSTIC=1"
+  ],
+  "source_esp_sha256": "80e78974e86c709f0961d4f80db5dcaeff3dade8bf2ab5c86b7102aad4035871",
+  "source_wim_sha256": "f3808bb5fe590af7e21549312adf2f903dd5e5449b1d357967c270f3ae1a7648",
+  "derived_wim_sha256": "8bb30cf164602de83ae11d4b110dbf53d5ce978b76038a0a0d4b99a4f4f7ef2b",
+  "boot_index": 1,
+  "preserved_files": {
+    "/EFI/Boot/bootarm.efi": "5dcf001e5be0bf252d303f0377c4dad67a070aed307b0f6153d1125bf346b397",
+    "/EFI/Microsoft/Boot/BCD": "65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d",
+    "/Boot/boot.sdi": "cd2c00ce027687ce4a8bdc967f26a8ab82f651c9becd703658ba282ec49702bd"
+  },
+  "startnet_sha256": "a9306d240d2e922a579bc979f7e53c1ac314d604692f3e0379cc9968504ad211",
+  "package_sha256": {
+    "ge8300-mips.fw": "cfe6f58db2ad604b1729349629510c5a3434b266c99ea886d2959887bff4fed8",
+    "ge8300-pnp-status.exe": "17cdb05fddc0dd48a0f6e7ad3c3fa283ebe4a9c12f9db06cffc6acd6ddf68ff4",
+    "ge8300-status.exe": "f8db1ecb2d36173c6ed0057cf17dc4b60547bd134208d0b4be9f68e873821f05",
+    "ge8300-test.cer": "641b4c75c029714a660bfe3e33549588ddd42778f64e8110822f91b623b9e6c7",
+    "mt8167-ge8300.cat": "11aa3d0b5539acad405d8851e6c4bb7ca5103d9464fb006d036f49ae04201328",
+    "mt8167-ge8300.inf": "73afb7f2e63469d577317b68ed505c01340a81b36373eda416883ce5ae4edc0b",
+    "mt8167-ge8300.sys": "858f53b364346e65c62604469dfbbc3b145c265fb8f258afb8d9449b6174498a"
+  },
+  "candidate_boot_sha256": "2813f8cb42651bb54374bf7b7b1bdd33eaf2198db6afd008c70574f337b190ab",
+  "candidate_boot_status": "previously used in full-screen WinPE run; GPU fixed render not tested",
+  "limitations": [
+    "Windows tile16 diagnostic and signature acceptance are untested on device.",
+    "Two cases measure output, not a direct spatial ISP tile trace; matching sentinels do not prove no GPU writes or visibility.",
+    "Firmware and GPU BVNC still differ; vendor 22.40 candidate is not included and has incompatible info header.",
+    "FW snapshots are non-atomic; zero counters do not prove fault absence.",
+    "Firmware shutdown and cleanup do not independently prove hardware DMA quiescence.",
+    "UART receipt and CRC are not known to target; screen fallback runs only on returned startup failure, not drvload hang or incomplete UART."
+  ],
+  "trusted_wim_sha256": "d17705a418e86a72144b0276d6b1e39a64edf4c8f7566ff9cb0f4305f8c0accb",
+  "trusted_esp_sha256": "d8eaf8a6cb57210d6297bd29ae1e63e04fffdff7a7fa3630d887c31b8fac936f",
+  "certificate": {
+    "source_sha256": "8bb30cf164602de83ae11d4b110dbf53d5ce978b76038a0a0d4b99a4f4f7ef2b",
+    "wim_sha256": "d17705a418e86a72144b0276d6b1e39a64edf4c8f7566ff9cb0f4305f8c0accb",
+    "serialized_cert_sha256": "527110013614697b719797b45a91f4a44bf381389ac7e4796677fb8c5a1e3175",
+    "thumbprint_sha1": "8C4C03E4A9EA0D0323E5CC23551E810E1A04D324",
+    "stores": [
+      "Root",
+      "TrustedPublisher"
+    ],
+    "note": "offline trust entries verified; signature acceptance and boot policy unverified"
+  },
+  "restore_boot_sha256": "7d03e814b3f156c4a03ef48c48ededd130916c5aa78df118d425f6ef40ea2ee3",
+  "restore_esp_sha256": "c2c1d2bfcf37b8422e9db9429b70fa98ffb7f995a6d24c8a5de3804d9b007176",
+  "successful_full_screen_evidence": {
+    "test_boot_sha256": "2813f8cb42651bb54374bf7b7b1bdd33eaf2198db6afd008c70574f337b190ab",
+    "test_esp_sha256": "80e78974e86c709f0961d4f80db5dcaeff3dade8bf2ab5c86b7102aad4035871",
+    "uart_sha256": "4078132753b808e8013f2c89afb1482d41a5f4cce5c6639407a1d4575373d81f",
+    "screen_pbm_sha256": "9c792a39c30fadbe86c9465c29314c2b5157c4b536700f991cf77cee63d095aa",
+    "inputs_sha256": "25cfd5cf360c3a86c1af7a7c8fdab6d3c513ee6bd785624c9a314a28018c44bc",
+    "observed": "CPU1 ownership and watchdog kicks; full 800x600 screen with per-part and aggregate CRC; no 3D render",
+    "restore": "matching restore input hashes and RESTORE_COMMANDS_SUCCEEDED; no physical readback; immediate restored combination boot not conclusively attributed"
+  },
+  "base_components_sha256": {
+    "SYSTEM": "cc151bf339dd2683b313e95d42179cfe571f6392c7a294b9a98f19a8a83e5214",
+    "mt8167-toprgu.sys": "52a1a1cb0cd66821099a87db9aca5bd82797061ab0e99a047d495d7fe06c2b3e",
+    "uart-screen.exe": "655bfc0fa4ae4369b7aa487a747dbe9b41780b3078bc335261fa9c83e53236d7"
+  },
+  "scissor_words": [
+    49,
+    64
+  ],
+  "triangle_interior_pixels": 1107,
+  "diagonal_edge_pixels": 41,
+  "transpose_interior_difference": 42,
+  "observed_09c630d": {
+    "status": "C000003E",
+    "stage": 32,
+    "background": 448,
+    "foreground": 576,
+    "other": 3072,
+    "old_morton_mismatch": 3547,
+    "foreground_linear_rectangle": "x=8..31,y=8..31",
+    "background_and_zero_spatial_unknown": true,
+    "old_decoder_wrong": true,
+    "screen_size": [
+      800,
+      1280
+    ],
+    "screen_aggregate_crc_complete": false
+  },
+  "signed_zip_sha256": "53325d0be99c1b5836b03c188c66d46b94ea0d19d290e28a235054ff45ac443e",
+  "sentinel_rgba": "a55ac37e",
+  "region_header_gpu_va": "0xdbf0000000",
+  "screen_policy": "skip on drvload, PnP and lifecycle success; screen fallback on returned startup failure; no host CRC acknowledgement",
+  "diagnostic_cases": [
+    "0: asymmetric triangle",
+    "1: clear only; independent DMA, VM and context; skipped on unsafe prior completion"
+  ],
+  "terminate_ppp": {
+    "value": "0x000c0003",
+    "previous": "0x00040001",
+    "target": "64x64, BVNC 22.40.54.30, SIPF1, 16x16 tiles",
+    "source": "https://github.com/mouseos/UniXNU-a04br3/blob/4a62c22fa18674033525946246e94b5806d5fc12/patches/mesa/pvr-darwin-winsys.patch",
+    "device_evidence": "UniXNU README records full-image clear and triangle success; this Windows implementation is untested"
+  },
+  "vendor_firmware_candidate": {
+    "repository": "https://github.com/mouseos/android_vendor_benesse_a04br3",
+    "revision": "0c756f413e7011231c8fb793af0930311023f68d",
+    "path": "proprietary/vendor/firmware/rgx.fw.22.40.54.30",
+    "sha256": "5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1",
+    "info_header_version": 1,
+    "loader_expected_info_header_version": 3,
+    "license": "not established",
+    "included": false
+  }
+}
