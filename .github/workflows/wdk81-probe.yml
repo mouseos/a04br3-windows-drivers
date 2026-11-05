@@ -2,12 +2,17 @@ name: Windows 8.1 WDK availability
 on:
   workflow_dispatch:
     inputs:
+      fourcpu_only:
+        description: Build only the unsigned TOPRGU CPU1 handoff variant
+        type: boolean
+        default: false
       ssh_debug:
         description: Keep the Windows runner available over SSH
         type: boolean
         default: false
 jobs:
   probe:
+    if: ${{ !inputs.fourcpu_only }}
     runs-on: windows-2022
     timeout-minutes: 210
     steps:
@@ -147,3 +152,36 @@ jobs:
         uses: ./.github/actions/open-ssh
         with:
           authorized-key: ${{ secrets.A04BR3_RUNNER_SSH_PUBLIC_KEY }}
+
+  fourcpu:
+    if: ${{ inputs.fourcpu_only }}
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Microsoft SDK and WDK 8.1
+        shell: pwsh
+        run: ./tools/ci/install-wdk81.ps1
+      - name: Build CPU1 ownership variant
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:A04_TOPRGU_CPU1_HANDOFF = '1'
+          $env:A04_TOPRGU_UART_SCREEN = '0'
+          $env:A04_TOPRGU_THERMAL_STOP = '0'
+          $env:A04_TOPRGU_DEADLINE_SECONDS = '0'
+          ./tools/ci/build-mt8167-toprgu.ps1
+          $out = Join-Path $env:RUNNER_TEMP 'mt8167-toprgu'
+          $files = Get-ChildItem $out -File | Where-Object { $_.Extension -in '.sys','.inf','.cat' }
+          $hashes = @{}
+          foreach ($file in $files) { $hashes[$file.Name] = (Get-FileHash -Algorithm SHA256 $file.FullName).Hash }
+          [ordered]@{ source_commit = (git rev-parse HEAD); cpu1_handoff = 1; deadline_seconds = 0; uart_screen = 0; thermal_stop = 0; sha256 = $hashes; status = 'unsigned; host build only; not approved for installation' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: toprgu-fourcpu-unsigned
+          path: |
+            ${{ runner.temp }}\mt8167-toprgu\mt8167-toprgu.sys
+            ${{ runner.temp }}\mt8167-toprgu\mt8167-toprgu.inf
+            ${{ runner.temp }}\mt8167-toprgu\mt8167-toprgu.cat
+            ${{ runner.temp }}\mt8167-toprgu\manifest.json
+          if-no-files-found: error

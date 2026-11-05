@@ -16,4 +16,4 @@
 
 Windows側はStart=0でもPnPとD0までの時間、署名受理は保証されない。対象の搭載Windowsについて、実際のUEFIとACPI MOU0005資源、現在選択中のControlSet、SYSとCATのハッシュ・署名、BCD署名設定、D0とCPU1取得、経過時間・給餌・次回BOOT_REASONを同一起動単位で照合する必要がある。旧WinPEの証明書を搭載OSが信頼しているとは仮定しない。いずれも記録なしにDISMや置換を始めない。既存 `startnet-upgrade-toprgu.cmd` は固定旧SYS比較とvolume guardがあるが、対象SYSの署名受理やCPU1引継ぎは判定せず、この変更の安全な自動導入を保証しない。
 
-ホスト検証: `python3 tests/toprgu_poll_host_test.py` は実ソースの4 CPU poll関数をMMIO/CPU模擬で実行し、CPU1以外の拒否、確認後給餌、CPU数減少後の再確認、MODE無効、確認途中のCPU数減少を検査する。`make test-toprgu-handoff` は所有ポリシーを検査する。`.github/workflows/toprgu-fourcpu-build.yml` は独立したWindows 8.1 WDK ARM32ビルドでSYS/INF/CATとビルド設定・SHA256を成果物化する。出力は未署名で実機投入用ではない。
+ホスト検証: `python3 tests/toprgu_poll_host_test.py` は実ソースの4 CPU poll関数をMMIO/CPU模擬で実行し、CPU1以外の拒否、確認後給餌、CPU数減少後の再確認、MODE無効、確認途中のCPU数減少を検査する。`make test-toprgu-handoff` は所有ポリシーを検査する。`.github/workflows/wdk81-probe.yml` の `fourcpu_only` は独立したWindows 8.1 WDK ARM32ビルドでSYS/INF/CATとビルド設定・SHA256を成果物化する。出力は未署名で実機投入用ではない。
