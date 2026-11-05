@@ -101,6 +101,7 @@ int main(void)
             const char *path=getenv("A04_COPY_USC_FIXTURE");unsigned char bytes[152]={0};
             assert(a04_vendor_copy_scratch_stage_usc(&scratch,bytes,sizeof(bytes))==STATUS_DATA_ERROR && !scratch.usc_ready);
             if(path) {
+                _Alignas(8) struct a04_vendor_copy_task_snapshot snapshot,old;
                 FILE *in=fopen(path,"rb");assert(in && fread(bytes,1,sizeof(bytes),in)==sizeof(bytes) && fgetc(in)==EOF);fclose(in);
                 assert(a04_vendor_copy_usc_match(bytes,sizeof(bytes)));
                 f.hardware_owned=TRUE;assert(a04_vendor_copy_scratch_stage_usc(&scratch,bytes,sizeof(bytes))==STATUS_INVALID_PARAMETER);f.hardware_owned=FALSE;
@@ -110,9 +111,24 @@ int main(void)
                 assert(a04_vendor_copy_scratch_stage_usc(&scratch,bytes,sizeof(bytes))==STATUS_SUCCESS && scratch.usc_ready);
                 assert(!memcmp((UCHAR*)r.buffer[10].cpu+128,bytes,sizeof(bytes)));
                 assert(a04_vendor_copy_scratch_stage_usc(&scratch,bytes,sizeof(bytes))==STATUS_INVALID_PARAMETER);
+                assert(a04_vendor_copy_scratch_task_snapshot(&scratch,&snapshot)==STATUS_SUCCESS);
+                assert(snapshot.words[0]==0x200 && snapshot.words[1]==0x1ffc && snapshot.words[6]==0x20002 &&
+                    snapshot.words[10]==0x202 && snapshot.words[11]==96 && snapshot.words[12]==64 &&
+                    snapshot.words[14]==192 && snapshot.words[15]==272);
+                assert(snapshot.known_words==UINT64_C(0x00ffdd43)); /* 17 of 52, not a complete task */
+                assert((snapshot.known_words&(UINT64_C(1)<<14)) && !(snapshot.known_words&(UINT64_C(1)<<24)) && !(snapshot.known_words&(UINT64_C(1)<<26)) &&
+                    !(snapshot.known_words&(UINT64_C(1)<<32)) && !(snapshot.known_words&(UINT64_C(1)<<50)));
+                old=snapshot;
+                scratch.kick.raw00^=1;
+                assert(a04_vendor_copy_scratch_task_snapshot(&scratch,&snapshot)==STATUS_DEVICE_CONFIGURATION_ERROR && !memcmp(&old,&snapshot,sizeof(old)));
+                scratch.kick.raw00^=1;
                 ((UCHAR*)r.buffer[10].cpu)[128]^=1;
+                assert(a04_vendor_copy_scratch_task_snapshot(&scratch,&snapshot)==STATUS_DEVICE_CONFIGURATION_ERROR && !memcmp(&old,&snapshot,sizeof(old)));
                 assert(a04_vendor_copy_scratch_release(&scratch)==STATUS_INVALID_DEVICE_STATE);
                 ((UCHAR*)r.buffer[10].cpu)[128]^=1;
+                ((uint32_t*)scratch.shared.cpu)[4]^=1;
+                assert(a04_vendor_copy_scratch_task_snapshot(&scratch,&snapshot)==STATUS_DEVICE_CONFIGURATION_ERROR && !memcmp(&old,&snapshot,sizeof(old)));
+                ((uint32_t*)scratch.shared.cpu)[4]^=1;
             }
         }
         {

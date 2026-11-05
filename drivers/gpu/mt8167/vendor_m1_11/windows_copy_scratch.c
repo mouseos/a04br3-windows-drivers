@@ -176,6 +176,68 @@ NTSTATUS a04_vendor_copy_scratch_stage_usc(struct a04_vendor_copy_scratch *o,con
 retain:
     o->exposed=TRUE;return STATUS_IO_DEVICE_ERROR;
 }
+static void snapshot32(struct a04_vendor_copy_task_snapshot *s,unsigned byte_offset,uint32_t value)
+{ unsigned word=byte_offset/4u;s->words[word]=value;s->known_words|=UINT64_C(1)<<word; }
+static void snapshot64(struct a04_vendor_copy_task_snapshot *s,unsigned byte_offset,uint64_t value)
+{ snapshot32(s,byte_offset,(uint32_t)value);snapshot32(s,byte_offset+4u,(uint32_t)(value>>32)); }
+static int copy_producer_valid(const struct a04_vendor_copy_scratch *o)
+{
+    _Alignas(8) struct a04_vendor_copy_state_input in={A04_VENDOR_COPY_SOURCE_VA,A04_VENDOR_COPY_DEST_VA,A04_VENDOR_COPY_SHARED_VA};
+    struct a04_vendor_copy_kick_input ki={FRAGMENT_PDS_OFFSET,SECONDARY_DATA_OFFSET,SECONDARY_CODE_OFFSET,FRAGMENT_USC_OFFSET};
+    struct a04_vendor_copy_state state;_Alignas(8) struct a04_vendor_copy_kick_image kick;
+    _Alignas(8) struct a04_vendor_clear_image eot;unsigned i;
+    if(a04_vendor_copy_state_build(&state,&in) || a04_vendor_copy_kick_build(&kick,&ki) ||
+       a04_vendor_clear_image_build(&eot,A04_VENDOR_RENDER_SCRATCH_VA,0))return 0;
+    eot.pds[2]=(uint32_t)(A04_VENDOR_COPY_DEST_VA>>2);
+    eot.pds[3]=(uint32_t)(A04_VENDOR_COPY_DEST_VA>>34)|(1u<<19);
+    for(i=0;i<9;i++)if(state.shared[i]!=o->state.shared[i])return 0;
+    for(i=0;i<4;i++)if(state.pds_data[i]!=o->state.pds_data[i] || state.pds_code[i]!=o->state.pds_code[i])return 0;
+    for(i=0;i<16;i++)if(kick.pds_fragment[i]!=o->kick.pds_fragment[i] || eot.pds[i]!=o->eot_pds[i])return 0;
+    for(i=0;i<3;i++)if(eot.usc[i]!=o->eot_usc[i])return 0;
+    return kick.raw00==o->kick.raw00 && kick.raw38==o->kick.raw38 && kick.raw40==o->kick.raw40 &&
+        kick.raw48==o->kick.raw48 && kick.raw50==o->kick.raw50 && kick.raw58==o->kick.raw58 &&
+        o->tile_raw04==eot.payload[1] && o->tile_raw18==eot.payload[6] && o->tile_raw20==eot.payload[8] &&
+        o->eot_raw28==eot.payload[10] && o->eot_raw2c==EOT_PDS_OFFSET+eot.payload[11] &&
+        o->eot_raw30==EOT_PDS_OFFSET+eot.payload[12];
+}
+NTSTATUS a04_vendor_copy_scratch_task_snapshot(struct a04_vendor_copy_scratch *o,
+    struct a04_vendor_copy_task_snapshot *out)
+{
+    struct a04_vendor_render_cold *r;struct a04_vendor_m1_11_memory *f;
+    _Alignas(8) struct a04_vendor_copy_task_snapshot image={0};
+    _Alignas(8) uint64_t entries[3];_Alignas(8) uint32_t usc[38],shared[9],eot[3];unsigned i;
+    if(!o || !out || ((uintptr_t)out&7u) || !a04_rgx_fw_pointer(out,sizeof(*out)) ||
+       KeGetCurrentIrql()!=PASSIVE_LEVEL || !(r=o->render) || !o->prepared || o->exposed || !o->usc_ready ||
+       r->copy_owner!=o || !(f=r->firmware) || f->render_owner!=r || f->hardware_owned || !r->mapped ||
+       !r->clear_ready || !r->buffer[10].cpu || r->buffer[10].bytes!=65536u || !same_mapping(r) ||
+       a04_rgx_fw_alias(out,sizeof(*out),o,sizeof(*o)) || a04_rgx_fw_alias(out,sizeof(*out),r,sizeof(*r)) ||
+       a04_rgx_fw_alias(out,sizeof(*out),f,sizeof(*f)) ||
+       (f->runtime && a04_rgx_fw_alias(out,sizeof(*out),f->runtime,sizeof(*f->runtime))))return STATUS_INVALID_PARAMETER;
+    for(i=0;i<16;i++)if(r->buffer[i].cpu && a04_rgx_fw_alias(out,sizeof(*out),r->buffer[i].cpu,r->buffer[i].bytes))return STATUS_INVALID_PARAMETER;
+    for(i=0;i<5;i++)if(!f->allocation[i] || a04_rgx_fw_alias(out,sizeof(*out),f->allocation[i],fw_sizes[i]))return STATUS_INVALID_PARAMETER;
+    if(a04_rgx_fw_alias(out,sizeof(*out),o->source.cpu,o->source.bytes) ||
+       a04_rgx_fw_alias(out,sizeof(*out),o->destination.cpu,o->destination.bytes) ||
+       a04_rgx_fw_alias(out,sizeof(*out),o->shared.cpu,o->shared.bytes) || !copy_producer_valid(o) || pds_region(o,0,0) || ptes(o,entries,0) ||
+       entries[0]!=((uint64_t)o->source.logical.QuadPart|A04_GPU_MMU_SLC_BYPASS|1u) ||
+       entries[1]!=((uint64_t)o->destination.logical.QuadPart|A04_GPU_MMU_SLC_BYPASS|1u) ||
+       entries[2]!=((uint64_t)o->shared.logical.QuadPart|A04_GPU_MMU_SLC_BYPASS|1u) ||
+       a04_rgx_device_read_words(usc,(UCHAR*)r->buffer[10].cpu+FRAGMENT_USC_OFFSET,sizeof(usc)) ||
+       a04_rgx_device_read_words(eot,r->buffer[10].cpu,sizeof(eot)) ||
+       a04_rgx_device_read_words(shared,o->shared.cpu,sizeof(shared)))return STATUS_DEVICE_CONFIGURATION_ERROR;
+    for(i=0;i<38;i++)if(usc[i]!=o->fragment_usc[i])return STATUS_DEVICE_CONFIGURATION_ERROR;
+    for(i=0;i<3;i++)if(eot[i]!=o->eot_usc[i])return STATUS_DEVICE_CONFIGURATION_ERROR;
+    for(i=0;i<9;i++)if(shared[i]!=o->state.shared[i])return STATUS_DEVICE_CONFIGURATION_ERROR;
+    if(!a04_vendor_copy_usc_match((const uint8_t*)usc,sizeof(usc)))return STATUS_DEVICE_CONFIGURATION_ERROR;
+    snapshot32(&image,0x00,o->kick.raw00);snapshot32(&image,0x04,o->tile_raw04);
+    snapshot32(&image,0x18,o->tile_raw18);snapshot32(&image,0x20,o->tile_raw20);
+    snapshot32(&image,0x28,o->eot_raw28);snapshot32(&image,0x2c,o->eot_raw2c);snapshot32(&image,0x30,o->eot_raw30);
+    snapshot64(&image,0x38,o->kick.raw38);snapshot64(&image,0x40,o->kick.raw40);
+    snapshot64(&image,0x48,o->kick.raw48);snapshot64(&image,0x50,o->kick.raw50);
+    snapshot64(&image,0x58,o->kick.raw58);
+    /* raw60 remains a mapping-identity candidate, not a proven word. No
+     * defaulting of unproven ISP/CSR/tail to valid words either. */
+    *out=image;return STATUS_SUCCESS;
+}
 NTSTATUS a04_vendor_copy_scratch_release(struct a04_vendor_copy_scratch *o)
 {
     struct a04_vendor_render_cold *r;_Alignas(8) uint64_t e[3],zero[3]={0};

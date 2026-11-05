@@ -30,5 +30,10 @@ NTSTATUS a04_vendor_copy_scratch_mark_exposed(struct a04_vendor_copy_scratch *ow
  * exposure. Successful staging is not a command submission authorization. */
 NTSTATUS a04_vendor_copy_scratch_stage_usc(struct a04_vendor_copy_scratch *owner,
     const void *asset,size_t bytes);
+/* CPU-only evidence image: each bit of known_words describes one DWORD, not
+ * permission to submit. Unset words are unspecified even though zero-filled. */
+struct a04_vendor_copy_task_snapshot { uint32_t words[52];uint64_t known_words; };
+NTSTATUS a04_vendor_copy_scratch_task_snapshot(struct a04_vendor_copy_scratch *owner,
+    struct a04_vendor_copy_task_snapshot *snapshot);
 NTSTATUS a04_vendor_copy_scratch_release(struct a04_vendor_copy_scratch *owner);
 #endif

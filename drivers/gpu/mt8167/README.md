@@ -438,6 +438,13 @@ releaseでは内容照合と消去・読戻しを行い、部分書込み・消�
 隔離する。これは152-byteコードの元バイナリとの同一性と領域のCPU側管理を示す
 のみで、shaderの意味、GPU cache可視性、PnP寿命や停止後のDMA排出は証明しない。
 
+`a04_vendor_copy_scratch_task_snapshot` はGPU起動前にPTE、共有state、PDS、
+EOT、元USCの読戻しを一括照合し、208バイト相当のCPU上の検証像と、根拠がある
+DWORDを示すmaskを返す。mapping identityが未確定のraw60、ISP、PBE CSR、tail等はmaskを立てない。
+ゼロ初期化された未確定語を正しい値とみなしてはならず、これはCCB packetではない。
+Linux m1.11 `rgxtransfer.c` はユーザー側のtransfer commandをFWへ転送するため、
+この検証像のmaskや不足を補完しない。GPU実行、描画や停止の証明には使えない。
+
 独立source／destination allocationのPTE公開後は、３つのPTEを読戻して期待した
 DMAアドレス・属性に一致しなければownerを隔離し、解放を拒否する。一致した場合、
 `FUN_00129f88` のsource／destination mapping baseが異なる限定分岐に従い
