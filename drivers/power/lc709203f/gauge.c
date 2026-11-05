@@ -20,7 +20,7 @@ static int read_word(const struct a04_gauge_bus *bus, uint8_t reg, uint16_t *out
     crc = crc_byte(crc, 0x17);
     crc = crc_byte(crc, bytes[0]);
     crc = crc_byte(crc, bytes[1]);
-    if (crc != bytes[2]) return -1;
+    if (crc != bytes[2]) return A04_GAUGE_INVALID;
     *out = (uint16_t)(bytes[0] | ((uint16_t)bytes[1] << 8));
     return 0;
 }
@@ -30,12 +30,17 @@ int a04_gauge_read_sample(const struct a04_gauge_bus *bus,
     struct a04_gauge_sample candidate;
     uint16_t mode;
     unsigned scaled;
+    int result;
     if (!bus || !bus->read_word_pec || !sample) return -1;
-    if (read_word(bus, 0x15, &mode) || mode != 1 ||
-        read_word(bus, 0x09, &candidate.voltage_mv) ||
-        read_word(bus, 0x0f, &candidate.indicator_tenths_percent)) return -1;
+    result = read_word(bus, 0x15, &mode);
+    if (result) return result;
+    if (mode != 1) return A04_GAUGE_INVALID;
+    result = read_word(bus, 0x09, &candidate.voltage_mv);
+    if (result) return result;
+    result = read_word(bus, 0x0f, &candidate.indicator_tenths_percent);
+    if (result) return result;
     if (candidate.voltage_mv < 2500 || candidate.voltage_mv > 4500 ||
-        candidate.indicator_tenths_percent > 1000) return -1;
+        candidate.indicator_tenths_percent > 1000) return A04_GAUGE_INVALID;
     if (candidate.indicator_tenths_percent <= 100) scaled = 0;
     else if (candidate.indicator_tenths_percent >= 950) scaled = 100;
     else scaled = ((candidate.indicator_tenths_percent - 100u) * 100u + 425u) / 850u;

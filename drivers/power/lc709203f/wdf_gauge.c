@@ -258,10 +258,14 @@ static void poll(GAUGE_CONTEXT *c)
         else {
             deadline=now<=UINT64_MAX-2000000000ULL ? now+2000000000ULL : 0;
             if (deadline>c->owner_broker.lifetime) deadline=c->owner_broker.lifetime;
-            error=!deadline || a04_broker_lifecycle_sample_local(&c->owner_lifecycle,deadline,&sample);
+            error=deadline ? a04_broker_lifecycle_sample_local(&c->owner_lifecycle,deadline,&sample) : -1;
             if (!error) {
                 changed=a04_battery_set_external(&c->battery,TRUE);
                 changed|=a04_battery_publish(&c->battery,&sample);
+            } else if (error>0) {
+                /* Invalid gauge data does not invalidate a healthy shared bus. */
+                changed=a04_battery_invalidate(&c->battery);
+                error=0;
             }
         }
         if (error) {

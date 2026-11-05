@@ -33,10 +33,11 @@ int main(void)
     assert(!a04_gauge_read_sample(&bus, &sample));
     assert(sample.voltage_mv == 3800 && sample.percent == 50 && f.calls == 3);
     f.corrupt = 1;
-    assert(a04_gauge_read_sample(&bus, &sample));
+    assert(a04_gauge_read_sample(&bus, &sample)==A04_GAUGE_INVALID);
     assert(sample.voltage_mv == 3800 && sample.percent == 50);
     f.corrupt = 0; f.indicator = 100; assert(!a04_gauge_read_sample(&bus, &sample)); assert(sample.percent == 0);
     f.indicator = 950; assert(!a04_gauge_read_sample(&bus, &sample)); assert(sample.percent == 100);
-    f.mode = 2; assert(a04_gauge_read_sample(&bus, &sample)); assert(sample.percent == 100);
+    f.mode = 2; assert(a04_gauge_read_sample(&bus, &sample)==A04_GAUGE_INVALID); assert(sample.percent == 100);
+    f.mode = 1; f.voltage = 2000; assert(a04_gauge_read_sample(&bus, &sample)==A04_GAUGE_INVALID); assert(sample.percent == 100);
     return 0;
 }

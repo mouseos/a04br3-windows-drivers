@@ -8,7 +8,7 @@
 #include "broker_handoff.h"
 #include "broker_lifecycle.h"
 #define NS 1000000000ULL
-struct fake { uint64_t now, gauge_delay; int reads, writes, gauge_reads, bad_gauge, bad_bq, transfer_stage, transfer_fail, clock_calls, regress_at; };
+struct fake { uint64_t now, gauge_delay; int reads, writes, gauge_reads, bad_gauge, bad_pec, bad_bq, transfer_stage, transfer_fail, clock_calls, regress_at; };
 static int transfer_action(void *p){struct fake *f=p;++f->transfer_stage;return f->transfer_stage==f->transfer_fail;}
 struct loopback { struct fake *fake; struct a04_broker_endpoint *endpoint; };
 static uint64_t loop_now(void *p) {return ((struct loopback *)p)->fake->now;}
@@ -30,7 +30,7 @@ static int read_gauge(void *p,uint8_t a,uint8_t reg,uint8_t v[3]) {
     struct fake *f=p; uint16_t n=reg==0x15?1:reg==0x09?4000:500; uint8_t c=0;
     assert(a==0x0b); ++f->gauge_reads; f->now+=f->gauge_delay;
     if(f->bad_gauge)return -1;
-    v[0]=(uint8_t)n;v[1]=(uint8_t)(n>>8);c=crc(c,0x16);c=crc(c,reg);c=crc(c,0x17);c=crc(c,v[0]);v[2]=crc(c,v[1]);return 0;
+    v[0]=(uint8_t)n;v[1]=(uint8_t)(n>>8);c=crc(c,0x16);c=crc(c,reg);c=crc(c,0x17);c=crc(c,v[0]);v[2]=(uint8_t)(crc(c,v[1]) ^ (f->bad_pec ? 1 : 0));return 0;
 }
 static void setup(struct fake *f,struct a04_bq_owner *o,struct a04_bq_broker *b,
                   struct a04_bq_bus *c,struct a04_gauge_bus *g) {
@@ -52,6 +52,15 @@ int main(void) {
     f.bad_gauge=1;assert(a04_bq_broker_run(&b,2,15*NS,&out)==A04_BROKER_STOPPED);
     assert(o.stopped&&!memcmp(&old,&out,sizeof(out)));
     f.bad_gauge=0;assert(a04_bq_broker_run(&b,3,15*NS,&out)==A04_BROKER_STOPPED&&f.writes==2);
+    /* PEC failure is bad data, not a transport fault: retain ownership,
+     * invalidate the sample, and continue scheduled watchdog maintenance. */
+    setup(&f,&o,&b,&c,&g);old=out;f.bad_pec=1;
+    assert(a04_bq_broker_run(&b,1,5*NS,&out)==A04_BROKER_REJECTED);
+    assert(!b.stopped&&!o.stopped&&!memcmp(&old,&out,sizeof(out))&&f.writes==1);
+    f.now=10*NS;assert(a04_bq_broker_run(&b,0,0,0)==A04_BROKER_OK&&f.writes==2);
+    f.bad_pec=0;assert(a04_bq_broker_run(&b,2,15*NS,&out)==A04_BROKER_OK);
+    setup(&f,&o,&b,&c,&g);f.bad_pec=1;f.gauge_delay=NS;
+    assert(a04_bq_broker_run(&b,1,5*NS,&out)==A04_BROKER_STOPPED&&o.stopped);
     setup(&f,&o,&b,&c,&g);f.bad_bq=1;
     assert(a04_bq_broker_run(&b,1,5*NS,&out)==A04_BROKER_STOPPED&&f.gauge_reads==0);
     setup(&f,&o,&b,&c,&g);f.gauge_delay=400000000;
@@ -217,6 +226,15 @@ int main(void) {
         f.bad_gauge=1;old=out;
         assert(a04_broker_lifecycle_sample_local(&l,5*NS,&out));
         assert(l.state==A04_LIFE_STOPPED&&e.closed&&o.stopped&&!memcmp(&out,&old,sizeof(out)));
+    }
+    {
+        struct a04_broker_endpoint e={0};struct a04_broker_lifecycle l={0};
+        setup(&f,&o,&b,&c,&g);memset(&b,0,sizeof(b));
+        assert(!a04_broker_lifecycle_start(&l,&e,&b,&o,&c,&g,0,40*NS,1));
+        f.bad_pec=1;old=out;
+        assert(a04_broker_lifecycle_sample_local(&l,5*NS,&out)==1);
+        assert(l.state==A04_LIFE_LIVE&&!e.closed&&!o.stopped&&!memcmp(&out,&old,sizeof(out)));
+        f.now=10*NS;assert(!a04_broker_lifecycle_maintain(&l)&&f.writes==2);
     }
     {
         struct a04_broker_endpoint e={0};struct a04_broker_lifecycle l={0};

@@ -27,10 +27,10 @@ int a04_broker_lifecycle_maintain(struct a04_broker_lifecycle *l)
 int a04_broker_lifecycle_sample_local(struct a04_broker_lifecycle *l,uint64_t deadline,struct a04_gauge_sample *out)
 {
     if (!l || l->state!=A04_LIFE_LIVE || !l->endpoint || !l->endpoint->broker) return -1;
-    if (a04_bq_broker_sample_local(l->endpoint->broker,deadline,out)!=A04_BROKER_OK) {
-        a04_broker_lifecycle_stop(l);return -1;
-    }
-    return 0;
+    enum a04_bq_broker_result result;
+    result=a04_bq_broker_sample_local(l->endpoint->broker,deadline,out);
+    if (result==A04_BROKER_STOPPED) { a04_broker_lifecycle_stop(l);return -1; }
+    return result==A04_BROKER_OK ? 0 : 1;
 }
 int a04_broker_lifecycle_quiesce(struct a04_broker_lifecycle *l)
 {

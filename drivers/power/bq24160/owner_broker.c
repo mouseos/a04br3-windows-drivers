@@ -30,6 +30,7 @@ static enum a04_bq_broker_result run(struct a04_bq_broker *b, uint64_t seq,
 {
     struct a04_gauge_sample sample;
     uint64_t now, start;
+    int sample_result;
     enum a04_bq_broker_result result=A04_BROKER_STOPPED;
     if (!b || !b->owner || b->stopped || b->entered) return A04_BROKER_STOPPED;
     b->entered=1;
@@ -51,11 +52,12 @@ static enum a04_bq_broker_result run(struct a04_bq_broker *b, uint64_t seq,
     }
     if (!local) b->last_request=seq;
     start=now;
-    if (a04_gauge_read_sample(b->gauge,&sample) || b->stopped) goto stop;
+    sample_result=a04_gauge_read_sample(b->gauge,&sample);
+    if (sample_result==A04_GAUGE_IO || b->stopped) goto stop;
     now=b->charger->now_ns(b->charger->context);
     if (now < start || now-start >= SECOND_NS || now >= b->next_due || now >= b->lifetime) goto stop;
     b->observed=now;
-    if (now >= deadline) { result=A04_BROKER_REJECTED; goto done; }
+    if (sample_result!=A04_GAUGE_OK || now >= deadline) { result=A04_BROKER_REJECTED; goto done; }
     *out=sample; result=A04_BROKER_OK; goto done;
 stop:
     a04_bq_broker_stop(b);
