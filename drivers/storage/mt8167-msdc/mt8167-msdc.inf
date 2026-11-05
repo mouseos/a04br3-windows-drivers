@@ -40,7 +40,7 @@ LoadOrderGroup = SCSI Miniport
 mt8167-msdc.sys = 1
 
 [Strings]
-Provider = "TAB-A04-BR3 development"
+Provider = "mouseos"
 DeviceDescription = "MediaTek MT8167 MSDC eMMC Host Controller"
 ServiceDescription = "MediaTek MT8167 MSDC eMMC Host Controller"
 DiskName = "MediaTek MT8167 MSDC eMMC Driver"

@@ -58,5 +58,5 @@ KmdfLibraryVersion=1.13
 
 [Strings]
 Provider="mouseos"
-Device="NXP MMA8652 accelerometer diagnostic"
-Disk="NXP MMA8652 accelerometer diagnostic driver"
+Device="NXP MMA8652 Accelerometer"
+Disk="NXP MMA8652 Accelerometer Driver"
