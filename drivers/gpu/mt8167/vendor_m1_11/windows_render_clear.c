@@ -81,15 +81,26 @@ NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
     fence.eCmdType=RGXFWIF_KCCB_CMD_SYNC;fence.eDM=0;
     fence.uCmdData.sSyncData.sSyncObjDevVAddr=f->command_sync_addr;
     fence.uCmdData.sSyncData.uiUpdateVal=flushseq;
-    if(a04_rgx_device_write_words(&f->kcommands[k.ui32WriteOffset],&flush,sizeof(flush)) ||
-       a04_rgx_device_write_words(&f->kcommands[(k.ui32WriteOffset+1u)&127u],&fence,sizeof(fence))) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
-    a04_gpu_dma_barrier();knext=(k.ui32WriteOffset+2u)&127u;
+    /* The board DDK schedules the flush and the subsequent GP fence as
+     * separate submissions, each with its own event kick. */
+    if(a04_rgx_device_write_words(&f->kcommands[k.ui32WriteOffset],&flush,sizeof(flush))) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
+    a04_gpu_dma_barrier();knext=(k.ui32WriteOffset+1u)&127u;
     ((volatile RGXFWIF_CCB_CTL *)f->kctl)->ui32WriteOffset=knext;
     a04_gpu_dma_barrier();result->phase=3;WRITE_REGISTER_ULONG((volatile ULONG *)(void *)(s->core+0xb00),0x10);
     status=STATUS_IO_TIMEOUT;
-    /* MTK m1.11 sysinfo.h permits at least 1 s for HW completion. Keep the
-     * earlier render deadline separate; allow the ordered global flush/SYNC
-     * the matching minimum without resubmitting either command. */
+    for(i=0;i<20000;i++) {
+        a04_gpu_dma_barrier();
+        if(((volatile RGXFWIF_CCB_CTL *)f->kctl)->ui32ReadOffset==knext){status=STATUS_SUCCESS;break;}
+        KeStallExecutionProcessor(50);
+    }
+    if(!NT_SUCCESS(status))goto poison;
+    status=queue_snapshot(f,&k,&q);if(!NT_SUCCESS(status))goto poison;
+    if(a04_rgx_device_write_words(&f->kcommands[k.ui32WriteOffset],&fence,sizeof(fence))) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
+    a04_gpu_dma_barrier();knext=(k.ui32WriteOffset+1u)&127u;
+    ((volatile RGXFWIF_CCB_CTL *)f->kctl)->ui32WriteOffset=knext;
+    a04_gpu_dma_barrier();result->phase=5;WRITE_REGISTER_ULONG((volatile ULONG *)(void *)(s->core+0xb00),0x10);
+    status=STATUS_IO_TIMEOUT;
+    /* MTK m1.11 sysinfo.h permits at least 1 s for hardware completion. */
     for(i=0;i<20000;i++) {
         a04_gpu_dma_barrier();
         if(((volatile RGXFWIF_CCB_CTL *)f->kctl)->ui32ReadOffset==knext &&
@@ -114,9 +125,9 @@ poison:
     if(!a04_rgx_device_read_words(&client,bank+r->layout.control[3],sizeof(client))) {
         result->cread=client.ui32ReadOffset;result->cwrite=client.ui32WriteOffset;
     }
-    result->ufo=result->phase>=3 ? *(volatile uint32_t *)f->command_sync : *sync;
-    result->expected=result->phase>=3 ? flushseq : seq;
-    if(result->phase==3) {
+    result->ufo=(result->phase==3 || result->phase==5) ? *(volatile uint32_t *)f->command_sync : *sync;
+    result->expected=(result->phase==3 || result->phase==5) ? flushseq : seq;
+    if(result->phase==3 || result->phase==5) {
         /* Diagnostic observation only: the flush is still unconfirmed and
          * reads may race cache/device activity. Never treat this as success. */
         result->slc_status=READ_REGISTER_ULONG((volatile ULONG *)(void *)(s->core+0x3820));

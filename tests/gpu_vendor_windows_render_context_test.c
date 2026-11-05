@@ -17,9 +17,10 @@ void KeStallExecutionProcessor(unsigned us)
     cmd=&run->kcommands[run->kctl->ui32ReadOffset];bank=sim->buffer[0].cpu;
     if(cmd->eCmdType==RGXFWIF_KCCB_CMD_SLCFLUSHINVAL) {
         if(complete==2)return;
-        RGXFWIF_KCCB_CMD *fence=&run->kcommands[(run->kctl->ui32ReadOffset+1u)&127u];
-        assert(fence->eCmdType==RGXFWIF_KCCB_CMD_SYNC);
-        *(uint32_t *)run->command_sync=fence->uCmdData.sSyncData.uiUpdateVal;
+        run->kctl->ui32ReadOffset=run->kctl->ui32WriteOffset;return;
+    }
+    if(cmd->eCmdType==RGXFWIF_KCCB_CMD_SYNC) {
+        *(uint32_t *)run->command_sync=cmd->uCmdData.sSyncData.uiUpdateVal;
         run->kctl->ui32ReadOffset=run->kctl->ui32WriteOffset;return;
     }
     assert(cmd->eCmdType==RGXFWIF_KCCB_CMD_KICK);
