@@ -11,12 +11,17 @@ static int supports(void*p,uint16_t r,uint16_t m,uint16_t v){(void)p;if(r==0x10c
 static int update(void*p,uint16_t r,uint16_t m,uint16_t v){struct fixture*f=p;if(r==0x10c && m==0xe){if(v==0xe)return a04_pmic_spk_clock_acquire(&f->bus,&f->clock);if(!v)return a04_pmic_spk_clock_release(&f->bus,&f->clock);return -1;}return a04_pmic_classd_update(&f->bus,r,m,v);}
 static int read_gain(void*p,uint16_t r,uint16_t*v){return a04_pmic_classd_read_gain(&((struct fixture*)p)->bus,r,v);}
 static int delay(void*p,uint32_t us){struct fixture*f=p;assert((f->delays==0 && us==20000)||(f->delays==1 && us==2000));f->delays++;return 0;}
-static void init(struct fixture*f,struct a04_mt6392_classd*c){memset(f,0,sizeof(*f));memset(c,0,sizeof(*c));f->bus.context=f;f->bus.read32=rd;f->bus.write32=wr;f->bus.delay=tiny;f->bus.attempts=2;f->regs[0x108/2]=0x800a;f->regs[0x64/2]=0x0a00;c->context=f;c->verify_start=verify;c->verify_quiescent=verify;c->supports=supports;c->update_bits=update;c->read16=read_gain;c->delay_us=delay;}
+static void init(struct fixture*f,struct a04_mt6392_classd*c){memset(f,0,sizeof(*f));memset(c,0,sizeof(*c));f->bus.context=f;f->bus.read32=rd;f->bus.write32=wr;f->bus.delay=tiny;f->bus.attempts=2;f->regs[0x108/2]=0x800a;f->regs[0x64/2]=0x0a00;c->context=f;c->verify_unmute=verify;c->verify_start=verify;c->verify_quiescent=verify;c->supports=supports;c->update_bits=update;c->read16=read_gain;c->delay_us=delay;}
 int main(void){struct fixture f;struct a04_mt6392_classd c;struct a04_mt6392_audio_rails rails;init(&f,&c);
  f.regs[0x404/2]=0xc000;f.regs[0x410/2]=0x60;f.regs[0x424/2]=0xc000;
  assert(!a04_pmic_audio_rails(&f.bus,&rails) && rails.vaud22_selector==0x60 && a04_pmic_audio_rails_ready(&rails));
  f.regs[0x424/2]=0x4000;assert(!a04_pmic_audio_rails(&f.bus,&rails) && !a04_pmic_audio_rails_ready(&rails));
  assert(!a04_mt6392_classd_start_muted(&c) && c.active && f.clock.held && f.regs[0x108/2]==0x8000 && !(f.regs[0x64/2]&0xf00) && f.delays==2);
+#if defined(A04_MT6392_UNMUTE_DIAGNOSTIC) && A04_MT6392_UNMUTE_DIAGNOSTIC
+ assert(!a04_mt6392_classd_unmute_min(&c) && (f.regs[0x64/2]&0xf00)==0x100);
+#else
+ assert(a04_mt6392_classd_unmute_min(&c) && !(f.regs[0x64/2]&0xf00));
+#endif
  f.regs[0x64/2]|=0x0a00;assert(!a04_mt6392_classd_mute(&c) && !(f.regs[0x64/2]&0xf00) && c.active && f.clock.held);
  assert(!a04_mt6392_classd_stop(&c) && !c.active && !f.clock.held && f.regs[0x108/2]==0x800a);
  init(&f,&c);f.ignore_alias=1;assert(a04_mt6392_classd_start_muted(&c) && c.poisoned && f.bus.poisoned && f.clock.held);

@@ -30,6 +30,8 @@ typedef struct _A04_SHARED_AUDIO_INTERFACE {
     int (*BindAfe)(PVOID, PVOID, ULONG);
     /* Active lease only: mute without releasing power, clock or DMA. */
     int (*Mute)(PVOID);
+    /* Diagnostic minimum gain, only after DMA start and verified board route. */
+    int (*UnmuteMin)(PVOID);
 } A04_SHARED_AUDIO_INTERFACE;
-#define A04_SHARED_AUDIO_INTERFACE_VERSION 6
+#define A04_SHARED_AUDIO_INTERFACE_VERSION 7
 #endif

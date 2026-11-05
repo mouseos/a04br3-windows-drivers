@@ -17,11 +17,13 @@ struct a04_audio_owner {
      * a caller assertion or disabled AFE bit alone is insufficient. */
     int (*verify_release)(void *);
     int (*codec_mute)(void *);
+    int (*codec_unmute)(void *);
     int (*codec_release_quiescent)(void *);
     int (*clock_release)(void *);
     int online, leased, poisoned;
 };
 int a04_audio_owner_acquire(struct a04_audio_owner *, uint32_t);
+int a04_audio_owner_unmute(struct a04_audio_owner *);
 int a04_audio_owner_mute(struct a04_audio_owner *);
 int a04_audio_owner_release(struct a04_audio_owner *);
 void a04_audio_owner_stop(struct a04_audio_owner *);

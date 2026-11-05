@@ -82,7 +82,11 @@ int a04_pmic_emmc_rails(struct a04_pmic_read *bus, struct a04_emmc_rails_raw *ou
  * checked; ambiguous completion poisons the bus. Caller owns the lock. */
 static int classd_allowed(uint16_t a,uint16_t m,uint16_t v)
 {
-    if(a==0x0064u) return (m==0x0f00u && v==0) || (m==0xf0ffu && (v==0x2018u || v==0x2000u));
+    if(a==0x0064u) return (m==0x0f00u && (v==0
+#if defined(A04_MT6392_UNMUTE_DIAGNOSTIC) && A04_MT6392_UNMUTE_DIAGNOSTIC
+        || v==0x0100u
+#endif
+        )) || (m==0xf0ffu && (v==0x2018u || v==0x2000u));
     if(m!=0xffffu)return 0;
     return (a==0x0052u && (v==0x3409u || v==0x3401u || v==0x3400u)) ||
            (a==0x0056u && v==0x0414u) || (a==0x0060u && v==0x48f4u) ||

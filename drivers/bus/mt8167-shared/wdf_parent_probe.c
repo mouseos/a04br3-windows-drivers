@@ -219,6 +219,9 @@ static int ParentCodecStart(void *context) {
     if(!a04_pmic_audio_rails_ready(&rails))return -1;
     return a04_mt6392_classd_start_muted(&c->classd);
 }
+#if defined(A04_MT6392_UNMUTE_DIAGNOSTIC) && A04_MT6392_UNMUTE_DIAGNOSTIC
+static int ParentCodecUnmute(void *context) { return a04_mt6392_classd_unmute_min(&((A04_PARENT_CONTEXT *)context)->classd); }
+#endif
 static int ParentCodecMute(void *context) { return a04_mt6392_classd_mute(&((A04_PARENT_CONTEXT *)context)->classd); }
 static int ParentCodecStop(void *context) { return a04_mt6392_classd_stop(&((A04_PARENT_CONTEXT *)context)->classd); }
 #endif
@@ -288,6 +291,12 @@ static int ParentAudioAcquire(PVOID context,ULONG rate) {
     A04_TRACE("A04AUD parent acquire rate=%lu result=%d pmic=%d apmixed=%d online=%d preflight=%d clock=%d codec=%d release-check=%d poisoned=%d\n",rate,result,c->pmic.online,c->apmixed!=NULL,c->audio.online,c->audio.preflight!=NULL,c->audio.clock_acquire!=NULL,c->audio.codec_acquire_muted!=NULL,c->audio.verify_release!=NULL,c->audio.poisoned);
     if(result && c->audio.poisoned)result=-2;
     ParentUnlock(c);return result;
+}
+static int ParentAudioUnmute(PVOID context) {
+    A04_PARENT_CONTEXT *c;int result;
+    if(!context || KeGetCurrentIrql()>APC_LEVEL)return -1;
+    c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
+    result=a04_audio_owner_unmute(&c->audio);ParentUnlock(c);return result;
 }
 static int ParentAudioMute(PVOID context) {
     A04_PARENT_CONTEXT *c;int result;
@@ -652,6 +661,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
         c->classd.context=c;c->classd.supports=ParentCodecSupports;c->classd.update_bits=ParentCodecUpdate;c->classd.read16=ParentCodecRead;c->classd.delay_us=ParentCodecDelay;
         c->audio.context=c;c->audio.codec_acquire_muted=ParentCodecStart;
         c->audio.codec_mute=ParentCodecMute;c->audio.codec_release_quiescent=ParentCodecStop;
+#if defined(A04_MT6392_UNMUTE_DIAGNOSTIC) && A04_MT6392_UNMUTE_DIAGNOSTIC
+        c->audio.codec_unmute=ParentCodecUnmute;
+#endif
 #endif
 #if A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC
         c->audio.context=c;c->audio.top_clock_acquire=ParentTopAudioAcquire;
@@ -684,7 +696,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     audioIface.Header.Size=sizeof(audioIface);audioIface.Header.Version=A04_SHARED_AUDIO_INTERFACE_VERSION;
     audioIface.Header.Context=dev;audioIface.Header.InterfaceReference=ParentInterfaceReference;
     audioIface.Header.InterfaceDereference=ParentInterfaceDereference;
-    audioIface.BindAfe=ParentBindAfe;audioIface.Mute=ParentAudioMute;audioIface.AcquireMuted=ParentAudioAcquire;audioIface.ReleaseQuiescent=ParentAudioRelease;audioIface.PrepareMaskedIrq=ParentAudioPrepareIrq;
+    audioIface.BindAfe=ParentBindAfe;audioIface.Mute=ParentAudioMute;audioIface.UnmuteMin=ParentAudioUnmute;audioIface.AcquireMuted=ParentAudioAcquire;audioIface.ReleaseQuiescent=ParentAudioRelease;audioIface.PrepareMaskedIrq=ParentAudioPrepareIrq;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&audioIface,&A04SharedAudioInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
     if(!NT_SUCCESS(status))return status;

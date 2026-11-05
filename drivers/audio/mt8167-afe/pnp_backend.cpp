@@ -36,6 +36,9 @@
 /* Link-time pairing prevents publishing the WaveRT buffer as silent DMA. */
 extern "C" int Mt8167SilentDmaMiniportEnabled(void);
 #endif
+#if defined(A04_AUDIO_UNMUTE_DIAGNOSTIC) && A04_AUDIO_UNMUTE_DIAGNOSTIC && (!defined(A04_AUDIO_PCM_PATTERN_DIAGNOSTIC) || !A04_AUDIO_PCM_PATTERN_DIAGNOSTIC)
+#error unmute diagnostic requires the isolated fixed PCM pattern
+#endif
 #define OWNER_TAG 'OwnA'
 struct Mt8167PnpBackend {
     Mt8167StreamBackend iface;
@@ -181,6 +184,9 @@ static BOOLEAN OwnerLiveDmaVerified(Mt8167PnpBackend *o)
 #endif
 }
 #endif
+#if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
+static NTSTATUS OwnerStopRunning(Mt8167PnpBackend *o);
+#endif
 static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
     if (!ctx || !possiblyExposed) return STATUS_INVALID_PARAMETER;
     *possiblyExposed=FALSE;
@@ -193,8 +199,15 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
         OwnerLiveDmaVerified(o)) {
         /* The selected period is a diagnostic half-ring, not a WaveRT
          * notification contract. No live-DMA verifier currently exists. */
-        if (!Mt8167TransportStartMaskedParent(&o->transport,o->buffer.size/2,&o->shared))
-            result=STATUS_SUCCESS;
+        if (!Mt8167TransportStartMaskedParent(&o->transport,o->buffer.size/2,&o->shared)) {
+#if defined(A04_AUDIO_UNMUTE_DIAGNOSTIC) && A04_AUDIO_UNMUTE_DIAGNOSTIC
+            /* Failed/ambiguous unmute still stops DMA and retains the lease. */
+            if(o->parentClient.parent.UnmuteMin(o->parentClient.parent.Header.Context))
+                (void)OwnerStopRunning(o);
+            else
+#endif
+                result=STATUS_SUCCESS;
+        }
 #if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
         *possiblyExposed=(o->silentBuffer.exposed || o->shared.quarantined) ? TRUE : FALSE;
 #else

@@ -2,9 +2,9 @@
 #include <stdint.h>
 #include <string.h>
 #include "dl1_engine.h"
-struct mock { uint32_t reg[256]; int calls, fail, writes; };
+struct mock { uint32_t reg[256]; int calls, fail, writes, stuck_irq; };
 static int rd(void *v, uint32_t off, uint32_t *p) { struct mock *m=v; if (++m->calls==m->fail) return -1; *p=m->reg[off/4]; return 0; }
-static int wr(void *v, uint32_t off, uint32_t x) { struct mock *m=v; if (++m->calls==m->fail) return -1; m->writes++; m->reg[off/4]=x; if(off==0x3a8)m->reg[0x3a4/4]&=~x;return 0; }
+static int wr(void *v, uint32_t off, uint32_t x) { struct mock *m=v; if (++m->calls==m->fail) return -1; m->writes++; m->reg[off/4]=x; if(off==0x3a8 && !m->stuck_irq)m->reg[0x3a4/4]&=~x;return 0; }
 int main(void) {
  struct mock m; struct mt8167_dl1_engine e; struct mt8167_dl1_plan p; int n, i, calls;
  assert(mt8167_dl1_plan(0x1000,1024,256,48000,&p));
@@ -28,10 +28,12 @@ int main(void) {
    assert(mt8167_dl1_start(&e,&p)==-1 && e.state==MT8167_DL1_POISONED);
    assert(mt8167_dl1_start(&e,&p)==-1);
  }
- for (i=1;i<=7;i++) { memset(&m,0,sizeof m); e.state=MT8167_DL1_IDLE;
+ for (i=1;i<=8;i++) { memset(&m,0,sizeof m); e.state=MT8167_DL1_IDLE;
    assert(mt8167_dl1_start(&e,&p)==0); m.fail=m.calls+i;
    assert(mt8167_dl1_stop(&e)==-1 && e.state==MT8167_DL1_POISONED);
  }
+ memset(&m,0,sizeof m);e.state=MT8167_DL1_IDLE;assert(!mt8167_dl1_start(&e,&p));
+ m.reg[0x3a4/4]=1;m.stuck_irq=1;assert(mt8167_dl1_stop(&e)==-1 && e.state==MT8167_DL1_POISONED);
  for (i=1;i<=3;i++) { memset(&m,0,sizeof m); e.state=MT8167_DL1_IDLE;
    assert(mt8167_dl1_start(&e,&p)==0); m.reg[0x3a4/4]=1; m.fail=m.calls+i;
    assert(mt8167_dl1_interrupt(&e,&n)==-1 && e.state==MT8167_DL1_POISONED && n==0);

@@ -99,13 +99,21 @@ unsigned char A04UsbWdfPhyRead(A04_USB_WDF*c,unsigned off)
 { return READ_REGISTER_UCHAR(c->phy+0x800u+off); }
 void A04UsbWdfPhyWrite(A04_USB_WDF*c,unsigned off,unsigned char value)
 { WRITE_REGISTER_UCHAR(c->phy+0x800u+off,value); }
+static BOOLEAN ArmSynchronized(WDFINTERRUPT irq,WDFCONTEXT context)
+{
+ A04_USB_WDF*c=context;UNREFERENCED_PARAMETER(irq);
+ if(InterlockedCompareExchange(&c->armed,1,0))return FALSE;
+ if(Mt8167UsbInterruptEnable(&c->controller)) {
+  Mt8167UsbInterruptDisable(&c->controller);InterlockedExchange(&c->armed,0);return FALSE;
+ }
+ return TRUE;
+}
 NTSTATUS A04UsbWdfArm(A04_USB_WDF*c)
 {
  if(!c || !c->mac || !c->phy || InterlockedCompareExchange(&c->armed,0,0))return STATUS_INVALID_DEVICE_STATE;
  /* Linux MT8167 USB20 platform declares an 8 KiB dynamic FIFO. */
  if(Mt8167UsbFifoInit(&c->controller,8192))return STATUS_DEVICE_HARDWARE_ERROR;
- InterlockedExchange(&c->armed,1);
- if(Mt8167UsbInterruptEnable(&c->controller)){InterlockedExchange(&c->armed,0);return STATUS_DEVICE_HARDWARE_ERROR;}
+ if(!WdfInterruptSynchronize(c->irq,ArmSynchronized,c))return STATUS_DEVICE_HARDWARE_ERROR;
  return STATUS_SUCCESS;
 }
 void A04UsbWdfDisarm(A04_USB_WDF*c)

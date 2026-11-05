@@ -310,3 +310,13 @@ the DMA mapping and ownership remain quarantined because DL1 disable and IRQ
 disconnect do not prove bus drain. Normal playback and all diagnostic flags
 remain off by default. Parent lease, board power, codec route and physical
 coherency still require separate establishment; no device run is claimed.
+
+`A04_AUDIO_UNMUTE_DIAGNOSTIC=1` additionally requests MT6392 gain code 1
+(Linux defines it as +0 dB, the lowest non-mute gain) only after the fixed PCM
+DMA starts. It requires the fixed-pattern and isolated-DMA flags. The parent
+requires an independently verified board route and retained power callback;
+the actual parent does not provide it, so the real device still rejects this
+operation. A failed request still stops DL1 and retains exposed DMA. This
+experiment does not connect WaveRT PCM or prove the MT8167 analog route.
+Linux's AIF RX, DAC, Vref, DAC clock, VCM and AU_LOL path must also be
+implemented and verified before any unmute is admitted.
