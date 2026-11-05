@@ -8,6 +8,7 @@
 #include "windows_linear_context.h"
 #include "ge8300_status.h"
 #include "vendor_m1_11/windows_stage.h"
+#include "vendor_m1_11/windows_power_acpi.h"
 #include "pvr_rogue_fwif.h"
 #include "pvr_rogue_defs.h"
 #ifndef A04_GE8300_VENDOR_STAGE
@@ -68,6 +69,8 @@ typedef struct {
 #if A04_GE8300_VENDOR_STAGE
     struct a04_vendor_m1_11_memory vendor;
     struct a04_ge8300_vendor_stage_status vendor_status;
+    struct a04_ge8300_vendor_power_status vendor_power_status;
+    volatile UCHAR *mfg;
 #endif
 #if A04_GE8300_RENDER_DIAGNOSTIC
     struct a04_windows_render_diagnostic render_diagnostic;
@@ -293,18 +296,30 @@ NTSTATUS GpuPrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
     GPU_CONTEXT *c=GpuContext(device); ULONG i, count=WdfCmResourceListGetCount(translated);
     PHYSICAL_ADDRESS core; BOOLEAN have_core=FALSE,have_mfg=FALSE;
+#if A04_GE8300_VENDOR_STAGE
+    PHYSICAL_ADDRESS mfg; mfg.QuadPart=0;
+#endif
     UNREFERENCED_PARAMETER(raw); core.QuadPart=0;
     for(i=0;i<count;++i) {
         PCM_PARTIAL_RESOURCE_DESCRIPTOR d=WdfCmResourceListGetDescriptor(translated,i);
         if(!d || d->Type!=CmResourceTypeMemory) continue;
         if(d->u.Memory.Start.QuadPart==CORE_BASE && d->u.Memory.Length==CORE_SIZE && !have_core) {
             core=d->u.Memory.Start; have_core=TRUE;
-        } else if(d->u.Memory.Start.QuadPart==MFG_BASE && d->u.Memory.Length==MFG_SIZE && !have_mfg) have_mfg=TRUE;
+        } else if(d->u.Memory.Start.QuadPart==MFG_BASE && d->u.Memory.Length==MFG_SIZE && !have_mfg) {
+            have_mfg=TRUE;
+#if A04_GE8300_VENDOR_STAGE
+            mfg=d->u.Memory.Start;
+#endif
+        }
         else return STATUS_DEVICE_CONFIGURATION_ERROR;
     }
     if(!have_core || !have_mfg) return STATUS_DEVICE_CONFIGURATION_ERROR;
     c->core=MmMapIoSpace(core,CORE_SIZE,MmNonCached);
     if(!c->core) return STATUS_INSUFFICIENT_RESOURCES;
+#if A04_GE8300_VENDOR_STAGE
+    c->mfg=MmMapIoSpace(mfg,MFG_SIZE,MmNonCached);
+    if(!c->mfg) { MmUnmapIoSpace((PVOID)c->core,CORE_SIZE);c->core=NULL;return STATUS_INSUFFICIENT_RESOURCES; }
+#endif
 #if A04_GE8300_BOOT_TEST
     {
         PHYSICAL_ADDRESS uart; UNICODE_STRING name=RTL_CONSTANT_STRING(L"KiBugCheckData");
@@ -331,6 +346,7 @@ NTSTATUS GpuRelease(WDFDEVICE device,WDFCMRESLIST translated)
     if(c->firmware.processor_released) return STATUS_DEVICE_BUSY;
 #if A04_GE8300_VENDOR_STAGE
     if(c->vendor.hardware_owned) return STATUS_DEVICE_BUSY;
+    if(c->mfg) { MmUnmapIoSpace((PVOID)c->mfg,MFG_SIZE);c->mfg=NULL; }
 #endif
 #if A04_GE8300_RENDER_DIAGNOSTIC
     if(c->render_diagnostic.memory.cpu || c->render_clear_diagnostic.memory.cpu) return STATUS_DEVICE_BUSY;
@@ -358,6 +374,18 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 #if A04_GE8300_VENDOR_STAGE
     /* CPU staging only: version-1 firmware needs its own FWIF runtime and
      * cannot be passed to the modern version-3 boot path. */
+    {
+        struct a04_vendor_power_snapshot snapshot;
+        struct a04_ge8300_vendor_power_status *p=&c->vendor_power_status;
+        p->version=1;p->attempted=1;
+        status=a04_vendor_m1_11_power_snapshot(device,c->mfg,MFG_SIZE,&snapshot);
+        p->status=status;
+        if(NT_SUCCESS(status)) {
+            p->spm_status=snapshot.spm_status;p->spm_status_2=snapshot.spm_status_2;
+            p->mfg_clock_status=snapshot.mfg_clock_status;p->top_mux0=snapshot.top_mux0;
+            p->top_mux1=snapshot.top_mux1;p->top_slow=snapshot.top_slow;
+        }
+    }
     c->vendor_status.version=1;c->vendor_status.attempted=1;
     if(!c->core || !c->dma) { c->vendor_status.stage_status=STATUS_DEVICE_NOT_READY; return STATUS_SUCCESS; }
     status=read_firmware(&image,&bytes);
@@ -555,6 +583,13 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
     WDFDEVICE device=WdfIoQueueGetDevice(queue); GPU_CONTEXT *c=GpuContext(device);
     struct a04_ge8300_status *out; NTSTATUS status; size_t size;
 #if A04_GE8300_VENDOR_STAGE
+    if(control==A04_GE8300_IOCTL_VENDOR_POWER_QUERY) {
+        struct a04_ge8300_vendor_power_status *power;
+        status=WdfRequestRetrieveOutputBuffer(request,sizeof(*power),(PVOID *)&power,&size);
+        if(NT_SUCCESS(status)) { *power=c->vendor_power_status; WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(*power)); }
+        else WdfRequestComplete(request,status);
+        return;
+    }
     if(control==A04_GE8300_IOCTL_VENDOR_STAGE_QUERY) {
         struct a04_ge8300_vendor_stage_status *vendor;
         status=WdfRequestRetrieveOutputBuffer(request,sizeof(*vendor),(PVOID *)&vendor,&size);

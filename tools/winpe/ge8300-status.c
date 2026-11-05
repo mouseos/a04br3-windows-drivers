@@ -15,6 +15,14 @@ static int vendor_uart(const char *message)
     }
     Sleep(1000);CloseHandle(port);return 1;
 }
+static char *vendor_text(char *p,const char *s)
+{ while(*s) *p++=*s++;return p; }
+static char *vendor_hex(char *p,DWORD value)
+{
+    static const char digits[]="0123456789ABCDEF";unsigned i;
+    for(i=0;i<8;i++) *p++=digits[(value>>(28-4*i))&15u];
+    return p;
+}
 #endif
 static void say(const char *p) { DWORD n=0,w; while(p[n])++n; WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),p,n,&w,NULL); }
 static void hex(DWORD n) { static const char d[]="0123456789ABCDEF"; char s[9]; unsigned i; for(i=0;i<8;++i)s[i]=d[(n>>(28-4*i))&15]; s[8]=0; say(s); }
@@ -30,6 +38,19 @@ void mainCRTStartup(void)
 #ifdef A04_GE8300_VENDOR_STAGE_STATUS
     {
         struct a04_ge8300_vendor_stage_status v;
+        struct a04_ge8300_vendor_power_status power;
+        DWORD power_bytes=0;char line[192],*p=line;
+        if(DeviceIoControl(h,A04_GE8300_IOCTL_VENDOR_POWER_QUERY,NULL,0,&power,sizeof(power),&power_bytes,NULL) &&
+           power_bytes==sizeof(power) && power.version==1 && power.attempted) {
+            p=vendor_text(p,"A04GPU POWER STATUS=");p=vendor_hex(p,power.status);
+            p=vendor_text(p," SPM1=");p=vendor_hex(p,power.spm_status);
+            p=vendor_text(p," SPM2=");p=vendor_hex(p,power.spm_status_2);
+            p=vendor_text(p," MFG=");p=vendor_hex(p,power.mfg_clock_status);
+            p=vendor_text(p," MUX0=");p=vendor_hex(p,power.top_mux0);
+            p=vendor_text(p," MUX1=");p=vendor_hex(p,power.top_mux1);
+            p=vendor_text(p," SLOW=");p=vendor_hex(p,power.top_slow);
+            p=vendor_text(p,"\n");*p=0;(void)vendor_uart(line);
+        } else (void)vendor_uart("A04GPU POWER QUERY FAILED\n");
         if(!DeviceIoControl(h,A04_GE8300_IOCTL_VENDOR_STAGE_QUERY,NULL,0,&v,sizeof(v),&got,NULL) ||
            got!=sizeof(v) || v.version!=1) {
             say("GE8300_VENDOR_STAGE_IOCTL_ERROR=");hex(GetLastError());say("\r\n");CloseHandle(h);ExitProcess(2);
