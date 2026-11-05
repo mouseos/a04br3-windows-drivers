@@ -657,3 +657,11 @@ build/gpu_mmu_multileaf_test: tests/gpu_mmu_multileaf_test.c drivers/gpu/mt8167/
 build/gpu_vendor_windows_surface_test: tests/gpu_vendor_windows_surface_test.c drivers/gpu/mt8167/vendor_m1_11/windows_surface.c drivers/gpu/mt8167/vendor_m1_11/windows_uncached.c drivers/gpu/mt8167/gpu_mmu.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 tests/gpu_vendor_windows_surface_test.c drivers/gpu/mt8167/vendor_m1_11/windows_surface.c drivers/gpu/mt8167/vendor_m1_11/windows_uncached.c drivers/gpu/mt8167/gpu_mmu.c -o $@
+
+.PHONY: test-gpu-wddm-staged-present
+test-gpu-wddm-staged-present: build/gpu_wddm_staged_present_test
+	./build/gpu_wddm_staged_present_test
+
+build/gpu_wddm_staged_present_test: tests/gpu_wddm_staged_present_test.cpp drivers/gpu/mt8167/wddm-display/ge8300_present.cxx drivers/gpu/mt8167/wddm-display/present_bounds.h
+	mkdir -p build
+	$(CXX) -std=c++17 -Wall -Wextra -Werror -Wno-multichar $< -o $@
