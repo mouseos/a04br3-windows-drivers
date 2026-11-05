@@ -29,10 +29,12 @@ int a04_bq_recover_batovp(const struct a04_bq_recovery_proof *p,const struct a04
         (r->before[7]&6u) || (r->before[1]&9u) ||
         ((r->before[1]&0xc0u) && (r->before[1]&0x30u)) || (r->before[2]&1u)) return -1;
     control=(uint8_t)(r->before[2]&0x7eu); /* exclude RESET and initial HZ */
-    r->write_attempted=1;r->stage=9;
+    r->write_attempted=1;r->stage=9;r->hiz_outcome=A04_BQ_HIZ_ASSERT_UNCERTAIN;
     if(io->write(io->context,2,(uint8_t)(control|1u))) return -1;
-    CHECK_TIME();r->stage=10;
+    r->hiz_outcome=A04_BQ_HIZ_ASSERT_ACK;
+    CHECK_TIME();r->stage=10;r->hiz_outcome=A04_BQ_HIZ_CLEAR_UNCERTAIN;
     if(io->write(io->context,2,control))return -1;
+    r->hiz_outcome=A04_BQ_HIZ_CLEAR_ACK;
     CHECK_TIME();r->stage=11;
     if(io->read(io->context,1,&value))return -1;
     r->after_battery=value;

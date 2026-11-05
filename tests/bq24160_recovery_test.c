@@ -12,10 +12,12 @@ int main(void){
  f.reg[0]=7;f.reg[1]=2;f.reg[2]=0x8c;f.reg[4]=0x45;f.reg[7]=0x28;
  p.battery_can_supply_system=0;assert(a04_bq_recover_batovp(&p,&io,100,&out)&&!f.reads&&!f.writes);
  p.battery_can_supply_system=1;assert(!a04_bq_recover_batovp(&p,&io,100,&out));
- assert(f.reads==9 && f.writes==2 && f.written[0]==0x0d && f.written[1]==0x0c && out.stage==12);
+ assert(f.reads==9 && f.writes==2 && f.written[0]==0x0d && f.written[1]==0x0c && out.stage==12 && out.hiz_outcome==A04_BQ_HIZ_CLEAR_ACK);
  f.reads=f.writes=0;f.fail_write=1;
- assert(a04_bq_recover_batovp(&p,&io,100,&out) && f.writes==1 && out.stage==9 && out.write_attempted);
+ assert(a04_bq_recover_batovp(&p,&io,100,&out) && f.writes==1 && out.stage==9 && out.write_attempted && out.hiz_outcome==A04_BQ_HIZ_ASSERT_UNCERTAIN);
+ f.reads=f.writes=0;f.fail_write=2;
+ assert(a04_bq_recover_batovp(&p,&io,100,&out) && f.writes==2 && out.stage==10 && out.hiz_outcome==A04_BQ_HIZ_CLEAR_UNCERTAIN);
  f.reads=f.writes=f.fail_write=0;f.reg[7]|=2;
- assert(a04_bq_recover_batovp(&p,&io,100,&out) && !f.writes);
+ assert(a04_bq_recover_batovp(&p,&io,100,&out) && !f.writes && out.hiz_outcome==A04_BQ_HIZ_NOT_ATTEMPTED);
  return 0;
 }
