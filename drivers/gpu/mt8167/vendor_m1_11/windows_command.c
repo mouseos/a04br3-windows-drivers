@@ -3,6 +3,7 @@
  * A04BR3RogueCommand.h, f5d43bf1677955e7e367545b9bbbd6449776cdda. */
 #include "windows_command.h"
 #include "A04BR3RogueCommand.h"
+#include "A04BR3RogueFirmwareRequests.h"
 #include "../windows_hw.h"
 static void fence_barrier(void *ctx)
 { UNREFERENCED_PARAMETER(ctx);a04_gpu_dma_barrier(); }
@@ -13,6 +14,29 @@ static void fence_kick(void *ctx,uint32_t offset,uint32_t value)
 }
 static void fence_wait(void *ctx,uint32_t usec)
 { UNREFERENCED_PARAMETER(ctx);KeStallExecutionProcessor(usec); }
+NTSTATUS a04_vendor_m1_11_windows_requests(struct a04_vendor_start *s,
+    BOOLEAN coherent_or_uncached,a04_vendor_request_handler handler,void *context,
+    uint32_t budget,uint32_t *handled,BOOLEAN *more)
+{
+    struct a04_rgx_request_io io;int result;
+    if (!handled || !more || !handler || !budget || budget>31) return STATUS_INVALID_PARAMETER;
+    *handled=0;*more=FALSE;
+    if (!s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !s->online || !s->attempted ||
+        !s->memory || !s->memory->hardware_owned || !s->memory->runtime || !s->core)
+        return STATUS_DEVICE_NOT_READY;
+    if (coherent_or_uncached!=TRUE) return STATUS_NOT_SUPPORTED;
+    if (InterlockedCompareExchange(&s->command_busy,1,0)!=0) return STATUS_DEVICE_BUSY;
+    if (s->command_poisoned) { InterlockedExchange(&s->command_busy,0);return STATUS_IO_DEVICE_ERROR; }
+    io.context=context;io.acquire=fence_barrier;io.publish=fence_barrier;io.handle=handler;
+    result=a04_rgx_firmware_requests(s->memory->runtime,&io,budget,handled);
+    if (result==A04_REQUEST_CORRUPT) s->command_poisoned=TRUE;
+    if (result==A04_REQUEST_MORE) *more=TRUE;
+    InterlockedExchange(&s->command_busy,0);
+    if (result==A04_REQUEST_EMPTY || result==A04_REQUEST_MORE) return STATUS_SUCCESS;
+    if (result==A04_REQUEST_BLOCKED) return STATUS_NOT_SUPPORTED;
+    if (result==A04_REQUEST_INVALID) return STATUS_INVALID_PARAMETER;
+    return STATUS_IO_DEVICE_ERROR;
+}
 NTSTATUS a04_vendor_m1_11_windows_fence(struct a04_vendor_start *s,
     uint32_t dm,BOOLEAN coherent_or_uncached)
 {

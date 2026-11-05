@@ -26,6 +26,12 @@ static void fence_kick(void *ctx,uint32_t offset,uint32_t value)
     }
 }
 static void fence_wait(void *ctx,uint32_t us) { (void)ctx;(void)us; }
+static int request_handler(void *ctx,const RGXFWIF_FWCCB_CMD *cmd)
+{
+    unsigned *calls=ctx;
+    if(cmd->eCmdType!=RGXFWIF_FWCCB_CMD_FREELIST_GROW) return 1;
+    ++*calls;return 0;
+}
 void KeStallExecutionProcessor(unsigned us)
 {
     (void)us;
@@ -112,6 +118,15 @@ int main(int argc,char **argv)
     if(a04_vendor_m1_11_windows_start(&start,&m,registers,0x80000,0x001600280036001eULL,&power,TRUE)!=STATUS_IO_TIMEOUT || m.hardware_owned || freed!=1) return 16;
     fail_sync=0;simulate_ready=1;delays=0;sim_memory=&m;
     if(a04_vendor_m1_11_windows_start(&start,&m,registers,0x80000,0x001600280036001eULL,&power,TRUE)!=STATUS_SUCCESS || !m.hardware_owned || !start.attempted) return 17;
+    {
+        uint32_t done=0;BOOLEAN more=FALSE;unsigned calls=0;
+        RGXFWIF_FWCCB_CMD *ring=(void *)(m.runtime->main.cpu+
+            m.runtime->init->psFirmwareCCB.ui32Addr-(0xc0000000u+A04_RGX_MAIN_OFFSET));
+        ring[0].eCmdType=RGXFWIF_FWCCB_CMD_FREELIST_GROW;
+        m.runtime->fctl->ui32WriteOffset=1;
+        if(a04_vendor_m1_11_windows_requests(&start,FALSE,request_handler,&calls,1,&done,&more)!=STATUS_NOT_SUPPORTED || calls) return 32;
+        if(a04_vendor_m1_11_windows_requests(&start,TRUE,request_handler,&calls,1,&done,&more)!=STATUS_SUCCESS || calls!=1 || done!=1 || more || m.runtime->fctl->ui32ReadOffset!=1) return 33;
+    }
     if(a04_vendor_m1_11_windows_fence(&start,A04_RGX_DM_GP,FALSE)!=STATUS_NOT_SUPPORTED || start.command_sequence) return 26;
     simulate_fence=1;
     if(a04_vendor_m1_11_windows_fence(&start,A04_RGX_DM_GP,TRUE)!=STATUS_SUCCESS || start.command_sequence!=1) return 27;
