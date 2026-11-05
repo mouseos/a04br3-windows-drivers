@@ -2,10 +2,13 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include "windows_render_cold.h"
 #include "windows_copy_scratch.h"
 #include "gpu_mmu.h"
-static unsigned allocs,frees,pools,fail_at;
+static unsigned allocs,frees,pools,fail_at,alias_next;
 unsigned KeGetCurrentIrql(void){return PASSIVE_LEVEL;}
 void a04_gpu_dma_barrier(void){}
 void *ExAllocatePoolWithTag(int type,size_t size,unsigned tag)
@@ -15,7 +18,7 @@ static void *allocate(PDMA_ADAPTER a,PHYSICAL_ADDRESS *max,ULONG n,PHYSICAL_ADDR
 {
     (void)a;assert(max->QuadPart==0xffffffffLL && !cache && !node);
     allocs++;if(allocs==fail_at)return NULL;
-    pa->QuadPart=0x80000000LL+(int64_t)allocs*0x1000000LL;return aligned_alloc(4096,n);
+    pa->QuadPart=alias_next ? 0xd0000000LL : 0x80000000LL+(int64_t)allocs*0x1000000LL;alias_next=0;return aligned_alloc(4096,n);
 }
 static void release(PDMA_ADAPTER a,ULONG n,PHYSICAL_ADDRESS pa,void *p,BOOLEAN cache)
 {(void)a;(void)n;(void)pa;assert(!cache);frees++;free(p);}
@@ -52,6 +55,19 @@ int main(void)
         struct a04_vendor_copy_scratch scratch={0};unsigned oldfrees=frees,oldallocs=allocs;
         uint64_t *pt=(uint64_t*)r.buffer[3].cpu,expected;
         assert(f.render_owner==&r && !r.copy_owner && !pt[16] && !pt[17] && !pt[18]);
+        { pid_t child=fork();int code;
+          assert(child>=0);
+          if(!child) {
+              struct a04_vendor_copy_scratch bad={0};unsigned was=frees;
+              alias_next=1;
+              assert(a04_vendor_copy_scratch_prepare(&bad,&r,1)==STATUS_DEVICE_CONFIGURATION_ERROR);
+              assert(bad.exposed && r.copy_owner==&bad && frees==was && !pt[16]);
+              assert(a04_vendor_copy_scratch_release(&bad)==STATUS_DEVICE_BUSY);
+              assert(a04_vendor_render_release_cold(&r)==STATUS_DEVICE_BUSY);
+              _exit(0);
+          }
+          assert(waitpid(child,&code,0)==child && WIFEXITED(code) && WEXITSTATUS(code)==0);
+        }
         assert(a04_vendor_copy_scratch_prepare(&scratch,&r,0)==STATUS_INVALID_DEVICE_STATE && allocs==oldallocs);
         fail_at=allocs+2;
         assert(a04_vendor_copy_scratch_prepare(&scratch,&r,1)==STATUS_INSUFFICIENT_RESOURCES && frees==oldfrees+1 && !r.copy_owner && !pt[16]);

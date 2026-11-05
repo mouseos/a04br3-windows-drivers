@@ -58,10 +58,10 @@ NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *o,
         if(a04_rgx_fw_alias(b[i]->cpu,b[i]->bytes,o,sizeof(*o)) ||
            a04_rgx_fw_alias(b[i]->cpu,b[i]->bytes,r,sizeof(*r)) ||
            a04_rgx_fw_alias(b[i]->cpu,b[i]->bytes,f,sizeof(*f)) ||
-           (f->runtime && a04_rgx_fw_alias(b[i]->cpu,b[i]->bytes,f->runtime,sizeof(*f->runtime)))) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;}
-        for(j=0;j<i;j++)if(clash(b[i],b[j]->cpu,(uint64_t)b[j]->logical.QuadPart,b[j]->bytes)) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;}
-        for(j=0;j<16;j++)if(r->buffer[j].cpu && clash(b[i],r->buffer[j].cpu,(uint64_t)r->buffer[j].logical.QuadPart,r->buffer[j].bytes)) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;}
-        for(j=0;j<5;j++)if(!f->allocation[j] || clash(b[i],f->allocation[j],(uint64_t)f->logical[j].QuadPart,fw_sizes[j])) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;}
+           (f->runtime && a04_rgx_fw_alias(b[i]->cpu,b[i]->bytes,f->runtime,sizeof(*f->runtime)))) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto quarantine;}
+        for(j=0;j<i;j++)if(clash(b[i],b[j]->cpu,(uint64_t)b[j]->logical.QuadPart,b[j]->bytes)) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto quarantine;}
+        for(j=0;j<16;j++)if(r->buffer[j].cpu && clash(b[i],r->buffer[j].cpu,(uint64_t)r->buffer[j].logical.QuadPart,r->buffer[j].bytes)) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto quarantine;}
+        for(j=0;j<5;j++)if(!f->allocation[j] || clash(b[i],f->allocation[j],(uint64_t)f->logical[j].QuadPart,fw_sizes[j])) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto quarantine;}
     }
     in.source_va=A04_VENDOR_COPY_SOURCE_VA;in.destination_va=A04_VENDOR_COPY_DEST_VA;in.shared_va=A04_VENDOR_COPY_SHARED_VA;
     if(a04_vendor_copy_state_build(&o->state,&in)) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;}
@@ -77,6 +77,11 @@ NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *o,
     o->render=r;r->copy_owner=o;o->prepared=TRUE;a04_gpu_dma_barrier();
     if(ptes(o,entries,1))return STATUS_IO_DEVICE_ERROR;
     a04_gpu_dma_barrier();return STATUS_SUCCESS;
+quarantine:
+    /* An alias means FreeCommonBuffer could release another live object.
+     * Retain every allocation and block parent teardown; no PTE is published. */
+    o->render=r;o->prepared=TRUE;o->exposed=TRUE;r->copy_owner=o;
+    return status;
 fail:
     for(i=0;i<3;i++)a04_vendor_uncached_free(b[i]);
     RtlZeroMemory(o,sizeof(*o));return status;
