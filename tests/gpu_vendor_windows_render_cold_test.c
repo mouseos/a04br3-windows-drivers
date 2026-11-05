@@ -102,6 +102,10 @@ int main(void)
             assert(a04_vendor_copy_scratch_stage_usc(&scratch,bytes,sizeof(bytes))==STATUS_DATA_ERROR && !scratch.usc_ready);
             if(path) {
                 _Alignas(8) struct a04_vendor_copy_task_snapshot snapshot,old;
+                const uint32_t expected[52]={[0]=0x200,[1]=0x1ffc,[6]=0x20002,[8]=0xa3000,
+                    [10]=0x202,[11]=96,[12]=64,[14]=192,[15]=272,[17]=256,[18]=256,
+                    [20]=0x10001,[21]=0x800000,[24]=3,[32]=0x68800000,[33]=0x0200003c,
+                    [34]=31,[35]=31};
                 FILE *in=fopen(path,"rb");assert(in && fread(bytes,1,sizeof(bytes),in)==sizeof(bytes) && fgetc(in)==EOF);fclose(in);
                 assert(a04_vendor_copy_usc_match(bytes,sizeof(bytes)));
                 f.hardware_owned=TRUE;assert(a04_vendor_copy_scratch_stage_usc(&scratch,bytes,sizeof(bytes))==STATUS_INVALID_PARAMETER);f.hardware_owned=FALSE;
@@ -112,6 +116,7 @@ int main(void)
                 assert(!memcmp((UCHAR*)r.buffer[10].cpu+128,bytes,sizeof(bytes)));
                 assert(a04_vendor_copy_scratch_stage_usc(&scratch,bytes,sizeof(bytes))==STATUS_INVALID_PARAMETER);
                 assert(a04_vendor_copy_scratch_task_snapshot(&scratch,&snapshot)==STATUS_SUCCESS);
+                assert(!memcmp(snapshot.words,expected,sizeof(expected)));
                 assert(snapshot.words[0]==0x200 && snapshot.words[1]==0x1ffc && snapshot.words[6]==0x20002 &&
                     snapshot.words[10]==0x202 && snapshot.words[11]==96 && snapshot.words[12]==64 &&
                     snapshot.words[14]==192 && snapshot.words[15]==272);
