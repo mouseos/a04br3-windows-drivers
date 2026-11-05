@@ -5,11 +5,13 @@
 #include "windows_uncached.h"
 #include "render_resources.h"
 #include "clear_image.h"
+#include "windows_surface.h"
 struct a04_vendor_render_cold {
     struct a04_vendor_uncached buffer[16];
     struct a04_vendor_clear_image clear;
     struct a04_vendor_render_layout layout;
     struct a04_vendor_m1_11_memory *firmware;
+    struct a04_vendor_surface *screen_surface;
     uint32_t client_write[4], sequence, cleanup_mask;
     uint32_t clear_first, clear_row_bytes, diagnostic_tile_index;
     BOOLEAN mapped, poisoned, clear_ready, clear_attempted, clear_verified, cleanup_started;
@@ -18,6 +20,8 @@ struct a04_vendor_render_cold {
  * after processor release until a separately verified DMA-quiescence path. */
 NTSTATUS a04_vendor_render_prepare_cold(struct a04_vendor_render_cold *render,
     struct a04_vendor_m1_11_memory *firmware, PDMA_ADAPTER adapter, BOOLEAN prepare_clear, uint32_t clear_colour);
+NTSTATUS a04_vendor_render_attach_screen(struct a04_vendor_render_cold *render,
+    struct a04_vendor_surface *surface);
 NTSTATUS a04_vendor_render_release_cold(struct a04_vendor_render_cold *render);
 struct a04_vendor_start;
 /* GP UPDATE or a TA/3D/TQ priority change; no drawing task is submitted. */

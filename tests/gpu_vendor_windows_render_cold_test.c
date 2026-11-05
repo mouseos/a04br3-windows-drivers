@@ -13,7 +13,7 @@ static void *allocate(PDMA_ADAPTER a,PHYSICAL_ADDRESS *max,ULONG n,PHYSICAL_ADDR
 {
     (void)a;assert(max->QuadPart==0xffffffffLL && !cache && !node);
     allocs++;if(allocs==fail_at)return NULL;
-    pa->QuadPart=0x80000000LL+(int64_t)allocs*0x100000LL;return aligned_alloc(4096,n);
+    pa->QuadPart=0x80000000LL+(int64_t)allocs*0x1000000LL;return aligned_alloc(4096,n);
 }
 static void release(PDMA_ADAPTER a,ULONG n,PHYSICAL_ADDRESS pa,void *p,BOOLEAN cache)
 {(void)a;(void)n;(void)pa;assert(!cache);frees++;free(p);}
@@ -21,11 +21,11 @@ int main(void)
 {
     DMA_OPERATIONS ops={.FreeCommonBuffer=release,.Size=sizeof(ops),.AllocateCommonBufferEx=allocate};
     struct fake_adapter adapter={&ops};struct a04_vendor_m1_11_memory f={0};
-    struct a04_vendor_render_cold r={0};uint32_t *table;unsigned i;
+    struct a04_vendor_render_cold r={0};struct a04_vendor_surface surface={0};uint32_t *table;unsigned i;
     const unsigned sizes[5]={32768,102400,20480,262144,65536};
     for(i=0;i<5;i++) {
         f.buffers[i].cpu=aligned_alloc(4096,sizes[i]);assert(f.buffers[i].cpu);
-        f.buffers[i].bytes=sizes[i];f.buffers[i].dma=0x90000000u+i*0x100000u;
+        f.buffers[i].bytes=sizes[i];f.buffers[i].dma=0xd0000000u+i*0x100000u;
         memset(f.buffers[i].cpu,0,sizes[i]);
     }
     f.adapter=&adapter;f.staged=TRUE;f.uncached=TRUE;table=f.buffers[0].cpu;table[0]=0x1234;
@@ -45,7 +45,14 @@ int main(void)
     assert(!memcmp(r.buffer[10].cpu,r.clear.usc,sizeof(r.clear.usc)));
     assert(((uint32_t *)r.buffer[1].cpu)[UINT64_C(0xf800000000)>>30]);
     assert(((uint32_t *)r.buffer[1].cpu)[UINT64_C(0xf900000000)>>30]);
+    assert(a04_vendor_surface_prepare(&surface,&adapter,800,1280,3328,UINT64_C(0x8000000000))==STATUS_SUCCESS);
+    assert(a04_vendor_render_attach_screen(&r,&surface)==STATUS_SUCCESS);
+    assert(r.screen_surface==&surface && r.clear_first==1248u*3328u+768u*4u && r.clear_row_bytes==3328u);
+    assert(((uint32_t *)r.buffer[1].cpu)[512]==((uint32_t)((uint64_t)surface.pd.logical.QuadPart>>8)|1u));
+    assert(((uint32_t *)surface.pixels.cpu)[0]==0xa5a5a5a5u &&
+           ((uint32_t *)surface.pixels.cpu)[surface.bytes/4u-1]==0xa5a5a5a5u);
     assert(a04_vendor_render_release_cold(&r)==STATUS_SUCCESS && frees==28 && !pools);
+    assert(a04_vendor_surface_release(&surface)==STATUS_SUCCESS && frees==34);
     for(i=0;i<5;i++)free(f.buffers[i].cpu);
     return 0;
 }

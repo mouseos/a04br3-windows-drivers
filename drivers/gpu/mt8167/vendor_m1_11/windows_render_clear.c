@@ -39,7 +39,10 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
        r->poisoned || !s->online || !s->memory || !s->memory->hardware_owned || s->memory!=r->firmware ||
        !(f=s->memory->runtime) || !f->kctl || !f->fctl || !f->kcommands || !f->command_sync || !s->core ||
        !r->buffer[0].cpu || !r->buffer[4].cpu || r->buffer[4].bytes!=65536u ||
-       !a04_vendor_clear_layout_valid(r->clear_first,r->clear_row_bytes) ||
+       (r->screen_surface ? (!r->screen_surface->hardware_exposed || !r->screen_surface->pixels.cpu ||
+         r->screen_surface->bytes!=4259840u || r->clear_row_bytes!=3328u ||
+         r->clear_first!=1248u*3328u+768u*4u) :
+         !a04_vendor_clear_layout_valid(r->clear_first,r->clear_row_bytes)) ||
        r->layout.sync>65532u || r->layout.control[3]>65536u-sizeof(client) ||
        r->layout.commands[3]>65536u-4096u || r->layout.tq>65536u-sizeof(RGXFWIF_FWCOMMONCONTEXT) ||
        r->sequence>=0xfffffffeu || s->command_sequence>=0xfffffffeu)return STATUS_INVALID_PARAMETER;
@@ -49,7 +52,7 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
     if(s->command_poisoned || s->shutdown_started){status=STATUS_IO_DEVICE_ERROR;goto done;}
     status=queue_snapshot(f,&k,&q);if(!NT_SUCCESS(status))goto done;
     bank=r->buffer[0].cpu;sync=(volatile uint32_t *)(void *)(bank+r->layout.sync);
-    output=(volatile uint32_t *)r->buffer[4].cpu;at=r->client_write[3];
+    output=(volatile uint32_t *)(r->screen_surface ? r->screen_surface->pixels.cpu : r->buffer[4].cpu);at=r->client_write[3];
     if(at>4095u || (at&7u) || at+sizeof(packet)+40u>4096u ||
        a04_rgx_device_read_words(&client,bank+r->layout.control[3],sizeof(client)) ||
        client.ui32WrapMask!=4095u || client.ui32ReadOffset!=at || client.ui32WriteOffset!=at ||
@@ -115,7 +118,7 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
     if(!NT_SUCCESS(status))goto poison;
     result->phase=4;
     a04_gpu_dma_barrier();
-    for(i=0;i<16384u;i++) {
+    for(i=0;i<(r->screen_surface ? r->screen_surface->bytes/4u : 16384u);i++) {
         value=output[i];if(a04_vendor_clear_is_target(i*4u,r->clear_first,r->clear_row_bytes)) {if(value==r->clear.expected)result->zeros++;} else if(value!=0xa5a5a5a5u)result->guard_errors++;
         if(i*4u==r->clear_first)result->first=value;
         if(i*4u==r->clear_first+31u*r->clear_row_bytes+124u)result->last=value;
@@ -139,7 +142,7 @@ poison:
         result->slc_status=READ_REGISTER_ULONG((volatile ULONG *)(void *)(s->core+0x3820));
         result->slc_idle=READ_REGISTER_ULONG((volatile ULONG *)(void *)(s->core+0x3898));
         result->provisional=1;
-        for(i=0;i<16384u;i++) {
+        for(i=0;i<(r->screen_surface ? r->screen_surface->bytes/4u : 16384u);i++) {
             value=output[i];
             if(a04_vendor_clear_is_target(i*4u,r->clear_first,r->clear_row_bytes)) {if(value==r->clear.expected)result->zeros++;}
             else if(value!=0xa5a5a5a5u)result->guard_errors++;

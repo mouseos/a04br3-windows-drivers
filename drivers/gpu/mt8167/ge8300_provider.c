@@ -32,6 +32,12 @@
 #if A04_GE8300_VENDOR_MULTI_TILE_DIAGNOSTIC && (!A04_GE8300_VENDOR_TILE_DIAGNOSTIC || A04_GE8300_VENDOR_COLOR_DIAGNOSTIC)
 #error Multiple tile diagnostic requires the offset zero-clear diagnostic
 #endif
+#ifndef A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
+#define A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC 0
+#endif
+#if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC && (!A04_GE8300_VENDOR_TILE_DIAGNOSTIC || A04_GE8300_VENDOR_MULTI_TILE_DIAGNOSTIC || A04_GE8300_VENDOR_COLOR_DIAGNOSTIC)
+#error Screen diagnostic requires isolated zero tile diagnostic
+#endif
 #ifndef A04_GE8300_VENDOR_COLOR_DIAGNOSTIC
 #define A04_GE8300_VENDOR_COLOR_DIAGNOSTIC 0
 #endif
@@ -128,6 +134,9 @@ typedef struct {
     struct a04_vendor_m1_11_memory vendor;
 #if A04_GE8300_VENDOR_RENDER_COLD
     struct a04_vendor_render_cold vendor_render;
+#if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
+    struct a04_vendor_surface vendor_screen;
+#endif
 #endif
     PDMA_ADAPTER vendor_adapter_v3;
 #if A04_GE8300_VENDOR_IRQ
@@ -431,6 +440,9 @@ NTSTATUS GpuPrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
 NTSTATUS GpuRelease(WDFDEVICE device,WDFCMRESLIST translated)
 {
     GPU_CONTEXT *c=GpuContext(device); UNREFERENCED_PARAMETER(translated);
+#if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
+    if(c->vendor_screen.hardware_exposed) return STATUS_DEVICE_BUSY;
+#endif
     /* Never detach mappings or DMA ownership while the GPU might master RAM. */
     if(c->firmware.processor_released) return STATUS_DEVICE_BUSY;
 #if A04_GE8300_VENDOR_IRQ
@@ -523,6 +535,14 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         status=a04_vendor_render_prepare_cold(&c->vendor_render,&c->vendor,adapter,
             A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC?TRUE:FALSE,
             A04_GE8300_VENDOR_COLOR_DIAGNOSTIC?0x78563412u:0u);
+#if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
+        if(NT_SUCCESS(status))status=a04_vendor_surface_prepare(&c->vendor_screen,adapter,800,1280,3328,UINT64_C(0x8000000000));
+        if(NT_SUCCESS(status))status=a04_vendor_render_attach_screen(&c->vendor_render,&c->vendor_screen);
+        if(!NT_SUCCESS(status)) {
+            (void)a04_vendor_render_release_cold(&c->vendor_render);
+            (void)a04_vendor_surface_release(&c->vendor_screen);
+        }
+#endif
         if(!NT_SUCCESS(status)) (void)a04_vendor_m1_11_windows_free(&c->vendor);
     }
 #endif
@@ -698,6 +718,9 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     status=a04_vendor_m1_11_power_snapshot(device,c->mfg,MFG_SIZE,&power);
     if(NT_SUCCESS(status) && !a04_vendor_m1_11_power_valid(&power)) status=STATUS_DEVICE_NOT_READY;
     GpuPrint("A04GPU NATIVE POWER=");GpuHex((ULONG)status);GpuPrint("\n");
+#if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
+    if(NT_SUCCESS(status))status=a04_vendor_surface_mark_exposed(&c->vendor_screen);
+#endif
     if(NT_SUCCESS(status)) {
         bvnc=((uint64_t)c->status.bvnc_high<<32)|c->status.bvnc_low;
         a04_vendor_irq_set_power(c->vendor_irq,TRUE);
@@ -795,10 +818,17 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             }
         }
     }
-    if(!c->vendor.hardware_owned) {
+    if(!c->vendor.hardware_owned
+#if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
+       && !c->vendor_screen.hardware_exposed
+#endif
+       ) {
         a04_vendor_irq_set_power(c->vendor_irq,FALSE);
 #if A04_GE8300_VENDOR_RENDER_COLD
         (void)a04_vendor_render_release_cold(&c->vendor_render);
+#if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
+        (void)a04_vendor_surface_release(&c->vendor_screen);
+#endif
 #endif
         if(c->vendor.adapter) (void)a04_vendor_m1_11_windows_free(&c->vendor);
         if(c->vendor_adapter_v3 && !c->vendor.adapter) {
@@ -814,6 +844,9 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 NTSTATUS GpuD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
 {
     GPU_CONTEXT *c=GpuContext(device); UNREFERENCED_PARAMETER(target);
+#if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
+    if(c->vendor_screen.hardware_exposed) return STATUS_DEVICE_BUSY;
+#endif
 #if A04_GE8300_VENDOR_STAGE
     if(c->vendor.hardware_owned) return STATUS_DEVICE_BUSY;
 #endif
