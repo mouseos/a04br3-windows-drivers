@@ -29,15 +29,15 @@ int main(void)
         memset(f.buffers[i].cpu,0,sizes[i]);
     }
     f.adapter=&adapter;f.staged=TRUE;f.uncached=TRUE;table=f.buffers[0].cpu;table[0]=0x1234;
-    fail_at=3;assert(a04_vendor_render_prepare_cold(&r,&f,&adapter,FALSE)==STATUS_INSUFFICIENT_RESOURCES);
+    fail_at=3;assert(a04_vendor_render_prepare_cold(&r,&f,&adapter,FALSE,0)==STATUS_INSUFFICIENT_RESOURCES);
     assert(frees==2 && !pools && !r.firmware && table[0]==0x1234 && !table[128]);
-    fail_at=0;assert(a04_vendor_render_prepare_cold(&r,&f,&adapter,FALSE)==STATUS_SUCCESS);
+    fail_at=0;assert(a04_vendor_render_prepare_cold(&r,&f,&adapter,FALSE,0)==STATUS_SUCCESS);
     assert(r.mapped && table[0]==0x1234 && table[128] && r.layout.used<32768);
     assert(((uint32_t *)r.buffer[1].cpu)[A04_VENDOR_RENDER_SCRATCH_VA>>30]);
     f.hardware_owned=TRUE;assert(a04_vendor_render_release_cold(&r)==STATUS_DEVICE_BUSY && table[128]);
     f.hardware_owned=FALSE;assert(a04_vendor_render_release_cold(&r)==STATUS_SUCCESS && !table[128]);
     assert(frees==12 && !pools && !r.firmware);
-    assert(a04_vendor_render_prepare_cold(&r,&f,&adapter,TRUE)==STATUS_SUCCESS);
+    assert(a04_vendor_render_prepare_cold(&r,&f,&adapter,TRUE,0)==STATUS_SUCCESS);
     assert(r.clear_ready && ((unsigned char *)r.buffer[4].cpu)[0]==0xa5);
     assert(((uint32_t *)r.buffer[1].cpu)[UINT64_C(0xa800000000)>>30]);
     assert(((uint32_t *)r.buffer[1].cpu)[UINT64_C(0xba00000000)>>30]);

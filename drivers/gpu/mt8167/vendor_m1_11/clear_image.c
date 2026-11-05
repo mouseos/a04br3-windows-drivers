@@ -2,12 +2,14 @@
 #include "clear_image.h"
 #include "render_resources.h"
 #include <string.h>
-int a04_vendor_clear_image_build(struct a04_vendor_clear_image *out,uint64_t target_va)
+int a04_vendor_clear_image_build(struct a04_vendor_clear_image *out,uint64_t target_va,uint32_t packed_colour)
 {
     struct a04_vendor_clear_image image;uint64_t csr0,csr1;
     unsigned char *usc;
-    if(!out || ((uintptr_t)out&7u) || target_va!=A04_VENDOR_RENDER_SCRATCH_VA)return 1;
+    if(!out || ((uintptr_t)out&7u) || target_va!=A04_VENDOR_RENDER_SCRATCH_VA || packed_colour==0xa5a5a5a5u)return 1;
     memset(&image,0,sizeof(image));
+    image.expected=packed_colour;
+    image.payload[2]=packed_colour;
     image.payload[1]=(~((8u<<10)-1u))^0xfffffffcu;
     image.payload[6]=2u|(2u<<16);
     image.payload[8]=0xa0000u|(3u<<12);

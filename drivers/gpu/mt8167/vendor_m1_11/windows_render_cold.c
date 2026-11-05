@@ -27,7 +27,7 @@ NTSTATUS a04_vendor_render_release_cold(struct a04_vendor_render_cold *r)
     RtlZeroMemory(r,sizeof(*r));return STATUS_SUCCESS;
 }
 NTSTATUS a04_vendor_render_prepare_cold(struct a04_vendor_render_cold *r,
-    struct a04_vendor_m1_11_memory *f,PDMA_ADAPTER adapter,BOOLEAN prepare_clear)
+    struct a04_vendor_m1_11_memory *f,PDMA_ADAPTER adapter,BOOLEAN prepare_clear,uint32_t clear_colour)
 {
     void *shadow[17]={0};unsigned i,j;NTSTATUS status=STATUS_DEVICE_CONFIGURATION_ERROR;
     struct a04_vendor_render_layout layout={0};
@@ -78,7 +78,7 @@ NTSTATUS a04_vendor_render_prepare_cold(struct a04_vendor_render_cold *r,
         status=STATUS_DEVICE_CONFIGURATION_ERROR;goto done;
     }
     if(prepare_clear) {
-        if(a04_vendor_clear_image_build(&r->clear,A04_VENDOR_RENDER_SCRATCH_VA) ||
+        if(a04_vendor_clear_image_build(&r->clear,A04_VENDOR_RENDER_SCRATCH_VA,clear_colour) ||
            a04_gpu_mmu_map_4k(shadow[1],shadow[5],shadow[6],
                (uint64_t)r->buffer[5].logical.QuadPart,(uint64_t)r->buffer[6].logical.QuadPart,
                UINT64_C(0xa800000000),(uint64_t)r->buffer[7].logical.QuadPart,16,A04_GPU_MMU_SLC_BYPASS) ||

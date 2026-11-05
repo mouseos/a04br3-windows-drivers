@@ -20,11 +20,17 @@
 #ifndef A04_GE8300_VENDOR_IRQ
 #define A04_GE8300_VENDOR_IRQ 0
 #endif
+#ifndef A04_GE8300_VENDOR_COLOR_DIAGNOSTIC
+#define A04_GE8300_VENDOR_COLOR_DIAGNOSTIC 0
+#endif
 #ifndef A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC
 #define A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC 0
 #endif
 #ifndef A04_GE8300_VENDOR_RENDER_COLD
 #define A04_GE8300_VENDOR_RENDER_COLD 0
+#endif
+#if A04_GE8300_VENDOR_COLOR_DIAGNOSTIC && !A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC
+#error Native colour diagnostic requires clear diagnostic
 #endif
 #if A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC && !A04_GE8300_VENDOR_RENDER_COLD
 #error Native clear requires cold render preparation
@@ -503,7 +509,8 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 #if A04_GE8300_VENDOR_RENDER_COLD
     if(NT_SUCCESS(status)) {
         status=a04_vendor_render_prepare_cold(&c->vendor_render,&c->vendor,adapter,
-            A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC?TRUE:FALSE);
+            A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC?TRUE:FALSE,
+            A04_GE8300_VENDOR_COLOR_DIAGNOSTIC?0x78563412u:0u);
         if(!NT_SUCCESS(status)) (void)a04_vendor_m1_11_windows_free(&c->vendor);
     }
 #endif
@@ -713,7 +720,7 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             struct a04_vendor_clear_result clear;
             NTSTATUS clear_status=a04_vendor_render_clear_once(&c->vendor_render,&c->vendor_start,&clear);
             GpuPrint("A04GPU NATIVE CLEAR=");GpuHex((ULONG)clear_status);
-            GpuPrint(" ZERO=");GpuHex(clear.zeros);GpuPrint(" GUARD=");GpuHex(clear.guard_errors);
+            GpuPrint(" MATCH=");GpuHex(clear.zeros);GpuPrint(" GUARD=");GpuHex(clear.guard_errors);
             GpuPrint(" FIRST=");GpuHex(clear.first);GpuPrint(" LAST=");GpuHex(clear.last);GpuPrint("\n");
             GpuPrint("A04GPU CLEAR PHASE=");GpuHex(clear.phase);
             GpuPrint(" KREAD=");GpuHex(clear.kread);GpuPrint(" KWRITE=");GpuHex(clear.kwrite);

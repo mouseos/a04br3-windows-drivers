@@ -57,7 +57,7 @@ int main(void)
     runtime.kctl=&kctl;runtime.fctl=&fctl;runtime.kcommands=cmd;runtime.command_sync=&command_sync;runtime.command_sync_addr.ui32Addr=0xc0040040;mem.runtime=&runtime;mem.hardware_owned=TRUE;
     start.memory=&mem;start.online=TRUE;start.core=core;r.firmware=&mem;r.buffer[0].cpu=bank;r.mapped=TRUE;
     r.buffer[4].cpu=target;r.buffer[4].bytes=65536;r.clear_ready=TRUE;
-    assert(!a04_vendor_clear_image_build(&r.clear,A04_VENDOR_RENDER_SCRATCH_VA));
+    assert(!a04_vendor_clear_image_build(&r.clear,A04_VENDOR_RENDER_SCRATCH_VA,0));
     sim=&r;run=&runtime;complete=1;
     for(current=0;current<4;current++) {
         assert(a04_vendor_render_context_command(&r,&start,current,current==2?0xffffffffu:0)==STATUS_SUCCESS);
@@ -74,7 +74,7 @@ int main(void)
     assert(!a04_vendor_render_build(bank,65536,0x81000000,0x82000000,A04_VENDOR_RENDER_SCRATCH_VA,1,&r.layout));
     kctl.ui32WrapMask=127;kctl.ui32CmdSize=sizeof(*cmd);fctl.ui32WrapMask=31;fctl.ui32CmdSize=sizeof(RGXFWIF_FWCCB_CMD);
     r.firmware=&mem;r.buffer[0].cpu=bank;r.buffer[4].cpu=target;r.buffer[4].bytes=65536;r.mapped=TRUE;r.clear_ready=TRUE;
-    assert(!a04_vendor_clear_image_build(&r.clear,A04_VENDOR_RENDER_SCRATCH_VA));
+    assert(!a04_vendor_clear_image_build(&r.clear,A04_VENDOR_RENDER_SCRATCH_VA,0));
     start.command_poisoned=FALSE;start.command_sequence=0;current=4;complete=2;
     assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_IO_TIMEOUT);
     assert(clear.phase==3 && clear.kread!=clear.kwrite && clear.expected==1 && r.poisoned && start.command_poisoned);

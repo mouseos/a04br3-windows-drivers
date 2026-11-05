@@ -111,7 +111,7 @@ NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
     result->phase=4;
     a04_gpu_dma_barrier();
     for(i=0;i<16384u;i++) {
-        value=output[i];if(i<1024u) {if(!value)result->zeros++;} else if(value!=0xa5a5a5a5u)result->guard_errors++;
+        value=output[i];if(i<1024u) {if(value==r->clear.expected)result->zeros++;} else if(value!=0xa5a5a5a5u)result->guard_errors++;
         if(i==0)result->first=value;
         if(i==1023u)result->last=value;
     }
@@ -135,7 +135,7 @@ poison:
         result->provisional=1;
         for(i=0;i<16384u;i++) {
             value=output[i];
-            if(i<1024u) {if(!value)result->zeros++;}
+            if(i<1024u) {if(value==r->clear.expected)result->zeros++;}
             else if(value!=0xa5a5a5a5u)result->guard_errors++;
             if(i==0)result->first=value;
             if(i==1023u)result->last=value;

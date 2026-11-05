@@ -16,14 +16,14 @@ struct a04_vendor_render_cold {
 /* Firmware is staged but has never been started. Each buffer remains pinned
  * after processor release until a separately verified DMA-quiescence path. */
 NTSTATUS a04_vendor_render_prepare_cold(struct a04_vendor_render_cold *render,
-    struct a04_vendor_m1_11_memory *firmware, PDMA_ADAPTER adapter, BOOLEAN prepare_clear);
+    struct a04_vendor_m1_11_memory *firmware, PDMA_ADAPTER adapter, BOOLEAN prepare_clear, uint32_t clear_colour);
 NTSTATUS a04_vendor_render_release_cold(struct a04_vendor_render_cold *render);
 struct a04_vendor_start;
 /* GP UPDATE or a TA/3D/TQ priority change; no drawing task is submitted. */
 NTSTATUS a04_vendor_render_context_command(struct a04_vendor_render_cold *render,
     struct a04_vendor_start *start, unsigned index, uint32_t priority);
 struct a04_vendor_clear_result {
-    uint32_t zeros, guard_errors, first, last, phase;
+    uint32_t zeros, guard_errors, first, last, phase; /* zeros = pixels matching requested value */
     uint32_t kread,kwrite,cread,cwrite,ufo,expected;
     uint32_t provisional,slc_status,slc_idle;
 };
