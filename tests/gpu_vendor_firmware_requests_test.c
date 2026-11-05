@@ -18,6 +18,14 @@ int main(void)
     struct a04_rgx_request_io io={&f,barrier,barrier,handle};
     RGXFWIF_INIT init={0};RGXFWIF_CCB_CTL *ctl;
     RGXFWIF_FWCCB_CMD *ring;uint32_t done;
+    {
+        uint32_t source[2]={0x12345678u,0x90abcdefu},destination[2]={0};
+        assert(a04_rgx_device_write_words(destination,source,sizeof(source))==0);
+        assert(destination[0]==source[0] && destination[1]==source[1]);
+        assert(a04_rgx_device_read_words(source,destination,sizeof(source))==0);
+        assert(a04_rgx_device_write_words((char *)destination+1,source,4)!=0);
+        assert(a04_rgx_device_read_words(source,destination,3)!=0);
+    }
     r.main.cpu=calloc(1,A04_RGX_MAIN_BYTES);assert(r.main.cpu);
     r.main.bytes=A04_RGX_MAIN_BYTES;r.main.used=4096;r.main.heap_offset=A04_RGX_MAIN_OFFSET;
     r.init=&init;ctl=(void *)r.main.cpu;ring=(void *)(r.main.cpu+64);r.fctl=ctl;

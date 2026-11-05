@@ -44,7 +44,8 @@ static inline int a04_rgx_firmware_requests(struct a04_rgx_fw_runtime *r,
         if (ctl->ui32WrapMask!=31 || ctl->ui32CmdSize!=sizeof(*ring) || read>31 || write>31)
             return A04_REQUEST_CORRUPT;
         if (read==write) return A04_REQUEST_EMPTY;
-        command=ring[read];
+        if (a04_rgx_device_read_words(&command,&ring[read],sizeof(command)))
+            return A04_REQUEST_CORRUPT;
         /* Unrecognised magic must remain in the ring for diagnosis. */
         if (((uint32_t)command.eCmdType & 0xffff0000u)!=0x2abc0000u)
             return A04_REQUEST_CORRUPT;

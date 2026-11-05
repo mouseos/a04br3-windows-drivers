@@ -9,6 +9,7 @@
 #define A04BR3_ROGUE_COMMAND_H
 #include <stdbool.h>
 #include "A04BR3RogueRuntimeLayout.h"
+#include "A04BR3RogueDeviceWords.h"
 enum { A04_RGX_DM_GP=0,A04_RGX_DM_TA=2,A04_RGX_DM_3D=3 };
 enum a04_rgx_command_result {
     A04_CCB_OK=0,A04_CCB_INPUT=1,A04_CCB_CORRUPT=2,A04_CCB_FULL=3,
@@ -73,7 +74,9 @@ static inline int a04_rgx_command_fence(struct a04_rgx_fw_runtime *r,
     cmd.eCmdType=RGXFWIF_KCCB_CMD_SYNC;cmd.eDM=dm;
     cmd.uCmdData.sSyncData.sSyncObjDevVAddr=r->command_sync_addr;
     cmd.uCmdData.sSyncData.uiUpdateVal=sequence;
-    cmds[write]=cmd;
+    if (a04_rgx_device_write_words(&cmds[write],&cmd,sizeof(cmd))) {
+        state->poisoned=true;return A04_CCB_CORRUPT;
+    }
     io->publish(io->context); /* complete command + sync clear BEFORE write offset */
     ctl->ui32WriteOffset=next;
     (void)ctl->ui32WriteOffset;
@@ -134,7 +137,10 @@ static inline int a04_rgx_command_power_off(struct a04_rgx_fw_runtime *r,
     *sync=0;cmd.eCmdType=RGXFWIF_KCCB_CMD_POW;cmd.eDM=A04_RGX_DM_GP;
     cmd.uCmdData.sPowData.ePowType=RGXFWIF_POW_OFF_REQ;
     cmd.uCmdData.sPowData.uPoweReqData.bForced=0;
-    cmds[write]=cmd;io->publish(io->context);
+    if (a04_rgx_device_write_words(&cmds[write],&cmd,sizeof(cmd))) {
+        state->poisoned=true;return A04_CCB_CORRUPT;
+    }
+    io->publish(io->context);
     ctl->ui32WriteOffset=next;(void)ctl->ui32WriteOffset;io->publish(io->context);
     io->kick(io->context,0x0b00,0x10);
     for(uint32_t i=0;i<polls;i++) {
