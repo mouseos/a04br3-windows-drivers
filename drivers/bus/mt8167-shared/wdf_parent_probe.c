@@ -66,6 +66,12 @@
 #ifndef A04_SHARED_BUTTON_D0_EXPERIMENT
 #define A04_SHARED_BUTTON_D0_EXPERIMENT 0
 #endif
+#ifndef A04_SHARED_TOUCH_D0_EXPERIMENT
+#define A04_SHARED_TOUCH_D0_EXPERIMENT 0
+#endif
+#if A04_SHARED_TOUCH_D0_EXPERIMENT && !A04_SHARED_BUTTON_D0_EXPERIMENT
+#error Shared touch requires the guarded shared parent D0 experiment
+#endif
 #if A04_MT6392_CLK_ALIAS_EXPERIMENT && !A04_SHARED_MT6392_DIAGNOSTIC
 #error A04_MT6392_CLK_ALIAS_EXPERIMENT requires MT6392 diagnostics
 #endif
@@ -494,10 +500,13 @@ NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
 #endif
     c->pmic.online=1;
     c->usb.online=(c->apmixed && !c->usb.poisoned) ? 1 : 0;
+#if A04_SHARED_TOUCH_D0_EXPERIMENT
+    c->regs.online=c->regs.poisoned ? 0 : 1;
+#endif
     if (InterlockedCompareExchange(&c->admissionClosed,0,2)==2) result=STATUS_SUCCESS;
-    else { c->pmic.online=0; c->usb.online=0; }
+    else { c->pmic.online=0; c->usb.online=0; c->regs.online=0; }
 done:
-    if (!NT_SUCCESS(result)) { c->pmic.online=0; c->usb.online=0;(void)InterlockedCompareExchange(&c->admissionClosed,1,2); }
+    if (!NT_SUCCESS(result)) { c->pmic.online=0; c->usb.online=0; c->regs.online=0;(void)InterlockedCompareExchange(&c->admissionClosed,1,2); }
     A04_TRACE("A04AUD parent d0 result=%08lx poisoned=%d; audio lease remains gated\n",(ULONG)result,c->pmic.bus.poisoned);
     ExReleaseFastMutex(&c->pwrapLock);return result;
 #else

@@ -189,9 +189,13 @@ int main(void){
  mockStatusFail=0;mockFsm=0;testContext.pmic.bus.poisoned=0;writes=0;
  mockWacs=1;
 #endif
- assert(!ParentD0(&testContext,0) && testContext.pmic.online && !testContext.admissionClosed && !testContext.regs.online);
+ assert(!ParentD0(&testContext,0) && testContext.pmic.online && !testContext.admissionClosed);
+ assert(testContext.regs.online==(A04_SHARED_TOUCH_D0_EXPERIMENT ? 1 : 0));
  assert(testContext.usb.online==(testContext.apmixed!=NULL));
  assert(!ParentUsbLock(&testContext) && testContext.pwrapLock.held);ParentUsbUnlock(&testContext);assert(!testContext.pwrapLock.held);
+#if A04_SHARED_TOUCH_D0_EXPERIMENT
+ {int down=0;assert(!input.TouchPen(input.Context,&down) && down==1);}
+#endif
 #if A04_AUDIO_PMIC_TRACE
  assert(writes==2 && a04_test_trace_count>0);writes=0;mockWacs=0;
 #else

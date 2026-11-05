@@ -335,6 +335,15 @@ builds keep parent D0 disabled. The ACPI table is an offline fixture with
 sharing have not been validated. Host tests and WDK compilation do not prove
 that USB or audio operates on the tablet.
 
+For a shared-resource diagnostic, `A04_SHARED_TOUCH_D0_EXPERIMENT=1` admits
+the existing BU21025 child register interface only after the guarded parent
+D0 entry; it defaults to zero and requires the guarded D0 experiment. Stop
+closes admission and takes the same lock before turning it off. This requires
+the mutually exclusive shared-parent ACPI configuration and the shared-touch
+driver build; an installed legacy touch provider must not coexist. Host mocks
+check admission and shutdown, but target touch, suspend/resume and ownership
+have not yet been validated.
+
 The diagnostic parent has also been linked as an unsigned ARM32 SYS using
 the WDK 8.1 import libraries. This is a build check only: the offline ACPI
 fixture, USB keyboard child and audio backend have not been installed or

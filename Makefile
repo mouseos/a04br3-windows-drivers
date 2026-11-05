@@ -810,3 +810,9 @@ test-gpu-wddm-staged-present: build/gpu_wddm_staged_present_test
 build/gpu_wddm_staged_present_test: tests/gpu_wddm_staged_present_test.cpp drivers/gpu/mt8167/wddm-display/ge8300_present.cxx drivers/gpu/mt8167/wddm-display/present_bounds.h
 	mkdir -p build
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -Wno-multichar $< -o $@
+
+.PHONY: test-mt8167-shared-touch-d0
+test-mt8167-shared-touch-d0:
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_SHARED_BUTTON_D0_EXPERIMENT=1 -DA04_SHARED_TOUCH_D0_EXPERIMENT=1 -DA04_SHARED_APMIXED_RESOURCE=1 -DA04_SHARED_MT6392_DIAGNOSTIC=1 -DA04_MT6392_WRITE_DIAGNOSTIC=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/bus/mt8167-shared/mt6392_classd.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c drivers/bus/mt8167-shared/usb_owner.c drivers/usb/mt8167-usb20/gpio22.c tests/mt8167_shared_wdf_test.c -o build/mt8167_shared_touch_d0_test
+	./build/mt8167_shared_touch_d0_test
