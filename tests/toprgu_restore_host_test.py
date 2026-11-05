@@ -22,6 +22,11 @@ with tempfile.TemporaryDirectory(prefix='restore-test-',dir=root/'build') as d:
  log.unlink(); bad[5]=str(d/'other')
  assert subprocess.run([str(script),'--execute',*bad],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode!=0
  assert not log.exists()
+ adb.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$ADB_TEST_CALLS"\necho device\nexit 0\n')
+ not_recovery=list(args);not_recovery[5]=str(d/'not-recovery')
+ assert subprocess.run([str(script),'--execute',*not_recovery],env=env,stdout=subprocess.DEVNULL).returncode!=0
+ calls=log.read_text(); assert 'get-state' in calls and 'push' not in calls and 'dd if=' not in calls
+ log.unlink()
  adb.write_text('''#!/bin/sh
 printf "%s\\n" "$*" >> "$ADB_TEST_CALLS"
 case "$*" in
