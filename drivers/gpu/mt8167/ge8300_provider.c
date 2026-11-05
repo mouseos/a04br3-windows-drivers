@@ -638,6 +638,7 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 #endif
 }
 #if A04_GE8300_VENDOR_START_DIAGNOSTIC
+#include "vendor_m1_11/A04BR3RogueRuntimeLayout.h"
 /* Bounded WinPE bring-up only. GPST verifies the immediate handoff state, not
  * exclusive ownership of shared clocks; do not enable for installed Windows.
  * Any hardware-owned allocations remain pinned even after a failed start. */
@@ -670,6 +671,18 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         if(NT_SUCCESS(c->status.health_status))
             c->status.shutdown_status=a04_vendor_m1_11_windows_power_off(&c->vendor_start,TRUE);
         GpuPrint("A04GPU NATIVE OFF=");GpuHex(c->status.shutdown_status);GpuPrint("\n");
+        if(c->vendor.runtime && c->vendor.runtime->power_sync && c->vendor.runtime->trace &&
+           c->vendor.runtime->kctl && c->vendor.runtime->fctl) {
+            struct a04_rgx_fw_runtime *r=c->vendor.runtime;
+            KeMemoryBarrier();
+            GpuPrint("A04GPU OFF SNAP SYNC=");GpuHex(*(volatile ULONG *)r->power_sync);
+            GpuPrint(" POW=");GpuHex((ULONG)((volatile RGXFWIF_TRACEBUF *)r->trace)->ePowState);
+            GpuPrint(" KRD=");GpuHex(((volatile RGXFWIF_CCB_CTL *)r->kctl)->ui32ReadOffset);
+            GpuPrint(" KWR=");GpuHex(((volatile RGXFWIF_CCB_CTL *)r->kctl)->ui32WriteOffset);
+            GpuPrint(" FRD=");GpuHex(((volatile RGXFWIF_CCB_CTL *)r->fctl)->ui32ReadOffset);
+            GpuPrint(" FWR=");GpuHex(((volatile RGXFWIF_CCB_CTL *)r->fctl)->ui32WriteOffset);
+            GpuPrint("\n");
+        }
     }
     if(!c->vendor.hardware_owned) {
         a04_vendor_irq_set_power(c->vendor_irq,FALSE);
