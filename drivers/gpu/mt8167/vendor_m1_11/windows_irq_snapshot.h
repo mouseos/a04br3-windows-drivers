@@ -10,4 +10,6 @@ NTSTATUS a04_vendor_m1_11_windows_fence(struct a04_vendor_start *start,
     uint32_t data_master,BOOLEAN coherent_or_uncached);
 NTSTATUS a04_vendor_m1_11_windows_power_off(struct a04_vendor_start *start,
     BOOLEAN coherent_or_uncached);
+/* Read-only diagnostics; values are a transient snapshot, not a quiescence proof. */
+NTSTATUS a04_vendor_m1_11_power_debug_snapshot(struct a04_vendor_start *start, ULONG values[6]);
 #endif

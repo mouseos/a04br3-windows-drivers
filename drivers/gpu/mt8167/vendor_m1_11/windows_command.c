@@ -112,3 +112,19 @@ NTSTATUS a04_vendor_m1_11_windows_power_off(struct a04_vendor_start *s,
     if(result==A04_CCB_INPUT) return STATUS_INVALID_PARAMETER;
     return STATUS_IO_DEVICE_ERROR;
 }
+
+NTSTATUS a04_vendor_m1_11_power_debug_snapshot(struct a04_vendor_start *s, ULONG values[6])
+{
+    struct a04_rgx_fw_runtime *r;
+    if(!s || !values || !s->memory || !s->memory->hardware_owned ||
+       !(r=s->memory->runtime) || !r->power_sync || !r->trace || !r->kctl || !r->fctl)
+        return STATUS_INVALID_DEVICE_STATE;
+    a04_gpu_dma_barrier();
+    values[0]=*(volatile ULONG *)r->power_sync;
+    values[1]=(ULONG)((volatile RGXFWIF_TRACEBUF *)r->trace)->ePowState;
+    values[2]=((volatile RGXFWIF_CCB_CTL *)r->kctl)->ui32ReadOffset;
+    values[3]=((volatile RGXFWIF_CCB_CTL *)r->kctl)->ui32WriteOffset;
+    values[4]=((volatile RGXFWIF_CCB_CTL *)r->fctl)->ui32ReadOffset;
+    values[5]=((volatile RGXFWIF_CCB_CTL *)r->fctl)->ui32WriteOffset;
+    return STATUS_SUCCESS;
+}
