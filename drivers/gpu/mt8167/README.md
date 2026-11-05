@@ -325,3 +325,11 @@ zero-clearし、fenceとSLC flush後に対象1024画素とそれ以外の全画�
 拒否する。これらの拒否はPnP削除時のリソース寿命や物理除去を保証しない。
 高pitch、複数leaf、キャッシュ属性、デバイス停止は実機未検証。実行結果を
 画面描画・共有・DMA排出の証拠としない。
+
+WDDMのCommitVidPnはVidPnコールバックを取得・検証後、Presentと同じmutexで
+framebufferのunmap、mapとmode更新を直列化する。mutex保有中にVidPnの取得・
+解放コールバックを呼ばない。visibilityとactive pathの変更も同じmutexを使い、
+停止後は拒否する。[CommitVidPn](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkddi_commitvidpn)、
+[PresentDisplayOnly](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkddi_presentdisplayonly)
+はPASSIVE_LEVELで、後者はzero-level同期。これはGPU DMAやscanoutの停止を保証しない。
+bugcheck用SystemDisplayの高IRQL経路にmutexを導入しておらず、その寿命は別途検証が必要。
