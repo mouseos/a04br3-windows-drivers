@@ -38,11 +38,8 @@ try {
     [IO.File]::WriteAllText("$base\src\toprgu-original.sys",'watchdog')
     [IO.File]::WriteAllText("$base\upgrade.cmd",(PrepareBatch 'startnet-upgrade-toprgu.cmd'),[Text.Encoding]::ASCII)
     $out=& cmd.exe /c "$base\upgrade.cmd"
-    if (-not ($out -match 'TOPRGU_UPGRADE_WINDOWS_STAGED') -or -not ($out -match 'TOPRGU_UPGRADE_DISM_EXIT=0')) { throw ($out -join ' ') }
-    Remove-Item "$base\Windows\Temp\a04br3-toprgu-upgrade-v7-dism.log"
-    [IO.File]::WriteAllText("$base\src\toprgu-original.sys",'different')
-    $out=& cmd.exe /c "$base\upgrade.cmd"
-    if (-not ($out -match 'TOPRGU_UPGRADE_PRECONDITION_REJECTED')) { throw 'mismatched TOPRGU was accepted' }
+    if ($LASTEXITCODE -ne 2 -or -not ($out -match 'TOPRGU_UPGRADE_DISABLED_NO_SAFE_TRANSACTION')) { throw 'legacy TOPRGU upgrade must fail closed' }
+    if ((Get-Content "$base\Windows\System32\drivers\mt8167-toprgu.sys" -Raw) -ne 'watchdog') { throw 'disabled upgrade changed target' }
     New-Item -ItemType Directory -Force "$base\src\toprgu" | Out-Null
     [IO.File]::WriteAllText("$base\src\toprgu\mt8167-toprgu.sys",'also-different')
     [IO.File]::WriteAllText("$base\disable-toprgu.cmd",(PrepareBatch 'startnet-disable-toprgu.cmd'),[Text.Encoding]::ASCII)
