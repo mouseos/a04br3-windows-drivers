@@ -333,3 +333,9 @@ framebufferのunmap、mapとmode更新を直列化する。mutex保有中にVidP
 [PresentDisplayOnly](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkddi_presentdisplayonly)
 はPASSIVE_LEVELで、後者はzero-level同期。これはGPU DMAやscanoutの停止を保証しない。
 bugcheck用SystemDisplayの高IRQL経路にmutexを導入しておらず、その寿命は別途検証が必要。
+
+既定OFFの旧ABI WDDM copy実験では、同期IOCTLの出力を専用nonpaged stagingに
+受け、成功かつ所定長の完了後のみPOST mappingへ32-bit register accessで転記する。
+部分応答・エラーはその矩形全体のCPU経路に戻す。framebufferをIOCTL出力先やGPU
+DMA先として渡さない。これは旧ABIの転送経路であり、m1.11の一般描画やscanout
+共有、GPU停止時のDMA静止・解放を証明しない。実機での可視性は未検証。
