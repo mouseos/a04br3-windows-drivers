@@ -3,15 +3,19 @@
 #include <stdlib.h>
 #include <string.h>
 #include "windows_stage.h"
-static unsigned count,freed,syncs,barriers,fail_sync;
+#include "A04BR3RogueRuntimeLayout.h"
+static unsigned count,freed,syncs,barriers,fail_sync,pools,fail_alloc;
 static void *alloc(PDMA_ADAPTER a,ULONG bytes,PHYSICAL_ADDRESS *pa,BOOLEAN cache)
 {
     (void)a;(void)cache;pa->QuadPart=(int64_t)(0x80001000u+count*0x100000u);count++;
+    if(count==fail_alloc)return NULL;
     return aligned_alloc(4096,bytes);
 }
 static void release(PDMA_ADAPTER a,ULONG bytes,PHYSICAL_ADDRESS pa,void *p,BOOLEAN cache)
 {(void)a;(void)bytes;(void)pa;(void)cache;freed++;free(p);}
 unsigned KeGetCurrentIrql(void){return PASSIVE_LEVEL;}
+void *ExAllocatePoolWithTag(int type,size_t n,unsigned tag){(void)type;(void)tag;pools++;return malloc(n);}
+void ExFreePoolWithTag(void *p,unsigned tag){(void)tag;pools--;free(p);}
 NTSTATUS a04_gpu_dma_sync(void *p,ULONG n,BOOLEAN writes)
 {(void)p;(void)n;(void)writes;syncs++;return fail_sync==syncs?STATUS_IO_TIMEOUT:STATUS_SUCCESS;}
 void a04_gpu_dma_barrier(void){barriers++;}
@@ -39,16 +43,18 @@ int main(int argc,char **argv)
     table=m.buffers[0].cpu;
     if(table[0]!=(((uint32_t)(m.buffers[1].dma>>6)&0x03ffffc0u)|0x17u) ||
        table[A04_VENDOR_DATA_HEAP_OFFSET/4096]!=(((uint32_t)(m.buffers[2].dma>>6)&0x03ffffc0u)|0x40000017u)) return 7;
-    if(!m.runtime.init || m.runtime.init->bFirmwareStarted ||
-       m.runtime.init->ui32InitialCoreClockSpeed!=26000000u ||
+    if(!m.runtime->init || m.runtime->init->bFirmwareStarted ||
+       m.runtime->init->ui32InitialCoreClockSpeed!=26000000u ||
        table[A04_RGX_MAIN_OFFSET/4096]!=(((uint32_t)(m.buffers[3].dma>>6)&0x03ffffc0u)|0x40000017u) ||
        table[A04_RGX_CONFIG_OFFSET/4096]!=(((uint32_t)(m.buffers[4].dma>>6)&0x03ffffc0u)|0x40000017u) ||
-       m.runtime.kctl->ui32WrapMask!=127 || m.runtime.kctl->ui32CmdSize!=sizeof(RGXFWIF_KCCB_CMD)) return 12;
+       m.runtime->kctl->ui32WrapMask!=127 || m.runtime->kctl->ui32CmdSize!=sizeof(RGXFWIF_KCCB_CMD)) return 12;
     m.hardware_owned=TRUE;if(a04_vendor_m1_11_windows_free(&m)!=STATUS_DEVICE_BUSY || freed) return 8;
-    m.hardware_owned=FALSE;if(a04_vendor_m1_11_windows_free(&m)!=STATUS_SUCCESS || freed!=5) return 9;
+    m.hardware_owned=FALSE;if(a04_vendor_m1_11_windows_free(&m)!=STATUS_SUCCESS || freed!=5 || pools) return 9;
     count=freed=syncs=barriers=0;image[n-4096]=0;
-    if(a04_vendor_m1_11_windows_stage(&m,&adapter,image,n)!=STATUS_DEVICE_CONFIGURATION_ERROR || freed!=5 || m.staged) return 10;
+    if(a04_vendor_m1_11_windows_stage(&m,&adapter,image,n)!=STATUS_DEVICE_CONFIGURATION_ERROR || freed!=5 || m.staged || pools) return 10;
     image[n-4096]=1;count=freed=syncs=barriers=0;fail_sync=2;
-    if(a04_vendor_m1_11_windows_stage(&m,&adapter,image,n)!=STATUS_IO_TIMEOUT || freed!=5 || m.staged || barriers) return 11;
+    if(a04_vendor_m1_11_windows_stage(&m,&adapter,image,n)!=STATUS_IO_TIMEOUT || freed!=5 || m.staged || barriers || pools) return 11;
+    count=freed=syncs=barriers=0;fail_sync=0;fail_alloc=4;
+    if(a04_vendor_m1_11_windows_stage(&m,&adapter,image,n)!=STATUS_INSUFFICIENT_RESOURCES || freed!=3 || pools || m.staged) return 13;
     free(image);free(code);free(data);puts("GE8300 vendor m1.11 staging OK");return 0;
 }

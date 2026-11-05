@@ -3,13 +3,13 @@
 #define A04_VENDOR_M1_11_WINDOWS_STAGE_H
 #include <ntddk.h>
 #include "stage.h"
-#include "A04BR3RogueRuntimeLayout.h"
+struct a04_rgx_fw_runtime;
 struct a04_vendor_m1_11_memory {
     PDMA_ADAPTER adapter;
     struct a04_vendor_buffer buffers[5];
     PHYSICAL_ADDRESS logical[5];
     void *allocation[5];
-    struct a04_rgx_fw_runtime runtime;
+    struct a04_rgx_fw_runtime *runtime;
     BOOLEAN staged;
     BOOLEAN hardware_owned;
 };

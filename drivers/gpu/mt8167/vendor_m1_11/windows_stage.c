@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "windows_stage.h"
+#include "A04BR3RogueRuntimeLayout.h"
 #include "../windows_hw.h"
 _Static_assert(sizeof(RGXFWIF_INIT)==592 && offsetof(RGXFWIF_INIT,bFirmwareStarted)==260,"m1.11 init ABI");
 _Static_assert(sizeof(RGXFWIF_TRACEBUF)==4152 && sizeof(RGXFWIF_HWRINFOBUF)==2072,"m1.11 trace ABI");
@@ -20,6 +21,7 @@ NTSTATUS a04_vendor_m1_11_windows_free(struct a04_vendor_m1_11_memory *m)
         m->adapter->DmaOperations->FreeCommonBuffer(m->adapter,allocated[i],m->logical[i],m->allocation[i],FALSE);
         m->allocation[i]=NULL;
     }
+    if(m->runtime) ExFreePoolWithTag(m->runtime,0x72564741u);
     RtlZeroMemory(m,sizeof(*m)); return STATUS_SUCCESS;
 }
 NTSTATUS a04_vendor_m1_11_windows_stage(struct a04_vendor_m1_11_memory *m,
@@ -28,10 +30,12 @@ NTSTATUS a04_vendor_m1_11_windows_stage(struct a04_vendor_m1_11_memory *m,
     unsigned i,j; NTSTATUS status=STATUS_DEVICE_CONFIGURATION_ERROR;
     if(!m || !adapter || !image || KeGetCurrentIrql()!=PASSIVE_LEVEL || m->adapter || m->hardware_owned ||
        m->buffers[0].cpu || m->buffers[1].cpu || m->buffers[2].cpu || m->buffers[3].cpu || m->buffers[4].cpu ||
-       m->allocation[0] || m->allocation[1] || m->allocation[2] || m->allocation[3] || m->allocation[4] || !adapter->DmaOperations ||
+       m->allocation[0] || m->allocation[1] || m->allocation[2] || m->allocation[3] || m->allocation[4] || m->runtime || !adapter->DmaOperations ||
        !adapter->DmaOperations->AllocateCommonBuffer || !adapter->DmaOperations->FreeCommonBuffer)
         return STATUS_INVALID_PARAMETER;
     m->adapter=adapter;
+    m->runtime=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*m->runtime),0x72564741u);
+    if(!m->runtime) { status=STATUS_INSUFFICIENT_RESOURCES; goto fail; }
     for(i=0;i<5;i++) {
         uint64_t address,offset;
         m->allocation[i]=adapter->DmaOperations->AllocateCommonBuffer(adapter,allocated[i],&m->logical[i],FALSE);
@@ -52,7 +56,7 @@ NTSTATUS a04_vendor_m1_11_windows_stage(struct a04_vendor_m1_11_memory *m,
            a04_rgx_fw_overlap(m->buffers[i].dma,sizes[i],m->buffers[j].dma,sizes[j])) goto fail;
     }
     if(a04_vendor_m1_11_stage(image,bytes,m->buffers)) goto fail;
-    if(a04_rgx_fw_runtime_init(&m->runtime,m->buffers[3].cpu,m->buffers[3].dma,
+    if(a04_rgx_fw_runtime_init(m->runtime,m->buffers[3].cpu,m->buffers[3].dma,
             m->buffers[4].cpu,m->buffers[4].dma,26000000u) ||
        a04_rgx_fw_runtime_map((uint32_t *)m->buffers[0].cpu,A04_VENDOR_TABLE_BYTES/4,
             m->buffers[3].dma,m->buffers[4].dma)) goto fail;

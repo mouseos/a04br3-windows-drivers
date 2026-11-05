@@ -28,6 +28,9 @@ struct fake_adapter { DMA_OPERATIONS *DmaOperations; };
 #define NT_SUCCESS(x) ((x)>=0)
 #define FALSE 0
 #define TRUE 1
+#define NonPagedPoolNx 0
+void *ExAllocatePoolWithTag(int,size_t,unsigned);
+void ExFreePoolWithTag(void *,unsigned);
 #define PASSIVE_LEVEL 0
 #define DISPATCH_LEVEL 2
 #define KernelMode 0
