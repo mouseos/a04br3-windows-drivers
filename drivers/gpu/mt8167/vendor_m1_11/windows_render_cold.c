@@ -4,6 +4,10 @@
  * xnu_kernel_benesse_a04br3, f5d43bf1677955e7e367545b9bbbd6449776cdda.
  */
 #include "windows_render_cold.h"
+#include "clear_tile.h"
+#ifndef A04_GE8300_VENDOR_TILE_DIAGNOSTIC
+#define A04_GE8300_VENDOR_TILE_DIAGNOSTIC 0
+#endif
 #include "A04BR3RogueRuntimeLayout.h"
 #include "A04BR3RogueDeviceWords.h"
 #include "../gpu_mmu.h"
@@ -88,6 +92,18 @@ NTSTATUS a04_vendor_render_prepare_cold(struct a04_vendor_render_cold *r,
                A04_GPU_MMU_SLC_BYPASS|A04_GPU_MMU_READ_ONLY)) {
             status=STATUS_DEVICE_CONFIGURATION_ERROR;goto done;
         }
+#if A04_GE8300_VENDOR_TILE_DIAGNOSTIC
+        {
+            struct a04_vendor_clear_tile tile;
+            const struct a04_vendor_clear_tile_request request={128,128,128,64,64};
+            if(clear_colour || a04_vendor_clear_tile_build(&tile,&request)) {
+                status=STATUS_DEVICE_CONFIGURATION_ERROR;goto done;
+            }
+            r->clear=tile.image;r->clear_first=tile.first;r->clear_row_bytes=tile.row_bytes;
+        }
+#else
+        r->clear_first=0;r->clear_row_bytes=128;
+#endif
         RtlFillMemory(shadow[4],sizes[4],0xa5);
         RtlCopyMemory(shadow[7],r->clear.pds,sizeof(r->clear.pds));
         RtlCopyMemory(shadow[10],r->clear.usc,sizeof(r->clear.usc));

@@ -253,3 +253,10 @@ XNU `A04BR3RogueClearTile.h` と REA `ev_a8b70e873cd2536b115a348ff0bc99a5802b311
 任意色、pitchの端数、64 KiBを超える全画面、資源管理、GPU送信は対象外。
 成功は画素出力を意味せず、現行の固定診断に接続しない。Windows実機の
 可視性、転送完了、所有・停止・画面出力は未検証。
+
+`A04_GE8300_VENDOR_TILE_DIAGNOSTIC=1` は既定OFF。既存のvendor stage、
+uncached stage、IRQ、start、render cold、clear診断の全指定を必要とし、
+カラー診断とは併用しない。64 KiB専用領域を0xa5で初期化し、pitch 128画素、
+位置(64,64)の32×32だけをzero-clearする。対象1024画素と残り15360画素の
+すべてをSLC flush・fence成功後に照合する。タイムアウト時の読取りは暫定値で、
+DMA停止や領域解放の証明ではない。対象実機・Windows本体への適用は未検証。

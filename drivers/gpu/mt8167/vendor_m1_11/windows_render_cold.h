@@ -11,6 +11,7 @@ struct a04_vendor_render_cold {
     struct a04_vendor_render_layout layout;
     struct a04_vendor_m1_11_memory *firmware;
     uint32_t client_write[4], sequence;
+    uint32_t clear_first, clear_row_bytes;
     BOOLEAN mapped, poisoned, clear_ready, clear_attempted;
 };
 /* Firmware is staged but has never been started. Each buffer remains pinned
