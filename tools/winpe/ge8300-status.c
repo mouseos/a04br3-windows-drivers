@@ -59,10 +59,33 @@ void mainCRTStartup(void)
            got!=sizeof(v) || v.version!=1) {
             say("GE8300_VENDOR_STAGE_IOCTL_ERROR=");hex(GetLastError());say("\r\n");CloseHandle(h);ExitProcess(2);
         }
-        CloseHandle(h);say("GE8300_VENDOR_STAGE_ATTEMPT=");hex(v.attempted);
+        say("GE8300_VENDOR_STAGE_ATTEMPT=");hex(v.attempted);
         say(" STATUS=");hex(v.stage_status);say("\r\n");
+#ifdef A04_GE8300_VENDOR_START_STATUS
+        if(!DeviceIoControl(h,A04_GE8300_IOCTL_QUERY,NULL,0,&s,sizeof(s),&got,NULL) ||
+           got!=sizeof(s) || s.version!=5) {
+            CloseHandle(h);(void)vendor_uart("A04GPU START QUERY FAILED\n");ExitProcess(2);
+        }
+        p=line;p=vendor_text(p,"A04GPU NATIVE START=");p=vendor_hex(p,s.boot_status);
+        p=vendor_text(p," HEALTH=");p=vendor_hex(p,s.health_status);
+        p=vendor_text(p," OFF=");p=vendor_hex(p,s.shutdown_status);
+        p=vendor_text(p,"\n");*p=0;
+        if(!vendor_uart(line)) {CloseHandle(h);ExitProcess(4);}
+        p=line;p=vendor_text(p,"A04GPU NATIVE ATTEMPT=");p=vendor_hex(p,s.attempted);
+        p=vendor_text(p," OWNED=");p=vendor_hex(p,s.processor_released);
+        p=vendor_text(p," READY=");p=vendor_hex(p,s.firmware_started);
+        p=vendor_text(p,"\n");*p=0;
+        if(!vendor_uart(line)) {CloseHandle(h);ExitProcess(4);}
+        CloseHandle(h);
+        /* Firmware-ready, SYNC and OFF acknowledgements remain separate;
+         * this diagnostic does not claim DMA quiescence or GPU drawing. */
+        ExitProcess(v.attempted && !v.stage_status && s.attempted && !s.boot_status &&
+                    !s.health_status && !s.shutdown_status && s.firmware_started ? 0 : 3);
+#else
+        CloseHandle(h);
         if(v.attempted && v.stage_status==0) ExitProcess(vendor_uart("A04GPU VENDOR_STAGE SUCCESS\n") ? 0 : 4);
         (void)vendor_uart("A04GPU VENDOR_STAGE FAILED\n");ExitProcess(3);
+#endif
     }
 #endif
     for(i=0;i<16;++i) {

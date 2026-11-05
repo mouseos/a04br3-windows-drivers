@@ -31,3 +31,8 @@ if ($LASTEXITCODE -ne 0) { throw 'ARM display PnP status link failed' }
 if ($LASTEXITCODE -ne 0) { throw 'ARM GE8300 vendor stage status compilation failed' }
 & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib (Join-Path $out 'vendor-stage-status.obj') (Join-Path $lib 'kernel32.lib') "/out:$out\ge8300-vendor-stage-status.exe"
 if ($LASTEXITCODE -ne 0) { throw 'ARM GE8300 vendor stage status link failed' }
+
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DA04_GE8300_VENDOR_STAGE_STATUS -DA04_GE8300_VENDOR_START_STATUS "-I$inc\um" "-I$inc\shared" -c (Join-Path $root 'tools\winpe\ge8300-status.c') -o (Join-Path $out 'vendor-start-status.obj')
+if ($LASTEXITCODE -ne 0) { throw 'ARM GE8300 vendor start status compilation failed' }
+& lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib (Join-Path $out 'vendor-start-status.obj') (Join-Path $lib 'kernel32.lib') "/out:$out\ge8300-vendor-start-status.exe"
+if ($LASTEXITCODE -ne 0) { throw 'ARM GE8300 vendor start status link failed' }
