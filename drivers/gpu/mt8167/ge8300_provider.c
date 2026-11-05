@@ -26,6 +26,12 @@
 #if A04_GE8300_VENDOR_TILE_DIAGNOSTIC && (!A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC || A04_GE8300_VENDOR_COLOR_DIAGNOSTIC)
 #error Offset tile requires zero-colour clear diagnostic
 #endif
+#ifndef A04_GE8300_VENDOR_MULTI_TILE_DIAGNOSTIC
+#define A04_GE8300_VENDOR_MULTI_TILE_DIAGNOSTIC 0
+#endif
+#if A04_GE8300_VENDOR_MULTI_TILE_DIAGNOSTIC && (!A04_GE8300_VENDOR_TILE_DIAGNOSTIC || A04_GE8300_VENDOR_COLOR_DIAGNOSTIC)
+#error Multiple tile diagnostic requires the offset zero-clear diagnostic
+#endif
 #ifndef A04_GE8300_VENDOR_COLOR_DIAGNOSTIC
 #define A04_GE8300_VENDOR_COLOR_DIAGNOSTIC 0
 #endif
@@ -736,6 +742,20 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             GpuPrint(" UFO=");GpuHex(clear.ufo);GpuPrint(" EXPECT=");GpuHex(clear.expected);GpuPrint("\n");
             GpuPrint("A04GPU CLEAR OBSERVATION PROVISIONAL=");GpuHex(clear.provisional);
             GpuPrint(" SLC=");GpuHex(clear.slc_status);GpuPrint(" IDLE=");GpuHex(clear.slc_idle);GpuPrint("\n");
+#if A04_GE8300_VENDOR_MULTI_TILE_DIAGNOSTIC
+            if(NT_SUCCESS(clear_status)) {
+                unsigned tile_index;
+                for(tile_index=1;tile_index<3;tile_index++) {
+                    clear_status=a04_vendor_render_next_tile(&c->vendor_render,&c->vendor_start,tile_index,&clear);
+                    GpuPrint("A04GPU TILE INDEX=");GpuHex(tile_index);
+                    GpuPrint(" STATUS=");GpuHex((ULONG)clear_status);
+                    GpuPrint(" MATCH=");GpuHex(clear.zeros);
+                    GpuPrint(" GUARD=");GpuHex(clear.guard_errors);
+                    GpuPrint(" PHASE=");GpuHex(clear.phase);GpuPrint("\n");
+                    if(!NT_SUCCESS(clear_status)) break;
+                }
+            }
+#endif
             if(!NT_SUCCESS(clear_status)) {
                 struct a04_vendor_fw_debug debug;unsigned request,word;
                 c->status.health_status=clear_status;

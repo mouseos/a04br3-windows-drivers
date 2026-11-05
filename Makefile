@@ -609,7 +609,7 @@ build/gpu_vendor_clear_image_test: tests/gpu_vendor_clear_image_test.c drivers/g
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
 
-build/gpu_vendor_windows_render_context_test: tests/gpu_vendor_windows_render_context_test.c drivers/gpu/mt8167/vendor_m1_11/windows_render_context.c drivers/gpu/mt8167/vendor_m1_11/windows_render_clear.c drivers/gpu/mt8167/vendor_m1_11/clear_image.c drivers/gpu/mt8167/vendor_m1_11/windows_render_cold.h drivers/gpu/mt8167/vendor_m1_11/render_resources.c
+build/gpu_vendor_windows_render_context_test: tests/gpu_vendor_windows_render_context_test.c drivers/gpu/mt8167/vendor_m1_11/windows_render_context.c drivers/gpu/mt8167/vendor_m1_11/windows_render_clear.c drivers/gpu/mt8167/vendor_m1_11/clear_image.c drivers/gpu/mt8167/vendor_m1_11/windows_render_cold.h drivers/gpu/mt8167/vendor_m1_11/render_resources.c drivers/gpu/mt8167/vendor_m1_11/clear_tile.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -DA04_TEST_INTERLOCK_HOOK -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
 

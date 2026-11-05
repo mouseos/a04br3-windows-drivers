@@ -277,3 +277,13 @@ poisons the context and stops further submissions. Partial cleanup forbids new
 work. Firmware cleanup and power acknowledgement do not prove external fabric
 quiescence; all DMA stays pinned and D0 exit remains guarded. This change is
 host-tested only; actual m1.11 cleanup and power-off are not yet verified.
+
+`A04_GE8300_VENDOR_MULTI_TILE_DIAGNOSTIC=1` は既定OFFで、既存tile診断を
+前提とする。同一起動中、専用64 KiBを毎回guardで再初期化し、(64,64) zero、
+(32,32) zero、(96,96) 0x78563412の順に処理する。各回の完了・SLC flush・
+fenceと全画素照合が成功した場合のみ次へ進み、失敗後は再使用しない。
+最初のzeroはcc1be36で実測済みだが、再初期化・PDS更新・連続実行・色付きの
+新経路は未検証。PDSやデバイス書込みの可視性・実GPUの色変換はhost模擬では
+保証できない。FW cleanup成功はDMA停止を証明しない。表示用共有フレーム
+バッファのpin、GPU/scanout ownershipとfence、電源・PnP寿命は未実装であり、
+この診断の64 KiBを表示と共有しない。
