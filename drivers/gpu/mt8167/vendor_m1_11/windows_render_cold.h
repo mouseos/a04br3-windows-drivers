@@ -11,8 +11,8 @@ struct a04_vendor_render_cold {
     struct a04_vendor_render_layout layout;
     struct a04_vendor_m1_11_memory *firmware;
     uint32_t client_write[4], sequence, cleanup_mask;
-    uint32_t clear_first, clear_row_bytes;
-    BOOLEAN mapped, poisoned, clear_ready, clear_attempted, cleanup_started;
+    uint32_t clear_first, clear_row_bytes, diagnostic_tile_index;
+    BOOLEAN mapped, poisoned, clear_ready, clear_attempted, clear_verified, cleanup_started;
 };
 /* Firmware is staged but has never been started. Each buffer remains pinned
  * after processor release until a separately verified DMA-quiescence path. */
@@ -34,4 +34,7 @@ struct a04_vendor_clear_result {
 /* One bounded owned 32x32 transfer, followed by SLC flush and CPU readback. */
 NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *render,
     struct a04_vendor_start *start, struct a04_vendor_clear_result *result);
+/* Diagnostic-only fixed sequence; completed pixels do not prove DMA quiescence. */
+NTSTATUS a04_vendor_render_next_tile(struct a04_vendor_render_cold *render,
+    struct a04_vendor_start *start, unsigned index, struct a04_vendor_clear_result *result);
 #endif
