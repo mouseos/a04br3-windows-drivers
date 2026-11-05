@@ -16,3 +16,26 @@ int a04_parent_validate_resources(const struct a04_parent_resource *r,size_t n,
     if(!tmp.topck||!tmp.infra||!tmp.gpio||!tmp.pwrap)return -1;
     *out=tmp;return 0;
 }
+
+/* Raw list entries identify board devices; paired translated entries provide
+ * physical addresses. Reject overlapping mappings and preserve out on error. */
+int a04_parent_translate_resources(const struct a04_parent_resource *raw,
+    const struct a04_parent_resource *translated,size_t n,struct a04_parent_mapping *out)
+{
+    struct a04_parent_mapping rawmap,tmp={0};size_t i,j;
+    if(!out || !translated || a04_parent_validate_resources(raw,n,&rawmap))return -1;
+    for(i=0;i<n;++i) {
+        uint64_t base=translated[i].base;
+        if(!base || base>UINT64_MAX-0xfffu || translated[i].length!=0x1000u || translated[i].exclusive!=1)return -1;
+        for(j=0;j<i;++j) {
+            uint64_t other=translated[j].base;
+            if((base<=other ? other-base : base-other)<0x1000u)return -1;
+        }
+        if(raw[i].base==rawmap.topck)tmp.topck=base;
+        else if(raw[i].base==rawmap.infra)tmp.infra=base;
+        else if(raw[i].base==rawmap.gpio)tmp.gpio=base;
+        else if(raw[i].base==rawmap.pwrap)tmp.pwrap=base;
+        else return -1;
+    }
+    *out=tmp;return 0;
+}

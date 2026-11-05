@@ -14,7 +14,7 @@
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
-typedef struct { PVOID topck,infra,gpio,pwrap; FAST_MUTEX pwrapLock; struct a04_pwrap_owner pmic; struct a04_register_owner regs; } A04_PARENT_CONTEXT;
+typedef struct { PVOID topck,infra,gpio,pwrap; FAST_MUTEX pwrapLock; volatile LONG admissionClosed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; } A04_PARENT_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_PARENT_CONTEXT,ParentContext)
 EVT_WDF_DRIVER_DEVICE_ADD ParentAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE ParentPrepare;
@@ -22,8 +22,14 @@ EVT_WDF_DEVICE_RELEASE_HARDWARE ParentRelease;
 EVT_WDF_DEVICE_D0_ENTRY ParentD0;
 EVT_WDF_DEVICE_D0_EXIT ParentD0Exit;
 EVT_WDF_DEVICE_SURPRISE_REMOVAL ParentSurprise;
-static int ParentLock(void *context) { ExAcquireFastMutex((FAST_MUTEX *)context);return 0; }
-static void ParentUnlock(void *context) { ExReleaseFastMutex((FAST_MUTEX *)context); }
+static int ParentLock(void *context) {
+    A04_PARENT_CONTEXT *c=context;
+    if(!c || KeGetCurrentIrql()!=PASSIVE_LEVEL || InterlockedCompareExchange(&c->admissionClosed,0,0))return -1;
+    ExAcquireFastMutex(&c->pwrapLock);
+    if(InterlockedCompareExchange(&c->admissionClosed,0,0)){ExReleaseFastMutex(&c->pwrapLock);return -1;}
+    return 0;
+}
+static void ParentUnlock(void *context) { ExReleaseFastMutex(&((A04_PARENT_CONTEXT *)context)->pwrapLock); }
 static uint32_t ParentPwrapRead(void *context,unsigned offset) {
     A04_PARENT_CONTEXT *c=(A04_PARENT_CONTEXT *)context;
     return READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->pwrap+offset));
@@ -49,8 +55,8 @@ static int ParentRegWrite(void *context,enum a04_shared_bank bank,unsigned offse
     if(!base)return -1;
     WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)base+offset),value);return 0;
 }
-static int ParentRegLock(void *context) { return ParentLock(&((A04_PARENT_CONTEXT *)context)->pwrapLock); }
-static void ParentRegUnlock(void *context) { ParentUnlock(&((A04_PARENT_CONTEXT *)context)->pwrapLock); }
+static int ParentRegLock(void *context) { return ParentLock(context); }
+static void ParentRegUnlock(void *context) { ParentUnlock(context); }
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 static int ParentBank(unsigned bank,enum a04_shared_bank *out)
 {
@@ -101,6 +107,7 @@ static void ParentStop(A04_PARENT_CONTEXT *c)
 {
     /* Both owners share this mutex. Close admission in one critical section
      * before any mapping is released; neither client can enter in between. */
+    InterlockedExchange(&c->admissionClosed,1);
     ExAcquireFastMutex(&c->pwrapLock);
     c->regs.online=0;
     c->pmic.online=0;
@@ -116,19 +123,23 @@ static void ParentUnmap(A04_PARENT_CONTEXT *c)
 }
 NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
-    A04_PARENT_CONTEXT *c=ParentContext(dev);struct a04_parent_resource r[4];
+    A04_PARENT_CONTEXT *c=ParentContext(dev);struct a04_parent_resource r[4],t[4];
     struct a04_parent_mapping mapping;ULONG i,n=0;PHYSICAL_ADDRESS pa;
-    UNREFERENCED_PARAMETER(raw);
     if(c->topck||c->infra||c->gpio||c->pwrap)return STATUS_INVALID_DEVICE_STATE;
+    if(!raw || !translated || WdfCmResourceListGetCount(raw)!=WdfCmResourceListGetCount(translated))return STATUS_DEVICE_CONFIGURATION_ERROR;
     for(i=0;i<WdfCmResourceListGetCount(translated);++i) {
         PCM_PARTIAL_RESOURCE_DESCRIPTOR d=WdfCmResourceListGetDescriptor(translated,i);
-        if(!d)return STATUS_DEVICE_CONFIGURATION_ERROR;
+        PCM_PARTIAL_RESOURCE_DESCRIPTOR original=WdfCmResourceListGetDescriptor(raw,i);
+        if(!d || !original || d->Type!=original->Type)return STATUS_DEVICE_CONFIGURATION_ERROR;
         if(d->Type!=CmResourceTypeMemory)continue;
         if(n>=4)return STATUS_DEVICE_CONFIGURATION_ERROR;
-        r[n].base=(uint64_t)d->u.Memory.Start.QuadPart;r[n].length=d->u.Memory.Length;
-        r[n].exclusive=d->ShareDisposition==CmResourceShareDeviceExclusive ? 1u:0u;++n;
+        if(d->u.Memory.Start.QuadPart<0 || original->u.Memory.Start.QuadPart<0)return STATUS_DEVICE_CONFIGURATION_ERROR;
+        r[n].base=(uint64_t)original->u.Memory.Start.QuadPart;r[n].length=original->u.Memory.Length;
+        r[n].exclusive=original->ShareDisposition==CmResourceShareDeviceExclusive ? 1u:0u;
+        t[n].base=(uint64_t)d->u.Memory.Start.QuadPart;t[n].length=d->u.Memory.Length;
+        t[n].exclusive=d->ShareDisposition==CmResourceShareDeviceExclusive ? 1u:0u;++n;
     }
-    if(a04_parent_validate_resources(r,n,&mapping))return STATUS_DEVICE_CONFIGURATION_ERROR;
+    if(a04_parent_translate_resources(r,t,n,&mapping))return STATUS_DEVICE_CONFIGURATION_ERROR;
     pa.QuadPart=(LONGLONG)mapping.topck;c->topck=MmMapIoSpace(pa,0x1000,MmNonCached);
     if(!c->topck)goto fail;
     pa.QuadPart=(LONGLONG)mapping.infra;c->infra=MmMapIoSpace(pa,0x1000,MmNonCached);
@@ -272,7 +283,8 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     {
         A04_PARENT_CONTEXT *c=ParentContext(dev);
         ExInitializeFastMutex(&c->pwrapLock);
-        c->pmic.lock_context=&c->pwrapLock;c->pmic.lock=ParentLock;c->pmic.unlock=ParentUnlock;
+        c->admissionClosed=1;
+        c->pmic.lock_context=c;c->pmic.lock=ParentLock;c->pmic.unlock=ParentUnlock;
         c->pmic.bus.context=c;c->pmic.bus.read32=ParentPwrapRead;c->pmic.bus.write32=ParentPwrapWrite;
         c->pmic.bus.delay=ParentPwrapDelay;c->pmic.bus.attempts=1000;
         c->regs.context=c;c->regs.lock=ParentRegLock;c->regs.unlock=ParentRegUnlock;

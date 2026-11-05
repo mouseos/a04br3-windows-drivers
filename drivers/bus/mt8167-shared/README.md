@@ -135,3 +135,15 @@ Output is unchanged on a partial failure and WACS timeouts poison the owner.
 This is a raw, read-only diagnostic helper, not a proof of mute, ownership,
 rail state or trim. It is not published as a client interface or invoked by
 D0/audio acquisition; the parent and RUN gates remain closed.
+
+The offline parent pairs raw and translated PnP descriptors by resource-list
+index: raw addresses identify TOPCKGEN, INFRA, GPIO and PWRAP, while only the
+exclusive non-overlapping translated ranges are mapped. See Microsoft's
+[raw and translated resource documentation](https://learn.microsoft.com/en-us/windows-hardware/drivers/wdf/raw-and-translated-resources).
+This follows the resource-pairing and admission work in commits `6bd1cf6` and
+`53a6c02`, adapted here to preserve the audio v2 query and existing children.
+The admission gate is closed before waiting for an active operation on stop;
+queued callers recheck after locking. The offline AML fixture has `_STA=0` so
+it cannot enumerate alongside the legacy button fixture. This is not an
+operational mutual-exclusion configuration: the parent still rejects D0, and a
+board-specific mutually exclusive enumeration and power handoff remain required.

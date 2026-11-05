@@ -7,6 +7,7 @@ DefinitionBlock ("shared-parent.aml", "SSDT", 2, "BENESS", "A04SHR  ", 1)
         {
             Name (_HID, "BEN0001")
             Name (_UID, Zero)
+            Name (_STA, Zero) // offline fixture: never compete with legacy devices
             Name (_CRS, ResourceTemplate ()
             {
                 Memory32Fixed (ReadWrite, 0x10000000, 0x1000)

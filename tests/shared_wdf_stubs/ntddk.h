@@ -5,7 +5,9 @@
 #include <string.h>
 #include <wchar.h>
 typedef const wchar_t *PCWSTR;
-typedef void VOID;typedef void *PVOID;typedef uint8_t UCHAR;typedef uint16_t USHORT;typedef uint32_t ULONG;typedef int32_t NTSTATUS;typedef int64_t LONGLONG;
+typedef void VOID;typedef void *PVOID;typedef uint8_t UCHAR;typedef uint16_t USHORT;typedef uint32_t ULONG;typedef int32_t NTSTATUS,LONG;typedef int64_t LONGLONG;
+static inline LONG InterlockedExchange(volatile LONG *p,LONG v){return __atomic_exchange_n(p,v,__ATOMIC_SEQ_CST);}
+static inline LONG InterlockedCompareExchange(volatile LONG *p,LONG v,LONG old){__atomic_compare_exchange_n(p,&old,v,0,__ATOMIC_SEQ_CST,__ATOMIC_SEQ_CST);return old;}
 typedef struct { int64_t QuadPart; } PHYSICAL_ADDRESS;
 typedef struct {int held;} FAST_MUTEX;
 #define STATUS_SUCCESS 0
