@@ -13,6 +13,15 @@
 #include "audio_owner.h"
 #include "usb_interface.h"
 #include "usb_owner.h"
+#ifndef A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
+#define A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC 0
+#endif
+#if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC && (!defined(A04_SHARED_MT6392_DIAGNOSTIC) || !A04_SHARED_MT6392_DIAGNOSTIC || !defined(A04_SHARED_APMIXED_RESOURCE) || !A04_SHARED_APMIXED_RESOURCE)
+#error codec domain requires MT6392 diagnostics and APMIXED resources
+#endif
+#if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
+#include "codec_domain.h"
+#endif
 #ifndef A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC
 #define A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC 0
 #endif
@@ -85,6 +94,9 @@
 #include "shared_interface.h"
 #endif
 typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; struct a04_usb_owner usb;
+#if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
+struct a04_codec_domain codecDomain;
+#endif
 PVOID audioAfe;
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
 int afeClockHeld,afeClockRestore,afeClockPoisoned;
@@ -212,18 +224,49 @@ static int ParentCodecDelay(void *context,uint32_t us) {
     status=KeDelayExecutionThread(KernelMode,FALSE,&interval);
     return status==STATUS_SUCCESS ? 0 : -1;
 }
+#if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
+static int ParentDomainRead(void *context,unsigned offset,uint32_t *value) {
+    A04_PARENT_CONTEXT *c=context;
+    if(!c || !c->apmixed || !value || (offset!=0x700 && offset!=0x704 && offset!=0x70c))return -1;
+    *value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+offset));return 0;
+}
+static int ParentDomainWrite(void *context,unsigned offset,uint32_t value) {
+    A04_PARENT_CONTEXT *c=context;
+    if(!c || !c->apmixed || (offset!=0x700 && offset!=0x704 && offset!=0x70c))return -1;
+    WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+offset),value);return 0;
+}
+#endif
 static int ParentCodecStart(void *context) {
     A04_PARENT_CONTEXT *c=context;struct a04_mt6392_audio_rails rails;
     if(!c || !c->pmic.online || a04_pmic_audio_rails(&c->pmic.bus,&rails))return -1;
     A04_TRACE("A04AUD codec rails vaud22=%04x selector=%04x vaud28=%04x\n",(unsigned)rails.vaud22,(unsigned)rails.vaud22_selector,(unsigned)rails.vaud28);
     if(!a04_pmic_audio_rails_ready(&rails))return -1;
+#if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
+    {
+        struct a04_codec_domain_io io={c,ParentDomainRead,ParentDomainWrite};
+        /* Must prove exclusive shared APMIXED ownership, clocks, retained
+         * rails and board silence before even enabling the common domain. */
+        if(a04_mt6392_classd_preflight(&c->classd) ||
+           a04_codec_domain_start(&c->codecDomain,&io))return -1;
+    }
+#endif
     return a04_mt6392_classd_start_muted(&c->classd);
 }
 #if defined(A04_MT6392_UNMUTE_DIAGNOSTIC) && A04_MT6392_UNMUTE_DIAGNOSTIC
 static int ParentCodecUnmute(void *context) { return a04_mt6392_classd_unmute_min(&((A04_PARENT_CONTEXT *)context)->classd); }
 #endif
 static int ParentCodecMute(void *context) { return a04_mt6392_classd_mute(&((A04_PARENT_CONTEXT *)context)->classd); }
-static int ParentCodecStop(void *context) { return a04_mt6392_classd_stop(&((A04_PARENT_CONTEXT *)context)->classd); }
+static int ParentCodecStop(void *context) {
+    A04_PARENT_CONTEXT *c=context;
+    if(!c || a04_mt6392_classd_stop(&c->classd))return -1;
+#if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
+    {
+        struct a04_codec_domain_io io={c,ParentDomainRead,ParentDomainWrite};
+        if(a04_codec_domain_stop(&c->codecDomain,&io))return -1;
+    }
+#endif
+    return 0;
+}
 #endif
 #if A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC
 /* These run under ParentLock. No admission is possible until the independent
@@ -391,7 +434,7 @@ static void ParentStop(A04_PARENT_CONTEXT *c,int can_access)
      * remove VBUS while mappings remain valid; revoke the lease in either case. */
     if(c->usb.leased) {
         if(can_access && !InterlockedCompareExchange(&c->removed,0,0) && c->gpio &&
-           !A04Gpio22Vbus(&c->usb.gpio,0))c->usb.leased=0;
+           !A04Gpio22Vbus(&c->usb.gpio,0) && !c->usb.otg_held)c->usb.leased=0;
         c->usb.poisoned=1;
     }
     ExReleaseFastMutex(&c->pwrapLock);
@@ -402,6 +445,9 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
     /* Failed/partial audio ownership cannot be interpreted as quiescent.
      * Retain mappings; this is not proof PnP retains physical resources. */
     if(c->audio.poisoned || c->audio.leased || c->audioAfe || c->usb.leased)return STATUS_DEVICE_BUSY;
+#if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
+    if(c->codecDomain.held || c->codecDomain.poisoned)return STATUS_DEVICE_BUSY;
+#endif
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
     if(c->afeClockHeld || c->afeClockPoisoned)return STATUS_DEVICE_BUSY;
 #endif

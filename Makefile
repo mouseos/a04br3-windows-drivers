@@ -899,3 +899,8 @@ build/thermal_readout_test: drivers/power/mt8167-thermal/readout.c drivers/power
 build/thermal_oneshot_test: drivers/power/mt8167-thermal/oneshot.c drivers/power/mt8167-thermal/hardware.c drivers/power/mt8167-thermal/completion.c drivers/power/mt8167-thermal/freshness.c drivers/power/mt8167-thermal/thermal.c tests/thermal_oneshot_test.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal $^ -o $@
+.PHONY: test-mt8167-codec-domain
+test-mt8167-codec-domain:
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared tests/mt8167_codec_domain_test.c -o build/mt8167_codec_domain_test
+	./build/mt8167_codec_domain_test

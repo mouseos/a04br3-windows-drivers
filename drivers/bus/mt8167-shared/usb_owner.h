@@ -10,9 +10,12 @@ struct a04_usb_owner {
  void *context; int (*lock)(void *); void (*unlock)(void *);
  int (*verify_upstream)(void *);
  int (*verify_overcurrent)(void *);
+ /* Charger/source owner serializes its watchdog and external source. -1 is
+  * rejection before effects; other failures mean ownership is uncertain. */
+ int (*otg_acquire)(void *); int (*otg_release)(void *);
  unsigned (*top_read)(void *,unsigned); void (*top_write)(void *,unsigned,unsigned);
  struct a04_pmic_read *pmic; A04_GPIO_IO gpio;
- int online,leased,poisoned;
+ int online,leased,poisoned,otg_held;
 };
 int a04_usb_owner_acquire(struct a04_usb_owner *);
 int a04_usb_owner_vbus(struct a04_usb_owner *,int);

@@ -348,3 +348,17 @@ The diagnostic parent has also been linked as an unsigned ARM32 SYS using
 the WDK 8.1 import libraries. This is a build check only: the offline ACPI
 fixture, USB keyboard child and audio backend have not been installed or
 exercised together on the target.
+
+`A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC=1` adds the common Linux MT8167
+codec clock/reference sequence under the parent lock: CLKLDO (`CON01` bit 20),
+codec clock (`CON03` bit 30), and both Vcm14 bits (`CON00` bits 19 and 1).
+The Class D preflight, rails and exclusive APMIXED ownership must be satisfied
+before these writes; the parent currently has no qualifying preflight and
+therefore cannot execute the sequence. Initial bit states are saved and
+restored in reverse order only after Class D quiescence; readback mismatch
+poisons and retains the lease. This is not a complete DAC-to-AU_LOL route:
+Linux also needs DL_CLK at APMIXED offset 0x710, DAC, Vref/VCM, voice amp and
+DC compensation/ramp. The present ACPI prototype allocates only 0x710 bytes,
+so offset 0x710 is not mapped. Extending the device-specific resource and
+proving calibration and shared thermal/codec ownership are prerequisites;
+no unsupported access is made.
