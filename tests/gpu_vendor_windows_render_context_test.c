@@ -136,6 +136,9 @@ int main(void)
         start.command_poisoned=FALSE;start.command_sequence=0;current=4;complete=1;
         assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_SUCCESS);
         assert(clear.zeros==1024 && !clear.guard_errors && clear.phase==4);
+        pixels[0]=0; r.clear_attempted=FALSE;
+        assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_DATA_ERROR);
+        assert(clear.guard_errors==1 && !r.clear_verified);
         free(pixels);
     }
     free(cmd);free(core);free(bank);free(target);return 0;
