@@ -19,7 +19,7 @@ int main(void) {
  assert(a.fault_reason==(unsigned)(mode==4?1:mode==1?2:mode==2?4:3)); f.mode=0;
  assert(a04_bq_mt8167_kick(&a,0x80)); }
  memset(&f,0,sizeof(f));a.faulted=0;f.mode=6;value=0x55;
- assert(a04_bq_mt8167_read(&a,0,&value));assert(a.faulted&&f.clocks==3&&value==0x55);
+ assert(a04_bq_mt8167_read(&a,0,&value));assert(a.faulted&&a.fault_reason==5&&f.clocks==3&&value==0x55);
  /* A single poisoned adapter blocks both device addresses, without further
   * MMIO or an attempted controller reset, in either failure direction. */
  { unsigned accesses; uint8_t gauge[3]={1,2,3};

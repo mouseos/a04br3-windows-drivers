@@ -24,11 +24,14 @@ static int transfer(struct a04_gauge_mt8167 *a, int read, uint8_t reg, uint8_t *
     previous=start;
     for (i=0;i<2000;++i) {
         now=a->monotonic_ns(io->context);
-        if (now<previous || now-start>=10000000ULL) break;
+        if (now<previous) { a->fault_reason=5; break; }
+        if (now-start>=10000000ULL) { a->fault_reason=4; break; }
         previous=now;
         status=io->read16(io->context,0x0c);
         now=a->monotonic_ns(io->context);
-        if (now<previous || now-start>=10000000ULL || (status&6u)) break;
+        if (now<previous) { a->fault_reason=5; break; }
+        if (now-start>=10000000ULL) { a->fault_reason=4; break; }
+        if (status&6u) break;
         previous=now;
         if (status&1u) {
             if (read) {
@@ -41,7 +44,7 @@ static int transfer(struct a04_gauge_mt8167 *a, int read, uint8_t reg, uint8_t *
     }
     a->fault_status=status;
     a->fault_fifo=io->read16(io->context,0x30);
-    a->fault_reason=(status&6u)?2:((status&1u)?3:4);
+    if (!a->fault_reason) a->fault_reason=(status&6u)?2:((status&1u)?3:4);
     io->write16(io->context,0x0c,7); a->faulted=1; return -1;
 }
 int a04_bq_mt8167_read(void *context,uint8_t reg,uint8_t *value)
