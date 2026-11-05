@@ -31,17 +31,22 @@ static enum a04_capture_result command(struct capture *c,uint32_t word,uint32_t 
     }
     if(n==c->limit) return A04_CAPTURE_TIMEOUT;
     if(!allowed(c)) return A04_CAPTURE_REVOKED;
-    b=io->read32(io->context,INT)&CMDEVENTS; if(b) io->write32(io->context,INT,b);
+    b=io->read32(io->context,INT)&CMDEVENTS;
+    if(b) {if(!allowed(c))return A04_CAPTURE_REVOKED;io->write32(io->context,INT,b);}
     if(!allowed(c)) return A04_CAPTURE_REVOKED;
-    io->write32(io->context,ARG,arg); io->write32(io->context,CMD,word);
+    io->write32(io->context,ARG,arg);
+    if(!allowed(c))return A04_CAPTURE_REVOKED;
+    io->write32(io->context,CMD,word);
     start=c->a->now(c->a->context);
     for(n=0;n<c->limit;++n) {
         if(!allowed(c)) return A04_CAPTURE_REVOKED;
         b=io->read32(io->context,INT)&CMDEVENTS;
         if(b) {
+            if(!allowed(c))return A04_CAPTURE_REVOKED;
             io->write32(io->context,INT,b);
             if((b&0x600u) || !(b&0x100u)) return A04_CAPTURE_COMMAND;
-            if(r1 && (io->read32(io->context,RESP)&0xffffe0c0u)) return A04_CAPTURE_COMMAND;
+            if(r1) {if(!allowed(c))return A04_CAPTURE_REVOKED;
+                if(io->read32(io->context,RESP)&0xffffe0c0u)return A04_CAPTURE_COMMAND;}
             return A04_CAPTURE_OK;
         }
         if(expired(c,start,n)) return A04_CAPTURE_TIMEOUT;
@@ -63,7 +68,10 @@ static enum a04_capture_result extcsd(struct capture *c,uint8_t *dst)
     uint64_t start; enum a04_capture_result r;
     if(!allowed(c)) return A04_CAPTURE_REVOKED;
     io->write32(io->context,BLK,1);
-    io->write32(io->context,FIFO,io->read32(io->context,FIFO)|FIFO_CLEAR);
+    if(!allowed(c))return A04_CAPTURE_REVOKED;
+    v=io->read32(io->context,FIFO);
+    if(!allowed(c))return A04_CAPTURE_REVOKED;
+    io->write32(io->context,FIFO,v|FIFO_CLEAR);
     start=c->a->now(c->a->context);
     for(n=0;n<c->limit;++n) {
         if(!allowed(c)) return A04_CAPTURE_REVOKED;
@@ -71,15 +79,19 @@ static enum a04_capture_result extcsd(struct capture *c,uint8_t *dst)
         if(expired(c,start,n)) return A04_CAPTURE_TIMEOUT;
     }
     if(n==c->limit) return A04_CAPTURE_TIMEOUT;
-    b=io->read32(io->context,INT)&DATAEVENTS; if(b) io->write32(io->context,INT,b);
+    if(!allowed(c))return A04_CAPTURE_REVOKED;
+    b=io->read32(io->context,INT)&DATAEVENTS;
+    if(b){if(!allowed(c))return A04_CAPTURE_REVOKED;io->write32(io->context,INT,b);}
     r=command(c,8u|(1u<<7)|(1u<<11)|(512u<<16),0,1);
     if(r!=A04_CAPTURE_OK) return r;
     start=c->a->now(c->a->context);
     for(n=0;n<c->limit;++n) {
         if(!allowed(c)) return A04_CAPTURE_REVOKED;
-        b=io->read32(io->context,INT)&DATAEVENTS; if(b) io->write32(io->context,INT,b);
+        b=io->read32(io->context,INT)&DATAEVENTS;
+        if(b){if(!allowed(c))return A04_CAPTURE_REVOKED;io->write32(io->context,INT,b);}
         if(b&0xc000u) return A04_CAPTURE_DATA;
         if(b&0x1000u) done=1;
+        if(!allowed(c))return A04_CAPTURE_REVOKED;
         count=io->read32(io->context,FIFO)&255u;
         while(count && off<512) {
             if(!allowed(c)) return A04_CAPTURE_REVOKED;
@@ -105,9 +117,14 @@ enum a04_capture_result a04_resume_capture(const struct a04_msdc_io *io,
         ((uintptr_t)out < (uintptr_t)ext && (uintptr_t)ext-(uintptr_t)out<sizeof(*out)))
         return A04_CAPTURE_INVALID;
     if(!allowed(&c)) return A04_CAPTURE_REVOKED;
-    cfg=io->read32(io->context,CFG); host=(io->read32(io->context,SDCCFG)>>16)&3u;
-    if((cfg&0x89u)!=0x89u || host==3 || (io->read32(io->context,DMACFG)&1u) ||
-       (io->read32(io->context,INTEN)&EV)) return A04_CAPTURE_UNSAFE;
+    cfg=io->read32(io->context,CFG);
+    if(!allowed(&c))return A04_CAPTURE_REVOKED;
+    host=(io->read32(io->context,SDCCFG)>>16)&3u;
+    if((cfg&0x89u)!=0x89u || host==3)return A04_CAPTURE_UNSAFE;
+    if(!allowed(&c))return A04_CAPTURE_REVOKED;
+    if(io->read32(io->context,DMACFG)&1u)return A04_CAPTURE_UNSAFE;
+    if(!allowed(&c))return A04_CAPTURE_REVOKED;
+    if(io->read32(io->context,INTEN)&EV)return A04_CAPTURE_UNSAFE;
     r=status(&c,&status0); if(r!=A04_CAPTURE_OK) return r;
     r=command(&c,10u|(2u<<7),(uint32_t)a->rca<<16,0); if(r!=A04_CAPTURE_OK) return r;
     for(i=0;i<4;++i) {
@@ -128,7 +145,23 @@ enum a04_capture_result a04_resume_capture(const struct a04_msdc_io *io,
     if(tmp.host_width!=tmp.card_width || (ext[179]&7u) || ext[33]) return A04_CAPTURE_MODE;
     tmp.sectors=(uint32_t)ext[212]|((uint32_t)ext[213]<<8)|((uint32_t)ext[214]<<16)|((uint32_t)ext[215]<<24);
     if(!tmp.sectors) return A04_CAPTURE_IDENTITY;
+    /* The admission callback is a software lease, not evidence of powered
+     * rails. Recheck the controller at the end, but leave power_owned false
+     * until a real power owner supplies independent, generation-bound proof. */
+    if(!allowed(&c)) return A04_CAPTURE_REVOKED;
+    cfg=io->read32(io->context,CFG);
+    if(!allowed(&c)) return A04_CAPTURE_REVOKED;
+    if((cfg&0x89u)!=0x89u)return A04_CAPTURE_UNSAFE;
+    if(!allowed(&c))return A04_CAPTURE_REVOKED;
+    if(((io->read32(io->context,SDCCFG)>>16)&3u)!=host)return A04_CAPTURE_UNSAFE;
+    if(!allowed(&c))return A04_CAPTURE_REVOKED;
+    if(io->read32(io->context,DMACFG)&1u)return A04_CAPTURE_UNSAFE;
+    if(!allowed(&c))return A04_CAPTURE_REVOKED;
+    if(io->read32(io->context,INTEN)&EV)return A04_CAPTURE_UNSAFE;
+    if(!allowed(&c)) return A04_CAPTURE_REVOKED;
     tmp.generation=a->generation;tmp.rca=a->rca;tmp.partition=ext[179]&7u;tmp.cache_ctrl=ext[33];
-    tmp.power_owned=tmp.clock_stable=tmp.pio_mode=tmp.dma_idle=tmp.events_masked=1;
+    /* CKSTB observes the controller only; the shared source clock and rail
+     * are not owned or verified by this capture. */
+    tmp.pio_mode=tmp.dma_idle=tmp.events_masked=1;
     *out=tmp;return A04_CAPTURE_OK;
 }

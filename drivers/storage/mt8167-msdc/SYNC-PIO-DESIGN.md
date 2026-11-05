@@ -45,3 +45,10 @@ PIO部品はDMA有効中、PIO無効、関連割込み有効中に開始しな�
 `cold_init.c` は外部の親がレール・ピン・リセットと400 kHz以下の1-bitホストを準備し、処理終了まで排他的に保持することを前提とするPASSIVE_LEVEL部品。CMD0、CMD1（sector mode）、CMD2、CMD3、CMD9、CMD7、CMD16を送り、既存の状態取得部品でCMD13/CMD10/CMD8/CMD13を実行してCIDを照合する。CMD6とカードデータ書込みは行わない。タイムアウト・取消し・状態不一致の後は自動再試行せず、部分結果を公開しない。コマンド順は機種UEFIのSdCardBlockIoDxeに基づく。実電源・クロック・ピン設定の実装や実機動作を示さず、Storportから呼ばれない。
 
 `pinmux.c` は親がGPIO、電源とコントローラを排他し静止・給電済みである場合だけ、GPIO110〜120のmode 1を共有ロック付きmasked updateで設定・読戻しする。offset 0x460/0x470/0x480と3-bit×5ピンの配置はLinux v6.6のMT8167 pinctrl、ピン番号は機種DTSに基づく。途中失敗はpoisonとしロールバックしない。pull、drive strength、入力有効や電圧は未設定。親のコールバックとWindows PnPの接続も未実装。両部品の成功だけでは起動・再開を許可しない。
+
+カード初期化と状態取得では各 MMIO 前に許可を確認し、ARG 書込みと CMD 発行の
+間に停止された場合はコマンドを送らない。各許可確認位置で停止を注入するホスト試験を
+含む。これは確認と MMIO 命令の間の物理除去を防ぐ仕組みではない。取得終了時にも
+PIO・clock stable・bus width・DMA idle・割込み mask を読み直す。controller CKSTB と
+ソフトウェア許可だけからレール所有や共有クロックの安定を証明せず、これらの観測値は
+0 のまま返す。実際の電源所有者と Storport 再開への接続は引き続き未実装。

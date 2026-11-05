@@ -2,14 +2,14 @@
 #include "resume_capture.h"
 #include <assert.h>
 #include <string.h>
-struct fake { uint32_t cfg,sdccfg,inten,dma,ints,cmd,arg,commands[8],args[8],ncmd,pos,ticks,revoked,checks,revoke_at,invalid_cid; uint8_t ext[512]; };
+struct fake { uint32_t cfg,sdccfg,inten,dma,ints,cmd,arg,commands[8],args[8],ncmd,pos,ticks,revoked,checks,revoke_at,invalid_cid,late_clock_loss,late_width,late_dma,late_interrupt; uint8_t ext[512]; };
 static uint32_t rd32(void *p,uint32_t off)
 {
     struct fake *f=p;
-    if(off==0) return f->cfg;
-    if(off==0x30) return f->sdccfg;
-    if(off==0x10) return f->inten;
-    if(off==0x9c) return f->dma;
+    if(off==0) return f->late_clock_loss && f->ncmd>=4 ? f->cfg & ~0x80u : f->cfg;
+    if(off==0x30) return f->late_width && f->ncmd>=4 ? 0 : f->sdccfg;
+    if(off==0x10) return f->late_interrupt && f->ncmd>=4 ? 0x1000u : f->inten;
+    if(off==0x9c) return f->late_dma && f->ncmd>=4 ? 1u : f->dma;
     if(off==0x3c) return 0;
     if(off==0xc) return f->ints | (f->cmd==8 && f->pos==512 ? 0x1000u:0);
     if(off==0x14) return f->cmd==8 && f->pos<512?64:0;
@@ -35,12 +35,17 @@ int main(void)
     struct a04_resume_observation out,old;uint8_t scratch[512];
     init(&f);memset(&out,0xa5,sizeof(out));
     assert(a04_resume_capture(&io,&a,1000,scratch,&out)==A04_CAPTURE_OK);
+    assert(!out.power_owned && !out.clock_stable && out.pio_mode==1 && out.dma_idle==1 && out.events_masked==1);
     assert(f.ncmd==4 && (f.commands[0]&63)==13 && (f.commands[1]&63)==10 && (f.commands[2]&63)==8 && (f.commands[3]&63)==13);
     assert(f.args[0]==65536 && f.args[1]==65536 && f.args[2]==0 && f.args[3]==65536);
     assert(out.sectors==12345 && out.generation==2 && out.host_width==8 && out.card_width==8 && out.rca==1 && out.cid[0]==0x10 && out.cid[3]==0x4c);
     init(&f);f.dma=1;memset(&out,0xa5,sizeof(out));old=out;
     assert(a04_resume_capture(&io,&a,1000,scratch,&out)==A04_CAPTURE_UNSAFE && !f.ncmd && !memcmp(&out,&old,sizeof(out)));
     init(&f);f.inten=0x1000;assert(a04_resume_capture(&io,&a,1000,scratch,&out)==A04_CAPTURE_UNSAFE && !f.ncmd);
+    init(&f);f.late_clock_loss=1;assert(a04_resume_capture(&io,&a,1000,scratch,&out)==A04_CAPTURE_UNSAFE && !memcmp(&out,&old,sizeof(out)));
+    init(&f);f.late_width=1;assert(a04_resume_capture(&io,&a,1000,scratch,&out)==A04_CAPTURE_UNSAFE && !memcmp(&out,&old,sizeof(out)));
+    init(&f);f.late_dma=1;assert(a04_resume_capture(&io,&a,1000,scratch,&out)==A04_CAPTURE_UNSAFE && !memcmp(&out,&old,sizeof(out)));
+    init(&f);f.late_interrupt=1;assert(a04_resume_capture(&io,&a,1000,scratch,&out)==A04_CAPTURE_UNSAFE && !memcmp(&out,&old,sizeof(out)));
     init(&f);f.invalid_cid=1;assert(a04_resume_capture(&io,&a,1000,scratch,&out)==A04_CAPTURE_IDENTITY && !memcmp(&out,&old,sizeof(out)));
     init(&f);f.ext[183]=1;assert(a04_resume_capture(&io,&a,1000,scratch,&out)==A04_CAPTURE_MODE && !memcmp(&out,&old,sizeof(out)));
     init(&f);f.ext[179]=1;assert(a04_resume_capture(&io,&a,1000,scratch,&out)==A04_CAPTURE_MODE);

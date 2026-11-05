@@ -6,6 +6,7 @@ struct fake { uint32_t cfg,sdccfg,inten,dma,ints,cmd,arg,commands[32],args[32],n
 static uint32_t rd32(void *p,uint32_t off)
 {
     struct fake *f=p;
+    assert(!(f->deny_at && f->checks>=f->deny_at));
     if(off==0)return f->cfg;
     if(off==0x30)return f->sdccfg;
     if(off==0x10)return f->inten;
@@ -21,10 +22,10 @@ static uint32_t rd32(void *p,uint32_t off)
     }
     return 0;
 }
-static uint8_t rd8(void *p,uint32_t off) {struct fake *f=p;assert(off==0x1c);return f->ext[f->pos++];}
+static uint8_t rd8(void *p,uint32_t off) {struct fake *f=p;assert(!(f->deny_at && f->checks>=f->deny_at));assert(off==0x1c);return f->ext[f->pos++];}
 static void wr32(void *p,uint32_t off,uint32_t v)
 {
-    struct fake *f=p;assert(off==0xc||off==0x14||off==0x34||off==0x38||off==0x50);
+    struct fake *f=p;assert(!(f->deny_at && f->checks>=f->deny_at));assert(off==0xc||off==0x14||off==0x34||off==0x38||off==0x50);
     if(off==0xc)f->ints&=~v;
     if(off==0x38)f->arg=v;
     if(off==0x34) {assert(f->ncmd<32);f->cmd=v&63u;f->commands[f->ncmd]=v;f->args[f->ncmd++]=f->arg;if(f->cmd==1)f->ocr_count++;f->ints|=(f->fail_cmd && f->cmd==f->fail_cmd)?0x400u:0x100u;}
@@ -49,6 +50,15 @@ int main(void)
     init(&f);f.bad_ocr=1;assert(a04_emmc_cold_init(&io,&a,1000,scratch,&out)==A04_COLD_OCR && f.ncmd==3 && !memcmp(&out,&old,sizeof out));
     init(&f);f.fail_cmd=3;assert(a04_emmc_cold_init(&io,&a,1000,scratch,&out)==A04_COLD_COMMAND && f.ncmd==5 && !memcmp(&out,&old,sizeof out));
     init(&f);f.cid_mismatch=1;assert(a04_emmc_cold_init(&io,&a,1000,scratch,&out)==A04_COLD_CID_MISMATCH && !memcmp(&out,&old,sizeof out));
+    /* Revoke at every authority check, including between ARG and CMD and
+     * inside EXT_CSD capture. No callback may access MMIO after revocation. */
+    init(&f);f.deny_at=0xffffffffu;out=old;
+    assert(a04_emmc_cold_init(&io,&a,1000,scratch,&out)==A04_COLD_OK);
+    {unsigned checks=f.checks,k;for(k=1;k<=checks;++k) {
+        init(&f);f.deny_at=k;out=old;
+        assert(a04_emmc_cold_init(&io,&a,1000,scratch,&out)==A04_COLD_REVOKED);
+        assert(!memcmp(&out,&old,sizeof out));
+    }}
     init(&f);a.ticks=1;assert(a04_emmc_cold_init(&io,&a,1000,scratch,&out)==A04_COLD_TIMEOUT && !memcmp(&out,&old,sizeof out));
     return 0;
 }

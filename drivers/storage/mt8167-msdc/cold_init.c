@@ -28,16 +28,21 @@ static enum a04_cold_result send(struct init *s,uint32_t word,uint32_t arg,int r
     }
     if(n==s->limit) return A04_COLD_TIMEOUT;
     if(!allowed(s)) return A04_COLD_REVOKED;
-    b=io->read32(io->context,INT)&COMMAND_EVENTS;if(b)io->write32(io->context,INT,b);
+    b=io->read32(io->context,INT)&COMMAND_EVENTS;
+    if(b){if(!allowed(s))return A04_COLD_REVOKED;io->write32(io->context,INT,b);}
     if(!allowed(s)) return A04_COLD_REVOKED;
-    io->write32(io->context,ARG,arg);io->write32(io->context,CMD,word);
+    io->write32(io->context,ARG,arg);
+    if(!allowed(s))return A04_COLD_REVOKED;
+    io->write32(io->context,CMD,word);
     for(n=0;n<s->limit;++n) {
         if(!allowed(s)) return A04_COLD_REVOKED;
         b=io->read32(io->context,INT)&COMMAND_EVENTS;
         if(b) {
+            if(!allowed(s))return A04_COLD_REVOKED;
             io->write32(io->context,INT,b);
             if((b&0x600u) || !(b&0x100u))return A04_COLD_COMMAND;
-            if(r1 && (io->read32(io->context,RESP)&0xffffe0c0u))return A04_COLD_COMMAND;
+            if(r1) {if(!allowed(s))return A04_COLD_REVOKED;
+                if(io->read32(io->context,RESP)&0xffffe0c0u)return A04_COLD_COMMAND;}
             if(expired(s))return A04_COLD_TIMEOUT;
             return A04_COLD_OK;
         }
@@ -61,8 +66,13 @@ enum a04_cold_result a04_emmc_cold_init(const struct a04_msdc_io *io,
         ((uintptr_t)out < (uintptr_t)scratch && (uintptr_t)scratch-(uintptr_t)out<sizeof(*out))) return A04_COLD_INVALID;
     s.io=io;s.a=a;s.limit=limit;s.start=a->now(a->context);
     if(!allowed(&s)) return A04_COLD_REVOKED;
-    if((io->read32(io->context,CFG)&0x89u)!=0x89u || (io->read32(io->context,SDCCFG)&0x30000u) ||
-       (io->read32(io->context,DMACFG)&1u) || (io->read32(io->context,INTEN)&EVENTS))return A04_COLD_UNSAFE;
+    if((io->read32(io->context,CFG)&0x89u)!=0x89u)return A04_COLD_UNSAFE;
+    if(!allowed(&s))return A04_COLD_REVOKED;
+    if(io->read32(io->context,SDCCFG)&0x30000u)return A04_COLD_UNSAFE;
+    if(!allowed(&s))return A04_COLD_REVOKED;
+    if(io->read32(io->context,DMACFG)&1u)return A04_COLD_UNSAFE;
+    if(!allowed(&s))return A04_COLD_REVOKED;
+    if(io->read32(io->context,INTEN)&EVENTS)return A04_COLD_UNSAFE;
     r=send(&s,0,0,0);if(r!=A04_COLD_OK)return r;
     if(!allowed(&s))return A04_COLD_REVOKED;
     a->delay_us(a->context,1000);
