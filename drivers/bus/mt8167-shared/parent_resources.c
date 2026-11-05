@@ -55,7 +55,7 @@ int a04_parent_translate_audio_resources(const struct a04_parent_resource *raw,
             if(base<=other ? other-base<len : base-other<otherlen)return -1;
         }
         if(raw[i].base==0x10018000u) {
-            if(a || raw[i].length!=0x710u || raw[i].exclusive!=1 || len!=0x710u)return -1;
+            if(a || (raw[i].length!=0x710u && raw[i].length!=0x714u) || raw[i].exclusive!=1 || len!=raw[i].length)return -1;
             a=base;
         } else {
             if(k==4)return -1;

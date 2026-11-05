@@ -93,7 +93,7 @@
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
-typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; struct a04_usb_owner usb;
+typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; struct a04_usb_owner usb;
 #if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 struct a04_codec_domain codecDomain;
 #endif
@@ -227,12 +227,12 @@ static int ParentCodecDelay(void *context,uint32_t us) {
 #if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 static int ParentDomainRead(void *context,unsigned offset,uint32_t *value) {
     A04_PARENT_CONTEXT *c=context;
-    if(!c || !c->apmixed || !value || (offset!=0x700 && offset!=0x704 && offset!=0x70c))return -1;
+    if(!c || !c->apmixed || !value || (offset!=0x700 && offset!=0x704 && offset!=0x70c && offset!=0x710) || offset>c->apmixedLength || c->apmixedLength-offset<sizeof(ULONG))return -1;
     *value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+offset));return 0;
 }
 static int ParentDomainWrite(void *context,unsigned offset,uint32_t value) {
     A04_PARENT_CONTEXT *c=context;
-    if(!c || !c->apmixed || (offset!=0x700 && offset!=0x704 && offset!=0x70c))return -1;
+    if(!c || !c->apmixed || (offset!=0x700 && offset!=0x704 && offset!=0x70c && offset!=0x710) || offset>c->apmixedLength || c->apmixedLength-offset<sizeof(ULONG))return -1;
     WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+offset),value);return 0;
 }
 #endif
@@ -457,7 +457,7 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
 #if A04_MT6392_CLK_ALIAS_EXPERIMENT
     if(c->speakerClock.held)return STATUS_DEVICE_BUSY;
 #endif
-    if(c->apmixed){MmUnmapIoSpace(c->apmixed,0x710);c->apmixed=NULL;}
+    if(c->apmixed){MmUnmapIoSpace(c->apmixed,c->apmixedLength);c->apmixed=NULL;c->apmixedLength=0;}
     if(c->pwrap){MmUnmapIoSpace(c->pwrap,0x1000);c->pwrap=NULL;}
     if(c->gpio){MmUnmapIoSpace(c->gpio,0x1000);c->gpio=NULL;}
     if(c->infra){MmUnmapIoSpace(c->infra,0x1000);c->infra=NULL;}
@@ -499,7 +499,10 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
     pa.QuadPart=(LONGLONG)mapping.pwrap;c->pwrap=MmMapIoSpace(pa,0x1000,MmNonCached);
     if(!c->pwrap)goto fail;
 #if A04_SHARED_APMIXED_RESOURCE
-    pa.QuadPart=(LONGLONG)apmixed;c->apmixed=MmMapIoSpace(pa,0x710,MmNonCached);
+    for(i=0;i<n;++i)if(r[i].base==0x10018000u)break;
+    if(i==n)goto fail;
+    c->apmixedLength=t[i].length;
+    pa.QuadPart=(LONGLONG)apmixed;c->apmixed=MmMapIoSpace(pa,c->apmixedLength,MmNonCached);
     if(!c->apmixed)goto fail;
 #endif
     /* Mapping alone does not admit clients; D0 must establish readiness. */
