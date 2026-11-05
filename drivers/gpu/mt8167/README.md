@@ -373,3 +373,12 @@ REA は `libsrv_um.so` SHA-256
 一致するが、命令の意味や異なる入出力を伴う完全taskの正当性は証明しない。
 ローカルXNUの同一source profileで36-byte shared、16-byte PDS data、16-byte
 PDS codeをそれぞれバイト比較し一致した。GPU実行・表示の検証ではない。
+`a04_vendor_copy_kick_build` は同じ限定key8のfragment PDS DOUTU、raw00と
+raw38/40/48/50の候補をCPU上で組み立てる。REA `FUN_00129f88`
+(ev_2643ceb73416945ad436c7b84268c9896d78dc0314e525becf17a84eb2b4ae98)、
+`FUN_0012c568` (ev_bfd5db4bb483da5e455dea5ee2e31d2bc3b1a28b388699b659a061919bc6c744)、
+`FUN_0013c5f8` と `FUN_0013cd1c` および XNU `A04BR3RogueFragmentKick.h` を
+参照。first padded count 0の場合、元producerはfirstとsecondのdataアドレスを
+同じにする。fragment PDS 64 bytesはXNU生成器と全範囲の4-byte USC offsetsで
+バイト一致した。残りのtask fields・USCの実行意味は未確定であり、これらの
+部分fieldsを完全な208-byte packetとして扱わない。実機診断には未接続。

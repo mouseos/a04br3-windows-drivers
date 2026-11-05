@@ -17,4 +17,15 @@ struct a04_vendor_copy_state {
  * ownership, cache coherency, fragment-code identity, or GPU completion. */
 int a04_vendor_copy_state_build(struct a04_vendor_copy_state *out,
     const struct a04_vendor_copy_state_input *input);
+/* Partial shader-branch fields only: never a complete 208-byte task. */
+struct a04_vendor_copy_kick_input {
+    uint32_t fragment_offset, secondary_data_offset, secondary_code_offset, usc_offset;
+};
+struct a04_vendor_copy_kick_image {
+    uint32_t pds_fragment[16];
+    uint32_t raw00;
+    uint64_t raw38,raw40,raw48,raw50;
+};
+int a04_vendor_copy_kick_build(struct a04_vendor_copy_kick_image *out,
+    const struct a04_vendor_copy_kick_input *input);
 #endif
