@@ -382,3 +382,12 @@ raw38/40/48/50の候補をCPU上で組み立てる。REA `FUN_00129f88`
 同じにする。fragment PDS 64 bytesはXNU生成器と全範囲の4-byte USC offsetsで
 バイト一致した。残りのtask fields・USCの実行意味は未確定であり、これらの
 部分fieldsを完全な208-byte packetとして扱わない。実機診断には未接続。
+
+追加REA: `FUN_00129f88` は source と destination のそれぞれに対する
+`PVRSRVAcquireDeviceMapping` の戻すベースを比較し、等しい場合は矩形・
+方向・オフセットに基づく別の重なり処理へ入る。`FUN_00128958` のcopy
+backendから同producerへ進む経路も確認した (ev_bfe4159ea96c8d50a84b27bee44073ca0cd519ad82300fd6248cea452aa4eade)。
+VA内の4 KiB範囲が離れていることだけでは元producerの独立mapping分岐を
+証明できない。固定copy診断では独立allocation・各GPU mapping・物理
+非重複・fenceまでの保持を実ownerで確定する必要がある。現在のCPU builderは
+これらを検証しないため、結果を投入可能なcopy taskとみなさない。

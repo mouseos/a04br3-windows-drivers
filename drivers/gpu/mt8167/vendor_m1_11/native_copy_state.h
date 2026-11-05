@@ -14,7 +14,9 @@ struct a04_vendor_copy_state {
 };
 /* One 32x32, pitch32, native22 surface per disjoint 4 KiB scratch range.
  * VA bounds/overlap validation here does not establish page mappings,
- * ownership, cache coherency, fragment-code identity, or GPU completion. */
+ * ownership, cache coherency, fragment-code identity, or GPU completion.
+ * The original producer compares allocation mapping bases; disjoint VAs
+ * here do not establish the independent-mapping branch. */
 int a04_vendor_copy_state_build(struct a04_vendor_copy_state *out,
     const struct a04_vendor_copy_state_input *input);
 /* Partial shader-branch fields only: never a complete 208-byte task. */
