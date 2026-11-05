@@ -4,10 +4,14 @@
 #include <stddef.h>
 #include <string.h>
 #include <wchar.h>
+#include <pthread.h>
 typedef const wchar_t *PCWSTR;
+typedef int32_t LONG;
+static inline LONG InterlockedExchange(volatile LONG *p,LONG v){return __atomic_exchange_n(p,v,__ATOMIC_SEQ_CST);}
+static inline LONG InterlockedCompareExchange(volatile LONG *p,LONG n,LONG o){__atomic_compare_exchange_n(p,&o,n,0,__ATOMIC_SEQ_CST,__ATOMIC_SEQ_CST);return o;}
 typedef void VOID;typedef void *PVOID;typedef uint8_t UCHAR;typedef uint16_t USHORT;typedef uint32_t ULONG;typedef int32_t NTSTATUS;typedef int64_t LONGLONG;
 typedef struct { int64_t QuadPart; } PHYSICAL_ADDRESS;
-typedef struct {int held;} FAST_MUTEX;
+typedef struct {pthread_mutex_t mutex;int held;} FAST_MUTEX;
 #define STATUS_SUCCESS 0
 #define STATUS_INVALID_PARAMETER (-1)
 #define STATUS_DEVICE_NOT_READY (-2)
@@ -18,6 +22,9 @@ typedef struct {int held;} FAST_MUTEX;
 #define PASSIVE_LEVEL 0
 #define TRUE 1
 #define CmResourceTypeMemory 1
+#define CmResourceTypeInterrupt 2
+#define CM_RESOURCE_INTERRUPT_LATCHED 1
+#define CM_RESOURCE_INTERRUPT_MESSAGE 2
 #define CmResourceShareDeviceExclusive 1
 #define MmNonCached 0
 #define CM_RESOURCE_MEMORY_READ_WRITE 0
@@ -32,7 +39,7 @@ void RtlInitUnicodeString(PUNICODE_STRING,PCWSTR);
 typedef void (*PINTERFACE_REFERENCE)(PVOID);
 typedef PINTERFACE_REFERENCE PINTERFACE_DEREFERENCE;
 typedef struct {USHORT Size,Version;PVOID Context;PINTERFACE_REFERENCE InterfaceReference,InterfaceDereference;} INTERFACE,*PINTERFACE;
-typedef struct {UCHAR Type,ShareDisposition;struct {struct {PHYSICAL_ADDRESS Start;ULONG Length;} Memory;} u;} CM_PARTIAL_RESOURCE_DESCRIPTOR,*PCM_PARTIAL_RESOURCE_DESCRIPTOR;
+typedef struct {UCHAR Type,ShareDisposition;USHORT Flags;struct {struct {PHYSICAL_ADDRESS Start;ULONG Length;} Memory;} u;} CM_PARTIAL_RESOURCE_DESCRIPTOR,*PCM_PARTIAL_RESOURCE_DESCRIPTOR;
 void ExInitializeFastMutex(FAST_MUTEX *);void ExAcquireFastMutex(FAST_MUTEX *);void ExReleaseFastMutex(FAST_MUTEX *);
 PVOID MmMapIoSpace(PHYSICAL_ADDRESS,ULONG,int);void MmUnmapIoSpace(PVOID,ULONG);
 ULONG READ_REGISTER_ULONG(volatile ULONG *);void WRITE_REGISTER_ULONG(volatile ULONG *,ULONG);

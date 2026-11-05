@@ -52,3 +52,40 @@ PIO部品はDMA有効中、PIO無効、関連割込み有効中に開始しな�
 PIO・clock stable・bus width・DMA idle・割込み mask を読み直す。controller CKSTB と
 ソフトウェア許可だけからレール所有や共有クロックの安定を証明せず、これらの観測値は
 0 のまま返す。実際の電源所有者と Storport 再開への接続は引き続き未実装。
+
+状態取得のアクセス許可は実レールの所有や供給電圧を証明しないため、
+`a04_resume_capture` は `power_owned` と `clock_stable` を 0 のまま返す。
+controller の CKSTB は共通 source clock の所有・安定性を証明しない。コマンド終了後に
+コントローラの PIO・clock stable・バス幅・DMA・割込みマスクを再確認し、
+失敗時は出力を変更しない。この観測だけでは `a04_resume_validate` は成功せず、
+実電源の所有と世代を別途確立するまで起動・復帰ゲートを解除できない。
+
+機種固有の [Linux MT6392 regulator](https://github.com/mouseos/a04br3-linux-drivers/blob/68f064d50de4568049e09e5990a6e21cfa67c1b6/pmic/mt6392-regulator.c)
+では VEMC3V3 の 0x052e bit 7 の選択値 0/1 がそれぞれ 3.0/3.3 V、
+0x0508 bit 14 が enable、bit 15 が QI、VIO18 は 0x0556 bit 14 enable、
+bit 15 QI の固定 1.8 V と記述される。機種 DTS の VEMC 範囲は 3.0–3.3 V、
+VIO18 は常時有効、両 rail の enable-ramp-delay は 264 µs である。これらは
+Linux の記述とレジスタ観測であり、実電圧・電源の持続・Windows での排他
+所有の証拠ではない。VIO18 の無効化、VEMC の切替や再有効化は、他クライアント
+と card の状態・保護順序を確立するまで行わない。
+
+`a04_emmc_prepare` は未接続の一括復帰試作で、同一世代の排他 lease の下に
+VEMC 再有効化、MSDC pin mode、clock 選択・ゲートの readback、機種側の reset／
+400 kHz host 設定、CMD0/1/2/3/9/7/16 と card 状態取得を順にまとめる。
+途中失敗では lease を解放せず poison にし、結果を公開しない。最終観測でも
+実レール所有・共有 clock 安定の証拠はゼロのため、boot／resume の許可にはならない。
+この関数は PASSIVE_LEVEL を保つロックと非取消 lease を必要とし、現行親の
+FAST_MUTEX は IRQL を上げるためそのまま使えない。親、Storport、IRQ や実電源
+への配線は未実装であり、ホスト模擬試験はハードウェア動作を保証しない。
+
+`host_prepare.c` は `emmc_prepare.c` の既定外の具体的なホスト準備経路で、DMA idle を検査した後、割込みをマスクし、ホストと FIFO をリセットする。親が保証するクロック上限から 260 kHz 以下となる分周値を計算し、親が排他的に所有するゲート操作で変更して安定状態と１ビット PIO を読戻す。ホスト試験で各段階の失敗と途中停止を検査する。レール・ピン・クロック・ホスト・カードのモック一連試験にも接続した。
+
+この部品の上限周波数、電源とゲートの所有権、バスへの安全なアクセスは呼出し元の責任であり、現在の WDF 親は実装していない。Windows 親や Storport に接続されたこと、物理除去中の MMIO が安全であること、また実機で初期化が動作することを示さない。D0 と eMMC の起動・再開ゲートは維持する。
+
+ホスト準備前に同一 lease 下で TOPCKGEN の機種 UEFI が使用する eMMC mux 値を照合し、ホスト準備の前後に呼出し元が選択クロックと周波数上限を検証するコールバックを要求する。mux 値は PLL の周波数・安定性・所有権の証明ではない。未確認の Windows 親側から値を決め打ちして成功を返してはならない。
+
+共有資源試作を読取り性能ブランチへ統合し、host準備の各MMIO読取り・書込み間と
+最終照合中に所有権を再確認する。レジスタが全ビット1を返した場合も準備成功に
+しない。各確認位置で所有権喪失を注入するホスト試験を追加した。ただし確認後の
+単一MMIO中の物理消失は防げず、WDF親D0・実リース・Storport DMAとの接続は
+引き続き未実装。物理miniportの開始拒否を解除する根拠にはならない。

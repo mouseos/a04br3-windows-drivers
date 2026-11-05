@@ -10,7 +10,7 @@ test: test-mma8652 build/msdc_resume_check_test build/msdc_resume_capture_test
 test: build/bq24160_owner_broker_test
 test: test-mt8167-pnp-backend test-mt8167-audio-adapter-pnp test-mt8167-common-dma test-mt8167-dma-adapter test-mt8167-clock-owner test-mt8167-stream-transport
 test: build/gpu_render_shared_size_test test-toprgu-handoff build/gpu_render_context_pds_test
-test: test-mt8167-shared-wdf test-mt8167-shared-audio test-mt8167-shared-transport
+test: build/mt8167_shared_filter_test test-mt8167-shared-wdf test-mt8167-shared-audio test-mt8167-shared-transport
 
 .PHONY: test-toprgu-handoff
 test-toprgu-handoff: build/toprgu_handoff_test
@@ -20,7 +20,7 @@ test-toprgu-handoff: build/toprgu_handoff_test
 test-mma8652:
 	$(MAKE) -C drivers/sensors/mma8652 test test-hid
 
-test: build/msdc_shared_drain_test build/msdc_touch_shared_test build/msdc_pin_uhs_test build/msdc_parent_resources_test build/msdc_pinmux_test build/msdc_cold_init_test build/msdc_board_owner_test build/msdc_rails_owner_test test-mt8167-pwrap-owner build/msdc_sync_pio_test build/gpu_render_pds_data_test test-mt8167-dl1-engine test-mt8167-wavert-dma build/gpu_windows_render_memory_test build/msdc_lifetime_test build/bqhr_diagnostic_test test-mt8167-audio-broker test-mt8167-audio-ring test-mt8167-audio-irq build/gpu_render_kick_off build/gpu_render_kick_on build/gpu_windows_render_command_test test-mt8167-dl1 build/gpu_render_execution_test test-thermal build/bq24160_handoff_test build/bq24160_charger_test build/bq24160_i2c_test build/gpu_render_context_test build/gpu_render_hwrt_test build/gpu_render_freelist_test build/gpu_render_stream_test build/lc709203f_test build/lc709203f_i2c_test build/msdc_io_gate_test build/toprgu_watchdog_policy_test build/toprgu_reset_command_test build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/button_pipeline_test build/button_device_test build/button_hardware_test build/pmic_read_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_board_init_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test build/eint_test build/gpu_power_test build/gpu_mmu_test build/gpu_fw_objects_test build/gpu_fw_queue_test build/gpu_transfer_stream_test build/gpu_windows_linear_test build/gpu_present_bounds_test build/gpu_dma_pages_test build/gpu_transfer_mapping_test
+test: build/msdc_host_prepare_test build/msdc_emmc_prepare_test build/msdc_vemc_restore_test build/msdc_shared_drain_test build/msdc_touch_shared_test build/msdc_pin_uhs_test build/msdc_parent_resources_test build/msdc_pinmux_test build/msdc_cold_init_test build/msdc_board_owner_test build/msdc_rails_owner_test test-mt8167-pwrap-owner build/msdc_sync_pio_test build/gpu_render_pds_data_test test-mt8167-dl1-engine test-mt8167-wavert-dma build/gpu_windows_render_memory_test build/msdc_lifetime_test build/bqhr_diagnostic_test test-mt8167-audio-broker test-mt8167-audio-ring test-mt8167-audio-irq build/gpu_render_kick_off build/gpu_render_kick_on build/gpu_windows_render_command_test test-mt8167-dl1 build/gpu_render_execution_test test-thermal build/bq24160_handoff_test build/bq24160_charger_test build/bq24160_i2c_test build/gpu_render_context_test build/gpu_render_hwrt_test build/gpu_render_freelist_test build/gpu_render_stream_test build/lc709203f_test build/lc709203f_i2c_test build/msdc_io_gate_test build/toprgu_watchdog_policy_test build/toprgu_reset_command_test build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/button_pipeline_test build/button_device_test build/button_hardware_test build/pmic_read_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_board_init_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test build/eint_test build/gpu_power_test build/gpu_mmu_test build/gpu_fw_objects_test build/gpu_fw_queue_test build/gpu_transfer_stream_test build/gpu_windows_linear_test build/gpu_present_bounds_test build/gpu_dma_pages_test build/gpu_transfer_mapping_test
 	./build/gpu_render_shared_size_test
 	./build/gpu_render_context_pds_test
 	./build/gpu_render_pds_data_test
@@ -59,6 +59,10 @@ test: build/msdc_shared_drain_test build/msdc_touch_shared_test build/msdc_pin_u
 	./build/lc709203f_i2c_test
 	./build/msdc_io_gate_test
 	./build/msdc_lifetime_test
+	./build/mt8167_shared_filter_test
+	./build/msdc_host_prepare_test
+	./build/msdc_emmc_prepare_test
+	./build/msdc_vemc_restore_test
 	./build/msdc_shared_drain_test
 	./build/msdc_touch_shared_test
 	./build/msdc_pin_uhs_test
@@ -549,9 +553,9 @@ build/mt8167_audio_adapter_pnp_test: drivers/audio/mt8167-afe/adapter.cpp tests/
 test-mt8167-shared-wdf: build/mt8167_shared_wdf_test
 	./build/mt8167_shared_wdf_test
 	python3 tests/shared_parent_prototype_test.py
-build/mt8167_shared_wdf_test: tests/mt8167_shared_wdf_test.c tests/shared_wdf_stubs/ntddk.h tests/shared_wdf_stubs/wdf.h drivers/bus/mt8167-shared/wdf_parent_probe.c drivers/bus/mt8167-shared/client_interface.h drivers/bus/mt8167-shared/shared_interface.h drivers/bus/mt8167-shared/audio_interface.h drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/register_owner.h drivers/input/a04br3-buttons/pmic_read.c
+build/mt8167_shared_wdf_test: tests/mt8167_shared_wdf_test.c tests/shared_wdf_stubs/ntddk.h tests/shared_wdf_stubs/wdf.h drivers/bus/mt8167-shared/wdf_parent_probe.c drivers/bus/mt8167-shared/client_interface.h drivers/bus/mt8167-shared/emmc_interface.h drivers/bus/mt8167-shared/shared_interface.h drivers/bus/mt8167-shared/audio_interface.h drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/register_owner.h drivers/input/a04br3-buttons/pmic_read.c
 	mkdir -p build
-	$(CC) $(CFLAGS) -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_shared_wdf_test.c -o $@
+	$(CC) $(CFLAGS) -pthread -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_SHARED_EMMC_CHILD_PROBE=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_shared_wdf_test.c -o $@
 
 build/msdc_shared_drain_test: drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/register_owner.h tests/msdc_shared_drain_test.c
 	@mkdir -p build
@@ -578,3 +582,19 @@ test-mt8167-audio-parent-client: build/mt8167_audio_parent_client_test
 build/mt8167_audio_parent_client_test: drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_audio_parent_client_test.c drivers/bus/mt8167-shared/audio_interface.h
 	mkdir -p build
 	$(CC) $(CFLAGS) -Itests/shared_wdf_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_audio_parent_client_test.c -o $@
+
+build/msdc_vemc_restore_test: drivers/bus/mt8167-shared/vemc_restore.c drivers/bus/mt8167-shared/vemc_restore.h tests/msdc_vemc_restore_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared drivers/bus/mt8167-shared/vemc_restore.c tests/msdc_vemc_restore_test.c -o $@
+
+build/msdc_emmc_prepare_test: drivers/storage/mt8167-msdc/host_prepare.c drivers/storage/mt8167-msdc/host_prepare.h drivers/storage/mt8167-msdc/emmc_prepare.c drivers/storage/mt8167-msdc/emmc_prepare.h drivers/storage/mt8167-msdc/board_owner.c drivers/storage/mt8167-msdc/board_owner.h drivers/storage/mt8167-msdc/pinmux.c drivers/storage/mt8167-msdc/pinmux.h drivers/storage/mt8167-msdc/cold_init.c drivers/storage/mt8167-msdc/cold_init.h drivers/storage/mt8167-msdc/resume_capture.c drivers/storage/mt8167-msdc/resume_capture.h drivers/bus/mt8167-shared/vemc_restore.c drivers/bus/mt8167-shared/vemc_restore.h tests/msdc_emmc_prepare_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/storage/mt8167-msdc drivers/storage/mt8167-msdc/host_prepare.c drivers/storage/mt8167-msdc/emmc_prepare.c drivers/storage/mt8167-msdc/board_owner.c drivers/storage/mt8167-msdc/pinmux.c drivers/storage/mt8167-msdc/cold_init.c drivers/storage/mt8167-msdc/resume_capture.c drivers/bus/mt8167-shared/vemc_restore.c tests/msdc_emmc_prepare_test.c -o $@
+
+build/mt8167_shared_filter_test: tests/mt8167_shared_filter_test.c tests/shared_wdf_stubs/ntddk.h tests/shared_wdf_stubs/wdf.h drivers/bus/mt8167-shared/wdf_parent_probe.c drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/input/a04br3-buttons/pmic_read.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -pthread -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_EMMC_FILTER_PROBE=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/input/a04br3-buttons/pmic_read.c tests/mt8167_shared_filter_test.c -o $@
+
+build/msdc_host_prepare_test: drivers/storage/mt8167-msdc/host_prepare.c drivers/storage/mt8167-msdc/host_prepare.h tests/msdc_host_prepare_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/storage/mt8167-msdc drivers/storage/mt8167-msdc/host_prepare.c tests/msdc_host_prepare_test.c -o $@
