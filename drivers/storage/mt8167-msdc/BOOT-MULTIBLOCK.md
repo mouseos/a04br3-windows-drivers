@@ -72,3 +72,22 @@ Microsoft の [HwStorWorkItem](https://learn.microsoft.com/en-us/windows-hardwar
 停止不能 DMA のためバッファを保持し続ける現在の quarantine は PnP 完了の解決では
 なく、削除後のバスマッピング保持の根拠にもならない。ハードウェア停止と要求排出を
 正常に完了できる別経路が必要。実験ゲートを解除しない。
+
+端末に同梱された Linux 4.4 の `drivers/mmc/host/mediatek/mt8167/sd.c` は
+DMA STOP 後に `MSDC_DMA_CFG_STS` の消失を待つ。停止できなければ FIFO を消去しない
+（`msdc_clr_fifo`）。同じソースの `msdc_reset_hw` は host reset、FIFO clear、
+interrupt clear の順であり、上流系 `drivers/mmc/host/mtk-sd.c` も DMA 停止を
+待ってからエラー時に host reset する。これは停止不能 DMA に reset をかければ必ず
+止まるという証拠ではない。
+
+所有 DMA の boot 試作に限り、読取りエラー後、受付が閉じていない間に bounded な
+DMA STOP を再要求し、inactive 確認後に host reset、再度 inactive 確認、FIFO と
+interrupt clear、最後の inactive 確認を行う。失敗または途中の所有権喪失では
+DMA 状態・SRB・領域を保持する。成功はその要求をエラー完了できる材料に限り、
+カード再開や書込み許可とはせず、失敗状態を維持する。書込みにこの回復を適用せず、
+書込み結果を推測して再試行もしない。実機で DMA 停止を保証するものではない。
+
+[HwStorResetBus](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/storport/nc-storport-hw_reset_bus)
+は StartIo ロックを保持した DISPATCH_LEVEL の callback 中に対象 SRB を完了する
+責任を miniport に課す。現行試作の停止不能時の保留はこの契約との整合が未解決で、
+PnP 削除後の DMA mapping 保持も未保証。実機投入の根拠ではなく起動拒否を維持する。

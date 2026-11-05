@@ -278,6 +278,13 @@ static void A04ClockObserve(void *context, uint32_t polls)
     }
 }
 #endif
+#ifdef A04_OWNED_DMA_EXPERIMENT
+static int A04AbortAllowed(void *context)
+{
+    struct a04_probe_extension *probe=(struct a04_probe_extension *)context;
+    return !(a04_life_load(&probe->lifetime)&(A04_LIFE_CLOSED|A04_LIFE_REMOVED));
+}
+#endif
 /* Diagnostic synchronization for the resident common buffer. This does not
  * resolve the unexpected cacheability of the Windows mapping. */
 static enum a04_dma_result A04DmaTransfer(struct a04_probe_extension *probe,
@@ -323,7 +330,15 @@ static enum a04_dma_result A04DmaTransfer(struct a04_probe_extension *probe,
         result = a04_msdc_dma_read_blocks_timed(io, lba, probe->dma_bus,
                            probe->dma_alignment, 100000000u, blocks, &clock);
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
-    /* Only complete success proves this path observed DMA inactive. */
+    /* A read error may drain the DMA engine under the same ownership. This
+     * never retries the request or makes the card reusable. Writes are never
+     * reset/retried here: their medium outcome may already be indeterminate. */
+#ifdef A04_OWNED_DMA_EXPERIMENT
+    if (tracked && !write && result!=A04_DMA_OK && A04AbortAllowed(probe) &&
+        a04_msdc_abort_read(io,100000000u,&clock,A04AbortAllowed,probe)==A04_ABORT_STOPPED)
+        a04_life_dma_end(&probe->lifetime,1);
+    else
+#endif
     if (tracked) a04_life_dma_end(&probe->lifetime, result == A04_DMA_OK);
 #endif
     if (result != A04_DMA_OK) {

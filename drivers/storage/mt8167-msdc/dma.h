@@ -30,6 +30,16 @@ enum a04_dma_result a04_msdc_dma_sector_timed(const struct a04_msdc_io *io,
 enum a04_dma_result a04_msdc_dma_read_blocks_timed(const struct a04_msdc_io *io,
         uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t poll_limit,
         uint32_t blocks, const struct a04_dma_clock *clock);
+/* Read-error recovery only, while the caller exclusively owns the controller.
+ * Success proves only that the controller reported DMA inactive around a
+ * completed host reset/FIFO clear; it does not prove card state or allow I/O.
+ * Never use this to retry a write. If access is revoked or any step fails,
+ * retain DMA resources and treat the device as untrusted. */
+enum a04_dma_abort_result { A04_ABORT_STOPPED, A04_ABORT_INVALID,
+    A04_ABORT_REVOKED, A04_ABORT_STOP_TIMEOUT, A04_ABORT_RESET_TIMEOUT,
+    A04_ABORT_FIFO_TIMEOUT, A04_ABORT_UNREADABLE };
+enum a04_dma_abort_result a04_msdc_abort_read(const struct a04_msdc_io *,
+    uint32_t poll_limit,const struct a04_dma_clock *,int (*allowed)(void *),void *context);
 enum a04_dma_result a04_msdc_dma_read_sector(const struct a04_msdc_io *io,
         uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t poll_limit);
 /* Write is experimental and requires an OS-owned, cache-synchronized DMA

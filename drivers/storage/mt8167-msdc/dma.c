@@ -208,3 +208,56 @@ enum a04_dma_result a04_msdc_dma_read_sector(const struct a04_msdc_io *io,
 enum a04_dma_result a04_msdc_dma_write_sector(const struct a04_msdc_io *io,
         uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t limit, uint16_t rca)
 { return a04_msdc_dma_sector_timed(io, lba, bus_address, alignment, limit, 1, rca, 0); }
+
+/* Based on the board Linux 4.4 MT8167 ordering: request DMA STOP, observe
+ * inactive before resetting the controller and clearing FIFO/interrupts.
+ * This routine is bounded and never asserts that the card is ready to reuse. */
+enum a04_dma_abort_result a04_msdc_abort_read(const struct a04_msdc_io *io,
+    uint32_t limit,const struct a04_dma_clock *clock,int (*allowed)(void *),void *context)
+{
+    uint32_t n,v;uint64_t start;
+    if(!io||!io->read32||!io->write32||!limit||!clock||!clock->now||!clock->ticks||!allowed)
+        return A04_ABORT_INVALID;
+#define ABORT_CHECK() do { if(allowed(context)!=1)return A04_ABORT_REVOKED; } while(0)
+    ABORT_CHECK();v=io->read32(io->context,DMA_CONTROL);if(v==UINT32_MAX)return A04_ABORT_UNREADABLE;
+    ABORT_CHECK();io->write32(io->context,DMA_CONTROL,(v&~DMA_START)|DMA_STOP);
+    start=clock->now(clock->context);
+    for(n=0;n<limit;++n) {
+        ABORT_CHECK();v=io->read32(io->context,DMA_CONFIG);
+        if(v==UINT32_MAX)return A04_ABORT_UNREADABLE;
+        if(!(v&DMA_ACTIVE))break;
+        if(a04_dma_expired(clock,start,n))return A04_ABORT_STOP_TIMEOUT;
+    }
+    if(n==limit)return A04_ABORT_STOP_TIMEOUT;
+    ABORT_CHECK();v=io->read32(io->context,CFG);if(v==UINT32_MAX)return A04_ABORT_UNREADABLE;
+    ABORT_CHECK();io->write32(io->context,CFG,v|(1u<<2));
+    start=clock->now(clock->context);
+    for(n=0;n<limit;++n) {
+        ABORT_CHECK();v=io->read32(io->context,CFG);
+        if(v==UINT32_MAX)return A04_ABORT_UNREADABLE;
+        if(!(v&(1u<<2)))break;
+        if(a04_dma_expired(clock,start,n))return A04_ABORT_RESET_TIMEOUT;
+    }
+    if(n==limit)return A04_ABORT_RESET_TIMEOUT;
+    ABORT_CHECK();v=io->read32(io->context,DMA_CONFIG);
+    if(v==UINT32_MAX)return A04_ABORT_UNREADABLE;
+    if(v&DMA_ACTIVE)return A04_ABORT_STOP_TIMEOUT;
+    ABORT_CHECK();v=io->read32(io->context,FIFO_STATUS);if(v==UINT32_MAX)return A04_ABORT_UNREADABLE;
+    ABORT_CHECK();io->write32(io->context,FIFO_STATUS,v|FIFO_CLEAR);
+    start=clock->now(clock->context);
+    for(n=0;n<limit;++n) {
+        ABORT_CHECK();v=io->read32(io->context,FIFO_STATUS);
+        if(v==UINT32_MAX)return A04_ABORT_UNREADABLE;
+        if(!(v&FIFO_CLEAR))break;
+        if(a04_dma_expired(clock,start,n))return A04_ABORT_FIFO_TIMEOUT;
+    }
+    if(n==limit)return A04_ABORT_FIFO_TIMEOUT;
+    ABORT_CHECK();v=io->read32(io->context,INT_STATUS);if(v==UINT32_MAX)return A04_ABORT_UNREADABLE;
+    ABORT_CHECK();io->write32(io->context,INT_STATUS,v);
+    ABORT_CHECK();v=io->read32(io->context,DMA_CONFIG);
+    if(v==UINT32_MAX)return A04_ABORT_UNREADABLE;
+    if(v&DMA_ACTIVE)return A04_ABORT_STOP_TIMEOUT;
+    ABORT_CHECK();
+#undef ABORT_CHECK
+    return A04_ABORT_STOPPED;
+}
