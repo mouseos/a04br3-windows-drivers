@@ -16,6 +16,8 @@
 
 新しいSYSは `port/xnu/out/windows-rt-toprgu-winpe-7109a90/signed/`、SHA-256 `9ca96c1f54964a132578a00e2362795c789ac627d4e925df69aa8bc17b28e7fa`、CPU1 handoff=1、UART screen=1、thermal stop=0、deadline=0。Windows 8.1 WDK ARM32でビルドしテスト署名した。証明書のSHA-1 thumbprintは `5FC3D0043DE4A471F738FB923FEC87336E81D43C`。一時Windowsランナーにテスト証明書を信頼させ、SYS署名、CAT署名、CATへのSYS登録をsigntoolで検証。署名済みSYSとStart=0の選択をオフラインWIMの再マウントで確認。これは対象RTでの署名受理・PnP開始を示さない。証明書の秘密鍵は成果物に含まない。
 
+再利用したランナーのビルドディレクトリに前回の画面機能無効・未署名manifestが残っており、生回収ZIPにも混入していた。履歴として `raw-runner-package-with-stale-metadata.zip` と `prior-unsigned-manifest-not-candidate.json` に区別して保持する。候補の配布物はSYS等と正しいmanifestだけを収め、各ハッシュを照合した `test-signed-package.zip` を使う。再現スクリプトは混入manifestを署名パッケージから除くよう修正した。
+
 生成手順: `tools/ci/prepare-toprgu-fourcpu-winpe.ps1`、`tools/ci/prepare-toprgu-audit-wim.ps1`、`tools/winpe/replace-diagnostic-wim.py`。ソース・入力・中間・出力ハッシュと設定は各成果物のJSONに記録。処理ログは `port/gsi/logs/ios-feasibility/windows-rt-toprgu-*7109a90*.log` と `windows-rt-toprgu-audit-*`。テスト署名を再生成すると鍵とハッシュが変わる。監査スクリプトのthumbprintは上記証明書に固定しており、別証明書へ差し替える場合はスクリプト・テスト・manifestも更新する。
 
 ## 主担当による監査と判定

@@ -15,6 +15,10 @@ $env:A04_TOPRGU_DEADLINE_SECONDS='0'
 & (Join-Path $PSScriptRoot 'build-mt8167-toprgu.ps1')
 $package=Join-Path $OutputRoot 'signed'
 & (Join-Path $PSScriptRoot 'sign-toprgu-early.ps1') -UnsignedPackage (Join-Path $env:RUNNER_TEMP 'mt8167-toprgu') -SignedPackage $package
+# The reused build directory may contain an unsigned manifest from an earlier
+# build with different flags. It must never describe this signed package.
+$staleManifest=Join-Path $package 'manifest.json'
+if (Test-Path $staleManifest) { Remove-Item -LiteralPath $staleManifest }
 $sys=Join-Path $package 'mt8167-toprgu.sys'
 $sysHash=(Get-FileHash -Algorithm SHA256 $sys).Hash
 $wim=Join-Path $OutputRoot 'diagnostic.wim'
