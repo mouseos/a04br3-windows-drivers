@@ -19,6 +19,21 @@ X:\a04br3\compare-files.exe C:\Windows\INF\oem32.inf X:\a04br3\names\original-st
 if errorlevel 1 goto mismatch
 X:\a04br3\compare-files.exe C:\Windows\INF\oem33.inf X:\a04br3\names\original-touch.inf
 if errorlevel 1 goto mismatch
+rem DISM configures services as well as staging files. Refuse to change an
+rem installation whose active services point to different driver binaries.
+reg load HKLM\A04TEMP C:\Windows\System32\config\SYSTEM >nul 2>&1
+if errorlevel 1 goto mismatch
+set "A04_CURRENT="
+for /f "tokens=1,2,3" %%A in ('reg query HKLM\A04TEMP\Select /v Current 2^>nul') do if /i "%%A"=="Current" set "A04_CURRENT=%%C"
+set "A04_STORAGE_PATH="
+set "A04_TOUCH_PATH="
+for /f "tokens=1,2,*" %%A in ('reg query HKLM\A04TEMP\ControlSet001\Services\a04msdcboot /v ImagePath 2^>nul') do if /i "%%A"=="ImagePath" set "A04_STORAGE_PATH=%%C"
+for /f "tokens=1,2,*" %%A in ('reg query HKLM\A04TEMP\ControlSet001\Services\A04Touch /v ImagePath 2^>nul') do if /i "%%A"=="ImagePath" set "A04_TOUCH_PATH=%%C"
+reg unload HKLM\A04TEMP >nul 2>&1
+if errorlevel 1 goto hiveunloadfail
+if not "!A04_CURRENT!"=="0x1" goto mismatch
+if /i not "!A04_STORAGE_PATH!"=="System32\drivers\a04msdcprobe.sys" goto mismatch
+if /i not "!A04_TOUCH_PATH!"=="\SystemRoot\System32\drivers\a04touch.sys" goto mismatch
 if exist C:\Windows\Temp\mt8167-bu21025-names-stage-v2 goto reject
 rem The new directory is a persistent one-shot guard and partial hive backup.
 mkdir C:\Windows\Temp\mt8167-bu21025-names-stage-v2
@@ -39,7 +54,7 @@ for %%H in (SYSTEM SOFTWARE COMPONENTS) do (
     if errorlevel 1 goto backupfail
   )
 )
-rem The packages preserve the original SYS and service configuration. Offline
+rem The guards above check the currently selected service binaries. Offline
 rem staging alone does not prove that PnP selected the new descriptions.
 X:\a04br3\uart-name-event.exe START
 if errorlevel 1 goto uartfail
@@ -70,6 +85,10 @@ goto finish
 :mismatch
 echo NAMES_INSTALLED_PACKAGE_MISMATCH
 goto dismount
+:hiveunloadfail
+echo NAMES_HIVE_UNLOAD_FAILED
+set "A04_OUTCOME=UNSAFE"
+goto finish
 :reject
 echo NAMES_ALREADY_ATTEMPTED_OR_LOCK_FAILED
 goto dismount
