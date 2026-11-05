@@ -29,7 +29,7 @@ NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
 {
     struct a04_rgx_fw_runtime *f;struct clear_packet packet={0};
     RGXFWIF_CCB_CTL k,q;RGXFWIF_CCCB_CTL client;RGXFWIF_KCCB_CMD kick={0},flush={0},fence={0};
-    volatile unsigned char *bank;volatile uint32_t *sync,*output;uint32_t at,next,knext,seq,flushseq,value;
+    volatile unsigned char *bank;volatile uint32_t *sync,*output;uint32_t at,next,knext,seq=0,flushseq=0,value;
     unsigned i;NTSTATUS status;
     if(!result)return STATUS_INVALID_PARAMETER;
     RtlZeroMemory(result,sizeof(*result));
@@ -60,7 +60,7 @@ NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
     if(a04_rgx_device_write_words(&f->kcommands[k.ui32WriteOffset],&kick,sizeof(kick))) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
     a04_gpu_dma_barrier();knext=(k.ui32WriteOffset+1u)&127u;
     ((volatile RGXFWIF_CCB_CTL *)f->kctl)->ui32WriteOffset=knext;
-    a04_gpu_dma_barrier();r->client_write[3]=next;r->clear_attempted=TRUE;
+    a04_gpu_dma_barrier();r->client_write[3]=next;r->clear_attempted=TRUE;result->phase=1;
     WRITE_REGISTER_ULONG((volatile ULONG *)(void *)(s->core+0xb00),0x10);
     status=STATUS_IO_TIMEOUT;
     for(i=0;i<10000;i++) {
@@ -72,6 +72,7 @@ NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
         KeStallExecutionProcessor(10);
     }
     if(!NT_SUCCESS(status))goto poison;
+    result->phase=2;
     status=queue_snapshot(f,&k,&q);if(!NT_SUCCESS(status))goto poison;
     /* Flush the global SLC and fence before sampling Device memory. */
     flushseq=++s->command_sequence;*(volatile uint32_t *)f->command_sync=0;
@@ -84,7 +85,7 @@ NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
        a04_rgx_device_write_words(&f->kcommands[(k.ui32WriteOffset+1u)&127u],&fence,sizeof(fence))) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
     a04_gpu_dma_barrier();knext=(k.ui32WriteOffset+2u)&127u;
     ((volatile RGXFWIF_CCB_CTL *)f->kctl)->ui32WriteOffset=knext;
-    a04_gpu_dma_barrier();WRITE_REGISTER_ULONG((volatile ULONG *)(void *)(s->core+0xb00),0x10);
+    a04_gpu_dma_barrier();result->phase=3;WRITE_REGISTER_ULONG((volatile ULONG *)(void *)(s->core+0xb00),0x10);
     status=STATUS_IO_TIMEOUT;
     for(i=0;i<10000;i++) {
         a04_gpu_dma_barrier();
@@ -93,6 +94,7 @@ NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
         KeStallExecutionProcessor(10);
     }
     if(!NT_SUCCESS(status))goto poison;
+    result->phase=4;
     a04_gpu_dma_barrier();
     for(i=0;i<16384u;i++) {
         value=output[i];if(i<1024u) {if(!value)result->zeros++;} else if(value!=0xa5a5a5a5u)result->guard_errors++;
@@ -102,6 +104,15 @@ NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
     status=(result->zeros==1024u && !result->guard_errors)?STATUS_SUCCESS:STATUS_DATA_ERROR;
     goto done;
 poison:
+    /* Snapshot only. A timeout does not establish completion or quiescence. */
+    a04_gpu_dma_barrier();
+    result->kread=((volatile RGXFWIF_CCB_CTL *)f->kctl)->ui32ReadOffset;
+    result->kwrite=((volatile RGXFWIF_CCB_CTL *)f->kctl)->ui32WriteOffset;
+    if(!a04_rgx_device_read_words(&client,bank+r->layout.control[3],sizeof(client))) {
+        result->cread=client.ui32ReadOffset;result->cwrite=client.ui32WriteOffset;
+    }
+    result->ufo=result->phase>=3 ? *(volatile uint32_t *)f->command_sync : *sync;
+    result->expected=result->phase>=3 ? flushseq : seq;
     r->poisoned=TRUE;s->command_poisoned=TRUE;
 done:
     InterlockedExchange(&s->command_busy,0);return status;

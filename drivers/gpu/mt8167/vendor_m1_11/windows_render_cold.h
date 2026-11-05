@@ -22,7 +22,10 @@ struct a04_vendor_start;
 /* GP UPDATE or a TA/3D/TQ priority change; no drawing task is submitted. */
 NTSTATUS a04_vendor_render_context_command(struct a04_vendor_render_cold *render,
     struct a04_vendor_start *start, unsigned index, uint32_t priority);
-struct a04_vendor_clear_result { uint32_t zeros, guard_errors, first, last; };
+struct a04_vendor_clear_result {
+    uint32_t zeros, guard_errors, first, last, phase;
+    uint32_t kread,kwrite,cread,cwrite,ufo,expected;
+};
 /* One bounded owned 32x32 transfer, followed by SLC flush and CPU readback. */
 NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *render,
     struct a04_vendor_start *start, struct a04_vendor_clear_result *result);

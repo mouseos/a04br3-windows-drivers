@@ -16,6 +16,7 @@ void KeStallExecutionProcessor(unsigned us)
     (void)us;if(!complete)return;
     cmd=&run->kcommands[run->kctl->ui32ReadOffset];bank=sim->buffer[0].cpu;
     if(cmd->eCmdType==RGXFWIF_KCCB_CMD_SLCFLUSHINVAL) {
+        if(complete==2)return;
         RGXFWIF_KCCB_CMD *fence=&run->kcommands[(run->kctl->ui32ReadOffset+1u)&127u];
         assert(fence->eCmdType==RGXFWIF_KCCB_CMD_SYNC);
         *(uint32_t *)run->command_sync=fence->uCmdData.sSyncData.uiUpdateVal;
@@ -63,10 +64,18 @@ int main(void)
     }
     assert(r.sequence==1 && !r.poisoned && !start.command_poisoned);
     current=4;assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_SUCCESS);
-    assert(clear.zeros==1024 && !clear.guard_errors && r.clear_attempted);
+    assert(clear.zeros==1024 && !clear.guard_errors && clear.phase==4 && r.clear_attempted);
     assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_INVALID_PARAMETER);
     current=2;complete=0;
     assert(a04_vendor_render_context_command(&r,&start,2,0xffffffffu)==STATUS_IO_TIMEOUT);
     assert(r.poisoned && start.command_poisoned);
+    memset(&r,0,sizeof(r));memset(&kctl,0,sizeof(kctl));memset(&fctl,0,sizeof(fctl));memset(cmd,0,128*sizeof(*cmd));
+    assert(!a04_vendor_render_build(bank,65536,0x81000000,0x82000000,A04_VENDOR_RENDER_SCRATCH_VA,1,&r.layout));
+    kctl.ui32WrapMask=127;kctl.ui32CmdSize=sizeof(*cmd);fctl.ui32WrapMask=31;fctl.ui32CmdSize=sizeof(RGXFWIF_FWCCB_CMD);
+    r.firmware=&mem;r.buffer[0].cpu=bank;r.buffer[4].cpu=target;r.buffer[4].bytes=65536;r.mapped=TRUE;r.clear_ready=TRUE;
+    assert(!a04_vendor_clear_image_build(&r.clear,A04_VENDOR_RENDER_SCRATCH_VA));
+    start.command_poisoned=FALSE;start.command_sequence=0;current=4;complete=2;
+    assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_IO_TIMEOUT);
+    assert(clear.phase==3 && clear.kread!=clear.kwrite && clear.expected==1 && r.poisoned && start.command_poisoned);
     free(cmd);free(core);free(bank);free(target);return 0;
 }

@@ -715,6 +715,10 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             GpuPrint("A04GPU NATIVE CLEAR=");GpuHex((ULONG)clear_status);
             GpuPrint(" ZERO=");GpuHex(clear.zeros);GpuPrint(" GUARD=");GpuHex(clear.guard_errors);
             GpuPrint(" FIRST=");GpuHex(clear.first);GpuPrint(" LAST=");GpuHex(clear.last);GpuPrint("\n");
+            GpuPrint("A04GPU CLEAR PHASE=");GpuHex(clear.phase);
+            GpuPrint(" KREAD=");GpuHex(clear.kread);GpuPrint(" KWRITE=");GpuHex(clear.kwrite);
+            GpuPrint(" CREAD=");GpuHex(clear.cread);GpuPrint(" CWRITE=");GpuHex(clear.cwrite);
+            GpuPrint(" UFO=");GpuHex(clear.ufo);GpuPrint(" EXPECT=");GpuHex(clear.expected);GpuPrint("\n");
             if(!NT_SUCCESS(clear_status)) {
                 struct a04_vendor_fw_debug debug;unsigned request,word;
                 c->status.health_status=clear_status;
