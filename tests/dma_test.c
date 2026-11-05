@@ -4,7 +4,7 @@
 #include <string.h>
 #include "dma.h"
 
-struct fake { uint32_t regs[64]; int command_error, data_error, no_stop, no_command, fifo_stuck, started; uint32_t first_command, delay, reads, observed; uint64_t time; uint32_t commands[4], command_count; int stop_error, stop_silent, reset_stuck, abort_revoked; unsigned reset_writes, fifo_writes, writes, abort_checks, revoke_at; };
+struct fake { uint32_t regs[64]; int command_error, data_error, no_stop, no_command, fifo_stuck, started; uint32_t first_command, delay, reads, observed; uint64_t time; uint32_t commands[4], command_count; int stop_error, stop_silent, reset_stuck, reset_clears_dma, abort_revoked; unsigned reset_writes, fifo_writes, writes, abort_checks, revoke_at; };
 static uint32_t rd(void *p, uint32_t off)
 {
     struct fake *f = p;
@@ -16,7 +16,7 @@ static void wr(void *p, uint32_t off, uint32_t val)
 {
     struct fake *f = p;
     ++f->writes;
-    if (off == 0 && (val & (1u<<2))) { ++f->reset_writes; f->regs[0]=f->reset_stuck ? val : val & ~(1u<<2); return; }
+    if (off == 0 && (val & (1u<<2))) { ++f->reset_writes; if(f->reset_clears_dma) f->regs[0x09c/4] &= ~1u; f->regs[0]=f->reset_stuck ? val : val & ~(1u<<2); return; }
     if (off == 0x014 && (val & (1u<<31))) ++f->fifo_writes;
     if (off == 0x00c) f->regs[off / 4] &= ~val;
     else if (off == 0x014) f->regs[off / 4] = f->fifo_stuck ? val : val & ~(1u << 31);
@@ -138,7 +138,10 @@ int main(void)
         assert(!(f.regs[0x09c/4]&1) && f.reset_writes==1 && f.fifo_writes==1 && !f.command_count);
         io=init(&f);f.regs[0x09c/4]=1;f.no_stop=1;
         assert(a04_msdc_abort_read(&io,20,&clock,abort_allowed,&f)==A04_ABORT_STOP_TIMEOUT);
-        assert(!f.reset_writes && !f.fifo_writes && !f.command_count);
+        assert(f.reset_writes==1 && !f.fifo_writes && !f.command_count);
+        io=init(&f);f.regs[0x09c/4]=1;f.no_stop=1;f.reset_clears_dma=1;
+        assert(a04_msdc_abort_read(&io,20,&clock,abort_allowed,&f)==A04_ABORT_RESET_UNPROVEN);
+        assert(f.reset_writes==1 && !f.fifo_writes && !f.command_count);
         io=init(&f);f.reset_stuck=1;
         assert(a04_msdc_abort_read(&io,20,&clock,abort_allowed,&f)==A04_ABORT_RESET_TIMEOUT);
         assert(f.reset_writes==1 && !f.fifo_writes);
@@ -156,6 +159,16 @@ int main(void)
             io=init(&f);f.regs[0x09c/4]=1;f.revoke_at=i;
             assert(a04_msdc_abort_read(&io,20,&clock,abort_allowed,&f)==A04_ABORT_REVOKED);
             assert(f.abort_checks==i);
+          }
+        }
+        /* Cancellation must also interrupt the STOP-timeout reset path. */
+        io=init(&f);f.regs[0x09c/4]=1;f.no_stop=1;f.reset_clears_dma=1;
+        assert(a04_msdc_abort_read(&io,20,&clock,abort_allowed,&f)==A04_ABORT_RESET_UNPROVEN);
+        { unsigned checks=f.abort_checks, i;
+          for(i=1;i<=checks;++i) {
+            io=init(&f);f.regs[0x09c/4]=1;f.no_stop=1;f.reset_clears_dma=1;f.revoke_at=i;
+            assert(a04_msdc_abort_read(&io,20,&clock,abort_allowed,&f)==A04_ABORT_REVOKED);
+            assert(f.abort_checks==i && !f.fifo_writes);
           }
         }
         io=init(&f);f.regs[0x098/4]=UINT32_MAX;

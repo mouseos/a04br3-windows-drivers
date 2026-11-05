@@ -135,3 +135,12 @@ DMA終了の観測中に停止・削除でMMIO所有を失った場合、終了�
 suiteビルドはソースの完全なcommit IDとHEADの一致、変更・未追跡のないworktreeを
 出力作成前に検査し、テスト設定以外のDMAログ・LBA・識別情報に関する環境変数も
 消去する。自己署名された出力の再生成時は鍵が変わるためバイト一致とは限らない。
+
+DMA STOPが期限内にinactiveにならない読取りエラーでは、端末付属Linux 4.4
+`drivers/mmc/host/mediatek/mt8167/sd.c` の転送timeout後のhost resetを参考に、
+機種所有権がある間に限りboundedなcontroller resetを試みる。resetが完了しても
+DMA状態がactiveなら失敗し、inactiveでも `A04_ABORT_RESET_UNPROVEN` を返す。
+先にSTOPが完了した場合の回復とは区別し、FIFOを消去せずDMA領域を隔離する。
+これはバス上の未完了書込みがなくなった証明ではなく、カード復旧・PnP削除・
+後続要求の受付許可にもならない。書込みの停止失敗にはこの処理を適用しない。
+実機未検証であり起動拒否は維持する。

@@ -215,7 +215,7 @@ enum a04_dma_result a04_msdc_dma_write_sector(const struct a04_msdc_io *io,
 enum a04_dma_abort_result a04_msdc_abort_read(const struct a04_msdc_io *io,
     uint32_t limit,const struct a04_dma_clock *clock,int (*allowed)(void *),void *context)
 {
-    uint32_t n,v;uint64_t start;
+    uint32_t n,v;uint64_t start;int stop_unproven=0;
     if(!io||!io->read32||!io->write32||!limit||!clock||!clock->now||!clock->ticks||!allowed)
         return A04_ABORT_INVALID;
 #define ABORT_CHECK() do { if(allowed(context)!=1)return A04_ABORT_REVOKED; } while(0)
@@ -226,9 +226,11 @@ enum a04_dma_abort_result a04_msdc_abort_read(const struct a04_msdc_io *io,
         ABORT_CHECK();v=io->read32(io->context,DMA_CONFIG);
         if(v==UINT32_MAX)return A04_ABORT_UNREADABLE;
         if(!(v&DMA_ACTIVE))break;
-        if(a04_dma_expired(clock,start,n))return A04_ABORT_STOP_TIMEOUT;
+        if(a04_dma_expired(clock,start,n)) { stop_unproven=1; break; }
     }
-    if(n==limit)return A04_ABORT_STOP_TIMEOUT;
+    if(n==limit)stop_unproven=1;
+    /* Linux performs a host reset on transfer timeout. If STOP did not
+     * complete, attempt reset but never infer that DMA writes have drained. */
     ABORT_CHECK();v=io->read32(io->context,CFG);if(v==UINT32_MAX)return A04_ABORT_UNREADABLE;
     ABORT_CHECK();io->write32(io->context,CFG,v|(1u<<2));
     start=clock->now(clock->context);
@@ -242,6 +244,7 @@ enum a04_dma_abort_result a04_msdc_abort_read(const struct a04_msdc_io *io,
     ABORT_CHECK();v=io->read32(io->context,DMA_CONFIG);
     if(v==UINT32_MAX)return A04_ABORT_UNREADABLE;
     if(v&DMA_ACTIVE)return A04_ABORT_STOP_TIMEOUT;
+    if(stop_unproven)return A04_ABORT_RESET_UNPROVEN;
     ABORT_CHECK();v=io->read32(io->context,FIFO_STATUS);if(v==UINT32_MAX)return A04_ABORT_UNREADABLE;
     ABORT_CHECK();io->write32(io->context,FIFO_STATUS,v|FIFO_CLEAR);
     start=clock->now(clock->context);
