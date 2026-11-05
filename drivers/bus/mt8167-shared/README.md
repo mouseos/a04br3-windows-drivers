@@ -383,4 +383,16 @@ It is not yet wired to the PnP backend: no validated calibration provider or
 proof of muted output and exclusive AFE ownership is available. No zero
 calibration value is assumed. The Linux LINEOUT mux is a virtual DAPM mux;
 Voice Amp uses CON02 bit 8 with gain bits 12:9, and Left DAC uses CON01 bit 15.
+
+The board Linux calibration measures headphone AUXADC voltage at VCM, DAC,
+and amplifier stages; it derives DAC-to-amplifier and amplifier-to-VCM
+coefficients per headphone PGA gain. `codec_calibration.h` only converts two
+measured microvolt values with those Linux coefficients, rejecting overflow;
+it does not acquire measurements or establish their applicability to the
+voice/line-out path. Linux sets the initial VCM-to-DAC coefficient to 0x4b4b,
+not a measured per-device value. The Linux AUXADC helper labeled Cali converts
+raw samples to microvolts and explicitly says there is no voltage calibration.
+The implementation remains disconnected from hardware pending a validated
+measurement provider, path equivalence, exclusive ownership, muted startup and
+PnP teardown. These calculations do not prove audible or safe playback.
 The ramp helper is not a complete DAC or playback path.

@@ -912,9 +912,8 @@ test-mt8167-thermal-owner:
 	./build/mt8167_thermal_owner_test
 
 .PHONY: test-mt8167-codec-dc
+test: test-mt8167-codec-domain test-mt8167-codec-dc
 test-mt8167-codec-dc:
-	@mkdir -p build
+	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared tests/mt8167_codec_dc_test.c -o build/mt8167_codec_dc_test
 	./build/mt8167_codec_dc_test
-
-test: test-mt8167-codec-dc

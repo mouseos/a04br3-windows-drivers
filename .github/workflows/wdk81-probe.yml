@@ -62,6 +62,20 @@ jobs:
             Write-Host "$path : $(Test-Path $full)"
             if (-not (Test-Path $full)) { throw "Missing required ARM32 WDK component: $path" }
           }
+      - name: Build gated ARM32 audio and shared parent checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:A04_AUDIO_CHILD_RESOURCES='1'
+          $env:A04_SHARED_BUTTON_D0_EXPERIMENT='1'
+          $env:A04_SHARED_APMIXED_RESOURCE='1'
+          $env:A04_SHARED_MT6392_DIAGNOSTIC='1'
+          $env:A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC='1'
+          $env:A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC='1'
+          $env:A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC='1'
+          $env:A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC='1'
+          ./tools/ci/build-msdc-parent-probe.ps1
+          ./tools/ci/build-mt8167-audio-portcls.ps1
       - name: Compile non-operational Storport interface probe
         shell: pwsh
         run: ./tools/ci/build-wdk81-probe.ps1
