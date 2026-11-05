@@ -491,6 +491,13 @@ NTSTATUS GpuD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
     GpuPrint("A04GPU D0EXIT TARGET="); GpuHex((ULONG)target);
     GpuPrint(" ONLINE="); GpuHex((ULONG)c->copy_online); GpuPrint("\n");
     c->copy_online=FALSE;
+    /* Firmware shutdown is not an independent proof that every GPU DMA
+     * master has stopped. Retain the transfer buffers, firmware heap and
+     * WDF DMA reference until a validated hardware-quiescence path exists. */
+    if (c->linear.memory.cpu || c->linear.memory.adapter) {
+        GpuPrint("A04GPU D0EXIT DMA RETAINED\n");
+        return STATUS_DEVICE_BUSY;
+    }
     c->firmware.trace=GpuTraceStage;
     if (c->firmware.processor_released) {
         status=a04_gpu_firmware_shutdown(&c->firmware);
