@@ -12,5 +12,5 @@ typedef struct {
 int KbSessionStart(KB_SESSION *,const MT8167_USB20_IO *,unsigned,void *,void (*)(void *,unsigned),int (*)(void *,const unsigned char *));
 int KbSessionEp0Interrupt(KB_SESSION *); /* 0=pending, 1=keyboard ready, -1=error */
 int KbSessionRequestReport(KB_SESSION *); /* schedule no faster than bInterval */
-int KbSessionRxInterrupt(KB_SESSION *); /* 0=NAK/no report, 1=delivered, -1=error */
+int KbSessionRxInterrupt(KB_SESSION *); /* 0=pending, 1=delivered, 2=NAK, -1=error */
 #endif

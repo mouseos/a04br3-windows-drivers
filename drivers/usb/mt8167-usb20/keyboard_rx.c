@@ -44,7 +44,7 @@ int KbRxComplete(const MT8167_USB20_IO *io,unsigned char report[8])
  if(!valid(io) || !report)return -1;
  io->write8(io->context,INDEX,1); csr=io->read16(io->context,RXCSR);
  if(csr & (RX_ERROR | RX_STALL))return -1;
- if(csr & RX_NAK) { io->write16(io->context,RXCSR,(unsigned short)((csr | RX_WZC) & ~(RX_NAK | RX_REQUEST))); return 0; }
+ if(csr & RX_NAK) { io->write16(io->context,RXCSR,(unsigned short)((csr | RX_WZC) & ~(RX_NAK | RX_REQUEST))); return 2; }
  if(!(csr & RX_READY))return 0;
  count=io->read16(io->context,RXCOUNT);
  if(count!=8)return -1;

@@ -12,7 +12,7 @@ int main(void) {
  assert(KbRxConfigure(&io,1,2,16,10,0xc0)==-1);
  m.csr=0; assert(KbRxRequest(&io)==0); assert(m.csr&0x20);
  m.csr=1; m.b[0x18]=8; memset(m.fifo,0x2a,8); assert(KbRxComplete(&io,report)==1 && report[7]==0x2a);
- m.csr=8; assert(KbRxComplete(&io,report)==0);
+ m.csr=8; assert(KbRxComplete(&io,report)==2);
  m.csr=0x40; assert(KbRxComplete(&io,report)==-1);
  m.csr=1; m.b[0x18]=9; assert(KbRxComplete(&io,report)==-1);
  return 0;

@@ -37,3 +37,18 @@ The EP0 PIO adapter assumes the indexed register layout and an initialized host-
 The boot-keyboard-only path in keyboard.c parses the first configuration and selects a direct boot keyboard interrupt IN endpoint; keyboard_rx.c implements MUSB PIO endpoint operations. keyboard_session.c connects EP0 enumeration and RX PIO to a report callback, and wdf_keyboard.c connects that callback to a KMDF HID transport. The board provider, PnP resources, actual IRQ delivery and power/PHY callbacks are not connected, so this is not a usable device driver. No hubs, general USB devices or arbitrary HID report protocols are supported.
 
 The HID transport is linked as an unsigned diagnostic .sys only; no INF or ACPI device is provided. It is not an installable or hardware-ready package. A board owner must control GPIO22, regulator/clocks, overcurrent and BQ24160/I2C2 ownership and perform PHY setup, FIFO allocation, reset, timeouts and safe teardown before invoking the session.
+
+## PnP, IRQ and shared power (prototype)
+
+`wdf_controller.c` validates and maps the two 64 KiB ACPI memory resources
+and requires one interrupt, captures enabled MT8167 L1/TX/RX/USB causes in
+the ISR, and defers HID work to PASSIVE_LEVEL. `controller.c` configures EP0
+and RX1 FIFO regions and masks/acknowledges the corresponding interrupts.
+`gpio22.c` performs only GPIO22 SET/CLR operations after checking GPIO mode;
+it must be called by a provider holding the pin and register ownership.
+
+`KbHidActivate` consumes callbacks from an exclusive board-power owner; no
+such provider or ACPI wiring exists here, and nothing calls Activate. The
+BQ24160/I2C2 and MT6392/clock lifetimes remain unresolved. Consequently IRQ
+arming, GPIO control and enumeration cannot be exercised by this package,
+regardless of successful compilation. Do not install or use on hardware.
