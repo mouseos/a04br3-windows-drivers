@@ -6,7 +6,8 @@
  */
 #ifndef A04_VENDOR_RENDER_RESOURCES_H
 #define A04_VENDOR_RENDER_RESOURCES_H
-#include "A04BR3RogueRuntimeLayout.h"
+#include <stddef.h>
+#include <stdint.h>
 #define A04_VENDOR_RENDER_BANK_BYTES 65536u
 #define A04_VENDOR_RENDER_FW_OFFSET 0x80000u
 #define A04_VENDOR_CLIENT_RING_BYTES 4096u

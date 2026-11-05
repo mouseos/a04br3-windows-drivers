@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "render_resources.h"
+#include "A04BR3RogueRuntimeLayout.h"
 int main(void)
 {
     unsigned char *bank=aligned_alloc(4096,A04_VENDOR_RENDER_BANK_BYTES);

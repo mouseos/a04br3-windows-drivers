@@ -4,6 +4,7 @@
  * xnu_kernel_benesse_a04br3, f5d43bf1677955e7e367545b9bbbd6449776cdda.
  */
 #include "windows_render_cold.h"
+#include "A04BR3RogueRuntimeLayout.h"
 #include "A04BR3RogueDeviceWords.h"
 #include "../gpu_mmu.h"
 #include "../windows_hw.h"

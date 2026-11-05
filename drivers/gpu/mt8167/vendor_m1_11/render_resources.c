@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "render_resources.h"
+#include "A04BR3RogueRuntimeLayout.h"
 /* Linux DDK rgx_fwif_resetframework.h: flags=0, 8-byte aligned register. */
 struct a04_vendor_reset_framework { uint32_t flags; uint64_t registers __attribute__((aligned(8))); };
 _Static_assert(sizeof(struct a04_vendor_reset_framework)==16,"m1.11 reset framework ABI");
