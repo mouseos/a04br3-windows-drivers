@@ -589,6 +589,7 @@ build/mt6630_sdio_args_test: drivers/network/mt6630/sdio_args.h tests/mt6630_sdi
 
 .PHONY: test-mt6630
 test-mt6630: build/mt6630_identity_test build/mt6630_sdio_args_test build/mt6630_transport_test build/mt6630_direct_test
+	./build/mt6630_bringup_test
 	./build/mt6630_board_sequence_test
 	./build/mt6630_identity_test
 	./build/mt6630_sdio_args_test
@@ -733,3 +734,9 @@ build/mt6630_board_sequence_test: drivers/network/mt6630/board_sequence.c driver
 	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/board_sequence.c tests/mt6630_board_sequence_test.c -o $@
 
 test-mt6630: build/mt6630_board_sequence_test
+
+build/mt6630_bringup_test: drivers/network/mt6630/bringup.c drivers/network/mt6630/board_sequence.c drivers/network/mt6630/control_start.c drivers/network/mt6630/enumerate.c drivers/network/mt6630/msdc2_pio.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c tests/mt6630_bringup_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 $^ -o $@
+
+test-mt6630: build/mt6630_bringup_test
