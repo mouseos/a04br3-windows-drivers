@@ -13,6 +13,7 @@ struct a04_vendor_m1_11_memory {
     BOOLEAN staged;
     BOOLEAN hardware_owned;
     BOOLEAN uncached;
+    ULONG stage_step;
 };
 /* PASSIVE_LEVEL only. Builds m1.11 FWIF memory but performs no MMIO. */
 NTSTATUS a04_vendor_m1_11_windows_stage(struct a04_vendor_m1_11_memory *m,

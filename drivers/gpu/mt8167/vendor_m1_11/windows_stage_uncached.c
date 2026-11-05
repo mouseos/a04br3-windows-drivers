@@ -11,15 +11,17 @@ NTSTATUS a04_vendor_m1_11_windows_stage_uncached(struct a04_vendor_m1_11_memory 
 {
     struct a04_vendor_buffer shadow[5]={0};struct a04_vendor_uncached allocation={0};
     IMG_PUINT32 trace_host;RGXFWIF_TRACEBUF *shadow_trace;
-    unsigned i,j;NTSTATUS status=STATUS_DEVICE_CONFIGURATION_ERROR;
+    unsigned i,j;ULONG step=1;NTSTATUS status=STATUS_DEVICE_CONFIGURATION_ERROR;
     if (!m || !adapter || !image || KeGetCurrentIrql()!=PASSIVE_LEVEL || m->adapter ||
         m->runtime || m->staged || m->uncached || m->hardware_owned) return STATUS_INVALID_PARAMETER;
     for (i=0;i<5;i++) if(m->allocation[i] || m->buffers[i].cpu) return STATUS_INVALID_PARAMETER;
     m->adapter=adapter;
+    step=2;
     m->runtime=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*m->runtime),0x72564741u);
     if(!m->runtime) { status=STATUS_INSUFFICIENT_RESOURCES;goto done; }
     for(i=0;i<5;i++) {
         uint64_t address,offset;
+        step=10+i;
         status=a04_vendor_uncached_allocate(&allocation,adapter,alloc_sizes[i]);
         if(!NT_SUCCESS(status)) goto done;
         m->allocation[i]=allocation.cpu;m->logical[i]=allocation.logical;
@@ -35,6 +37,7 @@ NTSTATUS a04_vendor_m1_11_windows_stage_uncached(struct a04_vendor_m1_11_memory 
         if(!shadow[i].cpu) {status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
         shadow[i].dma=m->buffers[i].dma;shadow[i].bytes=sizes[i];
     }
+    step=20;
     for(i=0;i<5;i++) {
         if (!a04_rgx_fw_pointer(m->buffers[i].cpu,sizes[i]) || ((uintptr_t)m->buffers[i].cpu&7u) ||
             !a04_rgx_mips_physical_range(m->buffers[i].dma,sizes[i],i?4096:A04_VENDOR_TABLE_BYTES) ||
@@ -43,19 +46,20 @@ NTSTATUS a04_vendor_m1_11_windows_stage_uncached(struct a04_vendor_m1_11_memory 
         for(j=0;j<i;j++) if(a04_rgx_fw_alias(m->buffers[i].cpu,sizes[i],m->buffers[j].cpu,sizes[j]) ||
             a04_rgx_fw_overlap(m->buffers[i].dma,sizes[i],m->buffers[j].dma,sizes[j])) goto bad;
     }
-    if(a04_vendor_m1_11_stage(image,bytes,shadow) ||
-       a04_rgx_fw_runtime_init(m->runtime,shadow[3].cpu,shadow[3].dma,shadow[4].cpu,shadow[4].dma,26000000u) ||
-       a04_rgx_fw_runtime_map((uint32_t *)shadow[0].cpu,A04_VENDOR_TABLE_BYTES/4,shadow[3].dma,shadow[4].dma)) goto bad;
+    step=21;if(a04_vendor_m1_11_stage(image,bytes,shadow)) goto bad;
+    step=22;if(a04_rgx_fw_runtime_init(m->runtime,shadow[3].cpu,shadow[3].dma,shadow[4].cpu,shadow[4].dma,26000000u)) goto bad;
+    step=23;if(a04_rgx_fw_runtime_map((uint32_t *)shadow[0].cpu,A04_VENDOR_TABLE_BYTES/4,shadow[3].dma,shadow[4].dma)) goto bad;
     for(i=0;i<A04_VENDOR_CODE_BYTES/4096;i++) ((uint32_t *)shadow[0].cpu)[i]|=4u;
     shadow_trace=m->runtime->trace;
-    if(a04_rgx_runtime_rebase(m->runtime,m->buffers[3].cpu,m->buffers[4].cpu,&trace_host)) goto bad;
+    step=24;if(a04_rgx_runtime_rebase(m->runtime,m->buffers[3].cpu,m->buffers[4].cpu,&trace_host)) goto bad;
     shadow_trace->sTraceBuf[0].pui32TraceBuffer=trace_host;
-    for(i=0;i<5;i++) if(a04_rgx_device_write_words(m->buffers[i].cpu,shadow[i].cpu,sizes[i])) goto bad;
+    step=25;for(i=0;i<5;i++) if(a04_rgx_device_write_words(m->buffers[i].cpu,shadow[i].cpu,sizes[i])) goto bad;
     a04_gpu_dma_barrier();m->uncached=TRUE;m->staged=TRUE;status=STATUS_SUCCESS;goto done;
 bad:
     status=STATUS_DEVICE_CONFIGURATION_ERROR;
 done:
     for(i=0;i<5;i++) if(shadow[i].cpu) ExFreePoolWithTag(shadow[i].cpu,0x73464741u);
     if(!NT_SUCCESS(status)) (void)a04_vendor_m1_11_windows_free(m);
+    m->stage_step=step;
     return status;
 }

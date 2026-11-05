@@ -489,6 +489,9 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     c->vendor_status.stage_status=status;
 #if A04_GE8300_VENDOR_START_DIAGNOSTIC
     GpuPrint("A04GPU NATIVE STAGE=");GpuHex((ULONG)status);GpuPrint("\n");
+    GpuPrint("A04GPU NATIVE STEP=");GpuHex(c->vendor.stage_step);
+    GpuPrint(" ADAPTER=");GpuHex(adapter?1u:0u);
+    GpuPrint(" BVNC=");GpuHex(hi);GpuHex(lo);GpuPrint("\n");
 #endif
 #endif
     return STATUS_SUCCESS;
