@@ -23,4 +23,7 @@ with tempfile.TemporaryDirectory(prefix='cpu-audit-monitor-',dir=root/'build') a
  log.write_bytes(head+parts[0]);out2=d/'incomplete'
  r=subprocess.run(['python3',str(monitor),str(log),'--offset','0','--token',t,'--output',str(out2),'--timeout','1'],capture_output=True)
  assert r.returncode==4 and not out2.exists() and b'No reset or restore' in r.stdout
+ log.write_bytes(head+parts[0].replace(b'544F5052',b'554F5052')+b''.join(parts[1:])+end);out3=d/'bad'
+ r=subprocess.run(['python3',str(monitor),str(log),'--offset','0','--token',t,'--output',str(out3),'--timeout','1'],capture_output=True)
+ assert r.returncode==2 and not out3.exists()
 print('CPU UART monitor: complete frame and timeout without reset verified')
