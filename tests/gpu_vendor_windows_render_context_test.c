@@ -75,14 +75,15 @@ int main(void)
     assert(clear.zeros==1024 && !clear.guard_errors && clear.phase==4 && r.clear_attempted);
     assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_INVALID_PARAMETER);
     { unsigned failed=99;complete=3;
-      assert(a04_vendor_render_cleanup_contexts(&r,&start,&failed)==STATUS_DEVICE_BUSY && failed==0 && !r.cleanup_mask && !r.poisoned);
+      assert(a04_vendor_render_cleanup_contexts(&r,&start,&failed)==STATUS_DEVICE_BUSY && failed==0 && !r.cleanup_mask && r.cleanup_started && !r.poisoned);
+      assert(a04_vendor_render_context_command(&r,&start,2,0xffffffffu)==STATUS_INVALID_PARAMETER);
       complete=1;cleanups=0;assert(a04_vendor_render_cleanup_contexts(&r,&start,&failed)==STATUS_SUCCESS && failed==4 && r.cleanup_mask==15u && cleanups==4);
       assert(a04_vendor_render_context_command(&r,&start,2,0xffffffffu)==STATUS_INVALID_PARAMETER);
       assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_INVALID_PARAMETER);
-      r.cleanup_mask=0;
+      r.cleanup_mask=0;r.cleanup_started=FALSE;
       complete=0;assert(a04_vendor_render_cleanup_contexts(&r,&start,&failed)==STATUS_IO_TIMEOUT && failed==0 && r.poisoned && start.command_poisoned);
       assert(a04_vendor_render_cleanup_contexts(&r,&start,&failed)==STATUS_INVALID_PARAMETER);
-      r.poisoned=FALSE;start.command_poisoned=FALSE;kctl.ui32ReadOffset=kctl.ui32WriteOffset;
+      r.poisoned=FALSE;r.cleanup_started=FALSE;start.command_poisoned=FALSE;kctl.ui32ReadOffset=kctl.ui32WriteOffset;
     }
     current=2;complete=0;
     assert(a04_vendor_render_context_command(&r,&start,2,0xffffffffu)==STATUS_IO_TIMEOUT);
