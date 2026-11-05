@@ -592,9 +592,14 @@ build/mt8167_audio_parent_client_test: drivers/audio/mt8167-afe/audio_parent_cli
 	$(CC) $(CFLAGS) -Itests/shared_wdf_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_audio_parent_client_test.c -o $@
 
 .PHONY: test-gpu-vendor-m1-11
-test-gpu-vendor-m1-11: build/gpu_vendor_m1_11_stage_test
+test-gpu-vendor-m1-11: build/gpu_vendor_m1_11_stage_test build/gpu_vendor_firmware_requests_test
 	python3 tests/gpu_vendor_m1_11_fixture.py
 	./build/gpu_vendor_m1_11_stage_test build/vendor-m1-11-test/firmware.bin build/vendor-m1-11-test/code.bin build/vendor-m1-11-test/data.bin
+	./build/gpu_vendor_firmware_requests_test
+
+build/gpu_vendor_firmware_requests_test: tests/gpu_vendor_firmware_requests_test.c drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueFirmwareRequests.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueCommand.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $< -o $@
 	python3 tests/test_ge8300_power_acpi.py
 
 build/gpu_vendor_m1_11_stage_test: tests/gpu_vendor_m1_11_stage_test.c drivers/gpu/mt8167/vendor_m1_11/stage.c drivers/gpu/mt8167/vendor_m1_11/windows_stage.c drivers/gpu/mt8167/vendor_m1_11/windows_start.c drivers/gpu/mt8167/vendor_m1_11/windows_command.c drivers/gpu/mt8167/vendor_m1_11/windows_command.h drivers/gpu/mt8167/vendor_m1_11/windows_stop.c drivers/gpu/mt8167/vendor_m1_11/windows_stop.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueStop.h drivers/gpu/mt8167/vendor_m1_11/stage.h drivers/gpu/mt8167/vendor_m1_11/windows_stage.h drivers/gpu/mt8167/vendor_m1_11/windows_start.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueCommand.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueStartupPlan.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueStartupExecutor.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueFirmware.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueMipsMMU.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueRuntimeLayout.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueDDKABI.h
