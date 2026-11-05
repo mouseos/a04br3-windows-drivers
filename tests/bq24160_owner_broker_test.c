@@ -4,12 +4,17 @@
 #include "owner_broker.h"
 #include "broker_mailbox.h"
 #include "broker_client.h"
+#include "broker_wire.h"
 #define NS 1000000000ULL
 struct fake { uint64_t now, gauge_delay; int reads, writes, gauge_reads, bad_gauge, bad_bq; };
 struct loopback { struct fake *fake; struct a04_broker_endpoint *endpoint; };
 static uint64_t loop_now(void *p) {return ((struct loopback *)p)->fake->now;}
 static int loop_exchange(void *p,const struct a04_broker_request *q,struct a04_broker_response *r) {
- return a04_broker_endpoint_dispatch(((struct loopback *)p)->endpoint,q,r);
+ uint8_t wire[A04_BROKER_WIRE_BYTES];struct a04_broker_request received;struct a04_broker_response result;
+ if(a04_broker_wire_request_encode(wire,sizeof(wire),q) || a04_broker_wire_request_decode(&received,wire,sizeof(wire)) ||
+    a04_broker_endpoint_dispatch(((struct loopback *)p)->endpoint,&received,&result) ||
+    a04_broker_wire_response_encode(wire,sizeof(wire),&result) || a04_broker_wire_response_decode(r,wire,sizeof(wire))) return -1;
+ return 0;
 }
 static uint64_t clock_ns(void *p) { return ((struct fake *)p)->now; }
 static int read_bq(void *p,uint8_t r,uint8_t *v) {
@@ -92,6 +97,20 @@ int main(void) {
         assert(f.writes==1&&f.gauge_reads==3&&out.voltage_mv==4000);
         f.bad_gauge=1;assert(a04_broker_client_read(&client,5*NS,&out));
         assert(e.closed&&client.stopped&&o.stopped);
+    }
+    {
+        uint8_t wire[A04_BROKER_WIRE_BYTES];struct a04_broker_request q={1,2,3},decoded={9,9,9};
+        struct a04_broker_response r={0},response={0};unsigned i;
+        assert(!a04_broker_wire_request_encode(wire,sizeof(wire),&q));
+        assert(!a04_broker_wire_request_decode(&decoded,wire,sizeof(wire))&&decoded.deadline==3);
+        for(i=32;i<sizeof(wire);++i){wire[i]=1;assert(a04_broker_wire_request_decode(&decoded,wire,sizeof(wire)));wire[i]=0;}
+        assert(a04_broker_wire_request_decode(&decoded,wire,sizeof(wire)-1));
+        r.epoch=1;r.sequence=2;r.result=A04_BROKER_STOPPED;
+        assert(!a04_broker_wire_response_encode(wire,sizeof(wire),&r));
+        assert(!a04_broker_wire_response_decode(&response,wire,sizeof(wire))&&response.result==A04_BROKER_STOPPED);
+        wire[25]=1;assert(a04_broker_wire_response_decode(&response,wire,sizeof(wire)));
+        wire[25]=0;wire[30]=1;assert(a04_broker_wire_response_decode(&response,wire,sizeof(wire)));
+        r.sample.percent=1;assert(a04_broker_wire_response_encode(wire,sizeof(wire),&r));
     }
     return 0;
 }
