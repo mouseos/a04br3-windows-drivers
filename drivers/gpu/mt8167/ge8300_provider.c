@@ -759,8 +759,11 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             if(!NT_SUCCESS(c->status.shutdown_status)) c->status.health_status=c->status.shutdown_status;
         }
 #endif
-        if(NT_SUCCESS(c->status.health_status))
-            c->status.shutdown_status=a04_vendor_m1_11_windows_power_off(&c->vendor_start,TRUE);
+        if(NT_SUCCESS(c->status.health_status)) {
+            NTSTATUS idle_status;
+            c->status.shutdown_status=a04_vendor_m1_11_windows_forced_power_off(&c->vendor_start,TRUE,&idle_status);
+            GpuPrint("A04GPU FORCED IDLE=");GpuHex((ULONG)idle_status);GpuPrint("\n");
+        }
         GpuPrint("A04GPU NATIVE OFF=");GpuHex(c->status.shutdown_status);GpuPrint("\n");
         {
             ULONG snap[6];

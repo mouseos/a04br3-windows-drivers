@@ -34,7 +34,7 @@ NTSTATUS a04_vendor_render_context_command(struct a04_vendor_render_cold *r,
     if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
     /* Cleanup can begin between the optimistic check and lock acquisition. */
     if(r->cleanup_started) {status=STATUS_INVALID_DEVICE_STATE;goto out;}
-    if(s->command_poisoned) {status=STATUS_IO_DEVICE_ERROR;goto out;}
+    if(s->command_poisoned || s->shutdown_started) {status=STATUS_IO_DEVICE_ERROR;goto out;}
     bank=(volatile unsigned char *)r->buffer[0].cpu;
     context_offset=index==0 ? r->layout.context+(uint32_t)offsetof(RGXFWIF_FWRENDERCONTEXT,sTAContext) :
         index==1 ? r->layout.context+(uint32_t)offsetof(RGXFWIF_FWRENDERCONTEXT,s3DContext) :
@@ -110,7 +110,7 @@ NTSTATUS a04_vendor_render_cleanup_contexts(struct a04_vendor_render_cold *r,
        !fw->kcommands || !fw->command_sync || !fw->command_sync_addr.ui32Addr || !s->core ||
        !r->buffer[0].cpu || r->layout.used>A04_VENDOR_RENDER_BANK_BYTES) return STATUS_INVALID_PARAMETER;
     if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
-    if(s->command_poisoned){status=STATUS_IO_DEVICE_ERROR;goto out;}
+    if(s->command_poisoned || s->shutdown_started){status=STATUS_IO_DEVICE_ERROR;goto out;}
     bank=(volatile unsigned char *)r->buffer[0].cpu;sync=(volatile uint32_t *)fw->command_sync;
     for(index=0;index<4;index++) {
         if(r->cleanup_mask&(1u<<index))continue;

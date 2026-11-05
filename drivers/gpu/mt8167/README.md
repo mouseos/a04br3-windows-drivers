@@ -277,3 +277,12 @@ poisons the context and stops further submissions. Partial cleanup forbids new
 work. Firmware cleanup and power acknowledgement do not prove external fabric
 quiescence; all DMA stays pinned and D0 exit remains guarded. This change is
 host-tested only; actual m1.11 cleanup and power-off are not yet verified.
+
+
+### m1.11 forced-idle電源停止診断
+
+`cc1be36` ではユーザー提供の実機結果として、オフセット付きclearのMATCH=400、GUARD=0、PHASE=4、４コンテキストのCLEANUP STATUS=0・MASK=Fだった。その後OFF=80000011、SYNC=1、POW=1、KRD=KWR=0Dであり、cleanup不足単独では拒否を説明できない。FWのstate 1はONである。
+
+参考のMediaTek Linux DDK m1.8 `services/server/common/power.c` のシステムOFF経路は、forced-idleを要求してから強制電源OFFを要求する。同DDK `rgxpower.c` は同期応答後にFORCED_IDLEを検査する。m1.11の固定FWIF宣言には別の `RGXFWIF_POWER_FORCE_IDLE=1` とforced OFFのフィールドがあり、m1.8のboolean値をそのまま流用しない。本診断はcleanup成功後にm1.11のforced-idleを送信し、同期値・KCCB消費・FW状態FORCED_IDLEをすべて確認できた場合だけforced OFFを送る。変更は既定OFFのvendor start診断のみに接続する。idle拒否、timeout、FW要求保留、予期しない状態ではOFFへ進まず、再投入を封じてDMAを保持する。
+
+ホストmockでidle拒否、forced OFF拒否、両段階成功、idle timeoutを検証した。現時点でWindows実機のforced-idle/OFFは未検証であり、この順序が拒否の原因を解消するかは不明。FWのOFF応答とstop registerの確認も外部fabricを含むDMA静止や領域解放を証明しない。
