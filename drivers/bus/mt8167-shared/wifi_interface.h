@@ -8,10 +8,14 @@
  * not itself a powered device. No provider currently grants this lease. */
 static const GUID A04SharedWifiInterfaceGuid =
  {0x6210787e,0x11db,0x4a59,{0xb2,0x81,0x27,0x3b,0x59,0xf1,0x2e,0x33}};
-#define A04_SHARED_WIFI_INTERFACE_VERSION 1
+#define A04_SHARED_WIFI_INTERFACE_VERSION 2
 typedef struct _A04_SHARED_WIFI_INTERFACE {
  INTERFACE Header;
  NTSTATUS (*Acquire)(PVOID context, ULONG *generation);
  NTSTATUS (*ReleaseQuiescent)(PVOID context, ULONG generation);
+ /* Banks 0=TOPCKGEN, 1=GPIO. Each operation is serialized with touch. */
+ int (*Live)(PVOID context, ULONG generation);
+ int (*UpdateShared)(PVOID context, ULONG generation, unsigned bank, unsigned offset, ULONG clear, ULONG set);
+ int (*WriteShared)(PVOID context, ULONG generation, unsigned bank, unsigned offset, ULONG value);
 } A04_SHARED_WIFI_INTERFACE;
 #endif

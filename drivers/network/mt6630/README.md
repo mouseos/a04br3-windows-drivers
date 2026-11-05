@@ -214,3 +214,12 @@ releaseで逆順に各providerへ返す。unmapのない場合だけstop一括AP
 DTSが示すRTC 32k・GPIO4/7・MSDC2の接続とXNU board sequenceがこの分割の根拠で、
 資源の物理的な存在や独占状態をソフトウェアフラグから証明するものではない。
 実provider、IRQ接続、親のD0、firmware取得、NDIS初期化には未接続である。
+
+`windows_board.c` は親のWi-Fi interface v2とMSDC2写像をボード手順へつなぎ、
+親の世代を検査しながらGPIO/TOP操作とMSDC2操作を分ける。共有レジスタの
+read-modify-writeは親がtouchと同じmutex内で実施し、対象offset・mask・値を
+XNU由来のボード手順に限定する。列挙後のWMT version照会までの呼出しも提供する。
+この接続の試験はモックのみ。親は引き続きD0とAcquireを拒否し、実リース、
+32kと電源の保持、割込み、firmware取得およびNDIS初期化は実装されていない。
+これは実機へ導入する候補ではない。親PnPと子の排出を直列化しても物理的な
+surprise removal中のMMIO例外を防ぐ証明にはならない。

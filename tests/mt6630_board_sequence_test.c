@@ -7,8 +7,9 @@ struct mock {uint32_t regs[3][1024];unsigned operations,fail_at,ms;int qualified
 static int qualified(void *c){return ((struct mock *)c)->qualified;}
 static int readreg(void *c,enum a04_wifi_board_bank b,unsigned off,uint32_t *v){struct mock *m=c;if(++m->operations==m->fail_at)return -1;if(m->operations==m->revoke_at)m->qualified=0;*v=m->regs[b][off/4];if(b==A04_WIFI_MSDC&&off==0){*v&=~4u;*v|=0x80;}return 0;}
 static int writereg(void *c,enum a04_wifi_board_bank b,unsigned off,uint32_t v){struct mock *m=c;if(++m->operations==m->fail_at)return -1;if(m->operations==m->revoke_at)m->qualified=0;m->regs[b][off/4]=v;return 0;}
+static int update_shared(void *c,enum a04_wifi_board_bank b,unsigned off,uint32_t mask,uint32_t value){struct mock *m=c;if(++m->operations==m->fail_at)return -1;if(m->operations==m->revoke_at)m->qualified=0;m->regs[b][off/4]=(m->regs[b][off/4]&~mask)|value;return 0;}
 static int delay(void *c,unsigned ms){struct mock *m=c;if(++m->operations==m->fail_at)return -1;if(m->operations==m->revoke_at)m->qualified=0;m->ms+=ms;return 0;}
-int main(void){struct mock m={0};struct a04_wifi_board s={0};struct a04_wifi_board_io io={&m,qualified,readreg,writereg,delay};
+int main(void){struct mock m={0};struct a04_wifi_board s={0};struct a04_wifi_board_io io={&m,qualified,readreg,writereg,delay,update_shared};
  assert(a04_wifi_board_start(&s,&io)<0&&!m.operations&&!s.started);m.qualified=1;
  assert(!a04_wifi_board_start(&s,&io)&&s.ready&&!s.poisoned&&m.ms==80);
  assert(a04_wifi_board_start(&s,&io)<0);

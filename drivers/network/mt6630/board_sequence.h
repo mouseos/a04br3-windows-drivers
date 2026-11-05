@@ -13,6 +13,8 @@ struct a04_wifi_board_io {
  int (*read)(void *,enum a04_wifi_board_bank,unsigned,uint32_t *);
  int (*write)(void *,enum a04_wifi_board_bank,unsigned,uint32_t);
  int (*delay_ms)(void *,unsigned);
+ /* Parent-serialized read/modify/write for shared TOP and GPIO. */
+ int (*update_shared)(void *,enum a04_wifi_board_bank,unsigned,uint32_t,uint32_t);
 };
 struct a04_wifi_board { unsigned started,ready,poisoned; };
 int a04_wifi_board_start(struct a04_wifi_board *,const struct a04_wifi_board_io *);

@@ -14,7 +14,7 @@ NTSTATUS WifiProbePrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated
  status=WdfFdoQueryForInterface(dev,&A04SharedWifiInterfaceGuid,(PINTERFACE)&iface,
   sizeof(iface),A04_SHARED_WIFI_INTERFACE_VERSION,NULL);
  if(!NT_SUCCESS(status))return status;
- if(!iface.Header.InterfaceDereference || !iface.Acquire || !iface.ReleaseQuiescent) {
+ if(!iface.Header.InterfaceDereference || !iface.Acquire || !iface.ReleaseQuiescent || !iface.Live || !iface.UpdateShared || !iface.WriteShared) {
   if(iface.Header.InterfaceDereference)iface.Header.InterfaceDereference(iface.Header.Context);
   return STATUS_DEVICE_CONFIGURATION_ERROR;
  }

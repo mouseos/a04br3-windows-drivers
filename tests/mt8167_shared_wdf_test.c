@@ -48,8 +48,8 @@ int main(void){
  children[1].base=0;assert(ChildRequirements(&children[1],NULL)==STATUS_DEVICE_CONFIGURATION_ERROR && appended==3);assert(saved.Header.Version==1 && saved.ReadButtons);
  assert(input.Version==1 && input.TouchPen && input.ButtonPmicRead);
  assert(audio.Header.Version==1 && audio.AcquireMuted && audio.ReleaseQuiescent);
- assert(wifi.Header.Version==1 && wifi.Acquire && wifi.ReleaseQuiescent);
- {ULONG generation=0xdead;assert(wifi.Acquire(wifi.Header.Context,&generation)==STATUS_DEVICE_NOT_READY && generation==0xdead && !reads && !writes);}
+ assert(wifi.Header.Version==2 && wifi.Acquire && wifi.ReleaseQuiescent && wifi.Live && wifi.UpdateShared && wifi.WriteShared);
+ {ULONG generation=0xdead;assert(!wifi.Live(wifi.Header.Context,generation));assert(wifi.UpdateShared(wifi.Header.Context,generation,1,0x300,7u<<12,0)!=0);assert(wifi.WriteShared(wifi.Header.Context,generation,0,0xa0,2)!=0);assert(wifi.Acquire(wifi.Header.Context,&generation)==STATUS_DEVICE_NOT_READY && generation==0xdead && !reads && !writes);}
  {
  struct Mt8167AudioParentClient wrapper={0};struct mt8167_audio_shared_client client={0};
  audio.Header.InterfaceReference(audio.Header.Context);assert(refs==1);
@@ -72,7 +72,14 @@ int main(void){
  /* Simulate admitted owners only in the mock, then verify surprise revokes
   * both under one lock before any unmap. D0 does not enable either in reality. */
  testContext.regs.online=1;testContext.pmic.online=1;
- ParentSurprise(&testContext);assert(!testContext.regs.online && !testContext.pmic.online && unmaps==0);
+ testContext.wifiActive=1;testContext.wifiGeneration=9;
+ assert(wifi.Live(wifi.Header.Context,9)==1 && !wifi.Live(wifi.Header.Context,8));
+ assert(!wifi.UpdateShared(wifi.Header.Context,9,1,0x300,7u<<12,0));
+ assert(wifi.UpdateShared(wifi.Header.Context,9,1,0x310,7u<<9,0)!=0);
+ assert(!wifi.WriteShared(wifi.Header.Context,9,0,0xa0,2));
+ assert(wifi.WriteShared(wifi.Header.Context,9,0,0xa0,3)!=0);
+ assert(reads==1 && writes==2);reads=writes=0;
+ ParentSurprise(&testContext);assert(!testContext.regs.online && !testContext.pmic.online && !testContext.wifiActive && unmaps==0);
  assert(!ParentD0Exit(&testContext,0));
  assert(!ParentRelease(&testContext,&list) && unmaps==4);
  assert(saved.ReadButtons(saved.Header.Context,&value)==STATUS_DEVICE_NOT_READY && !reads && !writes);

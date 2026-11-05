@@ -49,7 +49,7 @@ static NTSTATUS a04_query_parent(struct a04_ndis_context *a)
  if(status==STATUS_PENDING){KeWaitForSingleObject(&event,Executive,KernelMode,FALSE,NULL);status=ios.Status;}
  if(!NT_SUCCESS(status))return status;
  if(a->parent.Header.Size!=sizeof(a->parent) || a->parent.Header.Version!=A04_SHARED_WIFI_INTERFACE_VERSION ||
-    !a->parent.Header.InterfaceDereference || !a->parent.Acquire || !a->parent.ReleaseQuiescent) {
+    !a->parent.Header.InterfaceDereference || !a->parent.Acquire || !a->parent.ReleaseQuiescent || !a->parent.Live || !a->parent.UpdateShared || !a->parent.WriteShared) {
   if(a->parent.Header.InterfaceDereference)a->parent.Header.InterfaceDereference(a->parent.Header.Context);
   RtlZeroMemory(&a->parent,sizeof(a->parent));return STATUS_INVALID_DEVICE_STATE;
  }

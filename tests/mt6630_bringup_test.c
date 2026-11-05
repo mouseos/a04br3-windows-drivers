@@ -9,6 +9,7 @@ static int qual(void *p){return ((struct fake*)p)->lease;}
 static int same(void *p,const struct a04_wifi_owner *o,unsigned g){struct fake *f=p;f->same_calls++;return f->lease&&f->same_calls!=f->deny_same_on&&o->active&&g==o->generation;}
 static int rd(void *p,enum a04_wifi_board_bank b,unsigned off,uint32_t *v){struct fake *f=p;f->ops++;*v=f->reg[b][off/4];if(b==A04_WIFI_MSDC&&off==0){*v&=~4u;*v|=0x80;}return 0;}
 static int wr(void *p,enum a04_wifi_board_bank b,unsigned off,uint32_t v){struct fake *f=p;f->ops++;f->reg[b][off/4]=v;return 0;}
+static int update_shared(void *p,enum a04_wifi_board_bank b,unsigned off,uint32_t mask,uint32_t value){struct fake *f=p;f->ops++;f->reg[b][off/4]=(f->reg[b][off/4]&~mask)|value;return 0;}
 static int wait(void *p,unsigned ms){struct fake *f=p;f->ops++;if(f->lose_after_board && ms==10 && f->ops>20)f->lease=0;return 0;}
 static uint32_t pio_rd(void *p,unsigned off,unsigned width){struct fake *f=p;(void)width;if(off==0xc)return f->status;if(off==0x40)return f->response;return 0;}
 static void pio_wr(void *p,unsigned off,uint32_t v,unsigned width){struct fake *f=p;unsigned cmd,addr;(void)width;
@@ -20,7 +21,7 @@ static int lease_release(void *p,enum a04_lease_resource r){(void)p;(void)r;retu
 static int lease_drain(void *p){(void)p;return 0;}
 static int cleanup(void *p){((struct fake*)p)->cleaned++;return 0;}
 int main(void){struct fake f={0};struct a04_wifi_owner owner={0,1,1,1,1,1,0,0};struct a04_wifi_life life={0};struct a04_wifi_board board={0};struct a04_sdio_card_info out;
- struct a04_wifi_board_io io={&f,qual,rd,wr,wait};struct a04_msdc2_pio pio={&f,pio_rd,pio_wr,delay,&owner,0,0};struct a04_wifi_life_ops ops={&f,cleanup,cleanup,cleanup,cleanup};
+ struct a04_wifi_board_io io={&f,qual,rd,wr,wait,update_shared};struct a04_msdc2_pio pio={&f,pio_rd,pio_wr,delay,&owner,0,0};struct a04_wifi_life_ops ops={&f,cleanup,cleanup,cleanup,cleanup};
  const uint8_t cis[]={0x20,4,0x7a,0x03,0x30,0x66,0xff};f.lease=1;f.mem[10]=1;memcpy(f.mem+256,cis,sizeof cis);assert(!a04_wifi_admit(&owner));
  assert(a04_wifi_bringup(&board,&io,&life,&pio,0x80000000u,&ops,&out,same,&f)<0 && !f.ops && !f.cmds);
  assert(!a04_wifi_bringup(&board,&io,&life,&pio,0x100000,&ops,&out,same,&f));

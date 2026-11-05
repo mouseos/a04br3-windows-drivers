@@ -15,7 +15,7 @@
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
-typedef struct { PVOID topck,infra,gpio,pwrap; FAST_MUTEX pwrapLock; struct a04_pwrap_owner pmic; struct a04_register_owner regs; } A04_PARENT_CONTEXT;
+typedef struct { PVOID topck,infra,gpio,pwrap; FAST_MUTEX pwrapLock; struct a04_pwrap_owner pmic; struct a04_register_owner regs; ULONG wifiGeneration; int wifiActive; } A04_PARENT_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_PARENT_CONTEXT,ParentContext)
 EVT_WDF_DRIVER_DEVICE_ADD ParentAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE ParentPrepare;
@@ -88,6 +88,56 @@ static int ParentButtonRead(PVOID context,USHORT *value)
 /* No combo/firmware ownership or IRQ lifetime has been proven. */
 static NTSTATUS ParentWifiAcquire(PVOID context,ULONG *generation) { UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(generation);return STATUS_DEVICE_NOT_READY; }
 static NTSTATUS ParentWifiRelease(PVOID context,ULONG generation) { UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(generation);return STATUS_DEVICE_NOT_READY; }
+/* Board operations share the touch mutex. No lease is granted by this probe;
+ * these callbacks become usable only after a real parent has established and
+ * serialized the complete resource/IRQ/power contract. */
+static int ParentWifiLive(PVOID context,ULONG generation)
+{
+ A04_PARENT_CONTEXT *c;int ok;
+ if(!context||KeGetCurrentIrql()!=PASSIVE_LEVEL)return 0;
+ c=ParentContext((WDFDEVICE)context);ExAcquireFastMutex(&c->pwrapLock);
+ ok=c->wifiActive && c->regs.online && !c->regs.poisoned && generation && generation==c->wifiGeneration;
+ ExReleaseFastMutex(&c->pwrapLock);return ok;
+}
+static int ParentWifiUpdateAllowed(unsigned bank,unsigned off,ULONG clear,ULONG set)
+{
+ unsigned p,shift;
+ if(bank==0)return off==0x40 && clear==(7u<<3) && set==0;
+ if(bank!=1)return 0;
+ for(p=0;p<8;p++){
+  static const unsigned pins[]={4,7,68,69,70,71,72,73};
+  unsigned pin=pins[p];shift=(pin%5)*3;
+  if(off==0x300+(pin/5)*16 && clear==(7u<<shift) && set==((pin>=68?1u:0u)<<shift))return 1;
+ }
+ return 0;
+}
+static int ParentWifiWriteAllowed(unsigned b,unsigned off,ULONG v)
+{
+ if(b==0)return (off==0xa0&&v==2)||(off==0x9c&&v==1)||(off==0x6c&&v==(1u<<30))||(off==0xb0&&v==2);
+ if(b!=1)return 0;
+ return ((off==0x104||off==0x108||off==4)&&(v==(1u<<4)||v==(1u<<7))) ||
+  (off==0xe48&&v==((1u<<6)|(1u<<5)|(1u<<10)|(1u<<9)|(1u<<14)|(1u<<13))) ||
+  (off==0xe44&&v==((1u<<4)|(1u<<8)|(1u<<12))) ||
+  (off==0xe58&&v==((1u<<10)|(1u<<9)|(1u<<2)|(1u<<1)|(1u<<4))) ||
+  (off==0xe54&&v==((1u<<8)|1u|(1u<<6)|(1u<<5))) || (off==0x934&&v==0x7e);
+}
+static int ParentWifiOperation(PVOID context,ULONG generation,unsigned bank,unsigned off,ULONG clear,ULONG value,int update)
+{
+ A04_PARENT_CONTEXT *c;enum a04_shared_bank b;uint32_t old;int result=-1;
+ if(!context||KeGetCurrentIrql()!=PASSIVE_LEVEL || (update?!ParentWifiUpdateAllowed(bank,off,clear,value):!ParentWifiWriteAllowed(bank,off,value)))return -1;
+ c=ParentContext((WDFDEVICE)context);b=bank==0?A04_SHARED_TOP:A04_SHARED_GPIO;
+ ExAcquireFastMutex(&c->pwrapLock);
+ if(!c->wifiActive||!generation||generation!=c->wifiGeneration||!c->regs.online||c->regs.poisoned)goto done;
+ if(update){if(ParentRegRead(c,b,off,&old)||old==UINT32_MAX)goto fault;value=(old&~clear)|value;}
+ if(ParentRegWrite(c,b,off,value))goto fault;
+ result=0;goto done;
+fault:c->regs.poisoned=1;c->wifiActive=0;
+done:ExReleaseFastMutex(&c->pwrapLock);return result;
+}
+static int ParentWifiUpdate(PVOID c,ULONG g,unsigned b,unsigned o,ULONG clear,ULONG set)
+{return ParentWifiOperation(c,g,b,o,clear,set,1);}
+static int ParentWifiWrite(PVOID c,ULONG g,unsigned b,unsigned o,ULONG v)
+{return ParentWifiOperation(c,g,b,o,0,v,0);}
 static int ParentAudioAcquire(PVOID context,ULONG rate) { UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(rate);return -1; }
 static int ParentAudioRelease(PVOID context) { UNREFERENCED_PARAMETER(context);return -1; }
 static VOID ParentInterfaceReference(PVOID context) { WdfObjectReference((WDFDEVICE)context); }
@@ -104,6 +154,7 @@ static void ParentStop(A04_PARENT_CONTEXT *c)
     /* Both owners share this mutex. Close admission in one critical section
      * before any mapping is released; neither client can enter in between. */
     ExAcquireFastMutex(&c->pwrapLock);
+    c->wifiActive=0;
     c->regs.online=0;
     c->pmic.online=0;
     ExReleaseFastMutex(&c->pwrapLock);
@@ -288,6 +339,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     wifiIface.Header.Context=dev;wifiIface.Header.InterfaceReference=ParentInterfaceReference;
     wifiIface.Header.InterfaceDereference=ParentInterfaceDereference;
     wifiIface.Acquire=ParentWifiAcquire;wifiIface.ReleaseQuiescent=ParentWifiRelease;
+    wifiIface.Live=ParentWifiLive;wifiIface.UpdateShared=ParentWifiUpdate;wifiIface.WriteShared=ParentWifiWrite;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&wifiIface,&A04SharedWifiInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
 #endif

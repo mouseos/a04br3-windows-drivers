@@ -6,7 +6,7 @@ int a04_wifi_bringup(struct a04_wifi_board *board,const struct a04_wifi_board_io
  int (*same_lease)(void *,const struct a04_wifi_owner *,unsigned),void *context)
 {
  struct a04_sdio_card_info card;
- if(!board||!io||!io->qualified||!io->read||!io->write||!io->delay_ms||
+ if(!board||!io||!io->qualified||!io->read||!io->write||!io->delay_ms||!io->update_shared||
     !life||life->state!=A04_WIFI_LIFE_OFF||!pio||!pio->owner||!pio->read||!pio->write||!pio->delay||
     !ops||!ops->mask_and_drain_irq||!ops->drain_io||!ops->unmap_host||!ops->release_lease||
     !out||!same_lease||!ocr||(ocr&~0x00ff8000u)||board->started||board->ready||board->poisoned||pio->poisoned||pio->owner->poisoned||!pio->owner->active||

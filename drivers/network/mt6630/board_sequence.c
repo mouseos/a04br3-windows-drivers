@@ -11,7 +11,10 @@ static int write_checked(const struct a04_wifi_board_io *io,enum a04_wifi_board_
 static int delay_checked(const struct a04_wifi_board_io *io,unsigned ms)
 { return !ready(io) || io->delay_ms(io->context,ms) || !ready(io) ? -1:0; }
 static int update(const struct a04_wifi_board_io *io,enum a04_wifi_board_bank bank,unsigned offset,uint32_t clear,uint32_t set)
-{uint32_t value;if(read_checked(io,bank,offset,&value))return -1;return write_checked(io,bank,offset,(value&~clear)|set);}
+{uint32_t value;
+ if(bank!=A04_WIFI_MSDC)return !ready(io)||!io->update_shared||io->update_shared(io->context,bank,offset,clear,set)?-1:0;
+ if(read_checked(io,bank,offset,&value))return -1;
+ return write_checked(io,bank,offset,(value&~clear)|set);}
 static int pin(const struct a04_wifi_board_io *io,unsigned p,unsigned mode)
 {unsigned shift=(p%5)*3;return update(io,A04_WIFI_GPIO,0x300+(p/5)*16,7u<<shift,mode<<shift);}
 static int output(const struct a04_wifi_board_io *io,unsigned p,int high)
@@ -21,7 +24,7 @@ static int wait_reg(const struct a04_wifi_board_io *io,unsigned offset,uint32_t 
 int a04_wifi_board_start(struct a04_wifi_board *s,const struct a04_wifi_board_io *io)
 {
  unsigned p;
- if(!s||!io||!io->qualified||!io->read||!io->write||!io->delay_ms||s->started||s->poisoned||!ready(io))return -1;
+ if(!s||!io||!io->qualified||!io->read||!io->write||!io->delay_ms||!io->update_shared||s->started||s->poisoned||!ready(io))return -1;
  s->started=1;
 #define WRITE(bank,off,val) do{if(write_checked(io,bank,off,val))goto fail;}while(0)
 #define DELAY(ms) do{if(delay_checked(io,ms))goto fail;}while(0)
