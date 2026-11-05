@@ -74,8 +74,8 @@ touch expects only I2C0 MMIO. Each obtains the prototype query interface in
 PrepareHardware, stops and drains its timer before dereferencing in Release,
 and fails rather than mapping shared ranges when the interface is absent.
 These clients require actual child stacks and a provider that maintains the
-documented lifetime and power contract. No online provider or child PDO currently
-exists, and interface references alone cannot keep physical hardware present
+documented lifetime and power contract. No operational online provider or
+validated enumerated child PDO currently exists, and interface references alone cannot keep physical hardware present
 or powered. The remaining local keypad and I2C accesses also need a verified
 surprise-removal design. These compile-only clients are not installable builds.
 

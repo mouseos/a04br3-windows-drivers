@@ -83,3 +83,19 @@ installation remain separate development steps.
 `A04_BUTTON_TRACE=1` additionally maps the shared board UART and logs endpoint,
 sampling and notification status for temporary diagnostics. It is off by
 default, shares the UART with firmware, and is not a production logging design.
+
+The opt-in `A04_BUTTON_SHARED_PARENT=1` provider now requires paired raw and
+translated PnP resources: exactly one exclusive keypad memory range, identified
+by its raw board address, and no child-owned PWRAP range. It maps only the
+translated keypad range. It validates the referenced parent's interface size,
+version, context and callbacks, and compiles out direct WACS2 access callbacks.
+A query or mapping failure releases any acquired interface; release stops and
+drains the timer before dropping the reference. See Microsoft's [raw and
+translated resource documentation](https://learn.microsoft.com/en-us/windows-hardware/drivers/wdf/raw-and-translated-resources)
+and [WdfFdoQueryForInterface](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdffdo/nf-wdffdo-wdffdoqueryforinterface).
+
+This is a compile-only migration path, not a live replacement. The existing
+standalone button device still owns PWRAP unless platform enumeration moves it
+under the shared parent and disables the legacy claimant. The parent prototype
+still rejects D0; no automatic fallback or concurrent deployment is safe. No
+hardware or surprise-removal behavior has been verified.
