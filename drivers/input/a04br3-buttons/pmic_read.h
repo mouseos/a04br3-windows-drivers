@@ -28,9 +28,16 @@ int a04_pmic_spk_clock_status(struct a04_pmic_read *,uint16_t *);
 int a04_pmic_audio_observe(struct a04_pmic_read *bus,struct a04_mt6392_audio_raw *out);
 #if defined(A04_MT6392_WRITE_DIAGNOSTIC) && A04_MT6392_WRITE_DIAGNOSTIC
 /* Caller holds the common PWRAP lock; only Class D masks/values allowed.
- * TOP_CKPDN1 SET/CLR aliases are deliberately rejected. */
+ * SET/CLR aliases are rejected here and use a separate guarded lease. */
 int a04_pmic_classd_supported(uint16_t,uint16_t,uint16_t);
 int a04_pmic_classd_update(struct a04_pmic_read *,uint16_t,uint16_t,uint16_t);
 int a04_pmic_classd_read_gain(struct a04_pmic_read *,uint16_t,uint16_t *);
+#if defined(A04_MT6392_CLK_ALIAS_EXPERIMENT) && A04_MT6392_CLK_ALIAS_EXPERIMENT
+/* Caller holds PWRAP lock and must independently prove exclusive ownership,
+ * retained power and quiescence. Saved state is never cleared after failure. */
+struct a04_pmic_spk_clock { uint16_t original; int held; };
+int a04_pmic_spk_clock_acquire(struct a04_pmic_read *,struct a04_pmic_spk_clock *);
+int a04_pmic_spk_clock_release(struct a04_pmic_read *,struct a04_pmic_spk_clock *);
+#endif
 #endif
 #endif

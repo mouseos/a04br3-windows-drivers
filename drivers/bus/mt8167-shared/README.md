@@ -243,3 +243,19 @@ quiescence remain unresolved and the audio lease remains offline.
 Sources: [ASoC](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/sound/soc/soc-io.c),
 [regmap](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/drivers/base/regmap/regmap.c),
 and [board PMIC fields](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/drivers/misc/mediatek/include/mt-plat/mt8167/include/mach/upmu_hw.h).
+
+`A04_MT6392_CLK_ALIAS_EXPERIMENT=1` adds a default-off diagnostic
+interpretation of the MT6392 speaker clock aliases under the parent's same
+PWRAP lock. It snapshots TOP_CKPDN1, writes the previously set speaker PDN
+bits to CLR, and requires a base-register readback with those bits cleared
+and unrelated bits unchanged. After independently verified quiescence it
+writes only the originally set bits to SET and verifies restoration. A failed
+write/readback poisons the bus and retains the clock lease; it does not retry
+or attempt speculative rollback. Parent release refuses to unmap with such a
+lease. This SET-based restore is a diagnostic ownership strategy, not a claim
+that Linux executes the same stop operation: Linux performs update_bits on CLR
+with zero. The alias hardware behavior, retained power, other consumers and
+DMA drain have not been proven. The parent audio preflight, clock provider and
+codec quiescence callbacks are still absent, so the actual parent cannot
+execute the sequence or start audio even when all diagnostic flags are set.
+Host tests model alias behavior; they do not prove it on the device.

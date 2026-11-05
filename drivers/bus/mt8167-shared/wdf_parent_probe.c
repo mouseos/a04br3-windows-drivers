@@ -11,6 +11,9 @@
 #include "client_interface.h"
 #include "audio_interface.h"
 #include "audio_owner.h"
+#ifndef A04_MT6392_CLK_ALIAS_EXPERIMENT
+#define A04_MT6392_CLK_ALIAS_EXPERIMENT 0
+#endif
 #ifndef A04_SHARED_MT6392_DIAGNOSTIC
 #define A04_SHARED_MT6392_DIAGNOSTIC 0
 #endif
@@ -29,6 +32,9 @@
 #ifndef A04_SHARED_BUTTON_D0_EXPERIMENT
 #define A04_SHARED_BUTTON_D0_EXPERIMENT 0
 #endif
+#if A04_MT6392_CLK_ALIAS_EXPERIMENT && !A04_SHARED_MT6392_DIAGNOSTIC
+#error A04_MT6392_CLK_ALIAS_EXPERIMENT requires MT6392 diagnostics
+#endif
 #if A04_SHARED_MT6392_DIAGNOSTIC && (!defined(A04_SHARED_QUERY_EXPERIMENTAL) || !A04_SHARED_QUERY_EXPERIMENTAL || !A04_SHARED_APMIXED_RESOURCE || !A04_SHARED_BUTTON_D0_EXPERIMENT)
 #error A04_SHARED_MT6392_DIAGNOSTIC requires query, APMIXED and button D0 diagnostics
 #endif
@@ -41,6 +47,9 @@
 typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio;
 #if A04_SHARED_MT6392_DIAGNOSTIC
 struct a04_mt6392_classd classd;
+#if A04_MT6392_CLK_ALIAS_EXPERIMENT
+struct a04_pmic_spk_clock speakerClock;
+#endif
 #endif
 } A04_PARENT_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_PARENT_CONTEXT,ParentContext)
@@ -124,11 +133,22 @@ static int ParentButtonRead(PVOID context,USHORT *value)
  * prerequisites and bus callbacks are deliberately unset until a real board
  * mute, retained power, exclusive clock and safe WACS2 writer are proven. */
 static int ParentCodecSupports(void *context,uint16_t reg,uint16_t mask,uint16_t value) {
-    UNREFERENCED_PARAMETER(context);return a04_pmic_classd_supported(reg,mask,value);
+    UNREFERENCED_PARAMETER(context);
+#if A04_MT6392_CLK_ALIAS_EXPERIMENT
+    if(reg==0x010cu && mask==0x000eu && (value==0 || value==0x000eu))return 0;
+#endif
+    return a04_pmic_classd_supported(reg,mask,value);
 }
 static int ParentCodecUpdate(void *context,uint16_t reg,uint16_t mask,uint16_t value) {
     A04_PARENT_CONTEXT *c=context;
     if(!c || !c->pmic.online)return -1;
+#if A04_MT6392_CLK_ALIAS_EXPERIMENT
+    if(reg==0x010cu && mask==0x000eu) {
+        if(value==0x000eu)return a04_pmic_spk_clock_acquire(&c->pmic.bus,&c->speakerClock);
+        if(value==0)return a04_pmic_spk_clock_release(&c->pmic.bus,&c->speakerClock);
+        return -1;
+    }
+#endif
     return a04_pmic_classd_update(&c->pmic.bus,reg,mask,value);
 }
 static int ParentCodecRead(void *context,uint16_t reg,uint16_t *value) {
@@ -190,6 +210,9 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
     /* Failed/partial audio ownership cannot be interpreted as quiescent.
      * Retain mappings; this is not proof PnP retains physical resources. */
     if(c->audio.poisoned || c->audio.leased)return STATUS_DEVICE_BUSY;
+#if A04_MT6392_CLK_ALIAS_EXPERIMENT
+    if(c->speakerClock.held)return STATUS_DEVICE_BUSY;
+#endif
     if(c->apmixed){MmUnmapIoSpace(c->apmixed,0x710);c->apmixed=NULL;}
     if(c->pwrap){MmUnmapIoSpace(c->pwrap,0x1000);c->pwrap=NULL;}
     if(c->gpio){MmUnmapIoSpace(c->gpio,0x1000);c->gpio=NULL;}

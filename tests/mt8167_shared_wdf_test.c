@@ -60,7 +60,11 @@ int main(void){
  assert(!ParentAdd(NULL,NULL));
 #if A04_SHARED_MT6392_DIAGNOSTIC
  assert(testContext.audio.codec_acquire_muted && testContext.audio.codec_release_quiescent);
+#if A04_MT6392_CLK_ALIAS_EXPERIMENT
+ assert(!ParentCodecSupports(&testContext,0x10c,0xe,0xe) && !reads && !writes);
+#else
  assert(ParentCodecSupports(&testContext,0x10c,0xe,0xe) && !reads && !writes);
+#endif
  ExAcquireFastMutex(&testContext.pwrapLock);
  assert(!ParentCodecDelay(&testContext,2000) && !ParentCodecDelay(&testContext,20000));
  assert(ParentCodecDelay(&testContext,1999));ExReleaseFastMutex(&testContext.pwrapLock);
@@ -123,6 +127,11 @@ int main(void){
  assert(audio.AcquireMuted(audio.Header.Context,48000)==-2 && !reads && !writes);
  assert(ParentRelease(&testContext,&list)==STATUS_DEVICE_BUSY && !unmaps && testContext.pwrap);
  testContext.audio.poisoned=0;
+#if A04_MT6392_CLK_ALIAS_EXPERIMENT
+ testContext.speakerClock.held=1;
+ assert(ParentRelease(&testContext,&list)==STATUS_DEVICE_BUSY && !unmaps && testContext.pwrap);
+ testContext.speakerClock.held=0;
+#endif
 
 #if A04_SHARED_APMIXED_RESOURCE
  assert((uintptr_t)testContext.apmixed==0x20018000);

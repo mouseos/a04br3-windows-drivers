@@ -90,4 +90,39 @@ int a04_pmic_classd_update(struct a04_pmic_read *bus,uint16_t address,uint16_t m
     if(after!=next) {bus->poisoned=1;return -1;}
     return 0;
 }
+
+#if defined(A04_MT6392_CLK_ALIAS_EXPERIMENT) && A04_MT6392_CLK_ALIAS_EXPERIMENT
+/* Diagnostic interpretation: writing 1s to CLR clears the matching base
+ * bits; SET restores only bits initially set. Linux names these as aliases,
+ * but this interpretation and exclusive ownership remain unverified. */
+static int spk_clock_write(struct a04_pmic_read *bus,uint16_t reg,uint16_t value)
+{
+    uint32_t ignored;
+    if(wait_fsm(bus,0,&ignored)) {bus->poisoned=1;return -1;}
+    bus->write32(bus->context,WACS2_CMD,0x80000000u | ((uint32_t)reg>>1)<<16 | value);
+    return 0;
+}
+int a04_pmic_spk_clock_acquire(struct a04_pmic_read *bus,struct a04_pmic_spk_clock *lease)
+{
+    uint16_t before,after;
+    if(!bus || !lease || bus->poisoned || lease->held)return -1;
+    if(read_register(bus,0x0108u,&before))return -1;
+    lease->original=before&0x000eu;lease->held=1;
+    if(lease->original && spk_clock_write(bus,0x010cu,lease->original))return -1;
+    if(read_register(bus,0x0108u,&after) || (after&0x000eu) ||
+       ((after^before)&0xfff1u)) {bus->poisoned=1;return -1;}
+    return 0;
+}
+int a04_pmic_spk_clock_release(struct a04_pmic_read *bus,struct a04_pmic_spk_clock *lease)
+{
+    uint16_t before,after;
+    if(!bus || !lease || bus->poisoned || !lease->held)return -1;
+    if(read_register(bus,0x0108u,&before))return -1;
+    if(before&0x000eu) {bus->poisoned=1;return -1;}
+    if(lease->original && spk_clock_write(bus,0x010au,lease->original))return -1;
+    if(read_register(bus,0x0108u,&after) || (after&0x000eu)!=lease->original ||
+       ((after^before)&0xfff1u)) {bus->poisoned=1;return -1;}
+    lease->held=0;lease->original=0;return 0;
+}
+#endif
 #endif
