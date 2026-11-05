@@ -36,3 +36,12 @@ copy provider now retains DMA allocations and refuses D0 exit when its transfer
 context exists; firmware shutdown alone is not proof of DMA quiescence. This
 conservative behavior blocks normal suspend/removal and must be replaced by a
 verified quiesce and recovery sequence before device deployment.
+
+The display-only present path finishes synchronously while holding its present
+mutex. StopDevice and StopDeviceAndReleasePostDisplayOwnership now take that
+same mutex before closing admission and unmapping the POST framebuffer; the
+latter also serializes blackout and display-info handoff. A new present after
+stop is rejected. This protects these paths only, and does not establish mode
+change, power transition, surprise removal, crash-display or GPU DMA lifetime.
+POST physical addresses are not DMA addresses and must not be passed directly
+to GE8300 without an OS-authorized mapping and retained ownership.
