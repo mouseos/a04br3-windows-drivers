@@ -12,9 +12,14 @@ struct a04_vendor_m1_11_memory {
     struct a04_rgx_fw_runtime *runtime;
     BOOLEAN staged;
     BOOLEAN hardware_owned;
+    BOOLEAN uncached;
 };
 /* PASSIVE_LEVEL only. Builds m1.11 FWIF memory but performs no MMIO. */
 NTSTATUS a04_vendor_m1_11_windows_stage(struct a04_vendor_m1_11_memory *m,
+    PDMA_ADAPTER adapter,const void *image,size_t bytes);
+/* Version-3 DMA adapter; builds in ordinary pool then uses aligned writes to
+ * device memory. No GPU execution or platform-resource acquisition. */
+NTSTATUS a04_vendor_m1_11_windows_stage_uncached(struct a04_vendor_m1_11_memory *m,
     PDMA_ADAPTER adapter,const void *image,size_t bytes);
 /* A hardware-owned allocation must remain pinned until a separately proven
  * DMA-quiescence path exists; this function will not free it. */

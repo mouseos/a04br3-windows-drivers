@@ -58,6 +58,8 @@ static void *alloc(PDMA_ADAPTER a,ULONG bytes,PHYSICAL_ADDRESS *pa,BOOLEAN cache
     if(count==fail_alloc)return NULL;
     return aligned_alloc(4096,bytes);
 }
+static void *alloc_ex(PDMA_ADAPTER a,PHYSICAL_ADDRESS *max,ULONG bytes,PHYSICAL_ADDRESS *pa,BOOLEAN cache,ULONG node)
+{ assert(max->QuadPart==0xffffffffLL && !cache && !node);return alloc(a,bytes,pa,cache); }
 static void release(PDMA_ADAPTER a,ULONG bytes,PHYSICAL_ADDRESS pa,void *p,BOOLEAN cache)
 {(void)a;(void)bytes;(void)pa;(void)cache;freed++;free(p);}
 unsigned KeGetCurrentIrql(void){return PASSIVE_LEVEL;}
@@ -172,5 +174,12 @@ int main(int argc,char **argv)
     if(a04_vendor_m1_11_windows_stage(&m,&adapter,image,n)!=STATUS_IO_TIMEOUT || freed!=5 || m.staged || barriers || pools) return 11;
     count=freed=syncs=barriers=0;fail_sync=0;fail_alloc=4;
     if(a04_vendor_m1_11_windows_stage(&m,&adapter,image,n)!=STATUS_INSUFFICIENT_RESOURCES || freed!=3 || pools || m.staged) return 13;
+    count=freed=syncs=barriers=0;fail_alloc=0;ops.Size=sizeof(ops);ops.AllocateCommonBufferEx=alloc_ex;
+    if(a04_vendor_m1_11_windows_stage_uncached(&m,&adapter,image,n)!=STATUS_SUCCESS || !m.uncached || !m.staged || pools!=1) return 37;
+    if(memcmp(m.buffers[1].cpu,code,cn) || m.runtime->main.cpu!=m.buffers[3].cpu ||
+       m.runtime->config.cpu!=m.buffers[4].cpu ||
+       (uintptr_t)m.runtime->trace->sTraceBuf[0].pui32TraceBuffer<(uintptr_t)m.buffers[3].cpu ||
+       (uintptr_t)m.runtime->trace->sTraceBuf[0].pui32TraceBuffer>=(uintptr_t)m.buffers[3].cpu+A04_RGX_MAIN_BYTES) return 38;
+    if(a04_vendor_m1_11_windows_free(&m)!=STATUS_SUCCESS || freed!=5 || pools) return 39;
     free(image);free(code);free(data);puts("GE8300 vendor m1.11 staging OK");return 0;
 }
