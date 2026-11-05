@@ -639,9 +639,9 @@ build/mt6630_power_bridge_test: drivers/network/mt6630/power_bridge.c drivers/ne
 
 test-mt6630: build/mt6630_power_bridge_test
 
-build/mt6630_nvram_test: drivers/network/mt6630/nvram.h drivers/network/mt6630/calibration.c tests/mt6630_nvram_test.c
+build/mt6630_nvram_test: drivers/network/mt6630/nvram.h drivers/network/mt6630/nvram_sector.h drivers/network/mt6630/nvram_sector.c drivers/network/mt6630/calibration.c tests/mt6630_nvram_test.c
 	@mkdir -p build
-	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/calibration.c tests/mt6630_nvram_test.c -o $@
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/calibration.c drivers/network/mt6630/nvram_sector.c tests/mt6630_nvram_test.c -o $@
 
 test-mt6630: build/mt6630_nvram_test
 
