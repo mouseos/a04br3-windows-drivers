@@ -22,7 +22,4 @@ NTSTATUS a04_vendor_m1_11_windows_fence(struct a04_vendor_start *start,
  * buffers stay hardware-owned even after STATUS_SUCCESS. */
 NTSTATUS a04_vendor_m1_11_windows_power_off(struct a04_vendor_start *start,
     BOOLEAN coherent_or_uncached);
-/* Diagnostic-only, serialized forced-idle then forced OFF. All DMA stays owned. */
-NTSTATUS a04_vendor_m1_11_windows_forced_power_off(struct a04_vendor_start *start,
-    BOOLEAN coherent_or_uncached,NTSTATUS *idle_status);
 #endif

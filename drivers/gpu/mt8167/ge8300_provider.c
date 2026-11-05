@@ -67,7 +67,7 @@
 #endif
 #if A04_GE8300_VENDOR_IRQ
 #include "vendor_m1_11/windows_irq.h"
-#include "vendor_m1_11/windows_command.h"
+#include "vendor_m1_11/windows_irq_snapshot.h"
 #endif
 #if A04_GE8300_VENDOR_UNCACHED_STAGE && !A04_GE8300_VENDOR_STAGE
 #error Uncached vendor staging requires vendor staging
