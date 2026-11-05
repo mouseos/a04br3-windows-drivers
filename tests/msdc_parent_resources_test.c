@@ -21,5 +21,15 @@ int main(void)
         tr[1].base=UINT64_MAX-0xffe;assert(a04_parent_translate_resources(raw,tr,4,&m)!=0 && !memcmp(&m,&old,sizeof m));
         tr[1].base=0x2000f000;tr[1].exclusive=0;assert(a04_parent_translate_resources(raw,tr,4,&m)!=0 && !memcmp(&m,&old,sizeof m));
     }
+    {
+        struct a04_parent_resource raw[5]={{0x10005000u,0x1000,1},{0x10018000u,0x710,1},{0x1000f000u,0x1000,1},{0x10000000u,0x1000,1},{0x10001000u,0x1000,1}};
+        struct a04_parent_resource tr[5]={{0x20005000u,0x1000,1},{0x20018000u,0x710,1},{0x2000f000u,0x1000,1},{0x20000000u,0x1000,1},{0x20001000u,0x1000,1}};
+        uint64_t ap=7;assert(!a04_parent_translate_audio_resources(raw,tr,5,&m,&ap) && ap==0x20018000 && m.pwrap==0x2000f000);
+        old=m;ap=7;tr[1].base=0x20000fff;assert(a04_parent_translate_audio_resources(raw,tr,5,&m,&ap) && ap==7 && !memcmp(&m,&old,sizeof m));
+        tr[1].base=0x20018000;tr[1].length=0x711;assert(a04_parent_translate_audio_resources(raw,tr,5,&m,&ap));
+        tr[1].length=0x710;tr[1].exclusive=0;assert(a04_parent_translate_audio_resources(raw,tr,5,&m,&ap));
+        tr[1].exclusive=1;raw[1].base=0x10018f00;assert(a04_parent_translate_audio_resources(raw,tr,5,&m,&ap));
+        raw[1].base=0x10018000;tr[1].base=UINT64_MAX-0x70d;assert(a04_parent_translate_audio_resources(raw,tr,5,&m,&ap));
+    }
     return 0;
 }

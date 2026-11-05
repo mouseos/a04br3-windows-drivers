@@ -3,7 +3,7 @@
 /* Compile actual parent in this test translation unit to inspect its context. */
 #include "../drivers/bus/mt8167-shared/wdf_parent_probe.c"
 #include "../drivers/audio/mt8167-afe/audio_parent_client.h"
-static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,assertClosedOnLock,closeDuringLock;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;
+static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,assertClosedOnLock,closeDuringLock,failMap;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;
 #if A04_SHARED_BUTTON_D0_EXPERIMENT
 static ULONG mockInit,mockFsm;static int mockStopDuringRead,mockWacs;
 #endif
@@ -11,7 +11,7 @@ static A04_CHILD_CONTEXT children[3];static unsigned child_count,forward_count,a
 A04_CHILD_CONTEXT *ChildContext(WDFDEVICE d){return (A04_CHILD_CONTEXT *)d;}
 A04_PARENT_CONTEXT *ParentContext(WDFDEVICE d){(void)d;return &testContext;}
 void ExInitializeFastMutex(FAST_MUTEX *m){m->held=0;}void ExAcquireFastMutex(FAST_MUTEX *m){if(assertClosedOnLock)assert(testContext.admissionClosed);assert(!m->held);m->held=1;if(closeDuringLock)InterlockedExchange(&testContext.admissionClosed,1);}void ExReleaseFastMutex(FAST_MUTEX *m){assert(m->held);m->held=0;}
-PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,int c){(void)n;(void)c;maps++;return (PVOID)(uintptr_t)a.QuadPart;}
+PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,int c){(void)n;(void)c;maps++;if(failMap && maps==failMap)return NULL;return (PVOID)(uintptr_t)a.QuadPart;}
 void MmUnmapIoSpace(PVOID p,ULONG n){(void)p;(void)n;unmaps++;}
 ULONG READ_REGISTER_ULONG(volatile ULONG *p){(void)p;reads++;
 #if A04_SHARED_BUTTON_D0_EXPERIMENT
@@ -44,7 +44,13 @@ NTSTATUS WdfIoResourceRequirementsListAppendIoResList(WDFIORESREQLIST r,WDFIORES
 NTSTATUS WdfFdoAddStaticChild(WDFDEVICE p,WDFDEVICE c){(void)p;(void)c;return 0;}
 void WdfObjectDelete(void *p){(void)p;deleted++;}
 int main(void){
- CM_PARTIAL_RESOURCE_DESCRIPTOR entries[4]={0},translated[4]={0};struct test_list list={entries,4},translatedList={translated,4};USHORT value=0xeeee;
+ CM_PARTIAL_RESOURCE_DESCRIPTOR entries[5]={0},translated[5]={0};struct test_list list={entries,4},translatedList={translated,4};USHORT value=0xeeee;
+#if A04_SHARED_APMIXED_RESOURCE
+ list.count=translatedList.count=5;
+ entries[4].Type=CmResourceTypeMemory;entries[4].ShareDisposition=CmResourceShareDeviceExclusive;
+ entries[4].u.Memory.Start.QuadPart=0x10018000;entries[4].u.Memory.Length=0x710;
+ translated[4]=entries[4];translated[4].u.Memory.Start.QuadPart=0x20018000;
+#endif
  entries[0].Type=entries[1].Type=entries[2].Type=entries[3].Type=CmResourceTypeMemory;
  entries[0].ShareDisposition=entries[1].ShareDisposition=entries[2].ShareDisposition=entries[3].ShareDisposition=CmResourceShareDeviceExclusive;
  entries[0].u.Memory.Start.QuadPart=0x10000000;entries[1].u.Memory.Start.QuadPart=0x10001000;entries[2].u.Memory.Start.QuadPart=0x10005000;entries[3].u.Memory.Start.QuadPart=0x1000f000;
@@ -92,8 +98,21 @@ int main(void){
  translated[1].u.Memory.Start.QuadPart=0x20001000;
  translated[3].ShareDisposition=0;assert(ParentPrepare(&testContext,&list,&translatedList)==STATUS_DEVICE_CONFIGURATION_ERROR && !maps);
  translated[3].ShareDisposition=CmResourceShareDeviceExclusive;
- assert(!ParentPrepare(&testContext,&list,&translatedList) && maps==4);
+#if A04_SHARED_APMIXED_RESOURCE
+ translated[4].u.Memory.Start.QuadPart=0x20000fff;
+ assert(ParentPrepare(&testContext,&list,&translatedList)==STATUS_DEVICE_CONFIGURATION_ERROR && !maps);
+ translated[4].u.Memory.Start.QuadPart=0x20018000;
+ failMap=5;assert(ParentPrepare(&testContext,&list,&translatedList)==STATUS_INSUFFICIENT_RESOURCES);
+ assert(maps==5 && unmaps==4 && !testContext.apmixed && !testContext.topck && !testContext.pwrap);
+ failMap=0;maps=unmaps=0;
+#endif
+ assert(!ParentPrepare(&testContext,&list,&translatedList) && maps==(A04_SHARED_APMIXED_RESOURCE?5:4));
  assert((uintptr_t)testContext.topck==0x20000000 && (uintptr_t)testContext.pwrap==0x2000f000);
+#if A04_SHARED_APMIXED_RESOURCE
+ assert((uintptr_t)testContext.apmixed==0x20018000);
+#else
+ assert(!testContext.apmixed);
+#endif
 #if A04_SHARED_BUTTON_D0_EXPERIMENT
  mockInit=0;mockFsm=0;assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY && !testContext.pmic.online && testContext.admissionClosed);
  mockInit=1;mockFsm=6;assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY && !testContext.pmic.online && testContext.admissionClosed);
@@ -120,7 +139,7 @@ int main(void){
  assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY);
  assert(ParentLock(&testContext)!=0 && !testContext.pwrapLock.held);
  assert(!ParentD0Exit(&testContext,0));
- assert(!ParentRelease(&testContext,&list) && unmaps==4);
+ assert(!ParentRelease(&testContext,&list) && unmaps==(A04_SHARED_APMIXED_RESOURCE?5:4));
  assert(saved.ReadButtons(saved.Header.Context,&value)==STATUS_DEVICE_NOT_READY && !reads && !writes);
  {int down=7;assert(input.TouchPen(input.Context,&down)!=0 && down==7);
  assert(input.ButtonPmicRead(input.Context,&value)!=0 && value==0xeeee);}

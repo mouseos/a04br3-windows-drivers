@@ -169,3 +169,18 @@ all audio leases without hardware access. The lifecycle of mappings and parent
 references on a quarantined lease must be implemented before enabling them.
 Linux MT8167 APLL selection and MT6392 speaker sequences are evidence for
 dependencies, not proof of exclusive Windows ownership or safe board gain.
+
+`A04_SHARED_APMIXED_RESOURCE=1` is a separate default-off PnP resource
+experiment. The parent requires five exclusive raw/translated memory pairs,
+including the MT8167 DTS APMIXED syscon `0x10018000+0x710`, validates all
+translated ranges against overlap, maps the translated APMIXED range and
+unmaps it during normal rundown. No APMIXED registers are accessed. The normal
+four-resource configuration remains unchanged and rejects the extra range.
+The codec DTS references APMIXED, AFE, TOP audio and PWRAP; APMIXED is shared
+with other users including the Linux thermal driver. ACPI firmware does not
+currently provide this fifth resource. Windows PnP exclusivity does not prove
+that firmware or drivers using direct MMIO have stopped, nor does mapping
+prove clock rates, rail retention, codec mute, or a safe DMA drain. The audio
+lease and all clock/codec writes remain disabled. Do not deploy this experiment.
+Sources: [MT8167 DTS](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/arch/arm64/boot/dts/mediatek/mt8167.dtsi),
+[A04BR3 DTS](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/arch/arm64/boot/dts/mediatek/a04br3.dts).

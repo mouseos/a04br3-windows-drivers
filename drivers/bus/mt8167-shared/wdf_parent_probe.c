@@ -11,6 +11,9 @@
 #include "client_interface.h"
 #include "audio_interface.h"
 #include "audio_owner.h"
+#ifndef A04_SHARED_APMIXED_RESOURCE
+#define A04_SHARED_APMIXED_RESOURCE 0
+#endif
 #ifndef A04_SHARED_BUTTON_D0_EXPERIMENT
 #define A04_SHARED_BUTTON_D0_EXPERIMENT 0
 #endif
@@ -20,7 +23,7 @@
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
-typedef struct { PVOID topck,infra,gpio,pwrap; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; } A04_PARENT_CONTEXT;
+typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; } A04_PARENT_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_PARENT_CONTEXT,ParentContext)
 EVT_WDF_DRIVER_DEVICE_ADD ParentAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE ParentPrepare;
@@ -134,6 +137,7 @@ static void ParentStop(A04_PARENT_CONTEXT *c)
 static void ParentUnmap(A04_PARENT_CONTEXT *c)
 {
     ParentStop(c);
+    if(c->apmixed){MmUnmapIoSpace(c->apmixed,0x710);c->apmixed=NULL;}
     if(c->pwrap){MmUnmapIoSpace(c->pwrap,0x1000);c->pwrap=NULL;}
     if(c->gpio){MmUnmapIoSpace(c->gpio,0x1000);c->gpio=NULL;}
     if(c->infra){MmUnmapIoSpace(c->infra,0x1000);c->infra=NULL;}
@@ -141,23 +145,30 @@ static void ParentUnmap(A04_PARENT_CONTEXT *c)
 }
 NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
-    A04_PARENT_CONTEXT *c=ParentContext(dev);struct a04_parent_resource r[4],t[4];
+    A04_PARENT_CONTEXT *c=ParentContext(dev);struct a04_parent_resource r[5],t[5];
     struct a04_parent_mapping mapping;ULONG i,n=0;PHYSICAL_ADDRESS pa;
-    if(c->topck||c->infra||c->gpio||c->pwrap)return STATUS_INVALID_DEVICE_STATE;
+#if A04_SHARED_APMIXED_RESOURCE
+    uint64_t apmixed;
+#endif
+    if(c->topck||c->infra||c->gpio||c->pwrap||c->apmixed)return STATUS_INVALID_DEVICE_STATE;
     if(!raw || !translated || WdfCmResourceListGetCount(raw)!=WdfCmResourceListGetCount(translated))return STATUS_DEVICE_CONFIGURATION_ERROR;
     for(i=0;i<WdfCmResourceListGetCount(translated);++i) {
         PCM_PARTIAL_RESOURCE_DESCRIPTOR d=WdfCmResourceListGetDescriptor(translated,i);
         PCM_PARTIAL_RESOURCE_DESCRIPTOR original=WdfCmResourceListGetDescriptor(raw,i);
         if(!d || !original || d->Type!=original->Type)return STATUS_DEVICE_CONFIGURATION_ERROR;
         if(d->Type!=CmResourceTypeMemory)continue;
-        if(n>=4)return STATUS_DEVICE_CONFIGURATION_ERROR;
+        if(n>=5)return STATUS_DEVICE_CONFIGURATION_ERROR;
         if(d->u.Memory.Start.QuadPart<0 || original->u.Memory.Start.QuadPart<0)return STATUS_DEVICE_CONFIGURATION_ERROR;
         r[n].base=(uint64_t)original->u.Memory.Start.QuadPart;r[n].length=original->u.Memory.Length;
         r[n].exclusive=original->ShareDisposition==CmResourceShareDeviceExclusive ? 1u:0u;
         t[n].base=(uint64_t)d->u.Memory.Start.QuadPart;t[n].length=d->u.Memory.Length;
         t[n].exclusive=d->ShareDisposition==CmResourceShareDeviceExclusive ? 1u:0u;++n;
     }
+#if A04_SHARED_APMIXED_RESOURCE
+    if(a04_parent_translate_audio_resources(r,t,n,&mapping,&apmixed))return STATUS_DEVICE_CONFIGURATION_ERROR;
+#else
     if(a04_parent_translate_resources(r,t,n,&mapping))return STATUS_DEVICE_CONFIGURATION_ERROR;
+#endif
     pa.QuadPart=(LONGLONG)mapping.topck;c->topck=MmMapIoSpace(pa,0x1000,MmNonCached);
     if(!c->topck)goto fail;
     pa.QuadPart=(LONGLONG)mapping.infra;c->infra=MmMapIoSpace(pa,0x1000,MmNonCached);
@@ -166,6 +177,10 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
     if(!c->gpio)goto fail;
     pa.QuadPart=(LONGLONG)mapping.pwrap;c->pwrap=MmMapIoSpace(pa,0x1000,MmNonCached);
     if(!c->pwrap)goto fail;
+#if A04_SHARED_APMIXED_RESOURCE
+    pa.QuadPart=(LONGLONG)apmixed;c->apmixed=MmMapIoSpace(pa,0x710,MmNonCached);
+    if(!c->apmixed)goto fail;
+#endif
     /* Mapping alone does not admit clients; D0 must establish readiness. */
     return STATUS_SUCCESS;
 fail:
