@@ -60,3 +60,15 @@ MDL のいずれかが残る場合は adapter・PDO・共通領域を解放し�
 ハードウェアのバスマッピングが PnP 削除後も有効であることや、保留 SRB の Storport
 による扱いを保証しない。最終 callback と StartIo/worker の実機上の順序、待機中の
 ロック依存、ARM DMA 同期も未検証で、起動拒否は維持する。
+
+Microsoft の [HwStorWorkItem](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/storport/nc-storport-hw_workitem)
+は callback 起動時に Storport がロックを取得しないと明記する。ただし最終解放 callback
+の間に worker の他の Storport API が内部で待つ可能性や、正常に queue 済みの作業と
+削除の全順序までは同記述から証明できない。`RequestComplete` 後の SRB は Storport
+所有であり、miniport は再参照できない。
+[common-buffer DMA](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/using-common-buffer-bus-master-dma)
+では要求バイト数の `BYTES_TO_PAGES` が `IoGetDmaAdapter` の map register 数を
+超えてはならず、PnP stop/remove 時に `FreeCommonBuffer` するよう規定する。従って
+停止不能 DMA のためバッファを保持し続ける現在の quarantine は PnP 完了の解決では
+なく、削除後のバスマッピング保持の根拠にもならない。ハードウェア停止と要求排出を
+正常に完了できる別経路が必要。実験ゲートを解除しない。

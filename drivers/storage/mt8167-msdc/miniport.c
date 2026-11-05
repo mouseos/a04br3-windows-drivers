@@ -142,7 +142,9 @@ static int A04OwnedDmaAllocate(PVOID extension, struct a04_probe_extension *prob
     desc.InterfaceType=config->AdapterInterfaceType;desc.BusNumber=config->SystemIoBusNumber;
     desc.MaximumLength=4096+alignment-1;
     owner->adapter=IoGetDmaAdapter(owner->pdo,&desc,&maps);
-    if(!owner->adapter || !maps || !owner->adapter->DmaOperations ||
+    /* AllocateCommonBuffer may require one map register per requested page;
+     * the returned adapter can expose fewer than the requested length. */
+    if(!owner->adapter || maps < BYTES_TO_PAGES(desc.MaximumLength) || !owner->adapter->DmaOperations ||
        !owner->adapter->DmaOperations->AllocateCommonBuffer ||
        !owner->adapter->DmaOperations->FreeCommonBuffer ||
        !owner->adapter->DmaOperations->PutDmaAdapter) {
