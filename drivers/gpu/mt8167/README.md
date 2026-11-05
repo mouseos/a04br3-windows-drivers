@@ -245,3 +245,21 @@ m1.11のRGXStopに対応するレジスタ停止処理も追加した。FWのOFF
 上記の未接続・未検証という記述は各追加時点の記録。端末専用UEFI `3a310ccc` と4 CPUのWinPEで、ドライバ `2d144a9` の診断経路はDMA v3アダプターの取得、非キャッシュ領域への準備、GE8300ファームウェア起動、GP SYNCの完了をUARTで確認した。`DEVICE_DESCRIPTION_VERSION3` では `Dma32BitAddresses` は無視され、`DmaAddressWidth` に非ゼロを指定する必要がある。詳細は [Microsoftの構造体仕様](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-_device_description)。
 
 続く `0f8cd0e` の実機診断では電源オフ要求後の状態は同期値1、電源状態IDLE、KCCB読取り・書込み位置とも2だった。Linux m1.11 DDKは応答後にOFFでなければ電源移行拒否として扱うため、`bb71457` はキュー消費・応答を確認した上でOFF以外ならビジーを返し、オンライン状態とDMA所有を維持する。停止後の安全なDMA解放、共有電源の所有、GPU描画および通常Windowsへの導入は未確認。WinPE専用の診断フラグは既定OFFのままであり、スナップショットは電源所有やDMA停止の証明ではない。
+
+
+### m1.11 context cleanup and power-off
+
+In the 98dea76 run at UART offset 16720324, all four context commands and
+the bounded 32x32 transfer reported success, but the power-off request returned
+`80000011`; the snapshot showed power sync 1, power state 1, KCCB read=write=9
+and FWCCB read=write=0. A later color-clear run showed the same result. These
+are observations, not proof that live contexts caused the rejection.
+
+The experimental m1.11 path now drains each known client CCB and sends the
+vendor DDK common-context CLEANUP command on its data master. RUN without BUSY
+and consumption of the KCCB entry are required for each context before the
+power-off request. BUSY leaves memory owned; timeout or invalid queue state
+poisons the context and stops further submissions. Partial cleanup forbids new
+work. Firmware cleanup and power acknowledgement do not prove external fabric
+quiescence; all DMA stays pinned and D0 exit remains guarded. This change is
+host-tested only; actual m1.11 cleanup and power-off are not yet verified.

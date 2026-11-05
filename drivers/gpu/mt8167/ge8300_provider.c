@@ -742,6 +742,15 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             }
         }
 #endif
+#if A04_GE8300_VENDOR_RENDER_COLD
+        if(NT_SUCCESS(c->status.health_status)) {
+            unsigned failed=4;
+            c->status.shutdown_status=a04_vendor_render_cleanup_contexts(&c->vendor_render,&c->vendor_start,&failed);
+            GpuPrint("A04GPU CONTEXT CLEANUP STATUS=");GpuHex(c->status.shutdown_status);
+            GpuPrint(" FAILED=");GpuHex(failed);GpuPrint(" MASK=");GpuHex(c->vendor_render.cleanup_mask);GpuPrint("\n");
+            if(!NT_SUCCESS(c->status.shutdown_status)) c->status.health_status=c->status.shutdown_status;
+        }
+#endif
         if(NT_SUCCESS(c->status.health_status))
             c->status.shutdown_status=a04_vendor_m1_11_windows_power_off(&c->vendor_start,TRUE);
         GpuPrint("A04GPU NATIVE OFF=");GpuHex(c->status.shutdown_status);GpuPrint("\n");
