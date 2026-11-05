@@ -7,7 +7,7 @@ struct a04_vendor_irq {
     WDFINTERRUPT interrupt;WDFWORKITEM work;
     volatile UCHAR *core;ULONG bytes;
     a04_vendor_irq_service service;void *context;
-    volatile LONG powered,sequence,serviced;
+    volatile LONG powered,sequence,serviced,work_busy;
 };
 typedef struct a04_vendor_irq A04_VENDOR_IRQ;
 typedef struct { struct a04_vendor_irq *owner; } WORK_OBJECT;
@@ -37,14 +37,22 @@ VOID a04_vendor_work(WDFWORKITEM work)
 {
     struct a04_vendor_irq *q=WorkObject(work)->owner;LONG sequence;
     if(!q || !q->service || !InterlockedCompareExchange(&q->powered,0,0)) return;
+    /* KMDF can run a newly enqueued instance before the previous callback
+     * completes. Serialize the sole FWCCB consumer independently of WDF. */
+    if(InterlockedCompareExchange(&q->work_busy,1,0)) return;
     sequence=InterlockedCompareExchange(&q->sequence,0,0);
-    if(sequence==InterlockedCompareExchange(&q->serviced,0,0)) return;
+    if(sequence==InterlockedCompareExchange(&q->serviced,0,0)) {
+        InterlockedExchange(&q->work_busy,0);
+        if(sequence!=InterlockedCompareExchange(&q->sequence,0,0) &&
+           InterlockedCompareExchange(&q->powered,0,0)) WdfWorkItemEnqueue(work);
+        return;
+    }
     /* On failure keep the sequence pending; never acknowledge unhandled FWCCB
      * commands. The owner retries after startup, queue service or recovery. */
-    if(NT_SUCCESS(q->service(q->context))) {
-        InterlockedExchange(&q->serviced,sequence);
-        if(sequence!=InterlockedCompareExchange(&q->sequence,0,0)) WdfWorkItemEnqueue(work);
-    }
+    if(NT_SUCCESS(q->service(q->context))) InterlockedExchange(&q->serviced,sequence);
+    InterlockedExchange(&q->work_busy,0);
+    if(sequence!=InterlockedCompareExchange(&q->sequence,0,0) &&
+       InterlockedCompareExchange(&q->powered,0,0)) WdfWorkItemEnqueue(work);
 }
 NTSTATUS a04_vendor_irq_create(WDFDEVICE device,a04_vendor_irq_service service,
     void *context,struct a04_vendor_irq **out)
