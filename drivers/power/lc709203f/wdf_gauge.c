@@ -12,6 +12,15 @@
 #ifndef A04_BQ24160_EXPERIMENTAL
 #define A04_BQ24160_EXPERIMENTAL 0
 #endif
+#ifndef A04_BROKER_CLIENT_EXPERIMENTAL
+#define A04_BROKER_CLIENT_EXPERIMENTAL 0
+#endif
+#if A04_BROKER_CLIENT_EXPERIMENTAL && !A04_BQ24160_EXPERIMENTAL
+#error Broker client build requires BQ experimental components
+#endif
+#if A04_BROKER_CLIENT_EXPERIMENTAL
+#include "../bq24160/broker_wdf.h"
+#endif
 #ifndef A04_BQHR_DIAGNOSTIC
 #define A04_BQHR_DIAGNOSTIC 0
 #endif
@@ -30,7 +39,11 @@ typedef struct {
     WDFTIMER timer;
     WDFWAITLOCK class_lock;
     WDFWAITLOCK bus_lock;
-#if A04_BQ24160_EXPERIMENTAL
+#if A04_BROKER_CLIENT_EXPERIMENTAL
+    WDFWAITLOCK broker_lock;
+    struct a04_broker_wdf broker;
+#endif
+#if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
     struct a04_bq_owner charger;
     struct a04_bq_bus charger_bus;
 #endif
@@ -90,7 +103,7 @@ static void delay(void *context, unsigned us)
 { UNREFERENCED_PARAMETER(context); KeStallExecutionProcessor(us); }
 static uint64_t now_ns(void *context)
 { UNREFERENCED_PARAMETER(context); return KeQueryInterruptTime() * 100u; }
-#if A04_BQ24160_EXPERIMENTAL
+#if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
 /* No Windows firmware handoff protocol exists yet. This gate is intentionally
  * closed even for the experimental build; a compile flag is not proof that
  * firmware stopped accessing I2C2 or that its last pet is recent. */
@@ -116,6 +129,12 @@ static void diagnose_bqhr(GAUGE_CONTEXT *c)
     }
 }
 #endif
+#if A04_BROKER_CLIENT_EXPERIMENTAL
+/* A future resolver must validate the owner, target lifetime, boot-local epoch,
+ * PnP resource exclusion and the shared clock before returning success. */
+static NTSTATUS broker_resolve(GAUGE_CONTEXT *c,WDFIOTARGET *target,uint64_t *epoch)
+{ UNREFERENCED_PARAMETER(c);UNREFERENCED_PARAMETER(target);UNREFERENCED_PARAMETER(epoch);return STATUS_DEVICE_NOT_READY; }
+#endif
 static void notify(GAUGE_CONTEXT *c)
 {
     WdfWaitLockAcquire(c->class_lock, NULL);
@@ -126,13 +145,23 @@ static void poll(GAUGE_CONTEXT *c)
 {
     struct a04_gauge_sample sample;
     BOOLEAN changed = FALSE;
-#if A04_BQ24160_EXPERIMENTAL
+#if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
     enum a04_bq_result result;
     uint64_t now;
 #endif
     WdfWaitLockAcquire(c->bus_lock, NULL);
     if (!c->online) { WdfWaitLockRelease(c->bus_lock); return; }
-#if A04_BQ24160_EXPERIMENTAL
+#if A04_BROKER_CLIENT_EXPERIMENTAL
+    {
+        uint64_t now=now_ns(c);
+        if (now>UINT64_MAX-2000000000ULL ||
+            a04_broker_wdf_read(&c->broker,now+2000000000ULL,&sample)) {
+            c->faulted=TRUE; InterlockedExchange(&c->online,0);
+            changed=a04_battery_invalidate(&c->battery);
+        } else changed=a04_battery_publish(&c->battery,&sample);
+    }
+#else
+#if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
     now = charger_now(&c->adapter);
     /* The first call requires a qualified firmware ownership handoff.
      * This experimental build has no validated handoff record, so it is
@@ -161,7 +190,7 @@ static void poll(GAUGE_CONTEXT *c)
          * Do not publish the gauge; the next periodic read can recover it.
          * A busy controller, NACK or timeout latches the shared bus fault. */
         if (c->adapter.faulted) {
-#if A04_BQ24160_EXPERIMENTAL
+#if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
             c->charger.stopped = 1;
 #endif
             c->faulted = TRUE;
@@ -171,6 +200,7 @@ static void poll(GAUGE_CONTEXT *c)
         trace(c, "A04BAT SAMPLE VALID\n");
         changed |= a04_battery_publish(&c->battery, &sample);
     }
+#endif
     WdfWaitLockRelease(c->bus_lock);
     if (changed) notify(c);
 }
@@ -179,6 +209,12 @@ NTSTATUS GaugePrepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translate
     GAUGE_CONTEXT *c = GaugeContext(device);
     ULONG i, found = 0;
     PHYSICAL_ADDRESS address;
+#if A04_BROKER_CLIENT_EXPERIMENTAL
+    /* No proven owner, timebase or non-overlapping PnP resources yet. Do not
+     * map I2C2 or attempt target discovery merely because this was built. */
+    UNREFERENCED_PARAMETER(c); UNREFERENCED_PARAMETER(raw); UNREFERENCED_PARAMETER(translated);
+    return STATUS_DEVICE_NOT_READY;
+#endif
     if (WdfCmResourceListGetCount(raw) != WdfCmResourceListGetCount(translated))
         return STATUS_DEVICE_CONFIGURATION_ERROR;
     for (i = 0; i < WdfCmResourceListGetCount(translated); ++i) {
@@ -218,11 +254,26 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
 {
     GAUGE_CONTEXT *c = GaugeContext(device);
     UNREFERENCED_PARAMETER(previous);
+#if A04_BROKER_CLIENT_EXPERIMENTAL
+    {
+        WDFIOTARGET target=NULL;
+        uint64_t epoch=0;
+        NTSTATUS status=broker_resolve(c,&target,&epoch);
+        if (!NT_SUCCESS(status) || c->faulted || !target || !epoch) return STATUS_DEVICE_NOT_READY;
+        if (a04_broker_wdf_init(&c->broker,target,c->broker_lock,A04_BROKER_INTERNAL_IOCTL,epoch))
+            return STATUS_DEVICE_NOT_READY;
+        InterlockedExchange(&c->online,1);
+        poll(c);
+        if (!c->online) { a04_broker_wdf_stop(&c->broker); return STATUS_DEVICE_HARDWARE_ERROR; }
+        WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(30000));
+        return STATUS_SUCCESS;
+    }
+#else
     if (!c->i2c || c->faulted) return STATUS_DEVICE_NOT_READY;
 #if A04_BQHR_DIAGNOSTIC
     diagnose_bqhr(c);
 #endif
-#if A04_BQ24160_EXPERIMENTAL
+#if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
     if (!charger_handoff_is_qualified()) return STATUS_DEVICE_NOT_READY;
 #endif
     trace(c, "A04BAT D0 ENTRY\n");
@@ -235,29 +286,30 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
         trace(c, "A04BAT I2C NOT READY\n"); return STATUS_DEVICE_NOT_READY;
     }
     trace(c, "A04BAT I2C READY\n");
-#if A04_BQ24160_EXPERIMENTAL
+#if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
     c->charger_bus.context = &c->adapter;
     c->charger_bus.now_ns = charger_now;
     c->charger_bus.read = a04_bq_mt8167_read;
     c->charger_bus.write_watchdog = a04_bq_mt8167_kick;
 #endif
     InterlockedExchange(&c->online, 1);
-#if A04_BQ24160_EXPERIMENTAL
+#if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
     /* Arm before any charger transaction. D0Exit synchronously cancels it. */
     WdfTimerStart(c->timer, WDF_REL_TIMEOUT_IN_MS(10000));
 #endif
     poll(c);
     if (!c->online) {
-#if A04_BQ24160_EXPERIMENTAL
+#if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
         WdfTimerStop(c->timer, TRUE);
         WdfTimerStop(c->timer, FALSE);
 #endif
         return STATUS_DEVICE_HARDWARE_ERROR;
     }
-#if !A04_BQ24160_EXPERIMENTAL
+#if !A04_BQ24160_EXPERIMENTAL || A04_BROKER_CLIENT_EXPERIMENTAL
     WdfTimerStart(c->timer, WDF_REL_TIMEOUT_IN_MS(30000));
 #endif
     return STATUS_SUCCESS;
+#endif
 }
 NTSTATUS GaugeD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
 {
@@ -268,7 +320,10 @@ NTSTATUS GaugeD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
     /* The callback may have rearmed immediately before observing offline. */
     WdfTimerStop(c->timer, FALSE);
     WdfWaitLockAcquire(c->bus_lock, NULL);
-#if A04_BQ24160_EXPERIMENTAL
+#if A04_BROKER_CLIENT_EXPERIMENTAL
+    a04_broker_wdf_stop(&c->broker);
+#endif
+#if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
     /* Do not pretend the charger was restored or restart after D0 loss. */
     if (c->charger.attempts || c->charger.kicks || c->charger.handoff_pending) {
         c->charger.stopped = 1;
@@ -283,7 +338,7 @@ VOID GaugePoll(WDFTIMER timer)
 {
     GAUGE_CONTEXT *c = GaugeContext((WDFDEVICE)WdfTimerGetParentObject(timer));
     poll(c);
-#if A04_BQ24160_EXPERIMENTAL
+#if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
     if (c->online) WdfTimerStart(timer, WDF_REL_TIMEOUT_IN_MS(10000));
 #else
     if (c->online) WdfTimerStart(timer, WDF_REL_TIMEOUT_IN_MS(30000));
@@ -358,6 +413,10 @@ NTSTATUS GaugeAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     if (!NT_SUCCESS(status)) return status;
     status = WdfWaitLockCreate(&child, &c->bus_lock);
     if (!NT_SUCCESS(status)) return status;
+#if A04_BROKER_CLIENT_EXPERIMENTAL
+    status = WdfWaitLockCreate(&child, &c->broker_lock);
+    if (!NT_SUCCESS(status)) return status;
+#endif
     status = WdfWaitLockCreate(&child, &c->battery.lock);
     if (!NT_SUCCESS(status)) return status;
     /* KMDF passive-level timers cannot be periodic. */

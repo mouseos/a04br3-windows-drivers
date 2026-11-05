@@ -13,15 +13,17 @@ $source = Join-Path $root 'drivers\power\lc709203f'
 $trace = if ($env:A04_LC709203F_TRACE -eq '1') { '1' } else { '0' }
 $charger = if ($env:A04_BQ24160_EXPERIMENTAL -eq '1') { '1' } else { '0' }
 $bqhr = if ($env:A04_BQHR_DIAGNOSTIC -eq '1') { '1' } else { '0' }
+$broker = if ($env:A04_BROKER_CLIENT_EXPERIMENTAL -eq '1') { '1' } else { '0' }
+if ($broker -eq '1' -and $charger -ne '1') { throw 'Broker client requires BQ experimental components' }
 $objects = @()
 foreach ($name in @('gauge','mt8167_i2c','battery_class','wdf_gauge')) {
-    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_LC709203F_TRACE=$trace" "-DA04_BQ24160_EXPERIMENTAL=$charger" "-DA04_BQHR_DIAGNOSTIC=$bqhr" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" -c (Join-Path $source "$name.c") -o (Join-Path $out "$name.obj")
+    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_LC709203F_TRACE=$trace" "-DA04_BQ24160_EXPERIMENTAL=$charger" "-DA04_BROKER_CLIENT_EXPERIMENTAL=$broker" "-DA04_BQHR_DIAGNOSTIC=$bqhr" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" -c (Join-Path $source "$name.c") -o (Join-Path $out "$name.obj")
     if ($LASTEXITCODE -ne 0) { throw "ARM LC709203F compilation failed: $name" }
     $objects += Join-Path $out "$name.obj"
 }
 if ($charger -eq '1') {
     $bqSource = Join-Path $root 'drivers\power\bq24160'
-    foreach ($name in @('charger','mt8167_i2c','broker_client','broker_wire','broker_wdf')) {
+    foreach ($name in @('charger','mt8167_i2c','broker_client','broker_wire','broker_wdf','broker_wdf_receiver','broker_mailbox','owner_broker')) {
         $obj = Join-Path $out "bq_$name.obj"
         & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" -c (Join-Path $bqSource "$name.c") -o $obj
         if ($LASTEXITCODE -ne 0) { throw "ARM BQ24160 compilation failed: $name" }
