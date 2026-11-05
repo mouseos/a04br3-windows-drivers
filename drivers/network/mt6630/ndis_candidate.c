@@ -2,6 +2,9 @@
  * NDIS adapter initialization and rundown. Hardware startup is not ready. */
 #include <ntddk.h>
 #include <ndis.h>
+#if defined(A04_NDIS_NVRAM_PROBE) && A04_NDIS_NVRAM_PROBE
+#include "windows_nvram.h"
+#endif
 #if defined(A04_NDIS_OID_BRIDGE) && A04_NDIS_OID_BRIDGE
 #include "native_oid_async.h"
 #include "../../bus/mt8167-shared/wifi_interface.h"
@@ -10,6 +13,9 @@ static NDIS_HANDLE g_driver;
 /* The context retains the miniport handle until asynchronous OIDs drain.
  * Initialize currently fails before registering a usable adapter. */
 struct a04_ndis_context { NDIS_HANDLE adapter;
+#if defined(A04_NDIS_NVRAM_PROBE) && A04_NDIS_NVRAM_PROBE
+ struct a04_windows_nvram_job nvram;NTSTATUS nvram_status;UCHAR calibration[512];
+#endif
 #if defined(A04_NDIS_OID_BRIDGE) && A04_NDIS_OID_BRIDGE
  struct a04_wmt_bridge bridge;
  struct a04_native_oid_context oid;
@@ -52,9 +58,21 @@ static NTSTATUS a04_query_parent(struct a04_ndis_context *a)
 #endif
 /* Called at PASSIVE_LEVEL after NDIS has stopped issuing callbacks. An OID
  * completion can reenter NDIS: retain the entire context until it returns. */
+#if defined(A04_NDIS_NVRAM_PROBE) && A04_NDIS_NVRAM_PROBE
+static void a04_nvram_complete(void *context,NTSTATUS status,const UCHAR *data)
+{
+ struct a04_ndis_context *a=(struct a04_ndis_context *)context;
+ a->nvram_status=status;
+ if(NT_SUCCESS(status)&&data)RtlCopyMemory(a->calibration,data,sizeof(a->calibration));
+}
+#endif
 static void a04_adapter_free(struct a04_ndis_context *a)
 {
  if(!a)return;
+#if defined(A04_NDIS_NVRAM_PROBE) && A04_NDIS_NVRAM_PROBE
+ a04_windows_nvram_drain(&a->nvram);
+ RtlSecureZeroMemory(a->calibration,sizeof(a->calibration));
+#endif
 #if defined(A04_NDIS_OID_BRIDGE) && A04_NDIS_OID_BRIDGE
  if(a->oid_async.initialized) {
   while(a04_native_oid_async_close(&a->oid_async,1000)==NDIS_STATUS_PENDING) { }
@@ -89,6 +107,16 @@ NDIS_STATUS A04MiniportInitialize(NDIS_HANDLE adapter,NDIS_HANDLE context,PNDIS_
  attr.MiniportAdapterContext=a;attr.InterfaceType=NdisInterfaceInternal;
  status=NdisMSetMiniportAttributes(adapter,(PNDIS_MINIPORT_ADAPTER_ATTRIBUTES)&attr);
  if(status!=NDIS_STATUS_SUCCESS)goto failed;
+#if defined(A04_NDIS_NVRAM_PROBE) && A04_NDIS_NVRAM_PROBE
+ /* Explicit diagnostic only: drain before rejecting this candidate. A real
+  * miniport must keep the job alive and continue asynchronously. */
+ status=a04_windows_nvram_init(&a->nvram,adapter,a04_nvram_complete,a);
+ if(status!=NDIS_STATUS_SUCCESS)goto failed;
+ status=a04_windows_nvram_start(&a->nvram);
+ if(status!=NDIS_STATUS_PENDING)goto failed;
+ a04_windows_nvram_drain(&a->nvram);
+ DbgPrintEx(DPFLTR_IHVNETWORK_ID,DPFLTR_INFO_LEVEL,"A04 MT6630: runtime NVRAM status=%08lx\n",a->nvram_status);
+#endif
 #if defined(A04_NDIS_OID_BRIDGE) && A04_NDIS_OID_BRIDGE
  a->oid.bridge=&a->bridge;
  status=a04_native_oid_async_init(&a->oid_async,adapter,&a->oid);

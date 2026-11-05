@@ -168,3 +168,12 @@ ExtSTA OOB通知へ渡す。PHY/rate indexは実際にadvertiseされた表を�
 領域のディスク範囲・サイズ・整数境界を検査する。Windowsのディスク探索、
 GPTの一意性検証、I/O提供、停止時の直列化は未接続であり、この部品だけでは
 実機から校正値を取得できない。合成NVRAMによるホスト試験のみである。
+
+`windows_nvram.c` は、システムボリュームが単一ディスク上にあることを確認し、
+Windowsのディスクinterfaceとstorage device numberを照合した後、GPT layoutから
+一意の `nvram` を探して読み取る。I/OはNDIS work itemで実行し、校正は検証後のみ
+callbackへ渡し、作業メモリを消去する。対応するSystemRootの名前空間は
+`\\Device\\HarddiskVolumeN` 形式に限定し、不明な構成や複数候補では失敗する。
+診断専用 `A04_NDIS_NVRAM_PROBE=1` ではNDIS初期化時にこの処理を実行した後、
+従来どおり初期化を拒否する。INFや署名済みパッケージはなく、実機では未検証。
+ディスク識別、非同期停止、校正反映、共有電源・SDIO・NDISの実動作を保証しない。

@@ -9,6 +9,7 @@ $new="#define A04_NDIS_HEX_I(x) 0x ## x`r`n#define A04_NDIS_HEX(x) A04_NDIS_HEX_
 if(!$header.Contains($old)) { throw 'Unrecognized WDK ndis.h; refusing overlay' }
 [IO.File]::WriteAllText((Join-Path $out 'ndis.h'),$header.Replace($old,$new),[Text.Encoding]::ASCII)
 $probeFlags=@();if($env:A04_NDIS_OID_BRIDGE -eq '1'){$probeFlags+= '-DA04_NDIS_OID_BRIDGE=1'}
+if($env:A04_NDIS_NVRAM_PROBE -eq '1'){$probeFlags+= '-DA04_NDIS_NVRAM_PROBE=1'}
 & clang @probeFlags --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\ndis_candidate.c" -o "$out\ndis.obj"
 if($LASTEXITCODE) { throw 'NDIS compile failed' }
 if($env:A04_NDIS_OID_BRIDGE -ne '1') {
@@ -38,3 +39,6 @@ if($LASTEXITCODE) { throw 'Native OID work item compile failed' }
 
 & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_hif_rx.c" -o "$out\native_hif_rx.obj"
 if($LASTEXITCODE) { throw 'Native HIF RX decoder compile failed' }
+
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\windows_nvram.c" -o "$out\windows_nvram.obj"
+if($LASTEXITCODE) { throw 'Windows NVRAM reader compile failed' }

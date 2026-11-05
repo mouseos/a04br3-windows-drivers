@@ -8,8 +8,9 @@ static uint8_t disk[A04_NVRAM_BLOCK*3];
 static void le32(uint8_t *p,uint32_t v){p[0]=(uint8_t)v;p[1]=(uint8_t)(v>>8);p[2]=(uint8_t)(v>>16);p[3]=(uint8_t)(v>>24);}
 static int readpart(void *ctx,uint32_t off,void *out,unsigned n)
 {(void)ctx;if(off>sizeof(disk)||n>sizeof(disk)-off)return 9;memcpy(out,disk+off,n);return 0;}
+static int fail_sector;
 static int readsector(void *ctx,uint64_t lba,uint8_t out[512])
-{(void)ctx;if(lba<8 || lba>=8+sizeof(disk)/512)return 9;memcpy(out,disk+(lba-8)*512,512);return 0;}
+{(void)ctx;if(fail_sector)return 9;if(lba<8 || lba>=8+sizeof(disk)/512)return 9;memcpy(out,disk+(lba-8)*512,512);return 0;}
 static void make_fixture(void)
 {
  uint8_t *map=disk,*d=disk+A04_NVRAM_BLOCK,*bitmap=disk+2*A04_NVRAM_BLOCK;uint32_t sum=0;unsigned c=0;
@@ -28,6 +29,10 @@ int main(void)
  struct a04_nvram_sector_reader sectors;struct a04_nvram_reader sr;
  assert(!a04_nvram_sector_init(&sectors,&sr,0,readsector,8,sizeof(disk)/512,8+sizeof(disk)/512));
  assert(!a04_mt6630_calibration_read(&sr,&w,out));
+ uint8_t cross[4];assert(!sr.read(sr.context,511,cross,sizeof(cross)));
+ assert(!memcmp(cross,disk+511,sizeof(cross)));
+ assert(sr.read(sr.context,(uint32_t)sizeof(disk)-1,cross,sizeof(cross)));
+ fail_sector=1;assert(a04_mt6630_calibration_read(&sr,&w,out)!=0);fail_sector=0;
  assert(a04_nvram_sector_init(&sectors,&sr,0,readsector,8,sizeof(disk)/512,7+sizeof(disk)/512));
  assert(a04_nvram_sector_init(&sectors,&sr,0,readsector,UINT64_MAX,1,UINT64_MAX));
  assert(!a04_mt6630_calibration_read(&r,&w,out));assert(out[4]==2 && out[9]==0x50 && out[196]==1);
