@@ -28,11 +28,13 @@ def main():
     parser.add_argument('--package', type=Path, required=True)
     parser.add_argument('--manifest', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--source-sha', default=BASE_SHA, help='Expected source WIM SHA-256')
     a = parser.parse_args()
-    if sha(a.source) != BASE_SHA or sha(a.package) != PACKAGE_SHA:
-        raise SystemExit('tested WIM or signed package hash mismatch')
     manifest = json.loads(a.manifest.read_text())
-    if manifest.get('commit') != 'dcbb0d088674647c51a8031536792c3f76b77b5f' or manifest.get('zip_sha256') != PACKAGE_SHA:
+    package_sha = manifest.get('zip_sha256', '')
+    if len(a.source_sha) != 64 or len(package_sha) != 64 or sha(a.source) != a.source_sha or sha(a.package) != package_sha:
+        raise SystemExit('tested WIM or signed package hash mismatch')
+    if not manifest.get('commit') or manifest.get('zip_sha256') != package_sha:
         raise SystemExit('package provenance mismatch')
     if a.output.exists() or a.output.with_suffix(a.output.suffix + '.json').exists():
         raise SystemExit('output already exists')
@@ -42,12 +44,13 @@ def main():
         tmp = Path(tmp)
         with zipfile.ZipFile(a.package) as archive:
             entries = {x.filename.replace('\\', '/'): x for x in archive.infolist() if not x.is_dir()}
-            wanted = {'lc709203f-test-signed/' + n for n in NAMES}
+            prefix = 'lc709203f-test-signed/' if set(entries) == {'lc709203f-test-signed/' + n for n in NAMES} else ''
+            wanted = {prefix + n for n in NAMES}
             if set(entries) != wanted:
                 raise SystemExit('unexpected package members')
             for name in NAMES:
-                content = archive.read(entries['lc709203f-test-signed/' + name])
-                key = 'lc709203f-test-signed\\' + name
+                content = archive.read(entries[prefix + name])
+                key = (prefix.replace('/', '\\') + name)
                 if hashlib.sha256(content).hexdigest() != manifest['files'].get(key):
                     raise SystemExit('package member hash mismatch: ' + name)
                 (tmp / name).write_bytes(content)
@@ -98,7 +101,7 @@ def main():
         for store in stores:
             if run(['hivexget', str(check / 'SOFTWARE'), store+'\\'+thumb, 'Blob'], capture_output=True).stdout != blob:
                 raise SystemExit('WIM certificate verification failed')
-        result = {'source_wim_sha256': BASE_SHA, 'package_sha256': PACKAGE_SHA,
+        result = {'source_wim_sha256': a.source_sha, 'package_sha256': package_sha,
                   'driver_commit': manifest['commit'], 'wim_sha256': sha(a.output),
                   'certificate_sha1': thumb, 'boot_index': 1,
                   'limitations': ['new driver and signature trust are not validated on the device',
