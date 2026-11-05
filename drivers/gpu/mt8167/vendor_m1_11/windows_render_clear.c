@@ -46,7 +46,7 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
     if(!locked && InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
     /* Cleanup can begin between the optimistic check and lock acquisition. */
     if(r->cleanup_started || r->clear_attempted || r->poisoned){status=STATUS_INVALID_DEVICE_STATE;goto done;}
-    if(s->command_poisoned){status=STATUS_IO_DEVICE_ERROR;goto done;}
+    if(s->command_poisoned || s->shutdown_started){status=STATUS_IO_DEVICE_ERROR;goto done;}
     status=queue_snapshot(f,&k,&q);if(!NT_SUCCESS(status))goto done;
     bank=r->buffer[0].cpu;sync=(volatile uint32_t *)(void *)(bank+r->layout.sync);
     output=(volatile uint32_t *)r->buffer[4].cpu;at=r->client_write[3];
@@ -174,7 +174,7 @@ NTSTATUS a04_vendor_render_next_tile(struct a04_vendor_render_cold *r,
     if(a04_vendor_clear_tile_build(&tile,&q))return STATUS_INVALID_PARAMETER;
     tile.image.payload[2]=colour;tile.image.expected=colour;
     if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
-    if(r->cleanup_started || r->poisoned || s->command_poisoned || !r->mapped ||
+    if(r->cleanup_started || r->poisoned || s->command_poisoned || s->shutdown_started || !r->mapped ||
        !r->clear_ready || !r->clear_attempted || !r->clear_verified || r->diagnostic_tile_index+1!=index ||
        !r->buffer[4].cpu || r->buffer[4].bytes!=65536u || !r->buffer[7].cpu ||
        !s->online || !s->memory || !s->memory->hardware_owned || s->memory!=r->firmware) {

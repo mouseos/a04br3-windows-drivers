@@ -12,7 +12,7 @@ struct a04_vendor_start {
     PHYSICAL_ADDRESS trampoline_logical;
     void *trampoline_cpu;
     uint64_t trampoline_dma;
-    BOOLEAN attempted,online,command_poisoned,power_off_ack;
+    BOOLEAN attempted,online,command_poisoned,power_off_ack,shutdown_started;
     volatile LONG command_busy;
     uint32_t command_sequence;
 };
