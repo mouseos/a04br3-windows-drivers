@@ -47,11 +47,13 @@ harness = r'''
 static uint64_t ticks;static int mode,locks,sends;static LONGLONG lock_timeout,io_timeout;
 struct fake_request { uint8_t buffer[48];size_t in_size,out_size;NTSTATUS status;ULONG_PTR information;int completed; };
 uint64_t KeQueryInterruptTime(void){return ticks;}
-NTSTATUS WdfWaitLockAcquire(WDFWAITLOCK l,LONGLONG *t){assert(l==(void*)2);if(t)lock_timeout=*t;if(mode==1)return 0x102;++locks;return 0;}
-void WdfWaitLockRelease(WDFWAITLOCK l){assert(l==(void*)2&&locks==1);--locks;}
+NTSTATUS WdfWaitLockAcquire(WDFWAITLOCK l,LONGLONG *t){assert(l==(void*)2||l==(void*)3);if(t)lock_timeout=*t;if(mode==1)return 0x102;++locks;return 0;}
+void WdfWaitLockRelease(WDFWAITLOCK l){assert((l==(void*)2||l==(void*)3)&&locks>0);--locks;}
 NTSTATUS WdfIoTargetSendInternalIoctlSynchronously(WDFIOTARGET t,void *request,ULONG code,WDF_MEMORY_DESCRIPTOR *in,WDF_MEMORY_DESCRIPTOR *out,WDF_REQUEST_SEND_OPTIONS *opts,ULONG_PTR *ret){
  struct a04_broker_request q;struct a04_broker_response r={0};
  assert(t==(void*)1&&!request&&code==0x1234&&locks==1&&opts->flags==1);++sends;io_timeout=opts->timeout;
+ if(mode==6){struct fake_request f;struct a04_broker_endpoint endpoint={0};memset(&f,0,sizeof(f));f.in_size=f.out_size=48;memcpy(f.buffer,in->p,48);
+  a04_broker_wdf_receive(&endpoint,(void*)3,&f,A04_BROKER_INTERNAL_IOCTL);if(f.status)return f.status;memcpy(out->p,f.buffer,48);*ret=f.information;return 0;}
  assert(!a04_broker_wire_request_decode(&q,in->p,(unsigned)in->n));
  r.epoch=q.epoch;r.sequence=q.sequence;r.result=A04_BROKER_OK;r.sample.voltage_mv=4000;r.sample.indicator_tenths_percent=525;r.sample.percent=50;
  if(mode==2)++r.sequence;if(mode==3)ticks=q.deadline/100;
@@ -61,7 +63,7 @@ NTSTATUS WdfRequestRetrieveInputBuffer(WDFREQUEST p,size_t minimum,PVOID *out,si
 NTSTATUS WdfRequestRetrieveOutputBuffer(WDFREQUEST p,size_t minimum,PVOID *out,size_t *n){struct fake_request *f=p;if(f->out_size<minimum)return -1;*out=f->buffer;*n=f->out_size;return 0;}
 void WdfRequestCompleteWithInformation(WDFREQUEST p,NTSTATUS s,ULONG_PTR n){struct fake_request *f=p;f->status=s;f->information=n;++f->completed;}
 int a04_broker_endpoint_dispatch(struct a04_broker_endpoint *e,const struct a04_broker_request *q,struct a04_broker_response *r){
- (void)e;assert(locks==1);++sends;if(q->epoch!=9 || q->sequence!=1)return -1;
+ (void)e;assert(locks==1||locks==2);++sends;if(q->epoch!=9 || q->sequence!=1)return -1;
  memset(r,0,sizeof(*r));r->epoch=q->epoch;r->sequence=q->sequence;r->result=A04_BROKER_OK;r->sample.voltage_mv=4000;r->sample.indicator_tenths_percent=525;r->sample.percent=50;return 0;
 }
 int main(void){struct a04_broker_wdf w;struct a04_gauge_sample out,old;int i;
@@ -72,6 +74,9 @@ int main(void){struct a04_broker_wdf w;struct a04_gauge_sample out,old;int i;
   else {assert(a04_broker_wdf_read(&w,100000,&out));assert(!memcmp(&out,&old,sizeof(out)));if(i==1)assert(!sends&&!w.client.stopped);else assert(w.client.stopped&&sends==1);}
   assert(!locks);
  }
+ memset(&w,0,sizeof(w));mode=6;locks=0;sends=0;ticks=100;
+ assert(!a04_broker_wdf_init(&w,(void*)1,(void*)2,0x1234,9));
+ assert(!a04_broker_wdf_read(&w,100000,&out));assert(out.voltage_mv==4000&&sends==2&&!locks);
  {struct fake_request f;struct a04_broker_request q={9,1,100000};struct a04_broker_response r;struct a04_broker_endpoint e={0};
   memset(&f,0,sizeof(f));f.in_size=f.out_size=48;ticks=100;mode=0;locks=0;sends=0;
   assert(!a04_broker_wire_request_encode(f.buffer,48,&q));
