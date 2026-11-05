@@ -596,7 +596,7 @@ test-gpu-vendor-m1-11: build/gpu_vendor_m1_11_stage_test
 	python3 tests/gpu_vendor_m1_11_fixture.py
 	./build/gpu_vendor_m1_11_stage_test build/vendor-m1-11-test/firmware.bin build/vendor-m1-11-test/code.bin build/vendor-m1-11-test/data.bin
 
-build/gpu_vendor_m1_11_stage_test: tests/gpu_vendor_m1_11_stage_test.c drivers/gpu/mt8167/vendor_m1_11/stage.c drivers/gpu/mt8167/vendor_m1_11/windows_stage.c drivers/gpu/mt8167/vendor_m1_11/stage.h drivers/gpu/mt8167/vendor_m1_11/windows_stage.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueFirmware.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueMipsMMU.h
+build/gpu_vendor_m1_11_stage_test: tests/gpu_vendor_m1_11_stage_test.c drivers/gpu/mt8167/vendor_m1_11/stage.c drivers/gpu/mt8167/vendor_m1_11/windows_stage.c drivers/gpu/mt8167/vendor_m1_11/stage.h drivers/gpu/mt8167/vendor_m1_11/windows_stage.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueFirmware.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueMipsMMU.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueRuntimeLayout.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueDDKABI.h
 	mkdir -p build
 	$(CC) $(CFLAGS) -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 tests/gpu_vendor_m1_11_stage_test.c drivers/gpu/mt8167/vendor_m1_11/stage.c drivers/gpu/mt8167/vendor_m1_11/windows_stage.c -o $@
 
