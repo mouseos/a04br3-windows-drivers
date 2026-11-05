@@ -182,8 +182,10 @@ int main(int argc,char **argv)
        (uintptr_t)m.runtime->trace->sTraceBuf[0].pui32TraceBuffer>=(uintptr_t)m.buffers[3].cpu+A04_RGX_MAIN_BYTES) return 38;
     registers=calloc(1,0x80000);if(!registers) return 39;
     memset(&start,0,sizeof(start));sim_memory=&m;simulate_ready=1;delays=0;
-    if(a04_vendor_m1_11_windows_start(&start,&m,registers,0x80000,0x001600280036001eULL,&power,TRUE)!=STATUS_SUCCESS ||
+    *(uint32_t *)(void *)(registers+0x8a8)=1;
+    if(a04_vendor_m1_11_windows_start(&start,&m,registers,0x80000,0x001600280036001eULL,&power,A04_VENDOR_IRQ_HANDLER_OWNS)!=STATUS_SUCCESS ||
        !m.hardware_owned || !start.online || syncs) return 40;
+    if(*(uint32_t *)(void *)(registers+0x8b0)!=0) return 42;
     release(&adapter,0x8000,start.trampoline_logical,start.trampoline_allocation,FALSE);
     m.hardware_owned=FALSE;
     if(a04_vendor_m1_11_windows_free(&m)!=STATUS_SUCCESS || freed!=6 || pools) return 41;

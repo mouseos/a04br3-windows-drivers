@@ -18,12 +18,12 @@ struct a04_rgx_exec_io {
 };
 enum { A04_EXEC_OK=0,A04_EXEC_INPUT=1,A04_EXEC_BUS=2,A04_EXEC_TIMEOUT=3 };
 static inline int a04_rgx_execute_start(const struct a04_rgx_start_input *input,
-    const struct a04_rgx_exec_io *io,uint32_t *irq_status)
+    const struct a04_rgx_exec_io *io,uint32_t *irq_status,int irq_owned_by_handler)
 {
     struct a04_rgx_start_plan plan;
     if (!input || (uint64_t)input->poll_budget*input->poll_delay_us>1000000 ||
         !io || !io->read32 || !io->read64 || !io->write32 || !io->write64 ||
-        !io->wait_us || !io->shared32 || !irq_status ||
+        !io->wait_us || !io->shared32 || !irq_status || (irq_owned_by_handler!=0 && irq_owned_by_handler!=1) ||
         a04_rgx_start_plan(input,&plan)!=A04_START_OK) return A04_EXEC_INPUT;
     /* Ready must be observed zero before even the first reset/wrapper write. */
     uint32_t ready_pa=(uint32_t)(input->init_pa+input->started_offset);
@@ -64,6 +64,9 @@ static inline int a04_rgx_execute_start(const struct a04_rgx_start_input *input,
             break;
         }
         case A04_START_READ_IRQ:
+            /* The connected interrupt handler owns status and W1C. Sampling
+             * here races it and must not consume or acknowledge its event. */
+            if (irq_owned_by_handler) { *irq_status=0;break; }
             *irq_status=io->read32(io->context,op->address);
             if (*irq_status==0xffffffffU) return A04_EXEC_BUS;
             break;

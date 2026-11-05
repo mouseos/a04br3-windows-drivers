@@ -52,7 +52,7 @@ static int power_valid(const struct a04_vendor_power_snapshot *p)
 }
 NTSTATUS a04_vendor_m1_11_windows_start(struct a04_vendor_start *s,
     struct a04_vendor_m1_11_memory *m,volatile UCHAR *core,ULONG core_bytes,
-    uint64_t observed_bvnc,const struct a04_vendor_power_snapshot *power,BOOLEAN irq_is_masked)
+    uint64_t observed_bvnc,const struct a04_vendor_power_snapshot *power,enum a04_vendor_irq_mode irq_mode)
 {
     struct a04_rgx_start_input input={0};struct a04_rgx_start_plan plan;
     struct start_io context;struct a04_rgx_exec_io io;
@@ -60,7 +60,8 @@ NTSTATUS a04_vendor_m1_11_windows_start(struct a04_vendor_start *s,
     NTSTATUS status=STATUS_DEVICE_CONFIGURATION_ERROR;
     if(!s || !m || !core || KeGetCurrentIrql()!=PASSIVE_LEVEL || s->attempted ||
        s->trampoline_allocation || !m->adapter || !m->staged || m->hardware_owned ||
-       core_bytes<0xa104u || ((ULONG_PTR)core&3u) || !power_valid(power) || irq_is_masked!=TRUE ||
+       core_bytes<0xa104u || ((ULONG_PTR)core&3u) || !power_valid(power) ||
+       (irq_mode!=A04_VENDOR_IRQ_MASKED && irq_mode!=A04_VENDOR_IRQ_HANDLER_OWNS) ||
        observed_bvnc!=0x001600280036001eULL || !m->runtime || !m->runtime->init)
         return STATUS_INVALID_DEVICE_STATE;
     s->memory=m;s->core=core;
@@ -107,7 +108,7 @@ NTSTATUS a04_vendor_m1_11_windows_start(struct a04_vendor_start *s,
     /* From this point neither the stage nor trampoline may be freed until a
      * separate implementation proves both GPU reset and fabric quiescence. */
     m->hardware_owned=TRUE;s->attempted=TRUE;
-    result=a04_rgx_execute_start(&input,&io,&irq);
+    result=a04_rgx_execute_start(&input,&io,&irq,irq_mode==A04_VENDOR_IRQ_HANDLER_OWNS);
     if(!result) {
         uint32_t comp=(uint32_t)(input.init_pa+offsetof(RGXFWIF_INIT,sRGXCompChecks)+offsetof(RGXFWIF_COMPCHECKS,bUpdated));
         for(tries=0;tries<1000;tries++) {
@@ -127,7 +128,7 @@ NTSTATUS a04_vendor_m1_11_windows_start(struct a04_vendor_start *s,
                snapshot.sFWBVNC.ui64BVNC!=input.bvnc || snapshot.sHWBVNC.ui64BVNC!=input.bvnc) result=A04_EXEC_BUS;
         }
     }
-    if(irq&1u) wr32(&context,0x8b0,1);
+    if(irq_mode==A04_VENDOR_IRQ_MASKED && (irq&1u)) wr32(&context,0x8b0,1);
     if(result) { wr64(&context,0x100,0x100000000ULL);(void)rd64(&context,0x100);delay(&context,3);return STATUS_IO_DEVICE_ERROR; }
     s->online=TRUE;return STATUS_SUCCESS;
 fail:
