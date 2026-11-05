@@ -125,21 +125,32 @@ int main(void)
     assert(clear.provisional && clear.zeros==1024 && !clear.guard_errors);
     {
         struct a04_vendor_surface screen={0};
-        unsigned char *pixels=aligned_alloc(4096,4259840u);assert(pixels);memset(pixels,0xa5,4259840u);
+        unsigned char *pixels=aligned_alloc(4096,4259840u), *copy=malloc(4259840u);assert(pixels && copy);memset(pixels,0xa5,4259840u);
         memset(&r,0,sizeof(r));memset(&kctl,0,sizeof(kctl));memset(&fctl,0,sizeof(fctl));memset(cmd,0,128*sizeof(*cmd));
         assert(!a04_vendor_render_build(bank,65536,0x81000000,0x82000000,A04_VENDOR_RENDER_SCRATCH_VA,1,&r.layout));
         kctl.ui32WrapMask=127;kctl.ui32CmdSize=sizeof(*cmd);fctl.ui32WrapMask=31;fctl.ui32CmdSize=sizeof(RGXFWIF_FWCCB_CMD);
-        screen.pixels.cpu=pixels;screen.bytes=4259840u;screen.hardware_exposed=TRUE;
+        screen.pixels.cpu=pixels;screen.pixels.bytes=4259840u;screen.bytes=4259840u;screen.prepared=TRUE;screen.hardware_exposed=TRUE;
         r.firmware=&mem;r.buffer[0].cpu=bank;r.buffer[4].cpu=target;r.buffer[4].bytes=65536;r.mapped=TRUE;
         r.clear_ready=TRUE;r.screen_surface=&screen;r.clear_first=1248u*3328u+768u*4u;r.clear_row_bytes=3328u;
         assert(!a04_vendor_clear_image_build(&r.clear,A04_VENDOR_RENDER_SCRATCH_VA,0));
         start.command_poisoned=FALSE;start.command_sequence=0;current=4;complete=1;
         assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_SUCCESS);
         assert(clear.zeros==1024 && !clear.guard_errors && clear.phase==4);
+        assert(a04_vendor_render_copy_verified_screen(&r,&start,copy,4259840u)==STATUS_SUCCESS);
+        assert(!memcmp(copy,pixels,4259840u));
+        assert(a04_vendor_render_copy_verified_screen(&r,&start,copy,4259836u)==STATUS_INVALID_PARAMETER);
+        assert(a04_vendor_render_copy_verified_screen(&r,&start,pixels,4259840u)==STATUS_INVALID_DEVICE_STATE);
+        start.command_busy=1;
+        assert(a04_vendor_render_copy_verified_screen(&r,&start,copy,4259840u)==STATUS_DEVICE_BUSY);
+        start.command_busy=0;inject_cleanup=1;
+        assert(a04_vendor_render_copy_verified_screen(&r,&start,copy,4259840u)==STATUS_INVALID_DEVICE_STATE);
+        assert(!inject_cleanup && !start.command_busy);r.cleanup_started=FALSE;
+        assert(a04_vendor_render_next_tile(&r,&start,1,&clear)==STATUS_INVALID_DEVICE_STATE);
         pixels[0]=0; r.clear_attempted=FALSE;
         assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_DATA_ERROR);
         assert(clear.guard_errors==1 && !r.clear_verified);
-        free(pixels);
+        assert(a04_vendor_render_copy_verified_screen(&r,&start,copy,4259840u)==STATUS_INVALID_DEVICE_STATE);
+        free(copy);free(pixels);
     }
     free(cmd);free(core);free(bank);free(target);return 0;
 }

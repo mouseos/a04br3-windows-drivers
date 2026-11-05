@@ -325,3 +325,17 @@ zero-clearし、fenceとSLC flush後に対象1024画素とそれ以外の全画�
 拒否する。これらの拒否はPnP削除時のリソース寿命や物理除去を保証しない。
 高pitch、複数leaf、キャッシュ属性、デバイス停止は実機未検証。実行結果を
 画面描画・共有・DMA排出の証拠としない。
+
+
+`a04_vendor_render_copy_verified_screen` は画面サイズ診断の検証済み結果を
+呼出し側が独占する別のnonpaged通常メモリへ同期退避する未接続の内部部品。
+command lock中に検証・コピーし、cleanup、shutdown、poison、未完了を拒否する。
+このロックはadapterやsurface自体の寿命を保証せず、呼出し側の寿命管理が必要。
+仮想アドレスの重複検査は物理エイリアスやCPUキャッシュ可視性の証明ではない。
+一般描画・反復fence・GPU停止を証明せず、POST面やdxgkrnlの借用バッファを渡さない。
+将来の表示経路には、描画完了とSLC flush・CPU可視性の検証、独占stagingの
+寿命、WDDM Presentの完了順序と停止との直列化、scanout所有者の書込み契約が
+必要。現時点でWDDMやscanoutには接続しない。Microsoftの
+[PresentDisplayOnly](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkddi_presentdisplayonly)
+は同期または非同期の完了契約を定めるが、GPU側DMAの完了や異なるDMA主体間の
+アドレス共有を保証しない。

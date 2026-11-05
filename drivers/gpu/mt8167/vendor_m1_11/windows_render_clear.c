@@ -178,7 +178,7 @@ NTSTATUS a04_vendor_render_next_tile(struct a04_vendor_render_cold *r,
     tile.image.payload[2]=colour;tile.image.expected=colour;
     if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
     if(r->cleanup_started || r->poisoned || s->command_poisoned || s->shutdown_started || !r->mapped ||
-       !r->clear_ready || !r->clear_attempted || !r->clear_verified || r->diagnostic_tile_index+1!=index ||
+       !r->clear_ready || !r->clear_attempted || !r->clear_verified || r->screen_surface || r->diagnostic_tile_index+1!=index ||
        !r->buffer[4].cpu || r->buffer[4].bytes!=65536u || !r->buffer[7].cpu ||
        !s->online || !s->memory || !s->memory->hardware_owned || s->memory!=r->firmware) {
         InterlockedExchange(&s->command_busy,0);return STATUS_INVALID_DEVICE_STATE;
@@ -194,5 +194,39 @@ NTSTATUS a04_vendor_render_next_tile(struct a04_vendor_render_cold *r,
     status=clear_locked(r,s,result,TRUE);
     /* No retry on admission or submission failure. */
     if(!NT_SUCCESS(status)) {r->poisoned=TRUE;s->command_poisoned=TRUE;}
+    InterlockedExchange(&s->command_busy,0);return status;
+}
+
+/* Stage a diagnostic result only after clear_locked's job/flush/fence/readback
+ * succeeded. Never map the POST framebuffer or retain a caller pointer. */
+NTSTATUS a04_vendor_render_copy_verified_screen(struct a04_vendor_render_cold *r,
+    struct a04_vendor_start *s,void *destination,size_t bytes)
+{
+    struct a04_vendor_surface *screen;unsigned i;NTSTATUS status=STATUS_INVALID_DEVICE_STATE;
+    if(!r || !s || !destination || KeGetCurrentIrql()!=PASSIVE_LEVEL ||
+       ((uintptr_t)destination&3u) || bytes!=4259840u ||
+       (uintptr_t)destination>UINTPTR_MAX-bytes)return STATUS_INVALID_PARAMETER;
+    if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
+    screen=r->screen_surface;
+    if(!screen || !screen->prepared || !screen->hardware_exposed ||
+       !screen->pixels.cpu || screen->pixels.bytes!=bytes || screen->bytes!=bytes || !r->mapped || !r->clear_attempted ||
+       !r->clear_verified || r->cleanup_started || r->poisoned || s->command_poisoned ||
+       s->shutdown_started || !s->online || !s->memory || !s->memory->hardware_owned ||
+       s->memory!=r->firmware)goto done;
+    if(a04_rgx_fw_alias(destination,bytes,r,sizeof(*r)) || a04_rgx_fw_alias(destination,bytes,s,sizeof(*s)) ||
+       a04_rgx_fw_alias(destination,bytes,screen,sizeof(*screen)) ||
+       a04_rgx_fw_alias(destination,bytes,screen->pixels.cpu,screen->pixels.bytes) ||
+       a04_rgx_fw_alias(destination,bytes,screen->pc.cpu,screen->pc.bytes) ||
+       a04_rgx_fw_alias(destination,bytes,screen->pd.cpu,screen->pd.bytes))goto done;
+    for(i=0;i<A04_SURFACE_MAX_LEAVES;i++)if(screen->pt[i].cpu &&
+       a04_rgx_fw_alias(destination,bytes,screen->pt[i].cpu,screen->pt[i].bytes))goto done;
+    for(i=0;i<16;i++)if(r->buffer[i].cpu &&
+       a04_rgx_fw_alias(destination,bytes,r->buffer[i].cpu,r->buffer[i].bytes))goto done;
+    for(i=0;i<5;i++)if(r->firmware->buffers[i].cpu &&
+       a04_rgx_fw_alias(destination,bytes,r->firmware->buffers[i].cpu,r->firmware->buffers[i].bytes))goto done;
+    a04_gpu_dma_barrier();
+    if(a04_rgx_device_read_words(destination,screen->pixels.cpu,bytes)) {status=STATUS_IO_DEVICE_ERROR;goto done;}
+    status=STATUS_SUCCESS;
+done:
     InterlockedExchange(&s->command_busy,0);return status;
 }

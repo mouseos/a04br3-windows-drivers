@@ -38,6 +38,13 @@ struct a04_vendor_clear_result {
 /* One bounded owned 32x32 transfer, followed by SLC flush and CPU readback. */
 NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *render,
     struct a04_vendor_start *start, struct a04_vendor_clear_result *result);
+/* Diagnostic-only copy into separately owned, nonpaged normal memory.
+ * Caller owns a distinct allocation, guarantees no physical aliases with any
+ * device/control memory, retains all objects and serializes their teardown.
+ * Virtual overlap checks do not establish physical disjointness. No pointer
+ * from dxgkrnl/scanout may be passed. Not a present callback. */
+NTSTATUS a04_vendor_render_copy_verified_screen(struct a04_vendor_render_cold *render,
+    struct a04_vendor_start *start, void *destination, size_t bytes);
 /* Diagnostic-only fixed sequence; completed pixels do not prove DMA quiescence. */
 NTSTATUS a04_vendor_render_next_tile(struct a04_vendor_render_cold *render,
     struct a04_vendor_start *start, unsigned index, struct a04_vendor_clear_result *result);
