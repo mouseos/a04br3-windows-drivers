@@ -11,6 +11,12 @@
 #include "client_interface.h"
 #include "audio_interface.h"
 #include "audio_owner.h"
+#ifndef A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC
+#define A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC 0
+#endif
+#if A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC && (!defined(A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC) || !A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC)
+#error IRQ prep requires AFE clock diagnostic
+#endif
 #ifndef A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
 #define A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC 0
 #endif
@@ -287,8 +293,36 @@ static int ParentAudioRelease(PVOID context) {
     c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
     result=a04_audio_owner_release(&c->audio);ParentUnlock(c);return result;
 }
-/* The prototype does not own AFE or its clocks. Never touch the mapping. */
-static int ParentAudioPrepareIrq(PVOID context,PVOID afe,ULONG length) { UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(afe);UNREFERENCED_PARAMETER(length);return -1; }
+/* Only a fully acquired exclusive audio lease may mask and clear the IRQ.
+ * The preflight contract must exclude HDMI/TDM and all other AFE users. */
+static int ParentAudioPrepareIrq(PVOID context,PVOID afe,ULONG length) {
+#if A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC
+    A04_PARENT_CONTEXT *c;volatile UCHAR *base;ULONG dac,irq,irq2,status;int result=-1;
+    if(!context || !afe || length!=0x1000 || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+    c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
+    if(afe!=c->audioAfe || !c->audio.online || !c->audio.leased || c->audio.poisoned ||
+       !c->pmic.online || !c->audioTopClock.held || c->audioTopClock.poisoned ||
+       !c->afeClockHeld || c->afeClockPoisoned)goto done;
+    base=(volatile UCHAR *)afe;
+    dac=READ_REGISTER_ULONG((volatile ULONG *)(base+0x10));
+    /* AFE memifs with explicit DAC_CON0 enables must already be inactive. */
+    if(dac & 0xdeu)goto done;
+    irq=READ_REGISTER_ULONG((volatile ULONG *)(base+0x3a0));
+    irq2=READ_REGISTER_ULONG((volatile ULONG *)(base+0x3f8));
+    WRITE_REGISTER_ULONG((volatile ULONG *)(base+0x3a0),irq & ~0x4003u);
+    WRITE_REGISTER_ULONG((volatile ULONG *)(base+0x3f8),irq2 & ~0x18u);
+    WRITE_REGISTER_ULONG((volatile ULONG *)(base+0x3a8),0x2ffu);
+    irq=READ_REGISTER_ULONG((volatile ULONG *)(base+0x3a0));
+    irq2=READ_REGISTER_ULONG((volatile ULONG *)(base+0x3f8));
+    status=READ_REGISTER_ULONG((volatile ULONG *)(base+0x3a4));
+    if((irq&0x4003u) || (irq2&0x18u) || (status&0x2ffu)) {c->audio.poisoned=1;goto done;}
+    result=0;
+done:
+    ParentUnlock(c);return result;
+#else
+    UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(afe);UNREFERENCED_PARAMETER(length);return -1;
+#endif
+}
 static VOID ParentInterfaceReference(PVOID context) { WdfObjectReference((WDFDEVICE)context); }
 static VOID ParentInterfaceDereference(PVOID context) { WdfObjectDereference((WDFDEVICE)context); }
 static NTSTATUS ParentReadButtons(PVOID context,USHORT *value) {

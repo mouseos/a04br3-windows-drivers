@@ -7,7 +7,8 @@
 int a04_test_trace_count;
 #endif
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
-static ULONG mockAfe;static int mockAfeIgnoreWrite;
+static ULONG mockAfeRegs[1024];static int mockAfeIgnoreWrite;
+#define mockAfe mockAfeRegs[0]
 #endif
 static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,assertClosedOnLock,closeDuringLock,failMap;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;
 #if A04_SHARED_BUTTON_D0_EXPERIMENT
@@ -24,7 +25,7 @@ PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,int c){(void)n;(void)c;maps++;if(f
 void MmUnmapIoSpace(PVOID p,ULONG n){(void)p;(void)n;unmaps++;}
 ULONG READ_REGISTER_ULONG(volatile ULONG *p){(void)p;reads++;
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
- if(p==&mockAfe)return mockAfe;
+ if((uintptr_t)p>=(uintptr_t)mockAfeRegs && (uintptr_t)p<(uintptr_t)(mockAfeRegs+1024))return *p;
 #endif
 #if A04_SHARED_BUTTON_D0_EXPERIMENT
  if((uintptr_t)p==0x2000f09c)return mockInit;
@@ -32,7 +33,12 @@ ULONG READ_REGISTER_ULONG(volatile ULONG *p){(void)p;reads++;
 #endif
  return 0;}void WRITE_REGISTER_ULONG(volatile ULONG *p,ULONG x){(void)p;(void)x;writes++;
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
- if(p==&mockAfe){if(!mockAfeIgnoreWrite)mockAfe=x;return;}
+ if((uintptr_t)p>=(uintptr_t)mockAfeRegs && (uintptr_t)p<(uintptr_t)(mockAfeRegs+1024)) {
+    if(!mockAfeIgnoreWrite) {
+        if(p==&mockAfeRegs[0x3a8/4])mockAfeRegs[0x3a4/4]&=~x;
+        else *p=x;
+    } return;
+ }
 #endif
 #if A04_SHARED_BUTTON_D0_EXPERIMENT
  if(mockWacs && (uintptr_t)p==0x2000f0a0){assert(x==0x00a10000u || (A04_AUDIO_PMIC_TRACE && x==0x00840000u));
@@ -195,6 +201,17 @@ int main(void){
    testContext.audioTopClock.held=1;
    assert(!ParentAfeClockAcquire(&testContext,48000) && mockAfe==0x100);
    assert(audio.BindAfe(audio.Header.Context,NULL,0));
+#if A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC
+   testContext.audio.online=1;testContext.audio.leased=1;
+   mockAfeRegs[0x10/4]=2;{int n=writes;assert(audio.PrepareMaskedIrq(audio.Header.Context,&mockAfe,0x1000) && writes==n);}
+   mockAfeRegs[0x10/4]=0;mockAfeRegs[0x3a0/4]=0x5003;mockAfeRegs[0x3f8/4]=0x98;mockAfeRegs[0x3a4/4]=0x201;
+   assert(!audio.PrepareMaskedIrq(audio.Header.Context,&mockAfe,0x1000));
+   assert(mockAfeRegs[0x3a0/4]==0x1000 && mockAfeRegs[0x3f8/4]==0x80 && !mockAfeRegs[0x3a4/4]);
+   mockAfeRegs[0x3a0/4]=1;mockAfeIgnoreWrite=1;
+   assert(audio.PrepareMaskedIrq(audio.Header.Context,&mockAfe,0x1000) && testContext.audio.poisoned);
+   /* Host-only reset; real failures remain quarantined. */
+   mockAfeIgnoreWrite=0;testContext.audio.poisoned=0;testContext.audio.online=0;testContext.audio.leased=0;
+#endif
    assert(!ParentAfeClockRelease(&testContext) && mockAfe==0x104);
    mockAfeIgnoreWrite=1;assert(ParentAfeClockAcquire(&testContext,48000));
    assert(testContext.afeClockHeld && testContext.afeClockPoisoned && audio.BindAfe(audio.Header.Context,NULL,0));

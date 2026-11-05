@@ -4,6 +4,7 @@ $root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
 $inc = Join-Path $kit 'Include'
 $lib = Join-Path $kit 'Lib\winv6.3\km\arm'
+$silent=if($env:A04_AUDIO_SILENT_DMA_DIAGNOSTIC -eq '1'){'1'}else{'0'}
 $trace=if($env:A04_AUDIO_DIAGNOSTIC_TRACE -eq '1'){'1'}else{'0'}
 $out = Join-Path $env:TEMP 'a04-mt8167-portcls'
 New-Item -ItemType Directory -Force $out | Out-Null
@@ -65,4 +66,12 @@ if ($LASTEXITCODE -ne 0) { throw 'Masked IRQ backend link failed' }
 if ($LASTEXITCODE -ne 0) { throw 'RUN diagnostic backend compile failed' }
 & lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib (Join-Path $out 'adapter_diagnostic.obj') (Join-Path $out 'wavert_miniport.obj') (Join-Path $out 'dl1.obj') (Join-Path $out 'dl1_engine.obj') (Join-Path $out 'wavert_dma.obj') (Join-Path $out 'common_dma.obj') (Join-Path $out 'dma_adapter.obj') (Join-Path $out 'clock_owner.obj') (Join-Path $out 'stream_transport.obj') (Join-Path $out 'pnp_backend_run.obj') (Join-Path $out 'afe_mapping.obj') (Join-Path $out 'audio_parent_query.obj') (Join-Path $out 'shared_audio.obj') (Join-Path $out 'shared_transport.obj') (Join-Path $out 'audio_parent_client.obj') (Join-Path $out 'irq_windows_1.obj') (Join-Path $out 'wavert_registration_1.obj') (Join-Path $lib 'portcls.lib') (Join-Path $lib 'ntoskrnl.lib') (Join-Path $lib 'hal.lib') (Join-Path $lib 'bufferoverflowfastfailk.lib') "/out:$out\mt8167-audio-run-buildcheck.sys"
 if ($LASTEXITCODE -ne 0) { throw 'RUN diagnostic backend link failed' }
-Write-Host 'Built default-disabled SYS and diagnostic WaveRT, parent-query and AFE-mapping buildchecks; RUN always fails.'
+if($silent -eq '1') {
+    & clang++ --target=thumbv7-pc-windows-msvc -fms-extensions -fms-compatibility -ffreestanding -fno-exceptions -fno-rtti -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_AUDIO_SILENT_DMA_DIAGNOSTIC=1 "-I$inc\km" "-I$inc\shared" -c (Join-Path $root 'drivers\audio\mt8167-afe\wavert_miniport.cpp') -o (Join-Path $out 'wavert_miniport_silent.obj')
+    if ($LASTEXITCODE -ne 0) { throw 'Silent miniport compile failed' }
+    & clang++ --target=thumbv7-pc-windows-msvc -fms-extensions -fms-compatibility -ffreestanding -fno-exceptions -fno-rtti -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_AUDIO_QUERY_SHARED=1 -DA04_AUDIO_MAP_AFE=1 -DA04_AUDIO_IRQ_DIAGNOSTIC=1 -DA04_AUDIO_RUN_DIAGNOSTIC=1 -DA04_AUDIO_SILENT_DMA_DIAGNOSTIC=1 "-DA04_AUDIO_DIAGNOSTIC_TRACE=$trace" "-I$inc\km" "-I$inc\shared" -c (Join-Path $root 'drivers\audio\mt8167-afe\pnp_backend.cpp') -o (Join-Path $out 'pnp_backend_silent.obj')
+    if ($LASTEXITCODE -ne 0) { throw 'Silent backend compile failed' }
+    & lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib (Join-Path $out 'adapter_diagnostic.obj') (Join-Path $out 'wavert_miniport_silent.obj') (Join-Path $out 'dl1.obj') (Join-Path $out 'dl1_engine.obj') (Join-Path $out 'wavert_dma.obj') (Join-Path $out 'common_dma.obj') (Join-Path $out 'dma_adapter.obj') (Join-Path $out 'clock_owner.obj') (Join-Path $out 'stream_transport.obj') (Join-Path $out 'pnp_backend_silent.obj') (Join-Path $out 'afe_mapping.obj') (Join-Path $out 'audio_parent_query.obj') (Join-Path $out 'shared_audio.obj') (Join-Path $out 'shared_transport.obj') (Join-Path $out 'audio_parent_client.obj') (Join-Path $out 'irq_windows_1.obj') (Join-Path $out 'wavert_registration_1.obj') (Join-Path $lib 'portcls.lib') (Join-Path $lib 'ntoskrnl.lib') (Join-Path $lib 'hal.lib') (Join-Path $lib 'bufferoverflowfastfailk.lib') "/out:$out\mt8167-audio-silent-buildcheck.sys"
+    if ($LASTEXITCODE -ne 0) { throw 'Silent backend link failed' }
+}
+Write-Host 'Built audio buildchecks. Real parent acquisition and live audio remain gated.'

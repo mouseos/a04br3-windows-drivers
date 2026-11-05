@@ -1,6 +1,9 @@
 #include "wavert_miniport.h"
 #if defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
 #include "wavert_dma.h"
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+extern "C" int Mt8167SilentDmaMiniportEnabled(void) { return 1; }
+#endif
 #define AUDIO_TAG '7auM'
 void *operator new(size_t, void *p) { return p; }
 static bool ValidFormat(PKSDATAFORMAT f)
@@ -51,6 +54,10 @@ public:
                 backend.dereference(backend.context);
             }
         } else if (buffer.mdl && !buffer.handedToDevice) Mt8167ReleaseUnpublishedBuffer(&buffer);
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+        /* This PCM buffer is separate from the private hardware buffer. */
+        if (useBackend && buffer.mdl && !buffer.handedToDevice) (void)Mt8167ReleaseUnpublishedBuffer(&buffer);
+#endif
         port->Release();
     }
     STDMETHODIMP_(NTSTATUS) QueryInterface(REFIID id, PVOID *out) override {
@@ -90,6 +97,16 @@ public:
                     return STATUS_DEVICE_CONFIGURATION_ERROR;
                 }
                 backendMdl=*mdl;backendBytes=*actual;
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+                /* The backend's common buffer is never mapped to the client.
+                 * Present a separate PortCls allocation for PCM writes. */
+                NTSTATUS stage=Mt8167AllocateBuffer(port,backendBytes,&buffer);
+                if (!NT_SUCCESS(stage)) {
+                    backend.freeBuffer(backend.context,backendMdl,backendBytes);
+                    backendMdl=NULL;backendBytes=0;*mdl=NULL;*actual=0;*offset=0;return stage;
+                }
+                *mdl=buffer.mdl;*actual=buffer.bytes;*offset=0;*cache=MmNonCached;
+#endif
             }
             return result;
         }
@@ -98,7 +115,14 @@ public:
     }
     STDMETHODIMP_(VOID) FreeAudioBuffer(PMDL mdl,ULONG size) override {
         if (useBackend) {
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+            if (mdl && mdl==buffer.mdl && size==buffer.bytes && !InterlockedCompareExchange(&started,0,0)) {
+                (void)Mt8167ReleaseUnpublishedBuffer(&buffer);
+                if (!everStarted && backendMdl) {backend.freeBuffer(backend.context,backendMdl,backendBytes);backendMdl=NULL;backendBytes=0;}
+            }
+#else
             if (mdl && mdl==backendMdl && size==backendBytes && !everStarted) { backend.freeBuffer(backend.context,mdl,size); backendMdl=NULL;backendBytes=0; }
+#endif
         } else if (mdl && mdl==buffer.mdl && size==buffer.bytes) (void)Mt8167ReleaseUnpublishedBuffer(&buffer);
     }
     STDMETHODIMP_(VOID) GetHWLatency(KSRTAUDIO_HWLATENCY *p) override { if(p) RtlZeroMemory(p,sizeof(*p)); }

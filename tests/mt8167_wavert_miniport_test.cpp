@@ -39,6 +39,9 @@ int main(){
  assert(!Mt8167NewMiniportWithBackend(&m,&backend) && b.refs==1);assert(!m->GetDeviceDescription(&b));
  assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat) && b.refs==2);
  assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+ assert(mdl==&p.mdl && mdl!=&b.mdl);
+#endif
  assert(!st->SetState(KSSTATE_RUN));KSAUDIO_POSITION position{};assert(!st->GetPosition(&position) && position.PlayOffset==4);
  assert(!st->SetState(KSSTATE_STOP));st->FreeAudioBuffer(mdl,actual);assert(!b.frees);
  assert(st->SetState(KSSTATE_RUN)==STATUS_DEVICE_NOT_READY);st->Release();m->Release();

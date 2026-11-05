@@ -283,3 +283,11 @@ codec mute without releasing power before disabling DL1 and disconnecting its
 IRQ; even a mute failure does not skip the stop attempt. This path cannot run
 on the real parent until the retained-power, exclusive ownership, codec and
 live DMA prerequisites are established. DL1 enable readback is not DMA drain.
+
+`A04_AUDIO_SILENT_DMA_DIAGNOSTIC=1` is an opt-in, silent DMA prototype: it
+uses a private zero-filled hardware buffer and a separate PortCls buffer. It
+does not transfer application PCM to the device and must not be described as
+audio playback. The shared parent still refuses acquisition on hardware, and
+the new path has only host-side checks; WDK and target execution remain
+unverified. Any buffer exposed to DMA is retained because hardware drain has
+not been established.

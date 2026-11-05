@@ -23,18 +23,31 @@
 #else
 #define A04_TRACE(...) ((void)0)
 #endif
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC && (!defined(A04_AUDIO_RUN_DIAGNOSTIC) || !A04_AUDIO_RUN_DIAGNOSTIC)
+#error silent DMA diagnostic requires RUN diagnostic
+#endif
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+/* Link-time pairing prevents publishing the WaveRT buffer as silent DMA. */
+extern "C" int Mt8167SilentDmaMiniportEnabled(void);
+#endif
 #define OWNER_TAG 'OwnA'
 struct Mt8167PnpBackend {
     Mt8167StreamBackend iface;
     volatile LONG refs;
     FAST_MUTEX mutex;
     EX_RUNDOWN_REF positions;
+    EX_RUNDOWN_REF livePositions;
+    BOOLEAN livePositionsClosed;
     BOOLEAN online;
     PDEVICE_OBJECT pdo;
     PDMA_ADAPTER adapter;
     Mt8167CommonDma buffer;
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+    Mt8167CommonDma silentBuffer;
+#endif
     Mt8167PnpInterrupt interrupt;
     Mt8167Irq irq;
+    volatile LONG irqEvents,irqFaults;
     struct mt8167_dl1_engine engine;
     Mt8167Transport transport;
     struct mt8167_audio_shared_client shared;
@@ -86,6 +99,9 @@ static void OwnerDereference(void *ctx)
         /* Never release DMA adapter/PDO when buffer lifetime is uncertain. */
         return;
     }
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+    if (o->silentBuffer.mdl && !NT_SUCCESS(Mt8167CommonReleaseUnexposed(&o->silentBuffer))) return;
+#endif
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
     if (o->afeBound) {
         if (o->parentClient.parent.BindAfe(o->parentClient.parent.Header.Context,NULL,0)) return;
@@ -129,7 +145,22 @@ static void OwnerFree(void *ctx,PMDL mdl,ULONG bytes)
  * This platform-specific proof must be implemented before RUN can proceed. */
 #if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
 static BOOLEAN OwnerLiveDmaVerified(Mt8167PnpBackend *o)
-{ UNREFERENCED_PARAMETER(o);return FALSE; }
+{
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+    /* A private zero-filled common buffer is never exposed to WaveRT. The
+     * transport flushes it once before publishing its bus address. */
+    if(!o || !o->buffer.mdl || o->silentBuffer.mdl || !Mt8167SilentDmaMiniportEnabled())return FALSE;
+    if(!NT_SUCCESS(Mt8167CommonAllocate(o->adapter,o->buffer.size,&o->silentBuffer)))return FALSE;
+    /* The two active DMA allocations must not overlap in either address space. */
+    if(o->silentBuffer.cpu==o->buffer.cpu ||
+       ((ULONGLONG)o->silentBuffer.logical.QuadPart < (ULONGLONG)o->buffer.logical.QuadPart+o->buffer.size &&
+        (ULONGLONG)o->buffer.logical.QuadPart < (ULONGLONG)o->silentBuffer.logical.QuadPart+o->silentBuffer.size))return FALSE;
+    o->transport.dma=&o->silentBuffer;
+    return TRUE;
+#else
+    UNREFERENCED_PARAMETER(o);return FALSE;
+#endif
+}
 #endif
 static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
     if (!ctx || !possiblyExposed) return STATUS_INVALID_PARAMETER;
@@ -144,9 +175,13 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
          * notification contract. No live-DMA verifier currently exists. */
         if (!Mt8167TransportStartMaskedParent(&o->transport,o->buffer.size/2,&o->shared))
             result=STATUS_SUCCESS;
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+        *possiblyExposed=(o->silentBuffer.exposed || o->shared.quarantined) ? TRUE : FALSE;
+#else
         *possiblyExposed=(o->buffer.exposed || o->shared.quarantined) ? TRUE : FALSE;
+#endif
     }
-    A04_TRACE("A04AUD run result=%08lx online=%d buffer=%d lease=%d irq=%d live-dma=unverified exposed=%d\n",(ULONG)result,o->online,o->buffer.mdl!=NULL,o->shared.leased,o->irq.interrupt!=NULL,*possiblyExposed);
+    A04_TRACE("A04AUD run result=%08lx online=%d buffer=%d lease=%d irq=%d live-dma=isolated-or-refused exposed=%d\n",(ULONG)result,o->online,o->buffer.mdl!=NULL,o->shared.leased,o->irq.interrupt!=NULL,*possiblyExposed);
     ExReleaseFastMutex(&o->mutex);return result;
 #else
     return STATUS_DEVICE_NOT_READY;
@@ -157,6 +192,12 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
  * by FAST_MUTEX; stop DL1 even if mute failed, retaining resources on error. */
 static NTSTATUS OwnerStopRunning(Mt8167PnpBackend *o)
 {
+    /* No restart follows an exposed diagnostic run. Close position admission
+     * and wait for readers before disconnecting the interrupt object. */
+    if(!o->livePositionsClosed) {
+        ExWaitForRundownProtectionRelease(&o->livePositions);
+        o->livePositionsClosed=TRUE;
+    }
     int mute=o->parentClient.parent.Mute(o->parentClient.parent.Header.Context);
     int stop=Mt8167TransportStop(&o->transport);
     return !mute && !stop ? STATUS_SUCCESS : STATUS_DEVICE_NOT_READY;
@@ -168,7 +209,7 @@ static NTSTATUS OwnerStop(void *ctx) {
     if (!o)return STATUS_INVALID_PARAMETER;
     ExAcquireFastMutex(&o->mutex);
     if (o->transport.state==AUDIO_RUNNING)result=OwnerStopRunning(o);
-    A04_TRACE("A04AUD stop result=%08lx state=%d exposed=%d quarantine=%d; drain=unknown\n",(ULONG)result,(int)o->transport.state,o->buffer.exposed,o->shared.quarantined);
+    A04_TRACE("A04AUD stop result=%08lx state=%d quarantine=%d irq-events=%ld irq-faults=%ld; drain=unknown\n",(ULONG)result,(int)o->transport.state,o->shared.quarantined,o->irqEvents,o->irqFaults);
     ExReleaseFastMutex(&o->mutex);return result;
 #else
     UNREFERENCED_PARAMETER(ctx);return STATUS_DEVICE_NOT_READY;
@@ -182,13 +223,24 @@ static NTSTATUS OwnerPosition(void *ctx,PKSAUDIO_POSITION position)
     if (!ExAcquireRundownProtection(&o->positions)) return STATUS_DEVICE_NOT_READY;
     /* No hardware path can set AUDIO_RUNNING yet. A future start must publish
      * the transport under a nonblocking synchronization scheme first. */
-    NTSTATUS status=Mt8167TransportPosition(&o->transport,&offset)==0 ? STATUS_SUCCESS : STATUS_DEVICE_NOT_READY;
-    if (NT_SUCCESS(status)) { position->PlayOffset=offset;position->WriteOffset=offset; }
+    NTSTATUS status=STATUS_DEVICE_NOT_READY;
+    if (ExAcquireRundownProtection(&o->livePositions)) {
+        status=Mt8167TransportPosition(&o->transport,&offset)==0 ? STATUS_SUCCESS : STATUS_DEVICE_NOT_READY;
+        if (NT_SUCCESS(status)) { position->PlayOffset=offset;position->WriteOffset=offset; }
+        ExReleaseRundownProtection(&o->livePositions);
+    }
     ExReleaseRundownProtection(&o->positions);return status;
 }
 static NTSTATUS OwnerDescription(void *,PDEVICE_DESCRIPTION) { return STATUS_DEVICE_NOT_READY; }
 #if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
-static void OwnerIrqNotify(void *,ULONG,BOOLEAN) { /* RUN remains refused. */ }
+static void OwnerIrqNotify(void *ctx,ULONG periods,BOOLEAN fault) {
+    Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);LONG count;
+    if(!o)return;
+    count=InterlockedIncrement(&o->irqEvents);
+    if(fault)InterlockedIncrement(&o->irqFaults);
+    if(count<=4 || fault) A04_TRACE("A04AUD irq notification=%ld periods=%lu fault=%d\n",count,periods,fault);
+    UNREFERENCED_PARAMETER(periods);
+}
 /* Caller serializes against revoke. The parent's v4 lease excludes competing
  * AFE/clock owners; other AFE sources remain masked through release. */
 static NTSTATUS OwnerConnectMaskedIrq(Mt8167PnpBackend *o)
@@ -233,6 +285,7 @@ NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt816
     RtlZeroMemory(o,sizeof(*o));
     ExInitializeFastMutex(&o->mutex);
     ExInitializeRundownProtection(&o->positions);
+    ExInitializeRundownProtection(&o->livePositions);
     status=Mt8167GetDmaAdapter(pdo,&o->adapter,&mapRegisters);
     if (!NT_SUCCESS(status)) { ExFreePoolWithTag(o,OWNER_TAG);return status; }
 #if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED

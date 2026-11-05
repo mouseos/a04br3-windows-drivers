@@ -37,10 +37,23 @@ static void shared_deref(void *){shared_refs--;}
 static int shared_acquire(void *,uint32_t){return -1;}
 static int shared_release(void *){return 0;}
 static int freed,puts; static unsigned char data[8192];
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+static unsigned char silentData[8192];static unsigned allocCalls;
+#endif
 static std::atomic<bool> holdPosition(false),enteredPosition(false),revokeDone(false);
 #if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+extern "C" int Mt8167SilentDmaMiniportEnabled(void){return 1;}
+int Mt8167TransportStartMaskedParent(Mt8167Transport *t,uint32_t period,mt8167_audio_shared_client *s){
+ assert(t && t->dma && t->dma->cpu && t->dma->logical.QuadPart==0x200000 && period==4096);
+ for(unsigned i=0;i<t->dma->size;i++)assert(((unsigned char *)t->dma->cpu)[i]==0);
+ t->dma->exposed=TRUE;s->quarantined=1;t->state=AUDIO_RUNNING;return 0;
+}
+int Mt8167TransportStop(Mt8167Transport *t){assert(t->state==AUDIO_RUNNING);t->state=AUDIO_QUARANTINED;return 0;}
+#else
 int Mt8167TransportStartMaskedParent(Mt8167Transport *,uint32_t,mt8167_audio_shared_client *){assert(!"live DMA guard failed");return -1;}
 int Mt8167TransportStop(Mt8167Transport *){assert(!"unexpected stop");return -1;}
+#endif
 #endif
 int Mt8167TransportPosition(Mt8167Transport *,uint32_t *){enteredPosition=true;while(holdPosition)std::this_thread::yield();return -1;}
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
@@ -49,7 +62,11 @@ PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,MEMORY_CACHING_TYPE cache) { asser
 void MmUnmapIoSpace(PVOID p,ULONG n) { assert(p==mmio && n==4096);unmaps++; }
 #endif
 static void put(PDMA_ADAPTER){puts++;}
-static PVOID alloc(PDMA_ADAPTER,ULONG n,PHYSICAL_ADDRESS *l,BOOLEAN){assert(n==8192);l->QuadPart=0x100000;return data;}
+static PVOID alloc(PDMA_ADAPTER,ULONG n,PHYSICAL_ADDRESS *l,BOOLEAN){assert(n==8192);
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+ if(allocCalls++){l->QuadPart=0x200000;return silentData;}
+#endif
+ l->QuadPart=0x100000;return data;}
 static void freebuf(PDMA_ADAPTER,ULONG,PHYSICAL_ADDRESS,PVOID,BOOLEAN){freed++;}
 struct Resources : IResourceList { _CM_PARTIAL_RESOURCE_DESCRIPTOR irq{},rawIrq{},mem[2]{},rawMem[2]{};
  Resources(){irq.ShareDisposition=rawIrq.ShareDisposition=CmResourceShareDeviceExclusive;rawIrq.u.Interrupt.Vector=152;irq.u.Interrupt.Vector=80;irq.u.Interrupt.Level=5;irq.u.Interrupt.Affinity=1;rawMem[0].ShareDisposition=rawMem[1].ShareDisposition=CmResourceShareDeviceExclusive;rawMem[0].u.Memory.Start.QuadPart=0x11140000;rawMem[0].u.Memory.Length=0x1000;rawMem[1].u.Memory.Start.QuadPart=0x11141000;rawMem[1].u.Memory.Length=0x9000;mem[0]=rawMem[0];mem[1]=rawMem[1];mem[0].u.Memory.Start.QuadPart=0x21140000;mem[1].u.Memory.Start.QuadPart=0x21141000;}
@@ -127,7 +144,21 @@ int main(){
  const Mt8167StreamBackend *api=Mt8167PnpBackendInterface(owner);api->reference(api->context);
  PMDL mdl=nullptr;ULONG n=0,offset=9;MEMORY_CACHING_TYPE cache;
  assert(!api->allocate(api->context,8192,&mdl,&n,&offset,&cache) && mdl && n==8192 && !offset);
- BOOLEAN exposure=TRUE;assert(api->start(api->context,&exposure)==STATUS_DEVICE_NOT_READY && !exposure);
+ BOOLEAN exposure=TRUE;
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+ assert(!api->start(api->context,&exposure) && exposure && allocCalls==2);
+ holdPosition=true;enteredPosition=false;revokeDone=false;
+ std::thread positionReader([&]{KSAUDIO_POSITION p{};assert(api->position(api->context,&p)==STATUS_DEVICE_NOT_READY);});
+ while(!enteredPosition)std::this_thread::yield();
+ std::thread stopper([&]{assert(!api->stop(api->context));revokeDone=true;});
+ while(!test_interrupt.fn)std::this_thread::yield();
+ assert(!revokeDone);holdPosition=false;positionReader.join();stopper.join();assert(revokeDone);
+ Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);
+ api->dereference(api->context);
+ assert(!freed && !puts && parent_refs==2 && test_pdo_refs==1);return 0;
+#else
+ assert(api->start(api->context,&exposure)==STATUS_DEVICE_NOT_READY && !exposure);
+#endif
 #if defined(A04_AUDIO_DIAGNOSTIC_TRACE) && A04_AUDIO_DIAGNOSTIC_TRACE && defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
  assert(a04_test_trace_count>0);
 #endif
