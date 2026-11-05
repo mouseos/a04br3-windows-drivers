@@ -34,6 +34,15 @@
 #ifndef A04_BQHR_DIAGNOSTIC
 #define A04_BQHR_DIAGNOSTIC 0
 #endif
+#ifndef A04_BQ_CLOCK_DIAGNOSTIC
+#define A04_BQ_CLOCK_DIAGNOSTIC 0
+#endif
+#if A04_BQ_CLOCK_DIAGNOSTIC && !A04_BQHR_DIAGNOSTIC
+#error Clock observation requires the BQHR diagnostic
+#endif
+#if A04_BQ_CLOCK_DIAGNOSTIC
+#include "../bq24160/platform_clock_wdf.h"
+#endif
 #if A04_BQHR_DIAGNOSTIC || A04_BROKER_OWNER_EXPERIMENTAL
 #include "../bq24160/bqhr_acpi.h"
 #endif
@@ -144,6 +153,24 @@ static void diagnose_bqhr(GAUGE_CONTEXT *c)
                    "A04BAT BQHR FAILED result=%u status=%08lx\n", (unsigned)r, status);
         trace(c, "A04BAT BQHR FAILED\n");
     }
+#if A04_BQ_CLOCK_DIAGNOSTIC
+    {
+        struct a04_bq_clock_observation observation;
+        enum a04_bq_clock_result result=a04_bq_clock_observe(c->device,&observation,&status);
+        /* Candidate is only a numeric comparison; it never opens admission. */
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,
+                   "A04BAT CLOCK result=%u qpc_before=%I64x qpc_after=%I64x frequency=%I64x\n",
+                   (unsigned)result,observation.qpc_before,observation.qpc_after,observation.frequency);
+        trace(c,"A04BAT CLOCK result=");trace_hex(c,(ULONG)result);
+        trace(c," qpc_before=");trace_hex(c,(ULONG)(observation.qpc_before>>32));trace_hex(c,(ULONG)observation.qpc_before);
+        trace(c," qpc_after=");trace_hex(c,(ULONG)(observation.qpc_after>>32));trace_hex(c,(ULONG)observation.qpc_after);
+        trace(c," freq=");trace_hex(c,(ULONG)(observation.frequency>>32));trace_hex(c,(ULONG)observation.frequency);trace(c,"\n");
+        trace(c,"A04BAT CLOCK record_state=");trace_hex(c,(ULONG)observation.record_state);
+        trace(c," fw_last=");trace_hex(c,(ULONG)(observation.firmware_last>>32));trace_hex(c,(ULONG)observation.firmware_last);
+        trace(c," fw_exit=");trace_hex(c,(ULONG)(observation.firmware_exit>>32));trace_hex(c,(ULONG)observation.firmware_exit);
+        trace(c," fw_freq=");trace_hex(c,(ULONG)(observation.firmware_frequency>>32));trace_hex(c,(ULONG)observation.firmware_frequency);trace(c,"\n");
+    }
+#endif
 }
 #endif
 #if A04_BROKER_CLIENT_EXPERIMENTAL

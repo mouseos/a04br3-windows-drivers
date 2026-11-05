@@ -12,6 +12,8 @@ mock=r'''
 #include <string.h>
 typedef uint32_t ULONG; typedef uintptr_t ULONG_PTR; typedef uint64_t ULONGLONG;
 typedef uint8_t UCHAR; typedef int32_t NTSTATUS; typedef void *WDFDEVICE;
+typedef struct {int64_t QuadPart;} LARGE_INTEGER;
+uint64_t KeQueryInterruptTime(void); LARGE_INTEGER KeQueryPerformanceCounter(LARGE_INTEGER *);
 #define NT_SUCCESS(s) ((s)>=0)
 #define FIELD_OFFSET(t,f) ((ULONG)offsetof(t,f))
 #define RtlZeroMemory(p,n) memset(p,0,n)
@@ -44,7 +46,11 @@ harness=r'''
 #include "bqhr_acpi.h"
 #include "charger.h"
 #include "admission.h"
+#include "platform_clock_wdf.h"
 static int mode;
+static int clock_mode,clock_calls,clock_stage;
+uint64_t KeQueryInterruptTime(void){assert(clock_stage==0);clock_stage=1;return 10000000ULL;}
+LARGE_INTEGER KeQueryPerformanceCounter(LARGE_INTEGER *f){LARGE_INTEGER value;assert(clock_stage==1||clock_stage==2);clock_stage++;++clock_calls;f->QuadPart=(clock_mode==4||(clock_mode==2&&clock_calls==2))?12000000:13000000;value.QuadPart=clock_calls==1?150000000:156000000;if(clock_mode==1&&clock_calls==2)value.QuadPart=149000000;if(clock_mode==3&&clock_calls==1)value.QuadPart=142999999;if(clock_mode==5&&clock_calls==2)value.QuadPart=390000000;if(clock_mode==6&&clock_calls==2)value.QuadPart=150000000;return value;}
 static void put(UCHAR *p,uint64_t x){unsigned i;for(i=0;i<8;++i)p[i]=(UCHAR)(x>>(i*8));}
 static void seal(UCHAR *p){uint64_t h=14695981039346656037ULL;unsigned i;for(i=0;i<120;++i){h^=p[i];h*=1099511628211ULL;}put(p+120,h);}
 NTSTATUS WdfIoTargetSendIoctlSynchronously(void *target,void *request,ULONG code,WDF_MEMORY_DESCRIPTOR *in,WDF_MEMORY_DESCRIPTOR *out,WDF_REQUEST_SEND_OPTIONS *opt,ULONG_PTR *ret){
@@ -84,11 +90,25 @@ int main(void){NTSTATUS status;UCHAR record[128];unsigned i;enum a04_bqhr_acpi_r
   assert(expired.stopped&&!expired.handoff_pending);
   assert(a04_bq_admission_prepare(&invalid,record,128,1000000000ULL,156000000,13000000,5000000000ULL,0));
   assert(invalid.stopped&&!invalid.handoff_pending);}
+ {struct a04_bq_clock_observation o;enum a04_bq_clock_result r;
+  mode=0;clock_mode=0;clock_calls=clock_stage=0;r=a04_bq_clock_observe((void*)1,&o,&status);
+  assert(r==A04_CLOCK_STOPPED&&o.frequency==13000000&&clock_stage==3);
+  mode=9;clock_mode=0;clock_calls=clock_stage=0;r=a04_bq_clock_observe((void*)1,&o,&status);
+  assert(r==A04_CLOCK_CANDIDATE&&o.qpc_before==150000000&&o.qpc_after==156000000);
+  assert(o.record_state==1&&o.firmware_last==130000000&&o.firmware_exit==143000000&&o.firmware_frequency==13000000);
+  mode=9;clock_mode=1;clock_calls=clock_stage=0;assert(a04_bq_clock_observe((void*)1,&o,&status)==A04_CLOCK_INVALID);
+  mode=9;clock_mode=2;clock_calls=clock_stage=0;assert(a04_bq_clock_observe((void*)1,&o,&status)==A04_CLOCK_INVALID);
+  mode=9;clock_mode=3;clock_calls=clock_stage=0;assert(a04_bq_clock_observe((void*)1,&o,&status)==A04_CLOCK_INCONSISTENT);
+  mode=9;clock_mode=4;clock_calls=clock_stage=0;assert(a04_bq_clock_observe((void*)1,&o,&status)==A04_CLOCK_INCONSISTENT);
+  mode=9;clock_mode=5;clock_calls=clock_stage=0;assert(a04_bq_clock_observe((void*)1,&o,&status)==A04_CLOCK_INCONSISTENT);
+  mode=9;clock_mode=6;clock_calls=clock_stage=0;assert(a04_bq_clock_observe((void*)1,&o,&status)==A04_CLOCK_INVALID);
+  mode=5;clock_mode=0;clock_calls=clock_stage=0;assert(a04_bq_clock_observe((void*)1,&o,&status)==A04_CLOCK_INVALID);
+  mode=1;clock_mode=0;clock_calls=clock_stage=0;assert(a04_bq_clock_observe((void*)1,&o,&status)==A04_CLOCK_INVALID);}
  return 0;}
 '''
 with tempfile.TemporaryDirectory(prefix='a04-bqhr-wdf-') as td:
  p=Path(td);(p/'ntddk.h').write_text(mock);(p/'wdf.h').write_text('#include <ntddk.h>\n');(p/'acpiioct.h').write_text(acpi);(p/'test.c').write_text(harness)
  src=root/'drivers/power/bq24160'
- subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-Wno-misleading-indentation','-I'+str(p),'-I'+str(src),str(src/'bqhr_acpi.c'),str(src/'bqhr_diagnostic.c'),str(src/'charger.c'),str(src/'admission.c'),str(p/'test.c'),'-o',str(p/'test')],check=True)
+ subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-Wno-misleading-indentation','-I'+str(p),'-I'+str(src),str(src/'bqhr_acpi.c'),str(src/'bqhr_diagnostic.c'),str(src/'charger.c'),str(src/'admission.c'),str(src/'platform_clock.c'),str(src/'platform_clock_wdf.c'),str(p/'test.c'),'-o',str(p/'test')],check=True)
  subprocess.run([str(p/'test')],check=True)
 print('BQHR ACPI IOCTL, length/type checks and non-adoption: PASS (host mock)')
