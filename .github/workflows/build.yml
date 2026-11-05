@@ -8,6 +8,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check INF device names
+        run: python3 tools/ci/check-device-names.py
       - name: Install Linux test dependencies
         run: sudo apt-get update && sudo apt-get install -y acpica-tools device-tree-compiler ntfs-3g
       - run: make test arm-coff
