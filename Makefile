@@ -830,3 +830,9 @@ test-toprgu-uart-volume:
 	./build/toprgu_uart_volume_test
 
 test: test-toprgu-uart-volume
+
+.PHONY: test-uart-volume-host
+test-uart-volume-host:
+	python3 tests/uart_volume_host_test.py
+
+test: test-uart-volume-host

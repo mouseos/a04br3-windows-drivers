@@ -14,3 +14,5 @@ python3 tools/winpe/prepare-mt8167-volume-wim.py \
  --boot "$ROOT/port/xnu/out/windows-rt-uefi-shared-bqhr-a06afed0/boot.img" \
  --output "$OUTPUT"
 ```
+
+ホストの `tools/uart/request-winpe-volume-release.py` に診断起動前に保存したUARTログのバイト位置を指定すると、その位置以降のREADYを待ち、要求を送信して結果を監視する。`--reset-after-release` は成功行を完全に受信した場合だけresetを要求する。ログの切替・切詰め、失敗行、タイムアウトではresetしない。旧WinPEにはREADYがないためこのツールでは解除できない。
