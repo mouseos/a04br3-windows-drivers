@@ -519,6 +519,12 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         desc.InterfaceType=Internal;desc.MaximumLength=A04_PVR_HEAP_SIZE;
         c->vendor_adapter_v3=IoGetDmaAdapter(WdfDeviceWdmGetPhysicalDevice(device),&desc,&map_registers);
         adapter=c->vendor_adapter_v3;
+#if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
+        /* The screen common buffer needs one map register per page.  Keep
+         * the adapter in the context so the failure path releases it. */
+        GpuPrint("A04GPU DMA MAP REGISTERS=");GpuHex(map_registers);GpuPrint("\n");
+        if(adapter && map_registers<BYTES_TO_PAGES(4259840u)) adapter=NULL;
+#endif
     }
 #else
     adapter=WdfDmaEnablerWdmGetDmaAdapter(c->dma,WdfDmaDirectionReadFromDevice);
