@@ -11,6 +11,12 @@
 #include "client_interface.h"
 #include "audio_interface.h"
 #include "audio_owner.h"
+#ifndef A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC
+#define A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC 0
+#endif
+#if A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC && (!defined(A04_SHARED_QUERY_EXPERIMENTAL) || !A04_SHARED_QUERY_EXPERIMENTAL || !defined(A04_SHARED_BUTTON_D0_EXPERIMENT) || !A04_SHARED_BUTTON_D0_EXPERIMENT)
+#error TOP audio gate diagnostic requires shared query and D0
+#endif
 #ifndef A04_AUDIO_DIAGNOSTIC_TRACE
 #define A04_AUDIO_DIAGNOSTIC_TRACE 0
 #endif
@@ -59,6 +65,9 @@
 #include "shared_interface.h"
 #endif
 typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio;
+#if A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC
+struct a04_audio_top_clock audioTopClock;
+#endif
 #if A04_SHARED_MT6392_DIAGNOSTIC
 struct a04_mt6392_classd classd;
 #if A04_MT6392_CLK_ALIAS_EXPERIMENT
@@ -182,6 +191,20 @@ static int ParentCodecDelay(void *context,uint32_t us) {
 static int ParentCodecStart(void *context) { return a04_mt6392_classd_start_muted(&((A04_PARENT_CONTEXT *)context)->classd); }
 static int ParentCodecStop(void *context) { return a04_mt6392_classd_stop(&((A04_PARENT_CONTEXT *)context)->classd); }
 #endif
+#if A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC
+/* These run under ParentLock. No admission is possible until the independent
+ * AFE clock, power, codec and quiescence prerequisites are also supplied. */
+static int ParentTopAudioAcquire(void *context,uint32_t rate) {
+    A04_PARENT_CONTEXT *c=context;
+    if(!c || !c->topck || !c->pmic.online || rate!=48000) return -1;
+    return a04_audio_top_clock_acquire(&c->regs,&c->audioTopClock);
+}
+static int ParentTopAudioRelease(void *context) {
+    A04_PARENT_CONTEXT *c=context;
+    if(!c || !c->topck || !c->pmic.online) return -1;
+    return a04_audio_top_clock_release(&c->regs,&c->audioTopClock);
+}
+#endif
 static int ParentAudioAcquire(PVOID context,ULONG rate) {
     A04_PARENT_CONTEXT *c;int result;
     if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
@@ -225,6 +248,9 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
     /* Failed/partial audio ownership cannot be interpreted as quiescent.
      * Retain mappings; this is not proof PnP retains physical resources. */
     if(c->audio.poisoned || c->audio.leased)return STATUS_DEVICE_BUSY;
+#if A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC
+    if(c->audioTopClock.held || c->audioTopClock.poisoned)return STATUS_DEVICE_BUSY;
+#endif
 #if A04_MT6392_CLK_ALIAS_EXPERIMENT
     if(c->speakerClock.held)return STATUS_DEVICE_BUSY;
 #endif
@@ -456,6 +482,10 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
         c->classd.context=c;c->classd.supports=ParentCodecSupports;c->classd.update_bits=ParentCodecUpdate;c->classd.read16=ParentCodecRead;c->classd.delay_us=ParentCodecDelay;
         c->audio.context=c;c->audio.codec_acquire_muted=ParentCodecStart;
         c->audio.codec_release_quiescent=ParentCodecStop;
+#endif
+#if A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC
+        c->audio.context=c;c->audio.top_clock_acquire=ParentTopAudioAcquire;
+        c->audio.top_clock_release=ParentTopAudioRelease;
 #endif
     }
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL

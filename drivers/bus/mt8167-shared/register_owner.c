@@ -46,3 +46,30 @@ out:o->unlock(o->context);return result;
 }
 int a04_register_owner_stop(struct a04_register_owner *o)
 { if(enter(o))return -1;o->online=0;o->unlock(o->context);return 0; }
+
+/* MT8167 CLK_TOP_AUDIO: status TOP1 0x24 bit 25; CLR 0x84 enables,
+ * SET 0x54 disables. Only the original gate state is restored. */
+#define A04_TOP_AUDIO_BIT (1u<<25)
+int a04_audio_top_clock_acquire(struct a04_register_owner *o,struct a04_audio_top_clock *s)
+{
+    uint32_t v;
+    if(!o || !s || !o->read32 || !o->write32 || s->held || s->poisoned) return -1;
+    if(o->read32(o->context,A04_SHARED_TOP,0x24u,&v)) {s->poisoned=1;return -1;}
+    s->held=1;s->restore_gated=(v&A04_TOP_AUDIO_BIT)!=0;
+    if(s->restore_gated && (o->write32(o->context,A04_SHARED_TOP,0x84u,A04_TOP_AUDIO_BIT) ||
+       o->read32(o->context,A04_SHARED_TOP,0x24u,&v) || (v&A04_TOP_AUDIO_BIT))) {
+        s->poisoned=1;return -1;
+    }
+    return 0;
+}
+int a04_audio_top_clock_release(struct a04_register_owner *o,struct a04_audio_top_clock *s)
+{
+    uint32_t v;
+    if(!o || !s || !o->read32 || !o->write32 || !s->held || s->poisoned) return -1;
+    if(o->read32(o->context,A04_SHARED_TOP,0x24u,&v) || (v&A04_TOP_AUDIO_BIT)) {s->poisoned=1;return -1;}
+    if(s->restore_gated && (o->write32(o->context,A04_SHARED_TOP,0x54u,A04_TOP_AUDIO_BIT) ||
+       o->read32(o->context,A04_SHARED_TOP,0x24u,&v) || !(v&A04_TOP_AUDIO_BIT))) {
+        s->poisoned=1;return -1;
+    }
+    s->held=0;s->restore_gated=0;return 0;
+}

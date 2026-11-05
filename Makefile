@@ -754,3 +754,11 @@ test-mt8167-audio-trace: test-mt8167-pnp-run-diagnostic
 	./build/mt8167_pnp_trace_test
 	$(CXX) -O2 -Wall -Wextra -Werror -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_AUDIO_DIAGNOSTIC_TRACE=1 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/stream_transport.cpp drivers/audio/mt8167-afe/shared_transport.cpp drivers/audio/mt8167-afe/irq_windows.cpp drivers/audio/mt8167-afe/shared_audio.c drivers/audio/mt8167-afe/dl1.c drivers/audio/mt8167-afe/dl1_engine.c tests/mt8167_audio_irq_integration_test.cpp -o build/mt8167_audio_irq_trace_test
 	./build/mt8167_audio_irq_trace_test
+
+.PHONY: test-mt8167-audio-top-clock
+test-mt8167-audio-top-clock:
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared tests/mt8167_audio_top_clock_test.c drivers/bus/mt8167-shared/register_owner.c -o build/mt8167_audio_top_clock_test
+	./build/mt8167_audio_top_clock_test
+	$(CC) $(CFLAGS) -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_SHARED_BUTTON_D0_EXPERIMENT=1 -DA04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_shared_wdf_test.c -o build/mt8167_shared_top_clock_test
+	./build/mt8167_shared_top_clock_test

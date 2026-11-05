@@ -17,5 +17,10 @@ int a04_register_owner_start(struct a04_register_owner *);
 int a04_register_touch_update(struct a04_register_owner *,enum a04_shared_bank,unsigned,uint32_t,uint32_t);
 int a04_register_touch_write(struct a04_register_owner *,enum a04_shared_bank,unsigned,uint32_t);
 int a04_register_touch_input(struct a04_register_owner *,int *down);
+/* Caller holds the shared parent lock, and has established platform-wide
+ * exclusive ownership and retained power before using this diagnostic lease. */
+struct a04_audio_top_clock { int held, restore_gated, poisoned; };
+int a04_audio_top_clock_acquire(struct a04_register_owner *,struct a04_audio_top_clock *);
+int a04_audio_top_clock_release(struct a04_register_owner *,struct a04_audio_top_clock *);
 int a04_register_owner_stop(struct a04_register_owner *);
 #endif

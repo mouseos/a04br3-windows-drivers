@@ -9,6 +9,8 @@
 struct a04_audio_owner {
     void *context;
     int (*preflight)(void *, uint32_t);
+    int (*top_clock_acquire)(void *, uint32_t);
+    int (*top_clock_release)(void *);
     int (*clock_acquire)(void *, uint32_t);
     int (*codec_acquire_muted)(void *);
     /* Must independently establish device DMA and interrupt quiescence;

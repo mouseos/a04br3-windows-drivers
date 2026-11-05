@@ -82,6 +82,10 @@ int main(void){
  assert(ParentCodecDelay(&testContext,1999));ExReleaseFastMutex(&testContext.pwrapLock);
  assert(ParentCodecStart(&testContext) && !reads && !writes);
 #endif
+#if A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC
+ assert(testContext.audio.top_clock_acquire && testContext.audio.top_clock_release);
+ assert(!testContext.audio.clock_acquire && !testContext.audio.verify_release && !testContext.audio.online);
+#endif
  assert(child_count==3 && forward_count==6);
 #if defined(A04_AUDIO_CHILD_RESOURCES) && A04_AUDIO_CHILD_RESOURCES
  assert(!ChildRequirements(&children[2],NULL) && appended==1 && desc_count==3);

@@ -271,3 +271,22 @@ gate and disables them in reverse order; its shared clock framework and
 `afe_ctrl_lock` are not reproduced by a PnP mapping. The available Windows
 resources and source do not yet prove equivalent shared ownership or drain.
 Source: [MT8167 AFE clock handling](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/sound/soc/mediatek/mt8167/mt8167-afe-util.c).
+
+`A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC=1` binds the shared parent's TOPCKGEN
+clock lease into the audio-owner sequence. MT8167 Linux DTS connects
+`top_pdn_audio` to `CLK_TOP_AUDIO`; the board clock driver uses status 0x24,
+CLR 0x84, SET 0x54, bit 25. Acquisition saves the existing gate state, clears
+only that bit when needed and verifies readback. Release runs after codec and
+AFE clock shutdown, checks that the gate is still enabled and restores only
+its original state. Failure poisons and retains ownership. Host mock tests do
+not validate the physical register or external owners. The real parent still
+lacks power/AFE ownership, codec prerequisites and DMA/IRQ drain proof; this
+flag alone cannot put the audio owner online or execute the gate operation.
+For a device diagnostic, first prove firmware and all direct TOPCKGEN/PWRAP
+clients have handed over, PnP resource exclusivity and D0 retention, AFE bit 2
+ownership with its child mapping, codec muted power and IRQ/DMA quiescence;
+then verify readback and stop behavior under the platform owner's control.
+No such device verification has been performed.
+Sources: [DTS](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/arch/arm64/boot/dts/mediatek/mt8167.dtsi),
+[clock driver](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/drivers/clk/mediatek/clk-mt8167.c),
+[clock gate operations](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/drivers/clk/mediatek/clk-gate.c).
