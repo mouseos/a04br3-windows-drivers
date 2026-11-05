@@ -17,6 +17,16 @@
 #ifndef A04_GE8300_VENDOR_UNCACHED_STAGE
 #define A04_GE8300_VENDOR_UNCACHED_STAGE 0
 #endif
+#ifndef A04_GE8300_VENDOR_IRQ
+#define A04_GE8300_VENDOR_IRQ 0
+#endif
+#if A04_GE8300_VENDOR_IRQ && !A04_GE8300_VENDOR_UNCACHED_STAGE
+#error Vendor IRQ requires uncached vendor staging
+#endif
+#if A04_GE8300_VENDOR_IRQ
+#include "vendor_m1_11/windows_irq.h"
+#include "vendor_m1_11/windows_command.h"
+#endif
 #if A04_GE8300_VENDOR_UNCACHED_STAGE && !A04_GE8300_VENDOR_STAGE
 #error Uncached vendor staging requires vendor staging
 #endif
@@ -75,6 +85,12 @@ typedef struct {
 #if A04_GE8300_VENDOR_STAGE
     struct a04_vendor_m1_11_memory vendor;
     PDMA_ADAPTER vendor_adapter_v3;
+#if A04_GE8300_VENDOR_IRQ
+    struct a04_vendor_start vendor_start;
+    struct a04_vendor_irq *vendor_irq;
+    struct a04_vendor_irq_snapshot vendor_irq_snapshot;
+    WDFWAITLOCK vendor_lifetime;
+#endif
     struct a04_ge8300_vendor_stage_status vendor_status;
     struct a04_ge8300_vendor_power_status vendor_power_status;
     volatile UCHAR *mfg;
@@ -240,6 +256,15 @@ static void GpuBugCallback(PVOID buffer,ULONG length)
 }
 #endif
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(GPU_CONTEXT,GpuContext)
+#if A04_GE8300_VENDOR_IRQ
+static NTSTATUS GpuVendorIrqService(void *context)
+{
+    GPU_CONTEXT *c=context;NTSTATUS status;
+    WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+    status=a04_vendor_m1_11_windows_irq_snapshot(&c->vendor_start,TRUE,&c->vendor_irq_snapshot);
+    WdfWaitLockRelease(c->vendor_lifetime);return status;
+}
+#endif
 EVT_WDF_DRIVER_DEVICE_ADD GpuAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE GpuPrepare;
 EVT_WDF_DEVICE_RELEASE_HARDWARE GpuRelease;
@@ -327,6 +352,15 @@ NTSTATUS GpuPrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
     c->mfg=MmMapIoSpace(mfg,MFG_SIZE,MmNonCached);
     if(!c->mfg) { MmUnmapIoSpace((PVOID)c->core,CORE_SIZE);c->core=NULL;return STATUS_INSUFFICIENT_RESOURCES; }
 #endif
+#if A04_GE8300_VENDOR_IRQ
+    {
+        NTSTATUS bind=a04_vendor_irq_bind(c->vendor_irq,c->core,CORE_SIZE);
+        if(!NT_SUCCESS(bind)) {
+            MmUnmapIoSpace((PVOID)c->mfg,MFG_SIZE);c->mfg=NULL;
+            MmUnmapIoSpace((PVOID)c->core,CORE_SIZE);c->core=NULL;return bind;
+        }
+    }
+#endif
 #if A04_GE8300_BOOT_TEST
     {
         PHYSICAL_ADDRESS uart; UNICODE_STRING name=RTL_CONSTANT_STRING(L"KiBugCheckData");
@@ -351,6 +385,14 @@ NTSTATUS GpuRelease(WDFDEVICE device,WDFCMRESLIST translated)
     GPU_CONTEXT *c=GpuContext(device); UNREFERENCED_PARAMETER(translated);
     /* Never detach mappings or DMA ownership while the GPU might master RAM. */
     if(c->firmware.processor_released) return STATUS_DEVICE_BUSY;
+#if A04_GE8300_VENDOR_IRQ
+    /* Framework disconnects IRQ before ReleaseHardware. Never unmap while a
+     * deferred service callback is still using the resource. */
+    if(c->vendor.hardware_owned || c->vendor.adapter) return STATUS_DEVICE_BUSY;
+    a04_vendor_irq_set_power(c->vendor_irq,FALSE);
+    a04_vendor_irq_flush(c->vendor_irq);
+    if(!NT_SUCCESS(a04_vendor_irq_unbind(c->vendor_irq))) return STATUS_DEVICE_BUSY;
+#endif
 #if A04_GE8300_VENDOR_STAGE
     if(c->vendor.hardware_owned) return STATUS_DEVICE_BUSY;
     if(c->vendor.adapter) return STATUS_DEVICE_BUSY;
@@ -693,6 +735,11 @@ NTSTATUS GpuAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,GPU_CONTEXT); attr.ExecutionLevel=WdfExecutionLevelPassive;
     status=WdfDeviceCreate(&init,&attr,&device); if(!NT_SUCCESS(status)) return status;
     c=GpuContext(device); status=WdfDeviceCreateSymbolicLink(device,&link); if(!NT_SUCCESS(status)) return status;
+#if A04_GE8300_VENDOR_IRQ
+    WDF_OBJECT_ATTRIBUTES_INIT(&attr);attr.ParentObject=device;
+    status=WdfWaitLockCreate(&attr,&c->vendor_lifetime);if(!NT_SUCCESS(status)) return status;
+    status=a04_vendor_irq_create(device,GpuVendorIrqService,c,&c->vendor_irq);if(!NT_SUCCESS(status)) return status;
+#endif
     WDF_DMA_ENABLER_CONFIG_INIT(&dma_config,WdfDmaProfileScatterGatherDuplex,A04_PVR_HEAP_SIZE);
     status=WdfDmaEnablerCreate(device,&dma_config,WDF_NO_OBJECT_ATTRIBUTES,&c->dma); if(!NT_SUCCESS(status)) return status;
     WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&queue_config,WdfIoQueueDispatchSequential);
