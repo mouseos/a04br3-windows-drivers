@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 
 parser = argparse.ArgumentParser(description=__doc__)
-for name in ('source', 'package', 'helper', 'helper-cert', 'original-storage-inf', 'original-touch-inf', 'output'):
+for name in ('source', 'package', 'helper', 'helper-cert', 'uart-event', 'original-storage-inf', 'original-touch-inf', 'output'):
     parser.add_argument('--' + name, type=Path, required=True)
 parser.add_argument('--source-sha256', required=True)
 parser.add_argument('--wimlib', default='wimlib-imagex')
@@ -38,6 +38,7 @@ if sha(a.source) != a.source_sha256.lower() or header(a.source) != (1, 1):
 files = {
     '/Windows/System32/startnet.cmd': root / 'tools/winpe/startnet-stage-legacy-names.cmd',
     '/a04br3/check-volume-clean.exe': a.helper,
+    '/a04br3/uart-name-event.exe': a.uart_event,
     '/a04br3/names/original-storage.inf': a.original_storage_inf,
     '/a04br3/names/original-touch.inf': a.original_touch_inf,
 }
@@ -93,7 +94,7 @@ with tempfile.TemporaryDirectory(prefix='a04-legacy-name-wim-') as directory:
         raise SystemExit('output boot index changed')
     run([a.wimlib, 'verify', str(a.output)])
     check = tmp / 'check'
-    run([a.wimlib, 'extract', str(a.output), '1', '/a04br3/names', '/a04br3/check-volume-clean.exe', '/Windows/System32/startnet.cmd', '/Windows/System32/config/SOFTWARE', f'--dest-dir={check}'], stdout=subprocess.DEVNULL)
+    run([a.wimlib, 'extract', str(a.output), '1', '/a04br3/names', '/a04br3/check-volume-clean.exe', '/a04br3/uart-name-event.exe', '/Windows/System32/startnet.cmd', '/Windows/System32/config/SOFTWARE', f'--dest-dir={check}'], stdout=subprocess.DEVNULL)
     for dest, src in files.items():
         name = dest.removeprefix('/a04br3/') if dest.startswith('/a04br3/') else Path(dest).name
         if sha(check / name) != sha(src):

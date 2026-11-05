@@ -17,7 +17,7 @@ try {
     $batch = Get-Content (Join-Path $root 'tools\winpe\startnet-stage-legacy-names.cmd') -Raw
     $batch = $batch.Replace('C:\Windows',"$base\Windows").Replace('X:\a04br3',"$base\src")
     $batch = $batch -replace '(?m)^wpeinit\r?\n','' -replace '(?m)^drvload .*$', 'cmd /c exit 0'
-    $batch = $batch -replace '(?m)^.*\\(disable-quickedit|guard-windows-volume|check-volume-clean)\.exe.*$', 'cmd /c exit 0'
+    $batch = $batch -replace '(?m)^.*\\(disable-quickedit|guard-windows-volume|check-volume-clean|uart-name-event)\.exe.*$', 'cmd /c exit 0'
     $batch = $batch -replace '(?m)^\s*.*\\compare-files\.exe ', '    fc /b '
     $batch = $batch -replace '(?m)^\s*dism.exe .* > (.+?) 2>&1\r?$', '  cmd /c echo MOCK_DISM > $1'
     $batch = $batch -replace '(?m)^mountvol C: /p\r?\n',''

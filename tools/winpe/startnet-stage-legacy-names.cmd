@@ -1,5 +1,6 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
+set "A04_OUTCOME=FAILED"
 title MT8167 MSDC and BU21025 driver names
 X:\a04br3\disable-quickedit.exe
 if errorlevel 1 goto consolefail
@@ -40,6 +41,8 @@ for %%H in (SYSTEM SOFTWARE COMPONENTS) do (
 )
 rem The packages preserve the original SYS and service configuration. Offline
 rem staging alone does not prove that PnP selected the new descriptions.
+X:\a04br3\uart-name-event.exe START
+if errorlevel 1 goto uartfail
 for %%D in (storage touch) do (
   dism.exe /Image:C:\ /Add-Driver /Driver:X:\a04br3\names\%%D /ForceUnsigned /ScratchDir:X:\Windows\Temp > X:\a04br3\names-%%D.log 2>&1
   set "A04_RESULT=!errorlevel!"
@@ -50,6 +53,7 @@ for %%D in (storage touch) do (
   if not "!A04_RESULT!"=="0" goto dismfail
 )
 echo NAMES_PACKAGES_STAGED_PNP_NOT_VERIFIED
+set "A04_OUTCOME=STAGED"
 goto dismount
 :consolefail
 echo NAMES_CONSOLE_FAILED
@@ -77,8 +81,13 @@ echo NAMES_LOG_COPY_FAILED
 goto dismount
 :dismfail
 echo NAMES_DISM_FAILED_MAY_BE_PARTIAL
+goto dismount
+:uartfail
+echo NAMES_UART_EVENT_FAILED
 :dismount
 mountvol C: /p
 echo NAMES_MOUNTVOL_EXIT=!errorlevel!
+if errorlevel 1 set "A04_OUTCOME=FAILED"
 :finish
+X:\a04br3\uart-name-event.exe !A04_OUTCOME!
 echo NAMES_STAGE_FINISHED
