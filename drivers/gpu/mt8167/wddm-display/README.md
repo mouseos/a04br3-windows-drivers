@@ -45,3 +45,29 @@ stop is rejected. This protects these paths only, and does not establish mode
 change, power transition, surprise removal, crash-display or GPU DMA lifetime.
 POST physical addresses are not DMA addresses and must not be passed directly
 to GE8300 without an OS-authorized mapping and retained ownership.
+
+## m1.11 32x32 staging preparation
+
+`present_tile.h` bounds-checks a complete 32x32 32-bit tile against a
+CPU-mapped surface's width, height, stride and byte span, and packs its rows
+into a distinct 4096-byte CPU staging area. The row helper calculates a
+checked offset into a separate destination mapping; it does not perform MMIO
+writes, map POST memory for GPU DMA, submit commands or establish a fence.
+The actual WDDM path does not call this helper yet. Edge tiles, rotation,
+conversion and move overlap require the existing CPU path.
+
+`DxgkCbAcquirePostDisplayOwnership` yields display information and ownership;
+its physical address is not a GE8300 DMA logical address. The WDDM present
+callback is at PASSIVE_LEVEL and synchronous use must finish before its
+source mapping is unlocked. See Microsoft documentation for
+[PresentDisplayOnly](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkddi_presentdisplayonly),
+[POST display ownership](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/dispmprt/nc-dispmprt-dxgkcb_acquire_post_display_ownership),
+and [common buffer logical addresses](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_common_buffer).
+
+The m1.11 diagnostic currently has one frozen fixed-pattern task, one
+submission, context cleanup and forced power-off; it is not a repeatable
+caller-supplied-pixel copy service. The current Windows fence/cleanup
+observations and XNU `NativePowerVRQueue.cpp` UFO wait do not establish a
+safe DMA mapping of scanout, cache visibility, repeatability, or stop/removal
+lifetime. Until those are implemented and verified, the existing CPU WDDM
+path remains active and this helper is not evidence of GPU drawing.
