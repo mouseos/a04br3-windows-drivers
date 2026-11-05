@@ -7,6 +7,12 @@
 #include "watchdog_policy.h"
 #include "handoff_policy.h"
 #include "thermal_stop.h"
+#ifndef A04_TOPRGU_UART_VOLUME
+#define A04_TOPRGU_UART_VOLUME 0
+#endif
+#if A04_TOPRGU_UART_VOLUME
+#include "uart_volume_command.h"
+#endif
 #if A04_TOPRGU_UART_SCREEN
 #include <wdmsec.h>
 #include "uart_screen.h"
@@ -25,6 +31,12 @@
 #endif
 #if A04_TOPRGU_UART_SCREEN && (!A04_TOPRGU_CPU1_HANDOFF || A04_TOPRGU_THERMAL_STOP)
 #error UART screen requires CPU1 handoff and excludes thermal stop test
+#endif
+#if A04_TOPRGU_UART_VOLUME != 0 && A04_TOPRGU_UART_VOLUME != 1
+#error invalid UART volume request option
+#endif
+#if A04_TOPRGU_UART_VOLUME && !A04_TOPRGU_UART_SCREEN
+#error UART volume request requires secured screen interface
 #endif
 #ifndef A04_TOPRGU_DEADLINE_SECONDS
 #define A04_TOPRGU_DEADLINE_SECONDS 0
@@ -55,6 +67,10 @@ typedef struct {
     BOOLEAN deadlineReported;
     ULONG backupCalls;
     struct mt8167_reset_parser parser;
+#if A04_TOPRGU_UART_VOLUME
+    struct mt8167_volume_parser volumeParser;
+    volatile LONG volumePending;
+#endif
 } TOPRGU_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(TOPRGU_CONTEXT, ToprguGetContext)
 EVT_WDF_DRIVER_DEVICE_ADD ToprguAdd;
@@ -267,9 +283,15 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
             for (i=0; i<16; ++i) {
                 if ((READ_REGISTER_ULONG(c->uart + 3) & 0x80u) ||
                     !(READ_REGISTER_ULONG(c->uart + 5) & 1u)) break;
-                if (mt8167_reset_consume(&c->parser,(UCHAR)READ_REGISTER_ULONG(c->uart))) {
+                { UCHAR byte=(UCHAR)READ_REGISTER_ULONG(c->uart);
+                  if (mt8167_reset_consume(&c->parser,byte)) {
                     WRITE_REGISTER_ULONG(c->wdt + 5,0x1209u);
                     break;
+                  }
+#if A04_TOPRGU_UART_VOLUME
+                  if (mt8167_volume_consume(&c->volumeParser,byte))
+                    InterlockedExchange(&c->volumePending,1);
+#endif
                 }
             }
         }
@@ -375,9 +397,15 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
             for (i=0; i<16; ++i) {
                 if ((READ_REGISTER_ULONG(c->uart + 3) & 0x80u) ||
                     !(READ_REGISTER_ULONG(c->uart + 5) & 1u)) break;
-                if (mt8167_reset_consume(&c->parser,(UCHAR)READ_REGISTER_ULONG(c->uart))) {
+                { UCHAR byte=(UCHAR)READ_REGISTER_ULONG(c->uart);
+                  if (mt8167_reset_consume(&c->parser,byte)) {
                     WRITE_REGISTER_ULONG(c->wdt + 5,0x1209u);
                     break;
+                  }
+#if A04_TOPRGU_UART_VOLUME
+                  if (mt8167_volume_consume(&c->volumeParser,byte))
+                    InterlockedExchange(&c->volumePending,1);
+#endif
                 }
             }
         }
@@ -418,6 +446,21 @@ VOID ToprguScreenIoctl(WDFQUEUE queue,WDFREQUEST request,size_t out,size_t in,UL
 {
     TOPRGU_CONTEXT *c=ToprguGetContext(WdfIoQueueGetDevice(queue));
     UCHAR *data; size_t length,i; NTSTATUS status=STATUS_INVALID_PARAMETER;
+#if A04_TOPRGU_UART_VOLUME
+    if (code==A04_UART_VOLUME_GET) {
+        ULONG *result; size_t available;
+        status=WdfRequestRetrieveOutputBuffer(request,sizeof(*result),(PVOID *)&result,&available);
+        if (!NT_SUCCESS(status)) goto finish;
+        if (available<sizeof(*result)) { status=STATUS_BUFFER_TOO_SMALL; goto finish; }
+        if (InterlockedCompareExchange(&c->busy,1,0)!=0) { status=STATUS_DEVICE_BUSY; goto finish; }
+        if (!InterlockedCompareExchange(&c->running,0,0) || !InterlockedCompareExchange(&c->ownedFour,0,0) || KeQueryActiveProcessorCount(NULL)!=4)
+            status=STATUS_DEVICE_NOT_READY;
+        else { *result=(ULONG)InterlockedExchange(&c->volumePending,0); status=STATUS_SUCCESS; }
+        InterlockedExchange(&c->busy,0);
+        if (NT_SUCCESS(status)) { WdfRequestCompleteWithInformation(request,status,sizeof(*result)); return; }
+        goto finish;
+    }
+#endif
     UNREFERENCED_PARAMETER(out);
     if (code!=A04_UART_SCREEN_SEND || in==0 || in>sizeof(c->screenBuf)) goto finish;
     status=WdfRequestRetrieveInputBuffer(request,in,(PVOID *)&data,&length);

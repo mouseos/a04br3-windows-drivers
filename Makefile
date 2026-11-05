@@ -822,3 +822,11 @@ test-mt8167-usb-pnp-resources:
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/usb/mt8167-usb20 tests/usb/pnp_resources_test.c -o build/mt8167_usb_pnp_resources_test
 	./build/mt8167_usb_pnp_resources_test
+
+.PHONY: test-toprgu-uart-volume
+test-toprgu-uart-volume:
+	@mkdir -p build
+	$(CC) $(CFLAGS) -std=c11 -Idrivers/system/mt8167-toprgu tests/toprgu_uart_volume_test.c drivers/system/mt8167-toprgu/reset_command.c -o build/toprgu_uart_volume_test
+	./build/toprgu_uart_volume_test
+
+test: test-toprgu-uart-volume
