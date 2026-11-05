@@ -7,6 +7,8 @@
 #include "audio_parent_query.h"
 static int parent_refs,query_failure,malformed;
 static int parent_grant,parent_prepare_fail,parent_prepares,parent_releases,parent_release_fail;
+static PVOID parent_afe;
+static int parent_bind(PVOID,PVOID afe,ULONG n){if(afe && n==4096 && !parent_afe){parent_afe=afe;return 0;}if(!afe && !n && parent_afe){parent_afe=nullptr;return 0;}return -1;}
 #if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
 int test_connect_fail,test_irq_connections,test_irq_disconnections;
 void test_before_disconnect(){assert(!parent_releases);}
@@ -18,9 +20,9 @@ static int parent_release(PVOID){parent_releases++;return parent_release_fail?-1
 static int parent_prepare(PVOID,PVOID afe,ULONG n){assert(afe && n==4096);parent_prepares++;return parent_prepare_fail?-1:0;}
 extern "C" NTSTATUS Mt8167QueryAudioParent(PDEVICE_OBJECT p,A04_SHARED_AUDIO_INTERFACE *out) {
  if(query_failure)return STATUS_NOT_SUPPORTED;
- *out={};out->Header.Size=sizeof(*out);out->Header.Version=4;out->Header.Context=p;
+ *out={};out->Header.Size=sizeof(*out);out->Header.Version=A04_SHARED_AUDIO_INTERFACE_VERSION;out->Header.Context=p;
  out->Header.InterfaceReference=parent_ref;out->Header.InterfaceDereference=parent_deref;
- out->AcquireMuted=malformed?nullptr:parent_acquire;out->ReleaseQuiescent=parent_release;out->PrepareMaskedIrq=parent_prepare;parent_refs++;return STATUS_SUCCESS;
+ out->AcquireMuted=malformed?nullptr:parent_acquire;out->ReleaseQuiescent=parent_release;out->PrepareMaskedIrq=parent_prepare;out->BindAfe=parent_bind;parent_refs++;return STATUS_SUCCESS;
 }
 #endif
 #if defined(A04_AUDIO_DIAGNOSTIC_TRACE) && A04_AUDIO_DIAGNOSTIC_TRACE
@@ -160,10 +162,10 @@ int main(){
  assert(!Mt8167PnpBackendCreate(&adapter,&resources,&owner) && owner && test_interrupt.fn);
  Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);
  assert(maps==6 && unmaps==4 && parent_refs==2 && test_pdo_refs==1 && test_irq_disconnections==2 && !test_interrupt.fn);
- /* A failed release after failed preparation also retains ownership. */
+ /* A quarantined lease retains the binding; a second child is rejected. */
  parent_prepare_fail=1;parent_release_fail=1;owner=nullptr;
  assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_NOT_READY && !owner);
- assert(maps==7 && unmaps==4 && parent_refs==4 && test_pdo_refs==2 && test_irq_disconnections==2);
+ assert(maps==7 && unmaps==5 && parent_refs==2 && test_pdo_refs==1 && test_irq_disconnections==2);
 #else
  assert(unmaps==1);
 #endif

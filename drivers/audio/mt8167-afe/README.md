@@ -271,3 +271,9 @@ WACS timeout poisons the bus. Both flags default to zero. These observations
 are not evidence of powered rails, clock ownership, codec quiescence, or DMA
 drain. The real parent still lacks the callbacks required to acquire audio and
 RUN remains unavailable; exposed DMA and the parent lease remain quarantined.
+
+The current parent contract is version 5 and includes the child's explicit
+AFE mapping bind/unbind. The diagnostic backend binds only its validated
+PnP-assigned mapping before lease acquisition and retains that mapping if the
+parent cannot release it. The parent still rejects real acquisition; this does
+not establish DMA drain, board mute, power retention or hardware playback.

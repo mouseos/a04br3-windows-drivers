@@ -290,3 +290,22 @@ No such device verification has been performed.
 Sources: [DTS](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/arch/arm64/boot/dts/mediatek/mt8167.dtsi),
 [clock driver](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/drivers/clk/mediatek/clk-mt8167.c),
 [clock gate operations](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/drivers/clk/mediatek/clk-gate.c).
+
+The audio QUERY_INTERFACE is version 5. The diagnostic audio child supplies
+its validated exclusive PnP AFE mapping to `BindAfe` before acquiring the
+lease, and keeps it mapped until unbinding succeeds. Binding serializes with
+parent rundown, rejects a second mapping and performs no MMIO; it is a
+lifetime contract, not proof against firmware or uncoordinated direct users.
+`A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC=1` adds parent callbacks for the Linux
+`AUDIO_TOP_CON0` AFE PDN bit 2, after the TOP audio gate. They preserve the
+initial bit, verify writes, and retain the mapping and poison state on mismatch.
+A single parent mutex serializes its clients but cannot establish ownership by
+itself. The diagnostic flag requires the TOP gate flag and remains OFF by
+default. The parent still has no platform preflight, powered-rail guarantee,
+codec board-mute verification or independent DMA/IRQ quiescence callback, so
+it cannot grant a lease and these callbacks cannot run on a device yet.
+Linux clears DL1 enable and masks/clears IRQ at STOP, but the available Linux
+sources do not specify that outstanding bus transactions have drained. Neither
+this sequence nor a stationary cursor permits freeing DMA memory. The Windows
+backend retains exposed DMA and the parent lease; device removal may still
+revoke hardware resources, so this is not a complete PnP removal guarantee.

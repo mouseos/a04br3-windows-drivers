@@ -11,6 +11,12 @@
 #include "client_interface.h"
 #include "audio_interface.h"
 #include "audio_owner.h"
+#ifndef A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
+#define A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC 0
+#endif
+#if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC && (!defined(A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC) || !A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC)
+#error AFE gate diagnostic requires TOP audio gate diagnostic
+#endif
 #ifndef A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC
 #define A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC 0
 #endif
@@ -65,6 +71,10 @@
 #include "shared_interface.h"
 #endif
 typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio;
+PVOID audioAfe;
+#if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
+int afeClockHeld,afeClockRestore,afeClockPoisoned;
+#endif
 #if A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC
 struct a04_audio_top_clock audioTopClock;
 #endif
@@ -205,6 +215,50 @@ static int ParentTopAudioRelease(void *context) {
     return a04_audio_top_clock_release(&c->regs,&c->audioTopClock);
 }
 #endif
+/* This only records a mapping supplied by the validated audio child. It does
+ * not establish exclusive hardware ownership or retained power. */
+static int ParentBindAfe(PVOID context,PVOID afe,ULONG length) {
+    A04_PARENT_CONTEXT *c;int result=-1;
+    if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+    c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
+    if(afe && length==0x1000 && !c->audioAfe && !c->audio.leased && !c->audio.poisoned) {
+        c->audioAfe=afe;result=0;
+    } else if(!afe && !length && c->audioAfe && !c->audio.leased && !c->audio.poisoned) {
+#if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
+        if(!c->afeClockHeld && !c->afeClockPoisoned)
+#endif
+        {c->audioAfe=NULL;result=0;}
+    }
+    ParentUnlock(c);return result;
+}
+#if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
+/* AUDIO_TOP_CON0 bit 2, under the parent lock and an acquired TOP gate.
+ * Power and competing access must be independently verified by preflight. */
+static int ParentAfeClockAcquire(void *context,uint32_t rate) {
+    A04_PARENT_CONTEXT *c=context;volatile ULONG *reg;ULONG value;
+    if(!c || !c->audioAfe || !c->audioTopClock.held || c->audioTopClock.poisoned ||
+       !c->pmic.online || c->afeClockHeld || c->afeClockPoisoned || rate!=48000)return -1;
+    reg=(volatile ULONG *)c->audioAfe;value=READ_REGISTER_ULONG(reg);
+    c->afeClockHeld=1;c->afeClockRestore=(value&4u)!=0;
+    if(c->afeClockRestore) {
+        WRITE_REGISTER_ULONG(reg,value&~4u);
+        if(READ_REGISTER_ULONG(reg)&4u){c->afeClockPoisoned=1;return -1;}
+    }
+    return 0;
+}
+static int ParentAfeClockRelease(void *context) {
+    A04_PARENT_CONTEXT *c=context;volatile ULONG *reg;ULONG value;
+    if(!c || !c->audioAfe || !c->pmic.online || !c->audioTopClock.held ||
+       !c->afeClockHeld || c->afeClockPoisoned)return -1;
+    reg=(volatile ULONG *)c->audioAfe;value=READ_REGISTER_ULONG(reg);
+    if(value&4u){c->afeClockPoisoned=1;return -1;}
+    if(c->afeClockRestore) {
+        WRITE_REGISTER_ULONG(reg,value|4u);
+        if(!(READ_REGISTER_ULONG(reg)&4u)){c->afeClockPoisoned=1;return -1;}
+    }
+    c->afeClockHeld=0;c->afeClockRestore=0;return 0;
+}
+#endif
 static int ParentAudioAcquire(PVOID context,ULONG rate) {
     A04_PARENT_CONTEXT *c;int result;
     if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
@@ -247,7 +301,10 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
     ParentStop(c);
     /* Failed/partial audio ownership cannot be interpreted as quiescent.
      * Retain mappings; this is not proof PnP retains physical resources. */
-    if(c->audio.poisoned || c->audio.leased)return STATUS_DEVICE_BUSY;
+    if(c->audio.poisoned || c->audio.leased || c->audioAfe)return STATUS_DEVICE_BUSY;
+#if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
+    if(c->afeClockHeld || c->afeClockPoisoned)return STATUS_DEVICE_BUSY;
+#endif
 #if A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC
     if(c->audioTopClock.held || c->audioTopClock.poisoned)return STATUS_DEVICE_BUSY;
 #endif
@@ -487,6 +544,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
         c->audio.context=c;c->audio.top_clock_acquire=ParentTopAudioAcquire;
         c->audio.top_clock_release=ParentTopAudioRelease;
 #endif
+#if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
+        c->audio.clock_acquire=ParentAfeClockAcquire;c->audio.clock_release=ParentAfeClockRelease;
+#endif
     }
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
     RtlZeroMemory(&iface,sizeof(iface));iface.Header.Size=sizeof(iface);iface.Header.Version=1;
@@ -508,7 +568,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     audioIface.Header.Size=sizeof(audioIface);audioIface.Header.Version=A04_SHARED_AUDIO_INTERFACE_VERSION;
     audioIface.Header.Context=dev;audioIface.Header.InterfaceReference=ParentInterfaceReference;
     audioIface.Header.InterfaceDereference=ParentInterfaceDereference;
-    audioIface.AcquireMuted=ParentAudioAcquire;audioIface.ReleaseQuiescent=ParentAudioRelease;audioIface.PrepareMaskedIrq=ParentAudioPrepareIrq;
+    audioIface.BindAfe=ParentBindAfe;audioIface.AcquireMuted=ParentAudioAcquire;audioIface.ReleaseQuiescent=ParentAudioRelease;audioIface.PrepareMaskedIrq=ParentAudioPrepareIrq;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&audioIface,&A04SharedAudioInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
 #endif

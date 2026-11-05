@@ -6,6 +6,9 @@
 #if defined(A04_AUDIO_DIAGNOSTIC_TRACE) && A04_AUDIO_DIAGNOSTIC_TRACE
 int a04_test_trace_count;
 #endif
+#if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
+static ULONG mockAfe;static int mockAfeIgnoreWrite;
+#endif
 static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,assertClosedOnLock,closeDuringLock,failMap;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;
 #if A04_SHARED_BUTTON_D0_EXPERIMENT
 static ULONG mockInit,mockFsm;static int mockStopDuringRead,mockWacs;
@@ -20,11 +23,17 @@ void ExInitializeFastMutex(FAST_MUTEX *m){m->held=0;}void ExAcquireFastMutex(FAS
 PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,int c){(void)n;(void)c;maps++;if(failMap && maps==failMap)return NULL;return (PVOID)(uintptr_t)a.QuadPart;}
 void MmUnmapIoSpace(PVOID p,ULONG n){(void)p;(void)n;unmaps++;}
 ULONG READ_REGISTER_ULONG(volatile ULONG *p){(void)p;reads++;
+#if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
+ if(p==&mockAfe)return mockAfe;
+#endif
 #if A04_SHARED_BUTTON_D0_EXPERIMENT
  if((uintptr_t)p==0x2000f09c)return mockInit;
  if((uintptr_t)p==0x2000f0a4){if(mockStopDuringRead)InterlockedExchange(&testContext.admissionClosed,1);return (mockFsm<<16)|(mockWacs?0x1234u:0);}
 #endif
  return 0;}void WRITE_REGISTER_ULONG(volatile ULONG *p,ULONG x){(void)p;(void)x;writes++;
+#if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
+ if(p==&mockAfe){if(!mockAfeIgnoreWrite)mockAfe=x;return;}
+#endif
 #if A04_SHARED_BUTTON_D0_EXPERIMENT
  if(mockWacs && (uintptr_t)p==0x2000f0a0){assert(x==0x00a10000u || (A04_AUDIO_PMIC_TRACE && x==0x00840000u));
 #if A04_AUDIO_PMIC_TRACE
@@ -84,7 +93,12 @@ int main(void){
 #endif
 #if A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC
  assert(testContext.audio.top_clock_acquire && testContext.audio.top_clock_release);
- assert(!testContext.audio.clock_acquire && !testContext.audio.verify_release && !testContext.audio.online);
+#if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
+ assert(testContext.audio.clock_acquire && testContext.audio.clock_release);
+#else
+ assert(!testContext.audio.clock_acquire);
+#endif
+ assert(!testContext.audio.verify_release && !testContext.audio.online);
 #endif
  assert(child_count==3 && forward_count==6);
 #if defined(A04_AUDIO_CHILD_RESOURCES) && A04_AUDIO_CHILD_RESOURCES
@@ -104,7 +118,7 @@ int main(void){
  fail_step=3;assert(ChildRequirements(&children[1],NULL)!=0 && appended==2 && deleted==2);fail_step=0;
  children[1].base=0;assert(ChildRequirements(&children[1],NULL)==STATUS_DEVICE_CONFIGURATION_ERROR && appended==2);assert(saved.Header.Version==1 && saved.ReadButtons);
  assert(input.Version==1 && input.TouchPen && input.ButtonPmicRead);
- assert(audio.Header.Version==4 && audio.AcquireMuted && audio.ReleaseQuiescent && audio.PrepareMaskedIrq);
+ assert(audio.Header.Version==A04_SHARED_AUDIO_INTERFACE_VERSION && audio.AcquireMuted && audio.ReleaseQuiescent && audio.PrepareMaskedIrq && audio.BindAfe);
  assert(audio.PrepareMaskedIrq(audio.Header.Context,(PVOID)&audio,0x1000)!=0 && !reads && !writes);
  {
  struct Mt8167AudioParentClient wrapper={0};struct mt8167_audio_shared_client client={0};
@@ -173,6 +187,23 @@ int main(void){
  assert(!writes);
 #endif
  { int before=reads; assert(audio.AcquireMuted(audio.Header.Context,48000)!=0 && reads==before && !writes && !testContext.audio.leased); }
+#if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
+ { int before=reads;mockAfe=0x104;
+   assert(!audio.BindAfe(audio.Header.Context,&mockAfe,0x1000) && reads==before);
+   assert(audio.BindAfe(audio.Header.Context,&mockAfe,0x1000));
+   assert(ParentAfeClockAcquire(&testContext,48000));
+   testContext.audioTopClock.held=1;
+   assert(!ParentAfeClockAcquire(&testContext,48000) && mockAfe==0x100);
+   assert(audio.BindAfe(audio.Header.Context,NULL,0));
+   assert(!ParentAfeClockRelease(&testContext) && mockAfe==0x104);
+   mockAfeIgnoreWrite=1;assert(ParentAfeClockAcquire(&testContext,48000));
+   assert(testContext.afeClockHeld && testContext.afeClockPoisoned && audio.BindAfe(audio.Header.Context,NULL,0));
+   /* Host-only reset; hardware failures remain quarantined. */
+   testContext.afeClockHeld=testContext.afeClockPoisoned=testContext.afeClockRestore=0;
+   testContext.audioTopClock.held=0;mockAfeIgnoreWrite=0;
+   assert(!audio.BindAfe(audio.Header.Context,NULL,0));writes=0;
+ }
+#endif
  mockWacs=1;assert(!input.ButtonPmicRead(input.Context,&value) && value==0x1234 && writes==2);mockWacs=0;value=0xeeee;writes=0;
  assert(!ParentD0Exit(&testContext,0) && !testContext.pmic.online && testContext.admissionClosed);
  reads=0;

@@ -40,6 +40,7 @@ struct Mt8167PnpBackend {
     struct mt8167_audio_shared_client shared;
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
     Mt8167AfeMapping afe;
+    BOOLEAN afeBound;
 #endif
 #if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
     struct Mt8167AudioParentClient parentClient;
@@ -86,6 +87,10 @@ static void OwnerDereference(void *ctx)
         return;
     }
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
+    if (o->afeBound) {
+        if (o->parentClient.parent.BindAfe(o->parentClient.parent.Header.Context,NULL,0)) return;
+        o->afeBound=FALSE;
+    }
     Mt8167UnmapAssignedAfe(&o->afe);
 #endif
     if (o->shared.referenced && mt8167_audio_shared_detach(&o->shared)) return;
@@ -259,6 +264,10 @@ NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt816
     o->iface.allocate=OwnerAllocate;o->iface.freeBuffer=OwnerFree;
     o->iface.start=OwnerStart;o->iface.stop=OwnerStop;o->iface.position=OwnerPosition;o->iface.getDeviceDescription=OwnerDescription;
 #if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
+    if (o->parentClient.parent.BindAfe(o->parentClient.parent.Header.Context,o->afe.base,0x1000)) {
+        o->online=FALSE;OwnerDereference(o);return STATUS_DEVICE_NOT_READY;
+    }
+    o->afeBound=TRUE;
     status=OwnerConnectMaskedIrq(o);
     if (!NT_SUCCESS(status)) { o->online=FALSE;OwnerDereference(o);return status; }
 #endif
@@ -313,7 +322,11 @@ void Mt8167PnpBackendRevoke(Mt8167PnpBackend *o) {
 #endif
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
     /* No IRQ, DMA, register access, or asynchronous mapping user exists. */
-    if (!o->shared.leased && !o->shared.quarantined) Mt8167UnmapAssignedAfe(&o->afe);
+    if (!o->shared.leased && !o->shared.quarantined) {
+        if (o->afeBound && !o->parentClient.parent.BindAfe(o->parentClient.parent.Header.Context,NULL,0))
+            o->afeBound=FALSE;
+        if (!o->afeBound) Mt8167UnmapAssignedAfe(&o->afe);
+    }
 #endif
     ExReleaseFastMutex(&o->mutex);
 }

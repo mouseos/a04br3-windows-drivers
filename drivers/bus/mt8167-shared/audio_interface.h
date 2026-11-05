@@ -23,6 +23,10 @@ typedef struct _A04_SHARED_AUDIO_INTERFACE {
      * On failure no interrupt may be connected; parent retains responsibility
      * for any partial operation until ReleaseQuiescent reports success. */
     int (*PrepareMaskedIrq)(PVOID, PVOID afe, ULONG length);
+    /* Diagnostic v5: register the validated child mapping before acquisition.
+     * Keep it mapped until BindAfe(NULL,0) succeeds; binding itself grants no
+     * power or ownership and performs no MMIO. */
+    int (*BindAfe)(PVOID, PVOID, ULONG);
 } A04_SHARED_AUDIO_INTERFACE;
-#define A04_SHARED_AUDIO_INTERFACE_VERSION 4
+#define A04_SHARED_AUDIO_INTERFACE_VERSION 5
 #endif
