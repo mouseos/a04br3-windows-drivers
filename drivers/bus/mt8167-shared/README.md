@@ -325,3 +325,12 @@ The parent still does not grant a real lease and live DMA RUN remains refused.
 Sources: [MT6392 DTS](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/arch/arm64/boot/dts/mediatek/mt6392.dtsi),
 [regulator driver](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/drivers/regulator/mt6392-regulator.c),
 [IRQ handler](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/sound/soc/mediatek/mt8167/mt8167-afe-pcm.c).
+
+The integration branch combines the audio and USB ownership prototypes under
+the same parent lock and admission state. USB admission is possible only in
+the existing opt-in D0 experiment with the optional 0x710-byte APMIXED resource;
+the USB owner must still verify its clocks and overcurrent before VBUS. Normal
+builds keep parent D0 disabled. The ACPI table is an offline fixture with
+`_STA=0`; legacy owners, firmware handoff, PnP removal and physical power
+sharing have not been validated. Host tests and WDK compilation do not prove
+that USB or audio operates on the tablet.

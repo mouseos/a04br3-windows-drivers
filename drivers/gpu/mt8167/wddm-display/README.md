@@ -19,6 +19,11 @@ In the WinPE device test of driver commit `141466c`, the display miniport
 started and the provider reported two successful 16 KiB display-copy requests;
 the framebuffer was captured. These requests include CPU staging and do not
 establish faster presentation, general 3D rendering, or production stability.
+That copy path targets the earlier, different firmware ABI. It is not a
+validated presentation path for the device's m1.11 firmware: the m1.11 TQ
+diagnostic currently writes only to its dedicated 32-by-32 scratch buffer.
+Do not connect the older copy producer to m1.11 without establishing its
+command ABI, resource ownership, synchronization, and teardown separately.
 The later power-exit changes have not been tested on the device.
 The upstream sample explicitly does not support sleep. Do not deploy this build
 on the device until resource ownership, GPU synchronization, reset and power
@@ -31,3 +36,12 @@ copy provider now retains DMA allocations and refuses D0 exit when its transfer
 context exists; firmware shutdown alone is not proof of DMA quiescence. This
 conservative behavior blocks normal suspend/removal and must be replaced by a
 verified quiesce and recovery sequence before device deployment.
+
+The display-only present path finishes synchronously while holding its present
+mutex. StopDevice and StopDeviceAndReleasePostDisplayOwnership now take that
+same mutex before closing admission and unmapping the POST framebuffer; the
+latter also serializes blackout and display-info handoff. A new present after
+stop is rejected. This protects these paths only, and does not establish mode
+change, power transition, surprise removal, crash-display or GPU DMA lifetime.
+POST physical addresses are not DMA addresses and must not be passed directly
+to GE8300 without an OS-authorized mapping and retained ownership.

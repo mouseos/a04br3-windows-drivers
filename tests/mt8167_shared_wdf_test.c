@@ -10,14 +10,14 @@ int a04_test_trace_count;
 static ULONG mockAfeRegs[1024];static int mockAfeIgnoreWrite;
 #define mockAfe mockAfeRegs[0]
 #endif
-static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,assertClosedOnLock,closeDuringLock,failMap;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;
+static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,assertClosedOnLock,closeDuringLock,failMap;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;static A04_SHARED_USB_INTERFACE usb;
 #if A04_SHARED_BUTTON_D0_EXPERIMENT
 static ULONG mockInit,mockFsm;static int mockStopDuringRead,mockWacs;
 #if A04_AUDIO_PMIC_TRACE
 static int mockStatusFail;
 #endif
 #endif
-static A04_CHILD_CONTEXT children[3];static unsigned child_count,forward_count,appended,deleted;static int fail_step;static unsigned desc_count,fail_desc;static IO_RESOURCE_DESCRIPTOR descriptor,all_desc[3];
+static A04_CHILD_CONTEXT children[4];static unsigned child_count,forward_count,appended,deleted;static int fail_step;static unsigned desc_count,fail_desc;static IO_RESOURCE_DESCRIPTOR descriptor,all_desc[3];
 A04_CHILD_CONTEXT *ChildContext(WDFDEVICE d){return (A04_CHILD_CONTEXT *)d;}
 A04_PARENT_CONTEXT *ParentContext(WDFDEVICE d){(void)d;return &testContext;}
 void ExInitializeFastMutex(FAST_MUTEX *m){m->held=0;}void ExAcquireFastMutex(FAST_MUTEX *m){if(assertClosedOnLock)assert(testContext.admissionClosed);assert(!m->held);m->held=1;if(closeDuringLock)InterlockedExchange(&testContext.admissionClosed,1);}void ExReleaseFastMutex(FAST_MUTEX *m){assert(m->held);m->held=0;}
@@ -55,10 +55,10 @@ void KeStallExecutionProcessor(ULONG n){(void)n;}int KeGetCurrentIrql(void){retu
 NTSTATUS KeDelayExecutionThread(int mode,int alert,LARGE_INTEGER *i){assert(mode==KernelMode && !alert && testContext.pwrapLock.held && (i->QuadPart==-20000 || i->QuadPart==-200000));return STATUS_SUCCESS;}
 ULONG WdfCmResourceListGetCount(WDFCMRESLIST l){return l->count;}PCM_PARTIAL_RESOURCE_DESCRIPTOR WdfCmResourceListGetDescriptor(WDFCMRESLIST l,ULONG i){return &l->entries[i];}
 void WdfDeviceInitSetPnpPowerEventCallbacks(PWDFDEVICE_INIT i,WDF_PNPPOWER_EVENT_CALLBACKS *p){(void)i;(void)p;}
-NTSTATUS WdfDeviceCreate(PWDFDEVICE_INIT *i,WDF_OBJECT_ATTRIBUTES *a,WDFDEVICE *d){(void)a;if(*i){assert(child_count<3);*d=&children[child_count++];*i=NULL;}else *d=&testContext;return 0;}
+NTSTATUS WdfDeviceCreate(PWDFDEVICE_INIT *i,WDF_OBJECT_ATTRIBUTES *a,WDFDEVICE *d){(void)a;if(*i){assert(child_count<4);*d=&children[child_count++];*i=NULL;}else *d=&testContext;return 0;}
 NTSTATUS WdfDriverCreate(PDRIVER_OBJECT d,PUNICODE_STRING p,void *a,WDF_DRIVER_CONFIG *c,void *h){(void)d;(void)p;(void)a;(void)c;(void)h;return 0;}
 void WdfObjectReference(WDFDEVICE d){(void)d;refs++;}void WdfObjectDereference(WDFDEVICE d){(void)d;refs--;}
-NTSTATUS WdfDeviceAddQueryInterface(WDFDEVICE d,WDF_QUERY_INTERFACE_CONFIG *q){(void)d;if(!q->Interface){assert(q->SendQueryToParentStack);forward_count++;return 0;}if(!memcmp(q->Guid,&A04SharedInterfaceGuid,sizeof(GUID)))memcpy(&input,q->Interface,sizeof(input));else if(!memcmp(q->Guid,&A04SharedAudioInterfaceGuid,sizeof(GUID)))memcpy(&audio,q->Interface,sizeof(audio));else memcpy(&saved,q->Interface,sizeof(saved));return 0;}
+NTSTATUS WdfDeviceAddQueryInterface(WDFDEVICE d,WDF_QUERY_INTERFACE_CONFIG *q){(void)d;if(!q->Interface){assert(q->SendQueryToParentStack);forward_count++;return 0;}if(!memcmp(q->Guid,&A04SharedInterfaceGuid,sizeof(GUID)))memcpy(&input,q->Interface,sizeof(input));else if(!memcmp(q->Guid,&A04SharedAudioInterfaceGuid,sizeof(GUID)))memcpy(&audio,q->Interface,sizeof(audio));else if(!memcmp(q->Guid,&A04SharedUsbInterfaceGuid,sizeof(GUID)))memcpy(&usb,q->Interface,sizeof(usb));else memcpy(&saved,q->Interface,sizeof(saved));return 0;}
 void RtlInitUnicodeString(PUNICODE_STRING u,PCWSTR s){u->value=s;}
 PWDFDEVICE_INIT WdfPdoInitAllocate(WDFDEVICE p){(void)p;return (void *)1;}
 void WdfDeviceInitFree(PWDFDEVICE_INIT p){(void)p;}
@@ -106,17 +106,20 @@ int main(void){
 #endif
  assert(!testContext.audio.verify_release && !testContext.audio.online);
 #endif
- assert(child_count==3 && forward_count==6);
+ assert(child_count==4 && forward_count==12);
 #if defined(A04_AUDIO_CHILD_RESOURCES) && A04_AUDIO_CHILD_RESOURCES
- assert(!ChildRequirements(&children[2],NULL) && appended==1 && desc_count==3);
+ assert(!ChildRequirements(&children[3],NULL) && appended==1 && desc_count==3);
  assert(all_desc[0].Type==CmResourceTypeMemory && all_desc[0].ShareDisposition==CmResourceShareDeviceExclusive && all_desc[0].u.Memory.MinimumAddress.QuadPart==0x11140000 && all_desc[0].u.Memory.Length==0x1000);
  assert(all_desc[1].Type==CmResourceTypeMemory && all_desc[1].u.Memory.MinimumAddress.QuadPart==0x11141000 && all_desc[1].u.Memory.Length==0x9000);
  assert(all_desc[2].Type==CmResourceTypeInterrupt && all_desc[2].ShareDisposition==CmResourceShareDeviceExclusive && all_desc[2].u.Interrupt.MinimumVector==152 && all_desc[2].u.Interrupt.MaximumVector==152);
- for(unsigned i=1;i<=3;i++){desc_count=0;fail_desc=i;assert(ChildRequirements(&children[2],NULL)!=0 && appended==1 && deleted==i);}fail_desc=0;
- desc_count=0;fail_step=3;assert(ChildRequirements(&children[2],NULL)!=0 && appended==1 && deleted==4);fail_step=0;desc_count=0;appended=0;deleted=0;
+ for(unsigned i=1;i<=3;i++){desc_count=0;fail_desc=i;assert(ChildRequirements(&children[3],NULL)!=0 && appended==1 && deleted==i);}fail_desc=0;
+ desc_count=0;fail_step=3;assert(ChildRequirements(&children[3],NULL)!=0 && appended==1 && deleted==4);fail_step=0;desc_count=0;appended=0;deleted=0;
 #else
- assert(ChildRequirements(&children[2],NULL)==STATUS_DEVICE_CONFIGURATION_ERROR && appended==0);
+ assert(ChildRequirements(&children[3],NULL)==STATUS_DEVICE_CONFIGURATION_ERROR && appended==0);
 #endif
+ assert(usb.Header.Version==A04_SHARED_USB_INTERFACE_VERSION && usb.Acquire && usb.SetVbus && usb.Health && usb.Release);
+ desc_count=0;assert(!ChildRequirements(&children[2],NULL) && desc_count==3 && all_desc[0].u.Memory.MinimumAddress.QuadPart==0x11100000 && all_desc[1].u.Memory.MinimumAddress.QuadPart==0x11110000 && all_desc[2].u.Interrupt.MinimumVector==104);
+ desc_count=0;appended=0;
  assert(!ChildRequirements(&children[0],NULL) && appended==1 && descriptor.Type==CmResourceTypeMemory && descriptor.ShareDisposition==CmResourceShareDeviceExclusive && descriptor.u.Memory.Length==0x1000 && descriptor.u.Memory.MinimumAddress.QuadPart==0x10002000 && descriptor.u.Memory.MaximumAddress.QuadPart==0x10002fff);
  assert(!ChildRequirements(&children[1],NULL) && appended==2 && descriptor.u.Memory.MinimumAddress.QuadPart==0x11009000 && descriptor.u.Memory.MaximumAddress.QuadPart==0x11009fff);
  fail_step=1;assert(ChildRequirements(&children[1],NULL)!=0 && appended==2 && deleted==0);
@@ -187,6 +190,8 @@ int main(void){
  mockWacs=1;
 #endif
  assert(!ParentD0(&testContext,0) && testContext.pmic.online && !testContext.admissionClosed && !testContext.regs.online);
+ assert(testContext.usb.online==(testContext.apmixed!=NULL));
+ assert(!ParentUsbLock(&testContext) && testContext.pwrapLock.held);ParentUsbUnlock(&testContext);assert(!testContext.pwrapLock.held);
 #if A04_AUDIO_PMIC_TRACE
  assert(writes==2 && a04_test_trace_count>0);writes=0;mockWacs=0;
 #else
@@ -222,7 +227,7 @@ int main(void){
  }
 #endif
  mockWacs=1;assert(!input.ButtonPmicRead(input.Context,&value) && value==0x1234 && writes==2);mockWacs=0;value=0xeeee;writes=0;
- assert(!ParentD0Exit(&testContext,0) && !testContext.pmic.online && testContext.admissionClosed);
+ assert(!ParentD0Exit(&testContext,0) && !testContext.pmic.online && !testContext.usb.online && testContext.admissionClosed);
  reads=0;
 #else
  assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY);

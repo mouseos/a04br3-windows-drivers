@@ -130,7 +130,13 @@ NTSTATUS ToprguRelease(WDFDEVICE device, WDFCMRESLIST translated)
 {
     TOPRGU_CONTEXT *c=ToprguGetContext(device);
     UNREFERENCED_PARAMETER(translated);
+    InterlockedExchange(&c->running,0);
     WdfTimerStop(c->timer,TRUE);
+#if A04_TOPRGU_UART_SCREEN
+    WdfTimerStop(c->screenTimer,TRUE);
+#endif
+    KeCancelTimer(&c->backupTimer);
+    KeFlushQueuedDpcs();
     if (c->uart) { MmUnmapIoSpace((PVOID)c->uart,0x1000); c->uart=NULL; }
     if (c->wdt) { MmUnmapIoSpace((PVOID)c->wdt,0x1000); c->wdt=NULL; }
     return STATUS_SUCCESS;
@@ -196,12 +202,16 @@ static ULONG ToprguMpidrAffinity(void)
 static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
 {
     ULONG i;
-    BOOLEAN four, feed;
+    BOOLEAN four, feed, didFeed=FALSE;
     ULONGLONG elapsed;
     if (InterlockedCompareExchange(&c->busy,1,0) != 0) return;
     if (InterlockedCompareExchange(&c->running,1,1) && c->wdt && c->uart) {
         four=KeQueryActiveProcessorCount(NULL) == 4;
-        if (!four) goto done;
+        if (!four) {
+            /* A previous CPU1 witness cannot authorize a later topology. */
+            InterlockedExchange(&c->ownedFour,0);
+            goto done;
+        }
         if (!InterlockedCompareExchange(&c->backupStarted,0,0)) {
             LARGE_INTEGER due;
             due.QuadPart=-200000;
@@ -234,21 +244,26 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
                  0,
 #endif
                  elapsed,A04_TOPRGU_DEADLINE_SECONDS);
-        if (feed && a04_toprgu_can_feed(KeQueryActiveProcessorCount(NULL),
-                InterlockedCompareExchange(&c->ownedFour,0,0)))
+        if (!a04_toprgu_can_feed(KeQueryActiveProcessorCount(NULL),
+                InterlockedCompareExchange(&c->ownedFour,0,0))) {
+            InterlockedExchange(&c->ownedFour,0);
+            goto done;
+        }
+        if (feed) {
             WRITE_REGISTER_ULONG(c->wdt + 2,0x1971u);
+            didFeed=TRUE;
+        }
         if (four && !feed && !c->deadlineReported) {
             c->deadlineReported=TRUE;
             Trace(c,"A04RGU bounded watchdog deadline reached\n");
         }
-        if (four && feed && (c->ticks <= 3 || c->ticks % 500u == 0))
+        if (didFeed && (c->ticks <= 3 || c->ticks % 500u == 0))
             Trace(c,"A04RGU timer kick\n");
-        if (four && feed && (c->ticks==10 || c->ticks==25 || c->ticks==50 ||
+        if (didFeed && (c->ticks==10 || c->ticks==25 || c->ticks==50 ||
                              c->ticks==100 || c->ticks==250 || c->ticks==500))
             TraceTimer(c,c->ticks,elapsed);
         /* CPU1 owns UART until all four OS processors are online. */
         if (four) {
-            InterlockedExchange(&c->ownedFour,1);
             for (i=0; i<16; ++i) {
                 if ((READ_REGISTER_ULONG(c->uart + 3) & 0x80u) ||
                     !(READ_REGISTER_ULONG(c->uart + 5) & 1u)) break;

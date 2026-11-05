@@ -10,6 +10,9 @@ NTSTATUS a04_vendor_m1_11_windows_fence(struct a04_vendor_start *start,
     uint32_t data_master,BOOLEAN coherent_or_uncached);
 NTSTATUS a04_vendor_m1_11_windows_power_off(struct a04_vendor_start *start,
     BOOLEAN coherent_or_uncached);
+/* Firmware acknowledgement does not establish DMA or fabric quiescence. */
+NTSTATUS a04_vendor_m1_11_windows_forced_power_off(struct a04_vendor_start *start,
+    BOOLEAN coherent_or_uncached,NTSTATUS *idle_status);
 /* Read-only diagnostics; values are a transient snapshot, not a quiescence proof. */
 NTSTATUS a04_vendor_m1_11_power_debug_snapshot(struct a04_vendor_start *start, ULONG values[6]);
 struct a04_vendor_fw_debug { ULONG read,write,count,words[2][10]; };

@@ -14,6 +14,7 @@ DefinitionBlock ("shared-parent.aml", "SSDT", 2, "BENESS", "A04SHR  ", 1)
                 Memory32Fixed (ReadWrite, 0x10001000, 0x1000)
                 Memory32Fixed (ReadWrite, 0x10005000, 0x1000)
                 Memory32Fixed (ReadWrite, 0x1000F000, 0x1000)
+                Memory32Fixed (ReadWrite, 0x10018000, 0x0710)
             })
         }
     }

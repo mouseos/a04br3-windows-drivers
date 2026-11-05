@@ -23,12 +23,12 @@ $buttonD0=if($env:A04_SHARED_BUTTON_D0_EXPERIMENT -eq '1'){'1'}else{'0'}
 if($LASTEXITCODE -ne 0){throw 'Parent ARM32 compilation failed'}
 & clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c (Join-Path $src 'parent_resources.c') -o (Join-Path $out 'resources.obj')
 if($LASTEXITCODE -ne 0){throw 'Resources ARM32 compilation failed'}
-foreach ($part in @('pwrap_owner','pmic_read','register_owner','audio_owner','mt6392_classd')) {
-    $file=if($part -eq 'pmic_read'){Join-Path $root 'drivers\input\a04br3-buttons\pmic_read.c'}else{Join-Path $src "$part.c"}
+foreach ($part in @('pwrap_owner','pmic_read','register_owner','audio_owner','mt6392_classd','usb_owner','gpio22')) {
+    $file=if($part -eq 'pmic_read'){Join-Path $root 'drivers\input\a04br3-buttons\pmic_read.c'}elseif($part -eq 'gpio22'){Join-Path $root 'drivers\usb\mt8167-usb20\gpio22.c'}else{Join-Path $src "$part.c"}
     & clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 "-DA04_MT6392_WRITE_DIAGNOSTIC=$codec" "-DA04_MT6392_CLK_ALIAS_EXPERIMENT=$alias" -c $file -o (Join-Path $out "$part.obj")
     if($LASTEXITCODE -ne 0){throw "Parent shared core compilation failed: $part"}
 }
-& lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib (Join-Path $out 'parent.obj') (Join-Path $out 'resources.obj') (Join-Path $out 'pwrap_owner.obj') (Join-Path $out 'pmic_read.obj') (Join-Path $out 'register_owner.obj') (Join-Path $out 'audio_owner.obj') (Join-Path $out 'mt6392_classd.obj') (Join-Path $wdf 'wdfdriverentry.lib') (Join-Path $wdf 'wdfldr.lib') (Join-Path $lib 'ntoskrnl.lib') (Join-Path $lib 'hal.lib') (Join-Path $lib 'bufferoverflowfastfailk.lib') "/out:$out\parent-probe.sys"
+& lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib (Join-Path $out 'parent.obj') (Join-Path $out 'resources.obj') (Join-Path $out 'pwrap_owner.obj') (Join-Path $out 'pmic_read.obj') (Join-Path $out 'register_owner.obj') (Join-Path $out 'audio_owner.obj') (Join-Path $out 'mt6392_classd.obj') (Join-Path $out 'usb_owner.obj') (Join-Path $out 'gpio22.obj') (Join-Path $wdf 'wdfdriverentry.lib') (Join-Path $wdf 'wdfldr.lib') (Join-Path $lib 'ntoskrnl.lib') (Join-Path $lib 'hal.lib') (Join-Path $lib 'bufferoverflowfastfailk.lib') "/out:$out\parent-probe.sys"
 if($LASTEXITCODE -ne 0){throw 'Parent ARM32 link failed'}
 & llvm-readobj --file-headers --coff-imports (Join-Path $out 'parent-probe.sys')
 if($LASTEXITCODE -ne 0){throw 'Parent PE inspection failed'}

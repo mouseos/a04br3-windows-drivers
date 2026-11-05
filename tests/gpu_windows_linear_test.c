@@ -57,7 +57,7 @@ NTSTATUS a04_gpu_firmware_submit_kick(struct a04_gpu_firmware_state *s,const str
 }
 int main(void)
 {
-    DMA_OPERATIONS ops={allocate,release}; struct fake_adapter adapter={&ops};
+    DMA_OPERATIONS ops={.AllocateCommonBuffer=allocate,.FreeCommonBuffer=release}; struct fake_adapter adapter={&ops};
     struct a04_gpu_firmware_state s={0}; struct a04_gpu_queue_test_memory m={0};
     void *heap=aligned_alloc(4096,A04_PVR_HEAP_SIZE); NTSTATUS status; uint32_t first_end;
     if(!heap) return 1;

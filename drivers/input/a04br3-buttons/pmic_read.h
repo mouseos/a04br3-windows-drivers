@@ -45,4 +45,8 @@ int a04_pmic_spk_clock_acquire(struct a04_pmic_read *,struct a04_pmic_spk_clock 
 int a04_pmic_spk_clock_release(struct a04_pmic_read *,struct a04_pmic_spk_clock *);
 #endif
 #endif
+/* Fixed MT6392 VUSB rail, no arbitrary PMIC write; caller holds the same
+ * owner lock used by every PWRAP transaction. A failed write poisons bus. */
+int a04_pmic_vusb_get(struct a04_pmic_read *, uint16_t *);
+int a04_pmic_vusb_set(struct a04_pmic_read *, int);
 #endif

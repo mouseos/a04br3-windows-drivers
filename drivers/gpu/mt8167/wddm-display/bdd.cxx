@@ -120,10 +120,11 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StopDevice(VOID)
 {
     PAGED_CODE();
 
-    CleanUp();
-
+    NTSTATUS status=KeWaitForSingleObject(&m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+    if (!NT_SUCCESS(status)) return status;
+    A04PresentGuard guard(&m_PresentMutex);
     m_Flags.DriverStarted = FALSE;
-
+    CleanUp();
     return STATUS_SUCCESS;
 }
 
@@ -473,8 +474,9 @@ NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DIS
     if (!NT_SUCCESS(waitStatus)) return waitStatus;
     A04PresentGuard guard(&m_PresentMutex);
 
-    BDD_ASSERT(pPresentDisplayOnly != NULL);
-    BDD_ASSERT(pPresentDisplayOnly->VidPnSourceId < MAX_VIEWS);
+    if (!pPresentDisplayOnly || pPresentDisplayOnly->VidPnSourceId >= MAX_VIEWS)
+        return STATUS_INVALID_PARAMETER;
+    if (!m_Flags.DriverStarted) return STATUS_DEVICE_NOT_READY;
 
     if (pPresentDisplayOnly->BytesPerPixel < MIN_BYTES_PER_PIXEL_REPORTED)
     {
@@ -540,10 +542,13 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StopDeviceAndReleasePostDisplayOwnership(_In_  D3
 {
     PAGED_CODE();
 
-    BDD_ASSERT(TargetId < MAX_CHILDREN);
-
-
+    if (TargetId >= MAX_CHILDREN || !pDisplayInfo) return STATUS_INVALID_PARAMETER;
+    NTSTATUS status=KeWaitForSingleObject(&m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+    if (!NT_SUCCESS(status)) return status;
+    A04PresentGuard guard(&m_PresentMutex);
+    if (!m_Flags.DriverStarted) return STATUS_DEVICE_NOT_READY;
     D3DDDI_VIDEO_PRESENT_SOURCE_ID SourceId = FindSourceForTarget(TargetId, TRUE);
+    if (SourceId >= MAX_VIEWS) return STATUS_INVALID_DEVICE_STATE;
 
     // In case BDD is the next driver to run, the monitor should not be off, since
     // this could cause the BIOS to hang when the EDID is retrieved on Start.
@@ -557,7 +562,9 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StopDeviceAndReleasePostDisplayOwnership(_In_  D3
 
     *pDisplayInfo = m_CurrentModes[SourceId].DispInfo;
 
-    return StopDevice();
+    m_Flags.DriverStarted = FALSE;
+    CleanUp();
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS BASIC_DISPLAY_DRIVER::QueryVidPnHWCapability(_Inout_ DXGKARG_QUERYVIDPNHWCAPABILITY* pVidPnHWCaps)

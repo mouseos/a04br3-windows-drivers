@@ -4,6 +4,8 @@
  * f5d43bf1677955e7e367545b9bbbd6449776cdda. No user-provided GPU addresses.
  */
 #include "windows_render_cold.h"
+#include "clear_validate.h"
+#include "clear_tile.h"
 #include "windows_start.h"
 #include "A04BR3RogueCommand.h"
 #include "A04BR3RogueDeviceWords.h"
@@ -24,8 +26,8 @@ static NTSTATUS queue_snapshot(struct a04_rgx_fw_runtime *f,RGXFWIF_CCB_CTL *k,R
     if(k->ui32ReadOffset!=k->ui32WriteOffset || q->ui32ReadOffset!=q->ui32WriteOffset)return STATUS_DEVICE_BUSY;
     return STATUS_SUCCESS;
 }
-NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
-    struct a04_vendor_start *s,struct a04_vendor_clear_result *result)
+static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
+    struct a04_vendor_start *s,struct a04_vendor_clear_result *result, BOOLEAN locked)
 {
     struct a04_rgx_fw_runtime *f;struct clear_packet packet={0};
     RGXFWIF_CCB_CTL k,q;RGXFWIF_CCCB_CTL client;RGXFWIF_KCCB_CMD kick={0},flush={0},fence={0};
@@ -33,18 +35,24 @@ NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
     unsigned i;NTSTATUS status;
     if(!result)return STATUS_INVALID_PARAMETER;
     RtlZeroMemory(result,sizeof(*result));
-    if(!r || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !r->mapped || !r->clear_ready || r->clear_attempted ||
+    if(!r || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !r->mapped || r->cleanup_started || !r->clear_ready || r->clear_attempted ||
        r->poisoned || !s->online || !s->memory || !s->memory->hardware_owned || s->memory!=r->firmware ||
        !(f=s->memory->runtime) || !f->kctl || !f->fctl || !f->kcommands || !f->command_sync || !s->core ||
        !r->buffer[0].cpu || !r->buffer[4].cpu || r->buffer[4].bytes!=65536u ||
+       (r->screen_surface ? (!r->screen_surface->hardware_exposed || !r->screen_surface->pixels.cpu ||
+         r->screen_surface->bytes!=4259840u || r->clear_row_bytes!=3328u ||
+         r->clear_first!=1248u*3328u+768u*4u) :
+         !a04_vendor_clear_layout_valid(r->clear_first,r->clear_row_bytes)) ||
        r->layout.sync>65532u || r->layout.control[3]>65536u-sizeof(client) ||
        r->layout.commands[3]>65536u-4096u || r->layout.tq>65536u-sizeof(RGXFWIF_FWCOMMONCONTEXT) ||
        r->sequence>=0xfffffffeu || s->command_sequence>=0xfffffffeu)return STATUS_INVALID_PARAMETER;
-    if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
-    if(s->command_poisoned){status=STATUS_IO_DEVICE_ERROR;goto done;}
+    if(!locked && InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
+    /* Cleanup can begin between the optimistic check and lock acquisition. */
+    if(r->cleanup_started || r->clear_attempted || r->poisoned){status=STATUS_INVALID_DEVICE_STATE;goto done;}
+    if(s->command_poisoned || s->shutdown_started){status=STATUS_IO_DEVICE_ERROR;goto done;}
     status=queue_snapshot(f,&k,&q);if(!NT_SUCCESS(status))goto done;
     bank=r->buffer[0].cpu;sync=(volatile uint32_t *)(void *)(bank+r->layout.sync);
-    output=(volatile uint32_t *)r->buffer[4].cpu;at=r->client_write[3];
+    output=(volatile uint32_t *)(r->screen_surface ? r->screen_surface->pixels.cpu : r->buffer[4].cpu);at=r->client_write[3];
     if(at>4095u || (at&7u) || at+sizeof(packet)+40u>4096u ||
        a04_rgx_device_read_words(&client,bank+r->layout.control[3],sizeof(client)) ||
        client.ui32WrapMask!=4095u || client.ui32ReadOffset!=at || client.ui32WriteOffset!=at ||
@@ -110,12 +118,13 @@ NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
     if(!NT_SUCCESS(status))goto poison;
     result->phase=4;
     a04_gpu_dma_barrier();
-    for(i=0;i<16384u;i++) {
-        value=output[i];if(i<1024u) {if(!value)result->zeros++;} else if(value!=0xa5a5a5a5u)result->guard_errors++;
-        if(i==0)result->first=value;
-        if(i==1023u)result->last=value;
+    for(i=0;i<(r->screen_surface ? r->screen_surface->bytes/4u : 16384u);i++) {
+        value=output[i];if(a04_vendor_clear_is_target(i*4u,r->clear_first,r->clear_row_bytes)) {if(value==r->clear.expected)result->zeros++;} else if(value!=0xa5a5a5a5u)result->guard_errors++;
+        if(i*4u==r->clear_first)result->first=value;
+        if(i*4u==r->clear_first+31u*r->clear_row_bytes+124u)result->last=value;
     }
     status=(result->zeros==1024u && !result->guard_errors)?STATUS_SUCCESS:STATUS_DATA_ERROR;
+    r->clear_verified=NT_SUCCESS(status);
     goto done;
 poison:
     /* Snapshot only. A timeout does not establish completion or quiescence. */
@@ -133,15 +142,85 @@ poison:
         result->slc_status=READ_REGISTER_ULONG((volatile ULONG *)(void *)(s->core+0x3820));
         result->slc_idle=READ_REGISTER_ULONG((volatile ULONG *)(void *)(s->core+0x3898));
         result->provisional=1;
-        for(i=0;i<16384u;i++) {
+        for(i=0;i<(r->screen_surface ? r->screen_surface->bytes/4u : 16384u);i++) {
             value=output[i];
-            if(i<1024u) {if(!value)result->zeros++;}
+            if(a04_vendor_clear_is_target(i*4u,r->clear_first,r->clear_row_bytes)) {if(value==r->clear.expected)result->zeros++;}
             else if(value!=0xa5a5a5a5u)result->guard_errors++;
-            if(i==0)result->first=value;
-            if(i==1023u)result->last=value;
+            if(i*4u==r->clear_first)result->first=value;
+            if(i*4u==r->clear_first+31u*r->clear_row_bytes+124u)result->last=value;
         }
     }
     r->poisoned=TRUE;s->command_poisoned=TRUE;
 done:
+    if(!locked)InterlockedExchange(&s->command_busy,0);
+    return status;
+}
+
+NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
+    struct a04_vendor_start *s,struct a04_vendor_clear_result *result)
+{ return clear_locked(r,s,result,FALSE); }
+
+/* Internal diagnostic: reuse only after the previous job, SLC flush, fence and
+ * full readback all completed. The 64 KiB target and PDS belong to this render
+ * object, never to the display. Any failure leaves the sequence closed. */
+NTSTATUS a04_vendor_render_next_tile(struct a04_vendor_render_cold *r,
+    struct a04_vendor_start *s,unsigned index,struct a04_vendor_clear_result *result)
+{
+    _Alignas(8) struct a04_vendor_clear_tile tile;
+    struct a04_vendor_clear_tile_request q={128,128,128,0,0};
+    uint32_t colour;unsigned i;NTSTATUS status;
+    if(!result)return STATUS_INVALID_PARAMETER;
+    RtlZeroMemory(result,sizeof(*result));
+    if(!r || !s || (index!=1 && index!=2))return STATUS_INVALID_PARAMETER;
+    q.x=index==1?32u:96u;q.y=index==1?32u:96u;
+    colour=index==1?0u:0x78563412u;
+    if(a04_vendor_clear_tile_build(&tile,&q))return STATUS_INVALID_PARAMETER;
+    tile.image.payload[2]=colour;tile.image.expected=colour;
+    if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
+    if(r->cleanup_started || r->poisoned || s->command_poisoned || s->shutdown_started || !r->mapped ||
+       !r->clear_ready || !r->clear_attempted || !r->clear_verified || r->screen_surface || r->diagnostic_tile_index+1!=index ||
+       !r->buffer[4].cpu || r->buffer[4].bytes!=65536u || !r->buffer[7].cpu ||
+       !s->online || !s->memory || !s->memory->hardware_owned || s->memory!=r->firmware) {
+        InterlockedExchange(&s->command_busy,0);return STATUS_INVALID_DEVICE_STATE;
+    }
+    /* Device mappings are uncached; do not reuse after a failed transfer. */
+    for(i=0;i<16384;i++) ((volatile uint32_t *)r->buffer[4].cpu)[i]=0xa5a5a5a5u;
+    if(a04_rgx_device_write_words(r->buffer[7].cpu,tile.image.pds,sizeof(tile.image.pds))) {
+        r->poisoned=TRUE;s->command_poisoned=TRUE;InterlockedExchange(&s->command_busy,0);
+        return STATUS_IO_DEVICE_ERROR;
+    }
+    r->clear=tile.image;r->clear_first=tile.first;r->clear_row_bytes=tile.row_bytes;
+    a04_gpu_dma_barrier();r->clear_attempted=FALSE;r->clear_verified=FALSE;r->diagnostic_tile_index=index;
+    status=clear_locked(r,s,result,TRUE);
+    /* No retry on admission or submission failure. */
+    if(!NT_SUCCESS(status)) {r->poisoned=TRUE;s->command_poisoned=TRUE;}
+    InterlockedExchange(&s->command_busy,0);return status;
+}
+
+/* Bounded diagnostic replay of the exact same screen tile and PDS. The caller
+ * owns the adapter/render lifetime throughout this call. A completed fence is
+ * necessary for reuse but does not prove DMA quiescence at teardown. */
+NTSTATUS a04_vendor_render_repeat_screen(struct a04_vendor_render_cold *r,
+    struct a04_vendor_start *s,unsigned index,struct a04_vendor_clear_result *result)
+{
+    struct a04_vendor_surface *screen;unsigned i;NTSTATUS status;
+    if(!result)return STATUS_INVALID_PARAMETER;
+    RtlZeroMemory(result,sizeof(*result));
+    if(!r || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL || (index!=1 && index!=2))return STATUS_INVALID_PARAMETER;
+    if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
+    screen=r->screen_surface;
+    if(r->cleanup_started || r->poisoned || s->command_poisoned || s->shutdown_started || !r->mapped ||
+       !r->clear_ready || !r->clear_attempted || !r->clear_verified || r->diagnostic_tile_index+1!=index ||
+       !screen || !screen->prepared || !screen->hardware_exposed || !screen->pixels.cpu ||
+       screen->bytes!=4259840u || screen->pixels.bytes!=screen->bytes ||
+       !s->online || !s->memory || !s->memory->hardware_owned || s->memory!=r->firmware) {
+        status=STATUS_INVALID_DEVICE_STATE;goto out;
+    }
+    /* Keep the PDS and all mappings unchanged while the next job uses them. */
+    for(i=0;i<screen->bytes/4u;i++)((volatile uint32_t *)screen->pixels.cpu)[i]=0xa5a5a5a5u;
+    a04_gpu_dma_barrier();r->clear_attempted=FALSE;r->clear_verified=FALSE;r->diagnostic_tile_index=index;
+    status=clear_locked(r,s,result,TRUE);
+    if(!NT_SUCCESS(status)){r->poisoned=TRUE;s->command_poisoned=TRUE;}
+out:
     InterlockedExchange(&s->command_busy,0);return status;
 }

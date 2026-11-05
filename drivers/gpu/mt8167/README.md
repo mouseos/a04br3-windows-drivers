@@ -245,3 +245,110 @@ m1.11のRGXStopに対応するレジスタ停止処理も追加した。FWのOFF
 上記の未接続・未検証という記述は各追加時点の記録。端末専用UEFI `3a310ccc` と4 CPUのWinPEで、ドライバ `2d144a9` の診断経路はDMA v3アダプターの取得、非キャッシュ領域への準備、GE8300ファームウェア起動、GP SYNCの完了をUARTで確認した。`DEVICE_DESCRIPTION_VERSION3` では `Dma32BitAddresses` は無視され、`DmaAddressWidth` に非ゼロを指定する必要がある。詳細は [Microsoftの構造体仕様](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-_device_description)。
 
 続く `0f8cd0e` の実機診断では電源オフ要求後の状態は同期値1、電源状態IDLE、KCCB読取り・書込み位置とも2だった。Linux m1.11 DDKは応答後にOFFでなければ電源移行拒否として扱うため、`bb71457` はキュー消費・応答を確認した上でOFF以外ならビジーを返し、オンライン状態とDMA所有を維持する。停止後の安全なDMA解放、共有電源の所有、GPU描画および通常Windowsへの導入は未確認。WinPE専用の診断フラグは既定OFFのままであり、スナップショットは電源所有やDMA停止の証明ではない。
+
+`vendor_m1_11/clear_tile.c` は既存 32×32 zero-clear に対して、所有済み
+64 KiB 内の32画素境界タイル位置と32画素倍数pitchを指定するCPU上の生成部品。
+XNU `A04BR3RogueClearTile.h` と REA `ev_a8b70e873cd2536b115a348ff0bc99a5802b311ce09299c99f127d837cf5ef13`
+の native format 0x22・線形PBEアドレスとpitchに基づく。32×32外の矩形、
+任意色、pitchの端数、64 KiBを超える全画面、資源管理、GPU送信は対象外。
+成功は画素出力を意味せず、現行の固定診断に接続しない。Windows実機の
+可視性、転送完了、所有・停止・画面出力は未検証。
+
+`A04_GE8300_VENDOR_TILE_DIAGNOSTIC=1` は既定OFF。既存のvendor stage、
+uncached stage、IRQ、start、render cold、clear診断の全指定を必要とし、
+カラー診断とは併用しない。64 KiB専用領域を0xa5で初期化し、pitch 128画素、
+位置(64,64)の32×32だけをzero-clearする。対象1024画素と残り15360画素の
+すべてをSLC flush・fence成功後に照合する。タイムアウト時の読取りは暫定値で、
+DMA停止や領域解放の証明ではない。対象実機・Windows本体への適用は未検証。
+
+### m1.11 context cleanup and power-off
+
+In the 98dea76 run at UART offset 16720324, all four context commands and
+the bounded 32x32 transfer reported success, but the power-off request returned
+`80000011`; the snapshot showed power sync 1, power state 1, KCCB read=write=9
+and FWCCB read=write=0. A later color-clear run showed the same result. These
+are observations, not proof that live contexts caused the rejection.
+
+The experimental m1.11 path now drains each known client CCB and sends the
+vendor DDK common-context CLEANUP command on its data master. RUN without BUSY
+and consumption of the KCCB entry are required for each context before the
+power-off request. BUSY leaves memory owned; timeout or invalid queue state
+poisons the context and stops further submissions. Partial cleanup forbids new
+work. Firmware cleanup and power acknowledgement do not prove external fabric
+quiescence; all DMA stays pinned and D0 exit remains guarded. This change is
+host-tested only; actual m1.11 cleanup and power-off are not yet verified.
+
+`A04_GE8300_VENDOR_MULTI_TILE_DIAGNOSTIC=1` は既定OFFで、既存tile診断を
+前提とする。同一起動中、専用64 KiBを毎回guardで再初期化し、(64,64) zero、
+(32,32) zero、(96,96) 0x78563412の順に処理する。各回の完了・SLC flush・
+fenceと全画素照合が成功した場合のみ次へ進み、失敗後は再使用しない。
+最初のzeroはcc1be36で実測済みだが、再初期化・PDS更新・連続実行・色付きの
+新経路は未検証。PDSやデバイス書込みの可視性・実GPUの色変換はhost模擬では
+保証できない。FW cleanup成功はDMA停止を証明しない。表示用共有フレーム
+バッファのpin、GPU/scanout ownershipとfence、電源・PnP寿命は未実装であり、
+この診断の64 KiBを表示と共有しない。
+
+### m1.11 forced-idle電源停止診断
+
+`cc1be36` ではユーザー提供の実機結果として、オフセット付きclearのMATCH=400、GUARD=0、PHASE=4、４コンテキストのCLEANUP STATUS=0・MASK=Fだった。その後OFF=80000011、SYNC=1、POW=1、KRD=KWR=0Dであり、cleanup不足単独では拒否を説明できない。FWのstate 1はONである。
+
+参考のMediaTek Linux DDK m1.8 `services/server/common/power.c` のシステムOFF経路は、forced-idleを要求してから強制電源OFFを要求する。同DDK `rgxpower.c` は同期応答後にFORCED_IDLEを検査する。m1.11の固定FWIF宣言には別の `RGXFWIF_POWER_FORCE_IDLE=1` とforced OFFのフィールドがあり、m1.8のboolean値をそのまま流用しない。本診断はcleanup成功後にm1.11のforced-idleを送信し、同期値・KCCB消費・FW状態FORCED_IDLEをすべて確認できた場合だけforced OFFを送る。変更は既定OFFのvendor start診断のみに接続する。idle拒否、timeout、FW要求保留、予期しない状態ではOFFへ進まず、再投入を封じてDMAを保持する。
+
+ホストmockでidle拒否、forced OFF拒否、両段階成功、idle timeoutを検証した。現時点でWindows実機のforced-idle/OFFは未検証であり、この順序が拒否の原因を解消するかは不明。FWのOFF応答とstop registerの確認も外部fabricを含むDMA静止や領域解放を証明しない。
+
+`a04_gpu_mmu_map_pages_multi_4k` はOSから既に取得・保持されたDMAアドレス列を、
+最大16個の4 KiB leaf（32 MiB、単一1 GiB directory内）に展開する準備部品。
+全leafのDMA・CPU領域と全エントリを先に検査し、途中の異常で部分更新しない。
+`a04_gpu_dma_pages` は画面規模を扱うため最大8192ページを受け付ける。どちらも
+CPU上の構築のみで、OSのDMA取得、POST framebufferのpin、キャッシュ同期、GPU MMU
+invalidate、描画fence、scanout、取消し、停止・解放を行わず、既定経路には未接続。
+MicrosoftのGetScatterGatherListは対応するPutScatterGatherListとDMA方向・同期を
+要求し、POST物理アドレスをGPU DMAアドレスとして直接扱う根拠にはならない。
+
+`vendor_m1_11/windows_surface.c` は OS の version-3 DMA adapter による
+common buffer と複数leaf GPU page tableを、GPU未起動状態で準備する未接続の
+部品。832×1280・4byteの領域を含む最大8 MiB、最大4 leafに制限する。DMA
+logical addressとCPUアドレスは別であり、adapterは最後まで呼出し側が保持する。
+ハードへ公開する前に `mark_exposed` を呼ぶ契約で、その後は現在解放を拒否する。
+この部品はWDDMや表示コントローラへ公開せず、任意のboolで停止・fence完了を
+主張しない。OSのcommon bufferはGPU adapterに対する権利だけで、scanoutやPOST
+framebufferへの共有は証明しない。ARMのcache属性、両DMA主体のmappingと所有、
+GPU fence/MMU invalidate、表示走査の完了、PnP停止後の解放は未実装・未検証。
+
+`A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC=1` は既定OFFで、vendor start・cold・
+zero tile診断を要し、既存multi-tileとカラー診断には併用しない。GPU未起動時に
+専用832×1280 pitchの4,259,840-byte common bufferを別GPU VAにマップし、既存
+transfer contextの未使用catalog slotへ接続する。800×1280領域の右下32×32を
+zero-clearし、fenceとSLC flush後に対象1024画素とそれ以外の全画素を比較する。
+画面走査やWDDM framebufferは使わない。GPU起動前にsurfaceを公開済みに固定し、
+起動失敗やforced-idle／FW cleanup成功後もDMAとadapterを保持し、D0 exit・releaseを
+拒否する。これらの拒否はPnP削除時のリソース寿命や物理除去を保証しない。
+高pitch、複数leaf、キャッシュ属性、デバイス停止は実機未検証。実行結果を
+画面描画・共有・DMA排出の証拠としない。
+
+WDDMのCommitVidPnはVidPnコールバックを取得・検証後、Presentと同じmutexで
+framebufferのunmap、mapとmode更新を直列化する。mutex保有中にVidPnの取得・
+解放コールバックを呼ばない。visibilityとactive pathの変更も同じmutexを使い、
+停止後は拒否する。[CommitVidPn](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkddi_commitvidpn)、
+[PresentDisplayOnly](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkddi_presentdisplayonly)
+はPASSIVE_LEVELで、後者はzero-level同期。これはGPU DMAやscanoutの停止を保証しない。
+bugcheck用SystemDisplayの高IRQL経路にmutexを導入しておらず、その寿命は別途検証が必要。
+
+既定OFFの旧ABI WDDM copy実験では、同期IOCTLの出力を専用nonpaged stagingに
+受け、成功かつ所定長の完了後のみPOST mappingへ32-bit register accessで転記する。
+部分応答・エラーはその矩形全体のCPU経路に戻す。framebufferをIOCTL出力先やGPU
+DMA先として渡さない。これは旧ABIの転送経路であり、m1.11の一般描画やscanout
+共有、GPU停止時のDMA静止・解放を証明しない。実機での可視性は未検証。
+[WRITE_REGISTER_BUFFER_ULONG](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-write_register_buffer_ulong)
+は常駐バッファからmapped device memoryへULONG列を書き、memory barrierを挿入する。
+同期Presentでmutexを保持している間に転記を終え、モード変更・停止と直列化する。
+
+`A04_GE8300_VENDOR_SCREEN_REPEAT_DIAGNOSTIC=1` は既定OFFで、screen診断の成功後、
+同じ画面サイズ専用surface・固定32×32 zero-clear・同一PDSを２回追加実行する。
+各回のKCCB消費、TQ更新、SLC flush、GP fenceおよび対象と全ガード照合が
+成功した場合のみ次回へ進む。再初期化から次回完了までcommand lockを保持し、
+cleanup開始・停止・異常時は再使用しない。PDS、GPU mappingとadapterは診断中保持し、
+失敗時も従来の解放拒否を維持する。この反復はXNU由来の同一clearと既存m1.11
+FWIF手順の範囲であり、任意のsource-to-destination copy、Windows Present、
+scanout所有や停止時のDMA排出を実装・証明しない。画面サイズ版・反復版の
+実機結果は未取得。`_CCA` が制御するARM上の属性・可視性も未確認。

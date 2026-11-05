@@ -103,14 +103,15 @@ static inline int a04_rgx_command_fence(struct a04_rgx_fw_runtime *r,
  * The shared queue must be coherent or uncached, as for the fence above.
  * A firmware acknowledgement alone does NOT prove fabric drain or permit DMA
  * buffer reclamation; IRQ drain and RGXStop checks remain separate duties. */
-static inline int a04_rgx_command_power_off(struct a04_rgx_fw_runtime *r,
+enum a04_rgx_power_action { A04_POWER_NORMAL_OFF, A04_POWER_FORCE_IDLE, A04_POWER_FORCED_OFF };
+static inline int a04_rgx_command_power_transition(struct a04_rgx_fw_runtime *r,
     struct a04_rgx_command_state *state,const struct a04_rgx_command_io *io,
-    uint32_t polls,uint32_t delay_us)
+    enum a04_rgx_power_action action,uint32_t polls,uint32_t delay_us)
 {
     RGXFWIF_CCB_CTL *ctl,*fctl;RGXFWIF_KCCB_CMD *cmds,cmd={0};
     volatile uint32_t *sync;uint32_t read,write,next;
     if(!r || !state || !io || !io->publish || !io->acquire || !io->kick || !io->wait_us ||
-       !r->init || !r->trace || !r->osconfig || !polls || !delay_us ||
+       !r->init || !r->trace || !r->osconfig || (action!=A04_POWER_NORMAL_OFF && action!=A04_POWER_FORCE_IDLE && action!=A04_POWER_FORCED_OFF) || !polls || !delay_us ||
        delay_us>1000 || polls>100000/delay_us) return A04_CCB_INPUT;
     if(state->poisoned) return A04_CCB_OFFLINE;
     ctl=(RGXFWIF_CCB_CTL *)a04_rgx_command_memory(r,r->init->psKernelCCBCtl.ui32Addr,16);
@@ -135,9 +136,16 @@ static inline int a04_rgx_command_power_off(struct a04_rgx_fw_runtime *r,
     /* Reject the initial zero/OFF state: it cannot prove a transition. */
     if(r->trace->ePowState!=RGXFWIF_POW_ON && r->trace->ePowState!=RGXFWIF_POW_IDLE &&
        r->trace->ePowState!=RGXFWIF_POW_FORCED_IDLE) return A04_CCB_INPUT;
+    if(action==A04_POWER_FORCED_OFF && r->trace->ePowState!=RGXFWIF_POW_FORCED_IDLE) return A04_CCB_INPUT;
+    if(action==A04_POWER_FORCE_IDLE && r->trace->ePowState==RGXFWIF_POW_FORCED_IDLE) return A04_CCB_INPUT;
     *sync=0;cmd.eCmdType=RGXFWIF_KCCB_CMD_POW;cmd.eDM=A04_RGX_DM_GP;
-    cmd.uCmdData.sPowData.ePowType=RGXFWIF_POW_OFF_REQ;
-    cmd.uCmdData.sPowData.uPoweReqData.bForced=0;
+    if(action==A04_POWER_FORCE_IDLE) {
+        cmd.uCmdData.sPowData.ePowType=RGXFWIF_POW_FORCED_IDLE_REQ;
+        cmd.uCmdData.sPowData.uPoweReqData.ePowRequestType=RGXFWIF_POWER_FORCE_IDLE;
+    } else {
+        cmd.uCmdData.sPowData.ePowType=RGXFWIF_POW_OFF_REQ;
+        cmd.uCmdData.sPowData.uPoweReqData.bForced=action==A04_POWER_FORCED_OFF;
+    }
     if (a04_rgx_device_write_words(&cmds[write],&cmd,sizeof(cmd))) {
         state->poisoned=true;return A04_CCB_CORRUPT;
     }
@@ -152,11 +160,15 @@ static inline int a04_rgx_command_power_off(struct a04_rgx_fw_runtime *r,
             state->poisoned=true;return A04_CCB_CORRUPT;
         }
         if(value==1 && done==next)
-            return r->trace->ePowState==RGXFWIF_POW_OFF ? A04_CCB_OK : A04_CCB_POWER_DENIED;
+            return r->trace->ePowState==(action==A04_POWER_FORCE_IDLE ? RGXFWIF_POW_FORCED_IDLE : RGXFWIF_POW_OFF) ? A04_CCB_OK : A04_CCB_POWER_DENIED;
         io->wait_us(io->context,delay_us);
     }
     state->poisoned=true;return A04_CCB_TIMEOUT;
 }
+static inline int a04_rgx_command_power_off(struct a04_rgx_fw_runtime *r,
+    struct a04_rgx_command_state *state,const struct a04_rgx_command_io *io,
+    uint32_t polls,uint32_t delay_us)
+{ return a04_rgx_command_power_transition(r,state,io,A04_POWER_NORMAL_OFF,polls,delay_us); }
 _Static_assert(sizeof(RGXFWIF_KCCB_CMD)==56 && sizeof(RGXFWIF_CCB_CTL)==16,"KCCB ABI");
 _Static_assert((unsigned)RGXFWIF_KCCB_CMD_SYNC==0x2abc0068U,"DDK SYNC opcode");
 #endif

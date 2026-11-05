@@ -30,7 +30,7 @@ static int convert(const struct a04_gpu_dma_segment *segments,size_t count,
 int a04_gpu_dma_pages(const struct a04_gpu_dma_segment *segments,size_t count,
     uint64_t *pages,size_t page_count)
 {
-    if(!segments || !pages || !count || !page_count || page_count>512u || count>page_count*PAGE_SIZE ||
+    if(!segments || !pages || !count || !page_count || page_count>8192u || count>page_count*PAGE_SIZE ||
        count>SIZE_MAX/sizeof(*segments) || ((uintptr_t)segments&7u) || ((uintptr_t)pages&7u) ||
        overlap(segments,count*sizeof(*segments),pages,page_count*sizeof(*pages))) return -1;
     if(convert(segments,count,NULL,page_count)) return -1;

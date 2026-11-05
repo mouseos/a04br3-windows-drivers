@@ -11,6 +11,13 @@
 
 #pragma code_seg("PAGE")
 
+class A04DmmGuard {
+    KMUTEX *m_Mutex;
+public:
+    explicit A04DmmGuard(KMUTEX *mutex) : m_Mutex(mutex) {}
+    ~A04DmmGuard() { KeReleaseMutex(m_Mutex,FALSE); }
+};
+
 // Display-Only Devices can only return display modes of D3DDDIFMT_A8R8G8B8.
 // Color conversion takes place if the app's fullscreen backbuffer has different format.
 // Full display drivers can add more if the hardware supports them.
@@ -476,6 +483,13 @@ NTSTATUS BASIC_DISPLAY_DRIVER::SetVidPnSourceVisibility(_In_ CONST DXGKARG_SETVI
     BDD_ASSERT((pSetVidPnSourceVisibility->VidPnSourceId < MAX_VIEWS) ||
                (pSetVidPnSourceVisibility->VidPnSourceId == D3DDDI_ID_ALL));
 
+    if (!pSetVidPnSourceVisibility ||
+        (pSetVidPnSourceVisibility->VidPnSourceId >= MAX_VIEWS && pSetVidPnSourceVisibility->VidPnSourceId != D3DDDI_ID_ALL)) return STATUS_INVALID_PARAMETER;
+    NTSTATUS lockStatus=KeWaitForSingleObject(&m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+    if (!NT_SUCCESS(lockStatus)) return lockStatus;
+    A04DmmGuard guard(&m_PresentMutex);
+    if (!m_Flags.DriverStarted) return STATUS_DEVICE_NOT_READY;
+
     UINT StartVidPnSourceId = (pSetVidPnSourceVisibility->VidPnSourceId == D3DDDI_ID_ALL) ? 0 : pSetVidPnSourceVisibility->VidPnSourceId;
     UINT MaxVidPnSourceId = (pSetVidPnSourceVisibility->VidPnSourceId == D3DDDI_ID_ALL) ? MAX_VIEWS : pSetVidPnSourceVisibility->VidPnSourceId + 1;
 
@@ -515,6 +529,9 @@ NTSTATUS BASIC_DISPLAY_DRIVER::CommitVidPn(_In_ CONST DXGKARG_COMMITVIDPN* CONST
     CONST DXGK_VIDPNSOURCEMODESET_INTERFACE* pVidPnSourceModeSetInterface = NULL;
     CONST D3DKMDT_VIDPN_PRESENT_PATH*        pVidPnPresentPath = NULL;
     CONST D3DKMDT_VIDPN_SOURCE_MODE*         pPinnedVidPnSourceModeInfo = NULL;
+    SIZE_T NumPathsFromSource = 0;
+    D3DDDI_VIDEO_PRESENT_TARGET_ID TargetId = D3DDDI_ID_UNINITIALIZED;
+    if (!pCommitVidPn || pCommitVidPn->AffectedVidPnSourceId >= MAX_VIEWS) return STATUS_INVALID_PARAMETER;
 
     // Check this CommitVidPn is for the mode change notification when monitor is in power off state.
     if (pCommitVidPn->Flags.PathPoweredOff)
@@ -575,84 +592,38 @@ NTSTATUS BASIC_DISPLAY_DRIVER::CommitVidPn(_In_ CONST DXGKARG_COMMITVIDPN* CONST
         pPinnedVidPnSourceModeInfo = NULL;
     }
 
-    if (m_CurrentModes[pCommitVidPn->AffectedVidPnSourceId].FrameBuffer.Ptr &&
-        !m_CurrentModes[pCommitVidPn->AffectedVidPnSourceId].Flags.DoNotMapOrUnmap)
+    // Resolve and validate topology without the Present mutex: VidPn callbacks
+    // must not run while the framebuffer ownership lock is held.
+    if (pPinnedVidPnSourceModeInfo != NULL)
     {
-        Status = UnmapFrameBuffer(m_CurrentModes[pCommitVidPn->AffectedVidPnSourceId].FrameBuffer.Ptr,
-                                  m_CurrentModes[pCommitVidPn->AffectedVidPnSourceId].DispInfo.Pitch * m_CurrentModes[pCommitVidPn->AffectedVidPnSourceId].DispInfo.Height);
-        m_CurrentModes[pCommitVidPn->AffectedVidPnSourceId].FrameBuffer.Ptr = NULL;
-        m_CurrentModes[pCommitVidPn->AffectedVidPnSourceId].Flags.FrameBufferIsActive = FALSE;
-
-        if (!NT_SUCCESS(Status))
+        Status = IsVidPnSourceModeFieldsValid(pPinnedVidPnSourceModeInfo);
+        if (!NT_SUCCESS(Status)) goto CommitVidPnExit;
+        Status = pVidPnTopologyInterface->pfnGetNumPathsFromSource(hVidPnTopology, pCommitVidPn->AffectedVidPnSourceId, &NumPathsFromSource);
+        if (!NT_SUCCESS(Status)) goto CommitVidPnExit;
+        if (NumPathsFromSource > 1) { Status = STATUS_GRAPHICS_VIDPN_MODALITY_NOT_SUPPORTED; goto CommitVidPnExit; }
+        if (NumPathsFromSource == 1)
         {
-            goto CommitVidPnExit;
+            Status = pVidPnTopologyInterface->pfnEnumPathTargetsFromSource(hVidPnTopology, pCommitVidPn->AffectedVidPnSourceId, 0, &TargetId);
+            if (!NT_SUCCESS(Status)) goto CommitVidPnExit;
+            Status = pVidPnTopologyInterface->pfnAcquirePathInfo(hVidPnTopology, pCommitVidPn->AffectedVidPnSourceId, TargetId, &pVidPnPresentPath);
+            if (!NT_SUCCESS(Status)) goto CommitVidPnExit;
+            Status = IsVidPnPathFieldsValid(pVidPnPresentPath);
+            if (!NT_SUCCESS(Status)) goto CommitVidPnExit;
         }
     }
-
-    if (pPinnedVidPnSourceModeInfo == NULL)
     {
-        // There is no mode to pin on this source, any old paths here have already been cleared
-        Status = STATUS_SUCCESS;
-        goto CommitVidPnExit;
-    }
-
-    Status = IsVidPnSourceModeFieldsValid(pPinnedVidPnSourceModeInfo);
-    if (!NT_SUCCESS(Status))
-    {
-        goto CommitVidPnExit;
-    }
-
-    // Get the number of paths from this source so we can loop through all paths
-    SIZE_T NumPathsFromSource = 0;
-    Status = pVidPnTopologyInterface->pfnGetNumPathsFromSource(hVidPnTopology, pCommitVidPn->AffectedVidPnSourceId, &NumPathsFromSource);
-    if (!NT_SUCCESS(Status))
-    {
-        BDD_LOG_ERROR2("pfnGetNumPathsFromSource failed with Status = 0x%I64x, hVidPnTopology = 0x%I64x", Status, hVidPnTopology);
-        goto CommitVidPnExit;
-    }
-
-    // Loop through all paths to set this mode
-    for (SIZE_T PathIndex = 0; PathIndex < NumPathsFromSource; ++PathIndex)
-    {
-        // Get the target id for this path
-        D3DDDI_VIDEO_PRESENT_TARGET_ID TargetId = D3DDDI_ID_UNINITIALIZED;
-        Status = pVidPnTopologyInterface->pfnEnumPathTargetsFromSource(hVidPnTopology, pCommitVidPn->AffectedVidPnSourceId, PathIndex, &TargetId);
-        if (!NT_SUCCESS(Status))
+        NTSTATUS lockStatus=KeWaitForSingleObject(&m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+        if (!NT_SUCCESS(lockStatus)) { Status=lockStatus; goto CommitVidPnExit; }
+        A04DmmGuard guard(&m_PresentMutex);
+        if (!m_Flags.DriverStarted) { Status=STATUS_DEVICE_NOT_READY; goto CommitVidPnExit; }
+        CURRENT_BDD_MODE *mode=&m_CurrentModes[pCommitVidPn->AffectedVidPnSourceId];
+        if (mode->FrameBuffer.Ptr && !mode->Flags.DoNotMapOrUnmap)
         {
-            BDD_LOG_ERROR4("pfnEnumPathTargetsFromSource failed with Status = 0x%I64x, hVidPnTopology = 0x%I64x, SourceId = 0x%I64x, PathIndex = 0x%I64x",
-                            Status, hVidPnTopology, pCommitVidPn->AffectedVidPnSourceId, PathIndex);
-            goto CommitVidPnExit;
+            Status=UnmapFrameBuffer(mode->FrameBuffer.Ptr,mode->DispInfo.Pitch*mode->DispInfo.Height);
+            if (!NT_SUCCESS(Status)) goto CommitVidPnExit;
+            mode->FrameBuffer.Ptr=NULL;mode->Flags.FrameBufferIsActive=FALSE;
         }
-
-        // Get the actual path info
-        Status = pVidPnTopologyInterface->pfnAcquirePathInfo(hVidPnTopology, pCommitVidPn->AffectedVidPnSourceId, TargetId, &pVidPnPresentPath);
-        if (!NT_SUCCESS(Status))
-        {
-            BDD_LOG_ERROR4("pfnAcquirePathInfo failed with Status = 0x%I64x, hVidPnTopology = 0x%I64x, SourceId = 0x%I64x, TargetId = 0x%I64x",
-                            Status, hVidPnTopology, pCommitVidPn->AffectedVidPnSourceId, TargetId);
-            goto CommitVidPnExit;
-        }
-
-        Status = IsVidPnPathFieldsValid(pVidPnPresentPath);
-        if (!NT_SUCCESS(Status))
-        {
-            goto CommitVidPnExit;
-        }
-
-        Status = SetSourceModeAndPath(pPinnedVidPnSourceModeInfo, pVidPnPresentPath);
-        if (!NT_SUCCESS(Status))
-        {
-            goto CommitVidPnExit;
-        }
-
-        Status = pVidPnTopologyInterface->pfnReleasePathInfo(hVidPnTopology, pVidPnPresentPath);
-        if (!NT_SUCCESS(Status))
-        {
-            BDD_LOG_ERROR3("pfnReleasePathInfo failed with Status = 0x%I64x, hVidPnTopoogy = 0x%I64x, pVidPnPresentPath = 0x%I64x",
-                            Status, hVidPnTopology, pVidPnPresentPath);
-            goto CommitVidPnExit;
-        }
-        pVidPnPresentPath = NULL; // Successfully released it
+        Status=pVidPnPresentPath ? SetSourceModeAndPath(pPinnedVidPnSourceModeInfo,pVidPnPresentPath) : STATUS_SUCCESS;
     }
 
 CommitVidPnExit:
@@ -697,6 +668,11 @@ NTSTATUS BASIC_DISPLAY_DRIVER::UpdateActiveVidPnPresentPath(_In_ CONST DXGKARG_U
     {
         return Status;
     }
+
+    NTSTATUS lockStatus=KeWaitForSingleObject(&m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+    if (!NT_SUCCESS(lockStatus)) return lockStatus;
+    A04DmmGuard guard(&m_PresentMutex);
+    if (!m_Flags.DriverStarted) return STATUS_DEVICE_NOT_READY;
 
     // Mark the next present as fullscreen to make sure the full rotation comes through
     m_CurrentModes[pUpdateActiveVidPnPresentPath->VidPnPresentPathInfo.VidPnSourceId].Flags.FullscreenPresent = TRUE;

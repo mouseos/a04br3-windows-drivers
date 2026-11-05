@@ -141,3 +141,22 @@ int a04_pmic_spk_clock_release(struct a04_pmic_read *bus,struct a04_pmic_spk_clo
 }
 #endif
 #endif
+/* MT6392 VUSB is a fixed 3.3 V rail (DIGLDO_CON2 bit 14). All callers must
+ * hold the same parent lock for the complete read/modify/write/readback. */
+int a04_pmic_vusb_get(struct a04_pmic_read *bus, uint16_t *value)
+{ return read_register(bus, 0x0502u, value); }
+int a04_pmic_vusb_set(struct a04_pmic_read *bus, int enable)
+{
+    uint16_t before, after, expected;
+    uint32_t state;
+    if (read_register(bus, 0x0502u, &before)) return -1;
+    expected = enable ? (uint16_t)(before | 0x4000u) : (uint16_t)(before & ~0x4000u);
+    if (expected == before) return 0;
+    if (wait_fsm(bus, 0, &state)) { bus->poisoned = 1; return -1; }
+    bus->write32(bus->context, WACS2_CMD, 0x80000000u | (0x0502u >> 1 << 16) | expected);
+    if (wait_fsm(bus, 0, &state) || read_register(bus, 0x0502u, &after)) {
+        bus->poisoned = 1; return -1;
+    }
+    if (after != expected) { bus->poisoned = 1; return -1; }
+    return 0;
+}
