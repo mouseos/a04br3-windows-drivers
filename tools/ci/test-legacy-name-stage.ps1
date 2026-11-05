@@ -43,6 +43,8 @@ try {
     foreach ($name in @('SYSTEM.LOG1','SYSTEM.LOG2')) {
         if (-not (Test-Path (Join-Path $base "Windows\Temp\mt8167-bu21025-names-stage-v2\$name"))) { throw "Missing registry log backup: $name" }
     }
+    & (Join-Path $base 'src\copy-backup.exe') (Join-Path $base 'Windows\System32\config\SYSTEM.LOG1') (Join-Path $base 'Windows\Temp\mt8167-bu21025-names-stage-v2\SYSTEM.LOG1')
+    if ($LASTEXITCODE -ne 2) { throw 'Existing backup was not protected' }
     $out = & cmd.exe /c $cmd
     if (-not ($out -match 'NAMES_ALREADY_ATTEMPTED_OR_LOCK_FAILED')) { throw 'Persistent guard failed' }
     Remove-Item -Recurse -Force (Join-Path $base 'Windows\Temp\mt8167-bu21025-names-stage-v2')
