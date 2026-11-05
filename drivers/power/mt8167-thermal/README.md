@@ -185,3 +185,19 @@ UEFIが報告する所有権は未確認で、firmware_handoffゲートは閉じ
 同時に有効化するとコンパイル時に拒否する。親の共有レジスタをtouchから直接mapしない。
 既存UART screenとthermal watchdog stopの同時有効化も既存の制約どおり拒否する。
 これらは別々のビルドを意味し、全機能の同時実機動作は未検証。
+
+## 共有親を経由するAUXADC診断候補
+
+`A04_SHARED_THERMAL_DIAGNOSTIC=1`、共有親touch、thermal leaseおよび
+`A04_THERMAL_SHARED_PARENT=1` の組合せでは、親が排他的なthermal/AUXADC子資源を
+割り当て、TOP clock、INFRA reset、APMIXEDの温度用レジスタを所有する。touchの
+leaseから親へ取得・停止・単一MMIO保護を転送する。親とtouchのD0退出は進行中
+MMIOのrundownを待つ。正常quiesceが報告されないclock使用後はleaseを返さず、
+途中失敗はpoisonする。Linuxはthermalと汎用AUXADCが同じADCおよびclockを使うため、
+親のleaseだけを全利用者の排他証明として扱わない。
+
+現在はfirmware/EL3の解放と全AUXADC利用者の排他を証明できず、親は取得を拒否し、
+温度側のfirmware_handoffもfalseのままである。よってビルド・自己署名済みでも
+実機測温できることを意味しない。UEFIの校正提供、親子PnP、ADC鮮度、clock/reset、
+突然の取り外し、D0停止、正常quiesceは実機未検証。署名はテスト用自己署名であり、
+OSの信頼・ロード成功や実機安全性を保証しない。

@@ -85,6 +85,9 @@
 #ifndef A04_SHARED_TOUCH_D0_EXPERIMENT
 #define A04_SHARED_TOUCH_D0_EXPERIMENT 0
 #endif
+#if A04_SHARED_THERMAL_DIAGNOSTIC && (!defined(A04_SHARED_QUERY_EXPERIMENTAL) || !A04_SHARED_QUERY_EXPERIMENTAL || !defined(A04_SHARED_CHILD_PROBE) || !A04_SHARED_CHILD_PROBE || !A04_SHARED_BUTTON_D0_EXPERIMENT || !A04_SHARED_TOUCH_D0_EXPERIMENT || !A04_SHARED_APMIXED_RESOURCE)
+#error Shared thermal diagnostic requires query, children, touch D0 and APMIXED
+#endif
 #if A04_SHARED_TOUCH_D0_EXPERIMENT && !A04_SHARED_BUTTON_D0_EXPERIMENT
 #error Shared touch requires the guarded shared parent D0 experiment
 #endif
@@ -442,14 +445,14 @@ static NTSTATUS ParentThermalClock(PVOID p,ULONG generation)
 {
  A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);uint32_t state;NTSTATUS result=STATUS_DEVICE_NOT_READY;
  if(ParentLock(c))return result;
- if(a04_shared_thermal_valid(&c->thermal,generation)) {
+ if(a04_shared_thermal_valid(&c->thermal,generation) && !c->thermal.quiescent) {
   if(c->thermal.clocks_ready)result=STATUS_SUCCESS;
   else if(ParentRegRead(c,A04_SHARED_TOP,0x24,&state)) {c->thermal.poisoned=1;result=STATUS_DEVICE_HARDWARE_ERROR;}
   else {
    c->thermal.restore_gated=state&((1u<<1)|(1u<<30));
    if((!c->thermal.restore_gated || !ParentRegWrite(c,A04_SHARED_TOP,0x84,c->thermal.restore_gated)) &&
       !ParentRegRead(c,A04_SHARED_TOP,0x24,&state) && !(state&((1u<<1)|(1u<<30)))) {
-    c->thermal.clocks_ready=1;result=STATUS_SUCCESS;
+    c->thermal.clocks_ready=1;c->thermal.quiescent=0;result=STATUS_SUCCESS;
    } else {c->thermal.poisoned=1;result=STATUS_DEVICE_HARDWARE_ERROR;}
   }
  }
@@ -459,7 +462,7 @@ static NTSTATUS ParentThermalReset(PVOID p,ULONG generation)
 {
  A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);uint32_t state;NTSTATUS result=STATUS_DEVICE_NOT_READY;
  if(ParentLock(c))return result;
- if(a04_shared_thermal_valid(&c->thermal,generation) && c->thermal.clocks_ready) {
+ if(a04_shared_thermal_valid(&c->thermal,generation) && c->thermal.clocks_ready && !c->thermal.quiescent) {
   if(!ParentRegWrite(c,A04_SHARED_INFRA,0x120,1) && !ParentRegWrite(c,A04_SHARED_INFRA,0x124,1) &&
      !ParentRegRead(c,A04_SHARED_INFRA,0x128,&state) && !(state&1))result=STATUS_SUCCESS;
   else {c->thermal.poisoned=1;result=STATUS_DEVICE_HARDWARE_ERROR;}
@@ -481,11 +484,42 @@ static VOID ParentThermalEnd(PVOID p)
  ExAcquireFastMutex(&c->pwrapLock);a04_shared_thermal_end(&c->thermal);ExReleaseFastMutex(&c->pwrapLock);
  ExReleaseRundownProtection(&c->thermalRundown);
 }
+static NTSTATUS ParentThermalReadAnalog(PVOID p,ULONG generation,ULONG *value)
+{
+ A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);NTSTATUS result=STATUS_DEVICE_NOT_READY;
+ if(!value || ParentLock(c))return result;
+ if(a04_shared_thermal_valid(&c->thermal,generation) && c->thermal.inflight && c->apmixed && c->apmixedLength>=0x608) {
+  *value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x604));
+  if(*value!=MAXULONG)result=STATUS_SUCCESS;else c->thermal.poisoned=1;
+ }
+ ParentUnlock(c);return result;
+}
+static NTSTATUS ParentThermalWriteAnalog(PVOID p,ULONG generation,ULONG value)
+{
+ A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);volatile ULONG *reg;ULONG before,after;NTSTATUS result=STATUS_DEVICE_NOT_READY;
+ if(ParentLock(c))return result;
+ if(a04_shared_thermal_valid(&c->thermal,generation) && c->thermal.inflight && c->apmixed && c->apmixedLength>=0x608) {
+  reg=(volatile ULONG *)((volatile UCHAR *)c->apmixed+0x604);before=READ_REGISTER_ULONG(reg);
+  if(before!=MAXULONG && value==(before&~0x30u)) {
+   WRITE_REGISTER_ULONG(reg,value);after=READ_REGISTER_ULONG(reg);
+   if(after==value)result=STATUS_SUCCESS;else c->thermal.poisoned=1;
+  } else c->thermal.poisoned=1;
+ }
+ ParentUnlock(c);return result;
+}
+static NTSTATUS ParentThermalQuiescent(PVOID p,ULONG generation)
+{
+ A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);int result;
+ if(ParentLock(c))return STATUS_DEVICE_NOT_READY;
+ result=a04_shared_thermal_quiescent(&c->thermal,generation);ParentUnlock(c);
+ return result?STATUS_DEVICE_NOT_READY:STATUS_SUCCESS;
+}
 static NTSTATUS ParentThermalRelease(PVOID p,ULONG generation)
 {
  A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);int result;
  if(ParentLock(c))return STATUS_DEVICE_NOT_READY;
  if(!a04_shared_thermal_valid(&c->thermal,generation) || c->thermal.inflight) {ParentUnlock(c);return STATUS_DEVICE_BUSY;}
+ if(c->thermal.clocks_ready && !c->thermal.quiescent) {c->thermal.poisoned=1;ParentUnlock(c);return STATUS_DEVICE_BUSY;}
  if(c->thermal.clocks_ready && c->thermal.restore_gated) {
   uint32_t state;
   if(ParentRegWrite(c,A04_SHARED_TOP,0x54,c->thermal.restore_gated) ||
@@ -680,6 +714,23 @@ NTSTATUS ChildRequirements(WDFDEVICE child,WDFIORESREQLIST requirements)
 {
     A04_CHILD_CONTEXT *c=ChildContext(child); WDFIORESLIST list;
     IO_RESOURCE_DESCRIPTOR descriptor; NTSTATUS status;
+#if A04_SHARED_THERMAL_DIAGNOSTIC
+    if(c->base==0xfffffffeu) {
+        static const ULONG thermalBase[2]={0x1100d000u,0x11003000u};unsigned i;
+        status=WdfIoResourceListCreate(requirements,WDF_NO_OBJECT_ATTRIBUTES,&list);
+        if(!NT_SUCCESS(status))return status;
+        for(i=0;i<2;i++) {
+            RtlZeroMemory(&descriptor,sizeof(descriptor));descriptor.Type=CmResourceTypeMemory;
+            descriptor.ShareDisposition=CmResourceShareDeviceExclusive;descriptor.Flags=CM_RESOURCE_MEMORY_READ_WRITE;
+            descriptor.u.Memory.Length=0x1000;descriptor.u.Memory.Alignment=1;
+            descriptor.u.Memory.MinimumAddress.QuadPart=thermalBase[i];descriptor.u.Memory.MaximumAddress.QuadPart=thermalBase[i]+0xfff;
+            status=WdfIoResourceListAppendDescriptor(list,&descriptor);
+            if(!NT_SUCCESS(status)){WdfObjectDelete(list);return status;}
+        }
+        status=WdfIoResourceRequirementsListAppendIoResList(requirements,list);
+        if(!NT_SUCCESS(status))WdfObjectDelete(list);return status;
+    }
+#endif
 #if defined(A04_AUDIO_CHILD_RESOURCES) && A04_AUDIO_CHILD_RESOURCES
     if(c->base==0xffffffffu) {
         /* Diagnostic raw GSI candidate. IO_RESOURCE_DESCRIPTOR does not
@@ -851,7 +902,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     thermalIface.Header.Version=A04_SHARED_THERMAL_INTERFACE_VERSION;thermalIface.Header.Context=dev;
     thermalIface.Header.InterfaceReference=ParentInterfaceReference;thermalIface.Header.InterfaceDereference=ParentInterfaceDereference;
     thermalIface.Acquire=ParentThermalAcquire;thermalIface.Clock=ParentThermalClock;thermalIface.Reset=ParentThermalReset;
-    thermalIface.Begin=ParentThermalBegin;thermalIface.End=ParentThermalEnd;thermalIface.Release=ParentThermalRelease;
+    thermalIface.Begin=ParentThermalBegin;thermalIface.End=ParentThermalEnd;
+    thermalIface.ReadAnalog=ParentThermalReadAnalog;thermalIface.WriteAnalog=ParentThermalWriteAnalog;
+    thermalIface.Quiescent=ParentThermalQuiescent;thermalIface.Release=ParentThermalRelease;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&thermalIface,&A04SharedThermalInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
 #endif
@@ -875,6 +928,10 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     if(!NT_SUCCESS(status))return status;
     status=ParentAddProbeChild(dev,L"MT8167\\BU21025",L"0",0x11009000u);
     if(!NT_SUCCESS(status))return status;
+#if A04_SHARED_THERMAL_DIAGNOSTIC
+    status=ParentAddProbeChild(dev,L"MT8167\\Thermal",L"0",0xfffffffeu);
+    if(!NT_SUCCESS(status))return status;
+#endif
     status=ParentAddProbeChild(dev,L"MT8167\\USB20",L"0",0x11100000u);
     if(!NT_SUCCESS(status))return status;
     /* The audio sentinel remains unavailable unless the diagnostic flag is set. */

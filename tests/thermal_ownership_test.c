@@ -10,6 +10,7 @@ int main(void){struct a04_thermal_owner s={0};
   {0x10018000,0x10018000,4096,4096,1,1,1,1},
   {0x10009000,0x10009000,4096,4096,1,1,1,1}};
  assert(!a04_thermal_resources_validate(r,4));assert(a04_thermal_resources_validate(r,3));
+ assert(!a04_thermal_resources_validate_shared(r,2));assert(a04_thermal_resources_validate_shared(r,4));
  r[1].exclusive=0;assert(a04_thermal_resources_validate(r,4));r[1].exclusive=1;
  r[1].raw_exclusive=0;assert(a04_thermal_resources_validate(r,4));r[1].raw_exclusive=1;
  r[1].raw++;assert(a04_thermal_resources_validate(r,4));r[1].raw--;

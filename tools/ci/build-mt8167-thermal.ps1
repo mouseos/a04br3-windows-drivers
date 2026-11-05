@@ -11,6 +11,7 @@ $out=Join-Path $tempRoot 'a04br3-thermal-diagnostic'
 New-Item -ItemType Directory -Force $out | Out-Null
 $dir=Join-Path $root 'drivers\power\mt8167-thermal'
 $objects=@()
+$shared = if ($env:A04_THERMAL_SHARED_PARENT -eq '1') { '1' } else { '0' }
 $lease = if ($env:A04_THERMAL_LEASE_DIAG -eq '1') { '1' } else { '0' }
 $oneshot = if ($env:A04_THERMAL_ONESHOT_TEST -eq '1') { '1' } else { '0' }
 $monitor = if ($env:A04_THERMAL_MONITOR_TEST -eq '1') { '1' } else { '0' }
@@ -21,7 +22,7 @@ if ($monitor -eq '1') { $names += @('monitor','completion','freshness','hardware
 if ($oneshot -eq '1') { $names += 'oneshot' }
 foreach($name in $names) {
  $obj=Join-Path $out "$name.obj"
- & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_THERMAL_ONESHOT_TEST=$oneshot" "-DA04_THERMAL_LEASE_DIAG=$lease" "-DA04_THERMAL_MONITOR_TEST=$monitor" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$dir" -c (Join-Path $dir "$name.c") -o $obj
+ & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_THERMAL_SHARED_PARENT=$shared" "-DA04_THERMAL_ONESHOT_TEST=$oneshot" "-DA04_THERMAL_LEASE_DIAG=$lease" "-DA04_THERMAL_MONITOR_TEST=$monitor" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$dir" -c (Join-Path $dir "$name.c") -o $obj
  if($LASTEXITCODE -ne 0){throw "thermal compile failed: $name"}
  $objects += $obj
 }

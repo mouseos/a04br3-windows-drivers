@@ -9,6 +9,7 @@ CatalogFile=mt8167-thermal.cat
 %Provider%=Models,NTARM
 [Models.NTARM]
 %Device%=Install,ACPI\MOU0009
+%Device%=Install,MT8167\Thermal
 [DestinationDirs]
 DriverCopy=12
 [SourceDisksNames]
