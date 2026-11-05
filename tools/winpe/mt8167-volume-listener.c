@@ -27,7 +27,7 @@ static void report(const char *message,DWORD length)
 }
 static int run(void)
 {
-    DWORD request=0,got,rc; BOOL ok; HANDLE h;
+    DWORD request=0,got,rc; BOOL ok,ready=FALSE; HANDLE h;
     STARTUPINFOW si; PROCESS_INFORMATION pi;
     WCHAR cmd[]=L"X:\\Windows\\System32\\cmd.exe /d /c X:\\a04br3\\release-toprgu-audit-volume.cmd";
     for(;;) {
@@ -35,6 +35,10 @@ static int run(void)
         if(h!=INVALID_HANDLE_VALUE) {
             got=0;ok=DeviceIoControl(h,A04_UART_VOLUME_GET,NULL,0,&request,sizeof(request),&got,NULL);
             CloseHandle(h);
+            if(ok && got==sizeof(request) && !ready) {
+                static const char msg[]="A04VOL_LISTENER_READY\n";
+                report(msg,sizeof(msg)-1); ready=TRUE;
+            }
             if(ok && got==sizeof(request) && request==1)break;
         }
         Sleep(200);
