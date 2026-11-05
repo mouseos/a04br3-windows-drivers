@@ -173,6 +173,15 @@ int main(void) {
         assert(tr.state==A04_TRANSFER_FAILED&&f.transfer_stage==0&&e.closed&&destination.stopped);
     }
     {
+        struct a04_broker_endpoint e={0};struct a04_owner_transfer tr={0};struct a04_bq_owner destination={0};
+        struct a04_transfer_ops ops={&f,transfer_action,transfer_action,transfer_action,transfer_action,clock_ns};
+        setup(&f,&o,&b,&c,&g);assert(!a04_broker_endpoint_init(&e,&b,1));
+        assert(!a04_broker_endpoint_maintain(&e)&&!a04_broker_endpoint_quiesce(&e));
+        f.now=2*NS;tr.last_observed=3*NS;
+        assert(a04_broker_handoff(&e,&destination,&tr,&ops,30*NS));
+        assert(!tr.attempted&&!f.transfer_stage&&!e.closed&&!o.stopped);
+    }
+    {
         uint8_t wire[A04_BROKER_WIRE_BYTES];struct a04_broker_request q={1,2,3},decoded={9,9,9};
         struct a04_broker_response r={0},response={0};unsigned i;
         assert(!a04_broker_wire_request_encode(wire,sizeof(wire),&q));
