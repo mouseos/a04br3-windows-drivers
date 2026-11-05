@@ -10,14 +10,23 @@
 #ifndef A04_THERMAL_LEASE_DIAG
 #define A04_THERMAL_LEASE_DIAG 0
 #endif
+#ifndef A04_THERMAL_ONESHOT_TEST
+#define A04_THERMAL_ONESHOT_TEST 0
+#endif
 #ifndef A04_THERMAL_MONITOR_TEST
 #define A04_THERMAL_MONITOR_TEST 0
+#endif
+#if A04_THERMAL_ONESHOT_TEST && !A04_THERMAL_MONITOR_TEST
+#error one-shot requires monitor infrastructure
 #endif
 #if A04_THERMAL_MONITOR_TEST && !A04_THERMAL_LEASE_DIAG
 #error monitor test requires touch lease diagnostic
 #endif
 #if A04_THERMAL_MONITOR_TEST
 #include "monitor.h"
+#if A04_THERMAL_ONESHOT_TEST
+#include "oneshot.h"
+#endif
 #include "readout.h"
 #include "readout_ioctl.h"
 EVT_WDF_TIMER ThermalMonitorTimer;
@@ -144,6 +153,19 @@ static int HwWrite(void *p,uint32_t addr,uint32_t value) { THERMAL_CONTEXT *c=p;
  if(addr==0x10001124u && value==1 && c->reset_asserted) { c->reset_asserted=FALSE;return 0; }
  r=HwAddress(c,addr);if(!r)return -1;WRITE_REGISTER_ULONG(r,value);return 0; }
 static int HwDelay(void *p,unsigned us) { UNREFERENCED_PARAMETER(p);if(us>1000)return -1;KeStallExecutionProcessor(us);return 0; }
+#if A04_THERMAL_ONESHOT_TEST
+static uint64_t ThermalOneNow(void *p) { UNREFERENCED_PARAMETER(p);return KeQueryInterruptTime()/10000u; }
+static int ThermalOneWait(void *p,unsigned ms) {
+ LARGE_INTEGER interval;UNREFERENCED_PARAMETER(p);if(!ms || ms>10)return -1;
+ interval.QuadPart=-(LONGLONG)ms*10000;return NT_SUCCESS(KeDelayExecutionThread(KernelMode,FALSE,&interval))?0:-1;
+}
+static int ThermalOneReady(void *p,int ready) { ((THERMAL_CONTEXT *)p)->hw_ready=ready?TRUE:FALSE;return 0; }
+static int ThermalOneReport(void *p,const struct a04_thermal_sample *sample) {
+ THERMAL_CONTEXT *c=p;int result;
+ WdfSpinLockAcquire(c->readout_lock);result=a04_readout_publish(&c->readout,sample);WdfSpinLockRelease(c->readout_lock);
+ return result;
+}
+#endif
 NTSTATUS ThermalRelease(WDFDEVICE dev,WDFCMRESLIST translated) {
  THERMAL_CONTEXT *c=ThermalContext(dev);unsigned i;UNREFERENCED_PARAMETER(translated);
  c->pnp_resources=FALSE; ThermalInvalidate(c); a04_owner_revoke(&c->ownership);
@@ -231,6 +253,28 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
    WdfIoTargetClose(c->touch);WdfIoTargetClose(c->watchdog);
    return STATUS_DEVICE_NOT_READY;
  }
+#if A04_THERMAL_ONESHOT_TEST
+ {
+  struct a04_oneshot_io io;enum a04_oneshot_result measured;
+  c->hw.ctx=c;c->hw.qualified=HwQualified;c->hw.clocks_on=HwClocks;c->hw.initialized=HwReady;
+  c->hw.read32=HwRead;c->hw.write32=HwWrite;c->hw.delay_us=HwDelay;c->hw_ready=FALSE;c->reset_asserted=FALSE;
+  io.hw=&c->hw;io.context=c;io.now_ms=ThermalOneNow;io.wait_ms=ThermalOneWait;
+  io.set_ready=ThermalOneReady;io.report=ThermalOneReport;
+  measured=a04_thermal_oneshot(&io,&c->cal);
+  if(measured==A04_ONESHOT_SHUTDOWN_FAILED) {
+   ThermalInvalidate(c);a04_owner_quarantine(&c->ownership);
+   /* No safe lease return is known after partial MMIO. Stop immediately;
+    * bugcheck is not proof that reset or physical power isolation occurred. */
+   KeBugCheckEx(0xE2,0x41303454,6,0,0);return STATUS_DEVICE_HARDWARE_ERROR;
+  }
+  if(measured!=A04_ONESHOT_OK)ThermalInvalidate(c);
+  status=TouchRequest(c,A04_TOUCH_THERMAL_RELEASE);
+  if(!NT_SUCCESS(status)) { ThermalInvalidate(c);a04_owner_quarantine(&c->ownership);return status; }
+  c->lease_owned=FALSE;a04_owner_revoke(&c->ownership);
+  if(measured!=A04_ONESHOT_OK) { WdfIoTargetClose(c->touch);WdfIoTargetClose(c->watchdog);return STATUS_DEVICE_HARDWARE_ERROR; }
+  c->calibrated=TRUE;return STATUS_SUCCESS;
+ }
+#else
  {
   struct a04_thermal_policy policy={75000,65000,85000,1000,0};
   if(!NT_SUCCESS(WatchdogRequest(c,A04_TOPRGU_THERMAL_ARM))) {
@@ -248,6 +292,7 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
   }
   c->hw_ready=TRUE;WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(250));
  }
+#endif /* one-shot or monitor */
 #endif
  c->calibrated=TRUE;
  DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"A04THERM boot calibration accepted; measurement disabled\n");
