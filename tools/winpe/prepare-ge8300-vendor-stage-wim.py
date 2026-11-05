@@ -4,7 +4,7 @@ import argparse, hashlib, json, shutil, struct, subprocess, tempfile
 from pathlib import Path
 p=argparse.ArgumentParser()
 for name in ('source','package','manifest','output'):p.add_argument('--'+name,type=Path,required=True)
-p.add_argument('--source-sha256',required=True);p.add_argument('--wimlib',default='wimlib-imagex');a=p.parse_args()
+p.add_argument('--source-sha256',required=True);p.add_argument('--driver-commit',required=True);p.add_argument('--wimlib',default='wimlib-imagex');a=p.parse_args()
 def sha(p):
  h=hashlib.sha256()
  with p.open('rb') as f:
@@ -17,7 +17,7 @@ def header(p):
  return struct.unpack_from('<I',b,44)[0],struct.unpack_from('<I',b,120)[0]
 m=json.loads(a.manifest.read_text());expected=m['files']
 names={'mt8167-ge8300.sys','mt8167-ge8300.inf','mt8167-ge8300.cat','ge8300-mips.fw','ge8300-test.cer','ge8300-status.exe','ge8300-pnp-status.exe','ge8300-vendor-stage-status.exe'}
-if m.get('driver_commit')!='d47331d' or not m.get('vendor_stage') or set(expected)!=names:raise SystemExit('unexpected package manifest')
+if m.get('driver_commit')!=a.driver_commit or not m.get('vendor_stage') or set(expected)!=names:raise SystemExit('unexpected package manifest')
 if expected['ge8300-mips.fw']!='5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1':raise SystemExit('firmware mismatch')
 if sha(a.source)!=a.source_sha256.lower() or header(a.source)!=(1,1):raise SystemExit('source WIM mismatch')
 if a.output.exists() or a.output.with_suffix(a.output.suffix+'.json').exists():raise SystemExit('output exists')
