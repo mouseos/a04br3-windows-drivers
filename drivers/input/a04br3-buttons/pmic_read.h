@@ -25,6 +25,7 @@ int a04_pmic_audio_observe(struct a04_pmic_read *bus,struct a04_mt6392_audio_raw
 #if defined(A04_MT6392_WRITE_DIAGNOSTIC) && A04_MT6392_WRITE_DIAGNOSTIC
 /* Caller holds the common PWRAP lock; only Class D masks/values allowed.
  * TOP_CKPDN1 SET/CLR aliases are deliberately rejected. */
+int a04_pmic_classd_supported(uint16_t,uint16_t,uint16_t);
 int a04_pmic_classd_update(struct a04_pmic_read *,uint16_t,uint16_t,uint16_t);
 int a04_pmic_classd_read_gain(struct a04_pmic_read *,uint16_t,uint16_t *);
 #endif

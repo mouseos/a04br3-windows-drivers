@@ -123,6 +123,9 @@ static int ParentButtonRead(PVOID context,USHORT *value)
 /* Called under ParentLock by audio_owner; no nested PWRAP lock. The class-D
  * prerequisites and bus callbacks are deliberately unset until a real board
  * mute, retained power, exclusive clock and safe WACS2 writer are proven. */
+static int ParentCodecSupports(void *context,uint16_t reg,uint16_t mask,uint16_t value) {
+    UNREFERENCED_PARAMETER(context);return a04_pmic_classd_supported(reg,mask,value);
+}
 static int ParentCodecUpdate(void *context,uint16_t reg,uint16_t mask,uint16_t value) {
     A04_PARENT_CONTEXT *c=context;
     if(!c || !c->pmic.online)return -1;
@@ -385,7 +388,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
         c->regs.context=c;c->regs.lock=ParentRegLock;c->regs.unlock=ParentRegUnlock;
         c->regs.read32=ParentRegRead;c->regs.write32=ParentRegWrite;
 #if A04_SHARED_MT6392_DIAGNOSTIC
-        c->classd.context=c;c->classd.update_bits=ParentCodecUpdate;c->classd.read16=ParentCodecRead;
+        c->classd.context=c;c->classd.supports=ParentCodecSupports;c->classd.update_bits=ParentCodecUpdate;c->classd.read16=ParentCodecRead;
         c->audio.context=c;c->audio.codec_acquire_muted=ParentCodecStart;
         c->audio.codec_release_quiescent=ParentCodecStop;
 #endif

@@ -59,6 +59,7 @@ int main(void){
  assert(!ParentAdd(NULL,NULL));
 #if A04_SHARED_MT6392_DIAGNOSTIC
  assert(testContext.audio.codec_acquire_muted && testContext.audio.codec_release_quiescent);
+ assert(ParentCodecSupports(&testContext,0x10c,0xe,0xe) && !reads && !writes);
  assert(ParentCodecStart(&testContext) && !reads && !writes);
 #endif
  assert(child_count==3 && forward_count==6);

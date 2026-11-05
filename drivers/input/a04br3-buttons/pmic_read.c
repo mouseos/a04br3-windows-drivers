@@ -70,6 +70,8 @@ static int classd_allowed(uint16_t a,uint16_t m,uint16_t v)
            (a==0x0056u && v==0x0414u) || (a==0x0060u && v==0x48f4u) ||
            (a==0x0068u && v==0x0055u) || (a==0x006au && v==0);
 }
+int a04_pmic_classd_supported(uint16_t a,uint16_t m,uint16_t v)
+{ return classd_allowed(a,m,v) ? 0 : -1; }
 int a04_pmic_classd_read_gain(struct a04_pmic_read *bus,uint16_t address,uint16_t *out)
 { return address==0x0064u ? read_register(bus,address,out) : -1; }
 int a04_pmic_classd_update(struct a04_pmic_read *bus,uint16_t address,uint16_t mask,uint16_t bits)

@@ -10,6 +10,7 @@ struct a04_mt6392_classd {
     void *context;
     int (*verify_start)(void *);
     int (*verify_quiescent)(void *);
+    int (*supports)(void *,uint16_t,uint16_t,uint16_t);
     int (*update_bits)(void *,uint16_t,uint16_t,uint16_t);
     int (*read16)(void *,uint16_t,uint16_t *);
     int (*delay_us)(void *,uint32_t);

@@ -10,6 +10,21 @@
 #define SPK11 0x0068u
 #define SPK12 0x006au
 #define CK_CLR 0x010cu
+struct classd_update { uint16_t reg,mask,bits; };
+static const struct classd_update start_ops[]={
+    {SPK9,0x0f00,0},{CK_CLR,0x000e,0x000e},{SPK7,0xffff,0x48f4},
+    {SPK11,0xffff,0x0055},{SPK9,0xf0ff,0x2018},{SPK2,0xffff,0x0414},
+    {SPK0,0xffff,0x3409},{SPK0,0xffff,0x3401},{SPK9,0xf0ff,0x2000}
+};
+static const struct classd_update stop_ops[]={
+    {SPK9,0x0f00,0},{SPK12,0xffff,0},{SPK0,0xffff,0x3400},{CK_CLR,0x000e,0}
+};
+static int supported(struct a04_mt6392_classd *c,const struct classd_update *ops,unsigned n)
+{
+    unsigned i;if(!c->supports)return 0;
+    for(i=0;i<n;i++)if(c->supports(c->context,ops[i].reg,ops[i].mask,ops[i].bits))return 0;
+    return 1;
+}
 static int fail(struct a04_mt6392_classd *c) { c->poisoned=1;return -1; }
 static int upd(struct a04_mt6392_classd *c,uint16_t reg,uint16_t mask,uint16_t bits)
 { return c->update_bits(c->context,reg,mask,bits); }
@@ -17,7 +32,8 @@ int a04_mt6392_classd_start_muted(struct a04_mt6392_classd *c)
 {
     uint16_t gain;
     if(!c || c->active || c->poisoned || !c->verify_start || !c->verify_quiescent ||
-       !c->update_bits || !c->read16 || !c->delay_us || c->verify_start(c->context)) return -1;
+       !c->update_bits || !c->read16 || !c->delay_us || c->verify_start(c->context) ||
+       !supported(c,start_ops,sizeof(start_ops)/sizeof(start_ops[0]))) return -1;
     /* Linux enumerates SPK_CON9 gain code 0 as MUTE; readback alone does not
      * establish board-level silence, hence the separate prerequisite. */
     if(upd(c,SPK9,0x0f00,0) || c->read16(c->context,SPK9,&gain) || (gain&0x0f00)) return fail(c);
@@ -33,7 +49,8 @@ int a04_mt6392_classd_stop(struct a04_mt6392_classd *c)
 {
     uint16_t gain;
     if(!c || !c->active || c->poisoned || !c->verify_quiescent ||
-       !c->update_bits || !c->read16 || c->verify_quiescent(c->context)) return -1;
+       !c->update_bits || !c->read16 || c->verify_quiescent(c->context) ||
+       !supported(c,stop_ops,sizeof(stop_ops)/sizeof(stop_ops[0]))) return -1;
     if(upd(c,SPK9,0x0f00,0) || c->read16(c->context,SPK9,&gain) || (gain&0x0f00) ||
        upd(c,SPK12,0xffff,0) || upd(c,SPK0,0xffff,0x3400) ||
        upd(c,CK_CLR,0x000e,0)) return fail(c);
