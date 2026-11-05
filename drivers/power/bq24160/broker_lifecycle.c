@@ -47,3 +47,20 @@ int a04_broker_lifecycle_handoff(struct a04_broker_lifecycle *l,struct a04_bq_ow
     }
     l->state=A04_LIFE_HANDED_OFF;return 0;
 }
+
+int a04_broker_lifecycle_default(struct a04_broker_lifecycle *l,int (*reset)(void *),void *context)
+{
+    struct a04_bq_broker *b;
+    uint64_t now;
+    int eligible;
+    if (!l || l->state!=A04_LIFE_QUIESCING || !l->endpoint ||
+        !(b=l->endpoint->broker) || !b->owner || !b->charger || !b->charger->now_ns) return -1;
+    now=b->charger->now_ns(b->charger->context);
+    eligible=reset && !l->endpoint->closed && !b->stopped && !b->entered &&
+        !b->owner->stopped && !b->owner->handoff_pending && b->owner->kicks &&
+        now>=b->observed && now>=b->owner->last_kick && now<b->next_due && now<b->lifetime;
+    /* Close before writing; failure leaves mode unknown and cannot be retried. */
+    a04_broker_lifecycle_stop(l);
+    if (!eligible) return -1;
+    return reset(context) ? -1 : 0;
+}

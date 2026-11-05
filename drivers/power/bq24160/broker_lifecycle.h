@@ -17,5 +17,8 @@ int a04_broker_lifecycle_sample_local(struct a04_broker_lifecycle *,uint64_t dea
 int a04_broker_lifecycle_quiesce(struct a04_broker_lifecycle *);
 int a04_broker_lifecycle_handoff(struct a04_broker_lifecycle *,struct a04_bq_owner *,
                                  struct a04_owner_transfer *,const struct a04_transfer_ops *,uint64_t deadline);
+/* Caller stopped timer and drained requests under the owner lock. One exact
+ * RESET write; success means bus completion, not independently verified mode. */
+int a04_broker_lifecycle_default(struct a04_broker_lifecycle *, int (*reset)(void *), void *context);
 void a04_broker_lifecycle_stop(struct a04_broker_lifecycle *);
 #endif

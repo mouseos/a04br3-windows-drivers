@@ -9,6 +9,7 @@
 #include "broker_lifecycle.h"
 #define NS 1000000000ULL
 struct fake { uint64_t now, gauge_delay; int reads, writes, gauge_reads, bad_gauge, bad_pec, bad_bq, transfer_stage, transfer_fail, clock_calls, regress_at; };
+static int reset_action(void *p){struct fake *f=p;++f->transfer_stage;return f->transfer_fail;}
 static int transfer_action(void *p){struct fake *f=p;++f->transfer_stage;return f->transfer_stage==f->transfer_fail;}
 struct loopback { struct fake *fake; struct a04_broker_endpoint *endpoint; };
 static uint64_t loop_now(void *p) {return ((struct loopback *)p)->fake->now;}
@@ -235,6 +236,34 @@ int main(void) {
         assert(a04_broker_lifecycle_sample_local(&l,5*NS,&out)==1);
         assert(l.state==A04_LIFE_LIVE&&!e.closed&&!o.stopped&&!memcmp(&out,&old,sizeof(out)));
         f.now=10*NS;assert(!a04_broker_lifecycle_maintain(&l)&&f.writes==2);
+    }
+    {
+        struct a04_broker_endpoint e={0};struct a04_broker_lifecycle l={0};
+        setup(&f,&o,&b,&c,&g);memset(&b,0,sizeof(b));
+        assert(!a04_broker_lifecycle_start(&l,&e,&b,&o,&c,&g,0,40*NS,1));
+        assert(!a04_broker_lifecycle_maintain(&l));
+        assert(!a04_broker_lifecycle_quiesce(&l));f.now=2*NS;
+        assert(!a04_broker_lifecycle_default(&l,reset_action,&f));
+        assert(f.transfer_stage==1 && l.state==A04_LIFE_STOPPED && e.closed && o.stopped);
+        assert(a04_broker_lifecycle_default(&l,reset_action,&f) && f.transfer_stage==1);
+        assert(a04_broker_lifecycle_maintain(&l) && f.writes==1);
+    }
+    {
+        struct a04_broker_endpoint e={0};struct a04_broker_lifecycle l={0};
+        setup(&f,&o,&b,&c,&g);memset(&b,0,sizeof(b));
+        assert(!a04_broker_lifecycle_start(&l,&e,&b,&o,&c,&g,0,40*NS,1));
+        assert(!a04_broker_lifecycle_maintain(&l));assert(!a04_broker_lifecycle_quiesce(&l));
+        f.now=10*NS;assert(a04_broker_lifecycle_default(&l,reset_action,&f));
+        assert(!f.transfer_stage && e.closed && o.stopped);
+    }
+    {
+        struct a04_broker_endpoint e={0};struct a04_broker_lifecycle l={0};
+        setup(&f,&o,&b,&c,&g);memset(&b,0,sizeof(b));
+        assert(!a04_broker_lifecycle_start(&l,&e,&b,&o,&c,&g,0,40*NS,1));
+        assert(!a04_broker_lifecycle_maintain(&l));assert(!a04_broker_lifecycle_quiesce(&l));
+        f.transfer_fail=1;assert(a04_broker_lifecycle_default(&l,reset_action,&f));
+        assert(f.transfer_stage==1 && e.closed && o.stopped);
+        assert(a04_broker_lifecycle_default(&l,reset_action,&f) && f.transfer_stage==1);
     }
     {
         struct a04_broker_endpoint e={0};struct a04_broker_lifecycle l={0};

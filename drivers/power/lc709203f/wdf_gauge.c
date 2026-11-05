@@ -12,6 +12,9 @@
 #ifndef A04_BQ24160_EXPERIMENTAL
 #define A04_BQ24160_EXPERIMENTAL 0
 #endif
+#ifndef A04_BQ_DEFAULT_EXIT_EXPERIMENTAL
+#define A04_BQ_DEFAULT_EXIT_EXPERIMENTAL 0
+#endif
 #ifndef A04_BROKER_CLIENT_EXPERIMENTAL
 #define A04_BROKER_CLIENT_EXPERIMENTAL 0
 #endif
@@ -20,6 +23,9 @@
 #endif
 #if A04_BROKER_CLIENT_EXPERIMENTAL && !A04_BQ24160_EXPERIMENTAL
 #error Broker client build requires BQ experimental components
+#endif
+#if A04_BQ_DEFAULT_EXIT_EXPERIMENTAL && !A04_BROKER_OWNER_EXPERIMENTAL
+#error DEFAULT exit requires the broker owner
 #endif
 #if A04_BROKER_OWNER_EXPERIMENTAL && (!A04_BQ24160_EXPERIMENTAL || A04_BROKER_CLIENT_EXPERIMENTAL)
 #error Broker owner requires BQ experimental and excludes broker client
@@ -468,8 +474,17 @@ NTSTATUS GaugeD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
         const struct a04_transfer_ops *ops=NULL;
         uint64_t deadline=0;
         NTSTATUS status=owner_platform_successor(c,&next,&transfer,&ops,&deadline);
-        if (!NT_SUCCESS(status) || !next || !transfer || !ops || !deadline ||
-            a04_broker_lifecycle_handoff(&c->owner_lifecycle,next,transfer,ops,deadline))
+        if (!NT_SUCCESS(status) || !next || !transfer || !ops || !deadline) {
+#if A04_BQ_DEFAULT_EXIT_EXPERIMENTAL
+            /* Timer stopped, queue quiesced, bus lock held. Do not read BQ
+             * after RESET: I2C access starts its watchdog again. */
+            int result=a04_broker_lifecycle_default(&c->owner_lifecycle,
+                                                    a04_bq_mt8167_reset_default,&c->adapter);
+            trace(c, result ? "A04BAT DEFAULT UNCONFIRMED\n" : "A04BAT DEFAULT WRITE OK\n");
+#else
+            a04_broker_lifecycle_stop(&c->owner_lifecycle);
+#endif
+        } else if (a04_broker_lifecycle_handoff(&c->owner_lifecycle,next,transfer,ops,deadline))
             a04_broker_lifecycle_stop(&c->owner_lifecycle);
         c->faulted=TRUE;
     }

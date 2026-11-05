@@ -17,11 +17,13 @@ $clock = if ($env:A04_BQ_CLOCK_DIAGNOSTIC -eq '1') { '1' } else { '0' }
 if ($clock -eq '1' -and $bqhr -ne '1') { throw 'Clock observation requires BQHR diagnostic' }
 $broker = if ($env:A04_BROKER_CLIENT_EXPERIMENTAL -eq '1') { '1' } else { '0' }
 $brokerOwner = if ($env:A04_BROKER_OWNER_EXPERIMENTAL -eq '1') { '1' } else { '0' }
+$defaultExit = if ($env:A04_BQ_DEFAULT_EXIT_EXPERIMENTAL -eq '1') { '1' } else { '0' }
+if ($defaultExit -eq '1' -and $brokerOwner -ne '1') { throw 'DEFAULT exit requires broker owner' }
 if ($broker -eq '1' -and $charger -ne '1') { throw 'Broker client requires BQ experimental components' }
 if ($brokerOwner -eq '1' -and ($charger -ne '1' -or $broker -eq '1')) { throw 'Broker owner requires BQ experimental and excludes broker client' }
 $objects = @()
 foreach ($name in @('gauge','mt8167_i2c','battery_class','wdf_gauge')) {
-    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_LC709203F_TRACE=$trace" "-DA04_BQ24160_EXPERIMENTAL=$charger" "-DA04_BROKER_CLIENT_EXPERIMENTAL=$broker" "-DA04_BROKER_OWNER_EXPERIMENTAL=$brokerOwner" "-DA04_BQHR_DIAGNOSTIC=$bqhr" "-DA04_BQ_CLOCK_DIAGNOSTIC=$clock" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" -c (Join-Path $source "$name.c") -o (Join-Path $out "$name.obj")
+    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_LC709203F_TRACE=$trace" "-DA04_BQ24160_EXPERIMENTAL=$charger" "-DA04_BROKER_CLIENT_EXPERIMENTAL=$broker" "-DA04_BROKER_OWNER_EXPERIMENTAL=$brokerOwner" "-DA04_BQ_DEFAULT_EXIT_EXPERIMENTAL=$defaultExit" "-DA04_BQHR_DIAGNOSTIC=$bqhr" "-DA04_BQ_CLOCK_DIAGNOSTIC=$clock" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" -c (Join-Path $source "$name.c") -o (Join-Path $out "$name.obj")
     if ($LASTEXITCODE -ne 0) { throw "ARM LC709203F compilation failed: $name" }
     $objects += Join-Path $out "$name.obj"
 }
