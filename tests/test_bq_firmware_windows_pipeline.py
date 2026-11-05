@@ -16,6 +16,6 @@ with tempfile.TemporaryDirectory(prefix='bq-cross-',dir=root/'build') as td:
         obj=td/(name+'.o');subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-I'+str(inc),*renames,'-c',str(lib/(name+'.c')),'-o',str(obj)],check=True);objects.append(str(obj))
     cmd=['cc','-std=c11','-Wall','-Wextra','-Werror','-I'+str(inc),'-I'+str(win),str(root/'tests/bq24160_cross_firmware_test.c'),*objects]
     cmd += [str(win/(n+'.c')) for n in ('charger','admission','bqhr_diagnostic','owner_broker','broker_mailbox','broker_handoff','broker_lifecycle','owner_transfer')]
-    cmd += [str(root/'drivers/power/lc709203f/gauge.c'),'-o',str(td/'test')]
+    cmd += [str(root/'drivers/power/lc709203f/gauge.c'),str(root/'drivers/power/lc709203f/mt8167_i2c.c'),str(win/'mt8167_i2c.c'),'-o',str(td/'test')]
     subprocess.run(cmd,check=True);subprocess.run([str(td/'test')],check=True)
 print('Actual UEFI producer to Windows admission, broker and fake I2C: PASS (host only)')

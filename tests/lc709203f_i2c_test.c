@@ -2,7 +2,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include "mt8167_i2c.h"
-struct mock { uint16_t regs[64]; unsigned reads, delays; int outcome; };
+struct mock { uint16_t regs[64]; unsigned reads, delays, clocks; int outcome; };
 static uint16_t rd(void *p, unsigned reg)
 {
     struct mock *m = p;
@@ -17,10 +17,10 @@ static void wr(void *p, unsigned reg, uint16_t value)
     struct mock *m = p; m->regs[reg / 2] = value;
 }
 static void delay(void *p, unsigned us) { struct mock *m = p; assert(us == 5); ++m->delays; }
-static uint64_t now_ns(void *p) { struct mock *m = p; return (uint64_t)m->delays * 5000; }
+static uint64_t now_ns(void *p) { struct mock *m = p; if (m->outcome == 5) { ++m->clocks; return m->clocks == 1 ? 100 : m->clocks == 2 ? 120 : 110; } return (uint64_t)m->delays * 5000; }
 int main(void)
 {
-    struct mock m = {{0}, 0, 0, 0};
+    struct mock m = {0};
     struct a04_i2c_io io = {&m, rd, wr, delay};
     struct a04_gauge_mt8167 a = {.io = &io, .monotonic_ns = now_ns};
     uint8_t out[3] = {1, 2, 3};
@@ -43,5 +43,8 @@ int main(void)
     assert(a.fault_reason == 2 && a.fault_status == 2 && a.fault_command == 0x0f);
     m.outcome = 0;
     assert(a04_gauge_mt8167_read(&a, 0x0b, 0x09, out));
+    a.faulted = 0; m.outcome = 5;
+    assert(a04_gauge_mt8167_read(&a, 0x0b, 0x09, out));
+    assert(a.faulted && a.fault_reason == 5 && m.clocks == 3 && out[0] == 1);
     return 0;
 }

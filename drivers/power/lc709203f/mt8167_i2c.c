@@ -10,7 +10,7 @@ int a04_gauge_mt8167_read(void *context, uint8_t address, uint8_t command,
     const struct a04_i2c_io *io;
     uint8_t data[3];
     uint16_t status = 0;
-    uint64_t start, now;
+    uint64_t start, now, previous;
     unsigned n, i;
     if (!adapter || !(io = adapter->io) || !io->read16 || !io->write16 ||
         !io->delay_us || !adapter->monotonic_ns || !response || address != 0x0b || adapter->faulted)
@@ -33,12 +33,17 @@ int a04_gauge_mt8167_read(void *context, uint8_t address, uint8_t command,
     io->write16(io->context, 0x00, command);
     io->write16(io->context, 0x24, 1);
     start = adapter->monotonic_ns(io->context);
+    previous = start;
     for (n = 0; n < 2000; ++n) {
         now = adapter->monotonic_ns(io->context);
-        if (now < start || now - start >= 10000000u) break;
+        if (now < previous) { adapter->fault_reason = 5; break; }
+        if (now - start >= 10000000u) break;
+        previous = now;
         status = io->read16(io->context, 0x0c);
         now = adapter->monotonic_ns(io->context);
-        if (now < start || now - start >= 10000000u) break;
+        if (now < previous) { adapter->fault_reason = 5; break; }
+        if (now - start >= 10000000u) break;
+        previous = now;
         if (status & 6u) break;
         if (status & 1u) {
             if (((io->read16(io->context, 0x30) >> 4) & 15u) != 3u) break;
@@ -51,7 +56,8 @@ int a04_gauge_mt8167_read(void *context, uint8_t address, uint8_t command,
     }
     adapter->fault_status = status;
     adapter->fault_fifo = io->read16(io->context, 0x30);
-    adapter->fault_reason = (status & 6u) ? 2 : ((status & 1u) ? 3 : 4);
+    if (!adapter->fault_reason)
+        adapter->fault_reason = (status & 6u) ? 2 : ((status & 1u) ? 3 : 4);
     io->write16(io->context, 0x0c, 7);
     /* No reset of a shared controller. The owner must recover the bus. */
     adapter->faulted = 1;
