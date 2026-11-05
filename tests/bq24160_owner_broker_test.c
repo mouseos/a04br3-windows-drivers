@@ -93,6 +93,19 @@ int main(void) {
         assert(a04_broker_endpoint_maintain(&e)&&f.writes==1);
     }
     {
+        struct a04_broker_endpoint e={0};struct a04_broker_request q={1,1,25*NS};
+        struct a04_broker_response r;
+        setup(&f,&o,&b,&c,&g);assert(a04_broker_endpoint_quiesce(&e));
+        assert(!a04_broker_endpoint_init(&e,&b,1));
+        assert(!a04_broker_endpoint_maintain(&e)&&f.writes==1);
+        assert(!a04_broker_endpoint_quiesce(&e)&&e.quiescing);
+        assert(a04_broker_endpoint_quiesce(&e));
+        assert(a04_broker_endpoint_dispatch(&e,&q,&r)&&!f.gauge_reads);
+        f.now=10*NS;assert(!a04_broker_endpoint_maintain(&e)&&f.writes==2);
+        f.now=30*NS;assert(a04_broker_endpoint_maintain(&e)&&o.stopped&&e.closed);
+        assert(a04_broker_endpoint_maintain(&e)&&f.writes==2);
+    }
+    {
         struct a04_broker_endpoint e={0};struct a04_broker_client client={0};
         struct loopback l={&f,&e};struct a04_client_transport t={&l,loop_now,loop_exchange};
         setup(&f,&o,&b,&c,&g);assert(!a04_broker_endpoint_init(&e,&b,8));

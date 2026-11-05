@@ -15,7 +15,7 @@ struct a04_broker_response {
 struct a04_broker_endpoint {
     struct a04_bq_broker *broker;
     uint64_t epoch, last_sequence;
-    int closed;
+    int closed, quiescing;
 };
 /* Caller guarantees the exclusive I2C owner is quiescent, owns this endpoint,
  * and has already established a valid boot-local epoch. Never call from two
@@ -26,6 +26,10 @@ int a04_broker_endpoint_dispatch(struct a04_broker_endpoint *, const struct a04_
 /* The owner must call this independently of client traffic, with adequate
  * timing guarantees; the endpoint does not create or schedule a worker. */
 int a04_broker_endpoint_maintain(struct a04_broker_endpoint *);
+/* Under the same owner lock, close client admission without stopping the
+ * maintenance worker. This is one-way and does not transfer ownership or
+ * guarantee that the worker will continue running through D0 exit. */
+int a04_broker_endpoint_quiesce(struct a04_broker_endpoint *);
 /* Close stops maintenance; it does not transfer the bus or make it safe. */
 void a04_broker_endpoint_close(struct a04_broker_endpoint *);
 #endif
