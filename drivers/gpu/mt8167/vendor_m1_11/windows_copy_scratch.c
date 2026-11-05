@@ -65,7 +65,7 @@ NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *o,
     struct a04_vendor_copy_kick_input kick={FRAGMENT_PDS_OFFSET,SECONDARY_DATA_OFFSET,SECONDARY_CODE_OFFSET,FRAGMENT_USC_OFFSET};
     uint32_t existing_usc[3];
     unsigned i,j;NTSTATUS status;
-    if(!o || !r || KeGetCurrentIrql()!=PASSIVE_LEVEL || o->prepared || o->render || o->exposed || o->usc_ready ||
+    if(!o || !r || KeGetCurrentIrql()!=PASSIVE_LEVEL || o->prepared || o->render || o->exposed || o->usc_ready || o->task_frozen ||
        o->source.cpu || o->destination.cpu || o->shared.cpu || o->source.adapter || o->destination.adapter || o->shared.adapter ||
        o->source.bytes || o->destination.bytes || o->shared.bytes || r->copy_owner || r->screen_surface ||
        !r->mapped || !r->clear_ready || !(f=r->firmware) || f->hardware_owned || f->render_owner!=r ||
@@ -254,6 +254,18 @@ NTSTATUS a04_vendor_copy_scratch_task_snapshot(struct a04_vendor_copy_scratch *o
     snapshot32(&image,0x1c,0);snapshot32(&image,0x24,0);snapshot32(&image,0x34,0);
     for(i=0x90;i<0xc8;i+=4u)snapshot32(&image,i,0);
     *out=image;return STATUS_SUCCESS;
+}
+NTSTATUS a04_vendor_copy_scratch_freeze(struct a04_vendor_copy_scratch *o)
+{
+    _Alignas(8) struct a04_vendor_copy_task_snapshot image;NTSTATUS status;
+    if(!o || o->task_frozen)return STATUS_INVALID_PARAMETER;
+    status=a04_vendor_copy_scratch_task_snapshot(o,&image);
+    if(!NT_SUCCESS(status))return status;
+    if(image.known_words!=UINT64_C(0x000fffffffffffff))return STATUS_DEVICE_CONFIGURATION_ERROR;
+    RtlCopyMemory(o->frozen_task,image.words,sizeof(image.words));
+    status=a04_vendor_copy_scratch_mark_exposed(o);
+    if(!NT_SUCCESS(status))return status;
+    o->task_frozen=TRUE;return STATUS_SUCCESS;
 }
 NTSTATUS a04_vendor_copy_scratch_release(struct a04_vendor_copy_scratch *o)
 {

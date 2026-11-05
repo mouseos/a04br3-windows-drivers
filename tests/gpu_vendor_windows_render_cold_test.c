@@ -184,7 +184,10 @@ int main(void)
             assert(a04_vendor_copy_scratch_stage_usc(&retained,bytes,sizeof(bytes))==STATUS_SUCCESS);
         }
         f.hardware_owned=TRUE;assert(a04_vendor_copy_scratch_release(&retained)==STATUS_DEVICE_BUSY);f.hardware_owned=FALSE;
-        assert(a04_vendor_copy_scratch_mark_exposed(&retained)==STATUS_SUCCESS);
+        if(retained.usc_ready) {
+            assert(a04_vendor_copy_scratch_freeze(&retained)==STATUS_SUCCESS && retained.task_frozen);
+            assert(retained.frozen_task[0]==0x200 && retained.frozen_task[14]==192 && retained.frozen_task[15]==272);
+        } else assert(a04_vendor_copy_scratch_mark_exposed(&retained)==STATUS_SUCCESS);
         oldfrees=frees;
         assert(a04_vendor_copy_scratch_release(&retained)==STATUS_DEVICE_BUSY && frees==oldfrees);
         if(retained.usc_ready)assert(!memcmp((UCHAR*)r.buffer[10].cpu+128,retained.fragment_usc,152));

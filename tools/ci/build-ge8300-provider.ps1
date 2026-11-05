@@ -15,6 +15,7 @@ $uncachedStage = if ($env:A04_GE8300_VENDOR_UNCACHED_STAGE -eq '1') { '1' } else
 $vendorIrq = if ($env:A04_GE8300_VENDOR_IRQ -eq '1') { '1' } else { '0' }
 $vendorStartDiagnostic = if ($env:A04_GE8300_VENDOR_START_DIAGNOSTIC -eq '1') { '1' } else { '0' }
 $vendorRenderCold = if ($env:A04_GE8300_VENDOR_RENDER_COLD -eq '1') { '1' } else { '0' }
+$vendorCopyDiagnostic = if ($env:A04_GE8300_VENDOR_COPY_DIAGNOSTIC -eq '1') { '1' } else { '0' }
 $vendorClearDiagnostic = if ($env:A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC -eq '1') { '1' } else { '0' }
 $vendorScreenDiagnostic = if ($env:A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC -eq '1') { '1' } else { '0' }
 $vendorScreenRepeat = if ($env:A04_GE8300_VENDOR_SCREEN_REPEAT_DIAGNOSTIC -eq '1') { '1' } else { '0' }
@@ -27,6 +28,14 @@ if ($vendorMultiTileDiagnostic -eq '1' -and $vendorTileDiagnostic -ne '1') { thr
 if ($vendorTileDiagnostic -eq '1' -and ($vendorClearDiagnostic -ne '1' -or $vendorColorDiagnostic -eq '1')) { throw 'Offset tile requires zero-colour clear diagnostic' }
 if ($vendorColorDiagnostic -eq '1' -and $vendorClearDiagnostic -ne '1') { throw 'Vendor colour requires clear diagnostic' }
 if ($vendorClearDiagnostic -eq '1' -and $vendorRenderCold -ne '1') { throw 'Vendor clear requires cold render preparation' }
+if ($vendorCopyDiagnostic -eq '1') {
+    if ($vendorRenderCold -ne '1' -or $vendorClearDiagnostic -eq '1' -or $vendorScreenDiagnostic -eq '1') { throw 'Copy requires isolated cold render' }
+    if (-not $env:A04_GE8300_COPY_USC) { throw 'Copy requires the original native22 USC asset' }
+    $asset = [IO.File]::ReadAllBytes($env:A04_GE8300_COPY_USC)
+    if ($asset.Length -ne 152 -or (Get-FileHash $env:A04_GE8300_COPY_USC -Algorithm SHA256).Hash -ne '5C68917FAA051238B23674B64C6B137EF7FF75425DBDE9DBC5E1E5A36E02C4A3') { throw 'Copy USC identity mismatch' }
+    $items = ($asset | ForEach-Object { '0x{0:x2}' -f $_ }) -join ','
+    [IO.File]::WriteAllText((Join-Path $out 'a04_copy_usc_asset.h'),"static const unsigned char a04_copy_usc_asset[152]={$items};`n")
+}
 if ($vendorRenderCold -eq '1' -and $vendorStartDiagnostic -ne '1') { throw 'Vendor render cold preparation requires the bounded start diagnostic' }
 if ($vendorStartDiagnostic -eq '1' -and $vendorIrq -ne '1') { throw 'Vendor start diagnostic requires IRQ' }
 if ($vendorIrq -eq '1' -and $uncachedStage -ne '1') { throw 'Vendor IRQ requires uncached staging' }
@@ -53,7 +62,7 @@ $sources += @('vendor_m1_11\windows_uncached','vendor_m1_11\windows_stage_uncach
 if ($render -eq '1') { $sources += @('windows_render_memory','windows_render_diagnostic','render_pds_data','render_context_pds','render_context_static','render_shared_size','render_execution','render_fixed_vdm','render_fixed_ppp','render_fixed_command') }
 foreach ($name in $sources) {
     $obj = Join-Path $out "$($name.Replace('\','-')).obj"
-    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_GE8300_VENDOR_STAGE=$vendorStage" "-DA04_GE8300_VENDOR_UNCACHED_STAGE=$uncachedStage" "-DA04_GE8300_VENDOR_IRQ=$vendorIrq" "-DA04_GE8300_VENDOR_START_DIAGNOSTIC=$vendorStartDiagnostic" "-DA04_GE8300_VENDOR_RENDER_COLD=$vendorRenderCold" "-DA04_GE8300_VENDOR_CLEAR_DIAGNOSTIC=$vendorClearDiagnostic" "-DA04_GE8300_VENDOR_COLOR_DIAGNOSTIC=$vendorColorDiagnostic" "-DA04_GE8300_VENDOR_TILE_DIAGNOSTIC=$vendorTileDiagnostic" "-DA04_GE8300_VENDOR_MULTI_TILE_DIAGNOSTIC=$vendorMultiTileDiagnostic" "-DA04_GE8300_VENDOR_SCREEN_DIAGNOSTIC=$vendorScreenDiagnostic" "-DA04_GE8300_VENDOR_SCREEN_REPEAT_DIAGNOSTIC=$vendorScreenRepeat" "-DA04_GE8300_BOOT_TEST=$boot" "-DA04_GE8300_ALLOW_MISMATCH=$mismatch" "-DA04_GE8300_CLEAR_TEST=$clear" "-DA04_GE8300_COPY_TEST=$copy" "-DA04_GE8300_LINEAR_TEST=$linear" "-DA04_GE8300_COPY_SERVICE=$service" "-DA04_GE8300_SHARED_TRACE_DIAGNOSTIC=$sharedTrace" "-DA04_GE8300_RENDER_EXPERIMENT=$render" "-DA04_GE8300_RENDER_DIAGNOSTIC=$renderDiagnostic" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$gpu\compat" "-I$gpu\fwif" -c (Join-Path $gpu "$name.c") -o $obj
+    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_GE8300_VENDOR_STAGE=$vendorStage" "-DA04_GE8300_VENDOR_UNCACHED_STAGE=$uncachedStage" "-DA04_GE8300_VENDOR_IRQ=$vendorIrq" "-DA04_GE8300_VENDOR_START_DIAGNOSTIC=$vendorStartDiagnostic" "-DA04_GE8300_VENDOR_RENDER_COLD=$vendorRenderCold" "-DA04_GE8300_VENDOR_COPY_DIAGNOSTIC=$vendorCopyDiagnostic" "-DA04_GE8300_VENDOR_CLEAR_DIAGNOSTIC=$vendorClearDiagnostic" "-DA04_GE8300_VENDOR_COLOR_DIAGNOSTIC=$vendorColorDiagnostic" "-DA04_GE8300_VENDOR_TILE_DIAGNOSTIC=$vendorTileDiagnostic" "-DA04_GE8300_VENDOR_MULTI_TILE_DIAGNOSTIC=$vendorMultiTileDiagnostic" "-DA04_GE8300_VENDOR_SCREEN_DIAGNOSTIC=$vendorScreenDiagnostic" "-DA04_GE8300_VENDOR_SCREEN_REPEAT_DIAGNOSTIC=$vendorScreenRepeat" "-DA04_GE8300_BOOT_TEST=$boot" "-DA04_GE8300_ALLOW_MISMATCH=$mismatch" "-DA04_GE8300_CLEAR_TEST=$clear" "-DA04_GE8300_COPY_TEST=$copy" "-DA04_GE8300_LINEAR_TEST=$linear" "-DA04_GE8300_COPY_SERVICE=$service" "-DA04_GE8300_SHARED_TRACE_DIAGNOSTIC=$sharedTrace" "-DA04_GE8300_RENDER_EXPERIMENT=$render" "-DA04_GE8300_RENDER_DIAGNOSTIC=$renderDiagnostic" "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$gpu\compat" "-I$gpu\fwif" -c (Join-Path $gpu "$name.c") -o $obj
     if ($LASTEXITCODE -ne 0) { throw "ARM GE8300 provider compilation failed: $name" }
     $objects += $obj
 }
@@ -77,4 +86,4 @@ if ((Get-FileHash $firmware -Algorithm SHA256).Hash -ne $expectedFirmware) { thr
 Copy-Item (Join-Path $gpu 'mt8167-ge8300.inf') $package -Force
 & (Join-Path $kit 'bin\x86\Inf2Cat.exe') "/driver:$package" /os:6_3_ARM /uselocaltime
 if ($LASTEXITCODE -ne 0) { throw 'GE8300 provider catalog generation failed' }
-Write-Host "GE8300 provider built: boot=$boot mismatch=$mismatch clear=$clear copy=$copy linear=$linear service=$service sharedTrace=$sharedTrace render=$render renderDiagnostic=$renderDiagnostic. Not a WDDM driver."
+Write-Host "GE8300 provider built: boot=$boot mismatch=$mismatch clear=$clear copy=$copy vendorCopy=$vendorCopyDiagnostic linear=$linear service=$service sharedTrace=$sharedTrace render=$render renderDiagnostic=$renderDiagnostic. Not a WDDM driver."

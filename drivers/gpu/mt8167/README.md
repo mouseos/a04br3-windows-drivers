@@ -494,6 +494,19 @@ copy ownerのlease中は、既存clear送出と反復clearのPDS・target書換�
 `command_busy` の取得後に確認するが、copy ownerの生成・解放とWDF PnPの直列化は
 呼出し側の責任であり、この検査だけではsurprise removalや停止時の資源寿命を保証しない。
 
+固定検証像はfirmware起動前に `a04_vendor_copy_scratch_freeze` で凍結できる。
+以後ownerの公開フラグは戻らず、成功・失敗いずれもbufferを解放しない。
+`a04_vendor_render_copy_once` は既存clearと同じTQ TASK/UPDATE、UFO待機、
+SLC flushおよび後続GP fenceを実行し、その後source・destination・sharedと
+直前の64KiB scratch guardを検査する。timeoutではcopy領域を読まず、
+ownerを保持し再試行を拒否する。既定OFFの `A04_GE8300_VENDOR_COPY_DIAGNOSTIC=1`
+はcold render専用で、clear・screen診断と同時に使えない。ビルド時に
+`A04_GE8300_COPY_USC` に元assetを指定し、SHA-256を確認してドライバへ組み込む。
+D0で凍結してdevice参照を保持し、interrupt有効後の同期callback内で一回だけ送出する。
+参照とadapterをboot中保持し、D0 exitでは同じlifetime lockで送出を排出する。
+これはsurprise removal後のMMIOやfabric DMA停止の保証ではない。実機copy、
+USC動作、cache可視性とGPU停止は未検証で、WinPE限定の実験である。
+
 copy scratchのsource初期値はindexごとに異なる固定パターンを使用する。
 `a04_vendor_copy_check` は取得済みCPU snapshotのsource・destination各1024語と
 shared 1024語を期待値に照合し、各不一致数と最初の位置を返す。sourceと出力が

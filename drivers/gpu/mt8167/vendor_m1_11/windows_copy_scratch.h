@@ -21,7 +21,8 @@ struct a04_vendor_copy_scratch {
     uint32_t eot_raw28, eot_raw2c, eot_raw30; /* partial task fields */
     uint64_t raw60; /* only for independent source/destination mappings */
     uint32_t fragment_usc[A04_VENDOR_COPY_USC_BYTES/4];
-    BOOLEAN prepared,exposed,usc_ready;
+    uint32_t frozen_task[52];
+    BOOLEAN prepared,exposed,usc_ready,task_frozen;
 };
 NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *owner,
     struct a04_vendor_render_cold *render,ULONG map_registers);
@@ -35,5 +36,11 @@ NTSTATUS a04_vendor_copy_scratch_stage_usc(struct a04_vendor_copy_scratch *owner
 struct a04_vendor_copy_task_snapshot { uint32_t words[52];uint64_t known_words; };
 NTSTATUS a04_vendor_copy_scratch_task_snapshot(struct a04_vendor_copy_scratch *owner,
     struct a04_vendor_copy_task_snapshot *snapshot);
+/* Freeze before firmware start; exposure and retention are one-way. */
+NTSTATUS a04_vendor_copy_scratch_freeze(struct a04_vendor_copy_scratch *owner);
+/* Experiment only: caller holds the device lifetime/power serialization for
+ * the entire call and keeps the owner, adapter and mappings through reboot. */
+NTSTATUS a04_vendor_render_copy_once(struct a04_vendor_copy_scratch *owner,
+    struct a04_vendor_start *start,struct a04_vendor_clear_result *result);
 NTSTATUS a04_vendor_copy_scratch_release(struct a04_vendor_copy_scratch *owner);
 #endif

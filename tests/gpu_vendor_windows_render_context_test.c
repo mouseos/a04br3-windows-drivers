@@ -3,10 +3,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include "windows_render_cold.h"
+#include "windows_copy_scratch.h"
 #include "windows_start.h"
 #include "A04BR3RogueRuntimeLayout.h"
 static struct a04_vendor_render_cold *sim;
 static struct a04_rgx_fw_runtime *run;
+static struct a04_vendor_copy_scratch *copy_sim;
 static unsigned current,complete,cleanups,inject_cleanup;
 void a04_test_interlock_hook(volatile LONG *p,LONG value,LONG expected)
 {
@@ -35,6 +37,15 @@ void KeStallExecutionProcessor(unsigned us)
         run->kctl->ui32ReadOffset=run->kctl->ui32WriteOffset;return;
     }
     assert(cmd->eCmdType==RGXFWIF_KCCB_CMD_KICK);
+    if(current==5) {
+        ctl=(void *)(bank+sim->layout.control[3]);
+        off=cmd->uCmdData.sCmdKickData.ui32CWoffUpdate;
+        assert(off>=296 && !memcmp(bank+sim->layout.commands[3]+off-296+40,copy_sim->frozen_task,208));
+        ctl->ui32ReadOffset=ctl->ui32WriteOffset=off;
+        memcpy(copy_sim->destination.cpu,copy_sim->source.cpu,4096);
+        *(uint32_t *)(void *)(bank+sim->layout.sync)=sim->sequence;
+        run->kctl->ui32ReadOffset=run->kctl->ui32WriteOffset;return;
+    }
     if(current==4) {
         ctl=(void *)(bank+sim->layout.control[3]);
         ctl->ui32ReadOffset=ctl->ui32WriteOffset=cmd->uCmdData.sCmdKickData.ui32CWoffUpdate;
@@ -175,6 +186,38 @@ int main(void)
         assert(clear.phase==3 && r.poisoned && start.command_poisoned && !r.clear_verified);
         assert(a04_vendor_render_repeat_screen(&r,&start,2,&clear)==STATUS_INVALID_DEVICE_STATE);
         free(pixels);
+    }
+    {
+        struct a04_vendor_copy_scratch copy={0};uint32_t src[1024],dst[1024],shared[1024];unsigned i;
+        memset(target,0xa5,65536);
+        memset(&r,0,sizeof(r));memset(&kctl,0,sizeof(kctl));memset(&fctl,0,sizeof(fctl));memset(cmd,0,128*sizeof(*cmd));
+        assert(!a04_vendor_render_build(bank,65536,0x81000000,0x82000000,A04_VENDOR_RENDER_SCRATCH_VA,1,&r.layout));
+        kctl.ui32WrapMask=127;kctl.ui32CmdSize=sizeof(*cmd);fctl.ui32WrapMask=31;fctl.ui32CmdSize=sizeof(RGXFWIF_FWCCB_CMD);
+        r.firmware=&mem;r.buffer[0].cpu=bank;r.buffer[4].cpu=target;r.buffer[4].bytes=65536;r.mapped=TRUE;r.clear_ready=TRUE;
+        copy.render=&r;copy.prepared=copy.exposed=copy.usc_ready=copy.task_frozen=TRUE;
+        copy.source.cpu=src;copy.destination.cpu=dst;copy.shared.cpu=shared;
+        copy.source.bytes=copy.destination.bytes=copy.shared.bytes=4096;r.copy_owner=&copy;
+        for(i=0;i<1024;i++){src[i]=a04_vendor_copy_pattern(i);dst[i]=shared[i]=0xa5a5a5a5u;}
+        for(i=0;i<9;i++)shared[i]=copy.state.shared[i];
+        copy.frozen_task[0]=0x200;copy_sim=&copy;start.command_poisoned=FALSE;start.command_sequence=0;current=5;complete=1;
+        assert(a04_vendor_render_copy_once(&copy,&start,&clear)==STATUS_SUCCESS);
+        assert(clear.phase==4 && clear.zeros==1024 && !clear.guard_errors && r.clear_attempted && copy.exposed);
+        assert(a04_vendor_render_copy_once(&copy,&start,&clear)==STATUS_INVALID_PARAMETER);
+        r.clear_attempted=FALSE;r.clear_verified=FALSE;r.client_write[3]=0;r.sequence=0;
+        memset(&kctl,0,sizeof(kctl));memset(&fctl,0,sizeof(fctl));memset(cmd,0,128*sizeof(*cmd));
+        assert(!a04_vendor_render_build(bank,65536,0x81000000,0x82000000,A04_VENDOR_RENDER_SCRATCH_VA,1,&r.layout));
+        kctl.ui32WrapMask=127;kctl.ui32CmdSize=sizeof(*cmd);fctl.ui32WrapMask=31;fctl.ui32CmdSize=sizeof(RGXFWIF_FWCCB_CMD);
+        complete=0;
+        assert(a04_vendor_render_copy_once(&copy,&start,&clear)==STATUS_IO_TIMEOUT);
+        assert(clear.phase==1 && r.poisoned && start.command_poisoned && copy.exposed && r.copy_owner==&copy);
+        assert(a04_vendor_render_copy_once(&copy,&start,&clear)==STATUS_INVALID_PARAMETER);
+        r.poisoned=FALSE;r.clear_attempted=FALSE;r.client_write[3]=0;r.sequence=0;start.command_poisoned=FALSE;
+        memset(&kctl,0,sizeof(kctl));memset(&fctl,0,sizeof(fctl));memset(cmd,0,128*sizeof(*cmd));
+        assert(!a04_vendor_render_build(bank,65536,0x81000000,0x82000000,A04_VENDOR_RENDER_SCRATCH_VA,1,&r.layout));
+        kctl.ui32WrapMask=127;kctl.ui32CmdSize=sizeof(*cmd);fctl.ui32WrapMask=31;fctl.ui32CmdSize=sizeof(RGXFWIF_FWCCB_CMD);
+        complete=2;
+        assert(a04_vendor_render_copy_once(&copy,&start,&clear)==STATUS_IO_TIMEOUT);
+        assert(clear.phase==3 && clear.provisional && !clear.zeros && r.poisoned && start.command_poisoned && copy.exposed);
     }
     free(cmd);free(core);free(bank);free(target);return 0;
 }
