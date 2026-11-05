@@ -76,6 +76,21 @@ jobs:
           New-Item -ItemType Directory -Force $output | Out-Null
           Copy-Item $driver $output
           [ordered]@{ source_commit = (git rev-parse HEAD); sha256 = (Get-FileHash $driver -Algorithm SHA256).Hash; note = 'Unsigned link check only; initialization fails, no INF, not installable.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $output 'manifest.json')
+      - name: Test-sign MT6630 link-only image
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = Join-Path $env:RUNNER_TEMP 'a04-mt6630-link-check'
+          $signed = Join-Path $output 'mt6630-link-only-test-signed.sys'
+          Copy-Item (Join-Path $output 'mt6630-integrated-link-check.sys') $signed
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=A04BR3 MT6630 CI Test Only' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
+          $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
+          & (Join-Path $kit 'bin\x86\signtool.exe') sign /fd SHA256 /sha1 $cert.Thumbprint /s My $signed
+          if ($LASTEXITCODE -ne 0) { throw 'MT6630 test signature failed' }
+          $sig = Get-AuthenticodeSignature $signed
+          if (!$sig.SignerCertificate -or $sig.SignerCertificate.Thumbprint -ne $cert.Thumbprint) { throw 'Wrong embedded signing certificate' }
+          Export-Certificate -Cert $cert -FilePath (Join-Path $output 'mt6630-ci-test.cer') | Out-Null
+          [ordered]@{ source_commit = (git rev-parse HEAD); sha256 = (Get-FileHash $signed -Algorithm SHA256).Hash; signer_thumbprint = $cert.Thumbprint; signature_status = "$($sig.Status)"; note = 'Self-signed compile/link diagnostic only. Not installable, not proof of RT trust or PnP.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $output 'test-signed-manifest.json')
       - name: Upload MT6630 integration link check
         uses: actions/upload-artifact@v4
         with:

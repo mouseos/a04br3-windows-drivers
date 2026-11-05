@@ -33,7 +33,8 @@ int a04_wifi_board_start(struct a04_wifi_board *s,const struct a04_wifi_board_io
  if(output(io,4,0)||output(io,7,0))goto fail;
  DELAY(10);
  if(output(io,4,1))goto fail;
- DELAY(30);
+ /* Board DTS regulator startup-delay-us is 100000. */
+ DELAY(100);
  if(output(io,7,1))goto fail;
  DELAY(30);
  for(p=68;p<=73;p++)if(pin(io,p,1))goto fail;

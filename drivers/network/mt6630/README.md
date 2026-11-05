@@ -223,3 +223,16 @@ XNU由来のボード手順に限定する。列挙後のWMT version照会まで
 32kと電源の保持、割込み、firmware取得およびNDIS初期化は実装されていない。
 これは実機へ導入する候補ではない。親PnPと子の排出を直列化しても物理的な
 surprise removal中のMMIO例外を防ぐ証明にはならない。
+
+`windows_firmware.c` はPASSIVE_LEVELで固定パスのWMT bundleとWLAN firmwareを
+書込み・削除の共有を許さず開き、長さ制限付きコピーを保持する。WMTには呼出元が
+出自を固定したSHA-256を要求し、WLANは実際に問い合わせたWMT revisionと既存の
+既知ハッシュを確認する。両方の形式を事前検証した後に限り同期転送を呼ぶ。
+どちらも別途供給が必要であり、WMT hashをユーザー入力や未検証のファイルから
+採用してはならない。ハッシュ一致は配布権やデジタル署名の証明ではない。
+現状このAPIを呼ぶ運用NDIS経路も実親leaseもない。SDIO初期化に使用するGPIO4の
+電源投入後待ちは、UEFI配下の機種DTS `startup-delay-us = 100000` に合わせた。
+同DTSはRTC `ext_clock`、GPIO7 reset、MSDC2 IRQ、EINT5を別資源として記述し、
+XNUの実装はRTC出力の維持を前提にしている。RTCのWindows所有者・共有者とIRQ排出の
+保証が未確立のため、D0とAcquireの拒否は維持する。試験署名はCI専用の自己署名で、
+Windows RTの信頼・PnP開始・実機動作を意味しない。
