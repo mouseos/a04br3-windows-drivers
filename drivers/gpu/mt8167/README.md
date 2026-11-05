@@ -339,3 +339,6 @@ bugcheck用SystemDisplayの高IRQL経路にmutexを導入しておらず、そ�
 部分応答・エラーはその矩形全体のCPU経路に戻す。framebufferをIOCTL出力先やGPU
 DMA先として渡さない。これは旧ABIの転送経路であり、m1.11の一般描画やscanout
 共有、GPU停止時のDMA静止・解放を証明しない。実機での可視性は未検証。
+[WRITE_REGISTER_BUFFER_ULONG](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-write_register_buffer_ulong)
+は常駐バッファからmapped device memoryへULONG列を書き、memory barrierを挿入する。
+同期Presentでmutexを保持している間に転記を終え、モード変更・停止と直列化する。
