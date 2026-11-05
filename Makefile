@@ -589,6 +589,7 @@ build/mt6630_sdio_args_test: drivers/network/mt6630/sdio_args.h tests/mt6630_sdi
 
 .PHONY: test-mt6630
 test-mt6630: build/mt6630_identity_test build/mt6630_sdio_args_test build/mt6630_transport_test build/mt6630_direct_test
+	./build/mt6630_resource_lease_test
 	./build/mt6630_bringup_test
 	./build/mt6630_board_sequence_test
 	./build/mt6630_identity_test
@@ -740,3 +741,7 @@ build/mt6630_bringup_test: drivers/network/mt6630/bringup.c drivers/network/mt66
 	$(CC) $(CFLAGS) -Idrivers/network/mt6630 $^ -o $@
 
 test-mt6630: build/mt6630_bringup_test
+
+build/mt6630_resource_lease_test: drivers/network/mt6630/resource_lease.c drivers/network/mt6630/resource_lease.h tests/mt6630_resource_lease_test.c
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/resource_lease.c tests/mt6630_resource_lease_test.c -o $@
+test-mt6630: build/mt6630_resource_lease_test

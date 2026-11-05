@@ -201,3 +201,15 @@ SPDXはBSD-2-Clause-Patent。前者の全体SHA-256は
 ホスト統合試験では合成CISを使いボード起動→列挙→CMD52→停止と、無効OCR、CIS不正、
 リース喪失を確認する。現行のWindows共有親・NDISからこの経路はまだ呼ばれず、FW・
 校正・接続、実機の電源とIRQ、Windowsでの署名受理は未確認。開始拒否を維持する。
+
+`resource_lease.c` は外部の実資源providerを呼ぶ直列化済み所有管理である。
+combo、firmware、rail、RTC 32k、GPIO/clock、MSDC2、IRQの順に取得し、
+取得成功後だけ `a04_wifi_bringup` の `same_lease` に使える世代を発行する。
+停止時は受付を閉じ、IRQとI/Oを排出してから逆順に各providerへ返す。
+途中で失敗した操作は部分的に実行済みかもしれないため自動rollbackせず、
+残る資源を保持してFAILEDにする。返却はproviderのリース返却であり、共有レールや
+32k出力を無条件に切断する指示ではない。呼出側は全操作とPnPを同じ排他機構で
+直列化し、停止とsurprise removalの寿命を保証しなければならない。
+DTSが示すRTC 32k・GPIO4/7・MSDC2の接続とXNU board sequenceがこの分割の根拠で、
+資源の物理的な存在や独占状態をソフトウェアフラグから証明するものではない。
+実provider、IRQ接続、親のD0、firmware取得、NDIS初期化には未接続である。
