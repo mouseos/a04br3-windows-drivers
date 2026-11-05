@@ -18,7 +18,7 @@ int a04_bq_broker_init(struct a04_bq_broker *b, struct a04_bq_owner *o,
     if (b->owner || b->stopped || b->entered) return -1;
     b->owner = o;
     if (!charger || !charger->now_ns || !charger->read || !charger->write_watchdog ||
-        !gauge || !gauge->read_word_pec || o->stopped || !o->firmware_kicks ||
+        !gauge || !gauge->read_word_pec || o->stopped || (!o->firmware_kicks && o->handoff_pending!=2) ||
         !o->handoff_pending || !o->handoff_deadline || now >= o->handoff_deadline ||
         !lifetime || now >= lifetime) { a04_bq_broker_stop(b); return -1; }
     b->charger=charger; b->gauge=gauge; b->lifetime=lifetime;

@@ -12,6 +12,9 @@
 #ifndef A04_BQ24160_EXPERIMENTAL
 #define A04_BQ24160_EXPERIMENTAL 0
 #endif
+#ifndef A04_BQ_COLD_DIAGNOSTIC
+#define A04_BQ_COLD_DIAGNOSTIC 0
+#endif
 #ifndef A04_BQ_STOPPED_GAUGE_DIAGNOSTIC
 #define A04_BQ_STOPPED_GAUGE_DIAGNOSTIC 0
 #endif
@@ -26,6 +29,9 @@
 #endif
 #if A04_BROKER_CLIENT_EXPERIMENTAL && !A04_BQ24160_EXPERIMENTAL
 #error Broker client build requires BQ experimental components
+#endif
+#if A04_BQ_COLD_DIAGNOSTIC && (!A04_BROKER_OWNER_EXPERIMENTAL || !A04_BQ_DEFAULT_EXIT_EXPERIMENTAL || A04_BQ_STOPPED_GAUGE_DIAGNOSTIC)
+#error Cold diagnostic requires broker owner, DEFAULT exit, and no gauge-only fallback
 #endif
 #if A04_BQ_STOPPED_GAUGE_DIAGNOSTIC && !A04_BROKER_OWNER_EXPERIMENTAL
 #error Stopped-record gauge diagnostic requires broker owner build
@@ -57,6 +63,9 @@
 #endif
 #if A04_BQHR_DIAGNOSTIC || A04_BROKER_OWNER_EXPERIMENTAL
 #include "../bq24160/bqhr_acpi.h"
+#if A04_BQ_COLD_DIAGNOSTIC
+#include "../bq24160/bqhr_diagnostic.h"
+#endif
 #endif
 #ifndef A04_LC709203F_TRACE
 #define A04_LC709203F_TRACE 0
@@ -229,6 +238,23 @@ static NTSTATUS owner_prepare_handoff(GAUGE_CONTEXT *c)
         enum a04_bqhr_acpi_result record_status=a04_bqhr_receive(c->device,&status,record);
 #if A04_BQ_STOPPED_GAUGE_DIAGNOSTIC
         if (record_status==A04_BQHR_ACPI_STOPPED) return STATUS_NOT_SUPPORTED;
+#endif
+#if A04_BQ_COLD_DIAGNOSTIC
+        if (record_status==A04_BQHR_ACPI_STOPPED) {
+            struct a04_bqhr_info info;
+            uint64_t cold_now=now_ns(c);
+            if (a04_bqhr_classify(record,sizeof(record),&info)!=A04_BQHR_STOPPED ||
+                info.reason!=6 || info.kicks || info.faults || info.first_valid || info.latest_valid ||
+                cold_now>UINT64_MAX-10000000000ULL ||
+                a04_bq_prepare_cold_diagnostic(&c->charger,cold_now,cold_now+10000000000ULL))
+                return STATUS_DEVICE_NOT_READY;
+            /* PnP exclusive mapping was checked by PrepareHardware. This is
+             * an explicit experiment, not proof against firmware/other CPUs. */
+            c->owner_lifetime=UINT64_MAX;
+            c->owner_epoch=cold_now ? cold_now : 1;
+            trace(c,"A04BAT COLD OWNER EXPERIMENT\n");
+            return STATUS_SUCCESS;
+        }
 #endif
         if (record_status!=A04_BQHR_ACPI_OTHER_STATE) return STATUS_DEVICE_NOT_READY;
     }

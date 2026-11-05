@@ -107,6 +107,16 @@ jobs:
           $env:A04_BQ_CLOCK_DIAGNOSTIC='1'
           $env:A04_LC709203F_TRACE='1'
           ./tools/ci/build-lc709203f-probe.ps1
+      - name: Compile cold charger owner diagnostic
+        shell: pwsh
+        run: |
+          $env:A04_BQ24160_EXPERIMENTAL='1'
+          $env:A04_BROKER_OWNER_EXPERIMENTAL='1'
+          $env:A04_BQ_COLD_DIAGNOSTIC='1'
+          $env:A04_BQ_DEFAULT_EXIT_EXPERIMENTAL='1'
+          $env:A04_BQHR_DIAGNOSTIC='1'
+          $env:A04_LC709203F_TRACE='1'
+          ./tools/ci/build-lc709203f-probe.ps1
       - name: Compile button provider PnP status tool
         shell: pwsh
         run: ./tools/ci/build-button-provider-status.ps1

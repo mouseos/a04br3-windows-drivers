@@ -62,6 +62,10 @@ int main(void) {
     f.bad_pec=0;assert(a04_bq_broker_run(&b,2,15*NS,&out)==A04_BROKER_OK);
     setup(&f,&o,&b,&c,&g);f.bad_pec=1;f.gauge_delay=NS;
     assert(a04_bq_broker_run(&b,1,5*NS,&out)==A04_BROKER_STOPPED&&o.stopped);
+    setup(&f,&o,&b,&c,&g);memset(&b,0,sizeof(b));memset(&o,0,sizeof(o));
+    assert(!a04_bq_prepare_cold_diagnostic(&o,0,10*NS));
+    assert(!a04_bq_broker_init(&b,&o,&c,&g,0,40*NS));
+    assert(a04_bq_broker_run(&b,1,5*NS,&out)==A04_BROKER_OK && f.writes==1 && !o.firmware_kicks);
     setup(&f,&o,&b,&c,&g);f.bad_bq=1;
     assert(a04_bq_broker_run(&b,1,5*NS,&out)==A04_BROKER_STOPPED&&f.gauge_reads==0);
     setup(&f,&o,&b,&c,&g);f.gauge_delay=400000000;

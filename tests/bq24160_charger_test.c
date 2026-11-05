@@ -17,6 +17,14 @@ static void init(struct fake *f, struct a04_bq_owner *o, struct a04_bq_bus *b) {
 }
 int main(void) {
     struct fake f; struct a04_bq_owner o; struct a04_bq_bus b; unsigned i;
+    init(&f,&o,&b); memset(&o,0,sizeof(o));
+    assert(a04_bq_prepare_cold_diagnostic(&o,0,10000000001ULL) && !f.reads);
+    assert(!a04_bq_prepare_cold_diagnostic(&o,0,10000000000ULL));
+    assert(!o.firmware_kicks && o.handoff_pending==2);
+    assert(a04_bq_step(&o,&b,30000000000ULL)==A04_BQ_OK && f.writes==1 && !o.firmware_kicks);
+    init(&f,&o,&b); memset(&o,0,sizeof(o));
+    assert(!a04_bq_prepare_cold_diagnostic(&o,0,10000000000ULL));f.r[2]^=1;
+    assert(a04_bq_step(&o,&b,30000000000ULL)==A04_BQ_POLICY && !f.writes && o.first.valid==255);
     init(&f,&o,&b); o.handoff_pending=0;
     assert(a04_bq_step(&o,&b,30000000000ULL)==A04_BQ_STOPPED);
     assert(o.stopped && !f.clocks && !f.reads && !f.writes);
