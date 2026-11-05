@@ -27,18 +27,35 @@ int a04_resource_lease_same_owner(void *context,const struct a04_wifi_owner *o,u
  struct a04_resource_lease *l=context;
  return l && l->owner==o && o && o->active && !o->poisoned && o->generation==generation && a04_resource_lease_live(l,generation);
 }
-int a04_resource_lease_stop(struct a04_resource_lease *l,uint32_t generation)
+int a04_resource_lease_quiesce(struct a04_resource_lease *l,uint32_t generation)
 {
- unsigned i;
  if(!a04_resource_lease_live(l,generation) || (l->owner &&
     (!l->owner->active || l->owner->poisoned || l->owner->generation!=generation)))return -1;
  l->state=A04_LEASE_STOPPING;
  if(l->owner)a04_wifi_revoke(l->owner);
- if(l->ops.drain_irq(l->ops.context)||l->ops.drain_io(l->ops.context))goto failed;
+ if(l->ops.drain_irq(l->ops.context)||l->ops.drain_io(l->ops.context)){
+  if(l->owner)l->owner->poisoned=1;
+  l->state=A04_LEASE_FAILED;return -1;
+ }
+ l->state=A04_LEASE_QUIESCED;return 0;
+}
+int a04_resource_lease_release(struct a04_resource_lease *l,uint32_t generation)
+{
+ unsigned i;
+ if(!l||l->state!=A04_LEASE_QUIESCED||l->generation!=generation)return -1;
+ l->state=A04_LEASE_STOPPING;
  for(i=A04_LEASE_COUNT;i>0;i--){
-  if(l->ops.release(l->ops.context,(enum a04_lease_resource)(i-1)))goto failed;
+  if(l->ops.release(l->ops.context,(enum a04_lease_resource)(i-1))){
+   if(l->owner)l->owner->poisoned=1;
+  l->state=A04_LEASE_FAILED;return -1;
+  }
   l->held&=~(1u<<(i-1));
  }
  l->state=A04_LEASE_STOPPED;return 0;
-failed:if(l->owner)l->owner->poisoned=1;l->state=A04_LEASE_FAILED;return -1;
+}
+int a04_resource_lease_stop(struct a04_resource_lease *l,uint32_t generation)
+{
+ /* Only for users without a host mapping; mapped users use both phases. */
+ if(a04_resource_lease_quiesce(l,generation))return -1;
+ return a04_resource_lease_release(l,generation);
 }

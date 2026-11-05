@@ -10,7 +10,7 @@
 enum a04_lease_resource { A04_LEASE_COMBO, A04_LEASE_FIRMWARE, A04_LEASE_RAIL, A04_LEASE_RTC32K,
  A04_LEASE_GPIO_CLOCK, A04_LEASE_HOST, A04_LEASE_IRQ, A04_LEASE_COUNT };
 enum a04_lease_state { A04_LEASE_OFF, A04_LEASE_ACQUIRING, A04_LEASE_ACTIVE,
- A04_LEASE_STOPPING, A04_LEASE_STOPPED, A04_LEASE_FAILED };
+ A04_LEASE_STOPPING, A04_LEASE_QUIESCED, A04_LEASE_STOPPED, A04_LEASE_FAILED };
 struct a04_lease_ops {
  void *context;
  int (*acquire)(void *, enum a04_lease_resource);
@@ -28,5 +28,9 @@ int a04_resource_lease_acquire(struct a04_resource_lease *, const struct a04_lea
 int a04_resource_lease_live(const struct a04_resource_lease *, uint32_t);
 int a04_resource_lease_bind_owner(struct a04_resource_lease *, struct a04_wifi_owner *);
 int a04_resource_lease_same_owner(void *, const struct a04_wifi_owner *, unsigned);
+/* Quiesce before unmapping; release only after the caller has unmapped host.
+ * Both calls require the same serialization. A failure is terminal. */
+int a04_resource_lease_quiesce(struct a04_resource_lease *, uint32_t);
+int a04_resource_lease_release(struct a04_resource_lease *, uint32_t);
 int a04_resource_lease_stop(struct a04_resource_lease *, uint32_t);
 #endif

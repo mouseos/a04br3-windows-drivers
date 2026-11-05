@@ -17,7 +17,9 @@ int main(void)
  assert(!a04_resource_lease_bind_owner(&l,&owner));assert(a04_resource_lease_same_owner(&l,&owner,g));
  {struct a04_wifi_owner other={0};assert(a04_resource_lease_bind_owner(&l,&other));assert(!a04_resource_lease_same_owner(&l,&other,g));}
  assert(!a04_resource_lease_same_owner(&l,&owner,g+1));
- assert(a04_resource_lease_acquire(&l,&ops,&g));assert(!a04_resource_lease_stop(&l,g));
+ assert(a04_resource_lease_acquire(&l,&ops,&g));assert(!a04_resource_lease_quiesce(&l,g));
+ assert(l.state==A04_LEASE_QUIESCED && f.n==A04_LEASE_COUNT+2);
+ assert(a04_resource_lease_release(&l,g+1));assert(!a04_resource_lease_release(&l,g));
  assert(f.calls[A04_LEASE_COUNT]==20 && f.calls[A04_LEASE_COUNT+1]==21);
  for(i=0;i<A04_LEASE_COUNT;i++)assert(f.calls[A04_LEASE_COUNT+2+i]==30+A04_LEASE_COUNT-1-i);
  assert(l.held==0 && l.state==A04_LEASE_STOPPED);assert(!a04_resource_lease_same_owner(&l,&owner,g));a04_wifi_revoke(&owner);

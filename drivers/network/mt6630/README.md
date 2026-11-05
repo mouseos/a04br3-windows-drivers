@@ -205,7 +205,8 @@ SPDXはBSD-2-Clause-Patent。前者の全体SHA-256は
 `resource_lease.c` は外部の実資源providerを呼ぶ直列化済み所有管理である。
 combo、firmware、rail、RTC 32k、GPIO/clock、MSDC2、IRQの順に取得し、
 取得成功後だけ `a04_wifi_bringup` の `same_lease` に使える世代を発行する。
-停止時は受付を閉じ、IRQとI/Oを排出してから逆順に各providerへ返す。
+停止時はquiesceで受付を閉じ、IRQとI/Oを排出する。呼出側がMSDC2をunmapした後、
+releaseで逆順に各providerへ返す。unmapのない場合だけstop一括APIを使う。
 途中で失敗した操作は部分的に実行済みかもしれないため自動rollbackせず、
 残る資源を保持してFAILEDにする。返却はproviderのリース返却であり、共有レールや
 32k出力を無条件に切断する指示ではない。呼出側は全操作とPnPを同じ排他機構で
