@@ -6,13 +6,13 @@
 
 先行成功は正本UEFI `1b705d65fecacb21848d8d8b9d77339a61708df7` boot SHA-256 `1ff6bd83afe550d5e5fa7846d36623d628d1aa8b1b58730238cd3a26cc328e80`、ESP `ed92f50a7ba5464226e9781be6613135ed02bada702d3eb23300d85b902bd26e`。今回のESPは先行ESPからWIMだけを交換した**未実機検証の新構成**。現行正本3a310cccは子孫だがコードに差があり、このbootと同一とは扱わない。`FOUR-CPU-TEST-PREP.md` に旧実績と署名の根拠がある。
 
-修正版成果物は `port/xnu/out/windows-rt-cpu-release-ac1072b/`。ESP SHA-256 `5a5917dc81c8e6b68ce4e7db56d26dc442cc76c5e5c96e411c0df55a9b6d17ac`、報告識別子 `AF205419D7D71058`。`auto-esp.img.json` は元画像、WIM boot index、他87ファイルの一致を記録する。`auto.wim.json` は元WIM、置換した3つのcmd、報告識別子を記録。署名済みUART送信EXE・TOPRGUと元startnetは修正前WIMと一致する。元の `windows-rt-cpu-auto-9763689/` は今回の失敗を観測した旧版として保持する。入力のコピー以外を推測で再生成しない。
+ハイブ非キャッシュ検証を追加した成果物は `port/xnu/out/windows-rt-cpu-hive-f9c7e52/`。ESP SHA-256 `a0cbe2ce6715da3d271d5baeb471405f1e52f448d5a68bf70f344aa47e4d8410`、報告識別子 `871E57A13B73CCD2`。`auto-esp.img.json` は元画像、WIM boot index、他87ファイルの一致を記録する。`auto.wim.json` は元WIM、置換cmd、検査EXE、WinPE SOFTWAREコピー、証明書、報告識別子のハッシュを記録。旧署名済みUART送信EXE・TOPRGUは維持する。元の `windows-rt-cpu-auto-9763689/` は今回の失敗を観測した旧版、`windows-rt-cpu-release-ac1072b/` は前段の修正版として保持する。入力のコピー以外を推測で再生成しない。
 
 ## 起動から報告まで
 
 新startnetはwpeinit後に既存MSDC試験INFをdrvloadし、監査cmdを自動実行する。cmdはボリュームガードに成功した後に限り、対象WindowsのSYSTEM・SOFTWARE・SYSをX:へコピーし、コピーだけをレジストリにロードして選択ControlSet、サービス、SYS一致、テスト証明書キーを調べる。守れない場合は監査を拒否し、結果を送信する。NTFSの自動マウントやファイルシステムの内部動作による実際の書込み有無は未検証。入力ボリューム名・C:割当が異なればガードは拒否する。
 
-監査終了コードが0か、初回ガード成功後の監査失敗2の場合、別のrelease cmdがガードを再確認し、HKLM直下を列挙して両一時ハイブ名が存在しない場合だけ `mountvol C: /p` を試みる。初回ガード拒否4、一時ハイブのunload失敗3、再ガード拒否、レジストリの列挙失敗、ハイブ残存時はアンマウントしない。`MOUNTVOL_EXIT`、`TOPRGU_VOLUME_RELEASED`、`TOPRGU_RELEASE_EXIT` は実行経路に応じて報告する。これはコマンド結果であり、他のプロセスや他ホストがI/Oしないことは保証しない。DISMは呼ばない。監査結果はTOPRGUの既存UARTキューへ、16文字の固定識別子と断片ごとのCRC32・全体CRC32を付けて送る。キュー受理だけでは送信完了ではない。UART reset受信・既存watchdog給餌処理は変更していない。
+監査終了コードが0、初回ガード成功後の監査失敗2、または一時ハイブのunload失敗3の場合、別のrelease cmdがガードを再確認し、HKLM直下を列挙して両一時ハイブ名が存在しない場合だけ `mountvol C: /p` を試みる。初回ガード拒否4、再ガード拒否、レジストリの列挙失敗、ハイブ残存時はアンマウントしない。`MOUNTVOL_EXIT`、`TOPRGU_VOLUME_RELEASED`、`TOPRGU_RELEASE_EXIT` は実行経路に応じて報告する。これはコマンド結果であり、他のプロセスや他ホストがI/Oしないことは保証しない。DISMは呼ばない。監査結果はTOPRGUの既存UARTキューへ、16文字の固定識別子と断片ごとのCRC32・全体CRC32を付けて送る。キュー受理だけでは送信完了ではない。UART reset受信・既存watchdog給餌処理は変更していない。
 
 主担当は対象起動の前にUART収集ログのバイト数を `OFFSET` として保存し、他のリセット元を排他してから、指定画像と回復方法を判断する。以下は作業ルートのWindowsドライバworktreeから、収集ログと新規出力先を指定して実行する監視例。`TOKEN` は成果物の `auto.wim.json` または `token.txt` の値を使う。
 
@@ -41,4 +41,4 @@ python3 tools/recovery/monitor-cpu-audit.py "$UART_LOG" \
 
 ## ホスト検証
 
-`tests/cpu_uart_sender_host_test.py` は実際のC送信コードをWin32模擬で実行し、busy再試行と受信CRCを検査。`tests/cpu_audit_uart_test.py` は欠落・破損・順序・タイムアウト・アンマウント失敗・監査失敗後のrelease報告を検査。`tests/cpu_release_contract_test.py` はbatchの分岐と順序を静的に検査する。従来版はWindows runnerでstartnetと模擬ハイブを検証したが、今回の新しいログコピーとrelease batchはWindows上で未実行。復元側は `tests/toprgu_restore_host_test.py` でハッシュ不一致やrecovery未到達で書込みへ進まないことを検証した。いずれも実機のUARTやディスク動作の証明ではない。
+`tests/audit_hive_uncached_host_test.py` は実際の検査EXEソースをWin32模擬で実行し、過去のSYSTEMとLOG1/LOG2、コピー不一致、2回目の読取り不一致、ヘッダー破損、サイズ不正を検査する。`tests/audit_hive_header_test.c` は過去ハイブと古い再生コピーのヘッダーチェックサムを検査。`tests/cpu_uart_sender_host_test.py` は実際のC送信コードをWin32模擬で実行し、busy再試行と受信CRCを検査。`tests/cpu_audit_uart_test.py` は欠落・破損・順序・タイムアウト・アンマウント失敗・監査失敗後のrelease報告を検査。`tests/cpu_release_contract_test.py` はbatchの分岐と順序を静的に検査する。従来版はWindows runnerでstartnetと模擬ハイブを検証したが、今回の新しいログコピーとrelease batchはWindows上で未実行。復元側は `tests/toprgu_restore_host_test.py` でハッシュ不一致やrecovery未到達で書込みへ進まないことを検証した。いずれも実機のUARTやディスク動作の証明ではない。
