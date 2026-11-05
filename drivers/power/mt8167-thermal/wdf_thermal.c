@@ -17,7 +17,10 @@
 #endif
 #if A04_THERMAL_MONITOR_TEST
 #include "monitor.h"
+#include "readout.h"
+#include "readout_ioctl.h"
 EVT_WDF_TIMER ThermalMonitorTimer;
+EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL ThermalReadoutIoctl;
 #endif
 #include "../../system/mt8167-toprgu/thermal_stop.h"
 #if A04_THERMAL_LEASE_DIAG
@@ -32,6 +35,7 @@ typedef struct { struct a04_thermal_cal cal; struct a04_thermal_owner ownership;
 #if A04_THERMAL_MONITOR_TEST
  WDFDEVICE device; WDFTIMER timer; volatile UCHAR *mapped[3];
  struct a04_monitor monitor; struct a04_thermal_hw hw; BOOLEAN hw_ready;
+ WDFSPINLOCK readout_lock; struct a04_thermal_readout_state readout;
  BOOLEAN reset_asserted;
 #endif
 } THERMAL_CONTEXT;
@@ -96,6 +100,25 @@ int A04ThermalApply(void *context,enum a04_thermal_action action)
  return NT_SUCCESS(A04ThermalRequestStop((WDFDEVICE)context)) ? 0 : -1;
 }
 #if A04_THERMAL_MONITOR_TEST
+/* Publication and retrieval share one nonpaged lock; no fabricated or stale
+ * reading is returned while startup, failure, stop or power exit is pending. */
+static void ThermalInvalidate(THERMAL_CONTEXT *c) {
+ WdfSpinLockAcquire(c->readout_lock);a04_readout_invalidate(&c->readout);WdfSpinLockRelease(c->readout_lock);
+}
+VOID ThermalReadoutIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outputSize,size_t inputSize,ULONG code) {
+ THERMAL_CONTEXT *c=ThermalContext(WdfIoQueueGetDevice(queue));
+ struct a04_thermal_readout_v1 value,*output;size_t actual=0;NTSTATUS status;
+ UNREFERENCED_PARAMETER(inputSize);
+ if(code!=A04_THERMAL_GET_READING) { WdfRequestComplete(request,STATUS_INVALID_DEVICE_REQUEST);return; }
+ if(outputSize<sizeof(value)) { WdfRequestComplete(request,STATUS_BUFFER_TOO_SMALL);return; }
+ status=WdfRequestRetrieveOutputBuffer(request,sizeof(value),(PVOID *)&output,&actual);
+ if(!NT_SUCCESS(status)) { WdfRequestComplete(request,status);return; }
+ WdfSpinLockAcquire(c->readout_lock);
+ if(a04_readout_get(&c->readout,KeQueryInterruptTime()/10000u,1000,&value)) status=STATUS_DEVICE_NOT_READY;
+ else { *output=value;status=STATUS_SUCCESS; }
+ WdfSpinLockRelease(c->readout_lock);
+ WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(value):0);
+}
 static int HwQualified(void *p) { THERMAL_CONTEXT *c=p; return c->ownership.active && c->lease_owned && c->mapped[0] && c->mapped[1] && c->mapped[2]; }
 static int HwReady(void *p) { return ((THERMAL_CONTEXT *)p)->hw_ready; }
 static int HwClocks(void *p) { return NT_SUCCESS(TouchRequest(p,A04_TOUCH_THERMAL_CLOCK))?0:-1; }
@@ -114,26 +137,31 @@ static int HwWrite(void *p,uint32_t addr,uint32_t value) { THERMAL_CONTEXT *c=p;
 static int HwDelay(void *p,unsigned us) { UNREFERENCED_PARAMETER(p);if(us>1000)return -1;KeStallExecutionProcessor(us);return 0; }
 NTSTATUS ThermalRelease(WDFDEVICE dev,WDFCMRESLIST translated) {
  THERMAL_CONTEXT *c=ThermalContext(dev);unsigned i;UNREFERENCED_PARAMETER(translated);
- c->pnp_resources=FALSE; a04_owner_revoke(&c->ownership);
+ c->pnp_resources=FALSE; ThermalInvalidate(c); a04_owner_revoke(&c->ownership);
  for(i=0;i<3;i++) if(c->mapped[i]) { MmUnmapIoSpace((PVOID)c->mapped[i],0x1000);c->mapped[i]=NULL; }
  return STATUS_SUCCESS;
 }
 VOID ThermalMonitorTimer(WDFTIMER timer) {
  WDFDEVICE dev=(WDFDEVICE)WdfTimerGetParentObject(timer);THERMAL_CONTEXT *c=ThermalContext(dev);
  struct a04_thermal_sample sample;int result;
- if(!c->ownership.active)return;
+ if(!c->ownership.active){ThermalInvalidate(c);return;}
  if(!NT_SUCCESS(TouchRequest(c,A04_TOUCH_THERMAL_QUERY))) {
-  c->ownership.active=0;
+  ThermalInvalidate(c); c->ownership.active=0;
   if(!NT_SUCCESS(A04ThermalRequestStop(dev))) KeBugCheckEx(0xE2,0x41303454,1,0,0);
   return;
  }
  result=a04_monitor_poll(&c->monitor,KeQueryInterruptTime()/10000u,&sample);
- if(result==-2) { a04_owner_revoke(&c->ownership);KeBugCheckEx(0xE2,0x41303454,0,0,0);return; }
- if(result<0) { a04_owner_revoke(&c->ownership);return; }
+ if(result==-2) { ThermalInvalidate(c); a04_owner_revoke(&c->ownership);KeBugCheckEx(0xE2,0x41303454,0,0,0);return; }
+ if(result<0) { ThermalInvalidate(c); a04_owner_revoke(&c->ownership);return; }
  if(result==1 && !NT_SUCCESS(WatchdogRequest(c,A04_TOPRGU_THERMAL_PING))) {
-  a04_owner_revoke(&c->ownership);
+  ThermalInvalidate(c); a04_owner_revoke(&c->ownership);
   if(!NT_SUCCESS(A04ThermalRequestStop(dev))) KeBugCheckEx(0xE2,0x41303454,3,0,0);
   return;
+ }
+ if(result==1) {
+  int publish;
+  WdfSpinLockAcquire(c->readout_lock);publish=a04_readout_publish(&c->readout,&sample);WdfSpinLockRelease(c->readout_lock);
+  if(publish) { a04_owner_revoke(&c->ownership);if(!NT_SUCCESS(A04ThermalRequestStop(dev))) KeBugCheckEx(0xE2,0x41303454,5,0,0);return; }
  }
  WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(250));
 }
@@ -142,7 +170,11 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
 {
  THERMAL_CONTEXT *c=ThermalContext(dev); BOOT_CAL v; ULONG size=sizeof(v),attributes=0;
  UNICODE_STRING name=RTL_CONSTANT_STRING(THERMAL_VAR_NAME); GUID guid=calGuid; NTSTATUS status;
- UNREFERENCED_PARAMETER(prior);c->calibrated=FALSE; a04_owner_revoke(&c->ownership);
+ UNREFERENCED_PARAMETER(prior);c->calibrated=FALSE;
+#if A04_THERMAL_MONITOR_TEST
+ ThermalInvalidate(c);
+#endif
+ a04_owner_revoke(&c->ownership);
  c->ownership.resources=c->pnp_resources ? 1 : 0; RtlZeroMemory(&v,sizeof(v));
  status=ExGetFirmwareEnvironmentVariable(&name,&guid,&v,&size,&attributes);
  if(!NT_SUCCESS(status) || size!=sizeof(v) || v.version!=1 || (attributes&7u)!=6u || a04_thermal_calibrate(&c->cal,read_cal,&v)) {
@@ -215,7 +247,7 @@ NTSTATUS ThermalExit(WDFDEVICE dev,WDF_POWER_DEVICE_STATE next)
 {
  THERMAL_CONTEXT *c=ThermalContext(dev); UNREFERENCED_PARAMETER(next);
 #if A04_THERMAL_MONITOR_TEST
- WdfTimerStop(c->timer,TRUE); c->hw_ready=FALSE;
+ WdfTimerStop(c->timer,TRUE); ThermalInvalidate(c); c->hw_ready=FALSE;
  if(c->ownership.active && !NT_SUCCESS(A04ThermalRequestStop(dev))) KeBugCheckEx(0xE2,0x41303454,4,0,0);
 #endif
 #if A04_THERMAL_LEASE_DIAG
@@ -244,7 +276,12 @@ NTSTATUS ThermalAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
  status=WdfIoTargetCreate(device,&a,&ThermalContext(device)->touch); if(!NT_SUCCESS(status))return status;
 #endif
 #if A04_THERMAL_MONITOR_TEST
- { WDF_TIMER_CONFIG t; THERMAL_CONTEXT *c=ThermalContext(device); c->device=device;
+ { WDF_TIMER_CONFIG t; WDF_IO_QUEUE_CONFIG q; WDFQUEUE queue; THERMAL_CONTEXT *c=ThermalContext(device); c->device=device;
+   WDF_OBJECT_ATTRIBUTES_INIT(&a);a.ParentObject=device;
+   status=WdfSpinLockCreate(&a,&c->readout_lock);if(!NT_SUCCESS(status))return status;
+   WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel);q.EvtIoDeviceControl=ThermalReadoutIoctl;
+   status=WdfIoQueueCreate(device,&q,WDF_NO_OBJECT_ATTRIBUTES,&queue);if(!NT_SUCCESS(status))return status;
+   status=WdfDeviceCreateDeviceInterface(device,&A04ThermalReadoutInterfaceGuid,NULL);if(!NT_SUCCESS(status))return status;
    WDF_TIMER_CONFIG_INIT(&t,ThermalMonitorTimer);t.AutomaticSerialization=FALSE;
    WDF_OBJECT_ATTRIBUTES_INIT(&a);a.ParentObject=device;a.ExecutionLevel=WdfExecutionLevelPassive;
    return WdfTimerCreate(&t,&a,&c->timer); }

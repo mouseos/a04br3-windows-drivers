@@ -110,3 +110,18 @@ timer・backup DPCの両方が停止した場合はハードウェアwatchdogに
 これらはホスト模擬・ビルドのみで、実機の時間・CPU停止・復帰は未検証である。
 この仕組みは未確認の引継ぎゲートを開く根拠にはならない。
 監視を実機で開始する前に、共有資源の電源生存期間と独立の監視期限を接続・検証する。
+
+## Windows向け温度読取り試作
+
+`A04_THERMAL_MONITOR_TEST=1` のみでdevice interface
+`{6b2c65ed-e2a7-4ddc-86ba-3842e2214e29}` とread-only IOCTL
+`A04_THERMAL_GET_READING` を作る。出力は `readout.h` のversion 1で、３点と
+最高温度（m°C）、連番、経過ミリ秒を返す。監視の測定・変換とwatchdog heartbeatが
+成功した後だけ公開し、失敗・D0退出・資源解放で無効にする。1秒を超える値、
+時計逆行、起動前、長さ不足、未対応要求は成功扱いしない。値はKMDF spin lockで
+保護する。公開APIはWindows sensor class接続や熱保護の実装ではない。
+
+現状firmware引継ぎが未確認でmonitor自体は開始を拒否するため、IOCTLの実温度取得は
+未実証であり、必ず値を得られるという意味ではない。電源寿命にわたるtouch lease、
+AUXADCの実測完了、実機での校正・測温の検証が必要。ホスト試験は無効・期限切れ・
+異常データ・時計逆行の分岐だけを検査し、実機の物理温度や署名受理を証明しない。

@@ -253,7 +253,8 @@ clean:
 	rm -rf build
 
 # Linux-derived MT8167 thermal components are separately GPL-2.0-only.
-test-thermal: build/thermal_test build/thermal_devinfo_test build/thermal_hardware_test build/thermal_freshness_test build/thermal_lease_test build/thermal_completion_test build/thermal_monitor_test build/thermal_ownership_test
+test-thermal: build/thermal_readout_test build/thermal_test build/thermal_devinfo_test build/thermal_hardware_test build/thermal_freshness_test build/thermal_lease_test build/thermal_completion_test build/thermal_monitor_test build/thermal_ownership_test
+	./build/thermal_readout_test
 	./build/thermal_test
 	./build/thermal_devinfo_test
 	./build/thermal_hardware_test
@@ -295,3 +296,7 @@ build/thermal_monitor_test: drivers/power/mt8167-thermal/monitor.c drivers/power
 build/thermal_ownership_test: drivers/power/mt8167-thermal/ownership.h tests/thermal_ownership_test.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal tests/thermal_ownership_test.c -o $@
+
+build/thermal_readout_test: drivers/power/mt8167-thermal/readout.c drivers/power/mt8167-thermal/readout.h tests/thermal_readout_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal drivers/power/mt8167-thermal/readout.c tests/thermal_readout_test.c -o $@
