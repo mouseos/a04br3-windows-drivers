@@ -48,6 +48,15 @@ static inline int a04_rgx_firmware_requests(struct a04_rgx_fw_runtime *r,
         /* Unrecognised magic must remain in the ring for diagnosis. */
         if (((uint32_t)command.eCmdType & 0xffff0000u)!=0x2abc0000u)
             return A04_REQUEST_CORRUPT;
+        /* These requests require an object update and a matching KCCB reply
+         * (rgxta3d.c). The current callback cannot submit that reply while
+         * windows_requests holds command_busy. Leave the request pending
+         * until a serialized response transport and typed handlers exist. */
+        if (command.eCmdType==RGXFWIF_FWCCB_CMD_ZSBUFFER_BACKING ||
+            command.eCmdType==RGXFWIF_FWCCB_CMD_ZSBUFFER_UNBACKING ||
+            command.eCmdType==RGXFWIF_FWCCB_CMD_FREELIST_GROW ||
+            command.eCmdType==RGXFWIF_FWCCB_CMD_FREELISTS_RECONSTRUCTION)
+            return A04_REQUEST_BLOCKED;
         if (io->handle(io->context,&command)) return A04_REQUEST_BLOCKED;
         /* An unexpected consumer or damaged header makes acknowledgement unsafe. */
         if (ctl->ui32ReadOffset!=read || ctl->ui32WrapMask!=31 ||

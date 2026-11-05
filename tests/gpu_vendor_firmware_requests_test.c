@@ -9,7 +9,7 @@ static void barrier(void *p) { ((struct fixture *)p)->barriers++; }
 static int handle(void *p,const RGXFWIF_FWCCB_CMD *cmd)
 {
     struct fixture *f=p; f->calls++;
-    assert(cmd->eCmdType==RGXFWIF_FWCCB_CMD_FREELIST_GROW);
+    assert(cmd->eCmdType==RGXFWIF_FWCCB_CMD_DEBUG_DUMP);
     return f->reject;
 }
 int main(void)
@@ -25,13 +25,16 @@ int main(void)
     init.psFirmwareCCB.ui32Addr=init.psFirmwareCCBCtl.ui32Addr+64;
     ctl->ui32WrapMask=31;ctl->ui32CmdSize=sizeof(*ring);
     ctl->ui32ReadOffset=31;ctl->ui32WriteOffset=1;
-    ring[31].eCmdType=ring[0].eCmdType=RGXFWIF_FWCCB_CMD_FREELIST_GROW;
+    ring[31].eCmdType=ring[0].eCmdType=RGXFWIF_FWCCB_CMD_DEBUG_DUMP;
     f.reject=1;assert(a04_rgx_firmware_requests(&r,&io,2,&done)==A04_REQUEST_BLOCKED);
     assert(done==0 && ctl->ui32ReadOffset==31);
     f.reject=0;assert(a04_rgx_firmware_requests(&r,&io,1,&done)==A04_REQUEST_MORE);
     assert(done==1 && ctl->ui32ReadOffset==0);
     assert(a04_rgx_firmware_requests(&r,&io,2,&done)==A04_REQUEST_EMPTY);
     assert(done==1 && ctl->ui32ReadOffset==1 && f.calls==3);
+    ctl->ui32WriteOffset=2;ring[1].eCmdType=RGXFWIF_FWCCB_CMD_FREELIST_GROW;
+    assert(a04_rgx_firmware_requests(&r,&io,1,&done)==A04_REQUEST_BLOCKED);
+    assert(done==0 && ctl->ui32ReadOffset==1 && f.calls==3);
     ctl->ui32WriteOffset=2;ring[1].eCmdType=0;
     assert(a04_rgx_firmware_requests(&r,&io,1,&done)==A04_REQUEST_CORRUPT);
     assert(done==0 && ctl->ui32ReadOffset==1);
