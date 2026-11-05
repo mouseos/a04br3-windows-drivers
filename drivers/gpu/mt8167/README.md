@@ -490,6 +490,10 @@ destinationの仮想アドレスが異なり、それぞれのPTEも照合する
 元producerの分岐と入力条件に限定した静的な導出であり、copy taskの完成や
 異なるprofileの正当性は示さない。
 
+copy ownerのlease中は、既存clear送出と反復clearのPDS・target書換えを拒否する。
+`command_busy` の取得後に確認するが、copy ownerの生成・解放とWDF PnPの直列化は
+呼出し側の責任であり、この検査だけではsurprise removalや停止時の資源寿命を保証しない。
+
 copy scratchのsource初期値はindexごとに異なる固定パターンを使用する。
 `a04_vendor_copy_check` は取得済みCPU snapshotのsource・destination各1024語と
 shared 1024語を期待値に照合し、各不一致数と最初の位置を返す。sourceと出力が

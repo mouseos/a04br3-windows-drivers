@@ -49,6 +49,10 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
     if(!locked && InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
     /* Cleanup can begin between the optimistic check and lock acquisition. */
     if(r->cleanup_started || r->clear_attempted || r->poisoned){status=STATUS_INVALID_DEVICE_STATE;goto done;}
+    /* A cold copy lease reserves the same TQ context, sync and PDS heap.
+     * Never queue a clear while that lease is held. The caller must also
+     * serialize copy-owner lifetime with command_busy and PnP callbacks. */
+    if(r->copy_owner){status=STATUS_DEVICE_BUSY;goto done;}
     if(s->command_poisoned || s->shutdown_started){status=STATUS_IO_DEVICE_ERROR;goto done;}
     status=queue_snapshot(f,&k,&q);if(!NT_SUCCESS(status))goto done;
     bank=r->buffer[0].cpu;sync=(volatile uint32_t *)(void *)(bank+r->layout.sync);
@@ -177,7 +181,7 @@ NTSTATUS a04_vendor_render_next_tile(struct a04_vendor_render_cold *r,
     if(a04_vendor_clear_tile_build(&tile,&q))return STATUS_INVALID_PARAMETER;
     tile.image.payload[2]=colour;tile.image.expected=colour;
     if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
-    if(r->cleanup_started || r->poisoned || s->command_poisoned || s->shutdown_started || !r->mapped ||
+    if(r->copy_owner || r->cleanup_started || r->poisoned || s->command_poisoned || s->shutdown_started || !r->mapped ||
        !r->clear_ready || !r->clear_attempted || !r->clear_verified || r->screen_surface || r->diagnostic_tile_index+1!=index ||
        !r->buffer[4].cpu || r->buffer[4].bytes!=65536u || !r->buffer[7].cpu ||
        !s->online || !s->memory || !s->memory->hardware_owned || s->memory!=r->firmware) {
@@ -209,7 +213,7 @@ NTSTATUS a04_vendor_render_repeat_screen(struct a04_vendor_render_cold *r,
     if(!r || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL || (index!=1 && index!=2))return STATUS_INVALID_PARAMETER;
     if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
     screen=r->screen_surface;
-    if(r->cleanup_started || r->poisoned || s->command_poisoned || s->shutdown_started || !r->mapped ||
+    if(r->copy_owner || r->cleanup_started || r->poisoned || s->command_poisoned || s->shutdown_started || !r->mapped ||
        !r->clear_ready || !r->clear_attempted || !r->clear_verified || r->diagnostic_tile_index+1!=index ||
        !screen || !screen->prepared || !screen->hardware_exposed || !screen->pixels.cpu ||
        screen->bytes!=4259840u || screen->pixels.bytes!=screen->bytes ||

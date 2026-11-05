@@ -71,6 +71,14 @@ int main(void)
     r.buffer[4].cpu=target;r.buffer[4].bytes=65536;r.buffer[7].cpu=pds;r.clear_ready=TRUE;r.clear_first=(64u*128u+64u)*4u;r.clear_row_bytes=512u;
     assert(!a04_vendor_clear_image_build(&r.clear,A04_VENDOR_RENDER_SCRATCH_VA,0));
     sim=&r;run=&runtime;complete=1;
+    {
+      RGXFWIF_KCCB_CMD before=cmd[kctl.ui32WriteOffset];uint32_t oldwrite=kctl.ui32WriteOffset;
+      r.copy_owner=&mem;
+      assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_DEVICE_BUSY);
+      assert(!start.command_busy && !r.clear_attempted && !r.client_write[3] &&
+          kctl.ui32WriteOffset==oldwrite && !memcmp(&before,&cmd[oldwrite],sizeof(before)));
+      r.copy_owner=NULL;
+    }
     /* Simulate cleanup winning after the caller's initial check, immediately
      * before it acquires command_busy. Neither path may publish a command. */
     { RGXFWIF_KCCB_CMD before; uint32_t oldwrite=kctl.ui32WriteOffset;
@@ -92,6 +100,12 @@ int main(void)
     assert(r.sequence==1 && !r.poisoned && !start.command_poisoned);
     current=4;assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_SUCCESS);
     assert(clear.zeros==1024 && !clear.guard_errors && clear.phase==4 && r.clear_attempted);
+    { uint32_t before=pds[0],pixel=((uint32_t*)target)[0];
+      r.copy_owner=&mem;
+      assert(a04_vendor_render_next_tile(&r,&start,1,&clear)==STATUS_INVALID_DEVICE_STATE);
+      assert(!start.command_busy && pds[0]==before && ((uint32_t*)target)[0]==pixel && r.diagnostic_tile_index==0);
+      r.copy_owner=NULL;
+    }
     assert(a04_vendor_render_next_tile(&r,&start,1,&clear)==STATUS_SUCCESS);
     assert(clear.zeros==1024 && !clear.guard_errors && clear.phase==4);
     assert(a04_vendor_render_next_tile(&r,&start,2,&clear)==STATUS_SUCCESS);
