@@ -33,5 +33,5 @@ KmdfService=Mt8167Thermal,Wdf
 KmdfLibraryVersion=1.13
 [Strings]
 Provider="mouseos"
-Device="MT8167 thermal calibration diagnostic"
-Disk="MT8167 thermal diagnostic"
+Device="MediaTek MT8167 Thermal Sensor"
+Disk="MediaTek MT8167 Thermal Sensor Driver"
