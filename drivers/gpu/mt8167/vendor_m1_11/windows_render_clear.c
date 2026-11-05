@@ -87,11 +87,14 @@ NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
     ((volatile RGXFWIF_CCB_CTL *)f->kctl)->ui32WriteOffset=knext;
     a04_gpu_dma_barrier();result->phase=3;WRITE_REGISTER_ULONG((volatile ULONG *)(void *)(s->core+0xb00),0x10);
     status=STATUS_IO_TIMEOUT;
-    for(i=0;i<10000;i++) {
+    /* MTK m1.11 sysinfo.h permits at least 1 s for HW completion. Keep the
+     * earlier render deadline separate; allow the ordered global flush/SYNC
+     * the matching minimum without resubmitting either command. */
+    for(i=0;i<20000;i++) {
         a04_gpu_dma_barrier();
         if(((volatile RGXFWIF_CCB_CTL *)f->kctl)->ui32ReadOffset==knext &&
            *(volatile uint32_t *)f->command_sync==flushseq){status=STATUS_SUCCESS;break;}
-        KeStallExecutionProcessor(10);
+        KeStallExecutionProcessor(50);
     }
     if(!NT_SUCCESS(status))goto poison;
     result->phase=4;
