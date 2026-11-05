@@ -244,7 +244,7 @@ static NTSTATUS owner_prepare_handoff(GAUGE_CONTEXT *c)
             struct a04_bqhr_info info;
             uint64_t cold_now=now_ns(c);
             if (a04_bqhr_classify(record,sizeof(record),&info)!=A04_BQHR_STOPPED ||
-                info.reason!=6 || info.kicks || info.faults || info.first_valid || info.latest_valid ||
+                !a04_bqhr_is_cold_candidate(&info) ||
                 cold_now>UINT64_MAX-10000000000ULL ||
                 a04_bq_prepare_cold_diagnostic(&c->charger,cold_now,cold_now+10000000000ULL))
                 return STATUS_DEVICE_NOT_READY;

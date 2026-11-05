@@ -8,6 +8,11 @@ static void seal(uint8_t *p){uint64_t h=14695981039346656037ULL;unsigned i;for(i
 int main(void){uint8_t p[128]={0};struct a04_bqhr_info out;unsigned i;
  put(p,0x314f524147484334ULL);put(p+8,128);put(p+16,2);put(p+96,6);seal(p);
  assert(a04_bqhr_classify(p,128,&out)==A04_BQHR_STOPPED && out.reason==6 && !out.kicks);
+ assert(a04_bqhr_is_cold_candidate(&out));
+ out.kicks=1;assert(!a04_bqhr_is_cold_candidate(&out));out.kicks=0;
+ out.first_valid=1;assert(!a04_bqhr_is_cold_candidate(&out));out.first_valid=0;
+ out.reason=2;assert(!a04_bqhr_is_cold_candidate(&out));
+ assert(!a04_bqhr_is_cold_candidate(0));
  for(i=0;i<128;i++){p[i]^=1; assert(a04_bqhr_classify(p,128,&out)==A04_BQHR_INVALID);p[i]^=1;}
  assert(a04_bqhr_classify(p,127,&out)==A04_BQHR_INVALID);
  put(p+16,1);seal(p);assert(a04_bqhr_classify(p,128,&out)==A04_BQHR_OTHER_STATE);

@@ -16,3 +16,9 @@ enum a04_bqhr_result a04_bqhr_classify(const uint8_t *p, unsigned size, struct a
     *out=candidate;
     return candidate.state==2 ? A04_BQHR_STOPPED : A04_BQHR_OTHER_STATE;
 }
+
+int a04_bqhr_is_cold_candidate(const struct a04_bqhr_info *info)
+{
+    return info && info->state==2 && info->reason==6 && !info->kicks &&
+           !info->faults && !info->first_valid && !info->latest_valid;
+}
