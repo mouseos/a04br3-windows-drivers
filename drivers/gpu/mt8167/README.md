@@ -229,3 +229,5 @@ queues](https://learn.microsoft.com/en-us/windows-hardware/drivers/wdf/using-pow
 XNUのm1.11起動手順を使うWindows向けトランスポートを追加したが、現在のPnPドライバからは呼び出さない。電源・クロックと割り込みマスクの所有、DMAエネーブラの寿命、停止時のDMA排出を統合してから実機で使用する必要がある。起動試行後の共通バッファは成功・失敗を問わず保持し、未実装の停止経路で解放しない。
 
 実装は [mouseos/xnu_kernel_benesse_a04br3](https://github.com/mouseos/xnu_kernel_benesse_a04br3) の `iokit/Kernel/arm/rogue/A04BR3RogueFirmware.h`、`A04BR3RogueMipsMMU.h`、`A04BR3RogueMemory.h`、`A04BR3RogueRuntimeLayout.h`、MITライセンスの `A04BR3RogueDDKABI.h` を参照し、BSD-2-Clause-Patentのヘッダを保持している。`make test-gpu-vendor-m1-11` は合成画像で正常系と破損・DMA同期失敗を試す。該当vendor firmwareを別途入力したホスト検証でも独立した版1展開結果と一致したが、配布権と実機動作は別途未確認。
+
+m1.11向けの固定SYNCコマンド経路を追加した。GPU側のキュー読取りと同期値の両方を確認し、タイムアウトや破損後はキューを再利用しない。現時点ではPnPから呼び出さず、実機でのファームウェア通信を意味しない。コマンド制御領域はCPUとGPUが同じキャッシュ行へ同時に書くため、キャッシュ無効またはハードウェア整合性の証拠が必要である。Microsoftの[AllocateCommonBuffer仕様](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_common_buffer)では `CacheEnabled` 引数は無視され、ARMではACPIの `_CCA` などに基づきOSが決定する。`FALSE` を渡しただけでは証明にならない。対象環境で属性とDMA整合性を確認するまでは、このコマンド経路を実機で有効にしない。

@@ -12,7 +12,9 @@ struct a04_vendor_start {
     PHYSICAL_ADDRESS trampoline_logical;
     void *trampoline_cpu;
     uint64_t trampoline_dma;
-    BOOLEAN attempted;
+    BOOLEAN attempted,online,command_poisoned;
+    volatile LONG command_busy;
+    uint32_t command_sequence;
 };
 /* Captured after the platform owner establishes the MT8167 power domains and
  * clocks. Register meanings and 26 MHz mux path follow the board Linux

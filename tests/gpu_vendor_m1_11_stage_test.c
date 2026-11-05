@@ -4,13 +4,35 @@
 #include <string.h>
 #include "windows_stage.h"
 #include "windows_start.h"
+#include "windows_command.h"
 #include "A04BR3RogueRuntimeLayout.h"
+#include "A04BR3RogueCommand.h"
 static unsigned count,freed,syncs,barriers,fail_sync,pools,fail_alloc;
 static struct a04_vendor_m1_11_memory *sim_memory;
-static unsigned simulate_ready, delays;
+static unsigned simulate_ready, simulate_fence, delays;
+struct fence_mock { struct a04_rgx_fw_runtime *r; unsigned kicks,complete; };
+static void fence_barrier(void *ctx) { (void)ctx; }
+static void fence_kick(void *ctx,uint32_t offset,uint32_t value)
+{
+    struct fence_mock *m=ctx;RGXFWIF_CCB_CTL *ctl=m->r->kctl;
+    if(offset!=0xb00 || value!=0x10) return;
+    m->kicks++;
+    if(m->complete) {
+        RGXFWIF_KCCB_CMD *cmd=&m->r->kcommands[ctl->ui32ReadOffset];
+        *m->r->command_sync=cmd->uCmdData.sSyncData.uiUpdateVal;
+        ctl->ui32ReadOffset=ctl->ui32WriteOffset;
+    }
+}
+static void fence_wait(void *ctx,uint32_t us) { (void)ctx;(void)us; }
 void KeStallExecutionProcessor(unsigned us)
 {
     (void)us;
+    if (simulate_fence && sim_memory && sim_memory->runtime->kctl->ui32ReadOffset!=sim_memory->runtime->kctl->ui32WriteOffset) {
+        struct a04_rgx_fw_runtime *r=sim_memory->runtime;
+        RGXFWIF_KCCB_CMD *cmd=&r->kcommands[r->kctl->ui32ReadOffset];
+        *r->command_sync=cmd->uCmdData.sSyncData.uiUpdateVal;
+        r->kctl->ui32ReadOffset=r->kctl->ui32WriteOffset;
+    }
     if (++delays==3 && simulate_ready && sim_memory) {
         RGXFWIF_COMPCHECKS *c=&sim_memory->runtime->init->sRGXCompChecks;
         sim_memory->runtime->init->bFirmwareStarted=1;
@@ -64,6 +86,18 @@ int main(int argc,char **argv)
        table[A04_RGX_MAIN_OFFSET/4096]!=(((uint32_t)(m.buffers[3].dma>>6)&0x03ffffc0u)|0x40000017u) ||
        table[A04_RGX_CONFIG_OFFSET/4096]!=(((uint32_t)(m.buffers[4].dma>>6)&0x03ffffc0u)|0x40000017u) ||
        m.runtime->kctl->ui32WrapMask!=127 || m.runtime->kctl->ui32CmdSize!=sizeof(RGXFWIF_KCCB_CMD)) return 12;
+    {
+        struct a04_rgx_command_state state={0};
+        struct fence_mock mock={m.runtime,0,1};
+        struct a04_rgx_command_io io={&mock,fence_barrier,fence_barrier,fence_kick,fence_wait};
+        if(a04_rgx_command_fence(m.runtime,&state,&io,A04_RGX_DM_GP,10,1)!=A04_CCB_OK || mock.kicks!=1 || state.sequence!=1) return 23;
+        mock.complete=0;
+        if(a04_rgx_command_fence(m.runtime,&state,&io,A04_RGX_DM_3D,2,1)!=A04_CCB_TIMEOUT || !state.poisoned || mock.kicks!=2) return 24;
+        if(a04_rgx_command_fence(m.runtime,&state,&io,A04_RGX_DM_GP,10,1)!=A04_CCB_OFFLINE || mock.kicks!=2) return 25;
+        /* Restore the synthetic queue before the independent startup test. */
+        m.runtime->kctl->ui32ReadOffset=m.runtime->kctl->ui32WriteOffset;
+        *m.runtime->command_sync=0;
+    }
     registers=calloc(1,0x80000);if(!registers) return 14;
     if(a04_vendor_m1_11_windows_start(&start,&m,registers,0x80000,0x001600280036001eULL,&power,FALSE)!=STATUS_INVALID_DEVICE_STATE || count!=5) return 15;
     power.top_mux0=0;
@@ -73,6 +107,10 @@ int main(int argc,char **argv)
     if(a04_vendor_m1_11_windows_start(&start,&m,registers,0x80000,0x001600280036001eULL,&power,TRUE)!=STATUS_IO_TIMEOUT || m.hardware_owned || freed!=1) return 16;
     fail_sync=0;simulate_ready=1;delays=0;sim_memory=&m;
     if(a04_vendor_m1_11_windows_start(&start,&m,registers,0x80000,0x001600280036001eULL,&power,TRUE)!=STATUS_SUCCESS || !m.hardware_owned || !start.attempted) return 17;
+    if(a04_vendor_m1_11_windows_fence(&start,A04_RGX_DM_GP,FALSE)!=STATUS_NOT_SUPPORTED || start.command_sequence) return 26;
+    simulate_fence=1;
+    if(a04_vendor_m1_11_windows_fence(&start,A04_RGX_DM_GP,TRUE)!=STATUS_SUCCESS || start.command_sequence!=1) return 27;
+    simulate_fence=0;
     if(a04_vendor_m1_11_windows_free(&m)!=STATUS_DEVICE_BUSY || freed!=1) return 8;
     /* Test-only teardown after the simulated device has stopped. */
     release(&adapter,0x8000,start.trampoline_logical,start.trampoline_allocation,FALSE);

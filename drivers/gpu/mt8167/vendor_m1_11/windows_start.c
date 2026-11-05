@@ -111,7 +111,7 @@ NTSTATUS a04_vendor_m1_11_windows_start(struct a04_vendor_start *s,
     }
     if(irq&1u) wr32(&context,0x8b0,1);
     if(result) { wr64(&context,0x100,0x100000000ULL);(void)rd64(&context,0x100);delay(&context,3);return STATUS_IO_DEVICE_ERROR; }
-    return STATUS_SUCCESS;
+    s->online=TRUE;return STATUS_SUCCESS;
 fail:
     m->adapter->DmaOperations->FreeCommonBuffer(m->adapter,TRAMPOLINE_ALLOCATION,s->trampoline_logical,s->trampoline_allocation,FALSE);
     RtlZeroMemory(s,sizeof(*s));return status;
