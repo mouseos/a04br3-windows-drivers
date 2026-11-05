@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[4]
 WIM='f5a647a143ce3f4568f49087ca03d4b7a21b47bd323b6c1ed7a6b4354d7847c6'
 ESP='ba23a17b23bd7c7f42491788ff06004475bf0dabc427ebf4614f4d177b9c6bdc'
-BOOT='2cc9dfbff72b37bbb9af530c92575dce9971346de7b2a7fbe1af504280eec049'
+BOOT='7121ca8b3e8bcf4c4487ed611eaffa17429418436689eda21ad03af6e34dceb6'
 PKG='d5cd7969885614ea3eb62384905bc4fa1b90649c59e201b32a5ab5756a4b2244'
 BCD='65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d'
 START='ad5b59fd143f247518426b0d4c84e0d699f268dc9afbee3416513828e6b320a4'
@@ -59,7 +59,15 @@ def main():
    b'echo GE8300_COPY_STATUS_RETURNED\r\ngoto display\r\n:gpu_failed\r\necho GE8300_COPY_LOAD_FAILED\r\ngoto display\r\n')
   data=start.read_bytes()
   if data.count(marker)!=1:raise ValueError('startnetの挿入位置が不一致')
-  start.write_bytes(data.replace(marker,insertion))
+  early=b'mountvol /N\r\nif errorlevel 1 goto failed\r\necho MT8167_SHARED_DRVLOAD_START'
+  if data.count(early)!=1:raise ValueError('listenerの挿入位置が不一致')
+  data=data.replace(early,b'mountvol /N\r\nif errorlevel 1 goto failed\r\necho A04VOL_LISTENER_LAUNCH\r\nstart "" /b X:\\a04br3\\mt8167-volume-listener.exe\r\necho MT8167_SHARED_DRVLOAD_START')
+  late=b'X:\\a04br3\\uart-screen.exe\r\nstart "" /b X:\\a04br3\\mt8167-volume-listener.exe\r\n'
+  if data.count(late)!=1:raise ValueError('旧listenerとscreenの位置が不一致')
+  data=data.replace(late,b'echo A04VOL_SCREEN_DISABLED_UART_PRIORITY\r\n')
+  data=data.replace(marker,insertion)
+  data=data.replace(b'%GPU%\\ge8300-vendor-stage-status.exe\r\n%GPU%\\ge8300-vendor-start-status.exe\r\n',b'')
+  start.write_bytes(data)
   wim=out/'volume.wim';shutil.copyfile(a.source_wim,wim)
   targets={'/Windows/System32/config/SOFTWARE':hive,'/Windows/System32/config/SYSTEM':system,'/Windows/System32/startnet.cmd':start}
   targets.update({'/a04br3/ge8300-copy/'+n:pkg/n for n in FILES})
@@ -75,6 +83,6 @@ def main():
   run(['python3',str(Path(__file__).with_name('replace-esp-wim.py')),'--template',str(a.source_esp.resolve()),'--wim',str(wim),'--output',str(esp),'--template-bcd-sha256',BCD,'--template-wim-sha256',WIM],env=env)
   boot=out/'boot.img';shutil.copyfile(a.boot,boot)
   if sha(boot)!=BOOT:raise ValueError('boot.imgが不一致')
-  m={'driver_commit':'f2a2b5c','wdk_runner':'42106309260','build_flags':{'A04_GE8300_VENDOR_STAGE':1,'A04_GE8300_VENDOR_UNCACHED_STAGE':1,'A04_GE8300_VENDOR_IRQ':1,'A04_GE8300_VENDOR_START_DIAGNOSTIC':1,'A04_GE8300_VENDOR_RENDER_COLD':1,'A04_GE8300_VENDOR_COPY_DIAGNOSTIC':1,'A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC':0,'A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC':0},'signed_package_sha256':PKG,'package_files_sha256':{n:sha(pkg/n) for n in sorted(FILES)},'test_certificate_sha1':thumb,'source_wim_sha256':WIM,'source_esp_sha256':ESP,'boot_sha256':BOOT,'bcd_sha256':BCD,'system_hive_sha256':sha(system),'wim_sha256':sha(wim),'esp_sha256':sha(esp),'startnet_sha256':sha(start),'firmware_source_sha256':'5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1','usc_source_lib_sha256':'d32a4a224d06302d9bec0a66cbb7d17dec663d3985f1c8592f5bb77353ca1d4b','usc_sha256':'5c68917faa051238b23674b64c6b137ef7ff75425dbde9dbc5e1e5a36e02c4a3','usc_rea_evidence':'ev_910dc555760f50405b2c4dd9760a8681757e5dfaf091954580c73f0292857078','limitations':['元asset由来の実験用診断。コピー・署名受理・同一起動は実機未確認。','surprise removal時のMMIO、fabric DMA停止、cache可視性、WDF参照による資源寿命は未証明。','GPU drvload停止時は画面送信と解除listenerが起動しない。','C:解除の完全な確認より前に実機へ書き込まない。']}
+  m={'driver_commit':'f2a2b5c','uefi_source_commit':'ea8b7dce315f36946d438aa25bf8af448ac3cce5','thermal_handoff':'観測のみ。所有解放を意味せず、このWinPEでは未実機確認。','uart':'listenerを先行起動。自動画面送信とUARTを占有するvendor statusは無効。GPUの直接UART出力は競合し得る。','wdk_runner':'42106309260','build_flags':{'A04_GE8300_VENDOR_STAGE':1,'A04_GE8300_VENDOR_UNCACHED_STAGE':1,'A04_GE8300_VENDOR_IRQ':1,'A04_GE8300_VENDOR_START_DIAGNOSTIC':1,'A04_GE8300_VENDOR_RENDER_COLD':1,'A04_GE8300_VENDOR_COPY_DIAGNOSTIC':1,'A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC':0,'A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC':0},'signed_package_sha256':PKG,'package_files_sha256':{n:sha(pkg/n) for n in sorted(FILES)},'test_certificate_sha1':thumb,'source_wim_sha256':WIM,'source_esp_sha256':ESP,'boot_sha256':BOOT,'bcd_sha256':BCD,'system_hive_sha256':sha(system),'wim_sha256':sha(wim),'esp_sha256':sha(esp),'startnet_sha256':sha(start),'firmware_source_sha256':'5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1','usc_source_lib_sha256':'d32a4a224d06302d9bec0a66cbb7d17dec663d3985f1c8592f5bb77353ca1d4b','usc_sha256':'5c68917faa051238b23674b64c6b137ef7ff75425dbde9dbc5e1e5a36e02c4a3','usc_rea_evidence':'ev_910dc555760f50405b2c4dd9760a8681757e5dfaf091954580c73f0292857078','limitations':['元asset由来の実験用診断。コピー・署名受理・同一起動は実機未確認。','surprise removal時のMMIO、fabric DMA停止、cache可視性、WDF参照による資源寿命は未証明。','listener起動指示はdrvloadより前だが、実際の準備完了やスケジューリングは保証しない。READY送信が30秒失敗しても再通知されない。READY受信を確認する。','UART送信は共有bufferを介し、画面送信は排他オープン。GPUの直接UART出力は混在し得る。欠損や混線を解除成功と扱わない。','C:解除はGPU DMA停止を意味せず、解除後のreset時のDMA安全性は未証明。','thermal観測は所有解放を意味せず、このWinPEでは未実機確認。','C:解除の完全な確認より前に実機へ書き込まない。']}
   (out/'manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2)+'\n');print(json.dumps(m,ensure_ascii=False,indent=2))
 if __name__=='__main__':main()
