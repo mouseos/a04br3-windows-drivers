@@ -700,6 +700,8 @@ NTSTATUS BASIC_DISPLAY_DRIVER::RegisterHWInfo()
     PCSTR StrHWInfoBiosString = "UEFI";
 
     HANDLE DevInstRegKeyHandle;
+    UNICODE_STRING ValueNameMemorySize;
+    DWORD MemorySize = 0; // BDD has no access to video memory
     Status = IoOpenDeviceRegistryKey(m_pPhysicalDevice, PLUGPLAY_REGKEY_DRIVER, KEY_SET_VALUE, &DevInstRegKeyHandle);
     if (!NT_SUCCESS(Status))
     {
@@ -710,31 +712,29 @@ NTSTATUS BASIC_DISPLAY_DRIVER::RegisterHWInfo()
     Status = WriteHWInfoStr(DevInstRegKeyHandle, L"HardwareInformation.ChipType", StrHWInfoChipType);
     if (!NT_SUCCESS(Status))
     {
-        return Status;
+        goto CloseRegistryKey;
     }
 
     Status = WriteHWInfoStr(DevInstRegKeyHandle, L"HardwareInformation.DacType", StrHWInfoDacType);
     if (!NT_SUCCESS(Status))
     {
-        return Status;
+        goto CloseRegistryKey;
     }
 
     Status = WriteHWInfoStr(DevInstRegKeyHandle, L"HardwareInformation.AdapterString", StrHWInfoAdapterString);
     if (!NT_SUCCESS(Status))
     {
-        return Status;
+        goto CloseRegistryKey;
     }
 
     Status = WriteHWInfoStr(DevInstRegKeyHandle, L"HardwareInformation.BiosString", StrHWInfoBiosString);
     if (!NT_SUCCESS(Status))
     {
-        return Status;
+        goto CloseRegistryKey;
     }
 
     // MemorySize is a ULONG, unlike the others which are all strings
-    UNICODE_STRING ValueNameMemorySize;
     RtlInitUnicodeString(&ValueNameMemorySize, L"HardwareInformation.MemorySize");
-    DWORD MemorySize = 0; // BDD has no access to video memory
     Status = ZwSetValueKey(DevInstRegKeyHandle,
                            &ValueNameMemorySize,
                            0,
@@ -744,9 +744,10 @@ NTSTATUS BASIC_DISPLAY_DRIVER::RegisterHWInfo()
     if (!NT_SUCCESS(Status))
     {
         BDD_LOG_ERROR1("ZwSetValueKey for MemorySize failed with Status: 0x%I64x", Status);
-        return Status;
     }
 
+CloseRegistryKey:
+    ZwClose(DevInstRegKeyHandle);
     return Status;
 }
 
