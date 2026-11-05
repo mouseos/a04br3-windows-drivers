@@ -13,7 +13,7 @@ NTSTATUS a04_vendor_m1_11_windows_stage_uncached(struct a04_vendor_m1_11_memory 
     IMG_PUINT32 trace_host;RGXFWIF_TRACEBUF *shadow_trace;
     unsigned i,j;ULONG step=1;NTSTATUS status=STATUS_DEVICE_CONFIGURATION_ERROR;
     if (!m || !adapter || !image || KeGetCurrentIrql()!=PASSIVE_LEVEL || m->adapter ||
-        m->runtime || m->staged || m->uncached || m->hardware_owned) return STATUS_INVALID_PARAMETER;
+        m->runtime || m->staged || m->uncached || m->hardware_owned || m->render_owner) return STATUS_INVALID_PARAMETER;
     for (i=0;i<5;i++) if(m->allocation[i] || m->buffers[i].cpu) return STATUS_INVALID_PARAMETER;
     m->adapter=adapter;
     step=2;

@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "windows_render_cold.h"
+#include "windows_copy_scratch.h"
+#include "gpu_mmu.h"
 static unsigned allocs,frees,pools,fail_at;
 unsigned KeGetCurrentIrql(void){return PASSIVE_LEVEL;}
 void a04_gpu_dma_barrier(void){}
@@ -26,6 +28,7 @@ int main(void)
     for(i=0;i<5;i++) {
         f.buffers[i].cpu=aligned_alloc(4096,sizes[i]);assert(f.buffers[i].cpu);
         f.buffers[i].bytes=sizes[i];f.buffers[i].dma=0xd0000000u+i*0x100000u;
+        f.allocation[i]=f.buffers[i].cpu;f.logical[i].QuadPart=f.buffers[i].dma;
         memset(f.buffers[i].cpu,0,sizes[i]);
     }
     f.adapter=&adapter;f.staged=TRUE;f.uncached=TRUE;table=f.buffers[0].cpu;table[0]=0x1234;
@@ -45,14 +48,44 @@ int main(void)
     assert(!memcmp(r.buffer[10].cpu,r.clear.usc,sizeof(r.clear.usc)));
     assert(((uint32_t *)r.buffer[1].cpu)[UINT64_C(0xf800000000)>>30]);
     assert(((uint32_t *)r.buffer[1].cpu)[UINT64_C(0xf900000000)>>30]);
+    {
+        struct a04_vendor_copy_scratch scratch={0};unsigned oldfrees=frees,oldallocs=allocs;
+        uint64_t *pt=(uint64_t*)r.buffer[3].cpu,expected;
+        assert(f.render_owner==&r && !r.copy_owner && !pt[16] && !pt[17] && !pt[18]);
+        assert(a04_vendor_copy_scratch_prepare(&scratch,&r,0)==STATUS_INVALID_DEVICE_STATE && allocs==oldallocs);
+        fail_at=allocs+2;
+        assert(a04_vendor_copy_scratch_prepare(&scratch,&r,1)==STATUS_INSUFFICIENT_RESOURCES && frees==oldfrees+1 && !r.copy_owner && !pt[16]);
+        fail_at=0;oldfrees=frees;
+        assert(a04_vendor_copy_scratch_prepare(&scratch,&r,1)==STATUS_SUCCESS && scratch.prepared && r.copy_owner==&scratch);
+        assert(pt[16]==((uint64_t)scratch.source.logical.QuadPart|A04_GPU_MMU_SLC_BYPASS|1u) &&
+               pt[17]==((uint64_t)scratch.destination.logical.QuadPart|A04_GPU_MMU_SLC_BYPASS|1u) &&
+               pt[18]==((uint64_t)scratch.shared.logical.QuadPart|A04_GPU_MMU_SLC_BYPASS|1u));
+        assert(((uint32_t*)scratch.shared.cpu)[0]==scratch.state.shared[0]);
+        assert(((uint32_t*)scratch.source.cpu)[0]==0x5a00c3a5u && ((uint32_t*)scratch.destination.cpu)[0]==0xa5a5a5a5u);
+        assert(a04_vendor_render_release_cold(&r)==STATUS_DEVICE_BUSY);
+        expected=pt[17];pt[17]^=4096;
+        assert(a04_vendor_copy_scratch_release(&scratch)==STATUS_INVALID_DEVICE_STATE && frees==oldfrees && r.copy_owner==&scratch);
+        pt[17]=expected;
+        assert(a04_vendor_copy_scratch_release(&scratch)==STATUS_SUCCESS && frees==oldfrees+3 && !pt[16] && !pt[17] && !pt[18] && !r.copy_owner);
+    }
     assert(a04_vendor_surface_prepare(&surface,&adapter,800,1280,3328,UINT64_C(0x8000000000))==STATUS_SUCCESS);
     assert(a04_vendor_render_attach_screen(&r,&surface)==STATUS_SUCCESS);
     assert(r.screen_surface==&surface && r.clear_first==1248u*3328u+768u*4u && r.clear_row_bytes==3328u);
     assert(((uint32_t *)r.buffer[1].cpu)[512]==((uint32_t)((uint64_t)surface.pd.logical.QuadPart>>8)|1u));
     assert(((uint32_t *)surface.pixels.cpu)[0]==0xa5a5a5a5u &&
            ((uint32_t *)surface.pixels.cpu)[surface.bytes/4u-1]==0xa5a5a5a5u);
-    assert(a04_vendor_render_release_cold(&r)==STATUS_SUCCESS && frees==28 && !pools);
-    assert(a04_vendor_surface_release(&surface)==STATUS_SUCCESS && frees==34);
-    for(i=0;i<5;i++)free(f.buffers[i].cpu);
+    assert(a04_vendor_render_release_cold(&r)==STATUS_SUCCESS && frees==32 && !pools);
+    assert(a04_vendor_surface_release(&surface)==STATUS_SUCCESS && frees==38);
+    {
+        struct a04_vendor_copy_scratch retained={0};unsigned oldfrees;
+        assert(a04_vendor_render_prepare_cold(&r,&f,&adapter,TRUE,0)==STATUS_SUCCESS);
+        assert(a04_vendor_copy_scratch_prepare(&retained,&r,1)==STATUS_SUCCESS);
+        f.hardware_owned=TRUE;assert(a04_vendor_copy_scratch_release(&retained)==STATUS_DEVICE_BUSY);f.hardware_owned=FALSE;
+        assert(a04_vendor_copy_scratch_mark_exposed(&retained)==STATUS_SUCCESS);
+        oldfrees=frees;
+        assert(a04_vendor_copy_scratch_release(&retained)==STATUS_DEVICE_BUSY && frees==oldfrees);
+        assert(a04_vendor_render_release_cold(&r)==STATUS_DEVICE_BUSY && f.render_owner==&r);
+        /* Process exit models retained resources; no hardware was exposed. */
+    }
     return 0;
 }

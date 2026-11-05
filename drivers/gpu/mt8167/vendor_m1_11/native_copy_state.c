@@ -8,7 +8,7 @@ static int overlaps(uint64_t a,uint64_t an,uint64_t b,uint64_t bn)
 { return a<=b ? b-a<an : a-b<bn; }
 static int in_scratch(uint64_t addr,uint64_t bytes,uint64_t align)
 {
-    const uint64_t start=A04_VENDOR_RENDER_SCRATCH_VA, size=65536u;
+    const uint64_t start=A04_VENDOR_RENDER_SCRATCH_VA, size=131072u;
     return addr>=start && addr-start<=size && bytes<=size-(addr-start) && !(addr&(align-1));
 }
 int a04_vendor_copy_state_build(struct a04_vendor_copy_state *out,

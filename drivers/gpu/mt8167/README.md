@@ -391,3 +391,20 @@ VA内の4 KiB範囲が離れていることだけでは元producerの独立mappi
 証明できない。固定copy診断では独立allocation・各GPU mapping・物理
 非重複・fenceまでの保持を実ownerで確定する必要がある。現在のCPU builderは
 これらを検証しないため、結果を投入可能なcopy taskとみなさない。
+
+`windows_copy_scratch.c` は未接続の起動前専用ownerで、3個の4 KiB common
+bufferをsource・destination・sharedに別々に確保し、既存general heapの未使用
+３ページへmappingする。Linux m1.11のpage table形式とSLC bypass指定は既存
+`gpu_mmu.c` に従う。REA `FUN_0012daec` (ev_b5ae3658f28e9e4754cb7e786cb89c5c0f42654718582dc7ca3c7ee2b08ca341) の
+32×32・32bit・pitch32範囲は4096 bytes、`FUN_00130108`
+(ev_8c470b285d2142c76e2114d379cd9945f4498530b5ded209b505410b9720b431) は
+PDS域の割当と完了位置に基づく再使用を示す。ownerはsource／destinationに
+異なる初期値を設定し、確認済みCPU stateをshared領域に置く。
+
+`render_owner` と `copy_owner` は親を先に解放しないための外部直列化前提の
+cold leaseで、exposedは一方向。公開前の解放ではPTEの内容を照合し消去を
+読戻してから子を解放する。公開後は現状常に解放を拒否する。仮想・DMA範囲の
+不一致、PTE不一致、allocation失敗では失敗し、競合・部分公開を安全とみなさない。
+これはWDF/PnP削除時のowner自体の寿命、実電源、cache可視性やGPU停止を保証しない。
+既定経路・CCBには未接続。完全208-byte taskとUSCの実行契約が未確定のため、
+このownerだけではGPU scratch copy診断は実施できない。

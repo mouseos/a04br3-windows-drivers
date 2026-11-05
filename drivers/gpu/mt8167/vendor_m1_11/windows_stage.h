@@ -14,6 +14,7 @@ struct a04_vendor_m1_11_memory {
     BOOLEAN hardware_owned;
     BOOLEAN uncached;
     ULONG stage_step;
+    void *render_owner; /* externally serialized cold-child lease */
 };
 /* PASSIVE_LEVEL only. Builds m1.11 FWIF memory but performs no MMIO. */
 NTSTATUS a04_vendor_m1_11_windows_stage(struct a04_vendor_m1_11_memory *m,

@@ -30,7 +30,7 @@ int main(void)
     assert(a04_vendor_copy_state_build(&out,&in) && !memcmp(&out,&before,sizeof(out)));
     in.destination_va=A04_VENDOR_RENDER_SCRATCH_VA+4096;in.shared_va=in.destination_va+16;
     assert(a04_vendor_copy_state_build(&out,&in) && !memcmp(&out,&before,sizeof(out)));
-    in.shared_va=A04_VENDOR_RENDER_SCRATCH_VA+65520;
+    in.shared_va=A04_VENDOR_RENDER_SCRATCH_VA+131056;
     assert(a04_vendor_copy_state_build(&out,&in) && !memcmp(&out,&before,sizeof(out)));
     in.shared_va=A04_VENDOR_RENDER_SCRATCH_VA+8192;in.source_va++;
     assert(a04_vendor_copy_state_build(&out,&in) && !memcmp(&out,&before,sizeof(out)));
