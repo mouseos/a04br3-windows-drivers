@@ -84,6 +84,14 @@ int main(void){
  struct a04_broker_lifecycle life={0};struct a04_bqhr_info info;struct a04_broker_request q={7,1,5*NS};
  struct a04_broker_response response;uint8_t record[128];
  exercise_shared_faults();
+ {
+  struct a04_fw_owner stopped_fw={0};struct a04_bqhr_info stopped_info;
+  uint8_t stopped_record[128];
+  stopped_fw.bq.stopped=1;stopped_fw.last_result=A04_BQ_STOPPED;
+  assert(a04_fw_exit(&stopped_fw,0,stopped_record,sizeof(stopped_record)));
+  assert(a04_bqhr_classify(stopped_record,sizeof(stopped_record),&stopped_info)==A04_BQHR_STOPPED);
+  assert(a04_bqhr_is_cold_candidate(&stopped_info));
+ }
  f.tick=130000000;
  assert(!a04_fw_start(&firmware,&fw,13000000,20*NS,1,1,1,1));
  assert(a04_fw_tick(&firmware)==A04_BQ_OK&&f.reads==8&&f.writes==1);
