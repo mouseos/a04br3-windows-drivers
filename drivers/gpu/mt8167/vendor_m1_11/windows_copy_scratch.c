@@ -65,7 +65,7 @@ NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *o,
     struct a04_vendor_copy_kick_input kick={FRAGMENT_PDS_OFFSET,SECONDARY_DATA_OFFSET,SECONDARY_CODE_OFFSET,FRAGMENT_USC_OFFSET};
     uint32_t existing_usc[3];
     unsigned i,j;NTSTATUS status;
-    if(!o || !r || KeGetCurrentIrql()!=PASSIVE_LEVEL || o->prepared || o->render || o->exposed ||
+    if(!o || !r || KeGetCurrentIrql()!=PASSIVE_LEVEL || o->prepared || o->render || o->exposed || o->usc_ready ||
        o->source.cpu || o->destination.cpu || o->shared.cpu || o->source.adapter || o->destination.adapter || o->shared.adapter ||
        o->source.bytes || o->destination.bytes || o->shared.bytes || r->copy_owner || r->screen_surface ||
        !r->mapped || !r->clear_ready || !(f=r->firmware) || f->hardware_owned || f->render_owner!=r ||
@@ -146,9 +146,40 @@ NTSTATUS a04_vendor_copy_scratch_mark_exposed(struct a04_vendor_copy_scratch *o)
        o->render->copy_owner!=o || !o->render->firmware || o->render->firmware->hardware_owned)return STATUS_INVALID_DEVICE_STATE;
     o->exposed=TRUE;return STATUS_SUCCESS;
 }
+NTSTATUS a04_vendor_copy_scratch_stage_usc(struct a04_vendor_copy_scratch *o,const void *asset,size_t bytes)
+{
+    struct a04_vendor_render_cold *r;struct a04_vendor_m1_11_memory *f;
+    _Alignas(8) uint32_t image[38],observed[38];unsigned i;
+    if(!o || !asset || bytes!=sizeof(image) || KeGetCurrentIrql()!=PASSIVE_LEVEL ||
+       !(r=o->render) || !o->prepared || o->exposed || o->usc_ready || r->copy_owner!=o ||
+       !(f=r->firmware) || f->render_owner!=r || f->hardware_owned || !r->mapped || !r->clear_ready ||
+       !r->buffer[10].cpu || r->buffer[10].bytes!=65536u || !a04_rgx_fw_pointer(asset,bytes) ||
+       a04_rgx_fw_alias(asset,bytes,o,sizeof(*o)) || a04_rgx_fw_alias(asset,bytes,r,sizeof(*r)) ||
+       a04_rgx_fw_alias(asset,bytes,f,sizeof(*f)) ||
+       (f->runtime && a04_rgx_fw_alias(asset,bytes,f->runtime,sizeof(*f->runtime))))return STATUS_INVALID_PARAMETER;
+    for(i=0;i<16;i++)if(r->buffer[i].cpu && a04_rgx_fw_alias(asset,bytes,r->buffer[i].cpu,r->buffer[i].bytes))return STATUS_INVALID_PARAMETER;
+    for(i=0;i<5;i++)if(!f->allocation[i] || a04_rgx_fw_alias(asset,bytes,f->allocation[i],fw_sizes[i]))return STATUS_INVALID_PARAMETER;
+    if(a04_rgx_fw_alias(asset,bytes,o->source.cpu,o->source.bytes) ||
+       a04_rgx_fw_alias(asset,bytes,o->destination.cpu,o->destination.bytes) ||
+       a04_rgx_fw_alias(asset,bytes,o->shared.cpu,o->shared.bytes))return STATUS_INVALID_PARAMETER;
+    RtlCopyMemory(image,asset,sizeof(image));
+    if(!a04_vendor_copy_usc_match((const uint8_t *)image,sizeof(image)))return STATUS_DATA_ERROR;
+    if(a04_rgx_device_read_words(observed,(UCHAR*)r->buffer[10].cpu+FRAGMENT_USC_OFFSET,sizeof(observed)))return STATUS_IO_DEVICE_ERROR;
+    for(i=0;i<38;i++)if(observed[i])return STATUS_DEVICE_CONFIGURATION_ERROR;
+    RtlCopyMemory(o->fragment_usc,image,sizeof(image));
+    /* Any partial publication retains the owner permanently. */
+    if(a04_rgx_device_write_words((UCHAR*)r->buffer[10].cpu+FRAGMENT_USC_OFFSET,image,sizeof(image)))goto retain;
+    a04_gpu_dma_barrier();
+    if(a04_rgx_device_read_words(observed,(UCHAR*)r->buffer[10].cpu+FRAGMENT_USC_OFFSET,sizeof(observed)))goto retain;
+    for(i=0;i<38;i++)if(observed[i]!=image[i])goto retain;
+    a04_gpu_dma_barrier();o->usc_ready=TRUE;return STATUS_SUCCESS;
+retain:
+    o->exposed=TRUE;return STATUS_IO_DEVICE_ERROR;
+}
 NTSTATUS a04_vendor_copy_scratch_release(struct a04_vendor_copy_scratch *o)
 {
     struct a04_vendor_render_cold *r;_Alignas(8) uint64_t e[3],zero[3]={0};
+    _Alignas(8) uint32_t usc[38],empty[38]={0};unsigned i;
     if(!o || KeGetCurrentIrql()!=PASSIVE_LEVEL || !(r=o->render) || !o->prepared || r->copy_owner!=o ||
        !r->firmware || r->firmware->render_owner!=r)return STATUS_INVALID_DEVICE_STATE;
     if(o->exposed || r->firmware->hardware_owned)return STATUS_DEVICE_BUSY;
@@ -156,6 +187,14 @@ NTSTATUS a04_vendor_copy_scratch_release(struct a04_vendor_copy_scratch *o)
        e[0]!=((uint64_t)o->source.logical.QuadPart|A04_GPU_MMU_SLC_BYPASS|1u) ||
        e[1]!=((uint64_t)o->destination.logical.QuadPart|A04_GPU_MMU_SLC_BYPASS|1u) ||
        e[2]!=((uint64_t)o->shared.logical.QuadPart|A04_GPU_MMU_SLC_BYPASS|1u))return STATUS_INVALID_DEVICE_STATE;
+    if(o->usc_ready) {
+        if(a04_rgx_device_read_words(usc,(UCHAR*)r->buffer[10].cpu+FRAGMENT_USC_OFFSET,sizeof(usc)))return STATUS_IO_DEVICE_ERROR;
+        for(i=0;i<38;i++)if(usc[i]!=o->fragment_usc[i])return STATUS_INVALID_DEVICE_STATE;
+        if(a04_rgx_device_write_words((UCHAR*)r->buffer[10].cpu+FRAGMENT_USC_OFFSET,empty,sizeof(empty))) {o->exposed=TRUE;return STATUS_IO_DEVICE_ERROR;}
+        a04_gpu_dma_barrier();
+        if(a04_rgx_device_read_words(usc,(UCHAR*)r->buffer[10].cpu+FRAGMENT_USC_OFFSET,sizeof(usc))) {o->exposed=TRUE;return STATUS_IO_DEVICE_ERROR;}
+        for(i=0;i<38;i++)if(usc[i]) {o->exposed=TRUE;return STATUS_IO_DEVICE_ERROR;}
+    }
     if(ptes(o,zero,1))return STATUS_IO_DEVICE_ERROR;
     a04_gpu_dma_barrier();if(ptes(o,e,0) || e[0] || e[1] || e[2] || pds_region(o,1,1) || pds_region(o,0,1))return STATUS_IO_DEVICE_ERROR;
     a04_gpu_dma_barrier();

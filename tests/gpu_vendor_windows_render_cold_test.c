@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -28,6 +29,15 @@ int main(void)
     struct fake_adapter adapter={&ops};struct a04_vendor_m1_11_memory f={0};
     struct a04_vendor_render_cold r={0};struct a04_vendor_surface surface={0};uint32_t *table;unsigned i;
     const unsigned sizes[5]={32768,102400,20480,262144,65536};
+    {
+        static const unsigned char expected[32]={0x85,0xad,0xa5,0x7e,0x1f,0x60,0x1e,0x96,0x2d,0x70,0x5f,0x38,0x92,0x85,0xad,0xb4,0xe7,0x4f,0x45,0x0b,0xc0,0x06,0x72,0x24,0x0d,0xfe,0xf7,0x39,0x9d,0x82,0x45,0x7f};
+        unsigned char zeros[152]={0},digest[32];
+        static const unsigned char sequence_expected[32]={0xf5,0x84,0xef,0xf8,0xc5,0x15,0x2f,0xb6,0xb2,0x69,0x98,0x06,0x50,0x8c,0xdb,0x71,0x48,0x13,0x8e,0xcb,0x6d,0xd5,0x64,0xb0,0x2b,0xfc,0x02,0x1f,0xd0,0xec,0x58,0x6a};
+        a04_vendor_copy_usc_hash(zeros,digest);assert(!memcmp(digest,expected,32));
+        assert(!a04_vendor_copy_usc_match(zeros,sizeof(zeros)) && !a04_vendor_copy_usc_match(zeros,151));
+        for(i=0;i<152;i++)zeros[i]=(unsigned char)i;
+        a04_vendor_copy_usc_hash(zeros,digest);assert(!memcmp(digest,sequence_expected,32));
+    }
     for(i=0;i<5;i++) {
         f.buffers[i].cpu=aligned_alloc(4096,sizes[i]);assert(f.buffers[i].cpu);
         f.buffers[i].bytes=sizes[i];f.buffers[i].dma=0xd0000000u+i*0x100000u;
@@ -88,6 +98,24 @@ int main(void)
         assert(scratch.eot_raw28==0x202u && scratch.eot_raw2c==96u && scratch.eot_raw30==64u && scratch.raw60==3u);
         assert(!((uint32_t*)r.buffer[10].cpu)[128/4]); /* no background USC supplied */
         {
+            const char *path=getenv("A04_COPY_USC_FIXTURE");unsigned char bytes[152]={0};
+            assert(a04_vendor_copy_scratch_stage_usc(&scratch,bytes,sizeof(bytes))==STATUS_DATA_ERROR && !scratch.usc_ready);
+            if(path) {
+                FILE *in=fopen(path,"rb");assert(in && fread(bytes,1,sizeof(bytes),in)==sizeof(bytes) && fgetc(in)==EOF);fclose(in);
+                assert(a04_vendor_copy_usc_match(bytes,sizeof(bytes)));
+                f.hardware_owned=TRUE;assert(a04_vendor_copy_scratch_stage_usc(&scratch,bytes,sizeof(bytes))==STATUS_INVALID_PARAMETER);f.hardware_owned=FALSE;
+                ((uint32_t*)r.buffer[10].cpu)[128/4]=1;
+                assert(a04_vendor_copy_scratch_stage_usc(&scratch,bytes,sizeof(bytes))==STATUS_DEVICE_CONFIGURATION_ERROR && !scratch.usc_ready);
+                ((uint32_t*)r.buffer[10].cpu)[128/4]=0;
+                assert(a04_vendor_copy_scratch_stage_usc(&scratch,bytes,sizeof(bytes))==STATUS_SUCCESS && scratch.usc_ready);
+                assert(!memcmp((UCHAR*)r.buffer[10].cpu+128,bytes,sizeof(bytes)));
+                assert(a04_vendor_copy_scratch_stage_usc(&scratch,bytes,sizeof(bytes))==STATUS_INVALID_PARAMETER);
+                ((UCHAR*)r.buffer[10].cpu)[128]^=1;
+                assert(a04_vendor_copy_scratch_release(&scratch)==STATUS_INVALID_DEVICE_STATE);
+                ((UCHAR*)r.buffer[10].cpu)[128]^=1;
+            }
+        }
+        {
             struct a04_vendor_copy_check_result check;
             assert(!a04_vendor_copy_check(&check,scratch.source.cpu,scratch.destination.cpu,scratch.shared.cpu,1024,&scratch.state));
             assert(!check.source_mismatches && check.destination_mismatches==1024 && !check.shared_mismatches);
@@ -109,6 +137,7 @@ int main(void)
         pt[17]=expected;
         assert(a04_vendor_copy_scratch_release(&scratch)==STATUS_SUCCESS && frees==oldfrees+3 && !pt[16] && !pt[17] && !pt[18] && !r.copy_owner);
         assert(!memcmp(clear_pds,pds,sizeof(clear_pds)) && !pds[64/4] && !pds[192/4] && !pds[256/4] && !pds[272/4]);
+        for(i=128;i<128+152;i++)assert(!((UCHAR*)r.buffer[10].cpu)[i]);
     }
     assert(a04_vendor_surface_prepare(&surface,&adapter,800,1280,3328,UINT64_C(0x8000000000))==STATUS_SUCCESS);
     assert(a04_vendor_render_attach_screen(&r,&surface)==STATUS_SUCCESS);
@@ -122,10 +151,16 @@ int main(void)
         struct a04_vendor_copy_scratch retained={0};unsigned oldfrees;
         assert(a04_vendor_render_prepare_cold(&r,&f,&adapter,TRUE,0)==STATUS_SUCCESS);
         assert(a04_vendor_copy_scratch_prepare(&retained,&r,1)==STATUS_SUCCESS);
+        if(getenv("A04_COPY_USC_FIXTURE")) {
+            unsigned char bytes[152];FILE *in=fopen(getenv("A04_COPY_USC_FIXTURE"),"rb");
+            assert(in && fread(bytes,1,sizeof(bytes),in)==sizeof(bytes));fclose(in);
+            assert(a04_vendor_copy_scratch_stage_usc(&retained,bytes,sizeof(bytes))==STATUS_SUCCESS);
+        }
         f.hardware_owned=TRUE;assert(a04_vendor_copy_scratch_release(&retained)==STATUS_DEVICE_BUSY);f.hardware_owned=FALSE;
         assert(a04_vendor_copy_scratch_mark_exposed(&retained)==STATUS_SUCCESS);
         oldfrees=frees;
         assert(a04_vendor_copy_scratch_release(&retained)==STATUS_DEVICE_BUSY && frees==oldfrees);
+        if(retained.usc_ready)assert(!memcmp((UCHAR*)r.buffer[10].cpu+128,retained.fragment_usc,152));
         assert(a04_vendor_render_release_cold(&r)==STATUS_DEVICE_BUSY && f.render_owner==&r);
         /* Process exit models retained resources; no hardware was exposed. */
     }

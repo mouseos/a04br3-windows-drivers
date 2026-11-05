@@ -420,8 +420,10 @@ copy scratch cold owner は既存clearのPDS offset 0..63を保持したまま�
 64..127へdestination向けEOT PDS、192..255へfragment PDS、256..271へ
 secondary data、272..287へsecondary codeを配置する。各領域は書込み前に全0、
 解放前に期待値と一致することを確認し、解放時は消去・読戻しする。既存USCの
-先頭12-byte EOTと一致することも検証する。152-byte background USCはまだ
-供給・実行しない。PDSオフセットやCSRの保有は完全task、ISPまたは画像copyの
+先頭12-byte EOTと一致することも検証する。152-byte background USCは、信頼された
+kernel callerが端末の元assetを渡す場合に限り、固定SHA-256を照合してUSC+128へ
+配置・読戻しできる。asset自体はソースに含めず、自動ロードや実行も行わない。
+PDSオフセットやCSRの保有は完全task、ISPまたは画像copyの
 正当性を意味しない。異常時はownerを保持し、releaseしない。
 
 REA `FUN_0013c634` (ev_cd99ca62374bf4818b7f0bfe20c52993261ff9dd2f33e522cd8e05377d26c00e)
@@ -429,6 +431,12 @@ REA `FUN_0013c634` (ev_cd99ca62374bf4818b7f0bfe20c52993261ff9dd2f33e522cd8e05377
 固定32×32 ownerは、この配置と`FUN_00129f88`のheap相対値に従うtask部分値
 raw28=0x202、raw2c=96、raw30=64も保持する。残りのtaskやUSC・ISPの
 組合せは未証明のままで、これらをCCBへ渡していない。
+
+USC配置はcold ownerかつGPU起動前に限る。PDSのfragment参照先と同じoffsetを
+使い、配置前の未使用確認、固定SHA-256照合、配置後の読戻しを行う。公開前の
+releaseでは内容照合と消去・読戻しを行い、部分書込み・消去失敗時はownerを
+隔離する。これは152-byteコードの元バイナリとの同一性と領域のCPU側管理を示す
+のみで、shaderの意味、GPU cache可視性、PnP寿命や停止後のDMA排出は証明しない。
 
 独立source／destination allocationのPTE公開後は、３つのPTEを読戻して期待した
 DMAアドレス・属性に一致しなければownerを隔離し、解放を拒否する。一致した場合、
