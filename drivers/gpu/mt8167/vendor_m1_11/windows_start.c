@@ -2,6 +2,7 @@
 #include "windows_start.h"
 #include "A04BR3RogueRuntimeLayout.h"
 #include "A04BR3RogueStartupExecutor.h"
+#include "A04BR3RogueDeviceWords.h"
 #include "../windows_hw.h"
 #define TRAMPOLINE_BYTES 0x4000u
 #define TRAMPOLINE_ALLOCATION (2u*TRAMPOLINE_BYTES)
@@ -103,10 +104,12 @@ NTSTATUS a04_vendor_m1_11_windows_start(struct a04_vendor_start *s,
         if(tries==1000) result=A04_EXEC_TIMEOUT;
         if(!result) {
             RGXFWIF_COMPCHECKS *c=&m->runtime->init->sRGXCompChecks;
+            RGXFWIF_COMPCHECKS snapshot;
             status=a04_gpu_dma_sync(c,sizeof(*c),TRUE);
-            if(!NT_SUCCESS(status) || c->ui32DDKVersion!=0x1000b || c->ui32DDKBuild!=5425693 ||
-               c->ui32FWProcessorVersion!=1 || c->sFWBVNC.ui32LayoutVersion!=3 ||
-               c->sFWBVNC.ui64BVNC!=input.bvnc || c->sHWBVNC.ui64BVNC!=input.bvnc) result=A04_EXEC_BUS;
+            if(!NT_SUCCESS(status) || a04_rgx_device_read_words(&snapshot,c,sizeof(snapshot)) ||
+               snapshot.ui32DDKVersion!=0x1000b || snapshot.ui32DDKBuild!=5425693 ||
+               snapshot.ui32FWProcessorVersion!=1 || snapshot.sFWBVNC.ui32LayoutVersion!=3 ||
+               snapshot.sFWBVNC.ui64BVNC!=input.bvnc || snapshot.sHWBVNC.ui64BVNC!=input.bvnc) result=A04_EXEC_BUS;
         }
     }
     if(irq&1u) wr32(&context,0x8b0,1);

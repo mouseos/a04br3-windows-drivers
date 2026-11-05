@@ -77,7 +77,7 @@ static uint64_t word(const unsigned char *p)
 {uint64_t v=0;unsigned i;for(i=0;i<8;i++)v|=(uint64_t)p[i]<<(8*i);return v;}
 int main(int argc,char **argv)
 {
-    DMA_OPERATIONS ops={alloc,release};struct fake_adapter adapter={&ops};
+    DMA_OPERATIONS ops={.AllocateCommonBuffer=alloc,.FreeCommonBuffer=release};struct fake_adapter adapter={&ops};
     struct a04_vendor_m1_11_memory m={0};struct a04_vendor_start start={0};
     struct a04_vendor_power_snapshot power={(1u<<25)|(1u<<24)|(1u<<4),(1u<<25)|(1u<<24)|(1u<<4),0,4u<<8,8u<<8,0};
     size_t n,cn,dn;unsigned char *image,*code,*data,*boot,*registers;uint32_t *table;

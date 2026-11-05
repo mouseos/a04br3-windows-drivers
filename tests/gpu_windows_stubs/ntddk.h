@@ -13,6 +13,8 @@ typedef struct fake_adapter *PDMA_ADAPTER;
 typedef struct {
     void *(*AllocateCommonBuffer)(PDMA_ADAPTER,ULONG,PHYSICAL_ADDRESS *,BOOLEAN);
     void (*FreeCommonBuffer)(PDMA_ADAPTER,ULONG,PHYSICAL_ADDRESS,void *,BOOLEAN);
+    ULONG Size;
+    void *(*AllocateCommonBufferEx)(PDMA_ADAPTER,PHYSICAL_ADDRESS *,ULONG,PHYSICAL_ADDRESS *,BOOLEAN,ULONG);
 } DMA_OPERATIONS;
 struct fake_adapter { DMA_OPERATIONS *DmaOperations; };
 #define STATUS_SUCCESS ((NTSTATUS)0)
