@@ -194,11 +194,12 @@ static int copy_producer_valid(const struct a04_vendor_copy_scratch *o)
     for(i=0;i<4;i++)if(state.pds_data[i]!=o->state.pds_data[i] || state.pds_code[i]!=o->state.pds_code[i])return 0;
     for(i=0;i<16;i++)if(kick.pds_fragment[i]!=o->kick.pds_fragment[i] || eot.pds[i]!=o->eot_pds[i])return 0;
     for(i=0;i<3;i++)if(eot.usc[i]!=o->eot_usc[i])return 0;
+    for(i=0;i<4;i++)if(eot.payload[32+i]!=o->destination_csr[i])return 0;
     return kick.raw00==o->kick.raw00 && kick.raw38==o->kick.raw38 && kick.raw40==o->kick.raw40 &&
         kick.raw48==o->kick.raw48 && kick.raw50==o->kick.raw50 && kick.raw58==o->kick.raw58 &&
         o->tile_raw04==eot.payload[1] && o->tile_raw18==eot.payload[6] && o->tile_raw20==eot.payload[8] &&
         o->eot_raw28==eot.payload[10] && o->eot_raw2c==EOT_PDS_OFFSET+eot.payload[11] &&
-        o->eot_raw30==EOT_PDS_OFFSET+eot.payload[12];
+        o->eot_raw30==EOT_PDS_OFFSET+eot.payload[12] && o->raw60==3u;
 }
 NTSTATUS a04_vendor_copy_scratch_task_snapshot(struct a04_vendor_copy_scratch *o,
     struct a04_vendor_copy_task_snapshot *out)
@@ -233,9 +234,17 @@ NTSTATUS a04_vendor_copy_scratch_task_snapshot(struct a04_vendor_copy_scratch *o
     snapshot32(&image,0x28,o->eot_raw28);snapshot32(&image,0x2c,o->eot_raw2c);snapshot32(&image,0x30,o->eot_raw30);
     snapshot64(&image,0x38,o->kick.raw38);snapshot64(&image,0x40,o->kick.raw40);
     snapshot64(&image,0x48,o->kick.raw48);snapshot64(&image,0x50,o->kick.raw50);
-    snapshot64(&image,0x58,o->kick.raw58);
-    /* raw60 remains a mapping-identity candidate, not a proven word. No
-     * defaulting of unproven ISP/CSR/tail to valid words either. */
+    snapshot64(&image,0x58,o->kick.raw58);snapshot64(&image,0x60,o->raw60);
+    /* Queue zeroes the native record. For the fixed aligned, non-overlap
+     * direct copy, FUN_128958 calls FUN_129f88 without the ISP-list backend;
+     * its reachable helpers leave these three qwords untouched. */
+    snapshot64(&image,0x68,0);snapshot64(&image,0x70,0);snapshot64(&image,0x78,0);
+    /* FUN_13ed80(native22)=8; flags0 bypasses the source-format CSR rewrite. */
+    for(i=0;i<4;i++)snapshot32(&image,0x80+4u*i,o->destination_csr[i]);
+    /* Fixed offline request: record word1=0, flags bit3=0, hint=0.
+     * FUN_1326a8 copies word1 to c8 and combines flag/hint into cc. */
+    snapshot32(&image,0xc8,0);snapshot32(&image,0xcc,0);
+    /* No defaulting of other unproven fields to valid words. */
     *out=image;return STATUS_SUCCESS;
 }
 NTSTATUS a04_vendor_copy_scratch_release(struct a04_vendor_copy_scratch *o)

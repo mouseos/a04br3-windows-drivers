@@ -440,15 +440,38 @@ releaseでは内容照合と消去・読戻しを行い、部分書込み・消�
 
 `a04_vendor_copy_scratch_task_snapshot` はGPU起動前にPTE、共有state、PDS、
 EOT、元USCの読戻しを一括照合し、208バイト相当のCPU上の検証像と、根拠がある
-DWORDを示すmaskを返す。mapping identityが未確定のraw60、ISP、PBE CSR、tail等はmaskを立てない。
+DWORDを示すmaskを返す。未確定の語はmaskを立てない。tailは固定offline requestの
+record word1=0、flags bit3=0、context hint=0を選び、`FUN_001326a8`
+(ev_81c5443c85f9a0d64be59e6b70c814460dac832358891dd322fedb68604cda18)に従って
+rawc8=0、rawcc=0を生成する。tailの意味や他の設定は未確定。
 ゼロ初期化された未確定語を正しい値とみなしてはならず、これはCCB packetではない。
 Linux m1.11 `rgxtransfer.c` はユーザー側のtransfer commandをFWへ転送するため、
 この検証像のmaskや不足を補完しない。GPU実行、描画や停止の証明には使えない。
 
+この固定profileに限定すると、queueはrecordをゼロ初期化し、形式0x22・layout0・
+整列済み別mapping・同寸32×32は通常copy backendから `FUN_00129f88` へ直接進む。
+その経路の呼出し先を含む書込み範囲ではraw68/70/78が変更されず、各0とする。
+これは `FUN_0012934c` と `FUN_0012dc50` のISP listを用いるfill経路の値ではない。
+REA `FUN_00132f98` (ev_bd42dad992c9241abb9720a023dc35a5ea59847a7613fc3a7cc580f650554521)、
+`FUN_00128958` (ev_bfe4159ea96c8d50a84b27bee44073ca0cd519ad82300fd6248cea452aa4eade)、
+`FUN_00129f88` (ev_2643ceb73416945ad436c7b84268c9896d78dc0314e525becf17a84eb2b4ae98)を参照する。
+
+native22のdestination PBE CSRは、元producer `FUN_00129f88` の後処理で
+`FUN_0013ed80(0x22)=8` (ev_33af4659902de45f1a6aa53d10fad5e263dbc5e4fc3d4a1eca2fe9405f2a30fd、
+表 ev_7fb559ceaad6b6dd68c07215f916bdab3d28e077306e0375349598036c3639a1) を得る。
+native22の４channel種別は各1 (ev_661e59d2180b4141c38bf9b6baad8dc7cf89d731bad45bd188a2ad2e524fe1a6)。
+この固定profileでは32-bit特例に入らず、destination flags 0でCSR書換えを行わない。
+したがって元 `FUN_0013e2e4` と一致する既存clearのCSR 4語を部分検証像に含める。
+source変換・他形式・非ゼロflagsについて一般化しない。
+
 独立source／destination allocationのPTE公開後は、３つのPTEを読戻して期待した
 DMAアドレス・属性に一致しなければownerを隔離し、解放を拒否する。一致した場合、
 `FUN_00129f88` のsource／destination mapping baseが異なる限定分岐に従い
-raw60=3を候補として保持する。これは部分taskの値であり、実行承認には使わない。
+raw60=3を保持する。REA `PVRSRVAcquireDeviceMapping` (ev_b50fe9723f6017e0be1c96459b2564132a7f6a09a8b941b1f227ea873d95cf54)
+と `FUN_001137e8` (ev_b46814f2337abce19ae93424253aeeb6b280d00c04d04e8759863d8092633626)
+は参照を保持したmemdescのdevice仮想アドレスを返す。固定scratchではsourceと
+destinationの仮想アドレスが異なり、それぞれのPTEも照合する。この部分値は
+他のtaskやGPU完了の正当性を示さず、実行承認には使わない。
 
 固定profileのclip 0..32では `FUN_00129f88` が縦横2タイルを記録し、
 `FUN_0012bfb4` がraw18に格納する。対応するnative22のsource property 0は
