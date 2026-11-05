@@ -5,7 +5,7 @@ drvload X:\a04br3\a04-msdc-probe.inf
 if errorlevel 1 goto storagefail
 call X:\a04br3\audit-toprgu-installed.cmd > X:\a04br3\toprgu-audit-result.txt 2>&1
 set "A04_AUDIT_RC=%errorlevel%"
-echo TOPRGU_AUDIT_EXIT=%A04_AUDIT_RC%>> X:\a04br3\toprgu-audit-result.txt
+>> X:\a04br3\toprgu-audit-result.txt echo TOPRGU_AUDIT_EXIT=%A04_AUDIT_RC%
 goto transmit
 :storagefail
 > X:\a04br3\toprgu-audit-result.txt echo TOPRGU_AUDIT_STORAGE_FAILED
