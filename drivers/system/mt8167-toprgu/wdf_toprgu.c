@@ -58,7 +58,7 @@ typedef struct {
 #endif
     volatile LONG ownedFour;
 #if A04_TOPRGU_THERMAL_STOP
-    volatile LONG thermalHalt;
+    volatile LONG thermalHalt, thermalArmed, thermalLastTicks;
 #endif
     BOOLEAN suspendedWatchdog;
     ULONG savedMode;
@@ -197,6 +197,7 @@ NTSTATUS ToprguD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
     if (KeQueryActiveProcessorCount(NULL)==4 && InterlockedCompareExchange(&c->ownedFour,1,1) && c->wdt &&
 #if A04_TOPRGU_THERMAL_STOP
         !InterlockedCompareExchange(&c->thermalHalt,0,0) &&
+        !InterlockedCompareExchange(&c->thermalArmed,0,0) &&
 #endif
         (action==PowerActionSleep || action==PowerActionHibernate ||
          action==PowerActionShutdown || action==PowerActionShutdownOff)) {
@@ -224,6 +225,9 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
     if (InterlockedCompareExchange(&c->running,1,1) && c->wdt && c->uart) {
         four=KeQueryActiveProcessorCount(NULL) == 4;
         if (!four) {
+#if A04_TOPRGU_THERMAL_STOP
+            if(InterlockedCompareExchange(&c->thermalArmed,0,0))InterlockedExchange(&c->thermalHalt,1);
+#endif
             /* A previous CPU1 witness cannot authorize a later topology. */
             InterlockedExchange(&c->ownedFour,0);
             goto done;
@@ -253,6 +257,14 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
             Trace(c,"A04RGU backup DPC active\n");
         ++c->ticks;
         elapsed=KeQueryInterruptTime()-c->started;
+#if A04_TOPRGU_THERMAL_STOP
+        if (mt8167_thermal_must_stop(InterlockedCompareExchange(&c->thermalArmed,0,0),four,
+                (ULONG)KeQueryInterruptTime(),
+                (ULONG)InterlockedCompareExchange(&c->thermalLastTicks,0,0),30000000u)) {
+            InterlockedExchange(&c->thermalHalt,1);
+            WRITE_REGISTER_ULONG(c->wdt+5,0x1209u);
+        }
+#endif
         feed=mt8167_watchdog_thermal_may_feed(
 #if A04_TOPRGU_THERMAL_STOP
                  InterlockedCompareExchange(&c->thermalHalt,0,0),
@@ -350,6 +362,7 @@ NTSTATUS ToprguD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
     if (InterlockedCompareExchange(&c->ownedFour,1,1) && c->wdt &&
 #if A04_TOPRGU_THERMAL_STOP
         !InterlockedCompareExchange(&c->thermalHalt,0,0) &&
+        !InterlockedCompareExchange(&c->thermalArmed,0,0) &&
 #endif
         (action==PowerActionSleep || action==PowerActionHibernate ||
          action==PowerActionShutdown || action==PowerActionShutdownOff)) {
@@ -373,6 +386,14 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
         ++c->ticks;
         four=KeQueryActiveProcessorCount(NULL) >= 4;
         elapsed=KeQueryInterruptTime()-c->started;
+#if A04_TOPRGU_THERMAL_STOP
+        if (mt8167_thermal_must_stop(InterlockedCompareExchange(&c->thermalArmed,0,0),four,
+                (ULONG)KeQueryInterruptTime(),
+                (ULONG)InterlockedCompareExchange(&c->thermalLastTicks,0,0),30000000u)) {
+            InterlockedExchange(&c->thermalHalt,1);
+            WRITE_REGISTER_ULONG(c->wdt+5,0x1209u);
+        }
+#endif
         feed=mt8167_watchdog_thermal_may_feed(
 #if A04_TOPRGU_THERMAL_STOP
                  InterlockedCompareExchange(&c->thermalHalt,0,0),
@@ -489,6 +510,21 @@ VOID ToprguThermalControl(WDFQUEUE queue, WDFREQUEST request, size_t outputLengt
         status=(c->wdt && InterlockedCompareExchange(&c->running,0,0) &&
                 InterlockedCompareExchange(&c->ownedFour,0,0) &&
                 !InterlockedCompareExchange(&c->thermalHalt,0,0)) ? STATUS_SUCCESS : STATUS_DEVICE_NOT_READY;
+    } else if (code==A04_TOPRGU_THERMAL_ARM) {
+        if(c->wdt && InterlockedCompareExchange(&c->running,0,0) &&
+           InterlockedCompareExchange(&c->ownedFour,0,0) &&
+           !InterlockedCompareExchange(&c->thermalHalt,0,0) &&
+           !InterlockedCompareExchange(&c->thermalArmed,0,0)) {
+            InterlockedExchange(&c->thermalLastTicks,(LONG)(ULONG)KeQueryInterruptTime());
+            InterlockedExchange(&c->thermalArmed,1); status=STATUS_SUCCESS;
+        } else status=STATUS_DEVICE_NOT_READY;
+    } else if (code==A04_TOPRGU_THERMAL_PING) {
+        if(InterlockedCompareExchange(&c->thermalArmed,0,0) &&
+           KeQueryActiveProcessorCount(NULL)==4 && InterlockedCompareExchange(&c->ownedFour,0,0) &&
+           !InterlockedCompareExchange(&c->thermalHalt,0,0)) {
+            InterlockedExchange(&c->thermalLastTicks,(LONG)(ULONG)KeQueryInterruptTime());
+            status=STATUS_SUCCESS;
+        } else status=STATUS_DEVICE_NOT_READY;
     } else if (code==A04_TOPRGU_THERMAL_HALT) {
         InterlockedExchange(&c->thermalHalt,1);
         #if A04_TOPRGU_CPU1_HANDOFF
@@ -497,8 +533,12 @@ VOID ToprguThermalControl(WDFQUEUE queue, WDFREQUEST request, size_t outputLengt
 #else
         if (c->wdt && InterlockedCompareExchange(&c->running,0,0)) {
 #endif
-            WRITE_REGISTER_ULONG(c->wdt+5,0x1209u);
-            status=STATUS_SUCCESS; /* request sent; reset is not verified */
+            /* The latch prevents new feeds; never reset parallel to a poll. */
+            if(InterlockedCompareExchange(&c->busy,1,0)==0) {
+                WRITE_REGISTER_ULONG(c->wdt+5,0x1209u);
+                InterlockedExchange(&c->busy,0);
+            }
+            status=STATUS_SUCCESS; /* request, not reset completion */
         } else status=STATUS_DEVICE_NOT_READY;
     }
     WdfRequestComplete(request,status);

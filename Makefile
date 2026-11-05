@@ -410,11 +410,17 @@ clean:
 	rm -rf build
 
 # Linux-derived MT8167 thermal components are separately GPL-2.0-only.
-test-thermal: build/thermal_test build/thermal_devinfo_test build/thermal_hardware_test build/thermal_freshness_test
+test-thermal: build/thermal_test build/thermal_devinfo_test build/thermal_hardware_test build/thermal_freshness_test build/thermal_lease_test build/thermal_completion_test build/thermal_monitor_test build/thermal_ownership_test build/thermal_readout_test build/thermal_oneshot_test
 	./build/thermal_test
 	./build/thermal_devinfo_test
 	./build/thermal_hardware_test
 	./build/thermal_freshness_test
+	./build/thermal_lease_test
+	./build/thermal_completion_test
+	./build/thermal_monitor_test
+	./build/thermal_ownership_test
+	./build/thermal_readout_test
+	./build/thermal_oneshot_test
 	python3 tests/thermal_fdt_test.py
 
 build/thermal_test: drivers/power/mt8167-thermal/thermal.c drivers/power/mt8167-thermal/thermal.h drivers/power/mt8167-thermal/manager.c drivers/power/mt8167-thermal/manager.h tests/thermal_test.c
@@ -863,3 +869,33 @@ test-mt8167-usb-controller-irq:
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/usb/mt8167-usb20 tests/usb/controller_test.c drivers/usb/mt8167-usb20/controller.c -o build/mt8167_usb_irq_test
 	./build/mt8167_usb_irq_test
+
+
+build/thermal_lease_test: drivers/input/bu21025/thermal_lease.h tests/thermal_lease_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/input/bu21025 tests/thermal_lease_test.c -o $@
+
+
+build/thermal_completion_test: drivers/power/mt8167-thermal/completion.c drivers/power/mt8167-thermal/completion.h drivers/power/mt8167-thermal/freshness.c tests/thermal_completion_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal drivers/power/mt8167-thermal/completion.c drivers/power/mt8167-thermal/freshness.c tests/thermal_completion_test.c -o $@
+
+
+build/thermal_monitor_test: drivers/power/mt8167-thermal/monitor.c drivers/power/mt8167-thermal/completion.c drivers/power/mt8167-thermal/freshness.c drivers/power/mt8167-thermal/hardware.c drivers/power/mt8167-thermal/thermal.c tests/thermal_monitor_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal drivers/power/mt8167-thermal/monitor.c drivers/power/mt8167-thermal/completion.c drivers/power/mt8167-thermal/freshness.c drivers/power/mt8167-thermal/hardware.c drivers/power/mt8167-thermal/thermal.c tests/thermal_monitor_test.c -o $@
+
+
+build/thermal_ownership_test: drivers/power/mt8167-thermal/ownership.h drivers/power/mt8167-thermal/resources.h tests/thermal_ownership_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal tests/thermal_ownership_test.c -o $@
+
+
+build/thermal_readout_test: drivers/power/mt8167-thermal/readout.c drivers/power/mt8167-thermal/readout.h tests/thermal_readout_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal drivers/power/mt8167-thermal/readout.c tests/thermal_readout_test.c -o $@
+
+
+build/thermal_oneshot_test: drivers/power/mt8167-thermal/oneshot.c drivers/power/mt8167-thermal/hardware.c drivers/power/mt8167-thermal/completion.c drivers/power/mt8167-thermal/freshness.c drivers/power/mt8167-thermal/thermal.c tests/thermal_oneshot_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal $^ -o $@

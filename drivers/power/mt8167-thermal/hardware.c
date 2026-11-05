@@ -51,3 +51,28 @@ int a04_thermal_hw_protect(const struct a04_thermal_hw *h, const struct a04_ther
  WR(T+0x00c,interrupt|0x80000000u);
  return 0;
 }
+
+/* Linux MT8167 suspend first waits for the thermal AHB FSM, pauses sensing,
+ * then disables periodic measurement. Leave shared clocks and analog rails
+ * alone: another device may depend on them. Failure does not release a lease. */
+int a04_thermal_hw_quiesce(const struct a04_thermal_hw *h)
+{
+ uint32_t v; unsigned i;
+ if(!h || !h->qualified || !h->read32 || !h->write32 || !h->delay_us || !h->qualified(h->ctx))return -1;
+ for(i=0;i<50;i++) {
+  if(!h->qualified(h->ctx) || h->read32(h->ctx,T+0x418,&v) || v==UINT32_MAX)return -1;
+  if(!(v>>16))break;
+  if(h->delay_us(h->ctx,2))return -1;
+ }
+ if(i==50)return -1;
+ if(!h->qualified(h->ctx) || h->read32(h->ctx,T+0x03c,&v) || v==UINT32_MAX)return -1;
+ if(!h->qualified(h->ctx) || h->write32(h->ctx,T+0x03c,v|0x10eu))return -1;
+ if(!h->qualified(h->ctx) || h->write32(h->ctx,T,0))return -1;
+ if(!h->qualified(h->ctx) || h->read32(h->ctx,T,&v) || v!=0)return -1;
+ for(i=0;i<50;i++) {
+  if(!h->qualified(h->ctx) || h->read32(h->ctx,T+0x418,&v) || v==UINT32_MAX)return -1;
+  if(!(v>>16))return h->qualified(h->ctx)?0:-1;
+  if(h->delay_us(h->ctx,2))return -1;
+ }
+ return -1;
+}
