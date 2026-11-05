@@ -11,7 +11,7 @@ mock = r'''
 #include <stddef.h>
 #include <string.h>
 typedef int32_t NTSTATUS; typedef int64_t LONGLONG; typedef uint32_t ULONG;
-typedef uintptr_t ULONG_PTR; typedef void *WDFIOTARGET; typedef void *WDFWAITLOCK; typedef void *WDFREQUEST; typedef void *PVOID;
+typedef uintptr_t ULONG_PTR; typedef void *WDFIOTARGET; typedef void *WDFWAITLOCK; typedef void *WDFREQUEST; typedef void *WDFDEVICE; typedef void *WDFQUEUE; typedef void *PVOID;
 typedef struct { void *p; size_t n; } WDF_MEMORY_DESCRIPTOR;
 typedef struct { int flags; LONGLONG timeout; } WDF_REQUEST_SEND_OPTIONS;
 #define STATUS_SUCCESS 0
