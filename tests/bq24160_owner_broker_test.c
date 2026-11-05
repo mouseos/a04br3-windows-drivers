@@ -6,6 +6,7 @@
 #include "broker_client.h"
 #include "broker_wire.h"
 #include "broker_handoff.h"
+#include "broker_lifecycle.h"
 #define NS 1000000000ULL
 struct fake { uint64_t now, gauge_delay; int reads, writes, gauge_reads, bad_gauge, bad_bq, transfer_stage, transfer_fail, clock_calls, regress_at; };
 static int transfer_action(void *p){struct fake *f=p;++f->transfer_stage;return f->transfer_stage==f->transfer_fail;}
@@ -180,6 +181,31 @@ int main(void) {
         f.now=2*NS;tr.last_observed=3*NS;
         assert(a04_broker_handoff(&e,&destination,&tr,&ops,30*NS));
         assert(!tr.attempted&&!f.transfer_stage&&!e.closed&&!o.stopped);
+    }
+    {
+        struct a04_broker_endpoint e={0};struct a04_broker_lifecycle l={0};struct a04_owner_transfer tr={0};
+        struct a04_bq_owner destination={0};struct a04_broker_request q={1,1,5*NS};struct a04_broker_response response;
+        struct a04_transfer_ops ops={&f,transfer_action,transfer_action,transfer_action,transfer_action,clock_ns};
+        setup(&f,&o,&b,&c,&g);memset(&b,0,sizeof(b));
+        assert(!a04_broker_lifecycle_start(&l,&e,&b,&o,&c,&g,0,40*NS,1));
+        assert(!f.reads&&!f.writes&&l.state==A04_LIFE_LIVE);
+        assert(!a04_broker_lifecycle_maintain(&l)&&f.writes==1);
+        assert(!a04_broker_endpoint_dispatch(&e,&q,&response)&&response.result==A04_BROKER_OK);
+        assert(!a04_broker_lifecycle_quiesce(&l));
+        assert(a04_broker_endpoint_dispatch(&e,&q,&response));
+        f.now=2*NS;assert(!a04_broker_lifecycle_handoff(&l,&destination,&tr,&ops,30*NS));
+        assert(l.state==A04_LIFE_HANDED_OFF&&destination.handoff_pending&&o.stopped);
+        a04_broker_lifecycle_stop(&l);assert(!destination.stopped);
+    }
+    {
+        struct a04_broker_endpoint e={0};struct a04_broker_lifecycle l={0};
+        setup(&f,&o,&b,&c,&g);memset(&b,0,sizeof(b));
+        assert(!a04_broker_lifecycle_start(&l,&e,&b,&o,&c,&g,0,40*NS,1));
+        assert(!a04_broker_lifecycle_maintain(&l)&&!a04_broker_lifecycle_quiesce(&l));
+        a04_broker_lifecycle_stop(&l);
+        assert(l.state==A04_LIFE_STOPPED&&e.closed&&o.stopped);
+        assert(a04_broker_lifecycle_maintain(&l)&&a04_broker_lifecycle_quiesce(&l));
+        assert(a04_broker_lifecycle_start(&l,&e,&b,&o,&c,&g,0,40*NS,1));
     }
     {
         uint8_t wire[A04_BROKER_WIRE_BYTES];struct a04_broker_request q={1,2,3},decoded={9,9,9};

@@ -27,6 +27,9 @@
 #if A04_BROKER_CLIENT_EXPERIMENTAL || A04_BROKER_OWNER_EXPERIMENTAL
 #include "../bq24160/broker_wdf.h"
 #endif
+#if A04_BROKER_OWNER_EXPERIMENTAL
+#include "../bq24160/broker_lifecycle.h"
+#endif
 #ifndef A04_BQHR_DIAGNOSTIC
 #define A04_BQHR_DIAGNOSTIC 0
 #endif
@@ -51,6 +54,8 @@ typedef struct {
 #endif
 #if A04_BROKER_OWNER_EXPERIMENTAL
     struct a04_broker_endpoint owner_endpoint;
+    struct a04_bq_broker owner_broker;
+    struct a04_broker_lifecycle owner_lifecycle;
     WDFQUEUE owner_queue;
 #endif
 #if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
@@ -145,6 +150,16 @@ static void diagnose_bqhr(GAUGE_CONTEXT *c)
 static NTSTATUS broker_resolve(GAUGE_CONTEXT *c,WDFIOTARGET *target,uint64_t *epoch)
 { UNREFERENCED_PARAMETER(c);UNREFERENCED_PARAMETER(target);UNREFERENCED_PARAMETER(epoch);return STATUS_DEVICE_NOT_READY; }
 #endif
+#if A04_BROKER_OWNER_EXPERIMENTAL
+/* These must be implemented from verified platform ownership evidence, not
+ * flags or guessed epochs. No D0-off successor is currently established. */
+static NTSTATUS owner_platform_start(GAUGE_CONTEXT *c,uint64_t *lifetime,uint64_t *epoch)
+{ UNREFERENCED_PARAMETER(c);UNREFERENCED_PARAMETER(lifetime);UNREFERENCED_PARAMETER(epoch);return STATUS_DEVICE_NOT_READY; }
+static NTSTATUS owner_platform_successor(GAUGE_CONTEXT *c,struct a04_bq_owner **next,
+                                         struct a04_owner_transfer **transfer,
+                                         const struct a04_transfer_ops **ops,uint64_t *deadline)
+{ UNREFERENCED_PARAMETER(c);UNREFERENCED_PARAMETER(next);UNREFERENCED_PARAMETER(transfer);UNREFERENCED_PARAMETER(ops);UNREFERENCED_PARAMETER(deadline);return STATUS_DEVICE_NOT_READY; }
+#endif
 static void notify(GAUGE_CONTEXT *c)
 {
     WdfWaitLockAcquire(c->class_lock, NULL);
@@ -172,12 +187,16 @@ static void poll(GAUGE_CONTEXT *c)
     }
 #else
 #if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
+#if A04_BROKER_OWNER_EXPERIMENTAL
+    result=a04_broker_lifecycle_maintain(&c->owner_lifecycle) ? A04_BQ_STOPPED : A04_BQ_OK;
+#else
     now = charger_now(&c->adapter);
     /* The first call requires a qualified firmware ownership handoff.
      * This experimental build has no validated handoff record, so it is
      * never eligible for deployment. See README before any target use. */
     result = a04_bq_step(&c->charger, &c->charger_bus,
                           now <= UINT64_MAX - 20000000000ULL ? now + 20000000000ULL : 0);
+#endif
     if (result != A04_BQ_OK) {
         trace(c, "A04BAT CHARGER STOPPED\n");
         c->faulted = TRUE; InterlockedExchange(&c->online, 0);
@@ -200,6 +219,9 @@ static void poll(GAUGE_CONTEXT *c)
          * Do not publish the gauge; the next periodic read can recover it.
          * A busy controller, NACK or timeout latches the shared bus fault. */
         if (c->adapter.faulted) {
+#if A04_BROKER_OWNER_EXPERIMENTAL
+            a04_broker_lifecycle_stop(&c->owner_lifecycle);
+#endif
 #if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
             c->charger.stopped = 1;
 #endif
@@ -302,8 +324,25 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     c->charger_bus.read = a04_bq_mt8167_read;
     c->charger_bus.write_watchdog = a04_bq_mt8167_kick;
 #endif
+#if A04_BROKER_OWNER_EXPERIMENTAL
+    {
+        uint64_t lifetime=0,epoch=0;
+        NTSTATUS status=owner_platform_start(c,&lifetime,&epoch);
+        if (!NT_SUCCESS(status) || !lifetime || !epoch) return STATUS_DEVICE_NOT_READY;
+        WdfWaitLockAcquire(c->bus_lock,NULL);
+        /* Arm maintenance before publishing the endpoint: an internal IOCTL
+         * may immediately pet the BQ once it can acquire this same lock. */
+        InterlockedExchange(&c->online,1);
+        WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(10000));
+        status=a04_broker_lifecycle_start(&c->owner_lifecycle,&c->owner_endpoint,&c->owner_broker,
+                    &c->charger,&c->charger_bus,&c->bus,now_ns(c),lifetime,epoch) ? STATUS_DEVICE_NOT_READY : STATUS_SUCCESS;
+        if (!NT_SUCCESS(status)) InterlockedExchange(&c->online,0);
+        WdfWaitLockRelease(c->bus_lock);
+        if (!NT_SUCCESS(status)) { WdfTimerStop(c->timer,TRUE);WdfTimerStop(c->timer,FALSE);return status; }
+    }
+#endif
     InterlockedExchange(&c->online, 1);
-#if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
+#if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL && !A04_BROKER_OWNER_EXPERIMENTAL
     /* Arm before any charger transaction. D0Exit synchronously cancels it. */
     WdfTimerStart(c->timer, WDF_REL_TIMEOUT_IN_MS(10000));
 #endif
@@ -325,11 +364,31 @@ NTSTATUS GaugeD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
 {
     GAUGE_CONTEXT *c = GaugeContext(device);
     UNREFERENCED_PARAMETER(target);
+#if A04_BROKER_OWNER_EXPERIMENTAL
+    /* Close admission under the same lock while the D0 timer can still run. */
+    WdfWaitLockAcquire(c->bus_lock,NULL);
+    if (c->owner_lifecycle.state==A04_LIFE_LIVE)
+        (void)a04_broker_lifecycle_quiesce(&c->owner_lifecycle);
+    WdfWaitLockRelease(c->bus_lock);
+#endif
     InterlockedExchange(&c->online, 0);
     WdfTimerStop(c->timer, TRUE);
     /* The callback may have rearmed immediately before observing offline. */
     WdfTimerStop(c->timer, FALSE);
     WdfWaitLockAcquire(c->bus_lock, NULL);
+#if A04_BROKER_OWNER_EXPERIMENTAL
+    if (c->owner_lifecycle.state==A04_LIFE_QUIESCING) {
+        struct a04_bq_owner *next=NULL;
+        struct a04_owner_transfer *transfer=NULL;
+        const struct a04_transfer_ops *ops=NULL;
+        uint64_t deadline=0;
+        NTSTATUS status=owner_platform_successor(c,&next,&transfer,&ops,&deadline);
+        if (!NT_SUCCESS(status) || !next || !transfer || !ops || !deadline ||
+            a04_broker_lifecycle_handoff(&c->owner_lifecycle,next,transfer,ops,deadline))
+            a04_broker_lifecycle_stop(&c->owner_lifecycle);
+        c->faulted=TRUE;
+    }
+#endif
 #if A04_BROKER_CLIENT_EXPERIMENTAL
     a04_broker_wdf_stop(&c->broker);
 #endif

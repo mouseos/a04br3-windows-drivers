@@ -25,7 +25,7 @@ foreach ($name in @('gauge','mt8167_i2c','battery_class','wdf_gauge')) {
 }
 if ($charger -eq '1') {
     $bqSource = Join-Path $root 'drivers\power\bq24160'
-    foreach ($name in @('charger','mt8167_i2c','broker_client','broker_wire','broker_wdf','broker_wdf_receiver','broker_wdf_queue','broker_mailbox','owner_broker','broker_handoff','owner_transfer')) {
+    foreach ($name in @('charger','mt8167_i2c','broker_client','broker_wire','broker_wdf','broker_wdf_receiver','broker_wdf_queue','broker_mailbox','owner_broker','broker_handoff','broker_lifecycle','owner_transfer')) {
         $obj = Join-Path $out "bq_$name.obj"
         & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" -c (Join-Path $bqSource "$name.c") -o $obj
         if ($LASTEXITCODE -ne 0) { throw "ARM BQ24160 compilation failed: $name" }
