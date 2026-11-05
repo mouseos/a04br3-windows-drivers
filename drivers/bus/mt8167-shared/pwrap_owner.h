@@ -22,5 +22,6 @@ int a04_pwrap_owner_stop(struct a04_pwrap_owner *owner);
 /* Read-only fixed eMMC register set under the same owner lock. No regulator
  * writes; the parent must retain power and client references for the call. */
 int a04_pwrap_owner_read_emmc_rails(struct a04_pwrap_owner *, struct a04_emmc_rails_raw *);
+int a04_pwrap_owner_read_rtc32k(struct a04_pwrap_owner *, struct a04_rtc32k_raw *);
 int a04_pwrap_owner_read_buttons(struct a04_pwrap_owner *owner, uint16_t *status);
 #endif
