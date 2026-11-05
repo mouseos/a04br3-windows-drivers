@@ -4,6 +4,7 @@
  * f5d43bf1677955e7e367545b9bbbd6449776cdda. No user-provided GPU addresses.
  */
 #include "windows_render_cold.h"
+#include "clear_validate.h"
 #include "windows_start.h"
 #include "A04BR3RogueCommand.h"
 #include "A04BR3RogueDeviceWords.h"
@@ -37,6 +38,7 @@ NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
        r->poisoned || !s->online || !s->memory || !s->memory->hardware_owned || s->memory!=r->firmware ||
        !(f=s->memory->runtime) || !f->kctl || !f->fctl || !f->kcommands || !f->command_sync || !s->core ||
        !r->buffer[0].cpu || !r->buffer[4].cpu || r->buffer[4].bytes!=65536u ||
+       !a04_vendor_clear_layout_valid(r->clear_first,r->clear_row_bytes) ||
        r->layout.sync>65532u || r->layout.control[3]>65536u-sizeof(client) ||
        r->layout.commands[3]>65536u-4096u || r->layout.tq>65536u-sizeof(RGXFWIF_FWCOMMONCONTEXT) ||
        r->sequence>=0xfffffffeu || s->command_sequence>=0xfffffffeu)return STATUS_INVALID_PARAMETER;
@@ -111,9 +113,9 @@ NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
     result->phase=4;
     a04_gpu_dma_barrier();
     for(i=0;i<16384u;i++) {
-        value=output[i];if(i<1024u) {if(value==r->clear.expected)result->zeros++;} else if(value!=0xa5a5a5a5u)result->guard_errors++;
-        if(i==0)result->first=value;
-        if(i==1023u)result->last=value;
+        value=output[i];if(a04_vendor_clear_is_target(i*4u,r->clear_first,r->clear_row_bytes)) {if(value==r->clear.expected)result->zeros++;} else if(value!=0xa5a5a5a5u)result->guard_errors++;
+        if(i*4u==r->clear_first)result->first=value;
+        if(i*4u==r->clear_first+31u*r->clear_row_bytes+124u)result->last=value;
     }
     status=(result->zeros==1024u && !result->guard_errors)?STATUS_SUCCESS:STATUS_DATA_ERROR;
     goto done;
@@ -135,10 +137,10 @@ poison:
         result->provisional=1;
         for(i=0;i<16384u;i++) {
             value=output[i];
-            if(i<1024u) {if(value==r->clear.expected)result->zeros++;}
+            if(a04_vendor_clear_is_target(i*4u,r->clear_first,r->clear_row_bytes)) {if(value==r->clear.expected)result->zeros++;}
             else if(value!=0xa5a5a5a5u)result->guard_errors++;
-            if(i==0)result->first=value;
-            if(i==1023u)result->last=value;
+            if(i*4u==r->clear_first)result->first=value;
+            if(i*4u==r->clear_first+31u*r->clear_row_bytes+124u)result->last=value;
         }
     }
     r->poisoned=TRUE;s->command_poisoned=TRUE;
