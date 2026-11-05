@@ -14,6 +14,7 @@ def main():
  p.add_argument('--helper',type=Path);p.add_argument('--software',type=Path);p.add_argument('--certificate',type=Path);p.add_argument('--certificate-pem',type=Path);p.add_argument('--osslsigncode',type=Path);a=p.parse_args()
  out=a.output.resolve(); manifest=out.with_suffix(out.suffix+'.json')
  if workspace not in out.parents or out.exists() or manifest.exists():raise SystemExit('invalid output')
+ if workspace not in a.source.resolve().parents or workspace not in a.wimlib.resolve().parents:raise SystemExit('source and wimlib must be in workspace')
  if sha(a.source)!=a.source_sha256.lower() or header(a.source)!=(1,1):raise SystemExit('source hash or boot index mismatch')
  if not re.fullmatch('[0-9a-fA-F]{64}',a.source_sha256):raise SystemExit('bad digest')
  signing=(a.helper,a.software,a.certificate,a.certificate_pem,a.osslsigncode)
