@@ -12,6 +12,18 @@ void mainCRTStartup(void)
         Sleep(1000);
     }
     if(h==INVALID_HANDLE_VALUE) { say("GE8300_OPEN_ERROR="); hex(GetLastError()); say("\r\n"); ExitProcess(1); }
+#ifdef A04_GE8300_VENDOR_STAGE_STATUS
+    {
+        struct a04_ge8300_vendor_stage_status v;
+        if(!DeviceIoControl(h,A04_GE8300_IOCTL_VENDOR_STAGE_QUERY,NULL,0,&v,sizeof(v),&got,NULL) ||
+           got!=sizeof(v) || v.version!=1) {
+            say("GE8300_VENDOR_STAGE_IOCTL_ERROR=");hex(GetLastError());say("\r\n");CloseHandle(h);ExitProcess(2);
+        }
+        CloseHandle(h);say("GE8300_VENDOR_STAGE_ATTEMPT=");hex(v.attempted);
+        say(" STATUS=");hex(v.stage_status);say("\r\n");
+        ExitProcess(v.attempted && v.stage_status==0 ? 0 : 3);
+    }
+#endif
     for(i=0;i<16;++i) {
         if(!DeviceIoControl(h,A04_GE8300_IOCTL_QUERY,NULL,0,&s,sizeof(s),&got,NULL) || got!=sizeof(s) || s.version!=5) {
             say("GE8300_IOCTL_ERROR="); hex(GetLastError()); say("\r\n"); CloseHandle(h); ExitProcess(2);
