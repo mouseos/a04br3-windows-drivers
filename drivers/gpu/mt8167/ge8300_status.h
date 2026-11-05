@@ -16,6 +16,9 @@ struct a04_ge8300_vendor_power_status {
  * only; provider-side enforcement is mandatory. Experimental opt-in. */
 #define A04_GE8300_IOCTL_COPY 0x00226008u
 #define A04_GE8300_COPY_BYTES 16384u
+/* WinPE only, METHOD_BUFFERED 4 KiB private m1.11 bounce transfer. */
+#define A04_GE8300_IOCTL_VENDOR_COPY 0x00226018u
+#define A04_GE8300_VENDOR_COPY_BYTES 4096u
 /* Diagnostic-only report from the administrator-owned WinPE status tool. */
 #define A04_GE8300_IOCTL_REPORT_DISPLAY 0x0022600cu
 struct a04_ge8300_status {

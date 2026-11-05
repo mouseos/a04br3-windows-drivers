@@ -218,6 +218,33 @@ int main(void)
         complete=2;
         assert(a04_vendor_render_copy_once(&copy,&start,&clear)==STATUS_IO_TIMEOUT);
         assert(clear.phase==3 && clear.provisional && !clear.zeros && r.poisoned && start.command_poisoned && copy.exposed);
+        /* Arbitrary caller data never becomes a GPU address. Output is only
+         * returned after the copy and the separate flush/fence have completed. */
+        { uint32_t in[1024],out[1024];unsigned n,j;
+          r.poisoned=FALSE;r.clear_attempted=FALSE;r.clear_verified=FALSE;r.client_write[3]=0;r.sequence=0;
+          start.command_poisoned=FALSE;start.command_sequence=0;
+          memset(&kctl,0,sizeof(kctl));memset(&fctl,0,sizeof(fctl));memset(cmd,0,128*sizeof(*cmd));
+          assert(!a04_vendor_render_build(bank,65536,0x81000000,0x82000000,A04_VENDOR_RENDER_SCRATCH_VA,1,&r.layout));
+          kctl.ui32WrapMask=127;kctl.ui32CmdSize=sizeof(*cmd);fctl.ui32WrapMask=31;fctl.ui32CmdSize=sizeof(RGXFWIF_FWCCB_CMD);
+          complete=1;
+          for(n=0;n<3;n++) {
+            for(j=0;j<1024;j++){in[j]=j*31337u+n;out[j]=0;}
+            assert(a04_vendor_render_copy_buffer(&copy,&start,in,out,sizeof(in))==STATUS_SUCCESS);
+            assert(!memcmp(in,out,sizeof(in)) && !r.poisoned && !copy.service_expected_active);
+          }
+          { uint32_t old=r.client_write[3],sequence=r.sequence,write=kctl.ui32WriteOffset;
+            r.client_write[3]=3800u;memset(out,0x69,sizeof(out));
+            assert(a04_vendor_render_copy_buffer(&copy,&start,in,out,sizeof(in))==STATUS_DEVICE_BUSY);
+            assert(r.sequence==sequence && kctl.ui32WriteOffset==write && !r.poisoned);
+            for(j=0;j<1024;j++)assert(out[j]==0x69696969u);
+            r.client_write[3]=old;
+          }
+          memset(out,0x69,sizeof(out));complete=0;
+          assert(a04_vendor_render_copy_buffer(&copy,&start,in,out,sizeof(in))==STATUS_IO_TIMEOUT);
+          assert(r.poisoned && start.command_poisoned && copy.exposed && copy.service_expected_active);
+          for(j=0;j<1024;j++)assert(out[j]==0x69696969u);
+          assert(a04_vendor_render_copy_buffer(&copy,&start,in,out,sizeof(in))==STATUS_INVALID_DEVICE_STATE);
+        }
     }
     free(cmd);free(core);free(bank);free(target);return 0;
 }

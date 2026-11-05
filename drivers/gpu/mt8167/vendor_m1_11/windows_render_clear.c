@@ -130,7 +130,7 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
     if(copy) {
         volatile uint32_t *src=copy->source.cpu,*dst=copy->destination.cpu,*shared=copy->shared.cpu;
         for(i=0;i<1024u;i++) {
-            uint32_t expected=a04_vendor_copy_pattern(i);
+            uint32_t expected=copy->service_expected_active ? copy->service_expected[i] : a04_vendor_copy_pattern(i);
             value=dst[i];if(value==expected)result->zeros++;
             if(src[i]!=expected)result->guard_errors++;
             if(shared[i]!=(i<9u?copy->state.shared[i]:0xa5a5a5a5u))result->guard_errors++;
@@ -185,6 +185,49 @@ NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
 NTSTATUS a04_vendor_render_copy_once(struct a04_vendor_copy_scratch *o,
     struct a04_vendor_start *s,struct a04_vendor_clear_result *result)
 { return clear_locked(o?o->render:NULL,s,result,FALSE,o); }
+
+/* Finite ring experiment: no wrap or teardown is inferred from a fence. */
+NTSTATUS a04_vendor_render_copy_buffer(struct a04_vendor_copy_scratch *o,
+    struct a04_vendor_start *s,const void *input,void *output,size_t bytes)
+{
+    struct a04_vendor_render_cold *r;struct a04_vendor_clear_result result;
+    unsigned i;NTSTATUS status;
+    if(!o || !s || !input || !output || bytes!=4096u ||
+       ((uintptr_t)input&3u) || ((uintptr_t)output&3u) || KeGetCurrentIrql()!=PASSIVE_LEVEL)
+        return STATUS_INVALID_PARAMETER;
+    if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
+    r=o->render;
+    if(!r || !o->prepared || !o->exposed || !o->usc_ready || !o->task_frozen ||
+       !o->source.cpu || !o->destination.cpu || !o->shared.cpu || r->copy_owner!=o ||
+       r->poisoned || s->command_poisoned || s->shutdown_started || r->cleanup_started ||
+       (r->clear_attempted && !r->clear_verified) || !s->online ||
+       !s->memory || !s->memory->hardware_owned || r->firmware!=s->memory) {
+        status=STATUS_INVALID_DEVICE_STATE;goto out;
+    }
+    /* Refuse before touching or exposing buffers when the bounded CCCB has
+     * no room; no wrap/PADDING command has been validated for this ABI. */
+    if(r->client_write[3]>4095u || r->client_write[3]+sizeof(struct clear_packet)+40u>4096u) {
+        status=STATUS_DEVICE_BUSY;goto out;
+    }
+    RtlCopyMemory(o->service_expected,input,4096u);
+    if(a04_rgx_device_write_words(o->source.cpu,o->service_expected,4096u)) {
+        status=STATUS_IO_DEVICE_ERROR;goto poison;
+    }
+    for(i=0;i<1024u;i++) ((volatile uint32_t *)o->destination.cpu)[i]=0xa5a5a5a5u;
+    a04_gpu_dma_barrier();o->service_expected_active=TRUE;
+    r->clear_attempted=FALSE;r->clear_verified=FALSE;
+    status=clear_locked(r,s,&result,TRUE,o);
+    if(!NT_SUCCESS(status))goto poison;
+    /* Only the completed, synchronized private bounce reaches the caller. */
+    if(a04_rgx_device_read_words(output,o->destination.cpu,4096u)) {
+        status=STATUS_IO_DEVICE_ERROR;goto poison;
+    }
+    o->service_expected_active=FALSE;goto out;
+poison:
+    r->poisoned=TRUE;s->command_poisoned=TRUE;
+out:
+    InterlockedExchange(&s->command_busy,0);return status;
+}
 
 /* Internal diagnostic: reuse only after the previous job, SLC flush, fence and
  * full readback all completed. The 64 KiB target and PDS belong to this render

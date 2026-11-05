@@ -22,6 +22,8 @@ struct a04_vendor_copy_scratch {
     uint64_t raw60; /* only for independent source/destination mappings */
     uint32_t fragment_usc[A04_VENDOR_COPY_USC_BYTES/4];
     uint32_t frozen_task[52];
+    uint32_t service_expected[1024];
+    BOOLEAN service_expected_active;
     BOOLEAN prepared,exposed,usc_ready,task_frozen;
 };
 NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *owner,
@@ -42,5 +44,9 @@ NTSTATUS a04_vendor_copy_scratch_freeze(struct a04_vendor_copy_scratch *owner);
  * the entire call and keeps the owner, adapter and mappings through reboot. */
 NTSTATUS a04_vendor_render_copy_once(struct a04_vendor_copy_scratch *owner,
     struct a04_vendor_start *start,struct a04_vendor_clear_result *result);
+/* A caller holds the device lifetime lock; all IO is staged in private DMA.
+ * After timeout the owner is poisoned and remains retained. */
+NTSTATUS a04_vendor_render_copy_buffer(struct a04_vendor_copy_scratch *owner,
+    struct a04_vendor_start *start,const void *input,void *output,size_t bytes);
 NTSTATUS a04_vendor_copy_scratch_release(struct a04_vendor_copy_scratch *owner);
 #endif

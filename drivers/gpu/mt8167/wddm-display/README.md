@@ -71,3 +71,17 @@ observations and XNU `NativePowerVRQueue.cpp` UFO wait do not establish a
 safe DMA mapping of scanout, cache visibility, repeatability, or stop/removal
 lifetime. Until those are implemented and verified, the existing CPU WDDM
 path remains active and this helper is not evidence of GPU drawing.
+
+A separate WinPE-only `A04_GE8300_VENDOR_COPY_SERVICE=1` opt-in exposes a
+4 KiB METHOD_BUFFERED m1.11 diagnostic transfer. It stages inputs and outputs
+through the owner's independent uncached DMA buffers, checks the full output
+and guards after task UFO, SLC and GP fence, and never DMA maps POST memory.
+The fixed-size client CCB is deliberately not wrapped: once there is no room,
+new transfers fail rather than reuse an unverified ring location. A timeout
+poisons the queue and retains the owner and DMA buffers; subsequent requests
+are refused. D0 exit closes admission and serializes against active requests;
+surprise removal closes admission but cannot prove safety of an already active
+MMIO transaction, resource retention or fabric DMA stop. This is not connected
+to WDDM present and has not been tested on hardware. It is not a production
+PnP or suspend solution. The signed diagnostic EXE must not be deployed to
+installed Windows.
