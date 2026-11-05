@@ -194,3 +194,10 @@ exclusive, and leaves the OS-translated IRQ untouched for Storport. This is not
 proof of the Windows interrupt polarity, translated vector, power ordering or
 safe live removal. Both D0 and the miniport startup gate remain closed.
 See https://learn.microsoft.com/en-us/windows-hardware/drivers/wdf/raw-and-translated-resources
+
+The VEMC recovery prototype rejects all-ones WACS status, INIT_DONE2 and
+16-bit PMIC observations as unreadable. On failure it poisons the operation,
+keeps the lease and publishes no result; it does not attempt another PMIC
+command to clear a possibly stale transaction. This avoids treating an absent
+bus as enabled rails, but does not create a Windows power lease or make the
+parent/miniport operational.

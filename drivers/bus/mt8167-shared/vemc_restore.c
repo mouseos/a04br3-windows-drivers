@@ -26,14 +26,14 @@ static enum a04_vemc_status wr(struct op *o,unsigned off,uint32_t v)
 static enum a04_vemc_status fsm(struct op *o,unsigned target,uint32_t *last)
 {
     unsigned i;enum a04_vemc_status r;
-    for(i=0;i<o->limit;++i){r=rd(o,WACS_DATA,last);if(r)return r;if(((*last>>16)&7u)==target)return A04_VEMC_OK;}
+    for(i=0;i<o->limit;++i){r=rd(o,WACS_DATA,last);if(r)return r;if(*last==UINT32_MAX)return fail(o,A04_VEMC_IO);if(((*last>>16)&7u)==target)return A04_VEMC_OK;}
     return fail(o,A04_VEMC_TIMEOUT);
 }
 static enum a04_vemc_status pmic_read(struct op *o,unsigned addr,uint16_t *out)
 {
     uint32_t v;enum a04_vemc_status r;
     r=fsm(o,0,&v);if(r)return r;r=wr(o,WACS_CMD,(addr>>1)<<16);if(r)return r;
-    r=fsm(o,6,&v);if(r)return r;*out=(uint16_t)v;
+    r=fsm(o,6,&v);if(r)return r;if((uint16_t)v==UINT16_MAX)return fail(o,A04_VEMC_IO);*out=(uint16_t)v;
     r=wr(o,WACS_CLEAR,1);if(r)return r;return fsm(o,0,&v);
 }
 static enum a04_vemc_status pmic_enable(struct op *o,uint16_t value)
@@ -50,7 +50,7 @@ enum a04_vemc_status a04_vemc_restore(struct a04_vemc_state *s,const struct a04_
        !io->timeout_ticks||!io->ramp_ticks||io->ramp_ticks>=io->timeout_ticks||!gen||selector>1||!limit)return A04_VEMC_INVALID;
     if(s->poisoned)return A04_VEMC_POISONED;
     o.s=s;o.io=io;o.gen=gen;o.limit=limit;o.start=io->now(io->context);
-    r=rd(&o,INIT_DONE2,&init);if(r)return r;if(!(init&1u))return fail(&o,A04_VEMC_UNSAFE);
+    r=rd(&o,INIT_DONE2,&init);if(r)return r;if(init==UINT32_MAX)return fail(&o,A04_VEMC_IO);if(!(init&1u))return fail(&o,A04_VEMC_UNSAFE);
     r=pmic_read(&o,VIO18_CONTROL,&v.vio18);if(r)return r;
     r=pmic_read(&o,VEMC_SELECTOR,&v.selector);if(r)return r;
     r=pmic_read(&o,VEMC_CONTROL,&v.control);if(r)return r;
