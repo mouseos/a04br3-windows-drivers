@@ -64,4 +64,17 @@ int main(){
   if(fail==1) { assert(!shared.quarantined && !parent_leases && !irq_on && !d.exposed);assert(!mt8167_audio_shared_detach(&shared) && !parent_refs); }
   else { assert(shared.quarantined && parent_leases==1 && parent_refs==1);assert(mt8167_audio_shared_detach(&shared)==-1); }
  }
+ /* PnP already connected the masked interrupt: do not connect twice or
+  * release the lease on a failure after the exposure boundary. */
+ for(int fail=0;fail<=3;fail++) {
+  Mt8167CommonDma d{};_MDL m{};d.mdl=&m;d.size=8192;d.logical.QuadPart=0x100000;
+  mt8167_dl1_engine e{};Mt8167Irq i{};i.engine=&e;i.interrupt=&test_interrupt;i.active=1;
+  Mt8167Transport p{};p.dma=&d;p.irq=&i;p.engine=&e;
+  mt8167_audio_shared_client shared{};shared.referenced=1;shared.leased=1;
+  step=0;failat=fail;irq_on=1;disconnects=0;starts=0;
+  int result=Mt8167TransportStartMaskedParent(&p,256,&shared);
+  if(!fail) {assert(!result && p.state==AUDIO_RUNNING && shared.quarantined && d.exposed && starts==1);}
+  else {assert(result && i.interrupt && !disconnects);assert(shared.quarantined==(fail>1));assert(d.exposed==(fail==3));}
+ }
+
 }

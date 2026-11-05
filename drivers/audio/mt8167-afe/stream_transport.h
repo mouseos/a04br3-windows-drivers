@@ -33,6 +33,11 @@ int Mt8167TransportStart(Mt8167Transport *t, uint32_t periodBytes);
  * It becomes permanently quarantined before an IRQ can be connected. */
 int Mt8167TransportStartParentOwned(Mt8167Transport *t, uint32_t periodBytes,
                                    struct mt8167_audio_shared_client *shared);
+/* Pre-connected PnP IRQ variant: the parent has prepared and kept the
+ * complete IRQ source masked and supplied the same exclusive audio lease.
+ * Does not reconnect or disconnect on pre-publication failure. */
+int Mt8167TransportStartMaskedParent(Mt8167Transport *, uint32_t,
+                                    struct mt8167_audio_shared_client *);
 /* Returns ring offset, not a count of elapsed periods. Caller excludes stop,
  * disconnect and PnP removal and keeps the owner and mapping referenced. */
 int Mt8167TransportPosition(Mt8167Transport *t,uint32_t *offset);

@@ -110,15 +110,16 @@ the shared owner must exclude those sources and keep the mask stable until
 disconnect. It is not used directly by the PnP path.
 
 The separate `A04_AUDIO_IRQ_DIAGNOSTIC=1` path requires both the mapped child
-AFE resource and a version 2 shared-parent interface. It acquires a muted
+AFE resource and a version 3 shared-parent interface. It acquires a muted
 clock/codec lease and calls the parent's `PrepareMaskedIrq` contract, which
-must establish exclusive AFE ownership and keep all sources for the line masked
-until lease release. Only then does the backend connect the PnP-translated IRQ.
+must establish exclusive AFE ownership, initially mask every source, and keep
+all non-DL1 sources masked until lease release. After ISR connection only the
+child may unmask DL1; it must mask and synchronize it before releasing. Only then does the backend connect the PnP-translated IRQ.
 PnP revoke drains position requests, disconnects and flushes the IRQ, releases
 the lease, then unmaps AFE. Failed lease release retains the owner, mapping and
 parent references. The prototype parent rejects both acquisition and preparation
 without MMIO, so this path cannot connect on that parent. It does not start DMA,
-unmask interrupts or allow RUN. Version 2 intentionally rejects version 1 parents.
+unmask interrupts or allow RUN. Version 3 intentionally rejects older parents.
 
 The miniport now accepts an optional internal `Mt8167StreamBackend` supplied by
 an owning PnP provider. It forwards allocation, format-independent start/stop,
@@ -238,3 +239,11 @@ parent still does not grant the required clock/codec lease or masked IRQ
 contract, and backend RUN still rejects. The callbacks do not prove clock
 power, live buffer coherency, the speaker route, or a DMA drain. Host tests
 use simulated MMIO; there has been no Windows or device playback test.
+
+`Mt8167TransportStartMaskedParent` handles the PnP case where the IRQ was
+connected under the version 3 masked-source contract. It prepares the common
+buffer, quarantines the lease before publishing a DMA address, and starts the
+engine under IRQ synchronization without reconnecting the ISR. Failures after
+the exposure boundary retain the mapping, IRQ and lease. This is host-tested
+but is not wired to backend RUN: continuous cache synchronization, clock and
+codec ownership, muted startup and a DMA drain remain unresolved.

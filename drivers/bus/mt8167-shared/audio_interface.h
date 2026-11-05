@@ -14,11 +14,13 @@ typedef struct _A04_SHARED_AUDIO_INTERFACE {
     int (*ReleaseQuiescent)(PVOID);
     /* PASSIVE_LEVEL, with an acquired audio lease. On success the parent
      * has exclusive AFE/clock control, has masked and cleared every source
-     * on this IRQ, and keeps them masked until ReleaseQuiescent. The mapping
+     * on this IRQ. The parent keeps all other sources masked throughout the
+     * lease; the child may enable DL1 only after ISR connection, and must
+     * mask DL1 and synchronize/disconnect the ISR before releasing. The mapping
      * is the child's PnP-assigned AFE page and remains valid for this call.
      * On failure no interrupt may be connected; parent retains responsibility
      * for any partial operation until ReleaseQuiescent reports success. */
     int (*PrepareMaskedIrq)(PVOID, PVOID afe, ULONG length);
 } A04_SHARED_AUDIO_INTERFACE;
-#define A04_SHARED_AUDIO_INTERFACE_VERSION 2
+#define A04_SHARED_AUDIO_INTERFACE_VERSION 3
 #endif

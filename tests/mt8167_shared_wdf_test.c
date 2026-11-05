@@ -75,7 +75,7 @@ int main(void){
  fail_step=3;assert(ChildRequirements(&children[1],NULL)!=0 && appended==2 && deleted==2);fail_step=0;
  children[1].base=0;assert(ChildRequirements(&children[1],NULL)==STATUS_DEVICE_CONFIGURATION_ERROR && appended==2);assert(saved.Header.Version==1 && saved.ReadButtons);
  assert(input.Version==1 && input.TouchPen && input.ButtonPmicRead);
- assert(audio.Header.Version==2 && audio.AcquireMuted && audio.ReleaseQuiescent && audio.PrepareMaskedIrq);
+ assert(audio.Header.Version==3 && audio.AcquireMuted && audio.ReleaseQuiescent && audio.PrepareMaskedIrq);
  assert(audio.PrepareMaskedIrq(audio.Header.Context,(PVOID)&audio,0x1000)!=0 && !reads && !writes);
  {
  struct Mt8167AudioParentClient wrapper={0};struct mt8167_audio_shared_client client={0};

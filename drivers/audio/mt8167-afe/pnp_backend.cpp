@@ -134,8 +134,8 @@ static NTSTATUS OwnerPosition(void *ctx,PKSAUDIO_POSITION position)
 static NTSTATUS OwnerDescription(void *,PDEVICE_DESCRIPTION) { return STATUS_DEVICE_NOT_READY; }
 #if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
 static void OwnerIrqNotify(void *,ULONG,BOOLEAN) { /* RUN remains refused. */ }
-/* Caller serializes against revoke. The parent's v2 lease excludes competing
- * AFE/clock owners and keeps all AFE interrupt sources masked until release. */
+/* Caller serializes against revoke. The parent's v3 lease excludes competing
+ * AFE/clock owners; other AFE sources remain masked through release. */
 static NTSTATUS OwnerConnectMaskedIrq(Mt8167PnpBackend *o)
 {
     NTSTATUS status;
