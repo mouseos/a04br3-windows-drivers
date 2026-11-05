@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "bringup.h"
+#include "resource_lease.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -14,6 +15,9 @@ static void pio_wr(void *p,unsigned off,uint32_t v,unsigned width){struct fake *
  if(off==0xc){f->status&=~v;return;}if(off==0x38){f->arg=v;return;}if(off!=0x34)return;
  cmd=v&63u;f->cmds++;f->status=0x100;switch(cmd){case 0:f->response=0;break;case 5:f->response=(2u<<28)|0x100000u;if(f->arg&&++f->polls>=2)f->response|=0x80000000u;break;case 3:f->response=0x12340000u;break;case 7:f->response=0;break;case 52:addr=(f->arg>>9)&0x1ffffu;assert(addr<sizeof f->mem);f->response=f->mem[addr];break;default:assert(0);}}
 static void delay(void *p,unsigned us){(void)p;(void)us;}
+static int lease_acquire(void *p,enum a04_lease_resource r){(void)p;(void)r;return 0;}
+static int lease_release(void *p,enum a04_lease_resource r){(void)p;(void)r;return 0;}
+static int lease_drain(void *p){(void)p;return 0;}
 static int cleanup(void *p){((struct fake*)p)->cleaned++;return 0;}
 int main(void){struct fake f={0};struct a04_wifi_owner owner={0,1,1,1,1,1,0,0};struct a04_wifi_life life={0};struct a04_wifi_board board={0};struct a04_sdio_card_info out;
  struct a04_wifi_board_io io={&f,qual,rd,wr,wait};struct a04_msdc2_pio pio={&f,pio_rd,pio_wr,delay,&owner,0,0};struct a04_wifi_life_ops ops={&f,cleanup,cleanup,cleanup,cleanup};
@@ -27,4 +31,13 @@ int main(void){struct fake f={0};struct a04_wifi_owner owner={0,1,1,1,1,1,0,0};s
  memset(&out,0xa5,sizeof out);assert(a04_wifi_bringup(&board,&io,&life,&pio,0x100000,&ops,&out,same,&f)<0);assert(board.poisoned&&owner.poisoned&&out.vendor==0xa5a5&&!f.cleaned);
  memset(&f,0,sizeof f);memset(&owner,0,sizeof owner);memset(&life,0,sizeof life);memset(&board,0,sizeof board);f.lease=1;f.deny_same_on=3;f.mem[10]=1;memcpy(f.mem+256,cis,sizeof cis);owner.host=owner.gpio_clock=owner.combo=owner.firmware=owner.irq=1;assert(!a04_wifi_admit(&owner));
  memset(&out,0xa5,sizeof out);assert(a04_wifi_bringup(&board,&io,&life,&pio,0x100000,&ops,&out,same,&f)<0);assert(board.poisoned&&owner.poisoned&&life.state==A04_WIFI_LIFE_FAILED&&out.vendor==0xa5a5&&!f.cleaned);
+ {struct a04_resource_lease lease={0};struct a04_lease_ops lops={&f,lease_acquire,lease_release,lease_drain,lease_drain};uint32_t generation;
+  memset(&f,0,sizeof f);memset(&owner,0,sizeof owner);memset(&life,0,sizeof life);memset(&board,0,sizeof board);
+  f.lease=1;f.mem[10]=1;memcpy(f.mem+256,cis,sizeof cis);
+  assert(!a04_resource_lease_acquire(&lease,&lops,&generation));assert(!a04_resource_lease_bind_owner(&lease,&owner));pio.generation=generation;
+  assert(!a04_wifi_bringup(&board,&io,&life,&pio,0x100000,&ops,&out,a04_resource_lease_same_owner,&lease));
+  assert(out.vendor==0x037a && out.device==0x6630);
+  assert(!a04_resource_lease_quiesce(&lease,generation));assert(!owner.active);
+  assert(!a04_resource_lease_release(&lease,generation));
+ }
  puts("board-to-SDIO bringup, teardown and failure isolation: OK");return 0;}

@@ -736,7 +736,7 @@ build/mt6630_board_sequence_test: drivers/network/mt6630/board_sequence.c driver
 
 test-mt6630: build/mt6630_board_sequence_test
 
-build/mt6630_bringup_test: drivers/network/mt6630/bringup.c drivers/network/mt6630/board_sequence.c drivers/network/mt6630/control_start.c drivers/network/mt6630/enumerate.c drivers/network/mt6630/msdc2_pio.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c tests/mt6630_bringup_test.c
+build/mt6630_bringup_test: drivers/network/mt6630/resource_lease.c drivers/network/mt6630/bringup.c drivers/network/mt6630/board_sequence.c drivers/network/mt6630/control_start.c drivers/network/mt6630/enumerate.c drivers/network/mt6630/msdc2_pio.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c tests/mt6630_bringup_test.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/network/mt6630 $^ -o $@
 
