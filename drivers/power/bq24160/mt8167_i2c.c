@@ -5,7 +5,7 @@
 static int transfer(struct a04_gauge_mt8167 *a, int read, uint8_t reg, uint8_t *value)
 {
     const struct a04_i2c_io *io;
-    uint64_t start, now;
+    uint64_t start, now, previous;
     uint16_t status=0;
     unsigned i;
     if (!a || !(io=a->io) || !io->read16 || !io->write16 || !io->delay_us ||
@@ -21,12 +21,15 @@ static int transfer(struct a04_gauge_mt8167 *a, int read, uint8_t reg, uint8_t *
     io->write16(io->context,0,reg); if (!read) io->write16(io->context,0,*value);
     io->write16(io->context,0x24,read?1:0x4001);
     start=a->monotonic_ns(io->context);
+    previous=start;
     for (i=0;i<2000;++i) {
         now=a->monotonic_ns(io->context);
-        if (now<start || now-start>=10000000ULL) break;
+        if (now<previous || now-start>=10000000ULL) break;
+        previous=now;
         status=io->read16(io->context,0x0c);
         now=a->monotonic_ns(io->context);
-        if (now<start || now-start>=10000000ULL || (status&6u)) break;
+        if (now<previous || now-start>=10000000ULL || (status&6u)) break;
+        previous=now;
         if (status&1u) {
             if (read) {
                 if (((io->read16(io->context,0x30)>>4)&15u)!=1u) break;
