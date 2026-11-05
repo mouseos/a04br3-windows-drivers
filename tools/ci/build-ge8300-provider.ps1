@@ -10,6 +10,8 @@ $out = Join-Path $tempRoot 'mt8167-ge8300-provider'
 New-Item -ItemType Directory -Force $out | Out-Null
 $gpu = Join-Path $root 'drivers\gpu\mt8167'
 $boot = if ($env:A04_GE8300_BOOT_TEST -eq '1') { '1' } else { '0' }
+$vendorStage = if ($env:A04_GE8300_VENDOR_STAGE -eq '1') { '1' } else { '0' }
+if ($vendorStage -eq '1' -and $boot -eq '1') { throw 'Vendor staging and modern firmware boot are mutually exclusive' }
 $mismatch = if ($env:A04_GE8300_ALLOW_MISMATCH -eq '1') { '1' } else { '0' }
 $clear = if ($env:A04_GE8300_CLEAR_TEST -eq '1') { '1' } else { '0' }
 $copy = if ($env:A04_GE8300_COPY_TEST -eq '1') { '1' } else { '0' }
@@ -26,11 +28,11 @@ if (($clear -eq '1' -or $copy -eq '1' -or $linear -eq '1') -and ($boot -ne '1' -
 if ($service -eq '1' -and ($boot -ne '1' -or $mismatch -ne '1' -or $clear -eq '1' -or $copy -eq '1' -or $linear -eq '1')) { throw 'The copy service requires boot/mismatch opt-ins and no diagnostic test' }
 if (([int]$clear + [int]$copy + [int]$linear) -gt 1) { throw 'Choose one GE8300 diagnostic' }
 $objects = @()
-$sources = @('ge8300_provider','firmware','firmware_runtime','firmware_start','windows_hw','windows_firmware','gpu_mmu','dma_pages','firmware_objects','firmware_queue','render_context','render_pair','render_hwrt','render_target','render_freelist','render_stream','transfer_stream','clear_fixture','copy_fixture','linear_copy_fixture','transfer_mapping','windows_transfer_mapping','windows_linear_transfer','windows_linear_context','windows_queue_test')
+$sources = @('ge8300_provider','firmware','firmware_runtime','firmware_start','windows_hw','windows_firmware','gpu_mmu','dma_pages','firmware_objects','firmware_queue','render_context','render_pair','render_hwrt','render_target','render_freelist','render_stream','transfer_stream','clear_fixture','copy_fixture','linear_copy_fixture','transfer_mapping','windows_transfer_mapping','windows_linear_transfer','windows_linear_context','windows_queue_test','vendor_m1_11\stage','vendor_m1_11\windows_stage')
 if ($render -eq '1') { $sources += @('windows_render_memory','windows_render_diagnostic','render_pds_data','render_context_pds','render_context_static','render_shared_size','render_execution','render_fixed_vdm','render_fixed_ppp','render_fixed_command') }
 foreach ($name in $sources) {
-    $obj = Join-Path $out "$name.obj"
-    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_GE8300_BOOT_TEST=$boot" "-DA04_GE8300_ALLOW_MISMATCH=$mismatch" "-DA04_GE8300_CLEAR_TEST=$clear" "-DA04_GE8300_COPY_TEST=$copy" "-DA04_GE8300_LINEAR_TEST=$linear" "-DA04_GE8300_COPY_SERVICE=$service" "-DA04_GE8300_SHARED_TRACE_DIAGNOSTIC=$sharedTrace" "-DA04_GE8300_RENDER_EXPERIMENT=$render" "-DA04_GE8300_RENDER_DIAGNOSTIC=$renderDiagnostic" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$gpu\compat" "-I$gpu\fwif" -c (Join-Path $gpu "$name.c") -o $obj
+    $obj = Join-Path $out "$($name.Replace('\','-')).obj"
+    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_GE8300_VENDOR_STAGE=$vendorStage" "-DA04_GE8300_BOOT_TEST=$boot" "-DA04_GE8300_ALLOW_MISMATCH=$mismatch" "-DA04_GE8300_CLEAR_TEST=$clear" "-DA04_GE8300_COPY_TEST=$copy" "-DA04_GE8300_LINEAR_TEST=$linear" "-DA04_GE8300_COPY_SERVICE=$service" "-DA04_GE8300_SHARED_TRACE_DIAGNOSTIC=$sharedTrace" "-DA04_GE8300_RENDER_EXPERIMENT=$render" "-DA04_GE8300_RENDER_DIAGNOSTIC=$renderDiagnostic" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$gpu\compat" "-I$gpu\fwif" -c (Join-Path $gpu "$name.c") -o $obj
     if ($LASTEXITCODE -ne 0) { throw "ARM GE8300 provider compilation failed: $name" }
     $objects += $obj
 }

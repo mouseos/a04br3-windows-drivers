@@ -2,6 +2,9 @@
 #ifndef A04_GE8300_STATUS_H
 #define A04_GE8300_STATUS_H
 #define A04_GE8300_IOCTL_QUERY 0x00226004u
+/* CPU-only vendor FW staging; does not indicate a GPU boot. */
+#define A04_GE8300_IOCTL_VENDOR_STAGE_QUERY 0x00226010u
+struct a04_ge8300_vendor_stage_status { unsigned long version, attempted, stage_status; };
 /* METHOD_BUFFERED: exactly one 16 KiB input/output transfer. Kernel callers
  * only; provider-side enforcement is mandatory. Experimental opt-in. */
 #define A04_GE8300_IOCTL_COPY 0x00226008u

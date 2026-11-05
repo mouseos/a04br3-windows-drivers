@@ -590,3 +590,14 @@ test-mt8167-audio-parent-client: build/mt8167_audio_parent_client_test
 build/mt8167_audio_parent_client_test: drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_audio_parent_client_test.c drivers/bus/mt8167-shared/audio_interface.h
 	mkdir -p build
 	$(CC) $(CFLAGS) -Itests/shared_wdf_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_audio_parent_client_test.c -o $@
+
+.PHONY: test-gpu-vendor-m1-11
+test-gpu-vendor-m1-11: build/gpu_vendor_m1_11_stage_test
+	python3 tests/gpu_vendor_m1_11_fixture.py
+	./build/gpu_vendor_m1_11_stage_test build/vendor-m1-11-test/firmware.bin build/vendor-m1-11-test/code.bin build/vendor-m1-11-test/data.bin
+
+build/gpu_vendor_m1_11_stage_test: tests/gpu_vendor_m1_11_stage_test.c drivers/gpu/mt8167/vendor_m1_11/stage.c drivers/gpu/mt8167/vendor_m1_11/windows_stage.c drivers/gpu/mt8167/vendor_m1_11/stage.h drivers/gpu/mt8167/vendor_m1_11/windows_stage.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueFirmware.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueMipsMMU.h
+	mkdir -p build
+	$(CC) $(CFLAGS) -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 tests/gpu_vendor_m1_11_stage_test.c drivers/gpu/mt8167/vendor_m1_11/stage.c drivers/gpu/mt8167/vendor_m1_11/windows_stage.c -o $@
+
+test: test-gpu-vendor-m1-11

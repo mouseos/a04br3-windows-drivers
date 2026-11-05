@@ -221,3 +221,9 @@ SoC power restoration is not implemented. The optional display miniport client
 is tested only in WinPE and must not be treated as a supported driver. The
 initial WinPE test path remains separate. See Microsoft's [power-managed
 queues](https://learn.microsoft.com/en-us/windows-hardware/drivers/wdf/using-power-managed-i-o-queues).
+
+## MT8167 対応 m1.11 ファームウェアの準備
+
+実コア 22.40.54.30 向け vendor m1.11 ファームウェアの版1レイアウトを検証し、WindowsのDMA共通バッファにコード・データ・MIPSページ表を準備する経路を追加した。`A04_GE8300_VENDOR_STAGE=1` は既定オフで、既存の版3ファームウェア起動試験と同時には使えない。対象の入力は実機側の `System32\drivers\ge8300-mips.fw` として別途用意する。専用IOCTLの `stage_status` はCPU準備と解放の結果であり、従来の `boot_status` と `health_status` は `STATUS_NOT_SUPPORTED` のまま。GPU resetの解除、FWIF runtime、描画、DMA停止は実装・実機確認していない。
+
+実装は [mouseos/xnu_kernel_benesse_a04br3](https://github.com/mouseos/xnu_kernel_benesse_a04br3) の `iokit/Kernel/arm/rogue/A04BR3RogueFirmware.h`、`A04BR3RogueMipsMMU.h`、`A04BR3RogueMemory.h` を参照し、BSD-2-Clause-Patentのヘッダを保持している。`make test-gpu-vendor-m1-11` は合成画像で正常系と破損・DMA同期失敗を試す。該当vendor firmwareを別途入力したホスト検証でも独立した版1展開結果と一致したが、配布権と実機動作は別途未確認。

@@ -7,8 +7,12 @@
 #include "windows_queue_test.h"
 #include "windows_linear_context.h"
 #include "ge8300_status.h"
+#include "vendor_m1_11/windows_stage.h"
 #include "pvr_rogue_fwif.h"
 #include "pvr_rogue_defs.h"
+#ifndef A04_GE8300_VENDOR_STAGE
+#define A04_GE8300_VENDOR_STAGE 0
+#endif
 #ifndef A04_GE8300_BOOT_TEST
 #define A04_GE8300_BOOT_TEST 0
 #endif
@@ -48,6 +52,9 @@
 #if A04_GE8300_COPY_SERVICE && (!A04_GE8300_BOOT_TEST || !A04_GE8300_ALLOW_MISMATCH)
 #error The experimental copy service requires explicit firmware boot and BVNC mismatch opt-ins
 #endif
+#if A04_GE8300_VENDOR_STAGE && A04_GE8300_BOOT_TEST
+#error Vendor firmware staging cannot be combined with modern firmware boot
+#endif
 #define CORE_BASE 0x13000000u
 #define CORE_SIZE 0x80000u
 #define MFG_BASE  0x13ffe000u
@@ -58,6 +65,10 @@ typedef struct {
     volatile UCHAR *core;
     struct a04_gpu_firmware_state firmware;
     struct a04_gpu_queue_test_memory queue_memory;
+#if A04_GE8300_VENDOR_STAGE
+    struct a04_vendor_m1_11_memory vendor;
+    struct a04_ge8300_vendor_stage_status vendor_status;
+#endif
 #if A04_GE8300_RENDER_DIAGNOSTIC
     struct a04_windows_render_diagnostic render_diagnostic;
     struct a04_windows_render_diagnostic render_clear_diagnostic;
@@ -340,6 +351,24 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     c->attempted=TRUE; c->status.version=5;
 #if !A04_GE8300_BOOT_TEST
     c->status.boot_status=STATUS_NOT_SUPPORTED;
+    c->status.health_status=STATUS_NOT_SUPPORTED;
+#if A04_GE8300_VENDOR_STAGE
+    /* CPU staging only: version-1 firmware needs its own FWIF runtime and
+     * cannot be passed to the modern version-3 boot path. */
+    c->vendor_status.version=1;c->vendor_status.attempted=1;
+    if(!c->core || !c->dma) { c->vendor_status.stage_status=STATUS_DEVICE_NOT_READY; return STATUS_SUCCESS; }
+    status=read_firmware(&image,&bytes);
+    if(!NT_SUCCESS(status)) { c->vendor_status.stage_status=status; return STATUS_SUCCESS; }
+    lo=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x20));
+    hi=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x24));
+    c->status.bvnc_low=lo;c->status.bvnc_high=hi;
+    adapter=WdfDmaEnablerWdmGetDmaAdapter(c->dma,WdfDmaDirectionReadFromDevice);
+    if(!adapter || (((uint64_t)hi<<32)|lo)!=A04_PVR_BVNC) status=STATUS_DEVICE_CONFIGURATION_ERROR;
+    else status=a04_vendor_m1_11_windows_stage(&c->vendor,adapter,image,bytes);
+    ExFreePoolWithTag(image,'0XGA');
+    if(NT_SUCCESS(status)) status=a04_vendor_m1_11_windows_free(&c->vendor);
+    c->vendor_status.stage_status=status;
+#endif
     return STATUS_SUCCESS;
 #else
     c->status.attempted=1;
@@ -519,6 +548,15 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
 {
     WDFDEVICE device=WdfIoQueueGetDevice(queue); GPU_CONTEXT *c=GpuContext(device);
     struct a04_ge8300_status *out; NTSTATUS status; size_t size;
+#if A04_GE8300_VENDOR_STAGE
+    if(control==A04_GE8300_IOCTL_VENDOR_STAGE_QUERY) {
+        struct a04_ge8300_vendor_stage_status *vendor;
+        status=WdfRequestRetrieveOutputBuffer(request,sizeof(*vendor),(PVOID *)&vendor,&size);
+        if(NT_SUCCESS(status)) { *vendor=c->vendor_status; WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(*vendor)); }
+        else WdfRequestComplete(request,status);
+        return;
+    }
+#endif
 #if A04_GE8300_COPY_SERVICE
     if (control==A04_GE8300_IOCTL_REPORT_DISPLAY) {
         ULONG *value; size_t bytes;
