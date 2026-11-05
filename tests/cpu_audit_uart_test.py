@@ -26,4 +26,11 @@ with tempfile.TemporaryDirectory(prefix='cpu-audit-monitor-',dir=root/'build') a
  log.write_bytes(head+parts[0].replace(b'544F5052',b'554F5052')+b''.join(parts[1:])+end);out3=d/'bad'
  r=subprocess.run(['python3',str(monitor),str(log),'--offset','0','--token',t,'--output',str(out3),'--timeout','1'],capture_output=True)
  assert r.returncode==2 and not out3.exists()
+ failed=payload.replace(b'MOUNTVOL_EXIT=0',b'MOUNTVOL_EXIT=5'); checksum=zlib.crc32(failed)
+ framed=f'A04CPU0 {t} {len(failed):08X} {checksum:08X}\n'.encode()
+ for i in range(0,len(failed),16):
+  chunk=failed[i:i+16];framed+=f'A04CPU1 {t} {i//16:04X} {len(chunk):02X} {chunk.hex().upper()} {zlib.crc32(chunk):08X}\n'.encode()
+ framed+=f'A04CPUE {t} {checksum:08X}\n'.encode();log.write_bytes(framed);out4=d/'mountfail'
+ r=subprocess.run(['python3',str(monitor),str(log),'--offset','0','--token',t,'--output',str(out4),'--timeout','1'],capture_output=True)
+ assert r.returncode==3 and out4.read_bytes()==failed and b'"volume_dismount_zero": false' in r.stdout
 print('CPU UART monitor: complete frame and timeout without reset verified')

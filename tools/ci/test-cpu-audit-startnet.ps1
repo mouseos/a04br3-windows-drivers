@@ -29,5 +29,11 @@ Remove-Item "$base\toprgu-audit-result.txt"
 $out=& cmd.exe /c "$base\mountfail.cmd"
 $report=Get-Content "$base\toprgu-audit-result.txt" -Raw
 if(!($out -match "REPORT_TOKEN=$token") -or $report -notmatch 'MOUNTVOL_EXIT=5'){throw 'dismount failure not reported'}
+Remove-Item "$base\toprgu-audit-result.txt"
+[IO.File]::WriteAllText("$base\audit.cmd", "@echo off`r`necho TOPRGU_AUDIT_VOLUME_REJECTED`r`nexit /b 2`r`n",[Text.Encoding]::ASCII)
+[IO.File]::WriteAllText("$base\guardfail.cmd",(MakeTest 0),[Text.Encoding]::ASCII)
+$out=& cmd.exe /c "$base\guardfail.cmd"
+$report=Get-Content "$base\toprgu-audit-result.txt" -Raw
+if(!($out -match "REPORT_TOKEN=$token") -or $report -notmatch 'TOPRGU_AUDIT_VOLUME_REJECTED' -or $report -notmatch 'TOPRGU_AUDIT_EXIT=2' -or $report -match 'MOUNTVOL_EXIT='){throw 'guard rejection did not prevent dismount'}
 Write-Output 'CPU_AUDIT_STARTNET_FIXTURE_OK'
 $global:LASTEXITCODE=0
