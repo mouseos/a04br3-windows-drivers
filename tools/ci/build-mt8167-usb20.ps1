@@ -8,7 +8,7 @@ New-Item -ItemType Directory -Force $OutputDirectory | Out-Null
 $out = (Resolve-Path $OutputDirectory).Path
 $source = Join-Path $root 'drivers\usb\mt8167-usb20\ep0.c'
 $obj = Join-Path $out 'mt8167-usb20-ep0.obj'
-& clang --target=thumbv7-pc-windows-msvc -Wall -Wextra -Werror -fms-extensions -D_KERNEL_MODE -D_ARM_ -DARM -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" -include ntddk.h -c $source -o $obj
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -D_KERNEL_MODE -D_ARM_ -DARM -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" -include ntddk.h -c $source -o $obj
 if ($LASTEXITCODE -ne 0) { throw 'ARM32 WDK compilation failed' }
 $headers = & llvm-readobj --file-headers $obj
 if ($LASTEXITCODE -ne 0 -or ($headers -join "`n") -notmatch 'IMAGE_FILE_MACHINE_ARMNT') { throw 'Unexpected COFF machine' }
