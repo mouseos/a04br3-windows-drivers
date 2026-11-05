@@ -67,6 +67,7 @@ static UCHAR A04EmmcIdentity[7];
 static BOOLEAN A04EmmcIdentityValid;
 #endif
 #ifdef A04_OWNED_DMA_EXPERIMENT
+struct a04_probe_extension;
 /* Separate allocation retains the DMA adapter and common buffer if a later
  * teardown cannot prove hardware quiescence. It does not retain Storport's
  * extension or worker; the initialization gate below remains mandatory. */
@@ -83,6 +84,7 @@ struct a04_owned_dma {
     PMDL retained_dma_mdl;
     PSCSI_REQUEST_BLOCK pendingRequest;
     volatile ULONG *registers;
+    struct a04_probe_extension *execution;
     /* Worker shadow data has the same lifetime as the owned DMA allocation. */
     SCSI_REQUEST_BLOCK request;
     UCHAR data[4096],sense[256];
@@ -167,6 +169,7 @@ static void A04OwnedDmaFree(struct a04_owned_dma *owner)
         owner->adapter,owner->length,owner->logical,owner->buffer,FALSE);
     if (owner->adapter) owner->adapter->DmaOperations->PutDmaAdapter(owner->adapter);
     if (owner->pdo) ObDereferenceObject(owner->pdo);
+    if (owner->execution) ExFreePoolWithTag(owner->execution,'p4aA');
     ExFreePoolWithTag(owner,'d4aA');
 }
 static int A04OwnedDmaAllocate(PVOID extension, struct a04_probe_extension *probe,
@@ -181,6 +184,10 @@ static int A04OwnedDmaAllocate(PVOID extension, struct a04_probe_extension *prob
     owner=ExAllocatePoolWithTag(NonPagedPool,sizeof(*owner),'d4aA');
     if (!owner)return 0;
     RtlZeroMemory(owner,sizeof(*owner));ExInitializeRundownProtection(&owner->workers);
+    owner->execution=ExAllocatePoolWithTag(NonPagedPool,sizeof(*owner->execution),'p4aA');
+    if(!owner->execution){ExFreePoolWithTag(owner,'d4aA');return 0;}
+    RtlZeroMemory(owner->execution,sizeof(*owner->execution));
+    owner->execution->owned_dma=owner;
     owner->pdo=(PDEVICE_OBJECT)pdo;
     ObReferenceObject(owner->pdo);
     RtlZeroMemory(&desc,sizeof(desc));desc.Version=DEVICE_DESCRIPTION_VERSION2;
@@ -1281,7 +1288,13 @@ static VOID A04IsolatedWorker(PVOID extension, PVOID context, PVOID worker)
     StorPortAcquireSpinLock(extension,StartIoLock,NULL,&lock);
     run=A04_PENDING(probe) != NULL && !A04_CANCELLED(probe);
     StorPortReleaseSpinLock(extension,&lock);
+#ifdef A04_OWNED_DMA_EXPERIMENT
+    /* The data path uses a driver-owned execution snapshot. It performs no
+     * Storport calls and consults the owner's shared cancellation/lifetime. */
+    if (run) (void)A04RunIo(owner->execution,&A04_WORKER_REQUEST);
+#else
     if (run) (void)A04RunIo(extension,&A04_WORKER_REQUEST);
+#endif
     if (InterlockedCompareExchange(&A04_CANCELLED(probe),0,0))
         A04Trace("A04WIN isolated cancelled worker drained\n");
     /* No worker context is needed after the transfer; release it before
@@ -1289,6 +1302,9 @@ static VOID A04IsolatedWorker(PVOID extension, PVOID context, PVOID worker)
     (void)StorPortFreeWorker(extension,worker);
     StorPortAcquireSpinLock(extension,StartIoLock,NULL,&lock);
     original=A04_PENDING(probe);
+#ifdef A04_OWNED_DMA_EXPERIMENT
+    if (owner->execution->failed) probe->failed=TRUE;
+#endif
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
     /* DMA ownership is sticky after any unproven stop. Retain the SRB and
      * gate; neither completion nor a later write can reuse the bounce buffer.
@@ -1449,6 +1465,23 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 #endif
         return TRUE;
     }
+#ifdef A04_OWNED_DMA_EXPERIMENT
+    /* Copy only the controller and guarded I/O policy, not pending SRB,
+     * synchronization primitives, or pointers to port-owned request memory. */
+    probe->owned_dma->execution->registers=probe->registers;
+    probe->owned_dma->execution->sectors=probe->sectors;
+    probe->owned_dma->execution->requests=probe->requests;
+    probe->owned_dma->execution->failed=probe->failed;
+    probe->owned_dma->execution->write_ready=probe->write_ready;
+    probe->owned_dma->execution->cache_disabled=probe->cache_disabled;
+    probe->owned_dma->execution->write_first=probe->write_first;
+    probe->owned_dma->execution->write_last=probe->write_last;
+    probe->owned_dma->execution->esp_first=probe->esp_first;
+    probe->owned_dma->execution->esp_last=probe->esp_last;
+    probe->owned_dma->execution->dma_buffer=probe->dma_buffer;
+    probe->owned_dma->execution->dma_bus=probe->dma_bus;
+    probe->owned_dma->execution->dma_alignment=probe->dma_alignment;
+#endif
     dst=(UCHAR *)&A04_SHADOW_REQUEST(probe);
     for (i=0;i<sizeof(A04_SHADOW_REQUEST(probe));++i) dst[i]=src[i];
 #ifdef A04_OWNED_DMA_EXPERIMENT

@@ -118,3 +118,10 @@ API は依然 extension に依存する。これは worker 全体の独立や Pn
 置く。非所有構成の状態配置は従来どおり。これは MMIO mapping 自体の所有や、worker の
 Storport API 呼出しを独立させるものではない。最終 callback は引き続き rundown を待ち、
 停止不能 DMA の mapping、実電源とクロックの所有・再開は未保証。起動拒否を維持する。
+
+所有 DMA 構成のデータ処理 `A04RunIo` は、port extension ではなく driver-owned
+execution snapshot を受け取る。要求投入時に容量・書込み範囲・DMA バッファなど必要な
+値だけをコピーし、cancel、DMA/MMIO の寿命、poison は共通 owner で共有する。worker が
+検出した失敗は port 側の失敗状態へ反映する。元 SRB の完了調停と worker の Storport
+呼出しは依然 port 側で行う。port が所有する MMIO mapping 自体と、電源・クロックの
+所有、削除時の Storport 内部待ちについてはこの変更では保証されない。
