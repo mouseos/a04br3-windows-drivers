@@ -143,7 +143,9 @@ static int ParentAudioAcquire(PVOID context,ULONG rate) {
     A04_PARENT_CONTEXT *c;int result;
     if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
     c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
-    result=a04_audio_owner_acquire(&c->audio,rate);ParentUnlock(c);return result;
+    result=a04_audio_owner_acquire(&c->audio,rate);
+    if(result && c->audio.poisoned)result=-2;
+    ParentUnlock(c);return result;
 }
 static int ParentAudioRelease(PVOID context) {
     A04_PARENT_CONTEXT *c;int result;
@@ -173,14 +175,18 @@ static void ParentStop(A04_PARENT_CONTEXT *c)
     a04_audio_owner_stop(&c->audio);
     ExReleaseFastMutex(&c->pwrapLock);
 }
-static void ParentUnmap(A04_PARENT_CONTEXT *c)
+static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
 {
     ParentStop(c);
+    /* Failed/partial audio ownership cannot be interpreted as quiescent.
+     * Retain mappings; this is not proof PnP retains physical resources. */
+    if(c->audio.poisoned || c->audio.leased)return STATUS_DEVICE_BUSY;
     if(c->apmixed){MmUnmapIoSpace(c->apmixed,0x710);c->apmixed=NULL;}
     if(c->pwrap){MmUnmapIoSpace(c->pwrap,0x1000);c->pwrap=NULL;}
     if(c->gpio){MmUnmapIoSpace(c->gpio,0x1000);c->gpio=NULL;}
     if(c->infra){MmUnmapIoSpace(c->infra,0x1000);c->infra=NULL;}
     if(c->topck){MmUnmapIoSpace(c->topck,0x1000);c->topck=NULL;}
+    return STATUS_SUCCESS;
 }
 NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
@@ -229,7 +235,7 @@ NTSTATUS ParentRelease(WDFDEVICE dev,WDFCMRESLIST translated)
 {
     UNREFERENCED_PARAMETER(translated);
     /* Revoke admission and drain active operations before unmapping. */
-    ParentUnmap(ParentContext(dev));return STATUS_SUCCESS;
+    return ParentUnmap(ParentContext(dev));
 }
 VOID ParentSurprise(WDFDEVICE dev)
 {

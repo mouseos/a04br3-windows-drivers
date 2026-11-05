@@ -209,3 +209,20 @@ TOP_CKPDN1_CLR is explicitly rejected before any bus operation: alias semantics 
 parent still has no actual power/clock/board-mute preflight. Therefore the
 Class D path must not run on hardware. Existing direct button builds do not
 include the diagnostic writer. Linux [WACS2 write encoding](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/drivers/soc/mediatek/mtk-pmic-wrap.c) is the source of the command format. Readback of SPK registers and bus idle do not establish safe rails or DMA drain.
+
+For MT6392, the board kernel names `TOP_CKPDN1`/`_SET`/`_CLR` at
+0x0108/0x010a/0x010c. Its Class D driver uses `snd_soc_update_bits` on the
+CLR alias with mask 0x000e and value 0x000e at start, but with value 0 at
+stop; the codec routes that access through the PWRAP regmap. These sources
+do not specify alias readback, effective write-zero behavior, which other
+consumers require those clock bits, or retained power during Windows D0 exit.
+A generic RMW or guessed SET write is therefore not a safe implementation.
+The Class D implementation now checks both its complete start and stop
+capabilities before the first hardware write. A partially failed clock/codec
+acquisition is returned as an uncertain outcome in audio interface v4; the
+child quarantines its parent reference and the parent refuses to unmap on
+release. Windows may still reclaim resources after PnP release or physical
+removal, so this is not a physical power or exclusivity guarantee.
+Sources: [registers](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/include/linux/mfd/mt6392/registers.h),
+[MT6392 codec](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/sound/soc/codecs/mt6392-codec.c),
+and [MT8167 codec regmap](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/sound/soc/codecs/mt8167-codec.c).

@@ -10,6 +10,8 @@ static const GUID A04SharedAudioInterfaceGuid =
     {0x5b8d8b10,0x347b,0x4f76,{0x9c,0x7e,0x92,0x06,0x61,0xb3,0xd0,0x45}};
 typedef struct _A04_SHARED_AUDIO_INTERFACE {
     INTERFACE Header;
+    /* 0=acquired, -1=rejected before side effects, any other error means
+     * hardware state may have changed and parent/child must be quarantined. */
     int (*AcquireMuted)(PVOID, ULONG sampleRate);
     int (*ReleaseQuiescent)(PVOID);
     /* PASSIVE_LEVEL, with an acquired audio lease. On success the parent
@@ -22,5 +24,5 @@ typedef struct _A04_SHARED_AUDIO_INTERFACE {
      * for any partial operation until ReleaseQuiescent reports success. */
     int (*PrepareMaskedIrq)(PVOID, PVOID afe, ULONG length);
 } A04_SHARED_AUDIO_INTERFACE;
-#define A04_SHARED_AUDIO_INTERFACE_VERSION 3
+#define A04_SHARED_AUDIO_INTERFACE_VERSION 4
 #endif

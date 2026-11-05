@@ -18,7 +18,7 @@ static int parent_release(PVOID){parent_releases++;return parent_release_fail?-1
 static int parent_prepare(PVOID,PVOID afe,ULONG n){assert(afe && n==4096);parent_prepares++;return parent_prepare_fail?-1:0;}
 extern "C" NTSTATUS Mt8167QueryAudioParent(PDEVICE_OBJECT p,A04_SHARED_AUDIO_INTERFACE *out) {
  if(query_failure)return STATUS_NOT_SUPPORTED;
- *out={};out->Header.Size=sizeof(*out);out->Header.Version=3;out->Header.Context=p;
+ *out={};out->Header.Size=sizeof(*out);out->Header.Version=4;out->Header.Context=p;
  out->Header.InterfaceReference=parent_ref;out->Header.InterfaceDereference=parent_deref;
  out->AcquireMuted=malformed?nullptr:parent_acquire;out->ReleaseQuiescent=parent_release;out->PrepareMaskedIrq=parent_prepare;parent_refs++;return STATUS_SUCCESS;
 }

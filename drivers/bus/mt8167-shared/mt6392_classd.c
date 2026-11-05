@@ -33,7 +33,8 @@ int a04_mt6392_classd_start_muted(struct a04_mt6392_classd *c)
     uint16_t gain;
     if(!c || c->active || c->poisoned || !c->verify_start || !c->verify_quiescent ||
        !c->update_bits || !c->read16 || !c->delay_us || c->verify_start(c->context) ||
-       !supported(c,start_ops,sizeof(start_ops)/sizeof(start_ops[0]))) return -1;
+       !supported(c,start_ops,sizeof(start_ops)/sizeof(start_ops[0])) ||
+       !supported(c,stop_ops,sizeof(stop_ops)/sizeof(stop_ops[0]))) return -1;
     /* Linux enumerates SPK_CON9 gain code 0 as MUTE; readback alone does not
      * establish board-level silence, hence the separate prerequisite. */
     if(upd(c,SPK9,0x0f00,0) || c->read16(c->context,SPK9,&gain) || (gain&0x0f00)) return fail(c);

@@ -80,7 +80,7 @@ int main(void){
  fail_step=3;assert(ChildRequirements(&children[1],NULL)!=0 && appended==2 && deleted==2);fail_step=0;
  children[1].base=0;assert(ChildRequirements(&children[1],NULL)==STATUS_DEVICE_CONFIGURATION_ERROR && appended==2);assert(saved.Header.Version==1 && saved.ReadButtons);
  assert(input.Version==1 && input.TouchPen && input.ButtonPmicRead);
- assert(audio.Header.Version==3 && audio.AcquireMuted && audio.ReleaseQuiescent && audio.PrepareMaskedIrq);
+ assert(audio.Header.Version==4 && audio.AcquireMuted && audio.ReleaseQuiescent && audio.PrepareMaskedIrq);
  assert(audio.PrepareMaskedIrq(audio.Header.Context,(PVOID)&audio,0x1000)!=0 && !reads && !writes);
  {
  struct Mt8167AudioParentClient wrapper={0};struct mt8167_audio_shared_client client={0};
@@ -113,6 +113,13 @@ int main(void){
 #endif
  assert(!ParentPrepare(&testContext,&list,&translatedList) && maps==(A04_SHARED_APMIXED_RESOURCE?5:4));
  assert((uintptr_t)testContext.topck==0x20000000 && (uintptr_t)testContext.pwrap==0x2000f000);
+ /* Simulate an uncertain audio operation: reject unmap and report the
+  * ambiguous result to the child; clear only in the host fixture. */
+ testContext.audio.poisoned=1;testContext.admissionClosed=0;
+ assert(audio.AcquireMuted(audio.Header.Context,48000)==-2 && !reads && !writes);
+ assert(ParentRelease(&testContext,&list)==STATUS_DEVICE_BUSY && !unmaps && testContext.pwrap);
+ testContext.audio.poisoned=0;
+
 #if A04_SHARED_APMIXED_RESOURCE
  assert((uintptr_t)testContext.apmixed==0x20018000);
 #else

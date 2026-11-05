@@ -110,7 +110,7 @@ the shared owner must exclude those sources and keep the mask stable until
 disconnect. It is not used directly by the PnP path.
 
 The separate `A04_AUDIO_IRQ_DIAGNOSTIC=1` path requires both the mapped child
-AFE resource and a version 3 shared-parent interface. It acquires a muted
+AFE resource and a version 4 shared-parent interface. It acquires a muted
 clock/codec lease and calls the parent's `PrepareMaskedIrq` contract, which
 must establish exclusive AFE ownership, initially mask every source, and keep
 all non-DL1 sources masked until lease release. After ISR connection only the
@@ -119,7 +119,7 @@ PnP revoke drains position requests, disconnects and flushes the IRQ, releases
 the lease, then unmaps AFE. Failed lease release retains the owner, mapping and
 parent references. The prototype parent rejects both acquisition and preparation
 without MMIO, so this path cannot connect on that parent. It does not start DMA,
-unmask interrupts or allow RUN. Version 3 intentionally rejects older parents.
+unmask interrupts or allow RUN. Version 4 intentionally rejects older parents.
 
 The miniport now accepts an optional internal `Mt8167StreamBackend` supplied by
 an owning PnP provider. It forwards allocation, format-independent start/stop,
@@ -241,7 +241,7 @@ power, live buffer coherency, the speaker route, or a DMA drain. Host tests
 use simulated MMIO; there has been no Windows or device playback test.
 
 `Mt8167TransportStartMaskedParent` handles the PnP case where the IRQ was
-connected under the version 3 masked-source contract. It prepares the common
+connected under the version 4 masked-source contract. It prepares the common
 buffer, quarantines the lease before publishing a DMA address, and starts the
 engine under IRQ synchronization without reconnecting the ISR. Failures after
 the exposure boundary retain the mapping, IRQ and lease. This is host-tested
@@ -254,3 +254,10 @@ flush does not prove live WaveRT circular-buffer coherency. The current parent
 also refuses codec/clock ownership. The hypothetical start/stop path is not
 operational or hardware-tested; do not enable it for deployment. A successful
 stop still does not prove drain or permit freeing exposed DMA.
+
+Version 4 additionally distinguishes refusal before side effects (-1) from
+uncertain partial acquisition (any other failure). The latter quarantines
+the child lease/reference and causes the parent to retain mappings on release.
+This prevents ordinary software cleanup from freeing uncertain resources; it
+does not prove that Windows keeps the physical PnP resources assigned after
+release or surprise removal. No hardware audio lease is currently enabled.
