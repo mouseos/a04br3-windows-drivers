@@ -334,3 +334,8 @@ builds keep parent D0 disabled. The ACPI table is an offline fixture with
 `_STA=0`; legacy owners, firmware handoff, PnP removal and physical power
 sharing have not been validated. Host tests and WDK compilation do not prove
 that USB or audio operates on the tablet.
+
+The diagnostic parent has also been linked as an unsigned ARM32 SYS using
+the WDK 8.1 import libraries. This is a build check only: the offline ACPI
+fixture, USB keyboard child and audio backend have not been installed or
+exercised together on the target.
