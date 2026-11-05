@@ -177,8 +177,10 @@ translated ranges against overlap, maps the translated APMIXED range and
 unmaps it during normal rundown. No APMIXED registers are accessed. The normal
 four-resource configuration remains unchanged and rejects the extra range.
 The codec DTS references APMIXED, AFE, TOP audio and PWRAP; APMIXED is shared
-with other users including the Linux thermal driver. ACPI firmware does not
-currently provide this fifth resource. Windows PnP exclusivity does not prove
+with other users including the Linux thermal driver. The default ACPI configuration does not provide this fifth resource. The
+separate canonical UEFI branch `work/windows-shared-parent-acpi` offers it
+only with `A04BR3_SHARED_PARENT=1` and `A04BR3_SHARED_APMIXED=1`,
+and rejects concurrent thermal, GPU, display and battery build selections. Windows PnP exclusivity does not prove
 that firmware or drivers using direct MMIO have stopped, nor does mapping
 prove clock rates, rail retention, codec mute, or a safe DMA drain. The audio
 lease and all clock/codec writes remain disabled. Do not deploy this experiment.
