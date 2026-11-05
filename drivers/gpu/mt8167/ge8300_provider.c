@@ -35,6 +35,12 @@
 #ifndef A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
 #define A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC 0
 #endif
+#ifndef A04_GE8300_VENDOR_SCREEN_REPEAT_DIAGNOSTIC
+#define A04_GE8300_VENDOR_SCREEN_REPEAT_DIAGNOSTIC 0
+#endif
+#if A04_GE8300_VENDOR_SCREEN_REPEAT_DIAGNOSTIC && !A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
+#error Screen repeat requires the private screen diagnostic
+#endif
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC && (!A04_GE8300_VENDOR_TILE_DIAGNOSTIC || A04_GE8300_VENDOR_MULTI_TILE_DIAGNOSTIC || A04_GE8300_VENDOR_COLOR_DIAGNOSTIC)
 #error Screen diagnostic requires isolated zero tile diagnostic
 #endif
@@ -771,6 +777,20 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             GpuPrint(" UFO=");GpuHex(clear.ufo);GpuPrint(" EXPECT=");GpuHex(clear.expected);GpuPrint("\n");
             GpuPrint("A04GPU CLEAR OBSERVATION PROVISIONAL=");GpuHex(clear.provisional);
             GpuPrint(" SLC=");GpuHex(clear.slc_status);GpuPrint(" IDLE=");GpuHex(clear.slc_idle);GpuPrint("\n");
+#if A04_GE8300_VENDOR_SCREEN_REPEAT_DIAGNOSTIC
+            if(NT_SUCCESS(clear_status)) {
+                unsigned repeat_index;
+                for(repeat_index=1;repeat_index<=2;repeat_index++) {
+                    clear_status=a04_vendor_render_repeat_screen(&c->vendor_render,&c->vendor_start,repeat_index,&clear);
+                    GpuPrint("A04GPU SCREEN REPEAT INDEX=");GpuHex(repeat_index);
+                    GpuPrint(" STATUS=");GpuHex((ULONG)clear_status);
+                    GpuPrint(" MATCH=");GpuHex(clear.zeros);
+                    GpuPrint(" GUARD=");GpuHex(clear.guard_errors);
+                    GpuPrint(" PHASE=");GpuHex(clear.phase);GpuPrint("\n");
+                    if(!NT_SUCCESS(clear_status))break;
+                }
+            }
+#endif
 #if A04_GE8300_VENDOR_MULTI_TILE_DIAGNOSTIC
             if(NT_SUCCESS(clear_status)) {
                 unsigned tile_index;

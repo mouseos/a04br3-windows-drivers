@@ -178,7 +178,7 @@ NTSTATUS a04_vendor_render_next_tile(struct a04_vendor_render_cold *r,
     tile.image.payload[2]=colour;tile.image.expected=colour;
     if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
     if(r->cleanup_started || r->poisoned || s->command_poisoned || s->shutdown_started || !r->mapped ||
-       !r->clear_ready || !r->clear_attempted || !r->clear_verified || r->diagnostic_tile_index+1!=index ||
+       !r->clear_ready || !r->clear_attempted || !r->clear_verified || r->screen_surface || r->diagnostic_tile_index+1!=index ||
        !r->buffer[4].cpu || r->buffer[4].bytes!=65536u || !r->buffer[7].cpu ||
        !s->online || !s->memory || !s->memory->hardware_owned || s->memory!=r->firmware) {
         InterlockedExchange(&s->command_busy,0);return STATUS_INVALID_DEVICE_STATE;
@@ -194,5 +194,33 @@ NTSTATUS a04_vendor_render_next_tile(struct a04_vendor_render_cold *r,
     status=clear_locked(r,s,result,TRUE);
     /* No retry on admission or submission failure. */
     if(!NT_SUCCESS(status)) {r->poisoned=TRUE;s->command_poisoned=TRUE;}
+    InterlockedExchange(&s->command_busy,0);return status;
+}
+
+/* Bounded diagnostic replay of the exact same screen tile and PDS. The caller
+ * owns the adapter/render lifetime throughout this call. A completed fence is
+ * necessary for reuse but does not prove DMA quiescence at teardown. */
+NTSTATUS a04_vendor_render_repeat_screen(struct a04_vendor_render_cold *r,
+    struct a04_vendor_start *s,unsigned index,struct a04_vendor_clear_result *result)
+{
+    struct a04_vendor_surface *screen;unsigned i;NTSTATUS status;
+    if(!result)return STATUS_INVALID_PARAMETER;
+    RtlZeroMemory(result,sizeof(*result));
+    if(!r || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL || (index!=1 && index!=2))return STATUS_INVALID_PARAMETER;
+    if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
+    screen=r->screen_surface;
+    if(r->cleanup_started || r->poisoned || s->command_poisoned || s->shutdown_started || !r->mapped ||
+       !r->clear_ready || !r->clear_attempted || !r->clear_verified || r->diagnostic_tile_index+1!=index ||
+       !screen || !screen->prepared || !screen->hardware_exposed || !screen->pixels.cpu ||
+       screen->bytes!=4259840u || screen->pixels.bytes!=screen->bytes ||
+       !s->online || !s->memory || !s->memory->hardware_owned || s->memory!=r->firmware) {
+        status=STATUS_INVALID_DEVICE_STATE;goto out;
+    }
+    /* Keep the PDS and all mappings unchanged while the next job uses them. */
+    for(i=0;i<screen->bytes/4u;i++)((volatile uint32_t *)screen->pixels.cpu)[i]=0xa5a5a5a5u;
+    a04_gpu_dma_barrier();r->clear_attempted=FALSE;r->clear_verified=FALSE;r->diagnostic_tile_index=index;
+    status=clear_locked(r,s,result,TRUE);
+    if(!NT_SUCCESS(status)){r->poisoned=TRUE;s->command_poisoned=TRUE;}
+out:
     InterlockedExchange(&s->command_busy,0);return status;
 }

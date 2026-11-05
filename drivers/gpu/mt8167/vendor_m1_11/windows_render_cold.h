@@ -41,4 +41,7 @@ NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *render,
 /* Diagnostic-only fixed sequence; completed pixels do not prove DMA quiescence. */
 NTSTATUS a04_vendor_render_next_tile(struct a04_vendor_render_cold *render,
     struct a04_vendor_start *start, unsigned index, struct a04_vendor_clear_result *result);
+/* Diagnostic-only: two replays of the same private screen tile/PDS. */
+NTSTATUS a04_vendor_render_repeat_screen(struct a04_vendor_render_cold *render,
+    struct a04_vendor_start *start, unsigned index, struct a04_vendor_clear_result *result);
 #endif

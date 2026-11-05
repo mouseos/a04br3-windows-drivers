@@ -342,3 +342,13 @@ DMA先として渡さない。これは旧ABIの転送経路であり、m1.11の
 [WRITE_REGISTER_BUFFER_ULONG](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-write_register_buffer_ulong)
 は常駐バッファからmapped device memoryへULONG列を書き、memory barrierを挿入する。
 同期Presentでmutexを保持している間に転記を終え、モード変更・停止と直列化する。
+
+`A04_GE8300_VENDOR_SCREEN_REPEAT_DIAGNOSTIC=1` は既定OFFで、screen診断の成功後、
+同じ画面サイズ専用surface・固定32×32 zero-clear・同一PDSを２回追加実行する。
+各回のKCCB消費、TQ更新、SLC flush、GP fenceおよび対象と全ガード照合が
+成功した場合のみ次回へ進む。再初期化から次回完了までcommand lockを保持し、
+cleanup開始・停止・異常時は再使用しない。PDS、GPU mappingとadapterは診断中保持し、
+失敗時も従来の解放拒否を維持する。この反復はXNU由来の同一clearと既存m1.11
+FWIF手順の範囲であり、任意のsource-to-destination copy、Windows Present、
+scanout所有や停止時のDMA排出を実装・証明しない。画面サイズ版・反復版の
+実機結果は未取得。`_CCA` が制御するARM上の属性・可視性も未確認。
