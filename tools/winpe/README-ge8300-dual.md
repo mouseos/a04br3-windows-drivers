@@ -4,7 +4,7 @@
 
 case 1だけ全領域が背景となりcase 0が不全ならgeometry／vertex／PPP経路が候補となる。双方同様なら共通背景／ISP／PBE／可視性等が候補となるが、単独では原因を確定できない。各caseでsentinel初期化と全16 KiB RGBA、部分・全体CRC、fence、FW観測、region/TPCを取得し、最後に共通shutdownを記録する。sentinelの残存だけでGPU非書込みは断定できず、FWカウンタやshutdown成功もハードDMA停止の独立証明ではない。
 
-`python3 tools/uart/analyze-ge8300-dual-render.py UART --offset START --end END --output-dir NEW_DIRECTORY` は１起動内の２case、断片・全体CRC、順序、fence、shutdownを確認し、画素を16×16領域別に分類し、検証後にRGBAを出力する。case欠落、SKIPPED、ABORT、CRC不足は不完全扱い。出力先は新規ディレクトリを指定する。通信欠落やdrvload停止時には画面送信が自動起動しない。drvload・PnP・lifecycleが失敗として戻った場合のみ画面を送信する。
+`python3 tools/uart/analyze-ge8300-dual-render.py UART --offset START --end END --output-dir NEW_DIRECTORY` は１起動内の２case、断片・全体CRC、順序、fence、shutdownを確認し、画素を16×16領域別に分類し、検証後にRGBAを出力する。case欠落、SKIPPED、ABORT、CRC不足は不完全扱い。出力先は事前に作成した空のディレクトリを指定する。通信欠落やdrvload停止時には画面送信が自動起動しない。drvload・PnP・lifecycleが失敗として戻った場合のみ画面を送信する。
 
 タイムアウト・cleanup失敗等ではDMAを保持する。watchdogやUART reset、FW停止はGPU DMA停止を保証せず、確実なハードリセットと所有状態の確認が必要。復旧条件は `README-ge8300-linear.md` を参照。
 
