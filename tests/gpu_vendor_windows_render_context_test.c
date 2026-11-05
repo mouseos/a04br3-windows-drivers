@@ -7,7 +7,7 @@
 #include "A04BR3RogueRuntimeLayout.h"
 static struct a04_vendor_render_cold *sim;
 static struct a04_rgx_fw_runtime *run;
-static unsigned current,complete;
+static unsigned current,complete,cleanups;
 unsigned KeGetCurrentIrql(void){return PASSIVE_LEVEL;}
 void a04_gpu_dma_barrier(void){}
 void KeStallExecutionProcessor(unsigned us)
@@ -15,6 +15,12 @@ void KeStallExecutionProcessor(unsigned us)
     RGXFWIF_KCCB_CMD *cmd;RGXFWIF_CCCB_CTL *ctl;unsigned char *bank;uint32_t off;
     (void)us;if(!complete)return;
     cmd=&run->kcommands[run->kctl->ui32ReadOffset];bank=sim->buffer[0].cpu;
+    if(cmd->eCmdType==RGXFWIF_KCCB_CMD_CLEANUP) {
+        assert(cmd->uCmdData.sCleanupData.eCleanupType==RGXFWIF_CLEANUP_FWCOMMONCONTEXT);
+        assert(cmd->eDM==(cleanups==0?2u:(cleanups==2?0u:3u)));
+        *(uint32_t *)run->command_sync=complete==3?3u:1u;
+        run->kctl->ui32ReadOffset=run->kctl->ui32WriteOffset;cleanups++;return;
+    }
     if(cmd->eCmdType==RGXFWIF_KCCB_CMD_SLCFLUSHINVAL) {
         if(complete==2)return;
         run->kctl->ui32ReadOffset=run->kctl->ui32WriteOffset;return;
@@ -68,6 +74,16 @@ int main(void)
     current=4;assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_SUCCESS);
     assert(clear.zeros==1024 && !clear.guard_errors && clear.phase==4 && r.clear_attempted);
     assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_INVALID_PARAMETER);
+    { unsigned failed=99;complete=3;
+      assert(a04_vendor_render_cleanup_contexts(&r,&start,&failed)==STATUS_DEVICE_BUSY && failed==0 && !r.cleanup_mask && !r.poisoned);
+      complete=1;cleanups=0;assert(a04_vendor_render_cleanup_contexts(&r,&start,&failed)==STATUS_SUCCESS && failed==4 && r.cleanup_mask==15u && cleanups==4);
+      assert(a04_vendor_render_context_command(&r,&start,2,0xffffffffu)==STATUS_INVALID_PARAMETER);
+      assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_INVALID_PARAMETER);
+      r.cleanup_mask=0;
+      complete=0;assert(a04_vendor_render_cleanup_contexts(&r,&start,&failed)==STATUS_IO_TIMEOUT && failed==0 && r.poisoned && start.command_poisoned);
+      assert(a04_vendor_render_cleanup_contexts(&r,&start,&failed)==STATUS_INVALID_PARAMETER);
+      r.poisoned=FALSE;start.command_poisoned=FALSE;kctl.ui32ReadOffset=kctl.ui32WriteOffset;
+    }
     current=2;complete=0;
     assert(a04_vendor_render_context_command(&r,&start,2,0xffffffffu)==STATUS_IO_TIMEOUT);
     assert(r.poisoned && start.command_poisoned);

@@ -34,7 +34,7 @@ NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
     unsigned i;NTSTATUS status;
     if(!result)return STATUS_INVALID_PARAMETER;
     RtlZeroMemory(result,sizeof(*result));
-    if(!r || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !r->mapped || !r->clear_ready || r->clear_attempted ||
+    if(!r || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !r->mapped || r->cleanup_mask || !r->clear_ready || r->clear_attempted ||
        r->poisoned || !s->online || !s->memory || !s->memory->hardware_owned || s->memory!=r->firmware ||
        !(f=s->memory->runtime) || !f->kctl || !f->fctl || !f->kcommands || !f->command_sync || !s->core ||
        !r->buffer[0].cpu || !r->buffer[4].cpu || r->buffer[4].bytes!=65536u ||

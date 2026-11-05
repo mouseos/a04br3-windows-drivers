@@ -10,7 +10,7 @@ struct a04_vendor_render_cold {
     struct a04_vendor_clear_image clear;
     struct a04_vendor_render_layout layout;
     struct a04_vendor_m1_11_memory *firmware;
-    uint32_t client_write[4], sequence;
+    uint32_t client_write[4], sequence, cleanup_mask;
     uint32_t clear_first, clear_row_bytes;
     BOOLEAN mapped, poisoned, clear_ready, clear_attempted;
 };
@@ -23,6 +23,9 @@ struct a04_vendor_start;
 /* GP UPDATE or a TA/3D/TQ priority change; no drawing task is submitted. */
 NTSTATUS a04_vendor_render_context_command(struct a04_vendor_render_cold *render,
     struct a04_vendor_start *start, unsigned index, uint32_t priority);
+/* FW cleanup only; does not release mappings or establish fabric quiescence. */
+NTSTATUS a04_vendor_render_cleanup_contexts(struct a04_vendor_render_cold *render,
+    struct a04_vendor_start *start, unsigned *failed_index);
 struct a04_vendor_clear_result {
     uint32_t zeros, guard_errors, first, last, phase; /* zeros = pixels matching requested value */
     uint32_t kread,kwrite,cread,cwrite,ufo,expected;

@@ -260,3 +260,20 @@ uncached stage、IRQ、start、render cold、clear診断の全指定を必要と
 位置(64,64)の32×32だけをzero-clearする。対象1024画素と残り15360画素の
 すべてをSLC flush・fence成功後に照合する。タイムアウト時の読取りは暫定値で、
 DMA停止や領域解放の証明ではない。対象実機・Windows本体への適用は未検証。
+
+### m1.11 context cleanup and power-off
+
+In the 98dea76 run at UART offset 16720324, all four context commands and
+the bounded 32x32 transfer reported success, but the power-off request returned
+`80000011`; the snapshot showed power sync 1, power state 1, KCCB read=write=9
+and FWCCB read=write=0. A later color-clear run showed the same result. These
+are observations, not proof that live contexts caused the rejection.
+
+The experimental m1.11 path now drains each known client CCB and sends the
+vendor DDK common-context CLEANUP command on its data master. RUN without BUSY
+and consumption of the KCCB entry are required for each context before the
+power-off request. BUSY leaves memory owned; timeout or invalid queue state
+poisons the context and stops further submissions. Partial cleanup forbids new
+work. Firmware cleanup and power acknowledgement do not prove external fabric
+quiescence; all DMA stays pinned and D0 exit remains guarded. This change is
+host-tested only; actual m1.11 cleanup and power-off are not yet verified.

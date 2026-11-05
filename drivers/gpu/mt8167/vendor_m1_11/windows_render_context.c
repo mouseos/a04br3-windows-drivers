@@ -23,7 +23,7 @@ NTSTATUS a04_vendor_render_context_command(struct a04_vendor_render_cold *r,
     volatile unsigned char *bank;volatile uint32_t *sync,*priority_word;
     uint32_t context_offset,at,next,kread,kwrite,value,sequence=0;unsigned i,dm;
     NTSTATUS status=STATUS_DEVICE_BUSY;
-    if(!r || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL || index>3 ||
+    if(!r || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL || index>3 || r->cleanup_mask ||
        (index==2 ? priority!=0xffffffffu : priority>1u) || !r->mapped || r->poisoned ||
        !s->online || !s->memory || !s->memory->hardware_owned || r->firmware!=s->memory ||
        !(fw=s->memory->runtime) || !fw->kctl || !fw->fctl || !fw->kcommands || !s->core ||
@@ -86,6 +86,69 @@ NTSTATUS a04_vendor_render_context_command(struct a04_vendor_render_cold *r,
         KeStallExecutionProcessor(10);
     }
     status=STATUS_IO_TIMEOUT;
+poison:
+    r->poisoned=TRUE;s->command_poisoned=TRUE;
+out:
+    InterlockedExchange(&s->command_busy,0);return status;
+}
+
+/* m1.11 RGXFWRequestCommonContextCleanUp: drain the client CCB, issue
+ * CLEANUP on its data master, and wait for RUN without BUSY. No memory
+ * is released here; successful FW cleanup is not fabric quiescence. */
+NTSTATUS a04_vendor_render_cleanup_contexts(struct a04_vendor_render_cold *r,
+    struct a04_vendor_start *s,unsigned *failed_index)
+{
+    struct a04_rgx_fw_runtime *fw; RGXFWIF_CCB_CTL k,f; RGXFWIF_CCCB_CTL client;
+    RGXFWIF_KCCB_CMD cmd; volatile unsigned char *bank; volatile uint32_t *sync;
+    uint32_t off,next,value; unsigned index,i; NTSTATUS status=STATUS_DEVICE_BUSY;
+    if(failed_index)*failed_index=4;
+    if(!r || !s || !failed_index || KeGetCurrentIrql()!=PASSIVE_LEVEL || !r->mapped || r->poisoned ||
+       (r->cleanup_mask&~15u) || !s->online || !s->memory || !s->memory->hardware_owned ||
+       r->firmware!=s->memory || !(fw=s->memory->runtime) || !fw->kctl || !fw->fctl ||
+       !fw->kcommands || !fw->command_sync || !fw->command_sync_addr.ui32Addr || !s->core ||
+       !r->buffer[0].cpu || r->layout.used>A04_VENDOR_RENDER_BANK_BYTES) return STATUS_INVALID_PARAMETER;
+    if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
+    if(s->command_poisoned){status=STATUS_IO_DEVICE_ERROR;goto out;}
+    bank=(volatile unsigned char *)r->buffer[0].cpu;sync=(volatile uint32_t *)fw->command_sync;
+    for(index=0;index<4;index++) {
+        if(r->cleanup_mask&(1u<<index))continue;
+        *failed_index=index;
+        off=index==0 ? r->layout.context+(uint32_t)offsetof(RGXFWIF_FWRENDERCONTEXT,sTAContext) :
+            index==1 ? r->layout.context+(uint32_t)offsetof(RGXFWIF_FWRENDERCONTEXT,s3DContext) :
+            index==2 ? r->layout.gp : r->layout.tq;
+        if(off>A04_VENDOR_RENDER_BANK_BYTES-sizeof(RGXFWIF_FWCOMMONCONTEXT) ||
+           r->layout.control[index]>A04_VENDOR_RENDER_BANK_BYTES-sizeof(client) ||
+           r->client_write[index]>4095u || (r->client_write[index]&7u)) {status=STATUS_INVALID_PARAMETER;goto out;}
+        a04_gpu_dma_barrier();
+        if(a04_rgx_device_read_words(&k,fw->kctl,sizeof(k)) || a04_rgx_device_read_words(&f,fw->fctl,sizeof(f)) ||
+           a04_rgx_device_read_words(&client,bank+r->layout.control[index],sizeof(client)) ||
+           k.ui32WrapMask!=127u || k.ui32CmdSize!=sizeof(cmd) || k.ui32ReadOffset>127u || k.ui32WriteOffset>127u ||
+           f.ui32WrapMask!=31u || f.ui32CmdSize!=sizeof(RGXFWIF_FWCCB_CMD) || f.ui32ReadOffset>31u || f.ui32WriteOffset>31u ||
+           client.ui32WrapMask!=4095u || client.ui32ReadOffset>4095u || client.ui32WriteOffset>4095u) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
+        if(k.ui32ReadOffset!=k.ui32WriteOffset || f.ui32ReadOffset!=f.ui32WriteOffset ||
+           client.ui32ReadOffset!=r->client_write[index] || client.ui32WriteOffset!=r->client_write[index]) goto out;
+        RtlZeroMemory(&cmd,sizeof(cmd)); cmd.eCmdType=RGXFWIF_KCCB_CMD_CLEANUP;
+        cmd.eDM=index==0?2u:(index==2?0u:3u);
+        cmd.uCmdData.sCleanupData.eCleanupType=RGXFWIF_CLEANUP_FWCOMMONCONTEXT;
+        cmd.uCmdData.sCleanupData.uCleanupData.psContext.ui32Addr=0xc0080000u+off;
+        cmd.uCmdData.sCleanupData.sSyncObjDevVAddr=fw->command_sync_addr;*sync=0;
+        if(a04_rgx_device_write_words(&fw->kcommands[k.ui32WriteOffset],&cmd,sizeof(cmd))) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
+        a04_gpu_dma_barrier();next=(k.ui32WriteOffset+1u)&127u;
+        ((volatile RGXFWIF_CCB_CTL *)fw->kctl)->ui32WriteOffset=next;
+        a04_gpu_dma_barrier();WRITE_REGISTER_ULONG((volatile ULONG *)(void *)(s->core+0xb00),0x10);
+        status=STATUS_IO_TIMEOUT;
+        for(i=0;i<20000u;i++){
+            a04_gpu_dma_barrier();value=*sync;
+            if(value&~3u){status=STATUS_IO_DEVICE_ERROR;goto poison;}
+            if((value&1u) && ((volatile RGXFWIF_CCB_CTL *)fw->kctl)->ui32ReadOffset==next){
+                if(value&2u){status=STATUS_DEVICE_BUSY;goto out;}
+                r->cleanup_mask|=1u<<index;status=STATUS_SUCCESS;break;
+            }
+            KeStallExecutionProcessor(50);
+        }
+        if(!NT_SUCCESS(status))goto poison;
+    }
+    *failed_index=4;status=STATUS_SUCCESS;goto out;
 poison:
     r->poisoned=TRUE;s->command_poisoned=TRUE;
 out:
