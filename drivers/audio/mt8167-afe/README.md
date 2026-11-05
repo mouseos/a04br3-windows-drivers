@@ -220,8 +220,9 @@ engine. This neither identifies nor acknowledges a pending hardware interrupt,
 so IRQ routing and source quiescence must be established before connecting it.
 
 The optional `A04_AUDIO_MAP_AFE=1` diagnostic PnP path also requires the
-parent query. It validates both exact translated AFE/SRAM ranges and exclusive
-sharing, maps only the AFE register page, and unmaps it on PnP revocation or
+parent query. It identifies exact AFE/SRAM ranges in raw PnP descriptors,
+checks paired translated lengths, exclusive sharing and non-overlap, maps the
+translated AFE register page, and unmaps it on PnP revocation or
 final release. It performs no register accesses, does not map SRAM, and
 never connects the IRQ. Mapping a PnP resource is not a codec/clock lease or
 proof of safe hardware ownership. This path must remain disabled if any other

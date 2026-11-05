@@ -27,10 +27,18 @@ static BOOLEAN Mt8167ResourcesValid(PRESOURCELIST resources)
     if (!resources || resources->NumberOfEntries()!=3 ||
         resources->NumberOfEntriesOfType(CmResourceTypeMemory)!=2 ||
         resources->NumberOfEntriesOfType(CmResourceTypeInterrupt)!=1) return FALSE;
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR a=resources->FindTranslatedEntry(CmResourceTypeMemory,0);
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR b=resources->FindTranslatedEntry(CmResourceTypeMemory,1);
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR a=resources->FindUntranslatedEntry(CmResourceTypeMemory,0);
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR b=resources->FindUntranslatedEntry(CmResourceTypeMemory,1);
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR ta=resources->FindTranslatedEntry(CmResourceTypeMemory,0);
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR tb=resources->FindTranslatedEntry(CmResourceTypeMemory,1);
     PCM_PARTIAL_RESOURCE_DESCRIPTOR irq=resources->FindTranslatedEntry(CmResourceTypeInterrupt,0);
-    if (!a || !b || !irq) return FALSE;
+    if (!a || !b || !ta || !tb || !irq || a->ShareDisposition!=CmResourceShareDeviceExclusive ||
+        b->ShareDisposition!=CmResourceShareDeviceExclusive || ta->ShareDisposition!=CmResourceShareDeviceExclusive ||
+        tb->ShareDisposition!=CmResourceShareDeviceExclusive || a->u.Memory.Length!=ta->u.Memory.Length ||
+        b->u.Memory.Length!=tb->u.Memory.Length || a->u.Memory.Start.QuadPart<0 || b->u.Memory.Start.QuadPart<0 ||
+        ta->u.Memory.Start.QuadPart<0 || tb->u.Memory.Start.QuadPart<0 ||
+        !mt8167_audio_translated_memory((uint64_t)ta->u.Memory.Start.QuadPart,ta->u.Memory.Length,
+        (uint64_t)tb->u.Memory.Start.QuadPart,tb->u.Memory.Length)) return FALSE;
     return mt8167_audio_resources_match(3,2,1,(uint64_t)a->u.Memory.Start.QuadPart,
         a->u.Memory.Length,(uint64_t)b->u.Memory.Start.QuadPart,b->u.Memory.Length,
         !(irq->Flags & CM_RESOURCE_INTERRUPT_LATCHED)) ? TRUE : FALSE;

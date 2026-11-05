@@ -35,17 +35,17 @@ static std::atomic<bool> holdPosition(false),enteredPosition(false),revokeDone(f
 int Mt8167TransportPosition(Mt8167Transport *,uint32_t *){enteredPosition=true;while(holdPosition)std::this_thread::yield();return -1;}
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
 static int maps,unmaps,mapfail;static unsigned char mmio[4096];
-PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,MEMORY_CACHING_TYPE cache) { assert(a.QuadPart==0x11140000 && n==4096 && cache==MmNonCached);maps++;return mapfail?nullptr:mmio; }
+PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,MEMORY_CACHING_TYPE cache) { assert(a.QuadPart==0x21140000 && n==4096 && cache==MmNonCached);maps++;return mapfail?nullptr:mmio; }
 void MmUnmapIoSpace(PVOID p,ULONG n) { assert(p==mmio && n==4096);unmaps++; }
 #endif
 static void put(PDMA_ADAPTER){puts++;}
 static PVOID alloc(PDMA_ADAPTER,ULONG n,PHYSICAL_ADDRESS *l,BOOLEAN){assert(n==8192);l->QuadPart=0x100000;return data;}
 static void freebuf(PDMA_ADAPTER,ULONG,PHYSICAL_ADDRESS,PVOID,BOOLEAN){freed++;}
-struct Resources : IResourceList { _CM_PARTIAL_RESOURCE_DESCRIPTOR irq{},rawIrq{},mem[2]{};
- Resources(){irq.ShareDisposition=rawIrq.ShareDisposition=CmResourceShareDeviceExclusive;rawIrq.u.Interrupt.Vector=152;irq.u.Interrupt.Vector=80;irq.u.Interrupt.Level=5;irq.u.Interrupt.Affinity=1;mem[0].ShareDisposition=mem[1].ShareDisposition=CmResourceShareDeviceExclusive;mem[0].u.Memory.Start.QuadPart=0x11140000;mem[0].u.Memory.Length=0x1000;mem[1].u.Memory.Start.QuadPart=0x11141000;mem[1].u.Memory.Length=0x9000;}
+struct Resources : IResourceList { _CM_PARTIAL_RESOURCE_DESCRIPTOR irq{},rawIrq{},mem[2]{},rawMem[2]{};
+ Resources(){irq.ShareDisposition=rawIrq.ShareDisposition=CmResourceShareDeviceExclusive;rawIrq.u.Interrupt.Vector=152;irq.u.Interrupt.Vector=80;irq.u.Interrupt.Level=5;irq.u.Interrupt.Affinity=1;rawMem[0].ShareDisposition=rawMem[1].ShareDisposition=CmResourceShareDeviceExclusive;rawMem[0].u.Memory.Start.QuadPart=0x11140000;rawMem[0].u.Memory.Length=0x1000;rawMem[1].u.Memory.Start.QuadPart=0x11141000;rawMem[1].u.Memory.Length=0x9000;mem[0]=rawMem[0];mem[1]=rawMem[1];mem[0].u.Memory.Start.QuadPart=0x21140000;mem[1].u.Memory.Start.QuadPart=0x21141000;}
  ULONG NumberOfEntriesOfType(int type) override{return type==CmResourceTypeMemory?2:1;}
  PCM_PARTIAL_RESOURCE_DESCRIPTOR FindTranslatedEntry(int type,ULONG index) override{return type==CmResourceTypeMemory?(index<2?&mem[index]:nullptr):&irq;}
- PCM_PARTIAL_RESOURCE_DESCRIPTOR FindUntranslatedEntry(int type,ULONG index) override{return type==CmResourceTypeInterrupt && !index?&rawIrq:nullptr;}
+ PCM_PARTIAL_RESOURCE_DESCRIPTOR FindUntranslatedEntry(int type,ULONG index) override{return type==CmResourceTypeInterrupt && !index?&rawIrq:type==CmResourceTypeMemory && index<2?&rawMem[index]:nullptr;}
 };
 int main(){
  _DMA_OPERATIONS ops{put,alloc,freebuf};_DMA_ADAPTER adapter{&ops};test_dma_adapter=&adapter;
@@ -71,8 +71,13 @@ int main(){
  resources.mem[0].ShareDisposition=0;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner && !maps && !parent_refs);
  resources.mem[0].ShareDisposition=CmResourceShareDeviceExclusive;
  resources.mem[1].u.Memory.Length=0x8000;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner && !maps && !parent_refs);
- resources.mem[1].u.Memory.Length=0x9000;mapfail=1;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_INSUFFICIENT_RESOURCES && !owner && maps==1 && !unmaps && !parent_refs);mapfail=0;puts=0;
+ resources.mem[1].u.Memory.Length=0x9000;resources.mem[1].u.Memory.Start.QuadPart=0x21140800;
+ assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner && !maps && !parent_refs);
+ resources.mem[1].u.Memory.Start.QuadPart=0x21141000;resources.rawMem[0].u.Memory.Start.QuadPart=0x11150000;
+ assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner && !maps && !parent_refs);
+ resources.rawMem[0].u.Memory.Start.QuadPart=0x11140000;mapfail=1;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_INSUFFICIENT_RESOURCES && !owner && maps==1 && !unmaps && !parent_refs);mapfail=0;puts=0;
  _CM_PARTIAL_RESOURCE_DESCRIPTOR swap=resources.mem[0];resources.mem[0]=resources.mem[1];resources.mem[1]=swap;
+ swap=resources.rawMem[0];resources.rawMem[0]=resources.rawMem[1];resources.rawMem[1]=swap;
 #endif
 #if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
  assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_NOT_READY && !owner && !test_irq_connections && !parent_refs);
