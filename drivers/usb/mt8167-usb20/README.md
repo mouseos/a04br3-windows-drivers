@@ -1,6 +1,6 @@
 # MT8167 USB 2.0 EP0 sequencing
 
-This is a partial, hardware-independent host control-transfer engine, not an
+This is a partial host control-transfer engine and EP0 PIO adapter, not an
 installable Windows driver. It sequences setup, data and status, short IN
 packets and errors. The caller must serialize EP0, perform FIFO and CSR I/O,
 validate hardware completion and errors before calling Ep0Advance, manage
@@ -32,3 +32,5 @@ Run portable tests from repository root:
 `cc -std=c11 -Wall -Wextra -Werror -Idrivers/usb/mt8167-usb20 drivers/usb/mt8167-usb20/ep0.c tests/usb/ep0_test.c -o <output-in-workspace> && <output-in-workspace>`.
 `tools/ci/build-mt8167-usb20.ps1` compiles the engine with WDK 8.1 headers for
 ARM32 and verifies the COFF machine; this is not a linked driver package.
+
+The EP0 PIO adapter assumes the indexed register layout and an initialized host-mode controller. It performs FIFO I/O and CSR0 transactions through callbacks, but does not install an IRQ handler or manage power, route, cancellation or recovery. Mock tests are not hardware validation.
