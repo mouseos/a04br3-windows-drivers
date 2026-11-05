@@ -51,6 +51,15 @@ int main(void) {
  ToprguPoll(&c,1); assert(!c.ownedFour && writes==2);
  w[0]=1; active=4; queries=0; drop_at=3;
  ToprguPoll(&c,1); assert(!c.ownedFour && writes==2);
+ {
+   ULONG rw[16]={0},ru[16]={0}; TOPRGU_CONTEXT resumed={0};
+   resumed.wdt=rw; resumed.uart=ru; resumed.running=1;
+   resumed.suspendedWatchdog=1; resumed.savedMode=1;
+   active=4; queries=drop_at=0; cpu=0;
+   ToprguPoll(&resumed,0); assert(resumed.suspendedWatchdog && writes==2);
+   cpu=1; ToprguPoll(&resumed,1);
+   assert(!resumed.suspendedWatchdog && resumed.ownedFour && (rw[0]&1) && writes==6);
+ }
  puts("actual poll: claim, CPU loss, re-claim and disabled MODE: OK"); return 0;
 }
 '''
