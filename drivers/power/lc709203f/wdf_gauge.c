@@ -15,10 +15,16 @@
 #ifndef A04_BROKER_CLIENT_EXPERIMENTAL
 #define A04_BROKER_CLIENT_EXPERIMENTAL 0
 #endif
+#ifndef A04_BROKER_OWNER_EXPERIMENTAL
+#define A04_BROKER_OWNER_EXPERIMENTAL 0
+#endif
 #if A04_BROKER_CLIENT_EXPERIMENTAL && !A04_BQ24160_EXPERIMENTAL
 #error Broker client build requires BQ experimental components
 #endif
-#if A04_BROKER_CLIENT_EXPERIMENTAL
+#if A04_BROKER_OWNER_EXPERIMENTAL && (!A04_BQ24160_EXPERIMENTAL || A04_BROKER_CLIENT_EXPERIMENTAL)
+#error Broker owner requires BQ experimental and excludes broker client
+#endif
+#if A04_BROKER_CLIENT_EXPERIMENTAL || A04_BROKER_OWNER_EXPERIMENTAL
 #include "../bq24160/broker_wdf.h"
 #endif
 #ifndef A04_BQHR_DIAGNOSTIC
@@ -42,6 +48,10 @@ typedef struct {
 #if A04_BROKER_CLIENT_EXPERIMENTAL
     WDFWAITLOCK broker_lock;
     struct a04_broker_wdf broker;
+#endif
+#if A04_BROKER_OWNER_EXPERIMENTAL
+    struct a04_broker_endpoint owner_endpoint;
+    WDFQUEUE owner_queue;
 #endif
 #if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
     struct a04_bq_owner charger;
@@ -425,7 +435,15 @@ NTSTATUS GaugeAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
      * device callback lock that D0Exit may already hold. */
     timer.AutomaticSerialization = FALSE;
     WDF_OBJECT_ATTRIBUTES_INIT(&child); child.ParentObject = device; child.ExecutionLevel = WdfExecutionLevelPassive;
-    return WdfTimerCreate(&timer, &child, &c->timer);
+    status=WdfTimerCreate(&timer, &child, &c->timer);
+    if (!NT_SUCCESS(status)) return status;
+#if A04_BROKER_OWNER_EXPERIMENTAL
+    /* Register only an unbound, non-operational endpoint. It rejects every
+     * request until a separately proven owner is adopted and initialized. */
+    status=a04_broker_wdf_register_receiver(device,&c->owner_endpoint,c->bus_lock,&c->owner_queue);
+    if (!NT_SUCCESS(status)) return status;
+#endif
+    return STATUS_SUCCESS;
 }
 NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING registry)
 {

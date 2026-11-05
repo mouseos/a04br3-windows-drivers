@@ -22,8 +22,9 @@ void a04_broker_wdf_stop(struct a04_broker_wdf *);
  * serialize it with maintenance using owner_lock and maintain endpoint/lock
  * lifetime through request completion; no WDF queue is registered here. */
 void a04_broker_wdf_receive(struct a04_broker_endpoint *,WDFWAITLOCK,WDFREQUEST,ULONG code);
-/* Called only by a proven I2C2 owner before it exposes an I/O target. This
- * installs an internal-control queue; it does not grant ownership or start a
- * maintenance worker. Caller keeps endpoint and lock alive until queue drain. */
+/* A parent may register an unbound endpoint, which rejects all requests. The
+ * owner must establish all ownership and lifetime evidence before binding it.
+ * Registration does not grant ownership or start a maintenance worker. Caller
+ * keeps endpoint and lock alive until queue drain. */
 NTSTATUS a04_broker_wdf_register_receiver(WDFDEVICE,struct a04_broker_endpoint *,WDFWAITLOCK,WDFQUEUE *);
 #endif

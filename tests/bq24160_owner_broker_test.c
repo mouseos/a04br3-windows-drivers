@@ -67,7 +67,11 @@ int main(void) {
         struct a04_broker_endpoint e={0};
         struct a04_broker_request q={7,1,5*NS};
         struct a04_broker_response r;
-        setup(&f,&o,&b,&c,&g);assert(!a04_broker_endpoint_init(&e,&b,7));
+        setup(&f,&o,&b,&c,&g);
+        memset(&r,0xaa,sizeof(r));assert(a04_broker_endpoint_dispatch(&e,&q,&r));
+        assert(!r.epoch&&!f.reads&&!f.writes&&!f.gauge_reads);
+        assert(a04_broker_endpoint_maintain(&e)&&!f.reads&&!f.writes);
+        assert(!a04_broker_endpoint_init(&e,&b,7));
         q.epoch=8;memset(&r,0xaa,sizeof(r));
         assert(a04_broker_endpoint_dispatch(&e,&q,&r)&&!f.reads&&!r.epoch);
         q.epoch=7;assert(!a04_broker_endpoint_dispatch(&e,&q,&r));

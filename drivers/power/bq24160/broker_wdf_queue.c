@@ -17,7 +17,7 @@ NTSTATUS a04_broker_wdf_register_receiver(WDFDEVICE device,struct a04_broker_end
     WDFQUEUE queue;
     BROKER_QUEUE_CONTEXT *context;
     NTSTATUS status;
-    if (!device || !endpoint || !endpoint->broker || endpoint->closed || !lock || !out)
+    if (!device || !endpoint || !lock || !out)
         return STATUS_INVALID_PARAMETER;
     *out=NULL;
     WDF_IO_QUEUE_CONFIG_INIT(&config,WdfIoQueueDispatchSequential);
