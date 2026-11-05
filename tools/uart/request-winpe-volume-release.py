@@ -29,7 +29,13 @@ def main():
                     try:
                         if os.write(fd,b'\nA04BR3!VOL\n')!=12:raise OSError('short UART write')
                     finally:os.close(fd)
+                    # Discard every byte already buffered at request time. A
+                    # historical READY and success in the same read must never
+                    # authorize a reset for a newly sent request. A very fast
+                    # real response can be lost here: timeout is safer.
+                    log.seek(os.fstat(log.fileno()).st_size);pending=b''
                     requested=True;print('volume request sent',flush=True)
+                    break
                 elif requested and line in FAIL:raise SystemExit('volume release failed or unknown: '+line.decode())
                 elif requested and line==OK:
                     print('guarded volume release acknowledged',flush=True)
