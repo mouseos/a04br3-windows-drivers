@@ -78,16 +78,18 @@ echo NAMES_HIVE_BACKUP_FAILED
 goto dismount
 :logfail
 echo NAMES_LOG_COPY_FAILED
+set "A04_OUTCOME=PARTIAL"
 goto dismount
 :dismfail
 echo NAMES_DISM_FAILED_MAY_BE_PARTIAL
+set "A04_OUTCOME=PARTIAL"
 goto dismount
 :uartfail
 echo NAMES_UART_EVENT_FAILED
 :dismount
 mountvol C: /p
 echo NAMES_MOUNTVOL_EXIT=!errorlevel!
-if errorlevel 1 set "A04_OUTCOME=FAILED"
+if errorlevel 1 set "A04_OUTCOME=UNSAFE"
 :finish
 X:\a04br3\uart-name-event.exe !A04_OUTCOME!
 echo NAMES_STAGE_FINISHED
