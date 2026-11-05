@@ -9,7 +9,7 @@ static void wr(void *p,unsigned r,uint16_t v) { struct fake *f=p; f->regs[r/2]=v
 static void delay(void *p,unsigned us) { struct fake *f=p; assert(us==5); ++f->delay; }
 static uint64_t now(void *p) { return (uint64_t)((struct fake *)p)->delay*5000; }
 int main(void) {
- struct fake f; struct a04_i2c_io io={&f,rd,wr,delay}; struct a04_gauge_mt8167 a={&io,now,0}; uint8_t value=0; int mode;
+ struct fake f; struct a04_i2c_io io={&f,rd,wr,delay}; struct a04_gauge_mt8167 a={.io=&io,.monotonic_ns=now}; uint8_t value=0; int mode;
  memset(&f,0,sizeof(f)); assert(!a04_bq_mt8167_read(&a,4,&value) && value==0xa5);
  assert(f.regs[2]==0xd6 && f.data[0]==4 && f.regs[0x6c/2]==1);
  memset(&f,0,sizeof(f)); assert(!a04_bq_mt8167_kick(&a,0x80)); assert(f.count==2 && f.data[0]==0 && f.data[1]==0x80);
