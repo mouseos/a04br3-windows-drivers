@@ -14,6 +14,7 @@ def sha(p): return hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('source','build','sipf1','uploads','pds','output'):p.add_argument('--'+name,type=pathlib.Path,required=True)
+    p.add_argument('--private-compiler-candidates',action='store_true')
     a=p.parse_args();src,build,sipf,uploads,pds,out=(x.resolve() for x in (a.source,a.build,a.sipf1,a.uploads,a.pds,a.output))
     git=lambda *x:subprocess.check_output(['git','-C',str(src),*x],text=True).strip()
     meta=json.loads((pds/'diagnostic-manifest.json').read_text())
@@ -49,9 +50,21 @@ static void a04_pco_hash(unsigned stage, int internal, const void *data, unsigne
  if (fprintf(f,"{\\"event\\":\\"pco_binary\\",\\"stage\\":%u,\\"internal\\":%d,\\"size\\":%u,\\"fnv64\\":%llu}\\n",stage,internal,size,h)<0 || fclose(f)) abort();
 }
 '''
+    if a.private_compiler_candidates:
+        hook += '''#include <stdatomic.h>
+static void a04_pco_private(unsigned stage, int internal, const void *data, unsigned size) {
+ static atomic_uint seq=0; char path[4096]; const char *dir=getenv("A04_PCO_CANDIDATE_DIR");
+ if (internal || (stage!=0 && stage!=4)) return;
+ if (!dir || size>65536 || snprintf(path,sizeof(path),"%s/%u-%u.bin",dir,stage,atomic_fetch_add(&seq,1)) >= (int)sizeof(path)) abort();
+ FILE *f=fopen(path,"wx"); if (!f) abort();
+ if (fwrite(data,1,size,f)!=size || fclose(f)) abort();
+}
+'''
     marker='   if (pco_should_print_binary(shader))'
     if text.count(marker)!=1:raise SystemExit('unexpected PCO binary function')
     text=text.replace(marker,'   a04_pco_hash(shader->stage, shader->is_internal, shader->binary.data, shader->binary.size);\n\n'+marker)
+    if a.private_compiler_candidates:
+        text=text.replace(marker,'   a04_pco_private(shader->stage, shader->is_internal, shader->binary.data, shader->binary.size);\n\n'+marker)
     out.mkdir(mode=0o700,parents=True,exist_ok=False); (out/'pco_binary.c').write_text(hook+text)
     target='src/imagination/vulkan/libvulkan_powervr_mesa.so'
     cmds=subprocess.check_output(['ninja','-C',str(build),'-t','commands',target],text=True).splitlines()
@@ -72,5 +85,7 @@ static void a04_pco_hash(unsigned stage, int internal, const void *data, unsigne
     args=[repl.get(x,x) for x in args];subprocess.run(args,cwd=build,check=True)
     meta.update(usc_compiler_metadata_only=True,pco_original_sha256=sha(source),pco_source_sha256=sha(out/'pco_binary.c'),
                 pco_object_sha256=sha(out/'pco_binary.c.o'),library_sha256=sha(out/'libvulkan_powervr_mesa.so'))
+    if a.private_compiler_candidates:
+        meta['private_compiler_candidates']=True
     (out/'diagnostic-manifest.json').write_text(json.dumps(meta,indent=2)+'\n')
 if __name__=='__main__':main()

@@ -41,6 +41,14 @@ static void a04_usc_hash(unsigned long long gpu, const void *data, unsigned size
    if (!f) abort();
    if (fprintf(f,"{\\"event\\":\\"usc_upload_hash\\",\\"gpu_va\\":%llu,\\"size\\":%u,\\"fnv64\\":%llu}\\n",gpu,size,h)<0 || fclose(f)) abort();
 }
+static void a04_pds_code_hash(unsigned long long gpu, const void *data, unsigned size)
+{
+   const unsigned char *p=data; unsigned long long h=14695981039346656037ULL;
+   for (unsigned i=0;i<size;i++) { h^=p[i]; h*=1099511628211ULL; }
+   const char *name=getenv("A04_PDS_CODE_HASH"); FILE *f=name ? fopen(name,"a") : NULL;
+   if (!f) abort();
+   if (fprintf(f,"{\\\"gpu_va\\\":%llu,\\\"size\\\":%u,\\\"fnv64\\\":%llu}\\n",gpu,size,h)<0 || fclose(f)) abort();
+}
 '''
     # Only report the explicitly uploaded code/data extents. No source or CPU
     # destination pointers, bytes, or full BOs enter the trace.
@@ -64,6 +72,7 @@ static void a04_usc_hash(unsigned long long gpu, const void *data, unsigned size
       pds_upload_out->code_offset'''
     cc='''      memcpy((uint8_t *)map + code_offset, code, code_size);
       a04_upload_range("pds_code", (unsigned long long)pds_upload_out->pvr_bo->dev_addr.addr + code_offset, code_size);
+      a04_pds_code_hash((unsigned long long)pds_upload_out->pvr_bo->dev_addr.addr + code_offset, code, code_size);
 
       pds_upload_out->code_offset'''
     for old,new in ((u,uc),(d,dc),(c,cc)):
@@ -79,6 +88,6 @@ static void a04_usc_hash(unsigned long long gpu, const void *data, unsigned size
     args=shlex.split(link);args[args.index('-o')+1]=str(out/'libvulkan_powervr_mesa.so')
     args=[str(diag/'libpowervr_rogue.a') if x=='src/imagination/vulkan/libpowervr_rogue.a' else str(out/'pvr_device.c.o') if x=='src/imagination/vulkan/libvulkan_powervr_mesa.so.p/pvr_device.c.o' else x for x in args]
     subprocess.run(args,cwd=build,check=True)
-    meta.update(upload_metadata_only=True,upload_source_sha256=sha(out/'pvr_device.c'),upload_object_sha256=sha(out/'pvr_device.c.o'),library_sha256=sha(out/'libvulkan_powervr_mesa.so'))
+    meta.update(upload_metadata_only=True,pds_code_hash_metadata_only=True,upload_source_sha256=sha(out/'pvr_device.c'),upload_object_sha256=sha(out/'pvr_device.c.o'),library_sha256=sha(out/'libvulkan_powervr_mesa.so'))
     (out/'diagnostic-manifest.json').write_text(json.dumps(meta,indent=2)+'\n')
 if __name__=='__main__':main()

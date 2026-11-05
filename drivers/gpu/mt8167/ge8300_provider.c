@@ -18,6 +18,33 @@
 #ifndef A04_GE8300_COPY_SERVICE
 #define A04_GE8300_COPY_SERVICE 0
 #endif
+#ifndef A04_GE8300_RENDER_DIAGNOSTIC
+#define A04_GE8300_RENDER_DIAGNOSTIC 0
+#endif
+#ifndef A04_GE8300_CLEAR_TEST
+#define A04_GE8300_CLEAR_TEST 0
+#endif
+#ifndef A04_GE8300_COPY_TEST
+#define A04_GE8300_COPY_TEST 0
+#endif
+#ifndef A04_GE8300_LINEAR_TEST
+#define A04_GE8300_LINEAR_TEST 0
+#endif
+#if A04_GE8300_RENDER_DIAGNOSTIC && (!A04_GE8300_RENDER_EXPERIMENT || !A04_GE8300_BOOT_TEST || !A04_GE8300_ALLOW_MISMATCH || A04_GE8300_COPY_SERVICE || A04_GE8300_CLEAR_TEST || A04_GE8300_COPY_TEST || A04_GE8300_LINEAR_TEST)
+#error Render diagnostic requires the isolated render/boot/mismatch build and no copy service
+#endif
+#if A04_GE8300_RENDER_DIAGNOSTIC
+#include "windows_render_diagnostic.h"
+#endif
+#ifndef A04_GE8300_SHARED_TRACE_DIAGNOSTIC
+#define A04_GE8300_SHARED_TRACE_DIAGNOSTIC 0
+#endif
+#if A04_GE8300_SHARED_TRACE_DIAGNOSTIC && !A04_GE8300_BOOT_TEST
+#error Shared trace diagnostic requires the explicit firmware boot test
+#endif
+#if A04_GE8300_SHARED_TRACE_DIAGNOSTIC
+#include "render_trace_shared.h"
+#endif
 #if A04_GE8300_COPY_SERVICE && (!A04_GE8300_BOOT_TEST || !A04_GE8300_ALLOW_MISMATCH)
 #error The experimental copy service requires explicit firmware boot and BVNC mismatch opt-ins
 #endif
@@ -31,6 +58,10 @@ typedef struct {
     volatile UCHAR *core;
     struct a04_gpu_firmware_state firmware;
     struct a04_gpu_queue_test_memory queue_memory;
+#if A04_GE8300_RENDER_DIAGNOSTIC
+    struct a04_windows_render_diagnostic render_diagnostic;
+    struct a04_windows_render_diagnostic render_clear_diagnostic;
+#endif
 #if A04_GE8300_COPY_SERVICE
     struct a04_windows_linear_context linear;
     BOOLEAN copy_online;
@@ -62,8 +93,122 @@ static void GpuHex(ULONG value)
     for(i=0;i<8;++i) text[i]=digits[(value>>(28-4*i))&15u];
     text[8]=0; GpuPrint(text);
 }
+#if A04_GE8300_RENDER_DIAGNOSTIC
+/* Observe firmware-owned counters and pending notifications without consuming
+ * the ring or printing firmware addresses. Firmware may update concurrently. */
+static BOOLEAN GpuRenderFirmwareEvidence(struct a04_gpu_firmware_state *s,ULONG phase)
+{
+    uint8_t *heap;struct rogue_fwif_osinit *os;struct rogue_fwif_hwrinfobuf *hwr;
+    struct rogue_fwif_ccb_ctl *ctl;struct rogue_fwif_fwccb_cmd *ring;
+    uint32_t fw,off,rd,wr,wr_after,idx,reset=0,grow=0,rebuild=0,restart=0,pf=0,other=0;
+    NTSTATUS status=STATUS_INVALID_DEVICE_STATE;
+    if(!s || !s->processor_released || !s->memory.heap || s->runtime.next_free>A04_PVR_HEAP_SIZE ||
+       s->runtime.os_init!=A04_PVR_HEAP_SIZE-2u*65536u ||
+       s->runtime.firmware_ccb_control>s->runtime.next_free ||
+       sizeof(*ctl)>s->runtime.next_free-s->runtime.firmware_ccb_control ||
+       s->runtime.firmware_ccb>s->runtime.next_free ||
+       32u*sizeof(*ring)>s->runtime.next_free-s->runtime.firmware_ccb) goto fail;
+    heap=s->memory.heap;os=(void *)(heap+s->runtime.os_init);
+    fw=os->rogue_fwif_hwr_info_buf_ctl_fw_addr;off=fw&0x00ffffffu;
+    if((fw&0xff000000u)!=0xc0000000u || off!=s->runtime.hwr_control ||
+       off>s->runtime.next_free || sizeof(*hwr)>s->runtime.next_free-off) goto fail;
+    hwr=(void *)(heap+off);ctl=(void *)(heap+s->runtime.firmware_ccb_control);ring=(void *)(heap+s->runtime.firmware_ccb);
+    status=a04_gpu_dma_sync(hwr,sizeof(*hwr),TRUE);if(!NT_SUCCESS(status)) goto fail;
+    status=a04_gpu_dma_sync(ctl,sizeof(*ctl),TRUE);if(!NT_SUCCESS(status)) goto fail;
+    rd=*(volatile uint32_t *)&ctl->read_offset;wr=*(volatile uint32_t *)&ctl->write_offset;
+    if(ctl->wrap_mask!=31u || ctl->cmd_size!=sizeof(*ring) || rd>=32u || wr>=32u) { status=STATUS_DATA_ERROR;goto fail; }
+    status=a04_gpu_dma_sync(ring,32u*sizeof(*ring),TRUE);if(!NT_SUCCESS(status)) goto fail;
+    for(idx=rd;idx!=wr;idx=(idx+1u)&31u) {
+        uint32_t type=*(volatile uint32_t *)&ring[idx].cmd_type;
+        if(type==ROGUE_FWIF_FWCCB_CMD_CONTEXT_RESET_NOTIFICATION) ++reset;
+        else if(type==ROGUE_FWIF_FWCCB_CMD_FREELIST_GROW) ++grow;
+        else if(type==ROGUE_FWIF_FWCCB_CMD_FREELISTS_RECONSTRUCTION) ++rebuild;
+        else if(type==ROGUE_FWIF_FWCCB_CMD_REQUEST_GPU_RESTART) ++restart;
+        else if(type==ROGUE_FWIF_FWCCB_CMD_CONTEXT_FW_PF_NOTIFICATION) ++pf;
+        else ++other;
+    }
+    status=a04_gpu_dma_sync(ctl,sizeof(*ctl),TRUE);if(!NT_SUCCESS(status)) goto fail;
+    wr_after=*(volatile uint32_t *)&ctl->write_offset;
+    GpuPrint("A04GPU FW_EVIDENCE PHASE=");GpuHex(phase);
+    GpuPrint(" HWR=");GpuHex(hwr->hwr_counter);
+    GpuPrint(" GEOM_LOCK=");GpuHex(hwr->hwr_dm_locked_up_count[PVR_FWIF_DM_GEOM]);
+    GpuPrint(" FRAG_LOCK=");GpuHex(hwr->hwr_dm_locked_up_count[PVR_FWIF_DM_FRAG]);
+    GpuPrint(" GEOM_RECOVER=");GpuHex(hwr->hwr_dm_recovered_count[PVR_FWIF_DM_GEOM]);
+    GpuPrint(" FRAG_RECOVER=");GpuHex(hwr->hwr_dm_recovered_count[PVR_FWIF_DM_FRAG]);
+    GpuPrint(" R=");GpuHex(rd);GpuPrint(" W=");GpuHex(wr);
+    GpuPrint(" W_AFTER=");GpuHex(wr_after);GpuPrint(" RESET=");GpuHex(reset);
+    GpuPrint(" GROW=");GpuHex(grow);GpuPrint(" REBUILD=");GpuHex(rebuild);
+    GpuPrint(" RESTART=");GpuHex(restart);GpuPrint(" FW_PF=");GpuHex(pf);
+    GpuPrint(" OTHER=");GpuHex(other);GpuPrint("\n");
+    return hwr->hwr_counter==0 && !hwr->hwr_dm_locked_up_count[PVR_FWIF_DM_GEOM] &&
+        !hwr->hwr_dm_locked_up_count[PVR_FWIF_DM_FRAG] && !hwr->hwr_dm_recovered_count[PVR_FWIF_DM_GEOM] &&
+        !hwr->hwr_dm_recovered_count[PVR_FWIF_DM_FRAG] && !reset && !grow && !rebuild && !restart && !pf && wr_after==wr;
+fail:
+    GpuPrint("A04GPU FW_EVIDENCE PHASE=");GpuHex(phase);
+    GpuPrint(" ERROR=");GpuHex((ULONG)status);GpuPrint("\n");return FALSE;
+}
+/* CRC-32/ISO-HDLC over bytes in linear framebuffer order. */
+static ULONG GpuCrc32(const UCHAR *p,ULONG length)
+{
+    ULONG crc=0xffffffffu,i,j;
+    for(i=0;i<length;++i) {
+        crc^=p[i];
+        for(j=0;j<8;++j) crc=(crc>>1)^(0xedb88320u & (0u-(crc&1u)));
+    }
+    return crc^0xffffffffu;
+}
+static void GpuRenderPixels(const struct a04_windows_render_diagnostic *d)
+{
+    const UCHAR *p;ULONG offset,i,v;
+    if(d->stage!=32 || !d->memory.cpu || !d->memory.completion_observed || !d->memory.cleanup_complete) return;
+    p=(const UCHAR *)d->memory.cpu+A04_RENDER_PAYLOAD_OFFSET+65u*4096u;
+    GpuPrint("A04GPU PIXELS BEGIN LEN=00004000 CRC=");GpuHex(GpuCrc32(p,16384));GpuPrint("\n");
+    for(offset=0;offset<16384;offset+=64) {
+        GpuPrint("A04GPU PIXELS OFF=");GpuHex(offset);GpuPrint(" CRC=");GpuHex(GpuCrc32(p+offset,64));GpuPrint(" DATA=");
+        for(i=0;i<64;i+=4) {
+            v=((ULONG)p[offset+i]<<24)|((ULONG)p[offset+i+1]<<16)|((ULONG)p[offset+i+2]<<8)|p[offset+i+3];
+            GpuHex(v);
+        }
+        GpuPrint("\n");
+    }
+    GpuPrint("A04GPU PIXELS END LEN=00004000 CRC=");GpuHex(GpuCrc32(p,16384));GpuPrint("\n");
+}
+#endif
 static void GpuTraceStage(void *context,ULONG stage)
 { UNREFERENCED_PARAMETER(context); GpuPrint("A04GPU STEP="); GpuHex(stage); GpuPrint("\n"); }
+#if A04_GE8300_SHARED_TRACE_DIAGNOSTIC
+/* Output only masks and counts, never raw trace words, timestamps or pointers.
+ * Firmware can write concurrently: these are candidates, not validated packets. */
+static void GpuSharedTrace(GPU_CONTEXT *c)
+{
+    struct a04_gpu_firmware_state *s=&c->firmware;
+    struct rogue_fwif_tracebuf *ctl; struct a04_shared_trace_summary result={0};
+    unsigned t; ULONG before[2],after[2]; NTSTATUS status;
+    if (!s->processor_released || !s->memory.heap) return;
+    ctl=(void *)((uint8_t *)s->memory.heap+s->runtime.trace_control);
+    status=a04_gpu_dma_sync(ctl,sizeof(*ctl),TRUE);
+    if (!NT_SUCCESS(status)) goto failure;
+    for(t=0;t<2;++t) before[t]=ctl->tracebuf[t].trace_pointer;
+    for(t=0;t<2;++t) {
+        volatile uint32_t *words=(void *)((uint8_t *)s->memory.heap+s->runtime.trace[t]);
+        status=a04_gpu_dma_sync((void *)words,ROGUE_FW_TRACE_BUF_DEFAULT_SIZE_IN_DWORDS*sizeof(*words),TRUE);
+        if (!NT_SUCCESS(status)) goto failure;
+        a04_shared_trace_scan(words,ROGUE_FW_TRACE_BUF_DEFAULT_SIZE_IN_DWORDS,&result);
+    }
+    status=a04_gpu_dma_sync(ctl,sizeof(*ctl),TRUE);
+    if (!NT_SUCCESS(status)) goto failure;
+    for(t=0;t<2;++t) after[t]=ctl->tracebuf[t].trace_pointer;
+    GpuPrint("A04GPU SHARED CANDIDATES="); GpuHex(result.candidates);
+    GpuPrint(" STORE_MASK="); GpuHex(result.store_mask);
+    GpuPrint(" LOAD_MASK="); GpuHex(result.load_mask);
+    GpuPrint(" OTHER="); GpuHex(result.other);
+    GpuPrint(" DIFFERENT="); GpuHex(result.different);
+    GpuPrint(" CHANGED="); GpuHex(before[0]!=after[0] || before[1]!=after[1]); GpuPrint("\n");
+    return;
+failure:
+    GpuPrint("A04GPU SHARED SYNC_ERROR="); GpuHex((ULONG)status); GpuPrint("\n");
+}
+#endif
 static void GpuBugCallback(PVOID buffer,ULONG length)
 {
     unsigned i; UNREFERENCED_PARAMETER(buffer); UNREFERENCED_PARAMETER(length);
@@ -173,6 +318,9 @@ NTSTATUS GpuRelease(WDFDEVICE device,WDFCMRESLIST translated)
     GPU_CONTEXT *c=GpuContext(device); UNREFERENCED_PARAMETER(translated);
     /* Never detach mappings or DMA ownership while the GPU might master RAM. */
     if(c->firmware.processor_released) return STATUS_DEVICE_BUSY;
+#if A04_GE8300_RENDER_DIAGNOSTIC
+    if(c->render_diagnostic.memory.cpu || c->render_clear_diagnostic.memory.cpu) return STATUS_DEVICE_BUSY;
+#endif
 #if A04_GE8300_COPY_SERVICE
     if(c->linear.memory.cpu || c->linear.memory.adapter || c->referenced) return STATUS_DEVICE_BUSY;
 #endif
@@ -235,10 +383,86 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
                 c->status.queue_status=a04_gpu_queue_test(&c->firmware,&c->queue_memory);
                 GpuTraceStage(c,0x104);
             }
+#if A04_GE8300_RENDER_DIAGNOSTIC
+            if(NT_SUCCESS(c->status.mmu_status) && NT_SUCCESS(c->status.queue_status)) {
+              ULONG case_index;BOOLEAN prior_fw_ok=TRUE;
+              for(case_index=0;case_index<2;++case_index) {
+                struct a04_windows_render_diagnostic *d=case_index?&c->render_clear_diagnostic:&c->render_diagnostic;
+                if(case_index && (!prior_fw_ok || c->render_diagnostic.stage!=32 || !c->render_diagnostic.memory.completion_observed ||
+                   !c->render_diagnostic.memory.cleanup_complete || c->render_diagnostic.memory.poisoned)) {
+                    GpuPrint("A04GPU CASE SKIPPED=00000001 REASON=PRIOR_INCOMPLETE\n");break;
+                }
+                GpuPrint("A04GPU CASE BEGIN=");GpuHex(case_index);GpuPrint("\n");
+                if(!GpuRenderFirmwareEvidence(&c->firmware,0)) {
+                    GpuPrint("A04GPU CASE ABORT=FW_EVIDENCE\n");break;
+                }
+                status=a04_windows_render_diagnostic_case(d,&c->firmware,case_index?TRUE:FALSE,
+                    case_index?&c->render_diagnostic:NULL);
+                prior_fw_ok=GpuRenderFirmwareEvidence(&c->firmware,1);
+                if(d->stage==32) {
+                    ULONG y;
+                    for(y=0;y<64;++y) {
+                        GpuPrint("A04GPU ROW Y=");GpuHex(y);
+                        GpuPrint(" LO=");GpuHex(d->triangle_rows[y][0]);
+                        GpuPrint(" HI=");GpuHex(d->triangle_rows[y][1]);
+                        GpuPrint(" BGLO=");GpuHex(d->background_rows[y][0]);
+                        GpuPrint(" BGHI=");GpuHex(d->background_rows[y][1]);
+                        GpuPrint(" ZLO=");GpuHex(d->zero_rows[y][0]);
+                        GpuPrint(" ZHI=");GpuHex(d->zero_rows[y][1]);GpuPrint("\n");
+                    }
+                }
+                GpuPrint("A04GPU RENDER STATUS=");GpuHex((ULONG)status);
+                GpuPrint(" STAGE=");GpuHex(d->stage);
+                GpuPrint(" BG=");GpuHex(d->background_pixels);
+                GpuPrint(" TRI=");GpuHex(d->triangle_pixels);
+                GpuPrint(" OTHER=");GpuHex(d->other_pixels);
+                GpuPrint(" ZERO=");GpuHex(d->zero_pixels);
+                GpuPrint(" MISMATCH=");GpuHex(d->spatial_mismatch);
+                GpuPrint(" BOUNDED=");GpuHex(d->memory.bounded_states_checked);
+                GpuPrint(" B0_VALID=");GpuHex(d->memory.bounded_states[0].valid);
+                GpuPrint(" B0=");GpuHex(d->memory.bounded_states[0].blocks);
+                GpuPrint(" B1_VALID=");GpuHex(d->memory.bounded_states[1].valid);
+                GpuPrint(" B1=");GpuHex(d->memory.bounded_states[1].blocks);
+                GpuPrint("\n");
+                GpuPrint("A04GPU RENDER SENTINEL=");GpuHex(d->sentinel_pixels);GpuPrint("\n");
+                GpuPrint("A04GPU RENDER LIFETIME COMPLETED=");GpuHex(d->memory.completion_observed);
+                GpuPrint(" CLEANUP=");GpuHex(d->memory.cleanup_complete);
+                GpuPrint(" PARTIAL=");GpuHex(d->memory.kick_partial);
+                GpuPrint(" SUBMITTED=");GpuHex(d->memory.kick_submitted);
+                GpuPrint(" POISONED=");GpuHex(d->memory.poisoned);GpuPrint("\n");
+                GpuPrint("A04GPU RENDER FENCES VALID=");GpuHex(d->memory.fence_snapshot_valid);
+                GpuPrint(" GEOM=");GpuHex(d->memory.geom_fence_snapshot);
+                GpuPrint(" FRAG=");GpuHex(d->memory.frag_fence_snapshot);
+                GpuPrint(" FRAG_EXPECT=");GpuHex(d->memory.frag_fence_expected);
+                GpuPrint(" GEOM_READ=");GpuHex(d->memory.geom_read_snapshot);
+                GpuPrint(" GEOM_END=");GpuHex(d->memory.geom_end_expected);
+                GpuPrint(" FRAG_READ=");GpuHex(d->memory.frag_read_snapshot);
+                GpuPrint(" FRAG_END=");GpuHex(d->memory.frag_end_expected);GpuPrint("\n");
+                GpuPrint("A04GPU TILE_SLOTS VALID=");GpuHex(d->memory.tile_evidence_valid);
+                GpuPrint(" REGION_NONZERO=");GpuHex(d->memory.region_nonzero_slots);
+                GpuPrint(" TPC_NONZERO=");GpuHex(d->memory.tpc_nonzero_slots);GpuPrint("\n");
+                GpuRenderPixels(d);
+                GpuPrint("A04GPU CASE END=");GpuHex(case_index);GpuPrint("\n");
+              }
+            }
+#endif
+#if A04_GE8300_SHARED_TRACE_DIAGNOSTIC
+            GpuSharedTrace(c);
+#endif
             if(NT_SUCCESS(c->status.mmu_status) && NT_SUCCESS(c->status.queue_status))
                 c->status.shutdown_status=a04_gpu_firmware_shutdown(&c->firmware);
             if(NT_SUCCESS(c->status.shutdown_status))
                 c->status.shutdown_status=a04_gpu_queue_test_free(&c->firmware,&c->queue_memory);
+#if A04_GE8300_RENDER_DIAGNOSTIC
+            if(NT_SUCCESS(c->status.shutdown_status))
+                c->status.shutdown_status=a04_windows_render_memory_free(&c->render_diagnostic.memory,TRUE);
+            if(NT_SUCCESS(c->status.shutdown_status))
+                c->status.shutdown_status=a04_windows_render_memory_free(&c->render_clear_diagnostic.memory,TRUE);
+            GpuPrint("A04GPU RENDER SHUTDOWN STATUS=");GpuHex(c->status.shutdown_status);
+            GpuPrint(" RELEASED=");GpuHex(c->firmware.processor_released);
+            GpuPrint(" STARTED=");GpuHex(c->firmware.firmware_started);
+            GpuPrint(" QUEUE_FAILED=");GpuHex(c->firmware.queue_faulted);GpuPrint("\n");
+#endif
             /* Power-off may have gated MMIO; only inspect retained memory. */
             if(!NT_SUCCESS(c->status.shutdown_status) && c->firmware.processor_released)
                 GpuSnapshot(c,FALSE);
@@ -248,7 +472,12 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     c->status.processor_released=c->firmware.processor_released;
     c->status.firmware_started=c->firmware.firmware_started;
     c->status.queue_faulted=c->firmware.queue_faulted;
-    if(c->referenced && !c->firmware.processor_released && !c->queue_memory.cpu) {
+    if(c->referenced && !c->firmware.processor_released && !c->queue_memory.cpu
+#if A04_GE8300_RENDER_DIAGNOSTIC
+       && !c->render_diagnostic.memory.cpu
+       && !c->render_clear_diagnostic.memory.cpu
+#endif
+       ) {
         WdfObjectDereference(c->dma); c->referenced=FALSE;
     }
     return STATUS_SUCCESS;
@@ -273,6 +502,9 @@ NTSTATUS GpuD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
     /* Do not restart firmware on resume until the SoC power, clocks and
      * display ownership have a validated reinitialization sequence. The
      * display client falls back to CPU while this device remains present. */
+#endif
+#if A04_GE8300_RENDER_DIAGNOSTIC
+    if(c->render_diagnostic.memory.cpu || c->render_clear_diagnostic.memory.cpu) return STATUS_DEVICE_BUSY;
 #endif
     return c->firmware.processor_released ? STATUS_DEVICE_BUSY : STATUS_SUCCESS;
 }
@@ -317,6 +549,9 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
     c->status.processor_released=c->firmware.processor_released;
     c->status.firmware_started=c->firmware.firmware_started;
     c->status.queue_faulted=c->firmware.queue_faulted;
+#if A04_GE8300_SHARED_TRACE_DIAGNOSTIC
+    GpuSharedTrace(c);
+#endif
 #endif
     status=WdfRequestRetrieveOutputBuffer(request,sizeof(*out),(PVOID *)&out,&size);
     if(NT_SUCCESS(status)) { *out=c->status; WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(*out)); }

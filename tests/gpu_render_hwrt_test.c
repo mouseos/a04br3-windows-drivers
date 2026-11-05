@@ -27,7 +27,12 @@ int main(void)
     assert(common.isp_mtile_size==((50u<<16)|80u) && common.multi_sample_ctl==0x88);
     assert(data.hwrt_data_common_fw_addr==p.common_fw_address && data.freelists_fw_addr[1]==p.freelist_fw_address[1]);
     assert(data.rgn_header_dev_addr==p.region_gpu && data.rta_ctl.max_rts==1);
-    p.tpc_stride=0; p.rtc_gpu=0; p.macrotile_gpu=0;
+    /* 64x64 GE8300 SIPF1: Linux pvr_hwrt.c, 16x16 tiles, one macrotile. */
+    p.width=64; p.height=64; p.tpc_stride=0; p.rtc_gpu=0; p.macrotile_gpu=0;
+    assert(!a04_gpu_init_render_hwrt(&p,&common,&data));
+    assert(common.screen_pixel_max==0x003f003fu && common.te_screen==0x00003003u);
+    assert(common.mtile_stride==16u && common.te_mtile1==0x00100000u && common.te_mtile2==0x00100000u && common.isp_mtile_size==0x00040004u);
+    p.width=800; p.height=1280;
     assert(!a04_gpu_init_render_hwrt(&p,&common,&data));
     assert(!common.tpc_stride && !data.rtc_dev_addr && !data.macrotile_array_dev_addr);
     p.width=8192; assert(a04_gpu_init_render_hwrt(&p,&common,&data));

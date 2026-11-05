@@ -18,6 +18,98 @@ static int owned(const struct a04_render_owned_range *r,size_t n,uint64_t va,uin
 }
 static int overlap(uint64_t a,uint64_t n,uint64_t b,uint64_t m)
 { return a<=b ? b-a<n : a-b<m; }
+void a04_render_make_vertex_pds_code(uint8_t vertex[16],uint8_t descriptor[16])
+{
+    unsigned i;for(i=0;i<16;++i) { vertex[i]=0;descriptor[i]=0; }
+    /* Mesa pvr_pipeline_pds.c: DOUTW(c2,t0), DOUTU, HALT;
+     * DOUTD(c4,c0), DOUTD.END(c5,c1). */
+    put32(vertex,UINT32_C(0xf0024001));put32(vertex+4,UINT32_C(0xfc000002));
+    put32(vertex+8,UINT32_C(0xd3000000));
+    put32(descriptor,UINT32_C(0xf0040000));put32(descriptor+4,UINT32_C(0xf4050100));
+}
+void a04_render_make_scratchless_pds_code(uint8_t vertex[16],uint8_t descriptor[16])
+{
+    a04_render_make_vertex_pds_code(vertex,descriptor);
+    put32(descriptor,UINT32_C(0xf4020000));put32(descriptor+4,0);
+}
+int a04_render_make_scratchless_pds_data(const struct a04_render_pds_input *p,
+    const struct a04_render_owned_range *r,size_t n,struct a04_render_pds_data *out)
+{
+    struct a04_render_pds_data result={{0},{0},{0},{0}};
+    if (!p || !out || p->scratch_info_gpu || p->scratch_buffer_gpu || p->descriptor_literal1 ||
+        p->vertex_literal!=UINT32_C(0x80000000) || p->descriptor_literal0!=UINT32_C(0x90000003) ||
+        p->doutu_control!=UINT64_C(0x800000000) || a04_render_validate_owned_ranges(r,n) ||
+        (p->shader_gpu&3u) || (p->spill_info_gpu&7u) || (p->shader_gpu>>32)!=UINT64_C(0xe0) ||
+        !owned(r,n,p->shader_gpu,176,A04_RENDER_RANGE_READ|A04_RENDER_RANGE_EXEC) ||
+        !owned(r,n,p->spill_info_gpu,12,A04_RENDER_RANGE_READ) ||
+        !owned(r,n,p->spill_buffer_gpu,8192,A04_RENDER_RANGE_READ|A04_RENDER_RANGE_WRITE) ||
+        overlap(p->shader_gpu,176,p->spill_info_gpu,12) || overlap(p->shader_gpu,176,p->spill_buffer_gpu,8192) ||
+        overlap(p->spill_info_gpu,12,p->spill_buffer_gpu,8192)) return -1;
+    put64(result.vertex,p->doutu_control|((uint32_t)p->shader_gpu&UINT32_C(0xfffffffc)));
+    put32(result.vertex+8,p->vertex_literal);put64(result.descriptor,p->spill_info_gpu);
+    put32(result.descriptor+8,p->descriptor_literal0);
+    put64(result.spill_info,p->spill_buffer_gpu);put32(result.spill_info+8,4);
+    *out=result;return 0;
+}
+int a04_render_make_fragment_uniform(const struct a04_render_fragment_uniform_input *p,
+    const struct a04_render_owned_range *r,size_t n,struct a04_render_fragment_uniform_data *out)
+{
+    struct a04_render_fragment_uniform_data result={{0},{0},{0},{0}};
+    if (!p || !out || a04_render_validate_owned_ranges(r,n) || (p->spill_info_gpu&7u) || (p->fs_meta_gpu&3u) ||
+        !owned(r,n,p->spill_info_gpu,12,A04_RENDER_RANGE_READ) || !owned(r,n,p->fs_meta_gpu,4,A04_RENDER_RANGE_READ) ||
+        !owned(r,n,p->spill_buffer_gpu,8192,A04_RENDER_RANGE_READ|A04_RENDER_RANGE_WRITE) ||
+        overlap(p->spill_info_gpu,12,p->fs_meta_gpu,4) || overlap(p->spill_info_gpu,12,p->spill_buffer_gpu,8192) ||
+        overlap(p->fs_meta_gpu,4,p->spill_buffer_gpu,8192)) return -1;
+    put64(result.descriptor,p->spill_info_gpu);put64(result.descriptor+8,p->fs_meta_gpu);
+    put32(result.descriptor+16,UINT32_C(0x10008003));put32(result.descriptor+20,UINT32_C(0x90000001));
+    put64(result.spill_info,p->spill_buffer_gpu);put32(result.spill_info+8,4);
+    put32(result.fs_meta,UINT32_C(0x01fffffe));
+    put32(result.code,UINT32_C(0xf0040000));put32(result.code+4,UINT32_C(0xf4050100));
+    *out=result;return 0;
+}
+int a04_render_make_pixel_event(uint64_t shader_gpu,const struct a04_render_owned_range *r,
+    size_t n,uint8_t out[16])
+{
+    uint8_t result[16]={0};size_t i;
+    if (!out || a04_render_validate_owned_ranges(r,n) || (shader_gpu&3u) || (shader_gpu>>32)!=UINT64_C(0xe0) ||
+        !owned(r,n,shader_gpu,128,A04_RENDER_RANGE_READ|A04_RENDER_RANGE_EXEC)) return -1;
+    put64(result,UINT64_C(0x800000000)|((uint32_t)shader_gpu&UINT32_C(0xfffffffc)));
+    for(i=0;i<sizeof(result);++i) out[i]=result[i];
+    return 0;
+}
+int a04_render_make_fixed_eot(uint64_t target_gpu,const struct a04_render_owned_range *r,
+    size_t n,uint8_t out[128])
+{
+    /* Mesa PCO ef11349e8e: the two PBE state words occupy bytes 16 and 4.
+     * The immediate bytes below are zero; no captured address is retained. */
+    static const uint8_t code[40]={
+        0x86,0x92,0x40,0x13,0,0,0,0,0,0,0x40,0xff,0x86,0x92,0x40,0x13,
+        0,0,0,0,0,0,0x41,0xff,0x48,0xa0,0x80,0xc2,0xc1,0x40,0x00,0x40,
+        0,0,0xf3,0xff,0xff,0xff,0xff,0xff};
+    uint8_t result[128]={0};size_t i;
+    if (!out || (target_gpu&4095u) || a04_render_validate_owned_ranges(r,n) ||
+        !owned(r,n,target_gpu,16384,A04_RENDER_RANGE_READ|A04_RENDER_RANGE_WRITE)) return -1;
+    for(i=0;i<sizeof(code);++i) result[i]=code[i];
+    put32(result+16,(uint32_t)(target_gpu>>2));
+    put32(result+4,UINT32_C(0x82000)|(uint32_t)((target_gpu>>34)&63u));
+    for(i=0;i<sizeof(result);++i) out[i]=result[i];
+    return 0;
+}
+int a04_render_make_fixed_background(uint64_t constants_gpu,const struct a04_render_owned_range *r,
+    size_t n,uint8_t constants[16],uint8_t pds[16])
+{
+    uint8_t c[16]={0x22,0x44,0x66,0xff},d[16]={0};size_t i;
+    if (!constants || !pds || constants==pds || (constants_gpu&15u) ||
+        a04_render_validate_owned_ranges(r,n) || !owned(r,n,constants_gpu,16,A04_RENDER_RANGE_READ)) return -1;
+    put64(d,constants_gpu);put32(d+8,UINT32_C(0x90000001));
+    for(i=0;i<16;++i) { constants[i]=c[i];pds[i]=d[i]; }
+    return 0;
+}
+void a04_render_make_fixed_background_usc(uint8_t out[128])
+{
+    static const uint8_t code[16]={0x38,0x8a,0x80,0x87,0x80,0x08,0,0,0,0x20,0xf3,0xff,0xff,0xff,0xff,0xff};
+    size_t i;for(i=0;i<128;++i) out[i]=i<sizeof(code)?code[i]:0;
+}
 int a04_render_make_pds_data(const struct a04_render_pds_input *p,
     const struct a04_render_owned_range *r,size_t n,struct a04_render_pds_data *out)
 {

@@ -37,6 +37,36 @@ int main(void)
     assert(a04_render_make_fragment_pds(0xe000005040ULL,UINT64_C(1)<<33,ranges,4,frag));
     assert(!memcmp(frag,previous,sizeof(frag)));
     assert(a04_render_make_fragment_pds(0x8000001000ULL,0,ranges,4,frag));
+    p.shader_gpu=0xe000005040ULL;p.spill_info_gpu=0x8000001000ULL;p.scratch_info_gpu=0;
+    p.spill_buffer_gpu=0x8000002000ULL;p.scratch_buffer_gpu=0;p.descriptor_literal1=0;
+    p.vertex_literal=0x80000000u;p.descriptor_literal0=0x90000003u;p.doutu_control=UINT64_C(0x800000000);
+    assert(!a04_render_make_scratchless_pds_data(&p,ranges,4,&out));
+    assert(word(out.vertex)==0x5040 && word(out.descriptor)==0x1000 && word(out.descriptor+8)==0x90000003u);
+    assert(word(out.descriptor+12)==0 && word(out.spill_info+8)==4);
+    old=out;p.scratch_buffer_gpu=0x8000004000ULL;
+    assert(a04_render_make_scratchless_pds_data(&p,ranges,4,&out) && !memcmp(&out,&old,sizeof(out)));
+    { uint8_t v[16],d[16];a04_render_make_scratchless_pds_code(v,d);
+      assert(word(v)==0xf0024001 && word(v+4)==0xfc000002 && word(v+8)==0xd3000000 && !word(v+12));
+      assert(word(d)==0xf4020000 && !word(d+4) && !word(d+8) && !word(d+12)); }
+    { uint8_t eot[128],saved[128];
+      assert(!a04_render_make_fixed_eot(0x8000004000ULL,ranges,4,eot));
+      assert(word(eot)==0x13409286u && word(eot+4)==0x82020u);
+      assert(word(eot+16)==0x1000u && word(eot+24)==0xc280a048u);
+      for(i=40;i<sizeof(eot);i++) assert(!eot[i]);
+      memcpy(saved,eot,sizeof(eot));
+      assert(a04_render_make_fixed_eot(0x8000004004ULL,ranges,4,eot));
+      assert(!memcmp(eot,saved,sizeof(eot)));
+      ranges[3].access=1;
+      assert(a04_render_make_fixed_eot(0x8000004000ULL,ranges,4,eot));
+      assert(!memcmp(eot,saved,sizeof(eot))); }
+    { uint8_t c[16],d[16],saved[16];
+      assert(!a04_render_make_fixed_background(0x8000001000ULL,ranges,4,c,d));
+      assert(word(c)==0xff664422u && word(d)==0x1000u && word(d+4)==0x80u && word(d+8)==0x90000001u);
+      for(i=4;i<16;i++) assert(!c[i]);
+      for(i=12;i<16;i++) assert(!d[i]);
+      memcpy(saved,d,16);
+      assert(a04_render_make_fixed_background(0x8000001004ULL,ranges,4,c,d));
+      assert(!memcmp(d,saved,16)); }
     assert(!memcmp(frag,previous,sizeof(frag)));
     return 0;
 }
