@@ -16,6 +16,9 @@
 #endif
 #if A04_SHARED_MT6392_DIAGNOSTIC
 #include "mt6392_classd.h"
+#if !defined(A04_MT6392_WRITE_DIAGNOSTIC) || !A04_MT6392_WRITE_DIAGNOSTIC
+#error MT6392 diagnostic requires the guarded WACS2 writer
+#endif
 #endif
 #ifndef A04_SHARED_APMIXED_RESOURCE
 #define A04_SHARED_APMIXED_RESOURCE 0
@@ -120,6 +123,16 @@ static int ParentButtonRead(PVOID context,USHORT *value)
 /* Called under ParentLock by audio_owner; no nested PWRAP lock. The class-D
  * prerequisites and bus callbacks are deliberately unset until a real board
  * mute, retained power, exclusive clock and safe WACS2 writer are proven. */
+static int ParentCodecUpdate(void *context,uint16_t reg,uint16_t mask,uint16_t value) {
+    A04_PARENT_CONTEXT *c=context;
+    if(!c || !c->pmic.online)return -1;
+    return a04_pmic_classd_update(&c->pmic.bus,reg,mask,value);
+}
+static int ParentCodecRead(void *context,uint16_t reg,uint16_t *value) {
+    A04_PARENT_CONTEXT *c=context;
+    if(!c || !c->pmic.online)return -1;
+    return a04_pmic_classd_read_gain(&c->pmic.bus,reg,value);
+}
 static int ParentCodecStart(void *context) { return a04_mt6392_classd_start_muted(&((A04_PARENT_CONTEXT *)context)->classd); }
 static int ParentCodecStop(void *context) { return a04_mt6392_classd_stop(&((A04_PARENT_CONTEXT *)context)->classd); }
 #endif
@@ -372,6 +385,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
         c->regs.context=c;c->regs.lock=ParentRegLock;c->regs.unlock=ParentRegUnlock;
         c->regs.read32=ParentRegRead;c->regs.write32=ParentRegWrite;
 #if A04_SHARED_MT6392_DIAGNOSTIC
+        c->classd.context=c;c->classd.update_bits=ParentCodecUpdate;c->classd.read16=ParentCodecRead;
         c->audio.context=c;c->audio.codec_acquire_muted=ParentCodecStart;
         c->audio.codec_release_quiescent=ParentCodecStop;
 #endif

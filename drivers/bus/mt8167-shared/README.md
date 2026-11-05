@@ -199,3 +199,13 @@ the parent audio online transition are deliberately absent: even with the
 flag, the parent rejects before accessing hardware. A failed multi-step stop
 may already have changed some registers; it does not prove physical mute.
 Reference: [board Linux MT6392 codec](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/sound/soc/codecs/mt6392-codec.c).
+
+`A04_MT6392_WRITE_DIAGNOSTIC=1` adds a bounded WACS2 read-modify-write
+implementation for only the exact Class D SPK register masks and values. It
+serializes under the parent's existing PWRAP lock, verifies the complete
+readback and poisons the shared bus on timeout or mismatch; the diagnostic
+codec callbacks use it. TOP_CKPDN1_CLR is explicitly rejected before any bus
+operation: alias semantics and safe sharing are not established, and the
+parent still has no actual power/clock/board-mute preflight. Therefore the
+Class D path must not run on hardware. Existing direct button builds do not
+include the diagnostic writer. Linux [WACS2 write encoding](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/drivers/soc/mediatek/mtk-pmic-wrap.c) is the source of the command format. Readback of SPK registers and bus idle do not establish safe rails or DMA drain.
