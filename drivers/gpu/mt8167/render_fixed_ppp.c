@@ -12,7 +12,7 @@ int a04_render_make_fixed_ppp(const struct a04_render_fixed_ppp_input *p,
     const uint32_t fixed[25]={0x007f0e67,0x00050000,0x022e0f00,0x0e000000,0,0,0,0x01000000,0x00804000,0,
         0x80000003,3,0x42000000,0x42000000,0x42000000,0x42000000,0,0x3f800000,0x29e12e13,0x05040000,0,0,0,0x6a0,0};
     uint64_t a[3],n[3]={48,16,32};struct a04_render_fixed_ppp result;size_t i,j;
-    if (!p || !out || a04_render_validate_owned_ranges(ranges,count)) return -1;
+    if (!p || !out || p->ge8300_tile16>1u || a04_render_validate_owned_ranges(ranges,count)) return -1;
     a[0]=p->fragment_pds;a[1]=p->uniform_code;a[2]=p->uniform_data;
     for(i=0;i<3;++i) {
         unsigned matches=0;
@@ -24,6 +24,8 @@ int a04_render_make_fixed_ppp(const struct a04_render_fixed_ppp_input *p,
     }
     for(i=0;i<25;++i) put32(result.state+4*i,fixed[i]);
     put32(result.state+20,(uint32_t)a[0]);put32(result.state+24,(uint32_t)a[1]);put32(result.state+36,(uint32_t)a[2]);
-    put32(result.finish,UINT32_C(0x02000000));put32(result.finish+4,UINT32_C(0x00040001));put32(result.finish+8,0);
+    /* 22.40.54.30 SIPF1 uses 16-pixel tile units; generic Mesa uses 32.
+     * This fixed 64x64 option never expands the allocated render target. */
+    put32(result.finish,UINT32_C(0x02000000));put32(result.finish+4,p->ge8300_tile16 ? UINT32_C(0x000c0003) : UINT32_C(0x00040001));put32(result.finish+8,0);
     *out=result;return 0;
 }

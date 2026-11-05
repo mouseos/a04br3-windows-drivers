@@ -2,7 +2,8 @@
 #ifndef A04_RENDER_FIXED_PPP_H
 #define A04_RENDER_FIXED_PPP_H
 #include "render_execution.h"
-struct a04_render_fixed_ppp_input { uint64_t fragment_pds,uniform_code,uniform_data; };
+/* ge8300_tile16 is an explicit opt-in for this fixed 64x64 target. */
+struct a04_render_fixed_ppp_input { uint64_t fragment_pds,uniform_code,uniform_data; unsigned ge8300_tile16; };
 struct a04_render_fixed_ppp { uint8_t state[100],finish[12]; };
 /* Fixed 64x64 single-sample scratchless triangle. Only typed GPU addresses
  * enter the output. Caller must validate shaders, backing and job lifetime. */

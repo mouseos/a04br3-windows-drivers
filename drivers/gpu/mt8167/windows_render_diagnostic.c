@@ -80,7 +80,7 @@ NTSTATUS a04_windows_render_diagnostic_case(struct a04_windows_render_diagnostic
 {
     struct a04_windows_render_memory *m;struct a04_render_context_static_input cs={0};
     struct rogue_fwif_geom_registers_caswitch state;struct a04_windows_render_freelist_layout fl[2]={{G+0x48000,74,64,1},{G+0x49000,138,1024,2}};
-    struct a04_render_hwrt_params hw={0};struct a04_render_fixed_ppp_input pp={P+0x480,P+0x540,P+0x500};
+    struct a04_render_hwrt_params hw={0};struct a04_render_fixed_ppp_input pp={P+0x480,P+0x540,P+0x500,1};
     struct a04_render_fixed_vdm_input vd={P+0x410,P+0x430,P+0x400,P+0x420,P+0x640,P+0x6b0};
     struct a04_render_fixed_command_input ci={G+0x40000,G,G+0x40100,G+0x41000,P+0x5c0,P+0x5a0,P+0x590,P+0x590,P+0x600};
     struct a04_render_owned_range r[A04_RENDER_MAX_MAPS];struct rogue_fwif_cmd_geom geom;struct rogue_fwif_cmd_frag frag;

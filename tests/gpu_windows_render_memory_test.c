@@ -484,17 +484,20 @@ int main(void)
         assert(out[0x242]==4 && out[0x243]==0xf0 && out[0x245]==1 && out[0x246]==5 && out[0x247]==0xf4);
         for(unsigned i=0x218;i<0x220;++i) assert(!out[i]);
         assert(m.staged_count==16); }
-      { struct a04_render_fixed_ppp_input pp={0xda00010300ULL,0xda00010240ULL,0xda00010200ULL};
+      { struct a04_render_fixed_ppp_input pp={0xda00010300ULL,0xda00010240ULL,0xda00010200ULL,1};
         struct a04_render_fixed_vdm_input v={0xda000100b0ULL,0xda000100e0ULL,
           0xda000100a0ULL,0xda000100d0ULL,0xda00010400ULL,0xda00010470ULL};
         assert(a04_windows_render_stage_fragment_pds(&m,pp.fragment_pds,0xe000005040ULL,0)==STATUS_SUCCESS);
+        pp.ge8300_tile16=2;
+        assert(a04_windows_render_stage_fixed_ppp(&m,&pp,0xda00010400ULL,0xda00010470ULL)==STATUS_INVALID_PARAMETER);
+        pp.ge8300_tile16=1;
         assert(a04_windows_render_stage_fixed_ppp(&m,&pp,0xda00010400ULL,0xda00010400ULL)==STATUS_INVALID_PARAMETER);
         out[0x470]=1;
         assert(a04_windows_render_stage_fixed_ppp(&m,&pp,0xda00010400ULL,0xda00010470ULL)==STATUS_INVALID_DEVICE_STATE);
         assert(!out[0x400] && m.staged_count==17);out[0x470]=0;
         assert(a04_windows_render_stage_fixed_ppp(&m,&pp,0xda00010400ULL,0xda00010470ULL)==STATUS_SUCCESS);
         assert(out[0x400]==0x67 && out[0x401]==0x0e && out[0x402]==0x7f && out[0x414]==0 && out[0x415]==3);
-        assert(out[0x474]==1 && out[0x476]==4 && out[0x473]==2);
+        assert(out[0x474]==3 && out[0x476]==12 && out[0x473]==2);
         assert(a04_windows_render_stage_fixed_vdm(&m,&v,0xda00010500ULL)==STATUS_SUCCESS);
         assert(m.staged_count==20); }
       assert(a04_windows_render_stage_fixed_scissor(&m,0xda00010000ULL)==STATUS_INVALID_PARAMETER);

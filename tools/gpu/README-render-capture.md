@@ -285,3 +285,6 @@ UART画素取得は、既存のgeometry fence=1・partial/final fragment fence=2
 実機dafd822のUARTは各断片・全体CRC `c6b33b52`、RGBA SHA-256 `c9c3d77ebb62c4b81916a71b531e17ec2a5043ac06dfd7e6205eca1b341bf09f`。背景448・前景576・sentinel3072、HWRカウンタと未処理通知は前後とも０、非ゼロregion生スロット `ffff`・TPC生スロット `0000`、geom／fragment fenceは1／2、両CCB read=end、cleanup=1、shutdown=0。これは141233bと同じ画素であり、region maskだけで各タイルの描画完了はわからない。
 
 Mesa `csbgen/rogue/cr.xml` の `TE_PSG.completeonterminate` はterminate時にregion headerを書き、streamを終了し、tail pointer cache entryを無効化する。固定geometryのTE_PSG `0x20000` はこのbitを立てているため、fence後に全TPCがゼロという結果はgeometry未実行を意味しない。HWRカウンタと未処理通知がゼロでもサンプルは非原子的で、GPU fault不在やDMA停止を完全には証明しない。現時点でこの結果から次の描画設定変更を特定できず、同一jobの観測のみを根拠なく再投入しない。
+
+
+`3e5e0f7`の２条件実機ではtriangleとclear-onlyの両方で左上32×32のみ更新され、残り3072画素はsentinelだった。機種側 `UniXNU-a04br3` 4a62c22fa18674033525946246e94b5806d5fc12 の `patches/mesa/pvr-darwin-winsys.patch` はvendor GLESの終端PPP生成を基に22.40.54.30・SIPF1・16×16タイルに限り終端単位を16画素へ変更する。READMEは同経路で全画面clear・三角形読戻し130項目成功を記録するが、当Windows経路の成功を証明しない。汎用Mesa XMLの32画素単位では64×64終端が0x00040001、機種用の16画素単位では0x000c0003になる。本試験は既定OFFの固定64×64診断のみ後者を明示選択し、HWRT・PBE範囲は64×64のままとする。旧２条件との比較用に同じfence、全画素CRC、sentinel、FW観測を維持する。機種側の読戻し結果を根拠とする候補であり、Windowsでの描画・GPU停止は未検証。
