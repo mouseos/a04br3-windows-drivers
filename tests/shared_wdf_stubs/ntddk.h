@@ -1,6 +1,13 @@
 #ifndef A04_TEST_NTDDK_H
 #define A04_TEST_NTDDK_H
 #include <stdint.h>
+#if defined(A04_AUDIO_DIAGNOSTIC_TRACE) && A04_AUDIO_DIAGNOSTIC_TRACE
+#define DPFLTR_IHVDRIVER_ID 0
+#define DPFLTR_INFO_LEVEL 0
+extern int a04_test_trace_count;
+static inline int DbgPrintEx(unsigned a,unsigned b,const char *fmt,...){(void)a;(void)b;(void)fmt;a04_test_trace_count++;return 0;}
+#endif
+
 #include <stddef.h>
 #include <string.h>
 #include <wchar.h>

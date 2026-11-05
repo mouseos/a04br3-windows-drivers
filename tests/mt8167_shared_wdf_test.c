@@ -3,9 +3,15 @@
 /* Compile actual parent in this test translation unit to inspect its context. */
 #include "../drivers/bus/mt8167-shared/wdf_parent_probe.c"
 #include "../drivers/audio/mt8167-afe/audio_parent_client.h"
+#if defined(A04_AUDIO_DIAGNOSTIC_TRACE) && A04_AUDIO_DIAGNOSTIC_TRACE
+int a04_test_trace_count;
+#endif
 static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,assertClosedOnLock,closeDuringLock,failMap;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;
 #if A04_SHARED_BUTTON_D0_EXPERIMENT
 static ULONG mockInit,mockFsm;static int mockStopDuringRead,mockWacs;
+#if A04_AUDIO_PMIC_TRACE
+static int mockStatusFail;
+#endif
 #endif
 static A04_CHILD_CONTEXT children[3];static unsigned child_count,forward_count,appended,deleted;static int fail_step;static unsigned desc_count,fail_desc;static IO_RESOURCE_DESCRIPTOR descriptor,all_desc[3];
 A04_CHILD_CONTEXT *ChildContext(WDFDEVICE d){return (A04_CHILD_CONTEXT *)d;}
@@ -20,7 +26,13 @@ ULONG READ_REGISTER_ULONG(volatile ULONG *p){(void)p;reads++;
 #endif
  return 0;}void WRITE_REGISTER_ULONG(volatile ULONG *p,ULONG x){(void)p;(void)x;writes++;
 #if A04_SHARED_BUTTON_D0_EXPERIMENT
- if(mockWacs && (uintptr_t)p==0x2000f0a0){assert(x==0x00a10000u);mockFsm=6;}
+ if(mockWacs && (uintptr_t)p==0x2000f0a0){assert(x==0x00a10000u || (A04_AUDIO_PMIC_TRACE && x==0x00840000u));
+#if A04_AUDIO_PMIC_TRACE
+ mockFsm=(mockStatusFail && x==0x00840000u)?3:6;
+#else
+ mockFsm=6;
+#endif
+ }
  else if(mockWacs && (uintptr_t)p==0x2000f0a8){assert(x==1);mockFsm=0;}
 #endif
 }
@@ -143,7 +155,19 @@ int main(void){
  mockInit=1;mockFsm=6;assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY && !testContext.pmic.online && testContext.admissionClosed);
  mockFsm=0;closeDuringLock=1;assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY && !testContext.pmic.online && testContext.admissionClosed);closeDuringLock=0;
  mockStopDuringRead=1;assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY && !testContext.pmic.online && testContext.admissionClosed);mockStopDuringRead=0;
- assert(!ParentD0(&testContext,0) && testContext.pmic.online && !testContext.admissionClosed && !testContext.regs.online && !writes);
+#if A04_AUDIO_PMIC_TRACE
+ assert(!writes);mockWacs=1;mockStatusFail=1;
+ assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY && !testContext.pmic.online && testContext.pmic.bus.poisoned);
+ /* Host-only reset after simulated timeout; real hardware stays poisoned. */
+ mockStatusFail=0;mockFsm=0;testContext.pmic.bus.poisoned=0;writes=0;
+ mockWacs=1;
+#endif
+ assert(!ParentD0(&testContext,0) && testContext.pmic.online && !testContext.admissionClosed && !testContext.regs.online);
+#if A04_AUDIO_PMIC_TRACE
+ assert(writes==2 && a04_test_trace_count>0);writes=0;mockWacs=0;
+#else
+ assert(!writes);
+#endif
  { int before=reads; assert(audio.AcquireMuted(audio.Header.Context,48000)!=0 && reads==before && !writes && !testContext.audio.leased); }
  mockWacs=1;assert(!input.ButtonPmicRead(input.Context,&value) && value==0x1234 && writes==2);mockWacs=0;value=0xeeee;writes=0;
  assert(!ParentD0Exit(&testContext,0) && !testContext.pmic.online && testContext.admissionClosed);

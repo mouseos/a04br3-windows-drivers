@@ -261,3 +261,13 @@ the child lease/reference and causes the parent to retain mappings on release.
 This prevents ordinary software cleanup from freeing uncertain resources; it
 does not prove that Windows keeps the physical PnP resources assigned after
 release or surprise removal. No hardware audio lease is currently enabled.
+
+Diagnostic observation builds may set `A04_AUDIO_DIAGNOSTIC_TRACE=1` for the
+parent and audio build checks. They log parent admission and callback presence,
+RUN rejection, and AFE registers sampled under interrupt synchronization after
+STOP. `A04_AUDIO_PMIC_TRACE=1` additionally reads TOP_CKPDN1 over the parent
+PWRAP lock during the experimental D0 transition; failure rejects D0 and a
+WACS timeout poisons the bus. Both flags default to zero. These observations
+are not evidence of powered rails, clock ownership, codec quiescence, or DMA
+drain. The real parent still lacks the callbacks required to acquire audio and
+RUN remains unavailable; exposed DMA and the parent lease remain quarantined.

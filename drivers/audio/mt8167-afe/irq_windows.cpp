@@ -1,4 +1,9 @@
 #include "irq_windows.h"
+#if defined(A04_AUDIO_DIAGNOSTIC_TRACE) && A04_AUDIO_DIAGNOSTIC_TRACE
+#define A04_TRACE(...) DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_INFO_LEVEL,__VA_ARGS__)
+#else
+#define A04_TRACE(...) ((void)0)
+#endif
 #if defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
 static void Mt8167IrqDpc(PKDPC dpc, PVOID context, PVOID a1, PVOID a2)
 {
@@ -55,6 +60,9 @@ struct Mt8167SyncCall {
     Mt8167Irq *irq;
     const struct mt8167_dl1_plan *plan;
     int result;
+#if defined(A04_AUDIO_DIAGNOSTIC_TRACE) && A04_AUDIO_DIAGNOSTIC_TRACE
+    uint32_t dac,irqControl,status,current;int observed;
+#endif
 };
 static BOOLEAN Mt8167StartLocked(PVOID context)
 {
@@ -69,6 +77,15 @@ static BOOLEAN Mt8167StopLocked(PVOID context)
     Mt8167SyncCall *call = static_cast<Mt8167SyncCall *>(context);
     if (!InterlockedCompareExchange(&call->irq->active, 0, 0)) return FALSE;
     call->result = mt8167_dl1_stop(call->irq->engine);
+#if defined(A04_AUDIO_DIAGNOSTIC_TRACE) && A04_AUDIO_DIAGNOSTIC_TRACE
+    if (!call->result && call->irq->engine->io.read32) {
+        struct mt8167_dl1_io *io=&call->irq->engine->io;
+        call->observed=!io->read32(io->context,0x10,&call->dac) &&
+            !io->read32(io->context,0x3a0,&call->irqControl) &&
+            !io->read32(io->context,0x3a4,&call->status) &&
+            !io->read32(io->context,0x44,&call->current);
+    }
+#endif
     return TRUE;
 }
 struct Mt8167PositionCall {
@@ -93,15 +110,18 @@ static BOOLEAN Mt8167PositionLocked(PVOID context)
 int Mt8167SynchronizedStart(Mt8167Irq *irq, const struct mt8167_dl1_plan *plan)
 {
     if (!irq || !irq->interrupt || !irq->engine || !plan) return -1;
-    Mt8167SyncCall call = {irq, plan, -1};
+    Mt8167SyncCall call = {}; call.irq=irq;call.plan=plan;call.result=-1;
     if (!KeSynchronizeExecution(irq->interrupt, Mt8167StartLocked, &call)) return -1;
     return call.result;
 }
 int Mt8167SynchronizedStop(Mt8167Irq *irq)
 {
     if (!irq || !irq->interrupt || !irq->engine) return -1;
-    Mt8167SyncCall call = {irq, NULL, -1};
+    Mt8167SyncCall call = {}; call.irq=irq;call.result=-1;
     if (!KeSynchronizeExecution(irq->interrupt, Mt8167StopLocked, &call)) return -1;
+#if defined(A04_AUDIO_DIAGNOSTIC_TRACE) && A04_AUDIO_DIAGNOSTIC_TRACE
+    A04_TRACE("A04AUD afe-stop result=%d observed=%d dac=%08lx irq=%08lx status=%08lx cursor-nonzero=%d; drain=unknown\n",call.result,call.observed,(ULONG)call.dac,(ULONG)call.irqControl,(ULONG)call.status,call.current!=0);
+#endif
     return call.result;
 }
 int Mt8167SynchronizedPosition(Mt8167Irq *irq,const struct mt8167_dl1_plan *plan,uint32_t *offset)

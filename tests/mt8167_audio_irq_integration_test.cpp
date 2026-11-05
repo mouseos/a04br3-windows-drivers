@@ -1,5 +1,8 @@
 #include <cassert>
 #include "shared_transport.h"
+#if defined(A04_AUDIO_DIAGNOSTIC_TRACE) && A04_AUDIO_DIAGNOSTIC_TRACE
+int a04_test_trace_count=0;
+#endif
 int test_mdl_fail=0,test_mdl_frees=0,test_barriers=0,test_flushes=0;
 _KINTERRUPT test_interrupt{};PDMA_ADAPTER test_dma_adapter=nullptr;DEVICE_DESCRIPTION test_dma_description{};
 static uint32_t regs[0x400/4];static int refs,leases,notified,faulted;
@@ -23,6 +26,9 @@ int main(){
  irq.dpc.queued=0;irq.dpc.fn(&irq.dpc,irq.dpc.ctx,nullptr,nullptr);assert(notified==1 && !faulted);
  uint32_t pos=0;assert(!Mt8167TransportPosition(&t,&pos) && pos==256);
  assert(!Mt8167TransportStop(&t) && !irq.interrupt && !(regs[0x10/4]&2));
+#if defined(A04_AUDIO_DIAGNOSTIC_TRACE) && A04_AUDIO_DIAGNOSTIC_TRACE
+ assert(a04_test_trace_count>0);
+#endif
  assert(Mt8167TransportPosition(&t,&pos)==-1 && dma.exposed && shared.quarantined && refs==1 && leases==1);
  assert(mt8167_audio_shared_detach(&shared)==-1);
 }

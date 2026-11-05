@@ -11,6 +11,20 @@
 #include "client_interface.h"
 #include "audio_interface.h"
 #include "audio_owner.h"
+#ifndef A04_AUDIO_DIAGNOSTIC_TRACE
+#define A04_AUDIO_DIAGNOSTIC_TRACE 0
+#endif
+#ifndef A04_AUDIO_PMIC_TRACE
+#define A04_AUDIO_PMIC_TRACE 0
+#endif
+#if A04_AUDIO_PMIC_TRACE && !A04_AUDIO_DIAGNOSTIC_TRACE
+#error PMIC observation requires diagnostic trace
+#endif
+#if A04_AUDIO_DIAGNOSTIC_TRACE
+#define A04_TRACE(...) DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_INFO_LEVEL,__VA_ARGS__)
+#else
+#define A04_TRACE(...) ((void)0)
+#endif
 #ifndef A04_MT6392_CLK_ALIAS_EXPERIMENT
 #define A04_MT6392_CLK_ALIAS_EXPERIMENT 0
 #endif
@@ -173,6 +187,7 @@ static int ParentAudioAcquire(PVOID context,ULONG rate) {
     if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
     c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
     result=a04_audio_owner_acquire(&c->audio,rate);
+    A04_TRACE("A04AUD parent acquire rate=%lu result=%d pmic=%d apmixed=%d online=%d preflight=%d clock=%d codec=%d poisoned=%d\n",rate,result,c->pmic.online,c->apmixed!=NULL,c->audio.online,c->audio.preflight!=NULL,c->audio.clock_acquire!=NULL,c->audio.codec_acquire_muted!=NULL,c->audio.poisoned);
     if(result && c->audio.poisoned)result=-2;
     ParentUnlock(c);return result;
 }
@@ -294,16 +309,28 @@ NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
         InterlockedCompareExchange(&c->admissionClosed,0,0)!=2 ||
         !c->topck || !c->infra || !c->gpio || !c->pwrap || c->pmic.bus.poisoned ||
         !c->pmic.bus.read32 || !c->pmic.bus.write32 || !c->pmic.bus.delay || !c->pmic.bus.attempts) goto done;
-    /* Existing button provider uses these same WACS2 readiness observations.
-     * Never alter a rail, clock, codec, amplifier, GPIO or WACS transaction. */
+    /* Existing button provider uses these WACS2 readiness observations.
+     * The optional trace performs only one PMIC read after these checks. */
     init=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->pwrap+0x9c));
     state=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->pwrap+0xa4));
-    if (!(init&1u) || ((state>>16)&7u)!=0) goto done;
+    if (!(init&1u) || ((state>>16)&7u)!=0 ||
+        InterlockedCompareExchange(&c->removed,0,0) ||
+        InterlockedCompareExchange(&c->admissionClosed,0,0)!=2) goto done;
+#if A04_AUDIO_PMIC_TRACE
+    {
+        uint16_t raw=0;
+        if(a04_pmic_spk_clock_status(&c->pmic.bus,&raw)) {
+            A04_TRACE("A04AUD parent d0 pmic-clock read failed; reject\n");goto done;
+        }
+        A04_TRACE("A04AUD parent d0 TOP_CKPDN1=%04x; observation only\n",(unsigned)raw);
+    }
+#endif
     c->pmic.online=1;
     if (InterlockedCompareExchange(&c->admissionClosed,0,2)==2) result=STATUS_SUCCESS;
     else c->pmic.online=0;
 done:
     if (!NT_SUCCESS(result)) { c->pmic.online=0;(void)InterlockedCompareExchange(&c->admissionClosed,1,2); }
+    A04_TRACE("A04AUD parent d0 result=%08lx poisoned=%d; audio lease remains gated\n",(ULONG)result,c->pmic.bus.poisoned);
     ExReleaseFastMutex(&c->pwrapLock);return result;
 #else
     UNREFERENCED_PARAMETER(dev);

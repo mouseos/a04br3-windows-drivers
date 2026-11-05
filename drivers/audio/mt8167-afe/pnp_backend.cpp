@@ -18,6 +18,11 @@
 #if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC && (!defined(A04_AUDIO_IRQ_DIAGNOSTIC) || !A04_AUDIO_IRQ_DIAGNOSTIC)
 #error A04_AUDIO_RUN_DIAGNOSTIC requires the masked IRQ diagnostic path
 #endif
+#if defined(A04_AUDIO_DIAGNOSTIC_TRACE) && A04_AUDIO_DIAGNOSTIC_TRACE
+#define A04_TRACE(...) DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_INFO_LEVEL,__VA_ARGS__)
+#else
+#define A04_TRACE(...) ((void)0)
+#endif
 #define OWNER_TAG 'OwnA'
 struct Mt8167PnpBackend {
     Mt8167StreamBackend iface;
@@ -136,6 +141,7 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
             result=STATUS_SUCCESS;
         *possiblyExposed=(o->buffer.exposed || o->shared.quarantined) ? TRUE : FALSE;
     }
+    A04_TRACE("A04AUD run result=%08lx online=%d buffer=%d lease=%d irq=%d live-dma=unverified exposed=%d\n",(ULONG)result,o->online,o->buffer.mdl!=NULL,o->shared.leased,o->irq.interrupt!=NULL,*possiblyExposed);
     ExReleaseFastMutex(&o->mutex);return result;
 #else
     return STATUS_DEVICE_NOT_READY;
@@ -147,6 +153,7 @@ static NTSTATUS OwnerStop(void *ctx) {
     if (!o)return STATUS_INVALID_PARAMETER;
     ExAcquireFastMutex(&o->mutex);
     if (o->transport.state==AUDIO_RUNNING && !Mt8167TransportStop(&o->transport))result=STATUS_SUCCESS;
+    A04_TRACE("A04AUD stop result=%08lx state=%d exposed=%d quarantine=%d; drain=unknown\n",(ULONG)result,(int)o->transport.state,o->buffer.exposed,o->shared.quarantined);
     ExReleaseFastMutex(&o->mutex);return result;
 #else
     UNREFERENCED_PARAMETER(ctx);return STATUS_DEVICE_NOT_READY;
@@ -172,7 +179,9 @@ static void OwnerIrqNotify(void *,ULONG,BOOLEAN) { /* RUN remains refused. */ }
 static NTSTATUS OwnerConnectMaskedIrq(Mt8167PnpBackend *o)
 {
     NTSTATUS status;
-    if (mt8167_audio_shared_acquire(&o->shared,48000)) return STATUS_DEVICE_NOT_READY;
+    if (mt8167_audio_shared_acquire(&o->shared,48000)) {
+        A04_TRACE("A04AUD irq lease rejected quarantine=%d\n",o->shared.quarantined);return STATUS_DEVICE_NOT_READY;
+    }
     if (o->parentClient.parent.PrepareMaskedIrq(o->parentClient.parent.Header.Context,o->afe.base,0x1000)) {
         (void)mt8167_audio_shared_release_unexposed(&o->shared);return STATUS_DEVICE_NOT_READY;
     }

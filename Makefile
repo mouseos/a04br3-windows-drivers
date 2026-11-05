@@ -744,3 +744,13 @@ test-mt6392-classd-wacs-integration: build/mt6392_classd_wacs_integration_test
 build/mt6392_classd_wacs_integration_test: tests/mt6392_classd_wacs_integration_test.c drivers/input/a04br3-buttons/pmic_read.c drivers/bus/mt8167-shared/mt6392_classd.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -DA04_MT6392_WRITE_DIAGNOSTIC=1 -DA04_MT6392_CLK_ALIAS_EXPERIMENT=1 -Idrivers/input/a04br3-buttons -Idrivers/bus/mt8167-shared tests/mt6392_classd_wacs_integration_test.c drivers/input/a04br3-buttons/pmic_read.c drivers/bus/mt8167-shared/mt6392_classd.c -o $@
+
+.PHONY: test-mt8167-audio-trace
+test-mt8167-audio-trace: test-mt8167-pnp-run-diagnostic
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_SHARED_BUTTON_D0_EXPERIMENT=1 -DA04_SHARED_APMIXED_RESOURCE=1 -DA04_SHARED_MT6392_DIAGNOSTIC=1 -DA04_MT6392_WRITE_DIAGNOSTIC=1 -DA04_MT6392_CLK_ALIAS_EXPERIMENT=1 -DA04_AUDIO_DIAGNOSTIC_TRACE=1 -DA04_AUDIO_PMIC_TRACE=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/bus/mt8167-shared/mt6392_classd.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_shared_wdf_test.c -o build/mt8167_shared_trace_test
+	./build/mt8167_shared_trace_test
+	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_TEST_PNP_BACKEND=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_AUDIO_QUERY_SHARED=1 -DA04_AUDIO_MAP_AFE=1 -DA04_AUDIO_IRQ_DIAGNOSTIC=1 -DA04_AUDIO_RUN_DIAGNOSTIC=1 -DA04_AUDIO_DIAGNOSTIC_TRACE=1 -Itests/audio_owner_stubs -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/pnp_backend.cpp drivers/audio/mt8167-afe/afe_mapping.cpp drivers/audio/mt8167-afe/common_dma.cpp drivers/audio/mt8167-afe/dma_adapter.cpp drivers/audio/mt8167-afe/shared_audio.c drivers/audio/mt8167-afe/irq_windows.cpp drivers/audio/mt8167-afe/dl1_engine.c drivers/audio/mt8167-afe/dl1.c tests/mt8167_pnp_backend_test.cpp build/mt8167_run_parent_host.o -o build/mt8167_pnp_trace_test
+	./build/mt8167_pnp_trace_test
+	$(CXX) -O2 -Wall -Wextra -Werror -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_AUDIO_DIAGNOSTIC_TRACE=1 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/stream_transport.cpp drivers/audio/mt8167-afe/shared_transport.cpp drivers/audio/mt8167-afe/irq_windows.cpp drivers/audio/mt8167-afe/shared_audio.c drivers/audio/mt8167-afe/dl1.c drivers/audio/mt8167-afe/dl1_engine.c tests/mt8167_audio_irq_integration_test.cpp -o build/mt8167_audio_irq_trace_test
+	./build/mt8167_audio_irq_trace_test

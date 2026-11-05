@@ -23,6 +23,9 @@ extern "C" NTSTATUS Mt8167QueryAudioParent(PDEVICE_OBJECT p,A04_SHARED_AUDIO_INT
  out->AcquireMuted=malformed?nullptr:parent_acquire;out->ReleaseQuiescent=parent_release;out->PrepareMaskedIrq=parent_prepare;parent_refs++;return STATUS_SUCCESS;
 }
 #endif
+#if defined(A04_AUDIO_DIAGNOSTIC_TRACE) && A04_AUDIO_DIAGNOSTIC_TRACE
+int a04_test_trace_count=0;
+#endif
 int test_mdl_fail=0,test_mdl_frees=0,test_barriers=0,test_flushes=0,test_pdo_refs=0;
 _KINTERRUPT test_interrupt{};PDMA_ADAPTER test_dma_adapter=nullptr;DEVICE_DESCRIPTION test_dma_description{};
 static int shared_refs;
@@ -122,6 +125,9 @@ int main(){
  PMDL mdl=nullptr;ULONG n=0,offset=9;MEMORY_CACHING_TYPE cache;
  assert(!api->allocate(api->context,8192,&mdl,&n,&offset,&cache) && mdl && n==8192 && !offset);
  BOOLEAN exposure=TRUE;assert(api->start(api->context,&exposure)==STATUS_DEVICE_NOT_READY && !exposure);
+#if defined(A04_AUDIO_DIAGNOSTIC_TRACE) && A04_AUDIO_DIAGNOSTIC_TRACE && defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
+ assert(a04_test_trace_count>0);
+#endif
  KSAUDIO_POSITION position{};assert(api->position(api->context,&position)==STATUS_DEVICE_NOT_READY);
  holdPosition=true;enteredPosition=false;revokeDone=false;
  std::thread reader([&] { KSAUDIO_POSITION p{};assert(api->position(api->context,&p)==STATUS_DEVICE_NOT_READY); });
