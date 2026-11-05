@@ -3,12 +3,18 @@
 param([Parameter(Mandatory=$true)][string]$OutputRoot,
       [Parameter(Mandatory=$true)][string]$SourceCommit)
 $ErrorActionPreference='Stop'
+$repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+if ($SourceCommit -cnotmatch '^[0-9a-f]{40}$') { throw 'SourceCommit must be a full lowercase commit ID' }
+$actual = (& git -C $repo rev-parse --verify HEAD)
+if ($LASTEXITCODE -ne 0 -or $actual -cne $SourceCommit) { throw 'source commit does not match HEAD' }
+$dirty = @(& git -C $repo status --porcelain=v1 --untracked-files=all)
+if ($LASTEXITCODE -ne 0 -or $dirty.Count -ne 0) { throw 'source worktree is not clean' }
 if (Test-Path $OutputRoot) { throw 'OutputRoot already exists' }
 New-Item -ItemType Directory -Path $OutputRoot | Out-Null
 $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
 $tools = $PSScriptRoot
 $oldTemp = $env:RUNNER_TEMP
-$keys = @('A04_OWNED_DMA_EXPERIMENT','A04_SYNC_PIO_MULTIREAD','A04_READONLY_DISK_PROBE','A04_DMA_PROBE','A04_DMA_DISK_PROBE','A04_VIRTUAL_BOUNCE_EXPERIMENT','A04_DMA_MULTIBLOCK_EXPERIMENT','A04_SCRATCH_MULTIBLOCK_EXPERIMENT','A04_BOOT_MULTIBLOCK_EXPERIMENT','A04_PASSIVE_IO','A04_ENABLE_WRITES','A04_SCRATCH_IO','A04_SCRATCH_LBA','A04_SERIAL_QUEUE_EXPERIMENT','A04_ISOLATED_REQUEST_EXPERIMENT','A04_BOOT_EXPERIMENT','A04_BOOT_PASSIVE_EXPERIMENT','A04_DMA_WRITE_TEST','A04_ISOLATED_RESET_TEST')
+$keys = @('A04_OWNED_DMA_EXPERIMENT','A04_SYNC_PIO_MULTIREAD','A04_READONLY_DISK_PROBE','A04_DMA_PROBE','A04_DMA_DISK_PROBE','A04_VIRTUAL_BOUNCE_EXPERIMENT','A04_DMA_MULTIBLOCK_EXPERIMENT','A04_SCRATCH_MULTIBLOCK_EXPERIMENT','A04_BOOT_MULTIBLOCK_EXPERIMENT','A04_PASSIVE_IO','A04_ENABLE_WRITES','A04_SCRATCH_IO','A04_SCRATCH_LBA','A04_SERIAL_QUEUE_EXPERIMENT','A04_ISOLATED_REQUEST_EXPERIMENT','A04_BOOT_EXPERIMENT','A04_BOOT_PASSIVE_EXPERIMENT','A04_DMA_WRITE_TEST','A04_ISOLATED_RESET_TEST','A04_DMA_POLL_TRACE','A04_DMA_TEST_LBA','A04_EMMC_IDENTITY_HANDOFF')
 try {
   foreach ($profile in @('readonly','scratch-compile-only','boot-compile-only','owned-boot-compile-only','sync-pio-compile-only')) {
     foreach ($key in $keys) { [Environment]::SetEnvironmentVariable($key,$null,'Process') }

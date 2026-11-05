@@ -393,7 +393,12 @@ static enum a04_dma_result A04DmaTransfer(struct a04_probe_extension *probe,
         a04_life_dma_end(A04_LIFETIME(probe),1);
     else
 #endif
-    if (tracked) a04_life_dma_end(A04_LIFETIME(probe), result == A04_DMA_OK);
+    if (tracked && !a04_life_dma_end(A04_LIFETIME(probe), result == A04_DMA_OK) &&
+        result == A04_DMA_OK) {
+        /* Closing while the transfer was finishing revokes the observation.
+         * Do not report success or copy data from a quarantined DMA buffer. */
+        result = A04_DMA_STOP_TIMEOUT;
+    }
 #endif
     if (result != A04_DMA_OK) {
         uint64_t elapsed = A04ClockNow(&clockContext) - start;

@@ -4,7 +4,7 @@
 #include <string.h>
 #include "dma.h"
 
-struct fake { uint32_t regs[64]; int command_error, data_error, no_stop, no_command, fifo_stuck, started; uint32_t first_command, delay, reads, observed; uint64_t time; uint32_t commands[4], command_count; int stop_error, stop_silent, reset_stuck, abort_revoked; unsigned reset_writes, fifo_writes, writes; };
+struct fake { uint32_t regs[64]; int command_error, data_error, no_stop, no_command, fifo_stuck, started; uint32_t first_command, delay, reads, observed; uint64_t time; uint32_t commands[4], command_count; int stop_error, stop_silent, reset_stuck, abort_revoked; unsigned reset_writes, fifo_writes, writes, abort_checks, revoke_at; };
 static uint32_t rd(void *p, uint32_t off)
 {
     struct fake *f = p;
@@ -42,7 +42,7 @@ static void wr(void *p, uint32_t off, uint32_t val)
         if (off == 0x098 && (val & 2) && !f->no_stop) f->regs[0x09c / 4] &= ~1u;
     }
 }
-static int abort_allowed(void *p) {return !((struct fake *)p)->abort_revoked;}
+static int abort_allowed(void *p) { struct fake *f=p; ++f->abort_checks; return !f->abort_revoked && (!f->revoke_at || f->abort_checks < f->revoke_at); }
 static uint64_t now(void *p) { struct fake *f = p; return f->time++; }
 static void observe(void *p, uint32_t polls) { struct fake *f=p; assert(polls == 4096); ++f->observed; }
 static struct a04_msdc_io init(struct fake *f)
@@ -146,6 +146,18 @@ int main(void)
         assert(a04_msdc_abort_read(&io,20,&clock,abort_allowed,&f)==A04_ABORT_FIFO_TIMEOUT);
         io=init(&f);f.abort_revoked=1;
         assert(a04_msdc_abort_read(&io,20,&clock,abort_allowed,&f)==A04_ABORT_REVOKED && !f.writes);
+        /* Every stop/reset/FIFO phase must stop issuing MMIO as soon as
+         * the owner is revoked, including at the final release check. */
+        io=init(&f);f.regs[0x09c/4]=1;
+        assert(a04_msdc_abort_read(&io,20,&clock,abort_allowed,&f)==A04_ABORT_STOPPED);
+        { unsigned checks=f.abort_checks, i;
+          assert(checks > 10);
+          for(i=1;i<=checks;++i) {
+            io=init(&f);f.regs[0x09c/4]=1;f.revoke_at=i;
+            assert(a04_msdc_abort_read(&io,20,&clock,abort_allowed,&f)==A04_ABORT_REVOKED);
+            assert(f.abort_checks==i);
+          }
+        }
         io=init(&f);f.regs[0x098/4]=UINT32_MAX;
         assert(a04_msdc_abort_read(&io,20,&clock,abort_allowed,&f)==A04_ABORT_UNREADABLE && !f.writes);
     }
