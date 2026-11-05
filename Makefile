@@ -141,9 +141,9 @@ build/bq24160_charger_test: drivers/power/bq24160/charger.c drivers/power/bq2416
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/power/bq24160 drivers/power/bq24160/charger.c tests/bq24160_charger_test.c -o $@
 
-build/bq24160_i2c_test: drivers/power/bq24160/mt8167_i2c.c drivers/power/bq24160/mt8167_i2c.h drivers/power/lc709203f/mt8167_i2c.h tests/bq24160_i2c_test.c
+build/bq24160_i2c_test: drivers/power/bq24160/mt8167_i2c.c drivers/power/bq24160/mt8167_i2c.h drivers/power/lc709203f/mt8167_i2c.c drivers/power/lc709203f/mt8167_i2c.h tests/bq24160_i2c_test.c
 	mkdir -p build
-	$(CC) $(CFLAGS) -Idrivers/power/bq24160 drivers/power/bq24160/mt8167_i2c.c tests/bq24160_i2c_test.c -o $@
+	$(CC) $(CFLAGS) -Idrivers/power/bq24160 drivers/power/bq24160/mt8167_i2c.c drivers/power/lc709203f/mt8167_i2c.c tests/bq24160_i2c_test.c -o $@
 
 build/gpu_render_context_test: drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_context.h drivers/gpu/mt8167/render_pair.c drivers/gpu/mt8167/render_pair.h drivers/gpu/mt8167/render_stream.c drivers/gpu/mt8167/firmware_objects.c tests/gpu_render_context_test.c tests/gpu_render_mesa_fixture.h
 	mkdir -p build

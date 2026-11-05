@@ -6,12 +6,13 @@ static int transfer(struct a04_gauge_mt8167 *a, int read, uint8_t reg, uint8_t *
 {
     const struct a04_i2c_io *io;
     uint64_t start, now;
-    uint16_t status;
+    uint16_t status=0;
     unsigned i;
     if (!a || !(io=a->io) || !io->read16 || !io->write16 || !io->delay_us ||
         !a->monotonic_ns || !value || a->faulted || reg > 7 ||
         (!read && (reg != 0 || (*value & ~0x88u) || !(*value & 0x80u)))) return -1;
-    if (io->read16(io->context, 0x24) & 1u) { a->faulted=1; return -1; }
+    a->fault_command=reg; a->fault_reason=0; a->fault_status=0; a->fault_fifo=0;
+    if (io->read16(io->context, 0x24) & 1u) { a->fault_reason=1; a->faulted=1; return -1; }
     io->write16(io->context,0x08,0); io->write16(io->context,0x0c,7);
     io->write16(io->context,0x38,1);
     io->write16(io->context,0x10,(uint16_t)((io->read16(io->context,0x10)&~0x3eu)|0x28u|(read?0x12u:0u)));
@@ -35,6 +36,9 @@ static int transfer(struct a04_gauge_mt8167 *a, int read, uint8_t reg, uint8_t *
         }
         io->delay_us(io->context,5);
     }
+    a->fault_status=status;
+    a->fault_fifo=io->read16(io->context,0x30);
+    a->fault_reason=(status&6u)?2:((status&1u)?3:4);
     io->write16(io->context,0x0c,7); a->faulted=1; return -1;
 }
 int a04_bq_mt8167_read(void *context,uint8_t reg,uint8_t *value)
