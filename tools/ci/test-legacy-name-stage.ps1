@@ -15,6 +15,10 @@ try {
         @('Windows\INF\oem32.inf','storage-inf'), @('src\names\original-storage.inf','storage-inf'),
         @('Windows\INF\oem33.inf','touch-inf'), @('src\names\original-touch.inf','touch-inf')
     )) { [IO.File]::WriteAllText((Join-Path $base $pair[0]),$pair[1]) }
+    foreach ($name in @('SYSTEM.LOG1','SYSTEM.LOG2')) {
+        & attrib +H +S (Join-Path $base "Windows\System32\config\$name")
+        if ($LASTEXITCODE) { throw "Cannot set hidden/system attributes: $name" }
+    }
     $batch = Get-Content (Join-Path $root 'tools\winpe\startnet-stage-legacy-names.cmd') -Raw
     $batch = $batch.Replace('C:\Windows',"$base\Windows").Replace('X:\a04br3',"$base\src")
     $batch = $batch -replace '(?m)^wpeinit\r?\n','' -replace '(?m)^drvload .*$', 'cmd /c exit 0'
