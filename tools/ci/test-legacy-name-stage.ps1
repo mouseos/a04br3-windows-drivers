@@ -26,6 +26,9 @@ try {
     [IO.File]::WriteAllText($cmd,$batch,[Text.Encoding]::ASCII)
     $out = & cmd.exe /c $cmd
     if (-not ($out -match 'NAMES_PACKAGES_STAGED_PNP_NOT_VERIFIED')) { throw ($out -join ' ') }
+    foreach ($name in @('SYSTEM.LOG1','SYSTEM.LOG2')) {
+        if (-not (Test-Path (Join-Path $base "Windows\Temp\mt8167-bu21025-names-stage\$name"))) { throw "Missing registry log backup: $name" }
+    }
     $out = & cmd.exe /c $cmd
     if (-not ($out -match 'NAMES_ALREADY_ATTEMPTED_OR_LOCK_FAILED')) { throw 'Persistent guard failed' }
     Remove-Item -Recurse -Force (Join-Path $base 'Windows\Temp\mt8167-bu21025-names-stage')
