@@ -187,7 +187,7 @@ static int ParentAudioAcquire(PVOID context,ULONG rate) {
     if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
     c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
     result=a04_audio_owner_acquire(&c->audio,rate);
-    A04_TRACE("A04AUD parent acquire rate=%lu result=%d pmic=%d apmixed=%d online=%d preflight=%d clock=%d codec=%d poisoned=%d\n",rate,result,c->pmic.online,c->apmixed!=NULL,c->audio.online,c->audio.preflight!=NULL,c->audio.clock_acquire!=NULL,c->audio.codec_acquire_muted!=NULL,c->audio.poisoned);
+    A04_TRACE("A04AUD parent acquire rate=%lu result=%d pmic=%d apmixed=%d online=%d preflight=%d clock=%d codec=%d release-check=%d poisoned=%d\n",rate,result,c->pmic.online,c->apmixed!=NULL,c->audio.online,c->audio.preflight!=NULL,c->audio.clock_acquire!=NULL,c->audio.codec_acquire_muted!=NULL,c->audio.verify_release!=NULL,c->audio.poisoned);
     if(result && c->audio.poisoned)result=-2;
     ParentUnlock(c);return result;
 }

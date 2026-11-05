@@ -11,6 +11,9 @@ struct a04_audio_owner {
     int (*preflight)(void *, uint32_t);
     int (*clock_acquire)(void *, uint32_t);
     int (*codec_acquire_muted)(void *);
+    /* Must independently establish device DMA and interrupt quiescence;
+     * a caller assertion or disabled AFE bit alone is insufficient. */
+    int (*verify_release)(void *);
     int (*codec_release_quiescent)(void *);
     int (*clock_release)(void *);
     int online, leased, poisoned;

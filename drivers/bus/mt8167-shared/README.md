@@ -259,3 +259,15 @@ DMA drain have not been proven. The parent audio preflight, clock provider and
 codec quiescence callbacks are still absent, so the actual parent cannot
 execute the sequence or start audio even when all diagnostic flags are set.
 Host tests model alias behavior; they do not prove it on the device.
+
+The owner now requires an independent `verify_release` callback before it
+will acquire a lease and calls it before any codec shutdown or clock release.
+A failed verification retains the active lease without issuing hardware writes;
+a callback must prove DMA and interrupt quiescence rather than merely trust
+the child, a disabled bit, or an unchanged DMA pointer. The actual parent
+does not provide this callback and remains offline. The board Linux
+`mt8167-afe-util.c` enables `top_pdn_aud` before the reference-counted AFE
+gate and disables them in reverse order; its shared clock framework and
+`afe_ctrl_lock` are not reproduced by a PnP mapping. The available Windows
+resources and source do not yet prove equivalent shared ownership or drain.
+Source: [MT8167 AFE clock handling](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/sound/soc/mediatek/mt8167/mt8167-afe-util.c).
