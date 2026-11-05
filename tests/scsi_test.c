@@ -7,13 +7,15 @@ int main(void)
 {
     uint8_t out[4096], c[16]={0}; struct a04_scsi_reply r;
     c[0]=0x12;c[4]=36; r=a04_scsi_process(c,6,100,0,out,sizeof out);
-    assert(r.action==A04_SCSI_REPLY && r.transfer_length==36 && !memcmp(out+8,"A04BR3",6));
+    assert(r.action==A04_SCSI_REPLY && r.transfer_length==36 && !memcmp(out+8,"UNKNOWN ",8));
     { uint8_t identity[7]={0x15,'A','J','T','D','4','R'};
       assert(a04_scsi_set_emmc_identity(out,36,identity));
-      assert(!memcmp(out+8,"JEDEC15 ",8) && !memcmp(out+16,"AJTD4R",6));
+      assert(!memcmp(out+8,"SAMSUNG ",8) && !memcmp(out+16,"AJTD4R",6));
       identity[2]=0; assert(!a04_scsi_set_emmc_identity(out,36,identity));
       assert(!memcmp(out+16,"AJTD4R",6));
-      assert(!a04_scsi_set_emmc_identity(out,35,identity)); }
+      assert(!a04_scsi_set_emmc_identity(out,35,identity));
+      identity[0]=0x90; identity[2]='J'; assert(a04_scsi_set_emmc_identity(out,36,identity));
+      assert(!memcmp(out+8,"JEDEC90 ",8)); }
     c[1]=1;c[2]=0;c[4]=5;r=a04_scsi_process(c,6,100,0,out,sizeof out);
     assert(r.action==A04_SCSI_REPLY && out[3]==1 && out[4]==0);
     c[2]=0x83;r=a04_scsi_process(c,6,100,0,out,sizeof out);assert(r.action==A04_SCSI_ERROR && r.asc==0x24);
