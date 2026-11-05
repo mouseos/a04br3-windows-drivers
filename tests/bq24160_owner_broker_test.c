@@ -219,6 +219,12 @@ int main(void) {
         assert(l.state==A04_LIFE_STOPPED&&e.closed&&o.stopped&&!memcmp(&out,&old,sizeof(out)));
     }
     {
+        struct a04_broker_endpoint e={0};struct a04_broker_lifecycle l={0};
+        setup(&f,&o,&b,&c,&g);memset(&b,0,sizeof(b));o.handoff_deadline=5*NS;f.now=5*NS;
+        assert(a04_broker_lifecycle_start(&l,&e,&b,&o,&c,&g,f.now,40*NS,1));
+        assert(l.state==A04_LIFE_STOPPED&&o.stopped&&e.closed&&!f.reads&&!f.writes);
+    }
+    {
         uint8_t wire[A04_BROKER_WIRE_BYTES];struct a04_broker_request q={1,2,3},decoded={9,9,9};
         struct a04_broker_response r={0},response={0};unsigned i;
         assert(!a04_broker_wire_request_encode(wire,sizeof(wire),&q));

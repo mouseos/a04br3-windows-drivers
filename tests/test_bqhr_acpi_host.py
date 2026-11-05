@@ -43,6 +43,7 @@ harness=r'''
 #include <acpiioct.h>
 #include "bqhr_acpi.h"
 #include "charger.h"
+#include "admission.h"
 static int mode;
 static void put(UCHAR *p,uint64_t x){unsigned i;for(i=0;i<8;++i)p[i]=(UCHAR)(x>>(i*8));}
 static void seal(UCHAR *p){uint64_t h=14695981039346656037ULL;unsigned i;for(i=0;i<120;++i){h^=p[i];h*=1099511628211ULL;}put(p+120,h);}
@@ -72,11 +73,22 @@ int main(void){NTSTATUS status;UCHAR record[128];unsigned i;enum a04_bqhr_acpi_r
   assert(owner.handoff_pending&&owner.handoff_deadline==19000000000ULL);
   assert(a04_bq_adopt_handoff(&expired,record,128,1000000000ULL,390000000,13000000));
   assert(expired.stopped&&!expired.handoff_pending);}
+ {struct a04_bq_owner owner={0}, expired={0}, invalid={0}, stopped={0};mode=0;
+  assert(a04_bqhr_receive((void*)1,&status,record)==A04_BQHR_ACPI_STOPPED);
+  assert(a04_bq_admission_prepare(&stopped,record,128,1000000000ULL,156000000,13000000,5000000000ULL,7));
+  assert(stopped.stopped&&!stopped.handoff_pending);mode=9;
+  assert(a04_bqhr_receive((void*)1,&status,record)==A04_BQHR_ACPI_OTHER_STATE);
+  assert(!a04_bq_admission_prepare(&owner,record,128,1000000000ULL,156000000,13000000,5000000000ULL,7));
+  assert(owner.handoff_pending&&owner.handoff_deadline==5000000000ULL);
+  assert(a04_bq_admission_prepare(&expired,record,128,1000000000ULL,390000000,13000000,5000000000ULL,7));
+  assert(expired.stopped&&!expired.handoff_pending);
+  assert(a04_bq_admission_prepare(&invalid,record,128,1000000000ULL,156000000,13000000,5000000000ULL,0));
+  assert(invalid.stopped&&!invalid.handoff_pending);}
  return 0;}
 '''
 with tempfile.TemporaryDirectory(prefix='a04-bqhr-wdf-') as td:
  p=Path(td);(p/'ntddk.h').write_text(mock);(p/'wdf.h').write_text('#include <ntddk.h>\n');(p/'acpiioct.h').write_text(acpi);(p/'test.c').write_text(harness)
  src=root/'drivers/power/bq24160'
- subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-Wno-misleading-indentation','-I'+str(p),'-I'+str(src),str(src/'bqhr_acpi.c'),str(src/'bqhr_diagnostic.c'),str(src/'charger.c'),str(p/'test.c'),'-o',str(p/'test')],check=True)
+ subprocess.run(['cc','-std=c11','-Wall','-Wextra','-Werror','-Wno-misleading-indentation','-I'+str(p),'-I'+str(src),str(src/'bqhr_acpi.c'),str(src/'bqhr_diagnostic.c'),str(src/'charger.c'),str(src/'admission.c'),str(p/'test.c'),'-o',str(p/'test')],check=True)
  subprocess.run([str(p/'test')],check=True)
 print('BQHR ACPI IOCTL, length/type checks and non-adoption: PASS (host mock)')
