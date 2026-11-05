@@ -19,23 +19,23 @@ X:\a04br3\compare-files.exe C:\Windows\INF\oem32.inf X:\a04br3\names\original-st
 if errorlevel 1 goto mismatch
 X:\a04br3\compare-files.exe C:\Windows\INF\oem33.inf X:\a04br3\names\original-touch.inf
 if errorlevel 1 goto mismatch
-if exist C:\Windows\Temp\mt8167-bu21025-names-stage goto reject
+if exist C:\Windows\Temp\mt8167-bu21025-names-stage-v2 goto reject
 rem The new directory is a persistent one-shot guard and partial hive backup.
-mkdir C:\Windows\Temp\mt8167-bu21025-names-stage
+mkdir C:\Windows\Temp\mt8167-bu21025-names-stage-v2
 if errorlevel 1 goto reject
 for %%H in (SYSTEM SOFTWARE COMPONENTS) do (
   if exist C:\Windows\System32\config\%%H (
-    copy /b C:\Windows\System32\config\%%H C:\Windows\Temp\mt8167-bu21025-names-stage\%%H >nul
+    X:\a04br3\copy-backup.exe C:\Windows\System32\config\%%H C:\Windows\Temp\mt8167-bu21025-names-stage-v2\%%H
     if errorlevel 1 goto backupfail
-    X:\a04br3\compare-files.exe C:\Windows\System32\config\%%H C:\Windows\Temp\mt8167-bu21025-names-stage\%%H
+    X:\a04br3\compare-files.exe C:\Windows\System32\config\%%H C:\Windows\Temp\mt8167-bu21025-names-stage-v2\%%H
     if errorlevel 1 goto backupfail
   ) else (
     if /i not "%%H"=="COMPONENTS" goto backupfail
   )
   for %%E in (.LOG1 .LOG2) do if exist C:\Windows\System32\config\%%H%%E (
-    copy /b C:\Windows\System32\config\%%H%%E C:\Windows\Temp\mt8167-bu21025-names-stage\%%H%%E >nul
+    X:\a04br3\copy-backup.exe C:\Windows\System32\config\%%H%%E C:\Windows\Temp\mt8167-bu21025-names-stage-v2\%%H%%E
     if errorlevel 1 goto backupfail
-    X:\a04br3\compare-files.exe C:\Windows\System32\config\%%H%%E C:\Windows\Temp\mt8167-bu21025-names-stage\%%H%%E
+    X:\a04br3\compare-files.exe C:\Windows\System32\config\%%H%%E C:\Windows\Temp\mt8167-bu21025-names-stage-v2\%%H%%E
     if errorlevel 1 goto backupfail
   )
 )
@@ -46,7 +46,7 @@ if errorlevel 1 goto uartfail
 for %%D in (storage touch) do (
   dism.exe /Image:C:\ /Add-Driver /Driver:X:\a04br3\names\%%D /ForceUnsigned /ScratchDir:X:\Windows\Temp > X:\a04br3\names-%%D.log 2>&1
   set "A04_RESULT=!errorlevel!"
-  copy /b X:\a04br3\names-%%D.log C:\Windows\Temp\mt8167-bu21025-names-stage\%%D.log >nul
+  X:\a04br3\copy-backup.exe X:\a04br3\names-%%D.log C:\Windows\Temp\mt8167-bu21025-names-stage-v2\%%D.log
   if errorlevel 1 goto logfail
   type X:\a04br3\names-%%D.log
   echo NAMES_%%D_DISM_EXIT=!A04_RESULT!

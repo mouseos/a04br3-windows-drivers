@@ -19,6 +19,16 @@ try {
         & attrib +H +S (Join-Path $base "Windows\System32\config\$name")
         if ($LASTEXITCODE) { throw "Cannot set hidden/system attributes: $name" }
     }
+    $kit = "${env:ProgramFiles(x86)}\Windows Kits\10"
+    $sdk = Get-ChildItem (Join-Path $kit 'Include') -Directory | Sort-Object Name -Descending |
+        Where-Object { (Test-Path (Join-Path $_.FullName 'um\Windows.h')) -and (Test-Path (Join-Path $kit "Lib\$($_.Name)\um\x64\kernel32.lib")) } |
+        Select-Object -First 1
+    if (!$sdk) { throw 'Windows x64 SDK missing' }
+    $lib = Join-Path $kit "Lib\$($sdk.Name)\um\x64\kernel32.lib"
+    & clang --target=x86_64-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_WIN32_WINNT=0x0603 "-I$($sdk.FullName)\um" "-I$($sdk.FullName)\shared" "-I$($sdk.FullName)\ucrt" -c (Join-Path $root 'tools\winpe\copy-backup.c') -o "$base\copy.obj"
+    if ($LASTEXITCODE) { throw 'x64 backup helper compilation failed' }
+    & lld-link /subsystem:console /machine:x64 /entry:mainCRTStartup /nodefaultlib "$base\copy.obj" $lib "/out:$base\src\copy-backup.exe"
+    if ($LASTEXITCODE) { throw 'x64 backup helper link failed' }
     $batch = Get-Content (Join-Path $root 'tools\winpe\startnet-stage-legacy-names.cmd') -Raw
     $batch = $batch.Replace('C:\Windows',"$base\Windows").Replace('X:\a04br3',"$base\src")
     $batch = $batch -replace '(?m)^wpeinit\r?\n','' -replace '(?m)^drvload .*$', 'cmd /c exit 0'
@@ -31,11 +41,11 @@ try {
     $out = & cmd.exe /c $cmd
     if (-not ($out -match 'NAMES_PACKAGES_STAGED_PNP_NOT_VERIFIED')) { throw ($out -join ' ') }
     foreach ($name in @('SYSTEM.LOG1','SYSTEM.LOG2')) {
-        if (-not (Test-Path (Join-Path $base "Windows\Temp\mt8167-bu21025-names-stage\$name"))) { throw "Missing registry log backup: $name" }
+        if (-not (Test-Path (Join-Path $base "Windows\Temp\mt8167-bu21025-names-stage-v2\$name"))) { throw "Missing registry log backup: $name" }
     }
     $out = & cmd.exe /c $cmd
     if (-not ($out -match 'NAMES_ALREADY_ATTEMPTED_OR_LOCK_FAILED')) { throw 'Persistent guard failed' }
-    Remove-Item -Recurse -Force (Join-Path $base 'Windows\Temp\mt8167-bu21025-names-stage')
+    Remove-Item -Recurse -Force (Join-Path $base 'Windows\Temp\mt8167-bu21025-names-stage-v2')
     [IO.File]::WriteAllText((Join-Path $base 'src\names\storage\a04msdcprobe.sys'),'different')
     $out = & cmd.exe /c $cmd
     if (-not ($out -match 'NAMES_INSTALLED_PACKAGE_MISMATCH') -or ($out -match 'MOCK_DISM')) { throw 'Mismatch guard failed' }
