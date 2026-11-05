@@ -1,4 +1,4 @@
-; Compile-only prototype: parent D0 always fails, do not install.
+; Diagnostic prototype: D0 rejects by default; do not install.
 [Version]
 Signature="$WINDOWS NT$"
 Class=System

@@ -5,7 +5,7 @@ SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test test-thermal test-ntfs-root arm-coff clean
 
-test: test-mt8167-button-parent-contract test-mt8167-pnp-masked-irq test-mt8167-audio-irq-integration test-mt8167-afe-mapping test-mt8167-audio-parent-query test-mt8167-audio-parent-client test-mt8167-audio-child-resources test-mt8167-pnp-parent test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registration test-mt8167-wavert-miniport test-mt8167-audio-resource
+test: test-mt8167-shared-button-d0 test-mt8167-button-parent-contract test-mt8167-pnp-masked-irq test-mt8167-audio-irq-integration test-mt8167-afe-mapping test-mt8167-audio-parent-query test-mt8167-audio-parent-client test-mt8167-audio-child-resources test-mt8167-pnp-parent test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registration test-mt8167-wavert-miniport test-mt8167-audio-resource
 test: test-mma8652 build/msdc_resume_check_test build/msdc_resume_capture_test
 test: build/bq24160_owner_broker_test
 test: test-mt8167-pnp-backend test-mt8167-audio-adapter-pnp test-mt8167-common-dma test-mt8167-dma-adapter test-mt8167-clock-owner test-mt8167-stream-transport
@@ -684,3 +684,9 @@ test-mt8167-button-parent-contract: build/mt8167_button_parent_contract_test
 build/mt8167_button_parent_contract_test: tests/mt8167_button_parent_contract_test.c drivers/input/a04br3-buttons/shared_parent_contract.h drivers/bus/mt8167-shared/client_interface.h tests/shared_wdf_stubs/ntddk.h
 	mkdir -p build
 	$(CC) $(CFLAGS) -Itests/shared_wdf_stubs -Idrivers/input/a04br3-buttons tests/mt8167_button_parent_contract_test.c -o $@
+
+.PHONY: test-mt8167-shared-button-d0
+test-mt8167-shared-button-d0:
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_AUDIO_CHILD_RESOURCES=1 -DA04_SHARED_BUTTON_D0_EXPERIMENT=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_shared_wdf_test.c -o build/mt8167_shared_button_d0_test
+	./build/mt8167_shared_button_d0_test

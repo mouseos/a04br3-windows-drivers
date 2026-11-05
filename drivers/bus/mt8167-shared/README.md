@@ -30,8 +30,8 @@ button driver's direct PWRAP ownership to use this core.
 `wdf_parent_probe.c` is a non-installable KMDF PnP ABI prototype. It validates
 four exclusive translated memory ranges (TOPCKGEN, INFRA, GPIO and PWRAP)
 before mapping and unmaps partial
-acquisitions; D0 always fails and it publishes no interface or child. No INF or
-ACPI binding is provided. The current button and touch providers already claim
+acquisitions. D0 rejects by default; optional diagnostic interfaces and child
+PDOs are described below. The prototype INF and ACPI fixture are not a production binding. The current button and touch providers already claim
 parts of these ranges. Exclusive descriptors alone do not prove that firmware
 or existing direct owners have been migrated. Boot ordering, shared leases,
 client teardown, rail/pin/clock operations and actual Storport integration are
@@ -59,8 +59,7 @@ The parent probe optionally publishes a versioned, reference-counted kernel
 query interface when `A04_SHARED_QUERY_EXPERIMENTAL=1`; the interface currently
 exposes only the fixed MT6392 button-status read under a parent-owned FAST_MUTEX.
 The mutex and callbacks exist before interface publication, and ReleaseHardware
-sets the PWRAP owner offline under that same mutex before unmapping. D0 still
-always fails and never starts the owner, so calls fail without MMIO. No production client,
+sets the PWRAP owner offline under that same mutex before unmapping. Default D0 rejects and leaves the owner offline, so calls fail without MMIO. No production client,
 INF, ACPI parent/child topology, audio clock lease or PMIC audio operation is
 connected. WDF interface references retain the device object but do not make its
 hardware resources active. Windows PnP behavior and transition to an online
@@ -84,7 +83,7 @@ its older offline diagnostic interface. The parent translates the public touch
 bank IDs, dispatches narrow operations through the existing owners and uses one
 blocking lock for GPIO/TOP/INFRA and PWRAP. D0 exit, surprise removal and
 release close admission; stop waits for an operation already holding that lock.
-The parent still never starts the owners and always rejects D0. A physical
+Default D0 rejects and leaves both owners offline. A physical
 removal concurrent with an MMIO operation can still cause a bus abort, which a
 software lock cannot prevent. Do not infer safe removal or power ownership.
 
@@ -98,7 +97,7 @@ MOU0003/MOU0004 ACPI devices and is not included in firmware or packaging.
 Never install it alongside them. The INF files require shared-client builds and
 have not been signed or validated on a device. There is no active power owner,
 no verified firmware resource migration, and no physical-removal guarantee;
-parent D0 continues to fail. The source-level fixture checks cannot establish
+default parent D0 continues to fail. The source-level fixture checks cannot establish
 that ACPI descriptors are exclusive on the target or that every firmware or
 Windows driver has ceased bypassing the owner.
 
@@ -106,7 +105,7 @@ With `A04_SHARED_QUERY_EXPERIMENTAL=1`, the prototype additionally publishes a
 separate versioned audio interface; its codec/clock acquire and release always
 fail without MMIO. With `A04_SHARED_CHILD_PROBE=1`, a third experimental audio
 child forwards that GUID to its parent. The child has no AFE resources, INF or
-audio FDO binding and its requirements callback refuses to start. Parent D0
+audio FDO binding and its requirements callback refuses to start. Default parent D0
 still fails. This does not establish ownership or codec safety.
 
 The parent stop path closes both touch and PWRAP admission while holding their
@@ -114,8 +113,7 @@ single shared mutex, before releasing any mapping. Existing operations finish
 before this lock can be acquired; no new operation can enter either owner after
 it is released. This is a software rundown guarantee only: the prototype still
 has no mechanism that prevents the physical device disappearing while MMIO is
-already in progress, nor proof of retained rail or clock power. D0 remains
-unconditionally refused and a stop must never be interpreted as power control.
+already in progress, nor proof of retained rail or clock power. Default D0 remains refused and a stop must never be interpreted as power control.
 
 `A04_AUDIO_CHILD_RESOURCES=1` is a separate, default-off diagnostic resource
 requirements prototype for the audio child. It proposes exclusive AFE MMIO
@@ -147,3 +145,15 @@ queued callers recheck after locking. The offline AML fixture has `_STA=0` so
 it cannot enumerate alongside the legacy button fixture. This is not an
 operational mutual-exclusion configuration: the parent still rejects D0, and a
 board-specific mutually exclusive enumeration and power handoff remain required.
+
+`A04_SHARED_BUTTON_D0_EXPERIMENT=1` additionally requires the query and child
+flags. After exclusive PnP resources are mapped it reads PWRAP INIT_DONE2 and
+WACS2_RDATA, and admits only the button PWRAP owner when initialized and idle.
+A stop closes admission before draining the shared mutex; surprise removal also
+prevents a later D0 restart. Readiness does not prove retained power or firmware
+non-interference. Touch register and audio owners stay offline. The separate
+TAB-A04-BR3 firmware branch `windows-rt/shared-acpi-owner` selects the shared
+parent instead of legacy button and touch devices only with an explicit build
+option; the default remains legacy. Neither Windows arbitration, removal nor
+the diagnostic configuration has been verified on hardware. Do not deploy it
+alongside direct PWRAP users.

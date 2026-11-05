@@ -4,13 +4,26 @@
 #include "../drivers/bus/mt8167-shared/wdf_parent_probe.c"
 #include "../drivers/audio/mt8167-afe/audio_parent_client.h"
 static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,assertClosedOnLock,closeDuringLock;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;
+#if A04_SHARED_BUTTON_D0_EXPERIMENT
+static ULONG mockInit,mockFsm;static int mockStopDuringRead,mockWacs;
+#endif
 static A04_CHILD_CONTEXT children[3];static unsigned child_count,forward_count,appended,deleted;static int fail_step;static unsigned desc_count,fail_desc;static IO_RESOURCE_DESCRIPTOR descriptor,all_desc[3];
 A04_CHILD_CONTEXT *ChildContext(WDFDEVICE d){return (A04_CHILD_CONTEXT *)d;}
 A04_PARENT_CONTEXT *ParentContext(WDFDEVICE d){(void)d;return &testContext;}
 void ExInitializeFastMutex(FAST_MUTEX *m){m->held=0;}void ExAcquireFastMutex(FAST_MUTEX *m){if(assertClosedOnLock)assert(testContext.admissionClosed);assert(!m->held);m->held=1;if(closeDuringLock)InterlockedExchange(&testContext.admissionClosed,1);}void ExReleaseFastMutex(FAST_MUTEX *m){assert(m->held);m->held=0;}
 PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,int c){(void)n;(void)c;maps++;return (PVOID)(uintptr_t)a.QuadPart;}
 void MmUnmapIoSpace(PVOID p,ULONG n){(void)p;(void)n;unmaps++;}
-ULONG READ_REGISTER_ULONG(volatile ULONG *p){(void)p;reads++;return 0;}void WRITE_REGISTER_ULONG(volatile ULONG *p,ULONG x){(void)p;(void)x;writes++;}
+ULONG READ_REGISTER_ULONG(volatile ULONG *p){(void)p;reads++;
+#if A04_SHARED_BUTTON_D0_EXPERIMENT
+ if((uintptr_t)p==0x2000f09c)return mockInit;
+ if((uintptr_t)p==0x2000f0a4){if(mockStopDuringRead)InterlockedExchange(&testContext.admissionClosed,1);return (mockFsm<<16)|(mockWacs?0x1234u:0);}
+#endif
+ return 0;}void WRITE_REGISTER_ULONG(volatile ULONG *p,ULONG x){(void)p;(void)x;writes++;
+#if A04_SHARED_BUTTON_D0_EXPERIMENT
+ if(mockWacs && (uintptr_t)p==0x2000f0a0){assert(x==0x00a10000u);mockFsm=6;}
+ else if(mockWacs && (uintptr_t)p==0x2000f0a8){assert(x==1);mockFsm=0;}
+#endif
+}
 void KeStallExecutionProcessor(ULONG n){(void)n;}int KeGetCurrentIrql(void){return 0;}
 ULONG WdfCmResourceListGetCount(WDFCMRESLIST l){return l->count;}PCM_PARTIAL_RESOURCE_DESCRIPTOR WdfCmResourceListGetDescriptor(WDFCMRESLIST l,ULONG i){return &l->entries[i];}
 void WdfDeviceInitSetPnpPowerEventCallbacks(PWDFDEVICE_INIT i,WDF_PNPPOWER_EVENT_CALLBACKS *p){(void)i;(void)p;}
@@ -81,7 +94,18 @@ int main(void){
  translated[3].ShareDisposition=CmResourceShareDeviceExclusive;
  assert(!ParentPrepare(&testContext,&list,&translatedList) && maps==4);
  assert((uintptr_t)testContext.topck==0x20000000 && (uintptr_t)testContext.pwrap==0x2000f000);
+#if A04_SHARED_BUTTON_D0_EXPERIMENT
+ mockInit=0;mockFsm=0;assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY && !testContext.pmic.online && testContext.admissionClosed);
+ mockInit=1;mockFsm=6;assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY && !testContext.pmic.online && testContext.admissionClosed);
+ mockFsm=0;closeDuringLock=1;assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY && !testContext.pmic.online && testContext.admissionClosed);closeDuringLock=0;
+ mockStopDuringRead=1;assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY && !testContext.pmic.online && testContext.admissionClosed);mockStopDuringRead=0;
+ assert(!ParentD0(&testContext,0) && testContext.pmic.online && !testContext.admissionClosed && !testContext.regs.online && !writes);
+ mockWacs=1;assert(!input.ButtonPmicRead(input.Context,&value) && value==0x1234 && writes==2);mockWacs=0;value=0xeeee;writes=0;
+ assert(!ParentD0Exit(&testContext,0) && !testContext.pmic.online && testContext.admissionClosed);
+ reads=0;
+#else
  assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY);
+#endif
  assert(saved.ReadButtons(saved.Header.Context,&value)==STATUS_DEVICE_NOT_READY && !reads && !writes);
  /* Simulate admitted owners only in the mock, then verify surprise revokes
   * both under one lock before any unmap. D0 does not enable either in reality. */
@@ -92,6 +116,7 @@ int main(void){
  testContext.admissionClosed=0;assertClosedOnLock=1;
  ParentSurprise(&testContext);assertClosedOnLock=0;
  assert(testContext.admissionClosed && !testContext.regs.online && !testContext.pmic.online && unmaps==0);
+ assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY);
  assert(ParentLock(&testContext)!=0 && !testContext.pwrapLock.held);
  assert(!ParentD0Exit(&testContext,0));
  assert(!ParentRelease(&testContext,&list) && unmaps==4);

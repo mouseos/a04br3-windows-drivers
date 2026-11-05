@@ -10,7 +10,8 @@ $out=Join-Path $temp 'a04-msdc-parent-probe'
 New-Item -ItemType Directory -Force $out|Out-Null
 $src=Join-Path $root 'drivers\bus\mt8167-shared'
 $audioResources=if($env:A04_AUDIO_CHILD_RESOURCES -eq '1'){'1'}else{'0'}
-& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 "-DA04_AUDIO_CHILD_RESOURCES=$audioResources" -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$inc\wdf\kmdf\1.13" -c (Join-Path $src 'wdf_parent_probe.c') -o (Join-Path $out 'parent.obj')
+$buttonD0=if($env:A04_SHARED_BUTTON_D0_EXPERIMENT -eq '1'){'1'}else{'0'}
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 "-DA04_AUDIO_CHILD_RESOURCES=$audioResources" "-DA04_SHARED_BUTTON_D0_EXPERIMENT=$buttonD0" -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$inc\wdf\kmdf\1.13" -c (Join-Path $src 'wdf_parent_probe.c') -o (Join-Path $out 'parent.obj')
 if($LASTEXITCODE -ne 0){throw 'Parent ARM32 compilation failed'}
 & clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c (Join-Path $src 'parent_resources.c') -o (Join-Path $out 'resources.obj')
 if($LASTEXITCODE -ne 0){throw 'Resources ARM32 compilation failed'}
@@ -23,4 +24,4 @@ foreach ($part in @('pwrap_owner','pmic_read','register_owner')) {
 if($LASTEXITCODE -ne 0){throw 'Parent ARM32 link failed'}
 & llvm-readobj --file-headers --coff-imports (Join-Path $out 'parent-probe.sys')
 if($LASTEXITCODE -ne 0){throw 'Parent PE inspection failed'}
-Write-Host 'Non-installable parent ABI probe; D0 always rejects.'
+Write-Host "Non-installable parent ABI probe; experimental button-only D0: $buttonD0."

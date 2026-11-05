@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent
- * Non-operational PnP parent prototype. No INF, ACPI registration, interrupt,
- * active hardware access or clients. Optional offline query interface only.
- * D0 always fails. Never deploy this
- * while existing button/touch drivers claim the same resources. */
+ * Experimental PnP parent. D0 rejects by default; the opt-in button D0
+ * experiment checks WACS2 readiness and admits the fixed button transaction.
+ * Never deploy while existing button/touch drivers claim the same resources. */
 #include <initguid.h>
 #include <ntddk.h>
 #include <wdf.h>
@@ -11,10 +10,16 @@
 #include "register_owner.h"
 #include "client_interface.h"
 #include "audio_interface.h"
+#ifndef A04_SHARED_BUTTON_D0_EXPERIMENT
+#define A04_SHARED_BUTTON_D0_EXPERIMENT 0
+#endif
+#if A04_SHARED_BUTTON_D0_EXPERIMENT && (!defined(A04_SHARED_QUERY_EXPERIMENTAL) || !A04_SHARED_QUERY_EXPERIMENTAL || !defined(A04_SHARED_CHILD_PROBE) || !A04_SHARED_CHILD_PROBE)
+#error A04_SHARED_BUTTON_D0_EXPERIMENT requires the shared query and child topology
+#endif
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
-typedef struct { PVOID topck,infra,gpio,pwrap; FAST_MUTEX pwrapLock; volatile LONG admissionClosed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; } A04_PARENT_CONTEXT;
+typedef struct { PVOID topck,infra,gpio,pwrap; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; } A04_PARENT_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_PARENT_CONTEXT,ParentContext)
 EVT_WDF_DRIVER_DEVICE_ADD ParentAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE ParentPrepare;
@@ -148,7 +153,7 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
     if(!c->gpio)goto fail;
     pa.QuadPart=(LONGLONG)mapping.pwrap;c->pwrap=MmMapIoSpace(pa,0x1000,MmNonCached);
     if(!c->pwrap)goto fail;
-    /* Ownership remains offline: D0 never starts it. */
+    /* Mapping alone does not admit clients; D0 must establish readiness. */
     return STATUS_SUCCESS;
 fail:
     ParentUnmap(c);return STATUS_INSUFFICIENT_RESOURCES;
@@ -156,13 +161,14 @@ fail:
 NTSTATUS ParentRelease(WDFDEVICE dev,WDFCMRESLIST translated)
 {
     UNREFERENCED_PARAMETER(translated);
-    /* No interfaces or clients are published while D0 is gated. */
+    /* Revoke admission and drain active operations before unmapping. */
     ParentUnmap(ParentContext(dev));return STATUS_SUCCESS;
 }
 VOID ParentSurprise(WDFDEVICE dev)
 {
     /* Offline admission only: this cannot prevent a bus abort from removal
      * concurrent with an already executing hardware access. */
+    InterlockedExchange(&ParentContext(dev)->removed,1);
     ParentStop(ParentContext(dev));
 }
 NTSTATUS ParentD0Exit(WDFDEVICE dev,WDF_POWER_DEVICE_STATE target)
@@ -171,10 +177,35 @@ NTSTATUS ParentD0Exit(WDFDEVICE dev,WDF_POWER_DEVICE_STATE target)
 }
 NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
 {
-    UNREFERENCED_PARAMETER(dev);UNREFERENCED_PARAMETER(previous);
+    UNREFERENCED_PARAMETER(previous);
+#if A04_SHARED_BUTTON_D0_EXPERIMENT
+    A04_PARENT_CONTEXT *c=ParentContext(dev);NTSTATUS result=STATUS_DEVICE_NOT_READY;ULONG init,state;
+    /* 1=closed, 2=starting, 0=open. Stop can cancel a start before the
+     * final compare-exchange; surprise removal prevents any later restart. */
+    if (InterlockedCompareExchange(&c->removed,0,0) ||
+        InterlockedCompareExchange(&c->admissionClosed,2,1)!=1) return result;
+    ExAcquireFastMutex(&c->pwrapLock);
+    if (InterlockedCompareExchange(&c->removed,0,0) ||
+        InterlockedCompareExchange(&c->admissionClosed,0,0)!=2 ||
+        !c->topck || !c->infra || !c->gpio || !c->pwrap || c->pmic.bus.poisoned ||
+        !c->pmic.bus.read32 || !c->pmic.bus.write32 || !c->pmic.bus.delay || !c->pmic.bus.attempts) goto done;
+    /* Existing button provider uses these same WACS2 readiness observations.
+     * Never alter a rail, clock, codec, amplifier, GPIO or WACS transaction. */
+    init=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->pwrap+0x9c));
+    state=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->pwrap+0xa4));
+    if (!(init&1u) || ((state>>16)&7u)!=0) goto done;
+    c->pmic.online=1;
+    if (InterlockedCompareExchange(&c->admissionClosed,0,2)==2) result=STATUS_SUCCESS;
+    else c->pmic.online=0;
+done:
+    if (!NT_SUCCESS(result)) { c->pmic.online=0;(void)InterlockedCompareExchange(&c->admissionClosed,1,2); }
+    ExReleaseFastMutex(&c->pwrapLock);return result;
+#else
+    UNREFERENCED_PARAMETER(dev);
     /* Existing direct owners, boot ordering and shared lease teardown have not
      * been migrated. An ACPI resource assignment alone is not ownership. */
     return STATUS_DEVICE_NOT_READY;
+#endif
 }
 #if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE
 /* Compile-only topology. PnP arbitrates these exclusive child ranges; the
