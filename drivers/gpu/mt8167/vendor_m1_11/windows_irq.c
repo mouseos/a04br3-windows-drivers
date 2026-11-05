@@ -9,8 +9,9 @@ struct a04_vendor_irq {
     a04_vendor_irq_service service;void *context;
     volatile LONG powered,sequence,serviced;
 };
+typedef struct a04_vendor_irq A04_VENDOR_IRQ;
 typedef struct { struct a04_vendor_irq *owner; } WORK_OBJECT;
-WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(struct a04_vendor_irq,IrqObject)
+WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(A04_VENDOR_IRQ,IrqObject)
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(WORK_OBJECT,WorkObject)
 EVT_WDF_INTERRUPT_ISR a04_vendor_isr;
 EVT_WDF_INTERRUPT_DPC a04_vendor_dpc;
@@ -53,7 +54,7 @@ NTSTATUS a04_vendor_irq_create(WDFDEVICE device,a04_vendor_irq_service service,
     if(!device || !service || !out || *out)
         return STATUS_INVALID_PARAMETER;
     WDF_INTERRUPT_CONFIG_INIT(&irq_config,a04_vendor_isr,a04_vendor_dpc);
-    WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,struct a04_vendor_irq);
+    WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,A04_VENDOR_IRQ);
     status=WdfInterruptCreate(device,&irq_config,&attr,&interrupt);
     if(!NT_SUCCESS(status)) return status;
     q=IrqObject(interrupt);RtlZeroMemory(q,sizeof(*q));q->interrupt=interrupt;
