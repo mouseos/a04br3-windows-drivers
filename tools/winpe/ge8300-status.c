@@ -1,6 +1,21 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include <windows.h>
 #include "../../drivers/gpu/mt8167/ge8300_status.h"
+#ifdef A04_GE8300_VENDOR_STAGE_STATUS
+#include "../../drivers/system/mt8167-toprgu/uart_screen.h"
+static int vendor_uart(const char *message)
+{
+    HANDLE port; DWORD n=0,sent,start=GetTickCount();
+    while(message[n]) ++n;
+    port=CreateFileW(L"\\\\.\\A04BR3ScreenUart",GENERIC_WRITE,0,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
+    if(port==INVALID_HANDLE_VALUE)return 0;
+    while(!DeviceIoControl(port,A04_UART_SCREEN_SEND,(void *)message,n,NULL,0,&sent,NULL)) {
+        if(GetLastError()!=ERROR_BUSY || GetTickCount()-start>10000u) {CloseHandle(port);return 0;}
+        Sleep(10);
+    }
+    Sleep(1000);CloseHandle(port);return 1;
+}
+#endif
 static void say(const char *p) { DWORD n=0,w; while(p[n])++n; WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),p,n,&w,NULL); }
 static void hex(DWORD n) { static const char d[]="0123456789ABCDEF"; char s[9]; unsigned i; for(i=0;i<8;++i)s[i]=d[(n>>(28-4*i))&15]; s[8]=0; say(s); }
 void mainCRTStartup(void)
@@ -21,7 +36,8 @@ void mainCRTStartup(void)
         }
         CloseHandle(h);say("GE8300_VENDOR_STAGE_ATTEMPT=");hex(v.attempted);
         say(" STATUS=");hex(v.stage_status);say("\r\n");
-        ExitProcess(v.attempted && v.stage_status==0 ? 0 : 3);
+        if(v.attempted && v.stage_status==0) ExitProcess(vendor_uart("A04GPU VENDOR_STAGE SUCCESS\n") ? 0 : 4);
+        (void)vendor_uart("A04GPU VENDOR_STAGE FAILED\n");ExitProcess(3);
     }
 #endif
     for(i=0;i<16;++i) {
