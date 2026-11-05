@@ -61,5 +61,7 @@ rejects startup: existing direct owners have not been migrated, interrupt
 polarity and the GPIO/rail ownership are unverified, and BQ24160 coordination
 is incomplete. Portable owner and resource tests pass. The keyboard,
 controller and shared-parent translation units compiled with WDK 8.1 ARM32
-headers; the updated combined driver and package have not been linked or
-tested on the target. It is not an installable or working USB host driver.
+headers. The keyboard-side SYS also linked against the WDK ARM libraries;
+the shared parent was only compiled. The INF and complete package have not
+been validated or tested on the target. It is not an installable or working
+USB host driver.
