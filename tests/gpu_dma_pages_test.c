@@ -16,5 +16,11 @@ int main(void)
     s[2].address=0xa0000000;
     if(!a04_gpu_dma_pages(s,3,(uint64_t *)(void *)s,3) ||
        !a04_gpu_dma_pages(s,3,p,2) || !a04_gpu_dma_pages(s,3,p,513)) return 5;
+    {
+        static uint64_t screen[1040];
+        struct a04_gpu_dma_segment fb={0x60000000u,1040u*4096u};
+        if(a04_gpu_dma_pages(&fb,1,screen,1040) || screen[0]!=fb.address ||
+           screen[1039]!=fb.address+1039u*4096u)return 6;
+    }
     puts("GE8300 scatter/gather page conversion and rejection verified");return 0;
 }
