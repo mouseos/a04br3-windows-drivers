@@ -70,8 +70,16 @@ static void trace(GAUGE_CONTEXT *c, const char *message)
         WRITE_REGISTER_ULONG(c->uart, (ULONG)(UCHAR)*message++);
     }
 }
+static void trace_hex(GAUGE_CONTEXT *c, ULONG value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    char text[9]; unsigned i;
+    for (i = 0; i < 8; ++i) text[i] = digits[(value >> (28 - i * 4)) & 15];
+    text[8] = 0; trace(c, text);
+}
 #else
 #define trace(c, message) ((void)0)
+#define trace_hex(c, value) ((void)0)
 #endif
 
 static uint16_t rd(void *context, unsigned offset)
@@ -144,7 +152,10 @@ static void poll(GAUGE_CONTEXT *c)
     changed = a04_battery_set_external(&c->battery, TRUE);
 #endif
     if (a04_gauge_read_sample(&c->bus, &sample)) {
-        trace(c, "A04BAT SAMPLE FAILED\n");
+        trace(c, "A04BAT SAMPLE FAILED reason="); trace_hex(c, c->adapter.fault_reason);
+        trace(c, " command="); trace_hex(c, c->adapter.fault_command);
+        trace(c, " status="); trace_hex(c, c->adapter.fault_status);
+        trace(c, " fifo="); trace_hex(c, c->adapter.fault_fifo); trace(c, "\n");
         changed |= a04_battery_invalidate(&c->battery);
         /* A failed PEC/range check alone leaves the transport healthy.
          * Do not publish the gauge; the next periodic read can recover it.
