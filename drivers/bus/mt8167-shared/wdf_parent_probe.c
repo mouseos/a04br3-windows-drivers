@@ -94,7 +94,7 @@ EVT_WDF_DEVICE_D0_EXIT ParentD0Exit;
 EVT_WDF_DEVICE_SURPRISE_REMOVAL ParentSurprise;
 static int ParentLock(void *context) {
     A04_PARENT_CONTEXT *c=context;
-    if(!c || KeGetCurrentIrql()!=PASSIVE_LEVEL || InterlockedCompareExchange(&c->admissionClosed,0,0))return -1;
+    if(!c || KeGetCurrentIrql()>APC_LEVEL || InterlockedCompareExchange(&c->admissionClosed,0,0))return -1;
     ExAcquireFastMutex(&c->pwrapLock);
     if(InterlockedCompareExchange(&c->admissionClosed,0,0)){ExReleaseFastMutex(&c->pwrapLock);return -1;}
     return 0;
@@ -198,7 +198,14 @@ static int ParentCodecDelay(void *context,uint32_t us) {
     status=KeDelayExecutionThread(KernelMode,FALSE,&interval);
     return status==STATUS_SUCCESS ? 0 : -1;
 }
-static int ParentCodecStart(void *context) { return a04_mt6392_classd_start_muted(&((A04_PARENT_CONTEXT *)context)->classd); }
+static int ParentCodecStart(void *context) {
+    A04_PARENT_CONTEXT *c=context;struct a04_mt6392_audio_rails rails;
+    if(!c || !c->pmic.online || a04_pmic_audio_rails(&c->pmic.bus,&rails))return -1;
+    A04_TRACE("A04AUD codec rails vaud22=%04x selector=%04x vaud28=%04x\n",(unsigned)rails.vaud22,(unsigned)rails.vaud22_selector,(unsigned)rails.vaud28);
+    if(!a04_pmic_audio_rails_ready(&rails))return -1;
+    return a04_mt6392_classd_start_muted(&c->classd);
+}
+static int ParentCodecMute(void *context) { return a04_mt6392_classd_mute(&((A04_PARENT_CONTEXT *)context)->classd); }
 static int ParentCodecStop(void *context) { return a04_mt6392_classd_stop(&((A04_PARENT_CONTEXT *)context)->classd); }
 #endif
 #if A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC
@@ -267,6 +274,12 @@ static int ParentAudioAcquire(PVOID context,ULONG rate) {
     A04_TRACE("A04AUD parent acquire rate=%lu result=%d pmic=%d apmixed=%d online=%d preflight=%d clock=%d codec=%d release-check=%d poisoned=%d\n",rate,result,c->pmic.online,c->apmixed!=NULL,c->audio.online,c->audio.preflight!=NULL,c->audio.clock_acquire!=NULL,c->audio.codec_acquire_muted!=NULL,c->audio.verify_release!=NULL,c->audio.poisoned);
     if(result && c->audio.poisoned)result=-2;
     ParentUnlock(c);return result;
+}
+static int ParentAudioMute(PVOID context) {
+    A04_PARENT_CONTEXT *c;int result;
+    if(!context || KeGetCurrentIrql()>APC_LEVEL)return -1;
+    c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
+    result=a04_audio_owner_mute(&c->audio);ParentUnlock(c);return result;
 }
 static int ParentAudioRelease(PVOID context) {
     A04_PARENT_CONTEXT *c;int result;
@@ -538,7 +551,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #if A04_SHARED_MT6392_DIAGNOSTIC
         c->classd.context=c;c->classd.supports=ParentCodecSupports;c->classd.update_bits=ParentCodecUpdate;c->classd.read16=ParentCodecRead;c->classd.delay_us=ParentCodecDelay;
         c->audio.context=c;c->audio.codec_acquire_muted=ParentCodecStart;
-        c->audio.codec_release_quiescent=ParentCodecStop;
+        c->audio.codec_mute=ParentCodecMute;c->audio.codec_release_quiescent=ParentCodecStop;
 #endif
 #if A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC
         c->audio.context=c;c->audio.top_clock_acquire=ParentTopAudioAcquire;
@@ -568,7 +581,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     audioIface.Header.Size=sizeof(audioIface);audioIface.Header.Version=A04_SHARED_AUDIO_INTERFACE_VERSION;
     audioIface.Header.Context=dev;audioIface.Header.InterfaceReference=ParentInterfaceReference;
     audioIface.Header.InterfaceDereference=ParentInterfaceDereference;
-    audioIface.BindAfe=ParentBindAfe;audioIface.AcquireMuted=ParentAudioAcquire;audioIface.ReleaseQuiescent=ParentAudioRelease;audioIface.PrepareMaskedIrq=ParentAudioPrepareIrq;
+    audioIface.BindAfe=ParentBindAfe;audioIface.Mute=ParentAudioMute;audioIface.AcquireMuted=ParentAudioAcquire;audioIface.ReleaseQuiescent=ParentAudioRelease;audioIface.PrepareMaskedIrq=ParentAudioPrepareIrq;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&audioIface,&A04SharedAudioInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
 #endif

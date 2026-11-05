@@ -46,6 +46,16 @@ int a04_mt6392_classd_start_muted(struct a04_mt6392_classd *c)
     if(c->read16(c->context,SPK9,&gain) || (gain&0x0f00)) return fail(c);
     c->active=1;return 0;
 }
+/* Mute may be required while DMA drain is still unknown. This operation
+ * never disables the amplifier, a rail, or either clock lease. */
+int a04_mt6392_classd_mute(struct a04_mt6392_classd *c)
+{
+    uint16_t gain;
+    if(!c || !c->active || c->poisoned || !c->supports || !c->update_bits ||
+       !c->read16 || c->supports(c->context,SPK9,0x0f00,0)) return -1;
+    if(upd(c,SPK9,0x0f00,0) || c->read16(c->context,SPK9,&gain) || (gain&0x0f00)) return fail(c);
+    return 0;
+}
 int a04_mt6392_classd_stop(struct a04_mt6392_classd *c)
 {
     uint16_t gain;

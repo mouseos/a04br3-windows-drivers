@@ -8,7 +8,7 @@ int Mt8167AudioParentBind(struct Mt8167AudioParentClient *c,const A04_SHARED_AUD
     if(!c || !p || c->bound || c->clients || p->Header.Size!=sizeof(*p) ||
        p->Header.Version!=A04_SHARED_AUDIO_INTERFACE_VERSION || !p->Header.Context ||
        !p->Header.InterfaceReference || !p->Header.InterfaceDereference ||
-       !p->AcquireMuted || !p->ReleaseQuiescent || !p->PrepareMaskedIrq || !p->BindAfe) return -1;
+       !p->AcquireMuted || !p->ReleaseQuiescent || !p->PrepareMaskedIrq || !p->BindAfe || !p->Mute) return -1;
     c->parent=*p;c->service.size=sizeof(c->service);c->service.version=1;c->service.context=c;
     c->service.reference=parent_ref;c->service.dereference=parent_deref;
     c->service.acquire_muted=parent_acquire;c->service.release_quiescent=parent_release;

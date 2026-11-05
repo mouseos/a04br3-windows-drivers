@@ -152,12 +152,22 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
     return STATUS_DEVICE_NOT_READY;
 #endif
 }
+#if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
+/* Caller holds the backend mutex. Mute is allowed at APC_LEVEL, as required
+ * by FAST_MUTEX; stop DL1 even if mute failed, retaining resources on error. */
+static NTSTATUS OwnerStopRunning(Mt8167PnpBackend *o)
+{
+    int mute=o->parentClient.parent.Mute(o->parentClient.parent.Header.Context);
+    int stop=Mt8167TransportStop(&o->transport);
+    return !mute && !stop ? STATUS_SUCCESS : STATUS_DEVICE_NOT_READY;
+}
+#endif
 static NTSTATUS OwnerStop(void *ctx) {
 #if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);NTSTATUS result=STATUS_DEVICE_NOT_READY;
     if (!o)return STATUS_INVALID_PARAMETER;
     ExAcquireFastMutex(&o->mutex);
-    if (o->transport.state==AUDIO_RUNNING && !Mt8167TransportStop(&o->transport))result=STATUS_SUCCESS;
+    if (o->transport.state==AUDIO_RUNNING)result=OwnerStopRunning(o);
     A04_TRACE("A04AUD stop result=%08lx state=%d exposed=%d quarantine=%d; drain=unknown\n",(ULONG)result,(int)o->transport.state,o->buffer.exposed,o->shared.quarantined);
     ExReleaseFastMutex(&o->mutex);return result;
 #else
@@ -315,7 +325,7 @@ void Mt8167PnpBackendRevoke(Mt8167PnpBackend *o) {
     /* Parent keeps the source masked; disconnect and flush DPC before
      * releasing its lease or invalidating the AFE mapping. */
 #if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
-    if (o->transport.state==AUDIO_RUNNING) (void)Mt8167TransportStop(&o->transport);
+    if (o->transport.state==AUDIO_RUNNING) (void)OwnerStopRunning(o);
 #endif
     if (o->irq.interrupt && !o->shared.quarantined) Mt8167DisconnectIrq(&o->irq);
     if (o->shared.leased && !o->shared.quarantined) (void)mt8167_audio_shared_release_unexposed(&o->shared);

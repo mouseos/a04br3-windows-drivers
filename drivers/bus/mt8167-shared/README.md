@@ -309,3 +309,19 @@ sources do not specify that outstanding bus transactions have drained. Neither
 this sequence nor a stationary cursor permits freeing DMA memory. The Windows
 backend retains exposed DMA and the parent lease; device removal may still
 revoke hardware resources, so this is not a complete PnP removal guarantee.
+
+The audio interface is now version 6. It adds a mute-only operation that does
+not release DMA, clock or power and may be called at APC_LEVEL while the audio
+backend mutex is held. On a running stream the backend asks the parent to mute
+before stopping DL1; it still attempts DL1/IRQ stop if mute fails and keeps
+quarantined resources. Failure to write or verify the MT6392 SPK_CON9 mute
+field poisons the codec and owner. Codec startup now reads VAUD22 enable/QI,
+VAUD22 selector and VAUD28 enable/QI through the serialized PWRAP owner, and
+rejects startup if either enable or QI is clear. The board Linux DTS marks
+both regulators always-on and the regulator driver identifies bit 14 as enable
+and bit 15 as QI. This is a necessary register check, not an electrical
+measurement, rail retention guarantee, or evidence of exclusive ownership.
+The parent still does not grant a real lease and live DMA RUN remains refused.
+Sources: [MT6392 DTS](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/arch/arm64/boot/dts/mediatek/mt6392.dtsi),
+[regulator driver](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/drivers/regulator/mt6392-regulator.c),
+[IRQ handler](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/sound/soc/mediatek/mt8167/mt8167-afe-pcm.c).

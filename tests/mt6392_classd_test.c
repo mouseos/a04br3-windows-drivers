@@ -16,8 +16,10 @@ int main(void){struct state s={0};struct a04_mt6392_classd c=codec(&s);int n;
  s.regs[0x64/2]=0x0a00;assert(!a04_mt6392_classd_start_muted(&c) && c.active && !(s.regs[0x64/2]&0xf00));
  assert(s.delays[0]==20000 && s.delays[1]==2000 && s.regs[0x52/2]==0x3401);
  {const uint16_t expected[]={0x64,0x10c,0x60,0x68,0x64,0x56,0x52,0x52,0x64};assert(s.nwrites==9 && !memcmp(s.writes,expected,sizeof(expected)));}
+ s.regs[0x64/2]|=0x0a00;assert(!a04_mt6392_classd_mute(&c) && !(s.regs[0x64/2]&0xf00) && c.active);
  s.blocked=1;n=s.calls;assert(a04_mt6392_classd_stop(&c) && s.calls==n && c.active);s.blocked=0;
  assert(!a04_mt6392_classd_stop(&c) && !c.active && s.regs[0x52/2]==0x3400);
+ memset(&s,0,sizeof(s));c=codec(&s);assert(!a04_mt6392_classd_start_muted(&c));s.fail=s.calls+1;assert(a04_mt6392_classd_mute(&c) && c.poisoned && c.active);
  for(n=1;n<=13;n++){memset(&s,0,sizeof(s));c=codec(&s);s.fail=n;assert(a04_mt6392_classd_start_muted(&c));assert(c.poisoned && s.calls==n);assert(a04_mt6392_classd_start_muted(&c) && s.calls==n);}
  for(n=1;n<=5;n++){memset(&s,0,sizeof(s));c=codec(&s);assert(!a04_mt6392_classd_start_muted(&c));s.calls=0;s.fail=n;assert(a04_mt6392_classd_stop(&c));assert(c.poisoned && c.active && s.calls==n);assert(a04_mt6392_classd_stop(&c) && s.calls==n);}
  return 0;

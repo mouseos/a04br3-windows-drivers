@@ -8,6 +8,7 @@
 static int parent_refs,query_failure,malformed;
 static int parent_grant,parent_prepare_fail,parent_prepares,parent_releases,parent_release_fail;
 static PVOID parent_afe;
+static int parent_mute(PVOID){return 0;}
 static int parent_bind(PVOID,PVOID afe,ULONG n){if(afe && n==4096 && !parent_afe){parent_afe=afe;return 0;}if(!afe && !n && parent_afe){parent_afe=nullptr;return 0;}return -1;}
 #if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
 int test_connect_fail,test_irq_connections,test_irq_disconnections;
@@ -22,7 +23,7 @@ extern "C" NTSTATUS Mt8167QueryAudioParent(PDEVICE_OBJECT p,A04_SHARED_AUDIO_INT
  if(query_failure)return STATUS_NOT_SUPPORTED;
  *out={};out->Header.Size=sizeof(*out);out->Header.Version=A04_SHARED_AUDIO_INTERFACE_VERSION;out->Header.Context=p;
  out->Header.InterfaceReference=parent_ref;out->Header.InterfaceDereference=parent_deref;
- out->AcquireMuted=malformed?nullptr:parent_acquire;out->ReleaseQuiescent=parent_release;out->PrepareMaskedIrq=parent_prepare;out->BindAfe=parent_bind;parent_refs++;return STATUS_SUCCESS;
+ out->AcquireMuted=malformed?nullptr:parent_acquire;out->ReleaseQuiescent=parent_release;out->PrepareMaskedIrq=parent_prepare;out->BindAfe=parent_bind;out->Mute=parent_mute;parent_refs++;return STATUS_SUCCESS;
 }
 #endif
 #if defined(A04_AUDIO_DIAGNOSTIC_TRACE) && A04_AUDIO_DIAGNOSTIC_TRACE

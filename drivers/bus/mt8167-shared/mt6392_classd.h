@@ -17,5 +17,6 @@ struct a04_mt6392_classd {
     int active,poisoned;
 };
 int a04_mt6392_classd_start_muted(struct a04_mt6392_classd *);
+int a04_mt6392_classd_mute(struct a04_mt6392_classd *);
 int a04_mt6392_classd_stop(struct a04_mt6392_classd *);
 #endif

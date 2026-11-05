@@ -277,3 +277,9 @@ AFE mapping bind/unbind. The diagnostic backend binds only its validated
 PnP-assigned mapping before lease acquisition and retains that mapping if the
 parent cannot release it. The parent still rejects real acquisition; this does
 not establish DMA drain, board mute, power retention or hardware playback.
+
+The current parent interface is version 6. Diagnostic stream stop requests a
+codec mute without releasing power before disabling DL1 and disconnecting its
+IRQ; even a mute failure does not skip the stop attempt. This path cannot run
+on the real parent until the retained-power, exclusive ownership, codec and
+live DMA prerequisites are established. DL1 enable readback is not DMA drain.

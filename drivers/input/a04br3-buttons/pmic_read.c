@@ -51,6 +51,21 @@ int a04_pmic_audio_observe(struct a04_pmic_read *bus,struct a04_mt6392_audio_raw
     *out=tmp;return 0;
 }
 
+int a04_pmic_audio_rails(struct a04_pmic_read *bus,struct a04_mt6392_audio_rails *out)
+{
+    struct a04_mt6392_audio_rails raw;
+    if(!out || read_register(bus,0x0404u,&raw.vaud22) ||
+       read_register(bus,0x0410u,&raw.vaud22_selector) ||
+       read_register(bus,0x0424u,&raw.vaud28))return -1;
+    *out=raw;return 0;
+}
+int a04_pmic_audio_rails_ready(const struct a04_mt6392_audio_rails *raw)
+{
+    /* Linux regulator reports enable at bit 14 and QI at bit 15. The two-bit
+     * VAUD22 selector maps to 1.8, 1.9, 2.0 or 2.2 V, all allowed by DTS. */
+    return raw && (raw->vaud22&0xc000u)==0xc000u && (raw->vaud28&0xc000u)==0xc000u;
+}
+
 int a04_pmic_emmc_rails(struct a04_pmic_read *bus, struct a04_emmc_rails_raw *out)
 {
     struct a04_emmc_rails_raw tmp;

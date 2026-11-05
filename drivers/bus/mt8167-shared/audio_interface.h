@@ -3,7 +3,8 @@
 #define A04_SHARED_AUDIO_INTERFACE_H
 #include <ntddk.h>
 /* Prototype QUERY_INTERFACE contract; parent retains Context until the last
- * InterfaceDereference. All operations are PASSIVE_LEVEL and must reject once
+ * InterfaceDereference. Operations are PASSIVE_LEVEL except Mute (<= APC_LEVEL)
+ * and must reject once
  * the parent closes admission. Success must mean exclusive audio clock and a
  * verified muted codec, not merely an available register mapping. */
 static const GUID A04SharedAudioInterfaceGuid =
@@ -27,6 +28,8 @@ typedef struct _A04_SHARED_AUDIO_INTERFACE {
      * Keep it mapped until BindAfe(NULL,0) succeeds; binding itself grants no
      * power or ownership and performs no MMIO. */
     int (*BindAfe)(PVOID, PVOID, ULONG);
+    /* Active lease only: mute without releasing power, clock or DMA. */
+    int (*Mute)(PVOID);
 } A04_SHARED_AUDIO_INTERFACE;
-#define A04_SHARED_AUDIO_INTERFACE_VERSION 5
+#define A04_SHARED_AUDIO_INTERFACE_VERSION 6
 #endif
