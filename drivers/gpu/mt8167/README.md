@@ -304,3 +304,13 @@ CPU上の構築のみで、OSのDMA取得、POST framebufferのpin、キャッ�
 invalidate、描画fence、scanout、取消し、停止・解放を行わず、既定経路には未接続。
 MicrosoftのGetScatterGatherListは対応するPutScatterGatherListとDMA方向・同期を
 要求し、POST物理アドレスをGPU DMAアドレスとして直接扱う根拠にはならない。
+
+`vendor_m1_11/windows_surface.c` は OS の version-3 DMA adapter による
+common buffer と複数leaf GPU page tableを、GPU未起動状態で準備する未接続の
+部品。832×1280・4byteの領域を含む最大8 MiB、最大4 leafに制限する。DMA
+logical addressとCPUアドレスは別であり、adapterは最後まで呼出し側が保持する。
+ハードへ公開する前に `mark_exposed` を呼ぶ契約で、その後は現在解放を拒否する。
+この部品はWDDMや表示コントローラへ公開せず、任意のboolで停止・fence完了を
+主張しない。OSのcommon bufferはGPU adapterに対する権利だけで、scanoutやPOST
+framebufferへの共有は証明しない。ARMのcache属性、両DMA主体のmappingと所有、
+GPU fence/MMU invalidate、表示走査の完了、PnP停止後の解放は未実装・未検証。
