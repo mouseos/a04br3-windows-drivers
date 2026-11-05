@@ -231,3 +231,5 @@ XNUのm1.11起動手順を使うWindows向けトランスポートを追加し�
 実装は [mouseos/xnu_kernel_benesse_a04br3](https://github.com/mouseos/xnu_kernel_benesse_a04br3) の `iokit/Kernel/arm/rogue/A04BR3RogueFirmware.h`、`A04BR3RogueMipsMMU.h`、`A04BR3RogueMemory.h`、`A04BR3RogueRuntimeLayout.h`、MITライセンスの `A04BR3RogueDDKABI.h` を参照し、BSD-2-Clause-Patentのヘッダを保持している。`make test-gpu-vendor-m1-11` は合成画像で正常系と破損・DMA同期失敗を試す。該当vendor firmwareを別途入力したホスト検証でも独立した版1展開結果と一致したが、配布権と実機動作は別途未確認。
 
 m1.11向けの固定SYNCコマンド経路を追加した。GPU側のキュー読取りと同期値の両方を確認し、タイムアウトや破損後はキューを再利用しない。現時点ではPnPから呼び出さず、実機でのファームウェア通信を意味しない。コマンド制御領域はCPUとGPUが同じキャッシュ行へ同時に書くため、キャッシュ無効またはハードウェア整合性の証拠が必要である。Microsoftの[AllocateCommonBuffer仕様](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_common_buffer)では `CacheEnabled` 引数は無視され、ARMではACPIの `_CCA` などに基づきOSが決定する。`FALSE` を渡しただけでは証明にならない。対象環境で属性とDMA整合性を確認するまでは、このコマンド経路を実機で有効にしない。
+
+端末固有UEFI `46d18c37` は、GPU電源状態とクロック選択を読み取るACPIメソッド `GPST` を提供する。Windows側は応答の形式・長さと電源状態を確認してから、割り当て済みMFGリソースのクロック状態を読む。これは読み取り時点のスナップショットで、電源状態の維持や共有レジスタの所有を保証しない。実際のPnP経路には未接続であり、メソッドのWindows実行は未確認。
