@@ -20,10 +20,12 @@ try {
  [IO.File]::WriteAllText("$base\ram\toprgu-audit-candidate.sys",'fixture')
  [IO.File]::WriteAllText("$base\ram\guard-windows-volume.exe",'guard fixture')
  [IO.File]::WriteAllText("$base\ram\compare-files.exe",'compare fixture')
+ [IO.File]::WriteAllText("$base\ram\audit-hive-uncached.exe",'uncached verifier fixture')
  $source=Get-Content (Join-Path $root 'tools\winpe\audit-toprgu-installed.cmd') -Raw
  $source=$source.Replace('C:\Windows',"$base\Windows").Replace('X:\a04br3',"$base\ram")
  $source=$source -replace '(?m)^.*\\guard-windows-volume\.exe\r?$', 'cmd /c exit 0'
  $source=$source -replace '(?m)^.*\\compare-files\.exe ', 'fc /b '
+ $source=$source -replace '(?m)^.*\\audit-hive-uncached\.exe .*$', 'cmd /c exit 0'
  [IO.File]::WriteAllText("$base\audit.cmd",$source,[Text.Encoding]::ASCII)
  $systemBefore=(Get-FileHash "$base\Windows\System32\config\SYSTEM").Hash
  $softwareBefore=(Get-FileHash "$base\Windows\System32\config\SOFTWARE").Hash

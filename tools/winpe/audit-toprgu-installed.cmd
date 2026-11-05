@@ -5,30 +5,40 @@ rem Only RAM-disk X: copies are loaded into the registry; no target hive is load
 rem Pinned to the test certificate in the accompanying 7109a90 manifest.
 set "A04_CERT=5FC3D0043DE4A471F738FB923FEC87336E81D43C"
 if not exist X:\a04br3\guard-windows-volume.exe goto invalid
-if not exist X:\a04br3\compare-files.exe goto invalid
-if not exist X:\a04br3\toprgu-audit-candidate.sys goto invalid
-if exist X:\a04br3\toprgu-audit goto invalid
-reg query HKLM\A04TOPRGUSYS >nul 2>&1
-if not errorlevel 1 goto invalid
-reg query HKLM\A04TOPRGUSW >nul 2>&1
-if not errorlevel 1 goto invalid
 X:\a04br3\guard-windows-volume.exe
 if errorlevel 1 goto rejected
+if not exist X:\a04br3\compare-files.exe goto failed
+if not exist X:\a04br3\audit-hive-uncached.exe goto failed
+if not exist X:\a04br3\toprgu-audit-candidate.sys goto failed
+if exist X:\a04br3\toprgu-audit goto failed
+reg query HKLM\A04TOPRGUSYS >nul 2>&1
+if not errorlevel 1 goto failed
+reg query HKLM\A04TOPRGUSW >nul 2>&1
+if not errorlevel 1 goto failed
 mkdir X:\a04br3\toprgu-audit
 if errorlevel 1 goto failed
 copy /b C:\Windows\System32\config\SYSTEM X:\a04br3\toprgu-audit\SYSTEM >nul
 if errorlevel 1 goto failed
 X:\a04br3\compare-files.exe C:\Windows\System32\config\SYSTEM X:\a04br3\toprgu-audit\SYSTEM
 if errorlevel 1 goto failed
+echo TOPRGU_HIVE_VERIFY=SYSTEM
+X:\a04br3\audit-hive-uncached.exe SYSTEM
+if errorlevel 1 goto failed
 copy /b C:\Windows\System32\config\SOFTWARE X:\a04br3\toprgu-audit\SOFTWARE >nul
 if errorlevel 1 goto failed
 X:\a04br3\compare-files.exe C:\Windows\System32\config\SOFTWARE X:\a04br3\toprgu-audit\SOFTWARE
+if errorlevel 1 goto failed
+echo TOPRGU_HIVE_VERIFY=SOFTWARE
+X:\a04br3\audit-hive-uncached.exe SOFTWARE
 if errorlevel 1 goto failed
 rem Recovery logs belong next to the copied hive. Never load or replay C:.
 for %%H in (SYSTEM SOFTWARE) do for %%L in (LOG LOG1 LOG2) do if exist C:\Windows\System32\config\%%H.%%L (
   copy /b C:\Windows\System32\config\%%H.%%L X:\a04br3\toprgu-audit\%%H.%%L >nul
   if errorlevel 1 goto failed
   X:\a04br3\compare-files.exe C:\Windows\System32\config\%%H.%%L X:\a04br3\toprgu-audit\%%H.%%L
+  if errorlevel 1 goto failed
+  echo TOPRGU_HIVE_VERIFY=%%H.%%L
+  X:\a04br3\audit-hive-uncached.exe %%H.%%L
   if errorlevel 1 goto failed
   echo TOPRGU_HIVE_LOG_COPIED=%%H.%%L
 )

@@ -7,7 +7,8 @@ call X:\a04br3\audit-toprgu-installed.cmd > X:\a04br3\toprgu-audit-result.txt 2>
 set "A04_AUDIT_RC=%errorlevel%"
 >> X:\a04br3\toprgu-audit-result.txt echo TOPRGU_AUDIT_EXIT=%A04_AUDIT_RC%
 if "%A04_AUDIT_RC%"=="0" goto release
-if not "%A04_AUDIT_RC%"=="2" goto transmit
+if "%A04_AUDIT_RC%"=="2" goto release
+if not "%A04_AUDIT_RC%"=="3" goto transmit
 :release
 call X:\a04br3\release-toprgu-audit-volume.cmd >> X:\a04br3\toprgu-audit-result.txt 2>&1
 set "A04_RELEASE_RC=%errorlevel%"

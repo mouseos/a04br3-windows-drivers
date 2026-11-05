@@ -4,13 +4,13 @@ rem Only used after a guarded audit. Revalidate identity and inspect the live
 rem HKLM namespace before dismount; this never resets and never runs DISM.
 X:\a04br3\guard-windows-volume.exe
 if errorlevel 1 goto rejected
-if not exist X:\a04br3\toprgu-audit goto rejected
-reg query HKLM > X:\a04br3\toprgu-audit\release-hklm.txt 2>&1
+if exist X:\a04br3\toprgu-release-hklm.txt goto registryfail
+reg query HKLM > X:\a04br3\toprgu-release-hklm.txt 2>&1
 if errorlevel 1 goto registryfail
-findstr /l /i /c:"HKEY_LOCAL_MACHINE\A04TOPRGUSYS" X:\a04br3\toprgu-audit\release-hklm.txt >nul
+findstr /l /i /c:"HKEY_LOCAL_MACHINE\A04TOPRGUSYS" X:\a04br3\toprgu-release-hklm.txt >nul
 if errorlevel 2 goto registryfail
 if not errorlevel 1 goto hiveloaded
-findstr /l /i /c:"HKEY_LOCAL_MACHINE\A04TOPRGUSW" X:\a04br3\toprgu-audit\release-hklm.txt >nul
+findstr /l /i /c:"HKEY_LOCAL_MACHINE\A04TOPRGUSW" X:\a04br3\toprgu-release-hklm.txt >nul
 if errorlevel 2 goto registryfail
 if not errorlevel 1 goto hiveloaded
 mountvol C: /p
