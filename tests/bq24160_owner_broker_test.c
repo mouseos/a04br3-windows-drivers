@@ -190,9 +190,12 @@ int main(void) {
         assert(!a04_broker_lifecycle_start(&l,&e,&b,&o,&c,&g,0,40*NS,1));
         assert(!f.reads&&!f.writes&&l.state==A04_LIFE_LIVE);
         assert(!a04_broker_lifecycle_maintain(&l)&&f.writes==1);
+        assert(!a04_broker_lifecycle_sample_local(&l,5*NS,&out)&&out.voltage_mv==4000&&!b.last_request);
         assert(!a04_broker_endpoint_dispatch(&e,&q,&response)&&response.result==A04_BROKER_OK);
+        assert(b.last_request==1);
         assert(!a04_broker_lifecycle_quiesce(&l));
         assert(a04_broker_endpoint_dispatch(&e,&q,&response));
+        assert(a04_broker_lifecycle_sample_local(&l,5*NS,&out)&&!l.endpoint->closed);
         f.now=2*NS;assert(!a04_broker_lifecycle_handoff(&l,&destination,&tr,&ops,30*NS));
         assert(l.state==A04_LIFE_HANDED_OFF&&destination.handoff_pending&&o.stopped);
         a04_broker_lifecycle_stop(&l);assert(!destination.stopped);
@@ -206,6 +209,14 @@ int main(void) {
         assert(l.state==A04_LIFE_STOPPED&&e.closed&&o.stopped);
         assert(a04_broker_lifecycle_maintain(&l)&&a04_broker_lifecycle_quiesce(&l));
         assert(a04_broker_lifecycle_start(&l,&e,&b,&o,&c,&g,0,40*NS,1));
+    }
+    {
+        struct a04_broker_endpoint e={0};struct a04_broker_lifecycle l={0};
+        setup(&f,&o,&b,&c,&g);memset(&b,0,sizeof(b));
+        assert(!a04_broker_lifecycle_start(&l,&e,&b,&o,&c,&g,0,40*NS,1));
+        f.bad_gauge=1;old=out;
+        assert(a04_broker_lifecycle_sample_local(&l,5*NS,&out));
+        assert(l.state==A04_LIFE_STOPPED&&e.closed&&o.stopped&&!memcmp(&out,&old,sizeof(out)));
     }
     {
         uint8_t wire[A04_BROKER_WIRE_BYTES];struct a04_broker_request q={1,2,3},decoded={9,9,9};

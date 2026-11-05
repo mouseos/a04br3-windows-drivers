@@ -25,8 +25,8 @@ int a04_bq_broker_init(struct a04_bq_broker *b, struct a04_bq_owner *o,
     b->observed=now; b->next_due=now;
     return 0;
 }
-enum a04_bq_broker_result a04_bq_broker_run(struct a04_bq_broker *b, uint64_t seq,
-                                            uint64_t deadline, struct a04_gauge_sample *out)
+static enum a04_bq_broker_result run(struct a04_bq_broker *b, uint64_t seq,
+                                     uint64_t deadline, struct a04_gauge_sample *out, int local)
 {
     struct a04_gauge_sample sample;
     uint64_t now, start;
@@ -45,11 +45,12 @@ enum a04_bq_broker_result a04_bq_broker_run(struct a04_bq_broker *b, uint64_t se
         b->observed=now; b->next_due=b->owner->last_kick+PERIOD_NS;
         if (now >= b->next_due) goto stop;
     }
-    if (!seq) { result=A04_BROKER_OK; goto done; }
-    if (!out || seq <= b->last_request || deadline <= now || deadline > b->lifetime) {
+    if (!seq && !local) { result=A04_BROKER_OK; goto done; }
+    if (!out || (!local && seq <= b->last_request) || deadline <= now || deadline > b->lifetime) {
         result=A04_BROKER_REJECTED; goto done;
     }
-    b->last_request=seq; start=now;
+    if (!local) b->last_request=seq;
+    start=now;
     if (a04_gauge_read_sample(b->gauge,&sample) || b->stopped) goto stop;
     now=b->charger->now_ns(b->charger->context);
     if (now < start || now-start >= SECOND_NS || now >= b->next_due || now >= b->lifetime) goto stop;
@@ -62,3 +63,9 @@ done:
     b->entered=0;
     return result;
 }
+enum a04_bq_broker_result a04_bq_broker_run(struct a04_bq_broker *b,uint64_t seq,
+                                            uint64_t deadline,struct a04_gauge_sample *out)
+{ return run(b,seq,deadline,out,0); }
+enum a04_bq_broker_result a04_bq_broker_sample_local(struct a04_bq_broker *b,uint64_t deadline,
+                                                     struct a04_gauge_sample *out)
+{ return run(b,0,deadline,out,1); }

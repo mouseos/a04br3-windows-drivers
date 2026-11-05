@@ -23,5 +23,9 @@ int a04_bq_broker_init(struct a04_bq_broker *, struct a04_bq_owner *,
 enum a04_bq_broker_result a04_bq_broker_run(struct a04_bq_broker *, uint64_t seq,
                                             uint64_t request_deadline,
                                             struct a04_gauge_sample *output);
+/* Local battery-class polling shares the same budget but not the remote
+ * sequence space; caller holds the same I2C lock as the endpoint. */
+enum a04_bq_broker_result a04_bq_broker_sample_local(struct a04_bq_broker *,uint64_t deadline,
+                                                     struct a04_gauge_sample *output);
 void a04_bq_broker_stop(struct a04_bq_broker *);
 #endif

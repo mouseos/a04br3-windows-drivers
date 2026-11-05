@@ -64,7 +64,9 @@ NTSTATUS WdfRequestRetrieveOutputBuffer(WDFREQUEST p,size_t minimum,PVOID *out,s
 void WdfRequestCompleteWithInformation(WDFREQUEST p,NTSTATUS s,ULONG_PTR n){struct fake_request *f=p;f->status=s;f->information=n;++f->completed;}
 int a04_broker_endpoint_dispatch(struct a04_broker_endpoint *e,const struct a04_broker_request *q,struct a04_broker_response *r){
  (void)e;assert(locks==1||locks==2);++sends;if(q->epoch!=9 || q->sequence!=1)return -1;
- memset(r,0,sizeof(*r));r->epoch=q->epoch;r->sequence=q->sequence;r->result=A04_BROKER_OK;r->sample.voltage_mv=4000;r->sample.indicator_tenths_percent=525;r->sample.percent=50;return 0;
+ memset(r,0,sizeof(*r));r->epoch=q->epoch;r->sequence=q->sequence;
+ if(mode==7){r->result=A04_BROKER_STOPPED;return 0;}
+ r->result=A04_BROKER_OK;r->sample.voltage_mv=4000;r->sample.indicator_tenths_percent=525;r->sample.percent=50;return 0;
 }
 int main(void){struct a04_broker_wdf w;struct a04_gauge_sample out,old;int i;
  for(i=0;i<=5;++i){memset(&w,0,sizeof(w));memset(&out,0x55,sizeof(out));old=out;mode=i;locks=0;sends=0;ticks=100;
@@ -89,6 +91,10 @@ int main(void){struct a04_broker_wdf w;struct a04_gauge_sample out,old;int i;
   a04_broker_wdf_receive(&e,(void*)2,&f,A04_BROKER_INTERNAL_IOCTL);assert(f.status==STATUS_IO_TIMEOUT&&!f.information&&!sends);
   memset(&f,0,sizeof(f));f.in_size=f.out_size=48;assert(!a04_broker_wire_request_encode(f.buffer,48,&q));mode=0;ticks=1000;
   a04_broker_wdf_receive(&e,(void*)2,&f,A04_BROKER_INTERNAL_IOCTL);assert(f.status==STATUS_IO_TIMEOUT&&!sends);
+  memset(&f,0,sizeof(f));f.in_size=f.out_size=48;assert(!a04_broker_wire_request_encode(f.buffer,48,&q));mode=7;ticks=100;sends=0;
+  assert(a04_broker_wdf_receive(&e,(void*)2,&f,A04_BROKER_INTERNAL_IOCTL)==1);
+  assert(f.status==0&&f.information==48&&sends==1&&!locks);
+  assert(!a04_broker_wire_response_decode(&r,f.buffer,48)&&r.result==A04_BROKER_STOPPED&&!r.sample.voltage_mv);
  }
  return 0;}
 '''

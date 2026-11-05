@@ -21,10 +21,14 @@ void a04_broker_wdf_stop(struct a04_broker_wdf *);
 /* Owner's internal-IOCTL queue calls this at PASSIVE_LEVEL. The parent must
  * serialize it with maintenance using owner_lock and maintain endpoint/lock
  * lifetime through request completion; no WDF queue is registered here. */
-void a04_broker_wdf_receive(struct a04_broker_endpoint *,WDFWAITLOCK,WDFREQUEST,ULONG code);
+/* Returns 1 only if an accepted request stopped the broker; the queue must
+ * notify its owner after this returns, outside the shared I2C lock. */
+int a04_broker_wdf_receive(struct a04_broker_endpoint *,WDFWAITLOCK,WDFREQUEST,ULONG code);
 /* A parent may register an unbound endpoint, which rejects all requests. The
  * owner must establish all ownership and lifetime evidence before binding it.
  * Registration does not grant ownership or start a maintenance worker. Caller
  * keeps endpoint and lock alive until queue drain. */
-NTSTATUS a04_broker_wdf_register_receiver(WDFDEVICE,struct a04_broker_endpoint *,WDFWAITLOCK,WDFQUEUE *);
+typedef void (*a04_broker_wdf_failure_fn)(void *);
+NTSTATUS a04_broker_wdf_register_receiver(WDFDEVICE,struct a04_broker_endpoint *,WDFWAITLOCK,
+                                          a04_broker_wdf_failure_fn,void *,WDFQUEUE *);
 #endif

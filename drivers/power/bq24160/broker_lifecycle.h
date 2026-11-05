@@ -12,6 +12,7 @@ int a04_broker_lifecycle_start(struct a04_broker_lifecycle *,struct a04_broker_e
                                struct a04_bq_broker *,struct a04_bq_owner *,const struct a04_bq_bus *,
                                const struct a04_gauge_bus *,uint64_t now,uint64_t lifetime,uint64_t epoch);
 int a04_broker_lifecycle_maintain(struct a04_broker_lifecycle *);
+int a04_broker_lifecycle_sample_local(struct a04_broker_lifecycle *,uint64_t deadline,struct a04_gauge_sample *);
 int a04_broker_lifecycle_quiesce(struct a04_broker_lifecycle *);
 int a04_broker_lifecycle_handoff(struct a04_broker_lifecycle *,struct a04_bq_owner *,
                                  struct a04_owner_transfer *,const struct a04_transfer_ops *,uint64_t deadline);

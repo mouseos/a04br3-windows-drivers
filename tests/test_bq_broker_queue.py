@@ -38,16 +38,17 @@ test=r'''
 #include <string.h>
 #include "broker_wdf.h"
 #include "broker_wdf_queue.c"
-static BROKER_QUEUE_CONTEXT saved;static int configured,deleted,received,fail;
+static BROKER_QUEUE_CONTEXT saved;static int configured,deleted,received,fail,notify,broker_failure;
 BROKER_QUEUE_CONTEXT *BrokerQueueContext(WDFQUEUE q){assert(q==(void*)3);return &saved;}
 NTSTATUS WdfIoQueueCreate(WDFDEVICE d,WDF_IO_QUEUE_CONFIG *c,WDF_OBJECT_ATTRIBUTES *a,WDFQUEUE *q){assert(d==(void*)1&&c->EvtIoInternalDeviceControl==BrokerInternalControl&&a->ExecutionLevel==WdfExecutionLevelPassive);if(fail==1)return -8;*q=(void*)3;return 0;}
 NTSTATUS WdfDeviceConfigureRequestDispatching(WDFDEVICE d,WDFQUEUE q,int t){assert(d==(void*)1&&q==(void*)3&&t==WdfRequestTypeDeviceControlInternal&&saved.endpoint&&saved.lock==(void*)2);++configured;return fail==2?-9:0;}
 void WdfObjectDelete(WDFQUEUE q){assert(q==(void*)3);++deleted;}
-void a04_broker_wdf_receive(struct a04_broker_endpoint *e,WDFWAITLOCK l,WDFREQUEST r,ULONG code){assert(e==saved.endpoint&&l==(void*)2&&r==(void*)4&&code==123);++received;}
+int a04_broker_wdf_receive(struct a04_broker_endpoint *e,WDFWAITLOCK l,WDFREQUEST r,ULONG code){assert(e==saved.endpoint&&l==(void*)2&&r==(void*)4&&code==123);++received;return broker_failure;}
+static void failed(void *p){assert(p==(void*)5);++notify;}
 int main(void){struct a04_broker_endpoint e={0};WDFQUEUE q=(void*)9;int i;
  for(i=0;i<=2;++i){fail=i;configured=deleted=0;memset(&saved,0,sizeof(saved));q=(void*)9;
-  if(i){assert(a04_broker_wdf_register_receiver((void*)1,&e,(void*)2,&q)<0);assert(!q);assert(deleted==(i==2));}
-  else {assert(!a04_broker_wdf_register_receiver((void*)1,&e,(void*)2,&q));assert(q==(void*)3&&configured==1&&!deleted);BrokerInternalControl(q,(void*)4,0,0,123);assert(received==1);}
+  if(i){assert(a04_broker_wdf_register_receiver((void*)1,&e,(void*)2,failed,(void*)5,&q)<0);assert(!q);assert(deleted==(i==2));}
+  else {assert(!a04_broker_wdf_register_receiver((void*)1,&e,(void*)2,failed,(void*)5,&q));assert(q==(void*)3&&configured==1&&!deleted);BrokerInternalControl(q,(void*)4,0,0,123);assert(received==1&&!notify);broker_failure=1;BrokerInternalControl(q,(void*)4,0,0,123);assert(received==2&&notify==1);}
  }
  return 0;}
 '''

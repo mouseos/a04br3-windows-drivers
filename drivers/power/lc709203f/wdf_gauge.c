@@ -166,11 +166,28 @@ static void notify(GAUGE_CONTEXT *c)
     if (c->class_handle) BatteryClassStatusNotify(c->class_handle);
     WdfWaitLockRelease(c->class_lock);
 }
+#if A04_BROKER_OWNER_EXPERIMENTAL
+/* Queue callback is outside bus_lock. Latch failed shared ownership and
+ * invalidate battery data before notifying BatteryClass. Never restart here. */
+static void owner_broker_failed(void *context)
+{
+    GAUGE_CONTEXT *c=context;
+    BOOLEAN changed=FALSE;
+    WdfWaitLockAcquire(c->bus_lock,NULL);
+    if (c->owner_endpoint.broker && c->owner_endpoint.broker->stopped) {
+        a04_broker_lifecycle_stop(&c->owner_lifecycle);
+        c->faulted=TRUE;InterlockedExchange(&c->online,0);
+        changed=a04_battery_invalidate(&c->battery);
+    }
+    WdfWaitLockRelease(c->bus_lock);
+    if (changed) notify(c);
+}
+#endif
 static void poll(GAUGE_CONTEXT *c)
 {
     struct a04_gauge_sample sample;
     BOOLEAN changed = FALSE;
-#if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
+#if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL && !A04_BROKER_OWNER_EXPERIMENTAL
     enum a04_bq_result result;
     uint64_t now;
 #endif
@@ -185,18 +202,35 @@ static void poll(GAUGE_CONTEXT *c)
             changed=a04_battery_invalidate(&c->battery);
         } else changed=a04_battery_publish(&c->battery,&sample);
     }
+#elif A04_BROKER_OWNER_EXPERIMENTAL
+    {
+        uint64_t now=now_ns(c),deadline;
+        int error;
+        if (c->owner_lifecycle.state==A04_LIFE_QUIESCING)
+            error=a04_broker_lifecycle_maintain(&c->owner_lifecycle);
+        else {
+            deadline=now<=UINT64_MAX-2000000000ULL ? now+2000000000ULL : 0;
+            if (deadline>c->owner_broker.lifetime) deadline=c->owner_broker.lifetime;
+            error=!deadline || a04_broker_lifecycle_sample_local(&c->owner_lifecycle,deadline,&sample);
+            if (!error) {
+                changed=a04_battery_set_external(&c->battery,TRUE);
+                changed|=a04_battery_publish(&c->battery,&sample);
+            }
+        }
+        if (error) {
+            a04_broker_lifecycle_stop(&c->owner_lifecycle);
+            c->faulted=TRUE;InterlockedExchange(&c->online,0);
+            changed|=a04_battery_invalidate(&c->battery);
+        }
+    }
 #else
-#if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
-#if A04_BROKER_OWNER_EXPERIMENTAL
-    result=a04_broker_lifecycle_maintain(&c->owner_lifecycle) ? A04_BQ_STOPPED : A04_BQ_OK;
-#else
+#if A04_BQ24160_EXPERIMENTAL
     now = charger_now(&c->adapter);
     /* The first call requires a qualified firmware ownership handoff.
      * This experimental build has no validated handoff record, so it is
      * never eligible for deployment. See README before any target use. */
     result = a04_bq_step(&c->charger, &c->charger_bus,
                           now <= UINT64_MAX - 20000000000ULL ? now + 20000000000ULL : 0);
-#endif
     if (result != A04_BQ_OK) {
         trace(c, "A04BAT CHARGER STOPPED\n");
         c->faulted = TRUE; InterlockedExchange(&c->online, 0);
@@ -219,9 +253,6 @@ static void poll(GAUGE_CONTEXT *c)
          * Do not publish the gauge; the next periodic read can recover it.
          * A busy controller, NACK or timeout latches the shared bus fault. */
         if (c->adapter.faulted) {
-#if A04_BROKER_OWNER_EXPERIMENTAL
-            a04_broker_lifecycle_stop(&c->owner_lifecycle);
-#endif
 #if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
             c->charger.stopped = 1;
 #endif
@@ -499,7 +530,8 @@ NTSTATUS GaugeAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
 #if A04_BROKER_OWNER_EXPERIMENTAL
     /* Register only an unbound, non-operational endpoint. It rejects every
      * request until a separately proven owner is adopted and initialized. */
-    status=a04_broker_wdf_register_receiver(device,&c->owner_endpoint,c->bus_lock,&c->owner_queue);
+    status=a04_broker_wdf_register_receiver(device,&c->owner_endpoint,c->bus_lock,
+                                             owner_broker_failed,c,&c->owner_queue);
     if (!NT_SUCCESS(status)) return status;
 #endif
     return STATUS_SUCCESS;
