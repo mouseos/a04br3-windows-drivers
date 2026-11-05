@@ -464,7 +464,7 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         DEVICE_DESCRIPTION desc;ULONG map_registers=0;
         RtlZeroMemory(&desc,sizeof(desc));
         desc.Version=DEVICE_DESCRIPTION_VERSION3;desc.Master=TRUE;
-        desc.ScatterGather=TRUE;desc.Dma32BitAddresses=TRUE;
+        desc.ScatterGather=TRUE;desc.DmaAddressWidth=32;
         desc.InterfaceType=Internal;desc.MaximumLength=A04_PVR_HEAP_SIZE;
         c->vendor_adapter_v3=IoGetDmaAdapter(WdfDeviceWdmGetPhysicalDevice(device),&desc,&map_registers);
         adapter=c->vendor_adapter_v3;
