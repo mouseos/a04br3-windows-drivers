@@ -44,6 +44,10 @@ static inline int a04_rgx_runtime_rebase(struct a04_rgx_fw_runtime *runtime,
     A04_REBASE(kcommands,main,newmain);A04_REBASE(power_sync,main,newmain);
     A04_REBASE(command_sync,main,newmain);
 #undef A04_REBASE
+    /* Validating just the first command would allow a truncated allocation to
+     * appear valid even though firmware and host access the complete ring. */
+    if (!a04_rgx_rebase_pointer(runtime->kcommands,runtime->main.cpu,newmain,
+                                runtime->main.used,128u*sizeof(*runtime->kcommands))) return 1;
     trace=(IMG_PUINT32)a04_rgx_rebase_pointer(runtime->trace->sTraceBuf[0].pui32TraceBuffer,
         runtime->main.cpu,newmain,runtime->main.used,12000u*sizeof(uint32_t));
     if (!trace) return 1;

@@ -11,6 +11,9 @@ int main(void)
     assert(a04_rgx_fw_runtime_init(&r,main,0x81000000,cfg,0x82000000,26000000)==0);
     original=r;
     assert(a04_rgx_runtime_rebase(&r,main,newcfg,&trace)!=0 && r.init==original.init && trace==(void *)1);
+    r.kcommands=(RGXFWIF_KCCB_CMD *)((unsigned char *)main+r.main.used-sizeof(*r.kcommands));
+    assert(a04_rgx_runtime_rebase(&r,newmain,newcfg,&trace)!=0 && trace==(void *)1);
+    r=original;
     assert(a04_rgx_runtime_rebase(&r,newmain,newcfg,&trace)==0);
     assert((uintptr_t)r.init-(uintptr_t)newcfg==(uintptr_t)original.init-(uintptr_t)cfg);
     assert((uintptr_t)r.kctl-(uintptr_t)newmain==(uintptr_t)original.kctl-(uintptr_t)main);
