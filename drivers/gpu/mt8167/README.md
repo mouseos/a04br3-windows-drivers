@@ -440,13 +440,21 @@ releaseでは内容照合と消去・読戻しを行い、部分書込み・消�
 
 `a04_vendor_copy_scratch_task_snapshot` はGPU起動前にPTE、共有state、PDS、
 EOT、元USCの読戻しを一括照合し、208バイト相当のCPU上の検証像と、根拠がある
-DWORDを示すmaskを返す。未確定の語はmaskを立てない。tailは固定offline requestの
+DWORDを示すmaskを返す。この固定profileでは52語全てを埋める。tailは固定offline requestの
 record word1=0、flags bit3=0、context hint=0を選び、`FUN_001326a8`
 (ev_81c5443c85f9a0d64be59e6b70c814460dac832358891dd322fedb68604cda18)に従って
 rawc8=0、rawcc=0を生成する。tailの意味や他の設定は未確定。
-ゼロ初期化された未確定語を正しい値とみなしてはならず、これはCCB packetではない。
+他のprofileへ初期ゼロを一般化してはならず、これはCCB投入の承認ではない。
 Linux m1.11 `rgxtransfer.c` はユーザー側のtransfer commandをFWへ転送するため、
-この検証像のmaskや不足を補完しない。GPU実行、描画や停止の証明には使えない。
+検証像の内容やGPU可視性を保証しない。GPU実行、描画や停止の証明には使えない。
+
+残る21語は同じ固定条件でqueueのゼロ初期化とproducerの到達可能な書込みから導く。
+clear値の分岐は通らずraw08..14は0、`FUN_0012bfb4` の原点raw1cは0、
+single-sampleの `FUN_0012c310` はraw24=0、raw34は初期0のまま。出力数は1で、
+PBEがraw80..8fを書き、raw90..97を0にし、残りの未使用出力slot raw98..c7は
+初期0のままである。根拠はREA `FUN_00132f98`、`FUN_00129f88`、
+`FUN_0012c310`、`FUN_0012bfb4`。この静的再構成はfirmwareによる受理、元USCの
+動作意味、cache可視性や物理除去・停止時の資源寿命を証明しない。
 
 この固定profileに限定すると、queueはrecordをゼロ初期化し、形式0x22・layout0・
 整列済み別mapping・同寸32×32は通常copy backendから `FUN_00129f88` へ直接進む。

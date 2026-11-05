@@ -244,7 +244,15 @@ NTSTATUS a04_vendor_copy_scratch_task_snapshot(struct a04_vendor_copy_scratch *o
     /* Fixed offline request: record word1=0, flags bit3=0, hint=0.
      * FUN_1326a8 copies word1 to c8 and combines flag/hint into cc. */
     snapshot32(&image,0xc8,0);snapshot32(&image,0xcc,0);
-    /* No defaulting of other unproven fields to valid words. */
+    /* Queue zeros the record. In this one-source/one-output direct branch,
+     * FUN_129f88 does not take the clear-value branch; FUN_12bfb4 writes
+     * zero origin at raw1c, FUN_12c310 leaves raw24 zero for one sample,
+     * and a single PBE output writes raw80..8f and zero raw90..97. The
+     * other unused output slots retain their initial zeroes. */
+    snapshot32(&image,0x08,0);snapshot32(&image,0x0c,0);
+    snapshot32(&image,0x10,0);snapshot32(&image,0x14,0);
+    snapshot32(&image,0x1c,0);snapshot32(&image,0x24,0);snapshot32(&image,0x34,0);
+    for(i=0x90;i<0xc8;i+=4u)snapshot32(&image,i,0);
     *out=image;return STATUS_SUCCESS;
 }
 NTSTATUS a04_vendor_copy_scratch_release(struct a04_vendor_copy_scratch *o)

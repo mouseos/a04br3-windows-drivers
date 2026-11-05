@@ -115,7 +115,7 @@ int main(void)
                 assert(snapshot.words[0]==0x200 && snapshot.words[1]==0x1ffc && snapshot.words[6]==0x20002 &&
                     snapshot.words[10]==0x202 && snapshot.words[11]==96 && snapshot.words[12]==64 &&
                     snapshot.words[14]==192 && snapshot.words[15]==272);
-                assert(snapshot.known_words==UINT64_C(0x000c000fffffdd43)); /* 31 of 52, not a complete task */
+                assert(snapshot.known_words==UINT64_C(0x000fffffffffffff)); /* fixed-profile CPU image only */
                 assert((snapshot.known_words&(UINT64_C(1)<<14)) && (snapshot.known_words&(UINT64_C(1)<<24)) && (snapshot.known_words&(UINT64_C(1)<<26)) &&
                     (snapshot.known_words&(UINT64_C(1)<<32)) && (snapshot.known_words&(UINT64_C(1)<<50)) && !snapshot.words[50] && !snapshot.words[51]);
                 old=snapshot;
