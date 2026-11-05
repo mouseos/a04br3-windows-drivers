@@ -89,5 +89,19 @@ DMA 状態・SRB・領域を保持する。成功はその要求をエラー完�
 
 [HwStorResetBus](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/storport/nc-storport-hw_reset_bus)
 は StartIo ロックを保持した DISPATCH_LEVEL の callback 中に対象 SRB を完了する
-責任を miniport に課す。現行試作の停止不能時の保留はこの契約との整合が未解決で、
+責任を miniport に課す。現行試作の非所有 bounce 構成の停止不能時の保留はこの契約との整合が未解決で、
 PnP 削除後の DMA mapping 保持も未保証。実機投入の根拠ではなく起動拒否を維持する。
+
+
+所有 DMA の boot 試作では、worker が使う SRB の `SrbExtension`、`OriginalRequest`、
+`NextSrb` を消し、データと sense を専用の shadow に切り替える。reset callback は
+Storport が保持する StartIoLock の下で唯一の元 SRB ポインタを取り外し、
+`SRB_STATUS_BUS_RESET` で完了する。stop/removal の PnP SRB でも同じロックの下で
+取り外し、それぞれ reset/no-device で完了する。worker は同じロックの下でのみ元 SRB
+を取り出すため、通知後には再アクセスしない。DMA はドライバ所有 bounce のみを対象と
+し、停止不能時はその領域を継続して隔離する。既存の非所有 bounce 構成は変更しない。
+
+この分離は Storport の reset 時の完了責任に合わせた試作であり、削除後も DMA
+mapping を保持できること、最終 callback と worker の内部待ちによるデッドロックが
+ないこと、また reset の非同期処理がデバイスを復旧できることは証明していない。
+起動拒否と既定 OFF を維持し、実機投入しない。

@@ -1305,8 +1305,18 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
             a04_life_close(&probe->lifetime,pnp->PnPAction!=StorStopDevice);
             InterlockedExchange(&probe->cancelled,1);
             InterlockedExchange(&probe->transfer_poisoned,1);
-            /* The local state cannot pin port-owned memory; do not claim
-             * PnP rundown even if the atomic owner appears idle. */
+#ifdef A04_OWNED_DMA_EXPERIMENT
+            /* DMA and the worker use independent storage. Detach the only
+             * original SRB pointer under StartIoLock before completing it. */
+            if (probe->pendingRequest) {
+                PSCSI_REQUEST_BLOCK original=probe->pendingRequest;
+                probe->pendingRequest=NULL;
+                original->SrbStatus=pnp->PnPAction==StorStopDevice ? SRB_STATUS_BUS_RESET : SRB_STATUS_NO_DEVICE;
+                original->DataTransferLength=0;
+                StorPortNotification(RequestComplete,extension,original);
+            }
+#endif
+            /* A local state cannot guarantee PnP rundown or bus mapping. */
             pnp->SrbStatus=SRB_STATUS_ERROR;
         } else pnp->SrbStatus=SRB_STATUS_INVALID_REQUEST;
         StorPortNotification(RequestComplete,extension,request);
@@ -1382,6 +1392,13 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         return TRUE;
     }
     for (i=0;i<sizeof(probe->isolatedRequest);++i) dst[i]=src[i];
+#ifdef A04_OWNED_DMA_EXPERIMENT
+    /* No borrowed SRB extension, next request or original OS request may
+     * survive reset completion. Data/sense are replaced with private arrays. */
+    probe->isolatedRequest.SrbExtension=NULL;
+    probe->isolatedRequest.OriginalRequest=NULL;
+    probe->isolatedRequest.NextSrb=NULL;
+#endif
     for (i=0;i<request->DataTransferLength;++i)
         probe->isolatedData[i]=((UCHAR *)request->DataBuffer)[i];
     for (i=0;i<sizeof(probe->isolatedSense);++i) probe->isolatedSense[i]=0;
@@ -1561,9 +1578,18 @@ static BOOLEAN A04ResetBus(PVOID extension, ULONG path)
         InterlockedExchange(&probe->transfer_poisoned,1);
 #endif
         probe->failed=TRUE;
-#if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
-        /* A queued/running worker owns the SRB until it has observed DMA
-         * inactive. If not, it deliberately leaves the request pending. */
+#if defined(A04_OWNED_DMA_EXPERIMENT)
+        /* Storport holds StartIoLock here. The worker uses the private SRB,
+         * private data/sense and independently owned DMA buffer. Detach the
+         * sole original pointer under that same lock before notification. */
+        if (original) {
+            probe->pendingRequest=NULL;
+            original->SrbStatus=SRB_STATUS_BUS_RESET;
+            original->DataTransferLength=0;
+            StorPortNotification(RequestComplete,extension,original);
+        }
+#elif A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
+        /* Port-owned bounce path cannot establish independent DMA lifetime. */
         UNREFERENCED_PARAMETER(original);
 #else
         if (original) {
