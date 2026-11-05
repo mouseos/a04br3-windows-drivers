@@ -416,3 +416,9 @@ secondary data、272..287へsecondary codeを配置する。各領域は書込�
 先頭12-byte EOTと一致することも検証する。152-byte background USCはまだ
 供給・実行しない。PDSオフセットやCSRの保有は完全task、ISPまたは画像copyの
 正当性を意味しない。異常時はownerを保持し、releaseしない。
+
+REA `FUN_0013c634` (ev_cd99ca62374bf4818b7f0bfe20c52993261ff9dd2f33e522cd8e05377d26c00e)
+では１出力のpixel-event dataは５ DWORDを８ DWORDに揃え、続くcodeを配置する。
+固定32×32 ownerは、この配置と`FUN_00129f88`のheap相対値に従うtask部分値
+raw28=0x202、raw2c=96、raw30=64も保持する。残りのtaskやUSC・ISPの
+組合せは未証明のままで、これらをCCBへ渡していない。

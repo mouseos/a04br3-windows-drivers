@@ -99,6 +99,11 @@ NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *o,
     for(i=0;i<16;i++)o->eot_pds[i]=eot.pds[i];
     for(i=0;i<3;i++)o->eot_usc[i]=eot.usc[i];
     for(i=0;i<4;i++)o->destination_csr[i]=eot.payload[32+i];
+    /* FUN_129f88/13c634: single output, five data words padded to eight,
+     * then two code words; offsets are relative to the PDS heap. */
+    o->eot_raw28=eot.payload[10];
+    o->eot_raw2c=EOT_PDS_OFFSET+eot.payload[11];
+    o->eot_raw30=EOT_PDS_OFFSET+eot.payload[12];
     o->eot_pds[2]=(uint32_t)(A04_VENDOR_COPY_DEST_VA>>2);
     o->eot_pds[3]=(uint32_t)(A04_VENDOR_COPY_DEST_VA>>34)|(1u<<19);
     o->render=r;

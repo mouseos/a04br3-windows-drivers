@@ -84,6 +84,7 @@ int main(void)
         assert(!memcmp((UCHAR*)pds+256,scratch.state.pds_data,16));
         assert(!memcmp((UCHAR*)pds+272,scratch.state.pds_code,16));
         assert(scratch.eot_pds[2]==(uint32_t)(A04_VENDOR_COPY_DEST_VA>>2));
+        assert(scratch.eot_raw28==0x202u && scratch.eot_raw2c==96u && scratch.eot_raw30==64u);
         assert(!((uint32_t*)r.buffer[10].cpu)[128/4]); /* no background USC supplied */
         pds[64/4]^=1;
         assert(a04_vendor_copy_scratch_release(&scratch)==STATUS_INVALID_DEVICE_STATE && frees==oldfrees);

@@ -16,6 +16,7 @@ struct a04_vendor_copy_scratch {
     struct a04_vendor_copy_state state;
     _Alignas(8) struct a04_vendor_copy_kick_image kick;
     uint32_t eot_pds[16], eot_usc[3], destination_csr[4];
+    uint32_t eot_raw28, eot_raw2c, eot_raw30; /* partial task fields */
     BOOLEAN prepared,exposed;
 };
 NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *owner,
