@@ -2,7 +2,7 @@
 import importlib.util,zlib
 from pathlib import Path
 root=Path(__file__).resolve().parents[1];spec=importlib.util.spec_from_file_location('cpu',root/'tools/recovery/decode-cpu-audit-uart.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
-t='0123456789ABCDEF'; payload=b'TOPRGU_SYS_MATCH=NO\r\nTOPRGU_AUDIT_EXIT=0\r\n'; c=zlib.crc32(payload)
+t='0123456789ABCDEF'; payload=b'TOPRGU_SYS_MATCH=NO\r\nTOPRGU_AUDIT_FINISHED_READ_ONLY\r\nTOPRGU_AUDIT_EXIT=0\r\nMOUNTVOL_EXIT=0\r\n'; c=zlib.crc32(payload)
 head=f'A04CPU0 {t} {len(payload):08X} {c:08X}\n'.encode();end=f'A04CPUE {t} {c:08X}\n'.encode()
 parts=[]
 for i in range(0,len(payload),16):

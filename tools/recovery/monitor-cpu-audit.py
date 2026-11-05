@@ -18,7 +18,11 @@ while True:
    print(json.dumps({'status':'invalid-frame','reason':str(e)}));raise SystemExit(2)
  else:
   with output.open('xb') as f:f.write(payload)
-  audit_ok=bool(re.search(rb'^TOPRGU_AUDIT_EXIT=0\r?$',payload,re.M))
-  print(json.dumps({'status':'complete-report','audit_exit_zero':audit_ok,'note':'No reset or restore was initiated.'}));raise SystemExit(0 if audit_ok else 3)
+  finished=re.findall(rb'^TOPRGU_AUDIT_FINISHED_READ_ONLY\r?$',payload,re.M)
+  exits=re.findall(rb'^TOPRGU_AUDIT_EXIT=([^\r\n]*)\r?$',payload,re.M)
+  mounts=re.findall(rb'^MOUNTVOL_EXIT=([^\r\n]*)\r?$',payload,re.M)
+  audit_ok=len(finished)==1 and exits==[b'0']
+  dismounted=mounts==[b'0']
+  print(json.dumps({'status':'complete-report','audit_exit_zero':audit_ok,'volume_dismount_zero':dismounted,'note':'No reset or restore was initiated.'}));raise SystemExit(0 if audit_ok and dismounted else 3)
  if time.monotonic()>=deadline:print(json.dumps({'status':'incomplete-timeout','note':'No reset or restore was initiated.'}));raise SystemExit(4)
  time.sleep(1)
