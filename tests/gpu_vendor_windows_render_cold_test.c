@@ -36,14 +36,16 @@ int main(void)
     assert(((uint32_t *)r.buffer[1].cpu)[A04_VENDOR_RENDER_SCRATCH_VA>>30]);
     f.hardware_owned=TRUE;assert(a04_vendor_render_release_cold(&r)==STATUS_DEVICE_BUSY && table[128]);
     f.hardware_owned=FALSE;assert(a04_vendor_render_release_cold(&r)==STATUS_SUCCESS && !table[128]);
-    assert(frees==7 && !pools && !r.firmware);
+    assert(frees==12 && !pools && !r.firmware);
     assert(a04_vendor_render_prepare_cold(&r,&f,&adapter,TRUE)==STATUS_SUCCESS);
     assert(r.clear_ready && ((unsigned char *)r.buffer[4].cpu)[0]==0xa5);
     assert(((uint32_t *)r.buffer[1].cpu)[UINT64_C(0xa800000000)>>30]);
     assert(((uint32_t *)r.buffer[1].cpu)[UINT64_C(0xba00000000)>>30]);
     assert(!memcmp(r.buffer[7].cpu,r.clear.pds,sizeof(r.clear.pds)));
     assert(!memcmp(r.buffer[10].cpu,r.clear.usc,sizeof(r.clear.usc)));
-    assert(a04_vendor_render_release_cold(&r)==STATUS_SUCCESS && frees==18 && !pools);
+    assert(((uint32_t *)r.buffer[1].cpu)[UINT64_C(0xf800000000)>>30]);
+    assert(((uint32_t *)r.buffer[1].cpu)[UINT64_C(0xf900000000)>>30]);
+    assert(a04_vendor_render_release_cold(&r)==STATUS_SUCCESS && frees==28 && !pools);
     for(i=0;i<5;i++)free(f.buffers[i].cpu);
     return 0;
 }

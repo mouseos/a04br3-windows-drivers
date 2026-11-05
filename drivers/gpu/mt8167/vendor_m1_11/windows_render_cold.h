@@ -6,7 +6,7 @@
 #include "render_resources.h"
 #include "clear_image.h"
 struct a04_vendor_render_cold {
-    struct a04_vendor_uncached buffer[11];
+    struct a04_vendor_uncached buffer[16];
     struct a04_vendor_clear_image clear;
     struct a04_vendor_render_layout layout;
     struct a04_vendor_m1_11_memory *firmware;
