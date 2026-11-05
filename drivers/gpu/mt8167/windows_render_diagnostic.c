@@ -86,7 +86,7 @@ NTSTATUS a04_windows_render_diagnostic_case(struct a04_windows_render_diagnostic
     struct a04_render_owned_range r[A04_RENDER_MAX_MAPS];struct rogue_fwif_cmd_geom geom;struct rogue_fwif_cmd_frag frag;
     NTSTATUS status=STATUS_INVALID_PARAMETER;unsigned i,x,y;const uint8_t *pixels;
     if (!d || !s || (clear_only!=FALSE && clear_only!=TRUE) || prior==d || d->stage || d->memory.cpu || KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_INVALID_PARAMETER;
-    if(prior && (!prior->memory.cpu || !prior->memory.completion_observed || !prior->memory.cleanup_complete || prior->memory.poisoned)) return STATUS_INVALID_DEVICE_STATE;
+    if(prior && (prior->stage!=32 || !prior->memory.cpu || !prior->memory.completion_observed || !prior->memory.cleanup_complete || prior->memory.poisoned)) return STATUS_INVALID_DEVICE_STATE;
     m=&d->memory;d->result=STATUS_INVALID_DEVICE_STATE;
     STEP(1,a04_windows_render_memory_create_disjoint(m,s,PAGES,maps,sizeof(maps)/sizeof(maps[0]),prior?&prior->memory:NULL));
     STEP(2,a04_windows_render_memory_bind_vm(m));

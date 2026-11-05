@@ -388,7 +388,7 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
               ULONG case_index;BOOLEAN prior_fw_ok=TRUE;
               for(case_index=0;case_index<2;++case_index) {
                 struct a04_windows_render_diagnostic *d=case_index?&c->render_clear_diagnostic:&c->render_diagnostic;
-                if(case_index && (!prior_fw_ok || !c->render_diagnostic.memory.completion_observed ||
+                if(case_index && (!prior_fw_ok || c->render_diagnostic.stage!=32 || !c->render_diagnostic.memory.completion_observed ||
                    !c->render_diagnostic.memory.cleanup_complete || c->render_diagnostic.memory.poisoned)) {
                     GpuPrint("A04GPU CASE SKIPPED=00000001 REASON=PRIOR_INCOMPLETE\n");break;
                 }

@@ -606,6 +606,7 @@ int main(void)
       diagnostic_mock=NULL;diagnostic_wrong_pixels=0;s.processor_released=FALSE;assert(a04_windows_render_memory_free(&d.memory,TRUE)==STATUS_SUCCESS); }
     { struct a04_windows_render_diagnostic a={0},b={0};unsigned sync_before=diagnostic_target_synced;s.processor_released=TRUE;cleanup_calls=0;kick_calls=0;separate_dma=1;
       diagnostic_mock=&a;assert(a04_windows_render_diagnostic_case(&a,&s,FALSE,NULL)==STATUS_SUCCESS);
+      { unsigned before=allocated;a.stage=31;assert(a04_windows_render_diagnostic_case(&b,&s,TRUE,&a)==STATUS_INVALID_DEVICE_STATE && allocated==before);a.stage=32; }
       diagnostic_wrong_pixels=6;diagnostic_mock=&b;assert(a04_windows_render_diagnostic_case(&b,&s,TRUE,&a)==STATUS_SUCCESS);
       assert(diagnostic_target_synced==sync_before+2u);
       assert(b.background_pixels==4096 && !b.triangle_pixels && !b.sentinel_pixels && b.memory.cleanup_complete);
