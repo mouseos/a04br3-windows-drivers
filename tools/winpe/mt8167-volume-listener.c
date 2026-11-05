@@ -1,6 +1,10 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent
  * One fixed, guarded release operation; no shell input is accepted from UART. */
 #include <windows.h>
+#include <stddef.h>
+/* Freestanding CRT entry: avoid any dependency on a target C runtime. */
+void *memcpy(void *dst,const void *src,size_t n)
+{ volatile unsigned char *d=dst; const volatile unsigned char *s=src; size_t i; for(i=0;i<n;i++)d[i]=s[i]; return dst; }
 #include "../../drivers/system/mt8167-toprgu/uart_screen.h"
 static HANDLE open_uart(void)
 {
