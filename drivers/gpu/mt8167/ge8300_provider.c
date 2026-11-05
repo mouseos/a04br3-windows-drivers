@@ -112,7 +112,7 @@ typedef struct {
     struct a04_ge8300_status status;
     BOOLEAN referenced, attempted;
 } GPU_CONTEXT;
-#if A04_GE8300_BOOT_TEST
+#if A04_GE8300_BOOT_TEST || A04_GE8300_VENDOR_START_DIAGNOSTIC
 /* WinPE-only crash diagnostics. UART TX is shared with the existing monitor;
  * writes are bounded and never change its configuration. */
 static volatile ULONG *GpuUart;
@@ -370,7 +370,7 @@ NTSTATUS GpuPrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
         }
     }
 #endif
-#if A04_GE8300_BOOT_TEST
+#if A04_GE8300_BOOT_TEST || A04_GE8300_VENDOR_START_DIAGNOSTIC
     {
         PHYSICAL_ADDRESS uart; UNICODE_STRING name=RTL_CONSTANT_STRING(L"KiBugCheckData");
         uart.QuadPart=0x11005000u;
@@ -417,7 +417,7 @@ NTSTATUS GpuRelease(WDFDEVICE device,WDFCMRESLIST translated)
 #if A04_GE8300_COPY_SERVICE
     if(c->linear.memory.cpu || c->linear.memory.adapter || c->referenced) return STATUS_DEVICE_BUSY;
 #endif
-#if A04_GE8300_BOOT_TEST
+#if A04_GE8300_BOOT_TEST || A04_GE8300_VENDOR_START_DIAGNOSTIC
     if(GpuBugRegistered) { KeDeregisterBugCheckCallback(&GpuBugRecord); GpuBugRegistered=FALSE; }
     if(GpuUart) { MmUnmapIoSpace((PVOID)GpuUart,0x1000u); GpuUart=NULL; }
 #endif
@@ -429,6 +429,9 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     GPU_CONTEXT *c=GpuContext(device); NTSTATUS status; PVOID image=NULL; ULONG bytes=0,lo,hi;
     PDMA_ADAPTER adapter;
     UNREFERENCED_PARAMETER(previous);
+#if A04_GE8300_VENDOR_START_DIAGNOSTIC
+    GpuPrint("A04GPU NATIVE D0 ENTER\n");
+#endif
     if(c->attempted) return STATUS_SUCCESS;
     c->attempted=TRUE; c->status.version=5;
 #if !A04_GE8300_BOOT_TEST
@@ -484,6 +487,9 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         c->vendor_adapter_v3=NULL;
     }
     c->vendor_status.stage_status=status;
+#if A04_GE8300_VENDOR_START_DIAGNOSTIC
+    GpuPrint("A04GPU NATIVE STAGE=");GpuHex((ULONG)status);GpuPrint("\n");
+#endif
 #endif
     return STATUS_SUCCESS;
 #else
@@ -636,15 +642,19 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 {
     GPU_CONTEXT *c=GpuContext(device);struct a04_vendor_power_snapshot power;
     NTSTATUS status;uint64_t bvnc;UNREFERENCED_PARAMETER(previous);
+    GpuPrint("A04GPU NATIVE POST ENTER\n");
     if(!c->vendor.staged || !c->vendor.uncached || !c->vendor_irq) return STATUS_SUCCESS;
     WdfWaitLockAcquire(c->vendor_lifetime,NULL);
     status=a04_vendor_m1_11_power_snapshot(device,c->mfg,MFG_SIZE,&power);
     if(NT_SUCCESS(status) && !a04_vendor_m1_11_power_valid(&power)) status=STATUS_DEVICE_NOT_READY;
+    GpuPrint("A04GPU NATIVE POWER=");GpuHex((ULONG)status);GpuPrint("\n");
     if(NT_SUCCESS(status)) {
         bvnc=((uint64_t)c->status.bvnc_high<<32)|c->status.bvnc_low;
         a04_vendor_irq_set_power(c->vendor_irq,TRUE);
+        GpuPrint("A04GPU NATIVE START BEGIN\n");
         status=a04_vendor_m1_11_windows_start(&c->vendor_start,&c->vendor,c->core,CORE_SIZE,
             bvnc,&power,A04_VENDOR_IRQ_HANDLER_OWNS);
+        GpuPrint("A04GPU NATIVE START STATUS=");GpuHex((ULONG)status);GpuPrint("\n");
     }
     c->status.attempted=1;c->status.boot_status=status;
     c->status.processor_released=c->vendor.hardware_owned;
@@ -653,8 +663,10 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         /* GP SYNC proves execution, not merely firmware-ready. The power-off
          * acknowledgement is not fabric quiescence; DMA stays pinned. */
         c->status.health_status=a04_vendor_m1_11_windows_fence(&c->vendor_start,0,TRUE);
+        GpuPrint("A04GPU NATIVE FENCE=");GpuHex(c->status.health_status);GpuPrint("\n");
         if(NT_SUCCESS(c->status.health_status))
             c->status.shutdown_status=a04_vendor_m1_11_windows_power_off(&c->vendor_start,TRUE);
+        GpuPrint("A04GPU NATIVE OFF=");GpuHex(c->status.shutdown_status);GpuPrint("\n");
     }
     if(!c->vendor.hardware_owned) {
         a04_vendor_irq_set_power(c->vendor_irq,FALSE);

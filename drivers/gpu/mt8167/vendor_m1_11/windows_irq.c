@@ -62,6 +62,10 @@ NTSTATUS a04_vendor_irq_create(WDFDEVICE device,a04_vendor_irq_service service,
     if(!device || !service || !out || *out)
         return STATUS_INVALID_PARAMETER;
     WDF_INTERRUPT_CONFIG_INIT(&irq_config,a04_vendor_isr,a04_vendor_dpc);
+    /* DPC runs at DISPATCH_LEVEL while the parent device uses passive-level
+     * callbacks. Explicitly disable framework serialization; the deferred
+     * service is protected by work_busy and the owner's lifetime lock. */
+    irq_config.AutomaticSerialization=FALSE;
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,A04_VENDOR_IRQ);
     status=WdfInterruptCreate(device,&irq_config,&attr,&interrupt);
     if(!NT_SUCCESS(status)) return status;
