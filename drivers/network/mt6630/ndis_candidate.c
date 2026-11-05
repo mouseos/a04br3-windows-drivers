@@ -25,28 +25,40 @@ struct a04_ndis_context { NDIS_HANDLE adapter;
 };
 #define A04_NDIS_TAG 'n40A'
 #if defined(A04_NDIS_OID_BRIDGE) && A04_NDIS_OID_BRIDGE
+static NTSTATUS a04_query_complete(PDEVICE_OBJECT device,PIRP irp,PVOID context)
+{
+ UNREFERENCED_PARAMETER(device);UNREFERENCED_PARAMETER(irp);
+ KeSetEvent((PKEVENT)context,IO_NO_INCREMENT,FALSE);
+ return STATUS_MORE_PROCESSING_REQUIRED;
+}
 /* Query the PDO below NDIS, never the top of our own device stack. The bus
  * owns the returned interface reference. This query does not acquire a lease
  * or touch MMIO, clocks or power. */
 static NTSTATUS a04_query_parent(struct a04_ndis_context *a)
 {
  PDEVICE_OBJECT pdo=NULL;PIRP irp;PIO_STACK_LOCATION sp;KEVENT event;
- IO_STATUS_BLOCK ios;NTSTATUS status;
+ NTSTATUS status;
  NdisMGetDeviceProperty(a->adapter,&pdo,NULL,NULL,NULL,NULL);
  if(!pdo)return STATUS_NO_SUCH_DEVICE;
  KeInitializeEvent(&event,NotificationEvent,FALSE);
- RtlZeroMemory(&ios,sizeof(ios));
- irp=IoBuildSynchronousFsdRequest(IRP_MJ_PNP,pdo,NULL,0,NULL,&event,&ios);
+ /* IoBuildSynchronousFsdRequest does not construct PnP requests. Own this
+  * IRP through completion, including the synchronous completion case. */
+ irp=IoAllocateIrp(pdo->StackSize,FALSE);
  if(!irp)return STATUS_INSUFFICIENT_RESOURCES;
  irp->IoStatus.Status=STATUS_NOT_SUPPORTED;
+ irp->IoStatus.Information=0;
  sp=IoGetNextIrpStackLocation(irp);sp->MinorFunction=IRP_MN_QUERY_INTERFACE;
+ sp->MajorFunction=IRP_MJ_PNP;
  sp->Parameters.QueryInterface.InterfaceType=&A04SharedWifiInterfaceGuid;
  sp->Parameters.QueryInterface.Size=sizeof(a->parent);
  sp->Parameters.QueryInterface.Version=A04_SHARED_WIFI_INTERFACE_VERSION;
  sp->Parameters.QueryInterface.Interface=(PINTERFACE)&a->parent;
  sp->Parameters.QueryInterface.InterfaceSpecificData=NULL;
+ IoSetCompletionRoutine(irp,a04_query_complete,&event,TRUE,TRUE,TRUE);
  status=IoCallDriver(pdo,irp);
- if(status==STATUS_PENDING){KeWaitForSingleObject(&event,Executive,KernelMode,FALSE,NULL);status=ios.Status;}
+ if(status==STATUS_PENDING)KeWaitForSingleObject(&event,Executive,KernelMode,FALSE,NULL);
+ status=irp->IoStatus.Status;
+ IoFreeIrp(irp);
  if(!NT_SUCCESS(status))return status;
  if(a->parent.Header.Size!=sizeof(a->parent) || a->parent.Header.Version!=A04_SHARED_WIFI_INTERFACE_VERSION ||
     !a->parent.Header.InterfaceDereference || !a->parent.Acquire || !a->parent.ReleaseQuiescent || !a->parent.Live || !a->parent.UpdateShared || !a->parent.WriteShared) {
