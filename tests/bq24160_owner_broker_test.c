@@ -5,8 +5,10 @@
 #include "broker_mailbox.h"
 #include "broker_client.h"
 #include "broker_wire.h"
+#include "broker_handoff.h"
 #define NS 1000000000ULL
-struct fake { uint64_t now, gauge_delay; int reads, writes, gauge_reads, bad_gauge, bad_bq; };
+struct fake { uint64_t now, gauge_delay; int reads, writes, gauge_reads, bad_gauge, bad_bq, transfer_stage, transfer_fail, clock_calls, regress_at; };
+static int transfer_action(void *p){struct fake *f=p;++f->transfer_stage;return f->transfer_stage==f->transfer_fail;}
 struct loopback { struct fake *fake; struct a04_broker_endpoint *endpoint; };
 static uint64_t loop_now(void *p) {return ((struct loopback *)p)->fake->now;}
 static int loop_exchange(void *p,const struct a04_broker_request *q,struct a04_broker_response *r) {
@@ -16,7 +18,7 @@ static int loop_exchange(void *p,const struct a04_broker_request *q,struct a04_b
     a04_broker_wire_response_encode(wire,sizeof(wire),&result) || a04_broker_wire_response_decode(r,wire,sizeof(wire))) return -1;
  return 0;
 }
-static uint64_t clock_ns(void *p) { return ((struct fake *)p)->now; }
+static uint64_t clock_ns(void *p) { struct fake *f=p;++f->clock_calls;return f->clock_calls==f->regress_at?f->now-1:f->now; }
 static int read_bq(void *p,uint8_t r,uint8_t *v) {
     static const uint8_t data[8]={0x30,0,0x8c,0xa4,0x45,0x51,0,0x38};
     struct fake *f=p; ++f->reads; if(f->bad_bq)return -1; *v=data[r]; return 0;
@@ -114,6 +116,61 @@ int main(void) {
         assert(f.writes==1&&f.gauge_reads==3&&out.voltage_mv==4000);
         f.bad_gauge=1;assert(a04_broker_client_read(&client,5*NS,&out));
         assert(e.closed&&client.stopped&&o.stopped);
+    }
+    {
+        struct a04_broker_endpoint e={0};struct a04_owner_transfer tr={0};struct a04_bq_owner destination={0};
+        struct a04_transfer_ops ops={&f,transfer_action,transfer_action,transfer_action,transfer_action,clock_ns};
+        setup(&f,&o,&b,&c,&g);assert(!a04_broker_endpoint_init(&e,&b,1));
+        assert(!a04_broker_endpoint_maintain(&e)&&!a04_broker_endpoint_quiesce(&e));f.now=2*NS;
+        assert(!a04_broker_handoff(&e,&destination,&tr,&ops,30*NS));
+        assert(e.closed&&b.stopped&&o.stopped&&tr.state==A04_TRANSFER_NEW&&f.transfer_stage==4);
+        assert(destination.handoff_pending&&destination.handoff_deadline==10*NS&&destination.kicks==1);
+        f.now=10*NS;assert(a04_bq_step(&destination,&c,30*NS)==A04_BQ_DEADLINE&&f.writes==1);
+    }
+    {
+        struct a04_broker_endpoint e={0};struct a04_owner_transfer tr={0};struct a04_bq_owner destination={0};
+        struct a04_transfer_ops ops={&f,transfer_action,transfer_action,transfer_action,transfer_action,clock_ns};
+        setup(&f,&o,&b,&c,&g);assert(!a04_broker_endpoint_init(&e,&b,1));
+        assert(!a04_broker_endpoint_maintain(&e)&&!a04_broker_endpoint_quiesce(&e));f.now=2*NS;
+        assert(!a04_broker_handoff(&e,&destination,&tr,&ops,30*NS));
+        f.now=9*NS;assert(a04_bq_step(&destination,&c,30*NS)==A04_BQ_OK);
+        assert(!destination.handoff_pending&&destination.kicks==2&&f.writes==2&&o.stopped);
+    }
+    {
+        struct a04_broker_endpoint e={0};struct a04_owner_transfer tr={0};struct a04_bq_owner destination={0};
+        struct a04_transfer_ops ops={&f,transfer_action,transfer_action,transfer_action,transfer_action,clock_ns};
+        setup(&f,&o,&b,&c,&g);assert(!a04_broker_endpoint_init(&e,&b,1));
+        assert(!a04_broker_endpoint_maintain(&e)&&!a04_broker_endpoint_quiesce(&e));f.transfer_fail=3;
+        assert(a04_broker_handoff(&e,&destination,&tr,&ops,30*NS));
+        assert(tr.state==A04_TRANSFER_FAILED&&e.closed&&o.stopped&&destination.stopped&&f.transfer_stage==3);
+        assert(a04_bq_step(&destination,&c,30*NS)==A04_BQ_STOPPED&&f.writes==1);
+    }
+    {
+        struct a04_broker_endpoint e={0};struct a04_owner_transfer tr={0};struct a04_bq_owner destination={0};
+        struct a04_transfer_ops ops={&f,transfer_action,transfer_action,transfer_action,transfer_action,clock_ns};
+        setup(&f,&o,&b,&c,&g);assert(!a04_broker_endpoint_init(&e,&b,1));
+        assert(!a04_broker_endpoint_maintain(&e)&&!a04_broker_endpoint_quiesce(&e));f.now=10*NS;
+        assert(a04_broker_handoff(&e,&destination,&tr,&ops,30*NS));
+        assert(!tr.attempted&&!destination.stopped&&!f.transfer_stage&&!e.closed);
+        assert(a04_broker_endpoint_maintain(&e)==0&&f.writes==2);
+    }
+    {
+        struct a04_broker_endpoint e={0};struct a04_owner_transfer tr={0};struct a04_bq_owner destination={0};
+        struct a04_transfer_ops ops={&f,transfer_action,transfer_action,transfer_action,transfer_action,clock_ns};
+        setup(&f,&o,&b,&c,&g);assert(!a04_broker_endpoint_init(&e,&b,1));
+        assert(!a04_broker_endpoint_maintain(&e)&&!a04_broker_endpoint_quiesce(&e));
+        f.now=2*NS;f.clock_calls=0;f.regress_at=7;
+        assert(a04_broker_handoff(&e,&destination,&tr,&ops,30*NS));
+        assert(tr.state==A04_TRANSFER_FAILED&&e.closed&&o.stopped&&destination.stopped);
+    }
+    {
+        struct a04_broker_endpoint e={0};struct a04_owner_transfer tr={0};struct a04_bq_owner destination={0};
+        struct a04_transfer_ops ops={&f,transfer_action,transfer_action,transfer_action,transfer_action,clock_ns};
+        setup(&f,&o,&b,&c,&g);assert(!a04_broker_endpoint_init(&e,&b,1));
+        assert(!a04_broker_endpoint_maintain(&e)&&!a04_broker_endpoint_quiesce(&e));
+        f.now=2*NS;f.clock_calls=0;f.regress_at=2;
+        assert(a04_broker_handoff(&e,&destination,&tr,&ops,30*NS));
+        assert(tr.state==A04_TRANSFER_FAILED&&f.transfer_stage==0&&e.closed&&destination.stopped);
     }
     {
         uint8_t wire[A04_BROKER_WIRE_BYTES];struct a04_broker_request q={1,2,3},decoded={9,9,9};

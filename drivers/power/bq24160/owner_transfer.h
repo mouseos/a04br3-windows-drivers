@@ -16,6 +16,8 @@ struct a04_transfer_ops {
 };
 enum a04_transfer_state { A04_TRANSFER_OLD, A04_TRANSFER_TRANSITION,
     A04_TRANSFER_NEW, A04_TRANSFER_FAILED };
-struct a04_owner_transfer { enum a04_transfer_state state; int attempted; };
+/* last_observed may be initialized to a preceding observation in this same
+ * monotonic clock domain; the transfer rejects an earlier first sample. */
+struct a04_owner_transfer { enum a04_transfer_state state; int attempted; uint64_t last_observed; };
 int a04_owner_transfer_run(struct a04_owner_transfer *,const struct a04_transfer_ops *,uint64_t deadline);
 #endif
