@@ -227,12 +227,12 @@ static int ParentCodecDelay(void *context,uint32_t us) {
 #if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 static int ParentDomainRead(void *context,unsigned offset,uint32_t *value) {
     A04_PARENT_CONTEXT *c=context;
-    if(!c || !c->apmixed || !value || (offset!=0x700 && offset!=0x704 && offset!=0x70c))return -1;
+    if(!c || !c->apmixed || !value || (offset!=0x700 && offset!=0x704 && offset!=0x70c && offset!=0x710) || offset>c->apmixedLength || c->apmixedLength-offset<sizeof(ULONG))return -1;
     *value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+offset));return 0;
 }
 static int ParentDomainWrite(void *context,unsigned offset,uint32_t value) {
     A04_PARENT_CONTEXT *c=context;
-    if(!c || !c->apmixed || (offset!=0x700 && offset!=0x704 && offset!=0x70c))return -1;
+    if(!c || !c->apmixed || (offset!=0x700 && offset!=0x704 && offset!=0x70c && offset!=0x710) || offset>c->apmixedLength || c->apmixedLength-offset<sizeof(ULONG))return -1;
     WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+offset),value);return 0;
 }
 #endif
