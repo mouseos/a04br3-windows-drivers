@@ -48,6 +48,7 @@ NTSTATUS a04_vendor_m1_11_windows_power_off(struct a04_vendor_start *s,
     io.context=s;io.publish=fence_barrier;io.acquire=fence_barrier;io.kick=fence_kick;io.wait_us=fence_wait;
     result=a04_rgx_command_power_off(s->memory->runtime,&state,&io,10000,10);
     s->command_sequence=state.sequence;s->command_poisoned=state.poisoned?TRUE:FALSE;
+    if(result==A04_CCB_OK) s->power_off_ack=TRUE;
     if(result==A04_CCB_OK || result==A04_CCB_TIMEOUT || result==A04_CCB_CORRUPT)
         s->online=FALSE;
     InterlockedExchange(&s->command_busy,0);

@@ -6,6 +6,7 @@
 #include "windows_stage.h"
 #include "windows_start.h"
 #include "windows_command.h"
+#include "windows_stop.h"
 #include "A04BR3RogueRuntimeLayout.h"
 #include "A04BR3RogueCommand.h"
 static unsigned count,freed,syncs,barriers,fail_sync,pools,fail_alloc;
@@ -118,6 +119,16 @@ int main(int argc,char **argv)
     m.runtime->trace->ePowState=RGXFWIF_POW_ON;
     if(a04_vendor_m1_11_windows_power_off(&start,TRUE)!=STATUS_SUCCESS || start.online || !m.hardware_owned || *m.runtime->power_sync!=1) return 29;
     if(a04_vendor_m1_11_windows_fence(&start,A04_RGX_DM_GP,TRUE)!=STATUS_DEVICE_NOT_READY) return 30;
+    {
+        ULONG bad=0;uint64_t value=0;
+        *(uint32_t *)(void *)(registers+0x3c8)=0x7f;
+        *(uint32_t *)(void *)(registers+0x3898)=0xff;
+        if(a04_vendor_m1_11_windows_stop(&start,FALSE,&bad,&value)!=STATUS_INVALID_DEVICE_STATE) return 32;
+        if(a04_vendor_m1_11_windows_stop(&start,TRUE,&bad,&value)!=STATUS_SUCCESS || !m.hardware_owned || bad) return 33;
+        *(uint32_t *)(void *)(registers+0x1358)=1;
+        if(a04_vendor_m1_11_windows_stop(&start,TRUE,&bad,&value)!=STATUS_IO_TIMEOUT || bad!=0x1358 || value!=1 || !m.hardware_owned) return 34;
+        *(uint32_t *)(void *)(registers+0x1358)=0;
+    }
     simulate_fence=0;
     /* A lost firmware acknowledgement quarantines the synthetic queue and
      * leaves every DMA allocation owned, even if OFF was requested. */
