@@ -14,7 +14,7 @@ for input in "$test_boot" "$test_esp" "$restore_boot" "$restore_esp"; do [[ -f $
 mkdir -p "$out"
 root=$(cd "$(dirname "$0")/../.." && pwd)
 uart=/dev/ttyUSB0
-uart_log=/media/yuma/Expansion/TAB-A04-BR3/uart-recovery/uart-ttyUSB0-921600-before-restart.log
+uart_log=${A04_UART_LOG:-"$root/../../port/gsi/logs/ios-feasibility/windows-rt-uart-workspace.log"}
 flash_log="$root/../../port/gsi/logs/flash.log"
 [[ -c $uart && -f $uart_log && -x "$root/../../unixnu/UniXNU-a04br3/scripts/a04br3-reset.sh" ]] || exit 2
 sha256sum "$test_boot" "$test_esp" "$restore_boot" "$restore_esp" > "$out/inputs.sha256"
