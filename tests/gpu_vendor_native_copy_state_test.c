@@ -41,7 +41,7 @@ int main(void)
         assert(image.pds_fragment[0]==128 && image.pds_fragment[1]==8 &&
                image.pds_fragment[8]==0xf4000002u && image.raw00==0x200u);
         assert(image.raw38==((uint64_t)272<<32|192u) && image.raw40==((uint64_t)256<<32) &&
-               image.raw48==256 && image.raw50==((UINT64_C(1)<<55)|(UINT64_C(1)<<16)|1));
+               image.raw48==256 && image.raw50==((UINT64_C(1)<<55)|(UINT64_C(1)<<16)|1) && image.raw58==0);
         old=image;k.secondary_code_offset=256;
         assert(a04_vendor_copy_kick_build(&image,&k) && !memcmp(&image,&old,sizeof(image)));
         k.secondary_code_offset=272;k.usc_offset=65536-148;

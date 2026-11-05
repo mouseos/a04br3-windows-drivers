@@ -63,6 +63,9 @@ int a04_vendor_copy_kick_build(struct a04_vendor_copy_kick_image *out,
     image.raw40=(uint64_t)in.secondary_data_offset<<32;
     image.raw48=in.secondary_data_offset;
     image.raw50=(UINT64_C(1)<<55)|(UINT64_C(1)<<16)|1u;
+    /* FUN_12d28c writes raw58 from the optional format backing. For native
+     * 0x22, FUN_13ee34 selects bit5 of row 0x195f1c (0x08), hence zero. */
+    image.raw58=0;
     *out=image;return 0;
 }
 

@@ -26,7 +26,7 @@ struct a04_vendor_copy_kick_input {
 struct a04_vendor_copy_kick_image {
     uint32_t pds_fragment[16];
     uint32_t raw00;
-    uint64_t raw38,raw40,raw48,raw50;
+    uint64_t raw38,raw40,raw48,raw50,raw58;
 };
 int a04_vendor_copy_kick_build(struct a04_vendor_copy_kick_image *out,
     const struct a04_vendor_copy_kick_input *input);

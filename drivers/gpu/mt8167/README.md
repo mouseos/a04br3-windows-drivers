@@ -374,7 +374,7 @@ REA は `libsrv_um.so` SHA-256
 ローカルXNUの同一source profileで36-byte shared、16-byte PDS data、16-byte
 PDS codeをそれぞれバイト比較し一致した。GPU実行・表示の検証ではない。
 `a04_vendor_copy_kick_build` は同じ限定key8のfragment PDS DOUTU、raw00と
-raw38/40/48/50の候補をCPU上で組み立てる。REA `FUN_00129f88`
+raw38/40/48/50/58の候補をCPU上で組み立てる。REA `FUN_00129f88`
 (ev_2643ceb73416945ad436c7b84268c9896d78dc0314e525becf17a84eb2b4ae98)、
 `FUN_0012c568` (ev_bfd5db4bb483da5e455dea5ee2e31d2bc3b1a28b388699b659a061919bc6c744)、
 `FUN_0013c5f8` と `FUN_0013cd1c` および XNU `A04BR3RogueFragmentKick.h` を
@@ -382,6 +382,13 @@ raw38/40/48/50の候補をCPU上で組み立てる。REA `FUN_00129f88`
 同じにする。fragment PDS 64 bytesはXNU生成器と全範囲の4-byte USC offsetsで
 バイト一致した。残りのtask fields・USCの実行意味は未確定であり、これらの
 部分fieldsを完全な208-byte packetとして扱わない。実機診断には未接続。
+
+`FUN_0012d28c` (ev_90d81796e142693943627bd3fde4b34cc55816263f51e23a7cd04f9e604c0da3)
+はsource textureの処理中にraw58を書き込む。`FUN_0013ee34`
+(ev_71a7d16da3b0957dc5ff3230530f624c743020b583913f128b237f07fb5df1ac)
+が参照するnative22の表値は0x08 (ev_c57ae674bb851dc59f2dc5ecfacab9dfee4eecfa6316eb0223321b920f764ed8)で、
+bit5は0のため、この固定経路ではraw58は0になる。ゼロ値の根拠は初期化だけでなく
+この書込みにある。別形式や別分岐には適用しない。
 
 追加REA: `FUN_00129f88` は source と destination のそれぞれに対する
 `PVRSRVAcquireDeviceMapping` の戻すベースを比較し、等しい場合は矩形・
