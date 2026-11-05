@@ -11,7 +11,7 @@
 #include "A04BR3RogueCommand.h"
 static unsigned count,freed,syncs,barriers,fail_sync,pools,fail_alloc;
 static struct a04_vendor_m1_11_memory *sim_memory;
-static unsigned simulate_ready, simulate_fence, delays;
+static unsigned simulate_ready, simulate_fence, simulate_power_denied, delays;
 struct fence_mock { struct a04_rgx_fw_runtime *r; unsigned kicks,complete; };
 static void fence_barrier(void *ctx) { (void)ctx; }
 static void fence_kick(void *ctx,uint32_t offset,uint32_t value)
@@ -40,7 +40,7 @@ void KeStallExecutionProcessor(unsigned us)
         RGXFWIF_KCCB_CMD *cmd=&r->kcommands[r->kctl->ui32ReadOffset];
         if(cmd->eCmdType==RGXFWIF_KCCB_CMD_POW) {
             assert(cmd->uCmdData.sPowData.ePowType==RGXFWIF_POW_OFF_REQ);
-            *r->power_sync=1;r->trace->ePowState=RGXFWIF_POW_OFF;
+            *r->power_sync=1;r->trace->ePowState=simulate_power_denied ? RGXFWIF_POW_IDLE : RGXFWIF_POW_OFF;
         } else *r->command_sync=cmd->uCmdData.sSyncData.uiUpdateVal;
         r->kctl->ui32ReadOffset=r->kctl->ui32WriteOffset;
     }
@@ -139,6 +139,9 @@ int main(int argc,char **argv)
     if(a04_vendor_m1_11_windows_fence(&start,A04_RGX_DM_GP,TRUE)!=STATUS_SUCCESS || start.command_sequence!=1) return 27;
     if(a04_vendor_m1_11_windows_power_off(&start,TRUE)!=STATUS_INVALID_PARAMETER || !start.online) return 28;
     m.runtime->trace->ePowState=RGXFWIF_POW_ON;
+    simulate_power_denied=1;
+    if(a04_vendor_m1_11_windows_power_off(&start,TRUE)!=STATUS_DEVICE_BUSY || !start.online || start.command_poisoned || !m.hardware_owned) return 46;
+    simulate_power_denied=0;
     if(a04_vendor_m1_11_windows_power_off(&start,TRUE)!=STATUS_SUCCESS || start.online || !m.hardware_owned || *m.runtime->power_sync!=1) return 29;
     if(a04_vendor_m1_11_windows_fence(&start,A04_RGX_DM_GP,TRUE)!=STATUS_DEVICE_NOT_READY) return 30;
     {

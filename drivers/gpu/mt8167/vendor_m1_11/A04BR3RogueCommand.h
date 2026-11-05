@@ -13,7 +13,8 @@
 enum { A04_RGX_DM_GP=0,A04_RGX_DM_TA=2,A04_RGX_DM_3D=3 };
 enum a04_rgx_command_result {
     A04_CCB_OK=0,A04_CCB_INPUT=1,A04_CCB_CORRUPT=2,A04_CCB_FULL=3,
-    A04_CCB_TIMEOUT=4,A04_CCB_BUSY=5,A04_CCB_OFFLINE=6,A04_CCB_FW_REQUEST=7
+    A04_CCB_TIMEOUT=4,A04_CCB_BUSY=5,A04_CCB_OFFLINE=6,A04_CCB_FW_REQUEST=7,
+    A04_CCB_POWER_DENIED=8
 };
 /* CPU view MUST be verified noncache or hardware coherent; Windows common buffer
  * CacheEnabled=FALSE alone does not prove either property.
@@ -150,7 +151,8 @@ static inline int a04_rgx_command_power_off(struct a04_rgx_fw_runtime *r,
            ctl->ui32WrapMask!=127 || ctl->ui32CmdSize!=56) {
             state->poisoned=true;return A04_CCB_CORRUPT;
         }
-        if(value==1 && done==next && r->trace->ePowState==RGXFWIF_POW_OFF) return A04_CCB_OK;
+        if(value==1 && done==next)
+            return r->trace->ePowState==RGXFWIF_POW_OFF ? A04_CCB_OK : A04_CCB_POWER_DENIED;
         io->wait_us(io->context,delay_us);
     }
     state->poisoned=true;return A04_CCB_TIMEOUT;

@@ -108,6 +108,7 @@ NTSTATUS a04_vendor_m1_11_windows_power_off(struct a04_vendor_start *s,
     InterlockedExchange(&s->command_busy,0);
     if(result==A04_CCB_OK) return STATUS_SUCCESS;
     if(result==A04_CCB_TIMEOUT) return STATUS_IO_TIMEOUT;
+    if(result==A04_CCB_POWER_DENIED) return STATUS_DEVICE_BUSY;
     if(result==A04_CCB_FULL || result==A04_CCB_BUSY) return STATUS_DEVICE_BUSY;
     if(result==A04_CCB_INPUT) return STATUS_INVALID_PARAMETER;
     return STATUS_IO_DEVICE_ERROR;
