@@ -161,8 +161,10 @@ existing input-client and offline parent interfaces do not implement this
 contract and are not assumed to be the same interface. There is no operational
 provider, PWRAP codec write, or shared clock implementation.
 `shared_transport.cpp` joins that hypothetical lease to the existing DL1/IRQ
-transport but has no caller. It quarantines the shared reference and lease
-before attempting any transport work; no drain proof or release path exists.
+transport but has no PnP caller. It releases the shared lease if validation or
+DMA preparation fails before IRQ connection; a failed release quarantines it.
+It quarantines the shared reference and lease before attempting IRQ connection,
+because an ISR may run immediately; no post-exposure drain proof exists.
 Neither this composition nor a successful callback proves the provider owns
 hardware. No actual IRQ is connected by the present PnP backend; RUN remains
 refused, and this code is not a safe device trial.

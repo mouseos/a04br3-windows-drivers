@@ -522,10 +522,10 @@ build/mt8167_clock_owner_test: drivers/bus/mt8167-shared/clock_owner.c drivers/b
 .PHONY: test-mt8167-stream-transport
 test-mt8167-stream-transport: build/mt8167_stream_transport_test
 	./build/mt8167_stream_transport_test
-build/mt8167_stream_transport_test: drivers/audio/mt8167-afe/stream_transport.cpp drivers/audio/mt8167-afe/stream_transport.h drivers/audio/mt8167-afe/dl1.c tests/mt8167_stream_transport_test.cpp
+build/mt8167_stream_transport_test: drivers/audio/mt8167-afe/stream_transport.cpp drivers/audio/mt8167-afe/stream_transport.h drivers/audio/mt8167-afe/shared_transport.cpp drivers/audio/mt8167-afe/shared_audio.c drivers/audio/mt8167-afe/dl1.c tests/mt8167_stream_transport_test.cpp
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/audio/mt8167-afe -c drivers/audio/mt8167-afe/dl1.c -o build/mt8167_dl1_host.o
-	$(CXX) -O2 -Wall -Wextra -Werror -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/stream_transport.cpp tests/mt8167_stream_transport_test.cpp build/mt8167_dl1_host.o -o $@
+	$(CXX) -O2 -Wall -Wextra -Werror -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/stream_transport.cpp drivers/audio/mt8167-afe/shared_transport.cpp drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_stream_transport_test.cpp build/mt8167_dl1_host.o -o $@
 
 build/toprgu_handoff_test: drivers/system/mt8167-toprgu/handoff_policy.h tests/toprgu_handoff_test.c
 	@mkdir -p build

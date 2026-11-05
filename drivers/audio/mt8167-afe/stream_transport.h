@@ -2,6 +2,7 @@
 #define MT8167_STREAM_TRANSPORT_H
 #include "common_dma.h"
 #include "irq_windows.h"
+#include "shared_audio.h"
 #include "../../bus/mt8167-shared/clock_owner.h"
 #if defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
 /* Internal prototype; no PnP or WaveRT caller exists. Caller owns & serializes
@@ -27,9 +28,10 @@ struct Mt8167Transport {
 /* No caller has permission to start until the unresolved platform prerequisites
  * have independent evidence. On any exposure retain DMA and clock until reset. */
 int Mt8167TransportStart(Mt8167Transport *t, uint32_t periodBytes);
-/* The caller holds one exclusive parent lease covering this exact clock and
- * a muted codec. This path never takes or releases a second clock lease. */
-int Mt8167TransportStartParentOwned(Mt8167Transport *t, uint32_t periodBytes);
+/* The caller holds the shared parent's exclusive clock and muted-codec lease.
+ * It becomes permanently quarantined before an IRQ can be connected. */
+int Mt8167TransportStartParentOwned(Mt8167Transport *t, uint32_t periodBytes,
+                                   struct mt8167_audio_shared_client *shared);
 /* A successful stop only disables AFE and disconnects the IRQ. It does not
  * certify DMA drain; the buffer and clock lease remain quarantined. */
 int Mt8167TransportStop(Mt8167Transport *t);
