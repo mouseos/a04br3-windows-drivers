@@ -146,6 +146,26 @@ static uint64_t charger_now(void *context)
     return a->monotonic_ns(a->io->context);
 }
 #endif
+#if A04_BROKER_OWNER_EXPERIMENTAL && A04_LC709203F_TRACE
+/* Report only cached data already acquired by the owner. In particular this
+ * does not touch BQ after RESET, which would start its watchdog again. */
+static void trace_owner(GAUGE_CONTEXT *c,const char *phase)
+{
+    unsigned i;
+    const struct a04_bq_snapshot *snapshot=&c->charger.latest;
+    trace(c,"A04BAT OWNER phase=");trace(c,phase);
+    trace(c," life=");trace_hex(c,(ULONG)c->owner_lifecycle.state);
+    trace(c," valid=");trace_hex(c,(ULONG)snapshot->valid);
+    trace(c," regs=");
+    for (i=0;i<8;++i) trace_hex(c,(ULONG)snapshot->raw[i]);
+    trace(c," faults=");trace_hex(c,(ULONG)c->charger.fault_history);
+    trace(c," kicks=");trace_hex(c,(ULONG)c->charger.kicks);
+    trace(c," io_fault=");trace_hex(c,(ULONG)c->adapter.fault_reason);
+    trace(c," stopped=");trace_hex(c,(ULONG)c->charger.stopped);trace(c,"\n");
+}
+#else
+#define trace_owner(c, phase) ((void)0)
+#endif
 #if A04_BQHR_DIAGNOSTIC
 static void diagnose_bqhr(GAUGE_CONTEXT *c)
 {
@@ -276,6 +296,7 @@ static void poll(GAUGE_CONTEXT *c)
         }
         if (error) {
             a04_broker_lifecycle_stop(&c->owner_lifecycle);
+            trace_owner(c,"POLL_ERROR");
             c->faulted=TRUE;InterlockedExchange(&c->online,0);
             changed|=a04_battery_invalidate(&c->battery);
         }
@@ -394,7 +415,10 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     diagnose_bqhr(c);
 #endif
 #if A04_BROKER_OWNER_EXPERIMENTAL
-    if (!NT_SUCCESS(owner_prepare_handoff(c))) return STATUS_DEVICE_NOT_READY;
+    if (!NT_SUCCESS(owner_prepare_handoff(c))) {
+        trace(c,"A04BAT OWNER ADMISSION REFUSED\n");
+        return STATUS_DEVICE_NOT_READY;
+    }
 #elif A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
     if (!charger_handoff_is_qualified()) return STATUS_DEVICE_NOT_READY;
 #endif
@@ -478,9 +502,11 @@ NTSTATUS GaugeD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
 #if A04_BQ_DEFAULT_EXIT_EXPERIMENTAL
             /* Timer stopped, queue quiesced, bus lock held. Do not read BQ
              * after RESET: I2C access starts its watchdog again. */
-            int result=a04_broker_lifecycle_default(&c->owner_lifecycle,
+            int result;
+            result=a04_broker_lifecycle_default(&c->owner_lifecycle,
                                                     a04_bq_mt8167_reset_default,&c->adapter);
             trace(c, result ? "A04BAT DEFAULT UNCONFIRMED\n" : "A04BAT DEFAULT WRITE OK\n");
+            trace_owner(c,"POST_RESET_CACHED");
 #else
             a04_broker_lifecycle_stop(&c->owner_lifecycle);
 #endif
