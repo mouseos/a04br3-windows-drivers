@@ -329,6 +329,9 @@ NTSTATUS GpuRelease(WDFDEVICE device,WDFCMRESLIST translated)
     GPU_CONTEXT *c=GpuContext(device); UNREFERENCED_PARAMETER(translated);
     /* Never detach mappings or DMA ownership while the GPU might master RAM. */
     if(c->firmware.processor_released) return STATUS_DEVICE_BUSY;
+#if A04_GE8300_VENDOR_STAGE
+    if(c->vendor.hardware_owned) return STATUS_DEVICE_BUSY;
+#endif
 #if A04_GE8300_RENDER_DIAGNOSTIC
     if(c->render_diagnostic.memory.cpu || c->render_clear_diagnostic.memory.cpu) return STATUS_DEVICE_BUSY;
 #endif
@@ -515,6 +518,9 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 NTSTATUS GpuD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
 {
     GPU_CONTEXT *c=GpuContext(device); UNREFERENCED_PARAMETER(target);
+#if A04_GE8300_VENDOR_STAGE
+    if(c->vendor.hardware_owned) return STATUS_DEVICE_BUSY;
+#endif
 #if A04_GE8300_COPY_SERVICE
     NTSTATUS status;
     GpuPrint("A04GPU D0EXIT TARGET="); GpuHex((ULONG)target);

@@ -46,6 +46,7 @@ int main(int argc,char **argv)
 {
     DMA_OPERATIONS ops={alloc,release};struct fake_adapter adapter={&ops};
     struct a04_vendor_m1_11_memory m={0};struct a04_vendor_start start={0};
+    struct a04_vendor_power_snapshot power={(1u<<25)|(1u<<24)|(1u<<4),(1u<<25)|(1u<<24)|(1u<<4),0,4u<<8,8u<<8,0};
     size_t n,cn,dn;unsigned char *image,*code,*data,*boot,*registers;uint32_t *table;
     if(argc!=4 || !(image=load(argv[1],&n)) || !(code=load(argv[2],&cn)) || !(data=load(argv[3],&dn))) return 1;
     if(cn!=A04_VENDOR_CODE_BYTES || dn!=A04_VENDOR_DATA_BYTES) return 2;
@@ -64,11 +65,14 @@ int main(int argc,char **argv)
        table[A04_RGX_CONFIG_OFFSET/4096]!=(((uint32_t)(m.buffers[4].dma>>6)&0x03ffffc0u)|0x40000017u) ||
        m.runtime->kctl->ui32WrapMask!=127 || m.runtime->kctl->ui32CmdSize!=sizeof(RGXFWIF_KCCB_CMD)) return 12;
     registers=calloc(1,0x80000);if(!registers) return 14;
-    if(a04_vendor_m1_11_windows_start(&start,&m,registers,0x80000,0x001600280036001eULL,TRUE,FALSE)!=STATUS_INVALID_DEVICE_STATE || count!=5) return 15;
+    if(a04_vendor_m1_11_windows_start(&start,&m,registers,0x80000,0x001600280036001eULL,&power,FALSE)!=STATUS_INVALID_DEVICE_STATE || count!=5) return 15;
+    power.top_mux0=0;
+    if(a04_vendor_m1_11_windows_start(&start,&m,registers,0x80000,0x001600280036001eULL,&power,TRUE)!=STATUS_INVALID_DEVICE_STATE || count!=5) return 22;
+    power.top_mux0=4u<<8;
     fail_sync=syncs+1;
-    if(a04_vendor_m1_11_windows_start(&start,&m,registers,0x80000,0x001600280036001eULL,TRUE,TRUE)!=STATUS_IO_TIMEOUT || m.hardware_owned || freed!=1) return 16;
+    if(a04_vendor_m1_11_windows_start(&start,&m,registers,0x80000,0x001600280036001eULL,&power,TRUE)!=STATUS_IO_TIMEOUT || m.hardware_owned || freed!=1) return 16;
     fail_sync=0;simulate_ready=1;delays=0;sim_memory=&m;
-    if(a04_vendor_m1_11_windows_start(&start,&m,registers,0x80000,0x001600280036001eULL,TRUE,TRUE)!=STATUS_SUCCESS || !m.hardware_owned || !start.attempted) return 17;
+    if(a04_vendor_m1_11_windows_start(&start,&m,registers,0x80000,0x001600280036001eULL,&power,TRUE)!=STATUS_SUCCESS || !m.hardware_owned || !start.attempted) return 17;
     if(a04_vendor_m1_11_windows_free(&m)!=STATUS_DEVICE_BUSY || freed!=1) return 8;
     /* Test-only teardown after the simulated device has stopped. */
     release(&adapter,0x8000,start.trampoline_logical,start.trampoline_allocation,FALSE);
@@ -76,7 +80,7 @@ int main(int argc,char **argv)
     memset(&start,0,sizeof(start));memset(registers,0,0x80000);
     count=freed=syncs=barriers=0;simulate_ready=0;delays=0;
     if(a04_vendor_m1_11_windows_stage(&m,&adapter,image,n)!=STATUS_SUCCESS) return 18;
-    if(a04_vendor_m1_11_windows_start(&start,&m,registers,0x80000,0x001600280036001eULL,TRUE,TRUE)!=STATUS_IO_DEVICE_ERROR || !m.hardware_owned || !start.attempted || freed) return 19;
+    if(a04_vendor_m1_11_windows_start(&start,&m,registers,0x80000,0x001600280036001eULL,&power,TRUE)!=STATUS_IO_DEVICE_ERROR || !m.hardware_owned || !start.attempted || freed) return 19;
     if(a04_vendor_m1_11_windows_free(&m)!=STATUS_DEVICE_BUSY) return 20;
     release(&adapter,0x8000,start.trampoline_logical,start.trampoline_allocation,FALSE);
     m.hardware_owned=FALSE;if(a04_vendor_m1_11_windows_free(&m)!=STATUS_SUCCESS) return 21;

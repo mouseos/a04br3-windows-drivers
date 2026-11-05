@@ -14,12 +14,21 @@ struct a04_vendor_start {
     uint64_t trampoline_dma;
     BOOLEAN attempted;
 };
+/* Captured after the platform owner establishes the MT8167 power domains and
+ * clocks. Register meanings and 26 MHz mux path follow the board Linux
+ * mtk-scpsys/clk-mt8167 and A04BR3RoguePower.h. */
+struct a04_vendor_power_snapshot {
+    uint32_t spm_status,spm_status_2,mfg_clock_status;
+    uint32_t top_mux0,top_mux1,top_slow;
+};
 /* Caller owns a referenced DMA enabler and the mapped, powered register range.
  * Both must outlive any attempt, including failures: DMA remains quarantined.
- * power_is_stable and irq_is_masked must be proven by the caller, not inferred
- * from a readable BVNC or lack of interrupts.
+ * Power/clock values must be read by the legitimate platform resource owner
+ * immediately before this call and remain unchanged through the attempt.
+ * irq_is_masked must be proven by the caller, not inferred from no events.
  * PASSIVE_LEVEL; not a D0-exit or unload implementation. */
 NTSTATUS a04_vendor_m1_11_windows_start(struct a04_vendor_start *s,
     struct a04_vendor_m1_11_memory *m, volatile UCHAR *core, ULONG core_bytes,
-    uint64_t observed_bvnc, BOOLEAN power_is_stable, BOOLEAN irq_is_masked);
+    uint64_t observed_bvnc, const struct a04_vendor_power_snapshot *power,
+    BOOLEAN irq_is_masked);
 #endif

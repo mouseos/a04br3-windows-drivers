@@ -39,9 +39,17 @@ static uint32_t shared(void *ctx,uint32_t physical)
     a04_gpu_dma_barrier();
     return *(volatile uint32_t *)((unsigned char *)b->cpu+(size_t)offset);
 }
+static int power_valid(const struct a04_vendor_power_snapshot *p)
+{
+    const uint32_t domains=(1u<<25)|(1u<<24)|(1u<<4);
+    return p && (p->spm_status&domains)==domains &&
+        (p->spm_status_2&domains)==domains && !(p->mfg_clock_status&15u) &&
+        ((p->top_mux0>>8)&7u)==4u && ((p->top_mux1>>8)&63u)==8u &&
+        !(p->top_slow&((3u<<18)|(3u<<20)));
+}
 NTSTATUS a04_vendor_m1_11_windows_start(struct a04_vendor_start *s,
     struct a04_vendor_m1_11_memory *m,volatile UCHAR *core,ULONG core_bytes,
-    uint64_t observed_bvnc,BOOLEAN power_is_stable,BOOLEAN irq_is_masked)
+    uint64_t observed_bvnc,const struct a04_vendor_power_snapshot *power,BOOLEAN irq_is_masked)
 {
     struct a04_rgx_start_input input={0};struct a04_rgx_start_plan plan;
     struct start_io context;struct a04_rgx_exec_io io;
@@ -49,7 +57,7 @@ NTSTATUS a04_vendor_m1_11_windows_start(struct a04_vendor_start *s,
     NTSTATUS status=STATUS_DEVICE_CONFIGURATION_ERROR;
     if(!s || !m || !core || KeGetCurrentIrql()!=PASSIVE_LEVEL || s->attempted ||
        s->trampoline_allocation || !m->adapter || !m->staged || m->hardware_owned ||
-       core_bytes<0xa104u || ((ULONG_PTR)core&3u) || power_is_stable!=TRUE || irq_is_masked!=TRUE ||
+       core_bytes<0xa104u || ((ULONG_PTR)core&3u) || !power_valid(power) || irq_is_masked!=TRUE ||
        observed_bvnc!=0x001600280036001eULL || !m->runtime || !m->runtime->init)
         return STATUS_INVALID_DEVICE_STATE;
     s->memory=m;s->core=core;
