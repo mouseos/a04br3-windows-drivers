@@ -73,3 +73,13 @@ interrupt are accepted. The translated addresses, which need not equal the raw
 ones, are used for MMIO. A malformed or overlapping assignment is rejected
 before mapping. This does not validate the physical IRQ route, PHY sequence,
 VBUS, connector, or operation on the tablet.
+
+If the shared owner's overcurrent check fails while enabling VBUS, the owner
+now attempts VBUS-off immediately and latches the fault; VBUS-off and release
+remain available for a faulted lease. A release that cannot verify GPIO22 low
+retains the lease. The parent retains mappings for an unresolved lease and
+never retries GPIO MMIO after surprise removal; this software retention does
+not guarantee that Windows PnP retains physical resources. A failed host VBUS
+start now also executes the existing session/PHY/VBUS shutdown sequence.
+These failure paths are host-tested only; real overcurrent polarity and VBUS
+switch behavior remain unverified.

@@ -8,7 +8,7 @@ static int verify(void*p){M*m=p;assert(m->depth);return m->good?0:-1;}
 static unsigned tr(void*p,unsigned o){M*m=p;assert(m->depth);return m->top[o/4];}
 static void tw(void*p,unsigned o,unsigned v){M*m=p;assert(m->depth);m->ops++;if(o==0x84)m->top[0x24/4]&=~v;else if(o==0x9c)m->top[0x3c/4]&=~v;else assert(0);}
 static unsigned gr(void*p,unsigned o){M*m=p;assert(m->depth);return m->gpio[o/4];}
-static void gw(void*p,unsigned o,unsigned v){M*m=p;assert(m->depth);m->ops++;if(o==0x118)m->gpio[0x110/4]&=~v;else if(o==0x114)m->gpio[0x110/4]|=v;else if(o==0x14)m->gpio[0x10/4]|=v;else assert(0);}
+static void gw(void*p,unsigned o,unsigned v){M*m=p;assert(m->depth);m->ops++;if(o==0x118){if(!m->fail)m->gpio[0x110/4]&=~v;}else if(o==0x114)m->gpio[0x110/4]|=v;else if(o==0x14)m->gpio[0x10/4]|=v;else assert(0);}
 static uint32_t pr(void*p,unsigned o){M*m=p;assert(m->depth);if(o==0x9c)return 1;assert(o==0xa4);return m->stage?(6u<<16)|m->pmic:0;}
 static void pw(void*p,unsigned o,uint32_t v){M*m=p;assert(m->depth);m->ops++;if(o==0xa8){m->stage=0;return;}assert(o==0xa0);if(v>>31)m->pmic=v&0xffff;else m->stage=1;}
 static void delay(void*p){(void)p;}
@@ -19,4 +19,12 @@ int main(void){M m;struct a04_pmic_read bus;struct a04_usb_owner o;memset(&m,0,s
  assert(!a04_usb_owner_acquire(&o) && o.leased && m.pmic==0x4011);
  assert(!a04_usb_owner_vbus(&o,1) && (m.gpio[0x110/4]&64));assert(a04_usb_owner_stop(&o)<0);
  assert(a04_usb_owner_vbus(&o,1)<0);assert(!a04_usb_owner_vbus(&o,0));assert(!a04_usb_owner_release(&o));assert(!a04_usb_owner_stop(&o));
- assert(m.pmic==0x4011 && !(m.gpio[0x110/4]&64));return 0;}
+ assert(m.pmic==0x4011 && !(m.gpio[0x110/4]&64));
+ /* Overcurrent while already driving VBUS removes it and latches fault. */
+ o.online=1;o.poisoned=0;m.good=1;assert(!a04_usb_owner_acquire(&o));assert(!a04_usb_owner_vbus(&o,1));
+ m.good=0;assert(a04_usb_owner_vbus(&o,1) && o.poisoned && o.leased && !(m.gpio[0x110/4]&64));
+ assert(!a04_usb_owner_vbus(&o,0) && !a04_usb_owner_release(&o) && !o.leased);
+ /* If the off write cannot be verified, do not discard the lease. */
+ o.online=1;o.poisoned=0;m.good=1;assert(!a04_usb_owner_acquire(&o));assert(!a04_usb_owner_vbus(&o,1));
+ m.fail=1;assert(a04_usb_owner_release(&o) && o.leased && o.poisoned && (m.gpio[0x110/4]&64));
+ m.fail=0;assert(!a04_usb_owner_release(&o) && !o.leased && !(m.gpio[0x110/4]&64));return 0;}
