@@ -21,3 +21,9 @@ listenerはwpeinitとmountvol /Nの成功直後、共有親・touch・GPUのdrvl
 `replace-volume-listener-copy-wim.py` は上記のthermal付き早期listener媒体を入力に、署名済み `740117c` パッケージのlistenerのみ交換し、別媒体を作る。`--source-wim`、`--source-esp`、`--boot`、`--package`、`--output` を指定する。入力と出力は実体を確認した作業ルート内とし、outputは空ディレクトリを使う。WIMとESPの照合、既存証明書・SYSTEM・GPU・startnetの保持とlistenerの再抽出を検証する。
 
 `740117c` の署名済みパッケージはGit bundleに固定したコミットから生成された。生成当初はGitHubのcommit_refs拒否で未公開だったが、2026-11-06に公開を確認した。listenerは要求までREADYを繰り返すが、UARTの混線・欠落は引き続き失敗または不明。GPUの直接出力との排他保証や、解除後のGPU DMA停止は確立していない。
+
+## 0x714 APMIXED対応の親とUEFI
+
+`prepare-apmixed714-copy-volume-wim.py` はREADY反復listenerを含むGPUコピー候補に、固定SHAの共有親・BU21025署名ZIP `5ee5528` とUEFI boot `64c43d61` を組み合わせる。引数は `--source-wim`、`--source-esp`、`--boot`、`--package`、`--output`。outputは作業ルート内の空ディレクトリ。元媒体は保持する。WIMへ親とtouchのパッケージを置き、touchのINF名を `shared-touch.inf` に更新する。新証明書を追加し既存証明書を保持、listener・GPU SYS・SYSTEM・startnet・WIM・ESP・BCD・FATを照合する。
+
+入力の共有親は音声クロック・IRQ・MT6392診断、touch D0、traceを有効にしたビルドで、単なる0x714長対応だけではない。共有資源やUART出力の競合、署名受理、同一起動は未実機確認。出力manifestに全ビルドフラグを記録する。C:解除はGPU DMA停止やreset安全性を証明せず、thermal観測も所有解放を意味しない。
