@@ -117,6 +117,21 @@ jobs:
           $env:A04_BQHR_DIAGNOSTIC='1'
           $env:A04_LC709203F_TRACE='1'
           ./tools/ci/build-lc709203f-probe.ps1
+      - name: Test-sign cold charger diagnostic
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./tools/ci/sign-lc709203f-test.ps1
+          $pkg = Join-Path $env:RUNNER_TEMP 'lc709203f-test-signed'
+          $files = Get-ChildItem $pkg -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { @{name=(Split-Path $_.Path -Leaf); sha256=$_.Hash.ToLowerInvariant()} }
+          $manifest = @{ commit=$env:GITHUB_SHA; flags=@{A04_BQ24160_EXPERIMENTAL=1; A04_BROKER_OWNER_EXPERIMENTAL=1; A04_BQ_COLD_DIAGNOSTIC=1; A04_BQ_DEFAULT_EXIT_EXPERIMENTAL=1; A04_BQHR_DIAGNOSTIC=1; A04_LC709203F_TRACE=1}; state='test-signed-device-untested'; files=$files }
+          $manifest | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 (Join-Path $pkg 'manifest.json')
+      - name: Upload cold charger diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: bq-cold-diagnostic-${{ github.sha }}
+          path: ${{ runner.temp }}/lc709203f-test-signed/
+          if-no-files-found: error
       - name: Compile button provider PnP status tool
         shell: pwsh
         run: ./tools/ci/build-button-provider-status.ps1
