@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #ifndef A04_VENDOR_WINDOWS_SURFACE_H
 #define A04_VENDOR_WINDOWS_SURFACE_H
+#include <stdint.h>
 #include "windows_uncached.h"
 /* Private GPU-only candidate. Not a WDDM allocation or a scanout surface.
  * The adapter must remain referenced through release. Serialize every call. */
