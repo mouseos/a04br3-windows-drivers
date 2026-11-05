@@ -10,6 +10,7 @@ struct a04_oneshot_io {
  void *context;
  uint64_t (*now_ms)(void *);
  int (*wait_ms)(void *,unsigned);
+ int (*set_ready)(void *,int);
  int (*report)(void *,const struct a04_thermal_sample *);
 };
 enum a04_oneshot_result { A04_ONESHOT_OK, A04_ONESHOT_INVALID,

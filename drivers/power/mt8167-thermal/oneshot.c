@@ -4,11 +4,12 @@ enum a04_oneshot_result a04_thermal_oneshot(const struct a04_oneshot_io *io,cons
 {
  struct a04_completion c;struct a04_thermal_sample sample;uint32_t raw[3];
  uint64_t now,start;unsigned n;int r;enum a04_oneshot_result result=A04_ONESHOT_INIT_FAILED;
- if(!io || !io->hw || !cal || !io->now_ms || !io->wait_ms || !io->report ||
+ if(!io || !io->hw || !cal || !io->now_ms || !io->wait_ms || !io->set_ready || !io->report ||
     !io->hw->qualified || !io->hw->qualified(io->hw->ctx))return A04_ONESHOT_INVALID;
  /* A failed initialization does not reveal whether clocks were enabled.
   * Do not attempt further MMIO; the caller must retain the lease. */
  if(a04_thermal_hw_init(io->hw))return A04_ONESHOT_SHUTDOWN_FAILED;
+ if(io->set_ready(io->context,1))goto shutdown;
  start=io->now_ms(io->context);
  if(a04_completion_start(&c,start,2000))goto shutdown;
  for(n=0;n<200;n++) {
@@ -26,6 +27,7 @@ enum a04_oneshot_result a04_thermal_oneshot(const struct a04_oneshot_io *io,cons
  result=A04_ONESHOT_TIMEOUT;
 shutdown:
  if(a04_thermal_hw_quiesce(io->hw))return A04_ONESHOT_SHUTDOWN_FAILED;
+ if(io->set_ready(io->context,0))return A04_ONESHOT_SHUTDOWN_FAILED;
  if(result==A04_ONESHOT_OK && io->report(io->context,&sample))return A04_ONESHOT_REPORT_FAILED;
  return result;
 }
