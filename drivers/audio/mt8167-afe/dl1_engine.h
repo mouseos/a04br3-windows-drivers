@@ -18,6 +18,11 @@ struct mt8167_dl1_engine { struct mt8167_dl1_io io; enum mt8167_dl1_state state;
 #ifdef __cplusplus
 extern "C" {
 #endif
+/* Exclusive AFE owner only, before connecting ISR: with clock held and all
+ * other sources excluded, verify DL1 stopped, mask IRQ1, clear its latch and
+ * verify mask/status. Failure poisons the engine and requires retaining the
+ * ownership and mapping; this alone does not prove DMA bus drain. */
+int mt8167_dl1_prepare_masked_irq(struct mt8167_dl1_engine *);
 int mt8167_dl1_start(struct mt8167_dl1_engine *, const struct mt8167_dl1_plan *);
 /* On failure retain DMA mapping and contents; hardware quiescence is unknown. */
 int mt8167_dl1_stop(struct mt8167_dl1_engine *);

@@ -103,6 +103,12 @@ experiment acknowledges only IRQ1, preserving other sources. A host integration
 test joins a mock parent lease, transport, IRQ wrapper and register engine; it
 is not evidence that the actual Windows interrupt or board codec works.
 
+`mt8167_dl1_prepare_masked_irq` implements a pre-connect DL1 mask, latch clear,
+and readback for an exclusive owner with a held clock. It refuses an active DL1
+and poisons on ambiguous I/O. It deliberately leaves other IRQ sources alone;
+the shared owner must exclude those sources and keep the mask stable until
+disconnect. No current PnP caller establishes or invokes this contract.
+
 The miniport now accepts an optional internal `Mt8167StreamBackend` supplied by
 an owning PnP provider. It forwards allocation, format-independent start/stop,
 position and device-description requests and retains a backend reference for
