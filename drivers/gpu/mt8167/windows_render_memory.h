@@ -82,6 +82,9 @@ struct a04_windows_render_memory {
 NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
     struct a04_gpu_firmware_state *s,ULONG payload_pages,
     const struct a04_windows_render_map *maps,size_t count);
+NTSTATUS a04_windows_render_memory_create_disjoint(struct a04_windows_render_memory *m,
+    struct a04_gpu_firmware_state *s,ULONG payload_pages,const struct a04_windows_render_map *maps,
+    size_t count,const struct a04_windows_render_memory *prior);
 /* Bind the private page-table root to a firmware memory-context object from
  * this firmware's arena. Caller serializes access to firmware runtime.next_free.
  * Once allocated the object is retained until firmware shutdown. */
@@ -149,6 +152,8 @@ NTSTATUS a04_windows_render_stage_scratchless_pds_code(struct a04_windows_render
 /* Build a fixed 60-byte VDM stream. PPP contents and all remaining GPU
  * dependencies must be validated independently before any submission. */
 NTSTATUS a04_windows_render_stage_fixed_vdm(struct a04_windows_render_memory *m,
+    const struct a04_render_fixed_vdm_input *input,uint64_t vdm_gpu);
+NTSTATUS a04_windows_render_stage_clear_vdm(struct a04_windows_render_memory *m,
     const struct a04_render_fixed_vdm_input *input,uint64_t vdm_gpu);
 /* Stage fixed fragment uniform data, spill information, FS metadata and PDS
  * code atomically. PPP and shader contents still require validation. */

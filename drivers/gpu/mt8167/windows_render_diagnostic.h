@@ -12,5 +12,8 @@ struct a04_windows_render_diagnostic {
 };
 NTSTATUS a04_windows_render_diagnostic_run(struct a04_windows_render_diagnostic *d,
     struct a04_gpu_firmware_state *firmware);
+NTSTATUS a04_windows_render_diagnostic_case(struct a04_windows_render_diagnostic *d,
+    struct a04_gpu_firmware_state *firmware,BOOLEAN clear_only,
+    const struct a04_windows_render_diagnostic *prior);
 #endif
 #endif

@@ -60,6 +60,7 @@ typedef struct {
     struct a04_gpu_queue_test_memory queue_memory;
 #if A04_GE8300_RENDER_DIAGNOSTIC
     struct a04_windows_render_diagnostic render_diagnostic;
+    struct a04_windows_render_diagnostic render_clear_diagnostic;
 #endif
 #if A04_GE8300_COPY_SERVICE
     struct a04_windows_linear_context linear;
@@ -95,7 +96,7 @@ static void GpuHex(ULONG value)
 #if A04_GE8300_RENDER_DIAGNOSTIC
 /* Observe firmware-owned counters and pending notifications without consuming
  * the ring or printing firmware addresses. Firmware may update concurrently. */
-static void GpuRenderFirmwareEvidence(struct a04_gpu_firmware_state *s,ULONG phase)
+static BOOLEAN GpuRenderFirmwareEvidence(struct a04_gpu_firmware_state *s,ULONG phase)
 {
     uint8_t *heap;struct rogue_fwif_osinit *os;struct rogue_fwif_hwrinfobuf *hwr;
     struct rogue_fwif_ccb_ctl *ctl;struct rogue_fwif_fwccb_cmd *ring;
@@ -138,10 +139,13 @@ static void GpuRenderFirmwareEvidence(struct a04_gpu_firmware_state *s,ULONG pha
     GpuPrint(" W_AFTER=");GpuHex(wr_after);GpuPrint(" RESET=");GpuHex(reset);
     GpuPrint(" GROW=");GpuHex(grow);GpuPrint(" REBUILD=");GpuHex(rebuild);
     GpuPrint(" RESTART=");GpuHex(restart);GpuPrint(" FW_PF=");GpuHex(pf);
-    GpuPrint(" OTHER=");GpuHex(other);GpuPrint("\n");return;
+    GpuPrint(" OTHER=");GpuHex(other);GpuPrint("\n");
+    return hwr->hwr_counter==0 && !hwr->hwr_dm_locked_up_count[PVR_FWIF_DM_GEOM] &&
+        !hwr->hwr_dm_locked_up_count[PVR_FWIF_DM_FRAG] && !hwr->hwr_dm_recovered_count[PVR_FWIF_DM_GEOM] &&
+        !hwr->hwr_dm_recovered_count[PVR_FWIF_DM_FRAG] && !reset && !grow && !rebuild && !restart && !pf && wr_after==wr;
 fail:
     GpuPrint("A04GPU FW_EVIDENCE PHASE=");GpuHex(phase);
-    GpuPrint(" ERROR=");GpuHex((ULONG)status);GpuPrint("\n");
+    GpuPrint(" ERROR=");GpuHex((ULONG)status);GpuPrint("\n");return FALSE;
 }
 /* CRC-32/ISO-HDLC over bytes in linear framebuffer order. */
 static ULONG GpuCrc32(const UCHAR *p,ULONG length)
@@ -315,7 +319,7 @@ NTSTATUS GpuRelease(WDFDEVICE device,WDFCMRESLIST translated)
     /* Never detach mappings or DMA ownership while the GPU might master RAM. */
     if(c->firmware.processor_released) return STATUS_DEVICE_BUSY;
 #if A04_GE8300_RENDER_DIAGNOSTIC
-    if(c->render_diagnostic.memory.cpu) return STATUS_DEVICE_BUSY;
+    if(c->render_diagnostic.memory.cpu || c->render_clear_diagnostic.memory.cpu) return STATUS_DEVICE_BUSY;
 #endif
 #if A04_GE8300_COPY_SERVICE
     if(c->linear.memory.cpu || c->linear.memory.adapter || c->referenced) return STATUS_DEVICE_BUSY;
@@ -381,10 +385,20 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             }
 #if A04_GE8300_RENDER_DIAGNOSTIC
             if(NT_SUCCESS(c->status.mmu_status) && NT_SUCCESS(c->status.queue_status)) {
-                struct a04_windows_render_diagnostic *d=&c->render_diagnostic;
-                GpuRenderFirmwareEvidence(&c->firmware,0);
-                status=a04_windows_render_diagnostic_run(d,&c->firmware);
-                GpuRenderFirmwareEvidence(&c->firmware,1);
+              ULONG case_index;BOOLEAN prior_fw_ok=TRUE;
+              for(case_index=0;case_index<2;++case_index) {
+                struct a04_windows_render_diagnostic *d=case_index?&c->render_clear_diagnostic:&c->render_diagnostic;
+                if(case_index && (!prior_fw_ok || !c->render_diagnostic.memory.completion_observed ||
+                   !c->render_diagnostic.memory.cleanup_complete || c->render_diagnostic.memory.poisoned)) {
+                    GpuPrint("A04GPU CASE SKIPPED=00000001 REASON=PRIOR_INCOMPLETE\n");break;
+                }
+                GpuPrint("A04GPU CASE BEGIN=");GpuHex(case_index);GpuPrint("\n");
+                if(!GpuRenderFirmwareEvidence(&c->firmware,0)) {
+                    GpuPrint("A04GPU CASE ABORT=FW_EVIDENCE\n");break;
+                }
+                status=a04_windows_render_diagnostic_case(d,&c->firmware,case_index?TRUE:FALSE,
+                    case_index?&c->render_diagnostic:NULL);
+                prior_fw_ok=GpuRenderFirmwareEvidence(&c->firmware,1);
                 if(d->stage==32) {
                     ULONG y;
                     for(y=0;y<64;++y) {
@@ -428,6 +442,8 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
                 GpuPrint(" REGION_NONZERO=");GpuHex(d->memory.region_nonzero_slots);
                 GpuPrint(" TPC_NONZERO=");GpuHex(d->memory.tpc_nonzero_slots);GpuPrint("\n");
                 GpuRenderPixels(d);
+                GpuPrint("A04GPU CASE END=");GpuHex(case_index);GpuPrint("\n");
+              }
             }
 #endif
 #if A04_GE8300_SHARED_TRACE_DIAGNOSTIC
@@ -440,6 +456,8 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 #if A04_GE8300_RENDER_DIAGNOSTIC
             if(NT_SUCCESS(c->status.shutdown_status))
                 c->status.shutdown_status=a04_windows_render_memory_free(&c->render_diagnostic.memory,TRUE);
+            if(NT_SUCCESS(c->status.shutdown_status))
+                c->status.shutdown_status=a04_windows_render_memory_free(&c->render_clear_diagnostic.memory,TRUE);
             GpuPrint("A04GPU RENDER SHUTDOWN STATUS=");GpuHex(c->status.shutdown_status);
             GpuPrint(" RELEASED=");GpuHex(c->firmware.processor_released);
             GpuPrint(" STARTED=");GpuHex(c->firmware.firmware_started);
@@ -457,6 +475,7 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     if(c->referenced && !c->firmware.processor_released && !c->queue_memory.cpu
 #if A04_GE8300_RENDER_DIAGNOSTIC
        && !c->render_diagnostic.memory.cpu
+       && !c->render_clear_diagnostic.memory.cpu
 #endif
        ) {
         WdfObjectDereference(c->dma); c->referenced=FALSE;
@@ -485,7 +504,7 @@ NTSTATUS GpuD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
      * display client falls back to CPU while this device remains present. */
 #endif
 #if A04_GE8300_RENDER_DIAGNOSTIC
-    if(c->render_diagnostic.memory.cpu) return STATUS_DEVICE_BUSY;
+    if(c->render_diagnostic.memory.cpu || c->render_clear_diagnostic.memory.cpu) return STATUS_DEVICE_BUSY;
 #endif
     return c->firmware.processor_released ? STATUS_DEVICE_BUSY : STATUS_SUCCESS;
 }

@@ -202,13 +202,14 @@ static int freelists_valid(const struct a04_windows_render_memory *m,uint64_t ca
     }
     return 1;
 }
-NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
+NTSTATUS a04_windows_render_memory_create_disjoint(struct a04_windows_render_memory *m,
     struct a04_gpu_firmware_state *s,ULONG payload_pages,
-    const struct a04_windows_render_map *maps,size_t count)
+    const struct a04_windows_render_map *maps,size_t count,const struct a04_windows_render_memory *prior)
 {
     uint64_t dma; uint8_t *p; size_t i,j; ULONG total;
     if (!m || !s || !maps || !count || count>A04_RENDER_MAX_MAPS ||
-        !payload_pages || payload_pages>MAX_PAYLOAD_PAGES || m->cpu || m->adapter || m->firmware ||
+        !payload_pages || payload_pages>MAX_PAYLOAD_PAGES || m->cpu || m->adapter || m->firmware || prior==m ||
+        (prior && (!prior->cpu || !prior->length || prior->firmware!=s || prior->adapter!=s->memory.adapter)) ||
         !s->processor_released || !s->firmware_started || s->queue_faulted ||
         !s->memory.heap || !s->memory.adapter || !s->memory.adapter->DmaOperations ||
         !s->memory.adapter->DmaOperations->AllocateCommonBuffer ||
@@ -236,6 +237,8 @@ NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
     if (!m->cpu) { m->firmware=0;m->adapter=0;m->length=0;return STATUS_INSUFFICIENT_RESOURCES; }
     dma=(uint64_t)m->logical.QuadPart;p=m->cpu;
     if (((uintptr_t)p&(PAGE-1)) || (dma&(PAGE-1)) || dma>UINT64_C(0x100000000)-total ||
+        (prior && (overlap(dma,total,(uint64_t)prior->logical.QuadPart,prior->length) ||
+                   overlap((uint64_t)(uintptr_t)p,total,(uint64_t)(uintptr_t)prior->cpu,prior->length))) ||
         overlap(dma,total,(uint64_t)s->memory.heap_logical.QuadPart,A04_PVR_HEAP_SIZE) ||
         (s->memory.table && overlap(dma,total,(uint64_t)s->memory.table_logical.QuadPart,0x4000u)))
         return STATUS_DEVICE_CONFIGURATION_ERROR;
@@ -255,6 +258,9 @@ NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
     m->map_count=count;m->ready=TRUE;
     return STATUS_SUCCESS;
 }
+NTSTATUS a04_windows_render_memory_create(struct a04_windows_render_memory *m,
+    struct a04_gpu_firmware_state *s,ULONG payload_pages,const struct a04_windows_render_map *maps,size_t count)
+{ return a04_windows_render_memory_create_disjoint(m,s,payload_pages,maps,count,NULL); }
 NTSTATUS a04_windows_render_memory_bind_vm(struct a04_windows_render_memory *m)
 {
     struct a04_gpu_fw_arena arena={0};struct a04_gpu_fw_object vm={0};
@@ -780,8 +786,8 @@ NTSTATUS a04_windows_render_stage_static_heap_programs(struct a04_windows_render
     RtlCopyMemory((uint8_t *)m->cpu+off[1],usc,sizeof(usc));
     staged_commit(m,addr,len,2);m->static_heap_programs_staged=TRUE;return STATUS_SUCCESS;
 }
-NTSTATUS a04_windows_render_stage_fixed_vdm(struct a04_windows_render_memory *m,
-    const struct a04_render_fixed_vdm_input *input,uint64_t vdm)
+static NTSTATUS stage_vdm(struct a04_windows_render_memory *m,
+    const struct a04_render_fixed_vdm_input *input,uint64_t vdm,BOOLEAN clear_only)
 {
     struct a04_render_owned_range ranges[A04_RENDER_MAX_MAPS];uint64_t a[6],n[6]={16,16,16,16,100,12},off=0,len=60;
     uint8_t data[60];size_t i;unsigned matches=0;
@@ -803,9 +809,16 @@ NTSTATUS a04_windows_render_stage_fixed_vdm(struct a04_windows_render_memory *m,
     }
     if (matches!=1 || off>m->length || len>m->length-off || a04_render_make_fixed_vdm(input,ranges,m->map_count,data))
         return STATUS_INVALID_PARAMETER;
+    if(clear_only) { for(i=0;i<12u;++i) data[i]=data[48u+i];for(i=12u;i<60u;++i) data[i]=0; }
     for(i=0;i<len;++i) if (((const uint8_t *)m->cpu)[off+i]) return STATUS_INVALID_DEVICE_STATE;
     RtlCopyMemory((uint8_t *)m->cpu+off,data,sizeof(data));staged_commit(m,&vdm,&len,1);return STATUS_SUCCESS;
 }
+NTSTATUS a04_windows_render_stage_fixed_vdm(struct a04_windows_render_memory *m,
+    const struct a04_render_fixed_vdm_input *input,uint64_t vdm)
+{ return stage_vdm(m,input,vdm,FALSE); }
+NTSTATUS a04_windows_render_stage_clear_vdm(struct a04_windows_render_memory *m,
+    const struct a04_render_fixed_vdm_input *input,uint64_t vdm)
+{ return stage_vdm(m,input,vdm,TRUE); }
 NTSTATUS a04_windows_render_stage_context_pt(struct a04_windows_render_memory *m,
     uint64_t state,uint64_t store_data,uint64_t store_code,uint64_t resume_data,uint64_t resume_code)
 {

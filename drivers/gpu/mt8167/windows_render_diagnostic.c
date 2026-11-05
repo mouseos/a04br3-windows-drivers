@@ -34,7 +34,7 @@ static void ranges(const struct a04_windows_render_memory *m,struct a04_render_o
     }
 }
 static NTSTATUS verify_fixed(struct a04_windows_render_memory *m,const struct a04_render_owned_range *r,
-    const struct a04_render_fixed_ppp_input *pp,const struct a04_render_fixed_vdm_input *vd)
+    const struct a04_render_fixed_ppp_input *pp,const struct a04_render_fixed_vdm_input *vd,BOOLEAN clear_only)
 {
     struct a04_render_fixed_ppp ppp;uint8_t vdm[60],bg[16],data[16],code[16]={0,0,2,0xf4,0,0,0,0xd3};
     uint8_t usc[128],frag[48],eot[128],event[16],staticpds[256]={0},staticusc[128]={0};
@@ -46,6 +46,7 @@ static NTSTATUS verify_fixed(struct a04_windows_render_memory *m,const struct a0
         a04_render_make_fixed_eot(G+0x41000,r,m->map_count,eot) ||
         a04_render_make_pixel_event(U+0xec0,r,m->map_count,event)) return STATUS_INVALID_DEVICE_STATE;
     a04_render_make_fixed_background_usc(usc);
+    if(clear_only) { for(i=0;i<12u;++i) vdm[i]=vdm[48u+i];for(i=12u;i<60u;++i) vdm[i]=0; }
     staticpds[32]=2;staticpds[35]=0xf4;staticpds[128]=2;staticpds[131]=0xf4;
     for(i=0;i<8;++i) staticusc[i]=nop[i];
 #define CHECK(a,n,b,u) do { if(!NT_SUCCESS(a04_windows_render_verify_staged(m,(a),(n),(b),(u)))) return STATUS_INVALID_DEVICE_STATE; } while(0)
@@ -74,7 +75,8 @@ static NTSTATUS initialize_target(struct a04_windows_render_memory *m)
     for(i=0;i<16384u;++i) if(p[i]!=sentinel[i&3u]) return STATUS_DATA_ERROR;
     return STATUS_SUCCESS;
 }
-NTSTATUS a04_windows_render_diagnostic_run(struct a04_windows_render_diagnostic *d,struct a04_gpu_firmware_state *s)
+NTSTATUS a04_windows_render_diagnostic_case(struct a04_windows_render_diagnostic *d,struct a04_gpu_firmware_state *s,
+    BOOLEAN clear_only,const struct a04_windows_render_diagnostic *prior)
 {
     struct a04_windows_render_memory *m;struct a04_render_context_static_input cs={0};
     struct rogue_fwif_geom_registers_caswitch state;struct a04_windows_render_freelist_layout fl[2]={{G+0x48000,74,64,1},{G+0x49000,138,1024,2}};
@@ -83,9 +85,10 @@ NTSTATUS a04_windows_render_diagnostic_run(struct a04_windows_render_diagnostic 
     struct a04_render_fixed_command_input ci={G+0x40000,G,G+0x40100,G+0x41000,P+0x5c0,P+0x5a0,P+0x590,P+0x590,P+0x600};
     struct a04_render_owned_range r[A04_RENDER_MAX_MAPS];struct rogue_fwif_cmd_geom geom;struct rogue_fwif_cmd_frag frag;
     NTSTATUS status=STATUS_INVALID_PARAMETER;unsigned i,x,y;const uint8_t *pixels;
-    if (!d || !s || d->stage || d->memory.cpu || KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_INVALID_PARAMETER;
+    if (!d || !s || (clear_only!=FALSE && clear_only!=TRUE) || prior==d || d->stage || d->memory.cpu || KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_INVALID_PARAMETER;
+    if(prior && (!prior->memory.cpu || !prior->memory.completion_observed || !prior->memory.cleanup_complete || prior->memory.poisoned)) return STATUS_INVALID_DEVICE_STATE;
     m=&d->memory;d->result=STATUS_INVALID_DEVICE_STATE;
-    STEP(1,a04_windows_render_memory_create(m,s,PAGES,maps,sizeof(maps)/sizeof(maps[0])));
+    STEP(1,a04_windows_render_memory_create_disjoint(m,s,PAGES,maps,sizeof(maps)/sizeof(maps[0]),prior?&prior->memory:NULL));
     STEP(2,a04_windows_render_memory_bind_vm(m));
     STEP(3,a04_windows_render_stage_static_heap_programs(m));
     for(i=0;i<2;++i) {
@@ -100,7 +103,7 @@ NTSTATUS a04_windows_render_diagnostic_run(struct a04_windows_render_diagnostic 
     }
     cs.vdm_state=G+0x45000;cs.geom_state=G+0x45100;
     STEP(10,a04_windows_render_make_bounded_static(m,&cs,&state));
-    STEP(11,a04_windows_render_prepare_context(m,1,G+0x45400,4,&state));
+    STEP(11,a04_windows_render_prepare_context(m,clear_only?2u:1u,G+0x45400,4,&state));
     STEP(12,a04_windows_render_prepare_freelists(m,fl));
     hw.width=64;hw.height=64;hw.tpc_size=128;hw.region_header_size=16;hw.tpc_gpu=G+0x46000;
     hw.vheap_gpu=G+0x46100;hw.region_gpu=R;hw.pm_mlist_gpu=G+0x47000;
@@ -116,11 +119,13 @@ NTSTATUS a04_windows_render_diagnostic_run(struct a04_windows_render_diagnostic 
     STEP(22,a04_windows_render_stage_fixed_eot(m,U+0xec0,G+0x41000));
     STEP(23,a04_windows_render_stage_pixel_event(m,P+0x600,U+0xec0));
     STEP(24,a04_windows_render_stage_fixed_ppp(m,&pp,P+0x640,P+0x6b0));
-    STEP(25,a04_windows_render_stage_fixed_vdm(m,&vd,G+0x40000));
+    if(clear_only) { STEP(25,a04_windows_render_stage_clear_vdm(m,&vd,G+0x40000)); }
+    else { STEP(25,a04_windows_render_stage_fixed_vdm(m,&vd,G+0x40000)); }
     STEP(26,a04_windows_render_stage_fixed_scissor(m,G+0x40100));
-    ranges(m,r);STEP(27,verify_fixed(m,r,&pp,&vd));
+    ranges(m,r);STEP(27,verify_fixed(m,r,&pp,&vd,clear_only));
     STEP(33,initialize_target(m));
     if (a04_render_make_fixed_commands(&ci,r,m->map_count,&geom,&frag)) { status=STATUS_INVALID_DEVICE_STATE;goto fail; }
+    if(clear_only) geom.regs.vdm_context_resume_task0_size=UINT32_C(0x20000000);
     STEP(28,a04_windows_render_prepare_partial_pair(m,&geom,&frag,&frag,1));
     STEP(29,a04_windows_render_publish_context(m));
     STEP(30,a04_windows_render_submit_pair(m));
@@ -136,13 +141,15 @@ NTSTATUS a04_windows_render_diagnostic_run(struct a04_windows_render_diagnostic 
         if(bg) { ++d->background_pixels;d->background_rows[y][x/32u]|=1u<<(x%32u); }
         else if(tri) { ++d->triangle_pixels;d->triangle_rows[y][x/32u]|=1u<<(x%32u); }
         else { ++d->other_pixels; if(sentinel) ++d->sentinel_pixels; if(zero) { ++d->zero_pixels;d->zero_rows[y][x/32u]|=1u<<(x%32u); } }
-        edge=x>=8u && x<49u && y>=8u && x+y==63u;
-        inside=x>=8u && x<49u && y>=8u && x+y<63u;
+        edge=!clear_only && x>=8u && x<49u && y>=8u && x+y==63u;
+        inside=!clear_only && x>=8u && x<49u && y>=8u && x+y<63u;
         if(!edge && ((inside && !tri) || (!inside && !bg))) ++d->spatial_mismatch;
     }
-    d->stage=32;status=(d->background_pixels && d->triangle_pixels>=1107u && d->triangle_pixels<=1148u &&
-        !d->other_pixels && !d->spatial_mismatch) ? STATUS_SUCCESS : STATUS_DATA_ERROR;
+    d->stage=32;status=(clear_only ? (d->background_pixels==4096u && !d->other_pixels && !d->triangle_pixels) :
+        (d->background_pixels && d->triangle_pixels>=1107u && d->triangle_pixels<=1148u && !d->other_pixels && !d->spatial_mismatch)) ? STATUS_SUCCESS : STATUS_DATA_ERROR;
 fail:
     d->result=status;return status;
 }
+NTSTATUS a04_windows_render_diagnostic_run(struct a04_windows_render_diagnostic *d,struct a04_gpu_firmware_state *s)
+{ return a04_windows_render_diagnostic_case(d,s,FALSE,NULL); }
 #endif

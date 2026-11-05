@@ -13,8 +13,10 @@ static unsigned kick_calls,kick_fail,kick_fail_at;
 static struct a04_windows_render_diagnostic *diagnostic_mock;
 static unsigned diagnostic_wrong_pixels;
 static unsigned diagnostic_target_synced;
+static unsigned separate_dma;
 static void *alloc_buf(PDMA_ADAPTER a,ULONG n,PHYSICAL_ADDRESS *pa,BOOLEAN cache)
-{ (void)a;(void)cache;pa->QuadPart=0x10000000u;++allocated;return aligned_alloc(4096,n); }
+{ void *p;(void)a;(void)cache;pa->QuadPart=separate_dma==1?0x20000000u+(allocated&1u)*0x01000000u:0x10000000u;++allocated;
+  p=aligned_alloc(4096,n);if(p && separate_dma==2) memset(p,0x5c,n);return p; }
 static void free_buf(PDMA_ADAPTER a,ULONG n,PHYSICAL_ADDRESS pa,void *p,BOOLEAN cache)
 { (void)a;(void)n;(void)pa;(void)cache;++freed;free(p); }
 unsigned KeGetCurrentIrql(void) { return PASSIVE_LEVEL; }
@@ -50,6 +52,7 @@ NTSTATUS a04_gpu_firmware_submit_kick(struct a04_gpu_firmware_state *s,const str
     for(y=0;y<64;++y) for(x=0;x<64;++x) { unsigned tx=diagnostic_wrong_pixels==2 ? 63-x : diagnostic_wrong_pixels==3 ? y : x; unsigned ty=diagnostic_wrong_pixels==3 ? x : y; int inside=tx>=8 && tx<49 && ty>=8 && tx+ty<63; i=y*64u+x;
       if(diagnostic_wrong_pixels==4) { memset(p+4*i,0,4);continue; }
       if(diagnostic_wrong_pixels==5 && (x>=32 || y>=32)) continue;
+      if(diagnostic_wrong_pixels==6) inside=0;
       p[4*i]=diagnostic_wrong_pixels==1?0:(inside?0xff:0x22);p[4*i+1]=inside?0:0x44;p[4*i+2]=inside?0xff:0x66;p[4*i+3]=0xff; }
   }
   return kick_fail || kick_calls==kick_fail_at ? STATUS_IO_TIMEOUT : STATUS_SUCCESS; }
@@ -577,6 +580,8 @@ int main(void)
       diagnostic_mock=NULL;s.processor_released=FALSE;assert(a04_windows_render_memory_free(&d.memory,TRUE)==STATUS_SUCCESS); }
     { struct a04_windows_render_diagnostic d={0};s.processor_released=TRUE;cleanup_calls=0;kick_calls=0;kick_fail_at=1;diagnostic_mock=&d;
       assert(a04_windows_render_diagnostic_run(&d,&s)==STATUS_IO_TIMEOUT && d.stage==30 && d.memory.poisoned && !d.memory.cleanup_complete);
+      { struct a04_windows_render_diagnostic next={0};unsigned before=allocated;
+        assert(a04_windows_render_diagnostic_case(&next,&s,TRUE,&d)==STATUS_INVALID_DEVICE_STATE && !next.memory.cpu && allocated==before); }
       assert(a04_windows_render_memory_free(&d.memory,TRUE)==STATUS_DEVICE_BUSY);
       diagnostic_mock=NULL;kick_fail_at=0;s.processor_released=FALSE;assert(a04_windows_render_memory_free(&d.memory,TRUE)==STATUS_SUCCESS); }
     { struct a04_windows_render_diagnostic d={0};s.processor_released=TRUE;cleanup_calls=0;kick_calls=0;cleanup_fail_at=3;diagnostic_mock=&d;
@@ -599,6 +604,21 @@ int main(void)
       assert(a04_windows_render_diagnostic_run(&d,&s)==STATUS_DATA_ERROR && d.stage==32 && d.sentinel_pixels==3072 && d.zero_pixels==0);
       assert(d.background_pixels==448 && d.triangle_pixels==576 && d.other_pixels==3072);
       diagnostic_mock=NULL;diagnostic_wrong_pixels=0;s.processor_released=FALSE;assert(a04_windows_render_memory_free(&d.memory,TRUE)==STATUS_SUCCESS); }
+    { struct a04_windows_render_diagnostic a={0},b={0};unsigned sync_before=diagnostic_target_synced;s.processor_released=TRUE;cleanup_calls=0;kick_calls=0;separate_dma=1;
+      diagnostic_mock=&a;assert(a04_windows_render_diagnostic_case(&a,&s,FALSE,NULL)==STATUS_SUCCESS);
+      diagnostic_wrong_pixels=6;diagnostic_mock=&b;assert(a04_windows_render_diagnostic_case(&b,&s,TRUE,&a)==STATUS_SUCCESS);
+      assert(diagnostic_target_synced==sync_before+2u);
+      assert(b.background_pixels==4096 && !b.triangle_pixels && !b.sentinel_pixels && b.memory.cleanup_complete);
+      { const uint8_t *v=(const uint8_t *)b.memory.cpu+A04_RENDER_PAYLOAD_OFFSET+64u*4096u;
+        assert(v[0]==0xdau && v[1]==3u && v[4]==0xb0u && v[5]==6u && v[11]==0xc0u && !v[12]); }
+      diagnostic_mock=NULL;diagnostic_wrong_pixels=0;separate_dma=0;s.processor_released=FALSE;
+      assert(a04_windows_render_memory_free(&a.memory,TRUE)==STATUS_SUCCESS && a04_windows_render_memory_free(&b.memory,TRUE)==STATUS_SUCCESS); }
+    { struct a04_windows_render_diagnostic a={0},b={0};s.processor_released=TRUE;cleanup_calls=0;kick_calls=0;
+      diagnostic_mock=&a;assert(a04_windows_render_diagnostic_case(&a,&s,FALSE,NULL)==STATUS_SUCCESS);
+      separate_dma=2;diagnostic_mock=&b;assert(a04_windows_render_diagnostic_case(&b,&s,TRUE,&a)==STATUS_DEVICE_CONFIGURATION_ERROR);
+      assert(b.stage==1 && kick_calls==2 && ((uint8_t *)b.memory.cpu)[0]==0x5c);
+      diagnostic_mock=NULL;separate_dma=0;s.processor_released=FALSE;
+      assert(a04_windows_render_memory_free(&a.memory,TRUE)==STATUS_SUCCESS && a04_windows_render_memory_free(&b.memory,TRUE)==STATUS_SUCCESS); }
     free(s.memory.heap);
     return 0;
 }
