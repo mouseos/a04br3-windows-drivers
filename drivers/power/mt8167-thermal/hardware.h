@@ -15,5 +15,7 @@ struct a04_thermal_hw {
  int (*delay_us)(void *,unsigned);
 };
 int a04_thermal_hw_init(const struct a04_thermal_hw *);
+/* Returns success only after pause, disable and AHB-idle observations. */
+int a04_thermal_hw_quiesce(const struct a04_thermal_hw *);
 int a04_thermal_hw_protect(const struct a04_thermal_hw *, const struct a04_thermal_cal *, int32_t);
 #endif
