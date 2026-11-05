@@ -8,4 +8,9 @@
  * AllocateCommonBuffer(..., FALSE) is not that proof on Windows ARM. */
 NTSTATUS a04_vendor_m1_11_windows_fence(struct a04_vendor_start *start,
     uint32_t data_master,BOOLEAN coherent_or_uncached);
+/* Stop accepting work before calling. Firmware acknowledgement is only one
+ * step of shutdown: IRQ/fabric drain is not yet implemented, so all DMA
+ * buffers stay hardware-owned even after STATUS_SUCCESS. */
+NTSTATUS a04_vendor_m1_11_windows_power_off(struct a04_vendor_start *start,
+    BOOLEAN coherent_or_uncached);
 #endif

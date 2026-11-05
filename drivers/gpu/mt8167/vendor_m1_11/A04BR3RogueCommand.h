@@ -93,6 +93,62 @@ static inline int a04_rgx_command_fence(struct a04_rgx_fw_runtime *r,
     }
     state->poisoned=true;return A04_CCB_TIMEOUT;
 }
+
+/* m1.11 rgxpower.c RGXPrePowerState: publish POW_OFF_REQ, then require both
+ * queue consumption and the dedicated power sync value, plus OFF state.
+ * The shared queue must be coherent or uncached, as for the fence above.
+ * A firmware acknowledgement alone does NOT prove fabric drain or permit DMA
+ * buffer reclamation; IRQ drain and RGXStop checks remain separate duties. */
+static inline int a04_rgx_command_power_off(struct a04_rgx_fw_runtime *r,
+    struct a04_rgx_command_state *state,const struct a04_rgx_command_io *io,
+    uint32_t polls,uint32_t delay_us)
+{
+    RGXFWIF_CCB_CTL *ctl,*fctl;RGXFWIF_KCCB_CMD *cmds,cmd={0};
+    volatile uint32_t *sync;uint32_t read,write,next;
+    if(!r || !state || !io || !io->publish || !io->acquire || !io->kick || !io->wait_us ||
+       !r->init || !r->trace || !r->osconfig || !polls || !delay_us ||
+       delay_us>1000 || polls>100000/delay_us) return A04_CCB_INPUT;
+    if(state->poisoned) return A04_CCB_OFFLINE;
+    ctl=(RGXFWIF_CCB_CTL *)a04_rgx_command_memory(r,r->init->psKernelCCBCtl.ui32Addr,16);
+    cmds=(RGXFWIF_KCCB_CMD *)a04_rgx_command_memory(r,r->init->psKernelCCB.ui32Addr,128*56);
+    fctl=(RGXFWIF_CCB_CTL *)a04_rgx_command_memory(r,r->init->psFirmwareCCBCtl.ui32Addr,16);
+    if(!ctl || ctl!=r->kctl || !cmds || cmds!=r->kcommands || !fctl || fctl!=r->fctl ||
+       a04_rgx_command_memory(r,r->init->sOSConfig.ui32Addr,sizeof(*r->osconfig))!=r->osconfig ||
+       a04_rgx_command_memory(r,r->init->sTraceBufCtl.ui32Addr,sizeof(*r->trace))!=r->trace) return A04_CCB_INPUT;
+    sync=(volatile uint32_t *)a04_rgx_command_memory(r,r->osconfig->sPowerSync.ui32Addr,4);
+    if(!sync || sync!=r->power_sync) return A04_CCB_INPUT;
+    io->acquire(io->context);
+    read=ctl->ui32ReadOffset;write=ctl->ui32WriteOffset;
+    if(ctl->ui32WrapMask!=127 || ctl->ui32CmdSize!=56 || read>127 || write>127 ||
+       fctl->ui32WrapMask!=31 || fctl->ui32CmdSize!=40 ||
+       fctl->ui32ReadOffset>31 || fctl->ui32WriteOffset>31) {
+        state->poisoned=true;return A04_CCB_CORRUPT;
+    }
+    if(fctl->ui32ReadOffset!=fctl->ui32WriteOffset) return A04_CCB_FW_REQUEST;
+    next=(write+1)&127;
+    if(next==read) return A04_CCB_FULL;
+    if(read!=write) {state->poisoned=true;return A04_CCB_CORRUPT;}
+    /* Reject the initial zero/OFF state: it cannot prove a transition. */
+    if(r->trace->ePowState!=RGXFWIF_POW_ON && r->trace->ePowState!=RGXFWIF_POW_IDLE &&
+       r->trace->ePowState!=RGXFWIF_POW_FORCED_IDLE) return A04_CCB_INPUT;
+    *sync=0;cmd.eCmdType=RGXFWIF_KCCB_CMD_POW;cmd.eDM=A04_RGX_DM_GP;
+    cmd.uCmdData.sPowData.ePowType=RGXFWIF_POW_OFF_REQ;
+    cmd.uCmdData.sPowData.uPoweReqData.bForced=0;
+    cmds[write]=cmd;io->publish(io->context);
+    ctl->ui32WriteOffset=next;(void)ctl->ui32WriteOffset;io->publish(io->context);
+    io->kick(io->context,0x0b00,0x10);
+    for(uint32_t i=0;i<polls;i++) {
+        uint32_t value,done;io->acquire(io->context);
+        value=*sync;done=ctl->ui32ReadOffset;
+        if(done>127 || value>1 || ctl->ui32WriteOffset!=next ||
+           ctl->ui32WrapMask!=127 || ctl->ui32CmdSize!=56) {
+            state->poisoned=true;return A04_CCB_CORRUPT;
+        }
+        if(value==1 && done==next && r->trace->ePowState==RGXFWIF_POW_OFF) return A04_CCB_OK;
+        io->wait_us(io->context,delay_us);
+    }
+    state->poisoned=true;return A04_CCB_TIMEOUT;
+}
 _Static_assert(sizeof(RGXFWIF_KCCB_CMD)==56 && sizeof(RGXFWIF_CCB_CTL)==16,"KCCB ABI");
 _Static_assert((unsigned)RGXFWIF_KCCB_CMD_SYNC==0x2abc0068U,"DDK SYNC opcode");
 #endif

@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,7 +31,10 @@ void KeStallExecutionProcessor(unsigned us)
     if (simulate_fence && sim_memory && sim_memory->runtime->kctl->ui32ReadOffset!=sim_memory->runtime->kctl->ui32WriteOffset) {
         struct a04_rgx_fw_runtime *r=sim_memory->runtime;
         RGXFWIF_KCCB_CMD *cmd=&r->kcommands[r->kctl->ui32ReadOffset];
-        *r->command_sync=cmd->uCmdData.sSyncData.uiUpdateVal;
+        if(cmd->eCmdType==RGXFWIF_KCCB_CMD_POW) {
+            assert(cmd->uCmdData.sPowData.ePowType==RGXFWIF_POW_OFF_REQ);
+            *r->power_sync=1;r->trace->ePowState=RGXFWIF_POW_OFF;
+        } else *r->command_sync=cmd->uCmdData.sSyncData.uiUpdateVal;
         r->kctl->ui32ReadOffset=r->kctl->ui32WriteOffset;
     }
     if (++delays==3 && simulate_ready && sim_memory) {
@@ -110,7 +114,15 @@ int main(int argc,char **argv)
     if(a04_vendor_m1_11_windows_fence(&start,A04_RGX_DM_GP,FALSE)!=STATUS_NOT_SUPPORTED || start.command_sequence) return 26;
     simulate_fence=1;
     if(a04_vendor_m1_11_windows_fence(&start,A04_RGX_DM_GP,TRUE)!=STATUS_SUCCESS || start.command_sequence!=1) return 27;
+    if(a04_vendor_m1_11_windows_power_off(&start,TRUE)!=STATUS_INVALID_PARAMETER || !start.online) return 28;
+    m.runtime->trace->ePowState=RGXFWIF_POW_ON;
+    if(a04_vendor_m1_11_windows_power_off(&start,TRUE)!=STATUS_SUCCESS || start.online || !m.hardware_owned || *m.runtime->power_sync!=1) return 29;
+    if(a04_vendor_m1_11_windows_fence(&start,A04_RGX_DM_GP,TRUE)!=STATUS_DEVICE_NOT_READY) return 30;
     simulate_fence=0;
+    /* A lost firmware acknowledgement quarantines the synthetic queue and
+     * leaves every DMA allocation owned, even if OFF was requested. */
+    start.online=TRUE;m.runtime->trace->ePowState=RGXFWIF_POW_ON;
+    if(a04_vendor_m1_11_windows_power_off(&start,TRUE)!=STATUS_IO_TIMEOUT || start.online || !start.command_poisoned || !m.hardware_owned) return 31;
     if(a04_vendor_m1_11_windows_free(&m)!=STATUS_DEVICE_BUSY || freed!=1) return 8;
     /* Test-only teardown after the simulated device has stopped. */
     release(&adapter,0x8000,start.trampoline_logical,start.trampoline_allocation,FALSE);

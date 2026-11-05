@@ -35,3 +35,25 @@ NTSTATUS a04_vendor_m1_11_windows_fence(struct a04_vendor_start *s,
     else status=STATUS_IO_DEVICE_ERROR;
     return status;
 }
+NTSTATUS a04_vendor_m1_11_windows_power_off(struct a04_vendor_start *s,
+    BOOLEAN coherent_or_uncached)
+{
+    struct a04_rgx_command_io io;struct a04_rgx_command_state state;int result;
+    if(!s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !s->online || !s->attempted ||
+       !s->memory || !s->memory->hardware_owned || !s->memory->runtime || !s->core)
+        return STATUS_DEVICE_NOT_READY;
+    if(coherent_or_uncached!=TRUE) return STATUS_NOT_SUPPORTED;
+    if(InterlockedCompareExchange(&s->command_busy,1,0)!=0) return STATUS_DEVICE_BUSY;
+    state.sequence=s->command_sequence;state.poisoned=s->command_poisoned!=FALSE;
+    io.context=s;io.publish=fence_barrier;io.acquire=fence_barrier;io.kick=fence_kick;io.wait_us=fence_wait;
+    result=a04_rgx_command_power_off(s->memory->runtime,&state,&io,10000,10);
+    s->command_sequence=state.sequence;s->command_poisoned=state.poisoned?TRUE:FALSE;
+    if(result==A04_CCB_OK || result==A04_CCB_TIMEOUT || result==A04_CCB_CORRUPT)
+        s->online=FALSE;
+    InterlockedExchange(&s->command_busy,0);
+    if(result==A04_CCB_OK) return STATUS_SUCCESS;
+    if(result==A04_CCB_TIMEOUT) return STATUS_IO_TIMEOUT;
+    if(result==A04_CCB_FULL || result==A04_CCB_BUSY) return STATUS_DEVICE_BUSY;
+    if(result==A04_CCB_INPUT) return STATUS_INVALID_PARAMETER;
+    return STATUS_IO_DEVICE_ERROR;
+}
