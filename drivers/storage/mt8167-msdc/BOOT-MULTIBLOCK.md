@@ -112,3 +112,9 @@ mapping を保持できること、最終 callback と worker の内部待ちに
 構成は変更しない。ただし worker の制御状態、MMIO、元 SRB の調停、および Storport
 API は依然 extension に依存する。これは worker 全体の独立や PnP 後の安全な実行を
 保証しない。final callback の rundown と実電源所有は未解決で、起動ゲートを維持する。
+
+所有 DMA 構成では、worker shadow に加えて要求ゲート、取消し、DMA/MMIO の寿命状態、
+保留 SRB ポインタ、隔離 MDL と MMIO アドレスのコピーを別途確保した所有オブジェクトに
+置く。非所有構成の状態配置は従来どおり。これは MMIO mapping 自体の所有や、worker の
+Storport API 呼出しを独立させるものではない。最終 callback は引き続き rundown を待ち、
+停止不能 DMA の mapping、実電源とクロックの所有・再開は未保証。起動拒否を維持する。
