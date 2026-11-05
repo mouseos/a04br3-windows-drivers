@@ -180,6 +180,13 @@ int main(int argc,char **argv)
        m.runtime->config.cpu!=m.buffers[4].cpu ||
        (uintptr_t)m.runtime->trace->sTraceBuf[0].pui32TraceBuffer<(uintptr_t)m.buffers[3].cpu ||
        (uintptr_t)m.runtime->trace->sTraceBuf[0].pui32TraceBuffer>=(uintptr_t)m.buffers[3].cpu+A04_RGX_MAIN_BYTES) return 38;
-    if(a04_vendor_m1_11_windows_free(&m)!=STATUS_SUCCESS || freed!=5 || pools) return 39;
+    registers=calloc(1,0x80000);if(!registers) return 39;
+    memset(&start,0,sizeof(start));sim_memory=&m;simulate_ready=1;delays=0;
+    if(a04_vendor_m1_11_windows_start(&start,&m,registers,0x80000,0x001600280036001eULL,&power,TRUE)!=STATUS_SUCCESS ||
+       !m.hardware_owned || !start.online || syncs) return 40;
+    release(&adapter,0x8000,start.trampoline_logical,start.trampoline_allocation,FALSE);
+    m.hardware_owned=FALSE;
+    if(a04_vendor_m1_11_windows_free(&m)!=STATUS_SUCCESS || freed!=6 || pools) return 41;
+    free(registers);sim_memory=NULL;
     free(image);free(code);free(data);puts("GE8300 vendor m1.11 staging OK");return 0;
 }

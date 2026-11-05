@@ -3,6 +3,7 @@
 #include "A04BR3RogueRuntimeLayout.h"
 #include "A04BR3RogueStartupExecutor.h"
 #include "A04BR3RogueDeviceWords.h"
+#include "windows_uncached.h"
 #include "../windows_hw.h"
 #define TRAMPOLINE_BYTES 0x4000u
 #define TRAMPOLINE_ALLOCATION (2u*TRAMPOLINE_BYTES)
@@ -35,7 +36,8 @@ static uint32_t shared(void *ctx,uint32_t physical)
     if (physical<b->dma || (physical&3u)) return 0xffffffffu;
     offset=(uint64_t)physical-b->dma;
     if (offset>b->bytes-4u) return 0xffffffffu;
-    io->sync_status=a04_gpu_dma_sync((unsigned char *)b->cpu+(size_t)offset,4,TRUE);
+    io->sync_status=io->owner->memory->uncached ? STATUS_SUCCESS :
+        a04_gpu_dma_sync((unsigned char *)b->cpu+(size_t)offset,4,TRUE);
     if (!NT_SUCCESS(io->sync_status)) return 0xffffffffu;
     a04_gpu_dma_barrier();
     return *(volatile uint32_t *)((unsigned char *)b->cpu+(size_t)offset);
@@ -62,9 +64,15 @@ NTSTATUS a04_vendor_m1_11_windows_start(struct a04_vendor_start *s,
        observed_bvnc!=0x001600280036001eULL || !m->runtime || !m->runtime->init)
         return STATUS_INVALID_DEVICE_STATE;
     s->memory=m;s->core=core;
-    s->trampoline_allocation=m->adapter->DmaOperations->AllocateCommonBuffer(m->adapter,
+    if(m->uncached) {
+        struct a04_vendor_uncached allocation={0};
+        status=a04_vendor_uncached_allocate(&allocation,m->adapter,TRAMPOLINE_ALLOCATION);
+        if(!NT_SUCCESS(status)) return status;
+        s->trampoline_allocation=allocation.cpu;s->trampoline_logical=allocation.logical;
+    } else s->trampoline_allocation=m->adapter->DmaOperations->AllocateCommonBuffer(m->adapter,
         TRAMPOLINE_ALLOCATION,&s->trampoline_logical,FALSE);
     if(!s->trampoline_allocation) return STATUS_INSUFFICIENT_RESOURCES;
+    status=STATUS_DEVICE_CONFIGURATION_ERROR;
     addr=(uint64_t)s->trampoline_logical.QuadPart;
     off=(0u-addr)&(TRAMPOLINE_BYTES-1u);
     if(addr>UINT64_MAX-off || (uintptr_t)s->trampoline_allocation>UINTPTR_MAX-(uintptr_t)off) goto fail;
@@ -74,8 +82,15 @@ NTSTATUS a04_vendor_m1_11_windows_start(struct a04_vendor_start *s,
        a04_rgx_fw_overlap(s->trampoline_dma,TRAMPOLINE_BYTES,0x1fc00000u,TRAMPOLINE_BYTES)) goto fail;
     for(i=0;i<5;i++) if(a04_rgx_fw_overlap(s->trampoline_dma,TRAMPOLINE_BYTES,m->buffers[i].dma,m->buffers[i].bytes) ||
        a04_rgx_fw_alias(s->trampoline_cpu,TRAMPOLINE_BYTES,m->buffers[i].cpu,m->buffers[i].bytes)) goto fail;
-    RtlZeroMemory(s->trampoline_cpu,TRAMPOLINE_BYTES);
-    status=a04_gpu_dma_sync(s->trampoline_cpu,TRAMPOLINE_BYTES,FALSE);
+    if(m->uncached) {
+        volatile uint32_t *words=(volatile uint32_t *)s->trampoline_cpu;
+        if((uintptr_t)words&3u) goto fail;
+        for(i=0;i<TRAMPOLINE_BYTES/sizeof(*words);i++) words[i]=0;
+        a04_gpu_dma_barrier();status=STATUS_SUCCESS;
+    } else {
+        RtlZeroMemory(s->trampoline_cpu,TRAMPOLINE_BYTES);
+        status=a04_gpu_dma_sync(s->trampoline_cpu,TRAMPOLINE_BYTES,FALSE);
+    }
     if(!NT_SUCCESS(status)) goto fail;
     input.bvnc=observed_bvnc;input.table_pa=m->buffers[0].dma;input.code_pa=m->buffers[1].dma;
     input.data_pa=m->buffers[2].dma;input.init_pa=m->buffers[4].dma;
@@ -105,7 +120,7 @@ NTSTATUS a04_vendor_m1_11_windows_start(struct a04_vendor_start *s,
         if(!result) {
             RGXFWIF_COMPCHECKS *c=&m->runtime->init->sRGXCompChecks;
             RGXFWIF_COMPCHECKS snapshot;
-            status=a04_gpu_dma_sync(c,sizeof(*c),TRUE);
+            status=m->uncached ? STATUS_SUCCESS : a04_gpu_dma_sync(c,sizeof(*c),TRUE);
             if(!NT_SUCCESS(status) || a04_rgx_device_read_words(&snapshot,c,sizeof(snapshot)) ||
                snapshot.ui32DDKVersion!=0x1000b || snapshot.ui32DDKBuild!=5425693 ||
                snapshot.ui32FWProcessorVersion!=1 || snapshot.sFWBVNC.ui32LayoutVersion!=3 ||
