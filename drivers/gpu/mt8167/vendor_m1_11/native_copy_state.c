@@ -65,3 +65,40 @@ int a04_vendor_copy_kick_build(struct a04_vendor_copy_kick_image *out,
     image.raw50=(UINT64_C(1)<<55)|(UINT64_C(1)<<16)|1u;
     *out=image;return 0;
 }
+
+uint32_t a04_vendor_copy_pattern(uint32_t index)
+{ return 0x5a00c3a5u ^ (index * 0x9e3779b1u); }
+
+int a04_vendor_copy_check(struct a04_vendor_copy_check_result *out,
+    const uint32_t *source,const uint32_t *destination,const uint32_t *shared,
+    size_t snapshot_words,const struct a04_vendor_copy_state *state)
+{
+    struct a04_vendor_copy_check_result result={0,0,0,
+        A04_VENDOR_COPY_NO_MISMATCH,A04_VENDOR_COPY_NO_MISMATCH,A04_VENDOR_COPY_NO_MISMATCH};
+    uintptr_t p[5];size_t n[5]={sizeof(*out),4096,4096,4096,sizeof(*state)};
+    unsigned i,j;
+    if(snapshot_words!=A04_VENDOR_COPY_WORDS)return 1;
+    p[0]=(uintptr_t)out;p[1]=(uintptr_t)source;p[2]=(uintptr_t)destination;
+    p[3]=(uintptr_t)shared;p[4]=(uintptr_t)state;
+    for(i=0;i<5;i++) {
+        if(!p[i] || (p[i]&3u) || p[i]>UINTPTR_MAX-n[i])return 1;
+        for(j=0;j<i;j++)if(overlaps(p[i],n[i],p[j],n[j]))return 1;
+    }
+    for(i=0;i<A04_VENDOR_COPY_WORDS;i++) {
+        uint32_t expected=a04_vendor_copy_pattern(i);
+        uint32_t shared_expected=i<9 ? state->shared[i] : 0xa5a5a5a5u;
+        if(source[i]!=expected) {
+            if(!result.source_mismatches)result.source_first=i;
+            result.source_mismatches++;
+        }
+        if(destination[i]!=expected) {
+            if(!result.destination_mismatches)result.destination_first=i;
+            result.destination_mismatches++;
+        }
+        if(shared[i]!=shared_expected) {
+            if(!result.shared_mismatches)result.shared_first=i;
+            result.shared_mismatches++;
+        }
+    }
+    *out=result;return 0;
+}

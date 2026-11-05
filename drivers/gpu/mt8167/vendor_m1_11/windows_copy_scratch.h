@@ -16,6 +16,7 @@ struct a04_vendor_copy_scratch {
     struct a04_vendor_copy_state state;
     _Alignas(8) struct a04_vendor_copy_kick_image kick;
     uint32_t eot_pds[16], eot_usc[3], destination_csr[4];
+    uint32_t tile_raw04, tile_raw18, tile_raw20;
     uint32_t eot_raw28, eot_raw2c, eot_raw30; /* partial task fields */
     uint64_t raw60; /* only for independent source/destination mappings */
     BOOLEAN prepared,exposed;

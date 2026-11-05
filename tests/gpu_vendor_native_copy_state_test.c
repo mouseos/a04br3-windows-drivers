@@ -49,5 +49,29 @@ int main(void)
         k.usc_offset=128;k.fragment_offset=65504;
         assert(a04_vendor_copy_kick_build(&image,&k) && !memcmp(&image,&old,sizeof(image)));
     }
+    {
+        uint32_t source[1024],destination[1024],shared[1024];unsigned i;
+        struct a04_vendor_copy_check_result result,old;
+        struct a04_vendor_copy_state_input fixed={A04_VENDOR_RENDER_SCRATCH_VA,
+            A04_VENDOR_RENDER_SCRATCH_VA+4096,A04_VENDOR_RENDER_SCRATCH_VA+8192};
+        assert(!a04_vendor_copy_state_build(&out,&fixed));
+        for(i=0;i<1024;i++) {
+            source[i]=a04_vendor_copy_pattern(i);destination[i]=source[i];
+            shared[i]=i<9?out.shared[i]:0xa5a5a5a5u;
+        }
+        assert(source[0]!=source[256] && source[0]!=source[1023]);
+        assert(!a04_vendor_copy_check(&result,source,destination,shared,1024,&out));
+        assert(!result.source_mismatches && !result.destination_mismatches && !result.shared_mismatches &&
+            result.source_first==1024 && result.destination_first==1024 && result.shared_first==1024);
+        source[5]^=1;destination[5]^=1;destination[1023]^=1;shared[8]^=1;shared[1023]^=1;
+        assert(!a04_vendor_copy_check(&result,source,destination,shared,1024,&out));
+        assert(result.source_mismatches==1 && result.source_first==5 &&
+            result.destination_mismatches==2 && result.destination_first==5 &&
+            result.shared_mismatches==2 && result.shared_first==8);
+        old=result;
+        assert(a04_vendor_copy_check(&result,source,destination,shared,1023,&out) && !memcmp(&result,&old,sizeof(result)));
+        assert(a04_vendor_copy_check(&result,source,source,shared,1024,&out) && !memcmp(&result,&old,sizeof(result)));
+        assert(a04_vendor_copy_check(&result,source,destination,NULL,1024,&out) && !memcmp(&result,&old,sizeof(result)));
+    }
     return 0;
 }

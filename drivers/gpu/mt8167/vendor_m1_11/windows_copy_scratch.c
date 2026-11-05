@@ -99,6 +99,10 @@ NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *o,
     for(i=0;i<16;i++)o->eot_pds[i]=eot.pds[i];
     for(i=0;i<3;i++)o->eot_usc[i]=eot.usc[i];
     for(i=0;i<4;i++)o->destination_csr[i]=eot.payload[32+i];
+    /* Fixed native22 profile: source property 0 maps to one output slot
+     * (FUN_12e318 table[0]); full 32x32 clip yields the same 2x2 tiles as
+     * the restricted clear image. These are partial fields, not a task. */
+    o->tile_raw04=eot.payload[1];o->tile_raw18=eot.payload[6];o->tile_raw20=eot.payload[8];
     /* FUN_129f88/13c634: single output, five data words padded to eight,
      * then two code words; offsets are relative to the PDS heap. */
     o->eot_raw28=eot.payload[10];
@@ -110,7 +114,7 @@ NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *o,
     if(pds_region(o,0,1)) {o->render=NULL;status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;}
     o->render=NULL;
     for(i=0;i<PAGE_BYTES/4u;i++) {
-        ((volatile uint32_t*)o->source.cpu)[i]=0x5a00c3a5u^(i*0x01010101u);
+        ((volatile uint32_t*)o->source.cpu)[i]=a04_vendor_copy_pattern(i);
         ((volatile uint32_t*)o->destination.cpu)[i]=0xa5a5a5a5u;
         ((volatile uint32_t*)o->shared.cpu)[i]=0xa5a5a5a5u;
     }

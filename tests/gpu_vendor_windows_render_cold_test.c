@@ -84,12 +84,25 @@ int main(void)
         assert(!memcmp((UCHAR*)pds+256,scratch.state.pds_data,16));
         assert(!memcmp((UCHAR*)pds+272,scratch.state.pds_code,16));
         assert(scratch.eot_pds[2]==(uint32_t)(A04_VENDOR_COPY_DEST_VA>>2));
+        assert(scratch.tile_raw04==0x1ffcu && scratch.tile_raw18==0x20002u && scratch.tile_raw20==0xa3000u);
         assert(scratch.eot_raw28==0x202u && scratch.eot_raw2c==96u && scratch.eot_raw30==64u && scratch.raw60==3u);
         assert(!((uint32_t*)r.buffer[10].cpu)[128/4]); /* no background USC supplied */
+        {
+            struct a04_vendor_copy_check_result check;
+            assert(!a04_vendor_copy_check(&check,scratch.source.cpu,scratch.destination.cpu,scratch.shared.cpu,1024,&scratch.state));
+            assert(!check.source_mismatches && check.destination_mismatches==1024 && !check.shared_mismatches);
+            memcpy(scratch.destination.cpu,scratch.source.cpu,4096); /* host fixture, not GPU */
+            assert(!a04_vendor_copy_check(&check,scratch.source.cpu,scratch.destination.cpu,scratch.shared.cpu,1024,&scratch.state));
+            assert(!check.source_mismatches && !check.destination_mismatches && !check.shared_mismatches);
+            ((uint32_t*)scratch.shared.cpu)[1023]^=1;
+            assert(!a04_vendor_copy_check(&check,scratch.source.cpu,scratch.destination.cpu,scratch.shared.cpu,1024,&scratch.state));
+            assert(check.shared_mismatches==1 && check.shared_first==1023);
+            ((uint32_t*)scratch.shared.cpu)[1023]^=1;
+        }
         pds[64/4]^=1;
         assert(a04_vendor_copy_scratch_release(&scratch)==STATUS_INVALID_DEVICE_STATE && frees==oldfrees);
         pds[64/4]^=1;
-        assert(((uint32_t*)scratch.source.cpu)[0]==0x5a00c3a5u && ((uint32_t*)scratch.destination.cpu)[0]==0xa5a5a5a5u);
+        assert(((uint32_t*)scratch.source.cpu)[0]==0x5a00c3a5u && ((uint32_t*)scratch.destination.cpu)[0]==0x5a00c3a5u);
         assert(a04_vendor_render_release_cold(&r)==STATUS_DEVICE_BUSY);
         expected=pt[17];pt[17]^=4096;
         assert(a04_vendor_copy_scratch_release(&scratch)==STATUS_INVALID_DEVICE_STATE && frees==oldfrees && r.copy_owner==&scratch);

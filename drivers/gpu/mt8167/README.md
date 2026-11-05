@@ -427,3 +427,19 @@ raw28=0x202、raw2c=96、raw30=64も保持する。残りのtaskやUSC・ISPの
 DMAアドレス・属性に一致しなければownerを隔離し、解放を拒否する。一致した場合、
 `FUN_00129f88` のsource／destination mapping baseが異なる限定分岐に従い
 raw60=3を候補として保持する。これは部分taskの値であり、実行承認には使わない。
+
+固定profileのclip 0..32では `FUN_00129f88` が縦横2タイルを記録し、
+`FUN_0012bfb4` がraw18に格納する。対応するnative22のsource property 0は
+`FUN_0012e318` (ev_3f50b5af6ae0057d071edea77a20596556f42bbecb8a8a59235bba107dbb4c01)
+の表先頭値1 (ev_e6d3c0e767a07579fa1335cb18efffcd7916a05d9a058ea173934143282ea937)
+になり、`FUN_00135818` のslot・tile計算に用いられる。ownerは既存clearと
+一致するraw04=0x1ffc、raw18=0x20002、raw20=0xa3000を部分値として保持する。
+元producerの分岐と入力条件に限定した静的な導出であり、copy taskの完成や
+異なるprofileの正当性は示さない。
+
+copy scratchのsource初期値はindexごとに異なる固定パターンを使用する。
+`a04_vendor_copy_check` は取得済みCPU snapshotのsource・destination各1024語と
+shared 1024語を期待値に照合し、各不一致数と最初の位置を返す。sourceと出力が
+同じ位置で壊れた場合も不一致として数え、shared先頭9語と残りのguardも検査する。
+この関数はGPU終了・cache可視性・DMA停止を確立せず、実機読取りや解放を許可しない。
+実行可能copy診断への接続は未実装。

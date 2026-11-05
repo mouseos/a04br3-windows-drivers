@@ -30,4 +30,15 @@ struct a04_vendor_copy_kick_image {
 };
 int a04_vendor_copy_kick_build(struct a04_vendor_copy_kick_image *out,
     const struct a04_vendor_copy_kick_input *input);
+/* CPU snapshots only. The caller must first establish GPU completion and CPU
+ * visibility; this checker provides neither and cannot authorize release. */
+enum { A04_VENDOR_COPY_WORDS=1024, A04_VENDOR_COPY_NO_MISMATCH=1024 };
+struct a04_vendor_copy_check_result {
+    uint32_t source_mismatches, destination_mismatches, shared_mismatches;
+    uint32_t source_first, destination_first, shared_first;
+};
+uint32_t a04_vendor_copy_pattern(uint32_t index);
+int a04_vendor_copy_check(struct a04_vendor_copy_check_result *out,
+    const uint32_t *source, const uint32_t *destination, const uint32_t *shared,
+    size_t snapshot_words, const struct a04_vendor_copy_state *state);
 #endif
