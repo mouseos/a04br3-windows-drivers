@@ -94,7 +94,7 @@ NTSTATUS a04_vendor_render_prepare_cold(struct a04_vendor_render_cold *r,
         }
 #if A04_GE8300_VENDOR_TILE_DIAGNOSTIC
         {
-            struct a04_vendor_clear_tile tile;
+            _Alignas(8) struct a04_vendor_clear_tile tile;
             const struct a04_vendor_clear_tile_request request={128,128,128,64,64};
             if(clear_colour || a04_vendor_clear_tile_build(&tile,&request)) {
                 status=STATUS_DEVICE_CONFIGURATION_ERROR;goto done;
