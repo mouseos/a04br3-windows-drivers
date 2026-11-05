@@ -20,8 +20,20 @@
 #ifndef A04_GE8300_VENDOR_IRQ
 #define A04_GE8300_VENDOR_IRQ 0
 #endif
+#ifndef A04_GE8300_VENDOR_RENDER_COLD
+#define A04_GE8300_VENDOR_RENDER_COLD 0
+#endif
+#if A04_GE8300_VENDOR_RENDER_COLD && !A04_GE8300_VENDOR_IRQ
+#error Vendor render cold preparation requires vendor IRQ and uncached staging
+#endif
+#if A04_GE8300_VENDOR_RENDER_COLD
+#include "vendor_m1_11/windows_render_cold.h"
+#endif
 #ifndef A04_GE8300_VENDOR_START_DIAGNOSTIC
 #define A04_GE8300_VENDOR_START_DIAGNOSTIC 0
+#endif
+#if A04_GE8300_VENDOR_RENDER_COLD && !A04_GE8300_VENDOR_START_DIAGNOSTIC
+#error Vendor render cold preparation requires the bounded start diagnostic
 #endif
 #if A04_GE8300_VENDOR_START_DIAGNOSTIC && !A04_GE8300_VENDOR_IRQ
 #error Vendor firmware start diagnostic requires the IRQ and uncached staging paths
@@ -90,6 +102,9 @@ typedef struct {
     struct a04_gpu_queue_test_memory queue_memory;
 #if A04_GE8300_VENDOR_STAGE
     struct a04_vendor_m1_11_memory vendor;
+#if A04_GE8300_VENDOR_RENDER_COLD
+    struct a04_vendor_render_cold vendor_render;
+#endif
     PDMA_ADAPTER vendor_adapter_v3;
 #if A04_GE8300_VENDOR_IRQ
     struct a04_vendor_start vendor_start;
@@ -479,6 +494,12 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     else status=a04_vendor_m1_11_windows_stage(&c->vendor,adapter,image,bytes);
 #endif
     ExFreePoolWithTag(image,'0XGA');
+#if A04_GE8300_VENDOR_RENDER_COLD
+    if(NT_SUCCESS(status)) {
+        status=a04_vendor_render_prepare_cold(&c->vendor_render,&c->vendor,adapter);
+        if(!NT_SUCCESS(status)) (void)a04_vendor_m1_11_windows_free(&c->vendor);
+    }
+#endif
 #if !A04_GE8300_VENDOR_START_DIAGNOSTIC
     if(NT_SUCCESS(status)) status=a04_vendor_m1_11_windows_free(&c->vendor);
 #endif
@@ -682,6 +703,9 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     }
     if(!c->vendor.hardware_owned) {
         a04_vendor_irq_set_power(c->vendor_irq,FALSE);
+#if A04_GE8300_VENDOR_RENDER_COLD
+        (void)a04_vendor_render_release_cold(&c->vendor_render);
+#endif
         if(c->vendor.adapter) (void)a04_vendor_m1_11_windows_free(&c->vendor);
         if(c->vendor_adapter_v3 && !c->vendor.adapter) {
             c->vendor_adapter_v3->DmaOperations->PutDmaAdapter(c->vendor_adapter_v3);
