@@ -15,7 +15,11 @@ the separate experimental GE8300 kernel provider for full-width, unrotated,
 contiguous 32-bit rectangles. All other cases, provider absence and any
 failure use the existing CPU path. Both sides are disabled by default. The
 provider stages through CPU memory, so a speedup is not established.
-This path has not been deployed or validated on hardware.
+In the WinPE device test of driver commit `141466c`, the display miniport
+started and the provider reported two successful 16 KiB display-copy requests;
+the framebuffer was captured. These requests include CPU staging and do not
+establish faster presentation, general 3D rendering, or production stability.
+The later power-exit changes have not been tested on the device.
 The upstream sample explicitly does not support sleep. Do not deploy this build
 on the device until resource ownership, GPU synchronization, reset and power
 transitions have been implemented and independently verified.
