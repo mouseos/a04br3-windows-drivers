@@ -47,7 +47,11 @@ static std::atomic<bool> holdPosition(false),enteredPosition(false),revokeDone(f
 extern "C" int Mt8167SilentDmaMiniportEnabled(void){return 1;}
 int Mt8167TransportStartMaskedParent(Mt8167Transport *t,uint32_t period,mt8167_audio_shared_client *s){
  assert(t && t->dma && t->dma->cpu && t->dma->logical.QuadPart==0x200000 && period==4096);
+#if defined(A04_AUDIO_PCM_PATTERN_DIAGNOSTIC) && A04_AUDIO_PCM_PATTERN_DIAGNOSTIC
+ auto pcm=(unsigned char *)t->dma->cpu;assert(pcm[0]==0 && pcm[1]==0 && pcm[4]==25 && pcm[6]==25 && pcm[32]==128 && pcm[33]==0 && pcm[64]==0 && pcm[65]==0 && pcm[96]==128 && pcm[97]==255);
+#else
  for(unsigned i=0;i<t->dma->size;i++)assert(((unsigned char *)t->dma->cpu)[i]==0);
+#endif
  t->dma->exposed=TRUE;s->quarantined=1;t->state=AUDIO_RUNNING;return 0;
 }
 int Mt8167TransportStop(Mt8167Transport *t){assert(t->state==AUDIO_RUNNING);t->state=AUDIO_QUARANTINED;return 0;}

@@ -381,8 +381,9 @@ static void ParentStop(A04_PARENT_CONTEXT *c,int can_access)
     /* Surprise removal may already make MMIO unsafe. On ordered D0 exit,
      * remove VBUS while mappings remain valid; revoke the lease in either case. */
     if(c->usb.leased) {
-        if(can_access && c->gpio)(void)A04Gpio22Vbus(&c->usb.gpio,0);
-        c->usb.leased=0;c->usb.poisoned=1;
+        if(can_access && !InterlockedCompareExchange(&c->removed,0,0) && c->gpio &&
+           !A04Gpio22Vbus(&c->usb.gpio,0))c->usb.leased=0;
+        c->usb.poisoned=1;
     }
     ExReleaseFastMutex(&c->pwrapLock);
 }
@@ -391,7 +392,7 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
     ParentStop(c,1);
     /* Failed/partial audio ownership cannot be interpreted as quiescent.
      * Retain mappings; this is not proof PnP retains physical resources. */
-    if(c->audio.poisoned || c->audio.leased || c->audioAfe)return STATUS_DEVICE_BUSY;
+    if(c->audio.poisoned || c->audio.leased || c->audioAfe || c->usb.leased)return STATUS_DEVICE_BUSY;
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
     if(c->afeClockHeld || c->afeClockPoisoned)return STATUS_DEVICE_BUSY;
 #endif

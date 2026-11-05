@@ -166,6 +166,10 @@ int main(void){
  assert(audio.AcquireMuted(audio.Header.Context,48000)==-2 && !reads && !writes);
  assert(ParentRelease(&testContext,&list)==STATUS_DEVICE_BUSY && !unmaps && testContext.pwrap);
  testContext.audio.poisoned=0;
+ /* Surprise removal never touches GPIO; an unresolved USB lease retains maps. */
+ testContext.usb.leased=1;testContext.removed=1;
+ {int oldReads=reads,oldWrites=writes;assert(ParentRelease(&testContext,&list)==STATUS_DEVICE_BUSY && !unmaps && reads==oldReads && writes==oldWrites);}
+ testContext.usb.leased=0;testContext.usb.poisoned=0;testContext.removed=0;
 #if A04_MT6392_CLK_ALIAS_EXPERIMENT
  testContext.speakerClock.held=1;
  assert(ParentRelease(&testContext,&list)==STATUS_DEVICE_BUSY && !unmaps && testContext.pwrap);

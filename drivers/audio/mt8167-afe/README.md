@@ -299,3 +299,14 @@ higher-IRQL allocation or start is rejected; an unexpected high-IRQL free
 retains the allocation. GetPosition remains protected by rundown and does not
 take this blocking mutex. See [AllocateCommonBuffer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_common_buffer)
 and [FreeCommonBuffer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pfree_common_buffer).
+
+`A04_AUDIO_PCM_PATTERN_DIAGNOSTIC=1` selects an immutable test waveform in the
+private diagnostic DMA ring instead of zeroes. It requires
+`A04_AUDIO_SILENT_DMA_DIAGNOSTIC=1`, uses 48 kHz stereo S16_LE at 1500 Hz and
+peak 128/32768, and never maps that DMA ring to the WaveRT client. The buffer
+is filled before the existing pre-publication flush. The WaveRT client's PCM
+is not rendered by this experiment; the codec remains muted. On exposure,
+the DMA mapping and ownership remain quarantined because DL1 disable and IRQ
+disconnect do not prove bus drain. Normal playback and all diagnostic flags
+remain off by default. Parent lease, board power, codec route and physical
+coherency still require separate establishment; no device run is claimed.

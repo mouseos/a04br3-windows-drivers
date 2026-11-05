@@ -3,6 +3,12 @@
 #include "common_dma.h"
 #include "dma_adapter.h"
 #include "stream_transport.h"
+#if defined(A04_AUDIO_PCM_PATTERN_DIAGNOSTIC) && A04_AUDIO_PCM_PATTERN_DIAGNOSTIC
+#if !defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) || !A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+#error PCM pattern requires the isolated DMA diagnostic path
+#endif
+#include "pcm_pattern.h"
+#endif
 #if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC && (!defined(A04_AUDIO_MAP_AFE) || !A04_AUDIO_MAP_AFE || !defined(A04_AUDIO_QUERY_SHARED) || !A04_AUDIO_QUERY_SHARED)
 #error A04_AUDIO_IRQ_DIAGNOSTIC requires AFE mapping and parent query
 #endif
@@ -165,6 +171,9 @@ static BOOLEAN OwnerLiveDmaVerified(Mt8167PnpBackend *o)
     if(o->silentBuffer.cpu==o->buffer.cpu ||
        ((ULONGLONG)o->silentBuffer.logical.QuadPart < (ULONGLONG)o->buffer.logical.QuadPart+o->buffer.size &&
         (ULONGLONG)o->buffer.logical.QuadPart < (ULONGLONG)o->silentBuffer.logical.QuadPart+o->silentBuffer.size))return FALSE;
+#if defined(A04_AUDIO_PCM_PATTERN_DIAGNOSTIC) && A04_AUDIO_PCM_PATTERN_DIAGNOSTIC
+    if(mt8167_pcm_pattern(o->silentBuffer.cpu,o->silentBuffer.size))return FALSE;
+#endif
     o->transport.dma=&o->silentBuffer;
     return TRUE;
 #else
