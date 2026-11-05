@@ -692,13 +692,16 @@ NTSTATUS BASIC_DISPLAY_DRIVER::RegisterHWInfo()
 
     NTSTATUS Status;
 
-    // TODO: Replace these strings with proper information
-    PCSTR StrHWInfoChipType = "Replace with the chip name";
-    PCSTR StrHWInfoDacType = "Replace with the DAC name or identifier (ID)";
-    PCSTR StrHWInfoAdapterString = "Replace with the name of the adapter";
-    PCSTR StrHWInfoBiosString = "Replace with information about the BIOS";
+    // The display pipeline is the MT8167 controller; GE8300 is a separate
+    // optional copy provider and must not be identified as this display adapter.
+    PCSTR StrHWInfoChipType = "MediaTek MT8167";
+    PCSTR StrHWInfoDacType = "MIPI DSI";
+    PCSTR StrHWInfoAdapterString = "MediaTek MT8167 Display Controller";
+    PCSTR StrHWInfoBiosString = "UEFI";
 
     HANDLE DevInstRegKeyHandle;
+    UNICODE_STRING ValueNameMemorySize;
+    DWORD MemorySize = 0; // BDD has no access to video memory
     Status = IoOpenDeviceRegistryKey(m_pPhysicalDevice, PLUGPLAY_REGKEY_DRIVER, KEY_SET_VALUE, &DevInstRegKeyHandle);
     if (!NT_SUCCESS(Status))
     {
@@ -709,31 +712,29 @@ NTSTATUS BASIC_DISPLAY_DRIVER::RegisterHWInfo()
     Status = WriteHWInfoStr(DevInstRegKeyHandle, L"HardwareInformation.ChipType", StrHWInfoChipType);
     if (!NT_SUCCESS(Status))
     {
-        return Status;
+        goto CloseRegistryKey;
     }
 
     Status = WriteHWInfoStr(DevInstRegKeyHandle, L"HardwareInformation.DacType", StrHWInfoDacType);
     if (!NT_SUCCESS(Status))
     {
-        return Status;
+        goto CloseRegistryKey;
     }
 
     Status = WriteHWInfoStr(DevInstRegKeyHandle, L"HardwareInformation.AdapterString", StrHWInfoAdapterString);
     if (!NT_SUCCESS(Status))
     {
-        return Status;
+        goto CloseRegistryKey;
     }
 
     Status = WriteHWInfoStr(DevInstRegKeyHandle, L"HardwareInformation.BiosString", StrHWInfoBiosString);
     if (!NT_SUCCESS(Status))
     {
-        return Status;
+        goto CloseRegistryKey;
     }
 
     // MemorySize is a ULONG, unlike the others which are all strings
-    UNICODE_STRING ValueNameMemorySize;
     RtlInitUnicodeString(&ValueNameMemorySize, L"HardwareInformation.MemorySize");
-    DWORD MemorySize = 0; // BDD has no access to video memory
     Status = ZwSetValueKey(DevInstRegKeyHandle,
                            &ValueNameMemorySize,
                            0,
@@ -743,9 +744,10 @@ NTSTATUS BASIC_DISPLAY_DRIVER::RegisterHWInfo()
     if (!NT_SUCCESS(Status))
     {
         BDD_LOG_ERROR1("ZwSetValueKey for MemorySize failed with Status: 0x%I64x", Status);
-        return Status;
     }
 
+CloseRegistryKey:
+    ZwClose(DevInstRegKeyHandle);
     return Status;
 }
 

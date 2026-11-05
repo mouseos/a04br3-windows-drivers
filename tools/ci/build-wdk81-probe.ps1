@@ -59,7 +59,9 @@ if ($env:A04_BOOT_PASSIVE_EXPERIMENT -eq '1') {
     if ($env:A04_BOOT_EXPERIMENT -ne '1' -or $env:A04_PASSIVE_IO -ne '1' -or $env:A04_ENABLE_WRITES -ne '1' -or $env:A04_DMA_DISK_PROBE -ne '1' -or $env:A04_VIRTUAL_BOUNCE_EXPERIMENT -ne '1' -or $env:A04_SERIAL_QUEUE_EXPERIMENT -ne '1' -or $env:A04_ISOLATED_REQUEST_EXPERIMENT -ne '1' -or $env:A04_SCRATCH_IO -eq '1' -or $env:A04_ISOLATED_RESET_TEST -eq '1') { throw 'Passive boot experiment requires guarded isolated boot settings' }
     $probeDefines += '-DA04_BOOT_PASSIVE_EXPERIMENT'
 }
-if ($env:A04_EMMC_IDENTITY_HANDOFF -eq '1') {
+$identityHandoff = if ($env:A04_EMMC_IDENTITY_HANDOFF) { $env:A04_EMMC_IDENTITY_HANDOFF } elseif ($env:A04_BOOT_EXPERIMENT -eq '1') { '1' } else { '0' }
+if ($identityHandoff -notin @('0','1')) { throw 'A04_EMMC_IDENTITY_HANDOFF must be 0 or 1' }
+if ($identityHandoff -eq '1') {
     if ($env:A04_READONLY_DISK_PROBE -ne '1') { throw 'eMMC identity handoff requires the disk probe' }
     $probeDefines += '-DA04_EMMC_IDENTITY_HANDOFF'
 }

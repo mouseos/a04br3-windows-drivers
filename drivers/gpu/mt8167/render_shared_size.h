@@ -10,4 +10,8 @@
 struct a04_render_shared_size_result { uint32_t blocks,dwords,bytes; };
 int a04_render_check_saved_shared_size(const uint8_t *state,size_t size,
     struct a04_render_shared_size_result *out);
+/* Observation after the bounded diagnostic shader, fence and CPU sync only.
+ * The 0xffffffff oversize marker and all values >256 are errors. */
+int a04_render_check_bounded_shared_size(const uint8_t *state,size_t size,
+    struct a04_render_shared_size_result *out);
 #endif

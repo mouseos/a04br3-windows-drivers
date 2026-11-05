@@ -183,3 +183,111 @@ context switchのpersistent PDSは `pvr_pds_generate_stream_out_terminate_progra
 `check-context-usc-ir.py --source MESA_SOURCE --build MESA_BUILD` は固定Mesaコンパイラを非公開の一時ディレクトリで再実行し、通常ビルドと対象USC配列の一致を確認した後、最適化後NIRの定数とメモリ操作を検査する。store／loadのアドレスはPDSが設定するvertex inputから、storeのサイズはISA上の特殊レジスタ番号103 `sh_alloc_size`、loadのサイズはGPUがstate先頭に書いた値から来る。NIR上の定数はregister index、ループ幅、アドレス増分、減算値に限定される。ただしNIRと機械語の完全な意味対応、機械語の全即値、実機での特殊レジスタの値域と粒度を証明しない。非公開の生IRは保存・出力しない。実機操作は行っていない。
 
 `a04_render_check_saved_shared_size` は、完了fenceとCPU同期が呼出し側で既に確立した後に、shared state先頭４バイトをlittle-endianで読み、元のMesa store／load両ループが割当内で終了する条件（０、64、128、192、256）を検査するオフライン部品である。成功時にDWORD数とバイト数を返し、失敗時は出力を変更しない。これは保存値の事後観測にすぎず、その前に発生したGPUアクセスを防がず、特殊レジスタの値域やfence・キャッシュ同期を証明しない。fixtureやkickの許可条件には接続していない。Mesa由来のfirmware文字列にはTA contextのshared alloc sizeを記録する形式があるが、今回参照した既存資料から有効な実機値は得られていない。
+
+`a04_windows_render_stage_context_sr` は、公開前の所有DMAにshared store／load用PDS定数と命令を配置する。16432バイトの書込み可能state、store 544バイト・load 488バイトの読み取り専用USC範囲、４出力範囲の所有・重複・実PTEを検査し、出力先がすべてゼロの場合だけ書込む。USCの内容・由来と他の後続配置との重複は呼出し側の責任であり、USCコピー、contextレジスタ、fixture、kickには接続していない。これは部分配置のホスト検証で、GPU実行や `sh_alloc_size` の実測を証明しない。
+
+`a04_windows_render_collect_pair` は、別途投入済みの非partial pairに対し、geometry／fragment両fence値と両リングのread offsetが期待値になるまでCPU同期しながら待ち、payloadをCPU同期してからgeometry context、fragment context、HWRT、両freelistのfirmware cleanupを順に要求する実験部品。timeout、同期失敗、cleanup BUSY／失敗時はpoison状態で保持し、後続のcleanupを行わない。成功もMMU退役やGPU DMA停止の証明ではなく、allocationの解放には別途停止とDMA quiescenceが必要。入力pairの安全性を検証せず、kickも発行しない。ホストmockでのみ検証している。
+
+`a04_windows_render_prepare_pair` は公開前に非partialのCCCBとkickを構築し、`a04_windows_render_publish_context` によるDMA同期・MMU無効化後、`a04_windows_render_submit_pair` がkickを１回だけ送る。送信が失敗した場合は到達の有無が不明なためpoisonし、再投入・解放を禁止する。`collect_pair` は送信成功前には開始できず、完了とcleanupの後も独立したGPU/DMA停止を要求する。これらは信頼された内部呼出し向けで、geometry／fragmentのアドレスやUSCの由来・動的範囲を検証せず、ユーザー向け入口も持たない。`A04_GE8300_RENDER_EXPERIMENT=1` でこれらをWDK providerのビルドに含められるが、固定fixtureも呼出し元も未完成で、このフラグを設定するだけでは描画しない。実機投入可能な構成ではない。
+
+`summarize-shared-size-log.py PRIVATE_FIRMWARE_LOG` は、既に収集された `TA context shared alloc size store 0x..., load 0x...` 形式のfirmware traceだけを集計する。実機へ接続せず、元ログや他の内容を出力しない。ログの出自、記録フィールドと特殊レジスタ103の同一性、未観測値の範囲は証明できない。実機操作と採取は主担当が担当する。
+
+`A04_GE8300_SHARED_TRACE_DIAGNOSTIC=1` は、明示的な `A04_GE8300_BOOT_TEST=1` と組み合わせる追加診断で、既定OFF。既存のfirmware trace２本をCPU同期してCSW 15のID候補を走査し、UARTへ候補数、store/loadの値0・64・128・192・256のビット集合、それ以外の値の個数、異なる組の数、走査中にtrace pointerが変化したかを一行で出す。生のtrace、タイムスタンプ、範囲外の生値は出力しない。通常のboot testではqueue test後のshutdown前、copy serviceでは状態照会時に出力する。保存したUARTログは `python3 tools/gpu/summarize-shared-size-log.py --uart PRIVATE_UART_LOG` で構造化できる。診断実行とログ取得は主担当が行う。
+
+この走査はIDと引数位置だけに基づく候補検索で、レコード境界を証明せず誤検出があり得る。同期中にもfirmwareは書き込め、pointer不変でも整合したスナップショットとは限らない。既存queue testはrender context switchを発生させるものではなく、候補０件でも正常・安全・異常のいずれも判定できない。上記の値が特殊レジスタ103と同じか、対象firmwareに当該ログが実装されているかも未証明であり、fixtureやkickの有効化条件には使えない。
+
+描画用 `a04_windows_render_collect_pair` では、呼出し側が `trace_capture_enabled` を明示した場合に限り、両fenceの完了または待機タイムアウト後、cleanup前に同じ候補集計を `trace_summary` に記録する。`trace_capture_status` と `trace_capture_valid` を確認する。同期失敗や不正なtrace範囲は描画の完了判定を変更しない。タイムアウト時は従来どおりpoisonして資源を保持する。これはkickの発行、外部への診断表示、context switchの発生を実装するものではない。
+
+fragment PDS、persistent PDS、shared PDSの各配置は、成功した出力範囲をDMA allocationの寿命中に予約する。別の配置がpaddingを含む予約範囲と重なれば、書込み前に拒否する。未追跡のCPU書込みや別の方法による配置は呼出し側で防ぐ必要があり、この検査はfixture全体の参照閉包やGPU投入を保証しない。
+
+`a04_windows_render_stage_vertex_pds` は、Mesa由来の型付き値からvertex・descriptor PDS定数とspill／scratch情報を生成し、所有済みの読取り専用DMA範囲へ公開前にまとめて配置する。vertexとdescriptorの取得範囲はそれぞれ16・32バイトとして予約し、未使用部分はゼロに保つ。情報領域、312バイトのvertex USC、spill 8192バイト、scratch 49152バイトの所有と権限、出力間や依存先との重複、配置済み範囲、実PTEを検査し、検査失敗時は書き込まない。USCの内容・即値、PDSコード、VDM／PPP、他の参照は検証しない。呼出し元のない既定OFFの部品であり、描画fixtureや実行を許可するものではない。
+
+固定probeで観測されたgeometry１件・partial fragment１件・最終fragment１件の形に対応するため、`a04_windows_render_prepare_partial_pair` は公開前に２本のkickと完全なCCCBを作る。公開後はcombined kick、最終fragment kickの順に送る。どちらかの送信失敗時はpoisonし、再送や解放を許さない。完了待ちはgeometry fence値１と最終fragment fence値２、および両read offsetを要求し、partialの値１だけではcleanupを始めない。この部品もコマンドやfixtureの安全性を証明せず、実行入口には接続されていない。
+
+`check-render-submit-dependencies.py PRIVATE_CAPTURE` は、固定probeの２描画について、VDMから参照したvertex／descriptor PDSと対応コード、vertex USC、spill／scratch、PPPに対応するfragment PDSとUSCが、記録されたgeometry jobの時点でも同じVMに残り、観測済みuploadがunmapや重なる後続uploadで無効化されていないことを検査する。固定probeの記録順と２描画に限定し、アドレスや生データは出力しない。両PDS再構成ツールもこの検査に通ったcaptureだけを受け付ける。これはgeometry投入時の記録された参照のみであり、未計測のCPU書込み、GPU完了までの寿命、VDM／PPPの全参照、命令実行範囲やUSCの動的アクセスを証明しない。出力は引き続き実行禁止。
+
+固定probeのvertex／descriptor PDS命令は、Mesa `pvr_pipeline_pds.c` と `pvr_rogue_pds_encode.h` の式から生成する。vertexは頂点IDのDOUTW、DOUTU、HALTの12バイト、descriptorはspill／scratch用DOUTD２命令の８バイトで、両16バイト配置の余りはゼロ。`a04_windows_render_stage_vertex_pds_code` は公開前の所有済み読取り専用DMAへ配置し、既存の予約範囲との重複とゼロ初期化を検査する。
+
+新しいupload診断はPDSコードについてもGPUアドレス・サイズ・FNVだけを非公開captureに記録する。`check-vertex-pds-code.py PRIVATE_CAPTURE` はVDMの２参照とこれらの生成命令を照合し、アドレスや命令バイトを出力しない。独立した２回のshim captureの各２描画で両命令列のFNVが一致した。FNVは衝突耐性を持たず、これはUSCやVDM／PPP、実機の動作、全メモリ参照の証明ではない。GPU実行は引き続き禁止。
+
+固定三角形shaderのコンパイラ出力候補は、Mesa診断ライブラリを `build-mesa-usc-diagnostic.py` に `--private-compiler-candidates` を付けて構築し、通常のshim captureで取得できる。これはPCOコンパイラの出力バッファのみを非公開の新規ディレクトリへ書く経路で、生BOをコピーしない。`run-render-capture.py` の `--pco-fill 00`／`ff` の２captureを `check-triangle-usc-candidates.py ZERO ONES` で比較し、各shaderのSHA-256、PCOイベントのFNV、２初期化条件と２描画のバイト一致を検査する。候補はホスト由来即値の混入を完全には排除できないため、非公開で保持しGPUには投入しない。
+
+同診断の `--pco-ir` はNIRを非公開probe.logに記録する。`audit-triangle-nir.py IR_CAPTURE ONES_CAPTURE` は固定probeのsource commit・SHA-256とshader候補の比較に加え、２組の最適化後NIRのintrinsicと定数、scratch格納位置、vertex IDの８倍を使う８バイト読込み、３頂点の非index描画を検査する。固定probeの `vkCmdDraw(...,3,1,0,0)` とVDM挙動を前提とすると読込みは24バイト以内。NIRと実機械語の完全な意味対応、実機のVDM挙動、context switchや他のGPU参照は未証明。`generate-triangle-usc.py --ir IR_CAPTURE --ones ONES_CAPTURE --output NEW_PRIVATE_DIR --experimental-incomplete` は上記検査後のPCO出力をvertex 384バイト・fragment 448バイトへゼロpaddingして非公開出力するが、manifestはGPU実行禁止のままにする。
+
+NIR上の24バイト検査は、物理scratch allocation全体の境界を単独で証明しない。Mesa `pco_trans_nir.c` の `trans_scratch` はshared registerからscratch基底とblock sizeを読み、`local_addr_inst_num` 特殊レジスタをblock sizeに掛けた後にNIR offsetを加える。固定captureのblock size 24・allocation 49152はMesa `rogue_get_total_instance_count` の2048インスタンス分だが、GE8300で特殊レジスタが実際に常に0〜2047となることは未実測。したがって候補を実行可能とせず、値域の根拠を持たない小さいallocationへも接続しない。
+
+`scratchless` 固定probeは `tools/gpu/shaders/triangle-scratchless.vert` を使い、頂点IDの条件式で同じ３頂点を生成する。`run-render-capture.py` に `--scratchless-vertex --pco-ir --pco-fill 00` または `ff` とprivate compiler diagnosticを指定すると、固定probeのsourceとshader headerを新規非公開ディレクトリへ複製し、glslangValidator・spirv-valで新しいvertex SPIR-Vを生成してからshim実行する。元のprobe checkoutは変更しない。manifestにはshader source・SPIR-V・両ツールのハッシュを記録する。
+
+独立した２captureでは、各２描画の最適化後NIRは元と同じ頂点座標・深度を示し、vertex shaderのscratch intrinsicはなかった。grouped PCOも限定された頂点演算と出力命令だけで、vertexのload／storeは観測されなかった。vertex USCは176バイト（256バイト確保）、descriptorはspill情報１件の12バイト（16バイト取得）であり、scratch情報・scratch bufferを参照しない。vertex PDSコード12バイトとdescriptor PDSコード４バイトは、２captureでMesa uploadのFNVと一致した。`a04_windows_render_stage_scratchless_pds` と `_code` はこの別レイアウトを所有DMAへゼロpaddingして配置するが、shaderそのものの信頼性や他の参照を判定せず、既定OFFのまま実行入口には接続していない。元のscratch使用版とデータ・命令を混用しない。
+
+この変更でvertex NIR上のscratch参照は除けるが、spill allocation、context switchのshared state、fragmentやVDM／PPPの全アクセス、USC機械語との意味対応、実機動作は未証明。captureはGPUを実行せず、非公開生成USCは引き続きGPU投入禁止。
+
+scratchless版のPDS定数は、２回のcapture・各２描画でvertex literal `0x80000000`、DOUTU制御 `0x800000000`、descriptor literal `0x90000003` が一致した。`a04_render_make_scratchless_pds_data` と再構成ツールはこの固定値とspill-only構成を要求し、別のshader／layout用の値を拒否する。
+
+scratchless三角形のVDMは、Mesa `vdm.xml` に従うPDS state・PPP state・VDM state・３頂点index list・PPP terminate・stream terminateの計60バイトとして `a04_render_make_fixed_vdm` で生成する。PDS・PPPの６参照範囲の所有、読み取り専用属性、アドレス幅、境界と重複を検査し、`a04_windows_render_stage_fixed_vdm` が未公開DMAへ配置する。独立した２回のcaptureで各２描画の生成時VDM FNVと一致し、PPP 100／12バイトがgeometry job時に対象VMへマップされていた。
+
+PPPは固定probeの100バイト状態と12バイトterminateを `a04_render_make_fixed_ppp` で構成する。fragment PDS、fragment uniform code/dataは型付きGPUアドレスから埋め込み、その他はMesaのPPPパケット定義と固定probe条件から生成する。`a04_windows_render_stage_fixed_ppp` は所有DMAへ両状態を配置する。診断用Mesaは参照されたPPP範囲のGPUアドレス・長さ・FNVだけを非公開記録し、`check-fixed-ppp.py` で２回のcaptureについて一致を確認した。生BOをfixtureとしてコピーしない。
+
+PPPのfragment uniformはspill情報と４バイトFS_METAを読み、固定captureのFS_META値は `0x01fffffe`、scissorは `(xmin,ymin)=(0,0)`・`(xmax,ymax)=(64,64)` の８バイト。Mesaの生成箇所から出力範囲とFNV／型付き値を診断記録し、２回のcaptureでpartial・最終fragment双方のscissor参照が対象VMに存在することを検査した。`a04_windows_render_stage_fragment_uniform` と `_fixed_scissor` はこれらをゼロ初期化DMAへ構成する。FNVは衝突耐性を持たず、これらの一致はジョブ完了までの寿命、render target・背景プログラム・shader全体・context switchの安全性や実機描画を証明しない。実行入口は未接続でGPU実行は禁止。
+
+`check-fragment-background.py PRIVATE_CAPTURE` はscratchless固定probeのgeometry後の４fragmentについて、通常／partial両方の背景shader PDSデータ・コード、texture PDSデータ・コード、およびpixel event PDSデータが、記録されたfragment job時に同一VMに残ることを検査する。背景ごとの32バイトPDSデータ＋４バイトコード、８バイトtextureコード、12バイトtextureデータと16バイト取得範囲を照合する。pixel eventはMesaの生成点でデータ長・DOUTU制御値・USC範囲・FNVを非公開の構造化情報として記録し、16バイト取得範囲、128バイトUSC確保範囲と40バイトuploadの存続を検査する。２回の独立captureで各４fragmentの上記条件が一致した。`a04_windows_render_stage_pixel_event` は型付きUSC GPUアドレスと固定DOUTU制御から16バイトを所有DMAに生成し、後半８バイトをゼロにする。
+
+これは背景textureの内部descriptor、EOT USC中のPBE状態、partial renderのSPM scratch、render target書込み範囲、全GPU実行中の所有・同期を検証しない。既存のfragment commandの値をそのまま実機投入することはできず、上記部品も実行入口に接続されていない。
+
+pixel eventのEOT USCは `pvr_usc_eot` がPBE stateの２ワードを即値として埋め込むため、shaderだけを固定して別の出力先へ流用できない。診断はPBE生成時に画像のGPU基底・確保サイズ、出力先、寸法、stride、layout、２state wordを非公開記録し、pixel eventの同２wordとの対応を検査する。`check-fragment-background.py` はstate wordから出力先を復元し、64×64、stride 64、16 KiBの画像確保範囲がfragment job時に同一VMへ存在することを確認する。独立した２captureで各４fragmentに対応した。ただしlayoutの実際の書込み範囲、USC即値の全由来と命令の意味、partial時のSPM scratch、GPU終了までのマップ寿命は証明していない。記録されたstate wordやアドレスを生のfixtureとして公開・投入しない。
+
+`build-mesa-spm-diagnostic.py` は既存のVDM・PBE・PCO診断と同じ固定Mesaソースとbuildを照合し、別ディレクトリの `pvr_arch_spm.c` に計測を加える。SPM loadのscratch、定数、PDSデータのGPU範囲と構成値だけを非公開イベントに記録し、BO内容やCPUポインタは記録しない。`run-render-capture.py` でこの診断を指定し、`check-spm-load.py PRIVATE_CAPTURE` で範囲が構築時に同一VMへ一意にマップされていることを検査する。成功時も終了コード1でGPU実行を禁止する。
+
+scratchless固定probeの独立した00／ffの２captureでは、それぞれ３件のSPM load構築について64×64、１sample、出力レジスタ１、tile bufferなし、scratch使用・確保とも16384バイト、定数32バイト、PDSデータ16バイトだった。Mesaの `pvr_arch_cmd_buffer.c` は `barrier_load` のときにSPM背景状態をjobへ設定する。通常の背景状態と同一視できず、この検査は描画jobとの対応、GPU完了までの寿命、texture descriptorとUSCの実際の到達範囲、DMA同期を証明しない。生アドレスを含むcaptureは非公開のまま保持する。
+
+`build-mesa-eot-diagnostic.py` はSPM・VDM・PBE診断の一致を確認してから、独立したMesaライブラリに背景load-opとEOTの計測を追加する。PCOへの00／ff充填を変えた２captureの固定probeでは、背景６構築すべてがclear１ワード、画像texture０件、tile buffer０件で、clear値はRGBA `22 44 66 ff` だった。fragment jobの通常・partial各背景について、PDSがこの４バイトを同一VMから１ワード読み出すこと、背景USCとPDSが各job投入時にマップされることを検査した。生成点の記録から16バイトの背景USC、32バイトPDSデータ、４バイトPDS shader code、８バイトPDS DMA codeを照合した。FNVは暗号学的な一致証明ではない。
+
+EOTについてはcaptured PBE stateを含む基準入力の各64ビットを個別に反転したprivateなPCO出力と、２組の固定人工入力を検査した。40バイト命令列中のstate wordはbyte offset 16と4に配置され、残りが一致した。ただし一般の入力ではPCOが異なる長さの命令列を選ぶ。`check-eot-synthetic.py` は２captureのmanifest、候補SHA-256、PBEとupload、背景依存、個別ビットの結果を照合する。生のアドレスを含む候補・イベントは非公開とし、スクリプトの終了コード1は引き続きGPU実行禁止を意味する。
+
+`a04_windows_render_stage_fixed_background`、`a04_windows_render_stage_background_shader`、`a04_windows_render_stage_fixed_eot` は、上の固定条件の背景定数・PDS・USC、および指定されたGPU出力先から生成したEOTを、公開前の所有済みDMAへ配置する。各出力範囲の予約・読取り専用PTE・ゼロ初期状態を検査し、未使用の予約領域はゼロにする。EOTは書込み可能な16 KiB出力先を予約する。これらは実行入口に接続されておらず、PBEの実際の書込み範囲、context switchの動的なshared state範囲、実行中の全参照と寿命、GPU cache同期を証明しない。背景がtextureを使わないという結果も、この固定clear probeに限定される。
+
+`build-context-shared-bounded.py --compiler-diagnostic USC_DIAG` は、固定Mesaからshared state診断版を生成する。保存・復元の両方でサイズが256ブロックを超えた場合はループを実行せず、保存時は `0xffffffff` をstate先頭へ書く。残数の減算は０で打ち切る。元のMesaと異なる診断用shaderであり、範囲外のstateを復元できるようにするものではない。通常PCOで２回、さらにPCO出力領域を00／ffで事前充填して再生成し、対象２shaderの一致を検査する。`check-context-bounded-ir.py` は最適化後NIRの上限判定、ループ、markerと該当バイナリの一致を検査する。これはNIRから機械語への完全な意味対応や実機の特殊レジスタ値を証明しない。
+
+`generate-context-bounded-fixture.py` は上記検査と固定SHA-256・PCO metadataを通したUSCだけから `render_context_bounded_usc.h` を再生成する。`a04_windows_render_stage_bounded_context_usc` は２shaderをゼロpaddingして所有済みDMAへ配置し、`a04_windows_render_stage_bounded_context_sr` は予約済みshaderの全バイト・paddingを再確認して、必要なtemp数からPDSのDOUTUを構成する。所有範囲、予約、実PTE、ゼロ初期化を確認するが、static context registerと固定描画への接続やGPU実行の承認は行わない。
+
+persistent／shared context stateとHWRT、freelist表、callstackの書込み範囲は、各DMA allocationが独立したGPU/DMA停止後に解放されるまで予約する。互いの重複や既存配置との重複を拒否し、公開時にHWRTの７範囲が予約と一致することを再確認する。bounded stateは両fenceとCPU同期後に読み、無効値でもfirmware cleanupを試みたうえで `STATUS_DATA_ERROR` を返す。０はcontext switch発生の証拠ではない。firmware cleanup失敗・timeout時は従来どおりpoisonして保持する。これらはhost mock検証であり、実機上の同期や全間接参照の寿命を保証しない。
+
+`build-mesa-context-static-diagnostic.py` は独立Mesaライブラリでrender contextの静的レジスタ値を型付きで非公開記録する。`check-context-static.py` は２slotそれぞれのstate base、store／resumeのPDS state、persistent PDSのdataとcodeの連続配置を生成点のmetadataと照合する。00／ffの２captureで一致した。MesaのLLS定義ではVDM stateが92バイト、TA stateが484バイトである。
+
+`a04_render_make_context_static` は上記の固定レイアウトを所有範囲のGPUアドレスから生成する。`a04_windows_render_make_bounded_static` は先に配置された２組のbounded shared USC、shared PDS、persistent PDSと一致する場合に限り、ゼロ初期化されたSLC bypassのVDM／TA stateを予約してstatic registerを生成する。context生成にはその値をそのまま渡し、公開時にも固定値・shader・PDS・stateの予約と初期状態を再確認する。各部品はホストmockで検証した。機械語の意味、特殊レジスタの実機値、GPU cache動作、描画job全体やcleanup後のDMA停止を証明するものではなく、描画fixture・利用者向け実行入口は未完成である。
+
+`generate-triangle-fixture.py` はscratchなし固定頂点shaderとfragment shaderについて、独立した00／ff capture、SPIR-V／NIRの固定probe検査、PCO出力SHA-256を照合する。fragmentのgrouped PCOは27命令群、固定したopcode集合、`sh0` と `sr53` のみを受け入れる。比較対象はMesa compiler出力であり、生BOは読まない。生成した `render_triangle_usc.h` は実験用コードで、GPU上の命令意味や特殊レジスタ値の証明ではない。
+
+`a04_windows_render_stage_triangle_usc` と専用PDS／uniform配置関数は、生成shaderの所有DMAへの配置、検査済みshaderへのPDS接続、vertex／fragmentの各spill領域の別々の所有・ゼロ初期化・寿命予約を行う。公開時には固定shader、PDS、spill情報、FS metadataとspill領域を再確認し、不完全または改変された場合は拒否する。この検査もVDM／PPP、背景、PBE、partial renderの全依存やrender kickの安全性を保証せず、実機描画の入口には接続されていない。
+
+`check-fixed-commands.py` はscratchless固定probeの最初の64×64描画について、geometryとpartial／最終fragmentのレジスタ列を型付きGPUアドレスと固定値から再構成し、２つのMesa captureで一致を検査する。border tableはMesaの128 format × 非圧縮／圧縮 × 16バイト × 64 entryで262144バイト。固定shaderと背景load-opにはtexture参照がないため、この診断では確保済み読取り専用tableをゼロにする。検査では投入時のmappingも確認するが、実GPUのアクセス範囲・機械語・cache動作は未証明。
+
+`A04_GE8300_RENDER_DIAGNOSTIC=1` は `A04_GE8300_RENDER_EXPERIMENT=1`、`A04_GE8300_BOOT_TEST=1`、`A04_GE8300_ALLOW_MISMATCH=1` を必要とする、D0 entryで一度だけ動く既定OFFの診断。copy serviceや他のclear/copy/linear試験とは併用しない。固定DMA配置、firmware固定heapのVDM syncとpixel eventプログラム、bounded context、freelist／HWRT、背景・EOT・triangle・VDM／PPPを生成し、公開前に型付き参照と生成データを照合してからcombined kickと最終fragment kickを送る。geometry／fragment両fenceとring read offsetを待ち、CPU同期、bounded state検査、firmware cleanupへ進む。失敗やtimeoutでGPU到達の有無が不明な場合はDMAを保持し、再送しない。firmware power-off応答、BIF／SLC idle・outstanding確認とresetの成功後にのみDMAを解放する。
+
+UARTの `A04GPU RENDER STATUS=... STAGE=... BG=... TRI=... OTHER=... BOUNDED=... B0_VALID=... B0=... B1_VALID=... B1=...` は集計値で、アドレスや生BOは出力しない。`STAGE=32` はfenceとcleanupを通った後の読戻しまで到達したことを表す。成功statusには背景・前景の両色、前景1128〜1176画素、その他０画素を要求するが、これはtwiddled bufferの色ヒストグラムであり三角形の位置や向きの検証ではない。`BOUNDED` 値０や保存サイズ０はcontext switch発生の証拠ではない。実機結果は未取得で、ビルド・host mock成功を実機成功として扱わない。
+
+固定描画診断は64×64の出力について、Morton配置を仮定して各行の前景マスクを `A04GPU ROW Y=... LO=... HI=...` として出す。個々のRGBやGPU／ホストアドレスは出力しない。内部領域 `x>=8,y>=8,x+y<63` は前景、それ以外は背景と照合し、対角線 `x+y=63` の境界画素のみ両色を許容する。合計色数・不明色と位置違反数 `MISMATCH` も検査する。この並びはPBEの実機出力で未検証であり、失敗は配置仮定の誤りでも起きる。転置対称の図形なのでx/y入替えは識別できない。正常でもGPU停止・メモリ安全・context switchの証明にはならない。
+
+非対称試験は同じMesa生成三角形とVDM/PPP/PDS/USCを使用し、IPF scissorだけを `xmin=0,xmax=49,ymin=0,ymax=64` にする。Mesa `ef11349e8e` のIPF scissor XMLとscissor生成式に基づく派生値であり、元の２キャプチャの64×64 scissor FNVと、領域clipの16／32画素単位で49と64が同じ末端を示すことを `check-asymmetric-scissor.py` で照合できる。非対称版のMesa再キャプチャや実GPU結果ではない。対角辺を除く前景は `8<=x<49, y>=8, x+y<63`。x/y転置と左右反転を元画像と区別するが、出力面のMorton解釈は未検証。
+
+追補: `run-render-capture.py --scratchless-vertex --asymmetric-scissor` は固定probeの非公開コピーのscissorだけを49×64へ変えて再キャプチャする。検査側は変更を元に戻したソースのSHA-256を固定して出自を検証する。00／ff初期化の再キャプチャでは、scissorの８バイト、VDMとPPPの生成時ハッシュが固定構成と一致し、vertex／fragment USCのSHA-256も既存の固定命令と一致した。FNV一致はGPU実行の証明ではない。背景PDSの全32バイト検査は再キャプチャで失敗する。Mesa `pvr_pds_kick_usc` は32バイト確保中の先頭８バイトのみを生成し残りを初期化しないため、全領域のハッシュ比較では未初期化paddingの影響を受ける。Windows側はpaddingをゼロにしているが、この観察だけでは矩形化の原因やGPUの実アクセス範囲は確定しない。生BOとprobe.logは非公開のまま保持する。
+
+09c630d実機の初回記録ではPBE metadata `layout=1` を誤ってMortonとして読んだ。Mesa `pvr_common.h` の値１は `PVR_MEMLAYOUT_LINEAR` で、対象は64画素stride。記録済み64行の前景マスクを `analyze-09c630d-rows.py` で元の物理順へ戻すと、前景は線形座標x=8..31、y=8..31の576画素の矩形。元の記録には背景マスクがないため、残りの位置が背景か未知色かは復元できない。背景448・未知3072という合計だけから、処理済み領域を32×32と断定しない。Mesa/LinuxのHWRT値およびcaptured PBEクリップを照合したが、描画欠落の根本原因は未特定。修正版は線形strideで判定し、前景と背景それぞれの１bitマスクを出す。未知色はマスクのいずれにも含まれず、合計と座標を独立に照合できる。これはGPU修正の成功や次の実機試験の根拠にはならない。
+
+UART画素取得は、既存のgeometry fence=1・partial/final fragment fence=2と両CCBの終了位置、DMA同期、FW cleanupが成功し、stage 32まで進んだ場合に限る。64×64 RGBAの線形16 KiBを64バイト単位で出力し、各断片と全体にCRC-32/ISO-HDLCを付ける。BEGIN・ENDの両CRCが一致し、全256断片が一意で各CRCと全体CRCが一致する場合だけ `extract-render-pixels.py UART OUTPUT --offset OFFSET` が排他的に出力を作る。UART中断、混在、重複は失敗扱いとなる。出力は診断対象画素そのものであり、公開前に内容を確認する。LIFETIMEは既存のソフトウェア観測を示し、SHUTDOWN成功もハードDMA停止を独立に証明しない。タイムアウト時は従来どおり未同期画素を出力せず、危険なDMAを保持する。
+
+141233b実機ではBRN63142用region header VA `0xdbf0000000` と初期RGBA `a5 5a c3 7e` を使い、CRC-32 `c6b33b52`・SHA-256 `c9c3d77ebb62c4b81916a71b531e17ec2a5043ac06dfd7e6205eca1b341bf09f` の全画素を取得した。背景448、前景576、sentinel3072で、sentinel以外は左上32×32だけ。旧c1b2f9eの色分布と一致し、BRN63142配置単独では観測上改善しなかった。sentinel残存は未書込みと整合するが、同値書込みやCPU可視性の不具合を除外できない。geom fence 1・fragment fence 2、両CCB read=endとcleanup・FW shutdownはソフトウェア上の完了であり、FW HWRや独立したDMA停止の証明ではない。
+
+追加した `A04GPU FW_EVIDENCE` はrender前後にFW所有HWRカウンタとFWCCBの未処理通知種別の個数を非破壊で取得する。生アドレスは出さず、同期失敗・不正な範囲／キュー形式はERRORとして扱う。WとW_AFTERが違うときは通知の走査中に書込みが発生した可能性がある。ゼロカウンタや空キューはHWR・故障・DMA停止がなかった証明ではない。この診断は観測欠落を補うものであり、141233bの矩形化を修正するものではない。
+
+`A04GPU TILE_SLOTS` は両fence後・全DMA同期後・cleanup前に、固定SIPF1のregion header 16個（各５バイト）とtail pointer 16個（各８バイト）を確認し、生値を出さず非ゼロの生スロット番号だけをビット集合で記録する。割当範囲と所有マップを検査できない場合はVALID=0。スロット順と画面タイルの対応、ゼロが未書込みを意味すること、FW終了やキャッシュ可視性は保証しない。
+
+実機dafd822のUARTは各断片・全体CRC `c6b33b52`、RGBA SHA-256 `c9c3d77ebb62c4b81916a71b531e17ec2a5043ac06dfd7e6205eca1b341bf09f`。背景448・前景576・sentinel3072、HWRカウンタと未処理通知は前後とも０、非ゼロregion生スロット `ffff`・TPC生スロット `0000`、geom／fragment fenceは1／2、両CCB read=end、cleanup=1、shutdown=0。これは141233bと同じ画素であり、region maskだけで各タイルの描画完了はわからない。
+
+Mesa `csbgen/rogue/cr.xml` の `TE_PSG.completeonterminate` はterminate時にregion headerを書き、streamを終了し、tail pointer cache entryを無効化する。固定geometryのTE_PSG `0x20000` はこのbitを立てているため、fence後に全TPCがゼロという結果はgeometry未実行を意味しない。HWRカウンタと未処理通知がゼロでもサンプルは非原子的で、GPU fault不在やDMA停止を完全には証明しない。現時点でこの結果から次の描画設定変更を特定できず、同一jobの観測のみを根拠なく再投入しない。
+
+
+`3e5e0f7`の２条件実機ではtriangleとclear-onlyの両方で左上32×32のみ更新され、残り3072画素はsentinelだった。機種側 `UniXNU-a04br3` 4a62c22fa18674033525946246e94b5806d5fc12 の `patches/mesa/pvr-darwin-winsys.patch` はvendor GLESの終端PPP生成を基に22.40.54.30・SIPF1・16×16タイルに限り終端単位を16画素へ変更する。READMEは同経路で全画面clear・三角形読戻し130項目成功を記録するが、当Windows経路の成功を証明しない。汎用Mesa XMLの32画素単位では64×64終端が0x00040001、機種用の16画素単位では0x000c0003になる。本試験は既定OFFの固定64×64診断のみ後者を明示選択し、HWRT・PBE範囲は64×64のままとする。旧２条件との比較用に同じfence、全画素CRC、sentinel、FW観測を維持する。機種側の読戻し結果を根拠とする候補であり、Windowsでの描画・GPU停止は未検証。
+
+
+実機 `959e1c9` のUARTをCRC検査した結果、triangleは背景2989・前景1107・mismatch 0・sentinel 0、clear-onlyは背景4096・sentinel 0で、両status 0。RGBA SHA-256は順に `4b27d0a4cbf81024bbc79bafbf131c9a9394ac48dbc5a71959de78911c84b3cc`、`8bd99e91b9f115bcf9b1320ddf7672c765e13c3831f164d1437b435bb056d682`。両fence・cleanup・FW shutdownのソフトウェア完了を観測したが、ハードDMA停止の独立証明、一般描画やWDDMアクセラレーションの検証ではない。媒体とdriverの出自は `tools/winpe/ge8300-render-tile16-manifest.json` を参照。

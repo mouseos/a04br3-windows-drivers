@@ -30,8 +30,13 @@ int a04_scsi_set_emmc_identity(uint8_t *inquiry, size_t length, const uint8_t id
     }
     if (!nonspace) return 0;
     for (i = 8; i < 32; ++i) inquiry[i] = ' ';
-    inquiry[8]='J'; inquiry[9]='E'; inquiry[10]='D'; inquiry[11]='E'; inquiry[12]='C';
-    inquiry[13]=(uint8_t)hex[identity[0] >> 4]; inquiry[14]=(uint8_t)hex[identity[0] & 15];
+    if (identity[0] == 0x15) {
+        static const char samsung[7] = {'S','A','M','S','U','N','G'};
+        for (i = 0; i < sizeof samsung; ++i) inquiry[8 + i] = (uint8_t)samsung[i];
+    } else {
+        inquiry[8]='J'; inquiry[9]='E'; inquiry[10]='D'; inquiry[11]='E'; inquiry[12]='C';
+        inquiry[13]=(uint8_t)hex[identity[0] >> 4]; inquiry[14]=(uint8_t)hex[identity[0] & 15];
+    }
     for (i = 0; i < 6; ++i) inquiry[16 + i] = identity[1 + i];
     return 1;
 }
@@ -39,7 +44,7 @@ struct a04_scsi_reply a04_scsi_process(const uint8_t *c, size_t len,
     uint64_t capacity, int writable, uint8_t *out, size_t size)
 {
     static const uint8_t inquiry[36]={0,0,5,2,31,0,0,0,
-        'A','0','4','B','R','3',' ',' ', 'e','M','M','C',' ','S','t','o','r','a','g','e',' ',' ',' ',' ',
+        'U','N','K','N','O','W','N',' ', 'e','M','M','C',' ','D','e','v','i','c','e',' ',' ',' ',' ',' ',
         '0','0','0','1'};
     uint8_t data[32]={0}; uint32_t alloc; struct a04_scsi_reply r={0};
     if (!c || !len || !capacity) return error(5,0x24);

@@ -70,8 +70,16 @@ static void trace(GAUGE_CONTEXT *c, const char *message)
         WRITE_REGISTER_ULONG(c->uart, (ULONG)(UCHAR)*message++);
     }
 }
+static void trace_hex(GAUGE_CONTEXT *c, ULONG value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    char text[9]; unsigned i;
+    for (i = 0; i < 8; ++i) text[i] = digits[(value >> (28 - i * 4)) & 15];
+    text[8] = 0; trace(c, text);
+}
 #else
 #define trace(c, message) ((void)0)
+#define trace_hex(c, value) ((void)0)
 #endif
 
 static uint16_t rd(void *context, unsigned offset)
@@ -144,21 +152,21 @@ static void poll(GAUGE_CONTEXT *c)
     changed = a04_battery_set_external(&c->battery, TRUE);
 #endif
     if (a04_gauge_read_sample(&c->bus, &sample)) {
-        trace(c, "A04BAT SAMPLE FAILED\n");
+        trace(c, "A04BAT SAMPLE FAILED reason="); trace_hex(c, c->adapter.fault_reason);
+        trace(c, " command="); trace_hex(c, c->adapter.fault_command);
+        trace(c, " status="); trace_hex(c, c->adapter.fault_status);
+        trace(c, " fifo="); trace_hex(c, c->adapter.fault_fifo); trace(c, "\n");
         changed |= a04_battery_invalidate(&c->battery);
-#if A04_BQ24160_EXPERIMENTAL
         /* A failed PEC/range check alone leaves the transport healthy.
-         * Keep the already-armed charger owner alive; do not publish the gauge.
+         * Do not publish the gauge; the next periodic read can recover it.
          * A busy controller, NACK or timeout latches the shared bus fault. */
         if (c->adapter.faulted) {
+#if A04_BQ24160_EXPERIMENTAL
             c->charger.stopped = 1;
+#endif
             c->faulted = TRUE;
             InterlockedExchange(&c->online, 0);
         }
-#else
-        c->faulted = TRUE;
-        InterlockedExchange(&c->online, 0);
-#endif
     } else {
         trace(c, "A04BAT SAMPLE VALID\n");
         changed |= a04_battery_publish(&c->battery, &sample);
@@ -171,11 +179,17 @@ NTSTATUS GaugePrepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translate
     GAUGE_CONTEXT *c = GaugeContext(device);
     ULONG i, found = 0;
     PHYSICAL_ADDRESS address;
-    UNREFERENCED_PARAMETER(raw);
+    if (WdfCmResourceListGetCount(raw) != WdfCmResourceListGetCount(translated))
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
     for (i = 0; i < WdfCmResourceListGetCount(translated); ++i) {
         PCM_PARTIAL_RESOURCE_DESCRIPTOR d = WdfCmResourceListGetDescriptor(translated, i);
+        PCM_PARTIAL_RESOURCE_DESCRIPTOR r = WdfCmResourceListGetDescriptor(raw, i);
+        if (!d || !r || d->Type != r->Type) return STATUS_DEVICE_CONFIGURATION_ERROR;
         if (d && d->Type == CmResourceTypeMemory) {
-            if (d->u.Memory.Start.QuadPart != I2C2_BASE || d->u.Memory.Length != I2C2_SIZE || found)
+            if (r->u.Memory.Start.QuadPart != I2C2_BASE ||
+                r->u.Memory.Length != I2C2_SIZE || d->u.Memory.Length != I2C2_SIZE ||
+                r->ShareDisposition != CmResourceShareDeviceExclusive ||
+                d->ShareDisposition != CmResourceShareDeviceExclusive || found)
                 return STATUS_DEVICE_CONFIGURATION_ERROR;
             address = d->u.Memory.Start; ++found;
         }

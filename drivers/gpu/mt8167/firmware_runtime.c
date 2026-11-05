@@ -73,7 +73,7 @@ enum a04_pvr_fw_result a04_pvr_runtime_prepare(const struct a04_pvr_fw_plan *p,
     sys->gpu_util_fw_cb_ctl_fw_addr=fw(l.util); sys->initial_core_clock_speed=core_hz;
     sys->firmware_perf=FW_PERF_CONF_NONE; sys->gpio_validation_mode=ROGUE_FWIF_GPIO_VAL_OFF; sys->marker_val=1;
     result.kernel_ccb_control=l.kctl.offset; result.kernel_ccb=l.kccb.offset; result.kernel_return_slots=l.kreturn.offset;
-    result.firmware_ccb_control=l.fctl.offset; result.firmware_ccb=l.fccb.offset; result.os_data=l.osdata.offset;
+    result.firmware_ccb_control=l.fctl.offset; result.firmware_ccb=l.fccb.offset; result.hwr_control=l.hwr.offset; result.os_data=l.osdata.offset;
     result.system_data=l.sysdata.offset; result.power_sync=l.power.offset; result.mmu_sync=l.mmu.offset; result.trace_control=l.trace_ctl.offset;
     result.trace[0]=l.trace[0].offset; result.trace[1]=l.trace[1].offset;
     result.os_init=CONFIG_OFFSET+65536u; result.system_init=CONFIG_OFFSET+2u*65536u; result.next_free=l.next;

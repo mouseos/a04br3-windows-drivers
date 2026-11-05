@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
-typedef uint8_t UCHAR, BOOLEAN; typedef uint32_t ULONG; typedef uintptr_t ULONG_PTR; typedef uint64_t ULONGLONG;
+typedef uint8_t UCHAR, BOOLEAN; typedef uint32_t ULONG; typedef int32_t LONG; typedef uintptr_t ULONG_PTR; typedef uint64_t ULONGLONG;
 typedef int32_t NTSTATUS;
 typedef void *PMDL;
 typedef union { int64_t QuadPart; } PHYSICAL_ADDRESS, LARGE_INTEGER;
@@ -13,6 +13,8 @@ typedef struct fake_adapter *PDMA_ADAPTER;
 typedef struct {
     void *(*AllocateCommonBuffer)(PDMA_ADAPTER,ULONG,PHYSICAL_ADDRESS *,BOOLEAN);
     void (*FreeCommonBuffer)(PDMA_ADAPTER,ULONG,PHYSICAL_ADDRESS,void *,BOOLEAN);
+    ULONG Size;
+    void *(*AllocateCommonBufferEx)(PDMA_ADAPTER,PHYSICAL_ADDRESS *,ULONG,PHYSICAL_ADDRESS *,BOOLEAN,ULONG);
 } DMA_OPERATIONS;
 struct fake_adapter { DMA_OPERATIONS *DmaOperations; };
 #define STATUS_SUCCESS ((NTSTATUS)0)
@@ -25,9 +27,14 @@ struct fake_adapter { DMA_OPERATIONS *DmaOperations; };
 #define STATUS_DEVICE_CONFIGURATION_ERROR ((NTSTATUS)0xc0000182)
 #define STATUS_IO_TIMEOUT ((NTSTATUS)0xc00000b5)
 #define STATUS_DEVICE_BUSY ((NTSTATUS)0x80000011)
+#define STATUS_IO_DEVICE_ERROR ((NTSTATUS)0xc0000185)
+#define STATUS_DEVICE_NOT_READY ((NTSTATUS)0xc00000a3)
 #define NT_SUCCESS(x) ((x)>=0)
 #define FALSE 0
 #define TRUE 1
+#define NonPagedPoolNx 0
+void *ExAllocatePoolWithTag(int,size_t,unsigned);
+void ExFreePoolWithTag(void *,unsigned);
 #define PASSIVE_LEVEL 0
 #define DISPATCH_LEVEL 2
 #define KernelMode 0
@@ -38,6 +45,10 @@ struct fake_adapter { DMA_OPERATIONS *DmaOperations; };
 #define READ_REGISTER_ULONG(p) (*(p))
 #define WRITE_REGISTER_ULONG(p,v) (*(p)=(v))
 #define KeMemoryBarrier() ((void)0)
+static inline LONG InterlockedCompareExchange(volatile LONG *p,LONG value,LONG expected)
+{ return __sync_val_compare_and_swap(p,expected,value); }
+static inline LONG InterlockedExchange(volatile LONG *p,LONG value)
+{ return __sync_lock_test_and_set(p,value); }
 unsigned KeGetCurrentIrql(void);
 void KeStallExecutionProcessor(unsigned);
 NTSTATUS KeDelayExecutionThread(int,BOOLEAN,const LARGE_INTEGER *);

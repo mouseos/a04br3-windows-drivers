@@ -31,4 +31,37 @@ int a04_render_make_pds_data(const struct a04_render_pds_input *input,
  * all unused bytes are zero. Does not validate the shader or submit work. */
 int a04_render_make_fragment_pds(uint64_t shader_gpu,uint64_t doutu_control,
     const struct a04_render_owned_range *ranges,size_t range_count,uint8_t out[48]);
+/* Fixed probe: vertex ID DOUTW, DOUTU, HALT; and two descriptor DOUTDs.
+ * Sixteen-byte allocations include zero padding. These encode no addresses. */
+void a04_render_make_vertex_pds_code(uint8_t vertex[16],uint8_t descriptor[16]);
+/* Alternate fixed shader with no NIR scratch access. Descriptor contains one
+ * spill-info pointer and one literal; unused output bytes remain zero. */
+int a04_render_make_scratchless_pds_data(const struct a04_render_pds_input *input,
+    const struct a04_render_owned_range *ranges,size_t range_count,
+    struct a04_render_pds_data *out);
+void a04_render_make_scratchless_pds_code(uint8_t vertex[16],uint8_t descriptor[16]);
+struct a04_render_fragment_uniform_input {
+    uint64_t spill_info_gpu,spill_buffer_gpu,fs_meta_gpu;
+};
+struct a04_render_fragment_uniform_data {
+    uint8_t descriptor[24],spill_info[12],fs_meta[4],code[16];
+};
+/* Fixed probe fragment uniform program. Values are generated, never read
+ * from a BO. Shader, PPP and remaining references are not validated. */
+int a04_render_make_fragment_uniform(const struct a04_render_fragment_uniform_input *input,
+    const struct a04_render_owned_range *ranges,size_t count,struct a04_render_fragment_uniform_data *out);
+/* Fixed EOT DOUTU only. Generated 16-byte data has eight zero padding bytes.
+ * Caller must validate the shader and PBE state independently. */
+int a04_render_make_pixel_event(uint64_t shader_gpu,const struct a04_render_owned_range *ranges,
+    size_t count,uint8_t out[16]);
+/* Fixed 64x64 single-sample EOT candidate, with a generated GPU target.
+ * This validates ownership only; PBE layout, shader semantics and job lifetime
+ * still require independent validation before hardware submission. */
+int a04_render_make_fixed_eot(uint64_t target_gpu,const struct a04_render_owned_range *ranges,
+    size_t count,uint8_t out[128]);
+/* Fixed clear-only background: four RGBA bytes and one PDS DMA descriptor.
+ * Neither background USC nor GPU completion is established here. */
+int a04_render_make_fixed_background(uint64_t constants_gpu,const struct a04_render_owned_range *ranges,
+    size_t count,uint8_t constants[16],uint8_t pds[16]);
+void a04_render_make_fixed_background_usc(uint8_t out[128]);
 #endif

@@ -41,7 +41,7 @@ LoadOrderGroup = SCSI Miniport
 a04msdcprobe.sys = 1
 
 [Strings]
-Provider = "TAB-A04-BR3 development"
-DeviceDescription = "MT8167 eMMC non-operational probe"
-ServiceDescription = "MT8167 eMMC diagnostic probe"
-DiskName = "TAB-A04-BR3 diagnostic files"
+Provider = "mouseos"
+DeviceDescription = "MediaTek MT8167 MSDC eMMC Host Controller"
+ServiceDescription = "MediaTek MT8167 MSDC eMMC Host Controller"
+DiskName = "MediaTek MT8167 MSDC eMMC Driver"

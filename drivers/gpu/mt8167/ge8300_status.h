@@ -2,6 +2,16 @@
 #ifndef A04_GE8300_STATUS_H
 #define A04_GE8300_STATUS_H
 #define A04_GE8300_IOCTL_QUERY 0x00226004u
+/* CPU-only vendor FW staging; does not indicate a GPU boot. */
+#define A04_GE8300_IOCTL_VENDOR_STAGE_QUERY 0x00226010u
+struct a04_ge8300_vendor_stage_status { unsigned long version, attempted, stage_status; };
+/* Read-only ACPI snapshot; success is not power ownership or GPU start. */
+#define A04_GE8300_IOCTL_VENDOR_POWER_QUERY 0x00226014u
+struct a04_ge8300_vendor_power_status {
+    unsigned long version, attempted, status;
+    unsigned long spm_status, spm_status_2, mfg_clock_status;
+    unsigned long top_mux0, top_mux1, top_slow;
+};
 /* METHOD_BUFFERED: exactly one 16 KiB input/output transfer. Kernel callers
  * only; provider-side enforcement is mandatory. Experimental opt-in. */
 #define A04_GE8300_IOCTL_COPY 0x00226008u

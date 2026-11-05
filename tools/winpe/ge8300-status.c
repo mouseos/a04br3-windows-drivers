@@ -1,6 +1,29 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include <windows.h>
 #include "../../drivers/gpu/mt8167/ge8300_status.h"
+#ifdef A04_GE8300_VENDOR_STAGE_STATUS
+#include "../../drivers/system/mt8167-toprgu/uart_screen.h"
+static int vendor_uart(const char *message)
+{
+    HANDLE port; DWORD n=0,sent,start=GetTickCount();
+    while(message[n]) ++n;
+    port=CreateFileW(L"\\\\.\\A04BR3ScreenUart",GENERIC_WRITE,0,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
+    if(port==INVALID_HANDLE_VALUE)return 0;
+    while(!DeviceIoControl(port,A04_UART_SCREEN_SEND,(void *)message,n,NULL,0,&sent,NULL)) {
+        if(GetLastError()!=ERROR_BUSY || GetTickCount()-start>10000u) {CloseHandle(port);return 0;}
+        Sleep(10);
+    }
+    Sleep(1000);CloseHandle(port);return 1;
+}
+static char *vendor_text(char *p,const char *s)
+{ while(*s) *p++=*s++;return p; }
+static char *vendor_hex(char *p,DWORD value)
+{
+    static const char digits[]="0123456789ABCDEF";unsigned i;
+    for(i=0;i<8;i++) *p++=digits[(value>>(28-4*i))&15u];
+    return p;
+}
+#endif
 static void say(const char *p) { DWORD n=0,w; while(p[n])++n; WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),p,n,&w,NULL); }
 static void hex(DWORD n) { static const char d[]="0123456789ABCDEF"; char s[9]; unsigned i; for(i=0;i<8;++i)s[i]=d[(n>>(28-4*i))&15]; s[8]=0; say(s); }
 void mainCRTStartup(void)
@@ -12,6 +35,59 @@ void mainCRTStartup(void)
         Sleep(1000);
     }
     if(h==INVALID_HANDLE_VALUE) { say("GE8300_OPEN_ERROR="); hex(GetLastError()); say("\r\n"); ExitProcess(1); }
+#ifdef A04_GE8300_VENDOR_STAGE_STATUS
+    {
+        struct a04_ge8300_vendor_stage_status v;
+        struct a04_ge8300_vendor_power_status power;
+        DWORD power_bytes=0;char line[192],*p=line;
+        if(DeviceIoControl(h,A04_GE8300_IOCTL_VENDOR_POWER_QUERY,NULL,0,&power,sizeof(power),&power_bytes,NULL) &&
+           power_bytes==sizeof(power) && power.version==1 && power.attempted) {
+            p=vendor_text(p,"A04GPU POWER STATUS=");p=vendor_hex(p,power.status);
+            p=vendor_text(p," SPM1=");p=vendor_hex(p,power.spm_status);
+            p=vendor_text(p," SPM2=");p=vendor_hex(p,power.spm_status_2);
+            p=vendor_text(p," MFG=");p=vendor_hex(p,power.mfg_clock_status);
+            p=vendor_text(p,"\n");*p=0;
+            if(!vendor_uart(line)) say("GE8300_POWER_UART_FAILED\r\n");
+            p=line;p=vendor_text(p,"A04GPU CLOCK");
+            p=vendor_text(p," MUX0=");p=vendor_hex(p,power.top_mux0);
+            p=vendor_text(p," MUX1=");p=vendor_hex(p,power.top_mux1);
+            p=vendor_text(p," SLOW=");p=vendor_hex(p,power.top_slow);
+            p=vendor_text(p,"\n");*p=0;
+            if(!vendor_uart(line)) say("GE8300_CLOCK_UART_FAILED\r\n");
+        } else (void)vendor_uart("A04GPU POWER QUERY FAILED\n");
+        if(!DeviceIoControl(h,A04_GE8300_IOCTL_VENDOR_STAGE_QUERY,NULL,0,&v,sizeof(v),&got,NULL) ||
+           got!=sizeof(v) || v.version!=1) {
+            say("GE8300_VENDOR_STAGE_IOCTL_ERROR=");hex(GetLastError());say("\r\n");CloseHandle(h);ExitProcess(2);
+        }
+        say("GE8300_VENDOR_STAGE_ATTEMPT=");hex(v.attempted);
+        say(" STATUS=");hex(v.stage_status);say("\r\n");
+#ifdef A04_GE8300_VENDOR_START_STATUS
+        if(!DeviceIoControl(h,A04_GE8300_IOCTL_QUERY,NULL,0,&s,sizeof(s),&got,NULL) ||
+           got!=sizeof(s) || s.version!=5) {
+            CloseHandle(h);(void)vendor_uart("A04GPU START QUERY FAILED\n");ExitProcess(2);
+        }
+        p=line;p=vendor_text(p,"A04GPU NATIVE START=");p=vendor_hex(p,s.boot_status);
+        p=vendor_text(p," HEALTH=");p=vendor_hex(p,s.health_status);
+        p=vendor_text(p," OFF=");p=vendor_hex(p,s.shutdown_status);
+        p=vendor_text(p,"\n");*p=0;
+        if(!vendor_uart(line)) {CloseHandle(h);ExitProcess(4);}
+        p=line;p=vendor_text(p,"A04GPU NATIVE ATTEMPT=");p=vendor_hex(p,s.attempted);
+        p=vendor_text(p," OWNED=");p=vendor_hex(p,s.processor_released);
+        p=vendor_text(p," READY=");p=vendor_hex(p,s.firmware_started);
+        p=vendor_text(p,"\n");*p=0;
+        if(!vendor_uart(line)) {CloseHandle(h);ExitProcess(4);}
+        CloseHandle(h);
+        /* Firmware-ready, SYNC and OFF acknowledgements remain separate;
+         * this diagnostic does not claim DMA quiescence or GPU drawing. */
+        ExitProcess(v.attempted && !v.stage_status && s.attempted && !s.boot_status &&
+                    !s.health_status && !s.shutdown_status && s.firmware_started ? 0 : 3);
+#else
+        CloseHandle(h);
+        if(v.attempted && v.stage_status==0) ExitProcess(vendor_uart("A04GPU VENDOR_STAGE SUCCESS\n") ? 0 : 4);
+        (void)vendor_uart("A04GPU VENDOR_STAGE FAILED\n");ExitProcess(3);
+#endif
+    }
+#endif
     for(i=0;i<16;++i) {
         if(!DeviceIoControl(h,A04_GE8300_IOCTL_QUERY,NULL,0,&s,sizeof(s),&got,NULL) || got!=sizeof(s) || s.version!=5) {
             say("GE8300_IOCTL_ERROR="); hex(GetLastError()); say("\r\n"); CloseHandle(h); ExitProcess(2);

@@ -34,5 +34,5 @@ KmdfService=A04SharedParentProbe,Wdf
 KmdfLibraryVersion=1.13
 [Strings]
 Provider="mouseos"
-Device="MT8167 Shared Parent Offline Prototype"
-Disk="MT8167 Shared Parent Prototype"
+Device="MediaTek MT8167 Shared Resource Controller"
+Disk="MediaTek MT8167 Shared Resource Controller Driver"

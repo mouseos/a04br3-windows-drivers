@@ -19,7 +19,7 @@ for input in "$test_boot" "$test_esp" "$restore_boot" "$restore_esp"; do [[ -f $
 [[ ! -e $out ]] || exit 2
 root=$(cd "$(dirname "$0")/../.." && pwd)
 uart=${A04_UART:-/dev/ttyUSB0}
-uart_log=${A04_UART_LOG:-/media/yuma/Expansion/TAB-A04-BR3/uart-recovery/uart-ttyUSB0-921600-before-restart.log}
+uart_log=${A04_UART_LOG:-"$root/../../port/gsi/logs/ios-feasibility/windows-rt-uart-workspace.log"}
 flash_log="$root/../../port/gsi/logs/flash.log"
 [[ -c $uart && -f $uart_log ]] || exit 2
 [[ -f $manifest ]] || exit 2
@@ -50,7 +50,7 @@ mapfile -t hashes < <(cut -d ' ' -f1 "$out/inputs.sha256")
 fastboot devices | awk '{print $1}' | grep -Fxq "$serial" || exit 2
 fastboot -s "$serial" getvar product 2>&1 | grep -q 'product: A04BR3' || exit 2
 # Claim the nonce permanently before any device write. A crash cannot release it.
-ledger=${A04_OFFLINE_NONCE_LEDGER:-$HOME/.local/state/a04br3-mma8652-nonces}
+ledger=${A04_OFFLINE_NONCE_LEDGER:-"$root/../../port/gsi/logs/ios-feasibility/a04br3-mma8652-nonces"}
 mkdir -p "$ledger"
 ( set -o noclobber; printf '%s\n' "$A04_TEST_ESP_SHA256" > "$ledger/$token" ) || { echo MMA_NONCE_ALREADY_USED >&2; exit 2; }
 start=$(stat -c %s "$uart_log")

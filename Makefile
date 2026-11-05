@@ -21,6 +21,17 @@ test-mma8652:
 	$(MAKE) -C drivers/sensors/mma8652 test test-hid
 
 test: build/msdc_shared_drain_test build/msdc_touch_shared_test build/msdc_pin_uhs_test build/msdc_parent_resources_test build/msdc_pinmux_test build/msdc_cold_init_test build/msdc_board_owner_test build/msdc_rails_owner_test test-mt8167-pwrap-owner build/msdc_sync_pio_test build/gpu_render_pds_data_test test-mt8167-dl1-engine test-mt8167-wavert-dma build/gpu_windows_render_memory_test build/msdc_lifetime_test build/bqhr_diagnostic_test test-mt8167-audio-broker test-mt8167-audio-ring test-mt8167-audio-irq build/gpu_render_kick_off build/gpu_render_kick_on build/gpu_windows_render_command_test test-mt8167-dl1 build/gpu_render_execution_test test-thermal build/bq24160_handoff_test build/bq24160_charger_test build/bq24160_i2c_test build/gpu_render_context_test build/gpu_render_hwrt_test build/gpu_render_freelist_test build/gpu_render_stream_test build/lc709203f_test build/lc709203f_i2c_test build/msdc_io_gate_test build/toprgu_watchdog_policy_test build/toprgu_reset_command_test build/cdb_test build/pio_test build/scsi_capacity_test build/dma_test build/scsi_test build/gpt_guard_test build/button_state_test build/button_pipeline_test build/button_device_test build/button_hardware_test build/pmic_read_test build/bu21025_test build/i2c_pio_test build/bu21025_bus_test build/touch_board_init_test build/touch_coordinates_test build/touch_contact_test build/touch_hid_test build/touch_hid_dump build/touch_pipeline_test build/touch_device_test build/check_chkdsk_test build/eint_test build/gpu_power_test build/gpu_mmu_test build/gpu_fw_objects_test build/gpu_fw_queue_test build/gpu_transfer_stream_test build/gpu_windows_linear_test build/gpu_present_bounds_test build/gpu_dma_pages_test build/gpu_transfer_mapping_test
+	python3 tests/gpu_render_submit_dependencies_test.py
+	python3 tests/gpu_render_vertex_pds_code_test.py
+	python3 tests/gpu_triangle_nir_audit_test.py
+	python3 tests/gpu_render_triangle_fixture_test.py
+	python3 tests/gpu_render_fixed_vdm_test.py
+	python3 tests/gpu_render_fixed_ppp_test.py
+	python3 tests/gpu_render_background_test.py
+	python3 tests/gpu_render_spm_load_test.py
+	python3 tests/gpu_render_context_static_trace_test.py
+	python3 tests/gpu_render_context_bounded_ir_test.py
+	python3 tests/gpu_render_shared_log_test.py
 	./build/gpu_render_shared_size_test
 	./build/gpu_render_context_pds_test
 	./build/gpu_render_pds_data_test
@@ -103,6 +114,7 @@ test: build/msdc_shared_drain_test build/msdc_touch_shared_test build/msdc_pin_u
 	./build/gpu_transfer_stream_test
 	./build/gpu_windows_linear_test
 	./build/gpu_present_bounds_test
+	python3 tests/gpu_copy_d0_lifetime_test.py
 	./build/gpu_dma_pages_test
 	./build/gpu_transfer_mapping_test
 
@@ -130,9 +142,9 @@ build/gpu_render_context_test: drivers/gpu/mt8167/render_context.c drivers/gpu/m
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_pair.c drivers/gpu/mt8167/render_stream.c drivers/gpu/mt8167/firmware_objects.c tests/gpu_render_context_test.c -o $@
 
-build/gpu_windows_render_memory_test: tests/gpu_windows_render_memory_test.c tests/gpu_windows_stubs/ntddk.h drivers/gpu/mt8167/windows_render_memory.c drivers/gpu/mt8167/windows_render_memory.h drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/render_pds_data.c drivers/gpu/mt8167/render_context_pds.c drivers/gpu/mt8167/render_execution.c drivers/gpu/mt8167/firmware_objects.c drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_freelist.c drivers/gpu/mt8167/render_target.c drivers/gpu/mt8167/render_hwrt.c
+build/gpu_windows_render_memory_test: tests/gpu_windows_render_memory_test.c tests/gpu_windows_stubs/ntddk.h drivers/gpu/mt8167/render_fixed_ppp.c drivers/gpu/mt8167/render_fixed_vdm.c drivers/gpu/mt8167/render_pair.c drivers/gpu/mt8167/windows_render_memory.c drivers/gpu/mt8167/windows_render_diagnostic.c drivers/gpu/mt8167/render_fixed_command.c drivers/gpu/mt8167/windows_render_memory.h drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/render_pds_data.c drivers/gpu/mt8167/render_context_pds.c drivers/gpu/mt8167/render_context_static.c drivers/gpu/mt8167/render_context_bounded_usc.h drivers/gpu/mt8167/render_triangle_usc.h drivers/gpu/mt8167/render_shared_size.c drivers/gpu/mt8167/render_shared_size.h drivers/gpu/mt8167/render_execution.c drivers/gpu/mt8167/firmware_objects.c drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_freelist.c drivers/gpu/mt8167/render_target.c drivers/gpu/mt8167/render_hwrt.c
 	mkdir -p build
-	$(CC) $(CFLAGS) -DA04_GE8300_RENDER_EXPERIMENT=1 -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif tests/gpu_windows_render_memory_test.c drivers/gpu/mt8167/windows_render_memory.c drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/render_pds_data.c drivers/gpu/mt8167/render_context_pds.c drivers/gpu/mt8167/render_execution.c drivers/gpu/mt8167/firmware_objects.c drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_freelist.c drivers/gpu/mt8167/render_target.c drivers/gpu/mt8167/render_hwrt.c -o $@
+	$(CC) $(CFLAGS) -DA04_GE8300_RENDER_EXPERIMENT=1 -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif tests/gpu_windows_render_memory_test.c drivers/gpu/mt8167/render_fixed_ppp.c drivers/gpu/mt8167/render_fixed_vdm.c drivers/gpu/mt8167/render_pair.c drivers/gpu/mt8167/windows_render_memory.c drivers/gpu/mt8167/windows_render_diagnostic.c drivers/gpu/mt8167/render_fixed_command.c drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/render_pds_data.c drivers/gpu/mt8167/render_context_pds.c drivers/gpu/mt8167/render_context_static.c drivers/gpu/mt8167/render_shared_size.c drivers/gpu/mt8167/render_execution.c drivers/gpu/mt8167/firmware_objects.c drivers/gpu/mt8167/render_context.c drivers/gpu/mt8167/render_freelist.c drivers/gpu/mt8167/render_target.c drivers/gpu/mt8167/render_hwrt.c -o $@
 
 build/gpu_render_kick_off: tests/gpu_render_kick_policy_test.c drivers/gpu/mt8167/render_kick_policy.h
 	mkdir -p build
@@ -619,3 +631,49 @@ test-mt8167-pnp-masked-irq:
 	$(CC) $(CFLAGS) -Itests/audio_query_stubs -Idrivers/audio/mt8167-afe -c drivers/audio/mt8167-afe/audio_parent_client.c -o build/mt8167_irq_parent_host.o
 	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_TEST_PNP_BACKEND=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_AUDIO_QUERY_SHARED=1 -DA04_AUDIO_MAP_AFE=1 -DA04_AUDIO_IRQ_DIAGNOSTIC=1 -Itests/audio_owner_stubs -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/pnp_backend.cpp drivers/audio/mt8167-afe/afe_mapping.cpp drivers/audio/mt8167-afe/common_dma.cpp drivers/audio/mt8167-afe/dma_adapter.cpp drivers/audio/mt8167-afe/shared_audio.c drivers/audio/mt8167-afe/irq_windows.cpp drivers/audio/mt8167-afe/dl1_engine.c drivers/audio/mt8167-afe/dl1.c tests/mt8167_pnp_backend_test.cpp build/mt8167_irq_parent_host.o -o build/mt8167_pnp_masked_irq_test
 	./build/mt8167_pnp_masked_irq_test
+.PHONY: test-gpu-vendor-m1-11
+test-gpu-vendor-m1-11: build/gpu_vendor_m1_11_stage_test build/gpu_vendor_firmware_requests_test build/gpu_vendor_uncached_test build/gpu_vendor_rebase_test build/gpu_vendor_render_resources_test build/gpu_vendor_windows_render_cold_test build/gpu_vendor_windows_render_context_test build/gpu_vendor_clear_image_test
+	python3 tests/gpu_vendor_m1_11_fixture.py
+	./build/gpu_vendor_m1_11_stage_test build/vendor-m1-11-test/firmware.bin build/vendor-m1-11-test/code.bin build/vendor-m1-11-test/data.bin
+	./build/gpu_vendor_firmware_requests_test
+	./build/gpu_vendor_uncached_test
+	./build/gpu_vendor_rebase_test
+	./build/gpu_vendor_render_resources_test
+	./build/gpu_vendor_windows_render_cold_test
+	./build/gpu_vendor_windows_render_context_test
+	./build/gpu_vendor_clear_image_test
+
+build/gpu_vendor_clear_image_test: tests/gpu_vendor_clear_image_test.c drivers/gpu/mt8167/vendor_m1_11/clear_image.c drivers/gpu/mt8167/vendor_m1_11/clear_image.h drivers/gpu/mt8167/vendor_m1_11/render_resources.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
+
+build/gpu_vendor_windows_render_context_test: tests/gpu_vendor_windows_render_context_test.c drivers/gpu/mt8167/vendor_m1_11/windows_render_context.c drivers/gpu/mt8167/vendor_m1_11/windows_render_clear.c drivers/gpu/mt8167/vendor_m1_11/clear_image.c drivers/gpu/mt8167/vendor_m1_11/windows_render_cold.h drivers/gpu/mt8167/vendor_m1_11/render_resources.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
+
+build/gpu_vendor_windows_render_cold_test: tests/gpu_vendor_windows_render_cold_test.c drivers/gpu/mt8167/vendor_m1_11/windows_render_cold.c drivers/gpu/mt8167/vendor_m1_11/windows_render_cold.h drivers/gpu/mt8167/vendor_m1_11/render_resources.c drivers/gpu/mt8167/vendor_m1_11/windows_uncached.c drivers/gpu/mt8167/vendor_m1_11/clear_image.c drivers/gpu/mt8167/gpu_mmu.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
+
+build/gpu_vendor_render_resources_test: tests/gpu_vendor_render_resources_test.c drivers/gpu/mt8167/vendor_m1_11/render_resources.c drivers/gpu/mt8167/vendor_m1_11/render_resources.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueRuntimeLayout.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 tests/gpu_vendor_render_resources_test.c drivers/gpu/mt8167/vendor_m1_11/render_resources.c -o $@
+
+build/gpu_vendor_rebase_test: tests/gpu_vendor_rebase_test.c drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueRuntimeRebase.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueRuntimeLayout.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $< -o $@
+
+build/gpu_vendor_uncached_test: tests/gpu_vendor_uncached_test.c drivers/gpu/mt8167/vendor_m1_11/windows_uncached.c drivers/gpu/mt8167/vendor_m1_11/windows_uncached.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167/vendor_m1_11 tests/gpu_vendor_uncached_test.c drivers/gpu/mt8167/vendor_m1_11/windows_uncached.c -o $@
+
+build/gpu_vendor_firmware_requests_test: tests/gpu_vendor_firmware_requests_test.c drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueFirmwareRequests.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueCommand.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueDeviceWords.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $< -o $@
+	python3 tests/test_ge8300_power_acpi.py
+
+build/gpu_vendor_m1_11_stage_test: tests/gpu_vendor_m1_11_stage_test.c drivers/gpu/mt8167/vendor_m1_11/stage.c drivers/gpu/mt8167/vendor_m1_11/windows_stage.c drivers/gpu/mt8167/vendor_m1_11/windows_start.c drivers/gpu/mt8167/vendor_m1_11/windows_command.c drivers/gpu/mt8167/vendor_m1_11/windows_command.h drivers/gpu/mt8167/vendor_m1_11/windows_irq_snapshot.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueFirmwareRequests.h drivers/gpu/mt8167/vendor_m1_11/windows_stop.c drivers/gpu/mt8167/vendor_m1_11/windows_stop.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueStop.h drivers/gpu/mt8167/vendor_m1_11/stage.h drivers/gpu/mt8167/vendor_m1_11/windows_stage.h drivers/gpu/mt8167/vendor_m1_11/windows_start.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueCommand.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueDeviceWords.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueStartupPlan.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueStartupExecutor.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueFirmware.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueMipsMMU.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueRuntimeLayout.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueDDKABI.h drivers/gpu/mt8167/vendor_m1_11/windows_stage_uncached.c drivers/gpu/mt8167/vendor_m1_11/windows_uncached.c drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueRuntimeRebase.h
+	mkdir -p build
+	$(CC) $(CFLAGS) -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 tests/gpu_vendor_m1_11_stage_test.c drivers/gpu/mt8167/vendor_m1_11/stage.c drivers/gpu/mt8167/vendor_m1_11/windows_stage.c drivers/gpu/mt8167/vendor_m1_11/windows_start.c drivers/gpu/mt8167/vendor_m1_11/windows_command.c drivers/gpu/mt8167/vendor_m1_11/windows_stop.c drivers/gpu/mt8167/vendor_m1_11/windows_stage_uncached.c drivers/gpu/mt8167/vendor_m1_11/windows_uncached.c -o $@
+
+test: test-gpu-vendor-m1-11

@@ -12,7 +12,7 @@ def load_module(name,file):
     spec=importlib.util.spec_from_file_location(name,pathlib.Path(__file__).with_name(file))
     m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
 
-def links(events):
+def links(events,vertex_bytes=312):
     compilers=[];uploads={};out=[];last=None
     for e in events:
         op=e['event']
@@ -32,7 +32,7 @@ def links(events):
             size,digest,matches=uploads[addr]
             if (stage,0) not in matches or not addr<=entry<addr+size:
                 raise ValueError('compiler or entry mismatch')
-            if size != (312 if stage==0 else 360):raise ValueError('unsupported fixed shader size')
+            if size != (vertex_bytes if stage==0 else 360):raise ValueError('unsupported fixed shader size')
             out.append((stage,size,digest,entry-addr))
         elif op in ('vm_unmap','vm_destroy'):
             # Ambiguous lifetime: no stale upload can satisfy a later link.
@@ -50,7 +50,10 @@ def inspect(root, fill):
     if report['pds_shader_unmapped'] or report['fragment_unmapped'] or report['fragment_missing_uploads'] or report['uploads_ambiguous_vm']:
         raise ValueError('unmapped shader dependency')
     load_module('fragment','check-render-fragment.py').check(root)
-    return m,links(map(json.loads,data.splitlines()))
+    variant=m.get('scratchless_vertex')
+    if variant and variant.get('source_sha256')!=hashlib.sha256((pathlib.Path(__file__).with_name('shaders')/'triangle-scratchless.vert').read_bytes()).hexdigest():
+        raise ValueError('scratchless source mismatch')
+    return m,links(map(json.loads,data.splitlines()),176 if variant else 312)
 
 def compare(zero,ones):
     a,aa=inspect(zero,'00');b,bb=inspect(ones,'ff')
@@ -59,7 +62,8 @@ def compare(zero,ones):
     for k in ('mesa_commit','library_sha256','pco_source_sha256','pco_object_sha256'):
         if a['diagnostic_manifest'][k]!=b['diagnostic_manifest'][k]:raise ValueError('compiler provenance mismatch')
     if aa!=bb:raise ValueError('PCO output depends on fill pattern')
-    return {'vertex_links':2,'fragment_links':2,'vertex_bytes':312,'fragment_bytes':360,
+    if a.get('scratchless_vertex')!=b.get('scratchless_vertex'):raise ValueError('variant provenance mismatch')
+    return {'vertex_links':2,'fragment_links':2,'vertex_bytes':176 if a.get('scratchless_vertex') else 312,'fragment_bytes':360,
             'gpu_execution_allowed':False,'limitations':['FNV is not collision-resistant',
             'matching two fill values does not prove every emitted bit or immediate is safe',
             'indirect shader references, runtime writes and complete job lifetime remain unverified']}

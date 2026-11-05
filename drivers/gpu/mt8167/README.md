@@ -221,3 +221,27 @@ SoC power restoration is not implemented. The optional display miniport client
 is tested only in WinPE and must not be treated as a supported driver. The
 initial WinPE test path remains separate. See Microsoft's [power-managed
 queues](https://learn.microsoft.com/en-us/windows-hardware/drivers/wdf/using-power-managed-i-o-queues).
+
+## MT8167 対応 m1.11 ファームウェアの準備
+
+実コア 22.40.54.30 向け vendor m1.11 ファームウェアの版1レイアウトを検証し、WindowsのDMA共通バッファにコード・データ・MIPSページ表とm1.11用の初期FWIFキューを準備する経路を追加した。`A04_GE8300_VENDOR_STAGE=1` は既定オフで、既存の版3ファームウェア起動試験と同時には使えない。ビルド時は `A04_GE8300_FIRMWARE` に正規に用意した版1ファームウェアを指定し、期待するSHA-256を検査する。実機側の入力名は `System32\drivers\ge8300-mips.fw`。専用IOCTLの `stage_status` はCPU準備と解放の結果であり、従来の `boot_status` と `health_status` は `STATUS_NOT_SUPPORTED` のまま。GPUファームウェア起動、FWIFとの実行時通信、描画、DMA停止は実機確認していない。
+
+XNUのm1.11起動手順を使うWindows向けトランスポートを追加したが、現在のPnPドライバからは呼び出さない。電源・クロックと割り込みマスクの所有、DMAエネーブラの寿命、停止時のDMA排出を統合してから実機で使用する必要がある。起動試行後の共通バッファは成功・失敗を問わず保持し、未実装の停止経路で解放しない。
+
+実装は [mouseos/xnu_kernel_benesse_a04br3](https://github.com/mouseos/xnu_kernel_benesse_a04br3) の `iokit/Kernel/arm/rogue/A04BR3RogueFirmware.h`、`A04BR3RogueMipsMMU.h`、`A04BR3RogueMemory.h`、`A04BR3RogueRuntimeLayout.h`、MITライセンスの `A04BR3RogueDDKABI.h` を参照し、BSD-2-Clause-Patentのヘッダを保持している。`make test-gpu-vendor-m1-11` は合成画像で正常系と破損・DMA同期失敗を試す。該当vendor firmwareを別途入力したホスト検証でも独立した版1展開結果と一致したが、配布権と実機動作は別途未確認。
+
+m1.11向けの固定SYNCコマンド経路を追加した。GPU側のキュー読取りと同期値の両方を確認し、タイムアウトや破損後はキューを再利用しない。現時点ではPnPから呼び出さず、実機でのファームウェア通信を意味しない。コマンド制御領域はCPUとGPUが同じキャッシュ行へ同時に書くため、キャッシュ無効またはハードウェア整合性の証拠が必要である。Microsoftの[AllocateCommonBuffer仕様](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_common_buffer)では `CacheEnabled` 引数は無視され、ARMではACPIの `_CCA` などに基づきOSが決定する。`FALSE` を渡しただけでは証明にならない。対象環境で属性とDMA整合性を確認するまでは、このコマンド経路を実機で有効にしない。
+
+端末固有UEFI `46d18c37` は、GPU電源状態とクロック選択を読み取るACPIメソッド `GPST` を提供する。Windows側は応答の形式・長さと電源状態を確認してから、割り当て済みMFGリソースのクロック状態を読む。これは読み取り時点のスナップショットで、電源状態の維持や共有レジスタの所有を保証しない。実際のPnP経路には未接続であり、メソッドのWindows実行は未確認。
+
+`A04_GE8300_VENDOR_STAGE=1` の診断構成は、PnPから `GPST` 読取りとMFG状態の取得を試し、専用IOCTLとUARTへ結果を出す。読み取りに失敗してもCPU側のファームウェア準備結果とは別に記録する。未対応UEFIではメソッド取得失敗を報告し、取得成功も電源状態の継続やGPU動作を保証しない。
+
+m1.11の停止準備として、Linux DDKの `RGXPrePowerState` に従い固定の電源オフ要求をキューへ送り、消費位置、power sync、FWのOFF状態を確認する処理を追加した。タイムアウト時はキューを使用不能にする。FW応答は割り込み排出やバスのDMA停止を証明しないため、成功後もDMAメモリを保持する。この経路はPnPに未接続で、実機検証はしていない。
+
+m1.11のRGXStopに対応するレジスタ停止処理も追加した。FWのOFF応答とIRQ排出を前提に、Sidekick・SLCのidle、BIF/MMUと外部読取りの状態を確認し、MTSの関連付けを解除する。レジスタ条件の成功はSoC外側までのDMA排出を保証しないため、DMA領域を解放しない。割り込みカウンタ排出とPnPからの呼出しは未実装で、実機検証はしていない。
+
+## m1.11 WinPE実機診断（2026-11-05）
+
+上記の未接続・未検証という記述は各追加時点の記録。端末専用UEFI `3a310ccc` と4 CPUのWinPEで、ドライバ `2d144a9` の診断経路はDMA v3アダプターの取得、非キャッシュ領域への準備、GE8300ファームウェア起動、GP SYNCの完了をUARTで確認した。`DEVICE_DESCRIPTION_VERSION3` では `Dma32BitAddresses` は無視され、`DmaAddressWidth` に非ゼロを指定する必要がある。詳細は [Microsoftの構造体仕様](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-_device_description)。
+
+続く `0f8cd0e` の実機診断では電源オフ要求後の状態は同期値1、電源状態IDLE、KCCB読取り・書込み位置とも2だった。Linux m1.11 DDKは応答後にOFFでなければ電源移行拒否として扱うため、`bb71457` はキュー消費・応答を確認した上でOFF以外ならビジーを返し、オンライン状態とDMA所有を維持する。停止後の安全なDMA解放、共有電源の所有、GPU描画および通常Windowsへの導入は未確認。WinPE専用の診断フラグは既定OFFのままであり、スナップショットは電源所有やDMA停止の証明ではない。

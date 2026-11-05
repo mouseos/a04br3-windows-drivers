@@ -9,17 +9,18 @@ import pathlib
 import re
 import sys
 
-def analyze(events,log):
+def analyze(events,log,scratchless=False):
     def addresses(name):
         return [int(x,16) for x in re.findall(r'^\s*'+name+r'\s*:\s*(0x[0-9a-fA-F]+)',log,re.M)]
     def sizes(name):
         return [int(x) for x in re.findall(r'^\s*'+name+r'\s*:\s*(\d+) bytes',log,re.M)]
     v=addresses('vs_pds_data_base_addr');d=addresses('pds_data_addr')
     vc=addresses('vs_pds_code_base_addr');dc=addresses('pds_code_addr')
-    if not all(len(x)==2 for x in (v,d,vc,dc)) or sizes('vs_pds_data_size')!=[16,16] or sizes('pds_data_size')!=[32,32]:
+    descriptor_fetch=16 if scratchless else 32;descriptor_write=12 if scratchless else 24
+    if not all(len(x)==2 for x in (v,d,vc,dc)) or sizes('vs_pds_data_size')!=[16,16] or sizes('pds_data_size')!=[descriptor_fetch]*2:
         raise ValueError('unexpected fixed-probe VDM layout')
     expected={(addr,kind):(length,fetch) for addrs,kind,length,fetch in
-              ((v,'vertex_attributes',12,16),(d,'descriptor_mappings',24,32)) for addr in addrs}
+              ((v,'vertex_attributes',12,16),(d,'descriptor_mappings',descriptor_write,descriptor_fetch)) for addr in addrs}
     if len(expected)!=4:raise ValueError('duplicate data references')
     maps={};seen=set()
     for e in events:
@@ -39,7 +40,7 @@ def analyze(events,log):
         if len(rows)!=1 or rows[0]['size']<=0:raise ValueError('PDS code upload not identified')
         code_sizes.append(rows[0]['size'])
     return {'draws':2,'vertex_data_written':12,'vertex_data_fetch':16,
-            'descriptor_data_written':24,'descriptor_data_fetch':32,'pds_code_upload_sizes':code_sizes,
+            'descriptor_data_written':descriptor_write,'descriptor_data_fetch':descriptor_fetch,'pds_code_upload_sizes':code_sizes,
             'gpu_execution_allowed':False,
             'limitations':['code upload sizes do not prove instruction execution bounds',
                            'PPP and VDM address ordering is specific to the fixed probe',
@@ -56,7 +57,10 @@ def check(root):
     trace=importlib.util.module_from_spec(spec);spec.loader.exec_module(trace);r=trace.check(root/'events.jsonl')
     if r['uploads_unmapped_at_observation'] or r['uploads_ambiguous_vm'] or r['pds_dependency_unmapped']:
         raise ValueError('unmapped PDS')
-    return analyze([json.loads(x) for x in events.splitlines()],log.decode('utf-8','replace'))
+    variant=m.get('scratchless_vertex')
+    if variant and variant.get('source_sha256')!=hashlib.sha256((pathlib.Path(__file__).with_name('shaders')/'triangle-scratchless.vert').read_bytes()).hexdigest():
+        raise ValueError('scratchless source mismatch')
+    return analyze([json.loads(x) for x in events.splitlines()],log.decode('utf-8','replace'),bool(variant))
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('capture');a=p.parse_args()

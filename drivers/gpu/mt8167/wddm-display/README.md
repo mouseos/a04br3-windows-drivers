@@ -15,7 +15,19 @@ the separate experimental GE8300 kernel provider for full-width, unrotated,
 contiguous 32-bit rectangles. All other cases, provider absence and any
 failure use the existing CPU path. Both sides are disabled by default. The
 provider stages through CPU memory, so a speedup is not established.
-This path has not been deployed or validated on hardware.
+In the WinPE device test of driver commit `141466c`, the display miniport
+started and the provider reported two successful 16 KiB display-copy requests;
+the framebuffer was captured. These requests include CPU staging and do not
+establish faster presentation, general 3D rendering, or production stability.
+The later power-exit changes have not been tested on the device.
 The upstream sample explicitly does not support sleep. Do not deploy this build
 on the device until resource ownership, GPU synchronization, reset and power
 transitions have been implemented and independently verified.
+
+The render diagnostic's fixed triangle and clear passed on hardware separately
+from this display-only path. They do not validate WDDM presentation, shared
+surfaces, GPU DMA quiescence, a graphics KMD or a Direct3D UMD. The opt-in
+copy provider now retains DMA allocations and refuses D0 exit when its transfer
+context exists; firmware shutdown alone is not proof of DMA quiescence. This
+conservative behavior blocks normal suspend/removal and must be replaced by a
+verified quiesce and recovery sequence before device deployment.

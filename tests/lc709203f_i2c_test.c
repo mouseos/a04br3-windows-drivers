@@ -22,7 +22,7 @@ int main(void)
 {
     struct mock m = {{0}, 0, 0, 0};
     struct a04_i2c_io io = {&m, rd, wr, delay};
-    struct a04_gauge_mt8167 a = {&io, now_ns, 0};
+    struct a04_gauge_mt8167 a = {.io = &io, .monotonic_ns = now_ns};
     uint8_t out[3] = {1, 2, 3};
     assert(!a04_gauge_mt8167_read(&a, 0x0b, 0x09, out));
     assert(out[0] == 0xa0 && out[1] == 0xa1 && out[2] == 0xa2);
@@ -30,14 +30,17 @@ int main(void)
            m.regs[0x6c / 2] == 3 && m.regs[0x18 / 2] == 2);
     out[0] = 1; m.outcome = 3;
     assert(a04_gauge_mt8167_read(&a, 0x0b, 0x09, out));
-    assert(a.faulted && out[0] == 1);
+    assert(a.faulted && out[0] == 1 && a.fault_reason == 3 && a.fault_status == 1 && a.fault_fifo == 0x20 && a.fault_command == 0x09);
     m.outcome = 0; assert(a04_gauge_mt8167_read(&a, 0x0b, 0x09, out));
     a.faulted = 0; m.outcome = 2;
     assert(a04_gauge_mt8167_read(&a, 0x0b, 0x09, out));
-    assert(a.faulted && m.delays == 2000 && out[0] == 1);
+    assert(a.faulted && m.delays == 2000 && out[0] == 1 && a.fault_reason == 4);
     a.faulted = 0; m.outcome = 4;
     assert(a04_gauge_mt8167_read(&a, 0x0b, 0x09, out));
-    assert(a.faulted);
+    assert(a.faulted && a.fault_reason == 1);
+    a.faulted = 0; m.outcome = 1;
+    assert(a04_gauge_mt8167_read(&a, 0x0b, 0x0f, out));
+    assert(a.fault_reason == 2 && a.fault_status == 2 && a.fault_command == 0x0f);
     m.outcome = 0;
     assert(a04_gauge_mt8167_read(&a, 0x0b, 0x09, out));
     return 0;

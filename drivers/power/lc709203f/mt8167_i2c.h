@@ -7,6 +7,10 @@ struct a04_gauge_mt8167 {
     const struct a04_i2c_io *io;
     uint64_t (*monotonic_ns)(void *context);
     int faulted;
+    uint16_t fault_status;
+    uint16_t fault_fifo;
+    uint8_t fault_command;
+    uint8_t fault_reason;
 };
 /* Exclusive ownership of initialized I2C2 and a lock shared with charger
  * clients are prerequisites. A failure latches until owner-led recovery. */

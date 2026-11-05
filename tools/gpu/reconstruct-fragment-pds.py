@@ -25,6 +25,8 @@ def main():
     p.add_argument('--experimental-incomplete',action='store_true');a=p.parse_args()
     if not a.experimental_incomplete:raise SystemExit('incomplete fixture: explicit offline opt-in required')
     fragment.check(a.capture)
+    spec=importlib.util.spec_from_file_location('submit',pathlib.Path(__file__).with_name('check-render-submit-dependencies.py'))
+    submit=importlib.util.module_from_spec(spec);spec.loader.exec_module(submit);submit.check(a.capture)
     links=[e for e in map(json.loads,(a.capture/'events.jsonl').read_bytes().splitlines()) if e['event']=='fragment_shader_link']
     link=links[a.index]
     # The observed layout is fixed; refuse large or unexpected allocations.

@@ -17,6 +17,8 @@ def check(path):
     pds_deps = unmapped_deps = 0
     pds_shaders = unmapped_shaders = 0
     fragment_links = fragment_unmapped = fragment_missing_uploads = 0
+    fs_meta_seen = fs_meta_unmapped = 0
+    scissor_seen = scissor_unmapped = 0
     live_uploads = []
     open_submit = None
     for line in pathlib.Path(path).read_text(encoding='utf-8').splitlines():
@@ -103,6 +105,30 @@ def check(path):
                     matches = [u for u in live_uploads if u[0][0] == vm and u[1] == addr and u[3] == kind and (u[2] == written if written else u[2] <= size)]
                     if len(matches) != 1 or (kind == 'usc_code' and not addr <= e['entry_gpu'] < addr+matches[0][2]):
                         fragment_missing_uploads += 1
+        elif op == 'render_pbe_target':
+            image,size,target=e['image_gpu'],e['image_size'],e['target_gpu']
+            if (image<=0 or image>=GPU_LIMIT or size<=0 or size>GPU_LIMIT-image or target<image or target-image>=size or
+                e['width']<=0 or e['height']<=0 or e['stride']<=0 or not 0<=e['layout']<=0xffffffff or
+                any(not 0<=e[k]<=0xffffffff for k in ('state0','state1'))):raise ValueError('invalid PBE target')
+        elif op == 'render_pixel_event':
+            data,shader=e['data_gpu'],e['shader_gpu']
+            if (data<=0 or data>=GPU_LIMIT or shader<=0 or shader>=GPU_LIMIT or e['data_size']<=0 or
+                e['data_size']>GPU_LIMIT-data or e['shader_size']<=0 or e['shader_size']>GPU_LIMIT-shader or
+                not 0<=e['control']<1<<64 or not 0<=e['fnv64']<1<<64):raise ValueError('invalid render pixel event')
+        elif op == 'scissor_table':
+            addr,size=e['gpu_va'],e['size']
+            if addr<=0 or addr>=GPU_LIMIT or size<=0 or size>GPU_LIMIT-addr or not 0<=e['fnv64']<1<<64:
+                raise ValueError('invalid scissor table')
+            scissor_seen+=1
+            if sum(addr>=k[1] and size<=v and addr-k[1]<=v-size for k,v in maps.items())!=1:scissor_unmapped+=1
+        elif op == 'pds_fs_meta':
+            parent,addr=e['parent_gpu'],e['gpu_va']
+            if parent<=0 or parent>=GPU_LIMIT or addr<=0 or addr>=GPU_LIMIT or 4>GPU_LIMIT-addr or e['offset']<0 or not 0<=e['value']<=0xffffffff:
+                raise ValueError('invalid fragment metadata')
+            parent_vms={k[0] for k,v in maps.items() if parent>=k[1] and parent-k[1]<v}
+            data_vms={k[0] for k,v in maps.items() if addr>=k[1] and 4<=v and addr-k[1]<=v-4}
+            fs_meta_seen+=1
+            if len(parent_vms & data_vms)!=1:fs_meta_unmapped+=1
         elif op == 'pds_shader':
             parent,shader,entry,size=e['parent_gpu'],e['shader_gpu'],e['entry_gpu'],e['size']
             if parent<=0 or shader<=0 or shader>=GPU_LIMIT or size<=0 or size>GPU_LIMIT-shader or entry<shader or entry-shader>=size:
@@ -149,6 +175,31 @@ def check(path):
         elif op == 'ctx_pds_code_hash':
             if e['kind'] not in ('pt_store_code','pt_resume_code','sr_code') or e['size'] not in (12,20,24) or e['gpu_va']<=0 or e['gpu_va']>=GPU_LIMIT or not 0<=e['fnv64']<1<<64:
                 raise ValueError('invalid context PDS code hash')
+        elif op == 'ctx_static':
+            if (e['index'] not in (0,1) or not 0<e['vdm']<GPU_LIMIT or not 0<e['geom']<GPU_LIMIT or
+                any(not 0<=e[k]<1<<64 for k in ('store0','store1','store2','resume0','resume1','resume2'))):
+                raise ValueError('invalid context static metadata')
+        elif op in ('bg_shader','bg_frag_pds'):
+            if (e['gpu_va'] <= 0 or e['gpu_va'] >= GPU_LIMIT or e['size'] <= 0 or
+                e['size'] > GPU_LIMIT-e['gpu_va']):raise ValueError('invalid background shader metadata')
+            if op=='bg_shader' and (e['ordinal']<0 or not 0<e['pds_gpu']<GPU_LIMIT or e['clear_mask']<0 or e['load_mask']<0):
+                raise ValueError('invalid background shader properties')
+            if op=='bg_frag_pds' and (not 0<e['shader_gpu']<GPU_LIMIT or not 0<=e['control']<1<<64 or not 0<=e['fnv64']<1<<64):
+                raise ValueError('invalid background shader PDS')
+        elif op in ('bg_constants','bg_pds_data'):
+            if (e['gpu_va'] <= 0 or e['gpu_va'] >= GPU_LIMIT or e['size'] <= 0 or
+                e['size'] > GPU_LIMIT - e['gpu_va'] or e['shareds'] <= 0 or
+                not 0 <= e['fnv64'] < 1 << 64):
+                raise ValueError('invalid background metadata')
+            if op == 'bg_constants' and any(e[k] < 0 for k in ('clears','textures','tiles')):
+                raise ValueError('invalid background constants')
+            if op == 'bg_pds_data' and not 0 < e['constants_gpu'] < GPU_LIMIT:
+                raise ValueError('invalid background PDS source')
+        elif op == 'spm_load':
+            if (any(e[k] <= 0 or e[k] >= GPU_LIMIT for k in ('scratch_gpu','constants_gpu','pds_gpu')) or
+                any(e[k] <= 0 for k in ('scratch_size','used','constants_size','pds_size','width','height','samples','outputs')) or
+                e['used'] > e['scratch_size'] or e['tiles'] < 0):
+                raise ValueError('invalid SPM load metadata')
         elif op == 'submit_begin':
             if open_submit is not None: raise ValueError('nested submit')
             open_submit = [e['count'],0]; submits += 1
@@ -187,6 +238,8 @@ def check(path):
     return {'submits':submits, 'jobs':jobs, 'live_bos_at_end':len(bos),
             'zeroed_bo_allocations':zeroed_bos, 'uploads_seen':uploads, 'pds_entries_seen':pds_entries,'pds_dependencies_seen':pds_deps,'pds_dependency_unmapped':unmapped_deps,'pds_shader_links':pds_shaders,'pds_shader_unmapped':unmapped_shaders,
             'fragment_links':fragment_links, 'fragment_unmapped':fragment_unmapped, 'fragment_missing_uploads':fragment_missing_uploads,
+            'fs_meta_seen':fs_meta_seen,'fs_meta_unmapped':fs_meta_unmapped,
+            'scissor_seen':scissor_seen,'scissor_unmapped':scissor_unmapped,
             'uploads_unmapped_at_observation':unmapped_uploads, 'uploads_ambiguous_vm':ambiguous_uploads, 'full_extent_checks':full_checks,
             'start_only_checks':start_checks, 'unresolved_address_checks':unresolved,
             'fixture_exportable':False,

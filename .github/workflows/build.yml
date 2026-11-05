@@ -8,9 +8,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check INF device names
+        run: python3 tools/ci/check-device-names.py
+      - name: Install Linux test dependencies
+        run: sudo apt-get update && sudo apt-get install -y acpica-tools device-tree-compiler ntfs-3g
       - run: make test arm-coff
-      - name: Install NTFS image test tools
-        run: sudo apt-get update && sudo apt-get install -y ntfs-3g
       - run: make test-ntfs-root
   windows-format:
     runs-on: windows-latest
@@ -19,6 +21,12 @@ jobs:
       - name: Run touch component tests on Windows x64
         shell: pwsh
         run: ./tools/ci/test-touch-windows.ps1
+      - name: Check legacy driver name staging guards
+        shell: pwsh
+        run: ./tools/ci/test-legacy-name-stage.ps1
+      - name: Check pre-update service restoration guards
+        shell: pwsh
+        run: ./tools/ci/test-pre-names-service-restore.ps1
       - name: Build ARM32 COFF and native PE format probe
         shell: pwsh
         run: |
