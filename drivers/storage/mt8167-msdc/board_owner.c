@@ -28,6 +28,7 @@ enum a04_board_result a04_board_finish_clocks(struct a04_board_owner *s,const st
     if(!s->active || s->poisoned || s->prepared || s->generation!=generation) return A04_BOARD_BUSY;
     if(o->owned(o->context,generation)!=1) return fail(s,A04_BOARD_OWNER_LOST);
     if(o->read_rails(o->context,&rails)!=0 ||
+       rails.vemc_enable==UINT16_MAX || rails.vemc_selector==UINT16_MAX || rails.vio18_enable==UINT16_MAX ||
        (rails.vemc_enable&(ENABLE|GOOD))!=(ENABLE|GOOD) ||
        (rails.vio18_enable&(ENABLE|GOOD))!=(ENABLE|GOOD)) return fail(s,A04_BOARD_RAILS);
     for(pin=110;pin<=120;++pin) {
@@ -35,20 +36,22 @@ enum a04_board_result a04_board_finish_clocks(struct a04_board_owner *s,const st
         if(o->read_pin_mode(o->context,pin,&mode)!=0 || mode!=1) return fail(s,A04_BOARD_PINS);
     }
     if(o->owned(o->context,generation)!=1) return fail(s,A04_BOARD_OWNER_LOST);
-    if(o->read_clock(o->context,TOP1_STATUS,&v)!=0) return fail(s,A04_BOARD_CLOCK);
+    if(o->read_clock(o->context,TOP1_STATUS,&v)!=0 || v==UINT32_MAX) return fail(s,A04_BOARD_CLOCK);
     if(v&SOURCE) {
         if(o->owned(o->context,generation)!=1) return fail(s,A04_BOARD_OWNER_LOST);
         if(o->write_clock(o->context,TOP1_CLEAR,SOURCE)!=0) return fail(s,A04_BOARD_CLOCK);
     }
     if(o->owned(o->context,generation)!=1) return fail(s,A04_BOARD_OWNER_LOST);
-    if(o->read_clock(o->context,TOP1_STATUS,&v)!=0 || (v&SOURCE)) return fail(s,A04_BOARD_CLOCK);
-    if(o->read_clock(o->context,TOP2_STATUS,&v)!=0) return fail(s,A04_BOARD_CLOCK);
+    if(o->read_clock(o->context,TOP1_STATUS,&v)!=0 || v==UINT32_MAX || (v&SOURCE)) return fail(s,A04_BOARD_CLOCK);
+    if(o->owned(o->context,generation)!=1) return fail(s,A04_BOARD_OWNER_LOST);
+    if(o->read_clock(o->context,TOP2_STATUS,&v)!=0 || v==UINT32_MAX) return fail(s,A04_BOARD_CLOCK);
     if(!(v&INFRA)) {
         if(o->owned(o->context,generation)!=1) return fail(s,A04_BOARD_OWNER_LOST);
         if(o->write_clock(o->context,TOP2_SET,INFRA)!=0) return fail(s,A04_BOARD_CLOCK);
     }
     if(o->owned(o->context,generation)!=1) return fail(s,A04_BOARD_OWNER_LOST);
-    if(o->read_clock(o->context,TOP2_STATUS,&v)!=0 || !(v&INFRA)) return fail(s,A04_BOARD_CLOCK);
+    if(o->read_clock(o->context,TOP2_STATUS,&v)!=0 || v==UINT32_MAX || !(v&INFRA)) return fail(s,A04_BOARD_CLOCK);
+    if(o->owned(o->context,generation)!=1) return fail(s,A04_BOARD_OWNER_LOST);
     s->prepared=1;return A04_BOARD_OK;
 }
 enum a04_board_result a04_board_acquire_clocks(struct a04_board_owner *s,const struct a04_board_ops *o,uint32_t generation)
