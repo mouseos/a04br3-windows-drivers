@@ -12,6 +12,9 @@
 #ifndef A04_BQ24160_EXPERIMENTAL
 #define A04_BQ24160_EXPERIMENTAL 0
 #endif
+#ifndef A04_BQ_STOPPED_GAUGE_DIAGNOSTIC
+#define A04_BQ_STOPPED_GAUGE_DIAGNOSTIC 0
+#endif
 #ifndef A04_BQ_DEFAULT_EXIT_EXPERIMENTAL
 #define A04_BQ_DEFAULT_EXIT_EXPERIMENTAL 0
 #endif
@@ -23,6 +26,9 @@
 #endif
 #if A04_BROKER_CLIENT_EXPERIMENTAL && !A04_BQ24160_EXPERIMENTAL
 #error Broker client build requires BQ experimental components
+#endif
+#if A04_BQ_STOPPED_GAUGE_DIAGNOSTIC && !A04_BROKER_OWNER_EXPERIMENTAL
+#error Stopped-record gauge diagnostic requires broker owner build
 #endif
 #if A04_BQ_DEFAULT_EXIT_EXPERIMENTAL && !A04_BROKER_OWNER_EXPERIMENTAL
 #error DEFAULT exit requires the broker owner
@@ -74,6 +80,9 @@ typedef struct {
     struct a04_broker_lifecycle owner_lifecycle;
     uint64_t owner_lifetime, owner_epoch;
     WDFQUEUE owner_queue;
+#if A04_BQ_STOPPED_GAUGE_DIAGNOSTIC
+    BOOLEAN owner_fallback;
+#endif
 #endif
 #if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
     struct a04_bq_owner charger;
@@ -216,8 +225,13 @@ static NTSTATUS owner_prepare_handoff(GAUGE_CONTEXT *c)
     UCHAR record[128]; NTSTATUS status; uint64_t counter=0,frequency=0,now;
     /* BQHR reads the firmware NVS copy only, not the charger. Stopped records
      * are explicitly non-adoptable, even when their checksum is valid. */
-    if (a04_bqhr_receive(c->device,&status,record)!=A04_BQHR_ACPI_OTHER_STATE)
-        return STATUS_DEVICE_NOT_READY;
+    {
+        enum a04_bqhr_acpi_result record_status=a04_bqhr_receive(c->device,&status,record);
+#if A04_BQ_STOPPED_GAUGE_DIAGNOSTIC
+        if (record_status==A04_BQHR_ACPI_STOPPED) return STATUS_NOT_SUPPORTED;
+#endif
+        if (record_status!=A04_BQHR_ACPI_OTHER_STATE) return STATUS_DEVICE_NOT_READY;
+    }
     /* Sample OS time first, then let the platform read the *same* physical
      * counter as firmware and establish ownership and continuity evidence. */
     now=now_ns(c);
@@ -279,6 +293,23 @@ static void poll(GAUGE_CONTEXT *c)
     {
         uint64_t now=now_ns(c),deadline;
         int error;
+#if A04_BQ_STOPPED_GAUGE_DIAGNOSTIC
+        if (c->owner_fallback) {
+            error=a04_gauge_read_sample(&c->bus,&sample);
+            if (!error) {
+                changed=a04_battery_publish(&c->battery,&sample);
+                trace(c,"A04BAT STOPPED GAUGE mv=");trace_hex(c,(ULONG)sample.voltage_mv);
+                trace(c," pct=");trace_hex(c,(ULONG)sample.percent);trace(c,"\n");
+            } else {
+                changed=a04_battery_invalidate(&c->battery);
+                trace(c,"A04BAT STOPPED GAUGE ERROR reason=");trace_hex(c,c->adapter.fault_reason);trace(c,"\n");
+                if (c->adapter.faulted) {c->faulted=TRUE;InterlockedExchange(&c->online,0);}
+            }
+            WdfWaitLockRelease(c->bus_lock);
+            if (changed) notify(c);
+            return;
+        }
+#endif
         if (c->owner_lifecycle.state==A04_LIFE_QUIESCING)
             error=a04_broker_lifecycle_maintain(&c->owner_lifecycle);
         else {
@@ -415,9 +446,17 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     diagnose_bqhr(c);
 #endif
 #if A04_BROKER_OWNER_EXPERIMENTAL
-    if (!NT_SUCCESS(owner_prepare_handoff(c))) {
-        trace(c,"A04BAT OWNER ADMISSION REFUSED\n");
-        return STATUS_DEVICE_NOT_READY;
+    {
+        NTSTATUS admission=owner_prepare_handoff(c);
+#if A04_BQ_STOPPED_GAUGE_DIAGNOSTIC
+        c->owner_fallback=(admission==STATUS_NOT_SUPPORTED);
+        if (c->owner_fallback) trace(c,"A04BAT STOPPED GAUGE ONLY NO BQ\n");
+        else
+#endif
+        if (!NT_SUCCESS(admission)) {
+            trace(c,"A04BAT OWNER ADMISSION REFUSED\n");
+            return STATUS_DEVICE_NOT_READY;
+        }
     }
 #elif A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
     if (!charger_handoff_is_qualified()) return STATUS_DEVICE_NOT_READY;
@@ -442,6 +481,15 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     c->charger_bus.write_watchdog = a04_bq_mt8167_kick;
 #endif
 #if A04_BROKER_OWNER_EXPERIMENTAL
+#if A04_BQ_STOPPED_GAUGE_DIAGNOSTIC
+    if (c->owner_fallback) {
+        InterlockedExchange(&c->online,1);
+        poll(c);
+        if (!c->online) return STATUS_DEVICE_HARDWARE_ERROR;
+        WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(30000));
+        return STATUS_SUCCESS;
+    }
+#endif
     {
         NTSTATUS status;
         WdfWaitLockAcquire(c->bus_lock,NULL);
@@ -534,6 +582,10 @@ VOID GaugePoll(WDFTIMER timer)
     GAUGE_CONTEXT *c = GaugeContext((WDFDEVICE)WdfTimerGetParentObject(timer));
     poll(c);
 #if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
+#if A04_BROKER_OWNER_EXPERIMENTAL && A04_BQ_STOPPED_GAUGE_DIAGNOSTIC
+    if (c->online && c->owner_fallback) WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(30000));
+    else
+#endif
     if (c->online) WdfTimerStart(timer, WDF_REL_TIMEOUT_IN_MS(10000));
 #else
     if (c->online) WdfTimerStart(timer, WDF_REL_TIMEOUT_IN_MS(30000));
