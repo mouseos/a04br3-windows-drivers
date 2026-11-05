@@ -146,19 +146,16 @@ static void poll(GAUGE_CONTEXT *c)
     if (a04_gauge_read_sample(&c->bus, &sample)) {
         trace(c, "A04BAT SAMPLE FAILED\n");
         changed |= a04_battery_invalidate(&c->battery);
-#if A04_BQ24160_EXPERIMENTAL
         /* A failed PEC/range check alone leaves the transport healthy.
-         * Keep the already-armed charger owner alive; do not publish the gauge.
+         * Do not publish the gauge; the next periodic read can recover it.
          * A busy controller, NACK or timeout latches the shared bus fault. */
         if (c->adapter.faulted) {
+#if A04_BQ24160_EXPERIMENTAL
             c->charger.stopped = 1;
+#endif
             c->faulted = TRUE;
             InterlockedExchange(&c->online, 0);
         }
-#else
-        c->faulted = TRUE;
-        InterlockedExchange(&c->online, 0);
-#endif
     } else {
         trace(c, "A04BAT SAMPLE VALID\n");
         changed |= a04_battery_publish(&c->battery, &sample);
@@ -171,11 +168,17 @@ NTSTATUS GaugePrepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translate
     GAUGE_CONTEXT *c = GaugeContext(device);
     ULONG i, found = 0;
     PHYSICAL_ADDRESS address;
-    UNREFERENCED_PARAMETER(raw);
+    if (WdfCmResourceListGetCount(raw) != WdfCmResourceListGetCount(translated))
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
     for (i = 0; i < WdfCmResourceListGetCount(translated); ++i) {
         PCM_PARTIAL_RESOURCE_DESCRIPTOR d = WdfCmResourceListGetDescriptor(translated, i);
+        PCM_PARTIAL_RESOURCE_DESCRIPTOR r = WdfCmResourceListGetDescriptor(raw, i);
+        if (!d || !r || d->Type != r->Type) return STATUS_DEVICE_CONFIGURATION_ERROR;
         if (d && d->Type == CmResourceTypeMemory) {
-            if (d->u.Memory.Start.QuadPart != I2C2_BASE || d->u.Memory.Length != I2C2_SIZE || found)
+            if (r->u.Memory.Start.QuadPart != I2C2_BASE ||
+                r->u.Memory.Length != I2C2_SIZE || d->u.Memory.Length != I2C2_SIZE ||
+                r->ShareDisposition != CmResourceShareDeviceExclusive ||
+                d->ShareDisposition != CmResourceShareDeviceExclusive || found)
                 return STATUS_DEVICE_CONFIGURATION_ERROR;
             address = d->u.Memory.Start; ++found;
         }
