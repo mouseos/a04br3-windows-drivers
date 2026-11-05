@@ -295,3 +295,12 @@ fenceと全画素照合が成功した場合のみ次へ進み、失敗後は再
 参考のMediaTek Linux DDK m1.8 `services/server/common/power.c` のシステムOFF経路は、forced-idleを要求してから強制電源OFFを要求する。同DDK `rgxpower.c` は同期応答後にFORCED_IDLEを検査する。m1.11の固定FWIF宣言には別の `RGXFWIF_POWER_FORCE_IDLE=1` とforced OFFのフィールドがあり、m1.8のboolean値をそのまま流用しない。本診断はcleanup成功後にm1.11のforced-idleを送信し、同期値・KCCB消費・FW状態FORCED_IDLEをすべて確認できた場合だけforced OFFを送る。変更は既定OFFのvendor start診断のみに接続する。idle拒否、timeout、FW要求保留、予期しない状態ではOFFへ進まず、再投入を封じてDMAを保持する。
 
 ホストmockでidle拒否、forced OFF拒否、両段階成功、idle timeoutを検証した。現時点でWindows実機のforced-idle/OFFは未検証であり、この順序が拒否の原因を解消するかは不明。FWのOFF応答とstop registerの確認も外部fabricを含むDMA静止や領域解放を証明しない。
+
+`a04_gpu_mmu_map_pages_multi_4k` はOSから既に取得・保持されたDMAアドレス列を、
+最大16個の4 KiB leaf（32 MiB、単一1 GiB directory内）に展開する準備部品。
+全leafのDMA・CPU領域と全エントリを先に検査し、途中の異常で部分更新しない。
+`a04_gpu_dma_pages` は画面規模を扱うため最大8192ページを受け付ける。どちらも
+CPU上の構築のみで、OSのDMA取得、POST framebufferのpin、キャッシュ同期、GPU MMU
+invalidate、描画fence、scanout、取消し、停止・解放を行わず、既定経路には未接続。
+MicrosoftのGetScatterGatherListは対応するPutScatterGatherListとDMA方向・同期を
+要求し、POST物理アドレスをGPU DMAアドレスとして直接扱う根拠にはならない。

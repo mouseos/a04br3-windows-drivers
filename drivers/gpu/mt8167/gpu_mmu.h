@@ -26,6 +26,14 @@ int a04_gpu_mmu_map_4k(uint32_t *pc,uint64_t *pd,uint64_t *pt,
 int a04_gpu_mmu_map_pages_4k(uint32_t *pc,uint64_t *pd,uint64_t *pt,
     uint64_t pd_dma,uint64_t pt_dma,uint64_t gpu_va,const uint64_t *pages,
     size_t page_count,uint64_t flags);
+/* Prepare up to 16 consecutive leaf tables (32 MiB), within one 1 GiB
+ * directory. All checks precede any change. The owner holds DMA mappings and
+ * table pages; it must synchronize and invalidate before device access. This
+ * function neither pins a POST framebuffer nor establishes GPU quiescence. */
+struct a04_gpu_mmu_leaf { uint64_t *cpu; uint64_t dma; };
+int a04_gpu_mmu_map_pages_multi_4k(uint32_t *pc,uint64_t *pd,uint64_t pd_dma,
+    const struct a04_gpu_mmu_leaf *leaves,size_t leaf_count,uint64_t gpu_va,
+    const uint64_t *pages,size_t page_count,uint64_t flags);
 /* Replace an entirely present range in one leaf table with adapter DMA pages.
  * All entries and input addresses are validated before any are changed.
  * The caller serializes access, waits for all jobs using the old mapping,

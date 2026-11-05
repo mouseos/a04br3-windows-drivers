@@ -48,6 +48,45 @@ int a04_gpu_mmu_map_4k(uint32_t *pc,uint64_t *pd,uint64_t *pt,
 int a04_gpu_mmu_map_pages_4k(uint32_t *pc,uint64_t *pd,uint64_t *pt,
     uint64_t pd_dma,uint64_t pt_dma,uint64_t gpu_va,const uint64_t *pages,size_t page_count,uint64_t flags)
 { return pages ? map_4k(pc,pd,pt,pd_dma,pt_dma,gpu_va,0,pages,page_count,flags,1) : -1; }
+int a04_gpu_mmu_map_pages_multi_4k(uint32_t *pc,uint64_t *pd,uint64_t pd_dma,
+    const struct a04_gpu_mmu_leaf *leaves,size_t leaf_count,uint64_t gpu_va,
+    const uint64_t *pages,size_t page_count,uint64_t flags)
+{
+    size_t i,j,at=0,required; uint64_t cursor=gpu_va;
+    if(!pc || !pd || !leaves || !pages || !page_count || page_count>8192u ||
+       !aligned_address(gpu_va) || !aligned_address(pd_dma) ||
+       page_count>(ADDRESS_LIMIT-gpu_va)/A04_GPU_PAGE_SIZE ||
+       (gpu_va>>30)!=((gpu_va+(page_count-1u)*(uint64_t)A04_GPU_PAGE_SIZE)>>30) ||
+       ((uintptr_t)leaves % _Alignof(struct a04_gpu_mmu_leaf)) ||
+       ((uintptr_t)pages&7u) || (flags&~ALLOWED_FLAGS)) return -1;
+    required=((size_t)((gpu_va>>12)&511u)+page_count+511u)/512u;
+    if(!leaf_count || leaf_count>16u || leaf_count!=required ||
+       overlaps(leaves,leaf_count*sizeof(*leaves),pages,page_count*sizeof(*pages)) ||
+       overlaps(leaves,leaf_count*sizeof(*leaves),pc,A04_GPU_PAGE_SIZE) ||
+       overlaps(leaves,leaf_count*sizeof(*leaves),pd,A04_GPU_PAGE_SIZE) ||
+       overlaps(pages,page_count*sizeof(*pages),pc,A04_GPU_PAGE_SIZE) ||
+       overlaps(pages,page_count*sizeof(*pages),pd,A04_GPU_PAGE_SIZE)) return -1;
+    for(i=0;i<leaf_count;i++) {
+        size_t part=512u-(size_t)((cursor>>12)&511u);
+        if(part>page_count-at)part=page_count-at;
+        if(!leaves[i].cpu || !aligned_address(leaves[i].dma) || leaves[i].dma==pd_dma ||
+           overlaps(leaves,leaf_count*sizeof(*leaves),leaves[i].cpu,A04_GPU_PAGE_SIZE) ||
+           overlaps(pages,page_count*sizeof(*pages),leaves[i].cpu,A04_GPU_PAGE_SIZE)) return -1;
+        for(j=0;j<i;j++)
+            if(leaves[i].dma==leaves[j].dma || overlaps(leaves[i].cpu,A04_GPU_PAGE_SIZE,
+                                                        leaves[j].cpu,A04_GPU_PAGE_SIZE)) return -1;
+        if(map_4k(pc,pd,leaves[i].cpu,pd_dma,leaves[i].dma,cursor,0,pages+at,part,flags,0))return -1;
+        cursor+=(uint64_t)part*A04_GPU_PAGE_SIZE;at+=part;
+    }
+    cursor=gpu_va;at=0;
+    for(i=0;i<leaf_count;i++) {
+        size_t part=512u-(size_t)((cursor>>12)&511u);
+        if(part>page_count-at)part=page_count-at;
+        (void)map_4k(pc,pd,leaves[i].cpu,pd_dma,leaves[i].dma,cursor,0,pages+at,part,flags,1);
+        cursor+=(uint64_t)part*A04_GPU_PAGE_SIZE;at+=part;
+    }
+    return 0;
+}
 int a04_gpu_mmu_replace_pages_4k(uint64_t *pt,uint64_t gpu_va,
     const uint64_t *pages,size_t page_count,uint64_t flags)
 {

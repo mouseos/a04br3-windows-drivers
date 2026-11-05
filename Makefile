@@ -5,7 +5,7 @@ SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test test-thermal test-ntfs-root arm-coff clean
 
-test: test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registration test-mt8167-wavert-miniport test-mt8167-audio-resource
+test: build/gpu_mmu_multileaf_test test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registration test-mt8167-wavert-miniport test-mt8167-audio-resource
 test: test-mma8652 build/msdc_resume_check_test build/msdc_resume_capture_test
 test: build/bq24160_owner_broker_test
 test: test-mt8167-pnp-backend test-mt8167-audio-adapter-pnp test-mt8167-common-dma test-mt8167-dma-adapter test-mt8167-clock-owner test-mt8167-stream-transport
@@ -109,6 +109,7 @@ test: build/msdc_shared_drain_test build/msdc_touch_shared_test build/msdc_pin_u
 	./build/eint_test
 	./build/gpu_power_test
 	./build/gpu_mmu_test
+	./build/gpu_mmu_multileaf_test
 	./build/gpu_fw_objects_test
 	./build/gpu_fw_queue_test
 	./build/gpu_transfer_stream_test
@@ -647,3 +648,7 @@ build/gpu_vendor_clear_tile_test: tests/gpu_vendor_clear_tile_test.c drivers/gpu
 build/gpu_vendor_clear_validate_test: tests/gpu_vendor_clear_validate_test.c drivers/gpu/mt8167/vendor_m1_11/clear_validate.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 tests/gpu_vendor_clear_validate_test.c -o $@
+
+build/gpu_mmu_multileaf_test: tests/gpu_mmu_multileaf_test.c drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/gpu_mmu.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167 drivers/gpu/mt8167/gpu_mmu.c tests/gpu_mmu_multileaf_test.c -o $@

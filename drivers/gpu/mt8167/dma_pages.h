@@ -6,7 +6,7 @@
 struct a04_gpu_dma_segment { uint64_t address; uint64_t length; };
 /* Convert an OS-provided DMA scatter/gather list to whole 4 KiB device pages.
  * A segment may split a page only if the next segment continues at the same
- * DMA address. Input must cover exactly page_count pages. No output is written
+ * DMA address. Input must cover exactly page_count pages (up to 8192). No output is written
  * on failure, and output must not overlap the input list. The caller must
  * keep the input list unchanged throughout the call. This does not map,
  * pin, synchronize or release memory; the OS DMA mappings must remain owned
