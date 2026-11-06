@@ -8,7 +8,7 @@ CatalogFile=mt8167-gce.cat
 [Manufacturer]
 %Provider%=Models,NTARM
 [Models.NTARM]
-%Device%=Install,ACPI\MOU0011
+%Device%=Install,ACPI\MOU0099
 [DestinationDirs]
 DriverCopy=12
 [SourceDisksNames]
