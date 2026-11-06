@@ -31,8 +31,6 @@ X:\a04br3\guard-windows-volume.exe >> "%A04_REPORT%" 2>&1
 if errorlevel 1 goto guardfail
 if not exist "C:\Windows\System32\config\SYSTEM" goto guardfail
 if not exist "C:\a04backup" goto nobackupdir
-findstr /c:"STATE=BACKUP_STARTED" "C:\a04backup\shared-touch-v1\JOURNAL.txt" >nul 2>&1
-if errorlevel 1 goto journalexists
 if exist "C:\a04backup\shared-touch-v2" goto journalexists
 >> "%A04_REPORT%" echo UPDATE_PARTIAL_DEVICE_BACKUP_REMOVED_HOST_IMAGE_IS_ROLLBACK
 rd /s /q "C:\a04backup" >> "%A04_REPORT%" 2>&1
@@ -72,7 +70,7 @@ goto release
 set "A04_RC=5"
 goto release
 :journalexists
-type "C:\a04backup\shared-touch-v*\JOURNAL.txt" >> "%A04_REPORT%" 2>&1
+type "C:\a04backup\shared-touch-v2\JOURNAL.txt" >> "%A04_REPORT%" 2>&1
 >> "%A04_REPORT%" echo UPDATE_STATUS=JOURNAL_EXISTS_NO_CHANGE
 set "A04_RC=4"
 goto release
