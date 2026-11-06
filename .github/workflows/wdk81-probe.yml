@@ -6,8 +6,17 @@ on:
         description: Keep the Windows runner available over SSH
         type: boolean
         default: false
+      dev_ssh_only:
+        description: Open one reusable development runner without unrelated build checks
+        type: boolean
+        default: false
+      ssh_keep_minutes:
+        description: Development SSH lifetime, at most 330 minutes
+        type: number
+        default: 330
 jobs:
   probe:
+    if: ${{ !(inputs.ssh_debug && inputs.dev_ssh_only) }}
     runs-on: windows-2022
     timeout-minutes: 210
     steps:
@@ -234,3 +243,16 @@ jobs:
         uses: ./.github/actions/open-ssh
         with:
           authorized-key: ${{ secrets.A04BR3_RUNNER_SSH_PUBLIC_KEY }}
+
+  development:
+    if: ${{ inputs.ssh_debug && inputs.dev_ssh_only }}
+    runs-on: windows-2022
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - name: Keep one SSH runner through setup and hardware debugging
+        uses: ./.github/actions/open-ssh
+        with:
+          authorized-key: ${{ secrets.A04BR3_RUNNER_SSH_PUBLIC_KEY }}
+          keep-minutes: ${{ inputs.ssh_keep_minutes }}
+          on-ready-script: tools/ci/hold-wdk81-development.ps1
