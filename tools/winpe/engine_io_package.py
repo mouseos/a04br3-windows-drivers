@@ -15,6 +15,8 @@ ENGINE_CERT = 'BCBF6C456C6F0DD0818434763B189488FBF13570'
 LEGACY_CERT = '2655FC89A7082D3BAB3F26EC556EE8A3C52F4358'
 BASE_VERSION = '11/06/2026,2026.11.6.1001'
 AUDIO_VERSION = '11/06/2026,2026.11.7.1004'
+WIFI_REGISTRATION_SOURCE = '37a5bb1cc0d34b95d065bbe7bcb3e3a467e93f81'
+WIFI_DIRECT_OID_SOURCE = '9d3a88907b1ac9286d730b1efc8a58b21072462c'
 BRIGHTNESS_SOURCE = '0c73f273dc470dd3cb07c254808d534709dd711f'
 BRIGHTNESS_BOOT = '341894cdcbc90c696e9d8b5b8733314f107e03c1'
 TOPRGU_SOURCE = '0821853f798407858a1e2995b8f4e7d9d13c3e36'
@@ -89,7 +91,34 @@ class SignedPackage:
         return path, data
 
 
-def engine_package_check(legacy_path, engine_path, client_path, root):
+def wifi_override_check(directory, root):
+    """Accept only the fixed, separately signed Wi-Fi-only registration update.
+
+    Inputs are flat WDK output plus signed-manifest.json; sidecar build files
+    and any parent/client siblings are never selected or imported.
+    """
+    package = SignedPackage(directory, root)
+    if (package.record.get('source_commit') != WIFI_REGISTRATION_SOURCE
+            or package.record.get('signed') is not True
+            or package.record.get('signing_thumbprint') != ENGINE_CERT):
+        raise ValueError('37a5bb1/BCBF署名Wi-Fi packageのmanifestが必要です')
+    cert_path, certificate = package.certificate(ENGINE_CERT)
+    names = ['mt6630-runtime.' + extension for extension in ('inf', 'sys', 'cat')]
+    selected = {'wifi/' + name: package.file(name) for name in names}
+    check_inf(selected['wifi/mt6630-runtime.inf'], BASE_VERSION)
+    component = {'binary_source_commit': WIFI_REGISTRATION_SOURCE,
+                 'inf_source_commit': WIFI_REGISTRATION_SOURCE,
+                 'direct_oid_fix_source_commit': WIFI_DIRECT_OID_SOURCE,
+                 'driver_ver': BASE_VERSION, 'certificate_thumbprint': ENGINE_CERT,
+                 'signed_manifest_sha256': sha(package.manifest), 'explicit_override': True,
+                 'replaces_binary_source_commit': LEGACY_RUNTIME,
+                 'parent_replaced': False, 'wlan_client_replaced': False,
+                 'files': {name: sha(path) for name, path in selected.items()}}
+    selected['wifi-development.cer'] = cert_path
+    return selected, component, certificate
+
+
+def engine_package_check(legacy_path, engine_path, client_path, root, wifi_path=None):
     legacy, engine, client = [SignedPackage(path, root) for path in (legacy_path, engine_path, client_path)]
     if (legacy.record.get('driver_source_commit') != LEGACY_RUNTIME
             or legacy.record.get('client_source_commit') not in (LEGACY_CLIENT, LEGACY_CLIENT[:7])):
@@ -134,6 +163,8 @@ def engine_package_check(legacy_path, engine_path, client_path, root):
         ('wifi', legacy, 'mt6630-runtime', 'mt6630-runtime', BASE_VERSION, LEGACY_RUNTIME, LEGACY_RUNTIME, LEGACY_CERT),
     )
     for kind, package, inf, binary, version, runtime_source, inf_source, certificate in definitions:
+        if kind == 'wifi' and wifi_path is not None:
+            continue
         names = [kind + '/' + name for name in (inf + '.inf', binary + '.sys', inf + '.cat')]
         for name in names:
             selected[name] = package.file(name)
@@ -160,10 +191,18 @@ def engine_package_check(legacy_path, engine_path, client_path, root):
             raise ValueError('専用probeのexpected Engine SYS hashとpackageが不一致')
     selected.update({'mt8167-development.cer': old_cert_path, 'engine-development.cer': engine_cert_path,
                      'engine-client-development.cer': client_cert_path})
+    certificates = {'legacy_usb_wifi_wlan': old_cert, 'engine_parent_audio': engine_cert,
+                    'engine_audio_client': client_cert}
+    if wifi_path is not None:
+        wifi_files, wifi_component, wifi_cert = wifi_override_check(wifi_path, root)
+        selected.update(wifi_files)
+        components['wifi'] = wifi_component
+        # The old certificate is still required for USB and the WLAN client.
+        certificates['legacy_usb_wlan'] = certificates.pop('legacy_usb_wifi_wlan')
+        certificates['wifi_override'] = wifi_cert
     assert len([name for name in selected if name.endswith('/mt8167-shared.sys')]) == 1
     assert not any('first-playback' in name for name in selected)
-    return selected, components, {'legacy_usb_wifi_wlan': old_cert, 'engine_parent_audio': engine_cert,
-                                  'engine_audio_client': client_cert}
+    return selected, components, certificates
 
 
 def engine_optional_check(brightness_path, toprgu_path, root):

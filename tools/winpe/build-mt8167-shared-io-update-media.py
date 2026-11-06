@@ -33,6 +33,7 @@ def main():
  ap.add_argument('--brightness-package',type=Path)
  ap.add_argument('--toprgu-package',type=Path)
  ap.add_argument('--engine-package',type=Path)
+ ap.add_argument('--wifi-package',type=Path)
  ap.add_argument('--engine-client-package',type=Path)
  ap.add_argument('--probe-service',type=Path)
  for n in ('probe-manifest','probe-certificate','prepared-system','prepared-system-manifest'):
@@ -48,7 +49,7 @@ def main():
  audio_inf='mt8167-afe-engine-pcm.inf' if engine else 'mt8167-afe-first-playback.inf'
  audio_client='mt8167-audio-engine-probe.exe' if engine else 'mt8167-audio-first-playback.exe'
  if engine and (not probe or not a.engine_package or not a.engine_client_package):raise SystemExit('EnginePcmは専用serviceとEngine driver/client packageを明示指定してください')
- if not engine and (a.engine_package or a.engine_client_package or a.brightness_package or a.toprgu_package):raise SystemExit('Engine専用入力をTone modeへ渡せません')
+ if not engine and (a.engine_package or a.engine_client_package or a.brightness_package or a.toprgu_package or a.wifi_package):raise SystemExit('Engine専用入力をTone modeへ渡せません')
  private_args=(a.probe_manifest,a.probe_certificate,a.prepared_system,a.prepared_system_manifest,a.prepared_system_sha256)
  if probe:
   if not a.private_media or not all(private_args):raise SystemExit('probeにはprivate媒体とnative SYSTEM/probe manifest/cert/hashの全入力が必要です')
@@ -63,11 +64,10 @@ def main():
   probe_info=probe_check(probe,a.probe_manifest,a.probe_certificate,root,a.audio_mode)
  components={};optional_drivers=[]
  if engine:
-  sources,components,certificates=engine_package_check(pkg,a.engine_package,a.engine_client_package,root)
+  sources,components,certificates=engine_package_check(pkg,a.engine_package,a.engine_client_package,root,a.wifi_package)
   extra_files,extra_components,extra_certificates,optional_drivers=engine_optional_check(a.brightness_package,a.toprgu_package,root)
   sources.update(extra_files);components.update(extra_components);certificates.update(extra_certificates)
   files={rel:sha(path) for rel,path in sources.items()}
-  cert=certificates['legacy_usb_wifi_wlan']
  else:
   stems={'parent':('shared-parent','mt8167-shared'),'audio':('mt8167-afe-first-playback','mt8167-audio'),'usb':('mt8167-usb20','mt8167-usb20'),'wifi':('mt6630-runtime','mt6630-runtime')}
   declared=json.loads((pkg/'signed-manifest.json').read_text(encoding='utf-8-sig'))

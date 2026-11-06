@@ -140,3 +140,37 @@ System32\MT8167EngineProbe\drivers\{audio,usb,wifi}へcopyする。
 markerを残す。before/after CMとAPIのdiskログを主担当が回収する。
 Engine親と旧親は同版2026.11.6.1001なので、単一parentの選択と実ロードhash一致は別の確認事項。
 親のUpdateDriverはこのserviceで行わない。詳細とevent番号はhardware-probe READMEを参照。
+
+### 明示Wi-Fi-only署名package override
+
+EnginePcmだけで `--wifi-package` を指定できる。未指定時は旧f17b743 Wi-Fiを維持する。
+標準回収先候補は作業ルート内 `port/xnu/out/windows-rt-wifi-registration-37a5bb1/`。
+このdirectoryに置いた次のflat fileだけを選択する。別の親やclientを同梱してもimportしない。
+
+- mt6630-runtime.inf / mt6630-runtime.sys / mt6630-runtime.cat
+- mt8167-development.cer（BCBF6C456C6F0DD0818434763B189488FBF13570のDER）
+- signed-manifest.json
+
+signed-manifest.jsonは `source_commit=37a5bb1cc0d34b95d065bbe7bcb3e3a467e93f81`、
+`signed=true`、`signing_thumbprint=BCBF6C456C6F0DD0818434763B189488FBF13570`、
+`files=[{path,sha256}, ...]` を持ち、上のINF/SYS/CAT/certの4fileすべてを列挙する。
+SYSのhashは署名後の値を使い、unsigned build manifestのsys_sha256を代用しない。
+実file hash、ARMNT、INF DriverVer=11/06/2026,2026.11.6.1001とNT装飾、cert thumbprintを検査する。
+別source、未署名宣言、異なるcert、hash不一致は拒否する。ホストでのhash/manifest照合を
+Authenticode chain検証済みとは扱わず、通常OSのCAT/標準PnP検証も維持する。
+
+Wi-FiだけをBCBF署名へ切り替え、旧USBと旧WLAN clientは2655署名のまま保持する。
+trusted_certificatesはlegacy_usb_wlanとwifi_overrideを別roleにし、同じBCBFのstore登録はdedupする。
+単一Engine親、音声、USB、固定WLAN client、freshbackup/private SYSTEMゲートは変更しない。
+媒体componentのWi-Fiにsource/hash/INF版/cert/明示override/9d3a889修正出自を記録する。
+37a5bb1のbuild helperは親の実hash/critical flags/Wi-Fi interface blobを照合して別commit親を再利用できるが、
+媒体overrideは親package自体を選択しない。
+
+```sh
+# 前述のEngine引数に追加。Tone指定では拒否される。
+--wifi-package "$PROJECT_ROOT/port/xnu/out/windows-rt-wifi-registration-37a5bb1"
+```
+
+9d3a889はNDIS6.30必須direct OID callbacks欠落のsource修正であり、run26r2 status31の
+正確なNTSTATUS/原因確定ではない。65importsのRT exports全存在は主担当確認情報で、
+実ロード成功やWLAN interface作成の実機証明とは区別する。新SYSの実受理は主担当の次工程。

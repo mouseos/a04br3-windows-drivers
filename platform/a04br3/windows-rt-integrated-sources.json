@@ -248,5 +248,30 @@
     "required_active_processors": 4,
     "certificate": "BCBF6C456C6F0DD0818434763B189488FBF13570",
     "boot_embedded_or_applied_here": false
+  },
+  "engine_wifi_package_override": {
+    "default_enabled": false,
+    "engine_mode_only": true,
+    "argument": "--wifi-package",
+    "source_commit": "37a5bb1cc0d34b95d065bbe7bcb3e3a467e93f81",
+    "direct_oid_fix_source_commit": "9d3a88907b1ac9286d730b1efc8a58b21072462c",
+    "driver_ver": "11/06/2026,2026.11.6.1001",
+    "certificate_thumbprint": "BCBF6C456C6F0DD0818434763B189488FBF13570",
+    "legacy_usb_wlan_certificate": "2655FC89A7082D3BAB3F26EC556EE8A3C52F4358",
+    "standard_output": "port/xnu/out/windows-rt-wifi-registration-37a5bb1",
+    "manifest": "signed-manifest.json",
+    "files_selected": [
+      "mt6630-runtime.inf",
+      "mt6630-runtime.sys",
+      "mt6630-runtime.cat",
+      "mt8167-development.cer"
+    ],
+    "parent_replaced": false,
+    "wlan_client_replaced": false,
+    "status31_exact_ntstatus_confirmed": false,
+    "rt_export_presence_reported_by_owner": 65,
+    "signed_artifact_verified_here": false,
+    "wdk_built_here": false,
+    "device_verified_here": false
   }
 }

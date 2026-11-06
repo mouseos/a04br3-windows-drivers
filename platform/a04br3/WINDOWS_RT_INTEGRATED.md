@@ -233,3 +233,9 @@ API/Win32/rebootをdiskへ記録。3010は後続更新とclient開始を停止�
 USBのdevice role開始拒否等は結果に残し、再起動不要ならWLAN/音声診断を続ける。親は再bindしない。
 選択Engine親も旧f17親も同DriverVer=2026.11.6.1001であり、DISM stagingだけでは実ロード親の交換を保証しない。
 主担当は実ロードhashを別途確認する。PnP API成功、CM_STARTED、実機I/O成功は別々に評価する。
+
+Engine媒体は明示 `--wifi-package` で37a5bb1の署名済みmt6630-runtime単体へ差し替え可能。
+未指定は旧f17 Wi-Fiのまま。source37a5bb1、INF11/06/2026,2026.11.6.1001、署名後hash、BCBF certを検査し、
+旧USB/旧WLAN client2655とEngine親を保持する。overrideに別親/clientを混ぜない。
+9d3a889のNDIS direct OID登録修正を含む候補だがstatus31の正確なNTSTATUSは未確認。
+回収package候補はport/xnu/out/windows-rt-wifi-registration-37a5bb1。manifest契約は媒体READMEを参照。
