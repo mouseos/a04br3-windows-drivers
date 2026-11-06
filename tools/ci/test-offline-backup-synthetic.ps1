@@ -78,6 +78,20 @@ try {
  [Array]::Copy($hash,0,$v,$v.Length-32,32);[IO.File]::WriteAllBytes('S:\A04BACKUP\READY',$v)
  & "$base\fixture.exe" --probe;if($LASTEXITCODE){throw 'legacy v3 journal rejected'}
  Remove-Item 'S:\A04BACKUP' -Recurse -Force;Copy-Item $saved 'S:\A04BACKUP' -Recurse
+ # Derive a v4 fixture with published INF entries but no new hive entries.
+ $v=[byte[]]::new($original.Length);[Array]::Copy($original,0,$v,0,16+13*328)
+ [Array]::Copy([BitConverter]::GetBytes([uint32]4),0,$v,4,4);$next=13
+ for($i=21;$i -lt $count;$i++){
+  $name=[Text.Encoding]::Unicode.GetString($original,16+$i*328+72,256).Split([char]0)[0]
+  if($name.StartsWith('DRIVERS{',[StringComparison]::OrdinalIgnoreCase) -or $name.StartsWith('COMPONENTS{',[StringComparison]::OrdinalIgnoreCase)){continue}
+  [Array]::Copy($original,16+$i*328,$v,16+$next*328,328)
+  Copy-Item (Join-Path $saved ('item{0:D2}.bin' -f $i)) ('S:\A04BACKUP\item{0:D2}.bin' -f $next) -Force;$next++
+ }
+ [Array]::Copy([BitConverter]::GetBytes([uint32]$next),0,$v,8,4)
+ $digest=[Security.Cryptography.SHA256]::Create();try{$hash=$digest.ComputeHash($v,0,$v.Length-32)}finally{$digest.Dispose()}
+ [Array]::Copy($hash,0,$v,$v.Length-32,32);[IO.File]::WriteAllBytes('S:\A04BACKUP\READY',$v)
+ & "$base\fixture.exe" --probe;if($LASTEXITCODE){throw 'legacy v4 journal rejected'}
+ Remove-Item 'S:\A04BACKUP' -Recurse -Force;Copy-Item $saved 'S:\A04BACKUP' -Recurse
  & "$base\fixture.exe" --complete
  if(!$LASTEXITCODE -or (Test-Path 'S:\A04BACKUP\COMMIT')){throw 'completion permitted while C remains mounted'}
  & "$base\fixture.exe" --unknown
