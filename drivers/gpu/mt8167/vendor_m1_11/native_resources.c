@@ -26,6 +26,27 @@ int a04_m111_layout_auxiliary(uint64_t base,size_t bytes,struct a04_m111_auxilia
     made.used=A04_M111_DUMMY_REGION_BYTES+A04_M111_DUMMY_STENCIL_BYTES;
     *out=made;return 0;
 }
+int a04_m111_layout_target_storage(uint32_t width,uint32_t height,
+    uint64_t rbase,size_t rbytes,uint64_t tbase,size_t tbytes,
+    struct a04_m111_target_storage *out)
+{
+    struct a04_m111_target_storage made={0};uint32_t side=1;
+    if(!out || !width || !height || width>4096u || height>4096u ||
+       !gpu(rbase) || !gpu(tbase) || (rbase&63u) || (tbase&63u) ||
+       rbytes>UINT64_C(0x10000000000)-rbase ||
+       tbytes>UINT64_C(0x10000000000)-tbase ||
+       gpu_overlap(rbase,rbytes,tbase,tbytes))return 1;
+    made.tiles_x=(width+15u)/16u;made.tiles_y=(height+15u)/16u;
+    made.region_stride=(made.tiles_x*made.tiles_y*5u+63u)&~63u;
+    made.region_used=made.region_stride*2u;
+    while(side<made.tiles_x || side<made.tiles_y)side*=2u;
+    made.tpc_bytes=side*side*8u;
+    made.tpc_vheap_used=((made.tpc_bytes+63u)&~63u)+0x600u;
+    if(rbytes<made.region_used || tbytes<made.tpc_vheap_used)return 1;
+    made.region_gpu[0]=rbase;made.region_gpu[1]=rbase+made.region_stride;
+    made.tail_ptrs_gpu=tbase;made.vheap_gpu=tbase+((made.tpc_bytes+63u)&~63u);
+    *out=made;return 0;
+}
 int a04_m111_build_freelist(RGXFWIF_FREELIST *out,uint32_t *entries,
     size_t capacity,const struct a04_m111_freelist_input *p,
     const uint64_t *physical_pages,int mirror)

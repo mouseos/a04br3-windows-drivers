@@ -15,6 +15,17 @@ struct a04_m111_auxiliary_layout {
  * contents are inferred here and no allocation/mapping is performed. */
 int a04_m111_layout_auxiliary(uint64_t gpu_base,size_t bytes,
     struct a04_m111_auxiliary_layout *out);
+/* RGXAddRenderTarget: one RT, samplesX=samplesY=1 only. The two
+ * region ranges belong to the two HWRT slots; tail pointers and VHeap are
+ * shared, as in the vendor allocation. This reserves storage only; no
+ * initial contents, MTA/MLIST geometry, or complete HWRT is inferred. */
+struct a04_m111_target_storage {
+    uint64_t region_gpu[2],tail_ptrs_gpu,vheap_gpu;
+    uint32_t tiles_x,tiles_y,region_stride,region_used,tpc_bytes,tpc_vheap_used;
+};
+int a04_m111_layout_target_storage(uint32_t width,uint32_t height,
+    uint64_t region_base,size_t region_bytes,uint64_t tpc_base,size_t tpc_bytes,
+    struct a04_m111_target_storage *out);
 /* Cold CPU memory only. The caller maps and retains FW and GPU allocations;
  * these routines do not allocate DMA, publish mappings, or submit commands. */
 struct a04_m111_freelist_input {

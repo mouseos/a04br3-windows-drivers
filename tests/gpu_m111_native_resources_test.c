@@ -11,6 +11,29 @@ int main(void)
     uint64_t physical[4]={0x81000000,0x81003000,0x81008000,0xfffff000};
     uint32_t table[10], oldtable[10], i;
     struct a04_m111_hwrt_input h[2]={{0}};
+    struct a04_m111_target_storage storage,oldstorage;
+    assert(!a04_m111_layout_target_storage(800,600,UINT64_C(0x6501000000),0x5000,
+        UINT64_C(0x6502000000),0x9000,&storage));
+    assert(storage.tiles_x==50 && storage.tiles_y==38);
+    assert(storage.region_stride==0x2540 && storage.region_used==0x4a80);
+    assert(storage.region_gpu[1]==UINT64_C(0x6501002540));
+    assert(storage.tpc_bytes==0x8000 && storage.tpc_vheap_used==0x8600);
+    assert(storage.vheap_gpu==UINT64_C(0x6502008000));
+    oldstorage=storage;
+    assert(a04_m111_layout_target_storage(800,600,UINT64_C(0x6501000000),0x4a7f,
+        UINT64_C(0x6502000000),0x9000,&storage));
+    assert(a04_m111_layout_target_storage(800,600,UINT64_C(0x6501000000),0x5000,
+        UINT64_C(0x6501000000),0x9000,&storage));
+    assert(a04_m111_layout_target_storage(0,600,UINT64_C(0x6501000000),0x5000,
+        UINT64_C(0x6502000000),0x9000,&storage));
+    assert(!memcmp(&storage,&oldstorage,sizeof(storage)));
+    assert(!a04_m111_layout_target_storage(4096,4096,UINT64_C(0x6501000000),0xa0000,
+        UINT64_C(0x6502000000),0x80600,&storage));
+    assert(storage.region_stride==0x50000 && storage.tpc_bytes==0x80000);
+    assert(!a04_m111_layout_target_storage(1,1,UINT64_C(0x6501000000),128,
+        UINT64_C(0x6502000000),0x640,&storage));
+    assert(storage.tpc_bytes==8 && storage.tpc_vheap_used==0x640);
+    assert(storage.vheap_gpu==UINT64_C(0x6502000040));
     struct a04_m111_auxiliary_layout aux,oldaux;
     assert(!a04_m111_layout_auxiliary(UINT64_C(0x6500800000),4096,&aux));
     assert(aux.used==0x880 && aux.dummy_region_gpu==UINT64_C(0x6500800000));
