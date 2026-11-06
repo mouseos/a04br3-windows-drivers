@@ -8,6 +8,7 @@
 #include "windows_linear_context.h"
 #include "ge8300_status.h"
 #include "present_trace_policy.h"
+#include "idle_transition_diagnostic.h"
 #include "vendor_m1_11/windows_stage.h"
 #include "vendor_m1_11/windows_power_acpi.h"
 #include "pvr_rogue_fwif.h"
@@ -189,6 +190,27 @@
 #if A04_GE8300_VENDOR_STAGE && A04_GE8300_BOOT_TEST
 #error Vendor firmware staging cannot be combined with modern firmware boot
 #endif
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC && !A04_GE8300_VENDOR_COPY_SERVICE
+#error Idle transition diagnostic requires the native copy service
+#endif
+
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+/* Driver-managed S0 idle is supported by KMDF 1.13. No callback invocation,
+ * external wake claim, PoFx policy or D3cold transition is fabricated here. */
+static NTSTATUS GpuAssignDiagnosticIdle(WDFDEVICE device,BOOLEAN enabled)
+{
+    WDF_DEVICE_POWER_POLICY_IDLE_SETTINGS settings;
+    WDF_DEVICE_POWER_POLICY_IDLE_SETTINGS_INIT(&settings,IdleCannotWakeFromS0);
+    settings.DxState=PowerDeviceD3;
+    settings.IdleTimeout=A04_GE8300_IDLE_DIAGNOSTIC_MS;
+    settings.IdleTimeoutType=DriverManagedIdleTimeout;
+    settings.UserControlOfIdleSettings=IdleDoNotAllowUserControl;
+    settings.Enabled=enabled?WdfTrue:WdfFalse;
+    settings.PowerUpIdleDeviceOnSystemWake=WdfFalse;
+    settings.ExcludeD3Cold=WdfTrue;
+    return WdfDeviceAssignS0IdleSettings(device,&settings);
+}
+#endif
 #define CORE_BASE 0x13000000u
 #define CORE_SIZE 0x80000u
 #define MFG_BASE  0x13ffe000u
@@ -250,6 +272,11 @@ typedef struct {
     BOOLEAN copy_online;
 #endif
     struct a04_ge8300_status status;
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+    NTSTATUS idle_diag_policy_status;
+    BOOLEAN idle_diag_armed,idle_diag_exit_marked,idle_diag_d3_retired;
+    BOOLEAN idle_diag_reentry_marked,idle_diag_proof_marked;
+#endif
     BOOLEAN referenced, attempted;
 } GPU_CONTEXT;
 #if A04_GE8300_BOOT_TEST || A04_GE8300_VENDOR_START_DIAGNOSTIC
@@ -402,6 +429,24 @@ static void GpuBugCallback(PVOID buffer,ULONG length)
 }
 #endif
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(GPU_CONTEXT,GpuContext)
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+static void GpuObserveDiagnosticEntry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
+{
+    GPU_CONTEXT *c=GpuContext(device);NTSTATUS status;
+    if(!c->attempted) {
+        GpuPrint("A04GPU IDLE POLICY=");GpuHex((ULONG)c->idle_diag_policy_status);
+        GpuPrint(" MS=");GpuHex(A04_GE8300_IDLE_DIAGNOSTIC_MS);GpuPrint("\n");
+    } else if(previous==WdfPowerDeviceD3 && c->idle_diag_d3_retired && !c->idle_diag_reentry_marked) {
+        c->idle_diag_reentry_marked=TRUE;
+        GpuPrint("A04GPU IDLE REENTRY D3\n");
+        status=GpuAssignDiagnosticIdle(device,FALSE);
+        if(NT_SUCCESS(status))c->idle_diag_armed=FALSE;
+        GpuPrint("A04GPU IDLE DISARM=");GpuHex((ULONG)status);GpuPrint("\n");
+        /* Even a policy failure is diagnostic, not a cold FW restart. */
+    }
+
+}
+#endif
 #if A04_GE8300_VENDOR_COPY_SERVICE
 /* Caller holds vendor_lifetime. Acknowledged FW retirement permits CPU pixel
  * writes, never DMA release or a new FW start. Failure is terminal/closed. */
@@ -645,6 +690,9 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     UNREFERENCED_PARAMETER(previous);
 #if A04_GE8300_VENDOR_START_DIAGNOSTIC
     GpuPrint("A04GPU NATIVE D0 ENTER\n");
+#endif
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+    GpuObserveDiagnosticEntry(device,previous);
 #endif
     if(c->attempted) return STATUS_SUCCESS;
     c->attempted=TRUE; c->status.version=5;
@@ -1090,7 +1138,18 @@ NTSTATUS GpuD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
     WdfWaitLockAcquire(c->vendor_lifetime,NULL);
 #if A04_GE8300_VENDOR_COPY_SERVICE
     {
-        NTSTATUS retired=GpuRetireToCpu(c);
+        NTSTATUS retired;
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+        BOOLEAN observe=c->idle_diag_armed && target==WdfPowerDeviceD3 && !c->idle_diag_exit_marked;
+        if(observe) {c->idle_diag_exit_marked=TRUE;GpuPrint("A04GPU IDLE EXIT D3\n");}
+#endif
+        retired=GpuRetireToCpu(c);
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+        if(observe) {
+            c->idle_diag_d3_retired=NT_SUCCESS(retired) && c->vendor_cpu_fallback;
+            GpuPrint("A04GPU IDLE RETIRED=");GpuHex((ULONG)retired);GpuPrint("\n");
+        }
+#endif
         WdfWaitLockRelease(c->vendor_lifetime);
         return retired;
     }
@@ -1213,6 +1272,12 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
         else {
             status=GpuRetireToCpu(c);
             if(NT_SUCCESS(status))proof->flags=A04_GE8300_CPU_RETIRED|A04_GE8300_DMA_RETAINED;
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+            if(c->idle_diag_reentry_marked && !c->idle_diag_proof_marked) {
+                c->idle_diag_proof_marked=TRUE;
+                GpuPrint("A04GPU IDLE PROOF=");GpuHex((ULONG)status);GpuPrint("\n");
+            }
+#endif
         }
         WdfWaitLockRelease(c->vendor_lifetime);
         WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(*proof):0);return;
@@ -1614,7 +1679,15 @@ NTSTATUS GpuAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
      * is synchronous and bounded; no request is held for later completion. */
     queue_config.PowerManaged=WdfTrue;
     queue_config.EvtIoDeviceControl=GpuIoControl;
-    return WdfIoQueueCreate(device,&queue_config,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);
+    status=WdfIoQueueCreate(device,&queue_config,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);
+    if(!NT_SUCCESS(status))return status;
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+    c->idle_diag_policy_status=GpuAssignDiagnosticIdle(device,TRUE);
+    c->idle_diag_armed=NT_SUCCESS(c->idle_diag_policy_status);
+    /* A rejected policy must remain visible without failing device creation.
+     * Microsoft documents STATUS_POWER_STATE_INVALID as nonfatal here. */
+#endif
+    return STATUS_SUCCESS;
 }
 NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING path)
 {

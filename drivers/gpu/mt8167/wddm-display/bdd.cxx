@@ -758,6 +758,17 @@ NTSTATUS BASIC_DISPLAY_DRIVER::TryGpuLogicalPresent(const BLT_INFO *source,const
          * entire intended frame after retirement, not only its dirty rects. */
         WRITE_REGISTER_BUFFER_ULONG((volatile ULONG *)mode->FrameBuffer.Ptr,(ULONG *)staging,1024000u);
         status=STATUS_SUCCESS;
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+        if(!resources->IdleRestoreChecked) {
+            ULONG matched=0;resources->IdleRestoreChecked=TRUE;KeMemoryBarrier();
+            for(ULONG i=0;i<1024000u;i++)
+                if(READ_REGISTER_ULONG((volatile ULONG *)mode->FrameBuffer.Ptr+i)==((ULONG *)staging)[i])matched++;
+            A04DisplayTrace(0xc5,(NTSTATUS)matched);
+            status=matched==1024000u?STATUS_SUCCESS:STATUS_DATA_ERROR;
+            A04DisplayTrace(0xc6,status);
+            if(!NT_SUCCESS(status))resources->LiveFaulted=TRUE;
+        }
+#endif
     }
     if(NT_SUCCESS(status)) {
         void *previous=resources->LiveShadow;resources->LiveShadow=staging;staging=NULL;

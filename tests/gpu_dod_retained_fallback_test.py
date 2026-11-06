@@ -17,6 +17,7 @@ pre=r'''
 #include <climits>
 #include "ge8300_status.h"
 #include "present_trace_policy.h"
+#include "idle_transition_diagnostic.h"
 using NTSTATUS=int;using BOOLEAN=int;using UCHAR=unsigned char;using ULONG=uint32_t;using ULONGLONG=uint64_t;
 #define TRUE 1
 #define FALSE 0
@@ -31,12 +32,12 @@ using NTSTATUS=int;using BOOLEAN=int;using UCHAR=unsigned char;using ULONG=uint3
 #define MAXULONG UINT32_MAX
 #define PASSIVE_LEVEL 0
 #define NonPagedPoolNx 0
-static int scenario,calls,retire_calls,allocs;
+static int scenario,calls,retire_calls,allocs,proof_marks;
 static int KeGetCurrentIrql(){return 0;}static int KeAreAllApcsDisabled(){return 0;}
 static void *ExAllocatePoolWithTag(int,size_t n,int){++allocs;return malloc(n);}
 static void ExFreePoolWithTag(void *p,int){--allocs;free(p);}
 static ULONGLONG KeQueryInterruptTime(){return 0;}
-static void A04DisplayTrace(int,NTSTATUS){}
+static void A04DisplayTrace(int stage,NTSTATUS){if(stage==0xc4)++proof_marks;}
 #define RtlCopyMemory std::memcpy
 static void KeFlushIoBuffers(void*,int,int){}static void KeMemoryBarrier(){}
 struct Ops {int (*FlushAdapterBuffersEx)(void*,void*,void*,int,int,int);};
@@ -48,7 +49,7 @@ struct A04CommonFrameOwner {
 };
 struct A04DisplayResources {
  void *SharedCommonOwner,*GpuHandle;struct {uint32_t token;} Lease;
- int DirectPostActive,LiveReady,LiveFaulted,LiveShadowValid,LiveCpuFallback;uint32_t LiveFrames;
+ int DirectPostActive,LiveReady,LiveFaulted,LiveShadowValid,LiveCpuFallback,IdleRetirementMarked;uint32_t LiveFrames;
  NTSTATUS RetireToCpu();NTSTATUS SubmitLiveFrame(const void*,uint32_t);
 };
 static NTSTATUS LiveFrameIoctl(void*,uint32_t control,void *data,size_t,size_t) {
@@ -71,7 +72,7 @@ main=r'''
 int main(){
  Ops ops={flush};Adapter adapter={&ops};
  for(int i=0;i<=5;i++){
-  scenario=i;calls=retire_calls=allocs=0;
+  scenario=i;calls=retire_calls=allocs=proof_marks=0;
   A04CommonFrameOwner owner={};owner.sealed=1;owner.cpu=calloc(1,4096000);
   owner.shared.mdl=&owner;owner.shared.gpu_adapter=&adapter;owner.mapRegisterBase=&owner;
   owner.frame=3;owner.task=2;owner.flush=3;
@@ -87,6 +88,7 @@ int main(){
    assert(r.SubmitLiveFrame(pixels,3200)==STATUS_NOT_SUPPORTED && calls==previous);
    assert(r.RetireToCpu()==0 && calls==previous);
   }
+  assert(proof_marks==((i && A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC)?1:0));
   free(pixels);free(owner.cpu);
  }
  return 0;
@@ -103,6 +105,7 @@ assert 'RetireToCpu(' not in power and 'SetVidPnSourceVisibility(' not in power
 assert 'A04PresentGuard powerGuard' in power and 'LiveShadowValid=FALSE' in power
 with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as tmp:
  tmp=Path(tmp);p=tmp/'test.cpp';p.write_text(pre+functions+main)
- subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-Wno-multichar', '-Wno-misleading-indentation','-I'+str(g),str(p),'-o',str(tmp/'test')],check=True)
- subprocess.run([str(tmp/'test')],check=True)
-print('actual DOD submission: normal frame, retirement fallback, unknown/invalid proof and retained mappings passed')
+ for diagnostic in (0,1):
+  subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-Wno-multichar','-Wno-misleading-indentation',f'-DA04_GE8300_IDLE_TRANSITION_DIAGNOSTIC={diagnostic}','-I'+str(g),str(p),'-o',str(tmp/'test')],check=True)
+  subprocess.run([str(tmp/'test')],check=True)
+print('actual DOD submission: diagnostic proof mark ON/OFF, fallback, invalid proof and retained mappings passed')
