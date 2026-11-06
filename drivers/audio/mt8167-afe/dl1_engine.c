@@ -39,26 +39,38 @@ static int plan_valid(const struct mt8167_dl1_plan *p)
     return validated.base == p->base && validated.end == p->end &&
            validated.rate_code == p->rate_code && validated.period_frames == p->period_frames;
 }
-int mt8167_dl1_start(struct mt8167_dl1_engine *e, const struct mt8167_dl1_plan *p)
+static int start(struct mt8167_dl1_engine *e, const struct mt8167_dl1_plan *p, int restart, int reset)
 {
-    uint32_t dac, irq;
-    if (!e || !p || !e->io.read32 || !e->io.write32 || e->state != MT8167_DL1_IDLE ||
+    uint32_t dac, irq, status, base, end;
+    if (!e || !p || !e->io.read32 || !e->io.write32 || e->state != (restart ? MT8167_DL1_STOPPED : MT8167_DL1_IDLE) ||
         !plan_valid(p))
         return -1;
     if (e->io.read32(e->io.context, DAC0, &dac) ||
         e->io.read32(e->io.context, IRQ_CON, &irq)) return bad(e);
     if ((dac & 2u) || (irq & 1u)) return bad(e);
-    if (e->io.write32(e->io.context, DL1_BASE, p->base) ||
-        e->io.write32(e->io.context, DL1_END, p->end) ||
+    if (restart && (e->io.read32(e->io.context, IRQ_STATUS, &status) || (status & 1u) ||
+        e->io.read32(e->io.context, DL1_BASE, &base) || base!=p->base ||
+        e->io.read32(e->io.context, DL1_END, &end) || end!=p->end)) return bad(e);
+    /* Linux mt8167_afe_dais_trigger START/RESUME re-enables this memif;
+     * hw_params programs BASE/END. PAUSE resume retains those registers.
+     * STOP/reopen repeats hw_params with the SAME retained DMA allocation. */
+    if ((reset && (e->io.write32(e->io.context, DL1_BASE, p->base) ||
+        e->io.write32(e->io.context, DL1_END, p->end))) ||
         update(e, DAC1, (1u << 21) | 15u, p->rate_code) ||
         update(e, PBUF, 3u << 16, 0) ||
         update(e, IRQ_COUNT1, 0x3ffffu, p->period_frames) ||
         update(e, IRQ_CON, 15u << 4, p->rate_code << 4) ||
         e->io.write32(e->io.context, IRQ_CLEAR, 1u) ||
-        update(e, DAC0, 2u, 2u) || update(e, IRQ_CON, 1u, 1u)) return bad(e);
+        update(e, DAC0, 2u, 2u) || update(e, IRQ_CON, 1u, 1u) ||
+        e->io.read32(e->io.context,DAC0,&dac) || !(dac&2u) ||
+        e->io.read32(e->io.context,IRQ_CON,&irq) || !(irq&1u)) return bad(e);
     e->state = MT8167_DL1_RUNNING;
     return 0;
 }
+int mt8167_dl1_start(struct mt8167_dl1_engine *e,const struct mt8167_dl1_plan *p)
+{ return start(e,p,0,1); }
+int mt8167_dl1_restart(struct mt8167_dl1_engine *e,const struct mt8167_dl1_plan *p,int reset)
+{ return start(e,p,1,reset); }
 int mt8167_dl1_stop(struct mt8167_dl1_engine *e)
 {
     uint32_t dac, irq, status;

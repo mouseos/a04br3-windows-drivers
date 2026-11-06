@@ -12,5 +12,8 @@
   "wifi_runtime_base": "0b2b60c",
   "driver_date": "11/06/2026",
   "driver_version": "2026.11.6.1001",
-  "driver_ver": "11/06/2026,2026.11.6.1001"
+  "driver_ver": "11/06/2026,2026.11.6.1001",
+  "audio_mode_default": "private_fixed_tone_diagnostic",
+  "engine_pcm_optional_source": "329413ad2cabb68b3fe55fc4659640f7680fbb38",
+  "engine_pcm_default_enabled": false
 }

@@ -112,7 +112,7 @@ static int freed,puts; static unsigned char data[8192];
 static unsigned char silentData[8192];static unsigned allocCalls;
 #endif
 static std::atomic<bool> holdPosition(false),enteredPosition(false),revokeDone(false);
-#if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
+#if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC && (!defined(A04_AUDIO_ENGINE_PCM) || !A04_AUDIO_ENGINE_PCM)
 #if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
 extern "C" int Mt8167SilentDmaMiniportEnabled(void){return 1;}
 int Mt8167TransportStartMaskedParent(Mt8167Transport *t,uint32_t period,mt8167_audio_shared_client *s){
@@ -136,7 +136,9 @@ int Mt8167TransportStartMaskedParent(Mt8167Transport *,uint32_t,mt8167_audio_sha
 int Mt8167TransportStop(Mt8167Transport *){assert(!"unexpected stop");return -1;}
 #endif
 #endif
+#if !defined(A04_AUDIO_ENGINE_PCM) || !A04_AUDIO_ENGINE_PCM
 int Mt8167TransportPosition(Mt8167Transport *,uint32_t *){enteredPosition=true;while(holdPosition)std::this_thread::yield();return -1;}
+#endif
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
 static int maps,unmaps,mapfail;alignas(4) static unsigned char mmio[4096];
 PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,MEMORY_CACHING_TYPE cache) { assert(a.QuadPart==0x21140000 && n==4096 && cache==MmNonCached);maps++;return mapfail?nullptr:mmio; }
@@ -155,9 +157,71 @@ struct Resources : IResourceList { _CM_PARTIAL_RESOURCE_DESCRIPTOR irq{},rawIrq{
  PCM_PARTIAL_RESOURCE_DESCRIPTOR FindTranslatedEntry(int type,ULONG index) override{return type==CmResourceTypeMemory?(index<2?&mem[index]:nullptr):&irq;}
  PCM_PARTIAL_RESOURCE_DESCRIPTOR FindUntranslatedEntry(int type,ULONG index) override{return type==CmResourceTypeInterrupt && !index?&rawIrq:type==CmResourceTypeMemory && index<2?&rawMem[index]:nullptr;}
 };
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+struct EnginePort : IPortWaveRTStream {
+    _MDL mdl{data,8192};int refs=1,allocations=0,frees=0;
+    PMDL AllocateContiguousPagesForMdl(PHYSICAL_ADDRESS,PHYSICAL_ADDRESS,size_t n) override {
+        assert(n==8192);allocations++;return &mdl;
+    }
+    ULONG GetPhysicalPagesCount(PMDL) override {return 2;}
+    PHYSICAL_ADDRESS GetPhysicalPageAddress(PMDL,ULONG i) override {return {0x100000+(int64_t)i*4096};}
+    PVOID MapAllocatedPages(PMDL,int) override {return data;}
+    void UnmapAllocatedPages(PVOID,PMDL) override {}
+    void FreePagesFromMdl(PMDL) override {frees++;}
+    ULONG AddRef() override {return ++refs;}ULONG Release() override {return --refs;}
+};
+static int (*realWrite)(void *,uint32_t,uint32_t);
+static int engineWrite(void *context,uint32_t reg,uint32_t value) {
+    int result=realWrite(context,reg,value);
+    if(!result && reg==0x3a8)*reinterpret_cast<uint32_t *>(mmio+0x3a4)&=~value;
+    return result;
+}
+static void engineLifecycle(PDMA_ADAPTER adapter,Resources *resources) {
+    Mt8167PnpBackend *owner=NULL;parent_grant=1;live_verified=1;
+    assert(!Mt8167PnpBackendCreate(adapter,resources,&owner));
+    Mt8167Irq *irq=static_cast<Mt8167Irq *>(test_interrupt.ctx);
+    realWrite=irq->engine->io.write32;irq->engine->io.write32=engineWrite;
+    const Mt8167StreamBackend *api=Mt8167PnpBackendInterface(owner);
+    EnginePort first,second;PMDL mdl=NULL,again=NULL;ULONG bytes=0;KSAUDIO_POSITION position{};
+    assert(!api->checkout(api->context,&first,8192,&mdl,&bytes) && bytes==8192);
+    assert(api->checkout(api->context,&second,8192,&again,&bytes)==STATUS_DEVICE_NOT_READY);
+    assert(!api->setState(api->context,&first,KSSTATE_ACQUIRE));
+    assert(!api->setState(api->context,&first,KSSTATE_PAUSE));
+    assert(!api->setState(api->context,&first,KSSTATE_RUN));
+    LONG oldGeneration=irq->generation;
+    *reinterpret_cast<uint32_t *>(mmio+0x44)=0x100080;
+    assert(!api->setState(api->context,&first,KSSTATE_PAUSE));
+    assert(!irq->armed && !irq->dpc.queued && irq->interrupt);
+    assert(!api->position(api->context,&position) && position.PlayOffset==128);
+    assert(!api->setState(api->context,&first,KSSTATE_RUN) && irq->generation>oldGeneration);
+    irq->pending=3;irq->dpc.fn(&irq->dpc,irq, (PVOID)(ULONG_PTR)oldGeneration,NULL);
+    assert(irq->pending==3);irq->pending=0;
+    assert(!api->setState(api->context,&first,KSSTATE_ACQUIRE));
+    assert(!api->setState(api->context,&first,KSSTATE_STOP));
+    assert(!api->position(api->context,&position) && !position.PlayOffset);
+    assert(!api->setState(api->context,&first,KSSTATE_RUN));
+    assert(!api->setState(api->context,&first,KSSTATE_STOP));
+    assert(!api->checkin(api->context,&first,mdl));
+    assert(!api->checkout(api->context,&second,4096,&again,&bytes) && again==mdl && bytes==8192);
+    assert(first.allocations==1 && second.allocations==0 && dmaMaps==1 && !dmaReleases);
+    assert(!api->setState(api->context,&second,KSSTATE_RUN));
+    assert(voice_starts==1 && digitalCalls==1 && !voice_stops);
+    irq->fault=1; /* A previous ISR fault must stay poisoned even if stop reads back. */
+    assert(api->setState(api->context,&second,KSSTATE_STOP)==STATUS_DEVICE_NOT_READY);
+    assert(api->setState(api->context,&second,KSSTATE_RUN)==STATUS_DEVICE_NOT_READY);
+    assert(!api->checkin(api->context,&second,mdl));
+    assert(api->checkout(api->context,&first,8192,&again,&bytes)==STATUS_DEVICE_NOT_READY);
+    Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);
+    assert(!dmaReleases && !first.frees && !second.frees && !voice_stops && parent_refs);
+}
+#endif
 int main(){
  _DMA_OPERATIONS ops{put,alloc,freebuf};_DMA_ADAPTER adapter{&ops};test_dma_adapter=&adapter;
- Resources resources;Mt8167PnpBackend *owner=nullptr;
+ Resources resources;
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+ engineLifecycle(&adapter,&resources);return 0;
+#else
+ Mt8167PnpBackend *owner=nullptr;
  resources.rawIrq.Flags=CM_RESOURCE_INTERRUPT_MESSAGE;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner);
  resources.rawIrq.Flags=0;resources.rawIrq.ShareDisposition=0;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner);
  resources.rawIrq.ShareDisposition=CmResourceShareDeviceExclusive;resources.rawIrq.u.Interrupt.Vector=0;assert(Mt8167PnpBackendCreate(&adapter,&resources,&owner)==STATUS_DEVICE_CONFIGURATION_ERROR && !owner);
@@ -204,10 +268,10 @@ int main(){
    assert(io.write32(io.context,0x100,1) && !io.read32(io.context,0x3a4,&value));
    *reinterpret_cast<uint32_t *>(mmio+0x3a4)=1;
    *reinterpret_cast<uint32_t *>(mmio+0x10)=2;
-   irqstate->engine->state=MT8167_DL1_RUNNING;
+   irqstate->engine->state=MT8167_DL1_RUNNING;irqstate->armed=1;
    assert(test_interrupt.fn(&test_interrupt,test_interrupt.ctx));
    assert(*reinterpret_cast<uint32_t *>(mmio+0x3a8)==1 && irqstate->pending==1);
-   irqstate->engine->state=MT8167_DL1_IDLE;
+   irqstate->engine->state=MT8167_DL1_IDLE;irqstate->armed=0;
  }
 #endif
  Mt8167PnpInterrupt irq{};assert(!Mt8167PnpBackendInterrupt(owner,&irq) && irq.vector==80 && irq.level==5 && irq.affinity==1);
@@ -350,6 +414,7 @@ int main(){
  assert(maps==7 && unmaps==5 && parent_refs==2 && test_pdo_refs==1 && test_irq_disconnections==2);
 #else
  assert(unmaps==1);
+#endif
 #endif
 #endif
 }

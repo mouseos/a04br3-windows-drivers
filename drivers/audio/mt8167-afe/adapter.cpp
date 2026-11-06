@@ -6,11 +6,11 @@
 #include "pnp_backend.h"
 struct Mt8167DeviceExtension {
     ULONG_PTR portclsReserved[PORT_CLASS_DEVICE_EXTENSION_SIZE / sizeof(ULONG_PTR)]; Mt8167PnpBackend *owner;
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
     EX_RUNDOWN_REF diagRundown;volatile LONG diagInitialized,diagReady;
 #endif
 };
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
 static NTSTATUS Mt8167ControlDispatch(PDEVICE_OBJECT device,PIRP irp) {
     PIO_STACK_LOCATION stack=IoGetCurrentIrpStackLocation(irp);
     if(stack->Parameters.DeviceIoControl.IoControlCode!=A04_AUDIO_READ_STATUS)return PcDispatchIrp(device,irp);
@@ -33,7 +33,7 @@ static NTSTATUS Mt8167PnpDispatch(PDEVICE_OBJECT device,PIRP irp)
     PIO_STACK_LOCATION stack=IoGetCurrentIrpStackLocation(irp);
     if (stack->MinorFunction==IRP_MN_STOP_DEVICE || stack->MinorFunction==IRP_MN_SURPRISE_REMOVAL || stack->MinorFunction==IRP_MN_REMOVE_DEVICE) {
         Mt8167DeviceExtension *ext=static_cast<Mt8167DeviceExtension *>(device->DeviceExtension);
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
         InterlockedExchange(&ext->diagReady,0);
         if(InterlockedCompareExchange(&ext->diagInitialized,0,0))ExWaitForRundownProtectionRelease(&ext->diagRundown);
 #endif
@@ -83,7 +83,7 @@ static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device, PIRP irp,
     PDEVICE_OBJECT pdo=NULL;
     Mt8167PnpBackend *owner=NULL;
     if (ext->owner) return STATUS_DEVICE_BUSY;
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
     /* The retained bring-up driver deliberately refuses a second lifecycle. */
     if(InterlockedCompareExchange(&ext->diagInitialized,0,0))return STATUS_DEVICE_BUSY;
     ExInitializeRundownProtection(&ext->diagRundown);InterlockedExchange(&ext->diagInitialized,1);
@@ -96,7 +96,7 @@ static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device, PIRP irp,
     if (NT_SUCCESS(status)) { status=Mt8167RegisterWaveRt(device,irp,resources,miniport);miniport->Release(); }
     if (!NT_SUCCESS(status)) { Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);return status; }
     ext->owner=owner;
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
     InterlockedExchange(&ext->diagReady,1);
 #endif
     return status;
@@ -118,9 +118,21 @@ static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device, PIRP irp,
 NTSTATUS Mt8167AddDevice(PDRIVER_OBJECT driver, PDEVICE_OBJECT pdo)
 {
 #if defined(A04_MT8167_OWNER_DIAGNOSTIC) && A04_MT8167_OWNER_DIAGNOSTIC && defined(A04_MT8167_WAVERT_DIAGNOSTIC) && A04_MT8167_WAVERT_DIAGNOSTIC && defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
-    return PcAddAdapterDevice(driver,pdo,PCPFNSTARTDEVICE(Mt8167StartDevice),1,sizeof(Mt8167DeviceExtension));
+    return PcAddAdapterDevice(driver,pdo,PCPFNSTARTDEVICE(Mt8167StartDevice),
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+        2,
 #else
-    return PcAddAdapterDevice(driver, pdo, PCPFNSTARTDEVICE(Mt8167StartDevice),1,0);
+        1,
+#endif
+        sizeof(Mt8167DeviceExtension));
+#else
+    return PcAddAdapterDevice(driver, pdo, PCPFNSTARTDEVICE(Mt8167StartDevice),
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+        2,
+#else
+        1,
+#endif
+        0);
 #endif
 }
 extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING path)
@@ -129,7 +141,7 @@ extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT driver, PUNICODE_STRING path)
 #if defined(A04_MT8167_OWNER_DIAGNOSTIC) && A04_MT8167_OWNER_DIAGNOSTIC && defined(A04_MT8167_WAVERT_DIAGNOSTIC) && A04_MT8167_WAVERT_DIAGNOSTIC && defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
     if (NT_SUCCESS(status)) {
         driver->MajorFunction[IRP_MJ_PNP]=Mt8167PnpDispatch;
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
         driver->MajorFunction[IRP_MJ_DEVICE_CONTROL]=Mt8167ControlDispatch;
 #endif
     }

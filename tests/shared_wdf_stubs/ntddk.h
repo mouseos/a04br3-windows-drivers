@@ -17,6 +17,15 @@ static inline LONG InterlockedExchange(volatile LONG *p,LONG v){return __atomic_
 static inline LONG InterlockedCompareExchange(volatile LONG *p,LONG v,LONG old){__atomic_compare_exchange_n(p,&old,v,0,__ATOMIC_SEQ_CST,__ATOMIC_SEQ_CST);return old;}
 typedef struct { int64_t QuadPart; } PHYSICAL_ADDRESS;typedef PHYSICAL_ADDRESS LARGE_INTEGER;
 typedef struct {int held;} FAST_MUTEX;
+#if defined(A04_SHARED_ENGINE_PCM) && A04_SHARED_ENGINE_PCM
+#define PAGE_SIZE 4096u
+#define PAGE_SHIFT 12
+typedef uintptr_t PFN_NUMBER,*PPFN_NUMBER;
+typedef struct {ULONG offset,bytes;PFN_NUMBER pfns[2];} MDL,*PMDL;
+#define MmGetMdlByteOffset(m) ((m)->offset)
+#define MmGetMdlByteCount(m) ((m)->bytes)
+#define MmGetMdlPfnArray(m) ((m)->pfns)
+#endif
 #define STATUS_SUCCESS 0
 #define STATUS_INVALID_PARAMETER (-1)
 #define STATUS_DEVICE_NOT_READY (-2)

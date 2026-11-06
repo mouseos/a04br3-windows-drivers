@@ -55,6 +55,9 @@ try {
     & (Join-Path $PSScriptRoot 'build-mt8167-first-playback.ps1') -IntegratedUsb -IntegratedWifi -OutputDirectory $audioOut
     $audioManifest=Get-Content (Join-Path $audioOut 'manifest.json') -Raw|ConvertFrom-Json
     if($audioManifest.diagnostic_interface -ne 11 -or !$audioManifest.integrated_usb -or !$audioManifest.integrated_wifi){throw 'Audio/USB build profile mismatch'}
+    if($audioManifest.engine_pcm -or $audioManifest.audio_mode -ne 'private_fixed_tone_diagnostic'){
+        throw 'Legacy hardware probe bundle requires fixed-tone audio; never auto-register it for EnginePcm'
+    }
     $required=@('A04_SHARED_WIFI_RUNTIME','A04_MT6392_RTC32K_DIAGNOSTIC','A04_SHARED_WIFI_IRQ_DIAGNOSTIC',
       'A04_SHARED_TOUCH_D0_EXPERIMENT','A04_SHARED_BUTTON_D0_EXPERIMENT','A04_SHARED_FIRST_PLAYBACK',
       'A04_SHARED_DIGITAL_PLAYBACK','A04_SHARED_VOICE_PCM_DIAGNOSTIC','A04_MT6392_CLK_ALIAS_EXPERIMENT',

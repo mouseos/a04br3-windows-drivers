@@ -24,6 +24,10 @@ extern "C" {
  * ownership and mapping; this alone does not prove DMA bus drain. */
 int mt8167_dl1_prepare_masked_irq(struct mt8167_dl1_engine *);
 int mt8167_dl1_start(struct mt8167_dl1_engine *, const struct mt8167_dl1_plan *);
+/* Only after verified STOP, with the same retained ring. reset=0 is the
+ * Linux RESUME trigger; reset=1 repeats BASE/END setup for STOP/reopen.
+ * Neither permits freeing or replacing the allocation. */
+int mt8167_dl1_restart(struct mt8167_dl1_engine *,const struct mt8167_dl1_plan *,int reset);
 /* On failure retain DMA mapping and contents; hardware quiescence is unknown. */
 int mt8167_dl1_stop(struct mt8167_dl1_engine *);
 /* Returns 1 for own interrupt, 0 for other IRQ, -1 on error. Caller schedules

@@ -1549,3 +1549,14 @@ test-mt8167-usb-keyboard-batch: test-mt8167-usb-enumeration
 test-mt8167-peripherals:
 	$(MAKE) test-mt8167-first-playback CFLAGS="$(CFLAGS) -DA04_USB_GPIO22_SOURCE_EXPERIMENT=1 -DA04_SHARED_TOUCH_D0_EXPERIMENT=1 -DA04_SHARED_WIFI_RUNTIME=1 -DA04_MT6392_RTC32K_DIAGNOSTIC=1 -DA04_SHARED_WIFI_IRQ_DIAGNOSTIC=1"
 	$(MAKE) test-mt8167-usb-keyboard-batch test-mt6630-runtime
+
+
+# Reuse the existing stream lifecycle checks for direct PCM and retained pages.
+.PHONY: test-mt8167-engine-pcm
+test-mt8167-engine-pcm:
+	mkdir -p build
+	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -Wno-misleading-indentation -std=c++11 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_TEST_MINIPORT=1 -DA04_AUDIO_VOICE_PCM_DIAGNOSTIC=1 -DA04_AUDIO_WAVE_DMA_RETAINED=1 -DA04_AUDIO_ENGINE_PCM=1 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/wavert_miniport.cpp drivers/audio/mt8167-afe/wavert_dma.cpp drivers/audio/mt8167-afe/topology_miniport.cpp tests/mt8167_wavert_miniport_test.cpp -o build/mt8167_engine_pcm_test
+	./build/mt8167_engine_pcm_test
+	$(CC) $(CFLAGS) -Itests/audio_query_stubs -Idrivers/audio/mt8167-afe -c drivers/audio/mt8167-afe/audio_parent_client.c -o build/mt8167_engine_parent_host.o
+	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -Wno-unused-function -Wno-unused-variable -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_TEST_PNP_BACKEND=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_AUDIO_QUERY_SHARED=1 -DA04_AUDIO_MAP_AFE=1 -DA04_AUDIO_IRQ_DIAGNOSTIC=1 -DA04_AUDIO_RUN_DIAGNOSTIC=1 -DA04_AUDIO_ENGINE_PCM=1 -DA04_AUDIO_DIGITAL_PLAYBACK=1 -DA04_AUDIO_VOICE_PCM_DIAGNOSTIC=1 -DA04_AUDIO_WAVE_DMA_RETAINED=1 -Itests/audio_owner_stubs -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/pnp_backend.cpp drivers/audio/mt8167-afe/wavert_dma.cpp drivers/audio/mt8167-afe/stream_transport.cpp drivers/audio/mt8167-afe/afe_mapping.cpp drivers/audio/mt8167-afe/common_dma.cpp drivers/audio/mt8167-afe/dma_adapter.cpp drivers/audio/mt8167-afe/shared_audio.c drivers/audio/mt8167-afe/irq_windows.cpp drivers/audio/mt8167-afe/dl1_engine.c drivers/audio/mt8167-afe/dl1.c drivers/bus/mt8167-shared/clock_owner.c tests/mt8167_pnp_backend_test.cpp build/mt8167_engine_parent_host.o -o build/mt8167_engine_restart_pnp_test
+	./build/mt8167_engine_restart_pnp_test

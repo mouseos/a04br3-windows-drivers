@@ -18,7 +18,7 @@ NTSTATUS Mt8167PnpBackendBindInterrupt(Mt8167PnpBackend *owner,Mt8167Transport *
  * Until a provider exists this is unused and cannot enable IRQ or DMA. */
 NTSTATUS Mt8167PnpBackendAttachShared(Mt8167PnpBackend *owner,const struct mt8167_audio_shared *shared);
 const Mt8167StreamBackend *Mt8167PnpBackendInterface(Mt8167PnpBackend *owner);
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
 NTSTATUS Mt8167PnpBackendSnapshot(Mt8167PnpBackend *,struct a04_audio_snapshot *);
 #endif
 void Mt8167PnpBackendRevoke(Mt8167PnpBackend *owner);

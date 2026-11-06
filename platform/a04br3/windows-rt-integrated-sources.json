@@ -39,11 +39,16 @@
     "reason": "The legacy client consumes the retained first RUN; EnginePcm has multiple AUDIO interfaces after Topology registration"
   },
   "engine_pcm_candidate": {
-    "branch": "work/rt-audio-engine-pcm-20261107",
-    "source_commit": "49d5c657b452b3085627f0e8e664edd441036b83",
-    "integrated": false,
-    "mode": "AudioSrv engine PCM with new parent/audio/endpoint implementation",
-    "stop_run_reopen_complete": false,
-    "hardware_verified": false
+    "branch": "work/rt-audio-retained-restart-20261107",
+    "source_commit": "329413ad2cabb68b3fe55fc4659640f7680fbb38",
+    "integrated": true,
+    "mode": "engine_pcm_retained",
+    "hardware_verified": false,
+    "initial_source_commit": "49d5c657b452b3085627f0e8e664edd441036b83",
+    "default_enabled": false,
+    "retained_stop_run_reopen_implemented": true,
+    "wdk_verified": false,
+    "driver_ver": "11/06/2026,2026.11.7.1003",
+    "legacy_tone_probe_auto_registration_allowed": false
   }
 }

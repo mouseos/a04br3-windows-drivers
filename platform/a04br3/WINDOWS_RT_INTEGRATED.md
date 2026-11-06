@@ -16,10 +16,11 @@ GPU/MMA8652はGPU基点、parent/audio/USB/Wi-Fi/KS clientはperipheral基点の
 主担当が回収したSYS=`f17b743`、KS client=`a016d53`も同モードであり、
 GPU主試験はこの現診断parent版のまま先行する。回収済みSYSをEnginePcm版と呼ばない。
 
-AudioSrv実PCM候補 `49d5c65` は別branch `work/rt-audio-engine-pcm-20261107` の
-新しい親/audio/endpoint実装で、この統合branchには取り込んでいない。
-親interfaceが同じv11であっても、固定tone版との互換性・通常音声成功の証拠にはならない。
-STOP→RUN・再openはHerschelが継続中で、完成済みとして扱わない。
+AudioSrv実PCM候補 `49d5c65` と後続 `329413a` を既定OFFの別profileとしてsource統合した。
+Herschelの `work/rt-audio-retained-restart-20261107` が出自で、新しい親/audio/endpoint構成を使う。
+同allocationのSTOP→RUN・PAUSE→RUN・再openはソースとホストfixtureで確認されているが、
+WDK・AudioSrv列挙・実PCM更新・可聴再生・実電源遷移は未確認。
+親interfaceが同じv11でも固定tone親との互換性の証拠にはならない。
 
 **EnginePcmを使う構成にはhardwareprobe `94e4d47`を自動登録しない。**
 このserviceは旧private-tone KS clientを自動起動し、保持する初回RUNを消費する。
@@ -83,3 +84,25 @@ eMMC d4d8d57と前提6b5043eは将来の独立候補として収録し、実機�
 この統合のperipheral/GPU/service/media入口から自動で呼ばない。
 専用入口は `-SingleSectorBaseline` で比較用のread/write batchingを0にできる。
 当該performance package/ファイルverifierの生成・配置・実行は主担当の別工程。
+
+## 任意EnginePcmの増分build
+
+既定のGPU主試験・媒体builder・一括probeは引き続きtone診断構成。
+EnginePcm候補を明示選択する場合だけ、別の出力先で次を使う。
+
+```powershell
+.\tools\ci\build-mt8167-first-playback.ps1 -EnginePcm -IntegratedUsb -IntegratedWifi -SkipPeripheralBuild -OutputDirectory .\build\engine-pcm-retained
+```
+
+初回は新しいEnginePcm親とaudioをbuildする。旧tone client・USB/Wi-Fiの再compile、
+hardwareprobeの自動登録は行わない。一致する既存EnginePcm親出力を再利用するときだけ
+同じコマンドへ `-ReuseParent` を追加し、flags/SYS hashを照合してaudioだけをbuildする。
+固定tone親は拒否する。再利用親の元source commitはmanifestのparent_source_commitに記録する。
+異なる音声モードの出力manifestまたはINFがある出力先はbuild前に拒否する。
+
+Engine INFの版は2026.11.7.1003、署名日付は統合方針の11/06/2026。
+これはtone版4 INFの11/06/2026,2026.11.6.1001を変更しない。
+停止後もpages/SG/voice/D0を保持し、fabric DMA drain・解放成功を保証しない。
+同時clientは1つ、保持容量を超える再openとsticky poison後の再RUNを拒否する。
+既存tone hardwareprobeを登録済みのOSへEnginePcmを置く場合も、旧tone clientの
+自動起動を有効なままにしない。実機への適用判断・旧登録の解除は主担当工程。
