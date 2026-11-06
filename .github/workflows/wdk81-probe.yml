@@ -67,6 +67,9 @@ jobs:
             Write-Host "$path : $(Test-Path $full)"
             if (-not (Test-Path $full)) { throw "Missing required ARM32 WDK component: $path" }
           }
+      - name: Compile ARM32 audit stream sender
+        shell: pwsh
+        run: ./tools/ci/build-uart-audit-stream.ps1
       - name: Test preliminary offline registry queries
         shell: pwsh
         run: ./tools/ci/test-audit-offline-registry.ps1
@@ -112,6 +115,14 @@ jobs:
         with:
           name: offline-release-arm32-unsigned
           path: ${{ runner.temp }}/a04-offline-release/release-offline-volume.exe
+          if-no-files-found: error
+      - name: Test sign audit components
+        shell: pwsh
+        run: ./tools/ci/sign-audit-tools.ps1 -AuditExe "$env:RUNNER_TEMP\a04-audit-volume-sys\audit-volume-sys.exe" -ReleaseExe "$env:RUNNER_TEMP\a04-offline-release\release-offline-volume.exe" -SenderExe "$env:RUNNER_TEMP\a04-uart-audit-stream\uart-audit-stream.exe" -OutputDirectory "$env:RUNNER_TEMP\a04-audit-signed"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audit-components-test-signed
+          path: ${{ runner.temp }}/a04-audit-signed/
           if-no-files-found: error
       - name: Test sign offline maintenance tools
         shell: pwsh
