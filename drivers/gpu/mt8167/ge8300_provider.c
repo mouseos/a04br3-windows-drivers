@@ -400,6 +400,28 @@ static void GpuBugCallback(PVOID buffer,ULONG length)
 }
 #endif
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(GPU_CONTEXT,GpuContext)
+#if A04_GE8300_SHARED_LEASE
+/* Caller holds vendor_lifetime. Establish the existing fenced-copy contract
+ * internally; sharing must not depend on an external diagnostic executable. */
+static NTSTATUS GpuEnsureSharedCopyReady(GPU_CONTEXT *c)
+{
+    struct a04_vendor_clear_result result;NTSTATUS status;
+    if(c->shared_lease.task && c->shared_lease.flush)return STATUS_SUCCESS;
+    if(!c->vendor_service_online || c->vendor_start.command_poisoned ||
+       InterlockedCompareExchange(&c->vendor_service_closed,0,0))return STATUS_DEVICE_NOT_READY;
+    status=a04_vendor_render_copy_once(&c->vendor_copy,&c->vendor_start,&result);
+    if(NT_SUCCESS(status) && (result.zeros!=1024u || result.guard_errors ||
+       !result.completed_task || !result.completed_flush))status=STATUS_DATA_ERROR;
+    if(NT_SUCCESS(status))a04_shared_lease_copy_complete(&c->shared_lease,
+        result.completed_task,result.completed_flush);
+    else {
+        c->vendor_service_online=FALSE;InterlockedExchange(&c->vendor_service_closed,1);
+    }
+    GpuPrint("A04GPU SHARED COPY READY=");GpuHex((ULONG)status);GpuPrint("\n");
+    return status;
+}
+#endif
+
 #if A04_GE8300_VENDOR_IRQ
 static NTSTATUS GpuVendorIrqService(void *context)
 {
@@ -1088,8 +1110,9 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
                !c->vendor_service_online || InterlockedCompareExchange(&c->vendor_service_closed,0,0) ||
                !c->vendor.hardware_owned || c->vendor_start.command_poisoned ||
                !c->vendor_copy.destination.cpu || c->vendor_copy.destination.bytes!=4096u ||
-               ((ULONG_PTR)c->vendor_copy.destination.cpu&4095u) ||
-               !(token=a04_shared_lease_acquire(&c->shared_lease))) status=STATUS_DEVICE_NOT_READY;
+               ((ULONG_PTR)c->vendor_copy.destination.cpu&4095u)) status=STATUS_DEVICE_NOT_READY;
+            else if(!NT_SUCCESS(status=GpuEnsureSharedCopyReady(c))) { /* Remain closed. */ }
+            else if(!(token=a04_shared_lease_acquire(&c->shared_lease)))status=STATUS_DEVICE_NOT_READY;
             else {
                 c->shared_common_active=TRUE;WdfObjectReference(device);
                 page->cpu=c->vendor_copy.destination.cpu;page->gpu_va=A04_VENDOR_COPY_DEST_VA;
@@ -1201,11 +1224,12 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
         if(control==A04_GE8300_IOCTL_SHARED_ACQUIRE) {
             if(token || !c->vendor_service_online || InterlockedCompareExchange(&c->vendor_service_closed,0,0) ||
                !c->vendor_adapter_v3 || c->vendor_map_registers<1000u || !c->vendor.hardware_owned ||
-               c->vendor_start.command_poisoned ||
-               !(token=a04_shared_lease_acquire(&c->shared_lease))) {
+               c->vendor_start.command_poisoned) {
                 GpuPrint("A04GPU SHARED LEASE UNAVAILABLE MAPS=");GpuHex(c->vendor_map_registers);GpuPrint("\n");
                 status=STATUS_DEVICE_NOT_READY;
             }
+            else if(!NT_SUCCESS(status=GpuEnsureSharedCopyReady(c))) { /* Remain closed. */ }
+            else if(!(token=a04_shared_lease_acquire(&c->shared_lease)))status=STATUS_DEVICE_NOT_READY;
             else {
                 WdfObjectReference(device);
 #if A04_GE8300_SHARED_FULL_FRAME
