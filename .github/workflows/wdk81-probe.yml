@@ -135,7 +135,8 @@ jobs:
           $env:A04_GE8300_WDDM_SHARED_FULL_COMMON='1'
           $env:A04_GE8300_SHARED_DISPLAY_COMMON='1'
           $env:A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC='1'
-          $env:A04_GE8300_WDDM_GCE_LEASE='1'
+          $env:A04_GE8300_WDDM_GCE_LEASE='0'
+          $env:A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC='1'
           ./tools/ci/build-wddm-display-arm.ps1
       - name: Build and test-sign observation packages
         shell: pwsh
@@ -168,7 +169,7 @@ jobs:
             if($LASTEXITCODE){throw "Catalog signing failed: $name"}
           }
           $files=Get-ChildItem $out -File -Recurse | ForEach-Object { [ordered]@{path=$_.FullName.Substring($out.Length+1).Replace('\','/');sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash} }
-          [ordered]@{source_commit=(git rev-parse HEAD);certificate_thumbprint=$cert.Thumbprint;gce_irq_attach=0;gce_handoff_observe=1;display_gce_lease=1;ovl_switch=0;files=@($files);note='Test signed; execution and secure ownership unverified.'} | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+          [ordered]@{source_commit=(git rev-parse HEAD);certificate_thumbprint=$cert.Thumbprint;gce_irq_attach=0;gce_handoff_observe=1;display_gce_lease=0;gpu_post_diagnostic=1;ovl_switch=0;files=@($files);note='GPU copy then CPU POST transfer; direct scanout, execution and secure ownership unverified.'} | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
       - uses: actions/upload-artifact@v4
         with:
           name: gce-observation-test-signed

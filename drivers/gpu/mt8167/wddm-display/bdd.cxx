@@ -42,6 +42,9 @@ BASIC_DISPLAY_DRIVER::BASIC_DISPLAY_DRIVER(_In_ DEVICE_OBJECT* pPhysicalDeviceOb
 #if A04_GE8300_WDDM_SHARED_AUTOSTART
     KeInitializeEvent(&m_SharedWorkerStop,NotificationEvent,FALSE);
     m_SharedWorkerDone=NULL; m_SharedWorker=NULL; m_SharedWorkerObject=NULL;
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+    m_GpuPostAttempted=FALSE;
+#endif
 #endif
 
 
@@ -89,6 +92,12 @@ VOID BASIC_DISPLAY_DRIVER::SharedDiagnosticWorker(PVOID context)
 #endif
             done=TRUE;
         }
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+        if(done && NT_SUCCESS(status) && !self->m_GpuPostAttempted) {
+            self->m_GpuPostAttempted=TRUE;
+            NTSTATUS shown=self->ShowVerifiedGpuFrame();A04DisplayTrace(0x81,shown);
+        }
+#endif
         KeReleaseMutex(&self->m_PresentMutex,FALSE);
         if(i==0 || done || (i%10)==9) A04DisplayTrace(0x31,status);
         if(done)break;
@@ -96,6 +105,49 @@ VOID BASIC_DISPLAY_DRIVER::SharedDiagnosticWorker(PVOID context)
     KeSetEvent(done,IO_NO_INCREMENT,FALSE);
     PsTerminateSystemThread(STATUS_SUCCESS);
 }
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+/* Caller holds m_PresentMutex. No OVL or display DMA configuration changes.
+ * StopDevice signals the event before waiting for this worker, so restoration
+ * also runs when removal begins during the timed display. */
+NTSTATUS BASIC_DISPLAY_DRIVER::ShowVerifiedGpuFrame()
+{
+    const uint32_t *pixels=NULL;CURRENT_BDD_MODE *mode=&m_CurrentModes[0];
+    const DXGK_DISPLAY_INFORMATION *info=&mode->DispInfo;
+    PVOID mapped=NULL,backup=NULL;BOOLEAN temporary=FALSE;NTSTATUS status;
+    LARGE_INTEGER timeout;ULONG row,bytes;
+    status=m_DisplayResources.GetVerifiedGpuFrame(&pixels);
+    if(!NT_SUCCESS(status))return status;
+    if(KeReadStateEvent(&m_SharedWorkerStop) || !m_Flags.DriverStarted ||
+       m_AdapterPowerState!=PowerDeviceD0 || m_MonitorPowerState!=PowerDeviceD0 ||
+       info->Width!=800u || info->Height!=1280u || info->Pitch<3200u ||
+       info->Pitch>MAXULONG/1280u ||
+       (info->ColorFormat!=D3DDDIFMT_X8R8G8B8 && info->ColorFormat!=D3DDDIFMT_A8R8G8B8))
+        return STATUS_DEVICE_NOT_READY;
+    bytes=info->Pitch*1280u;
+    backup=ExAllocatePoolWithTag(NonPagedPoolNx,4096000u,'pG4A');
+    if(!backup)return STATUS_INSUFFICIENT_RESOURCES;
+    mapped=mode->FrameBuffer.Ptr;
+    if(!mapped) {
+        status=MapFrameBuffer(info->PhysicAddress,bytes,&mapped);
+        if(!NT_SUCCESS(status))goto done;
+        temporary=TRUE;
+    }
+    if(KeReadStateEvent(&m_SharedWorkerStop)){status=STATUS_CANCELLED;goto done;}
+    for(row=0;row<1280u;row++)
+        RtlCopyMemory((UCHAR *)backup+row*3200u,(UCHAR *)mapped+row*info->Pitch,3200u);
+    for(row=0;row<1280u;row++)
+        RtlCopyMemory((UCHAR *)mapped+row*info->Pitch,(const UCHAR *)pixels+row*3200u,3200u);
+    KeMemoryBarrier();A04DisplayTrace(0x80,STATUS_SUCCESS);
+    timeout.QuadPart=-50000000LL;
+    (void)KeWaitForSingleObject(&m_SharedWorkerStop,Executive,KernelMode,FALSE,&timeout);
+    for(row=0;row<1280u;row++)
+        RtlCopyMemory((UCHAR *)mapped+row*info->Pitch,(UCHAR *)backup+row*3200u,3200u);
+    KeMemoryBarrier();A04DisplayTrace(0x82,STATUS_SUCCESS);status=STATUS_SUCCESS;
+done:
+    if(temporary)UnmapFrameBuffer(mapped,bytes);
+    ExFreePoolWithTag(backup,'pG4A');return status;
+}
+#endif
 VOID BASIC_DISPLAY_DRIVER::StopSharedDiagnosticWorker()
 {
     if(!m_SharedWorker)return;
@@ -261,6 +313,9 @@ NTSTATUS BASIC_DISPLAY_DRIVER::SetPowerState(_In_  ULONG              HardwareUi
 
     if (HardwareUid == DISPLAY_ADAPTER_HW_ID)
     {
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+        if(DevicePowerState!=PowerDeviceD0)StopSharedDiagnosticWorker();
+#endif
         if (DevicePowerState == PowerDeviceD0)
         {
 

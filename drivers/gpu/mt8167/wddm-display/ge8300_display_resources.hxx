@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #ifndef A04_DISPLAY_RESOURCES_HXX
 #define A04_DISPLAY_RESOURCES_HXX
+#ifndef A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+#define A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC 0
+#endif
 #ifndef A04_GE8300_WDDM_DIRECT_EXPERIMENT
 #define A04_GE8300_WDDM_DIRECT_EXPERIMENT 0
 #endif
@@ -42,6 +45,9 @@
 #endif
 #ifndef A04_GE8300_WDDM_SHARED_AUTOSTART
 #define A04_GE8300_WDDM_SHARED_AUTOSTART 0
+#endif
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC && (!A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC || !A04_GE8300_WDDM_SHARED_AUTOSTART)
+#error GPU POST diagnostic requires the common frame worker
 #endif
 #if A04_GE8300_WDDM_SHARED_AUTOSTART && !A04_GE8300_WDDM_SHARED_DIAGNOSTIC
 #error Shared autostart requires shared diagnostic
@@ -87,6 +93,9 @@ struct A04DisplayResources {
     struct a04_shared_common_once SharedCommonOnce;
 #if A04_GE8300_WDDM_SHARED_FULL_COMMON
     NTSTATUS ProbeDisplayFullCommon(struct a04_ge8300_common_page *page);
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+    NTSTATUS GetVerifiedGpuFrame(const uint32_t **pixels);
+#endif
 #endif
     NTSTATUS ProbeSharedCommonPage();
 #endif

@@ -3,6 +3,9 @@
 #include "ge8300_display_resource_check.h"
 #include "present_tile.h"
 #include "ge8300_trace.hxx"
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+#include "gpu_post_pattern.h"
+#endif
 #if A04_GE8300_WDDM_GCE_LEASE
 #include "../gce/gce_display_interface.h"
 struct A04GceDisplayLeaseHolder { A04_GCE_DISPLAY_INTERFACE iface;PFILE_OBJECT file;ULONG token; };
@@ -312,8 +315,26 @@ struct A04CommonFrameOwner {
     uint32_t frame,task,flush,cpuMatches;
     BOOLEAN sealed;
 };
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+NTSTATUS A04DisplayResources::GetVerifiedGpuFrame(const uint32_t **pixels)
+{
+    A04CommonFrameOwner *owner=(A04CommonFrameOwner *)SharedCommonOwner;
+    if(!pixels)return STATUS_INVALID_PARAMETER;
+    *pixels=NULL;
+    if(!SharedCommonRetained || !owner || !owner->cpu || !owner->sealed ||
+       !owner->task || !owner->flush || owner->cpuMatches!=1024000u)
+        return STATUS_DEVICE_NOT_READY;
+    *pixels=(const uint32_t *)owner->cpu;return STATUS_SUCCESS;
+}
+#endif
 static uint32_t CommonFramePixel(uint32_t x,uint32_t y)
-{ return (y*800u+x)^0x6d3a59c7u; }
+{
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+    return a04_gpu_post_pixel(x,y);
+#else
+    return (y*800u+x)^0x6d3a59c7u;
+#endif
+}
 static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile uint32_t *cpu,
     struct A04CommonFrameOwner *owner)
 {
@@ -444,7 +465,11 @@ NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(struct a04_ge8300_common_pa
     A04DisplayTrace(0x5d,status);
     if(NT_SUCCESS(status))status=CommonFrameTiles(GpuHandle,Lease.token,mdl,(volatile uint32_t *)cpu,owner);
 #if A04_GE8300_WDDM_GCE_LEASE
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+    if(NT_SUCCESS(status)) {NTSTATUS gceStatus=GceDisplayAcquire(&GceDisplayLease);A04DisplayTrace(0x67,gceStatus);}
+#else
     if(NT_SUCCESS(status)) {status=GceDisplayAcquire(&GceDisplayLease);A04DisplayTrace(0x67,status);}
+#endif
 #endif
     /* Read-only, non-atomic snapshot; no acknowledgement, IRQ clearing or
      * timing inference.  Firmware can enable both GOP L0 and overlay L3. */

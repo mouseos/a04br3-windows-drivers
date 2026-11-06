@@ -196,6 +196,10 @@ private:
     PVOID m_SharedWorkerObject;
     static VOID SharedDiagnosticWorker(PVOID context);
     VOID StopSharedDiagnosticWorker();
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+    NTSTATUS ShowVerifiedGpuFrame();
+    BOOLEAN m_GpuPostAttempted;
+#endif
 #endif
 
     // Current monitorpower state (this needs to be changed if MAX_CHILDREN != 1)
