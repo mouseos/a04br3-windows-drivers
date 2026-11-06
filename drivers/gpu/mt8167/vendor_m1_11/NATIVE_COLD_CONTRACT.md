@@ -65,3 +65,9 @@ GPU mapping/cache policyをallocation flagsから機械的に同一視しない�
 TA +0x3c/+0x44/+0x4c/+0x54/+0x80等の意味/初期化、3D clear/残りregister、USC/PDS/VDM/PPP/EOTが未確定。TPC以外の未確定初期内容を「全zeroが正解」と宣言しない。CPU allocationをzeroで確保する場合も安全なhost policyと記録し、GPU初期状態の一次証拠にはしない。
 
 packet担当はStartFrame 0x15e9c8、SetupBGObject 0x11372cのclear分岐、DoKickTA 0x1612a0とRGXKickTA 0x126354の間をREAで追い、clear専用の完全recordと依存コードを次に渡す。owner/backing担当は本契約でcold準備とqueue公開部を進められるが、dummy complete payloadを公開して試験しない。
+
+## owner実装後のHWRT register factory
+
+`native_hwrt_profile`はRGXAddRenderTargetの単一RT・1x1 samples分岐を800x600/800x1280について実装する。ownerの実`target`/`mlists`と寸法を渡し、返した2組を既存`a04_vendor_native_bind_bank_cold`へ渡す。private m1.11翻訳単位内で使用し、modern providerのenumへm1.11型を露出しない。GPUへのpublishは行わない。
+
+重要: `region_header_size`へ入るのはbyte容量ではなくtile数（1900/4000）。`tpc_size`はraw TPC bytes（0x8000/0x20000）、`tpc_stride=0`、`mtile_stride`はtile数。merge registerはvendor定数0x3e89309c/0x3fddb3d9/0x3fbb67b2からIEEE754 binary32 round-nearest/evenで算出した固定bitsで、実装内でFPUを使用しない。sample tableは08,08の1sample位置を反映した0x88。cold bind可能なmetadataであり、完全描画packetではない。
