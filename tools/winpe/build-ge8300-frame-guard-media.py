@@ -47,6 +47,11 @@ def main():
             commands='cd '+key+'\nadd '+thumb+'\ncd '+thumb+'\nsetval 1\nBlob\nhex:3:'+blob.hex()+'\ncommit\nquit\n'
             run(['hivexsh','-w',str(software)],input=commands,text=True,capture_output=True)
         assert run(['hivexget',str(software),key+'\\'+thumb,'Blob'],capture_output=True).stdout == blob
+    # The direct-POST base predates the audit sender. Import the fixed
+    # sender from the pinned maintenance image instead of assuming it exists.
+    maintenance = ROOT/'port/xnu/out/windows-rt-cpu-usb-audit-scope-v2-mapfix/maintenance-staged.wim'
+    assert sha(maintenance) == '0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4'
+    wim('extract', maintenance, '1', '/a04br3/uart-audit-stream.exe', '--dest-dir='+str(work), '--no-acls')
     start = work/'startnet.cmd'
     text = start.read_text().replace('\r','')
     text = re.sub(r'echo A04USB_OBSERVATION_START\n.*?(?= echo PnP and touch)', '', text, flags=re.S)
@@ -84,10 +89,17 @@ def main():
         'set DISPLAY_LOAD_RC=%errorlevel%\n'
         'X:\\a04br3\\uart-audit-stream.exe 9917000000000002\n'
         'if not "%DISPLAY_LOAD_RC%"=="0" goto gpu_failed\n')
-    text = text.replace('echo A04VOL_SCREEN_DISABLED_UART_PRIORITY', 'X:\\a04br3\\uart-screen.exe -f')
+    text = text.replace('echo GE8300_COPY_DRVLOAD_EXIT=%errorlevel%\nif errorlevel 1 goto gpu_failed',
+        'echo GE8300_COPY_DRVLOAD_EXIT=%GPU_LOAD_RC%')
+    text = text.replace('echo A04_SHARED_DISPLAY_DRVLOAD_EXIT=%errorlevel%\nif errorlevel 1 goto gpu_failed',
+        'echo A04_SHARED_DISPLAY_DRVLOAD_EXIT=%DISPLAY_LOAD_RC%')
+    assert 'uart-audit-stream.exe' in text
+    # Full-resolution UART screenshots are slow; collect only after frame
+    # completion with a separate image if needed, not during timing.
+
     start.write_bytes(text.replace('\n','\r\n').encode())
     image = out/'volume.wim'; shutil.copyfile(base/'volume.wim',image)
-    changes = [(software,'/Windows/System32/config/SOFTWARE'),(start,'/Windows/System32/startnet.cmd')]
+    changes = [(software,'/Windows/System32/config/SOFTWARE'),(start,'/Windows/System32/startnet.cmd'), (work/'uart-audit-stream.exe','/a04br3/uart-audit-stream.exe')]
     changes += [(package/name,'/a04br3/ge8300-copy/'+name) for name in
                 ('mt8167-ge8300.sys','mt8167-ge8300.inf','mt8167-ge8300.cat')]
     wim('update',image,'1',input=''.join('add '+str(src)+' '+dst+'\n' for src,dst in changes),text=True)
