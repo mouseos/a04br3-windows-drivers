@@ -13,7 +13,7 @@ struct a04_windows_session_platform {
  int (*mask_and_drain_irq)(void *);
  int (*drain_io)(void *);
 };
-enum a04_windows_session_state { A04_SESSION_OFF,A04_SESSION_STARTING,A04_SESSION_READY,A04_SESSION_STOPPED,A04_SESSION_QUARANTINED };
+enum a04_windows_session_state { A04_SESSION_OFF,A04_SESSION_STARTING,A04_SESSION_READY,A04_SESSION_STOPPED,A04_SESSION_QUARANTINED,A04_SESSION_REJECTED };
 struct a04_windows_session {
  enum a04_windows_session_state state;
  A04_SHARED_WIFI_INTERFACE *parent;
