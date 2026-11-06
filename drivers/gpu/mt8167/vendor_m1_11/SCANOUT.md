@@ -484,10 +484,13 @@ With separately gated `A04_GCE_DISPLAY_LEASE_INTERFACE` and
 kernel QUERY_INTERFACE; after the one-shot GPU frame verification the WDDM
 worker locates exactly one GCE device and sends the query to its stack. It
 retains the interface, file reference and holder if a callback ever returns a
-token, including on failure. Step 67 records the acquire status. The current
-GCE acquire callback always returns `STATUS_DEVICE_NOT_READY` and no token:
-clock, interrupt, thread and event ownership are not proved. Therefore this
-connection has never granted a display lease and cannot submit a command.
+token, including on failure. Step 67 records the result. Version 2 grants a
+single generation-tagged resource lease during D0 and keeps a WDF device
+reference; it closes admission on D0 exit or surprise removal. This lease only
+keeps the software object: it is not a power reference. `Ready` still refuses
+because clock, interrupt, thread and event ownership are not proved. The WDDM
+caller releases the resource lease on this refusal; if release fails it retains
+the holder and references. No command can be submitted through the interface.
 An interface reference alone does not retain PnP power or prove DMA stop.
 
 MT8167 DTS maps `disp_rdma0_frame_done` to 27 and `stream_done_0` to 38;

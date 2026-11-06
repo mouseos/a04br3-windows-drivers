@@ -43,10 +43,14 @@ static NTSTATUS GceDisplayAcquire(void **retained)
     }
     status=irp->IoStatus.Status;IoFreeIrp(irp);irp=NULL;
     if(!NT_SUCCESS(status))goto done;
-    if(!h->iface.Header.InterfaceDereference || !h->iface.Acquire || !h->iface.Release) {
+    if(!h->iface.Header.InterfaceDereference || !h->iface.Acquire || !h->iface.Release || !h->iface.Ready) {
         status=STATUS_NOINTERFACE;goto done;
     }
     status=h->iface.Acquire(h->iface.Header.Context,&h->token);
+    if(h->token && NT_SUCCESS(status)) {
+        status=h->iface.Ready(h->iface.Header.Context,h->token);
+        if(!NT_SUCCESS(status) && NT_SUCCESS(h->iface.Release(h->iface.Header.Context,h->token)))h->token=0;
+    }
     if(h->token){*retained=h;h=NULL;goto done;} /* retain even on failure */
     if(NT_SUCCESS(status))status=STATUS_DEVICE_CONFIGURATION_ERROR;
 done:
