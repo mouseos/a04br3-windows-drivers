@@ -82,3 +82,5 @@ recovery上でESPを一時的に読取り専用マウントし、`A04BACKUP` が
 `prepare-update-candidates.py` は実績WinPE WIMから共有親・タッチのINF/SYS/CATを抽出し、同じWIMのTOPRGU SYSと740117c署名パッケージを照合する。TOPRGU、共有親、タッチの署名者は別々である。`verify-transaction-candidates.ps1` はWDK signtoolで各INFとSYSのCAT所属を記録し、自己署名ルートが信頼されない場合を実機受理と混同しない。`prepare-transaction-trust.py` は固定ハッシュと所属記録を照合し、3組の証明書・SYSピンを生成する。`offline-hive-apply.exe --payload-check` はX:上の候補SYSと3証明書のピンを照合し、元SYSが未交換の状態でも使用できる。PnP・Driver Storeの更新や完全な復旧が揃ったことは意味しない。
 
 `offline-pnp-baseline.exe` は呼出側がRAMコピーとしてロードした `HKLM\\A04AUDITSYS` のControlSet、TOPRGUサービス、MOU0004/MOU0005の選択INFと共有サービス不在を検査する。元hiveを自らロードしない。RAMコピーの排他・最新性は呼出側が確認する。`offline-signature-check.exe` は候補3 SYSをWinPEの一般署名ポリシーで検査し、成功時はRT側CI受理を未確認と明示する。ユーザーが指定した実機試験に向けた事前検査であり、実機受理を成功扱いしない。
+
+`preflight-offline-update.cmd` は基準SYS・INFの照合、hiveのRAMコピー、PnP参照の確認とコピーのunload、候補3 SYS・証明書ピンとWinPE署名の確認を順に実行する。どの段階も搭載OSへの適用を行わない。PnP検査が失敗してもRAM hiveのunloadを試み、unload失敗を独立して報告する。成功は非原子的なRAMコピー、Driver Store全体の復旧、RT署名受理、OS更新の成功を意味しない。
