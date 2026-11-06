@@ -491,3 +491,11 @@ while `mtk-infracfg.c` waits for the protection status. The source does not
 establish that the Windows parent is the sole owner or that this observation
 alone safely drains all external transactions. The connection and behavior are
 host/WDK tests only, not a device-proven power-off or unload sequence.
+
+The bundled Linux `m1.8ED4490469/services/system/rgx_mt8167/mtk_mfgsys.c`
+acquires runtime power in ASYNC, 2D, MFG order before enabling top clocks and
+the GPU clock gate; it releases in the reverse order after gating clocks. Its
+shutdown notifier deliberately enables clocks again as a workaround for
+possibly unfinished GPU commands. This reinforces that a parent must own and
+serialize the whole transition and that a bus-protection acknowledgement is
+not by itself evidence that all commands and writes are drained.
