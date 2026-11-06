@@ -7,3 +7,7 @@ New-Item -ItemType Directory -Force $out|Out-Null
 if($LASTEXITCODE){throw 'GDI workload compile failed'}
 & lld-link /subsystem:windows /machine:arm /entry:WinMainCRTStartup /nodefaultlib "$out\frame.obj" "$lib\kernel32.lib" "$lib\user32.lib" "$lib\gdi32.lib" "/out:$out\ge8300-gdi-frame.exe"
 if($LASTEXITCODE){throw 'GDI workload link failed'}
+# Windows RT's user-mode code integrity also requires the GDI workload signer.
+if (-not $env:A04_TEST_CERTIFICATE_THUMBPRINT) { throw 'Supply the test certificate trusted by the target image' }
+& "$kit\bin\x86\signtool.exe" sign /fd SHA256 /sha1 $env:A04_TEST_CERTIFICATE_THUMBPRINT /s My "$out\ge8300-gdi-frame.exe"
+if ($LASTEXITCODE) { throw 'GDI workload signing failed' }
