@@ -21,6 +21,17 @@ def resource(status=0,data=b"\x11\x22\x33\x44",seq=1):
     return event(3,seq,[(7,meta),(8,data)])
 
 class CaptureTests(unittest.TestCase):
+    def test_connect_packed17_and_partial_is_not_capture_success(self):
+        inp=struct.pack("<4I",0,0x2010,0x1000b,5425693)
+        out=struct.pack("<B4I",2,0,1,2,0)
+        raw=event(4,0,[(9,struct.pack("<6I",1,0,10,16,17,0)+inp+out)])
+        with self.assertRaises(ValueError):parser.parse(raw)
+        result=parser.parse(raw,allow_incomplete=True)
+        self.assertFalse(result["complete_capture"])
+        self.assertEqual(result["events"][0]["client"]["ddk_version"],"1.11")
+        self.assertEqual(result["events"][0]["client"]["ddk_build"],5425693)
+        self.assertEqual(result["events"][0]["bridge_error"],0)
+        self.assertTrue(result["gpu_success"].startswith("unknown"))
     def test_resource_is_not_gpu_success(self):
         result=parser.parse(resource()+format_only_pairs())
         self.assertEqual(result["resource_bytes"],4)

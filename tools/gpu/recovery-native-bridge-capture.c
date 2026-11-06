@@ -90,7 +90,8 @@ int ioctl(int fd,unsigned long request,...)
     va_start(ap,request);arg=va_arg(ap,void *);va_end(ap);
     if(trace_fd>=0 && !mem_inside && !trace_broken && (uint32_t)request==PVR_IOCTL && arg){
         memcpy(&pkg,arg,sizeof(pkg));
-        if(pkg.group==6u || pkg.group==11u)return mem_bridge_ioctl(fd,request,arg,&pkg);
+        if(pkg.group==6u || pkg.group==11u || (pkg.group==1u && pkg.function==0u))
+            return mem_bridge_ioctl(fd,request,arg,&pkg);
         if(pkg.group==0x82u && pkg.function==12u){
             mem_inside++;
             pthread_mutex_lock(&lock);

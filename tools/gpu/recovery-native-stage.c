@@ -47,11 +47,16 @@ int main(int argc,char **argv)
     if(unshare(CLONE_NEWNS))fail("unshare mount namespace");
     if(mount(0,"/",0,MS_REC|MS_PRIVATE,0))fail("private mount propagation");
     if(inspect){
-        char data[4096];size_t n;
-        path(target,base,"debugfs");directory(target);
+        char data[4096];size_t n,total=0;struct stat st;
+        path(target,base,"debugfs");
+        if(mkdir(target,0700) && errno!=EEXIST)fail("inspect directory");
+        if(lstat(target,&st) || !S_ISDIR(st.st_mode)){errno=EINVAL;fail("inspect path type");}
         if(mount("debugfs",target,"debugfs",MS_RDONLY|MS_NOSUID|MS_NODEV|MS_NOEXEC,0))fail("read-only debugfs");
         path(source,target,"pvr/version");f=fopen(source,"r");if(!f)fail("pvr version");
-        while((n=fread(data,1,sizeof(data),f)))fwrite(data,1,n,stdout);
+        while((n=fread(data,1,sizeof(data),f))){
+            if(n>16384-total){errno=EOVERFLOW;fail("version output cap");}
+            fwrite(data,1,n,stdout);total+=n;
+        }
         if(ferror(f))fail("read pvr version");
         fclose(f);return 0;
     }

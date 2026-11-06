@@ -61,8 +61,11 @@ int main(int argc,char **argv)
 #undef LOAD_E
 #undef LOAD_G
     fprintf(stderr,"PHASE egl-init\n");
+    fprintf(stderr,"PHASE egl-get-display\n");
     display=a.eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    if(display==EGL_NO_DISPLAY || !a.eglInitialize(display,&major,&minor))goto egl_fail;
+    if(display==EGL_NO_DISPLAY)goto egl_fail;
+    fprintf(stderr,"PHASE egl-initialize\n");
+    if(!a.eglInitialize(display,&major,&minor))goto egl_fail;
     ready=1;
     fprintf(stderr,"EGL %d.%d vendor=%s version=%s\n",major,minor,
         a.eglQueryString(display,EGL_VENDOR),a.eglQueryString(display,EGL_VERSION));

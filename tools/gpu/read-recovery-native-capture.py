@@ -6,7 +6,7 @@ import json
 import struct
 from pathlib import Path
 
-def parse(raw,resources_directory=None):
+def parse(raw,resources_directory=None,allow_incomplete=False):
     pos=0;events=[];pending=set();seen=set();resources=set();read_total=0;kick_read={}
     while pos<len(raw):
         if len(raw)-pos<32:raise ValueError("truncated header")
@@ -25,9 +25,18 @@ def parse(raw,resources_directory=None):
             if set(components)!={9} or len(components[9])<24:raise ValueError("bridge journal")
             data=components[9];group,fn,fd,ni,no,unknown=struct.unpack_from("<6I",data)
             if ni>64 or no>32 or len(data)!=24+ni+no:raise ValueError("bridge journal size")
-            events.append({"phase":"memory-bridge","group":group,"function":fn,"fd":fd,
+            event={"phase":"memory-bridge","group":group,"function":fn,"fd":fd,
                 "ioctl_result":rc,"errno_only_if_failed":error if rc<0 else None,"unknown_before":unknown,
-                "input_hex":data[24:24+ni].hex(),"output_hex":data[24+ni:].hex()})
+                "input_hex":data[24:24+ni].hex(),"output_hex":data[24+ni:].hex()}
+            # common_srvcore_bridge.h: packed CONNECT input16/output17.
+            if group==1 and fn==0 and ni==16 and no==17:
+                inp=data[24:24+ni];out=data[24+ni:];flags,options,version,build=struct.unpack("<4I",inp)
+                event["phase"]="connect"
+                event["client"]={"flags":hex(flags),"build_options":hex(options),
+                    "ddk_version_raw":hex(version),"ddk_version":f"{version>>16}.{version&65535}","ddk_build":build}
+                event["kernel_arch_raw"]=out[0] if rc>=0 else None
+                event["bridge_error"]=struct.unpack_from("<I",out,13)[0] if rc>=0 else None
+            events.append(event)
             continue
         if kind==3:
             if set(components)!={7,8} or len(components[7])!=104:raise ValueError("resource metadata")
@@ -81,18 +90,21 @@ def parse(raw,resources_directory=None):
             event["output_hex"]=components[6].hex()
             event["bridge_error"]=struct.unpack_from("<I",components[6],8)[0] if rc>=0 else None
         events.append(event)
-    if pending or not seen or not resources<=seen:raise ValueError("incomplete or empty capture")
+    complete=not pending and bool(seen) and resources<=seen
+    if not complete and not allow_incomplete:raise ValueError("incomplete or empty capture")
     return {"capture_sha256":hashlib.sha256(raw).hexdigest(),"events":events,
+            "complete_capture":complete,"missing_post_sequences":sorted(pending),"ta_pre_sequences":sorted(seen),
             "resource_bytes":read_total,"resource_reference_coverage":"unknown; assess all referenced ranges and reasons",
             "gpu_success":"unknown: also require original harness readback and phase logs"}
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__);ap.add_argument("capture",type=Path)
     ap.add_argument("--resources-directory",type=Path,help="新規directoryへresource内容だけを抽出")
+    ap.add_argument("--allow-incomplete",action="store_true",help="完全なTLVだけの診断結果を返す。capture成功にはしない")
     args=ap.parse_args()
     try:
         if args.resources_directory is not None:args.resources_directory.mkdir(exist_ok=False)
-        result=parse(args.capture.read_bytes(),args.resources_directory)
+        result=parse(args.capture.read_bytes(),args.resources_directory,args.allow_incomplete)
     except (ValueError,OSError) as exc:ap.error(str(exc))
     print(json.dumps(result,indent=2))
 if __name__=="__main__":main()
