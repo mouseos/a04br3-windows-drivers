@@ -31,7 +31,7 @@ def main():
     if files['provider/ge8300-mips.fw']!='5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1':
         raise SystemExit('m1.11の固定firmwareと一致しません')
     out.mkdir();stage=out/'stage';stage.mkdir()
-    token=files['provider/mt8167-ge8300.sys'][:16].upper()
+    token=hashlib.sha256(json.dumps(files,sort_keys=True).encode()).hexdigest()[:16].upper()
     cert=(provider/'gpu-test.cer').read_bytes();thumb=hashlib.sha1(cert).hexdigest().upper()
     blob=struct.pack('<III',3,1,20)+hashlib.sha1(cert).digest()+struct.pack('<III',32,1,len(cert))+cert
     trust=[]
@@ -51,6 +51,6 @@ def main():
     subprocess.run([str(wim),'update',str(image),'1'],input=commands,text=True,env=env,check=True)
     subprocess.run([str(wim),'verify',str(image)],env=env,check=True)
     subprocess.run(['python3',str(here/'replace-esp-wim.py'),'--template',str(base/'maintenance-staged-esp.img'),'--wim',str(image),'--output',str(out/'update-esp.img'),'--template-bcd-sha256','65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d','--template-wim-sha256','0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4'],env=env,check=True)
-    (out/'manifest.json').write_text(json.dumps({'source_commit':a.source_commit,'token':token,'package_sha256':files,'provider_signer_sha1':thumb,'wim_sha256':sha(image),'esp_sha256':sha(out/'update-esp.img'),'status':'generated; offline installation and installed Windows operation unverified'},indent=2)+'\n')
+    (out/'manifest.json').write_text(json.dumps({'source_commit':a.source_commit,'token':token,'package_sha256':files,'provider_signer_sha1':thumb,'builder_sha256':sha(Path(__file__).resolve()),'update_command_sha256':sha(stage/'run-update-once.cmd'),'wim_sha256':sha(image),'esp_sha256':sha(out/'update-esp.img'),'status':'generated; offline installation and installed Windows operation unverified'},indent=2)+'\n')
 
 if __name__=='__main__':main()
