@@ -44,6 +44,12 @@ static BOOLEAN stop_locked(PVOID context)
  WRITE_REGISTER_ULONG(reg(irq,MSDC_INTEN),enabled&~MSDC_SDIOIRQ);
  return (READ_REGISTER_ULONG(reg(irq,MSDC_INTEN))&MSDC_SDIOIRQ)?FALSE:TRUE;
 }
+static BOOLEAN remove_locked(PVOID context)
+{
+ struct a04_windows_irq *irq=context;
+ InterlockedExchange(&irq->active,0);InterlockedExchange(&irq->armed,0);
+ return TRUE;
+}
 NTSTATUS a04_windows_irq_connect(struct a04_windows_irq *irq,volatile UCHAR *base,
  const CM_PARTIAL_RESOURCE_DESCRIPTOR *raw,const CM_PARTIAL_RESOURCE_DESCRIPTOR *translated,
  a04_wifi_irq_notify notify,void *context)
@@ -81,5 +87,14 @@ int a04_windows_irq_stop(struct a04_windows_irq *irq)
  IoDisconnectInterrupt(irq->interrupt);irq->interrupt=NULL;
  (void)KeRemoveQueueDpc(&irq->dpc);KeFlushQueuedDpcs();
  irq->base=NULL;irq->notify=NULL;irq->context=NULL;return masked?0:-1;
+}
+int a04_windows_irq_remove(struct a04_windows_irq *irq)
+{
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL||!irq)return -1;
+ if(!irq->interrupt)return 0;
+ (void)KeSynchronizeExecution(irq->interrupt,remove_locked,irq);
+ IoDisconnectInterrupt(irq->interrupt);irq->interrupt=NULL;
+ (void)KeRemoveQueueDpc(&irq->dpc);KeFlushQueuedDpcs();
+ irq->base=NULL;irq->notify=NULL;irq->context=NULL;return 0;
 }
 #endif
