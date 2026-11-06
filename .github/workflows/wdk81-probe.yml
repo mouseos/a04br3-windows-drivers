@@ -112,6 +112,9 @@ jobs:
           $env:A04_GCE_PARENT_CLOCK_INTERFACE='0'
           $env:A04_GCE_DISPLAY_LEASE_INTERFACE='0'
           $env:A04_GCE_IRQ_ATTACH='0'
+          $env:A04_GCE_HANDOFF_OBSERVE='0'
+          ./tools/ci/build-mt8167-gce.ps1
+          $env:A04_GCE_HANDOFF_OBSERVE='1'
           ./tools/ci/build-mt8167-gce.ps1
           $env:A04_GCE_PARENT_CLOCK_INTERFACE='1'
           $env:A04_GCE_DISPLAY_LEASE_INTERFACE='1'

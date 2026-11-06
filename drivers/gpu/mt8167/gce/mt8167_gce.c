@@ -4,6 +4,9 @@
 #include <ntddk.h>
 #include <wdf.h>
 #include "../wddm-display/ge8300_display_resource_check.h"
+#ifndef A04_GCE_HANDOFF_OBSERVE
+#define A04_GCE_HANDOFF_OBSERVE 0
+#endif
 #ifndef A04_GCE_PARENT_CLOCK_INTERFACE
 #define A04_GCE_PARENT_CLOCK_INTERFACE 0
 #endif
@@ -36,6 +39,25 @@
 #define GCE_PROOF_DMA_LIFETIME 0x10u
 #define GCE_PROOF_ALL (GCE_PROOF_POWER_CLOCK|GCE_PROOF_CONTROLLER|GCE_PROOF_IRQ_THREAD_EVENT|GCE_PROOF_DISPLAY|GCE_PROOF_DMA_LIFETIME)
 #define GCE_PROOF_IRQ (GCE_PROOF_POWER_CLOCK|GCE_PROOF_CONTROLLER|GCE_PROOF_IRQ_THREAD_EVENT)
+#if A04_GCE_HANDOFF_OBSERVE
+typedef struct { ULONG version,bytes,valid,top2_status,thread0_enable,thread0_status,thread0_irq,ownership; } GCE_OBSERVATION;
+static VOID GceObserveFirmware(VOID)
+{
+    UNICODE_STRING name=RTL_CONSTANT_STRING(L"A04BR3GceObservation");
+    GUID guid={0xb0f4cc26,0x0ad6,0x48e9,{0x94,0x74,0xe0,0x37,0x2a,0xcf,0x32,0x41}};
+    GCE_OBSERVATION record;ULONG size=sizeof(record),attributes=0;NTSTATUS status;
+    RtlZeroMemory(&record,sizeof(record));
+    status=ExGetFirmwareEnvironmentVariable(&name,&guid,&record,&size,&attributes);
+    if(!NT_SUCCESS(status) || size!=sizeof(record) || record.version!=1 || record.bytes!=sizeof(record) ||
+       record.valid!=1 || record.ownership || record.thread0_enable!=MAXULONG ||
+       record.thread0_status!=MAXULONG || record.thread0_irq!=MAXULONG) {
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_INFO_LEVEL,"A04GCE handoff unavailable/invalid status=%08lx size=%lu\n",(ULONG)status,size);
+        return;
+    }
+    /* Diagnostic only: a TOP2 snapshot cannot authorize any GCE access. */
+    DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_INFO_LEVEL,"A04GCE handoff TOP2=%08lx thread/irq/secure ownership unknown\n",record.top2_status);
+}
+#endif
 typedef struct gce_context {
     PDMA_ADAPTER adapter;
     PDEVICE_OBJECT pdo;
@@ -316,6 +338,9 @@ NTSTATUS GcePrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
     struct gce_context *c=GceContext(device);PCM_PARTIAL_RESOURCE_DESCRIPTOR mem=NULL,irq=NULL;
     DEVICE_DESCRIPTION desc;ULONG n,i,matches=0,interrupts=0;NTSTATUS status=STATUS_DEVICE_CONFIGURATION_ERROR;
     UNREFERENCED_PARAMETER(raw);
+#if A04_GCE_HANDOFF_OBSERVE
+    GceObserveFirmware();
+#endif
     if(c->adapter || c->registers || c->command_cpu)return STATUS_INVALID_DEVICE_STATE;
     n=WdfCmResourceListGetCount(translated);
     for(i=0;i<n;i++) {

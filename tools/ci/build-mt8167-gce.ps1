@@ -14,8 +14,9 @@ $src=Join-Path $root 'drivers\gpu\mt8167\gce'
 $parentClock=if($env:A04_GCE_PARENT_CLOCK_INTERFACE -eq '1'){'1'}else{'0'}
 $displayLease=if($env:A04_GCE_DISPLAY_LEASE_INTERFACE -eq '1'){'1'}else{'0'}
 $irqAttach=if($env:A04_GCE_IRQ_ATTACH -eq '1'){'1'}else{'0'}
+$handoffObserve=if($env:A04_GCE_HANDOFF_OBSERVE -eq '1'){'1'}else{'0'}
 $obj=Join-Path $out 'mt8167_gce.obj'
-& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_GCE_IRQ_ATTACH=$irqAttach" "-DA04_GCE_DISPLAY_LEASE_INTERFACE=$displayLease" "-DA04_GCE_PARENT_CLOCK_INTERFACE=$parentClock" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" -c (Join-Path $src 'mt8167_gce.c') -o $obj
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_GCE_HANDOFF_OBSERVE=$handoffObserve" "-DA04_GCE_IRQ_ATTACH=$irqAttach" "-DA04_GCE_DISPLAY_LEASE_INTERFACE=$displayLease" "-DA04_GCE_PARENT_CLOCK_INTERFACE=$parentClock" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" -c (Join-Path $src 'mt8167_gce.c') -o $obj
 if($LASTEXITCODE){throw 'GCE ARM source compilation failed'}
 $submitObj=Join-Path $out 'gce_submit.obj'
 & clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c (Join-Path $src 'gce_submit.c') -o $submitObj
