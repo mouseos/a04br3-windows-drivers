@@ -299,6 +299,20 @@ int main(void)
             }
             assert(screen[4096000/4-1]==1023999u);
             assert(a04_vendor_render_copy_shared_tile(&copy,&start,&surface,&tables,in,1000,&clear)==STATUS_INVALID_PARAMETER);
+            /* An interior scratch corruption must fail the last tile, so a
+             * frame cannot be sealed with corrupted scratch guards. */
+            for(n=0;n<1000;n++) {
+                if(n==500) ((uint32_t *)target)[16000]^=1u;
+                assert(a04_vendor_render_copy_shared_tile(&copy,&start,&surface,&tables,in,n,&clear)==
+                    (n==999?STATUS_DATA_ERROR:STATUS_SUCCESS));
+            }
+            assert(clear.guard_errors==1 && !clear.completed_task && !clear.completed_flush);
+            assert(r.poisoned && start.command_poisoned);
+            ((uint32_t *)target)[16000]^=1u;
+            /* Only the synthetic harness can reset a poisoned owner. */
+            r.poisoned=FALSE;start.command_poisoned=FALSE;r.clear_verified=TRUE;
+            copy.diagnostic_cpu=NULL;copy.diagnostic_mdl=NULL;copy.service_expected_active=FALSE;
+            copy.shared_gpu_only=FALSE;copy.shared_frame_interior=FALSE;
 #endif
             complete=5;
             assert(a04_vendor_render_copy_shared_diagnostic(&copy,&start,&surface,&tables,&clear)==STATUS_DATA_ERROR);

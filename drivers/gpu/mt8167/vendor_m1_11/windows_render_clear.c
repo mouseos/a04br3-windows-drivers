@@ -182,17 +182,23 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
             if(copy->diagnostic_cpu) {
                 value=copy->diagnostic_cpu[(i/32u)*800u+(i%32u)];
                 if(dst[i]!=0xa5a5a5a5u)result->guard_errors++;
-            } else if(copy->shared_gpu_only && dst[i]!=0xa5a5a5a5u)result->guard_errors++;
+            } else if(copy->shared_gpu_only && !copy->shared_frame_interior && dst[i]!=0xa5a5a5a5u)result->guard_errors++;
 #endif
             if(!copy->shared_gpu_only && value==expected)result->zeros++;
             if(src[i]!=expected)result->guard_errors++;
-            if(shared[i]!=(i<9u?copy->state.shared[i]:0xa5a5a5a5u))result->guard_errors++;
+            if((!copy->shared_frame_interior || i<9u) &&
+               shared[i]!=(i<9u?copy->state.shared[i]:0xa5a5a5a5u))result->guard_errors++;
             if(i==0)result->first=value;
             if(i==1023u)result->last=value;
         }
         /* The general-heap pages immediately preceding source belong to
          * the cold clear scratch; verify their original guard as well. */
-        for(i=0;i<16384u;i++)if(output[i]!=0xa5a5a5a5u)result->guard_errors++;
+        /* These 64 KiB never participate in a shared-frame copy. Scanning
+         * Device memory on all 1000 tiles repeats 16 million MMIO reads.
+         * Validate both frame boundaries; a corrupted final guard fails the
+         * last tile, so the provider cannot seal or accept that frame. */
+        if(!copy->shared_frame_interior)
+            for(i=0;i<16384u;i++)if(output[i]!=0xa5a5a5a5u)result->guard_errors++;
     } else for(i=0;i<(r->screen_surface ? r->screen_surface->bytes/4u : 16384u);i++) {
         value=output[i];if(a04_vendor_clear_is_target(i*4u,r->clear_first,r->clear_row_bytes)) {if(value==r->clear.expected)result->zeros++;} else if(value!=0xa5a5a5a5u)result->guard_errors++;
         if(i*4u==r->clear_first)result->first=value;
@@ -301,6 +307,7 @@ static NTSTATUS copy_shared_tile(struct a04_vendor_copy_scratch *o,
     /* Write only the EOT PDS span under the same lock as the normal copy. */
     if(a04_rgx_device_write_words((UCHAR *)r->buffer[7].cpu+64,pds,sizeof(pds))) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
     a04_gpu_dma_barrier();o->service_expected_active=TRUE;o->diagnostic_mdl=pixels?target->mdl:NULL;o->diagnostic_cpu=pixels;o->shared_gpu_only=gpu_only;
+    o->shared_frame_interior=gpu_only && index>0u && index<999u;
     r->clear_attempted=FALSE;r->clear_verified=FALSE;
     status=clear_locked(r,s,result,TRUE,o);
     if(result->phase==4) {
@@ -310,7 +317,7 @@ static NTSTATUS copy_shared_tile(struct a04_vendor_copy_scratch *o,
         a04_gpu_dma_barrier();
     }
     if(!NT_SUCCESS(status))goto poison;
-    o->service_expected_active=FALSE;o->diagnostic_mdl=NULL;o->diagnostic_cpu=NULL;o->shared_gpu_only=FALSE;goto out;
+    o->service_expected_active=FALSE;o->diagnostic_mdl=NULL;o->diagnostic_cpu=NULL;o->shared_gpu_only=FALSE;o->shared_frame_interior=FALSE;goto out;
 poison:
     /* Retain changed PDS and mappings if completion is uncertain. */
     r->poisoned=TRUE;s->command_poisoned=TRUE;

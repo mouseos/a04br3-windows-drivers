@@ -28,6 +28,9 @@ struct a04_vendor_copy_scratch {
     PMDL diagnostic_mdl;
     volatile uint32_t *diagnostic_cpu;
     BOOLEAN shared_gpu_only;
+    /* A complete shared frame validates unchanged scratch guards at its
+     * first and last tile. Source pixels remain checked on every tile. */
+    BOOLEAN shared_frame_interior;
     BOOLEAN prepared,exposed,usc_ready,task_frozen;
 };
 NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *owner,
