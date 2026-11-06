@@ -7,3 +7,5 @@
 `tools/ci/build-ge8300-vendor-copy-service.ps1` に元firmware、REA抽出USC、未作成のrunner作業ディレクトリを渡す。ドライバ・診断EXEをARM32 WDK 8.1でビルドし自己署名ZIPを作る。証明書はビルドごとに変わる。署名受理は実機未確認。
 
 `prepare-vendor-copy-service-wim.py` は0x714親とREADY反復listenerの固定媒体に署名ZIPを追加する。`--source-wim`、`--source-esp`、`--boot`、`--package`、`--package-sha256`、`--driver-commit`、`--output`を指定。実体・作業先をルート内に限定し空のoutputを使う。診断EXEは任意パターンを3回送ってコンソールに `VENDOR_COPY_PASS` 3回と `VENDOR_COPY_THREE_PASS` を出す。UART画面送信は自動実行しない。listenerやGPUのUART出力は衝突し得るため、欠落・混線した結果や解除応答を成功扱いしない。実機は未試験。
+
+診断は実行後、`A04BR3ScreenUart` の共有オープンを最大30秒試し、送信busyも再試行する。結果は `A04CP1` の行CRC付きレコードを各3回送る。入力・出力CRC、要求番号、IOCTL結果、返却バイト数、不一致数と終端がすべて揃った場合のみ `tools/recovery/decode-ge8300-copy-uart.py` が成功とする。IOCTL成功はドライバ内のfence待ちと照合の成功を表すが、fence値の直接観測やDMA停止の証明ではない。listenerとGPU直接出力が混線した場合、CRC検証に通る完全な反復だけを採用し、欠落や矛盾は不明とする。取得ログは起動ごとに分ける。

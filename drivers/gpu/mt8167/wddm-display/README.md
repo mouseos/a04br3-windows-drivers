@@ -85,3 +85,5 @@ MMIO transaction, resource retention or fabric DMA stop. This is not connected
 to WDDM present and has not been tested on hardware. It is not a production
 PnP or suspend solution. The signed diagnostic EXE must not be deployed to
 installed Windows.
+
+`A04_GE8300_WDDM_VENDOR_TILE=1` は実験専用で、非回転32bppのちょうど32×32矩形をCPU stageへ詰め、m1.11の同期4KiB IOCTLを発行する。成功時のみ返却stageからCPUがPOST framebufferへ行単位で書く。GPUの直接画面描画ではない。その他の矩形、open/IOCTL失敗、13回上限到達後は既存CPU経路へ戻る。同期完了までは呼出し元stageを保持し、timeout時はproviderが独立したGPU DMA資源を隔離する設計。実機でのcopy、cache可視性、stop・surprise removalは未検証であり、インストール用ではない。
