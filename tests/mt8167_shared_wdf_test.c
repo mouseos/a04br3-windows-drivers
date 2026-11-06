@@ -127,7 +127,14 @@ int main(void){
  desc_count=0;appended=0;
  assert(!ChildRequirements(&children[0],NULL) && appended==1 && descriptor.Type==CmResourceTypeMemory && descriptor.ShareDisposition==CmResourceShareDeviceExclusive && descriptor.u.Memory.Length==0x1000 && descriptor.u.Memory.MinimumAddress.QuadPart==0x10002000 && descriptor.u.Memory.MaximumAddress.QuadPart==0x10002fff);
  assert(!ChildRequirements(&children[1],NULL) && appended==2 && descriptor.u.Memory.MinimumAddress.QuadPart==0x11009000 && descriptor.u.Memory.MaximumAddress.QuadPart==0x11009fff);
- assert(!ChildRequirements(&children[4+A04_SHARED_THERMAL_DIAGNOSTIC],NULL) && appended==3 && descriptor.Type==CmResourceTypeMemory && descriptor.ShareDisposition==CmResourceShareDeviceExclusive && descriptor.u.Memory.Length==0x1000 && descriptor.u.Memory.MinimumAddress.QuadPart==0x11170000 && descriptor.u.Memory.MaximumAddress.QuadPart==0x11170fff);
+ desc_count=0;
+ assert(!ChildRequirements(&children[4+A04_SHARED_THERMAL_DIAGNOSTIC],NULL) && appended==3);
+ assert(all_desc[0].Type==CmResourceTypeMemory && all_desc[0].ShareDisposition==CmResourceShareDeviceExclusive && all_desc[0].u.Memory.Length==0x1000 && all_desc[0].u.Memory.MinimumAddress.QuadPart==0x11170000 && all_desc[0].u.Memory.MaximumAddress.QuadPart==0x11170fff);
+#if A04_SHARED_WIFI_IRQ_DIAGNOSTIC
+ assert(desc_count==2 && all_desc[1].Type==CmResourceTypeInterrupt && all_desc[1].ShareDisposition==CmResourceShareDeviceExclusive && all_desc[1].Flags==CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE && all_desc[1].u.Interrupt.MinimumVector==141 && all_desc[1].u.Interrupt.MaximumVector==141);
+#else
+ assert(desc_count==1);
+#endif
  fail_step=1;assert(ChildRequirements(&children[1],NULL)!=0 && appended==3 && deleted==0);
  fail_step=2;assert(ChildRequirements(&children[1],NULL)!=0 && appended==3 && deleted==1);
  fail_step=3;assert(ChildRequirements(&children[1],NULL)!=0 && appended==3 && deleted==2);fail_step=0;

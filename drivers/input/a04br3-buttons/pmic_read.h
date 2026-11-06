@@ -28,6 +28,13 @@ int a04_pmic_emmc_rails(struct a04_pmic_read *bus, struct a04_emmc_rails_raw *ou
 struct a04_rtc32k_raw { uint16_t pdn1, con; };
 /* Raw MT6392 RTC state, not proof of a running physical clock. */
 int a04_pmic_rtc32k(struct a04_pmic_read *, struct a04_rtc32k_raw *);
+#if defined(A04_MT6392_RTC32K_DIAGNOSTIC) && A04_MT6392_RTC32K_DIAGNOSTIC
+/* Caller owns RTC against all other writers and holds WACS2 throughout.
+ * Release clears only our bit and deliberately leaves clock output enabled. */
+struct a04_rtc32k_lease { int held, uncertain; };
+int a04_pmic_rtc32k_acquire(struct a04_pmic_read *,struct a04_rtc32k_lease *);
+int a04_pmic_rtc32k_release(struct a04_pmic_read *,struct a04_rtc32k_lease *);
+#endif
 int a04_pmic_chrstatus(struct a04_pmic_read *bus, uint16_t *value);
 /* Read raw TOP_CKPDN1 only. Bits 1/2/3 are speaker PWM divider,
  * divider and clock PDN fields in the MT8167 MT6392 board header. This is

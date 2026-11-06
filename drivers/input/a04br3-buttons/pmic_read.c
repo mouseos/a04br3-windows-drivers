@@ -174,3 +174,56 @@ int a04_pmic_rtc32k(struct a04_pmic_read *bus, struct a04_rtc32k_raw *out)
     *out = tmp;
     return 0;
 }
+
+#if defined(A04_MT6392_RTC32K_DIAGNOSTIC) && A04_MT6392_RTC32K_DIAGNOSTIC
+/* Linux mt6397-misc supports MT6392: PDN1 user 8, CON bit 5,
+ * WRTGR followed by BBPU CBUSY. The common WACS lock must be held and
+ * firmware/other RTC writers must have explicitly relinquished access. */
+static int rtc_write_raw(struct a04_pmic_read *bus, uint16_t address, uint16_t value)
+{
+    uint32_t state;
+    if(wait_fsm(bus,0,&state)) {bus->poisoned=1;return -1;}
+    bus->write32(bus->context,WACS2_CMD,0x80000000u | ((uint32_t)address>>1)<<16 | value);
+    if(wait_fsm(bus,0,&state)) {bus->poisoned=1;return -1;}
+    return 0;
+}
+static int rtc_commit(struct a04_pmic_read *bus)
+{
+    unsigned i;uint16_t bbpu;
+    if(rtc_write_raw(bus,0x803cu,1))return -1;
+    for(i=0;i<bus->attempts;i++) {
+        if(read_register(bus,0x8000u,&bbpu))return -1;
+        if(!(bbpu&0x40u))return 0;
+        bus->delay(bus->context);
+    }
+    bus->poisoned=1;return -1;
+}
+int a04_pmic_rtc32k_acquire(struct a04_pmic_read *bus,struct a04_rtc32k_lease *lease)
+{
+    uint16_t pdn,con,check;
+    if(!bus||!lease||lease->held||lease->uncertain||bus->poisoned)return -1;
+    if(read_register(bus,0x802cu,&pdn)||read_register(bus,0x803eu,&con))return -1;
+    /* A pre-existing user bit belongs to an unknown owner. */
+    if(pdn&0x0100u)return -1;
+    lease->uncertain=1;
+    if(rtc_write_raw(bus,0x802cu,(uint16_t)(pdn|0x0100u))||rtc_commit(bus)||
+       read_register(bus,0x802cu,&check)||check!=(uint16_t)(pdn|0x0100u))goto fail;
+    if(rtc_write_raw(bus,0x803eu,(uint16_t)(con&~0x0020u))||rtc_commit(bus)||
+       read_register(bus,0x803eu,&check)||check!=(uint16_t)(con&~0x0020u))goto fail;
+    lease->held=1;lease->uncertain=0;return 0;
+fail: bus->poisoned=1;return -1;
+}
+int a04_pmic_rtc32k_release(struct a04_pmic_read *bus,struct a04_rtc32k_lease *lease)
+{
+    uint16_t pdn,check;
+    if(!bus||!lease||!lease->held||lease->uncertain||bus->poisoned)return -1;
+    if(read_register(bus,0x802cu,&pdn) || !(pdn&0x0100u))return -1;
+    lease->uncertain=1;
+    /* Never switch off CON: unknown firmware/other consumers may use it. */
+    if(rtc_write_raw(bus,0x802cu,(uint16_t)(pdn&~0x0100u))||rtc_commit(bus)||
+       read_register(bus,0x802cu,&check)||check!=(uint16_t)(pdn&~0x0100u)) {
+        bus->poisoned=1;return -1;
+    }
+    lease->held=0;lease->uncertain=0;return 0;
+}
+#endif

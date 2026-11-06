@@ -89,6 +89,12 @@
 #if A04_SHARED_APMIXED_RESOURCE != 0 && A04_SHARED_APMIXED_RESOURCE != 1
 #error A04_SHARED_APMIXED_RESOURCE must be 0 or 1
 #endif
+#ifndef A04_SHARED_WIFI_IRQ_DIAGNOSTIC
+#define A04_SHARED_WIFI_IRQ_DIAGNOSTIC 0
+#endif
+#if A04_SHARED_WIFI_IRQ_DIAGNOSTIC && (!defined(A04_SHARED_CHILD_PROBE) || !A04_SHARED_CHILD_PROBE)
+#error Wi-Fi IRQ diagnostic requires the shared child topology
+#endif
 #ifndef A04_SHARED_BUTTON_D0_EXPERIMENT
 #define A04_SHARED_BUTTON_D0_EXPERIMENT 0
 #endif
@@ -899,6 +905,21 @@ NTSTATUS ChildRequirements(WDFDEVICE child,WDFIORESREQLIST requirements)
         status=WdfIoResourceListAppendDescriptor(list,&descriptor);
         if(!NT_SUCCESS(status)){WdfObjectDelete(list);return status;}
     }
+#if A04_SHARED_WIFI_IRQ_DIAGNOSTIC
+    if(c->base==0x11170000u) {
+        /* a04br3 DTS: GIC SPI 109 => GSIV 141, level low. Requirements
+         * do not encode polarity: platform routing must supply it. This is
+         * MSDC2's interrupt, not the separate combo GPIO/EINT5. */
+        RtlZeroMemory(&descriptor,sizeof(descriptor));
+        descriptor.Type=CmResourceTypeInterrupt;
+        descriptor.ShareDisposition=CmResourceShareDeviceExclusive;
+        descriptor.Flags=CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+        descriptor.u.Interrupt.MinimumVector=141;
+        descriptor.u.Interrupt.MaximumVector=141;
+        status=WdfIoResourceListAppendDescriptor(list,&descriptor);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(list);return status;}
+    }
+#endif
     status=WdfIoResourceRequirementsListAppendIoResList(requirements,list);
     if(!NT_SUCCESS(status))WdfObjectDelete(list);
     return status;
@@ -1068,8 +1089,8 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     /* The audio sentinel remains unavailable unless the diagnostic flag is set. */
     status=ParentAddProbeChild(dev,L"MT8167\\AFE",L"0",0xffffffffu);
     if(!NT_SUCCESS(status))return status;
-    /* The host MMIO range is a separate child resource. IRQ translation and
-     * the EINT5 provider are not established, so no interrupt is advertised. */
+    /* The host MMIO range is a separate child resource. The optional MSDC2 interrupt descriptor still needs platform polarity and
+     * translation verification; it does not describe the separate EINT5. */
     status=ParentAddProbeChild(dev,L"A04BR3\\MT6630SDIO",L"0",0x11170000u);
 #endif
     return status;
