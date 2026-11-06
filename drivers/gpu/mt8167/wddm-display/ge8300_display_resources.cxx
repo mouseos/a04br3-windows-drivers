@@ -556,6 +556,9 @@ NTSTATUS A04DisplayResources::RetireToCpu()
     if(NT_SUCCESS(status)) {
         LiveCpuFallback=TRUE;LiveReady=FALSE;LiveFaulted=FALSE;LiveShadowValid=FALSE;
     }
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+    if(!IdleRetirementMarked) {IdleRetirementMarked=TRUE;A04DisplayTrace(0xc4,status);}
+#endif
     A04DisplayTrace(0xbc,status);return status;
 }
 /* Present mutex and source MDL are held by the DOD caller until return.
