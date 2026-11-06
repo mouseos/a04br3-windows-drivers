@@ -97,6 +97,12 @@ jobs:
           ./tools/ci/build-msdc-parent-probe.ps1
           ./tools/ci/build-mt6630-parent-probe.ps1
           ./tools/ci/build-mt6630-wdf-lease-probe.ps1
+      - name: Upload MT6630 WDF lease probes
+        uses: actions/upload-artifact@v4
+        with:
+          name: a04-mt6630-wdf-lease-probes
+          path: ${{ runner.temp }}\a04br3-wifi-wdf-lease-probe\*.sys
+          if-no-files-found: error
       - name: Build MT6630 ARM32 integration link check
         shell: pwsh
         run: |
