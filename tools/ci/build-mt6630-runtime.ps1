@@ -14,7 +14,14 @@ if($SharedParentDirectory){
   if($parentManifest.flags.$flag -ne '1'){throw "Shared parent lacks required Wi-Fi capability: $flag"}
  }
  if($parentManifest.sys_sha256 -ne (Get-FileHash $parentBinary -Algorithm SHA256).Hash){throw 'Shared parent hash does not match its capabilities manifest'}
- if($parentManifest.source_commit -ne (& git -C $root rev-parse HEAD)){throw 'Shared parent source commit differs from this checkout'}
+ if($parentManifest.source_dirty -ne $false -or $parentManifest.source_commit -notmatch '^[0-9a-f]{40}$'){throw 'Shared parent needs a clean fixed source commit'}
+ # A Wi-Fi-only fix does not require rebuilding the audio/USB parent. Require
+ # its actual capabilities, binary hash and identical public interface blob.
+ $interfacePath='drivers/bus/mt8167-shared/wifi_interface.h'
+ $parentInterface=(& git -C $root rev-parse "$($parentManifest.source_commit):$interfacePath")
+ if($LASTEXITCODE){throw 'Parent interface source is unavailable'}
+ $currentInterface=(& git -C $root rev-parse "HEAD:$interfacePath")
+ if($LASTEXITCODE -or $parentInterface -ne $currentInterface){throw 'Shared parent Wi-Fi interface differs'}
 }
 New-Item -ItemType Directory -Force $taskOut | Out-Null
 # Keep every intermediate inside this checkout. No external TEMP staging.
@@ -50,7 +57,7 @@ try {
  if($LASTEXITCODE){throw 'Native runtime link failed'}
  Copy-Item "$root\drivers\network\mt6630\mt6630-runtime.inf" $taskOut
  & "$PSScriptRoot\build-mt6630-wlan-probe.ps1" -OutputDirectory (Join-Path $taskOut 'wlan-probe')
- [ordered]@{driver_date='11/06/2026';driver_version='2026.11.6.1001';driver_ver='11/06/2026,2026.11.6.1001';source_commit=(git -C $root rev-parse HEAD);shared_parent_path=$parentBinary;shared_parent_sha256=(Get-FileHash $parentBinary -Algorithm SHA256).Hash;shared_parent_reused=[bool]$SharedParentDirectory;probe_manifest_path='wlan-probe/probe-manifest.json';probe_manifest_sha256=(Get-FileHash (Join-Path $taskOut 'wlan-probe\probe-manifest.json') -Algorithm SHA256).Hash;native_runtime=1;radio_mode='2.4GHz ERP20 OPEN/NONE or RSNA-PSK/CCMP; OS supplicant';firmware_embedded=0;device_calibration_embedded=0;hardware_verified=0;wdk_link_succeeded=1;sys_sha256=(Get-FileHash "$taskOut\mt6630-runtime.sys" -Algorithm SHA256).Hash} | ConvertTo-Json | Set-Content -Encoding UTF8 "$taskOut\manifest.json"
+ [ordered]@{driver_date='11/06/2026';driver_version='2026.11.6.1001';driver_ver='11/06/2026,2026.11.6.1001';source_commit=(git -C $root rev-parse HEAD);shared_parent_path=$parentBinary;shared_parent_source_commit=$(if($SharedParentDirectory){$parentManifest.source_commit}else{git -C $root rev-parse HEAD});shared_parent_interface_blob=$(if($SharedParentDirectory){$parentInterface}else{git -C $root rev-parse HEAD:drivers/bus/mt8167-shared/wifi_interface.h});shared_parent_sha256=(Get-FileHash $parentBinary -Algorithm SHA256).Hash;shared_parent_reused=[bool]$SharedParentDirectory;probe_manifest_path='wlan-probe/probe-manifest.json';probe_manifest_sha256=(Get-FileHash (Join-Path $taskOut 'wlan-probe\probe-manifest.json') -Algorithm SHA256).Hash;native_runtime=1;radio_mode='2.4GHz ERP20 OPEN/NONE or RSNA-PSK/CCMP; OS supplicant';firmware_embedded=0;device_calibration_embedded=0;hardware_verified=0;wdk_link_succeeded=1;sys_sha256=(Get-FileHash "$taskOut\mt6630-runtime.sys" -Algorithm SHA256).Hash} | ConvertTo-Json | Set-Content -Encoding UTF8 "$taskOut\manifest.json"
  Write-Output "Unsigned Native miniport and shared parent: $taskOut. Requires target signing and PnP validation by main operator."
 } finally {
  $env:TMP=$priorTmp;$env:TEMP=$priorTemp;$env:RUNNER_TEMP=$priorRunner
