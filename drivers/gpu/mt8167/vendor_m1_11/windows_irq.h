@@ -21,6 +21,9 @@ NTSTATUS a04_vendor_irq_unbind(struct a04_vendor_irq *irq);
 /* Called at PASSIVE_LEVEL with the owner's power/lifetime lock held, after
  * a successful FWCCB snapshot. Never rearms an asserted/unknown source. */
 BOOLEAN a04_vendor_irq_rearm(struct a04_vendor_irq *irq);
+/* Permanent admission close while core MMIO is still powered. Serialize
+ * the source mask with ISR before issuing the polling-only FW shutdown. */
+BOOLEAN a04_vendor_irq_retire(struct a04_vendor_irq *irq);
 void a04_vendor_irq_set_power(struct a04_vendor_irq *irq,BOOLEAN powered);
 void a04_vendor_irq_kick(struct a04_vendor_irq *irq);
 void a04_vendor_irq_flush(struct a04_vendor_irq *irq);

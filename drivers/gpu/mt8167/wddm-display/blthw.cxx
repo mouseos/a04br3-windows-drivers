@@ -1,3 +1,4 @@
+#include "../present_trace_policy.h"
 /******************************Module*Header*******************************\
 * Module Name: blthw.cxx
 *
@@ -544,7 +545,8 @@ HwExecutePresentDisplayOnly(
     NTSTATUS presentStatus=STATUS_NOT_SUPPORTED;
 #if A04_GE8300_WDDM_LIVE_FULL_PRESENT
     static volatile LONG observed=0;
-    if(InterlockedIncrement(&observed)<=8) {
+    if(A04_GE8300_PRESENT_TRACE_ALL || InterlockedCompareExchange(&observed,0,0)<3) {
+        InterlockedIncrement(&observed);
         A04DisplayTrace(0xb8,(NTSTATUS)ctx->SrcWidth);A04DisplayTrace(0xb9,(NTSTATUS)ctx->SrcHeight);
         A04DisplayTrace(0xba,(NTSTATUS)ctx->Rotation);A04DisplayTrace(0xbb,(NTSTATUS)ctx->NumDirtyRects);
     }

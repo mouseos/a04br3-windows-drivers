@@ -36,6 +36,9 @@ NTSTATUS a04_vendor_m1_11_windows_stage(struct a04_vendor_m1_11_memory *m,
         return STATUS_INVALID_PARAMETER;
     status=mt8167_gpu_clock_read(&m->clock_hz,&m->clock_parent);
     if(!NT_SUCCESS(status)) return status;
+    /* The optional clock read returned success. Later parse/layout rejection
+     * must retain its configuration-error status rather than that success. */
+    status=STATUS_DEVICE_CONFIGURATION_ERROR;
     m->adapter=adapter;
     m->runtime=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*m->runtime),0x72564741u);
     if(!m->runtime) { status=STATUS_INSUFFICIENT_RESOURCES; goto fail; }
