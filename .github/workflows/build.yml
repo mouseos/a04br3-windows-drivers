@@ -24,6 +24,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Test maintenance startup guards
+        shell: pwsh
+        run: ./tools/ci/test-offline-maintenance-startnet.ps1
       - name: Run touch component tests on Windows x64
         shell: pwsh
         run: ./tools/ci/test-touch-windows.ps1
