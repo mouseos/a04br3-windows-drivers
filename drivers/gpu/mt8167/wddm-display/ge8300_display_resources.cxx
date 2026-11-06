@@ -735,7 +735,7 @@ NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(struct a04_ge8300_common_pa
      * the same retained mappings; no root retirement or DMA release occurs. */
     {
         uint32_t completed=NT_SUCCESS(status)?1u:0u;
-        for(uint32_t frame=2u;NT_SUCCESS(status) && frame<=16u;frame++) {
+        for(uint32_t frame=2u;NT_SUCCESS(status) && frame<=(A04_GE8300_WDDM_LIVE_FULL_PRESENT?1u:16u);frame++) {
             struct a04_ge8300_frame_begin begin={Lease.token,owner->frame,owner->task,owner->flush,frame};
             IO_STATUS_BLOCK io={};PFILE_OBJECT file=NULL;
             status=ObReferenceObjectByHandle(GpuHandle,SYNCHRONIZE,*IoFileObjectType,KernelMode,(PVOID *)&file,NULL);
