@@ -12,7 +12,7 @@
 #define WIDTH 800
 #define HEIGHT 600
 #define EGL_FUNCS(X) X(eglGetDisplay) X(eglInitialize) X(eglBindAPI) X(eglChooseConfig) \
- X(eglCreatePbufferSurface) X(eglCreateContext) X(eglMakeCurrent) X(eglGetError) \
+ X(eglGetConfigAttrib) X(eglCreatePbufferSurface) X(eglCreateContext) X(eglMakeCurrent) X(eglGetError) \
  X(eglQueryString) X(eglDestroyContext) X(eglDestroySurface) X(eglTerminate)
 #define GL_FUNCS(X) X(glGetString) X(glGetError) X(glDisable) X(glColorMask) \
  X(glClearColor) X(glClear) X(glFinish) X(glReadPixels)
@@ -61,6 +61,21 @@ int main(int argc,char **argv)
         a.eglQueryString(display,EGL_VENDOR),a.eglQueryString(display,EGL_VERSION));
     if(!a.eglBindAPI(EGL_OPENGL_ES_API) ||
        !a.eglChooseConfig(display,attrs,&config,1,&count) || count!=1)goto egl_fail;
+    /* eglChooseConfig attributes are minima, not exact constraints. */
+    {
+        const EGLint keys[]={EGL_RED_SIZE,EGL_GREEN_SIZE,EGL_BLUE_SIZE,EGL_ALPHA_SIZE,
+            EGL_DEPTH_SIZE,EGL_STENCIL_SIZE,EGL_SAMPLES,EGL_SAMPLE_BUFFERS};
+        const EGLint expected[]={8,8,8,8,0,0,0,0};
+        EGLint value;
+        for(i=0;i<sizeof(keys)/sizeof(keys[0]);i++){
+            if(!a.eglGetConfigAttrib(display,config,keys[i],&value))goto egl_fail;
+            if(value!=expected[i]){
+                fprintf(stderr,"REJECT_CONFIG attribute=0x%x actual=%d expected=%d\n",
+                    keys[i],value,expected[i]);goto done;
+            }
+        }
+        fprintf(stderr,"CONFIG rgba=8,8,8,8 depth=0 stencil=0 samples=0 buffers=0\n");
+    }
     surface=a.eglCreatePbufferSurface(display,config,shape);
     context=a.eglCreateContext(display,config,EGL_NO_CONTEXT,version);
     if(surface==EGL_NO_SURFACE || context==EGL_NO_CONTEXT ||
