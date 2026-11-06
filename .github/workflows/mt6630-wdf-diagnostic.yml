@@ -2,7 +2,7 @@ name: MT6630 ARM32 WDF diagnostic package
 on:
   workflow_dispatch:
   push:
-    branches: [work/rt-wifi-wdf-diagnostic]
+    branches: [work/rt-wifi-wdf-diagnostic, work/rt-unified-gpu]
 jobs:
   package:
     runs-on: windows-2022
@@ -29,6 +29,14 @@ jobs:
           name: mt6630-wdf-hardware-link-check
           path: ${{ runner.temp }}\a04br3-wifi-wdf-hardware
           if-no-files-found: error
+      - name: Build read-only UART observer
+        shell: pwsh
+        run: ./tools/ci/build-mt6630-pnp-uart.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mt6630-pnp-uart
+          path: ${{ runner.temp }}\a04br3-wifi-pnp-uart\mt6630-pnp-uart.exe
+          if-no-files-found: error
       - name: Create signed diagnostic package
         shell: pwsh
         run: |
@@ -36,7 +44,7 @@ jobs:
           $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
           $out = Join-Path $env:RUNNER_TEMP 'mt6630-wdf-diagnostic-package'
           New-Item -ItemType Directory -Force $out | Out-Null
-          Copy-Item (Join-Path $env:RUNNER_TEMP 'a04br3-wifi-wdf-lease-probe\wifi-lease-probe-0.sys') (Join-Path $out 'mt6630-wdf-diagnostic.sys')
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'a04br3-wifi-wdf-hardware\wifi-hardware-config-disabled.sys') (Join-Path $out 'mt6630-wdf-diagnostic.sys')
           Copy-Item 'drivers/network/mt6630/mt6630-wdf-diagnostic.inf' $out
           $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=MT6630 WDF Diagnostic' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
           Export-Certificate -Cert $cert -FilePath (Join-Path $out 'mt6630-wdf-diagnostic.cer') | Out-Null
@@ -49,7 +57,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Catalog signing failed' }
           $signature = Get-AuthenticodeSignature (Join-Path $out 'mt6630-wdf-diagnostic.cat')
           if (!$signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $cert.Thumbprint) { throw 'Catalog signer mismatch' }
-          [ordered]@{ source_commit = (git rev-parse HEAD); lease_diagnostic = 0; signer_sha1 = $cert.Thumbprint; files = @{ 'mt6630-wdf-diagnostic.sys' = (Get-FileHash (Join-Path $out 'mt6630-wdf-diagnostic.sys') -Algorithm SHA256).Hash; 'mt6630-wdf-diagnostic.cat' = (Get-FileHash (Join-Path $out 'mt6630-wdf-diagnostic.cat') -Algorithm SHA256).Hash; 'mt6630-wdf-diagnostic.inf' = (Get-FileHash (Join-Path $out 'mt6630-wdf-diagnostic.inf') -Algorithm SHA256).Hash }; note = 'Self-signed, disabled diagnostic. Target trust and operation unverified; no Wi-Fi.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+          [ordered]@{ source_commit = (git rev-parse HEAD); lease_diagnostic = 1; hardware_code = 1; verified_board_configuration = 0; firmware_included = 0; signer_sha1 = $cert.Thumbprint; files = @{ 'mt6630-wdf-diagnostic.sys' = (Get-FileHash (Join-Path $out 'mt6630-wdf-diagnostic.sys') -Algorithm SHA256).Hash; 'mt6630-wdf-diagnostic.cat' = (Get-FileHash (Join-Path $out 'mt6630-wdf-diagnostic.cat') -Algorithm SHA256).Hash; 'mt6630-wdf-diagnostic.inf' = (Get-FileHash (Join-Path $out 'mt6630-wdf-diagnostic.inf') -Algorithm SHA256).Hash }; note = 'Self-signed, hardware diagnostic compiled; board configuration disabled and parent lease refuses. Firmware distributed separately; target trust and operation unverified.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
       - uses: actions/upload-artifact@v4
         with:
           name: mt6630-wdf-diagnostic-package

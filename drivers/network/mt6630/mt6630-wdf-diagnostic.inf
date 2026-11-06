@@ -1,4 +1,4 @@
-; Test-only lease rejection diagnostic. No Wi-Fi or hardware access.
+; Test-signed diagnostic; board configuration and parent ownership gates remain closed.
 [Version]
 Signature="$WINDOWS NT$"
 Class=System
@@ -46,5 +46,5 @@ KmdfLibraryVersion=1.13
 
 [Strings]
 Provider="mouseos"
-Device="MT6630 SDIO lease diagnostic"
+Device="MT6630 SDIO hardware diagnostic (gated)"
 Disk="MT6630 diagnostic driver"

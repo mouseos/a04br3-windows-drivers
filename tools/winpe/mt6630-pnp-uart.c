@@ -19,9 +19,19 @@ static int emit(const char *text,DWORD length)
   * that bytes reached the host. Preserve the existing owner's lifetime. */
  Sleep(1000);CloseHandle(h);return 1;
 }
+static DWORD firmware_size(const WCHAR *suffix,DWORD *error)
+{
+ WCHAR path[MAX_PATH];UINT n=GetWindowsDirectoryW(path,MAX_PATH);WIN32_FILE_ATTRIBUTE_DATA info;unsigned i=0;
+ if(!n||n>=MAX_PATH){*error=GetLastError();return 0;}
+ while(suffix[i]){if(n+1>=MAX_PATH){*error=ERROR_BUFFER_OVERFLOW;return 0;}path[n++]=suffix[i++];}
+ path[n]=0;
+ if(!GetFileAttributesExW(path,GetFileExInfoStandard,&info)){*error=GetLastError();return 0;}
+ if((info.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)||info.nFileSizeHigh){*error=ERROR_INVALID_DATA;return 0;}
+ *error=0;return info.nFileSizeLow;
+}
 void mainCRTStartup(void)
 {
- static WCHAR ids[2048];const WCHAR *p;ULONG n=0,status=0,problem=0,matches=0;DEVINST node=0;CONFIGRET r;char line[160],*out=line;DWORD written;
+ static WCHAR ids[2048];const WCHAR *p;ULONG n=0,status=0,problem=0,matches=0;DEVINST node=0;CONFIGRET r;char line[96],*out=line;DWORD written,wmt,wlan,wmt_error,wlan_error;int sent;
  r=CM_Get_Device_ID_List_SizeW(&n,L"A04BR3",CM_GETIDLIST_FILTER_ENUMERATOR|CM_GETIDLIST_FILTER_PRESENT);
  if(r==CR_SUCCESS && n>1 && n<=2048) {
   r=CM_Get_Device_ID_ListW(L"A04BR3",ids,2048,CM_GETIDLIST_FILTER_ENUMERATOR|CM_GETIDLIST_FILTER_PRESENT);
@@ -31,7 +41,14 @@ void mainCRTStartup(void)
  else if(r==CR_SUCCESS)r=CR_FAILURE;
  out=append(out,"A04WIFI PNP=");out=hex(out,(ULONG)r);out=append(out," MATCHES=");out=hex(out,matches);
  out=append(out," STATUS=");out=hex(out,status);out=append(out," PROBLEM=");out=hex(out,problem);
- out=append(out," RTC=UNKNOWN SESSION=UNOBSERVED\n");
+ out=append(out,"\n");
  WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),line,(DWORD)(out-line),&written,NULL);
- ExitProcess(emit(line,(DWORD)(out-line))?0:2);
+ sent=emit(line,(DWORD)(out-line));
+ wmt=firmware_size(L"\\System32\\drivers\\a04br3\\mt6630-wmt.bin",&wmt_error);
+ wlan=firmware_size(L"\\System32\\drivers\\a04br3\\mt6630-wlan.bin",&wlan_error);
+ out=line;out=append(out,"A04WIFI FW WMT=");out=hex(out,wmt);out=append(out," ERR=");out=hex(out,wmt_error);
+ out=append(out," WLAN=");out=hex(out,wlan);out=append(out," ERR=");out=hex(out,wlan_error);out=append(out,"\n");
+ WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),line,(DWORD)(out-line),&written,NULL);
+ if(!emit(line,(DWORD)(out-line)))sent=0;
+ ExitProcess(sent?0:2);
 }

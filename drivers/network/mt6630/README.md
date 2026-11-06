@@ -385,3 +385,19 @@ WMT digest、OCR、基板設定がない場合は親取得前に拒否する。�
 一回観測後に再有効化しない。現在の親は lease を付与せず、実機での動作、
 割り込み配線、電源・停止・削除時の安全性は未検証である。NDIS 機能はない。
 `make test-mt6630-wdf-hardware` は模擬した WDF、session、IRQ による試験である。
+
+統合診断パッケージは hardware・session・IRQ のコードをコンパイルし、SYS と
+INF/CAT をテスト署名する。`A04_WIFI_WDF_CONFIG_VERIFIED=0` と、実際の共有親の
+Acquire 拒否は変更しない。WMT の digest は固定 vendor revision
+`0c756f413e7011231c8fb793af0930311023f68d` の二つの patch から生成した bundle
+`4af7996b89ef110d8f270877f61aaf0b90fde21b6c5b0ed23ccbd32c2989dcee` に固定。
+これは入力の識別であり、電圧・起動設定・所有権の証明ではない。
+`tools/winpe/prepare-mt6630-firmware.py --output <empty-dir>` は固定元の SHA-256 を
+確認し、別途ステージする二つのファイルを生成する。実行環境の `Windows\System32\drivers\a04br3`
+に置く想定だが、実機の変更や配布許可を意味しない。firmware は CI パッケージに含めない。
+
+`mt6630-pnp-uart.exe` は既存 TOPRGU UART 所有者を通して 96 バイト以内の行を
+二つ送る。子 PDO の PnP status/problem と firmware ファイルのサイズ・Win32 エラー
+のみを示す。ファイルサイズはハッシュ照合やロード成功の証拠ではない。UART の
+IOCTL 受理もホストでの受信を証明しない。session・親 lease・IRQ 状態は PnP の
+値から推測しない。kernel の DbgPrint は UART に自動転送されるとは限らない。
