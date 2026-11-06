@@ -98,13 +98,14 @@ int main(void){
  assert(!ParentAdd(NULL,NULL));
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
  assert(testContext.usb.otg_acquire && testContext.usb.otg_release);
- testContext.gpio=usbGpio;usbGpio[0x220/4]=1u<<2;usbGpio[0x210/4]=1u<<5;
+ testContext.gpio=usbGpio;usbGpio[0x380/4]=2u<<3;usbGpio[0x220/4]=1u<<2;usbGpio[0x210/4]=1u<<5;
  assert(!ParentUsbSourceAcquire(&testContext) && !ParentUsbOvercurrent(&testContext));
  usbGpio[0x220/4]=0;assert(ParentUsbSourceAcquire(&testContext)); /* external VBUS */
  usbGpio[0x220/4]=(1u<<2)|(1u<<9);assert(ParentUsbSourceAcquire(&testContext) && ParentUsbOvercurrent(&testContext));
  usbGpio[0x220/4]=1u<<2;usbGpio[0x20/4]=1u<<2;assert(ParentUsbSourceAcquire(&testContext));
  usbGpio[0x20/4]=0;usbGpio[0x360/4]=1u<<12;assert(ParentUsbSourceAcquire(&testContext));
- usbGpio[0x360/4]=0;usbGpio[0x210/4]=0;assert(ParentUsbOvercurrent(&testContext));
+ usbGpio[0x360/4]=0;usbGpio[0x210/4]=0;assert(!ParentUsbOvercurrent(&testContext)); /* CONFIG_OC disabled in board source */
+ usbGpio[0x380/4]=0;assert(ParentUsbOvercurrent(&testContext));usbGpio[0x380/4]=2u<<3;
  assert(!ParentUsbSourceRelease(&testContext));testContext.gpio=NULL;reads=0;
 #else
  assert(!testContext.usb.otg_acquire && !testContext.usb.otg_release);
@@ -130,6 +131,14 @@ int main(void){
 #endif
  assert(!testContext.audio.verify_release && !testContext.audio.online);
 #endif
+#if A04_SHARED_USB_ONLY
+ assert(child_count==1 && forward_count==3);
+ assert(children[0].base==0x11100000u);
+ assert(!ChildRequirements(&children[0],NULL) && desc_count==3);
+ assert(all_desc[0].u.Memory.MinimumAddress.QuadPart==0x11100000u && all_desc[1].u.Memory.MinimumAddress.QuadPart==0x11110000u);
+ assert(all_desc[2].Type==CmResourceTypeInterrupt && all_desc[2].u.Interrupt.MinimumVector==104);
+ desc_count=appended=deleted=0;
+#else
  assert(child_count==5+A04_SHARED_THERMAL_DIAGNOSTIC && forward_count==16+7*A04_SHARED_THERMAL_DIAGNOSTIC);
 #if defined(A04_AUDIO_CHILD_RESOURCES) && A04_AUDIO_CHILD_RESOURCES
  assert(!ChildRequirements(&children[3+A04_SHARED_THERMAL_DIAGNOSTIC],NULL) && appended==1 && desc_count==3);
@@ -158,6 +167,7 @@ int main(void){
  fail_step=2;assert(ChildRequirements(&children[1],NULL)!=0 && appended==3 && deleted==1);
  fail_step=3;assert(ChildRequirements(&children[1],NULL)!=0 && appended==3 && deleted==2);fail_step=0;
  children[1].base=0;assert(ChildRequirements(&children[1],NULL)==STATUS_DEVICE_CONFIGURATION_ERROR && appended==3);assert(saved.Header.Version==1 && saved.ReadButtons);
+#endif
  assert(input.Version==1 && input.TouchPen && input.ButtonPmicRead);
  assert(audio.Header.Version==A04_SHARED_AUDIO_INTERFACE_VERSION && audio.AcquireMuted && audio.ReleaseQuiescent && audio.PrepareMaskedIrq && audio.BindAfe && audio.Mute && audio.UnmuteMin);
 #if A04_SHARED_VOICE_PCM_DIAGNOSTIC

@@ -11,6 +11,7 @@ typedef struct {
  unsigned char (*mac_read)(void *,unsigned);
  void (*mac_write)(void *,unsigned,unsigned char);
  void (*delay_ms)(void *,unsigned);
+ unsigned (*phy_read32)(void *,unsigned);
 } A04_USB_BOARD;
 int A04UsbHostStart(const A04_USB_BOARD *);
 /* Prepare owns power and initializes the PHY. Arm the IRQ before Run so a

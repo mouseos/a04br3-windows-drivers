@@ -251,3 +251,10 @@ EP0 PIOへ通し、SETUP、データ、ステータスの完了順序、IDの除
 MMIOの模擬試験であり、WindowsでのWDF実行や実機LED点灯の確認ではない。
 給電のゲートは変更しない。汎用USBホスト、hub、電源・IRQの実機検証は
 引き続き未完了で、動作済みパッケージとして配布できない。
+
+### USB専用PnP構成と入力経路の継続実装
+
+`c027fa3`からの継続では、[KEYBOARD_INTEGRATION.md](KEYBOARD_INTEGRATION.md)の
+共有親＋USB PDO＋HID transport構成を追加した。本文中の古い未接続説明は
+当時の記録であり、同文書の接続表を現在のソース状態として参照する。
+実機、SSH、WDKビルドの実行は主担当の工程として残る。

@@ -14,8 +14,14 @@
 #include "audio_owner.h"
 #include "usb_interface.h"
 #include "usb_owner.h"
+#ifndef A04_SHARED_USB_ONLY
+#define A04_SHARED_USB_ONLY 0
+#endif
 #ifndef A04_USB_GPIO22_SOURCE_EXPERIMENT
 #define A04_USB_GPIO22_SOURCE_EXPERIMENT 0
+#endif
+#if A04_USB_GPIO22_SOURCE_EXPERIMENT
+#include "../../usb/mt8167-usb20/board_pins.h"
 #endif
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT && (!defined(A04_SHARED_QUERY_EXPERIMENTAL) || !A04_SHARED_QUERY_EXPERIMENTAL || !defined(A04_SHARED_CHILD_PROBE) || !A04_SHARED_CHILD_PROBE || !defined(A04_SHARED_BUTTON_D0_EXPERIMENT) || !A04_SHARED_BUTTON_D0_EXPERIMENT || !defined(A04_SHARED_APMIXED_RESOURCE) || !A04_SHARED_APMIXED_RESOURCE)
 #error GPIO22 source experiment requires shared query, child, D0 and APMIXED
@@ -573,16 +579,19 @@ static void ParentUsbTopWrite(void *p,unsigned off,unsigned v) { A04_PARENT_CONT
 static unsigned ParentUsbGpioRead(void *p,unsigned off) { A04_PARENT_CONTEXT*c=p; return READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->gpio+off)); }
 static void ParentUsbGpioWrite(void *p,unsigned off,unsigned v) { A04_PARENT_CONTEXT*c=p; WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->gpio+off),v); }
 static int ParentUsbOvercurrent(void *p) {
- A04_PARENT_CONTEXT*c=p; unsigned mode,dir,input;
+ A04_PARENT_CONTEXT*c=p;
  if(!c->gpio)return -1;
- mode=ParentUsbGpioRead(c,0x340);dir=ParentUsbGpioRead(c,0x10);input=ParentUsbGpioRead(c,0x210);
- /* GPIO21: Linux overcurrent IRQ starts active low. Require input and GPIO. */
- if((mode & (7u<<3)) || (dir & (1u<<5)) || !(input & (1u<<5)))return -1;
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
- /* ID low selects host. Check on every health poll, including unplug. */
- if((ParentUsbGpioRead(c,0x20)&(1u<<9)) || (ParentUsbGpioRead(c,0x220)&(1u<<9)))return -1;
+ /* Board usb20_host.c has CONFIG_OC disabled. Do not make an unconfigured
+  * GPIO21 a mandatory overcurrent measurement. This profile has ID/source
+  * health only, not overcurrent protection. ID41 uses mux 2 (IDDIG). */
+ return (ParentUsbGpioRead(c,0x20)&(1u<<9)) ||
+  (ParentUsbGpioRead(c,0x220)&(1u<<9)) ||
+  (ParentUsbGpioRead(c,0x380)&(7u<<3))!=(2u<<3) ? -1:0;
+#else
+ unsigned mode=ParentUsbGpioRead(c,0x340),dir=ParentUsbGpioRead(c,0x10),input=ParentUsbGpioRead(c,0x210);
+ return (mode&(7u<<3)) || (dir&(1u<<5)) || !(input&(1u<<5)) ? -1:0;
 #endif
- return 0;
 }
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
 /* a04br3 Linux switches GPIO22 and its BQ24160 configuration has no action
@@ -596,7 +605,7 @@ static int ParentUsbSourceAcquire(void *p)
  dir=ParentUsbGpioRead(c,0x20);in=ParentUsbGpioRead(c,0x220);mode=ParentUsbGpioRead(c,0x360);
  /* ID41 grounded and USB-detect34 inactive before sourcing; do not drive
   * into a detected external source. The latter is active low in Linux. */
- if((dir&((1u<<9)|(1u<<2))) || (in&(1u<<9)) || !(in&(1u<<2)) || (mode&(7u<<12)))return -1;
+ if((ParentUsbGpioRead(c,0x380)&(7u<<3))!=(2u<<3) || (dir&((1u<<9)|(1u<<2))) || (in&(1u<<9)) || !(in&(1u<<2)) || (mode&(7u<<12)))return -1;
  return 0;
 }
 static int ParentUsbSourceRelease(void *p) { UNREFERENCED_PARAMETER(p);return 0; }
@@ -604,11 +613,24 @@ static int ParentUsbSourceRelease(void *p) { UNREFERENCED_PARAMETER(p);return 0;
 static int ParentUsbVerify(void *p) {
  A04_PARENT_CONTEXT*c=p; ULONG sel,con,pwr,rate;
  if(!c->topck || !c->apmixed)return -1;
+#if A04_USB_GPIO22_SOURCE_EXPERIMENT
+ if(!c->gpio || A04UsbPinsPrepare(&c->usb.gpio))return -1;
+#endif
  sel=ParentUsbTopRead(c,4); con=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x140));
  pwr=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x150));
  rate=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x144));
- /* USB78 mux = UNIVPLL/16, PLL enabled, powered and not isolated. */
- return ((sel>>20)&7)==2 && (con&0x30000001u)==0x30000001u && ((pwr&3)==1) && (rate&0x7fu)==48 && ((rate>>24)&7u)==0 && rate==READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x144)) ? 0 : -1;
+ /* Verify the shared PLL; never retune it on behalf of USB. */
+ if((con&0x30000001u)!=0x30000001u || (pwr&3)!=1 || (rate&0x7fu)!=48 ||
+    ((rate>>24)&7u)!=0 || rate!=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x144)))return -1;
+#if A04_USB_GPIO22_SOURCE_EXPERIMENT
+ if(((sel>>20)&7u)!=2u){
+  /* clk-mt8167.c: USB78 mux at 4[22:20], parent2=UNIVPLL/16.
+   * Change only with both its USB20 and USB11 consumers gated. */
+  if(!(ParentUsbTopRead(c,0x24)&(1u<<13)) || !(ParentUsbTopRead(c,0x3c)&(1u<<14)))return -1;
+  ParentUsbTopWrite(c,4,(sel&~(7u<<20))|(2u<<20));
+ }
+#endif
+ return ((ParentUsbTopRead(c,4)>>20)&7u)==2u ? 0:-1;
 }
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 static int ParentUsbAcquire(PVOID p) { return a04_usb_owner_acquire(&ParentContext((WDFDEVICE)p)->usb); }
@@ -1149,6 +1171,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #endif
 #if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE
     if(!NT_SUCCESS(status))return status;
+#if !A04_SHARED_USB_ONLY
     status=ParentAddProbeChild(dev,L"MT6392\\Buttons",L"0",0x10002000u);
     if(!NT_SUCCESS(status))return status;
     status=ParentAddProbeChild(dev,L"MT8167\\BU21025",L"0",0x11009000u);
@@ -1157,14 +1180,17 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     status=ParentAddProbeChild(dev,L"MT8167\\Thermal",L"0",0xfffffffeu);
     if(!NT_SUCCESS(status))return status;
 #endif
+#endif
     status=ParentAddProbeChild(dev,L"MT8167\\USB20",L"0",0x11100000u);
     if(!NT_SUCCESS(status))return status;
+#if !A04_SHARED_USB_ONLY
     /* The audio sentinel remains unavailable unless the diagnostic flag is set. */
     status=ParentAddProbeChild(dev,L"MT8167\\AFE",L"0",0xffffffffu);
     if(!NT_SUCCESS(status))return status;
     /* The host MMIO range is a separate child resource. The optional MSDC2 interrupt descriptor still needs platform polarity and
      * translation verification; it does not describe the separate EINT5. */
     status=ParentAddProbeChild(dev,L"A04BR3\\MT6630SDIO",L"0",0x11170000u);
+#endif
 #endif
     return status;
 }

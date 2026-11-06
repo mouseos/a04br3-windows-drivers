@@ -1208,3 +1208,24 @@ test-mt8167-usb-keyboard-output:
 	./build/mt8167_usb_keyboard_output_test
 
 test: test-mt8167-usb-keyboard-output
+
+.PHONY: test-mt8167-usb-keyboard-port
+test-mt8167-usb-keyboard-port:
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/usb/mt8167-usb20 tests/usb/keyboard_port_test.c drivers/usb/mt8167-usb20/keyboard_port.c drivers/usb/mt8167-usb20/keyboard_session.c drivers/usb/mt8167-usb20/keyboard.c drivers/usb/mt8167-usb20/keyboard_rx.c drivers/usb/mt8167-usb20/ep0.c drivers/usb/mt8167-usb20/ep0_pio.c -o build/mt8167_usb_keyboard_port_test
+	./build/mt8167_usb_keyboard_port_test
+
+test: test-mt8167-usb-keyboard-port
+
+.PHONY: test-mt8167-usb-keyboard-batch
+test-mt8167-usb-keyboard-batch: test-mt8167-usb-keyboard-port test-mt8167-usb-keyboard-output test-mt8167-usb-source test-mt8167-usb-faults test-mt8167-usb-host-control test-mt8167-usb-controller-irq test-mt8167-usb-pnp-resources
+	$(CC) $(CFLAGS) -Idrivers/usb/mt8167-usb20 tests/usb/gpio22_test.c drivers/usb/mt8167-usb20/gpio22.c -o build/mt8167_usb_board_pins_test
+	./build/mt8167_usb_board_pins_test
+
+.PHONY: test-mt8167-usb-keyboard-pnp
+test-mt8167-usb-keyboard-pnp:
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_SHARED_USB_ONLY=1 -DA04_USB_GPIO22_SOURCE_EXPERIMENT=1 -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_SHARED_BUTTON_D0_EXPERIMENT=1 -DA04_SHARED_APMIXED_RESOURCE=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/bus/mt8167-shared/mt6392_classd.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c drivers/bus/mt8167-shared/usb_owner.c drivers/usb/mt8167-usb20/gpio22.c tests/mt8167_shared_wdf_test.c -o build/mt8167_usb_keyboard_pnp_test
+	./build/mt8167_usb_keyboard_pnp_test
+
+test-mt8167-usb-keyboard-batch: test-mt8167-usb-keyboard-pnp
