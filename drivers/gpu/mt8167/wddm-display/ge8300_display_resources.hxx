@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #ifndef A04_DISPLAY_RESOURCES_HXX
 #define A04_DISPLAY_RESOURCES_HXX
+#ifndef A04_GE8300_WDDM_OVL_OBSERVE
+#define A04_GE8300_WDDM_OVL_OBSERVE 0
+#endif
 #ifndef A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
 #define A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC 0
 #endif
@@ -18,6 +21,9 @@
 #endif
 #ifndef A04_GE8300_WDDM_GCE_LEASE
 #define A04_GE8300_WDDM_GCE_LEASE 0
+#endif
+#if A04_GE8300_WDDM_OVL_OBSERVE && !A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
+#error OVL observation requires the common frame diagnostic
 #endif
 #if A04_GE8300_WDDM_GCE_LEASE && !A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
 #error GCE lease diagnostic requires the common frame diagnostic

@@ -511,6 +511,19 @@ NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(struct a04_ge8300_common_pa
         A04DisplayTrace(0x7a,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0xfa0/4));
         A04DisplayTrace(0x7b,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0x004/4));
         A04DisplayTrace(0x7c,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0x008/4));
+#if A04_GE8300_WDDM_OVL_OBSERVE
+        /* Linux mt8167 ddp_ovl.c reads these debug registers without clearing
+         * IRQs. Samples are non-atomic and never authorize a flip. */
+        for(ULONG sample=0;sample<2u;sample++) {
+            if(sample) { LARGE_INTEGER delay;delay.QuadPart=-200000LL;
+                (void)KeDelayExecutionThread(KernelMode,FALSE,&delay); }
+            ULONG base=0x90u+sample*4u;
+            A04DisplayTrace(base,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0x240/4));
+            A04DisplayTrace(base+1,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0x244/4));
+            A04DisplayTrace(base+2,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0x24c/4));
+            A04DisplayTrace(base+3,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0x258/4));
+        }
+#endif
     }
     /* Even failed stage may have published or aliased a root: never unwind. */
     return status;
