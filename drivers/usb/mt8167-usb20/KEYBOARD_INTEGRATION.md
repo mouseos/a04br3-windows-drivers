@@ -156,3 +156,18 @@ USB scriptの前半C coreと実験core/contractにも`-fno-stack-protector`を�
 親の前回WDK成功は主担当の結果。今回の統合版SYS再リンク、通常OS上での
 touch/battery/ボタン継続開始は主担当の未確認工程であり、ホスト確認から
 実機成功へ読み替えない。
+
+## 列挙の追補
+
+`d9d95dc`以後の追補では、EP0の初期packet sizeをhigh-speedで64とし、
+low-speedのdescriptorが8、high-speedが64であることをSET_ADDRESS前に
+確認する。full-speedは8/16/32/64をdescriptorから取得する。
+同じ端末GPL sourceの`drivers/usb/core/hub.c`にある`hub_port_init`の
+速度別初期値を根拠とし、今回の限定hostが扱えないサイズは拒否する。
+
+configurationはboot keyboard endpointを選んだ後も末尾まで長さを検証し、
+壊れた後続descriptorで途中の選択結果を確定しない。Linux
+`drivers/usb/core/config.c`の全体走査と同じく、descriptorの境界を確認する。
+EP0/RX/入力配送で失敗したsessionはKB_ERRORへ遷移させ、KB_READYのまま
+次の受信要求を出さない。これらは既存fixtureへまとめて確認を追加した。
+親・資源・GPU/DOD・installerには変更を加えない。実機成功は未確認。

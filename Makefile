@@ -1341,3 +1341,13 @@ test-mt8167-usb-integrated:
 	$(MAKE) test-mt8167-first-playback CFLAGS="$(CFLAGS) -DA04_USB_GPIO22_SOURCE_EXPERIMENT=1 -DA04_SHARED_TOUCH_D0_EXPERIMENT=1"
 	$(CC) $(CFLAGS) -DA04_SHARED_USB_ONLY=0 -DA04_USB_GPIO22_SOURCE_EXPERIMENT=1 -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_SHARED_BUTTON_D0_EXPERIMENT=1 -DA04_SHARED_TOUCH_D0_EXPERIMENT=1 -DA04_SHARED_APMIXED_RESOURCE=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/bus/mt8167-shared/mt6392_classd.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c drivers/bus/mt8167-shared/usb_owner.c drivers/usb/mt8167-usb20/gpio22.c tests/mt8167_shared_wdf_test.c -o build/mt8167_usb_integrated_parent_test
 	./build/mt8167_usb_integrated_parent_test
+
+.PHONY: test-mt8167-usb-enumeration
+test-mt8167-usb-enumeration:
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/usb/mt8167-usb20 tests/usb/keyboard_test.c drivers/usb/mt8167-usb20/keyboard.c -o build/mt8167_usb_keyboard_enum_test
+	./build/mt8167_usb_keyboard_enum_test
+	$(CC) $(CFLAGS) -Idrivers/usb/mt8167-usb20 tests/usb/keyboard_session_test.c drivers/usb/mt8167-usb20/keyboard_session.c drivers/usb/mt8167-usb20/keyboard.c drivers/usb/mt8167-usb20/keyboard_rx.c drivers/usb/mt8167-usb20/ep0.c drivers/usb/mt8167-usb20/ep0_pio.c -o build/mt8167_usb_keyboard_session_test
+	./build/mt8167_usb_keyboard_session_test
+
+test-mt8167-usb-keyboard-batch: test-mt8167-usb-enumeration
