@@ -28,6 +28,16 @@ int main(void)
     assert(memcmp(report + 3, down + 3, 4) == 0);
     assert(a04_touch_pipeline_sample(&pipeline, &sample, 16, report) == -1);
     assert(a04_touch_pipeline_fault(&pipeline, 17, report) == -1);
+    /* One far-off sample mid-stroke must not move the contact. */
+    assert(a04_touch_pipeline_init(&pipeline, &cal, &pressure) == 0);
+    sample = (struct a04_bu21025_sample){1000,1000,1000};
+    assert(a04_touch_pipeline_sample(&pipeline, &sample, 20, report) == 1);
+    assert(a04_touch_pipeline_sample(&pipeline, &sample, 21, report) >= 0);
+    assert(a04_touch_pipeline_sample(&pipeline, &sample, 22, report) >= 0);
+    memcpy(down, report, sizeof(down));
+    sample.y = 4095;
+    assert(a04_touch_pipeline_sample(&pipeline, &sample, 23, report) >= 0);
+    assert(memcmp(report + 3, down + 3, 4) == 0);
     puts("touch pipeline tests passed");
     return 0;
 }

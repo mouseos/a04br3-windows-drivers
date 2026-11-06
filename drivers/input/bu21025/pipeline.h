@@ -9,6 +9,10 @@ struct a04_touch_pipeline {
     struct a04_touch_calibration calibration;
     struct a04_touch_pressure_policy pressure;
     struct a04_touch_report_state report;
+    /* Raw X/Y of the current contact for a median-of-3 spike filter. A
+     * resistive panel occasionally returns one far-off sample mid-stroke. */
+    uint16_t history_x[3], history_y[3];
+    uint8_t history_count;
     uint8_t faulted;
 };
 
