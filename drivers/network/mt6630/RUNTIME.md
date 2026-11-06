@@ -147,3 +147,36 @@ scan probe一式には起動用 `mt6630-wlan-observe.cmd` とprobe manifestを�
 既存TOPRGU UART ownerへcount/statusレコードを送り、stdoutは主担当のCRC付きaudit-streamにも
 収録できる。起動・レコード解釈・転送とscan成功の区別はprobe READMEを参照。
 Ramanの `build-mt8167-peripherals.ps1` はprobe一式とmanifestを統合成果物へ含める。
+
+
+## NDIS 6.30 初期登録のdirect OID契約
+
+`ndis_runtime.c` はNDIS 6.30、driver characteristics Revision 2を登録する。
+NDIS 6.20以降で必須の `DirectOidRequestHandler` と
+`CancelDirectOidRequestHandler` を両方登録する。旧実装ではゼロ初期化のままだった。
+
+このminiportはdirect OIDによるoffloadを実装・広告していないため、direct要求は
+`NDIS_STATUS_NOT_SUPPORTED` で同期完了する。要求を保持せずpendingにもせず、
+通常OIDのworkerへ流さず、`NdisMDirectOidRequestComplete` も呼ばない。
+cancel handlerには保持中要求がなく、通常OIDやSDIOへ触れない。
+直接要求は通常OIDと直列化されないので、この分離は必須。
+NDIS申告versionを下げたり、未処理要求を成功扱いしたりしない。
+
+根拠はMicrosoftのversion別契約とcallback仕様：
+
+- [Implementing an NDIS 6.20 Driver](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/implementing-an-ndis-6-20-driver)
+- [NDIS 6.20 Updates to NDIS 6.1 Features](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/ndis-6-20-updates-to-ndis-6-1-features)
+- [Implementing an NDIS 6.30 Driver](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/implementing-an-ndis-6-30-driver)
+- [MiniportDirectOidRequest](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ndis/nc-ndis-miniport_direct_oid_request)
+- [MiniportCancelDirectOidRequest](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ndis/nc-ndis-miniport_cancel_direct_oid_request)
+
+汎用callback資料の「optional」はNDIS 6.1を含む説明。
+6.20以降はversion別資料の必須要件も適用する。
+この修正は登録契約の欠落を解消するが、実機で得られた `CM_PROB_FAILED_ADD (0x1f)`
+の正確なNTSTATUSや、修正後のPnP受理・WLAN interface作成を実測したものではない。
+SetupAPIのproblem値だけから `NDIS_STATUS_BAD_CHARACTERISTICS` 等を断定しない。
+
+既存build入口は `tools/ci/build-mt6630-runtime.ps1`。
+既存親packageを再利用する場合は `-SharedParentDirectory` のcapability/hash/commit確認を維持する。
+署名・配備・実機確認は主担当で行う。INF・親driver・firmware・通常OID・MMIO・Bluetoothは
+この登録修正では変更しない。

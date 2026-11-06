@@ -172,6 +172,8 @@ NdisFreeSpinLock(&a->lock);RtlSecureZeroMemory(a,sizeof(*a));NdisFreeMemory(a,0,
 MINIPORT_INITIALIZE RuntimeInitialize;MINIPORT_HALT RuntimeHalt;MINIPORT_PAUSE RuntimePause;MINIPORT_RESTART RuntimeRestart;
 MINIPORT_OID_REQUEST RuntimeOid;MINIPORT_CANCEL_OID_REQUEST RuntimeCancelOid;MINIPORT_SEND_NET_BUFFER_LISTS RuntimeSend;
 MINIPORT_RETURN_NET_BUFFER_LISTS RuntimeReturn;MINIPORT_CANCEL_SEND RuntimeCancelSend;MINIPORT_SHUTDOWN RuntimeShutdown;
+MINIPORT_DIRECT_OID_REQUEST RuntimeDirectOid;
+MINIPORT_CANCEL_DIRECT_OID_REQUEST RuntimeCancelDirectOid;
 DRIVER_UNLOAD RuntimeUnload;
 NDIS_STATUS RuntimeInitialize(NDIS_HANDLE adapter,NDIS_HANDLE context,PNDIS_MINIPORT_INIT_PARAMETERS params)
 {
@@ -202,6 +204,19 @@ NDIS_STATUS RuntimeOid(NDIS_HANDLE p,PNDIS_OID_REQUEST request)
  else{a->request=request;a->cancelled=0;if(queue_work(a)){a->request=NULL;s=NDIS_STATUS_RESOURCES;}else s=NDIS_STATUS_PENDING;}
  NdisReleaseSpinLock(&a->lock);return s;
 }
+/* NDIS 6.20+ requires both direct-OID entry points, even without direct
+ * offloads. Direct requests are not serialized with RuntimeOid and must not
+ * enter its single PASSIVE_LEVEL hardware queue. No direct OID is advertised
+ * or retained: reject synchronously, with no completion/cancellation state. */
+_Use_decl_annotations_
+NDIS_STATUS RuntimeDirectOid(NDIS_HANDLE p,PNDIS_OID_REQUEST request)
+{
+ UNREFERENCED_PARAMETER(p);UNREFERENCED_PARAMETER(request);
+ return NDIS_STATUS_NOT_SUPPORTED;
+}
+_Use_decl_annotations_
+VOID RuntimeCancelDirectOid(NDIS_HANDLE p,PVOID id)
+{UNREFERENCED_PARAMETER(p);UNREFERENCED_PARAMETER(id);}
 VOID RuntimeCancelOid(NDIS_HANDLE p,PVOID id){struct a04_ndis_runtime *a=p;NdisAcquireSpinLock(&a->lock);if(a->request&&a->request->RequestId==id)a->cancelled=1;if(a->next_request&&a->next_request->RequestId==id)a->next_cancelled=1;NdisReleaseSpinLock(&a->lock);}
 VOID RuntimeSend(NDIS_HANDLE p,PNET_BUFFER_LIST list,NDIS_PORT_NUMBER port,ULONG flags)
 {
@@ -225,7 +240,8 @@ VOID RuntimePnp(NDIS_HANDLE p,PNET_DEVICE_PNP_EVENT event)
 VOID RuntimeUnload(PDRIVER_OBJECT p){UNREFERENCED_PARAMETER(p);if(driver_handle)NdisMDeregisterMiniportDriver(driver_handle);}
 NTSTATUS DriverEntry(PDRIVER_OBJECT p,PUNICODE_STRING path)
 {
- NDIS_MINIPORT_DRIVER_CHARACTERISTICS c;NdisZeroMemory(&c,sizeof(c));c.Header.Type=NDIS_OBJECT_TYPE_MINIPORT_DRIVER_CHARACTERISTICS;c.Header.Revision=2;c.Header.Size=NDIS_SIZEOF_MINIPORT_DRIVER_CHARACTERISTICS_REVISION_2;c.MajorNdisVersion=6;c.MinorNdisVersion=30;c.MajorDriverVersion=0;c.MinorDriverVersion=2;
+ NDIS_MINIPORT_DRIVER_CHARACTERISTICS c;NdisZeroMemory(&c,sizeof(c));c.Header.Type=NDIS_OBJECT_TYPE_MINIPORT_DRIVER_CHARACTERISTICS;c.Header.Revision=NDIS_MINIPORT_DRIVER_CHARACTERISTICS_REVISION_2;c.Header.Size=NDIS_SIZEOF_MINIPORT_DRIVER_CHARACTERISTICS_REVISION_2;c.MajorNdisVersion=6;c.MinorNdisVersion=30;c.MajorDriverVersion=0;c.MinorDriverVersion=2;
  c.InitializeHandlerEx=RuntimeInitialize;c.HaltHandlerEx=RuntimeHalt;c.PauseHandler=RuntimePause;c.RestartHandler=RuntimeRestart;c.OidRequestHandler=RuntimeOid;c.CancelOidRequestHandler=RuntimeCancelOid;c.SendNetBufferListsHandler=RuntimeSend;c.ReturnNetBufferListsHandler=RuntimeReturn;c.CancelSendHandler=RuntimeCancelSend;c.ShutdownHandlerEx=RuntimeShutdown;c.UnloadHandler=RuntimeUnload;c.DevicePnPEventNotifyHandler=RuntimePnp;
+ c.DirectOidRequestHandler=RuntimeDirectOid;c.CancelDirectOidRequestHandler=RuntimeCancelDirectOid;
  return NdisMRegisterMiniportDriver(p,path,NULL,&c,&driver_handle);
 }
