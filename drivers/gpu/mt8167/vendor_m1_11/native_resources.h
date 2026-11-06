@@ -3,6 +3,18 @@
 #define A04_M111_NATIVE_RESOURCES_H
 #include "A04BR3RogueDDKABI.h"
 #define A04_M111_MAX_FREELIST_PAGES 4096u
+#define A04_M111_DUMMY_REGION_BYTES 128u
+#define A04_M111_DUMMY_STENCIL_BYTES 2048u
+struct a04_m111_auxiliary_layout {
+    uint64_t dummy_region_gpu,dummy_stencil_gpu,dummy_stencil_register;
+    uint32_t used;
+};
+/* Reserve subranges inside a caller-owned GPU allocation. RGXCreateGlobalPB
+ * uses 128 bytes/alignment 64 for DummyRgnHeader; RGXCreateRenderContextCCB
+ * uses 2048 bytes/alignment 16 for BRN Dummy Stencil Store. No initial memory
+ * contents are inferred here and no allocation/mapping is performed. */
+int a04_m111_layout_auxiliary(uint64_t gpu_base,size_t bytes,
+    struct a04_m111_auxiliary_layout *out);
 /* Cold CPU memory only. The caller maps and retains FW and GPU allocations;
  * these routines do not allocate DMA, publish mappings, or submit commands. */
 struct a04_m111_freelist_input {

@@ -9,7 +9,7 @@
  * intentionally preserve unknown register semantics. No zero template or
  * submit API is provided. Apply to an independently initialized record. */
 struct a04_m111_ta_fields {
-    uint64_t word08, word30, word78;
+    uint64_t word08, word30, dummy_region;
     uint32_t flags, frame, hwrt, zbuffer, sbuffer, msaa;
     uint32_t pr_fence_addr, pr_fence_value, overlap_addr, overlap_value;
 };
