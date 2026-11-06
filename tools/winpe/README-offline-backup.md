@@ -1,0 +1,34 @@
+# WinPE固定対象バックアップ・復旧の試作
+
+`offline-backup.c` は更新プログラムではない。SYSTEM、SOFTWAREとそれぞれの
+LOG/LOG1/LOG2、TOPRGU・共有親・BU21025のSYSだけを対象とする。DISM、Driver
+Store、デバイス列挙・PnP設定、他の変更ファイルを復旧するものではない。
+搭載Windowsへの適用には使わない。実機のNTFS整合性、EFI空き容量、電源断後の
+FAT・NTFSとストレージドライバのflush動作、WinPE署名受理は未確認。
+
+C: はdisk 0のoffset 469762048・length 15147204608のNTFS、E: はdisk 0の
+offset 184549376・length 268435456のFAT32で、ブートファイルを持つ既存ESP
+という固定条件を確認する。容量は対象ファイルの通常サイズの合計に32 MiBを
+加えた値の2倍を要求するが、代替ストリームが大きければ保存途中に容量不足で
+失敗する。既存の `E:\A04BACKUP` がある場合は上書きしない。完成前の残骸も
+自動削除しない。圧縮・スパース・暗号化・オフライン・ハードリンク・再解析
+ポイントの対象は拒否する。管理者権限とbackup、restore、securityの各特権が必要。
+
+バックアップ時は、対象を排他的に開き `BackupRead` のバイト列を個別保存し、
+SHA-256と属性・時刻を記録する。ファイルflush、読戻し検証、ESP flushの後に
+`READY` を書き、そのflushと再読込み検証を行う。復旧時は全アーカイブと
+`READY` を検証してから、`BackupWrite` を使って一時ファイルへ再現し置換する。
+各対象を再読込み・比較し、途中で失敗した場合は `READY` を残す。復旧終了は
+ボリュームのdismountやNTFS整合性を意味しない。
+
+排他確認は一時的なものであり、他プロセスや未知の名前でロードされたhiveを
+完全に排除する仕組みはない。実行環境側でアクセス停止と全hiveのunloadを
+保証する必要がある。EFIとWindowsは同一eMMC上にあるため、媒体自体の故障に
+対する独立バックアップにもならない。電源断に対する永続性は両ファイルシステム、
+ストレージドライバ、eMMCのflush実装の実測が必要。
+
+ARMバイナリは `tools/ci/build-offline-backup.ps1` でビルドする。Windows上の
+合成テスト `tools/ci/test-offline-backup-synthetic.ps1` は対象とESPを一時
+ディレクトリへ置き、identityとvolume flushを模擬する。これらは実機の安全性を
+証明しない。更新を伴う機能を接続するには、変更範囲、署名受理、ハイブの
+ロードとunload、失敗時復旧、正常dismountまで別途実装・検証する必要がある。
