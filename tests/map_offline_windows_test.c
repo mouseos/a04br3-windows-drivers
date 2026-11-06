@@ -3,6 +3,34 @@
 #include <setjmp.h>
 #include <wchar.h>
 #include <stdlib.h>
+/* Keep mock Win32 symbols separate from the Windows CRT imports. */
+#define GetStdHandle mock_GetStdHandle
+#define WriteFile mock_WriteFile
+#define CompareStringOrdinal mock_CompareStringOrdinal
+#define lstrlenW mock_lstrlenW
+#define lstrcpyW mock_lstrcpyW
+#define lstrcatW mock_lstrcatW
+#define lstrcmpiW mock_lstrcmpiW
+#define GetWindowsDirectoryW mock_GetWindowsDirectoryW
+#define RegOpenKeyExW mock_RegOpenKeyExW
+#define RegCloseKey mock_RegCloseKey
+#define GetLogicalDrives mock_GetLogicalDrives
+#define GetVolumeNameForVolumeMountPointW mock_GetVolumeNameForVolumeMountPointW
+#define FindFirstVolumeW mock_FindFirstVolumeW
+#define FindNextVolumeW mock_FindNextVolumeW
+#define FindVolumeClose mock_FindVolumeClose
+#define CreateFileW mock_CreateFileW
+#define DeviceIoControl mock_DeviceIoControl
+#define SetFilePointerEx mock_SetFilePointerEx
+#define ReadFile mock_ReadFile
+#define Sleep mock_Sleep
+#define CloseHandle mock_CloseHandle
+#define GetVolumeInformationW mock_GetVolumeInformationW
+#define GetFileAttributesW mock_GetFileAttributesW
+#define DeleteVolumeMountPointW mock_DeleteVolumeMountPointW
+#define SetVolumeMountPointW mock_SetVolumeMountPointW
+#define GetLastError mock_GetLastError
+#define ExitProcess mock_ExitProcess
 #include "windows.h"
 #include "winioctl.h"
 static jmp_buf done;static unsigned scenario,code,indexn,assigned,removed,drives_calls,infos,sleeps;static DWORD error;
@@ -31,5 +59,7 @@ BOOL DeleteVolumeMountPointW(const WCHAR*p){(void)p;removed++;return 1;}
 BOOL SetVolumeMountPointW(const WCHAR*a,const WCHAR*b){(void)a;(void)b;assigned++;return scenario!=7;}
 DWORD GetLastError(void){return error;}
 void ExitProcess(DWORD v){code=v;longjmp(done,1);}
+#define mainCRTStartup mapper_test_entry
 #include "../tools/winpe/map-offline-windows.c"
-int main(void){static const unsigned expected[]={0,0,4,2,2,2,2,3,2,2,2,2,2,0,2,2,2,2,2,2,2,2};for(scenario=0;scenario<22;scenario++){assigned=removed=drives_calls=infos=sleeps=0;error=0;if(!setjmp(done))mainCRTStartup();if(code!=expected[scenario]||(scenario!=0&&scenario!=7&&scenario!=13&&scenario!=16&&scenario!=21&&assigned)||((scenario==0||scenario==13)&&assigned!=1)||(scenario==16&&(removed!=1||sleeps!=2))||(scenario==21&&(assigned!=1||removed!=1))){fprintf(stderr,"scenario %u exit %u assigns %u\n",scenario,code,assigned);return 1;}}puts("offline volume mapper guards: PASS");return 0;}
+#undef mainCRTStartup
+int main(void){static const unsigned expected[]={0,0,4,2,2,2,2,3,2,2,2,2,2,0,2,2,2,2,2,2,2,2};for(scenario=0;scenario<22;scenario++){assigned=removed=drives_calls=infos=sleeps=0;error=0;if(!setjmp(done))mapper_test_entry();if(code!=expected[scenario]||(scenario!=0&&scenario!=7&&scenario!=13&&scenario!=16&&scenario!=21&&assigned)||((scenario==0||scenario==13)&&assigned!=1)||(scenario==16&&(removed!=1||sleeps!=2))||(scenario==21&&(assigned!=1||removed!=1))){fprintf(stderr,"scenario %u exit %u assigns %u\n",scenario,code,assigned);return 1;}}puts("offline volume mapper guards: PASS");return 0;}
