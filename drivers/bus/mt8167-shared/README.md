@@ -396,3 +396,14 @@ The implementation remains disconnected from hardware pending a validated
 measurement provider, path equivalence, exclusive ownership, muted startup and
 PnP teardown. These calculations do not prove audible or safe playback.
 The ramp helper is not a complete DAC or playback path.
+
+The isolated `codec_voice.h` experiment models the board Linux AIF RX, left
+DAC DC ramp and voice amplifier depop ordering. It requires a caller to prove
+both downstream mute and Linux-compatible per-device calibration before any
+write; no caller currently supplies that proof. It is not connected to the
+parent, AUXADC, or PCM and cannot produce audio. Its callback is an interface,
+not proof that headphone calibration is appropriate for AU_LOL. The fixed
+0x4b4b initial DAC-stage coefficient is from the board Linux codec utility;
+the ramp endpoint must be measured. Failure retains the active state and
+poisons the experiment, requiring explicit recovery. Host tests simulate the
+registers only and do not validate analog behavior or actual hardware.
