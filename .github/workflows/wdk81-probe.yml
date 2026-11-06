@@ -67,6 +67,12 @@ jobs:
             Write-Host "$path : $(Test-Path $full)"
             if (-not (Test-Path $full)) { throw "Missing required ARM32 WDK component: $path" }
           }
+      - name: Test read-only system file hashes
+        shell: pwsh
+        run: ./tools/ci/test-audit-volume-sys.ps1
+      - name: Compile ARM32 read-only volume audit
+        shell: pwsh
+        run: ./tools/ci/build-audit-volume-sys.ps1
       - name: Compile ARM32 offline hive updater
         shell: pwsh
         run: ./tools/ci/build-offline-hive-apply.ps1
