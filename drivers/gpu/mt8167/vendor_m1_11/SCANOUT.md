@@ -558,3 +558,18 @@ therefore must not map it a second time or clear its bit directly: an owner-
 mediated clock lease and lifetime across firmware/secure users are still
 needed. A successful `IoGetDmaAdapter` or an assigned GCE MMIO range provides
 no clock, interrupt or hardware-thread ownership by itself.
+
+The canonical a04br3 UEFI machine sources at 035b3222 configure OVL L0 and
+L3 directly in DisplayInitDxe and disable the OVL interrupt. The `DSI_CMDQ0`
+register used there belongs to DSI, not the separate GCE at 0x1020a000. A
+search of the machine package found no GCE thread, event or GCE clock lease
+to release; the ACPI GCE node assigns PnP resources only. This observation
+does not cover previous boot stages or secure firmware and cannot establish
+that any GCE thread, event or shared clock is available to Windows.
+
+The default-off KMDF executor experiment includes a real GCE DMA common-buffer
+binding, interrupt synchronization and bounded wait/stop, but has no provider
+for the required independent ownership proofs. Its IRQ attach intentionally
+fails without them, so it is not a usable display diagnostic. A WDF reference,
+a busy return from PnP callbacks, and a programmed-address readback are not
+evidence of power retention, stopped DMA, a latched layer, or restored output.

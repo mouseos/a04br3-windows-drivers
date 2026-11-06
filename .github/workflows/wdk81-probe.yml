@@ -105,6 +105,18 @@ jobs:
         run: |
           ./tools/ci/build-ge8300-provider.ps1
           ./tools/ci/build-ge8300-status.ps1
+      - name: Compile default and ownership-gated GCE provider
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:A04_GCE_PARENT_CLOCK_INTERFACE='0'
+          $env:A04_GCE_DISPLAY_LEASE_INTERFACE='0'
+          $env:A04_GCE_IRQ_ATTACH='0'
+          ./tools/ci/build-mt8167-gce.ps1
+          $env:A04_GCE_PARENT_CLOCK_INTERFACE='1'
+          $env:A04_GCE_DISPLAY_LEASE_INTERFACE='1'
+          $env:A04_GCE_IRQ_ATTACH='1'
+          ./tools/ci/build-mt8167-gce.ps1
       - name: Compile non-installable ARM32 display-only build check
         shell: pwsh
         run: ./tools/ci/build-wddm-display-arm.ps1
