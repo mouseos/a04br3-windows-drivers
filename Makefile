@@ -4,10 +4,15 @@ CFLAGS ?= -O2 -Wall -Wextra -Werror -std=c11
 SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test-gpu-m111-native
-test-gpu-m111-native: build/gpu_m111_native_resources_test build/gpu_m111_native_fields_test build/gpu_m111_native_ccb_test
+test-gpu-m111-native: build/gpu_m111_native_resources_test build/gpu_m111_native_fields_test build/gpu_m111_native_ccb_test build/gpu_m111_native_pair_test
 	./build/gpu_m111_native_resources_test
 	./build/gpu_m111_native_fields_test
 	./build/gpu_m111_native_ccb_test
+	./build/gpu_m111_native_pair_test
+
+build/gpu_m111_native_pair_test: tests/gpu_m111_native_pair_test.c drivers/gpu/mt8167/vendor_m1_11/native_pair.c drivers/gpu/mt8167/vendor_m1_11/native_pair.h drivers/gpu/mt8167/vendor_m1_11/native_ccb.c drivers/gpu/mt8167/vendor_m1_11/native_ccb.h drivers/gpu/mt8167/vendor_m1_11/native_record_fields.c drivers/gpu/mt8167/vendor_m1_11/native_record_fields.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueDDKABI.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
 
 build/gpu_m111_native_ccb_test: tests/gpu_m111_native_ccb_test.c drivers/gpu/mt8167/vendor_m1_11/native_ccb.c drivers/gpu/mt8167/vendor_m1_11/native_ccb.h drivers/gpu/mt8167/vendor_m1_11/native_record_fields.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueDDKABI.h
 	@mkdir -p build
