@@ -147,6 +147,7 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
     }
     status=(result->zeros==1024u && !result->guard_errors)?STATUS_SUCCESS:STATUS_DATA_ERROR;
     r->clear_verified=NT_SUCCESS(status);
+    if (r->clear_verified) { result->completed_task=seq; result->completed_flush=flushseq; }
     if(copy && !NT_SUCCESS(status)){r->poisoned=TRUE;s->command_poisoned=TRUE;}
     goto done;
 poison:

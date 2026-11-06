@@ -111,6 +111,7 @@ int main(void)
     assert(r.sequence==1 && !r.poisoned && !start.command_poisoned);
     current=4;assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_SUCCESS);
     assert(clear.zeros==1024 && !clear.guard_errors && clear.phase==4 && r.clear_attempted);
+    assert(clear.completed_task==r.sequence && clear.completed_flush==start.command_sequence && clear.completed_task && clear.completed_flush);
     { uint32_t before=pds[0],pixel=((uint32_t*)target)[0];
       r.copy_owner=&mem;
       assert(a04_vendor_render_next_tile(&r,&start,1,&clear)==STATUS_INVALID_DEVICE_STATE);
@@ -147,6 +148,7 @@ int main(void)
     start.command_poisoned=FALSE;start.command_sequence=0;current=4;complete=2;
     assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_IO_TIMEOUT);
     assert(clear.phase==3 && clear.kread!=clear.kwrite && clear.expected==1 && r.poisoned && start.command_poisoned);
+    assert(!clear.completed_task && !clear.completed_flush);
     assert(clear.provisional && clear.zeros==1024 && !clear.guard_errors);
     {
         struct a04_vendor_surface screen={0};
@@ -178,7 +180,7 @@ int main(void)
         }
         pixels[0]=0; r.clear_attempted=FALSE;
         assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_DATA_ERROR);
-        assert(clear.guard_errors==1 && !r.clear_verified);
+        assert(clear.guard_errors==1 && !r.clear_verified && !clear.completed_task && !clear.completed_flush);
         memset(pixels,0xa5,4259840u);r.clear_attempted=FALSE;r.diagnostic_tile_index=0;complete=1;
         assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_SUCCESS);
         complete=2;
