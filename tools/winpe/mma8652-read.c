@@ -49,7 +49,7 @@ void mainCRTStartup(void) {
   }
  }
  CloseHandle(ev); CloseHandle(selected);
- if(got!=9 || report[0]!=1 || report[1]!=1 || report[2]!=3) { say("MMA_HID_REPORT_INVALID\r\n"); ExitProcess(5); }
+ if(got!=9 || report[0]!=1 || report[1]!=2 || report[2]!=4) { say("MMA_HID_REPORT_INVALID\r\n"); ExitProcess(5); }
  say("MMA_HID_X_CENTIG_HEX="); hex((ULONG)(LONG)(SHORT)(report[3]|(report[4]<<8)));
  say(" Y="); hex((ULONG)(LONG)(SHORT)(report[5]|(report[6]<<8)));
  say(" Z="); hex((ULONG)(LONG)(SHORT)(report[7]|(report[8]<<8))); say("\r\n"); ExitProcess(0);

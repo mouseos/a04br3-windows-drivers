@@ -5,7 +5,9 @@
 #include <stdint.h>
 #include "mma8652.h"
 #define A04_MMA_HID_INPUT_SIZE 9u
-#define A04_MMA_HID_FEATURE_SIZE 13u
+#define A04_MMA_HID_FEATURE_SIZE 14u
+#define A04_MMA_HID_STATE_READY 2u
+#define A04_MMA_HID_EVENT_DATA_UPDATED 4u
 struct a04_mma_hid_features { uint8_t reporting; uint16_t sensitivity; uint32_t interval_ms; };
 int a04_mma_hid_changed(const struct a04_mma_hid_features *, const struct a04_mma8652_sample *, const struct a04_mma8652_sample *, int);
 const uint8_t *a04_mma_hid_descriptor(size_t *length);

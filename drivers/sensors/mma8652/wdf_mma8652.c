@@ -207,6 +207,21 @@ VOID AccIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULONG
   descriptor=a04_mma_hid_descriptor(&size); s=Copy(request,descriptor,size); break;
  case IOCTL_HID_READ_REPORT:
   s=WdfRequestForwardToIoQueue(request,c->reads); if (NT_SUCCESS(s)) return; break;
+ case IOCTL_HID_GET_INPUT_REPORT: {
+  struct a04_mma8652_sample sample; uint8_t input[A04_MMA_HID_INPUT_SIZE]; int result;
+  irp=WdfRequestWdmGetIrp(request); packet=(PHID_XFER_PACKET)irp->UserBuffer;
+  if(outlen<sizeof(*packet) || !packet || packet->reportId!=1 || !packet->reportBuffer || packet->reportBufferLen<sizeof(input)) { s=STATUS_INVALID_PARAMETER; break; }
+  WdfWaitLockAcquire(c->lock,NULL);
+  if(!c->online || c->faulted) s=STATUS_DEVICE_NOT_READY;
+  else {
+   result=a04_mma8652_read(&c->bus,&sample);
+   if(result==A04_MMA_OK) {
+    a04_mma_hid_input(&sample,input); RtlCopyMemory(packet->reportBuffer,input,sizeof(input));
+    WdfRequestSetInformation(request,sizeof(input)); s=STATUS_SUCCESS;
+   } else s=result==A04_MMA_NOT_READY?STATUS_DEVICE_NOT_READY:STATUS_DEVICE_HARDWARE_ERROR;
+  }
+  WdfWaitLockRelease(c->lock); break;
+ }
  case IOCTL_HID_GET_FEATURE:
  case IOCTL_HID_SET_FEATURE:
   irp=WdfRequestWdmGetIrp(request); packet=(PHID_XFER_PACKET)irp->UserBuffer;

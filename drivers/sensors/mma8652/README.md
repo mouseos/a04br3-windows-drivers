@@ -58,11 +58,20 @@ ARM32 WDK package and `tools/ci/sign-mma8652.ps1` creates a research-only
 self-signed package; acceptance outside the test-mode WinPE is not established. Do not treat
 host simulation, linking or a signature as evidence of hardware operation.
 
-## HID physical units
+## Windows 8.1 sensor HID contract
 
-The report descriptor explicitly declares G (0x1a) with exponent -2 for
-acceleration and absolute sensitivity, and milliseconds (0x19) for report
-intervals, following the Microsoft Sensor HID Class Driver sample. Unit
-state is cleared for sensor-state and event selectors. Raw HID sample reads
-do not establish that the Windows Sensor HID class can start or rotate the
-display. Reference: https://learn.microsoft.com/en-us/windows-hardware/drivers/hid/sensor-hid-class-driver
+Microsoft's detailed HID Sensors Usages white paper requires one-based named
+array selectors: READY=2, DATA_UPDATED=4, NO_EVENTS=1 and ALL_EVENTS=2.
+The earlier zero-based values made raw WinPE reads look valid while exposing
+UNKNOWN/property-change values to the Windows sensor class. A PC-integrated
+connection feature is needed for Windows motion/orientation UX. The single
+sensor uses the documented Physical collection form.
+
+Acceleration retains the prescribed default G unit with exponent -2;
+intervals retain the prescribed default milliseconds. Explicit alternate
+units are prohibited by the detailed white paper, which supersedes the old
+Learn sample for these values. GET_INPUT_REPORT is supported even when
+asynchronous reporting is disabled. Read-only feature fields are ignored
+when processing SET_FEATURE.
+
+Reference: https://learn.microsoft.com/en-us/windows-hardware/design/whitepapers/hid-sensors-usages
