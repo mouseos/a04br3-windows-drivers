@@ -111,6 +111,9 @@ NTSTATUS a04_vendor_native_prepare_backing_cold(struct a04_vendor_native_cold *n
        a04_gpu_mmu_map_4k(pc,pd,pt[1],(uint64_t)n->output[1].logical.QuadPart,
           (uint64_t)n->output[3].logical.QuadPart,A04_NATIVE_OUTPUT_VA+0x200000u,
           address+0x200000u,488u,A04_GPU_MMU_SLC_BYPASS))goto done;
+    /* A black clear must change the owned output, rather than matching an
+     * already-zero allocation. Table shadows remain zero-initialized. */
+    for(i=0;i<1024u;i++)((uint32_t *)(void *)(shadow+16384u))[i]=0xa5a5a5a5u;
     /* All allocations are validated before any Device-memory write. */
     for(i=0;i<1000u;i++)if(a04_rgx_device_write_words((UCHAR *)n->output[0].cpu+i*4096u,shadow+16384u,4096u))goto done;
     if(a04_rgx_device_write_words(n->output[1].cpu,pd,4096u) ||
