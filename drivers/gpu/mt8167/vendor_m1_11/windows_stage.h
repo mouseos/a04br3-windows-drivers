@@ -14,6 +14,7 @@ struct a04_vendor_m1_11_memory {
     BOOLEAN hardware_owned;
     BOOLEAN uncached;
     ULONG stage_step;
+    ULONG clock_hz,clock_parent;
     void *render_owner; /* externally serialized cold-child lease */
 };
 /* PASSIVE_LEVEL only. Builds m1.11 FWIF memory but performs no MMIO. */

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "windows_stage.h"
+#include "windows_clock.h"
 #include "windows_uncached.h"
 #include "A04BR3RogueRuntimeRebase.h"
 #include "A04BR3RogueDeviceWords.h"
@@ -15,6 +16,8 @@ NTSTATUS a04_vendor_m1_11_windows_stage_uncached(struct a04_vendor_m1_11_memory 
     if (!m || !adapter || !image || KeGetCurrentIrql()!=PASSIVE_LEVEL || m->adapter ||
         m->runtime || m->staged || m->uncached || m->hardware_owned || m->render_owner) return STATUS_INVALID_PARAMETER;
     for (i=0;i<5;i++) if(m->allocation[i] || m->buffers[i].cpu) return STATUS_INVALID_PARAMETER;
+    status=mt8167_gpu_clock_read(&m->clock_hz,&m->clock_parent);
+    if(!NT_SUCCESS(status)) return status;
     m->adapter=adapter;
     step=2;
     m->runtime=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*m->runtime),0x72564741u);
@@ -47,7 +50,7 @@ NTSTATUS a04_vendor_m1_11_windows_stage_uncached(struct a04_vendor_m1_11_memory 
             a04_rgx_fw_overlap(m->buffers[i].dma,sizes[i],m->buffers[j].dma,sizes[j])) goto bad;
     }
     step=21;if(a04_vendor_m1_11_stage(image,bytes,shadow)) goto bad;
-    step=22;if(a04_rgx_fw_runtime_init(m->runtime,shadow[3].cpu,shadow[3].dma,shadow[4].cpu,shadow[4].dma,26000000u)) goto bad;
+    step=22;if(a04_rgx_fw_runtime_init(m->runtime,shadow[3].cpu,shadow[3].dma,shadow[4].cpu,shadow[4].dma,m->clock_hz)) goto bad;
     step=23;if(a04_rgx_fw_runtime_map((uint32_t *)shadow[0].cpu,A04_VENDOR_TABLE_BYTES/4,shadow[3].dma,shadow[4].dma)) goto bad;
     for(i=0;i<A04_VENDOR_CODE_BYTES/4096;i++) ((uint32_t *)shadow[0].cpu)[i]|=4u;
     shadow_trace=m->runtime->trace;

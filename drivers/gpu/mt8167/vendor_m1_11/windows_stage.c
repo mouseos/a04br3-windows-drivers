@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "windows_stage.h"
+#include "windows_clock.h"
 #include "A04BR3RogueRuntimeLayout.h"
 #include "../windows_hw.h"
 _Static_assert(sizeof(RGXFWIF_INIT)==592 && offsetof(RGXFWIF_INIT,bFirmwareStarted)==260,"m1.11 init ABI");
@@ -33,6 +34,8 @@ NTSTATUS a04_vendor_m1_11_windows_stage(struct a04_vendor_m1_11_memory *m,
        m->allocation[0] || m->allocation[1] || m->allocation[2] || m->allocation[3] || m->allocation[4] || m->runtime || !adapter->DmaOperations ||
        !adapter->DmaOperations->AllocateCommonBuffer || !adapter->DmaOperations->FreeCommonBuffer)
         return STATUS_INVALID_PARAMETER;
+    status=mt8167_gpu_clock_read(&m->clock_hz,&m->clock_parent);
+    if(!NT_SUCCESS(status)) return status;
     m->adapter=adapter;
     m->runtime=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*m->runtime),0x72564741u);
     if(!m->runtime) { status=STATUS_INSUFFICIENT_RESOURCES; goto fail; }
@@ -57,7 +60,7 @@ NTSTATUS a04_vendor_m1_11_windows_stage(struct a04_vendor_m1_11_memory *m,
     }
     if(a04_vendor_m1_11_stage(image,bytes,m->buffers)) goto fail;
     if(a04_rgx_fw_runtime_init(m->runtime,m->buffers[3].cpu,m->buffers[3].dma,
-            m->buffers[4].cpu,m->buffers[4].dma,26000000u) ||
+            m->buffers[4].cpu,m->buffers[4].dma,m->clock_hz) ||
        a04_rgx_fw_runtime_map((uint32_t *)m->buffers[0].cpu,A04_VENDOR_TABLE_BYTES/4,
             m->buffers[3].dma,m->buffers[4].dma)) goto fail;
     /* DDK allocation grants GPU write access to firmware code. */

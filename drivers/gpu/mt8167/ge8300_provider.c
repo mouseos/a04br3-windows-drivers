@@ -666,6 +666,8 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 #else
     else status=a04_vendor_m1_11_windows_stage(&c->vendor,adapter,image,bytes);
 #endif
+    GpuPrint("A04GPU CLOCK HZ=");GpuHex(c->vendor.clock_hz);
+    GpuPrint(" PARENT=");GpuHex(c->vendor.clock_parent);GpuPrint("\n");
     ExFreePoolWithTag(image,'0XGA');
 #if A04_GE8300_VENDOR_RENDER_COLD
     if(NT_SUCCESS(status)) {
