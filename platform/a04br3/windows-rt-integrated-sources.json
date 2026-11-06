@@ -151,5 +151,19 @@
     "uefi_firmware_built_here": false,
     "wdk_built_here": false,
     "hardware_verified_here": false
+  },
+  "engine_pcm_standalone_probe_candidate": {
+    "source_commit": "1e481ae55ea3a60036306e4a22f6edd91a99baff",
+    "mode": "normal Windows AudioSrv/WASAPI shared-mode only",
+    "build_entry": "tools/ci/build-mt8167-audio-engine-probe.ps1",
+    "program": "mt8167-audio-engine-probe.exe",
+    "automatic_registration": false,
+    "included_in_current_run26": false,
+    "tone_probe_replaced": false,
+    "recompiles_driver_sys": false,
+    "wdk_verified_here": false,
+    "hardware_verified_here": false,
+    "audible_verified": false,
+    "expected_driver_hashes_are_loaded_driver_proof": false
   }
 }

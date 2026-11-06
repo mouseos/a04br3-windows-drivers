@@ -167,3 +167,19 @@ Windows display INFは11/06/2026,0.0.1.3。brightnessの実機UI/物理応答・
 current run26は26d5520固定の既生成媒体のまま。この追加ソースをrun26の入力・バイナリ・
 manifestへ差し替えない。次のWDK/機種UEFI build候補としてsource pinだけを記録する。
 主担当が次のUEFI buildでbrightnessを有効にするかを決め、両flagとresource構成を一致させる。
+
+## 通常AudioSrv/WASAPI専用probeの次構成候補
+
+Herschelの1e481aeを新規C・単独build helper・READMEの3ファイルとして収録した。
+`tools/ci/build-mt8167-audio-engine-probe.ps1` はEXEだけを生成し、driver SYSを再compileしない。
+起動は引数なしの `mt8167-audio-engine-probe.exe`。EnginePcm候補向け通常Windows専用で、
+既存tone service・KS client・current run26媒体・自動登録へは追加しない。
+
+対象はDeviceTopology/InstanceIdでMT8167\AFEと確認したactive endpoint一つだけ。
+2回の独立WASAPI client lifetimeで固定PCMを送り、API完了・clock増加・DMA CUR観測を
+分けて記録する。default endpointへのfallbackや任意dispatcherはない。
+可聴は常に未確認、実kernel pin再openやDMA内容CRCを測定したとは扱わない。
+manifestのexpected SYS hashは回収bundleの期待値であり、実ロードdriverの照合結果ではない。
+通常OSのUART名が存在するとは仮定せず、diskログ/stdout/終了状態と通知失敗を区別する。
+WDK compile/link・実endpoint/API・実再生の確認は主担当が次構成で行う。
+詳細は `tools/audio/README-mt8167-audio-engine-probe.md` を参照。
