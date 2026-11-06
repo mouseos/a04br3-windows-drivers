@@ -30,10 +30,11 @@ int main(int argc,char **argv)
     static const char *const dirs[]={"system-origin","system","vendor","stage","deps",
         "capture","dev","proc","sys","apex","linkerconfig","lib","lib/firmware","sbin","bin","lib64","etc"};
     static const char *const inherited[]={"dev","proc","sys","apex","linkerconfig","sbin","bin","lib64","etc"};
-    unsigned i;
-    if(argc!=3 || strcmp(argv[1],"--run")){
-        fprintf(stderr,"usage: recovery-native-stage --run /tmp/fresh-stage\n");return 2;
+    unsigned i;int inspect;
+    if(argc!=3 || (strcmp(argv[1],"--run") && strcmp(argv[1],"--inspect"))){
+        fprintf(stderr,"usage: recovery-native-stage --run|--inspect /tmp/fresh-stage\n");return 2;
     }
+    inspect=!strcmp(argv[1],"--inspect");
     base=realpath(argv[2],0);
     if(!base || strncmp(base,"/tmp/",5) || geteuid()!=0){errno=EINVAL;fail("stage/root requirement");}
     umask(077);alarm(15);
@@ -45,6 +46,15 @@ int main(int argc,char **argv)
     /* A failure here occurs before any driver load, mount or GPU descriptor. */
     if(unshare(CLONE_NEWNS))fail("unshare mount namespace");
     if(mount(0,"/",0,MS_REC|MS_PRIVATE,0))fail("private mount propagation");
+    if(inspect){
+        char data[4096];size_t n;
+        path(target,base,"debugfs");directory(target);
+        if(mount("debugfs",target,"debugfs",MS_RDONLY|MS_NOSUID|MS_NODEV|MS_NOEXEC,0))fail("read-only debugfs");
+        path(source,target,"pvr/version");f=fopen(source,"r");if(!f)fail("pvr version");
+        while((n=fread(data,1,sizeof(data),f)))fwrite(data,1,n,stdout);
+        if(ferror(f))fail("read pvr version");
+        fclose(f);return 0;
+    }
     path(root,base,"root");directory(root);
     for(i=0;i<sizeof(dirs)/sizeof(dirs[0]);i++){path(target,root,dirs[i]);directory(target);}
     path(target,root,"system-origin");bind_dir("/system",target);
