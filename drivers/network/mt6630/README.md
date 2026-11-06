@@ -425,3 +425,20 @@ removal 時の I/O・IRQ 排出と PnP 資源寿命が、同一起動・同一�
 そのためこの変更は実 handoff や親 lease を実装したものではなく、親 Acquire は
 従来どおり拒否する。共有親の署名済み診断ビルドは D0 も既定で無効であり、
 実機 PnP・署名受理・UART 配送はいずれも未検証。
+
+### combo 停止確認と lease 解放
+
+CT3 の Linux 4.4 `drivers/misc/mediatek/connectivity/common/common_detect/wmt_detect_pwr.c`
+では MT6630 系の電源投入時に `RTC_GPIO_USER_GPS` で RTC 32 kHz を要求し、
+PMU・reset を順に操作する。同ファイルの停止では LDO・reset・PMU を下げる。
+`common_main/platform/wmt_plat_alps.c` も同じ RTC user を要求する。Linux の
+手順は Windows の排他所有、ファームウェア停止、基板上の信号到達を証明しない。
+`port/gsi/kernel-4.14/drivers/mfd/mt6397-misc.c` では RTC PDN1 の user bit と
+RTC_CON の共有状態を mutex で更新する。Windows の WACS lock は EL3 等との
+排他を保証しないため、そのまま引継ぎ証明には使えない。
+
+session 停止は IRQ と非同期 I/O の排出後、combo と firmware の停止を確認する
+`quiesce_combo` callback が成功した場合だけ MMIO unmap と親 release に進む。
+現行 WDF 接続には確認可能な provider がないため、その callback は拒否し、
+停止状態を隔離して lease と写像を保持する。host の注入 callback による成功・
+失敗の試験は実デバイスの停止根拠ではない。RTC の取得や放棄も有効化していない。

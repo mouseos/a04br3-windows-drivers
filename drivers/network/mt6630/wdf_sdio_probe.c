@@ -56,6 +56,8 @@ static int wifi_try_lock(void *p)
 { WIFI_CONTEXT *c=p; LARGE_INTEGER zero; zero.QuadPart=0;
  return KeWaitForSingleObject(&c->serial,Executive,KernelMode,FALSE,&zero)==STATUS_SUCCESS?0:-1; }
 static int wifi_no_other_io(void *p) { UNREFERENCED_PARAMETER(p); return 0; }
+/* No verified combo power-off/firmware stop provider is available yet. */
+static int wifi_combo_not_quiescent(void *p) { UNREFERENCED_PARAMETER(p); return -1; }
 static int wifi_firmware_poll(void *p)
 {
  struct a04_irq_firmware *f=p;int result=a04_irq_firmware_poll(f);
@@ -169,6 +171,7 @@ NTSTATUS WifiD0Entry(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
  if(!NT_SUCCESS(status)){wifi_unlock(c);return status;}
  c->session_irq.raw=&c->raw_irq;c->session_irq.translated=&c->translated_irq;
  c->session_irq.work=&c->irq_work;c->session_irq.context=c;c->session_irq.drain_io=wifi_no_other_io;
+ c->session_irq.quiesce_combo=wifi_combo_not_quiescent;
  if(a04_windows_session_irq_bind(&c->session_irq,&c->platform) ||
     a04_windows_session_start(&c->session,&c->parent,&c->platform,&c->raw_mem,&c->translated_mem,
       a04_wifi_wdf_ocr,a04_wifi_wdf_wmt_sha256,&a04_wifi_wdf_options)) {
