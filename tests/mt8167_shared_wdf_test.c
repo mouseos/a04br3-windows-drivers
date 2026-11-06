@@ -179,6 +179,14 @@ int main(void){
  assert(audio.VerifyLivePcm && audio.StartVoice && audio.StopVoice);
  assert(audio.VerifyLivePcm(audio.Header.Context,(PVOID)&audio,0x100000,8192)!=0);
  assert(audio.StartVoice(audio.Header.Context)!=0 && audio.StopVoice(audio.Header.Context)!=0 && !reads && !writes);
+ { int (*oldRead)(void *,uint16_t,uint16_t *)=testContext.classd.read16;
+   testContext.admissionClosed=0;testContext.audio.online=1;testContext.audio.leased=1;
+   testContext.pmic.online=1;testContext.classd.active=1;testContext.classd.read16=voiceReadGain;
+   testContext.codecDomain.held=1;testContext.audioAfe=&audio;voiceGainFail=1;
+   assert(audio.StartVoice(audio.Header.Context)!=0 && testContext.audio.poisoned && testContext.classd.poisoned && !writes);
+   voiceGainFail=0;testContext.admissionClosed=1;testContext.audio.online=0;testContext.audio.leased=0;testContext.audio.poisoned=0;
+   testContext.pmic.online=0;testContext.classd.active=0;testContext.classd.poisoned=0;testContext.classd.read16=oldRead;
+   testContext.codecDomain.held=0;testContext.audioAfe=NULL; }
 #endif
  assert(audio.PrepareMaskedIrq(audio.Header.Context,(PVOID)&audio,0x1000)!=0 && !reads && !writes);
  assert(wifi.Header.Version==2 && wifi.Acquire && wifi.ReleaseQuiescent && wifi.Live && wifi.UpdateShared && wifi.WriteShared);
