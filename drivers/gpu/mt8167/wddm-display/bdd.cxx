@@ -164,6 +164,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StartDevice(_In_  DXGK_START_INFO*   pDxgkStartIn
 #if A04_GE8300_WDDM_DIRECT_EXPERIMENT
     /* Absence of explicit OVL resources keeps the CPU display path working. */
     Status=m_DisplayResources.Start(m_pPhysicalDevice,&m_DeviceInfo);
+    A04DisplayTrace(0x3f,Status);
     if (!NT_SUCCESS(Status)) {
         DbgPrint("A04 display: direct resources unavailable: 0x%08lx\n",Status);
     }

@@ -2,39 +2,72 @@
 #include "BDD.hxx"
 #include "ge8300_display_resource_check.h"
 #include "present_tile.h"
+#include "ge8300_trace.hxx"
 #if A04_GE8300_WDDM_DIRECT_EXPERIMENT
 NTSTATUS A04DisplayResources::Start(PDEVICE_OBJECT pdo,const DXGK_DEVICE_INFO *info)
 {
-    PCM_RESOURCE_LIST list; PCM_PARTIAL_RESOURCE_LIST partial;
+    PCM_RESOURCE_LIST list; PCM_PARTIAL_RESOURCE_LIST partial; PCM_FULL_RESOURCE_DESCRIPTOR full;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR ovl=NULL,irq=NULL;
-    ULONG matches=0,interrupts=0,i;DEVICE_DESCRIPTION desc;
+    ULONG matches=0,interrupts=0,i,j,flags=0;DEVICE_DESCRIPTION desc;
+    /* Trace raw PnP metadata, never a kernel pointer or an MMIO read. */
+    flags=(pdo?1u:0u)|(info?2u:0u)|(info && info->PhysicalDeviceObject==pdo?4u:0u)|
+        (Adapter?8u:0u)|(Ovl?16u:0u)|((ULONG)KeGetCurrentIrql()<<8);
+    A04DisplayTrace(0x40,(NTSTATUS)flags);
     if (!pdo || !info || info->PhysicalDeviceObject!=pdo || Adapter || Ovl ||
         KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_INVALID_PARAMETER;
     list=info->TranslatedResourceList;
-    if (!list || list->Count!=1) return STATUS_DEVICE_CONFIGURATION_ERROR;
-    partial=&list->List[0].PartialResourceList;
-    for (i=0;i<partial->Count;i++) {
-        PCM_PARTIAL_RESOURCE_DESCRIPTOR item=&partial->PartialDescriptors[i];
-        if (item->Type==CmResourceTypeMemory &&
-            (ULONGLONG)item->u.Memory.Start.QuadPart==0x14007000ULL) { ovl=item; matches++; }
-        if (item->Type==CmResourceTypeInterrupt) { irq=item; interrupts++; }
+    A04DisplayTrace(0x41,(NTSTATUS)(list?list->Count:0xffffffffu));
+    if (!list || !list->Count || list->Count>16) return STATUS_DEVICE_CONFIGURATION_ERROR;
+    full=&list->List[0];
+    for(j=0;j<list->Count;j++) {
+        partial=&full->PartialResourceList;
+        A04DisplayTrace(0x42,(NTSTATUS)((j<<16)|(partial->Count&0xffffu)));
+        if(partial->Count>128)return STATUS_DEVICE_CONFIGURATION_ERROR;
+        for(i=0;i<partial->Count;i++) {
+            PCM_PARTIAL_RESOURCE_DESCRIPTOR item=&partial->PartialDescriptors[i];
+            if(i<16u) {
+                A04DisplayTrace(0x43,(NTSTATUS)((j<<24)|(i<<16)|((ULONG)item->ShareDisposition<<8)|item->Type));
+                if(item->Type==CmResourceTypeMemory) {
+                    A04DisplayTrace(0x44,(NTSTATUS)item->u.Memory.Start.LowPart);
+                    A04DisplayTrace(0x45,(NTSTATUS)item->u.Memory.Start.HighPart);
+                    A04DisplayTrace(0x46,(NTSTATUS)item->u.Memory.Length);
+                }
+            }
+            if (item->Type==CmResourceTypeMemory &&
+                (ULONGLONG)item->u.Memory.Start.QuadPart==0x14007000ULL) { ovl=item; matches++; }
+            if (item->Type==CmResourceTypeInterrupt) { irq=item; interrupts++; }
+        }
+        full=(PCM_FULL_RESOURCE_DESCRIPTOR)(void *)&partial->PartialDescriptors[partial->Count];
     }
+    flags=(matches&0xffu)|((interrupts&0xffu)<<8)|
+        (ovl && ovl->ShareDisposition==CmResourceShareDeviceExclusive?0x10000u:0u)|
+        (irq && irq->ShareDisposition==CmResourceShareDeviceExclusive?0x20000u:0u);
+    A04DisplayTrace(0x47,(NTSTATUS)flags);
     if (!ovl || !a04_display_resources_valid(matches,interrupts,
         ovl->ShareDisposition==CmResourceShareDeviceExclusive,
         irq && irq->ShareDisposition==CmResourceShareDeviceExclusive,
         (uint64_t)ovl->u.Memory.Start.QuadPart,ovl->u.Memory.Length))
         return STATUS_DEVICE_CONFIGURATION_ERROR;
-    /* A GPIO or unrelated ACPI PDO must never be substituted for the OVL PDO. */
+    /* OVL has one linear layer address, not a hardware SG descriptor list.
+     * GetScatterGatherList still works for a non-SG bus master: Windows must
+     * provide an appropriate contiguous mapping or reject the request. */
     RtlZeroMemory(&desc,sizeof(desc));desc.Version=DEVICE_DESCRIPTION_VERSION3;
-    desc.Master=TRUE;desc.ScatterGather=TRUE;desc.DmaAddressWidth=32;
+    desc.Master=TRUE;desc.ScatterGather=FALSE;desc.DmaAddressWidth=32;
     desc.InterfaceType=Internal;desc.MaximumLength=4096000;
     Adapter=IoGetDmaAdapter(pdo,&desc,&MapRegisters);
-    if (!Adapter || !Adapter->DmaOperations ||
-        Adapter->DmaOperations->Size<
-            FIELD_OFFSET(DMA_OPERATIONS,PutScatterGatherList)+sizeof(Adapter->DmaOperations->PutScatterGatherList) ||
-        !Adapter->DmaOperations->GetScatterGatherList || !Adapter->DmaOperations->PutScatterGatherList ||
-        MapRegisters<1000) { Stop(); return STATUS_NOT_SUPPORTED; }
+    flags=(Adapter?1u:0u)|(Adapter && Adapter->DmaOperations?2u:0u);
+    if(Adapter && Adapter->DmaOperations && Adapter->DmaOperations->Size>=
+        FIELD_OFFSET(DMA_OPERATIONS,PutScatterGatherList)+sizeof(Adapter->DmaOperations->PutScatterGatherList)) {
+        flags|=4u;
+        if(Adapter->DmaOperations->GetScatterGatherList)flags|=8u;
+        if(Adapter->DmaOperations->PutScatterGatherList)flags|=16u;
+        if(Adapter->DmaOperations->PutDmaAdapter)flags|=32u;
+    }
+    A04DisplayTrace(0x48,(NTSTATUS)flags);
+    A04DisplayTrace(0x49,(NTSTATUS)MapRegisters);
+    if ((flags&63u)!=63u || MapRegisters<1000) { Stop(); return STATUS_NOT_SUPPORTED; }
     Ovl=(volatile ULONG *)MmMapIoSpace(ovl->u.Memory.Start,0x1000,MmNonCached);
+    A04DisplayTrace(0x4a,Ovl?STATUS_SUCCESS:STATUS_INSUFFICIENT_RESOURCES);
     if (!Ovl) { Stop(); return STATUS_INSUFFICIENT_RESOURCES; }
     DisplayPdo=pdo;HasInterrupt=(interrupts==1);
     return STATUS_SUCCESS;
