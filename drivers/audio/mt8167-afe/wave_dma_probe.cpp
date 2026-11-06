@@ -1,5 +1,15 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "wave_dma_probe.h"
+static void WaveDmaBarrier()
+{
+#if defined(__clang__) && defined(_ARM_)
+    __asm__ volatile ("" ::: "memory");
+    __builtin_arm_dmb(15);
+    __asm__ volatile ("" ::: "memory");
+#else
+    KeMemoryBarrier();
+#endif
+}
 #define WAVE_DMA_TAG 'pDaM'
 struct WaveProbe {
     volatile LONG refs;
@@ -37,7 +47,7 @@ NTSTATUS Mt8167ProbeWaveDma(PDMA_ADAPTER adapter,PDEVICE_OBJECT pdo,PMDL mdl,ULO
     /* This is before the MDL is returned to the client; no concurrent CPU
      * writes are admitted during the packet-DMA mapping probe. */
     KeFlushIoBuffers(mdl,FALSE,TRUE);
-    KeMemoryBarrier();
+    WaveDmaBarrier();
     KeRaiseIrql(DISPATCH_LEVEL,&oldIrql);
     result=adapter->DmaOperations->GetScatterGatherList(adapter,pdo,mdl,MmGetMdlVirtualAddress(mdl),
              bytes,ProbeCallback,p,TRUE);

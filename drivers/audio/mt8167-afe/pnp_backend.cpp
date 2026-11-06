@@ -50,6 +50,12 @@ extern "C" int Mt8167SilentDmaMiniportEnabled(void);
 #endif
 #include "wave_dma_probe.h"
 #endif
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+#if !defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) || !A04_AUDIO_VOICE_PCM_DIAGNOSTIC || (defined(A04_AUDIO_WAVE_DMA_PROBE) && A04_AUDIO_WAVE_DMA_PROBE)
+#error retained wave DMA requires voice PCM and excludes the mapping probe
+#endif
+#include "wave_dma_live.h"
+#endif
 #define OWNER_TAG 'OwnA'
 struct Mt8167PnpBackend {
     Mt8167StreamBackend iface;
@@ -64,6 +70,9 @@ struct Mt8167PnpBackend {
     Mt8167CommonDma buffer;
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
     PMDL waveMdl; PVOID waveMapping; ULONG waveBytes; BOOLEAN waveProbePending;
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+    Mt8167WaveDma waveDma; BOOLEAN waveReleased;
+#endif
 #endif
 #if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
     Mt8167CommonDma silentBuffer;
@@ -187,6 +196,27 @@ static NTSTATUS OwnerBindWave(void *ctx,PMDL mdl,PVOID mapping,ULONG bytes) {
     OwnerLock(o);
     if(o->online && !o->waveMdl && !o->shared.quarantined) {
         o->waveMdl=mdl;o->waveMapping=mapping;o->waveBytes=bytes;result=STATUS_SUCCESS;
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+        if(!o->shared.leased || !o->parentClient.parent.VerifyLivePcm ||
+           !o->parentClient.parent.VerifyDmaDrained || !o->parentClient.parent.StartVoice ||
+           !o->parentClient.parent.StopVoice) result=STATUS_DEVICE_NOT_READY;
+        else {
+            result=Mt8167WaveDmaMap(o->adapter,o->pdo,mdl,bytes,&o->waveDma);
+            if(NT_SUCCESS(result) && o->parentClient.parent.VerifyLivePcm(
+               o->parentClient.parent.Header.Context,mdl,(uint64_t)o->waveDma.logical.QuadPart,bytes)) {
+                result=NT_SUCCESS(Mt8167WaveDmaRelease(&o->waveDma,FALSE)) ? STATUS_DEVICE_NOT_READY : STATUS_IO_TIMEOUT;
+            }
+            if(NT_SUCCESS(result)) {
+                o->buffer.adapter=o->adapter;o->buffer.cpu=mapping;o->buffer.mdl=mdl;
+                o->buffer.logical=o->waveDma.logical;o->buffer.size=bytes;
+                o->buffer.prepared=FALSE;o->buffer.exposed=FALSE;o->waveReleased=FALSE;
+            }
+        }
+        if(result==STATUS_IO_TIMEOUT) {
+            o->waveProbePending=TRUE;
+            if(!o->shared.quarantined)(void)mt8167_audio_shared_quarantine(&o->shared);
+        } else if(!NT_SUCCESS(result)) {o->waveMdl=NULL;o->waveMapping=NULL;o->waveBytes=0;}
+#endif
 #if defined(A04_AUDIO_WAVE_DMA_PROBE) && A04_AUDIO_WAVE_DMA_PROBE
         result=Mt8167ProbeWaveDma(o->adapter,o->pdo,mdl,bytes);
         if(result==STATUS_IO_TIMEOUT) {
@@ -203,8 +233,16 @@ static NTSTATUS OwnerUnbindWave(void *ctx,PMDL mdl) {
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);NTSTATUS result=STATUS_DEVICE_NOT_READY;
     if(!o || !mdl || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
     OwnerLock(o);
-    if(o->waveMdl==mdl && !o->waveProbePending && !o->shared.quarantined && o->transport.state!=AUDIO_RUNNING) {
-        o->waveMdl=NULL;o->waveMapping=NULL;o->waveBytes=0;result=STATUS_SUCCESS;
+    if(o->waveMdl==mdl && !o->waveProbePending && o->transport.state!=AUDIO_RUNNING) {
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+        if(o->waveReleased || (!o->buffer.exposed && o->waveDma.list &&
+           NT_SUCCESS(Mt8167WaveDmaRelease(&o->waveDma,FALSE)))) {
+            RtlZeroMemory(&o->buffer,sizeof(o->buffer));
+            o->waveMdl=NULL;o->waveMapping=NULL;o->waveBytes=0;result=STATUS_SUCCESS;
+        }
+#else
+        if(!o->shared.quarantined) {o->waveMdl=NULL;o->waveMapping=NULL;o->waveBytes=0;result=STATUS_SUCCESS;}
+#endif
     }
     OwnerUnlock(o);return result;
 }
@@ -228,6 +266,11 @@ static BOOLEAN OwnerLiveDmaVerified(Mt8167PnpBackend *o)
 #endif
     o->transport.dma=&o->silentBuffer;
     return TRUE;
+#elif defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+    if(!o || !o->waveDma.list || !o->waveMdl || o->waveDma.exposed ||
+       !o->parentClient.parent.VerifyLivePcm || o->parentClient.parent.VerifyLivePcm(
+       o->parentClient.parent.Header.Context,o->waveMdl,(uint64_t)o->waveDma.logical.QuadPart,o->waveBytes))return FALSE;
+    o->transport.dma=&o->buffer;return TRUE;
 #elif defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
     /* PortCls pages require a DMA adapter mapping with a device logical
      * address and retained map registers. That mapping is not implemented. */
@@ -256,6 +299,10 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
         /* The owner mutex serializes PnP revoke. Quarantine on every
          * attempted voice operation, including a failed DMA preparation. */
         if (!o->parentClient.parent.StartVoice(o->parentClient.parent.Header.Context)) {
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+            /* Exposure precedes any synchronized DL1 register writes. */
+            o->waveDma.exposed=TRUE;
+#endif
             if (!Mt8167TransportStartMaskedParent(&o->transport,o->buffer.size/2,&o->shared)) {
                 if(o->parentClient.parent.UnmuteMin(o->parentClient.parent.Header.Context))
                     (void)OwnerStopRunning(o);
@@ -300,9 +347,17 @@ static NTSTATUS OwnerStopRunning(Mt8167PnpBackend *o)
     int mute=o->parentClient.parent.Mute(o->parentClient.parent.Header.Context);
     int stop=Mt8167TransportStop(&o->transport);
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
-    if (!mute && !stop && o->parentClient.parent.StopVoice &&
-        !o->parentClient.parent.StopVoice(o->parentClient.parent.Header.Context))return STATUS_SUCCESS;
-    return STATUS_DEVICE_NOT_READY;
+    if(mute || stop || !o->parentClient.parent.StopVoice)return STATUS_DEVICE_NOT_READY;
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+    if(!o->parentClient.parent.VerifyDmaDrained ||
+       o->parentClient.parent.VerifyDmaDrained(o->parentClient.parent.Header.Context))return STATUS_DEVICE_NOT_READY;
+#endif
+    if(o->parentClient.parent.StopVoice(o->parentClient.parent.Header.Context))return STATUS_DEVICE_NOT_READY;
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+    if(!NT_SUCCESS(Mt8167WaveDmaRelease(&o->waveDma,TRUE)))return STATUS_DEVICE_NOT_READY;
+    RtlZeroMemory(&o->buffer,sizeof(o->buffer));o->waveReleased=TRUE;
+#endif
+    return STATUS_SUCCESS;
 #else
     return !mute && !stop ? STATUS_SUCCESS : STATUS_DEVICE_NOT_READY;
 #endif

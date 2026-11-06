@@ -176,7 +176,8 @@ int main(void){
  assert(input.Version==1 && input.TouchPen && input.ButtonPmicRead);
  assert(audio.Header.Version==A04_SHARED_AUDIO_INTERFACE_VERSION && audio.AcquireMuted && audio.ReleaseQuiescent && audio.PrepareMaskedIrq && audio.BindAfe && audio.Mute && audio.UnmuteMin);
 #if A04_SHARED_VOICE_PCM_DIAGNOSTIC
- assert(audio.VerifyLivePcm && audio.StartVoice && audio.StopVoice);
+ assert(audio.VerifyLivePcm && audio.StartVoice && audio.StopVoice && audio.VerifyDmaDrained);
+ assert(audio.VerifyDmaDrained(audio.Header.Context)!=0);
  assert(audio.VerifyLivePcm(audio.Header.Context,(PVOID)&audio,0x100000,8192)!=0);
  assert(audio.StartVoice(audio.Header.Context)!=0 && audio.StopVoice(audio.Header.Context)!=0 && !reads && !writes);
  { int (*oldRead)(void *,uint16_t,uint16_t *)=testContext.classd.read16;

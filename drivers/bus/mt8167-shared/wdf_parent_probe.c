@@ -463,6 +463,11 @@ static int ParentVoiceOperation(PVOID context,int start) {
 }
 static int ParentStartVoice(PVOID context) { return ParentVoiceOperation(context,1); }
 static int ParentStopVoice(PVOID context) { return ParentVoiceOperation(context,0); }
+static int ParentVerifyDmaDrained(PVOID context) {
+    UNREFERENCED_PARAMETER(context);
+    /* DL1 disable/IRQ readback alone does not prove fabric or DMA drain. */
+    return -1;
+}
 static int ParentVerifyLivePcm(PVOID context,PVOID mdl,uint64_t logical,ULONG size) {
     UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(mdl);
     UNREFERENCED_PARAMETER(logical);UNREFERENCED_PARAMETER(size);
@@ -1131,7 +1136,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     audioIface.Header.Context=dev;audioIface.Header.InterfaceReference=ParentInterfaceReference;
     audioIface.Header.InterfaceDereference=ParentInterfaceDereference;
     #if A04_SHARED_VOICE_PCM_DIAGNOSTIC
-    audioIface.VerifyLivePcm=ParentVerifyLivePcm;audioIface.StartVoice=ParentStartVoice;audioIface.StopVoice=ParentStopVoice;
+    audioIface.VerifyDmaDrained=ParentVerifyDmaDrained;audioIface.VerifyLivePcm=ParentVerifyLivePcm;audioIface.StartVoice=ParentStartVoice;audioIface.StopVoice=ParentStopVoice;
 #endif
     audioIface.BindAfe=ParentBindAfe;audioIface.Mute=ParentAudioMute;audioIface.UnmuteMin=ParentAudioUnmute;audioIface.AcquireMuted=ParentAudioAcquire;audioIface.ReleaseQuiescent=ParentAudioRelease;audioIface.PrepareMaskedIrq=ParentAudioPrepareIrq;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&audioIface,&A04SharedAudioInterfaceGuid,NULL);

@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 typedef void VOID;typedef void *PVOID;typedef int32_t NTSTATUS,LONG;typedef uint32_t ULONG;typedef uint8_t BOOLEAN,KIRQL;typedef uint64_t ULONGLONG;
 typedef struct { int64_t QuadPart; } PHYSICAL_ADDRESS,LARGE_INTEGER;
 typedef struct { ULONG size,offset; PVOID address; } MDL,*PMDL;
@@ -36,6 +37,9 @@ typedef struct { int signaled; } KEVENT;
 extern int probe_allocated,probe_flushes;
 inline PVOID ExAllocatePoolWithTag(int,size_t n,ULONG){probe_allocated++;return malloc(n);}
 inline void ExFreePoolWithTag(PVOID p,ULONG){probe_allocated--;free(p);}
+#define STATUS_DEVICE_BUSY (-5)
+#define RtlZeroMemory(p,n) memset(p,0,n)
+inline LONG InterlockedCompareExchange(volatile LONG *p,LONG v,LONG expected){return __sync_val_compare_and_swap(p,expected,v);}
 inline LONG InterlockedDecrement(volatile LONG *p){return __sync_sub_and_fetch(p,1);}
 inline void KeFlushIoBuffers(PMDL,int read,int dma){if(!read && dma)probe_flushes++;}
 inline void KeMemoryBarrier(){}

@@ -3,12 +3,25 @@
 #include <thread>
 #include "pnp_backend.h"
 #include "stream_transport.h"
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+#include "wave_dma_live.h"
+static int dmaMaps,dmaReleases,drainProven;
+NTSTATUS Mt8167WaveDmaMap(PDMA_ADAPTER a,PDEVICE_OBJECT p,PMDL m,ULONG n,Mt8167WaveDma *out){assert(a && p && m && n==8192);dmaMaps++;
+#if defined(A04_TEST_RETAINED_TIMEOUT) && A04_TEST_RETAINED_TIMEOUT
+ return STATUS_IO_TIMEOUT;
+#endif
+ out->adapter=a;out->list=reinterpret_cast<PSCATTER_GATHER_LIST>(1);out->logical.QuadPart=0x100000;out->bytes=n;return STATUS_SUCCESS;}
+NTSTATUS Mt8167WaveDmaRelease(Mt8167WaveDma *m,BOOLEAN drained){assert(m && m->list);if(m->exposed && !drained)return STATUS_DEVICE_BUSY;dmaReleases++;*m={};return STATUS_SUCCESS;}
+#endif
 #if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
 #include "audio_parent_query.h"
 static int parent_refs,query_failure,malformed;
 static int parent_grant,parent_prepare_fail,parent_prepares,parent_releases,parent_release_fail;
 static PVOID parent_afe;
 static int parent_mute(PVOID){return 0;}
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+static int parent_drained(PVOID){return !drainProven;}
+#endif
 static int parent_unmutes;
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
 static int live_verified,voice_starts,voice_stops;
@@ -55,6 +68,9 @@ extern "C" NTSTATUS Mt8167QueryAudioParent(PDEVICE_OBJECT p,A04_SHARED_AUDIO_INT
  out->Header.InterfaceReference=parent_ref;out->Header.InterfaceDereference=parent_deref;
  #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
  out->VerifyLivePcm=verify_pcm;out->StartVoice=voice_start;out->StopVoice=voice_stop;
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+ out->VerifyDmaDrained=parent_drained;
+#endif
 #endif
  out->AcquireMuted=malformed?nullptr:parent_acquire;out->ReleaseQuiescent=parent_release;out->PrepareMaskedIrq=parent_prepare;out->BindAfe=parent_bind;out->Mute=parent_mute;out->UnmuteMin=parent_unmute;parent_refs++;return STATUS_SUCCESS;
 }
@@ -189,7 +205,27 @@ int main(){
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
  { _MDL portMdl{data,8192};BOOLEAN exposed=TRUE; (void)exposed;
    assert(api->bindWaveBuffer && api->unbindWaveBuffer);
-#if defined(A04_TEST_PROBE_TIMEOUT) && A04_TEST_PROBE_TIMEOUT
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+#if defined(A04_TEST_RETAINED_TIMEOUT) && A04_TEST_RETAINED_TIMEOUT
+   assert(api->bindWaveBuffer(api->context,&portMdl,data,8192)==STATUS_IO_TIMEOUT && dmaMaps==1 && !dmaReleases);
+   assert(api->unbindWaveBuffer(api->context,&portMdl)==STATUS_DEVICE_NOT_READY);
+   Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);api->dereference(api->context);
+   assert(!freed && !puts && parent_refs==2 && test_pdo_refs==1);return 0;
+#else
+   assert(api->bindWaveBuffer(api->context,&portMdl,data,8192)==STATUS_DEVICE_NOT_READY && dmaMaps==1 && dmaReleases==1);
+   live_verified=1;assert(!api->bindWaveBuffer(api->context,&portMdl,data,8192) && dmaMaps==2 && dmaReleases==1);
+   assert(!api->start(api->context,&exposed) && exposed && voice_starts==1 && parent_unmutes==1 && dmaReleases==1);
+#if defined(A04_TEST_DRAIN_ACCEPTED) && A04_TEST_DRAIN_ACCEPTED
+   drainProven=1;assert(!api->stop(api->context) && dmaReleases==2 && voice_stops==1);
+   assert(!api->unbindWaveBuffer(api->context,&portMdl));
+#else
+   assert(api->stop(api->context)==STATUS_DEVICE_NOT_READY && dmaReleases==1 && !voice_stops);
+   assert(api->unbindWaveBuffer(api->context,&portMdl)==STATUS_DEVICE_NOT_READY);
+#endif
+   Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);api->dereference(api->context);
+   assert(!freed && !puts && parent_refs==2 && test_pdo_refs==1);return 0;
+#endif
+#elif defined(A04_TEST_PROBE_TIMEOUT) && A04_TEST_PROBE_TIMEOUT
    assert(api->bindWaveBuffer(api->context,&portMdl,data,8192)==STATUS_IO_TIMEOUT && probeCalls==1);
    assert(api->unbindWaveBuffer(api->context,&portMdl)==STATUS_DEVICE_NOT_READY);
    Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);api->dereference(api->context);

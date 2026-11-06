@@ -62,9 +62,18 @@ int main(){
  assert(mdl==&p.mdl && mdl!=&b.mdl);
 #endif
  assert(!st->SetState(KSSTATE_RUN));KSAUDIO_POSITION position{};assert(!st->GetPosition(&position) && position.PlayOffset==4);
- assert(!st->SetState(KSSTATE_STOP));st->FreeAudioBuffer(mdl,actual);assert(!b.frees);
+ assert(!st->SetState(KSSTATE_STOP));st->FreeAudioBuffer(mdl,actual);
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+ assert(b.frees==1);
+#else
+ assert(!b.frees);
+#endif
  assert(st->SetState(KSSTATE_RUN)==STATUS_DEVICE_NOT_READY);st->Release();m->Release();
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+ assert(!b.refs && b.starts==1 && b.stops==1 && b.frees==1);
+#else
  assert(b.refs==1 && b.starts==1 && b.stops==1 && !b.frees);
+#endif
  Back b2{};b2.fail=true;backend.context=&b2;assert(!Mt8167NewMiniportWithBackend(&m,&backend));
  assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat));assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
  assert(st->SetState(KSSTATE_RUN)==STATUS_DEVICE_NOT_READY);st->FreeAudioBuffer(mdl,actual);st->Release();m->Release();

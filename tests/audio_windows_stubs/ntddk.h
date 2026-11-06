@@ -72,6 +72,9 @@ typedef struct {int64_t QuadPart;} PHYSICAL_ADDRESS;
 struct _MDL { void *address; ULONG size; }; typedef _MDL *PMDL;
 #define MmGetMdlByteOffset(p) 0u
 #define MmGetMdlByteCount(p) ((p)->size)
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+struct _SCATTER_GATHER_LIST; typedef _SCATTER_GATHER_LIST *PSCATTER_GATHER_LIST;
+#endif
 struct _DMA_ADAPTER; typedef _DMA_ADAPTER *PDMA_ADAPTER;
 struct _DMA_OPERATIONS {
  void (*PutDmaAdapter)(PDMA_ADAPTER);

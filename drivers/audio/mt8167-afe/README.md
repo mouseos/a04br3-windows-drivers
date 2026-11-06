@@ -404,3 +404,22 @@ segments, timeout and PnP/WaveRT retention; no target execution is claimed.
 The packet-DMA API's CPU-access restrictions preclude using this short-lived
 probe as proof of continuous WaveRT ring coherence. The result is not kept as
 an AFE logical address and does not establish the next mapping's address.
+
+`A04_AUDIO_WAVE_DMA_RETAINED=1` is a separate default-off experimental path.
+It uses the DMA adapter mapping for the PortCls MDL and retains its scatter-
+gather list and map registers through RUN. The parent must first prove the
+mapping and Windows/board cache contract, including CPU writes during playback;
+the real parent rejects this verification. On stop the PnP backend requests
+mute, stops DL1 and disconnects IRQ, then requires an independent parent DMA
+and fabric drain proof before stopping Voice and returning the mapping through
+`PutScatterGatherList`. The real parent rejects that drain check. An exposed
+mapping is retained if any operation fails or drain is unknown; a timed-out
+mapping request also retains the MDL/adapter while its callback may arrive.
+Only a successful verified stop permits WaveRT to unbind and free its pages.
+
+This code path has host tests, not device proof. A packet-DMA scatter/gather
+mapping does not by itself establish that CPU access to a continuously updated
+WaveRT ring is supported; the verified parent contract must establish this
+independently. Neither DL1 disable nor IRQ disconnect is treated as drain.
+PnP surprise removal and the OS resource lifetime after quarantine remain
+unproven. No real parent callback admits this path and no playback is claimed.

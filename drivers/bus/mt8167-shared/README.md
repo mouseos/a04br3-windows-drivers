@@ -478,3 +478,9 @@ programs DL1 from `runtime->dma_addr` and `dma_bytes`, not from a generic CPU
 physical-page query. UniXNU's checked-in `package/wifi/network/apple/IOEthernetController.cpp`
 uses IODMACommand's mapped IOVM address for network packets; this is a separate
 XNU subsystem and does not establish the Windows or AFE mapping contract.
+
+Audio interface version 9 adds an independent `VerifyDmaDrained` callback.
+The actual parent unconditionally rejects it: a disabled DL1 bit and interrupt
+rundown do not prove that outstanding fabric transactions have completed.
+The existing live PCM verification also rejects, so the retained-map PnP path
+cannot be enabled merely by setting its diagnostic build flag.
