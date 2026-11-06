@@ -105,3 +105,28 @@ under the shared-parent mutex and a future implementation must define lock
 ordering and watchdog lifetime without reentering the parent.
 Sources: [TI BQ24160 datasheet](https://www.ti.com/lit/ds/symlink/bq24160.pdf),
 [Linux USB host](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/drivers/misc/mediatek/usb20/mt8167/usb20_host.c).
+
+## Guarded Windows source and session ordering
+
+The shared-parent WDF source can now register a board-specific GPIO22 source
+provider with `A04_USB_GPIO22_SOURCE_EXPERIMENT=1` (default 0). It requires
+the experimental shared query, child topology, button D0 and APMIXED resource.
+The provider checks ID41 low and USB-detect34 inactive before permitting the
+existing owner to raise GPIO22; health polls also check ID and overcurrent,
+and faults stop the MUSB session. The off path lowers GPIO22 before releasing
+the source lease. It makes no BQ24160 writes: the a04br3 Linux defconfig selects
+BQ24160 and the vendor `tbl_charger_otg_vbus` has no BQ24160 branch. GPIO22
+being an actual 5 V source enable, GPIO34 electrical behavior, ID/overcurrent
+polarity, pinmux and protection are not established by these software facts.
+The experiment is not authorized by detecting the flags alone and must remain
+disabled until the board wiring and exclusive ownership are established.
+
+The HID diagnostic now prepares clocks/PHY, arms and clears IRQs, and only
+then starts VBUS and the MUSB session; previously arm cleared CONNECT after
+the device could already have connected. The lock keeps queued IRQ work from
+starting enumeration before startup completes. This remains a direct boot
+keyboard diagnostic, not a general Windows USB host controller/root hub.
+An absent host cable or detected external VBUS rejects D0; hotplug retry,
+actual PnP binding, signed package, IRQ delivery, electrical VBUS and keyboard
+operation remain unverified. `make test-mt8167-usb-source` exercises the actual
+parent callbacks with stub MMIO, not hardware.

@@ -13,9 +13,8 @@ void A04UsbHostStop(const A04_USB_BOARD *b)
  phy_update(b,0x6c,0x2e,0x10); phy_update(b,0x6d,0,0x3e);
  (void)b->vbus(b->context,0); (void)b->power(b->context,0);
 }
-int A04UsbHostStart(const A04_USB_BOARD *b)
+int A04UsbHostPrepare(const A04_USB_BOARD *b)
 {
- unsigned char v;
  if(!valid(b) || b->power(b->context,1))return -1;
  /* Restore USB function and release forced suspend after the shared parent
   * has enabled VUSB and clocks. Offsets are relative to SIF+0x800. */
@@ -27,7 +26,12 @@ int A04UsbHostStart(const A04_USB_BOARD *b)
  phy_update(b,0x1a,0x80,0x10); phy_update(b,0x18,0x08,0x06);
  b->delay_ms(b->context,1);
  phy_update(b,0x6c,0x10,0x2e); phy_update(b,0x6d,0,0x3e);
- if(b->vbus(b->context,1)) { A04UsbHostStop(b); return -1; }
+ return 0;
+}
+int A04UsbHostRun(const A04_USB_BOARD *b)
+{
+ unsigned char v;
+ if(!valid(b) || b->vbus(b->context,1))return -1;
  b->delay_ms(b->context,100);
  v=b->mac_read(b->context,DEVCTL); b->mac_write(b->context,DEVCTL,(unsigned char)(v&~1u));
  phy_update(b,0x6c,0x2e,0x10); phy_update(b,0x6d,0,0x3e);
@@ -36,5 +40,11 @@ int A04UsbHostStart(const A04_USB_BOARD *b)
  b->delay_ms(b->context,5);
  v=b->mac_read(b->context,DEVCTL); b->mac_write(b->context,DEVCTL,(unsigned char)(v|1u));
  phy_update(b,0x6c,0x10,0x2c); phy_update(b,0x6d,0,0x3e);
+ return 0;
+}
+int A04UsbHostStart(const A04_USB_BOARD *b)
+{
+ if(A04UsbHostPrepare(b))return -1;
+ if(A04UsbHostRun(b)){A04UsbHostStop(b);return -1;}
  return 0;
 }
