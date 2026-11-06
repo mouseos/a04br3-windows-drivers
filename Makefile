@@ -5,7 +5,13 @@ SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test test-thermal test-ntfs-root arm-coff clean
 
-test: test-mt6392-classd-wacs-integration test-mt8167-shared-alias-diagnostic test-mt6392-speaker-clock test-mt6392-wacs-write test-mt6392-classd test-mt8167-shared-apmixed test-mt8167-audio-owner test-mt8167-shared-button-d0 test-mt8167-button-parent-contract test-mt8167-pnp-masked-irq test-mt8167-audio-irq-integration test-mt8167-afe-mapping test-mt8167-audio-parent-query test-mt8167-audio-parent-client test-mt8167-audio-child-resources test-mt8167-pnp-parent test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registration test-mt8167-wavert-miniport test-mt8167-audio-resource
+test: test-mt8167-codec-adc-probe test-mt6392-classd-wacs-integration test-mt8167-shared-alias-diagnostic test-mt6392-speaker-clock test-mt6392-wacs-write test-mt6392-classd test-mt8167-shared-apmixed test-mt8167-audio-owner test-mt8167-shared-button-d0 test-mt8167-button-parent-contract test-mt8167-pnp-masked-irq test-mt8167-audio-irq-integration test-mt8167-afe-mapping test-mt8167-audio-parent-query test-mt8167-audio-parent-client test-mt8167-audio-child-resources test-mt8167-pnp-parent test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registration test-mt8167-wavert-miniport test-mt8167-audio-resource
+
+test-mt8167-codec-adc-probe: build/mt8167_codec_adc_probe_test
+	./build/mt8167_codec_adc_probe_test
+build/mt8167_codec_adc_probe_test: drivers/bus/mt8167-shared/codec_adc_probe.c drivers/bus/mt8167-shared/codec_adc_probe.h drivers/bus/mt8167-shared/codec_calibration.h tests/mt8167_codec_adc_probe_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared drivers/bus/mt8167-shared/codec_adc_probe.c tests/mt8167_codec_adc_probe_test.c -o $@
 test: build/gpu_mmu_multileaf_test test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registration test-mt8167-wavert-miniport test-mt8167-audio-resource
 test: test-mma8652 build/msdc_resume_check_test build/msdc_resume_capture_test
 test: build/bq24160_owner_broker_test

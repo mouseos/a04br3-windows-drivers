@@ -67,6 +67,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $env:A04_AUDIO_CHILD_RESOURCES='1'
+          $env:A04_AUDIO_DIAGNOSTIC_TRACE='1'
           $env:A04_SHARED_BUTTON_D0_EXPERIMENT='1'
           $env:A04_SHARED_APMIXED_RESOURCE='1'
           $env:A04_SHARED_MT6392_DIAGNOSTIC='1'
@@ -82,6 +83,25 @@ jobs:
           $env:A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC='1'
           ./tools/ci/build-msdc-parent-probe.ps1
           ./tools/ci/build-mt8167-audio-portcls.ps1
+      - name: Stage non-installable audio diagnostics build checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:RUNNER_TEMP 'a04-audio-buildchecks'
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          $inputs = @(
+            (Join-Path $env:RUNNER_TEMP 'a04-msdc-parent-probe\mt8167-shared.sys'),
+            (Join-Path $env:RUNNER_TEMP 'a04-msdc-parent-probe\codec_adc_probe.obj'),
+            (Join-Path $env:TEMP 'a04-mt8167-portcls\mt8167-audio-retained-buildcheck.sys')
+          )
+          foreach ($file in $inputs) { if (!(Test-Path $file)) { throw "Missing build check: $file" }; Copy-Item $file $stage }
+          $hashes = @(Get-ChildItem $stage -File | ForEach-Object { @{ name=$_.Name; sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash } })
+          @{ source_commit=(git rev-parse HEAD); installable=$false; purpose='unsigned build checks only; ADC object is not linked to the parent'; files=$hashes } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 (Join-Path $stage 'manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a04-audio-noninstallable-buildchecks
+          path: ${{ runner.temp }}\a04-audio-buildchecks
+          if-no-files-found: error
       - name: Build gated USB host and GPIO22 source
         shell: pwsh
         run: |

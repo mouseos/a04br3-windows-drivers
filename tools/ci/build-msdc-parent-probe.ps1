@@ -9,6 +9,8 @@ $temp=if($env:RUNNER_TEMP){$env:RUNNER_TEMP}else{$env:TEMP}
 $out=Join-Path $temp 'a04-msdc-parent-probe'
 New-Item -ItemType Directory -Force $out|Out-Null
 $src=Join-Path $root 'drivers\bus\mt8167-shared'
+& clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c (Join-Path $src 'codec_adc_probe.c') -o (Join-Path $out 'codec_adc_probe.obj')
+if($LASTEXITCODE -ne 0){throw 'Codec ADC acquisition ARM32 compilation failed'}
 $audioResources=if($env:A04_AUDIO_CHILD_RESOURCES -eq '1'){'1'}else{'0'}
 $irqPrep=if($env:A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC -eq '1'){'1'}else{'0'}
 $afeClock=if($env:A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC -eq '1'){'1'}else{'0'}
