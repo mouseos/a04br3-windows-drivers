@@ -167,6 +167,17 @@ int main(int argc,char **argv)
         start.shutdown_started=FALSE;simulate_power_denied=0;m.runtime->trace->ePowState=RGXFWIF_POW_ON;
         assert(a04_vendor_m1_11_windows_forced_power_off(&start,TRUE,&idle)==STATUS_SUCCESS);
         assert(idle==STATUS_SUCCESS && idle_count==3 && forced_off_count==2 && start.shutdown_started && start.power_off_ack && !start.online && m.hardware_owned);
+        {
+            struct a04_vendor_irq_snapshot after_off={0};
+            assert(a04_vendor_m1_11_windows_irq_snapshot(&start,TRUE,&after_off)==STATUS_SUCCESS);
+            assert(after_off.valid && after_off.count==7);
+            start.power_off_ack=FALSE;
+            assert(a04_vendor_m1_11_windows_irq_snapshot(&start,TRUE,&after_off)==STATUS_DEVICE_NOT_READY);
+            start.power_off_ack=TRUE;
+            m.runtime->fctl->ui32WriteOffset=(m.runtime->fctl->ui32ReadOffset+1u)&31u;
+            assert(a04_vendor_m1_11_windows_irq_snapshot(&start,TRUE,&after_off)==STATUS_DEVICE_BUSY);
+            m.runtime->fctl->ui32WriteOffset=m.runtime->fctl->ui32ReadOffset;
+        }
         start.shutdown_started=FALSE;start.power_off_ack=FALSE;start.online=TRUE;
         simulate_fence=0;m.runtime->trace->ePowState=RGXFWIF_POW_ON;
         assert(a04_vendor_m1_11_windows_forced_power_off(&start,TRUE,&idle)==STATUS_IO_TIMEOUT);

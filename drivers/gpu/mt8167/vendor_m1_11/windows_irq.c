@@ -104,3 +104,10 @@ void a04_vendor_irq_flush(struct a04_vendor_irq *q)
         WdfWorkItemFlush(q->work);
     }
 }
+
+BOOLEAN a04_vendor_irq_work_drained(struct a04_vendor_irq *q)
+{
+    if(!q || !q->core || !InterlockedCompareExchange(&q->powered,0,0)) return FALSE;
+    return InterlockedCompareExchange(&q->work_busy,0,0)==0 &&
+        InterlockedCompareExchange(&q->sequence,0,0)==InterlockedCompareExchange(&q->serviced,0,0);
+}

@@ -20,7 +20,7 @@ NTSTATUS a04_vendor_m1_11_windows_irq_snapshot(struct a04_vendor_start *s,
     struct a04_rgx_fw_runtime *r;RGXFWIF_CCB_CTL *ctl;RGXFWIF_TRACEBUF *trace;
     uint32_t count,after,rd,wr;NTSTATUS status=STATUS_DEVICE_BUSY;unsigned i;
     if(!snapshot) return STATUS_INVALID_PARAMETER;
-    if(!s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !s->online || !s->attempted ||
+    if(!s || KeGetCurrentIrql()!=PASSIVE_LEVEL || (!s->online && !s->power_off_ack) || !s->attempted ||
        !s->memory || !s->memory->hardware_owned || !s->memory->runtime || !s->core)
         return STATUS_DEVICE_NOT_READY;
     if(coherent_or_uncached!=TRUE) return STATUS_NOT_SUPPORTED;

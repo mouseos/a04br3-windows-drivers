@@ -513,3 +513,32 @@ shared 1024語を期待値に照合し、各不一致数と最初の位置を返
 同じ位置で壊れた場合も不一致として数え、shared先頭9語と残りのguardも検査する。
 この関数はGPU終了・cache可視性・DMA停止を確立せず、実機読取りや解放を許可しない。
 実行可能copy診断への接続は未実装。
+
+### Copy service PnP teardown diagnostic
+
+The copy-service-only D0 exit pre-interrupt callback closes submissions and
+attempts the existing context cleanup, forced idle and firmware OFF sequence.
+After KMDF disables the interrupt, D0 exit flushes queued DPCs and work without
+holding the lifetime lock. It calls RGXStop only when the IRQ worker sequence
+is fully serviced, its firmware interrupt snapshot is valid and matches a
+stable post-OFF snapshot with an empty FWCCB, and the hardware IRQ status is
+clear. Surprise removal skips MMIO. UART reports `A04GPU PNP IRQ`, the saved
+and final counts, IRQ register, RGXStop status and failed register/value.
+Failures leave all DMA allocations owned. This path has host mock coverage but
+has not been exercised on the device.
+
+Reference: the supplied MT8167 Linux 4.4 source `drivers/misc/mediatek/gpu/
+gpu_rgx/m1.8ED4490469/services/server/devices/rgx/rgxpower.c` waits for each
+FW interrupt count to match its host sample after OFF before RGXStop;
+`rgxstartstop.c` polls sidekick, SLC, BIF and outstanding reads. The local
+`drivers/soc/mediatek/mtk-scpsys-mt8167.c` gives MFG_2D bus protection
+bits 2 and 5 and AXI SI1 bit 7; MFG and MFG_ASYNC are separate domains.
+`mtk-infracfg.c` sets protection enable at 0x220 and polls status at 0x228.
+This is evidence for Linux's power sequence, not proof that these bits alone
+isolate every GE8300 DMA path or that this driver owns the shared domain.
+No SPM, INFRACFG, clocks or bus-protection registers are modified here.
+Until the shared-resource owner provides exclusive ownership and a validated
+fabric-drain/reset contract, this code neither clears `hardware_owned` nor
+frees common buffers. A D0 exit callback return alone is not proof that PnP
+has prevented removal or driver unload; surprise-removal lifetime remains an
+open issue.

@@ -21,4 +21,6 @@ NTSTATUS a04_vendor_irq_unbind(struct a04_vendor_irq *irq);
 void a04_vendor_irq_set_power(struct a04_vendor_irq *irq,BOOLEAN powered);
 void a04_vendor_irq_kick(struct a04_vendor_irq *irq);
 void a04_vendor_irq_flush(struct a04_vendor_irq *irq);
+/* Only after framework interrupt disable AND a04_vendor_irq_flush. */
+BOOLEAN a04_vendor_irq_work_drained(struct a04_vendor_irq *irq);
 #endif

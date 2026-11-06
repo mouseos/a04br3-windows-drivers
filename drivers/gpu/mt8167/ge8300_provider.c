@@ -99,6 +99,7 @@
 #if A04_GE8300_VENDOR_IRQ
 #include "vendor_m1_11/windows_irq.h"
 #include "vendor_m1_11/windows_irq_snapshot.h"
+#include "vendor_m1_11/windows_stop.h"
 #endif
 #if A04_GE8300_VENDOR_UNCACHED_STAGE && !A04_GE8300_VENDOR_STAGE
 #error Uncached vendor staging requires vendor staging
@@ -163,7 +164,7 @@ typedef struct {
     struct a04_vendor_copy_scratch vendor_copy;
     BOOLEAN vendor_copy_device_ref;
 #if A04_GE8300_VENDOR_COPY_SERVICE
-    volatile LONG vendor_service_closed; BOOLEAN vendor_service_online;
+    volatile LONG vendor_service_closed, vendor_surprise_removed; BOOLEAN vendor_service_online;
 #endif
 #endif
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
@@ -938,6 +939,53 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     return STATUS_SUCCESS;
 }
 #endif
+#if A04_GE8300_VENDOR_COPY_SERVICE
+static NTSTATUS GpuVendorRequestStop(GPU_CONTEXT *c)
+{
+        NTSTATUS cleanup=STATUS_DEVICE_NOT_READY,idle=STATUS_NOT_SUPPORTED,off=STATUS_NOT_SUPPORTED;
+        unsigned failed=4; ULONG snap[6];
+        if(InterlockedCompareExchange(&c->vendor_service_closed,1,0))
+            return STATUS_INVALID_DEVICE_STATE;
+        WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+        if(c->vendor_service_online) {
+            c->vendor_service_online=FALSE;
+            cleanup=a04_vendor_render_cleanup_contexts(&c->vendor_render,&c->vendor_start,&failed);
+            if(NT_SUCCESS(cleanup))
+                off=a04_vendor_m1_11_windows_forced_power_off(&c->vendor_start,TRUE,&idle);
+        }
+        GpuPrint("A04GPU STOP CLEANUP=");GpuHex((ULONG)cleanup);
+        GpuPrint(" FAILED=");GpuHex(failed);GpuPrint(" MASK=");GpuHex(c->vendor_render.cleanup_mask);
+        GpuPrint(" IDLE=");GpuHex((ULONG)idle);GpuPrint(" OFF=");GpuHex((ULONG)off);GpuPrint("\n");
+        if(NT_SUCCESS(a04_vendor_m1_11_power_debug_snapshot(&c->vendor_start,snap))) {
+            GpuPrint("A04GPU STOP SNAP SYNC=");GpuHex(snap[0]);GpuPrint(" POW=");GpuHex(snap[1]);
+            GpuPrint(" KRD=");GpuHex(snap[2]);GpuPrint(" KWR=");GpuHex(snap[3]);
+            GpuPrint(" FRD=");GpuHex(snap[4]);GpuPrint(" FWR=");GpuHex(snap[5]);GpuPrint("\n");
+        }
+        if(NT_SUCCESS(off) && c->core) {
+            ULONG side=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x3c8u));
+            ULONG slc=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x3898u));
+            ULONG bif=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x1358u));
+            ULONG mmu=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x1350u));
+            GpuPrint("A04GPU STOP REG SIDE=");GpuHex(side);GpuPrint(" SLC=");GpuHex(slc);
+            GpuPrint(" BIF=");GpuHex(bif);GpuPrint(" MMU=");GpuHex(mmu);GpuPrint("\n");
+        }
+        /* Single samples are observations, not IRQ drain or RGXStop. */
+        GpuPrint("A04GPU STOP DMA RETAINED UNLOAD UNSAFE\n");
+        WdfWaitLockRelease(c->vendor_lifetime);
+        return NT_SUCCESS(cleanup)?off:cleanup;
+}
+NTSTATUS GpuD0ExitPreInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
+{
+    GPU_CONTEXT *c=GpuContext(device);NTSTATUS status;
+    UNREFERENCED_PARAMETER(target);
+    if(InterlockedCompareExchange(&c->vendor_surprise_removed,0,0)) return STATUS_SUCCESS;
+    if(!InterlockedCompareExchange(&c->vendor_service_closed,0,0)) {
+        status=GpuVendorRequestStop(c);
+        GpuPrint("A04GPU PNP PREOFF=");GpuHex((ULONG)status);GpuPrint("\n");
+    }
+    return STATUS_SUCCESS;
+}
+#endif
 NTSTATUS GpuD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
 {
     GPU_CONTEXT *c=GpuContext(device); UNREFERENCED_PARAMETER(target);
@@ -948,6 +996,29 @@ NTSTATUS GpuD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
      * callback ordering, not a proof of physical-removal MMIO safety. */
 #if A04_GE8300_VENDOR_COPY_SERVICE
     InterlockedExchange(&c->vendor_service_closed,1);
+    /* EvtDeviceD0Exit follows KMDF interrupt disable. Do not flush while
+     * holding vendor_lifetime: the passive IRQ worker takes that lock. */
+    if(!InterlockedCompareExchange(&c->vendor_surprise_removed,0,0) && c->vendor_start.power_off_ack) {
+        struct a04_vendor_irq_snapshot final_irq={0};
+        NTSTATUS irq_status=STATUS_DEVICE_BUSY,stop_status=STATUS_DEVICE_BUSY;
+        ULONG irq_reg=0xffffffffu,bad=0;uint64_t last=0;
+        a04_vendor_irq_flush(c->vendor_irq);
+        WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+        if(a04_vendor_irq_work_drained(c->vendor_irq) && c->vendor_irq_snapshot.valid && c->core) {
+            irq_status=a04_vendor_m1_11_windows_irq_snapshot(&c->vendor_start,TRUE,&final_irq);
+            irq_reg=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x8a8u));
+            if(NT_SUCCESS(irq_status) && final_irq.valid &&
+               final_irq.count==c->vendor_irq_snapshot.count && irq_reg!=0xffffffffu && !(irq_reg&1u))
+                stop_status=a04_vendor_m1_11_windows_stop(&c->vendor_start,TRUE,&bad,&last);
+        }
+        GpuPrint("A04GPU PNP IRQ=");GpuHex((ULONG)irq_status);
+        GpuPrint(" HOST=");GpuHex(c->vendor_irq_snapshot.count);GpuPrint(" FW=");GpuHex(final_irq.count);
+        GpuPrint(" REG=");GpuHex(irq_reg);GpuPrint(" RGXSTOP=");GpuHex((ULONG)stop_status);
+        GpuPrint(" BAD=");GpuHex(bad);GpuPrint(" VALUEHI=");GpuHex((ULONG)(last>>32));
+        GpuPrint(" VALUELO=");GpuHex((ULONG)last);GpuPrint(" FABRIC=UNPROVEN DMA=RETAINED\n");
+        a04_vendor_irq_set_power(c->vendor_irq,FALSE);
+        WdfWaitLockRelease(c->vendor_lifetime);
+    }
 #endif
     WdfWaitLockAcquire(c->vendor_lifetime,NULL);
 #if A04_GE8300_VENDOR_COPY_SERVICE
@@ -999,38 +1070,9 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
     struct a04_ge8300_status *out; NTSTATUS status; size_t size;
 #if A04_GE8300_VENDOR_COPY_SERVICE
     if(control==A04_GE8300_IOCTL_VENDOR_STOP) {
-        NTSTATUS cleanup=STATUS_DEVICE_NOT_READY,idle=STATUS_NOT_SUPPORTED,off=STATUS_NOT_SUPPORTED;
-        unsigned failed=4; ULONG snap[6];
-        if(input || output || InterlockedCompareExchange(&c->vendor_service_closed,1,0)) {
-            WdfRequestComplete(request,STATUS_INVALID_DEVICE_STATE);return;
-        }
-        WdfWaitLockAcquire(c->vendor_lifetime,NULL);
-        if(c->vendor_service_online) {
-            c->vendor_service_online=FALSE;
-            cleanup=a04_vendor_render_cleanup_contexts(&c->vendor_render,&c->vendor_start,&failed);
-            if(NT_SUCCESS(cleanup))
-                off=a04_vendor_m1_11_windows_forced_power_off(&c->vendor_start,TRUE,&idle);
-        }
-        GpuPrint("A04GPU STOP CLEANUP=");GpuHex((ULONG)cleanup);
-        GpuPrint(" FAILED=");GpuHex(failed);GpuPrint(" MASK=");GpuHex(c->vendor_render.cleanup_mask);
-        GpuPrint(" IDLE=");GpuHex((ULONG)idle);GpuPrint(" OFF=");GpuHex((ULONG)off);GpuPrint("\n");
-        if(NT_SUCCESS(a04_vendor_m1_11_power_debug_snapshot(&c->vendor_start,snap))) {
-            GpuPrint("A04GPU STOP SNAP SYNC=");GpuHex(snap[0]);GpuPrint(" POW=");GpuHex(snap[1]);
-            GpuPrint(" KRD=");GpuHex(snap[2]);GpuPrint(" KWR=");GpuHex(snap[3]);
-            GpuPrint(" FRD=");GpuHex(snap[4]);GpuPrint(" FWR=");GpuHex(snap[5]);GpuPrint("\n");
-        }
-        if(NT_SUCCESS(off) && c->core) {
-            ULONG side=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x3c8u));
-            ULONG slc=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x3898u));
-            ULONG bif=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x1358u));
-            ULONG mmu=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x1350u));
-            GpuPrint("A04GPU STOP REG SIDE=");GpuHex(side);GpuPrint(" SLC=");GpuHex(slc);
-            GpuPrint(" BIF=");GpuHex(bif);GpuPrint(" MMU=");GpuHex(mmu);GpuPrint("\n");
-        }
-        /* Single samples are observations, not IRQ drain or RGXStop. */
-        GpuPrint("A04GPU STOP DMA RETAINED UNLOAD UNSAFE\n");
-        WdfWaitLockRelease(c->vendor_lifetime);
-        WdfRequestComplete(request,NT_SUCCESS(cleanup)?off:cleanup);return;
+        if(input || output) status=STATUS_INVALID_PARAMETER;
+        else status=GpuVendorRequestStop(c);
+        WdfRequestComplete(request,status);return;
     }
     if(control==A04_GE8300_IOCTL_VENDOR_COPY) {
         void *src,*dst;size_t in_bytes,out_bytes;
@@ -1117,7 +1159,7 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
 }
 #if A04_GE8300_VENDOR_COPY_SERVICE
 VOID GpuSurpriseRemoval(WDFDEVICE device)
-{ GPU_CONTEXT *c=GpuContext(device);InterlockedExchange(&c->vendor_service_closed,1); }
+{ GPU_CONTEXT *c=GpuContext(device);InterlockedExchange(&c->vendor_surprise_removed,1);InterlockedExchange(&c->vendor_service_closed,1); }
 #endif
 NTSTATUS GpuAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 {
@@ -1135,6 +1177,7 @@ NTSTATUS GpuAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     pnp.EvtDeviceReleaseHardware=GpuRelease; pnp.EvtDeviceD0Entry=GpuD0Entry; pnp.EvtDeviceD0Exit=GpuD0Exit;
 #if A04_GE8300_VENDOR_COPY_SERVICE
     pnp.EvtDeviceSurpriseRemoval=GpuSurpriseRemoval;
+    pnp.EvtDeviceD0ExitPreInterruptsDisabled=GpuD0ExitPreInterrupts;
 #endif
 #if A04_GE8300_VENDOR_START_DIAGNOSTIC
     pnp.EvtDeviceD0EntryPostInterruptsEnabled=GpuPostInterrupts;
