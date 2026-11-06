@@ -248,3 +248,19 @@ GPIO・IRQ provider、NDIS初期化への接続は未完成である。この関
 診断開始後にlifeが初期化済みの場合、ファームウェア投入やブリッジ初期化の失敗後も
 stopから既存のIRQ・I/O排出と資源返却を試みられる。life初期化前の失敗は従来どおり
 自動返却しない。返却の可否は実providerの契約に依存し、失敗時はFAILEDのままとなる。
+
+
+機種用 Linux 4.14 の `drivers/mfd/mt6397-misc.c` は MT6392 を明示的に
+扱い、RTC PDN1 bit 8、RTC CON bit 5、WRTGR、BBPU CBUSY を用いる。
+`A04_MT6392_RTC32K_DIAGNOSTIC=1` の PMIC 補助関数は、共通 WACS2 lock
+と他の RTC writer の停止を呼出側が保証する前提で user bit を保持する。
+既存 bit は所有せず拒否し、失敗時は poison する。解放時は自分の bit
+だけを消し、他の利用者や firmware を考慮して RTC 出力は停止しない。
+まだ親 lease や NDIS から呼ばれず、外部 writer の排他、物理出力、
+Windows 電源遷移は未確認。既定ではコンパイルされない。
+
+`A04_SHARED_WIFI_IRQ_DIAGNOSTIC=1` は機種 DTS の MSDC2 SPI 109 に
+対応する GSIV 141 を子 PDO の排他的な level IRQ 候補として追加する。
+別の combo GPIO/EINT5 ではない。Windows の要求記述子は極性を指定できず、
+実際のルーティング・active-low・ISR/DPC と停止時の排出は未確認。
+共有親の Wi-Fi Acquire/D0 拒否は引き続き残る。
