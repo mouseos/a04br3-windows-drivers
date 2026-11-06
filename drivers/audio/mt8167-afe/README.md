@@ -320,3 +320,17 @@ operation. A failed request still stops DL1 and retains exposed DMA. This
 experiment does not connect WaveRT PCM or prove the MT8167 analog route.
 Linux's AIF RX, DAC, Vref, DAC clock, VCM and AU_LOL path must also be
 implemented and verified before any unmute is admitted.
+
+`voice_playback.h` is a host-tested experimental composition of the existing
+MT8167 Voice Amp sequence with DMA and downstream mute operations. It requires
+preflight to establish exclusive owners, actual voice-path calibration,
+downstream mute and live PCM coherence before touching the codec. Voice starts
+while muted, DMA starts next, and unmute follows only after both succeed. Stop
+requests mute and then DMA stop even when mute fails; analog shutdown is allowed
+only when both succeed and the codec helper verifies mute again. Any attempted
+start permanently retains resources; DMA stop does not establish bus drain.
+The callbacks have no production provider and this helper is not wired into PnP
+or WaveRT. Host tests model ordering and failure paths, not physical playback.
+Linux's `mt8167-codec.c` DAPM routes connect Left DAC through Voice Amp and
+LINEOUT Mux to AU_LOL; this does not establish the board's downstream route or
+prove headphone calibration applies to voice output.

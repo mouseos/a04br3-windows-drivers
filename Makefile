@@ -924,3 +924,10 @@ test-mt8167-codec-voice:
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared tests/mt8167_codec_voice_test.c -o build/mt8167_codec_voice_test
 	./build/mt8167_codec_voice_test
+
+test: test-mt8167-voice-playback
+.PHONY: test-mt8167-voice-playback
+test-mt8167-voice-playback:
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/audio/mt8167-afe tests/mt8167_voice_playback_test.c -o build/mt8167_voice_playback_test
+	./build/mt8167_voice_playback_test
