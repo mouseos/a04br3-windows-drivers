@@ -52,6 +52,15 @@ int a04_m111_patch_3d_fields(void *p,size_t bytes,const struct a04_m111_3d_field
     word(p,0,f->word00,4);word(p,0x1c,f->word1c,4);word(p,0x20,f->word20,4);
     word(p,0x128,f->dummy_stencil,8);word(p,0x130,f->flags,4);word(p,0x134,f->frame,4);
     word(p,0x138,f->hwrt,4);word(p,0x13c,f->zbuffer,4);word(p,0x140,f->sbuffer,4);word(p,0x144,f->msaa,4);
+    word(p,0x148,f->zls_stride,4);word(p,0x14c,f->sls_stride,4);
+    return 0;
+}
+int a04_m111_patch_ta_registers(void *p,size_t bytes,const struct a04_m111_ta_registers *r)
+{
+    if(bytes!=A04_M111_TA_BYTES || !valid(p,bytes,r,sizeof(*r)))return 1;
+    word(p,0,r->ppp_ctrl,8);word(p,0x10,r->vdm_stream,8);
+    word(p,0x18,r->border_table,8);word(p,0x20,r->word20,8);word(p,0x28,r->tpu,8);
+    word(p,0x38,r->word38,4);word(p,0x40,r->pds_code40,4);
     return 0;
 }
 int a04_m111_patch_3d_pbe(void *p,size_t bytes,const uint64_t csr[8][2])
