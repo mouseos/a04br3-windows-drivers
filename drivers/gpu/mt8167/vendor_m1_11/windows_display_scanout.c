@@ -108,4 +108,24 @@ NTSTATUS a04_display_scanout_switch(struct a04_display_scanout *s,
     WRITE_REGISTER_ULONG(ovl+OVL_L0_ADDR/4,s->display_address);
     return STATUS_SUCCESS; /* write issued, not proof of latch or display */
 }
+NTSTATUS a04_display_scanout_restore(struct a04_display_scanout *s,
+    a04_display_boundary_fn boundary, void *context)
+{
+    NTSTATUS status;
+    if (!s || !s->attempted || s->restore_attempted || !s->sg || !s->ovl ||
+        s->ovl_length<OVL_REQUIRED_SIZE || !s->saved_address || !boundary ||
+        KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_INVALID_PARAMETER;
+    status=boundary(context);
+    if (status!=STATUS_SUCCESS) return NT_SUCCESS(status)?STATUS_DEVICE_NOT_READY:status;
+    /* A matching address is only a guard against a competing update; it is
+     * not evidence that the first switch latched or that DMA has stopped. */
+    if (!(READ_REGISTER_ULONG(s->ovl+OVL_EN/4)&1u) ||
+        READ_REGISTER_ULONG(s->ovl+OVL_SRC_CON/4)!=1u ||
+        READ_REGISTER_ULONG(s->ovl+OVL_L0_ADDR/4)!=s->display_address)
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+    s->restore_attempted=TRUE;
+    a04_gpu_dma_barrier();
+    WRITE_REGISTER_ULONG(s->ovl+OVL_L0_ADDR/4,s->saved_address);
+    return STATUS_SUCCESS;
+}
 #endif

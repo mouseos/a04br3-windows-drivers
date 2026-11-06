@@ -19,7 +19,7 @@ struct a04_display_scanout {
     uint32_t display_address, saved_address;
     volatile ULONG *ovl;
     ULONG ovl_length;
-    BOOLEAN attempted;
+    BOOLEAN attempted, restore_attempted;
 };
 /* MDL describes the complete page-aligned GPU allocation and is locked by
  * its owner. Display adapter must be for OVL, not the GPU PDO. */
@@ -38,6 +38,11 @@ typedef NTSTATUS (*a04_display_boundary_fn)(void *context);
 NTSTATUS a04_display_scanout_switch(struct a04_display_scanout *,
     volatile void *ovl, ULONG length, uint32_t expected_old_address,
     uint64_t fence, a04_display_ready_fn ready,
+    a04_display_boundary_fn boundary, void *context);
+/* The original owner must still hold the saved framebuffer and display lease.
+ * A successful return means only that the restore write was issued. Both
+ * surfaces and mappings remain retained; no latch or retirement is inferred. */
+NTSTATUS a04_display_scanout_restore(struct a04_display_scanout *,
     a04_display_boundary_fn boundary, void *context);
 #endif
 #endif

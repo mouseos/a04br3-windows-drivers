@@ -45,5 +45,12 @@ int main(void)
     assert(NT_SUCCESS(a04_display_scanout_switch(&s,regs,sizeof(regs),0x11100000,7,ready,boundary,0)));
     assert(regs[0xf40/4]==0x30000000 && s.attempted && surf.hardware_exposed);
     assert(a04_display_scanout_unmap(&s)==STATUS_DEVICE_BUSY && puts==1);
+    regs[0xf40/4]=0x22200000;
+    assert(a04_display_scanout_restore(&s,boundary,0)==STATUS_DEVICE_CONFIGURATION_ERROR);
+    regs[0xf40/4]=0x30000000;
+    assert(NT_SUCCESS(a04_display_scanout_restore(&s,boundary,0)));
+    assert(regs[0xf40/4]==0x11100000 && s.restore_attempted);
+    assert(a04_display_scanout_unmap(&s)==STATUS_DEVICE_BUSY && puts==1);
+    assert(a04_display_scanout_restore(&s,boundary,0)==STATUS_INVALID_PARAMETER);
     return 0;
 }

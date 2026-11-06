@@ -52,8 +52,9 @@ L0 format, rotation and pixel layout match the rendered surface. Current
 firmware config enables layer 3, so this implementation deliberately refuses
 it. No vblank or register read is claimed to prove a latch. Once a write is
 attempted the mapping and GPU surface cannot be freed by this interface; it
-provides neither display retirement nor stop/removal, and no restored-framebuffer
-operation. No production WDDM/provider entry point registers or calls it.
+provides a guarded write of the saved address for restoration, but neither
+write proves latch or retirement. Stop/removal and resource release remain
+unimplemented. No production WDDM/provider entry point registers or calls it.
 The current screen diagnostic uses pitch 3328 and cannot use this 3200-pitch
 path. Thus enabling compilation does not enable scanout or demonstrate a
 working display. Its host test models DMA and MMIO; it is not a hardware test.
