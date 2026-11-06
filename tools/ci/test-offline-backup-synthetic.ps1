@@ -26,7 +26,7 @@ try {
  if($src.Contains('L"C:\\Windows') -or $src.Contains('if(!volume(L''C''')){throw 'fixture path substitution failed'}
  [IO.File]::WriteAllText("$base\fixture.c",$src)
  $inc=Join-Path $kit 'Include';$lib=Join-Path $kit 'Lib\winv6.3\um\x64'
- & clang --target=x86_64-pc-windows-msvc -fms-extensions -D_WIN32_WINNT=0x0603 "-I$inc\um" "-I$inc\shared" -c "$base\fixture.c" -o "$base\fixture.obj"
+ & clang --target=x86_64-pc-windows-msvc -fms-extensions -DA04_OFFLINE_FIXTURE -D_WIN32_WINNT=0x0603 "-I$inc\um" "-I$inc\shared" -c "$base\fixture.c" -o "$base\fixture.obj"
  if($LASTEXITCODE){throw 'fixture compilation failed'}
  & lld-link /subsystem:console /machine:x64 /entry:mainCRTStartup /nodefaultlib "$base\fixture.obj" "$lib\kernel32.lib" "$lib\advapi32.lib" "/out:$base\fixture.exe"
  if($LASTEXITCODE){throw 'fixture link failed'}
@@ -45,6 +45,14 @@ try {
  if((Get-Content -LiteralPath 'R:\Windows\System32\config\SYSTEM' -Stream fixture -Raw).Trim() -ne 'alternate stream'){throw 'alternate stream mismatch'}
  & "$base\fixture.exe" --restore
  if($LASTEXITCODE){throw 'fixture repeat replay failed'}
+ foreach($index in 0..9){
+   $env:A04_FAIL_AFTER="$index"
+   & "$base\fixture.exe" --restore
+   if($LASTEXITCODE -ne 98){throw "fixture interruption failed at $index"}
+   Remove-Item Env:A04_FAIL_AFTER
+   & "$base\fixture.exe" --restore
+   if($LASTEXITCODE){throw "fixture resume failed at $index"}
+ }
  [IO.File]::AppendAllText('S:\A04BACKUP\item00.bin','corruption')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE','do-not-overwrite')
  & "$base\fixture.exe" --restore

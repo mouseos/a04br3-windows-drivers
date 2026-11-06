@@ -49,9 +49,9 @@ static int prep(void){
  * BackupRead/BackupWrite preserve streams and security in the archive. */
 static int save_item(unsigned i){
  HANDLE src,dst;BY_HANDLE_FILE_INFORMATION info;HCRYPTHASH h;void *ctx=0;DWORD n;WCHAR p[64];ENTRY *e=&manifest.entries[i];int ok=0;
- src=CreateFileW(target[i],GENERIC_READ|READ_CONTROL|ACCESS_SYSTEM_SECURITY,0,0,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,0);
+ src=CreateFileW(target[i],GENERIC_READ|READ_CONTROL|ACCESS_SYSTEM_SECURITY,0,0,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_BACKUP_SEMANTICS,0);
  if(src==INVALID_HANDLE_VALUE){DWORD x=GetLastError();return (x==ERROR_FILE_NOT_FOUND && i!=0 && i!=4);}
- if(!GetFileInformationByHandle(src,&info)||info.nNumberOfLinks!=1||(info.dwFileAttributes&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_ENCRYPTED)))goto endsrc;
+ if(!GetFileInformationByHandle(src,&info)||info.nNumberOfLinks!=1||(info.dwFileAttributes&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_ENCRYPTED|FILE_ATTRIBUTE_COMPRESSED|FILE_ATTRIBUTE_SPARSE_FILE|FILE_ATTRIBUTE_OFFLINE)))goto endsrc;
  e->present=1;e->attributes=info.dwFileAttributes;e->creation=info.ftCreationTime;e->access=info.ftLastAccessTime;e->write=info.ftLastWriteTime;
  path(i,p);dst=CreateFileW(p,GENERIC_WRITE,0,0,CREATE_NEW,FILE_FLAG_WRITE_THROUGH,0);if(dst==INVALID_HANDLE_VALUE)goto endsrc;
  if(!hash_start(&h))goto enddst;
@@ -69,7 +69,7 @@ static int load_manifest(void){HANDLE h;DWORD n;BYTE extra;h=CreateFileW(L"E:\\A
 static int verify_restored(unsigned i){
  HANDLE f;BY_HANDLE_FILE_INFORMATION info;HCRYPTHASH h;BYTE digest[32];void *ctx=0;DWORD n;ULONGLONG total=0;int ok=0;ENTRY *e=&manifest.entries[i];
  if(!e->present){if(GetFileAttributesW(target[i])!=INVALID_FILE_ATTRIBUTES)return 0;return GetLastError()==ERROR_FILE_NOT_FOUND;}
- f=CreateFileW(target[i],GENERIC_READ|READ_CONTROL|ACCESS_SYSTEM_SECURITY,0,0,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,0);if(f==INVALID_HANDLE_VALUE)return 0;
+ f=CreateFileW(target[i],GENERIC_READ|READ_CONTROL|ACCESS_SYSTEM_SECURITY,0,0,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_BACKUP_SEMANTICS,0);if(f==INVALID_HANDLE_VALUE)return 0;
  if(!GetFileInformationByHandle(f,&info)||info.nNumberOfLinks!=1||info.dwFileAttributes!=e->attributes||CompareFileTime(&info.ftCreationTime,&e->creation)||CompareFileTime(&info.ftLastWriteTime,&e->write))goto close;
  if(!hash_start(&h))goto close;
  for(;;){if(!BackupRead(f,buf,CHUNK,&n,FALSE,TRUE,&ctx))goto hashfail;if(!n)break;total+=n;if(!CryptHashData(h,buf,n,0))goto hashfail;}
@@ -82,7 +82,7 @@ static int replay_item(unsigned i){WCHAR p[64];HANDLE in,out;void *ctx=0;DWORD n
  if(!e->present){attr=GetFileAttributesW(target[i]);if(attr==INVALID_FILE_ATTRIBUTES)return GetLastError()==ERROR_FILE_NOT_FOUND;if(attr&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY))return 0;if(!SetFileAttributesW(target[i],FILE_ATTRIBUTE_NORMAL))return 0;return DeleteFileW(target[i])!=0;}
  attr=GetFileAttributesW(temp[i]);if(attr!=INVALID_FILE_ATTRIBUTES){if(attr&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY))return 0;if(!SetFileAttributesW(temp[i],FILE_ATTRIBUTE_NORMAL)||!DeleteFileW(temp[i]))return 0;}else if(GetLastError()!=ERROR_FILE_NOT_FOUND)return 0;
  path(i,p);in=CreateFileW(p,GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,0,0);if(in==INVALID_HANDLE_VALUE)return 0;
- out=CreateFileW(temp[i],GENERIC_WRITE|WRITE_DAC|WRITE_OWNER|ACCESS_SYSTEM_SECURITY,0,0,CREATE_NEW,FILE_FLAG_WRITE_THROUGH,0);if(out==INVALID_HANDLE_VALUE){CloseHandle(in);return 0;}
+ out=CreateFileW(temp[i],GENERIC_WRITE|WRITE_DAC|WRITE_OWNER|ACCESS_SYSTEM_SECURITY,0,0,CREATE_NEW,FILE_FLAG_WRITE_THROUGH|FILE_FLAG_BACKUP_SEMANTICS,0);if(out==INVALID_HANDLE_VALUE){CloseHandle(in);return 0;}
  for(;;){if(!ReadFile(in,buf,CHUNK,&n,0))goto done;if(!n)break;if(!BackupWrite(out,buf,n,&w,FALSE,TRUE,&ctx)||w!=n)goto done;}
  if(!BackupWrite(out,0,0,&w,TRUE,TRUE,&ctx))goto done;ctx=0;
  if(!SetFileTime(out,&e->creation,&e->access,&e->write)||!FlushFileBuffers(out))goto done;
@@ -107,5 +107,16 @@ static void backup(void){unsigned i;ULARGE_INTEGER free;ULONGLONG need=RESERVE;W
  if(!write_all(ready,(BYTE*)&manifest,sizeof(manifest))||!FlushFileBuffers(ready)){CloseHandle(ready);fail("BACKUP_READY_WRITE_FAILED");}if(!CloseHandle(ready)||!flush_volume(L'E'))fail("BACKUP_READY_FLUSH_FAILED");
  if(!load_manifest())fail("BACKUP_READY_VERIFY_FAILED");n=0;(void)n;say("BACKUP_READY_NO_UPDATE_PERFORMED\r\n");
 }
-static void restore(void){unsigned i;if(!load_manifest())fail("RECOVERY_JOURNAL_REJECTED");for(i=0;i<COUNT;++i)if(!replay_item(i)||!flush_volume(L'C')||!verify_restored(i))fail("RECOVERY_INCOMPLETE_RETRY_FROM_WINPE");say("RECOVERY_FILES_REPLAYED_DISMOUNT_REQUIRED\r\n");}
+static int target_exclusive(unsigned i){HANDLE h;BY_HANDLE_FILE_INFORMATION info;DWORD e;
+ h=CreateFileW(target[i],GENERIC_READ|READ_CONTROL,0,0,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_BACKUP_SEMANTICS,0);
+ if(h==INVALID_HANDLE_VALUE){e=GetLastError();return e==ERROR_FILE_NOT_FOUND;}
+ if(!GetFileInformationByHandle(h,&info)||info.nNumberOfLinks!=1||(info.dwFileAttributes&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY))){CloseHandle(h);return 0;}
+ return CloseHandle(h)!=0;
+}
+#ifdef A04_OFFLINE_FIXTURE
+static void fixture_fault(unsigned i){char s[8];DWORD n=GetEnvironmentVariableA("A04_FAIL_AFTER",s,sizeof(s));if(n==1 && s[0]>='0' && s[0]<='9' && (unsigned)(s[0]-'0')==i)ExitProcess(98);}
+#else
+static void fixture_fault(unsigned i){(void)i;}
+#endif
+static void restore(void){unsigned i;if(!load_manifest())fail("RECOVERY_JOURNAL_REJECTED");for(i=0;i<COUNT;++i)if(!target_exclusive(i))fail("RECOVERY_TARGET_BUSY_OR_UNSAFE");for(i=0;i<COUNT;++i){if(!replay_item(i)||!flush_volume(L'C')||!verify_restored(i))fail("RECOVERY_INCOMPLETE_RETRY_FROM_WINPE");fixture_fault(i);}say("RECOVERY_FILES_REPLAYED_DISMOUNT_REQUIRED\r\n");}
 void mainCRTStartup(void){const WCHAR *c=GetCommandLineW();int restore_mode=0;while(*c){if(c[0]==L'-'&&c[1]==L'-'&&c[2]==L'r'&&c[3]==L'e'&&c[4]==L's'&&c[5]==L't'&&c[6]==L'o'&&c[7]==L'r'&&c[8]==L'e'&&(c[9]==0||c[9]==L' ')){restore_mode=1;break;}++c;}if(!prep())fail("BACKUP_IDENTITY_OR_PRIVILEGE_REJECTED");if(restore_mode)restore();else backup();CryptReleaseContext(provider,0);ExitProcess(0);}
