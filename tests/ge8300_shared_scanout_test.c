@@ -62,6 +62,10 @@ int main(void)
       struct a04_vendor_m1_11_memory fw={0};struct a04_vendor_render_cold render={0};
       struct a04_vendor_copy_scratch copy={0};struct a04_shared_tables tables={0};
       fw.adapter=&ga;render.firmware=&fw;render.copy_owner=&copy;copy.render=&render;
+      fw.buffers[0].dma=0x41000000;fw.buffers[0].bytes=4096;
+      assert(a04_shared_tables_stage(&tables,&s,&render,&copy)==STATUS_DEVICE_CONFIGURATION_ERROR);
+      assert(tables.quarantined && !table_allocs);
+      memset(&tables,0,sizeof(tables));fw.buffers[0].bytes=0;
       assert(NT_SUCCESS(a04_shared_tables_stage(&tables,&s,&render,&copy)) && tables.ready);
       assert((((uint64_t *)tables.table[2].cpu)[0]&~4095ULL)==0x41000000);
       assert((((uint64_t *)tables.table[3].cpu)[487]&~4095ULL)==0x413e7000);

@@ -28,6 +28,16 @@ NTSTATUS a04_shared_tables_stage(struct a04_shared_tables *t,struct a04_shared_s
        copy->render!=r || r->copy_owner!=copy)return status;
     for(i=0;i<4;i++)if(t->table[i].cpu || t->table[i].adapter)return status;
     owned[0]=&copy->source;owned[1]=&copy->destination;owned[2]=&copy->shared;
+    /* A faulty DMA mapping may alias firmware, queues or copy resources. Do
+     * not release that mapping until independent quiescence is established. */
+    for(i=0;i<A04_SHARED_SCANOUT_PAGES;i++) {
+        for(j=0;j<5;j++)if(r->firmware->buffers[j].bytes &&
+            a04_rgx_fw_overlap(s->gpu_pages[i],4096,r->firmware->buffers[j].dma,r->firmware->buffers[j].bytes))goto alias;
+        for(j=0;j<16;j++)if(r->buffer[j].cpu &&
+            a04_rgx_fw_overlap(s->gpu_pages[i],4096,(uint64_t)r->buffer[j].logical.QuadPart,r->buffer[j].bytes))goto alias;
+        for(j=0;j<3;j++)if(owned[j]->cpu &&
+            a04_rgx_fw_overlap(s->gpu_pages[i],4096,(uint64_t)owned[j]->logical.QuadPart,owned[j]->bytes))goto alias;
+    }
     for(i=0;i<4;i++) {
         status=a04_vendor_uncached_allocate(&t->table[i],s->gpu_adapter,4096);
         if(!NT_SUCCESS(status))goto fail;
