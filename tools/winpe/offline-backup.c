@@ -22,6 +22,7 @@ typedef struct { DWORD present, attributes; FILETIME creation,access,write; ULON
 typedef struct { DWORD magic, version, count, reserved; ENTRY entries[COUNT]; BYTE digest[32]; } MANIFEST;
 static BYTE buf[CHUNK]; static MANIFEST manifest; static HCRYPTPROV provider;
 static void say(const char *s){DWORD n=0,w;while(s[n])++n;WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),s,n,&w,0);}
+static void hex(DWORD x){const char *d="0123456789ABCDEF";char b[9];unsigned j;for(j=0;j<8;++j)b[j]=d[(x>>(28-4*j))&15];b[8]=0;say(b);}
 static void fail(const char *s){say(s);say("\r\n");ExitProcess(1);}
 static int same(const BYTE *a,const BYTE *b,DWORD n){DWORD i;BYTE v=0;for(i=0;i<n;++i)v|=a[i]^b[i];return v==0;}
 static void path(unsigned i,WCHAR *p){const WCHAR *base=L"E:\\A04BACKUP\\item00.bin";unsigned j=0;while(base[j]){p[j]=base[j];++j;}p[j]=0;p[17]=(WCHAR)(L'0'+i/10);p[18]=(WCHAR)(L'0'+i%10);}
@@ -76,11 +77,15 @@ static int verify_restored(unsigned i){
  HANDLE f;BY_HANDLE_FILE_INFORMATION info;HCRYPTHASH h;BYTE digest[32];void *ctx=0;DWORD n;ULONGLONG total=0;int ok=0;ENTRY *e=&manifest.entries[i];
  if(!e->present){if(GetFileAttributesW(target[i])!=INVALID_FILE_ATTRIBUTES)return 0;return GetLastError()==ERROR_FILE_NOT_FOUND;}
  f=CreateFileW(target[i],GENERIC_READ|READ_CONTROL|ACCESS_SYSTEM_SECURITY,0,0,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_BACKUP_SEMANTICS,0);if(f==INVALID_HANDLE_VALUE)return 0;
- if(!GetFileInformationByHandle(f,&info)||info.nNumberOfLinks!=1||info.dwFileAttributes!=e->attributes||CompareFileTime(&info.ftCreationTime,&e->creation)||CompareFileTime(&info.ftLastWriteTime,&e->write))goto close;
+ if(!GetFileInformationByHandle(f,&info)){say("RECOVERY_INFO_FAILED\r\n");goto close;}
+ if(info.nNumberOfLinks!=1){say("RECOVERY_LINK_MISMATCH\r\n");goto close;}
+ if(info.dwFileAttributes!=e->attributes){say("RECOVERY_ATTRIBUTES_MISMATCH actual=");hex(info.dwFileAttributes);say(" expected=");hex(e->attributes);say("\r\n");goto close;}
+ if(CompareFileTime(&info.ftCreationTime,&e->creation)){say("RECOVERY_CREATION_MISMATCH\r\n");goto close;}
+ if(CompareFileTime(&info.ftLastWriteTime,&e->write)){say("RECOVERY_WRITE_TIME_MISMATCH\r\n");goto close;}
  if(!hash_start(&h))goto close;
  for(;;){if(!BackupRead(f,buf,CHUNK,&n,FALSE,TRUE,&ctx))goto hashfail;if(!n)break;total+=n;if(!CryptHashData(h,buf,n,0))goto hashfail;}
  if(!BackupRead(f,0,0,&n,TRUE,TRUE,&ctx))goto hashfail;ctx=0;
- if(!hash_end(h,digest))goto close;ok=(total==e->length&&same(digest,e->digest,32));goto close;
+ if(!hash_end(h,digest))goto close;ok=(total==e->length&&same(digest,e->digest,32));if(!ok)say("RECOVERY_STREAM_MISMATCH\r\n");goto close;
  hashfail:CryptDestroyHash(h);if(ctx)BackupRead(f,0,0,&n,TRUE,TRUE,&ctx);
  close:if(!CloseHandle(f))ok=0;return ok;
 }
@@ -98,7 +103,8 @@ static int replay_item(unsigned i){WCHAR p[64];HANDLE in,out;void *ctx=0;DWORD n
  attr=GetFileAttributesW(target[i]);
  if(attr!=INVALID_FILE_ATTRIBUTES){if(attr&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY))return 0;if(!SetFileAttributesW(target[i],FILE_ATTRIBUTE_NORMAL))return 0;}
  else if(GetLastError()!=ERROR_FILE_NOT_FOUND)return 0;
- return MoveFileExW(temp[i],target[i],MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)!=0;
+ if(!MoveFileExW(temp[i],target[i],MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))return 0;
+ return SetFileAttributesW(target[i],e->attributes)!=0;
 }
 static void backup(void){unsigned i;ULARGE_INTEGER free;ULONGLONG need=RESERVE;WIN32_FILE_ATTRIBUTE_DATA d;HANDLE ready;DWORD n;
  if(GetFileAttributesW(L"E:\\A04BACKUP")!=INVALID_FILE_ATTRIBUTES)fail("BACKUP_DIRECTORY_EXISTS");
@@ -124,5 +130,5 @@ static void fixture_fault(unsigned i){char s[8];DWORD n=GetEnvironmentVariableA(
 #else
 static void fixture_fault(unsigned i){(void)i;}
 #endif
-static void restore(void){unsigned i;if(!load_manifest())fail("RECOVERY_JOURNAL_REJECTED");for(i=0;i<COUNT;++i)if(!target_exclusive(i))fail("RECOVERY_TARGET_BUSY_OR_UNSAFE");for(i=0;i<COUNT;++i){if(!replay_item(i)||!flush_volume(L'C')||!verify_restored(i))fail("RECOVERY_INCOMPLETE_RETRY_FROM_WINPE");fixture_fault(i);}say("RECOVERY_FILES_REPLAYED_DISMOUNT_REQUIRED\r\n");}
+static void restore(void){unsigned i;if(!load_manifest())fail("RECOVERY_JOURNAL_REJECTED");for(i=0;i<COUNT;++i)if(!target_exclusive(i))fail("RECOVERY_TARGET_BUSY_OR_UNSAFE");for(i=0;i<COUNT;++i){if(!replay_item(i))fail("RECOVERY_REPLAY_FAILED_RETRY_FROM_WINPE");if(!flush_volume(L'C'))fail("RECOVERY_FLUSH_FAILED_RETRY_FROM_WINPE");if(!verify_restored(i))fail("RECOVERY_VERIFY_FAILED_RETRY_FROM_WINPE");fixture_fault(i);}say("RECOVERY_FILES_REPLAYED_DISMOUNT_REQUIRED\r\n");}
 void mainCRTStartup(void){const WCHAR *c=GetCommandLineW();int restore_mode=0;while(*c){if(c[0]==L'-'&&c[1]==L'-'&&c[2]==L'r'&&c[3]==L'e'&&c[4]==L's'&&c[5]==L't'&&c[6]==L'o'&&c[7]==L'r'&&c[8]==L'e'&&(c[9]==0||c[9]==L' ')){restore_mode=1;break;}++c;}if(!prep())fail("BACKUP_IDENTITY_OR_PRIVILEGE_REJECTED");if(restore_mode)restore();else backup();CryptReleaseContext(provider,0);ExitProcess(0);}
