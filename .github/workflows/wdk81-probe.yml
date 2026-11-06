@@ -105,6 +105,12 @@ jobs:
           New-Item -ItemType Directory -Force $output | Out-Null
           Copy-Item $driver $output
           [ordered]@{ source_commit = (git rev-parse HEAD); sha256 = (Get-FileHash $driver -Algorithm SHA256).Hash; note = 'Unsigned link check only; initialization fails, no INF, not installable.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $output 'manifest.json')
+      - name: Build gated MT6630 session and IRQ ARM32 link check
+        shell: pwsh
+        run: |
+          $env:A04_WIFI_SESSION_DIAGNOSTIC='1'
+          $env:A04_WIFI_IRQ_DIAGNOSTIC='1'
+          ./tools/ci/build-mt6630-integrated-link.ps1
       - name: Test-sign MT6630 link-only image
         shell: pwsh
         run: |
