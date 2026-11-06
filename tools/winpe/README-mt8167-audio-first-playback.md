@@ -49,9 +49,12 @@ Windows媒体の正規コンポーネントを組み込む。存在しないDLL�
    LOOPED_STREAMINGがあれば優先する。48 kHz・stereo・S16_LEでKsCreatePinする。
 5. ACQUIRE→KSPROPERTY_RTAUDIO_BUFFER（8192 bytes）→PAUSE→RUNを一度要求する。
    利用者側bufferはdriverのDMA用固定PCMとは別。clientはどちらも書き換えない。
-6. RUN後に8回、実snapshotを取得する。短い待機とUART出力を挟むため、間隔は一定ではない。
-   記録したGetTickCountとCURを使う。CUR差から総経過frame数を推測しない。
-7. PAUSE→STOPと停止後snapshotを回収する。pin/filterを閉じてもdrainや資源解放を意味しない。
+6. RUN後に37 msの待機を挟んで8回、実snapshotをメモリへ保存する。観測中はUARTへ
+   出力しない。間隔にはsnapshot取得時間も含むため、記録したGetTickCountとCURを使う。
+   CUR差から総経過frame数を推測しない。
+7. PAUSE→STOPと停止後snapshotを取得してから、保存した全標本をUART・ログへ出す。
+   UART混雑によってSTOPが遅れることを避ける。標本時刻は送信時刻とは異なる。
+   pin/filterを閉じてもdrainや資源解放を意味しない。
    kernelは既存設計どおり、露出したDMA・clock・codec・mapping・電源参照を保持する。
 
 RUNの再送・自動再起動・復旧・追加書込みはない。途中失敗もerror、failure_stage、
@@ -117,8 +120,9 @@ code 2は重複client起動、3はUART経路、4はksuser、5はfilter発見、6
 
 UART IOCTLは非同期送信queueへの受付であり、ホスト受信完了の証拠ではない。
 主担当が既存UART収集ログのbegin・各観測・endを確認する。ローカルログと標準出力にも
-同じ内容を残す。UART送信が途中で失敗すると残りはログへ保存し、再生の観測を打ち切り
-停止へ進む。end自身のqueue失敗はローカルのuart-queue-errorとprocess終了codeに残る。
+同じ内容を残す。RUN前にUART送信が失敗した場合はRUNしない。RUN中の標本はSTOP後に送るため、
+送信前にSTOP要求と停止後snapshot取得を終え、残りをログへ保存する。
+停止の成否はPAUSE/STOPの返り値と停止後のvalid bit付きsnapshotで判断する。end自身のqueue失敗はローカルのuart-queue-errorとprocess終了codeに残る。
 
 ## 回収済みログの解析
 

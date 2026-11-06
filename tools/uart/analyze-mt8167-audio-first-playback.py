@@ -47,10 +47,16 @@ def summarize(run):
     retained = bool(stopped and stopped.get('flags', (0, 0, 0))[0:2] == (1, 1)
                     and stopped.get('lease', (0, 0, 0))[1:3] == (1, 1))
     complete = bool(run.get('begin') and run.get('end'))
-    measurement_complete = len(samples) == 8 and all(FIELDS <= frame.keys() for frame in frames)
+    measurement_complete = (len(samples) == 8
+                            and [sample.get('header', (-1,))[0] for sample in samples] == list(range(8))
+                            and [frame['phase'] for frame in frames] == [0, 1, 2, 3]
+                            and all(FIELDS <= frame.keys() for frame in frames)
+                            and all({'header', 'cur', 'codec', 'valid'} <= sample.keys() for sample in samples))
+    state_requests_ok = all(any(item['tag'] == tag and item['values'][0] == 0 for item in run['records'])
+                            for tag in ('run', 'pause-after', 'stop'))
     end = run.get('end')
     queue_failed = bool(end and end[1]) or any(item['tag'] == 'uart-queue-error' for item in run['records'])
-    observed = bool(complete and measurement_complete and end[0] == 0 and not queue_failed and changes and codec_enabled
+    observed = bool(complete and measurement_complete and state_requests_ok and end[0] == 0 and not queue_failed and changes and codec_enabled
                     and stopped_muted and retained and not any(faults))
     states = [f['state'][2] for f in frames if f.get('state', (0, 0, 0))[2]]
     return {

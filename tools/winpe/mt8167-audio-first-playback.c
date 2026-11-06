@@ -115,9 +115,9 @@ static DWORD snapshot(HANDLE filter,struct a04_audio_snapshot *s) {
  if(got!=sizeof(*s)||s->size!=sizeof(*s)||s->version!=A04_AUDIO_DIAG_VERSION)return ERROR_INVALID_DATA;
  return 0;
 }
-static void dump(const struct a04_audio_snapshot *s,DWORD phase) {
+static void dump(const struct a04_audio_snapshot *s,DWORD phase,DWORD captured_tick) {
  const struct a04_codec_snapshot *c=&s->codec;
- line("snapshot",phase,s->sequence,GetTickCount());line("state",s->stage,s->last_status,s->failure_stage);line("transport",s->transport,s->irq_active,s->dma_exposed);
+ line("snapshot",phase,s->sequence,captured_tick);line("state",s->stage,s->last_status,s->failure_stage);line("transport",s->transport,s->irq_active,s->dma_exposed);
  line("valid",s->valid,c->valid,s->online);line("dma",s->dma_base,s->dma_end,s->dma_bytes);
  line("cur",s->dl1_cur,s->position_bytes,s->dma_exposed);line("irq",s->irq_events,s->irq_faults,s->irq_status);
  line("afe",s->dac0,s->afe_top,s->irq_active);line("lease",c->online,c->leased,c->power_pinned);
@@ -161,6 +161,9 @@ static DWORD run(void) {
  typedef char contiguous_format[(offsetof(struct {KSPIN_CONNECT c;KSDATAFORMAT_WAVEFORMATEX f;},f)==sizeof(KSPIN_CONNECT))?1:-1];
  KSRTAUDIO_BUFFER_PROPERTY buffer;KSRTAUDIO_BUFFER mapping;
  struct a04_audio_snapshot s;DWORD error=0,result=1,got=0,i,valid=0,changes=0,previous=0,have_previous=0,codec_ok=0;
+ static struct a04_audio_snapshot samples[8],before_stop,after_stop;
+ DWORD sample_ticks[8],sample_count=0,sample_error=0,run_error=0,run_tick=0;
+ DWORD before_error=0,after_error=0,before_tick=0,after_tick=0,pause_error=0,stop_error=0,pause_tick=0,stop_tick=0;
  int ran=0;(void)sizeof(contiguous_format);
  SetLastError(ERROR_SUCCESS);mutex=CreateMutexW(NULL,FALSE,L"A04BR3AudioFirstPlayback");
  if(!mutex || GetLastError()==ERROR_ALREADY_EXISTS){line("singleton-error",GetLastError(),0,0);if(mutex)CloseHandle(mutex);return 2;}
@@ -169,7 +172,7 @@ static DWORD run(void) {
  ks=LoadLibraryW(L"ksuser.dll");if(!ks){line("ksuser-error",GetLastError(),0,0);result=4;goto done;}
  create=(CREATE_KS_PIN)GetProcAddress(ks,"KsCreatePin");if(!create){line("kscreate-error",GetLastError(),0,0);result=4;goto done;}
  filter=find_filter();if(filter==INVALID_HANDLE_VALUE){failed_pnp();result=5;goto done;}
- error=snapshot(filter,&s);if(error){line("snapshot-error",error,0,0);result=6;goto done;}dump(&s,0);
+ error=snapshot(filter,&s);if(error){line("snapshot-error",error,0,0);result=6;goto done;}dump(&s,0,GetTickCount());
  if((s.valid&A04_AUDIO_VALID_PARENT)==0 || !s.codec.online || !s.codec.leased || !s.codec.power_pinned ||
     s.stage!=A04_STAGE_CREATED || s.digital_retained || s.shared_quarantined || s.codec.poisoned){line("not-first",s.stage,s.digital_retained,s.shared_quarantined);result=7;goto done;}
  ZeroMemory(&request,sizeof(request));
@@ -197,16 +200,15 @@ static DWORD run(void) {
  if(error){result=11;goto done;}
  error=state(pin,KSSTATE_PAUSE);line("pause-before",error,0,0);if(error){result=12;goto done;}
  if(uart_lost){result=3;goto done;}
- /* Exactly one RUN request. Never retry after partial hardware exposure. */
- error=state(pin,KSSTATE_RUN);ran=1;line("run",error,GetTickCount(),0);
- if(error){result=13;goto observe_failure;}
+ /* Exactly one RUN request. Keep UART output out of the active interval:
+  * shared UART queue contention must not delay mute/STOP. */
+ run_tick=GetTickCount();run_error=state(pin,KSSTATE_RUN);ran=1;
+ if(run_error){result=13;goto observe_failure;}
  result=14;
- for(i=0;i<8 && !uart_lost;i++) {
-  Sleep(37);error=snapshot(filter,&s);if(error){line("sample-error",error,i,0);break;}
-  if(!i)dump(&s,1);
-  line("sample",i,GetTickCount(),s.valid);line("sample-cur",s.dl1_cur,s.position_bytes,s.irq_events);
-  line("sample-codec",s.codec.spk9,s.codec.overcurrent,s.irq_faults);
-  line("sample-valid",s.codec.valid,s.codec.poisoned,s.failure_stage);
+ for(i=0;i<8;i++) {
+  Sleep(37);sample_error=snapshot(filter,&samples[i]);sample_ticks[i]=GetTickCount();
+  if(sample_error)break;
+  sample_count++;s=samples[i];
   if((s.valid&(A04_AUDIO_VALID_POSITION|A04_AUDIO_VALID_DMA|A04_AUDIO_VALID_AFE))==
       (A04_AUDIO_VALID_POSITION|A04_AUDIO_VALID_DMA|A04_AUDIO_VALID_AFE) && !s.irq_faults && (s.dac0&3)==3 &&
       s.dl1_cur>=s.dma_base && s.dl1_cur<=s.dma_end && s.position_bytes<s.dma_bytes) {
@@ -214,17 +216,32 @@ static DWORD run(void) {
   }
   if(codec_running(&s))codec_ok++;
  }
- if(valid>=2 && changes && codec_ok==8 && !uart_lost)result=0;
+ if(valid>=2 && changes && codec_ok==8)result=0;
 observe_failure:
- error=snapshot(filter,&s);if(!error)dump(&s,2);else line("snapshot-error",error,2,0);
- if(ran){error=state(pin,KSSTATE_PAUSE);line("pause-after",error,GetTickCount(),0);if(error && !result)result=15;}
- error=state(pin,KSSTATE_STOP);line("stop",error,0,0);if(error && !result)result=15;
- error=snapshot(filter,&s);
- if(!error) {
-  dump(&s,3);
-  if(((s.valid&A04_AUDIO_VALID_AFE)==0 || (s.codec.valid&A04_CODEC_VALID_SPEAKER)==0 ||
-     (s.dac0&2) || (s.codec.spk9&0xf00)) && !result)result=16;
- }else {line("snapshot-error",error,3,0);if(!result)result=16;}
+ before_error=snapshot(filter,&before_stop);before_tick=GetTickCount();
+ if(ran){pause_error=state(pin,KSSTATE_PAUSE);pause_tick=GetTickCount();if(pause_error && !result)result=15;}
+ stop_error=state(pin,KSSTATE_STOP);stop_tick=GetTickCount();if(stop_error && !result)result=15;
+ after_error=snapshot(filter,&after_stop);after_tick=GetTickCount();
+ if(!after_error) {
+  if(((after_stop.valid&A04_AUDIO_VALID_AFE)==0 || (after_stop.codec.valid&A04_CODEC_VALID_SPEAKER)==0 ||
+     (after_stop.dac0&2) || (after_stop.codec.spk9&0xf00)) && !result)result=16;
+ }else if(!result)result=16;
+ /* Everything below is a report of already captured data. The driver keeps
+  * its resources pinned; transmission time is not a sampling timestamp. */
+ line("run",run_error,run_tick,0);
+ if(sample_count)dump(&samples[0],1,sample_ticks[0]);
+ for(i=0;i<sample_count;i++) {
+  const struct a04_audio_snapshot *sample=&samples[i];
+  line("sample",i,sample_ticks[i],sample->valid);
+  line("sample-cur",sample->dl1_cur,sample->position_bytes,sample->irq_events);
+  line("sample-codec",sample->codec.spk9,sample->codec.overcurrent,sample->irq_faults);
+  line("sample-valid",sample->codec.valid,sample->codec.poisoned,sample->failure_stage);
+ }
+ if(sample_error)line("sample-error",sample_error,sample_count,0);
+ if(!before_error)dump(&before_stop,2,before_tick);else line("snapshot-error",before_error,2,0);
+ if(ran)line("pause-after",pause_error,pause_tick,0);
+ line("stop",stop_error,stop_tick,0);
+ if(!after_error)dump(&after_stop,3,after_tick);else line("snapshot-error",after_error,3,0);
  line("observed",valid,changes,codec_ok);
 done:
  /* Close is not DMA drain. The kernel deliberately retains exposed resources. */
