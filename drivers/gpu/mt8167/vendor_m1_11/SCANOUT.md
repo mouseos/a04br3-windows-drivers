@@ -712,3 +712,24 @@ cannot subsequently change, that saved surfaces remain owned, or that GCE,
 its clock, interrupt and event are free. The independently supplied lease,
 visibility and quiescence proof is still required; no existing provider
 supplies it and the routine is not yet called by normal present.
+
+### TOP2 observation with the present-frame diagnostic
+
+The opt-in handoff diagnostic reads TOPCKGEN TOP2 at BeforeExitBootServices,
+without mapping or accessing GCE. Linux MT8167 `clk-mt8167.c` identifies bit 4
+as the active-low GCE gate. The UEFI UART record gives `top2` and `gate_off`;
+owner, threads, events and secure state are explicitly UNKNOWN. A gate bit
+is a transient observation, not a guarantee that GCE MMIO can be read or
+that another domain will keep the clock running. Linux's `cmdqCoreGetEvent`
+first writes the global `SYNC_TOKEN_ID` selector; no event value can be read
+by that sequence without a shared-owner protocol.
+
+With the WDDM GCE interface option enabled, the successful frame diagnostic
+reads the volatile handoff record: step 68 reports retrieval/validation, 69
+the TOP2 value, 6A zero means unknown ownership, 6B reports device-interface
+enumeration and 67 the final GCE acquisition result. In the companion firmware
+GCE PDO and display IRQ remain absent: no thread, event, controller reset or
+OVL register is written. GPU present capture, explicit DMA flush, OVL
+observation, CPU workload, touch and UART listener run in the same image.
+This candidate is for clock and existing GPU/CPU observations only; it is not
+GPU direct scanout, GCE ownership proof, or a completed restore path.
