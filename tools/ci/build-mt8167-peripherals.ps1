@@ -73,6 +73,9 @@ try {
     if((Get-FileHash $parent -Algorithm SHA256).Hash -ne $parentHash){throw 'Shared parent changed during Wi-Fi build'}
     $parents=@(Get-ChildItem $out -Recurse -File -Filter 'mt8167-shared.sys')
     if($parents.Count -ne 1){throw 'Batch output must contain exactly one shared parent SYS'}
+    & (Join-Path $PSScriptRoot 'build-mt8167-hardware-probe.ps1') -OutputDirectory (Join-Path $out 'hardware-probe') `
+      -WlanProbePath (Join-Path $wifiOut 'wlan-probe\mt6630-wlan-probe.exe') `
+      -AudioClientPath (Join-Path $audioOut 'client\mt8167-audio-first-playback.exe')
     $files=@(
       'audio-usb\a04-msdc-parent-probe\mt8167-shared.sys',
       'audio-usb\a04-msdc-parent-probe\shared-parent.inf',
@@ -80,7 +83,12 @@ try {
       'audio-usb\audio\mt8167-audio.sys','audio-usb\audio\mt8167-afe-first-playback.inf',
       'audio-usb\usb\mt8167-usb20.sys','audio-usb\usb\mt8167-usb20.inf','audio-usb\usb\usb-manifest.json',
       'audio-usb\client\mt8167-audio-first-playback.exe','audio-usb\client\run-mt8167-audio-first-playback.cmd','audio-usb\client\client-manifest.json',
-      'audio-usb\wifi\mt6630-runtime.sys','audio-usb\wifi\mt6630-runtime.inf','audio-usb\wifi\manifest.json','audio-usb\wifi\wlan-probe\mt6630-wlan-probe.exe')
+      'audio-usb\wifi\mt6630-runtime.sys','audio-usb\wifi\mt6630-runtime.inf','audio-usb\wifi\manifest.json','audio-usb\wifi\wlan-probe\mt6630-wlan-probe.exe',
+      'audio-usb\wifi\wlan-probe\mt6630-wlan-observe.cmd','audio-usb\wifi\wlan-probe\probe-manifest.json',
+      'audio-usb\wifi\wlan-probe\README-mt6630-wlan-probe.md',
+      'hardware-probe\MT8167HardwareProbe.exe','hardware-probe\mt6630-wlan-probe.exe',
+      'hardware-probe\mt8167-audio-first-playback.exe','hardware-probe\hardware-probe-manifest.json',
+      'hardware-probe\README-mt8167-hardware-probe.md')
     foreach($file in $files){if(!(Test-Path (Join-Path $out $file))){throw "Missing artifact: $file"}}
     foreach($file in @($files|Where-Object{$_ -match '\.inf$'})){
         $body=[IO.File]::ReadAllText((Join-Path $out $file))
@@ -107,12 +115,16 @@ try {
       parent_hardware_id='ACPI\BEN0001';shared_parent_count=1;audio_interface=11;usb_interface=1;wifi_interface=2;
       driver_date=$inputs.driver_date;driver_version=$inputs.driver_version;driver_ver=$inputs.driver_ver;
       parent_flags=$audioManifest.parent_flags;audio_flags=$audioManifest.audio_flags;
+      hardware_probe_service='MT8167HardwareProbe';hardware_probe_path='hardware-probe';hardware_probe_one_attempt=$true;
+      hardware_probe_exe_destination='System32\MT8167HardwareProbe.exe';hardware_probe_client_directory='System32\MT8167HardwareProbe';
+      hardware_probe_scm_start=2;hardware_probe_scm_arguments='';hardware_probe_delayed_auto_start=$false;
       namespace='Reuse current BEN0001/touch/battery/buttons/GPU; do not add USB-only SSDT';
       uefi_reference='cc7c20fa (reported by primary owner; not rebuilt or validated here)';
       firmware_embedded=$false;device_calibration_embedded=$false;hardware_verified=$false;
       status='Unsigned WDK8.1 batch completed; signing and target validation are separate';
       prerequisites=@('Matched existing TOPRGU 96-byte UART queue','ARM32 ksuser.dll for KS client',
-        'WlanSvc/wlanapi.dll for WLAN probe','Media-prepared MT6630 firmware; runtime device NVRAM');
+        'WlanSvc/wlanapi.dll for WLAN probe','Media-prepared MT6630 firmware; runtime device NVRAM',
+        'Signed service at System32/MT8167HardwareProbe.exe; fixed clients under System32/MT8167HardwareProbe; trusted machine certificate chain');
       files=@($files|ForEach-Object{@{path=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}})
     }|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 $manifestPath
     @{source_commit=$commit;state='complete';hardware_verified=$false}|ConvertTo-Json|Set-Content -Encoding UTF8 (Join-Path $out 'build-state.json')

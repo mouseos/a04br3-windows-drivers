@@ -142,3 +142,8 @@ station ownerのBSS観測処理へ渡す。peer deauth/disassocは引き続き�
 `build-mt8167-first-playback.ps1 -IntegratedUsb -IntegratedWifi` はparentを1回だけ生成し、
 Wi-Fi runtimeはfeature/commit/hashを照合してそのSYSを再利用する。
 個別runtime buildのparent SYSを統合版の後から上書きしない。
+
+scan probe一式には起動用 `mt6630-wlan-observe.cmd` とprobe manifestを含む。
+既存TOPRGU UART ownerへcount/statusレコードを送り、stdoutは主担当のCRC付きaudit-streamにも
+収録できる。起動・レコード解釈・転送とscan成功の区別はprobe READMEを参照。
+Ramanの `build-mt8167-peripherals.ps1` はprobe一式とmanifestを統合成果物へ含める。
