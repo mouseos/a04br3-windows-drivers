@@ -72,6 +72,54 @@ VOID BASIC_DISPLAY_DRIVER::SharedDiagnosticWorker(PVOID context)
     KEVENT *done=self->m_SharedWorkerDone;
     A04DisplayTrace(0x83,STATUS_SUCCESS);
     LARGE_INTEGER delay;delay.QuadPart=-10000000LL;
+#if A04_GE8300_WDDM_PRESENT_CAPTURE
+    /* Snapshot publication and cleanup are protected by m_PresentMutex. GPU
+     * work runs without it so normal presents are not blocked for 1000 tiles.
+     * StopDevice/D3 join this worker before touching its resources. */
+    for(ULONG i=0;i<120;i++) {
+        NTSTATUS wait=KeWaitForSingleObject(&self->m_SharedWorkerStop,Executive,KernelMode,FALSE,&delay);
+        if(wait!=STATUS_TIMEOUT)break;
+        wait=KeWaitForSingleObject(&self->m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+        if(!NT_SUCCESS(wait))break;
+        if(!self->m_Flags.DriverStarted || !self->m_DisplayResources.Adapter) {
+            KeReleaseMutex(&self->m_PresentMutex,FALSE);break;
+        }
+        if(!self->m_DisplayResources.PresentCapture && !self->m_DisplayResources.PresentCaptureConsumed && i<29u) {
+            KeReleaseMutex(&self->m_PresentMutex,FALSE);continue;
+        }
+        BOOLEAN captured=self->m_DisplayResources.PresentCapture!=NULL;
+        self->m_DisplayResources.PresentCaptureConsumed=TRUE;
+        KeReleaseMutex(&self->m_PresentMutex,FALSE);
+        A04DisplayTrace(0x9c,captured?1:0);
+        NTSTATUS status=self->m_DisplayResources.PrepareViaGpu();
+        BOOLEAN finished=NT_SUCCESS(status) || self->m_DisplayResources.Shared.mdl ||
+            self->m_DisplayResources.GpuHandle || !a04_common_may_attempt(&self->m_DisplayResources.SharedCommonOnce);
+        if(i==0 || finished || (i%10)==9)A04DisplayTrace(0x31,status);
+        if(finished) {
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+            /* The synthetic fallback can reproduce the known POST display.
+             * Never paint an old captured present over newer presents. */
+            if(!captured && NT_SUCCESS(status)) {
+                wait=KeWaitForSingleObject(&self->m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+                if(NT_SUCCESS(wait)) {
+                    if(!self->m_GpuPostAttempted) {self->m_GpuPostAttempted=TRUE;
+                        NTSTATUS shown=self->ShowVerifiedGpuFrame();A04DisplayTrace(0x81,shown);}
+                    KeReleaseMutex(&self->m_PresentMutex,FALSE);
+                }
+            }
+#endif
+            break;
+        }
+    }
+    if(NT_SUCCESS(KeWaitForSingleObject(&self->m_PresentMutex,Executive,KernelMode,FALSE,NULL))) {
+        if(self->m_DisplayResources.PresentCapture) {
+            ExFreePoolWithTag((PVOID)self->m_DisplayResources.PresentCapture,'cG4A');
+            self->m_DisplayResources.PresentCapture=NULL;
+        }
+        self->m_DisplayResources.PresentCaptureConsumed=TRUE;
+        KeReleaseMutex(&self->m_PresentMutex,FALSE);
+    }
+#else
     for(ULONG i=0;i<120;i++) {
         NTSTATUS wait=KeWaitForSingleObject(&self->m_SharedWorkerStop,Executive,KernelMode,FALSE,&delay);
         if(wait==STATUS_SUCCESS)break;
@@ -104,6 +152,7 @@ VOID BASIC_DISPLAY_DRIVER::SharedDiagnosticWorker(PVOID context)
         if(i==0 || done || (i%10)==9) A04DisplayTrace(0x31,status);
         if(done)break;
     }
+#endif
     KeSetEvent(done,IO_NO_INCREMENT,FALSE);
     PsTerminateSystemThread(STATUS_SUCCESS);
 }
@@ -686,7 +735,24 @@ NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DIS
                                                                     pPresentDisplayOnly->NumDirtyRects,
                                                                     pPresentDisplayOnly->pDirtyRect,
                                                                     RotationNeededByFb);
-#if A04_GE8300_WDDM_SHARED_LEASE
+#if A04_GE8300_WDDM_PRESENT_CAPTURE
+            /* A snapshot of the completed POST image incorporates move and
+             * dirty rectangles. This is staging for GPU copy, not scanout. */
+            if(NT_SUCCESS(presentStatus) && pPresentDisplayOnly->VidPnSourceId==0 &&
+               m_SharedWorker && !m_DisplayResources.PresentCapture &&
+               !m_DisplayResources.PresentCaptureConsumed && !KeReadStateEvent(&m_SharedWorkerStop) &&
+               mode->DispInfo.Width==800u && mode->DispInfo.Height==1280u &&
+               mode->DispInfo.Pitch>=3200u && mode->DispInfo.Pitch<=MAXULONG/1280u &&
+               (mode->DispInfo.ColorFormat==D3DDDIFMT_X8R8G8B8 || mode->DispInfo.ColorFormat==D3DDDIFMT_A8R8G8B8)) {
+                uint8_t *snapshot=(uint8_t *)ExAllocatePoolWithTag(NonPagedPoolNx,4096000u,'cG4A');
+                if(snapshot) {
+                    for(ULONG row=0;row<1280u;row++)RtlCopyMemory(snapshot+row*3200u,
+                        (const uint8_t *)mode->FrameBuffer.Ptr+row*mode->DispInfo.Pitch,3200u);
+                    m_DisplayResources.PresentCapture=(const uint32_t *)snapshot;A04DisplayTrace(0x9b,STATUS_SUCCESS);
+                } else A04DisplayTrace(0x9b,STATUS_INSUFFICIENT_RESOURCES);
+            }
+#endif
+#if A04_GE8300_WDDM_SHARED_LEASE && !A04_GE8300_WDDM_PRESENT_CAPTURE
             /* Diagnostic-only: the provider admits the lease only after a
              * verified copy/fence. Retry while the copy service is not ready. */
             if (NT_SUCCESS(presentStatus) && m_DisplayResources.Adapter &&

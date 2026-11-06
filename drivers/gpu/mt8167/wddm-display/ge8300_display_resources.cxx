@@ -396,8 +396,13 @@ NTSTATUS A04DisplayResources::GetVerifiedGpuFrame(const uint32_t **pixels)
     *pixels=(const uint32_t *)owner->cpu;return STATUS_SUCCESS;
 }
 #endif
-static uint32_t CommonFramePixel(uint32_t x,uint32_t y)
+static uint32_t CommonFramePixel(uint32_t x,uint32_t y,const uint32_t *capture)
 {
+#if A04_GE8300_WDDM_PRESENT_CAPTURE
+    if(capture)return capture[y*800u+x];
+#else
+    UNREFERENCED_PARAMETER(capture);
+#endif
 #if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
     return a04_gpu_post_pixel(x,y);
 #else
@@ -405,7 +410,7 @@ static uint32_t CommonFramePixel(uint32_t x,uint32_t y)
 #endif
 }
 static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile uint32_t *cpu,
-    struct A04CommonFrameOwner *owner)
+    struct A04CommonFrameOwner *owner,const uint32_t *capture)
 {
     struct a04_ge8300_shared_tile *tile;IO_STATUS_BLOCK io={};PFILE_OBJECT file=NULL;
     NTSTATUS status;uint32_t index=0,matches=0,lastTask=0,lastFlush=0;
@@ -417,7 +422,7 @@ static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile 
         uint32_t x=(index%25u)*32u,y=(index/25u)*32u;
         RtlZeroMemory(tile,sizeof(*tile));tile->token=token;tile->frame=1;tile->index=index;
         for(uint32_t row=0;row<32u;row++)for(uint32_t col=0;col<32u;col++)
-            tile->pixels[row*32u+col]=CommonFramePixel(x+col,y+row);
+            tile->pixels[row*32u+col]=CommonFramePixel(x+col,y+row,capture);
         io.Information=0;io.Status=STATUS_PENDING;
         status=ZwDeviceIoControlFile(handle,NULL,NULL,NULL,&io,A04_GE8300_IOCTL_SHARED_TILE,
             tile,sizeof(*tile),tile,sizeof(*tile));
@@ -458,7 +463,7 @@ static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile 
 #endif
         KeFlushIoBuffers(mdl,TRUE,TRUE);KeMemoryBarrier();
         for(uint32_t y=0;y<1280u;y++)for(uint32_t x=0;x<800u;x++)
-            if(cpu[y*800u+x]==CommonFramePixel(x,y))matches++;
+            if(cpu[y*800u+x]==CommonFramePixel(x,y,capture))matches++;
         status=matches==1024000u?STATUS_SUCCESS:STATUS_DATA_ERROR;
         owner->cpuMatches=matches;
         A04DisplayTrace(0x60,(NTSTATUS)matches);A04DisplayTrace(0x61,status);
@@ -478,6 +483,11 @@ NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(struct a04_ge8300_common_pa
     uint64_t total=0;ULONG i,j;
 #if A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
     struct A04CommonFrameOwner *owner=NULL;uint32_t npage=0;BOOLEAN layoutValid=FALSE;
+#if A04_GE8300_WDDM_PRESENT_CAPTURE
+    const uint32_t *capture=PresentCapture;
+#else
+    const uint32_t *capture=NULL;
+#endif
 #endif
     if(!Adapter || !gpu || !gpuPdo || gpu==Adapter || !Adapter->DmaOperations || !gpu->DmaOperations ||
        Adapter->DmaOperations->Size<FIELD_OFFSET(DMA_OPERATIONS,AllocateCommonBufferEx)+sizeof(Adapter->DmaOperations->AllocateCommonBufferEx) ||
@@ -491,7 +501,7 @@ NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(struct a04_ge8300_common_pa
     A04DisplayTrace(0x57,STATUS_SUCCESS);A04DisplayTrace(0x58,(NTSTATUS)logical.LowPart);
     A04DisplayTrace(0x59,(NTSTATUS)4096000u);
 #if A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
-    for(i=0;i<1024000u;i++)((volatile uint32_t *)cpu)[i]=~CommonFramePixel(i%800u,i/800u);
+    for(i=0;i<1024000u;i++)((volatile uint32_t *)cpu)[i]=~CommonFramePixel(i%800u,i/800u,capture);
     KeMemoryBarrier();
 #endif
     if(gpu->DmaOperations->Size<FIELD_OFFSET(DMA_OPERATIONS,FreeAdapterObject)+sizeof(gpu->DmaOperations->FreeAdapterObject) ||
@@ -572,7 +582,7 @@ NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(struct a04_ge8300_common_pa
     Lease.gpu_adapter=gpu;Lease.gpu_pdo=gpuPdo;Lease.shared_mdl_owner=&owner->shared;
     status=SharedLeaseIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_STAGE,&Lease);
     A04DisplayTrace(0x5d,status);
-    if(NT_SUCCESS(status))status=CommonFrameTiles(GpuHandle,Lease.token,mdl,(volatile uint32_t *)cpu,owner);
+    if(NT_SUCCESS(status))status=CommonFrameTiles(GpuHandle,Lease.token,mdl,(volatile uint32_t *)cpu,owner,capture);
 #if A04_GE8300_WDDM_GCE_LEASE
 #if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
     if(NT_SUCCESS(status)) {NTSTATUS gceStatus=GceDisplayAcquire(&GceDisplayLease);A04DisplayTrace(0x67,gceStatus);}

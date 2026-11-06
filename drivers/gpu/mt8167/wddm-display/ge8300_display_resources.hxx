@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #ifndef A04_DISPLAY_RESOURCES_HXX
 #define A04_DISPLAY_RESOURCES_HXX
+#ifndef A04_GE8300_WDDM_PRESENT_CAPTURE
+#define A04_GE8300_WDDM_PRESENT_CAPTURE 0
+#endif
 #ifndef A04_GE8300_WDDM_EXPLICIT_GPU_FLUSH
 #define A04_GE8300_WDDM_EXPLICIT_GPU_FLUSH 0
 #endif
@@ -24,6 +27,9 @@
 #endif
 #ifndef A04_GE8300_WDDM_GCE_LEASE
 #define A04_GE8300_WDDM_GCE_LEASE 0
+#endif
+#if A04_GE8300_WDDM_PRESENT_CAPTURE && (!A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC || !A04_GE8300_WDDM_EXPLICIT_GPU_FLUSH)
+#error Present capture requires common frame and explicit GPU DMA flush
 #endif
 #if A04_GE8300_WDDM_EXPLICIT_GPU_FLUSH && !A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
 #error Explicit GPU DMA flush requires the common frame diagnostic
@@ -57,6 +63,9 @@
 #endif
 #ifndef A04_GE8300_WDDM_SHARED_AUTOSTART
 #define A04_GE8300_WDDM_SHARED_AUTOSTART 0
+#endif
+#if A04_GE8300_WDDM_PRESENT_CAPTURE && (!A04_GE8300_WDDM_SHARED_AUTOSTART || !A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC)
+#error Present capture requires the GPU POST worker
 #endif
 #if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC && (!A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC || !A04_GE8300_WDDM_SHARED_AUTOSTART)
 #error GPU POST diagnostic requires the common frame worker
@@ -99,6 +108,9 @@ struct A04DisplayResources {
     BOOLEAN SharedCommonFinished;
     NTSTATUS SharedCommonResult;
     void *SharedCommonOwner;
+#if A04_GE8300_WDDM_PRESENT_CAPTURE
+    const uint32_t *PresentCapture;BOOLEAN PresentCaptureConsumed;
+#endif
 #if A04_GE8300_WDDM_GCE_LEASE
     void *GceDisplayLease;
 #if A04_GE8300_WDDM_EXPLICIT_GPU_FLUSH
