@@ -588,3 +588,9 @@ uncertain GPU access. Mappings stay retained; normal power/resume, removal,
 all partial-update acceleration and 3D remain unfinished. The accompanying
 Win32 GDI workload creates eight changing full-screen images without user
 input. Its successful exit alone is not evidence of GPU rendering.
+
+The GDI workload uses Windows' logical screen dimensions instead of assuming
+they equal native panel dimensions. Full presents rotated by the existing DOD
+blitter use private cached staging before GPU transfer; CPU rotation remains
+on the CPU. The visible framebuffer is written by the GPU only. Other source
+geometries and partial updates still fall back to the established CPU path.

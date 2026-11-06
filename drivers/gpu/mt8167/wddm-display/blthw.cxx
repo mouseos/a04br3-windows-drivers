@@ -542,12 +542,32 @@ HwExecutePresentDisplayOnly(
 
     NTSTATUS presentStatus=STATUS_NOT_SUPPORTED;
 #if A04_GE8300_WDDM_LIVE_FULL_PRESENT
-    if(ctx->SynchExecution && ctx->SourceID==0 && ctx->SrcWidth==800 && ctx->SrcHeight==1280 &&
-       ctx->Rotation==D3DKMDT_VPPR_IDENTITY && ctx->DstBitPerPixel==32 && !ctx->NumMoves) {
+    static volatile LONG observed=0;
+    if(InterlockedIncrement(&observed)<=8) {
+        A04DisplayTrace(0xb8,(NTSTATUS)ctx->SrcWidth);A04DisplayTrace(0xb9,(NTSTATUS)ctx->SrcHeight);
+        A04DisplayTrace(0xba,(NTSTATUS)ctx->Rotation);A04DisplayTrace(0xbb,(NTSTATUS)ctx->NumDirtyRects);
+    }
+    if(ctx->SynchExecution && ctx->SourceID==0 && DstBltInfo.Width==800 && DstBltInfo.Height==1280 &&
+       ctx->DstBitPerPixel==32 && !ctx->NumMoves) {
         for(UINT i=0;i<ctx->NumDirtyRects;i++)if(ctx->DirtyRect[i].left==0 && ctx->DirtyRect[i].top==0 &&
-           ctx->DirtyRect[i].right==800 && ctx->DirtyRect[i].bottom==1280) {
-            presentStatus=((BASIC_DISPLAY_DRIVER *)ctx->hAdapter)->TryGpuFullPresent(
-                ctx->SrcAddr,(uint32_t)ctx->SrcPitch,ctx->DstAddr,ctx->DstStride);break;
+           ctx->DirtyRect[i].right==(LONG)ctx->SrcWidth && ctx->DirtyRect[i].bottom==(LONG)ctx->SrcHeight) {
+            if(ctx->Rotation==D3DKMDT_VPPR_IDENTITY) {
+                presentStatus=((BASIC_DISPLAY_DRIVER *)ctx->hAdapter)->TryGpuFullPresent(
+                    ctx->SrcAddr,(uint32_t)ctx->SrcPitch,ctx->DstAddr,ctx->DstStride);
+            } else {
+                /* Reuse the DOD's established rotation into private cached
+                 * staging. Only the GPU writes the visible POST destination. */
+                void *staging=ExAllocatePoolWithTag(NonPagedPoolNx,4096000u,'rG4A');
+                if(!staging)presentStatus=STATUS_INSUFFICIENT_RESOURCES;
+                else {
+                    BLT_INFO rotated=DstBltInfo;rotated.pBits=staging;rotated.Pitch=3200u;
+                    BltBits(&rotated,&SrcBltInfo,1,&ctx->DirtyRect[i]);
+                    presentStatus=((BASIC_DISPLAY_DRIVER *)ctx->hAdapter)->TryGpuFullPresent(
+                        staging,3200u,ctx->DstAddr,ctx->DstStride);
+                    ExFreePoolWithTag(staging,'rG4A');
+                }
+            }
+            break;
         }
     }
 #endif
