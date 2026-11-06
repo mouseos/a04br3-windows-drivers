@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "BDD.hxx"
 #include "ge8300_display_resource_check.h"
+#include "present_tile.h"
 #if A04_GE8300_WDDM_DIRECT_EXPERIMENT
 NTSTATUS A04DisplayResources::Start(PDEVICE_OBJECT pdo,const DXGK_DEVICE_INFO *info)
 {
@@ -58,6 +59,44 @@ static NTSTATUS SharedLeaseIoctl(HANDLE handle,ULONG code,struct a04_ge8300_shar
     if (NT_SUCCESS(status) && io.Information!=sizeof(*lease))return STATUS_IO_DEVICE_ERROR;
     return status;
 }
+#if A04_GE8300_WDDM_SHARED_PRESENT
+NTSTATUS A04DisplayResources::SubmitFullFrame(const void *pixels,uint32_t pitch)
+{
+    struct a04_present_surface source;struct a04_present_tile position;
+    struct a04_ge8300_shared_tile *tile;IO_STATUS_BLOCK io={};PFILE_OBJECT file=NULL;
+    NTSTATUS status;uint32_t frame;
+    if(!pixels || pitch<3200u || (pitch&3u) || !GpuHandle || !Lease.token ||
+       !Shared.mdl || !Shared.exposed || !Shared.gpu_sg || !Shared.display_sg ||
+       FrameId==UINT32_MAX || KeGetCurrentIrql()!=PASSIVE_LEVEL || KeAreAllApcsDisabled())
+        return STATUS_INVALID_DEVICE_STATE;
+    source.base=(unsigned char *)pixels;source.bytes=(size_t)pitch*1280u;
+    if(source.bytes/pitch!=1280u)return STATUS_INVALID_PARAMETER;
+    source.width=800;source.height=1280;source.pitch=pitch;
+    tile=(struct a04_ge8300_shared_tile *)ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*tile),'fG4A');
+    if(!tile)return STATUS_INSUFFICIENT_RESOURCES;
+    status=ObReferenceObjectByHandle(GpuHandle,SYNCHRONIZE,*IoFileObjectType,KernelMode,(PVOID *)&file,NULL);
+    if(!NT_SUCCESS(status)){ExFreePoolWithTag(tile,'fG4A');return status;}
+    frame=++FrameId;
+    for(uint32_t i=0;i<1000;i++) {
+        RtlZeroMemory(tile,sizeof(*tile));tile->token=Lease.token;tile->frame=frame;tile->index=i;
+        position.x=(i%25u)*32u;position.y=(i/25u)*32u;
+        if(a04_present_tile_pack((unsigned char *)tile->pixels,4096,&source,&position)) {
+            status=STATUS_INVALID_PARAMETER;break;
+        }
+        io.Information=0;io.Status=STATUS_PENDING;
+        status=ZwDeviceIoControlFile(GpuHandle,NULL,NULL,NULL,&io,A04_GE8300_IOCTL_SHARED_TILE,
+            tile,sizeof(*tile),tile,sizeof(*tile));
+        if(status==STATUS_PENDING) {
+            do {status=KeWaitForSingleObject(file,Executive,KernelMode,FALSE,NULL);} while(status!=STATUS_SUCCESS);
+            status=io.Status;
+        } else if(NT_SUCCESS(status))status=io.Status;
+        if(!NT_SUCCESS(status) || io.Information!=sizeof(*tile) || !tile->task || !tile->flush) {
+            if(NT_SUCCESS(status))status=STATUS_IO_DEVICE_ERROR;break;
+        }
+    }
+    ObDereferenceObject(file);ExFreePoolWithTag(tile,'fG4A');return status;
+}
+#endif
 NTSTATUS A04DisplayResources::SwitchShared(uint32_t expected,a04_shared_ovl_ready ready,
     a04_shared_ovl_boundary boundary,void *context)
 {

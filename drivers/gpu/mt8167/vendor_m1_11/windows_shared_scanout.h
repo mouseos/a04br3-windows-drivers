@@ -33,6 +33,13 @@ NTSTATUS a04_shared_scanout_prepare(struct a04_shared_scanout *,
 /* No hardware may use the mappings before a separately implemented lifetime
  * and visibility protocol; an exposed allocation can never be freed here. */
 NTSTATUS a04_shared_scanout_release(struct a04_shared_scanout *);
+/* One-way handoff. The caller serializes lifetime and proves GPU root removal,
+ * MMU invalidation, GPU DMA drain and that OVL cannot read either mapping.
+ * There is currently no production caller capable of proving these facts.
+ * Failure after Put retains the allocation and never restores GPU access. */
+typedef NTSTATUS (*a04_shared_quiesce_proof)(void *);
+NTSTATUS a04_shared_scanout_handoff_display(struct a04_shared_scanout *,
+    PDEVICE_OBJECT display_pdo,a04_shared_quiesce_proof,void *);
 /* Build inactive GPU page-table images for the 1000 mapped pages. The GPU
  * owner provides independent GPU-DMA table addresses and later publishes the
  * images; this function does not acquire table memory or invalidate the MMU. */

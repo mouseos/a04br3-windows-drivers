@@ -83,7 +83,7 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
        client.ui32WrapMask!=4095u || client.ui32ReadOffset!=at || client.ui32WriteOffset!=at ||
        client.ui32DepOffset>4095u || (client.ui32DepOffset&7u)) {status=STATUS_INVALID_DEVICE_STATE;goto done;}
 #if A04_GE8300_SHARED_GPU_DIAGNOSTIC && A04_GE8300_SHARED_FULL_FRAME
-    shared_wrap=copy && copy->diagnostic_cpu;
+    shared_wrap=copy && (copy->diagnostic_cpu || copy->shared_gpu_only);
     if(shared_wrap) {
         if(!a04_tq_ring_plan(client.ui32ReadOffset,at,client.ui32DepOffset,&plan)) {
             status=STATUS_DEVICE_BUSY;goto done;
@@ -94,7 +94,7 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
     seq=++r->sequence;packet.task.eCmdType=TQ_TASK;packet.task.ui32CmdSize=208u;
     RtlCopyMemory(packet.payload,copy?copy->frozen_task:r->clear.payload,sizeof(packet.payload));
 #if A04_GE8300_SHARED_GPU_DIAGNOSTIC
-    if(copy && copy->diagnostic_cpu) {
+    if(copy && (copy->diagnostic_cpu || copy->shared_gpu_only)) {
         uint64_t csr=(UINT64_C(2)<<56)|((UINT64_C(799)&UINT64_C(0x1fffe))<<33)|
             (UINT64_C(1)<<23)|(UINT64_C(2)<<26)|(UINT64_C(3)<<29);
         packet.payload[32]=(uint32_t)csr;packet.payload[33]=(uint32_t)(csr>>32);
@@ -182,9 +182,9 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
             if(copy->diagnostic_cpu) {
                 value=copy->diagnostic_cpu[(i/32u)*800u+(i%32u)];
                 if(dst[i]!=0xa5a5a5a5u)result->guard_errors++;
-            }
+            } else if(copy->shared_gpu_only && dst[i]!=0xa5a5a5a5u)result->guard_errors++;
 #endif
-            if(value==expected)result->zeros++;
+            if(!copy->shared_gpu_only && value==expected)result->zeros++;
             if(src[i]!=expected)result->guard_errors++;
             if(shared[i]!=(i<9u?copy->state.shared[i]:0xa5a5a5a5u))result->guard_errors++;
             if(i==0)result->first=value;
@@ -198,7 +198,7 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
         if(i*4u==r->clear_first)result->first=value;
         if(i*4u==r->clear_first+31u*r->clear_row_bytes+124u)result->last=value;
     }
-    status=(result->zeros==1024u && !result->guard_errors)?STATUS_SUCCESS:STATUS_DATA_ERROR;
+    status=((copy && copy->shared_gpu_only ? TRUE : result->zeros==1024u) && !result->guard_errors)?STATUS_SUCCESS:STATUS_DATA_ERROR;
     r->clear_verified=NT_SUCCESS(status);
     if (r->clear_verified) { result->completed_task=seq; result->completed_flush=flushseq; }
     if(copy && !NT_SUCCESS(status)){r->poisoned=TRUE;s->command_poisoned=TRUE;}
@@ -246,7 +246,7 @@ NTSTATUS a04_vendor_render_copy_once(struct a04_vendor_copy_scratch *o,
  * Completion + CPU readback do not establish display visibility or quiescence. */
 static NTSTATUS copy_shared_tile(struct a04_vendor_copy_scratch *o,
     struct a04_vendor_start *s,struct a04_shared_scanout *target,struct a04_shared_tables *tables,
-    const uint32_t *input,uint32_t index,struct a04_vendor_clear_result *result)
+    const uint32_t *input,uint32_t index,BOOLEAN gpu_only,struct a04_vendor_clear_result *result)
 {
     struct a04_vendor_render_cold *r;volatile uint32_t *pixels;uint32_t pds[16];
     unsigned i;NTSTATUS status;uint32_t offset=0;uint64_t gpu_va;
@@ -255,7 +255,7 @@ static NTSTATUS copy_shared_tile(struct a04_vendor_copy_scratch *o,
     if(!a04_shared_tile_at(index,&tile))return STATUS_INVALID_PARAMETER;
     offset=tile.byte_offset;
 #else
-    if(index || input)return STATUS_INVALID_PARAMETER;
+    if(index || input || gpu_only)return STATUS_INVALID_PARAMETER;
 #endif
     gpu_va=UINT64_C(0x8000000000)+offset;
     if(!result)return STATUS_INVALID_PARAMETER;
@@ -282,22 +282,25 @@ static NTSTATUS copy_shared_tile(struct a04_vendor_copy_scratch *o,
         status=STATUS_IO_DEVICE_ERROR;goto out;
     }
     for(i=0;i<16;i++)if(pds[i]!=o->eot_pds[i]) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto out;}
-    pixels=(volatile uint32_t *)MmGetSystemAddressForMdlSafe(target->mdl,NormalPagePriority);
-    if(!pixels || ((uintptr_t)pixels&3u)){status=STATUS_INSUFFICIENT_RESOURCES;goto out;}
-    pixels+=offset/4u;
+    pixels=NULL;
+    if(!gpu_only) {
+        pixels=(volatile uint32_t *)MmGetSystemAddressForMdlSafe(target->mdl,NormalPagePriority);
+        if(!pixels || ((uintptr_t)pixels&3u)){status=STATUS_INSUFFICIENT_RESOURCES;goto out;}
+        pixels+=offset/4u;
+    }
     for(i=0;i<1024u;i++) {
         o->service_expected[i]=input?input[i]:a04_vendor_copy_pattern(i);
-        pixels[(i/32u)*800u+(i%32u)]=0xa5a5a5a5u;
+        if(pixels)pixels[(i/32u)*800u+(i%32u)]=0xa5a5a5a5u;
         ((volatile uint32_t *)o->destination.cpu)[i]=0xa5a5a5a5u;
     }
-    KeFlushIoBuffers(target->mdl,FALSE,TRUE);
+    if(pixels)KeFlushIoBuffers(target->mdl,FALSE,TRUE);
     if(a04_rgx_device_write_words(o->source.cpu,o->service_expected,4096)) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
     RtlCopyMemory(pds,o->eot_pds,sizeof(pds));
     pds[2]=(uint32_t)(gpu_va>>2);
     pds[3]=(uint32_t)(gpu_va>>34)|(1u<<19);
     /* Write only the EOT PDS span under the same lock as the normal copy. */
     if(a04_rgx_device_write_words((UCHAR *)r->buffer[7].cpu+64,pds,sizeof(pds))) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
-    a04_gpu_dma_barrier();o->service_expected_active=TRUE;o->diagnostic_mdl=target->mdl;o->diagnostic_cpu=pixels;
+    a04_gpu_dma_barrier();o->service_expected_active=TRUE;o->diagnostic_mdl=pixels?target->mdl:NULL;o->diagnostic_cpu=pixels;o->shared_gpu_only=gpu_only;
     r->clear_attempted=FALSE;r->clear_verified=FALSE;
     status=clear_locked(r,s,result,TRUE,o);
     if(result->phase==4) {
@@ -307,7 +310,7 @@ static NTSTATUS copy_shared_tile(struct a04_vendor_copy_scratch *o,
         a04_gpu_dma_barrier();
     }
     if(!NT_SUCCESS(status))goto poison;
-    o->service_expected_active=FALSE;o->diagnostic_mdl=NULL;o->diagnostic_cpu=NULL;goto out;
+    o->service_expected_active=FALSE;o->diagnostic_mdl=NULL;o->diagnostic_cpu=NULL;o->shared_gpu_only=FALSE;goto out;
 poison:
     /* Retain changed PDS and mappings if completion is uncertain. */
     r->poisoned=TRUE;s->command_poisoned=TRUE;
@@ -318,7 +321,7 @@ out:
 NTSTATUS a04_vendor_render_copy_shared_diagnostic(struct a04_vendor_copy_scratch *o,
     struct a04_vendor_start *s,struct a04_shared_scanout *target,struct a04_shared_tables *tables,
     struct a04_vendor_clear_result *result)
-{ return copy_shared_tile(o,s,target,tables,NULL,0,result); }
+{ return copy_shared_tile(o,s,target,tables,NULL,0,FALSE,result); }
 #if A04_GE8300_SHARED_FULL_FRAME
 /* Trusted kernel buffer: one packed 32x32 tile, held stable for the call. This
  * is not a frame-completion or display-DMA ownership transfer. */
@@ -327,7 +330,7 @@ NTSTATUS a04_vendor_render_copy_shared_tile(struct a04_vendor_copy_scratch *o,
     const uint32_t *input,uint32_t index,struct a04_vendor_clear_result *result)
 {
     if(!input || ((uintptr_t)input&3u))return STATUS_INVALID_PARAMETER;
-    return copy_shared_tile(o,s,target,tables,input,index,result);
+    return copy_shared_tile(o,s,target,tables,input,index,TRUE,result);
 }
 #endif
 #endif

@@ -8,6 +8,8 @@
 static struct fake_mdl mdl;static SCATTER_GATHER_LIST gpu_list,display_list;
 static PDMA_ADAPTER gpu_id,display_id;static int gpu_put,display_put,freed,fragment,duplicate;
 static unsigned table_allocs,table_frees;static int table_alias;
+static int proof_status,proof_calls;
+static NTSTATUS proof(void *p){assert(p==(void*)3);proof_calls++;return proof_status;}
 void a04_gpu_dma_barrier(void){}
 NTSTATUS a04_vendor_uncached_allocate(struct a04_vendor_uncached *b,PDMA_ADAPTER a,ULONG bytes)
 {
@@ -78,11 +80,18 @@ int main(void)
       table_alias=0;
     }
     s.exposed=1;assert(a04_shared_scanout_release(&s)==STATUS_DEVICE_BUSY && !gpu_put && !display_put && !freed);
-    s.exposed=0;assert(NT_SUCCESS(a04_shared_scanout_release(&s)) && gpu_put==1 && display_put==1 && freed==1);
+    proof_status=STATUS_DEVICE_BUSY;
+    assert(a04_shared_scanout_handoff_display(&s,(void*)2,proof,(void*)3)==STATUS_DEVICE_BUSY);
+    assert(proof_calls==1 && s.gpu_sg && s.display_sg && !gpu_put && !display_put);
+    proof_status=STATUS_SUCCESS;
+    assert(NT_SUCCESS(a04_shared_scanout_handoff_display(&s,(void*)2,proof,(void*)3)));
+    assert(!s.gpu_sg && s.display_sg && s.display_dma==0x51000000 && gpu_put==1 && display_put==1);
+    assert(a04_shared_scanout_handoff_display(&s,(void*)2,proof,(void*)3)==STATUS_INVALID_DEVICE_STATE);
+    s.exposed=0;assert(NT_SUCCESS(a04_shared_scanout_release(&s)) && gpu_put==1 && display_put==2 && freed==1);
     fragment=1;assert(a04_shared_scanout_prepare(&s,&ga,(void*)1,&da,(void*)2)==STATUS_DEVICE_CONFIGURATION_ERROR);
-    assert(gpu_put==2 && display_put==2 && freed==2 && !s.mdl);
+    assert(gpu_put==2 && display_put==3 && freed==2 && !s.mdl);
     fragment=0;duplicate=1;assert(a04_shared_scanout_prepare(&s,&ga,(void*)1,&da,(void*)2)==STATUS_DEVICE_CONFIGURATION_ERROR);
-    assert(gpu_put==3 && display_put==3 && freed==3 && !s.mdl);
+    assert(gpu_put==3 && display_put==4 && freed==3 && !s.mdl);
     assert(a04_shared_scanout_prepare(&s,&ga,(void*)1,&ga,(void*)2)==STATUS_INVALID_PARAMETER);
     return 0;
 }

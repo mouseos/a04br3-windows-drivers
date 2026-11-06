@@ -240,8 +240,9 @@ restore write; no interrupt or readback is treated as retirement.
 diagnostic) enables a kernel-only tile function and a drained-CCB wrapping
 experiment. It accepts a stable, packed 32x32 input tile and one of 1000
 row-major positions on the fixed 800x1280, 3200-byte-pitch surface. Each tile
-is independently submitted, SLC-flushed, fenced and CPU-checked. This is a
-building block, not a WDDM present interface or an atomic complete frame.
+is independently submitted, SLC-flushed and fenced. The full-frame path does
+not CPU-read the GPU-mapped shared MDL. Queue completion is not pixel
+verification, display visibility, or an atomic complete frame.
 Normal copy service submissions retain their existing bounded, non-wrapping
 behavior. The host simulation exercises 1000 positions and padding; neither
 wrapping nor the full surface has been demonstrated on the device.
@@ -279,3 +280,30 @@ and the final result. GPU-side shared diagnostics retain their existing UART
 records. Neither starting the worker nor a successful kernel build proves that
 WinPE loaded the WDDM driver, owns the display resources, or completed the GPU
 diagnostic. This option does not initiate an OVL switch.
+
+### Full-frame present submission and one-way DMA handoff
+
+`A04_GE8300_WDDM_SHARED_PRESENT=1` and provider
+`A04_GE8300_SHARED_FULL_FRAME=1` are separate default-off opt-ins. With an
+existing published lease, an identity 800x1280 32-bit WDDM present with no
+moves and exactly one full-screen dirty rectangle packs the locked source
+into 1000 kernel-only METHOD_BUFFERED tile requests. The provider serializes
+them under its lifetime lock, requires matching token/frame and strict tile
+order, and reports each TQ/SLC/GP fence; failed frames cannot complete. POST
+remains the displayed surface. Full submission is synchronous and potentially
+very slow; there is no display fence, scanout switch or hardware timing claim.
+Partial or rotated presents remain on the original path.
+
+The display handoff helper is deliberately uncalled: it requires independent
+proof that the GPU mapping is no longer in the root, MMU caches were
+invalidated, GPU DMA drained and OVL cannot access either mapping. It then
+releases the old display SG and GPU SG, and obtains a fresh display-read SG.
+Its mapping is quarantined on failure. The current OVL gate also requires the
+old GPU SG, so it deliberately does not authorize switching after this
+handoff; a validated lifecycle and boundary implementation must replace that
+condition before the pieces can be connected. Microsoft documents
+[GetScatterGatherList](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pget_scatter_gather_list)
+and [PutScatterGatherList](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pput_scatter_gather_list)
+as transfer-scoped operations, with Put flushing adapter buffers. Neither the
+CPU readback in the older 32x32 diagnostic nor a GPU fence proves the new
+display mapping is coherent.

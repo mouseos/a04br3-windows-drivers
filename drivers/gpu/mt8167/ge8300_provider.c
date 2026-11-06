@@ -53,14 +53,23 @@
 #ifndef A04_GE8300_VENDOR_RENDER_COLD
 #define A04_GE8300_VENDOR_RENDER_COLD 0
 #endif
+#ifndef A04_GE8300_SHARED_FULL_FRAME
+#define A04_GE8300_SHARED_FULL_FRAME 0
+#endif
 #ifndef A04_GE8300_SHARED_GPU_DIAGNOSTIC
 #define A04_GE8300_SHARED_GPU_DIAGNOSTIC 0
+#endif
+#if A04_GE8300_SHARED_FULL_FRAME && !A04_GE8300_SHARED_GPU_DIAGNOSTIC
+#error Full frame requires shared GPU diagnostic
 #endif
 #ifndef A04_GE8300_SHARED_MMU_PUBLISH
 #define A04_GE8300_SHARED_MMU_PUBLISH 0
 #endif
 #ifndef A04_GE8300_SHARED_LEASE
 #define A04_GE8300_SHARED_LEASE 0
+#endif
+#if A04_GE8300_SHARED_FULL_FRAME
+#include "vendor_m1_11/shared_frame_sequence.h"
 #endif
 #if A04_GE8300_SHARED_LEASE
 #include "vendor_m1_11/shared_lease.h"
@@ -196,6 +205,9 @@ typedef struct {
     struct a04_shared_lease_state shared_lease;
     struct a04_shared_tables shared_tables;
     struct a04_shared_scanout *shared_owner;
+#if A04_GE8300_SHARED_FULL_FRAME
+    struct a04_shared_frame_sequence shared_frame;
+#endif
 #endif
 #endif
 #endif
@@ -1044,6 +1056,37 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
     struct a04_ge8300_status *out; NTSTATUS status; size_t size;
 #if A04_GE8300_VENDOR_COPY_SERVICE
 #if A04_GE8300_SHARED_LEASE
+#if A04_GE8300_SHARED_FULL_FRAME
+    if(control==A04_GE8300_IOCTL_SHARED_TILE) {
+        struct a04_ge8300_shared_tile *tile;struct a04_vendor_clear_result result;
+        if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*tile) || output!=sizeof(*tile)) {
+            WdfRequestComplete(request,STATUS_ACCESS_DENIED);return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,sizeof(*tile),(void **)&tile,&size);
+        if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+        WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+        if(!tile->token || tile->token!=c->shared_lease.active || !c->shared_owner ||
+           !c->vendor_service_online || InterlockedCompareExchange(&c->vendor_service_closed,0,0) ||
+           !tile->frame || tile->index>=1000u || tile->task || tile->flush) status=STATUS_INVALID_DEVICE_STATE;
+        else {
+            if(!a04_shared_frame_accept(&c->shared_frame,tile->frame,tile->index)) status=STATUS_INVALID_DEVICE_STATE;
+            else {
+                status=a04_vendor_render_copy_shared_tile(&c->vendor_copy,&c->vendor_start,
+                    c->shared_owner,&c->shared_tables,tile->pixels,tile->index,&result);
+                if(NT_SUCCESS(status)) {
+                    tile->task=result.completed_task;tile->flush=result.completed_flush;
+                    if(!tile->task || !tile->flush)status=STATUS_IO_DEVICE_ERROR;
+                }
+                a04_shared_frame_complete_tile(&c->shared_frame,NT_SUCCESS(status));
+                if(c->vendor_start.command_poisoned) {
+                    c->vendor_service_online=FALSE;InterlockedExchange(&c->vendor_service_closed,1);
+                }
+            }
+        }
+        WdfWaitLockRelease(c->vendor_lifetime);
+        WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(*tile):0);return;
+    }
+#endif
     if (control==A04_GE8300_IOCTL_SHARED_ACQUIRE || control==A04_GE8300_IOCTL_SHARED_RELEASE ||
         control==A04_GE8300_IOCTL_SHARED_STAGE || control==A04_GE8300_IOCTL_SHARED_UNSTAGE
 #if A04_GE8300_SHARED_GPU_DIAGNOSTIC
@@ -1068,6 +1111,9 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
             }
             else {
                 WdfObjectReference(device);
+#if A04_GE8300_SHARED_FULL_FRAME
+                RtlZeroMemory(&c->shared_frame,sizeof(c->shared_frame));
+#endif
                 RtlZeroMemory(lease,sizeof(*lease));lease->token=token;
                 lease->gpu_adapter=c->vendor_adapter_v3;lease->gpu_pdo=WdfDeviceWdmGetPhysicalDevice(device);
                 lease->task_sequence=c->shared_lease.task;lease->flush_sequence=c->shared_lease.flush;

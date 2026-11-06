@@ -22,6 +22,44 @@ static NTSTATUS map_one(PDMA_ADAPTER adapter,PDEVICE_OBJECT pdo,PMDL mdl,
     if(!w.sg)return STATUS_DEVICE_CONFIGURATION_ERROR;
     *out=w.sg;return STATUS_SUCCESS;
 }
+static NTSTATUS display_address(PSCATTER_GATHER_LIST sg,uint32_t *out)
+{
+    uint64_t base=0,next=0,remaining=A04_SHARED_SCANOUT_BYTES;ULONG i;
+    if(!sg || !out || !sg->NumberOfElements)return STATUS_DEVICE_CONFIGURATION_ERROR;
+    for(i=0;i<sg->NumberOfElements;i++) {
+        uint64_t a=(uint64_t)sg->Elements[i].Address.QuadPart;
+        ULONG len=sg->Elements[i].Length;
+        if(!len || len>remaining || a>UINT32_MAX || len-1u>UINT32_MAX-a || (i && a!=next))
+            return STATUS_DEVICE_CONFIGURATION_ERROR;
+        if(!i)base=a;
+        next=a+len;remaining-=len;
+    }
+    if(remaining || !base || (base&3u))return STATUS_DEVICE_CONFIGURATION_ERROR;
+    *out=(uint32_t)base;return STATUS_SUCCESS;
+}
+NTSTATUS a04_shared_scanout_handoff_display(struct a04_shared_scanout *s,
+    PDEVICE_OBJECT display_pdo,a04_shared_quiesce_proof proof,void *ctx)
+{
+    NTSTATUS status;PSCATTER_GATHER_LIST fresh=NULL;uint32_t address=0;
+    if(!s || !display_pdo || !proof || KeGetCurrentIrql()!=PASSIVE_LEVEL ||
+       !s->exposed || !s->mdl || !s->gpu_sg || !s->display_sg ||
+       !s->gpu_adapter || !s->display_adapter)return STATUS_INVALID_DEVICE_STATE;
+    /* Proof is an ownership operation, not an IRQ observation or GPU fence. */
+    status=proof(ctx);if(!NT_SUCCESS(status))return status;
+    s->display_dma=0;
+    s->display_adapter->DmaOperations->PutScatterGatherList(s->display_adapter,s->display_sg,TRUE);
+    s->display_sg=NULL;
+    s->gpu_adapter->DmaOperations->PutScatterGatherList(s->gpu_adapter,s->gpu_sg,FALSE);
+    s->gpu_sg=NULL;
+    status=map_one(s->display_adapter,display_pdo,s->mdl,TRUE,&fresh);
+    if(!NT_SUCCESS(status))return status;
+    status=display_address(fresh,&address);
+    if(!NT_SUCCESS(status)) {
+        s->display_adapter->DmaOperations->PutScatterGatherList(s->display_adapter,fresh,TRUE);
+        return status;
+    }
+    s->display_sg=fresh;s->display_dma=address;return STATUS_SUCCESS;
+}
 NTSTATUS a04_shared_scanout_release(struct a04_shared_scanout *s)
 {
     if (!s || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
@@ -36,7 +74,7 @@ NTSTATUS a04_shared_scanout_prepare(struct a04_shared_scanout *s,
     PDMA_ADAPTER gpu,PDEVICE_OBJECT gpu_pdo,PDMA_ADAPTER display,PDEVICE_OBJECT display_pdo)
 {
     PHYSICAL_ADDRESS low,high,skip;struct a04_gpu_dma_segment *segments=NULL;
-    uint64_t base=0,next=0,remaining;ULONG i,count;NTSTATUS status=STATUS_INVALID_PARAMETER;
+    ULONG i,count;NTSTATUS status=STATUS_INVALID_PARAMETER;
     if(!s || !gpu || !display || gpu==display || !gpu_pdo || !display_pdo || gpu_pdo==display_pdo ||
        KeGetCurrentIrql()!=PASSIVE_LEVEL || s->mdl || s->gpu_sg || s->display_sg || s->gpu_pages || s->exposed ||
        !gpu->DmaOperations || !display->DmaOperations ||
@@ -64,18 +102,9 @@ NTSTATUS a04_shared_scanout_prepare(struct a04_shared_scanout *s,
             status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;
         }
     }
-    remaining=A04_SHARED_SCANOUT_BYTES;
-    for(i=0;i<s->display_sg->NumberOfElements;i++) {
-        uint64_t a=(uint64_t)s->display_sg->Elements[i].Address.QuadPart;
-        ULONG len=s->display_sg->Elements[i].Length;
-        if(!len || len>remaining || a>UINT32_MAX || len-1u>UINT32_MAX-a || (i && a!=next)) {
-            status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;
-        }
-        if(!i)base=a;
-        next=a+len;remaining-=len;
-    }
-    if(remaining || !base || (base&3u)){status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;}
-    s->display_dma=(uint32_t)base;ExFreePoolWithTag(segments,TAG);return STATUS_SUCCESS;
+    status=display_address(s->display_sg,&s->display_dma);
+    if(!NT_SUCCESS(status))goto fail;
+    ExFreePoolWithTag(segments,TAG);return STATUS_SUCCESS;
 fail:
     if(segments)ExFreePoolWithTag(segments,TAG);
     (void)a04_shared_scanout_release(s);return status;

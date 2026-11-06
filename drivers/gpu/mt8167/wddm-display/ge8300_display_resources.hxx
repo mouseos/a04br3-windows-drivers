@@ -7,6 +7,12 @@
 #ifndef A04_GE8300_WDDM_SHARED_DIAGNOSTIC
 #define A04_GE8300_WDDM_SHARED_DIAGNOSTIC 0
 #endif
+#ifndef A04_GE8300_WDDM_SHARED_PRESENT
+#define A04_GE8300_WDDM_SHARED_PRESENT 0
+#endif
+#if A04_GE8300_WDDM_SHARED_PRESENT && !A04_GE8300_WDDM_SHARED_DIAGNOSTIC
+#error Shared present requires shared diagnostic
+#endif
 #ifndef A04_GE8300_WDDM_SHARED_AUTOSTART
 #define A04_GE8300_WDDM_SHARED_AUTOSTART 0
 #endif
@@ -37,6 +43,10 @@ struct A04DisplayResources {
 #if A04_GE8300_WDDM_SHARED_LEASE
     HANDLE GpuHandle;
     struct a04_ge8300_shared_lease Lease;
+#if A04_GE8300_WDDM_SHARED_PRESENT
+    uint32_t FrameId;
+    NTSTATUS SubmitFullFrame(const void *pixels,uint32_t pitch);
+#endif
     NTSTATUS PrepareViaGpu();
     /* No call site until platform visibility and frame callbacks exist. */
     NTSTATUS SwitchShared(uint32_t expected,a04_shared_ovl_ready ready,

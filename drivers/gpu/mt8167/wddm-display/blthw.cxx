@@ -556,6 +556,16 @@ HwExecutePresentDisplayOnly(
             BltBits(&DstBltInfo,&SrcBltInfo,1,&ctx->DirtyRect[i]);
     }
 
+#if A04_GE8300_WDDM_SHARED_PRESENT
+    /* Only a single explicit full dirty rect supplies a complete frame. Keep
+     * the source MDL locked and the present mutex held through submission.
+     * POST remains active; a completed GPU queue is not scanout readiness. */
+    if(ctx->SynchExecution && ctx->SrcWidth==800 && ctx->SrcHeight==1280 &&
+       ctx->Rotation==D3DKMDT_VPPR_IDENTITY && !ctx->NumMoves && ctx->NumDirtyRects==1 &&
+       ctx->DirtyRect[0].left==0 && ctx->DirtyRect[0].top==0 &&
+       ctx->DirtyRect[0].right==800 && ctx->DirtyRect[0].bottom==1280 && ctx->SrcPitch>=3200)
+        (void)((BASIC_DISPLAY_DRIVER *)ctx->hAdapter)->SubmitSharedPresent(ctx->SrcAddr,(uint32_t)ctx->SrcPitch);
+#endif
     // Unmap unmap and unlock the pages.
     if (ctx->Mdl)
     {

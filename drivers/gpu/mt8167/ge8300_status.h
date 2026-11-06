@@ -34,6 +34,16 @@ struct a04_ge8300_fenced_copy {
 #define A04_GE8300_IOCTL_SHARED_STAGE 0x00226028u
 #define A04_GE8300_IOCTL_SHARED_UNSTAGE 0x0022602cu
 #define A04_GE8300_IOCTL_SHARED_DIAGNOSTIC 0x00226030u
+#define A04_GE8300_IOCTL_SHARED_TILE 0x00226034u
+/* METHOD_BUFFERED, kernel callers; no display visibility claim. */
+struct a04_ge8300_shared_tile { uint32_t token,frame,index,task,flush; uint32_t pixels[1024]; };
+#if defined(_ARM_)
+#ifdef __cplusplus
+static_assert(sizeof(struct a04_ge8300_shared_tile)==4116, "shared tile ABI");
+#else
+_Static_assert(sizeof(struct a04_ge8300_shared_tile)==4116, "shared tile ABI");
+#endif
+#endif
 struct a04_ge8300_shared_lease {
     void *gpu_adapter, *gpu_pdo, *shared_mdl_owner;
     uint64_t inactive_gpu_pc_dma;

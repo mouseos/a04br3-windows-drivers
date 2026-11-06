@@ -618,7 +618,7 @@ test-gpu-vendor-m1-11: build/ge8300_shared_frame_plan_test build/ge8300_shared_o
 	./build/gpu_vendor_clear_tile_test
 	./build/gpu_vendor_clear_validate_test
 
-build/ge8300_shared_frame_plan_test: tests/ge8300_shared_frame_plan_test.c drivers/gpu/mt8167/vendor_m1_11/shared_frame_plan.h
+build/ge8300_shared_frame_plan_test: tests/ge8300_shared_frame_plan_test.c drivers/gpu/mt8167/vendor_m1_11/shared_frame_plan.h drivers/gpu/mt8167/vendor_m1_11/shared_frame_sequence.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) tests/ge8300_shared_frame_plan_test.c -o $@
 

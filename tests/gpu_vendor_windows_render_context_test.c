@@ -8,6 +8,7 @@
 #if A04_GE8300_SHARED_GPU_DIAGNOSTIC
 #include "windows_shared_tables.h"
 static unsigned diagnostic_flushes;
+static uint32_t *sim_shared_pixels;
 void *MmGetSystemAddressForMdlSafe(PMDL mdl,int priority){(void)priority;return mdl->va;}
 void KeFlushIoBuffers(PMDL mdl,BOOLEAN read,BOOLEAN dma){(void)mdl;assert(dma);diagnostic_flushes+=(read?2u:1u);}
 #endif
@@ -48,14 +49,15 @@ void KeStallExecutionProcessor(unsigned us)
         off=cmd->uCmdData.sCmdKickData.ui32CWoffUpdate;
         assert(off>=296);
 #if A04_GE8300_SHARED_GPU_DIAGNOSTIC
-        if(copy_sim->diagnostic_cpu) {
+        if(copy_sim->diagnostic_cpu || copy_sim->shared_gpu_only) {
             uint32_t *task=(uint32_t *)(void *)(bank+sim->layout.commands[3]+off-296+40);
             uint64_t csr=(UINT64_C(2)<<56)|((UINT64_C(799)&UINT64_C(0x1fffe))<<33)|
                 (UINT64_C(1)<<23)|(UINT64_C(2)<<26)|(UINT64_C(3)<<29);
             for(unsigned n=0;n<52;n++)if(n!=32 && n!=33)assert(task[n]==copy_sim->frozen_task[n]);
             assert(task[32]==(uint32_t)csr && task[33]==(uint32_t)(csr>>32));
             {
-                uintptr_t offset=(uintptr_t)copy_sim->diagnostic_cpu-(uintptr_t)copy_sim->diagnostic_mdl->va;
+                uintptr_t offset=copy_sim->diagnostic_cpu ? (uintptr_t)copy_sim->diagnostic_cpu-(uintptr_t)copy_sim->diagnostic_mdl->va :
+                    ((uintptr_t)((uint32_t *)sim->buffer[7].cpu)[18]<<2);
                 assert(((uint32_t *)sim->buffer[7].cpu)[18]==(uint32_t)((UINT64_C(0x8000000000)+offset)>>2));
                 if(off==296 && ctl->ui32ReadOffset!=0) {
                     RGXFWIF_CCB_CMD_HEADER *padding=(void *)(bank+sim->layout.commands[3]+ctl->ui32ReadOffset);
@@ -63,8 +65,13 @@ void KeStallExecutionProcessor(unsigned us)
                     assert(padding->ui32CmdSize==4096-ctl->ui32ReadOffset-sizeof(*padding));
                 }
             }
-            for(unsigned n=0;n<1024;n++)copy_sim->diagnostic_cpu[(n/32)*800+n%32]=((uint32_t *)copy_sim->source.cpu)[n];
-            if(complete==5)copy_sim->diagnostic_cpu[31*800+31]^=1u;
+            {
+                uintptr_t offset=(uintptr_t)((uint32_t *)sim->buffer[7].cpu)[18]<<2;
+                volatile uint32_t *target=copy_sim->diagnostic_cpu ? copy_sim->diagnostic_cpu : sim_shared_pixels+offset/4;
+                assert(target);
+                for(unsigned n=0;n<1024;n++)target[(n/32)*800+n%32]=((uint32_t *)copy_sim->source.cpu)[n];
+                if(complete==5)target[31*800+31]^=1u;
+            }
         } else
 #endif
         {
@@ -268,7 +275,7 @@ int main(void)
           {
             struct fake_mdl mdl={0};struct a04_shared_scanout surface={0};struct a04_shared_tables tables={0};
             DMA_OPERATIONS dma_ops={0};struct fake_adapter gpu_adapter={&dma_ops};
-            uint32_t *screen=calloc(1,4096000);assert(screen);mdl.va=screen;mdl.bytes=4096000;
+            uint32_t *screen=calloc(1,4096000);assert(screen);sim_shared_pixels=screen;mdl.va=screen;mdl.bytes=4096000;
             mem.adapter=&gpu_adapter;surface.gpu_adapter=&gpu_adapter;
             surface.mdl=&mdl;surface.gpu_sg=(PSCATTER_GATHER_LIST)1;surface.display_sg=(PSCATTER_GATHER_LIST)1;surface.exposed=TRUE;
             tables.published=tables.mmu_ack=tables.quarantined=TRUE;
@@ -287,6 +294,7 @@ int main(void)
             for(n=0;n<1000;n++) {
                 for(j=0;j<1024;j++)in[j]=n*1024u+j;
                 assert(a04_vendor_render_copy_shared_tile(&copy,&start,&surface,&tables,in,n,&clear)==STATUS_SUCCESS);
+                assert(!clear.zeros && clear.completed_task && clear.completed_flush && diagnostic_flushes==3);
                 assert(screen[(n/25)*32*800+(n%25)*32]==n*1024u);
             }
             assert(screen[4096000/4-1]==1023999u);

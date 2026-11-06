@@ -27,6 +27,7 @@ struct a04_vendor_copy_scratch {
     /* Non-NULL only while serialized shared-surface diagnostic runs. */
     PMDL diagnostic_mdl;
     volatile uint32_t *diagnostic_cpu;
+    BOOLEAN shared_gpu_only;
     BOOLEAN prepared,exposed,usc_ready,task_frozen;
 };
 NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *owner,

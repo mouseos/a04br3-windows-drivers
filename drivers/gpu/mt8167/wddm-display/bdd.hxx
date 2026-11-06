@@ -216,6 +216,10 @@ private:
 #endif
 
 public:
+#if A04_GE8300_WDDM_SHARED_PRESENT
+    NTSTATUS SubmitSharedPresent(const void *pixels,uint32_t pitch)
+    { return m_DisplayResources.SubmitFullFrame(pixels,pitch); }
+#endif
     BASIC_DISPLAY_DRIVER(_In_ DEVICE_OBJECT* pPhysicalDeviceObject);
     ~BASIC_DISPLAY_DRIVER();
 
