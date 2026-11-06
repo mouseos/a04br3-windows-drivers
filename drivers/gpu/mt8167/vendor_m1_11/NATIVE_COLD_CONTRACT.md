@@ -140,3 +140,18 @@ DoClear 0x125ca0（ev_1626a79a9018691d78ef6dd7e19fbfe85bf5826ba9e1e121e66bb1ff5d
 FW consumerを確認するため同梱rgx.fw.22.40.54.30（SHA256 5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1）をREAで開いたが、現在providerはMIPS16/microMIPS ASEをarchitecture_unsupportedとして拒否。別disassemblerによる迂回は行っていない。診断は指定logのwindows-rt-m111-fw-micromips-rea-blocker-20261107.json。
 
 残る完全producer確定の別経路としてtools/gpu/README-recovery-native-clear.mdと元EGL/GLES pbuffer harness、DRM ioctl observerを準備。実機利用は主担当のRecovery許可後のみ。現状ARM64 object compileまででrunnable link未実施、runtime packetは未取得。
+
+
+## 元vendor成功captureから確定したfast-clear色
+
+元vendor runのTA/PR/3Dは0x88/0/0x150、800x600の全480000画素RGBA={17,34,51,255}一致。
+これはWindows 3D成功ではない。captureはGPU VAの再送用テンプレートではない。
+3D+4の0xff332211は同版caller0x1621d4がsurface+0x5c4を0x200edcへ渡す経路と一致する。
+REA ev_66ed74a8cb7f8bae745867bb7fe94d75038c28abd178d53d5f58c0d3d458bd4a。
+`a04_m111_patch_3d_fast_clear_rgba8`は確定した8bit laneのR|G<<8|B<<16|A<<24を+4へ配置する。
+FPUを使わず、入力は既に量子化済みのRGBA8。+0のcontrolや他形式をこの関数で生成しない。
+
+完全producerの阻害は、TA+0x10のVDM本体とPPP参照、3D+0x38/+0x40の疎資源内容・役割、
+GPU-only dummy region/stencilの初期状態、残りregisterを含む生成順の網羅である。
+取得済みPDS/USCは各programを個別に照合し、Windowsが所有するheap相対VAへ明示relocateする。
+未取得をzeroにせず、完全producer提供までTA/3D publishを開けない。
