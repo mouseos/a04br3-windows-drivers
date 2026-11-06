@@ -1374,3 +1374,9 @@ test-mt8167-usb-enumeration:
 	./build/mt8167_usb_keyboard_session_test
 
 test-mt8167-usb-keyboard-batch: test-mt8167-usb-enumeration
+
+
+.PHONY: test-mt8167-peripherals
+test-mt8167-peripherals:
+	$(MAKE) test-mt8167-first-playback CFLAGS="$(CFLAGS) -DA04_USB_GPIO22_SOURCE_EXPERIMENT=1 -DA04_SHARED_TOUCH_D0_EXPERIMENT=1 -DA04_SHARED_WIFI_RUNTIME=1 -DA04_MT6392_RTC32K_DIAGNOSTIC=1 -DA04_SHARED_WIFI_IRQ_DIAGNOSTIC=1"
+	$(MAKE) test-mt8167-usb-keyboard-batch test-mt6630-runtime

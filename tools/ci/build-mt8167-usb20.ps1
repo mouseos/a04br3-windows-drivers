@@ -49,3 +49,8 @@ if ($LASTEXITCODE -ne 0) { throw 'HID transport link failed' }
 $headers = & llvm-readobj --file-headers $sys
 if ($LASTEXITCODE -ne 0 -or ($headers -join "`n") -notmatch 'IMAGE_FILE_MACHINE_ARMNT') { throw 'Unexpected HID PE machine' }
 Write-Host 'HID transport linked; no controller connection or installable package.'
+
+@{source_commit=(& git -C $root rev-parse HEAD);hardware='MediaTek MT8167 USB20';
+  driver_date='11/06/2026';driver_version='2026.11.6.1001';driver_ver='11/06/2026,2026.11.6.1001';
+  host_core=$hostCore;hid_control=$hidControl;hardware_verified=$false;
+  sys_sha256=(Get-FileHash $sys -Algorithm SHA256).Hash}|ConvertTo-Json|Set-Content -Encoding UTF8 (Join-Path $out 'usb-manifest.json')

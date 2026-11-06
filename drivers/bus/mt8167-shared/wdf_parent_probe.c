@@ -550,6 +550,43 @@ static int ParentPreparePlayback(PVOID context,ULONG rate) {
 /* Selected by the board-specific first-playback build. Windows owns the
  * shared parent/PnP child ranges; all operations hold its single WACS lock.
  * Readiness tests observe hardware, and do not claim secure-world handoff. */
+static int ParentReadAudioDiagnostic(PVOID context,struct a04_codec_snapshot *out) {
+    A04_PARENT_CONTEXT *c;uint32_t value;uint16_t trim,oc,clock;
+    struct a04_mt6392_audio_raw speaker;struct a04_mt6392_audio_rails rails;unsigned i;
+    if(!out)return -1;
+    RtlZeroMemory(out,sizeof(*out));
+    if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+    c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
+    out->valid=A04_CODEC_VALID_PARENT;out->online=c->audio.online;
+    out->leased=c->audio.leased;out->poisoned=c->audio.poisoned;
+    out->power_pinned=c->audioPowerPinned;out->trim_captured=c->trimCaptured;out->trim_code=c->trimCode;
+    out->digital_prepared=c->digitalPlayback.prepared;out->voice_active=c->voice.active;
+    if(c->audio.online && c->pmic.online && c->audioPowerPinned) {
+        if(!ParentRegRead(c,A04_SHARED_TOP,0x24,&value)){out->top_clock=value;out->valid|=A04_CODEC_VALID_CLOCK;}
+        for(i=0;i<5;i++)if(ParentDomainRead(c,0x700+i*4,&out->analog[i]))break;
+        if(i==5)out->valid|=A04_CODEC_VALID_ANALOG;
+        if(!a04_pmic_audio_observe(&c->pmic.bus,&speaker)) {
+            out->spk0=speaker.spk_con0;out->spk9=speaker.spk_con9;out->spk11=speaker.spk_con11;
+            out->valid|=A04_CODEC_VALID_SPEAKER;
+        }
+        if(!a04_pmic_audio_rails(&c->pmic.bus,&rails)) {
+            out->vaud22=rails.vaud22;out->vaud22_selector=rails.vaud22_selector;out->vaud28=rails.vaud28;
+            out->valid|=A04_CODEC_VALID_RAILS;
+        }
+        if(!a04_pmic_classd_trim(&c->pmic.bus,&trim) && !a04_pmic_classd_overcurrent(&c->pmic.bus,&oc) &&
+           !a04_pmic_spk_clock_status(&c->pmic.bus,&clock)) {
+            out->trim_raw=trim;out->overcurrent=oc;out->pmic_clock=clock;out->valid|=A04_CODEC_VALID_TRIM_OC;
+        }
+        if(c->audioAfe && c->afeClockHeld && !c->afeClockPoisoned) {
+            ParentDigitalRead(c,0x10,&out->afe_dac0);ParentDigitalRead(c,0,&out->afe_top);
+            ParentDigitalRead(c,0x44,&out->afe_cur);ParentDigitalRead(c,0x3a4,&out->afe_irq);
+            out->valid|=A04_CODEC_VALID_AFE;
+        }
+        if(c->pmic.bus.poisoned)c->audio.poisoned=1;
+        out->poisoned=c->audio.poisoned;
+    }
+    ParentUnlock(c);return 0;
+}
 static int ParentFirstPreflight(void *context,uint32_t rate) {
     A04_PARENT_CONTEXT *c=context;struct a04_mt6392_audio_raw spk;
     uint32_t con1,con2,dac,abb;
@@ -1454,6 +1491,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #endif
     #if A04_SHARED_DIGITAL_PLAYBACK
     audioIface.PreparePlayback=ParentPreparePlayback;
+#if A04_SHARED_FIRST_PLAYBACK
+    audioIface.ReadDiagnostic=ParentReadAudioDiagnostic;
+#endif
 #endif
     audioIface.BindAfe=ParentBindAfe;audioIface.Mute=ParentAudioMute;audioIface.UnmuteMin=ParentAudioUnmute;audioIface.AcquireMuted=ParentAudioAcquire;audioIface.ReleaseQuiescent=ParentAudioRelease;audioIface.PrepareMaskedIrq=ParentAudioPrepareIrq;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&audioIface,&A04SharedAudioInterfaceGuid,NULL);

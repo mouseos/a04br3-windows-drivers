@@ -83,5 +83,6 @@ $parentFlags=[ordered]@{
  A04_AUDIO_PMIC_TRACE=$pmicTrace
 }
 [ordered]@{source_commit=(& git -C $root rev-parse HEAD);source_dirty=(@(& git -C $root status --porcelain).Count -ne 0);
+    driver_date='11/06/2026';driver_version='2026.11.6.1001';driver_ver='11/06/2026,2026.11.6.1001';
     flags=$parentFlags;sys_sha256=(Get-FileHash (Join-Path $out 'mt8167-shared.sys') -Algorithm SHA256).Hash;
     hardware_verified=$false}|ConvertTo-Json -Depth 5|Set-Content -Encoding UTF8 (Join-Path $out 'parent-manifest.json')

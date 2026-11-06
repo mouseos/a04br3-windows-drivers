@@ -77,6 +77,9 @@ struct Mt8167PnpBackend {
     BOOLEAN livePositionsClosed;
     BOOLEAN online;
     BOOLEAN digitalRetained;
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+    ULONG diagSequence,diagStage,diagFailedStage;NTSTATUS diagStatus;
+#endif
     PDEVICE_OBJECT pdo;
     PDMA_ADAPTER adapter;
     Mt8167CommonDma buffer;
@@ -309,9 +312,15 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
         /* The parent owns clocks, routing and codec hw_params. Retain the
          * lease after even partial writes; never infer quiescence from DL1. */
         if(!o->parentClient.parent.PreparePlayback) {OwnerUnlock(o);return result;}
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+        o->diagStage=A04_STAGE_DIGITAL;o->diagStatus=STATUS_DEVICE_NOT_READY;
+#endif
         int digital=o->parentClient.parent.PreparePlayback(o->parentClient.parent.Header.Context,48000);
         if(digital!= -1) {o->digitalRetained=TRUE;*possiblyExposed=TRUE;}
         if(digital) {
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+            o->diagFailedStage=o->diagStage;
+#endif
             if(o->digitalRetained)(void)mt8167_audio_shared_quarantine(&o->shared);
             OwnerUnlock(o);return result;
         }
@@ -320,9 +329,11 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
         /* The private common buffer has fixed PCM, CacheEnabled=FALSE and
          * no user mapping. PrepareForDevice flushes once before DL1 starts;
          * no CPU writes occur afterward. No cyclic-client coherency claim. */
+        o->diagStage=A04_STAGE_VOICE;
         if(!o->parentClient.parent.StartVoice ||
            o->parentClient.parent.StartVoice(o->parentClient.parent.Header.Context)) {
             (void)mt8167_audio_shared_quarantine(&o->shared);
+            o->diagFailedStage=o->diagStage;
             *possiblyExposed=TRUE;OwnerUnlock(o);return result;
         }
 #endif
@@ -344,12 +355,21 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
         }
         if (!o->shared.quarantined) (void)mt8167_audio_shared_quarantine(&o->shared);
 #else
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+        o->diagStage=A04_STAGE_DMA;
+#endif
         if (!Mt8167TransportStartMaskedParent(&o->transport,o->buffer.size/2,&o->shared)) {
 #if defined(A04_AUDIO_UNMUTE_DIAGNOSTIC) && A04_AUDIO_UNMUTE_DIAGNOSTIC
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+            o->diagStage=A04_STAGE_UNMUTE;
+#endif
             /* Failed/ambiguous unmute still stops DMA and retains the lease. */
-            if(o->parentClient.parent.UnmuteMin(o->parentClient.parent.Header.Context))
+            if(o->parentClient.parent.UnmuteMin(o->parentClient.parent.Header.Context)) {
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+                o->diagFailedStage=A04_STAGE_UNMUTE;
+#endif
                 (void)OwnerStopRunning(o);
-            else
+            } else
 #endif
                 result=STATUS_SUCCESS;
         }
@@ -362,6 +382,11 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
         *possiblyExposed=(o->buffer.exposed || o->shared.quarantined) ? TRUE : FALSE;
 #endif
     }
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+    o->diagStatus=result;
+    if(NT_SUCCESS(result))o->diagStage=A04_STAGE_RUNNING;
+    else if(!o->diagFailedStage)o->diagFailedStage=o->diagStage;
+#endif
     A04_TRACE("A04AUD run result=%08lx online=%d buffer=%d lease=%d irq=%d live-dma=isolated-or-refused exposed=%d\n",(ULONG)result,o->online,o->buffer.mdl!=NULL,o->shared.leased,o->irq.interrupt!=NULL,*possiblyExposed);
     OwnerUnlock(o);return result;
 #else
@@ -379,6 +404,9 @@ static NTSTATUS OwnerStopRunning(Mt8167PnpBackend *o)
         ExWaitForRundownProtectionRelease(&o->livePositions);
         o->livePositionsClosed=TRUE;
     }
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+    o->diagStage=A04_STAGE_STOP;
+#endif
     int mute=o->parentClient.parent.Mute(o->parentClient.parent.Header.Context);
     int stop=Mt8167TransportStop(&o->transport);
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
@@ -394,6 +422,10 @@ static NTSTATUS OwnerStopRunning(Mt8167PnpBackend *o)
 #endif
     return STATUS_SUCCESS;
 #else
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+    o->diagStatus=!mute && !stop ? STATUS_SUCCESS : STATUS_DEVICE_NOT_READY;
+    if(NT_SUCCESS(o->diagStatus))o->diagStage=A04_STAGE_STOPPED_PINNED;
+#endif
     return !mute && !stop ? STATUS_SUCCESS : STATUS_DEVICE_NOT_READY;
 #endif
 }
@@ -546,6 +578,9 @@ NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt816
     status=OwnerConnectMaskedIrq(o);
     if (!NT_SUCCESS(status)) { o->online=FALSE;OwnerDereference(o);return status; }
 #endif
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+    o->diagStage=A04_STAGE_CREATED;o->diagStatus=STATUS_SUCCESS;
+#endif
     *out=o;return STATUS_SUCCESS;
 }
 NTSTATUS Mt8167PnpBackendInterrupt(Mt8167PnpBackend *o,Mt8167PnpInterrupt *interrupt)
@@ -579,6 +614,34 @@ NTSTATUS Mt8167PnpBackendAttachShared(Mt8167PnpBackend *o,const struct mt8167_au
     return result;
 }
 const Mt8167StreamBackend *Mt8167PnpBackendInterface(Mt8167PnpBackend *o) { return o?&o->iface:NULL; }
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+NTSTATUS Mt8167PnpBackendSnapshot(Mt8167PnpBackend *o,struct a04_audio_snapshot *s) {
+    if(!o || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+    RtlZeroMemory(s,sizeof(*s));s->size=sizeof(*s);s->version=A04_AUDIO_DIAG_VERSION;
+    OwnerLock(o);s->sequence=++o->diagSequence;s->stage=o->diagStage;s->last_status=(ULONG)o->diagStatus;s->failure_stage=o->diagFailedStage;
+    s->online=o->online;s->transport=(ULONG)o->transport.state;
+    s->irq_events=(ULONG)InterlockedCompareExchange(&o->irqEvents,0,0);
+    s->irq_faults=(ULONG)InterlockedCompareExchange(&o->irqFaults,0,0);
+    s->irq_active=(ULONG)InterlockedCompareExchange(&o->irq.active,0,0);
+    s->shared_quarantined=o->shared.quarantined;s->digital_retained=o->digitalRetained;
+    if(o->transport.dma && o->transport.dma->mdl) {
+        Mt8167CommonDma *dma=o->transport.dma;
+        s->dma_base=(ULONG)dma->logical.QuadPart;s->dma_bytes=dma->size;
+        s->dma_end=s->dma_base+dma->size-1;s->dma_exposed=dma->exposed;s->valid|=A04_AUDIO_VALID_DMA;
+    }
+    if(o->online && o->parentClient.parent.ReadDiagnostic &&
+       !o->parentClient.parent.ReadDiagnostic(o->parentClient.parent.Header.Context,&s->codec)) {
+        s->valid|=A04_AUDIO_VALID_PARENT;
+        if(s->codec.valid&A04_CODEC_VALID_AFE) {
+            s->dac0=s->codec.afe_dac0;s->afe_top=s->codec.afe_top;
+            s->dl1_cur=s->codec.afe_cur;s->irq_status=s->codec.afe_irq;s->valid|=A04_AUDIO_VALID_AFE;
+            if(o->transport.state==AUDIO_RUNNING && (s->dac0&2u) &&
+               mt8167_dl1_position(&o->transport.plan,s->dl1_cur,&s->position_bytes))s->valid|=A04_AUDIO_VALID_POSITION;
+        }
+    }
+    OwnerUnlock(o);return STATUS_SUCCESS;
+}
+#endif
 void Mt8167PnpBackendRevoke(Mt8167PnpBackend *o) {
     if (!o)return;
     OwnerLock(o);o->online=FALSE;OwnerUnlock(o);

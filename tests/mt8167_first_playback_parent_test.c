@@ -2,14 +2,14 @@
 #define main legacy_parent_test_main
 #include "mt8167_shared_wdf_test.c"
 #undef main
-struct first_pmic {uint16_t reg[1024],response;unsigned fsm,writes;int no_qi;} firstPmic;
+struct first_pmic {uint16_t reg[32768],response;unsigned fsm,writes;int no_qi;} firstPmic;
 static uint32_t firstRead(void *p,unsigned off) {
  struct first_pmic *f=p;if(off==0x9c)return 1;assert(off==0xa4);return f->fsm<<16|f->response;
 }
 static void firstWrite(void *p,unsigned off,uint32_t value) {
  struct first_pmic *f=p;unsigned reg;
  if(off==0xa8){f->fsm=0;return;}assert(off==0xa0);reg=((value>>16)&0x7fff)*2;
- assert(reg/2<1024);
+ assert(reg/2<sizeof(f->reg)/sizeof(f->reg[0]));
  if(value&0x80000000u) {
   uint16_t data=(uint16_t)value;f->writes++;
   if(reg==0x10c)f->reg[0x108/2]&=~data;
@@ -32,6 +32,14 @@ int main(void) {
  before=firstPmic.writes;
  assert(audio.AcquireMuted(&testContext,44100)==-1 && !firstIdleRefs && firstPmic.writes==before);
  assert(!audio.AcquireMuted(&testContext,48000));
+#if A04_SHARED_WIFI_RUNTIME
+ {ULONG generation=0;
+  assert(audio.Header.Version==11 && audio.ReadDiagnostic && wifi.Header.Version==2);
+  assert(!wifi.Acquire(&testContext,&generation) && generation && testContext.wifiActive==1);
+  assert(testContext.wifiRtc.held && testContext.pmic.rtc_lease==&testContext.wifiRtc);
+  assert(testContext.audio.leased && firstIdleRefs==1 && testContext.regs.online);
+ }
+#endif
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
  { PVOID oldGpio=testContext.gpio;int oldWrites=writes;unsigned oldPmic=firstPmic.writes;
    testContext.gpio=usbGpio;usbGpio[0x220/4]=1u<<9; /* PC/ID-device, external VBUS */

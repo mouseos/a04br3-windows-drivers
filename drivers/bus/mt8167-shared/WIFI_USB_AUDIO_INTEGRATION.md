@@ -1,9 +1,13 @@
 # Wi-Fi / USB / audio 単一parent統合
 
-Raman側の `work/rt-usb-keyboard-output` の `d9d95dc`（USB/audio統合）と
-`5f81872`（USB再列挙検証）をWi-Fi側の `0b2b60c` へmergeした構成。
-統合先は同一repoの `work/rt-wifi-runtime-20261107`。Ramanのworktreeは変更しない。
-双方の履歴を保持し、sharedファイルの片側上書きや別parentの並行インストールを避ける。
+最終統合の所有branchは`work/rt-peripherals-integrated-20261107`。
+Nashの確定`331cb2f`を基点に、audio `ae1c716`（v11・直接KS client）を
+統合した。最終成果はこの基点に対する1コミットに固定する。
+Nashのworktree、実機、runner、UEFI、Einstein所有REAは変更しない。
+UEFI `cc7c20fa`のboot生成済みという主担当の情報を参照記録に留める。
+
+以下の履歴表はNashがUSB/audio v10とWi-Fiを統合した時点の出自。
+最終ソースではv11とKS client/decoderを保持し、親の別構成を上書きしない。
 
 ## 必要な履歴と競合
 
@@ -72,6 +76,7 @@ SSID/BSSID/鍵/PSK/個体校正のログや成果物は生成しない。
 
 ## 確認範囲とRaman/主担当への連絡
 
+以下の段落はNashの331cb2f時点の確認記録。今回のaudio v11統合後のPowerShell/WDK実行を意味しない。
 既存test-mt8167-usb-integrated、test-mt6630、test-mt6630-firmwareを一括確認した。
 追加模擬test群は作らない。変更したPowerShell 4 scriptは実Parserで構文確認。
 統合フラグのparentを公開WDK10 10.0.16299 / KMDF1.15参照headersでARM32 COFF compileした。
@@ -86,3 +91,41 @@ Raman側へ渡す単位はこのmerge済みbranch全体。5f81872からのmerge�
 主担当は最新WDK8.1の一括link/署名と通常OS配置を行う。PnP資源、touch/battery/buttonsの継続、
 audio/USB/Wi-Fiの同居、NVRAM動的読出し、実scan/WPA2接続は実機確認が残る。
 実機/runnerは主担当専有、REAはEinstein専有、USBカメラによる観測は行わない。
+
+
+## 最終profileとpackage version
+
+一括入口`build-mt8167-peripherals.ps1`はcleanな固定commitだけを受け付け、
+内部で`build-mt8167-first-playback.ps1 -IntegratedUsb -IntegratedWifi`を
+一度実行する。Wi-FiはNashの`SharedParentDirectory`契約を使い、親の
+capability manifest・commit・SHA256を照合して再利用する。親SYS数は厳密に1個。
+親/audio/USB/Wi-FiとKS client/WLAN probe、対応INFの全hashを最上位manifestへ残す。
+失敗時は成功manifestを作らず`build-state.json`をfailedにする。古いmanifestは保存する。
+
+同梱4 INFの固定値は`DriverVer=11/06/2026,2026.11.6.1001`。
+parentの既存oem50/0.0.1.xに対してversionを明確に上げ、同rank同versionによる
+旧package残留を避ける。UTC 11/06のrunnerで11/07がfuture dateになった実例に
+合わせ、audioを含め11/07は同梱INFに残さない。sourceと生成先INFの値を照合し、
+日付/versionを親・各child・最上位manifestへ記録する。
+全INFのDDInstall/Servicesは`Install.NT`/`Install.NT.Services`装飾を維持する。
+Device/DisplayNameはMediaTek MT8167/MT6392/MT6630の実ハード名で、
+experimentalやa04br3を表示名に使わない。既存hardware IDとサービス名は変えない。
+
+version更新はpackage選択の条件であり、現在常駐する旧SYSが置き換わったという
+証拠ではない。署名・PnP更新・必要な再起動と、選択INF/DriverVer/SYS hashの
+照合は主担当の実機工程。こちらではInf2Cat・署名・配置・実機操作を実行していない。
+
+音声はv11の親・Audio SYS・KS clientを同じcommitから作る。親の
+FIRST_PLAYBACK/VOICE_PCM/DIGITAL_PLAYBACK/MT6392_CLK_ALIAS/UNMUTEは1、
+旧SHARED_VOICE_DIAGNOSTICは0。子のFIRST/DIGITAL/SILENT_DMA/PCM_PATTERN/UNMUTEは1、
+AUDIO_VOICE_PCM_DIAGNOSTICは0。KS clientはRUN一度→snapshot→STOP要求後に
+既存TOPRGU queueへ観測を送る。AudioSrv不要、対象ARM32 ksuser.dllが必要。
+可聴成功は未確認。通常OSのGPU/DODと一回限りPnP installerは主担当が所有する。
+
+既存touch/battery/buttons/GPUのINF・namespace・resource validatorを変更しない。
+PC接続/外部VBUS/ID-deviceでは、USBのsource eligibilityが無書込みで拒否し、
+親・audio/Wi-Fi leaseをpoisonしない。GPIO/clock/PMICの既存bit maskを広げない。
+単一parentでの同時フラグ、audio leaseとRTC lease、USB条件拒否を既存fixtureに
+まとめて確認するが、実PnP・実Wi-Fi接続・実キー入力・音声再生成功とは区別する。
+
+最終audio v11統合後は`make test-mt8167-peripherals`が成功。4 INFの固定日付/版、NT装飾、実ハード表示名を静的確認した。ローカルにPowerShellがないため、更新後scriptの実Parser確認およびWDK8.1 link/Inf2Catは未実施で、主担当の一括build工程へ渡す。

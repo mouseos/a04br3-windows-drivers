@@ -17,8 +17,9 @@ $names=@('TEMP','TMP','RUNNER_TEMP','A04_AUDIO_CHILD_RESOURCES','A04_SHARED_QUER
  'A04_SHARED_VOICE_PCM_DIAGNOSTIC','A04_MT6392_CLK_ALIAS_EXPERIMENT','A04_MT6392_UNMUTE_DIAGNOSTIC',
  'A04_AUDIO_DIAGNOSTIC_TRACE','A04_SHARED_VOICE_DIAGNOSTIC','A04_SHARED_THERMAL_DIAGNOSTIC',
  'A04_SHARED_TOUCH_D0_EXPERIMENT','A04_USB_GPIO22_SOURCE_EXPERIMENT','A04_MT6392_RTC32K_DIAGNOSTIC',
- 'A04_SHARED_WIFI_IRQ_DIAGNOSTIC','A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC','A04_SHARED_WIFI_RUNTIME','A04_AUDIO_PMIC_TRACE',
- 'A04_SHARED_USB_ONLY','A04_MUSB_HOST_CORE_EXPERIMENT','A04_MUSB_HID_CONTROL_EXPERIMENT')
+ 'A04_SHARED_WIFI_IRQ_DIAGNOSTIC','A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC','A04_AUDIO_PMIC_TRACE',
+ 'A04_SHARED_USB_ONLY','A04_MUSB_HOST_CORE_EXPERIMENT','A04_MUSB_HID_CONTROL_EXPERIMENT',
+ 'A04_SHARED_WIFI_RUNTIME')
 $saved=@{};foreach($name in $names){$saved[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}
 $transcript=$false
 try {
@@ -38,7 +39,7 @@ try {
         $env:A04_USB_GPIO22_SOURCE_EXPERIMENT='1'
         $env:A04_MUSB_HOST_CORE_EXPERIMENT='1';$env:A04_MUSB_HID_CONTROL_EXPERIMENT='1'
         # Existing optional parent consumers keep their resource/feature flags.
-        foreach($name in @('A04_SHARED_THERMAL_DIAGNOSTIC','A04_MT6392_RTC32K_DIAGNOSTIC',
+        foreach($name in @('A04_SHARED_THERMAL_DIAGNOSTIC','A04_MT6392_RTC32K_DIAGNOSTIC','A04_SHARED_WIFI_RUNTIME',
           'A04_SHARED_WIFI_IRQ_DIAGNOSTIC','A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC')){
             if($saved[$name] -eq '1'){[Environment]::SetEnvironmentVariable($name,'1','Process')}
         }
@@ -59,7 +60,7 @@ try {
       '-DA04_MT8167_OWNER_DIAGNOSTIC=1','-DA04_AUDIO_QUERY_SHARED=1','-DA04_AUDIO_MAP_AFE=1',
       '-DA04_AUDIO_IRQ_DIAGNOSTIC=1','-DA04_AUDIO_RUN_DIAGNOSTIC=1','-DA04_AUDIO_SILENT_DMA_DIAGNOSTIC=1',
       '-DA04_AUDIO_PCM_PATTERN_DIAGNOSTIC=1','-DA04_AUDIO_UNMUTE_DIAGNOSTIC=1',
-      '-DA04_AUDIO_DIGITAL_PLAYBACK=1','-DA04_AUDIO_FIRST_PLAYBACK=1','-DA04_AUDIO_DIAGNOSTIC_TRACE=1')
+      '-DA04_AUDIO_DIGITAL_PLAYBACK=1','-DA04_AUDIO_FIRST_PLAYBACK=1','-DA04_AUDIO_VOICE_PCM_DIAGNOSTIC=0','-DA04_AUDIO_DIAGNOSTIC_TRACE=1')
     $objects=@()
     foreach($name in @('dl1','dl1_engine','shared_audio','audio_parent_client','audio_parent_query')){
         $file=Join-Path $obj "$name.obj";$objects+=$file
@@ -84,8 +85,10 @@ try {
     if($LASTEXITCODE -ne 0){throw 'Audio PE inspection failed'}
     Copy-Item (Join-Path $audio 'mt8167-afe-first-playback.inf') $obj
     Copy-Item (Join-Path $root 'drivers\bus\mt8167-shared\prototype\shared-parent.inf') (Join-Path $out 'a04-msdc-parent-probe')
+    & (Join-Path $PSScriptRoot 'build-mt8167-audio-ks-client.ps1') -OutputDirectory (Join-Path $out 'client')
     $files=@((Join-Path $out 'a04-msdc-parent-probe\mt8167-shared.sys'),
-      (Join-Path $out 'a04-msdc-parent-probe\shared-parent.inf'),$binary,(Join-Path $obj 'mt8167-afe-first-playback.inf'))
+      (Join-Path $out 'a04-msdc-parent-probe\shared-parent.inf'),$binary,(Join-Path $obj 'mt8167-afe-first-playback.inf'),
+      (Join-Path $out 'client\mt8167-audio-first-playback.exe'),(Join-Path $out 'client\run-mt8167-audio-first-playback.cmd'))
     if($IntegratedUsb){
         $usbOut=Join-Path $out 'usb'
         & (Join-Path $PSScriptRoot 'build-mt8167-usb20.ps1') -OutputDirectory $usbOut
@@ -111,7 +114,8 @@ try {
       calibration='MT6392 hardware trim; Linux cold-start DC profile, no measured AU_LOL ADC calibration';
       installable=$false;note='Unsigned pair and INF only; primary owner must sign/package and validate on target';
       integrated_usb=[bool]$IntegratedUsb;integrated_wifi=[bool]$IntegratedWifi;shared_parent_count=$parents.Count;namespace='Reuse existing parent/touch/buttons/battery; no ACPI replacement';
-      parent_flags=$parentFlags;audio_flags=$flags;files=$hashes}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+      driver_date='11/06/2026';driver_version='2026.11.6.1001';driver_ver='11/06/2026,2026.11.6.1001';
+      parent_flags=$parentFlags;audio_flags=$flags;diagnostic_interface=11;client='direct KS, AudioSrv not required; dynamic ksuser.dll';files=$hashes}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
 } finally {
     if($transcript){Stop-Transcript|Out-Null}
     foreach($name in $names){[Environment]::SetEnvironmentVariable($name,$saved[$name],'Process')}

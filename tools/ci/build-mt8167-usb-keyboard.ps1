@@ -33,7 +33,7 @@ if($Profile -eq 'Integrated') {
     }
     $settings['A04_SHARED_USB_ONLY']='0';$settings['A04_SHARED_TOUCH_D0_EXPERIMENT']='1'
 } else {
-    $settings['A04_SHARED_FIRST_PLAYBACK']='0';$settings['A04_SHARED_DIGITAL_PLAYBACK']='0'
+    $settings['A04_SHARED_FIRST_PLAYBACK']='0';$settings['A04_SHARED_DIGITAL_PLAYBACK']='0';$settings['A04_SHARED_WIFI_RUNTIME']='0'
 }
 $saved=@{}
 foreach($key in $settings.Keys){$saved[$key]=[Environment]::GetEnvironmentVariable($key);[Environment]::SetEnvironmentVariable($key,$settings[$key])}
@@ -47,6 +47,7 @@ try {
     Copy-Item (Join-Path $root 'drivers\usb\mt8167-usb20\mt8167-usb20.inf') $out
     if($Profile -eq 'UsbOnly'){Copy-Item (Join-Path $root 'platform\a04br3\acpi\UsbKeyboard.asl') $out}
     $manifest=@{
+        driver_date='11/06/2026';driver_version='2026.11.6.1001';driver_ver='11/06/2026,2026.11.6.1001';
         repository='https://github.com/mouseos/a04br3-windows-drivers.git';commit=(& git -C $root rev-parse HEAD);
         dirty=(@(& git -C $root status --porcelain).Count -ne 0);profile=$Profile;settings=$settings;
         namespace=$(if($Profile -eq 'Integrated'){'Reuse existing shared parent and battery nodes; no ACPI replacement'}else{'Standalone USB-only ACPI candidate'});

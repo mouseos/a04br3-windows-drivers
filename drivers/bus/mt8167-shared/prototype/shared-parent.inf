@@ -1,10 +1,10 @@
-; Diagnostic prototype: D0 rejects by default; do not install.
+; MediaTek MT8167 shared parent. Requires matched profile and signed catalog.
 [Version]
 Signature="$WINDOWS NT$"
 Class=System
 ClassGuid={4D36E97D-E325-11CE-BFC1-08002BE10318}
 Provider=%Provider%
-DriverVer=11/04/2026,0.0.1.0
+DriverVer=11/06/2026,2026.11.6.1001
 CatalogFile=shared-parent.cat
 [Manufacturer]
 %Provider%=Models,NTARM
