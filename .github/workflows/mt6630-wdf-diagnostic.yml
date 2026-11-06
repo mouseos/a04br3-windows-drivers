@@ -18,6 +18,17 @@ jobs:
       - name: Build guarded hardware path
         shell: pwsh
         run: ./tools/ci/build-mt6630-wdf-hardware.ps1
+      - name: Record guarded hardware build
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'a04br3-wifi-wdf-hardware'
+          $driver = Join-Path $out 'wifi-hardware-config-disabled.sys'
+          [ordered]@{ source_commit = (git rev-parse HEAD); hardware_code = 1; verified_configuration = 0; sha256 = (Get-FileHash $driver -Algorithm SHA256).Hash; note = 'Unsigned ARM32 link check; hardware configuration disabled; not an installable package.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mt6630-wdf-hardware-link-check
+          path: ${{ runner.temp }}\a04br3-wifi-wdf-hardware
+          if-no-files-found: error
       - name: Create signed diagnostic package
         shell: pwsh
         run: |
