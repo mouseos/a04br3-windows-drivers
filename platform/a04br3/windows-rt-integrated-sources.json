@@ -153,7 +153,7 @@
     "hardware_verified_here": false
   },
   "engine_pcm_standalone_probe_candidate": {
-    "source_commit": "1e481ae55ea3a60036306e4a22f6edd91a99baff",
+    "source_commit": "d0eb43691b4358fb3dc165946da33d03a4ce1b29",
     "mode": "normal Windows AudioSrv/WASAPI shared-mode only",
     "build_entry": "tools/ci/build-mt8167-audio-engine-probe.ps1",
     "program": "mt8167-audio-engine-probe.exe",
@@ -164,6 +164,19 @@
     "wdk_verified_here": false,
     "hardware_verified_here": false,
     "audible_verified": false,
-    "expected_driver_hashes_are_loaded_driver_proof": false
+    "expected_driver_hashes_are_loaded_driver_proof": false,
+    "package_version": "2026.11.7.2",
+    "disk_log_required": true,
+    "disk_flush_required_before_start": true,
+    "uart_required": false,
+    "uart_errors_affect_audio_result": false
+  },
+  "legacy_tone_uart_prerequisite": {
+    "source": "tools/winpe/mt8167-audio-first-playback.c",
+    "uart_open_required_before_ks_pin_and_run": true,
+    "uart_missing_result": 3,
+    "uart_missing_is_audio_execution_evidence": false,
+    "legacy_client_modified": false,
+    "current_run26_media_modified": false
   }
 }

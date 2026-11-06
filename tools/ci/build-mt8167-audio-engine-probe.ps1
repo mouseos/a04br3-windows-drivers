@@ -30,7 +30,7 @@ try {
     if($LASTEXITCODE -ne 0){throw 'Audio engine probe PE inspection failed'}
     $inspection|Set-Content -Encoding UTF8 (Join-Path $out 'pe-imports.txt');$inspection|Write-Host
     Copy-Item (Join-Path $root 'tools\audio\README-mt8167-audio-engine-probe.md') $out
-    @{package_version='2026.11.7.1';source_commit=$commit;source_dirty=($dirty.Count -ne 0);
+    @{package_version='2026.11.7.2';source_commit=$commit;source_dirty=($dirty.Count -ne 0);
       source_sha256=(Get-FileHash $source -Algorithm SHA256).Hash;
       entry='mt8167-audio-engine-probe.exe (no arguments, no service wrapper)';
       api='shared-mode MMDevice/DeviceTopology/WASAPI; AudioEndpointBuilder and AudioSrv';
@@ -41,6 +41,7 @@ try {
       signed_parent_sys_sha256_expected='99338c1bbe30205b09af6c594a7c79cc4ef8a7c080a692330d36cdbb973f86ca';
       driver_sources_verified_by_probe=$false;diagnostic_interface=11;snapshot_version=1;
       program='two standard client lifetimes; each 48000 frames 1500Hz, 48000 silence, 48000 frames 750Hz; peak 1/256 FS';
+      evidence_required='disk log, successful writes and FlushFileBuffers';uart_transport='optional; open/send errors recorded separately, never an audio failure';
       audible_verified=$false;deployment_performed=$false;
       files=@(@{name='mt8167-audio-engine-probe.exe';sha256=(Get-FileHash $exe -Algorithm SHA256).Hash},
               @{name='README-mt8167-audio-engine-probe.md';sha256=(Get-FileHash (Join-Path $out 'README-mt8167-audio-engine-probe.md') -Algorithm SHA256).Hash})

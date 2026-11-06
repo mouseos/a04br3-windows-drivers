@@ -183,3 +183,19 @@ manifestのexpected SYS hashは回収bundleの期待値であり、実ロードd
 通常OSのUART名が存在するとは仮定せず、diskログ/stdout/終了状態と通知失敗を区別する。
 WDK compile/link・実endpoint/API・実再生の確認は主担当が次構成で行う。
 詳細は `tools/audio/README-mt8167-audio-engine-probe.md` を参照。
+
+## probeのUART任意化と旧toneの前提
+
+通常音声専用probeのd0eb436を取り込み（package_version=2026.11.7.2）。
+必須diskログの作成・書込み・flushを確認できれば、UART open/send失敗があっても
+AudioSrv/WASAPI→DMA観測へ進む。各pass Start前のdisk flushは必須で、保存失敗は開始拒否/exit5。
+UART失敗はtransport/uart-optional/output-state/endへ分離し、API/DMA maskやexitへ加算しない。
+例：summary=3,3,0、output-state=0,2,0、end result0/UART2は、音声API/DMA確認とUART名不在を区別する。
+可聴成功を示すものではない。
+
+旧tone clientは変更していない。tools/winpe/mt8167-audio-first-playback.c:184は
+open_uart失敗でresult=3として、ksuser load/KsCreatePin/RUNより前に終了する。
+216にもRUN直前のuart_lost拒否がある。run25同様のdevice名不在が続けば旧toneは再生前に止まり、
+その結果を音声再生失敗や実RUN済みの証拠にしない。
+この任意UART修正は新EnginePcm専用probeだけで、旧tone service/SYS/INF/boot/current run26媒体へ
+混ぜない。旧tone診断の通知前提を解消する修正が必要なら、主担当が別の固定client更新として扱う。

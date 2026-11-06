@@ -55,13 +55,17 @@ MMDevice/WASAPIのCOM実装は通常Windowsの標準コンポーネントを使�
 固定のWindowsサービス2個が停止している場合だけSCMのStartServiceを使う。
 既に実行中ならqueryだけで進む。無効化・欠落・権限不足は明示して失敗し、
 service設定の変更や独自brokerによる代用はしない。
-主担当の既存実行主体にUARTと音声read-only診断へのアクセス権が必要。
+主担当の既存実行主体にdisklog保存と音声read-only診断へのアクセス権が必要。UARTは補助輸送である。
 既存toneのCMD/serviceからこのprobeを自動起動しない。
 
 ## 一回のコマンドが行う処理
 
 1. EXEと同じdirectoryへ `audio-engine-probe-<runid>.log` を新規作成し、
-   stdoutと既存TOPRGU `A04BR3ScreenUart` も開く。開始時点で保存/UARTを開けなければ再生しない。
+   stdoutと既存TOPRGU `A04BR3ScreenUart` も試す。disklogを作成・書込み・flushできなければ再生しない。
+   UARTのCreateFile error 2（device名なし）を含むopen/send失敗は、補助輸送エラーとしてdisklogへ残す。
+   disklogを確保できれば標準AudioSrv/WASAPIとDMA診断へ進み、UARTだけの失敗でabortしない。
+   UART失敗後は再試行を繰り返さず、TOPRGUやboot設定を変更しない。
+   各passのStart前にもdisklogをflushする。pass間で保存失敗を検出した場合は次のpassを開始しない。
 2. 固定のAudioEndpointBuilder / AudioSrvをqueryし、停止時のみ開始する。
    サービス開始は各15秒、endpoint列挙は最大約10秒まで待つ。
    この待機はOSサービスの準備待ちであり、DMA静止を推定するwaitではない。
@@ -106,11 +110,17 @@ kernel自身が停止している場合のprocess終了まで保証するもの�
 各行は96 bytes以内の `A04AUDENG r=<8桁runid> <tag> a=<hex> b=<hex> c=<hex>`。
 数値は全て16進数。phase=0は非RUN区間、1/2は各WASAPI passのStartからStop要求まで。
 非同期snapshotの前後でphaseが変わった標本は境界標本として進行判定から除く。
-UART IOCTL成功はqueue受付であり、主担当のhostログに同runidのendが届いたことを回収証拠とする。
+必須の回収証拠はEXE横のdisklogとprocess exit statusである。
+UART IOCTL成功はqueue受付にすぎず、UARTを使えたrunだけhost側end受信を追加の輸送証拠にする。
+UART不在runではhost側end受信を要求しない。run25通常OSでdevice名がなくCreateFile error 2だったという
+主担当の既知観測を前提に、UART状態と標準音声の成否を分離する。
 
 | tag | a / b / c |
 | --- | --- |
 | begin | probe ABI 1 / tick / probe source先頭32bit |
+| transport | disk error / UART error / 1=UART optional・disk mandatory |
+| uart-optional | UART open error / 0 / 0（音声失敗を意味しない） |
+| disk-required | 必須disklog error / 0 / 0（PCM未開始） |
 | expected-src | runtime source短縮値 / INF source短縮値 / version末尾（実ロード証明ではない） |
 | service | 0=EndpointBuilder,1=AudioSrv / SERVICE状態 / Win32 exit code |
 | endpoint, route | endpoint index / HRESULT / state等 |
@@ -132,10 +142,10 @@ UART IOCTL成功はqueue受付であり、主担当のhostログに同runidのen
 | clock | pass / tick / GetPosition HRESULT |
 | clock-pos, clock-qpc | low32 / high32 / paddingまたは0。position単位はclock-hz、QPCはAPI仕様の100ns単位 |
 | dma-progress, dma-fault | pass / 有効標本数 / CUR変化数、およびpass / fault観測 / 0 |
-| summary | 標準API完了bitmask / DMA進行観測bitmask / 暫定exit code |
+| summary | 標準API完了bitmask / DMA進行観測bitmask / 音声・診断のresult（輸送エラーを除く） |
 | output-state | log error / UART error / diagnostic error |
 | audible | 常に0 / 0 / 0 |
-| end | 最終sender result / tick / 0 |
+| end | process result / tick / 補助UART error（0以外でも音声成功は可能） |
 
 pass-result stageは、1 Activate、2 GetMixFormat、3 GetDevicePeriod、4 Initialize、
 5 GetBufferSize、6 GetStreamLatency、7 render service、8 clock service、9 GetFrequency、
@@ -148,8 +158,11 @@ IRQ fault/codec poison/有効なovercurrent異常を見ていない場合。
 IRQ通知数をperiod総数と解釈せず、modulo CUR差から経過framesやwrap回数を推定しない。
 別groupのcodec/rails状態はraw値とvalidを併せて評価する。
 
-exit 0は両mask=3かつ保存・UART・診断にエラーがないことを示す。
-exit 1はsetup/API失敗、3は観測不足等、4は診断thread未完了、5は出力失敗。
+exit 0は両mask=3かつ必須disklog保存・診断にエラーがないことを示す。
+UARTだけの不在/送信失敗はexit statusと音声resultを変更しない。
+例: summary a=3,b=3,c=0、output-state a=0,b=2,c=0、end a=0,c=2 は
+「標準APIとDMA進行は成功、disklog保存あり、UART device名なし」を表す。
+exit 1はsetup/API失敗または未開始、3は観測不足等、4は診断thread未完了、5は必須disklog失敗。
 最後のflushなどでexit statusがさらに失敗へ変わる場合もあるため、sender endだけで成功としない。
 記録済みpayload hashはclientが標準APIへ渡した内容の証拠であり、DMA内容のCRCではない。
 AudioSrvの変換・global mute/volume、実DAC出力、可聴性、欠落のない実波形まで証明しない。
@@ -172,3 +185,12 @@ AudioSrvの変換・global mute/volume、実DAC出力、可聴性、欠落のな
 追加ARM算術helper/CRT/未定義GUID参照がないことを確認したが、WDK 8.1 compile/linkとは区別する。
 このprobeのWDK compile/link、通常Windowsのendpoint/API実行、DMA/codec観測は未確認。
 実機・runner・SSH・REA・EDK2は操作していない。
+
+## 旧fixed-tone clientのUART条件（変更していない）
+
+`tools/winpe/mt8167-audio-first-playback.c` のrunはopen_uart失敗時、
+uart_lost=1、result=3、goto doneとなり、ksuser.dllのload・KsCreatePin・RUNには到達しない。
+open_uartは約5秒間openを試す。初期openに成功してもRUN直前のuart_lost確認でabortし、
+最後にもUART輸送失敗をresult=3へ反映する。したがってrun25のdevice名不在が続く構成では、
+旧tone clientも同じ理由でPCM試行前に止まる。
+この修正は新しい通常音声probeだけに適用し、旧tone入口とTOPRGUは変更していない。
