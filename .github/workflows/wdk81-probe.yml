@@ -67,6 +67,9 @@ jobs:
             Write-Host "$path : $(Test-Path $full)"
             if (-not (Test-Path $full)) { throw "Missing required ARM32 WDK component: $path" }
           }
+      - name: Compile ARM32 offline release primitive
+        shell: pwsh
+        run: ./tools/ci/build-offline-release.ps1
       - name: Compile non-operational Storport interface probe
         shell: pwsh
         run: ./tools/ci/build-wdk81-probe.ps1
