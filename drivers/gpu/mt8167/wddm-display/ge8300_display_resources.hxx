@@ -101,6 +101,14 @@ struct A04DisplayResources {
     void *SharedCommonOwner;
 #if A04_GE8300_WDDM_GCE_LEASE
     void *GceDisplayLease;
+#if A04_GE8300_WDDM_EXPLICIT_GPU_FLUSH
+    BOOLEAN GceFrameAttempted;
+    /* Caller holds the present lock and owns the stop event and proof context.
+     * Provider must independently prove both saved display mappings, the
+     * GPU-to-display visibility and the selected OVL geometry. */
+    NTSTATUS GcePresentAndRestore(ULONG event,ULONG savedL0,ULONG savedL3,
+        int (*validate)(void *,uint32_t,uint32_t),void *proofContext,PKEVENT stopEvent);
+#endif
 #endif
     struct a04_shared_common_once SharedCommonOnce;
 #if A04_GE8300_WDDM_SHARED_FULL_COMMON

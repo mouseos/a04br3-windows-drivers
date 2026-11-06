@@ -339,9 +339,48 @@ struct A04CommonFrameOwner {
     uint32_t frame,task,flush,cpuMatches;
     BOOLEAN sealed;
 #if A04_GE8300_WDDM_EXPLICIT_GPU_FLUSH
-    PVOID mapRegisterBase;
+    PVOID mapRegisterBase;BOOLEAN gpuFlushed;
 #endif
 };
+#if A04_GE8300_WDDM_GCE_LEASE && A04_GE8300_WDDM_EXPLICIT_GPU_FLUSH
+/* Caller supplies a live independent proof provider, not a readback-derived
+ * boolean. Keep the holder, surfaces, mapping and proof context alive across
+ * both submissions, the wait, and any uncertain return. This routine reports
+ * command completion only; EOC is not evidence of an OVL latch or retirement. */
+NTSTATUS A04DisplayResources::GcePresentAndRestore(ULONG event,ULONG savedL0,ULONG savedL3,
+    int (*validate)(void *,uint32_t,uint32_t),void *proofContext,PKEVENT stopEvent)
+{
+    A04GceDisplayLeaseHolder *holder=(A04GceDisplayLeaseHolder *)GceDisplayLease;
+    A04CommonFrameOwner *owner=(A04CommonFrameOwner *)SharedCommonOwner;
+    NTSTATUS status,restoreStatus;LARGE_INTEGER timeout;
+    if(KeGetCurrentIrql()!=PASSIVE_LEVEL || !stopEvent || !validate || !proofContext ||
+       !holder || !holder->token || !holder->iface.Ready || !holder->iface.Submit || !holder->iface.Restore ||
+       !owner || !SharedCommonRetained || !owner->sealed || !owner->gpuFlushed ||
+       owner->cpuMatches!=1024000u || !owner->shared.display_common || !owner->shared.display_dma ||
+       !savedL0 || !savedL3 || (savedL0&3u) || (savedL3&3u) || (event!=27u && event!=38u) ||
+       GceFrameAttempted)return STATUS_INVALID_DEVICE_STATE;
+    status=holder->iface.Ready(holder->iface.Header.Context,holder->token);
+    if(!NT_SUCCESS(status))return status;
+    /* Validation must cover new display-common backing and both old layers,
+     * visibility, pinning and layout; an address comparison alone is invalid. */
+    if(validate(proofContext,savedL0,savedL3)!=1)return STATUS_DEVICE_NOT_READY;
+    if(KeReadStateEvent(stopEvent))return STATUS_CANCELLED;
+    GceFrameAttempted=TRUE;
+    status=holder->iface.Submit(holder->iface.Header.Context,holder->token,event,
+                                owner->shared.display_dma,savedL3);
+    A04DisplayTrace(0x99,status);
+    if(NT_SUCCESS(status)) {
+        timeout.QuadPart=-50000000LL;
+        (void)KeWaitForSingleObject(stopEvent,Executive,KernelMode,FALSE,&timeout);
+    }
+    /* Restore accepts only a stopped, owned engine and revalidates both old
+     * mappings. If submit timed out, it refuses and all resources remain. */
+    restoreStatus=holder->iface.Restore(holder->iface.Header.Context,holder->token,event,
+                                        savedL0,savedL3,validate,proofContext);
+    A04DisplayTrace(0x9a,restoreStatus);
+    return NT_SUCCESS(status)?restoreStatus:status;
+}
+#endif
 #if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
 NTSTATUS A04DisplayResources::GetVerifiedGpuFrame(const uint32_t **pixels)
 {
@@ -412,6 +451,7 @@ static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile 
             owner->shared.gpu_adapter,mdl,owner->mapRegisterBase,0,4096000u,FALSE);
         A04DisplayTrace(0x98,status);
         if(!NT_SUCCESS(status))goto done;
+        owner->gpuFlushed=TRUE;
 #endif
         KeFlushIoBuffers(mdl,TRUE,TRUE);KeMemoryBarrier();
         for(uint32_t y=0;y<1280u;y++)for(uint32_t x=0;x<800u;x++)
