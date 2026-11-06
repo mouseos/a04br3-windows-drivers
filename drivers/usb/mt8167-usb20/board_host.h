@@ -11,8 +11,9 @@ typedef struct {
  unsigned char (*mac_read)(void *,unsigned);
  void (*mac_write)(void *,unsigned,unsigned char);
  void (*delay_ms)(void *,unsigned);
- /* Source qualification must come from its real exclusive owner and include
-  * charger lock/watchdog coordination where applicable. vbus_verified must
+ /* source_ready is a side-effect-free, repeatable check by the real source
+  * owner. vbus(on) must acquire and retain charger lock/watchdog and source
+  * ownership before raising the switch. vbus_verified must
   * report an independent, qualified electrical observation, not GPIO22's
   * output latch, forced PHY bits, DEVCTL, or the Linux constant-true stub. */
  int (*source_ready)(void *);

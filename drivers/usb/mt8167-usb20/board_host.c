@@ -33,7 +33,8 @@ int A04UsbHostRun(const A04_USB_BOARD *b)
 {
  unsigned char v;
  if(!valid(b) || !b->source_ready || !b->vbus_verified ||
-    b->source_ready(b->context) || b->vbus(b->context,1))return -1;
+    b->source_ready(b->context))return -1;
+ if(b->vbus(b->context,1)) { (void)b->vbus(b->context,0);return -1; }
  b->delay_ms(b->context,100);
  /* The Linux implementation forces PHY VBUSVALID and its status helper
   * always reports true. Neither is electrical confirmation of VBUS. */
