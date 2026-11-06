@@ -26,6 +26,15 @@
 #if A04_USB_POWER_OBSERVATION && (!defined(A04_SHARED_BUTTON_D0_EXPERIMENT) || !A04_SHARED_BUTTON_D0_EXPERIMENT)
 #error USB power observation requires the shared parent D0 experiment
 #endif
+#ifndef A04_USB_POWER_IOCTL
+#define A04_USB_POWER_IOCTL 0
+#endif
+#if A04_USB_POWER_IOCTL && !A04_USB_POWER_OBSERVATION
+#error USB IOCTL requires the opt-in power observation
+#endif
+#if A04_USB_POWER_IOCTL
+#include "usb_observation_ioctl.h"
+#endif
 #ifndef A04_SHARED_THERMAL_DIAGNOSTIC
 #define A04_SHARED_THERMAL_DIAGNOSTIC 0
 #endif
@@ -604,6 +613,31 @@ static unsigned ParentUsbTopRead(void *p,unsigned off) { A04_PARENT_CONTEXT*c=p;
 static void ParentUsbTopWrite(void *p,unsigned off,unsigned v) { A04_PARENT_CONTEXT*c=p; WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->topck+off),v); }
 static unsigned ParentUsbGpioRead(void *p,unsigned off) { A04_PARENT_CONTEXT*c=p; return READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->gpio+off)); }
 static void ParentUsbGpioWrite(void *p,unsigned off,unsigned v) { A04_PARENT_CONTEXT*c=p; WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->gpio+off),v); }
+#if A04_USB_POWER_IOCTL
+/* Only read fixed registers while the parent is admitted and locked. */
+static VOID ParentUsbObservationIoctl(WDFQUEUE queue,WDFREQUEST request,size_t out,size_t in,ULONG code)
+{
+ A04_PARENT_CONTEXT *c=ParentContext(WdfIoQueueGetDevice(queue));
+ A04_USB_OBSERVATION *v;size_t available;NTSTATUS status=STATUS_INVALID_PARAMETER;
+ if(code!=A04_USB_OBSERVATION_GET || in!=0)goto done;
+ if(out<sizeof(*v)){status=STATUS_BUFFER_TOO_SMALL;goto done;}
+ status=WdfRequestRetrieveOutputBuffer(request,sizeof(*v),(PVOID *)&v,&available);
+ if(!NT_SUCCESS(status))goto done;
+ if(available<sizeof(*v)){status=STATUS_BUFFER_TOO_SMALL;goto done;}
+ if(ParentLock(c)){status=STATUS_DEVICE_NOT_READY;goto done;}
+ if(!c->gpio || InterlockedCompareExchange(&c->removed,0,0)) {
+  ParentUnlock(c);status=STATUS_DEVICE_NOT_READY;goto done;
+ }
+ v->size=sizeof(*v);v->version=A04_USB_OBSERVATION_VERSION;
+ v->dir1=ParentUsbGpioRead(c,0x10);v->dout1=ParentUsbGpioRead(c,0x110);
+ v->din1=ParentUsbGpioRead(c,0x210);v->mode21_22=ParentUsbGpioRead(c,0x340);
+ v->dir2=ParentUsbGpioRead(c,0x20);v->dout2=ParentUsbGpioRead(c,0x120);
+ v->din2=ParentUsbGpioRead(c,0x220);v->mode34=ParentUsbGpioRead(c,0x360);
+ v->mode41=ParentUsbGpioRead(c,0x380);
+ ParentUnlock(c);WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(*v));return;
+done: WdfRequestComplete(request,status);
+}
+#endif
 static int ParentUsbOvercurrent(void *p) {
  A04_PARENT_CONTEXT*c=p; unsigned mode,dir,input;
  if(!c->gpio)return -1;
@@ -1078,6 +1112,12 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     A04_SHARED_WIFI_INTERFACE wifiIface;
 #endif
     UNREFERENCED_PARAMETER(driver);
+#if A04_USB_POWER_IOCTL
+    { DECLARE_CONST_UNICODE_STRING(name,A04_USB_OBSERVATION_DEVICE);
+      DECLARE_CONST_UNICODE_STRING(sddl,L"D:P(A;;GA;;;SY)(A;;GA;;;BA)");
+      status=WdfDeviceInitAssignName(init,&name);if(!NT_SUCCESS(status))return status;
+      status=WdfDeviceInitAssignSDDLString(init,&sddl);if(!NT_SUCCESS(status))return status; }
+#endif
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
     pnp.EvtDevicePrepareHardware=ParentPrepare;pnp.EvtDeviceReleaseHardware=ParentRelease;pnp.EvtDeviceD0Entry=ParentD0;
     pnp.EvtDeviceD0Exit=ParentD0Exit;pnp.EvtDeviceSurpriseRemoval=ParentSurprise;
@@ -1086,6 +1126,14 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     attr.ExecutionLevel=WdfExecutionLevelPassive;
     status=WdfDeviceCreate(&init,&attr,&dev);
     if(!NT_SUCCESS(status))return status;
+#if A04_USB_POWER_IOCTL
+    { DECLARE_CONST_UNICODE_STRING(link,A04_USB_OBSERVATION_LINK);WDF_IO_QUEUE_CONFIG q;
+      status=WdfDeviceCreateSymbolicLink(dev,&link);if(!NT_SUCCESS(status))return status;
+      WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchSequential);
+      q.PowerManaged=WdfTrue;q.EvtIoDeviceControl=ParentUsbObservationIoctl;
+      status=WdfIoQueueCreate(dev,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);
+      if(!NT_SUCCESS(status))return status; }
+#endif
     {
         A04_PARENT_CONTEXT *c=ParentContext(dev);
         ExInitializeFastMutex(&c->pwrapLock);

@@ -27,6 +27,22 @@ NTSTATUS WdfIoResourceListCreate(WDFIORESREQLIST,void *,WDFIORESLIST *);
 NTSTATUS WdfIoResourceListAppendDescriptor(WDFIORESLIST,IO_RESOURCE_DESCRIPTOR *);
 NTSTATUS WdfIoResourceRequirementsListAppendIoResList(WDFIORESREQLIST,WDFIORESLIST);
 NTSTATUS WdfFdoAddStaticChild(WDFDEVICE,WDFDEVICE);void WdfObjectDelete(void *);
+#if defined(A04_USB_POWER_IOCTL) && A04_USB_POWER_IOCTL
+typedef void *WDFQUEUE;
+typedef struct test_request {void *buffer;size_t size,info;NTSTATUS status;} *WDFREQUEST;
+typedef struct {int PowerManaged;void (*EvtIoDeviceControl)(WDFQUEUE,WDFREQUEST,size_t,size_t,ULONG);} WDF_IO_QUEUE_CONFIG;
+#define WdfIoQueueDispatchSequential 0
+#define WdfTrue 1
+#define WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(p,mode) (memset((p),0,sizeof(*(p))),(void)(mode))
+NTSTATUS WdfDeviceInitAssignName(PWDFDEVICE_INIT,const UNICODE_STRING *);
+NTSTATUS WdfDeviceInitAssignSDDLString(PWDFDEVICE_INIT,const UNICODE_STRING *);
+NTSTATUS WdfDeviceCreateSymbolicLink(WDFDEVICE,const UNICODE_STRING *);
+NTSTATUS WdfIoQueueCreate(WDFDEVICE,WDF_IO_QUEUE_CONFIG *,void *,void *);
+WDFDEVICE WdfIoQueueGetDevice(WDFQUEUE);
+NTSTATUS WdfRequestRetrieveOutputBuffer(WDFREQUEST,size_t,PVOID *,size_t *);
+void WdfRequestComplete(WDFREQUEST,NTSTATUS);
+void WdfRequestCompleteWithInformation(WDFREQUEST,NTSTATUS,size_t);
+#endif
 #define WdfExecutionLevelPassive 0
 #define WDF_NO_OBJECT_ATTRIBUTES NULL
 #define WDF_NO_HANDLE NULL

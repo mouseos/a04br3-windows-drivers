@@ -261,3 +261,44 @@ GPIO22 DOUT is a latch and neither it nor GPIO34 alone confirms a 5 V source,
 connector voltage, current, power direction or physical wiring. Compare the
 snapshot with the platform's verified mux and detect definitions; establish
 VBUS separately before treating power as available.
+
+## TOPRGU UART collection for the next WinPE candidate
+
+`A04_USB_POWER_IOCTL=1` (default 0, requires power observation and its D0
+prerequisites) adds the SYSTEM/Administrators-only `A04UsbObservation` device.
+Its fixed buffered read IOCTL takes no input, validates the output size, and
+reads the same nine GPIO registers under the parent lock only while admission
+is open and removal has not been reported. It neither enables VBUS nor changes
+GPIO, I2C, clocks, PHY or the MUSB session. Stop closes admission before taking
+the lock and unmapping; as with the existing parent, a surprise bus removal
+racing an already executing read cannot be made safe in software alone.
+
+`usb-power-uart.exe` opens this device, reads the versioned snapshot, and uses
+only the existing `A04BR3ScreenUart` TOPRGU user-mode send IOCTL. It does not
+map UART or start another UART owner. Run the supplied `usb-power-observe.cmd`
+after both the shared parent and TOPRGU's secured screen-UART endpoint are
+ready. All three complete lines with the same eight-digit observation ID are
+needed for a usable snapshot:
+
+- `A04USB SNAP id 1 dir1 dout1 din1 mode21_22`
+- `A04USB SNAP id 2 dir2 dout2 din2 mode34`
+- `A04USB SNAP id 3 mode41`
+
+Each value is eight hexadecimal digits, in the raw register order above. An
+`A04USB ERROR id error` line reports failure rather than a zero snapshot. Exit
+0 means all three sends were queued, not that the host received them. Existing
+UART traffic can interleave or be lost; incomplete or mixed lines are not a
+valid snapshot. The sequential snapshot is not atomic. GPIO22 output, GPIO34
+input, and MUSB state are not connector-voltage measurements and do not prove
+5 V, source topology or available current.
+
+The WDK workflow's `usb-power-touch-integration-test-signed` artifact contains
+parent and BU21025 SYS/INF/CAT, the signed UART utility, a command file, public
+test certificate and a manifest of commit, flags and hashes. It uses shared
+button/touch D0 and APMIXED=1, GPIO source=0, and does not add GPU code. This
+is a reproducible integration candidate, not the previously validated WinPE:
+compare its manifest and assigned APMIXED resources against the actual touch/GPU
+baseline before combining. APMIXED=1 requires the matching resource in firmware.
+The diagnostic endpoint uses a different self-signed certificate; target policy,
+security, PnP, the simultaneous GPU/touch behavior and actual UART reception
+are unverified. The main operator performs all device operations.

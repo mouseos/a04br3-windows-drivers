@@ -19,7 +19,7 @@ static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,a
 static unsigned usbObservationReads;
 #endif
 static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;static A04_SHARED_USB_INTERFACE usb;static A04_SHARED_WIFI_INTERFACE wifi;
-#if A04_USB_GPIO22_SOURCE_EXPERIMENT
+#if A04_USB_GPIO22_SOURCE_EXPERIMENT || A04_USB_POWER_IOCTL
 static ULONG usbGpio[1024];
 #endif
 #if A04_SHARED_BUTTON_D0_EXPERIMENT
@@ -40,7 +40,7 @@ ULONG READ_REGISTER_ULONG(volatile ULONG *p){(void)p;reads++;
    unsigned i; for(i=0;i<sizeof(offsets)/sizeof(offsets[0]);i++)
     if((uintptr_t)p==(uintptr_t)testContext.gpio+offsets[i])usbObservationReads|=1u<<i; }
 #endif
-#if A04_USB_GPIO22_SOURCE_EXPERIMENT
+#if A04_USB_GPIO22_SOURCE_EXPERIMENT || A04_USB_POWER_IOCTL
  if((uintptr_t)p>=(uintptr_t)usbGpio && (uintptr_t)p<(uintptr_t)(usbGpio+1024))return *p;
 #endif
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
@@ -76,6 +76,16 @@ ULONG WdfCmResourceListGetCount(WDFCMRESLIST l){return l->count;}PCM_PARTIAL_RES
 void WdfDeviceInitSetPnpPowerEventCallbacks(PWDFDEVICE_INIT i,WDF_PNPPOWER_EVENT_CALLBACKS *p){(void)i;(void)p;}
 NTSTATUS WdfDeviceCreate(PWDFDEVICE_INIT *i,WDF_OBJECT_ATTRIBUTES *a,WDFDEVICE *d){(void)a;if(*i){assert(child_count<6);*d=&children[child_count++];*i=NULL;}else *d=&testContext;return 0;}
 NTSTATUS WdfDriverCreate(PDRIVER_OBJECT d,PUNICODE_STRING p,void *a,WDF_DRIVER_CONFIG *c,void *h){(void)d;(void)p;(void)a;(void)c;(void)h;return 0;}
+#if A04_USB_POWER_IOCTL
+NTSTATUS WdfDeviceInitAssignName(PWDFDEVICE_INIT p,const UNICODE_STRING *u){(void)p;(void)u;return 0;}
+NTSTATUS WdfDeviceInitAssignSDDLString(PWDFDEVICE_INIT p,const UNICODE_STRING *u){(void)p;(void)u;return 0;}
+NTSTATUS WdfDeviceCreateSymbolicLink(WDFDEVICE d,const UNICODE_STRING *u){(void)d;(void)u;return 0;}
+NTSTATUS WdfIoQueueCreate(WDFDEVICE d,WDF_IO_QUEUE_CONFIG *q,void *a,void *h){(void)d;(void)a;(void)h;assert(q->EvtIoDeviceControl==ParentUsbObservationIoctl);return 0;}
+WDFDEVICE WdfIoQueueGetDevice(WDFQUEUE q){return q;}
+NTSTATUS WdfRequestRetrieveOutputBuffer(WDFREQUEST r,size_t min,PVOID *p,size_t *n){if(r->size<min)return STATUS_BUFFER_TOO_SMALL;*p=r->buffer;*n=r->size;return 0;}
+void WdfRequestComplete(WDFREQUEST r,NTSTATUS status){r->status=status;r->info=0;}
+void WdfRequestCompleteWithInformation(WDFREQUEST r,NTSTATUS status,size_t info){r->status=status;r->info=info;}
+#endif
 void WdfObjectReference(WDFDEVICE d){(void)d;refs++;}void WdfObjectDereference(WDFDEVICE d){(void)d;refs--;}
 NTSTATUS WdfDeviceAddQueryInterface(WDFDEVICE d,WDF_QUERY_INTERFACE_CONFIG *q){(void)d;if(!q->Interface){assert(q->SendQueryToParentStack);forward_count++;return 0;}if(!memcmp(q->Guid,&A04SharedInterfaceGuid,sizeof(GUID)))memcpy(&input,q->Interface,sizeof(input));else if(!memcmp(q->Guid,&A04SharedAudioInterfaceGuid,sizeof(GUID)))memcpy(&audio,q->Interface,sizeof(audio));else if(!memcmp(q->Guid,&A04SharedUsbInterfaceGuid,sizeof(GUID)))memcpy(&usb,q->Interface,sizeof(usb));else if(!memcmp(q->Guid,&A04SharedWifiInterfaceGuid,sizeof(GUID)))memcpy(&wifi,q->Interface,sizeof(wifi));else memcpy(&saved,q->Interface,sizeof(saved));return 0;}
 void RtlInitUnicodeString(PUNICODE_STRING u,PCWSTR s){u->value=s;}
@@ -288,6 +298,21 @@ int main(void){
 #endif
  assert(testContext.regs.online==(A04_SHARED_TOUCH_D0_EXPERIMENT ? 1 : 0));
  assert(testContext.usb.online==(testContext.apmixed!=NULL));
+#if A04_USB_POWER_IOCTL
+ { A04_USB_OBSERVATION obs;struct test_request req={&obs,sizeof(obs),0,0};void *oldgpio=testContext.gpio;int oldwrites=writes;unsigned i;
+   static const unsigned offs[]={0x10,0x110,0x210,0x340,0x20,0x120,0x220,0x360,0x380};
+   testContext.gpio=usbGpio;for(i=0;i<9;i++)usbGpio[offs[i]/4]=0x100+i;
+   ParentUsbObservationIoctl(&testContext,&req,sizeof(obs),0,A04_USB_OBSERVATION_GET);
+   assert(req.status==0 && req.info==sizeof(obs) && obs.size==sizeof(obs) && obs.version==1);
+   assert(obs.dir1==0x100 && obs.mode21_22==0x103 && obs.dir2==0x104 && obs.mode41==0x108 && writes==oldwrites);
+   req.info=999;ParentUsbObservationIoctl(&testContext,&req,sizeof(obs)-1,0,A04_USB_OBSERVATION_GET);
+   assert(req.status==STATUS_BUFFER_TOO_SMALL && !req.info);
+   ParentUsbObservationIoctl(&testContext,&req,sizeof(obs),1,A04_USB_OBSERVATION_GET);assert(req.status==STATUS_INVALID_PARAMETER);
+   ParentUsbObservationIoctl(&testContext,&req,sizeof(obs),0,0);assert(req.status==STATUS_INVALID_PARAMETER);
+   testContext.admissionClosed=1;ParentUsbObservationIoctl(&testContext,&req,sizeof(obs),0,A04_USB_OBSERVATION_GET);assert(req.status==STATUS_DEVICE_NOT_READY);
+   testContext.admissionClosed=0;testContext.removed=1;ParentUsbObservationIoctl(&testContext,&req,sizeof(obs),0,A04_USB_OBSERVATION_GET);assert(req.status==STATUS_DEVICE_NOT_READY);
+   testContext.removed=0;testContext.gpio=oldgpio;assert(writes==oldwrites); }
+#endif
  assert(!ParentUsbLock(&testContext) && testContext.pwrapLock.held);ParentUsbUnlock(&testContext);assert(!testContext.pwrapLock.held);
 #if A04_SHARED_TOUCH_D0_EXPERIMENT
  {int down=0;assert(!input.TouchPen(input.Context,&down) && down==1);}

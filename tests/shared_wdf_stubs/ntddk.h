@@ -17,6 +17,12 @@ static inline LONG InterlockedExchange(volatile LONG *p,LONG v){return __atomic_
 static inline LONG InterlockedCompareExchange(volatile LONG *p,LONG v,LONG old){__atomic_compare_exchange_n(p,&old,v,0,__ATOMIC_SEQ_CST,__ATOMIC_SEQ_CST);return old;}
 typedef struct { int64_t QuadPart; } PHYSICAL_ADDRESS;typedef PHYSICAL_ADDRESS LARGE_INTEGER;
 typedef struct {int held;} FAST_MUTEX;
+#define STATUS_BUFFER_TOO_SMALL (-12)
+#define FILE_DEVICE_UNKNOWN 0x22
+#define METHOD_BUFFERED 0
+#define FILE_READ_ACCESS 1
+#define CTL_CODE(d,f,m,a) (((d)<<16)|((a)<<14)|((f)<<2)|(m))
+#define DECLARE_CONST_UNICODE_STRING(name,value) const UNICODE_STRING name={value}
 #define STATUS_SUCCESS 0
 #define STATUS_INVALID_PARAMETER (-1)
 #define STATUS_DEVICE_NOT_READY (-2)

@@ -150,6 +150,62 @@ jobs:
           name: usb-touch-observation-parent-test-signed
           path: ${{ runner.temp }}\usb-touch-observation-parent
           if-no-files-found: error
+      - name: Build GPIO UART and touch integration package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:A04_SHARED_BUTTON_D0_EXPERIMENT='1'
+          $env:A04_SHARED_TOUCH_D0_EXPERIMENT='1'
+          $env:A04_SHARED_APMIXED_RESOURCE='1'
+          $env:A04_USB_POWER_OBSERVATION='1'
+          $env:A04_USB_POWER_IOCTL='1'
+          $env:A04_AUDIO_DIAGNOSTIC_TRACE='1'
+          $env:A04_USB_GPIO22_SOURCE_EXPERIMENT='0'
+          $env:A04_TOUCH_SHARED_PARENT='1'
+          $env:A04_TOUCH_TRACE='1'
+          $env:A04_TOUCH_THERMAL_LEASE='0'
+          ./tools/ci/build-msdc-parent-probe.ps1
+          ./tools/ci/build-wdf-touch.ps1
+          ./tools/ci/build-usb-power-uart.ps1
+      - name: Test-sign GPIO UART and touch integration package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1"
+          $out=Join-Path $env:RUNNER_TEMP 'usb-power-touch-integration'
+          New-Item -ItemType Directory -Force (Join-Path $out 'parent'),(Join-Path $out 'touch'),(Join-Path $out 'tools') | Out-Null
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'a04-msdc-parent-probe\mt8167-shared.sys') (Join-Path $out 'parent')
+          Copy-Item 'drivers/bus/mt8167-shared/prototype/shared-parent.inf' (Join-Path $out 'parent')
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'a04-wdf-touch\bu21025.sys') (Join-Path $out 'touch')
+          Copy-Item 'drivers/bus/mt8167-shared/prototype/shared-touch.inf' (Join-Path $out 'touch')
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'a04-usb-power-uart\usb-power-uart.exe') (Join-Path $out 'tools')
+          Copy-Item 'tools/winpe/usb-power-observe.cmd' (Join-Path $out 'tools')
+          $cert=New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=A04BR3 USB Power Touch Integration Test' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
+          Export-Certificate -Cert $cert -FilePath (Join-Path $out 'integration-test.cer') | Out-Null
+          $sign=Join-Path $kit 'bin\x86\signtool.exe'
+          foreach($p in @(@('parent','mt8167-shared.sys','shared-parent.cat'),@('touch','bu21025.sys','bu21025.cat'))) {
+            $dir=Join-Path $out $p[0];$sys=Join-Path $dir $p[1];$cat=Join-Path $dir $p[2]
+            & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My $sys
+            if($LASTEXITCODE -ne 0){throw 'SYS signing failed'}
+            & (Join-Path $kit 'bin\x86\Inf2Cat.exe') "/driver:$dir" /os:6_3_ARM /uselocaltime
+            if($LASTEXITCODE -ne 0){throw 'Catalog creation failed'}
+            & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My $cat
+            if($LASTEXITCODE -ne 0){throw 'Catalog signing failed'}
+            $sig=Get-AuthenticodeSignature $sys
+            if(!$sig.SignerCertificate -or $sig.SignerCertificate.Thumbprint -ne $cert.Thumbprint){throw 'SYS signer mismatch'}
+          }
+          $exe=Join-Path $out 'tools\usb-power-uart.exe'
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My $exe
+          if($LASTEXITCODE -ne 0){throw 'Utility signing failed'}
+          $exeSig=Get-AuthenticodeSignature $exe
+          if(!$exeSig.SignerCertificate -or $exeSig.SignerCertificate.Thumbprint -ne $cert.Thumbprint){throw 'Utility signer mismatch'}
+          $hashes=@{}; Get-ChildItem $out -Recurse -File | ForEach-Object { $name=$_.FullName.Substring($out.Length+1).Replace('\','/');$hashes[$name]=(Get-FileHash $_.FullName -Algorithm SHA256).Hash }
+          [ordered]@{source_commit=(git rev-parse HEAD); parent_flags=@{query=1;children=1;button_d0=1;touch_d0=1;apmixed=1;observation=1;ioctl=1;audio_trace=1;gpio22_source=0;other_optional=0};touch_flags=@{shared_parent=1;trace=1;thermal_lease=0};signer_sha1=$cert.Thumbprint;files=$hashes;note='Self-signed candidate, not a complete WinPE image. Compare firmware resources and every parent/touch flag with the known-working GPU candidate. UART delivery and target trust/PnP are unverified.'} | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: usb-power-touch-integration-test-signed
+          path: ${{ runner.temp }}\usb-power-touch-integration
+          if-no-files-found: error
       - name: Build MT8167 parent and MT6630 query probes
         shell: pwsh
         run: |
