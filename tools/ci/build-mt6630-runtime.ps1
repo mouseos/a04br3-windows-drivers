@@ -37,8 +37,8 @@ try {
  & lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib /opt:ref $objects "$km\ndis.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\bufferoverflowfastfailk.lib" "/out:$taskOut\mt6630-runtime.sys"
  if($LASTEXITCODE){throw 'Native runtime link failed'}
  Copy-Item "$root\drivers\network\mt6630\mt6630-runtime.inf" $taskOut
- [ordered]@{source_commit=(git -C $root rev-parse HEAD);shared_parent_built=(!$SkipSharedParent);native_runtime=1;radio_mode='2.4GHz ERP20 OPEN/NONE or RSNA-PSK/CCMP; OS supplicant';firmware_embedded=0;device_calibration_embedded=0;hardware_verified=0;wdk_link_succeeded=1;sys_sha256=(Get-FileHash "$taskOut\mt6630-runtime.sys" -Algorithm SHA256).Hash} | ConvertTo-Json | Set-Content -Encoding UTF8 "$taskOut\manifest.json"
  & "$PSScriptRoot\build-mt6630-wlan-probe.ps1" -OutputDirectory (Join-Path $taskOut 'wlan-probe')
+ [ordered]@{source_commit=(git -C $root rev-parse HEAD);shared_parent_built=(!$SkipSharedParent);probe_manifest_path='wlan-probe/probe-manifest.json';probe_manifest_sha256=(Get-FileHash (Join-Path $taskOut 'wlan-probe\probe-manifest.json') -Algorithm SHA256).Hash;native_runtime=1;radio_mode='2.4GHz ERP20 OPEN/NONE or RSNA-PSK/CCMP; OS supplicant';firmware_embedded=0;device_calibration_embedded=0;hardware_verified=0;wdk_link_succeeded=1;sys_sha256=(Get-FileHash "$taskOut\mt6630-runtime.sys" -Algorithm SHA256).Hash} | ConvertTo-Json | Set-Content -Encoding UTF8 "$taskOut\manifest.json"
  Write-Output "Unsigned Native miniport (shared parent skipped=$SkipSharedParent): $taskOut. Requires target signing and PnP validation by main operator."
 } finally {
  $env:TMP=$priorTmp;$env:TEMP=$priorTemp;$env:RUNNER_TEMP=$priorRunner

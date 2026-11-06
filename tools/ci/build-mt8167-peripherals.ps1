@@ -63,7 +63,9 @@ try {
       'audio-usb\audio\mt8167-audio.sys','audio-usb\audio\mt8167-afe-first-playback.inf',
       'audio-usb\usb\mt8167-usb20.sys','audio-usb\usb\mt8167-usb20.inf',
       'audio-usb\client\mt8167-audio-first-playback.exe','audio-usb\client\run-mt8167-audio-first-playback.cmd',
-      'wifi\mt6630-runtime.sys','wifi\mt6630-runtime.inf','wifi\wlan-probe\mt6630-wlan-probe.exe')
+      'wifi\mt6630-runtime.sys','wifi\mt6630-runtime.inf','wifi\manifest.json',
+      'wifi\wlan-probe\mt6630-wlan-probe.exe','wifi\wlan-probe\mt6630-wlan-observe.cmd',
+      'wifi\wlan-probe\probe-manifest.json','wifi\wlan-probe\README-mt6630-wlan-probe.md')
     foreach($file in $files){if(!(Test-Path (Join-Path $out $file))){throw "Missing artifact: $file"}}
     foreach($file in $files|Where-Object{$_ -match '\.(sys|exe)$'}){
         $header=& llvm-readobj --file-headers --coff-imports (Join-Path $out $file)

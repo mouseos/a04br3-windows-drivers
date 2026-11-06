@@ -16,5 +16,12 @@ try {
  if($LASTEXITCODE){throw 'Native WLAN probe compile failed'}
  & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\probe.obj" "$lib\kernel32.lib" "$lib\advapi32.lib" "/out:$out\mt6630-wlan-probe.exe"
  if($LASTEXITCODE){throw 'Native WLAN probe link failed'}
+ Copy-Item "$root\tools\winpe\mt6630-wlan-observe.cmd" $out
+ Copy-Item "$root\tools\winpe\README-mt6630-wlan-probe.md" $out
+ $probeFiles=@('mt6630-wlan-probe.exe','mt6630-wlan-observe.cmd','README-mt6630-wlan-probe.md')
+ $hashes=@($probeFiles|ForEach-Object{@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}})
+ [ordered]@{source_commit=(& git -C $root rev-parse HEAD);source_dirty=(@(& git -C $root status --porcelain).Count -ne 0);
+  target='Windows RT 8.1 ARM32 with WlanSvc and wlanapi.dll';uart='Existing TOPRGU A04BR3ScreenUart queue; no MMIO';
+  secrets_logged=$false;hardware_verified=$false;signed=$false;files=$hashes}|ConvertTo-Json -Depth 5|Set-Content -Encoding UTF8 (Join-Path $out 'probe-manifest.json')
  Write-Output "Unsigned Native WLAN API probe: $out. WlanSvc/wlanapi.dll are required on target; missing components are explicitly reported."
 } finally {$env:TMP=$oldTmp;$env:TEMP=$oldTemp}

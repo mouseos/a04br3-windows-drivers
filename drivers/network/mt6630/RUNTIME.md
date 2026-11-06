@@ -134,3 +134,8 @@ probeの使用法は `tools/winpe/README-mt6630-wlan-probe.md` を参照。
 接続後の再scanでもBeacon/Probe Responseをdata受信成功扱いで消費せず、
 station ownerのBSS観測処理へ渡す。peer deauth/disassocは引き続き受信入口で処理する。
 この経路のソース修正とARM compileを確認したが、接続後再scanの実測は未確認。
+
+scan probe一式には起動用 `mt6630-wlan-observe.cmd` とprobe manifestを含む。
+既存TOPRGU UART ownerへcount/statusレコードを送り、stdoutは主担当のCRC付きaudit-streamにも
+収録できる。起動・レコード解釈・転送とscan成功の区別はprobe READMEを参照。
+Ramanの `build-mt8167-peripherals.ps1` はprobe一式とmanifestを統合成果物へ含める。
