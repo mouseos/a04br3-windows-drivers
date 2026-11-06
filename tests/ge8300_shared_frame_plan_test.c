@@ -27,6 +27,12 @@ int main(void)
       for(uint32_t i=0;i<1000;i++){assert(a04_shared_frame_accept(&s,3,i));a04_shared_frame_complete_tile(&s,1);}
       s.last_task=44;s.last_flush=45;assert(a04_shared_frame_seal(&s,3,44,45));
       assert(!a04_shared_frame_accept(&s,4,0));assert(!a04_shared_frame_seal(&s,3,44,45));
+      assert(!a04_shared_frame_begin(&s,3,44,46,4));
+      assert(!a04_shared_frame_begin(&s,3,44,45,5));
+      assert(a04_shared_frame_begin(&s,3,44,45,4));
+      assert(!s.sealed && s.next==0 && s.frame==4);
+      assert(!a04_shared_frame_begin(&s,3,44,45,4));
+      assert(a04_shared_frame_accept(&s,4,0));
     }
     return 0;
 }

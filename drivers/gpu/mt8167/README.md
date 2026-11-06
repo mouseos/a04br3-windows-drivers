@@ -563,3 +563,16 @@ Trace A0=1 selects the single-command path; A2 is CPU+GPU+verification elapsed
 milliseconds. Existing 5E/60 counts describe covered tiles/pixels, not GPU
 command counts. Run `make test-ge8300-wide-frame` for CPU-side geometry and
 mapping checks. Hardware execution of this candidate is not yet established.
+
+### Repeated wide-frame diagnostic
+
+`A04_GE8300_SHARED_WIDE_REPEAT=1` and the display-side
+`A04_GE8300_WDDM_WIDE_REPEAT=1` opt into a sixteen-image diagnostic. Each
+image has different RGB data and must pass a complete output comparison.
+Sixteen tasks cross the private 4 KiB client command-ring wrap. A kernel-only
+FRAME_BEGIN requires the previous sealed frame, exact task/flush fence IDs,
+and the next consecutive frame number. The provider also checks its current
+completed hardware sequences and lifetime state. This renews frame metadata;
+it does not retire the published MMU root or release either DMA mapping.
+Errors keep the mappings retained and stop the diagnostic. Default builds
+remain single-frame. This is not normal Windows rendering or a 3D driver.

@@ -9,6 +9,12 @@
 #ifndef A04_GE8300_SHARED_WIDE_FRAME
 #define A04_GE8300_SHARED_WIDE_FRAME 0
 #endif
+#ifndef A04_GE8300_SHARED_WIDE_REPEAT
+#define A04_GE8300_SHARED_WIDE_REPEAT 0
+#endif
+#if A04_GE8300_SHARED_WIDE_REPEAT && !A04_GE8300_SHARED_WIDE_FRAME
+#error Repeated wide frames require wide frame support
+#endif
 #define A04_VENDOR_WIDE_SOURCE_VA UINT64_C(0x8000400000)
 #define A04_VENDOR_WIDE_BYTES 4096000u
 struct a04_vendor_wide_state { uint32_t shared[9],tile_size,csr[4]; };

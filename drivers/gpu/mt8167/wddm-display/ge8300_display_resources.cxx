@@ -263,6 +263,9 @@ static NTSTATUS CommonFrameCapabilities(HANDLE handle)
        !(caps.flags&A04_GE8300_SHARED_CAP_FRAME_SEAL) || caps.reserved))return STATUS_DEVICE_CONFIGURATION_ERROR;
 #if A04_GE8300_WDDM_WIDE_FRAME
     if(NT_SUCCESS(status) && !(caps.flags&A04_GE8300_SHARED_CAP_WIDE_FRAME))return STATUS_NOT_SUPPORTED;
+#if A04_GE8300_WDDM_WIDE_REPEAT
+    if(NT_SUCCESS(status) && !(caps.flags&A04_GE8300_SHARED_CAP_WIDE_REPEAT))return STATUS_NOT_SUPPORTED;
+#endif
 #endif
     return status;
 }
@@ -422,21 +425,21 @@ NTSTATUS A04DisplayResources::GetVerifiedGpuFrame(const uint32_t **pixels)
     *pixels=(const uint32_t *)owner->cpu;return STATUS_SUCCESS;
 }
 #endif
-static uint32_t CommonFramePixel(uint32_t x,uint32_t y,const uint32_t *capture)
+static uint32_t CommonFramePixel(uint32_t x,uint32_t y,const uint32_t *capture,uint32_t frame)
 {
 #if A04_GE8300_WDDM_PRESENT_CAPTURE
-    if(capture)return capture[y*800u+x];
+    if(capture)return capture[y*800u+x]^(((frame-1u)*0x000f111du)&0x00ffffffu);
 #else
     UNREFERENCED_PARAMETER(capture);
 #endif
 #if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
-    return a04_gpu_post_pixel(x,y);
+    return a04_gpu_post_pixel(x,y)^(((frame-1u)*0x000f111du)&0x00ffffffu);
 #else
-    return (y*800u+x)^0x6d3a59c7u;
+    return (y*800u+x)^0x6d3a59c7u^(((frame-1u)*0x000f111du)&0x00ffffffu);
 #endif
 }
 static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile uint32_t *cpu,
-    struct A04CommonFrameOwner *owner,const uint32_t *capture)
+    struct A04CommonFrameOwner *owner,const uint32_t *capture,uint32_t frame)
 {
     struct a04_ge8300_shared_tile *tile;IO_STATUS_BLOCK io={};PFILE_OBJECT file=NULL;
     NTSTATUS status;uint32_t index=0,matches=0,lastTask=0,lastFlush=0;
@@ -452,9 +455,9 @@ static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile 
     if(!NT_SUCCESS(status)){A04DisplayTrace(0x5e,0);A04DisplayTrace(0x5f,status);goto done;}
 #if A04_GE8300_WDDM_WIDE_FRAME
     wide=(struct a04_ge8300_shared_wide_frame *)tile;
-    wide->token=token;wide->frame=1;wide->task=0;wide->flush=0;
+    wide->token=token;wide->frame=frame;wide->task=0;wide->flush=0;
     for(uint32_t row=0;row<1280u;row++)for(uint32_t col=0;col<800u;col++)
-        wide->pixels[row*800u+col]=CommonFramePixel(col,row,capture);
+        wide->pixels[row*800u+col]=CommonFramePixel(col,row,capture,frame);
     A04DisplayTrace(0xa0,1); /* One full-surface TQ data command, plus its SLC/GP fence. */
     io.Information=0;io.Status=STATUS_PENDING;
     status=ZwDeviceIoControlFile(handle,NULL,NULL,NULL,&io,A04_GE8300_IOCTL_SHARED_WIDE_FRAME,
@@ -469,9 +472,9 @@ static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile 
 #else
     for(index=0;index<1000u;index++) {
         uint32_t x=(index%25u)*32u,y=(index/25u)*32u;
-        RtlZeroMemory(tile,sizeof(*tile));tile->token=token;tile->frame=1;tile->index=index;
+        RtlZeroMemory(tile,sizeof(*tile));tile->token=token;tile->frame=frame;tile->index=index;
         for(uint32_t row=0;row<32u;row++)for(uint32_t col=0;col<32u;col++)
-            tile->pixels[row*32u+col]=CommonFramePixel(x+col,y+row,capture);
+            tile->pixels[row*32u+col]=CommonFramePixel(x+col,y+row,capture,frame);
         io.Information=0;io.Status=STATUS_PENDING;
         status=ZwDeviceIoControlFile(handle,NULL,NULL,NULL,&io,A04_GE8300_IOCTL_SHARED_TILE,
             tile,sizeof(*tile),tile,sizeof(*tile));
@@ -488,7 +491,7 @@ static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile 
     A04DisplayTrace(0x5e,(NTSTATUS)index);A04DisplayTrace(0x5f,status);
     A04DisplayTrace(0x62,(NTSTATUS)lastTask);A04DisplayTrace(0x63,(NTSTATUS)lastFlush);
     if(NT_SUCCESS(status) && index==1000u) {
-        struct a04_ge8300_frame_seal seal={token,1,lastTask,lastFlush};
+        struct a04_ge8300_frame_seal seal={token,frame,lastTask,lastFlush};
         io.Information=0;io.Status=STATUS_PENDING;
         status=ZwDeviceIoControlFile(handle,NULL,NULL,NULL,&io,A04_GE8300_IOCTL_SHARED_FRAME_SEAL,
             &seal,sizeof(seal),&seal,sizeof(seal));
@@ -499,7 +502,7 @@ static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile 
         if(NT_SUCCESS(status) && io.Information!=sizeof(seal))status=STATUS_IO_DEVICE_ERROR;
         A04DisplayTrace(0x66,status);
         if(!NT_SUCCESS(status))goto done;
-        owner->frame=1;owner->task=lastTask;owner->flush=lastFlush;owner->sealed=TRUE;
+        owner->frame=frame;owner->task=lastTask;owner->flush=lastFlush;owner->sealed=TRUE;
         /* This is a CPU observation, not a display-adapter visibility proof.
          * A GPU DMA bounce mapping can cause a mismatch. */
 #if A04_GE8300_WDDM_EXPLICIT_GPU_FLUSH
@@ -513,7 +516,7 @@ static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile 
 #endif
         KeFlushIoBuffers(mdl,TRUE,TRUE);KeMemoryBarrier();
         for(uint32_t y=0;y<1280u;y++)for(uint32_t x=0;x<800u;x++)
-            if(cpu[y*800u+x]==CommonFramePixel(x,y,capture))matches++;
+            if(cpu[y*800u+x]==CommonFramePixel(x,y,capture,frame))matches++;
         status=matches==1024000u?STATUS_SUCCESS:STATUS_DATA_ERROR;
         owner->cpuMatches=matches;
         A04DisplayTrace(0x60,(NTSTATUS)matches);A04DisplayTrace(0x61,status);
@@ -569,7 +572,7 @@ NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(struct a04_ge8300_common_pa
     A04DisplayTrace(0x57,STATUS_SUCCESS);A04DisplayTrace(0x58,(NTSTATUS)logical.LowPart);
     A04DisplayTrace(0x59,(NTSTATUS)4096000u);
 #if A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
-    for(i=0;i<1024000u;i++)((volatile uint32_t *)cpu)[i]=~CommonFramePixel(i%800u,i/800u,capture);
+    for(i=0;i<1024000u;i++)((volatile uint32_t *)cpu)[i]=~CommonFramePixel(i%800u,i/800u,capture,1);
     KeMemoryBarrier();
 #endif
     if(gpu->DmaOperations->Size<FIELD_OFFSET(DMA_OPERATIONS,FreeAdapterObject)+sizeof(gpu->DmaOperations->FreeAdapterObject) ||
@@ -650,13 +653,40 @@ NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(struct a04_ge8300_common_pa
     Lease.gpu_adapter=gpu;Lease.gpu_pdo=gpuPdo;Lease.shared_mdl_owner=&owner->shared;
     status=SharedLeaseIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_STAGE,&Lease);
     A04DisplayTrace(0x5d,status);
-    if(NT_SUCCESS(status))status=CommonFrameTiles(GpuHandle,Lease.token,mdl,(volatile uint32_t *)cpu,owner,capture);
+    if(NT_SUCCESS(status))status=CommonFrameTiles(GpuHandle,Lease.token,mdl,(volatile uint32_t *)cpu,owner,capture,1);
 #if A04_GE8300_WDDM_GCE_LEASE
 #if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
     if(NT_SUCCESS(status)) {NTSTATUS gceStatus=GceDisplayAcquire(&GceDisplayLease);A04DisplayTrace(0x67,gceStatus);}
 #else
     if(NT_SUCCESS(status)) {status=GceDisplayAcquire(&GceDisplayLease);A04DisplayTrace(0x67,status);}
 #endif
+#endif
+#if A04_GE8300_WDDM_WIDE_REPEAT
+    /* Sixteen different images cross the 4 KiB TQ client-ring wrap. Reuse
+     * the same retained mappings; no root retirement or DMA release occurs. */
+    {
+        uint32_t completed=NT_SUCCESS(status)?1u:0u;
+        for(uint32_t frame=2u;NT_SUCCESS(status) && frame<=16u;frame++) {
+            struct a04_ge8300_frame_begin begin={Lease.token,owner->frame,owner->task,owner->flush,frame};
+            IO_STATUS_BLOCK io={};PFILE_OBJECT file=NULL;
+            status=ObReferenceObjectByHandle(GpuHandle,SYNCHRONIZE,*IoFileObjectType,KernelMode,(PVOID *)&file,NULL);
+            if(!NT_SUCCESS(status))break;
+            status=ZwDeviceIoControlFile(GpuHandle,NULL,NULL,NULL,&io,A04_GE8300_IOCTL_SHARED_FRAME_BEGIN,
+                &begin,sizeof(begin),&begin,sizeof(begin));
+            if(status==STATUS_PENDING) {
+                do{status=KeWaitForSingleObject(file,Executive,KernelMode,FALSE,NULL);}while(status!=STATUS_SUCCESS);
+                status=io.Status;
+            } else if(NT_SUCCESS(status))status=io.Status;
+            ObDereferenceObject(file);
+            if(NT_SUCCESS(status) && io.Information!=sizeof(begin))status=STATUS_IO_DEVICE_ERROR;
+            A04DisplayTrace(0xa3,(NTSTATUS)frame);A04DisplayTrace(0xa4,status);
+            if(!NT_SUCCESS(status))break;
+            owner->sealed=FALSE;owner->cpuMatches=0;
+            status=CommonFrameTiles(GpuHandle,Lease.token,mdl,(volatile uint32_t *)cpu,owner,capture,frame);
+            if(NT_SUCCESS(status))completed++;
+        }
+        A04DisplayTrace(0xa5,(NTSTATUS)completed);A04DisplayTrace(0xa6,status);
+    }
 #endif
     /* Read-only, non-atomic snapshot; no acknowledgement, IRQ clearing or
      * timing inference.  Firmware can enable both GOP L0 and overlay L3. */

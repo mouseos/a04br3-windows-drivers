@@ -1157,6 +1157,9 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
         caps->version=1;caps->bytes=sizeof(*caps);caps->flags=A04_GE8300_SHARED_CAP_FRAME_SEAL;
 #if A04_GE8300_SHARED_WIDE_FRAME
         caps->flags|=A04_GE8300_SHARED_CAP_WIDE_FRAME;
+#if A04_GE8300_SHARED_WIDE_REPEAT
+        caps->flags|=A04_GE8300_SHARED_CAP_WIDE_REPEAT;
+#endif
 #endif
         caps->reserved=0;
         WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(*caps));return;
@@ -1178,6 +1181,30 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
         WdfWaitLockRelease(c->vendor_lifetime);
         WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(*seal):0);return;
     }
+#if A04_GE8300_SHARED_WIDE_REPEAT
+    if(control==A04_GE8300_IOCTL_SHARED_FRAME_BEGIN) {
+        struct a04_ge8300_frame_begin *begin;
+        if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*begin) || output!=sizeof(*begin)) {
+            WdfRequestComplete(request,STATUS_ACCESS_DENIED);return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,sizeof(*begin),(void **)&begin,&size);
+        if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+        WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+        if(!begin->token || begin->token!=c->shared_lease.active || !c->shared_owner ||
+           !c->shared_owner->display_common || !c->shared_tables.mmu_ack ||
+           !c->vendor_service_online || c->vendor_start.command_poisoned ||
+           c->vendor_start.shutdown_started || c->vendor_render.poisoned ||
+           !c->vendor_render.clear_verified || c->vendor_render.sequence!=begin->task ||
+           c->vendor_start.command_sequence!=begin->flush ||
+           InterlockedCompareExchange(&c->vendor_start.command_busy,0,0) ||
+           InterlockedCompareExchange(&c->vendor_service_closed,0,0) ||
+           !a04_shared_frame_begin(&c->shared_frame,begin->frame,begin->task,begin->flush,begin->next_frame))
+            status=STATUS_INVALID_DEVICE_STATE;
+        else status=STATUS_SUCCESS;
+        WdfWaitLockRelease(c->vendor_lifetime);
+        WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(*begin):0);return;
+    }
+#endif
 #if A04_GE8300_SHARED_WIDE_FRAME
     if(control==A04_GE8300_IOCTL_SHARED_WIDE_FRAME) {
         struct a04_ge8300_shared_wide_frame *frame;struct a04_vendor_clear_result result;

@@ -1,6 +1,12 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #ifndef A04_DISPLAY_RESOURCES_HXX
 #define A04_DISPLAY_RESOURCES_HXX
+#ifndef A04_GE8300_WDDM_WIDE_REPEAT
+#define A04_GE8300_WDDM_WIDE_REPEAT 0
+#endif
+#if A04_GE8300_WDDM_WIDE_REPEAT && !A04_GE8300_WDDM_WIDE_FRAME
+#error Repeated frames require wide frame submission
+#endif
 #ifndef A04_GE8300_WDDM_WIDE_FRAME
 #define A04_GE8300_WDDM_WIDE_FRAME 0
 #endif

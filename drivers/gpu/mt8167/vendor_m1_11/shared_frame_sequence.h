@@ -18,4 +18,14 @@ static int a04_shared_frame_seal(struct a04_shared_frame_sequence *s,uint32_t fr
        !task || !flush || task!=s->last_task || flush!=s->last_flush)return 0;
     s->sealed=1;return 1;
 }
+/* Renew only the immediately preceding sealed/fenced frame. Caller owns
+ * both DMA mappings and serializes hardware and frame lifetime separately. */
+static int a04_shared_frame_begin(struct a04_shared_frame_sequence *s,uint32_t frame,
+    uint32_t task,uint32_t flush,uint32_t next)
+{
+    if(!s || !s->sealed || s->failed || s->next!=1000u || !frame || frame==UINT32_MAX ||
+       s->frame!=frame || next!=frame+1u || !task || !flush ||
+       s->last_task!=task || s->last_flush!=flush)return 0;
+    s->sealed=0;s->frame=next;s->next=0;s->last_task=0;s->last_flush=0;return 1;
+}
 #endif
