@@ -67,6 +67,14 @@ jobs:
             Write-Host "$path : $(Test-Path $full)"
             if (-not (Test-Path $full)) { throw "Missing required ARM32 WDK component: $path" }
           }
+      - name: Compile ARM32 offline backup and recovery
+        shell: pwsh
+        run: ./tools/ci/build-offline-backup.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline-backup-arm32-unsigned
+          path: ${{ runner.temp }}/a04-offline-backup/offline-backup.exe
+          if-no-files-found: error
       - name: Compile ARM32 offline release primitive
         shell: pwsh
         run: ./tools/ci/build-offline-release.ps1
