@@ -600,6 +600,13 @@ uncertain check or prepare failure. No current KMDF consumer supplies this
 validator or executes the restore, and no observation here proves latch or
 retirement. Register checks and a stop return alone must not replace it.
 
+The machine UEFI DisplayInitDxe programs DSI_MODE_CTRL=2; Linux MT8167
+`ddp_reg.h` identifies 2 as sync-event video mode. Linux `ddp_path.c` waits
+for RDMA0 EOF when its mutex rising-edge option is enabled and otherwise for
+mutex0 stream EOF in video mode. This supports the event choices in the
+packet builder, but does not establish the current firmware's mutex routing,
+event exclusivity, shadow-latch behavior, or post-EOC surface retirement.
+
 An optional versioned firmware variable records TOPCKGEN TOP2 at
 BeforeExitBootServices. The GCE PDO can read it for diagnostics with
 `A04_GCE_HANDOFF_OBSERVE=1`; it cannot set any ownership proof. Thread and IRQ
