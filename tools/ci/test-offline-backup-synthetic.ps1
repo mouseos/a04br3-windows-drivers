@@ -33,6 +33,7 @@ try {
  if($LASTEXITCODE){throw 'fixture link failed'}
  & "$base\fixture.exe"
  if($LASTEXITCODE){throw 'fixture backup failed'}
+ (Get-Item -Force 'R:\Windows\System32\config\SYSTEM').Attributes = 'Normal'
  [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM','changed')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE','changed')
  [IO.File]::WriteAllText('R:\Windows\System32\drivers\mt8167-shared.sys','new')
