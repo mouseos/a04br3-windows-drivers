@@ -1,6 +1,12 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #ifndef A04_DISPLAY_RESOURCES_HXX
 #define A04_DISPLAY_RESOURCES_HXX
+#ifndef A04_GE8300_WDDM_WIDE_FRAME
+#define A04_GE8300_WDDM_WIDE_FRAME 0
+#endif
+#if A04_GE8300_WDDM_WIDE_FRAME && !A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
+#error Wide frame submission requires the common frame owner
+#endif
 #ifndef A04_GE8300_WDDM_PRESENT_CAPTURE
 #define A04_GE8300_WDDM_PRESENT_CAPTURE 0
 #endif

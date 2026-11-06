@@ -100,6 +100,12 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
         packet.payload[32]=(uint32_t)csr;packet.payload[33]=(uint32_t)(csr>>32);
     }
 #endif
+#if A04_GE8300_SHARED_WIDE_FRAME
+    if(copy && copy->wide_frame) {
+        packet.payload[6]=copy->wide_state.tile_size;
+        RtlCopyMemory(packet.payload+32,copy->wide_state.csr,sizeof(copy->wide_state.csr));
+    }
+#endif
     packet.update.eCmdType=CLIENT_UPDATE;packet.update.ui32CmdSize=8;
     packet.ufo.puiAddrUFO.ui32Addr=0xc0080000u+r->layout.sync;packet.ufo.ui32Value=seq;
     *sync=0;
@@ -459,3 +465,68 @@ NTSTATUS a04_vendor_render_repeat_screen(struct a04_vendor_render_cold *r,
 out:
     InterlockedExchange(&s->command_busy,0);return status;
 }
+
+#if A04_GE8300_SHARED_WIDE_FRAME
+/* Lifetime lock held; both complete surfaces and all six tables stay pinned.
+ * Nothing here changes a display address or retires a DMA mapping. */
+NTSTATUS a04_vendor_render_copy_wide_frame(struct a04_vendor_copy_scratch *o,
+    struct a04_vendor_start *s,struct a04_shared_scanout *target,struct a04_shared_tables *tables,
+    const uint32_t *input,struct a04_vendor_clear_result *result)
+{
+    struct a04_vendor_render_cold *r;struct a04_vendor_wide_state wide;
+    uint32_t saved_shared[9],actual_shared[9],pds[16];unsigned i;NTSTATUS status;
+    if(!result)return STATUS_INVALID_PARAMETER;
+    RtlZeroMemory(result,sizeof(*result));
+    if(!o || !s || !target || !tables || !input || ((uintptr_t)input&3u) ||
+       KeGetCurrentIrql()!=PASSIVE_LEVEL || !tables->published || !tables->mmu_ack ||
+       !tables->quarantined || !target->exposed || !target->mdl || !target->gpu_sg ||
+       !a04_shared_has_display_backing(target) || !(r=o->render) || r->copy_owner!=o ||
+       !o->prepared || !o->exposed || !o->task_frozen || !o->usc_ready ||
+       !tables->wide_source.cpu || tables->wide_source.bytes!=A04_VENDOR_WIDE_BYTES ||
+       !r->buffer[7].cpu || r->buffer[7].bytes!=65536u || r->poisoned || s->command_poisoned ||
+       s->shutdown_started || r->cleanup_started || (r->clear_attempted && !r->clear_verified) ||
+       !s->online || !s->memory || !s->memory->hardware_owned || r->firmware!=s->memory ||
+       target->gpu_adapter!=s->memory->adapter || tables->wide_source.adapter!=target->gpu_adapter)
+        return STATUS_INVALID_DEVICE_STATE;
+    if(a04_vendor_copy_wide_state_build(&wide,A04_VENDOR_WIDE_SOURCE_VA,800,1280,800))
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+    if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
+    if(a04_rgx_device_read_words(pds,(UCHAR *)r->buffer[7].cpu+64,sizeof(pds)) ||
+       a04_rgx_device_read_words(actual_shared,o->shared.cpu,sizeof(actual_shared))) {
+        status=STATUS_IO_DEVICE_ERROR;goto out;
+    }
+    for(i=0;i<16;i++)if(pds[i]!=o->eot_pds[i]){status=STATUS_DEVICE_CONFIGURATION_ERROR;goto out;}
+    for(i=0;i<9;i++)if(actual_shared[i]!=o->state.shared[i]){status=STATUS_DEVICE_CONFIGURATION_ERROR;goto out;}
+    RtlCopyMemory(saved_shared,o->state.shared,sizeof(saved_shared));
+    if(a04_rgx_device_write_words(tables->wide_source.cpu,input,A04_VENDOR_WIDE_BYTES)) {
+        status=STATUS_IO_DEVICE_ERROR;goto poison;
+    }
+    pds[2]=(uint32_t)(UINT64_C(0x8000000000)>>2);
+    pds[3]=(uint32_t)(UINT64_C(0x8000000000)>>34)|(1u<<19);
+    o->wide_state=wide;RtlCopyMemory(o->state.shared,wide.shared,sizeof(wide.shared));
+    if(a04_rgx_device_write_words(o->shared.cpu,wide.shared,sizeof(wide.shared)) ||
+       a04_rgx_device_write_words((UCHAR *)r->buffer[7].cpu+64,pds,sizeof(pds))) {
+        status=STATUS_IO_DEVICE_ERROR;goto poison;
+    }
+    for(i=0;i<1024u;i++)((volatile uint32_t *)o->destination.cpu)[i]=0xa5a5a5a5u;
+    o->wide_frame=TRUE;o->shared_gpu_only=TRUE;o->shared_frame_interior=FALSE;
+    o->service_expected_active=FALSE;o->diagnostic_mdl=NULL;o->diagnostic_cpu=NULL;
+    r->clear_attempted=FALSE;r->clear_verified=FALSE;a04_gpu_dma_barrier();
+    status=clear_locked(r,s,result,TRUE,o);
+    if(!NT_SUCCESS(status) || result->phase!=4 || !result->completed_task || !result->completed_flush)
+        goto poison;
+    /* Completion + SLC fence precede restoring the private descriptor/PDS.
+     * Retain changed images if either restoration is uncertain. */
+    if(a04_rgx_device_write_words((UCHAR *)r->buffer[7].cpu+64,o->eot_pds,sizeof(o->eot_pds)) ||
+       a04_rgx_device_write_words(o->shared.cpu,saved_shared,sizeof(saved_shared))) {
+        status=STATUS_IO_DEVICE_ERROR;goto poison;
+    }
+    RtlCopyMemory(o->state.shared,saved_shared,sizeof(saved_shared));
+    o->wide_frame=FALSE;o->shared_gpu_only=FALSE;a04_gpu_dma_barrier();goto out;
+poison:
+    r->poisoned=TRUE;s->command_poisoned=TRUE;
+    if(NT_SUCCESS(status))status=STATUS_IO_DEVICE_ERROR;
+out:
+    InterlockedExchange(&s->command_busy,0);return status;
+}
+#endif

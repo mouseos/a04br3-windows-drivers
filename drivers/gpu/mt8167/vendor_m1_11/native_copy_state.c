@@ -105,3 +105,30 @@ int a04_vendor_copy_check(struct a04_vendor_copy_check_result *out,
     }
     *out=result;return 0;
 }
+
+/* The native producer at 12c310 selects sample count one. 129f88 writes
+ * pixel bounds divided by 16, and 12bfb4 packs extent Y / extent X into
+ * raw18. Source image and PBE fields retain the proven native22 encoding. */
+int a04_vendor_copy_wide_state_build(struct a04_vendor_wide_state *out,uint64_t source,
+    uint32_t width,uint32_t height,uint32_t pitch)
+{
+    struct a04_vendor_wide_state image={0};uint64_t bytes,t0,t1,csr,clip;
+    if(!out || ((uintptr_t)out&3u) || (uintptr_t)out>UINTPTR_MAX-sizeof(*out) ||
+       !width || !height || width>16368u || height>16368u || pitch<width ||
+       pitch>16384u || (pitch&31u) || source<4096u || (source&127u))return 1;
+    bytes=(uint64_t)pitch*height*4u;
+    if(source>=(UINT64_C(1)<<40) || bytes>(UINT64_C(1)<<40)-source)return 1;
+    image.shared[1]=0x2400u;
+    t0=(UINT64_C(12)<<27)|(UINT64_C(1)<<11)|(UINT64_C(2)<<8)|(UINT64_C(3)<<5)|4u|
+        ((uint64_t)(width-1u)<<34)|((uint64_t)(height-1u)<<48);
+    t1=(source<<14)|(pitch-1u)|(UINT64_C(1)<<60)|(UINT64_C(1)<<59);
+    image.shared[4]=(uint32_t)t0;image.shared[5]=(uint32_t)(t0>>32);
+    image.shared[6]=(uint32_t)t1;image.shared[7]=(uint32_t)(t1>>32);image.shared[8]=255u;
+    image.tile_size=((width+15u)/16u)<<16|((height+15u)/16u);
+    csr=(UINT64_C(2)<<56)|(((uint64_t)(pitch-1u)&UINT64_C(0x1fffe))<<33)|
+        (UINT64_C(1)<<23)|(UINT64_C(2)<<26)|(UINT64_C(3)<<29);
+    clip=((uint64_t)(height-1u)<<32)|(width-1u);
+    image.csr[0]=(uint32_t)csr;image.csr[1]=(uint32_t)(csr>>32);
+    image.csr[2]=(uint32_t)clip;image.csr[3]=(uint32_t)(clip>>32);
+    *out=image;return 0;
+}

@@ -639,6 +639,9 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         desc.Version=DEVICE_DESCRIPTION_VERSION3;desc.Master=TRUE;
         desc.ScatterGather=TRUE;desc.DmaAddressWidth=32;
         desc.InterfaceType=Internal;desc.MaximumLength=A04_PVR_HEAP_SIZE;
+#if A04_GE8300_SHARED_WIDE_FRAME
+        if(desc.MaximumLength<A04_VENDOR_WIDE_BYTES)desc.MaximumLength=A04_VENDOR_WIDE_BYTES;
+#endif
         c->vendor_adapter_v3=IoGetDmaAdapter(WdfDeviceWdmGetPhysicalDevice(device),&desc,&map_registers);
         adapter=c->vendor_adapter_v3;
 #if A04_GE8300_SHARED_LEASE
@@ -1151,7 +1154,11 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
         }
         status=WdfRequestRetrieveInputBuffer(request,sizeof(*caps),(void **)&caps,&size);
         if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
-        caps->version=1;caps->bytes=sizeof(*caps);caps->flags=A04_GE8300_SHARED_CAP_FRAME_SEAL;caps->reserved=0;
+        caps->version=1;caps->bytes=sizeof(*caps);caps->flags=A04_GE8300_SHARED_CAP_FRAME_SEAL;
+#if A04_GE8300_SHARED_WIDE_FRAME
+        caps->flags|=A04_GE8300_SHARED_CAP_WIDE_FRAME;
+#endif
+        caps->reserved=0;
         WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(*caps));return;
     }
     if(control==A04_GE8300_IOCTL_SHARED_FRAME_SEAL) {
@@ -1171,6 +1178,44 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
         WdfWaitLockRelease(c->vendor_lifetime);
         WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(*seal):0);return;
     }
+#if A04_GE8300_SHARED_WIDE_FRAME
+    if(control==A04_GE8300_IOCTL_SHARED_WIDE_FRAME) {
+        struct a04_ge8300_shared_wide_frame *frame;struct a04_vendor_clear_result result;
+        ULONGLONG began;
+        if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*frame) ||
+           output!=A04_GE8300_WIDE_HEADER_BYTES) {
+            WdfRequestComplete(request,STATUS_ACCESS_DENIED);return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,sizeof(*frame),(void **)&frame,&size);
+        if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+        WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+        if(!frame->token || frame->token!=c->shared_lease.active || frame->task || frame->flush ||
+           !c->shared_owner || !c->shared_owner->display_common || !c->shared_tables.mmu_ack ||
+           !c->vendor_service_online || c->vendor_start.command_poisoned ||
+           InterlockedCompareExchange(&c->vendor_service_closed,0,0) ||
+           !a04_shared_frame_accept(&c->shared_frame,frame->frame,0))status=STATUS_INVALID_DEVICE_STATE;
+        else {
+            began=KeQueryInterruptTime();
+            status=a04_vendor_render_copy_wide_frame(&c->vendor_copy,&c->vendor_start,
+                c->shared_owner,&c->shared_tables,frame->pixels,&result);
+            if(NT_SUCCESS(status)) {
+                frame->task=result.completed_task;frame->flush=result.completed_flush;
+                if(!frame->task || !frame->flush)status=STATUS_IO_DEVICE_ERROR;
+            }
+            if(NT_SUCCESS(status)) {
+                c->shared_frame.next=1000u;c->shared_frame.last_task=frame->task;
+                c->shared_frame.last_flush=frame->flush;
+                GpuPrint("GE8300 full frame ms=");
+                GpuHex((ULONG)((KeQueryInterruptTime()-began)/10000u));GpuPrint("\n");
+            } else a04_shared_frame_complete_tile(&c->shared_frame,0);
+            if(c->vendor_start.command_poisoned) {
+                c->vendor_service_online=FALSE;InterlockedExchange(&c->vendor_service_closed,1);
+            }
+        }
+        WdfWaitLockRelease(c->vendor_lifetime);
+        WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?A04_GE8300_WIDE_HEADER_BYTES:0);return;
+    }
+#endif
     if(control==A04_GE8300_IOCTL_SHARED_TILE) {
         struct a04_ge8300_shared_tile *tile;struct a04_vendor_clear_result result;
         if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*tile) || output!=sizeof(*tile)) {

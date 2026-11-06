@@ -5,7 +5,18 @@
 #include "windows_copy_scratch.h"
 /* Inactive GPU DMA tables only; never linked to a live PC root. Caller holds
  * the provider lifetime lock and the WDDM shared-MDL lease. */
-struct a04_shared_tables { struct a04_vendor_uncached table[4]; BOOLEAN ready,quarantined,published,mmu_ack; };
+#if A04_GE8300_SHARED_WIDE_FRAME
+#define A04_SHARED_TABLE_COUNT 6u
+#else
+#define A04_SHARED_TABLE_COUNT 4u
+#endif
+struct a04_shared_tables {
+    struct a04_vendor_uncached table[A04_SHARED_TABLE_COUNT];
+#if A04_GE8300_SHARED_WIDE_FRAME
+    struct a04_vendor_uncached wide_source;
+#endif
+    BOOLEAN ready,quarantined,published,mmu_ack;
+};
 NTSTATUS a04_shared_tables_stage(struct a04_shared_tables *,struct a04_shared_scanout *,
     struct a04_vendor_render_cold *,struct a04_vendor_copy_scratch *);
 NTSTATUS a04_shared_tables_release(struct a04_shared_tables *);

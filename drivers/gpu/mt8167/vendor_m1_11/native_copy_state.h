@@ -6,6 +6,17 @@
 #define A04_VENDOR_NATIVE_COPY_STATE_H
 #include <stdint.h>
 #include <stddef.h>
+#ifndef A04_GE8300_SHARED_WIDE_FRAME
+#define A04_GE8300_SHARED_WIDE_FRAME 0
+#endif
+#define A04_VENDOR_WIDE_SOURCE_VA UINT64_C(0x8000400000)
+#define A04_VENDOR_WIDE_BYTES 4096000u
+struct a04_vendor_wide_state { uint32_t shared[9],tile_size,csr[4]; };
+/* CPU image only. Single-sample native22, integer origin, linear point copy.
+ * Source/destination mappings, lifetime and completion belong to the caller. */
+int a04_vendor_copy_wide_state_build(struct a04_vendor_wide_state *,uint64_t source_va,
+    uint32_t width,uint32_t height,uint32_t pitch_pixels);
+
 struct a04_vendor_copy_state_input {
     uint64_t source_va, destination_va, shared_va;
 };

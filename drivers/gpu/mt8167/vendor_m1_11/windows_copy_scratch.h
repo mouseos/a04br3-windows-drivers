@@ -31,6 +31,10 @@ struct a04_vendor_copy_scratch {
     /* A complete shared frame validates unchanged scratch guards at its
      * first and last tile. Source pixels remain checked on every tile. */
     BOOLEAN shared_frame_interior;
+#if A04_GE8300_SHARED_WIDE_FRAME
+    struct a04_vendor_wide_state wide_state;
+    BOOLEAN wide_frame;
+#endif
     BOOLEAN prepared,exposed,usc_ready,task_frozen;
 };
 NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *owner,
@@ -68,5 +72,10 @@ NTSTATUS a04_vendor_render_copy_shared_diagnostic(struct a04_vendor_copy_scratch
 NTSTATUS a04_vendor_render_copy_shared_tile(struct a04_vendor_copy_scratch *,
     struct a04_vendor_start *,struct a04_shared_scanout *,struct a04_shared_tables *,
     const uint32_t *,uint32_t,struct a04_vendor_clear_result *);
+#if A04_GE8300_SHARED_WIDE_FRAME
+NTSTATUS a04_vendor_render_copy_wide_frame(struct a04_vendor_copy_scratch *,
+    struct a04_vendor_start *,struct a04_shared_scanout *,struct a04_shared_tables *,
+    const uint32_t *,struct a04_vendor_clear_result *);
+#endif
 NTSTATUS a04_vendor_copy_scratch_release(struct a04_vendor_copy_scratch *owner);
 #endif

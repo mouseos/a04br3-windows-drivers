@@ -209,7 +209,13 @@ NTSTATUS A04DisplayResources::SubmitFullFrame(const void *pixels,uint32_t pitch)
     source.base=(unsigned char *)pixels;source.bytes=(size_t)pitch*1280u;
     if(source.bytes/pitch!=1280u)return STATUS_INVALID_PARAMETER;
     source.width=800;source.height=1280;source.pitch=pitch;
+    ULONGLONG began=KeQueryInterruptTime();
+#if A04_GE8300_WDDM_WIDE_FRAME
+    struct a04_ge8300_shared_wide_frame *wide;
+    tile=(struct a04_ge8300_shared_tile *)ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*wide),'fG4A');
+#else
     tile=(struct a04_ge8300_shared_tile *)ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*tile),'fG4A');
+#endif
     if(!tile)return STATUS_INSUFFICIENT_RESOURCES;
     status=ObReferenceObjectByHandle(GpuHandle,SYNCHRONIZE,*IoFileObjectType,KernelMode,(PVOID *)&file,NULL);
     if(!NT_SUCCESS(status)){ExFreePoolWithTag(tile,'fG4A');return status;}
@@ -255,6 +261,9 @@ static NTSTATUS CommonFrameCapabilities(HANDLE handle)
     ObDereferenceObject(file);
     if(NT_SUCCESS(status) && (io.Information!=sizeof(caps) || caps.version!=1 || caps.bytes!=sizeof(caps) ||
        !(caps.flags&A04_GE8300_SHARED_CAP_FRAME_SEAL) || caps.reserved))return STATUS_DEVICE_CONFIGURATION_ERROR;
+#if A04_GE8300_WDDM_WIDE_FRAME
+    if(NT_SUCCESS(status) && !(caps.flags&A04_GE8300_SHARED_CAP_WIDE_FRAME))return STATUS_NOT_SUPPORTED;
+#endif
     return status;
 }
 #endif
@@ -431,10 +440,33 @@ static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile 
 {
     struct a04_ge8300_shared_tile *tile;IO_STATUS_BLOCK io={};PFILE_OBJECT file=NULL;
     NTSTATUS status;uint32_t index=0,matches=0,lastTask=0,lastFlush=0;
+    ULONGLONG began=KeQueryInterruptTime();
+#if A04_GE8300_WDDM_WIDE_FRAME
+    struct a04_ge8300_shared_wide_frame *wide;
+    tile=(struct a04_ge8300_shared_tile *)ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*wide),'fG4A');
+#else
     tile=(struct a04_ge8300_shared_tile *)ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*tile),'fG4A');
+#endif
     if(!tile){A04DisplayTrace(0x5e,0);A04DisplayTrace(0x5f,STATUS_INSUFFICIENT_RESOURCES);return STATUS_INSUFFICIENT_RESOURCES;}
     status=ObReferenceObjectByHandle(handle,SYNCHRONIZE,*IoFileObjectType,KernelMode,(PVOID *)&file,NULL);
     if(!NT_SUCCESS(status)){A04DisplayTrace(0x5e,0);A04DisplayTrace(0x5f,status);goto done;}
+#if A04_GE8300_WDDM_WIDE_FRAME
+    wide=(struct a04_ge8300_shared_wide_frame *)tile;
+    wide->token=token;wide->frame=1;wide->task=0;wide->flush=0;
+    for(uint32_t row=0;row<1280u;row++)for(uint32_t col=0;col<800u;col++)
+        wide->pixels[row*800u+col]=CommonFramePixel(col,row,capture);
+    A04DisplayTrace(0xa0,1); /* One full-surface TQ data command, plus its SLC/GP fence. */
+    io.Information=0;io.Status=STATUS_PENDING;
+    status=ZwDeviceIoControlFile(handle,NULL,NULL,NULL,&io,A04_GE8300_IOCTL_SHARED_WIDE_FRAME,
+        wide,sizeof(*wide),wide,A04_GE8300_WIDE_HEADER_BYTES);
+    if(status==STATUS_PENDING) {
+        do {status=KeWaitForSingleObject(file,Executive,KernelMode,FALSE,NULL);}while(status!=STATUS_SUCCESS);
+        status=io.Status;
+    } else if(NT_SUCCESS(status))status=io.Status;
+    if(NT_SUCCESS(status) && (io.Information!=A04_GE8300_WIDE_HEADER_BYTES || !wide->task || !wide->flush))
+        status=STATUS_IO_DEVICE_ERROR;
+    if(NT_SUCCESS(status)){index=1000u;lastTask=wide->task;lastFlush=wide->flush;}
+#else
     for(index=0;index<1000u;index++) {
         uint32_t x=(index%25u)*32u,y=(index/25u)*32u;
         RtlZeroMemory(tile,sizeof(*tile));tile->token=token;tile->frame=1;tile->index=index;
@@ -452,6 +484,7 @@ static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile 
         }
         lastTask=tile->task;lastFlush=tile->flush;
     }
+#endif
     A04DisplayTrace(0x5e,(NTSTATUS)index);A04DisplayTrace(0x5f,status);
     A04DisplayTrace(0x62,(NTSTATUS)lastTask);A04DisplayTrace(0x63,(NTSTATUS)lastFlush);
     if(NT_SUCCESS(status) && index==1000u) {
@@ -486,6 +519,7 @@ static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile 
         A04DisplayTrace(0x60,(NTSTATUS)matches);A04DisplayTrace(0x61,status);
     }
 done:
+    A04DisplayTrace(0xa2,(NTSTATUS)((KeQueryInterruptTime()-began)/10000u));
     if(file)ObDereferenceObject(file);ExFreePoolWithTag(tile,'fG4A');return status;
 }
 #endif

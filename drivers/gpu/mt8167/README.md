@@ -539,3 +539,27 @@ for an O0 debug comparison. Build logs record the exact codegen flags.
 Shared-surface acquisition now establishes its required first fenced copy
 inside the provider instead of requiring a separate test executable. Failure
 keeps the sharing service closed and preserves retained DMA allocations.
+
+### One-command full-surface copy candidate
+
+`A04_GE8300_SHARED_WIDE_FRAME=1` adds a read-only 4,096,000-byte source surface
+at GPU VA 0x8000400000 and two source leaf tables. Source, destination, firmware
+and table DMA ranges are checked for overlap before publication. Exposed source
+and table allocations remain retained on failure. The native22 descriptor and
+single-sample 16-pixel region packing follow the original producer; the
+unchanged native USC asset is still a required external build input.
+
+The kernel-only buffered request contains a fixed 800x1280 image and no nested
+pointer or caller-supplied GPU address. It submits one full-surface TQ data
+command, retains the separate SLC flush and GP fence, and only then restores the
+private descriptor/PDS. Timeout poisons the owner and retains changed state.
+The existing seal and WDDM all-pixel readback remain required. No repeated-frame
+or DMA retirement contract is added by this candidate.
+
+Build the provider with the above flag and the DOD with
+`A04_GE8300_WDDM_WIDE_FRAME=1`, alongside the existing full-common diagnostic
+flags. The DOD checks the provider capability before using the new request.
+Trace A0=1 selects the single-command path; A2 is CPU+GPU+verification elapsed
+milliseconds. Existing 5E/60 counts describe covered tiles/pixels, not GPU
+command counts. Run `make test-ge8300-wide-frame` for CPU-side geometry and
+mapping checks. Hardware execution of this candidate is not yet established.

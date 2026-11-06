@@ -40,6 +40,17 @@ struct a04_ge8300_fenced_copy {
 #define A04_GE8300_IOCTL_SHARED_FRAME_SEAL 0x00226040u
 #define A04_GE8300_IOCTL_SHARED_CAPABILITIES 0x00226044u
 #define A04_GE8300_SHARED_CAP_FRAME_SEAL 1u
+#define A04_GE8300_SHARED_CAP_WIDE_FRAME 2u
+#define A04_GE8300_IOCTL_SHARED_WIDE_FRAME 0x00226048u
+#define A04_GE8300_WIDE_PIXELS 1024000u
+#define A04_GE8300_WIDE_HEADER_BYTES 16u
+/* Kernel-only METHOD_BUFFERED image, with no nested pointer or GPU address.
+ * The output is only the four-DWORD header, after a completed fenced copy. */
+struct a04_ge8300_shared_wide_frame {
+    uint32_t token,frame,task,flush;
+    uint32_t pixels[A04_GE8300_WIDE_PIXELS];
+};
+
 struct a04_ge8300_shared_capabilities { uint32_t version,bytes,flags,reserved; };
 struct a04_ge8300_frame_seal { uint32_t token,frame,task,flush; };
 /* Kernel-only, short-lived lease on the GPU common-buffer copy result. */

@@ -763,3 +763,11 @@ build/gpu_vendor_native_copy_state_test: tests/gpu_vendor_native_copy_state_test
 build/ge8300_ovl_saved_test: tests/ge8300_ovl_saved_test.c drivers/gpu/mt8167/wddm-display/mt8167_ovl_saved.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) tests/ge8300_ovl_saved_test.c -o $@
+
+.PHONY: test-ge8300-wide-frame
+test-ge8300-wide-frame: build/gpu_wide_frame_test
+	./build/gpu_wide_frame_test
+
+build/gpu_wide_frame_test: tests/gpu_wide_frame_test.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.c drivers/gpu/mt8167/vendor_m1_11/clear_image.c drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.h drivers/gpu/mt8167/gpu_mmu.h
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@

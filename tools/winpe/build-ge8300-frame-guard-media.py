@@ -16,6 +16,8 @@ def main():
     p.add_argument('--base', type=Path, required=True)
     p.add_argument('--package', type=Path, required=True)
     p.add_argument('--provider-sha256', required=True)
+    p.add_argument('--display-package', type=Path)
+    p.add_argument('--display-sha256')
     p.add_argument('--out', type=Path, required=True)
     a = p.parse_args()
     base, package, out = (v.resolve() for v in (a.base, a.package, a.out))
@@ -23,6 +25,13 @@ def main():
         raise SystemExit('Use workspace inputs and a new output directory')
     assert sha(base/'volume.wim') == WIM and sha(base/'volume-esp.img') == ESP
     assert sha(package/'mt8167-ge8300.sys') == a.provider_sha256
+    assert bool(a.display_package) == bool(a.display_sha256)
+    display = a.display_package.resolve() if a.display_package else None
+    if display:
+        assert display.is_relative_to(ROOT)
+        assert sha(display/'mt8167-display.sys') == a.display_sha256
+        assert all((display/name).is_file() for name in ('mt8167-display.inf','mt8167-display.cat'))
+
     assert sha(package/'ge8300-mips.fw') == '5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1'
     out.mkdir(parents=True)
     work = out/'stage'; work.mkdir()
@@ -88,13 +97,16 @@ def main():
     changes = [(software,'/Windows/System32/config/SOFTWARE'),(start,'/Windows/System32/startnet.cmd'), (work/'uart-audit-stream.exe','/a04br3/uart-audit-stream.exe')]
     changes += [(package/name,'/a04br3/ge8300-copy/'+name) for name in
                 ('mt8167-ge8300.sys','mt8167-ge8300.inf','mt8167-ge8300.cat')]
+    if display:
+        changes += [(display/name,'/a04br3/display-shared/'+name) for name in
+                    ('mt8167-display.sys','mt8167-display.inf','mt8167-display.cat')]
     wim('update',image,'1',input=''.join('add '+str(src)+' '+dst+'\n' for src,dst in changes),text=True)
     wim('verify',image)
     helper = ROOT/'windows-rt/a04br3-windows-ge8300-copy-safe-stop/tools/winpe/replace-esp-wim.py'
     run(['python3',str(helper),'--template',str(base/'volume-esp.img'),'--wim',str(image),
          '--output',str(out/'volume-esp.img'),'--template-bcd-sha256',BCD,'--template-wim-sha256',WIM])
     (out/'manifest.json').write_text(json.dumps({'base_wim_sha256':WIM,'provider_sha256':a.provider_sha256,
-       'test_signer_sha1':thumb,'wim_sha256':sha(image),'esp_sha256':sha(out/'volume-esp.img'),
+       'display_sha256':a.display_sha256,'test_signer_sha1':thumb,'wim_sha256':sha(image),'esp_sha256':sha(out/'volume-esp.img'),
        'status':'built; device performance unverified'},indent=2)+'\n')
 
 if __name__ == '__main__': main()

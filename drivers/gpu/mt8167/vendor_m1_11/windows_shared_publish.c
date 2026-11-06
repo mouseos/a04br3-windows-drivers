@@ -31,6 +31,10 @@ NTSTATUS a04_shared_tables_publish(struct a04_shared_tables *t,struct a04_shared
        r->layout.memory>65536u-sizeof(mem) || s->command_sequence>=65534u ||
        !t->table[0].cpu || !t->table[1].cpu || !t->table[2].cpu || !t->table[3].cpu)
         return STATUS_INVALID_PARAMETER;
+#if A04_GE8300_SHARED_WIDE_FRAME
+    if(!t->wide_source.cpu || t->wide_source.bytes!=A04_VENDOR_WIDE_BYTES ||
+       !t->table[4].cpu || !t->table[5].cpu)return STATUS_INVALID_DEVICE_STATE;
+#endif
     if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
     if(s->shutdown_started || s->command_poisoned || r->cleanup_started || r->poisoned) {
         status=STATUS_INVALID_DEVICE_STATE;goto out;
