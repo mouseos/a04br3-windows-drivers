@@ -10,8 +10,10 @@ static void hex(char *s,DWORD v) {
  static const char d[]="0123456789ABCDEF";unsigned i;for(i=0;i<8;++i)s[i]=d[(v>>(28-4*i))&15u];
 }
 static int frame(DWORD run,DWORD seq,DWORD kind,const DWORD *values) {
- char s[90]={'A','0','4','C','P','1',' '}; DWORD i,n=7,sum,done,start=GetTickCount(),rep;
- DWORD fields[7]={run,seq,kind,values[0],values[1],values[2],values[3]};
+ static char s[90]; DWORD i,n=7,sum,done,start=GetTickCount(),rep;
+ DWORD fields[7];
+ s[0]='A';s[1]='0';s[2]='4';s[3]='C';s[4]='P';s[5]='1';s[6]=' ';
+ fields[0]=run;fields[1]=seq;fields[2]=kind;fields[3]=values[0];fields[4]=values[1];fields[5]=values[2];fields[6]=values[3];
  for(i=0;i<7;i++){hex(s+n,fields[i]);n+=8;s[n++]=' ';}
  sum=crc32((const unsigned char *)s,n-1);hex(s+n,sum);n+=8;s[n++]='\n';
  for(rep=0;rep<3;rep++)while(!DeviceIoControl(uart,A04_UART_SCREEN_SEND,s,n,NULL,0,&done,NULL)) {
