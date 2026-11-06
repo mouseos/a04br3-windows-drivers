@@ -6,7 +6,7 @@ $inc = Join-Path $kit 'Include'
 if (!(Test-Path (Join-Path $inc 'km\ntddk.h'))) { throw 'Windows 8.1 WDK is required' }
 New-Item -ItemType Directory -Force $OutputDirectory | Out-Null
 $out = (Resolve-Path $OutputDirectory).Path
-foreach ($name in @('ep0','ep0_pio','keyboard','keyboard_rx','board_host','keyboard_session','controller','gpio22')) {
+foreach ($name in @('ep0','ep0_pio','keyboard','keyboard_rx','board_host','vcdt_pwrap','keyboard_session','controller','gpio22')) {
   $source = Join-Path $root "drivers\usb\mt8167-usb20\$name.c"
   $obj = Join-Path $out "mt8167-usb20-$name.obj"
   & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -D_KERNEL_MODE -D_ARM_ -DARM -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" -include ntddk.h -c $source -o $obj
@@ -44,7 +44,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Controller compilation failed' }
 $sys = Join-Path $out 'mt8167-usb20-hid-transport.sys'
 $hostObjects=@()
 if($hidControl -eq '1'){$hostObjects=@((Join-Path $out 'mt8167-usb20-host_core.obj'),(Join-Path $out 'mt8167-usb20-host_control.obj'))}
-& lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib $hidObj $controllerObj $hostObjects (Join-Path $out 'mt8167-usb20-controller.obj') (Join-Path $out 'mt8167-usb20-board_host.obj') (Join-Path $out 'mt8167-usb20-keyboard.obj') (Join-Path $out 'mt8167-usb20-keyboard_session.obj') (Join-Path $out 'mt8167-usb20-keyboard_rx.obj') (Join-Path $out 'mt8167-usb20-ep0.obj') (Join-Path $out 'mt8167-usb20-ep0_pio.obj') (Join-Path $wdfLib 'wdfdriverentry.lib') (Join-Path $wdfLib 'wdfldr.lib') (Join-Path $kmLib 'ntoskrnl.lib') (Join-Path $kmLib 'hal.lib') (Join-Path $kmLib 'bufferoverflowfastfailk.lib') "/out:$sys"
+& lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib $hidObj $controllerObj $hostObjects (Join-Path $out 'mt8167-usb20-controller.obj') (Join-Path $out 'mt8167-usb20-board_host.obj') (Join-Path $out 'mt8167-usb20-vcdt_pwrap.obj') (Join-Path $out 'mt8167-usb20-keyboard.obj') (Join-Path $out 'mt8167-usb20-keyboard_session.obj') (Join-Path $out 'mt8167-usb20-keyboard_rx.obj') (Join-Path $out 'mt8167-usb20-ep0.obj') (Join-Path $out 'mt8167-usb20-ep0_pio.obj') (Join-Path $wdfLib 'wdfdriverentry.lib') (Join-Path $wdfLib 'wdfldr.lib') (Join-Path $kmLib 'ntoskrnl.lib') (Join-Path $kmLib 'hal.lib') (Join-Path $kmLib 'bufferoverflowfastfailk.lib') "/out:$sys"
 if ($LASTEXITCODE -ne 0) { throw 'HID transport link failed' }
 $headers = & llvm-readobj --file-headers $sys
 if ($LASTEXITCODE -ne 0 -or ($headers -join "`n") -notmatch 'IMAGE_FILE_MACHINE_ARMNT') { throw 'Unexpected HID PE machine' }

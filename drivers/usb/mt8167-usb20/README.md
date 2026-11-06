@@ -318,3 +318,14 @@ The earlier device-specific `Mt8167UsbHostDxe` sets GPIO9 low, enables MT6392 VU
 The stock [MT8167 battery meter](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/drivers/misc/mediatek/power/mt8167/battery_meter_hw_lc709203f.c) reads `VCHARGER_CHANNEL_NUMBER` for charger input. The [board header](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/drivers/misc/mediatek/include/mt-plat/mt8167/include/mach/mtk_battery_meter.h) sets channel 2 and divider values 330 and 39; [MT6392 AUXADC](https://github.com/s1204IT/CT3_GPL_LGPL_Src/blob/7c4782127d4ea11965be00ce1343056be9bfb769/kernel-4.4/drivers/misc/mediatek/power/mt8167/pmic_auxadc.c) identifies channel 2 as VCDT, requests bit 2 in RQST0 SET, polls ADC2 bit 15, and converts its lower 12 bits with 1800/4096. This gives a physically independent *charger-input* ADC candidate, but the supplied sources do not prove that VCDT is connected to the Mini-AB receptacle rather than another input or a switched node. It is not yet an accepted VBUS verification callback.
 
 `A04Mt6392VcdtRead` implements that bounded stock-derived channel-2 request and conversion through explicit PMIC callbacks; no direct MMIO or I2C owner is invented. It requires an actual exclusive AUXADC/PWRAP owner, including firmware and EL3 handoff, before the first request. On a failed write, timeout, read, or release it returns an uncertain result and retains the lease for owner-specific recovery; it does not publish a partial sample. A ready bit alone has not been established as proof of a fresh conversion, and the code is not connected to the shared parent or UART. It is therefore an integration candidate, not a measured value. Compare VCDT against a known external voltage measurement across USB and AC input states before treating it as connector VBUS, and independently qualify the ADC owner. No extra device operation has been performed here.
+
+The USB-only `vcdt_pwrap` adapter serializes its fixed channel-2 WACS2
+transactions with the shared `a04_pwrap_owner`; it does not publish an
+interface, access hardware by itself, or supply an ADC lease. A future caller
+must keep the owner, adapter, and a genuine cross-firmware/EL3 ADC lease alive,
+and callbacks must not reenter the PWRAP lock. A WACS2 timeout poisons the
+shared bus; on an ambiguous transaction or release failure the adapter retains
+the ADC lease but drops the PWRAP lock. Recovery requires an owner-specific
+procedure. The adapter has only fake-WACS host tests and remains disconnected
+from the parent, IOCTL, UART, charger, and GPIO22 control. Linking it does not
+make VCDT available in the signed GPIO observation package.
