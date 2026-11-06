@@ -34,6 +34,14 @@ try {
  [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM{fixture}.TM.blf','original-system-sidecar')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE{fixture}.TMContainer01.regtrans-ms','original-software-sidecar')
  [IO.File]::WriteAllText('R:\Windows\System32\config\TxR\{fixture}.TxR.0.regtrans-ms','original-txr')
+ [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM{bad}.txt','unsupported')
+ & "$base\fixture.exe"
+ if(!$LASTEXITCODE -or (Test-Path 'S:\A04BACKUP')){throw 'unsupported sidecar was not rejected'}
+ Remove-Item -LiteralPath 'R:\Windows\System32\config\SYSTEM{bad}.txt'
+ foreach($i in 1..86){[IO.File]::WriteAllText("R:\Windows\System32\config\SYSTEM{$i}.TM.blf",'extra')}
+ & "$base\fixture.exe"
+ if(!$LASTEXITCODE -or (Test-Path 'S:\A04BACKUP')){throw 'sidecar count limit was not enforced'}
+ foreach($i in 1..86){Remove-Item -LiteralPath "R:\Windows\System32\config\SYSTEM{$i}.TM.blf"}
  $env:A04_FAKE_FULL='1'
  & "$base\fixture.exe"
  if(!$LASTEXITCODE -or (Test-Path 'S:\A04BACKUP')){throw 'capacity failure did not stop before journal creation'}
