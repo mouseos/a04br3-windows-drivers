@@ -162,3 +162,29 @@ completion/ordering, concurrent context use and timeout retention still need
 hardware-specific validation before publishing a parent entry. The interface
 also does not establish no-bounce visibility for OVL, frame boundary/latch,
 PnP surprise-removal safety or DMA stop. It does not enable direct display.
+
+## Opt-in live root publication and MMUCACHE
+
+`A04_GE8300_SHARED_MMU_PUBLISH=1` is a separate provider build opt-in and
+requires the shared lease and vendor copy service. After the existing copy and
+its completion fence, with provider lifetime serialization and `command_busy`
+held, it requires the client/firmware queues to be idle, verifies the render
+FW memory context points at the existing PC, and requires PC slot 512 to be
+empty. Slot 512 covers GPU VA `0x8000000000` through `0x803fffffff` (1 GiB),
+which is distinct from the existing copy scratch at `0x65c0000000`. It writes
+only that PC entry, pointing to the staged 1000-page PD/PT image, then sends an
+m1.11 typed `RGXFWIF_KCCB_CMD_MMUCACHE` for the render memory context and waits
+for both KCCB consumption and an exact nonzero 16-bit sync value. The existing
+copy command stream and its mappings are not modified.
+
+The `0x1f` PC/PD/PT/TLB flags are based on the MTK m1.8 DDK and the command
+structure on the m1.11 ABI; the flags' applicability and acknowledgement
+semantics on this device/firmware have **not** been established. This is an
+experiment, not a claim of correct invalidation. Once the root write is
+attempted, the shared MDL, both DMA mappings, tables and lease are retained,
+including after an acknowledgement. A failed or timed-out MMU command poisons
+the existing GPU queue and closes the copy service; retry and release are
+forbidden. Normal D0 exit is blocked while leased, but surprise removal and a
+full stop/drain are not solved. No render request targets the shared VA and
+no OVL switch is performed; display-side bounce/cache visibility and frame
+synchronization remain separate, unverified prerequisites.

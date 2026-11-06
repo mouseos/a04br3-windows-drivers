@@ -53,6 +53,9 @@
 #ifndef A04_GE8300_VENDOR_RENDER_COLD
 #define A04_GE8300_VENDOR_RENDER_COLD 0
 #endif
+#ifndef A04_GE8300_SHARED_MMU_PUBLISH
+#define A04_GE8300_SHARED_MMU_PUBLISH 0
+#endif
 #ifndef A04_GE8300_SHARED_LEASE
 #define A04_GE8300_SHARED_LEASE 0
 #endif
@@ -68,6 +71,9 @@
 #endif
 #ifndef A04_GE8300_VENDOR_COPY_DIAGNOSTIC
 #define A04_GE8300_VENDOR_COPY_DIAGNOSTIC 0
+#endif
+#if A04_GE8300_SHARED_MMU_PUBLISH && !A04_GE8300_SHARED_LEASE
+#error Live MMU publication requires the shared lease
 #endif
 #if A04_GE8300_SHARED_LEASE && !A04_GE8300_VENDOR_COPY_SERVICE
 #error Shared lease requires the vendor copy service
@@ -1054,6 +1060,13 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
             else {
                 status=a04_shared_tables_stage(&c->shared_tables,
                     (struct a04_shared_scanout *)lease->shared_mdl_owner,&c->vendor_render,&c->vendor_copy);
+#if A04_GE8300_SHARED_MMU_PUBLISH
+                if(NT_SUCCESS(status))status=a04_shared_tables_publish(&c->shared_tables,
+                    (struct a04_shared_scanout *)lease->shared_mdl_owner,&c->vendor_render,&c->vendor_start);
+                if(c->vendor_start.command_poisoned) {
+                    c->vendor_service_online=FALSE;InterlockedExchange(&c->vendor_service_closed,1);
+                }
+#endif
                 if(NT_SUCCESS(status))lease->inactive_gpu_pc_dma=(uint64_t)c->shared_tables.table[0].logical.QuadPart;
             }
         } else if(control==A04_GE8300_IOCTL_SHARED_UNSTAGE) {
