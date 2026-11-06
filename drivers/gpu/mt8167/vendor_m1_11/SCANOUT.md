@@ -482,12 +482,21 @@ MT8167 DTS maps `disp_rdma0_frame_done` to 27 and `stream_done_0` to 38;
 these are hardware event values, unlike the abstract enum values 77 and 113
 in `cmdq_event_common.h`. Linux `cmdq_device.c` populates the runtime event
 table from DTS. The tested `mt8167_cmdq_packet.h` constructs a Linux-shaped
-non-clearing EOF wait, full L0 address write, EOC and relative JUMP; L3 is
+token clear, non-clearing EOF wait, full L0 address write, EOC and relative JUMP; L3 is
 not touched and a packet for the saved L0 address can be built separately.
 An alternative inert packet writes both L0 and L3 addresses in order, and a
 separate packet can encode their saved values. Neither changes enable, format,
 pitch or alpha, and sequential writes alone do not prove an atomic latch.
-It only creates an inert image: event freshness, display mode and exclusive
-GCE execution are not established. In particular a latched old event makes
-WAIT_NO_CLEAR inadequate as a fresh boundary by itself. There is no executor,
+It only creates an inert image: the clear followed by wait requires exclusive
+event ownership, and the boolean precondition is not proof of that ownership.
+Display mode and exclusive GCE execution are not established. There is no executor,
 ISR, timeout recovery, frame-latch proof or production caller yet.
+
+Linux `cmdq_core.c` resets the owned hardware thread, configures its end and
+current address, IRQ enable and priority before enabling it; it patches the
+terminal jump/end address according to its task queue. The emitted image here
+is not an executable task until an equivalent supported DMA mapping and end
+address contract exist. In particular the display adapter used for OVL must
+not be assumed to be a GCE DMA adapter merely because both resources appear in
+one ACPI device. A GCE PDO/DMA domain and clock/thread/event ownership remain
+necessary before this packet can be submitted.
