@@ -499,3 +499,11 @@ shutdown notifier deliberately enables clocks again as a workaround for
 possibly unfinished GPU commands. This reinforces that a parent must own and
 serialize the whole transition and that a bus-protection acknowledgement is
 not by itself evidence that all commands and writes are drained.
+
+`gce_clock_lease.c` implements the MT8167 TOP2 bit-4 set/clear operation for a
+future parent-held lock. It refuses entry until an external contract proves
+clock ownership, reserves a generation before any write, and retains a poisoned
+lease after an uncertain write. Release requires independent quiescence proof
+and restores the preexisting gate state. It is not connected to the WDF parent
+or GCE PDO, and its proof inputs are not supplied by PnP resource assignment.
+No clock register is touched by including this code in host tests.

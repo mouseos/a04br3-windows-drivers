@@ -535,6 +535,12 @@ build/mt8167_dma_adapter_test: drivers/audio/mt8167-afe/dma_adapter.cpp drivers/
 .PHONY: test-mt8167-clock-owner
 test-mt8167-clock-owner: build/mt8167_clock_owner_test
 	./build/mt8167_clock_owner_test
+.PHONY: test-mt8167-gce-clock-lease
+test-mt8167-gce-clock-lease: build/mt8167_gce_clock_lease_test
+	./build/mt8167_gce_clock_lease_test
+build/mt8167_gce_clock_lease_test: drivers/bus/mt8167-shared/gce_clock_lease.c drivers/bus/mt8167-shared/gce_clock_lease.h tests/mt8167_gce_clock_lease_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) drivers/bus/mt8167-shared/gce_clock_lease.c tests/mt8167_gce_clock_lease_test.c -o $@
 build/mt8167_clock_owner_test: drivers/bus/mt8167-shared/clock_owner.c drivers/bus/mt8167-shared/clock_owner.h tests/mt8167_clock_owner_test.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared drivers/bus/mt8167-shared/clock_owner.c tests/mt8167_clock_owner_test.c -o $@
