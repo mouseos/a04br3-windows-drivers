@@ -56,6 +56,35 @@ timeoutでprocessを終了したことは、WLAN scan完了やaudioのSTOP/mute/
 既存音声driverは資源を保持する設計なので、audio timeout後のhardware状態は未確認として扱う。
 SCM STOPは進行中のprocessを終了するが、PnP resetやhardware復旧は行わない。
 
+## 試行中だけの自動スリープ抑止
+
+marker作成後、clientの署名確認/起動/待機/終了処理の間だけ、
+PowerCreateRequest → PowerSetRequest(PowerRequestSystemRequired)を1回取得する。
+要求を作成/設定できなければ数値エラーを記録してclientを起動しない。
+正常終了、署名/起動失敗、timeout、SCM STOPは同じcleanupへ進み、
+取得済み要求をPowerClearRequestしてから、成功/失敗にかかわらずCloseHandleする。
+Set失敗時も作成済みhandleをcloseする。登録補助/試行済み拒否では要求を取得しない。
+
+SystemRequiredだけを使用し、DisplayRequired/AwayMode/ExecutionRequiredは要求しない。
+画面点灯、恒久power policy、powercfg/registry設定を変更せず、ユーザー明示のSleepを尊重する。
+Sleep後の要求再設定や、時間制限を回避するための定期的な再取得も行わない。
+
+一次仕様:
+
+- [PowerCreateRequest](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-powercreaterequest): Windows 7以降のdesktop API、Kernel32、不要時はCloseHandle。
+- [PowerSetRequest](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-powersetrequest): SystemRequiredは無操作sleepを抑止。明示Sleepでは解除され、終了後は速やかなclear/closeが必要。
+- [PowerClearRequest](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-powerclearrequest): 取得した種類の参照を減らす。ExecutionRequiredはserviceでは使用できない。
+
+RT8.1の提供確認として、既存Microsoft Surface RT回復媒体のinstall.wim image 1
+（Windows RT 8.1 / CoreARM / ARM / 6.3.9600.16441）からkernel32.dllのPE export metadataを
+読取り、PowerCreateRequest/PowerSetRequest/PowerClearRequestの3 exportを確認した。
+当該DLL SHA256は `a7a035b4105ac4c3c9aa521571b919f54fdd2e60997fd2f3b8527e1f0c434c5b`。
+DLLはソースrepoや配布成果物へ組み込まない。実OSのAPI受付/電源状態は未測定。
+
+Microsoft仕様ではDCのConnected/Modern Standbyで、sleep timeout超過後の要求保持に
+5分制限がある。SystemRequiredの取得成功を「10分間sleepしない」保証として扱わない。
+対象の電源方式/policyに対する実効性は主担当の実測で確認する。
+
 ## 出力
 
 同じ固定ディレクトリにservice.log、attempted.bin、wlan.stdout.txt、wlan.stderr.txt、
@@ -88,6 +117,9 @@ WLAN client自身のUARTはcount/statusだけ。サービス通知にもSSID/BSS
 | 12 | childログ保存エラー | Win32 error |
 | 13 | service UART状態 | それまでの通知エラー（0も到着証明ではない） |
 | 14 | 最終SCM結果（service.logのみ） | END自身のUART失敗も含む最終結果 |
+| 15 | SystemRequired作成/設定 | Win32 error、0はAPI受付のみ |
+| 16 | SystemRequired clear | Win32 error |
+| 17 | power request handle close | Win32 error |
 
 UARTは既存96-byteキューだけを利用する。通常は各通知後にhandleを閉じ、clientと共有する。
 pending IOCTLは最大1秒、cancel後250msで打切り、未完了storageをprocess終了まで保持して
