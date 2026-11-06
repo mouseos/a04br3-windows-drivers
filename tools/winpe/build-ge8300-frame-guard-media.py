@@ -124,7 +124,7 @@ def main():
     if a.workload: changes.append((a.workload.resolve(),'/a04br3/ge8300-gdi-frame.exe'))
     wim('update',image,'1',input=''.join('add '+str(src)+' '+dst+'\n' for src,dst in changes),text=True)
     wim('verify',image)
-    helper = ROOT/'windows-rt/a04br3-windows-ge8300-copy-safe-stop/tools/winpe/replace-esp-wim.py'
+    helper = Path(__file__).resolve().with_name('replace-esp-wim.py')
     run(['python3',str(helper),'--template',str(base/'volume-esp.img'),'--wim',str(image),
          '--output',str(out/'volume-esp.img'),'--template-bcd-sha256',BCD,'--template-wim-sha256',WIM])
     (out/'manifest.json').write_text(json.dumps({'base_wim_sha256':WIM,'provider_sha256':a.provider_sha256,
