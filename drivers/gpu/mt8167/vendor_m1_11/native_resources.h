@@ -26,6 +26,15 @@ struct a04_m111_target_storage {
 int a04_m111_layout_target_storage(uint32_t width,uint32_t height,
     uint64_t region_base,size_t region_bytes,uint64_t tpc_base,size_t tpc_bytes,
     struct a04_m111_target_storage *out);
+/* Single-RT MLIST storage. global_pb_max_bytes is the maximum parameter
+ * buffer size supplied to RGXCreateGlobalPB, not the freelist table size.
+ * Fixed-PB subset: 16KiB..16MiB in 4KiB units. No MTA array is allocated. */
+struct a04_m111_mlist_storage {
+    uint64_t gpu[2];
+    uint32_t stride,used;
+};
+int a04_m111_layout_pm_mlists(uint32_t global_pb_max_bytes,
+    uint64_t gpu_base,size_t bytes,struct a04_m111_mlist_storage *out);
 /* Cold CPU memory only. The caller maps and retains FW and GPU allocations;
  * these routines do not allocate DMA, publish mappings, or submit commands. */
 struct a04_m111_freelist_input {
@@ -46,7 +55,9 @@ struct a04_m111_hwrt_input {
     uint32_t mtile_stride, merge_lower_x, merge_lower_y, merge_upper_x, merge_upper_y;
     uint32_t merge_scale_x, merge_scale_y, isp_mtile_size;
 };
-/* MaxRTs=1 only; arrays/shadow-cache storage for MRT are deliberately absent. */
+/* MaxRTs=1 only; arrays/shadow-cache storage for MRT are deliberately absent.
+ * macrotile may be zero: RGXAddRenderTarget passes literal 0 to the
+ * sMacrotileArrayDevVAddr bridge parameter on this vendor path. */
 int a04_m111_build_hwrt(RGXFWIF_HWRTDATA *out,
     const struct a04_m111_hwrt_input *input, uint32_t target_fw,
     const uint32_t freelist_fw[2]);

@@ -11,6 +11,14 @@ int main(void)
     uint64_t physical[4]={0x81000000,0x81003000,0x81008000,0xfffff000};
     uint32_t table[10], oldtable[10], i;
     struct a04_m111_hwrt_input h[2]={{0}};
+    struct a04_m111_mlist_storage ml,oldml;
+    assert(!a04_m111_layout_pm_mlists(0x1000000,UINT64_C(0x6504000000),8192,&ml));
+    assert(ml.stride==4096 && ml.used==8192 && ml.gpu[1]==UINT64_C(0x6504001000));
+    oldml=ml;
+    assert(a04_m111_layout_pm_mlists(0x1000000,UINT64_C(0x6504000000),8191,&ml));
+    assert(a04_m111_layout_pm_mlists(0x1000001,UINT64_C(0x6504000000),8192,&ml));
+    assert(a04_m111_layout_pm_mlists(0x1000000,UINT64_C(0xfffffffff0),8192,&ml));
+    assert(!memcmp(&ml,&oldml,sizeof(ml)));
     struct a04_m111_target_storage storage,oldstorage;
     assert(!a04_m111_layout_target_storage(800,600,UINT64_C(0x6501000000),0x5000,
         UINT64_C(0x6502000000),0x9000,&storage));
@@ -88,6 +96,9 @@ int main(void)
         assert(a.three_d_cleanup[i]==a.hwrt[i]+offsetof(RGXFWIF_HWRTDATA,s3DCleanupState));
         assert(!d->ui32NumPartialRenders && !d->ui32HWRTDataFlags && !d->eState);
     }
+    h[0].macrotile=0;h[1].macrotile=0;
+    assert(!a04_m111_build_native_bank(&bank,&a,0xc0090000u,UINT64_C(0x6500600000),fl,h));
+    assert(!bank.hwrt[0].sMacrotileArrayDevVAddr.uiAddr && !bank.hwrt[1].sMacrotileArrayDevVAddr.uiAddr);
     saved=bank;olda=a;h[1].tail_ptrs++;
     assert(a04_m111_build_native_bank(&bank,&a,0xc0090000u,UINT64_C(0x6500600000),fl,h));
     assert(!memcmp(&bank,&saved,sizeof(bank)) && !memcmp(&a,&olda,sizeof(a)));h[1].tail_ptrs--;

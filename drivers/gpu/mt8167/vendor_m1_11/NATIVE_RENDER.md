@@ -43,3 +43,5 @@ CPU側構築部のみが完成している。完全描画packet、ドライバ�
 `a04_m111_layout_target_storage`は同版`RGXAddRenderTarget`（0x124a34）のMSAAなし・単一RT分岐を実装する。各軸16-pixel tile数を切上げ、region headerを`align64(tilesX*tilesY*5)`ずつ2組確保する。TPCは両軸tile数以上の最小2冪をsideとして`side*side*8` bytes、64-byte境界へ切り上げた位置に続くVHeapは0x600 bytes。RTCはこの分岐にはない。800x600ではregion計0x4a80、TPC/VHeap計0x8600 bytes。領域の不足・重複・40-bit範囲超過を拒否する。MTA/MLIST、初期内容、実allocation/mapping、完全HWRTの生成は別工程である。
 
 到達目標はまずnative TA/3Dによる実GPUのclearまたは三角形描画。Windows D3D UMDと完全WDDM render miniportはまだなく、DOD転送成功は3D対応を意味しない。
+
+`a04_m111_layout_pm_mlists`は`RGXCreateGlobalPB`のMLIST容量式と`RGXAddRenderTarget`の2組配置を実装する。固定PB 16KiB〜16MiBの部分集合では各MLISTが4KiB、計8KiB。同版UMはHWRT作成bridgeのmacrotile引数へliteral 0を渡すため、単一RT builderでこの0を受け付ける。これは未確定fieldのゼロ埋めではなく、観測した引数の再現である。実GPU backingと初期内容はここでは生成しない。
