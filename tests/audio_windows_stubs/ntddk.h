@@ -15,7 +15,7 @@ static inline int DbgPrintEx(unsigned a,unsigned b,const char *fmt,...){(void)a;
 inline uint32_t READ_REGISTER_ULONG(volatile uint32_t *p) { return *p; }
 inline void WRITE_REGISTER_ULONG(volatile uint32_t *p,uint32_t value) { *p=value; }
 #endif
-typedef void *PVOID; typedef uint32_t ULONG; typedef unsigned char BOOLEAN,KIRQL; typedef uintptr_t KAFFINITY; typedef int32_t NTSTATUS,LONG; typedef enum { LevelSensitive, Latched } KINTERRUPT_MODE;
+typedef void *PVOID; typedef uint32_t ULONG; typedef unsigned char BOOLEAN,KIRQL; typedef uintptr_t ULONG_PTR,KAFFINITY; typedef int32_t NTSTATUS,LONG; typedef enum { LevelSensitive, Latched } KINTERRUPT_MODE;
 #ifdef A04_AUDIO_QUERY_SHARED
 typedef uint16_t USHORT;
 typedef struct { uint32_t a; uint16_t b,c; uint8_t d[8]; } GUID;
@@ -112,6 +112,7 @@ inline int KeReleaseMutex(KMUTEX *m,BOOLEAN){__sync_lock_release(&m->held);retur
 typedef struct { volatile int held; } FAST_MUTEX;
 typedef struct { volatile int state; } EX_RUNDOWN_REF;
 inline void ExInitializeRundownProtection(EX_RUNDOWN_REF *r){r->state=0;}
+inline void ExReInitializeRundownProtection(EX_RUNDOWN_REF *r){r->state=0;}
 inline BOOLEAN ExAcquireRundownProtection(EX_RUNDOWN_REF *r){int v;do{v=__sync_fetch_and_add(&r->state,0);if(v&0x40000000)return FALSE;}while(!__sync_bool_compare_and_swap(&r->state,v,v+1));return TRUE;}
 inline void ExReleaseRundownProtection(EX_RUNDOWN_REF *r){__sync_fetch_and_sub(&r->state,1);}
 inline void ExWaitForRundownProtectionRelease(EX_RUNDOWN_REF *r){__sync_fetch_and_or(&r->state,0x40000000);while(__sync_fetch_and_add(&r->state,0)&0x3fffffff)sched_yield();}

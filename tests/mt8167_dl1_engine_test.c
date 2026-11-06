@@ -24,6 +24,10 @@ int main(void) {
  m.reg[0x3a4/4]=2; assert(mt8167_dl1_interrupt(&e,&n)==0 && n==0);
  m.reg[0x3a4/4]=3; assert(mt8167_dl1_interrupt(&e,&n)==1 && n==1 && m.reg[0x3a8/4]==1);
  assert(mt8167_dl1_stop(&e)==0 && e.state==MT8167_DL1_STOPPED);
+ assert(!mt8167_dl1_restart(&e,&p,0) && e.state==MT8167_DL1_RUNNING);
+ assert(!mt8167_dl1_stop(&e) && !mt8167_dl1_restart(&e,&p,1));
+ assert(!mt8167_dl1_stop(&e));m.reg[0x40/4]+=4;
+ assert(mt8167_dl1_restart(&e,&p,0)==-1 && e.state==MT8167_DL1_POISONED);
  for(i=1;i<=calls;i++) { memset(&m,0,sizeof m); m.fail=i; e.state=MT8167_DL1_IDLE;
    assert(mt8167_dl1_start(&e,&p)==-1 && e.state==MT8167_DL1_POISONED);
    assert(mt8167_dl1_start(&e,&p)==-1);

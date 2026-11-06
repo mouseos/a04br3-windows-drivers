@@ -5,6 +5,20 @@ typedef int MEMORY_CACHING_TYPE;
 enum { MmNonCached };
 typedef struct { uint64_t PlayOffset,WriteOffset; } KSAUDIO_POSITION,*PKSAUDIO_POSITION;
 typedef DEVICE_DESCRIPTION *PDEVICE_DESCRIPTION;
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+#define STATUS_BUFFER_TOO_SMALL (-16)
+enum KSSTATE {KSSTATE_STOP,KSSTATE_ACQUIRE,KSSTATE_PAUSE,KSSTATE_RUN};
+struct IPortWaveRTStream {
+ virtual PMDL AllocateContiguousPagesForMdl(PHYSICAL_ADDRESS,PHYSICAL_ADDRESS,size_t)=0;
+ virtual ULONG GetPhysicalPagesCount(PMDL)=0;
+ virtual PHYSICAL_ADDRESS GetPhysicalPageAddress(PMDL,ULONG)=0;
+ virtual PVOID MapAllocatedPages(PMDL,int)=0;
+ virtual void UnmapAllocatedPages(PVOID,PMDL)=0;
+ virtual void FreePagesFromMdl(PMDL)=0;
+ virtual ULONG AddRef()=0;virtual ULONG Release()=0;
+};
+typedef IPortWaveRTStream *PPORTWAVERTSTREAM;
+#endif
 #define CmResourceTypeInterrupt 2
 #define CmResourceTypeMemory 3
 #define CmResourceShareDeviceExclusive 1

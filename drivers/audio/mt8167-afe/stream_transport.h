@@ -9,7 +9,7 @@
  * the whole object at PASSIVE_LEVEL and must provide genuine resource owners,
  * safe clocks, codec mute, and a cache-coherent mapped buffer. The fixed audio
  * buffer must not be written concurrently during the initial publish. */
-enum Mt8167TransportState { AUDIO_READY, AUDIO_RUNNING, AUDIO_QUARANTINED, AUDIO_FAILED };
+enum Mt8167TransportState { AUDIO_READY, AUDIO_RUNNING, AUDIO_QUARANTINED, AUDIO_FAILED, AUDIO_STOPPED_RETAINED };
 struct Mt8167Transport {
     Mt8167CommonDma *dma;
     Mt8167Irq *irq;
@@ -41,8 +41,12 @@ int Mt8167TransportStartMaskedParent(Mt8167Transport *, uint32_t,
 /* Returns ring offset, not a count of elapsed periods. Caller excludes stop,
  * disconnect and PnP removal and keeps the owner and mapping referenced. */
 int Mt8167TransportPosition(Mt8167Transport *t,uint32_t *offset);
-/* A successful stop only disables AFE and disconnects the IRQ. It does not
- * certify DMA drain; the buffer and clock lease remain quarantined. */
+/* Engine PCM: disable/readback, retire and flush IRQ/DPC work, retain the
+ * connection and allocation for restart. Other profiles disconnect the IRQ.
+ * Neither path certifies DMA bus drain or permits freeing exposed memory. */
 int Mt8167TransportStop(Mt8167Transport *t);
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+int Mt8167TransportRestartRetained(Mt8167Transport *,BOOLEAN reset);
+#endif
 #endif
 #endif

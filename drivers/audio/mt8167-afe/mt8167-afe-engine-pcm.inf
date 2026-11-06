@@ -1,10 +1,10 @@
-; Engine PCM bring-up. One initial RUN; exposed resources pinned until reset.
+; Engine PCM with retained STOP/RUN and reopen; exposed resources pinned until reset.
 [Version]
 Signature="$WINDOWS NT$"
 Class=MEDIA
 ClassGuid={4d36e96c-e325-11ce-bfc1-08002be10318}
 Provider=%Provider%
-DriverVer=11/07/2026,2026.11.7.1002
+DriverVer=11/07/2026,2026.11.7.1003
 CatalogFile=mt8167-afe-engine-pcm.cat
 
 [Manufacturer]

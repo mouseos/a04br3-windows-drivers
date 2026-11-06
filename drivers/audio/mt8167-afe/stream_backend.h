@@ -26,5 +26,12 @@ struct Mt8167StreamBackend {
      * holds allocation until unbind succeeds or the backend is quarantined. */
     NTSTATUS (*bindWaveBuffer)(void *, PMDL, PVOID, ULONG);
     NTSTATUS (*unbindWaveBuffer)(void *, PMDL);
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+    /* Owner retains the PortCls allocation across stream instances. Exactly
+     * one checked-out client; checkin never releases exposed pages or SG. */
+    NTSTATUS (*checkout)(void *,PPORTWAVERTSTREAM,ULONG,PMDL *,PULONG);
+    NTSTATUS (*checkin)(void *,PPORTWAVERTSTREAM,PMDL);
+    NTSTATUS (*setState)(void *,PPORTWAVERTSTREAM,KSSTATE);
+#endif
 };
 #endif

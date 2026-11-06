@@ -22,10 +22,13 @@ int main() {
  read_fail=1;assert(Mt8167SynchronizedPosition(&irq,&plan,&offset)==-1 && offset==99);read_fail=0;
  pending=1; assert(test_interrupt.fn(&test_interrupt,test_interrupt.ctx) && irq.dpc.queued);
  assert(test_interrupt.fn(&test_interrupt,test_interrupt.ctx) && irq.dpc.queued);
- irq.dpc.queued=0; irq.dpc.fn(&irq.dpc,irq.dpc.ctx,nullptr,nullptr); assert(calls==1 && total==2 && !fault_seen);
+ irq.dpc.queued=0; irq.dpc.fn(&irq.dpc,irq.dpc.ctx,(PVOID)(ULONG_PTR)irq.generation,nullptr); assert(calls==1 && total==2 && !fault_seen);
+ LONG pendingBefore=irq.pending;int callbacks=calls;
+ irq.dpc.fn(&irq.dpc,irq.dpc.ctx,(PVOID)(ULONG_PTR)(irq.generation-1),nullptr);
+ assert(irq.pending==pendingBefore && calls==callbacks);
  fail=1; assert(!test_interrupt.fn(&test_interrupt,test_interrupt.ctx) && irq.dpc.queued);
  assert(Mt8167SynchronizedPosition(&irq,&plan,&offset)==-1 && offset==99);
- irq.dpc.queued=0; irq.dpc.fn(&irq.dpc,irq.dpc.ctx,nullptr,nullptr); assert(calls==2 && fault_seen);
+ irq.dpc.queued=0; irq.dpc.fn(&irq.dpc,irq.dpc.ctx,(PVOID)(ULONG_PTR)irq.generation,nullptr); assert(calls==2 && fault_seen);
  assert(Mt8167SynchronizedStart(&irq,&plan)==-1 && starts==1);
  assert(!Mt8167SynchronizedStop(&irq) && stops==1);
  pending=1;fail=1;assert(!test_interrupt.fn(&test_interrupt,test_interrupt.ctx) && !irq.dpc.queued);

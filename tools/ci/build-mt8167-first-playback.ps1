@@ -1,5 +1,5 @@
 # Build one matched, retained first-playback parent/PortCls pair. No deployment.
-param([string]$OutputDirectory,[switch]$IntegratedUsb,[switch]$IntegratedWifi,[switch]$EnginePcm,[switch]$SkipPeripheralBuild)
+param([string]$OutputDirectory,[switch]$IntegratedUsb,[switch]$IntegratedWifi,[switch]$EnginePcm,[switch]$SkipPeripheralBuild,[switch]$ReuseParent)
 $ErrorActionPreference='Stop'
 if($IntegratedWifi -and !$IntegratedUsb){throw 'IntegratedWifi requires IntegratedUsb for the single full-feature parent profile'}
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
@@ -50,7 +50,24 @@ try {
         $env:A04_SHARED_WIFI_IRQ_DIAGNOSTIC='1';$env:A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC='0'
     }
     # Exactly one parent build: includes both the retained audio and USB owners.
-    & (Join-Path $PSScriptRoot 'build-msdc-parent-probe.ps1')
+    if($ReuseParent){
+        $parentOut=Join-Path $out 'a04-msdc-parent-probe'
+        $manifestPath=Join-Path $parentOut 'parent-manifest.json'
+        $parentManifest=Get-Content -Raw $manifestPath|ConvertFrom-Json
+        foreach($property in $parentManifest.flags.PSObject.Properties){
+            if($names -contains $property.Name){
+                $requested=[Environment]::GetEnvironmentVariable($property.Name,'Process')
+                if([string]$property.Value -ne $requested){throw "Existing parent flag mismatch: $($property.Name)"}
+            }
+        }
+        if($EnginePcm -and $parentManifest.flags.A04_SHARED_ENGINE_PCM -ne '1'){
+            throw 'EnginePcm requires the actual identity-DMA parent provider'
+        }
+        $parentHash=(Get-FileHash (Join-Path $parentOut 'mt8167-shared.sys') -Algorithm SHA256).Hash
+        if($parentHash -ne $parentManifest.sys_sha256){throw 'Existing parent SYS hash mismatch'}
+    } else {
+        & (Join-Path $PSScriptRoot 'build-msdc-parent-probe.ps1')
+    }
     $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1"
     $inc=Join-Path $kit 'Include';$lib=Join-Path $kit 'Lib\winv6.3\km\arm'
     $audio=Join-Path $root 'drivers\audio\mt8167-afe';$obj=Join-Path $out 'audio'
@@ -119,12 +136,12 @@ try {
     $parentFlags=@{};foreach($name in $names){if($name.StartsWith('A04_')){$parentFlags[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}}
     @{source_commit=$commit;source_dirty=($dirty.Count -ne 0);hardware='MediaTek MT8167 AFE / MT6392';
       sample_rate=48000;pcm=$(if($EnginePcm){'client-written PortCls noncached stereo S16_LE; identity SG DMA'}else{'private immutable stereo S16_LE, 1500 Hz, peak 128/32768'});
-      mode='one initial RUN, resources and D0 power reference pinned until reset';
+      mode=$(if($EnginePcm){'retained STOP/RUN and reopen, one allocation; fault poison sticky; D0 pinned until reset'}else{'one initial RUN, resources and D0 power reference pinned until reset'});
       calibration='MT6392 hardware trim; Linux cold-start DC profile, no measured AU_LOL ADC calibration';
       installable=$false;note='Unsigned pair and INF only; primary owner must sign/package and validate on target';
       peripheral_binaries_included=(!$SkipPeripheralBuild);integrated_usb=[bool]$IntegratedUsb;integrated_wifi=[bool]$IntegratedWifi;shared_parent_count=$parents.Count;namespace='Reuse existing parent/touch/buttons/battery; no ACPI replacement';
-      driver_date=$(if($EnginePcm){'11/07/2026'}else{'11/06/2026'});driver_version=$(if($EnginePcm){'2026.11.7.1002'}else{'2026.11.6.1001'});
-      parent_flags=$parentFlags;audio_flags=$flags;diagnostic_interface=11;engine_pcm=[bool]$EnginePcm;client=$(if($EnginePcm){'AudioEndpointBuilder/AudioSrv; polling WaveRT, one initial RUN; not the private-tone client'}else{'direct KS, AudioSrv not required; dynamic ksuser.dll'});files=$hashes}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+      driver_date=$(if($EnginePcm){'11/07/2026'}else{'11/06/2026'});driver_version=$(if($EnginePcm){'2026.11.7.1003'}else{'2026.11.6.1001'});
+      parent_flags=$parentFlags;audio_flags=$flags;diagnostic_interface=11;parent_reused=[bool]$ReuseParent;engine_pcm=[bool]$EnginePcm;client=$(if($EnginePcm){'AudioEndpointBuilder/AudioSrv; polling WaveRT, retained STOP/RUN and reopen; not the private-tone client'}else{'direct KS, AudioSrv not required; dynamic ksuser.dll'});files=$hashes}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
 } finally {
     if($transcript){Stop-Transcript|Out-Null}
     foreach($name in $names){[Environment]::SetEnvironmentVariable($name,$saved[$name],'Process')}

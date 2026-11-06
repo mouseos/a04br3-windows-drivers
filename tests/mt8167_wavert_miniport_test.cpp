@@ -19,7 +19,11 @@ struct Port : IPortWaveRTStream {
  void FreePagesFromMdl(PMDL) override{freed++;}
  ULONG AddRef() override{return ++refs;} ULONG Release() override{return --refs;}
 };
-struct Back { int refs, frees, starts, stops; bool fail, uncertain; MDL mdl; };
+struct Back { int refs, frees, starts, stops; bool fail, uncertain; MDL mdl;
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+ bool poison=false,checked=false;KSSTATE state=KSSTATE_STOP;PMDL retained=nullptr;
+#endif
+};
 static void ref(void *c){((Back*)c)->refs++;}
 static void deref(void *c){((Back*)c)->refs--;}
 static NTSTATUS allocate(void *c,ULONG,PMDL *m,PULONG n,PULONG o,MEMORY_CACHING_TYPE *cache){Back*b=(Back*)c;*m=&b->mdl;*n=8192;*o=0;*cache=MmNonCached;return STATUS_SUCCESS;}
@@ -37,6 +41,23 @@ static NTSTATUS bindwave(void *,PMDL mdl,PVOID mapping,ULONG size){
 #endif
 }
 static NTSTATUS unbindwave(void *c,PMDL){((Back*)c)->frees++;return STATUS_SUCCESS;}
+#endif
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+static NTSTATUS checkout(void *c,PPORTWAVERTSTREAM port,ULONG bytes,PMDL *mdl,PULONG actual) {
+ Back *b=(Back *)c;if(b->checked || b->poison || bytes>8192)return STATUS_DEVICE_NOT_READY;
+ if(!b->retained)b->retained=&static_cast<Port *>(port)->mdl;
+ b->checked=true;*mdl=b->retained;*actual=8192;return STATUS_SUCCESS;
+}
+static NTSTATUS checkin(void *c,PPORTWAVERTSTREAM,PMDL) {
+ ((Back *)c)->checked=false;return STATUS_SUCCESS;
+}
+static NTSTATUS state(void *c,PPORTWAVERTSTREAM,KSSTATE s) {
+ Back *b=(Back *)c;if(b->poison)return STATUS_DEVICE_NOT_READY;
+ if(b->state==s)return STATUS_SUCCESS;
+ if(s==KSSTATE_RUN)b->starts++;else if(b->state==KSSTATE_RUN)b->stops++;
+ if(b->fail){b->poison=true;return STATUS_DEVICE_NOT_READY;}
+ b->state=s;return STATUS_SUCCESS;
+}
 #endif
 int main(){
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
@@ -62,7 +83,11 @@ int main(){
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
  assert(d->nodeCount==1 && d->connectionCount==2);
 #endif
- fmt.WaveFormatEx.nChannels=2; Back b{};Mt8167StreamBackend backend{&b,ref,deref,allocate,releasebuf,start,stop,pos,device,nullptr,nullptr};
+ fmt.WaveFormatEx.nChannels=2; Back b{};Mt8167StreamBackend backend{&b,ref,deref,allocate,releasebuf,start,stop,pos,device,nullptr,nullptr
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+ ,checkout,checkin,state
+#endif
+ };
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
  backend.bindWaveBuffer=bindwave;backend.unbindWaveBuffer=unbindwave;
 #endif
@@ -78,6 +103,22 @@ int main(){
  assert(m->NewStream(&st,&p,0,FALSE,&ext.data)==STATUS_NO_MATCH);
 #endif
  assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat) && b.refs==2);
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+ assert(!st->SetState(KSSTATE_ACQUIRE));
+ assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
+ assert(!st->SetState(KSSTATE_PAUSE) && !st->SetState(KSSTATE_RUN));
+ assert(!st->SetState(KSSTATE_PAUSE) && !st->SetState(KSSTATE_RUN));
+ assert(!st->SetState(KSSTATE_STOP) && !st->SetState(KSSTATE_RUN));
+ st->FreeAudioBuffer(mdl,actual);assert(!b.checked && p.freed==2);
+ st->Release();Port next;
+ assert(!m->NewStream(&st,&next,0,FALSE,&fmt.DataFormat));
+ PMDL again=nullptr;assert(!st->AllocateAudioBuffer(8192,&again,&actual,&off,&cache) && again==mdl);
+ assert(!st->SetState(KSSTATE_RUN));b.fail=true;
+ assert(st->SetState(KSSTATE_PAUSE)==STATUS_DEVICE_NOT_READY);
+ b.fail=false;assert(st->SetState(KSSTATE_RUN)==STATUS_DEVICE_NOT_READY);
+ st->Release();m->Release();assert(!b.refs && !b.frees);
+ return 0;
+#else
 #if defined(A04_TEST_WAVE_BIND_TIMEOUT) && A04_TEST_WAVE_BIND_TIMEOUT
  {int freed=p.freed;assert(st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache)==STATUS_IO_TIMEOUT && !mdl);
   st->Release();m->Release();assert(b.refs==1 && !b.frees && p.freed==freed);return 0;}
@@ -112,4 +153,5 @@ int main(){
  assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat));assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
  assert(st->SetState(KSSTATE_RUN)==STATUS_DEVICE_NOT_READY);assert(st->SetState(KSSTATE_STOP)==STATUS_DEVICE_NOT_READY);st->FreeAudioBuffer(mdl,actual);st->Release();m->Release();
  assert(b4.refs==1 && !b4.frees);
+#endif
 }

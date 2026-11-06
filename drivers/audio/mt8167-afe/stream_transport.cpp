@@ -67,8 +67,28 @@ int Mt8167TransportStop(Mt8167Transport *t)
 {
     if (!t || t->state != AUDIO_RUNNING || !t->irq) return -1;
     if (Mt8167SynchronizedStop(t->irq)) { t->state=AUDIO_QUARANTINED;return -1; }
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+    if(Mt8167DrainStoppedIrq(t->irq)) {t->state=AUDIO_QUARANTINED;return -1;}
+    /* Same DMA ring/SG/clock stay pinned. IRQ work drained, bus drain UNKNOWN. */
+    t->state=AUDIO_STOPPED_RETAINED;return 0;
+#else
     Mt8167DisconnectIrq(t->irq);
     /* No known drain proof exists. Keep clock and mapping. */
     t->state=AUDIO_QUARANTINED;return 0;
+#endif
 }
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+int Mt8167TransportRestartRetained(Mt8167Transport *t,BOOLEAN reset)
+{
+    if(!t || t->state!=AUDIO_STOPPED_RETAINED || !t->dma || !t->dma->exposed ||
+       !t->dma->prepared || !t->irq || !t->irq->interrupt ||
+       !t->engine || t->engine->state!=MT8167_DL1_STOPPED ||
+       (uint64_t)t->dma->logical.QuadPart!=t->plan.base ||
+       (uint64_t)t->plan.end+1!=(uint64_t)t->plan.base+t->dma->size)return -1;
+    if(Mt8167SynchronizedRestart(t->irq,&t->plan,reset)) {
+        t->state=AUDIO_QUARANTINED;return -1;
+    }
+    t->state=AUDIO_RUNNING;return 0;
+}
+#endif
 #endif

@@ -80,6 +80,13 @@ public:
     }
     ~Stream() {
         if (useBackend) {
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+            if(backendMdl) {
+                (void)backend.setState(backend.context,port,KSSTATE_STOP);
+                (void)backend.checkin(backend.context,port,backendMdl);
+            }
+            backend.dereference(backend.context);
+#else
             if (InterlockedExchange(&started,0)) {
                 NTSTATUS stopResult=backend.stop(backend.context);
 #if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED && (!defined(A04_AUDIO_ENGINE_PCM) || !A04_AUDIO_ENGINE_PCM)
@@ -105,6 +112,7 @@ public:
                 backend.dereference(backend.context);
 #endif
             }
+#endif
         } else if (buffer.mdl && !buffer.handedToDevice) Mt8167ReleaseUnpublishedBuffer(&buffer);
 #if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
         /* This PCM buffer is separate from the private hardware buffer. */
@@ -122,14 +130,20 @@ public:
     STDMETHODIMP_(ULONG) Release() override { LONG n=InterlockedDecrement(&refs); if(!n) { this->~Stream(); ExFreePoolWithTag(this,AUDIO_TAG); } return (ULONG)n; }
     STDMETHODIMP_(NTSTATUS) SetFormat(PKSDATAFORMAT f) override { return ValidFormat(f)?STATUS_SUCCESS:STATUS_NO_MATCH; }
     STDMETHODIMP_(NTSTATUS) SetState(KSSTATE s) override {
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+        if(s!=KSSTATE_STOP && s!=KSSTATE_ACQUIRE && s!=KSSTATE_PAUSE && s!=KSSTATE_RUN)
+            return STATUS_INVALID_PARAMETER;
+        if(!useBackend)return s==KSSTATE_RUN ? STATUS_DEVICE_NOT_READY : STATUS_SUCCESS;
+        if(!backendMdl)return s==KSSTATE_RUN ? STATUS_DEVICE_NOT_READY : STATUS_SUCCESS;
+        NTSTATUS result=backend.setState(backend.context,port,s);
+        if(NT_SUCCESS(result))InterlockedExchange(&started,s==KSSTATE_RUN);
+        return result;
+#else
         if (s==KSSTATE_RUN) {
             if (!useBackend || !backendMdl || InterlockedCompareExchange(&started,0,0) || everStarted) return STATUS_DEVICE_NOT_READY;
             BOOLEAN possiblyExposed=TRUE;
             NTSTATUS result=backend.start(backend.context,&possiblyExposed);
             everStarted=NT_SUCCESS(result) || possiblyExposed;
-#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
-            if(everStarted)buffer.handedToDevice=TRUE;
-#endif
             if (!NT_SUCCESS(result) && possiblyExposed) stopUncertain=true;
             if (NT_SUCCESS(result)) InterlockedExchange(&started,1);
             return result;
@@ -142,14 +156,29 @@ public:
 #endif
         }
         return STATUS_SUCCESS;
+#endif
     }
-    STDMETHODIMP_(NTSTATUS) GetPosition(PKSAUDIO_POSITION p) override { if(!p)return STATUS_INVALID_PARAMETER; if(useBackend && InterlockedCompareExchange(&started,0,0))return backend.position(backend.context,p); p->PlayOffset=0;p->WriteOffset=0;return STATUS_SUCCESS; }
+    STDMETHODIMP_(NTSTATUS) GetPosition(PKSAUDIO_POSITION p) override {
+        if(!p)return STATUS_INVALID_PARAMETER;
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+        if(useBackend && backendMdl)return backend.position(backend.context,p);
+#else
+        if(useBackend && InterlockedCompareExchange(&started,0,0))return backend.position(backend.context,p);
+#endif
+        p->PlayOffset=0;p->WriteOffset=0;return STATUS_SUCCESS;
+    }
     STDMETHODIMP_(NTSTATUS) AllocateAudioBuffer(ULONG size,PMDL *mdl,PULONG actual,PULONG offset,MEMORY_CACHING_TYPE *cache) override {
         if(!mdl || !actual || !offset || !cache) return STATUS_INVALID_PARAMETER;
         *mdl=NULL;*actual=0;*offset=0;
         if (useBackend) {
             if (backendMdl) return STATUS_DEVICE_BUSY;
-#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+            NTSTATUS result=backend.checkout(backend.context,port,size,mdl,actual);
+            if(NT_SUCCESS(result)) {
+                backendMdl=*mdl;backendBytes=*actual;*offset=0;*cache=MmNonCached;
+            }
+            return result;
+#elif defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
             NTSTATUS result=Mt8167AllocateBuffer(port,size,&buffer);
             if (!NT_SUCCESS(result)) return result;
             result=backend.bindWaveBuffer(backend.context,buffer.mdl,buffer.mapping,buffer.bytes);
@@ -196,7 +225,14 @@ public:
     }
     STDMETHODIMP_(VOID) FreeAudioBuffer(PMDL mdl,ULONG size) override {
         if (useBackend) {
-#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+            if(mdl && mdl==backendMdl && size==backendBytes) {
+                NTSTATUS stop=backend.setState(backend.context,port,KSSTATE_STOP);
+                if(NT_SUCCESS(stop) && NT_SUCCESS(backend.checkin(backend.context,port,mdl))) {
+                    backendMdl=NULL;backendBytes=0;InterlockedExchange(&started,0);
+                }
+            }
+#elif defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
             if (mdl && mdl==backendMdl && size==backendBytes && (!everStarted
 #if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED && (!defined(A04_AUDIO_ENGINE_PCM) || !A04_AUDIO_ENGINE_PCM)
                 || drained
@@ -289,6 +325,9 @@ public:
 NTSTATUS Mt8167NewMiniportWithBackend(PMINIPORTWAVERT *out, const Mt8167StreamBackend *b) {
     if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;
     if(b && (!b->reference || !b->dereference || !b->allocate || !b->freeBuffer || !b->start || !b->stop || !b->position || !b->getDeviceDescription)) return STATUS_INVALID_PARAMETER;
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+    if(b && (!b->checkout || !b->checkin || !b->setState))return STATUS_INVALID_PARAMETER;
+#endif
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
     if(b && (!b->bindWaveBuffer || !b->unbindWaveBuffer)) return STATUS_INVALID_PARAMETER;
 #endif
