@@ -82,3 +82,6 @@ frameを組立て、復元したstdoutからA04WLANのcount/statusを読む。�
 
 ARM32 compile/link、数値レコード長、PowerShell構文は開発側で確認する。
 通常OSでのcmd起動、WlanSvc/NDISによる実完了通知、UARTの実受信は主担当の確認が残る。
+
+物理入力なしで通常OSから1回起動するサービスはREADME-mt8167-hardware-probe.mdを参照。
+LocalSystemのMT8167HardwareProbeが、署名済みの固定WLAN/audio clientだけを起動する。
