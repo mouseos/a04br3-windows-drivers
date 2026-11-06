@@ -3,11 +3,12 @@
  * rgxinit.c RGXFWIrqEventRx; deferred request handling is supplied by owner.
  */
 #include "windows_irq.h"
+#include "../fwif/pvr_rogue_cr_defs.h"
 struct a04_vendor_irq {
     WDFINTERRUPT interrupt;WDFWORKITEM work;
     volatile UCHAR *core;ULONG bytes;
     a04_vendor_irq_service service;void *context;
-    volatile LONG powered,sequence,serviced,work_busy;
+    volatile LONG powered,sequence,serviced,work_busy,masked;
 };
 typedef struct a04_vendor_irq A04_VENDOR_IRQ;
 typedef struct { struct a04_vendor_irq *owner; } WORK_OBJECT;
@@ -23,7 +24,14 @@ BOOLEAN a04_vendor_isr(WDFINTERRUPT interrupt,ULONG message)
     if(!q || !q->core || !InterlockedCompareExchange(&q->powered,0,0)) return FALSE;
     status=READ_REGISTER_ULONG((volatile ULONG *)(void *)(q->core+0x8a8u));
     if(status==0xffffffffu || !(status&1u)) return FALSE;
-    WRITE_REGISTER_ULONG((volatile ULONG *)(void *)(q->core+0x8b0u),1u);
+    /* A level source that remains asserted must not monopolize DIRQL and
+     * starve the watchdog DPC. Mask this device's source before acknowledging;
+     * deferred service rearms it only after both FWCCB and the source drain. */
+    WRITE_REGISTER_ULONG((volatile ULONG *)(void *)(q->core+ROGUE_CR_MIPS_WRAPPER_IRQ_ENABLE),0u);
+    (void)READ_REGISTER_ULONG((volatile ULONG *)(void *)(q->core+ROGUE_CR_MIPS_WRAPPER_IRQ_ENABLE));
+    InterlockedExchange(&q->masked,1);
+    WRITE_REGISTER_ULONG((volatile ULONG *)(void *)(q->core+ROGUE_CR_MIPS_WRAPPER_IRQ_CLEAR),1u);
+    (void)READ_REGISTER_ULONG((volatile ULONG *)(void *)(q->core+ROGUE_CR_MIPS_WRAPPER_IRQ_STATUS));
     InterlockedIncrement(&q->sequence);
     WdfInterruptQueueDpcForIsr(interrupt);return TRUE;
 }
@@ -89,6 +97,28 @@ NTSTATUS a04_vendor_irq_unbind(struct a04_vendor_irq *q)
 {
     if(!q || InterlockedCompareExchange(&q->powered,0,0)) return STATUS_INVALID_DEVICE_STATE;
     q->core=NULL;q->bytes=0;return STATUS_SUCCESS;
+}
+static BOOLEAN a04_vendor_rearm_synchronized(WDFINTERRUPT interrupt,WDFCONTEXT context)
+{
+    struct a04_vendor_irq *q=context;ULONG status;
+    UNREFERENCED_PARAMETER(interrupt);
+    if(!q || !q->core || !InterlockedCompareExchange(&q->powered,0,0))return FALSE;
+    if(!InterlockedCompareExchange(&q->masked,0,0))return TRUE;
+    WRITE_REGISTER_ULONG((volatile ULONG *)(void *)(q->core+ROGUE_CR_MIPS_WRAPPER_IRQ_CLEAR),1u);
+    status=READ_REGISTER_ULONG((volatile ULONG *)(void *)(q->core+ROGUE_CR_MIPS_WRAPPER_IRQ_STATUS));
+    /* Preserve unknown or still-pending events. All synchronous commands
+     * already poll their completion; masking is not DMA quiescence. */
+    if(status==0xffffffffu || (status&ROGUE_CR_MIPS_WRAPPER_IRQ_STATUS_EVENT_EN))return FALSE;
+    InterlockedExchange(&q->masked,0);
+    WRITE_REGISTER_ULONG((volatile ULONG *)(void *)(q->core+ROGUE_CR_MIPS_WRAPPER_IRQ_ENABLE),
+        ROGUE_CR_MIPS_WRAPPER_IRQ_ENABLE_EVENT_EN);
+    (void)READ_REGISTER_ULONG((volatile ULONG *)(void *)(q->core+ROGUE_CR_MIPS_WRAPPER_IRQ_ENABLE));
+    return TRUE;
+}
+BOOLEAN a04_vendor_irq_rearm(struct a04_vendor_irq *q)
+{
+    if(!q || !q->interrupt || !InterlockedCompareExchange(&q->powered,0,0))return FALSE;
+    return WdfInterruptSynchronize(q->interrupt,a04_vendor_rearm_synchronized,q);
 }
 void a04_vendor_irq_set_power(struct a04_vendor_irq *q,BOOLEAN powered)
 { if(q) InterlockedExchange(&q->powered,powered?1:0); }

@@ -406,6 +406,7 @@ static NTSTATUS GpuVendorIrqService(void *context)
     GPU_CONTEXT *c=context;NTSTATUS status;
     WdfWaitLockAcquire(c->vendor_lifetime,NULL);
     status=a04_vendor_m1_11_windows_irq_snapshot(&c->vendor_start,TRUE,&c->vendor_irq_snapshot);
+    if(NT_SUCCESS(status)) (void)a04_vendor_irq_rearm(c->vendor_irq);
     WdfWaitLockRelease(c->vendor_lifetime);return status;
 }
 #endif
