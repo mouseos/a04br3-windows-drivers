@@ -33,7 +33,7 @@ if($Profile -eq 'Integrated') {
     }
     $settings['A04_SHARED_USB_ONLY']='0';$settings['A04_SHARED_TOUCH_D0_EXPERIMENT']='1'
 } else {
-    $settings['A04_SHARED_FIRST_PLAYBACK']='0';$settings['A04_SHARED_DIGITAL_PLAYBACK']='0'
+    $settings['A04_SHARED_FIRST_PLAYBACK']='0';$settings['A04_SHARED_DIGITAL_PLAYBACK']='0';$settings['A04_SHARED_WIFI_RUNTIME']='0'
 }
 $saved=@{}
 foreach($key in $settings.Keys){$saved[$key]=[Environment]::GetEnvironmentVariable($key);[Environment]::SetEnvironmentVariable($key,$settings[$key])}

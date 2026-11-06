@@ -1,7 +1,13 @@
 # ARM32 Native WLAN scan probe. No deployment, signing, profile or key input.
+param([string]$OutputDirectory)
 $ErrorActionPreference='Stop'
 $root=Resolve-Path (Join-Path $PSScriptRoot '..\..');$kit="${env:ProgramFiles(x86)}\Windows Kits\8.1"
-$inc=Join-Path $kit 'Include';$lib=Join-Path $kit 'Lib\winv6.3\um\arm';$out=Join-Path $root 'build\mt6630-runtime\wlan-probe'
+$inc=Join-Path $kit 'Include';$lib=Join-Path $kit 'Lib\winv6.3\um\arm'
+if(!$OutputDirectory){$OutputDirectory=Join-Path $root 'build\mt6630-runtime\wlan-probe'}
+$out=[IO.Path]::GetFullPath($OutputDirectory)
+if(!$out.StartsWith($root.Path+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){
+ throw 'OutputDirectory must be inside this checkout'
+}
 New-Item -ItemType Directory -Force $out | Out-Null
 $oldTmp=$env:TMP;$oldTemp=$env:TEMP
 try {

@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/mouseos/a04br3-windows-drivers.git",
+  "usb_base": "5f8187223ed0988772fd659d208b6a47bced79fe",
+  "audio": "ae1c716",
+  "audio_interface": 11,
+  "wifi": "0b2b60c",
+  "wifi_interface": 2,
+  "shared_parent_hardware_id": "ACPI\\BEN0001",
+  "uefi_reference_from_primary_owner": "cc7c20fa",
+  "uefi_modified": false,
+  "hardware_verified": false
+}
