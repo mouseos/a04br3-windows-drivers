@@ -105,7 +105,8 @@ int main(void)
         assert(n->bindings.pixel_event_info==0x202 && n->bindings.pixel_event_code==0x100a0u);
         assert(((uint64_t *)n->output[2].cpu)[511] && ((uint64_t *)n->output[3].cpu)[487]);
         assert(!((uint64_t *)n->output[3].cpu)[488]);
-        for(i=0;i<4096000u/4u;i++)assert(!((uint32_t *)n->output[0].cpu)[i]);
+        /* An unexecuted black clear must not match its expected output. */
+        for(i=0;i<4096000u/4u;i++)assert(((uint32_t *)n->output[0].cpu)[i]==0xa5a5a5a5u);
     }
     x.fw.hardware_owned=TRUE;i=frees;
     assert(a04_vendor_native_release_cold(&n)==STATUS_DEVICE_BUSY && n && frees==i);
