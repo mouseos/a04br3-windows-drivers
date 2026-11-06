@@ -22,7 +22,7 @@ static int frame(DWORD run,DWORD seq,DWORD kind,const DWORD *values) {
  return 1;
 }
 void mainCRTStartup(void) {
- HANDLE cpu;struct a04_cpu_response r;DWORD run=GetTickCount(),start=run,i,n,err,v[4];
+ HANDLE cpu;struct a04_cpu_response r;DWORD run=GetTickCount(),start=run,i,n,err,v[4],result=0;
  do {uart=CreateFileW(L"\\\\.\\A04BR3ScreenUart",GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,0,NULL);if(uart!=INVALID_HANDLE_VALUE)break;Sleep(50);}while((DWORD)(GetTickCount()-start)<30000u);
  if(uart==INVALID_HANDLE_VALUE)ExitProcess(4);
  start=GetTickCount();do {cpu=CreateFileW(A04_CPU_USER,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,0,NULL);if(cpu!=INVALID_HANDLE_VALUE)break;Sleep(100);}while((DWORD)(GetTickCount()-start)<60000u);
@@ -30,7 +30,7 @@ void mainCRTStartup(void) {
  for(i=0;i<4;i++) {
   n=0;SetLastError(ERROR_SUCCESS);
   if(!DeviceIoControl(cpu,A04_CPU_GET,NULL,0,&r,sizeof(r),&n,NULL) || n!=sizeof(r) || r.version!=1) {
-   err=GetLastError();if(!err)err=ERROR_INVALID_DATA;v[0]=err;v[1]=n;v[2]=v[3]=0;if(!frame(run,i,0xffffffffu,v))ExitProcess(4);
+   result=6;err=GetLastError();if(!err)err=ERROR_INVALID_DATA;v[0]=err;v[1]=n;v[2]=v[3]=0;if(!frame(run,i,0xffffffffu,v))ExitProcess(4);
   } else {
    v[0]=r.valid;v[1]=r.configured_pll_hz;v[2]=r.vproc_uv;v[3]=r.devinfo_bin;if(!frame(run,i,0,v))ExitProcess(4);
    v[0]=r.mux;v[1]=r.pll0;v[2]=r.pll1;v[3]=r.pll_power;if(!frame(run,i,1,v))ExitProcess(4);
@@ -38,5 +38,5 @@ void mainCRTStartup(void) {
   }
   if(i<3)Sleep(15000u);
  }
- CloseHandle(cpu);CloseHandle(uart);ExitProcess(0);
+ CloseHandle(cpu);CloseHandle(uart);ExitProcess(result);
 }
