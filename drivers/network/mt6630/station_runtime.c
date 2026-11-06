@@ -2,7 +2,7 @@
  * Single PASSIVE_LEVEL SDIO owner. Consume actual WHISR/RX events, never
  * synthesize scan completion, association response or STA activation. */
 #include "station_runtime.h"
-#include "rsn_policy.h"
+#include "station_selection.h"
 static int fail(struct a04_station_runtime *r,int e)
 {r->failed=e?e:-1;r->connecting=r->connected=0;return r->failed;}
 int a04_station_runtime_init(struct a04_station_runtime *r,struct a04_wmt_bridge *b)
@@ -84,11 +84,8 @@ int a04_station_runtime_connect(struct a04_station_runtime *r,const uint8_t *ssi
 {
  unsigned i;uint64_t now,deadline;int e;
  if(!r||!r->initialized||r->failed||r->connected||r->connecting||!ssid||!length||length>32||r->bridge->scan.pending)return -1;
- for(i=0;i<r->bss_count;i++)if(r->bss[i].ap.ssid_length==length&&a04_wlan_equal(r->bss[i].ap.ssid,ssid,length))break;
+ for(i=0;i<r->bss_count;i++)if(a04_station_candidate_matches(&r->station.local,&r->bss[i].ap,ssid,length,r->desired_secured))break;
  if(i==r->bss_count)return A04_WLAN_UNSUPPORTED;
- if(!(r->station.local.active_channels&(1u<<r->bss[i].ap.channel)))return A04_WLAN_UNSUPPORTED;
- if(!!(r->bss[i].ap.capability&16u)!=!!r->desired_secured)return A04_WLAN_SECURITY;
- if(r->desired_secured&&a04_os_rsn_policy(r->bss[i].ap.rsn,r->bss[i].ap.rsn_length))return A04_WLAN_SECURITY;
  now=r->now(r->context);deadline=now+5000000u;
  e=a04_wmt_bridge_station_select(r->bridge,&r->station,&r->bss[i].ap,r->desired_secured,1,5000,now,deadline);if(e)return fail(r,e);
  r->connecting=1;r->phase=0;

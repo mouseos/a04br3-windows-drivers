@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "ndis_runtime.h"
-#include "rsn_policy.h"
+#include "station_selection.h"
 #define HDR(v,t,rev) do{(v).Header.Type=NDIS_OBJECT_TYPE_DEFAULT;(v).Header.Revision=(rev);(v).Header.Size=sizeof(t);}while(0)
 static const NDIS_OID oids[]={OID_GEN_SUPPORTED_LIST,OID_GEN_HARDWARE_STATUS,OID_GEN_MEDIA_SUPPORTED,OID_GEN_MEDIA_IN_USE,OID_GEN_MAXIMUM_FRAME_SIZE,OID_GEN_MAXIMUM_TOTAL_SIZE,OID_GEN_LINK_SPEED,OID_GEN_CURRENT_LOOKAHEAD,OID_GEN_CURRENT_PACKET_FILTER,OID_GEN_VENDOR_ID,OID_GEN_VENDOR_DESCRIPTION,OID_GEN_DRIVER_VERSION,OID_GEN_MEDIA_CONNECT_STATUS,
  OID_DOT11_CIPHER_KEY_MAPPING_KEY,OID_DOT11_CIPHER_DEFAULT_KEY,OID_DOT11_CIPHER_DEFAULT_KEY_ID,OID_DOT11_PORT_STATE_NOTIFICATION,OID_DOT11_RESET_REQUEST,OID_DOT11_CURRENT_ADDRESS,OID_DOT11_PERMANENT_ADDRESS,OID_DOT11_OPERATION_MODE_CAPABILITY,OID_DOT11_CURRENT_OPERATION_MODE,OID_DOT11_SUPPORTED_PHY_TYPES,OID_DOT11_CURRENT_PHY_ID,OID_DOT11_DESIRED_PHY_LIST,OID_DOT11_HARDWARE_PHY_STATE,OID_DOT11_NIC_POWER_STATE,OID_DOT11_EXTSTA_CAPABILITY,OID_DOT11_AUTO_CONFIG_ENABLED,OID_DOT11_DESIRED_BSS_TYPE,OID_DOT11_DESIRED_SSID_LIST,OID_DOT11_DESIRED_BSSID_LIST,OID_DOT11_ENABLED_AUTHENTICATION_ALGORITHM,OID_DOT11_ENABLED_UNICAST_CIPHER_ALGORITHM,OID_DOT11_ENABLED_MULTICAST_CIPHER_ALGORITHM,OID_DOT11_SUPPORTED_UNICAST_ALGORITHM_PAIR,OID_DOT11_SUPPORTED_MULTICAST_ALGORITHM_PAIR,OID_DOT11_PRIVACY_EXEMPTION_LIST,OID_DOT11_EXCLUDE_UNENCRYPTED,OID_DOT11_SCAN_REQUEST,OID_DOT11_ENUM_BSS_LIST,OID_DOT11_FLUSH_BSS_LIST,OID_DOT11_CONNECT_REQUEST,OID_DOT11_DISCONNECT_REQUEST,OID_DOT11_CURRENT_CHANNEL,OID_DOT11_CURRENT_FREQUENCY,OID_DOT11_SUPPORTED_COUNTRY_OR_REGION_STRING,OID_DOT11_DESIRED_COUNTRY_OR_REGION_STRING};
@@ -80,11 +80,11 @@ static NDIS_STATUS connect(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
 {
  DOT11_CONNECTION_START_PARAMETERS start;DOT11_CONNECTION_COMPLETION_PARAMETERS done;DOT11_ASSOCIATION_START_PARAMETERS ast;
  union {DOT11_ASSOCIATION_COMPLETION_PARAMETERS align;uint8_t bytes[sizeof(DOT11_ASSOCIATION_COMPLETION_PARAMETERS)+384+1024+1024+sizeof(ULONG)];} buffer;uint8_t *storage=buffer.bytes;DOT11_ASSOCIATION_COMPLETION_PARAMETERS *ac=&buffer.align;ULONG offset=sizeof(*ac),phy=0;int e;unsigned index;
- for(index=0;index<a->radio.bss_count;index++)if(a->desired.uSSIDLength==a->radio.bss[index].ap.ssid_length&&a04_wlan_equal(a->desired.ucSSID,a->radio.bss[index].ap.ssid,a->desired.uSSIDLength))break;
- if(index==a->radio.bss_count)return NDIS_STATUS_FAILURE;
  unsigned secured=a->os_security.auth==DOT11_AUTH_ALGO_RSNA_PSK;
- if(secured){if(a->os_security.unicast!=DOT11_CIPHER_ALGO_CCMP||a->os_security.multicast!=DOT11_CIPHER_ALGO_CCMP||a04_os_rsn_policy(a->radio.bss[index].ap.rsn,a->radio.bss[index].ap.rsn_length))return NDIS_STATUS_NOT_SUPPORTED;}
- else if(a->os_security.unicast||a->os_security.multicast||(a->radio.bss[index].ap.capability&16))return NDIS_STATUS_NOT_SUPPORTED;
+ if(secured){if(a->os_security.unicast!=DOT11_CIPHER_ALGO_CCMP||a->os_security.multicast!=DOT11_CIPHER_ALGO_CCMP)return NDIS_STATUS_NOT_SUPPORTED;}
+ else if(a->os_security.unicast||a->os_security.multicast)return NDIS_STATUS_NOT_SUPPORTED;
+ for(index=0;index<a->radio.bss_count;index++)if(a04_station_candidate_matches(&a->radio.station.local,&a->radio.bss[index].ap,a->desired.ucSSID,a->desired.uSSIDLength,secured))break;
+ if(index==a->radio.bss_count)return NDIS_STATUS_FAILURE;
  a->radio.desired_secured=secured;a->association_reported=0;
  NdisAcquireSpinLock(&a->lock);a->request=NULL;NdisReleaseSpinLock(&a->lock);NdisMOidRequestComplete(a->adapter,q,NDIS_STATUS_SUCCESS);
  NdisZeroMemory(&start,sizeof(start));HDR(start,DOT11_CONNECTION_START_PARAMETERS,1);start.BSSType=dot11_BSS_type_infrastructure;a04_ndis_status(a,NDIS_STATUS_DOT11_CONNECTION_START,&start,sizeof(start));

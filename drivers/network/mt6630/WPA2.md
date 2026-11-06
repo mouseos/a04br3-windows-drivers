@@ -30,3 +30,12 @@ BSS wire値をOPEN=0、WPA2-PSK=7、CCMP encryption status=6へ修正した。
 
 ARM32 COFF compileの確認と実接続は別である。最新WDK8.1 SYS link、OSの属性/OID受理、
 EAPOL往復、鍵event、暗号化データ送受信、DHCPは主担当の実機確認が残る。
+
+接続候補の選択では同じSSIDの先頭BSSだけを検査せず、候補ごとにERP対象channel、
+NVRAM由来permitted/active mask、OPEN/RSNA-PSKとCCMP RSN policyを確認する。
+先頭がOPEN、非対応group cipher、使用不可channelでも、後続の適合BSSを選べる。
+Native association通知とfirmware station選択は同じpredicateを使う。
+同型番Linux gen3 mgmt/scan.cのscanSanityCheckBssDescもchannel legalityと
+rsnPerformPolicySelectionを候補ごとに評価する。新しいSSID/BSSID/鍵のログは追加しない。
+既存bridge確認へ混在候補の回帰確認を1件追加し、模擬NDISや試験群は追加しない。
+この変更で実接続を確認したとは扱わない。接続中scanは引き続き明示拒否される。

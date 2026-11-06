@@ -10,10 +10,17 @@ static inline int a04_os_rsn_policy(const uint8_t *p,unsigned n)
  if(!p||n<20||p[0]!=48||p[1]+2u!=n||a04_wmt_le16(p+2)!=1||!a04_wlan_equal(p+4,aes,4))return -1;
  count=a04_wmt_le16(p+off);off+=2;if(!count||count>(n-off)/4)return -1;
  for(unsigned i=0;i<count;i++,off+=4)found|=a04_wlan_equal(p+off,aes,4);
- if(!found||n-off<2)return -1;count=a04_wmt_le16(p+off);off+=2;found=0;if(!count||count>(n-off)/4)return -1;
- for(unsigned i=0;i<count;i++,off+=4)found|=a04_wlan_equal(p+off,psk,4);if(!found)return -1;
- if(off==n)return 0;if(n-off<2)return -1;caps=a04_wmt_le16(p+off);off+=2;if(caps&0x40)return -1;
- if(off==n)return 0;if(n-off<2)return -1;count=a04_wmt_le16(p+off);off+=2;if(count>(n-off)/16)return -1;off+=16*count;
- if(off==n)return 0;return (n-off==4&&(caps&0x80)&&p[off]==0&&p[off+1]==15&&p[off+2]==172&&p[off+3]==6)?0:-1;
+ if(!found||n-off<2)return -1;
+ count=a04_wmt_le16(p+off);off+=2;found=0;if(!count||count>(n-off)/4)return -1;
+ for(unsigned i=0;i<count;i++,off+=4)found|=a04_wlan_equal(p+off,psk,4);
+ if(!found)return -1;
+ if(off==n)return 0;
+ if(n-off<2)return -1;
+ caps=a04_wmt_le16(p+off);off+=2;if(caps&0x40)return -1;
+ if(off==n)return 0;
+ if(n-off<2)return -1;
+ count=a04_wmt_le16(p+off);off+=2;if(count>(n-off)/16)return -1;off+=16*count;
+ if(off==n)return 0;
+ return (n-off==4&&(caps&0x80)&&p[off]==0&&p[off+1]==15&&p[off+2]==172&&p[off+3]==6)?0:-1;
 }
 #endif

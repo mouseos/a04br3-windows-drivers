@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include <assert.h>
 #include <stdio.h>
+#include "../drivers/network/mt6630/station_selection.h"
 #include "../drivers/network/mt6630/wmt_bridge.c"
 struct fake {unsigned requests;uint32_t status;};
 static int direct(void *context,uint32_t arg,uint32_t *out){(void)context;(void)arg;*out=0;return 0;}
@@ -12,8 +13,27 @@ static int transfer_fake(void *context,uint32_t arg,unsigned write,uint8_t *data
  data[0]=(uint8_t)v;data[1]=(uint8_t)(v>>8);data[2]=(uint8_t)(v>>16);data[3]=(uint8_t)(v>>24);return 0;
 }
 static int done(void *context){(void)context;return 0;}
+static void candidate_selection_regression(void)
+{
+ struct a04_wlan_local local={0};struct a04_wlan_ap ap[3]={0};
+ const uint8_t synthetic_ssid[1]={1};unsigned length,i,chosen;
+ const uint8_t *rsn=a04_wlan_rsn_selected(&length);
+ local.active_channels=local.permitted_channels=1u<<1;
+ for(i=0;i<3;i++){
+  ap[i].ssid_length=1;ap[i].ssid[0]=1;ap[i].channel=1;ap[i].capability=16;
+  ap[i].rsn_length=length;for(unsigned j=0;j<length;j++)ap[i].rsn[j]=rsn[j];
+ }
+ ap[0].capability=0;ap[0].rsn_length=0; /* Earlier OPEN BSS. */
+ ap[1].rsn[7]=2; /* Earlier incompatible TKIP group suite. */
+ for(chosen=0;chosen<3;chosen++)if(a04_station_candidate_matches(&local,&ap[chosen],synthetic_ssid,1,1))break;
+ assert(chosen==2); /* Compatible CCMP BSS must still be reachable. */
+ assert(a04_station_candidate_matches(&local,&ap[0],synthetic_ssid,1,0));
+ assert(!a04_station_candidate_matches(&local,&ap[2],synthetic_ssid,1,0));
+ ap[2].channel=6;assert(!a04_station_candidate_matches(&local,&ap[2],synthetic_ssid,1,1));
+}
 int main(void)
 {
+ candidate_selection_regression();
  uint8_t cis[]={0x20,4,0x7a,0x03,0x30,0x66,0xff};uint32_t status=0;
  struct a04_wifi_owner owner={0,1,1,1,1,1,0,0};struct a04_wifi_life life={0};struct fake f={0};
  struct a04_sdio_direct d={&owner,&f,direct,0,0};struct a04_sdio_bus bus={&f,transfer_fake};
