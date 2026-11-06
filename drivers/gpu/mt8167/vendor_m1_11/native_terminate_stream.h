@@ -14,4 +14,8 @@ struct a04_m111_terminate_stream { uint8_t data[A04_M111_TERMINATE_BYTES]; };
  * No publication; output and resource lifetime belong to the caller. */
 int a04_m111_build_terminate_stream(struct a04_m111_terminate_stream *out,
     uint64_t page_gpu,uint32_t screen_xy_max);
+/* Single-sample AddRT dimensions, same no-streamout conditions as above.
+ * Uses the board's ceil(/16)-1 maxima, not generic /32 XML units. */
+int a04_m111_build_clear_terminate_stream(struct a04_m111_terminate_stream *out,
+    uint64_t page_gpu,uint32_t width,uint32_t height);
 #endif

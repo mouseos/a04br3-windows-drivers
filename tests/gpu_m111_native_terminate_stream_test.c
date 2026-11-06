@@ -15,7 +15,13 @@ int main(void)
     assert(((u32(p.data+68)>>18)&511)==49 && (u32(p.data+68)&511)==79);
     assert(!u32(p.data+72));
     for(i=12;i<64;i++)assert(!p.data[i]);
+    assert(!a04_m111_build_clear_terminate_stream(&p,UINT64_C(0x65c0358000),800,600));
+    assert(u32(p.data+68)==((49u<<18)|37u));
+    assert(!a04_m111_build_clear_terminate_stream(&p,UINT64_C(0x65c0358000),800,1280));
+    assert(u32(p.data+68)==((49u<<18)|79u));
     old=p;
+    assert(a04_m111_build_clear_terminate_stream(&p,UINT64_C(0x65c0358000),0,600));
+    assert(a04_m111_build_clear_terminate_stream(&p,UINT64_C(0x65c0358000),800,4097));
     assert(a04_m111_build_terminate_stream(&p,UINT64_C(0x65c0358004),0));
     assert(a04_m111_build_terminate_stream(&p,UINT64_C(0x65c0358000),1u<<9));
     assert(a04_m111_build_terminate_stream(&p,UINT64_C(1)<<40,0));
