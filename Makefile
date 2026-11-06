@@ -4,7 +4,8 @@ CFLAGS ?= -O2 -Wall -Wextra -Werror -std=c11
 SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test-gpu-m111-native
-test-gpu-m111-native: build/gpu_m111_native_clear_surface_test build/gpu_m111_native_clear_codespace_test build/gpu_m111_native_eot_program_test build/gpu_m111_native_hwrt_profile_test build/gpu_m111_native_clear_pds_test build/gpu_m111_native_resources_test build/gpu_m111_native_fields_test build/gpu_m111_native_ccb_test build/gpu_m111_native_pair_test
+test-gpu-m111-native: build/gpu_m111_native_terminate_stream_test build/gpu_m111_native_clear_surface_test build/gpu_m111_native_clear_codespace_test build/gpu_m111_native_eot_program_test build/gpu_m111_native_hwrt_profile_test build/gpu_m111_native_clear_pds_test build/gpu_m111_native_resources_test build/gpu_m111_native_fields_test build/gpu_m111_native_ccb_test build/gpu_m111_native_pair_test
+	./build/gpu_m111_native_terminate_stream_test
 	./build/gpu_m111_native_clear_surface_test
 	./build/gpu_m111_native_clear_codespace_test
 	./build/gpu_m111_native_eot_program_test
@@ -14,6 +15,10 @@ test-gpu-m111-native: build/gpu_m111_native_clear_surface_test build/gpu_m111_na
 	./build/gpu_m111_native_fields_test
 	./build/gpu_m111_native_ccb_test
 	./build/gpu_m111_native_pair_test
+
+build/gpu_m111_native_terminate_stream_test: tests/gpu_m111_native_terminate_stream_test.c drivers/gpu/mt8167/vendor_m1_11/native_terminate_stream.c drivers/gpu/mt8167/vendor_m1_11/native_terminate_stream.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
 
 build/gpu_m111_native_clear_surface_test: tests/gpu_m111_native_clear_surface_test.c drivers/gpu/mt8167/vendor_m1_11/native_clear_surface.c drivers/gpu/mt8167/vendor_m1_11/native_clear_surface.h drivers/gpu/mt8167/vendor_m1_11/native_clear_codespace.c drivers/gpu/mt8167/vendor_m1_11/native_clear_codespace.h drivers/gpu/mt8167/vendor_m1_11/native_eot_program.c drivers/gpu/mt8167/vendor_m1_11/native_eot_program.h drivers/gpu/mt8167/vendor_m1_11/native_clear_pds.c drivers/gpu/mt8167/vendor_m1_11/native_clear_pds.h
 	@mkdir -p build
