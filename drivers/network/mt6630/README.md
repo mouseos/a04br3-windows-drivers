@@ -442,3 +442,33 @@ session 停止は IRQ と非同期 I/O の排出後、combo と firmware の停�
 現行 WDF 接続には確認可能な provider がないため、その callback は拒否し、
 停止状態を隔離して lease と写像を保持する。host の注入 callback による成功・
 失敗の試験は実デバイスの停止根拠ではない。RTC の取得や放棄も有効化していない。
+
+### Linux と機種 UEFI の書込み経路（ソース調査）
+
+- CT3 Linux 4.4 `drivers/misc/mediatek/connectivity/common/common_detect/wmt_detect_pwr.c`:
+  power-on で任意 LDO、RTC 32 kHz、PMU、reset を扱い、power-off では任意 LDO、
+  reset、PMU の順に low を要求する。機種 `port/gsi/kernel-4.14/arch/arm64/boot/dts/mediatek/a04br3.dts`
+  は PMU=GPIO4、reset=GPIO7、Wi-Fi EINT=GPIO5 を記述し、combo LDO pin は記述しない。
+- 同 Linux `common_main/platform/wmt_plat_alps.c` は RTC を `RTC_GPIO_USER_GPS` で
+  有効化する。`include/linux/mfd/mt6397/rtc_misc.h` では GPS user は 9。別の
+  Wi-Fi user bit や他の user を Linux 側から引き継いだと仮定しない。
+- Linux 4.14 `drivers/mfd/mt6397-misc.c` は同一 mutex で RTC_PDN1 と RTC_CON を
+  read/modify/write し、WRTGR を発行する。ローカル mutex は Linux 以外の writer、
+  または UEFI/EL3 との排他の証拠ではない。
+- `uefi-a04br3` の `WindowsArm32/BootShim/EarlyRecovery.c`、`WindowsArm32/PrePi/Pi.c`、
+  `Library/A04BR3PlatformSecBoardLib` は各 build flag に応じて SEC/PrePi で RTC や
+  spare register を操作する。`A04BR3TestCycleDxe` は `A04BR3_TEST_CYCLE=1` の
+  場合、entry と ExitBootServices callback で RTC_PDN1 bit 13 を更新する。
+  `ThreeCpuDxe/A04BR3BootTraceDxe.c` にも条件付き bounded recovery の更新がある。
+- UEFI `DisplayInitDxe` は PWRAP WACS2 を使用し、条件付き `TouchPowerDxe` は
+  BeforeExitBootServices で VGP 電源を WACS2 で更新する。各イベント通知の存在、
+  同期、終了順序だけでは未知の EL3 writer や物理 GPIO の排他は証明されない。
+  上記はソース上の経路であり、現在端末に書かれているビルド設定の観測ではない。
+
+診断 session の IRQ と非同期 I/O が排出され、親の実 lease と board ready が
+有効な場合、`a04_wifi_board_poweroff_signals` は GPIO7 reset low、GPIO4 PMU low
+を順に要求する。GPIO の所有権が無効、起動途中、surprise removal、書込み失敗
+では停止または poison し、自動で次の操作に進まない。書込み受付は pad 電圧、
+RTC 停止、WLAN/Bluetooth/GPS の活動停止を証明しないため、現状は成功しても
+`quiesce_combo` が失敗を返して lease を保持する。親 Acquire と UEFI 移譲は
+未成立であり、この条件付き power-off は現時点では実デバイス上で呼ばれない。

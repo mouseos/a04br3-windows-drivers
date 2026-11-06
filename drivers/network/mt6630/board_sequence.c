@@ -51,3 +51,18 @@ fail:s->poisoned=1;return -1;
 #undef WRITE
 #undef DELAY
 }
+
+/* CT3 Linux wmt_detect_chip_pwr_off: reset low, then PMU low; a04br3 DTS
+ * assigns reset to GPIO7 and PMU to GPIO4 and declares no combo LDO pin.
+ * Caller must have drained I/O/IRQs and own the whole combo. This cannot
+ * prove pad voltage or chip power, and never releases RTC or shared clocks. */
+int a04_wifi_board_poweroff_signals(struct a04_wifi_board *s,const struct a04_wifi_board_io *io)
+{
+ if(!s||!io||!io->qualified||!io->write||!s->ready||s->poisoned||!ready(io))return -1;
+ s->ready=0;
+ if(write_checked(io,A04_WIFI_GPIO,0x108,1u<<7) ||
+    write_checked(io,A04_WIFI_GPIO,0x108,1u<<4) || !ready(io)) {
+  s->poisoned=1;return -1;
+ }
+ return 0;
+}

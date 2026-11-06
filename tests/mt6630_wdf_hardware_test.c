@@ -25,6 +25,7 @@ NTSTATUS WdfFdoQueryForInterface(WDFDEVICE d,const GUID *g,PINTERFACE i,USHORT n
 void WdfDeviceInitSetPnpPowerEventCallbacks(PWDFDEVICE_INIT i,WDF_PNPPOWER_EVENT_CALLBACKS *p){(void)i;saved=*p;}
 NTSTATUS WdfDeviceCreate(PWDFDEVICE_INIT *i,WDF_OBJECT_ATTRIBUTES *a,WDFDEVICE *d){(void)i;(void)a;*d=&ctx;return 0;}
 NTSTATUS WdfDriverCreate(PDRIVER_OBJECT d,PUNICODE_STRING p,void *a,WDF_DRIVER_CONFIG *c,void *h){(void)d;(void)p;(void)a;(void)c;(void)h;return 0;}
+int a04_wifi_board_poweroff_signals(struct a04_wifi_board *b,const struct a04_wifi_board_io *i){(void)b;(void)i;return 0;}
 int a04_irq_firmware_poll(void *p){(void)p;return 0;}
 NTSTATUS a04_irq_work_init(struct a04_irq_work *w,PDEVICE_OBJECT d,int (*process)(void *),void *f){assert(d&&f&&process);w->work=&item;return STATUS_SUCCESS;}
 int a04_irq_work_drain(struct a04_irq_work *w){assert(w->work);++drains;w->work=NULL;return 0;}

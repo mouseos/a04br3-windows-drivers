@@ -56,8 +56,16 @@ static int wifi_try_lock(void *p)
 { WIFI_CONTEXT *c=p; LARGE_INTEGER zero; zero.QuadPart=0;
  return KeWaitForSingleObject(&c->serial,Executive,KernelMode,FALSE,&zero)==STATUS_SUCCESS?0:-1; }
 static int wifi_no_other_io(void *p) { UNREFERENCED_PARAMETER(p); return 0; }
-/* No verified combo power-off/firmware stop provider is available yet. */
-static int wifi_combo_not_quiescent(void *p) { UNREFERENCED_PARAMETER(p); return -1; }
+/* Request the board reset/PMU sequence only under the live parent lease.
+ * Register writes do not prove the chip stopped; retain the lease until a
+ * real power/firmware quiescence provider supplies independent evidence. */
+static int wifi_combo_not_quiescent(void *p)
+{
+ WIFI_CONTEXT *c=p;
+ if(c && c->session.diagnostic.board.ready)
+  (void)a04_wifi_board_poweroff_signals(&c->session.diagnostic.board,&c->session.diagnostic.board_io.io);
+ return -1;
+}
 static int wifi_firmware_poll(void *p)
 {
  struct a04_irq_firmware *f=p;int result=a04_irq_firmware_poll(f);
