@@ -1,0 +1,12 @@
+/* SPDX-License-Identifier: BSD-2-Clause-Patent */
+#ifndef MT8167_WAVE_DMA_LIVE_H
+#define MT8167_WAVE_DMA_LIVE_H
+#include <ntddk.h>
+/* Caller owns adapter, device, MDL and serializes at PASSIVE_LEVEL. Map before
+ * client access; timeout retains all inputs until a possible late callback.
+ * A successful map remains held until Release. Exposed mappings may be
+ * released only after an independent hardware/bus drain proof. */
+struct Mt8167WaveDma { PDMA_ADAPTER adapter; PSCATTER_GATHER_LIST list; PHYSICAL_ADDRESS logical; ULONG bytes; BOOLEAN exposed; };
+NTSTATUS Mt8167WaveDmaMap(PDMA_ADAPTER,PDEVICE_OBJECT,PMDL,ULONG,Mt8167WaveDma *);
+NTSTATUS Mt8167WaveDmaRelease(Mt8167WaveDma *,BOOLEAN drainVerified);
+#endif

@@ -40,16 +40,34 @@ class Stream : public IMiniportWaveRTStream {
     ULONG backendBytes;
     volatile LONG started;
     bool everStarted;
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+    bool drained;
+#endif
 public:
-    explicit Stream(PPORTWAVERTSTREAM p, const Mt8167StreamBackend *b): refs(1),port(p),buffer{},backend{},useBackend(b!=NULL),backendMdl(NULL),backendBytes(0),started(false),everStarted(false) {
+    explicit Stream(PPORTWAVERTSTREAM p, const Mt8167StreamBackend *b): refs(1),port(p),buffer{},backend{},useBackend(b!=NULL),backendMdl(NULL),backendBytes(0),started(false),everStarted(false)
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+    ,drained(false)
+#endif
+    {
         port->AddRef(); if (b) { backend=*b; backend.reference(backend.context); }
     }
     ~Stream() {
         if (useBackend) {
-            if (InterlockedExchange(&started,0)) (void)backend.stop(backend.context);
+            if (InterlockedExchange(&started,0)) {
+                NTSTATUS stopResult=backend.stop(backend.context);
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+                if(NT_SUCCESS(stopResult))drained=true;
+#else
+                (void)stopResult;
+#endif
+            }
             /* No drain proof exists. Retain the backend reference and buffer
              * after any start or failure that may have exposed DMA. */
-            if (!everStarted) {
+            if (!everStarted
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+                || drained
+#endif
+               ) {
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
                 if (backendMdl && NT_SUCCESS(backend.unbindWaveBuffer(backend.context,backendMdl))) {
                     backendMdl=NULL;(void)Mt8167ReleaseUnpublishedBuffer(&buffer);
@@ -86,7 +104,11 @@ public:
             return result;
         }
         if (s!=KSSTATE_STOP && s!=KSSTATE_ACQUIRE && s!=KSSTATE_PAUSE) return STATUS_INVALID_PARAMETER;
-        if (InterlockedExchange(&started,0)) { NTSTATUS result=backend.stop(backend.context); if (!NT_SUCCESS(result)) return result; }
+        if (InterlockedExchange(&started,0)) { NTSTATUS result=backend.stop(backend.context); if (!NT_SUCCESS(result)) return result;
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+            drained=true;
+#endif
+        }
         return STATUS_SUCCESS;
     }
     STDMETHODIMP_(NTSTATUS) GetPosition(PKSAUDIO_POSITION p) override { if(!p)return STATUS_INVALID_PARAMETER; if(useBackend && InterlockedCompareExchange(&started,0,0))return backend.position(backend.context,p); p->PlayOffset=0;p->WriteOffset=0;return STATUS_SUCCESS; }
@@ -99,7 +121,17 @@ public:
             NTSTATUS result=Mt8167AllocateBuffer(port,size,&buffer);
             if (!NT_SUCCESS(result)) return result;
             result=backend.bindWaveBuffer(backend.context,buffer.mdl,buffer.mapping,buffer.bytes);
-            if (!NT_SUCCESS(result)) { (void)Mt8167ReleaseUnpublishedBuffer(&buffer);return result; }
+            if (!NT_SUCCESS(result)) {
+#if (defined(A04_AUDIO_WAVE_DMA_PROBE) && A04_AUDIO_WAVE_DMA_PROBE) || (defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED)
+                if(result==STATUS_IO_TIMEOUT) {
+                    /* Callback can outlive this stream. Retain the backend,
+                     * port allocation and MDL even though no client got it. */
+                    backendMdl=buffer.mdl;backendBytes=buffer.bytes;everStarted=true;
+                    return result;
+                }
+#endif
+                (void)Mt8167ReleaseUnpublishedBuffer(&buffer);return result;
+            }
             backendMdl=buffer.mdl;backendBytes=buffer.bytes;
             *mdl=buffer.mdl;*actual=buffer.bytes;*offset=0;*cache=MmNonCached;
             return STATUS_SUCCESS;
@@ -133,8 +165,11 @@ public:
     STDMETHODIMP_(VOID) FreeAudioBuffer(PMDL mdl,ULONG size) override {
         if (useBackend) {
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
-            if (mdl && mdl==backendMdl && size==backendBytes && !everStarted &&
-                NT_SUCCESS(backend.unbindWaveBuffer(backend.context,mdl))) {
+            if (mdl && mdl==backendMdl && size==backendBytes && (!everStarted
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+                || drained
+#endif
+                ) && NT_SUCCESS(backend.unbindWaveBuffer(backend.context,mdl))) {
                 backendMdl=NULL;backendBytes=0;(void)Mt8167ReleaseUnpublishedBuffer(&buffer);
             }
 #elif defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC

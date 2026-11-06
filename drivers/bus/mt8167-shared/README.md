@@ -461,3 +461,26 @@ DMA-then-Voice ordering. Both remain blocked by the real parent's absent mute
 and calibration verification; the PCM path also lacks a DMA mapping and drain
 proof. Wi-Fi/RTC flags are independent and are exercised with both enabled in
 the host and ARM32 build checks.
+
+The Voice verifier now reads MT6392 SPK_CON9 through the existing class-D
+PWRAP callback under the shared parent lock when the PMIC is online and the
+class-D owner is active. A nonzero gain code rejects; a read error poisons the
+class-D owner and the PCM operation propagates that failure to the audio lease.
+A zero gain code is only register evidence, not proof of physical silence,
+retained rails or the AU_LOL-to-speaker route. The verifier still rejects
+because a board mute and Voice calibration provider do not exist. Thus this
+connection performs no Voice register writes and cannot enable playback.
+
+The A04BR3 Linux DTS explicitly sets `headphone-cap-sel = <1>` (22 uF) for
+the headphone setting; this is configuration evidence, not a measured Voice
+path capacitance or a reason to use headphone calibration for AU_LOL. Linux
+programs DL1 from `runtime->dma_addr` and `dma_bytes`, not from a generic CPU
+physical-page query. UniXNU's checked-in `package/wifi/network/apple/IOEthernetController.cpp`
+uses IODMACommand's mapped IOVM address for network packets; this is a separate
+XNU subsystem and does not establish the Windows or AFE mapping contract.
+
+Audio interface version 9 adds an independent `VerifyDmaDrained` callback.
+The actual parent unconditionally rejects it: a disabled DL1 bit and interrupt
+rundown do not prove that outstanding fabric transactions have completed.
+The existing live PCM verification also rejects, so the retained-map PnP path
+cannot be enabled merely by setting its diagnostic build flag.

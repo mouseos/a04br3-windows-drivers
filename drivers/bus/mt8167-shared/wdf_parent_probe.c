@@ -284,7 +284,12 @@ static int ParentDomainWrite(void *context,unsigned offset,uint32_t value) {
 /* No AU_LOL calibration provider or downstream route proof exists yet.
  * This must remain a rejection until both are independently established. */
 static int ParentVoiceVerify(void *context,int16_t *initial,int16_t *value,unsigned *cap) {
-    UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(initial);UNREFERENCED_PARAMETER(value);UNREFERENCED_PARAMETER(cap);
+    A04_PARENT_CONTEXT *c=context;
+    UNREFERENCED_PARAMETER(initial);UNREFERENCED_PARAMETER(value);UNREFERENCED_PARAMETER(cap);
+    /* ParentLock serializes the WACS read with gain changes. This checks the
+     * PMIC gain only; a board-route mute and voice calibration provider are
+     * still absent and cannot be inferred from this register. */
+    if(!c || !c->pmic.online || a04_mt6392_classd_verify_muted(&c->classd))return -1;
     return -1;
 }
 static int ParentVoiceAfeRead(void *context,unsigned offset,uint32_t *value) {
@@ -452,12 +457,17 @@ static int ParentVoiceOperation(PVOID context,int start) {
        !c->codecDomain.poisoned && c->audioAfe) {
         io=ParentVoiceIo(c);
         result=start?a04_codec_voice_start(&c->voice,&io):a04_codec_voice_stop(&c->voice,&io);
-        if(c->voice.poisoned)c->audio.poisoned=1;
+        if(c->voice.poisoned || c->classd.poisoned || c->pmic.bus.poisoned)c->audio.poisoned=1;
     }
     ParentUnlock(c);return result;
 }
 static int ParentStartVoice(PVOID context) { return ParentVoiceOperation(context,1); }
 static int ParentStopVoice(PVOID context) { return ParentVoiceOperation(context,0); }
+static int ParentVerifyDmaDrained(PVOID context) {
+    UNREFERENCED_PARAMETER(context);
+    /* DL1 disable/IRQ readback alone does not prove fabric or DMA drain. */
+    return -1;
+}
 static int ParentVerifyLivePcm(PVOID context,PVOID mdl,uint64_t logical,ULONG size) {
     UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(mdl);
     UNREFERENCED_PARAMETER(logical);UNREFERENCED_PARAMETER(size);
@@ -1126,7 +1136,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     audioIface.Header.Context=dev;audioIface.Header.InterfaceReference=ParentInterfaceReference;
     audioIface.Header.InterfaceDereference=ParentInterfaceDereference;
     #if A04_SHARED_VOICE_PCM_DIAGNOSTIC
-    audioIface.VerifyLivePcm=ParentVerifyLivePcm;audioIface.StartVoice=ParentStartVoice;audioIface.StopVoice=ParentStopVoice;
+    audioIface.VerifyDmaDrained=ParentVerifyDmaDrained;audioIface.VerifyLivePcm=ParentVerifyLivePcm;audioIface.StartVoice=ParentStartVoice;audioIface.StopVoice=ParentStopVoice;
 #endif
     audioIface.BindAfe=ParentBindAfe;audioIface.Mute=ParentAudioMute;audioIface.UnmuteMin=ParentAudioUnmute;audioIface.AcquireMuted=ParentAudioAcquire;audioIface.ReleaseQuiescent=ParentAudioRelease;audioIface.PrepareMaskedIrq=ParentAudioPrepareIrq;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&audioIface,&A04SharedAudioInterfaceGuid,NULL);
