@@ -37,3 +37,9 @@ board `libsrv_um.so` SHA256 `d32a4a224d06302d9bec0a66cbb7d17dec663d3985f1c8592f5
 5. 既存`command_busy`、hardware ownership、poison、cleanup、DMA barrier、FWCCB回収を保ったruntime接続を実装する。TA/3D completionを別々に確認し、実行が停止した資源を解放しない。
 
 CPU側構築部のみが完成している。完全描画packet、ドライバへの接続、実機3D成功は未達である。
+
+## 単一RTのGPU storage配置
+
+`a04_m111_layout_target_storage`は同版`RGXAddRenderTarget`（0x124a34）のMSAAなし・単一RT分岐を実装する。各軸16-pixel tile数を切上げ、region headerを`align64(tilesX*tilesY*5)`ずつ2組確保する。TPCは両軸tile数以上の最小2冪をsideとして`side*side*8` bytes、64-byte境界へ切り上げた位置に続くVHeapは0x600 bytes。RTCはこの分岐にはない。800x600ではregion計0x4a80、TPC/VHeap計0x8600 bytes。領域の不足・重複・40-bit範囲超過を拒否する。MTA/MLIST、初期内容、実allocation/mapping、完全HWRTの生成は別工程である。
+
+到達目標はまずnative TA/3Dによる実GPUのclearまたは三角形描画。Windows D3D UMDと完全WDDM render miniportはまだなく、DOD転送成功は3D対応を意味しない。
