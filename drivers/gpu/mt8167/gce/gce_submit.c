@@ -13,7 +13,7 @@
 #define GCE_END 0x124u
 #define GCE_CFG 0x140u
 #define GCE_FIXED_END 0x1020ac00u
-int a04_gce_submit_primary(struct a04_gce_submit *s,uint32_t event,uint32_t l0,uint32_t l3)
+int a04_gce_prepare_primary(struct a04_gce_submit *s,uint32_t event,uint32_t l0,uint32_t l3)
 {
     uint32_t words[A04_CMDQ_TWO_LAYER_WORDS],enabled,irq,reset;unsigned i;
     if(!s || s->state!=A04_GCE_IDLE || !s->authorize || !s->read32 || !s->write32 ||
@@ -39,8 +39,15 @@ int a04_gce_submit_primary(struct a04_gce_submit *s,uint32_t event,uint32_t l0,u
     if(s->write32(s->context,GCE_SLOT_CYCLES,0x3200u) ||
        s->write32(s->context,GCE_END,GCE_FIXED_END) ||
        s->write32(s->context,GCE_CURRENT,(uint32_t)s->command_dma) ||
-       s->write32(s->context,GCE_CFG,0u) ||
-       s->write32(s->context,GCE_IRQ_ENABLE,0x13u))return -1;
+       s->write32(s->context,GCE_CFG,0u))return -1;
+    s->state=A04_GCE_PREPARED;return 0;
+}
+int a04_gce_kick_primary(struct a04_gce_submit *s)
+{
+    if(!s || s->state!=A04_GCE_PREPARED || !s->write32 || !s->barrier)return -1;
+    /* The caller holds the IRQ lock: no ISR can see a partial transition. */
+    s->state=A04_GCE_RETAIN;
+    if(s->write32(s->context,GCE_IRQ_ENABLE,0x13u))return -1;
     s->barrier(s->context);
     if(s->write32(s->context,GCE_ENABLE,1u))return -1;
     s->state=A04_GCE_RUNNING;return 0;
@@ -59,4 +66,4 @@ int a04_gce_submit_irq(struct a04_gce_submit *s)
     s->state=A04_GCE_IRQ_DONE;return 0;
 }
 void a04_gce_submit_timeout(struct a04_gce_submit *s)
-{ if(s && s->state==A04_GCE_RUNNING)s->state=A04_GCE_RETAIN; }
+{ if(s && (s->state==A04_GCE_RUNNING || s->state==A04_GCE_PREPARED))s->state=A04_GCE_RETAIN; }

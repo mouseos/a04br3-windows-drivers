@@ -12,10 +12,14 @@ int main(void)
 {
     struct fake f={0};_Alignas(8) uint32_t buf[1024]={0};
     struct a04_gce_submit s={&f,auth,rd,wr,bar,delay,buf,0x80001000,A04_GCE_IDLE};
-    assert(a04_gce_submit_primary(&s,27,0x90000000,0x91000000) && !f.writes && s.state==A04_GCE_IDLE);
+    assert(a04_gce_kick_primary(&s) && !f.writes);
+    assert(a04_gce_prepare_primary(&s,27,0x90000000,0x91000000) && !f.writes && s.state==A04_GCE_IDLE);
     f.authorized=1;f.regs[0x104/4]=1;
-    assert(a04_gce_submit_primary(&s,27,0x90000000,0x91000000) && !f.writes && s.state==A04_GCE_IDLE);
-    f.regs[0x104/4]=0;assert(!a04_gce_submit_primary(&s,27,0x90000000,0x91000000));
+    assert(a04_gce_prepare_primary(&s,27,0x90000000,0x91000000) && !f.writes && s.state==A04_GCE_IDLE);
+    f.regs[0x104/4]=0;assert(!a04_gce_prepare_primary(&s,27,0x90000000,0x91000000));
+    assert(s.state==A04_GCE_PREPARED && f.writes==5 && f.barriers==1);
+    assert(a04_gce_submit_irq(&s) && f.writes==5 && s.state==A04_GCE_PREPARED);
+    assert(!a04_gce_kick_primary(&s));
     assert(s.state==A04_GCE_RUNNING && f.writes==7 && f.barriers==2);
     assert(f.off[0]==0x100 && f.off[1]==0x030 && f.off[2]==0x124 && f.off[3]==0x120);
     assert(f.val[2]==0x1020ac00 && f.val[3]==0x80001000 && f.off[5]==0x114 && f.off[6]==0x104);
@@ -23,11 +27,13 @@ int main(void)
     f.regs[0x110/4]=1;assert(!a04_gce_submit_irq(&s) && s.state==A04_GCE_IRQ_DONE);
     assert(f.off[7]==0x110 && f.val[7]==~1u);
     memset(&f,0,sizeof(f));s.state=A04_GCE_IDLE;f.authorized=1;f.stuck=1;
-    assert(a04_gce_submit_primary(&s,38,0x90000000,0x91000000) && s.state==A04_GCE_RETAIN && f.writes==1 && f.delays==1000);
+    assert(a04_gce_prepare_primary(&s,38,0x90000000,0x91000000) && s.state==A04_GCE_RETAIN && f.writes==1 && f.delays==1000);
     memset(&f,0,sizeof(f));s.state=A04_GCE_IDLE;f.authorized=1;f.fail_at=7;
-    assert(a04_gce_submit_primary(&s,38,0x90000000,0x91000000) && s.state==A04_GCE_RETAIN);
+    assert(!a04_gce_prepare_primary(&s,38,0x90000000,0x91000000));
+    assert(a04_gce_kick_primary(&s) && s.state==A04_GCE_RETAIN);
     memset(&f,0,sizeof(f));s.state=A04_GCE_IDLE;f.authorized=1;
-    assert(!a04_gce_submit_primary(&s,38,0x90000000,0x91000000));
+    assert(!a04_gce_prepare_primary(&s,38,0x90000000,0x91000000));
+    assert(!a04_gce_kick_primary(&s));
     a04_gce_submit_timeout(&s);assert(s.state==A04_GCE_RETAIN && a04_gce_submit_irq(&s));
     return 0;
 }

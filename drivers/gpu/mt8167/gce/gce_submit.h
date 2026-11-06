@@ -20,9 +20,14 @@ struct a04_gce_submit {
 #define A04_GCE_RETAIN 1u
 #define A04_GCE_RUNNING 2u
 #define A04_GCE_IRQ_DONE 3u
-/* Success means a task was started, not that OVL latched a frame. All
- * failures after the first register write retain both mappings. */
-int a04_gce_submit_primary(struct a04_gce_submit *,uint32_t event,uint32_t l0,uint32_t l3);
+#define A04_GCE_PREPARED 4u
+/* Prepare is PASSIVE_LEVEL and may wait for reset. It must run while IRQs
+ * for this thread are disabled and the lease is held. Once a register write
+ * is attempted, failure retains the buffers. */
+int a04_gce_prepare_primary(struct a04_gce_submit *,uint32_t event,uint32_t l0,uint32_t l3);
+/* Kick must run under the same WDF interrupt lock as a04_gce_submit_irq.
+ * It never sleeps. Success means started, not that OVL latched a frame. */
+int a04_gce_kick_primary(struct a04_gce_submit *);
 /* IRQ is only for the owned thread; an EOC is not an OVL latch proof. */
 int a04_gce_submit_irq(struct a04_gce_submit *);
 void a04_gce_submit_timeout(struct a04_gce_submit *);

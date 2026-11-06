@@ -525,9 +525,12 @@ not be assumed to be a GCE DMA adapter merely because both resources appear in
 one ACPI device. A GCE PDO/DMA domain and clock/thread/event ownership remain
 necessary before this packet can be submitted.
 
-`gce_submit.c` now implements the primary-thread reset, fixed END, command
-DMA address, priority, IRQ-enable and thread-enable writes through supplied
-MMIO callbacks, plus Linux-style thread IRQ acknowledgement. Its required
+`gce_submit.c` implements the primary-thread reset, fixed END, command
+DMA address and priority writes through supplied MMIO callbacks, plus a
+separate non-sleeping IRQ-enable/thread-enable kick and Linux-style thread IRQ
+acknowledgement. The caller must run kick under the same WDF interrupt lock as
+the ISR; reset preparation stays at PASSIVE_LEVEL. A timeout in either the
+prepared or running state retains the mappings. Its required
 authorization callback must prove clock/power, controller-global register,
 IRQ, thread, event and display ownership and the GCE DMA buffer lifetime.
 All failures after the first MMIO write and all timeouts retain the command
