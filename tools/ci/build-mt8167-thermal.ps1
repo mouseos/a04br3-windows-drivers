@@ -15,6 +15,8 @@ $shared = if ($env:A04_THERMAL_SHARED_PARENT -eq '1') { '1' } else { '0' }
 $lease = if ($env:A04_THERMAL_LEASE_DIAG -eq '1') { '1' } else { '0' }
 $oneshot = if ($env:A04_THERMAL_ONESHOT_TEST -eq '1') { '1' } else { '0' }
 $monitor = if ($env:A04_THERMAL_MONITOR_TEST -eq '1') { '1' } else { '0' }
+$codecAdc = if ($env:A04_THERMAL_CODEC_ADC_DIAGNOSTIC -eq '1') { '1' } else { '0' }
+if ($codecAdc -eq '1' -and ($shared -ne '1' -or $oneshot -ne '1')) { throw 'codec ADC requires shared one-shot' }
 if ($oneshot -eq '1' -and $monitor -ne '1') { throw 'one-shot requires monitor infrastructure' }
 if ($monitor -eq '1' -and $lease -ne '1') { throw 'monitor requires lease diagnostic' }
 $names = @('wdf_thermal','thermal')
@@ -22,8 +24,18 @@ if ($monitor -eq '1') { $names += @('monitor','completion','freshness','hardware
 if ($oneshot -eq '1') { $names += 'oneshot' }
 foreach($name in $names) {
  $obj=Join-Path $out "$name.obj"
- & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_THERMAL_SHARED_PARENT=$shared" "-DA04_THERMAL_ONESHOT_TEST=$oneshot" "-DA04_THERMAL_LEASE_DIAG=$lease" "-DA04_THERMAL_MONITOR_TEST=$monitor" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$dir" -c (Join-Path $dir "$name.c") -o $obj
+ & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_THERMAL_SHARED_PARENT=$shared" "-DA04_THERMAL_ONESHOT_TEST=$oneshot" "-DA04_THERMAL_LEASE_DIAG=$lease" "-DA04_THERMAL_MONITOR_TEST=$monitor" "-DA04_THERMAL_CODEC_ADC_DIAGNOSTIC=$codecAdc" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$dir" -c (Join-Path $dir "$name.c") -o $obj
  if($LASTEXITCODE -ne 0){throw "thermal compile failed: $name"}
+ $objects += $obj
+}
+if ($codecAdc -eq '1') {
+ $obj=Join-Path $out 'codec_adc_probe.obj'
+ & clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c (Join-Path $root 'drivers\bus\mt8167-shared\codec_adc_probe.c') -o $obj
+ if($LASTEXITCODE -ne 0){throw 'codec ADC compile failed'}
+ $objects += $obj
+ $obj=Join-Path $out 'codec_adc_session.obj'
+ & clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c (Join-Path $root 'drivers\bus\mt8167-shared\codec_adc_session.c') -o $obj
+ if($LASTEXITCODE -ne 0){throw 'codec ADC session compile failed'}
  $objects += $obj
 }
 & lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib @objects (Join-Path $wdfLib 'wdfdriverentry.lib') (Join-Path $wdfLib 'wdfldr.lib') (Join-Path $km 'ntoskrnl.lib') (Join-Path $km 'hal.lib') (Join-Path $km 'bufferoverflowfastfailk.lib') (Join-Path $km 'libcntpr.lib') "/out:$out\mt8167-thermal.sys"

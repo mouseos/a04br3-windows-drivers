@@ -10,6 +10,7 @@ int a04_usb_owner_acquire(struct a04_usb_owner *o)
  int r=-1, gpio_attempted=0; unsigned clk1,clk2; uint16_t rail;
  if(enter(o))return -1;
  if(!o->online || o->leased || o->poisoned || !o->verify_upstream || !o->top_read || !o->top_write || !o->pmic || o->pmic->poisoned)goto done;
+ if(o->probe_source && o->probe_source(o->context))goto done;
  if(o->verify_upstream(o->context) || a04_pmic_vusb_get(o->pmic,&rail))goto fail;
  /* Configure GPIO low before enabling the output. Never repurpose its mux. */
  gpio_attempted=1; if(A04Gpio22Prepare(&o->gpio))goto fail;

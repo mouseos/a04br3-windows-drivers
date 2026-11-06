@@ -1,7 +1,21 @@
 # Explicit build, not a runner launcher. Windows WDK8.1 ARM + clang/lld required.
+param([string]$OutputDirectory,[string]$SharedParentDirectory)
 $ErrorActionPreference='Stop'
 $root=Resolve-Path (Join-Path $PSScriptRoot '..\..')
-$taskOut=Join-Path $root 'build\mt6630-runtime'
+if(!$OutputDirectory){$OutputDirectory=Join-Path $root 'build\mt6630-runtime'}
+$taskOut=[IO.Path]::GetFullPath($OutputDirectory)
+if(!$taskOut.StartsWith($root.Path+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'OutputDirectory must be inside this checkout'}
+if($SharedParentDirectory){
+ $SharedParentDirectory=[IO.Path]::GetFullPath($SharedParentDirectory)
+ if(!$SharedParentDirectory.StartsWith($root.Path+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'SharedParentDirectory must be inside this checkout'}
+ $parentBinary=Join-Path $SharedParentDirectory 'mt8167-shared.sys'
+ $parentManifest=Get-Content -Raw (Join-Path $SharedParentDirectory 'parent-manifest.json')|ConvertFrom-Json
+ foreach($flag in @('A04_SHARED_WIFI_RUNTIME','A04_MT6392_RTC32K_DIAGNOSTIC','A04_SHARED_WIFI_IRQ_DIAGNOSTIC')){
+  if($parentManifest.flags.$flag -ne '1'){throw "Shared parent lacks required Wi-Fi capability: $flag"}
+ }
+ if($parentManifest.sys_sha256 -ne (Get-FileHash $parentBinary -Algorithm SHA256).Hash){throw 'Shared parent hash does not match its capabilities manifest'}
+ if($parentManifest.source_commit -ne (& git -C $root rev-parse HEAD)){throw 'Shared parent source commit differs from this checkout'}
+}
 New-Item -ItemType Directory -Force $taskOut | Out-Null
 # Keep every intermediate inside this checkout. No external TEMP staging.
 $priorTmp=$env:TMP;$priorTemp=$env:TEMP;$priorRunner=$env:RUNNER_TEMP
@@ -10,7 +24,10 @@ $prior=@{};foreach($name in $names){$prior[$name]=[Environment]::GetEnvironmentV
 try {
  $env:TMP=$taskOut;$env:TEMP=$taskOut;$env:RUNNER_TEMP=$taskOut
  & "$PSScriptRoot\build-mt6630-core.ps1"
- & "$PSScriptRoot\build-msdc-parent-probe.ps1"
+ if(!$SharedParentDirectory){
+  & "$PSScriptRoot\build-msdc-parent-probe.ps1"
+  $parentBinary=Join-Path $taskOut 'a04-msdc-parent-probe\mt8167-shared.sys'
+ }
  $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1";$inc=Join-Path $kit 'Include';$km=Join-Path $kit 'Lib\winv6.3\km\arm'
  # Reuse the checked NDIS token-paste overlay and compile Native I/O bridges.
  $overlay=Join-Path $taskOut 'a04br3-ndis-candidate'
@@ -32,8 +49,8 @@ try {
  & lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib /opt:ref $objects "$km\ndis.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\bufferoverflowfastfailk.lib" "/out:$taskOut\mt6630-runtime.sys"
  if($LASTEXITCODE){throw 'Native runtime link failed'}
  Copy-Item "$root\drivers\network\mt6630\mt6630-runtime.inf" $taskOut
- [ordered]@{source_commit=(git -C $root rev-parse HEAD);native_runtime=1;radio_mode='2.4GHz ERP20 OPEN/NONE or RSNA-PSK/CCMP; OS supplicant';firmware_embedded=0;device_calibration_embedded=0;hardware_verified=0;wdk_link_succeeded=1;sys_sha256=(Get-FileHash "$taskOut\mt6630-runtime.sys" -Algorithm SHA256).Hash} | ConvertTo-Json | Set-Content -Encoding UTF8 "$taskOut\manifest.json"
- & "$PSScriptRoot\build-mt6630-wlan-probe.ps1"
+ [ordered]@{source_commit=(git -C $root rev-parse HEAD);shared_parent_path=$parentBinary;shared_parent_sha256=(Get-FileHash $parentBinary -Algorithm SHA256).Hash;shared_parent_reused=[bool]$SharedParentDirectory;native_runtime=1;radio_mode='2.4GHz ERP20 OPEN/NONE or RSNA-PSK/CCMP; OS supplicant';firmware_embedded=0;device_calibration_embedded=0;hardware_verified=0;wdk_link_succeeded=1;sys_sha256=(Get-FileHash "$taskOut\mt6630-runtime.sys" -Algorithm SHA256).Hash} | ConvertTo-Json | Set-Content -Encoding UTF8 "$taskOut\manifest.json"
+ & "$PSScriptRoot\build-mt6630-wlan-probe.ps1" -OutputDirectory (Join-Path $taskOut 'wlan-probe')
  Write-Output "Unsigned Native miniport and shared parent: $taskOut. Requires target signing and PnP validation by main operator."
 } finally {
  $env:TMP=$priorTmp;$env:TEMP=$priorTemp;$env:RUNNER_TEMP=$priorRunner

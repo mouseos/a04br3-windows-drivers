@@ -134,3 +134,11 @@ probeの使用法は `tools/winpe/README-mt6630-wlan-probe.md` を参照。
 接続後の再scanでもBeacon/Probe Responseをdata受信成功扱いで消費せず、
 station ownerのBSS観測処理へ渡す。peer deauth/disassocは引き続き受信入口で処理する。
 この経路のソース修正とARM compileを確認したが、接続後再scanの実測は未確認。
+
+## USB/audioとの単一parentビルド
+
+既存touch/battery/buttons/audio/USBを維持する統合版は
+`drivers/bus/mt8167-shared/WIFI_USB_AUDIO_INTEGRATION.md` を参照。
+`build-mt8167-first-playback.ps1 -IntegratedUsb -IntegratedWifi` はparentを1回だけ生成し、
+Wi-Fi runtimeはfeature/commit/hashを照合してそのSYSを再利用する。
+個別runtime buildのparent SYSを統合版の後から上書きしない。

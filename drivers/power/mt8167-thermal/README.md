@@ -201,3 +201,33 @@ MMIOのrundownを待つ。正常quiesceが報告されないclock使用後はlea
 実機測温できることを意味しない。UEFIの校正提供、親子PnP、ADC鮮度、clock/reset、
 突然の取り外し、D0停止、正常quiesceは実機未検証。署名はテスト用自己署名であり、
 OSの信頼・ロード成功や実機安全性を保証しない。
+
+The default-off `A04_THERMAL_CODEC_ADC_DIAGNOSTIC` requires the shared
+one-shot configuration. After the shared lease, guard, and thermal handoff
+admission it calls the bounded headphone ADC helper using the child's PnP ADC
+mapping. Each register operation is guarded through the touch/shared parent
+rundown. A poisoned partial transaction requests the existing fatal-stop path
+rather than claiming the lease is safe to release. The helper's independent
+headphone-route and physical-mute verifier in the shared parent currently rejects, so no
+ADC transaction or usable measurement is possible in this build. It does not
+produce AU_LOL calibration. Lease, handoff and route/mute rejection messages
+are submitted to the existing TOPRGU UART queue; queue acceptance is not
+transmission completion, and earlier startup failures can occur before this
+reporting path is available. If a future verified provider admits sampling,
+two `A04ADC HPL <tag> 0` and `A04ADC HPL <tag> 1` messages carry eleven 12-bit
+raw samples each. The low 32 bits of interrupt time form the tag and can wrap;
+it is not a globally unique identifier or a checksum. Submission has a bounded
+busy retry; the recipient must reject a missing, malformed or mismatched pair.
+Device operation and PnP failure handling are
+unverified on hardware.
+
+The one-shot session now performs route/mute preflight before acquiring the
+shared clocks, then captures the samples and checks ADC idle, cleared trigger,
+disabled thermal sampling and idle thermal AHB before requesting quiescence.
+Only then does it return the lease. A clock, sampling or quiescence failure is
+uncertain and follows the existing fatal-stop path; it is never a release
+proof. The preflight queries the version 3 shared-parent interface through the
+live lease; it rejects because no evidence-backed route and mute provider exists.
+The parent also rejects without an independently
+verified firmware/EL3 release. The successful sequence has only host-mock
+coverage; device behavior and the adequacy of these observations are unproven.

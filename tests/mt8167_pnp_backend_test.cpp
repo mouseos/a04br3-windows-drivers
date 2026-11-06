@@ -23,6 +23,10 @@ static int parent_mute(PVOID){return 0;}
 static int parent_drained(PVOID){return !drainProven;}
 #endif
 static int parent_unmutes;
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+static int firstVoiceStarts;
+static int first_voice_start(PVOID){firstVoiceStarts++;return 0;}
+#endif
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
 static int live_verified,voice_starts,voice_stops;
 #if defined(A04_AUDIO_WAVE_DMA_PROBE) && A04_AUDIO_WAVE_DMA_PROBE
@@ -52,6 +56,17 @@ static int parent_unmute(PVOID){parent_unmutes++;
  return 0;
 #endif
 }
+#if defined(A04_AUDIO_DIGITAL_PLAYBACK) && A04_AUDIO_DIGITAL_PLAYBACK
+static int digitalCalls;
+static int parent_digital(PVOID,ULONG rate) {
+ assert(rate==48000);digitalCalls++;
+#ifdef A04_TEST_DIGITAL_FAILURE
+ return A04_TEST_DIGITAL_FAILURE;
+#else
+ return 0;
+#endif
+}
+#endif
 static int parent_bind(PVOID,PVOID afe,ULONG n){if(afe && n==4096 && !parent_afe){parent_afe=afe;return 0;}if(!afe && !n && parent_afe){parent_afe=nullptr;return 0;}return -1;}
 #if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
 int test_connect_fail,test_irq_connections,test_irq_disconnections;
@@ -71,6 +86,12 @@ extern "C" NTSTATUS Mt8167QueryAudioParent(PDEVICE_OBJECT p,A04_SHARED_AUDIO_INT
 #if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
  out->VerifyDmaDrained=parent_drained;
 #endif
+#endif
+#if defined(A04_AUDIO_DIGITAL_PLAYBACK) && A04_AUDIO_DIGITAL_PLAYBACK
+ out->PreparePlayback=parent_digital;
+#endif
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+ out->StartVoice=first_voice_start;
 #endif
  out->AcquireMuted=malformed?nullptr:parent_acquire;out->ReleaseQuiescent=parent_release;out->PrepareMaskedIrq=parent_prepare;out->BindAfe=parent_bind;out->Mute=parent_mute;out->UnmuteMin=parent_unmute;parent_refs++;return STATUS_SUCCESS;
 }
@@ -249,12 +270,29 @@ int main(){
  BOOLEAN exposure=TRUE;
  test_audio_irql=1;assert(api->start(api->context,&exposure)==STATUS_DEVICE_NOT_READY && !exposure);api->freeBuffer(api->context,mdl,8192);assert(!freed);test_audio_irql=0;
 #if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
-#if defined(A04_TEST_UNMUTE_FAILURE) && A04_TEST_UNMUTE_FAILURE
+#if defined(A04_AUDIO_DIGITAL_PLAYBACK) && A04_AUDIO_DIGITAL_PLAYBACK && defined(A04_TEST_DIGITAL_FAILURE)
+ assert(api->start(api->context,&exposure)==STATUS_DEVICE_NOT_READY && digitalCalls==1);
+ assert(exposure==(A04_TEST_DIGITAL_FAILURE==-2));
+ Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);api->dereference(api->context);
+ if(A04_TEST_DIGITAL_FAILURE==-2)assert(!freed && !puts && parent_refs==2 && test_pdo_refs==1);
+ else assert(puts==1 && !parent_refs && !test_pdo_refs);
+ return 0;
+#elif defined(A04_TEST_UNMUTE_FAILURE) && A04_TEST_UNMUTE_FAILURE
  assert(api->start(api->context,&exposure)==STATUS_DEVICE_NOT_READY && exposure && allocCalls==2 && parent_unmutes==1);
  Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);api->dereference(api->context);
  assert(!freed && !puts && parent_refs==2 && test_pdo_refs==1);return 0;
 #else
  assert(!api->start(api->context,&exposure) && exposure && allocCalls==2);
+#if defined(A04_AUDIO_DIGITAL_PLAYBACK) && A04_AUDIO_DIGITAL_PLAYBACK
+ assert(digitalCalls==1);
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+ assert(firstVoiceStarts==1);
+ DEVICE_DESCRIPTION description{};
+ assert(!api->getDeviceDescription(api->context,&description) && description.Dma32BitAddresses && description.Master);
+ BOOLEAN repeated=TRUE;
+ assert(api->start(api->context,&repeated)==STATUS_DEVICE_NOT_READY && allocCalls==2 && firstVoiceStarts==1);
+#endif
+#endif
 #endif
 #if defined(A04_AUDIO_UNMUTE_DIAGNOSTIC) && A04_AUDIO_UNMUTE_DIAGNOSTIC
  assert(parent_unmutes==1);

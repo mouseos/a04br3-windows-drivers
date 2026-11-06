@@ -19,6 +19,17 @@
 #ifndef A04_THERMAL_MONITOR_TEST
 #define A04_THERMAL_MONITOR_TEST 0
 #endif
+#ifndef A04_THERMAL_CODEC_ADC_DIAGNOSTIC
+#define A04_THERMAL_CODEC_ADC_DIAGNOSTIC 0
+#endif
+#if A04_THERMAL_CODEC_ADC_DIAGNOSTIC && (!A04_THERMAL_SHARED_PARENT || !A04_THERMAL_ONESHOT_TEST)
+#error codec ADC diagnostic requires the shared-parent one-shot path
+#endif
+#if A04_THERMAL_CODEC_ADC_DIAGNOSTIC
+#include "../../bus/mt8167-shared/codec_adc_probe.h"
+#include "../../bus/mt8167-shared/codec_adc_session.h"
+#include "../../system/mt8167-toprgu/uart_screen.h"
+#endif
 #if A04_THERMAL_SHARED_PARENT && !A04_THERMAL_MONITOR_TEST
 #error shared thermal resources require diagnostic monitor infrastructure
 #endif
@@ -56,6 +67,9 @@ typedef struct { struct a04_thermal_cal cal; struct a04_thermal_owner ownership;
  struct a04_monitor monitor; struct a04_thermal_hw hw; BOOLEAN hw_ready;
  WDFSPINLOCK readout_lock; struct a04_thermal_readout_state readout;
  BOOLEAN reset_asserted;
+#if A04_THERMAL_CODEC_ADC_DIAGNOSTIC
+ struct a04_codec_adc_probe codec_adc; BOOLEAN codec_route_verified;
+#endif
 #endif
 } THERMAL_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(THERMAL_CONTEXT,ThermalContext)
@@ -134,9 +148,9 @@ static NTSTATUS TouchGuardGet(THERMAL_CONTEXT *c)
  WDF_REQUEST_SEND_OPTIONS_SET_TIMEOUT(&options,WDF_REL_TIMEOUT_IN_SEC(1));
  status=WdfIoTargetSendInternalIoctlSynchronously(c->touch,NULL,A04_TOUCH_THERMAL_GET_GUARD,NULL,&output,&options,&got);
  if(!NT_SUCCESS(status))return status;
- if(got!=sizeof(c->touch_guard)||c->touch_guard.size!=sizeof(c->touch_guard)||c->touch_guard.version!=1 ||
+ if(got!=sizeof(c->touch_guard)||c->touch_guard.size!=sizeof(c->touch_guard)||c->touch_guard.version!=3 ||
     !c->touch_guard.context || !c->touch_guard.owner || !c->touch_guard.generation || !c->touch_guard.Begin || !c->touch_guard.End || !c->touch_guard.Release ||
-    (A04_THERMAL_SHARED_PARENT && (!c->touch_guard.ReadAnalog || !c->touch_guard.WriteAnalog))) {
+    (A04_THERMAL_SHARED_PARENT && (!c->touch_guard.ReadAnalog || !c->touch_guard.WriteAnalog || !c->touch_guard.VerifyOwnership))) {
   if(c->touch_guard.context && c->touch_guard.Release)c->touch_guard.Release(c->touch_guard.context);
   RtlZeroMemory(&c->touch_guard,sizeof(c->touch_guard));return STATUS_DEVICE_CONFIGURATION_ERROR;
  }
@@ -211,6 +225,93 @@ static int HwWrite(void *p,uint32_t addr,uint32_t value) { THERMAL_CONTEXT *c=p;
  if(!c->touch_guard.Begin(c->touch_guard.context,c->touch_guard.owner,c->touch_guard.generation))return -1;
  WRITE_REGISTER_ULONG(r,value);c->touch_guard.End(c->touch_guard.context);return 0; }
 static int HwDelay(void *p,unsigned us) { UNREFERENCED_PARAMETER(p);if(us>1000)return -1;KeStallExecutionProcessor(us);return 0; }
+#if A04_THERMAL_CODEC_ADC_DIAGNOSTIC
+/* Only the shared parent's verification callback can establish the route and
+ * physical mute; a thermal lease or Class D gain alone is insufficient. */
+static int CodecAdcQualified(void *p) {
+ THERMAL_CONTEXT *c=p;
+ return HwQualified(c) && c->hw_ready && c->codec_route_verified;
+}
+/* Verify through the live parent lease before touching the ADC clock. */
+static int CodecAdcPreflight(void *p) {
+ THERMAL_CONTEXT *c=p;NTSTATUS status;
+ c->codec_route_verified=FALSE;
+ if(!HwQualified(c) || !c->touch_guard.VerifyHeadphone ||
+    !c->touch_guard.Begin(c->touch_guard.context,c->touch_guard.owner,c->touch_guard.generation))return -1;
+ status=c->touch_guard.VerifyHeadphone(c->touch_guard.context);
+ c->touch_guard.End(c->touch_guard.context);
+ if(!NT_SUCCESS(status))return -1;
+ c->codec_route_verified=TRUE;return 0;
+}
+static int CodecAdcClock(void *p) {
+ THERMAL_CONTEXT *c=p;
+ if(!NT_SUCCESS(TouchRequest(c,A04_TOUCH_THERMAL_CLOCK)))return -1;
+ c->hw_ready=TRUE;return 0;
+}
+static int CodecAdcRead(void *p,uint32_t offset,uint16_t *value) {
+ THERMAL_CONTEXT *c=p;
+ if(!HwQualified(c) || !value || !c->mapped[1] || offset>0xffeu || (offset&1u) ||
+    !c->touch_guard.Begin(c->touch_guard.context,c->touch_guard.owner,c->touch_guard.generation))return -1;
+ *value=READ_REGISTER_USHORT((volatile USHORT *)(c->mapped[1]+offset));
+ c->touch_guard.End(c->touch_guard.context);return 0;
+}
+static int CodecAdcWrite(void *p,uint32_t offset,uint16_t value) {
+ THERMAL_CONTEXT *c=p;
+ if(!HwQualified(c) || !c->mapped[1] || offset!=4 ||
+    !c->touch_guard.Begin(c->touch_guard.context,c->touch_guard.owner,c->touch_guard.generation))return -1;
+ WRITE_REGISTER_USHORT((volatile USHORT *)(c->mapped[1]+offset),value);
+ c->touch_guard.End(c->touch_guard.context);return 0;
+}
+static NTSTATUS CodecAdcUart(THERMAL_CONTEXT *c,const char *message,ULONG length) {
+ WDF_MEMORY_DESCRIPTOR input;WDF_REQUEST_SEND_OPTIONS options;
+ WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&input,(PVOID)message,length);
+ WDF_REQUEST_SEND_OPTIONS_INIT(&options,WDF_REQUEST_SEND_OPTION_TIMEOUT);
+ WDF_REQUEST_SEND_OPTIONS_SET_TIMEOUT(&options,WDF_REL_TIMEOUT_IN_SEC(1));
+ /* Delivery is asynchronous after the IOCTL completes; failed send or
+  * missing UART bytes is not evidence of successful transmission. */
+ return WdfIoTargetSendIoctlSynchronously(c->watchdog,NULL,A04_UART_SCREEN_SEND,&input,NULL,&options,NULL);
+}
+static int CodecAdcCapture(THERMAL_CONTEXT *c,struct a04_codec_adc_samples *samples) {
+ struct a04_codec_adc_io io={c,CodecAdcQualified,CodecAdcRead,CodecAdcWrite,HwDelay};
+ return a04_codec_adc_capture(&c->codec_adc,&io,7,samples);
+}
+static int CodecAdcCaptureCallback(void *p,struct a04_codec_adc_samples *samples) {
+ return CodecAdcCapture((THERMAL_CONTEXT *)p,samples);
+}
+/* Clock and all mappings remain held. Stopped control bits alone are not a
+ * general fabric drain proof; these checks only qualify this ADC diagnostic's
+ * shared thermal lease for its existing quiescent contract. */
+static int CodecAdcQuiesce(void *p) {
+ THERMAL_CONTEXT *c=p;uint16_t trigger,busy;uint32_t enabled,ahb;
+ if(!CodecAdcQualified(c) || CodecAdcRead(c,4,&trigger) || (trigger&(1u<<7)) ||
+    CodecAdcRead(c,0x10,&busy) || (busy&1u) ||
+    HwRead(c,0x1100d000u,&enabled) || enabled ||
+    HwRead(c,0x1100d418u,&ahb) || (ahb>>16))return -1;
+ return NT_SUCCESS(TouchRequest(c,A04_TOUCH_THERMAL_QUIESCENT))?0:-1;
+}
+static int CodecAdcSendSamples(THERMAL_CONTEXT *c,const struct a04_codec_adc_samples *samples) {
+ static const char hex[]="0123456789ABCDEF";
+ unsigned part,i,n,retry;ULONG tag=(ULONG)KeQueryInterruptTime();char line[80];NTSTATUS status;LARGE_INTEGER delay;
+ delay.QuadPart=-100000; /* 10 ms; UART queue is intentionally bounded. */
+ for(part=0;part<2;part++) {
+  const char prefix[]="A04ADC HPL ";n=0;
+  for(i=0;i<sizeof(prefix)-1;i++)line[n++]=prefix[i];
+  for(i=0;i<8;i++)line[n++]=hex[(tag>>(28-4*i))&15];
+  line[n++]=' ';line[n++]=(char)('0'+part);line[n++]=' ';
+  for(i=0;i<11;i++) {
+   uint16_t raw=samples->raw[part*11+i];
+   line[n++]=hex[(raw>>8)&15];line[n++]=hex[(raw>>4)&15];line[n++]=hex[raw&15];line[n++]=' ';
+  }
+  line[n++]='\n';status=STATUS_DEVICE_BUSY;
+  for(retry=0;retry<200 && status==STATUS_DEVICE_BUSY;retry++) {
+   status=CodecAdcUart(c,line,n);
+   if(status==STATUS_DEVICE_BUSY && KeDelayExecutionThread(KernelMode,FALSE,&delay)!=STATUS_SUCCESS)return -1;
+  }
+  if(!NT_SUCCESS(status))return -1;
+ }
+ return 0; /* queued, not proof that UART transmitted either line */
+}
+#endif
 #if A04_THERMAL_ONESHOT_TEST
 static uint64_t ThermalOneNow(void *p) { UNREFERENCED_PARAMETER(p);return KeQueryInterruptTime()/10000u; }
 static int ThermalOneWait(void *p,unsigned ms) {
@@ -299,7 +400,11 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
   status=WdfIoTargetOpen(c->touch,&open);
   if(!NT_SUCCESS(status)) { WdfIoTargetClose(c->watchdog); return status; }
   status=TouchRequest(c,A04_TOUCH_THERMAL_CLAIM);
-  if(!NT_SUCCESS(status)) { WdfIoTargetClose(c->touch); WdfIoTargetClose(c->watchdog); return status; }
+  if(!NT_SUCCESS(status)) {
+#if A04_THERMAL_CODEC_ADC_DIAGNOSTIC
+   CodecAdcUart(c,"A04ADC REJECT LEASE\n",20);
+#endif
+   WdfIoTargetClose(c->touch); WdfIoTargetClose(c->watchdog); return status; }
   c->lease_owned=TRUE; c->ownership.touch_lease=1;
   DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"A04THERM touch lease acquired; no clock or reset writes\n");
 #if !A04_THERMAL_MONITOR_TEST
@@ -312,8 +417,7 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
 #endif
  }
 #endif
- /* Firmware/EL3 handoff has not been proven: the monitor remains blocked.
-  * Never infer this flag from ACPI resource allocation or a touch lease. */
+ /* Never infer firmware handoff from ACPI allocation or a touch lease. */
  c->ownership.firmware_handoff=0;
 #if A04_THERMAL_MONITOR_TEST
  status=TouchGuardGet(c);
@@ -321,6 +425,14 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
   if(c->lease_owned) { (VOID)TouchRequest(c,A04_TOUCH_THERMAL_RELEASE);c->lease_owned=FALSE; }
   WdfIoTargetClose(c->touch);WdfIoTargetClose(c->watchdog);return status;
  }
+#if A04_THERMAL_SHARED_PARENT
+ if(c->touch_guard.VerifyOwnership &&
+    c->touch_guard.Begin(c->touch_guard.context,c->touch_guard.owner,c->touch_guard.generation)) {
+  NTSTATUS verified=c->touch_guard.VerifyOwnership(c->touch_guard.context);
+  c->touch_guard.End(c->touch_guard.context);
+  if(NT_SUCCESS(verified))c->ownership.firmware_handoff=1;
+ }
+#endif
 #endif
 #if A04_THERMAL_MONITOR_TEST
  /* No verified firmware/EL3 release protocol exists. Buildable, but cannot
@@ -328,9 +440,38 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
  if(a04_owner_activate(&c->ownership)) {
    TouchGuardPut(c);
    if(c->lease_owned) { (VOID)TouchRequest(c,A04_TOUCH_THERMAL_RELEASE);c->lease_owned=FALSE; }
+#if A04_THERMAL_CODEC_ADC_DIAGNOSTIC
+   CodecAdcUart(c,"A04ADC REJECT HANDOFF\n",22);
+#endif
    WdfIoTargetClose(c->touch);WdfIoTargetClose(c->watchdog);
    return STATUS_DEVICE_NOT_READY;
  }
+#if A04_THERMAL_CODEC_ADC_DIAGNOSTIC
+ {
+  struct a04_codec_adc_samples samples;enum a04_codec_adc_session_result result;
+  struct a04_codec_adc_session_io io={c,CodecAdcPreflight,CodecAdcClock,CodecAdcCaptureCallback,CodecAdcQuiesce};
+  result=a04_codec_adc_session(&io,&samples);
+  if(result!=A04_ADC_COMPLETE) {
+   if(result==A04_ADC_UNCERTAIN) { a04_owner_quarantine(&c->ownership);KeBugCheckEx(0xE2,0x41303454,7,0,0);return STATUS_DEVICE_HARDWARE_ERROR; }
+   TouchGuardPut(c);
+   status=TouchRequest(c,A04_TOUCH_THERMAL_RELEASE);
+   if(!NT_SUCCESS(status)) { a04_owner_quarantine(&c->ownership);return status; }
+   c->lease_owned=FALSE;a04_owner_revoke(&c->ownership);
+   CodecAdcUart(c,"A04ADC REJECT ROUTE_OR_MUTE\n",28);
+   WdfIoTargetClose(c->touch);WdfIoTargetClose(c->watchdog);return STATUS_DEVICE_NOT_READY;
+  }
+  /* The present parent rejects without an evidence-backed provider.
+   * Values are not AU_LOL calibration. */
+  if(CodecAdcSendSamples(c,&samples))
+   DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"A04ADC UART queue incomplete\n");
+  TouchGuardPut(c);
+  status=TouchRequest(c,A04_TOUCH_THERMAL_RELEASE);
+  if(!NT_SUCCESS(status)) { a04_owner_quarantine(&c->ownership);return status; }
+  c->lease_owned=FALSE;c->hw_ready=FALSE;c->codec_route_verified=FALSE;
+  a04_owner_revoke(&c->ownership);WdfIoTargetClose(c->touch);WdfIoTargetClose(c->watchdog);
+  c->calibrated=TRUE;return STATUS_SUCCESS;
+ }
+#endif
 #if A04_THERMAL_ONESHOT_TEST
  {
   struct a04_oneshot_io io;enum a04_oneshot_result measured;

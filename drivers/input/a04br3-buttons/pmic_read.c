@@ -77,6 +77,37 @@ int a04_pmic_emmc_rails(struct a04_pmic_read *bus, struct a04_emmc_rails_raw *ou
 }
 
 #if defined(A04_MT6392_WRITE_DIAGNOSTIC) && A04_MT6392_WRITE_DIAGNOSTIC
+/* Board mt6392-regulator.c + mt6392.dtsi: enable bit14, QI bit15,
+ * 264 us enable ramp; preserve voltage selection and every unrelated field.
+ * No disable is offered: this provider pins both always-on board rails. */
+int a04_pmic_audio_power_on_pinned(struct a04_pmic_read *bus)
+{
+    static const uint16_t regs[2]={0x0404u,0x0424u};
+    uint16_t before,after;uint32_t state;unsigned i,n;
+    if(!bus || bus->poisoned || !bus->delay)return -1;
+    for(i=0;i<2;i++) {
+        if(read_register(bus,regs[i],&before))return -1;
+        if(!(before&0x4000u)) {
+            if(wait_fsm(bus,0,&state))goto fail;
+            bus->write32(bus->context,WACS2_CMD,0x80000000u | ((uint32_t)regs[i]>>1)<<16 | (before|0x4000u));
+            for(n=0;n<264;n++)bus->delay(bus->context);
+        }
+        for(n=0;n<bus->attempts;n++) {
+            if(read_register(bus,regs[i],&after))goto fail;
+            if(((after^before)&0x3fffu) || !(after&0x4000u))goto fail;
+            if(after&0x8000u)break;
+            bus->delay(bus->context);
+        }
+        if(n==bus->attempts)goto fail;
+    }
+    return 0;
+fail:bus->poisoned=1;return -1;
+}
+int a04_pmic_classd_trim(struct a04_pmic_read *bus,uint16_t *value)
+{ return read_register(bus,0x0054u,value); }
+int a04_pmic_classd_overcurrent(struct a04_pmic_read *bus,uint16_t *value)
+{ return read_register(bus,0x005eu,value); }
+
 /* Linux mtk-pmic-wrap WACS2: bit31 is write, bits30:16 are address/2,
  * bits15:0 are data. The following read is ordered after the write and is
  * checked; ambiguous completion poisons the bus. Caller owns the lock. */

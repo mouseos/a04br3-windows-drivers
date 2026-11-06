@@ -17,4 +17,11 @@ int KbNextControl(const KB_ENUM *, KB_CONTROL *);
 int KbControlComplete(KB_ENUM *, const unsigned char *, unsigned);
 /* Windows HID boot keyboard descriptor; reports are eight bytes with no ID. */
 const unsigned char *KbHidDescriptor(unsigned *length);
+/* Accept the one-byte unnumbered packet or its zero-ID-prefixed form.
+ * Validates the entire LED report before constructing a SET_REPORT. */
+int KbOutputControl(const KB_ENUM *, const unsigned char *report,
+ unsigned length, unsigned report_id, KB_CONTROL *, unsigned char *led);
+int KbCopyInputReport(unsigned char *report, unsigned length,
+ const unsigned char input[8]);
+const unsigned char *KbHidOutputDescriptor(unsigned *length);
 #endif

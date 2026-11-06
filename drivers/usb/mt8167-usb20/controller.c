@@ -16,6 +16,16 @@
 #define USB_EVENTS (0x10u|0x20u|0x80u)
 static int valid(const MT8167_USB20_CONTROLLER *c)
 { return c && c->io.read8 && c->io.read16 && c->io.write8 && c->io.write16 && c->read32 && c->write32; }
+int Mt8167UsbPioReady(const MT8167_USB20_CONTROLLER *c)
+{
+ unsigned channel;
+ if(!valid(c))return -1;
+ /* MT8167 musbhsdma.h: eight channels, CONTROL=0x204+channel*0x10,
+  * ENABLE bit0. Observe only: no authority to abort firmware DMA here. */
+ for(channel=0;channel<8;++channel)
+  if(c->io.read16(c->io.context,0x204u+channel*0x10u)&1u)return -1;
+ return 0;
+}
 int Mt8167UsbFifoInit(const MT8167_USB20_CONTROLLER *c,unsigned bytes)
 {
  void *p; if(!valid(c)||bytes<128) return -1; p=c->io.context;

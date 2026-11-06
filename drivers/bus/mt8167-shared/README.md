@@ -484,3 +484,27 @@ The actual parent unconditionally rejects it: a disabled DL1 bit and interrupt
 rundown do not prove that outstanding fabric transactions have completed.
 The existing live PCM verification also rejects, so the retained-map PnP path
 cannot be enabled merely by setting its diagnostic build flag.
+
+The bounded `codec_adc_probe.c` experiment captures 22 raw samples for
+headphone ADC channels 7 or 8 and reports the nominal Linux-style trimmed
+average. It requires a provider to establish exclusive ADC and thermal
+ownership, a stable powered analog route and actual downstream mute before
+any access. It serializes with the provider's lease, times out, and poisons
+its state after an ambiguous transaction. It does not configure a calibration
+route, provide a Windows hardware transport, or implement a lease. It is not
+linked into the WDF parent and cannot establish AU_LOL calibration. Linux
+references: `drivers/misc/mediatek/auxadc/mtk_auxadc.c` and
+`sound/soc/codecs/mt8167-codec-utils.c` in the board source. Its nominal 1.5 V
+conversion is not ADC voltage calibration. No live ADC operation is enabled.
+
+The shared thermal interface is version 3 and its touch guard is version 3.
+They carry a headphone-route and physical-mute verification request from the
+ADC child through the held, rundown-protected thermal lease to the parent.
+The current parent returns not ready: it has no evidence-backed provider, and
+neither a Class D gain read nor a firmware variable grants this capability.
+Older parent/touch/thermal binaries are not compatible with this diagnostic
+interface and must not be mixed. This is not an AUXADC or EL3 handoff proof.
+The child also revalidates the parent's live lease and its independently
+established firmware-release and all-consumer-exclusion evidence under the
+guard. The parent currently has no provider of either piece of evidence and
+continues to reject. A lease or an observation record alone grants neither.

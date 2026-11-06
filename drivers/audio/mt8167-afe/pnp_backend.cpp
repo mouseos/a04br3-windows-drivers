@@ -56,6 +56,17 @@ extern "C" int Mt8167SilentDmaMiniportEnabled(void);
 #endif
 #include "wave_dma_live.h"
 #endif
+#if defined(A04_AUDIO_DIGITAL_PLAYBACK) && A04_AUDIO_DIGITAL_PLAYBACK && (!defined(A04_AUDIO_RUN_DIAGNOSTIC) || !A04_AUDIO_RUN_DIAGNOSTIC)
+#error digital playback requires the gated RUN path
+#endif
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if !defined(A04_AUDIO_DIGITAL_PLAYBACK) || !A04_AUDIO_DIGITAL_PLAYBACK || !defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) || !A04_AUDIO_SILENT_DMA_DIAGNOSTIC || !defined(A04_AUDIO_PCM_PATTERN_DIAGNOSTIC) || !A04_AUDIO_PCM_PATTERN_DIAGNOSTIC || !defined(A04_AUDIO_UNMUTE_DIAGNOSTIC) || !A04_AUDIO_UNMUTE_DIAGNOSTIC
+#error first playback requires digital playback, immutable private PCM and minimum unmute
+#endif
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+#error first playback must not DMA a client-modifiable WaveRT buffer
+#endif
+#endif
 #define OWNER_TAG 'OwnA'
 struct Mt8167PnpBackend {
     Mt8167StreamBackend iface;
@@ -65,6 +76,7 @@ struct Mt8167PnpBackend {
     EX_RUNDOWN_REF livePositions;
     BOOLEAN livePositionsClosed;
     BOOLEAN online;
+    BOOLEAN digitalRetained;
     PDEVICE_OBJECT pdo;
     PDMA_ADAPTER adapter;
     Mt8167CommonDma buffer;
@@ -136,7 +148,7 @@ static void OwnerDereference(void *ctx)
     if (o->waveMdl) return;
 #endif
     /* An uncertain lease release keeps the mapping and parent alive. */
-    if (o->shared.leased || o->shared.quarantined || o->irq.interrupt) return;
+    if (o->digitalRetained || o->shared.leased || o->shared.quarantined || o->irq.interrupt) return;
     /* RUN is always refused, so all buffers allocated here remain unexposed. */
     if (o->buffer.mdl && !NT_SUCCESS(Mt8167CommonReleaseUnexposed(&o->buffer))) {
         /* Never release DMA adapter/PDO when buffer lifetime is uncertain. */
@@ -291,8 +303,29 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
     NTSTATUS result=STATUS_DEVICE_NOT_READY;
     OwnerLock(o);
-    if (o->online && o->buffer.mdl && o->shared.leased && o->irq.interrupt &&
-        OwnerLiveDmaVerified(o)) {
+    if (o->online && o->buffer.mdl && o->shared.leased && !o->shared.quarantined &&
+        !o->digitalRetained && o->transport.state==AUDIO_READY && o->irq.interrupt && OwnerLiveDmaVerified(o)) {
+#if defined(A04_AUDIO_DIGITAL_PLAYBACK) && A04_AUDIO_DIGITAL_PLAYBACK
+        /* The parent owns clocks, routing and codec hw_params. Retain the
+         * lease after even partial writes; never infer quiescence from DL1. */
+        if(!o->parentClient.parent.PreparePlayback) {OwnerUnlock(o);return result;}
+        int digital=o->parentClient.parent.PreparePlayback(o->parentClient.parent.Header.Context,48000);
+        if(digital!= -1) {o->digitalRetained=TRUE;*possiblyExposed=TRUE;}
+        if(digital) {
+            if(o->digitalRetained)(void)mt8167_audio_shared_quarantine(&o->shared);
+            OwnerUnlock(o);return result;
+        }
+#endif
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+        /* The private common buffer has fixed PCM, CacheEnabled=FALSE and
+         * no user mapping. PrepareForDevice flushes once before DL1 starts;
+         * no CPU writes occur afterward. No cyclic-client coherency claim. */
+        if(!o->parentClient.parent.StartVoice ||
+           o->parentClient.parent.StartVoice(o->parentClient.parent.Header.Context)) {
+            (void)mt8167_audio_shared_quarantine(&o->shared);
+            *possiblyExposed=TRUE;OwnerUnlock(o);return result;
+        }
+#endif
         /* The selected period is a diagnostic half-ring, not a WaveRT
          * notification contract. No live-DMA verifier currently exists. */
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
@@ -321,6 +354,8 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
                 result=STATUS_SUCCESS;
         }
 #endif
+        if(o->digitalRetained && !o->shared.quarantined)
+            (void)mt8167_audio_shared_quarantine(&o->shared);
 #if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
         *possiblyExposed=(o->silentBuffer.exposed || o->shared.quarantined) ? TRUE : FALSE;
 #else
@@ -391,7 +426,21 @@ static NTSTATUS OwnerPosition(void *ctx,PKSAUDIO_POSITION position)
     }
     ExReleaseRundownProtection(&o->positions);return status;
 }
-static NTSTATUS OwnerDescription(void *,PDEVICE_DESCRIPTION) { return STATUS_DEVICE_NOT_READY; }
+static NTSTATUS OwnerDescription(void *context,PDEVICE_DESCRIPTION description) {
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+    Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(context);
+    if(!o || !description || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+    OwnerLock(o);
+    if(!o->online){OwnerUnlock(o);return STATUS_DEVICE_NOT_READY;}
+    RtlZeroMemory(description,sizeof(*description));
+    description->Version=DEVICE_DESCRIPTION_VERSION;description->Master=TRUE;
+    description->Dma32BitAddresses=TRUE;description->InterfaceType=Internal;
+    description->MaximumLength=1048576;
+    OwnerUnlock(o);return STATUS_SUCCESS;
+#else
+    UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(description);return STATUS_DEVICE_NOT_READY;
+#endif
+}
 #if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
 static void OwnerIrqNotify(void *ctx,ULONG periods,BOOLEAN fault) {
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);LONG count;

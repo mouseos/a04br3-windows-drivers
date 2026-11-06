@@ -8,6 +8,9 @@
  * owned platform resources; mappings alone are not sufficient. */
 struct a04_usb_owner {
  void *context; int (*lock)(void *); void (*unlock)(void *);
+ /* Optional read-only eligibility probe. Rejection is temporary and occurs
+  * before GPIO/clock/PMIC changes; it must not poison the shared parent. */
+ int (*probe_source)(void *);
  int (*verify_upstream)(void *);
  int (*verify_overcurrent)(void *);
  /* Charger/source owner serializes its watchdog and external source. -1 is

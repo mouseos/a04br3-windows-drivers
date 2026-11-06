@@ -5,7 +5,21 @@ SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test test-thermal test-ntfs-root arm-coff clean
 
-test: test-mt6392-classd-wacs-integration test-mt8167-shared-alias-diagnostic test-mt6392-speaker-clock test-mt6392-wacs-write test-mt6392-classd test-mt8167-shared-apmixed test-mt8167-audio-owner test-mt8167-shared-button-d0 test-mt8167-button-parent-contract test-mt8167-pnp-masked-irq test-mt8167-audio-irq-integration test-mt8167-afe-mapping test-mt8167-audio-parent-query test-mt8167-audio-parent-client test-mt8167-audio-child-resources test-mt8167-pnp-parent test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registration test-mt8167-wavert-miniport test-mt8167-audio-resource
+test: test-mt8167-codec-adc-probe test-mt6392-classd-wacs-integration test-mt8167-shared-alias-diagnostic test-mt6392-speaker-clock test-mt6392-wacs-write test-mt6392-classd test-mt8167-shared-apmixed test-mt8167-audio-owner test-mt8167-shared-button-d0 test-mt8167-button-parent-contract test-mt8167-pnp-masked-irq test-mt8167-audio-irq-integration test-mt8167-afe-mapping test-mt8167-audio-parent-query test-mt8167-audio-parent-client test-mt8167-audio-child-resources test-mt8167-pnp-parent test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registration test-mt8167-wavert-miniport test-mt8167-audio-resource
+
+test-mt8167-codec-adc-probe: build/mt8167_codec_adc_probe_test build/mt8167_codec_adc_session_test build/mt8167_adc_observation_test
+	./build/mt8167_codec_adc_probe_test
+	./build/mt8167_codec_adc_session_test
+	./build/mt8167_adc_observation_test
+build/mt8167_adc_observation_test: drivers/bus/mt8167-shared/adc_observation.h tests/mt8167_adc_observation_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared tests/mt8167_adc_observation_test.c -o $@
+build/mt8167_codec_adc_session_test: drivers/bus/mt8167-shared/codec_adc_session.c drivers/bus/mt8167-shared/codec_adc_session.h tests/mt8167_codec_adc_session_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared drivers/bus/mt8167-shared/codec_adc_session.c tests/mt8167_codec_adc_session_test.c -o $@
+build/mt8167_codec_adc_probe_test: drivers/bus/mt8167-shared/codec_adc_probe.c drivers/bus/mt8167-shared/codec_adc_session.c drivers/bus/mt8167-shared/codec_adc_probe.h drivers/bus/mt8167-shared/codec_adc_session.h drivers/bus/mt8167-shared/codec_calibration.h tests/mt8167_codec_adc_probe_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared drivers/bus/mt8167-shared/codec_adc_probe.c drivers/bus/mt8167-shared/codec_adc_session.c tests/mt8167_codec_adc_probe_test.c -o $@
 test: build/gpu_mmu_multileaf_test test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registration test-mt8167-wavert-miniport test-mt8167-audio-resource
 test: test-mma8652 build/msdc_resume_check_test build/msdc_resume_capture_test
 test: build/bq24160_owner_broker_test
@@ -1246,6 +1260,34 @@ test-mt8167-usb-host-control:
 	$(CC) $(CFLAGS) -DA04_MUSB_HOST_CORE_EXPERIMENT=1 -Idrivers/usb/mt8167-usb20 tests/usb/host_control_test.c drivers/usb/mt8167-usb20/host_control.c drivers/usb/mt8167-usb20/host_core.c drivers/usb/mt8167-usb20/controller.c drivers/usb/mt8167-usb20/ep0_pio.c drivers/usb/mt8167-usb20/ep0.c -o build/mt8167_usb_host_control_test
 	./build/mt8167_usb_host_control_test
 
+.PHONY: test-mt8167-usb-keyboard-output
+test-mt8167-usb-keyboard-output:
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_MUSB_HOST_CORE_EXPERIMENT=1 -Idrivers/usb/mt8167-usb20 tests/usb/keyboard_output_test.c drivers/usb/mt8167-usb20/keyboard.c drivers/usb/mt8167-usb20/host_control.c drivers/usb/mt8167-usb20/host_core.c drivers/usb/mt8167-usb20/ep0_pio.c drivers/usb/mt8167-usb20/ep0.c -o build/mt8167_usb_keyboard_output_test
+	./build/mt8167_usb_keyboard_output_test
+
+test: test-mt8167-usb-keyboard-output
+
+.PHONY: test-mt8167-usb-keyboard-port
+test-mt8167-usb-keyboard-port:
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/usb/mt8167-usb20 tests/usb/keyboard_port_test.c drivers/usb/mt8167-usb20/keyboard_port.c drivers/usb/mt8167-usb20/keyboard_session.c drivers/usb/mt8167-usb20/keyboard.c drivers/usb/mt8167-usb20/keyboard_rx.c drivers/usb/mt8167-usb20/ep0.c drivers/usb/mt8167-usb20/ep0_pio.c -o build/mt8167_usb_keyboard_port_test
+	./build/mt8167_usb_keyboard_port_test
+
+test: test-mt8167-usb-keyboard-port
+
+.PHONY: test-mt8167-usb-keyboard-batch
+test-mt8167-usb-keyboard-batch: test-mt8167-usb-keyboard-port test-mt8167-usb-keyboard-output test-mt8167-usb-source test-mt8167-usb-faults test-mt8167-usb-host-control test-mt8167-usb-controller-irq test-mt8167-usb-pnp-resources
+	$(CC) $(CFLAGS) -Idrivers/usb/mt8167-usb20 tests/usb/gpio22_test.c drivers/usb/mt8167-usb20/gpio22.c -o build/mt8167_usb_board_pins_test
+	./build/mt8167_usb_board_pins_test
+
+.PHONY: test-mt8167-usb-keyboard-pnp
+test-mt8167-usb-keyboard-pnp:
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_SHARED_USB_ONLY=1 -DA04_USB_GPIO22_SOURCE_EXPERIMENT=1 -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_SHARED_BUTTON_D0_EXPERIMENT=1 -DA04_SHARED_APMIXED_RESOURCE=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/bus/mt8167-shared/mt6392_classd.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c drivers/bus/mt8167-shared/usb_owner.c drivers/usb/mt8167-usb20/gpio22.c tests/mt8167_shared_wdf_test.c -o build/mt8167_usb_keyboard_pnp_test
+	./build/mt8167_usb_keyboard_pnp_test
+
+test-mt8167-usb-keyboard-batch: test-mt8167-usb-keyboard-pnp
 .PHONY: test-mt6630-wdf-lease-probe
 test-mt6630-wdf-lease-probe:
 	@mkdir -p build
@@ -1285,3 +1327,50 @@ build/mt6630_diagnostic_calibration_test: drivers/network/mt6630/windows_diagnos
 
 # Rebuild the existing bridge checks when the shared country codec/table changes.
 build/mt6630_wmt_bridge_test build/mt6630_native_bridge_test build/mt6630_data_bridge_test build/mt6630_native_nbl_test build/mt6630_calibration_bridge_test: drivers/network/mt6630/regulatory.c drivers/network/mt6630/regulatory.h drivers/network/mt6630/regulatory_data.h
+
+.PHONY: test-mt8167-digital-playback
+test: test-mt8167-digital-playback
+test-mt8167-digital-playback:
+	mkdir -p build
+	$(CC) $(CFLAGS) tests/mt8167_digital_playback_test.c -o build/mt8167_digital_playback_test
+	./build/mt8167_digital_playback_test
+
+.PHONY: test-mt8167-digital-parent test-mt8167-digital-pnp
+test: test-mt8167-digital-parent test-mt8167-digital-pnp
+test-mt8167-digital-parent:
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_MT6392_WRITE_DIAGNOSTIC=1 -DA04_SHARED_BUTTON_D0_EXPERIMENT=1 -DA04_SHARED_APMIXED_RESOURCE=1 -DA04_SHARED_MT6392_DIAGNOSTIC=1 -DA04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC=1 -DA04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC=1 -DA04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC=1 -DA04_SHARED_DIGITAL_PLAYBACK=1 -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/bus/mt8167-shared/mt6392_classd.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c drivers/bus/mt8167-shared/usb_owner.c drivers/usb/mt8167-usb20/gpio22.c tests/mt8167_shared_wdf_test.c -o build/mt8167_digital_parent_test
+	./build/mt8167_digital_parent_test
+test-mt8167-digital-pnp: test-mt8167-pnp-run-diagnostic
+	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_TEST_PNP_BACKEND=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_AUDIO_QUERY_SHARED=1 -DA04_AUDIO_MAP_AFE=1 -DA04_AUDIO_IRQ_DIAGNOSTIC=1 -DA04_AUDIO_RUN_DIAGNOSTIC=1 -DA04_AUDIO_SILENT_DMA_DIAGNOSTIC=1 -DA04_AUDIO_DIGITAL_PLAYBACK=1 -Itests/audio_owner_stubs -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/pnp_backend.cpp drivers/audio/mt8167-afe/afe_mapping.cpp drivers/audio/mt8167-afe/common_dma.cpp drivers/audio/mt8167-afe/dma_adapter.cpp drivers/audio/mt8167-afe/shared_audio.c drivers/audio/mt8167-afe/irq_windows.cpp drivers/audio/mt8167-afe/dl1_engine.c drivers/audio/mt8167-afe/dl1.c tests/mt8167_pnp_backend_test.cpp build/mt8167_run_parent_host.o -o build/mt8167_digital_pnp_test
+	./build/mt8167_digital_pnp_test
+	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_TEST_PNP_BACKEND=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_AUDIO_QUERY_SHARED=1 -DA04_AUDIO_MAP_AFE=1 -DA04_AUDIO_IRQ_DIAGNOSTIC=1 -DA04_AUDIO_RUN_DIAGNOSTIC=1 -DA04_AUDIO_SILENT_DMA_DIAGNOSTIC=1 -DA04_AUDIO_DIGITAL_PLAYBACK=1 -Itests/audio_owner_stubs -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/pnp_backend.cpp drivers/audio/mt8167-afe/afe_mapping.cpp drivers/audio/mt8167-afe/common_dma.cpp drivers/audio/mt8167-afe/dma_adapter.cpp drivers/audio/mt8167-afe/shared_audio.c drivers/audio/mt8167-afe/irq_windows.cpp drivers/audio/mt8167-afe/dl1_engine.c drivers/audio/mt8167-afe/dl1.c tests/mt8167_pnp_backend_test.cpp build/mt8167_run_parent_host.o -DA04_TEST_DIGITAL_FAILURE=-1 -o build/mt8167_digital_pnp_fail1_test
+	./build/mt8167_digital_pnp_fail1_test
+	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_TEST_PNP_BACKEND=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_AUDIO_QUERY_SHARED=1 -DA04_AUDIO_MAP_AFE=1 -DA04_AUDIO_IRQ_DIAGNOSTIC=1 -DA04_AUDIO_RUN_DIAGNOSTIC=1 -DA04_AUDIO_SILENT_DMA_DIAGNOSTIC=1 -DA04_AUDIO_DIGITAL_PLAYBACK=1 -Itests/audio_owner_stubs -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/pnp_backend.cpp drivers/audio/mt8167-afe/afe_mapping.cpp drivers/audio/mt8167-afe/common_dma.cpp drivers/audio/mt8167-afe/dma_adapter.cpp drivers/audio/mt8167-afe/shared_audio.c drivers/audio/mt8167-afe/irq_windows.cpp drivers/audio/mt8167-afe/dl1_engine.c drivers/audio/mt8167-afe/dl1.c tests/mt8167_pnp_backend_test.cpp build/mt8167_run_parent_host.o -DA04_TEST_DIGITAL_FAILURE=-2 -o build/mt8167_digital_pnp_fail2_test
+	./build/mt8167_digital_pnp_fail2_test
+
+.PHONY: test-mt8167-first-playback
+test: test-mt8167-first-playback
+test-mt8167-first-playback:
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_SHARED_FIRST_PLAYBACK=1 -DA04_SHARED_VOICE_PCM_DIAGNOSTIC=1 -DA04_MT6392_CLK_ALIAS_EXPERIMENT=1 -DA04_MT6392_UNMUTE_DIAGNOSTIC=1 -DA04_MT6392_WRITE_DIAGNOSTIC=1 -DA04_SHARED_BUTTON_D0_EXPERIMENT=1 -DA04_SHARED_APMIXED_RESOURCE=1 -DA04_SHARED_MT6392_DIAGNOSTIC=1 -DA04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC=1 -DA04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC=1 -DA04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC=1 -DA04_SHARED_DIGITAL_PLAYBACK=1 -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/bus/mt8167-shared/mt6392_classd.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c drivers/bus/mt8167-shared/usb_owner.c drivers/usb/mt8167-usb20/gpio22.c tests/mt8167_first_playback_parent_test.c -o build/mt8167_first_playback_parent_test
+	./build/mt8167_first_playback_parent_test
+	$(CC) $(CFLAGS) -Itests/audio_query_stubs -Idrivers/audio/mt8167-afe -c drivers/audio/mt8167-afe/audio_parent_client.c -o build/mt8167_run_parent_host.o
+	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_TEST_PNP_BACKEND=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_AUDIO_QUERY_SHARED=1 -DA04_AUDIO_MAP_AFE=1 -DA04_AUDIO_IRQ_DIAGNOSTIC=1 -DA04_AUDIO_RUN_DIAGNOSTIC=1 -DA04_AUDIO_SILENT_DMA_DIAGNOSTIC=1 -DA04_AUDIO_DIGITAL_PLAYBACK=1 -DA04_AUDIO_FIRST_PLAYBACK=1 -DA04_AUDIO_PCM_PATTERN_DIAGNOSTIC=1 -DA04_AUDIO_UNMUTE_DIAGNOSTIC=1 -Itests/audio_owner_stubs -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/pnp_backend.cpp drivers/audio/mt8167-afe/afe_mapping.cpp drivers/audio/mt8167-afe/common_dma.cpp drivers/audio/mt8167-afe/dma_adapter.cpp drivers/audio/mt8167-afe/shared_audio.c drivers/audio/mt8167-afe/irq_windows.cpp drivers/audio/mt8167-afe/dl1_engine.c drivers/audio/mt8167-afe/dl1.c tests/mt8167_pnp_backend_test.cpp build/mt8167_run_parent_host.o -o build/mt8167_first_playback_pnp_test
+	./build/mt8167_first_playback_pnp_test
+
+.PHONY: test-mt8167-usb-integrated
+test-mt8167-usb-integrated:
+	$(MAKE) test-mt8167-first-playback CFLAGS="$(CFLAGS) -DA04_USB_GPIO22_SOURCE_EXPERIMENT=1 -DA04_SHARED_TOUCH_D0_EXPERIMENT=1"
+	$(CC) $(CFLAGS) -DA04_SHARED_USB_ONLY=0 -DA04_USB_GPIO22_SOURCE_EXPERIMENT=1 -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_SHARED_BUTTON_D0_EXPERIMENT=1 -DA04_SHARED_TOUCH_D0_EXPERIMENT=1 -DA04_SHARED_APMIXED_RESOURCE=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/bus/mt8167-shared/mt6392_classd.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c drivers/bus/mt8167-shared/usb_owner.c drivers/usb/mt8167-usb20/gpio22.c tests/mt8167_shared_wdf_test.c -o build/mt8167_usb_integrated_parent_test
+	./build/mt8167_usb_integrated_parent_test
+
+.PHONY: test-mt8167-usb-enumeration
+test-mt8167-usb-enumeration:
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/usb/mt8167-usb20 tests/usb/keyboard_test.c drivers/usb/mt8167-usb20/keyboard.c -o build/mt8167_usb_keyboard_enum_test
+	./build/mt8167_usb_keyboard_enum_test
+	$(CC) $(CFLAGS) -Idrivers/usb/mt8167-usb20 tests/usb/keyboard_session_test.c drivers/usb/mt8167-usb20/keyboard_session.c drivers/usb/mt8167-usb20/keyboard.c drivers/usb/mt8167-usb20/keyboard_rx.c drivers/usb/mt8167-usb20/ep0.c drivers/usb/mt8167-usb20/ep0_pio.c -o build/mt8167_usb_keyboard_session_test
+	./build/mt8167_usb_keyboard_session_test
+
+test-mt8167-usb-keyboard-batch: test-mt8167-usb-enumeration

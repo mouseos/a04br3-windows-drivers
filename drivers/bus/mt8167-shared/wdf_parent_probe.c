@@ -10,12 +10,38 @@
 #include "register_owner.h"
 #include "client_interface.h"
 #include "audio_interface.h"
+#ifndef A04_SHARED_FIRST_PLAYBACK
+#define A04_SHARED_FIRST_PLAYBACK 0
+#endif
+#if A04_SHARED_FIRST_PLAYBACK
+#if !defined(A04_SHARED_DIGITAL_PLAYBACK) || !A04_SHARED_DIGITAL_PLAYBACK || !defined(A04_MT6392_CLK_ALIAS_EXPERIMENT) || !A04_MT6392_CLK_ALIAS_EXPERIMENT || !defined(A04_MT6392_UNMUTE_DIAGNOSTIC) || !A04_MT6392_UNMUTE_DIAGNOSTIC || !defined(A04_SHARED_VOICE_PCM_DIAGNOSTIC) || !A04_SHARED_VOICE_PCM_DIAGNOSTIC
+#error first playback requires digital playback, PMIC clock aliases, unmute and voice service
+#endif
+#if defined(A04_SHARED_VOICE_DIAGNOSTIC) && A04_SHARED_VOICE_DIAGNOSTIC
+#error first playback uses the explicit StartVoice service, not unmute-side voice startup
+#endif
+#endif
+#ifndef A04_SHARED_DIGITAL_PLAYBACK
+#define A04_SHARED_DIGITAL_PLAYBACK 0
+#endif
+#if A04_SHARED_DIGITAL_PLAYBACK
+#if !defined(A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC) || !A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC || !defined(A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC) || !A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
+#error digital playback requires the shared AFE clock and MT8167 codec domain
+#endif
+#include "digital_playback.h"
+#endif
 #include "wifi_interface.h"
 #include "audio_owner.h"
 #include "usb_interface.h"
 #include "usb_owner.h"
+#ifndef A04_SHARED_USB_ONLY
+#define A04_SHARED_USB_ONLY 0
+#endif
 #ifndef A04_USB_GPIO22_SOURCE_EXPERIMENT
 #define A04_USB_GPIO22_SOURCE_EXPERIMENT 0
+#endif
+#if A04_USB_GPIO22_SOURCE_EXPERIMENT
+#include "../../usb/mt8167-usb20/board_pins.h"
 #endif
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT && (!defined(A04_SHARED_QUERY_EXPERIMENTAL) || !A04_SHARED_QUERY_EXPERIMENTAL || !defined(A04_SHARED_CHILD_PROBE) || !A04_SHARED_CHILD_PROBE || !defined(A04_SHARED_BUTTON_D0_EXPERIMENT) || !A04_SHARED_BUTTON_D0_EXPERIMENT || !defined(A04_SHARED_APMIXED_RESOURCE) || !A04_SHARED_APMIXED_RESOURCE)
 #error GPIO22 source experiment requires shared query, child, D0 and APMIXED
@@ -26,6 +52,7 @@
 #if A04_SHARED_THERMAL_DIAGNOSTIC
 #include "thermal_interface.h"
 #include "thermal_owner.h"
+#include "adc_observation.h"
 #endif
 #ifndef A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 #define A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC 0
@@ -104,6 +131,12 @@
 #ifndef A04_SHARED_WIFI_RUNTIME
 #define A04_SHARED_WIFI_RUNTIME 0
 #endif
+#if A04_SHARED_WIFI_RUNTIME != 0 && A04_SHARED_WIFI_RUNTIME != 1
+#error A04_SHARED_WIFI_RUNTIME must be 0 or 1
+#endif
+#if A04_SHARED_WIFI_RUNTIME && A04_SHARED_USB_ONLY
+#error Wi-Fi runtime requires the integrated parent child namespace
+#endif
 #if A04_SHARED_WIFI_RUNTIME && (!defined(A04_MT6392_RTC32K_DIAGNOSTIC) || !A04_MT6392_RTC32K_DIAGNOSTIC || !defined(A04_SHARED_WIFI_IRQ_DIAGNOSTIC) || !A04_SHARED_WIFI_IRQ_DIAGNOSTIC)
 #error Wi-Fi runtime requires RTC32K and exclusive child MSDC2 IRQ resources
 #endif
@@ -156,6 +189,12 @@ struct a04_shared_thermal_owner thermal;EX_RUNDOWN_REF thermalRundown;BOOLEAN th
 PVOID audioAfe;
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
 int afeClockHeld,afeClockRestore,afeClockPoisoned;
+#if A04_SHARED_DIGITAL_PLAYBACK
+struct a04_digital_playback digitalPlayback;
+#if A04_SHARED_FIRST_PLAYBACK
+int audioPowerPinned,trimCaptured;uint16_t trimCode;
+#endif
+#endif
 #endif
 #if A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC
 struct a04_audio_top_clock audioTopClock;
@@ -240,13 +279,13 @@ static int ParentButtonRead(PVOID context,USHORT *value)
     if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
     return a04_pwrap_owner_read_buttons(&ParentContext((WDFDEVICE)context)->pmic,value);
 }
-/* Audio owner operations share the PWRAP/register mutex. Platform clock,
- * power and muted-codec callbacks are deliberately unset: no resource set or
- * handoff currently proves their ownership. This path cannot grant a lease. */
+/* Audio operations share the PWRAP/register mutex. The explicit retained
+ * first-playback build wires the board provider at ParentAdd/D0; legacy
+ * diagnostic builds leave the acquisition prerequisites unset. */
 #if A04_SHARED_MT6392_DIAGNOSTIC
-/* Called under ParentLock by audio_owner; no nested PWRAP lock. The class-D
- * prerequisites and bus callbacks are deliberately unset until a real board
- * mute, retained power, exclusive clock and safe WACS2 writer are proven. */
+/* Called under ParentLock by audio_owner; no nested PWRAP lock. The board
+ * first-playback provider supplies readiness and pinned power/clock leases;
+ * all fixed-mask PMIC updates use the existing serialized WACS2 writer. */
 static int ParentCodecSupports(void *context,uint16_t reg,uint16_t mask,uint16_t value) {
     UNREFERENCED_PARAMETER(context);
 #if A04_MT6392_CLK_ALIAS_EXPERIMENT
@@ -278,6 +317,14 @@ static int ParentCodecDelay(void *context,uint32_t us) {
     if(!context || (us!=2000u && us!=20000u) || KeGetCurrentIrql()>APC_LEVEL)return -1;
     interval.QuadPart=-(LONGLONG)us*10;
     status=KeDelayExecutionThread(KernelMode,FALSE,&interval);
+#if A04_SHARED_FIRST_PLAYBACK
+    if(status==STATUS_SUCCESS && us==20000u) {
+        A04_PARENT_CONTEXT *c=context;uint16_t trim;
+        if(a04_pmic_classd_trim(&c->pmic.bus,&trim))return -1;
+        c->trimCode=trim&31u;c->trimCaptured=1;
+        A04_TRACE("A04AUD MT6392 hardware trim code=%u (not AU_LOL ADC calibration)\n",(unsigned)c->trimCode);
+    }
+#endif
     return status==STATUS_SUCCESS ? 0 : -1;
 }
 #if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
@@ -293,16 +340,31 @@ static int ParentDomainWrite(void *context,unsigned offset,uint32_t value) {
 }
 #endif
 #if A04_SHARED_VOICE_DIAGNOSTIC || A04_SHARED_VOICE_PCM_DIAGNOSTIC
-/* No AU_LOL calibration provider or downstream route proof exists yet.
- * This must remain a rejection until both are independently established. */
+/* The retained first-playback provider uses the board Linux cold-start DC
+ * profile and real MT6392 hardware trim. The older measurement-based path
+ * still requires an AU_LOL-specific provider and does not reuse HP ADC data. */
 static int ParentVoiceVerify(void *context,int16_t *initial,int16_t *value,unsigned *cap) {
     A04_PARENT_CONTEXT *c=context;
+#if A04_SHARED_FIRST_PLAYBACK
+    if(!c || !initial || !value || !cap || !c->audio.leased || c->audio.poisoned ||
+       !c->trimCaptured || !c->digitalPlayback.prepared ||
+       a04_mt6392_classd_verify_muted(&c->classd))return -1;
+    /* Linux cold-start profile: kzalloc DC arrays until HP DC Offsets is
+     * requested. No AU_LOL ADC channel or measured lineout calibration exists
+     * in the board source. Do not relabel HP measurements as lineout data. */
+    *initial=0;*value=0;*cap=1;return 0;
+#else
     UNREFERENCED_PARAMETER(initial);UNREFERENCED_PARAMETER(value);UNREFERENCED_PARAMETER(cap);
     /* ParentLock serializes the WACS read with gain changes. This checks the
      * PMIC gain only; a board-route mute and voice calibration provider are
      * still absent and cannot be inferred from this register. */
-    if(!c || !c->pmic.online || a04_mt6392_classd_verify_muted(&c->classd))return -1;
+    if(!c || !c->pmic.online || a04_mt6392_classd_verify_muted(&c->classd)) {
+        A04_TRACE("A04AUD voice calibration rejected: classd mute unavailable or unverified\n");
+        return -1;
+    }
+    A04_TRACE("A04AUD voice calibration rejected: AU_LOL calibration and downstream mute unverified\n");
     return -1;
+#endif
 }
 static int ParentVoiceAfeRead(void *context,unsigned offset,uint32_t *value) {
     A04_PARENT_CONTEXT *c=context;
@@ -332,6 +394,9 @@ static int ParentCodecStart(void *context) {
     { int16_t initial,value;unsigned cap;
       if(ParentVoiceVerify(c,&initial,&value,&cap))return -1; }
 #endif
+#if A04_SHARED_FIRST_PLAYBACK
+    if(!c || !c->pmic.online || a04_pmic_audio_power_on_pinned(&c->pmic.bus))return -1;
+#endif
     if(!c || !c->pmic.online || a04_pmic_audio_rails(&c->pmic.bus,&rails))return -1;
     A04_TRACE("A04AUD codec rails vaud22=%04x selector=%04x vaud28=%04x\n",(unsigned)rails.vaud22,(unsigned)rails.vaud22_selector,(unsigned)rails.vaud28);
     if(!a04_pmic_audio_rails_ready(&rails))return -1;
@@ -343,6 +408,13 @@ static int ParentCodecStart(void *context) {
         if(a04_mt6392_classd_preflight(&c->classd) ||
            a04_codec_domain_start(&c->codecDomain,&io))return -1;
     }
+#endif
+#if A04_SHARED_FIRST_PLAYBACK
+    { struct a04_codec_domain_io io={c,ParentDomainRead,ParentDomainWrite};
+      uint32_t con2;
+      /* Board mt8167_codec_init_regs: LOUT gain9 = 0 dB, quasi-current0. */
+      if(ParentDomainRead(c,0x708,&con2) ||
+         a04_codec_domain_update(&io,0x708,(15u<<9)|(3u<<30),con2&((15u<<9)|(3u<<30)),9u<<9))return -1; }
 #endif
     return a04_mt6392_classd_start_muted(&c->classd);
 }
@@ -435,14 +507,116 @@ static int ParentAfeClockRelease(void *context) {
     c->afeClockHeld=0;c->afeClockRestore=0;return 0;
 }
 #endif
-static int ParentAudioAcquire(PVOID context,ULONG rate) {
-    A04_PARENT_CONTEXT *c;int result;
+#if A04_SHARED_DIGITAL_PLAYBACK
+static int ParentDigitalRead(void *context,unsigned off,uint32_t *value) {
+    A04_PARENT_CONTEXT *c=context;
+    if(!c || !c->audioAfe || !value || (off&3u) || off>=0x1000)return -1;
+    *value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->audioAfe+off));return 0;
+}
+static int ParentDigitalWrite(void *context,unsigned off,uint32_t value) {
+    A04_PARENT_CONTEXT *c=context;
+    if(!c || !c->audioAfe)return -1;
+    switch(off) {
+    case 0: case 0x10: case 0x24: case 0x28: case 0x34: case 0x6c:
+    case 0x108: case 0x10c: case 0x124: case 0x260: case 0x264:
+    case 0xf04: case 0xf0c: case 0xf10: case 0xf28: case 0xf2c: break;
+    default:return -1;
+    }
+    WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->audioAfe+off),value);return 0;
+}
+static int ParentDigitalDelay(void *context,unsigned us) {
+    if(!context || us!=100 || KeGetCurrentIrql()>APC_LEVEL)return -1;
+    KeStallExecutionProcessor(us);return 0;
+}
+static int ParentPreparePlayback(PVOID context,ULONG rate) {
+    A04_PARENT_CONTEXT *c;int result=-1;struct a04_digital_io io;
     if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
     c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
-    result=a04_audio_owner_acquire(&c->audio,rate);
-    A04_TRACE("A04AUD parent acquire rate=%lu result=%d pmic=%d apmixed=%d online=%d preflight=%d clock=%d codec=%d release-check=%d poisoned=%d\n",rate,result,c->pmic.online,c->apmixed!=NULL,c->audio.online,c->audio.preflight!=NULL,c->audio.clock_acquire!=NULL,c->audio.codec_acquire_muted!=NULL,c->audio.verify_release!=NULL,c->audio.poisoned);
-    if(result && c->audio.poisoned)result=-2;
+    if(c->audio.online && c->audio.leased && !c->audio.poisoned &&
+       c->pmic.online && c->audioAfe && c->afeClockHeld && !c->afeClockPoisoned &&
+       c->audioTopClock.held && !c->audioTopClock.poisoned &&
+       c->codecDomain.held && !c->codecDomain.poisoned &&
+       !a04_mt6392_classd_verify_muted(&c->classd)) {
+        io.context=c;io.read=ParentDigitalRead;io.write=ParentDigitalWrite;io.delay_us=ParentDigitalDelay;
+        result=a04_digital_prepare(&c->digitalPlayback,&io,rate);
+    }
+    if(c->digitalPlayback.poisoned || c->classd.poisoned || c->pmic.bus.poisoned) {
+        c->audio.poisoned=1;result=-2;
+    }
     ParentUnlock(c);return result;
+}
+#endif
+#if A04_SHARED_FIRST_PLAYBACK
+/* Selected by the board-specific first-playback build. Windows owns the
+ * shared parent/PnP child ranges; all operations hold its single WACS lock.
+ * Readiness tests observe hardware, and do not claim secure-world handoff. */
+static int ParentFirstPreflight(void *context,uint32_t rate) {
+    A04_PARENT_CONTEXT *c=context;struct a04_mt6392_audio_raw spk;
+    uint32_t con1,con2,dac,abb;
+    if(!c || rate!=48000 || !c->pmic.online || c->pmic.bus.poisoned ||
+       !c->topck || !c->apmixed || c->apmixedLength<0x714 || !c->audioAfe ||
+       c->afeClockHeld || c->afeClockPoisoned || c->audioTopClock.held || c->audioTopClock.poisoned ||
+       c->codecDomain.held || c->codecDomain.poisoned || c->digitalPlayback.retained ||
+       c->classd.active || c->classd.poisoned || c->speakerClock.held ||
+       ParentDomainRead(c,0x704,&con1) || (con1&((1u<<15)|(1u<<14)|(1u<<12)|(1u<<11))) ||
+       ParentDomainRead(c,0x708,&con2) || (con2&(1u<<8)) ||
+       ParentDigitalRead(c,0x10,&dac) || (dac&0xdeu) ||
+       ParentDigitalRead(c,0xf00,&abb) || (abb&3u) ||
+       a04_pmic_audio_observe(&c->pmic.bus,&spk) || (spk.spk_con0&1u))return -1;
+    return 0;
+}
+/* Deliberately no release/drain certificate for a one-shot retained lease. */
+static int ParentPinnedRelease(void *context) {UNREFERENCED_PARAMETER(context);return -1;}
+static int ParentFirstCodecReady(void *context) {
+    A04_PARENT_CONTEXT *c=context;struct a04_mt6392_audio_rails rails;
+    struct a04_mt6392_audio_raw spk;uint32_t con1,con2;
+    if(!c || !c->pmic.online || c->pmic.bus.poisoned ||
+       !c->audioTopClock.held || c->audioTopClock.poisoned || !c->afeClockHeld || c->afeClockPoisoned ||
+       ParentDomainRead(c,0x704,&con1) || (con1&(1u<<15)) ||
+       ParentDomainRead(c,0x708,&con2) || (con2&(1u<<8)) ||
+       a04_pmic_audio_rails(&c->pmic.bus,&rails) || !a04_pmic_audio_rails_ready(&rails) ||
+       a04_pmic_audio_observe(&c->pmic.bus,&spk) || (spk.spk_con0&1u))return -1;
+    return 0;
+}
+static int ParentFirstUnmuteReady(void *context) {
+    A04_PARENT_CONTEXT *c=context;uint32_t dac;uint16_t oc;
+    struct a04_mt6392_audio_rails rails;
+    if(!c || !c->audio.leased || !c->audio.online || c->audio.poisoned ||
+       !c->trimCaptured || !c->voice.active || c->voice.poisoned ||
+       !c->digitalPlayback.prepared || c->digitalPlayback.poisoned ||
+       ParentDigitalRead(c,0x10,&dac) || (dac&3u)!=3u ||
+       a04_pmic_audio_rails(&c->pmic.bus,&rails) || !a04_pmic_audio_rails_ready(&rails) ||
+       a04_pmic_classd_overcurrent(&c->pmic.bus,&oc) || (oc&(1u<<14)))return -1;
+    return 0;
+}
+#endif
+static int ParentAudioAcquire(PVOID context,ULONG rate) {
+    A04_PARENT_CONTEXT *c;int result;
+#if A04_SHARED_FIRST_PLAYBACK
+    int keepPower=0;
+#endif
+    if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+#if A04_SHARED_FIRST_PLAYBACK
+    if(!NT_SUCCESS(WdfDeviceStopIdle((WDFDEVICE)context,TRUE)))return -1;
+#endif
+    c=ParentContext((WDFDEVICE)context);
+    if(ParentLock(c)) {
+#if A04_SHARED_FIRST_PLAYBACK
+        WdfDeviceResumeIdle((WDFDEVICE)context);
+#endif
+        return -1;
+    }
+    result=a04_audio_owner_acquire(&c->audio,rate);
+#if A04_SHARED_FIRST_PLAYBACK
+    if((!result || c->audio.poisoned) && !c->audioPowerPinned) {c->audioPowerPinned=1;keepPower=1;}
+#endif
+    A04_TRACE("A04AUD parent acquire rate=%lu result=%d online=%d leased=%d poisoned=%d\n",rate,result,c->audio.online,c->audio.leased,c->audio.poisoned);
+    if(result && c->audio.poisoned)result=-2;
+    ParentUnlock(c);
+#if A04_SHARED_FIRST_PLAYBACK
+    if(!keepPower)WdfDeviceResumeIdle((WDFDEVICE)context);
+#endif
+    return result;
 }
 static int ParentAudioUnmute(PVOID context) {
     A04_PARENT_CONTEXT *c;int result;
@@ -478,12 +652,14 @@ static int ParentStopVoice(PVOID context) { return ParentVoiceOperation(context,
 static int ParentVerifyDmaDrained(PVOID context) {
     UNREFERENCED_PARAMETER(context);
     /* DL1 disable/IRQ readback alone does not prove fabric or DMA drain. */
+    A04_TRACE("A04AUD DMA drain rejected: outstanding fabric transactions unverified\n");
     return -1;
 }
 static int ParentVerifyLivePcm(PVOID context,PVOID mdl,uint64_t logical,ULONG size) {
     UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(mdl);
     UNREFERENCED_PARAMETER(logical);UNREFERENCED_PARAMETER(size);
     /* No established CPU/AFE coherency or user-mapping attribute contract. */
+    A04_TRACE("A04AUD live PCM rejected: cyclic coherency and mapping attributes unverified\n");
     return -1;
 }
 #endif
@@ -493,6 +669,9 @@ static int ParentAudioRelease(PVOID context) {
     c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
 #if A04_SHARED_VOICE_PCM_DIAGNOSTIC
     if(c->voice.active || c->voice.poisoned){ParentUnlock(c);return -1;}
+#endif
+    #if A04_SHARED_DIGITAL_PLAYBACK
+    if(c->digitalPlayback.retained){ParentUnlock(c);return -1;}
 #endif
     result=a04_audio_owner_release(&c->audio);ParentUnlock(c);return result;
 }
@@ -626,22 +805,34 @@ static void ParentUsbTopWrite(void *p,unsigned off,unsigned v) { A04_PARENT_CONT
 static unsigned ParentUsbGpioRead(void *p,unsigned off) { A04_PARENT_CONTEXT*c=p; return READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->gpio+off)); }
 static void ParentUsbGpioWrite(void *p,unsigned off,unsigned v) { A04_PARENT_CONTEXT*c=p; WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->gpio+off),v); }
 static int ParentUsbOvercurrent(void *p) {
- A04_PARENT_CONTEXT*c=p; unsigned mode,dir,input;
+ A04_PARENT_CONTEXT*c=p;
  if(!c->gpio)return -1;
- mode=ParentUsbGpioRead(c,0x340);dir=ParentUsbGpioRead(c,0x10);input=ParentUsbGpioRead(c,0x210);
- /* GPIO21: Linux overcurrent IRQ starts active low. Require input and GPIO. */
- if((mode & (7u<<3)) || (dir & (1u<<5)) || !(input & (1u<<5)))return -1;
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
- /* ID low selects host. Check on every health poll, including unplug. */
- if((ParentUsbGpioRead(c,0x20)&(1u<<9)) || (ParentUsbGpioRead(c,0x220)&(1u<<9)))return -1;
+ /* Board usb20_host.c has CONFIG_OC disabled. Do not make an unconfigured
+  * GPIO21 a mandatory overcurrent measurement. This profile has ID/source
+  * health only, not overcurrent protection. ID41 uses mux 2 (IDDIG). */
+ return (ParentUsbGpioRead(c,0x20)&(1u<<9)) ||
+  (ParentUsbGpioRead(c,0x220)&(1u<<9)) ||
+  (ParentUsbGpioRead(c,0x380)&(7u<<3))!=(2u<<3) ? -1:0;
+#else
+ unsigned mode=ParentUsbGpioRead(c,0x340),dir=ParentUsbGpioRead(c,0x10),input=ParentUsbGpioRead(c,0x210);
+ return (mode&(7u<<3)) || (dir&(1u<<5)) || !(input&(1u<<5)) ? -1:0;
 #endif
- return 0;
 }
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
 /* a04br3 Linux switches GPIO22 and its BQ24160 configuration has no action
  * in tbl_charger_otg_vbus. This is a board-specific, unverified assumption:
  * GPIO22 itself controls the source. Do not claim a BQ boost was enabled.
  * Called under the parent mutex, before GPIO22 is raised. */
+static int ParentUsbProbeSource(void *p)
+{
+ A04_PARENT_CONTEXT*c=p;unsigned input;
+ if(!c->gpio)return -1;
+ input=ParentUsbGpioRead(c,0x220);
+ /* PC cable: ID41 is high or external VBUS detect34 is low. Decline before
+  * any pin, clock, rail or PHY change. This is eligibility, not a fault. */
+ return (input&(1u<<9)) || !(input&(1u<<2)) ? -1:0;
+}
 static int ParentUsbSourceAcquire(void *p)
 {
  A04_PARENT_CONTEXT*c=p; unsigned dir,in,mode;
@@ -649,7 +840,7 @@ static int ParentUsbSourceAcquire(void *p)
  dir=ParentUsbGpioRead(c,0x20);in=ParentUsbGpioRead(c,0x220);mode=ParentUsbGpioRead(c,0x360);
  /* ID41 grounded and USB-detect34 inactive before sourcing; do not drive
   * into a detected external source. The latter is active low in Linux. */
- if((dir&((1u<<9)|(1u<<2))) || (in&(1u<<9)) || !(in&(1u<<2)) || (mode&(7u<<12)))return -1;
+ if((ParentUsbGpioRead(c,0x380)&(7u<<3))!=(2u<<3) || (dir&((1u<<9)|(1u<<2))) || (in&(1u<<9)) || !(in&(1u<<2)) || (mode&(7u<<12)))return -1;
  return 0;
 }
 static int ParentUsbSourceRelease(void *p) { UNREFERENCED_PARAMETER(p);return 0; }
@@ -657,11 +848,24 @@ static int ParentUsbSourceRelease(void *p) { UNREFERENCED_PARAMETER(p);return 0;
 static int ParentUsbVerify(void *p) {
  A04_PARENT_CONTEXT*c=p; ULONG sel,con,pwr,rate;
  if(!c->topck || !c->apmixed)return -1;
+#if A04_USB_GPIO22_SOURCE_EXPERIMENT
+ if(!c->gpio || A04UsbPinsPrepare(&c->usb.gpio))return -1;
+#endif
  sel=ParentUsbTopRead(c,4); con=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x140));
  pwr=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x150));
  rate=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x144));
- /* USB78 mux = UNIVPLL/16, PLL enabled, powered and not isolated. */
- return ((sel>>20)&7)==2 && (con&0x30000001u)==0x30000001u && ((pwr&3)==1) && (rate&0x7fu)==48 && ((rate>>24)&7u)==0 && rate==READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x144)) ? 0 : -1;
+ /* Verify the shared PLL; never retune it on behalf of USB. */
+ if((con&0x30000001u)!=0x30000001u || (pwr&3)!=1 || (rate&0x7fu)!=48 ||
+    ((rate>>24)&7u)!=0 || rate!=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x144)))return -1;
+#if A04_USB_GPIO22_SOURCE_EXPERIMENT
+ if(((sel>>20)&7u)!=2u){
+  /* clk-mt8167.c: USB78 mux at 4[22:20], parent2=UNIVPLL/16.
+   * Change only with both its USB20 and USB11 consumers gated. */
+  if(!(ParentUsbTopRead(c,0x24)&(1u<<13)) || !(ParentUsbTopRead(c,0x3c)&(1u<<14)))return -1;
+  ParentUsbTopWrite(c,4,(sel&~(7u<<20))|(2u<<20));
+ }
+#endif
+ return ((ParentUsbTopRead(c,4)>>20)&7u)==2u ? 0:-1;
 }
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 static int ParentUsbAcquire(PVOID p) { return a04_usb_owner_acquire(&ParentContext((WDFDEVICE)p)->usb); }
@@ -743,6 +947,36 @@ static NTSTATUS ParentThermalWriteAnalog(PVOID p,ULONG generation,ULONG value)
  }
  ParentUnlock(c);return result;
 }
+static NTSTATUS ParentThermalVerifyHeadphone(PVOID p,ULONG generation)
+{
+ A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);NTSTATUS result=STATUS_DEVICE_NOT_READY;
+ if(ParentLock(c))return result;
+ if(a04_shared_thermal_valid(&c->thermal,generation) && c->thermal.inflight) {
+#if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC && A04_AUDIO_DIAGNOSTIC_TRACE
+  /* The active codec lease owns APMIXED and PWRAP while the shared mutex
+   * is held. These reads are observations only, not proof of board mute. */
+  if(c->audio.leased && !c->audio.poisoned && c->codecDomain.held &&
+     !c->codecDomain.poisoned && c->classd.active && !c->classd.poisoned && c->pmic.online) {
+   uint32_t con2;int readResult=ParentDomainRead(c,0x708,&con2);
+   int muteResult=a04_mt6392_classd_verify_muted(&c->classd);
+   if(c->classd.poisoned || c->pmic.bus.poisoned)c->audio.poisoned=1;
+   A04_TRACE("A04ADC codec observation route-read=%d hp-left-adc=%d gain-muted=%d; physical mute unknown\n",
+             readResult,readResult?0:!!(con2&(1u<<15)),muteResult==0);
+  }
+#endif
+  /* No provider establishes both route and physical downstream mute yet. */
+  result=STATUS_DEVICE_NOT_READY;
+ }
+ ParentUnlock(c);return result;
+}
+static NTSTATUS ParentThermalVerifyOwnership(PVOID p,ULONG generation)
+{
+ A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);NTSTATUS result=STATUS_DEVICE_NOT_READY;
+ if(ParentLock(c))return result;
+ if(a04_shared_thermal_ownership_verified(&c->thermal,generation))
+  result=STATUS_SUCCESS;
+ ParentUnlock(c);return result;
+}
 static NTSTATUS ParentThermalQuiescent(PVOID p,ULONG generation)
 {
  A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);int result;
@@ -777,6 +1011,10 @@ static void ParentStop(A04_PARENT_CONTEXT *c,int can_access)
     if(!c->thermalRundownClosed){ExWaitForRundownProtectionRelease(&c->thermalRundown);c->thermalRundownClosed=TRUE;}
 #endif
     ExAcquireFastMutex(&c->pwrapLock);
+#if A04_SHARED_FIRST_PLAYBACK
+    if(can_access && !c->removed && c->classd.active && c->pmic.online)
+        (void)a04_mt6392_classd_mute(&c->classd);
+#endif
     c->wifiActive=0;
     c->regs.online=0;
     c->pmic.online=0;
@@ -812,6 +1050,9 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
 #endif
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
     if(c->afeClockHeld || c->afeClockPoisoned)return STATUS_DEVICE_BUSY;
+#if A04_SHARED_DIGITAL_PLAYBACK
+    if(c->digitalPlayback.retained)return STATUS_DEVICE_BUSY;
+#endif
 #endif
 #if A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC
     if(c->audioTopClock.held || c->audioTopClock.poisoned)return STATUS_DEVICE_BUSY;
@@ -831,7 +1072,7 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
     A04_PARENT_CONTEXT *c=ParentContext(dev);struct a04_parent_resource r[5],t[5];
     struct a04_parent_mapping mapping;ULONG i,n=0;PHYSICAL_ADDRESS pa;
 #if A04_SHARED_APMIXED_RESOURCE
-    uint64_t apmixed;
+    uint64_t apmixed=0;
 #endif
     if(c->topck||c->infra||c->gpio||c->pwrap||c->apmixed)return STATUS_INVALID_DEVICE_STATE;
     if(!raw || !translated || WdfCmResourceListGetCount(raw)!=WdfCmResourceListGetCount(translated))return STATUS_DEVICE_CONFIGURATION_ERROR;
@@ -848,7 +1089,11 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
         t[n].exclusive=d->ShareDisposition==CmResourceShareDeviceExclusive ? 1u:0u;++n;
     }
 #if A04_SHARED_APMIXED_RESOURCE
-    if(a04_parent_translate_audio_resources(r,t,n,&mapping,&apmixed))return STATUS_DEVICE_CONFIGURATION_ERROR;
+    /* Integrated parent keeps the platform's existing four/five windows.
+     * Absence of APMIXED only withholds USB/audio admission, not input D0. */
+    if(!A04_SHARED_USB_ONLY && n==4){
+        if(a04_parent_translate_resources(r,t,n,&mapping))return STATUS_DEVICE_CONFIGURATION_ERROR;
+    } else if(a04_parent_translate_audio_resources(r,t,n,&mapping,&apmixed))return STATUS_DEVICE_CONFIGURATION_ERROR;
 #else
     if(a04_parent_translate_resources(r,t,n,&mapping))return STATUS_DEVICE_CONFIGURATION_ERROR;
 #endif
@@ -861,11 +1106,13 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
     pa.QuadPart=(LONGLONG)mapping.pwrap;c->pwrap=MmMapIoSpace(pa,0x1000,MmNonCached);
     if(!c->pwrap)goto fail;
 #if A04_SHARED_APMIXED_RESOURCE
-    for(i=0;i<n;++i)if(r[i].base==0x10018000u)break;
-    if(i==n)goto fail;
-    c->apmixedLength=t[i].length;
-    pa.QuadPart=(LONGLONG)apmixed;c->apmixed=MmMapIoSpace(pa,c->apmixedLength,MmNonCached);
-    if(!c->apmixed)goto fail;
+    if(apmixed){
+        for(i=0;i<n;++i)if(r[i].base==0x10018000u)break;
+        if(i==n)goto fail;
+        c->apmixedLength=t[i].length;
+        pa.QuadPart=(LONGLONG)apmixed;c->apmixed=MmMapIoSpace(pa,c->apmixedLength,MmNonCached);
+        if(!c->apmixed)goto fail;
+    }
 #endif
     /* Mapping alone does not admit clients; D0 must establish readiness. */
     return STATUS_SUCCESS;
@@ -894,6 +1141,12 @@ NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
     UNREFERENCED_PARAMETER(previous);
 #if A04_SHARED_BUTTON_D0_EXPERIMENT
     A04_PARENT_CONTEXT *c=ParentContext(dev);NTSTATUS result=STATUS_DEVICE_NOT_READY;ULONG init,state;
+#if A04_SHARED_THERMAL_DIAGNOSTIC && A04_AUDIO_DIAGNOSTIC_TRACE
+    struct a04_adc_observation observation;ULONG observationBytes=sizeof(observation),observationAttributes=0;
+    UNICODE_STRING observationName=RTL_CONSTANT_STRING(L"A04BR3AdcObservation");
+    GUID observationGuid={0x91b27b25,0x4cc5,0x4471,{0xa0,0x4b,0x81,0x67,0x03,0x01,0x00,0x01}};
+    NTSTATUS observationStatus;
+#endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
     if(c->thermalRundownClosed){ExReInitializeRundownProtection(&c->thermalRundown);c->thermalRundownClosed=FALSE;}
 #endif
@@ -901,6 +1154,13 @@ NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
      * final compare-exchange; surprise removal prevents any later restart. */
     if (InterlockedCompareExchange(&c->removed,0,0) ||
         InterlockedCompareExchange(&c->admissionClosed,2,1)!=1) return result;
+#if A04_SHARED_THERMAL_DIAGNOSTIC && A04_AUDIO_DIAGNOSTIC_TRACE
+    RtlZeroMemory(&observation,sizeof(observation));
+    observationStatus=ExGetFirmwareEnvironmentVariable(&observationName,&observationGuid,&observation,&observationBytes,&observationAttributes);
+    if(NT_SUCCESS(observationStatus) && a04_adc_observation_valid(&observation,observationBytes,observationAttributes))
+        A04_TRACE("A04ADC early DXE clock=%08lx; EBS and secure release unknown\n",(ULONG)observation.clock_first);
+    else A04_TRACE("A04ADC early DXE observation unavailable or invalid\n");
+#endif
     ExAcquireFastMutex(&c->pwrapLock);
     if (InterlockedCompareExchange(&c->removed,0,0) ||
         InterlockedCompareExchange(&c->admissionClosed,0,0)!=2 ||
@@ -923,6 +1183,10 @@ NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
     }
 #endif
     c->pmic.online=1;
+#if A04_SHARED_FIRST_PLAYBACK
+    c->audio.online=(c->apmixed && c->apmixedLength>=0x714 && !c->audio.poisoned && !c->audio.leased && !c->audioPowerPinned);
+    c->regs.online=c->regs.poisoned?0:1;
+#endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
     /* No known provider proves release by EL3 or every AUXADC consumer. */
     c->thermal.online=1;c->thermal.firmware_released=0;c->thermal.adc_exclusive=0;
@@ -932,10 +1196,10 @@ NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
     c->regs.online=c->regs.poisoned ? 0 : 1;
 #endif
     if (InterlockedCompareExchange(&c->admissionClosed,0,2)==2) result=STATUS_SUCCESS;
-    else { c->pmic.online=0; c->usb.online=0; c->regs.online=0; }
+    else { c->pmic.online=0; c->usb.online=0; c->regs.online=0;c->audio.online=0; }
 done:
-    if (!NT_SUCCESS(result)) { c->pmic.online=0; c->usb.online=0; c->regs.online=0;(void)InterlockedCompareExchange(&c->admissionClosed,1,2); }
-    A04_TRACE("A04AUD parent d0 result=%08lx poisoned=%d; audio lease remains gated\n",(ULONG)result,c->pmic.bus.poisoned);
+    if (!NT_SUCCESS(result)) { c->pmic.online=0; c->usb.online=0; c->regs.online=0;c->audio.online=0;(void)InterlockedCompareExchange(&c->admissionClosed,1,2); }
+    A04_TRACE("A04AUD parent d0 result=%08lx poisoned=%d audio-online=%d\n",(ULONG)result,c->pmic.bus.poisoned,c->audio.online);
     ExReleaseFastMutex(&c->pwrapLock);return result;
 #else
     UNREFERENCED_PARAMETER(dev);
@@ -1129,6 +1393,11 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
         c->classd.context=c;c->classd.supports=ParentCodecSupports;c->classd.update_bits=ParentCodecUpdate;c->classd.read16=ParentCodecRead;c->classd.delay_us=ParentCodecDelay;
         c->audio.context=c;c->audio.codec_acquire_muted=ParentCodecStart;
         c->audio.codec_mute=ParentCodecMute;c->audio.codec_release_quiescent=ParentCodecStop;
+#if A04_SHARED_FIRST_PLAYBACK
+        c->audio.preflight=ParentFirstPreflight;c->audio.verify_release=ParentPinnedRelease;
+        c->classd.verify_start=ParentFirstCodecReady;c->classd.verify_quiescent=ParentPinnedRelease;
+        c->classd.verify_unmute=ParentFirstUnmuteReady;
+#endif
 #if defined(A04_MT6392_UNMUTE_DIAGNOSTIC) && A04_MT6392_UNMUTE_DIAGNOSTIC
         c->audio.codec_unmute=ParentCodecUnmute;
 #endif
@@ -1143,7 +1412,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
         c->usb.context=c;c->usb.lock=ParentUsbLock;c->usb.unlock=ParentUsbUnlock;
         c->usb.verify_upstream=ParentUsbVerify;c->usb.verify_overcurrent=ParentUsbOvercurrent;c->usb.top_read=ParentUsbTopRead;c->usb.top_write=ParentUsbTopWrite;
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
-        c->usb.otg_acquire=ParentUsbSourceAcquire;c->usb.otg_release=ParentUsbSourceRelease;
+        c->usb.probe_source=ParentUsbProbeSource;c->usb.otg_acquire=ParentUsbSourceAcquire;c->usb.otg_release=ParentUsbSourceRelease;
 #endif
         c->usb.pmic=&c->pmic.bus;c->usb.gpio.context=c;c->usb.gpio.read32=ParentUsbGpioRead;c->usb.gpio.write32=ParentUsbGpioWrite;
     }
@@ -1171,6 +1440,8 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     thermalIface.Begin=ParentThermalBegin;thermalIface.End=ParentThermalEnd;
     thermalIface.ReadAnalog=ParentThermalReadAnalog;thermalIface.WriteAnalog=ParentThermalWriteAnalog;
     thermalIface.Quiescent=ParentThermalQuiescent;thermalIface.Release=ParentThermalRelease;
+    thermalIface.VerifyHeadphone=ParentThermalVerifyHeadphone;
+    thermalIface.VerifyOwnership=ParentThermalVerifyOwnership;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&thermalIface,&A04SharedThermalInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
 #endif
@@ -1180,6 +1451,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     audioIface.Header.InterfaceDereference=ParentInterfaceDereference;
     #if A04_SHARED_VOICE_PCM_DIAGNOSTIC
     audioIface.VerifyDmaDrained=ParentVerifyDmaDrained;audioIface.VerifyLivePcm=ParentVerifyLivePcm;audioIface.StartVoice=ParentStartVoice;audioIface.StopVoice=ParentStopVoice;
+#endif
+    #if A04_SHARED_DIGITAL_PLAYBACK
+    audioIface.PreparePlayback=ParentPreparePlayback;
 #endif
     audioIface.BindAfe=ParentBindAfe;audioIface.Mute=ParentAudioMute;audioIface.UnmuteMin=ParentAudioUnmute;audioIface.AcquireMuted=ParentAudioAcquire;audioIface.ReleaseQuiescent=ParentAudioRelease;audioIface.PrepareMaskedIrq=ParentAudioPrepareIrq;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&audioIface,&A04SharedAudioInterfaceGuid,NULL);
@@ -1202,6 +1476,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #endif
 #if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE
     if(!NT_SUCCESS(status))return status;
+#if !A04_SHARED_USB_ONLY
     status=ParentAddProbeChild(dev,L"MT6392\\Buttons",L"0",0x10002000u);
     if(!NT_SUCCESS(status))return status;
     status=ParentAddProbeChild(dev,L"MT8167\\BU21025",L"0",0x11009000u);
@@ -1210,14 +1485,17 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     status=ParentAddProbeChild(dev,L"MT8167\\Thermal",L"0",0xfffffffeu);
     if(!NT_SUCCESS(status))return status;
 #endif
+#endif
     status=ParentAddProbeChild(dev,L"MT8167\\USB20",L"0",0x11100000u);
     if(!NT_SUCCESS(status))return status;
+#if !A04_SHARED_USB_ONLY
     /* The audio sentinel remains unavailable unless the diagnostic flag is set. */
     status=ParentAddProbeChild(dev,L"MT8167\\AFE",L"0",0xffffffffu);
     if(!NT_SUCCESS(status))return status;
     /* The host MMIO range is a separate child resource. The optional MSDC2 interrupt descriptor still needs platform polarity and
      * translation verification; it does not describe the separate EINT5. */
     status=ParentAddProbeChild(dev,L"A04BR3\\MT6630SDIO",L"0",0x11170000u);
+#endif
 #endif
     return status;
 }

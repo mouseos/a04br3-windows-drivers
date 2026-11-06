@@ -43,6 +43,10 @@ typedef struct _A04_SHARED_AUDIO_INTERFACE {
     /* v9: independently verify all AFE transactions have drained after
      * stop and IRQ rundown, with power and mappings still retained. */
     int (*VerifyDmaDrained)(PVOID);
+    /* v10: 48 kHz S16_LE INT ADDA + codec hw_params, with a muted lease.
+     * 0=prepared, -1=no writes, -2=partial writes; retain lease after success
+     * or -2 until reset. This does not start DMA or unmute the analog route. */
+    int (*PreparePlayback)(PVOID, ULONG);
 } A04_SHARED_AUDIO_INTERFACE;
-#define A04_SHARED_AUDIO_INTERFACE_VERSION 9
+#define A04_SHARED_AUDIO_INTERFACE_VERSION 10
 #endif

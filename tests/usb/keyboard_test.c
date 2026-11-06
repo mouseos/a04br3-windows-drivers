@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <string.h>
 #include "keyboard.h"
 int main(void) {
  KB_ENUM k; KB_CONTROL c; unsigned char d[18]={18,1,0,2,0,0,0,8,0x34,0x12,0x78,0x56,0,1,0,0,0,1};
@@ -15,5 +16,15 @@ int main(void) {
  KbEnumStart(&k); assert(!KbControlComplete(&k,d,8)); assert(!KbControlComplete(&k,0,0));
  assert(!KbControlComplete(&k,d,18)); assert(!KbControlComplete(&k,conf,9));
  conf[9]=0; assert(KbControlComplete(&k,conf,25)==-1);
+ /* A boot endpoint must not hide a malformed descriptor behind it. */
+ {unsigned char tail[27];memcpy(tail,conf,25);tail[9]=9;tail[2]=27;tail[25]=0;tail[26]=0;
+  KbEnumStart(&k);k.stage=KB_CONFIG;k.config_length=27;k.endpoint=7;k.interface_number=6;
+  assert(KbControlComplete(&k,tail,27)<0 && k.stage==KB_ERROR && k.endpoint==7 && k.interface_number==6);
+  /* A well-bounded unknown trailing descriptor is preserved/accepted. */
+  tail[25]=2;tail[26]=0x30;KbEnumStart(&k);k.stage=KB_CONFIG;k.config_length=27;
+  assert(!KbControlComplete(&k,tail,27) && k.endpoint==1 && k.stage==KB_SET_CONFIG);
+  tail[13]=0;KbEnumStart(&k);k.stage=KB_CONFIG;k.config_length=27;
+  assert(KbControlComplete(&k,tail,27)<0 && k.stage==KB_ERROR);
+ }
  return 0;
 }
