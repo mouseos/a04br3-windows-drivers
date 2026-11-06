@@ -4,6 +4,12 @@
 #include <ntddk.h>
 #include <wdf.h>
 #include "../wddm-display/ge8300_display_resource_check.h"
+#ifndef A04_GCE_PARENT_CLOCK_INTERFACE
+#define A04_GCE_PARENT_CLOCK_INTERFACE 0
+#endif
+#if A04_GCE_PARENT_CLOCK_INTERFACE
+#include "gce_clock_interface.h"
+#endif
 #define GCE_BYTES 4096u
 typedef struct gce_context {
     PDMA_ADAPTER adapter;
@@ -12,12 +18,57 @@ typedef struct gce_context {
     PVOID command_cpu;
     PHYSICAL_ADDRESS command_dma;
     ULONG map_registers;
+#if A04_GCE_PARENT_CLOCK_INTERFACE
+    WDFIOTARGET parent_target;
+    A04_GCE_CLOCK_INTERFACE parent_clock;
+    ULONG clock_token;NTSTATUS clock_status;
+#endif
 } GCE_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(GCE_CONTEXT,GceContext)
 DRIVER_INITIALIZE DriverEntry;
 EVT_WDF_DRIVER_DEVICE_ADD GceAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE GcePrepare;
 EVT_WDF_DEVICE_RELEASE_HARDWARE GceRelease;
+#if A04_GCE_PARENT_CLOCK_INTERFACE
+static NTSTATUS GceConnectParent(WDFDEVICE device,struct gce_context *c)
+{
+    PWSTR links=NULL;UNICODE_STRING path;WDF_IO_TARGET_OPEN_PARAMS open;
+    WDF_OBJECT_ATTRIBUTES attributes;NTSTATUS status;size_t length;
+    status=IoGetDeviceInterfaces((LPGUID)&A04GceParentDeviceInterfaceGuid,NULL,0,&links);
+    if(!NT_SUCCESS(status))return status;
+    if(!links || !*links){status=STATUS_NO_SUCH_DEVICE;goto done;}
+    RtlInitUnicodeString(&path,links);length=path.Length/sizeof(WCHAR);
+    /* No arbitrary selection if multiple parents appear. */
+    if(links[length+1]){status=STATUS_DEVICE_CONFIGURATION_ERROR;goto done;}
+    WDF_OBJECT_ATTRIBUTES_INIT(&attributes);attributes.ParentObject=device;
+    status=WdfIoTargetCreate(device,&attributes,&c->parent_target);
+    if(!NT_SUCCESS(status))goto done;
+    WDF_IO_TARGET_OPEN_PARAMS_INIT_OPEN_BY_NAME(&open,&path,GENERIC_READ|GENERIC_WRITE);
+    status=WdfIoTargetOpen(c->parent_target,&open);
+    if(!NT_SUCCESS(status))goto fail;
+    RtlZeroMemory(&c->parent_clock,sizeof(c->parent_clock));
+    status=WdfIoTargetQueryForInterface(c->parent_target,&A04GceClockInterfaceGuid,
+        (PINTERFACE)&c->parent_clock,sizeof(c->parent_clock),A04_GCE_CLOCK_INTERFACE_VERSION,NULL);
+    if(!NT_SUCCESS(status))goto close;
+    if(!c->parent_clock.Header.InterfaceDereference || !c->parent_clock.Acquire || !c->parent_clock.Release) {
+        status=STATUS_NOINTERFACE;goto dereference;
+    }
+    /* The parent currently reports not-ready because firmware ownership of
+     * the shared clock has not been proved; no GCE access is enabled. */
+    status=c->parent_clock.Acquire(c->parent_clock.Header.Context,&c->clock_token);
+    if(c->clock_token)goto done; /* retain even when acquisition returned error */
+    if(NT_SUCCESS(status))status=STATUS_DEVICE_CONFIGURATION_ERROR;
+dereference:
+    if(c->parent_clock.Header.InterfaceDereference)c->parent_clock.Header.InterfaceDereference(c->parent_clock.Header.Context);
+    RtlZeroMemory(&c->parent_clock,sizeof(c->parent_clock));
+close:
+    WdfIoTargetClose(c->parent_target);
+fail:
+    WdfObjectDelete(c->parent_target);c->parent_target=NULL;
+done:
+    if(links)ExFreePool(links);return status;
+}
+#endif
 static void GceFree(struct gce_context *c)
 {
     if(c->command_cpu && c->adapter && c->adapter->DmaOperations &&
@@ -67,13 +118,20 @@ NTSTATUS GcePrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
     c->registers=(volatile ULONG *)MmMapIoSpace(mem->u.Memory.Start,0x1000,MmNonCached);
     if(!c->registers){status=STATUS_INSUFFICIENT_RESOURCES;goto fail;}
     /* No device DMA, MMIO access or interrupt is initiated. */
+#if A04_GCE_PARENT_CLOCK_INTERFACE
+    c->clock_status=GceConnectParent(device,c);
+#endif
     return STATUS_SUCCESS;
 fail:
     GceFree(c);return status;
 }
 NTSTATUS GceRelease(WDFDEVICE device,WDFCMRESLIST translated)
 {
-    UNREFERENCED_PARAMETER(translated);GceFree(GceContext(device));return STATUS_SUCCESS;
+    struct gce_context *c=GceContext(device);UNREFERENCED_PARAMETER(translated);
+#if A04_GCE_PARENT_CLOCK_INTERFACE
+    if(c->clock_token)return STATUS_DEVICE_BUSY;
+#endif
+    GceFree(c);return STATUS_SUCCESS;
 }
 NTSTATUS GceAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 {
