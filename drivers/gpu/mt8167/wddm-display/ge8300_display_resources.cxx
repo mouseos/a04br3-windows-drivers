@@ -46,12 +46,15 @@ NTSTATUS A04DisplayResources::PrepareShared(PDMA_ADAPTER gpu,PDEVICE_OBJECT gpuP
 #if A04_GE8300_WDDM_SHARED_LEASE
 static NTSTATUS SharedLeaseIoctl(HANDLE handle,ULONG code,struct a04_ge8300_shared_lease *lease)
 {
-    IO_STATUS_BLOCK io={};NTSTATUS status;
+    IO_STATUS_BLOCK io={};NTSTATUS status;PFILE_OBJECT file=NULL;
+    status=ObReferenceObjectByHandle(handle,SYNCHRONIZE,*IoFileObjectType,KernelMode,(PVOID *)&file,NULL);
+    if(!NT_SUCCESS(status))return status;
     status=ZwDeviceIoControlFile(handle,NULL,NULL,NULL,&io,code,lease,sizeof(*lease),lease,sizeof(*lease));
     if (status==STATUS_PENDING) {
-        do {status=ZwWaitForSingleObject(handle,FALSE,NULL);} while(status!=STATUS_SUCCESS);
+        do {status=KeWaitForSingleObject(file,Executive,KernelMode,FALSE,NULL);} while(status!=STATUS_SUCCESS);
         status=io.Status;
     } else if (NT_SUCCESS(status)) status=io.Status;
+    ObDereferenceObject(file);
     if (NT_SUCCESS(status) && io.Information!=sizeof(*lease))return STATUS_IO_DEVICE_ERROR;
     return status;
 }
