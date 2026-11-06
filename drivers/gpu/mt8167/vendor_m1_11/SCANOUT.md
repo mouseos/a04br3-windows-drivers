@@ -525,6 +525,22 @@ not be assumed to be a GCE DMA adapter merely because both resources appear in
 one ACPI device. A GCE PDO/DMA domain and clock/thread/event ownership remain
 necessary before this packet can be submitted.
 
+`gce_submit.c` now implements the primary-thread reset, fixed END, command
+DMA address, priority, IRQ-enable and thread-enable writes through supplied
+MMIO callbacks, plus Linux-style thread IRQ acknowledgement. Its required
+authorization callback must prove clock/power, controller-global register,
+IRQ, thread, event and display ownership and the GCE DMA buffer lifetime.
+All failures after the first MMIO write and all timeouts retain the command
+and display mappings; EOC is reported separately from an OVL latch. The core
+is ARM32-built and host-tested with a fake MMIO backend, but no KMDF callback
+supplies this authorization or invokes it. It does not currently submit a
+hardware command, prove a latch, or implement restoration.
+
+Linux `cmdq_virtual_disp_thread` selects thread 0 for primary display; the
+same tree reserves 12-14 for secure work and can use 15 for secure notify.
+The packet finalizer now accepts only thread 0. That selection does not prove
+that thread 0, its event, or its clock have been released by firmware or EL3.
+
 Linux `clk-mt8167.c` identifies the GCE clock as TOP2 bit 4, with status
 offset 0x3c and set/clear offsets 0x6c/0x9c in TOPCKGEN. The same TOPCKGEN
 range is assigned to the existing shared-parent PDO. The GCE resource owner

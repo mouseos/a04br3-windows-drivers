@@ -35,9 +35,12 @@ int main(void)
     assert(a04_mt8167_cmdq_l0_address(restore,10,38,0x90000000,1));
     assert(restore[1]==0x20000026 && restore[4]==0x90000000 && restore[5]==words[5]);
     assert(!a04_mt8167_cmdq_finalize(restore,10,16));
-    assert(a04_mt8167_cmdq_finalize(restore,10,3));
-    assert(restore[8]==0x1020ac30 && restore[9]==0x10000001);
+    assert(!a04_mt8167_cmdq_finalize(restore,10,12));
+    assert(!a04_mt8167_cmdq_finalize(restore,10,15));
     assert(!a04_mt8167_cmdq_finalize(restore,10,3));
+    assert(a04_mt8167_cmdq_finalize(restore,10,0));
+    assert(restore[8]==0x1020ac00 && restore[9]==0x10000001);
+    assert(!a04_mt8167_cmdq_finalize(restore,10,0));
     {
       uint32_t pair[12]={0},saved[12]={0};
       assert(!a04_mt8167_cmdq_layer_addresses(pair,12,38,0x90000000,0,1));

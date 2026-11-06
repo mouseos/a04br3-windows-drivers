@@ -14,7 +14,7 @@
  * a token is only valid under independently established exclusive ownership;
  * the boolean below is a precondition, not proof of that ownership. No caller may use
  * this function as evidence that a safe boundary exists. L3 is untouched. */
-static int a04_mt8167_cmdq_l0_address(uint32_t *words,uint32_t count,
+static inline int a04_mt8167_cmdq_l0_address(uint32_t *words,uint32_t count,
                                      uint32_t event,uint32_t display_address,int exclusive_event)
 {
     if(!words || count<A04_CMDQ_FLIP_WORDS ||
@@ -33,7 +33,7 @@ static int a04_mt8167_cmdq_l0_address(uint32_t *words,uint32_t count,
 /* For an explicitly validated two-layer transaction, write L0 then L3.
  * The caller supplies both currently owned addresses for a separate restore
  * packet. Building either packet does not execute or authorize a switch. */
-static int a04_mt8167_cmdq_layer_addresses(uint32_t *words,uint32_t count,
+static inline int a04_mt8167_cmdq_layer_addresses(uint32_t *words,uint32_t count,
                                           uint32_t event,uint32_t l0,uint32_t l3,int exclusive_event)
 {
     if(!words || count<A04_CMDQ_TWO_LAYER_WORDS ||
@@ -49,12 +49,14 @@ static int a04_mt8167_cmdq_layer_addresses(uint32_t *words,uint32_t count,
 }
 /* Linux cmdq_core_task_finalize_end plus thread-specific fixup: convert the
  * terminal relative +8 jump to an absolute GCE end marker.  The caller still
- * needs the selected thread, its DMA domain and exclusive ownership. */
-static int a04_mt8167_cmdq_finalize(uint32_t *words,uint32_t count,uint32_t thread)
+ * needs exclusive ownership of primary-display thread 0 and its DMA domain.
+ * Linux reserves threads 12-14 for secure work and may use 15 for secure
+ * notification; never encode a task for those or an unrelated thread. */
+static inline int a04_mt8167_cmdq_finalize(uint32_t *words,uint32_t count,uint32_t thread)
 {
     uint32_t end;
     if(!words || (count!=A04_CMDQ_FLIP_WORDS && count!=A04_CMDQ_TWO_LAYER_WORDS) ||
-       thread>=16u || words[count-4]!=1u || words[count-3]!=0x40000000u ||
+       thread!=0u || words[count-4]!=1u || words[count-3]!=0x40000000u ||
        words[count-2]!=8u || words[count-1]!=0x10000000u)return 0;
     end=0x1020ac00u|(thread<<4);
     words[count-2]=end;words[count-1]=0x10000001u;
