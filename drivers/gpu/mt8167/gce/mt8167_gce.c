@@ -193,11 +193,17 @@ EVT_WDF_INTERRUPT_SYNCHRONIZE GceKickSync;
 EVT_WDF_INTERRUPT_SYNCHRONIZE GceTimeoutSync;
 EVT_WDF_INTERRUPT_SYNCHRONIZE GceStateSync;
 EVT_WDF_INTERRUPT_SYNCHRONIZE GceObserveSync;
+static int GceCanInspect(void *p)
+{
+    GCE_CONTEXT *c=(GCE_CONTEXT *)p;
+    return c && !InterlockedCompareExchange(&c->removal_pending,0,0) &&
+        (c->ownership_proofs&GCE_PROOF_IRQ)==GCE_PROOF_IRQ && c->clock_token && NT_SUCCESS(c->clock_status) &&
+        InterlockedCompareExchange(&c->irq_enabled,0,0) && c->registers && c->command_cpu && c->adapter;
+}
 static int GceAuthorized(void *p)
 {
     GCE_CONTEXT *c=(GCE_CONTEXT *)p;
-    return c && !InterlockedCompareExchange(&c->removal_pending,0,0) && c->ownership_proofs==GCE_PROOF_ALL && c->clock_token && NT_SUCCESS(c->clock_status) &&
-        InterlockedCompareExchange(&c->irq_enabled,0,0) && c->registers && c->command_cpu && c->adapter;
+    return GceCanInspect(p) && c->ownership_proofs==GCE_PROOF_ALL;
 }
 static int GceRead(void *p,uint32_t off,uint32_t *v)
 {
@@ -233,7 +239,7 @@ BOOLEAN GceObserveSync(WDFINTERRUPT irq,WDFCONTEXT p)
 {
     GCE_OBSERVE_QUERY *q=(GCE_OBSERVE_QUERY *)p;GCE_CONTEXT *c=q->owner;struct a04_gce_snapshot s;
     UNREFERENCED_PARAMETER(irq);
-    if(a04_gce_observe_thread0(c,GceAuthorized(c) && c->engine.state==A04_GCE_IDLE,GceRead,&s))return FALSE;
+    if(a04_gce_observe_thread0(c,GceCanInspect(c) && c->engine.state==A04_GCE_IDLE,GceRead,&s))return FALSE;
     q->value.enable=s.enable;q->value.status=s.status;q->value.irq_status=s.irq_status;q->value.irq_enable=s.irq_enable;return TRUE;
 }
 BOOLEAN GceInterruptIsr(WDFINTERRUPT interrupt,ULONG message)
@@ -296,7 +302,7 @@ static NTSTATUS GceDisplayObserve(PVOID p,ULONG token,A04_GCE_THREAD_OBSERVATION
     if(!p || !token || !out || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
     RtlZeroMemory(out,sizeof(*out));c=GceContext((WDFDEVICE)p);
     (void)WdfWaitLockAcquire(c->lease_lock,NULL);
-    if(a04_gce_display_is_live(&c->lease,token) && c->interrupt && GceAuthorized(c)) {
+    if(a04_gce_display_is_live(&c->lease,token) && c->interrupt && GceCanInspect(c)) {
         RtlZeroMemory(&q,sizeof(q));q.owner=c;
         if(WdfInterruptSynchronize(c->interrupt,GceObserveSync,&q)) {*out=q.value;status=STATUS_SUCCESS;}
     }
