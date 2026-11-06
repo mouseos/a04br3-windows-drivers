@@ -77,3 +77,13 @@ packet担当はStartFrame 0x15e9c8、SetupBGObject 0x11372cのclear分岐、DoKi
 `native_hwrt_profile`はRGXAddRenderTargetの単一RT・1x1 samples分岐を800x600/800x1280について実装する。ownerの実`target`/`mlists`と寸法を渡し、返した2組を既存`a04_vendor_native_bind_bank_cold`へ渡す。private m1.11翻訳単位内で使用し、modern providerのenumへm1.11型を露出しない。GPUへのpublishは行わない。
 
 重要: `region_header_size`へ入るのはbyte容量ではなくtile数（1900/4000）。`tpc_size`はraw TPC bytes（0x8000/0x20000）、`tpc_stride=0`、`mtile_stride`はtile数。merge registerはvendor定数0x3e89309c/0x3fddb3d9/0x3fbb67b2からIEEE754 binary32 round-nearest/evenで算出した固定bitsで、実装内でFPUを使用しない。sample tableは08,08の1sample位置を反映した0x88。cold bind可能なmetadataであり、完全描画packetではない。
+
+## 採用したsingle-emit EOT code factory
+
+`native_eot_program`は即値loadを使わず、共有reg sh0/sh1からPBEへ単一emitするsource-generated USCと、同版UMの1-DMA PDS constructorを組む。必要な有効範囲はUSC16 bytes（temp0/shared2）、PDS40 bytes（32-byte data segment＋8-byte code、data先頭からcode+32）。USC entry alignment4、PDS data/code alignment16。DMA allocation/mappingは各4KiBへ切上げれば足りる。この量はEOT部分のみで、背景USC/VDM/PPPの総codespaceではない。
+
+USCは既存ホストMesa PCOでGE8300 22.40.54.30向けに生成した。source baseは0d94b3f397fb9cf8470bb5600ada8af79ff5361a、再生成レシピはtools/native_eot_reference.c。使用した既存archiveのSHA256・確認したsource差分・生成手順は指定log領域のmanifestに保存する。生成物は48a080c280408001880000fff2ffffff。既存TQ EOTの命令bodyと一致し、group lengthと末尾16-byte alignmentが異なる。vendorの即値load encoderから算出した42/44/46-byte候補は未採用であり、mapper仕様に使わない。
+
+factoryへ渡すemit_word0/1はPBE setupで確定した最終2wordで、record内2個の64-bit CSRとは別。PDSはtask64、emit_word0/1、control0x90000002、alignment padding、DOUTW0xf0040101、DOUTU0xf4000002。PDS taskは上記USC VAから構築する。pixel event registerにはdata/codeサイズとshared2の正しいbindingが必要で、そのregister builderは未完成。完全TA/3D公開は依然禁止。
+
+code GPU VAは既存USC heap [0xba00000000,0xba40000000)、PDS heap [0xa800000000,0xa840000000)の中で所有者がcold予約する。既存TQ/clear各64KiBと重複しなければ、USC0xba00010000、PDS0xa800010000を各1page予約する案が使える。ただし最新owner inventoryの確認と同一FWMEMCONTEXTへのcold mappingが前提。背景側を含む全資源の量が確定したとは扱わない。
