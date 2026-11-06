@@ -31,4 +31,15 @@ for version in (1,2,3):
     try:m.verify_journal(Fat(bad),files)
     except ValueError:pass
     else:raise AssertionError('altered manifest accepted')
+content,files=example(3)
+data=bytearray(content['/A04BACKUP/READY']);struct.pack_into('<I',data,8,12)
+off=16+11*328;payload=b'tm-stream';struct.pack_into('<I',data,off,1);struct.pack_into('<Q',data,off+32,len(payload));data[off+40:off+72]=hashlib.sha256(payload).digest()
+name='SYSTEM{fixture}.TM.blf'.encode('utf-16le');data[off+72:off+72+len(name)]=name;data[-32:]=hashlib.sha256(data[:-32]).digest()
+content['/A04BACKUP/READY']=bytes(data);content['/A04BACKUP/item11.bin']=payload
+files={k.lower():(k,hashlib.sha256(v).hexdigest()) for k,v in content.items()}
+assert m.verify_journal(Fat(content),files)['count']==12
+bad=bytearray(data);bad[off+72:off+328]=bytes(256);bad[-32:]=hashlib.sha256(bad[:-32]).digest();content['/A04BACKUP/READY']=bytes(bad)
+try:m.verify_journal(Fat(content),files)
+except ValueError:pass
+else:raise AssertionError('invalid sidecar name accepted')
 print('ESP journal manifest tests: PASS')

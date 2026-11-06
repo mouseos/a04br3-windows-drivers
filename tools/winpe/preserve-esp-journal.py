@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import re
 from pathlib import Path
 import shutil
 import struct
@@ -26,10 +27,23 @@ def verify_journal(fat, files):
     elif version in (2,3):capacity,entry_size=99,328
     else:raise ValueError('unsupported journal version')
     if not 11<=count<=capacity or len(data)!=16+capacity*entry_size+32:raise ValueError('journal manifest size/count mismatch')
+    names=set()
     for i in range(count):
         offset=16+i*entry_size;present=struct.unpack_from('<I',data,offset)[0]
         length=struct.unpack_from('<Q',data,offset+32)[0];digest=data[offset+40:offset+72].hex()
         if present>1 or (i in (0,4) and not present) or (version in (2,3) and i>=11 and not present):raise ValueError('invalid presence')
+        if version in (2,3):
+            raw=data[offset+72:offset+328]
+            if raw[-2:]!=b'\0\0':raise ValueError('unterminated journal name')
+            name=raw.decode('utf-16le').split('\0',1)[0]
+            if i<11 and name:raise ValueError('unexpected fixed-entry name')
+            if i>=11:
+                txr=name.startswith('TxR\\');base=name[4:] if txr else name
+                prefix=base.startswith('{') if txr else base.upper().startswith(('SYSTEM{','SOFTWARE{'))
+                if (not prefix or not re.fullmatch(r'[A-Za-z0-9{}._-]{8,119}',base) or '}' not in base or
+                    not base.lower().endswith(('.blf','.regtrans-ms')) or name.lower() in names):
+                    raise ValueError('invalid or duplicate sidecar name')
+                names.add(name.lower())
         if present:
             item=f'/a04backup/item{i:02}.bin'
             if item not in files or files[item][1]!=digest or fat.getsize(files[item][0])!=length:
