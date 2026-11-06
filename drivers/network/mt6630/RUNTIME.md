@@ -130,3 +130,7 @@ Native最終linkだけがntoskrnl.lib(helpexcept.obj)のGS helperで失敗した
 最新変更のARM COFFと既存テストの確認は行ったが、最新WDK8.1 SYS link、
 PnP、WPA2実接続、実scanは未確認で、主担当が検証する。
 probeの使用法は `tools/winpe/README-mt6630-wlan-probe.md` を参照。
+
+接続後の再scanでもBeacon/Probe Responseをdata受信成功扱いで消費せず、
+station ownerのBSS観測処理へ渡す。peer deauth/disassocは引き続き受信入口で処理する。
+この経路のソース修正とARM compileを確認したが、接続後再scanの実測は未確認。

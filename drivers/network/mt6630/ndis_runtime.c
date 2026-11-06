@@ -62,9 +62,15 @@ int a04_ndis_rate_lookup(void *p,unsigned mode,unsigned code,ULONG *phy,UCHAR *r
 static int receive_data(void *p,const uint8_t *packet,unsigned bytes)
 {
  struct a04_ndis_runtime *a=p;struct a04_native_hif_rx rx;NDIS_STATUS status;struct a04_wlan_rx_frame management;
- if(!a04_wlan_rx_frame_parse(packet,bytes,&management)&&management.length>=26&&(management.data[0]==0xc0||management.data[0]==0xa0)){
-  if(!a04_wlan_disconnect_rx(&a->radio.station,&a->security,management.data,management.length))a04_ndis_peer_disconnect(a,(management.data[0]==0xc0?DOT11_ASSOC_STATUS_PEER_DEAUTHENTICATED:DOT11_ASSOC_STATUS_PEER_DISASSOCIATED)|a04_wmt_le16(management.data+24));
-  return 0;
+ if(!a04_wlan_rx_frame_parse(packet,bytes,&management)&&management.length>=24&&!(management.data[0]&0x0c)){
+  if(management.length>=26&&(management.data[0]==0xc0||management.data[0]==0xa0)){
+   if(!a04_wlan_disconnect_rx(&a->radio.station,&a->security,management.data,management.length))a04_ndis_peer_disconnect(a,(management.data[0]==0xc0?DOT11_ASSOC_STATUS_PEER_DEAUTHENTICATED:DOT11_ASSOC_STATUS_PEER_DISASSOCIATED)|a04_wmt_le16(management.data+24));
+   return 0;
+  }
+  /* Let the station owner consume beacons/probe responses even after STA
+   * activation. Dropping an undecodable data frame must not swallow a
+   * management frame needed by a subsequent real scan. */
+  return A04_WLAN_UNSUPPORTED;
  }
  if(a->radio.station.secured){
   if(!a->association_reported){
