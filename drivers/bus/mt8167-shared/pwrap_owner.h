@@ -11,6 +11,10 @@ struct a04_pwrap_owner {
     void (*unlock)(void *);
     struct a04_pmic_read bus;
     int online;
+#if defined(A04_MT6392_RTC32K_DIAGNOSTIC) && A04_MT6392_RTC32K_DIAGNOSTIC
+    /* Lease object must outlive the owner until successful release/recovery. */
+    struct a04_rtc32k_lease *rtc_lease;
+#endif
 };
 /* Called only after the parent has claimed exclusive PnP resources and set up
  * its lock, bus callbacks and power. Publishing the interface is separate. */

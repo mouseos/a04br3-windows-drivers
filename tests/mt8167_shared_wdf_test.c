@@ -199,6 +199,11 @@ int main(void){
 #endif
  assert(!ParentPrepare(&testContext,&list,&translatedList) && maps==(A04_SHARED_APMIXED_RESOURCE?5:4));
  assert((uintptr_t)testContext.topck==0x20000000 && (uintptr_t)testContext.pwrap==0x2000f000);
+#if defined(A04_MT6392_RTC32K_DIAGNOSTIC) && A04_MT6392_RTC32K_DIAGNOSTIC
+ {struct a04_rtc32k_lease lease={0};testContext.pmic.rtc_lease=&lease;
+  assert(ParentRelease(&testContext,&list)==STATUS_DEVICE_BUSY && !unmaps && testContext.pwrap);
+  testContext.pmic.rtc_lease=NULL;}
+#endif
  /* Simulate an uncertain audio operation: reject unmap and report the
   * ambiguous result to the child; clear only in the host fixture. */
  testContext.audio.poisoned=1;testContext.admissionClosed=0;
