@@ -203,7 +203,7 @@ done:
     if(dmaContext)ExFreePoolWithTag(dmaContext,'mG4A');
     if(mdl)IoFreeMdl(mdl);
 #if A04_GE8300_WDDM_SHARED_FULL_COMMON
-    if(NT_SUCCESS(status))ProbeDisplayFullCommon((PDMA_ADAPTER)page.gpu_adapter,(PDEVICE_OBJECT)page.gpu_pdo);
+    if(NT_SUCCESS(status))status=ProbeDisplayFullCommon((PDMA_ADAPTER)page.gpu_adapter,(PDEVICE_OBJECT)page.gpu_pdo);
 #endif
     release=CommonPageIoctl(GpuHandle,&page);A04DisplayTrace(0x56,release);
     if(!NT_SUCCESS(release)){SharedCommonRetained=TRUE;return release;}
@@ -211,7 +211,7 @@ done:
 }
 #endif
 #if A04_GE8300_WDDM_SHARED_FULL_COMMON
-VOID A04DisplayResources::ProbeDisplayFullCommon(PDMA_ADAPTER gpu,PDEVICE_OBJECT gpuPdo)
+NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(PDMA_ADAPTER gpu,PDEVICE_OBJECT gpuPdo)
 {
     PHYSICAL_ADDRESS max,logical;PVOID cpu=NULL,context=NULL;PMDL mdl=NULL;
     PSCATTER_GATHER_LIST sg=NULL;NTSTATUS status=STATUS_NOT_SUPPORTED;BOOLEAN mapped=FALSE;
@@ -256,9 +256,12 @@ VOID A04DisplayResources::ProbeDisplayFullCommon(PDMA_ADAPTER gpu,PDEVICE_OBJECT
     A04DisplayTrace(0x5c,(NTSTATUS)sg->NumberOfElements);
     /* A cross-domain map is not evidence that either device accessed it.
      * Do not publish a mapping without proven post-publication retirement. */
-    A04DisplayTrace(0x5d,STATUS_NOT_SUPPORTED);status=STATUS_SUCCESS;
+    A04DisplayTrace(0x5b,STATUS_SUCCESS);
+    status=STATUS_NOT_SUPPORTED;A04DisplayTrace(0x5d,status);
+    goto cleanup_gpu;
 gpu_done:
     A04DisplayTrace(0x5b,status);
+cleanup_gpu:
     if(mapped)gpu->DmaOperations->FreeAdapterObject(gpu,DeallocateObject);
     if(context)ExFreePoolWithTag(context,'xG4A');
     if(mdl)IoFreeMdl(mdl);
@@ -268,6 +271,7 @@ done:
         Adapter->DmaOperations->FreeCommonBuffer(Adapter,4096000u,logical,cpu,FALSE);
         A04DisplayTrace(0x5a,STATUS_SUCCESS);
     }
+    return status;
 }
 
 #endif

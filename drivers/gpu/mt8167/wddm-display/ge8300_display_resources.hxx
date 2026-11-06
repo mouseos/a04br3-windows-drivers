@@ -65,7 +65,7 @@ struct A04DisplayResources {
     BOOLEAN SharedCommonRetained;
     struct a04_shared_common_once SharedCommonOnce;
 #if A04_GE8300_WDDM_SHARED_FULL_COMMON
-    VOID ProbeDisplayFullCommon(PDMA_ADAPTER gpu,PDEVICE_OBJECT gpuPdo);
+    NTSTATUS ProbeDisplayFullCommon(PDMA_ADAPTER gpu,PDEVICE_OBJECT gpuPdo);
 #endif
     NTSTATUS ProbeSharedCommonPage();
 #endif

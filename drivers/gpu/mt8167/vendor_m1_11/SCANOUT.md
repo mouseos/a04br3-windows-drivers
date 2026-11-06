@@ -386,7 +386,8 @@ successful one-page probe is followed once by a 4,096,000-byte uncached
 `AllocateCommonBufferEx` request on the display adapter. Step 57 reports the
 allocation/linear range check, 58 the display-domain logical base, 59 the
 fixed byte length, and 5A that `FreeCommonBuffer` returned. The buffer is
-never mapped to GPU, submitted to OVL, or used for DMA; it is freed immediately
+not submitted to OVL or used for DMA; it is freed immediately after the GPU
+mapping preflight described below
 with the same adapter and parameters. Success establishes only that the HAL
 provided a display-domain contiguous common-buffer address at that time. It
 does not establish GPU access to the same backing pages, no-bounce, visibility,
@@ -412,3 +413,6 @@ not initiated until the lifetime of both DMA mappings, root retirement, and a
 real display-DMA observer are implemented. Thus it is not the requested
 same-boot full-copy/visibility diagnostic yet. One boot can establish which
 allocation or mapping stage blocks; it cannot claim a completed frame.
+The full probe returns its failure to the caller after releasing the lease;
+successful GPU SG validation followed by the unimplemented stage returns
+STATUS_NOT_SUPPORTED rather than reporting the whole diagnostic successful.
