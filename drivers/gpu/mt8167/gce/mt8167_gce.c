@@ -5,15 +5,15 @@
 #include <wdf.h>
 #include "../wddm-display/ge8300_display_resource_check.h"
 #define GCE_BYTES 4096u
-struct gce_context {
+typedef struct gce_context {
     PDMA_ADAPTER adapter;
     PDEVICE_OBJECT pdo;
     volatile ULONG *registers;
     PVOID command_cpu;
     PHYSICAL_ADDRESS command_dma;
     ULONG map_registers;
-};
-WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(struct gce_context,GceContext)
+} GCE_CONTEXT;
+WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(GCE_CONTEXT,GceContext)
 DRIVER_INITIALIZE DriverEntry;
 EVT_WDF_DRIVER_DEVICE_ADD GceAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE GcePrepare;
@@ -82,7 +82,7 @@ NTSTATUS GceAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&callbacks);callbacks.EvtDevicePrepareHardware=GcePrepare;
     callbacks.EvtDeviceReleaseHardware=GceRelease;
     WdfDeviceInitSetPnpPowerEventCallbacks(init,&callbacks);
-    WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attributes,struct gce_context);
+    WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attributes,GCE_CONTEXT);
     return WdfDeviceCreate(&init,&attributes,&device);
 }
 NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry)
