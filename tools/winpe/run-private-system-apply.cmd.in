@@ -1,0 +1,80 @@
+@echo off
+setlocal EnableExtensions DisableDelayedExpansion
+rem Adapted from the tested installed-driver transaction in mouseos/a04br3-windows-drivers.
+rem PRIVATE SYSTEM replacement only. Never distribute this generated medium.
+set "A04_REPORT=X:\a04br3\toprgu-audit-result.txt"
+set "A04_BK=C:\a04backup\system-apply-@JOURNAL@"
+> "%A04_REPORT%" echo UPDATE_BEGIN
+X:\a04br3\observe-msdc-storage.exe >> "%A04_REPORT%" 2>&1
+if "%errorlevel%"=="0" goto storageobserved
+X:\a04br3\observe-msdc-storage.exe --verify-package >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto packagefail
+drvload X:\a04br3\a04-msdc-probe.inf >> "%A04_REPORT%" 2>&1
+>> "%A04_REPORT%" echo MSDC_DRVLOAD_EXIT=%errorlevel%
+:storageobserved
+set /a A04_MAP_ATTEMPTS=0
+:mapretry
+set /a A04_MAP_ATTEMPTS+=1
+>> "%A04_REPORT%" echo A04MAP_ATTEMPT=%A04_MAP_ATTEMPTS%
+X:\a04br3\map-offline-windows.exe >> "%A04_REPORT%" 2>&1
+set "A04_MAP_RC=%errorlevel%"
+>> "%A04_REPORT%" echo A04MAP_EXIT=%A04_MAP_RC%
+if "%A04_MAP_RC%"=="0" goto mapped
+if not "%A04_MAP_RC%"=="4" goto mapfail
+if %A04_MAP_ATTEMPTS% GEQ 6 goto mapfail
+X:\a04br3\observe-msdc-storage.exe --wait >> "%A04_REPORT%" 2>&1
+goto mapretry
+:mapped
+X:\a04br3\guard-windows-volume.exe >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto guardfail
+if not exist "C:\Windows\System32\config\SYSTEM" goto guardfail
+if exist "%A04_BK%" goto journalexists
+mkdir "%A04_BK%" >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto backupfail
+> "%A04_BK%\JOURNAL.txt" echo STATE=SYSTEM_COPY_STARTED
+>> "%A04_REPORT%" echo HOST_BACKUP_MANIFEST_SHA256=@HOST_BACKUP_SHA@
+>> "%A04_REPORT%" echo SYSTEM_INPUT_SHA256=@SYSTEM_SHA@
+rem No REG LOAD of SYSTEM in WinPE. This clean hive was prepared by native Windows APIs.
+copy /b /y X:\a04br3\private-system\SYSTEM.patched C:\Windows\System32\config\SYSTEM >> "%A04_REPORT%" 2>&1
+set "A04_COPY_RC=%errorlevel%"
+>> "%A04_REPORT%" echo UPDATE_SYSTEM_COPY_EXIT=%A04_COPY_RC%
+if not "%A04_COPY_RC%"=="0" goto dismfail
+> "%A04_BK%\JOURNAL.txt" echo STATE=COMMITTED
+>> "%A04_REPORT%" echo UPDATE_STATUS=COMMITTED
+set "A04_RC=0"
+goto release
+:dismfail
+> "%A04_BK%\JOURNAL.txt" echo STATE=SYSTEM_COPY_FAILED
+>> "%A04_REPORT%" echo UPDATE_STATUS=SYSTEM_COPY_FAILED
+set "A04_RC=6"
+goto release
+:backupfail
+>> "%A04_REPORT%" echo UPDATE_STATUS=BACKUP_FAILED_NO_CHANGE
+set "A04_RC=5"
+goto release
+:journalexists
+type "%A04_BK%\JOURNAL.txt" >> "%A04_REPORT%" 2>&1
+>> "%A04_REPORT%" echo UPDATE_STATUS=JOURNAL_EXISTS_NO_CHANGE
+set "A04_RC=4"
+goto release
+:release
+copy /y "%A04_REPORT%" "%A04_BK%\prepare-report.txt" >nul
+X:\a04br3\release-offline-volume.exe >> "%A04_REPORT%" 2>&1
+set "A04_RELEASE_RC=%errorlevel%"
+>> "%A04_REPORT%" echo UPDATE_RELEASE_EXIT=%A04_RELEASE_RC%
+goto transmit
+:packagefail
+>> "%A04_REPORT%" echo UPDATE_STATUS=MSDC_PACKAGE_PIN_REJECTED
+set "A04_RC=2"
+goto transmit
+:mapfail
+>> "%A04_REPORT%" echo UPDATE_STATUS=VOLUME_MAPPING_REJECTED
+set "A04_RC=2"
+goto transmit
+:guardfail
+>> "%A04_REPORT%" echo UPDATE_STATUS=VOLUME_IDENTITY_REJECTED
+set "A04_RC=2"
+:transmit
+>> "%A04_REPORT%" echo UPDATE_EXIT=%A04_RC%
+X:\a04br3\uart-audit-stream.exe @TOKEN@
+exit /b %A04_RC%
