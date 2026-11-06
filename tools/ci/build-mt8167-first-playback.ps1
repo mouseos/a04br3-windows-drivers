@@ -140,7 +140,8 @@ try {
       calibration='MT6392 hardware trim; Linux cold-start DC profile, no measured AU_LOL ADC calibration';
       installable=$false;note='Unsigned pair and INF only; primary owner must sign/package and validate on target';
       peripheral_binaries_included=(!$SkipPeripheralBuild);integrated_usb=[bool]$IntegratedUsb;integrated_wifi=[bool]$IntegratedWifi;shared_parent_count=$parents.Count;namespace='Reuse existing parent/touch/buttons/battery; no ACPI replacement';
-      driver_date=$(if($EnginePcm){'11/07/2026'}else{'11/06/2026'});driver_version=$(if($EnginePcm){'2026.11.7.1004'}else{'2026.11.6.1001'});
+      driver_date='11/06/2026';driver_version=$(if($EnginePcm){'2026.11.7.1004'}else{'2026.11.6.1001'});
+      driver_ver=$(if($EnginePcm){'11/06/2026,2026.11.7.1004'}else{'11/06/2026,2026.11.6.1001'});
       parent_flags=$parentFlags;audio_flags=$flags;diagnostic_interface=11;parent_reused=[bool]$ReuseParent;engine_pcm=[bool]$EnginePcm;client=$(if($EnginePcm){'AudioEndpointBuilder/AudioSrv; polling WaveRT, retained STOP/RUN and reopen; not the private-tone client'}else{'direct KS, AudioSrv not required; dynamic ksuser.dll'});files=$hashes}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
 } finally {
     if($transcript){Stop-Transcript|Out-Null}
