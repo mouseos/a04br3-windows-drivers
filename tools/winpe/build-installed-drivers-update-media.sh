@@ -5,6 +5,7 @@
 # usage: build-installed-drivers-update-media.sh <base-media-dir> <package-dir> <out-dir> <wimtools-dir> <python-fat-dir>
 set -euo pipefail
 base=$1 pkg=$2 out=$3 wt=$4 pyfat=$5
+update_command=${6:-run-update-installed-drivers-once.cmd}
 here=$(cd "$(dirname "$0")" && pwd)
 wim() { LD_LIBRARY_PATH="$wt" "$wt/wimlib-imagex" "$@"; }
 echo "0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4  $base/maintenance-staged.wim" | sha256sum -c -
@@ -13,7 +14,7 @@ for f in touch/shared-touch.inf touch/bu21025.sys touch/bu21025.cat battery/lc70
 mkdir -p "$out/stage"
 test ! -e "$out/update.wim"
 cp "$base/maintenance-staged.wim" "$out/update.wim"
-sed 's/$/\r/' "$here/run-update-installed-drivers-once.cmd" > "$out/stage/run-update-once.cmd"
+sed 's/$/\r/' "$here/$update_command" > "$out/stage/run-update-once.cmd"
 wim extract "$out/update.wim" 1 /Windows/System32/startnet.cmd --dest-dir="$out/stage" --no-acls >/dev/null
 tr -d '\r' < "$out/stage/startnet.cmd" \
   | sed 's#^call X:\\a04br3\\run-audit-once.cmd$#call X:\\a04br3\\run-update-once.cmd#' \
