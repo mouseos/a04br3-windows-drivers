@@ -9,10 +9,23 @@
 #include "wdf_controller.h"
 #include "wdf_keyboard.h"
 #include "../../bus/mt8167-shared/usb_interface.h"
+#ifndef A04_MUSB_HID_CONTROL_EXPERIMENT
+#define A04_MUSB_HID_CONTROL_EXPERIMENT 0
+#endif
+#if A04_MUSB_HID_CONTROL_EXPERIMENT
+#include "host_control.h"
+#if !A04_MUSB_HOST_CORE_EXPERIMENT
+#error A04_MUSB_HID_CONTROL_EXPERIMENT requires A04_MUSB_HOST_CORE_EXPERIMENT
+#endif
+#endif
 #define REPORT_SLOTS 32u
 typedef struct {
  WDFWAITLOCK lock; WDFQUEUE reads; UCHAR reports[REPORT_SLOTS][8];
  unsigned head,count; BOOLEAN connected,overflow,draining; KB_SESSION session; A04_USB_WDF *usb; WDFWAITLOCK controller_lock; WDFTIMER poll; BOOLEAN rx_pending, board_owned, board_fault; A04_USB_BOARD board; A04_SHARED_USB_INTERFACE shared; BOOLEAN shared_valid; ULONGLONG next_poll;
+#if A04_MUSB_HID_CONTROL_EXPERIMENT
+ WDFQUEUE controls; struct a04_control_host control; struct a04_control_request control_request;
+ UCHAR control_data[8]; BOOLEAN control_ready,control_busy,control_poisoned; ULONGLONG control_deadline;
+#endif
 } KB_HID_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(KB_HID_CONTEXT,KbHidContext)
 EVT_WDF_DRIVER_DEVICE_ADD KbHidAdd;
@@ -73,6 +86,47 @@ static void SessionDelay(void *p,unsigned ms)
 { LARGE_INTEGER interval; UNREFERENCED_PARAMETER(p); interval.QuadPart=-10000LL*ms; (void)KeDelayExecutionThread(KernelMode,FALSE,&interval); }
 static int SessionReport(void *p,const unsigned char *report)
 { return NT_SUCCESS(KbHidReport((WDFDEVICE)p,report)) ? 0 : -1; }
+#if A04_MUSB_HID_CONTROL_EXPERIMENT
+/* Only retrieved requests may be touched. WDF owns/cancels queued requests;
+ * EP0 always uses control_data, never the queued request's buffer. */
+static void ControlComplete(KB_HID_CONTEXT *c,NTSTATUS status)
+{
+ WDFREQUEST request; PIRP irp; PHID_XFER_PACKET packet;
+ if(!NT_SUCCESS(WdfIoQueueRetrieveNextRequest(c->controls,&request)))return;
+ if(NT_SUCCESS(status)) {
+  irp=WdfRequestWdmGetIrp(request);packet=(PHID_XFER_PACKET)irp->UserBuffer;
+  if(!packet || !packet->reportBuffer || packet->reportId || packet->reportBufferLen<9)status=STATUS_INVALID_PARAMETER;
+  else {packet->reportBuffer[0]=0;RtlCopyMemory(packet->reportBuffer+1,c->control_data,8);WdfRequestSetInformation(request,8);}
+ }
+ WdfRequestComplete(request,status);
+}
+static int ControlReady(KB_HID_CONTEXT *c,const MT8167_USB20_CONTROLLER *controller)
+{
+ unsigned speed=c->session.speed==0xc0?A04_PORT_LOW_SPEED:(c->session.speed==0x40?A04_PORT_HIGH_SPEED:0);
+ if(c->control_poisoned || a04_control_init(&c->control,&controller->io) ||
+    a04_port_power(&c->control.port,1,1) || a04_port_connect(&c->control.port,1) ||
+    a04_port_reset_begin(&c->control.port) || a04_port_reset_done(&c->control.port,speed) || a04_queue_online(&c->control.queue))return -1;
+ c->control_ready=TRUE;return 0;
+}
+static NTSTATUS ControlSubmit(WDFDEVICE dev,WDFREQUEST request)
+{
+ KB_HID_CONTEXT*c=KbHidContext(dev); PIRP irp;PHID_XFER_PACKET packet;NTSTATUS status;struct a04_control_request *r=&c->control_request;
+ irp=WdfRequestWdmGetIrp(request);packet=(PHID_XFER_PACKET)irp->UserBuffer;
+ if(!packet || !packet->reportBuffer || packet->reportId || packet->reportBufferLen<9)return STATUS_INVALID_PARAMETER;
+ WdfWaitLockAcquire(c->controller_lock,NULL);
+ if(!c->board_owned || c->board_fault || !c->control_ready || c->control_busy || c->control_poisoned || c->session.enumeration.stage!=KB_READY) {WdfWaitLockRelease(c->controller_lock);return STATUS_DEVICE_NOT_READY;}
+ RtlZeroMemory(r,sizeof(*r));r->setup[0]=0xa1;r->setup[1]=1;r->setup[3]=1;
+ r->setup[4]=(UCHAR)c->session.enumeration.interface_number;r->setup[5]=(UCHAR)(c->session.enumeration.interface_number>>8);r->setup[6]=8;
+ r->buffer=c->control_data;r->address=1;r->speed=c->session.speed;r->max_packet=c->session.enumeration.max_packet0;
+ status=WdfRequestForwardToIoQueue(request,c->controls);
+ if(!NT_SUCCESS(status)){WdfWaitLockRelease(c->controller_lock);return status;}
+ c->control_busy=TRUE;c->control_deadline=KeQueryInterruptTime()+20000000ULL;
+ if(a04_control_submit(&c->control,r) || a04_control_start(&c->control)) {
+  c->control_poisoned=TRUE;c->control_ready=FALSE;c->control_busy=FALSE;ControlComplete(c,STATUS_DEVICE_HARDWARE_ERROR);
+ }
+ WdfWaitLockRelease(c->controller_lock);return STATUS_PENDING;
+}
+#endif
 int KbHidControllerStart(WDFDEVICE dev,const MT8167_USB20_IO *io,unsigned speed)
 { return KbSessionStart(&KbHidContext(dev)->session,io,speed,dev,SessionDelay,SessionReport); }
 int KbHidControllerEp0Interrupt(WDFDEVICE dev)
@@ -100,12 +154,23 @@ VOID KbPoll(WDFTIMER timer)
   if(c->shared.Health(c->shared.Header.Context)) {
    const MT8167_USB20_CONTROLLER *controller=A04UsbWdfController(c->usb);
    c->board_fault=TRUE;
+#if A04_MUSB_HID_CONTROL_EXPERIMENT
+   if(c->control_busy) { (void)a04_control_cancel(&c->control,&c->control_request);c->control_poisoned=TRUE;c->control_busy=FALSE;ControlComplete(c,STATUS_DEVICE_POWER_FAILURE); }
+   c->control_ready=FALSE;
+#endif
    if(controller) { unsigned char devctl=controller->io.read8(controller->io.context,0x60);
     controller->io.write8(controller->io.context,0x60,(unsigned char)(devctl&~1u)); }
    c->session.enumeration.stage=KB_ERROR; c->rx_pending=FALSE; KbHidDisconnected(dev);
    WdfWaitLockRelease(c->controller_lock); return;
   }
   now=KeQueryInterruptTime();
+#if A04_MUSB_HID_CONTROL_EXPERIMENT
+  if(c->control_busy && now>=c->control_deadline) {
+   (void)a04_control_cancel(&c->control,&c->control_request);
+   c->control_poisoned=TRUE;c->control_ready=FALSE;c->control_busy=FALSE;
+   ControlComplete(c,STATUS_IO_TIMEOUT);
+  }
+#endif
   if(c->session.enumeration.stage==KB_READY && !c->rx_pending && now>=c->next_poll) {
    if(KbHidControllerRequest(dev)) { c->session.enumeration.stage=KB_ERROR; KbHidDisconnected(dev); }
    else { c->rx_pending=TRUE; c->next_poll=now+((ULONGLONG)PollMs(&c->session)*10000u); }
@@ -121,6 +186,10 @@ static void KbControllerEvents(void *context,MT8167_USB20_EVENTS events)
  WdfWaitLockAcquire(c->controller_lock,NULL);
  if(!c->board_owned || c->board_fault){WdfWaitLockRelease(c->controller_lock);return;}
  if(events.usb & (0x20u|0x80u)) {
+#if A04_MUSB_HID_CONTROL_EXPERIMENT
+  if(c->control_busy) {struct a04_control_request *done; (void)a04_control_events(&c->control,events,&done);c->control_poisoned=TRUE;c->control_busy=FALSE;ControlComplete(c,STATUS_DEVICE_NOT_CONNECTED);}
+  c->control_ready=FALSE;
+#endif
   c->rx_pending=FALSE; KbHidDisconnected(dev); c->session.enumeration.stage=KB_ERROR;
  } else {
   if(events.usb & 0x10u) {
@@ -143,9 +212,22 @@ static void KbControllerEvents(void *context,MT8167_USB20_EVENTS events)
    events.tx=events.rx=0; c->rx_pending=FALSE;
   }
   if((events.tx&1u) && c->session.enumeration.stage!=KB_ERROR) {
+#if A04_MUSB_HID_CONTROL_EXPERIMENT
+   if(c->control_busy) {
+    struct a04_control_request *done=NULL;result=a04_control_events(&c->control,events,&done);
+    if(result==1 && done) {c->control_busy=FALSE;ControlComplete(c,done->transfer.actual==8?STATUS_SUCCESS:STATUS_DEVICE_DATA_ERROR);}
+    else if(result<0 || c->control_request.transfer.state==A04_XFER_ABORTING) {c->control_poisoned=TRUE;c->control_ready=FALSE;c->control_busy=FALSE;ControlComplete(c,STATUS_DEVICE_HARDWARE_ERROR);}
+   } else
+#endif
+   if(c->session.enumeration.stage!=KB_READY) {
    result=KbHidControllerEp0Interrupt(dev);
    if(result<0) { c->session.enumeration.stage=KB_ERROR; KbHidDisconnected(dev); }
-   else if(result==1)c->next_poll=0;
+   else if(result==1) {c->next_poll=0;
+#if A04_MUSB_HID_CONTROL_EXPERIMENT
+    controller=A04UsbWdfController(c->usb);if(!controller || ControlReady(c,controller))c->control_ready=FALSE;
+#endif
+   }
+   }
   }
   if((events.rx&2u) && c->session.enumeration.stage==KB_READY && c->rx_pending) {
    result=KbHidControllerRxInterrupt(dev);
@@ -187,7 +269,14 @@ void KbHidDeactivate(WDFDEVICE dev)
 {
  KB_HID_CONTEXT*c=KbHidContext(dev);
  WdfTimerStop(c->poll,TRUE); A04UsbWdfDisarm(c->usb);
+#if A04_MUSB_HID_CONTROL_EXPERIMENT
+ WdfIoQueuePurgeSynchronously(c->controls);
+#endif
  WdfWaitLockAcquire(c->controller_lock,NULL);
+#if A04_MUSB_HID_CONTROL_EXPERIMENT
+ if(c->control_busy)c->control_poisoned=TRUE;
+ c->control_busy=FALSE;c->control_ready=FALSE;
+#endif
  c->session.enumeration.stage=KB_ERROR; c->rx_pending=FALSE;
  KbHidDisconnected(dev);
  if(c->board_owned) { A04UsbHostStop(&c->board); c->board_owned=FALSE; }
@@ -210,6 +299,9 @@ NTSTATUS KbD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
 {
  KB_HID_CONTEXT*c=KbHidContext(dev); A04_USB_BOARD b; UNREFERENCED_PARAMETER(previous);
  if(!c->shared_valid)return STATUS_DEVICE_NOT_READY;
+#if A04_MUSB_HID_CONTROL_EXPERIMENT
+ WdfIoQueueStart(c->controls);
+#endif
  RtlZeroMemory(&b,sizeof(b)); b.context=dev; b.power=BoardPower; b.vbus=BoardVbus;
  b.phy_read=BoardPhyRead; b.phy_write=BoardPhyWrite; b.mac_read=BoardMacRead; b.mac_write=BoardMacWrite; b.delay_ms=SessionDelay;
  { NTSTATUS status=KbHidActivate(dev,&b);
@@ -239,6 +331,11 @@ VOID KbHidIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULO
  case IOCTL_HID_GET_DEVICE_ATTRIBUTES: attr.Size=sizeof(attr); attr.VersionNumber=1; status=CopyOutput(request,&attr,sizeof(attr)); break;
  case IOCTL_HID_READ_REPORT:
   status=WdfRequestForwardToIoQueue(request,c->reads); if(NT_SUCCESS(status)) { Drain(dev); return; } break;
+#if A04_MUSB_HID_CONTROL_EXPERIMENT
+ case IOCTL_HID_GET_INPUT_REPORT:
+  if(outlen<9){status=STATUS_BUFFER_TOO_SMALL;break;}
+  status=ControlSubmit(dev,request);if(status==STATUS_PENDING)return;break;
+#endif
  }
  WdfRequestComplete(request,status);
 }
@@ -259,7 +356,12 @@ NTSTATUS KbHidAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
  s=WdfTimerCreate(&timer,&child,&c->poll); if(!NT_SUCCESS(s))return s;
  WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel); q.EvtIoInternalDeviceControl=KbHidIoctl;
  s=WdfIoQueueCreate(dev,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE); if(!NT_SUCCESS(s))return s;
- WDF_IO_QUEUE_CONFIG_INIT(&q,WdfIoQueueDispatchManual); return WdfIoQueueCreate(dev,&q,WDF_NO_OBJECT_ATTRIBUTES,&c->reads);
+ WDF_IO_QUEUE_CONFIG_INIT(&q,WdfIoQueueDispatchManual); s=WdfIoQueueCreate(dev,&q,WDF_NO_OBJECT_ATTRIBUTES,&c->reads);if(!NT_SUCCESS(s))return s;
+#if A04_MUSB_HID_CONTROL_EXPERIMENT
+ WDF_IO_QUEUE_CONFIG_INIT(&q,WdfIoQueueDispatchManual);return WdfIoQueueCreate(dev,&q,WDF_NO_OBJECT_ATTRIBUTES,&c->controls);
+#else
+ return STATUS_SUCCESS;
+#endif
 }
 NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry)
 { WDF_DRIVER_CONFIG c; WDF_DRIVER_CONFIG_INIT(&c,KbHidAdd); return WdfDriverCreate(driver,registry,WDF_NO_OBJECT_ATTRIBUTES,&c,WDF_NO_HANDLE); }

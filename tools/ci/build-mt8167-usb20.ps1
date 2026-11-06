@@ -33,13 +33,18 @@ $wdfInc = Join-Path $inc 'wdf\kmdf\1.13'
 $wdfLib = Join-Path $kit 'Lib\wdf\kmdf\arm\1.13'
 $kmLib = Join-Path $kit 'Lib\winv6.3\km\arm'
 $hidObj = Join-Path $out 'mt8167-usb20-wdf_keyboard.obj'
-& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" -c (Join-Path $root 'drivers\usb\mt8167-usb20\wdf_keyboard.c') -o $hidObj
+$hidControl=if($env:A04_MUSB_HID_CONTROL_EXPERIMENT -eq '1'){'1'}else{'0'}
+if ($hidControl -eq '1' -and $env:A04_MUSB_HOST_CORE_EXPERIMENT -ne '1') { throw 'HID control requires host core experiment' }
+$hostCore=if($env:A04_MUSB_HOST_CORE_EXPERIMENT -eq '1'){'1'}else{'0'}
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_MUSB_HOST_CORE_EXPERIMENT=$hostCore" "-DA04_MUSB_HID_CONTROL_EXPERIMENT=$hidControl" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" -c (Join-Path $root 'drivers\usb\mt8167-usb20\wdf_keyboard.c') -o $hidObj
 if ($LASTEXITCODE -ne 0) { throw 'HID transport compilation failed' }
 $controllerObj = Join-Path $out 'mt8167-usb20-wdf_controller.obj'
 & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" -c (Join-Path $root 'drivers\usb\mt8167-usb20\wdf_controller.c') -o $controllerObj
 if ($LASTEXITCODE -ne 0) { throw 'Controller compilation failed' }
 $sys = Join-Path $out 'mt8167-usb20-hid-transport.sys'
-& lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib $hidObj $controllerObj (Join-Path $out 'mt8167-usb20-controller.obj') (Join-Path $out 'mt8167-usb20-board_host.obj') (Join-Path $out 'mt8167-usb20-keyboard.obj') (Join-Path $out 'mt8167-usb20-keyboard_session.obj') (Join-Path $out 'mt8167-usb20-keyboard_rx.obj') (Join-Path $out 'mt8167-usb20-ep0.obj') (Join-Path $out 'mt8167-usb20-ep0_pio.obj') (Join-Path $wdfLib 'wdfdriverentry.lib') (Join-Path $wdfLib 'wdfldr.lib') (Join-Path $kmLib 'ntoskrnl.lib') (Join-Path $kmLib 'hal.lib') (Join-Path $kmLib 'bufferoverflowfastfailk.lib') "/out:$sys"
+$hostObjects=@()
+if($hidControl -eq '1'){$hostObjects=@((Join-Path $out 'mt8167-usb20-host_core.obj'),(Join-Path $out 'mt8167-usb20-host_control.obj'))}
+& lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib $hidObj $controllerObj $hostObjects (Join-Path $out 'mt8167-usb20-controller.obj') (Join-Path $out 'mt8167-usb20-board_host.obj') (Join-Path $out 'mt8167-usb20-keyboard.obj') (Join-Path $out 'mt8167-usb20-keyboard_session.obj') (Join-Path $out 'mt8167-usb20-keyboard_rx.obj') (Join-Path $out 'mt8167-usb20-ep0.obj') (Join-Path $out 'mt8167-usb20-ep0_pio.obj') (Join-Path $wdfLib 'wdfdriverentry.lib') (Join-Path $wdfLib 'wdfldr.lib') (Join-Path $kmLib 'ntoskrnl.lib') (Join-Path $kmLib 'hal.lib') (Join-Path $kmLib 'bufferoverflowfastfailk.lib') "/out:$sys"
 if ($LASTEXITCODE -ne 0) { throw 'HID transport link failed' }
 $headers = & llvm-readobj --file-headers $sys
 if ($LASTEXITCODE -ne 0 -or ($headers -join "`n") -notmatch 'IMAGE_FILE_MACHINE_ARMNT') { throw 'Unexpected HID PE machine' }

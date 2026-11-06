@@ -197,3 +197,24 @@ Windows request completion remain the caller's responsibility. Nothing creates
 or binds this adapter in the current driver and the existing VBUS gate is
 unchanged. `make test-mt8167-usb-host-control` injects events through the
 real interrupt capture and mock MMIO; it does not exercise physical hardware.
+
+### WDF HID control experiment
+
+With both `A04_MUSB_HOST_CORE_EXPERIMENT=1` and
+`A04_MUSB_HID_CONTROL_EXPERIMENT=1`, the existing direct boot-keyboard WDF
+transport accepts `IOCTL_HID_GET_INPUT_REPORT` after enumeration and issues
+one HID GET_REPORT(Input, ID 0) over EP0. The request remains in a WDF manual
+queue while EP0 uses an eight-byte device-context buffer. WDF handles queued
+request cancellation; the hardware transfer is not immediately aborted when
+that happens, and the context buffer cannot be reused until completion. A
+2-second deadline rejects further EP0 use after a timeout. Disconnect,
+power-health failure or EP0 error also poisons the experimental path when a
+transfer is active. IRQs are disarmed under the interrupt lock, queued DPCs and
+work are flushed, and queued requests are purged before MMIO release. Do not
+flush the work item from its own callback or while holding its controller lock.
+
+This diagnostic remains gated by the existing shared power owner and cannot
+establish connector power or provide general USB PnP. Neither WDF cancellation
+races nor the interrupt drain have been exercised under Windows Driver Verifier
+or on the device; ARM32 compilation/linking and host MMIO simulations do not
+establish those results. No new signed or installable package is produced.

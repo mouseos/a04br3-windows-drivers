@@ -17,7 +17,8 @@ int main(void)
  memset(&m,0,sizeof(m));memset(&a,0,sizeof(a));memset(&b,0,sizeof(b));
  c.io=(MT8167_USB20_IO){&m,r8,r16,w8,w16};c.read32=r32;c.write32=w32;
  assert(!a04_control_init(&h,&c.io));assert(!a04_port_power(&h.port,1,1));assert(!a04_queue_online(&h.queue));assert(!Mt8167UsbInterruptEnable(&c));
- a.setup[0]=0x80;a.setup[1]=6;a.setup[6]=8;a.buffer=data;a.speed=0x80;a.max_packet=8;
+ /* Boot-keyboard HID GET_REPORT(Input, id 0) on interface 3. */
+ a.setup[0]=0xa1;a.setup[1]=1;a.setup[3]=1;a.setup[4]=3;a.setup[6]=8;a.buffer=data;a.speed=0x80;a.max_packet=8;
  assert(!a04_control_submit(&h,&a));assert(a04_control_start(&h)<0);
  irq(&m,&c,&h,0x10,0,&done,0);assert(!a04_port_reset_begin(&h.port));assert(!a04_port_reset_done(&h.port,0));
  assert(!a04_control_start(&h));assert(m.out==8 && !memcmp(m.fifo,a.setup,8));
