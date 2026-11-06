@@ -997,8 +997,11 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             c->vendor_adapter_v3=NULL;
         }
     }
+    GpuPrint("A04GPU POST CALLBACK=");GpuHex((ULONG)(ULONG_PTR)GpuPostInterrupts);GpuPrint(" UNLOCK\n");
     WdfWaitLockRelease(c->vendor_lifetime);
+    GpuPrint("A04GPU POST UNLOCKED\n");
     if(c->vendor.hardware_owned) a04_vendor_irq_kick(c->vendor_irq);
+    GpuPrint("A04GPU POST COMPLETE\n");
     return STATUS_SUCCESS;
 }
 #endif
