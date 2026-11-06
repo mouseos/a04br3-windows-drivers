@@ -28,6 +28,7 @@ typedef struct { USHORT Size,Version; PVOID Context; PINTERFACE_REFERENCE Interf
 #define NULL 0
 #endif
 #define STATUS_INVALID_PARAMETER (-1)
+#define STATUS_IO_TIMEOUT (-7)
 #define NT_SUCCESS(s) ((s)>=0)
 #define UNREFERENCED_PARAMETER(x) ((void)(x))
 struct _KINTERRUPT; typedef _KINTERRUPT *PKINTERRUPT;

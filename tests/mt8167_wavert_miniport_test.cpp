@@ -23,7 +23,13 @@ static NTSTATUS stop(void *c){Back*b=(Back*)c;b->stops++;return b->fail?STATUS_D
 static NTSTATUS device(void *,PDEVICE_DESCRIPTION d){return d?STATUS_SUCCESS:STATUS_INVALID_PARAMETER;}
 static NTSTATUS pos(void *,PKSAUDIO_POSITION p){p->PlayOffset=4;p->WriteOffset=4;return STATUS_SUCCESS;}
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
-static NTSTATUS bindwave(void *,PMDL mdl,PVOID mapping,ULONG size){return mdl && mapping && size==8192?STATUS_SUCCESS:STATUS_INVALID_PARAMETER;}
+static NTSTATUS bindwave(void *,PMDL mdl,PVOID mapping,ULONG size){
+#if defined(A04_TEST_WAVE_BIND_TIMEOUT) && A04_TEST_WAVE_BIND_TIMEOUT
+ (void)mdl;(void)mapping;(void)size;return STATUS_IO_TIMEOUT;
+#else
+ return mdl && mapping && size==8192?STATUS_SUCCESS:STATUS_INVALID_PARAMETER;
+#endif
+}
 static NTSTATUS unbindwave(void *c,PMDL){((Back*)c)->frees++;return STATUS_SUCCESS;}
 #endif
 int main(){
@@ -47,6 +53,10 @@ int main(){
 #endif
  assert(!Mt8167NewMiniportWithBackend(&m,&backend) && b.refs==1);assert(!m->GetDeviceDescription(&b));
  assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat) && b.refs==2);
+#if defined(A04_TEST_WAVE_BIND_TIMEOUT) && A04_TEST_WAVE_BIND_TIMEOUT
+ {int freed=p.freed;assert(st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache)==STATUS_IO_TIMEOUT && !mdl);
+  st->Release();m->Release();assert(b.refs==1 && !b.frees && p.freed==freed);return 0;}
+#endif
  assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
 #if (defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC) || (defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC)
  assert(mdl==&p.mdl && mdl!=&b.mdl);

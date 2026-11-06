@@ -9,6 +9,7 @@ typedef void VOID; typedef uint32_t ULONG; typedef int32_t LONG; typedef uint8_t
 #define TRUE 1
 #define STATUS_SUCCESS 0
 #define STATUS_INVALID_PARAMETER (-1)
+#define STATUS_IO_TIMEOUT (-7)
 #define STATUS_INSUFFICIENT_RESOURCES (-2)
 #define STATUS_DEVICE_CONFIGURATION_ERROR (-3)
 #define STATUS_DEVICE_BUSY (-4)

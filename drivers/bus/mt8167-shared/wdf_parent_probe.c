@@ -284,7 +284,12 @@ static int ParentDomainWrite(void *context,unsigned offset,uint32_t value) {
 /* No AU_LOL calibration provider or downstream route proof exists yet.
  * This must remain a rejection until both are independently established. */
 static int ParentVoiceVerify(void *context,int16_t *initial,int16_t *value,unsigned *cap) {
-    UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(initial);UNREFERENCED_PARAMETER(value);UNREFERENCED_PARAMETER(cap);
+    A04_PARENT_CONTEXT *c=context;
+    UNREFERENCED_PARAMETER(initial);UNREFERENCED_PARAMETER(value);UNREFERENCED_PARAMETER(cap);
+    /* ParentLock serializes the WACS read with gain changes. This checks the
+     * PMIC gain only; a board-route mute and voice calibration provider are
+     * still absent and cannot be inferred from this register. */
+    if(!c || !c->pmic.online || a04_mt6392_classd_verify_muted(&c->classd))return -1;
     return -1;
 }
 static int ParentVoiceAfeRead(void *context,unsigned offset,uint32_t *value) {
@@ -452,7 +457,7 @@ static int ParentVoiceOperation(PVOID context,int start) {
        !c->codecDomain.poisoned && c->audioAfe) {
         io=ParentVoiceIo(c);
         result=start?a04_codec_voice_start(&c->voice,&io):a04_codec_voice_stop(&c->voice,&io);
-        if(c->voice.poisoned)c->audio.poisoned=1;
+        if(c->voice.poisoned || c->classd.poisoned || c->pmic.bus.poisoned)c->audio.poisoned=1;
     }
     ParentUnlock(c);return result;
 }

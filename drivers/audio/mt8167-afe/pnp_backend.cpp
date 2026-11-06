@@ -44,6 +44,12 @@ extern "C" int Mt8167SilentDmaMiniportEnabled(void);
 #error voice PCM requires RUN diagnostic and the direct WaveRT buffer
 #endif
 #endif
+#if defined(A04_AUDIO_WAVE_DMA_PROBE) && A04_AUDIO_WAVE_DMA_PROBE
+#if !defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) || !A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+#error wave DMA probe requires voice PCM diagnostic
+#endif
+#include "wave_dma_probe.h"
+#endif
 #define OWNER_TAG 'OwnA'
 struct Mt8167PnpBackend {
     Mt8167StreamBackend iface;
@@ -57,7 +63,7 @@ struct Mt8167PnpBackend {
     PDMA_ADAPTER adapter;
     Mt8167CommonDma buffer;
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
-    PMDL waveMdl; PVOID waveMapping; ULONG waveBytes;
+    PMDL waveMdl; PVOID waveMapping; ULONG waveBytes; BOOLEAN waveProbePending;
 #endif
 #if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
     Mt8167CommonDma silentBuffer;
@@ -117,6 +123,9 @@ static void OwnerDereference(void *ctx)
     if (InterlockedDecrement(&o->refs)) return;
     /* A violated caller IRQL contract cannot safely free a DMA adapter. */
     if (KeGetCurrentIrql()!=PASSIVE_LEVEL) return;
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+    if (o->waveMdl) return;
+#endif
     /* An uncertain lease release keeps the mapping and parent alive. */
     if (o->shared.leased || o->shared.quarantined || o->irq.interrupt) return;
     /* RUN is always refused, so all buffers allocated here remain unexposed. */
@@ -178,6 +187,15 @@ static NTSTATUS OwnerBindWave(void *ctx,PMDL mdl,PVOID mapping,ULONG bytes) {
     OwnerLock(o);
     if(o->online && !o->waveMdl && !o->shared.quarantined) {
         o->waveMdl=mdl;o->waveMapping=mapping;o->waveBytes=bytes;result=STATUS_SUCCESS;
+#if defined(A04_AUDIO_WAVE_DMA_PROBE) && A04_AUDIO_WAVE_DMA_PROBE
+        result=Mt8167ProbeWaveDma(o->adapter,o->pdo,mdl,bytes);
+        if(result==STATUS_IO_TIMEOUT) {
+            /* An outstanding adapter callback still owns this MDL. Do not
+             * unbind or release the parent, even after PnP revoke. */
+            o->waveProbePending=TRUE;
+            if(!o->shared.quarantined)(void)mt8167_audio_shared_quarantine(&o->shared);
+        } else if(!NT_SUCCESS(result)) {o->waveMdl=NULL;o->waveMapping=NULL;o->waveBytes=0;}
+#endif
     }
     OwnerUnlock(o);return result;
 }
@@ -185,7 +203,7 @@ static NTSTATUS OwnerUnbindWave(void *ctx,PMDL mdl) {
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);NTSTATUS result=STATUS_DEVICE_NOT_READY;
     if(!o || !mdl || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
     OwnerLock(o);
-    if(o->waveMdl==mdl && !o->shared.quarantined && o->transport.state!=AUDIO_RUNNING) {
+    if(o->waveMdl==mdl && !o->waveProbePending && !o->shared.quarantined && o->transport.state!=AUDIO_RUNNING) {
         o->waveMdl=NULL;o->waveMapping=NULL;o->waveBytes=0;result=STATUS_SUCCESS;
     }
     OwnerUnlock(o);return result;
