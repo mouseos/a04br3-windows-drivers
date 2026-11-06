@@ -12,6 +12,7 @@ struct a04_windows_session_irq {
  const CM_PARTIAL_RESOURCE_DESCRIPTOR *raw,*translated;
  struct a04_irq_work *work;void *context;
  int (*drain_io)(void *);
+ int (*quiesce_combo)(void *);
 };
 int a04_windows_session_irq_bind(struct a04_windows_session_irq *,struct a04_windows_session_platform *);
 #endif

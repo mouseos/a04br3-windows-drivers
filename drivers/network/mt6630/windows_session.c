@@ -4,7 +4,7 @@
 static int mask_irq(void *p)
 {struct a04_windows_session *s=p;return s->platform.mask_and_drain_irq(s->platform.context);}
 static int drain_io(void *p)
-{struct a04_windows_session *s=p;return s->platform.drain_io(s->platform.context);}
+{struct a04_windows_session *s=p;if(s->platform.drain_io(s->platform.context))return -1;return s->platform.quiesce_combo(s->platform.context);}
 static int unmap(void *p)
 {struct a04_windows_session *s=p;a04_windows_msdc2_unmap(&s->host);return 0;}
 static int release(void *p)
@@ -18,12 +18,15 @@ int a04_windows_session_start(struct a04_windows_session *s,A04_SHARED_WIFI_INTE
  if(KeGetCurrentIrql()!=PASSIVE_LEVEL||!s||s->state!=A04_SESSION_OFF||!parent||
     parent->Header.Version!=A04_SHARED_WIFI_INTERFACE_VERSION||parent->Header.Size<sizeof(*parent)||
     !parent->Acquire||!parent->ReleaseQuiescent||!parent->Live||!parent->UpdateShared||!parent->WriteShared||
-    !platform||!platform->connect_masked_irq||!platform->mask_and_drain_irq||!platform->drain_io||
+    !platform||!platform->connect_masked_irq||!platform->mask_and_drain_irq||!platform->drain_io||!platform->quiesce_combo||
     !raw||!translated||!ocr||(ocr&~0x00ff8000u)||!hash||!options)return -1;
- /* Acquire failure can be partial: quarantine, never silently retry. */
+ /* The interface guarantees that a failed Acquire has no side effects. */
  s->state=A04_SESSION_STARTING;s->parent=parent;s->platform=*platform;
  status=parent->Acquire(parent->Header.Context,&generation);
- if(!NT_SUCCESS(status)||!generation||parent->Live(parent->Header.Context,generation)!=1)goto fail;
+ if(!NT_SUCCESS(status)){s->state=A04_SESSION_REJECTED;return -1;}
+ /* A successful response with invalid generation or lost liveness can have
+  * retained a lease; keep every reference quarantined for recovery. */
+ if(!generation||parent->Live(parent->Header.Context,generation)!=1)goto fail;
  s->generation=generation;
  /* Only a real parent's contract can grant these properties. The existing
   * provider rejects Acquire; an interface reference alone is not a lease. */

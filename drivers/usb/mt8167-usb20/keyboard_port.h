@@ -14,6 +14,8 @@ typedef struct {
 /* Caller owns powered host-mode MAC/PHY, FIFO/IRQs and serializes INDEX.
  * now is monotonic milliseconds modulo 2^32; tick at least once per second.
  * On -1 the caller must mask IRQs and stop the session/VBUS before reuse. */
+/* 100ns counter -> milliseconds modulo 2^32, without ARM CRT 64bit divide. */
+unsigned KbPortMilliseconds(unsigned high,unsigned low);
 int KbPortInit(KB_PORT *,KB_SESSION *,const MT8167_USB20_IO *,void *,
  void (*)(void *,unsigned),int (*)(void *,const unsigned char *),void (*)(void *));
 int KbPortEvents(KB_PORT *,MT8167_USB20_EVENTS,unsigned now);

@@ -81,3 +81,78 @@ ACPIコンパイル、ARM32 core COFF生成まで実施した。新しいポー�
 常時拒否APIは追加しなかった。実キーボード入力へは上記の直接HID transportを
 用いる。実機給電・PHY・IRQ・実PnP成功、署名済みパッケージの受理は主担当の
 未実施工程であり、USB移植完了として扱わない。
+
+## 通常OSを維持する統合profile（audio 08faae5との統合）
+
+`98775b4`のUSBと`08faae5`のfirst playbackを、履歴を維持して同じ
+`wdf_parent_probe.c`へ統合した。親SYSを2個インストールしない。
+主担当のWDKビルドで確認されたUSBのGS helper link errorも同じ変更に含める。
+
+音声とUSBを同時に組み込む場合は、次の**単一parent**ビルドを使う。
+
+```powershell
+./tools/ci/build-mt8167-first-playback.ps1 -IntegratedUsb -OutputDirectory ./build/integrated-usb-audio
+```
+
+出力は`a04-msdc-parent-probe/mt8167-shared.sys`が1個、`audio/mt8167-audio.sys`、
+`usb/mt8167-usb20.sys`と対応INF・hash manifest。parentを先に一度だけ
+ビルドし、両childが同じソース・audio interfaceとUSB interfaceを使う。
+USB単独の親で、稼働中のfirst-playback用親を上書きしない。
+
+既存の通常parentへUSBだけを追加する場合の入口は次。
+
+```powershell
+./tools/ci/build-mt8167-usb-keyboard.ps1 -Profile Integrated -OutputDirectory ./build/integrated-usb
+```
+
+`Integrated`が既定。`USB_ONLY=0`、button D0とtouch D0を有効にし、USB関連
+以外のaudio/thermal/Wi-Fi等の既存環境フラグは勝手に0へ戻さない。
+音声も必要なら上の`-IntegratedUsb`入口を用い、既存の有効な任意consumer
+フラグはmanifestと照合する。単独診断の旧構成は明示的な`-Profile UsbOnly`で
+選ぶ。統合profileは`UsbKeyboard.asl`を出力せず、既存ACPI parent、touch、
+battery、ボタンのnode/INF/SYSを削除・交換しない。
+
+### 既存資源maskと所有範囲を変えない方法
+
+- parentの既存TOPCK/INFRA/GPIO/PWRAP各4KiBは従来の親だけがmapする。
+  childに同じ範囲を追加しない。USB clientは親へのquery interfaceを使う。
+- `USB_ONLY=0`では、従来の4領域をそのまま受け付ける。APMIXEDがなければ
+  USB/audioを利用不可にするが、parentのD0・touch・ボタンの開始は拒否しない。
+  OSが割り当てていないAPMIXEDを固定アドレスで勝手にmapしない。
+- 既に5領域ならAPMIXEDの既存長`0x710`/`0x714`を維持し、拡張しない。
+  USBは`0x710`で足りる。first playbackは`0x714`がなければaudio leaseを
+  拒否し、入力の開始とは分離する。
+- USB PDOはMAC `0x11100000/0x10000`、SIF `0x11110000/0x10000`、GSIV104
+  だけを所有する。touch PDOのI2C0 `0x11009000/0x1000`、ボタンPDOの
+  `0x10002000/0x1000`を変更しない。既存USB nodeが同範囲を所有している
+  場合はそのUSB nodeだけと排他にし、入力やbattery nodeを無効化しない。
+- batteryのLC709203Fが持つI2C2 `0x1100b000/0x1000`には触れない。
+  USBにBQ24160/I2C2の別mapping・timer・charger書込みを作らない。
+- GPIO更新はUSBのMODE22/34/41とdirectionの該当bit、IES SETのbit2/10に
+  限る。既存touchのMODE `0x3b0/0x310`、DIR0 bit8、IES SET bit3/15の
+  allowlistを変更しない。bank丸ごとの値を書き戻さない。
+- TOPはUSB gateのbitだけをSET/CLRし、muxは`0x004[22:20]`だけを更新する。
+  audio gateやtouch/I2C gateのmaskは拡張しない。共有PLLを再設定しない。
+
+### PC接続中の期待状態
+
+外部VBUS検出またはID-deviceなら、親のUSB ownerは**読取りだけのeligibility
+probeで、GPIO・clock・PMIC・PHY変更前にacquireを拒否する**。これは故障では
+ないのでUSB/PMIC/parentをpoisonせず、touch/ボタンや保持中audio leaseを止めない。
+USB childがhost開始不可でも、親全体の開始失敗として扱わない。
+後で主担当が別条件で再試験できるが、この作業から接続変更を要求しない。
+
+### WDK8.1のlink error修正
+
+主担当の`windows-rt-usb-audio-batch-build-20261107.log.stderr`にある
+`__security_push_cookie / __security_pop_cookie`未解決を確認した。
+USB scriptの前半C coreと実験core/contractにも`-fno-stack-protector`を揃えた。
+さらに、実ログは`ntoskrnl.lib(helpexcept.obj)`からの参照なので、時刻の
+64bit除算が`__rt_udiv64`を引き込む経路も除いた。時刻変換とPHYの整数除算は
+32bitのshift/subtractで同じ商を計算し、USB coreのARM出力で当該GS helperと
+除算helperの非参照を確認する。既存`bufferoverflowfastfailk.lib`のリンクは維持し、
+ライブラリを追加して解決済みと扱わない。
+
+親の前回WDK成功は主担当の結果。今回の統合版SYS再リンク、通常OS上での
+touch/battery/ボタン継続開始は主担当の未確認工程であり、ホスト確認から
+実機成功へ読み替えない。

@@ -461,3 +461,50 @@ DMA-then-Voice ordering. Both remain blocked by the real parent's absent mute
 and calibration verification; the PCM path also lacks a DMA mapping and drain
 proof. Wi-Fi/RTC flags are independent and are exercised with both enabled in
 the host and ARM32 build checks.
+
+The Voice verifier now reads MT6392 SPK_CON9 through the existing class-D
+PWRAP callback under the shared parent lock when the PMIC is online and the
+class-D owner is active. A nonzero gain code rejects; a read error poisons the
+class-D owner and the PCM operation propagates that failure to the audio lease.
+A zero gain code is only register evidence, not proof of physical silence,
+retained rails or the AU_LOL-to-speaker route. The verifier still rejects
+because a board mute and Voice calibration provider do not exist. Thus this
+connection performs no Voice register writes and cannot enable playback.
+
+The A04BR3 Linux DTS explicitly sets `headphone-cap-sel = <1>` (22 uF) for
+the headphone setting; this is configuration evidence, not a measured Voice
+path capacitance or a reason to use headphone calibration for AU_LOL. Linux
+programs DL1 from `runtime->dma_addr` and `dma_bytes`, not from a generic CPU
+physical-page query. UniXNU's checked-in `package/wifi/network/apple/IOEthernetController.cpp`
+uses IODMACommand's mapped IOVM address for network packets; this is a separate
+XNU subsystem and does not establish the Windows or AFE mapping contract.
+
+Audio interface version 9 adds an independent `VerifyDmaDrained` callback.
+The actual parent unconditionally rejects it: a disabled DL1 bit and interrupt
+rundown do not prove that outstanding fabric transactions have completed.
+The existing live PCM verification also rejects, so the retained-map PnP path
+cannot be enabled merely by setting its diagnostic build flag.
+
+The bounded `codec_adc_probe.c` experiment captures 22 raw samples for
+headphone ADC channels 7 or 8 and reports the nominal Linux-style trimmed
+average. It requires a provider to establish exclusive ADC and thermal
+ownership, a stable powered analog route and actual downstream mute before
+any access. It serializes with the provider's lease, times out, and poisons
+its state after an ambiguous transaction. It does not configure a calibration
+route, provide a Windows hardware transport, or implement a lease. It is not
+linked into the WDF parent and cannot establish AU_LOL calibration. Linux
+references: `drivers/misc/mediatek/auxadc/mtk_auxadc.c` and
+`sound/soc/codecs/mt8167-codec-utils.c` in the board source. Its nominal 1.5 V
+conversion is not ADC voltage calibration. No live ADC operation is enabled.
+
+The shared thermal interface is version 3 and its touch guard is version 3.
+They carry a headphone-route and physical-mute verification request from the
+ADC child through the held, rundown-protected thermal lease to the parent.
+The current parent returns not ready: it has no evidence-backed provider, and
+neither a Class D gain read nor a firmware variable grants this capability.
+Older parent/touch/thermal binaries are not compatible with this diagnostic
+interface and must not be mixed. This is not an AUXADC or EL3 handoff proof.
+The child also revalidates the parent's live lease and its independently
+established firmware-release and all-consumer-exclusion evidence under the
+guard. The parent currently has no provider of either piece of evidence and
+continues to reject. A lease or an observation record alone grants neither.

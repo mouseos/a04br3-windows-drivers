@@ -44,6 +44,11 @@ int a04_pmic_audio_observe(struct a04_pmic_read *bus,struct a04_mt6392_audio_raw
 #if defined(A04_MT6392_WRITE_DIAGNOSTIC) && A04_MT6392_WRITE_DIAGNOSTIC
 /* Caller holds the common PWRAP lock; only Class D masks/values allowed.
  * SET/CLR aliases are rejected here and use a separate guarded lease. */
+/* First-playback provider: enable only the board VAUD rails, retain until
+ * reset, and observe the Class D hardware-trim/overcurrent registers. */
+int a04_pmic_audio_power_on_pinned(struct a04_pmic_read *);
+int a04_pmic_classd_trim(struct a04_pmic_read *,uint16_t *);
+int a04_pmic_classd_overcurrent(struct a04_pmic_read *,uint16_t *);
 int a04_pmic_classd_supported(uint16_t,uint16_t,uint16_t);
 int a04_pmic_classd_update(struct a04_pmic_read *,uint16_t,uint16_t,uint16_t);
 int a04_pmic_classd_read_gain(struct a04_pmic_read *,uint16_t,uint16_t *);

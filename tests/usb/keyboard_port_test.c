@@ -43,6 +43,9 @@ static void enumerate(KB_PORT*p,MOCK*m,unsigned now)
 int main(void)
 {
  MOCK m;KB_PORT p;KB_SESSION s;unsigned now;
+ {static const unsigned long long ticks[]={0,9999,10000,0xffffffffULL,0x100000000ULL,0xffffffffffffffffULL,0x2710ffffffffULL};unsigned i;
+  for(i=0;i<sizeof(ticks)/sizeof(ticks[0]);++i)assert(KbPortMilliseconds((unsigned)(ticks[i]>>32),(unsigned)ticks[i])==(unsigned)(ticks[i]/10000u));
+ }
  init(&p,&s,&m);now=connect(&p,&m,0xfffffff0u);enumerate(&p,&m,now);
  assert(!KbPortTick(&p,now) && p.rx_pending && (m.rx&0x20));
  m.rx=8;assert(!event(&p,0,0,2,now+1) && !p.rx_pending); /* NAK: retry, no false report */

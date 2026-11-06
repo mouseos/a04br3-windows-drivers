@@ -376,3 +376,155 @@ mapping for the PortCls pages, its map-register lifetime and DMA drain proof
 are not implemented. No PCM reaches hardware. A successful preflight cannot
 override this restriction. When mapping is added, it must preserve the PortCls
 allocation and mapping until the hardware and adapter are demonstrably done.
+
+The Linux board driver programs DL1 BASE/END from the DMA allocation's
+`runtime->dma_addr` and size. The XNU network IODMACommand example maps a
+buffer and uses an IOVM address; neither proves a numeric physical-address
+identity for the Windows AFE. Microsoft documents
+[GetScatterGatherList](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pget_scatter_gather_list)
+as retaining mapping resources and requiring `PutScatterGatherList` before CPU
+access to the buffer. That packet-DMA contract alone is not evidence that an
+actively written WaveRT cyclic buffer can safely use that mapping indefinitely.
+The PortCls-to-AFE adapter mapping, continuous synchronization and safe release
+remain unimplemented; RUN remains refused.
+
+`A04_AUDIO_WAVE_DMA_PROBE=1` is an additional default-off PnP/WaveRT
+integration diagnostic. Before the PortCls MDL is returned to a client, it
+calls the DMA adapter's `GetScatterGatherList` at DISPATCH_LEVEL, requires a
+single complete aligned 32-bit device-address segment, and immediately calls
+`PutScatterGatherList` from the adapter callback. It never publishes that
+address to DL1, never enables DMA, and does not retain it as a live mapping.
+The test has a one-second bounded wait. On timeout an adapter callback may
+still arrive: the MDL, PortCls mapping, adapter, PDO and parent lease remain
+retained, and PnP unbind is refused. This is a deliberately conservative leak,
+not a cancellation or drain proof. Failed mapping without a callback is freed.
+The real parent still rejects the codec and live PCM prerequisites and RUN
+remains disabled. Host tests simulate immediate and late callbacks, invalid
+segments, timeout and PnP/WaveRT retention; no target execution is claimed.
+The packet-DMA API's CPU-access restrictions preclude using this short-lived
+probe as proof of continuous WaveRT ring coherence. The result is not kept as
+an AFE logical address and does not establish the next mapping's address.
+
+`A04_AUDIO_WAVE_DMA_RETAINED=1` is a separate default-off experimental path.
+It uses the DMA adapter mapping for the PortCls MDL and retains its scatter-
+gather list and map registers through RUN. The parent must first prove the
+mapping and Windows/board cache contract, including CPU writes during playback;
+the real parent rejects this verification. On stop the PnP backend requests
+mute, stops DL1 and disconnects IRQ, then requires an independent parent DMA
+and fabric drain proof before stopping Voice and returning the mapping through
+`PutScatterGatherList`. The real parent rejects that drain check. An exposed
+mapping is retained if any operation fails or drain is unknown; a timed-out
+mapping request also retains the MDL/adapter while its callback may arrive.
+Only a successful verified stop permits WaveRT to unbind and free its pages.
+
+This code path has host tests, not device proof. A packet-DMA scatter/gather
+mapping does not by itself establish that CPU access to a continuously updated
+WaveRT ring is supported; the verified parent contract must establish this
+independently. Neither DL1 disable nor IRQ disconnect is treated as drain.
+PnP surprise removal and the OS resource lifetime after quarantine remain
+unproven. No real parent callback admits this path and no playback is claimed.
+
+## INT ADDA共有サービス（2026-11-07）
+
+`A04_SHARED_DIGITAL_PLAYBACK=1` のparentは、バージョン10の
+`PreparePlayback(48000)` を公開する。子の
+`A04_AUDIO_DIGITAL_PLAYBACK=1` はRUN時、DMA開始とVoice Amp開始より前に
+このサービスを呼ぶ。表示名とPnP IDは既存のMediaTek MT8167 AFEを維持する。
+
+サービスは、取得済みのmuted audio lease、TOP/AFE clock、codec domainと
+MT6392 gain muteを確認してから、DAC/DAC_PREDIS gate、AFE_ON、S16_LE、
+DL1 I05/I06からO03/O04への接続、ADDA SRC、I2S出力、内蔵codecの48 kHz設定、
+DC補償初期値とlatchを設定する。I2Sのrate codeは10、ADDA/codecは8であり、
+同じ値を流用しない。アナログDAC、Voice Amp、Class D unmuteはこの操作では
+有効にしない。既存の稼働中DL1/capture/ADDA/I2S/codecを検出すると書込み前に
+拒否する。書込み後の失敗は-2、無変更の拒否は-1と区別する。
+
+根拠はボードLinuxの `sound/soc/mediatek/mt8167/mt8167-afe-pcm.c` の
+`mt8167_afe_int_adda_startup/hw_params/prepare`、`mt8167_afe_set_adda_out`、
+`mt8167_afe_set_i2s_out` とO03/O04のDAPM mixer、同ディレクトリの
+`mt8167-afe-regs.h`、`sound/soc/codecs/mt8167-codec.c` の
+`mt8167_codec_setup_dl_rate/hw_params`、`mt8167-codec-utils.c` の
+`mt8167_codec_update_dc_comp`。Linuxソースを配布物へコピーせず、これらの
+レジスタ仕様と順序に基づく限定実装とした。
+
+`make test-mt8167-digital-playback test-mt8167-digital-parent
+ test-mt8167-digital-pnp` で、設定成功、各書込みの失敗、latchの両status、
+PnP queryで公開された実parent callback、RUNからの呼出し、-1/-2で異なる
+資源保持をホスト検証する。ホスト試験は実機再生・Windows WDK linkの証明ではない。
+
+**残る欠落**: 既存parentの `audio.preflight`、`audio.verify_release`、
+`classd.verify_start/verify_quiescent/verify_unmute` とaudioのD0 admissionは
+未接続であり、実機用のAcquireMutedは依然成功しない。この変更は、その状態を
+解除するための推測によるcallbackを追加していない。PnPのresource assignment
+だけでは既存firmware/secure側の共有clock/PWRAP解放を証明できない。
+`ParentVoiceVerify`にはAU_LOLへ適用できる校正値取得経路がなく、
+`ParentVerifyLivePcm`には循環DMAのcoherency保証、`ParentVerifyDmaDrained`
+にはMT8167の未完了バストランザクション確認手段がない。
+ヘッドホンAUXADC 7/8の測定をAU_LOL校正と見なしたり、DL1の停止bitをdrainと
+見なしたりはしない。これらの欠落により可聴再生までは到達していない。
+
+デジタル設定後は共有clock・codec・AFE mappingをresetまで保持する。
+`ReleaseQuiescent`とparent unmapは拒否し、子も保持状態をquarantineする。
+既存の停止経路が成功してもこの保持を解除しない。通常のPnP remove/resumeや
+再生再開を完成したものとして扱わない。実機・SSH・REA・EDK2の操作は行っていない。
+
+## 資源を保持する初回再生プロバイダ（2026-11-07追記）
+
+前節の未接続callbackは、専用の `A04_SHARED_FIRST_PLAYBACK=1` ビルドでは
+実プロバイダへ接続した。従来の診断ビルドには有効化しない。
+親D0はPnP割当済みの共有bankとWACS2 readinessを確認してaudio admissionを開く。
+`AcquireMuted` は `WdfDeviceStopIdle(TRUE)` で親の電源参照を取得し、
+既存の再生・収録・ヘッドホンアンプ・Class Dが稼働していないことを確認する。
+VAUD22/VAUD28のbit14を設定し、Linux regulatorの264 us ramp後にQI bit15を
+有界待機する。電圧selectorは維持する。TOP audio/AFE clockとcodec domainを
+取得し、MT6392の実WACS2更新でgain muteとhardware trimを行う。
+trimの20 ms待機後、trimを切る前にSPK_CON1 bits4:0を読み取り記録する。
+副作用前の拒否だけは取得した電源参照を返し、成功または不確定な失敗は保持する。
+
+基板LinuxはAU_LOLをVoice AmpからMT6392内部Class Dへ接続する。
+`LINEOUT Mux` は `SND_SOC_NOPM` のソフトウェアmuxであり、推測のmuxレジスタは
+追加しない。提供された `mt8167-codec.c` のVoice gain初期値9（0 dB）を設定し、
+DC補償はLinuxの未校正cold-start状態（kzalloc配列の0→0）を明示して使用する。
+Linuxの `HP DC Offsets` は別途ヘッドホン回路をADC測定した場合に配列を設定する。
+**AU_LOL専用のADCチャンネル・測定手順は一次ソースにないため、AU_LOLの実測DC校正を
+実装済みとは扱わない。** 今回接続した校正動作はMT6392 Class Dのhardware trimであり、
+AU_LOLの測定値や0x4b4bの無条件適用ではない。
+
+子は `A04_AUDIO_FIRST_PLAYBACK=1` により、共有lease/IRQ取得後の最初のRUNで
+デジタル設定、Voice Amp、DL1、最小Class D gainの順に開始する。
+DMAは `AllocateCommonBuffer(CacheEnabled=FALSE)` の論理アドレスを使う。
+非公開・非cachedの別bufferへ48 kHz stereo S16_LE、1500 Hz、peak 128/32768の
+固定PCMを一度書き、既存の `KeFlushIoBuffers` とARM DMBを通してからDL1へ渡す。
+利用者に渡すWaveRT bufferとDMA用bufferは別であり、利用者の書込みや循環cache管理を
+この経路で成立させたとは主張しない。これは初回の固定PCM再生専用である。
+
+停止時はmuteとDL1停止・IRQ rundownを行うが、drainを証明せず、共有lease・
+parent電源参照・PMIC電源・clock・codec・DMA buffer・PDO・mappingをresetまで保持する。
+lease返却、DMA資源の解放、二度目のRUNは許可しない。parentのpower policyに対する
+idle防止はあるが、強制removeやシステム電源遷移で物理資源が維持されることまで保証しない。
+通常運用の音声ドライバ、live PCM、再開・suspend/resumeの完成形ではない。
+
+主担当が行うWDK 8.1 ARM32ビルド:
+
+```powershell
+./tools/ci/build-mt8167-first-playback.ps1
+```
+
+この入口だけで親子の一致するフラグを設定し、共有parent SYSとPortCls SYSを一括ビルドする。
+既存runnerを開始・停止する処理、実機へ接続する処理は含まない。
+出力・一時ファイル・build.logはcheckout内の `build/mt8167-first-playback/` へ置く。
+`-OutputDirectory` を使う場合もcheckout内だけを許可する。
+
+- `a04-msdc-parent-probe/mt8167-shared.sys` と `shared-parent.inf`
+- `audio/mt8167-audio.sys` と `mt8167-afe-first-playback.inf`
+- `manifest.json`: source commit、dirty状態、PCM設定、ビルドフラグと4ファイルのSHA-256
+
+INFは既存子ID `MT8167\AFE`、subdevice `Mt8167WaveRT` に一致し、表示名は
+`MediaTek MT8167 AFE / MT6392 Audio`。媒体への組込み前に、主担当側でCAT生成・署名と
+既存の競合するstandalone所有者の無効化、APMIXED 0x714を含む親resource割当、
+PnP開始を確認する。Windowsの通常のSpeaker endpoint列挙・topology接続や署名受理は
+今回未確認であり、SYS link成功だけで利用者向け音声出力が完成したとは扱わない。
+
+ローカルでは変更に直接関係する一括ホスト確認を実施。実parent callbackを用いた
+D0→AcquireMuted→PreparePlayback→StartVoice→DL1有効後のUnmute、停止後の資源保持と、
+既存PnP fixtureによる固定PCM RUN接続を確認した。WDK linkと実機試験は主担当が実施する。

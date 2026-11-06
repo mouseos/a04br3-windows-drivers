@@ -29,8 +29,8 @@
 #ifndef A04_TOPRGU_THERMAL_STOP
 #define A04_TOPRGU_THERMAL_STOP 0
 #endif
-#if A04_TOPRGU_UART_SCREEN && (!A04_TOPRGU_CPU1_HANDOFF || A04_TOPRGU_THERMAL_STOP)
-#error UART screen requires CPU1 handoff and excludes thermal stop test
+#if A04_TOPRGU_UART_SCREEN && !A04_TOPRGU_CPU1_HANDOFF
+#error UART screen requires CPU1 handoff
 #endif
 #if A04_TOPRGU_UART_VOLUME != 0 && A04_TOPRGU_UART_VOLUME != 1
 #error invalid UART volume request option
@@ -553,15 +553,17 @@ NTSTATUS ToprguAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     TOPRGU_CONTEXT *c;
     NTSTATUS status;
     UNREFERENCED_PARAMETER(driver);
-#if A04_TOPRGU_UART_SCREEN
-    { DECLARE_CONST_UNICODE_STRING(name,A04_UART_SCREEN_DEVICE);
-      DECLARE_CONST_UNICODE_STRING(sddl,L"D:P(A;;GA;;;SY)(A;;GA;;;BA)");
-      status=WdfDeviceInitAssignName(init,&name); if(!NT_SUCCESS(status)) return status;
-      status=WdfDeviceInitAssignSDDLString(init,&sddl); if(!NT_SUCCESS(status)) return status; }
-#endif
 #if A04_TOPRGU_THERMAL_STOP
     { DECLARE_CONST_UNICODE_STRING(name,A04_TOPRGU_THERMAL_NAME);
       status=WdfDeviceInitAssignName(init,&name); if (!NT_SUCCESS(status)) return status; }
+#elif A04_TOPRGU_UART_SCREEN
+    { DECLARE_CONST_UNICODE_STRING(name,A04_UART_SCREEN_DEVICE);
+      status=WdfDeviceInitAssignName(init,&name); if(!NT_SUCCESS(status)) return status; }
+#endif
+#if A04_TOPRGU_UART_SCREEN
+    {
+      DECLARE_CONST_UNICODE_STRING(sddl,L"D:P(A;;GA;;;SY)(A;;GA;;;BA)");
+      status=WdfDeviceInitAssignSDDLString(init,&sddl); if(!NT_SUCCESS(status)) return status; }
 #endif
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
     pnp.EvtDevicePrepareHardware=ToprguPrepare; pnp.EvtDeviceReleaseHardware=ToprguRelease;
@@ -574,8 +576,17 @@ NTSTATUS ToprguAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
 #if A04_TOPRGU_UART_SCREEN
     { DECLARE_CONST_UNICODE_STRING(link,A04_UART_SCREEN_LINK); WDF_IO_QUEUE_CONFIG q;
       status=WdfDeviceCreateSymbolicLink(device,&link); if(!NT_SUCCESS(status))return status;
+#if A04_TOPRGU_THERMAL_STOP
+      /* Thermal ping/halt must not queue behind user UART requests. UART
+       * state and hardware access remain serialized by c->busy. */
+      WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel);
+#else
       WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchSequential);
+#endif
       q.PowerManaged=WdfTrue;q.EvtIoDeviceControl=ToprguScreenIoctl;
+#if A04_TOPRGU_THERMAL_STOP
+      q.EvtIoInternalDeviceControl=ToprguThermalControl;
+#endif
       status=WdfIoQueueCreate(device,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE); if(!NT_SUCCESS(status))return status; }
     { WDF_TIMER_CONFIG screenConfig;
       WDF_TIMER_CONFIG_INIT_PERIODIC(&screenConfig,ToprguScreenTimer,1);
@@ -583,7 +594,7 @@ NTSTATUS ToprguAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
       WDF_OBJECT_ATTRIBUTES_INIT(&timerAttr);timerAttr.ParentObject=device;timerAttr.ExecutionLevel=WdfExecutionLevelDispatch;
       status=WdfTimerCreate(&screenConfig,&timerAttr,&c->screenTimer); if(!NT_SUCCESS(status))return status; }
 #endif
-#if A04_TOPRGU_THERMAL_STOP
+#if A04_TOPRGU_THERMAL_STOP && !A04_TOPRGU_UART_SCREEN
     { WDF_IO_QUEUE_CONFIG q;
       WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel);
       q.PowerManaged=WdfTrue; q.EvtIoInternalDeviceControl=ToprguThermalControl;

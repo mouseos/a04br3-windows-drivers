@@ -1,7 +1,10 @@
 # Windowsの画面取得・UART転送試作
 
 `A04_TOPRGU_UART_SCREEN=1` と `A04_TOPRGU_CPU1_HANDOFF=1` を明示した４ CPU試験だけで
-有効。既定はOFF。`A04_TOPRGU_THERMAL_STOP=1` との併用はコンパイル時に拒否する。
+有効。既定はOFF。`A04_TOPRGU_THERMAL_STOP=1` と併用した場合、熱管理の
+デバイス名を使用し、UART用のDOSリンクを同じデバイスへ付ける。両要求を同一の
+並列キューで受け、熱管理のpingがUART要求の後ろに直列化されないようにする。
+併用はビルド対象だが、実機での給餌間隔やD0遷移は未検証。
 UARTはTOPRGUのみが操作し、SYSTEM／管理者限定IOCTLで最大96バイトを１件受ける。
 送信は高分解能WDFタイマーの１回につき準備済みの１バイトのみで、ハードウェアを
 待たない。watchdogと同じatomic gateを使うため、送信中に別の給餌処理は走らず、

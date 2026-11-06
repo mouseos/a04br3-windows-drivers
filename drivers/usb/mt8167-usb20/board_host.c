@@ -9,14 +9,24 @@ static void phy_update(const A04_USB_BOARD *b,unsigned reg,unsigned clear,unsign
  * Frequency-meter registers are relative to SIF+0x800, not the MAC. */
 static int calibrate(const A04_USB_BOARD *b)
 {
- unsigned i,data,value=4,x;
+ unsigned i,data,value=4,x,remainder,numerator;
  b->phy_write(b->context,0x15,0x80);b->delay_ms(b->context,1);
  b->phy_write(b->context,0x711,1);b->phy_write(b->context,0x701,4);
  phy_update(b,0x703,0,1);
  for(i=0;i<3000;++i){if(b->phy_read(b->context,0x710)&1)break;b->delay_ms(b->context,1);}
  if(i<3000){
   data=b->phy_read32(b->context,0x70c);
-  if(!data){value=8;}else {x=(1024u*48u*28u)/data;value=(x+500u)/1000u;}
+  if(!data){value=8;}else {
+   /* Match the Linux integer quotient without pulling ARM CRT division
+    * exception helpers into a Windows 8.1 kernel driver. Numerator is small,
+    * so the 32-bit remainder cannot overflow during long division. */
+   numerator=1024u*48u*28u;remainder=0;x=0;
+   for(i=0;i<32;++i){
+    remainder=(remainder<<1)|(numerator>>31);numerator<<=1;x<<=1;
+    if(remainder>=data){remainder-=data;x|=1u;}
+   }
+   value=(x+500u)/1000u;
+  }
  }
  phy_update(b,0x703,1,0);phy_update(b,0x711,1,0);
  /* Linux's timeout fallback is 4; impossible measured values are failures. */

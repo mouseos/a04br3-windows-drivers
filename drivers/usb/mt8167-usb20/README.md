@@ -258,3 +258,7 @@ MMIOの模擬試験であり、WindowsでのWDF実行や実機LED点灯の確認
 共有親＋USB PDO＋HID transport構成を追加した。本文中の古い未接続説明は
 当時の記録であり、同文書の接続表を現在のソース状態として参照する。
 実機、SSH、WDKビルドの実行は主担当の工程として残る。
+
+通常OSの既存入力・batteryを維持する構成は、同文書の「通常OSを維持する統合profile」を参照。
+`build-mt8167-usb-keyboard.ps1`の既定はIntegratedへ変更し、08faae5との
+単一parent＋audio＋USBは`build-mt8167-first-playback.ps1 -IntegratedUsb`で生成する。

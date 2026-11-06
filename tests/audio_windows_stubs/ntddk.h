@@ -28,6 +28,7 @@ typedef struct { USHORT Size,Version; PVOID Context; PINTERFACE_REFERENCE Interf
 #define NULL 0
 #endif
 #define STATUS_INVALID_PARAMETER (-1)
+#define STATUS_IO_TIMEOUT (-7)
 #define NT_SUCCESS(s) ((s)>=0)
 #define UNREFERENCED_PARAMETER(x) ((void)(x))
 struct _KINTERRUPT; typedef _KINTERRUPT *PKINTERRUPT;
@@ -71,6 +72,9 @@ typedef struct {int64_t QuadPart;} PHYSICAL_ADDRESS;
 struct _MDL { void *address; ULONG size; }; typedef _MDL *PMDL;
 #define MmGetMdlByteOffset(p) 0u
 #define MmGetMdlByteCount(p) ((p)->size)
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+struct _SCATTER_GATHER_LIST; typedef _SCATTER_GATHER_LIST *PSCATTER_GATHER_LIST;
+#endif
 struct _DMA_ADAPTER; typedef _DMA_ADAPTER *PDMA_ADAPTER;
 struct _DMA_OPERATIONS {
  void (*PutDmaAdapter)(PDMA_ADAPTER);

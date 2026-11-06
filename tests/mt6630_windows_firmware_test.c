@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
+#define A04_WIFI_WLAN_SHA256_BYTES {0x2e,0x4c,0xd3,0x04,0x7d,0xa9,0x94,0xc0,0x26,0xc3,0xc1,0xf4,0x72,0xf0,0x45,0xcb,0x24,0x3c,0x0e,0xc8,0xb0,0x61,0x1d,0x7c,0x55,0xb8,0x86,0x1f,0xd9,0x41,0x8b,0xab}
 #include "../drivers/network/mt6630/windows_firmware.c"
 static int short_read,denied,closes,allocations,transfers;static unsigned char blob[128];
 int KeGetCurrentIrql(void){return 0;}
@@ -21,13 +22,17 @@ int a04_wmt_bridge_boot_wlan(struct a04_wmt_bridge *b,const void *d,unsigned n,i
 {(void)b;(void)d;(void)n;(void)h;transfers++;return 0;}
 int main(void)
 {
- struct snapshot s={0};static struct a04_wmt_bridge bridge;struct a04_wmt_startup_options options={0};uint8_t hash[32]={0};
+ struct snapshot s={0};struct a04_windows_fw_snapshot fw={0};static struct a04_wmt_bridge bridge;struct a04_wmt_startup_options options={0};uint8_t hash[32]={0};
  memset(blob,0x55,sizeof(blob));assert(!read_snapshot(L"test",sizeof(blob),&s));assert(s.length==sizeof(blob)&&allocations==1&&closes==1);release_snapshot(&s);assert(!allocations);
  short_read=1;assert(read_snapshot(L"test",sizeof(blob),&s)==STATUS_END_OF_FILE&&!s.bytes&&!allocations);short_read=0;
  denied=1;assert(read_snapshot(L"test",sizeof(blob),&s)!=0&&!s.bytes);denied=0;
  assert(read_snapshot(L"test",sizeof(blob)-1,&s)==STATUS_INVALID_BUFFER_SIZE&&!s.bytes);
  bridge.identity_ready=1;assert(a04_windows_firmware_boot(&bridge,hash,&options)!=0&&!transfers&&!allocations);
  assert(!a04_sha256(blob,sizeof(blob),hash));
+ assert(!a04_windows_firmware_prepare(&fw,hash) && fw.wmt && fw.wlan && allocations==2);
+ assert(a04_windows_firmware_prepare(&fw,hash) && allocations==2);
+ {uint8_t digest[32];assert(wlan_digest_matches(fw.wlan,fw.wlan_length,digest));fw.wlan[0]^=1;assert(!wlan_digest_matches(fw.wlan,fw.wlan_length,digest));fw.wlan[0]^=1;}
+ a04_windows_firmware_release(&fw);assert(!allocations && !fw.wmt && !fw.wlan);
  assert(a04_windows_firmware_boot(&bridge,hash,&options)!=0&&!transfers&&!allocations);
  puts("Windows immutable firmware snapshot and preflight refusal: OK");return 0;
 }

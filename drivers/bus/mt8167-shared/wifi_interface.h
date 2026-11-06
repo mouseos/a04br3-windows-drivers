@@ -11,6 +11,9 @@ static const GUID A04SharedWifiInterfaceGuid =
 #define A04_SHARED_WIFI_INTERFACE_VERSION 2
 typedef struct _A04_SHARED_WIFI_INTERFACE {
  INTERFACE Header;
+ /* Failure must be side-effect-free: no retained lease, power changes or
+  * outstanding work. Partial acquisition must never be reported as failure;
+  * a provider unable to ensure this contract must refuse before touching HW. */
  NTSTATUS (*Acquire)(PVOID context, ULONG *generation);
  NTSTATUS (*ReleaseQuiescent)(PVOID context, ULONG generation);
  /* Banks 0=TOPCKGEN, 1=GPIO. Each operation is serialized with touch. */

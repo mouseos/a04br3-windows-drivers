@@ -7,8 +7,17 @@
 int a04_test_trace_count;
 #endif
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
+#if A04_SHARED_FIRST_PLAYBACK
+static ULONG firstAnalog[1024];static int firstIdleRefs;
+NTSTATUS WdfDeviceStopIdle(WDFDEVICE dev,int wait){(void)dev;assert(wait);firstIdleRefs++;return STATUS_SUCCESS;}
+void WdfDeviceResumeIdle(WDFDEVICE dev){(void)dev;assert(firstIdleRefs);firstIdleRefs--;}
+#endif
 static ULONG mockAfeRegs[1024];static int mockAfeIgnoreWrite;
 #define mockAfe mockAfeRegs[0]
+#endif
+#if A04_SHARED_VOICE_DIAGNOSTIC || A04_SHARED_VOICE_PCM_DIAGNOSTIC || A04_SHARED_DIGITAL_PLAYBACK
+static int voiceGainReads,voiceGainFail;static uint16_t voiceGain;
+static int voiceReadGain(void *p,uint16_t reg,uint16_t *out){(void)p;assert(reg==0x64);voiceGainReads++;if(voiceGainFail)return -1;*out=voiceGain;return 0;}
 #endif
 static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,assertClosedOnLock,closeDuringLock,failMap;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;static A04_SHARED_USB_INTERFACE usb;static A04_SHARED_WIFI_INTERFACE wifi;
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
@@ -27,6 +36,9 @@ void ExInitializeFastMutex(FAST_MUTEX *m){m->held=0;}void ExAcquireFastMutex(FAS
 PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,int c){(void)n;(void)c;maps++;if(failMap && maps==failMap)return NULL;return (PVOID)(uintptr_t)a.QuadPart;}
 void MmUnmapIoSpace(PVOID p,ULONG n){(void)p;(void)n;unmaps++;}
 ULONG READ_REGISTER_ULONG(volatile ULONG *p){(void)p;reads++;
+#if A04_SHARED_FIRST_PLAYBACK
+ if((uintptr_t)p>=(uintptr_t)firstAnalog && (uintptr_t)p<(uintptr_t)(firstAnalog+1024))return *p;
+#endif
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
  if((uintptr_t)p>=(uintptr_t)usbGpio && (uintptr_t)p<(uintptr_t)(usbGpio+1024))return *p;
 #endif
@@ -38,6 +50,9 @@ ULONG READ_REGISTER_ULONG(volatile ULONG *p){(void)p;reads++;
  if((uintptr_t)p==0x2000f0a4){if(mockStopDuringRead)InterlockedExchange(&testContext.admissionClosed,1);return (mockFsm<<16)|(mockWacs?0x1234u:0);}
 #endif
  return 0;}void WRITE_REGISTER_ULONG(volatile ULONG *p,ULONG x){(void)p;(void)x;writes++;
+#if A04_SHARED_FIRST_PLAYBACK
+ if((uintptr_t)p>=(uintptr_t)firstAnalog && (uintptr_t)p<(uintptr_t)(firstAnalog+1024)){*p=x;return;}
+#endif
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
  if((uintptr_t)p>=(uintptr_t)mockAfeRegs && (uintptr_t)p<(uintptr_t)(mockAfeRegs+1024)) {
     if(!mockAfeIgnoreWrite) {
@@ -83,6 +98,17 @@ int main(void){
    assert(ParentVoiceVerify(&testContext,&initial,&value,&cap));
    assert(ParentCodecStart(&testContext));assert(writes==n && initial==321 && value==123 && cap==9); }
 #endif
+#if A04_SHARED_VOICE_DIAGNOSTIC || A04_SHARED_VOICE_PCM_DIAGNOSTIC
+ { int16_t initial=321,value=123;unsigned cap=9;int n=writes;
+   testContext.pmic.online=1;testContext.classd.active=1;testContext.classd.read16=voiceReadGain;
+   voiceGain=0;assert(ParentVoiceVerify(&testContext,&initial,&value,&cap) && voiceGainReads==1);
+   assert(writes==n && initial==321 && value==123 && cap==9);
+   voiceGain=0x100;assert(ParentVoiceVerify(&testContext,&initial,&value,&cap) && voiceGainReads==2);
+   assert(writes==n && !testContext.classd.poisoned);
+   voiceGainFail=1;assert(ParentVoiceVerify(&testContext,&initial,&value,&cap) && testContext.classd.poisoned && voiceGainReads==3);
+   voiceGainFail=0;testContext.classd.poisoned=0;
+   testContext.pmic.online=0;testContext.classd.active=0;testContext.classd.read16=NULL; }
+#endif
  CM_PARTIAL_RESOURCE_DESCRIPTOR entries[5]={0},translated[5]={0};struct test_list list={entries,4},translatedList={translated,4};USHORT value=0xeeee;
 #if A04_SHARED_APMIXED_RESOURCE
  list.count=translatedList.count=5;
@@ -97,10 +123,11 @@ int main(void){
  for(unsigned i=0;i<4;i++){translated[i]=entries[i];translated[i].u.Memory.Start.QuadPart+=0x10000000;}
  assert(!ParentAdd(NULL,NULL));
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
- assert(testContext.usb.otg_acquire && testContext.usb.otg_release);
+ assert(testContext.usb.probe_source && testContext.usb.otg_acquire && testContext.usb.otg_release);
  testContext.gpio=usbGpio;usbGpio[0x380/4]=2u<<3;usbGpio[0x220/4]=1u<<2;usbGpio[0x210/4]=1u<<5;
  assert(!ParentUsbSourceAcquire(&testContext) && !ParentUsbOvercurrent(&testContext));
- usbGpio[0x220/4]=0;assert(ParentUsbSourceAcquire(&testContext)); /* external VBUS */
+ assert(!ParentUsbProbeSource(&testContext));
+ usbGpio[0x220/4]=0;assert(ParentUsbProbeSource(&testContext));assert(ParentUsbSourceAcquire(&testContext)); /* external VBUS */
  usbGpio[0x220/4]=(1u<<2)|(1u<<9);assert(ParentUsbSourceAcquire(&testContext) && ParentUsbOvercurrent(&testContext));
  usbGpio[0x220/4]=1u<<2;usbGpio[0x20/4]=1u<<2;assert(ParentUsbSourceAcquire(&testContext));
  usbGpio[0x20/4]=0;usbGpio[0x360/4]=1u<<12;assert(ParentUsbSourceAcquire(&testContext));
@@ -171,13 +198,30 @@ int main(void){
  assert(input.Version==1 && input.TouchPen && input.ButtonPmicRead);
  assert(audio.Header.Version==A04_SHARED_AUDIO_INTERFACE_VERSION && audio.AcquireMuted && audio.ReleaseQuiescent && audio.PrepareMaskedIrq && audio.BindAfe && audio.Mute && audio.UnmuteMin);
 #if A04_SHARED_VOICE_PCM_DIAGNOSTIC
- assert(audio.VerifyLivePcm && audio.StartVoice && audio.StopVoice);
+ assert(audio.VerifyLivePcm && audio.StartVoice && audio.StopVoice && audio.VerifyDmaDrained);
+ assert(audio.VerifyDmaDrained(audio.Header.Context)!=0);
  assert(audio.VerifyLivePcm(audio.Header.Context,(PVOID)&audio,0x100000,8192)!=0);
  assert(audio.StartVoice(audio.Header.Context)!=0 && audio.StopVoice(audio.Header.Context)!=0 && !reads && !writes);
+ { int (*oldRead)(void *,uint16_t,uint16_t *)=testContext.classd.read16;
+   testContext.admissionClosed=0;testContext.audio.online=1;testContext.audio.leased=1;
+   testContext.pmic.online=1;testContext.classd.active=1;testContext.classd.read16=voiceReadGain;
+   testContext.codecDomain.held=1;testContext.audioAfe=&audio;voiceGainFail=1;
+   assert(audio.StartVoice(audio.Header.Context)!=0 && testContext.audio.poisoned && testContext.classd.poisoned && !writes);
+   voiceGainFail=0;testContext.admissionClosed=1;testContext.audio.online=0;testContext.audio.leased=0;testContext.audio.poisoned=0;
+   testContext.pmic.online=0;testContext.classd.active=0;testContext.classd.poisoned=0;testContext.classd.read16=oldRead;
+   testContext.codecDomain.held=0;testContext.audioAfe=NULL; }
 #endif
  assert(audio.PrepareMaskedIrq(audio.Header.Context,(PVOID)&audio,0x1000)!=0 && !reads && !writes);
  assert(wifi.Header.Version==2 && wifi.Acquire && wifi.ReleaseQuiescent && wifi.Live && wifi.UpdateShared && wifi.WriteShared);
- {ULONG generation=0xdead;assert(!wifi.Live(wifi.Header.Context,generation));assert(wifi.UpdateShared(wifi.Header.Context,generation,1,0x300,7u<<12,0)!=0);assert(wifi.WriteShared(wifi.Header.Context,generation,0,0xa0,2)!=0);assert(wifi.Acquire(wifi.Header.Context,&generation)==STATUS_DEVICE_NOT_READY && generation==0xdead && !reads && !writes);}
+ {ULONG generation=0xdead;
+#if A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC
+ int traceBefore=a04_test_trace_count;
+#endif
+ assert(!wifi.Live(wifi.Header.Context,generation));assert(wifi.UpdateShared(wifi.Header.Context,generation,1,0x300,7u<<12,0)!=0);assert(wifi.WriteShared(wifi.Header.Context,generation,0,0xa0,2)!=0);assert(wifi.Acquire(wifi.Header.Context,&generation)==STATUS_DEVICE_NOT_READY && generation==0xdead && !reads && !writes);
+#if A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC
+ assert(a04_test_trace_count==traceBefore+1);
+#endif
+ }
  {
  struct Mt8167AudioParentClient wrapper={0};struct mt8167_audio_shared_client client={0};
  audio.Header.InterfaceReference(audio.Header.Context);assert(refs==1);
@@ -321,5 +365,41 @@ int main(void){
  assert(saved.ReadButtons(saved.Header.Context,&value)==STATUS_DEVICE_NOT_READY && !reads && !writes);
  {int down=7;assert(input.TouchPen(input.Context,&down)!=0 && down==7);
  assert(input.ButtonPmicRead(input.Context,&value)!=0 && value==0xeeee);}
+
+#if A04_SHARED_DIGITAL_PLAYBACK
+ /* Exercise the actual published parent callback, with an already acquired
+  * muted lease. The test does not bypass acquisition in production. */
+ { int oldReads=reads,oldWrites=writes,oldUnmaps=unmaps;
+   assert(audio.PreparePlayback);
+   assert(audio.PreparePlayback(&testContext,48000)==-1 && writes==oldWrites);
+   testContext.admissionClosed=0;testContext.audio.online=1;testContext.audio.leased=1;
+   testContext.pmic.online=1;testContext.audioAfe=mockAfeRegs;
+   testContext.afeClockHeld=1;testContext.audioTopClock.held=1;testContext.codecDomain.held=1;
+   testContext.classd.active=1;testContext.classd.read16=voiceReadGain;voiceGain=0;
+   memset(mockAfeRegs,0,sizeof(mockAfeRegs));
+   assert(!audio.PreparePlayback(&testContext,48000));
+   assert(testContext.digitalPlayback.prepared && mockAfeRegs[0x108/4]==0x83001803);
+   assert(audio.ReleaseQuiescent(&testContext)==-1);
+   assert(ParentUnmap(&testContext)==STATUS_DEVICE_BUSY && unmaps==oldUnmaps);
+   testContext.digitalPlayback=(struct a04_digital_playback){0};
+   testContext.afeClockHeld=0;testContext.audioTopClock.held=0;testContext.codecDomain.held=0;
+   testContext.classd.active=0;testContext.audio.leased=0;testContext.audio.poisoned=0;testContext.audioAfe=NULL;
+   testContext.pmic.online=0;testContext.audio.online=0;testContext.admissionClosed=1;
+   reads=oldReads;writes=oldWrites;
+ }
+#endif
+#if A04_SHARED_APMIXED_RESOURCE && !A04_SHARED_USB_ONLY && A04_SHARED_BUTTON_D0_EXPERIMENT && A04_SHARED_TOUCH_D0_EXPERIMENT
+ /* Reuse a four-window installed parent without inventing APMIXED MMIO.
+  * Touch/button admission survives; unavailable USB/audio is independent. */
+ {
+  int oldMaps=maps,oldUnmaps=unmaps;testContext.removed=0;testContext.admissionClosed=1;
+  testContext.pmic.bus.poisoned=0;testContext.regs.poisoned=0;mockInit=1;mockFsm=0;
+  list.count=translatedList.count=4;
+  assert(!ParentPrepare(&testContext,&list,&translatedList) && maps==oldMaps+4 && !testContext.apmixed);
+  assert(!ParentD0(&testContext,0) && testContext.pmic.online && testContext.regs.online && !testContext.usb.online);
+  assert(!ParentD0Exit(&testContext,0));assert(!ParentRelease(&testContext,&list) && unmaps==oldUnmaps+4);
+ }
+#endif
  input.InterfaceDereference(input.Context);saved.Header.InterfaceDereference(saved.Header.Context);assert(!refs);
+ return 0;
 }

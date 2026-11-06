@@ -9,6 +9,8 @@ $temp=if($env:RUNNER_TEMP){$env:RUNNER_TEMP}else{$env:TEMP}
 $out=Join-Path $temp 'a04-msdc-parent-probe'
 New-Item -ItemType Directory -Force $out|Out-Null
 $src=Join-Path $root 'drivers\bus\mt8167-shared'
+& clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c (Join-Path $src 'codec_adc_probe.c') -o (Join-Path $out 'codec_adc_probe.obj')
+if($LASTEXITCODE -ne 0){throw 'Codec ADC acquisition ARM32 compilation failed'}
 $audioResources=if($env:A04_AUDIO_CHILD_RESOURCES -eq '1'){'1'}else{'0'}
 $irqPrep=if($env:A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC -eq '1'){'1'}else{'0'}
 $afeClock=if($env:A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC -eq '1'){'1'}else{'0'}
@@ -21,16 +23,19 @@ $pmicTrace=if($env:A04_AUDIO_PMIC_TRACE -eq '1'){'1'}else{'0'}
 $alias=if($env:A04_MT6392_CLK_ALIAS_EXPERIMENT -eq '1'){'1'}else{'0'}
 $thermal=if($env:A04_SHARED_THERMAL_DIAGNOSTIC -eq '1'){'1'}else{'0'}
 $voicePcm=if($env:A04_SHARED_VOICE_PCM_DIAGNOSTIC -eq '1'){'1'}else{'0'}
+$firstPlayback=if($env:A04_SHARED_FIRST_PLAYBACK -eq '1'){'1'}else{'0'}
+$digitalPlayback=if($env:A04_SHARED_DIGITAL_PLAYBACK -eq '1'){'1'}else{'0'}
 $codecDomain=if($env:A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC -eq '1'){'1'}else{'0'}
 $rtc32k=if($env:A04_MT6392_RTC32K_DIAGNOSTIC -eq '1'){'1'}else{'0'}
 $wifiIrq=if($env:A04_SHARED_WIFI_IRQ_DIAGNOSTIC -eq '1'){'1'}else{'0'}
+$wifiHandoff=if($env:A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC -eq '1'){'1'}else{'0'}
 $voice=if($env:A04_SHARED_VOICE_DIAGNOSTIC -eq '1'){'1'}else{'0'}
 $unmute=if($env:A04_MT6392_UNMUTE_DIAGNOSTIC -eq '1'){'1'}else{'0'}
 $codec=if($env:A04_SHARED_MT6392_DIAGNOSTIC -eq '1'){'1'}else{'0'}
 if($unmute -eq '1' -and $codec -ne '1'){throw 'Unmute requires MT6392 diagnostics'}
 $buttonD0=if($env:A04_SHARED_BUTTON_D0_EXPERIMENT -eq '1'){'1'}else{'0'}
 $touchD0=if($env:A04_SHARED_TOUCH_D0_EXPERIMENT -eq '1'){'1'}else{'0'}
-& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 "-DA04_MT6392_RTC32K_DIAGNOSTIC=$rtc32k" "-DA04_SHARED_WIFI_IRQ_DIAGNOSTIC=$wifiIrq" "-DA04_AUDIO_CHILD_RESOURCES=$audioResources" "-DA04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC=$topAudio" "-DA04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC=$afeClock" "-DA04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC=$irqPrep" "-DA04_SHARED_BUTTON_D0_EXPERIMENT=$buttonD0" "-DA04_SHARED_TOUCH_D0_EXPERIMENT=$touchD0" "-DA04_SHARED_APMIXED_RESOURCE=$apmixed" "-DA04_USB_GPIO22_SOURCE_EXPERIMENT=$usbSource" "-DA04_SHARED_USB_ONLY=$usbOnly" "-DA04_SHARED_MT6392_DIAGNOSTIC=$codec" "-DA04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC=$codecDomain" "-DA04_SHARED_VOICE_DIAGNOSTIC=$voice" "-DA04_SHARED_VOICE_PCM_DIAGNOSTIC=$voicePcm" "-DA04_SHARED_THERMAL_DIAGNOSTIC=$thermal" "-DA04_MT6392_UNMUTE_DIAGNOSTIC=$unmute" "-DA04_MT6392_WRITE_DIAGNOSTIC=$codec" "-DA04_MT6392_CLK_ALIAS_EXPERIMENT=$alias" "-DA04_AUDIO_DIAGNOSTIC_TRACE=$trace" "-DA04_AUDIO_PMIC_TRACE=$pmicTrace" -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$inc\wdf\kmdf\1.13" -c (Join-Path $src 'wdf_parent_probe.c') -o (Join-Path $out 'parent.obj')
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 "-DA04_MT6392_RTC32K_DIAGNOSTIC=$rtc32k" "-DA04_SHARED_WIFI_IRQ_DIAGNOSTIC=$wifiIrq" "-DA04_SHARED_WIFI_HANDOFF_DIAGNOSTIC=$wifiHandoff" "-DA04_AUDIO_CHILD_RESOURCES=$audioResources" "-DA04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC=$topAudio" "-DA04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC=$afeClock" "-DA04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC=$irqPrep" "-DA04_SHARED_BUTTON_D0_EXPERIMENT=$buttonD0" "-DA04_SHARED_TOUCH_D0_EXPERIMENT=$touchD0" "-DA04_SHARED_APMIXED_RESOURCE=$apmixed" "-DA04_USB_GPIO22_SOURCE_EXPERIMENT=$usbSource" "-DA04_SHARED_USB_ONLY=$usbOnly" "-DA04_SHARED_MT6392_DIAGNOSTIC=$codec" "-DA04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC=$codecDomain" "-DA04_SHARED_DIGITAL_PLAYBACK=$digitalPlayback" "-DA04_SHARED_FIRST_PLAYBACK=$firstPlayback" "-DA04_SHARED_VOICE_DIAGNOSTIC=$voice" "-DA04_SHARED_VOICE_PCM_DIAGNOSTIC=$voicePcm" "-DA04_SHARED_THERMAL_DIAGNOSTIC=$thermal" "-DA04_MT6392_UNMUTE_DIAGNOSTIC=$unmute" "-DA04_MT6392_WRITE_DIAGNOSTIC=$codec" "-DA04_MT6392_CLK_ALIAS_EXPERIMENT=$alias" "-DA04_AUDIO_DIAGNOSTIC_TRACE=$trace" "-DA04_AUDIO_PMIC_TRACE=$pmicTrace" -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$inc\wdf\kmdf\1.13" -c (Join-Path $src 'wdf_parent_probe.c') -o (Join-Path $out 'parent.obj')
 if($LASTEXITCODE -ne 0){throw 'Parent ARM32 compilation failed'}
 & clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c (Join-Path $src 'parent_resources.c') -o (Join-Path $out 'resources.obj')
 if($LASTEXITCODE -ne 0){throw 'Resources ARM32 compilation failed'}

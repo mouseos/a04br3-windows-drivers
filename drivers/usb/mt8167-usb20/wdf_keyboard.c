@@ -171,6 +171,11 @@ static void PortFault(WDFDEVICE dev,NTSTATUS status)
  KbHidDisconnected(dev);
  if(c->board_owned){A04UsbHostStop(&c->board);c->board_owned=FALSE;}
 }
+static unsigned PortNowMs(void)
+{
+ ULONGLONG now=KeQueryInterruptTime();
+ return KbPortMilliseconds((unsigned)(now>>32),(unsigned)now);
+}
 VOID KbPoll(WDFTIMER timer)
 {
  WDFDEVICE dev=(WDFDEVICE)WdfTimerGetParentObject(timer); KB_HID_CONTEXT*c=KbHidContext(dev); ULONGLONG now;
@@ -182,7 +187,7 @@ VOID KbPoll(WDFTIMER timer)
 #if A04_MUSB_HID_CONTROL_EXPERIMENT
    if(c->control_busy && now>=c->control_deadline)PortFault(dev,STATUS_IO_TIMEOUT);
 #endif
-   if(!c->board_fault && KbPortTick(&c->port,(unsigned)(now/10000u))<0)PortFault(dev,STATUS_IO_TIMEOUT);
+   if(!c->board_fault && KbPortTick(&c->port,KbPortMilliseconds((unsigned)(now>>32),(unsigned)now))<0)PortFault(dev,STATUS_IO_TIMEOUT);
   }
   if(c->board_owned)WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(10));
  }
@@ -211,7 +216,7 @@ static void KbControllerEvents(void *context,MT8167_USB20_EVENTS events)
  }
 #endif
  if(!c->board_fault){
-  result=KbPortEvents(&c->port,events,(unsigned)(KeQueryInterruptTime()/10000u));
+  result=KbPortEvents(&c->port,events,PortNowMs());
   if(result<0)PortFault(dev,STATUS_DEVICE_HARDWARE_ERROR);
   else if(result==1){
    DbgPrint("MT8167 USB20 keyboard enumerated vid=%04x pid=%04x speed=%02x\n",c->session.enumeration.vid,c->session.enumeration.pid,c->session.speed);

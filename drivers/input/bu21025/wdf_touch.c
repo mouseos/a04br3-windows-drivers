@@ -107,7 +107,16 @@ static void TraceHex(TOUCH_CONTEXT *c, ULONG value)
 #endif
 
 static uint16_t I2cRead(void *p, unsigned off)
-{ return READ_REGISTER_USHORT((volatile USHORT *)(TouchGetContext((WDFDEVICE)p)->mmio[I2C]+off)); }
+{
+    TOUCH_CONTEXT *c=TouchGetContext((WDFDEVICE)p);
+    uint16_t value=READ_REGISTER_USHORT((volatile USHORT *)(c->mmio[I2C]+off));
+#if A04_TOUCH_TRACE
+    if (off==0x0c && (value & 6)) {
+        Trace(c,"A04TOUCH I2C status="); TraceHex(c,value); Trace(c,"\n");
+    }
+#endif
+    return value;
+}
 static void I2cWrite(void *p, unsigned off, uint16_t v)
 { WRITE_REGISTER_USHORT((volatile USHORT *)(TouchGetContext((WDFDEVICE)p)->mmio[I2C]+off), v); }
 static void Delay(void *p, unsigned us)
@@ -116,7 +125,12 @@ static int BoardUpdate(void *p, enum a04_touch_register_bank bank, unsigned off,
 {
     TOUCH_CONTEXT *c = TouchGetContext((WDFDEVICE)p);
 #if A04_TOUCH_SHARED_PARENT
-    return c->shared.TouchUpdate(c->shared.Context,(unsigned)bank,off,mask,bits);
+    int result=c->shared.TouchUpdate(c->shared.Context,(unsigned)bank,off,mask,bits);
+#if A04_TOUCH_TRACE
+    if (result) { Trace(c,"A04TOUCH update failed bank="); TraceHex(c,bank);
+        Trace(c," offset="); TraceHex(c,off); Trace(c,"\n"); }
+#endif
+    return result;
 #else
     unsigned i = bank == A04_TOUCH_GPIO ? GPIO : bank == A04_TOUCH_INFRA ? INFRA : TOP;
     volatile ULONG *reg;
@@ -139,7 +153,12 @@ static int BoardWrite(void *p, enum a04_touch_register_bank bank, unsigned off, 
 {
     TOUCH_CONTEXT *c = TouchGetContext((WDFDEVICE)p);
 #if A04_TOUCH_SHARED_PARENT
-    return c->shared.TouchWrite(c->shared.Context,(unsigned)bank,off,value);
+    int result=c->shared.TouchWrite(c->shared.Context,(unsigned)bank,off,value);
+#if A04_TOUCH_TRACE
+    if (result) { Trace(c,"A04TOUCH write failed bank="); TraceHex(c,bank);
+        Trace(c," offset="); TraceHex(c,off); Trace(c,"\n"); }
+#endif
+    return result;
 #else
     unsigned i = bank == A04_TOUCH_GPIO ? GPIO : TOP;
     if (!c->mmio[i] || off > RANGE_SIZE-4) return -1;
@@ -188,7 +207,7 @@ NTSTATUS TouchPrepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translate
             (PINTERFACE)&c->thermal_parent,sizeof(c->thermal_parent),A04_SHARED_THERMAL_INTERFACE_VERSION,NULL);
         if(!NT_SUCCESS(status)) {c->shared.InterfaceDereference(c->shared.Context);RtlZeroMemory(&c->shared,sizeof(c->shared));return status;}
         if(!c->thermal_parent.Header.InterfaceDereference || !c->thermal_parent.Acquire || !c->thermal_parent.Clock ||
-           !c->thermal_parent.Reset || !c->thermal_parent.Begin || !c->thermal_parent.End || !c->thermal_parent.ReadAnalog || !c->thermal_parent.WriteAnalog || !c->thermal_parent.Quiescent || !c->thermal_parent.Release) {
+           !c->thermal_parent.Reset || !c->thermal_parent.Begin || !c->thermal_parent.End || !c->thermal_parent.ReadAnalog || !c->thermal_parent.WriteAnalog || !c->thermal_parent.Quiescent || !c->thermal_parent.Release || !c->thermal_parent.VerifyHeadphone || !c->thermal_parent.VerifyOwnership) {
             if(c->thermal_parent.Header.InterfaceDereference)c->thermal_parent.Header.InterfaceDereference(c->thermal_parent.Header.Context);
             RtlZeroMemory(&c->thermal_parent,sizeof(c->thermal_parent));c->shared.InterfaceDereference(c->shared.Context);
             RtlZeroMemory(&c->shared,sizeof(c->shared));return STATUS_NOINTERFACE;
@@ -266,9 +285,16 @@ NTSTATUS TouchD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     if (a04_touch_set_nominal_inset(&cal,A04_PANEL_WIDTH_HUNDREDTH_IN,
                                      A04_PANEL_HEIGHT_HUNDREDTH_IN,A04_NOMINAL_INSET_HUNDREDTH_IN))
         return STATUS_DEVICE_CONFIGURATION_ERROR;
-    if (a04_touch_board_init(&board) || a04_bu21025_mt8167_bind(&c->adapter,&c->io) ||
-        a04_touch_device_init(&c->touch,&c->io,&cal,&pressure)) {
-        Trace(c,"A04TOUCH hardware init failed\n");
+    if (a04_touch_board_init(&board)) {
+        Trace(c,"A04TOUCH board init failed\n");
+        c->faulted=TRUE; return STATUS_DEVICE_HARDWARE_ERROR;
+    }
+    if (a04_bu21025_mt8167_bind(&c->adapter,&c->io)) {
+        Trace(c,"A04TOUCH adapter bind failed\n");
+        c->faulted=TRUE; return STATUS_DEVICE_HARDWARE_ERROR;
+    }
+    if (a04_touch_device_init(&c->touch,&c->io,&cal,&pressure)) {
+        Trace(c,"A04TOUCH controller init failed\n");
         c->faulted=TRUE; return STATUS_DEVICE_HARDWARE_ERROR;
     }
     c->recovering=FALSE; c->recovery_attempts=0;
@@ -467,6 +493,16 @@ static NTSTATUS TouchThermalAnalogWrite(PVOID context,ULONG value)
  TOUCH_CONTEXT *c=TouchGetContext((WDFDEVICE)context);
  return c->thermal_parent.WriteAnalog(c->thermal_parent.Header.Context,c->thermal_parent_generation,value);
 }
+static NTSTATUS TouchThermalVerifyHeadphone(PVOID context)
+{
+ TOUCH_CONTEXT *c=TouchGetContext((WDFDEVICE)context);
+ return c->thermal_parent.VerifyHeadphone(c->thermal_parent.Header.Context,c->thermal_parent_generation);
+}
+static NTSTATUS TouchThermalVerifyOwnership(PVOID context)
+{
+ TOUCH_CONTEXT *c=TouchGetContext((WDFDEVICE)context);
+ return c->thermal_parent.VerifyOwnership(c->thermal_parent.Header.Context,c->thermal_parent_generation);
+}
 #endif
 static VOID TouchThermalGuardRelease(PVOID context)
 { WdfObjectDereference((WDFDEVICE)context); }
@@ -508,12 +544,16 @@ static NTSTATUS TouchThermalRequest(TOUCH_CONTEXT *c,WDFREQUEST request,ULONG co
         if(code==A04_TOUCH_THERMAL_GET_GUARD) {
             status=WdfRequestRetrieveOutputBuffer(request,sizeof(*guard),(PVOID *)&guard,&output);
             if(NT_SUCCESS(status)) {
-                WdfObjectReference(c->device);guard->size=sizeof(*guard);guard->version=1;
+                WdfObjectReference(c->device);guard->size=sizeof(*guard);guard->version=3;
                 guard->context=c->device;guard->owner=(ULONG_PTR)owner;guard->generation=c->thermal_lease.generation;
 #if A04_TOUCH_SHARED_PARENT
                 guard->ReadAnalog=TouchThermalAnalogRead;guard->WriteAnalog=TouchThermalAnalogWrite;
+                guard->VerifyHeadphone=TouchThermalVerifyHeadphone;
+                guard->VerifyOwnership=TouchThermalVerifyOwnership;
 #else
                 guard->ReadAnalog=NULL;guard->WriteAnalog=NULL;
+                guard->VerifyHeadphone=NULL;
+                guard->VerifyOwnership=NULL;
 #endif
                 guard->Begin=TouchThermalGuardBegin;guard->End=TouchThermalGuardEnd;
                 guard->Release=TouchThermalGuardRelease;WdfRequestSetInformation(request,sizeof(*guard));

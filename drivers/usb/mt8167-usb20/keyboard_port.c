@@ -5,6 +5,21 @@
 #define DEVCTL 0x60u
 #define CSR0 0x12u
 #define RXCSR 0x16u
+unsigned KbPortMilliseconds(unsigned high,unsigned low)
+{
+ unsigned i,remainder=0,quotient=0;
+ /* Binary long division. Keep only the low quotient word; remainder is
+  * bounded below 10000, so every intermediate fits in 32 bits. */
+ for(i=0;i<32;++i){
+  remainder=(remainder<<1)|(high>>31);high<<=1;
+  if(remainder>=10000u)remainder-=10000u;
+ }
+ for(i=0;i<32;++i){
+  remainder=(remainder<<1)|(low>>31);low<<=1;quotient<<=1;
+  if(remainder>=10000u){remainder-=10000u;quotient|=1u;}
+ }
+ return quotient;
+}
 static int due(unsigned now,unsigned deadline){return (unsigned)(now-deadline)<0x80000000u;}
 static int fail(KB_PORT *p)
 {

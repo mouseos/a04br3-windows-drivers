@@ -338,3 +338,107 @@ RTC lease が残る場合、PWRAP owner の明示 stop は拒否して online �
 取得中に WACS が poison された場合は lease を不確定として保持する。これは
 不確定な取引を完了済みと扱わないための局所的な寿命処理であり、UEFI・EL3・
 他のファームウェアからの所有移譲の証明や、親 Wi-Fi Acquire の許可ではない。
+
+`tools/winpe/mt6630-pnp-uart.c` は子 PDO `A04BR3\\MT6630SDIO` の存在と PnP
+状態を照会し、TOPRGU の既存 UART 送信口へ `RTC=UNKNOWN SESSION=UNOBSERVED`
+を含む行を渡す。インスタンスが複数の場合は曖昧として拒否する。UART の
+IOCTL 成功は送信受付であって、ホスト側受信やセッション起動の証明ではない。
+子ドライバから session を起動する経路、RTC 引継ぎと実 firmware 実行は未完成。
+
+firmware 診断はボード初期化前に固定パスから WMT と WLAN の snapshot を
+取得し、WMT の固定 digest を照合する。取得・照合に失敗した場合、board
+初期化と SDIO 列挙を行わない。実機 identity に依存する bundle・WLAN の
+選択とハッシュ検証は列挙後、転送前に行い、snapshot は終了時に消去する。
+これは親 Acquire、IRQ の接続、WDF 子ドライバや停止時の資源隔離を完成させる
+ものではなく、実機試験も行っていない。
+
+共有親 interface の Acquire 失敗は、lease やハードウェア変更が残らない契約。
+現行親は操作前に無条件拒否する。session はこの拒否を REJECTED として区別し、
+成功応答後の無効な generation や失敗は QUARANTINED のまま保持する。
+WDF 子による参照寿命・開始・停止は未接続で、上記の区別自体は実機動作や
+PnP resource が quarantine 中に保持される保証にはならない。
+
+`A04_WIFI_WDF_LEASE_DIAGNOSTIC=1` の `wdf_sdio_probe.c` は、PrepareHardwareで
+親interfaceを照会し、D0EntryでAcquireを試す限定診断である。現行親は副作用なく
+拒否する。予期せずAcquireが成功してもMMIO、IRQ、SDIO、firmwareには触れず、
+有効なgenerationをReleaseQuiescentに返してD0Entryを失敗させる。成功時の
+無効generationやrelease失敗は状態不明として親オブジェクトのinterface参照を
+意図的に保持する。これはPnP資源の保持やleaseの復旧を保証せず、契約違反時に
+参照が残る。WDFはD0Entry失敗後にD0Exitを呼ばないため、ReleaseHardwareで
+正常に返却済みまたは拒否済みの参照だけを解放する。PrepareHardware失敗後も
+ReleaseHardwareが呼ばれる。既定OFF、INFなし、無線機能なし。D0Entry成功や
+実機動作の検証ではない。強制削除と実際のWi-Fi起動の安全性は未完成。
+
+出典: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdfdevice/nc-wdfdevice-evt_wdf_device_d0_entry と https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdfdevice/nc-wdfdevice-evt_wdf_device_release_hardware
+
+WDF のハードウェア診断経路は `A04_WIFI_WDF_HARDWARE_DIAGNOSTIC`、
+`A04_WIFI_WDF_LEASE_DIAGNOSTIC`、`A04_WIFI_SESSION_DIAGNOSTIC`、
+`A04_WIFI_IRQ_DIAGNOSTIC` の明示的な有効化を必要とし、既定では無効。
+`wdf_hardware_config.h` の検証済み設定も既定で無効である。出典を確認した
+WMT digest、OCR、基板設定がない場合は親取得前に拒否する。親が取得を拒否
+した場合は work item を解放し、MMIO・IRQ・firmware のアクセスを行わない。
+取得後は session を通じて firmware snapshot、masked IRQ、起動、IRQ の一回の
+観測へ進み、D0 終了では IRQ、work item、MMIO、lease の順で停止する。
+起動途中の失敗、停止失敗、突然の取り外しでは IRQ と work item を切り離し、
+安全性が確認できない lease・親参照を保持する。親参照は PnP リソースの保持を
+保証しないため、この異常経路を実機で安全と判断してはならない。割り込みは
+一回観測後に再有効化しない。現在の親は lease を付与せず、実機での動作、
+割り込み配線、電源・停止・削除時の安全性は未検証である。NDIS 機能はない。
+`make test-mt6630-wdf-hardware` は模擬した WDF、session、IRQ による試験である。
+
+統合診断パッケージは hardware・session・IRQ のコードをコンパイルし、SYS と
+INF/CAT をテスト署名する。`A04_WIFI_WDF_CONFIG_VERIFIED=0` と、実際の共有親の
+Acquire 拒否は変更しない。WMT の digest は固定 vendor revision
+`0c756f413e7011231c8fb793af0930311023f68d` の二つの patch から生成した bundle
+`4af7996b89ef110d8f270877f61aaf0b90fde21b6c5b0ed23ccbd32c2989dcee` に固定。
+これは入力の識別であり、電圧・起動設定・所有権の証明ではない。
+`tools/winpe/prepare-mt6630-firmware.py --output <empty-dir>` は固定元の SHA-256 を
+確認し、別途ステージする二つのファイルを生成する。実行環境の `Windows\System32\drivers\a04br3`
+に置く想定だが、実機の変更や配布許可を意味しない。firmware は CI パッケージに含めない。
+
+`mt6630-pnp-uart.exe` は既存 TOPRGU UART 所有者を通して 96 バイト以内の行を
+二つ送る。子 PDO の PnP status/problem と firmware ファイルのサイズ・Win32 エラー
+のみを示す。ファイルサイズはハッシュ照合やロード成功の証拠ではない。UART の
+IOCTL 受理もホストでの受信を証明しない。session・親 lease・IRQ 状態は PnP の
+値から推測しない。kernel の DbgPrint は UART に自動転送されるとは限らない。
+WLAN snapshot も固定 SHA-256 `07fe1a225e6b9de6b310894db3b40bcc1cb66107b913e4c43eb6a62089aada22`
+と照合し、boot 前に再照合する。固定ハッシュの一致は入力の同一性の確認であり、
+実機の revision、送信許可、firmware 稼働の確認ではない。
+
+### 所有権引継ぎの未解決条件と拒否診断
+
+既定 OFF の `A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC=1` は親の Acquire 拒否時に、
+未証明の firmware・EL3、RTC、clock、GPIO、combo、IRQ、PnP の各領域を
+DbgPrint に出す。レジスタ読書き、RTC 取得、lease 発行や証明済みという記録は
+行わない。DbgPrint が UART へ配送される保証はない。
+
+実際の引継ぎには、UEFI とそれ以前の writer が対象資源と処理を停止したこと、
+EL3 等の並行 writer がいないこと、RTC の user bit と clock・GPIO の他利用者を
+共有親が仲介できること、MSDC2・combo・firmware・IRQ の占有、D0・surprise
+removal 時の I/O・IRQ 排出と PnP 資源寿命が、同一起動・同一世代について確認
+できる搬送路を要する。ExitBootServices の到達や ACPI の列挙、設定フラグ、
+固定文字列や自己申告だけでは証拠にならない。引継ぎ途中の障害は不確定として
+保持し、証拠のない解除や別の利用者の RTC bit 消去を行わない。
+
+現行の機種 UEFI には EBS 時の RTC_PDN1 bit 13 更新経路があり、EL3・外部 writer
+の停止は確認できない。UEFI から信頼できる Wi-Fi 所有移譲を示す経路も存在しない。
+そのためこの変更は実 handoff や親 lease を実装したものではなく、親 Acquire は
+従来どおり拒否する。共有親の署名済み診断ビルドは D0 も既定で無効であり、
+実機 PnP・署名受理・UART 配送はいずれも未検証。
+
+### combo 停止確認と lease 解放
+
+CT3 の Linux 4.4 `drivers/misc/mediatek/connectivity/common/common_detect/wmt_detect_pwr.c`
+では MT6630 系の電源投入時に `RTC_GPIO_USER_GPS` で RTC 32 kHz を要求し、
+PMU・reset を順に操作する。同ファイルの停止では LDO・reset・PMU を下げる。
+`common_main/platform/wmt_plat_alps.c` も同じ RTC user を要求する。Linux の
+手順は Windows の排他所有、ファームウェア停止、基板上の信号到達を証明しない。
+`port/gsi/kernel-4.14/drivers/mfd/mt6397-misc.c` では RTC PDN1 の user bit と
+RTC_CON の共有状態を mutex で更新する。Windows の WACS lock は EL3 等との
+排他を保証しないため、そのまま引継ぎ証明には使えない。
+
+session 停止は IRQ と非同期 I/O の排出後、combo と firmware の停止を確認する
+`quiesce_combo` callback が成功した場合だけ MMIO unmap と親 release に進む。
+現行 WDF 接続には確認可能な provider がないため、その callback は拒否し、
+停止状態を隔離して lease と写像を保持する。host の注入 callback による成功・
+失敗の試験は実デバイスの停止根拠ではない。RTC の取得や放棄も有効化していない。
