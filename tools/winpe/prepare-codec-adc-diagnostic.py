@@ -18,11 +18,23 @@ def main():
     ap=argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--packages',type=Path,required=True)
     ap.add_argument('--output',type=Path,required=True)
+    ap.add_argument('--boot',type=Path)
+    ap.add_argument('--boot-manifest',type=Path)
     a=ap.parse_args(); packages=a.packages.resolve(); out=a.output.resolve()
     if not packages.is_relative_to(ROOT) or not out.is_relative_to(ROOT) or not out.is_dir() or any(out.iterdir()):
         raise SystemExit('Packages and empty output must be within the project root')
     for name,digest in EXPECTED.items():
         if sha(BASE/name)!=digest: raise SystemExit('Base hash mismatch: '+name)
+    if bool(a.boot)!=bool(a.boot_manifest):raise SystemExit('Boot and its manifest must be supplied together')
+    if a.boot:
+        boot_source=a.boot.resolve(strict=True);boot_manifest=a.boot_manifest.resolve(strict=True)
+        if not boot_source.is_relative_to(ROOT) or not boot_manifest.is_relative_to(ROOT):raise SystemExit('Boot inputs must be within the project root')
+        bm=json.loads(boot_manifest.read_text());flags=bm.get('firmware_build_defines',{})
+        if bm.get('status')!='bounded-os-entry-unvalidated' or bm.get('boot_img_sha256')!=sha(boot_source) or not all(flags.get(k)=='1' for k in ('A04BR3_THERMAL_HANDOFF_RECORD','A04BR3_SHARED_PARENT','A04BR3_SHARED_APMIXED','A04BR3_FOUR_CPU_TEST','A04BR3_GPU_HANDOFF','A04BR3_BQ_HANDOFF')):
+            raise SystemExit('Boot manifest or required combined diagnostic flags invalid')
+        boot_hash=bm['boot_img_sha256'];uefi_source=bm['uefi_source_commit']
+    else:
+        boot_source=BASE/'boot.img';boot_hash=EXPECTED['boot.img'];uefi_source=json.loads((BASE/'manifest.json').read_text())['uefi_commit']
     if any(c.isspace() or c in "\"'" for c in str(out)): raise SystemExit('Output path contains unsupported characters')
     env=os.environ.copy(); env['TMPDIR']=str(out);env['PYTHONDONTWRITEBYTECODE']='1'
     env['PATH']=str(TOOLS/'runtime/usr/bin')+os.pathsep+env['PATH']
@@ -83,10 +95,9 @@ def main():
             if len(got)!=1 or sha(got[0])!=sha(source):raise ValueError('WIM readback mismatch '+dest)
         esp=out/'diagnostic-esp.img'
         run(['python3',str(Path(__file__).with_name('replace-esp-wim.py')),'--template',str(BASE/'volume-esp.img'),'--wim',str(wim),'--output',str(esp),'--template-bcd-sha256',BCD,'--template-wim-sha256',EXPECTED['volume.wim']])
-        boot=out/'boot.img';shutil.copyfile(BASE/'boot.img',boot)
-        if sha(boot)!=EXPECTED['boot.img']:raise ValueError('Boot image mismatch')
+        boot=out/'boot.img';shutil.copyfile(boot_source,boot)
+        if sha(boot)!=boot_hash:raise ValueError('Boot image mismatch')
         builder=run(['git','-C',str(Path(__file__).resolve().parents[2]),'rev-parse','HEAD'],capture_output=True,text=True).stdout.strip()
-        base_manifest=json.loads((BASE/'manifest.json').read_text())
-        manifest={'builder_source_commit':builder,'driver_source_commit':manifests[0]['source_commit'],'uefi_source_commit':base_manifest['uefi_commit'],'base':EXPECTED,'package_files':{str(p.relative_to(packages)):sha(p) for p in files},'wim':sha(wim),'esp':sha(esp),'boot':sha(boot),'limitations':['Test signatures and device operation unverified','ADC route and mute gate rejects measurements','UART queue acceptance is not transmission','No device writes performed']}
+        manifest={'builder_source_commit':builder,'driver_source_commit':manifests[0]['source_commit'],'uefi_source_commit':uefi_source,'boot_manifest_sha256':sha(boot_manifest) if a.boot else None,'base':EXPECTED,'package_files':{str(p.relative_to(packages)):sha(p) for p in files},'wim':sha(wim),'esp':sha(esp),'boot':sha(boot),'limitations':['Test signatures and device operation unverified','ADC route and mute gate rejects measurements','UART queue acceptance is not transmission','No device writes performed']}
         (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 if __name__=='__main__':main()
