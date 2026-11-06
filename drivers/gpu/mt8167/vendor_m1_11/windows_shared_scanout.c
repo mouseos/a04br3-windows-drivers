@@ -63,7 +63,7 @@ NTSTATUS a04_shared_scanout_handoff_display(struct a04_shared_scanout *s,
 NTSTATUS a04_shared_scanout_release(struct a04_shared_scanout *s)
 {
     if (!s || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
-    if (s->exposed)return STATUS_DEVICE_BUSY;
+    if (s->exposed || s->display_common)return STATUS_DEVICE_BUSY;
     if (s->display_sg) s->display_adapter->DmaOperations->PutScatterGatherList(s->display_adapter,s->display_sg,TRUE);
     if (s->gpu_sg) s->gpu_adapter->DmaOperations->PutScatterGatherList(s->gpu_adapter,s->gpu_sg,FALSE);
     if (s->gpu_pages) ExFreePoolWithTag(s->gpu_pages,TAG);
@@ -116,7 +116,7 @@ NTSTATUS a04_shared_scanout_build_tables(const struct a04_shared_scanout *s,
 {
     struct a04_gpu_mmu_leaf leaves[2];
     uint64_t table_dma[4];ULONG i,j;
-    if (!s || !s->mdl || !s->gpu_sg || !s->display_sg || !s->gpu_pages || s->exposed ||
+    if (!s || !s->mdl || !s->gpu_sg || !a04_shared_has_display_backing(s) || !s->gpu_pages || s->exposed ||
         !pc || !pd || !pt0 || !pt1) return STATUS_INVALID_PARAMETER;
     table_dma[0]=pc_dma;table_dma[1]=pd_dma;table_dma[2]=pt0_dma;table_dma[3]=pt1_dma;
     for(i=0;i<4;i++) {

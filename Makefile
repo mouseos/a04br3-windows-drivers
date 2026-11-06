@@ -645,7 +645,7 @@ build/ge8300_shared_lease_test: tests/ge8300_shared_lease_test.c drivers/gpu/mt8
 
 build/ge8300_shared_scanout_test: tests/ge8300_shared_scanout_test.c drivers/gpu/mt8167/vendor_m1_11/windows_shared_scanout.c drivers/gpu/mt8167/vendor_m1_11/windows_shared_tables.c drivers/gpu/mt8167/vendor_m1_11/windows_shared_scanout.h drivers/gpu/mt8167/dma_pages.c drivers/gpu/mt8167/gpu_mmu.c tests/gpu_windows_stubs/ntddk.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) -DA04_TEST_DISPLAY_SCANOUT -Itests/gpu_windows_stubs $(filter %.c,$^) -o $@
+	$(CC) $(CFLAGS) -DA04_TEST_DISPLAY_SCANOUT -DA04_GE8300_SHARED_DISPLAY_COMMON=1 -Itests/gpu_windows_stubs $(filter %.c,$^) -o $@
 
 build/ge8300_present_copy_fence_test: tests/ge8300_present_copy_fence_test.c drivers/gpu/mt8167/wddm-display/present_copy_fence.h drivers/gpu/mt8167/ge8300_status.h
 	@mkdir -p build

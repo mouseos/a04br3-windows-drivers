@@ -9,6 +9,9 @@ extern "C" {
 #endif
 #define A04_SHARED_SCANOUT_BYTES 4096000u
 #define A04_SHARED_SCANOUT_PAGES 1000u
+#ifndef A04_GE8300_SHARED_DISPLAY_COMMON
+#define A04_GE8300_SHARED_DISPLAY_COMMON 0
+#endif
 /* Serialized at PASSIVE_LEVEL. Both PDOs and adapters remain referenced by
  * their respective owners. Pages and two DMA mappings share ONE OS MDL.
  * Preparation alone does not grant hardware access or prove no bounce. */
@@ -19,7 +22,14 @@ struct a04_shared_scanout {
     uint64_t *gpu_pages;
     uint32_t display_dma;
     BOOLEAN exposed;
+    /* Owned externally; never fabricate an SG list for a common buffer. */
+    BOOLEAN display_common;
 };
+static __inline int a04_shared_has_display_backing(const struct a04_shared_scanout *s)
+{
+    return s && (s->display_common ?
+        (A04_GE8300_SHARED_DISPLAY_COMMON && !s->display_sg && s->display_adapter && s->display_dma) : s->display_sg != NULL);
+}
 #if defined(_ARM_)
 #ifdef __cplusplus
 static_assert(sizeof(struct a04_shared_scanout)==32 && offsetof(struct a04_shared_scanout,gpu_pages)==20 && offsetof(struct a04_shared_scanout,exposed)==28, "shared scanout ABI");

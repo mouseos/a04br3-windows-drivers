@@ -23,7 +23,7 @@ NTSTATUS a04_shared_tables_stage(struct a04_shared_tables *t,struct a04_shared_s
     void *shadow=NULL;unsigned i,j;NTSTATUS status=STATUS_INVALID_PARAMETER;
     struct a04_vendor_uncached *owned[3];
     if(!t || !s || !r || !copy || KeGetCurrentIrql()!=PASSIVE_LEVEL || t->ready || t->quarantined ||
-       !s->mdl || !s->gpu_sg || !s->display_sg || !s->gpu_pages || s->exposed ||
+       !s->mdl || !s->gpu_sg || !a04_shared_has_display_backing(s) || !s->gpu_pages || s->exposed ||
        !r->firmware || !r->firmware->adapter || s->gpu_adapter!=r->firmware->adapter ||
        copy->render!=r || r->copy_owner!=copy)return status;
     for(i=0;i<4;i++)if(t->table[i].cpu || t->table[i].adapter)return status;

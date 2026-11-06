@@ -22,7 +22,7 @@ NTSTATUS a04_shared_tables_publish(struct a04_shared_tables *t,struct a04_shared
     RGXFWIF_FWMEMCONTEXT mem;uint32_t old=0,entry=0,next,sequence;unsigned i;
     NTSTATUS status=STATUS_DEVICE_BUSY;
     if(!t || !shared || !r || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !t->ready ||
-       t->quarantined || shared->exposed || !shared->mdl || !shared->gpu_sg || !shared->display_sg ||
+       t->quarantined || shared->exposed || !shared->mdl || !shared->gpu_sg || !a04_shared_has_display_backing(shared) ||
        !r->mapped || !r->clear_attempted || !r->clear_verified || r->poisoned || r->cleanup_started ||
        !r->copy_owner || !r->buffer[0].cpu || r->buffer[0].bytes!=65536 || !r->buffer[1].cpu || r->buffer[1].bytes!=4096 ||
        !r->firmware || r->firmware!=s->memory || !s->memory->hardware_owned || !s->online ||

@@ -262,7 +262,7 @@ static NTSTATUS copy_shared_tile(struct a04_vendor_copy_scratch *o,
     RtlZeroMemory(result,sizeof(*result));
     if(!o || !s || !target || !tables || KeGetCurrentIrql()!=PASSIVE_LEVEL ||
        !tables->published || !tables->mmu_ack || !tables->quarantined || !target->exposed ||
-       !target->mdl || !target->gpu_sg || !target->display_sg ||
+       !target->mdl || !target->gpu_sg || !a04_shared_has_display_backing(target) ||
        !(r=o->render) || r->copy_owner!=o || !o->prepared || !o->exposed ||
        !o->task_frozen || !o->usc_ready || !r->buffer[7].cpu || r->buffer[7].bytes!=65536u ||
        !o->source.cpu || !o->destination.cpu || !o->shared.cpu)return STATUS_INVALID_DEVICE_STATE;

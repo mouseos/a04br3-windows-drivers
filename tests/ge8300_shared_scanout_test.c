@@ -53,6 +53,16 @@ int main(void)
     assert(NT_SUCCESS(a04_shared_scanout_prepare(&s,&ga,(void*)1,&da,(void*)2)));
     assert(s.mdl==&mdl && s.gpu_pages[0]==0x41000000 && s.gpu_pages[999]==0x413e7000 && s.display_dma==0x51000000);
     {
+      struct a04_shared_scanout common=s;
+      uint32_t pc[1024]={0};uint64_t pd[512]={0},pt0[512]={0},pt1[512]={0};
+      common.display_sg=NULL;common.display_common=TRUE;
+      assert(a04_shared_has_display_backing(&common));
+      assert(NT_SUCCESS(a04_shared_scanout_build_tables(&common,pc,0x60000000,pd,0x60001000,pt0,0x60002000,pt1,0x60003000)));
+      assert(a04_shared_scanout_release(&common)==STATUS_DEVICE_BUSY);
+      common.display_sg=&display_list;assert(!a04_shared_has_display_backing(&common));
+      common.display_sg=NULL;common.display_dma=0;assert(!a04_shared_has_display_backing(&common));
+    }
+    {
       uint32_t pc[1024]={0};uint64_t pd[512]={0},pt0[512]={0},pt1[512]={0};
       assert(a04_shared_scanout_build_tables(&s,pc,0x41000000,pd,0x60001000,pt0,0x60002000,pt1,0x60003000)==STATUS_DEVICE_CONFIGURATION_ERROR);
       assert(!pc[512] && !pd[0] && !pt0[0]);
