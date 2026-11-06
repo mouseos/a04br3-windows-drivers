@@ -270,7 +270,7 @@ NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(struct a04_ge8300_common_pa
     PSCATTER_GATHER_LIST sg=NULL;NTSTATUS status=STATUS_NOT_SUPPORTED;BOOLEAN mapped=FALSE;
     uint64_t total=0;ULONG i,j;
 #if A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
-    struct A04CommonFrameOwner *owner=NULL;uint32_t npage=0;
+    struct A04CommonFrameOwner *owner=NULL;uint32_t npage=0;BOOLEAN layoutValid=FALSE;
 #endif
     if(!Adapter || !gpu || !gpuPdo || gpu==Adapter || !Adapter->DmaOperations || !gpu->DmaOperations ||
        Adapter->DmaOperations->Size<FIELD_OFFSET(DMA_OPERATIONS,AllocateCommonBufferEx)+sizeof(Adapter->DmaOperations->AllocateCommonBufferEx) ||
@@ -315,6 +315,8 @@ NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(struct a04_ge8300_common_pa
     if(total!=4096000u){status=STATUS_DEVICE_CONFIGURATION_ERROR;goto gpu_done;}
     A04DisplayTrace(0x5c,(NTSTATUS)sg->NumberOfElements);
 #if A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
+    A04DisplayTrace(0x5b,STATUS_SUCCESS);
+    layoutValid=TRUE;
     owner=(struct A04CommonFrameOwner *)ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*owner),'oG4A');
     if(!owner){status=STATUS_INSUFFICIENT_RESOURCES;goto gpu_done;}
     RtlZeroMemory(owner,sizeof(*owner));
@@ -327,7 +329,7 @@ NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(struct a04_ge8300_common_pa
     owner->shared.gpu_sg=sg;owner->shared.display_dma=logical.LowPart;owner->shared.display_common=TRUE;
     owner->cpu=cpu;owner->context=context;owner->displayPdo=DisplayPdo;owner->gpuHandle=GpuHandle;
     status=CommonPageIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_COMMON_PROMOTE,page);
-    A04DisplayTrace(0x5b,status);
+    A04DisplayTrace(0x64,status);
     if(!NT_SUCCESS(status))goto gpu_done;
     ObReferenceObject(DisplayPdo);
     SharedCommonRetained=TRUE;
@@ -346,7 +348,11 @@ NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(struct a04_ge8300_common_pa
     goto cleanup_gpu;
 #endif
 gpu_done:
+#if A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
+    A04DisplayTrace(layoutValid?0x65:0x5b,status);
+#else
     A04DisplayTrace(0x5b,status);
+#endif
 #if A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
     if(owner){if(owner->shared.gpu_pages)ExFreePoolWithTag(owner->shared.gpu_pages,'pG4A');ExFreePoolWithTag(owner,'oG4A');}
 #endif
