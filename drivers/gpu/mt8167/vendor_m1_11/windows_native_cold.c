@@ -3,6 +3,7 @@
  * PM physical-page protection follows m1.11 rgxta3d.c RGXGrowFreeList's
  * PMMETA_PROTECT allocation. No drawing packet, MMIO kick or FW execution. */
 #include "windows_native_cold_private.h"
+#include "native_hwrt_profile.h"
 #include "windows_copy_scratch.h"
 #include "A04BR3RogueRuntimeLayout.h"
 #include "A04BR3RogueDeviceWords.h"
@@ -174,10 +175,17 @@ NTSTATUS a04_vendor_native_allocate_cold(struct a04_vendor_native_cold **out,
     struct a04_vendor_render_cold *r,PDMA_ADAPTER adapter,ULONG maps,ULONG width,ULONG height)
 {
     struct a04_vendor_native_cold *n;NTSTATUS status;
+    _Alignas(8) struct a04_m111_hwrt_input profile[2];
     if(!out || *out || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
     n=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*n),TAG);
     if(!n)return STATUS_INSUFFICIENT_RESOURCES;
     RtlZeroMemory(n,sizeof(*n));status=prepare_contents(n,r,adapter,maps,width,height);
+    if(NT_SUCCESS(status)) {
+        if(a04_m111_build_single_rt_hwrt_profile(profile,width,height,&n->target,&n->mlists))
+            status=STATUS_DEVICE_CONFIGURATION_ERROR;
+        else status=a04_vendor_native_bind_bank_cold(n,profile);
+        if(!NT_SUCCESS(status))(void)release_contents(n);
+    }
     if(!NT_SUCCESS(status) && !n->render)ExFreePoolWithTag(n,TAG);
     else *out=n; /* Preserve a failed cold cleanup's ownership and allocation. */
     return status;
