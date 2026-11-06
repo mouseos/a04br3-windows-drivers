@@ -148,7 +148,7 @@ static NTSTATUS TouchGuardGet(THERMAL_CONTEXT *c)
  WDF_REQUEST_SEND_OPTIONS_SET_TIMEOUT(&options,WDF_REL_TIMEOUT_IN_SEC(1));
  status=WdfIoTargetSendInternalIoctlSynchronously(c->touch,NULL,A04_TOUCH_THERMAL_GET_GUARD,NULL,&output,&options,&got);
  if(!NT_SUCCESS(status))return status;
- if(got!=sizeof(c->touch_guard)||c->touch_guard.size!=sizeof(c->touch_guard)||c->touch_guard.version!=1 ||
+ if(got!=sizeof(c->touch_guard)||c->touch_guard.size!=sizeof(c->touch_guard)||c->touch_guard.version!=2 ||
     !c->touch_guard.context || !c->touch_guard.owner || !c->touch_guard.generation || !c->touch_guard.Begin || !c->touch_guard.End || !c->touch_guard.Release ||
     (A04_THERMAL_SHARED_PARENT && (!c->touch_guard.ReadAnalog || !c->touch_guard.WriteAnalog))) {
   if(c->touch_guard.context && c->touch_guard.Release)c->touch_guard.Release(c->touch_guard.context);
@@ -226,19 +226,22 @@ static int HwWrite(void *p,uint32_t addr,uint32_t value) { THERMAL_CONTEXT *c=p;
  WRITE_REGISTER_ULONG(r,value);c->touch_guard.End(c->touch_guard.context);return 0; }
 static int HwDelay(void *p,unsigned us) { UNREFERENCED_PARAMETER(p);if(us>1000)return -1;KeStallExecutionProcessor(us);return 0; }
 #if A04_THERMAL_CODEC_ADC_DIAGNOSTIC
-/* The shared audio owner has no provider that verifies both the headphone
- * analog route and the downstream physical mute. Never infer either from
- * a thermal lease or from the Class D gain. This independent prerequisite
- * must be implemented before actual sampling can be admitted. */
+/* Only the shared parent's verification callback can establish the route and
+ * physical mute; a thermal lease or Class D gain alone is insufficient. */
 static int CodecAdcQualified(void *p) {
  THERMAL_CONTEXT *c=p;
  return HwQualified(c) && c->hw_ready && c->codec_route_verified;
 }
-/* There is not yet an evidence-backed route/mute provider. */
+/* Verify through the live parent lease before touching the ADC clock. */
 static int CodecAdcPreflight(void *p) {
- THERMAL_CONTEXT *c=p;
+ THERMAL_CONTEXT *c=p;NTSTATUS status;
  c->codec_route_verified=FALSE;
- return -1;
+ if(!HwQualified(c) || !c->touch_guard.VerifyHeadphone ||
+    !c->touch_guard.Begin(c->touch_guard.context,c->touch_guard.owner,c->touch_guard.generation))return -1;
+ status=c->touch_guard.VerifyHeadphone(c->touch_guard.context);
+ c->touch_guard.End(c->touch_guard.context);
+ if(!NT_SUCCESS(status))return -1;
+ c->codec_route_verified=TRUE;return 0;
 }
 static int CodecAdcClock(void *p) {
  THERMAL_CONTEXT *c=p;
@@ -450,8 +453,8 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
    CodecAdcUart(c,"A04ADC REJECT ROUTE_OR_MUTE\n",28);
    WdfIoTargetClose(c->touch);WdfIoTargetClose(c->watchdog);return STATUS_DEVICE_NOT_READY;
   }
-  /* Success is deliberately unreachable until a real route/mute provider
-   * replaces CodecAdcQualified. Values are not AU_LOL calibration. */
+  /* The present parent rejects without an evidence-backed provider.
+   * Values are not AU_LOL calibration. */
   if(CodecAdcSendSamples(c,&samples))
    DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"A04ADC UART queue incomplete\n");
   TouchGuardPut(c);

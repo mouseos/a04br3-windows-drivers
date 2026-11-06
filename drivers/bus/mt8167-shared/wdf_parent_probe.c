@@ -719,6 +719,16 @@ static NTSTATUS ParentThermalWriteAnalog(PVOID p,ULONG generation,ULONG value)
  }
  ParentUnlock(c);return result;
 }
+static NTSTATUS ParentThermalVerifyHeadphone(PVOID p,ULONG generation)
+{
+ A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);NTSTATUS result=STATUS_DEVICE_NOT_READY;
+ if(ParentLock(c))return result;
+ if(a04_shared_thermal_valid(&c->thermal,generation) && c->thermal.inflight) {
+  /* No provider establishes both route and physical downstream mute yet. */
+  result=STATUS_DEVICE_NOT_READY;
+ }
+ ParentUnlock(c);return result;
+}
 static NTSTATUS ParentThermalQuiescent(PVOID p,ULONG generation)
 {
  A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);int result;
@@ -1147,6 +1157,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     thermalIface.Begin=ParentThermalBegin;thermalIface.End=ParentThermalEnd;
     thermalIface.ReadAnalog=ParentThermalReadAnalog;thermalIface.WriteAnalog=ParentThermalWriteAnalog;
     thermalIface.Quiescent=ParentThermalQuiescent;thermalIface.Release=ParentThermalRelease;
+    thermalIface.VerifyHeadphone=ParentThermalVerifyHeadphone;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&thermalIface,&A04SharedThermalInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
 #endif

@@ -208,7 +208,7 @@ admission it calls the bounded headphone ADC helper using the child's PnP ADC
 mapping. Each register operation is guarded through the touch/shared parent
 rundown. A poisoned partial transaction requests the existing fatal-stop path
 rather than claiming the lease is safe to release. The helper's independent
-headphone-route and physical-mute qualifier currently always rejects, so no
+headphone-route and physical-mute verifier in the shared parent currently rejects, so no
 ADC transaction or usable measurement is possible in this build. It does not
 produce AU_LOL calibration. Lease, handoff and route/mute rejection messages
 are submitted to the existing TOPRGU UART queue; queue acceptance is not
@@ -226,7 +226,8 @@ shared clocks, then captures the samples and checks ADC idle, cleared trigger,
 disabled thermal sampling and idle thermal AHB before requesting quiescence.
 Only then does it return the lease. A clock, sampling or quiescence failure is
 uncertain and follows the existing fatal-stop path; it is never a release
-proof. The current preflight still rejects because no evidence-backed route
-and mute provider exists, and the parent still rejects without an independently
+proof. The preflight queries the version 2 shared-parent interface through the
+live lease; it rejects because no evidence-backed route and mute provider exists.
+The parent also rejects without an independently
 verified firmware/EL3 release. The successful sequence has only host-mock
 coverage; device behavior and the adequacy of these observations are unproven.

@@ -6,7 +6,7 @@
  * the physical device. Begin/End protect only one nonblocking MMIO access. */
 static const GUID A04SharedThermalInterfaceGuid =
  {0xa07ba8fc,0x89e1,0x4e7a,{0x83,0x21,0x30,0x6a,0x1a,0x08,0xc2,0x74}};
-#define A04_SHARED_THERMAL_INTERFACE_VERSION 1
+#define A04_SHARED_THERMAL_INTERFACE_VERSION 2
 #define A04_SHARED_THERMAL_IFACE_SIGNATURE 0x54413430u
 typedef struct _A04_SHARED_THERMAL_INTERFACE {
  INTERFACE Header;
@@ -19,5 +19,9 @@ typedef struct _A04_SHARED_THERMAL_INTERFACE {
  NTSTATUS (*WriteAnalog)(PVOID,ULONG,ULONG);
  NTSTATUS (*Quiescent)(PVOID,ULONG);
  NTSTATUS (*Release)(PVOID,ULONG);
+ /* A live lease and Begin are required. Success must prove the headphone
+  * ADC analog route is stable and downstream physical mute, not AU_LOL
+  * calibration or merely Class D gain readback. */
+ NTSTATUS (*VerifyHeadphone)(PVOID,ULONG);
 } A04_SHARED_THERMAL_INTERFACE;
 #endif
