@@ -71,3 +71,9 @@ packet担当はStartFrame 0x15e9c8、SetupBGObject 0x11372cのclear分岐、DoKi
 `windows_native_cold`は、親render所有者に子leaseを持ち、32bit adapter DMAの連続data領域と追加PTを確保する。PM local40/global256ページを実DMA addressから構成し、独立したfreelist表とmirrorを作る。PCの親directory一致、未使用leaf、既存FW/render/copy資源との非重複を確認してcold PD entryを公開する。PMページには同版RGXGrowFreeListのPMMETA_PROTECTを使う。使用量は800x1280で0x158000 bytes、別にPT 4KiB。
 
 `A04_GE8300_VENDOR_NATIVE_BACKING=1`は既定OFFで、providerの実cold準備へ接続する。完全なTA/3D packetを作成・送信するflagではない。region/MLIST/auxiliaryのゼロはhost allocation policyに限定し、TPC/VHeap以外の必須初期内容を推測しない。HWRT bank bindは独立して導出したregister値と所有GPU VAを検証し、MIPS bank+0x4800と専用UFOだけを初期化する。bank bindとTA/3D実行許可は別である。hardware_owned後は解放せず、cold解放でも親の他mappingを復元snapshotで上書きしない。
+
+## owner実装後のHWRT register factory
+
+`native_hwrt_profile`はRGXAddRenderTargetの単一RT・1x1 samples分岐を800x600/800x1280について実装する。ownerの実`target`/`mlists`と寸法を渡し、返した2組を既存`a04_vendor_native_bind_bank_cold`へ渡す。private m1.11翻訳単位内で使用し、modern providerのenumへm1.11型を露出しない。GPUへのpublishは行わない。
+
+重要: `region_header_size`へ入るのはbyte容量ではなくtile数（1900/4000）。`tpc_size`はraw TPC bytes（0x8000/0x20000）、`tpc_stride=0`、`mtile_stride`はtile数。merge registerはvendor定数0x3e89309c/0x3fddb3d9/0x3fbb67b2からIEEE754 binary32 round-nearest/evenで算出した固定bitsで、実装内でFPUを使用しない。sample tableは08,08の1sample位置を反映した0x88。cold bind可能なmetadataであり、完全描画packetではない。
