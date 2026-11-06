@@ -20,7 +20,7 @@ static int value(HKEY k,const WCHAR*name,WCHAR*data,DWORD bytes){DWORD type=0,n=
 /* Catalogs can be retained in DriverStore rather than under the INF's
  * original filename in CatRoot. Report all bounded filename matches, never
  * infer a binding or catalog membership from a name alone. */
-static void catalog_store(const WCHAR *cat){WIN32_FIND_DATAW d;HANDLE h;DWORD error,count=0,seen=0,skipped=0;WCHAR path[512];
+static void catalog_store(const WCHAR *cat){WIN32_FIND_DATAW d;HANDLE h;DWORD error,count=0,seen=0,skipped=0,reported=0;WCHAR path[512];
  h=FindFirstFileW(L"C:\\Windows\\System32\\DriverStore\\FileRepository\\*",&d);
  if(h==INVALID_HANDLE_VALUE){out("PNP_CATALOG_STORE_ENUM_ERROR=");hex(GetLastError());out("\r\n");return;}
  do{DWORD attr;if(!lstrcmpW(d.cFileName,L".")||!lstrcmpW(d.cFileName,L".."))continue;
@@ -28,7 +28,8 @@ static void catalog_store(const WCHAR *cat){WIN32_FIND_DATAW d;HANDLE h;DWORD er
  if(!(d.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY))continue;
  if((d.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT)||!safe(d.cFileName,0)){++skipped;continue;}
  lstrcpyW(path,L"C:\\Windows\\System32\\DriverStore\\FileRepository\\");lstrcatW(path,d.cFileName);lstrcatW(path,L"\\");lstrcatW(path,cat);
- attr=GetFileAttributesW(path);if(attr==INVALID_FILE_ATTRIBUTES){error=GetLastError();if(error!=ERROR_FILE_NOT_FOUND&&error!=ERROR_PATH_NOT_FOUND){out("PNP_CATALOG_STORE_STAT_ERROR=");hex(error);out("\r\n");++skipped;}continue;}
+ attr=GetFileAttributesW(path);if(attr==INVALID_FILE_ATTRIBUTES){error=GetLastError();if(error!=ERROR_FILE_NOT_FOUND&&error!=ERROR_PATH_NOT_FOUND){if(!skipped){out("PNP_CATALOG_STORE_STAT_ERROR=");hex(error);out("\r\n");}++skipped;}continue;}
+ if(reported++>=8){out("PNP_CATALOG_STORE_MATCH_LIMIT ENUM_INCOMPLETE\r\n");FindClose(h);return;}
  out("PNP_CATALOG_STORE_PATH=");wide(path);out(" SHA256=");if(hash(path))++count;out("\r\n");
  }while(FindNextFileW(h,&d));error=GetLastError();if(!FindClose(h)||error!=ERROR_NO_MORE_FILES){out("PNP_CATALOG_STORE_ENUM_INCOMPLETE\r\n");return;}
  out("PNP_CATALOG_STORE_MATCH_COUNT=");hex(count);out(" MEMBERSHIP_UNVERIFIED\r\n");

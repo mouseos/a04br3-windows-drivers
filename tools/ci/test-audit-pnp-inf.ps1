@@ -29,6 +29,10 @@ try {
  if(!($lines -contains 'PNP_CONTROLSET=ControlSet007') -or !($lines -contains 'SERVICE_START=00000000') -or !($lines -contains "PNP_INF=oem42.inf SHA256=$ih") -or !($lines -contains "PNP_CATALOG=fixture.cat SHA256=$ch")){throw "identity/hash mismatch: $($lines -join ' | ')"}
  $sh=(Get-FileHash -Algorithm SHA256 'R:\Windows\System32\DriverStore\FileRepository\fixture.inf_arm_abc\fixture.cat').Hash
  if(!($lines -contains "PNP_CATALOG_STORE_PATH=R:\Windows\System32\DriverStore\FileRepository\fixture.inf_arm_abc\fixture.cat SHA256=$sh") -or !($lines -contains 'PNP_CATALOG_STORE_MATCH_COUNT=00000001 MEMBERSHIP_UNVERIFIED')){throw 'DriverStore catalog discovery failed'}
+ foreach($i in 1..8){$d="R:\Windows\System32\DriverStore\FileRepository\extra$i";New-Item -ItemType Directory $d | Out-Null;[IO.File]::WriteAllText("$d\fixture.cat",'extra')}
+ $lines=& "$base\fixture.exe"
+ if(!($lines -contains 'PNP_CATALOG_STORE_MATCH_LIMIT ENUM_INCOMPLETE') -or @($lines | Where-Object { $_ -like 'PNP_CATALOG_STORE_PATH=*' }).Count -ne 8){throw 'catalog output limit not enforced'}
+ foreach($i in 1..8){Remove-Item -Recurse -Force "R:\Windows\System32\DriverStore\FileRepository\extra$i"}
  Remove-Item 'R:\Windows\System32\CatRoot\{F750E6C3-38EE-11D1-85E5-00C04FC295EE}\fixture.cat'
  $lines=& "$base\fixture.exe";if(!($lines -match 'PNP_CATALOG=fixture.cat SHA256=OPEN_ERROR_')){throw 'missing catalog not reported'}
  Reg @('add','HKLM\A04AUDITSYS\ControlSet007\Control\Class\{ABC}\0001','/v','InfPath','/t','REG_SZ','/d','..\escape.inf','/f')
