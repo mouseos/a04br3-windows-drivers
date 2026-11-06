@@ -188,11 +188,14 @@ NTSTATUS a04_vendor_render_copy_once(struct a04_vendor_copy_scratch *o,
 { return clear_locked(o?o->render:NULL,s,result,FALSE,o); }
 
 /* Finite ring experiment: no wrap or teardown is inferred from a fence. */
-NTSTATUS a04_vendor_render_copy_buffer(struct a04_vendor_copy_scratch *o,
-    struct a04_vendor_start *s,const void *input,void *output,size_t bytes)
+NTSTATUS a04_vendor_render_copy_buffer_fenced(struct a04_vendor_copy_scratch *o,
+    struct a04_vendor_start *s,const void *input,void *output,size_t bytes,
+    uint32_t *task,uint32_t *flush)
 {
     struct a04_vendor_render_cold *r;struct a04_vendor_clear_result result;
     unsigned i;NTSTATUS status;
+    if (!task || !flush || task==flush) return STATUS_INVALID_PARAMETER;
+    *task=0;*flush=0;
     if(!o || !s || !input || !output || bytes!=4096u ||
        ((uintptr_t)input&3u) || ((uintptr_t)output&3u) || KeGetCurrentIrql()!=PASSIVE_LEVEL)
         return STATUS_INVALID_PARAMETER;
@@ -223,11 +226,19 @@ NTSTATUS a04_vendor_render_copy_buffer(struct a04_vendor_copy_scratch *o,
     if(a04_rgx_device_read_words(output,o->destination.cpu,4096u)) {
         status=STATUS_IO_DEVICE_ERROR;goto poison;
     }
+    *task=result.completed_task;*flush=result.completed_flush;
     o->service_expected_active=FALSE;goto out;
 poison:
     r->poisoned=TRUE;s->command_poisoned=TRUE;
 out:
     InterlockedExchange(&s->command_busy,0);return status;
+}
+
+NTSTATUS a04_vendor_render_copy_buffer(struct a04_vendor_copy_scratch *o,
+    struct a04_vendor_start *s,const void *input,void *output,size_t bytes)
+{
+    uint32_t task,flush;
+    return a04_vendor_render_copy_buffer_fenced(o,s,input,output,bytes,&task,&flush);
 }
 
 /* Internal diagnostic: reuse only after the previous job, SLC flush, fence and

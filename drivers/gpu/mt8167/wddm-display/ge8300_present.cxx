@@ -3,6 +3,13 @@
 #include "../ge8300_status.h"
 #include "present_bounds.h"
 #include "present_tile.h"
+#include "present_copy_fence.h"
+#ifndef A04_GE8300_WDDM_FENCED_TILE
+#define A04_GE8300_WDDM_FENCED_TILE 0
+#endif
+#if A04_GE8300_WDDM_FENCED_TILE && !A04_GE8300_WDDM_VENDOR_TILE
+#error Fenced tile requires vendor tile
+#endif
 #ifndef A04_GE8300_WDDM_VENDOR_TILE
 #define A04_GE8300_WDDM_VENDOR_TILE 0
 #endif
@@ -16,6 +23,9 @@ BOOLEAN A04Ge8300Present(const BLT_INFO* dst,const BLT_INFO* src,const RECT* rec
     UNICODE_STRING name=RTL_CONSTANT_STRING(L"\\Device\\A04GE8300");
     struct a04_present_surface source,dest; struct a04_present_tile tile;
     BYTE *stage=NULL; NTSTATUS status; size_t offset; unsigned y;
+#if A04_GE8300_WDDM_FENCED_TILE
+    struct a04_ge8300_fenced_copy *fenced;
+#endif
     if (!dst || !src || !rect || KeGetCurrentIrql()!=PASSIVE_LEVEL || KeAreAllApcsDisabled() ||
         !dst->pBits || !src->pBits || dst->BitsPerPel!=32 || src->BitsPerPel!=32 ||
         dst->Rotation!=D3DKMDT_VPPR_IDENTITY || src->Rotation!=D3DKMDT_VPPR_IDENTITY ||
@@ -30,7 +40,13 @@ BOOLEAN A04Ge8300Present(const BLT_INFO* dst,const BLT_INFO* src,const RECT* rec
     dest.width=dst->Width;dest.height=dst->Height;dest.pitch=dst->Pitch;
     tile.x=(uint32_t)rect->left;tile.y=(uint32_t)rect->top;
     if (a04_present_tile_region(&source,&tile,&offset) || a04_present_tile_region(&dest,&tile,&offset)) return FALSE;
-    stage=(BYTE*)ExAllocatePoolWithTag(NonPagedPoolNx,8192,'pG4A');
+    stage=(BYTE*)ExAllocatePoolWithTag(NonPagedPoolNx,
+#if A04_GE8300_WDDM_FENCED_TILE
+        4096+sizeof(struct a04_ge8300_fenced_copy),
+#else
+        8192,
+#endif
+        'pG4A');
     if (!stage) return FALSE;
     if (a04_present_tile_pack(stage,4096,&source,&tile)) { ExFreePoolWithTag(stage,'pG4A');return FALSE; }
     InitializeObjectAttributes(&attr,&name,OBJ_KERNEL_HANDLE|OBJ_CASE_INSENSITIVE,NULL,NULL);
@@ -40,15 +56,30 @@ BOOLEAN A04Ge8300Present(const BLT_INFO* dst,const BLT_INFO* src,const RECT* rec
     if (NT_SUCCESS(status)) status=ObReferenceObjectByHandle(file,SYNCHRONIZE,*IoFileObjectType,KernelMode,(PVOID*)&object,NULL);
     if (NT_SUCCESS(status)) {
         io.Information=0;io.Status=STATUS_PENDING;
+#if A04_GE8300_WDDM_FENCED_TILE
+        fenced=(struct a04_ge8300_fenced_copy *)(void *)(stage+4096);
+        status=ZwDeviceIoControlFile(file,NULL,NULL,NULL,&io,A04_GE8300_IOCTL_VENDOR_FENCED_COPY,
+                                     stage,4096,fenced,sizeof(*fenced));
+#else
         status=ZwDeviceIoControlFile(file,NULL,NULL,NULL,&io,A04_GE8300_IOCTL_VENDOR_COPY,stage,4096,stage+4096,4096);
+#endif
         if (status==STATUS_PENDING) {
             do { status=KeWaitForSingleObject(object,Executive,KernelMode,FALSE,NULL); } while (status!=STATUS_SUCCESS);
             status=io.Status;
         } else if (NT_SUCCESS(status)) status=io.Status;
+#if A04_GE8300_WDDM_FENCED_TILE
+        if (NT_SUCCESS(status) && !a04_present_copy_fence_valid(fenced,io.Information))
+            status=STATUS_IO_DEVICE_ERROR;
+#else
         if (NT_SUCCESS(status) && io.Information!=4096) status=STATUS_IO_DEVICE_ERROR;
+#endif
         if (NT_SUCCESS(status)) for(y=0;y<32;y++) {
             (void)a04_present_tile_row(&dest,&tile,y,&offset);
+#if A04_GE8300_WDDM_FENCED_TILE
+            WRITE_REGISTER_BUFFER_ULONG((volatile ULONG *)(dest.base+offset),(ULONG *)(fenced->pixels+y*128),32);
+#else
             WRITE_REGISTER_BUFFER_ULONG((volatile ULONG *)(dest.base+offset),(ULONG *)(stage+4096+y*128),32);
+#endif
         }
     }
     if(object) ObDereferenceObject(object);if(file) ZwClose(file);

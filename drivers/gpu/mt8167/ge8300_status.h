@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #ifndef A04_GE8300_STATUS_H
 #define A04_GE8300_STATUS_H
+#include <stdint.h>
 #define A04_GE8300_IOCTL_QUERY 0x00226004u
 /* CPU-only vendor FW staging; does not indicate a GPU boot. */
 #define A04_GE8300_IOCTL_VENDOR_STAGE_QUERY 0x00226010u
@@ -19,6 +20,12 @@ struct a04_ge8300_vendor_power_status {
 /* WinPE only, METHOD_BUFFERED 4 KiB private m1.11 bounce transfer. */
 #define A04_GE8300_IOCTL_VENDOR_COPY 0x00226018u
 #define A04_GE8300_VENDOR_COPY_BYTES 4096u
+/* Kernel-only experimental bounded copy with local GPU completion evidence. */
+#define A04_GE8300_IOCTL_VENDOR_FENCED_COPY 0x0022601cu
+struct a04_ge8300_fenced_copy {
+    uint32_t version, task_sequence, flush_sequence;
+    uint8_t pixels[A04_GE8300_VENDOR_COPY_BYTES];
+};
 /* Diagnostic-only report from the administrator-owned WinPE status tool. */
 #define A04_GE8300_IOCTL_REPORT_DISPLAY 0x0022600cu
 struct a04_ge8300_status {

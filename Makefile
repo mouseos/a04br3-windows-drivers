@@ -593,11 +593,12 @@ build/mt8167_audio_parent_client_test: drivers/audio/mt8167-afe/audio_parent_cli
 	$(CC) $(CFLAGS) -Itests/shared_wdf_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_audio_parent_client_test.c -o $@
 
 .PHONY: test-gpu-vendor-m1-11
-test-gpu-vendor-m1-11: build/ge8300_display_resource_check_test build/ge8300_windows_display_scanout_test build/ge8300_scanout_lifetime_test build/ge8300_scanout_candidate_test build/gpu_vendor_windows_surface_test build/gpu_vendor_m1_11_stage_test build/gpu_vendor_firmware_requests_test build/gpu_vendor_uncached_test build/gpu_vendor_rebase_test build/gpu_vendor_render_resources_test build/gpu_vendor_windows_render_cold_test build/gpu_vendor_windows_render_context_test build/gpu_vendor_clear_image_test build/gpu_vendor_clear_tile_test build/gpu_vendor_clear_validate_test
+test-gpu-vendor-m1-11: build/ge8300_present_copy_fence_test build/ge8300_display_resource_check_test build/ge8300_windows_display_scanout_test build/ge8300_scanout_lifetime_test build/ge8300_scanout_candidate_test build/gpu_vendor_windows_surface_test build/gpu_vendor_m1_11_stage_test build/gpu_vendor_firmware_requests_test build/gpu_vendor_uncached_test build/gpu_vendor_rebase_test build/gpu_vendor_render_resources_test build/gpu_vendor_windows_render_cold_test build/gpu_vendor_windows_render_context_test build/gpu_vendor_clear_image_test build/gpu_vendor_clear_tile_test build/gpu_vendor_clear_validate_test
 	./build/ge8300_scanout_candidate_test
 	./build/ge8300_scanout_lifetime_test
 	./build/ge8300_windows_display_scanout_test
 	./build/ge8300_display_resource_check_test
+	./build/ge8300_present_copy_fence_test
 	python3 tests/gpu_vendor_m1_11_fixture.py
 	./build/gpu_vendor_windows_surface_test
 	./build/gpu_vendor_m1_11_stage_test build/vendor-m1-11-test/firmware.bin build/vendor-m1-11-test/code.bin build/vendor-m1-11-test/data.bin
@@ -610,6 +611,10 @@ test-gpu-vendor-m1-11: build/ge8300_display_resource_check_test build/ge8300_win
 	./build/gpu_vendor_clear_image_test
 	./build/gpu_vendor_clear_tile_test
 	./build/gpu_vendor_clear_validate_test
+
+build/ge8300_present_copy_fence_test: tests/ge8300_present_copy_fence_test.c drivers/gpu/mt8167/wddm-display/present_copy_fence.h drivers/gpu/mt8167/ge8300_status.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) tests/ge8300_present_copy_fence_test.c -o $@
 
 build/ge8300_display_resource_check_test: tests/ge8300_display_resource_check_test.c drivers/gpu/mt8167/wddm-display/ge8300_display_resource_check.h
 	@mkdir -p build

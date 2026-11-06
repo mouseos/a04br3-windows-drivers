@@ -82,3 +82,21 @@ is an observation, not by itself proof of an atomic switch or retirement.
 A PnP interrupt, an ISR-safe transaction or hardware command queue, shared
 allocation lifetime, and device-to-device visibility are still required before
 this experimental code can safely submit a scanout switch.
+
+## Fenced WDDM tile staging
+
+`A04_GE8300_VENDOR_FENCED_COPY=1` adds a kernel-requestor-only buffered IOCTL
+when the separate vendor copy service is explicitly enabled. It returns the
+4 KiB CPU-staged result and the exact locally observed TQ task and subsequent
+SLC-flush/GP-fence sequences, but only after output and guard verification and
+readback succeed. Failure returns no result and follows the existing poisoned
+queue/retention policy. `A04_GE8300_WDDM_FENCED_TILE=1` additionally requires
+`A04_GE8300_WDDM_VENDOR_TILE=1`; it verifies the response before the synchronous
+WDDM present writes the tile to POST. Missing or invalid response falls back to
+CPU. This ties the existing bounded copy completion to the WDDM synchronous
+present, and does not turn the sequence values into Dxgkrnl fences.
+
+The GPU source/destination remain private bounce allocations and the CPU still
+writes POST. This does not share a GPU scanout surface or establish GPU-to-OVL
+cache visibility, IRQ ownership, atomic frame switching or retirement. These
+prerequisites remain required for the separate direct scanout path.

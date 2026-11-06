@@ -48,5 +48,10 @@ NTSTATUS a04_vendor_render_copy_once(struct a04_vendor_copy_scratch *owner,
  * After timeout the owner is poisoned and remains retained. */
 NTSTATUS a04_vendor_render_copy_buffer(struct a04_vendor_copy_scratch *owner,
     struct a04_vendor_start *start,const void *input,void *output,size_t bytes);
+/* Returns nonzero local sequence values only after exact task completion,
+ * SLC flush, GP fence, output/guard validation and CPU readback. */
+NTSTATUS a04_vendor_render_copy_buffer_fenced(struct a04_vendor_copy_scratch *owner,
+    struct a04_vendor_start *start,const void *input,void *output,size_t bytes,
+    uint32_t *task,uint32_t *flush);
 NTSTATUS a04_vendor_copy_scratch_release(struct a04_vendor_copy_scratch *owner);
 #endif

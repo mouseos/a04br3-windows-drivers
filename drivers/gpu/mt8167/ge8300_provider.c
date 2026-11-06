@@ -53,11 +53,17 @@
 #ifndef A04_GE8300_VENDOR_RENDER_COLD
 #define A04_GE8300_VENDOR_RENDER_COLD 0
 #endif
+#ifndef A04_GE8300_VENDOR_FENCED_COPY
+#define A04_GE8300_VENDOR_FENCED_COPY 0
+#endif
 #ifndef A04_GE8300_VENDOR_COPY_SERVICE
 #define A04_GE8300_VENDOR_COPY_SERVICE 0
 #endif
 #ifndef A04_GE8300_VENDOR_COPY_DIAGNOSTIC
 #define A04_GE8300_VENDOR_COPY_DIAGNOSTIC 0
+#endif
+#if A04_GE8300_VENDOR_FENCED_COPY && !A04_GE8300_VENDOR_COPY_SERVICE
+#error Fenced copy requires the vendor copy service
 #endif
 #if A04_GE8300_VENDOR_COPY_SERVICE && defined(A04_GE8300_COPY_SERVICE) && A04_GE8300_COPY_SERVICE
 #error Vendor and modern firmware copy services are exclusive
@@ -998,6 +1004,32 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
     WDFDEVICE device=WdfIoQueueGetDevice(queue); GPU_CONTEXT *c=GpuContext(device);
     struct a04_ge8300_status *out; NTSTATUS status; size_t size;
 #if A04_GE8300_VENDOR_COPY_SERVICE
+#if A04_GE8300_VENDOR_FENCED_COPY
+    if(control==A04_GE8300_IOCTL_VENDOR_FENCED_COPY) {
+        void *src; struct a04_ge8300_fenced_copy *dst; size_t in_bytes,out_bytes;
+        uint32_t task=0,flush=0;
+        if (WdfRequestGetRequestorMode(request)!=KernelMode ||
+            input!=A04_GE8300_VENDOR_COPY_BYTES || output!=sizeof(*dst) ||
+            InterlockedCompareExchange(&c->vendor_service_closed,0,0)) {
+            WdfRequestComplete(request,STATUS_INVALID_DEVICE_STATE);return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,A04_GE8300_VENDOR_COPY_BYTES,&src,&in_bytes);
+        if(NT_SUCCESS(status))status=WdfRequestRetrieveOutputBuffer(request,sizeof(*dst),(void **)&dst,&out_bytes);
+        if(NT_SUCCESS(status)) {
+            WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+            if(!c->vendor_service_online || InterlockedCompareExchange(&c->vendor_service_closed,0,0))
+                status=STATUS_INVALID_DEVICE_STATE;
+            else status=a04_vendor_render_copy_buffer_fenced(&c->vendor_copy,&c->vendor_start,
+                src,dst->pixels,input,&task,&flush);
+            if (!NT_SUCCESS(status) && (c->vendor_render.poisoned || c->vendor_start.command_poisoned)) {
+                c->vendor_service_online=FALSE;InterlockedExchange(&c->vendor_service_closed,1);
+            }
+            if (NT_SUCCESS(status)) {dst->version=1;dst->task_sequence=task;dst->flush_sequence=flush;}
+            WdfWaitLockRelease(c->vendor_lifetime);
+        }
+        WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(*dst):0);return;
+    }
+#endif
     if(control==A04_GE8300_IOCTL_VENDOR_COPY) {
         void *src,*dst;size_t in_bytes,out_bytes;
         if(input!=A04_GE8300_VENDOR_COPY_BYTES || output!=A04_GE8300_VENDOR_COPY_BYTES ||
