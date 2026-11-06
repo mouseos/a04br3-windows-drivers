@@ -142,12 +142,12 @@ NTSTATUS A04DisplayResources::SwitchShared(uint32_t expected,a04_shared_ovl_read
     return a04_shared_ovl_switch(&SharedOvl,&Shared,&Lease,Ovl,0x1000,expected,ready,boundary,context);
 }
 #if A04_GE8300_WDDM_SHARED_COMMON_PAGE
-static NTSTATUS CommonPageIoctl(HANDLE handle,struct a04_ge8300_common_page *page)
+static NTSTATUS CommonPageIoctl(HANDLE handle,ULONG code,struct a04_ge8300_common_page *page)
 {
     IO_STATUS_BLOCK io={};NTSTATUS status;PFILE_OBJECT file=NULL;
     status=ObReferenceObjectByHandle(handle,SYNCHRONIZE,*IoFileObjectType,KernelMode,(PVOID *)&file,NULL);
     if(!NT_SUCCESS(status))return status;
-    status=ZwDeviceIoControlFile(handle,NULL,NULL,NULL,&io,A04_GE8300_IOCTL_SHARED_COMMON_PAGE,
+    status=ZwDeviceIoControlFile(handle,NULL,NULL,NULL,&io,code,
         page,sizeof(*page),page,sizeof(*page));
     if(status==STATUS_PENDING) {
         do {status=KeWaitForSingleObject(file,Executive,KernelMode,FALSE,NULL);} while(status!=STATUS_SUCCESS);
@@ -166,10 +166,10 @@ NTSTATUS A04DisplayResources::ProbeSharedCommonPage()
        Adapter->DmaOperations->Size<FIELD_OFFSET(DMA_OPERATIONS,FreeAdapterObject)+sizeof(Adapter->DmaOperations->FreeAdapterObject) ||
        !Adapter->DmaOperations->InitializeDmaTransferContext || !Adapter->DmaOperations->GetScatterGatherListEx ||
        !Adapter->DmaOperations->FreeAdapterObject)return STATUS_NOT_SUPPORTED;
-    status=CommonPageIoctl(GpuHandle,&page);A04DisplayTrace(0x50,status);
+    status=CommonPageIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_COMMON_PAGE,&page);A04DisplayTrace(0x50,status);
     if(!NT_SUCCESS(status)) {
         if(page.token) {
-            release=CommonPageIoctl(GpuHandle,&page);A04DisplayTrace(0x56,release);
+            release=CommonPageIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_COMMON_PAGE,&page);A04DisplayTrace(0x56,release);
             if(!NT_SUCCESS(release))SharedCommonRetained=TRUE;
         }
         return status;
@@ -203,19 +203,75 @@ done:
     if(dmaContext)ExFreePoolWithTag(dmaContext,'mG4A');
     if(mdl)IoFreeMdl(mdl);
 #if A04_GE8300_WDDM_SHARED_FULL_COMMON
-    if(NT_SUCCESS(status))status=ProbeDisplayFullCommon((PDMA_ADAPTER)page.gpu_adapter,(PDEVICE_OBJECT)page.gpu_pdo);
+    if(NT_SUCCESS(status))status=ProbeDisplayFullCommon(&page);
 #endif
-    release=CommonPageIoctl(GpuHandle,&page);A04DisplayTrace(0x56,release);
+    if(SharedCommonRetained)return status;
+    release=CommonPageIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_COMMON_PAGE,&page);A04DisplayTrace(0x56,release);
     if(!NT_SUCCESS(release)){SharedCommonRetained=TRUE;return release;}
     return status;
 }
 #endif
 #if A04_GE8300_WDDM_SHARED_FULL_COMMON
-NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(PDMA_ADAPTER gpu,PDEVICE_OBJECT gpuPdo)
+#if A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
+/* Independent of the display object: once the provider can see the root,
+ * retain this object, both adapter mappings and both PDO references. */
+struct A04CommonFrameOwner {
+    struct a04_shared_scanout shared;
+    PVOID cpu,context;
+    PDEVICE_OBJECT displayPdo;
+    HANDLE gpuHandle;
+};
+static uint32_t CommonFramePixel(uint32_t x,uint32_t y)
+{ return (y*800u+x)^0x6d3a59c7u; }
+static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile uint32_t *cpu)
 {
+    struct a04_ge8300_shared_tile *tile;IO_STATUS_BLOCK io={};PFILE_OBJECT file=NULL;
+    NTSTATUS status;uint32_t index=0,matches=0,lastTask=0,lastFlush=0;
+    tile=(struct a04_ge8300_shared_tile *)ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*tile),'fG4A');
+    if(!tile)return STATUS_INSUFFICIENT_RESOURCES;
+    status=ObReferenceObjectByHandle(handle,SYNCHRONIZE,*IoFileObjectType,KernelMode,(PVOID *)&file,NULL);
+    if(!NT_SUCCESS(status))goto done;
+    for(index=0;index<1000u;index++) {
+        uint32_t x=(index%25u)*32u,y=(index/25u)*32u;
+        RtlZeroMemory(tile,sizeof(*tile));tile->token=token;tile->frame=1;tile->index=index;
+        for(uint32_t row=0;row<32u;row++)for(uint32_t col=0;col<32u;col++)
+            tile->pixels[row*32u+col]=CommonFramePixel(x+col,y+row);
+        io.Information=0;io.Status=STATUS_PENDING;
+        status=ZwDeviceIoControlFile(handle,NULL,NULL,NULL,&io,A04_GE8300_IOCTL_SHARED_TILE,
+            tile,sizeof(*tile),tile,sizeof(*tile));
+        if(status==STATUS_PENDING) {
+            do {status=KeWaitForSingleObject(file,Executive,KernelMode,FALSE,NULL);} while(status!=STATUS_SUCCESS);
+            status=io.Status;
+        } else if(NT_SUCCESS(status))status=io.Status;
+        if(!NT_SUCCESS(status) || io.Information!=sizeof(*tile) || !tile->task || !tile->flush) {
+            if(NT_SUCCESS(status))status=STATUS_IO_DEVICE_ERROR;break;
+        }
+        lastTask=tile->task;lastFlush=tile->flush;
+    }
+    A04DisplayTrace(0x5e,(NTSTATUS)index);A04DisplayTrace(0x5f,status);
+    A04DisplayTrace(0x62,(NTSTATUS)lastTask);A04DisplayTrace(0x63,(NTSTATUS)lastFlush);
+    if(NT_SUCCESS(status) && index==1000u) {
+        /* This is a CPU observation, not a display-adapter visibility proof.
+         * A GPU DMA bounce mapping can cause a mismatch. */
+        KeFlushIoBuffers(mdl,TRUE,TRUE);KeMemoryBarrier();
+        for(uint32_t y=0;y<1280u;y++)for(uint32_t x=0;x<800u;x++)
+            if(cpu[y*800u+x]==CommonFramePixel(x,y))matches++;
+        status=matches==1024000u?STATUS_SUCCESS:STATUS_DATA_ERROR;
+        A04DisplayTrace(0x60,(NTSTATUS)matches);A04DisplayTrace(0x61,status);
+    }
+done:
+    if(file)ObDereferenceObject(file);ExFreePoolWithTag(tile,'fG4A');return status;
+}
+#endif
+NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(struct a04_ge8300_common_page *page)
+{
+    PDMA_ADAPTER gpu=(PDMA_ADAPTER)page->gpu_adapter;PDEVICE_OBJECT gpuPdo=(PDEVICE_OBJECT)page->gpu_pdo;
     PHYSICAL_ADDRESS max,logical;PVOID cpu=NULL,context=NULL;PMDL mdl=NULL;
     PSCATTER_GATHER_LIST sg=NULL;NTSTATUS status=STATUS_NOT_SUPPORTED;BOOLEAN mapped=FALSE;
     uint64_t total=0;ULONG i,j;
+#if A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
+    struct A04CommonFrameOwner *owner=NULL;uint32_t npage=0;
+#endif
     if(!Adapter || !gpu || !gpuPdo || gpu==Adapter || !Adapter->DmaOperations || !gpu->DmaOperations ||
        Adapter->DmaOperations->Size<FIELD_OFFSET(DMA_OPERATIONS,AllocateCommonBufferEx)+sizeof(Adapter->DmaOperations->AllocateCommonBufferEx) ||
        !Adapter->DmaOperations->AllocateCommonBufferEx || !Adapter->DmaOperations->FreeCommonBuffer) goto done;
@@ -227,6 +283,10 @@ NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(PDMA_ADAPTER gpu,PDEVICE_OB
     }
     A04DisplayTrace(0x57,STATUS_SUCCESS);A04DisplayTrace(0x58,(NTSTATUS)logical.LowPart);
     A04DisplayTrace(0x59,(NTSTATUS)4096000u);
+#if A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
+    for(i=0;i<1024000u;i++)((volatile uint32_t *)cpu)[i]=~CommonFramePixel(i%800u,i/800u);
+    KeMemoryBarrier();
+#endif
     if(gpu->DmaOperations->Size<FIELD_OFFSET(DMA_OPERATIONS,FreeAdapterObject)+sizeof(gpu->DmaOperations->FreeAdapterObject) ||
        !gpu->DmaOperations->InitializeDmaTransferContext || !gpu->DmaOperations->GetScatterGatherListEx ||
        !gpu->DmaOperations->FreeAdapterObject){status=STATUS_NOT_SUPPORTED;goto gpu_done;}
@@ -254,13 +314,42 @@ NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(PDMA_ADAPTER gpu,PDEVICE_OB
     }
     if(total!=4096000u){status=STATUS_DEVICE_CONFIGURATION_ERROR;goto gpu_done;}
     A04DisplayTrace(0x5c,(NTSTATUS)sg->NumberOfElements);
+#if A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
+    owner=(struct A04CommonFrameOwner *)ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*owner),'oG4A');
+    if(!owner){status=STATUS_INSUFFICIENT_RESOURCES;goto gpu_done;}
+    RtlZeroMemory(owner,sizeof(*owner));
+    owner->shared.gpu_pages=(uint64_t *)ExAllocatePoolWithTag(NonPagedPoolNx,1000u*sizeof(uint64_t),'pG4A');
+    if(!owner->shared.gpu_pages){status=STATUS_INSUFFICIENT_RESOURCES;goto gpu_done;}
+    for(i=0;i<sg->NumberOfElements;i++)for(j=0;j<sg->Elements[i].Length;j+=4096u)
+        owner->shared.gpu_pages[npage++]=(uint64_t)sg->Elements[i].Address.QuadPart+j;
+    if(npage!=1000u){status=STATUS_DEVICE_CONFIGURATION_ERROR;goto gpu_done;}
+    owner->shared.mdl=mdl;owner->shared.gpu_adapter=gpu;owner->shared.display_adapter=Adapter;
+    owner->shared.gpu_sg=sg;owner->shared.display_dma=logical.LowPart;owner->shared.display_common=TRUE;
+    owner->cpu=cpu;owner->context=context;owner->displayPdo=DisplayPdo;owner->gpuHandle=GpuHandle;
+    status=CommonPageIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_COMMON_PROMOTE,page);
+    A04DisplayTrace(0x5b,status);
+    if(!NT_SUCCESS(status))goto gpu_done;
+    ObReferenceObject(DisplayPdo);
+    SharedCommonRetained=TRUE;
+    RtlZeroMemory(&Lease,sizeof(Lease));Lease.token=page->token;
+    Lease.gpu_adapter=gpu;Lease.gpu_pdo=gpuPdo;Lease.shared_mdl_owner=&owner->shared;
+    status=SharedLeaseIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_STAGE,&Lease);
+    A04DisplayTrace(0x5d,status);
+    if(NT_SUCCESS(status))status=CommonFrameTiles(GpuHandle,Lease.token,mdl,(volatile uint32_t *)cpu);
+    /* Even failed stage may have published or aliased a root: never unwind. */
+    return status;
+#else
     /* A cross-domain map is not evidence that either device accessed it.
      * Do not publish a mapping without proven post-publication retirement. */
     A04DisplayTrace(0x5b,STATUS_SUCCESS);
     status=STATUS_NOT_SUPPORTED;A04DisplayTrace(0x5d,status);
     goto cleanup_gpu;
+#endif
 gpu_done:
     A04DisplayTrace(0x5b,status);
+#if A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
+    if(owner){if(owner->shared.gpu_pages)ExFreePoolWithTag(owner->shared.gpu_pages,'pG4A');ExFreePoolWithTag(owner,'oG4A');}
+#endif
 cleanup_gpu:
     if(mapped)gpu->DmaOperations->FreeAdapterObject(gpu,DeallocateObject);
     if(context)ExFreePoolWithTag(context,'xG4A');

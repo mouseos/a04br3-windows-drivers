@@ -24,6 +24,8 @@ New-Item -ItemType Directory -Force $out | Out-Null
 $objects = @()
 $sharedDiagnostic = if ($env:A04_GE8300_WDDM_SHARED_DIAGNOSTIC -eq '1') { '1' } else { '0' }
 $sharedFullCommon = if ($env:A04_GE8300_WDDM_SHARED_FULL_COMMON -eq '1') { '1' } else { '0' }
+$commonFrame = if ($env:A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC -eq '1') { '1' } else { '0' }
+$sharedDisplayCommon = if ($env:A04_GE8300_SHARED_DISPLAY_COMMON -eq '1') { '1' } else { '0' }
 $sharedCommonPage = if ($env:A04_GE8300_WDDM_SHARED_COMMON_PAGE -eq '1') { '1' } else { '0' }
 $sharedPresent = if ($env:A04_GE8300_WDDM_SHARED_PRESENT -eq '1') { '1' } else { '0' }
 if ($sharedPresent -eq '1' -and $sharedDiagnostic -ne '1') { throw 'Shared present requires shared diagnostic' }
@@ -39,7 +41,7 @@ if ($fencedTile -eq '1' -and $vendorTile -ne '1') { throw 'Fenced tile requires 
 $gpuCopy = if ($env:A04_GE8300_WDDM_COPY -eq '1') { '1' } else { '0' }
 foreach ($name in @('bdd','bdd_ddi','bdd_dmm','bdd_util','bltfuncs','blthw','memory','ge8300_present','ge8300_trace','ge8300_display_resources')) {
     $obj = Join-Path $out "$name.obj"
-    & $cl /nologo /c /kernel /GS- /Zl /D_KERNEL_MODE /D_ARM_ /DARM /DNTDDI_VERSION=0x06030000 /D_WIN32_WINNT=0x0603 "/DA04_GE8300_WDDM_SHARED_DIAGNOSTIC=$sharedDiagnostic" "/DA04_GE8300_WDDM_SHARED_AUTOSTART=$sharedAutostart" "/DA04_GE8300_WDDM_SHARED_PRESENT=$sharedPresent" "/DA04_GE8300_WDDM_SHARED_COMMON_PAGE=$sharedCommonPage" "/DA04_GE8300_WDDM_SHARED_FULL_COMMON=$sharedFullCommon" "/DA04_GE8300_WDDM_SHARED_LEASE=$sharedLease" "/DA04_GE8300_WDDM_DIRECT_EXPERIMENT=$direct" "/DA04_GE8300_WDDM_FENCED_TILE=$fencedTile" "/DA04_GE8300_WDDM_COPY=$gpuCopy" "/DA04_GE8300_WDDM_VENDOR_TILE=$vendorTile" "/I$inc\km" "/I$inc\shared" "/I$inc\um" "/I$($vc.FullName)\include" "/I$($ucrt.FullName)\ucrt" "/I$src" "/Fo$obj" (Join-Path $src "$name.cxx")
+    & $cl /nologo /c /kernel /GS- /Zl /D_KERNEL_MODE /D_ARM_ /DARM /DNTDDI_VERSION=0x06030000 /D_WIN32_WINNT=0x0603 "/DA04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC=$commonFrame" "/DA04_GE8300_SHARED_DISPLAY_COMMON=$sharedDisplayCommon" "/DA04_GE8300_WDDM_SHARED_DIAGNOSTIC=$sharedDiagnostic" "/DA04_GE8300_WDDM_SHARED_AUTOSTART=$sharedAutostart" "/DA04_GE8300_WDDM_SHARED_PRESENT=$sharedPresent" "/DA04_GE8300_WDDM_SHARED_COMMON_PAGE=$sharedCommonPage" "/DA04_GE8300_WDDM_SHARED_FULL_COMMON=$sharedFullCommon" "/DA04_GE8300_WDDM_SHARED_LEASE=$sharedLease" "/DA04_GE8300_WDDM_DIRECT_EXPERIMENT=$direct" "/DA04_GE8300_WDDM_FENCED_TILE=$fencedTile" "/DA04_GE8300_WDDM_COPY=$gpuCopy" "/DA04_GE8300_WDDM_VENDOR_TILE=$vendorTile" "/I$inc\km" "/I$inc\shared" "/I$inc\um" "/I$($vc.FullName)\include" "/I$($ucrt.FullName)\ucrt" "/I$src" "/Fo$obj" (Join-Path $src "$name.cxx")
     if ($LASTEXITCODE -ne 0) { throw "ARM32 display source compilation failed: $name" }
     $objects += $obj
 }

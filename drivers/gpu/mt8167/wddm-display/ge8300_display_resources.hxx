@@ -10,6 +10,15 @@
 #ifndef A04_GE8300_WDDM_SHARED_FULL_COMMON
 #define A04_GE8300_WDDM_SHARED_FULL_COMMON 0
 #endif
+#ifndef A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
+#define A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC 0
+#endif
+#if A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC && !A04_GE8300_WDDM_SHARED_FULL_COMMON
+#error Common frame diagnostic requires the full common probe
+#endif
+#if A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC && !A04_GE8300_SHARED_DISPLAY_COMMON
+#error Common frame diagnostic requires shared display common support
+#endif
 #ifndef A04_GE8300_WDDM_SHARED_COMMON_PAGE
 #define A04_GE8300_WDDM_SHARED_COMMON_PAGE 0
 #endif
@@ -65,7 +74,7 @@ struct A04DisplayResources {
     BOOLEAN SharedCommonRetained;
     struct a04_shared_common_once SharedCommonOnce;
 #if A04_GE8300_WDDM_SHARED_FULL_COMMON
-    NTSTATUS ProbeDisplayFullCommon(PDMA_ADAPTER gpu,PDEVICE_OBJECT gpuPdo);
+    NTSTATUS ProbeDisplayFullCommon(struct a04_ge8300_common_page *page);
 #endif
     NTSTATUS ProbeSharedCommonPage();
 #endif

@@ -36,6 +36,7 @@ struct a04_ge8300_fenced_copy {
 #define A04_GE8300_IOCTL_SHARED_DIAGNOSTIC 0x00226030u
 #define A04_GE8300_IOCTL_SHARED_TILE 0x00226034u
 #define A04_GE8300_IOCTL_SHARED_COMMON_PAGE 0x00226038u
+#define A04_GE8300_IOCTL_SHARED_COMMON_PROMOTE 0x0022603cu
 /* Kernel-only, short-lived lease on the GPU common-buffer copy result. */
 struct a04_ge8300_common_page { void *cpu; uint64_t gpu_va; uint32_t token,task,flush; void *gpu_adapter,*gpu_pdo; };
 #if defined(_ARM_)

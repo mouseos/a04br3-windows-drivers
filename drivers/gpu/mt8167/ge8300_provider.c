@@ -1066,7 +1066,11 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
 #if A04_GE8300_VENDOR_COPY_SERVICE
 #if A04_GE8300_SHARED_LEASE
 #if A04_GE8300_SHARED_COMMON_PAGE
-    if(control==A04_GE8300_IOCTL_SHARED_COMMON_PAGE) {
+    if(control==A04_GE8300_IOCTL_SHARED_COMMON_PAGE
+#if A04_GE8300_SHARED_FULL_FRAME
+       || control==A04_GE8300_IOCTL_SHARED_COMMON_PROMOTE
+#endif
+       ) {
         struct a04_ge8300_common_page *page;BOOLEAN drop=FALSE;uint32_t token;
         if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*page) || output!=sizeof(*page)) {
             WdfRequestComplete(request,STATUS_ACCESS_DENIED);return;
@@ -1074,7 +1078,7 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
         status=WdfRequestRetrieveInputBuffer(request,sizeof(*page),(void **)&page,&size);
         if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
         token=page->token;WdfWaitLockAcquire(c->vendor_lifetime,NULL);
-        if(!token) {
+        if(!token && control==A04_GE8300_IOCTL_SHARED_COMMON_PAGE) {
             if(page->cpu || page->gpu_va || page->task || page->flush || page->gpu_adapter || page->gpu_pdo || c->shared_common_active ||
                !c->vendor_service_online || InterlockedCompareExchange(&c->vendor_service_closed,0,0) ||
                !c->vendor.hardware_owned || c->vendor_start.command_poisoned ||
@@ -1092,7 +1096,17 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
                   page->cpu!=c->vendor_copy.destination.cpu || page->gpu_va!=A04_VENDOR_COPY_DEST_VA ||
                   page->task!=c->shared_lease.task || page->flush!=c->shared_lease.flush ||
                   page->gpu_adapter!=c->vendor_adapter_v3 || page->gpu_pdo!=WdfDeviceWdmGetPhysicalDevice(device)) status=STATUS_INVALID_DEVICE_STATE;
-        else {
+        else if(control==A04_GE8300_IOCTL_SHARED_COMMON_PROMOTE) {
+#if A04_GE8300_SHARED_FULL_FRAME
+            /* Transfer the existing WDF reference and token into the normal
+             * shared lease; never drop the provider between DMA mappings. */
+            c->shared_common_active=FALSE;
+            RtlZeroMemory(&c->shared_frame,sizeof(c->shared_frame));
+            status=STATUS_SUCCESS;
+#else
+            status=STATUS_NOT_SUPPORTED;
+#endif
+        } else {
             (void)a04_shared_lease_release(&c->shared_lease,token);c->shared_common_active=FALSE;
             RtlZeroMemory(page,sizeof(*page));status=STATUS_SUCCESS;drop=TRUE;
         }
