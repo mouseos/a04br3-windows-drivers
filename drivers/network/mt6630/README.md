@@ -297,3 +297,9 @@ I/O work item の排出は別途必要。raw vector、排他、translated affini
 根拠は別の `pre_mask` provider が必要で、存在を仮定しない。親の Acquire は
 なお拒否し、RTC の取得・解放は親 lease に実接続されていない。ISR/DPC・
 firmware 診断と実 IRQ の同時運用も未実機検証で、インストール用ではない。
+
+`windows_irq_work.c` は DPC 通知を一回限りの WDM work item に渡し、IRQ と
+DPC の停止後に完了イベントを待って work item を解放する。複数通知や処理
+失敗は fault として隔離し、再 arm による再利用はしない。firmware の実処理は
+呼出側の callback が担う。通知前に割込み source の排他・マスクを実証する
+provider、親 RTC lease、実機配送は未接続のため、本構成を実行可能とは扱わない。

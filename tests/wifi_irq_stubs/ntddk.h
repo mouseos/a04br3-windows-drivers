@@ -23,4 +23,15 @@ int KeGetCurrentIrql(void);ULONG READ_REGISTER_ULONG(volatile ULONG *);void WRIT
 void KeInitializeDpc(PKDPC,void (*)(PKDPC,PVOID,PVOID,PVOID),PVOID);BOOLEAN KeInsertQueueDpc(PKDPC,PVOID,PVOID);BOOLEAN KeRemoveQueueDpc(PKDPC);void KeFlushQueuedDpcs(void);
 NTSTATUS IoConnectInterrupt(PKINTERRUPT *,BOOLEAN (*)(PKINTERRUPT,PVOID),PVOID,void *,ULONG,KIRQL,KIRQL,int,BOOLEAN,KAFFINITY,BOOLEAN);
 void IoDisconnectInterrupt(PKINTERRUPT);BOOLEAN KeSynchronizeExecution(PKINTERRUPT,BOOLEAN (*)(PVOID),PVOID);
+typedef struct {int state;} KEVENT;typedef struct {int unused;} DEVICE_OBJECT,*PDEVICE_OBJECT;typedef struct {int unused;} IO_WORKITEM,*PIO_WORKITEM;
+#define STATUS_INVALID_PARAMETER (-3)
+#define STATUS_INSUFFICIENT_RESOURCES (-4)
+#define IO_NO_INCREMENT 0
+#define NotificationEvent 0
+#define Executive 0
+#define KernelMode 0
+#define DelayedWorkQueue 0
+PIO_WORKITEM IoAllocateWorkItem(PDEVICE_OBJECT);void IoFreeWorkItem(PIO_WORKITEM);
+void IoQueueWorkItem(PIO_WORKITEM,void (*)(PDEVICE_OBJECT,PVOID),int,PVOID);
+void KeInitializeEvent(KEVENT *,int,int);void KeClearEvent(KEVENT *);void KeSetEvent(KEVENT *,int,int);NTSTATUS KeWaitForSingleObject(KEVENT *,int,int,int,void *);
 #endif
