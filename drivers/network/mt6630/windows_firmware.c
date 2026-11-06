@@ -83,3 +83,17 @@ int a04_windows_firmware_boot(struct a04_wmt_bridge *b,const uint8_t expected[32
  result=a04_windows_firmware_boot_prepared(b,&snapshot,expected,options);
  a04_windows_firmware_release(&snapshot);return result;
 }
+
+/* Bluetooth shares the same provenance-pinned WMT patch bundle. No WLAN
+ * firmware or function1 activation is needed in the exclusive BT profile. */
+int a04_windows_firmware_prepare_wmt(struct a04_windows_fw_snapshot *out,const uint8_t expected[32])
+{
+ static const WCHAR path[]=L"\\SystemRoot\\System32\\drivers\\a04br3\\mt6630-wmt.bin";
+ struct snapshot wmt={0};uint8_t digest[32];unsigned diff=0;
+ if(!out||out->wmt||out->wlan||!expected||KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+ if(!NT_SUCCESS(read_snapshot(path,A04_WMT_FW_MAX_BUNDLE,&wmt)))return -1;
+ if(a04_sha256(wmt.bytes,wmt.length,digest)){release_snapshot(&wmt);return -1;}
+ for(unsigned i=0;i<32;i++)diff|=digest[i]^expected[i];
+ if(diff){release_snapshot(&wmt);return -1;}
+ out->wmt=wmt.bytes;out->wmt_length=wmt.length;return 0;
+}

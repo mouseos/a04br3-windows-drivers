@@ -55,7 +55,7 @@ static int a04_read_sector(void *ctx,uint64_t lba,uint8_t out[512])
  if(!NT_SUCCESS(s)||s==STATUS_PENDING||!NT_SUCCESS(io.Status)||io.Information!=512)return 1;
  RtlCopyMemory(out,r->buffer,512);return 0;
 }
-static NTSTATUS read_calibration(UCHAR result[512])
+static NTSTATUS read_calibration(UCHAR *result,int bluetooth)
 {
  HANDLE volume=NULL,disk=NULL,match=NULL;PWSTR links=NULL,p;ULONG_PTR used;NTSTATUS status;
  VOLUME_DISK_EXTENTS ext;STORAGE_DEVICE_NUMBER number;ULONG matches=0,i,count;
@@ -106,7 +106,7 @@ static NTSTATUS read_calibration(UCHAR result[512])
   if(!NT_SUCCESS(status)||used<sizeof(len)||len.Length.QuadPart<=0||(len.Length.QuadPart&511)){status=STATUS_DISK_CORRUPT_ERROR;goto done;}
   disk_sectors=(uint64_t)len.Length.QuadPart/512;
   if(a04_nvram_sector_init(sector,&reader,&disk_reader,a04_read_sector,first,sectors,disk_sectors) ||
-     a04_mt6630_calibration_read(&reader,work,result)){status=STATUS_DATA_ERROR;goto done;}
+     (bluetooth?a04_nvram_bt_prefix(&reader,work,result):a04_mt6630_calibration_read(&reader,work,result))){status=STATUS_DATA_ERROR;goto done;}
  }
  status=STATUS_SUCCESS;
 done:
@@ -123,7 +123,16 @@ NTSTATUS a04_windows_nvram_read(UCHAR result[512])
  if(!result)return STATUS_INVALID_PARAMETER;
  RtlSecureZeroMemory(result,512);
  if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
- status=read_calibration(result);
+ status=read_calibration(result,0);
  if(!NT_SUCCESS(status))RtlSecureZeroMemory(result,512);
  return status;
+}
+
+NTSTATUS a04_windows_bt_nvram_read(UCHAR result[36])
+{
+ NTSTATUS status;if(!result)return STATUS_INVALID_PARAMETER;
+ RtlSecureZeroMemory(result,36);
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+ status=read_calibration(result,1);
+ if(!NT_SUCCESS(status))RtlSecureZeroMemory(result,36);return status;
 }

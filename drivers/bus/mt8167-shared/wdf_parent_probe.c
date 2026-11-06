@@ -128,6 +128,13 @@
 #if A04_SHARED_APMIXED_RESOURCE != 0 && A04_SHARED_APMIXED_RESOURCE != 1
 #error A04_SHARED_APMIXED_RESOURCE must be 0 or 1
 #endif
+/* Exactly one physical MSDC2 child and one unchanged v2 combo lease. */
+#ifndef A04_SHARED_BT_PROFILE
+#define A04_SHARED_BT_PROFILE 0
+#endif
+#if A04_SHARED_BT_PROFILE && (!defined(A04_SHARED_WIFI_RUNTIME) || !A04_SHARED_WIFI_RUNTIME)
+#error Bluetooth profile requires the real shared combo ownership provider
+#endif
 #ifndef A04_SHARED_WIFI_RUNTIME
 #define A04_SHARED_WIFI_RUNTIME 0
 #endif
@@ -1528,7 +1535,11 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     if(!NT_SUCCESS(status))return status;
     /* The host MMIO range is a separate child resource. The optional MSDC2 interrupt descriptor still needs platform polarity and
      * translation verification; it does not describe the separate EINT5. */
+    #if A04_SHARED_BT_PROFILE
+    status=ParentAddProbeChild(dev,L"A04BR3\\MT6630BGF",L"0",0x11170000u);
+#else
     status=ParentAddProbeChild(dev,L"A04BR3\\MT6630SDIO",L"0",0x11170000u);
+#endif
 #endif
 #endif
     return status;

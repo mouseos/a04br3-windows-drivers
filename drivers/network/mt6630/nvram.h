@@ -38,9 +38,13 @@ static inline int a04_nvram_file_read(const struct a04_nvram_reader *r,const str
  }
  return 0;
 }
-static inline int a04_nvram_wifi(const struct a04_nvram_reader *r,struct a04_nvram_work *w,uint8_t out[512])
+/* Canonical path lookup; record length comes from AllMap, including its two
+ * checksum bytes. The caller requests a known prefix, never assumes a BT LID
+ * or whether the Linux 66-byte export included the checksum trailer. */
+static inline int a04_nvram_record(const struct a04_nvram_reader *r,struct a04_nvram_work *w,
+ const char *name,unsigned namesize,unsigned lid,unsigned exact_payload,uint8_t *out,unsigned prefix)
 {
- if(!r || !w || !out || r->bytes%A04_NVRAM_BLOCK)return A04_NVRAM_INVALID;
+ if(!r || !w || !out || !name || !namesize || namesize>128 || !prefix || prefix>512 || r->bytes%A04_NVRAM_BLOCK)return A04_NVRAM_INVALID;
  unsigned total=r->bytes/A04_NVRAM_BLOCK;
  if(total<3 || total>A04_NVRAM_MAX_BLOCKS)return A04_NVRAM_INVALID;
  /* Match libnvram's descending search and triple bitmap + 0xaabbccdd flag.
@@ -67,15 +71,15 @@ static inline int a04_nvram_wifi(const struct a04_nvram_reader *r,struct a04_nvr
  unsigned data=map+1;while(data<bitmap_block && w->bitmap[data])data++;
  if(data>=bitmap_block)return A04_NVRAM_INVALID;
  /* AllMap uses 12-byte container header then 52-byte map header. */
- uint32_t wifi_offset=0;unsigned matches=0;
- static const char name[]="/data/nvram/APCFG/APRDEB/WIFI";
+ uint32_t wifi_offset=0;unsigned matches=0,payload=0;
  for(uint32_t at=52;at<mapsize;at+=140){
   e=a04_nvram_read(r,map*A04_NVRAM_BLOCK+12+at,w->scratch,140);if(e)return e;
   uint32_t offset=a04_nvram_le32(w->scratch+4),size=a04_nvram_le32(w->scratch+8);
   if(!size || offset>datasize || size>datasize-offset)return A04_NVRAM_INVALID;
-  if(!memcmp(w->scratch+12,name,sizeof(name))){
-   if(a04_nvram_le32(w->scratch)!=7 || size!=514 || matches++)return A04_NVRAM_INVALID;
-   wifi_offset=offset;
+  if(!memcmp(w->scratch+12,name,namesize)){
+   if((lid!=UINT32_MAX && a04_nvram_le32(w->scratch)!=lid) || size<2 ||
+      size>sizeof(w->record) || size-2<prefix || (exact_payload && size-2!=exact_payload) || matches++)return A04_NVRAM_INVALID;
+   wifi_offset=offset;payload=size-2;
   }
  }
  if(matches!=1)return A04_NVRAM_NOT_FOUND;
@@ -89,12 +93,25 @@ static inline int a04_nvram_wifi(const struct a04_nvram_reader *r,struct a04_nvr
   checksum+=tail;off+=n;
  }
  if((checksum^datasize)!=expected)return A04_NVRAM_INVALID;
- e=a04_nvram_file_read(r,w,bitmap_block,data,wifi_offset,w->record,514);if(e)return e;
- unsigned check=0;for(unsigned i=0;i<512;i++)check=((i&1)?check^w->record[i]:check+w->record[i])&255;
- if(w->record[512]!=0xaa || w->record[513]!=check)return A04_NVRAM_INVALID;
+ e=a04_nvram_file_read(r,w,bitmap_block,data,wifi_offset,w->record,payload+2);if(e)return e;
+ unsigned check=0;for(unsigned i=0;i<payload;i++)check=((i&1)?check^w->record[i]:check+w->record[i])&255;
+ if(w->record[payload]!=0xaa || w->record[payload+1]!=check)return A04_NVRAM_INVALID;
+ if(out!=w->record)memcpy(out,w->record,prefix);
+ return 0;
+}
+static inline int a04_nvram_wifi(const struct a04_nvram_reader *r,struct a04_nvram_work *w,uint8_t out[512])
+{
+ static const char name[]="/data/nvram/APCFG/APRDEB/WIFI";
+ if(!out)return A04_NVRAM_INVALID;
+ int e=a04_nvram_record(r,w,name,sizeof(name),7,512,w?w->record:NULL,512);if(e)return e;
  unsigned any=0;for(unsigned i=4;i<10;i++)any|=w->record[i];
  if(!any || (w->record[4]&1) || w->record[196]!=1)return A04_NVRAM_INVALID;
  memcpy(out,w->record,512);return 0;
+}
+static inline int a04_nvram_bt_prefix(const struct a04_nvram_reader *r,struct a04_nvram_work *w,uint8_t out[36])
+{
+ static const char name[]="/data/nvram/APCFG/APRDEB/BT_Addr";
+ return a04_nvram_record(r,w,name,sizeof(name),UINT32_MAX,0,out,36);
 }
 /* No device reader is provided. Output is original on-device bytes only. */
 int a04_mt6630_calibration_read(const struct a04_nvram_reader *,

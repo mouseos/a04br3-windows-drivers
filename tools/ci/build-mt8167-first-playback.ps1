@@ -1,5 +1,5 @@
 # Build one matched, retained first-playback parent/PortCls pair. No deployment.
-param([string]$OutputDirectory,[switch]$IntegratedUsb)
+param([string]$OutputDirectory,[switch]$IntegratedUsb,[switch]$BluetoothProfile)
 $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 if(!$OutputDirectory){$OutputDirectory=Join-Path $root 'build\mt8167-first-playback'}
@@ -18,7 +18,7 @@ $names=@('TEMP','TMP','RUNNER_TEMP','A04_AUDIO_CHILD_RESOURCES','A04_SHARED_QUER
  'A04_SHARED_TOUCH_D0_EXPERIMENT','A04_USB_GPIO22_SOURCE_EXPERIMENT','A04_MT6392_RTC32K_DIAGNOSTIC',
  'A04_SHARED_WIFI_IRQ_DIAGNOSTIC','A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC','A04_AUDIO_PMIC_TRACE',
  'A04_SHARED_USB_ONLY','A04_MUSB_HOST_CORE_EXPERIMENT','A04_MUSB_HID_CONTROL_EXPERIMENT',
- 'A04_SHARED_WIFI_RUNTIME')
+ 'A04_SHARED_WIFI_RUNTIME','A04_SHARED_BT_PROFILE')
 $saved=@{};foreach($name in $names){$saved[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}
 $transcript=$false
 try {
@@ -42,6 +42,11 @@ try {
           'A04_SHARED_WIFI_IRQ_DIAGNOSTIC','A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC')){
             if($saved[$name] -eq '1'){[Environment]::SetEnvironmentVariable($name,'1','Process')}
         }
+    }
+    if($BluetoothProfile){
+        if(!$IntegratedUsb){throw 'Bluetooth profile requires retained integrated USB/audio parent'}
+        $env:A04_SHARED_BT_PROFILE='1';$env:A04_SHARED_WIFI_RUNTIME='1'
+        $env:A04_MT6392_RTC32K_DIAGNOSTIC='1';$env:A04_SHARED_WIFI_IRQ_DIAGNOSTIC='1'
     }
     # Exactly one parent build: includes both the retained audio and USB owners.
     & (Join-Path $PSScriptRoot 'build-msdc-parent-probe.ps1')

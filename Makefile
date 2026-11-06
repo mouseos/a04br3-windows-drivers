@@ -1373,3 +1373,8 @@ build/mt6630_diagnostic_calibration_test: drivers/network/mt6630/windows_diagnos
 
 # Rebuild the existing bridge checks when the shared country codec/table changes.
 build/mt6630_wmt_bridge_test build/mt6630_native_bridge_test build/mt6630_data_bridge_test build/mt6630_native_nbl_test build/mt6630_calibration_bridge_test: drivers/network/mt6630/regulatory.c drivers/network/mt6630/regulatory.h drivers/network/mt6630/regulatory_data.h
+
+# Focused portable BT protocol regression; no simulated hardware success claim.
+build/mt6630_bt_transport_test: tests/mt6630_bt_transport_test.c drivers/bluetooth/mt6630/transport.c drivers/bluetooth/mt6630/transport.h
+	mkdir -p build
+	$(CC) $(CFLAGS) tests/mt6630_bt_transport_test.c drivers/bluetooth/mt6630/transport.c -o $@
