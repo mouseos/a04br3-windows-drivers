@@ -204,6 +204,9 @@ typedef struct {
 #endif
 #endif
     PDMA_ADAPTER vendor_adapter_v3;
+#if A04_GE8300_SHARED_LEASE
+    ULONG vendor_map_registers;
+#endif
 #if A04_GE8300_VENDOR_IRQ
     struct a04_vendor_start vendor_start;
     struct a04_vendor_irq *vendor_irq;
@@ -593,6 +596,9 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         desc.InterfaceType=Internal;desc.MaximumLength=A04_PVR_HEAP_SIZE;
         c->vendor_adapter_v3=IoGetDmaAdapter(WdfDeviceWdmGetPhysicalDevice(device),&desc,&map_registers);
         adapter=c->vendor_adapter_v3;
+#if A04_GE8300_SHARED_LEASE
+        c->vendor_map_registers=map_registers;
+#endif
 #if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
         copy_map_registers=map_registers;
 #endif
@@ -1054,8 +1060,12 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
         WdfWaitLockAcquire(c->vendor_lifetime,NULL);
         if(control==A04_GE8300_IOCTL_SHARED_ACQUIRE) {
             if(token || !c->vendor_service_online || InterlockedCompareExchange(&c->vendor_service_closed,0,0) ||
-               !c->vendor_adapter_v3 || !c->vendor.hardware_owned || c->vendor_start.command_poisoned ||
-               !(token=a04_shared_lease_acquire(&c->shared_lease))) status=STATUS_DEVICE_NOT_READY;
+               !c->vendor_adapter_v3 || c->vendor_map_registers<1000u || !c->vendor.hardware_owned ||
+               c->vendor_start.command_poisoned ||
+               !(token=a04_shared_lease_acquire(&c->shared_lease))) {
+                GpuPrint("A04GPU SHARED LEASE UNAVAILABLE MAPS=");GpuHex(c->vendor_map_registers);GpuPrint("\n");
+                status=STATUS_DEVICE_NOT_READY;
+            }
             else {
                 WdfObjectReference(device);
                 RtlZeroMemory(lease,sizeof(*lease));lease->token=token;
