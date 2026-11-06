@@ -35,6 +35,16 @@ struct a04_ge8300_fenced_copy {
 #define A04_GE8300_IOCTL_SHARED_UNSTAGE 0x0022602cu
 #define A04_GE8300_IOCTL_SHARED_DIAGNOSTIC 0x00226030u
 #define A04_GE8300_IOCTL_SHARED_TILE 0x00226034u
+#define A04_GE8300_IOCTL_SHARED_COMMON_PAGE 0x00226038u
+/* Kernel-only, short-lived lease on the GPU common-buffer copy result. */
+struct a04_ge8300_common_page { void *cpu; uint64_t gpu_va; uint32_t token,task,flush; };
+#if defined(_ARM_)
+#ifdef __cplusplus
+static_assert(sizeof(struct a04_ge8300_common_page)==32, "common page ABI");
+#else
+_Static_assert(sizeof(struct a04_ge8300_common_page)==32, "common page ABI");
+#endif
+#endif
 /* METHOD_BUFFERED, kernel callers; no display visibility claim. */
 struct a04_ge8300_shared_tile { uint32_t token,frame,index,task,flush; uint32_t pixels[1024]; };
 #if defined(_ARM_)

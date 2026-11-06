@@ -7,6 +7,12 @@
 #ifndef A04_GE8300_WDDM_SHARED_DIAGNOSTIC
 #define A04_GE8300_WDDM_SHARED_DIAGNOSTIC 0
 #endif
+#ifndef A04_GE8300_WDDM_SHARED_COMMON_PAGE
+#define A04_GE8300_WDDM_SHARED_COMMON_PAGE 0
+#endif
+#if A04_GE8300_WDDM_SHARED_COMMON_PAGE && !A04_GE8300_WDDM_SHARED_DIAGNOSTIC
+#error Shared common page requires shared diagnostic
+#endif
 #ifndef A04_GE8300_WDDM_SHARED_PRESENT
 #define A04_GE8300_WDDM_SHARED_PRESENT 0
 #endif
@@ -48,6 +54,10 @@ struct A04DisplayResources {
     NTSTATUS SubmitFullFrame(const void *pixels,uint32_t pitch);
 #endif
     NTSTATUS PrepareViaGpu();
+#if A04_GE8300_WDDM_SHARED_COMMON_PAGE
+    BOOLEAN SharedCommonRetained;
+    NTSTATUS ProbeSharedCommonPage();
+#endif
     /* No call site until platform visibility and frame callbacks exist. */
     NTSTATUS SwitchShared(uint32_t expected,a04_shared_ovl_ready ready,
         a04_shared_ovl_boundary boundary,void *context);

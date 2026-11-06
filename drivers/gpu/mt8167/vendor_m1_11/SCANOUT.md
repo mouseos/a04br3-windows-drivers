@@ -335,3 +335,39 @@ address, not a scatter/gather descriptor list. This still requires the OS to
 return an appropriate mapping and does not establish bounce, cache, stop, or
 frame-boundary safety. An actual failure point cannot be identified from the
 old generic `STEP=30 STATUS=C00000A3` alone.
+
+### Common-buffer one-page lease experiment
+
+The observed display adapter supplied 64 map registers. That number bounds
+an individual DMA transfer; it does not establish how many mappings can be
+retained concurrently, and splitting 1000 pages does not produce the single
+contiguous display DMA range required by OVL. In particular, repeatedly
+queueing legacy asynchronous SG requests while retaining earlier mappings can
+wait indefinitely. Neither adjacent CPU physical pages nor matching logical
+addresses prove shared IOMMU domains or the absence of bounce buffers.
+
+The separate default-off `A04_GE8300_SHARED_COMMON_PAGE` provider and
+`A04_GE8300_WDDM_SHARED_COMMON_PAGE` display flags enable a 4 KiB diagnostic.
+After an existing fenced GPU copy, a kernel-only provider lease pins its
+already GPU-mapped uncached common-buffer destination and prevents concurrent
+normal copy calls. WDDM builds an MDL over that page and asks the display's
+own V3 adapter for a single-page SG mapping with `DMA_SYNCHRONOUS_CALLBACK`;
+insufficient resources fail without waiting. The display does not read the
+mapping. WDDM releases the adapter object and MDL before the provider lease;
+a release failure retains the provider reference and blocks further copies.
+Steps 50/51 report lease/mapping status, 52/53 the one-page list and DMA
+address, 54/55 the already completed GPU task/flush and 56 lease release.
+This validates neither display DMA reads nor visibility, no-bounce, GPU stop,
+full-frame mappings, frame boundaries, or OVL switching. The returned GPU
+and display DMA addresses belong to separate adapters and cannot be equated.
+
+The full-size shared-MDL path remains behind its existing 1000-register
+checks. A valid full scanout design must independently establish a contiguous
+4,096,000-byte display logical range, an independently valid GPU mapping of
+those same pages, bounded allocation/cleanup, and cache/ownership transitions.
+A large `AllocateCommonBuffer` may itself require map registers and can fail;
+it does not automatically map the same pages into another device's domain.
+Windows 8.1 does not expose the later `CreateCommonBufferFromMdl` interface.
+See Microsoft documentation for [common buffers](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_common_buffer),
+[GetScatterGatherListEx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pget_scatter_gather_list_ex),
+and [FreeAdapterObject](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pfree_adapter_object).
