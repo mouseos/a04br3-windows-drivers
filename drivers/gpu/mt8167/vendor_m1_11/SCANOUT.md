@@ -393,3 +393,22 @@ does not establish GPU access to the same backing pages, no-bounce, visibility,
 frame synchronization, or stable capacity on subsequent allocation. Failure
 is an expected diagnostic outcome; it neither authorizes a split scanout nor
 triggers an allocation retry.
+
+### Full common-buffer cross-adapter mapping preflight
+
+The full display common-buffer probe now runs while the short-lived provider
+lease holds the GPU PDO/adapter valid. If display allocation succeeds it
+builds an MDL over the common buffer and issues one synchronous V3 GPU-adapter
+SG mapping request for the full 4,096,000 bytes. Step 5B records GPU mapping
+and layout validation; 5C reports the GPU SG element count on success. A
+resource shortage fails without waiting. GPU SG addresses are checked in the
+GPU address domain and are not required to be display-contiguous. The display
+address still comes exclusively from its common-buffer allocation. No device
+access is started, so both mappings can be safely released at the end.
+
+If this preflight succeeds, STEP 5D reports STATUS_NOT_SUPPORTED: the GPU root
+publication, all-tile copy, and display-side visibility test are deliberately
+not initiated until the lifetime of both DMA mappings, root retirement, and a
+real display-DMA observer are implemented. Thus it is not the requested
+same-boot full-copy/visibility diagnostic yet. One boot can establish which
+allocation or mapping stage blocks; it cannot claim a completed frame.

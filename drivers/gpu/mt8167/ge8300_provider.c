@@ -1075,7 +1075,7 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
         if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
         token=page->token;WdfWaitLockAcquire(c->vendor_lifetime,NULL);
         if(!token) {
-            if(page->cpu || page->gpu_va || page->task || page->flush || c->shared_common_active ||
+            if(page->cpu || page->gpu_va || page->task || page->flush || page->gpu_adapter || page->gpu_pdo || c->shared_common_active ||
                !c->vendor_service_online || InterlockedCompareExchange(&c->vendor_service_closed,0,0) ||
                !c->vendor.hardware_owned || c->vendor_start.command_poisoned ||
                !c->vendor_copy.destination.cpu || c->vendor_copy.destination.bytes!=4096u ||
@@ -1085,11 +1085,13 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
                 c->shared_common_active=TRUE;WdfObjectReference(device);
                 page->cpu=c->vendor_copy.destination.cpu;page->gpu_va=A04_VENDOR_COPY_DEST_VA;
                 page->token=token;page->task=c->shared_lease.task;page->flush=c->shared_lease.flush;
+                page->gpu_adapter=c->vendor_adapter_v3;page->gpu_pdo=WdfDeviceWdmGetPhysicalDevice(device);
                 status=STATUS_SUCCESS;
             }
         } else if(!c->shared_common_active || token!=c->shared_lease.active ||
                   page->cpu!=c->vendor_copy.destination.cpu || page->gpu_va!=A04_VENDOR_COPY_DEST_VA ||
-                  page->task!=c->shared_lease.task || page->flush!=c->shared_lease.flush) status=STATUS_INVALID_DEVICE_STATE;
+                  page->task!=c->shared_lease.task || page->flush!=c->shared_lease.flush ||
+                  page->gpu_adapter!=c->vendor_adapter_v3 || page->gpu_pdo!=WdfDeviceWdmGetPhysicalDevice(device)) status=STATUS_INVALID_DEVICE_STATE;
         else {
             (void)a04_shared_lease_release(&c->shared_lease,token);c->shared_common_active=FALSE;
             RtlZeroMemory(page,sizeof(*page));status=STATUS_SUCCESS;drop=TRUE;
