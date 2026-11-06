@@ -3,6 +3,7 @@
 #define A04_SHARED_AUDIO_INTERFACE_H
 #include <ntddk.h>
 #include <stdint.h>
+#include "../../audio/mt8167-afe/diagnostic.h"
 /* Prototype QUERY_INTERFACE contract; parent retains Context until the last
  * InterfaceDereference. Operations are PASSIVE_LEVEL except Mute (<= APC_LEVEL)
  * and must reject once
@@ -47,6 +48,9 @@ typedef struct _A04_SHARED_AUDIO_INTERFACE {
      * 0=prepared, -1=no writes, -2=partial writes; retain lease after success
      * or -2 until reset. This does not start DMA or unmute the analog route. */
     int (*PreparePlayback)(PVOID, ULONG);
+    /* v11: PASSIVE_LEVEL, read-only observations with per-group valid bits.
+     * Failure leaves the zero-initialized result invalid; no drain claim. */
+    int (*ReadDiagnostic)(PVOID, struct a04_codec_snapshot *);
 } A04_SHARED_AUDIO_INTERFACE;
-#define A04_SHARED_AUDIO_INTERFACE_VERSION 10
+#define A04_SHARED_AUDIO_INTERFACE_VERSION 11
 #endif

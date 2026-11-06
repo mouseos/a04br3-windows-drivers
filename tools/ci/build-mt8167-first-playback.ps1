@@ -67,8 +67,10 @@ try {
     if($LASTEXITCODE -ne 0){throw 'Audio PE inspection failed'}
     Copy-Item (Join-Path $audio 'mt8167-afe-first-playback.inf') $obj
     Copy-Item (Join-Path $root 'drivers\bus\mt8167-shared\prototype\shared-parent.inf') (Join-Path $out 'a04-msdc-parent-probe')
+    & (Join-Path $PSScriptRoot 'build-mt8167-audio-ks-client.ps1') -OutputDirectory (Join-Path $out 'client')
     $files=@((Join-Path $out 'a04-msdc-parent-probe\mt8167-shared.sys'),
-      (Join-Path $out 'a04-msdc-parent-probe\shared-parent.inf'),$binary,(Join-Path $obj 'mt8167-afe-first-playback.inf'))
+      (Join-Path $out 'a04-msdc-parent-probe\shared-parent.inf'),$binary,(Join-Path $obj 'mt8167-afe-first-playback.inf'),
+      (Join-Path $out 'client\mt8167-audio-first-playback.exe'),(Join-Path $out 'client\run-mt8167-audio-first-playback.cmd'))
     $hashes=@($files|ForEach-Object{@{path=$_.Substring($out.Length+1);sha256=(Get-FileHash $_ -Algorithm SHA256).Hash}})
     $commit=(& git -C $root rev-parse HEAD);if($LASTEXITCODE -ne 0){throw 'Cannot identify source commit'}
     $dirty=@(& git -C $root status --porcelain)
@@ -78,7 +80,7 @@ try {
       mode='one initial RUN, resources and D0 power reference pinned until reset';
       calibration='MT6392 hardware trim; Linux cold-start DC profile, no measured AU_LOL ADC calibration';
       installable=$false;note='Unsigned pair and INF only; primary owner must sign/package and validate on target';
-      parent_flags=$parentFlags;audio_flags=$flags;files=$hashes}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+      parent_flags=$parentFlags;audio_flags=$flags;diagnostic_interface=11;client='direct KS, AudioSrv not required; dynamic ksuser.dll';files=$hashes}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
 } finally {
     if($transcript){Stop-Transcript|Out-Null}
     foreach($name in $names){[Environment]::SetEnvironmentVariable($name,$saved[$name],'Process')}

@@ -528,3 +528,12 @@ PnP開始を確認する。Windowsの通常のSpeaker endpoint列挙・topology�
 ローカルでは変更に直接関係する一括ホスト確認を実施。実parent callbackを用いた
 D0→AcquireMuted→PreparePlayback→StartVoice→DL1有効後のUnmute、停止後の資源保持と、
 既存PnP fixtureによる固定PCM RUN接続を確認した。WDK linkと実機試験は主担当が実施する。
+
+## WinPEのKS clientと観測（2026-11-07追記）
+
+08faae5の親・Audio SYSは主担当のWDK 8.1 runnerでcompile/link成功し、PE importsを回収済み。
+次の追加は共有音声interface v11のread-only snapshot、Audio filterの観測IOCTL、
+AudioSrvなしで直接KS pinを開くuserland clientと、既存TOPRGU経由のUART転送。
+[主担当向け手順と全レコード定義](../../../tools/winpe/README-mt8167-audio-first-playback.md) を参照。
+一括ビルド入口は同じで、今回の親子SYSとclientを対で生成する。旧v10 parentとの混用は不可。
+可聴成功と、KS受付・DMA CUR進行・codec状態の観測を区別する。今回の実機確認は未実施。
