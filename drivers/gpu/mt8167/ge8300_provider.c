@@ -235,7 +235,7 @@ typedef struct {
 #if A04_GE8300_VENDOR_RENDER_COLD
     struct a04_vendor_render_cold vendor_render;
 #if A04_GE8300_VENDOR_NATIVE_BACKING
-    struct a04_vendor_native_cold vendor_native;
+    struct a04_vendor_native_cold *vendor_native;
 #endif
 #if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
     struct a04_vendor_copy_scratch vendor_copy;
@@ -780,10 +780,10 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         if(NT_SUCCESS(status))status=a04_vendor_copy_scratch_stage_usc(&c->vendor_copy,a04_copy_usc_asset,sizeof(a04_copy_usc_asset));
         if(NT_SUCCESS(status))status=a04_vendor_copy_scratch_freeze(&c->vendor_copy);
 #if A04_GE8300_VENDOR_NATIVE_BACKING
-        if(NT_SUCCESS(status))status=a04_vendor_native_prepare_cold(&c->vendor_native,
+        if(NT_SUCCESS(status))status=a04_vendor_native_allocate_cold(&c->vendor_native,
             &c->vendor_render,adapter,copy_map_registers,800,1280);
         GpuPrint("A04GPU NATIVE BACKING=");GpuHex((ULONG)status);
-        GpuPrint(" BYTES=");GpuHex(c->vendor_native.used);GpuPrint("\n");
+        GpuPrint(" BYTES=");GpuHex(a04_vendor_native_bytes(c->vendor_native));GpuPrint("\n");
 #endif
         /* Retain device context and adapter for the diagnostic boot.  A
          * reference alone does not establish physical-removal safety. */
@@ -792,7 +792,7 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             (void)a04_vendor_copy_scratch_release(&c->vendor_copy);
         if(!NT_SUCCESS(status) && !c->vendor_copy.exposed) {
 #if A04_GE8300_VENDOR_NATIVE_BACKING
-        if(c->vendor_native.render)(void)a04_vendor_native_release_cold(&c->vendor_native);
+        if(c->vendor_native)(void)a04_vendor_native_release_cold(&c->vendor_native);
 #endif
         (void)a04_vendor_render_release_cold(&c->vendor_render);
         }
@@ -802,7 +802,7 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         if(NT_SUCCESS(status))status=a04_vendor_render_attach_screen(&c->vendor_render,&c->vendor_screen);
         if(!NT_SUCCESS(status)) {
 #if A04_GE8300_VENDOR_NATIVE_BACKING
-        if(c->vendor_native.render)(void)a04_vendor_native_release_cold(&c->vendor_native);
+        if(c->vendor_native)(void)a04_vendor_native_release_cold(&c->vendor_native);
 #endif
         (void)a04_vendor_render_release_cold(&c->vendor_render);
             (void)a04_vendor_surface_release(&c->vendor_screen);
@@ -1131,7 +1131,7 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         a04_vendor_irq_set_power(c->vendor_irq,FALSE);
 #if A04_GE8300_VENDOR_RENDER_COLD
 #if A04_GE8300_VENDOR_NATIVE_BACKING
-        if(c->vendor_native.render)(void)a04_vendor_native_release_cold(&c->vendor_native);
+        if(c->vendor_native)(void)a04_vendor_native_release_cold(&c->vendor_native);
 #endif
         (void)a04_vendor_render_release_cold(&c->vendor_render);
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC

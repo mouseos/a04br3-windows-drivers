@@ -2,7 +2,7 @@
  * Native cold backing contract: NATIVE_COLD_CONTRACT.md / native_resources.
  * PM physical-page protection follows m1.11 rgxta3d.c RGXGrowFreeList's
  * PMMETA_PROTECT allocation. No drawing packet, MMIO kick or FW execution. */
-#include "windows_native_cold.h"
+#include "windows_native_cold_private.h"
 #include "windows_copy_scratch.h"
 #include "A04BR3RogueRuntimeLayout.h"
 #include "A04BR3RogueDeviceWords.h"
@@ -36,7 +36,7 @@ static int owned_range(struct a04_vendor_native_cold *n,const struct a04_vendor_
                 overlap_all(a,&copy->shared)))return 0;
     return 1;
 }
-NTSTATUS a04_vendor_native_release_cold(struct a04_vendor_native_cold *n)
+static NTSTATUS release_contents(struct a04_vendor_native_cold *n)
 {
     uint64_t zero=0;struct a04_vendor_render_cold *r;
     if(!n || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
@@ -64,7 +64,7 @@ NTSTATUS a04_vendor_native_release_cold(struct a04_vendor_native_cold *n)
     if(r)r->native_owner=NULL;
     RtlZeroMemory(n,sizeof(*n));return STATUS_SUCCESS;
 }
-NTSTATUS a04_vendor_native_prepare_cold(struct a04_vendor_native_cold *n,
+static NTSTATUS prepare_contents(struct a04_vendor_native_cold *n,
     struct a04_vendor_render_cold *r,PDMA_ADAPTER adapter,ULONG map_registers,
     ULONG width,ULONG height)
 {
@@ -138,12 +138,12 @@ NTSTATUS a04_vendor_native_prepare_cold(struct a04_vendor_native_cold *n,
     a04_gpu_dma_barrier();n->mapped=TRUE;n->prepared=TRUE;status=STATUS_SUCCESS;
 done:
     if(shadow)ExFreePoolWithTag(shadow,TAG);
-    if(!NT_SUCCESS(status))(void)a04_vendor_native_release_cold(n);
+    if(!NT_SUCCESS(status))(void)release_contents(n);
     return status;
 }
 
 NTSTATUS a04_vendor_native_bind_bank_cold(struct a04_vendor_native_cold *n,
-    const struct a04_m111_hwrt_input hwrt[2])
+    const struct a04_m111_hwrt_input *hwrt)
 {
     UCHAR *allocation;struct a04_m111_native_bank *bank;
     struct a04_m111_native_addresses addresses;unsigned i;
@@ -166,4 +166,27 @@ NTSTATUS a04_vendor_native_bind_bank_cold(struct a04_vendor_native_cold *n,
         a04_gpu_dma_barrier();n->addresses=addresses;n->bank_prepared=TRUE;status=STATUS_SUCCESS;
     }
     ExFreePoolWithTag(allocation,TAG);return status;
+}
+
+ULONG a04_vendor_native_bytes(const struct a04_vendor_native_cold *n)
+{ return n ? n->used : 0; }
+NTSTATUS a04_vendor_native_allocate_cold(struct a04_vendor_native_cold **out,
+    struct a04_vendor_render_cold *r,PDMA_ADAPTER adapter,ULONG maps,ULONG width,ULONG height)
+{
+    struct a04_vendor_native_cold *n;NTSTATUS status;
+    if(!out || *out || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+    n=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*n),TAG);
+    if(!n)return STATUS_INSUFFICIENT_RESOURCES;
+    RtlZeroMemory(n,sizeof(*n));status=prepare_contents(n,r,adapter,maps,width,height);
+    if(!NT_SUCCESS(status) && !n->render)ExFreePoolWithTag(n,TAG);
+    else *out=n; /* Preserve a failed cold cleanup's ownership and allocation. */
+    return status;
+}
+NTSTATUS a04_vendor_native_release_cold(struct a04_vendor_native_cold **owner)
+{
+    NTSTATUS status;
+    if(!owner || !*owner)return STATUS_INVALID_PARAMETER;
+    status=release_contents(*owner);
+    if(NT_SUCCESS(status)){ExFreePoolWithTag(*owner,TAG);*owner=NULL;}
+    return status;
 }
