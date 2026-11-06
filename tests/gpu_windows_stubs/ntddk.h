@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include <wchar.h>
 typedef uint8_t UCHAR, BOOLEAN; typedef uint32_t ULONG; typedef int32_t LONG; typedef uintptr_t ULONG_PTR; typedef uint64_t ULONGLONG;
 typedef int32_t NTSTATUS;
 #ifdef A04_TEST_DISPLAY_SCANOUT
@@ -100,4 +101,12 @@ PMDL IoAllocateMdl(void *,ULONG,BOOLEAN,BOOLEAN,void *);
 void MmBuildMdlForNonPagedPool(PMDL);
 void KeFlushIoBuffers(PMDL,BOOLEAN,BOOLEAN);
 void IoFreeMdl(PMDL);
+/* Older crystal-only firmware fixture: the optional MMPLL record is absent. */
+typedef struct { uint32_t a;uint16_t b,c;uint8_t d[8]; } GUID;
+typedef struct { const wchar_t *value; } UNICODE_STRING;
+#define RTL_CONSTANT_STRING(x) {x}
+#define STATUS_VARIABLE_NOT_FOUND ((NTSTATUS)0xc0000100)
+#define STATUS_NOT_IMPLEMENTED ((NTSTATUS)0xc0000002)
+static inline NTSTATUS ExGetFirmwareEnvironmentVariable(UNICODE_STRING *name,GUID *guid,void *value,ULONG *size,ULONG *attributes)
+{ (void)name;(void)guid;(void)value;(void)size;(void)attributes;return STATUS_VARIABLE_NOT_FOUND; }
 #endif
