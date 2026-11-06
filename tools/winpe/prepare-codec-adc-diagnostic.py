@@ -85,6 +85,8 @@ def main():
         run(['python3',str(Path(__file__).with_name('replace-esp-wim.py')),'--template',str(BASE/'volume-esp.img'),'--wim',str(wim),'--output',str(esp),'--template-bcd-sha256',BCD,'--template-wim-sha256',EXPECTED['volume.wim']])
         boot=out/'boot.img';shutil.copyfile(BASE/'boot.img',boot)
         if sha(boot)!=EXPECTED['boot.img']:raise ValueError('Boot image mismatch')
-        manifest={'driver_source_commit':manifests[0]['source_commit'],'base':EXPECTED,'package_files':{str(p.relative_to(packages)):sha(p) for p in files},'wim':sha(wim),'esp':sha(esp),'boot':sha(boot),'limitations':['Test signatures and device operation unverified','ADC route and mute gate rejects measurements','UART queue acceptance is not transmission','No device writes performed']}
+        builder=run(['git','-C',str(Path(__file__).resolve().parents[2]),'rev-parse','HEAD'],capture_output=True,text=True).stdout.strip()
+        base_manifest=json.loads((BASE/'manifest.json').read_text())
+        manifest={'builder_source_commit':builder,'driver_source_commit':manifests[0]['source_commit'],'uefi_source_commit':base_manifest['uefi_commit'],'base':EXPECTED,'package_files':{str(p.relative_to(packages)):sha(p) for p in files},'wim':sha(wim),'esp':sha(esp),'boot':sha(boot),'limitations':['Test signatures and device operation unverified','ADC route and mute gate rejects measurements','UART queue acceptance is not transmission','No device writes performed']}
         (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 if __name__=='__main__':main()
