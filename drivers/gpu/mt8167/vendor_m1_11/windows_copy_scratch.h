@@ -24,6 +24,9 @@ struct a04_vendor_copy_scratch {
     uint32_t frozen_task[52];
     uint32_t service_expected[1024];
     BOOLEAN service_expected_active;
+    /* Non-NULL only while serialized shared-surface diagnostic runs. */
+    PMDL diagnostic_mdl;
+    volatile uint32_t *diagnostic_cpu;
     BOOLEAN prepared,exposed,usc_ready,task_frozen;
 };
 NTSTATUS a04_vendor_copy_scratch_prepare(struct a04_vendor_copy_scratch *owner,
@@ -53,5 +56,10 @@ NTSTATUS a04_vendor_render_copy_buffer(struct a04_vendor_copy_scratch *owner,
 NTSTATUS a04_vendor_render_copy_buffer_fenced(struct a04_vendor_copy_scratch *owner,
     struct a04_vendor_start *start,const void *input,void *output,size_t bytes,
     uint32_t *task,uint32_t *flush);
+struct a04_shared_scanout;
+struct a04_shared_tables;
+NTSTATUS a04_vendor_render_copy_shared_diagnostic(struct a04_vendor_copy_scratch *,
+    struct a04_vendor_start *,struct a04_shared_scanout *,struct a04_shared_tables *,
+    struct a04_vendor_clear_result *);
 NTSTATUS a04_vendor_copy_scratch_release(struct a04_vendor_copy_scratch *owner);
 #endif

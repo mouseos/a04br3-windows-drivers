@@ -58,6 +58,11 @@ static NTSTATUS SharedLeaseIoctl(HANDLE handle,ULONG code,struct a04_ge8300_shar
     if (NT_SUCCESS(status) && io.Information!=sizeof(*lease))return STATUS_IO_DEVICE_ERROR;
     return status;
 }
+NTSTATUS A04DisplayResources::SwitchShared(uint32_t expected,a04_shared_ovl_ready ready,
+    a04_shared_ovl_boundary boundary,void *context)
+{
+    return a04_shared_ovl_switch(&SharedOvl,&Shared,&Lease,Ovl,0x1000,expected,ready,boundary,context);
+}
 NTSTATUS A04DisplayResources::PrepareViaGpu()
 {
     UNICODE_STRING name=RTL_CONSTANT_STRING(L"\\Device\\A04GE8300");
@@ -79,6 +84,22 @@ NTSTATUS A04DisplayResources::PrepareViaGpu()
         Lease.shared_mdl_owner=&Shared;
         status=SharedLeaseIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_STAGE,&Lease);
         if(NT_SUCCESS(status) && !Lease.inactive_gpu_pc_dma)status=STATUS_DEVICE_CONFIGURATION_ERROR;
+#if A04_GE8300_WDDM_SHARED_DIAGNOSTIC
+        if(NT_SUCCESS(status)) {
+            /* Non-atomic read-only snapshot; it is neither a frame boundary
+             * nor authority to change an enabled OVL layer. */
+            Lease.ovl_enable=READ_REGISTER_ULONG(Ovl+0x00c/4);
+            Lease.ovl_sources=READ_REGISTER_ULONG(Ovl+0x02c/4);
+            Lease.ovl_l0_control=READ_REGISTER_ULONG(Ovl+0x030/4);
+            Lease.ovl_l0_size=READ_REGISTER_ULONG(Ovl+0x038/4);
+            Lease.ovl_l0_pitch=READ_REGISTER_ULONG(Ovl+0x044/4);
+            Lease.ovl_l0_address=READ_REGISTER_ULONG(Ovl+0xf40/4);
+            Lease.ovl_interrupt_status=READ_REGISTER_ULONG(Ovl+0x008/4);
+            status=SharedLeaseIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_DIAGNOSTIC,&Lease);
+            if(NT_SUCCESS(status) && (!Lease.diagnostic_task || !Lease.diagnostic_flush ||
+               Lease.diagnostic_matches!=1024))status=STATUS_DEVICE_CONFIGURATION_ERROR;
+        }
+#endif
     }
     if(!NT_SUCCESS(status)) {
         NTSTATUS released=SharedLeaseIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_UNSTAGE,&Lease);

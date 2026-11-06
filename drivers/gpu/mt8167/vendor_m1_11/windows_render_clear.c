@@ -8,6 +8,12 @@
 #include "clear_validate.h"
 #include "clear_tile.h"
 #include "windows_start.h"
+#ifndef A04_GE8300_SHARED_GPU_DIAGNOSTIC
+#define A04_GE8300_SHARED_GPU_DIAGNOSTIC 0
+#endif
+#if A04_GE8300_SHARED_GPU_DIAGNOSTIC
+#include "windows_shared_tables.h"
+#endif
 #include "A04BR3RogueCommand.h"
 #include "A04BR3RogueDeviceWords.h"
 #include "../windows_hw.h"
@@ -68,6 +74,13 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
        client.ui32DepOffset>4095u || (client.ui32DepOffset&7u)) {status=STATUS_INVALID_DEVICE_STATE;goto done;}
     seq=++r->sequence;packet.task.eCmdType=TQ_TASK;packet.task.ui32CmdSize=208u;
     RtlCopyMemory(packet.payload,copy?copy->frozen_task:r->clear.payload,sizeof(packet.payload));
+#if A04_GE8300_SHARED_GPU_DIAGNOSTIC
+    if(copy && copy->diagnostic_cpu) {
+        uint64_t csr=(UINT64_C(2)<<56)|((UINT64_C(799)&UINT64_C(0x1fffe))<<33)|
+            (UINT64_C(1)<<23)|(UINT64_C(2)<<26)|(UINT64_C(3)<<29);
+        packet.payload[32]=(uint32_t)csr;packet.payload[33]=(uint32_t)(csr>>32);
+    }
+#endif
     packet.update.eCmdType=CLIENT_UPDATE;packet.update.ui32CmdSize=8;
     packet.ufo.puiAddrUFO.ui32Addr=0xc0080000u+r->layout.sync;packet.ufo.ui32Value=seq;
     *sync=0;if(a04_rgx_device_write_words(bank+r->layout.commands[3]+at,&packet,sizeof(packet))) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
@@ -129,9 +142,22 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
     a04_gpu_dma_barrier();
     if(copy) {
         volatile uint32_t *src=copy->source.cpu,*dst=copy->destination.cpu,*shared=copy->shared.cpu;
+#if A04_GE8300_SHARED_GPU_DIAGNOSTIC
+        if(copy->diagnostic_cpu) {
+            KeFlushIoBuffers(copy->diagnostic_mdl,TRUE,TRUE);
+            a04_gpu_dma_barrier();
+        }
+#endif
         for(i=0;i<1024u;i++) {
             uint32_t expected=copy->service_expected_active ? copy->service_expected[i] : a04_vendor_copy_pattern(i);
-            value=dst[i];if(value==expected)result->zeros++;
+            value=dst[i];
+#if A04_GE8300_SHARED_GPU_DIAGNOSTIC
+            if(copy->diagnostic_cpu) {
+                value=copy->diagnostic_cpu[(i/32u)*800u+(i%32u)];
+                if(dst[i]!=0xa5a5a5a5u)result->guard_errors++;
+            }
+#endif
+            if(value==expected)result->zeros++;
             if(src[i]!=expected)result->guard_errors++;
             if(shared[i]!=(i<9u?copy->state.shared[i]:0xa5a5a5a5u))result->guard_errors++;
             if(i==0)result->first=value;
@@ -187,6 +213,69 @@ NTSTATUS a04_vendor_render_copy_once(struct a04_vendor_copy_scratch *o,
     struct a04_vendor_start *s,struct a04_vendor_clear_result *result)
 { return clear_locked(o?o->render:NULL,s,result,FALSE,o); }
 
+#if A04_GE8300_SHARED_GPU_DIAGNOSTIC
+/* Fixed 32x32 diagnostic into the first pixels of the shared 800x1280
+ * surface. The owner holds the provider lifetime lock and a published mapping.
+ * Completion + CPU readback do not establish display visibility or quiescence. */
+NTSTATUS a04_vendor_render_copy_shared_diagnostic(struct a04_vendor_copy_scratch *o,
+    struct a04_vendor_start *s,struct a04_shared_scanout *target,struct a04_shared_tables *tables,
+    struct a04_vendor_clear_result *result)
+{
+    struct a04_vendor_render_cold *r;volatile uint32_t *pixels;uint32_t pds[16];
+    unsigned i;NTSTATUS status;
+    if(!result)return STATUS_INVALID_PARAMETER;
+    RtlZeroMemory(result,sizeof(*result));
+    if(!o || !s || !target || !tables || KeGetCurrentIrql()!=PASSIVE_LEVEL ||
+       !tables->published || !tables->mmu_ack || !tables->quarantined || !target->exposed ||
+       !target->mdl || !target->gpu_sg || !target->display_sg ||
+       !(r=o->render) || r->copy_owner!=o || !o->prepared || !o->exposed ||
+       !o->task_frozen || !o->usc_ready || !r->buffer[7].cpu || r->buffer[7].bytes!=65536u ||
+       !o->source.cpu || !o->destination.cpu || !o->shared.cpu)return STATUS_INVALID_DEVICE_STATE;
+    if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
+    if(r->poisoned || s->command_poisoned || s->shutdown_started || r->cleanup_started ||
+       (r->clear_attempted && !r->clear_verified) || !s->online || !s->memory ||
+       !s->memory->hardware_owned || r->firmware!=s->memory || !target->gpu_adapter ||
+       target->gpu_adapter!=s->memory->adapter ||
+       r->client_write[3]>4095u || r->client_write[3]+sizeof(struct clear_packet)+40u>4096u) {
+        status=STATUS_INVALID_DEVICE_STATE;goto out;
+    }
+    if(a04_rgx_device_read_words(pds,(UCHAR *)r->buffer[7].cpu+64,sizeof(pds))) {
+        status=STATUS_IO_DEVICE_ERROR;goto out;
+    }
+    for(i=0;i<16;i++)if(pds[i]!=o->eot_pds[i]) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto out;}
+    pixels=(volatile uint32_t *)MmGetSystemAddressForMdlSafe(target->mdl,NormalPagePriority);
+    if(!pixels || ((uintptr_t)pixels&3u)){status=STATUS_INSUFFICIENT_RESOURCES;goto out;}
+    for(i=0;i<1024u;i++) {
+        o->service_expected[i]=a04_vendor_copy_pattern(i);
+        pixels[(i/32u)*800u+(i%32u)]=0xa5a5a5a5u;
+        ((volatile uint32_t *)o->destination.cpu)[i]=0xa5a5a5a5u;
+    }
+    KeFlushIoBuffers(target->mdl,FALSE,TRUE);
+    if(a04_rgx_device_write_words(o->source.cpu,o->service_expected,4096)) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
+    RtlCopyMemory(pds,o->eot_pds,sizeof(pds));
+    pds[2]=(uint32_t)(UINT64_C(0x8000000000)>>2);
+    pds[3]=(uint32_t)(UINT64_C(0x8000000000)>>34)|(1u<<19);
+    /* Write only the EOT PDS span under the same lock as the normal copy. */
+    if(a04_rgx_device_write_words((UCHAR *)r->buffer[7].cpu+64,pds,sizeof(pds))) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
+    a04_gpu_dma_barrier();o->service_expected_active=TRUE;o->diagnostic_mdl=target->mdl;o->diagnostic_cpu=pixels;
+    r->clear_attempted=FALSE;r->clear_verified=FALSE;
+    status=clear_locked(r,s,result,TRUE,o);
+    if(result->phase==4) {
+        if(a04_rgx_device_write_words((UCHAR *)r->buffer[7].cpu+64,o->eot_pds,sizeof(o->eot_pds))) {
+            status=STATUS_IO_DEVICE_ERROR;goto poison;
+        }
+        a04_gpu_dma_barrier();
+    }
+    if(!NT_SUCCESS(status))goto poison;
+    o->service_expected_active=FALSE;o->diagnostic_mdl=NULL;o->diagnostic_cpu=NULL;goto out;
+poison:
+    /* Retain changed PDS and mappings if completion is uncertain. */
+    r->poisoned=TRUE;s->command_poisoned=TRUE;
+out:
+    InterlockedExchange(&s->command_busy,0);return status;
+}
+
+#endif
 /* Finite ring experiment: no wrap or teardown is inferred from a fence. */
 NTSTATUS a04_vendor_render_copy_buffer_fenced(struct a04_vendor_copy_scratch *o,
     struct a04_vendor_start *s,const void *input,void *output,size_t bytes,

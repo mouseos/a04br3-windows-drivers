@@ -53,6 +53,9 @@
 #ifndef A04_GE8300_VENDOR_RENDER_COLD
 #define A04_GE8300_VENDOR_RENDER_COLD 0
 #endif
+#ifndef A04_GE8300_SHARED_GPU_DIAGNOSTIC
+#define A04_GE8300_SHARED_GPU_DIAGNOSTIC 0
+#endif
 #ifndef A04_GE8300_SHARED_MMU_PUBLISH
 #define A04_GE8300_SHARED_MMU_PUBLISH 0
 #endif
@@ -71,6 +74,9 @@
 #endif
 #ifndef A04_GE8300_VENDOR_COPY_DIAGNOSTIC
 #define A04_GE8300_VENDOR_COPY_DIAGNOSTIC 0
+#endif
+#if A04_GE8300_SHARED_GPU_DIAGNOSTIC && !A04_GE8300_SHARED_MMU_PUBLISH
+#error Shared GPU diagnostic requires live MMU publication
 #endif
 #if A04_GE8300_SHARED_MMU_PUBLISH && !A04_GE8300_SHARED_LEASE
 #error Live MMU publication requires the shared lease
@@ -189,6 +195,7 @@ typedef struct {
 #if A04_GE8300_SHARED_LEASE
     struct a04_shared_lease_state shared_lease;
     struct a04_shared_tables shared_tables;
+    struct a04_shared_scanout *shared_owner;
 #endif
 #endif
 #endif
@@ -1032,7 +1039,11 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
 #if A04_GE8300_VENDOR_COPY_SERVICE
 #if A04_GE8300_SHARED_LEASE
     if (control==A04_GE8300_IOCTL_SHARED_ACQUIRE || control==A04_GE8300_IOCTL_SHARED_RELEASE ||
-        control==A04_GE8300_IOCTL_SHARED_STAGE || control==A04_GE8300_IOCTL_SHARED_UNSTAGE) {
+        control==A04_GE8300_IOCTL_SHARED_STAGE || control==A04_GE8300_IOCTL_SHARED_UNSTAGE
+#if A04_GE8300_SHARED_GPU_DIAGNOSTIC
+        || control==A04_GE8300_IOCTL_SHARED_DIAGNOSTIC
+#endif
+        ) {
         struct a04_ge8300_shared_lease *lease; uint32_t token; BOOLEAN drop=FALSE;
         if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*lease) || output!=sizeof(*lease)) {
             WdfRequestComplete(request,STATUS_ACCESS_DENIED);return;
@@ -1067,11 +1078,39 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
                     c->vendor_service_online=FALSE;InterlockedExchange(&c->vendor_service_closed,1);
                 }
 #endif
-                if(NT_SUCCESS(status))lease->inactive_gpu_pc_dma=(uint64_t)c->shared_tables.table[0].logical.QuadPart;
+                if(NT_SUCCESS(status)) {
+                    c->shared_owner=(struct a04_shared_scanout *)lease->shared_mdl_owner;
+                    lease->inactive_gpu_pc_dma=(uint64_t)c->shared_tables.table[0].logical.QuadPart;
+                }
             }
+#if A04_GE8300_SHARED_GPU_DIAGNOSTIC
+        } else if(control==A04_GE8300_IOCTL_SHARED_DIAGNOSTIC) {
+            struct a04_vendor_clear_result result;
+            RtlZeroMemory(&result,sizeof(result));
+            if(!token || token!=c->shared_lease.active || !c->shared_owner ||
+               lease->shared_mdl_owner!=c->shared_owner || !c->vendor_service_online ||
+               InterlockedCompareExchange(&c->vendor_service_closed,0,0))status=STATUS_INVALID_DEVICE_STATE;
+            else status=a04_vendor_render_copy_shared_diagnostic(&c->vendor_copy,&c->vendor_start,
+                c->shared_owner,&c->shared_tables,&result);
+            GpuPrint("A04GPU SHARED COPY STATUS=");GpuHex((ULONG)status);
+            GpuPrint(" MATCH=");GpuHex(result.zeros);GpuPrint(" GUARD=");GpuHex(result.guard_errors);
+            GpuPrint(" PHASE=");GpuHex(result.phase);GpuPrint(" TASK=");GpuHex(result.completed_task);
+            GpuPrint(" FLUSH=");GpuHex(result.completed_flush);GpuPrint("\n");
+            GpuPrint("A04GPU OVL SNAP EN=");GpuHex(lease->ovl_enable);
+            GpuPrint(" SRC=");GpuHex(lease->ovl_sources);GpuPrint(" CON=");GpuHex(lease->ovl_l0_control);
+            GpuPrint(" SIZE=");GpuHex(lease->ovl_l0_size);GpuPrint(" PITCH=");GpuHex(lease->ovl_l0_pitch);
+            GpuPrint(" ADDR=");GpuHex(lease->ovl_l0_address);GpuPrint(" IRQ=");GpuHex(lease->ovl_interrupt_status);GpuPrint("\n");
+            if(NT_SUCCESS(status)) {
+                lease->diagnostic_task=result.completed_task;lease->diagnostic_flush=result.completed_flush;
+                lease->diagnostic_matches=result.zeros;
+            }
+            if(c->vendor_start.command_poisoned) {
+                c->vendor_service_online=FALSE;InterlockedExchange(&c->vendor_service_closed,1);
+            }
+#endif
         } else if(control==A04_GE8300_IOCTL_SHARED_UNSTAGE) {
             if(!token || token!=c->shared_lease.active)status=STATUS_INVALID_DEVICE_STATE;
-            else {status=a04_shared_tables_release(&c->shared_tables);if(NT_SUCCESS(status))lease->inactive_gpu_pc_dma=0;}
+            else {status=a04_shared_tables_release(&c->shared_tables);if(NT_SUCCESS(status)){lease->inactive_gpu_pc_dma=0;c->shared_owner=NULL;}}
         } else {
             if(c->shared_tables.ready || c->shared_tables.quarantined)status=STATUS_DEVICE_BUSY;
             else if(!a04_shared_lease_release(&c->shared_lease,token)) status=STATUS_INVALID_DEVICE_STATE;

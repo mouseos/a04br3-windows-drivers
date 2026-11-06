@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent
  * Experimental m1.11 live PC slot and MMUCACHE transaction. The m1.11
- * command layout comes from A04BR3RogueDDKABI.h; 0x1f is the PC/PD/PT/TLB
- * flag combination in MTK m1.8 DDK rgx_fwif_km.h. Its m1.11 hardware effect
- * on this BVNC is NOT established. Compile and call only under the separate
+ * command layout and 0x1f PC/PD/PT/TLB flags match MTK m1.11ED5425693
+ * rgx_fwif_km.h and rgxmem.c for the table's non-SLC_VIVT 22.0.54.30.
+ * The firmware's execution and acknowledgement on this device are untested. Compile and call only under the separate
  * explicit experiment flag; never infer display visibility or DMA stop. */
 #include "windows_shared_tables.h"
 #include "windows_start.h"
@@ -10,7 +10,7 @@
 #include "A04BR3RogueDeviceWords.h"
 #include "../windows_hw.h"
 #define SHARED_PC_INDEX 512u
-#define MMU_FLAGS_EXPERIMENT 0x1fu
+#define MMU_FLAGS_NON_VIVT_22_0_54_30 0x1fu
 _Static_assert(offsetof(RGXFWIF_MMUCACHEDATA,sMemoryContext)==0 &&
     offsetof(RGXFWIF_MMUCACHEDATA,ui32Flags)==4 &&
     offsetof(RGXFWIF_MMUCACHEDATA,sMMUCacheSync)==8 &&
@@ -50,7 +50,7 @@ NTSTATUS a04_shared_tables_publish(struct a04_shared_tables *t,struct a04_shared
     sequence=++s->command_sequence;
     cmd.eCmdType=RGXFWIF_KCCB_CMD_MMUCACHE;cmd.eDM=0;
     cmd.uCmdData.sMMUCacheData.sMemoryContext.ui32Addr=0xc0080000u+r->layout.memory;
-    cmd.uCmdData.sMMUCacheData.ui32Flags=MMU_FLAGS_EXPERIMENT;
+    cmd.uCmdData.sMMUCacheData.ui32Flags=MMU_FLAGS_NON_VIVT_22_0_54_30;
     cmd.uCmdData.sMMUCacheData.sMMUCacheSync=fw->command_sync_addr;
     cmd.uCmdData.sMMUCacheData.ui16MMUCacheSyncUpdateValue=(uint16_t)sequence;
     /* Hardware may observe the root immediately. There is no validated

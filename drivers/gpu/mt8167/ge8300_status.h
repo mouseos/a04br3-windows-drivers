@@ -33,16 +33,20 @@ struct a04_ge8300_fenced_copy {
 #define A04_GE8300_IOCTL_SHARED_RELEASE 0x00226024u
 #define A04_GE8300_IOCTL_SHARED_STAGE 0x00226028u
 #define A04_GE8300_IOCTL_SHARED_UNSTAGE 0x0022602cu
+#define A04_GE8300_IOCTL_SHARED_DIAGNOSTIC 0x00226030u
 struct a04_ge8300_shared_lease {
     void *gpu_adapter, *gpu_pdo, *shared_mdl_owner;
     uint64_t inactive_gpu_pc_dma;
     uint32_t token, task_sequence, flush_sequence;
+    uint32_t diagnostic_task, diagnostic_flush, diagnostic_matches;
+    uint32_t ovl_enable, ovl_sources, ovl_l0_control, ovl_l0_size;
+    uint32_t ovl_l0_pitch, ovl_l0_address, ovl_interrupt_status;
 };
 #if defined(_ARM_)
 #ifdef __cplusplus
-static_assert(sizeof(struct a04_ge8300_shared_lease)==40 && offsetof(struct a04_ge8300_shared_lease,inactive_gpu_pc_dma)==16, "shared lease ABI");
+static_assert(sizeof(struct a04_ge8300_shared_lease)==80 && offsetof(struct a04_ge8300_shared_lease,inactive_gpu_pc_dma)==16, "shared lease ABI");
 #else
-_Static_assert(sizeof(struct a04_ge8300_shared_lease)==40 && offsetof(struct a04_ge8300_shared_lease,inactive_gpu_pc_dma)==16, "shared lease ABI");
+_Static_assert(sizeof(struct a04_ge8300_shared_lease)==80 && offsetof(struct a04_ge8300_shared_lease,inactive_gpu_pc_dma)==16, "shared lease ABI");
 #endif
 #endif
 #define A04_GE8300_IOCTL_REPORT_DISPLAY 0x0022600cu

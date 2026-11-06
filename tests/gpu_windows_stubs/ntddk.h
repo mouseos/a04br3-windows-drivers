@@ -31,6 +31,8 @@ typedef void (*PDRIVER_LIST_CONTROL)(PDEVICE_OBJECT,PIRP,PSCATTER_GATHER_LIST,PV
 #define IO_NO_INCREMENT 0
 #define MmNonCached 0
 #define MM_ALLOCATE_FULLY_REQUIRED 1
+#define NormalPagePriority 0
+void *MmGetSystemAddressForMdlSafe(PMDL,int);
 PMDL MmAllocatePagesForMdlEx(PHYSICAL_ADDRESS,PHYSICAL_ADDRESS,PHYSICAL_ADDRESS,SIZE_T,int,ULONG);
 void MmFreePagesFromMdl(PMDL);
 void ExFreePool(void *);

@@ -137,7 +137,7 @@ supports unexposed preparation and must be redesigned before hardware use.
 
 With both `A04_GE8300_SHARED_LEASE=1` in the vendor copy provider and
 `A04_GE8300_WDDM_DIRECT_EXPERIMENT=1` plus
-`A04_GE8300_WDDM_SHARED_LEASE=1` in WDDM, WDDM sparsely retries a kernel-only
+`A04_GE8300_WDDM_SHARED_LEASE=1` in WDDM, WDDM retries a kernel-only
 lease after a synchronous present. The provider grants it only after a
 successful existing vendor copy, including its TQ UFO, SLC flush, GP fence,
 output verification and readback. It holds a WDF device reference and blocks
@@ -177,9 +177,20 @@ m1.11 typed `RGXFWIF_KCCB_CMD_MMUCACHE` for the render memory context and waits
 for both KCCB consumption and an exact nonzero 16-bit sync value. The existing
 copy command stream and its mappings are not modified.
 
-The `0x1f` PC/PD/PT/TLB flags are based on the MTK m1.8 DDK and the command
-structure on the m1.11 ABI; the flags' applicability and acknowledgement
-semantics on this device/firmware have **not** been established. This is an
+The `0x1f` PC/PD/PT/TLB flags are supported by the exact MTK m1.11ED5425693
+DDK: `rgx_fwif_km.h` defines PC=4, PD=2, PT=1 and non-VIVT TLB=0x18;
+`rgxmem.c` accumulates these for changed levels and requests TLB for non-VIVT.
+The DDK `gaFeatures` entry for 22.0.54.30 is 0x22c24ec05 and the SLC_VIVT
+bit is bit 32, which is clear; the captured hardware BVNC is 22.40.54.30.
+Source: mouseos/android_kernel_benesse_TAB-A04-BR3 commit
+`eb47f42e1f84fe5716ef239620725f82718a620a`, paths
+`drivers/misc/mediatek/gpu/gpu_rgx/m1.11ED5425693/services/include/rgx_fwif_km.h`,
+`services/server/devices/rgx/rgxmem.c`, and
+`hwdefs/km/rgx_bvnc_table_km.h` / `rgx_bvnc_defs_km.h`.
+The source submits a 16-bit update to a dedicated sync primitive; our reuse of
+the command sync, exact-ack rule and the memory-context field are design
+choices not established by that source. Firmware execution and ack semantics
+on this Windows/device configuration remain untested. This is an
 experiment, not a claim of correct invalidation. Once the root write is
 attempted, the shared MDL, both DMA mappings, tables and lease are retained,
 including after an acknowledgement. A failed or timed-out MMU command poisons
@@ -188,3 +199,37 @@ forbidden. Normal D0 exit is blocked while leased, but surprise removal and a
 full stop/drain are not solved. No render request targets the shared VA and
 no OVL switch is performed; display-side bounce/cache visibility and frame
 synchronization remain separate, unverified prerequisites.
+
+## Shared GPU copy and OVL combined diagnostic
+
+With the separate provider `A04_GE8300_SHARED_GPU_DIAGNOSTIC=1` and WDDM
+`A04_GE8300_WDDM_SHARED_DIAGNOSTIC=1` flags, the existing native22 copy task
+is submitted to the already-published shared GPU VA for a fixed top-left
+32x32 tile on the 800-pixel, 3200-byte pitch. Under the existing command and
+lifetime locks, its PBE CSR and EOT PDS destination are changed for that
+one task; after TQ completion, SLC flush and GP fence the old EOT PDS is
+restored. The shared MDL is synchronized for a CPU diagnostic read and all
+1024 expected words, the private copy destination, source and guards are
+checked. A mismatch or uncertain completion poisons the existing copy queue
+and retains resources. Success only establishes the diagnostic's CPU view,
+not display DMA visibility or a complete initialized frame.
+
+WDDM takes a non-atomic, read-only OVL register snapshot and passes it with
+the diagnostic request. Provider UART reports `A04GPU SHARED COPY STATUS`,
+`MATCH`, `GUARD`, `PHASE`, `TASK`, `FLUSH`, plus `A04GPU OVL SNAP` fields.
+A host can prepare paired test packages with
+`tools/ci/build-ge8300-shared-diagnostic.ps1` and explicit original firmware
+and native22 USC asset paths. The diagnostic needs the ordinary copy service
+to have completed a copy before the shared lease is admitted. The UART output
+and success codes are observations to validate on a single boot, not proof of
+OVL latch or safe DMA teardown. This script does not install or flash.
+
+`windows_shared_ovl.c` connects the actual shared display DMA address to OVL
+switch and restoration operations through WDDM's resource owner. It refuses to
+write unless trusted platform callbacks establish both complete-frame contents
+and display-side visibility for that exact mapping, as well as an exclusive
+safe frame boundary. It also checks the current single-layer, size, pitch,
+format and old address. No such callbacks or call site exist: the combined
+diagnostic reads OVL only. The 32x32 GPU result is not a complete frame.
+Both surfaces and the shared lease remain retained even after a switch or
+restore write; no interrupt or readback is treated as retirement.

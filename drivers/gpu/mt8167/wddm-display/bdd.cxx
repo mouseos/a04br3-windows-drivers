@@ -546,11 +546,10 @@ NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DIS
                                                                     pPresentDisplayOnly->pDirtyRect,
                                                                     RotationNeededByFb);
 #if A04_GE8300_WDDM_SHARED_LEASE
-            /* GPU provider admits the lease only after a verified copy/fence.
-             * Sparse retries avoid opening a device on every CPU present. */
+            /* Diagnostic-only: the provider admits the lease only after a
+             * verified copy/fence. Retry while the copy service is not ready. */
             if (NT_SUCCESS(presentStatus) && m_DisplayResources.Adapter &&
-                !m_DisplayResources.Shared.mdl && !m_DisplayResources.GpuHandle &&
-                !(m_DisplayResources.PrepareCounter++ & 127u))
+                !m_DisplayResources.Shared.mdl && !m_DisplayResources.GpuHandle)
                 (void)m_DisplayResources.PrepareViaGpu();
 #endif
             return presentStatus;

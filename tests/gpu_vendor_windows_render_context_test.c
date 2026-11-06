@@ -5,6 +5,12 @@
 #include "windows_render_cold.h"
 #include "windows_copy_scratch.h"
 #include "windows_start.h"
+#if A04_GE8300_SHARED_GPU_DIAGNOSTIC
+#include "windows_shared_tables.h"
+static unsigned diagnostic_flushes;
+void *MmGetSystemAddressForMdlSafe(PMDL mdl,int priority){(void)priority;return mdl->va;}
+void KeFlushIoBuffers(PMDL mdl,BOOLEAN read,BOOLEAN dma){(void)mdl;assert(dma);diagnostic_flushes+=(read?2u:1u);}
+#endif
 #include "A04BR3RogueRuntimeLayout.h"
 static struct a04_vendor_render_cold *sim;
 static struct a04_rgx_fw_runtime *run;
@@ -40,9 +46,24 @@ void KeStallExecutionProcessor(unsigned us)
     if(current==5) {
         ctl=(void *)(bank+sim->layout.control[3]);
         off=cmd->uCmdData.sCmdKickData.ui32CWoffUpdate;
-        assert(off>=296 && !memcmp(bank+sim->layout.commands[3]+off-296+40,copy_sim->frozen_task,208));
+        assert(off>=296);
+#if A04_GE8300_SHARED_GPU_DIAGNOSTIC
+        if(copy_sim->diagnostic_cpu) {
+            uint32_t *task=(uint32_t *)(void *)(bank+sim->layout.commands[3]+off-296+40);
+            uint64_t csr=(UINT64_C(2)<<56)|((UINT64_C(799)&UINT64_C(0x1fffe))<<33)|
+                (UINT64_C(1)<<23)|(UINT64_C(2)<<26)|(UINT64_C(3)<<29);
+            for(unsigned n=0;n<52;n++)if(n!=32 && n!=33)assert(task[n]==copy_sim->frozen_task[n]);
+            assert(task[32]==(uint32_t)csr && task[33]==(uint32_t)(csr>>32));
+            assert(((uint32_t *)sim->buffer[7].cpu)[18]==(uint32_t)(UINT64_C(0x8000000000)>>2));
+            for(unsigned n=0;n<1024;n++)copy_sim->diagnostic_cpu[(n/32)*800+n%32]=((uint32_t *)copy_sim->source.cpu)[n];
+            if(complete==5)copy_sim->diagnostic_cpu[31*800+31]^=1u;
+        } else
+#endif
+        {
+            assert(!memcmp(bank+sim->layout.commands[3]+off-296+40,copy_sim->frozen_task,208));
+            memcpy(copy_sim->destination.cpu,copy_sim->source.cpu,4096);
+        }
         ctl->ui32ReadOffset=ctl->ui32WriteOffset=off;
-        memcpy(copy_sim->destination.cpu,copy_sim->source.cpu,4096);
         *(uint32_t *)(void *)(bank+sim->layout.sync)=sim->sequence;
         run->kctl->ui32ReadOffset=run->kctl->ui32WriteOffset;return;
     }
@@ -70,7 +91,7 @@ void KeStallExecutionProcessor(unsigned us)
 int main(void)
 {
     unsigned char *bank=aligned_alloc(4096,65536),*core=calloc(1,0x8000),*target=aligned_alloc(4096,65536);
-    uint32_t pds[16]={0};uint32_t command_sync=0;struct a04_vendor_clear_result clear;
+    uint32_t pds[64]={0};uint32_t command_sync=0;struct a04_vendor_clear_result clear;
     RGXFWIF_CCB_CTL kctl={0},fctl={0};RGXFWIF_KCCB_CMD *cmd=calloc(128,sizeof(*cmd));
     struct a04_vendor_render_cold r={0};struct a04_vendor_m1_11_memory mem={0};
     struct a04_rgx_fw_runtime runtime={0};struct a04_vendor_start start={0};
@@ -163,7 +184,7 @@ int main(void)
         start.command_poisoned=FALSE;start.command_sequence=0;current=4;complete=1;
         assert(a04_vendor_render_clear_once(&r,&start,&clear)==STATUS_SUCCESS);
         assert(clear.zeros==1024 && !clear.guard_errors && clear.phase==4);
-        { uint32_t seq=r.sequence, fence=start.command_sequence, pds_before[16];
+        { uint32_t seq=r.sequence, fence=start.command_sequence, pds_before[64];
           memcpy(pds_before,pds,sizeof(pds));
           assert(a04_vendor_render_next_tile(&r,&start,1,&clear)==STATUS_INVALID_DEVICE_STATE);
           inject_cleanup=1;
@@ -235,6 +256,35 @@ int main(void)
             assert(task==r.sequence && flush==start.command_sequence && task && flush);
             assert(!memcmp(in,out,sizeof(in)) && !r.poisoned && !copy.service_expected_active);
           }
+#if A04_GE8300_SHARED_GPU_DIAGNOSTIC
+          {
+            struct fake_mdl mdl={0};struct a04_shared_scanout surface={0};struct a04_shared_tables tables={0};
+            DMA_OPERATIONS dma_ops={0};struct fake_adapter gpu_adapter={&dma_ops};
+            uint32_t *screen=calloc(1,4096000);assert(screen);mdl.va=screen;mdl.bytes=4096000;
+            mem.adapter=&gpu_adapter;surface.gpu_adapter=&gpu_adapter;
+            surface.mdl=&mdl;surface.gpu_sg=(PSCATTER_GATHER_LIST)1;surface.display_sg=(PSCATTER_GATHER_LIST)1;surface.exposed=TRUE;
+            tables.published=tables.mmu_ack=tables.quarantined=TRUE;
+            r.buffer[7].cpu=pds;r.buffer[7].bytes=65536;
+            for(j=0;j<16;j++)copy.eot_pds[j]=pds[16+j]=0x12000000u+j;
+            tables.mmu_ack=FALSE;
+            assert(a04_vendor_render_copy_shared_diagnostic(&copy,&start,&surface,&tables,&clear)==STATUS_INVALID_DEVICE_STATE);
+            assert(!diagnostic_flushes && screen[0]==0);
+            tables.mmu_ack=TRUE;
+            assert(a04_vendor_render_copy_shared_diagnostic(&copy,&start,&surface,&tables,&clear)==STATUS_SUCCESS);
+            assert(clear.zeros==1024 && !clear.guard_errors && clear.completed_task && clear.completed_flush && diagnostic_flushes==3);
+            for(j=0;j<16;j++)assert(pds[16+j]==copy.eot_pds[j]);
+            assert(screen[0]==a04_vendor_copy_pattern(0) && screen[31*800+31]==a04_vendor_copy_pattern(1023));
+            assert(screen[32]==0 && !copy.diagnostic_cpu && !copy.diagnostic_mdl);
+            complete=5;
+            assert(a04_vendor_render_copy_shared_diagnostic(&copy,&start,&surface,&tables,&clear)==STATUS_DATA_ERROR);
+            assert(clear.zeros==1023 && !clear.completed_task && !clear.completed_flush && r.poisoned && start.command_poisoned);
+            for(j=0;j<16;j++)assert(pds[16+j]==copy.eot_pds[j]);
+            /* Reset only this synthetic harness; production retains poison. */
+            r.poisoned=FALSE;start.command_poisoned=FALSE;r.clear_verified=TRUE;
+            copy.diagnostic_cpu=NULL;copy.diagnostic_mdl=NULL;copy.service_expected_active=FALSE;complete=1;
+            free(screen);mem.adapter=NULL;
+          }
+#endif
           { uint32_t old=r.client_write[3],sequence=r.sequence,write=kctl.ui32WriteOffset;
             r.client_write[3]=3800u;memset(out,0x69,sizeof(out));
             assert(a04_vendor_render_copy_buffer(&copy,&start,in,out,sizeof(in))==STATUS_DEVICE_BUSY);
