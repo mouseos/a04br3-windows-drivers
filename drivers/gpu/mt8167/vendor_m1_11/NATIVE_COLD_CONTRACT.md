@@ -123,3 +123,6 @@ output VA0x8000000000、pitch800の場合、emit={0,0x80020}、CSR0=0x0200063c68
 VDM={PPP address high|0x300,PPP address low&~3,0xc0000000}、PPP={0x02000000,screen_xy_max,0}。screen_xy_maxは同版native surface+0x150の完全wordを入力する。HWRT ppp_screenとは別registerであり、modern XMLの32-pixel単位へ変換しない。許容bitはX最大bits18..26、Y最大bits0..8。このsuffixだけで空のTA streamが描画可能であることは未証明。先頭state／clear trigger、TA register残部、data必須初期化の確定は引き続き必要。
 
 Windows選定例として、data arenaが[0x65c0200000,0x65c0400000)で現allocationが0x158000 bytesなら、直後0x65c0358000へこの1pageを追加できる（owner inventory照合必須）。この場合PPP VA=0x65c0358040、data backing合計0x159000 bytes。物理ページとPT mapping、barrier、GPU owner前のcopy完了はruntime担当。screen_xy_maxの最終取得／寸法profile照合は未完了なので推測値をpublishしない。
+
+
+clip入力の追加確定: `a04_m111_build_clear_terminate_stream(out,page_gpu,width,height)`はAddRTと同版getterを接続し、single sampleのceil(width/16)-1 / ceil(height/16)-1からclip wordを構築する。getter 0x1258b8、証拠ev_2a52e0ae5f4979e58962d3a101e91d124fc30380ece2c3640ad842414a2c4178はdataset+0x34/+0x38をそのまま返す。AddRT 0x124a34の既存証拠ev_f33018709a2c5a26acbe7e73ed517452c2a058a13e38b56f1fdac9c58fbc5752はceil(/16)-1を当該2fieldへ保存。StartFrame 0x15e9c8がX<<18|Yへ変換。800x600=0x00c40025、800x1280=0x00c4004f。直前の「寸法profile照合は未完了」はこの追加証拠で解決済み。空TA streamの成立・先頭state・完全recordは未確定のまま。

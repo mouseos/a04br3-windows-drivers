@@ -20,3 +20,15 @@ int a04_m111_build_terminate_stream(struct a04_m111_terminate_stream *out,
     /* PPP third word=RT0,left0, observed in native producer. */
     *out=made;return 0;
 }
+
+/* RGXAddRenderTarget 0x124a34: dataset+0x34=ceil(width/16)-1,
+ * dataset+0x38=ceil(height/16)-1. Getter 0x1258b8 returns these unchanged;
+ * GLES StartFrame 0x15e9c8 packs (xmax<<18)|ymax into surface+0x150. */
+int a04_m111_build_clear_terminate_stream(struct a04_m111_terminate_stream *out,
+    uint64_t page_gpu,uint32_t width,uint32_t height)
+{
+    uint32_t x,y;
+    if(!width || !height || width>4096u || height>4096u)return 1;
+    x=(width+15u)/16u-1u;y=(height+15u)/16u-1u;
+    return a04_m111_build_terminate_stream(out,page_gpu,(x<<18)|y);
+}
