@@ -43,7 +43,7 @@ static DWORD uart_record(const char *line,DWORD length)
  memcpy(packet->text,line,length);
  packet->operation.hEvent=CreateEventW(NULL,TRUE,FALSE,NULL);
  if(!packet->operation.hEvent){error=GetLastError();HeapFree(GetProcessHeap(),0,packet);return error;}
- port=CreateFileW(L"\\.\A04BR3ScreenUart",GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_FLAG_OVERLAPPED,NULL);
+ port=CreateFileW(L"\\\\.\\A04BR3ScreenUart",GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_FLAG_OVERLAPPED,NULL);
  if(port==INVALID_HANDLE_VALUE){error=GetLastError();goto done;}
  for(;;){
   ResetEvent(packet->operation.hEvent);
