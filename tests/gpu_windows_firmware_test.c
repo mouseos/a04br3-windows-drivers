@@ -71,7 +71,7 @@ int main(int argc,char **argv)
 {
     FILE *f; long n; uint8_t *image,*regs; NTSTATUS status; struct rogue_fwif_kccb_cmd kick={0};
     struct a04_gpu_queue_test_memory queue_memory={0};
-    DMA_OPERATIONS ops={allocate,release}; struct fake_adapter adapter={&ops};
+    DMA_OPERATIONS ops={.AllocateCommonBuffer=allocate,.FreeCommonBuffer=release}; struct fake_adapter adapter={&ops};
     if(argc!=2 || !(f=fopen(argv[1],"rb"))) return 1;
     if(fseek(f,0,SEEK_END) || (n=ftell(f))<=0 || fseek(f,0,SEEK_SET)) return 2;
     image=malloc((size_t)n); regs=calloc(1,0x80000);
