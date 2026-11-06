@@ -28,7 +28,8 @@
    WPA/WPA2、5GHz、channel14、ローミング、省電力運用は本miniportの対応に含めない。
 9. NBL送信は既存HIF TXとTX_DONE照合へ、受信は実RX vectorからPHY/rate/RCPIを
    取り出してNDISへ同期RESOURCES indicationする。未観測のリンク速度は不明値のまま。
-   disconnectはordered stopと新しいcold-start世代へ進む。
+   disconnectとPHY+MACのRESET_REQUESTはordered stopと新しいcold-start世代へ進む。
+   MAC単独／PHY単独resetと個体MACのoverrideは対応に含めない。
 
 ## 動的NVRAMとeMMC
 
