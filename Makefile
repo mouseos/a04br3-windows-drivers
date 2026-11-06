@@ -3,6 +3,24 @@ CLANG ?= clang
 CFLAGS ?= -O2 -Wall -Wextra -Werror -std=c11
 SRC := drivers/storage/mt8167-msdc
 
+.PHONY: test-gpu-m111-native
+test-gpu-m111-native: build/gpu_m111_native_resources_test build/gpu_m111_native_fields_test build/gpu_m111_native_ccb_test
+	./build/gpu_m111_native_resources_test
+	./build/gpu_m111_native_fields_test
+	./build/gpu_m111_native_ccb_test
+
+build/gpu_m111_native_ccb_test: tests/gpu_m111_native_ccb_test.c drivers/gpu/mt8167/vendor_m1_11/native_ccb.c drivers/gpu/mt8167/vendor_m1_11/native_ccb.h drivers/gpu/mt8167/vendor_m1_11/native_record_fields.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueDDKABI.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
+
+build/gpu_m111_native_fields_test: tests/gpu_m111_native_fields_test.c drivers/gpu/mt8167/vendor_m1_11/native_record_fields.c drivers/gpu/mt8167/vendor_m1_11/native_record_fields.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
+
+build/gpu_m111_native_resources_test: tests/gpu_m111_native_resources_test.c drivers/gpu/mt8167/vendor_m1_11/native_resources.c drivers/gpu/mt8167/vendor_m1_11/native_resources.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueDDKABI.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
+
 .PHONY: test test-thermal test-ntfs-root arm-coff clean
 
 test: build/gpu_mmu_multileaf_test test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registration test-mt8167-wavert-miniport test-mt8167-audio-resource
