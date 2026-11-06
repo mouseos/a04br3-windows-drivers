@@ -17,7 +17,12 @@ int a04_windows_diagnostic_start(struct a04_windows_diagnostic *d,A04_SHARED_WIF
 }
 int a04_windows_diagnostic_stop(struct a04_windows_diagnostic *d)
 {
- if(!d||(d->state!=A04_DIAG_CONTROL&&d->state!=A04_DIAG_READY))return -1;
+ /* A firmware or bridge failure can leave an initialized life with I/O or
+  * a faulted transport. It still needs the normal ordered rundown. Earlier
+  * board failures have no initialized life and must not release its lease. */
+ if(!d||(d->state!=A04_DIAG_CONTROL&&d->state!=A04_DIAG_READY&&
+    !(d->state==A04_DIAG_FAILED && (d->life.state==A04_WIFI_LIFE_IO ||
+                                     d->life.state==A04_WIFI_LIFE_FAILED))))return -1;
  if(a04_wifi_life_stop(&d->life)){d->state=A04_DIAG_FAILED;return -1;}
  d->state=A04_DIAG_STOPPED;return 0;
 }
