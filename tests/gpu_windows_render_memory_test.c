@@ -58,7 +58,7 @@ NTSTATUS a04_gpu_firmware_submit_kick(struct a04_gpu_firmware_state *s,const str
   return kick_fail || kick_calls==kick_fail_at ? STATUS_IO_TIMEOUT : STATUS_SUCCESS; }
 int main(void)
 {
-    DMA_OPERATIONS ops={alloc_buf,free_buf};struct fake_adapter adapter={&ops};
+    DMA_OPERATIONS ops={.AllocateCommonBuffer=alloc_buf,.FreeCommonBuffer=free_buf};struct fake_adapter adapter={&ops};
     struct a04_gpu_firmware_state s={0};struct a04_windows_render_memory m={0};
     struct rogue_fwif_geom_registers_caswitch static_state={0};
     struct a04_windows_render_map maps[]={{0x80000b6000ULL,0,4,0,A04_GPU_MMU_SLC_BYPASS},{0xda00002000ULL,4,1,1,A04_GPU_MMU_READ_ONLY},
