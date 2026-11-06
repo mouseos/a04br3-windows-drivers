@@ -695,3 +695,20 @@ latch, or old-surface retirement. The GPU frame is still intentionally not
 scanned out: there is no board proof provider or production caller for the
 conditional GCE transaction. Snapshot lifetime, explicit-flush semantics, PnP
 and power transitions require device validation; the feature defaults off.
+
+On the user's `windows-rt-present-capture-3620f12-uart.log` boot, the worker
+reported 9B=0, 9C=1, 8B=0, 5E=3E8, 5F=0, 66=0, 98=0, 60=FA000 and
+61=0. The normal-present POST snapshot, complete GPU copy, explicit GPU DMA
+flush and CPU comparison were observed in that order. This does not observe
+the display engine reading the GPU allocation or establish a frame latch.
+The old `OVL_SRC_CON=9`, L0=BE9C0000 and L3=BEDA8000 were also observed.
+
+The guarded GCE transition now checks two matching OVL register snapshots
+against the board's DisplayInitDxe setup, both original addresses and a
+non-overlapping 4,096,000-byte target in the OVL address domain. The board
+UEFI reserves 0xBE9C0000..0xBF9BFFFF and configures both old layers there.
+This is a real validation of the known layout, not evidence that OVL state
+cannot subsequently change, that saved surfaces remain owned, or that GCE,
+its clock, interrupt and event are free. The independently supplied lease,
+visibility and quiescence proof is still required; no existing provider
+supplies it and the routine is not yet called by normal present.
