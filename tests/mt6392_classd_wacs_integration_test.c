@@ -17,8 +17,10 @@ int main(void){struct fixture f;struct a04_mt6392_classd c;struct a04_mt6392_aud
  assert(!a04_pmic_audio_rails(&f.bus,&rails) && rails.vaud22_selector==0x60 && a04_pmic_audio_rails_ready(&rails));
  f.regs[0x424/2]=0x4000;assert(!a04_pmic_audio_rails(&f.bus,&rails) && !a04_pmic_audio_rails_ready(&rails));
  assert(!a04_mt6392_classd_start_muted(&c) && c.active && f.clock.held && f.regs[0x108/2]==0x8000 && !(f.regs[0x64/2]&0xf00) && f.delays==2);
+ {unsigned writes=f.writes;assert(!a04_mt6392_classd_verify_muted(&c) && f.writes==writes);}
 #if defined(A04_MT6392_UNMUTE_DIAGNOSTIC) && A04_MT6392_UNMUTE_DIAGNOSTIC
  assert(!a04_mt6392_classd_unmute_min(&c) && (f.regs[0x64/2]&0xf00)==0x100);
+ {unsigned writes=f.writes;assert(a04_mt6392_classd_verify_muted(&c) && f.writes==writes);}
 #else
  assert(a04_mt6392_classd_unmute_min(&c) && !(f.regs[0x64/2]&0xf00));
 #endif
