@@ -8,7 +8,7 @@ SRC := drivers/storage/mt8167-msdc
 test: build/gpu_mmu_multileaf_test test-mt8167-pwrap-owner test-mt8167-irq-windows test-mt8167-wavert-registration test-mt8167-wavert-miniport test-mt8167-audio-resource
 test: test-mma8652 build/msdc_resume_check_test build/msdc_resume_capture_test
 test: build/bq24160_owner_broker_test build/bq24160_recovery_test
-test: build/bq24160_client_transfer_test
+test: build/bq24160_client_transfer_test build/lc709203f_battery_class_test
 test: test-mt8167-pnp-backend test-mt8167-audio-adapter-pnp test-mt8167-common-dma test-mt8167-dma-adapter test-mt8167-clock-owner test-mt8167-stream-transport
 test: build/gpu_render_shared_size_test test-toprgu-handoff build/gpu_render_context_pds_test
 test: test-mt8167-shared-wdf test-mt8167-shared-audio test-mt8167-shared-transport
@@ -72,6 +72,7 @@ test: build/msdc_shared_drain_test build/msdc_touch_shared_test build/msdc_pin_u
 	python3 tests/gpu_render_upload_candidates_test.py
 	python3 tests/gpu_render_csb_summary_test.py
 	./build/lc709203f_test
+	./build/lc709203f_battery_class_test
 	./build/lc709203f_i2c_test
 	./build/msdc_io_gate_test
 	./build/msdc_lifetime_test
@@ -199,6 +200,10 @@ build/gpu_render_freelist_test: drivers/gpu/mt8167/render_freelist.c drivers/gpu
 build/gpu_render_stream_test: drivers/gpu/mt8167/render_stream.c drivers/gpu/mt8167/render_stream.h tests/gpu_render_stream_test.c tests/gpu_render_mesa_fixture.h
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/compat -Idrivers/gpu/mt8167/fwif drivers/gpu/mt8167/render_stream.c tests/gpu_render_stream_test.c -o $@
+
+build/lc709203f_battery_class_test: drivers/power/lc709203f/battery_class.c drivers/power/lc709203f/battery_class.h drivers/power/bq24160/battery_status.h tests/lc709203f_battery_class_test.c tests/battery_class_stubs/ntddk.h tests/battery_class_stubs/wdf.h tests/battery_class_stubs/batclass.h
+	mkdir -p build
+	$(CC) $(CFLAGS) -Itests/battery_class_stubs -Idrivers/power/lc709203f -Idrivers/power/bq24160 drivers/power/lc709203f/battery_class.c tests/lc709203f_battery_class_test.c -o $@
 
 build/lc709203f_test: drivers/power/lc709203f/gauge.c drivers/power/lc709203f/gauge.h tests/lc709203f_test.c
 	mkdir -p build

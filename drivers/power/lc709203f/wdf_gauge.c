@@ -8,6 +8,9 @@
 #include "battery_class.h"
 #include "mt8167_i2c.h"
 #include "../bq24160/charger.h"
+#if A04_BQ24160_EXPERIMENTAL
+#include "../bq24160/battery_status.h"
+#endif
 #include "../bq24160/mt8167_i2c.h"
 #ifndef A04_BQ24160_EXPERIMENTAL
 #define A04_BQ24160_EXPERIMENTAL 0
@@ -350,8 +353,10 @@ static void poll(GAUGE_CONTEXT *c)
             if (deadline>c->owner_broker.lifetime) deadline=c->owner_broker.lifetime;
             error=deadline ? a04_broker_lifecycle_sample_local(&c->owner_lifecycle,deadline,&sample) : -1;
             if (!error) {
-                changed=a04_battery_set_external(&c->battery,TRUE);
-                changed|=a04_battery_publish(&c->battery,&sample);
+                /* The broker has accepted this cached BQ snapshot and kicked
+                 * its watchdog. Linux reports STAT 3/4 as charging. */
+                changed=a04_battery_publish_power(&c->battery,&sample,
+                    BATTERY_POWER_ON_LINE | (a04_bq_status_charging(c->charger.latest.raw[0]) ? BATTERY_CHARGING : 0));
             } else if (error>0) {
                 /* Invalid gauge data does not invalidate a healthy shared bus. */
                 changed=a04_battery_invalidate(&c->battery);
@@ -383,7 +388,6 @@ static void poll(GAUGE_CONTEXT *c)
     }
     /* Only accepted charger snapshots establish usable external input.
      * A failed or ambiguous sample invalidates the battery status entirely. */
-    changed = a04_battery_set_external(&c->battery, TRUE);
 #endif
     if (a04_gauge_read_sample(&c->bus, &sample)) {
         trace(c, "A04BAT SAMPLE FAILED reason="); trace_hex(c, c->adapter.fault_reason);
@@ -403,7 +407,14 @@ static void poll(GAUGE_CONTEXT *c)
         }
     } else {
         trace(c, "A04BAT SAMPLE VALID\n");
+#if A04_BQ24160_EXPERIMENTAL
+        {
+            changed |= a04_battery_publish_power(&c->battery,&sample,
+                BATTERY_POWER_ON_LINE | (a04_bq_status_charging(c->charger.latest.raw[0]) ? BATTERY_CHARGING : 0));
+        }
+#else
         changed |= a04_battery_publish(&c->battery, &sample);
+#endif
     }
 #endif
     WdfWaitLockRelease(c->bus_lock);

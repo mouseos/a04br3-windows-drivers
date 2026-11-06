@@ -5,25 +5,22 @@
 BOOLEAN a04_battery_publish(struct a04_battery_class *c,
                             const struct a04_gauge_sample *sample)
 {
+    return a04_battery_publish_power(c, sample, 0);
+}
+BOOLEAN a04_battery_publish_power(struct a04_battery_class *c,
+                                  const struct a04_gauge_sample *sample, ULONG power_state)
+{
     BOOLEAN changed;
     WdfWaitLockAcquire(c->lock, NULL);
     changed = !c->valid || c->sample.percent != sample->percent ||
-              c->sample.voltage_mv != sample->voltage_mv;
+              c->sample.voltage_mv != sample->voltage_mv || c->power_state != power_state;
     if (!c->valid) {
         ++c->tag;
         if (c->tag == BATTERY_TAG_INVALID) ++c->tag;
     }
     c->sample = *sample;
+    c->power_state = power_state;
     c->valid = TRUE;
-    WdfWaitLockRelease(c->lock);
-    return changed;
-}
-BOOLEAN a04_battery_set_external(struct a04_battery_class *c, BOOLEAN online)
-{
-    BOOLEAN changed;
-    WdfWaitLockAcquire(c->lock, NULL);
-    changed = c->external_power != online;
-    c->external_power = online;
     WdfWaitLockRelease(c->lock);
     return changed;
 }
@@ -33,7 +30,7 @@ BOOLEAN a04_battery_invalidate(struct a04_battery_class *c)
     WdfWaitLockAcquire(c->lock, NULL);
     changed = c->valid;
     c->valid = FALSE;
-    c->external_power = FALSE;
+    c->power_state = 0;
     WdfWaitLockRelease(c->lock);
     return changed;
 }
@@ -87,7 +84,7 @@ NTSTATUS a04_battery_query_status(PVOID context, ULONG tag, PBATTERY_STATUS stat
     WdfWaitLockAcquire(c->lock, NULL);
     if (!c->valid || tag != c->tag) result = STATUS_NO_SUCH_DEVICE;
     else {
-        status->PowerState = c->external_power ? BATTERY_POWER_ON_LINE : 0;
+        status->PowerState = c->power_state;
         status->Capacity = c->sample.percent;
         status->Voltage = c->sample.voltage_mv;
         status->Rate = BATTERY_UNKNOWN_RATE;
