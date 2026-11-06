@@ -8,6 +8,8 @@ static int rd(void *p,uint32_t off,uint32_t *v){struct fake *f=p;assert(off<0x10
 static int wr(void *p,uint32_t off,uint32_t v){struct fake *f=p;assert(f->writes<20);f->off[f->writes]=off;f->val[f->writes++]=v;if(f->fail_at && f->writes==(unsigned)f->fail_at)return -1;f->regs[off/4]=(off==0x100 && !f->stuck)?0:v;return 0;}
 static void bar(void *p){((struct fake *)p)->barriers++;}
 static void delay(void *p){((struct fake *)p)->delays++;}
+static int restored(void *p,uint32_t l0,uint32_t l3)
+{return ((struct fake *)p)->authorized && l0==0x90000000 && l3==0x91000000;}
 int main(void)
 {
     struct fake f={0};_Alignas(8) uint32_t buf[1024]={0};
@@ -31,6 +33,12 @@ int main(void)
     assert(!a04_gce_stop_completed(&s) && s.state==A04_GCE_STOPPED);
     assert(f.off[8]==0x108 && f.off[9]==0x100 && f.off[10]==0x114 && f.off[11]==0x104);
     assert(a04_gce_stop_completed(&s) && s.state==A04_GCE_STOPPED);
+    assert(a04_gce_prepare_restore(&s,27,0x90000000,0x91000000,0) && s.state==A04_GCE_STOPPED && f.writes==12);
+    assert(a04_gce_prepare_restore(&s,27,0x90000000,0x92000000,restored) && s.state==A04_GCE_STOPPED && f.writes==12);
+    f.regs[0x110/4]=0;assert(!a04_gce_prepare_restore(&s,27,0x90000000,0x91000000,restored));
+    assert(s.state==A04_GCE_PREPARED && buf[4]==0x90000000 && buf[6]==0x91000000 && f.writes==17);
+    memset(&f,0,sizeof(f));s.state=A04_GCE_STOPPED;f.authorized=1;f.regs[0x110/4]=1;
+    assert(a04_gce_prepare_restore(&s,27,0x90000000,0x91000000,restored) && s.state==A04_GCE_RETAIN && !f.writes);
     memset(&f,0,sizeof(f));s.state=A04_GCE_IDLE;f.authorized=1;
     assert(!a04_gce_prepare_primary(&s,27,0x90000000,0x91000000));
     assert(!a04_gce_kick_primary(&s));

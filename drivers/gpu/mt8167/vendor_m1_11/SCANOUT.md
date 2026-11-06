@@ -592,6 +592,14 @@ trusted saved-state, rearm, display visibility or retirement proof. A fresh
 post-write event establishes packet ordering only; it is not independent
 evidence that either plane latched or that a displayed frame used the buffer.
 
+The executor can prepare a restore packet after the completed thread has been
+stopped, provided an independent validator establishes GCE command DMA
+quiescence and lifetime/visibility of both saved display mappings. It checks
+thread-enable and interrupt state again, and retains all resources on an
+uncertain check or prepare failure. No current KMDF consumer supplies this
+validator or executes the restore, and no observation here proves latch or
+retirement. Register checks and a stop return alone must not replace it.
+
 An optional versioned firmware variable records TOPCKGEN TOP2 at
 BeforeExitBootServices. The GCE PDO can read it for diagnostics with
 `A04_GCE_HANDOFF_OBSERVE=1`; it cannot set any ownership proof. Thread and IRQ

@@ -36,4 +36,10 @@ void a04_gce_submit_timeout(struct a04_gce_submit *);
 /* PASSIVE_LEVEL, with the thread/IRQ and DMA lifetime exclusively held.
  * Stopping the GCE thread does not prove an OVL latch or surface retirement. */
 int a04_gce_stop_completed(struct a04_gce_submit *);
+/* Reuse the stopped command buffer for a saved two-layer transaction only
+ * after an independent provider validates GCE DMA quiescence and both saved
+ * display mappings. The caller holds the same clock/thread/event lease. A
+ * successful prepare is not a restore latch or surface-retirement proof. */
+int a04_gce_prepare_restore(struct a04_gce_submit *,uint32_t event,uint32_t l0,uint32_t l3,
+                            int (*validate)(void *,uint32_t,uint32_t));
 #endif

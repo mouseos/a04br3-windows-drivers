@@ -100,3 +100,18 @@ int a04_gce_stop_completed(struct a04_gce_submit *s)
        s->read32(s->context,GCE_ENABLE,&enabled) || (enabled&1u))return -1;
     s->state=A04_GCE_STOPPED;return 0;
 }
+int a04_gce_prepare_restore(struct a04_gce_submit *s,uint32_t event,uint32_t l0,uint32_t l3,
+                            int (*validate)(void *,uint32_t,uint32_t))
+{
+    uint32_t enabled,irq,mask;
+    if(!s || s->state!=A04_GCE_STOPPED || !s->authorize || !s->read32 || !validate ||
+       s->authorize(s->context)!=1 || validate(s->context,l0,l3)!=1)return -1;
+    /* These reads are consistency checks, not the independent DMA proof. */
+    if(s->read32(s->context,GCE_ENABLE,&enabled) || s->read32(s->context,GCE_IRQ_STATUS,&irq) ||
+       s->read32(s->context,GCE_IRQ_ENABLE,&mask) || (enabled&1u) || (irq&0x13u) || (mask&0x13u)) {
+        s->state=A04_GCE_RETAIN;return -1;
+    }
+    s->state=A04_GCE_IDLE;
+    if(a04_gce_prepare_primary(s,event,l0,l3)) {s->state=A04_GCE_RETAIN;return -1;}
+    return 0;
+}
