@@ -513,3 +513,20 @@ shared 1024語を期待値に照合し、各不一致数と最初の位置を返
 同じ位置で壊れた場合も不一致として数え、shared先頭9語と残りのguardも検査する。
 この関数はGPU終了・cache可視性・DMA停止を確立せず、実機読取りや解放を許可しない。
 実行可能copy診断への接続は未実装。
+
+
+### Deferred handling of persistent firmware IRQs
+
+The MIPS wrapper has STATUS at 0x8a8, CLEAR at 0x8b0 and ENABLE at 0x8a0
+(the MT8167 m1.11 register definitions). The ISR masks its device source before
+acknowledging it and queues deferred service. This prevents an asserted level
+from occupying DIRQL continuously and starving unrelated DPCs, including the
+watchdog. Register readbacks order the mask and acknowledgement writes.
+
+The firmware snapshot must succeed while holding the provider's power/lifetime
+lock before rearming under WdfInterruptSynchronize. An asserted or unknown
+source remains masked; no FWCCB request is discarded. Synchronous command
+completion already uses bounded polling. This policy does not establish DMA
+quiescence or authorize freeing any retained GPU allocation. Power-off must
+still clear powered under the same owner lock before interrupt disconnect and
+work-item flush. Hardware acceptance of this change remains to be verified.
