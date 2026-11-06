@@ -594,3 +594,14 @@ they equal native panel dimensions. Full presents rotated by the existing DOD
 blitter use private cached staging before GPU transfer; CPU rotation remains
 on the CPU. The visible framebuffer is written by the GPU only. Other source
 geometries and partial updates still fall back to the established CPU path.
+
+The live DOD path now applies move/dirty blits to a cached native shadow,
+including partial updates. It seeds from POST once and invalidates on CPU
+fallback, blackout or viewport/rotation changes. The provider compares two
+cached CPU images, uploads only their changed bounding rectangle to its
+retained DMA source, and executes the same proven full-surface GPU task.
+Neither the GPU task format nor its viewport/clip changes. Even an unchanged
+source still executes a fenced GPU task to restore any CPU-written POST data.
+The source shadow becomes valid only after GPU completion and private-state
+restoration; failures retain resources and close the live path. CPU shadows
+are not DMA-mapped. This remains test-only pending device validation.

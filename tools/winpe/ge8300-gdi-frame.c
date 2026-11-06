@@ -21,8 +21,9 @@ static LRESULT CALLBACK FrameProc(HWND w,UINT message,WPARAM wp,LPARAM lp)
         info.bmiHeader.biWidth=screen_width;info.bmiHeader.biHeight=-screen_height;
         info.bmiHeader.biPlanes=1;info.bmiHeader.biBitCount=32;info.bmiHeader.biCompression=BI_RGB;
         for(y=0;y<(unsigned)screen_height;y++)for(x=0;x<(unsigned)screen_width;x++)
-            pixels[y*screen_width+x]=0xff000000u|(((x+frame*29u)&255u)<<16)|
-                (((y+frame*41u)&255u)<<8)|((x^y^(frame*73u))&255u);
+            pixels[y*screen_width+x]=0xff000000u|((x&255u)<<16)|((y&255u)<<8)|((x^y)&255u);
+        if(frame>1)for(y=100;y<200;y++)for(x=100;x<200;x++)
+            pixels[y*screen_width+x]=0xff000000u|((frame*0x17295bu)&0x00ffffffu);
         dc=BeginPaint(w,&ps);
         SetDIBitsToDevice(dc,0,0,screen_width,screen_height,0,0,0,screen_height,pixels,&info,DIB_RGB_COLORS);
         EndPaint(w,&ps);GdiFlush();return 0;

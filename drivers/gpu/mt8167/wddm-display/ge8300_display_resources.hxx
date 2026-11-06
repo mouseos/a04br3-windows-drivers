@@ -136,7 +136,8 @@ struct A04DisplayResources {
     NTSTATUS SharedCommonResult;
     void *SharedCommonOwner;
 #if A04_GE8300_WDDM_LIVE_FULL_PRESENT
-    BOOLEAN LiveReady,LiveFaulted;uint32_t LiveFrames;
+    BOOLEAN LiveReady,LiveFaulted,LiveShadowValid;uint32_t LiveFrames;
+    void *LiveShadow;uint32_t LiveWidth,LiveHeight,LiveRotation,LiveOffset;
     NTSTATUS SubmitLiveFrame(const void *pixels,uint32_t pitch);
 #endif
 #if A04_GE8300_WDDM_PRESENT_CAPTURE

@@ -227,7 +227,8 @@ public:
     { return m_DisplayResources.SubmitFullFrame(pixels,pitch); }
 #endif
 #if A04_GE8300_WDDM_LIVE_FULL_PRESENT
-    NTSTATUS TryGpuLogicalFullPresent(const BLT_INFO *source,const BLT_INFO *destination,const RECT *rect);
+    NTSTATUS TryGpuLogicalPresent(const BLT_INFO *source,const BLT_INFO *destination,
+        ULONG moves,const D3DKMT_MOVE_RECT *move,ULONG count,const RECT *rects);
 #endif
     BASIC_DISPLAY_DRIVER(_In_ DEVICE_OBJECT* pPhysicalDeviceObject);
     ~BASIC_DISPLAY_DRIVER();

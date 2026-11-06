@@ -548,13 +548,9 @@ HwExecutePresentDisplayOnly(
         A04DisplayTrace(0xb8,(NTSTATUS)ctx->SrcWidth);A04DisplayTrace(0xb9,(NTSTATUS)ctx->SrcHeight);
         A04DisplayTrace(0xba,(NTSTATUS)ctx->Rotation);A04DisplayTrace(0xbb,(NTSTATUS)ctx->NumDirtyRects);
     }
-    if(ctx->SynchExecution && ctx->SourceID==0 && ctx->DstBitPerPixel==32 && !ctx->NumMoves) {
-        for(UINT i=0;i<ctx->NumDirtyRects;i++)if(ctx->DirtyRect[i].left==0 && ctx->DirtyRect[i].top==0 &&
-           ctx->DirtyRect[i].right==(LONG)ctx->SrcWidth && ctx->DirtyRect[i].bottom==(LONG)ctx->SrcHeight) {
-            presentStatus=((BASIC_DISPLAY_DRIVER *)ctx->hAdapter)->TryGpuLogicalFullPresent(
-                &SrcBltInfo,&DstBltInfo,&ctx->DirtyRect[i]);break;
-        }
-    }
+    if(ctx->SynchExecution && ctx->SourceID==0 && ctx->DstBitPerPixel==32)
+        presentStatus=((BASIC_DISPLAY_DRIVER *)ctx->hAdapter)->TryGpuLogicalPresent(
+            &SrcBltInfo,&DstBltInfo,ctx->NumMoves,ctx->Moves,ctx->NumDirtyRects,ctx->DirtyRect);
 #endif
     // A GPU error may leave hardware exposed. Never race it with CPU fallback.
     // Only NOT_SUPPORTED means that no live GPU work was attempted.

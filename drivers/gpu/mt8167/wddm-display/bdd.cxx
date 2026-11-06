@@ -694,39 +694,54 @@ NTSTATUS BASIC_DISPLAY_DRIVER::SetPointerShape(_In_ CONST DXGKARG_SETPOINTERSHAP
 }
 #if A04_GE8300_WDDM_LIVE_FULL_PRESENT
 /* Called only by the synchronous DOD path with m_PresentMutex held. */
-NTSTATUS BASIC_DISPLAY_DRIVER::TryGpuLogicalFullPresent(const BLT_INFO *source,const BLT_INFO *destination,const RECT *rect)
+NTSTATUS BASIC_DISPLAY_DRIVER::TryGpuLogicalPresent(const BLT_INFO *source,const BLT_INFO *destination,
+    ULONG moves,const D3DKMT_MOVE_RECT *move,ULONG count,const RECT *rects)
 {
     const CURRENT_BDD_MODE *mode=&m_CurrentModes[0];uint32_t w,h,offset;unsigned turns;
-    if(!source || !destination || !rect || !m_Flags.DriverStarted || m_AdapterPowerState!=PowerDeviceD0 ||
-       m_MonitorPowerState!=PowerDeviceD0 || KeReadStateEvent(&m_SharedWorkerStop) ||
-       mode->DispInfo.Width!=800u || mode->DispInfo.Height!=1280u || mode->DispInfo.Pitch!=3200u ||
-       !mode->FrameBuffer.Ptr || mode->DispInfo.PhysicAddress.QuadPart!=m_DisplayResources.PostPhys.QuadPart ||
-       !m_DisplayResources.LiveReady)return STATUS_NOT_SUPPORTED;
+    A04DisplayResources *resources=&m_DisplayResources;
+    if(!source || !destination || (moves && !move) || (count && !rects) || !m_Flags.DriverStarted ||
+       m_AdapterPowerState!=PowerDeviceD0 || m_MonitorPowerState!=PowerDeviceD0 ||
+       KeReadStateEvent(&m_SharedWorkerStop) || mode->DispInfo.Width!=800u || mode->DispInfo.Height!=1280u ||
+       mode->DispInfo.Pitch!=3200u || !mode->FrameBuffer.Ptr ||
+       mode->DispInfo.PhysicAddress.QuadPart!=resources->PostPhys.QuadPart || !resources->LiveReady) {
+        resources->LiveShadowValid=FALSE;return STATUS_NOT_SUPPORTED;
+    }
     switch(destination->Rotation) {
     case D3DKMDT_VPPR_IDENTITY:turns=0;break;
     case D3DKMDT_VPPR_ROTATE90:turns=1;break;
     case D3DKMDT_VPPR_ROTATE180:turns=2;break;
     case D3DKMDT_VPPR_ROTATE270:turns=3;break;
-    default:return STATUS_NOT_SUPPORTED;
+    default:resources->LiveShadowValid=FALSE;return STATUS_NOT_SUPPORTED;
     }
     if(a04_present_layout(mode->SrcModeWidth,mode->SrcModeHeight,800,1280,3200,turns,
            mode->Scaling==D3DKMDT_VPPS_CENTERED,&w,&h,&offset) ||
        source->Width!=mode->SrcModeWidth || source->Height!=mode->SrcModeHeight ||
        destination->Width!=w || destination->Height!=h || destination->Pitch!=3200 ||
        destination->BitsPerPel!=32 || source->BitsPerPel!=32 ||
-       destination->pBits!=(UCHAR *)mode->FrameBuffer.Ptr+offset ||
-       rect->left || rect->top || rect->right!=(LONG)source->Width || rect->bottom!=(LONG)source->Height)
-        return STATUS_NOT_SUPPORTED;
+       destination->pBits!=(UCHAR *)mode->FrameBuffer.Ptr+offset) {
+        resources->LiveShadowValid=FALSE;return STATUS_NOT_SUPPORTED;
+    }
+    if(!moves && !count)return STATUS_SUCCESS;
     void *staging=ExAllocatePoolWithTag(NonPagedPoolNx,4096000u,'rG4A');
     if(!staging)return STATUS_INSUFFICIENT_RESOURCES;
-    /* The logical mode can be smaller than the native panel (WinPE uses
-     * 800x600). Preserve the existing DOD viewport/rotation calculation and
-     * explicitly black the pixels outside that viewport. No POST CPU write. */
-    RtlZeroMemory(staging,4096000u);
+    BOOLEAN cached=resources->LiveShadowValid && resources->LiveShadow &&
+        resources->LiveWidth==mode->SrcModeWidth && resources->LiveHeight==mode->SrcModeHeight &&
+        resources->LiveRotation==turns && resources->LiveOffset==offset;
+    /* Seed once from the owned native POST image. Subsequent presents update
+     * a cached native shadow with exactly the legacy DOD move/dirty blits.
+     * Unsupported CPU fallback, blackout and viewport changes invalidate it. */
+    RtlCopyMemory(staging,cached?resources->LiveShadow:mode->FrameBuffer.Ptr,4096000u);
     BLT_INFO rotated=*destination;rotated.pBits=(UCHAR *)staging+offset;
-    BltBits(&rotated,source,1,rect);
-    NTSTATUS status=m_DisplayResources.SubmitLiveFrame(staging,3200u);
-    ExFreePoolWithTag(staging,'rG4A');return status;
+    for(ULONG i=0;i<moves;i++)BltBits(&rotated,source,1,&move[i].DestRect);
+    for(ULONG i=0;i<count;i++)BltBits(&rotated,source,1,&rects[i]);
+    NTSTATUS status=resources->SubmitLiveFrame(staging,3200u);
+    if(NT_SUCCESS(status)) {
+        void *previous=resources->LiveShadow;resources->LiveShadow=staging;staging=NULL;
+        resources->LiveShadowValid=TRUE;resources->LiveWidth=mode->SrcModeWidth;
+        resources->LiveHeight=mode->SrcModeHeight;resources->LiveRotation=turns;resources->LiveOffset=offset;
+        if(previous)ExFreePoolWithTag(previous,'rG4A');
+    }
+    if(staging)ExFreePoolWithTag(staging,'rG4A');return status;
 }
 #endif
 NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DISPLAYONLY* pPresentDisplayOnly)
@@ -903,6 +918,9 @@ NTSTATUS BASIC_DISPLAY_DRIVER::GetEdid(D3DDDI_VIDEO_PRESENT_TARGET_ID TargetId)
 
 VOID BASIC_DISPLAY_DRIVER::BlackOutScreen(D3DDDI_VIDEO_PRESENT_SOURCE_ID SourceId)
 {
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+    m_DisplayResources.LiveShadowValid=FALSE;
+#endif
     PAGED_CODE();
 
 
