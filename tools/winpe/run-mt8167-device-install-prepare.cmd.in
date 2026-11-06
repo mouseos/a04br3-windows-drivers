@@ -32,12 +32,12 @@ if exist "%A04_BK%" goto journalexists
 mkdir "%A04_BK%" >> "%A04_REPORT%" 2>&1
 if errorlevel 1 goto backupfail
 > "%A04_BK%\JOURNAL.txt" echo STATE=PREPARE_STARTED
-copy /y C:\Windows\System32\config\SYSTEM "%A04_BK%\SYSTEM.before" >nul
+call :backupfile SYSTEM required
 if errorlevel 1 goto backupfail
-copy /y C:\Windows\System32\config\SOFTWARE "%A04_BK%\SOFTWARE.before" >nul
+call :backupfile SOFTWARE required
 if errorlevel 1 goto backupfail
 for %%H in (SYSTEM.LOG1 SYSTEM.LOG2 SOFTWARE.LOG1 SOFTWARE.LOG2) do (
-  if exist C:\Windows\System32\config\%%H copy /y C:\Windows\System32\config\%%H "%A04_BK%\%%H.before" >nul
+  call :backupfile %%H optional
   if errorlevel 1 goto backupfail
 )
 reg.exe load HKLM\Mt8167GpuOffline C:\Windows\System32\config\SOFTWARE >> "%A04_REPORT%" 2>&1
@@ -77,6 +77,19 @@ if errorlevel 1 goto dismfail
 >> "%A04_REPORT%" echo UPDATE_STATUS=COMMITTED
 set "A04_RC=0"
 goto release
+:backupfile
+if exist "C:\Windows\System32\config\%1" goto backupcopy
+>> "%A04_REPORT%" echo BACKUP_MISSING=%1
+if "%2"=="optional" exit /b 0
+exit /b 1
+:backupcopy
+>> "%A04_REPORT%" echo BACKUP_FILE=%1
+rem Registry transaction logs are hidden/system: COPY skips them, XCOPY /H includes them.
+xcopy.exe /h /k /y "C:\Windows\System32\config\%1" "%A04_BK%" >> "%A04_REPORT%" 2>&1
+set "A04_COPY_RC=%errorlevel%"
+>> "%A04_REPORT%" echo BACKUP_FILE_EXIT=%A04_COPY_RC%
+if not "%A04_COPY_RC%"=="0" exit /b 1
+exit /b 0
 :systemfail
 reg.exe unload HKLM\Mt8167InstallSystem >> "%A04_REPORT%" 2>&1
 goto dismfail
