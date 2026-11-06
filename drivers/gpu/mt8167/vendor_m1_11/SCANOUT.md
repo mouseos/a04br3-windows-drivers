@@ -567,6 +567,17 @@ to release; the ACPI GCE node assigns PnP resources only. This observation
 does not cover previous boot stages or secure firmware and cannot establish
 that any GCE thread, event or shared clock is available to Windows.
 
+The published a04br3 Linux `arch/arm64/configs/a04br3_defconfig` enables
+`CONFIG_MTK_SEC_VIDEO_PATH_SUPPORT`, `CONFIG_MTK_CMDQ`, and
+`CONFIG_MTK_CMDQ_TAB`. The CMDQ v2 Makefile conditionally builds secure-path
+support for this configuration; `cmdq_def.h` reserves threads 12-14 for
+secure tasks. This is evidence of a supported secure configuration, not
+evidence that a secure task is running or has stopped at Windows handoff.
+Linux's GCE clock enable count is its own software clock-framework state; it
+is not a reset value or proof that LK or secure firmware released the gate.
+The machine source tree inspected here has LK and TEE images, not their
+complete corresponding source, so their effect on GCE remains unknown.
+
 The default-off KMDF executor experiment includes a real GCE DMA common-buffer
 binding, interrupt synchronization and bounded wait/stop, but has no provider
 for the required independent ownership proofs. Its IRQ attach intentionally
