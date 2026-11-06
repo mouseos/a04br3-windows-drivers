@@ -31,3 +31,26 @@ int a04_m111_build_clear_codespace(struct a04_m111_clear_codespace *out,
     for(i=0;i<sizeof(eot.pds);i++)made.pds[0x80+i]=eot.pds[i];
     *out=made;return 0;
 }
+
+/* Native InitPixelEventCodeBlocks 0x1c1a14 consumes generator +0x20 as
+ * data words and +0x24 as code-allocation words, NOT PDS temporary words.
+ * Rogue EVENT_PIXEL_PDS_INFO: shared units16, temp units4, const units4.
+ * Exact EOT uses shared2, temp0, data8 -> 0x202. Background shared loader
+ * reserves native generator's minimum one PDS temp unit (0x204504).
+ * SetupBGObject 0x11372c packs the same three background register words.
+ */
+int a04_m111_build_clear_code_bindings(struct a04_m111_clear_code_bindings *out,
+    uint64_t pds_gpu)
+{
+    struct a04_m111_clear_code_bindings made;uint64_t offset;
+    if(!out || span(pds_gpu,UINT64_C(0xa800000000),A04_M111_CLEAR_PDS_BYTES,16))return 1;
+    offset=pds_gpu-UINT64_C(0xa800000000);
+    made.background[0]=((offset+A04_M111_CLEAR_BG_SHARED_CODE)<<32)|offset;
+    made.background[1]=(offset+A04_M111_CLEAR_BG_SHARED_DATA)<<32;
+    made.background[2]=UINT64_C(0x0080000000010001);
+    made.pixel_event_info=0x202u;
+    made.pixel_event_code=(uint32_t)(offset+A04_M111_CLEAR_EOT_CODE);
+    made.pixel_event_data=(uint32_t)(offset+A04_M111_CLEAR_EOT_DATA);
+    made.background_pixel_data_bytes=32;
+    *out=made;return 0;
+}
