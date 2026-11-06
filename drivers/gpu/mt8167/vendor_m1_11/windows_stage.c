@@ -13,7 +13,7 @@ NTSTATUS a04_vendor_m1_11_windows_free(struct a04_vendor_m1_11_memory *m)
 {
     unsigned i;
     if(!m || KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_INVALID_PARAMETER;
-    if(m->hardware_owned) return STATUS_DEVICE_BUSY;
+    if(m->hardware_owned || m->render_owner) return STATUS_DEVICE_BUSY;
     if(m->adapter && (!m->adapter->DmaOperations || !m->adapter->DmaOperations->FreeCommonBuffer))
         return STATUS_INVALID_DEVICE_STATE;
     for(i=0;i<5;i++) if(m->allocation[i]) {
@@ -28,7 +28,7 @@ NTSTATUS a04_vendor_m1_11_windows_stage(struct a04_vendor_m1_11_memory *m,
     PDMA_ADAPTER adapter,const void *image,size_t bytes)
 {
     unsigned i,j; NTSTATUS status=STATUS_DEVICE_CONFIGURATION_ERROR;
-    if(!m || !adapter || !image || KeGetCurrentIrql()!=PASSIVE_LEVEL || m->adapter || m->hardware_owned ||
+    if(!m || !adapter || !image || KeGetCurrentIrql()!=PASSIVE_LEVEL || m->adapter || m->hardware_owned || m->render_owner ||
        m->buffers[0].cpu || m->buffers[1].cpu || m->buffers[2].cpu || m->buffers[3].cpu || m->buffers[4].cpu ||
        m->allocation[0] || m->allocation[1] || m->allocation[2] || m->allocation[3] || m->allocation[4] || m->runtime || !adapter->DmaOperations ||
        !adapter->DmaOperations->AllocateCommonBuffer || !adapter->DmaOperations->FreeCommonBuffer)

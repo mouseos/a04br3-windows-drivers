@@ -208,7 +208,7 @@ int main(int argc,char **argv)
     if(a04_vendor_m1_11_windows_free(&m)!=STATUS_DEVICE_BUSY || freed!=1) return 8;
     /* Test-only teardown after the simulated device has stopped. */
     release(&adapter,0x8000,start.trampoline_logical,start.trampoline_allocation,FALSE);
-    m.hardware_owned=FALSE;if(a04_vendor_m1_11_windows_free(&m)!=STATUS_SUCCESS || freed!=7 || pools) return 9;
+    m.hardware_owned=FALSE;m.render_owner=&m;assert(a04_vendor_m1_11_windows_free(&m)==STATUS_DEVICE_BUSY);m.render_owner=NULL;if(a04_vendor_m1_11_windows_free(&m)!=STATUS_SUCCESS || freed!=7 || pools) return 9;
     memset(&start,0,sizeof(start));memset(registers,0,0x80000);
     count=freed=syncs=barriers=0;simulate_ready=0;delays=0;
     if(a04_vendor_m1_11_windows_stage(&m,&adapter,image,n)!=STATUS_SUCCESS) return 18;

@@ -4,6 +4,7 @@
  * f5d43bf1677955e7e367545b9bbbd6449776cdda. No user-provided GPU addresses.
  */
 #include "windows_render_cold.h"
+#include "windows_copy_scratch.h"
 #include "clear_validate.h"
 #include "clear_tile.h"
 #include "windows_start.h"
@@ -27,7 +28,8 @@ static NTSTATUS queue_snapshot(struct a04_rgx_fw_runtime *f,RGXFWIF_CCB_CTL *k,R
     return STATUS_SUCCESS;
 }
 static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
-    struct a04_vendor_start *s,struct a04_vendor_clear_result *result, BOOLEAN locked)
+    struct a04_vendor_start *s,struct a04_vendor_clear_result *result, BOOLEAN locked,
+    struct a04_vendor_copy_scratch *copy)
 {
     struct a04_rgx_fw_runtime *f;struct clear_packet packet={0};
     RGXFWIF_CCB_CTL k,q;RGXFWIF_CCCB_CTL client;RGXFWIF_KCCB_CMD kick={0},flush={0},fence={0};
@@ -39,7 +41,10 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
        r->poisoned || !s->online || !s->memory || !s->memory->hardware_owned || s->memory!=r->firmware ||
        !(f=s->memory->runtime) || !f->kctl || !f->fctl || !f->kcommands || !f->command_sync || !s->core ||
        !r->buffer[0].cpu || !r->buffer[4].cpu || r->buffer[4].bytes!=65536u ||
-       (r->screen_surface ? (!r->screen_surface->hardware_exposed || !r->screen_surface->pixels.cpu ||
+       (copy ? (r->screen_surface || r->copy_owner!=copy || copy->render!=r || !copy->prepared || !copy->exposed ||
+         !copy->usc_ready || !copy->task_frozen || !copy->source.cpu || !copy->destination.cpu || !copy->shared.cpu ||
+         copy->source.bytes!=4096u || copy->destination.bytes!=4096u || copy->shared.bytes!=4096u) :
+        r->screen_surface ? (!r->screen_surface->hardware_exposed || !r->screen_surface->pixels.cpu ||
          r->screen_surface->bytes!=4259840u || r->clear_row_bytes!=3328u ||
          r->clear_first!=1248u*3328u+768u*4u) :
          !a04_vendor_clear_layout_valid(r->clear_first,r->clear_row_bytes)) ||
@@ -49,6 +54,10 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
     if(!locked && InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
     /* Cleanup can begin between the optimistic check and lock acquisition. */
     if(r->cleanup_started || r->clear_attempted || r->poisoned){status=STATUS_INVALID_DEVICE_STATE;goto done;}
+    /* A cold copy lease reserves the same TQ context, sync and PDS heap.
+     * Never queue a clear while that lease is held. The caller must also
+     * serialize copy-owner lifetime with command_busy and PnP callbacks. */
+    if((copy && r->copy_owner!=copy) || (!copy && r->copy_owner)){status=STATUS_DEVICE_BUSY;goto done;}
     if(s->command_poisoned || s->shutdown_started){status=STATUS_IO_DEVICE_ERROR;goto done;}
     status=queue_snapshot(f,&k,&q);if(!NT_SUCCESS(status))goto done;
     bank=r->buffer[0].cpu;sync=(volatile uint32_t *)(void *)(bank+r->layout.sync);
@@ -58,7 +67,7 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
        client.ui32WrapMask!=4095u || client.ui32ReadOffset!=at || client.ui32WriteOffset!=at ||
        client.ui32DepOffset>4095u || (client.ui32DepOffset&7u)) {status=STATUS_INVALID_DEVICE_STATE;goto done;}
     seq=++r->sequence;packet.task.eCmdType=TQ_TASK;packet.task.ui32CmdSize=208u;
-    RtlCopyMemory(packet.payload,r->clear.payload,sizeof(packet.payload));
+    RtlCopyMemory(packet.payload,copy?copy->frozen_task:r->clear.payload,sizeof(packet.payload));
     packet.update.eCmdType=CLIENT_UPDATE;packet.update.ui32CmdSize=8;
     packet.ufo.puiAddrUFO.ui32Addr=0xc0080000u+r->layout.sync;packet.ufo.ui32Value=seq;
     *sync=0;if(a04_rgx_device_write_words(bank+r->layout.commands[3]+at,&packet,sizeof(packet))) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
@@ -118,13 +127,27 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
     if(!NT_SUCCESS(status))goto poison;
     result->phase=4;
     a04_gpu_dma_barrier();
-    for(i=0;i<(r->screen_surface ? r->screen_surface->bytes/4u : 16384u);i++) {
+    if(copy) {
+        volatile uint32_t *src=copy->source.cpu,*dst=copy->destination.cpu,*shared=copy->shared.cpu;
+        for(i=0;i<1024u;i++) {
+            uint32_t expected=copy->service_expected_active ? copy->service_expected[i] : a04_vendor_copy_pattern(i);
+            value=dst[i];if(value==expected)result->zeros++;
+            if(src[i]!=expected)result->guard_errors++;
+            if(shared[i]!=(i<9u?copy->state.shared[i]:0xa5a5a5a5u))result->guard_errors++;
+            if(i==0)result->first=value;
+            if(i==1023u)result->last=value;
+        }
+        /* The general-heap pages immediately preceding source belong to
+         * the cold clear scratch; verify their original guard as well. */
+        for(i=0;i<16384u;i++)if(output[i]!=0xa5a5a5a5u)result->guard_errors++;
+    } else for(i=0;i<(r->screen_surface ? r->screen_surface->bytes/4u : 16384u);i++) {
         value=output[i];if(a04_vendor_clear_is_target(i*4u,r->clear_first,r->clear_row_bytes)) {if(value==r->clear.expected)result->zeros++;} else if(value!=0xa5a5a5a5u)result->guard_errors++;
         if(i*4u==r->clear_first)result->first=value;
         if(i*4u==r->clear_first+31u*r->clear_row_bytes+124u)result->last=value;
     }
     status=(result->zeros==1024u && !result->guard_errors)?STATUS_SUCCESS:STATUS_DATA_ERROR;
     r->clear_verified=NT_SUCCESS(status);
+    if(copy && !NT_SUCCESS(status)){r->poisoned=TRUE;s->command_poisoned=TRUE;}
     goto done;
 poison:
     /* Snapshot only. A timeout does not establish completion or quiescence. */
@@ -142,7 +165,7 @@ poison:
         result->slc_status=READ_REGISTER_ULONG((volatile ULONG *)(void *)(s->core+0x3820));
         result->slc_idle=READ_REGISTER_ULONG((volatile ULONG *)(void *)(s->core+0x3898));
         result->provisional=1;
-        for(i=0;i<(r->screen_surface ? r->screen_surface->bytes/4u : 16384u);i++) {
+        for(i=0;!copy && i<(r->screen_surface ? r->screen_surface->bytes/4u : 16384u);i++) {
             value=output[i];
             if(a04_vendor_clear_is_target(i*4u,r->clear_first,r->clear_row_bytes)) {if(value==r->clear.expected)result->zeros++;}
             else if(value!=0xa5a5a5a5u)result->guard_errors++;
@@ -158,7 +181,53 @@ done:
 
 NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *r,
     struct a04_vendor_start *s,struct a04_vendor_clear_result *result)
-{ return clear_locked(r,s,result,FALSE); }
+{ return clear_locked(r,s,result,FALSE,NULL); }
+NTSTATUS a04_vendor_render_copy_once(struct a04_vendor_copy_scratch *o,
+    struct a04_vendor_start *s,struct a04_vendor_clear_result *result)
+{ return clear_locked(o?o->render:NULL,s,result,FALSE,o); }
+
+/* Finite ring experiment: no wrap or teardown is inferred from a fence. */
+NTSTATUS a04_vendor_render_copy_buffer(struct a04_vendor_copy_scratch *o,
+    struct a04_vendor_start *s,const void *input,void *output,size_t bytes)
+{
+    struct a04_vendor_render_cold *r;struct a04_vendor_clear_result result;
+    unsigned i;NTSTATUS status;
+    if(!o || !s || !input || !output || bytes!=4096u ||
+       ((uintptr_t)input&3u) || ((uintptr_t)output&3u) || KeGetCurrentIrql()!=PASSIVE_LEVEL)
+        return STATUS_INVALID_PARAMETER;
+    if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
+    r=o->render;
+    if(!r || !o->prepared || !o->exposed || !o->usc_ready || !o->task_frozen ||
+       !o->source.cpu || !o->destination.cpu || !o->shared.cpu || r->copy_owner!=o ||
+       r->poisoned || s->command_poisoned || s->shutdown_started || r->cleanup_started ||
+       (r->clear_attempted && !r->clear_verified) || !s->online ||
+       !s->memory || !s->memory->hardware_owned || r->firmware!=s->memory) {
+        status=STATUS_INVALID_DEVICE_STATE;goto out;
+    }
+    /* Refuse before touching or exposing buffers when the bounded CCCB has
+     * no room; no wrap/PADDING command has been validated for this ABI. */
+    if(r->client_write[3]>4095u || r->client_write[3]+sizeof(struct clear_packet)+40u>4096u) {
+        status=STATUS_DEVICE_BUSY;goto out;
+    }
+    RtlCopyMemory(o->service_expected,input,4096u);
+    if(a04_rgx_device_write_words(o->source.cpu,o->service_expected,4096u)) {
+        status=STATUS_IO_DEVICE_ERROR;goto poison;
+    }
+    for(i=0;i<1024u;i++) ((volatile uint32_t *)o->destination.cpu)[i]=0xa5a5a5a5u;
+    a04_gpu_dma_barrier();o->service_expected_active=TRUE;
+    r->clear_attempted=FALSE;r->clear_verified=FALSE;
+    status=clear_locked(r,s,&result,TRUE,o);
+    if(!NT_SUCCESS(status))goto poison;
+    /* Only the completed, synchronized private bounce reaches the caller. */
+    if(a04_rgx_device_read_words(output,o->destination.cpu,4096u)) {
+        status=STATUS_IO_DEVICE_ERROR;goto poison;
+    }
+    o->service_expected_active=FALSE;goto out;
+poison:
+    r->poisoned=TRUE;s->command_poisoned=TRUE;
+out:
+    InterlockedExchange(&s->command_busy,0);return status;
+}
 
 /* Internal diagnostic: reuse only after the previous job, SLC flush, fence and
  * full readback all completed. The 64 KiB target and PDS belong to this render
@@ -177,7 +246,7 @@ NTSTATUS a04_vendor_render_next_tile(struct a04_vendor_render_cold *r,
     if(a04_vendor_clear_tile_build(&tile,&q))return STATUS_INVALID_PARAMETER;
     tile.image.payload[2]=colour;tile.image.expected=colour;
     if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
-    if(r->cleanup_started || r->poisoned || s->command_poisoned || s->shutdown_started || !r->mapped ||
+    if(r->copy_owner || r->cleanup_started || r->poisoned || s->command_poisoned || s->shutdown_started || !r->mapped ||
        !r->clear_ready || !r->clear_attempted || !r->clear_verified || r->screen_surface || r->diagnostic_tile_index+1!=index ||
        !r->buffer[4].cpu || r->buffer[4].bytes!=65536u || !r->buffer[7].cpu ||
        !s->online || !s->memory || !s->memory->hardware_owned || s->memory!=r->firmware) {
@@ -191,7 +260,7 @@ NTSTATUS a04_vendor_render_next_tile(struct a04_vendor_render_cold *r,
     }
     r->clear=tile.image;r->clear_first=tile.first;r->clear_row_bytes=tile.row_bytes;
     a04_gpu_dma_barrier();r->clear_attempted=FALSE;r->clear_verified=FALSE;r->diagnostic_tile_index=index;
-    status=clear_locked(r,s,result,TRUE);
+    status=clear_locked(r,s,result,TRUE,NULL);
     /* No retry on admission or submission failure. */
     if(!NT_SUCCESS(status)) {r->poisoned=TRUE;s->command_poisoned=TRUE;}
     InterlockedExchange(&s->command_busy,0);return status;
@@ -209,7 +278,7 @@ NTSTATUS a04_vendor_render_repeat_screen(struct a04_vendor_render_cold *r,
     if(!r || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL || (index!=1 && index!=2))return STATUS_INVALID_PARAMETER;
     if(InterlockedCompareExchange(&s->command_busy,1,0)!=0)return STATUS_DEVICE_BUSY;
     screen=r->screen_surface;
-    if(r->cleanup_started || r->poisoned || s->command_poisoned || s->shutdown_started || !r->mapped ||
+    if(r->copy_owner || r->cleanup_started || r->poisoned || s->command_poisoned || s->shutdown_started || !r->mapped ||
        !r->clear_ready || !r->clear_attempted || !r->clear_verified || r->diagnostic_tile_index+1!=index ||
        !screen || !screen->prepared || !screen->hardware_exposed || !screen->pixels.cpu ||
        screen->bytes!=4259840u || screen->pixels.bytes!=screen->bytes ||
@@ -219,7 +288,7 @@ NTSTATUS a04_vendor_render_repeat_screen(struct a04_vendor_render_cold *r,
     /* Keep the PDS and all mappings unchanged while the next job uses them. */
     for(i=0;i<screen->bytes/4u;i++)((volatile uint32_t *)screen->pixels.cpu)[i]=0xa5a5a5a5u;
     a04_gpu_dma_barrier();r->clear_attempted=FALSE;r->clear_verified=FALSE;r->diagnostic_tile_index=index;
-    status=clear_locked(r,s,result,TRUE);
+    status=clear_locked(r,s,result,TRUE,NULL);
     if(!NT_SUCCESS(status)){r->poisoned=TRUE;s->command_poisoned=TRUE;}
 out:
     InterlockedExchange(&s->command_busy,0);return status;

@@ -658,11 +658,11 @@ build/gpu_vendor_clear_image_test: tests/gpu_vendor_clear_image_test.c drivers/g
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
 
-build/gpu_vendor_windows_render_context_test: tests/gpu_vendor_windows_render_context_test.c drivers/gpu/mt8167/vendor_m1_11/windows_render_context.c drivers/gpu/mt8167/vendor_m1_11/windows_render_clear.c drivers/gpu/mt8167/vendor_m1_11/clear_image.c drivers/gpu/mt8167/vendor_m1_11/windows_render_cold.h drivers/gpu/mt8167/vendor_m1_11/render_resources.c drivers/gpu/mt8167/vendor_m1_11/clear_tile.c
+build/gpu_vendor_windows_render_context_test: tests/gpu_vendor_windows_render_context_test.c drivers/gpu/mt8167/vendor_m1_11/windows_render_context.c drivers/gpu/mt8167/vendor_m1_11/windows_render_clear.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.c drivers/gpu/mt8167/vendor_m1_11/clear_image.c drivers/gpu/mt8167/vendor_m1_11/windows_render_cold.h drivers/gpu/mt8167/vendor_m1_11/render_resources.c drivers/gpu/mt8167/vendor_m1_11/clear_tile.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -DA04_TEST_INTERLOCK_HOOK -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
 
-build/gpu_vendor_windows_render_cold_test: tests/gpu_vendor_windows_render_cold_test.c drivers/gpu/mt8167/vendor_m1_11/windows_render_cold.c drivers/gpu/mt8167/vendor_m1_11/windows_render_cold.h drivers/gpu/mt8167/vendor_m1_11/render_resources.c drivers/gpu/mt8167/vendor_m1_11/windows_uncached.c drivers/gpu/mt8167/vendor_m1_11/clear_image.c drivers/gpu/mt8167/vendor_m1_11/windows_surface.c drivers/gpu/mt8167/gpu_mmu.c
+build/gpu_vendor_windows_render_cold_test: tests/gpu_vendor_windows_render_cold_test.c drivers/gpu/mt8167/vendor_m1_11/windows_copy_scratch.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.c drivers/gpu/mt8167/vendor_m1_11/native_copy_usc.c drivers/gpu/mt8167/vendor_m1_11/native_copy_usc.h drivers/gpu/mt8167/vendor_m1_11/windows_render_cold.c drivers/gpu/mt8167/vendor_m1_11/windows_render_cold.h drivers/gpu/mt8167/vendor_m1_11/render_resources.c drivers/gpu/mt8167/vendor_m1_11/windows_uncached.c drivers/gpu/mt8167/vendor_m1_11/clear_image.c drivers/gpu/mt8167/vendor_m1_11/windows_surface.c drivers/gpu/mt8167/gpu_mmu.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
 
@@ -924,3 +924,10 @@ test-mt8167-codec-voice:
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared tests/mt8167_codec_voice_test.c -o build/mt8167_codec_voice_test
 	./build/mt8167_codec_voice_test
+.PHONY: test-gpu-vendor-native-copy-state
+test-gpu-vendor-native-copy-state: build/gpu_vendor_native_copy_state_test
+	./build/gpu_vendor_native_copy_state_test
+
+build/gpu_vendor_native_copy_state_test: tests/gpu_vendor_native_copy_state_test.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.h
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 tests/gpu_vendor_native_copy_state_test.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.c -o $@

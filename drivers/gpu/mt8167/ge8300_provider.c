@@ -53,6 +53,25 @@
 #ifndef A04_GE8300_VENDOR_RENDER_COLD
 #define A04_GE8300_VENDOR_RENDER_COLD 0
 #endif
+#ifndef A04_GE8300_VENDOR_COPY_SERVICE
+#define A04_GE8300_VENDOR_COPY_SERVICE 0
+#endif
+#ifndef A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+#define A04_GE8300_VENDOR_COPY_DIAGNOSTIC 0
+#endif
+#if A04_GE8300_VENDOR_COPY_SERVICE && defined(A04_GE8300_COPY_SERVICE) && A04_GE8300_COPY_SERVICE
+#error Vendor and modern firmware copy services are exclusive
+#endif
+#if A04_GE8300_VENDOR_COPY_SERVICE && !A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+#error Vendor copy service requires native copy diagnostic resources
+#endif
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC && (!A04_GE8300_VENDOR_RENDER_COLD || A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC || A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC)
+#error Copy diagnostic requires cold render and excludes clear and screen diagnostics
+#endif
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+#include "vendor_m1_11/windows_copy_scratch.h"
+#include "a04_copy_usc_asset.h"
+#endif
 #if A04_GE8300_VENDOR_COLOR_DIAGNOSTIC && !A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC
 #error Native colour diagnostic requires clear diagnostic
 #endif
@@ -140,6 +159,13 @@ typedef struct {
     struct a04_vendor_m1_11_memory vendor;
 #if A04_GE8300_VENDOR_RENDER_COLD
     struct a04_vendor_render_cold vendor_render;
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+    struct a04_vendor_copy_scratch vendor_copy;
+    BOOLEAN vendor_copy_device_ref;
+#if A04_GE8300_VENDOR_COPY_SERVICE
+    volatile LONG vendor_service_closed; BOOLEAN vendor_service_online;
+#endif
+#endif
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
     struct a04_vendor_surface vendor_screen;
 #endif
@@ -446,6 +472,9 @@ NTSTATUS GpuPrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
 NTSTATUS GpuRelease(WDFDEVICE device,WDFCMRESLIST translated)
 {
     GPU_CONTEXT *c=GpuContext(device); UNREFERENCED_PARAMETER(translated);
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+    if(c->vendor_copy.exposed) return STATUS_DEVICE_BUSY;
+#endif
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
     if(c->vendor_screen.hardware_exposed) return STATUS_DEVICE_BUSY;
 #endif
@@ -485,6 +514,9 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 {
     GPU_CONTEXT *c=GpuContext(device); NTSTATUS status; PVOID image=NULL; ULONG bytes=0,lo,hi;
     PDMA_ADAPTER adapter;
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+    ULONG copy_map_registers=0;
+#endif
     UNREFERENCED_PARAMETER(previous);
 #if A04_GE8300_VENDOR_START_DIAGNOSTIC
     GpuPrint("A04GPU NATIVE D0 ENTER\n");
@@ -525,6 +557,9 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         desc.InterfaceType=Internal;desc.MaximumLength=A04_PVR_HEAP_SIZE;
         c->vendor_adapter_v3=IoGetDmaAdapter(WdfDeviceWdmGetPhysicalDevice(device),&desc,&map_registers);
         adapter=c->vendor_adapter_v3;
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+        copy_map_registers=map_registers;
+#endif
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
         /* The screen common buffer needs one map register per page.  Keep
          * the adapter in the context so the failure path releases it. */
@@ -545,8 +580,20 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 #if A04_GE8300_VENDOR_RENDER_COLD
     if(NT_SUCCESS(status)) {
         status=a04_vendor_render_prepare_cold(&c->vendor_render,&c->vendor,adapter,
-            A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC?TRUE:FALSE,
+            (A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC || A04_GE8300_VENDOR_COPY_DIAGNOSTIC)?TRUE:FALSE,
             A04_GE8300_VENDOR_COLOR_DIAGNOSTIC?0x78563412u:0u);
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+        if(NT_SUCCESS(status))status=a04_vendor_copy_scratch_prepare(&c->vendor_copy,&c->vendor_render,copy_map_registers);
+        if(NT_SUCCESS(status))status=a04_vendor_copy_scratch_stage_usc(&c->vendor_copy,a04_copy_usc_asset,sizeof(a04_copy_usc_asset));
+        if(NT_SUCCESS(status))status=a04_vendor_copy_scratch_freeze(&c->vendor_copy);
+        /* Retain device context and adapter for the diagnostic boot.  A
+         * reference alone does not establish physical-removal safety. */
+        if(c->vendor_copy.exposed) {WdfObjectReference(device);c->vendor_copy_device_ref=TRUE;}
+        if(!NT_SUCCESS(status) && c->vendor_copy.prepared && !c->vendor_copy.exposed)
+            (void)a04_vendor_copy_scratch_release(&c->vendor_copy);
+        if(!NT_SUCCESS(status) && !c->vendor_copy.exposed)
+            (void)a04_vendor_render_release_cold(&c->vendor_render);
+#endif
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
         if(NT_SUCCESS(status))status=a04_vendor_surface_prepare(&c->vendor_screen,adapter,800,1280,3328,UINT64_C(0x8000000000));
         if(NT_SUCCESS(status))status=a04_vendor_render_attach_screen(&c->vendor_render,&c->vendor_screen);
@@ -725,7 +772,13 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     GPU_CONTEXT *c=GpuContext(device);struct a04_vendor_power_snapshot power;
     NTSTATUS status;uint64_t bvnc;UNREFERENCED_PARAMETER(previous);
     GpuPrint("A04GPU NATIVE POST ENTER\n");
+#if A04_GE8300_VENDOR_COPY_SERVICE
+    if(InterlockedCompareExchange(&c->vendor_service_closed,0,0))return STATUS_DEVICE_NOT_READY;
+#endif
     if(!c->vendor.staged || !c->vendor.uncached || !c->vendor_irq) return STATUS_SUCCESS;
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+    if(!c->vendor_copy.task_frozen) {GpuPrint("A04GPU COPY NOT PREPARED\n");return STATUS_SUCCESS;}
+#endif
     WdfWaitLockAcquire(c->vendor_lifetime,NULL);
     status=a04_vendor_m1_11_power_snapshot(device,c->mfg,MFG_SIZE,&power);
     if(NT_SUCCESS(status) && !a04_vendor_m1_11_power_valid(&power)) status=STATUS_DEVICE_NOT_READY;
@@ -761,6 +814,22 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
                 if(!NT_SUCCESS(context_status)) {c->status.health_status=context_status;break;}
             }
         }
+#endif
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+#if !A04_GE8300_VENDOR_COPY_SERVICE
+        if(NT_SUCCESS(c->status.health_status)) {
+            struct a04_vendor_clear_result copy_result;
+            NTSTATUS copy_status=a04_vendor_render_copy_once(&c->vendor_copy,&c->vendor_start,&copy_result);
+            GpuPrint("A04GPU COPY STATUS=");GpuHex((ULONG)copy_status);
+            GpuPrint(" MATCH=");GpuHex(copy_result.zeros);GpuPrint(" GUARD=");GpuHex(copy_result.guard_errors);
+            GpuPrint(" PHASE=");GpuHex(copy_result.phase);GpuPrint(" UFO=");GpuHex(copy_result.ufo);
+            GpuPrint(" EXPECT=");GpuHex(copy_result.expected);GpuPrint("\n");
+            if(!NT_SUCCESS(copy_status))c->status.health_status=copy_status;
+        }
+#else
+        if(NT_SUCCESS(c->status.health_status) && !InterlockedCompareExchange(&c->vendor_service_closed,0,0))
+            c->vendor_service_online=TRUE;
+#endif
 #endif
 #if A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC
         if(NT_SUCCESS(c->status.health_status)) {
@@ -819,7 +888,7 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             }
         }
 #endif
-#if A04_GE8300_VENDOR_RENDER_COLD
+#if A04_GE8300_VENDOR_RENDER_COLD && !A04_GE8300_VENDOR_COPY_SERVICE
         if(NT_SUCCESS(c->status.health_status)) {
             unsigned failed=4;
             c->status.shutdown_status=a04_vendor_render_cleanup_contexts(&c->vendor_render,&c->vendor_start,&failed);
@@ -828,12 +897,14 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             if(!NT_SUCCESS(c->status.shutdown_status)) c->status.health_status=c->status.shutdown_status;
         }
 #endif
+#if !A04_GE8300_VENDOR_COPY_SERVICE
         if(NT_SUCCESS(c->status.health_status)) {
             NTSTATUS idle_status;
             c->status.shutdown_status=a04_vendor_m1_11_windows_forced_power_off(&c->vendor_start,TRUE,&idle_status);
             GpuPrint("A04GPU FORCED IDLE=");GpuHex((ULONG)idle_status);GpuPrint("\n");
         }
         GpuPrint("A04GPU NATIVE OFF=");GpuHex(c->status.shutdown_status);GpuPrint("\n");
+#endif
         {
             ULONG snap[6];
             if(NT_SUCCESS(a04_vendor_m1_11_power_debug_snapshot(&c->vendor_start,snap))) {
@@ -870,10 +941,27 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 NTSTATUS GpuD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
 {
     GPU_CONTEXT *c=GpuContext(device); UNREFERENCED_PARAMETER(target);
+#if A04_GE8300_VENDOR_STAGE
+#if A04_GE8300_VENDOR_START_DIAGNOSTIC
+    /* The bounded diagnostic and its IRQ service hold this same lock.  Do
+     * not admit new commands once D0 exit has acquired it. This preserves
+     * callback ordering, not a proof of physical-removal MMIO safety. */
+#if A04_GE8300_VENDOR_COPY_SERVICE
+    InterlockedExchange(&c->vendor_service_closed,1);
+#endif
+    WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+#if A04_GE8300_VENDOR_COPY_SERVICE
+    c->vendor_service_online=FALSE;
+#endif
+    c->vendor_start.shutdown_started=TRUE;
+    WdfWaitLockRelease(c->vendor_lifetime);
+#endif
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
     if(c->vendor_screen.hardware_exposed) return STATUS_DEVICE_BUSY;
 #endif
-#if A04_GE8300_VENDOR_STAGE
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+    if(c->vendor_copy.exposed) return STATUS_DEVICE_BUSY;
+#endif
     if(c->vendor.hardware_owned) return STATUS_DEVICE_BUSY;
 #endif
 #if A04_GE8300_COPY_SERVICE
@@ -909,6 +997,29 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
 {
     WDFDEVICE device=WdfIoQueueGetDevice(queue); GPU_CONTEXT *c=GpuContext(device);
     struct a04_ge8300_status *out; NTSTATUS status; size_t size;
+#if A04_GE8300_VENDOR_COPY_SERVICE
+    if(control==A04_GE8300_IOCTL_VENDOR_COPY) {
+        void *src,*dst;size_t in_bytes,out_bytes;
+        if(input!=A04_GE8300_VENDOR_COPY_BYTES || output!=A04_GE8300_VENDOR_COPY_BYTES ||
+           InterlockedCompareExchange(&c->vendor_service_closed,0,0)) {
+            WdfRequestComplete(request,STATUS_INVALID_DEVICE_STATE);return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,A04_GE8300_VENDOR_COPY_BYTES,&src,&in_bytes);
+        if(NT_SUCCESS(status))status=WdfRequestRetrieveOutputBuffer(request,A04_GE8300_VENDOR_COPY_BYTES,&dst,&out_bytes);
+        if(NT_SUCCESS(status)) {
+            WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+            if(!c->vendor_service_online || InterlockedCompareExchange(&c->vendor_service_closed,0,0))
+                status=STATUS_INVALID_DEVICE_STATE;
+            else status=a04_vendor_render_copy_buffer(&c->vendor_copy,&c->vendor_start,src,dst,input);
+            if(!NT_SUCCESS(status) && (c->vendor_render.poisoned || c->vendor_start.command_poisoned)) {
+                c->vendor_service_online=FALSE;InterlockedExchange(&c->vendor_service_closed,1);
+            }
+            WdfWaitLockRelease(c->vendor_lifetime);
+        }
+        WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?A04_GE8300_VENDOR_COPY_BYTES:0);
+        return;
+    }
+#endif
 #if A04_GE8300_VENDOR_STAGE
     if(control==A04_GE8300_IOCTL_VENDOR_POWER_QUERY) {
         struct a04_ge8300_vendor_power_status *power;
@@ -970,6 +1081,10 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
     if(NT_SUCCESS(status)) { *out=c->status; WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(*out)); }
     else WdfRequestComplete(request,status);
 }
+#if A04_GE8300_VENDOR_COPY_SERVICE
+VOID GpuSurpriseRemoval(WDFDEVICE device)
+{ GPU_CONTEXT *c=GpuContext(device);InterlockedExchange(&c->vendor_service_closed,1); }
+#endif
 NTSTATUS GpuAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 {
     WDF_PNPPOWER_EVENT_CALLBACKS pnp; WDF_OBJECT_ATTRIBUTES attr;
@@ -984,6 +1099,9 @@ NTSTATUS GpuAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     WdfDeviceInitSetDeviceType(init,FILE_DEVICE_UNKNOWN);
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp); pnp.EvtDevicePrepareHardware=GpuPrepare;
     pnp.EvtDeviceReleaseHardware=GpuRelease; pnp.EvtDeviceD0Entry=GpuD0Entry; pnp.EvtDeviceD0Exit=GpuD0Exit;
+#if A04_GE8300_VENDOR_COPY_SERVICE
+    pnp.EvtDeviceSurpriseRemoval=GpuSurpriseRemoval;
+#endif
 #if A04_GE8300_VENDOR_START_DIAGNOSTIC
     pnp.EvtDeviceD0EntryPostInterruptsEnabled=GpuPostInterrupts;
 #endif

@@ -2,12 +2,58 @@
 #include "ge8300_present.hxx"
 #include "../ge8300_status.h"
 #include "present_bounds.h"
+#include "present_tile.h"
+#ifndef A04_GE8300_WDDM_VENDOR_TILE
+#define A04_GE8300_WDDM_VENDOR_TILE 0
+#endif
 #ifndef A04_GE8300_WDDM_COPY
 #define A04_GE8300_WDDM_COPY 0
 #endif
 BOOLEAN A04Ge8300Present(const BLT_INFO* dst,const BLT_INFO* src,const RECT* rect)
 {
-#if A04_GE8300_WDDM_COPY
+#if A04_GE8300_WDDM_VENDOR_TILE
+    HANDLE file=NULL; PFILE_OBJECT object=NULL; IO_STATUS_BLOCK io={}; OBJECT_ATTRIBUTES attr;
+    UNICODE_STRING name=RTL_CONSTANT_STRING(L"\\Device\\A04GE8300");
+    struct a04_present_surface source,dest; struct a04_present_tile tile;
+    BYTE *stage=NULL; NTSTATUS status; size_t offset; unsigned y;
+    if (!dst || !src || !rect || KeGetCurrentIrql()!=PASSIVE_LEVEL || KeAreAllApcsDisabled() ||
+        !dst->pBits || !src->pBits || dst->BitsPerPel!=32 || src->BitsPerPel!=32 ||
+        dst->Rotation!=D3DKMDT_VPPR_IDENTITY || src->Rotation!=D3DKMDT_VPPR_IDENTITY ||
+        dst->Offset.x || dst->Offset.y || src->Offset.x || src->Offset.y ||
+        rect->left<0 || rect->top<0 || (int64_t)rect->right-rect->left!=32 ||
+        (int64_t)rect->bottom-rect->top!=32) return FALSE;
+    if ((uint64_t)src->Pitch*src->Height>SIZE_MAX || (uint64_t)dst->Pitch*dst->Height>SIZE_MAX ||
+        ((uintptr_t)dst->pBits&3u) || (dst->Pitch&3u)) return FALSE;
+    source.base=(BYTE*)src->pBits;source.bytes=(SIZE_T)src->Pitch*src->Height;
+    source.width=src->Width;source.height=src->Height;source.pitch=src->Pitch;
+    dest.base=(BYTE*)dst->pBits;dest.bytes=(SIZE_T)dst->Pitch*dst->Height;
+    dest.width=dst->Width;dest.height=dst->Height;dest.pitch=dst->Pitch;
+    tile.x=(uint32_t)rect->left;tile.y=(uint32_t)rect->top;
+    if (a04_present_tile_region(&source,&tile,&offset) || a04_present_tile_region(&dest,&tile,&offset)) return FALSE;
+    stage=(BYTE*)ExAllocatePoolWithTag(NonPagedPoolNx,8192,'pG4A');
+    if (!stage) return FALSE;
+    if (a04_present_tile_pack(stage,4096,&source,&tile)) { ExFreePoolWithTag(stage,'pG4A');return FALSE; }
+    InitializeObjectAttributes(&attr,&name,OBJ_KERNEL_HANDLE|OBJ_CASE_INSENSITIVE,NULL,NULL);
+    status=ZwCreateFile(&file,FILE_READ_DATA|FILE_WRITE_DATA|SYNCHRONIZE,&attr,&io,NULL,
+                        FILE_ATTRIBUTE_NORMAL,FILE_SHARE_READ|FILE_SHARE_WRITE,FILE_OPEN,
+                        FILE_NON_DIRECTORY_FILE|FILE_SYNCHRONOUS_IO_NONALERT,NULL,0);
+    if (NT_SUCCESS(status)) status=ObReferenceObjectByHandle(file,SYNCHRONIZE,*IoFileObjectType,KernelMode,(PVOID*)&object,NULL);
+    if (NT_SUCCESS(status)) {
+        io.Information=0;io.Status=STATUS_PENDING;
+        status=ZwDeviceIoControlFile(file,NULL,NULL,NULL,&io,A04_GE8300_IOCTL_VENDOR_COPY,stage,4096,stage+4096,4096);
+        if (status==STATUS_PENDING) {
+            do { status=KeWaitForSingleObject(object,Executive,KernelMode,FALSE,NULL); } while (status!=STATUS_SUCCESS);
+            status=io.Status;
+        } else if (NT_SUCCESS(status)) status=io.Status;
+        if (NT_SUCCESS(status) && io.Information!=4096) status=STATUS_IO_DEVICE_ERROR;
+        if (NT_SUCCESS(status)) for(y=0;y<32;y++) {
+            (void)a04_present_tile_row(&dest,&tile,y,&offset);
+            WRITE_REGISTER_BUFFER_ULONG((volatile ULONG *)(dest.base+offset),(ULONG *)(stage+4096+y*128),32);
+        }
+    }
+    if(object) ObDereferenceObject(object);if(file) ZwClose(file);
+    ExFreePoolWithTag(stage,'pG4A');return NT_SUCCESS(status);
+#elif A04_GE8300_WDDM_COPY
     HANDLE file=NULL; PFILE_OBJECT object=NULL; IO_STATUS_BLOCK io={}; OBJECT_ATTRIBUTES attr;
     UNICODE_STRING name=RTL_CONSTANT_STRING(L"\\Device\\A04GE8300");
     uint32_t bytes,offset; NTSTATUS status; SIZE_T done=0; ULONG *stage=NULL;

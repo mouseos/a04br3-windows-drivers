@@ -18,7 +18,8 @@ NTSTATUS a04_vendor_render_release_cold(struct a04_vendor_render_cold *r)
 {
     unsigned i;
     if(!r || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
-    if(r->firmware && r->firmware->hardware_owned)return STATUS_DEVICE_BUSY;
+    if(r->copy_owner || (r->firmware && r->firmware->hardware_owned))return STATUS_DEVICE_BUSY;
+    if(r->firmware && r->firmware->render_owner!=r)return STATUS_INVALID_DEVICE_STATE;
     if(r->mapped) {
         uint32_t zeros[16]={0};
         if(!r->firmware || !r->firmware->buffers[0].cpu ||
@@ -28,6 +29,7 @@ NTSTATUS a04_vendor_render_release_cold(struct a04_vendor_render_cold *r)
         a04_gpu_dma_barrier();r->mapped=FALSE;
     }
     for(i=0;i<16;i++)a04_vendor_uncached_free(&r->buffer[i]);
+    if(r->firmware && r->firmware->render_owner==r)r->firmware->render_owner=NULL;
     RtlZeroMemory(r,sizeof(*r));return STATUS_SUCCESS;
 }
 /* Fixed screen-sized, GPU-only diagnostic. Called before firmware start. */
@@ -37,7 +39,7 @@ NTSTATUS a04_vendor_render_attach_screen(struct a04_vendor_render_cold *r,
     uint32_t pc_index,entry=0,source=0;uint64_t first,address,csr;unsigned i,j;
     struct a04_vendor_uncached *resources[7];
     if(!r || !screen || KeGetCurrentIrql()!=PASSIVE_LEVEL || !r->mapped ||
-       !r->clear_ready || !r->firmware || r->firmware->hardware_owned || r->screen_surface ||
+       !r->clear_ready || !r->firmware || r->firmware->hardware_owned || r->screen_surface || r->copy_owner ||
        !screen->prepared || screen->hardware_exposed || screen->gpu_va!=UINT64_C(0x8000000000) ||
        screen->width!=800 || screen->height!=1280 || screen->pitch!=3328 || screen->bytes!=4259840u ||
        !screen->pixels.cpu || !screen->pc.cpu || !r->buffer[1].cpu || !r->buffer[7].cpu)
@@ -77,10 +79,10 @@ NTSTATUS a04_vendor_render_prepare_cold(struct a04_vendor_render_cold *r,
     void *shadow[17]={0};unsigned i,j;NTSTATUS status=STATUS_DEVICE_CONFIGURATION_ERROR;
     struct a04_vendor_render_layout layout={0};
     if(!r || !f || !adapter || KeGetCurrentIrql()!=PASSIVE_LEVEL || r->firmware || r->mapped ||
-       !f->staged || !f->uncached || f->hardware_owned || f->adapter!=adapter || !f->buffers[0].cpu)
+       !f->staged || !f->uncached || f->hardware_owned || f->render_owner || f->adapter!=adapter || !f->buffers[0].cpu)
         return STATUS_INVALID_PARAMETER;
     for(i=0;i<16;i++)if(r->buffer[i].cpu || r->buffer[i].adapter)return STATUS_INVALID_PARAMETER;
-    r->firmware=f;
+    r->firmware=f;f->render_owner=r;
     for(i=0;i<16;i++) {
         if(!prepare_clear && i>=5u && i<=10u)continue;
         status=a04_vendor_uncached_allocate(&r->buffer[i],adapter,sizes[i]);

@@ -12,6 +12,7 @@ struct a04_vendor_render_cold {
     struct a04_vendor_render_layout layout;
     struct a04_vendor_m1_11_memory *firmware;
     struct a04_vendor_surface *screen_surface;
+    void *copy_owner; /* cold mapping lease; release child first */
     uint32_t client_write[4], sequence, cleanup_mask;
     uint32_t clear_first, clear_row_bytes, diagnostic_tile_index;
     BOOLEAN mapped, poisoned, clear_ready, clear_attempted, clear_verified, cleanup_started;
