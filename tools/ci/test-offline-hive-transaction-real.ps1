@@ -10,7 +10,8 @@ try {
  & subst.exe R: "$base\target";if($LASTEXITCODE){throw 'subst target failed'}
  & subst.exe S: "$base\ram";if($LASTEXITCODE){throw 'subst ram failed'}
  & subst.exe T: "$base\esp";if($LASTEXITCODE){throw 'subst esp failed'}
- New-Item -ItemType Directory -Force 'R:\Windows\System32\config','R:\Windows\System32\config\TxR','R:\Windows\System32\drivers','S:\a04br3\driver-trust','T:\EFI\Boot' | Out-Null
+ New-Item -ItemType Directory -Force 'R:\Windows\System32\config','R:\Windows\System32\config\TxR','R:\Windows\System32\drivers','R:\Windows\INF','S:\a04br3\driver-trust','T:\EFI\Boot' | Out-Null
+ [IO.File]::WriteAllText('R:\Windows\INF\oem33.inf','fixture-inf33');[IO.File]::WriteAllText('R:\Windows\INF\oem35.inf','fixture-inf35')
  foreach($n in @('mt8167-toprgu.sys','mt8167-shared.sys','bu21025.sys')){[IO.File]::WriteAllText("R:\Windows\System32\drivers\$n","fixture-$n")}
  $pin=@{'toprgu-sys'='mt8167-toprgu.sys';'shared-sys'='mt8167-shared.sys';'touch-sys'='bu21025.sys'}
  foreach($k in $pin.Keys){$hash=(Get-FileHash -Algorithm SHA256 "R:\Windows\System32\drivers\$($pin[$k])").Hash;[IO.File]::WriteAllBytes("S:\a04br3\driver-trust\$k.sha256",(From-Hex $hash))}

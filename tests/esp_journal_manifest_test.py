@@ -4,8 +4,10 @@ import importlib.util
 import io
 from pathlib import Path
 import struct
+import sys
 
 root=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(root/'tools/winpe'))
 spec=importlib.util.spec_from_file_location('journal',root/'tools/winpe/preserve-esp-journal.py')
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 class Fat:
@@ -58,4 +60,14 @@ bad=bytearray(data);bad[off+72:off+328]=bytes(256);bad[-32:]=hashlib.sha256(bad[
 try:m.verify_journal(Fat(content),files)
 except ValueError:pass
 else:raise AssertionError('invalid sidecar name accepted')
+content,files=example(3)
+data=bytearray(content['/A04BACKUP/READY']);struct.pack_into('<II',data,4,4,13)
+for i,name in ((11,'FIXED-oem33.inf'),(12,'FIXED-oem35.inf')):
+    off=16+i*328;payload=('fixed%d'%i).encode();struct.pack_into('<I',data,off,1);struct.pack_into('<Q',data,off+32,len(payload));data[off+40:off+72]=hashlib.sha256(payload).digest();raw=name.encode('utf-16le');data[off+72:off+72+len(raw)]=raw;content[f'/A04BACKUP/item{i:02}.bin']=payload
+data[-32:]=hashlib.sha256(data[:-32]).digest();content['/A04BACKUP/READY']=bytes(data);files={k.lower():(k,hashlib.sha256(v).hexdigest()) for k,v in content.items()}
+assert m.verify_journal(Fat(content),files)['version']==4
+bad=bytearray(data);bad[16+11*328+72]^=1;bad[-32:]=hashlib.sha256(bad[:-32]).digest();content['/A04BACKUP/READY']=bytes(bad)
+try:m.verify_journal(Fat(content),files)
+except ValueError:pass
+else:raise AssertionError('v4 fixed INF name mismatch accepted')
 print('ESP journal manifest tests: PASS')

@@ -1,7 +1,7 @@
 # WinPE固定対象バックアップ・復旧の試作
 
 `offline-backup.c` は更新プログラムではない。SYSTEM、SOFTWAREとそれぞれの
-LOG/LOG1/LOG2・TM関連ファイル、config/TxR内の対象ログ、TOPRGU・共有親・BU21025のSYSを対象とする。DISM、Driver
+LOG/LOG1/LOG2・TM関連ファイル、config/TxR内の対象ログ、TOPRGU・共有親・BU21025のSYS、およびoem33.inf・oem35.infを対象とする。DISM、Driver
 Store、デバイス列挙・PnP設定、他の変更ファイルを復旧するものではない。
 搭載Windowsへの適用には使わない。実機のNTFS整合性、EFI空き容量、電源断後の
 FAT・NTFSとストレージドライバのflush動作、WinPE署名受理は未確認。
@@ -66,9 +66,9 @@ recovery上でESPを一時的に読取り専用マウントし、`A04BACKUP` が
 他プロセスによる確認後の変更や電源断を防ぐ排他制御ではない。別の書込み手段は
 このガードの対象外。`--verify-only` はローカル入力の照合だけを行う。
 
-現在のWinPEツールはシリアルを含む形式3のみ再生する。過去の形式1・2は
+現在のWinPEツールはシリアルを含む形式3・4を再生する。新規の形式4は固定スロットにoem33.inf・oem35.infを含み、形式3の既存ジャーナルは従来のスロット解釈で復旧する。過去の形式1・2は
 対象ボリュームとの結び付きがないため自動再生せず、保全したまま拒否する。
-`preserve-esp-journal.py` は形式1〜3のファイルを別イメージへ保全できるが、
+`preserve-esp-journal.py` は形式1〜4のファイルを別イメージへ保全できるが、
 保全成功は旧形式を現在の実機へ安全に復旧できる証拠ではない。
 
 ## 限定hive更新トランザクション
@@ -76,3 +76,5 @@ recovery上でESPを一時的に読取り専用マウントし、`A04BACKUP` が
 `apply-offline-hives.cmd` は事前照合、バックアップ、INTENT記録、SYSTEMの既存TOPRGUサービスのStart変更とSOFTWAREへの証明書登録、C:のflush・dismount・解除、COMMIT記録を順に実行する。更新失敗時はバックアップを再生してから解除し、失敗時はジャーナルを保持する。3つのSYSのハッシュが指定値と一致し、既存サービスが条件を満たす場合だけ実行する。SYS・INF・CATの導入、PnP構成、実機の署名受理は行わない。Windows合成試験のボリュームidentity、flush、解除は模擬であり、停電後のdirty NTFSは復旧前に拒否する。COMMITの直接実行はC:不在を検査するが、別手段で解除された場合のflush・dismountを証明しない。
 
 2026-11-06の監査では共有SYSが未存在だった。復旧時、INTENTがないジャーナルに対して元は不在だった固定対象が出現している場合は、一切の再生に先立って拒否する。INTENTが検証された場合だけ、更新中に作成された対象として不在状態に戻す。この判定は他プロセスとの排他やDriver Store・PnP全体の復旧を保証しない。
+
+`offline-baseline-guard.c` は対象のNTFS範囲・シリアル・dirty bit、既存TOPRGU/BU21025 SYS、oem33/oem35 INFのハッシュと共有SYS不在を照合する。各ファイルの読取中は排他的に開くが、対象全体のスナップショットやPnP、CAT、署名受理、後続処理までの排他を証明しない。`offline-signature-check.c` は候補2 SYSのWinPE上の一般署名検証を試し、失敗も、両方成功してRT側ポリシーが未証明の場合も更新を拒否する。Driver Storeの変更範囲・回復と搭載RTの署名受理は引き続き未実装で、この部品を更新許可として使わない。

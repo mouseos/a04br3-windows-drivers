@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import struct
 from pyfatfs.PyFatFS import PyFatFS
+from fat32_fsinfo import mark_free_space_unknown
 
 p = argparse.ArgumentParser()
 p.add_argument('--source-esp', type=Path, required=True)
@@ -66,23 +67,7 @@ shutil.copyfile(a.source_esp, a.output)
 # clusters. Mark the advisory free count unknown before changing files, so
 # the filesystem consumer will calculate it rather than trust stale data.
 # This is image construction metadata, not fsck repair of an existing volume.
-with a.output.open('r+b') as image:
-    boot = image.read(512)
-    bps = struct.unpack_from('<H', boot, 11)[0]
-    reserved = struct.unpack_from('<H', boot, 14)[0]
-    fsinfo = struct.unpack_from('<H', boot, 48)[0]
-    backup = struct.unpack_from('<H', boot, 50)[0]
-    if bps != 512 or not 0 < fsinfo < reserved or boot[510:512] != b'\x55\xaa':
-        raise SystemExit('Unsupported FAT32 FSInfo geometry')
-    for sector in {fsinfo, backup + fsinfo}:
-        if sector >= reserved:
-            raise SystemExit('Invalid backup FSInfo location')
-        image.seek(sector * bps)
-        info = image.read(bps)
-        if len(info) != bps or info[:4] != b'RRaA' or info[484:488] != b'rrAa' or info[508:512] != b'\x00\x00\x55\xaa':
-            raise SystemExit('Invalid FAT32 FSInfo signature')
-        image.seek(sector * bps + 488)
-        image.write(struct.pack('<II', 0xffffffff, 0xffffffff))
+mark_free_space_unknown(a.output)
 with PyFatFS(str(a.output), preserve_case=True) as fat:
     fat.remove(wim_path)
     with a.wim.open('rb') as src, fat.openbin(wim_path, 'w') as dst:

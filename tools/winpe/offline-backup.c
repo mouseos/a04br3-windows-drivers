@@ -94,8 +94,9 @@ static int save_item(unsigned i){
 }
 static int verify_item(unsigned i){WCHAR p[64];HANDLE h;HCRYPTHASH hash;BYTE digest[32];DWORD n;ULONGLONG total=0;int ok=0;ENTRY *e=&manifest.entries[i];if(!e->present)return 1;path(i,p);h=CreateFileW(p,GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,0,0);if(h==INVALID_HANDLE_VALUE)return 0;if(!hash_start(&hash)){CloseHandle(h);return 0;}for(;;){if(!ReadFile(h,buf,CHUNK,&n,0))goto done;if(!n)break;total+=n;if(!CryptHashData(hash,buf,n,0))goto done;}if(!hash_end(hash,digest)){hash=0;goto close;}hash=0;ok=total==e->length&&same(digest,e->digest,32);goto close;done:CryptDestroyHash(hash);close:if(!CloseHandle(h))ok=0;return ok;}
 static int configure_sidecar(unsigned i,const WCHAR *name);
-static int verify_manifest(void){BYTE d[32];unsigned i;if(manifest.magic!=0x41303442||manifest.version!=3||manifest.count<BASE_COUNT||manifest.count>COUNT||manifest.reserved!=target_serial)return 0;if(!hash_mem(&manifest,(DWORD)offsetof(MANIFEST,digest),d)||!same(d,manifest.digest,32))return 0;active_count=BASE_COUNT;for(i=0;i<BASE_COUNT;++i)if(manifest.entries[i].name[0])return 0;
- for(i=BASE_COUNT;i<manifest.count;++i){unsigned j;if(manifest.entries[i].name[127]||!configure_sidecar(i,manifest.entries[i].name))return 0;for(j=BASE_COUNT;j<i;++j)if(!lstrcmpiW(manifest.entries[j].name,manifest.entries[i].name))return 0;++active_count;}
+static int configure_fixed_inf(unsigned i,const WCHAR *name);
+static int verify_manifest(void){BYTE d[32];unsigned i;if(manifest.magic!=0x41303442||(manifest.version!=3&&manifest.version!=4)||manifest.count<(manifest.version==4?BASE_COUNT+2:BASE_COUNT)||manifest.count>COUNT||manifest.reserved!=target_serial)return 0;if(!hash_mem(&manifest,(DWORD)offsetof(MANIFEST,digest),d)||!same(d,manifest.digest,32))return 0;active_count=BASE_COUNT;for(i=0;i<BASE_COUNT;++i)if(manifest.entries[i].name[0])return 0;
+ for(i=BASE_COUNT;i<manifest.count;++i){unsigned j;if(manifest.entries[i].name[127]||!((manifest.version==4&&i<BASE_COUNT+2)?configure_fixed_inf(i,manifest.entries[i].name):configure_sidecar(i,manifest.entries[i].name)))return 0;for(j=BASE_COUNT;j<i;++j)if(!lstrcmpiW(manifest.entries[j].name,manifest.entries[i].name))return 0;++active_count;}
  for(i=0;i<manifest.count;++i)if(manifest.entries[i].present>1||(i>=BASE_COUNT&&!manifest.entries[i].present)||!verify_item(i))return 0;return manifest.entries[0].present&&manifest.entries[4].present;}
 static int read_manifest_file(void){HANDLE h;DWORD n;BYTE extra;h=CreateFileW(L"E:\\A04BACKUP\\READY",GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,0,0);if(h==INVALID_HANDLE_VALUE)return 0;if(!ReadFile(h,&manifest,sizeof(manifest),&n,0)||n!=sizeof(manifest)){CloseHandle(h);return 0;}if(!ReadFile(h,&extra,1,&n,0)||n){CloseHandle(h);return 0;}return CloseHandle(h)!=0;}
 static int load_manifest(void){return read_manifest_file()&&verify_manifest();}
@@ -161,6 +162,15 @@ static int configure_sidecar(unsigned i,const WCHAR *name){WCHAR *t,*q;unsigned 
  {unsigned n=lstrlenW(q);q[n-6]=(WCHAR)(L'0'+i/10);q[n-5]=(WCHAR)(L'0'+i%10);}
  target[i]=t;temp[i]=q;return 1;
 }
+/* Version 4 binds the two observed published INFs to fixed slots. Version 3
+ * retains its original slot interpretation for recovery of old journals. */
+static int configure_fixed_inf(unsigned i,const WCHAR *name){WCHAR *t,*q;unsigned slot;const WCHAR *expected;
+ if(i<BASE_COUNT||i>=BASE_COUNT+2)return 0;expected=i==BASE_COUNT?L"FIXED-oem33.inf":L"FIXED-oem35.inf";
+ if(lstrcmpW(name,expected))return 0;slot=i-BASE_COUNT;t=dynamic_target[slot];q=dynamic_temp[slot];
+ lstrcpyW(t,L"C:\\Windows\\INF\\");lstrcatW(t,name+6);
+ lstrcpyW(q,L"C:\\Windows\\INF\\A04RESTORE00.tmp");
+ {unsigned n=lstrlenW(q);q[n-6]=(WCHAR)(L'0'+i/10);q[n-5]=(WCHAR)(L'0'+i%10);}
+ target[i]=t;temp[i]=q;return 1;}
 static int find_sidecar(const WCHAR *name){unsigned i;for(i=BASE_COUNT;i<active_count;++i)if(!lstrcmpiW(manifest.entries[i].name,name))return (int)i;return -1;}
 static int scan_sidecars(const WCHAR *pattern,int txr,int recovering){WIN32_FIND_DATAW data;HANDLE h;DWORD error;WCHAR name[128];
  h=FindFirstFileW(pattern,&data);if(h==INVALID_HANDLE_VALUE){error=GetLastError();return error==ERROR_FILE_NOT_FOUND;}
@@ -185,7 +195,10 @@ static int collect_sidecars(int recovering){DWORD attr=GetFileAttributesW(L"C:\\
 }
 static void backup(void){unsigned i;ULARGE_INTEGER free;ULONGLONG need=RESERVE,cluster,rounded;HANDLE ready;DWORD spc,bps,avail,total;static ENTRY measured[COUNT],final_scan[COUNT];
  if(GetFileAttributesW(L"E:\\A04BACKUP")!=INVALID_FILE_ATTRIBUTES)fail("BACKUP_DIRECTORY_EXISTS");
- active_count=BASE_COUNT;if(!collect_sidecars(0))fail("BACKUP_SIDECAR_ENUMERATION_FAILED");
+ active_count=BASE_COUNT;
+ if(!configure_fixed_inf(active_count,L"FIXED-oem33.inf"))fail("BACKUP_FIXED_TARGET_FAILED");lstrcpyW(manifest.entries[active_count++].name,L"FIXED-oem33.inf");
+ if(!configure_fixed_inf(active_count,L"FIXED-oem35.inf"))fail("BACKUP_FIXED_TARGET_FAILED");lstrcpyW(manifest.entries[active_count++].name,L"FIXED-oem35.inf");
+ if(!collect_sidecars(0))fail("BACKUP_SIDECAR_ENUMERATION_FAILED");
  if(!GetDiskFreeSpaceW(L"E:\\",&spc,&bps,&avail,&total)||!spc||!bps)fail("BACKUP_CAPACITY_UNKNOWN");cluster=(ULONGLONG)spc*bps;if(!cluster || (cluster & (cluster-1)))fail("BACKUP_CLUSTER_REJECTED");
  for(i=0;i<active_count;++i){
   if(GetFileAttributesW(temp[i])!=INVALID_FILE_ATTRIBUTES)fail("BACKUP_TEMP_EXISTS");
@@ -196,7 +209,7 @@ static void backup(void){unsigned i;ULARGE_INTEGER free;ULONGLONG need=RESERVE,c
  }
  if(fixture_full()||!GetDiskFreeSpaceExW(L"E:\\",&free,0,0)||free.QuadPart<need)fail("BACKUP_CAPACITY_REJECTED");
  if(!CreateDirectoryW(L"E:\\A04BACKUP",0))fail("BACKUP_DIRECTORY_FAILED");
- manifest.magic=0x41303442;manifest.version=3;manifest.count=active_count;manifest.reserved=target_serial;
+ manifest.magic=0x41303442;manifest.version=4;manifest.count=active_count;manifest.reserved=target_serial;
  for(i=0;i<active_count;++i)if(!save_item(i)||!same_entry(&manifest.entries[i],&measured[i]))fail("BACKUP_ITEM_CHANGED_OR_FAILED_NO_UPDATE");
  if(!collect_sidecars(1)||active_count!=manifest.count)fail("BACKUP_SIDECAR_SET_CHANGED_NO_UPDATE");
  for(i=0;i<active_count;++i)if(!measure_item(i,&final_scan[i])||!same_entry(&manifest.entries[i],&final_scan[i]))fail("BACKUP_FINAL_CHECK_FAILED_NO_UPDATE");

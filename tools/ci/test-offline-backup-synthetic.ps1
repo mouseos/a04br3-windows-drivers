@@ -10,12 +10,14 @@ try {
  if($LASTEXITCODE){throw 'subst target failed'}
  & subst.exe S: "$base\esp"
  if($LASTEXITCODE){throw 'subst ESP failed'}
- New-Item -ItemType Directory -Force 'R:\Windows\System32\config','R:\Windows\System32\config\TxR','R:\Windows\System32\drivers','S:\EFI\Boot' | Out-Null
+ New-Item -ItemType Directory -Force 'R:\Windows\System32\config','R:\Windows\System32\config\TxR','R:\Windows\System32\drivers','R:\Windows\INF','S:\EFI\Boot' | Out-Null
  [IO.File]::WriteAllText('S:\EFI\Boot\bootarm.efi','fixture')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM','original-system')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM.LOG1','original-log')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE','original-software')
  [IO.File]::WriteAllText('R:\Windows\System32\drivers\bu21025.sys','original-touch')
+ [IO.File]::WriteAllText('R:\Windows\INF\oem33.inf','original-inf33')
+ [IO.File]::WriteAllText('R:\Windows\INF\oem35.inf','original-inf35')
  Set-Content -LiteralPath 'R:\Windows\System32\config\SYSTEM' -Stream 'fixture' -Value 'alternate stream'
  (Get-Item -Force 'R:\Windows\System32\config\SYSTEM').Attributes = 'Hidden'
  $acl=(Get-Acl 'R:\Windows\System32\config\SYSTEM').Sddl
@@ -54,6 +56,21 @@ try {
  if($LASTEXITCODE){throw 'fixture backup failed'}
  & "$base\fixture.exe" --probe
  if($LASTEXITCODE){throw 'valid recovery journal probe failed'}
+ # Convert a fixture copy to the legacy v3 slot layout and verify it is
+ # still discoverable without modifying the v4 journal retained for replay.
+ $saved="$base\saved-v4";Copy-Item 'S:\A04BACKUP' $saved -Recurse
+ $v=[IO.File]::ReadAllBytes('S:\A04BACKUP\READY');$count=[BitConverter]::ToUInt32($v,8)
+ [Array]::Copy([BitConverter]::GetBytes([uint32]3),0,$v,4,4)
+ [Array]::Copy([BitConverter]::GetBytes([uint32]($count-2)),0,$v,8,4)
+ [Array]::Copy($v,(16+13*328),$v,(16+11*328),([int]($count-13)*328))
+ [Array]::Clear($v,(16+([int]$count-2)*328),656)
+ $digest=[Security.Cryptography.SHA256]::Create();try{$hash=$digest.ComputeHash($v,0,$v.Length-32)}finally{$digest.Dispose()}
+ [Array]::Copy($hash,0,$v,$v.Length-32,32)
+ Remove-Item 'S:\A04BACKUP\item11.bin','S:\A04BACKUP\item12.bin'
+ for($i=13;$i -lt $count;$i++){Copy-Item (Join-Path $saved ('item{0:D2}.bin' -f $i)) ('S:\A04BACKUP\item{0:D2}.bin' -f ($i-2)) -Force}
+ [IO.File]::WriteAllBytes('S:\A04BACKUP\READY',$v)
+ & "$base\fixture.exe" --probe;if($LASTEXITCODE){throw 'legacy v3 journal rejected'}
+ Remove-Item 'S:\A04BACKUP' -Recurse -Force;Copy-Item $saved 'S:\A04BACKUP' -Recurse
  & "$base\fixture.exe" --complete
  if(!$LASTEXITCODE -or (Test-Path 'S:\A04BACKUP\COMMIT')){throw 'completion permitted while C remains mounted'}
  & "$base\fixture.exe" --unknown
@@ -61,6 +78,8 @@ try {
  (Get-Item -Force 'R:\Windows\System32\config\SYSTEM').Attributes = 'Normal'
  [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM','changed')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE','changed')
+ [IO.File]::WriteAllText('R:\Windows\INF\oem33.inf','changed-inf33')
+ [IO.File]::WriteAllText('R:\Windows\INF\oem35.inf','changed-inf35')
  [IO.File]::WriteAllText('R:\Windows\System32\drivers\mt8167-shared.sys','new')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM{fixture}.TM.blf','changed-sidecar')
  [IO.File]::WriteAllText('R:\Windows\System32\config\TxR\{fixture}.TxR.0.regtrans-ms','changed-txr')
@@ -81,6 +100,7 @@ try {
  & "$base\fixture.exe" --restore
  if($LASTEXITCODE){throw 'fixture replay failed'}
  if([IO.File]::ReadAllText('R:\Windows\System32\config\SYSTEM') -ne 'original-system'){throw 'SYSTEM content mismatch'}
+ if([IO.File]::ReadAllText('R:\Windows\INF\oem33.inf') -ne 'original-inf33' -or [IO.File]::ReadAllText('R:\Windows\INF\oem35.inf') -ne 'original-inf35'){throw 'published INF replay failed'}
  if([IO.File]::ReadAllText('R:\Windows\System32\config\SOFTWARE') -ne 'original-software'){throw 'SOFTWARE content mismatch'}
  if([IO.File]::ReadAllText('R:\Windows\System32\config\SYSTEM{fixture}.TM.blf') -ne 'original-system-sidecar'){throw 'SYSTEM sidecar mismatch'}
  if([IO.File]::ReadAllText('R:\Windows\System32\config\TxR\{fixture}.TxR.0.regtrans-ms') -ne 'original-txr'){throw 'TxR mismatch'}
@@ -93,7 +113,7 @@ try {
  [IO.File]::WriteAllText('R:\Windows\System32\drivers\mt8167-shared.sys','armed-new')
  & "$base\fixture.exe" --restore
  if($LASTEXITCODE -or (Test-Path 'R:\Windows\System32\drivers\mt8167-shared.sys')){throw 'armed replay failed to remove new file'}
- foreach($index in 0..13){
+ foreach($index in 0..15){
    $env:A04_FAIL_AFTER="$index"
    & "$base\fixture.exe" --restore
    if($LASTEXITCODE -ne 98){throw "fixture interruption failed at $index"}
@@ -101,7 +121,7 @@ try {
    & "$base\fixture.exe" --restore
    if($LASTEXITCODE){throw "fixture resume failed at $index"}
  }
- foreach($index in @(0,2,4,10,11,12,13)){
+ foreach($index in @(0,2,4,10,11,12,13,14,15)){
    $env:A04_FAIL_TEMP="$index"
    & "$base\fixture.exe" --restore
    if($LASTEXITCODE -ne 98){throw "temporary-file interruption failed at $index"}
