@@ -1,6 +1,8 @@
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
 rem Read-only preflight only. The RAM hive copy is not an exclusive snapshot.
+X:\a04br3\offline-package-pins.exe
+if errorlevel 1 goto packagefail
 X:\a04br3\offline-baseline-guard.exe
 if errorlevel 1 goto baselinefail
 X:\a04br3\audit-copy-hives.exe
@@ -21,6 +23,9 @@ exit /b 0
 :baselinefail
 echo UPDATE_PREFLIGHT_BASELINE_REJECTED
 exit /b 2
+:packagefail
+echo UPDATE_PREFLIGHT_PACKAGE_REJECTED
+exit /b 9
 :copyfail
 echo UPDATE_PREFLIGHT_RAM_COPY_REJECTED
 exit /b 3

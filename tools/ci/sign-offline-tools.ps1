@@ -6,6 +6,7 @@ param([Parameter(Mandatory=$true)][string]$BackupExe,
       [string]$PnpBaselineExe,
       [string]$StageDriversExe,
       [string]$PublishDriversExe,
+      [string]$PackagePinsExe,
       [Parameter(Mandatory=$true)][string]$OutputDirectory)
 $ErrorActionPreference='Stop'
 if(Test-Path $OutputDirectory){throw 'Output directory already exists'}
@@ -20,6 +21,7 @@ if($SignatureCheckExe){if(!(Test-Path -LiteralPath $SignatureCheckExe -PathType 
 if($PnpBaselineExe){if(!(Test-Path -LiteralPath $PnpBaselineExe -PathType Leaf)){throw 'PnP baseline executable missing'};Copy-Item -LiteralPath $PnpBaselineExe -Destination (Join-Path $OutputDirectory 'offline-pnp-baseline.exe');$names+='offline-pnp-baseline.exe'}
 if($StageDriversExe){if(!(Test-Path -LiteralPath $StageDriversExe -PathType Leaf)){throw 'Stage drivers executable missing'};Copy-Item -LiteralPath $StageDriversExe -Destination (Join-Path $OutputDirectory 'offline-stage-drivers.exe');$names+='offline-stage-drivers.exe'}
 if($PublishDriversExe){if(!(Test-Path -LiteralPath $PublishDriversExe -PathType Leaf)){throw 'Publish drivers executable missing'};Copy-Item -LiteralPath $PublishDriversExe -Destination (Join-Path $OutputDirectory 'offline-publish-drivers.exe');$names+='offline-publish-drivers.exe'}
+if($PackagePinsExe){if(!(Test-Path -LiteralPath $PackagePinsExe -PathType Leaf)){throw 'Package pins executable missing'};Copy-Item -LiteralPath $PackagePinsExe -Destination (Join-Path $OutputDirectory 'offline-package-pins.exe');$names+='offline-package-pins.exe'}
 $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1"
 $sign=Join-Path $kit 'bin\x86\signtool.exe'
 $cert=New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=A04BR3 Offline Maintenance Test' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
