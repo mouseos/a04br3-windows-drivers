@@ -89,6 +89,12 @@ static int verify_restored(unsigned i){
  hashfail:CryptDestroyHash(h);if(ctx)BackupRead(f,0,0,&n,TRUE,TRUE,&ctx);
  close:if(!CloseHandle(f))ok=0;return ok;
 }
+#ifdef A04_OFFLINE_FIXTURE
+static int fixture_index(const char *name,unsigned i){char s[8];DWORD n=GetEnvironmentVariableA(name,s,sizeof(s));unsigned value;if(n==1 && s[0]>='0' && s[0]<='9')value=(unsigned)(s[0]-'0');else if(n==2 && s[0]=='1' && s[1]=='0')value=10;else return 0;return value==i;}
+static void fixture_temp_fault(unsigned i){if(fixture_index("A04_FAIL_TEMP",i))ExitProcess(98);}
+#else
+static void fixture_temp_fault(unsigned i){(void)i;}
+#endif
 static int replay_item(unsigned i){WCHAR p[64];HANDLE in,out;void *ctx=0;DWORD n,w,attr;int ok=0;ENTRY *e=&manifest.entries[i];
  if(!e->present){attr=GetFileAttributesW(target[i]);if(attr==INVALID_FILE_ATTRIBUTES)return GetLastError()==ERROR_FILE_NOT_FOUND;if(attr&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY))return 0;if(!SetFileAttributesW(target[i],FILE_ATTRIBUTE_NORMAL))return 0;return DeleteFileW(target[i])!=0;}
  attr=GetFileAttributesW(temp[i]);if(attr!=INVALID_FILE_ATTRIBUTES){if(attr&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY))return 0;if(!SetFileAttributesW(temp[i],FILE_ATTRIBUTE_NORMAL)||!DeleteFileW(temp[i]))return 0;}else if(GetLastError()!=ERROR_FILE_NOT_FOUND)return 0;
@@ -100,6 +106,7 @@ static int replay_item(unsigned i){WCHAR p[64];HANDLE in,out;void *ctx=0;DWORD n
  ok=1;
  done:if(ctx)BackupWrite(out,0,0,&w,TRUE,TRUE,&ctx);if(!CloseHandle(out))ok=0;if(!CloseHandle(in))ok=0;if(!ok)return 0;
  if(!SetFileAttributesW(temp[i],e->attributes))return 0;
+ fixture_temp_fault(i);
  attr=GetFileAttributesW(target[i]);
  if(attr!=INVALID_FILE_ATTRIBUTES){if(attr&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY))return 0;if(!SetFileAttributesW(target[i],FILE_ATTRIBUTE_NORMAL))return 0;}
  else if(GetLastError()!=ERROR_FILE_NOT_FOUND)return 0;
@@ -126,7 +133,7 @@ static int target_exclusive(unsigned i){HANDLE h;BY_HANDLE_FILE_INFORMATION info
  return CloseHandle(h)!=0;
 }
 #ifdef A04_OFFLINE_FIXTURE
-static void fixture_fault(unsigned i){char s[8];DWORD n=GetEnvironmentVariableA("A04_FAIL_AFTER",s,sizeof(s));if(n==1 && s[0]>='0' && s[0]<='9' && (unsigned)(s[0]-'0')==i)ExitProcess(98);}
+static void fixture_fault(unsigned i){if(fixture_index("A04_FAIL_AFTER",i))ExitProcess(98);}
 #else
 static void fixture_fault(unsigned i){(void)i;}
 #endif

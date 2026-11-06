@@ -47,13 +47,21 @@ try {
  if((Get-Content -LiteralPath 'R:\Windows\System32\config\SYSTEM' -Stream fixture -Raw).Trim() -ne 'alternate stream'){throw 'alternate stream mismatch'}
  & "$base\fixture.exe" --restore
  if($LASTEXITCODE){throw 'fixture repeat replay failed'}
- foreach($index in 0..9){
+ foreach($index in 0..10){
    $env:A04_FAIL_AFTER="$index"
    & "$base\fixture.exe" --restore
    if($LASTEXITCODE -ne 98){throw "fixture interruption failed at $index"}
    Remove-Item Env:A04_FAIL_AFTER
    & "$base\fixture.exe" --restore
    if($LASTEXITCODE){throw "fixture resume failed at $index"}
+ }
+ foreach($index in @(0,2,4,10)){
+   $env:A04_FAIL_TEMP="$index"
+   & "$base\fixture.exe" --restore
+   if($LASTEXITCODE -ne 98){throw "temporary-file interruption failed at $index"}
+   Remove-Item Env:A04_FAIL_TEMP
+   & "$base\fixture.exe" --restore
+   if($LASTEXITCODE){throw "temporary-file resume failed at $index"}
  }
  [IO.File]::AppendAllText('S:\A04BACKUP\item00.bin','corruption')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE','do-not-overwrite')
