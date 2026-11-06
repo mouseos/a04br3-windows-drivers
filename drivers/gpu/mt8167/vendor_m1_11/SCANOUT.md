@@ -100,3 +100,35 @@ The GPU source/destination remain private bounce allocations and the CPU still
 writes POST. This does not share a GPU scanout surface or establish GPU-to-OVL
 cache visibility, IRQ ownership, atomic frame switching or retirement. These
 prerequisites remain required for the separate direct scanout path.
+
+## Shared MDL preparation
+
+`windows_shared_scanout.c` allocates one page-backed MDL through
+`MmAllocatePagesForMdlEx`, then obtains independent GPU and OVL DMA mappings
+from their respective PDOs and DMA adapters. The GPU mapping is for device
+writes (`WriteToDevice=FALSE`); OVL is for device reads (`TRUE`). The same
+flags are supplied when each mapping is released. This also corrects the
+previous `windows_display_scanout.c` OVL direction. The helper converts the
+GPU scatter/gather list to 1000 GPU pages, rejects duplicate GPU addresses,
+requires a contiguous 32-bit OVL address, and can construct inactive GPU MMU
+page-table images with SLC bypass. GPU owner-supplied page-table DMA addresses
+must be distinct from each other and from every mapped GPU data page.
+
+The WDDM resource owner now has a `PrepareShared` entry point that supplies
+its PnP-assigned display PDO and adapter; the GPU owner must supply and retain
+its PDO and adapter until cleanup. This entry point has no production caller.
+No table image is published, no GPU work or OVL write is submitted, and no
+mapping is exposed to either device by this integration. The existing GPU
+service is separately reported by the user to have completed three 4 KiB
+copies with matching CRC in
+`port/gsi/logs/ios-feasibility/windows-rt-ge8300-copy-43c59835-uart.log`;
+that does not validate this allocation or a scanout.
+
+A DMA adapter can introduce bounce buffers: an OVL mapping made before GPU
+writes may see a stale copy. Thus even a successful dual mapping, uncached MDL,
+GPU SLC bypass and a fence are not accepted here as proof of display visibility.
+A platform-backed no-bounce/visibility contract, shared cross-driver ownership,
+GPU table publication/invalidation, present completion, frame switching and
+both engines' stop/removal protocol remain necessary. Unexposed mappings can
+be released; exposed mappings are retained. The current WDDM lifecycle only
+supports unexposed preparation and must be redesigned before hardware use.

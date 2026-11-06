@@ -33,6 +33,15 @@ foreach ($name in @('bdd','bdd_ddi','bdd_dmm','bdd_util','bltfuncs','blthw','mem
     if ($LASTEXITCODE -ne 0) { throw "ARM32 display source compilation failed: $name" }
     $objects += $obj
 }
+if ($direct -eq '1') {
+    foreach ($name in @('vendor_m1_11\windows_shared_scanout','dma_pages','gpu_mmu')) {
+        $obj = Join-Path $out "$($name.Replace('\','-')).obj"
+        $gpu = Join-Path $root 'drivers\gpu\mt8167'
+        & $cl /nologo /c /TC /std:c11 /kernel /GS- /Zl /D_KERNEL_MODE /D_ARM_ /DARM /DNTDDI_VERSION=0x06030000 /D_WIN32_WINNT=0x0603 "/I$inc\km" "/I$inc\shared" "/I$inc\um" "/I$($vc.FullName)\include" "/I$($ucrt.FullName)\ucrt" "/Fo$obj" (Join-Path $gpu "$name.c")
+        if ($LASTEXITCODE -ne 0) { throw "ARM32 shared scanout compilation failed: $name" }
+        $objects += $obj
+    }
+}
 & $link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib @objects (Join-Path $lib 'displib.lib') (Join-Path $lib 'ntoskrnl.lib') (Join-Path $lib 'hal.lib') (Join-Path $lib 'bufferoverflowfastfailk.lib') (Join-Path $lib 'BufferOverflowGDI.lib') (Join-Path $lib 'libcntpr.lib') "/out:$out\wddm-display-build-check.sys"
 if ($LASTEXITCODE -ne 0) { throw 'ARM32 display build-check link failed' }
 Write-Host 'Display-only build check; no INF, no GPU acceleration, do not install.'

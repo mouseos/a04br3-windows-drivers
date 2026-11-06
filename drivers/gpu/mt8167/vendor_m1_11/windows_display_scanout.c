@@ -45,7 +45,7 @@ NTSTATUS a04_display_scanout_map(struct a04_display_scanout *s,
     }
     KeInitializeEvent(&wait.event,NotificationEvent,FALSE);wait.list=NULL;
     status=adapter->DmaOperations->GetScatterGatherList(adapter,device,mdl,
-        MmGetMdlVirtualAddress(mdl),surface->bytes,a04_display_sg_complete,&wait,FALSE);
+        MmGetMdlVirtualAddress(mdl),surface->bytes,a04_display_sg_complete,&wait,TRUE);
     if (!NT_SUCCESS(status)) return status;
     /* The callback owns this stack context until it signals; do not time out. */
     do { status=KeWaitForSingleObject(&wait.event,Executive,KernelMode,FALSE,NULL); }
@@ -65,7 +65,7 @@ NTSTATUS a04_display_scanout_map(struct a04_display_scanout *s,
     s->surface=surface;s->display_adapter=adapter;s->mdl=mdl;s->sg=sg;
     s->display_address=(uint32_t)start;return STATUS_SUCCESS;
 invalid:
-    adapter->DmaOperations->PutScatterGatherList(adapter,sg,FALSE);
+    adapter->DmaOperations->PutScatterGatherList(adapter,sg,TRUE);
     return STATUS_DEVICE_CONFIGURATION_ERROR;
 }
 NTSTATUS a04_display_scanout_unmap(struct a04_display_scanout *s)
@@ -73,7 +73,7 @@ NTSTATUS a04_display_scanout_unmap(struct a04_display_scanout *s)
     if (!s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !s->sg || !s->display_adapter)
         return STATUS_INVALID_PARAMETER;
     if (s->attempted) return STATUS_DEVICE_BUSY;
-    s->display_adapter->DmaOperations->PutScatterGatherList(s->display_adapter,s->sg,FALSE);
+    s->display_adapter->DmaOperations->PutScatterGatherList(s->display_adapter,s->sg,TRUE);
     RtlZeroMemory(s,sizeof(*s));return STATUS_SUCCESS;
 }
 NTSTATUS a04_display_scanout_switch(struct a04_display_scanout *s,

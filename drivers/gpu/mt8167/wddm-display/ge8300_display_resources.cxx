@@ -35,16 +35,23 @@ NTSTATUS A04DisplayResources::Start(PDEVICE_OBJECT pdo,const DXGK_DEVICE_INFO *i
         MapRegisters<1000) { Stop(); return STATUS_NOT_SUPPORTED; }
     Ovl=(volatile ULONG *)MmMapIoSpace(ovl->u.Memory.Start,0x1000,MmNonCached);
     if (!Ovl) { Stop(); return STATUS_INSUFFICIENT_RESOURCES; }
-    HasInterrupt=(interrupts==1);
+    DisplayPdo=pdo;HasInterrupt=(interrupts==1);
     return STATUS_SUCCESS;
+}
+NTSTATUS A04DisplayResources::PrepareShared(PDMA_ADAPTER gpu,PDEVICE_OBJECT gpuPdo)
+{
+    if (!Adapter || !DisplayPdo || !Ovl) return STATUS_DEVICE_NOT_READY;
+    return a04_shared_scanout_prepare(&Shared,gpu,gpuPdo,Adapter,DisplayPdo);
 }
 VOID A04DisplayResources::Stop()
 {
-    /* Until an OVL scanout is connected no DMA map, IRQ or GPU lease exists. */
+    /* This path may only hold an unexposed shared preparation.  Connecting
+     * hardware requires a new stop/removal lifetime, not this cleanup. */
+    if (!NT_SUCCESS(a04_shared_scanout_release(&Shared))) return;
     if (Ovl) { MmUnmapIoSpace((void *)Ovl,0x1000); Ovl=NULL; }
     if (Adapter && Adapter->DmaOperations && Adapter->DmaOperations->PutDmaAdapter)
         Adapter->DmaOperations->PutDmaAdapter(Adapter);
     Adapter=NULL;
-    MapRegisters=0;HasInterrupt=FALSE;
+    MapRegisters=0;HasInterrupt=FALSE;DisplayPdo=NULL;
 }
 #endif

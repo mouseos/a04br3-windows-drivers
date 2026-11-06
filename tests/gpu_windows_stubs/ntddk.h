@@ -29,6 +29,11 @@ typedef void (*PDRIVER_LIST_CONTROL)(PDEVICE_OBJECT,PIRP,PSCATTER_GATHER_LIST,PV
 #define NotificationEvent 0
 #define Executive 0
 #define IO_NO_INCREMENT 0
+#define MmNonCached 0
+#define MM_ALLOCATE_FULLY_REQUIRED 1
+PMDL MmAllocatePagesForMdlEx(PHYSICAL_ADDRESS,PHYSICAL_ADDRESS,PHYSICAL_ADDRESS,SIZE_T,int,ULONG);
+void MmFreePagesFromMdl(PMDL);
+void ExFreePool(void *);
 void KeInitializeEvent(KEVENT *,int,BOOLEAN);
 void KeSetEvent(KEVENT *,int,BOOLEAN);
 NTSTATUS KeWaitForSingleObject(void *,int,int,BOOLEAN,void *);

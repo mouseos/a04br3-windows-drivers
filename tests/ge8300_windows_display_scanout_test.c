@@ -13,9 +13,9 @@ NTSTATUS KeWaitForSingleObject(void *p,int a,int b,BOOLEAN c,void *d)
 PHYSICAL_ADDRESS MmGetPhysicalAddress(void *p)
 { PHYSICAL_ADDRESS a; a.QuadPart=(int64_t)(uintptr_t)p+0x40000000;return a; }
 static NTSTATUS get(PDMA_ADAPTER a,PDEVICE_OBJECT d,PMDL m,void *v,ULONG n,PDRIVER_LIST_CONTROL cb,void *ctx,BOOLEAN write)
-{ (void)a;(void)m;(void)v;(void)n;assert(!write);cb(d,0,&list,ctx);return STATUS_SUCCESS; }
+{ (void)a;(void)m;(void)v;(void)n;assert(write);cb(d,0,&list,ctx);return STATUS_SUCCESS; }
 static void put(PDMA_ADAPTER a,PSCATTER_GATHER_LIST s,BOOLEAN write)
-{ (void)a;assert(s==&list && !write);puts++; }
+{ (void)a;assert(s==&list && write);puts++; }
 NTSTATUS a04_vendor_surface_mark_exposed(struct a04_vendor_surface *s)
 { assert(!s->hardware_exposed);s->hardware_exposed=TRUE;return STATUS_SUCCESS; }
 static NTSTATUS ready(void *ctx,uint64_t f) { (void)ctx;assert(f==7);return readiness ? STATUS_SUCCESS : STATUS_DEVICE_NOT_READY; }
