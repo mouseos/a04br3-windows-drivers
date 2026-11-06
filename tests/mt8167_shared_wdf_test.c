@@ -11,6 +11,9 @@ static ULONG mockAfeRegs[1024];static int mockAfeIgnoreWrite;
 #define mockAfe mockAfeRegs[0]
 #endif
 static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,assertClosedOnLock,closeDuringLock,failMap;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;static A04_SHARED_USB_INTERFACE usb;static A04_SHARED_WIFI_INTERFACE wifi;
+#if A04_SHARED_GCE_CLOCK_INTERFACE
+static A04_GCE_CLOCK_INTERFACE gceInterface;static int gceDevicePublished;
+#endif
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
 static ULONG usbGpio[1024];
 #endif
@@ -64,7 +67,16 @@ void WdfDeviceInitSetPnpPowerEventCallbacks(PWDFDEVICE_INIT i,WDF_PNPPOWER_EVENT
 NTSTATUS WdfDeviceCreate(PWDFDEVICE_INIT *i,WDF_OBJECT_ATTRIBUTES *a,WDFDEVICE *d){(void)a;if(*i){assert(child_count<6);*d=&children[child_count++];*i=NULL;}else *d=&testContext;return 0;}
 NTSTATUS WdfDriverCreate(PDRIVER_OBJECT d,PUNICODE_STRING p,void *a,WDF_DRIVER_CONFIG *c,void *h){(void)d;(void)p;(void)a;(void)c;(void)h;return 0;}
 void WdfObjectReference(WDFDEVICE d){(void)d;refs++;}void WdfObjectDereference(WDFDEVICE d){(void)d;refs--;}
-NTSTATUS WdfDeviceAddQueryInterface(WDFDEVICE d,WDF_QUERY_INTERFACE_CONFIG *q){(void)d;if(!q->Interface){assert(q->SendQueryToParentStack);forward_count++;return 0;}if(!memcmp(q->Guid,&A04SharedInterfaceGuid,sizeof(GUID)))memcpy(&input,q->Interface,sizeof(input));else if(!memcmp(q->Guid,&A04SharedAudioInterfaceGuid,sizeof(GUID)))memcpy(&audio,q->Interface,sizeof(audio));else if(!memcmp(q->Guid,&A04SharedUsbInterfaceGuid,sizeof(GUID)))memcpy(&usb,q->Interface,sizeof(usb));else if(!memcmp(q->Guid,&A04SharedWifiInterfaceGuid,sizeof(GUID)))memcpy(&wifi,q->Interface,sizeof(wifi));else memcpy(&saved,q->Interface,sizeof(saved));return 0;}
+NTSTATUS WdfDeviceAddQueryInterface(WDFDEVICE d,WDF_QUERY_INTERFACE_CONFIG *q){(void)d;if(!q->Interface){assert(q->SendQueryToParentStack);forward_count++;return 0;}
+#if A04_SHARED_GCE_CLOCK_INTERFACE
+if(!memcmp(q->Guid,&A04GceClockInterfaceGuid,sizeof(GUID))){memcpy(&gceInterface,q->Interface,sizeof(gceInterface));return 0;}
+#endif
+if(!memcmp(q->Guid,&A04SharedInterfaceGuid,sizeof(GUID)))memcpy(&input,q->Interface,sizeof(input));else if(!memcmp(q->Guid,&A04SharedAudioInterfaceGuid,sizeof(GUID)))memcpy(&audio,q->Interface,sizeof(audio));else if(!memcmp(q->Guid,&A04SharedUsbInterfaceGuid,sizeof(GUID)))memcpy(&usb,q->Interface,sizeof(usb));else if(!memcmp(q->Guid,&A04SharedWifiInterfaceGuid,sizeof(GUID)))memcpy(&wifi,q->Interface,sizeof(wifi));else memcpy(&saved,q->Interface,sizeof(saved));return 0;}
+NTSTATUS WdfDeviceCreateDeviceInterface(WDFDEVICE d,const GUID *g,void *ref){(void)d;(void)g;(void)ref;
+#if A04_SHARED_GCE_CLOCK_INTERFACE
+assert(!memcmp(g,&A04GceParentDeviceInterfaceGuid,sizeof(GUID)));gceDevicePublished++;
+#endif
+return 0;}
 void RtlInitUnicodeString(PUNICODE_STRING u,PCWSTR s){u->value=s;}
 PWDFDEVICE_INIT WdfPdoInitAllocate(WDFDEVICE p){(void)p;return (void *)1;}
 void WdfDeviceInitFree(PWDFDEVICE_INIT p){(void)p;}
@@ -238,6 +250,13 @@ int main(void){
  mockWacs=1;
 #endif
  assert(!ParentD0(&testContext,0) && testContext.pmic.online && !testContext.admissionClosed);
+#if A04_SHARED_GCE_CLOCK_INTERFACE
+ {ULONG token=123;int beforeReads=reads,beforeWrites=writes;
+  assert(gceDevicePublished==1 && gceInterface.Acquire && gceInterface.Release);
+  assert(gceInterface.Acquire(gceInterface.Header.Context,&token)==STATUS_DEVICE_NOT_READY && token==0);
+  assert(reads==beforeReads && writes==beforeWrites && !testContext.gceClock.active);
+  assert(gceInterface.Release(gceInterface.Header.Context,1)==STATUS_NOT_SUPPORTED);}
+#endif
  assert(testContext.regs.online==(A04_SHARED_TOUCH_D0_EXPERIMENT ? 1 : 0));
  assert(testContext.usb.online==(testContext.apmixed!=NULL));
  assert(!ParentUsbLock(&testContext) && testContext.pwrapLock.held);ParentUsbUnlock(&testContext);assert(!testContext.pwrapLock.held);

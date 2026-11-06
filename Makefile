@@ -572,6 +572,12 @@ build/mt8167_audio_adapter_pnp_test: drivers/audio/mt8167-afe/adapter.cpp tests/
 	$(CXX) -O2 -Wall -Wextra -Werror -std=c++11 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_MT8167_WAVERT_DIAGNOSTIC=1 -DA04_MT8167_OWNER_DIAGNOSTIC=1 -Itests/audio_adapter_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/adapter.cpp tests/mt8167_audio_adapter_pnp_test.cpp -o $@
 
 .PHONY: test-mt8167-shared-wdf
+.PHONY: test-mt8167-gce-parent-wdf
+test-mt8167-gce-parent-wdf: build/mt8167_gce_parent_wdf_test
+	./build/mt8167_gce_parent_wdf_test
+build/mt8167_gce_parent_wdf_test: tests/mt8167_shared_wdf_test.c tests/shared_wdf_stubs/ntddk.h tests/shared_wdf_stubs/wdf.h drivers/bus/mt8167-shared/wdf_parent_probe.c drivers/bus/mt8167-shared/gce_clock_lease.c drivers/bus/mt8167-shared/gce_clock_interface.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_SHARED_BUTTON_D0_EXPERIMENT=1 -DA04_SHARED_TOUCH_D0_EXPERIMENT=1 -DA04_SHARED_GCE_CLOCK_INTERFACE=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/gce_clock_lease.c drivers/bus/mt8167-shared/audio_owner.c drivers/bus/mt8167-shared/mt6392_classd.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c drivers/bus/mt8167-shared/usb_owner.c drivers/usb/mt8167-usb20/gpio22.c tests/mt8167_shared_wdf_test.c -o $@
 test-mt8167-shared-wdf: build/mt8167_shared_wdf_test
 	./build/mt8167_shared_wdf_test
 	python3 tests/shared_parent_prototype_test.py

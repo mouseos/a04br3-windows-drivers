@@ -41,5 +41,6 @@ NTSTATUS WdfDeviceCreate(PWDFDEVICE_INIT *,WDF_OBJECT_ATTRIBUTES *,WDFDEVICE *);
 NTSTATUS WdfDriverCreate(PDRIVER_OBJECT,PUNICODE_STRING,void *,WDF_DRIVER_CONFIG *,void *);
 void WdfObjectReference(WDFDEVICE);void WdfObjectDereference(WDFDEVICE);
 NTSTATUS WdfDeviceAddQueryInterface(WDFDEVICE,WDF_QUERY_INTERFACE_CONFIG *);
+NTSTATUS WdfDeviceCreateDeviceInterface(WDFDEVICE,const GUID *,void *);
 NTSTATUS WdfFdoQueryForInterface(WDFDEVICE,const GUID *,PINTERFACE,USHORT,USHORT,void *);
 #endif
