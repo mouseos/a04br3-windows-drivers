@@ -329,3 +329,16 @@ the ADC lease but drops the PWRAP lock. Recovery requires an owner-specific
 procedure. The adapter has only fake-WACS host tests and remains disconnected
 from the parent, IOCTL, UART, charger, and GPIO22 control. Linking it does not
 make VCDT available in the signed GPIO observation package.
+
+The opt-in shared-parent USB observation IOCTL also offers a separate fixed
+read-only PMIC snapshot: CHRSTATUS (0x0142) and VUSB DIGLDO_CON2 (0x0502).
+The same parent PWRAP lock serializes both fixed reads; each validity bit is
+independent and the shared bus poison state is reported. The UART utility
+emits these as `A04USB SNAP <id> 4 <valid> <chrstatus> <vusb> <poison>`;
+`FFFFFFFF` poison means the new IOCTL was unavailable, not an observed bus
+state. These are live register reads, not a firmware handoff record, an ADC
+sample, connector voltage or evidence of exclusive access by firmware/EL3.
+The operation issues WACS read commands and clears the wrapper valid flag;
+it does not write PMIC registers, start an ADC conversion, access the charger
+I2C device or change GPIO. Existing ADC ownership and charger gates remain
+closed. Output validity indicates successful bus reads only.

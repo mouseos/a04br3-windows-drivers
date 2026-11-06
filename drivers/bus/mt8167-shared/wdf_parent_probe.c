@@ -619,6 +619,22 @@ static VOID ParentUsbObservationIoctl(WDFQUEUE queue,WDFREQUEST request,size_t o
 {
  A04_PARENT_CONTEXT *c=ParentContext(WdfIoQueueGetDevice(queue));
  A04_USB_OBSERVATION *v;size_t available;NTSTATUS status=STATUS_INVALID_PARAMETER;
+ if(code==A04_USB_POWER_STATE_GET && in==0) {
+  A04_USB_POWER_STATE *p; USHORT raw;
+  if(out<sizeof(*p)){status=STATUS_BUFFER_TOO_SMALL;goto done;}
+  status=WdfRequestRetrieveOutputBuffer(request,sizeof(*p),(PVOID *)&p,&available);
+  if(!NT_SUCCESS(status))goto done;
+  if(available<sizeof(*p)){status=STATUS_BUFFER_TOO_SMALL;goto done;}
+  if(ParentLock(c)){status=STATUS_DEVICE_NOT_READY;goto done;}
+  if(!c->pmic.online || InterlockedCompareExchange(&c->removed,0,0)) {
+   ParentUnlock(c);status=STATUS_DEVICE_NOT_READY;goto done;
+  }
+  RtlZeroMemory(p,sizeof(*p));p->size=sizeof(*p);p->version=A04_USB_POWER_STATE_VERSION;
+  if(!a04_pmic_chrstatus(&c->pmic.bus,&raw)){p->chrstatus=raw;p->valid|=A04_USB_POWER_CHR_VALID;}
+  if(!a04_pmic_vusb_get(&c->pmic.bus,&raw)){p->vusb=raw;p->valid|=A04_USB_POWER_VUSB_VALID;}
+  p->pwrap_poisoned=(ULONG)(c->pmic.bus.poisoned!=0);
+  ParentUnlock(c);WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(*p));return;
+ }
  if(code!=A04_USB_OBSERVATION_GET || in!=0)goto done;
  if(out<sizeof(*v)){status=STATUS_BUFFER_TOO_SMALL;goto done;}
  status=WdfRequestRetrieveOutputBuffer(request,sizeof(*v),(PVOID *)&v,&available);
