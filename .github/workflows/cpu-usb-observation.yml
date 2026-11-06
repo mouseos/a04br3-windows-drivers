@@ -1,0 +1,25 @@
+name: CPU and USB observation ARM32
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDK and WDK 8.1
+        shell: pwsh
+        run: ./tools/ci/install-wdk81.ps1
+      - name: Build and test-sign one shared parent
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./tools/ci/build-cpu-observe-signed.ps1
+          $dir=Join-Path $env:RUNNER_TEMP 'cpu-observe-signed'
+          $files=@{}; Get-ChildItem $dir -File | ForEach-Object {$files[$_.Name]=(Get-FileHash $_.FullName -Algorithm SHA256).Hash}
+          [ordered]@{source_commit=(git rev-parse HEAD);cpu_observe=1;usb_observe=1;gpio22_source=0;files=$files;note='Test-signed only; no VCDT request or charger control'} | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 (Join-Path $dir 'manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpu-usb-observe-test-signed
+          path: ${{ runner.temp }}\cpu-observe-signed
+          if-no-files-found: error

@@ -13,6 +13,15 @@
 #include "audio_owner.h"
 #include "usb_interface.h"
 #include "usb_owner.h"
+#ifndef A04_CPU_USB_OBSERVE
+#define A04_CPU_USB_OBSERVE 0
+#endif
+#if A04_CPU_USB_OBSERVE
+#include "usb_observation_ioctl.h"
+#if !defined(A04_SHARED_CPU_OBSERVE) || !A04_SHARED_CPU_OBSERVE
+#error USB observation requires the CPU observation queue
+#endif
+#endif
 #ifndef A04_SHARED_CPU_OBSERVE
 #define A04_SHARED_CPU_OBSERVE 0
 #endif
@@ -156,6 +165,38 @@ static int ParentCpuRead(void *context,enum a04_cpu_field field,uint32_t *value)
     if(r->calls>=8)r->second[index]=*value;
     ++r->calls;return 0;
 }
+#if A04_CPU_USB_OBSERVE
+/* Same D0-managed queue and parent lock as CPU sampling. Fixed reads only. */
+static VOID ParentUsbIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULONG code)
+{
+ A04_PARENT_CONTEXT *c=ParentContext(WdfIoQueueGetDevice(queue));size_t n;NTSTATUS status;
+ A04_USB_OBSERVATION *v;A04_USB_POWER_STATE *p;USHORT raw;
+ if(inlen){WdfRequestComplete(request,STATUS_INVALID_PARAMETER);return;}
+ if(code==A04_USB_OBSERVATION_GET) {
+  if(outlen<sizeof(*v)){WdfRequestComplete(request,STATUS_BUFFER_TOO_SMALL);return;}
+  status=WdfRequestRetrieveOutputBuffer(request,sizeof(*v),(PVOID *)&v,&n);
+  if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+  if(ParentLock(c)){WdfRequestComplete(request,STATUS_DEVICE_NOT_READY);return;}
+  if(!c->gpio || InterlockedCompareExchange(&c->removed,0,0)){ParentUnlock(c);WdfRequestComplete(request,STATUS_DEVICE_NOT_READY);return;}
+  v->size=sizeof(*v);v->version=A04_USB_OBSERVATION_VERSION;
+#define GPIOREAD(off) READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->gpio+(off)))
+  v->dir1=GPIOREAD(0x10);v->dout1=GPIOREAD(0x110);v->din1=GPIOREAD(0x210);v->mode21_22=GPIOREAD(0x340);
+  v->dir2=GPIOREAD(0x20);v->dout2=GPIOREAD(0x120);v->din2=GPIOREAD(0x220);v->mode34=GPIOREAD(0x360);v->mode41=GPIOREAD(0x380);
+#undef GPIOREAD
+  ParentUnlock(c);WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(*v));return;
+ }
+ if(outlen<sizeof(*p)){WdfRequestComplete(request,STATUS_BUFFER_TOO_SMALL);return;}
+ status=WdfRequestRetrieveOutputBuffer(request,sizeof(*p),(PVOID *)&p,&n);
+ if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+ if(ParentLock(c)){WdfRequestComplete(request,STATUS_DEVICE_NOT_READY);return;}
+ if(!c->pmic.online || InterlockedCompareExchange(&c->removed,0,0)){ParentUnlock(c);WdfRequestComplete(request,STATUS_DEVICE_NOT_READY);return;}
+ RtlZeroMemory(p,sizeof(*p));p->size=sizeof(*p);p->version=A04_USB_POWER_STATE_VERSION;
+ if(!a04_pmic_chrstatus(&c->pmic.bus,&raw)){p->chrstatus=raw;p->valid|=A04_USB_POWER_CHR_VALID;}
+ if(!a04_pmic_vusb_get(&c->pmic.bus,&raw)){p->vusb=raw;p->valid|=A04_USB_POWER_VUSB_VALID;}
+ p->pwrap_poisoned=(ULONG)(c->pmic.bus.poisoned!=0);ParentUnlock(c);
+ WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(*p));
+}
+#endif
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL ParentCpuIoctl;
 VOID ParentCpuIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULONG code)
 {
@@ -163,6 +204,9 @@ VOID ParentCpuIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen
     struct a04_cpu_response *out; struct a04_cpu_observation obs;
     struct cpu_read_context reads; size_t len; NTSTATUS status;
     UNREFERENCED_PARAMETER(inlen);UNREFERENCED_PARAMETER(outlen);
+#if A04_CPU_USB_OBSERVE
+    if(code==A04_USB_OBSERVATION_GET || code==A04_USB_POWER_STATE_GET){ParentUsbIoctl(queue,request,outlen,inlen,code);return;}
+#endif
     if(code!=A04_CPU_GET){WdfRequestComplete(request,STATUS_INVALID_DEVICE_REQUEST);return;}
     status=WdfRequestRetrieveOutputBuffer(request,sizeof(*out),(PVOID *)&out,&len);
     if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
