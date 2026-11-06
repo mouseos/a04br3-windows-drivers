@@ -17,6 +17,7 @@ try {
  [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE','original-software')
  [IO.File]::WriteAllText('R:\Windows\System32\config\DRIVERS','original-drivers')
  [IO.File]::WriteAllText('R:\Windows\System32\config\DRIVERS.LOG1','original-drivers-log')
+ [IO.File]::WriteAllText('R:\Windows\System32\drivers\mt8167-toprgu.sys','original-toprgu')
  [IO.File]::WriteAllText('R:\Windows\System32\drivers\bu21025.sys','original-touch')
  [IO.File]::WriteAllText('R:\Windows\INF\oem33.inf','original-inf33')
  [IO.File]::WriteAllText('R:\Windows\INF\oem35.inf','original-inf35')
@@ -151,6 +152,23 @@ try {
  & "$base\fixture.exe" --restore;if($LASTEXITCODE){throw 'staged journal recovery failed'}
  foreach($name in $stageNames.Values){if(Test-Path "R:\Windows\System32\drivers\$name.a04restore"){throw 'staged file remains after recovery'}}
  if([IO.File]::ReadAllText('R:\Windows\System32\drivers\bu21025.sys') -ne 'original-touch'){throw 'target touch changed during staging'}
+ # Real file publication against the real fixture journal; helper guard and
+ # volume flush remain mocked. Interrupt after each published file and replay.
+ $publishSrc=[IO.File]::ReadAllText("$root\tools\winpe\offline-publish-drivers.c").Replace('L"C:\\','L"R:\\').Replace('L"X:\\','L"S:\\');[IO.File]::WriteAllText("$base\publish.c",$publishSrc)
+ & clang --target=x86_64-pc-windows-msvc -fms-extensions -Werror=incompatible-pointer-types -DA04_PUBLISH_FIXTURE -D_WIN32_WINNT=0x0603 "-I$inc\um" "-I$inc\shared" -c "$base\publish.c" -o "$base\publish.obj";if($LASTEXITCODE){throw 'publish fixture compilation failed'}
+ & lld-link /subsystem:console /machine:x64 /entry:mainCRTStartup /nodefaultlib "$base\publish.obj" "$lib\kernel32.lib" "$lib\advapi32.lib" "/out:$base\publish.exe";if($LASTEXITCODE){throw 'publish fixture link failed'}
+ $env:A04_PUBLISH_FIXTURE_ARMED='1'
+ foreach($point in @('0','1','2','success')){
+  & "$base\stage.exe";if($LASTEXITCODE){throw "stage before publish $point failed"}
+  if($point -ne 'success'){$env:A04_PUBLISH_FIXTURE_FAIL=$point}
+  & "$base\publish.exe";$result=$LASTEXITCODE
+  if($point -ne 'success'){Remove-Item Env:A04_PUBLISH_FIXTURE_FAIL;if($result -ne 98){throw "publish interruption $point failed"}}
+  elseif($result -ne 0){throw 'publish success fixture failed'}
+  & "$base\fixture.exe" --restore;if($LASTEXITCODE){throw "journal recovery after publish $point failed"}
+  if([IO.File]::ReadAllText('R:\Windows\System32\drivers\mt8167-toprgu.sys') -ne 'original-toprgu' -or [IO.File]::ReadAllText('R:\Windows\System32\drivers\bu21025.sys') -ne 'original-touch' -or (Test-Path 'R:\Windows\System32\drivers\mt8167-shared.sys')){throw "driver rollback after publish $point failed"}
+  foreach($name in $stageNames.Values){if(Test-Path "R:\Windows\System32\drivers\$name.a04restore"){throw "temporary remains after publish $point"}}
+ }
+ Remove-Item Env:A04_PUBLISH_FIXTURE_ARMED
  $env:A04_STAGE_FIXTURE_FAIL='1';& "$base\stage.exe";if($LASTEXITCODE -ne 98){throw 'stage interruption failed'};Remove-Item Env:A04_STAGE_FIXTURE_FAIL
  & "$base\fixture.exe" --restore;if($LASTEXITCODE){throw 'interrupted stage recovery failed'}
  foreach($name in $stageNames.Values){if(Test-Path "R:\Windows\System32\drivers\$name.a04restore"){throw 'interrupted stage remains after recovery'}}
@@ -186,6 +204,8 @@ try {
  Write-Host 'SYNTHETIC_BACKUP_REPLAY_PASS (identity and flush mocked)'
 } finally {
  Remove-Item Env:A04_STAGE_FIXTURE_ARMED -ErrorAction SilentlyContinue
+ Remove-Item Env:A04_PUBLISH_FIXTURE_ARMED -ErrorAction SilentlyContinue
+ Remove-Item Env:A04_PUBLISH_FIXTURE_FAIL -ErrorAction SilentlyContinue
  Remove-Item Env:A04_STAGE_FIXTURE_FAIL -ErrorAction SilentlyContinue
  & subst.exe R: /d
  & subst.exe S: /d

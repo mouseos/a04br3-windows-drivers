@@ -86,3 +86,7 @@ recovery上でESPを一時的に読取り専用マウントし、`A04BACKUP` が
 `preflight-offline-update.cmd` は基準SYS・INFの照合、hiveのRAMコピー、PnP参照の確認とコピーのunload、候補3 SYS・証明書ピンとWinPE署名の確認を順に実行する。どの段階も搭載OSへの適用を行わない。PnP検査が失敗してもRAM hiveのunloadを試み、unload失敗を独立して報告する。成功は非原子的なRAMコピー、Driver Store全体の復旧、RT署名受理、OS更新の成功を意味しない。
 
 `offline-stage-drivers.exe` は、有効なINTENT、現状基準、RAM hiveのPnP基準、候補SYS・証明書ピンおよびWinPE署名の各ガードが成功した場合に限り、3 SYSを固定の `.a04restore` 一時パスへ新規作成する。候補の読取り中に排他し、コピー前後のSHA-256、各ファイルとC:のflushを確認する。既存SYSは置換しない。一時配置途中の停止後は、INTENTを検証した復旧処理がこれらのパスを取り除き、元ファイル・不在状態を再生する。RAM hiveのロードとunloadは呼出側の責任である。これは完成したDriver Store/PnP適用経路ではなく、更新やOS起動の成功を意味しない。
+
+`offline-publish-drivers.exe` は有効なINTENT・基準・RAM hiveのPnP・候補ピン・WinPE署名を確認し、事前に配置した3個の一時SYSをすべてハッシュ検証してから、TOPRGU、共有親、BU21025の順で固定SYSパスへ反映する。既存2ファイルについて旧セキュリティ記述子を再設定し、制御フラグとSDDLを読戻し照合する。各反映後にC:をflushし、ハッシュを検証する。途中失敗・停止時はジャーナルから3 SYSと一時パスを復旧する。共有親の元状態は不在である。PnP・INF/CAT・Driver Storeの更新、コミット、dismountはこの部品に含まれない。Windows合成試験で各反映後の中断・復旧を行ったが、WinPE実機でのACL、flush、電源断後の復旧は未検証。単独で搭載OSへ適用しない。
+
+保護DACLの一部では、Windowsの置換・再設定後に自動継承の制御フラグが元と一致しなかった。この場合は`DRIVER_PUBLISH_SECURITY_CHANGED`を出して失敗し、ジャーナル再生が必要となる。保護DACLを含む合成対象では元のSYSとACLへ戻ることを確認したが、実機のACLと停電後のNTFSは未確認。
