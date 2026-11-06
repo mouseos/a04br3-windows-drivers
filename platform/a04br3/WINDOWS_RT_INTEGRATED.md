@@ -1,5 +1,9 @@
 # TAB-A04-BR3 Windows RT統合ソース
 
+run25の主担当実測：通常WindowsのDODが実フレームをGE8300へ転送し、全1,024,000画素一致を3回、B1=0・FWstart=0・380,000,062 Hzを確認。3D・完全render UMD・長期安定は未完了。実機生ログと私用hiveは公開しない。
+
+installer実ログもUPDATE_API_SUCCESS=1、REBOOT_REQUIRED=0、CM_PROBLEM=0、RESULT=BOUND_STARTED、FINAL_WIN32_ERROR=0、SCM_EXIT=0。最終UARTだけCreateFile error2（通常OSのScreenUart名不存在）で未達。probeも通知成功を前提にせず、diskログ・終了コードと分けて判定する。
+
 独立branch `work/windows-rt-integrated-20261107` はGPU/MMA8652 `d5f676d` と、
 USB/audio/Wi-Fi単一parent `f17b743` を履歴を保持して統合する。
 KS clientの9 GUID修正はHerschel `a016d53` と同内容の `f035c59` を含む。

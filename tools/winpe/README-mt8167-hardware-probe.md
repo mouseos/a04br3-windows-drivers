@@ -166,3 +166,18 @@ EXEの引数なし入口はStartServiceCtrlDispatcherWであり、対話起動�
 自サービス無効化→marker→CreateProcessの経路を開発側で確認する。
 模擬SCM/偽署名verifierの成功を実起動の証拠にしない。
 WDK8.1の署名build、対象OSの署名信頼、LocalSystem開始、実probeとUART回収は主担当が確認する。
+
+## 現行bulkのcopy-only構成と通知の限界
+
+WinPEでSYSTEMをRegLoadして登録する旧prepare手順は使用しない。
+現行bulk builderはTesla担当のnative-prepared clean SYSTEMと成功manifest/hashを必須入力にし、
+private媒体でDISM前にcopy-only適用する。native registry recipeは別担当で、serviceの再武装を
+このservice EXEや媒体builderが行うものではない。
+
+run25ではinstaller自体のBOUND_STARTED/CM_PROBLEM=0/SCM_EXIT=0を主担当が回収した一方、
+最終UARTのCreateFileはerror2で通常OSのScreenUart名がなかった。
+probeの同名UARTも利用可能と仮定しない。UART最終通知だけで試行成功・未実行を判定しない。
+主担当はSystem32/MT8167HardwareProbe配下のservice.log、wlan.stdout.txt、wlan.stderr.txt、
+audio.stdout.txt、audio.stderr.txt、attempted.binをprivate diskログとして回収し、
+子プロセス開始/終了、終了コード、EV_POWER_SET/CLEAR/CLOSE、UART errorを対応づける。
+これらの実機ログやhiveを公開repo/CI artifactへ含めない。

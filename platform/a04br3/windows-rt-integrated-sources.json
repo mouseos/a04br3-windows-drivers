@@ -90,5 +90,41 @@
     "clean_reload_verified": true,
     "target_run": "run25 private maintenance ESP application in progress; user report",
     "target_result_verified_here": false
+  },
+  "hardware_probe_power_request_source": "27ad206d54fcf54aae0b958d9b9b6edaafee2ae9",
+  "bulk_hardware_probe_preparation": {
+    "mode": "private-native-clean-SYSTEM-copy-only-before-DISM",
+    "winpe_system_regload": false,
+    "native_recipe_owner": "Tesla",
+    "native_candidate_input_required": true,
+    "probe_manifest_and_certificate_required": true,
+    "probe_certificate_independent_from_clients": true,
+    "probe_certificate_thumbprint_reported": "BCBF6C456C6F0DD0818434763B189488FBF13570",
+    "real_media_generated_here": false
+  },
+  "run25_dod_results_reported_by_primary_owner": {
+    "environment": "normal Windows DOD",
+    "real_frame_transfer": "GE8300",
+    "matching_pixels": 1024000,
+    "successful_repeats": 3,
+    "B1": 0,
+    "FWstart": 0,
+    "gpu_clock_hz": 380000062,
+    "3d_complete": false,
+    "full_render_umd_complete": false,
+    "long_term_stability_verified": false,
+    "service_final_notification_received": false
+  },
+  "run25_installer_results_reported_by_primary_owner": {
+    "UPDATE_API_SUCCESS": 1,
+    "REBOOT_REQUIRED": 0,
+    "CM_PROBLEM": 0,
+    "RESULT": "BOUND_STARTED",
+    "FINAL_WIN32_ERROR": 0,
+    "SCM_EXIT": 0,
+    "final_uart_createfile_error": 2,
+    "normal_os_screen_uart_name_present": false,
+    "probe_uart_delivery_verified": false,
+    "disk_log_collection_required": true
   }
 }

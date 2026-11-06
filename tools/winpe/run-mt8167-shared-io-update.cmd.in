@@ -33,6 +33,7 @@ mkdir "%A04_BK%" >> "%A04_REPORT%" 2>&1
 if errorlevel 1 goto backupfail
 > "%A04_BK%\JOURNAL.txt" echo STATE=DISM_STARTED
 >> "%A04_REPORT%" echo HOST_BACKUP_MANIFEST_SHA256=@HOST_BACKUP_SHA@
+@PROBE_PREPARE@
 reg.exe load HKLM\Mt8167IoOffline C:\Windows\System32\config\SOFTWARE >> "%A04_REPORT%" 2>&1
 if errorlevel 1 goto dismfail
 @TRUST_COMMANDS@
@@ -51,7 +52,6 @@ call :adddriver USB X:\a04br3\shared-io\usb\mt8167-usb20.inf
 if errorlevel 1 goto dismfail
 call :adddriver WIFI X:\a04br3\shared-io\wifi\mt6630-runtime.inf
 if errorlevel 1 goto dismfail
-@PROBE_PREPARE@
 copy /y X:\a04br3\dism-*.txt "%A04_BK%\" >nul
 > "%A04_BK%\JOURNAL.txt" echo STATE=COMMITTED
 >> "%A04_REPORT%" echo UPDATE_STATUS=COMMITTED
