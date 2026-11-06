@@ -530,3 +530,12 @@ completion already uses bounded polling. This policy does not establish DMA
 quiescence or authorize freeing any retained GPU allocation. Power-off must
 still clear powered under the same owner lock before interrupt disconnect and
 work-item flush. Hardware acceptance of this change remains to be verified.
+
+
+The provider build uses scalar ARM code generation at O2 by default, with
+vectorization and unaligned accesses disabled. The volatile 32-bit device-word
+helpers and explicit DMA barriers remain required. Set A04_GE8300_OPTIMIZE=0
+for an O0 debug comparison. Build logs record the exact codegen flags.
+Shared-surface acquisition now establishes its required first fenced copy
+inside the provider instead of requiring a separate test executable. Failure
+keeps the sharing service closed and preserves retained DMA allocations.
