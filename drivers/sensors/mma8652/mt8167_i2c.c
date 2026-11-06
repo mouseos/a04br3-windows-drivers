@@ -3,6 +3,17 @@
  */
 #include "mt8167_i2c.h"
 #include "../../bus/mt8167-i2c/pio.h"
+int a04_mma_i2c_recover_stopped(struct a04_mma_i2c *a)
+{
+    const struct a04_i2c_io *io;
+    if(!a || !(io=a->io) || !io->read16 || !io->write16 ||
+       (io->read16(io->context,0x24)&1u)) return -1;
+    io->write16(io->context,0x08,0);
+    io->write16(io->context,0x0c,7);
+    io->write16(io->context,0x38,1);
+    if(io->read16(io->context,0x24)&1u)return -1;
+    a->faulted=0; return 0;
+}
 int a04_mma_i2c_read(void *context, uint8_t address, uint8_t reg, uint8_t *out, unsigned len)
 {
     struct a04_mma_i2c *a = context; const struct a04_i2c_io *io;

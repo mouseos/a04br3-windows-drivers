@@ -164,6 +164,19 @@ static NTSTATUS Copy(WDFREQUEST request,const void *p,size_t len)
  if (!NT_SUCCESS(s)) return s; WdfMemoryGetBuffer(m,&n); if (n<len) return STATUS_BUFFER_TOO_SMALL;
  s=WdfMemoryCopyFromBuffer(m,0,(PVOID)p,len); if (NT_SUCCESS(s)) WdfRequestSetInformation(request,len); return s;
 }
+/* Caller holds the bus lock. A transient poll failure must not permanently
+ * close the HID queue when firmware still grants ownership and START is idle.
+ * Retry only once; active or persistently failing hardware remains failed. */
+static int ReadSample(WDFDEVICE dev,ACC_CONTEXT *c,struct a04_mma8652_sample *sample)
+{
+ int r=a04_mma8652_read(&c->bus,sample);
+ if(r==A04_MMA_IO && c->adapter.faulted && handoff_qualified(dev,c) &&
+    !a04_mma_i2c_recover_stopped(&c->adapter)) {
+  trace(c,"READ_RETRY",c->samples);
+  r=a04_mma8652_read(&c->bus,sample);
+ }
+ return r;
+}
 VOID AccTimer(WDFTIMER timer)
 {
  WDFDEVICE dev=(WDFDEVICE)WdfTimerGetParentObject(timer); ACC_CONTEXT *c=AccContext(dev);
@@ -172,7 +185,7 @@ VOID AccTimer(WDFTIMER timer)
  if (!InterlockedCompareExchange(&c->online,1,1)) return;
  WdfWaitLockAcquire(c->lock,NULL); interval=c->features.interval_ms;
  if (c->features.reporting && NT_SUCCESS(WdfIoQueueRetrieveNextRequest(c->reads,&request))) {
-   r=a04_mma8652_read(&c->bus,&sample);
+   r=ReadSample(dev,c,&sample);
    if(r==A04_MMA_OK) {
      ++c->samples;
      if(c->samples==1 || c->samples==100 || c->samples==1000)trace(c,"SAMPLES",c->samples);
@@ -192,6 +205,21 @@ VOID AccIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULONG
  HID_DESCRIPTOR h={0}; const uint8_t *descriptor; size_t size; PIRP irp; PHID_XFER_PACKET packet;
  uint8_t feature[A04_MMA_HID_FEATURE_SIZE];
  switch (code) {
+ case IOCTL_HID_GET_STRING: {
+  WDF_REQUEST_PARAMETERS parameters; ULONG id;
+  static const WCHAR manufacturer[]=L"NXP Semiconductors";
+  static const WCHAR product[]=L"NXP MMA8652 Accelerometer";
+  /* The chip has no exported hardware serial number. Return an empty
+   * serial string rather than inventing a per-device identifier. */
+  static const WCHAR serial[]=L"";
+  WDF_REQUEST_PARAMETERS_INIT(&parameters); WdfRequestGetParameters(request,&parameters);
+  id=(ULONG)(ULONG_PTR)parameters.Parameters.DeviceIoControl.Type3InputBuffer & 0xffffu;
+  if(id==HID_STRING_ID_IMANUFACTURER)s=Copy(request,manufacturer,sizeof(manufacturer));
+  else if(id==HID_STRING_ID_IPRODUCT)s=Copy(request,product,sizeof(product));
+  else if(id==HID_STRING_ID_ISERIALNUMBER)s=Copy(request,serial,sizeof(serial));
+  else s=STATUS_INVALID_PARAMETER;
+  trace(c,"IDENTIFICATION_STRING",id); break;
+ }
  case IOCTL_HID_GET_DEVICE_DESCRIPTOR:
   descriptor=a04_mma_hid_descriptor(&size); UNREFERENCED_PARAMETER(descriptor);
   h.bLength=sizeof(h); h.bDescriptorType=HID_HID_DESCRIPTOR_TYPE; h.bcdHID=0x0111;
@@ -214,7 +242,7 @@ VOID AccIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULONG
   WdfWaitLockAcquire(c->lock,NULL);
   if(!c->online || c->faulted) s=STATUS_DEVICE_NOT_READY;
   else {
-   result=a04_mma8652_read(&c->bus,&sample);
+   result=ReadSample(WdfIoQueueGetDevice(queue),c,&sample);
    if(result==A04_MMA_OK) {
     a04_mma_hid_input(&sample,input); RtlCopyMemory(packet->reportBuffer,input,sizeof(input));
     WdfRequestSetInformation(request,sizeof(input)); s=STATUS_SUCCESS;

@@ -2,7 +2,7 @@
 setlocal EnableExtensions DisableDelayedExpansion
 rem Offline driver update for the installed Windows RT volume: NXP MMA8652 accelerometer start diagnostics. The rollback point is the host image of the Windows partition.
 set "A04_REPORT=X:\a04br3\toprgu-audit-result.txt"
-set "A04_BK=C:\a04backup\mma8652-code10-v3"
+set "A04_BK=C:\a04backup\mma8652-code10-v4"
 > "%A04_REPORT%" echo UPDATE_BEGIN
 X:\a04br3\observe-msdc-storage.exe >> "%A04_REPORT%" 2>&1
 if "%errorlevel%"=="0" goto storageobserved
