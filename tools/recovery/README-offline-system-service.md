@@ -15,7 +15,23 @@
 
 出力先は必ず新規。input内や既存出力先は拒否する。必要なら `-ExpectedSystemSha256` / `-ExpectedLog1Sha256` / `-ExpectedLog2Sha256` でホストbackup由来hashを明示できる。省略時も入力hashを取得し、workcopy一致と処理終了時のoriginal不変を検査する。
 
-既定で対象はMT8167DeviceInstallだけ。将来の任意 `-IncludeHardwareProbe` は同じ値型・依存を持つMT8167HardwareProbeを追加するが、最初のGPU復旧試験では指定しない。
+既定は従来どおりMT8167DeviceInstallだけ。`-ServiceName MT8167HardwareProbe` はHardwareProbeだけを登録し、既存DeviceInstall版の登録・再武装を行わない。名前とEXEの絶対パスは2件の固定allowlistであり、任意サービス名・任意ImagePath・追加引数は受け付けない。内部workerも同じallowlistを照合する。
+
+### bulk準備：MT8167HardwareProbeだけ
+
+```powershell
+.\tools\recovery\prepare-offline-system-service.ps1 `
+    -SourceDirectory 'C:\mt8167-system-bulk\input' `
+    -OutputDirectory 'C:\mt8167-system-bulk\prepared-probe-new-01' `
+    -ServiceName MT8167HardwareProbe `
+    -TimeoutSeconds 30
+```
+
+固定ImagePathは `"C:\Windows\System32\MT8167HardwareProbe.exe"`（REG_EXPAND_SZ、引用符を含む）、DisplayNameは `MediaTek MT8167 Hardware Probe`。ほかの型・値は下表と同じで、DependOnServiceは実在照合するDeviceInstall/RpcSsだけ。EXE、clients、一回限りmarkerの配置・不存在確認はbulk担当側で行う。本レシピはprivate hiveやファイル配備を自動で行わない。
+
+両方を同じ新規workcopyへ登録する従来の明示指定 `-IncludeHardwareProbe` も保持する。`-ServiceName MT8167HardwareProbe` と併用してもDeviceInstallを暗黙追加しない。登録対象はresult.jsonのservicesとworkerの正確な7値に記録する。
+
+bulk側はnative準備成功のcandidate/SYSTEMを私用copy-only媒体へ渡し、旧prepare-mt8167-hardware-probe.cmd.inのWinPE RegLoad SYSTEMを併用しない。builder修正はbulk担当側で行う。
 
 ## 処理と正確なサービス値
 
@@ -23,7 +39,7 @@
 2. 子プロセス内でSeBackupPrivilege/SeRestorePrivilegeを有効化し、一意なHKLMのprivate aliasへRegLoadKeyWでloadする。Windows native APIによるreplayを使い、Pythonでlogを合成したりheaderの版・sequence/checksumを手修正したりしない。
 3. replay後のSelect.Current=1を確認する。次回起動先の食い違いを避けるためSelect.Defaultも同じ1でなければ拒否する。両Select値自体は変更しない。
 4. ControlSet001/ServicesのDeviceInstall(Type=32, Start=3)とRpcSs(Type=32, Start=2)の実在・DWORD型を検査する。PlugPlayは追加しない。
-5. ControlSet001/Services/MT8167DeviceInstallを下表どおり登録する。未登録または互換性のある部分登録だけを許可し、既存Start=4等を勝手に再武装しない。
+5. 選択したControlSet001/Services/MT8167DeviceInstallまたはMT8167HardwareProbeを固定値どおり登録する。未登録または互換性のある部分登録だけを許可し、既存Start=4等を勝手に再武装しない。
 6. registry handlesを閉じ、RegUnLoadKeyWを成功させる。process tokenの元のprivilege状態も復元する。
 7. 保存SYSTEMのregf、major=1/minor=5、primary/direct format、checksum、primary/secondary sequence一致を検査する。hostがformatを更新した場合は拒否し、版の書換えで取り繕わない。
 8. clean SYSTEMだけを別verify directoryへ複製し、LOG無しで再loadして新serviceの7値と、Select・既存DeviceInstall/RpcSsの関連設定fingerprintを確認、unloadする。原本とcandidateの不変・コピー一致を確認する。
@@ -38,7 +54,7 @@
 | DisplayName | REG_SZ | MediaTek MT8167 Device Installation |
 | DependOnService | REG_MULTI_SZ | DeviceInstall、RpcSsの2要素 |
 
-検査スコープは **Select、および既存Services/DeviceInstall・Services/RpcSsそれぞれの直下のraw値（名前・型・長さ・SHA-256）のfingerprint、新serviceに書く上記7値の型と内容の正確照合だけ**。関連既存設定は登録前後とclean candidate再load後に一致することを確認する。比較基点はnative replay後なので、log replayによる更新とservice登録を区別する。
+検査スコープは **Select、および既存Services/DeviceInstall・Services/RpcSsそれぞれの直下のraw値（名前・型・長さ・SHA-256）のfingerprint、選択した新serviceに書く7値の型と内容の正確照合だけ**。関連既存設定は登録前後とclean candidate再load後に一致することを確認する。比較基点はnative replay後なので、log replayによる更新とservice登録を区別する。
 
 **全SYSTEMのkey列挙・監査は行わない。** Lsa等の保護keyや関連serviceの子keyへ再帰しない。ACL変更や保護keyを迂回する処理は追加しない。APIの書込み先は固定された新service keyだけで、driverバイナリは扱わないが、この限定検査を全SYSTEMの無変更証明とは呼ばない。resultとworker stateに `whole_system_audit=false` と `audit_scope` を明記する。registry linkは辿って変更しない。
 

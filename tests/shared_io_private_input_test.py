@@ -52,6 +52,9 @@ with tempfile.TemporaryDirectory(dir=args.scratch, prefix='synthetic-system-cont
     manifest = root / 'result.json'
     manifest.write_text(json.dumps(report))
     assert inputs.prepared_system_check(system, manifest, digest, root, backup)['sha256'] == digest
+    flat = root / 'SYSTEM'
+    flat.write_bytes(system.read_bytes())
+    assert inputs.prepared_system_check(flat, manifest, digest, root, backup)['relocated_after_native_preparation'] is True
     for case in ('failed', 'wrong-service', 'wrong-hash', 'wrong-value', 'outside-root'):
         bad = copy.deepcopy(report)
         if case == 'failed': bad['status'] = 'failed-do-not-deploy'

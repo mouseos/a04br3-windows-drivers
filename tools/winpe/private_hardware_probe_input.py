@@ -52,8 +52,13 @@ def prepared_system_check(system, manifest, expected_sha256, root, backup):
             or report.get('services') != ['MT8167HardwareProbe']):
         raise ValueError('HardwareProbeだけをnative準備した成功manifestが必要です')
     candidate = report['candidate']
-    declared = (manifest.parent / candidate['path'].replace('\\', '/')).resolve(strict=True)
-    if (not declared.is_relative_to(manifest.parent) or declared != system
+    native_path = candidate['path'].replace('\\', '/')
+    if native_path not in ('candidate/SYSTEM', 'SYSTEM'):
+        raise ValueError('native candidateの相対path契約不一致')
+    declared = (manifest.parent / native_path).resolve()
+    # Host recovery may flatten candidate/SYSTEM to SYSTEM beside result.json.
+    allowed = {declared, (manifest.parent / 'SYSTEM').resolve()}
+    if (system not in allowed or not system.is_relative_to(manifest.parent)
             or sha(system) != expected_sha256.lower()
             or candidate['sha256'].lower() != expected_sha256.lower()):
         raise ValueError('candidate path/SHA256 pin不一致')
@@ -99,6 +104,7 @@ def prepared_system_check(system, manifest, expected_sha256, root, backup):
             raise ValueError('native入力とRecovery backupの由来不一致: ' + name)
     return {'sha256': expected_sha256.lower(), 'manifest_sha256': sha(manifest),
             'root_relative_path': str(system.relative_to(root.resolve())), 'header': header,
+            'native_candidate_path': native_path, 'relocated_after_native_preparation': system != declared,
             'status': report['status'], 'whole_system_audit': False,
             'audit_scope': report['audit_scope'], 'target_value_names': list(expected)}
 

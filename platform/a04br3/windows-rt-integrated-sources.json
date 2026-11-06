@@ -74,7 +74,7 @@
       "ControlSet001/Services/RpcSs"
     ],
     "existing_values_comparison": "direct raw value fingerprints (name/type/length/SHA256), no subkey recursion; compare after native replay, after registration and after clean reload",
-    "target_service": "MT8167DeviceInstall (optional MT8167HardwareProbe only by explicit selection; forbidden for EnginePcm auto-registration)",
+    "target_service": "Fixed DeviceInstall or HardwareProbe selector; bulk media requires HardwareProbe only",
     "target_value_names": [
       "Type",
       "Start",
@@ -104,7 +104,10 @@
     "probe_manifest_and_certificate_required": true,
     "probe_certificate_independent_from_clients": true,
     "probe_certificate_thumbprint_reported": "BCBF6C456C6F0DD0818434763B189488FBF13570",
-    "real_media_generated_here": false
+    "real_media_generated_here": false,
+    "native_recipe_source": "c98875b0abb082f0fc1f48e499bd3d1595d67e2b",
+    "flattened_recovery_candidate_supported": true,
+    "native_execution_success_reported_by_primary_owner": true
   },
   "run25_dod_results_reported_by_primary_owner": {
     "environment": "normal Windows DOD",
@@ -130,5 +133,6 @@
     "normal_os_screen_uart_name_present": false,
     "probe_uart_delivery_verified": false,
     "disk_log_collection_required": true
-  }
+  },
+  "hardware_probe_native_recipe_source": "c98875b0abb082f0fc1f48e499bd3d1595d67e2b"
 }

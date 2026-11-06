@@ -25,8 +25,10 @@ WinPEのSOFTWARE証明書store更新と4driver DISMは従来どおりで、SYSTE
 - `--prepared-system` / `--prepared-system-manifest` / `--prepared-system-sha256`: native候補とresult.json、完全SHA256 pin。
 
 probe EXE/manifest/cert、native候補/manifestはresolved pathでroot内を確認する。
-候補/manifestとprivate出力を本drivers checkoutへ置く指定は拒否する。候補はmanifest内candidate.pathと
-同じfileでなければならず、hash pin・manifest SHA256・実file SHA256を照合する。
+候補/manifestとprivate出力を本drivers checkoutへ置く指定は拒否する。候補はmanifest内candidate.path（candidate/SYSTEMまたはSYSTEM）と
+同じfile、またはresult.jsonと同じdirectoryへ回収したSYSTEMだけを許可し、
+hash pin・manifestのcandidate SHA256・実file SHA256を照合する。平坦化回収は
+relocated_after_native_preparationとしてprivate manifestに記録する。
 状態はverified-clean-system-services-only、patch/verify workerのfinished/exit/status/load/unload成功、
 clean regf1.5/checksum/sequence/extent、対象serviceだけの7値の型/内容を確認する。
 Select・DeviceInstall/RpcSs直下の限定fingerprintがpatch前後とclean reloadで一致し、
@@ -50,3 +52,22 @@ candidate SYSTEM・backup・private ESP/WIM・private manifestをrepo/CI artifac
 通常OSのScreenUart名はrun25でCreateFile error2となった。probeの最終UART通知が届く前提を
 成功条件にしない。主担当がprivateなservice.log/子stdout・stderr/SCM終了結果を回収して
 実行結果と通知経路失敗を区別する。builderは通常OSのUART device名やhiveを修正しない。
+
+### 入力指定例（値はprivateな主担当記録から指定）
+
+```sh
+python3 tools/winpe/build-mt8167-shared-io-update-media.py \
+  --workspace "$PROJECT_ROOT" --base "$MAINTENANCE_BASE" \
+  --package "$SIGNED_TONE_PACKAGE" --firmware "$MT6630_FIRMWARE" \
+  --backup "$FRESH_RECOVERY_BACKUP_MANIFEST" --tools "$LOCAL_WIMTOOLS" \
+  --source-commit "$FIXED_SOURCE_COMMIT" --out "$NEW_PRIVATE_OUTPUT" \
+  --private-media --probe-service "$SIGNED_PROBE_EXE" \
+  --probe-manifest "$SIGNED_PROBE_MANIFEST" --probe-certificate "$PROBE_DER_CERT" \
+  --prepared-system "$NATIVE_CLEAN_SYSTEM" \
+  --prepared-system-manifest "$NATIVE_RESULT_JSON" \
+  --prepared-system-sha256 "$EXPECTED_CANDIDATE_SHA256"
+```
+
+旧SYSTEM/LOGのnative入力は今回fresh Recovery backupと一致させる。
+回収したcandidateはnativeのcandidate/SYSTEM配置、または同じresult.json横のSYSTEMだけ。
+実機書込み前のRecovery boot_id照合とdiskログ回収は主担当が行い、このbuilderは実行しない。

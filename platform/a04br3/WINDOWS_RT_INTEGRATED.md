@@ -139,3 +139,14 @@ run25はprivate保守ESPで適用中という情報であり、この統合作�
 SYS source=de214c8、署名INF/manifest source=e4dff2b（11/06/2026,2026.11.7.1004）を区別する。
 親/audioのWDK compile/link成功は主担当申告であり、この統合で再buildしていない。
 GPU主試験/tone診断の基点と、EnginePcmへの旧tone probe自動登録禁止を維持する。
+
+## 次bulkのHardwareProbe準備
+
+27ad206のSystemRequired power requestと、TeslaのHardwareProbe固定選択c98875bをsource統合。
+主担当申告でc98875bのnative処理はverified-clean-system-services-onlyまで成功している。
+私用SYSTEM/resultの内容やhashを公開sourceへ転記しない。
+次bulkはprepared SYSTEM/hash/native manifestとprobe専用EXE/manifest/certを入力し、
+SYSTEMをWinPEでRegLoadせず、DISM前にコピーする。旧clientのcertとprobeの新certを区別する。
+平坦化回収のSYSTEM/result.jsonもhash pin照合で受け付け、private出力だけに候補を含める。
+詳細CLIと検証範囲はtools/winpe/README-mt8167-shared-io-update.mdを参照。
+この作業では私用媒体の生成・端末/runner操作を行わない。
