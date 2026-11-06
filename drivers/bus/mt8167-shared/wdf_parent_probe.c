@@ -14,6 +14,16 @@
 #include "audio_owner.h"
 #include "usb_interface.h"
 #include "usb_owner.h"
+#ifndef A04_SHARED_GCE_CLOCK_INTERFACE
+#define A04_SHARED_GCE_CLOCK_INTERFACE 0
+#endif
+#if A04_SHARED_GCE_CLOCK_INTERFACE && (!defined(A04_SHARED_QUERY_EXPERIMENTAL) || !A04_SHARED_QUERY_EXPERIMENTAL || !defined(A04_SHARED_BUTTON_D0_EXPERIMENT) || !A04_SHARED_BUTTON_D0_EXPERIMENT)
+#error GCE clock interface requires parent query and guarded D0
+#endif
+#if A04_SHARED_GCE_CLOCK_INTERFACE
+#include "gce_clock_interface.h"
+#include "gce_clock_lease.h"
+#endif
 #ifndef A04_SHARED_GPU_DIAGNOSTIC
 #define A04_SHARED_GPU_DIAGNOSTIC 0
 #endif
@@ -145,6 +155,9 @@ typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST
 #if A04_SHARED_GPU_DIAGNOSTIC
 struct a04_gpu_observation_lease gpuLease;
 #endif
+#if A04_SHARED_GCE_CLOCK_INTERFACE
+struct a04_gce_clock_lease gceClock;
+#endif
 #if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 struct a04_codec_domain codecDomain;
 #if A04_SHARED_VOICE_DIAGNOSTIC || A04_SHARED_VOICE_PCM_DIAGNOSTIC
@@ -208,6 +221,26 @@ static int ParentRegWrite(void *context,enum a04_shared_bank bank,unsigned offse
     if(!base)return -1;
     WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)base+offset),value);return 0;
 }
+#if A04_SHARED_GCE_CLOCK_INTERFACE
+static int ParentGceClockRead(void *p,unsigned off,uint32_t *v)
+{ return ParentRegRead(p,A04_SHARED_TOP,off,v); }
+static int ParentGceClockWrite(void *p,unsigned off,uint32_t v)
+{ return ParentRegWrite(p,A04_SHARED_TOP,off,v); }
+static NTSTATUS ParentGceClockAcquire(PVOID p,ULONG *token)
+{
+    A04_PARENT_CONTEXT *c;int rc;
+    if(!p || !token)return STATUS_INVALID_PARAMETER;
+    *token=0;c=ParentContext((WDFDEVICE)p);
+    if(ParentLock(c))return STATUS_DEVICE_NOT_READY;
+    rc=a04_gce_clock_acquire(&c->gceClock,(uint32_t *)token);ParentUnlock(c);
+    return rc?STATUS_DEVICE_NOT_READY:STATUS_SUCCESS;
+}
+static NTSTATUS ParentGceClockRelease(PVOID p,ULONG token)
+{
+    /* No consumer can yet supply a trusted GCE DMA/IRQ quiescence proof. */
+    UNREFERENCED_PARAMETER(p);UNREFERENCED_PARAMETER(token);return STATUS_NOT_SUPPORTED;
+}
+#endif
 static int ParentRegLock(void *context) { return ParentLock(context); }
 static void ParentRegUnlock(void *context) { ParentUnlock(context); }
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
@@ -778,6 +811,9 @@ static void ParentStop(A04_PARENT_CONTEXT *c,int can_access)
 #endif
     ExAcquireFastMutex(&c->pwrapLock);
     c->wifiActive=0;
+#if A04_SHARED_GCE_CLOCK_INTERFACE
+    c->gceClock.online=0;
+#endif
     c->regs.online=0;
     c->pmic.online=0;
 #if A04_SHARED_THERMAL_DIAGNOSTIC
@@ -800,6 +836,9 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
     /* Failed/partial audio ownership cannot be interpreted as quiescent.
      * Retain mappings; this is not proof PnP retains physical resources. */
     if(c->audio.poisoned || c->audio.leased || c->audioAfe || c->usb.leased)return STATUS_DEVICE_BUSY;
+#if A04_SHARED_GCE_CLOCK_INTERFACE
+    if(c->gceClock.active || c->gceClock.poisoned)return STATUS_DEVICE_BUSY;
+#endif
 #if A04_SHARED_GPU_DIAGNOSTIC
     if(c->gpuLease.active)return STATUS_DEVICE_BUSY;
 #endif
@@ -926,6 +965,9 @@ NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
     }
 #endif
     c->pmic.online=1;
+#if A04_SHARED_GCE_CLOCK_INTERFACE
+    c->gceClock.online=1; /* ownership_proven remains false */
+#endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
     /* No known provider proves release by EL3 or every AUXADC consumer. */
     c->thermal.online=1;c->thermal.firmware_released=0;c->thermal.adc_exclusive=0;
@@ -1132,6 +1174,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
     A04_LEGACY_SHARED_INTERFACE iface;WDF_QUERY_INTERFACE_CONFIG query;
     A04_SHARED_INTERFACE inputIface;
+#if A04_SHARED_GCE_CLOCK_INTERFACE
+    A04_GCE_CLOCK_INTERFACE gceIface;
+#endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
     A04_SHARED_THERMAL_INTERFACE thermalIface;
 #endif
@@ -1162,6 +1207,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
         c->pmic.bus.delay=ParentPwrapDelay;c->pmic.bus.attempts=1000;
         c->regs.context=c;c->regs.lock=ParentRegLock;c->regs.unlock=ParentRegUnlock;
         c->regs.read32=ParentRegRead;c->regs.write32=ParentRegWrite;
+#if A04_SHARED_GCE_CLOCK_INTERFACE
+        c->gceClock.context=c;c->gceClock.read32=ParentGceClockRead;c->gceClock.write32=ParentGceClockWrite;
+#endif
 #if A04_SHARED_MT6392_DIAGNOSTIC
         c->classd.context=c;c->classd.supports=ParentCodecSupports;c->classd.update_bits=ParentCodecUpdate;c->classd.read16=ParentCodecRead;c->classd.delay_us=ParentCodecDelay;
         c->audio.context=c;c->audio.codec_acquire_muted=ParentCodecStart;
@@ -1191,6 +1239,16 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&iface,&GUID_A04_MT8167_SHARED_INTERFACE,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
     if(!NT_SUCCESS(status))return status;
+#if A04_SHARED_GCE_CLOCK_INTERFACE
+    RtlZeroMemory(&gceIface,sizeof(gceIface));gceIface.Header.Size=sizeof(gceIface);
+    gceIface.Header.Version=A04_GCE_CLOCK_INTERFACE_VERSION;gceIface.Header.Context=dev;
+    gceIface.Header.InterfaceReference=ParentInterfaceReference;gceIface.Header.InterfaceDereference=ParentInterfaceDereference;
+    gceIface.Acquire=ParentGceClockAcquire;gceIface.Release=ParentGceClockRelease;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&gceIface,&A04GceClockInterfaceGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
+    status=WdfDeviceCreateDeviceInterface(dev,&A04GceParentDeviceInterfaceGuid,NULL);
+    if(!NT_SUCCESS(status))return status;
+#endif
     RtlZeroMemory(&inputIface,sizeof(inputIface));
     inputIface.Size=sizeof(inputIface);inputIface.Version=A04_SHARED_INTERFACE_VERSION;
     inputIface.Context=dev;inputIface.InterfaceReference=ParentInterfaceReference;
