@@ -41,3 +41,25 @@ GPUのその他のソースはd5f676dのまま。
 client=a016d53の混在で、全SYSの再compileはしていない。
 この既存バイナリの出自と、新統合branchから将来buildするソースを区別する。
 具体的なSYS/EXE/CAT hashと署名結果は主担当の回収manifestが正本。
+
+## 一括観測service・Recovery更新媒体・eMMC候補
+
+Nashのhardware probe service/probe一式は94e4d47（2f613e6のSCM契約とUART literal修正を含む）。
+`build-mt8167-peripherals.ps1`は同一sourceのWLAN/KS clientをservice bundleへ渡し、
+`hardware-probe`とWLAN launcher/probe manifestを一括manifestへ含める。
+既存単一parentのSharedParentDirectory再利用・DriverVer・ABI検査は保持する。
+serviceの署名buildは主担当が94e4d47固定で実施中という申告を記録する。
+
+main ba26a34の `tools/winpe/build-mt8167-shared-io-update-media.py` とCMD templateを保持。
+Recoveryから退避したhost hive backupの状態・byte数・SHA256・必要hive/logを確認し、
+Recovery boot_idとbackup manifest hashを生成manifestへ固定する。
+parent/audio/USB/Wi-Fiの4 driverを一括DISMする媒体builderで、storage driver更新は含めない。
+媒体生成やDISMの実行はこのsource統合では行っていない。
+
+eMMC d4d8d57と前提6b5043eは将来の独立候補として収録し、実機非適用。
+通常sourceのA04_DMA_WRITE_MULTIBLOCK_EXPERIMENTは既定0で、明示環境flag=1以外では
+汎用build入口へdefineを追加しない。既存のread-multiblockのみの構成を勝手にwrite batchingへ変えない。
+専用 `build-msdc-boot-write-performance.ps1` の呼出し自体はperformance構成を明示選択するため、
+この統合のperipheral/GPU/service/media入口から自動で呼ばない。
+専用入口は `-SingleSectorBaseline` で比較用のread/write batchingを0にできる。
+当該performance package/ファイルverifierの生成・配置・実行は主担当の別工程。

@@ -18,5 +18,12 @@
     "sys_recompiled": false,
     "signing_and_collection": "in progress, user report",
     "note": "Existing peripheral SYS/client artifacts; not built from this integrated GPU source commit"
-  }
+  },
+  "hardware_probe_service": "94e4d4725fb38e5ae9f780f5e00179695c3ac52c",
+  "bulk_update_media_builder": "ba26a347abcf141f833a01e6b23256d21331c597",
+  "emmc_optin_sources": "d4d8d57dc92a827f46b1908d3f74fe991464921e",
+  "emmc_write_batching_source": "6b5043e98c853ca6cb4af31f747732198183a933",
+  "emmc_write_multiblock_default": 0,
+  "emmc_applied_on_target": false,
+  "hardware_probe_service_build": "Primary owner building/signing 94e4d47; not executed here"
 }
