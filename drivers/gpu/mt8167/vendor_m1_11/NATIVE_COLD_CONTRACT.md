@@ -120,3 +120,10 @@ Windows選定例として、data arenaが[0x65c0200000,0x65c0400000)で現alloca
 
 
 clip入力の追加確定: `a04_m111_build_clear_terminate_stream(out,page_gpu,width,height)`はAddRTと同版getterを接続し、single sampleのceil(width/16)-1 / ceil(height/16)-1からclip wordを構築する。getter 0x1258b8、証拠ev_2a52e0ae5f4979e58962d3a101e91d124fc30380ece2c3640ad842414a2c4178はdataset+0x34/+0x38をそのまま返す。AddRT 0x124a34の既存証拠ev_f33018709a2c5a26acbe7e73ed517452c2a058a13e38b56f1fdac9c58fbc5752はceil(/16)-1を当該2fieldへ保存。StartFrame 0x15e9c8がX<<18|Yへ変換。800x600=0x00c40025、800x1280=0x00c4004f。直前の「寸法profile照合は未完了」はこの追加証拠で解決済み。空TA streamの成立・先頭state・完全recordは未確定のまま。
+
+
+## TA PPP-state update programの追加（有効量更新）
+
+同版InitPPPStateCodeBlocks 0x1c1b54（ev_5eda239ac555d3583d60b3d6f906f9109163e784ecbdbd250d02d23476938340）はUSC8 bytesを0x2628d2からコピーし、temp0のtaskとDOUTU-only PDSを生成してcontext+0x7208へ保持する。USC一次bytesは44a08005000000ff（ev_8df7dad9414e7836dc3e7f2cdb90b9f6589046fe632b35faa2cd968b134e3221）。StartFrameがこのPDS allocation baseをTA+0x40へ設定する。field旧名pds_code40は単独code addressではなくdata+code一体programのbase。
+
+native_clear_codespaceへUSC+0x20の8 bytes、PDS+0xc0のdata32 bytes／+0xe0のcode4 bytesを追加。**最新有効量はUSC40 bytes、PDS0xe4 bytes**。各4KiB allocation・既存VA案は変更なし。bindings.ta_ppp_pds_baseはPDS VA0xa800010000で0x100c0。以前の32/0xa8は背景＋EOTのみの量として保持する。完全producerへ至るために必要なTA依存programであり、成功を装うhost stubではない。

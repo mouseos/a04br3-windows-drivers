@@ -12,6 +12,9 @@ int main(void)
         UINT64_C(0xa800010000),0x11223344,0x55667788,0x99aabbcc));
     assert(u32(p.pds)==0x10000 && u32(p.pds+0x80)==0x10010);
     assert(u32(p.pds+0x20)==0xf4000002u);
+    assert(u32(p.pds+0xc0)==0x10020 && !u32(p.pds+0xc4));
+    assert(u32(p.pds+0xe0)==0xf4000002u);
+    assert(u32(p.usc+0x20)==0x0580a044 && u32(p.usc+0x24)==0xff000000u);
     ins=u32(p.pds+0x50);
     /* Decode DOUTW and follow its constant operands, independently of layout. */
     assert((ins>>28)==15 && (ins&15)==1 && ((ins>>26)&1)==1);
@@ -31,6 +34,7 @@ int main(void)
     assert((b.pixel_event_info>>9)==1 && ((b.pixel_event_info>>5)&15)==0);
     assert((b.pixel_event_info&31)==2);
     assert(b.pixel_event_code==0x100a0 && b.pixel_event_data==0x10080);
+    assert(b.ta_ppp_pds_base==0x100c0);
     before=b;
     assert(a04_m111_build_clear_code_bindings(&b,UINT64_C(0xa83fffff60)));
     assert(!memcmp(&b,&before,sizeof(b)));
@@ -42,7 +46,7 @@ int main(void)
     assert(a04_m111_build_clear_codespace(&p,UINT64_C(0xba00010000),
         UINT64_C(0xa800010008),0,0,0));
     assert(!memcmp(&p,&old,sizeof(p)));
-    assert(!a04_m111_build_clear_codespace(&p,UINT64_C(0xba3fffffe0),
-        UINT64_C(0xa83fffff50),0,0,0));
+    assert(!a04_m111_build_clear_codespace(&p,UINT64_C(0xba3fffffd8),
+        UINT64_C(0xa83fffff10),0,0,0));
     return 0;
 }
