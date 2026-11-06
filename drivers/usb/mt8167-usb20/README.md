@@ -143,3 +143,26 @@ Windows USB host still requires a supported Windows 8.1 host-stack interface,
 root hub and device PnP, transfer scheduling and cancellation, and a verified
 DMA design if DMA is used. The XNU charger implementation observes the BQ24160
 and its board handoff; it does not establish the connector's 5 V source.
+
+## Experimental host core (default off)
+
+`host_core.c` models one root port and a bounded serialized transfer queue.
+Its power indication requires a caller's verified VBUS result; it does not
+acquire power, drive registers or bind to Windows. Connect, disconnect, reset
+completion and overcurrent are reported by an eventual hardware adapter. An
+active request cannot finish cancellation or disconnect until that adapter
+confirms endpoint and DMA quiescence. Callers serialize all operations and
+must complete queued requests when offline. `make test-mt8167-usb-host-core`
+tests these contracts. Set `A04_MUSB_HOST_CORE_EXPERIMENT=1` for the ARM WDK
+compile script to compile the core as a separate object; it is not linked into
+the diagnostic driver. Linux `musb_virthub.c` supplies the reference for the
+single port, reset and change bits; `musb_host.c` documents the distinction
+between queued and hardware-active cancellation.
+
+The [Microsoft UCX controller creation DDI](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ucxcontroller/nf-ucxcontroller-ucxcontrollercreate)
+lists Windows 10 as its minimum client; the available 8.1 WDK lacks its UCX
+headers. Do not infer a Windows RT 8.1 host stack integration from this model.
+PnP enumeration, root-hub requests and notifications, endpoint scheduling,
+timeouts, hardware execution, DMA and Windows request completion remain to be
+implemented against a verified 8.1 interface. Neither hardware nor VBUS has
+been validated by these tests.
