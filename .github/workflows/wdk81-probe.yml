@@ -63,6 +63,195 @@ jobs:
             Write-Host "$path : $(Test-Path $full)"
             if (-not (Test-Path $full)) { throw "Missing required ARM32 WDK component: $path" }
           }
+      - name: Build gated ARM32 audio and shared parent checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:A04_AUDIO_CHILD_RESOURCES='1'
+          $env:A04_AUDIO_DIAGNOSTIC_TRACE='1'
+          $env:A04_SHARED_BUTTON_D0_EXPERIMENT='1'
+          $env:A04_SHARED_APMIXED_RESOURCE='1'
+          $env:A04_SHARED_MT6392_DIAGNOSTIC='1'
+          $env:A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC='1'
+          $env:A04_SHARED_VOICE_PCM_DIAGNOSTIC='1'
+          $env:A04_SHARED_VOICE_DIAGNOSTIC='1'
+          $env:A04_MT6392_UNMUTE_DIAGNOSTIC='1'
+          $env:A04_MT6392_RTC32K_DIAGNOSTIC='1'
+          $env:A04_SHARED_WIFI_IRQ_DIAGNOSTIC='1'
+          $env:A04_USB_GPIO22_SOURCE_EXPERIMENT='1'
+          $env:A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC='1'
+          $env:A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC='1'
+          $env:A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC='1'
+          ./tools/ci/build-msdc-parent-probe.ps1
+          ./tools/ci/build-mt8167-audio-portcls.ps1
+      - name: Stage non-installable audio diagnostics build checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:RUNNER_TEMP 'a04-audio-buildchecks'
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          $inputs = @(
+            (Join-Path $env:RUNNER_TEMP 'a04-msdc-parent-probe\mt8167-shared.sys'),
+            (Join-Path $env:RUNNER_TEMP 'a04-msdc-parent-probe\codec_adc_probe.obj'),
+            (Join-Path $env:TEMP 'a04-mt8167-portcls\mt8167-audio-retained-buildcheck.sys')
+          )
+          foreach ($file in $inputs) { if (!(Test-Path $file)) { throw "Missing build check: $file" }; Copy-Item $file $stage }
+          $hashes = @(Get-ChildItem $stage -File | ForEach-Object { @{ name=$_.Name; sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash } })
+          @{ source_commit=(git rev-parse HEAD); installable=$false; purpose='unsigned build checks only; ADC object is not linked to the parent'; files=$hashes } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 (Join-Path $stage 'manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a04-audio-noninstallable-buildchecks
+          path: ${{ runner.temp }}\a04-audio-buildchecks
+          if-no-files-found: error
+      - name: Build gated USB host and GPIO22 source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:A04_SHARED_BUTTON_D0_EXPERIMENT='1'
+          $env:A04_SHARED_APMIXED_RESOURCE='1'
+          $env:A04_USB_GPIO22_SOURCE_EXPERIMENT='1'
+          ./tools/ci/build-msdc-parent-probe.ps1
+          ./tools/ci/build-mt8167-usb20.ps1 -OutputDirectory (Join-Path $env:RUNNER_TEMP 'a04-usb20-link')
+      - name: Build combined watchdog and UART diagnostics
+        shell: pwsh
+        run: |
+          $env:A04_TOPRGU_CPU1_HANDOFF='1'
+          $env:A04_TOPRGU_UART_SCREEN='1'
+          $env:A04_TOPRGU_UART_VOLUME='1'
+          $env:A04_TOPRGU_THERMAL_STOP='1'
+          ./tools/ci/build-mt8167-toprgu.ps1
+      - name: Test-sign combined watchdog and UART diagnostics
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir=Join-Path $env:RUNNER_TEMP 'mt8167-toprgu'
+          $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1"
+          $cert=New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=MT8167 TOPRGU UART Thermal Diagnostic' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
+          try {
+            Export-Certificate -Cert $cert -FilePath (Join-Path $dir 'mt8167-toprgu-test.cer') | Out-Null
+            $sign=Join-Path $kit 'bin\x86\signtool.exe'
+            & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $dir 'mt8167-toprgu.sys'); if($LASTEXITCODE){throw 'SYS signing failed'}
+            Remove-Item (Join-Path $dir 'mt8167-toprgu.cat')
+            & (Join-Path $kit 'bin\x86\Inf2Cat.exe') "/driver:$dir" /os:6_3_ARM /uselocaltime; if($LASTEXITCODE){throw 'Catalog generation failed'}
+            & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $dir 'mt8167-toprgu.cat'); if($LASTEXITCODE){throw 'CAT signing failed'}
+            $files=@('mt8167-toprgu.sys','mt8167-toprgu.cat','mt8167-toprgu.inf','mt8167-toprgu-test.cer')
+            $hashes=@($files | ForEach-Object { @{name=$_;sha256=(Get-FileHash (Join-Path $dir $_) -Algorithm SHA256).Hash} })
+            @{source_commit=(git rev-parse HEAD);cpu1_handoff=1;uart_screen=1;uart_volume=1;thermal_stop=1;files=$hashes;note='Test-signed prototype; target operation and trust unverified'} | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 (Join-Path $dir 'manifest.json')
+          } finally { Remove-Item "Cert:\CurrentUser\My\$($cert.Thumbprint)" -ErrorAction SilentlyContinue }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a04-toprgu-uart-thermal-test-signed
+          path: |
+            ${{ runner.temp }}\mt8167-toprgu\mt8167-toprgu.sys
+            ${{ runner.temp }}\mt8167-toprgu\mt8167-toprgu.cat
+            ${{ runner.temp }}\mt8167-toprgu\mt8167-toprgu.inf
+            ${{ runner.temp }}\mt8167-toprgu\mt8167-toprgu-test.cer
+            ${{ runner.temp }}\mt8167-toprgu\manifest.json
+          if-no-files-found: error
+      - name: Build and sign shared codec ADC diagnostic
+        shell: pwsh
+        run: |
+          $env:A04_THERMAL_SHARED_PARENT='1'
+          $env:A04_THERMAL_LEASE_DIAG='1'
+          $env:A04_THERMAL_MONITOR_TEST='1'
+          $env:A04_THERMAL_ONESHOT_TEST='1'
+          $env:A04_THERMAL_CODEC_ADC_DIAGNOSTIC='1'
+          ./tools/ci/build-mt8167-thermal.ps1
+          ./tools/ci/sign-mt8167-thermal-test.ps1
+          $dir=Join-Path $env:RUNNER_TEMP 'a04br3-thermal-shared-test-signed'
+          $files=@('mt8167-thermal.sys','mt8167-thermal.cat','mt8167-thermal.inf','mt8167-thermal-test.cer')
+          $hashes=@($files | ForEach-Object { @{name=$_;sha256=(Get-FileHash (Join-Path $dir $_) -Algorithm SHA256).Hash} })
+          @{source_commit=(git rev-parse HEAD);shared_parent=1;oneshot=1;codec_adc=1;files=$hashes;note='Test-signed prototype; codec route and mute verifier rejects; UART delivery and target trust unverified'} | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 (Join-Path $dir 'manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a04-codec-adc-thermal-test-signed
+          path: ${{ runner.temp }}\a04br3-thermal-shared-test-signed
+          if-no-files-found: error
+      - name: Build and sign shared thermal parent and touch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:A04_SHARED_BUTTON_D0_EXPERIMENT='1'
+          $env:A04_SHARED_TOUCH_D0_EXPERIMENT='1'
+          $env:A04_SHARED_APMIXED_RESOURCE='1'
+          $env:A04_SHARED_THERMAL_DIAGNOSTIC='1'
+          $env:A04_AUDIO_DIAGNOSTIC_TRACE='1'
+          $env:A04_SHARED_WIFI_IRQ_DIAGNOSTIC='1'
+          $env:A04_AUDIO_CHILD_RESOURCES='1'
+          $env:A04_SHARED_MT6392_DIAGNOSTIC='1'
+          $env:A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC='1'
+          $env:A04_SHARED_VOICE_PCM_DIAGNOSTIC='1'
+          $env:A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC='1'
+          $env:A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC='1'
+          $env:A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC='1'
+          ./tools/ci/build-msdc-parent-probe.ps1
+          $env:A04_TOUCH_SHARED_PARENT='1'
+          $env:A04_TOUCH_THERMAL_LEASE='1'
+          ./tools/ci/build-wdf-touch.ps1
+          $stage=Join-Path $env:RUNNER_TEMP 'a04-adc-shared-unsigned'
+          New-Item -ItemType Directory -Force (Join-Path $stage 'parent'),(Join-Path $stage 'touch') | Out-Null
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'a04-msdc-parent-probe\mt8167-shared.sys') (Join-Path $stage 'parent')
+          Copy-Item 'drivers/bus/mt8167-shared/prototype/shared-parent.inf' (Join-Path $stage 'parent')
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'a04-wdf-touch\bu21025.sys') (Join-Path $stage 'touch')
+          Copy-Item 'drivers/bus/mt8167-shared/prototype/shared-touch.inf' (Join-Path $stage 'touch')
+          $zip=Join-Path $env:RUNNER_TEMP 'a04-adc-shared-unsigned.zip'
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
+          $signed=Join-Path $env:RUNNER_TEMP 'a04-adc-shared-signed'
+          ./tools/ci/sign-shared-touch.ps1 -InputZip $zip -OutputDirectory $signed
+          @{source_commit=(git rev-parse HEAD);thermal_parent=1;touch_lease=1;note='Test-signed diagnostic; target operation and trust unverified'} | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $signed 'manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a04-adc-shared-parent-touch-test-signed
+          path: ${{ runner.temp }}\a04-adc-shared-signed
+          if-no-files-found: error
+      - name: Build MT8167 parent and MT6630 query probes
+        shell: pwsh
+        run: |
+          ./tools/ci/build-msdc-parent-probe.ps1
+          ./tools/ci/build-mt6630-parent-probe.ps1
+          ./tools/ci/build-mt6630-wdf-lease-probe.ps1
+      - name: Upload MT6630 WDF lease probes
+        uses: actions/upload-artifact@v4
+        with:
+          name: a04-mt6630-wdf-lease-probes
+          path: ${{ runner.temp }}\a04br3-wifi-wdf-lease-probe\*.sys
+          if-no-files-found: error
+      - name: Build MT6630 ARM32 integration link check
+        shell: pwsh
+        run: |
+          ./tools/ci/build-mt6630-integrated-link.ps1
+          $driver = Join-Path $env:TEMP 'a04br3-mt6630-core\mt6630-integrated-link-check.sys'
+          $output = Join-Path $env:RUNNER_TEMP 'a04-mt6630-link-check'
+          New-Item -ItemType Directory -Force $output | Out-Null
+          Copy-Item $driver $output
+          [ordered]@{ source_commit = (git rev-parse HEAD); sha256 = (Get-FileHash $driver -Algorithm SHA256).Hash; note = 'Unsigned link check only; initialization fails, no INF, not installable.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $output 'manifest.json')
+      - name: Build gated MT6630 session and IRQ ARM32 link check
+        shell: pwsh
+        run: |
+          $env:A04_WIFI_SESSION_DIAGNOSTIC='1'
+          $env:A04_WIFI_IRQ_DIAGNOSTIC='1'
+          ./tools/ci/build-mt6630-integrated-link.ps1
+      - name: Test-sign MT6630 link-only image
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = Join-Path $env:RUNNER_TEMP 'a04-mt6630-link-check'
+          $signed = Join-Path $output 'mt6630-link-only-test-signed.sys'
+          Copy-Item (Join-Path $output 'mt6630-integrated-link-check.sys') $signed
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=A04BR3 MT6630 CI Test Only' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
+          $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
+          & (Join-Path $kit 'bin\x86\signtool.exe') sign /fd SHA256 /sha1 $cert.Thumbprint /s My $signed
+          if ($LASTEXITCODE -ne 0) { throw 'MT6630 test signature failed' }
+          $sig = Get-AuthenticodeSignature $signed
+          if (!$sig.SignerCertificate -or $sig.SignerCertificate.Thumbprint -ne $cert.Thumbprint) { throw 'Wrong embedded signing certificate' }
+          Export-Certificate -Cert $cert -FilePath (Join-Path $output 'mt6630-ci-test.cer') | Out-Null
+          [ordered]@{ source_commit = (git rev-parse HEAD); sha256 = (Get-FileHash $signed -Algorithm SHA256).Hash; signer_thumbprint = $cert.Thumbprint; signature_status = "$($sig.Status)"; note = 'Self-signed compile/link diagnostic only. Not installable, not proof of RT trust or PnP.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $output 'test-signed-manifest.json')
+      - name: Upload MT6630 integration link check
+        uses: actions/upload-artifact@v4
+        with:
+          name: a04-mt6630-link-check
+          path: ${{ runner.temp }}\a04-mt6630-link-check
+          if-no-files-found: error
       - name: Compile non-operational Storport interface probe
         if: ${{ !inputs.ssh_debug }}
         shell: pwsh

@@ -2,16 +2,55 @@
 #ifndef A04_SHARED_AUDIO_INTERFACE_H
 #define A04_SHARED_AUDIO_INTERFACE_H
 #include <ntddk.h>
+#include <stdint.h>
+#include "../../audio/mt8167-afe/diagnostic.h"
 /* Prototype QUERY_INTERFACE contract; parent retains Context until the last
- * InterfaceDereference. All operations are PASSIVE_LEVEL and must reject once
+ * InterfaceDereference. Operations are PASSIVE_LEVEL except Mute (<= APC_LEVEL)
+ * and must reject once
  * the parent closes admission. Success must mean exclusive audio clock and a
  * verified muted codec, not merely an available register mapping. */
 static const GUID A04SharedAudioInterfaceGuid =
     {0x5b8d8b10,0x347b,0x4f76,{0x9c,0x7e,0x92,0x06,0x61,0xb3,0xd0,0x45}};
 typedef struct _A04_SHARED_AUDIO_INTERFACE {
     INTERFACE Header;
+    /* 0=acquired, -1=rejected before side effects, any other error means
+     * hardware state may have changed and parent/child must be quarantined. */
     int (*AcquireMuted)(PVOID, ULONG sampleRate);
     int (*ReleaseQuiescent)(PVOID);
+    /* PASSIVE_LEVEL, with an acquired audio lease. On success the parent
+     * has exclusive AFE/clock control, has masked and cleared every source
+     * on this IRQ. The parent keeps all other sources masked throughout the
+     * lease; the child may enable DL1 only after ISR connection, and must
+     * mask DL1 and synchronize/disconnect the ISR before releasing. The mapping
+     * is the child's PnP-assigned AFE page and remains valid for this call.
+     * On failure no interrupt may be connected; parent retains responsibility
+     * for any partial operation until ReleaseQuiescent reports success. */
+    int (*PrepareMaskedIrq)(PVOID, PVOID afe, ULONG length);
+    /* Diagnostic v5: register the validated child mapping before acquisition.
+     * Keep it mapped until BindAfe(NULL,0) succeeds; binding itself grants no
+     * power or ownership and performs no MMIO. */
+    int (*BindAfe)(PVOID, PVOID, ULONG);
+    /* Active lease only: mute without releasing power, clock or DMA. */
+    int (*Mute)(PVOID);
+    /* Diagnostic minimum gain, only after DMA start and verified board route. */
+    int (*UnmuteMin)(PVOID);
+    /* Optional v8 gated live path; failure may leave hardware changed.
+     * VerifyLivePcm success must independently prove continuous client CPU
+     * access to this adapter mapping, cache attributes and synchronization,
+     * including exclusion of writes during initial publication. */
+    int (*VerifyLivePcm)(PVOID, PVOID, uint64_t, ULONG);
+    int (*StartVoice)(PVOID);
+    int (*StopVoice)(PVOID);
+    /* v9: independently verify all AFE transactions have drained after
+     * stop and IRQ rundown, with power and mappings still retained. */
+    int (*VerifyDmaDrained)(PVOID);
+    /* v10: 48 kHz S16_LE INT ADDA + codec hw_params, with a muted lease.
+     * 0=prepared, -1=no writes, -2=partial writes; retain lease after success
+     * or -2 until reset. This does not start DMA or unmute the analog route. */
+    int (*PreparePlayback)(PVOID, ULONG);
+    /* v11: PASSIVE_LEVEL, read-only observations with per-group valid bits.
+     * Failure leaves the zero-initialized result invalid; no drain claim. */
+    int (*ReadDiagnostic)(PVOID, struct a04_codec_snapshot *);
 } A04_SHARED_AUDIO_INTERFACE;
-#define A04_SHARED_AUDIO_INTERFACE_VERSION 1
+#define A04_SHARED_AUDIO_INTERFACE_VERSION 11
 #endif

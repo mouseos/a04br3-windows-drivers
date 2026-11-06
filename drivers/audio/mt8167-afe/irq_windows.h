@@ -22,6 +22,10 @@ NTSTATUS Mt8167ConnectIrq(Mt8167Irq *irq, struct mt8167_dl1_engine *engine,
  * Caller keeps the interrupt connected and excludes concurrent disconnect. */
 int Mt8167SynchronizedStart(Mt8167Irq *irq, const struct mt8167_dl1_plan *plan);
 int Mt8167SynchronizedStop(Mt8167Irq *irq);
+/* Nonblocking, callable at IRQL <= the interrupt synchronization level.
+ * Caller excludes disconnect and keeps plan, engine and mapping alive. CUR is
+ * accepted only while DL1 is running and within the published DMA ring. */
+int Mt8167SynchronizedPosition(Mt8167Irq *irq,const struct mt8167_dl1_plan *plan,uint32_t *offset);
 /* PASSIVE_LEVEL only. Caller must retain engine, callbacks and mapping until
  * disconnect and DPC flush complete, and separately prove DMA has drained. */
 void Mt8167DisconnectIrq(Mt8167Irq *irq);

@@ -1,6 +1,9 @@
 #include "wavert_miniport.h"
 #if defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
 #include "wavert_dma.h"
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+extern "C" int Mt8167SilentDmaMiniportEnabled(void) { return 1; }
+#endif
 #define AUDIO_TAG '7auM'
 void *operator new(size_t, void *p) { return p; }
 static bool ValidFormat(PKSDATAFORMAT f)
@@ -37,20 +40,50 @@ class Stream : public IMiniportWaveRTStream {
     ULONG backendBytes;
     volatile LONG started;
     bool everStarted;
+    bool stopUncertain;
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+    bool drained;
+#endif
 public:
-    explicit Stream(PPORTWAVERTSTREAM p, const Mt8167StreamBackend *b): refs(1),port(p),buffer{},backend{},useBackend(b!=NULL),backendMdl(NULL),backendBytes(0),started(false),everStarted(false) {
+    explicit Stream(PPORTWAVERTSTREAM p, const Mt8167StreamBackend *b): refs(1),port(p),buffer{},backend{},useBackend(b!=NULL),backendMdl(NULL),backendBytes(0),started(false),everStarted(false),stopUncertain(false)
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+    ,drained(false)
+#endif
+    {
         port->AddRef(); if (b) { backend=*b; backend.reference(backend.context); }
     }
     ~Stream() {
         if (useBackend) {
-            if (InterlockedExchange(&started,0)) (void)backend.stop(backend.context);
+            if (InterlockedExchange(&started,0)) {
+                NTSTATUS stopResult=backend.stop(backend.context);
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+                if(NT_SUCCESS(stopResult))drained=true;
+#else
+                (void)stopResult;
+#endif
+            }
             /* No drain proof exists. Retain the backend reference and buffer
-             * after any attempted start, including an ambiguous failure. */
-            if (!everStarted) {
+             * after any start or failure that may have exposed DMA. */
+            if (!everStarted
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+                || drained
+#endif
+               ) {
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+                if (backendMdl && NT_SUCCESS(backend.unbindWaveBuffer(backend.context,backendMdl))) {
+                    backendMdl=NULL;(void)Mt8167ReleaseUnpublishedBuffer(&buffer);
+                }
+                if (!backendMdl) backend.dereference(backend.context);
+#else
                 if (backendMdl) backend.freeBuffer(backend.context,backendMdl,backendBytes);
                 backend.dereference(backend.context);
+#endif
             }
         } else if (buffer.mdl && !buffer.handedToDevice) Mt8167ReleaseUnpublishedBuffer(&buffer);
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+        /* This PCM buffer is separate from the private hardware buffer. */
+        if (useBackend && buffer.mdl && !buffer.handedToDevice) (void)Mt8167ReleaseUnpublishedBuffer(&buffer);
+#endif
         port->Release();
     }
     STDMETHODIMP_(NTSTATUS) QueryInterface(REFIID id, PVOID *out) override {
@@ -65,12 +98,20 @@ public:
     STDMETHODIMP_(NTSTATUS) SetState(KSSTATE s) override {
         if (s==KSSTATE_RUN) {
             if (!useBackend || !backendMdl || InterlockedCompareExchange(&started,0,0) || everStarted) return STATUS_DEVICE_NOT_READY;
-            everStarted=true;
-            NTSTATUS result=backend.start(backend.context); if (NT_SUCCESS(result)) InterlockedExchange(&started,1);
+            BOOLEAN possiblyExposed=TRUE;
+            NTSTATUS result=backend.start(backend.context,&possiblyExposed);
+            everStarted=NT_SUCCESS(result) || possiblyExposed;
+            if (!NT_SUCCESS(result) && possiblyExposed) stopUncertain=true;
+            if (NT_SUCCESS(result)) InterlockedExchange(&started,1);
             return result;
         }
         if (s!=KSSTATE_STOP && s!=KSSTATE_ACQUIRE && s!=KSSTATE_PAUSE) return STATUS_INVALID_PARAMETER;
-        if (InterlockedExchange(&started,0)) { NTSTATUS result=backend.stop(backend.context); if (!NT_SUCCESS(result)) return result; }
+        if (stopUncertain) return STATUS_DEVICE_NOT_READY;
+        if (InterlockedExchange(&started,0)) { NTSTATUS result=backend.stop(backend.context); if (!NT_SUCCESS(result)) { stopUncertain=true; return result; }
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+            drained=true;
+#endif
+        }
         return STATUS_SUCCESS;
     }
     STDMETHODIMP_(NTSTATUS) GetPosition(PKSAUDIO_POSITION p) override { if(!p)return STATUS_INVALID_PARAMETER; if(useBackend && InterlockedCompareExchange(&started,0,0))return backend.position(backend.context,p); p->PlayOffset=0;p->WriteOffset=0;return STATUS_SUCCESS; }
@@ -79,24 +120,69 @@ public:
         *mdl=NULL;*actual=0;*offset=0;
         if (useBackend) {
             if (backendMdl) return STATUS_DEVICE_BUSY;
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+            NTSTATUS result=Mt8167AllocateBuffer(port,size,&buffer);
+            if (!NT_SUCCESS(result)) return result;
+            result=backend.bindWaveBuffer(backend.context,buffer.mdl,buffer.mapping,buffer.bytes);
+            if (!NT_SUCCESS(result)) {
+#if (defined(A04_AUDIO_WAVE_DMA_PROBE) && A04_AUDIO_WAVE_DMA_PROBE) || (defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED)
+                if(result==STATUS_IO_TIMEOUT) {
+                    /* Callback can outlive this stream. Retain the backend,
+                     * port allocation and MDL even though no client got it. */
+                    backendMdl=buffer.mdl;backendBytes=buffer.bytes;everStarted=true;
+                    return result;
+                }
+#endif
+                (void)Mt8167ReleaseUnpublishedBuffer(&buffer);return result;
+            }
+            backendMdl=buffer.mdl;backendBytes=buffer.bytes;
+            *mdl=buffer.mdl;*actual=buffer.bytes;*offset=0;*cache=MmNonCached;
+            return STATUS_SUCCESS;
+#else
             NTSTATUS result=backend.allocate(backend.context,size,mdl,actual,offset,cache);
             if (NT_SUCCESS(result)) {
-                if (!*mdl || *actual < PAGE_SIZE || *actual > 1048576 || *actual > size ||
+                if (!*mdl || *actual < PAGE_SIZE || *actual > 1048576 || *actual < size ||
                     (*actual & (PAGE_SIZE - 1)) || *offset || *cache != MmNonCached) {
                     if (*mdl) backend.freeBuffer(backend.context,*mdl,*actual);
                     *mdl=NULL; *actual=0; *offset=0;
                     return STATUS_DEVICE_CONFIGURATION_ERROR;
                 }
                 backendMdl=*mdl;backendBytes=*actual;
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+                /* The backend's common buffer is never mapped to the client.
+                 * Present a separate PortCls allocation for PCM writes. */
+                NTSTATUS stage=Mt8167AllocateBuffer(port,backendBytes,&buffer);
+                if (!NT_SUCCESS(stage)) {
+                    backend.freeBuffer(backend.context,backendMdl,backendBytes);
+                    backendMdl=NULL;backendBytes=0;*mdl=NULL;*actual=0;*offset=0;return stage;
+                }
+                *mdl=buffer.mdl;*actual=buffer.bytes;*offset=0;*cache=MmNonCached;
+#endif
             }
             return result;
+#endif
         }
         NTSTATUS status=Mt8167AllocateBuffer(port,size,&buffer); if(!NT_SUCCESS(status)) return status;
         *mdl=buffer.mdl;*actual=buffer.bytes;*cache=MmNonCached;return STATUS_SUCCESS;
     }
     STDMETHODIMP_(VOID) FreeAudioBuffer(PMDL mdl,ULONG size) override {
         if (useBackend) {
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+            if (mdl && mdl==backendMdl && size==backendBytes && (!everStarted
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+                || drained
+#endif
+                ) && NT_SUCCESS(backend.unbindWaveBuffer(backend.context,mdl))) {
+                backendMdl=NULL;backendBytes=0;(void)Mt8167ReleaseUnpublishedBuffer(&buffer);
+            }
+#elif defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+            if (mdl && mdl==buffer.mdl && size==buffer.bytes && !InterlockedCompareExchange(&started,0,0)) {
+                (void)Mt8167ReleaseUnpublishedBuffer(&buffer);
+                if (!everStarted && backendMdl) {backend.freeBuffer(backend.context,backendMdl,backendBytes);backendMdl=NULL;backendBytes=0;}
+            }
+#else
             if (mdl && mdl==backendMdl && size==backendBytes && !everStarted) { backend.freeBuffer(backend.context,mdl,size); backendMdl=NULL;backendBytes=0; }
+#endif
         } else if (mdl && mdl==buffer.mdl && size==buffer.bytes) (void)Mt8167ReleaseUnpublishedBuffer(&buffer);
     }
     STDMETHODIMP_(VOID) GetHWLatency(KSRTAUDIO_HWLATENCY *p) override { if(p) RtlZeroMemory(p,sizeof(*p)); }
@@ -172,6 +258,9 @@ public:
 NTSTATUS Mt8167NewMiniportWithBackend(PMINIPORTWAVERT *out, const Mt8167StreamBackend *b) {
     if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;
     if(b && (!b->reference || !b->dereference || !b->allocate || !b->freeBuffer || !b->start || !b->stop || !b->position || !b->getDeviceDescription)) return STATUS_INVALID_PARAMETER;
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+    if(b && (!b->bindWaveBuffer || !b->unbindWaveBuffer)) return STATUS_INVALID_PARAMETER;
+#endif
     void *mem=ExAllocatePoolWithTag(NonPagedPool,sizeof(Miniport),AUDIO_TAG);if(!mem)return STATUS_INSUFFICIENT_RESOURCES;
     *out=new(mem) Miniport(b);return STATUS_SUCCESS;
 }

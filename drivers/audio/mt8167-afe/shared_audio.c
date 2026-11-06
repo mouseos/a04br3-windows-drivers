@@ -10,7 +10,11 @@ int mt8167_audio_shared_attach(struct mt8167_audio_shared_client *c,const struct
 int mt8167_audio_shared_acquire(struct mt8167_audio_shared_client *c,uint32_t rate)
 {
     if (!c || !c->referenced || c->leased || c->quarantined || !rate) return -1;
-    if (c->service.acquire_muted(c->service.context,rate)) return -1;
+    int result=c->service.acquire_muted(c->service.context,rate);
+    if (result) {
+        if (result!=-1) { c->leased=1;c->quarantined=1; }
+        return -1;
+    }
     c->leased=1;return 0;
 }
 int mt8167_audio_shared_release_unexposed(struct mt8167_audio_shared_client *c)

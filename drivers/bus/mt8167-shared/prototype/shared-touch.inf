@@ -11,7 +11,7 @@ CatalogFile=bu21025.cat
 %Provider%=Models,NTARM
 
 [Models.NTARM]
-%Device%=Install,A04BR3\SharedTouchProbe
+%Device%=Install,MT8167\BU21025
 
 [DestinationDirs]
 DriverCopy=12
@@ -32,11 +32,11 @@ bu21025.sys
 AddReg=Filter
 
 [Filter]
-HKR,,LowerFilters,0x00010000,"A04Touch"
+HKR,,LowerFilters,0x00010000,"Bu21025Shared"
 
 [Install.NT.Services]
 AddService=mshidkmdf,0x00000002,HidService
-AddService=A04Touch,0,TouchService
+AddService=Bu21025Shared,0,TouchService
 
 [HidService]
 ServiceType=1
@@ -52,7 +52,7 @@ ErrorControl=1
 ServiceBinary=%12%\bu21025.sys
 
 [Install.NT.Wdf]
-KmdfService=A04Touch,Wdf
+KmdfService=Bu21025Shared,Wdf
 
 [Wdf]
 KmdfLibraryVersion=1.13

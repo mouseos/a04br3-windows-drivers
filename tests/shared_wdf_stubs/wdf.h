@@ -31,6 +31,7 @@ NTSTATUS WdfFdoAddStaticChild(WDFDEVICE,WDFDEVICE);void WdfObjectDelete(void *);
 #define WDF_NO_OBJECT_ATTRIBUTES NULL
 #define WDF_NO_HANDLE NULL
 #define WDF_PNPPOWER_EVENT_CALLBACKS_INIT(p) memset((p),0,sizeof(*(p)))
+#define WDF_OBJECT_ATTRIBUTES_INIT(p) memset((p),0,sizeof(*(p)))
 #define WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(p,t) memset((p),0,sizeof(*(p)))
 #define WDF_DRIVER_CONFIG_INIT(p,f) ((void)(p),(void)(f))
 #define WDF_QUERY_INTERFACE_CONFIG_INIT(p,i,g,f) (memset((p),0,sizeof(*(p))),(p)->Interface=(i),(p)->Guid=(g),(void)(f))
@@ -38,6 +39,8 @@ ULONG WdfCmResourceListGetCount(WDFCMRESLIST);PCM_PARTIAL_RESOURCE_DESCRIPTOR Wd
 void WdfDeviceInitSetPnpPowerEventCallbacks(PWDFDEVICE_INIT,WDF_PNPPOWER_EVENT_CALLBACKS *);
 NTSTATUS WdfDeviceCreate(PWDFDEVICE_INIT *,WDF_OBJECT_ATTRIBUTES *,WDFDEVICE *);
 NTSTATUS WdfDriverCreate(PDRIVER_OBJECT,PUNICODE_STRING,void *,WDF_DRIVER_CONFIG *,void *);
+NTSTATUS WdfDeviceStopIdle(WDFDEVICE,int);void WdfDeviceResumeIdle(WDFDEVICE);
 void WdfObjectReference(WDFDEVICE);void WdfObjectDereference(WDFDEVICE);
 NTSTATUS WdfDeviceAddQueryInterface(WDFDEVICE,WDF_QUERY_INTERFACE_CONFIG *);
+NTSTATUS WdfFdoQueryForInterface(WDFDEVICE,const GUID *,PINTERFACE,USHORT,USHORT,void *);
 #endif

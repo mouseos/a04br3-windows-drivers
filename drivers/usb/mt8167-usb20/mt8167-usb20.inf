@@ -1,0 +1,48 @@
+; Offline prototype: parent ownership migration and IRQ polarity unverified.
+[Version]
+Signature="$WINDOWS NT$"
+Class=HIDClass
+ClassGuid={745a17a0-74d3-11d0-b6fe-00a0c90f57da}
+Provider=%Provider%
+DriverVer=11/06/2026,2026.11.6.1001
+CatalogFile=mt8167-usb20.cat
+[Manufacturer]
+%Provider%=Models,NTARM
+[Models.NTARM]
+%Device%=Install,MT8167\USB20
+[DestinationDirs]
+DriverCopy=12
+[SourceDisksNames]
+1=%Disk%,,,
+[SourceDisksFiles]
+mt8167-usb20.sys=1
+[Install.NT]
+CopyFiles=DriverCopy
+[DriverCopy]
+mt8167-usb20.sys
+[Install.NT.HW]
+AddReg=Filter
+[Filter]
+HKR,,LowerFilters,0x00010000,"A04Usb20Keyboard"
+[Install.NT.Services]
+AddService=mshidkmdf,0x00000002,HidService
+AddService=A04Usb20Keyboard,0,Service
+[HidService]
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\mshidkmdf.sys
+[Service]
+DisplayName=%Device%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\mt8167-usb20.sys
+[Install.NT.Wdf]
+KmdfService=A04Usb20Keyboard,Wdf
+[Wdf]
+KmdfLibraryVersion=1.13
+[Strings]
+Provider="mouseos"
+Device="MediaTek MT8167 USB20 Boot Keyboard Controller"
+Disk="MediaTek MT8167 USB20 Boot Keyboard Driver"

@@ -20,6 +20,7 @@ typedef void VOID;typedef void *PVOID;typedef uint32_t ULONG;typedef uintptr_t U
 #define IRP_MN_REMOVE_DEVICE 3
 #define CmResourceTypeMemory 1
 #define CmResourceTypeInterrupt 2
+#define CmResourceShareDeviceExclusive 1
 #define CM_RESOURCE_INTERRUPT_LATCHED 1
 struct _DEVICE_OBJECT {void *DeviceExtension;};typedef _DEVICE_OBJECT *PDEVICE_OBJECT;
 struct _IO_STACK_LOCATION {int MinorFunction;};typedef _IO_STACK_LOCATION *PIO_STACK_LOCATION;
@@ -35,8 +36,8 @@ typedef NTSTATUS DRIVER_ADD_DEVICE(PDRIVER_OBJECT,PDEVICE_OBJECT);
 struct _MDL{};typedef _MDL *PMDL;typedef int MEMORY_CACHING_TYPE;
 struct KSAUDIO_POSITION{};typedef KSAUDIO_POSITION *PKSAUDIO_POSITION;typedef void *PDEVICE_DESCRIPTION;
 struct PHYSICAL_ADDRESS {int64_t QuadPart;};
-struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {ULONG Flags;union {struct {PHYSICAL_ADDRESS Start;ULONG Length;} Memory;} u;};typedef _CM_PARTIAL_RESOURCE_DESCRIPTOR *PCM_PARTIAL_RESOURCE_DESCRIPTOR;
-struct IResourceList {virtual ULONG NumberOfEntries()=0;virtual ULONG NumberOfEntriesOfType(int)=0;virtual PCM_PARTIAL_RESOURCE_DESCRIPTOR FindTranslatedEntry(int,ULONG)=0;};typedef IResourceList *PRESOURCELIST;
+struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {ULONG Flags;unsigned ShareDisposition;union {struct {PHYSICAL_ADDRESS Start;ULONG Length;} Memory;} u;};typedef _CM_PARTIAL_RESOURCE_DESCRIPTOR *PCM_PARTIAL_RESOURCE_DESCRIPTOR;
+struct IResourceList {virtual ULONG NumberOfEntries()=0;virtual ULONG NumberOfEntriesOfType(int)=0;virtual PCM_PARTIAL_RESOURCE_DESCRIPTOR FindTranslatedEntry(int,ULONG)=0;virtual PCM_PARTIAL_RESOURCE_DESCRIPTOR FindUntranslatedEntry(int,ULONG)=0;};typedef IResourceList *PRESOURCELIST;
 struct IMiniportWaveRT {virtual ULONG Release()=0;};typedef IMiniportWaveRT *PMINIPORTWAVERT;
 typedef NTSTATUS (*PCPFNSTARTDEVICE)(PDEVICE_OBJECT,PIRP,PRESOURCELIST);
 NTSTATUS PcInitializeAdapterDriver(PDRIVER_OBJECT,PUNICODE_STRING,DRIVER_ADD_DEVICE*);

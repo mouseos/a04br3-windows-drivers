@@ -11,7 +11,7 @@
 #define A04_BUTTON_SHARED_PARENT 0
 #endif
 #if A04_BUTTON_SHARED_PARENT
-#include "../../bus/mt8167-shared/client_interface.h"
+#include "shared_parent_contract.h"
 #endif
 
 #define A04_KEYPAD_BASE 0x10002000u
@@ -80,6 +80,7 @@ static void TraceHex(A04_CONTEXT *c, ULONG value)
 }
 #endif
 
+#if !A04_BUTTON_SHARED_PARENT
 static uint32_t PwrapRead(void *context, unsigned offset)
 {
     A04_CONTEXT *c = context;
@@ -99,9 +100,14 @@ static void PwrapDelay(void *context)
     UNREFERENCED_PARAMETER(context);
     KeStallExecutionProcessor(10);
 }
+#endif
 #if A04_BUTTON_SHARED_PARENT
 static int SharedPmicRead(void *p, uint16_t *v)
-{ A04_CONTEXT *c=p; return c->shared.ButtonPmicRead(c->shared.Context,v); }
+{ A04_CONTEXT *c=p;int result=c->shared.ButtonPmicRead(c->shared.Context,v);
+#if A04_BUTTON_TRACE
+  if(!result)c->lastPmic=*v;
+#endif
+  return result; }
 #endif
 static int KeypadRead(void *context, unsigned offset, uint16_t *value)
 {
@@ -183,13 +189,35 @@ reject:
 NTSTATUS A04Prepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translated)
 {
     A04_CONTEXT *c = A04GetContext(device);
-    ULONG i, count = WdfCmResourceListGetCount(translated);
+    ULONG i, count;
     PHYSICAL_ADDRESS keypad, pwrap;
     BOOLEAN haveKeypad = FALSE, havePwrap = FALSE;
+#if A04_BUTTON_SHARED_PARENT
+    struct a04_button_shared_selection selection={0};
+    if (!raw || !translated) return STATUS_DEVICE_CONFIGURATION_ERROR;
+#endif
+    count=WdfCmResourceListGetCount(translated);
+    if (c->keypad || c->pwrap) return STATUS_INVALID_DEVICE_STATE;
+#if A04_BUTTON_SHARED_PARENT
+    if (c->shared.InterfaceDereference || WdfCmResourceListGetCount(raw)!=count)
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+#else
     UNREFERENCED_PARAMETER(raw);
+#endif
     keypad.QuadPart = pwrap.QuadPart = 0;
     for (i = 0; i < count; ++i) {
         PCM_PARTIAL_RESOURCE_DESCRIPTOR d = WdfCmResourceListGetDescriptor(translated, i);
+#if A04_BUTTON_SHARED_PARENT
+        PCM_PARTIAL_RESOURCE_DESCRIPTOR r = WdfCmResourceListGetDescriptor(raw,i);
+        if (!d || !r || d->Type!=r->Type) return STATUS_DEVICE_CONFIGURATION_ERROR;
+        if (d->Type!=CmResourceTypeMemory) continue;
+        if (r->u.Memory.Start.QuadPart<0 || d->u.Memory.Start.QuadPart<0 ||
+            !a04_button_shared_select(&selection,(uint64_t)r->u.Memory.Start.QuadPart,r->u.Memory.Length,
+                r->ShareDisposition==CmResourceShareDeviceExclusive,(uint64_t)d->u.Memory.Start.QuadPart,
+                d->u.Memory.Length,d->ShareDisposition==CmResourceShareDeviceExclusive))
+            return STATUS_DEVICE_CONFIGURATION_ERROR;
+        keypad=d->u.Memory.Start;haveKeypad=TRUE;
+#else
         if (!d || d->Type != CmResourceTypeMemory) continue;
         if (d->u.Memory.Length != A04_RANGE_SIZE) return STATUS_DEVICE_CONFIGURATION_ERROR;
         if (d->u.Memory.Start.QuadPart == A04_KEYPAD_BASE && !haveKeypad) {
@@ -197,14 +225,16 @@ NTSTATUS A04Prepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translated)
         } else if (d->u.Memory.Start.QuadPart == A04_PWRAP_BASE && !havePwrap) {
             pwrap = d->u.Memory.Start; havePwrap = TRUE;
         } else return STATUS_DEVICE_CONFIGURATION_ERROR;
+#endif
     }
 #if A04_BUTTON_SHARED_PARENT
     if (!haveKeypad || havePwrap) return STATUS_DEVICE_CONFIGURATION_ERROR;
     {
+        RtlZeroMemory(&c->shared,sizeof(c->shared));
         NTSTATUS status = WdfFdoQueryForInterface(device, &A04SharedInterfaceGuid,
             (PINTERFACE)&c->shared, sizeof(c->shared), A04_SHARED_INTERFACE_VERSION, NULL);
-        if (!NT_SUCCESS(status)) return status;
-        if (!c->shared.InterfaceDereference || !c->shared.ButtonPmicRead) {
+        if (!NT_SUCCESS(status)) { RtlZeroMemory(&c->shared,sizeof(c->shared));return status; }
+        if (!a04_button_shared_interface_valid(&c->shared)) {
             if (c->shared.InterfaceDereference) c->shared.InterfaceDereference(c->shared.Context);
             RtlZeroMemory(&c->shared, sizeof(c->shared));
             return STATUS_NOINTERFACE;
@@ -235,11 +265,13 @@ NTSTATUS A04Prepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translated)
     c->hardware.context = c;
     c->hardware.keypad_read16 = KeypadRead;
     c->hardware.notify = Notify;
+#if !A04_BUTTON_SHARED_PARENT
     c->hardware.pmic.context = c;
     c->hardware.pmic.read32 = PwrapRead;
     c->hardware.pmic.write32 = PwrapWrite;
     c->hardware.pmic.delay = PwrapDelay;
     c->hardware.pmic.attempts = 1000;
+#endif
     a04_button_hardware_init(&c->hardware);
 #if A04_BUTTON_TRACE
     { PHYSICAL_ADDRESS uart; uart.QuadPart=0x11005000u;
@@ -267,6 +299,7 @@ NTSTATUS A04Release(WDFDEVICE device, WDFCMRESLIST translated)
     if (c->pwrap) { MmUnmapIoSpace((PVOID)c->pwrap, A04_RANGE_SIZE); c->pwrap = NULL; }
     if (c->keypad) { MmUnmapIoSpace((PVOID)c->keypad, A04_RANGE_SIZE); c->keypad = NULL; }
 #if A04_BUTTON_SHARED_PARENT
+    c->hardware.shared_pmic_read=NULL;c->hardware.shared_pmic_context=NULL;c->hardware.shared_pmic=0;
     if (c->shared.InterfaceDereference) { c->shared.InterfaceDereference(c->shared.Context); RtlZeroMemory(&c->shared,sizeof(c->shared)); }
 #endif
     return STATUS_SUCCESS;

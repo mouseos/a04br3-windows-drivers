@@ -12,6 +12,7 @@ struct mt8167_audio_shared {
     void *context;
     int (*reference)(void *);
     void (*dereference)(void *);
+    /* -1: no side effects; other failures: ownership state is uncertain. */
     int (*acquire_muted)(void *,uint32_t rate);
     int (*release_quiescent)(void *);
 };

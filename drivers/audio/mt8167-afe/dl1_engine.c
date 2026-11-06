@@ -15,6 +15,17 @@ static int update(struct mt8167_dl1_engine *e, uint32_t off, uint32_t mask, uint
     return e->io.write32(e->io.context, off, (old & ~mask) | (value & mask));
 }
 static int bad(struct mt8167_dl1_engine *e) { e->state = MT8167_DL1_POISONED; return -1; }
+int mt8167_dl1_prepare_masked_irq(struct mt8167_dl1_engine *e)
+{
+    uint32_t dac,irq,status;
+    if (!e || !e->io.read32 || !e->io.write32 || e->state!=MT8167_DL1_IDLE) return -1;
+    /* Never mask or acknowledge a source that may belong to an active DL1. */
+    if (e->io.read32(e->io.context,DAC0,&dac) || (dac&2u)) return bad(e);
+    if (update(e,IRQ_CON,1u,0) || e->io.write32(e->io.context,IRQ_CLEAR,1u) ||
+        e->io.read32(e->io.context,IRQ_CON,&irq) || (irq&1u) ||
+        e->io.read32(e->io.context,IRQ_STATUS,&status) || (status&1u)) return bad(e);
+    return 0;
+}
 static int plan_valid(const struct mt8167_dl1_plan *p)
 {
     static const uint32_t rates[16] = {8000,11025,12000,0,16000,22050,24000,0,32000,44100,48000,0,96000,0,0,0};
@@ -50,13 +61,15 @@ int mt8167_dl1_start(struct mt8167_dl1_engine *e, const struct mt8167_dl1_plan *
 }
 int mt8167_dl1_stop(struct mt8167_dl1_engine *e)
 {
-    uint32_t dac, irq;
+    uint32_t dac, irq, status;
     if (!e || e->state != MT8167_DL1_RUNNING) return -1;
     if (update(e, DAC0, 2u, 0) || update(e, IRQ_CON, 1u, 0) ||
         e->io.write32(e->io.context, IRQ_CLEAR, 1u) ||
         e->io.read32(e->io.context, DAC0, &dac) ||
-        e->io.read32(e->io.context, IRQ_CON, &irq) || (dac & 2u) || (irq & 1u)) return bad(e);
-    /* Readback of enable bits alone is NOT proof DMA has drained. */
+        e->io.read32(e->io.context, IRQ_CON, &irq) ||
+        e->io.read32(e->io.context, IRQ_STATUS, &status) ||
+        (dac & 2u) || (irq & 1u) || (status & 1u)) return bad(e);
+    /* Disabled DL1 and acknowledged IRQ do NOT prove DMA has drained. */
     e->state = MT8167_DL1_STOPPED;
     return 0;
 }
