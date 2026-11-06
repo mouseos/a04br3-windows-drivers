@@ -747,6 +747,10 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
     /* Failed/partial audio ownership cannot be interpreted as quiescent.
      * Retain mappings; this is not proof PnP retains physical resources. */
     if(c->audio.poisoned || c->audio.leased || c->audioAfe || c->usb.leased)return STATUS_DEVICE_BUSY;
+#if defined(A04_MT6392_RTC32K_DIAGNOSTIC) && A04_MT6392_RTC32K_DIAGNOSTIC
+    /* A retained or ambiguous RTC lease must outlive the PWRAP mapping. */
+    if(c->pmic.rtc_lease)return STATUS_DEVICE_BUSY;
+#endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
     if(c->thermal.leased || c->thermal.poisoned)return STATUS_DEVICE_BUSY;
 #endif

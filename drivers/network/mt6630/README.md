@@ -318,3 +318,23 @@ read-clear status 読取りへ接続する。競合時に待たない共通 try-
 親の同一 mutex 内で実行する。これは他の親クライアントとの直列化であり、
 EL3・firmware や別の RTC writer の排他を保証しない。Wi-Fi の親 Acquire は
 依然拒否し、この補助関数は親 lease に接続されていない。
+
+Linux CT3 4.4 `wmt_plat_alps.c` の RTC 初期化と `wmt_detect_pwr.c` は
+`RTC_GPIO_USER_GPS` を要求する。Windows が使用する user bit 8 は独立した
+予約であり、既存 GPS bit の消去や所有権移転を意味しない。Linux 4.14 の
+`mt6397-misc.c` は MT6392 に適用され、PDN1 と RTC_CON を WRTGR で確定する。
+Windows ARM32 機種 UEFI（調査時 HEAD `e8af0fb0`、作業ツリーの完全な出自は
+別途確認）では `A04BR3RecoveryDxe` の ExitBootServices callback が WACS2 を
+経由して RTC_PDN1 bit 13 を設定する構成がある。これらはコード上の事実で、
+今起動中の構成や EL3 が RTC・PWRAP を解放した証明ではない。
+
+共有親の PWRAP owner は診断 RTC lease の保持中、または途中失敗で状態が
+不確定な場合に lease を記録し、`ParentUnmap` はその間の PWRAP 解除を拒否
+する。実際の PnP resource が保持される保証や物理除去の安全性ではない。
+親 Acquire、外部 writer の排他、firmware と GPIO の引継ぎは未確立のため、
+Wi-Fi 診断は引き続き開始しない。
+
+RTC lease が残る場合、PWRAP owner の明示 stop は拒否して online を維持する。
+取得中に WACS が poison された場合は lease を不確定として保持する。これは
+不確定な取引を完了済みと扱わないための局所的な寿命処理であり、UEFI・EL3・
+他のファームウェアからの所有移譲の証明や、親 Wi-Fi Acquire の許可ではない。
