@@ -23,4 +23,6 @@ void a04_vendor_irq_kick(struct a04_vendor_irq *irq);
 void a04_vendor_irq_flush(struct a04_vendor_irq *irq);
 /* Only after framework interrupt disable AND a04_vendor_irq_flush. */
 BOOLEAN a04_vendor_irq_work_drained(struct a04_vendor_irq *irq);
+/* Atomic fields sampled individually; concurrent IRQs may change them. */
+BOOLEAN a04_vendor_irq_observe(struct a04_vendor_irq *irq,ULONG values[4]);
 #endif

@@ -542,3 +542,12 @@ fabric-drain/reset contract, this code neither clears `hardware_owned` nor
 frees common buffers. A D0 exit callback return alone is not proof that PnP
 has prevented removal or driver unload; surprise-removal lifetime remains an
 open issue.
+
+The copy-service stop IOCTL also emits `A04GPU STOP IRQ` with individually
+sampled interrupt sequence, serviced sequence, worker busy state, saved host
+firmware count, fresh FW count/validity and IRQ status. `STOP OUTSTANDING`
+reports BIF and BIFPM external-read status plus the low/high SLC status words.
+These are single, potentially concurrent observations while IRQs are enabled;
+they do not replace the post-interrupt-disable drain and RGXStop path and do
+not authorize DMA release. SLC words are separate 32-bit reads, not an atomic
+64-bit sample. Invalid register reads remain visible as `FFFFFFFF`.

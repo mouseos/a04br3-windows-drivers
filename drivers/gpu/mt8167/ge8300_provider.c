@@ -1014,6 +1014,26 @@ static NTSTATUS GpuVendorRequestStop(GPU_CONTEXT *c)
             GpuPrint("A04GPU STOP REG SIDE=");GpuHex(side);GpuPrint(" SLC=");GpuHex(slc);
             GpuPrint(" BIF=");GpuHex(bif);GpuPrint(" MMU=");GpuHex(mmu);GpuPrint("\n");
         }
+        if(NT_SUCCESS(off) && c->core && c->vendor_irq) {
+            struct a04_vendor_irq_snapshot fw={0};ULONG irq[4]={0};
+            NTSTATUS fw_status=a04_vendor_m1_11_windows_irq_snapshot(&c->vendor_start,TRUE,&fw);
+            ULONG reg=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x8a8u));
+            ULONG reads=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x1320u));
+            ULONG pmreads=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x1338u));
+            ULONG slclo=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x3870u));
+            ULONG slchi=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x3874u));
+            BOOLEAN have_irq=a04_vendor_irq_observe(c->vendor_irq,irq);
+            GpuPrint("A04GPU STOP IRQ OBS=");GpuHex((ULONG)have_irq);
+            GpuPrint(" POWER=");GpuHex(irq[0]);GpuPrint(" SEQ=");GpuHex(irq[1]);
+            GpuPrint(" DONE=");GpuHex(irq[2]);GpuPrint(" BUSY=");GpuHex(irq[3]);
+            GpuPrint(" HOSTVALID=");GpuHex(c->vendor_irq_snapshot.valid);
+            GpuPrint(" HOST=");GpuHex(c->vendor_irq_snapshot.count);
+            GpuPrint(" FWSTATUS=");GpuHex((ULONG)fw_status);GpuPrint(" FWVALID=");GpuHex(fw.valid);
+            GpuPrint(" FW=");GpuHex(fw.count);GpuPrint(" REG=");GpuHex(reg);GpuPrint("\n");
+            GpuPrint("A04GPU STOP OUTSTANDING READ=");GpuHex(reads);
+            GpuPrint(" PMREAD=");GpuHex(pmreads);GpuPrint(" SLCLO=");GpuHex(slclo);
+            GpuPrint(" SLCHI=");GpuHex(slchi);GpuPrint(" OBSERVATION ONLY\n");
+        }
         /* Single samples are observations, not IRQ drain or RGXStop. */
         GpuPrint("A04GPU STOP DMA RETAINED UNLOAD UNSAFE\n");
         WdfWaitLockRelease(c->vendor_lifetime);

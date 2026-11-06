@@ -111,3 +111,13 @@ BOOLEAN a04_vendor_irq_work_drained(struct a04_vendor_irq *q)
     return InterlockedCompareExchange(&q->work_busy,0,0)==0 &&
         InterlockedCompareExchange(&q->sequence,0,0)==InterlockedCompareExchange(&q->serviced,0,0);
 }
+
+BOOLEAN a04_vendor_irq_observe(struct a04_vendor_irq *q,ULONG values[4])
+{
+    if(!q || !values) return FALSE;
+    values[0]=(ULONG)InterlockedCompareExchange(&q->powered,0,0);
+    values[1]=(ULONG)InterlockedCompareExchange(&q->sequence,0,0);
+    values[2]=(ULONG)InterlockedCompareExchange(&q->serviced,0,0);
+    values[3]=(ULONG)InterlockedCompareExchange(&q->work_busy,0,0);
+    return TRUE;
+}
