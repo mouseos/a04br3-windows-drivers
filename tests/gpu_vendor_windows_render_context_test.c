@@ -54,7 +54,15 @@ void KeStallExecutionProcessor(unsigned us)
                 (UINT64_C(1)<<23)|(UINT64_C(2)<<26)|(UINT64_C(3)<<29);
             for(unsigned n=0;n<52;n++)if(n!=32 && n!=33)assert(task[n]==copy_sim->frozen_task[n]);
             assert(task[32]==(uint32_t)csr && task[33]==(uint32_t)(csr>>32));
-            assert(((uint32_t *)sim->buffer[7].cpu)[18]==(uint32_t)(UINT64_C(0x8000000000)>>2));
+            {
+                uintptr_t offset=(uintptr_t)copy_sim->diagnostic_cpu-(uintptr_t)copy_sim->diagnostic_mdl->va;
+                assert(((uint32_t *)sim->buffer[7].cpu)[18]==(uint32_t)((UINT64_C(0x8000000000)+offset)>>2));
+                if(off==296 && ctl->ui32ReadOffset!=0) {
+                    RGXFWIF_CCB_CMD_HEADER *padding=(void *)(bank+sim->layout.commands[3]+ctl->ui32ReadOffset);
+                    assert(padding->eCmdType==0x2abc00ddu);
+                    assert(padding->ui32CmdSize==4096-ctl->ui32ReadOffset-sizeof(*padding));
+                }
+            }
             for(unsigned n=0;n<1024;n++)copy_sim->diagnostic_cpu[(n/32)*800+n%32]=((uint32_t *)copy_sim->source.cpu)[n];
             if(complete==5)copy_sim->diagnostic_cpu[31*800+31]^=1u;
         } else
@@ -63,7 +71,7 @@ void KeStallExecutionProcessor(unsigned us)
             assert(!memcmp(bank+sim->layout.commands[3]+off-296+40,copy_sim->frozen_task,208));
             memcpy(copy_sim->destination.cpu,copy_sim->source.cpu,4096);
         }
-        ctl->ui32ReadOffset=ctl->ui32WriteOffset=off;
+        ctl->ui32ReadOffset=ctl->ui32WriteOffset=ctl->ui32DepOffset=off;
         *(uint32_t *)(void *)(bank+sim->layout.sync)=sim->sequence;
         run->kctl->ui32ReadOffset=run->kctl->ui32WriteOffset;return;
     }
@@ -275,6 +283,15 @@ int main(void)
             for(j=0;j<16;j++)assert(pds[16+j]==copy.eot_pds[j]);
             assert(screen[0]==a04_vendor_copy_pattern(0) && screen[31*800+31]==a04_vendor_copy_pattern(1023));
             assert(screen[32]==0 && !copy.diagnostic_cpu && !copy.diagnostic_mdl);
+            #if A04_GE8300_SHARED_FULL_FRAME
+            for(n=0;n<1000;n++) {
+                for(j=0;j<1024;j++)in[j]=n*1024u+j;
+                assert(a04_vendor_render_copy_shared_tile(&copy,&start,&surface,&tables,in,n,&clear)==STATUS_SUCCESS);
+                assert(screen[(n/25)*32*800+(n%25)*32]==n*1024u);
+            }
+            assert(screen[4096000/4-1]==1023999u);
+            assert(a04_vendor_render_copy_shared_tile(&copy,&start,&surface,&tables,in,1000,&clear)==STATUS_INVALID_PARAMETER);
+#endif
             complete=5;
             assert(a04_vendor_render_copy_shared_diagnostic(&copy,&start,&surface,&tables,&clear)==STATUS_DATA_ERROR);
             assert(clear.zeros==1023 && !clear.completed_task && !clear.completed_flush && r.poisoned && start.command_poisoned);

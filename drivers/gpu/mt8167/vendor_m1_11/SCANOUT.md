@@ -233,3 +233,33 @@ format and old address. No such callbacks or call site exist: the combined
 diagnostic reads OVL only. The 32x32 GPU result is not a complete frame.
 Both surfaces and the shared lease remain retained even after a switch or
 restore write; no interrupt or readback is treated as retirement.
+
+### Experimental shared tiles and queue wrapping
+
+`A04_GE8300_SHARED_FULL_FRAME=1` (default 0; also requires the shared GPU
+diagnostic) enables a kernel-only tile function and a drained-CCB wrapping
+experiment. It accepts a stable, packed 32x32 input tile and one of 1000
+row-major positions on the fixed 800x1280, 3200-byte-pitch surface. Each tile
+is independently submitted, SLC-flushed, fenced and CPU-checked. This is a
+building block, not a WDDM present interface or an atomic complete frame.
+Normal copy service submissions retain their existing bounded, non-wrapping
+behavior. The host simulation exercises 1000 positions and padding; neither
+wrapping nor the full surface has been demonstrated on the device.
+
+The m1.11 DDK `services/server/devices/rgx/rgxccb.c` writes a PADDING
+header at the old tail and submits it together with the command at zero.
+The experiment additionally requires read, write and dependency offsets to
+agree before reusing the queue. Whether the running Windows firmware advances
+all three in this way is unverified; refusal is safe and expected if it does
+not. Timeout poisons the existing owner and retains its published mappings.
+
+A GPU fence and CPU readback do not establish display DMA visibility: the
+separately acquired display scatter/gather mapping could use a bounce buffer
+whose contents predate GPU writes. No display ownership handoff or remapping
+is attempted until GPU drain and mapping lifetime are proven. Linux mt8167
+`ddp_path.c` uses CMDQ to wait for RDMA0 EOF or MUTEX0 STREAM EOF before
+configuration in video mode; `ddp_manager.c` associates FRAME_DONE with
+RDMA0_DONE and IF_VSYNC with DSI0_EXT_TE. A CPU interrupt observed after an
+EOF alone does not provide the same serialized operation. CMDQ resources,
+event ownership, and safe GPU stop are not established here, so the existing
+OVL readiness and frame-boundary gates remain closed.

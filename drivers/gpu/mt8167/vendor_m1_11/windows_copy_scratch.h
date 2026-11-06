@@ -61,5 +61,8 @@ struct a04_shared_tables;
 NTSTATUS a04_vendor_render_copy_shared_diagnostic(struct a04_vendor_copy_scratch *,
     struct a04_vendor_start *,struct a04_shared_scanout *,struct a04_shared_tables *,
     struct a04_vendor_clear_result *);
+NTSTATUS a04_vendor_render_copy_shared_tile(struct a04_vendor_copy_scratch *,
+    struct a04_vendor_start *,struct a04_shared_scanout *,struct a04_shared_tables *,
+    const uint32_t *,uint32_t,struct a04_vendor_clear_result *);
 NTSTATUS a04_vendor_copy_scratch_release(struct a04_vendor_copy_scratch *owner);
 #endif

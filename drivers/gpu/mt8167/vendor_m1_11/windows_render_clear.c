@@ -11,6 +11,12 @@
 #ifndef A04_GE8300_SHARED_GPU_DIAGNOSTIC
 #define A04_GE8300_SHARED_GPU_DIAGNOSTIC 0
 #endif
+#ifndef A04_GE8300_SHARED_FULL_FRAME
+#define A04_GE8300_SHARED_FULL_FRAME 0
+#endif
+#if A04_GE8300_SHARED_GPU_DIAGNOSTIC && A04_GE8300_SHARED_FULL_FRAME
+#include "shared_frame_plan.h"
+#endif
 #if A04_GE8300_SHARED_GPU_DIAGNOSTIC
 #include "windows_shared_tables.h"
 #endif
@@ -41,6 +47,10 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
     RGXFWIF_CCB_CTL k,q;RGXFWIF_CCCB_CTL client;RGXFWIF_KCCB_CMD kick={0},flush={0},fence={0};
     volatile unsigned char *bank;volatile uint32_t *sync,*output;uint32_t at,next,knext,seq=0,flushseq=0,value;
     unsigned i;NTSTATUS status;
+#if A04_GE8300_SHARED_GPU_DIAGNOSTIC && A04_GE8300_SHARED_FULL_FRAME
+    struct a04_tq_ring_plan plan={0}; RGXFWIF_CCB_CMD_HEADER padding={0};
+    BOOLEAN shared_wrap=FALSE;
+#endif
     if(!result)return STATUS_INVALID_PARAMETER;
     RtlZeroMemory(result,sizeof(*result));
     if(!r || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !r->mapped || r->cleanup_started || !r->clear_ready || r->clear_attempted ||
@@ -68,10 +78,19 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
     status=queue_snapshot(f,&k,&q);if(!NT_SUCCESS(status))goto done;
     bank=r->buffer[0].cpu;sync=(volatile uint32_t *)(void *)(bank+r->layout.sync);
     output=(volatile uint32_t *)(r->screen_surface ? r->screen_surface->pixels.cpu : r->buffer[4].cpu);at=r->client_write[3];
-    if(at>4095u || (at&7u) || at+sizeof(packet)+40u>4096u ||
+    if(at>4095u || (at&7u) ||
        a04_rgx_device_read_words(&client,bank+r->layout.control[3],sizeof(client)) ||
        client.ui32WrapMask!=4095u || client.ui32ReadOffset!=at || client.ui32WriteOffset!=at ||
        client.ui32DepOffset>4095u || (client.ui32DepOffset&7u)) {status=STATUS_INVALID_DEVICE_STATE;goto done;}
+#if A04_GE8300_SHARED_GPU_DIAGNOSTIC && A04_GE8300_SHARED_FULL_FRAME
+    shared_wrap=copy && copy->diagnostic_cpu;
+    if(shared_wrap) {
+        if(!a04_tq_ring_plan(client.ui32ReadOffset,at,client.ui32DepOffset,&plan)) {
+            status=STATUS_DEVICE_BUSY;goto done;
+        }
+    } else
+#endif
+    if(at+sizeof(packet)+40u>4096u) {status=STATUS_INVALID_DEVICE_STATE;goto done;}
     seq=++r->sequence;packet.task.eCmdType=TQ_TASK;packet.task.ui32CmdSize=208u;
     RtlCopyMemory(packet.payload,copy?copy->frozen_task:r->clear.payload,sizeof(packet.payload));
 #if A04_GE8300_SHARED_GPU_DIAGNOSTIC
@@ -83,7 +102,15 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
 #endif
     packet.update.eCmdType=CLIENT_UPDATE;packet.update.ui32CmdSize=8;
     packet.ufo.puiAddrUFO.ui32Addr=0xc0080000u+r->layout.sync;packet.ufo.ui32Value=seq;
-    *sync=0;if(a04_rgx_device_write_words(bank+r->layout.commands[3]+at,&packet,sizeof(packet))) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
+    *sync=0;
+#if A04_GE8300_SHARED_GPU_DIAGNOSTIC && A04_GE8300_SHARED_FULL_FRAME
+    if(shared_wrap && plan.pad_bytes) {
+        padding.eCmdType=0x2abc00ddu; padding.ui32CmdSize=plan.pad_bytes-sizeof(padding);
+        if(a04_rgx_device_write_words(bank+r->layout.commands[3]+plan.pad_at,&padding,sizeof(padding))) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
+    }
+    if(shared_wrap)at=plan.task_at;
+#endif
+    if(a04_rgx_device_write_words(bank+r->layout.commands[3]+at,&packet,sizeof(packet))) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
     next=at+sizeof(packet);kick.eCmdType=RGXFWIF_KCCB_CMD_KICK;kick.eDM=3;
     kick.uCmdData.sCmdKickData.psContext.ui32Addr=0xc0080000u+r->layout.tq;
     kick.uCmdData.sCmdKickData.ui32CWoffUpdate=next;
@@ -217,12 +244,20 @@ NTSTATUS a04_vendor_render_copy_once(struct a04_vendor_copy_scratch *o,
 /* Fixed 32x32 diagnostic into the first pixels of the shared 800x1280
  * surface. The owner holds the provider lifetime lock and a published mapping.
  * Completion + CPU readback do not establish display visibility or quiescence. */
-NTSTATUS a04_vendor_render_copy_shared_diagnostic(struct a04_vendor_copy_scratch *o,
+static NTSTATUS copy_shared_tile(struct a04_vendor_copy_scratch *o,
     struct a04_vendor_start *s,struct a04_shared_scanout *target,struct a04_shared_tables *tables,
-    struct a04_vendor_clear_result *result)
+    const uint32_t *input,uint32_t index,struct a04_vendor_clear_result *result)
 {
     struct a04_vendor_render_cold *r;volatile uint32_t *pixels;uint32_t pds[16];
-    unsigned i;NTSTATUS status;
+    unsigned i;NTSTATUS status;uint32_t offset=0;uint64_t gpu_va;
+#if A04_GE8300_SHARED_FULL_FRAME
+    struct a04_shared_tile tile;
+    if(!a04_shared_tile_at(index,&tile))return STATUS_INVALID_PARAMETER;
+    offset=tile.byte_offset;
+#else
+    if(index || input)return STATUS_INVALID_PARAMETER;
+#endif
+    gpu_va=UINT64_C(0x8000000000)+offset;
     if(!result)return STATUS_INVALID_PARAMETER;
     RtlZeroMemory(result,sizeof(*result));
     if(!o || !s || !target || !tables || KeGetCurrentIrql()!=PASSIVE_LEVEL ||
@@ -236,7 +271,11 @@ NTSTATUS a04_vendor_render_copy_shared_diagnostic(struct a04_vendor_copy_scratch
        (r->clear_attempted && !r->clear_verified) || !s->online || !s->memory ||
        !s->memory->hardware_owned || r->firmware!=s->memory || !target->gpu_adapter ||
        target->gpu_adapter!=s->memory->adapter ||
-       r->client_write[3]>4095u || r->client_write[3]+sizeof(struct clear_packet)+40u>4096u) {
+       r->client_write[3]>4095u
+#if !A04_GE8300_SHARED_FULL_FRAME
+       || r->client_write[3]+sizeof(struct clear_packet)+40u>4096u
+#endif
+       ) {
         status=STATUS_INVALID_DEVICE_STATE;goto out;
     }
     if(a04_rgx_device_read_words(pds,(UCHAR *)r->buffer[7].cpu+64,sizeof(pds))) {
@@ -245,16 +284,17 @@ NTSTATUS a04_vendor_render_copy_shared_diagnostic(struct a04_vendor_copy_scratch
     for(i=0;i<16;i++)if(pds[i]!=o->eot_pds[i]) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto out;}
     pixels=(volatile uint32_t *)MmGetSystemAddressForMdlSafe(target->mdl,NormalPagePriority);
     if(!pixels || ((uintptr_t)pixels&3u)){status=STATUS_INSUFFICIENT_RESOURCES;goto out;}
+    pixels+=offset/4u;
     for(i=0;i<1024u;i++) {
-        o->service_expected[i]=a04_vendor_copy_pattern(i);
+        o->service_expected[i]=input?input[i]:a04_vendor_copy_pattern(i);
         pixels[(i/32u)*800u+(i%32u)]=0xa5a5a5a5u;
         ((volatile uint32_t *)o->destination.cpu)[i]=0xa5a5a5a5u;
     }
     KeFlushIoBuffers(target->mdl,FALSE,TRUE);
     if(a04_rgx_device_write_words(o->source.cpu,o->service_expected,4096)) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
     RtlCopyMemory(pds,o->eot_pds,sizeof(pds));
-    pds[2]=(uint32_t)(UINT64_C(0x8000000000)>>2);
-    pds[3]=(uint32_t)(UINT64_C(0x8000000000)>>34)|(1u<<19);
+    pds[2]=(uint32_t)(gpu_va>>2);
+    pds[3]=(uint32_t)(gpu_va>>34)|(1u<<19);
     /* Write only the EOT PDS span under the same lock as the normal copy. */
     if(a04_rgx_device_write_words((UCHAR *)r->buffer[7].cpu+64,pds,sizeof(pds))) {status=STATUS_IO_DEVICE_ERROR;goto poison;}
     a04_gpu_dma_barrier();o->service_expected_active=TRUE;o->diagnostic_mdl=target->mdl;o->diagnostic_cpu=pixels;
@@ -275,6 +315,21 @@ out:
     InterlockedExchange(&s->command_busy,0);return status;
 }
 
+NTSTATUS a04_vendor_render_copy_shared_diagnostic(struct a04_vendor_copy_scratch *o,
+    struct a04_vendor_start *s,struct a04_shared_scanout *target,struct a04_shared_tables *tables,
+    struct a04_vendor_clear_result *result)
+{ return copy_shared_tile(o,s,target,tables,NULL,0,result); }
+#if A04_GE8300_SHARED_FULL_FRAME
+/* Trusted kernel buffer: one packed 32x32 tile, held stable for the call. This
+ * is not a frame-completion or display-DMA ownership transfer. */
+NTSTATUS a04_vendor_render_copy_shared_tile(struct a04_vendor_copy_scratch *o,
+    struct a04_vendor_start *s,struct a04_shared_scanout *target,struct a04_shared_tables *tables,
+    const uint32_t *input,uint32_t index,struct a04_vendor_clear_result *result)
+{
+    if(!input || ((uintptr_t)input&3u))return STATUS_INVALID_PARAMETER;
+    return copy_shared_tile(o,s,target,tables,input,index,result);
+}
+#endif
 #endif
 /* Finite ring experiment: no wrap or teardown is inferred from a fence. */
 NTSTATUS a04_vendor_render_copy_buffer_fenced(struct a04_vendor_copy_scratch *o,
