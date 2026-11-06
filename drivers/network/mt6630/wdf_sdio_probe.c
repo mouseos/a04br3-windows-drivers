@@ -51,11 +51,15 @@ NTSTATUS WifiD0Entry(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
  WIFI_CONTEXT *c=WifiContext(dev);ULONG generation=0;NTSTATUS status;
  if(!c->referenced||c->uncertain)return STATUS_DEVICE_NOT_READY;
  status=c->parent.Acquire(c->parent.Header.Context,&generation);
- if(!NT_SUCCESS(status))return status; /* contract: failure has no effects */
+ if(!NT_SUCCESS(status)){
+  DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_INFO_LEVEL,"A04WIFI: parent rejected lease: 0x%08lx\n",(unsigned long)status);
+  return status; /* contract: failure has no effects */
+ }
  /* Nothing has touched hardware. Do not enable the data path while forced
   * removal and lease/MMIO/IRQ rundown are unproven. */
  if(!generation || !NT_SUCCESS(c->parent.ReleaseQuiescent(c->parent.Header.Context,generation)))
   c->uncertain=1;
+ DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_INFO_LEVEL,"A04WIFI: lease granted; startup refused; release %s\n",c->uncertain?"uncertain":"completed");
  return STATUS_DEVICE_NOT_READY;
 #else
  UNREFERENCED_PARAMETER(dev);return STATUS_DEVICE_NOT_READY;

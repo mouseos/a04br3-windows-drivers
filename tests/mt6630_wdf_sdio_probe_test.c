@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include <assert.h>
 #include <string.h>
+#define A04_AUDIO_DIAGNOSTIC_TRACE 1
+int a04_test_trace_count;
 #include "../drivers/network/mt6630/wdf_sdio_probe.c"
 static WIFI_CONTEXT ctx;static int refs,acquires,releases,grant,badgen,releasefail,queries,malformed,queryfail;
 static WDF_PNPPOWER_EVENT_CALLBACKS saved;
