@@ -75,6 +75,9 @@ jobs:
           name: offline-backup-arm32-unsigned
           path: ${{ runner.temp }}/a04-offline-backup/offline-backup.exe
           if-no-files-found: error
+      - name: Test recovery and release orchestration
+        shell: pwsh
+        run: ./tools/ci/test-offline-restore-fixture.ps1
       - name: Test offline backup and replay on synthetic volumes
         shell: pwsh
         run: ./tools/ci/test-offline-backup-synthetic.ps1
