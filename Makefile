@@ -1136,3 +1136,10 @@ test-mt6630-windows-session:
 	@mkdir -p build
 	$(CC) $(CFLAGS) -DA04_WIFI_SESSION_DIAGNOSTIC=1 -Itests/shared_wdf_stubs -Idrivers/network/mt6630 drivers/network/mt6630/windows_session.c tests/mt6630_windows_session_test.c -o build/mt6630_windows_session_test
 	./build/mt6630_windows_session_test
+.PHONY: test-mt8167-usb-source
+test-mt8167-usb-source:
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_USB_GPIO22_SOURCE_EXPERIMENT=1 -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_SHARED_BUTTON_D0_EXPERIMENT=1 -DA04_SHARED_APMIXED_RESOURCE=1 -DA04_SHARED_MT6392_DIAGNOSTIC=1 -DA04_MT6392_WRITE_DIAGNOSTIC=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/bus/mt8167-shared/mt6392_classd.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c drivers/bus/mt8167-shared/usb_owner.c drivers/usb/mt8167-usb20/gpio22.c tests/mt8167_shared_wdf_test.c -o build/mt8167_usb_source_test
+	./build/mt8167_usb_source_test
+
+test: test-mt8167-usb-source test-mt8167-usb-faults test-mt8167-usb-controller-irq test-mt8167-usb-pnp-resources
