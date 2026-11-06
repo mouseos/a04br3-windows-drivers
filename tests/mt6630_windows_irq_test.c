@@ -20,4 +20,6 @@ int main(void){struct a04_windows_irq irq={0};CM_PARTIAL_RESOURCE_DESCRIPTOR raw
  raw.u.Interrupt.Vector=142;assert(a04_windows_irq_connect(&irq,(UCHAR*)regs,&raw,&tr,notify,&notifications)<0);raw.u.Interrupt.Vector=141;
  regs[4]=0x180;assert(!a04_windows_irq_connect(&irq,(UCHAR*)regs,&raw,&tr,notify,&notifications));assert(regs[4]==0x100);assert(!a04_windows_irq_arm(&irq)&&regs[4]==0x180);
  regs[3]=0x180;assert(isr(&object,isr_context)&&regs[3]==0x100&&regs[4]==0x100&&queued);assert(!isr(&object,isr_context));assert(!a04_windows_irq_stop(&irq)&&disconnects==1&&flushes==1&&!notifications&&!irq.base);
- memset(&irq,0,sizeof irq);ignore_mask=1;regs[4]=0x80;assert(a04_windows_irq_connect(&irq,(UCHAR*)regs,&raw,&tr,notify,&notifications)<0&&!irq.interrupt);return 0;}
+ memset(&irq,0,sizeof irq);regs[4]=0;assert(!a04_windows_irq_connect(&irq,(UCHAR*)regs,&raw,&tr,notify,&notifications));assert(!a04_windows_irq_arm(&irq));
+ regs[3]=0x80;assert(isr(&object,isr_context)&&queued);ignore_mask=1;assert(a04_windows_irq_stop(&irq)<0);assert(disconnects==2&&flushes==2&&!irq.interrupt&&!irq.base&&!notifications);
+ memset(&irq,0,sizeof irq);regs[4]=0x80;assert(a04_windows_irq_connect(&irq,(UCHAR*)regs,&raw,&tr,notify,&notifications)<0&&!irq.interrupt);return 0;}

@@ -71,10 +71,15 @@ int a04_windows_irq_arm(struct a04_windows_irq *irq)
 {if(KeGetCurrentIrql()!=PASSIVE_LEVEL||!irq||!irq->interrupt||InterlockedCompareExchange(&irq->armed,0,0))return -1;return KeSynchronizeExecution(irq->interrupt,arm_locked,irq)?0:-1;}
 int a04_windows_irq_stop(struct a04_windows_irq *irq)
 {
+ BOOLEAN masked;
  if(KeGetCurrentIrql()!=PASSIVE_LEVEL||!irq||!irq->interrupt)return -1;
- if(!KeSynchronizeExecution(irq->interrupt,stop_locked,irq))return -1;
+ /* Disconnect even if the device did not confirm its mask. Otherwise PnP
+  * removal can free the ISR context while the interrupt remains registered.
+  * Failure still means the device is not quiescent: retain the lease and do
+  * not treat this disconnect as permission to unmap or release it. */
+ masked=KeSynchronizeExecution(irq->interrupt,stop_locked,irq);
  IoDisconnectInterrupt(irq->interrupt);irq->interrupt=NULL;
  (void)KeRemoveQueueDpc(&irq->dpc);KeFlushQueuedDpcs();
- irq->base=NULL;irq->notify=NULL;irq->context=NULL;return 0;
+ irq->base=NULL;irq->notify=NULL;irq->context=NULL;return masked?0:-1;
 }
 #endif
