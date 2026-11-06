@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Build the installed-Windows driver update media from the verified CPU/USB
+# audit media. Inputs are pinned by SHA-256; outputs go to the given directory.
+# usage: build-shared-touch-update-media.sh <base-media-dir> <out-dir> <wimtools-dir> <python-fat-dir>
+set -euo pipefail
+base=$1 out=$2 wt=$3 pyfat=$4
+here=$(cd "$(dirname "$0")" && pwd)
+wim() { LD_LIBRARY_PATH="$wt" "$wt/wimlib-imagex" "$@"; }
+echo "0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4  $base/maintenance-staged.wim" | sha256sum -c -
+echo "22ac309921bd9ae405bd48e65d8cb8a70506c90f0c08e6edda4f0150fb4993ce  $base/maintenance-staged-esp.img" | sha256sum -c -
+mkdir -p "$out/stage"
+test ! -e "$out/update.wim"
+cp "$base/maintenance-staged.wim" "$out/update.wim"
+cp "$base/boot.img" "$out/boot.img"
+sed 's/$/\r/' "$here/run-update-shared-touch-once.cmd" > "$out/stage/run-update-once.cmd"
+wim extract "$out/update.wim" 1 /Windows/System32/startnet.cmd --dest-dir="$out/stage" --no-acls >/dev/null
+tr -d '\r' < "$out/stage/startnet.cmd" \
+  | sed 's#^call X:\\a04br3\\run-audit-once.cmd$#call X:\\a04br3\\run-update-once.cmd#' \
+  | sed 's/$/\r/' > "$out/stage/startnet.new"
+grep -q 'run-update-once.cmd' "$out/stage/startnet.new"
+printf 'add %s /a04br3/run-update-once.cmd\nadd %s /Windows/System32/startnet.cmd\n' \
+  "$out/stage/run-update-once.cmd" "$out/stage/startnet.new" | wim update "$out/update.wim" 1
+wim optimize "$out/update.wim"
+wim verify "$out/update.wim"
+wim info "$out/update.wim" | grep -q 'Boot Index:     1'
+PYTHONPATH="$pyfat" python3 "$here/../../../a04br3-windows-ge8300-copy-safe-stop/tools/winpe/replace-esp-wim.py" \
+  --template "$base/maintenance-staged-esp.img" --wim "$out/update.wim" --output "$out/update-esp.img" \
+  --template-bcd-sha256 65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d \
+  --template-wim-sha256 0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4
+sha256sum "$out/update-esp.img" "$out/update.wim" "$out/boot.img"
