@@ -100,7 +100,7 @@ static DWORD paths(void)
  WCHAR system[MAX_PATH],module[MAX_PATH];DWORD n,error;BY_HANDLE_FILE_INFORMATION info;
  n=GetSystemDirectoryW(system,MAX_PATH);if(!n||n>=MAX_PATH)return ERROR_INSUFFICIENT_BUFFER;
  error=path(directory,system,L"MT8167HardwareProbe");if(error)return error;
- error=path(executable,directory,L"MT8167HardwareProbe.exe");if(error)return error;
+ error=path(executable,system,L"MT8167HardwareProbe.exe");if(error)return error;
  error=path(marker,directory,L"attempted.bin");if(error)return error;
  n=GetModuleFileNameW(NULL,module,MAX_PATH);if(!n||n>=MAX_PATH||lstrcmpiW(module,executable))return ERROR_BAD_PATHNAME;
  directory_handle=CreateFileW(directory,FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,NULL);
@@ -249,7 +249,7 @@ static void WINAPI service_main(DWORD argc,WCHAR **argv)
 static DWORD register_service(void)
 {
  SC_HANDLE manager,service;DWORD error;WCHAR command[MAX_PATH+3];unsigned n;
- SERVICE_FAILURE_ACTIONSW actions;SERVICE_DELAYED_AUTO_START_INFO delayed;
+ SERVICE_FAILURE_ACTIONSW actions;
  error=paths();if(error)return error;
  if(GetFileAttributesW(marker)!=INVALID_FILE_ATTRIBUTES)return ERROR_ALREADY_EXISTS;
  error=GetLastError();if(error!=ERROR_FILE_NOT_FOUND)return error;
@@ -257,9 +257,9 @@ static DWORD register_service(void)
  manager=OpenSCManagerW(NULL,NULL,SC_MANAGER_CREATE_SERVICE);if(!manager)return GetLastError();
  service=CreateServiceW(manager,service_name,service_name,SERVICE_CHANGE_CONFIG,SERVICE_WIN32_OWN_PROCESS,SERVICE_AUTO_START,SERVICE_ERROR_NORMAL,command,NULL,NULL,NULL,L"LocalSystem",NULL);
  if(!service){error=GetLastError();CloseServiceHandle(manager);return error;}
- memset(&actions,0,sizeof(actions));delayed.fDelayedAutostart=TRUE;
+ memset(&actions,0,sizeof(actions));
  error=0;
- if(!ChangeServiceConfig2W(service,SERVICE_CONFIG_FAILURE_ACTIONS,&actions)||!ChangeServiceConfig2W(service,SERVICE_CONFIG_DELAYED_AUTO_START_INFO,&delayed)){
+ if(!ChangeServiceConfig2W(service,SERVICE_CONFIG_FAILURE_ACTIONS,&actions)){
   error=GetLastError();(void)ChangeServiceConfigW(service,SERVICE_NO_CHANGE,SERVICE_DISABLED,SERVICE_NO_CHANGE,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
  }
  CloseServiceHandle(service);CloseServiceHandle(manager);return error;

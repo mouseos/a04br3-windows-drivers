@@ -63,10 +63,11 @@ try {
  $files+='README-mt8167-hardware-probe.md'
  [ordered]@{source_commit=(& git -C $root rev-parse HEAD);source_sha256=(Get-FileHash $source -Algorithm SHA256).Hash;
   source_dirty=(@(& git -C $root status --porcelain).Count -ne 0);service='MT8167HardwareProbe';
-  target='Windows RT 8.1 ARM32 LocalSystem';destination='System32\MT8167HardwareProbe';
+  target='Windows RT 8.1 ARM32 LocalSystem';service_destination='System32\MT8167HardwareProbe.exe';
+  client_directory='System32\MT8167HardwareProbe';scm_arguments='';scm_start=2;scm_delayed_auto_start=$false;
   clients_staged=($inputs.Count -eq 2);signing_requested=[bool]$Sign;
   signing_thumbprint=$(if($Sign){$CertificateThumbprint}else{$null});target_signature_trust_verified=$false;
-  marker='attempted.bin';startup='delayed auto start; disabled before the only attempt';
+  marker='attempted.bin';startup='standard auto start; disabled before the only attempt';
   timeouts_ms=@(600000,120000);audio_interface=11;client_arguments=@('','');hardware_verified=$false;
   files=@($files|ForEach-Object{@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}})
  }|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 (Join-Path $out 'hardware-probe-manifest.json')

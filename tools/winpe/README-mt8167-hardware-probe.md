@@ -10,8 +10,8 @@ PnP installerではなく、driver導入、UEFI変更、サービス再起動、
 配置先はGetSystemDirectoryWが返す通常OSのSystem32配下だけ。
 
 ```text
+System32\MT8167HardwareProbe.exe
 System32\MT8167HardwareProbe\
-  MT8167HardwareProbe.exe
   mt6630-wlan-probe.exe
   mt8167-audio-first-playback.exe
 ```
@@ -47,7 +47,7 @@ reparse point/ディレクトリを拒否し、WinVerifyTrustで署名とロー�
    終了確認できなければ次のclientも起動しない。再起動/再試行は行わない。
 7. processの終了code、保存エラー、UART通知状態を記録し、SCMへSTOPPEDを返す。
 
-登録はdelayed-auto-startで、SCM recovery actionは空。WlanSvc依存でSCM開始自体を
+登録は標準AutoStart（Start=2）で、遅延起動は指定せず、SCM recovery actionは空。WlanSvc依存でSCM開始自体を
 阻止しないため、WLANコンポーネント不在でもサービスが試行を消費して無効化できる。
 PnPとTOPRGU、WlanSvc/Native WLAN、Audio v11/KS/ksuser.dllの準備は主担当が行う。
 準備不足によるclient失敗も同じbootで再実行しない。--startも無効化を解除しない。
@@ -111,14 +111,20 @@ build scriptはSCM登録・サービス開始・実機/runner操作を行わな�
 - 出力manifestは署名後のhashを記録するが、対象OSのLocalSystemでの署名信頼は未確認とする。
 - 統合build-mt8167-peripherals.ps1も未署名serviceと2つのclientをhardware-probe/へまとめる。
 
-主担当が署名済み3 EXEを固定ディレクトリへ配置した後、管理権限の既存実行経路で
-以下を呼べば、物理入力なしでSCMによる次回起動が設定される。
+主担当のbulk適用builderがofflineで標準SCMサービスを登録する。
+Service名はMT8167HardwareProbe、Type=0x10、Start=2、ObjectName=LocalSystem。
+DelayedAutoStartは0または未指定とする。
+ImagePathは引用符付き `%SystemRoot%\System32\MT8167HardwareProbe.exe` のみで、引数なし。
+EXEの引数なし入口はStartServiceCtrlDispatcherWであり、対話起動や手動client起動を必要としない。
+署名済みservice EXEはSystem32直下、署名済み2 clientsとログ/markerは同名directory配下へ置く。
+
+通常OS上で登録する既存実行経路向けには、同じ契約の任意の登録補助手段も用意している。
 
 ```batch
-"%SystemRoot%\System32\MT8167HardwareProbe\MT8167HardwareProbe.exe" --install
+"%SystemRoot%\System32\MT8167HardwareProbe.exe" --install
 ```
 
-通常OSでPnP準備済みなら同じ既存実行経路から--startで直ちに開始できる。
+通常OSでPnP準備済みなら同じ既存実行経路から--startで直ちに開始できる。bulk登録では引数を付けない。
 登録後の既存サービス更新/再有効化/marker削除は提供しない。
 追加の物理操作や対話loginを求める実装ではない。
 

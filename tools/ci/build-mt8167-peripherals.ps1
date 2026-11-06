@@ -86,13 +86,15 @@ try {
       parent_hardware_id='ACPI\BEN0001';shared_parent_count=1;audio_interface=11;usb_interface=1;wifi_interface=2;
       parent_flags=$audioManifest.parent_flags;audio_flags=$audioManifest.audio_flags;
       hardware_probe_service='MT8167HardwareProbe';hardware_probe_path='hardware-probe';hardware_probe_one_attempt=$true;
+      hardware_probe_exe_destination='System32\MT8167HardwareProbe.exe';hardware_probe_client_directory='System32\MT8167HardwareProbe';
+      hardware_probe_scm_start=2;hardware_probe_scm_arguments='';hardware_probe_delayed_auto_start=$false;
       namespace='Reuse current BEN0001/touch/battery/buttons/GPU; do not add USB-only SSDT';
       uefi_reference='cc7c20fa (reported by primary owner; not rebuilt or validated here)';
       firmware_embedded=$false;device_calibration_embedded=$false;hardware_verified=$false;
       status='Unsigned WDK8.1 batch completed; signing and target validation are separate';
       prerequisites=@('Matched existing TOPRGU 96-byte UART queue','ARM32 ksuser.dll for KS client',
         'WlanSvc/wlanapi.dll for WLAN probe','Media-prepared MT6630 firmware; runtime device NVRAM',
-        'Signed service and two fixed clients staged under System32/MT8167HardwareProbe; trusted machine certificate chain');
+        'Signed service at System32/MT8167HardwareProbe.exe; fixed clients under System32/MT8167HardwareProbe; trusted machine certificate chain');
       files=@($files|ForEach-Object{@{path=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}})
     }|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 $manifestPath
     @{source_commit=$commit;state='complete';hardware_verified=$false}|ConvertTo-Json|Set-Content -Encoding UTF8 (Join-Path $out 'build-state.json')
