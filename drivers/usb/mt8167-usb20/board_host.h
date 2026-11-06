@@ -11,7 +11,31 @@ typedef struct {
  unsigned char (*mac_read)(void *,unsigned);
  void (*mac_write)(void *,unsigned,unsigned char);
  void (*delay_ms)(void *,unsigned);
+ /* Source qualification must come from its real exclusive owner and include
+  * charger lock/watchdog coordination where applicable. vbus_verified must
+  * report an independent, qualified electrical observation, not GPIO22's
+  * output latch, forced PHY bits, DEVCTL, or the Linux constant-true stub. */
+ int (*source_ready)(void *);
+ int (*vbus_verified)(void *);
 } A04_USB_BOARD;
+/* BQ24160 register 0x01 USB input lockout, not a 5 V boost control.
+ * The caller holds the actual exclusive I2C/charger lease for the complete
+ * acquire..release lifetime. owner_safe must verify that lease and continuous
+ * watchdog servicing; switch_off must verify the physical switch is off.
+ * Neither callback may infer these facts from GPIO output or PHY status. */
+typedef struct {
+ void *context;
+ int (*owner_safe)(void *);
+ int (*read_status)(void *,unsigned char *);
+ int (*write_status)(void *,unsigned char);
+ int (*switch_off)(void *);
+ unsigned char nobat;
+ int held,uncertain;
+} A04_BQ24160_OTG_LOCK;
+/* 0=locked, -1=refused without a write, -2=state uncertain; caller must
+ * retain owner/watchdog resources on -2 until verified release succeeds. */
+int A04Bq24160OtgAcquire(A04_BQ24160_OTG_LOCK *);
+int A04Bq24160OtgRelease(A04_BQ24160_OTG_LOCK *);
 int A04UsbHostStart(const A04_USB_BOARD *);
 /* Prepare owns power and initializes the PHY. Arm the IRQ before Run so a
  * device already connected when SESSION starts cannot lose CONNECT. */

@@ -151,7 +151,7 @@ VOID KbPoll(WDFTIMER timer)
  WDFDEVICE dev=(WDFDEVICE)WdfTimerGetParentObject(timer); KB_HID_CONTEXT*c=KbHidContext(dev); ULONGLONG now;
  WdfWaitLockAcquire(c->controller_lock,NULL);
  if(c->board_owned && c->shared_valid) {
-  if(c->shared.Health(c->shared.Header.Context)) {
+  if(c->shared.Health(c->shared.Header.Context) || !c->board.vbus_verified || c->board.vbus_verified(c->board.context)) {
    const MT8167_USB20_CONTROLLER *controller=A04UsbWdfController(c->usb);
    c->board_fault=TRUE;
 #if A04_MUSB_HID_CONTROL_EXPERIMENT
@@ -160,6 +160,8 @@ VOID KbPoll(WDFTIMER timer)
 #endif
    if(controller) { unsigned char devctl=controller->io.read8(controller->io.context,0x60);
     controller->io.write8(controller->io.context,0x60,(unsigned char)(devctl&~1u)); }
+   /* Remove power after stopping SESSION. Release remains in D0 teardown. */
+   (void)c->board.vbus(c->board.context,0);
    c->session.enumeration.stage=KB_ERROR; c->rx_pending=FALSE; KbHidDisconnected(dev);
    WdfWaitLockRelease(c->controller_lock); return;
   }
@@ -302,6 +304,8 @@ NTSTATUS KbD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
 #if A04_MUSB_HID_CONTROL_EXPERIMENT
  WdfIoQueueStart(c->controls);
 #endif
+ /* The shared v1 interface proves neither the physical source nor VBUS
+  * voltage. Leave both evidence callbacks absent until real owners exist. */
  RtlZeroMemory(&b,sizeof(b)); b.context=dev; b.power=BoardPower; b.vbus=BoardVbus;
  b.phy_read=BoardPhyRead; b.phy_write=BoardPhyWrite; b.mac_read=BoardMacRead; b.mac_write=BoardMacWrite; b.delay_ms=SessionDelay;
  { NTSTATUS status=KbHidActivate(dev,&b);

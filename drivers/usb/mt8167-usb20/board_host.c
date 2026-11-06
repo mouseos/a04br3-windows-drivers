@@ -15,7 +15,8 @@ void A04UsbHostStop(const A04_USB_BOARD *b)
 }
 int A04UsbHostPrepare(const A04_USB_BOARD *b)
 {
- if(!valid(b) || b->power(b->context,1))return -1;
+ if(!valid(b) || !b->source_ready || !b->vbus_verified ||
+    b->source_ready(b->context) || b->power(b->context,1))return -1;
  /* Restore USB function and release forced suspend after the shared parent
   * has enabled VUSB and clocks. Offsets are relative to SIF+0x800. */
  b->delay_ms(b->context,1);
@@ -31,8 +32,12 @@ int A04UsbHostPrepare(const A04_USB_BOARD *b)
 int A04UsbHostRun(const A04_USB_BOARD *b)
 {
  unsigned char v;
- if(!valid(b) || b->vbus(b->context,1))return -1;
+ if(!valid(b) || !b->source_ready || !b->vbus_verified ||
+    b->source_ready(b->context) || b->vbus(b->context,1))return -1;
  b->delay_ms(b->context,100);
+ /* The Linux implementation forces PHY VBUSVALID and its status helper
+  * always reports true. Neither is electrical confirmation of VBUS. */
+ if(b->vbus_verified(b->context)) { (void)b->vbus(b->context,0);return -1; }
  v=b->mac_read(b->context,DEVCTL); b->mac_write(b->context,DEVCTL,(unsigned char)(v&~1u));
  phy_update(b,0x6c,0x2e,0x10); phy_update(b,0x6d,0,0x3e);
  b->delay_ms(b->context,5);
@@ -47,4 +52,40 @@ int A04UsbHostStart(const A04_USB_BOARD *b)
  if(A04UsbHostPrepare(b))return -1;
  if(A04UsbHostRun(b)){A04UsbHostStop(b);return -1;}
  return 0;
+}
+
+/* TI BQ24160 SLUSAO0H 8.6.2: writable bits of register 01 are OTG_LOCK
+ * (bit 3) and EN_NOBATOP (bit 0). The other bits are read-only status.
+ * Access is made only through the already-qualified charger owner. */
+static int bq_valid(const A04_BQ24160_OTG_LOCK *b)
+{ return b && b->owner_safe && b->read_status && b->write_status && b->switch_off; }
+int A04Bq24160OtgAcquire(A04_BQ24160_OTG_LOCK *b)
+{
+ unsigned char v,after;
+ if(!bq_valid(b) || b->held || b->uncertain || b->owner_safe(b->context) ||
+    b->switch_off(b->context) || b->read_status(b->context,&v))return -1;
+ /* Never adopt a lock asserted by firmware or another consumer. */
+ if(v&8u)return -1;
+ b->nobat=(unsigned char)(v&1u);
+ if(b->owner_safe(b->context))return -1;
+ b->held=1;
+ if(b->write_status(b->context,(unsigned char)(b->nobat|8u)) ||
+    b->read_status(b->context,&after) || (after&9u)!=(b->nobat|8u) ||
+    b->owner_safe(b->context)) { b->uncertain=1;return -2; }
+ return 0;
+}
+int A04Bq24160OtgRelease(A04_BQ24160_OTG_LOCK *b)
+{
+ unsigned char v,after;
+ if(!bq_valid(b) || !b->held || b->owner_safe(b->context) ||
+    b->switch_off(b->context) || b->read_status(b->context,&v) ||
+    (v&1u)!=b->nobat) { if(b && b->held)b->uncertain=1;return -1; }
+ if(v&8u) {
+  if(b->write_status(b->context,b->nobat) || b->read_status(b->context,&after) ||
+     (after&9u)!=b->nobat || b->owner_safe(b->context)) {b->uncertain=1;return -1;}
+ } else if(!b->uncertain) {
+  /* Unexpected loss of a confirmed lock may be watchdog expiry. */
+  b->uncertain=1;return -1;
+ }
+ b->held=0;b->uncertain=0;return 0;
 }
