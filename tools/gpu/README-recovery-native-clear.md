@@ -89,3 +89,11 @@ prepare-recovery-native-capture.pyに--plan-directory <新規root内dir>を渡�
 source PVRSRVDeviceInitialise→PVRSRVDeviceFinaliseは初期化失敗でeDevState=PVRSRV_DEVICE_STATE_BADを設定し、module_common.c:PVRSRVCommonDeviceOpenはこの状態で-ENODEVを返し再初期化を試さない。後からprivate chrootへFWを配置しても遅い。将来のcapture用Recoveryには、同梱hash5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1のFWをramdiskの/lib/firmware/rgx.fw.22.40.54.30へ入れ、Recovery/minuiを含めた最初のDRM open前から読めることが必要。実機の再起動・再flash・driver state強制変更は今回行っていない。BAD_STATEログをpreflightで見つけた場合はexit3で再試行を止める。
 
 REA証拠: 初回ev_a725d023e34bb4971b6e1397602437ab64f59fff6491d8d0e1a390e07bfc3d95はmain前alarm、native TLS修正版ev_43d8932f019974292b3ff3cf0c6f8a047297af4eb37ef7c832a1be074e837c5dはCAPTURE_INIT_ENTER→PHASE egl-initまで。元driverの成功経路は未取得であり、完全native producer完成とは扱わない。
+
+### 次回のRecovery ramdisk入力（hostのみ）
+
+`prepare-recovery-native-firmware.py --work-root <TAB-A04-BR3 root> --firmware <固定FW> --output <新規root内dir>`は指定hashのFWだけを受け付け、`root/lib/firmware/rgx.fw.22.40.54.30`とroot uid/gid・mtime0のdeterministic newc `firmware-overlay.cpio`、manifestを生成する。固定FW以外は出力前に拒否する。proprietary blobはsource repoへ追加しない。
+
+生成済み入力はport/xnu/out/windows-rt-recovery-fw-before-drm-20261107/。system cpioによる一覧・展開、展開後hash/mode、archiveのuid/gid/mtime、誤ったFWの拒否を検証した。これはramdisk入力でありboot/recovery imageではない。実行中Recoveryの正本buildまたは固定されたbase imageの出自を確認してからramdiskへ組み込み、kernel・DTB・boot headerを保持して別imageを生成する。overlayをそのままflashしない。既存hostの別Recovery imageを、実機で稼働した同じbuildと無条件に扱わない。
+
+次回はFWを組み込んだRecoveryの最初のDRM open前から/lib/firmwareを供給し、boot時dmesgでFW成功/BADなしを確認してから同じUM/KM/FW識別とprivate captureへ進む。今回の実機解放後はADB/REA実機呼出しを行わず、host artifact生成だけを行った。
