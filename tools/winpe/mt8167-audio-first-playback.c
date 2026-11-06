@@ -7,9 +7,23 @@
 #include <setupapi.h>
 #include <cfgmgr32.h>
 #include <mmreg.h>
-#include <initguid.h>
 #include <ks.h>
 #include <ksmedia.h>
+/* WDK 8.1 C headers use DEFINE_GUIDEX declarations for named KS GUIDs;
+ * initguid.h does not instantiate them. Define exactly the nine GUIDs used
+ * below from the SDK's own STATIC_* tuples, without uuid.lib or new imports.
+ * This translation unit is C; brace elision initializes GUID.Data4 in order. */
+#define A04_DEFINE_KS_GUID(name) const GUID name = { STATIC_##name }
+A04_DEFINE_KS_GUID(KSDATAFORMAT_TYPE_AUDIO);
+A04_DEFINE_KS_GUID(KSDATAFORMAT_SUBTYPE_PCM);
+A04_DEFINE_KS_GUID(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX);
+A04_DEFINE_KS_GUID(KSPROPSETID_Pin);
+A04_DEFINE_KS_GUID(KSMEDIUMSETID_Standard);
+A04_DEFINE_KS_GUID(KSINTERFACESETID_Standard);
+A04_DEFINE_KS_GUID(KSPROPSETID_Connection);
+A04_DEFINE_KS_GUID(KSCATEGORY_AUDIO);
+A04_DEFINE_KS_GUID(KSPROPSETID_RtAudio);
+#undef A04_DEFINE_KS_GUID
 #include <stddef.h>
 #include "../../drivers/system/mt8167-toprgu/uart_screen.h"
 #include "../../drivers/audio/mt8167-afe/diagnostic.h"
