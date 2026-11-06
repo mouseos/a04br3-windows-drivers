@@ -479,6 +479,17 @@ shared lease interface and cannot be used by the display driver yet. Translated
 IRQ identity, interrupt routing, power/clock ownership and conflict with secure
 or firmware users remain unresolved. The device and driver are default off.
 
+With separately gated `A04_GCE_DISPLAY_LEASE_INTERFACE` and
+`A04_GE8300_WDDM_GCE_LEASE`, the GCE PDO registers a device interface and
+kernel QUERY_INTERFACE; after the one-shot GPU frame verification the WDDM
+worker locates exactly one GCE device and sends the query to its stack. It
+retains the interface, file reference and holder if a callback ever returns a
+token, including on failure. Step 67 records the acquire status. The current
+GCE acquire callback always returns `STATUS_DEVICE_NOT_READY` and no token:
+clock, interrupt, thread and event ownership are not proved. Therefore this
+connection has never granted a display lease and cannot submit a command.
+An interface reference alone does not retain PnP power or prove DMA stop.
+
 MT8167 DTS maps `disp_rdma0_frame_done` to 27 and `stream_done_0` to 38;
 these are hardware event values, unlike the abstract enum values 77 and 113
 in `cmdq_event_common.h`. Linux `cmdq_device.c` populates the runtime event
