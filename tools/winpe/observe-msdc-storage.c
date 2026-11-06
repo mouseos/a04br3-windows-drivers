@@ -22,13 +22,16 @@ static int command_mode(const WCHAR*s){const WCHAR*start;unsigned n=0;
  if(n==16&&CompareStringOrdinal(start,n,L"--verify-package",16,FALSE)==CSTR_EQUAL)return 1;
  if(n==6&&CompareStringOrdinal(start,n,L"--wait",6,FALSE)==CSTR_EQUAL)return 2;
  return -1;}
-static int file_pin(HCRYPTPROV provider,const WCHAR*path,const char*label,const char*expected){HANDLE f;HCRYPTHASH h=0;BYTE d[32];DWORD n,z=32,i;int ok=0;const char*digits="0123456789abcdef";
+static int file_pin(HCRYPTPROV provider,const WCHAR*path,const char*label,const char*expected){HANDLE f;HCRYPTHASH h=0;BYTE d[32];DWORD n,z=32,i;int ok=0;const char*digits="0123456789abcdef";BY_HANDLE_FILE_INFORMATION info;
  out(label);out("=");f=CreateFileW(path,GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,0);if(f==INVALID_HANDLE_VALUE){out("OPEN_ERROR=");hex(GetLastError());out("\r\n");return 0;}
- {BY_HANDLE_FILE_INFORMATION info;if(!GetFileInformationByHandle(f,&info)||info.nNumberOfLinks!=1||(info.dwFileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_OFFLINE)))goto done;}
- if(!CryptCreateHash(provider,CALG_SHA_256,0,0,&h))goto done;
- do{if(!ReadFile(f,hashbuf,sizeof(hashbuf),&n,0)||(n&&!CryptHashData(h,hashbuf,n,0)))goto done;}while(n);
- if(!CryptGetHashParam(h,HP_HASHVAL,d,&z,0)||z!=32)goto done;for(i=0;i<32;i++)if(digits[d[i]>>4]!=expected[2*i]||digits[d[i]&15]!=expected[2*i+1]){unsigned j;char q[3];q[2]=0;out("MISMATCH ACTUAL=");for(j=0;j<32;j++){q[0]=digits[d[j]>>4];q[1]=digits[d[j]&15];out(q);}out("\r\n");goto done;}out("MATCH\r\n");ok=1;
- done:if(h)CryptDestroyHash(h);if(!CloseHandle(f))ok=0;if(!ok)out("MSDC_PIN_REJECTED\r\n");return ok;}
+ if(!GetFileInformationByHandle(f,&info)){out("METADATA_ERROR=");hex(GetLastError());out("\r\n");goto done;}
+ if(info.nNumberOfLinks!=1||(info.dwFileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_OFFLINE))){out("ATTRIBUTES_REJECTED=");hex(info.dwFileAttributes);out(" LINKS=");hex(info.nNumberOfLinks);out("\r\n");goto done;}
+ if(!CryptCreateHash(provider,CALG_SHA_256,0,0,&h)){out("HASH_CREATE_ERROR=");hex(GetLastError());out("\r\n");goto done;}
+ do{if(!ReadFile(f,hashbuf,sizeof(hashbuf),&n,0)){out("READ_ERROR=");hex(GetLastError());out("\r\n");goto done;}if(n&&!CryptHashData(h,hashbuf,n,0)){out("HASH_UPDATE_ERROR=");hex(GetLastError());out("\r\n");goto done;}}while(n);
+ if(!CryptGetHashParam(h,HP_HASHVAL,d,&z,0)||z!=32){out("HASH_RESULT_ERROR=");hex(GetLastError());out("\r\n");goto done;}
+ for(i=0;i<32;i++)if(digits[d[i]>>4]!=expected[2*i]||digits[d[i]&15]!=expected[2*i+1]){unsigned j;char q[3];q[2]=0;out("MISMATCH ACTUAL=");for(j=0;j<32;j++){q[0]=digits[d[j]>>4];q[1]=digits[d[j]&15];out(q);}out("\r\n");goto done;}
+ out("MATCH\r\n");ok=1;
+ done:if(h)CryptDestroyHash(h);if(!CloseHandle(f)){out("MSDC_PIN_CLOSE_ERROR=");hex(GetLastError());out("\r\n");ok=0;}return ok;}
 static int package(void){HCRYPTPROV p=0;int ok=1;if(!CryptAcquireContextW(&p,0,0,PROV_RSA_AES,CRYPT_VERIFYCONTEXT)){out("MSDC_PACKAGE_HASH_PROVIDER_FAILED\r\n");return 0;}
  if(!file_pin(p,L"X:\\a04br3\\a04-msdc-probe.inf","MSDC_PIN_INF","9bbf73d73c6dcad9f392e294a2cee7ca23209f80e4d36801e6b6a5781acb7192"))ok=0;
  if(!file_pin(p,L"X:\\a04br3\\mt8167-msdc.sys","MSDC_PIN_SYS","28115a3ba588d3354e30faca4b37a7de28dcc0b288c7354e2dd3b1ddf3ef416f"))ok=0;
