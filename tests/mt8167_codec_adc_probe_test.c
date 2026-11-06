@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "codec_adc_probe.h"
+#include "codec_adc_session.h"
 struct mock { uint16_t con; unsigned writes,reads,samples; int qualified,stuck; };
 static int qual(void *p) {return ((struct mock *)p)->qualified;}
 static int rd(void *p,uint32_t reg,uint16_t *out) {
@@ -19,6 +20,14 @@ static int wr(void *p,uint32_t reg,uint16_t val) {
  m->con=val;m->writes++;return 0;
 }
 static int delay(void *p,unsigned us) {(void)p;return us==25 || us==1000?0:-1;}
+struct chain { struct mock m;struct a04_codec_adc_probe probe;int clock,quiescent; };
+static int chain_pre(void *p) {return !((struct chain *)p)->m.qualified;}
+static int chain_clock(void *p) {((struct chain *)p)->clock=1;return 0;}
+static int chain_capture(void *p,struct a04_codec_adc_samples *out) {
+ struct chain *c=p;struct a04_codec_adc_io io={&c->m,qual,rd,wr,delay};
+ return !c->clock || a04_codec_adc_capture(&c->probe,&io,7,out);
+}
+static int chain_quiesce(void *p) {struct chain *c=p;if(c->m.con)return -1;c->quiescent=1;return 0;}
 int main(void) {
  struct mock m={0};struct a04_codec_adc_probe s={0};struct a04_codec_adc_samples out,old;
  struct a04_codec_adc_io io={&m,qual,rd,wr,delay};
@@ -29,5 +38,8 @@ int main(void) {
  memset(&out,0xa5,sizeof(out));old=out;m.stuck=1;
  assert(a04_codec_adc_capture(&s,&io,7,&out));assert(s.poisoned && !memcmp(&out,&old,sizeof(out)));
  {unsigned writes=m.writes;assert(a04_codec_adc_capture(&s,&io,7,&out));assert(m.writes==writes);}
+ {struct chain c={0};struct a04_codec_adc_session_io session={&c,chain_pre,chain_clock,chain_capture,chain_quiesce};
+  c.m.qualified=1;assert(a04_codec_adc_session(&session,&out)==A04_ADC_COMPLETE);
+  assert(c.quiescent && c.m.samples==22 && out.raw[0]==1000 && out.raw[21]==1021);}
  puts("codec ADC gated acquisition: OK");return 0;
 }

@@ -220,3 +220,13 @@ it is not a globally unique identifier or a checksum. Submission has a bounded
 busy retry; the recipient must reject a missing, malformed or mismatched pair.
 Device operation and PnP failure handling are
 unverified on hardware.
+
+The one-shot session now performs route/mute preflight before acquiring the
+shared clocks, then captures the samples and checks ADC idle, cleared trigger,
+disabled thermal sampling and idle thermal AHB before requesting quiescence.
+Only then does it return the lease. A clock, sampling or quiescence failure is
+uncertain and follows the existing fatal-stop path; it is never a release
+proof. The current preflight still rejects because no evidence-backed route
+and mute provider exists, and the parent still rejects without an independently
+verified firmware/EL3 release. The successful sequence has only host-mock
+coverage; device behavior and the adequacy of these observations are unproven.

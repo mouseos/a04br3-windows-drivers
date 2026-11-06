@@ -33,6 +33,10 @@ if ($codecAdc -eq '1') {
  & clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c (Join-Path $root 'drivers\bus\mt8167-shared\codec_adc_probe.c') -o $obj
  if($LASTEXITCODE -ne 0){throw 'codec ADC compile failed'}
  $objects += $obj
+ $obj=Join-Path $out 'codec_adc_session.obj'
+ & clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c (Join-Path $root 'drivers\bus\mt8167-shared\codec_adc_session.c') -o $obj
+ if($LASTEXITCODE -ne 0){throw 'codec ADC session compile failed'}
+ $objects += $obj
 }
 & lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib @objects (Join-Path $wdfLib 'wdfdriverentry.lib') (Join-Path $wdfLib 'wdfldr.lib') (Join-Path $km 'ntoskrnl.lib') (Join-Path $km 'hal.lib') (Join-Path $km 'bufferoverflowfastfailk.lib') (Join-Path $km 'libcntpr.lib') "/out:$out\mt8167-thermal.sys"
 if($LASTEXITCODE -ne 0){throw 'thermal link failed'}
