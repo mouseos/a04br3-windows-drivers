@@ -20,6 +20,7 @@ typedef struct {
     struct a04_mma_hid_features features; struct a04_mma8652_sample last;
     volatile LONG online; BOOLEAN faulted, have_last;
     volatile ULONG *uart; ULONG trace_count;
+    LARGE_INTEGER counter_frequency; ULONG samples;
 } ACC_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(ACC_CONTEXT, AccContext)
 static void trace(ACC_CONTEXT *c, const char *event, ULONG value)
@@ -60,7 +61,17 @@ EVT_WDF_TIMER AccTimer;
 static uint16_t rd(void *p,unsigned off) { ACC_CONTEXT *c=p; return READ_REGISTER_USHORT((volatile USHORT *)(c->i2c+off)); }
 static void wr(void *p,unsigned off,uint16_t v) { ACC_CONTEXT *c=p; WRITE_REGISTER_USHORT((volatile USHORT *)(c->i2c+off),v); }
 static void delay(void *p,unsigned us) { UNREFERENCED_PARAMETER(p); KeStallExecutionProcessor(us); }
-static uint64_t now_ns(void *p) { UNREFERENCED_PARAMETER(p); return KeQueryInterruptTime()*100u; }
+/* KeQueryInterruptTime is tick-quantized: a tick can exceed the I2C 10 ms
+ * deadline even when the transaction has just completed. Use the hardware
+ * performance counter and split the conversion to avoid uptime overflow. */
+static uint64_t now_ns(void *p)
+{
+    ACC_CONTEXT *c=p;
+    uint64_t ticks=(uint64_t)KeQueryPerformanceCounter(NULL).QuadPart;
+    uint64_t frequency=(uint64_t)c->counter_frequency.QuadPart;
+    return (ticks/frequency)*UINT64_C(1000000000)+
+        ((ticks%frequency)*UINT64_C(1000000000))/frequency;
+}
 /* HSTA checks the per-boot ACPI NVS marker and shared clock/pin state.
  * This is an ownership contract, not authentication against hostile firmware. */
 static BOOLEAN handoff_qualified(WDFDEVICE dev, ACC_CONTEXT *c)
@@ -114,6 +125,9 @@ NTSTATUS AccD0(WDFDEVICE dev, WDF_POWER_DEVICE_STATE previous)
     ACC_CONTEXT *c=AccContext(dev); int r; ULONG timing, inverse;
     UNREFERENCED_PARAMETER(previous);
     trace(c,"D0_ENTRY",previous);
+    (VOID)KeQueryPerformanceCounter(&c->counter_frequency);
+    if(c->counter_frequency.QuadPart<=0 || c->counter_frequency.QuadPart>1000000000)
+        return fail(c,"COUNTER_FREQUENCY_FAIL",STATUS_DEVICE_CONFIGURATION_ERROR);
     if (!c->i2c || c->faulted || !handoff_qualified(dev,c)) return fail(c,"D0_HANDOFF_FAIL",STATUS_DEVICE_NOT_READY);
     timing=READ_REGISTER_ULONG(c->handoff+1);
     inverse=READ_REGISTER_ULONG(c->handoff+2);
@@ -138,6 +152,7 @@ NTSTATUS AccD0(WDFDEVICE dev, WDF_POWER_DEVICE_STATE previous)
 NTSTATUS AccD0Exit(WDFDEVICE dev,WDF_POWER_DEVICE_STATE target)
 {
     ACC_CONTEXT *c=AccContext(dev); UNREFERENCED_PARAMETER(target);
+    trace(c,"D0_EXIT",target);
     InterlockedExchange(&c->online,0); WdfTimerStop(c->timer,TRUE); WdfTimerStop(c->timer,FALSE);
     WdfIoQueuePurgeSynchronously(c->reads);
     /* D0 re-entry repeats ACPI gate checks and reinitializes the sensor. */
@@ -158,10 +173,14 @@ VOID AccTimer(WDFTIMER timer)
  WdfWaitLockAcquire(c->lock,NULL); interval=c->features.interval_ms;
  if (c->features.reporting && NT_SUCCESS(WdfIoQueueRetrieveNextRequest(c->reads,&request))) {
    r=a04_mma8652_read(&c->bus,&sample);
+   if(r==A04_MMA_OK) {
+     ++c->samples;
+     if(c->samples==1 || c->samples==100 || c->samples==1000)trace(c,"SAMPLES",c->samples);
+   }
    if (r==A04_MMA_OK && a04_mma_hid_changed(&c->features,&sample,&c->last,c->have_last)) { c->last=sample; c->have_last=TRUE; a04_mma_hid_input(&sample,report); WdfRequestComplete(request,Copy(request,report,sizeof(report))); }
    else if (r==A04_MMA_OK) { NTSTATUS s=WdfRequestForwardToIoQueue(request,c->reads); if (!NT_SUCCESS(s)) WdfRequestComplete(request,s); }
    else if (r==A04_MMA_NOT_READY) { NTSTATUS s=WdfRequestForwardToIoQueue(request,c->reads); if (!NT_SUCCESS(s)) WdfRequestComplete(request,s); }
-   else { c->faulted=TRUE; InterlockedExchange(&c->online,0); WdfRequestComplete(request,STATUS_DEVICE_HARDWARE_ERROR); }
+   else { trace(c,"READ_FAIL",(ULONG)r); trace(c,"I2C_STATUS",rd(c,0x0c)); trace(c,"I2C_START",rd(c,0x24)); c->faulted=TRUE; InterlockedExchange(&c->online,0); WdfRequestComplete(request,STATUS_DEVICE_HARDWARE_ERROR); }
  }
  WdfWaitLockRelease(c->lock);
  if (InterlockedCompareExchange(&c->online,1,1)) WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(interval));
@@ -192,6 +211,11 @@ VOID AccIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULONG
  case IOCTL_HID_SET_FEATURE:
   irp=WdfRequestWdmGetIrp(request); packet=(PHID_XFER_PACKET)irp->UserBuffer;
   if ((code==IOCTL_HID_GET_FEATURE ? outlen : inlen)<sizeof(*packet) || !packet || packet->reportId!=1 || !packet->reportBuffer || packet->reportBufferLen<sizeof(feature)) { s=STATUS_INVALID_PARAMETER; break; }
+  if(code==IOCTL_HID_SET_FEATURE && c->trace_count<16) {
+    const UCHAR *p=packet->reportBuffer;
+    trace(c,"FEATURE_WRITE_HEAD",((ULONG)p[0]<<16)|((ULONG)p[1]<<8)|p[2]);
+    trace(c,"FEATURE_WRITE_INTERVAL",(ULONG)p[5]|((ULONG)p[6]<<8)|((ULONG)p[7]<<16)|((ULONG)p[8]<<24));
+  }
   WdfWaitLockAcquire(c->lock,NULL);
   if (code==IOCTL_HID_GET_FEATURE) { a04_mma_hid_get_feature(&c->features,feature); RtlCopyMemory(packet->reportBuffer,feature,sizeof(feature)); s=STATUS_SUCCESS; }
   else { s=a04_mma_hid_set_feature(&c->features,packet->reportBuffer,sizeof(feature)) ? STATUS_INVALID_PARAMETER : STATUS_SUCCESS; if (NT_SUCCESS(s)) c->have_last=FALSE; }
