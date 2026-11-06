@@ -407,3 +407,11 @@ not proof that headphone calibration is appropriate for AU_LOL. The fixed
 the ramp endpoint must be measured. Failure retains the active state and
 poisons the experiment, requiring explicit recovery. Host tests simulate the
 registers only and do not validate analog behavior or actual hardware.
+
+The optional version 8 audio interface wires the MT8167 Voice Amp helper to
+parent-owned APMIXED and the child's bound AFE mapping. The diagnostic parent
+still rejects PCM coherency verification and the voice calibration/mute check;
+no unverified board assumptions can activate it. It uses the same shared lock
+and requires the existing codec domain and lease. A partial voice sequence
+poisons the owner; its resources must remain retained. The PCM client and
+parent flags default off and do not establish PnP or hardware safety.

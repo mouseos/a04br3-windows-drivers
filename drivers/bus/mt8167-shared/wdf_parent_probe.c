@@ -29,6 +29,15 @@
 #if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 #include "codec_domain.h"
 #endif
+#ifndef A04_SHARED_VOICE_PCM_DIAGNOSTIC
+#define A04_SHARED_VOICE_PCM_DIAGNOSTIC 0
+#endif
+#if A04_SHARED_VOICE_PCM_DIAGNOSTIC && !A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
+#error voice PCM requires codec domain diagnostic
+#endif
+#if A04_SHARED_VOICE_PCM_DIAGNOSTIC
+#include "codec_voice.h"
+#endif
 #ifndef A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC
 #define A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC 0
 #endif
@@ -106,6 +115,9 @@
 typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; struct a04_usb_owner usb;
 #if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 struct a04_codec_domain codecDomain;
+#if A04_SHARED_VOICE_PCM_DIAGNOSTIC
+struct a04_codec_voice voice;
+#endif
 #endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
 struct a04_shared_thermal_owner thermal;EX_RUNDOWN_REF thermalRundown;BOOLEAN thermalRundownClosed;
@@ -360,6 +372,54 @@ static int ParentAudioMute(PVOID context) {
     c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
     result=a04_audio_owner_mute(&c->audio);ParentUnlock(c);return result;
 }
+#if A04_SHARED_VOICE_PCM_DIAGNOSTIC
+/* PnP owns the AFE mapping; all accesses below run under the parent lock.
+ * A real board calibration/mute verifier is not available yet. */
+static int ParentVoiceAfeRead(void *context,unsigned offset,uint32_t *value) {
+    A04_PARENT_CONTEXT *c=context;
+    if(!c || !c->audioAfe || !value || (offset!=0xf00 && offset!=0xf0c && offset!=0xf2c))return -1;
+    *value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->audioAfe+offset));return 0;
+}
+static int ParentVoiceAfeWrite(void *context,unsigned offset,uint32_t value) {
+    A04_PARENT_CONTEXT *c=context;
+    if(!c || !c->audioAfe || (offset!=0xf00 && offset!=0xf0c && offset!=0xf2c))return -1;
+    WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->audioAfe+offset),value);return 0;
+}
+static int ParentVoiceDelay(void *context,unsigned us) {
+    LARGE_INTEGER interval;
+    if(!context || (us!=400 && us!=2000) || KeGetCurrentIrql()>APC_LEVEL)return -1;
+    interval.QuadPart=-(LONGLONG)us*10;
+    return KeDelayExecutionThread(KernelMode,FALSE,&interval)==STATUS_SUCCESS?0:-1;
+}
+static int ParentVoiceVerify(void *context,int16_t *measured,unsigned *cap) {
+    UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(measured);UNREFERENCED_PARAMETER(cap);
+    /* Do not substitute headphone calibration or an assumed mute state. */
+    return -1;
+}
+static int ParentVoiceOperation(PVOID context,int start) {
+    A04_PARENT_CONTEXT *c;int result=-1;
+    struct a04_codec_voice_io io;
+    if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+    c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
+    if(c->audio.online && c->audio.leased && !c->audio.poisoned && c->codecDomain.held &&
+       !c->codecDomain.poisoned && c->audioAfe) {
+        io.analog.context=c;io.analog.read=ParentDomainRead;io.analog.write=ParentDomainWrite;
+        io.afe.context=c;io.afe.read=ParentVoiceAfeRead;io.afe.write=ParentVoiceAfeWrite;
+        io.afe.delay_us=ParentVoiceDelay;io.verify_muted_and_calibrated=ParentVoiceVerify;
+        result=start?a04_codec_voice_start(&c->voice,&io):a04_codec_voice_stop(&c->voice,&io);
+        if(c->voice.poisoned)c->audio.poisoned=1;
+    }
+    ParentUnlock(c);return result;
+}
+static int ParentStartVoice(PVOID context) { return ParentVoiceOperation(context,1); }
+static int ParentStopVoice(PVOID context) { return ParentVoiceOperation(context,0); }
+static int ParentVerifyLivePcm(PVOID context,PVOID mdl,uint64_t logical,ULONG size) {
+    UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(mdl);
+    UNREFERENCED_PARAMETER(logical);UNREFERENCED_PARAMETER(size);
+    /* No established CPU/AFE coherency or user-mapping attribute contract. */
+    return -1;
+}
+#endif
 static int ParentAudioRelease(PVOID context) {
     A04_PARENT_CONTEXT *c;int result;
     if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
@@ -912,6 +972,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     audioIface.Header.Size=sizeof(audioIface);audioIface.Header.Version=A04_SHARED_AUDIO_INTERFACE_VERSION;
     audioIface.Header.Context=dev;audioIface.Header.InterfaceReference=ParentInterfaceReference;
     audioIface.Header.InterfaceDereference=ParentInterfaceDereference;
+    #if A04_SHARED_VOICE_PCM_DIAGNOSTIC
+    audioIface.VerifyLivePcm=ParentVerifyLivePcm;audioIface.StartVoice=ParentStartVoice;audioIface.StopVoice=ParentStopVoice;
+#endif
     audioIface.BindAfe=ParentBindAfe;audioIface.Mute=ParentAudioMute;audioIface.UnmuteMin=ParentAudioUnmute;audioIface.AcquireMuted=ParentAudioAcquire;audioIface.ReleaseQuiescent=ParentAudioRelease;audioIface.PrepareMaskedIrq=ParentAudioPrepareIrq;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&audioIface,&A04SharedAudioInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);

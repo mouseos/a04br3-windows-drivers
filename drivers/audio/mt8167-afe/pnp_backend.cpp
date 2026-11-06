@@ -39,6 +39,11 @@ extern "C" int Mt8167SilentDmaMiniportEnabled(void);
 #if defined(A04_AUDIO_UNMUTE_DIAGNOSTIC) && A04_AUDIO_UNMUTE_DIAGNOSTIC && (!defined(A04_AUDIO_PCM_PATTERN_DIAGNOSTIC) || !A04_AUDIO_PCM_PATTERN_DIAGNOSTIC)
 #error unmute diagnostic requires the isolated fixed PCM pattern
 #endif
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+#if !defined(A04_AUDIO_RUN_DIAGNOSTIC) || !A04_AUDIO_RUN_DIAGNOSTIC || (defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC)
+#error voice PCM requires RUN diagnostic and the direct WaveRT buffer
+#endif
+#endif
 #define OWNER_TAG 'OwnA'
 struct Mt8167PnpBackend {
     Mt8167StreamBackend iface;
@@ -179,6 +184,12 @@ static BOOLEAN OwnerLiveDmaVerified(Mt8167PnpBackend *o)
 #endif
     o->transport.dma=&o->silentBuffer;
     return TRUE;
+#elif defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+    if(!o || !o->buffer.mdl || !o->parentClient.parent.VerifyLivePcm ||
+       !o->parentClient.parent.StartVoice || !o->parentClient.parent.StopVoice ||
+       o->parentClient.parent.VerifyLivePcm(o->parentClient.parent.Header.Context,
+           o->buffer.mdl,(ULONGLONG)o->buffer.logical.QuadPart,o->buffer.size))return FALSE;
+    o->transport.dma=&o->buffer;return TRUE;
 #else
     UNREFERENCED_PARAMETER(o);return FALSE;
 #endif
@@ -199,6 +210,18 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
         OwnerLiveDmaVerified(o)) {
         /* The selected period is a diagnostic half-ring, not a WaveRT
          * notification contract. No live-DMA verifier currently exists. */
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+        /* The owner mutex serializes PnP revoke. Quarantine on every
+         * attempted voice operation, including a failed DMA preparation. */
+        if (!o->parentClient.parent.StartVoice(o->parentClient.parent.Header.Context)) {
+            if (!Mt8167TransportStartMaskedParent(&o->transport,o->buffer.size/2,&o->shared)) {
+                if(o->parentClient.parent.UnmuteMin(o->parentClient.parent.Header.Context))
+                    (void)OwnerStopRunning(o);
+                else result=STATUS_SUCCESS;
+            }
+        }
+        if (!o->shared.quarantined) (void)mt8167_audio_shared_quarantine(&o->shared);
+#else
         if (!Mt8167TransportStartMaskedParent(&o->transport,o->buffer.size/2,&o->shared)) {
 #if defined(A04_AUDIO_UNMUTE_DIAGNOSTIC) && A04_AUDIO_UNMUTE_DIAGNOSTIC
             /* Failed/ambiguous unmute still stops DMA and retains the lease. */
@@ -208,6 +231,7 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
 #endif
                 result=STATUS_SUCCESS;
         }
+#endif
 #if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
         *possiblyExposed=(o->silentBuffer.exposed || o->shared.quarantined) ? TRUE : FALSE;
 #else
@@ -233,7 +257,13 @@ static NTSTATUS OwnerStopRunning(Mt8167PnpBackend *o)
     }
     int mute=o->parentClient.parent.Mute(o->parentClient.parent.Header.Context);
     int stop=Mt8167TransportStop(&o->transport);
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+    if (!mute && !stop && o->parentClient.parent.StopVoice &&
+        !o->parentClient.parent.StopVoice(o->parentClient.parent.Header.Context))return STATUS_SUCCESS;
+    return STATUS_DEVICE_NOT_READY;
+#else
     return !mute && !stop ? STATUS_SUCCESS : STATUS_DEVICE_NOT_READY;
+#endif
 }
 #endif
 static NTSTATUS OwnerStop(void *ctx) {
