@@ -41,6 +41,7 @@ BASIC_DISPLAY_DRIVER::BASIC_DISPLAY_DRIVER(_In_ DEVICE_OBJECT* pPhysicalDeviceOb
     KeInitializeMutex(&m_PresentMutex,0);
 #if A04_GE8300_WDDM_SHARED_AUTOSTART
     KeInitializeEvent(&m_SharedWorkerStop,NotificationEvent,FALSE);
+    KeInitializeMutex(&m_SharedWorkerStopMutex,0);
     m_SharedWorkerDone=NULL; m_SharedWorker=NULL; m_SharedWorkerObject=NULL;
 #if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
     m_GpuPostAttempted=FALSE;
@@ -150,6 +151,9 @@ done:
 #endif
 VOID BASIC_DISPLAY_DRIVER::StopSharedDiagnosticWorker()
 {
+    NTSTATUS status=KeWaitForSingleObject(&m_SharedWorkerStopMutex,Executive,KernelMode,FALSE,NULL);
+    if(!NT_SUCCESS(status))return;
+    A04PresentGuard stopGuard(&m_SharedWorkerStopMutex);
     if(!m_SharedWorker)return;
     KeSetEvent(&m_SharedWorkerStop,IO_NO_INCREMENT,FALSE);
     if(m_SharedWorkerObject) {

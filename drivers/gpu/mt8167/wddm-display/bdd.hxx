@@ -191,6 +191,7 @@ private:
     KMUTEX           m_PresentMutex;
 #if A04_GE8300_WDDM_SHARED_AUTOSTART
     KEVENT m_SharedWorkerStop;
+    KMUTEX m_SharedWorkerStopMutex;
     KEVENT *m_SharedWorkerDone;
     HANDLE m_SharedWorker;
     PVOID m_SharedWorkerObject;
