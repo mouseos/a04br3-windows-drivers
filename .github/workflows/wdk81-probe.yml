@@ -146,6 +146,25 @@ jobs:
             ${{ runner.temp }}\mt8167-toprgu\mt8167-toprgu-test.cer
             ${{ runner.temp }}\mt8167-toprgu\manifest.json
           if-no-files-found: error
+      - name: Build and sign shared codec ADC diagnostic
+        shell: pwsh
+        run: |
+          $env:A04_THERMAL_SHARED_PARENT='1'
+          $env:A04_THERMAL_LEASE_DIAG='1'
+          $env:A04_THERMAL_MONITOR_TEST='1'
+          $env:A04_THERMAL_ONESHOT_TEST='1'
+          $env:A04_THERMAL_CODEC_ADC_DIAGNOSTIC='1'
+          ./tools/ci/build-mt8167-thermal.ps1
+          ./tools/ci/sign-mt8167-thermal-test.ps1
+          $dir=Join-Path $env:RUNNER_TEMP 'a04br3-thermal-shared-test-signed'
+          $files=@('mt8167-thermal.sys','mt8167-thermal.cat','mt8167-thermal.inf','mt8167-thermal-test.cer')
+          $hashes=@($files | ForEach-Object { @{name=$_;sha256=(Get-FileHash (Join-Path $dir $_) -Algorithm SHA256).Hash} })
+          @{source_commit=(git rev-parse HEAD);shared_parent=1;oneshot=1;codec_adc=1;files=$hashes;note='Test-signed prototype; codec route and mute verifier rejects; UART delivery and target trust unverified'} | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 (Join-Path $dir 'manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a04-codec-adc-thermal-test-signed
+          path: ${{ runner.temp }}\a04br3-thermal-shared-test-signed
+          if-no-files-found: error
       - name: Build MT8167 parent and MT6630 query probes
         shell: pwsh
         run: |

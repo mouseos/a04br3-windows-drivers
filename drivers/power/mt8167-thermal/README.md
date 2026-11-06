@@ -201,3 +201,17 @@ MMIOのrundownを待つ。正常quiesceが報告されないclock使用後はlea
 実機測温できることを意味しない。UEFIの校正提供、親子PnP、ADC鮮度、clock/reset、
 突然の取り外し、D0停止、正常quiesceは実機未検証。署名はテスト用自己署名であり、
 OSの信頼・ロード成功や実機安全性を保証しない。
+
+The default-off `A04_THERMAL_CODEC_ADC_DIAGNOSTIC` requires the shared
+one-shot configuration. After the shared lease, guard, and thermal handoff
+admission it calls the bounded headphone ADC helper using the child's PnP ADC
+mapping. Each register operation is guarded through the touch/shared parent
+rundown. A poisoned partial transaction requests the existing fatal-stop path
+rather than claiming the lease is safe to release. The helper's independent
+headphone-route and physical-mute qualifier currently always rejects, so no
+ADC transaction or usable measurement is possible in this build. It does not
+produce AU_LOL calibration. Lease, handoff and route/mute rejection messages
+are submitted to the existing TOPRGU UART queue; queue acceptance is not
+transmission completion, and earlier startup failures can occur before this
+reporting path is available. Device operation and PnP failure handling are
+unverified on hardware.
