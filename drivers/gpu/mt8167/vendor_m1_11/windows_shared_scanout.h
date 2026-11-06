@@ -3,6 +3,7 @@
 #define A04_WINDOWS_SHARED_SCANOUT_H
 #include <ntddk.h>
 #include <stdint.h>
+#include <stddef.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -19,6 +20,13 @@ struct a04_shared_scanout {
     uint32_t display_dma;
     BOOLEAN exposed;
 };
+#if defined(_ARM_)
+#ifdef __cplusplus
+static_assert(sizeof(struct a04_shared_scanout)==32 && offsetof(struct a04_shared_scanout,gpu_pages)==20 && offsetof(struct a04_shared_scanout,exposed)==28, "shared scanout ABI");
+#else
+_Static_assert(sizeof(struct a04_shared_scanout)==32 && offsetof(struct a04_shared_scanout,gpu_pages)==20 && offsetof(struct a04_shared_scanout,exposed)==28, "shared scanout ABI");
+#endif
+#endif
 NTSTATUS a04_shared_scanout_prepare(struct a04_shared_scanout *,
     PDMA_ADAPTER gpu,PDEVICE_OBJECT gpu_pdo,
     PDMA_ADAPTER display,PDEVICE_OBJECT display_pdo);
