@@ -5,9 +5,11 @@
 #include "ndis_runtime.h"
 #include "windows_calibration.h"
 #include "wdf_hardware_config.h"
+#include "arm_clock.h"
 #define TAG 'r40A'
 static NDIS_HANDLE driver_handle;
-static uint64_t now(void *p){UNREFERENCED_PARAMETER(p);return KeQueryInterruptTime()/10;}
+static uint64_t now(void *p){UNREFERENCED_PARAMETER(p);return a04_interrupt_time_us(KeQueryInterruptTime());}
+static uint64_t system_time(void *p){LARGE_INTEGER t;UNREFERENCED_PARAMETER(p);KeQuerySystemTime(&t);return (uint64_t)t.QuadPart;}
 static void wait_us(void *p,unsigned us){LARGE_INTEGER delay;UNREFERENCED_PARAMETER(p);delay.QuadPart=-(LONGLONG)us*10;(void)KeDelayExecutionThread(KernelMode,FALSE,&delay);}
 static int cancelled(void *p){struct a04_ndis_runtime *a=p;return a->closing||a->cancelled;}
 static void irq_notify(void *p){UNREFERENCED_PARAMETER(p);} /* deliberately polled; never arm SDIOIRQ */
@@ -47,10 +49,11 @@ static NTSTATUS query_parent(struct a04_ndis_runtime *a)
 static int firmware_event(void *p,const uint8_t *packet,unsigned bytes,uint64_t time)
 {
  struct a04_ndis_runtime *a=p;
+ if(a04_os_security_event(a,packet,bytes))return -1;
  if(a->tx.pending){NDIS_STATUS s=a04_native_nbl_tx_event(&a->tx,&a->session.diagnostic.bridge,&a->radio.station,&a->security,packet,bytes,time);if(s!=NDIS_STATUS_SUCCESS&&s!=NDIS_STATUS_PENDING&&s!=NDIS_STATUS_NOT_SUPPORTED)return -1;}
  return 0;
 }
-static int rate_lookup(void *p,unsigned mode,unsigned code,ULONG *phy,UCHAR *rate)
+int a04_ndis_rate_lookup(void *p,unsigned mode,unsigned code,ULONG *phy,UCHAR *rate)
 {
  static const UCHAR cck[4]={2,4,11,22};static const UCHAR ofdm[8]={96,48,24,12,108,72,36,18};UNREFERENCED_PARAMETER(p);
  if(mode==0&&code<4)*rate=cck[code];else if(mode==1&&code>=8&&code<16)*rate=ofdm[code-8];else return -1;
@@ -58,17 +61,32 @@ static int rate_lookup(void *p,unsigned mode,unsigned code,ULONG *phy,UCHAR *rat
 }
 static int receive_data(void *p,const uint8_t *packet,unsigned bytes)
 {
- struct a04_ndis_runtime *a=p;
- struct a04_native_hif_rx rx;NDIS_STATUS s=a04_native_hif_rx_decode(packet,bytes,a->radio.bridge->regulatory.permitted,a->radio.station.local.mac,a->radio.station.ap.mac,a,rate_lookup,&rx);
- if(s!=NDIS_STATUS_SUCCESS)return s==NDIS_STATUS_NOT_SUPPORTED?0:-1;
- {unsigned group=rx.mpdu[4]&1,broadcast=1;for(unsigned i=0;i<6;i++)if(rx.mpdu[4+i]!=255)broadcast=0;
-  if(!group&&!(a->filter&NDIS_PACKET_TYPE_DIRECTED))return 0;
-  if(group&&broadcast&&!(a->filter&NDIS_PACKET_TYPE_BROADCAST))return 0;
-  if(group&&!broadcast&&!(a->filter&NDIS_PACKET_TYPE_MULTICAST))return 0;}
- if(rx.length>sizeof(a->rx_bytes))return -1;
+ struct a04_ndis_runtime *a=p;struct a04_native_hif_rx rx;NDIS_STATUS status;struct a04_wlan_rx_frame management;
+ if(!a04_wlan_rx_frame_parse(packet,bytes,&management)&&management.length>=26&&(management.data[0]==0xc0||management.data[0]==0xa0)){
+  if(!a04_wlan_disconnect_rx(&a->radio.station,&a->security,management.data,management.length))a04_ndis_peer_disconnect(a,(management.data[0]==0xc0?DOT11_ASSOC_STATUS_PEER_DEAUTHENTICATED:DOT11_ASSOC_STATUS_PEER_DISASSOCIATED)|a04_wmt_le16(management.data+24));
+  return 0;
+ }
+ if(a->radio.station.secured){
+  if(!a->association_reported){
+   status=a04_native_hif_rx_decode_security(packet,bytes,a->radio.bridge->regulatory.permitted,a->radio.station.local.mac,a->radio.station.ap.mac,a,a04_ndis_rate_lookup,&rx);
+   if(status==NDIS_STATUS_SUCCESS&&!a->early_length&&bytes<=sizeof(a->early_rx)){NdisMoveMemory(a->early_rx,packet,bytes);a->early_length=bytes;}
+   return status==NDIS_STATUS_SUCCESS?0:A04_WLAN_UNSUPPORTED;
+  }
+  status=a04_os_security_receive(a,packet,bytes,&rx);
+ }else status=a04_native_hif_rx_decode(packet,bytes,a->radio.bridge->regulatory.permitted,a->radio.station.local.mac,a->radio.station.ap.mac,a,a04_ndis_rate_lookup,&rx);
+ if(status!=NDIS_STATUS_SUCCESS)return 0; /* reject unauthenticated/malformed packets without authorizing */
+ {unsigned group=rx.mpdu[4]&1,broadcast=1,eapol=rx.length>=32&&a04_wlan_be16(rx.mpdu+30)==0x888e;for(unsigned i=0;i<6;i++)if(rx.mpdu[4+i]!=255)broadcast=0;
+  if(!eapol){if(!a->radio.station.secured&&a->os_security.exclude_unencrypted)return 0;if(!group&&!(a->filter&NDIS_PACKET_TYPE_DIRECTED))return 0;if(group&&broadcast&&!(a->filter&NDIS_PACKET_TYPE_BROADCAST))return 0;if(group&&!broadcast&&!(a->filter&NDIS_PACKET_TYPE_MULTICAST))return 0;}}
+ if(rx.length>sizeof(a->rx_bytes))return 0;
  NET_BUFFER_DATA_LENGTH(NET_BUFFER_LIST_FIRST_NB(a->rx_nbl))=rx.length;
- s=a04_native_indicate_mpdu(a->adapter,a->rx_nbl,rx.mpdu,rx.length,&rx.info);
- return s==NDIS_STATUS_SUCCESS||s==NDIS_STATUS_NOT_SUPPORTED?0:-1;
+ status=a04_native_indicate_mpdu(a->adapter,a->rx_nbl,rx.mpdu,rx.length,&rx.info);
+ RtlSecureZeroMemory(a->rx_bytes,sizeof(a->rx_bytes));return status==NDIS_STATUS_SUCCESS?0:-1;
+}
+void a04_ndis_association_reported(struct a04_ndis_runtime *a)
+{
+ a->association_reported=1;
+ if(a->early_length)(void)receive_data(a,a->early_rx,a->early_length);
+ RtlSecureZeroMemory(a->early_rx,sizeof(a->early_rx));a->early_length=0;
 }
 static int hardware_start(struct a04_ndis_runtime *a)
 {
@@ -82,14 +100,16 @@ static int hardware_start(struct a04_ndis_runtime *a)
   * stp_uart_launcher default FM mode2; no shared26MHz/merge option. */
  {const struct a04_wmt_startup_options options={1,1,0,0,2,1};
  if(a04_windows_session_start(&a->session,&a->parent,&platform,mem,mapped,0x00300000,a04_wifi_wdf_wmt_sha256,&options))return -1;}
- a->radio.context=a;a->radio.now=now;a->radio.wait=wait_us;a->radio.cancelled=cancelled;a->radio.event=firmware_event;a->radio.data=receive_data;
+ a->radio.context=a;a->radio.now=now;a->radio.system_time=system_time;a->radio.wait=wait_us;a->radio.cancelled=cancelled;a->radio.event=firmware_event;a->radio.data=receive_data;
  return a04_station_runtime_init(&a->radio,&a->session.diagnostic.bridge);
 }
 int a04_ndis_radio_reset(struct a04_ndis_runtime *a)
 {
  if(a04_windows_session_stop(&a->session)){a->uncertain=1;a->radio.failed=-1;return -1;}
  RtlZeroMemory(&a->session,sizeof(a->session));RtlZeroMemory(&a->irq,sizeof(a->irq));
- RtlZeroMemory(&a->radio,sizeof(a->radio));RtlZeroMemory(&a->security,sizeof(a->security));
+ RtlZeroMemory(&a->radio,sizeof(a->radio));
+ {struct a04_os_security old=a->os_security;a04_os_security_clear(a);a->os_security.auth=old.auth;a->os_security.unicast=old.unicast;a->os_security.multicast=old.multicast;a->os_security.default_id=old.default_id;a->os_security.exclude_unencrypted=old.exclude_unencrypted;a->os_security.exemption_count=old.exemption_count;NdisMoveMemory(a->os_security.exemptions,old.exemptions,sizeof(old.exemptions));RtlSecureZeroMemory(&old,sizeof(old));}
+ a->association_reported=a->early_length=0;RtlSecureZeroMemory(a->early_rx,sizeof(a->early_rx));
  RtlZeroMemory(&a->tx,sizeof(a->tx));a->tx.adapter=a->adapter;
  if(hardware_start(a)){a->radio.failed=-1;return -1;}return 0;
 }
@@ -109,14 +129,16 @@ again:
  else if(send){
   s=NDIS_STATUS_ADAPTER_NOT_READY;
   if(!a->closing&&!a->paused&&a->radio.connected){uint64_t end=now(a)+900000;
-   s=a04_native_nbl_send(&a->tx,&a->session.diagnostic.bridge,&a->radio.station,&a->security,send,a->mpdu,sizeof(a->mpdu),a->ethernet,sizeof(a->ethernet),NULL,NULL,now(a),end);
+   s=a->radio.station.secured?a04_os_security_send(a,send,now(a),end):a04_native_nbl_send(&a->tx,&a->session.diagnostic.bridge,&a->radio.station,&a->security,send,a->mpdu,sizeof(a->mpdu),a->ethernet,sizeof(a->ethernet),NULL,NULL,now(a),end);
    if(s==NDIS_STATUS_PENDING){while(a->tx.pending&&!a->closing&&now(a)<end){if(a04_station_runtime_poll(&a->radio))break;wait_us(a,1000);}if(a->tx.pending)(void)a04_native_nbl_abort(&a->tx,&a->session.diagnostic.bridge);}
   }
+  RtlSecureZeroMemory(a->mpdu,sizeof(a->mpdu));RtlSecureZeroMemory(a->ethernet,sizeof(a->ethernet));RtlSecureZeroMemory(a->session.diagnostic.bridge.wlan.tx,sizeof(a->session.diagnostic.bridge.wlan.tx));
   if(s!=NDIS_STATUS_PENDING){NET_BUFFER_LIST_STATUS(send)=s;NdisMSendNetBufferListsComplete(a->adapter,send,0);}
   NdisAcquireSpinLock(&a->lock);a->send=NULL;NdisReleaseSpinLock(&a->lock);
  }else if(!a->closing&&!a->paused)(void)a04_station_runtime_poll(&a->radio);
  NdisAcquireSpinLock(&a->lock);
  if(a->next_request){a->request=a->next_request;a->next_request=NULL;a->cancelled=a->next_cancelled;a->next_cancelled=0;NdisReleaseSpinLock(&a->lock);goto again;}
+ if(a->next_send){a->send=a->next_send;a->next_send=NULL;NdisReleaseSpinLock(&a->lock);goto again;}
  NdisFreeIoWorkItem(work);a->busy=0;a->cancelled=0;NdisSetEvent(&a->idle);NdisReleaseSpinLock(&a->lock);
 }
 static void poll_dpc(PKDPC dpc,PVOID context,PVOID x,PVOID y)
@@ -132,6 +154,7 @@ static void close_worker(struct a04_ndis_runtime *a)
 }
 static void cleanup(struct a04_ndis_runtime *a)
 {
+ a04_os_security_clear(a);RtlSecureZeroMemory(a->early_rx,sizeof(a->early_rx));RtlSecureZeroMemory(a->mpdu,sizeof(a->mpdu));RtlSecureZeroMemory(a->ethernet,sizeof(a->ethernet));RtlSecureZeroMemory(a->rx_bytes,sizeof(a->rx_bytes));
  if(a->session.state==A04_SESSION_READY||a->session.state==A04_SESSION_QUARANTINED){if(a04_windows_session_stop(&a->session))a->uncertain=1;}
  if(a->irq.interrupt)(void)a04_windows_irq_remove(&a->irq);
  /* Do not free objects whose live MMIO/lease cannot be released. */
@@ -177,7 +200,7 @@ VOID RuntimeCancelOid(NDIS_HANDLE p,PVOID id){struct a04_ndis_runtime *a=p;NdisA
 VOID RuntimeSend(NDIS_HANDLE p,PNET_BUFFER_LIST list,NDIS_PORT_NUMBER port,ULONG flags)
 {
  struct a04_ndis_runtime *a=p;UNREFERENCED_PARAMETER(port);
- NdisAcquireSpinLock(&a->lock);if(!a->busy&&!a->closing&&!a->paused&&!NET_BUFFER_LIST_NEXT_NBL(list)){a->send=list;if(!queue_work(a)){NdisReleaseSpinLock(&a->lock);return;}a->send=NULL;}NdisReleaseSpinLock(&a->lock);
+ NdisAcquireSpinLock(&a->lock);if(a->busy&&!a->closing&&!a->paused&&!a->next_send&&!NET_BUFFER_LIST_NEXT_NBL(list)){a->next_send=list;NdisReleaseSpinLock(&a->lock);return;}if(!a->busy&&!a->closing&&!a->paused&&!NET_BUFFER_LIST_NEXT_NBL(list)){a->send=list;if(!queue_work(a)){NdisReleaseSpinLock(&a->lock);return;}a->send=NULL;}NdisReleaseSpinLock(&a->lock);
  for(PNET_BUFFER_LIST n=list;n;n=NET_BUFFER_LIST_NEXT_NBL(n))NET_BUFFER_LIST_STATUS(n)=NDIS_STATUS_ADAPTER_NOT_READY;
  NdisMSendNetBufferListsComplete(a->adapter,list,(flags&NDIS_SEND_FLAGS_DISPATCH_LEVEL)?NDIS_SEND_COMPLETE_FLAGS_DISPATCH_LEVEL:0);
 }

@@ -21,9 +21,9 @@ try {
  if(!$header.Contains($old)){throw 'Unrecognized WDK8.1 NDIS header'}
  [IO.File]::WriteAllText((Join-Path $overlay 'ndis.h'),$header.Replace($old,$new),[Text.Encoding]::ASCII)
  $objects=@()
- foreach($name in @('ndis_runtime','native_control','station_runtime','native_tx','native_scan','native_scan_bridge','native_nbl','native_receive','native_hif_rx')) {
+ foreach($name in @('ndis_runtime','native_control','native_security','station_runtime','native_tx','native_scan','native_scan_bridge','native_nbl','native_receive','native_hif_rx')) {
   $obj=Join-Path $taskOut "$name.obj"
-  & clang --target=thumbv7-pc-windows-msvc -w -std=c11 -ffunction-sections -fdata-sections -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -D_WINSOCK_DEPRECATED_NO_WARNINGS=1 -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 -DA04_WIFI_SESSION_DIAGNOSTIC=1 -DA04_WIFI_IRQ_DIAGNOSTIC=1 -DA04_WIFI_CALIBRATION_DIAGNOSTIC=1 "-I$overlay" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\$name.c" -o $obj
+  & clang --target=thumbv7-pc-windows-msvc -w -std=c11 -ffunction-sections -fdata-sections -fms-extensions -ffreestanding -O2 -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -D_WINSOCK_DEPRECATED_NO_WARNINGS=1 -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 -DA04_WIFI_SESSION_DIAGNOSTIC=1 -DA04_WIFI_IRQ_DIAGNOSTIC=1 -DA04_WIFI_CALIBRATION_DIAGNOSTIC=1 "-I$overlay" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\$name.c" -o $obj
   if($LASTEXITCODE){throw "$name compile failed"};$objects+=$obj
  }
  # Avoid duplicate native_tx from the core set; never wildcard another driver.
@@ -32,7 +32,8 @@ try {
  & lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib /opt:ref $objects "$km\ndis.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\bufferoverflowfastfailk.lib" "/out:$taskOut\mt6630-runtime.sys"
  if($LASTEXITCODE){throw 'Native runtime link failed'}
  Copy-Item "$root\drivers\network\mt6630\mt6630-runtime.inf" $taskOut
- [ordered]@{source_commit=(git -C $root rev-parse HEAD);native_runtime=1;radio_mode='2.4GHz ERP20 OPEN/NONE';firmware_embedded=0;device_calibration_embedded=0;hardware_verified=0;wdk_link_succeeded=1;sys_sha256=(Get-FileHash "$taskOut\mt6630-runtime.sys" -Algorithm SHA256).Hash} | ConvertTo-Json | Set-Content -Encoding UTF8 "$taskOut\manifest.json"
+ [ordered]@{source_commit=(git -C $root rev-parse HEAD);native_runtime=1;radio_mode='2.4GHz ERP20 OPEN/NONE or RSNA-PSK/CCMP; OS supplicant';firmware_embedded=0;device_calibration_embedded=0;hardware_verified=0;wdk_link_succeeded=1;sys_sha256=(Get-FileHash "$taskOut\mt6630-runtime.sys" -Algorithm SHA256).Hash} | ConvertTo-Json | Set-Content -Encoding UTF8 "$taskOut\manifest.json"
+ & "$PSScriptRoot\build-mt6630-wlan-probe.ps1"
  Write-Output "Unsigned Native miniport and shared parent: $taskOut. Requires target signing and PnP validation by main operator."
 } finally {
  $env:TMP=$priorTmp;$env:TEMP=$priorTemp;$env:RUNNER_TEMP=$priorRunner

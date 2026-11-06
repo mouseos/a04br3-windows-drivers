@@ -10,12 +10,12 @@ if(!$header.Contains($old)) { throw 'Unrecognized WDK ndis.h; refusing overlay' 
 [IO.File]::WriteAllText((Join-Path $out 'ndis.h'),$header.Replace($old,$new),[Text.Encoding]::ASCII)
 $probeFlags=@();if($env:A04_NDIS_OID_BRIDGE -eq '1'){$probeFlags+= '-DA04_NDIS_OID_BRIDGE=1'}
 if($env:A04_NDIS_NVRAM_PROBE -eq '1'){$probeFlags+= '-DA04_NDIS_NVRAM_PROBE=1'}
-& clang @probeFlags --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\ndis_candidate.c" -o "$out\ndis.obj"
+& clang @probeFlags --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -O2 -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\ndis_candidate.c" -o "$out\ndis.obj"
 if($LASTEXITCODE) { throw 'NDIS compile failed' }
 $nvramObjects=@()
 if($env:A04_NDIS_NVRAM_PROBE -eq '1') {
  foreach($name in @('windows_nvram','windows_nvram_reader','nvram_sector','calibration')) {
-  & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\$name.c" -o "$out\$name.obj"
+  & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -O2 -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\$name.c" -o "$out\$name.obj"
   if($LASTEXITCODE) { throw "$name compile failed" }
   $nvramObjects+= "$out\$name.obj"
  }
@@ -26,30 +26,30 @@ if($LASTEXITCODE) { throw 'NDIS link failed' }
 }
 Write-Host 'Build-only NDIS candidate: initialize always fails; no INF or hardware access.'
 
-& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_scan.c" -o "$out\native_scan.obj"
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -O2 -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_scan.c" -o "$out\native_scan.obj"
 if($LASTEXITCODE) { throw 'Native 802.11 scan parser compile failed' }
 Write-Host 'Native scan request parser compiled; OID wiring depends on the explicit build flag.'
 
-& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_scan_bridge.c" -o "$out\native_scan_bridge.obj"
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -O2 -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_scan_bridge.c" -o "$out\native_scan_bridge.obj"
 if($LASTEXITCODE) { throw 'Native scan bridge compile failed' }
 
-& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_nbl.c" -o "$out\native_nbl.obj"
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -O2 -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_nbl.c" -o "$out\native_nbl.obj"
 if($LASTEXITCODE) { throw 'Native NBL bridge compile failed' }
 
-& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_receive.c" -o "$out\native_receive.obj"
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -O2 -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_receive.c" -o "$out\native_receive.obj"
 if($LASTEXITCODE) { throw 'Native receive indication compile failed' }
 
-& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_oid.c" -o "$out\native_oid.obj"
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -O2 -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_oid.c" -o "$out\native_oid.obj"
 if($LASTEXITCODE) { throw 'Native OID dispatcher compile failed' }
 
-& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_oid_async.c" -o "$out\native_oid_async.obj"
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -O2 -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_oid_async.c" -o "$out\native_oid_async.obj"
 if($LASTEXITCODE) { throw 'Native OID work item compile failed' }
 
-& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_hif_rx.c" -o "$out\native_hif_rx.obj"
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -O2 -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\native_hif_rx.c" -o "$out\native_hif_rx.obj"
 if($LASTEXITCODE) { throw 'Native HIF RX decoder compile failed' }
 
-& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\windows_nvram.c" -o "$out\windows_nvram.obj"
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -O2 -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\windows_nvram.c" -o "$out\windows_nvram.obj"
 if($LASTEXITCODE) { throw 'Windows NVRAM reader compile failed' }
 
-& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\windows_nvram_reader.c" -o "$out\windows_nvram_reader.obj"
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -O2 -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\windows_nvram_reader.c" -o "$out\windows_nvram_reader.obj"
 if($LASTEXITCODE) { throw 'Windows synchronous NVRAM reader compile failed' }

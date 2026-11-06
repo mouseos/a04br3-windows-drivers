@@ -2,7 +2,7 @@
 
 この実装は既存の常時初期化失敗candidateとは別の、PnPから開始するminiport。
 `ndis_runtime.c` がDriverEntryを持つ。Windowsによる受理、SYSリンク・署名、
-実機のscan・OPEN接続・IP通信はまだ確認していない。実機とrunnerの操作は主担当が行う。
+実機のscan・OPEN/WPA2接続・IP通信はまだ確認していない。実機とrunnerの操作は主担当が行う。
 
 ## 接続した経路
 
@@ -22,10 +22,11 @@
    BSS/OwnMAC/STA/WTBL割当て、NDIS general/native attributes登録。
 7. NDIS work item一つでOID・RX poll・TXを直列化する。scanは実SCAN_DONEから
    SCAN_CONFIRMを通知し、観測したBSSをENUM_BSS_LISTへ返す。
-8. 最初の接続は2.4GHz/ERP/20MHz、OPEN認証・暗号NONE。
+8. 接続は2.4GHz/ERP/20MHz、OPEN/NONEまたはRSNA-PSK/CCMP。
    実CH_PRIVILEGE grant→authentication response→association response→
    ACTIVATE_STA_RECを待つ。成功通知には実送受信したassociation frame bodyを使う。
-   WPA/WPA2、5GHz、channel14、ローミング、省電力運用は本miniportの対応に含めない。
+   WPA2のOS key OID、CID7、controlled portは [WPA2.md](WPA2.md) を参照。
+   WPA/TKIP、WPA3、必須PMF、5GHz、channel14、ローミング、省電力運用は対応に含めない。
 9. NBL送信は既存HIF TXとTX_DONE照合へ、受信は実RX vectorからPHY/rate/RCPIを
    取り出してNDISへ同期RESOURCES indicationする。未観測のリンク速度は不明値のまま。
    disconnectとPHY+MACのRESET_REQUESTはordered stopと新しいcold-start世代へ進む。
@@ -79,7 +80,9 @@ APMIXEDを明示的に有効化し、親とminiportをビルドする。通常�
 リンクしない。TEMP/TMP/RUNNER_TEMPをcheckout内へ向け、終了時に環境を戻す。
 出力は `build/mt6630-runtime/mt6630-runtime.sys` とそのINF/manifest、
 `build/mt6630-runtime/a04-msdc-parent-probe/mt8167-shared.sys`。
-SYSは未署名。自動署名・実機配置・runner起動はしない。
+同時に `build/mt6630-runtime/wlan-probe/mt6630-wlan-probe.exe` を生成する。
+probeはWDK8.1 UM ARMのkernel32/advapi32.libとwlanapi.hも必要。
+SYS/EXEは未署名。自動署名・実機配置・runner起動はしない。
 
 firmwareは既存 `tools/winpe/prepare-mt6630-firmware.py` が固定元・digestから生成する
 二つのsnapshotを主担当のmedia作成工程でWindows\System32\drivers\a04br3へ置く。
@@ -116,3 +119,14 @@ surprise removalでは新要求を閉じてworkerを排出し、MMIOなしでIRQ
   combo_tool/src/stp_uart_launcher.cとcfg_folder/WMT.cfg/mt6630_ant_m1.cfg。
 - Microsoft WDK: NdisMGetDeviceProperty、Native 802.11 attributes、
   DOT11_DATA_RATE_MAPPING_ENTRY（usDataRateValueは500Kbps単位）、各OID・status定義。
+
+## 2026-11-07 WPA2・ARM link引継ぎ
+
+主担当の報告ではc29fcbfはWDK8.1の全compileとshared parent linkを通過し、
+Native最終linkだけがntoskrnl.lib(helpexcept.obj)のGS helperで失敗した。
+全Wi-Fi/core/parent TUを `-O2 -fno-stack-protector` に統一した。
+元からfno指定はあり、追加の原因はruntime clockの64bit除算による `__rt_udiv64` 参照。
+`arm_clock.h` で同値の32bit分割計算へ置換し、GS helperの偽stubは追加しない。
+最新変更のARM COFFと既存テストの確認は行ったが、最新WDK8.1 SYS link、
+PnP、WPA2実接続、実scanは未確認で、主担当が検証する。
+probeの使用法は `tools/winpe/README-mt6630-wlan-probe.md` を参照。

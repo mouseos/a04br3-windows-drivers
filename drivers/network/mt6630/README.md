@@ -1,6 +1,9 @@
 # TAB-A04-BR3 MT6630 / MSDC2 Windows向け基盤
 
-このディレクトリはWi-Fiドライバではない。無線・SDIOコントローラにアクセスせず、
+現在のNative miniportは [RUNTIME.md](RUNTIME.md)、WPA2の役割と限界は [WPA2.md](WPA2.md) を参照。
+以下の冒頭は旧candidate基盤の記録であり、別DriverEntryのruntimeの状態を示さない。
+
+旧candidateはWi-Fiドライバではない。無線・SDIOコントローラにアクセスせず、
 未完成の所有権や電源処理が実機上で有効になることを防ぐ。`wdf_sdio_probe.c` は
 常にPrepareHardwareを失敗させ、MMIO、GPIO、送受信、NDIS登録を行わない。
 対応する機種ACPI候補は別UEFI worktreeの `WifiSdioCandidate.asl` で、_STA=0かつ
