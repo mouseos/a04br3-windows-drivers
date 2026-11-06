@@ -1,0 +1,12 @@
+/* SPDX-License-Identifier: BSD-2-Clause-Patent */
+#ifndef A04_WINDOWS_SHARED_TABLES_H
+#define A04_WINDOWS_SHARED_TABLES_H
+#include "windows_shared_scanout.h"
+#include "windows_copy_scratch.h"
+/* Inactive GPU DMA tables only; never linked to a live PC root. Caller holds
+ * the provider lifetime lock and the WDDM shared-MDL lease. */
+struct a04_shared_tables { struct a04_vendor_uncached table[4]; BOOLEAN ready,quarantined; };
+NTSTATUS a04_shared_tables_stage(struct a04_shared_tables *,struct a04_shared_scanout *,
+    struct a04_vendor_render_cold *,struct a04_vendor_copy_scratch *);
+NTSTATUS a04_shared_tables_release(struct a04_shared_tables *);
+#endif

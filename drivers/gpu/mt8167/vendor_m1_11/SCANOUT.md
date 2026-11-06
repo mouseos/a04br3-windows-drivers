@@ -132,3 +132,33 @@ GPU table publication/invalidation, present completion, frame switching and
 both engines' stop/removal protocol remain necessary. Unexposed mappings can
 be released; exposed mappings are retained. The current WDDM lifecycle only
 supports unexposed preparation and must be redesigned before hardware use.
+
+## Kernel-only shared-MDL handoff and inactive tables
+
+With both `A04_GE8300_SHARED_LEASE=1` in the vendor copy provider and
+`A04_GE8300_WDDM_DIRECT_EXPERIMENT=1` plus
+`A04_GE8300_WDDM_SHARED_LEASE=1` in WDDM, WDDM sparsely retries a kernel-only
+lease after a synchronous present. The provider grants it only after a
+successful existing vendor copy, including its TQ UFO, SLC flush, GP fence,
+output verification and readback. It holds a WDF device reference and blocks
+normal D0 exit/release while the single token is active. This records local
+completion, not a WDDM fence, display visibility or DMA stop.
+
+WDDM allocates and maps the shared MDL using the leased GPU PDO/adapter and
+its own display PDO/adapter, then passes the in-kernel owner pointer to the
+provider while holding its present mutex. Under the provider lifetime lock,
+the provider allocates four independent GPU-adapter common buffers, checks
+for aliases against GPU firmware/render/copy buffers and the shared data
+pages, builds GPU page-table images and writes them to those buffers. A
+collision quarantines the allocation and keeps the lease and MDL. Teardown
+unstages these **inactive** tables first, releases both MDL DMA mappings, and
+only then releases the GPU lease. An uncertain cleanup retains ownership.
+The existing copy service remains usable independently of these new flags.
+
+The GPU DMA table images are not linked into the live render PC root and no
+MMU-cache invalidation is submitted. In particular, returning an inactive PC
+DMA address does not authorize GPU access. The m1.11 MMUCACHE command, exact
+completion/ordering, concurrent context use and timeout retention still need
+hardware-specific validation before publishing a parent entry. The interface
+also does not establish no-bounce visibility for OVL, frame boundary/latch,
+PnP surprise-removal safety or DMA stop. It does not enable direct display.

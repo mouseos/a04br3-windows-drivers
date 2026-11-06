@@ -4,8 +4,20 @@
 #include <string.h>
 #include "../drivers/gpu/mt8167/vendor_m1_11/windows_shared_scanout.h"
 #include "../drivers/gpu/mt8167/gpu_mmu.h"
+#include "../drivers/gpu/mt8167/vendor_m1_11/windows_shared_tables.h"
 static struct fake_mdl mdl;static SCATTER_GATHER_LIST gpu_list,display_list;
 static PDMA_ADAPTER gpu_id,display_id;static int gpu_put,display_put,freed,fragment,duplicate;
+static unsigned table_allocs,table_frees;static int table_alias;
+void a04_gpu_dma_barrier(void){}
+NTSTATUS a04_vendor_uncached_allocate(struct a04_vendor_uncached *b,PDMA_ADAPTER a,ULONG bytes)
+{
+    assert(a==gpu_id && bytes==4096);b->cpu=aligned_alloc(4096,4096);
+    if(!b->cpu)return STATUS_INSUFFICIENT_RESOURCES;
+    b->adapter=a;b->bytes=bytes;b->logical.QuadPart=table_alias?0x41000000:0x60000000u+table_allocs*4096u;
+    table_allocs++;return STATUS_SUCCESS;
+}
+void a04_vendor_uncached_free(struct a04_vendor_uncached *b)
+{if(b->cpu){free(b->cpu);table_frees++;memset(b,0,sizeof(*b));}}
 unsigned KeGetCurrentIrql(void){return PASSIVE_LEVEL;}
 void KeInitializeEvent(KEVENT *e,int t,BOOLEAN b){(void)t;(void)b;e->signaled=0;}
 void KeSetEvent(KEVENT *e,int p,BOOLEAN b){(void)p;(void)b;e->signaled=1;}
@@ -45,6 +57,21 @@ int main(void)
       assert(NT_SUCCESS(a04_shared_scanout_build_tables(&s,pc,0x60000000,pd,0x60001000,pt0,0x60002000,pt1,0x60003000)));
       assert((pt0[0]&~4095ULL)==0x41000000 && (pt1[487]&~4095ULL)==0x413e7000);
       assert((pt0[0]&A04_GPU_MMU_SLC_BYPASS)!=0);
+    }
+    {
+      struct a04_vendor_m1_11_memory fw={0};struct a04_vendor_render_cold render={0};
+      struct a04_vendor_copy_scratch copy={0};struct a04_shared_tables tables={0};
+      fw.adapter=&ga;render.firmware=&fw;render.copy_owner=&copy;copy.render=&render;
+      assert(NT_SUCCESS(a04_shared_tables_stage(&tables,&s,&render,&copy)) && tables.ready);
+      assert((((uint64_t *)tables.table[2].cpu)[0]&~4095ULL)==0x41000000);
+      assert((((uint64_t *)tables.table[3].cpu)[487]&~4095ULL)==0x413e7000);
+      assert(NT_SUCCESS(a04_shared_tables_release(&tables)) && table_frees==4);
+      table_alias=1;
+      assert(a04_shared_tables_stage(&tables,&s,&render,&copy)==STATUS_DEVICE_CONFIGURATION_ERROR);
+      assert(tables.quarantined && a04_shared_tables_release(&tables)==STATUS_DEVICE_BUSY && table_frees==4);
+      /* Test teardown only: production deliberately retains aliases. */
+      a04_vendor_uncached_free(&tables.table[0]);
+      table_alias=0;
     }
     s.exposed=1;assert(a04_shared_scanout_release(&s)==STATUS_DEVICE_BUSY && !gpu_put && !display_put && !freed);
     s.exposed=0;assert(NT_SUCCESS(a04_shared_scanout_release(&s)) && gpu_put==1 && display_put==1 && freed==1);

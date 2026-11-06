@@ -2,6 +2,7 @@
 #ifndef A04_GE8300_STATUS_H
 #define A04_GE8300_STATUS_H
 #include <stdint.h>
+#include <stddef.h>
 #define A04_GE8300_IOCTL_QUERY 0x00226004u
 /* CPU-only vendor FW staging; does not indicate a GPU boot. */
 #define A04_GE8300_IOCTL_VENDOR_STAGE_QUERY 0x00226010u
@@ -27,6 +28,23 @@ struct a04_ge8300_fenced_copy {
     uint8_t pixels[A04_GE8300_VENDOR_COPY_BYTES];
 };
 /* Diagnostic-only report from the administrator-owned WinPE status tool. */
+/* Internal kernel-only lifetime lease; opaque cookie, never for user mode. */
+#define A04_GE8300_IOCTL_SHARED_ACQUIRE 0x00226020u
+#define A04_GE8300_IOCTL_SHARED_RELEASE 0x00226024u
+#define A04_GE8300_IOCTL_SHARED_STAGE 0x00226028u
+#define A04_GE8300_IOCTL_SHARED_UNSTAGE 0x0022602cu
+struct a04_ge8300_shared_lease {
+    void *gpu_adapter, *gpu_pdo, *shared_mdl_owner;
+    uint64_t inactive_gpu_pc_dma;
+    uint32_t token, task_sequence, flush_sequence;
+};
+#if defined(_ARM_)
+#ifdef __cplusplus
+static_assert(sizeof(struct a04_ge8300_shared_lease)==40 && offsetof(struct a04_ge8300_shared_lease,inactive_gpu_pc_dma)==16, "shared lease ABI");
+#else
+_Static_assert(sizeof(struct a04_ge8300_shared_lease)==40 && offsetof(struct a04_ge8300_shared_lease,inactive_gpu_pc_dma)==16, "shared lease ABI");
+#endif
+#endif
 #define A04_GE8300_IOCTL_REPORT_DISPLAY 0x0022600cu
 struct a04_ge8300_status {
     unsigned long version, attempted, boot_status, health_status, shutdown_status;

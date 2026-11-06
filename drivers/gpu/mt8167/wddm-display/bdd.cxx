@@ -535,7 +535,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DIS
                 (uintptr_t)pDst>UINTPTR_MAX-(uint64_t)mode->DispInfo.Pitch*mode->DispInfo.Height)
                 return STATUS_INVALID_PARAMETER;
             pDst+=offset;
-            return m_HardwareBlt[pPresentDisplayOnly->VidPnSourceId].ExecutePresentDisplayOnly(pDst,
+            NTSTATUS presentStatus=m_HardwareBlt[pPresentDisplayOnly->VidPnSourceId].ExecutePresentDisplayOnly(pDst,
                                                                     DstBitPerPixel,
                                                                     (BYTE*)pPresentDisplayOnly->pSource,
                                                                     pPresentDisplayOnly->BytesPerPixel,
@@ -545,6 +545,15 @@ NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DIS
                                                                     pPresentDisplayOnly->NumDirtyRects,
                                                                     pPresentDisplayOnly->pDirtyRect,
                                                                     RotationNeededByFb);
+#if A04_GE8300_WDDM_SHARED_LEASE
+            /* GPU provider admits the lease only after a verified copy/fence.
+             * Sparse retries avoid opening a device on every CPU present. */
+            if (NT_SUCCESS(presentStatus) && m_DisplayResources.Adapter &&
+                !m_DisplayResources.Shared.mdl && !m_DisplayResources.GpuHandle &&
+                !(m_DisplayResources.PrepareCounter++ & 127u))
+                (void)m_DisplayResources.PrepareViaGpu();
+#endif
+            return presentStatus;
     }
 
     return STATUS_SUCCESS;

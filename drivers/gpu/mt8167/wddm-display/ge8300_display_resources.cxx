@@ -43,11 +43,64 @@ NTSTATUS A04DisplayResources::PrepareShared(PDMA_ADAPTER gpu,PDEVICE_OBJECT gpuP
     if (!Adapter || !DisplayPdo || !Ovl) return STATUS_DEVICE_NOT_READY;
     return a04_shared_scanout_prepare(&Shared,gpu,gpuPdo,Adapter,DisplayPdo);
 }
+#if A04_GE8300_WDDM_SHARED_LEASE
+static NTSTATUS SharedLeaseIoctl(HANDLE handle,ULONG code,struct a04_ge8300_shared_lease *lease)
+{
+    IO_STATUS_BLOCK io={};NTSTATUS status;
+    status=ZwDeviceIoControlFile(handle,NULL,NULL,NULL,&io,code,lease,sizeof(*lease),lease,sizeof(*lease));
+    if (status==STATUS_PENDING) {
+        do {status=ZwWaitForSingleObject(handle,FALSE,NULL);} while(status!=STATUS_SUCCESS);
+        status=io.Status;
+    } else if (NT_SUCCESS(status)) status=io.Status;
+    if (NT_SUCCESS(status) && io.Information!=sizeof(*lease))return STATUS_IO_DEVICE_ERROR;
+    return status;
+}
+NTSTATUS A04DisplayResources::PrepareViaGpu()
+{
+    UNICODE_STRING name=RTL_CONSTANT_STRING(L"\\Device\\A04GE8300");
+    OBJECT_ATTRIBUTES attr;IO_STATUS_BLOCK io={};NTSTATUS status;
+    if(!Adapter || !Ovl || !DisplayPdo || GpuHandle || Shared.mdl ||
+       KeGetCurrentIrql()!=PASSIVE_LEVEL || KeAreAllApcsDisabled())return STATUS_DEVICE_NOT_READY;
+    InitializeObjectAttributes(&attr,&name,OBJ_KERNEL_HANDLE|OBJ_CASE_INSENSITIVE,NULL,NULL);
+    status=ZwCreateFile(&GpuHandle,FILE_READ_DATA|FILE_WRITE_DATA|SYNCHRONIZE,&attr,&io,NULL,
+        FILE_ATTRIBUTE_NORMAL,FILE_SHARE_READ|FILE_SHARE_WRITE,FILE_OPEN,
+        FILE_NON_DIRECTORY_FILE|FILE_SYNCHRONOUS_IO_NONALERT,NULL,0);
+    if(!NT_SUCCESS(status)) {GpuHandle=NULL;return status;}
+    RtlZeroMemory(&Lease,sizeof(Lease));
+    status=SharedLeaseIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_ACQUIRE,&Lease);
+    if(!NT_SUCCESS(status)){ZwClose(GpuHandle);GpuHandle=NULL;return status;}
+    if(!Lease.token || !Lease.gpu_adapter || !Lease.gpu_pdo || !Lease.task_sequence || !Lease.flush_sequence)
+        status=STATUS_DEVICE_CONFIGURATION_ERROR;
+    else status=PrepareShared((PDMA_ADAPTER)Lease.gpu_adapter,(PDEVICE_OBJECT)Lease.gpu_pdo);
+    if(NT_SUCCESS(status)) {
+        Lease.shared_mdl_owner=&Shared;
+        status=SharedLeaseIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_STAGE,&Lease);
+        if(NT_SUCCESS(status) && !Lease.inactive_gpu_pc_dma)status=STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
+    if(!NT_SUCCESS(status)) {
+        NTSTATUS released=SharedLeaseIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_UNSTAGE,&Lease);
+        if(NT_SUCCESS(released))released=a04_shared_scanout_release(&Shared);
+        if(NT_SUCCESS(released))released=SharedLeaseIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_RELEASE,&Lease);
+        if(NT_SUCCESS(released)){ZwClose(GpuHandle);GpuHandle=NULL;}
+    }
+    return status;
+}
+#endif
 VOID A04DisplayResources::Stop()
 {
     /* This path may only hold an unexposed shared preparation.  Connecting
      * hardware requires a new stop/removal lifetime, not this cleanup. */
+#if A04_GE8300_WDDM_SHARED_LEASE
+    if (GpuHandle && Lease.token &&
+        !NT_SUCCESS(SharedLeaseIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_UNSTAGE,&Lease))) return;
+#endif
     if (!NT_SUCCESS(a04_shared_scanout_release(&Shared))) return;
+#if A04_GE8300_WDDM_SHARED_LEASE
+    if (GpuHandle) {
+        if (Lease.token && !NT_SUCCESS(SharedLeaseIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_RELEASE,&Lease))) return;
+        ZwClose(GpuHandle);GpuHandle=NULL;
+    }
+#endif
     if (Ovl) { MmUnmapIoSpace((void *)Ovl,0x1000); Ovl=NULL; }
     if (Adapter && Adapter->DmaOperations && Adapter->DmaOperations->PutDmaAdapter)
         Adapter->DmaOperations->PutDmaAdapter(Adapter);
