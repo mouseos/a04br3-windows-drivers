@@ -584,3 +584,17 @@ for the required independent ownership proofs. Its IRQ attach intentionally
 fails without them, so it is not a usable display diagnostic. A WDF reference,
 a busy return from PnP callbacks, and a programmed-address readback are not
 evidence of power retention, stopped DMA, a latched layer, or restored output.
+
+The executor's two-layer packet now waits for a newly cleared EOF both before
+the L0/L3 writes and again after them before its EOC. The same packet encoding
+can carry saved addresses, but this code does not yet supply the required
+trusted saved-state, rearm, display visibility or retirement proof. A fresh
+post-write event establishes packet ordering only; it is not independent
+evidence that either plane latched or that a displayed frame used the buffer.
+
+An optional versioned firmware variable records TOPCKGEN TOP2 at
+BeforeExitBootServices. The GCE PDO can read it for diagnostics with
+`A04_GCE_HANDOFF_OBSERVE=1`; it cannot set any ownership proof. Thread and IRQ
+fields are explicitly unknown because a gate bit alone does not establish safe
+nonsecure access to the GCE. Runtime variable contents are not authenticated
+and no such observation may authorize the experimental executor.
