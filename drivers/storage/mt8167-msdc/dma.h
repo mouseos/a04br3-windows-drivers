@@ -30,6 +30,13 @@ enum a04_dma_result a04_msdc_dma_sector_timed(const struct a04_msdc_io *io,
 enum a04_dma_result a04_msdc_dma_read_blocks_timed(const struct a04_msdc_io *io,
         uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t poll_limit,
         uint32_t blocks, const struct a04_dma_clock *clock);
+/* CMD25 + explicit R1b CMD12 for 2..8 sectors (CMD24 for one).
+ * Success still requires XFER_DONE, DMA inactive, DAT0 high and CMD13 ready
+ * in transfer state. The caller must guard the entire range before starting.
+ * Errors leave media contents indeterminate; never retry automatically. */
+enum a04_dma_result a04_msdc_dma_write_blocks_timed(const struct a04_msdc_io *io,
+        uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t poll_limit,
+        uint32_t blocks, uint16_t rca, const struct a04_dma_clock *clock);
 enum a04_dma_result a04_msdc_dma_read_sector(const struct a04_msdc_io *io,
         uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t poll_limit);
 /* Write is experimental and requires an OS-owned, cache-synchronized DMA

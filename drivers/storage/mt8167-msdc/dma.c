@@ -53,7 +53,7 @@ static enum a04_dma_result a04_dma_transfer(const struct a04_msdc_io *io,
     enum a04_dma_result result = A04_DMA_OK;
     if (!io || !io->read32 || !io->write32 || !limit || !alignment ||
         (alignment & (alignment - 1)) || (bus_address & (alignment - 1)) ||
-        !blocks || blocks > 8 || (write && blocks != 1) ||
+        !blocks || blocks > 8 ||
         lba > UINT32_MAX - (blocks - 1) ||
         bus_address > UINT32_MAX - (blocks * 512u - 1u) || (write && !rca) ||
         (clock && (!clock->now || !clock->ticks)))
@@ -76,7 +76,7 @@ static enum a04_dma_result a04_dma_transfer(const struct a04_msdc_io *io,
     if (bits) io->write32(io->context, INT_STATUS, bits);
     io->write32(io->context, BLOCK_COUNT, blocks);
     io->write32(io->context, ARGUMENT, lba);
-    io->write32(io->context, COMMAND, (write ? 24u : blocks > 1 ? 18u : 17u) | (1u << 7) |
+    io->write32(io->context, COMMAND, (write ? (blocks > 1 ? 25u : 24u) : blocks > 1 ? 18u : 17u) | (1u << 7) |
                 ((blocks > 1 ? 2u : 1u) << 11) | (write ? 1u << 13 : 0u) | (512u << 16));
     if (clock) start = clock->now(clock->context);
     for (n = 0; n < limit; ++n) {
@@ -121,7 +121,7 @@ static enum a04_dma_result a04_dma_transfer(const struct a04_msdc_io *io,
     }
     if (n == limit) return A04_DMA_STOP_TIMEOUT;
     if (blocks > 1) {
-        /* CMD18 is open-ended. Stop it even after a data error, but never
+        /* CMD18/CMD25 are open-ended. Stop even after a data error, but never
          * treat a failed stop as recoverable or copy partial data to the SRB. */
         if (clock) start = clock->now(clock->context);
         for (n = 0; n < limit; ++n) {
@@ -200,6 +200,11 @@ enum a04_dma_result a04_msdc_dma_read_blocks_timed(const struct a04_msdc_io *io,
         uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t limit,
         uint32_t blocks, const struct a04_dma_clock *clock)
 { return a04_dma_transfer(io, lba, bus_address, alignment, limit, 0, 0, blocks, clock); }
+
+enum a04_dma_result a04_msdc_dma_write_blocks_timed(const struct a04_msdc_io *io,
+        uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t limit,
+        uint32_t blocks, uint16_t rca, const struct a04_dma_clock *clock)
+{ return a04_dma_transfer(io, lba, bus_address, alignment, limit, 1, rca, blocks, clock); }
 
 enum a04_dma_result a04_msdc_dma_read_sector(const struct a04_msdc_io *io,
         uint32_t lba, uint64_t bus_address, uint32_t alignment, uint32_t limit)
