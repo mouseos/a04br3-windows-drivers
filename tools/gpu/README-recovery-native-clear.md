@@ -80,3 +80,12 @@ prepare-recovery-native-capture.pyに--plan-directory <新規root内dir>を渡�
 
 
 実Recovery試験で初回preloadはmain前にalarm終了した。API26 buildのobserverには__emutls_get_addressがあり、mmap等の入口で先にTLSを参照する実装はTLS用allocationと再入する。修正版は実SDK29に合わせAPI29 native initial-exec TLS、-fno-emulated-tlsを用い、trace_fd未初期化時はTLSに触れずsyscallへ転送する。これによりobserverの最低runtimeはAPI29。旧API26 binaryを今回のcaptureに使わない。
+
+
+## 実Recovery試行で確定した最初のopen以前のFW条件
+
+実KMは1.11@5425693 release、build options0x2010、HW22.40.54.30。driver/BVNCは指定UMと一致したが、Recovery自身(process195)がboot2.91秒でDRMをopenし、rgx.fw.22.40.54.30/22.40p.54.30/rgx.fwが全てENOENTとなり初期化失敗していた。後刻のprobeはegl-initで待ち、kernelはDriver already in bad stateとしてopenを拒否した。0byte capture、TA/PR/3Dもresourceも0件。未完了packetや強制kickは送っていない。
+
+source PVRSRVDeviceInitialise→PVRSRVDeviceFinaliseは初期化失敗でeDevState=PVRSRV_DEVICE_STATE_BADを設定し、module_common.c:PVRSRVCommonDeviceOpenはこの状態で-ENODEVを返し再初期化を試さない。後からprivate chrootへFWを配置しても遅い。将来のcapture用Recoveryには、同梱hash5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1のFWをramdiskの/lib/firmware/rgx.fw.22.40.54.30へ入れ、Recovery/minuiを含めた最初のDRM open前から読めることが必要。実機の再起動・再flash・driver state強制変更は今回行っていない。BAD_STATEログをpreflightで見つけた場合はexit3で再試行を止める。
+
+REA証拠: 初回ev_a725d023e34bb4971b6e1397602437ab64f59fff6491d8d0e1a390e07bfc3d95はmain前alarm、native TLS修正版ev_43d8932f019974292b3ff3cf0c6f8a047297af4eb37ef7c832a1be074e837c5dはCAPTURE_INIT_ENTER→PHASE egl-initまで。元driverの成功経路は未取得であり、完全native producer完成とは扱わない。

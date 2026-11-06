@@ -20,3 +20,14 @@ if command -v getprop >/dev/null 2>&1; then
     echo "ro.vndk.version=$(getprop ro.vndk.version)"
     echo "ro.build.version.sdk=$(getprop ro.build.version.sdk)"
 fi
+
+# A prior failed first-open is latched by PVRSRV_DEVICE_STATE_BAD.
+# A private userspace FW view cannot retry PVRSRVDeviceInitialise in that state.
+if command -v dmesg >/dev/null 2>&1; then
+    pvr_failed=$(dmesg 2>/dev/null | grep 'PVRSRVCommonDeviceOpen: Driver already in bad state' || true)
+    if [ -n "$pvr_failed" ]; then
+        echo 'BLOCKED_PVR_BAD_STATE: FW must be available before the first DRM open of a fresh Recovery boot.'
+        echo "$pvr_failed"
+        exit 3
+    fi
+fi
