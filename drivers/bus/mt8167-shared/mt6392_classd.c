@@ -74,6 +74,13 @@ int a04_mt6392_classd_mute(struct a04_mt6392_classd *c)
     if(upd(c,SPK9,0x0f00,0) || c->read16(c->context,SPK9,&gain) || (gain&0x0f00)) return fail(c);
     return 0;
 }
+int a04_mt6392_classd_verify_muted(struct a04_mt6392_classd *c)
+{
+    uint16_t gain;
+    if(!c || !c->active || c->poisoned || !c->read16)return -1;
+    if(c->read16(c->context,SPK9,&gain))return fail(c);
+    return (gain&0x0f00u) ? -1 : 0;
+}
 int a04_mt6392_classd_stop(struct a04_mt6392_classd *c)
 {
     uint16_t gain;

@@ -10,6 +10,10 @@ int a04_test_trace_count;
 static ULONG mockAfeRegs[1024];static int mockAfeIgnoreWrite;
 #define mockAfe mockAfeRegs[0]
 #endif
+#if A04_SHARED_VOICE_DIAGNOSTIC || A04_SHARED_VOICE_PCM_DIAGNOSTIC
+static int voiceGainReads,voiceGainFail;static uint16_t voiceGain;
+static int voiceReadGain(void *p,uint16_t reg,uint16_t *out){(void)p;assert(reg==0x64);voiceGainReads++;if(voiceGainFail)return -1;*out=voiceGain;return 0;}
+#endif
 static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,assertClosedOnLock,closeDuringLock,failMap;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;static A04_SHARED_USB_INTERFACE usb;static A04_SHARED_WIFI_INTERFACE wifi;
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
 static ULONG usbGpio[1024];
@@ -82,6 +86,17 @@ int main(void){
  { int16_t initial=321,value=123;unsigned cap=9;int n=writes;
    assert(ParentVoiceVerify(&testContext,&initial,&value,&cap));
    assert(ParentCodecStart(&testContext));assert(writes==n && initial==321 && value==123 && cap==9); }
+#endif
+#if A04_SHARED_VOICE_DIAGNOSTIC || A04_SHARED_VOICE_PCM_DIAGNOSTIC
+ { int16_t initial=321,value=123;unsigned cap=9;int n=writes;
+   testContext.pmic.online=1;testContext.classd.active=1;testContext.classd.read16=voiceReadGain;
+   voiceGain=0;assert(ParentVoiceVerify(&testContext,&initial,&value,&cap) && voiceGainReads==1);
+   assert(writes==n && initial==321 && value==123 && cap==9);
+   voiceGain=0x100;assert(ParentVoiceVerify(&testContext,&initial,&value,&cap) && voiceGainReads==2);
+   assert(writes==n && !testContext.classd.poisoned);
+   voiceGainFail=1;assert(ParentVoiceVerify(&testContext,&initial,&value,&cap) && testContext.classd.poisoned && voiceGainReads==3);
+   voiceGainFail=0;testContext.classd.poisoned=0;
+   testContext.pmic.online=0;testContext.classd.active=0;testContext.classd.read16=NULL; }
 #endif
  CM_PARTIAL_RESOURCE_DESCRIPTOR entries[5]={0},translated[5]={0};struct test_list list={entries,4},translatedList={translated,4};USHORT value=0xeeee;
 #if A04_SHARED_APMIXED_RESOURCE
@@ -161,9 +176,18 @@ int main(void){
  assert(input.Version==1 && input.TouchPen && input.ButtonPmicRead);
  assert(audio.Header.Version==A04_SHARED_AUDIO_INTERFACE_VERSION && audio.AcquireMuted && audio.ReleaseQuiescent && audio.PrepareMaskedIrq && audio.BindAfe && audio.Mute && audio.UnmuteMin);
 #if A04_SHARED_VOICE_PCM_DIAGNOSTIC
- assert(audio.VerifyLivePcm && audio.StartVoice && audio.StopVoice);
+ assert(audio.VerifyLivePcm && audio.StartVoice && audio.StopVoice && audio.VerifyDmaDrained);
+ assert(audio.VerifyDmaDrained(audio.Header.Context)!=0);
  assert(audio.VerifyLivePcm(audio.Header.Context,(PVOID)&audio,0x100000,8192)!=0);
  assert(audio.StartVoice(audio.Header.Context)!=0 && audio.StopVoice(audio.Header.Context)!=0 && !reads && !writes);
+ { int (*oldRead)(void *,uint16_t,uint16_t *)=testContext.classd.read16;
+   testContext.admissionClosed=0;testContext.audio.online=1;testContext.audio.leased=1;
+   testContext.pmic.online=1;testContext.classd.active=1;testContext.classd.read16=voiceReadGain;
+   testContext.codecDomain.held=1;testContext.audioAfe=&audio;voiceGainFail=1;
+   assert(audio.StartVoice(audio.Header.Context)!=0 && testContext.audio.poisoned && testContext.classd.poisoned && !writes);
+   voiceGainFail=0;testContext.admissionClosed=1;testContext.audio.online=0;testContext.audio.leased=0;testContext.audio.poisoned=0;
+   testContext.pmic.online=0;testContext.classd.active=0;testContext.classd.poisoned=0;testContext.classd.read16=oldRead;
+   testContext.codecDomain.held=0;testContext.audioAfe=NULL; }
 #endif
  assert(audio.PrepareMaskedIrq(audio.Header.Context,(PVOID)&audio,0x1000)!=0 && !reads && !writes);
  assert(wifi.Header.Version==2 && wifi.Acquire && wifi.ReleaseQuiescent && wifi.Live && wifi.UpdateShared && wifi.WriteShared);

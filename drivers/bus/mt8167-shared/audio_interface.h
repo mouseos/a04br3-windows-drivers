@@ -33,10 +33,16 @@ typedef struct _A04_SHARED_AUDIO_INTERFACE {
     int (*Mute)(PVOID);
     /* Diagnostic minimum gain, only after DMA start and verified board route. */
     int (*UnmuteMin)(PVOID);
-    /* Optional v8 gated live path; failure may leave hardware changed. */
+    /* Optional v8 gated live path; failure may leave hardware changed.
+     * VerifyLivePcm success must independently prove continuous client CPU
+     * access to this adapter mapping, cache attributes and synchronization,
+     * including exclusion of writes during initial publication. */
     int (*VerifyLivePcm)(PVOID, PVOID, uint64_t, ULONG);
     int (*StartVoice)(PVOID);
     int (*StopVoice)(PVOID);
+    /* v9: independently verify all AFE transactions have drained after
+     * stop and IRQ rundown, with power and mappings still retained. */
+    int (*VerifyDmaDrained)(PVOID);
 } A04_SHARED_AUDIO_INTERFACE;
-#define A04_SHARED_AUDIO_INTERFACE_VERSION 8
+#define A04_SHARED_AUDIO_INTERFACE_VERSION 9
 #endif
