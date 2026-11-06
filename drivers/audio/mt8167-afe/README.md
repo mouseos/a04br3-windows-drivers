@@ -387,3 +387,20 @@ access to the buffer. That packet-DMA contract alone is not evidence that an
 actively written WaveRT cyclic buffer can safely use that mapping indefinitely.
 The PortCls-to-AFE adapter mapping, continuous synchronization and safe release
 remain unimplemented; RUN remains refused.
+
+`A04_AUDIO_WAVE_DMA_PROBE=1` is an additional default-off PnP/WaveRT
+integration diagnostic. Before the PortCls MDL is returned to a client, it
+calls the DMA adapter's `GetScatterGatherList` at DISPATCH_LEVEL, requires a
+single complete aligned 32-bit device-address segment, and immediately calls
+`PutScatterGatherList` from the adapter callback. It never publishes that
+address to DL1, never enables DMA, and does not retain it as a live mapping.
+The test has a one-second bounded wait. On timeout an adapter callback may
+still arrive: the MDL, PortCls mapping, adapter, PDO and parent lease remain
+retained, and PnP unbind is refused. This is a deliberately conservative leak,
+not a cancellation or drain proof. Failed mapping without a callback is freed.
+The real parent still rejects the codec and live PCM prerequisites and RUN
+remains disabled. Host tests simulate immediate and late callbacks, invalid
+segments, timeout and PnP/WaveRT retention; no target execution is claimed.
+The packet-DMA API's CPU-access restrictions preclude using this short-lived
+probe as proof of continuous WaveRT ring coherence. The result is not kept as
+an AFE logical address and does not establish the next mapping's address.

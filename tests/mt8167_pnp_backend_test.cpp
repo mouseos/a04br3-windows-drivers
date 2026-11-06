@@ -12,6 +12,16 @@ static int parent_mute(PVOID){return 0;}
 static int parent_unmutes;
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
 static int live_verified,voice_starts,voice_stops;
+#if defined(A04_AUDIO_WAVE_DMA_PROBE) && A04_AUDIO_WAVE_DMA_PROBE
+static int probeCalls;
+NTSTATUS Mt8167ProbeWaveDma(PDMA_ADAPTER a,PDEVICE_OBJECT p,PMDL m,ULONG n){assert(a && p && m && n==8192);probeCalls++;
+#if defined(A04_TEST_PROBE_TIMEOUT) && A04_TEST_PROBE_TIMEOUT
+ return STATUS_IO_TIMEOUT;
+#else
+ return STATUS_SUCCESS;
+#endif
+}
+#endif
 static int verify_pcm(PVOID,PVOID mdl,ULONGLONG logical,ULONG size){return !(live_verified && mdl && logical==0x100000 && size==8192);}
 static int voice_start(PVOID){voice_starts++;
 #if defined(A04_TEST_VOICE_FAILURE) && A04_TEST_VOICE_FAILURE
@@ -177,14 +187,25 @@ int main(){
  assert(Mt8167PnpBackendAttachShared(owner,&shared)==STATUS_DEVICE_NOT_READY);
  const Mt8167StreamBackend *api=Mt8167PnpBackendInterface(owner);api->reference(api->context);
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
- { _MDL portMdl{data,8192};BOOLEAN exposed=TRUE;
+ { _MDL portMdl{data,8192};BOOLEAN exposed=TRUE; (void)exposed;
    assert(api->bindWaveBuffer && api->unbindWaveBuffer);
+#if defined(A04_TEST_PROBE_TIMEOUT) && A04_TEST_PROBE_TIMEOUT
+   assert(api->bindWaveBuffer(api->context,&portMdl,data,8192)==STATUS_IO_TIMEOUT && probeCalls==1);
+   assert(api->unbindWaveBuffer(api->context,&portMdl)==STATUS_DEVICE_NOT_READY);
+   Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);api->dereference(api->context);
+   assert(!freed && !puts && parent_refs==2 && test_pdo_refs==1);return 0;
+#else
    assert(!api->bindWaveBuffer(api->context,&portMdl,data,8192));
+#if defined(A04_AUDIO_WAVE_DMA_PROBE) && A04_AUDIO_WAVE_DMA_PROBE
+   assert(probeCalls==1);
+#endif
    assert(api->bindWaveBuffer(api->context,&portMdl,data,8192)==STATUS_DEVICE_NOT_READY);
    live_verified=1;assert(api->start(api->context,&exposed)==STATUS_DEVICE_NOT_READY && !exposed && !voice_starts);
    assert(!api->unbindWaveBuffer(api->context,&portMdl));
    Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);api->dereference(api->context);
-   assert(!freed && puts==1 && !parent_refs && !test_pdo_refs);return 0; }
+   assert(!freed && puts==1 && !parent_refs && !test_pdo_refs);return 0;
+#endif
+ }
 #endif
  PMDL mdl=nullptr;ULONG n=0,offset=9;MEMORY_CACHING_TYPE cache;
  test_audio_irql=1;assert(api->allocate(api->context,8192,&mdl,&n,&offset,&cache)==STATUS_DEVICE_NOT_READY && !mdl);test_audio_irql=0;

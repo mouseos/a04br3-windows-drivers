@@ -99,7 +99,17 @@ public:
             NTSTATUS result=Mt8167AllocateBuffer(port,size,&buffer);
             if (!NT_SUCCESS(result)) return result;
             result=backend.bindWaveBuffer(backend.context,buffer.mdl,buffer.mapping,buffer.bytes);
-            if (!NT_SUCCESS(result)) { (void)Mt8167ReleaseUnpublishedBuffer(&buffer);return result; }
+            if (!NT_SUCCESS(result)) {
+#if defined(A04_AUDIO_WAVE_DMA_PROBE) && A04_AUDIO_WAVE_DMA_PROBE
+                if(result==STATUS_IO_TIMEOUT) {
+                    /* Callback can outlive this stream. Retain the backend,
+                     * port allocation and MDL even though no client got it. */
+                    backendMdl=buffer.mdl;backendBytes=buffer.bytes;everStarted=true;
+                    return result;
+                }
+#endif
+                (void)Mt8167ReleaseUnpublishedBuffer(&buffer);return result;
+            }
             backendMdl=buffer.mdl;backendBytes=buffer.bytes;
             *mdl=buffer.mdl;*actual=buffer.bytes;*offset=0;*cache=MmNonCached;
             return STATUS_SUCCESS;

@@ -1182,3 +1182,21 @@ test-mt6630-windows-irq-firmware:
 	@mkdir -p build
 	$(CC) $(CFLAGS) -DA04_WIFI_SESSION_DIAGNOSTIC=1 -DA04_WIFI_IRQ_DIAGNOSTIC=1 -Itests/firmware_irq_stubs -Itests/shared_wdf_stubs -Idrivers/network/mt6630 drivers/network/mt6630/windows_irq_firmware.c tests/mt6630_windows_irq_firmware_test.c -o build/mt6630_windows_irq_firmware_test
 	./build/mt6630_windows_irq_firmware_test
+
+test: test-mt8167-wave-dma-probe
+.PHONY: test-mt8167-wave-dma-probe
+test-mt8167-wave-dma-probe:
+	@mkdir -p build
+	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -std=c++11 -Itests/wave_dma_probe_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/wave_dma_probe.cpp tests/mt8167_wave_dma_probe_test.cpp -o build/mt8167_wave_dma_probe_test
+	./build/mt8167_wave_dma_probe_test
+
+.PHONY: test-mt8167-wave-dma-probe-pnp
+test: test-mt8167-wave-dma-probe-pnp
+test-mt8167-wave-dma-probe-pnp: test-mt8167-pnp-run-diagnostic
+	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_TEST_PNP_BACKEND=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_AUDIO_QUERY_SHARED=1 -DA04_AUDIO_MAP_AFE=1 -DA04_AUDIO_IRQ_DIAGNOSTIC=1 -DA04_AUDIO_RUN_DIAGNOSTIC=1 -DA04_AUDIO_VOICE_PCM_DIAGNOSTIC=1 -DA04_AUDIO_WAVE_DMA_PROBE=1 -DA04_TEST_PROBE_TIMEOUT=1 -Itests/audio_owner_stubs -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/pnp_backend.cpp drivers/audio/mt8167-afe/afe_mapping.cpp drivers/audio/mt8167-afe/common_dma.cpp drivers/audio/mt8167-afe/dma_adapter.cpp drivers/audio/mt8167-afe/shared_audio.c drivers/audio/mt8167-afe/irq_windows.cpp drivers/audio/mt8167-afe/dl1_engine.c drivers/audio/mt8167-afe/dl1.c tests/mt8167_pnp_backend_test.cpp build/mt8167_run_parent_host.o -o build/mt8167_wave_dma_probe_pnp_test
+	./build/mt8167_wave_dma_probe_pnp_test
+	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -std=c++11 -DA04_TEST_COMMON_DMA=1 -DA04_TEST_PNP_BACKEND=1 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_AUDIO_QUERY_SHARED=1 -DA04_AUDIO_MAP_AFE=1 -DA04_AUDIO_IRQ_DIAGNOSTIC=1 -DA04_AUDIO_RUN_DIAGNOSTIC=1 -DA04_AUDIO_VOICE_PCM_DIAGNOSTIC=1 -DA04_AUDIO_WAVE_DMA_PROBE=1 -Itests/audio_owner_stubs -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/pnp_backend.cpp drivers/audio/mt8167-afe/afe_mapping.cpp drivers/audio/mt8167-afe/common_dma.cpp drivers/audio/mt8167-afe/dma_adapter.cpp drivers/audio/mt8167-afe/shared_audio.c drivers/audio/mt8167-afe/irq_windows.cpp drivers/audio/mt8167-afe/dl1_engine.c drivers/audio/mt8167-afe/dl1.c tests/mt8167_pnp_backend_test.cpp build/mt8167_run_parent_host.o -o build/mt8167_wave_dma_probe_pnp_success_test
+
+	./build/mt8167_wave_dma_probe_pnp_success_test
+	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -Wno-misleading-indentation -std=c++11 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_TEST_MINIPORT=1 -DA04_AUDIO_VOICE_PCM_DIAGNOSTIC=1 -DA04_AUDIO_WAVE_DMA_PROBE=1 -DA04_TEST_WAVE_BIND_TIMEOUT=1 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/wavert_miniport.cpp drivers/audio/mt8167-afe/wavert_dma.cpp tests/mt8167_wavert_miniport_test.cpp -o build/mt8167_wave_dma_probe_timeout_test
+	./build/mt8167_wave_dma_probe_timeout_test
