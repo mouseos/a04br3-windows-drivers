@@ -598,6 +598,13 @@ static NTSTATUS OwnerSetState(void *ctx,PPORTWAVERTSTREAM port,KSSTATE state)
     /* Keep client/state admission atomic with PnP/checkin. Locked helpers
      * never reacquire the mutex; DPC notification never takes this mutex. */
     OwnerLock(o);NTSTATUS result=STATUS_DEVICE_NOT_READY;
+    if(o->online && !o->enginePoison && o->engineClient==port &&
+       InterlockedCompareExchange(&o->irq.fault,0,0)) {
+        /* Even a duplicate RUN must fail after an asynchronous ISR fault.
+         * At PASSIVE_LEVEL also mute; stop retains the allocation on error. */
+        if(o->transport.state==AUDIO_RUNNING)(void)OwnerStopLocked(o);
+        InterlockedExchange(&o->enginePoison,1);
+    }
     if(o->online && !o->enginePoison && o->engineClient==port) {
         if(state==o->engineState)result=STATUS_SUCCESS;
         else if(state==KSSTATE_RUN) {

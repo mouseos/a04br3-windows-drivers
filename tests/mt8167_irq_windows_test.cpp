@@ -5,9 +5,9 @@ static int pending, fail, calls, fault_seen, total, starts, stops;
 static uint32_t current;static int read_fail,reads;
 static int read_cur(void *,uint32_t off,uint32_t *value) { assert(off==0x44);reads++;if(read_fail)return -1;*value=current;return 0; }
 extern "C" int fake_dummy(void) { return 0; }
-extern "C" int mt8167_dl1_interrupt(struct mt8167_dl1_engine *, int *notify) { if(fail)return -1; *notify=pending;return pending; }
+extern "C" int mt8167_dl1_interrupt(struct mt8167_dl1_engine *e, int *notify) { if(fail){e->state=MT8167_DL1_POISONED;return -1;} *notify=pending;return pending; }
 extern "C" int mt8167_dl1_start(struct mt8167_dl1_engine *e,const struct mt8167_dl1_plan *) { starts++;e->state=MT8167_DL1_RUNNING;return 0; }
-extern "C" int mt8167_dl1_stop(struct mt8167_dl1_engine *e) { stops++;e->state=MT8167_DL1_STOPPED;return 0; }
+extern "C" int mt8167_dl1_stop(struct mt8167_dl1_engine *e) { stops++;if(e->state==MT8167_DL1_POISONED)return -1;e->state=MT8167_DL1_STOPPED;return 0; }
 static void notify(void *, ULONG count, BOOLEAN fault) { calls++;total+=(int)count;fault_seen=fault; }
 int main() {
  Mt8167Irq irq{}; mt8167_dl1_engine engine{};
@@ -27,10 +27,12 @@ int main() {
  irq.dpc.fn(&irq.dpc,irq.dpc.ctx,(PVOID)(ULONG_PTR)(irq.generation-1),nullptr);
  assert(irq.pending==pendingBefore && calls==callbacks);
  fail=1; assert(!test_interrupt.fn(&test_interrupt,test_interrupt.ctx) && irq.dpc.queued);
+ assert(stops==1 && engine.state==MT8167_DL1_POISONED);
+ assert(!test_interrupt.fn(&test_interrupt,test_interrupt.ctx) && stops==1);
  assert(Mt8167SynchronizedPosition(&irq,&plan,&offset)==-1 && offset==99);
  irq.dpc.queued=0; irq.dpc.fn(&irq.dpc,irq.dpc.ctx,(PVOID)(ULONG_PTR)irq.generation,nullptr); assert(calls==2 && fault_seen);
  assert(Mt8167SynchronizedStart(&irq,&plan)==-1 && starts==1);
- assert(!Mt8167SynchronizedStop(&irq) && stops==1);
+ assert(Mt8167SynchronizedStop(&irq)==-1 && stops==2 && engine.state==MT8167_DL1_POISONED);
  pending=1;fail=1;assert(!test_interrupt.fn(&test_interrupt,test_interrupt.ctx) && !irq.dpc.queued);
  Mt8167DisconnectIrq(&irq); assert(!irq.interrupt && !irq.dpc.queued && !test_interrupt.fn);
 }

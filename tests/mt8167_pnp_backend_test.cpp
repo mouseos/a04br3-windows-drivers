@@ -212,7 +212,12 @@ static void engineLifecycle(PDMA_ADAPTER adapter,Resources *resources) {
     assert(first.allocations==1 && second.allocations==0 && dmaMaps==1 && !dmaReleases);
     assert(!api->setState(api->context,&second,KSSTATE_RUN));
     assert(voice_starts==1 && digitalCalls==1 && !voice_stops);
-    irq->fault=1; /* A previous ISR fault must stay poisoned even if stop reads back. */
+    irq->fault=1;irq->engine->state=MT8167_DL1_POISONED;
+    /* Duplicate RUN after an ISR fault cannot bypass failure admission. */
+    assert(api->setState(api->context,&second,KSSTATE_RUN)==STATUS_DEVICE_NOT_READY);
+    assert(!(*reinterpret_cast<uint32_t *>(mmio+0x10)&2) &&
+           !(*reinterpret_cast<uint32_t *>(mmio+0x3a0)&1));
+    assert(irq->engine->state==MT8167_DL1_POISONED && !irq->armed);
     assert(api->setState(api->context,&second,KSSTATE_STOP)==STATUS_DEVICE_NOT_READY);
     assert(api->setState(api->context,&second,KSSTATE_RUN)==STATUS_DEVICE_NOT_READY);
     assert(!api->checkin(api->context,&second,mdl));

@@ -25,7 +25,8 @@ static BOOLEAN Mt8167Isr(PKINTERRUPT interrupt, PVOID context)
     int notify = 0, result;
     UNREFERENCED_PARAMETER(interrupt);
     if (!InterlockedCompareExchange(&irq->active, 0, 0) ||
-        !InterlockedCompareExchange(&irq->armed,0,0)) return FALSE;
+        !InterlockedCompareExchange(&irq->armed,0,0) ||
+        InterlockedCompareExchange(&irq->fault,0,0)) return FALSE;
     /* Delivery may start immediately after IoConnectInterrupt, before DL1
      * is started, or after a synchronized stop. Neither is an engine fault. */
     if (irq->engine->state == MT8167_DL1_IDLE ||
@@ -33,6 +34,10 @@ static BOOLEAN Mt8167Isr(PKINTERRUPT interrupt, PVOID context)
     result = mt8167_dl1_interrupt(irq->engine, &notify);
     if (result < 0) {
         InterlockedExchange(&irq->fault, 1);
+        /* ISR already holds interrupt synchronization and this generation
+         * owns a started DL1. Request disable/mask/ack once, retaining poison
+         * and armed so the queued DPC can still deliver the fault. */
+        (void)mt8167_dl1_stop(irq->engine);
         KeInsertQueueDpc(&irq->dpc, (PVOID)(ULONG_PTR)InterlockedCompareExchange(&irq->generation,0,0), NULL);
         return FALSE;
     }
@@ -40,7 +45,12 @@ static BOOLEAN Mt8167Isr(PKINTERRUPT interrupt, PVOID context)
         LONG old;
         do {
             old = InterlockedCompareExchange(&irq->pending, 0, 0);
-            if (old == 0x7fffffffL) { InterlockedExchange(&irq->fault, 1); break; }
+            if (old == 0x7fffffffL) {
+                InterlockedExchange(&irq->fault, 1);
+                irq->engine->state=MT8167_DL1_POISONED;
+                (void)mt8167_dl1_stop(irq->engine);
+                break;
+            }
         } while (InterlockedCompareExchange(&irq->pending, old + 1, old) != old);
         KeInsertQueueDpc(&irq->dpc, (PVOID)(ULONG_PTR)InterlockedCompareExchange(&irq->generation,0,0), NULL);
     }

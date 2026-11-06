@@ -207,3 +207,32 @@ productionの照会helperはARM32 Thumb Windows COFFまでコード生成を確�
 DDI宣言を最小化した局所compileでありWDK compile/linkではない。
 ログは作業ルートport/gsi/logs/ios-feasibility/windows-rt-audio-normal-nc-host-20261107.log。
 一次資料PDF/TXTは同logs内windows-rt-audio-arm-ddi0406-20261107.*であり、repoへ混ぜない。
+
+## IRQ fault後の停止要求（次候補、固定de214c8とは別）
+
+ISRのMMIOエラーはengineをPOISONEDにする。従来のstopはRUNNINGのみを
+受け付けたため、後続のSTOPからDL1 disable/IRQ mask/ackへ到達しなかった。
+次候補では、実行済みDL1を所有するISRの同期範囲内で停止操作を一度要求する。
+period通知counterのoverflowも同じ扱いにし、sticky fault後のISRでは再試行しない。
+armedはfault DPCの通知まで維持し、PASSIVEのSetStateでMute/同期stopを試みる。
+重複RUNを含め、その後の状態変更は失敗する。
+
+stopはPOISONEDでもDL1 disable、IRQ1 mask、IRQ1 ackとreadbackを個別に試す。
+先行操作が失敗しても後段操作を短絡しない。read-modify-writeのreadが失敗した
+registerには推測値を書かない。以前のpoisonはreadbackが正常でも解除しない。
+この関数の呼出元は当該DL1/IRQ1の排他的所有を維持する必要がある。
+初回startの所有権precondition失敗を、この停止経路で強制回復することはしない。
+DMA/SG/MDL/parent lease/D0は保持し、fabric drainや解放の成功は主張しない。
+
+根拠はボードLinux `port/gsi/kernel-4.14/sound/soc/mediatek/mt8167/mt8167-afe-pcm.c`
+の `mt8167_afe_dais_trigger` STOP/SUSPEND（2403–2410行）と
+`mt8167_afe_disable_irq` IRQ1（838–842行）：AFE_DAC_CON0のDL1 bit1を落とし、
+AFE_IRQ_MCU_CON bit0をmaskしてAFE_IRQ_CLR bit0をackする。
+`mt8167_afe_irq_handler`（3541–3582行）もread失敗時にclear経路へ進む。
+Windowsの実装では所有するIRQ1だけを操作し、他sourceはclearしない。
+
+必要な既存DL1/IRQ/EnginePcm/PnP/first-playback fixtureを一括確認した。
+WDK build、MMIO実動作、AudioSrv再生、可聴成功は未確認。
+親ソース/INF/probeは変更していない。上記audio増分build recipeで
+一致するEnginePcm親を再利用できる。既存de214c8/e4dff2b候補は置換せず、
+採用する場合だけ新audio SYSのsource/hashを別manifestで記録する。

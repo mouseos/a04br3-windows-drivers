@@ -73,14 +73,21 @@ int mt8167_dl1_restart(struct mt8167_dl1_engine *e,const struct mt8167_dl1_plan 
 { return start(e,p,1,reset); }
 int mt8167_dl1_stop(struct mt8167_dl1_engine *e)
 {
-    uint32_t dac, irq, status;
-    if (!e || e->state != MT8167_DL1_RUNNING) return -1;
-    if (update(e, DAC0, 2u, 0) || update(e, IRQ_CON, 1u, 0) ||
-        e->io.write32(e->io.context, IRQ_CLEAR, 1u) ||
-        e->io.read32(e->io.context, DAC0, &dac) ||
-        e->io.read32(e->io.context, IRQ_CON, &irq) ||
-        e->io.read32(e->io.context, IRQ_STATUS, &status) ||
-        (dac & 2u) || (irq & 1u) || (status & 1u)) return bad(e);
+    uint32_t dac = 2u, irq = 1u, status = 1u;
+    int failed;
+    if (!e || !e->io.read32 || !e->io.write32 ||
+        (e->state != MT8167_DL1_RUNNING && e->state != MT8167_DL1_POISONED)) return -1;
+    failed = e->state == MT8167_DL1_POISONED;
+    /* Linux mt8167_afe_dais_trigger STOP -> mt8167_afe_disable_irq:
+     * disable this memif, mask IRQ1, acknowledge IRQ1. Attempt each even
+     * after an MMIO error. Never promote a previously poisoned engine. */
+    if (update(e, DAC0, 2u, 0)) failed = 1;
+    if (update(e, IRQ_CON, 1u, 0)) failed = 1;
+    if (e->io.write32(e->io.context, IRQ_CLEAR, 1u)) failed = 1;
+    if (e->io.read32(e->io.context, DAC0, &dac)) failed = 1;
+    if (e->io.read32(e->io.context, IRQ_CON, &irq)) failed = 1;
+    if (e->io.read32(e->io.context, IRQ_STATUS, &status)) failed = 1;
+    if (failed || (dac & 2u) || (irq & 1u) || (status & 1u)) return bad(e);
     /* Disabled DL1 and acknowledged IRQ do NOT prove DMA has drained. */
     e->state = MT8167_DL1_STOPPED;
     return 0;

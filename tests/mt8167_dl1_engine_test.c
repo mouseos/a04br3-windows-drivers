@@ -34,7 +34,13 @@ int main(void) {
  }
  for (i=1;i<=8;i++) { memset(&m,0,sizeof m); e.state=MT8167_DL1_IDLE;
    assert(mt8167_dl1_start(&e,&p)==0); m.fail=m.calls+i;
+   m.reg[0x3a4/4]=1;
    assert(mt8167_dl1_stop(&e)==-1 && e.state==MT8167_DL1_POISONED);
+   /* No early failure may skip the independent IRQ acknowledge. */
+   if(i!=5)assert(m.reg[0x3a4/4]==0);
+   m.fail=0;
+   assert(mt8167_dl1_stop(&e)==-1 && e.state==MT8167_DL1_POISONED);
+   assert(!(m.reg[0x10/4]&2) && !(m.reg[0x3a0/4]&1) && !m.reg[0x3a4/4]);
  }
  memset(&m,0,sizeof m);e.state=MT8167_DL1_IDLE;assert(!mt8167_dl1_start(&e,&p));
  m.reg[0x3a4/4]=1;m.stuck_irq=1;assert(mt8167_dl1_stop(&e)==-1 && e.state==MT8167_DL1_POISONED);
