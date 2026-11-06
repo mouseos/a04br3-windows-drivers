@@ -366,8 +366,11 @@ NTSTATUS A04DisplayResources::GcePresentAndRestore(ULONG event,ULONG savedL0,ULO
     if(validate(proofContext,savedL0,savedL3)!=1)return STATUS_DEVICE_NOT_READY;
     if(KeReadStateEvent(stopEvent))return STATUS_CANCELLED;
     GceFrameAttempted=TRUE;
+    /* Both L0 and L3 hit the active ROI on the observed firmware; do not
+     * leave L3 scanning the old framebuffer above the new L0. Validation
+     * must prove both layer layouts match this one tightly packed surface. */
     status=holder->iface.Submit(holder->iface.Header.Context,holder->token,event,
-                                owner->shared.display_dma,savedL3);
+                                owner->shared.display_dma,owner->shared.display_dma);
     A04DisplayTrace(0x99,status);
     if(NT_SUCCESS(status)) {
         timeout.QuadPart=-50000000LL;

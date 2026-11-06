@@ -642,3 +642,34 @@ retained; timeout or uncertain submission retains them as well. This connects
 the conditional execution path, but the current platform supplies no such
 validator or ownership proof and has no WDDM restore caller. It does not prove
 that either plane latched or that either scanout surface can be released.
+
+### Four-CPU and active-layer observation
+
+On the user's `windows-rt-fourcpu-ovl-43f3aac-uart.log` boot, steps 5E=3E8,
+5F=0, 66=0, 60=FA000, 61=0, 80=0, 82=0 and 81=0 were reported in the
+captured log; the CRC decoder returns `pass_60s` for four logical CPUs.
+The Linux MT8167 definitions for `OVL_ADDCON_DBG` decode 829D42F9 as
+(x=761,y=669) and 80014279 as (x=633,y=1), with L0 and L3 hit set in both
+samples. L0/L3 source bits were both enabled (SRC_CON=9). These are snapshots
+of current composition, not a direct-scanout or latch observation. A proposed
+full-frame replacement must account for both layers rather than silently leave
+L3 above L0. Sequential L0/L3 writes are not proven atomic.
+
+A separate default-off WDDM path uses V3 `GetDmaTransferInfo`, synchronous
+`AllocateAdapterChannelEx` and `MapTransferEx`, preserving the actual map
+register handle. After 1000 GPU tile fences and the frame seal it calls
+`FlushAdapterBuffersEx` on the same MDL, exact offset/length and FALSE
+(device-to-memory) direction before CPU comparison. Failure retains any
+published mapping. This avoids treating an opaque scatter/gather list as a map
+register handle; it is not proof of display-side DMA visibility, no bounce,
+GPU stop or scanout retirement. The original diagnostic remains unchanged by
+default. Microsoft documents [AllocateAdapterChannelEx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_adapter_channel_ex),
+[MapTransferEx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pmap_transfer_ex),
+and [FlushAdapterBuffersEx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pflush_adapter_buffers_ex).
+
+When an independent platform proof provider is eventually available,
+`GcePresentAndRestore` can issue a two-layer transaction, wait for stop or a
+bounded interval, and request restoration of both original addresses. It is
+not currently called: no provider proves secure GCE release, event exclusivity,
+both saved mappings, target visibility, or latch/retirement. EOC and a successful
+restore request report command progress only, not a displayed or retired frame.
