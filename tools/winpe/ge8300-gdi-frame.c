@@ -2,6 +2,9 @@
  * A real Win32/GDI workload. GPU use is established by the DOD UART traces,
  * not by this application returning successfully. No keyboard or camera. */
 #include <windows.h>
+#ifndef A04_GE8300_GDI_D0_TRANSITION
+#define A04_GE8300_GDI_D0_TRANSITION 0
+#endif
 static DWORD pixels[800*1280];
 static unsigned frame=1;
 static int screen_width,screen_height;
@@ -29,6 +32,9 @@ static LRESULT CALLBACK FrameProc(HWND w,UINT message,WPARAM wp,LPARAM lp)
         EndPaint(w,&ps);GdiFlush();return 0;
     }
     if(message==WM_TIMER) {
+#if A04_GE8300_GDI_D0_TRANSITION
+        if(frame==1)SetTimer(w,1,2000,NULL);
+#endif
         if(frame>=8){DestroyWindow(w);return 0;}
         frame++;InvalidateRect(w,NULL,FALSE);UpdateWindow(w);return 0;
     }
@@ -40,7 +46,15 @@ void WinMainCRTStartup(void)
     WNDCLASSA wc;HWND window;MSG msg;HINSTANCE instance=GetModuleHandleA(NULL);
     /* Startup diagnostic owns the present mutex until all sixteen frames and
      * restoration complete. This wait avoids counting them as GDI presents. */
+#if A04_GE8300_GDI_D0_TRANSITION
+    /* The matched provider's diagnostic-only S0 idle timeout is 30 s.
+     * Hide the console caret, hold a real GDI frame for 40 s, then repaint
+     * to let KMDF resume the PDO and exercise retained CPU fallback. */
+    Sleep(5000);
+    ShowWindow(GetConsoleWindow(),SW_HIDE);
+#else
     Sleep(45000);
+#endif
     screen_width=GetSystemMetrics(SM_CXSCREEN);screen_height=GetSystemMetrics(SM_CYSCREEN);
     ReportNumber("GE8300_GDI_WIDTH=",screen_width);ReportNumber("GE8300_GDI_HEIGHT=",screen_height);
     if(screen_width<=0 || screen_height<=0 || screen_width>1280 || screen_height>1280 ||
@@ -50,7 +64,15 @@ void WinMainCRTStartup(void)
     window=CreateWindowExA(WS_EX_TOPMOST,wc.lpszClassName,"Imagination PowerVR GE8300",WS_POPUP|WS_VISIBLE,
         0,0,screen_width,screen_height,NULL,NULL,instance,NULL);
     if(!window)ExitProcess(4);
-    ShowWindow(window,SW_SHOW);UpdateWindow(window);SetTimer(window,1,2000,NULL);
+    ShowWindow(window,SW_SHOW);UpdateWindow(window);
+#if A04_GE8300_GDI_D0_TRANSITION
+    SetTimer(window,1,40000,NULL);
+#else
+    SetTimer(window,1,2000,NULL);
+#endif
     while(GetMessageA(&msg,NULL,0,0)>0){TranslateMessage(&msg);DispatchMessageA(&msg);}
+#if A04_GE8300_GDI_D0_TRANSITION
+    ShowWindow(GetConsoleWindow(),SW_SHOW);
+#endif
     ExitProcess(frame==8?0:6);
 }
