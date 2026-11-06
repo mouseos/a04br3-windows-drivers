@@ -16,7 +16,17 @@ struct a04_m111_ta_fields {
 struct a04_m111_3d_fields {
     uint64_t dummy_stencil;
     uint32_t word00, word1c, word20, flags, frame, hwrt, zbuffer, sbuffer, msaa;
+    uint32_t zls_stride,sls_stride;
 };
+/* GLES 0x15e9c8 / 0x1612a0: remaining proven TA register stores.
+ * word20 is intentionally unnamed; register semantics remain separate from
+ * the observed address/value layout. No writes to 0x3c/0x44/0x80 holes. */
+struct a04_m111_ta_registers {
+    uint64_t ppp_ctrl,vdm_stream,border_table,word20,tpu;
+    uint32_t word38,pds_code40;
+};
+int a04_m111_patch_ta_registers(void *record,size_t bytes,
+    const struct a04_m111_ta_registers *registers);
 uint32_t a04_m111_ta_flags(uint32_t client_flags,uint32_t rt_flags);
 uint32_t a04_m111_3d_flags(uint32_t client_flags,uint32_t rt_flags,int context_flag);
 /* Writes only the offsets proved by libsrv_um RGXKickTA / FUN_0012877c.
