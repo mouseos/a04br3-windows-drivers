@@ -33,10 +33,12 @@ typedef struct { int signaled; } KEVENT;
 #define MmGetMdlByteOffset(m) ((m)->offset)
 #define MmGetMdlByteCount(m) ((m)->size)
 #define MmGetMdlVirtualAddress(m) ((m)->address)
-extern int probe_allocated;
+extern int probe_allocated,probe_flushes;
 inline PVOID ExAllocatePoolWithTag(int,size_t n,ULONG){probe_allocated++;return malloc(n);}
 inline void ExFreePoolWithTag(PVOID p,ULONG){probe_allocated--;free(p);}
 inline LONG InterlockedDecrement(volatile LONG *p){return __sync_sub_and_fetch(p,1);}
+inline void KeFlushIoBuffers(PMDL,int read,int dma){if(!read && dma)probe_flushes++;}
+inline void KeMemoryBarrier(){}
 inline void KeInitializeEvent(KEVENT *e,int,int){e->signaled=0;}
 inline void KeSetEvent(KEVENT *e,int,int){e->signaled=1;}
 inline int KeGetCurrentIrql(){return 0;}

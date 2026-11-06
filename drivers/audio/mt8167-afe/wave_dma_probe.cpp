@@ -34,6 +34,10 @@ NTSTATUS Mt8167ProbeWaveDma(PDMA_ADAPTER adapter,PDEVICE_OBJECT pdo,PMDL mdl,ULO
     if(!p)return STATUS_INSUFFICIENT_RESOURCES;
     p->refs=2;p->adapter=adapter;p->bytes=bytes;p->result=STATUS_DEVICE_CONFIGURATION_ERROR;
     KeInitializeEvent(&p->completed,NotificationEvent,FALSE);
+    /* This is before the MDL is returned to the client; no concurrent CPU
+     * writes are admitted during the packet-DMA mapping probe. */
+    KeFlushIoBuffers(mdl,FALSE,TRUE);
+    KeMemoryBarrier();
     KeRaiseIrql(DISPATCH_LEVEL,&oldIrql);
     result=adapter->DmaOperations->GetScatterGatherList(adapter,pdo,mdl,MmGetMdlVirtualAddress(mdl),
              bytes,ProbeCallback,p,TRUE);
