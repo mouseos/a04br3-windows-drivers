@@ -351,3 +351,9 @@ firmware 診断はボード初期化前に固定パスから WMT と WLAN の sn
 選択とハッシュ検証は列挙後、転送前に行い、snapshot は終了時に消去する。
 これは親 Acquire、IRQ の接続、WDF 子ドライバや停止時の資源隔離を完成させる
 ものではなく、実機試験も行っていない。
+
+共有親 interface の Acquire 失敗は、lease やハードウェア変更が残らない契約。
+現行親は操作前に無条件拒否する。session はこの拒否を REJECTED として区別し、
+成功応答後の無効な generation や失敗は QUARANTINED のまま保持する。
+WDF 子による参照寿命・開始・停止は未接続で、上記の区別自体は実機動作や
+PnP resource が quarantine 中に保持される保証にはならない。

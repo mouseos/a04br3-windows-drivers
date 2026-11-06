@@ -2,9 +2,9 @@
 #include <assert.h>
 #include <string.h>
 #include "windows_session.h"
-static unsigned stage;static int reject,fail_irq,fail_start,fail_drain;
+static unsigned stage;static int reject,zero_generation,fail_irq,fail_start,fail_drain;
 int KeGetCurrentIrql(void){return PASSIVE_LEVEL;}
-static NTSTATUS acquire(PVOID p,ULONG *g){(void)p;assert(stage++==0);if(reject)return STATUS_DEVICE_NOT_READY;*g=7;return 0;}
+static NTSTATUS acquire(PVOID p,ULONG *g){(void)p;assert(stage++==0);if(reject)return STATUS_DEVICE_NOT_READY;*g=zero_generation?0:7;return 0;}
 static int live(PVOID p,ULONG g){(void)p;assert(g==7);return 1;}
 static NTSTATUS release(PVOID p,ULONG g){(void)p;assert(g==7&&stage++==8);return 0;}
 static int update(PVOID p,ULONG g,unsigned b,unsigned o,ULONG c,ULONG v){(void)p;(void)g;(void)b;(void)o;(void)c;(void)v;return 0;}
@@ -22,8 +22,9 @@ int a04_windows_diagnostic_start(struct a04_windows_diagnostic *d,A04_SHARED_WIF
 int a04_windows_diagnostic_stop(struct a04_windows_diagnostic *d){struct a04_wifi_life_ops *o=&d->life.ops;return o->mask_and_drain_irq(o->context)||o->drain_io(o->context)||o->unmap_host(o->context)||o->release_lease(o->context);}
 int main(void){struct a04_windows_session s={0};A04_SHARED_WIFI_INTERFACE p={0};struct a04_windows_session_platform f={0};CM_PARTIAL_RESOURCE_DESCRIPTOR r={0},t={0};uint8_t hash[32]={0};struct a04_wmt_startup_options opts={0};
  p.Header.Size=sizeof(p);p.Header.Version=A04_SHARED_WIFI_INTERFACE_VERSION;p.Acquire=acquire;p.ReleaseQuiescent=release;p.Live=live;p.UpdateShared=update;p.WriteShared=write_shared;f.connect_masked_irq=connect_irq;f.mask_and_drain_irq=irq;f.drain_io=io;
- reject=1;assert(a04_windows_session_start(&s,&p,&f,&r,&t,0x8000,hash,&opts));assert(s.state==A04_SESSION_QUARANTINED&&stage==1);assert(a04_windows_session_stop(&s));
- memset(&s,0,sizeof(s));stage=0;reject=0;assert(!a04_windows_session_start(&s,&p,&f,&r,&t,0x8000,hash,&opts));assert(s.state==A04_SESSION_READY);assert(!a04_windows_session_stop(&s)&&stage==9&&s.state==A04_SESSION_STOPPED);
+ reject=1;assert(a04_windows_session_start(&s,&p,&f,&r,&t,0x8000,hash,&opts));assert(s.state==A04_SESSION_REJECTED&&stage==1);assert(a04_windows_session_stop(&s));
+ memset(&s,0,sizeof(s));stage=0;reject=0;zero_generation=1;assert(a04_windows_session_start(&s,&p,&f,&r,&t,0x8000,hash,&opts));assert(s.state==A04_SESSION_QUARANTINED && stage==1);
+ memset(&s,0,sizeof(s));stage=0;zero_generation=0;assert(!a04_windows_session_start(&s,&p,&f,&r,&t,0x8000,hash,&opts));assert(s.state==A04_SESSION_READY);assert(!a04_windows_session_stop(&s)&&stage==9&&s.state==A04_SESSION_STOPPED);
  memset(&s,0,sizeof(s));stage=0;fail_start=1;assert(a04_windows_session_start(&s,&p,&f,&r,&t,0x8000,hash,&opts));assert(!a04_windows_session_stop(&s)&&stage==9);
  memset(&s,0,sizeof(s));stage=0;fail_start=0;fail_drain=1;assert(!a04_windows_session_start(&s,&p,&f,&r,&t,0x8000,hash,&opts));assert(a04_windows_session_stop(&s)&&stage==7&&s.state==A04_SESSION_QUARANTINED&&s.host.base);
  memset(&s,0,sizeof(s));stage=0;fail_drain=0;fail_irq=1;assert(a04_windows_session_start(&s,&p,&f,&r,&t,0x8000,hash,&opts)&&stage==3&&s.state==A04_SESSION_QUARANTINED);return 0;}
