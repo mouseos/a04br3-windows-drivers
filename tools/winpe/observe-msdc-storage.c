@@ -9,12 +9,25 @@ static void out(const char*s){DWORD n=0,w;while(s[n])n++;WriteFile(GetStdHandle(
 static void hex(DWORD v){const char*h="0123456789ABCDEF";char b[9];unsigned i;for(i=0;i<8;i++)b[i]=h[(v>>(28-4*i))&15];b[8]=0;out(b);}
 static void hex64(ULONGLONG v){hex((DWORD)(v>>32));hex((DWORD)v);}
 static void wide(const WCHAR*s,unsigned limit){char c[2];c[1]=0;while(*s&&limit--){c[0]=(*s>=32&&*s<127)?(char)*s:'?';out(c);s++;}}
+/* Parse only the executable and one optional switch. cmd.exe may retain
+ * spaces or tabs immediately before redirected output. */
+static int command_mode(const WCHAR*s){const WCHAR*start;unsigned n=0;
+ if(!s||!*s)return -1;
+ if(*s==L'"'){s++;while(*s&&*s!=L'"')s++;if(*s!=L'"')return -1;s++;if(*s&&*s!=L' '&&*s!=L'\t')return -1;}
+ else while(*s&&*s!=L' '&&*s!=L'\t')s++;
+ while(*s==L' '||*s==L'\t')s++;if(!*s)return 0;
+ if(*s==L'"'){s++;start=s;while(*s&&*s!=L'"'){s++;n++;}if(*s!=L'"')return -1;s++;}
+ else {start=s;while(*s&&*s!=L' '&&*s!=L'\t'){s++;n++;}}
+ while(*s==L' '||*s==L'\t')s++;if(*s)return -1;
+ if(n==16&&CompareStringOrdinal(start,n,L"--verify-package",16,FALSE)==CSTR_EQUAL)return 1;
+ if(n==6&&CompareStringOrdinal(start,n,L"--wait",6,FALSE)==CSTR_EQUAL)return 2;
+ return -1;}
 static int file_pin(HCRYPTPROV provider,const WCHAR*path,const char*label,const char*expected){HANDLE f;HCRYPTHASH h=0;BYTE d[32];DWORD n,z=32,i;int ok=0;const char*digits="0123456789abcdef";
- out(label);out("=");f=CreateFileW(path,GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,0);if(f==INVALID_HANDLE_VALUE){out("OPEN_ERROR\r\n");return 0;}
+ out(label);out("=");f=CreateFileW(path,GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,0);if(f==INVALID_HANDLE_VALUE){out("OPEN_ERROR=");hex(GetLastError());out("\r\n");return 0;}
  {BY_HANDLE_FILE_INFORMATION info;if(!GetFileInformationByHandle(f,&info)||info.nNumberOfLinks!=1||(info.dwFileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_OFFLINE)))goto done;}
  if(!CryptCreateHash(provider,CALG_SHA_256,0,0,&h))goto done;
  do{if(!ReadFile(f,hashbuf,sizeof(hashbuf),&n,0)||(n&&!CryptHashData(h,hashbuf,n,0)))goto done;}while(n);
- if(!CryptGetHashParam(h,HP_HASHVAL,d,&z,0)||z!=32)goto done;for(i=0;i<32;i++)if(digits[d[i]>>4]!=expected[2*i]||digits[d[i]&15]!=expected[2*i+1]){out("MISMATCH\r\n");goto done;}out("MATCH\r\n");ok=1;
+ if(!CryptGetHashParam(h,HP_HASHVAL,d,&z,0)||z!=32)goto done;for(i=0;i<32;i++)if(digits[d[i]>>4]!=expected[2*i]||digits[d[i]&15]!=expected[2*i+1]){unsigned j;char q[3];q[2]=0;out("MISMATCH ACTUAL=");for(j=0;j<32;j++){q[0]=digits[d[j]>>4];q[1]=digits[d[j]&15];out(q);}out("\r\n");goto done;}out("MATCH\r\n");ok=1;
  done:if(h)CryptDestroyHash(h);if(!CloseHandle(f))ok=0;if(!ok)out("MSDC_PIN_REJECTED\r\n");return ok;}
 static int package(void){HCRYPTPROV p=0;int ok=1;if(!CryptAcquireContextW(&p,0,0,PROV_RSA_AES,CRYPT_VERIFYCONTEXT)){out("MSDC_PACKAGE_HASH_PROVIDER_FAILED\r\n");return 0;}
  if(!file_pin(p,L"X:\\a04br3\\a04-msdc-probe.inf","MSDC_PIN_INF","9bbf73d73c6dcad9f392e294a2cee7ca23209f80e4d36801e6b6a5781acb7192"))ok=0;
@@ -33,4 +46,11 @@ static void disk(void){HANDLE h;DWORD n=0,i,count;DRIVE_LAYOUT_INFORMATION_EX*d=
  count=d->PartitionCount;out("MSDC_DISK0_LAYOUT_STYLE=");hex(d->PartitionStyle);out(" COUNT=");hex(count);out(" BYTES=");hex(n);out("\r\n");
  if(count>(n-(DWORD)offsetof(DRIVE_LAYOUT_INFORMATION_EX,PartitionEntry))/sizeof(PARTITION_INFORMATION_EX)||count>128){out("MSDC_DISK0_LAYOUT_TRUNCATED\r\n");CloseHandle(h);return;}
  for(i=0;i<count;i++){PARTITION_INFORMATION_EX*p=&d->PartitionEntry[i];out("MSDC_GPT_ENTRY=");hex(p->PartitionNumber);out(" STYLE=");hex(p->PartitionStyle);out(" OFFSET=");hex64((ULONGLONG)p->StartingOffset.QuadPart);out(" LENGTH=");hex64((ULONGLONG)p->PartitionLength.QuadPart);if(p->PartitionStyle==PARTITION_STYLE_GPT){out(" NAME=");wide(p->Gpt.Name,36);}out("\r\n");}CloseHandle(h);}
-void mainCRTStartup(void){int started;WCHAR *c=GetCommandLineW(),*last=c;while(*c){if(*c==L' ')last=c+1;c++;}if(!lstrcmpW(last,L"--verify-package")){ExitProcess(package()?0:2);}if(!lstrcmpW(last,L"--wait")){out("MSDC_PNP_WAIT_MS=00001388\r\n");Sleep(5000);}service(L"a04msdcboot");service(L"a04msdcprobe");started=pnp();disk();out("MSDC_OBSERVATION_READ_ONLY\r\n");ExitProcess(started?0:4);}
+void mainCRTStartup(void){int started,mode=command_mode(GetCommandLineW());
+#ifdef A04_TEST_COMMANDLINE
+ out("MSDC_TEST_CMDLINE=[");wide(GetCommandLineW(),1024);out("]\r\n");
+#endif
+ if(mode<0){out("MSDC_ARGUMENT_ERROR\r\n");ExitProcess(2);}
+ if(mode==1){int ok;out("MSDC_MODE=VERIFY_PACKAGE\r\n");ok=package();out(ok?"MSDC_PACKAGE_VERIFIED\r\n":"MSDC_PACKAGE_REJECTED\r\n");ExitProcess(ok?0:2);}
+ if(mode==2){out("MSDC_MODE=WAIT\r\nMSDC_PNP_WAIT_MS=00001388\r\n");Sleep(5000);}else out("MSDC_MODE=OBSERVE\r\n");
+ service(L"a04msdcboot");service(L"a04msdcprobe");started=pnp();disk();out("MSDC_OBSERVATION_READ_ONLY\r\n");ExitProcess(started?0:4);}
