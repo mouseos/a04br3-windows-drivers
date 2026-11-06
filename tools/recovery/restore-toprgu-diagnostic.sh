@@ -15,6 +15,8 @@ log=$(realpath -m "$log")
 [[ $(stat -c %s "$boot") -le 33554432 && $(head -c 8 "$boot") == ANDROID! ]] || exit 2
 [[ $(sha256sum "$boot" | cut -d ' ' -f1) == "$boot_hash" && $(sha256sum "$esp" | cut -d ' ' -f1) == "$esp_hash" ]] || { echo RESTORE_HASH_MISMATCH >&2; exit 2; }
 if [[ $mode == --verify-only ]]; then echo RESTORE_INPUTS_VALIDATED_NO_DEVICE_ACTION; exit 0; fi
+echo RESTORE_ESP_OVERWRITE_DISABLED_JOURNAL_PROTECTION_REQUIRED >&2
+exit 2
 [[ ! -e $log ]] || { echo RESTORE_LOG_ALREADY_EXISTS >&2; exit 2; }
 mkdir -m 700 "$log"
 exec > >(tee -a "$log/restore.log") 2>&1

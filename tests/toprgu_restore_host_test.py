@@ -14,32 +14,16 @@ with tempfile.TemporaryDirectory(prefix='restore-test-',dir=root/'build') as d:
  env=dict(os.environ,PATH=str(d)+os.pathsep+os.environ['PATH'],ADB_TEST_CALLS=str(log))
  script=root/'tools/recovery/restore-toprgu-diagnostic.sh'
  args=['SERIAL',str(boot),digest(boot),str(esp),digest(esp),str(d/'journal')]
- assert subprocess.run([str(script),'--verify-only',*args],env=env,stdout=subprocess.DEVNULL).returncode==0
+ assert subprocess.run(["bash",str(script),'--verify-only',*args],env=env,stdout=subprocess.DEVNULL).returncode==0
  assert not log.exists()
- assert subprocess.run([str(script),'--execute',*args],env=env,stdout=subprocess.DEVNULL).returncode!=0
- calls=log.read_text(); assert 'get-state' in calls and 'push' not in calls and 'dd if=' not in calls
- bad=list(args); bad[2]='0'*64
- log.unlink(); bad[5]=str(d/'other')
- assert subprocess.run([str(script),'--execute',*bad],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode!=0
+ r=subprocess.run(["bash",str(script),'--execute',*args],env=env,capture_output=True,text=True)
+ assert r.returncode!=0 and 'RESTORE_ESP_OVERWRITE_DISABLED_JOURNAL_PROTECTION_REQUIRED' in r.stderr
  assert not log.exists()
- adb.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$ADB_TEST_CALLS"\necho device\nexit 0\n')
- not_recovery=list(args);not_recovery[5]=str(d/'not-recovery')
- assert subprocess.run([str(script),'--execute',*not_recovery],env=env,stdout=subprocess.DEVNULL).returncode!=0
- calls=log.read_text(); assert 'get-state' in calls and 'push' not in calls and 'dd if=' not in calls
- log.unlink()
- adb.write_text('''#!/bin/sh
-printf "%s\\n" "$*" >> "$ADB_TEST_CALLS"
-case "$*" in
- *get-state*) echo recovery;; *"shell id -u"*) echo 0;;
- *A04_RESTORE_GEOMETRY_OK*) echo A04_RESTORE_GEOMETRY_OK;;
- *A04_RESTORE_STAGING_OK*) echo A04_RESTORE_STAGING_OK;;
- *A04_RESTORE_BOOT_SYNCED*) echo A04_RESTORE_BOOT_SYNCED;;
- *A04_RESTORE_ESP_SYNCED*) echo A04_RESTORE_ESP_SYNCED;;
-esac
-exit 0
-''')
- good=list(args);good[5]=str(d/'good-journal')
- assert subprocess.run([str(script),'--execute',*good],env=env,stdout=subprocess.DEVNULL).returncode==0
- calls=log.read_text(); assert calls.index('A04_RESTORE_STAGING_OK')<calls.index('A04_RESTORE_BOOT_SYNCED')<calls.index('A04_RESTORE_ESP_SYNCED')
- assert 'reboot' not in calls
-print('restore: local verification has no device access; missing marker and wrong hash fail before writes')
+ blocked=subprocess.run(['bash',str(root/'tools/recovery/flash-efi.sh'),'unused'],env=env,capture_output=True,text=True)
+ assert blocked.returncode!=0 and not log.exists()
+ blocked=subprocess.run(['python3',str(root/'tools/recovery/flash-esp.py'),'--image','unused','--manifest','unused','--flash-log','unused'],env=env,capture_output=True,text=True)
+ assert blocked.returncode!=0 and not log.exists()
+ bad=list(args); bad[2]='0'*64; bad[5]=str(d/'other')
+ assert subprocess.run(["bash",str(script),'--execute',*bad],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode!=0
+ assert not log.exists()
+print('restore: ESP overwrite is blocked before any device access')

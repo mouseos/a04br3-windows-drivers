@@ -13,6 +13,7 @@ p.add_argument('--manifest', type=Path, required=True)
 p.add_argument('--flash-log', type=Path, required=True)
 p.add_argument('--reboot', action='store_true')
 a = p.parse_args()
+raise SystemExit('ESP全体の書込みは復旧ジャーナル保護と代替起動経路の検証まで停止しています')
 size = 268435456
 m = json.loads(a.manifest.read_text())
 if (a.image.stat().st_size != size or m.get('size') != size or

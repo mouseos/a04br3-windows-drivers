@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Recovery must already be installed. Writes one complete, locally verified ESP.
 set -euo pipefail
+echo 'ESP全体の書込みは復旧ジャーナル保護と代替起動経路の検証まで停止しています' >&2
+exit 2
 if [[ $# != 1 || ! -f $1 ]]; then
   printf 'usage: %s /path/to/256MiB-esp.img\n' "$0" >&2
   exit 2
