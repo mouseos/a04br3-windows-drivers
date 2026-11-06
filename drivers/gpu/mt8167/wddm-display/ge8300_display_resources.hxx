@@ -13,6 +13,12 @@
 #ifndef A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
 #define A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC 0
 #endif
+#ifndef A04_GE8300_WDDM_GCE_LEASE
+#define A04_GE8300_WDDM_GCE_LEASE 0
+#endif
+#if A04_GE8300_WDDM_GCE_LEASE && !A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC
+#error GCE lease diagnostic requires the common frame diagnostic
+#endif
 #if A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC && !A04_GE8300_WDDM_SHARED_FULL_COMMON
 #error Common frame diagnostic requires the full common probe
 #endif
@@ -75,6 +81,9 @@ struct A04DisplayResources {
     BOOLEAN SharedCommonFinished;
     NTSTATUS SharedCommonResult;
     void *SharedCommonOwner;
+#if A04_GE8300_WDDM_GCE_LEASE
+    void *GceDisplayLease;
+#endif
     struct a04_shared_common_once SharedCommonOnce;
 #if A04_GE8300_WDDM_SHARED_FULL_COMMON
     NTSTATUS ProbeDisplayFullCommon(struct a04_ge8300_common_page *page);

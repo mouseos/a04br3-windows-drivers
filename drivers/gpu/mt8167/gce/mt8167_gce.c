@@ -10,6 +10,12 @@
 #if A04_GCE_PARENT_CLOCK_INTERFACE
 #include "gce_clock_interface.h"
 #endif
+#ifndef A04_GCE_DISPLAY_LEASE_INTERFACE
+#define A04_GCE_DISPLAY_LEASE_INTERFACE 0
+#endif
+#if A04_GCE_DISPLAY_LEASE_INTERFACE
+#include "gce_display_interface.h"
+#endif
 #define GCE_BYTES 4096u
 typedef struct gce_context {
     PDMA_ADAPTER adapter;
@@ -29,6 +35,20 @@ DRIVER_INITIALIZE DriverEntry;
 EVT_WDF_DRIVER_DEVICE_ADD GceAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE GcePrepare;
 EVT_WDF_DEVICE_RELEASE_HARDWARE GceRelease;
+#if A04_GCE_DISPLAY_LEASE_INTERFACE
+static VOID GceInterfaceReference(PVOID p){WdfObjectReference((WDFDEVICE)p);}
+static VOID GceInterfaceDereference(PVOID p){WdfObjectDereference((WDFDEVICE)p);}
+static NTSTATUS GceDisplayAcquire(PVOID p,ULONG *token)
+{
+    if(!p || !token)return STATUS_INVALID_PARAMETER;
+    *token=0;
+    /* No platform-owned clock, GCE thread, IRQ and event exclusivity proof
+     * exists. Do not issue a lease or expose DMA/register pointers. */
+    return STATUS_DEVICE_NOT_READY;
+}
+static NTSTATUS GceDisplayRelease(PVOID p,ULONG token)
+{ UNREFERENCED_PARAMETER(p);UNREFERENCED_PARAMETER(token);return STATUS_NOT_SUPPORTED; }
+#endif
 #if A04_GCE_PARENT_CLOCK_INTERFACE
 static NTSTATUS GceConnectParent(WDFDEVICE device,struct gce_context *c)
 {
@@ -136,12 +156,26 @@ NTSTATUS GceRelease(WDFDEVICE device,WDFCMRESLIST translated)
 NTSTATUS GceAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 {
     WDF_PNPPOWER_EVENT_CALLBACKS callbacks;WDF_OBJECT_ATTRIBUTES attributes;WDFDEVICE device;
+#if A04_GCE_DISPLAY_LEASE_INTERFACE
+    A04_GCE_DISPLAY_INTERFACE iface;WDF_QUERY_INTERFACE_CONFIG query;NTSTATUS status;
+#endif
     UNREFERENCED_PARAMETER(driver);
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&callbacks);callbacks.EvtDevicePrepareHardware=GcePrepare;
     callbacks.EvtDeviceReleaseHardware=GceRelease;
     WdfDeviceInitSetPnpPowerEventCallbacks(init,&callbacks);
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attributes,GCE_CONTEXT);
+#if A04_GCE_DISPLAY_LEASE_INTERFACE
+    status=WdfDeviceCreate(&init,&attributes,&device);if(!NT_SUCCESS(status))return status;
+    RtlZeroMemory(&iface,sizeof(iface));iface.Header.Size=sizeof(iface);
+    iface.Header.Version=A04_GCE_DISPLAY_INTERFACE_VERSION;iface.Header.Context=device;
+    iface.Header.InterfaceReference=GceInterfaceReference;iface.Header.InterfaceDereference=GceInterfaceDereference;
+    iface.Acquire=GceDisplayAcquire;iface.Release=GceDisplayRelease;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&iface,&A04GceDisplayInterfaceGuid,NULL);
+    status=WdfDeviceAddQueryInterface(device,&query);if(!NT_SUCCESS(status))return status;
+    return WdfDeviceCreateDeviceInterface(device,&A04GceDeviceInterfaceGuid,NULL);
+#else
     return WdfDeviceCreate(&init,&attributes,&device);
+#endif
 }
 NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry)
 {

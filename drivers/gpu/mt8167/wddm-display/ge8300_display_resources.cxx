@@ -3,6 +3,59 @@
 #include "ge8300_display_resource_check.h"
 #include "present_tile.h"
 #include "ge8300_trace.hxx"
+#if A04_GE8300_WDDM_GCE_LEASE
+#include "../gce/gce_display_interface.h"
+struct A04GceDisplayLeaseHolder { A04_GCE_DISPLAY_INTERFACE iface;PFILE_OBJECT file;ULONG token; };
+static NTSTATUS GceQueryCompletion(PDEVICE_OBJECT device,PIRP irp,PVOID context)
+{
+    UNREFERENCED_PARAMETER(device);UNREFERENCED_PARAMETER(irp);
+    KeSetEvent((PKEVENT)context,IO_NO_INCREMENT,FALSE);return STATUS_MORE_PROCESSING_REQUIRED;
+}
+static NTSTATUS GceDisplayAcquire(void **retained)
+{
+    PWSTR links=NULL;UNICODE_STRING path;PDEVICE_OBJECT target=NULL;PIRP irp=NULL;
+    PIO_STACK_LOCATION stack;KEVENT event;NTSTATUS status;size_t length;
+    struct A04GceDisplayLeaseHolder *h=NULL;
+    if(!retained || *retained || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+    status=IoGetDeviceInterfaces((LPGUID)&A04GceDeviceInterfaceGuid,NULL,0,&links);
+    if(!NT_SUCCESS(status))return status;
+    if(!links || !*links){status=STATUS_NO_SUCH_DEVICE;goto done;}
+    RtlInitUnicodeString(&path,links);length=path.Length/sizeof(WCHAR);
+    if(links[length+1]){status=STATUS_DEVICE_CONFIGURATION_ERROR;goto done;}
+    h=(struct A04GceDisplayLeaseHolder *)ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*h),'lG4A');
+    if(!h){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
+    RtlZeroMemory(h,sizeof(*h));
+    status=IoGetDeviceObjectPointer(&path,FILE_READ_DATA|FILE_WRITE_DATA,&h->file,&target);
+    if(!NT_SUCCESS(status))goto done;
+    irp=IoAllocateIrp(target->StackSize,FALSE);
+    if(!irp){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
+    KeInitializeEvent(&event,NotificationEvent,FALSE);irp->IoStatus.Status=STATUS_NOT_SUPPORTED;
+    stack=IoGetNextIrpStackLocation(irp);stack->MajorFunction=IRP_MJ_PNP;stack->MinorFunction=IRP_MN_QUERY_INTERFACE;
+    stack->Parameters.QueryInterface.InterfaceType=&A04GceDisplayInterfaceGuid;
+    stack->Parameters.QueryInterface.Size=sizeof(h->iface);
+    stack->Parameters.QueryInterface.Version=A04_GCE_DISPLAY_INTERFACE_VERSION;
+    stack->Parameters.QueryInterface.Interface=(PINTERFACE)&h->iface;
+    stack->Parameters.QueryInterface.InterfaceSpecificData=NULL;
+    IoSetCompletionRoutine(irp,GceQueryCompletion,&event,TRUE,TRUE,TRUE);
+    status=IoCallDriver(target,irp);
+    if(status==STATUS_PENDING) {
+        do {status=KeWaitForSingleObject(&event,Executive,KernelMode,FALSE,NULL);} while(status!=STATUS_SUCCESS);
+    }
+    status=irp->IoStatus.Status;IoFreeIrp(irp);irp=NULL;
+    if(!NT_SUCCESS(status))goto done;
+    if(!h->iface.Header.InterfaceDereference || !h->iface.Acquire || !h->iface.Release) {
+        status=STATUS_NOINTERFACE;goto done;
+    }
+    status=h->iface.Acquire(h->iface.Header.Context,&h->token);
+    if(h->token){*retained=h;h=NULL;goto done;} /* retain even on failure */
+    if(NT_SUCCESS(status))status=STATUS_DEVICE_CONFIGURATION_ERROR;
+done:
+    if(irp)IoFreeIrp(irp);
+    if(h){if(h->iface.Header.InterfaceDereference)h->iface.Header.InterfaceDereference(h->iface.Header.Context);
+          if(h->file)ObDereferenceObject(h->file);ExFreePoolWithTag(h,'lG4A');}
+    if(links)ExFreePool(links);return status;
+}
+#endif
 #if A04_GE8300_WDDM_DIRECT_EXPERIMENT
 NTSTATUS A04DisplayResources::Start(PDEVICE_OBJECT pdo,const DXGK_DEVICE_INFO *info)
 {
@@ -354,6 +407,9 @@ NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(struct a04_ge8300_common_pa
     status=SharedLeaseIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_STAGE,&Lease);
     A04DisplayTrace(0x5d,status);
     if(NT_SUCCESS(status))status=CommonFrameTiles(GpuHandle,Lease.token,mdl,(volatile uint32_t *)cpu,owner);
+#if A04_GE8300_WDDM_GCE_LEASE
+    if(NT_SUCCESS(status)) {status=GceDisplayAcquire(&GceDisplayLease);A04DisplayTrace(0x67,status);}
+#endif
     /* Read-only, non-atomic snapshot; no acknowledgement, IRQ clearing or
      * timing inference.  Firmware can enable both GOP L0 and overlay L3. */
     if(Ovl) {
