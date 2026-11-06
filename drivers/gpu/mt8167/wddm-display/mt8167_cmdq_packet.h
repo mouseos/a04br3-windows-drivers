@@ -7,6 +7,7 @@
 #define A04_CMDQ_RDMA0_EOF 27u
 #define A04_CMDQ_MUTEX0_EOF 38u
 #define A04_CMDQ_FLIP_WORDS 8u
+#define A04_CMDQ_TWO_LAYER_WORDS 10u
 /* Construct an inert command image only. The caller must establish resource,
  * clock, thread and event ownership, freshness, DMA visibility, and prove the
  * active layer/layout before making this image reachable by the GCE. A wait
@@ -25,6 +26,22 @@ static int a04_mt8167_cmdq_l0_address(uint32_t *words,uint32_t count,
     words[2]=display_address;words[3]=0x04017f40u;
     words[4]=1u;words[5]=0x40000000u;
     words[6]=8u;words[7]=0x10000000u;
+    return 1;
+}
+/* For an explicitly validated two-layer transaction, write L0 then L3.
+ * The caller supplies both currently owned addresses for a separate restore
+ * packet. Building either packet does not execute or authorize a switch. */
+static int a04_mt8167_cmdq_layer_addresses(uint32_t *words,uint32_t count,
+                                          uint32_t event,uint32_t l0,uint32_t l3)
+{
+    if(!words || count<A04_CMDQ_TWO_LAYER_WORDS ||
+       (event!=A04_CMDQ_RDMA0_EOF && event!=A04_CMDQ_MUTEX0_EOF) ||
+       !l0 || !l3 || (l0&3u) || (l3&3u))return 0;
+    words[0]=0x00008001u;words[1]=0x20000000u|event;
+    words[2]=l0;words[3]=0x04017f40u;
+    words[4]=l3;words[5]=0x04017fa0u;
+    words[6]=1u;words[7]=0x40000000u;
+    words[8]=8u;words[9]=0x10000000u;
     return 1;
 }
 #endif

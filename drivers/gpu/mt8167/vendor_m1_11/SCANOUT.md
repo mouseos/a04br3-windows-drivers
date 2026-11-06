@@ -484,6 +484,9 @@ in `cmdq_event_common.h`. Linux `cmdq_device.c` populates the runtime event
 table from DTS. The tested `mt8167_cmdq_packet.h` constructs a Linux-shaped
 non-clearing EOF wait, full L0 address write, EOC and relative JUMP; L3 is
 not touched and a packet for the saved L0 address can be built separately.
+An alternative inert packet writes both L0 and L3 addresses in order, and a
+separate packet can encode their saved values. Neither changes enable, format,
+pitch or alpha, and sequential writes alone do not prove an atomic latch.
 It only creates an inert image: event freshness, display mode and exclusive
 GCE execution are not established. In particular a latched old event makes
 WAIT_NO_CLEAR inadequate as a fresh boundary by itself. There is no executor,
