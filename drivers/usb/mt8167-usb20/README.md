@@ -166,3 +166,34 @@ PnP enumeration, root-hub requests and notifications, endpoint scheduling,
 timeouts, hardware execution, DMA and Windows request completion remain to be
 implemented against a verified 8.1 interface. Neither hardware nor VBUS has
 been validated by these tests.
+
+### Windows 8.1 interface evidence and EP0 PIO adapter
+
+Microsoft describes USBPORT plus the Microsoft-supplied EHCI/OHCI/UHCI
+miniports in the [USB host stack](https://learn.microsoft.com/en-us/windows-hardware/drivers/usbcon/usb-3-0-driver-stack-architecture), and its
+[debugger documentation](https://learn.microsoft.com/en-us/windows-hardware/drivers/debuggercmds/-usbkd-usbhcdlist)
+shows an internal registration packet. In the locally available WDK 8.1 kit,
+no USBPORT miniport registration header or import library was found. This is
+not proof that Microsoft has no private or partner-only interface. The kit's
+`usbbusif.h` describes `USB_BUS_INTERFACE_USBDI` as a function-driver
+interface; [Microsoft](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/usbbusif/ns-usbbusif-_usb_bus_interface_usbdi_v3)
+says it is provided to USB clients by a hub, so it cannot register a MUSB
+controller. A partner DDI or a complete independently implemented host and
+hub bus remains unverified. [UCX](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ucxcontroller/nf-ucxcontroller-ucxcontrollercreate)
+and [UDE](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/udecxwdfdevice/nf-udecxwdfdevice-udecxinitializewdfdeviceinit)
+list Windows 10 as their minimum. A [HID transport minidriver](https://learn.microsoft.com/en-us/windows-hardware/drivers/hid/transport-minidrivers)
+is an applicable class-specific alternative, not a general USB host; the
+existing keyboard diagnostic explores that path and remains electrically gated.
+
+`host_control.c` connects the experimental serialized queue to the existing
+MUSB EP0 PIO engine and accepts acknowledged events from
+`Mt8167UsbInterruptCapture` or the WDF interrupt worker. It supports direct
+control transfers only, with no hubs or DMA. Disconnect and VBUS errors win
+over a simultaneous EP0 event; a VBUS error is not assumed to be a measured
+overcurrent. Cancellation and errors require the caller to stop the endpoint
+and drain stale interrupts before acknowledging quiescence. Port power, bus
+reset timing, queue serialization, lifetime, IRQ draining, deadlines and all
+Windows request completion remain the caller's responsibility. Nothing creates
+or binds this adapter in the current driver and the existing VBUS gate is
+unchanged. `make test-mt8167-usb-host-control` injects events through the
+real interrupt capture and mock MMIO; it does not exercise physical hardware.

@@ -1194,3 +1194,9 @@ test-mt8167-usb-host-core:
 	mkdir -p build
 	$(CC) $(CFLAGS) -DA04_MUSB_HOST_CORE_EXPERIMENT=1 -Idrivers/usb/mt8167-usb20 tests/usb/host_core_test.c drivers/usb/mt8167-usb20/host_core.c -o build/mt8167_usb_host_core_test
 	./build/mt8167_usb_host_core_test
+
+.PHONY: test-mt8167-usb-host-control
+test-mt8167-usb-host-control:
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_MUSB_HOST_CORE_EXPERIMENT=1 -Idrivers/usb/mt8167-usb20 tests/usb/host_control_test.c drivers/usb/mt8167-usb20/host_control.c drivers/usb/mt8167-usb20/host_core.c drivers/usb/mt8167-usb20/controller.c drivers/usb/mt8167-usb20/ep0_pio.c drivers/usb/mt8167-usb20/ep0.c -o build/mt8167_usb_host_control_test
+	./build/mt8167_usb_host_control_test

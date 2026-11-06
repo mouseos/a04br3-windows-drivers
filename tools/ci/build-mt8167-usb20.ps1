@@ -20,6 +20,11 @@ if ($env:A04_MUSB_HOST_CORE_EXPERIMENT -eq '1') {
   if ($LASTEXITCODE -ne 0) { throw 'Experimental host core ARM32 compilation failed' }
   $headers = & llvm-readobj --file-headers $obj
   if ($LASTEXITCODE -ne 0 -or ($headers -join "`n") -notmatch 'IMAGE_FILE_MACHINE_ARMNT') { throw 'Unexpected host core COFF machine' }
+  $control = Join-Path $out 'mt8167-usb20-host_control.obj'
+  & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -D_KERNEL_MODE -D_ARM_ -DARM -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 -DA04_MUSB_HOST_CORE_EXPERIMENT=1 "-I$inc\km" "-I$inc\shared" -include ntddk.h -c (Join-Path $root 'drivers\usb\mt8167-usb20\host_control.c') -o $control
+  if ($LASTEXITCODE -ne 0) { throw 'Experimental host control ARM32 compilation failed' }
+  $headers = & llvm-readobj --file-headers $control
+  if ($LASTEXITCODE -ne 0 -or ($headers -join "`n") -notmatch 'IMAGE_FILE_MACHINE_ARMNT') { throw 'Unexpected host control COFF machine' }
   $contract = Join-Path $out 'mt8167-usb20-host_core_contract.obj'
   & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -D_KERNEL_MODE -D_ARM_ -DARM -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 -DA04_MUSB_HOST_CORE_EXPERIMENT=1 "-I$inc\km" "-I$inc\shared" -c (Join-Path $root 'tests\usb\host_core_wdk_contract.c') -o $contract
   if ($LASTEXITCODE -ne 0) { throw 'Experimental host core WDK contract failed' }
