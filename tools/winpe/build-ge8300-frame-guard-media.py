@@ -55,6 +55,15 @@ def main():
     text = re.sub(r'echo A04AUDIT_WAIT[^\n]*\nping[^\n]*\ncall[^\n]*run-audit-once.cmd\n?', '', text)
     assert 'fourcpu-load.exe' not in text and 'usb-power-observe.cmd' not in text
     assert 'run-audit-once.cmd' not in text and 'display-shared\\mt8167-display.inf' in text
+    # Unattended diagnostics must not enter automatic system/display sleep.
+    # This changes the maintenance RAM image only, not installed Windows.
+    # Unlike a CPU load loop, these settings do not alter benchmark workload.
+    text = text.replace('mountvol /N\nif errorlevel 1 goto failed\n',
+        'mountvol /N\nif errorlevel 1 goto failed\n'
+        'powercfg /change standby-timeout-ac 0\n'
+        'powercfg /change standby-timeout-dc 0\n'
+        'powercfg /change monitor-timeout-ac 0\n'
+        'powercfg /change monitor-timeout-dc 0\n')
     # Load the actual display path directly; independent copy self-tests and
     # status programs must not gate the frame measurement. Preserve stage
     # stdout in bounded CRC-framed UART reports when no camera is attached.
