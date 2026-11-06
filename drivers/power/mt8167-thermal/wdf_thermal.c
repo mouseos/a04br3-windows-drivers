@@ -148,9 +148,9 @@ static NTSTATUS TouchGuardGet(THERMAL_CONTEXT *c)
  WDF_REQUEST_SEND_OPTIONS_SET_TIMEOUT(&options,WDF_REL_TIMEOUT_IN_SEC(1));
  status=WdfIoTargetSendInternalIoctlSynchronously(c->touch,NULL,A04_TOUCH_THERMAL_GET_GUARD,NULL,&output,&options,&got);
  if(!NT_SUCCESS(status))return status;
- if(got!=sizeof(c->touch_guard)||c->touch_guard.size!=sizeof(c->touch_guard)||c->touch_guard.version!=2 ||
+ if(got!=sizeof(c->touch_guard)||c->touch_guard.size!=sizeof(c->touch_guard)||c->touch_guard.version!=3 ||
     !c->touch_guard.context || !c->touch_guard.owner || !c->touch_guard.generation || !c->touch_guard.Begin || !c->touch_guard.End || !c->touch_guard.Release ||
-    (A04_THERMAL_SHARED_PARENT && (!c->touch_guard.ReadAnalog || !c->touch_guard.WriteAnalog))) {
+    (A04_THERMAL_SHARED_PARENT && (!c->touch_guard.ReadAnalog || !c->touch_guard.WriteAnalog || !c->touch_guard.VerifyOwnership))) {
   if(c->touch_guard.context && c->touch_guard.Release)c->touch_guard.Release(c->touch_guard.context);
   RtlZeroMemory(&c->touch_guard,sizeof(c->touch_guard));return STATUS_DEVICE_CONFIGURATION_ERROR;
  }
@@ -417,8 +417,7 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
 #endif
  }
 #endif
- /* Firmware/EL3 handoff has not been proven: the monitor remains blocked.
-  * Never infer this flag from ACPI resource allocation or a touch lease. */
+ /* Never infer firmware handoff from ACPI allocation or a touch lease. */
  c->ownership.firmware_handoff=0;
 #if A04_THERMAL_MONITOR_TEST
  status=TouchGuardGet(c);
@@ -426,6 +425,14 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
   if(c->lease_owned) { (VOID)TouchRequest(c,A04_TOUCH_THERMAL_RELEASE);c->lease_owned=FALSE; }
   WdfIoTargetClose(c->touch);WdfIoTargetClose(c->watchdog);return status;
  }
+#if A04_THERMAL_SHARED_PARENT
+ if(c->touch_guard.VerifyOwnership &&
+    c->touch_guard.Begin(c->touch_guard.context,c->touch_guard.owner,c->touch_guard.generation)) {
+  NTSTATUS verified=c->touch_guard.VerifyOwnership(c->touch_guard.context);
+  c->touch_guard.End(c->touch_guard.context);
+  if(NT_SUCCESS(verified))c->ownership.firmware_handoff=1;
+ }
+#endif
 #endif
 #if A04_THERMAL_MONITOR_TEST
  /* No verified firmware/EL3 release protocol exists. Buildable, but cannot

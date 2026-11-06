@@ -15,6 +15,8 @@ static inline int a04_shared_thermal_valid(const struct a04_shared_thermal_owner
 { return s && s->online && s->leased && !s->poisoned && generation && s->generation==generation; }
 static inline int a04_shared_thermal_begin(struct a04_shared_thermal_owner *s,uint32_t generation)
 { if(!a04_shared_thermal_valid(s,generation) || s->quiescent || s->inflight==UINT32_MAX)return -1;s->inflight++;return 0; }
+static inline int a04_shared_thermal_ownership_verified(const struct a04_shared_thermal_owner *s,uint32_t generation)
+{ return s && a04_shared_thermal_valid(s,generation) && s->inflight && !s->quiescent && s->firmware_released && s->adc_exclusive; }
 static inline void a04_shared_thermal_end(struct a04_shared_thermal_owner *s)
 { if(s && s->inflight)s->inflight--; }
 static inline int a04_shared_thermal_quiescent(struct a04_shared_thermal_owner *s,uint32_t generation)

@@ -226,7 +226,7 @@ shared clocks, then captures the samples and checks ADC idle, cleared trigger,
 disabled thermal sampling and idle thermal AHB before requesting quiescence.
 Only then does it return the lease. A clock, sampling or quiescence failure is
 uncertain and follows the existing fatal-stop path; it is never a release
-proof. The preflight queries the version 2 shared-parent interface through the
+proof. The preflight queries the version 3 shared-parent interface through the
 live lease; it rejects because no evidence-backed route and mute provider exists.
 The parent also rejects without an independently
 verified firmware/EL3 release. The successful sequence has only host-mock

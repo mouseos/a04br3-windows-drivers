@@ -729,6 +729,14 @@ static NTSTATUS ParentThermalVerifyHeadphone(PVOID p,ULONG generation)
  }
  ParentUnlock(c);return result;
 }
+static NTSTATUS ParentThermalVerifyOwnership(PVOID p,ULONG generation)
+{
+ A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);NTSTATUS result=STATUS_DEVICE_NOT_READY;
+ if(ParentLock(c))return result;
+ if(a04_shared_thermal_ownership_verified(&c->thermal,generation))
+  result=STATUS_SUCCESS;
+ ParentUnlock(c);return result;
+}
 static NTSTATUS ParentThermalQuiescent(PVOID p,ULONG generation)
 {
  A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);int result;
@@ -1158,6 +1166,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     thermalIface.ReadAnalog=ParentThermalReadAnalog;thermalIface.WriteAnalog=ParentThermalWriteAnalog;
     thermalIface.Quiescent=ParentThermalQuiescent;thermalIface.Release=ParentThermalRelease;
     thermalIface.VerifyHeadphone=ParentThermalVerifyHeadphone;
+    thermalIface.VerifyOwnership=ParentThermalVerifyOwnership;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&thermalIface,&A04SharedThermalInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
 #endif

@@ -20,5 +20,6 @@ typedef struct _A04_TOUCH_THERMAL_GUARD {
  VOID (*End)(PVOID);
  VOID (*Release)(PVOID);
  NTSTATUS (*VerifyHeadphone)(PVOID);
+ NTSTATUS (*VerifyOwnership)(PVOID);
 } A04_TOUCH_THERMAL_GUARD;
 #endif

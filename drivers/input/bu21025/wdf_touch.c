@@ -207,7 +207,7 @@ NTSTATUS TouchPrepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translate
             (PINTERFACE)&c->thermal_parent,sizeof(c->thermal_parent),A04_SHARED_THERMAL_INTERFACE_VERSION,NULL);
         if(!NT_SUCCESS(status)) {c->shared.InterfaceDereference(c->shared.Context);RtlZeroMemory(&c->shared,sizeof(c->shared));return status;}
         if(!c->thermal_parent.Header.InterfaceDereference || !c->thermal_parent.Acquire || !c->thermal_parent.Clock ||
-           !c->thermal_parent.Reset || !c->thermal_parent.Begin || !c->thermal_parent.End || !c->thermal_parent.ReadAnalog || !c->thermal_parent.WriteAnalog || !c->thermal_parent.Quiescent || !c->thermal_parent.Release || !c->thermal_parent.VerifyHeadphone) {
+           !c->thermal_parent.Reset || !c->thermal_parent.Begin || !c->thermal_parent.End || !c->thermal_parent.ReadAnalog || !c->thermal_parent.WriteAnalog || !c->thermal_parent.Quiescent || !c->thermal_parent.Release || !c->thermal_parent.VerifyHeadphone || !c->thermal_parent.VerifyOwnership) {
             if(c->thermal_parent.Header.InterfaceDereference)c->thermal_parent.Header.InterfaceDereference(c->thermal_parent.Header.Context);
             RtlZeroMemory(&c->thermal_parent,sizeof(c->thermal_parent));c->shared.InterfaceDereference(c->shared.Context);
             RtlZeroMemory(&c->shared,sizeof(c->shared));return STATUS_NOINTERFACE;
@@ -498,6 +498,11 @@ static NTSTATUS TouchThermalVerifyHeadphone(PVOID context)
  TOUCH_CONTEXT *c=TouchGetContext((WDFDEVICE)context);
  return c->thermal_parent.VerifyHeadphone(c->thermal_parent.Header.Context,c->thermal_parent_generation);
 }
+static NTSTATUS TouchThermalVerifyOwnership(PVOID context)
+{
+ TOUCH_CONTEXT *c=TouchGetContext((WDFDEVICE)context);
+ return c->thermal_parent.VerifyOwnership(c->thermal_parent.Header.Context,c->thermal_parent_generation);
+}
 #endif
 static VOID TouchThermalGuardRelease(PVOID context)
 { WdfObjectDereference((WDFDEVICE)context); }
@@ -539,14 +544,16 @@ static NTSTATUS TouchThermalRequest(TOUCH_CONTEXT *c,WDFREQUEST request,ULONG co
         if(code==A04_TOUCH_THERMAL_GET_GUARD) {
             status=WdfRequestRetrieveOutputBuffer(request,sizeof(*guard),(PVOID *)&guard,&output);
             if(NT_SUCCESS(status)) {
-                WdfObjectReference(c->device);guard->size=sizeof(*guard);guard->version=2;
+                WdfObjectReference(c->device);guard->size=sizeof(*guard);guard->version=3;
                 guard->context=c->device;guard->owner=(ULONG_PTR)owner;guard->generation=c->thermal_lease.generation;
 #if A04_TOUCH_SHARED_PARENT
                 guard->ReadAnalog=TouchThermalAnalogRead;guard->WriteAnalog=TouchThermalAnalogWrite;
                 guard->VerifyHeadphone=TouchThermalVerifyHeadphone;
+                guard->VerifyOwnership=TouchThermalVerifyOwnership;
 #else
                 guard->ReadAnalog=NULL;guard->WriteAnalog=NULL;
                 guard->VerifyHeadphone=NULL;
+                guard->VerifyOwnership=NULL;
 #endif
                 guard->Begin=TouchThermalGuardBegin;guard->End=TouchThermalGuardEnd;
                 guard->Release=TouchThermalGuardRelease;WdfRequestSetInformation(request,sizeof(*guard));
