@@ -9,7 +9,7 @@ static jmp_buf done;
 static unsigned exit_code, scenario, locked, flushed, dismounted, closed;
 HANDLE GetStdHandle(DWORD n) { (void)n; return (HANDLE)1; }
 BOOL WriteFile(HANDLE h,const void *p,DWORD n,DWORD *w,void *o) { (void)h;(void)p;(void)o;*w=n;return 1; }
-LONG RegOpenKeyExW(HKEY h,const WCHAR *p,DWORD a,DWORD b,HKEY *k) { (void)h;(void)p;(void)a;(void)b;(void)k;return scenario==1 ? 5 : ERROR_FILE_NOT_FOUND; }
+LONG RegOpenKeyExW(HKEY h,const WCHAR *p,DWORD a,DWORD b,HKEY *k) { (void)h;(void)a;(void)b;(void)k;return (scenario==1 || (scenario==11 && !wcscmp(p,L"A04AUDITSYS"))) ? 5 : ERROR_FILE_NOT_FOUND; }
 LONG RegCloseKey(HKEY h) { (void)h;return 0; }
 BOOL GetVolumeInformationW(const WCHAR *p,WCHAR *l,DWORD a,DWORD *b,DWORD *c,DWORD *d,WCHAR *f,DWORD e) { (void)p;(void)a;(void)b;(void)c;(void)d;(void)e;wcscpy(l,L"Windows");wcscpy(f,L"NTFS");return scenario!=2; }
 int lstrcmpiW(const WCHAR *a,const WCHAR *b) { return wcscmp(a,b); }
@@ -33,8 +33,8 @@ DWORD GetLastError(void) { return 123; }
 void ExitProcess(DWORD code) { exit_code=code;longjmp(done,1); }
 #include "../tools/winpe/release-offline-volume.c"
 int main(void) {
-    static const unsigned expected[]={0,2,3,4,5,6,7,8,9,10,11};
-    for (scenario=0;scenario<11;++scenario) {
+    static const unsigned expected[]={0,2,3,4,5,6,7,8,9,10,11,2};
+    for (scenario=0;scenario<12;++scenario) {
         locked=flushed=dismounted=closed=0;
         if (!setjmp(done)) mainCRTStartup();
         if (exit_code!=expected[scenario] || (scenario>=1 && scenario<=5 && dismounted) ||

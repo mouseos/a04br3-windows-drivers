@@ -67,6 +67,9 @@ jobs:
             Write-Host "$path : $(Test-Path $full)"
             if (-not (Test-Path $full)) { throw "Missing required ARM32 WDK component: $path" }
           }
+      - name: Test preliminary offline registry queries
+        shell: pwsh
+        run: ./tools/ci/test-audit-offline-registry.ps1
       - name: Test read-only system file hashes
         shell: pwsh
         run: ./tools/ci/test-audit-volume-sys.ps1

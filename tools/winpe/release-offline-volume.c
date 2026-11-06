@@ -24,7 +24,8 @@ static int hive_absent(const WCHAR *name) {
 void mainCRTStartup(void) {
     HANDLE h; DWORD n=0, err; VOLUME_DISK_EXTENTS ex; WCHAR label[64], fs[32];
     if (!hive_absent(L"A04TOPRGUSYS") || !hive_absent(L"A04TOPRGUSW") ||
-        !hive_absent(L"A04TXSYS") || !hive_absent(L"A04TXSW") || !hive_absent(L"A04TEMP")) {
+        !hive_absent(L"A04TXSYS") || !hive_absent(L"A04TXSW") ||
+        !hive_absent(L"A04AUDITSYS") || !hive_absent(L"A04TEMP")) {
         say("A04_RELEASE_HIVE_LOADED_OR_UNKNOWN\r\n"); ExitProcess(2);
     }
     if (!GetVolumeInformationW(L"C:\\",label,64,NULL,NULL,NULL,fs,32) ||
