@@ -12,12 +12,13 @@ int main(void)
     uint64_t csr[8][2]={{0}},bg_f8[3]={1,2,3},bg_110[3]={4,5,6};
     t.word08=UINT64_C(0x1122334455667788);t.word30=UINT64_C(0x8877665544332211);
     t.flags=a04_m111_ta_flags(9,0);t.frame=17;t.hwrt=0xc0090100;t.pr_fence_addr=0xc0080300;t.pr_fence_value=5;
-    t.word78=UINT64_C(0x0102030405060708);
+    t.dummy_region=UINT64_C(0x6500600000);
     memset(ta,0xa5,sizeof(ta));
     assert(!a04_m111_patch_ta_fields(ta+1,A04_M111_TA_BYTES,&t));
     assert(ta[0]==0xa5 && ta[sizeof(ta)-1]==0xa5);
     assert(u32(ta+1+8)==0x55667788 && u32(ta+1+12)==0x11223344);
     assert(u32(ta+1+0x48)==0x103 && u32(ta+1+0x50)==17 && u32(ta+1+0x58)==t.hwrt);
+    assert(u32(ta+1+0x78)==0x00600000 && u32(ta+1+0x7c)==0x65);
     /* Unknown intervals must survive, including presumed alignment holes. */
     for(i=0;i<A04_M111_TA_BYTES;i++)
         if(i<8 || (i>=0x10 && i<0x30) || (i>=0x38 && i<0x48) ||

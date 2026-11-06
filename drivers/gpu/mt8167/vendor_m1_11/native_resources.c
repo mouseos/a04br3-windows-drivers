@@ -14,6 +14,18 @@ static int gpu(uint64_t a) { return a && a<UINT64_C(0x10000000000) && !(a&15u); 
 static int fw(uint32_t a) { return (a&0xff000003u)==0xc0000000u; }
 static int gpu_overlap(uint64_t a,uint64_t n,uint64_t b,uint64_t m)
 { return a<=b ? b-a<n : a-b<m; }
+int a04_m111_layout_auxiliary(uint64_t base,size_t bytes,struct a04_m111_auxiliary_layout *out)
+{
+    struct a04_m111_auxiliary_layout made={0};
+    if(!out || !gpu(base) || (base&63u) ||
+       bytes<A04_M111_DUMMY_REGION_BYTES+A04_M111_DUMMY_STENCIL_BYTES ||
+       bytes>UINT64_C(0x10000000000)-base)return 1;
+    made.dummy_region_gpu=base;
+    made.dummy_stencil_gpu=base+A04_M111_DUMMY_REGION_BYTES;
+    made.dummy_stencil_register=made.dummy_stencil_gpu|1u;
+    made.used=A04_M111_DUMMY_REGION_BYTES+A04_M111_DUMMY_STENCIL_BYTES;
+    *out=made;return 0;
+}
 int a04_m111_build_freelist(RGXFWIF_FREELIST *out,uint32_t *entries,
     size_t capacity,const struct a04_m111_freelist_input *p,
     const uint64_t *physical_pages,int mirror)

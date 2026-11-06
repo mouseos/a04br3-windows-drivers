@@ -5,6 +5,7 @@
 ## 実装した契約
 
 - `native_resources`: 固定freelist（init=max、grow=ready=0）、物理4KiBページ番号表、任意の再構築用mirror、親render targetと2組のHWRTを構築する。FWのstate/counterは同版KMのZERO_ON_ALLOCに従う。PMページは全数を割り当てる仕様であり、KMのlowest-entry省略最適化は使用しない。PM領域はfreelist当たり最大16MiB。2つのlistの物理ページ集合が互いに重ならず、他のGPU/FW資源とも重ならないことを割当て側で保証する。
+  `a04_m111_layout_auxiliary`はcaller所有のGPU allocation内に、128-byte/64-byte alignmentのdummy region headerと2048-byte/16-byte alignmentのdummy stencilを分ける。使用量は0x880 bytes。TA+0x78にはdummy region GPU VA、3D+0x128にはdummy stencil GPU VA|1を設定する。allocation/mappingと初期内容はこの関数の責任外である。
 - `native_record_fields`: libsrvが更新する確定済みfieldのみをpatchする。未確定registerやpaddingへ書かない。PBEは`+0x68`の8組×2個の64bit CSR、background bankは`+0xf8`と`+0x110`の各3個の64bit wordとして独立にpatchできる。値の生成とアドレス所有権は呼出側の責任である。
 - `native_ccb`: 40-byte header、TA/3D/PR opcode、UFO fence/update、4KiB ringのpadding/wrapを構築する。payloadはそのままコピーするだけで、正しい描画packetと認証するAPIではない。KICKはDM2/DM3の別contextとHWRTの別cleanup参照を使う。
 - `native_pair`: 固有PR payloadを使わないTA/3Dの同期列を組む。TA/UPDATE=224 bytes、FENCE_PR/3D/UPDATE=472 bytesの各グループを先に予約し、paddingはグループより前に置く。8KiBの呼出側workspaceを使用し、失敗時は両CPU shadowとresultを変更しない。FW context/HWRT/UFOの重複、payloadのHWRT/UFO不一致を拒否する。Z/S/MSAA backing objectとno-overlap syncを持たない部分集合に限定する。runtimeの排他、Device memory転送、FW公開は行わない。

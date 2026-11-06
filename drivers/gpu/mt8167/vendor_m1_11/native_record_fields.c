@@ -43,7 +43,7 @@ int a04_m111_patch_ta_fields(void *p,size_t bytes,const struct a04_m111_ta_field
     word(p,0x48,f->flags,4);word(p,0x50,f->frame,4);word(p,0x58,f->hwrt,4);
     word(p,0x5c,f->zbuffer,4);word(p,0x60,f->sbuffer,4);word(p,0x64,f->msaa,4);
     word(p,0x68,f->pr_fence_addr,4);word(p,0x6c,f->pr_fence_value,4);
-    word(p,0x70,f->overlap_addr,4);word(p,0x74,f->overlap_value,4);word(p,0x78,f->word78,8);
+    word(p,0x70,f->overlap_addr,4);word(p,0x74,f->overlap_value,4);word(p,0x78,f->dummy_region,8);
     return 0;
 }
 int a04_m111_patch_3d_fields(void *p,size_t bytes,const struct a04_m111_3d_fields *f)

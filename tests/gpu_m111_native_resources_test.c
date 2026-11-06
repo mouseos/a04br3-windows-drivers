@@ -11,6 +11,15 @@ int main(void)
     uint64_t physical[4]={0x81000000,0x81003000,0x81008000,0xfffff000};
     uint32_t table[10], oldtable[10], i;
     struct a04_m111_hwrt_input h[2]={{0}};
+    struct a04_m111_auxiliary_layout aux,oldaux;
+    assert(!a04_m111_layout_auxiliary(UINT64_C(0x6500800000),4096,&aux));
+    assert(aux.used==0x880 && aux.dummy_region_gpu==UINT64_C(0x6500800000));
+    assert(aux.dummy_stencil_gpu==UINT64_C(0x6500800080) && aux.dummy_stencil_register==UINT64_C(0x6500800081));
+    oldaux=aux;
+    assert(a04_m111_layout_auxiliary(UINT64_C(0x6500800000),2175,&aux));
+    assert(a04_m111_layout_auxiliary(UINT64_C(0xffffffffc0),4096,&aux));
+    assert(a04_m111_layout_auxiliary(UINT64_C(0x6500800010),4096,&aux));
+    assert(!memcmp(&aux,&oldaux,sizeof(aux)));
     memset(table,0xa5,sizeof(table));
     assert(!a04_m111_build_freelist(&fl[0],table,8,&p,physical,1));
     assert(table[0]==0x81000 && table[1]==0x81003 && table[2]==0x81008 && table[3]==0xfffff);
