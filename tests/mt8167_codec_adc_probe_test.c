@@ -4,13 +4,17 @@
 #include <string.h>
 #include "codec_adc_probe.h"
 #include "codec_adc_session.h"
-struct mock { uint16_t con; unsigned writes,reads,samples; int qualified,stuck; };
+struct mock { uint16_t con; unsigned writes,reads,samples,ready_reads; int qualified,stuck,lose_ready; };
 static int qual(void *p) {return ((struct mock *)p)->qualified;}
 static int rd(void *p,uint32_t reg,uint16_t *out) {
  struct mock *m=p;m->reads++;
  if(reg==4)*out=m->con;
  else if(reg==0x10)*out=0;
- else if(reg==0x30 || reg==0x34)*out=(m->con & (reg==0x30?128:256)) && !m->stuck ? (uint16_t)(0x1000|(1000+m->samples)) : 0;
+ else if(reg==0x30 || reg==0x34) {
+  int ready=(m->con & (reg==0x30?128:256)) && !m->stuck;
+  if(ready && m->lose_ready && ++m->ready_reads==2)ready=0;
+  *out=ready ? (uint16_t)(0x1000|(1000+m->samples)) : 0;
+ }
  else return -1;
  return 0;
 }
@@ -38,6 +42,11 @@ int main(void) {
  memset(&out,0xa5,sizeof(out));old=out;m.stuck=1;
  assert(a04_codec_adc_capture(&s,&io,7,&out));assert(s.poisoned && !memcmp(&out,&old,sizeof(out)));
  {unsigned writes=m.writes;assert(a04_codec_adc_capture(&s,&io,7,&out));assert(m.writes==writes);}
+ {struct mock lost={0};struct a04_codec_adc_probe state={0};
+  struct a04_codec_adc_io lost_io={&lost,qual,rd,wr,delay};
+  lost.qualified=1;lost.lose_ready=1;memset(&out,0xa5,sizeof(out));old=out;
+  assert(a04_codec_adc_capture(&state,&lost_io,7,&out));
+  assert(state.poisoned && lost.writes==1 && lost.con==128 && !memcmp(&out,&old,sizeof(out)));}
  {struct chain c={0};struct a04_codec_adc_session_io session={&c,chain_pre,chain_clock,chain_capture,chain_quiesce};
   c.m.qualified=1;assert(a04_codec_adc_session(&session,&out)==A04_ADC_COMPLETE);
   assert(c.quiescent && c.m.samples==22 && out.raw[0]==1000 && out.raw[21]==1021);}
