@@ -150,3 +150,20 @@ SYSTEMをWinPEでRegLoadせず、DISM前にコピーする。旧clientのcertと
 平坦化回収のSYSTEM/result.jsonもhash pin照合で受け付け、private出力だけに候補を含める。
 詳細CLIと検証範囲はtools/winpe/README-mt8167-shared-io-update.mdを参照。
 この作業では私用媒体の生成・端末/runner操作を行わない。
+
+## 既定OFFのbrightness公開ソース候補
+
+CarverのWindows0c73f27を統合し、機種UEFI18d8cdeeを独立した同名候補branchへ配置した。
+UEFI repoはhttps://github.com/mouseos/uefi-a04br3、18d8cdeeの親は現在のcc7c20faそのもの。
+機種packageのDisplayProvider.asl、build wrapper、説明、既存resource確認だけを変更し、
+EDK2共通コード・submodule・現在のUEFI checkoutは変更していない。
+
+WindowsはA04_MT8167_DISPLAY_BRIGHTNESS=1、機種UEFIは
+A04_DIAGNOSTIC_DISPLAY_BRIGHTNESS_RESOURCES=1を明示したときだけ有効で、両方とも既定OFF。
+DISP_PWM0のMMIOを既存MOU0007へ排他割当てした場合だけWindows callbackを提供する。
+古いbootに無い領域を固定mapせず、clock/PLL/GPIO1/PMICの所有を奪わない。
+Windows display INFは11/06/2026,0.0.1.3。brightnessの実機UI/物理応答・署名・PnPは未確認。
+
+current run26は26d5520固定の既生成媒体のまま。この追加ソースをrun26の入力・バイナリ・
+manifestへ差し替えない。次のWDK/機種UEFI build候補としてsource pinだけを記録する。
+主担当が次のUEFI buildでbrightnessを有効にするかを決め、両flagとresource構成を一致させる。

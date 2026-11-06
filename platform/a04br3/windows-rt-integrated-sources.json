@@ -134,5 +134,22 @@
     "probe_uart_delivery_verified": false,
     "disk_log_collection_required": true
   },
-  "hardware_probe_native_recipe_source": "c98875b0abb082f0fc1f48e499bd3d1595d67e2b"
+  "hardware_probe_native_recipe_source": "c98875b0abb082f0fc1f48e499bd3d1595d67e2b",
+  "brightness_source_candidate": {
+    "windows_source": "0c73f273dc470dd3cb07c254808d534709dd711f",
+    "uefi_repository": "https://github.com/mouseos/uefi-a04br3",
+    "uefi_source": "18d8cdeeeb6769175cf59f4baa3b9a5a40d8d6bb",
+    "uefi_parent_source": "cc7c20fae9296cdcc391312124e2c84a7ccc4e7d",
+    "uefi_candidate_branch": "work/windows-rt-integrated-20261107",
+    "windows_default_enabled": false,
+    "uefi_default_enabled": false,
+    "windows_optin": "A04_MT8167_DISPLAY_BRIGHTNESS=1",
+    "uefi_optin": "A04_DIAGNOSTIC_DISPLAY_BRIGHTNESS_RESOURCES=1",
+    "current_run26_source": "26d5520021dcea53f816bc236e62264473300129",
+    "current_run26_media_changed": false,
+    "edk2_common_modified": false,
+    "uefi_firmware_built_here": false,
+    "wdk_built_here": false,
+    "hardware_verified_here": false
+  }
 }

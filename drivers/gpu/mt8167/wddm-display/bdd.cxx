@@ -39,6 +39,9 @@ BASIC_DISPLAY_DRIVER::BASIC_DISPLAY_DRIVER(_In_ DEVICE_OBJECT* pPhysicalDeviceOb
     RtlZeroMemory(&m_DisplayResources, sizeof(m_DisplayResources));
 #endif
     KeInitializeMutex(&m_PresentMutex,0);
+#if A04_MT8167_DISPLAY_BRIGHTNESS
+    m_Brightness.Initialize();
+#endif
 #if A04_GE8300_WDDM_SHARED_AUTOSTART
     KeInitializeEvent(&m_SharedWorkerStop,NotificationEvent,FALSE);
     KeInitializeMutex(&m_SharedWorkerStopMutex,0);
@@ -306,6 +309,12 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StartDevice(_In_  DXGK_START_INFO*   pDxgkStartIn
         DbgPrint("A04 display: direct resources unavailable: 0x%08lx\n",Status);
     }
 #endif
+#if A04_MT8167_DISPLAY_BRIGHTNESS
+    m_CurrentModes[0].Flags.IsInternal=TRUE; // Fixed built-in A04BR3 portrait panel.
+    NTSTATUS brightnessStatus=m_Brightness.Start(m_DeviceInfo.TranslatedResourceList);
+    m_Brightness.SetPower(m_AdapterPowerState==PowerDeviceD0 && m_MonitorPowerState==PowerDeviceD0);
+    A04DisplayTrace(0xb2,brightnessStatus); // Optional PWM resource never blocks the POST display.
+#endif
     m_Flags.DriverStarted = TRUE;
 #if A04_GE8300_WDDM_SHARED_AUTOSTART
     if(m_DisplayResources.Adapter && !m_SharedWorker) {
@@ -350,6 +359,9 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StopDevice(VOID)
 VOID BASIC_DISPLAY_DRIVER::CleanUp()
 {
     PAGED_CODE();
+#if A04_MT8167_DISPLAY_BRIGHTNESS
+    m_Brightness.Stop();
+#endif
 #if A04_GE8300_WDDM_DIRECT_EXPERIMENT
     m_DisplayResources.Stop();
 #endif
@@ -417,6 +429,9 @@ NTSTATUS BASIC_DISPLAY_DRIVER::SetPowerState(_In_  ULONG              HardwareUi
 
         // Store new adapter power state
         m_AdapterPowerState = DevicePowerState;
+#if A04_MT8167_DISPLAY_BRIGHTNESS
+        m_Brightness.SetPower(m_AdapterPowerState==PowerDeviceD0 && m_MonitorPowerState==PowerDeviceD0);
+#endif
 
         // There is nothing to do to specifically power up/down the display adapter
         return STATUS_SUCCESS;
@@ -427,6 +442,9 @@ NTSTATUS BASIC_DISPLAY_DRIVER::SetPowerState(_In_  ULONG              HardwareUi
         if(!NT_SUCCESS(lockStatus))return lockStatus;
         A04PresentGuard monitorGuard(&m_PresentMutex);
         m_MonitorPowerState=DevicePowerState;
+#if A04_MT8167_DISPLAY_BRIGHTNESS
+        m_Brightness.SetPower(m_AdapterPowerState==PowerDeviceD0 && m_MonitorPowerState==PowerDeviceD0);
+#endif
 #if A04_GE8300_WDDM_LIVE_FULL_PRESENT
         m_DisplayResources.LiveShadowValid=FALSE;
 #endif
@@ -1259,3 +1277,16 @@ VOID BASIC_DISPLAY_DRIVER::SystemDisplayWrite(_In_reads_bytes_(SourceHeight * So
 }
 
 #pragma code_seg(pop) // End Non-Paged Code
+
+NTSTATUS BASIC_DISPLAY_DRIVER::QueryBrightness(PQUERY_INTERFACE query)
+{
+    PAGED_CODE();
+#if A04_MT8167_DISPLAY_BRIGHTNESS
+    NTSTATUS status=KeWaitForSingleObject(&m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+    if(!NT_SUCCESS(status))return status;
+    A04PresentGuard guard(&m_PresentMutex);
+    return m_Flags.DriverStarted ? m_Brightness.QueryInterface(query) : STATUS_DEVICE_NOT_READY;
+#else
+    UNREFERENCED_PARAMETER(query);return STATUS_NOT_SUPPORTED;
+#endif
+}

@@ -54,6 +54,7 @@ extern "C"
 
 #include "BDD_ErrorLog.hxx"
 #include "ge8300_display_resources.hxx"
+#include "mt8167_brightness.hxx"
 
 #define MIN_WIDTH                    640
 #define MIN_HEIGHT                   480
@@ -189,6 +190,9 @@ private:
 
     BDD_HWBLT        m_HardwareBlt[MAX_VIEWS];
     KMUTEX           m_PresentMutex;
+#if A04_MT8167_DISPLAY_BRIGHTNESS
+    A04Mt8167Brightness m_Brightness;
+#endif
 #if A04_GE8300_WDDM_SHARED_AUTOSTART
     KEVENT m_SharedWorkerStop;
     KMUTEX m_SharedWorkerStopMutex;
@@ -247,6 +251,7 @@ public:
                          _Out_ ULONG*             pNumberOfChildren);
 
     NTSTATUS StopDevice(VOID);
+    NTSTATUS QueryBrightness(PQUERY_INTERFACE query);
 
     // Must be Non-Paged
     VOID ResetDevice(VOID);
@@ -672,5 +677,7 @@ void  __cdecl operator delete[](void* pObject);
 
 // Pool allocation tag for the Sample Display Driver. All allocations use this tag.
 #define BDDTAG 'DDBS'
+
+DXGKDDI_QUERY_INTERFACE BddDdiQueryInterface;
 
 #endif // _BDD_HXX_

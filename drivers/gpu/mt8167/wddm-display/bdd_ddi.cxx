@@ -46,6 +46,7 @@ DriverEntry(
     InitialData.DxgkDdiQueryDeviceDescriptor        = BddDdiQueryDeviceDescriptor;
     InitialData.DxgkDdiSetPowerState                = BddDdiSetPowerState;
     InitialData.DxgkDdiUnload                       = BddDdiUnload;
+    InitialData.DxgkDdiQueryInterface               = BddDdiQueryInterface;
     InitialData.DxgkDdiQueryAdapterInfo             = BddDdiQueryAdapterInfo;
     InitialData.DxgkDdiSetPointerPosition           = BddDdiSetPointerPosition;
     InitialData.DxgkDdiSetPointerShape              = BddDdiSetPointerShape;
@@ -584,3 +585,10 @@ BddDdiSystemDisplayWrite(
 
 // END: Non-Paged Code
 #pragma code_seg(pop)
+
+NTSTATUS BddDdiQueryInterface(IN_CONST_PVOID context,IN_PQUERY_INTERFACE query)
+{
+    PAGED_CODE();
+    if(!context)return STATUS_INVALID_PARAMETER;
+    return ((BASIC_DISPLAY_DRIVER *)context)->QueryBrightness(query);
+}
