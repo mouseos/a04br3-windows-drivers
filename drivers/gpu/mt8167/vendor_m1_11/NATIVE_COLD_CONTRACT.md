@@ -130,3 +130,45 @@ clip入力の追加確定: `a04_m111_build_clear_terminate_stream(out,page_gpu,w
 ## Windows coldコード用ページの予約
 
 `windows_native_code`はnative backing既定OFFフラグの内側で、USC0xba00010000/PDS0xa800010000に各4KiBのuncached DMA pageを予約する。既存PC/PD/PTの親と空PTEを確認し、自分の1entryだけを書き込む。USCはread-only、両方SLC bypass。既存TQの先頭64KiBとは非重複。コード・完全packetはまだ書かず実行しない。FW所有後はunmap/freeを拒否し、失敗途中のPTEも所有して保持する。完全producerと実ターゲットmappingが揃うまで、この予約を描画可能と扱わない。
+
+## private output・known code・termination suffixのcold接続
+
+`windows_native_backing.c` は既定OFFの既存native backing flagの範囲で、
+provider→`a04_vendor_native_allocate_cold`の実cold経路へ接続する。
+現在の実接続対象は800x1280のみ。800x600のfactory自体は変更しないが、このownerでは拒否する。
+
+- private output: 800x1280、pitch3200 bytes、4096000 bytes（1000 pages）。
+  GPU VAは`0x8200000000`、PC index520。既存screenの`0x8000000000`/index512、
+  Generalのindex407、PDS672、USC744と異なる。空PC entryを確認し、
+  専用PDと2枚のPTへ512+488 pagesをmapして、既存renderのcatalogueのこの1 entryだけを公開する。
+  別FWMEMCONTEXTは作らない。既存screen_surfaceを流用・書換えしない。
+- General arena末尾に終端専用4KiBを追加。800x1280ではoffset`0x158000`、
+  GPU VA`0x65c0358000`、arena全体`0x159000` bytes。PMページ・freelist配置は維持する。
+  追加pageはPM保護域外でSLC_BYPASS。VDM+0、PPP+64の既知76-byte suffixだけを書き込む。
+  これを完全TA streamの先頭とは扱わない。
+- `build_clear_surface`へpitch **pixels=800** を渡し、得たemitを`build_clear_codespace`へ渡す。
+  既存予約USC`0xba00010000`/PDS`0xa800010000`の各4KiBに有効32/0xa8 bytesをstageする。
+  packed colourは診断用raw値0。code/binding/surface/suffixは既知factoryのみを使い、
+  upload後の有効code/suffixとPC entryをDevice-safe 32-bitアクセスでreadbackする。
+- `build_clear_code_bindings`の結果とsurface CSRはprivate owner内のmetadataとして保存する。
+  未確定のPR/通常background recordへの選択・patchは行わない。TQ clear payloadと既存code bankは変更しない。
+  bank bindとknown backingのstage完了は、完全payloadの完成やTA/3D実行許可ではない。
+
+pixels/PD/PTを含む全DMAは既存FW/render/copy/screen、native data/PT/USC/PDS、
+互いのadapter logical spanとCPU spanとの非重複を確認してからDevice memoryへ書き込む。
+allocator aliasを検出した場合はnative owner全体をquarantineし、未証明のFreeCommonBufferを行わず、
+親render/FW/adapterの保持を継続する。この異常時の意図的retentionを正常動作の解放漏れとは扱わない。
+
+PC/PD/PTEの公開前に所有bitを立てる。cold cleanupは自分が所有したentry又は0だけを受け入れて
+個別に消去し、readback確認後に所有bitを落とす。他ownerのentryや全catalogueを上書きしない。
+cleanup失敗では全DMAとownerを返却・保持して再試行可能にする。
+`hardware_owned`後はreserve/stage/unmap/releaseを禁止し、FW所有済みDMAを解放しない。
+
+`a04_vendor_native_bytes`は従来どおりGeneral arena bytes（現在0x159000）であり、
+private outputやpage tablesを含む総DMA量ではない。追加codeを含むnative子の総DMAは0x547000 bytes。
+
+`make test-gpu-native-backing`（`test-gpu-m111-native`にも含む）は実owner関数を模擬DMA上で実行する。
+同catalogueの正しいPC entry/2leaf/1000page、suffix mappingとPM保護、factory出力一致、
+既存PC/TQ code/screen不変、8箇所のDMA確保失敗、5箇所のpool失敗、全DMA確保位置でのalias quarantine、
+外国PC/PTEのcleanup拒否、bank-zero失敗retention/再試行、FW所有後解放拒否を確認する。
+ホスト試験・ASan/UBSanとWindows WDK build/実機成功を区別する。完全packet/queue公開は引き続き未実装・禁止。
