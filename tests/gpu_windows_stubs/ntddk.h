@@ -7,12 +7,41 @@
 #include <string.h>
 typedef uint8_t UCHAR, BOOLEAN; typedef uint32_t ULONG; typedef int32_t LONG; typedef uintptr_t ULONG_PTR; typedef uint64_t ULONGLONG;
 typedef int32_t NTSTATUS;
+#ifdef A04_TEST_DISPLAY_SCANOUT
+typedef uintptr_t PFN_NUMBER; typedef size_t SIZE_T; typedef void *PVOID;
+typedef struct fake_mdl { unsigned short MdlFlags; ULONG offset,bytes; void *va; PFN_NUMBER *pfns; } *PMDL;
+typedef void *PDEVICE_OBJECT, *PIRP;
+
+#else
 typedef void *PMDL;
+#endif
 typedef union { int64_t QuadPart; } PHYSICAL_ADDRESS, LARGE_INTEGER;
+#ifdef A04_TEST_DISPLAY_SCANOUT
+typedef struct { PHYSICAL_ADDRESS Address; ULONG Length; } SCATTER_GATHER_ELEMENT;
+typedef struct { ULONG NumberOfElements; SCATTER_GATHER_ELEMENT Elements[4]; } SCATTER_GATHER_LIST, *PSCATTER_GATHER_LIST;
+typedef struct { int signaled; } KEVENT;
+typedef void (*PDRIVER_LIST_CONTROL)(PDEVICE_OBJECT,PIRP,PSCATTER_GATHER_LIST,PVOID);
+#define MDL_PAGES_LOCKED 1
+#define MmGetMdlByteOffset(m) ((m)->offset)
+#define MmGetMdlByteCount(m) ((m)->bytes)
+#define MmGetMdlPfnArray(m) ((m)->pfns)
+#define MmGetMdlVirtualAddress(m) ((m)->va)
+#define NotificationEvent 0
+#define Executive 0
+#define IO_NO_INCREMENT 0
+void KeInitializeEvent(KEVENT *,int,BOOLEAN);
+void KeSetEvent(KEVENT *,int,BOOLEAN);
+NTSTATUS KeWaitForSingleObject(void *,int,int,BOOLEAN,void *);
+PHYSICAL_ADDRESS MmGetPhysicalAddress(void *);
+#endif
 typedef struct fake_adapter *PDMA_ADAPTER;
 typedef struct {
     void *(*AllocateCommonBuffer)(PDMA_ADAPTER,ULONG,PHYSICAL_ADDRESS *,BOOLEAN);
     void (*FreeCommonBuffer)(PDMA_ADAPTER,ULONG,PHYSICAL_ADDRESS,void *,BOOLEAN);
+#ifdef A04_TEST_DISPLAY_SCANOUT
+    NTSTATUS (*GetScatterGatherList)(PDMA_ADAPTER,PDEVICE_OBJECT,PMDL,void *,ULONG,PDRIVER_LIST_CONTROL,void *,BOOLEAN);
+    void (*PutScatterGatherList)(PDMA_ADAPTER,PSCATTER_GATHER_LIST,BOOLEAN);
+#endif
     ULONG Size;
     void *(*AllocateCommonBufferEx)(PDMA_ADAPTER,PHYSICAL_ADDRESS *,ULONG,PHYSICAL_ADDRESS *,BOOLEAN,ULONG);
 } DMA_OPERATIONS;

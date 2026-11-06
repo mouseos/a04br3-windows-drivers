@@ -26,3 +26,33 @@ adapter mapping, cache maintenance/visibility, hardware-specific latch and
 retirement evidence, stop/removal integration and a WDDM presentation path.
 This policy is deliberately not wired to hardware and does not enable direct
 scanout.
+
+## Experimental Windows mapping and OVL write
+
+`windows_display_scanout.c` compiles only when
+`A04_GE8300_DISPLAY_SCANOUT_EXPERIMENT=1`; the default provider contains no
+active path. It maps a caller-owned locked MDL with the **OVL device's** DMA
+adapter using GetScatterGatherList for device reads. Every MDL PFN must match
+the backing of the prepared GPU common buffer; the display scatter/gather
+addresses must form one contiguous 32-bit interval. The SG mapping and its
+adapter, MDL and GPU surface must stay owned for the full display lifetime.
+Map before the GPU surface is marked hardware-exposed. The display adapter and
+PDO must actually describe OVL and its M4U domain; this code cannot verify that
+platform resource assignment. DMA bounce buffers require the readiness
+operation to synchronize the display mapping after GPU completion; merely
+obtaining the list is not sufficient.
+
+The switch routine joins that mapping to the MT8167 OVL L0 address register.
+It requires a PnP-owned mapped OVL range and a display lease held by the caller,
+a real exact-fence/visibility operation, and a real safe-boundary operation.
+It validates enabled OVL, a single active layer, geometry, pitch, and the
+expected existing address before writing. The caller must also establish that
+L0 format, rotation and pixel layout match the rendered surface. Current
+firmware config enables layer 3, so this implementation deliberately refuses
+it. No vblank or register read is claimed to prove a latch. Once a write is
+attempted the mapping and GPU surface cannot be freed by this interface; it
+provides neither display retirement nor stop/removal, and no restored-framebuffer
+operation. No production WDDM/provider entry point registers or calls it.
+The current screen diagnostic uses pitch 3328 and cannot use this 3200-pitch
+path. Thus enabling compilation does not enable scanout or demonstrate a
+working display. Its host test models DMA and MMIO; it is not a hardware test.
