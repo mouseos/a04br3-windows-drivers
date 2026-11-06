@@ -48,7 +48,7 @@ static int prep(void){
  if(!clean_windows_volume())return 0;
  if(GetFileAttributesW(L"C:\\Windows\\System32\\config\\SYSTEM")==INVALID_FILE_ATTRIBUTES||GetFileAttributesW(L"E:\\EFI\\Boot\\bootarm.efi")==INVALID_FILE_ATTRIBUTES)return 0;
  if(!absent_hive(L"A04TOPRGUSYS")||!absent_hive(L"A04TOPRGUSW")||!absent_hive(L"A04TEMP")||!absent_hive(L"A04TXSYS")||!absent_hive(L"A04TXSW"))return 0;
- if(!privilege(SE_BACKUP_NAME)||!privilege(SE_RESTORE_NAME)||!privilege(SE_SECURITY_NAME))return 0;
+ if(!privilege(L"SeBackupPrivilege")||!privilege(L"SeRestorePrivilege")||!privilege(L"SeSecurityPrivilege"))return 0;
  return CryptAcquireContextW(&provider,0,0,PROV_RSA_AES,CRYPT_VERIFYCONTEXT)!=0;
 }
 /* Exclusive access prevents taking a snapshot of a file another process holds.
