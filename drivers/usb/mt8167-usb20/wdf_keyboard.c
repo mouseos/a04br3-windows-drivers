@@ -12,7 +12,7 @@
 #define REPORT_SLOTS 32u
 typedef struct {
  WDFWAITLOCK lock; WDFQUEUE reads; UCHAR reports[REPORT_SLOTS][8];
- unsigned head,count; BOOLEAN connected,overflow,draining; KB_SESSION session; A04_USB_WDF *usb; WDFWAITLOCK controller_lock; WDFTIMER poll; BOOLEAN rx_pending, board_owned; A04_USB_BOARD board; A04_SHARED_USB_INTERFACE shared; BOOLEAN shared_valid; ULONGLONG next_poll;
+ unsigned head,count; BOOLEAN connected,overflow,draining; KB_SESSION session; A04_USB_WDF *usb; WDFWAITLOCK controller_lock; WDFTIMER poll; BOOLEAN rx_pending, board_owned, board_fault; A04_USB_BOARD board; A04_SHARED_USB_INTERFACE shared; BOOLEAN shared_valid; ULONGLONG next_poll;
 } KB_HID_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(KB_HID_CONTEXT,KbHidContext)
 EVT_WDF_DRIVER_DEVICE_ADD KbHidAdd;
@@ -98,6 +98,10 @@ VOID KbPoll(WDFTIMER timer)
  WdfWaitLockAcquire(c->controller_lock,NULL);
  if(c->board_owned && c->shared_valid) {
   if(c->shared.Health(c->shared.Header.Context)) {
+   const MT8167_USB20_CONTROLLER *controller=A04UsbWdfController(c->usb);
+   c->board_fault=TRUE;
+   if(controller) { unsigned char devctl=controller->io.read8(controller->io.context,0x60);
+    controller->io.write8(controller->io.context,0x60,(unsigned char)(devctl&~1u)); }
    c->session.enumeration.stage=KB_ERROR; c->rx_pending=FALSE; KbHidDisconnected(dev);
    WdfWaitLockRelease(c->controller_lock); return;
   }
@@ -115,6 +119,7 @@ static void KbControllerEvents(void *context,MT8167_USB20_EVENTS events)
  WDFDEVICE dev=(WDFDEVICE)context; KB_HID_CONTEXT*c=KbHidContext(dev); int result;
  const MT8167_USB20_CONTROLLER *controller; unsigned char power,devctl; unsigned speed;
  WdfWaitLockAcquire(c->controller_lock,NULL);
+ if(!c->board_owned || c->board_fault){WdfWaitLockRelease(c->controller_lock);return;}
  if(events.usb & (0x20u|0x80u)) {
   c->rx_pending=FALSE; KbHidDisconnected(dev); c->session.enumeration.stage=KB_ERROR;
  } else {
@@ -167,10 +172,15 @@ NTSTATUS KbHidActivate(WDFDEVICE dev,const A04_USB_BOARD *board)
  KB_HID_CONTEXT*c=KbHidContext(dev); NTSTATUS status;
  if(!board || !A04UsbWdfController(c->usb) || c->board_owned)return STATUS_INVALID_DEVICE_STATE;
  c->board=*board;
- if(A04UsbHostStart(&c->board))return STATUS_DEVICE_POWER_FAILURE;
- c->board_owned=TRUE;
+ WdfWaitLockAcquire(c->controller_lock,NULL);
+ c->board_fault=FALSE;
+ if(A04UsbHostPrepare(&c->board)){WdfWaitLockRelease(c->controller_lock);return STATUS_DEVICE_POWER_FAILURE;}
  status=A04UsbWdfArm(c->usb);
- if(!NT_SUCCESS(status)) { A04UsbHostStop(&c->board); c->board_owned=FALSE; }
+ if(NT_SUCCESS(status) && A04UsbHostRun(&c->board))status=STATUS_DEVICE_POWER_FAILURE;
+ if(NT_SUCCESS(status))c->board_owned=TRUE;
+ WdfWaitLockRelease(c->controller_lock);
+ /* Never flush work while holding controller_lock: the IRQ worker takes it. */
+ if(!NT_SUCCESS(status)) { A04UsbWdfDisarm(c->usb); A04UsbHostStop(&c->board); }
  return status;
 }
 void KbHidDeactivate(WDFDEVICE dev)
