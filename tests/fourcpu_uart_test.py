@@ -8,6 +8,8 @@ def fixture():
  return start+cpu+row(0xffffffff,0xffffffff,15,4,0,60100)*3
 class Tests(unittest.TestCase):
  def test_complete(self):self.assertEqual(m.decode(fixture())['runs'][0]['result'],'pass_60s')
+ def test_summary_clock_starts_after_workers(self):
+  d=fixture().replace(row(0xffffffff,0xffffffff,15,4,0,60100),row(0xffffffff,0xffffffff,15,4,0,59999));self.assertEqual(m.decode(d)['runs'][0]['result'],'pass_60s')
  def test_missing_cpu(self):self.assertNotEqual(m.decode(fixture().replace(row(6,2,2,60,3,60000),b''))['runs'][0]['result'],'pass_60s')
  def test_wrong_cpu(self):self.assertNotEqual(m.decode(fixture().replace(row(6,2,2,60,3,60000),row(6,2,1,60,3,60000)))['runs'][0]['result'],'pass_60s')
  def test_checksum_and_missing_repetitions(self):

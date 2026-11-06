@@ -35,7 +35,7 @@ def decode(data):
                     if prior and (value[1]<prior[1] or (prior[2]!=3 and value[1]==prior[1])):progress_ok=False;break
                     prior=value
                 if not progress_ok:break
-        passed=(not contradictions and len(starts)>=3 and len(ends)>=3 and starts[0]==(0,0,0,0) and end is not None and end[0]==15 and end[1]==4 and end[2]==0 and end[3]>=60000 and progress_ok and all(c['copies']>=3 and c['observed']==c['cpu'] and c['iterations'] and c['state']==3 and c['elapsed_ms']>=60000 for c in core))
+        passed=(not contradictions and len(starts)>=3 and len(ends)>=3 and starts[0]==(0,0,0,0) and end is not None and end[0]==15 and end[1]==4 and end[2]==0 and progress_ok and all(c['copies']>=3 and c['observed']==c['cpu'] and c['iterations'] and c['state']==3 and c['elapsed_ms']>=60000 for c in core))
         out.append({'run_id':f'{run:08X}','result':'pass_60s' if passed else 'incomplete_or_failed','summary':list(end) if end else None,'start_copies':len(starts),'end_copies':len(ends),'cores':core,'contradictory_records':contradictions,'progress_complete':progress_ok})
     return {'runs':out,'invalid_lines':bad,'interpretation':'Four logical CPUs under this 60-second workload only; not long-term, physical identity, IRQ, suspend, or reboot stability.'}
 def main():
