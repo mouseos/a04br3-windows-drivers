@@ -14,4 +14,4 @@ NTSTATUS KeWaitForSingleObject(KEVENT *e,int a,int b,int c,void *d){(void)a;(voi
 static int process(void *p){assert(p==&calls);calls++;return fail;}
 int main(void){struct a04_irq_work w={0};assert(!a04_irq_work_init(&w,&device,process,&calls));a04_irq_work_notify(&w);assert(w.busy==1&&!w.idle.state);assert(!a04_irq_work_drain(&w));assert(!calls&&freed==1&&!w.work);
  memset(&w,0,sizeof w);assert(!a04_irq_work_init(&w,&device,process,&calls));a04_irq_work_notify(&w);worker(&device,worker_context);worker=0;assert(calls==1&&w.busy==2);assert(!a04_irq_work_drain(&w)&&freed==2);
- memset(&w,0,sizeof w);assert(!a04_irq_work_init(&w,&device,process,&calls));a04_irq_work_notify(&w);a04_irq_work_notify(&w);assert(w.fault);assert(a04_irq_work_drain(&w)&&freed==2&&w.work);return 0;}
+ memset(&w,0,sizeof w);assert(!a04_irq_work_init(&w,&device,process,&calls));a04_irq_work_notify(&w);a04_irq_work_notify(&w);assert(w.fault);assert(a04_irq_work_drain(&w)&&freed==3&&!w.work&&!w.context);return 0;}

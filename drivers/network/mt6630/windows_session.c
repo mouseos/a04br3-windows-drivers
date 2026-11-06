@@ -20,10 +20,13 @@ int a04_windows_session_start(struct a04_windows_session *s,A04_SHARED_WIFI_INTE
     !parent->Acquire||!parent->ReleaseQuiescent||!parent->Live||!parent->UpdateShared||!parent->WriteShared||
     !platform||!platform->connect_masked_irq||!platform->mask_and_drain_irq||!platform->drain_io||
     !raw||!translated||!ocr||(ocr&~0x00ff8000u)||!hash||!options)return -1;
- /* Acquire failure can be partial: quarantine, never silently retry. */
+ /* The interface guarantees that a failed Acquire has no side effects. */
  s->state=A04_SESSION_STARTING;s->parent=parent;s->platform=*platform;
  status=parent->Acquire(parent->Header.Context,&generation);
- if(!NT_SUCCESS(status)||!generation||parent->Live(parent->Header.Context,generation)!=1)goto fail;
+ if(!NT_SUCCESS(status)){s->state=A04_SESSION_REJECTED;return -1;}
+ /* A successful response with invalid generation or lost liveness can have
+  * retained a lease; keep every reference quarantined for recovery. */
+ if(!generation||parent->Live(parent->Header.Context,generation)!=1)goto fail;
  s->generation=generation;
  /* Only a real parent's contract can grant these properties. The existing
   * provider rejects Acquire; an interface reference alone is not a lease. */

@@ -1245,3 +1245,14 @@ test-mt8167-usb-host-control:
 	mkdir -p build
 	$(CC) $(CFLAGS) -DA04_MUSB_HOST_CORE_EXPERIMENT=1 -Idrivers/usb/mt8167-usb20 tests/usb/host_control_test.c drivers/usb/mt8167-usb20/host_control.c drivers/usb/mt8167-usb20/host_core.c drivers/usb/mt8167-usb20/controller.c drivers/usb/mt8167-usb20/ep0_pio.c drivers/usb/mt8167-usb20/ep0.c -o build/mt8167_usb_host_control_test
 	./build/mt8167_usb_host_control_test
+
+.PHONY: test-mt6630-wdf-lease-probe
+test-mt6630-wdf-lease-probe:
+	@mkdir -p build
+	$(CC) $(CFLAGS) -DA04_WIFI_WDF_LEASE_DIAGNOSTIC=1 -Itests/shared_wdf_stubs tests/mt6630_wdf_sdio_probe_test.c -o build/mt6630_wdf_sdio_probe_test
+	./build/mt6630_wdf_sdio_probe_test
+
+.PHONY: test-mt6630-wdf-hardware
+test-mt6630-wdf-hardware:
+	$(CC) $(CFLAGS) -DA04_WIFI_WDF_LEASE_DIAGNOSTIC=1 -DA04_WIFI_WDF_HARDWARE_DIAGNOSTIC=1 -DA04_WIFI_SESSION_DIAGNOSTIC=1 -DA04_WIFI_IRQ_DIAGNOSTIC=1 -Itests/wifi_wdf_hardware_stubs tests/mt6630_wdf_hardware_test.c -o build/mt6630_wdf_hardware_test
+	./build/mt6630_wdf_hardware_test
