@@ -4,10 +4,10 @@ $base=Join-Path $env:RUNNER_TEMP 'a04-toprgu-audit-test'
 if ((Test-Path $base) -or (Test-Path 'HKLM:\SOFTWARE\A04TOPRGUTEST') -or (Test-Path 'HKLM:\A04TOPRGUSYS') -or (Test-Path 'HKLM:\A04TOPRGUSW')) { throw 'test namespace already in use' }
 New-Item -ItemType Directory -Force "$base\Windows\System32\config","$base\Windows\System32\drivers","$base\ram" | Out-Null
 try {
- & reg add HKLM\SOFTWARE\A04TOPRGUTEST\Select /v Current /t REG_DWORD /d 1 /f | Out-Null
- & reg add HKLM\SOFTWARE\A04TOPRGUTEST\ControlSet001\Services\Mt8167Toprgu /v Start /t REG_DWORD /d 0 /f | Out-Null
- & reg add HKLM\SOFTWARE\A04TOPRGUTEST\ControlSet001\Services\Mt8167Toprgu /v Group /t REG_SZ /d 'System Bus Extender' /f | Out-Null
- & reg add HKLM\SOFTWARE\A04TOPRGUTEST\ControlSet001\Services\Mt8167Toprgu /v ImagePath /t REG_EXPAND_SZ /d 'System32\drivers\mt8167-toprgu.sys' /f | Out-Null
+ & reg add HKLM\SOFTWARE\A04TOPRGUTEST\Select /v Current /t REG_DWORD /d 4 /f | Out-Null
+ & reg add HKLM\SOFTWARE\A04TOPRGUTEST\ControlSet004\Services\Mt8167Toprgu /v Start /t REG_DWORD /d 0 /f | Out-Null
+ & reg add HKLM\SOFTWARE\A04TOPRGUTEST\ControlSet004\Services\Mt8167Toprgu /v Group /t REG_SZ /d 'System Bus Extender' /f | Out-Null
+ & reg add HKLM\SOFTWARE\A04TOPRGUTEST\ControlSet004\Services\Mt8167Toprgu /v ImagePath /t REG_EXPAND_SZ /d 'System32\drivers\mt8167-toprgu.sys' /f | Out-Null
  & reg save HKLM\SOFTWARE\A04TOPRGUTEST "$base\Windows\System32\config\SYSTEM" /y | Out-Null
  if($LASTEXITCODE) {throw 'SYSTEM fixture save failed'}
  & reg delete HKLM\SOFTWARE\A04TOPRGUTEST /f | Out-Null
@@ -23,20 +23,34 @@ try {
  [IO.File]::WriteAllText("$base\ram\audit-hive-uncached.exe",'uncached verifier fixture')
  $source=Get-Content (Join-Path $root 'tools\winpe\audit-toprgu-installed.cmd') -Raw
  $source=$source.Replace('C:\Windows',"$base\Windows").Replace('X:\a04br3',"$base\ram")
- $source=$source -replace '(?m)^.*\\guard-windows-volume\.exe\r?$', 'cmd /c exit 0'
- $source=$source -replace '(?m)^.*\\compare-files\.exe ', 'fc /b '
- $source=$source -replace '(?m)^.*\\audit-hive-uncached\.exe .*$', 'cmd /c exit 0'
+ $ramPattern=[regex]::Escape("$base\ram")
+ $source=$source -replace "(?m)^\s*$ramPattern\\guard-windows-volume\.exe\r?$", 'cmd /c exit 0'
+ $source=$source -replace "(?m)^\s*$ramPattern\\compare-files\.exe ", 'fc /b '
+ $source=$source -replace "(?m)^\s*$ramPattern\\audit-hive-uncached\.exe .*\r?$", 'cmd /c exit 0'
  [IO.File]::WriteAllText("$base\audit.cmd",$source,[Text.Encoding]::ASCII)
  $systemBefore=(Get-FileHash "$base\Windows\System32\config\SYSTEM").Hash
  $softwareBefore=(Get-FileHash "$base\Windows\System32\config\SOFTWARE").Hash
  $out=& cmd.exe /c "$base\audit.cmd"
- if($LASTEXITCODE -ne 0 -or !($out -match 'TOPRGU_AUDIT_FINISHED_READ_ONLY') -or !($out -match 'TOPRGU_SYS_MATCH=YES') -or !($out -match 'TOPRGU_TEST_CERT_ROOT=YES') -or !($out -match 'TOPRGU_TEST_CERT_PUBLISHER=YES')) {throw ($out -join ' ')}
+ if($LASTEXITCODE -ne 0 -or !($out -match 'TOPRGU_SELECTED_CONTROLSET=ControlSet004') -or !($out -match 'TOPRGU_AUDIT_FINISHED_READ_ONLY') -or !($out -match 'TOPRGU_SYS_MATCH=YES') -or !($out -match 'TOPRGU_TEST_CERT_ROOT=YES') -or !($out -match 'TOPRGU_TEST_CERT_PUBLISHER=YES')) {throw ($out -join ' ')}
  if((Get-FileHash "$base\Windows\System32\config\SYSTEM").Hash -ne $systemBefore -or (Get-FileHash "$base\Windows\System32\config\SOFTWARE").Hash -ne $softwareBefore) {throw 'fixture source hives modified'}
  Remove-Item -Recurse -Force "$base\ram\toprgu-audit"
  [IO.File]::WriteAllText("$base\ram\toprgu-audit-candidate.sys",'different')
  $out=& cmd.exe /c "$base\audit.cmd"
  if($LASTEXITCODE -ne 0 -or !($out -match 'TOPRGU_SYS_MATCH=NO')) {throw 'mismatch not reported'}
  Remove-Item -Recurse -Force "$base\ram\toprgu-audit"
+ foreach($number in @(0, 5, 1000)) {
+  & reg load HKLM\A04TOPRGUSYS "$base\Windows\System32\config\SYSTEM" | Out-Null
+  if($LASTEXITCODE) {throw 'fixture hive load failed'}
+  & reg add HKLM\A04TOPRGUSYS\Select /v Current /t REG_DWORD /d $number /f | Out-Null
+  if($LASTEXITCODE) {throw 'fixture Select write failed'}
+  & reg unload HKLM\A04TOPRGUSYS | Out-Null
+  if($LASTEXITCODE) {throw 'fixture hive unload failed'}
+  $out=& cmd.exe /c "$base\audit.cmd"
+  if($LASTEXITCODE -eq 0 -or !($out -match 'TOPRGU_AUDIT_FAILED')) {throw "invalid or absent ControlSet $number was accepted"}
+  & cmd.exe /c 'reg query HKLM\A04TOPRGUSYS >nul 2>&1'
+  if($LASTEXITCODE -eq 0) {throw 'audit left SYSTEM loaded after rejection'}
+  Remove-Item -Recurse -Force "$base\ram\toprgu-audit"
+ }
  $source=$source -replace '(?m)^cmd /c exit 0\r?$', 'cmd /c exit 1'
  [IO.File]::WriteAllText("$base\reject.cmd",$source,[Text.Encoding]::ASCII)
  $out=& cmd.exe /c "$base\reject.cmd"

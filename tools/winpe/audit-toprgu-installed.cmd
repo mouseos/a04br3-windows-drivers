@@ -49,12 +49,20 @@ if errorlevel 1 (echo TOPRGU_SYS_MATCH=NO) else (echo TOPRGU_SYS_MATCH=YES)
 reg load HKLM\A04TOPRGUSYS X:\a04br3\toprgu-audit\SYSTEM >nul
 if errorlevel 1 goto failed
 set "A04_CURRENT="
-for /f "tokens=1,2,3" %%A in ('reg query HKLM\A04TOPRGUSYS\Select /v Current 2^>nul') do if /i "%%A"=="Current" set "A04_CURRENT=%%C"
-set "A04_SET="
-if /i "%A04_CURRENT%"=="0x1" set "A04_SET=ControlSet001"
-if /i "%A04_CURRENT%"=="0x2" set "A04_SET=ControlSet002"
-if /i "%A04_CURRENT%"=="0x3" set "A04_SET=ControlSet003"
-if not defined A04_SET goto fail_sys
+for /f "tokens=1,2,3" %%A in ('reg query HKLM\A04TOPRGUSYS\Select /v Current 2^>nul') do if /i "%%A"=="Current" if /i "%%B"=="REG_DWORD" set "A04_CURRENT=%%C"
+if not defined A04_CURRENT goto fail_sys
+rem REG_DWORD is rendered by reg.exe as a hexadecimal number. Restrict its
+rem characters before SET /A so hive content cannot become an expression.
+echo(%A04_CURRENT%| findstr /r /x "0x[0-9a-fA-F][0-9a-fA-F]*" >nul
+if errorlevel 1 goto fail_sys
+set /a A04_NUMBER=%A04_CURRENT% >nul 2>&1
+if errorlevel 1 goto fail_sys
+if %A04_NUMBER% LSS 1 goto fail_sys
+if %A04_NUMBER% GTR 999 goto fail_sys
+set "A04_PAD=00%A04_NUMBER%"
+call set "A04_SET=ControlSet%%A04_PAD:~-3%%"
+reg query HKLM\A04TOPRGUSYS\%A04_SET% >nul 2>&1
+if errorlevel 1 goto fail_sys
 echo TOPRGU_SELECTED_CONTROLSET=%A04_SET%
 reg query HKLM\A04TOPRGUSYS\%A04_SET%\Services\Mt8167Toprgu /v Start
 if errorlevel 1 goto fail_sys
