@@ -55,6 +55,22 @@ def main():
     text = re.sub(r'echo A04AUDIT_WAIT[^\n]*\nping[^\n]*\ncall[^\n]*run-audit-once.cmd\n?', '', text)
     assert 'fourcpu-load.exe' not in text and 'usb-power-observe.cmd' not in text
     assert 'run-audit-once.cmd' not in text and 'display-shared\\mt8167-display.inf' in text
+    # Load the actual display path directly; independent copy self-tests and
+    # status programs must not gate the frame measurement. Preserve stage
+    # stdout in bounded CRC-framed UART reports when no camera is attached.
+    text = text.replace('%GPU%\\ge8300-pnp-status.exe\n', '').replace('%GPU%\\ge8300-status.exe\n', '')
+    text = text.replace('%GPU%\\ge8300-vendor-copy-test.exe\nif errorlevel 1 goto gpu_failed\n', '')
+    text = text.replace('drvload %GPU%\\mt8167-ge8300.inf\n',
+        'drvload %GPU%\\mt8167-ge8300.inf > X:\\a04br3\\toprgu-audit-result.txt 2>&1\n'
+        'set GPU_LOAD_RC=%errorlevel%\n'
+        'X:\\a04br3\\uart-audit-stream.exe 9917000000000001\n'
+        'if not "%GPU_LOAD_RC%"=="0" goto gpu_failed\n')
+    text = text.replace('drvload X:\\a04br3\\display-shared\\mt8167-display.inf\n',
+        'drvload X:\\a04br3\\display-shared\\mt8167-display.inf > X:\\a04br3\\toprgu-audit-result.txt 2>&1\n'
+        'set DISPLAY_LOAD_RC=%errorlevel%\n'
+        'X:\\a04br3\\uart-audit-stream.exe 9917000000000002\n'
+        'if not "%DISPLAY_LOAD_RC%"=="0" goto gpu_failed\n')
+    text = text.replace('echo A04VOL_SCREEN_DISABLED_UART_PRIORITY', 'X:\\a04br3\\uart-screen.exe -f')
     start.write_bytes(text.replace('\n','\r\n').encode())
     image = out/'volume.wim'; shutil.copyfile(base/'volume.wim',image)
     changes = [(software,'/Windows/System32/config/SOFTWARE'),(start,'/Windows/System32/startnet.cmd')]
