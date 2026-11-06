@@ -28,6 +28,7 @@
 #endif
 #if A04_GCE_IRQ_ATTACH
 #include "gce_submit.h"
+#include "gce_observe.h"
 #endif
 #define GCE_BYTES 4096u
 /* These proofs require independent providers; assigning PnP resources does
@@ -96,9 +97,12 @@ EVT_WDF_DEVICE_D0_EXIT GceD0Exit;
 #if A04_GCE_IRQ_ATTACH
 EVT_WDF_DEVICE_D0_ENTRY_POST_INTERRUPTS_ENABLED GceD0PostInterrupt;
 static NTSTATUS GceDisplaySubmit(PVOID,ULONG,ULONG,ULONG,ULONG);
+static NTSTATUS GceDisplayObserve(PVOID,ULONG,A04_GCE_THREAD_OBSERVATION *);
 #else
 static NTSTATUS GceDisplaySubmit(PVOID p,ULONG token,ULONG event,ULONG l0,ULONG l3)
 {UNREFERENCED_PARAMETER(p);UNREFERENCED_PARAMETER(token);UNREFERENCED_PARAMETER(event);UNREFERENCED_PARAMETER(l0);UNREFERENCED_PARAMETER(l3);return STATUS_NOT_SUPPORTED;}
+static NTSTATUS GceDisplayObserve(PVOID p,ULONG token,A04_GCE_THREAD_OBSERVATION *out)
+{UNREFERENCED_PARAMETER(p);UNREFERENCED_PARAMETER(token);UNREFERENCED_PARAMETER(out);return STATUS_NOT_SUPPORTED;}
 #endif
 static VOID GceInterfaceReference(PVOID p){WdfObjectReference((WDFDEVICE)p);}
 static VOID GceInterfaceDereference(PVOID p){WdfObjectDereference((WDFDEVICE)p);}
@@ -188,6 +192,7 @@ EVT_WDF_INTERRUPT_DPC GceInterruptDpc;
 EVT_WDF_INTERRUPT_SYNCHRONIZE GceKickSync;
 EVT_WDF_INTERRUPT_SYNCHRONIZE GceTimeoutSync;
 EVT_WDF_INTERRUPT_SYNCHRONIZE GceStateSync;
+EVT_WDF_INTERRUPT_SYNCHRONIZE GceObserveSync;
 static int GceAuthorized(void *p)
 {
     GCE_CONTEXT *c=(GCE_CONTEXT *)p;
@@ -223,6 +228,14 @@ BOOLEAN GceTimeoutSync(WDFINTERRUPT irq,WDFCONTEXT p)
 typedef struct {GCE_CONTEXT *owner;uint32_t state;} GCE_STATE_QUERY;
 BOOLEAN GceStateSync(WDFINTERRUPT irq,WDFCONTEXT p)
 {GCE_STATE_QUERY *q=(GCE_STATE_QUERY *)p;UNREFERENCED_PARAMETER(irq);q->state=q->owner->engine.state;return TRUE;}
+typedef struct {GCE_CONTEXT *owner;A04_GCE_THREAD_OBSERVATION value;} GCE_OBSERVE_QUERY;
+BOOLEAN GceObserveSync(WDFINTERRUPT irq,WDFCONTEXT p)
+{
+    GCE_OBSERVE_QUERY *q=(GCE_OBSERVE_QUERY *)p;GCE_CONTEXT *c=q->owner;struct a04_gce_snapshot s;
+    UNREFERENCED_PARAMETER(irq);
+    if(a04_gce_observe_thread0(c,GceAuthorized(c) && c->engine.state==A04_GCE_IDLE,GceRead,&s))return FALSE;
+    q->value.enable=s.enable;q->value.status=s.status;q->value.irq_status=s.irq_status;q->value.irq_enable=s.irq_enable;return TRUE;
+}
 BOOLEAN GceInterruptIsr(WDFINTERRUPT interrupt,ULONG message)
 {
     GCE_CONTEXT *c=GceContext(WdfInterruptGetDevice(interrupt));int result;
@@ -275,6 +288,18 @@ static NTSTATUS GceDisplaySubmit(PVOID p,ULONG token,ULONG event,ULONG l0,ULONG 
     /* Even EOC and thread stop do not prove display latch or retirement.
      * STOPPED, like RETAIN, keeps the lease and all DMA resources. */
 done:
+    WdfWaitLockRelease(c->lease_lock);return status;
+}
+static NTSTATUS GceDisplayObserve(PVOID p,ULONG token,A04_GCE_THREAD_OBSERVATION *out)
+{
+    GCE_CONTEXT *c;GCE_OBSERVE_QUERY q;NTSTATUS status=STATUS_DEVICE_NOT_READY;
+    if(!p || !token || !out || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+    RtlZeroMemory(out,sizeof(*out));c=GceContext((WDFDEVICE)p);
+    (void)WdfWaitLockAcquire(c->lease_lock,NULL);
+    if(a04_gce_display_is_live(&c->lease,token) && c->interrupt && GceAuthorized(c)) {
+        RtlZeroMemory(&q,sizeof(q));q.owner=c;
+        if(WdfInterruptSynchronize(c->interrupt,GceObserveSync,&q)) {*out=q.value;status=STATUS_SUCCESS;}
+    }
     WdfWaitLockRelease(c->lease_lock);return status;
 }
 #endif
@@ -439,7 +464,7 @@ NTSTATUS GceAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     RtlZeroMemory(&iface,sizeof(iface));iface.Header.Size=sizeof(iface);
     iface.Header.Version=A04_GCE_DISPLAY_INTERFACE_VERSION;iface.Header.Context=device;
     iface.Header.InterfaceReference=GceInterfaceReference;iface.Header.InterfaceDereference=GceInterfaceDereference;
-    iface.Acquire=GceDisplayAcquire;iface.Release=GceDisplayRelease;iface.Ready=GceDisplayReady;iface.Submit=GceDisplaySubmit;
+    iface.Acquire=GceDisplayAcquire;iface.Release=GceDisplayRelease;iface.Ready=GceDisplayReady;iface.Submit=GceDisplaySubmit;iface.ObserveThread0=GceDisplayObserve;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&iface,&A04GceDisplayInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(device,&query);if(!NT_SUCCESS(status))return status;
     return WdfDeviceCreateDeviceInterface(device,&A04GceDeviceInterfaceGuid,NULL);

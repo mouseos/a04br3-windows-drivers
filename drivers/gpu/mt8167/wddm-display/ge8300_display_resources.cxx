@@ -65,12 +65,20 @@ static NTSTATUS GceDisplayAcquire(void **retained)
     status=irp->IoStatus.Status;IoFreeIrp(irp);irp=NULL;
     A04DisplayTrace(0x6d,status);
     if(!NT_SUCCESS(status))goto done;
-    if(!h->iface.Header.InterfaceDereference || !h->iface.Acquire || !h->iface.Release || !h->iface.Ready) {
+    if(!h->iface.Header.InterfaceDereference || !h->iface.Acquire || !h->iface.Release || !h->iface.Ready || !h->iface.ObserveThread0) {
         status=STATUS_NOINTERFACE;goto done;
     }
     status=h->iface.Acquire(h->iface.Header.Context,&h->token);
     A04DisplayTrace(0x6e,status);
     if(h->token && NT_SUCCESS(status)) {
+        A04_GCE_THREAD_OBSERVATION o;NTSTATUS observation;
+        RtlZeroMemory(&o,sizeof(o));
+        observation=h->iface.ObserveThread0(h->iface.Header.Context,h->token,&o);
+        A04DisplayTrace(0x70,observation);
+        if(NT_SUCCESS(observation)) {
+            A04DisplayTrace(0x71,(NTSTATUS)o.enable);A04DisplayTrace(0x72,(NTSTATUS)o.status);
+            A04DisplayTrace(0x73,(NTSTATUS)o.irq_status);A04DisplayTrace(0x74,(NTSTATUS)o.irq_enable);
+        }
         status=h->iface.Ready(h->iface.Header.Context,h->token);
         A04DisplayTrace(0x6f,status);
         if(!NT_SUCCESS(status) && NT_SUCCESS(h->iface.Release(h->iface.Header.Context,h->token)))h->token=0;
