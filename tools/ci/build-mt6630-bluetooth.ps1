@@ -32,7 +32,7 @@ try {
  $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1";$inc=Join-Path $kit 'Include'
  $km=Join-Path $kit 'Lib\winv6.3\km\arm';$wdf=Join-Path $kit 'Lib\wdf\kmdf\arm\1.13'
  $objects=@()
- foreach($name in @('transport','windows_driver')){
+ foreach($name in @('transport','status','windows_driver')){
   $obj=Join-Path $out "$name.obj";$objects+=$obj
   & clang --target=thumbv7-pc-windows-msvc -std=c11 -w -ffunction-sections -fdata-sections -fms-extensions -ffreestanding -O2 -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 -DA04_WIFI_IRQ_DIAGNOSTIC=1 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$inc\wdf\kmdf\1.13" -c "$root\drivers\bluetooth\mt6630\$name.c" -o $obj
   if($LASTEXITCODE){throw "Bluetooth $name compile failed"}

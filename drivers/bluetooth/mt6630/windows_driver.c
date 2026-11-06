@@ -4,6 +4,7 @@
 #include <wdf.h>
 #include <bthxddi.h>
 #include "transport.h"
+#include "status.h"
 #include "../../network/mt6630/windows_board.h"
 #include "../../network/mt6630/windows_irq.h"
 #include "../../network/mt6630/windows_firmware.h"
@@ -20,6 +21,7 @@ typedef struct _BT_DEVICE {
  struct a04_wifi_owner owner;struct a04_windows_msdc2 host;struct a04_windows_irq irq;
  struct a04_windows_wifi_board board_io;struct a04_wifi_board board;struct a04_wifi_life life;
  struct a04_sdio_card_info card;struct a04_wifi_life_ops ops;struct a04_wmt_bridge bridge;
+ MT6630_STATUS observation;
  struct a04_bt_transport bt;struct bt_packet packets[BT_SLOTS];unsigned packet_count;
 } BT_DEVICE;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(BT_DEVICE,BtContext)
@@ -33,6 +35,20 @@ EVT_WDF_IO_QUEUE_IO_INTERNAL_DEVICE_CONTROL BtInternal;
 EVT_WDF_TIMER BtTimer;
 static void lock(BT_DEVICE *c){(void)WdfWaitLockAcquire(c->lock,NULL);}
 static void unlock(BT_DEVICE *c){WdfWaitLockRelease(c->lock);}
+/* Called with the FDO lock. Only allowlisted scalar fields enter the ABI. */
+static void observe(BT_DEVICE *c,unsigned state)
+{
+ MT6630_STATUS *s=&c->observation;s->state=state;s->running=c->running;
+ s->exclusive_bt_profile=1;s->transport_status=(ULONG)c->bt.failed;
+ s->read_version_sent=c->bt.version_sent;s->read_version_complete=c->bt.version_complete;
+ s->read_version_status=c->bt.version_complete?c->bt.version_status:MT6630_STATUS_UNKNOWN;
+ s->read_version_length=c->bt.version_length;
+ s->version_valid=c->bt.version_valid;
+ s->hci_version=s->hci_revision=s->lmp_version=s->manufacturer=s->lmp_subversion=0;
+ if(s->version_valid){s->hci_version=c->bt.version.hci_version;s->hci_revision=c->bt.version.hci_revision;
+  s->lmp_version=c->bt.version.lmp_version;s->manufacturer=c->bt.version.manufacturer;s->lmp_subversion=c->bt.version.lmp_subversion;}
+ a04_bt_status_publish(s);
+}
 static void notify(void *p){UNREFERENCED_PARAMETER(p);} /* polling, INTEN=0 */
 static int mask(void *p){BT_DEVICE *c=p;return c->irq.interrupt?a04_windows_irq_stop(&c->irq):0;}
 static int drain(void *p)
@@ -77,7 +93,7 @@ VOID BtTimer(WDFTIMER timer)
  BT_DEVICE *c=BtContext(WdfTimerGetParentObject(timer));lock(c);
  if(c->running){
   if(a04_bt_poll(&c->bt)){
-   c->running=0;c->uncertain=1;
+   c->running=0;c->uncertain=1;observe(c,MT6630_STATE_TRANSPORT_FAILED);
    DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"MT6630BT: transport failed status=%d\n",c->bt.failed);
    WdfIoQueuePurge(c->reads[0],NULL,NULL);WdfIoQueuePurge(c->reads[1],NULL,NULL);
   }else {deliver(c);WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(5));}
@@ -128,7 +144,7 @@ VOID BtInternal(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULO
  }
  unlock(c);WdfRequestCompleteWithInformation(request,status,used);
 }
-NTSTATUS BtPrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
+static NTSTATUS prepare_impl(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
  BT_DEVICE *c=BtContext(device);ULONG n,i;unsigned mem=0,irq=0;NTSTATUS status;
  if(c->referenced||c->uncertain||!raw||!translated||
@@ -155,12 +171,22 @@ NTSTATUS BtPrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
     !c->parent.Live||!c->parent.UpdateShared||!c->parent.WriteShared){c->uncertain=1;return STATUS_DEVICE_CONFIGURATION_ERROR;}
  c->removed=0;return STATUS_SUCCESS;
 }
+NTSTATUS BtPrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
+{
+ NTSTATUS status=prepare_impl(device,raw,translated);BT_DEVICE *c=BtContext(device);
+ if(!NT_SUCCESS(status)){lock(c);c->observation.stage=8;c->observation.start_status=(ULONG)status;
+  observe(c,MT6630_STATE_PREPARE_FAILED);unlock(c);}
+ return status;
+}
 NTSTATUS BtStart(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 {
  BT_DEVICE *c=BtContext(device);struct a04_windows_fw_snapshot fw={0};UCHAR nvram[36]={0};NTSTATUS status=STATUS_DEVICE_NOT_READY;
  unsigned stage=0;const struct a04_wmt_startup_options options={1,1,0,0,2,0};
  UNREFERENCED_PARAMETER(previous);lock(c);
  if(!c->referenced||c->uncertain||c->leased||c->removed)goto done;
+ c->observation.attempts++;c->observation.stage=0;c->observation.start_status=(ULONG)STATUS_PENDING;
+ /* An early failure must not inherit a previous D0 attempt's version. */
+ RtlZeroMemory(&c->bt,sizeof(c->bt));observe(c,MT6630_STATE_STARTING);
  /* Read all fixed and individual inputs before taking the physical lease. */
  stage=1;
  if(a04_windows_firmware_prepare_wmt(&fw,a04_wifi_wdf_wmt_sha256))goto done;
@@ -196,6 +222,7 @@ fail:
  if(c->host.base)a04_windows_msdc2_unmap(&c->host);
  DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"MT6630BT: start failed status=%d; lease quarantined\n",c->bt.failed);
 done:
+ c->observation.stage=stage;c->observation.start_status=(ULONG)status;observe(c,MT6630_STATE_START_DONE);
  if(!NT_SUCCESS(status))DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,
   "MT6630BT: startup stage=%u status=0x%08lx\n",stage,(unsigned long)status);
  RtlSecureZeroMemory(nvram,sizeof(nvram));a04_windows_firmware_release(&fw);unlock(c);return status;
@@ -210,7 +237,7 @@ NTSTATUS BtStop(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
  if(c->uncertain){if(c->host.base)a04_windows_msdc2_unmap(&c->host);status=STATUS_IO_DEVICE_ERROR;}
  RtlSecureZeroMemory(c->packets,sizeof(c->packets));c->packet_count=0;
  RtlSecureZeroMemory(c->bt.tx,sizeof(c->bt.tx));RtlSecureZeroMemory(c->bt.rx,sizeof(c->bt.rx));
- RtlSecureZeroMemory(c->bt.hci,sizeof(c->bt.hci));unlock(c);return status;
+ RtlSecureZeroMemory(c->bt.hci,sizeof(c->bt.hci));observe(c,MT6630_STATE_STOPPED);unlock(c);return status;
 }
 VOID BtRemoved(WDFDEVICE device)
 {
@@ -218,7 +245,7 @@ VOID BtRemoved(WDFDEVICE device)
  c->removed=1;if(c->leased)c->uncertain=1;
  if(c->irq.interrupt)(void)a04_windows_irq_remove(&c->irq);
  /* No register access following surprise removal. */
- if(c->host.base)a04_windows_msdc2_unmap(&c->host);unlock(c);
+ if(c->host.base)a04_windows_msdc2_unmap(&c->host);observe(c,MT6630_STATE_REMOVED);unlock(c);
 }
 NTSTATUS BtRelease(WDFDEVICE device,WDFCMRESLIST translated)
 {
@@ -269,5 +296,13 @@ NTSTATUS BtAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
  }
  return child_create(device);
 }
+EVT_WDF_DRIVER_UNLOAD BtUnload;
+VOID BtUnload(WDFDRIVER driver){UNREFERENCED_PARAMETER(driver);a04_bt_status_delete();}
 NTSTATUS DriverEntry(PDRIVER_OBJECT object,PUNICODE_STRING path)
-{WDF_DRIVER_CONFIG config;WDF_DRIVER_CONFIG_INIT(&config,BtAdd);return WdfDriverCreate(object,path,WDF_NO_OBJECT_ATTRIBUTES,&config,WDF_NO_HANDLE);}
+{
+ WDFDRIVER driver;NTSTATUS status;WDF_DRIVER_CONFIG config;WDF_DRIVER_CONFIG_INIT(&config,BtAdd);
+ config.EvtDriverUnload=BtUnload;
+ status=WdfDriverCreate(object,path,WDF_NO_OBJECT_ATTRIBUTES,&config,&driver);
+ if(!NT_SUCCESS(status))return status;
+ return a04_bt_status_create(driver);
+}

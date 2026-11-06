@@ -55,7 +55,7 @@ AllFile全体と、AllMapが示す実record末尾2byteの既存libnvram checksum
 BT_Addrがこの個体のAllMapへ保存されているかは未確認。存在しない／checksum不整合なら
 起動に失敗する。利用者の抽出、既定BD_ADDR、他個体の校正を代用する経路はない。
 NVRAM、HCI key packet、BD_ADDRをログへ出さず、所有する一時bufferを消去する。
-現状のversion結果はkernel DbgPrint（version数値のみ）で、UART自動回収clientは未実装。
+version結果はkernel DbgPrintと固定read-only snapshotで取得できる。通常OSの独立probe／任意UART出力は [tools/bluetooth](../../../tools/bluetooth/README.md) を参照。
 
 `A04_SHARED_BT_PROFILE=1`は単一のMSDC2子PDOを `A04BR3\MT6630BGF`へ切り替える。
 既定0では従来の `A04BR3\MT6630SDIO`を維持する。既存v2 whole-combo leaseのABIを

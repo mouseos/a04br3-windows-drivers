@@ -14,6 +14,7 @@ struct a04_bt_transport {
  unsigned pending,hci_used,hci_expected,wmt_used,wmt_expected;
  unsigned awaiting,complete,func_wait,func_complete,enabled,ready;
  uint8_t reply[256];unsigned reply_length;int failed;
+ unsigned version_sent,version_complete,version_status,version_length,version_valid;
  struct a04_bt_version version;
 };
 int a04_bt_open(struct a04_bt_transport *,struct a04_wmt_bridge *,void *,int (*)(void *,unsigned,const uint8_t *,unsigned));

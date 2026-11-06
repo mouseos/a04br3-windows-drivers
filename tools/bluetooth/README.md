@@ -1,0 +1,105 @@
+# MT6630 通常OS read-only probe
+
+`mt6630-bluetooth-probe.exe` は引数なしのARM32通常OS用client。
+BT排他profileのkernel起動結果と、標準Bluetooth radio列挙の結果を別に取得する。
+Wi-Fi同時使用、pairing、通信、SCOの成功判定には使用しない。
+HardwareProbe本体、native installer、一括builderは変更／呼出ししない。
+
+## 固定build手順
+
+同一repoの、このprobeとkernel status ABIを含む固定commitをclean checkoutして、
+主担当のWindows WDK8.1 ARM32環境で次を実行する。
+
+```powershell
+# kernelのみ。既存のmatching BT排他親を使用する場合。
+.\tools\ci\build-mt6630-bluetooth.ps1
+# probeだけ（driver/parent/HardwareProbeを再buildしない）
+.\tools\bluetooth\build-mt6630-bluetooth-probe.ps1
+```
+
+必要物：WDK8.1 `Include/um`, `Include/shared`, ARM `kernel32.lib`、clang、
+lld-link、PowerShell、Git。kernelには従来どおりKMDF1.13とARM kernel libsが必要。
+全TUで既存ARM GS helper回避と同じ `-fno-stack-protector` を使用する。
+probe既定出力はcheckout内 `build/mt6630-bluetooth-probe/`。署名は主担当。
+CI helperはEXE、README、SHA-256/source commit入りmanifestだけを生成する。
+自動CI／runner起動、service登録、再起動、配置は行わない。
+
+c715ad2の旧SYSにはstatus診断口がないため、新probeだけを追加してもkernel結果を
+取得できない。この変更のSYS／status ABI1と組み合わせる必要がある。
+現在Ramanが作業する最新audio／Engine親を古いbranchの親で置き換えない。
+親profileは従来どおりBT専用。今回の変更では親sourceを変更していない。
+
+## 実行・回収
+
+通常Windows RT 8.1で管理者またはLocalSystemとして、主担当のprivate audit作業directoryを
+カレントにし、署名済みEXEを引数なしで起動する。固定名
+`mt6630-bluetooth-probe.txt` をカレントに上書き作成し、同じ数値行をstdoutへ出す。
+任意のHCI、firmware、device path、出力path引数を受け取らない。
+
+既存 `\\.\A04BR3ScreenUart` が存在すれば、TOPRGUの既存queueへ同じ短い行を送る。
+UARTは任意出力であり、その不在／送信失敗をBT controller失敗とは扱わない。
+`UART_OPEN_ERROR`／`UART_SEND_ERROR` とdisk log／実process exitを回収する。
+queue受付はhost到着の証拠ではなく、host側の対応RUN／SEQ／ENDを確認する。
+新serviceやMMIO accessは追加しない。HardwareProbeへの組込みは今回行わない。
+
+## kernel snapshot
+
+`\\.\MT6630BluetoothStatus` へGENERIC_READで固定IOCTLを1回送る。
+診断口はdriver-load時に作成し、FDO起動失敗時にも保存済みstatusを読める構成。
+DACLはSYSTEM full／Administrators readのみ。入力は0byteで、返すのは80byteの
+ABI1 structに定義した数値だけ。未知IOCTLと入力付き要求を拒否する。
+FDO pointerやNVRAM、HCI packet、任意読出し機能は公開しない。
+診断IOCTLはSDIO／HCI／firmware／電源遷移を実行せず、spinlock内のcopyのみ。
+
+`attempts`, `stage`, `start_status` はkernel自身の起動試行結果。
+`stage` は0=入口、1=固定WMT取得、2=動的NVRAM、3=親lease、4=host/IRQ、
+5=SDIO/WMT identity、6=WMT patch起動、7=BT初期化、8=Prepare失敗。
+`state` は0=driver loaded、1=開始中、2=起動処理終了、3=transport故障、
+4=停止、5=surprise removal、6=Prepare失敗。終了stateだけで成功と扱わない。
+`start_status` はULONG表現のNTSTATUS、`transport_status` は同様に32bit表現の内部int。
+
+- `read_version_sent`：起動時0x1001のHIF送信完了。応答完了とは別。
+- `read_version_complete`：同opcodeの実Command Completeを受信。
+- `read_version_status`：そのcontroller status。応答未受信は4294967295。
+- `read_version_length`：statusを含むreturn parametersの実長。
+- `version_valid`：status0／長さ9を確認し、version数値をdecode済み。
+- version数値はHCI/LMP version/revision、manufacturer、subversionのみ。
+  BD_ADDRやfriendly name、校正、鍵は要求・出力しない。
+
+`KERNEL_START_VERSION_OK=1` はsnapshot読取り成功、state2、起動NTSTATUS0、
+現在running、実0x1001送信／Command Complete／status0／長さ9／decode、
+BT排他profileを全て満たした場合だけ。停止・故障後も起動時のversion記録は残るが、
+この現在状態の判定は0になる。probeは未完了のkernel処理を待機・再試行しない。
+
+## 標準OS受理は独立判定
+
+System32の固定 `bthprops.cpl` から `BluetoothFindFirstRadio`／`NextRadio`／
+`RadioClose` を動的取得し、標準radio handle総数だけを記録する。
+`BluetoothGetRadioInfo`、remote device列挙、name取得、discoverability設定は呼ばない。
+`RADIO_ENUM_COMPLETE` と `RADIO_API_ERROR` をcountと別記する。
+総数には別adapterが含まれうるため、`RADIO_COUNT>0`だけでMT6630成功と扱わない。
+
+別にSetupAPIでGUID_BTHPORT_DEVICE_INTERFACEを列挙し、hardware IDが固定
+`A04BR3\MT6630HCI`と一致するdevnodeだけを数える。ID文字列自体はログしない。
+`TARGET_INTERFACE_ACCEPTED=1` は列挙正常終了、同IDのactive interface、
+CM_Get_DevNode_Status成功／DN_STARTED／problemなしを全て満たす場合。
+これは標準interfaceの列挙受理の証拠であり、HCI version応答・無線接続・音声成功とは別。
+各列挙は64件で上限エラーにし、不完全なcountを完了扱いしない。
+DLL／export不在は数値エラーとして記録する。WinPEでAPIが無い場合は通常OS向けであり、
+無線不良やkernel HCI応答失敗と混同しない。DLLを同梱・コピーして補わない。
+
+process exitは0=kernel現在起動/version条件成立、2=その条件未成立／snapshot取得失敗、
+4=disk結果保存失敗。標準radio列挙とUARTは独立した数値結果であり、exit0はそれらの成功を
+意味しない。最終flush失敗時は既出のEXIT行より実process exitを優先する。
+
+## 検証範囲
+
+公開WDK/KMDF参照headerでのARM32 compile、限定した既存BT protocol回帰、
+PowerShell Parserを使用。WDK8.1最終署名SYS／実probe起動／RT8.1でのDLL export／
+実PnP受理／実UART回収は主担当の未確認事項。実機／runner／REAは操作していない。
+SCO capabilitiesは従来どおりNoneで、BthMini受理が阻害される可能性は未解決。
+
+一次仕様：
+[BluetoothFindFirstRadio](https://learn.microsoft.com/en-us/windows/win32/api/bluetoothapis/nf-bluetoothapis-bluetoothfindfirstradio)、
+[SetupDiGetDeviceInterfaceDetailW](https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceinterfacedetailw)、
+[CM_Get_DevNode_Status](https://learn.microsoft.com/en-us/windows/win32/api/cfgmgr32/nf-cfgmgr32-cm_get_devnode_status)。

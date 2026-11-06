@@ -29,6 +29,9 @@ static int hci_packet(struct a04_bt_transport *b)
   /* Command Complete: command credits, opcode, return parameters. A matching
    * Command Status is only acceptance, never completion of initialization. */
   if(n>=5&&p[0]==0x0e&&a04_wmt_le16(p+3)==b->awaiting){
+   if(b->awaiting==0x1001&&!b->version_complete&&n>=6){
+    b->version_complete=1;b->version_status=p[5];b->version_length=n-5;
+   }
    if(b->complete||n<6||p[5]||n-5>sizeof(b->reply))return fail(b,-3);
    b->reply_length=n-5;memcpy(b->reply,p+5,b->reply_length);b->complete=1;return 0;
   }
@@ -147,6 +150,7 @@ static int command(struct a04_bt_transport *b,unsigned op,const uint8_t *p,unsig
  b->awaiting=0;b->complete=b->reply_length=0;e=a04_bt_write(b,1,cmd,n+3);
  for(volatile unsigned char *v=cmd;v<cmd+sizeof(cmd);v++)*v=0;
  if(e)return e;
+ if(op==0x1001)b->version_sent=1;
  b->awaiting=op;
  for(unsigned i=0;i<2000;i++){
   if(a04_bt_poll(b))return b->failed;
@@ -159,7 +163,7 @@ int a04_bt_open(struct a04_bt_transport *b,struct a04_wmt_bridge *bridge,void *p
 {
  if(!b||!bridge||!bridge->wmt_ready||bridge->failed||bridge->wlan_ready||
     !bridge->channel.initialized||bridge->channel.pending_cost||bridge->channel.free_bytes!=2080)return -1;
- memset(b,0,sizeof(*b));b->bridge=bridge;b->context=p;b->receive=rx;
+ memset(b,0,sizeof(*b));b->version_status=0xffffffffu;b->bridge=bridge;b->context=p;b->receive=rx;
  /* Bootstrap channel must never read CHISR again after this handoff. */
  bridge->channel.initialized=0;return 0;
 }
@@ -179,7 +183,7 @@ int a04_bt_initialize(struct a04_bt_transport *b,const uint8_t nv[36])
  if(b->reply_length!=9)return fail(b,-11);
  b->version.hci_version=b->reply[1];b->version.hci_revision=(uint16_t)a04_wmt_le16(b->reply+2);
  b->version.lmp_version=b->reply[4];b->version.manufacturer=(uint16_t)a04_wmt_le16(b->reply+5);
- b->version.lmp_subversion=(uint16_t)a04_wmt_le16(b->reply+7);b->ready=1;return 0;
+ b->version.lmp_subversion=(uint16_t)a04_wmt_le16(b->reply+7);b->version_valid=1;b->ready=1;return 0;
 }
 int a04_bt_disable(struct a04_bt_transport *b)
 {if(!valid(b))return -1;b->ready=0;return b->enabled?function(b,0):idle(b);}

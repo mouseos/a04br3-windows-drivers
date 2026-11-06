@@ -38,7 +38,7 @@ static int transfer(void *context,uint32_t arg,void *buffer,unsigned length)
   assert(stp.task==0&&h[0]==1&&step<7&&op==ops[step]&&h[3]==sizes[step]);
   for(unsigned i=0;i<sizes[step];i++)assert(h[4+i]==s->nvram[step?offsets[step]+i:5-i]);
   uint8_t reply[15]={4,0x0e,4,1,(uint8_t)op,(uint8_t)(op>>8),0};unsigned n=7;
-  if(s->reject)reply[6]=0x0c;
+  if(s->reject==1||(s->reject==2&&op==0x1001))reply[6]=0x0c;
   if(op==0x1001){const uint8_t version[]={6,0x34,0x12,6,0x46,0,0x78,0x56};memcpy(reply+7,version,8);reply[2]=12;n=15;}
   /* Exercise H4 reconstruction over STP boundaries, not just whole packets. */
   off+=frame(s->response+off,0,reply,2);off=(off+3)&~3u;
@@ -59,8 +59,10 @@ static void init(void)
 int main(void)
 {
  init();assert(!a04_bt_initialize(&bt,f.nvram));assert(bt.ready&&f.step==7&&!f.received);
+ assert(bt.version_sent&&bt.version_complete&&bt.version_status==0&&bt.version_length==9&&bt.version_valid);
  assert(bt.version.hci_revision==0x1234&&bt.version.manufacturer==0x46&&bt.version.lmp_subversion==0x5678);
- assert(!a04_bt_disable(&bt)&&!bt.enabled&&!bt.ready);
- init();f.reject=1;assert(a04_bt_initialize(&bt,f.nvram)&&!bt.ready&&bt.failed);
+ assert(!a04_bt_disable(&bt)&&!bt.enabled&&!bt.ready&&bt.version_valid);
+ init();f.reject=1;assert(a04_bt_initialize(&bt,f.nvram)&&!bt.ready&&bt.failed&&!bt.version_sent);
+ init();f.reject=2;assert(a04_bt_initialize(&bt,f.nvram)&&!bt.version_valid&&bt.version_sent&&bt.version_complete&&bt.version_status==0x0c);
  puts("Synthetic MT6630 BT init, aggregate notification, fragmented H4 and failure propagation: OK");return 0;
 }
