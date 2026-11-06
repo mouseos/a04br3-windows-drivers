@@ -19,6 +19,9 @@ struct a04_ge8300_vendor_power_status {
 /* WinPE only, METHOD_BUFFERED 4 KiB private m1.11 bounce transfer. */
 #define A04_GE8300_IOCTL_VENDOR_COPY 0x00226018u
 #define A04_GE8300_VENDOR_COPY_BYTES 4096u
+/* WinPE diagnostic: close submissions and attempt FW cleanup/power-off.
+ * Success does not permit DMA reclamation or PnP unload. */
+#define A04_GE8300_IOCTL_VENDOR_STOP 0x0022601cu
 /* Diagnostic-only report from the administrator-owned WinPE status tool. */
 #define A04_GE8300_IOCTL_REPORT_DISPLAY 0x0022600cu
 struct a04_ge8300_status {

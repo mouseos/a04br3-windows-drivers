@@ -998,6 +998,40 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
     WDFDEVICE device=WdfIoQueueGetDevice(queue); GPU_CONTEXT *c=GpuContext(device);
     struct a04_ge8300_status *out; NTSTATUS status; size_t size;
 #if A04_GE8300_VENDOR_COPY_SERVICE
+    if(control==A04_GE8300_IOCTL_VENDOR_STOP) {
+        NTSTATUS cleanup=STATUS_DEVICE_NOT_READY,idle=STATUS_NOT_SUPPORTED,off=STATUS_NOT_SUPPORTED;
+        unsigned failed=4; ULONG snap[6];
+        if(input || output || InterlockedCompareExchange(&c->vendor_service_closed,1,0)) {
+            WdfRequestComplete(request,STATUS_INVALID_DEVICE_STATE);return;
+        }
+        WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+        if(c->vendor_service_online) {
+            c->vendor_service_online=FALSE;
+            cleanup=a04_vendor_render_cleanup_contexts(&c->vendor_render,&c->vendor_start,&failed);
+            if(NT_SUCCESS(cleanup))
+                off=a04_vendor_m1_11_windows_forced_power_off(&c->vendor_start,TRUE,&idle);
+        }
+        GpuPrint("A04GPU STOP CLEANUP=");GpuHex((ULONG)cleanup);
+        GpuPrint(" FAILED=");GpuHex(failed);GpuPrint(" MASK=");GpuHex(c->vendor_render.cleanup_mask);
+        GpuPrint(" IDLE=");GpuHex((ULONG)idle);GpuPrint(" OFF=");GpuHex((ULONG)off);GpuPrint("\n");
+        if(NT_SUCCESS(a04_vendor_m1_11_power_debug_snapshot(&c->vendor_start,snap))) {
+            GpuPrint("A04GPU STOP SNAP SYNC=");GpuHex(snap[0]);GpuPrint(" POW=");GpuHex(snap[1]);
+            GpuPrint(" KRD=");GpuHex(snap[2]);GpuPrint(" KWR=");GpuHex(snap[3]);
+            GpuPrint(" FRD=");GpuHex(snap[4]);GpuPrint(" FWR=");GpuHex(snap[5]);GpuPrint("\n");
+        }
+        if(NT_SUCCESS(off) && c->core) {
+            ULONG side=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x3c8u));
+            ULONG slc=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x3898u));
+            ULONG bif=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x1358u));
+            ULONG mmu=READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x1350u));
+            GpuPrint("A04GPU STOP REG SIDE=");GpuHex(side);GpuPrint(" SLC=");GpuHex(slc);
+            GpuPrint(" BIF=");GpuHex(bif);GpuPrint(" MMU=");GpuHex(mmu);GpuPrint("\n");
+        }
+        /* Single samples are observations, not IRQ drain or RGXStop. */
+        GpuPrint("A04GPU STOP DMA RETAINED UNLOAD UNSAFE\n");
+        WdfWaitLockRelease(c->vendor_lifetime);
+        WdfRequestComplete(request,NT_SUCCESS(cleanup)?off:cleanup);return;
+    }
     if(control==A04_GE8300_IOCTL_VENDOR_COPY) {
         void *src,*dst;size_t in_bytes,out_bytes;
         if(input!=A04_GE8300_VENDOR_COPY_BYTES || output!=A04_GE8300_VENDOR_COPY_BYTES ||

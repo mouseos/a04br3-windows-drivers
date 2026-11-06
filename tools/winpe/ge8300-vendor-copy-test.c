@@ -34,6 +34,10 @@ void mainCRTStartup(void) {
   r->status=(!ok || bytes!=sizeof(output))?2:(r->mismatch?3:0);count++;
   if(r->status){final=r->status;say("VENDOR_COPY_FAILED\r\n");break;}say("VENDOR_COPY_PASS\r\n");
  }
- CloseHandle(h);if(!final)say("VENDOR_COPY_THREE_PASS\r\n");
+ if(!final)say("VENDOR_COPY_THREE_PASS\r\n");
+ bytes=0;ok=DeviceIoControl(h,A04_GE8300_IOCTL_VENDOR_STOP,NULL,0,NULL,0,&bytes,NULL);
+ if(ok)say("VENDOR_COPY_FW_STOP_ACK_DMA_RETAINED\r\n");
+ else {say("VENDOR_COPY_FW_STOP_FAILED_DMA_RETAINED\r\n");if(!final)final=5;}
+ CloseHandle(h);
  done: if(!report(run,count,final)){say("VENDOR_COPY_UART_FAILED\r\n");ExitProcess(4);}ExitProcess(final);
 }
