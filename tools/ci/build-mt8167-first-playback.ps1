@@ -79,8 +79,10 @@ try {
     if($LASTEXITCODE -ne 0){throw 'Audio PE inspection failed'}
     Copy-Item (Join-Path $audio 'mt8167-afe-first-playback.inf') $obj
     Copy-Item (Join-Path $root 'drivers\bus\mt8167-shared\prototype\shared-parent.inf') (Join-Path $out 'a04-msdc-parent-probe')
+    & (Join-Path $PSScriptRoot 'build-mt8167-audio-ks-client.ps1') -OutputDirectory (Join-Path $out 'client')
     $files=@((Join-Path $out 'a04-msdc-parent-probe\mt8167-shared.sys'),
-      (Join-Path $out 'a04-msdc-parent-probe\shared-parent.inf'),$binary,(Join-Path $obj 'mt8167-afe-first-playback.inf'))
+      (Join-Path $out 'a04-msdc-parent-probe\shared-parent.inf'),$binary,(Join-Path $obj 'mt8167-afe-first-playback.inf'),
+      (Join-Path $out 'client\mt8167-audio-first-playback.exe'),(Join-Path $out 'client\run-mt8167-audio-first-playback.cmd'))
     if($IntegratedUsb){
         $usbOut=Join-Path $out 'usb'
         & (Join-Path $PSScriptRoot 'build-mt8167-usb20.ps1') -OutputDirectory $usbOut
@@ -97,7 +99,7 @@ try {
       calibration='MT6392 hardware trim; Linux cold-start DC profile, no measured AU_LOL ADC calibration';
       installable=$false;note='Unsigned pair and INF only; primary owner must sign/package and validate on target';
       integrated_usb=[bool]$IntegratedUsb;shared_parent_count=1;namespace='Reuse existing parent/touch/buttons/battery; no ACPI replacement';
-      parent_flags=$parentFlags;audio_flags=$flags;files=$hashes}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+      parent_flags=$parentFlags;audio_flags=$flags;diagnostic_interface=11;client='direct KS, AudioSrv not required; dynamic ksuser.dll';files=$hashes}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
 } finally {
     if($transcript){Stop-Transcript|Out-Null}
     foreach($name in $names){[Environment]::SetEnvironmentVariable($name,$saved[$name],'Process')}
