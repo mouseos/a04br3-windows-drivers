@@ -593,9 +593,10 @@ build/mt8167_audio_parent_client_test: drivers/audio/mt8167-afe/audio_parent_cli
 	$(CC) $(CFLAGS) -Itests/shared_wdf_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c tests/mt8167_audio_parent_client_test.c -o $@
 
 .PHONY: test-gpu-vendor-m1-11
-test-gpu-vendor-m1-11: build/ge8300_gpu_post_pattern_test build/ge8300_gce_observe_test build/ge8300_gce_submit_test build/ge8300_gce_display_lease_test build/ge8300_mt8167_cmdq_packet_test build/ge8300_common_probe_policy_test build/ge8300_shared_frame_plan_test build/ge8300_shared_ovl_test build/ge8300_shared_gpu_diagnostic_test build/ge8300_shared_publish_test build/ge8300_shared_lease_test build/ge8300_shared_scanout_test build/ge8300_present_copy_fence_test build/ge8300_display_resource_check_test build/ge8300_windows_display_scanout_test build/ge8300_scanout_lifetime_test build/ge8300_scanout_candidate_test build/gpu_vendor_windows_surface_test build/gpu_vendor_m1_11_stage_test build/gpu_vendor_firmware_requests_test build/gpu_vendor_uncached_test build/gpu_vendor_rebase_test build/gpu_vendor_render_resources_test build/gpu_vendor_windows_render_cold_test build/gpu_vendor_windows_render_context_test build/gpu_vendor_clear_image_test build/gpu_vendor_clear_tile_test build/gpu_vendor_clear_validate_test
+test-gpu-vendor-m1-11: build/ge8300_ovl_saved_test build/ge8300_gpu_post_pattern_test build/ge8300_gce_observe_test build/ge8300_gce_submit_test build/ge8300_gce_display_lease_test build/ge8300_mt8167_cmdq_packet_test build/ge8300_common_probe_policy_test build/ge8300_shared_frame_plan_test build/ge8300_shared_ovl_test build/ge8300_shared_gpu_diagnostic_test build/ge8300_shared_publish_test build/ge8300_shared_lease_test build/ge8300_shared_scanout_test build/ge8300_present_copy_fence_test build/ge8300_display_resource_check_test build/ge8300_windows_display_scanout_test build/ge8300_scanout_lifetime_test build/ge8300_scanout_candidate_test build/gpu_vendor_windows_surface_test build/gpu_vendor_m1_11_stage_test build/gpu_vendor_firmware_requests_test build/gpu_vendor_uncached_test build/gpu_vendor_rebase_test build/gpu_vendor_render_resources_test build/gpu_vendor_windows_render_cold_test build/gpu_vendor_windows_render_context_test build/gpu_vendor_clear_image_test build/gpu_vendor_clear_tile_test build/gpu_vendor_clear_validate_test
 	./build/ge8300_gpu_post_pattern_test
 	./build/ge8300_gce_observe_test
+	./build/ge8300_ovl_saved_test
 	./build/ge8300_gce_submit_test
 	./build/ge8300_gce_display_lease_test
 	./build/ge8300_mt8167_cmdq_packet_test
@@ -758,3 +759,7 @@ test-gpu-vendor-native-copy-state: build/gpu_vendor_native_copy_state_test
 build/gpu_vendor_native_copy_state_test: tests/gpu_vendor_native_copy_state_test.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.h
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 tests/gpu_vendor_native_copy_state_test.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.c -o $@
+
+build/ge8300_ovl_saved_test: tests/ge8300_ovl_saved_test.c drivers/gpu/mt8167/wddm-display/mt8167_ovl_saved.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) tests/ge8300_ovl_saved_test.c -o $@

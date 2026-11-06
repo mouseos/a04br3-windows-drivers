@@ -2,6 +2,7 @@
 #include "BDD.hxx"
 #include "ge8300_display_resource_check.h"
 #include "present_tile.h"
+#include "mt8167_ovl_saved.h"
 #include "ge8300_trace.hxx"
 #if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
 #include "gpu_post_pattern.h"
@@ -361,6 +362,22 @@ NTSTATUS A04DisplayResources::GcePresentAndRestore(ULONG event,ULONG savedL0,ULO
        GceFrameAttempted)return STATUS_INVALID_DEVICE_STATE;
     status=holder->iface.Ready(holder->iface.Header.Context,holder->token);
     if(!NT_SUCCESS(status))return status;
+    if(!Ovl || !DisplayPdo || !owner->shared.exposed || !owner->shared.mdl ||
+       !owner->shared.gpu_sg || !owner->shared.gpu_pages || !owner->mapRegisterBase ||
+       owner->shared.display_adapter!=Adapter || owner->displayPdo!=DisplayPdo)
+        return STATUS_INVALID_DEVICE_STATE;
+    {
+        /* Both observations are non-atomic consistency checks under the
+         * caller's display lease; they cannot grant that lease themselves. */
+        static const ULONG offsets[A04_OVL_SNAPSHOT_WORDS]={0x00c,0x02c,0x020,0x030,0x038,0x03c,0x044,0xf40,
+                                                             0x090,0x098,0x09c,0x0a4,0xfa0};
+        uint32_t first[A04_OVL_SNAPSHOT_WORDS],second[A04_OVL_SNAPSHOT_WORDS];
+        for(ULONG i=0;i<A04_OVL_SNAPSHOT_WORDS;i++)first[i]=READ_REGISTER_ULONG(Ovl+offsets[i]/4);
+        KeMemoryBarrier();
+        for(ULONG i=0;i<A04_OVL_SNAPSHOT_WORDS;i++)second[i]=READ_REGISTER_ULONG(Ovl+offsets[i]/4);
+        if(!a04_ovl_saved_layout(first,second,savedL0,savedL3,owner->shared.display_dma))
+            return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
     /* Validation must cover new display-common backing and both old layers,
      * visibility, pinning and layout; an address comparison alone is invalid. */
     if(validate(proofContext,savedL0,savedL3)!=1)return STATUS_DEVICE_NOT_READY;
