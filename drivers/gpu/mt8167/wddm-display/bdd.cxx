@@ -41,8 +41,7 @@ BASIC_DISPLAY_DRIVER::BASIC_DISPLAY_DRIVER(_In_ DEVICE_OBJECT* pPhysicalDeviceOb
     KeInitializeMutex(&m_PresentMutex,0);
 #if A04_GE8300_WDDM_SHARED_AUTOSTART
     KeInitializeEvent(&m_SharedWorkerStop,NotificationEvent,FALSE);
-    KeInitializeEvent(&m_SharedWorkerDone,NotificationEvent,FALSE);
-    m_SharedWorker=NULL;
+    m_SharedWorkerDone=NULL; m_SharedWorker=NULL; m_SharedWorkerObject=NULL;
 #endif
 
 
@@ -66,6 +65,7 @@ BASIC_DISPLAY_DRIVER::~BASIC_DISPLAY_DRIVER()
 VOID BASIC_DISPLAY_DRIVER::SharedDiagnosticWorker(PVOID context)
 {
     BASIC_DISPLAY_DRIVER *self=(BASIC_DISPLAY_DRIVER *)context;
+    KEVENT *done=self->m_SharedWorkerDone;
     LARGE_INTEGER delay;delay.QuadPart=-10000000LL;
     for(ULONG i=0;i<120;i++) {
         NTSTATUS wait=KeWaitForSingleObject(&self->m_SharedWorkerStop,Executive,KernelMode,FALSE,&delay);
@@ -85,15 +85,23 @@ VOID BASIC_DISPLAY_DRIVER::SharedDiagnosticWorker(PVOID context)
         if(i==0 || done || (i%10)==9) A04DisplayTrace(0x31,status);
         if(done)break;
     }
-    KeSetEvent(&self->m_SharedWorkerDone,IO_NO_INCREMENT,FALSE);
+    KeSetEvent(done,IO_NO_INCREMENT,FALSE);
     PsTerminateSystemThread(STATUS_SUCCESS);
 }
 VOID BASIC_DISPLAY_DRIVER::StopSharedDiagnosticWorker()
 {
     if(!m_SharedWorker)return;
     KeSetEvent(&m_SharedWorkerStop,IO_NO_INCREMENT,FALSE);
-    (void)KeWaitForSingleObject(&m_SharedWorkerDone,Executive,KernelMode,FALSE,NULL);
-    ZwClose(m_SharedWorker);m_SharedWorker=NULL;
+    if(m_SharedWorkerObject) {
+        (void)KeWaitForSingleObject(m_SharedWorkerObject,Executive,KernelMode,FALSE,NULL);
+        ObDereferenceObject(m_SharedWorkerObject);m_SharedWorkerObject=NULL;
+        ExFreePoolWithTag(m_SharedWorkerDone,'wG4A');
+    } else {
+        /* Rare handle-reference failure: do not free the separately allocated
+         * event while KeSetEvent may still be returning on the worker CPU. */
+        (void)KeWaitForSingleObject(m_SharedWorkerDone,Executive,KernelMode,FALSE,NULL);
+    }
+    m_SharedWorkerDone=NULL;ZwClose(m_SharedWorker);m_SharedWorker=NULL;
 }
 #endif
 
@@ -164,11 +172,19 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StartDevice(_In_  DXGK_START_INFO*   pDxgkStartIn
 #if A04_GE8300_WDDM_SHARED_AUTOSTART
     if(m_DisplayResources.Adapter && !m_SharedWorker) {
         KeClearEvent(&m_SharedWorkerStop);
-        KeClearEvent(&m_SharedWorkerDone);
-        NTSTATUS workerStatus=PsCreateSystemThread(&m_SharedWorker,THREAD_ALL_ACCESS,NULL,NULL,NULL,
-            SharedDiagnosticWorker,this);
+        m_SharedWorkerDone=(KEVENT *)ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(KEVENT),'wG4A');
+        NTSTATUS workerStatus=STATUS_INSUFFICIENT_RESOURCES;
+        if(m_SharedWorkerDone) {
+            KeInitializeEvent(m_SharedWorkerDone,NotificationEvent,FALSE);
+            workerStatus=PsCreateSystemThread(&m_SharedWorker,THREAD_ALL_ACCESS,NULL,NULL,NULL,
+                SharedDiagnosticWorker,this);
+            if(NT_SUCCESS(workerStatus)) {
+                workerStatus=ObReferenceObjectByHandle(m_SharedWorker,THREAD_ALL_ACCESS,NULL,KernelMode,
+                    &m_SharedWorkerObject,NULL);
+                if(!NT_SUCCESS(workerStatus))StopSharedDiagnosticWorker();
+            } else { ExFreePoolWithTag(m_SharedWorkerDone,'wG4A');m_SharedWorkerDone=NULL; }
+        }
         A04DisplayTrace(0x30,workerStatus);
-        if(!NT_SUCCESS(workerStatus))m_SharedWorker=NULL;
     } else A04DisplayTrace(0x30,STATUS_DEVICE_NOT_READY);
 #endif
     *pNumberOfViews = MAX_VIEWS;
