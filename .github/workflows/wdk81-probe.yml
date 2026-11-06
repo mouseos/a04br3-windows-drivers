@@ -70,6 +70,11 @@ jobs:
       - name: Compile ARM32 offline release primitive
         shell: pwsh
         run: ./tools/ci/build-offline-release.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline-release-arm32-unsigned
+          path: ${{ runner.temp }}/a04-offline-release/release-offline-volume.exe
+          if-no-files-found: error
       - name: Compile non-operational Storport interface probe
         shell: pwsh
         run: ./tools/ci/build-wdk81-probe.ps1

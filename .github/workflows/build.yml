@@ -8,6 +8,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Test offline release failure handling
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -Itests/offline-release-shim tests/offline_release_test.c -o "$RUNNER_TEMP/offline-release-test"
+          "$RUNNER_TEMP/offline-release-test"
       - name: Check INF device names
         run: python3 tools/ci/check-device-names.py
       - name: Install Linux test dependencies
