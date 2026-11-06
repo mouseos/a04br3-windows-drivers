@@ -87,3 +87,12 @@ PnP or suspend solution. The signed diagnostic EXE must not be deployed to
 installed Windows.
 
 `A04_GE8300_WDDM_VENDOR_TILE=1` は実験専用で、非回転32bppのちょうど32×32矩形をCPU stageへ詰め、m1.11の同期4KiB IOCTLを発行する。成功時のみ返却stageからCPUがPOST framebufferへ行単位で書く。GPUの直接画面描画ではない。その他の矩形、open/IOCTL失敗、13回上限到達後は既存CPU経路へ戻る。同期完了までは呼出し元stageを保持し、timeout時はproviderが独立したGPU DMA資源を隔離する設計。実機でのcopy、cache可視性、stop・surprise removalは未検証であり、インストール用ではない。
+The 81df772 POST diagnostic rebooted after display STEP 06. Its translated
+resource count was five, including an OVL IRQ, while the working d76005b
+boot had four memory resources and no display IRQ. The BDD ISR returns FALSE.
+This is an unproven failure hypothesis, not an observed interrupt storm.
+The CPU POST experiment now rejects an IRQ-bearing resource list and its
+next candidate must use the previously tested no-display-IRQ firmware.
+UART stages 83, 84, 85, 86, 87, and 8A distinguish worker entry, adapter
+power callback, GPU device open start/result, common-page IOCTL start, and
+unexpected display IRQ rejection. No stage establishes GPU display success.

@@ -70,6 +70,7 @@ VOID BASIC_DISPLAY_DRIVER::SharedDiagnosticWorker(PVOID context)
 {
     BASIC_DISPLAY_DRIVER *self=(BASIC_DISPLAY_DRIVER *)context;
     KEVENT *done=self->m_SharedWorkerDone;
+    A04DisplayTrace(0x83,STATUS_SUCCESS);
     LARGE_INTEGER delay;delay.QuadPart=-10000000LL;
     for(ULONG i=0;i<120;i++) {
         NTSTATUS wait=KeWaitForSingleObject(&self->m_SharedWorkerStop,Executive,KernelMode,FALSE,&delay);
@@ -318,6 +319,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::SetPowerState(_In_  ULONG              HardwareUi
     if (HardwareUid == DISPLAY_ADAPTER_HW_ID)
     {
 #if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+        A04DisplayTrace(0x84,(NTSTATUS)DevicePowerState);
         if(DevicePowerState!=PowerDeviceD0)StopSharedDiagnosticWorker();
 #endif
         if (DevicePowerState == PowerDeviceD0)

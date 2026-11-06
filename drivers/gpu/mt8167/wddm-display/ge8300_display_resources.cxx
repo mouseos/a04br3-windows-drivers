@@ -135,6 +135,11 @@ NTSTATUS A04DisplayResources::Start(PDEVICE_OBJECT pdo,const DXGK_DEVICE_INFO *i
         (ovl && ovl->ShareDisposition==CmResourceShareDeviceExclusive?0x10000u:0u)|
         (irq && irq->ShareDisposition==CmResourceShareDeviceExclusive?0x20000u:0u);
     A04DisplayTrace(0x47,(NTSTATUS)flags);
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+    /* The POST diagnostic has no display IRQ handler. Do not start its
+     * resource/worker path with an interrupt-bearing PDO. */
+    if(interrupts) {A04DisplayTrace(0x8a,STATUS_DEVICE_CONFIGURATION_ERROR);return STATUS_DEVICE_CONFIGURATION_ERROR;}
+#endif
     if (!ovl || !a04_display_resources_valid(matches,interrupts,
         ovl->ShareDisposition==CmResourceShareDeviceExclusive,
         irq && irq->ShareDisposition==CmResourceShareDeviceExclusive,
@@ -258,6 +263,7 @@ NTSTATUS A04DisplayResources::ProbeSharedCommonPage()
        Adapter->DmaOperations->Size<FIELD_OFFSET(DMA_OPERATIONS,FreeAdapterObject)+sizeof(Adapter->DmaOperations->FreeAdapterObject) ||
        !Adapter->DmaOperations->InitializeDmaTransferContext || !Adapter->DmaOperations->GetScatterGatherListEx ||
        !Adapter->DmaOperations->FreeAdapterObject)return STATUS_NOT_SUPPORTED;
+    A04DisplayTrace(0x87,STATUS_PENDING);
     status=CommonPageIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_COMMON_PAGE,&page);A04DisplayTrace(0x50,status);
     if(!NT_SUCCESS(status)) {
         if(page.token) {
@@ -530,9 +536,11 @@ NTSTATUS A04DisplayResources::PrepareViaGpu()
     if(!a04_common_may_attempt(&SharedCommonOnce))return STATUS_DEVICE_BUSY;
 #endif
     InitializeObjectAttributes(&attr,&name,OBJ_KERNEL_HANDLE|OBJ_CASE_INSENSITIVE,NULL,NULL);
+    A04DisplayTrace(0x85,STATUS_PENDING);
     status=ZwCreateFile(&GpuHandle,FILE_READ_DATA|FILE_WRITE_DATA|SYNCHRONIZE,&attr,&io,NULL,
         FILE_ATTRIBUTE_NORMAL,FILE_SHARE_READ|FILE_SHARE_WRITE,FILE_OPEN,
         FILE_NON_DIRECTORY_FILE|FILE_SYNCHRONOUS_IO_NONALERT,NULL,0);
+    A04DisplayTrace(0x86,status);
     if(!NT_SUCCESS(status)) {GpuHandle=NULL;return status;}
 #if A04_GE8300_WDDM_SHARED_COMMON_PAGE
     status=ProbeSharedCommonPage();
