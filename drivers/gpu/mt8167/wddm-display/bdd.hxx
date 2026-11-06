@@ -377,7 +377,7 @@ private:
     NTSTATUS IsVidPnPathFieldsValid(CONST D3DKMDT_VIDPN_PRESENT_PATH* pPath) const;
     NTSTATUS IsVidPnSourceModeFieldsValid(CONST D3DKMDT_VIDPN_SOURCE_MODE* pSourceMode) const;
 
-    VOID BlackOutScreen(D3DDDI_VIDEO_PRESENT_SOURCE_ID SourceId);
+    NTSTATUS BlackOutScreen(D3DDDI_VIDEO_PRESENT_SOURCE_ID SourceId);
 
     // Returns the index into gBddBiosData.BddModes of the VBE mode that matches the given VidPnSourceMode.
     // If such a mode cannot be found, returns a number outside of [0, gBddBiosData.CountBddModes)

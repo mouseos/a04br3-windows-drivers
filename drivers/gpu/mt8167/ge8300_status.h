@@ -42,6 +42,11 @@ struct a04_ge8300_fenced_copy {
 #define A04_GE8300_SHARED_CAP_FRAME_SEAL 1u
 #define A04_GE8300_SHARED_CAP_WIDE_FRAME 2u
 #define A04_GE8300_SHARED_CAP_WIDE_REPEAT 4u
+/* Kernel-only terminal retirement, never a DMA-unmap or power lease proof. */
+#define A04_GE8300_IOCTL_RETAINED_CPU 0x00226050u
+#define A04_GE8300_CPU_RETIRED 1u
+#define A04_GE8300_DMA_RETAINED 2u
+struct a04_ge8300_retained_cpu { uint32_t version,bytes,token,flags; };
 #define A04_GE8300_IOCTL_SHARED_FRAME_BEGIN 0x0022604cu
 struct a04_ge8300_frame_begin { uint32_t token,frame,task,flush,next_frame; };
 #define A04_GE8300_IOCTL_SHARED_WIDE_FRAME 0x00226048u

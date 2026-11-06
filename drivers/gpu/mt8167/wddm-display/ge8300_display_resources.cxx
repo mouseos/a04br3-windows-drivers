@@ -2,6 +2,7 @@
 #include "BDD.hxx"
 #include "ge8300_display_resource_check.h"
 #include "present_tile.h"
+#include "../present_trace_policy.h"
 #include "mt8167_ovl_saved.h"
 #include "ge8300_trace.hxx"
 #if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
@@ -541,6 +542,22 @@ static NTSTATUS LiveFrameIoctl(HANDLE handle,ULONG code,void *data,ULONG input,U
     if(NT_SUCCESS(status) && io.Information!=output)status=STATUS_IO_DEVICE_ERROR;
     return status;
 }
+/* Caller holds the present mutex. Only an explicit provider retirement
+ * acknowledgement permits CPU writes to a previously GPU-exposed POST. */
+NTSTATUS A04DisplayResources::RetireToCpu()
+{
+    struct a04_ge8300_retained_cpu proof={};NTSTATUS status;
+    if(LiveCpuFallback)return STATUS_SUCCESS;
+    if(!GpuHandle || !Lease.token)return STATUS_DEVICE_NOT_READY;
+    proof.version=1;proof.bytes=sizeof(proof);proof.token=Lease.token;
+    status=LiveFrameIoctl(GpuHandle,A04_GE8300_IOCTL_RETAINED_CPU,&proof,sizeof(proof),sizeof(proof));
+    if(NT_SUCCESS(status) && (proof.version!=1 || proof.bytes!=sizeof(proof) || proof.token!=Lease.token ||
+       proof.flags!=(A04_GE8300_CPU_RETIRED|A04_GE8300_DMA_RETAINED)))status=STATUS_DATA_ERROR;
+    if(NT_SUCCESS(status)) {
+        LiveCpuFallback=TRUE;LiveReady=FALSE;LiveFaulted=FALSE;LiveShadowValid=FALSE;
+    }
+    A04DisplayTrace(0xbc,status);return status;
+}
 /* Present mutex and source MDL are held by the DOD caller until return.
  * All mappings remain retained across frames and any failure. */
 NTSTATUS A04DisplayResources::SubmitLiveFrame(const void *pixels,uint32_t pitch)
@@ -549,7 +566,7 @@ NTSTATUS A04DisplayResources::SubmitLiveFrame(const void *pixels,uint32_t pitch)
     struct a04_ge8300_shared_wide_frame *image=NULL;
     struct a04_ge8300_frame_begin begin={};struct a04_ge8300_frame_seal seal={};
     NTSTATUS status;uint32_t matches=0;ULONGLONG began=KeQueryInterruptTime();
-    if(!LiveReady)return STATUS_NOT_SUPPORTED;
+    if(LiveCpuFallback || !LiveReady)return STATUS_NOT_SUPPORTED;
     if(LiveFaulted)return STATUS_IO_DEVICE_ERROR;
     if(!owner || !owner->sealed || !owner->cpu || !owner->shared.mdl ||
        !owner->shared.gpu_adapter || !owner->mapRegisterBase || !GpuHandle ||
@@ -589,9 +606,14 @@ NTSTATUS A04DisplayResources::SubmitLiveFrame(const void *pixels,uint32_t pitch)
     owner->frame=image->frame;owner->task=image->task;owner->flush=image->flush;owner->sealed=TRUE;
     LiveFrames++;
 done:
-    A04DisplayTrace(0xb0,(NTSTATUS)LiveFrames);A04DisplayTrace(0xb1,status);
-    A04DisplayTrace(0xb3,(NTSTATUS)((KeQueryInterruptTime()-began)/10000u));
-    if(!NT_SUCCESS(status))LiveFaulted=TRUE;
+    if(a04_gpu_present_trace(LiveFrames,(int32_t)status)) {
+        A04DisplayTrace(0xb0,(NTSTATUS)LiveFrames);A04DisplayTrace(0xb1,status);
+        A04DisplayTrace(0xb3,(NTSTATUS)((KeQueryInterruptTime()-began)/10000u));
+    }
+    if(!NT_SUCCESS(status)) {
+        LiveFaulted=TRUE;
+        if(NT_SUCCESS(RetireToCpu()))status=STATUS_NOT_SUPPORTED;
+    }
     ExFreePoolWithTag(image,'lG4A');return status;
 }
 #endif

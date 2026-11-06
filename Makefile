@@ -771,3 +771,13 @@ test-ge8300-wide-frame: build/gpu_wide_frame_test
 build/gpu_wide_frame_test: tests/gpu_wide_frame_test.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.c drivers/gpu/mt8167/vendor_m1_11/clear_image.c drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.h drivers/gpu/mt8167/gpu_mmu.h
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
+
+.PHONY: test-gpu-d0-fallback
+test: test-gpu-d0-fallback
+test-gpu-d0-fallback:
+	mkdir -p build/gpu-d0-tmp
+	TMPDIR="$(CURDIR)/build/gpu-d0-tmp" python3 tests/gpu_vendor_d0_fallback_test.py
+	TMPDIR="$(CURDIR)/build/gpu-d0-tmp" python3 tests/gpu_dod_retained_fallback_test.py
+	TMPDIR="$(CURDIR)/build/gpu-d0-tmp" python3 tests/gpu_irq_retire_test.py
+	TMPDIR="$(CURDIR)/build/gpu-d0-tmp" python3 tests/gpu_dod_power_test.py
+	TMPDIR="$(CURDIR)/build/gpu-d0-tmp" python3 tests/gpu_dod_restore_test.py

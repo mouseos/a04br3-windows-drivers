@@ -394,16 +394,24 @@ NTSTATUS BASIC_DISPLAY_DRIVER::SetPowerState(_In_  ULONG              HardwareUi
         A04DisplayTrace(0x84,(NTSTATUS)DevicePowerState);
         if(DevicePowerState!=PowerDeviceD0)StopSharedDiagnosticWorker();
 #endif
+        NTSTATUS lockStatus=KeWaitForSingleObject(&m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+        if(!NT_SUCCESS(lockStatus))return lockStatus;
+        A04PresentGuard powerGuard(&m_PresentMutex);
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+        m_DisplayResources.LiveShadowValid=FALSE;
+#endif
         if (DevicePowerState == PowerDeviceD0)
         {
 
             // When returning from D3 the device visibility defined to be off for all targets
             if (m_AdapterPowerState == PowerDeviceD3)
             {
-                DXGKARG_SETVIDPNSOURCEVISIBILITY Visibility;
-                Visibility.VidPnSourceId = D3DDDI_ID_ALL;
-                Visibility.Visible = FALSE;
-                SetVidPnSourceVisibility(&Visibility);
+                /* No provider IOCTL or POST write in a power callback:
+                 * the independently powered provider may not be in D0 yet. */
+                for(UINT i=0;i<MAX_VIEWS;i++) {
+                    m_CurrentModes[i].Flags.SourceNotVisible=TRUE;
+                    m_CurrentModes[i].Flags.FullscreenPresent=TRUE;
+                }
             }
         }
 
@@ -415,8 +423,13 @@ NTSTATUS BASIC_DISPLAY_DRIVER::SetPowerState(_In_  ULONG              HardwareUi
     }
     else
     {
-        // TODO: This is where the specified monitor should be powered up/down
-        NOTHING;
+        NTSTATUS lockStatus=KeWaitForSingleObject(&m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+        if(!NT_SUCCESS(lockStatus))return lockStatus;
+        A04PresentGuard monitorGuard(&m_PresentMutex);
+        m_MonitorPowerState=DevicePowerState;
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+        m_DisplayResources.LiveShadowValid=FALSE;
+#endif
         return STATUS_SUCCESS;
     }
 }
@@ -699,6 +712,11 @@ NTSTATUS BASIC_DISPLAY_DRIVER::TryGpuLogicalPresent(const BLT_INFO *source,const
 {
     const CURRENT_BDD_MODE *mode=&m_CurrentModes[0];uint32_t w,h,offset;unsigned turns;
     A04DisplayResources *resources=&m_DisplayResources;
+    if(resources->LiveCpuFallback)return STATUS_NOT_SUPPORTED;
+    if(resources->LiveReady && KeReadStateEvent(&m_SharedWorkerStop)) {
+        NTSTATUS retired=resources->RetireToCpu();
+        return NT_SUCCESS(retired)?STATUS_NOT_SUPPORTED:retired;
+    }
     if(!source || !destination || (moves && !move) || (count && !rects) || !m_Flags.DriverStarted ||
        m_AdapterPowerState!=PowerDeviceD0 || m_MonitorPowerState!=PowerDeviceD0 ||
        KeReadStateEvent(&m_SharedWorkerStop) || mode->DispInfo.Width!=800u || mode->DispInfo.Height!=1280u ||
@@ -735,6 +753,12 @@ NTSTATUS BASIC_DISPLAY_DRIVER::TryGpuLogicalPresent(const BLT_INFO *source,const
     for(ULONG i=0;i<moves;i++)BltBits(&rotated,source,1,&move[i].DestRect);
     for(ULONG i=0;i<count;i++)BltBits(&rotated,source,1,&rects[i]);
     NTSTATUS status=resources->SubmitLiveFrame(staging,3200u);
+    if(status==STATUS_NOT_SUPPORTED && resources->LiveCpuFallback) {
+        /* A failed full GPU copy may have written part of POST. Restore the
+         * entire intended frame after retirement, not only its dirty rects. */
+        WRITE_REGISTER_BUFFER_ULONG((volatile ULONG *)mode->FrameBuffer.Ptr,(ULONG *)staging,1024000u);
+        status=STATUS_SUCCESS;
+    }
     if(NT_SUCCESS(status)) {
         void *previous=resources->LiveShadow;resources->LiveShadow=staging;staging=NULL;
         resources->LiveShadowValid=TRUE;resources->LiveWidth=mode->SrcModeWidth;
@@ -756,6 +780,8 @@ NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DIS
         return STATUS_INVALID_PARAMETER;
     if (!m_Flags.DriverStarted) return STATUS_DEVICE_NOT_READY;
 #if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+    /* A previous unretired failure discarded its intended frame. Never
+     * treat a later power acknowledgement as recovery of those pixels. */
     if(m_DisplayResources.LiveFaulted)return STATUS_IO_DEVICE_ERROR;
 #endif
 
@@ -767,7 +793,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DIS
     }
 
     // If it is in monitor off state or source is not supposed to be visible, don't present anything to the screen
-    if ((m_MonitorPowerState > PowerDeviceD0) ||
+    if ((m_AdapterPowerState > PowerDeviceD0) || (m_MonitorPowerState > PowerDeviceD0) ||
         (m_CurrentModes[pPresentDisplayOnly->VidPnSourceId].Flags.SourceNotVisible))
     {
         return STATUS_SUCCESS;
@@ -861,7 +887,9 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StopDeviceAndReleasePostDisplayOwnership(_In_  D3
     A04PresentGuard guard(&m_PresentMutex);
     if (!m_Flags.DriverStarted) return STATUS_DEVICE_NOT_READY;
 #if A04_GE8300_WDDM_LIVE_FULL_PRESENT
-    if(m_DisplayResources.LiveFaulted)return STATUS_IO_DEVICE_ERROR;
+    if(m_AdapterPowerState==PowerDeviceD0 && m_DisplayResources.LiveFaulted &&
+       !NT_SUCCESS(m_DisplayResources.RetireToCpu()))
+        return STATUS_IO_DEVICE_ERROR;
 #endif
     D3DDDI_VIDEO_PRESENT_SOURCE_ID SourceId = FindSourceForTarget(TargetId, TRUE);
     if (SourceId >= MAX_VIEWS) return STATUS_INVALID_DEVICE_STATE;
@@ -874,7 +902,8 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StopDeviceAndReleasePostDisplayOwnership(_In_  D3
     }
 
     // The driver has to black out the display and ensure it is visible when releasing ownership
-    BlackOutScreen(SourceId);
+    status=BlackOutScreen(SourceId);
+    if(!NT_SUCCESS(status))return status;
 
     *pDisplayInfo = m_CurrentModes[SourceId].DispInfo;
 
@@ -916,9 +945,12 @@ NTSTATUS BASIC_DISPLAY_DRIVER::GetEdid(D3DDDI_VIDEO_PRESENT_TARGET_ID TargetId)
     return Status;
 }
 
-VOID BASIC_DISPLAY_DRIVER::BlackOutScreen(D3DDDI_VIDEO_PRESENT_SOURCE_ID SourceId)
+NTSTATUS BASIC_DISPLAY_DRIVER::BlackOutScreen(D3DDDI_VIDEO_PRESENT_SOURCE_ID SourceId)
 {
+    if(m_AdapterPowerState!=PowerDeviceD0)return STATUS_DEVICE_NOT_READY;
 #if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+    if(m_DisplayResources.LiveFaulted && !NT_SUCCESS(m_DisplayResources.RetireToCpu()))
+        return STATUS_IO_DEVICE_ERROR;
     m_DisplayResources.LiveShadowValid=FALSE;
 #endif
     PAGED_CODE();
@@ -968,7 +1000,7 @@ VOID BASIC_DISPLAY_DRIVER::BlackOutScreen(D3DDDI_VIDEO_PRESENT_SOURCE_ID SourceI
 
     m_CurrentModes[SourceId].ZeroedOutStart.QuadPart = NewPhysAddrStart.QuadPart;
     m_CurrentModes[SourceId].ZeroedOutEnd.QuadPart = NewPhysAddrEnd.QuadPart;
-
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS BASIC_DISPLAY_DRIVER::WriteHWInfoStr(_In_ HANDLE DevInstRegKeyHandle, _In_ PCWSTR pszwValueName, _In_ PCSTR pszValue)
