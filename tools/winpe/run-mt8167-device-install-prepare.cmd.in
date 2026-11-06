@@ -97,6 +97,7 @@ type "%A04_BK%\JOURNAL.txt" >> "%A04_REPORT%" 2>&1
 set "A04_RC=4"
 goto release
 :release
+if exist "%A04_BK%" copy /y "%A04_REPORT%" "%A04_BK%\prepare-report.txt" >nul
 X:\a04br3\release-offline-volume.exe >> "%A04_REPORT%" 2>&1
 set "A04_RELEASE_RC=%errorlevel%"
 >> "%A04_REPORT%" echo UPDATE_RELEASE_EXIT=%A04_RELEASE_RC%
@@ -114,6 +115,5 @@ goto transmit
 set "A04_RC=2"
 :transmit
 >> "%A04_REPORT%" echo UPDATE_EXIT=%A04_RC%
-if exist "%A04_BK%" copy /y "%A04_REPORT%" "%A04_BK%\prepare-report.txt" >nul
 X:\a04br3\uart-audit-stream.exe @TOKEN@
 exit /b %A04_RC%
