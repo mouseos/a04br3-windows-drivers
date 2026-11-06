@@ -14,6 +14,7 @@
   "driver_version": "2026.11.6.1001",
   "driver_ver": "11/06/2026,2026.11.6.1001",
   "audio_mode_default": "private_fixed_tone_diagnostic",
-  "engine_pcm_optional_source": "329413ad2cabb68b3fe55fc4659640f7680fbb38",
-  "engine_pcm_default_enabled": false
+  "engine_pcm_optional_source": "de214c8b7495913d0716f149b24fd210ef42de8a",
+  "engine_pcm_default_enabled": false,
+  "engine_pcm_inf_signing_source": "e4dff2b25cc164892dce1d534cb564218845c29c"
 }

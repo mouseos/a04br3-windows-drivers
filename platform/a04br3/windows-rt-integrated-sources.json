@@ -40,7 +40,7 @@
   },
   "engine_pcm_candidate": {
     "branch": "work/rt-audio-retained-restart-20261107",
-    "source_commit": "329413ad2cabb68b3fe55fc4659640f7680fbb38",
+    "source_commit": "de214c8b7495913d0716f149b24fd210ef42de8a",
     "integrated": true,
     "mode": "engine_pcm_retained",
     "hardware_verified": false,
@@ -48,8 +48,12 @@
     "default_enabled": false,
     "retained_stop_run_reopen_implemented": true,
     "wdk_verified": false,
-    "driver_ver": "11/06/2026,2026.11.7.1003",
-    "legacy_tone_probe_auto_registration_allowed": false
+    "driver_ver": "11/06/2026,2026.11.7.1004",
+    "legacy_tone_probe_auto_registration_allowed": false,
+    "inf_signing_source": "e4dff2b25cc164892dce1d534cb564218845c29c",
+    "mapping": "PortCls WC request; verify ARM stage-1 Normal-NC same MDL page before CPU access",
+    "wdk_compile_link_reported_by_primary_owner": true,
+    "wdk_verified_here": false
   },
   "private_system_source_recipes": {
     "main_source": "1e1c87dd5df99d739f8a959dc3dce731b440b2c5",

@@ -705,8 +705,10 @@ static int ParentVerifyLivePcm(PVOID context,PVOID mdl,uint64_t logical,ULONG si
        !logical || (logical&(PAGE_SIZE-1)) || logical>0x100000000ULL-size ||
        MmGetMdlByteOffset(pages) || MmGetMdlByteCount(pages)!=size ||
        KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
-    /* The matched child owns PortCls pages mapped MmNonCached in both
-     * kernel and user space. Reject HAL bounce/map-register copies: a
+    /* The matched child owns PortCls pages, validates kernel Normal-NC,
+     * and requests MmWriteCombined for both aliases. Cache admission is the
+     * child's responsibility; this callback verifies lease and DMA identity.
+     * Reject HAL bounce/map-register copies: a
      * once-only flush cannot keep an engine-written cyclic buffer current. */
     pfns=MmGetMdlPfnArray(pages);count=size/PAGE_SIZE;
     for(i=0;i<count;++i)

@@ -2,7 +2,7 @@
 #define AUDIO_OWNER_TEST_PORTCLS_H
 #include "../audio_windows_stubs/ntddk.h"
 typedef int MEMORY_CACHING_TYPE;
-enum { MmNonCached };
+enum { MmNonCached, MmCached, MmWriteCombined };
 typedef struct { uint64_t PlayOffset,WriteOffset; } KSAUDIO_POSITION,*PKSAUDIO_POSITION;
 typedef DEVICE_DESCRIPTION *PDEVICE_DESCRIPTION;
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM

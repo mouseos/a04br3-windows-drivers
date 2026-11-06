@@ -27,7 +27,8 @@ struct Mt8167StreamBackend {
     NTSTATUS (*bindWaveBuffer)(void *, PMDL, PVOID, ULONG);
     NTSTATUS (*unbindWaveBuffer)(void *, PMDL);
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
-    /* Owner retains the PortCls allocation across stream instances. Exactly
+    /* Returns a WC/verified Normal-NC PortCls MDL, never a common-buffer MDL.
+     * Owner retains the allocation across stream instances. Exactly
      * one checked-out client; checkin never releases exposed pages or SG. */
     NTSTATUS (*checkout)(void *,PPORTWAVERTSTREAM,ULONG,PMDL *,PULONG);
     NTSTATUS (*checkin)(void *,PPORTWAVERTSTREAM,PMDL);

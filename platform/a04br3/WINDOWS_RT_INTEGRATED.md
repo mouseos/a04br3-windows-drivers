@@ -104,7 +104,7 @@ hardwareprobeの自動登録は行わない。一致する既存EnginePcm親出�
 固定tone親は拒否する。再利用親の元source commitはmanifestのparent_source_commitに記録する。
 異なる音声モードの出力manifestまたはINFがある出力先はbuild前に拒否する。
 
-Engine INFの版は2026.11.7.1003、署名日付は統合方針の11/06/2026。
+Engine INFの版は2026.11.7.1004、署名日付は統合方針の11/06/2026。
 これはtone版4 INFの11/06/2026,2026.11.6.1001を変更しない。
 停止後もpages/SG/voice/D0を保持し、fabric DMA drain・解放成功を保証しない。
 同時clientは1つ、保持容量を超える再openとsticky poison後の再RUNを拒否する。
@@ -130,3 +130,12 @@ recipeのresult/worker manifestはwhole_system_audit=falseとaudit_scopeを明�
 主担当申告では4a879f9のWindows native準備、clean format 1.5、LOG無し再loadを確認済み。
 run25はprivate保守ESPで適用中という情報であり、この統合作業での実測・起動成功ではない。
 候補hiveのhashや中身、バックアップ・private媒体は本source記録へ転記しない。
+
+## EnginePcm ARM mapping修正
+
+既定OFF候補へde214c8のWC/Normal-NC検査を取り込み。329413a以前の公開buffer cache設定を
+通常AudioSrv用として採用しない。kernel/userのMmWriteCombined要求と、CPUアクセス前の
+全page ATS1CPR/PAR検査を使う。PARはstage-1のみで、user PTE/EL2の最終属性は未実測。
+SYS source=de214c8、署名INF/manifest source=e4dff2b（11/06/2026,2026.11.7.1004）を区別する。
+親/audioのWDK compile/link成功は主担当申告であり、この統合で再buildしていない。
+GPU主試験/tone診断の基点と、EnginePcmへの旧tone probe自動登録禁止を維持する。

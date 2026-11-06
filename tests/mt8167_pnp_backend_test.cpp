@@ -158,6 +158,12 @@ struct Resources : IResourceList { _CM_PARTIAL_RESOURCE_DESCRIPTOR irq{},rawIrq{
  PCM_PARTIAL_RESOURCE_DESCRIPTOR FindUntranslatedEntry(int type,ULONG index) override{return type==CmResourceTypeInterrupt && !index?&rawIrq:type==CmResourceTypeMemory && index<2?&rawMem[index]:nullptr;}
 };
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+#include "wavert_cache.h"
+NTSTATUS Mt8167VerifyWaveCache(PVOID,ULONG bytes,ULONG first) {
+ for(ULONG i=0;i<bytes;i+=PAGE_SIZE)
+  assert(mt8167_arm_par_normal_nc((uint64_t)(first+i),first+i));
+ return STATUS_SUCCESS;
+}
 struct EnginePort : IPortWaveRTStream {
     _MDL mdl{data,8192};int refs=1,allocations=0,frees=0;
     PMDL AllocateContiguousPagesForMdl(PHYSICAL_ADDRESS,PHYSICAL_ADDRESS,size_t n) override {
@@ -165,7 +171,7 @@ struct EnginePort : IPortWaveRTStream {
     }
     ULONG GetPhysicalPagesCount(PMDL) override {return 2;}
     PHYSICAL_ADDRESS GetPhysicalPageAddress(PMDL,ULONG i) override {return {0x100000+(int64_t)i*4096};}
-    PVOID MapAllocatedPages(PMDL,int) override {return data;}
+    PVOID MapAllocatedPages(PMDL,int cache) override {assert(cache==MmWriteCombined);return data;}
     void UnmapAllocatedPages(PVOID,PMDL) override {}
     void FreePagesFromMdl(PMDL) override {frees++;}
     ULONG AddRef() override {return ++refs;}ULONG Release() override {return --refs;}

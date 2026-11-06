@@ -4,6 +4,7 @@
 #include "dma_adapter.h"
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
 #include "wavert_dma.h"
+#include "wavert_cache.h"
 #endif
 #include "stream_transport.h"
 #if defined(A04_AUDIO_PCM_PATTERN_DIAGNOSTIC) && A04_AUDIO_PCM_PATTERN_DIAGNOSTIC
@@ -302,7 +303,13 @@ static NTSTATUS OwnerCheckout(void *ctx,PPORTWAVERTSTREAM port,ULONG bytes,PMDL 
                     else (void)Mt8167ReleaseUnpublishedBuffer(&o->retainedBuffer);
                 }
             }
-        } else result=bytes<=o->retainedBuffer.bytes ? STATUS_SUCCESS : STATUS_BUFFER_TOO_SMALL;
+        } else {
+            result=bytes<=o->retainedBuffer.bytes ? Mt8167VerifyWaveCache(
+                o->retainedBuffer.mapping,o->retainedBuffer.bytes,o->retainedBuffer.physicalAddress) :
+                STATUS_BUFFER_TOO_SMALL;
+            if(result==STATUS_DEVICE_CONFIGURATION_ERROR)
+                InterlockedExchange(&o->enginePoison,1);
+        }
         if(NT_SUCCESS(result)) {
             /* PortCls retires its client mapping on FreeAudioBuffer. The
              * allocating port reference and MDL remain in this owner. */
@@ -327,7 +334,7 @@ static NTSTATUS OwnerCheckin(void *ctx,PPORTWAVERTSTREAM port,PMDL mdl)
     OwnerUnlock(o);return result;
 }
 #endif
-/* Direct engine PCM uses retained identity DMA of noncached PortCls pages.
+/* Direct engine PCM uses retained identity DMA of WC/Normal-NC PortCls pages.
  * A once-only flush alone never admits a client-modifiable cyclic buffer. */
 #if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
 static BOOLEAN OwnerLiveDmaVerified(Mt8167PnpBackend *o)
