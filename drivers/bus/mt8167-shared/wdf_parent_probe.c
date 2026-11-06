@@ -26,6 +26,7 @@
 #if A04_SHARED_THERMAL_DIAGNOSTIC
 #include "thermal_interface.h"
 #include "thermal_owner.h"
+#include "adc_observation.h"
 #endif
 #ifndef A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 #define A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC 0
@@ -888,6 +889,12 @@ NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
     UNREFERENCED_PARAMETER(previous);
 #if A04_SHARED_BUTTON_D0_EXPERIMENT
     A04_PARENT_CONTEXT *c=ParentContext(dev);NTSTATUS result=STATUS_DEVICE_NOT_READY;ULONG init,state;
+#if A04_SHARED_THERMAL_DIAGNOSTIC && A04_AUDIO_DIAGNOSTIC_TRACE
+    struct a04_adc_observation observation;ULONG observationBytes=sizeof(observation),observationAttributes=0;
+    UNICODE_STRING observationName=RTL_CONSTANT_STRING(L"A04BR3AdcObservation");
+    GUID observationGuid={0x91b27b25,0x4cc5,0x4471,{0xa0,0x4b,0x81,0x67,0x03,0x01,0x00,0x01}};
+    NTSTATUS observationStatus;
+#endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
     if(c->thermalRundownClosed){ExReInitializeRundownProtection(&c->thermalRundown);c->thermalRundownClosed=FALSE;}
 #endif
@@ -895,6 +902,13 @@ NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
      * final compare-exchange; surprise removal prevents any later restart. */
     if (InterlockedCompareExchange(&c->removed,0,0) ||
         InterlockedCompareExchange(&c->admissionClosed,2,1)!=1) return result;
+#if A04_SHARED_THERMAL_DIAGNOSTIC && A04_AUDIO_DIAGNOSTIC_TRACE
+    RtlZeroMemory(&observation,sizeof(observation));
+    observationStatus=ExGetFirmwareEnvironmentVariable(&observationName,&observationGuid,&observation,&observationBytes,&observationAttributes);
+    if(NT_SUCCESS(observationStatus) && a04_adc_observation_valid(&observation,observationBytes,observationAttributes))
+        A04_TRACE("A04ADC early DXE clock=%08lx; EBS and secure release unknown\n",(ULONG)observation.clock_first);
+    else A04_TRACE("A04ADC early DXE observation unavailable or invalid\n");
+#endif
     ExAcquireFastMutex(&c->pwrapLock);
     if (InterlockedCompareExchange(&c->removed,0,0) ||
         InterlockedCompareExchange(&c->admissionClosed,0,0)!=2 ||
