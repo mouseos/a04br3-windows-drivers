@@ -22,7 +22,7 @@ try {
  $src=[IO.File]::ReadAllText("$root\tools\winpe\offline-backup.c")
  $src=$src.Replace('L"C:\\','L"R:\\').Replace('L"E:\\','L"S:\\')
  $src=$src.Replace('if(!volume(L''C'',469762048LL,15147204608LL,L"NTFS")||!volume(L''E'',184549376LL,268435456LL,L"FAT32"))return 0;','if(0)return 0;')
- $src=$src.Replace('if(!clean_windows_volume())return 0;','if(0)return 0;')
+ $src=$src.Replace('if(!clean_windows_volume())return 0;','if(GetEnvironmentVariableW(L"A04_FAKE_DIRTY",0,0))return 0;')
  $src=$src.Replace('static int flush_volume(WCHAR drive){','static int flush_volume(WCHAR drive){ (void)drive; return 1;')
  if($src.Contains('L"C:\\Windows') -or $src.Contains('if(!volume(L''C''')){throw 'fixture path substitution failed'}
  [IO.File]::WriteAllText("$base\fixture.c",$src)
@@ -42,6 +42,10 @@ try {
  & "$base\fixture.exe"
  if(!$LASTEXITCODE -or (Test-Path 'S:\A04BACKUP')){throw 'sidecar count limit was not enforced'}
  foreach($i in 1..86){Remove-Item -LiteralPath "R:\Windows\System32\config\SYSTEM{$i}.TM.blf"}
+ $env:A04_FAKE_DIRTY='1'
+ & "$base\fixture.exe"
+ if(!$LASTEXITCODE -or (Test-Path 'S:\A04BACKUP') -or [IO.File]::ReadAllText('R:\Windows\System32\config\SYSTEM') -ne 'original-system'){throw 'dirty target did not reject backup without mutation'}
+ Remove-Item Env:A04_FAKE_DIRTY
  $env:A04_FAKE_FULL='1'
  & "$base\fixture.exe"
  if(!$LASTEXITCODE -or (Test-Path 'S:\A04BACKUP')){throw 'capacity failure did not stop before journal creation'}
@@ -60,6 +64,12 @@ try {
  [IO.File]::WriteAllText('R:\Windows\System32\drivers\mt8167-shared.sys','new')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM{fixture}.TM.blf','changed-sidecar')
  [IO.File]::WriteAllText('R:\Windows\System32\config\TxR\{fixture}.TxR.0.regtrans-ms','changed-txr')
+ $env:A04_FAKE_DIRTY='1'
+ & "$base\fixture.exe" --restore
+ if(!$LASTEXITCODE -or [IO.File]::ReadAllText('R:\Windows\System32\config\SOFTWARE') -ne 'changed' -or !(Test-Path 'S:\A04BACKUP\READY')){throw 'dirty target did not reject replay without mutation'}
+ Remove-Item Env:A04_FAKE_DIRTY
+ $locked=[IO.File]::Open('R:\Windows\System32\config\TxR\{fixture}.TxR.0.regtrans-ms',[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::None)
+ try { & "$base\fixture.exe" --restore; if(!$LASTEXITCODE -or [IO.File]::ReadAllText('R:\Windows\System32\config\SOFTWARE') -ne 'changed'){throw 'busy TxR did not reject replay before mutation'} } finally { $locked.Dispose() }
  [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE{new}.TM.blf','new-sidecar')
  & "$base\fixture.exe" --restore
  if(!$LASTEXITCODE -or [IO.File]::ReadAllText('R:\Windows\System32\config\SOFTWARE') -ne 'changed'){throw 'unrecorded sidecar did not block replay before mutation'}
