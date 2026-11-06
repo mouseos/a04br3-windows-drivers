@@ -50,5 +50,45 @@
     "wdk_verified": false,
     "driver_ver": "11/06/2026,2026.11.7.1003",
     "legacy_tone_probe_auto_registration_allowed": false
+  },
+  "private_system_source_recipes": {
+    "main_source": "1e1c87dd5df99d739f8a959dc3dce731b440b2c5",
+    "copy_only_media_source": "3a562de2e78cc1487a4ba008601e19cbec208734",
+    "drivers_directory_case_fix": "0423968d1e37721fece6fdd12821588d33008f79",
+    "native_recipe_initial": "b7b9a8766452868815d042b80ea3203d0ec1a086",
+    "native_recipe_scoped_audit": "4a879f93ddceee8eae15bc18673ca96a86f5e00b",
+    "source_only": true,
+    "private_hives_backups_esp_in_repository": false,
+    "private_outputs_allowed_in_ci_artifacts": false
+  },
+  "native_system_audit_scope": {
+    "whole_system_audit": false,
+    "reason": "Whole SYSTEM enumeration blocked by protected-key ACL; no ACL bypass",
+    "related_existing_keys": [
+      "Select",
+      "ControlSet001/Services/DeviceInstall",
+      "ControlSet001/Services/RpcSs"
+    ],
+    "existing_values_comparison": "direct raw value fingerprints (name/type/length/SHA256), no subkey recursion; compare after native replay, after registration and after clean reload",
+    "target_service": "MT8167DeviceInstall (optional MT8167HardwareProbe only by explicit selection; forbidden for EnginePcm auto-registration)",
+    "target_value_names": [
+      "Type",
+      "Start",
+      "ErrorControl",
+      "ImagePath",
+      "ObjectName",
+      "DisplayName",
+      "DependOnService"
+    ],
+    "target_value_check": "exact type and value comparison",
+    "not_a_whole_system_unchanged_proof": true
+  },
+  "native_system_validation_reported_by_primary_owner": {
+    "recipe": "4a879f9",
+    "windows_preparation_succeeded": true,
+    "candidate_clean_format": "1.5",
+    "clean_reload_verified": true,
+    "target_run": "run25 private maintenance ESP application in progress; user report",
+    "target_result_verified_here": false
   }
 }

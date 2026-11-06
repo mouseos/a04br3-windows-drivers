@@ -106,3 +106,23 @@ Engine INFの版は2026.11.7.1003、署名日付は統合方針の11/06/2026。
 同時clientは1つ、保持容量を超える再openとsticky poison後の再RUNを拒否する。
 既存tone hardwareprobeを登録済みのOSへEnginePcmを置く場合も、旧tone clientの
 自動起動を有効なままにしない。実機への適用判断・旧登録の解除は主担当工程。
+
+## private SYSTEMレシピのsource統合
+
+main 1e1c87d（copy-only媒体3a562de、Drivers大文字D修正0423968、専用SSH最大330分保持）と、
+native SYSTEMレシピb7b9a87→4a879f9を統合。保持jobは既定OFFの明示dispatch用で、
+この統合ではrunner起動・接続・private媒体生成を行わない。
+候補hive・SYSTEM.LOG・backup・private ESP/WIM・private resultは公開repoとCI artifactへ含めない。
+公開対象はレシピとテンプレートだけ。private出力は作業ルート内のrepo外へ保存する。
+
+全SYSTEM監査は保護keyのACLで阻害されたため実施していない。
+検証範囲はSelect、およびDeviceInstall/RpcSs直下のraw値fingerprint、対象serviceの
+Type/Start/ErrorControl/ImagePath/ObjectName/DisplayName/DependOnServiceの7値だけ。
+Select.Current/Defaultと依存serviceのType/Startを確認し、関連既存設定はnative replay後を
+基点として登録前後とclean candidate再loadで照合する。子keyへ再帰せずACLも変更しない。
+recipeのresult/worker manifestはwhole_system_audit=falseとaudit_scopeを明示する。
+この限定検査を全SYSTEMの無変更証明と呼ばない。
+
+主担当申告では4a879f9のWindows native準備、clean format 1.5、LOG無し再loadを確認済み。
+run25はprivate保守ESPで適用中という情報であり、この統合作業での実測・起動成功ではない。
+候補hiveのhashや中身、バックアップ・private媒体は本source記録へ転記しない。
