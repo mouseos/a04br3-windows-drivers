@@ -10,6 +10,6 @@ static int check(const WCHAR *path,const char *label){WINTRUST_FILE_INFO file;WI
  p=(BYTE*)&data;for(i=0;i<sizeof(data);i++)p[i]=0;data.cbStruct=sizeof(data);data.dwUIChoice=WTD_UI_NONE;data.fdwRevocationChecks=WTD_REVOKE_NONE;data.dwUnionChoice=WTD_CHOICE_FILE;data.pFile=&file;data.dwStateAction=WTD_STATEACTION_VERIFY;data.dwProvFlags=WTD_CACHE_ONLY_URL_RETRIEVAL;
  result=WinVerifyTrust(INVALID_HANDLE_VALUE,&policy,&data);data.dwStateAction=WTD_STATEACTION_CLOSE;WinVerifyTrust(INVALID_HANDLE_VALUE,&policy,&data);
  say(label);say(" WINPE_GENERIC_TRUST_STATUS=");hex((DWORD)result);say("\r\n");return result==ERROR_SUCCESS;}
-void mainCRTStartup(void){int top=check(L"X:\\a04br3\\update\\mt8167-toprgu.sys","SIGN_TOPRGU");int touch=check(L"X:\\a04br3\\update\\bu21025.sys","SIGN_TOUCH");
- if(!top||!touch){say("SIGNATURE_PRECHECK_REJECTED_NO_UPDATE\r\n");ExitProcess(2);}
- say("SIGNATURE_WINPE_GENERIC_ONLY_RT_CI_POLICY_UNPROVEN_NO_UPDATE\r\n");ExitProcess(3);}
+void mainCRTStartup(void){int top=check(L"X:\\a04br3\\update\\mt8167-toprgu.sys","SIGN_TOPRGU");int touch=check(L"X:\\a04br3\\update\\bu21025.sys","SIGN_TOUCH");int parent=check(L"X:\\a04br3\\update\\mt8167-shared.sys","SIGN_PARENT");
+ if(!top||!touch||!parent){say("SIGNATURE_PRECHECK_REJECTED_NO_UPDATE\r\n");ExitProcess(2);}
+ say("SIGNATURE_WINPE_GENERIC_OK_RT_CI_POLICY_UNPROVEN\r\n");ExitProcess(0);}

@@ -15,6 +15,8 @@ try {
  [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM','original-system')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM.LOG1','original-log')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE','original-software')
+ [IO.File]::WriteAllText('R:\Windows\System32\config\DRIVERS','original-drivers')
+ [IO.File]::WriteAllText('R:\Windows\System32\config\DRIVERS.LOG1','original-drivers-log')
  [IO.File]::WriteAllText('R:\Windows\System32\drivers\bu21025.sys','original-touch')
  [IO.File]::WriteAllText('R:\Windows\INF\oem33.inf','original-inf33')
  [IO.File]::WriteAllText('R:\Windows\INF\oem35.inf','original-inf35')
@@ -35,6 +37,7 @@ try {
  if($LASTEXITCODE){throw 'fixture link failed'}
  [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM{fixture}.TM.blf','original-system-sidecar')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE{fixture}.TMContainer01.regtrans-ms','original-software-sidecar')
+ [IO.File]::WriteAllText('R:\Windows\System32\config\DRIVERS{fixture}.TM.blf','original-drivers-sidecar')
  [IO.File]::WriteAllText('R:\Windows\System32\config\TxR\{fixture}.TxR.0.regtrans-ms','original-txr')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM{bad}.txt','unsupported')
  & "$base\fixture.exe"
@@ -56,19 +59,23 @@ try {
  if($LASTEXITCODE){throw 'fixture backup failed'}
  & "$base\fixture.exe" --probe
  if($LASTEXITCODE){throw 'valid recovery journal probe failed'}
- # Convert a fixture copy to the legacy v3 slot layout and verify it is
- # still discoverable without modifying the v4 journal retained for replay.
- $saved="$base\saved-v4";Copy-Item 'S:\A04BACKUP' $saved -Recurse
- $v=[IO.File]::ReadAllBytes('S:\A04BACKUP\READY');$count=[BitConverter]::ToUInt32($v,8)
+ # Derive a valid legacy v3 journal from the v5 fixture, retaining only
+ # sidecar types supported by v3 and keeping the original v5 bytes intact.
+ $saved="$base\saved-v5";Copy-Item 'S:\A04BACKUP' $saved -Recurse
+ $original=[IO.File]::ReadAllBytes('S:\A04BACKUP\READY');$count=[BitConverter]::ToUInt32($original,8)
+ $v=[byte[]]::new($original.Length);[Array]::Copy($original,0,$v,0,16+11*328)
  [Array]::Copy([BitConverter]::GetBytes([uint32]3),0,$v,4,4)
- [Array]::Copy([BitConverter]::GetBytes([uint32]($count-2)),0,$v,8,4)
- [Array]::Copy($v,(16+13*328),$v,(16+11*328),([int]($count-13)*328))
- [Array]::Clear($v,(16+([int]$count-2)*328),656)
+ $next=11
+ for($i=21;$i -lt $count;$i++){
+  $name=[Text.Encoding]::Unicode.GetString($original,16+$i*328+72,256).Split([char]0)[0]
+  if($name.StartsWith('DRIVERS{',[StringComparison]::OrdinalIgnoreCase) -or $name.StartsWith('COMPONENTS{',[StringComparison]::OrdinalIgnoreCase)){continue}
+  [Array]::Copy($original,16+$i*328,$v,16+$next*328,328)
+  Copy-Item (Join-Path $saved ('item{0:D2}.bin' -f $i)) ('S:\A04BACKUP\item{0:D2}.bin' -f $next) -Force
+  $next++
+ }
+ [Array]::Copy([BitConverter]::GetBytes([uint32]$next),0,$v,8,4)
  $digest=[Security.Cryptography.SHA256]::Create();try{$hash=$digest.ComputeHash($v,0,$v.Length-32)}finally{$digest.Dispose()}
- [Array]::Copy($hash,0,$v,$v.Length-32,32)
- Remove-Item 'S:\A04BACKUP\item11.bin','S:\A04BACKUP\item12.bin'
- for($i=13;$i -lt $count;$i++){Copy-Item (Join-Path $saved ('item{0:D2}.bin' -f $i)) ('S:\A04BACKUP\item{0:D2}.bin' -f ($i-2)) -Force}
- [IO.File]::WriteAllBytes('S:\A04BACKUP\READY',$v)
+ [Array]::Copy($hash,0,$v,$v.Length-32,32);[IO.File]::WriteAllBytes('S:\A04BACKUP\READY',$v)
  & "$base\fixture.exe" --probe;if($LASTEXITCODE){throw 'legacy v3 journal rejected'}
  Remove-Item 'S:\A04BACKUP' -Recurse -Force;Copy-Item $saved 'S:\A04BACKUP' -Recurse
  & "$base\fixture.exe" --complete
@@ -80,6 +87,8 @@ try {
  [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE','changed')
  [IO.File]::WriteAllText('R:\Windows\INF\oem33.inf','changed-inf33')
  [IO.File]::WriteAllText('R:\Windows\INF\oem35.inf','changed-inf35')
+ [IO.File]::WriteAllText('R:\Windows\System32\config\DRIVERS','changed-drivers')
+ [IO.File]::WriteAllText('R:\Windows\System32\config\DRIVERS{fixture}.TM.blf','changed-drivers-sidecar')
  [IO.File]::WriteAllText('R:\Windows\System32\drivers\mt8167-shared.sys','new')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM{fixture}.TM.blf','changed-sidecar')
  [IO.File]::WriteAllText('R:\Windows\System32\config\TxR\{fixture}.TxR.0.regtrans-ms','changed-txr')
@@ -100,6 +109,7 @@ try {
  & "$base\fixture.exe" --restore
  if($LASTEXITCODE){throw 'fixture replay failed'}
  if([IO.File]::ReadAllText('R:\Windows\System32\config\SYSTEM') -ne 'original-system'){throw 'SYSTEM content mismatch'}
+ if([IO.File]::ReadAllText('R:\Windows\System32\config\DRIVERS') -ne 'original-drivers' -or [IO.File]::ReadAllText('R:\Windows\System32\config\DRIVERS{fixture}.TM.blf') -ne 'original-drivers-sidecar'){throw 'DRIVERS hive replay failed'}
  if([IO.File]::ReadAllText('R:\Windows\INF\oem33.inf') -ne 'original-inf33' -or [IO.File]::ReadAllText('R:\Windows\INF\oem35.inf') -ne 'original-inf35'){throw 'published INF replay failed'}
  if([IO.File]::ReadAllText('R:\Windows\System32\config\SOFTWARE') -ne 'original-software'){throw 'SOFTWARE content mismatch'}
  if([IO.File]::ReadAllText('R:\Windows\System32\config\SYSTEM{fixture}.TM.blf') -ne 'original-system-sidecar'){throw 'SYSTEM sidecar mismatch'}
@@ -111,9 +121,10 @@ try {
  & "$base\fixture.exe" --arm
  if($LASTEXITCODE){throw 'fixture arm failed'}
  [IO.File]::WriteAllText('R:\Windows\System32\drivers\mt8167-shared.sys','armed-new')
+ [IO.File]::WriteAllText('R:\Windows\System32\config\COMPONENTS','armed-new-components')
  & "$base\fixture.exe" --restore
- if($LASTEXITCODE -or (Test-Path 'R:\Windows\System32\drivers\mt8167-shared.sys')){throw 'armed replay failed to remove new file'}
- foreach($index in 0..15){
+ if($LASTEXITCODE -or (Test-Path 'R:\Windows\System32\drivers\mt8167-shared.sys') -or (Test-Path 'R:\Windows\System32\config\COMPONENTS')){throw 'armed replay failed to remove new file'}
+ foreach($index in 0..24){
    $env:A04_FAIL_AFTER="$index"
    & "$base\fixture.exe" --restore
    if($LASTEXITCODE -ne 98){throw "fixture interruption failed at $index"}
@@ -121,7 +132,7 @@ try {
    & "$base\fixture.exe" --restore
    if($LASTEXITCODE){throw "fixture resume failed at $index"}
  }
- foreach($index in @(0,2,4,10,11,12,13,14,15)){
+ foreach($index in @(0,2,4,10,11,12,13,15,21,22,23,24)){
    $env:A04_FAIL_TEMP="$index"
    & "$base\fixture.exe" --restore
    if($LASTEXITCODE -ne 98){throw "temporary-file interruption failed at $index"}

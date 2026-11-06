@@ -15,7 +15,7 @@ try {
  foreach($n in @('mt8167-toprgu.sys','mt8167-shared.sys','bu21025.sys')){[IO.File]::WriteAllText("R:\Windows\System32\drivers\$n","fixture-$n")}
  $pin=@{'toprgu-sys'='mt8167-toprgu.sys';'shared-sys'='mt8167-shared.sys';'touch-sys'='bu21025.sys'}
  foreach($k in $pin.Keys){$hash=(Get-FileHash -Algorithm SHA256 "R:\Windows\System32\drivers\$($pin[$k])").Hash;[IO.File]::WriteAllBytes("S:\a04br3\driver-trust\$k.sha256",(From-Hex $hash))}
- foreach($kind in @('toprgu','shared')){
+ foreach($kind in @('toprgu','shared','touch')){
   $c=New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=A04 Synthetic $kind" -CertStoreLocation 'Cert:\CurrentUser\My';$certs+= $c
   Export-Certificate -Cert $c -FilePath "S:\a04br3\driver-trust\$kind.cer" | Out-Null
   $hash=(Get-FileHash -Algorithm SHA256 "S:\a04br3\driver-trust\$kind.cer").Hash
@@ -67,6 +67,11 @@ try {
  $env:A04_HIVE_FAIL_AFTER_FIRST_CERT='1';$lines=& cmd.exe /c "$base\transaction.cmd";$rc=$LASTEXITCODE;Remove-Item Env:A04_HIVE_FAIL_AFTER_FIRST_CERT
  if($rc -ne 3 -or !($lines -match 'HIVE_TRANSACTION_ROLLED_BACK')){throw "certificate rollback failed rc=$rc output=$($lines -join ' | ')"}
  if((Get-FileHash -Algorithm SHA256 'R:\Windows\System32\config\SYSTEM').Hash -ne $before -or (Get-FileHash -Algorithm SHA256 'R:\Windows\System32\config\SOFTWARE').Hash -ne $beforeSoftware){throw 'hives not restored after certificate failure'}
+ & cmd.exe /c 'rmdir /s /q T:\A04BACKUP';if($LASTEXITCODE){throw 'fixture journal cleanup failed'}
+ # The actual selected packages have three distinct signing certificates.
+ $env:A04_HIVE_FAIL_AFTER_THIRD_ROOT='1';$lines=& cmd.exe /c "$base\transaction.cmd";$rc=$LASTEXITCODE;Remove-Item Env:A04_HIVE_FAIL_AFTER_THIRD_ROOT
+ if($rc -ne 3 -or !($lines -match 'HIVE_TRANSACTION_ROLLED_BACK')){throw "third certificate rollback failed rc=$rc output=$($lines -join ' | ')"}
+ if((Get-FileHash -Algorithm SHA256 'R:\Windows\System32\config\SYSTEM').Hash -ne $before -or (Get-FileHash -Algorithm SHA256 'R:\Windows\System32\config\SOFTWARE').Hash -ne $beforeSoftware){throw 'hives not restored after third certificate failure'}
  & cmd.exe /c 'rmdir /s /q T:\A04BACKUP';if($LASTEXITCODE){throw 'fixture journal cleanup failed'}
  # Simulate a process/power interruption after the SYSTEM edit, before the
  # coordinator can run rollback.  The journal and intent survive in the fixture.

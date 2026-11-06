@@ -23,31 +23,32 @@ def verify_journal(fat, files):
     with fat.openbin(files[key][0], 'r') as f: data=f.read()
     if len(data)<48 or hashlib.sha256(data[:-32]).digest()!=data[-32:]:raise ValueError('journal manifest hash mismatch')
     magic,version,count,reserved=struct.unpack_from('<IIII',data)
-    if magic!=0x41303442 or (version in (1,2) and reserved) or (version in (3,4) and not reserved):raise ValueError('journal manifest identity rejected')
+    if magic!=0x41303442 or (version in (1,2) and reserved) or (version in (3,4,5) and not reserved):raise ValueError('journal manifest identity rejected')
     if version==1: capacity,entry_size=11,72
-    elif version in (2,3,4):capacity,entry_size=99,328
+    elif version in (2,3,4,5):capacity,entry_size=99,328
     else:raise ValueError('unsupported journal version')
-    if not (13 if version==4 else 11)<=count<=capacity or len(data)!=16+capacity*entry_size+32:raise ValueError('journal manifest size/count mismatch')
+    if not (21 if version==5 else (13 if version==4 else 11))<=count<=capacity or len(data)!=16+capacity*entry_size+32:raise ValueError('journal manifest size/count mismatch')
     names=set()
     for i in range(count):
         offset=16+i*entry_size;present=struct.unpack_from('<I',data,offset)[0]
         length=struct.unpack_from('<Q',data,offset+32)[0];digest=data[offset+40:offset+72].hex()
-        if present>1 or (i in (0,4) and not present) or (version in (2,3,4) and i>=11 and not present):raise ValueError('invalid presence')
-        if version in (2,3,4):
+        if present>1 or (i in (0,4) and not present) or (version in (2,3,4,5) and i>=11 and not present and not (version==5 and 13<=i<21)):raise ValueError('invalid presence')
+        if version in (2,3,4,5):
             raw=data[offset+72:offset+328]
             if raw[-2:]!=b'\0\0':raise ValueError('unterminated journal name')
             name=raw.decode('utf-16le').split('\0',1)[0]
             if i<11 and name:raise ValueError('unexpected fixed-entry name')
             if i>=11:
-                if version==4 and i<13:
-                    if name != ('FIXED-oem33.inf' if i==11 else 'FIXED-oem35.inf'):raise ValueError('invalid fixed INF name')
+                if (version==4 and i<13) or (version==5 and i<21):
+                    fixed=('FIXED-oem33.inf','FIXED-oem35.inf','HIVE-DRIVERS','HIVE-DRIVERS.LOG','HIVE-DRIVERS.LOG1','HIVE-DRIVERS.LOG2','HIVE-COMPONENTS','HIVE-COMPONENTS.LOG','HIVE-COMPONENTS.LOG1','HIVE-COMPONENTS.LOG2')
+                    if name != fixed[i-11]:raise ValueError('invalid fixed target name')
                     names.add(name.lower())
                     if present:
                         item=f'/a04backup/item{i:02}.bin'
                         if item not in files or files[item][1]!=digest or fat.getsize(files[item][0])!=length:raise ValueError(f'journal item {i} mismatch')
                     continue
                 txr=name.startswith('TxR\\');base=name[4:] if txr else name
-                prefix=base.startswith('{') if txr else base.upper().startswith(('SYSTEM{','SOFTWARE{'))
+                prefix=base.startswith('{') if txr else base.upper().startswith(('SYSTEM{','SOFTWARE{','DRIVERS{','COMPONENTS{') if version==5 else ('SYSTEM{','SOFTWARE{'))
                 if (not prefix or not re.fullmatch(r'[A-Za-z0-9{}._-]{8,119}',base) or '}' not in base or
                     not base.lower().endswith(('.blf','.regtrans-ms')) or name.lower() in names):
                     raise ValueError('invalid or duplicate sidecar name')
@@ -60,14 +61,14 @@ def verify_journal(fat, files):
     if intent_key in files:
         with fat.openbin(files[intent_key][0],'r') as f: intent=f.read()
         if (len(intent)!=76 or struct.unpack_from('<III',intent)!=(0x544e4934,1,reserved) or
-            version not in (3,4) or intent[12:44]!=data[-32:] or hashlib.sha256(intent[:-32]).digest()!=intent[-32:]):
+            version not in (3,4,5) or intent[12:44]!=data[-32:] or hashlib.sha256(intent[:-32]).digest()!=intent[-32:]):
             raise ValueError('invalid transaction intent')
     commit_key='/a04backup/commit'
     if commit_key in files:
         with fat.openbin(files[commit_key][0],'r') as f: committed=f.read()
         expected=('A04COMMIT_V1 '+hashlib.sha256(data).hexdigest()+'\n').encode('ascii')
         if committed!=expected:raise ValueError('invalid transaction completion marker')
-    return {'version':version,'count':count,'target_serial':reserved if version in (3,4) else None,
+    return {'version':version,'count':count,'target_serial':reserved if version in (3,4,5) else None,
             'armed':intent_key in files,'complete':commit_key in files,'manifest_sha256':hashlib.sha256(data).hexdigest()}
 
 def main():

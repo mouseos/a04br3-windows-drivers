@@ -5,11 +5,12 @@
 #include <wincrypt.h>
 
 #define MAX_CERT 16384
-static BYTE certs[2][MAX_CERT],blob[MAX_CERT+44],existing_blob[MAX_CERT+44],hash_buffer[4096];
-static DWORD cert_len[2];static HCRYPTPROV provider;
-static const WCHAR *certpath[2]={L"X:\\a04br3\\driver-trust\\toprgu.cer",L"X:\\a04br3\\driver-trust\\shared.cer"};
-static const WCHAR *certpin[2]={L"X:\\a04br3\\driver-trust\\toprgu-cert.sha256",L"X:\\a04br3\\driver-trust\\shared-cert.sha256"};
+static BYTE certs[3][MAX_CERT],blob[MAX_CERT+44],existing_blob[MAX_CERT+44],hash_buffer[4096];
+static DWORD cert_len[3];static HCRYPTPROV provider;
+static const WCHAR *certpath[3]={L"X:\\a04br3\\driver-trust\\toprgu.cer",L"X:\\a04br3\\driver-trust\\shared.cer",L"X:\\a04br3\\driver-trust\\touch.cer"};
+static const WCHAR *certpin[3]={L"X:\\a04br3\\driver-trust\\toprgu-cert.sha256",L"X:\\a04br3\\driver-trust\\shared-cert.sha256",L"X:\\a04br3\\driver-trust\\touch-cert.sha256"};
 static const WCHAR *sys[3]={L"C:\\Windows\\System32\\drivers\\mt8167-toprgu.sys",L"C:\\Windows\\System32\\drivers\\mt8167-shared.sys",L"C:\\Windows\\System32\\drivers\\bu21025.sys"};
+static const WCHAR *payload[3]={L"X:\\a04br3\\update\\mt8167-toprgu.sys",L"X:\\a04br3\\update\\mt8167-shared.sys",L"X:\\a04br3\\update\\bu21025.sys"};
 static const WCHAR *syspin[3]={L"X:\\a04br3\\driver-trust\\toprgu-sys.sha256",L"X:\\a04br3\\driver-trust\\shared-sys.sha256",L"X:\\a04br3\\driver-trust\\touch-sys.sha256"};
 static void say(const char *s){DWORD n=0,w;while(s[n])++n;WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),s,n,&w,0);}
 static int equal(const BYTE *a,const BYTE *b,DWORD n){DWORD i;BYTE d=0;for(i=0;i<n;++i)d|=a[i]^b[i];return d==0;}
@@ -18,7 +19,7 @@ static int digest_mem(ALG_ID alg,const BYTE *data,DWORD size,BYTE *out,DWORD exp
 static int digest_file(const WCHAR *path,BYTE *out){HANDLE f;HCRYPTHASH h;DWORD n,size=32;int ok=0;f=CreateFileW(path,GENERIC_READ,0,0,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,0);if(f==INVALID_HANDLE_VALUE)return 0;if(!CryptCreateHash(provider,CALG_SHA_256,0,0,&h)){CloseHandle(f);return 0;}for(;;){if(!ReadFile(f,hash_buffer,sizeof(hash_buffer),&n,0))goto done;if(!n)break;if(!CryptHashData(h,hash_buffer,n,0))goto done;}ok=CryptGetHashParam(h,HP_HASHVAL,out,&size,0)&&size==32;done:CryptDestroyHash(h);if(!CloseHandle(f))ok=0;return ok;}
 static int verify_pin(const WCHAR *target,const WCHAR *pin){BYTE got[32],want[32];DWORD n;if(!read_exact_file(pin,want,sizeof(want),&n)||n!=32||!digest_file(target,got))return 0;return equal(got,want,32);}
 static int privilege(const WCHAR *name){HANDLE t;TOKEN_PRIVILEGES p;LUID l;DWORD e;if(!OpenProcessToken(GetCurrentProcess(),TOKEN_ADJUST_PRIVILEGES|TOKEN_QUERY,&t))return 0;if(!LookupPrivilegeValueW(0,name,&l)){CloseHandle(t);return 0;}p.PrivilegeCount=1;p.Privileges[0].Luid=l;p.Privileges[0].Attributes=SE_PRIVILEGE_ENABLED;SetLastError(0);if(!AdjustTokenPrivileges(t,FALSE,&p,0,0,0)){CloseHandle(t);return 0;}e=GetLastError();CloseHandle(t);return e==ERROR_SUCCESS;}
-static int check_inputs(void){unsigned i;PCCERT_CONTEXT ctx;for(i=0;i<3;++i)if(!verify_pin(sys[i],syspin[i]))return 0;for(i=0;i<2;++i){if(!verify_pin(certpath[i],certpin[i])||!read_exact_file(certpath[i],certs[i],MAX_CERT,&cert_len[i])||!cert_len[i])return 0;ctx=CertCreateCertificateContext(X509_ASN_ENCODING|PKCS_7_ASN_ENCODING,certs[i],cert_len[i]);if(!ctx)return 0;CertFreeCertificateContext(ctx);}return 1;}
+static int check_inputs(int use_payload){unsigned i;PCCERT_CONTEXT ctx;for(i=0;i<3;++i)if(!verify_pin(use_payload?payload[i]:sys[i],syspin[i]))return 0;for(i=0;i<3;++i){if(!verify_pin(certpath[i],certpin[i])||!read_exact_file(certpath[i],certs[i],MAX_CERT,&cert_len[i])||!cert_len[i])return 0;ctx=CertCreateCertificateContext(X509_ASN_ENCODING|PKCS_7_ASN_ENCODING,certs[i],cert_len[i]);if(!ctx)return 0;CertFreeCertificateContext(ctx);}return 1;}
 static int set_toprgu(void){HKEY root=0,select=0,service=0;DWORD current=0,n=sizeof(current),type=0,start=0;LONG rc;int ok=0;WCHAR name[64];lstrcpyW(name,L"ControlSet000\\Services\\Mt8167Toprgu");
  rc=RegLoadKeyW(HKEY_LOCAL_MACHINE,L"A04TXSYS",L"C:\\Windows\\System32\\config\\SYSTEM");if(rc!=ERROR_SUCCESS)return 0;
  if(RegOpenKeyExW(HKEY_LOCAL_MACHINE,L"A04TXSYS",0,KEY_READ,&root)!=ERROR_SUCCESS)goto done;
@@ -53,7 +54,11 @@ static int set_trust(void){HKEY root=0;LONG rc;int ok=0;rc=RegLoadKeyW(HKEY_LOCA
 #ifdef A04_HIVE_FAULT_INJECTION
  {char x[4];if(GetEnvironmentVariableA("A04_HIVE_FAIL_AFTER_FIRST_CERT",x,sizeof(x))==1&&x[0]=='1')goto done;}
 #endif
- if(!add_cert(root,L"TrustedPublisher",0)||!add_cert(root,L"Root",1)||!add_cert(root,L"TrustedPublisher",1))goto done;ok=1;
+ if(!add_cert(root,L"TrustedPublisher",0)||!add_cert(root,L"Root",1)||!add_cert(root,L"TrustedPublisher",1)||!add_cert(root,L"Root",2))goto done;
+#ifdef A04_HIVE_FAULT_INJECTION
+ {char x[4];if(GetEnvironmentVariableA("A04_HIVE_FAIL_AFTER_THIRD_ROOT",x,sizeof(x))==1&&x[0]=='1')goto done;}
+#endif
+ if(!add_cert(root,L"TrustedPublisher",2))goto done;ok=1;
  done:if(root)RegCloseKey(root);if(RegUnLoadKeyW(HKEY_LOCAL_MACHINE,L"A04TXSW")!=ERROR_SUCCESS)ok=0;return ok;}
 #ifdef A04_HIVE_FIXTURE
 static int journal_ready(void){char x[4];return GetEnvironmentVariableA("A04_FIXTURE_JOURNAL",x,sizeof(x))==1&&x[0]=='1';}
@@ -66,9 +71,9 @@ static int journal_ready(void){STARTUPINFOW si;PROCESS_INFORMATION pi;BYTE *p;DW
  CloseHandle(pi.hThread);CloseHandle(pi.hProcess);return code==0;
 }
 #endif
-static int mode(void){const WCHAR *p=GetCommandLineW();if(*p==L'"'){++p;while(*p&&*p!=L'"')++p;if(!*p)return -1;++p;}else while(*p&&*p!=L' '&&*p!=L'\t')++p;while(*p==L' '||*p==L'\t')++p;if(!lstrcmpW(p,L"--check"))return 0;if(!lstrcmpW(p,L"--apply"))return 1;return -1;}
+static int mode(void){const WCHAR *p=GetCommandLineW();if(*p==L'"'){++p;while(*p&&*p!=L'"')++p;if(!*p)return -1;++p;}else while(*p&&*p!=L' '&&*p!=L'\t')++p;while(*p==L' '||*p==L'\t')++p;if(!lstrcmpW(p,L"--check"))return 0;if(!lstrcmpW(p,L"--apply"))return 1;if(!lstrcmpW(p,L"--payload-check"))return 2;return -1;}
 void mainCRTStartup(void){int m=mode();if(m<0||!privilege(L"SeBackupPrivilege")||!privilege(L"SeRestorePrivilege")||!CryptAcquireContextW(&provider,0,0,PROV_RSA_AES,CRYPT_VERIFYCONTEXT)){say("HIVE_APPLY_PRECONDITION_FAILED\r\n");ExitProcess(2);}
- if(!check_inputs()){say("HIVE_APPLY_INPUT_REJECTED\r\n");ExitProcess(3);}if(!m){say("HIVE_APPLY_INPUTS_MATCH\r\n");CryptReleaseContext(provider,0);ExitProcess(0);}
+ if(!check_inputs(m==2)){say("HIVE_APPLY_INPUT_REJECTED\r\n");ExitProcess(3);}if(m!=1){say(m==2?"HIVE_APPLY_PAYLOAD_MATCH_NOT_AUTHORIZATION\r\n":"HIVE_APPLY_INPUTS_MATCH\r\n");CryptReleaseContext(provider,0);ExitProcess(0);}
  if(!journal_ready()){say("HIVE_APPLY_JOURNAL_REJECTED\r\n");ExitProcess(5);}
  if(!set_toprgu()){say("HIVE_APPLY_FAILED_RECOVERY_REQUIRED\r\n");ExitProcess(4);}
 #ifdef A04_HIVE_FAULT_INJECTION

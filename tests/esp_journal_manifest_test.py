@@ -70,4 +70,17 @@ bad=bytearray(data);bad[16+11*328+72]^=1;bad[-32:]=hashlib.sha256(bad[:-32]).dig
 try:m.verify_journal(Fat(content),files)
 except ValueError:pass
 else:raise AssertionError('v4 fixed INF name mismatch accepted')
+content,files=example(3);data=bytearray(content['/A04BACKUP/READY']);struct.pack_into('<II',data,4,5,21)
+fixed=('FIXED-oem33.inf','FIXED-oem35.inf','HIVE-DRIVERS','HIVE-DRIVERS.LOG','HIVE-DRIVERS.LOG1','HIVE-DRIVERS.LOG2','HIVE-COMPONENTS','HIVE-COMPONENTS.LOG','HIVE-COMPONENTS.LOG1','HIVE-COMPONENTS.LOG2')
+for i,name in enumerate(fixed,11):
+    off=16+i*328;raw=name.encode('utf-16le');data[off+72:off+72+len(raw)]=raw
+    if i<13:
+        payload=('fixed%d'%i).encode();struct.pack_into('<I',data,off,1);struct.pack_into('<Q',data,off+32,len(payload));data[off+40:off+72]=hashlib.sha256(payload).digest();content[f'/A04BACKUP/item{i:02}.bin']=payload
+data[-32:]=hashlib.sha256(data[:-32]).digest();content['/A04BACKUP/READY']=bytes(data);files={k.lower():(k,hashlib.sha256(v).hexdigest()) for k,v in content.items()}
+assert m.verify_journal(Fat(content),files)['version']==5
+extra=bytearray(data);struct.pack_into('<I',extra,8,22);off=16+21*328;payload=b'driver-tm';struct.pack_into('<I',extra,off,1);struct.pack_into('<Q',extra,off+32,len(payload));extra[off+40:off+72]=hashlib.sha256(payload).digest();name='DRIVERS{fixture}.TM.blf'.encode('utf-16le');extra[off+72:off+72+len(name)]=name;extra[-32:]=hashlib.sha256(extra[:-32]).digest();content['/A04BACKUP/READY']=bytes(extra);content['/A04BACKUP/item21.bin']=payload;files={k.lower():(k,hashlib.sha256(v).hexdigest()) for k,v in content.items()};assert m.verify_journal(Fat(content),files)['count']==22
+bad=bytearray(data);bad[16+13*328+72]^=1;bad[-32:]=hashlib.sha256(bad[:-32]).digest();content['/A04BACKUP/READY']=bytes(bad)
+try:m.verify_journal(Fat(content),files)
+except ValueError:pass
+else:raise AssertionError('v5 hive name mismatch accepted')
 print('ESP journal manifest tests: PASS')

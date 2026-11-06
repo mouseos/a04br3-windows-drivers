@@ -1,6 +1,6 @@
 # WinPE固定対象バックアップ・復旧の試作
 
-`offline-backup.c` は更新プログラムではない。SYSTEM、SOFTWAREとそれぞれの
+`offline-backup.c` は更新プログラムではない。SYSTEM、SOFTWARE、DRIVERS、COMPONENTSとそれぞれの
 LOG/LOG1/LOG2・TM関連ファイル、config/TxR内の対象ログ、TOPRGU・共有親・BU21025のSYS、およびoem33.inf・oem35.infを対象とする。DISM、Driver
 Store、デバイス列挙・PnP設定、他の変更ファイルを復旧するものではない。
 搭載Windowsへの適用には使わない。実機のNTFS整合性、EFI空き容量、電源断後の
@@ -66,9 +66,9 @@ recovery上でESPを一時的に読取り専用マウントし、`A04BACKUP` が
 他プロセスによる確認後の変更や電源断を防ぐ排他制御ではない。別の書込み手段は
 このガードの対象外。`--verify-only` はローカル入力の照合だけを行う。
 
-現在のWinPEツールはシリアルを含む形式3・4を再生する。新規の形式4は固定スロットにoem33.inf・oem35.infを含み、形式3の既存ジャーナルは従来のスロット解釈で復旧する。過去の形式1・2は
+現在のWinPEツールはシリアルを含む形式3・4・5を再生する。形式4は固定スロットにoem33.inf・oem35.infを含み、新規の形式5はDRIVERS・COMPONENTSの本体・LOG・LOG1・LOG2およびそれらのTMファイルを追加する。存在しないhiveは不在として記録する。既存形式3・4は従来のスロット解釈で復旧する。過去の形式1・2は
 対象ボリュームとの結び付きがないため自動再生せず、保全したまま拒否する。
-`preserve-esp-journal.py` は形式1〜4のファイルを別イメージへ保全できるが、
+`preserve-esp-journal.py` は形式1〜5のファイルを別イメージへ保全できるが、
 保全成功は旧形式を現在の実機へ安全に復旧できる証拠ではない。
 
 ## 限定hive更新トランザクション
@@ -77,4 +77,8 @@ recovery上でESPを一時的に読取り専用マウントし、`A04BACKUP` が
 
 2026-11-06の監査では共有SYSが未存在だった。復旧時、INTENTがないジャーナルに対して元は不在だった固定対象が出現している場合は、一切の再生に先立って拒否する。INTENTが検証された場合だけ、更新中に作成された対象として不在状態に戻す。この判定は他プロセスとの排他やDriver Store・PnP全体の復旧を保証しない。
 
-`offline-baseline-guard.c` は対象のNTFS範囲・シリアル・dirty bit、既存TOPRGU/BU21025 SYS、oem33/oem35 INFのハッシュと共有SYS不在を照合する。各ファイルの読取中は排他的に開くが、対象全体のスナップショットやPnP、CAT、署名受理、後続処理までの排他を証明しない。`offline-signature-check.c` は候補2 SYSのWinPE上の一般署名検証を試し、失敗も、両方成功してRT側ポリシーが未証明の場合も更新を拒否する。Driver Storeの変更範囲・回復と搭載RTの署名受理は引き続き未実装で、この部品を更新許可として使わない。
+`offline-baseline-guard.c` は対象のNTFS範囲・シリアル・dirty bit、既存TOPRGU/BU21025 SYS、oem33/oem35 INFのハッシュと共有SYS不在を照合する。各ファイルの読取中は排他的に開くが、対象全体のスナップショットやPnP、CAT、署名受理、後続処理までの排他を証明しない。`offline-signature-check.c` は候補のTOPRGU・共有親・BU21025の3 SYSについてWinPE上の一般署名検証を試し、失敗は拒否し、全て成功した場合もRT側ポリシーが未証明と報告する。Driver Storeの変更範囲・回復と搭載RTの署名受理は引き続き未実装で、この部品を更新許可として使わない。
+
+`prepare-update-candidates.py` は実績WinPE WIMから共有親・タッチのINF/SYS/CATを抽出し、同じWIMのTOPRGU SYSと740117c署名パッケージを照合する。TOPRGU、共有親、タッチの署名者は別々である。`verify-transaction-candidates.ps1` はWDK signtoolで各INFとSYSのCAT所属を記録し、自己署名ルートが信頼されない場合を実機受理と混同しない。`prepare-transaction-trust.py` は固定ハッシュと所属記録を照合し、3組の証明書・SYSピンを生成する。`offline-hive-apply.exe --payload-check` はX:上の候補SYSと3証明書のピンを照合し、元SYSが未交換の状態でも使用できる。PnP・Driver Storeの更新や完全な復旧が揃ったことは意味しない。
+
+`offline-pnp-baseline.exe` は呼出側がRAMコピーとしてロードした `HKLM\\A04AUDITSYS` のControlSet、TOPRGUサービス、MOU0004/MOU0005の選択INFと共有サービス不在を検査する。元hiveを自らロードしない。RAMコピーの排他・最新性は呼出側が確認する。`offline-signature-check.exe` は候補3 SYSをWinPEの一般署名ポリシーで検査し、成功時はRT側CI受理を未確認と明示する。ユーザーが指定した実機試験に向けた事前検査であり、実機受理を成功扱いしない。

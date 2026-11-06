@@ -8,6 +8,7 @@
 #include <wincrypt.h>
 
 #define BASE_COUNT 11
+#define V5_FIXED_COUNT 10
 #define COUNT 99
 #define CHUNK 65536
 #define RESERVE (8ULL*1024*1024)
@@ -58,10 +59,11 @@ static int prep(void){
 }
 /* Exclusive access prevents taking a snapshot of a file another process holds.
  * BackupRead/BackupWrite preserve streams and security in the archive. */
+static int optional_item(unsigned i){return (i<BASE_COUNT && i!=0 && i!=4) || (manifest.version==5 && i>=BASE_COUNT+2 && i<BASE_COUNT+V5_FIXED_COUNT);}
 static int measure_item(unsigned i,ENTRY *e){
  HANDLE src;BY_HANDLE_FILE_INFORMATION info;HCRYPTHASH h;void *ctx=0;DWORD n;int ok=0;
  src=CreateFileW(target[i],GENERIC_READ|READ_CONTROL|ACCESS_SYSTEM_SECURITY,0,0,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_BACKUP_SEMANTICS,0);
- if(src==INVALID_HANDLE_VALUE){DWORD x=GetLastError();return x==ERROR_FILE_NOT_FOUND && i!=0 && i!=4 && i<BASE_COUNT;}
+ if(src==INVALID_HANDLE_VALUE){DWORD x=GetLastError();return x==ERROR_FILE_NOT_FOUND && optional_item(i);}
  if(!GetFileInformationByHandle(src,&info)||info.nNumberOfLinks!=1||(info.dwFileAttributes&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_ENCRYPTED|FILE_ATTRIBUTE_COMPRESSED|FILE_ATTRIBUTE_SPARSE_FILE|FILE_ATTRIBUTE_OFFLINE)))goto done;
  e->present=1;e->attributes=info.dwFileAttributes;e->creation=info.ftCreationTime;e->access=info.ftLastAccessTime;e->write=info.ftLastWriteTime;
  if(!hash_start(&h))goto done;
@@ -79,7 +81,7 @@ static int same_entry(const ENTRY *a,const ENTRY *b){
 static int save_item(unsigned i){
  HANDLE src,dst;BY_HANDLE_FILE_INFORMATION info;HCRYPTHASH h;void *ctx=0;DWORD n;WCHAR p[64];ENTRY *e=&manifest.entries[i];int ok=0;
  src=CreateFileW(target[i],GENERIC_READ|READ_CONTROL|ACCESS_SYSTEM_SECURITY,0,0,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_BACKUP_SEMANTICS,0);
- if(src==INVALID_HANDLE_VALUE){DWORD x=GetLastError();return (x==ERROR_FILE_NOT_FOUND && i!=0 && i!=4 && i<BASE_COUNT);}
+ if(src==INVALID_HANDLE_VALUE){DWORD x=GetLastError();return (x==ERROR_FILE_NOT_FOUND && optional_item(i));}
  if(!GetFileInformationByHandle(src,&info)||info.nNumberOfLinks!=1||(info.dwFileAttributes&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_ENCRYPTED|FILE_ATTRIBUTE_COMPRESSED|FILE_ATTRIBUTE_SPARSE_FILE|FILE_ATTRIBUTE_OFFLINE)))goto endsrc;
  e->present=1;e->attributes=info.dwFileAttributes;e->creation=info.ftCreationTime;e->access=info.ftLastAccessTime;e->write=info.ftLastWriteTime;
  path(i,p);dst=CreateFileW(p,GENERIC_WRITE,0,0,CREATE_NEW,FILE_FLAG_WRITE_THROUGH,0);if(dst==INVALID_HANDLE_VALUE)goto endsrc;
@@ -95,9 +97,9 @@ static int save_item(unsigned i){
 static int verify_item(unsigned i){WCHAR p[64];HANDLE h;HCRYPTHASH hash;BYTE digest[32];DWORD n;ULONGLONG total=0;int ok=0;ENTRY *e=&manifest.entries[i];if(!e->present)return 1;path(i,p);h=CreateFileW(p,GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,0,0);if(h==INVALID_HANDLE_VALUE)return 0;if(!hash_start(&hash)){CloseHandle(h);return 0;}for(;;){if(!ReadFile(h,buf,CHUNK,&n,0))goto done;if(!n)break;total+=n;if(!CryptHashData(hash,buf,n,0))goto done;}if(!hash_end(hash,digest)){hash=0;goto close;}hash=0;ok=total==e->length&&same(digest,e->digest,32);goto close;done:CryptDestroyHash(hash);close:if(!CloseHandle(h))ok=0;return ok;}
 static int configure_sidecar(unsigned i,const WCHAR *name);
 static int configure_fixed_inf(unsigned i,const WCHAR *name);
-static int verify_manifest(void){BYTE d[32];unsigned i;if(manifest.magic!=0x41303442||(manifest.version!=3&&manifest.version!=4)||manifest.count<(manifest.version==4?BASE_COUNT+2:BASE_COUNT)||manifest.count>COUNT||manifest.reserved!=target_serial)return 0;if(!hash_mem(&manifest,(DWORD)offsetof(MANIFEST,digest),d)||!same(d,manifest.digest,32))return 0;active_count=BASE_COUNT;for(i=0;i<BASE_COUNT;++i)if(manifest.entries[i].name[0])return 0;
- for(i=BASE_COUNT;i<manifest.count;++i){unsigned j;if(manifest.entries[i].name[127]||!((manifest.version==4&&i<BASE_COUNT+2)?configure_fixed_inf(i,manifest.entries[i].name):configure_sidecar(i,manifest.entries[i].name)))return 0;for(j=BASE_COUNT;j<i;++j)if(!lstrcmpiW(manifest.entries[j].name,manifest.entries[i].name))return 0;++active_count;}
- for(i=0;i<manifest.count;++i)if(manifest.entries[i].present>1||(i>=BASE_COUNT&&!manifest.entries[i].present)||!verify_item(i))return 0;return manifest.entries[0].present&&manifest.entries[4].present;}
+static int verify_manifest(void){BYTE d[32];unsigned i;if(manifest.magic!=0x41303442||(manifest.version!=3&&manifest.version!=4&&manifest.version!=5)||manifest.count<(manifest.version==5?BASE_COUNT+V5_FIXED_COUNT:(manifest.version==4?BASE_COUNT+2:BASE_COUNT))||manifest.count>COUNT||manifest.reserved!=target_serial)return 0;if(!hash_mem(&manifest,(DWORD)offsetof(MANIFEST,digest),d)||!same(d,manifest.digest,32))return 0;active_count=BASE_COUNT;for(i=0;i<BASE_COUNT;++i)if(manifest.entries[i].name[0])return 0;
+ for(i=BASE_COUNT;i<manifest.count;++i){unsigned j;if(manifest.entries[i].name[127]||!(((manifest.version==4&&i<BASE_COUNT+2)||(manifest.version==5&&i<BASE_COUNT+V5_FIXED_COUNT))?configure_fixed_inf(i,manifest.entries[i].name):configure_sidecar(i,manifest.entries[i].name)))return 0;for(j=BASE_COUNT;j<i;++j)if(!lstrcmpiW(manifest.entries[j].name,manifest.entries[i].name))return 0;++active_count;}
+ for(i=0;i<manifest.count;++i)if(manifest.entries[i].present>1||(i>=BASE_COUNT&&!manifest.entries[i].present&&!optional_item(i))||!verify_item(i))return 0;return manifest.entries[0].present&&manifest.entries[4].present;}
 static int read_manifest_file(void){HANDLE h;DWORD n;BYTE extra;h=CreateFileW(L"E:\\A04BACKUP\\READY",GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,0,0);if(h==INVALID_HANDLE_VALUE)return 0;if(!ReadFile(h,&manifest,sizeof(manifest),&n,0)||n!=sizeof(manifest)){CloseHandle(h);return 0;}if(!ReadFile(h,&extra,1,&n,0)||n){CloseHandle(h);return 0;}return CloseHandle(h)!=0;}
 static int load_manifest(void){return read_manifest_file()&&verify_manifest();}
 static int verify_restored(unsigned i){
@@ -152,7 +154,7 @@ static int suffix(const WCHAR *name,const WCHAR *ending){int n=lstrlenW(name),e=
 static int sidecar_valid(const WCHAR *name){unsigned i;int n=lstrlenW(name),txr=0,brace=0;
  if(n>=4 && name[0]==L'T' && name[1]==L'x' && name[2]==L'R' && name[3]==L'\\'){txr=1;name+=4;n-=4;}
  if(n<8 || n>119)return 0;
- if(txr){if(name[0]!=L'{')return 0;}else if(!((n>7 && CompareStringOrdinal(name,7,L"SYSTEM{",7,TRUE)==CSTR_EQUAL) || (n>9 && CompareStringOrdinal(name,9,L"SOFTWARE{",9,TRUE)==CSTR_EQUAL)))return 0;
+ if(txr){if(name[0]!=L'{')return 0;}else if(!((n>7 && CompareStringOrdinal(name,7,L"SYSTEM{",7,TRUE)==CSTR_EQUAL) || (n>9 && CompareStringOrdinal(name,9,L"SOFTWARE{",9,TRUE)==CSTR_EQUAL) || (manifest.version==5 && n>8 && CompareStringOrdinal(name,8,L"DRIVERS{",8,TRUE)==CSTR_EQUAL) || (manifest.version==5 && n>11 && CompareStringOrdinal(name,11,L"COMPONENTS{",11,TRUE)==CSTR_EQUAL)))return 0;
  for(i=0;name[i];++i){WCHAR c=name[i];if(c==L'}')brace=1;if(!((c>=L'0'&&c<=L'9')||(c>=L'A'&&c<=L'Z')||(c>=L'a'&&c<=L'z')||c==L'{'||c==L'}'||c==L'.'||c==L'-'||c==L'_'))return 0;}
  return brace && (suffix(name,L".blf")||suffix(name,L".regtrans-ms"));
 }
@@ -164,11 +166,12 @@ static int configure_sidecar(unsigned i,const WCHAR *name){WCHAR *t,*q;unsigned 
 }
 /* Version 4 binds the two observed published INFs to fixed slots. Version 3
  * retains its original slot interpretation for recovery of old journals. */
-static int configure_fixed_inf(unsigned i,const WCHAR *name){WCHAR *t,*q;unsigned slot;const WCHAR *expected;
- if(i<BASE_COUNT||i>=BASE_COUNT+2)return 0;expected=i==BASE_COUNT?L"FIXED-oem33.inf":L"FIXED-oem35.inf";
- if(lstrcmpW(name,expected))return 0;slot=i-BASE_COUNT;t=dynamic_target[slot];q=dynamic_temp[slot];
- lstrcpyW(t,L"C:\\Windows\\INF\\");lstrcatW(t,name+6);
- lstrcpyW(q,L"C:\\Windows\\INF\\A04RESTORE00.tmp");
+static const WCHAR *v5_names[V5_FIXED_COUNT]={L"FIXED-oem33.inf",L"FIXED-oem35.inf",L"HIVE-DRIVERS",L"HIVE-DRIVERS.LOG",L"HIVE-DRIVERS.LOG1",L"HIVE-DRIVERS.LOG2",L"HIVE-COMPONENTS",L"HIVE-COMPONENTS.LOG",L"HIVE-COMPONENTS.LOG1",L"HIVE-COMPONENTS.LOG2"};
+static int configure_fixed_inf(unsigned i,const WCHAR *name){WCHAR *t,*q;unsigned slot,limit;
+ limit=manifest.version==5?V5_FIXED_COUNT:2;if(i<BASE_COUNT||i>=BASE_COUNT+limit)return 0;slot=i-BASE_COUNT;
+ if(lstrcmpW(name,v5_names[slot]))return 0;t=dynamic_target[slot];q=dynamic_temp[slot];
+ if(slot<2){lstrcpyW(t,L"C:\\Windows\\INF\\");lstrcatW(t,name+6);lstrcpyW(q,L"C:\\Windows\\INF\\A04RESTORE00.tmp");}
+ else{lstrcpyW(t,L"C:\\Windows\\System32\\config\\");lstrcatW(t,name+5);lstrcpyW(q,L"C:\\Windows\\System32\\config\\A04RESTORE00.tmp");}
  {unsigned n=lstrlenW(q);q[n-6]=(WCHAR)(L'0'+i/10);q[n-5]=(WCHAR)(L'0'+i%10);}
  target[i]=t;temp[i]=q;return 1;}
 static int find_sidecar(const WCHAR *name){unsigned i;for(i=BASE_COUNT;i<active_count;++i)if(!lstrcmpiW(manifest.entries[i].name,name))return (int)i;return -1;}
@@ -191,13 +194,13 @@ static int collect_sidecars(int recovering){DWORD attr=GetFileAttributesW(L"C:\\
  if(attr==INVALID_FILE_ATTRIBUTES || !(attr&FILE_ATTRIBUTE_DIRECTORY) || (attr&FILE_ATTRIBUTE_REPARSE_POINT))return 0;
  return scan_sidecars(L"C:\\Windows\\System32\\config\\SYSTEM{*",0,recovering) &&
         scan_sidecars(L"C:\\Windows\\System32\\config\\SOFTWARE{*",0,recovering) &&
+        (manifest.version!=5 || (scan_sidecars(L"C:\\Windows\\System32\\config\\DRIVERS{*",0,recovering) && scan_sidecars(L"C:\\Windows\\System32\\config\\COMPONENTS{*",0,recovering))) &&
         scan_sidecars(L"C:\\Windows\\System32\\config\\TxR\\*",1,recovering);
 }
 static void backup(void){unsigned i;ULARGE_INTEGER free;ULONGLONG need=RESERVE,cluster,rounded;HANDLE ready;DWORD spc,bps,avail,total;static ENTRY measured[COUNT],final_scan[COUNT];
  if(GetFileAttributesW(L"E:\\A04BACKUP")!=INVALID_FILE_ATTRIBUTES)fail("BACKUP_DIRECTORY_EXISTS");
- active_count=BASE_COUNT;
- if(!configure_fixed_inf(active_count,L"FIXED-oem33.inf"))fail("BACKUP_FIXED_TARGET_FAILED");lstrcpyW(manifest.entries[active_count++].name,L"FIXED-oem33.inf");
- if(!configure_fixed_inf(active_count,L"FIXED-oem35.inf"))fail("BACKUP_FIXED_TARGET_FAILED");lstrcpyW(manifest.entries[active_count++].name,L"FIXED-oem35.inf");
+ manifest.version=5;active_count=BASE_COUNT;
+ for(i=0;i<V5_FIXED_COUNT;++i){if(!configure_fixed_inf(active_count,v5_names[i]))fail("BACKUP_FIXED_TARGET_FAILED");lstrcpyW(manifest.entries[active_count++].name,v5_names[i]);}
  if(!collect_sidecars(0))fail("BACKUP_SIDECAR_ENUMERATION_FAILED");
  if(!GetDiskFreeSpaceW(L"E:\\",&spc,&bps,&avail,&total)||!spc||!bps)fail("BACKUP_CAPACITY_UNKNOWN");cluster=(ULONGLONG)spc*bps;if(!cluster || (cluster & (cluster-1)))fail("BACKUP_CLUSTER_REJECTED");
  for(i=0;i<active_count;++i){
@@ -209,7 +212,7 @@ static void backup(void){unsigned i;ULARGE_INTEGER free;ULONGLONG need=RESERVE,c
  }
  if(fixture_full()||!GetDiskFreeSpaceExW(L"E:\\",&free,0,0)||free.QuadPart<need)fail("BACKUP_CAPACITY_REJECTED");
  if(!CreateDirectoryW(L"E:\\A04BACKUP",0))fail("BACKUP_DIRECTORY_FAILED");
- manifest.magic=0x41303442;manifest.version=4;manifest.count=active_count;manifest.reserved=target_serial;
+ manifest.magic=0x41303442;manifest.version=5;manifest.count=active_count;manifest.reserved=target_serial;
  for(i=0;i<active_count;++i)if(!save_item(i)||!same_entry(&manifest.entries[i],&measured[i]))fail("BACKUP_ITEM_CHANGED_OR_FAILED_NO_UPDATE");
  if(!collect_sidecars(1)||active_count!=manifest.count)fail("BACKUP_SIDECAR_SET_CHANGED_NO_UPDATE");
  for(i=0;i<active_count;++i)if(!measure_item(i,&final_scan[i])||!same_entry(&manifest.entries[i],&final_scan[i]))fail("BACKUP_FINAL_CHECK_FAILED_NO_UPDATE");

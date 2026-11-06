@@ -77,7 +77,7 @@ def main():
         trust=a.driver_trust.resolve(strict=True)
         if WORKSPACE not in trust.parents or not trust.is_dir():raise ValueError('driver trust path rejected')
         trust_manifest=json.loads(builder.regular(trust/'manifest.json').read_text())
-        trust_names=('toprgu.cer','shared.cer','toprgu-cert.sha256','shared-cert.sha256','toprgu-sys.sha256','shared-sys.sha256','touch-sys.sha256')
+        trust_names=('toprgu.cer','shared.cer','touch.cer','toprgu-cert.sha256','shared-cert.sha256','touch-cert.sha256','toprgu-sys.sha256','shared-sys.sha256','touch-sys.sha256')
         for name in trust_names:
             item=builder.regular(trust/name)
             if sha(item)!=trust_manifest.get('files',{}).get(name):raise ValueError('driver trust payload hash mismatch')

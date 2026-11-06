@@ -9,11 +9,11 @@ function From-Hex([string]$value){$result=New-Object byte[] ($value.Length/2);fo
 try {
  & subst.exe R: "$base\target";if($LASTEXITCODE){throw 'subst target failed'}
  & subst.exe S: "$base\ram";if($LASTEXITCODE){throw 'subst ram failed'}
- New-Item -ItemType Directory -Force 'R:\Windows\System32\config','R:\Windows\System32\drivers','S:\a04br3\driver-trust' | Out-Null
+ New-Item -ItemType Directory -Force 'R:\Windows\System32\config','R:\Windows\System32\drivers','S:\a04br3\driver-trust','S:\a04br3\update' | Out-Null
  foreach($n in @('mt8167-toprgu.sys','mt8167-shared.sys','bu21025.sys')){[IO.File]::WriteAllText("R:\Windows\System32\drivers\$n","fixture-$n")}
  $pin=@{'toprgu-sys'='mt8167-toprgu.sys';'shared-sys'='mt8167-shared.sys';'touch-sys'='bu21025.sys'}
  foreach($k in $pin.Keys){$hash=(Get-FileHash -Algorithm SHA256 "R:\Windows\System32\drivers\$($pin[$k])").Hash;[IO.File]::WriteAllBytes("S:\a04br3\driver-trust\$k.sha256",(From-Hex $hash))}
- foreach($kind in @('toprgu','shared')){
+ foreach($kind in @('toprgu','shared','touch')){
   $c=New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=A04 Synthetic $kind" -CertStoreLocation 'Cert:\CurrentUser\My';$certs+= $c
   Export-Certificate -Cert $c -FilePath "S:\a04br3\driver-trust\$kind.cer" | Out-Null
   $hash=(Get-FileHash -Algorithm SHA256 "S:\a04br3\driver-trust\$kind.cer").Hash
@@ -35,6 +35,11 @@ try {
  if($LASTEXITCODE){throw 'fixture compile failed'}
  & lld-link /subsystem:console /machine:x64 /entry:mainCRTStartup /nodefaultlib "$base\fixture.obj" "$lib\kernel32.lib" "$lib\advapi32.lib" "$lib\crypt32.lib" "/out:$base\fixture.exe"
  if($LASTEXITCODE){throw 'fixture link failed'}
+ foreach($n in @('mt8167-toprgu.sys','mt8167-shared.sys','bu21025.sys')){Copy-Item "R:\Windows\System32\drivers\$n" "S:\a04br3\update\$n"}
+ & "$base\fixture.exe" --payload-check;if($LASTEXITCODE){throw 'valid payload rejected'}
+ [IO.File]::AppendAllText('S:\a04br3\update\bu21025.sys','tampered')
+ & "$base\fixture.exe" --payload-check;if($LASTEXITCODE -ne 3){throw 'tampered payload accepted'}
+ Copy-Item 'R:\Windows\System32\drivers\bu21025.sys' 'S:\a04br3\update\bu21025.sys' -Force
  & "$base\fixture.exe" --check;if($LASTEXITCODE){throw 'valid inputs rejected'}
  & "$base\fixture.exe" --apply;if($LASTEXITCODE -ne 5){throw 'missing journal not rejected'}
  $env:A04_FIXTURE_JOURNAL='1'; & "$base\fixture.exe" --apply;if($LASTEXITCODE){throw 'hive apply failed'}

@@ -26,6 +26,8 @@ def main():
   pem=out/(label+'.pem');pem.write_text(ssl.DER_cert_to_PEM_cert(cert))
   for name in names:subprocess.run([str(verify),'verify','-CAfile',str(pem),'-in',str(files[name])],check=True,stdout=subprocess.DEVNULL)
   (out/(label+'.cer')).write_bytes(cert);(out/(label+'-cert.sha256')).write_bytes(hashlib.sha256(cert).digest())
+ # Legacy combined package uses the same certificate for parent and touch.
+ (out/'touch.cer').write_bytes(sharedcert);(out/'touch-cert.sha256').write_bytes(hashlib.sha256(sharedcert).digest())
  for short,name in (('toprgu','mt8167-toprgu.sys'),('shared','mt8167-shared.sys'),('touch','bu21025.sys')):
   (out/(short+'-sys.sha256')).write_bytes(bytes.fromhex(m.sha(files[name])))
  result={'version':1,'catalog_proof_sha256':m.sha(proof),'package_hashes':{n:m.sha(f) for n,f in files.items()},'thumbprints':report['thumbprints'],

@@ -3,6 +3,7 @@ param([Parameter(Mandatory=$true)][string]$BackupExe,
       [string]$HiveApplyExe,
       [string]$BaselineGuardExe,
       [string]$SignatureCheckExe,
+      [string]$PnpBaselineExe,
       [Parameter(Mandatory=$true)][string]$OutputDirectory)
 $ErrorActionPreference='Stop'
 if(Test-Path $OutputDirectory){throw 'Output directory already exists'}
@@ -14,6 +15,7 @@ $names=@('offline-backup.exe','release-offline-volume.exe')
 if($HiveApplyExe){if(!(Test-Path -LiteralPath $HiveApplyExe -PathType Leaf)){throw 'Hive apply executable missing'};Copy-Item -LiteralPath $HiveApplyExe -Destination (Join-Path $OutputDirectory 'offline-hive-apply.exe');$names+= 'offline-hive-apply.exe'}
 if($BaselineGuardExe){if(!(Test-Path -LiteralPath $BaselineGuardExe -PathType Leaf)){throw 'Baseline guard executable missing'};Copy-Item -LiteralPath $BaselineGuardExe -Destination (Join-Path $OutputDirectory 'offline-baseline-guard.exe');$names+='offline-baseline-guard.exe'}
 if($SignatureCheckExe){if(!(Test-Path -LiteralPath $SignatureCheckExe -PathType Leaf)){throw 'Signature checker executable missing'};Copy-Item -LiteralPath $SignatureCheckExe -Destination (Join-Path $OutputDirectory 'offline-signature-check.exe');$names+='offline-signature-check.exe'}
+if($PnpBaselineExe){if(!(Test-Path -LiteralPath $PnpBaselineExe -PathType Leaf)){throw 'PnP baseline executable missing'};Copy-Item -LiteralPath $PnpBaselineExe -Destination (Join-Path $OutputDirectory 'offline-pnp-baseline.exe');$names+='offline-pnp-baseline.exe'}
 $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1"
 $sign=Join-Path $kit 'bin\x86\signtool.exe'
 $cert=New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=A04BR3 Offline Maintenance Test' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
