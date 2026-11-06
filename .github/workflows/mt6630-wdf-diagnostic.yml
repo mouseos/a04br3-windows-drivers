@@ -15,6 +15,9 @@ jobs:
       - name: Build disabled and lease rejection configurations
         shell: pwsh
         run: ./tools/ci/build-mt6630-wdf-lease-probe.ps1
+      - name: Build guarded hardware path
+        shell: pwsh
+        run: ./tools/ci/build-mt6630-wdf-hardware.ps1
       - name: Create signed diagnostic package
         shell: pwsh
         run: |

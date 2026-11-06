@@ -370,3 +370,18 @@ ReleaseHardwareが呼ばれる。既定OFF、INFなし、無線機能なし。D0
 実機動作の検証ではない。強制削除と実際のWi-Fi起動の安全性は未完成。
 
 出典: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdfdevice/nc-wdfdevice-evt_wdf_device_d0_entry と https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdfdevice/nc-wdfdevice-evt_wdf_device_release_hardware
+
+WDF のハードウェア診断経路は `A04_WIFI_WDF_HARDWARE_DIAGNOSTIC`、
+`A04_WIFI_WDF_LEASE_DIAGNOSTIC`、`A04_WIFI_SESSION_DIAGNOSTIC`、
+`A04_WIFI_IRQ_DIAGNOSTIC` の明示的な有効化を必要とし、既定では無効。
+`wdf_hardware_config.h` の検証済み設定も既定で無効である。出典を確認した
+WMT digest、OCR、基板設定がない場合は親取得前に拒否する。親が取得を拒否
+した場合は work item を解放し、MMIO・IRQ・firmware のアクセスを行わない。
+取得後は session を通じて firmware snapshot、masked IRQ、起動、IRQ の一回の
+観測へ進み、D0 終了では IRQ、work item、MMIO、lease の順で停止する。
+起動途中の失敗、停止失敗、突然の取り外しでは IRQ と work item を切り離し、
+安全性が確認できない lease・親参照を保持する。親参照は PnP リソースの保持を
+保証しないため、この異常経路を実機で安全と判断してはならない。割り込みは
+一回観測後に再有効化しない。現在の親は lease を付与せず、実機での動作、
+割り込み配線、電源・停止・削除時の安全性は未検証である。NDIS 機能はない。
+`make test-mt6630-wdf-hardware` は模擬した WDF、session、IRQ による試験である。

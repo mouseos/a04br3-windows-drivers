@@ -1251,3 +1251,8 @@ test-mt6630-wdf-lease-probe:
 	@mkdir -p build
 	$(CC) $(CFLAGS) -DA04_WIFI_WDF_LEASE_DIAGNOSTIC=1 -Itests/shared_wdf_stubs tests/mt6630_wdf_sdio_probe_test.c -o build/mt6630_wdf_sdio_probe_test
 	./build/mt6630_wdf_sdio_probe_test
+
+.PHONY: test-mt6630-wdf-hardware
+test-mt6630-wdf-hardware:
+	$(CC) $(CFLAGS) -DA04_WIFI_WDF_LEASE_DIAGNOSTIC=1 -DA04_WIFI_WDF_HARDWARE_DIAGNOSTIC=1 -DA04_WIFI_SESSION_DIAGNOSTIC=1 -DA04_WIFI_IRQ_DIAGNOSTIC=1 -Itests/wifi_wdf_hardware_stubs tests/mt6630_wdf_hardware_test.c -o build/mt6630_wdf_hardware_test
+	./build/mt6630_wdf_hardware_test
