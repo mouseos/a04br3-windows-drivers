@@ -404,3 +404,24 @@ IOCTL 受理もホストでの受信を証明しない。session・親 lease・I
 WLAN snapshot も固定 SHA-256 `07fe1a225e6b9de6b310894db3b40bcc1cb66107b913e4c43eb6a62089aada22`
 と照合し、boot 前に再照合する。固定ハッシュの一致は入力の同一性の確認であり、
 実機の revision、送信許可、firmware 稼働の確認ではない。
+
+### 所有権引継ぎの未解決条件と拒否診断
+
+既定 OFF の `A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC=1` は親の Acquire 拒否時に、
+未証明の firmware・EL3、RTC、clock、GPIO、combo、IRQ、PnP の各領域を
+DbgPrint に出す。レジスタ読書き、RTC 取得、lease 発行や証明済みという記録は
+行わない。DbgPrint が UART へ配送される保証はない。
+
+実際の引継ぎには、UEFI とそれ以前の writer が対象資源と処理を停止したこと、
+EL3 等の並行 writer がいないこと、RTC の user bit と clock・GPIO の他利用者を
+共有親が仲介できること、MSDC2・combo・firmware・IRQ の占有、D0・surprise
+removal 時の I/O・IRQ 排出と PnP 資源寿命が、同一起動・同一世代について確認
+できる搬送路を要する。ExitBootServices の到達や ACPI の列挙、設定フラグ、
+固定文字列や自己申告だけでは証拠にならない。引継ぎ途中の障害は不確定として
+保持し、証拠のない解除や別の利用者の RTC bit 消去を行わない。
+
+現行の機種 UEFI には EBS 時の RTC_PDN1 bit 13 更新経路があり、EL3・外部 writer
+の停止は確認できない。UEFI から信頼できる Wi-Fi 所有移譲を示す経路も存在しない。
+そのためこの変更は実 handoff や親 lease を実装したものではなく、親 Acquire は
+従来どおり拒否する。共有親の署名済み診断ビルドは D0 も既定で無効であり、
+実機 PnP・署名受理・UART 配送はいずれも未検証。

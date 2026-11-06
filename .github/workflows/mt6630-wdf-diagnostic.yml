@@ -29,6 +29,39 @@ jobs:
           name: mt6630-wdf-hardware-link-check
           path: ${{ runner.temp }}\a04br3-wifi-wdf-hardware
           if-no-files-found: error
+      - name: Build shared parent handoff diagnostics OFF and ON
+        shell: pwsh
+        run: |
+          $env:A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC='0'
+          ./tools/ci/build-msdc-parent-probe.ps1
+          $env:A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC='1'
+          ./tools/ci/build-msdc-parent-probe.ps1
+      - name: Sign shared parent diagnostic
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
+          $out = Join-Path $env:RUNNER_TEMP 'mt6630-parent-handoff-diagnostic'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'a04-msdc-parent-probe\mt8167-shared.sys') $out
+          Copy-Item 'drivers/bus/mt8167-shared/prototype/shared-parent.inf' $out
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=MT6630 Parent Handoff Diagnostic' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
+          Export-Certificate -Cert $cert -FilePath (Join-Path $out 'parent-test.cer') | Out-Null
+          $sign = Join-Path $kit 'bin\x86\signtool.exe'
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $out 'mt8167-shared.sys')
+          if ($LASTEXITCODE -ne 0) { throw 'Parent SYS signing failed' }
+          & (Join-Path $kit 'bin\x86\Inf2Cat.exe') "/driver:$out" /os:6_3_ARM /uselocaltime
+          if ($LASTEXITCODE -ne 0) { throw 'Parent catalog generation failed' }
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $out 'shared-parent.cat')
+          if ($LASTEXITCODE -ne 0) { throw 'Parent catalog signing failed' }
+          $signature=Get-AuthenticodeSignature (Join-Path $out 'shared-parent.cat')
+          if (!$signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $cert.Thumbprint) { throw 'Parent catalog signer mismatch' }
+          [ordered]@{ source_commit=(git rev-parse HEAD); wifi_handoff_diagnostic=1; wifi_acquire='always refuses'; parent_d0='disabled'; signer_sha1=$cert.Thumbprint; files=@{ 'mt8167-shared.sys'=(Get-FileHash (Join-Path $out 'mt8167-shared.sys') -Algorithm SHA256).Hash; 'shared-parent.inf'=(Get-FileHash (Join-Path $out 'shared-parent.inf') -Algorithm SHA256).Hash; 'shared-parent.cat'=(Get-FileHash (Join-Path $out 'shared-parent.cat') -Algorithm SHA256).Hash }; note='Self-signed diagnostic; no actual handoff or device operation; target trust unverified.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mt6630-parent-handoff-diagnostic
+          path: ${{ runner.temp }}\mt6630-parent-handoff-diagnostic
+          if-no-files-found: error
       - name: Build read-only UART observer
         shell: pwsh
         run: ./tools/ci/build-mt6630-pnp-uart.ps1
