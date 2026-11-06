@@ -127,7 +127,9 @@ int a04_vendor_copy_wide_state_build(struct a04_vendor_wide_state *out,uint64_t 
     image.tile_size=((width+15u)/16u)<<16|((height+15u)/16u);
     csr=(UINT64_C(2)<<56)|(((uint64_t)(pitch-1u)&UINT64_C(0x1fffe))<<33)|
         (UINT64_C(1)<<23)|(UINT64_C(2)<<26)|(UINT64_C(3)<<29);
-    clip=((uint64_t)(height-1u)<<32)|(width-1u);
+    /* Native FUN_13e2e4 packs max X at bit32 and max Y at bit0.
+     * Square 32x32 golden data cannot distinguish this ordering. */
+    clip=((uint64_t)(width-1u)<<32)|(height-1u);
     image.csr[0]=(uint32_t)csr;image.csr[1]=(uint32_t)(csr>>32);
     image.csr[2]=(uint32_t)clip;image.csr[3]=(uint32_t)(clip>>32);
     *out=image;return 0;

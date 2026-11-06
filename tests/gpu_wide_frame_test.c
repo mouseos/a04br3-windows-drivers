@@ -22,7 +22,7 @@ int main(void)
     assert(!a04_vendor_clear_image_build(&clear,A04_VENDOR_RENDER_SCRATCH_VA,0));
     assert(w.tile_size==clear.payload[6] && !memcmp(w.csr,clear.payload+32,sizeof(w.csr)));
     assert(!a04_vendor_copy_wide_state_build(&w,A04_VENDOR_WIDE_SOURCE_VA,800,1280,800));
-    assert(w.tile_size==0x00320050u && w.csr[2]==799 && w.csr[3]==1279);
+    assert(w.tile_size==0x00320050u && w.csr[2]==1279 && w.csr[3]==799);
     assert(a04_vendor_copy_wide_state_build(&w,A04_VENDOR_WIDE_SOURCE_VA,800,1280,799));
     assert(a04_vendor_copy_wide_state_build(&w,A04_VENDOR_WIDE_SOURCE_VA+1,800,1280,800));
     assert(a04_vendor_copy_wide_state_build(&w,(UINT64_C(1)<<40)-128u,800,1280,800));
