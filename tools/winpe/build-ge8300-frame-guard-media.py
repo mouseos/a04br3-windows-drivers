@@ -60,17 +60,22 @@ def main():
     # Unlike a CPU load loop, these settings do not alter benchmark workload.
     text = text.replace('mountvol /N\nif errorlevel 1 goto failed\n',
         'mountvol /N\nif errorlevel 1 goto failed\n'
-        'powercfg /change standby-timeout-ac 0\n'
-        'powercfg /change standby-timeout-dc 0\n'
-        'powercfg /change monitor-timeout-ac 0\n'
-        'powercfg /change monitor-timeout-dc 0\n')
+        '> X:\\a04br3\\toprgu-audit-result.txt echo GPU_MAINTENANCE_BEGIN\n'
+        'powercfg /change standby-timeout-ac 0 >> X:\\a04br3\\toprgu-audit-result.txt 2>&1\n'
+        'echo STANDBY_AC_RC=%errorlevel% >> X:\\a04br3\\toprgu-audit-result.txt\n'
+        'powercfg /change standby-timeout-dc 0 >> X:\\a04br3\\toprgu-audit-result.txt 2>&1\n'
+        'echo STANDBY_TIMEOUT_DC_RC=%errorlevel% >> X:\\a04br3\\toprgu-audit-result.txt\n'
+        'powercfg /change monitor-timeout-ac 0 >> X:\\a04br3\\toprgu-audit-result.txt 2>&1\n'
+        'echo MONITOR_TIMEOUT_AC_RC=%errorlevel% >> X:\\a04br3\\toprgu-audit-result.txt\n'
+        'powercfg /change monitor-timeout-dc 0 >> X:\\a04br3\\toprgu-audit-result.txt 2>&1\n'
+        'echo MONITOR_TIMEOUT_DC_RC=%errorlevel% >> X:\\a04br3\\toprgu-audit-result.txt\n')
     # Load the actual display path directly; independent copy self-tests and
     # status programs must not gate the frame measurement. Preserve stage
     # stdout in bounded CRC-framed UART reports when no camera is attached.
     text = text.replace('%GPU%\\ge8300-pnp-status.exe\n', '').replace('%GPU%\\ge8300-status.exe\n', '')
     text = text.replace('%GPU%\\ge8300-vendor-copy-test.exe\nif errorlevel 1 goto gpu_failed\n', '')
     text = text.replace('drvload %GPU%\\mt8167-ge8300.inf\n',
-        'drvload %GPU%\\mt8167-ge8300.inf > X:\\a04br3\\toprgu-audit-result.txt 2>&1\n'
+        'drvload %GPU%\\mt8167-ge8300.inf >> X:\\a04br3\\toprgu-audit-result.txt 2>&1\n'
         'set GPU_LOAD_RC=%errorlevel%\n'
         'X:\\a04br3\\uart-audit-stream.exe 9917000000000001\n'
         'if not "%GPU_LOAD_RC%"=="0" goto gpu_failed\n')
