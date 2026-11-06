@@ -14,6 +14,16 @@
 #include "audio_owner.h"
 #include "usb_interface.h"
 #include "usb_owner.h"
+#ifndef A04_SHARED_GPU_DIAGNOSTIC
+#define A04_SHARED_GPU_DIAGNOSTIC 0
+#endif
+#if A04_SHARED_GPU_DIAGNOSTIC
+#include "gpu_interface.h"
+#include "gpu_lease.h"
+#if !defined(A04_SHARED_QUERY_EXPERIMENTAL) || !A04_SHARED_QUERY_EXPERIMENTAL || !defined(A04_SHARED_CHILD_PROBE) || !A04_SHARED_CHILD_PROBE || !defined(A04_SHARED_BUTTON_D0_EXPERIMENT) || !A04_SHARED_BUTTON_D0_EXPERIMENT
+#error GPU diagnostic requires parent query, child topology and D0
+#endif
+#endif
 #ifndef A04_USB_GPIO22_SOURCE_EXPERIMENT
 #define A04_USB_GPIO22_SOURCE_EXPERIMENT 0
 #endif
@@ -132,6 +142,9 @@
 #include "shared_interface.h"
 #endif
 typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; struct a04_usb_owner usb; ULONG wifiGeneration; int wifiActive;
+#if A04_SHARED_GPU_DIAGNOSTIC
+struct a04_gpu_observation_lease gpuLease;
+#endif
 #if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 struct a04_codec_domain codecDomain;
 #if A04_SHARED_VOICE_DIAGNOSTIC || A04_SHARED_VOICE_PCM_DIAGNOSTIC
@@ -557,6 +570,46 @@ static int ParentWifiUpdate(PVOID c,ULONG g,unsigned b,unsigned o,ULONG clear,UL
 {return ParentWifiOperation(c,g,b,o,clear,set,1);}
 static int ParentWifiWrite(PVOID c,ULONG g,unsigned b,unsigned o,ULONG v)
 {return ParentWifiOperation(c,g,b,o,0,v,0);}
+#if A04_SHARED_GPU_DIAGNOSTIC
+static NTSTATUS ParentGpuAcquire(PVOID context,ULONG *generation)
+{
+ A04_PARENT_CONTEXT *c;unsigned g;int ret;
+ if(!context||!generation||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return STATUS_DEVICE_NOT_READY;
+ ret=(!c->infra || InterlockedCompareExchange(&c->removed,0,0))?-1:a04_gpu_observe_acquire(&c->gpuLease,&g);
+ if(!ret)*generation=g;ParentUnlock(c);return ret?STATUS_DEVICE_BUSY:STATUS_SUCCESS;
+}
+static NTSTATUS ParentGpuSnapshot(PVOID context,ULONG generation,struct a04_gpu_bus_snapshot *out)
+{
+ A04_PARENT_CONTEXT *c;ULONG a,b,d;
+ if(!context||!out||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return STATUS_DEVICE_NOT_READY;
+ if(!c->infra||!a04_gpu_observe_valid(&c->gpuLease,generation)||InterlockedCompareExchange(&c->removed,0,0)) {ParentUnlock(c);return STATUS_DEVICE_NOT_READY;}
+ a=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->infra+0x204));
+ b=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->infra+0x220));
+ d=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->infra+0x228));
+ if(a==0xffffffffu||b==0xffffffffu||d==0xffffffffu){ParentUnlock(c);return STATUS_DEVICE_HARDWARE_ERROR;}
+ out->axi_si1=a;out->protect_enable=b;out->protect_status=d;
+ ParentUnlock(c);return STATUS_SUCCESS;
+}
+static NTSTATUS ParentGpuAuthorize(PVOID context,ULONG generation)
+{
+ A04_PARENT_CONTEXT *c;int valid;
+ if(!context||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return STATUS_DEVICE_NOT_READY;
+ valid=a04_gpu_observe_valid(&c->gpuLease,generation);ParentUnlock(c);
+ /* Neither exclusive power-domain ownership nor a fabric drain is established. */
+ return valid?STATUS_NOT_SUPPORTED:STATUS_DEVICE_NOT_READY;
+}
+static NTSTATUS ParentGpuRelease(PVOID context,ULONG generation)
+{
+ A04_PARENT_CONTEXT *c;int ret;
+ if(!context||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ c=ParentContext((WDFDEVICE)context);ExAcquireFastMutex(&c->pwrapLock);
+ ret=a04_gpu_observe_release(&c->gpuLease,generation);ExReleaseFastMutex(&c->pwrapLock);
+ return ret?STATUS_INVALID_DEVICE_STATE:STATUS_SUCCESS;
+}
+#endif
 static VOID ParentInterfaceReference(PVOID context) { WdfObjectReference((WDFDEVICE)context); }
 static VOID ParentInterfaceDereference(PVOID context) { WdfObjectDereference((WDFDEVICE)context); }
 static NTSTATUS ParentReadButtons(PVOID context,USHORT *value) {
@@ -747,6 +800,9 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
     /* Failed/partial audio ownership cannot be interpreted as quiescent.
      * Retain mappings; this is not proof PnP retains physical resources. */
     if(c->audio.poisoned || c->audio.leased || c->audioAfe || c->usb.leased)return STATUS_DEVICE_BUSY;
+#if A04_SHARED_GPU_DIAGNOSTIC
+    if(c->gpuLease.active)return STATUS_DEVICE_BUSY;
+#endif
 #if defined(A04_MT6392_RTC32K_DIAGNOSTIC) && A04_MT6392_RTC32K_DIAGNOSTIC
     /* A retained or ambiguous RTC lease must outlive the PWRAP mapping. */
     if(c->pmic.rtc_lease)return STATUS_DEVICE_BUSY;
@@ -947,6 +1003,30 @@ NTSTATUS ChildRequirements(WDFDEVICE child,WDFIORESREQLIST requirements)
         return status;
     }
 #endif
+#if A04_SHARED_GPU_DIAGNOSTIC
+    if(c->base==0x13000000u) {
+        static const ULONG bases[2]={0x13000000u,0x13ffe000u};
+        static const ULONG lengths[2]={0x80000u,0x1000u};unsigned i;
+        status=WdfIoResourceListCreate(requirements,WDF_NO_OBJECT_ATTRIBUTES,&list);
+        if(!NT_SUCCESS(status))return status;
+        for(i=0;i<2;i++) {
+            RtlZeroMemory(&descriptor,sizeof(descriptor));descriptor.Type=CmResourceTypeMemory;
+            descriptor.ShareDisposition=CmResourceShareDeviceExclusive;descriptor.Flags=CM_RESOURCE_MEMORY_READ_WRITE;
+            descriptor.u.Memory.Alignment=1;descriptor.u.Memory.Length=lengths[i];
+            descriptor.u.Memory.MinimumAddress.QuadPart=bases[i];descriptor.u.Memory.MaximumAddress.QuadPart=bases[i]+lengths[i]-1;
+            status=WdfIoResourceListAppendDescriptor(list,&descriptor);
+            if(!NT_SUCCESS(status)){WdfObjectDelete(list);return status;}
+        }
+        /* DTS SPI 185 = GSIV 217, level low; routing/polarity remain unverified. */
+        RtlZeroMemory(&descriptor,sizeof(descriptor));descriptor.Type=CmResourceTypeInterrupt;
+        descriptor.ShareDisposition=CmResourceShareDeviceExclusive;descriptor.Flags=CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+        descriptor.u.Interrupt.MinimumVector=217;descriptor.u.Interrupt.MaximumVector=217;
+        status=WdfIoResourceListAppendDescriptor(list,&descriptor);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(list);return status;}
+        status=WdfIoResourceRequirementsListAppendIoResList(requirements,list);
+        if(!NT_SUCCESS(status))WdfObjectDelete(list);return status;
+    }
+#endif
     if(c->base!=0x10002000u && c->base!=0x11009000u && c->base!=0x11100000u && c->base!=0x11170000u)return STATUS_DEVICE_CONFIGURATION_ERROR;
     status=WdfIoResourceListCreate(requirements,WDF_NO_OBJECT_ATTRIBUTES,&list);
     if(!NT_SUCCESS(status))return status;
@@ -1021,6 +1101,13 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
     if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+#if A04_SHARED_GPU_DIAGNOSTIC
+    if(base==0x13000000u) {
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedGpuInterfaceGuid,NULL);
+        query.SendQueryToParentStack=TRUE;status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    }
+#endif
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedAudioInterfaceGuid,NULL);
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
@@ -1050,6 +1137,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #endif
     A04_SHARED_AUDIO_INTERFACE audioIface; A04_SHARED_USB_INTERFACE usbIface;
     A04_SHARED_WIFI_INTERFACE wifiIface;
+#if A04_SHARED_GPU_DIAGNOSTIC
+    A04_SHARED_GPU_INTERFACE gpuIface;
+#endif
 #endif
     UNREFERENCED_PARAMETER(driver);
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
@@ -1138,6 +1228,15 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&usbIface,&A04SharedUsbInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
     if(!NT_SUCCESS(status))return status;
+#if A04_SHARED_GPU_DIAGNOSTIC
+    RtlZeroMemory(&gpuIface,sizeof(gpuIface));gpuIface.Header.Size=sizeof(gpuIface);
+    gpuIface.Header.Version=A04_SHARED_GPU_INTERFACE_VERSION;gpuIface.Header.Context=dev;
+    gpuIface.Header.InterfaceReference=ParentInterfaceReference;gpuIface.Header.InterfaceDereference=ParentInterfaceDereference;
+    gpuIface.AcquireObservation=ParentGpuAcquire;gpuIface.Snapshot=ParentGpuSnapshot;
+    gpuIface.AuthorizeDma=ParentGpuAuthorize;gpuIface.ReleaseObservation=ParentGpuRelease;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&gpuIface,&A04SharedGpuInterfaceGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
+#endif
     RtlZeroMemory(&wifiIface,sizeof(wifiIface));
     wifiIface.Header.Size=sizeof(wifiIface);wifiIface.Header.Version=A04_SHARED_WIFI_INTERFACE_VERSION;
     wifiIface.Header.Context=dev;wifiIface.Header.InterfaceReference=ParentInterfaceReference;
@@ -1159,6 +1258,10 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #endif
     status=ParentAddProbeChild(dev,L"MT8167\\USB20",L"0",0x11100000u);
     if(!NT_SUCCESS(status))return status;
+#if A04_SHARED_GPU_DIAGNOSTIC
+    status=ParentAddProbeChild(dev,L"MT8167\\GE8300",L"0",0x13000000u);
+    if(!NT_SUCCESS(status))return status;
+#endif
     /* The audio sentinel remains unavailable unless the diagnostic flag is set. */
     status=ParentAddProbeChild(dev,L"MT8167\\AFE",L"0",0xffffffffu);
     if(!NT_SUCCESS(status))return status;

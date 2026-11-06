@@ -1188,3 +1188,10 @@ test-mt8167-rtc-parent-lifetime:
 	mkdir -p build
 	$(CC) $(CFLAGS) -DA04_MT6392_RTC32K_DIAGNOSTIC=1 -DA04_USB_GPIO22_SOURCE_EXPERIMENT=1 -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -DA04_SHARED_BUTTON_D0_EXPERIMENT=1 -DA04_SHARED_APMIXED_RESOURCE=1 -DA04_SHARED_MT6392_DIAGNOSTIC=1 -DA04_MT6392_WRITE_DIAGNOSTIC=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/bus/mt8167-shared/mt6392_classd.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c drivers/bus/mt8167-shared/usb_owner.c drivers/usb/mt8167-usb20/gpio22.c tests/mt8167_shared_wdf_test.c -o build/mt8167_rtc_parent_lifetime_test
 	./build/mt8167_rtc_parent_lifetime_test
+
+.PHONY: test-mt8167-gpu-observation
+test-mt8167-gpu-observation: build/mt8167_gpu_observation_test
+	./build/mt8167_gpu_observation_test
+build/mt8167_gpu_observation_test: tests/mt8167_gpu_observation_test.c drivers/bus/mt8167-shared/gpu_lease.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) tests/mt8167_gpu_observation_test.c -o $@

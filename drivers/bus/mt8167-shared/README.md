@@ -461,3 +461,33 @@ DMA-then-Voice ordering. Both remain blocked by the real parent's absent mute
 and calibration verification; the PCM path also lacks a DMA mapping and drain
 proof. Wi-Fi/RTC flags are independent and are exercised with both enabled in
 the host and ARM32 build checks.
+
+### GE8300 shared-parent observation
+
+`A04_SHARED_GPU_DIAGNOSTIC=1` adds a synthetic `MT8167\GE8300` child with
+GE8300 core, MFGCFG, and GSIV 217 requirements, and exposes a versioned GPU
+interface. It requires the existing query, child, and parent D0 experiments.
+Disable the legacy ACPI GPU before using this topology; PnP allocation alone
+cannot prove other firmware or software consumers are absent. GSIV polarity
+and platform translation are unverified. The option is off by default.
+
+The parent serializes one generation-checked **observation** lease and reads
+INFRACFG SI1 (0x204), protection enable (0x220), and protection status (0x228)
+under its existing resource mutex. No bus protection or power writes occur.
+A stale lease cannot operate; parent unmap is refused while leased, and a
+client may release the observation lease after admission has closed. Such a
+reference does not establish physical-removal safety. The parent explicitly
+returns STATUS_NOT_SUPPORTED for DMA authorization: mapping INFRACFG, a child
+resource assignment, and a protection-ACK sample do not establish exclusive
+ownership of MFG, MFG_2D, MFG_ASYNC, clocks, all bus consumers, or the
+outstanding-transaction drain. GPU client `A04_GE8300_SHARED_PARENT_DIAGNOSTIC`
+queries the real parent, obtains and reports the snapshot, and fails closed
+before starting firmware or DMA. Therefore this diagnostic cannot perform the
+copy service until a separately validated domain/fabric owner exists.
+
+Linux references: MT8167 `mt8167.dtsi` identifies core ranges and SPI 185;
+`mtk-scpsys-mt8167.c` configures MFG_2D protection bits 2/5 and SI1 bit 7,
+while `mtk-infracfg.c` waits for the protection status. The source does not
+establish that the Windows parent is the sole owner or that this observation
+alone safely drains all external transactions. The connection and behavior are
+host/WDK tests only, not a device-proven power-off or unload sequence.

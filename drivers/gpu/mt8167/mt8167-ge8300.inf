@@ -11,6 +11,7 @@ CatalogFile=mt8167-ge8300.cat
 
 [Models.NTARM]
 %Device%=Install,ACPI\MOU0006
+%Device%=Install,MT8167\GE8300
 
 [DestinationDirs]
 DriverCopy=12

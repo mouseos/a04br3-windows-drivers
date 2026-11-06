@@ -11,6 +11,15 @@
 #include "vendor_m1_11/windows_power_acpi.h"
 #include "pvr_rogue_fwif.h"
 #include "pvr_rogue_defs.h"
+#ifndef A04_GE8300_SHARED_PARENT_DIAGNOSTIC
+#define A04_GE8300_SHARED_PARENT_DIAGNOSTIC 0
+#endif
+#if A04_GE8300_SHARED_PARENT_DIAGNOSTIC
+#include "../../bus/mt8167-shared/gpu_interface.h"
+#if !defined(A04_GE8300_VENDOR_START_DIAGNOSTIC) || !A04_GE8300_VENDOR_START_DIAGNOSTIC
+#error Shared GPU diagnostic requires vendor start diagnostic
+#endif
+#endif
 #ifndef A04_GE8300_VENDOR_STAGE
 #define A04_GE8300_VENDOR_STAGE 0
 #endif
@@ -153,6 +162,9 @@
 #define MAX_FIRMWARE (1024u*1024u)
 typedef struct {
     WDFDMAENABLER dma;
+#if A04_GE8300_SHARED_PARENT_DIAGNOSTIC
+    A04_SHARED_GPU_INTERFACE shared_gpu;ULONG shared_gpu_generation;BOOLEAN shared_gpu_valid;
+#endif
     volatile UCHAR *core;
     struct a04_gpu_firmware_state firmware;
     struct a04_gpu_queue_test_memory queue_memory;
@@ -509,6 +521,13 @@ NTSTATUS GpuRelease(WDFDEVICE device,WDFCMRESLIST translated)
     if(GpuUart) { MmUnmapIoSpace((PVOID)GpuUart,0x1000u); GpuUart=NULL; }
 #endif
     if(c->core) { MmUnmapIoSpace((PVOID)c->core,CORE_SIZE); c->core=NULL; }
+#if A04_GE8300_SHARED_PARENT_DIAGNOSTIC
+    if(c->shared_gpu_valid) {
+        NTSTATUS released=c->shared_gpu.ReleaseObservation(c->shared_gpu.Header.Context,c->shared_gpu_generation);
+        if(!NT_SUCCESS(released))return released;
+        c->shared_gpu.Header.InterfaceDereference(c->shared_gpu.Header.Context);c->shared_gpu_valid=FALSE;
+    }
+#endif
     return STATUS_SUCCESS;
 }
 NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
@@ -519,6 +538,32 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     ULONG copy_map_registers=0;
 #endif
     UNREFERENCED_PARAMETER(previous);
+#if A04_GE8300_SHARED_PARENT_DIAGNOSTIC
+    {
+        struct a04_gpu_bus_snapshot bus={0};
+        if(c->shared_gpu_valid)return STATUS_INVALID_DEVICE_STATE;
+        RtlZeroMemory(&c->shared_gpu,sizeof(c->shared_gpu));
+        status=WdfFdoQueryForInterface(device,&A04SharedGpuInterfaceGuid,(PINTERFACE)&c->shared_gpu,
+            sizeof(c->shared_gpu),A04_SHARED_GPU_INTERFACE_VERSION,NULL);
+        if(!NT_SUCCESS(status))return status;
+        if(c->shared_gpu.Header.Size<sizeof(c->shared_gpu) ||
+           c->shared_gpu.Header.Version!=A04_SHARED_GPU_INTERFACE_VERSION ||
+           !c->shared_gpu.Header.InterfaceDereference || !c->shared_gpu.AcquireObservation ||
+           !c->shared_gpu.Snapshot || !c->shared_gpu.AuthorizeDma || !c->shared_gpu.ReleaseObservation) {
+            if(c->shared_gpu.Header.InterfaceDereference)c->shared_gpu.Header.InterfaceDereference(c->shared_gpu.Header.Context);
+            return STATUS_DEVICE_CONFIGURATION_ERROR;
+        }
+        status=c->shared_gpu.AcquireObservation(c->shared_gpu.Header.Context,&c->shared_gpu_generation);
+        if(!NT_SUCCESS(status)){c->shared_gpu.Header.InterfaceDereference(c->shared_gpu.Header.Context);return status;}
+        c->shared_gpu_valid=TRUE;
+        status=c->shared_gpu.Snapshot(c->shared_gpu.Header.Context,c->shared_gpu_generation,&bus);
+        GpuPrint("A04GPU PARENT SNAP=");GpuHex((ULONG)status);GpuPrint(" SI1=");GpuHex(bus.axi_si1);
+        GpuPrint(" EN=");GpuHex(bus.protect_enable);GpuPrint(" ACK=");GpuHex(bus.protect_status);GpuPrint("\n");
+        if(NT_SUCCESS(status))status=c->shared_gpu.AuthorizeDma(c->shared_gpu.Header.Context,c->shared_gpu_generation);
+        GpuPrint("A04GPU PARENT DMA AUTH=");GpuHex((ULONG)status);GpuPrint("\n");
+        if(!NT_SUCCESS(status))return status;
+    }
+#endif
 #if A04_GE8300_VENDOR_START_DIAGNOSTIC
     GpuPrint("A04GPU NATIVE D0 ENTER\n");
 #endif
