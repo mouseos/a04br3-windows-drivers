@@ -21,7 +21,7 @@ AOSP recovery/minuiは通常EGLを必要としないため、Recoveryにこれ�
 ## 準備したコード
 
 - recovery-native-preflight.sh --inspect: nodeとfileのmetadataのみ。GPU fdを開かない。
-- recovery-native-clear.c: --runとEGL/GLES絶対pathを必須とする。800x600、RGBA8、MSAA/Z/SなしをeglGetConfigAttribで厳密確認し、ES2 pbufferを作り、元glClear→glFinish→glReadPixelsを1回行う。全480000画素のRGBA={17,34,51,255}一致を検査。PowerVR以外のrendererは拒否。30秒alarm。デフォルト起動はdriverをloadせずusage終了。
+- recovery-native-clear.c: --runとEGL/GLES絶対pathを必須とする。800x600、RGBA8、MSAA/Z/SなしをeglGetConfigAttribで厳密確認し、ES2 pbufferを作り、元glClear→glFinish→glReadPixelsを1回行う。capture環境変数がある場合はobserverの初期化完了をdriver load前に必須確認する。全480000画素のRGBA={17,34,51,255}一致を検査。PowerVR以外のrendererは拒否。30秒alarm。デフォルト起動はdriverをloadせずusage終了。
 - recovery-native-bridge-capture.c: ARM64 LD_PRELOAD ioctl observer。A04_M111_CAPTUREの絶対pathをO_EXCLで新規作成する。元ioctlをそのままsyscallへ渡す。group0x82/function12のみ、input0x160・TA0x88・PR0または0x150・3D0x150を送信前にdeep-copyし、ioctl後のoutput12 bytesと結果を保存。packetを生成・書換え・再送しない。最大32 kick、形式相違や書込み失敗はbrokenとして記録する。CPU pointerは捕捉時点でcaller自身が所有するものに限る。Android SP-HAL namespaceがdefaultのLD_PRELOADを参照しない可能性があるので、CAPTURE_SUMMARY kicks>0を実測するまでinterpose成功と扱わない。必要なら許可後にvendor direct library pathを使うstandalone構成を選び、その依存解決を確認する。
 - read-recovery-native-capture.py: 独自TLVの整合、pre/post pair、サイズを検査してJSONをstdoutへ出す。GPU成功とは判定せず、常に別途harnessのphase/readbackを要求する。
 

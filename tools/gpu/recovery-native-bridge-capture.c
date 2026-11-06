@@ -58,6 +58,9 @@ __attribute__((constructor)) static void trace_init(void)
     trace_fd=open(path,O_WRONLY|O_CREAT|O_EXCL|O_CLOEXEC,0600);
     if(trace_fd<0)fprintf(stderr,"CAPTURE_OPEN_FAILED errno=%d\n",errno);
 }
+/* The harness checks this before loading any vendor driver. */
+int a04_m111_capture_ready(void)
+{ return trace_fd>=0 && !atomic_load(&trace_broken); }
 __attribute__((destructor)) static void trace_done(void)
 {
     if(trace_fd>=0){

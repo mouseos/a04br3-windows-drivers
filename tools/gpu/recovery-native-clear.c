@@ -44,6 +44,13 @@ int main(int argc,char **argv)
     if(argv[2][0]!='/' || argv[3][0]!='/')return 2;
     /* No default execution: only the explicit --run path can load the driver. */
     setvbuf(stderr,0,_IONBF,0);alarm(30);
+    if(getenv("A04_M111_CAPTURE")){
+        int (*capture_ready)(void)=0;
+        if(symbol(RTLD_DEFAULT,"a04_m111_capture_ready",&capture_ready,sizeof(capture_ready)) ||
+           !capture_ready()){
+            fprintf(stderr,"CAPTURE_NOT_READY\n");return 1;
+        }
+    }
     el=dlopen(argv[2],RTLD_NOW|RTLD_LOCAL);
     if(!el){fprintf(stderr,"DLOPEN_FAILED EGL %s\n",dlerror());goto done;}
     gl=dlopen(argv[3],RTLD_NOW|RTLD_LOCAL);
