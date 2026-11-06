@@ -2,6 +2,7 @@
 #ifndef A04_SHARED_AUDIO_INTERFACE_H
 #define A04_SHARED_AUDIO_INTERFACE_H
 #include <ntddk.h>
+#include <stdint.h>
 /* Prototype QUERY_INTERFACE contract; parent retains Context until the last
  * InterfaceDereference. Operations are PASSIVE_LEVEL except Mute (<= APC_LEVEL)
  * and must reject once
@@ -32,6 +33,10 @@ typedef struct _A04_SHARED_AUDIO_INTERFACE {
     int (*Mute)(PVOID);
     /* Diagnostic minimum gain, only after DMA start and verified board route. */
     int (*UnmuteMin)(PVOID);
+    /* Optional v8 gated live path; failure may leave hardware changed. */
+    int (*VerifyLivePcm)(PVOID, PVOID, uint64_t, ULONG);
+    int (*StartVoice)(PVOID);
+    int (*StopVoice)(PVOID);
 } A04_SHARED_AUDIO_INTERFACE;
-#define A04_SHARED_AUDIO_INTERFACE_VERSION 7
+#define A04_SHARED_AUDIO_INTERFACE_VERSION 8
 #endif

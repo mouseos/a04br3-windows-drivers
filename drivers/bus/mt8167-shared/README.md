@@ -402,9 +402,9 @@ DAC DC ramp and voice amplifier depop ordering. It requires a caller to prove
 both downstream mute and Linux-compatible per-device calibration before any
 write; no caller currently supplies that proof. It is not connected to the
 parent, AUXADC, or PCM and cannot produce audio. Its callback is an interface,
-not proof that headphone calibration is appropriate for AU_LOL. The fixed
-0x4b4b initial DAC-stage coefficient is from the board Linux codec utility;
-the ramp endpoint must be measured. Failure retains the active state and
+not proof that headphone calibration is appropriate for AU_LOL. The initial DAC-stage coefficient and ramp endpoint are supplied by the
+verified calibration provider; the Linux utility can calculate 0x4b4b but
+its invocation is not established for every startup. Failure retains the active state and
 poisons the experiment, requiring explicit recovery. Host tests simulate the
 registers only and do not validate analog behavior or actual hardware.
 
@@ -444,3 +444,20 @@ existing ACPI Wi-Fi candidate remains independent and must not be enabled
 alongside this child. No IRQ is claimed: translating the MSDC2 interrupt and
 supplying EINT5 still require a real interrupt provider. The PDO has no bound
 NDIS driver, the lease cannot be acquired and this is not a radio test.
+
+The optional version 8 audio interface wires the MT8167 Voice Amp helper to
+parent-owned APMIXED and the child's bound AFE mapping. The diagnostic parent
+still rejects PCM coherency verification and the voice calibration/mute check;
+no unverified board assumptions can activate it. It uses the same shared lock
+and requires the existing codec domain and lease. A partial voice sequence
+poisons the owner; its resources must remain retained. The PCM client and
+parent flags default off and do not establish PnP or hardware safety.
+
+The legacy Voice diagnostic and PCM diagnostic share one Voice state and the
+same calibrated initial/end values. With both flags enabled, PCM explicitly
+starts the Voice path before DMA; the legacy unmute callback recognizes the
+active path instead of starting it twice. Legacy-only mode retains its
+DMA-then-Voice ordering. Both remain blocked by the real parent's absent mute
+and calibration verification; the PCM path also lacks a DMA mapping and drain
+proof. Wi-Fi/RTC flags are independent and are exercised with both enabled in
+the host and ARM32 build checks.

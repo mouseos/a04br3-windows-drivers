@@ -320,3 +320,59 @@ operation. A failed request still stops DL1 and retains exposed DMA. This
 experiment does not connect WaveRT PCM or prove the MT8167 analog route.
 Linux's AIF RX, DAC, Vref, DAC clock, VCM and AU_LOL path must also be
 implemented and verified before any unmute is admitted.
+
+`voice_playback.h` is a host-tested experimental composition of the existing
+MT8167 Voice Amp sequence with DMA and downstream mute operations. It requires
+preflight to establish exclusive owners, actual voice-path calibration,
+downstream mute and live PCM coherence before touching the codec. Voice starts
+while muted, DMA starts next, and unmute follows only after both succeed. Stop
+requests mute and then DMA stop even when mute fails; analog shutdown is allowed
+only when both succeed and the codec helper verifies mute again. Any attempted
+start permanently retains resources; DMA stop does not establish bus drain.
+The callbacks have no production provider and this helper is not wired into PnP
+or WaveRT. Host tests model ordering and failure paths, not physical playback.
+Linux's `mt8167-codec.c` DAPM routes connect Left DAC through Voice Amp and
+LINEOUT Mux to AU_LOL; this does not establish the board's downstream route or
+prove headphone calibration applies to voice output.
+
+`A04_AUDIO_VOICE_PCM_DIAGNOSTIC=1` connects the existing WaveRT backend's
+client buffer to the PnP transport and DL1 common DMA, and invokes the shared
+parent's Voice Amp start before DMA and minimum-gain unmute after DMA starts.
+Stop mutes first, stops DMA even on mute failure, and only then stops Voice Amp
+if both succeeded. The flag requires the RUN/IRQ/shared-parent diagnostics and
+is incompatible with the private silent-buffer mode. The parent version 8
+provides optional `VerifyLivePcm`, `StartVoice` and `StopVoice` operations.
+Voice start failure and any DMA exposure quarantine the lease and buffer.
+
+This remains an integration build, not working audio. The parent implementation
+is compiled only with `A04_SHARED_VOICE_PCM_DIAGNOSTIC=1` and refuses both live
+PCM verification and voice-path calibration/mute verification unconditionally.
+No client buffer reaches DMA or codec registers on the real parent. The parent
+owns the codec sequence under its shared lock; AFE reads/writes are restricted
+to ABB CON0/3/11. A future provider must also handle PnP removal and prove DMA
+drain before resource release. No production or physical validation is implied.
+
+Microsoft documents WaveRT's cyclic buffer and RUN boundary in
+[AllocateAudioBuffer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/portcls/nf-portcls-iminiportwavertstream-allocateaudiobuffer):
+it describes allocation through PortCls page methods and requires the actual
+buffer to be at least the requested size. The present common-buffer/MDL route
+and its size behavior need independent Windows RT compatibility validation.
+[AllocateCommonBuffer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_common_buffer)
+returns a device logical address and its current documentation bases ARM cache
+behavior on platform properties; neither the CPU mapping nor a single
+[KeFlushIoBuffers](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-keflushiobuffers)
+call proves continuous coherency or a matching user-mode mapping on this board.
+Preflight must also ensure initial publication cannot race client writes.
+These current Microsoft pages are API guidance, not proof of RT 8.1 behavior.
+
+
+The voice PCM variant now allocates its client MDL through PortCls
+`AllocateContiguousPagesForMdl`, maps it through `MapAllocatedPages`, rounds
+requests up to pages, and reports the actual size. The PnP owner binds the
+PortCls MDL without treating physical addresses as device logical addresses.
+The earlier description of directly using its common-buffer allocation for
+this variant is superseded. RUN currently refuses unconditionally: an adapter
+mapping for the PortCls pages, its map-register lifetime and DMA drain proof
+are not implemented. No PCM reaches hardware. A successful preflight cannot
+override this restriction. When mapping is added, it must preserve the PortCls
+allocation and mapping until the hardware and adapter are demonstrably done.

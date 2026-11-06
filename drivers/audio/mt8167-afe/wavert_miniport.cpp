@@ -50,8 +50,15 @@ public:
             /* No drain proof exists. Retain the backend reference and buffer
              * after any start or failure that may have exposed DMA. */
             if (!everStarted) {
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+                if (backendMdl && NT_SUCCESS(backend.unbindWaveBuffer(backend.context,backendMdl))) {
+                    backendMdl=NULL;(void)Mt8167ReleaseUnpublishedBuffer(&buffer);
+                }
+                if (!backendMdl) backend.dereference(backend.context);
+#else
                 if (backendMdl) backend.freeBuffer(backend.context,backendMdl,backendBytes);
                 backend.dereference(backend.context);
+#endif
             }
         } else if (buffer.mdl && !buffer.handedToDevice) Mt8167ReleaseUnpublishedBuffer(&buffer);
 #if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
@@ -88,9 +95,18 @@ public:
         *mdl=NULL;*actual=0;*offset=0;
         if (useBackend) {
             if (backendMdl) return STATUS_DEVICE_BUSY;
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+            NTSTATUS result=Mt8167AllocateBuffer(port,size,&buffer);
+            if (!NT_SUCCESS(result)) return result;
+            result=backend.bindWaveBuffer(backend.context,buffer.mdl,buffer.mapping,buffer.bytes);
+            if (!NT_SUCCESS(result)) { (void)Mt8167ReleaseUnpublishedBuffer(&buffer);return result; }
+            backendMdl=buffer.mdl;backendBytes=buffer.bytes;
+            *mdl=buffer.mdl;*actual=buffer.bytes;*offset=0;*cache=MmNonCached;
+            return STATUS_SUCCESS;
+#else
             NTSTATUS result=backend.allocate(backend.context,size,mdl,actual,offset,cache);
             if (NT_SUCCESS(result)) {
-                if (!*mdl || *actual < PAGE_SIZE || *actual > 1048576 || *actual > size ||
+                if (!*mdl || *actual < PAGE_SIZE || *actual > 1048576 || *actual < size ||
                     (*actual & (PAGE_SIZE - 1)) || *offset || *cache != MmNonCached) {
                     if (*mdl) backend.freeBuffer(backend.context,*mdl,*actual);
                     *mdl=NULL; *actual=0; *offset=0;
@@ -109,13 +125,19 @@ public:
 #endif
             }
             return result;
+#endif
         }
         NTSTATUS status=Mt8167AllocateBuffer(port,size,&buffer); if(!NT_SUCCESS(status)) return status;
         *mdl=buffer.mdl;*actual=buffer.bytes;*cache=MmNonCached;return STATUS_SUCCESS;
     }
     STDMETHODIMP_(VOID) FreeAudioBuffer(PMDL mdl,ULONG size) override {
         if (useBackend) {
-#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+            if (mdl && mdl==backendMdl && size==backendBytes && !everStarted &&
+                NT_SUCCESS(backend.unbindWaveBuffer(backend.context,mdl))) {
+                backendMdl=NULL;backendBytes=0;(void)Mt8167ReleaseUnpublishedBuffer(&buffer);
+            }
+#elif defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
             if (mdl && mdl==buffer.mdl && size==buffer.bytes && !InterlockedCompareExchange(&started,0,0)) {
                 (void)Mt8167ReleaseUnpublishedBuffer(&buffer);
                 if (!everStarted && backendMdl) {backend.freeBuffer(backend.context,backendMdl,backendBytes);backendMdl=NULL;backendBytes=0;}
@@ -198,6 +220,9 @@ public:
 NTSTATUS Mt8167NewMiniportWithBackend(PMINIPORTWAVERT *out, const Mt8167StreamBackend *b) {
     if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;
     if(b && (!b->reference || !b->dereference || !b->allocate || !b->freeBuffer || !b->start || !b->stop || !b->position || !b->getDeviceDescription)) return STATUS_INVALID_PARAMETER;
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+    if(b && (!b->bindWaveBuffer || !b->unbindWaveBuffer)) return STATUS_INVALID_PARAMETER;
+#endif
     void *mem=ExAllocatePoolWithTag(NonPagedPool,sizeof(Miniport),AUDIO_TAG);if(!mem)return STATUS_INSUFFICIENT_RESOURCES;
     *out=new(mem) Miniport(b);return STATUS_SUCCESS;
 }
