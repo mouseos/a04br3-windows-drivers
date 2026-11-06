@@ -84,3 +84,5 @@ recovery上でESPを一時的に読取り専用マウントし、`A04BACKUP` が
 `offline-pnp-baseline.exe` は呼出側がRAMコピーとしてロードした `HKLM\\A04AUDITSYS` のControlSet、TOPRGUサービス、MOU0004/MOU0005の選択INFと共有サービス不在を検査する。元hiveを自らロードしない。RAMコピーの排他・最新性は呼出側が確認する。`offline-signature-check.exe` は候補3 SYSをWinPEの一般署名ポリシーで検査し、成功時はRT側CI受理を未確認と明示する。ユーザーが指定した実機試験に向けた事前検査であり、実機受理を成功扱いしない。
 
 `preflight-offline-update.cmd` は基準SYS・INFの照合、hiveのRAMコピー、PnP参照の確認とコピーのunload、候補3 SYS・証明書ピンとWinPE署名の確認を順に実行する。どの段階も搭載OSへの適用を行わない。PnP検査が失敗してもRAM hiveのunloadを試み、unload失敗を独立して報告する。成功は非原子的なRAMコピー、Driver Store全体の復旧、RT署名受理、OS更新の成功を意味しない。
+
+`offline-stage-drivers.exe` は、有効なINTENT、現状基準、RAM hiveのPnP基準、候補SYS・証明書ピンおよびWinPE署名の各ガードが成功した場合に限り、3 SYSを固定の `.a04restore` 一時パスへ新規作成する。候補の読取り中に排他し、コピー前後のSHA-256、各ファイルとC:のflushを確認する。既存SYSは置換しない。一時配置途中の停止後は、INTENTを検証した復旧処理がこれらのパスを取り除き、元ファイル・不在状態を再生する。RAM hiveのロードとunloadは呼出側の責任である。これは完成したDriver Store/PnP適用経路ではなく、更新やOS起動の成功を意味しない。

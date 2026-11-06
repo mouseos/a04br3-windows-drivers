@@ -113,6 +113,10 @@ try {
  & "$base\fixture.exe" --restore
  if(!$LASTEXITCODE -or [IO.File]::ReadAllText('R:\Windows\System32\drivers\mt8167-shared.sys') -ne 'new' -or [IO.File]::ReadAllText('R:\Windows\System32\config\SOFTWARE') -ne 'changed'){throw 'unarmed replay removed newly present target or mutated other files'}
  Remove-Item 'R:\Windows\System32\drivers\mt8167-shared.sys'
+ [IO.File]::WriteAllText('R:\Windows\System32\drivers\mt8167-shared.sys.a04restore','unarmed-stage')
+ & "$base\fixture.exe" --restore
+ if(!$LASTEXITCODE -or [IO.File]::ReadAllText('R:\Windows\System32\drivers\mt8167-shared.sys.a04restore') -ne 'unarmed-stage' -or [IO.File]::ReadAllText('R:\Windows\System32\config\SOFTWARE') -ne 'changed'){throw 'unarmed stage was removed or other files mutated'}
+ Remove-Item 'R:\Windows\System32\drivers\mt8167-shared.sys.a04restore'
  $locked=[IO.File]::Open('R:\Windows\System32\config\TxR\{fixture}.TxR.0.regtrans-ms',[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::None)
  try { & "$base\fixture.exe" --restore; if(!$LASTEXITCODE -or [IO.File]::ReadAllText('R:\Windows\System32\config\SOFTWARE') -ne 'changed'){throw 'busy TxR did not reject replay before mutation'} } finally { $locked.Dispose() }
  [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE{new}.TM.blf','new-sidecar')
@@ -134,10 +138,28 @@ try {
  if((Get-Content -LiteralPath 'R:\Windows\System32\config\SYSTEM' -Stream fixture -Raw).Trim() -ne 'alternate stream'){throw 'alternate stream mismatch'}
  & "$base\fixture.exe" --arm
  if($LASTEXITCODE){throw 'fixture arm failed'}
+ # Exercise real staging followed by actual journal replay while target
+ # SYS files remain unchanged. Stage's guard/volume flush are mocked here.
+ New-Item -ItemType Directory -Force 'S:\a04br3\update','S:\a04br3\driver-trust' | Out-Null
+ $stageNames=@{'toprgu'='mt8167-toprgu.sys';'shared'='mt8167-shared.sys';'touch'='bu21025.sys'}
+ foreach($k in $stageNames.Keys){$name=$stageNames[$k];[IO.File]::WriteAllText("S:\a04br3\update\$name","candidate-$name");$hash=(Get-FileHash -Algorithm SHA256 "S:\a04br3\update\$name").Hash;$bytes=New-Object byte[] 32;for($j=0;$j -lt 32;$j++){$bytes[$j]=[Convert]::ToByte($hash.Substring($j*2,2),16)};[IO.File]::WriteAllBytes("S:\a04br3\driver-trust\$k-sys.sha256",$bytes)}
+ $stageSrc=[IO.File]::ReadAllText("$root\tools\winpe\offline-stage-drivers.c").Replace('L"C:\\','L"R:\\').Replace('L"X:\\','L"S:\\');[IO.File]::WriteAllText("$base\stage.c",$stageSrc)
+ & clang --target=x86_64-pc-windows-msvc -fms-extensions -Werror=incompatible-pointer-types -DA04_STAGE_FIXTURE -D_WIN32_WINNT=0x0603 "-I$inc\um" "-I$inc\shared" -c "$base\stage.c" -o "$base\stage.obj";if($LASTEXITCODE){throw 'stage fixture compilation failed'}
+ & lld-link /subsystem:console /machine:x64 /entry:mainCRTStartup /nodefaultlib "$base\stage.obj" "$lib\kernel32.lib" "$lib\advapi32.lib" "/out:$base\stage.exe";if($LASTEXITCODE){throw 'stage fixture link failed'}
+ $env:A04_STAGE_FIXTURE_ARMED='1'
+ & "$base\stage.exe";if($LASTEXITCODE){throw 'journal staging failed'}
+ & "$base\fixture.exe" --restore;if($LASTEXITCODE){throw 'staged journal recovery failed'}
+ foreach($name in $stageNames.Values){if(Test-Path "R:\Windows\System32\drivers\$name.a04restore"){throw 'staged file remains after recovery'}}
+ if([IO.File]::ReadAllText('R:\Windows\System32\drivers\bu21025.sys') -ne 'original-touch'){throw 'target touch changed during staging'}
+ $env:A04_STAGE_FIXTURE_FAIL='1';& "$base\stage.exe";if($LASTEXITCODE -ne 98){throw 'stage interruption failed'};Remove-Item Env:A04_STAGE_FIXTURE_FAIL
+ & "$base\fixture.exe" --restore;if($LASTEXITCODE){throw 'interrupted stage recovery failed'}
+ foreach($name in $stageNames.Values){if(Test-Path "R:\Windows\System32\drivers\$name.a04restore"){throw 'interrupted stage remains after recovery'}}
+ Remove-Item Env:A04_STAGE_FIXTURE_ARMED
  [IO.File]::WriteAllText('R:\Windows\System32\drivers\mt8167-shared.sys','armed-new')
+ [IO.File]::WriteAllText('R:\Windows\System32\drivers\mt8167-shared.sys.a04restore','armed-stage')
  [IO.File]::WriteAllText('R:\Windows\System32\config\COMPONENTS','armed-new-components')
  & "$base\fixture.exe" --restore
- if($LASTEXITCODE -or (Test-Path 'R:\Windows\System32\drivers\mt8167-shared.sys') -or (Test-Path 'R:\Windows\System32\config\COMPONENTS')){throw 'armed replay failed to remove new file'}
+ if($LASTEXITCODE -or (Test-Path 'R:\Windows\System32\drivers\mt8167-shared.sys') -or (Test-Path 'R:\Windows\System32\config\COMPONENTS') -or (Test-Path 'R:\Windows\System32\drivers\mt8167-shared.sys.a04restore')){throw 'armed replay failed to remove new file or stage'}
  foreach($index in 0..24){
    $env:A04_FAIL_AFTER="$index"
    & "$base\fixture.exe" --restore
@@ -163,6 +185,8 @@ try {
  if([IO.File]::ReadAllText('R:\Windows\System32\config\SOFTWARE') -ne 'do-not-overwrite'){throw 'mutation before validation'}
  Write-Host 'SYNTHETIC_BACKUP_REPLAY_PASS (identity and flush mocked)'
 } finally {
+ Remove-Item Env:A04_STAGE_FIXTURE_ARMED -ErrorAction SilentlyContinue
+ Remove-Item Env:A04_STAGE_FIXTURE_FAIL -ErrorAction SilentlyContinue
  & subst.exe R: /d
  & subst.exe S: /d
 }

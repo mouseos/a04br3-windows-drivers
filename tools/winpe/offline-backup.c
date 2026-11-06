@@ -124,8 +124,12 @@ static void fixture_temp_fault(unsigned i){if(fixture_index("A04_FAIL_TEMP",i))E
 #else
 static void fixture_temp_fault(unsigned i){(void)i;}
 #endif
-static int replay_item(unsigned i){WCHAR p[64];HANDLE in,out;void *ctx=0;DWORD n,w,attr;int ok=0;ENTRY *e=&manifest.entries[i];
- if(!e->present){attr=GetFileAttributesW(target[i]);if(attr==INVALID_FILE_ATTRIBUTES)return GetLastError()==ERROR_FILE_NOT_FOUND;if(attr&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY))return 0;if(!SetFileAttributesW(target[i],FILE_ATTRIBUTE_NORMAL))return 0;return DeleteFileW(target[i])!=0;}
+static int replay_item(unsigned i,int armed){WCHAR p[64];HANDLE in,out;void *ctx=0;DWORD n,w,attr;int ok=0;ENTRY *e=&manifest.entries[i];
+ if(!e->present){
+  /* A staged candidate may occupy this fixed temporary path after INTENT.
+   * Before INTENT an unknown file is never removed. */
+  attr=GetFileAttributesW(temp[i]);if(attr!=INVALID_FILE_ATTRIBUTES){if(!armed||(attr&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY))||!SetFileAttributesW(temp[i],FILE_ATTRIBUTE_NORMAL)||!DeleteFileW(temp[i]))return 0;}else if(GetLastError()!=ERROR_FILE_NOT_FOUND)return 0;
+  attr=GetFileAttributesW(target[i]);if(attr==INVALID_FILE_ATTRIBUTES)return GetLastError()==ERROR_FILE_NOT_FOUND;if(attr&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY))return 0;if(!SetFileAttributesW(target[i],FILE_ATTRIBUTE_NORMAL))return 0;return DeleteFileW(target[i])!=0;}
  attr=GetFileAttributesW(temp[i]);if(attr!=INVALID_FILE_ATTRIBUTES){if(attr&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY))return 0;if(!SetFileAttributesW(temp[i],FILE_ATTRIBUTE_NORMAL)||!DeleteFileW(temp[i]))return 0;}else if(GetLastError()!=ERROR_FILE_NOT_FOUND)return 0;
  path(i,p);in=CreateFileW(p,GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,0,0);if(in==INVALID_HANDLE_VALUE)return 0;
  out=CreateFileW(temp[i],GENERIC_WRITE|WRITE_DAC|WRITE_OWNER|ACCESS_SYSTEM_SECURITY,0,0,CREATE_NEW,FILE_FLAG_WRITE_THROUGH|FILE_FLAG_BACKUP_SEMANTICS,0);if(out==INVALID_HANDLE_VALUE){CloseHandle(in);return 0;}
@@ -273,7 +277,8 @@ static void fixture_fault(unsigned i){if(fixture_index("A04_FAIL_AFTER",i))ExitP
 #else
 static void fixture_fault(unsigned i){(void)i;}
 #endif
-static void restore(void){unsigned i;int intent;if(!load_manifest())fail("RECOVERY_JOURNAL_REJECTED");intent=intent_read();if(intent<0||commit_read()!=0)fail("RECOVERY_INTENT_OR_COMMIT_REJECTED");if(!collect_sidecars(intent?2:1))fail("RECOVERY_SIDECAR_ENUMERATION_FAILED");if(!intent)for(i=0;i<active_count;++i)if(!manifest.entries[i].present&&!verify_restored(i))fail("RECOVERY_UNARMED_NEW_TARGET_REJECTED");for(i=0;i<active_count;++i)if(!target_exclusive(i))fail("RECOVERY_TARGET_BUSY_OR_UNSAFE");for(i=0;i<active_count;++i){if(!replay_item(i))fail("RECOVERY_REPLAY_FAILED_RETRY_FROM_WINPE");if(!flush_volume(L'C'))fail("RECOVERY_FLUSH_FAILED_RETRY_FROM_WINPE");if(!verify_restored(i))fail("RECOVERY_VERIFY_FAILED_RETRY_FROM_WINPE");fixture_fault(i);}say("RECOVERY_FILES_REPLAYED_DISMOUNT_REQUIRED\r\n");}
+static int unarmed_absent_safe(unsigned i){DWORD attr;if(!verify_restored(i))return 0;attr=GetFileAttributesW(temp[i]);if(attr!=INVALID_FILE_ATTRIBUTES)return 0;return GetLastError()==ERROR_FILE_NOT_FOUND;}
+static void restore(void){unsigned i;int intent;if(!load_manifest())fail("RECOVERY_JOURNAL_REJECTED");intent=intent_read();if(intent<0||commit_read()!=0)fail("RECOVERY_INTENT_OR_COMMIT_REJECTED");if(!collect_sidecars(intent?2:1))fail("RECOVERY_SIDECAR_ENUMERATION_FAILED");if(!intent)for(i=0;i<active_count;++i)if(!manifest.entries[i].present&&!unarmed_absent_safe(i))fail("RECOVERY_UNARMED_NEW_TARGET_REJECTED");for(i=0;i<active_count;++i)if(!target_exclusive(i))fail("RECOVERY_TARGET_BUSY_OR_UNSAFE");for(i=0;i<active_count;++i){if(!replay_item(i,intent))fail("RECOVERY_REPLAY_FAILED_RETRY_FROM_WINPE");if(!flush_volume(L'C'))fail("RECOVERY_FLUSH_FAILED_RETRY_FROM_WINPE");if(!verify_restored(i))fail("RECOVERY_VERIFY_FAILED_RETRY_FROM_WINPE");fixture_fault(i);}say("RECOVERY_FILES_REPLAYED_DISMOUNT_REQUIRED\r\n");}
 static int command_mode(void){const WCHAR *p=GetCommandLineW();
  if(*p==L'"'){++p;while(*p&&*p!=L'"')++p;if(!*p)return -1;++p;}else while(*p&&*p!=L' '&&*p!=L'\t')++p;
  while(*p==L' '||*p==L'\t')++p;
