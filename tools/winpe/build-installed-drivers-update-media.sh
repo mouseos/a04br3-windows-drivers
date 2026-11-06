@@ -20,6 +20,11 @@ tr -d '\r' < "$out/stage/startnet.cmd" \
   | sed 's#^call X:\\a04br3\\run-audit-once.cmd$#call X:\\a04br3\\run-update-once.cmd#' \
   | sed 's/$/\r/' > "$out/stage/startnet.new"
 grep -q 'run-update-once.cmd' "$out/stage/startnet.new"
+if [[ "$update_command" == run-update-mma8652-once.cmd ]]; then
+  # A sensor package update does not require CPU load, USB observation or GPU
+  # diagnostics. TOPRGU is already a boot driver in this pinned WinPE image.
+  printf '@echo off\r\nmountvol /N\r\nwpeinit\r\nif errorlevel 1 exit /b 2\r\nmountvol /N\r\ncall X:\\a04br3\\run-update-once.cmd\r\n' > "$out/stage/startnet.new"
+fi
 printf 'add %s /a04br3/run-update-once.cmd\nadd %s /Windows/System32/startnet.cmd\nadd %s /a04br3/upd/touch\nadd %s /a04br3/upd/battery\nadd %s /a04br3/upd/accel\n' \
   "$out/stage/run-update-once.cmd" "$out/stage/startnet.new" "$pkg/touch" "$pkg/battery" "$pkg/accel" | wim update "$out/update.wim" 1
 wim optimize "$out/update.wim"
