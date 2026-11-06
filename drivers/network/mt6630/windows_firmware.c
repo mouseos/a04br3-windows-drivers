@@ -2,6 +2,16 @@
 #include "windows_firmware.h"
 #include "sha256.h"
 #define FW_TAG 'f40A'
+#ifndef A04_WIFI_WLAN_SHA256_BYTES
+#define A04_WIFI_WLAN_SHA256_BYTES {0x07,0xfe,0x1a,0x22,0x5e,0x6b,0x9d,0xe6,0xb3,0x10,0x89,0x4d,0xb3,0xb4,0x0b,0xcc,0x1c,0xb6,0x61,0x07,0xb9,0x13,0xe4,0xc4,0x3e,0xb6,0xa6,0x20,0x89,0xaa,0xda,0x22}
+#endif
+static const uint8_t a04_wlan_expected[32]=A04_WIFI_WLAN_SHA256_BYTES;
+static int wlan_digest_matches(const uint8_t *data,ULONG length,uint8_t digest[32])
+{
+ unsigned i,diff=0;if(a04_sha256(data,length,digest))return 0;
+ for(i=0;i<32;i++)diff|=digest[i]^a04_wlan_expected[i];
+ return diff==0;
+}
 struct snapshot { uint8_t *bytes;ULONG length; };
 static void release_snapshot(struct snapshot *s)
 {
@@ -44,7 +54,7 @@ int a04_windows_firmware_prepare(struct a04_windows_fw_snapshot *out,const uint8
  if(!NT_SUCCESS(read_snapshot(wlan_path,237008,&wlan)))goto done;
  if(a04_sha256(wmt.bytes,wmt.length,digest))goto done;
  for(i=0;i<32;i++)diff|=digest[i]^expected[i];
- if(diff)goto done;
+ if(diff||!wlan_digest_matches(wlan.bytes,wlan.length,digest))goto done;
  out->wmt=wmt.bytes;out->wmt_length=wmt.length;out->wlan=wlan.bytes;out->wlan_length=wlan.length;
  wmt.bytes=wlan.bytes=NULL;result=0;
 done:release_snapshot(&wlan);release_snapshot(&wmt);return result;
@@ -59,7 +69,7 @@ int a04_windows_firmware_boot_prepared(struct a04_wmt_bridge *b,struct a04_windo
  if(a04_sha256(s->wmt,s->wmt_length,digest))return -1;
  for(i=0;i<32;i++)diff|=digest[i]^expected[i];
  if(diff||a04_wmt_firmware_bundle(&b->identity,s->wmt,s->wmt_length,&check_wmt))return -1;
- if(a04_sha256(s->wlan,s->wlan_length,digest)||a04_wlan_firmware_select(&b->identity,s->wlan,s->wlan_length,digest,&check_wlan))return -1;
+ if(!wlan_digest_matches(s->wlan,s->wlan_length,digest)||a04_wlan_firmware_select(&b->identity,s->wlan,s->wlan_length,digest,&check_wlan))return -1;
  if(a04_wmt_bridge_boot_wmt(b,s->wmt,s->wmt_length,expected,a04_sha256,options))return -1;
  if(a04_wmt_bridge_boot_wlan(b,s->wlan,s->wlan_length,a04_sha256))return -1;
  return 0;

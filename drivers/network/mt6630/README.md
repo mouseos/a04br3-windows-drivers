@@ -401,3 +401,6 @@ Acquire 拒否は変更しない。WMT の digest は固定 vendor revision
 のみを示す。ファイルサイズはハッシュ照合やロード成功の証拠ではない。UART の
 IOCTL 受理もホストでの受信を証明しない。session・親 lease・IRQ 状態は PnP の
 値から推測しない。kernel の DbgPrint は UART に自動転送されるとは限らない。
+WLAN snapshot も固定 SHA-256 `07fe1a225e6b9de6b310894db3b40bcc1cb66107b913e4c43eb6a62089aada22`
+と照合し、boot 前に再照合する。固定ハッシュの一致は入力の同一性の確認であり、
+実機の revision、送信許可、firmware 稼働の確認ではない。
