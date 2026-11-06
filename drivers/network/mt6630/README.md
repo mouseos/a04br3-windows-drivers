@@ -357,3 +357,16 @@ firmware 診断はボード初期化前に固定パスから WMT と WLAN の sn
 成功応答後の無効な generation や失敗は QUARANTINED のまま保持する。
 WDF 子による参照寿命・開始・停止は未接続で、上記の区別自体は実機動作や
 PnP resource が quarantine 中に保持される保証にはならない。
+
+`A04_WIFI_WDF_LEASE_DIAGNOSTIC=1` の `wdf_sdio_probe.c` は、PrepareHardwareで
+親interfaceを照会し、D0EntryでAcquireを試す限定診断である。現行親は副作用なく
+拒否する。予期せずAcquireが成功してもMMIO、IRQ、SDIO、firmwareには触れず、
+有効なgenerationをReleaseQuiescentに返してD0Entryを失敗させる。成功時の
+無効generationやrelease失敗は状態不明として親オブジェクトのinterface参照を
+意図的に保持する。これはPnP資源の保持やleaseの復旧を保証せず、契約違反時に
+参照が残る。WDFはD0Entry失敗後にD0Exitを呼ばないため、ReleaseHardwareで
+正常に返却済みまたは拒否済みの参照だけを解放する。PrepareHardware失敗後も
+ReleaseHardwareが呼ばれる。既定OFF、INFなし、無線機能なし。D0Entry成功や
+実機動作の検証ではない。強制削除と実際のWi-Fi起動の安全性は未完成。
+
+出典: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdfdevice/nc-wdfdevice-evt_wdf_device_d0_entry と https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdfdevice/nc-wdfdevice-evt_wdf_device_release_hardware

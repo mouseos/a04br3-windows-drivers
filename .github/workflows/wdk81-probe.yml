@@ -96,6 +96,7 @@ jobs:
         run: |
           ./tools/ci/build-msdc-parent-probe.ps1
           ./tools/ci/build-mt6630-parent-probe.ps1
+          ./tools/ci/build-mt6630-wdf-lease-probe.ps1
       - name: Build MT6630 ARM32 integration link check
         shell: pwsh
         run: |
