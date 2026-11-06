@@ -213,5 +213,10 @@ ADC transaction or usable measurement is possible in this build. It does not
 produce AU_LOL calibration. Lease, handoff and route/mute rejection messages
 are submitted to the existing TOPRGU UART queue; queue acceptance is not
 transmission completion, and earlier startup failures can occur before this
-reporting path is available. Device operation and PnP failure handling are
+reporting path is available. If a future verified provider admits sampling,
+two `A04ADC HPL <tag> 0` and `A04ADC HPL <tag> 1` messages carry eleven 12-bit
+raw samples each. The low 32 bits of interrupt time form the tag and can wrap;
+it is not a globally unique identifier or a checksum. Submission has a bounded
+busy retry; the recipient must reject a missing, malformed or mismatched pair.
+Device operation and PnP failure handling are
 unverified on hardware.

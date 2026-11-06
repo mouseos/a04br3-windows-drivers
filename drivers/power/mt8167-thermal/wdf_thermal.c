@@ -244,18 +244,40 @@ static int CodecAdcWrite(void *p,uint32_t offset,uint16_t value) {
  WRITE_REGISTER_USHORT((volatile USHORT *)(c->mapped[1]+offset),value);
  c->touch_guard.End(c->touch_guard.context);return 0;
 }
-static void CodecAdcUart(THERMAL_CONTEXT *c,const char *message,ULONG length) {
+static NTSTATUS CodecAdcUart(THERMAL_CONTEXT *c,const char *message,ULONG length) {
  WDF_MEMORY_DESCRIPTOR input;WDF_REQUEST_SEND_OPTIONS options;
  WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&input,(PVOID)message,length);
  WDF_REQUEST_SEND_OPTIONS_INIT(&options,WDF_REQUEST_SEND_OPTION_TIMEOUT);
  WDF_REQUEST_SEND_OPTIONS_SET_TIMEOUT(&options,WDF_REL_TIMEOUT_IN_SEC(1));
  /* Delivery is asynchronous after the IOCTL completes; failed send or
   * missing UART bytes is not evidence of successful transmission. */
- (VOID)WdfIoTargetSendIoctlSynchronously(c->watchdog,NULL,A04_UART_SCREEN_SEND,&input,NULL,&options,NULL);
+ return WdfIoTargetSendIoctlSynchronously(c->watchdog,NULL,A04_UART_SCREEN_SEND,&input,NULL,&options,NULL);
 }
 static int CodecAdcCapture(THERMAL_CONTEXT *c,struct a04_codec_adc_samples *samples) {
  struct a04_codec_adc_io io={c,CodecAdcQualified,CodecAdcRead,CodecAdcWrite,HwDelay};
  return a04_codec_adc_capture(&c->codec_adc,&io,7,samples);
+}
+static int CodecAdcSendSamples(THERMAL_CONTEXT *c,const struct a04_codec_adc_samples *samples) {
+ static const char hex[]="0123456789ABCDEF";
+ unsigned part,i,n,retry;ULONG tag=(ULONG)KeQueryInterruptTime();char line[80];NTSTATUS status;LARGE_INTEGER delay;
+ delay.QuadPart=-100000; /* 10 ms; UART queue is intentionally bounded. */
+ for(part=0;part<2;part++) {
+  const char prefix[]="A04ADC HPL ";n=0;
+  for(i=0;i<sizeof(prefix)-1;i++)line[n++]=prefix[i];
+  for(i=0;i<8;i++)line[n++]=hex[(tag>>(28-4*i))&15];
+  line[n++]=' ';line[n++]=(char)('0'+part);line[n++]=' ';
+  for(i=0;i<11;i++) {
+   uint16_t raw=samples->raw[part*11+i];
+   line[n++]=hex[(raw>>8)&15];line[n++]=hex[(raw>>4)&15];line[n++]=hex[raw&15];line[n++]=' ';
+  }
+  line[n++]='\n';status=STATUS_DEVICE_BUSY;
+  for(retry=0;retry<200 && status==STATUS_DEVICE_BUSY;retry++) {
+   status=CodecAdcUart(c,line,n);
+   if(status==STATUS_DEVICE_BUSY && KeDelayExecutionThread(KernelMode,FALSE,&delay)!=STATUS_SUCCESS)return -1;
+  }
+  if(!NT_SUCCESS(status))return -1;
+ }
+ return 0; /* queued, not proof that UART transmitted either line */
 }
 #endif
 #if A04_THERMAL_ONESHOT_TEST
@@ -399,6 +421,8 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
   }
   /* Success is deliberately unreachable until a real route/mute provider
    * replaces CodecAdcQualified. Values are not AU_LOL calibration. */
+  if(CodecAdcSendSamples(c,&samples))
+   DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"A04ADC UART queue incomplete\n");
  }
 #endif
 #if A04_THERMAL_ONESHOT_TEST
