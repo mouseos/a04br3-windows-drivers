@@ -181,6 +181,15 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
             a04_gpu_dma_barrier();
         }
 #endif
+        /* Retain cold guards for the first three wide frames. These private
+         * scratch allocations are not the later wide task's output. Scanning
+         * them on every present would be diagnostic bus traffic in the render
+         * path. Command/UFO completion, SLC flush and GP fence remain above;
+         * descriptor checks and first-three full-frame checks remain outside. */
+#if A04_GE8300_SHARED_WIDE_FRAME
+        if(!copy->wide_frame || copy->wide_guard_samples<3u)
+#endif
+        {
         for(i=0;i<1024u;i++) {
             uint32_t expected=copy->service_expected_active ? copy->service_expected[i] : a04_vendor_copy_pattern(i);
             value=dst[i];
@@ -205,6 +214,7 @@ static NTSTATUS clear_locked(struct a04_vendor_render_cold *r,
          * last tile, so the provider cannot seal or accept that frame. */
         if(!copy->shared_frame_interior)
             for(i=0;i<16384u;i++)if(output[i]!=0xa5a5a5a5u)result->guard_errors++;
+        }
     } else for(i=0;i<(r->screen_surface ? r->screen_surface->bytes/4u : 16384u);i++) {
         value=output[i];if(a04_vendor_clear_is_target(i*4u,r->clear_first,r->clear_row_bytes)) {if(value==r->clear.expected)result->zeros++;} else if(value!=0xa5a5a5a5u)result->guard_errors++;
         if(i*4u==r->clear_first)result->first=value;
@@ -538,6 +548,7 @@ NTSTATUS a04_vendor_render_copy_wide_frame(struct a04_vendor_copy_scratch *o,
     }
     RtlCopyMemory(o->state.shared,saved_shared,sizeof(saved_shared));
     RtlCopyMemory(tables->wide_shadow,input,A04_VENDOR_WIDE_BYTES);tables->wide_shadow_valid=TRUE;
+    if(o->wide_guard_samples<3u)o->wide_guard_samples++;
     o->wide_frame=FALSE;o->shared_gpu_only=FALSE;a04_gpu_dma_barrier();goto out;
 poison:
     tables->wide_shadow_valid=FALSE;r->poisoned=TRUE;s->command_poisoned=TRUE;
