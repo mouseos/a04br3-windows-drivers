@@ -81,9 +81,10 @@ int main(){
  Back b3{};backend.context=&b3;assert(!Mt8167NewMiniportWithBackend(&m,&backend));
  assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat));assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
  assert(!st->SetState(KSSTATE_RUN));b3.fail=true;assert(st->SetState(KSSTATE_STOP)==STATUS_DEVICE_NOT_READY);
+ b3.fail=false;assert(st->SetState(KSSTATE_STOP)==STATUS_DEVICE_NOT_READY);assert(st->SetState(KSSTATE_PAUSE)==STATUS_DEVICE_NOT_READY);
  st->Release();m->Release();assert(b3.stops==1 && b3.refs==1 && !b3.frees);
  Back b4{};b4.fail=true;b4.uncertain=true;backend.context=&b4;assert(!Mt8167NewMiniportWithBackend(&m,&backend));
  assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat));assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
- assert(st->SetState(KSSTATE_RUN)==STATUS_DEVICE_NOT_READY);st->FreeAudioBuffer(mdl,actual);st->Release();m->Release();
+ assert(st->SetState(KSSTATE_RUN)==STATUS_DEVICE_NOT_READY);assert(st->SetState(KSSTATE_STOP)==STATUS_DEVICE_NOT_READY);st->FreeAudioBuffer(mdl,actual);st->Release();m->Release();
  assert(b4.refs==1 && !b4.frees);
 }
