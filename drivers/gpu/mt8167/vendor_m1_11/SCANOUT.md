@@ -501,3 +501,11 @@ address contract exist. In particular the display adapter used for OVL must
 not be assumed to be a GCE DMA adapter merely because both resources appear in
 one ACPI device. A GCE PDO/DMA domain and clock/thread/event ownership remain
 necessary before this packet can be submitted.
+
+Linux `clk-mt8167.c` identifies the GCE clock as TOP2 bit 4, with status
+offset 0x3c and set/clear offsets 0x6c/0x9c in TOPCKGEN. The same TOPCKGEN
+range is assigned to the existing shared-parent PDO. The GCE resource owner
+therefore must not map it a second time or clear its bit directly: an owner-
+mediated clock lease and lifetime across firmware/secure users are still
+needed. A successful `IoGetDmaAdapter` or an assigned GCE MMIO range provides
+no clock, interrupt or hardware-thread ownership by itself.
