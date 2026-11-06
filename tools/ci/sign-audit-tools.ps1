@@ -2,6 +2,7 @@ param([Parameter(Mandatory=$true)][string]$AuditExe,
       [Parameter(Mandatory=$true)][string]$ReleaseExe,
       [Parameter(Mandatory=$true)][string]$SenderExe,
       [string]$PnpExe,
+      [string]$CopyExe,
       [Parameter(Mandatory=$true)][string]$OutputDirectory)
 $ErrorActionPreference='Stop'
 if(Test-Path $OutputDirectory){throw 'Output directory exists'}
@@ -12,6 +13,7 @@ Copy-Item -LiteralPath $ReleaseExe -Destination (Join-Path $OutputDirectory 'rel
 Copy-Item -LiteralPath $SenderExe -Destination (Join-Path $OutputDirectory 'uart-audit-stream.exe')
 $names=@('audit-volume-sys.exe','release-offline-volume.exe','uart-audit-stream.exe')
 if($PnpExe){if(!(Test-Path -LiteralPath $PnpExe -PathType Leaf)){throw 'PnP input missing'};Copy-Item -LiteralPath $PnpExe -Destination (Join-Path $OutputDirectory 'audit-pnp-inf.exe');$names+='audit-pnp-inf.exe'}
+if($CopyExe){if(!(Test-Path -LiteralPath $CopyExe -PathType Leaf)){throw 'copy input missing'};Copy-Item -LiteralPath $CopyExe -Destination (Join-Path $OutputDirectory 'audit-copy-hives.exe');$names+='audit-copy-hives.exe'}
 $cert=New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=A04BR3 Audit Test' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
 try {
  Export-Certificate -Cert $cert -FilePath (Join-Path $OutputDirectory 'audit-test.cer') | Out-Null
