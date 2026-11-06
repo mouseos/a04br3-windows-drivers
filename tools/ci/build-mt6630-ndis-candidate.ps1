@@ -12,8 +12,16 @@ $probeFlags=@();if($env:A04_NDIS_OID_BRIDGE -eq '1'){$probeFlags+= '-DA04_NDIS_O
 if($env:A04_NDIS_NVRAM_PROBE -eq '1'){$probeFlags+= '-DA04_NDIS_NVRAM_PROBE=1'}
 & clang @probeFlags --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\ndis_candidate.c" -o "$out\ndis.obj"
 if($LASTEXITCODE) { throw 'NDIS compile failed' }
+$nvramObjects=@()
+if($env:A04_NDIS_NVRAM_PROBE -eq '1') {
+ foreach($name in @('windows_nvram','windows_nvram_reader','nvram_sector','calibration')) {
+  & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\$name.c" -o "$out\$name.obj"
+  if($LASTEXITCODE) { throw "$name compile failed" }
+  $nvramObjects+= "$out\$name.obj"
+ }
+}
 if($env:A04_NDIS_OID_BRIDGE -ne '1') {
-& lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib "$out\ndis.obj" "$km\ndis.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\bufferoverflowfastfailk.lib" "/out:$out\mt6630-ndis-candidate.sys"
+& lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib "$out\ndis.obj" @nvramObjects "$km\ndis.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\bufferoverflowfastfailk.lib" "/out:$out\mt6630-ndis-candidate.sys"
 if($LASTEXITCODE) { throw 'NDIS link failed' }
 }
 Write-Host 'Build-only NDIS candidate: initialize always fails; no INF or hardware access.'
@@ -42,3 +50,6 @@ if($LASTEXITCODE) { throw 'Native HIF RX decoder compile failed' }
 
 & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNDIS_MINIPORT_DRIVER -DNDIS630_MINIPORT -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\windows_nvram.c" -o "$out\windows_nvram.obj"
 if($LASTEXITCODE) { throw 'Windows NVRAM reader compile failed' }
+
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" -c "$root\drivers\network\mt6630\windows_nvram_reader.c" -o "$out\windows_nvram_reader.obj"
+if($LASTEXITCODE) { throw 'Windows synchronous NVRAM reader compile failed' }

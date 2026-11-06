@@ -1005,7 +1005,7 @@ build/mt6630_power_bridge_test: drivers/network/mt6630/power_bridge.c drivers/ne
 
 test-mt6630: build/mt6630_power_bridge_test
 
-build/mt6630_nvram_test: drivers/network/mt6630/nvram.h drivers/network/mt6630/nvram_sector.h drivers/network/mt6630/nvram_sector.c drivers/network/mt6630/calibration.c tests/mt6630_nvram_test.c
+build/mt6630_nvram_test: drivers/network/mt6630/nvram.h drivers/network/mt6630/nvram_sector.h drivers/network/mt6630/nvram_sector.c drivers/network/mt6630/calibration.c tests/mt6630_nvram_test.c tests/mt6630_nvram_fixture.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/calibration.c drivers/network/mt6630/nvram_sector.c tests/mt6630_nvram_test.c -o $@
 
@@ -1262,3 +1262,23 @@ test-mt8167-wifi-handoff-refusal:
 	mkdir -p build
 	$(CC) $(CFLAGS) -DA04_SHARED_WIFI_HANDOFF_DIAGNOSTIC=1 -DA04_AUDIO_DIAGNOSTIC_TRACE=1 -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/bus/mt8167-shared/mt6392_classd.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c drivers/bus/mt8167-shared/usb_owner.c drivers/usb/mt8167-usb20/gpio22.c tests/mt8167_shared_wdf_test.c -o build/mt8167_wifi_handoff_refusal_test
 	./build/mt8167_wifi_handoff_refusal_test
+
+.PHONY: test-mt6630-runtime
+test-mt6630-runtime: build/mt6630_calibration_bridge_test build/mt6630_windows_calibration_test build/mt6630_diagnostic_calibration_test
+	./build/mt6630_calibration_bridge_test
+	./build/mt6630_windows_calibration_test
+	./build/mt6630_diagnostic_calibration_test
+
+build/mt6630_calibration_bridge_test: tests/mt6630_calibration_bridge_test.c tests/mt6630_nvram_fixture.h drivers/network/mt6630/wmt_bridge.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 tests/mt6630_calibration_bridge_test.c drivers/network/mt6630/native_tx.c drivers/network/mt6630/calibration.c drivers/network/mt6630/nvram_sector.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c -o $@
+
+build/mt6630_windows_calibration_test: tests/mt6630_windows_calibration_test.c drivers/network/mt6630/windows_calibration.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Wno-multichar -Itests/firmware_wdk_stubs -Idrivers/network/mt6630 tests/mt6630_windows_calibration_test.c -o $@
+
+test-mt6630: test-mt6630-runtime
+
+build/mt6630_diagnostic_calibration_test: drivers/network/mt6630/windows_diagnostic.c tests/mt6630_windows_diagnostic_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_WIFI_CALIBRATION_DIAGNOSTIC=1 -Itests/shared_wdf_stubs -Idrivers/network/mt6630 $^ -o $@

@@ -472,3 +472,41 @@ session 停止は IRQ と非同期 I/O の排出後、combo と firmware の停�
 RTC 停止、WLAN/Bluetooth/GPS の活動停止を証明しないため、現状は成功しても
 `quiesce_combo` が失敗を返して lease を保持する。親 Acquire と UEFI 移譲は
 未成立であり、この条件付き power-off は現時点では実デバイス上で呼ばれない。
+
+### 実行時NVRAMの転送段階
+
+Linux機種ドライバ [a04br3-linux-drivers](https://github.com/mouseos/a04br3-linux-drivers)
+の `3d2c74e252d6f34a5980deda96bdc04064108d74`、
+`pwrseq/a04br3-mt6630-pwrseq.c` に合わせ、起動はreset GPIO7を先にassertし、
+PMU GPIO4を落として250ms待つ。その後PMU有効化・100ms・reset解除・30msの順とする。
+停止時もreset、PMUの順で落として10ms待つ。Linuxでの150/200msの差の観測は
+Linuxソースに記載された根拠であり、Windows実測ではない。RTC32Kとcombo全体の
+排他的所有は依然呼出側の前提である。
+
+`windows_nvram_reader.c` はNDIS work itemから独立したPASSIVE_LEVELの読取り処理。
+システムボリュームの単一disk extentに一致するdisk interfaceを選び、GPTの`nvram`
+領域を探索する。固定disk番号、バックアップファイル、個体MAC・校正値の定数は使わない。
+領域・bitmap・全データとWIFIレコードのチェックサム検証は既存`nvram.h`を使う。
+失敗時は出力を消去する。従来のNDIS work itemもこの同じ実処理を呼ぶ。
+WinPEのRAM disk等、システムボリュームから対象diskを特定できない構成は拒否する。
+
+`windows_calibration.c` はこの動的読取りを`a04_wmt_bridge_load_calibration`へ渡す。
+WLAN起動済み・同一の有効leaseを要し、初期化時の送信資源返却を観測してruntime
+budgetへ切り替え、元の512バイトを変更せず送る。根拠はLinux gen3
+`common/wlan_lib.c` の `wlanLoadManufactureData` 手順9と
+`include/nic_cmd_event.h` の `CMD_ID_SET_NVRAM_SETTINGS=0x48`、
+`CMD_NVRAM_SETTING_T`。転送は同期HIF送信で、完了後に作業バッファとHIF payloadを
+消去する。失敗時はbridgeとleaseをpoisonし、二重送信と自動再試行を拒否する。
+
+`A04_WIFI_CALIBRATION_DIAGNOSTIC=1` をcoreビルドへ明示した場合だけ、既存の
+`windows_diagnostic_start` がfirmware起動後にこの処理を実行する。既定OFFで、
+親Acquire・board verified設定のゲートは変更しない。
+`calibration_submitted` はHIFへの送信受付だけを表し、firmwareの適用ACKではない。
+Linux手順のTX power・EFUSE・国別domain等の残り、NDIS登録・認証・通常通信、
+PnP/電源遷移と所有権引継ぎの実機検証は未完了。これだけでRF送信を許可しない。
+
+`make test-mt6630-runtime` は合成NVRAM→実parser→HIF wire payload、二重送信拒否、
+途中失敗と消去、Windows読取りadapter、診断開始失敗時の停止を検証する。
+`make test-mt6630` は従来の部品試験も実行する。これらはホスト上の模擬I/O試験で、
+Windows WDKビルド・SYS署名・実機無線動作を証明しない。
+INF表示名は `MediaTek MT6630 Wireless LAN SDIO Adapter`。

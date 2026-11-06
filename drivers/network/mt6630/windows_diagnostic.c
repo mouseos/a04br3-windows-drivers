@@ -1,5 +1,8 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "windows_diagnostic.h"
+#if defined(A04_WIFI_CALIBRATION_DIAGNOSTIC) && A04_WIFI_CALIBRATION_DIAGNOSTIC
+#include "windows_calibration.h"
+#endif
 int a04_windows_diagnostic_start(struct a04_windows_diagnostic *d,A04_SHARED_WIFI_INTERFACE *parent,
  struct a04_windows_msdc2 *host,struct a04_wifi_owner *owner,ULONG generation,uint32_t ocr,
  const struct a04_wifi_life_ops *ops,const uint8_t expected[32],const struct a04_wmt_startup_options *options)
@@ -15,6 +18,9 @@ int a04_windows_diagnostic_start(struct a04_windows_diagnostic *d,A04_SHARED_WIF
  if(a04_windows_wifi_control_open(&d->board_io,&d->board,&d->life,&d->bridge,ocr,ops,&d->card))goto done;
  d->state=A04_DIAG_CONTROL;
  if(a04_windows_firmware_boot_prepared(&d->bridge,&snapshot,expected,options)){d->state=A04_DIAG_FAILED;goto done;}
+#if defined(A04_WIFI_CALIBRATION_DIAGNOSTIC) && A04_WIFI_CALIBRATION_DIAGNOSTIC
+ if(a04_windows_calibration_load(&d->bridge)){d->state=A04_DIAG_FAILED;goto done;}
+#endif
  d->state=A04_DIAG_READY;result=0;
 done:a04_windows_firmware_release(&snapshot);return result;
 }
