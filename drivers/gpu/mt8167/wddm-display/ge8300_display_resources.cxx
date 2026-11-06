@@ -161,6 +161,7 @@ NTSTATUS A04DisplayResources::ProbeSharedCommonPage()
 {
     struct a04_ge8300_common_page page={};PMDL mdl=NULL;PVOID dmaContext=NULL;
     PSCATTER_GATHER_LIST sg=NULL;NTSTATUS status,release;BOOLEAN mapped=FALSE;
+    if(!a04_common_claim_attempt(&SharedCommonOnce))return STATUS_DEVICE_BUSY;
     if(!GpuHandle || !Adapter || !DisplayPdo || !Adapter->DmaOperations ||
        Adapter->DmaOperations->Size<FIELD_OFFSET(DMA_OPERATIONS,FreeAdapterObject)+sizeof(Adapter->DmaOperations->FreeAdapterObject) ||
        !Adapter->DmaOperations->InitializeDmaTransferContext || !Adapter->DmaOperations->GetScatterGatherListEx ||
@@ -205,12 +206,37 @@ done:
     return status;
 }
 #endif
+#if A04_GE8300_WDDM_SHARED_FULL_COMMON
+VOID A04DisplayResources::ProbeDisplayFullCommon()
+{
+    PHYSICAL_ADDRESS max,logical;PVOID cpu;
+    if(!Adapter || !Adapter->DmaOperations ||
+       Adapter->DmaOperations->Size<FIELD_OFFSET(DMA_OPERATIONS,AllocateCommonBufferEx)+sizeof(Adapter->DmaOperations->AllocateCommonBufferEx) ||
+       !Adapter->DmaOperations->AllocateCommonBufferEx || !Adapter->DmaOperations->FreeCommonBuffer) {
+        A04DisplayTrace(0x57,STATUS_NOT_SUPPORTED);return;
+    }
+    max.QuadPart=0xffffffffLL;logical.QuadPart=0;
+    cpu=Adapter->DmaOperations->AllocateCommonBufferEx(Adapter,&max,4096000u,&logical,FALSE,0);
+    if(!cpu){A04DisplayTrace(0x57,STATUS_INSUFFICIENT_RESOURCES);return;}
+    if(a04_display_common_range_valid((uint64_t)logical.QuadPart,(uintptr_t)cpu,4096000u)) {
+        A04DisplayTrace(0x57,STATUS_SUCCESS);A04DisplayTrace(0x58,(NTSTATUS)logical.LowPart);
+        A04DisplayTrace(0x59,(NTSTATUS)4096000u);
+    } else A04DisplayTrace(0x57,STATUS_DEVICE_CONFIGURATION_ERROR);
+    /* No GPU mapping or display transfer exists. Only the display adapter's
+     * own common-buffer address is observed, then freed by that adapter. */
+    Adapter->DmaOperations->FreeCommonBuffer(Adapter,4096000u,logical,cpu,FALSE);
+    A04DisplayTrace(0x5a,STATUS_SUCCESS);
+}
+#endif
 NTSTATUS A04DisplayResources::PrepareViaGpu()
 {
     UNICODE_STRING name=RTL_CONSTANT_STRING(L"\\Device\\A04GE8300");
     OBJECT_ATTRIBUTES attr;IO_STATUS_BLOCK io={};NTSTATUS status;
     if(!Adapter || !Ovl || !DisplayPdo || GpuHandle || Shared.mdl ||
        KeGetCurrentIrql()!=PASSIVE_LEVEL || KeAreAllApcsDisabled())return STATUS_DEVICE_NOT_READY;
+#if A04_GE8300_WDDM_SHARED_COMMON_PAGE
+    if(!a04_common_may_attempt(&SharedCommonOnce))return STATUS_DEVICE_BUSY;
+#endif
     InitializeObjectAttributes(&attr,&name,OBJ_KERNEL_HANDLE|OBJ_CASE_INSENSITIVE,NULL,NULL);
     status=ZwCreateFile(&GpuHandle,FILE_READ_DATA|FILE_WRITE_DATA|SYNCHRONIZE,&attr,&io,NULL,
         FILE_ATTRIBUTE_NORMAL,FILE_SHARE_READ|FILE_SHARE_WRITE,FILE_OPEN,
@@ -218,6 +244,9 @@ NTSTATUS A04DisplayResources::PrepareViaGpu()
     if(!NT_SUCCESS(status)) {GpuHandle=NULL;return status;}
 #if A04_GE8300_WDDM_SHARED_COMMON_PAGE
     status=ProbeSharedCommonPage();
+#if A04_GE8300_WDDM_SHARED_FULL_COMMON
+    if(NT_SUCCESS(status) && !SharedCommonRetained)ProbeDisplayFullCommon();
+#endif
     /* A failed release leaves the provider's referenced lease alive. */
     if(!SharedCommonRetained){ZwClose(GpuHandle);GpuHandle=NULL;}
     return status;

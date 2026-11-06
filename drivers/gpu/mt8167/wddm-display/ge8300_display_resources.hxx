@@ -7,8 +7,14 @@
 #ifndef A04_GE8300_WDDM_SHARED_DIAGNOSTIC
 #define A04_GE8300_WDDM_SHARED_DIAGNOSTIC 0
 #endif
+#ifndef A04_GE8300_WDDM_SHARED_FULL_COMMON
+#define A04_GE8300_WDDM_SHARED_FULL_COMMON 0
+#endif
 #ifndef A04_GE8300_WDDM_SHARED_COMMON_PAGE
 #define A04_GE8300_WDDM_SHARED_COMMON_PAGE 0
+#endif
+#if A04_GE8300_WDDM_SHARED_FULL_COMMON && !A04_GE8300_WDDM_SHARED_COMMON_PAGE
+#error Full common buffer probe requires shared common page
 #endif
 #if A04_GE8300_WDDM_SHARED_COMMON_PAGE && !A04_GE8300_WDDM_SHARED_DIAGNOSTIC
 #error Shared common page requires shared diagnostic
@@ -36,6 +42,7 @@
 #endif
 #if A04_GE8300_WDDM_DIRECT_EXPERIMENT
 #include "../ge8300_status.h"
+#include "shared_common_policy.h"
 #include "../vendor_m1_11/windows_shared_scanout.h"
 #include "../vendor_m1_11/windows_shared_ovl.h"
 struct A04DisplayResources {
@@ -56,6 +63,10 @@ struct A04DisplayResources {
     NTSTATUS PrepareViaGpu();
 #if A04_GE8300_WDDM_SHARED_COMMON_PAGE
     BOOLEAN SharedCommonRetained;
+    struct a04_shared_common_once SharedCommonOnce;
+#if A04_GE8300_WDDM_SHARED_FULL_COMMON
+    VOID ProbeDisplayFullCommon();
+#endif
     NTSTATUS ProbeSharedCommonPage();
 #endif
     /* No call site until platform visibility and frame callbacks exist. */

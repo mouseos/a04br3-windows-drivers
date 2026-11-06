@@ -371,3 +371,25 @@ Windows 8.1 does not expose the later `CreateCommonBufferFromMdl` interface.
 See Microsoft documentation for [common buffers](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_common_buffer),
 [GetScatterGatherListEx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pget_scatter_gather_list_ex),
 and [FreeAdapterObject](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pfree_adapter_object).
+
+### One-shot policy and full-size display common-buffer probe
+
+The one-page probe is limited to one lease request per display-driver object,
+including failure. The automatic worker and `PresentDisplayOnly` share this
+latch under the present mutex, so successful cleanup (which closes the GPU
+handle) cannot re-arm it. Opening the GPU provider may retry until it exists;
+no repeated mapping is allowed after the probe starts. A new driver instance
+starts with a fresh latch. This does not change the GPU copy-service policy.
+
+With the separate, default-off `A04_GE8300_WDDM_SHARED_FULL_COMMON=1`, a
+successful one-page probe is followed once by a 4,096,000-byte uncached
+`AllocateCommonBufferEx` request on the display adapter. Step 57 reports the
+allocation/linear range check, 58 the display-domain logical base, 59 the
+fixed byte length, and 5A that `FreeCommonBuffer` returned. The buffer is
+never mapped to GPU, submitted to OVL, or used for DMA; it is freed immediately
+with the same adapter and parameters. Success establishes only that the HAL
+provided a display-domain contiguous common-buffer address at that time. It
+does not establish GPU access to the same backing pages, no-bounce, visibility,
+frame synchronization, or stable capacity on subsequent allocation. Failure
+is an expected diagnostic outcome; it neither authorizes a split scanout nor
+triggers an allocation retry.

@@ -79,6 +79,9 @@ VOID BASIC_DISPLAY_DRIVER::SharedDiagnosticWorker(PVOID context)
            !self->m_DisplayResources.Shared.mdl && !self->m_DisplayResources.GpuHandle) {
             status=self->m_DisplayResources.PrepareViaGpu();
             done=NT_SUCCESS(status) || self->m_DisplayResources.Shared.mdl || self->m_DisplayResources.GpuHandle;
+#if A04_GE8300_WDDM_SHARED_COMMON_PAGE
+            if(!a04_common_may_attempt(&self->m_DisplayResources.SharedCommonOnce))done=TRUE;
+#endif
         } else if(!self->m_Flags.DriverStarted || !self->m_DisplayResources.Adapter ||
                   self->m_DisplayResources.Shared.mdl || self->m_DisplayResources.GpuHandle) done=TRUE;
         KeReleaseMutex(&self->m_PresentMutex,FALSE);
@@ -621,7 +624,11 @@ NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DIS
             /* Diagnostic-only: the provider admits the lease only after a
              * verified copy/fence. Retry while the copy service is not ready. */
             if (NT_SUCCESS(presentStatus) && m_DisplayResources.Adapter &&
-                !m_DisplayResources.Shared.mdl && !m_DisplayResources.GpuHandle)
+                !m_DisplayResources.Shared.mdl && !m_DisplayResources.GpuHandle
+#if A04_GE8300_WDDM_SHARED_COMMON_PAGE
+                && a04_common_may_attempt(&m_DisplayResources.SharedCommonOnce)
+#endif
+                )
                 (void)m_DisplayResources.PrepareViaGpu();
 #endif
             return presentStatus;
