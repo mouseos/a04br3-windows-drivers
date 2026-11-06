@@ -137,6 +137,43 @@ jobs:
           $env:A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC='1'
           $env:A04_GE8300_WDDM_GCE_LEASE='1'
           ./tools/ci/build-wddm-display-arm.ps1
+      - name: Build and test-sign observation packages
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
+          $env:A04_GCE_PARENT_CLOCK_INTERFACE='1'
+          $env:A04_GCE_DISPLAY_LEASE_INTERFACE='1'
+          $env:A04_GCE_IRQ_ATTACH='0'
+          $env:A04_GCE_HANDOFF_OBSERVE='1'
+          ./tools/ci/build-mt8167-gce.ps1
+          $out=Join-Path $env:RUNNER_TEMP 'gce-observation-signed'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          $gce=Join-Path $out 'gce';$display=Join-Path $out 'display'
+          Copy-Item -Recurse (Join-Path $env:RUNNER_TEMP 'mt8167-gce-provider\package') $gce
+          New-Item -ItemType Directory -Force $display | Out-Null
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'a04br3-wddm-display-build-check\wddm-display-build-check.sys') (Join-Path $display 'mt8167-display.sys')
+          Copy-Item 'drivers/gpu/mt8167/wddm-display/mt8167-display.inf' $display
+          $cert=New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=A04BR3 GCE Observation Test' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
+          Export-Certificate -Cert $cert -FilePath (Join-Path $out 'gce-observation-test.cer') | Out-Null
+          $sign=Join-Path $kit 'bin\x86\signtool.exe';$cat=Join-Path $kit 'bin\x86\Inf2Cat.exe'
+          foreach($entry in @(@($gce,'mt8167-gce'),@($display,'mt8167-display'))) {
+            $dir=$entry[0];$name=$entry[1]
+            & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $dir "$name.sys")
+            if($LASTEXITCODE){throw "SYS signing failed: $name"}
+            Remove-Item (Join-Path $dir "$name.cat") -ErrorAction SilentlyContinue
+            & $cat "/driver:$dir" /os:6_3_ARM /uselocaltime
+            if($LASTEXITCODE){throw "Catalog creation failed: $name"}
+            & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $dir "$name.cat")
+            if($LASTEXITCODE){throw "Catalog signing failed: $name"}
+          }
+          $files=Get-ChildItem $out -File -Recurse | ForEach-Object { [ordered]@{path=$_.FullName.Substring($out.Length+1).Replace('\','/');sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash} }
+          [ordered]@{source_commit=(git rev-parse HEAD);certificate_thumbprint=$cert.Thumbprint;gce_irq_attach=0;gce_handoff_observe=1;display_gce_lease=1;ovl_switch=0;files=@($files);note='Test signed; execution and secure ownership unverified.'} | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gce-observation-test-signed
+          path: ${{ runner.temp }}\gce-observation-signed
+          if-no-files-found: error
       - name: Compile WinPE file comparison tool
         shell: pwsh
         run: ./tools/ci/build-compare-files.ps1 -Arch arm
