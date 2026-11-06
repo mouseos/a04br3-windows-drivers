@@ -27,8 +27,21 @@ if(Test-Path $priorManifest){
  if($previous.audio_mode -and $previous.audio_mode -ne $modeName){throw 'Use separate output directories for fixed service modes'}
  if(!$previous.audio_mode -and $enginePcm){throw 'Legacy output cannot be reused for EnginePcm'}
 }
-if($enginePcm -and $Sign -and $CertificateThumbprint -ne 'BCBF6C456C6F0DD0818434763B189488FBF13570'){
- throw 'EngineProbe requires the pinned new signing certificate; specify CertificateThumbprint explicitly'
+if($enginePcm -and $Sign -and !$PSBoundParameters.ContainsKey('CertificateThumbprint')){
+ throw 'EngineProbe signing requires an explicit CertificateThumbprint from your development certificate store'
+}
+$signingThumbprint=$null
+if($Sign){
+ $requestedThumbprint=([string]$CertificateThumbprint).Trim().ToUpperInvariant()
+ if($requestedThumbprint -notmatch '^[0-9A-F]{40}$'){throw 'CertificateThumbprint must be an explicit 40-digit SHA1 thumbprint'}
+ $cert=Get-Item -LiteralPath "Cert:\$CertificateLocation\My\$requestedThumbprint"
+ if(!$cert.HasPrivateKey){throw 'Signing certificate has no private key'}
+ $nowUtc=[DateTime]::UtcNow
+ if($nowUtc -lt $cert.NotBefore.ToUniversalTime() -or $nowUtc -gt $cert.NotAfter.ToUniversalTime()){
+  throw 'Signing certificate is outside its validity period'
+ }
+ $signingThumbprint=$cert.Thumbprint.ToUpperInvariant()
+ if($signingThumbprint -ne $requestedThumbprint){throw 'Resolved signing certificate thumbprint differs from the request'}
 }
 $inputs=@()
 foreach($item in @(@{path=$WlanProbePath;name='mt6630-wlan-probe.exe'},@{path=$AudioClientPath;name=$audioName})){
@@ -65,9 +78,7 @@ try {
   if($LASTEXITCODE -or ($header -join "`n") -notmatch 'IMAGE_FILE_MACHINE_ARMNT'){throw "Expected ARM32 PE: $name"}
  }
  if($Sign){
-  $cert=Get-Item "Cert:\$CertificateLocation\My\$CertificateThumbprint"
-  if(!$cert.HasPrivateKey){throw 'Signing certificate has no private key'}
-  $signArgs=@('sign','/fd','SHA256','/sha1',$CertificateThumbprint,'/s','My')
+  $signArgs=@('sign','/fd','SHA256','/sha1',$signingThumbprint,'/s','My')
   if($CertificateLocation -eq 'LocalMachine'){$signArgs+='/sm'}
   # Match b508de8: no timestamp server or target/runner operations.
   $signFiles=if($enginePcm){@($serviceName+'.exe')}else{$files}
@@ -83,7 +94,7 @@ try {
   client_directory=$(if($enginePcm){'System32\MT8167EngineProbe\clients'}else{'System32\MT8167HardwareProbe'});
   log_directory=$(if($enginePcm){'System32\MT8167EngineProbe\logs'}else{'System32\MT8167HardwareProbe'});scm_arguments='';scm_start=2;scm_delayed_auto_start=$false;
   clients_staged=($inputs.Count -eq 2);signing_requested=[bool]$Sign;
-  signing_thumbprint=$(if($Sign){$CertificateThumbprint}else{$null});target_signature_trust_verified=$false;
+  signing_thumbprint=$signingThumbprint;target_signature_trust_verified=$false;
   audio_mode=$modeName;engine_pcm_compatible=[bool]$enginePcm;engine_pcm_auto_registration_allowed=[bool]$enginePcm;
   fixed_clients=@('mt6630-wlan-probe.exe',$audioName);client_signatures_preserved=[bool]$enginePcm;
   build_defines=@{A04_HARDWARE_PROBE_ENGINE_PCM=$engineDefine};

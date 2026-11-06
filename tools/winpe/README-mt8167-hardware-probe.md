@@ -207,8 +207,18 @@ service成功やUART最終通知だけでAPI/DMA/可聴まで成功したと推�
 clients/audio-engine-probe-*.logもprivate回収対象とする。
 
 ```powershell
-powershell -File tools/ci/build-mt8167-hardware-probe.ps1 -AudioMode EnginePcm -Sign -CertificateThumbprint BCBF6C456C6F0DD0818434763B189488FBF13570
+powershell -File tools/ci/build-mt8167-hardware-probe.ps1 -AudioMode EnginePcm -Sign -CertificateThumbprint $MyDevelopmentThumbprint
 ```
+
+公開build helperは特定の開発鍵を要求しない。EnginePcmとSignの併用時はCertificateThumbprintの
+明示指定を必須とし、選択store内の秘密鍵付き・有効期間内の証明書を使う。
+指定値は40桁SHA1として検証し、実際に選択した証明書のthumbprintをsigning_thumbprintへ記録する。
+自己署名開発証明書の作成・対象Windowsでの信頼設定は各利用者が行う。秘密鍵を配布しない。
+Toneの既存既定thumbprintと、Signなしのbuild経路は保持する。
+
+今回のprivate snapshot媒体は別の固定入力契約であり、BCBF cert/hash/source pinを引き続き要求する。
+主担当の既存 `-CertificateThumbprint BCBF6C456C6F0DD0818434763B189488FBF13570` 指定はそのまま使える。
+他の鍵で公開helperをbuildできることと、今回private媒体の入力として受理されることは別条件。
 
 この例は新serviceだけをbuild/署名する。既存client2本・SYSは再compile/再署名しない。
 任意のclient staging引数を使う場合もmodeで固定したbasename2個だけを許可し、
