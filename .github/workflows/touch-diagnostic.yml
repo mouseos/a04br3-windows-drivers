@@ -1,0 +1,32 @@
+name: ARM32 touch diagnostic build
+on:
+  workflow_dispatch:
+  push:
+    branches: [work/bu21025-recovery]
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Windows 8.1 SDK and WDK
+        shell: pwsh
+        run: ./tools/ci/install-wdk81.ps1
+      - name: Test touch components
+        shell: pwsh
+        run: ./tools/ci/test-touch-windows.ps1
+      - name: Build shared-parent diagnostic driver
+        shell: pwsh
+        run: |
+          $env:A04_TOUCH_SHARED_PARENT='1'
+          $env:A04_TOUCH_TRACE='1'
+          ./tools/ci/build-wdf-touch.ps1
+          $driver = Join-Path $env:RUNNER_TEMP 'a04-wdf-touch\bu21025.sys'
+          [ordered]@{ source_commit = (git rev-parse HEAD); sha256 = (Get-FileHash $driver -Algorithm SHA256).Hash; shared_parent = 1; trace = 1; note = 'Unsigned diagnostic build; target operation unverified.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $env:RUNNER_TEMP 'a04-wdf-touch\manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bu21025-shared-diagnostic
+          path: |
+            ${{ runner.temp }}\a04-wdf-touch\bu21025.sys
+            ${{ runner.temp }}\a04-wdf-touch\manifest.json
+          if-no-files-found: error
