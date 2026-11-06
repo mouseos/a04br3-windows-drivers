@@ -81,3 +81,18 @@ USCは既存ホストMesa PCOでGE8300 22.40.54.30向けに生成した。source
 factoryへ渡すemit_word0/1はPBE setupで確定した最終2wordで、record内2個の64-bit CSRとは別。PDSはtask64、emit_word0/1、control0x90000002、alignment padding、DOUTW0xf0040101、DOUTU0xf4000002。PDS taskは上記USC VAから構築する。pixel event registerにはdata/codeサイズとshared2の正しいbindingが必要で、そのregister builderは未完成。完全TA/3D公開は依然禁止。
 
 code GPU VAは既存USC heap [0xba00000000,0xba40000000)、PDS heap [0xa800000000,0xa840000000)の中で所有者がcold予約する。既存TQ/clear各64KiBと重複しなければ、USC0xba00010000、PDS0xa800010000を各1page予約する案が使える。ただし最新owner inventoryの確認と同一FWMEMCONTEXTへのcold mappingが前提。背景側を含む全資源の量が確定したとは扱わない。
+
+## 背景＋EOT codespace factory（cold mapping可能な範囲）
+
+`a04_m111_build_clear_codespace`は背景packed32出力とEOTのUSC/PDS CPU shadowを生成する。USC有効32 bytes、PDS有効0xa8 bytes、各4KiB allocationで収まる。USC alignment4、PDS alignment16。VA全spanを各1GiB execution heap内で検査する。既存TQ bankと非重複ならUSC 0xba00010000 / PDS 0xa800010000の各1pageをcold mapできる。この容量は背景＋EOTのみで、今後のVDM/PPP/TA用programを含む総量ではない。追加FWbank領域は要求しない。
+
+| host選定offset | 内容 |
+| --- | --- |
+| USC +0 / +0x10 | 背景 / EOT、各16 bytes |
+| PDS +0 / +0x20 | 背景pixel data32 / DOUTU code4 |
+| PDS +0x40 / +0x50 | 色shared-loader data16 / DOUTW END code4 |
+| PDS +0x80 / +0xa0 | EOT data32 / code8 |
+
+背景USCは`388a8087800800000020f3ffffffffff`、temp0/shared2。独立PCO recipe `tools/native_background_reference.c`はshared0からpacked32をoutput0へ書く。PDS shared-loaderはconstant64 slot0から色と未使用shared1=0を送り、control32 slot2=0x90000002。cc0/end1のDOUTW 0xf4020001はMesaの`pvr_pds_inst_encode_dout`で独立生成して照合した。pad zeroはhost packing policy。RGBA/format変換は行わず、入力は既にpacked済みのoutput register bit pattern。
+
+record側background triple、pixel event binding、PBE final emit wordsは本factoryの出力に含めない。CPU生成・ASan/UBSan・ARM32 COFF compile確認は、WDK compile/linkやGPU実行確認とは別。完全TA/3Dと必須data初期内容は依然未確定でpublish不可。
