@@ -493,6 +493,15 @@ caller releases the resource lease on this refusal; if release fails it retains
 the holder and references. No command can be submitted through the interface.
 An interface reference alone does not retain PnP power or prove DMA stop.
 
+The default-off `A04_GCE_IRQ_ATTACH` additionally creates a KMDF interrupt
+object against the GCE PDO's assigned interrupt. Its enable callback currently
+returns `STATUS_DEVICE_NOT_READY` without MMIO, and its ISR never claims or
+acknowledges an interrupt. Enabling this flag therefore makes the device fail
+the interrupt-enable step; it does not establish an operational IRQ. The
+display lease remains offline in that configuration. This intentionally has
+no hardware-active mode until clock, thread, event and IRQ ownership and the
+interrupt acknowledgement protocol are established together.
+
 MT8167 DTS maps `disp_rdma0_frame_done` to 27 and `stream_done_0` to 38;
 these are hardware event values, unlike the abstract enum values 77 and 113
 in `cmdq_event_common.h`. Linux `cmdq_device.c` populates the runtime event
