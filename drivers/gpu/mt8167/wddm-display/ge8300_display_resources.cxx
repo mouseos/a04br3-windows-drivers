@@ -228,9 +228,9 @@ static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile 
     struct a04_ge8300_shared_tile *tile;IO_STATUS_BLOCK io={};PFILE_OBJECT file=NULL;
     NTSTATUS status;uint32_t index=0,matches=0,lastTask=0,lastFlush=0;
     tile=(struct a04_ge8300_shared_tile *)ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*tile),'fG4A');
-    if(!tile)return STATUS_INSUFFICIENT_RESOURCES;
+    if(!tile){A04DisplayTrace(0x5e,0);A04DisplayTrace(0x5f,STATUS_INSUFFICIENT_RESOURCES);return STATUS_INSUFFICIENT_RESOURCES;}
     status=ObReferenceObjectByHandle(handle,SYNCHRONIZE,*IoFileObjectType,KernelMode,(PVOID *)&file,NULL);
-    if(!NT_SUCCESS(status))goto done;
+    if(!NT_SUCCESS(status)){A04DisplayTrace(0x5e,0);A04DisplayTrace(0x5f,status);goto done;}
     for(index=0;index<1000u;index++) {
         uint32_t x=(index%25u)*32u,y=(index/25u)*32u;
         RtlZeroMemory(tile,sizeof(*tile));tile->token=token;tile->frame=1;tile->index=index;

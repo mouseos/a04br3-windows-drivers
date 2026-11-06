@@ -386,8 +386,8 @@ successful one-page probe is followed once by a 4,096,000-byte uncached
 `AllocateCommonBufferEx` request on the display adapter. Step 57 reports the
 allocation/linear range check, 58 the display-domain logical base, 59 the
 fixed byte length, and 5A that `FreeCommonBuffer` returned. The buffer is
-not submitted to OVL or used for DMA; it is freed immediately after the GPU
-mapping preflight described below
+not submitted to OVL. Without the additional common-frame diagnostic it is
+freed immediately after the GPU mapping preflight described below
 with the same adapter and parameters. Success establishes only that the HAL
 provided a display-domain contiguous common-buffer address at that time. It
 does not establish GPU access to the same backing pages, no-bounce, visibility,
@@ -404,15 +404,26 @@ SG mapping request for the full 4,096,000 bytes. Step 5B records GPU mapping
 and layout validation; 5C reports the GPU SG element count on success. A
 resource shortage fails without waiting. GPU SG addresses are checked in the
 GPU address domain and are not required to be display-contiguous. The display
-address still comes exclusively from its common-buffer allocation. No device
-access is started, so both mappings can be safely released at the end.
+address still comes exclusively from its common-buffer allocation. The
+preflight alone starts no device access; the opt-in continuation below does.
 
-If this preflight succeeds, STEP 5D reports STATUS_NOT_SUPPORTED: the GPU root
-publication, all-tile copy, and display-side visibility test are deliberately
-not initiated until the lifetime of both DMA mappings, root retirement, and a
-real display-DMA observer are implemented. Thus it is not the requested
-same-boot full-copy/visibility diagnostic yet. One boot can establish which
-allocation or mapping stage blocks; it cannot claim a completed frame.
-The full probe returns its failure to the caller after releasing the lease;
-successful GPU SG validation followed by the unimplemented stage returns
-STATUS_NOT_SUPPORTED rather than reporting the whole diagnostic successful.
+With `A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC=1`,
+`A04_GE8300_SHARED_DISPLAY_COMMON=1`, and GPU full-frame support enabled,
+success continues in the same boot: the common-page lease is promoted to a
+shared lease, the 1000 GPU page addresses are published through the existing
+root and MMUCACHE path, and 1000 synthetic 32x32 GPU copies are submitted.
+The CPU then compares all 1,024,000 pixels with a position-dependent pattern.
+The buffer is initialized with the inverse pattern before the GPU map.
+The independent owner, display PDO reference, common buffer, GPU SG mapping,
+MDL, transfer context, provider handle and lease remain retained after lease
+promotion, including on stage, command or comparison failure. No root removal
+or hardware stop is asserted. PnP removal and power transitions remain untested.
+
+Steps 5B/5C report GPU map status and element count; 64 reports lease
+promotion, 65 a post-map preparation error, 5D root staging/publication,
+5E the completed tile count (or failing zero-based tile), 5F tile status,
+62/63 the last task and flush sequence, and 60/61 the CPU match count and
+comparison status. 5A/56 appear only when cleanup is permitted. On a GPU map
+failure no root or tile is submitted. A CPU match is an observation of this
+mapping, not a display-DMA visibility, no-bounce, frame boundary, or stop
+proof. OVL switching remains disabled. The common-frame flags default to zero.
