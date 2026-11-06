@@ -25,6 +25,9 @@ struct a04_mt6392_audio_raw { uint16_t spk_con0,spk_con9,spk_con11; };
 /* Caller holds the same WACS2 owner lock across all three reads. Output is
  * unchanged on failure; values are register observations, not voltage proof. */
 int a04_pmic_emmc_rails(struct a04_pmic_read *bus, struct a04_emmc_rails_raw *out);
+struct a04_rtc32k_raw { uint16_t pdn1, con; };
+/* Raw MT6392 RTC state, not proof of a running physical clock. */
+int a04_pmic_rtc32k(struct a04_pmic_read *, struct a04_rtc32k_raw *);
 int a04_pmic_chrstatus(struct a04_pmic_read *bus, uint16_t *value);
 /* Read raw TOP_CKPDN1 only. Bits 1/2/3 are speaker PWM divider,
  * divider and clock PDN fields in the MT8167 MT6392 board header. This is

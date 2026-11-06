@@ -164,3 +164,13 @@ int a04_pmic_vusb_set(struct a04_pmic_read *bus, int enable)
     if (after != expected) { bus->poisoned = 1; return -1; }
     return 0;
 }
+
+int a04_pmic_rtc32k(struct a04_pmic_read *bus, struct a04_rtc32k_raw *out)
+{
+    struct a04_rtc32k_raw tmp;
+    /* MT6392 RTC base 0x8000; PDN1 +0x2c, CON +0x3e. */
+    if (!out || read_register(bus, 0x802cu, &tmp.pdn1) ||
+        read_register(bus, 0x803eu, &tmp.con)) return -1;
+    *out = tmp;
+    return 0;
+}

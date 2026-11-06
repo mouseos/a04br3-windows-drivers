@@ -53,3 +53,12 @@ int a04_pwrap_owner_read_speaker_clocks(struct a04_pwrap_owner *o,uint16_t *out)
     if (o->online) result=a04_pmic_spk_clock_status(&o->bus,out);
     o->unlock(o->lock_context);return result;
 }
+
+int a04_pwrap_owner_read_rtc32k(struct a04_pwrap_owner *o, struct a04_rtc32k_raw *out)
+{
+    int result = -1;
+    if (!out || enter(o)) return -1;
+    if (o->online) result = a04_pmic_rtc32k(&o->bus, out);
+    o->unlock(o->lock_context);
+    return result;
+}

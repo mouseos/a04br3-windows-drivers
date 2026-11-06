@@ -1,0 +1,19 @@
+{
+  "source": "https://github.com/mouseos/UniXNU-a04br3",
+  "status": "ローカル未追跡ファイルを取得。リポジトリコミットに含まれるとは主張しない。",
+  "license": "BSD-2-Clause-Patent",
+  "sha256": {
+    "A04BR3SDIOProtocol.h": "52d2644220ce73d626f6d84557bf589b436d85b872b664e32206a953cafbd9b9",
+    "A04BR3SDIOTransport.h": "2389ab0f4520de4e97687125d484fc9c840f9ffa523ac5b6aa392a270781269f",
+    "A04BR3WMTProtocol.h": "d448a4a0866e88ae6567fc97e1b3aadf12fc8e7d9b48ce578fb1380c165d2b11",
+    "A04BR3WMTRoundtrip.h": "b0a2dfab1147e9e37a4a7d942bd92ccd1a25bcf6e0fb9c4b70a006bd29a56a35",
+    "A04BR3WMTFirmware.h": "0e6b0f8beefc9bf587e4db7222c8618e754a3af7a2068e6458b8d6d152ccc2ed",
+    "A04BR3WMTDownload.h": "f3a2e0a045664cb984a5f1be32289030f5ae9777fbeab77002cd1a2f96b21762",
+    "A04BR3WLANProtocol.h": "68cf12452d664a39d6c3786ca8b9284eb4bc8df68c6abbe257dc9c5ac9349062",
+    "A04BR3WLANHost.h": "1b04ad9b5a19b985a459027419315ab678821b317cad88706f9738a9a0b90e5b",
+    "A04BR3WLANFirmware.h": "a584a97f244eaa99eba23baa9869c22338a00279ce9f764ef890bfc27b64471b",
+    "A04BR3WLANStation.h": "2ed29ef61ecd543d4be3b71384ff60fef5c045215610610125153dc34fc95eab",
+    "A04BR3WLANSecurity.h": "d321dc8b83308185cbd0f4adcc74996f3c2c05eebc4551a23791530d337853b0",
+    "A04BR3WLANData.h": "867de20edcbd25d6240110cf1e0e890b5257e3424260c44fffb2c6094179b17c"
+  }
+}

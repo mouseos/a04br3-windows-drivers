@@ -931,3 +931,189 @@ test-gpu-vendor-native-copy-state: build/gpu_vendor_native_copy_state_test
 build/gpu_vendor_native_copy_state_test: tests/gpu_vendor_native_copy_state_test.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.h
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 tests/gpu_vendor_native_copy_state_test.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.c -o $@
+build/mt6630_identity_test: drivers/network/mt6630/identity.c drivers/network/mt6630/identity.h drivers/network/mt6630/ownership.h tests/mt6630_identity_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/identity.c tests/mt6630_identity_test.c -o $@
+
+build/mt6630_sdio_args_test: drivers/network/mt6630/sdio_args.h tests/mt6630_sdio_args_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 tests/mt6630_sdio_args_test.c -o $@
+
+.PHONY: test-mt6630
+test-mt6630: build/mt6630_identity_test build/mt6630_sdio_args_test build/mt6630_transport_test build/mt6630_direct_test
+	./build/mt6630_windows_firmware_test
+	./build/mt6630_sha256_test
+	./build/mt6630_windows_board_test
+	./build/mt6630_windows_diagnostic_test
+	./build/mt6630_resource_lease_test
+	./build/mt6630_bringup_test
+	./build/mt6630_board_sequence_test
+	./build/mt6630_identity_test
+	./build/mt6630_sdio_args_test
+	./build/mt6630_transport_test
+	./build/mt6630_power_plan_test
+	./build/mt6630_direct_test
+	./build/mt6630_msdc2_pio_test
+	./build/mt6630_power_bridge_test
+	./build/mt6630_nvram_test
+	./build/mt6630_wlan_firmware_test
+	./build/mt6630_lifetime_test
+	./build/mt6630_parent_query_test
+	./build/mt6630_enumerate_test
+	./build/mt6630_control_start_test
+	./build/mt6630_wmt_bridge_test
+	./build/mt6630_native_scan_test
+	./build/mt6630_native_bridge_test
+	./build/mt6630_data_bridge_test
+	./build/mt6630_native_nbl_test
+	./build/mt6630_native_receive_test
+	./build/mt6630_native_oid_async_test
+	./build/mt6630_native_hif_rx_test
+
+test: test-mt6630
+
+build/mt6630_transport_test: drivers/network/mt6630/transport.c drivers/network/mt6630/transport.h drivers/network/mt6630/sdio_args.h tests/mt6630_transport_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/transport.c tests/mt6630_transport_test.c -o $@
+
+build/mt6630_power_plan_test: drivers/network/mt6630/power_plan.c drivers/network/mt6630/power_plan.h tests/mt6630_power_plan_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/power_plan.c tests/mt6630_power_plan_test.c -o $@
+
+test-mt6630: build/mt6630_power_plan_test
+
+build/mt6630_direct_test: drivers/network/mt6630/direct.c drivers/network/mt6630/direct.h drivers/network/mt6630/ownership.h drivers/network/mt6630/sdio_args.h tests/mt6630_direct_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/direct.c tests/mt6630_direct_test.c -o $@
+
+build/mt6630_msdc2_pio_test: drivers/network/mt6630/msdc2_pio.c drivers/network/mt6630/msdc2_pio.h drivers/network/mt6630/transport.c drivers/network/mt6630/direct.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/identity.c tests/mt6630_msdc2_pio_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/msdc2_pio.c drivers/network/mt6630/transport.c drivers/network/mt6630/direct.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/identity.c tests/mt6630_msdc2_pio_test.c -o $@
+
+test-mt6630: build/mt6630_msdc2_pio_test
+
+build/mt6630_power_bridge_test: drivers/network/mt6630/power_bridge.c drivers/network/mt6630/power_bridge.h drivers/network/mt6630/power_plan.c tests/mt6630_power_bridge_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/power_bridge.c drivers/network/mt6630/power_plan.c tests/mt6630_power_bridge_test.c -o $@
+
+test-mt6630: build/mt6630_power_bridge_test
+
+build/mt6630_nvram_test: drivers/network/mt6630/nvram.h drivers/network/mt6630/nvram_sector.h drivers/network/mt6630/nvram_sector.c drivers/network/mt6630/calibration.c tests/mt6630_nvram_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/calibration.c drivers/network/mt6630/nvram_sector.c tests/mt6630_nvram_test.c -o $@
+
+test-mt6630: build/mt6630_nvram_test
+
+build/mt6630_wlan_firmware_test: drivers/network/mt6630/wlan_firmware.c drivers/network/mt6630/wlan_firmware.h tests/mt6630_wlan_firmware_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/wlan_firmware.c tests/mt6630_wlan_firmware_test.c -o $@
+
+test-mt6630: build/mt6630_wlan_firmware_test
+
+build/mt6630_lifetime_test: drivers/network/mt6630/lifetime.c drivers/network/mt6630/lifetime.h drivers/network/mt6630/identity.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c tests/mt6630_lifetime_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/lifetime.c drivers/network/mt6630/identity.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c tests/mt6630_lifetime_test.c -o $@
+
+test-mt6630: build/mt6630_lifetime_test
+
+build/mt6630_parent_query_test: tests/mt6630_parent_query_test.c tests/shared_wdf_stubs/ntddk.h tests/shared_wdf_stubs/wdf.h drivers/network/mt6630/wdf_wifi_parent_probe.c drivers/bus/mt8167-shared/wifi_interface.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Itests/shared_wdf_stubs tests/mt6630_parent_query_test.c -o $@
+
+test-mt6630: build/mt6630_parent_query_test
+
+build/mt6630_enumerate_test: drivers/network/mt6630/enumerate.c drivers/network/mt6630/enumerate.h drivers/network/mt6630/identity.c tests/mt6630_enumerate_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/enumerate.c drivers/network/mt6630/identity.c tests/mt6630_enumerate_test.c -o $@
+
+test-mt6630: build/mt6630_enumerate_test
+
+build/mt6630_control_start_test: drivers/network/mt6630/control_start.c drivers/network/mt6630/control_start.h drivers/network/mt6630/enumerate.c drivers/network/mt6630/msdc2_pio.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c tests/mt6630_control_start_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/control_start.c drivers/network/mt6630/enumerate.c drivers/network/mt6630/msdc2_pio.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c tests/mt6630_control_start_test.c -o $@
+
+test-mt6630: build/mt6630_control_start_test
+
+build/mt6630_wmt_bridge_test: tests/mt6630_wmt_bridge_test.c drivers/network/mt6630/wmt_bridge.c drivers/network/mt6630/wmt_bridge.h drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 tests/mt6630_wmt_bridge_test.c drivers/network/mt6630/native_tx.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c -o $@
+
+test-mt6630: build/mt6630_wmt_bridge_test
+
+.PHONY: test-mt6630-firmware
+test-mt6630-firmware:
+	python3 -m unittest discover -s tests/mt6630_xnu -p 'test_*.py'
+
+build/mt6630_native_scan_test: drivers/network/mt6630/native_scan.c drivers/network/mt6630/native_scan.h tests/native_scan_stubs/ndis.h tests/mt6630_native_scan_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Itests/native_scan_stubs -Idrivers/network/mt6630 drivers/network/mt6630/native_scan.c tests/mt6630_native_scan_test.c -o $@
+
+test-mt6630: build/mt6630_native_scan_test
+
+build/mt6630_native_bridge_test: tests/mt6630_native_bridge_test.c drivers/network/mt6630/native_oid.c drivers/network/mt6630/native_tx.c drivers/network/mt6630/native_scan.c drivers/network/mt6630/native_scan_bridge.c drivers/network/mt6630/wmt_bridge.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Itests/native_scan_stubs -Idrivers/network/mt6630 tests/mt6630_native_bridge_test.c drivers/network/mt6630/native_oid.c drivers/network/mt6630/native_tx.c drivers/network/mt6630/native_scan.c drivers/network/mt6630/native_scan_bridge.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c -o $@
+
+test-mt6630: build/mt6630_native_bridge_test
+
+build/mt6630_data_bridge_test: tests/mt6630_data_bridge_test.c drivers/network/mt6630/wmt_bridge.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 tests/mt6630_data_bridge_test.c drivers/network/mt6630/native_tx.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c -o $@
+
+test-mt6630: build/mt6630_data_bridge_test
+
+build/mt6630_native_nbl_test: tests/mt6630_native_nbl_test.c drivers/network/mt6630/native_nbl.c drivers/network/mt6630/native_nbl.h drivers/network/mt6630/wmt_bridge.c drivers/network/mt6630/native_tx.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Itests/native_scan_stubs -Idrivers/network/mt6630 tests/mt6630_native_nbl_test.c drivers/network/mt6630/native_nbl.c drivers/network/mt6630/native_tx.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c -o $@
+
+test-mt6630: build/mt6630_native_nbl_test
+
+build/mt6630_native_receive_test: drivers/network/mt6630/native_receive.c drivers/network/mt6630/native_receive.h tests/native_scan_stubs/ndis.h tests/mt6630_native_receive_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Itests/native_scan_stubs -Idrivers/network/mt6630 drivers/network/mt6630/native_receive.c tests/mt6630_native_receive_test.c -o $@
+
+test-mt6630: build/mt6630_native_receive_test
+
+build/mt6630_native_oid_async_test: tests/mt6630_native_oid_async_test.c drivers/network/mt6630/native_oid_async.c drivers/network/mt6630/native_oid_async.h tests/native_scan_stubs/ndis.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Itests/native_scan_stubs -Idrivers/network/mt6630 tests/mt6630_native_oid_async_test.c drivers/network/mt6630/native_oid_async.c -o $@
+
+test-mt6630: build/mt6630_native_oid_async_test
+
+build/mt6630_native_hif_rx_test: drivers/network/mt6630/native_hif_rx.c drivers/network/mt6630/native_hif_rx.h drivers/network/mt6630/native_receive.h tests/mt6630_native_hif_rx_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Itests/native_scan_stubs -Idrivers/network/mt6630 drivers/network/mt6630/native_hif_rx.c tests/mt6630_native_hif_rx_test.c -o $@
+
+test-mt6630: build/mt6630_native_hif_rx_test
+
+build/mt6630_board_sequence_test: drivers/network/mt6630/board_sequence.c drivers/network/mt6630/board_sequence.h tests/mt6630_board_sequence_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/board_sequence.c tests/mt6630_board_sequence_test.c -o $@
+
+test-mt6630: build/mt6630_board_sequence_test
+
+build/mt6630_bringup_test: drivers/network/mt6630/resource_lease.c drivers/network/mt6630/bringup.c drivers/network/mt6630/board_sequence.c drivers/network/mt6630/control_start.c drivers/network/mt6630/enumerate.c drivers/network/mt6630/msdc2_pio.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c tests/mt6630_bringup_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 $^ -o $@
+
+test-mt6630: build/mt6630_bringup_test
+
+build/mt6630_resource_lease_test: drivers/network/mt6630/resource_lease.c drivers/network/mt6630/resource_lease.h tests/mt6630_resource_lease_test.c
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/resource_lease.c tests/mt6630_resource_lease_test.c -o $@
+test-mt6630: build/mt6630_resource_lease_test
+
+build/mt6630_windows_board_test: drivers/network/mt6630/windows_board.c tests/mt6630_windows_board_test.c
+	$(CC) $(CFLAGS) -Itests/shared_wdf_stubs -Idrivers/network/mt6630 $^ -o $@
+test-mt6630: build/mt6630_windows_board_test
+
+build/mt6630_sha256_test: drivers/network/mt6630/sha256.c tests/mt6630_sha256_test.c
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 $^ -o $@
+test-mt6630: build/mt6630_sha256_test
+
+build/mt6630_windows_firmware_test: tests/mt6630_windows_firmware_test.c drivers/network/mt6630/windows_firmware.c drivers/network/mt6630/sha256.c
+	$(CC) $(CFLAGS) -Wno-multichar -Itests/firmware_wdk_stubs -Idrivers/network/mt6630 tests/mt6630_windows_firmware_test.c drivers/network/mt6630/sha256.c -o $@
+test-mt6630: build/mt6630_windows_firmware_test
+
+build/mt6630_windows_diagnostic_test: drivers/network/mt6630/windows_diagnostic.c tests/mt6630_windows_diagnostic_test.c
+	$(CC) $(CFLAGS) -Itests/shared_wdf_stubs -Idrivers/network/mt6630 $^ -o $@
+test-mt6630: build/mt6630_windows_diagnostic_test

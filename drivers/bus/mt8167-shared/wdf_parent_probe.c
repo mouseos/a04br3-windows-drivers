@@ -10,6 +10,7 @@
 #include "register_owner.h"
 #include "client_interface.h"
 #include "audio_interface.h"
+#include "wifi_interface.h"
 #include "audio_owner.h"
 #include "usb_interface.h"
 #include "usb_owner.h"
@@ -112,7 +113,7 @@
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
-typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; struct a04_usb_owner usb;
+typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; struct a04_usb_owner usb; ULONG wifiGeneration; int wifiActive;
 #if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 struct a04_codec_domain codecDomain;
 #if A04_SHARED_VOICE_DIAGNOSTIC
@@ -456,6 +457,59 @@ done:
     UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(afe);UNREFERENCED_PARAMETER(length);return -1;
 #endif
 }
+/* No combo/firmware ownership or IRQ lifetime has been proven. */
+static NTSTATUS ParentWifiAcquire(PVOID context,ULONG *generation) { UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(generation);return STATUS_DEVICE_NOT_READY; }
+static NTSTATUS ParentWifiRelease(PVOID context,ULONG generation) { UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(generation);return STATUS_DEVICE_NOT_READY; }
+/* Board operations share the touch mutex. No lease is granted by this probe;
+ * these callbacks become usable only after a real parent has established and
+ * serialized the complete resource/IRQ/power contract. */
+static int ParentWifiLive(PVOID context,ULONG generation)
+{
+ A04_PARENT_CONTEXT *c;int ok;
+ if(!context||KeGetCurrentIrql()!=PASSIVE_LEVEL)return 0;
+ c=ParentContext((WDFDEVICE)context);ExAcquireFastMutex(&c->pwrapLock);
+ ok=c->wifiActive && c->regs.online && !c->regs.poisoned && generation && generation==c->wifiGeneration;
+ ExReleaseFastMutex(&c->pwrapLock);return ok;
+}
+static int ParentWifiUpdateAllowed(unsigned bank,unsigned off,ULONG clear,ULONG set)
+{
+ unsigned p,shift;
+ if(bank==0)return off==0x40 && clear==(7u<<3) && set==0;
+ if(bank!=1)return 0;
+ for(p=0;p<8;p++){
+  static const unsigned pins[]={4,7,68,69,70,71,72,73};
+  unsigned pin=pins[p];shift=(pin%5)*3;
+  if(off==0x300+(pin/5)*16 && clear==(7u<<shift) && set==((pin>=68?1u:0u)<<shift))return 1;
+ }
+ return 0;
+}
+static int ParentWifiWriteAllowed(unsigned b,unsigned off,ULONG v)
+{
+ if(b==0)return (off==0xa0&&v==2)||(off==0x9c&&v==1)||(off==0x6c&&v==(1u<<30))||(off==0xb0&&v==2);
+ if(b!=1)return 0;
+ return ((off==0x104||off==0x108||off==4)&&(v==(1u<<4)||v==(1u<<7))) ||
+  (off==0xe48&&v==((1u<<6)|(1u<<5)|(1u<<10)|(1u<<9)|(1u<<14)|(1u<<13))) ||
+  (off==0xe44&&v==((1u<<4)|(1u<<8)|(1u<<12))) ||
+  (off==0xe58&&v==((1u<<10)|(1u<<9)|(1u<<2)|(1u<<1)|(1u<<4))) ||
+  (off==0xe54&&v==((1u<<8)|1u|(1u<<6)|(1u<<5))) || (off==0x934&&v==0x7e);
+}
+static int ParentWifiOperation(PVOID context,ULONG generation,unsigned bank,unsigned off,ULONG clear,ULONG value,int update)
+{
+ A04_PARENT_CONTEXT *c;enum a04_shared_bank b;uint32_t old;int result=-1;
+ if(!context||KeGetCurrentIrql()!=PASSIVE_LEVEL || (update?!ParentWifiUpdateAllowed(bank,off,clear,value):!ParentWifiWriteAllowed(bank,off,value)))return -1;
+ c=ParentContext((WDFDEVICE)context);b=bank==0?A04_SHARED_TOP:A04_SHARED_GPIO;
+ ExAcquireFastMutex(&c->pwrapLock);
+ if(!c->wifiActive||!generation||generation!=c->wifiGeneration||!c->regs.online||c->regs.poisoned)goto done;
+ if(update){if(ParentRegRead(c,b,off,&old)||old==UINT32_MAX)goto fault;value=(old&~clear)|value;}
+ if(ParentRegWrite(c,b,off,value))goto fault;
+ result=0;goto done;
+fault:c->regs.poisoned=1;c->wifiActive=0;
+done:ExReleaseFastMutex(&c->pwrapLock);return result;
+}
+static int ParentWifiUpdate(PVOID c,ULONG g,unsigned b,unsigned o,ULONG clear,ULONG set)
+{return ParentWifiOperation(c,g,b,o,clear,set,1);}
+static int ParentWifiWrite(PVOID c,ULONG g,unsigned b,unsigned o,ULONG v)
+{return ParentWifiOperation(c,g,b,o,0,v,0);}
 static VOID ParentInterfaceReference(PVOID context) { WdfObjectReference((WDFDEVICE)context); }
 static VOID ParentInterfaceDereference(PVOID context) { WdfObjectDereference((WDFDEVICE)context); }
 static NTSTATUS ParentReadButtons(PVOID context,USHORT *value) {
@@ -601,6 +655,7 @@ static void ParentStop(A04_PARENT_CONTEXT *c,int can_access)
     if(!c->thermalRundownClosed){ExWaitForRundownProtectionRelease(&c->thermalRundown);c->thermalRundownClosed=TRUE;}
 #endif
     ExAcquireFastMutex(&c->pwrapLock);
+    c->wifiActive=0;
     c->regs.online=0;
     c->pmic.online=0;
 #if A04_SHARED_THERMAL_DIAGNOSTIC
@@ -819,7 +874,7 @@ NTSTATUS ChildRequirements(WDFDEVICE child,WDFIORESREQLIST requirements)
         return status;
     }
 #endif
-    if(c->base!=0x10002000u && c->base!=0x11009000u && c->base!=0x11100000u)return STATUS_DEVICE_CONFIGURATION_ERROR;
+    if(c->base!=0x10002000u && c->base!=0x11009000u && c->base!=0x11100000u && c->base!=0x11170000u)return STATUS_DEVICE_CONFIGURATION_ERROR;
     status=WdfIoResourceListCreate(requirements,WDF_NO_OBJECT_ATTRIBUTES,&list);
     if(!NT_SUCCESS(status))return status;
     RtlZeroMemory(&descriptor,sizeof(descriptor));
@@ -882,6 +937,12 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
     if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    if(base==0x11170000u) {
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedWifiInterfaceGuid,NULL);
+        query.SendQueryToParentStack=TRUE;
+        status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    }
     status=WdfFdoAddStaticChild(parent,child);
     if(!NT_SUCCESS(status))WdfObjectDelete(child);
     return status;
@@ -900,6 +961,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     A04_SHARED_THERMAL_INTERFACE thermalIface;
 #endif
     A04_SHARED_AUDIO_INTERFACE audioIface; A04_SHARED_USB_INTERFACE usbIface;
+    A04_SHARED_WIFI_INTERFACE wifiIface;
 #endif
     UNREFERENCED_PARAMETER(driver);
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
@@ -981,6 +1043,15 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     usbIface.Acquire=ParentUsbAcquire;usbIface.SetVbus=ParentUsbVbus;usbIface.Health=ParentUsbHealth;usbIface.Release=ParentUsbRelease;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&usbIface,&A04SharedUsbInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
+    if(!NT_SUCCESS(status))return status;
+    RtlZeroMemory(&wifiIface,sizeof(wifiIface));
+    wifiIface.Header.Size=sizeof(wifiIface);wifiIface.Header.Version=A04_SHARED_WIFI_INTERFACE_VERSION;
+    wifiIface.Header.Context=dev;wifiIface.Header.InterfaceReference=ParentInterfaceReference;
+    wifiIface.Header.InterfaceDereference=ParentInterfaceDereference;
+    wifiIface.Acquire=ParentWifiAcquire;wifiIface.ReleaseQuiescent=ParentWifiRelease;
+    wifiIface.Live=ParentWifiLive;wifiIface.UpdateShared=ParentWifiUpdate;wifiIface.WriteShared=ParentWifiWrite;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&wifiIface,&A04SharedWifiInterfaceGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);
 #endif
 #if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE
     if(!NT_SUCCESS(status))return status;
@@ -996,6 +1067,10 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     if(!NT_SUCCESS(status))return status;
     /* The audio sentinel remains unavailable unless the diagnostic flag is set. */
     status=ParentAddProbeChild(dev,L"MT8167\\AFE",L"0",0xffffffffu);
+    if(!NT_SUCCESS(status))return status;
+    /* The host MMIO range is a separate child resource. IRQ translation and
+     * the EINT5 provider are not established, so no interrupt is advertised. */
+    status=ParentAddProbeChild(dev,L"A04BR3\\MT6630SDIO",L"0",0x11170000u);
 #endif
     return status;
 }

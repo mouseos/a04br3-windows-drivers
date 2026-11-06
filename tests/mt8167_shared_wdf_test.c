@@ -10,14 +10,14 @@ int a04_test_trace_count;
 static ULONG mockAfeRegs[1024];static int mockAfeIgnoreWrite;
 #define mockAfe mockAfeRegs[0]
 #endif
-static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,assertClosedOnLock,closeDuringLock,failMap;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;static A04_SHARED_USB_INTERFACE usb;
+static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,assertClosedOnLock,closeDuringLock,failMap;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;static A04_SHARED_USB_INTERFACE usb;static A04_SHARED_WIFI_INTERFACE wifi;
 #if A04_SHARED_BUTTON_D0_EXPERIMENT
 static ULONG mockInit,mockFsm;static int mockStopDuringRead,mockWacs;
 #if A04_AUDIO_PMIC_TRACE
 static int mockStatusFail;
 #endif
 #endif
-static A04_CHILD_CONTEXT children[4];static unsigned child_count,forward_count,appended,deleted;static int fail_step;static unsigned desc_count,fail_desc;static IO_RESOURCE_DESCRIPTOR descriptor,all_desc[3];
+static A04_CHILD_CONTEXT children[6];static unsigned child_count,forward_count,appended,deleted;static int fail_step;static unsigned desc_count,fail_desc;static IO_RESOURCE_DESCRIPTOR descriptor,all_desc[3];
 A04_CHILD_CONTEXT *ChildContext(WDFDEVICE d){return (A04_CHILD_CONTEXT *)d;}
 A04_PARENT_CONTEXT *ParentContext(WDFDEVICE d){(void)d;return &testContext;}
 void ExInitializeFastMutex(FAST_MUTEX *m){m->held=0;}void ExAcquireFastMutex(FAST_MUTEX *m){if(assertClosedOnLock)assert(testContext.admissionClosed);assert(!m->held);m->held=1;if(closeDuringLock)InterlockedExchange(&testContext.admissionClosed,1);}void ExReleaseFastMutex(FAST_MUTEX *m){assert(m->held);m->held=0;}
@@ -55,10 +55,10 @@ void KeStallExecutionProcessor(ULONG n){(void)n;}int KeGetCurrentIrql(void){retu
 NTSTATUS KeDelayExecutionThread(int mode,int alert,LARGE_INTEGER *i){assert(mode==KernelMode && !alert && testContext.pwrapLock.held && (i->QuadPart==-20000 || i->QuadPart==-200000));return STATUS_SUCCESS;}
 ULONG WdfCmResourceListGetCount(WDFCMRESLIST l){return l->count;}PCM_PARTIAL_RESOURCE_DESCRIPTOR WdfCmResourceListGetDescriptor(WDFCMRESLIST l,ULONG i){return &l->entries[i];}
 void WdfDeviceInitSetPnpPowerEventCallbacks(PWDFDEVICE_INIT i,WDF_PNPPOWER_EVENT_CALLBACKS *p){(void)i;(void)p;}
-NTSTATUS WdfDeviceCreate(PWDFDEVICE_INIT *i,WDF_OBJECT_ATTRIBUTES *a,WDFDEVICE *d){(void)a;if(*i){assert(child_count<4);*d=&children[child_count++];*i=NULL;}else *d=&testContext;return 0;}
+NTSTATUS WdfDeviceCreate(PWDFDEVICE_INIT *i,WDF_OBJECT_ATTRIBUTES *a,WDFDEVICE *d){(void)a;if(*i){assert(child_count<6);*d=&children[child_count++];*i=NULL;}else *d=&testContext;return 0;}
 NTSTATUS WdfDriverCreate(PDRIVER_OBJECT d,PUNICODE_STRING p,void *a,WDF_DRIVER_CONFIG *c,void *h){(void)d;(void)p;(void)a;(void)c;(void)h;return 0;}
 void WdfObjectReference(WDFDEVICE d){(void)d;refs++;}void WdfObjectDereference(WDFDEVICE d){(void)d;refs--;}
-NTSTATUS WdfDeviceAddQueryInterface(WDFDEVICE d,WDF_QUERY_INTERFACE_CONFIG *q){(void)d;if(!q->Interface){assert(q->SendQueryToParentStack);forward_count++;return 0;}if(!memcmp(q->Guid,&A04SharedInterfaceGuid,sizeof(GUID)))memcpy(&input,q->Interface,sizeof(input));else if(!memcmp(q->Guid,&A04SharedAudioInterfaceGuid,sizeof(GUID)))memcpy(&audio,q->Interface,sizeof(audio));else if(!memcmp(q->Guid,&A04SharedUsbInterfaceGuid,sizeof(GUID)))memcpy(&usb,q->Interface,sizeof(usb));else memcpy(&saved,q->Interface,sizeof(saved));return 0;}
+NTSTATUS WdfDeviceAddQueryInterface(WDFDEVICE d,WDF_QUERY_INTERFACE_CONFIG *q){(void)d;if(!q->Interface){assert(q->SendQueryToParentStack);forward_count++;return 0;}if(!memcmp(q->Guid,&A04SharedInterfaceGuid,sizeof(GUID)))memcpy(&input,q->Interface,sizeof(input));else if(!memcmp(q->Guid,&A04SharedAudioInterfaceGuid,sizeof(GUID)))memcpy(&audio,q->Interface,sizeof(audio));else if(!memcmp(q->Guid,&A04SharedUsbInterfaceGuid,sizeof(GUID)))memcpy(&usb,q->Interface,sizeof(usb));else if(!memcmp(q->Guid,&A04SharedWifiInterfaceGuid,sizeof(GUID)))memcpy(&wifi,q->Interface,sizeof(wifi));else memcpy(&saved,q->Interface,sizeof(saved));return 0;}
 void RtlInitUnicodeString(PUNICODE_STRING u,PCWSTR s){u->value=s;}
 PWDFDEVICE_INIT WdfPdoInitAllocate(WDFDEVICE p){(void)p;return (void *)1;}
 void WdfDeviceInitFree(PWDFDEVICE_INIT p){(void)p;}
@@ -111,29 +111,32 @@ int main(void){
 #endif
  assert(!testContext.audio.verify_release && !testContext.audio.online);
 #endif
- assert(child_count==4 && forward_count==12);
+ assert(child_count==5+A04_SHARED_THERMAL_DIAGNOSTIC && forward_count==16+7*A04_SHARED_THERMAL_DIAGNOSTIC);
 #if defined(A04_AUDIO_CHILD_RESOURCES) && A04_AUDIO_CHILD_RESOURCES
- assert(!ChildRequirements(&children[3],NULL) && appended==1 && desc_count==3);
+ assert(!ChildRequirements(&children[3+A04_SHARED_THERMAL_DIAGNOSTIC],NULL) && appended==1 && desc_count==3);
  assert(all_desc[0].Type==CmResourceTypeMemory && all_desc[0].ShareDisposition==CmResourceShareDeviceExclusive && all_desc[0].u.Memory.MinimumAddress.QuadPart==0x11140000 && all_desc[0].u.Memory.Length==0x1000);
  assert(all_desc[1].Type==CmResourceTypeMemory && all_desc[1].u.Memory.MinimumAddress.QuadPart==0x11141000 && all_desc[1].u.Memory.Length==0x9000);
  assert(all_desc[2].Type==CmResourceTypeInterrupt && all_desc[2].ShareDisposition==CmResourceShareDeviceExclusive && all_desc[2].u.Interrupt.MinimumVector==152 && all_desc[2].u.Interrupt.MaximumVector==152);
- for(unsigned i=1;i<=3;i++){desc_count=0;fail_desc=i;assert(ChildRequirements(&children[3],NULL)!=0 && appended==1 && deleted==i);}fail_desc=0;
- desc_count=0;fail_step=3;assert(ChildRequirements(&children[3],NULL)!=0 && appended==1 && deleted==4);fail_step=0;desc_count=0;appended=0;deleted=0;
+ for(unsigned i=1;i<=3;i++){desc_count=0;fail_desc=i;assert(ChildRequirements(&children[3+A04_SHARED_THERMAL_DIAGNOSTIC],NULL)!=0 && appended==1 && deleted==i);}fail_desc=0;
+ desc_count=0;fail_step=3;assert(ChildRequirements(&children[3+A04_SHARED_THERMAL_DIAGNOSTIC],NULL)!=0 && appended==1 && deleted==4);fail_step=0;desc_count=0;appended=0;deleted=0;
 #else
- assert(ChildRequirements(&children[3],NULL)==STATUS_DEVICE_CONFIGURATION_ERROR && appended==0);
+ assert(ChildRequirements(&children[3+A04_SHARED_THERMAL_DIAGNOSTIC],NULL)==STATUS_DEVICE_CONFIGURATION_ERROR && appended==0);
 #endif
  assert(usb.Header.Version==A04_SHARED_USB_INTERFACE_VERSION && usb.Acquire && usb.SetVbus && usb.Health && usb.Release);
- desc_count=0;assert(!ChildRequirements(&children[2],NULL) && desc_count==3 && all_desc[0].u.Memory.MinimumAddress.QuadPart==0x11100000 && all_desc[1].u.Memory.MinimumAddress.QuadPart==0x11110000 && all_desc[2].u.Interrupt.MinimumVector==104);
+ desc_count=0;assert(!ChildRequirements(&children[2+A04_SHARED_THERMAL_DIAGNOSTIC],NULL) && desc_count==3 && all_desc[0].u.Memory.MinimumAddress.QuadPart==0x11100000 && all_desc[1].u.Memory.MinimumAddress.QuadPart==0x11110000 && all_desc[2].u.Interrupt.MinimumVector==104);
  desc_count=0;appended=0;
  assert(!ChildRequirements(&children[0],NULL) && appended==1 && descriptor.Type==CmResourceTypeMemory && descriptor.ShareDisposition==CmResourceShareDeviceExclusive && descriptor.u.Memory.Length==0x1000 && descriptor.u.Memory.MinimumAddress.QuadPart==0x10002000 && descriptor.u.Memory.MaximumAddress.QuadPart==0x10002fff);
  assert(!ChildRequirements(&children[1],NULL) && appended==2 && descriptor.u.Memory.MinimumAddress.QuadPart==0x11009000 && descriptor.u.Memory.MaximumAddress.QuadPart==0x11009fff);
- fail_step=1;assert(ChildRequirements(&children[1],NULL)!=0 && appended==2 && deleted==0);
- fail_step=2;assert(ChildRequirements(&children[1],NULL)!=0 && appended==2 && deleted==1);
- fail_step=3;assert(ChildRequirements(&children[1],NULL)!=0 && appended==2 && deleted==2);fail_step=0;
- children[1].base=0;assert(ChildRequirements(&children[1],NULL)==STATUS_DEVICE_CONFIGURATION_ERROR && appended==2);assert(saved.Header.Version==1 && saved.ReadButtons);
+ assert(!ChildRequirements(&children[4+A04_SHARED_THERMAL_DIAGNOSTIC],NULL) && appended==3 && descriptor.Type==CmResourceTypeMemory && descriptor.ShareDisposition==CmResourceShareDeviceExclusive && descriptor.u.Memory.Length==0x1000 && descriptor.u.Memory.MinimumAddress.QuadPart==0x11170000 && descriptor.u.Memory.MaximumAddress.QuadPart==0x11170fff);
+ fail_step=1;assert(ChildRequirements(&children[1],NULL)!=0 && appended==3 && deleted==0);
+ fail_step=2;assert(ChildRequirements(&children[1],NULL)!=0 && appended==3 && deleted==1);
+ fail_step=3;assert(ChildRequirements(&children[1],NULL)!=0 && appended==3 && deleted==2);fail_step=0;
+ children[1].base=0;assert(ChildRequirements(&children[1],NULL)==STATUS_DEVICE_CONFIGURATION_ERROR && appended==3);assert(saved.Header.Version==1 && saved.ReadButtons);
  assert(input.Version==1 && input.TouchPen && input.ButtonPmicRead);
  assert(audio.Header.Version==A04_SHARED_AUDIO_INTERFACE_VERSION && audio.AcquireMuted && audio.ReleaseQuiescent && audio.PrepareMaskedIrq && audio.BindAfe && audio.Mute && audio.UnmuteMin);
  assert(audio.PrepareMaskedIrq(audio.Header.Context,(PVOID)&audio,0x1000)!=0 && !reads && !writes);
+ assert(wifi.Header.Version==2 && wifi.Acquire && wifi.ReleaseQuiescent && wifi.Live && wifi.UpdateShared && wifi.WriteShared);
+ {ULONG generation=0xdead;assert(!wifi.Live(wifi.Header.Context,generation));assert(wifi.UpdateShared(wifi.Header.Context,generation,1,0x300,7u<<12,0)!=0);assert(wifi.WriteShared(wifi.Header.Context,generation,0,0xa0,2)!=0);assert(wifi.Acquire(wifi.Header.Context,&generation)==STATUS_DEVICE_NOT_READY && generation==0xdead && !reads && !writes);}
  {
  struct Mt8167AudioParentClient wrapper={0};struct mt8167_audio_shared_client client={0};
  audio.Header.InterfaceReference(audio.Header.Context);assert(refs==1);
@@ -250,11 +253,19 @@ int main(void){
   * both under one lock before any unmap. D0 does not enable either in reality. */
  testContext.regs.online=1;testContext.pmic.online=1;
  assert(input.ButtonPmicRead(input.Context,&value)!=0 && !reads && !writes);
+ testContext.admissionClosed=0;
+ testContext.wifiActive=1;testContext.wifiGeneration=9;
+ assert(wifi.Live(wifi.Header.Context,9)==1 && !wifi.Live(wifi.Header.Context,8));
+ assert(!wifi.UpdateShared(wifi.Header.Context,9,1,0x300,7u<<12,0));
+ assert(wifi.UpdateShared(wifi.Header.Context,9,1,0x310,7u<<9,0)!=0);
+ assert(!wifi.WriteShared(wifi.Header.Context,9,0,0xa0,2));
+ assert(wifi.WriteShared(wifi.Header.Context,9,0,0xa0,3)!=0);
+ assert(reads==1 && writes==2);reads=writes=0;
  testContext.admissionClosed=0;closeDuringLock=1;
  assert(ParentLock(&testContext)!=0 && !testContext.pwrapLock.held);closeDuringLock=0;
  testContext.admissionClosed=0;assertClosedOnLock=1;
  ParentSurprise(&testContext);assertClosedOnLock=0;
- assert(testContext.admissionClosed && !testContext.regs.online && !testContext.pmic.online && unmaps==0);
+ assert(testContext.admissionClosed && !testContext.regs.online && !testContext.pmic.online && !testContext.wifiActive && unmaps==0);
  assert(ParentD0(&testContext,0)==STATUS_DEVICE_NOT_READY);
  assert(ParentLock(&testContext)!=0 && !testContext.pwrapLock.held);
  assert(!ParentD0Exit(&testContext,0));
