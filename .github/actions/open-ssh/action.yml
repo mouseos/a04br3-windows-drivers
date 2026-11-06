@@ -74,9 +74,7 @@ runs:
           }
           if (Test-Path $stdout) { Get-Content $stdout }
           if (Test-Path $stderr) { Get-Content $stderr }
-          Stop-Process -Id $process.Id -ErrorAction SilentlyContinue
           if ($setup.ExitCode -ne 0) { throw "SSH setup script failed: $($setup.ExitCode)" }
-          return
         }
         $until = (Get-Date).AddMinutes([int]$env:KEEP_MINUTES)
         $stop = Join-Path $env:GITHUB_WORKSPACE 'end-ssh'
