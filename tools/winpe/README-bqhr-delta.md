@@ -2,15 +2,15 @@
 
 この差分はCPU/USB共有親、PnP/容量監査、タッチ、GPU、TOPRGU、UEFIを置換しない。Windows ARM32自己署名の `bqhr-observe.sys`、`bqhr-observe.inf`、`bqhr-observe.cat`、`usb-bqhr-uart.exe`、`bqhr-observe-test.cer` が必要。`manifest.json` の各SHA-256を照合する。署名済みであっても端末の信頼・PnP・動作は未確認。
 
-対象UEFIに `A04BR3_BATTERY_PROVIDER=1`、`A04BR3_BQ_HANDOFF=1` を確認する。基準のCPU媒体はUEFI `e969a116` で両方1。BQHRは `\\_SB.BAT0.BQHR` の128バイト記録であり、UEFIのACPI NVSから得る。UEFIやWindowsが実際にメソッドを公開・評価するかは起動ごとに未確認。
+対象UEFIに `A04BR3_BATTERY_PROVIDER=1`、`A04BR3_BQ_HANDOFF=1` を確認する。基準のCPU媒体はUEFI `e969a116` で両方1。BQHRは `\_SB.BAT0.BQHR` の128バイト記録であり、UEFIのACPI NVSから得る。UEFIやWindowsが実際にメソッドを公開・評価するかは起動ごとに未確認。
 
-このドライバは `ACPI\\MOU0008` の機能ドライバとしてPnPバインドされ、燃料計の機能ドライバとは同時に使えない。対象のPnP構成とOS担当の監査構成を確認し、MOU0008で他の機能ドライバを必要とする場合はこの差分を起動しない。既存バッテリー機能を引き継がず、I2Cはマップ・読取り・書込みしない。PnP上はリソースを占有しうる。BQHR専用のフィルタではない。
+このドライバは `ACPI\MOU0008` の機能ドライバとしてPnPバインドされ、燃料計の機能ドライバとは同時に使えない。対象のPnP構成とOS担当の監査構成を確認し、MOU0008で他の機能ドライバを必要とする場合はこの差分を起動しない。既存バッテリー機能を引き継がず、I2Cはマップ・読取り・書込みしない。PnP上はリソースを占有しうる。BQHR専用のフィルタではない。
 
 媒体作成時にコピーする。
 
-- `bqhr-observe.inf`、`bqhr-observe.sys`、`bqhr-observe.cat` → `X:\\a04br3\\usb-bqhr\\`
-- `usb-bqhr-uart.exe` → `X:\\a04br3\\`
-- `bqhr-observe-test.cer` → 作成するWIMの既存証明書を残したまま、証明書のサムプリントとBlobをオフラインのSOFTWARE hiveの `Microsoft\\SystemCertificates\\Root\\Certificates` および `TrustedPublisher\\Certificates` に追加し、書込み後に読み戻して照合。既存のCPU/USB親用証明書を削除・置換しない。OS担当の証明書統合作業に同梱し、実機Windowsのストアへ直接インストールしない。ストアへの追加はRTでの署名受理を保証しない。
+- `bqhr-observe.inf`、`bqhr-observe.sys`、`bqhr-observe.cat` → `X:\a04br3\usb-bqhr\`
+- `usb-bqhr-uart.exe` → `X:\a04br3\`
+- `bqhr-observe-test.cer` → 作成するWIMの既存証明書を残したまま、証明書のサムプリントとBlobをオフラインのSOFTWARE hiveの `Microsoft\SystemCertificates\Root\Certificates` および `TrustedPublisher\Certificates` に追加し、書込み後に読み戻して照合。既存のCPU/USB親用証明書を削除・置換しない。OS担当の証明書統合作業に同梱し、実機Windowsのストアへ直接インストールしない。ストアへの追加はRTでの署名受理を保証しない。
 
 OS担当のstartnetを優先して保持する。MOU0008競合がないと判断した構成のみ、既存の共有親・タッチ・USB観測が開始された後、CPUのUART連続観測開始前の順序を保てる位置に以下を追加する。既存のPnP・容量監査を削除・移動せず、UART利用が同時になる場合は連続送信が終わる位置へ調整する。BQHR失敗時もCPU・USB・GPUの診断は続行する。
 
