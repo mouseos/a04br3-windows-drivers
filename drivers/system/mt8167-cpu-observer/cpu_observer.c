@@ -1,5 +1,23 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "cpu_observer.h"
+static int read_snapshot(a04_cpu_read_field read, void *ctx, struct a04_cpu_snapshot *s)
+{
+ uint32_t *fields[]={&s->mux,&s->pll0,&s->pll1,&s->pll_power,
+                     &s->vproc_ctrl,&s->vproc_en,&s->vosel,&s->vosel_on};
+ unsigned i;
+ for (i=0;i<A04_CPU_FIELD_COUNT;i++)
+  if (read(ctx,(enum a04_cpu_field)i,fields[i])) return -1;
+ return 0;
+}
+int a04_cpu_capture(a04_cpu_read_field read, void *ctx, int devinfo_valid,
+                    uint32_t devinfo3, struct a04_cpu_observation *out)
+{
+ struct a04_cpu_snapshot a,b;
+ if (!out) return -1;
+ out->valid=0; out->configured_pll_hz=0; out->vproc_uv=0; out->devinfo_bin=0;
+ if (!read || read_snapshot(read,ctx,&a) || read_snapshot(read,ctx,&b)) return -1;
+ return a04_cpu_observe(&a,&b,devinfo_valid,devinfo3,out);
+}
 int a04_cpu_observe(const struct a04_cpu_snapshot *a, const struct a04_cpu_snapshot *b,
                     int devinfo_valid, uint32_t devinfo3, struct a04_cpu_observation *out)
 {

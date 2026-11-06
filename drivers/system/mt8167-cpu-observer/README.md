@@ -5,6 +5,9 @@ accepts two caller-supplied snapshots of the CPU mux, ARMPLL, and MT6392 VPROC
 selectors, and optionally the trusted Linux-compatible devinfo word 3. A
 mismatch invalidates the entire sample. Equality does not prove an atomic
 snapshot: the resource owner must serialize access and exclude competing writers.
+`a04_cpu_capture` invokes a read-only, named-field callback twice and fails
+closed on a read error or differing values. The owner supplies and validates
+the callback and holds the resource lifetime and locks for the entire call.
 The function performs no hardware access, locking, clock or voltage change,
 thermal policy, or protection. It is not wired to a Windows driver.
 
