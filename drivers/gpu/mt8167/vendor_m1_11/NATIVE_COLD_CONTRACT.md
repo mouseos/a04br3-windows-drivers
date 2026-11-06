@@ -108,3 +108,12 @@ record側background triple、pixel event binding、PBE final emit wordsは本fac
 `native_clear_surface`は単一RT、single sample、linear layout3、packed8入力、output0、identity lane swizzle、norm/gamma/rotationなし、全extent clipの最終emit2wordとnative CSR2qwordを返す。同版GLES format helper 0x22c9c0（ev_a85befce74dbbd23327a59b658c855eab7b0ab00fce16487ae09aece873c2763）、format row0x22 at 0x26ac44（ev_76cf618c0315ebe655426b949e05d391fb66c064eb5dfe3b9ac336f9e1aab919）、layout table at0x265080（ev_f9776c4cf4ad0b451fd2c972655f47fa8e798d233dbc170979d57026a239cad7）を既存producer 0x20ff6cと照合。rowは1 plane、packmode0、norm0、swizzle0/1/2/3。API形式のRGBA float変換は行わない。
 
 output VA0x8000000000、pitch800の場合、emit={0,0x80020}、CSR0=0x0200063c68800000、CSR1=(799<<32)|(height-1)。800x600と800x1280を試験し、surface→EOT codespace連結をASan/UBSan、ARM32 COFFで検証。既存native22 wide-stateと同じCSR配置、modern 3qword形式は使わない。callerはemitをcodespaceへ渡し、CSR pairをRT0へ配置する。完全record・backing・publicationを本factoryは提供しない。
+
+
+## no-streamoutのVDM/PPP終端suffix
+
+`a04_m111_build_terminate_stream`は同版OutputTerminateState 0x1c1facのstreamout objectなし・context+0x7e30 bit5なしの分岐を実装。一次証拠ev_d2f9a3486f50a6cddb02212742471cd5a74f401fb3d6259aa2a8b7c95e74f417、count0条件はev_58565dc9429b268065a2c583e3d74008ac11e518cbcba640b928c30ec53a7cf2。General dataに追加4KiB pageをcold mapし、VDMをpage+0（12 bytes）、PPPをpage+64（12 bytes）へ置く。host有効shadowは76 bytes。VDM STREAM_TERMINATEが最終page末尾64 bytesに入らない配置。PDS/USC/FWbankの増量は不要。
+
+VDM={PPP address high|0x300,PPP address low&~3,0xc0000000}、PPP={0x02000000,screen_xy_max,0}。screen_xy_maxは同版native surface+0x150の完全wordを入力する。HWRT ppp_screenとは別registerであり、modern XMLの32-pixel単位へ変換しない。許容bitはX最大bits18..26、Y最大bits0..8。このsuffixだけで空のTA streamが描画可能であることは未証明。先頭state／clear trigger、TA register残部、data必須初期化の確定は引き続き必要。
+
+Windows選定例として、data arenaが[0x65c0200000,0x65c0400000)で現allocationが0x158000 bytesなら、直後0x65c0358000へこの1pageを追加できる（owner inventory照合必須）。この場合PPP VA=0x65c0358040、data backing合計0x159000 bytes。物理ページとPT mapping、barrier、GPU owner前のcopy完了はruntime担当。screen_xy_maxの最終取得／寸法profile照合は未完了なので推測値をpublishしない。
