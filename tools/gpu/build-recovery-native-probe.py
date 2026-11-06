@@ -18,6 +18,7 @@ def main():
     temporary=out/"tmp";temporary.mkdir(exist_ok=True)
     env=os.environ.copy();env["TMPDIR"]=str(temporary)
     products={"recovery-native-clear":["-fPIE","-pie","-ldl"],
+              "recovery-native-stage":["-fPIE","-pie"],
               "recovery-native-bridge-capture.so":["-fPIC","-shared","-pthread"]}
     manifest={"hardware_executed":False,"compiler":str(compiler),"commands":[],"products":{}}
     manifest["sources"]={p.name:hashlib.sha256(p.read_bytes()).hexdigest()

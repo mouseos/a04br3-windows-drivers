@@ -68,3 +68,12 @@ wire v1の追加kind3はPMR/CPU/GPU/offset/size/protection/provenanceと内容�
 `read-recovery-native-capture.py <capture> --resources-directory <新規root内dir>`でresource内容を別binへ抽出する。既存dirへの上書きは拒否し、JSONにはhash・capture内offset・未捕捉理由を記す。VDM/PPP/USC/PDS/regionの参照が全て入ったかはGPU VA/PMR offsetとsnapshot範囲で判断する。CPU mappingがない資源、prefix外のsuballocation、直接syscallやnamespaceによる見逃しは依然として阻害条件であり、未取得をzeroと推定しない。
 
 CPU-only試験はtest-recovery-native-memory.c（所有権、実PROT_NONE、疎、handle再利用、read上限）、test-recovery-native-mmap.c（通常fileでのsyscall転送）、test-recovery-native-capture.py（wire破損・上限・unknown維持）。人工metadataはunit fixtureだけでありGPUへ渡さない。これらの合格とNDK最終linkは実GPU成功の証拠ではない。
+
+
+## private namespace/chroot launcherと完全command manifest
+
+recovery-native-stage --run /tmp/<fresh-stage>は主担当が実行する。自身はGPU fdを開かず、unshare(CLONE_NEWNS)→mount propagationをprivate→/tmp内chrootを作る。実Recoveryの/systemをsystem-originとして保持し、APEX/dev/proc/sys等を継承、元vendorを/vendorへbind、/system/vendorを同じtreeへのsymlinkとする。/lib/firmwareにも同梱FWをbindする。binとdeps、capture用runtimeを別々にbindするためparent/childの再帰mountは作らない。Windowsや/dataや実partitionはmountせず、既存Recoveryのmountやmodule parameterも変更しない。
+
+namespace不可、未知custom FW path、chroot/bind失敗はvendor load前に明示終了。FW pathは空(default)、/vendor/firmware、/system/vendor/firmware、/lib/firmwareを扱う。これはsource firmware_classの同期filp_open経路向けのviewであり、実RecoveryのKM/FW互換確認を代替しない。launcher自体もNDKで最終link済みだが、実機のnamespace/chroot動作は未試験。
+
+prepare-recovery-native-capture.pyに--plan-directory <新規root内dir>を渡すと、実serialを埋めたcommand-manifest.jsonとREA scenario-vendor-direct.json/scenario-preflight.jsonも作る。生成だけでADBを実行しない。主担当がKM互換を確認し、staging_commands_NOT_EXECUTEDを順番に実行した後、rea_cli_capture_NOT_EXECUTEDを一回実行する。launcherが環境を設定するため、launcher自身へLD_PRELOADを設定しない。回収元は/tmp/<stage>/runtime/capture-01.bin。GPU-only資源などの未捕捉はunknownのまま残す。

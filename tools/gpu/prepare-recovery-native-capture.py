@@ -7,6 +7,7 @@ from pathlib import Path
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--plan-directory",type=Path,help="新規host directoryへmanifest/scenarioも保存。ADBは実行しない")
     ap.add_argument("--serial",required=True,help="主担当が確認した対象serial")
     ap.add_argument("--bundle",type=Path,required=True)
     ap.add_argument("--log-directory",type=Path,required=True,help="root内ios-feasibilityログ保存先")
@@ -28,39 +29,42 @@ def main():
                 "idle_timeout_ms":timeout,"finalization_ms":3000,
                 "terminal":{"columns":160,"rows":40,"scrollback":1500},
                 "limits":{"output_bytes":262144,"processes":16}}
-    staged=[("bin/recovery-native-clear","recovery-native-clear"),
-            ("bin/recovery-native-bridge-capture.so","recovery-native-bridge-capture.so"),
+    staged=[("bin/recovery-native-clear","bin/recovery-native-clear"),
+            ("bin/recovery-native-stage","bin/recovery-native-stage"),
+            ("bin/recovery-native-bridge-capture.so","bin/recovery-native-bridge-capture.so"),
             ("source/tools/gpu/recovery-native-preflight.sh","recovery-native-preflight.sh")]
-    commands=[shell(["mkdir",device])]
+    commands=[shell(["mkdir",device]),shell(["mkdir",device+"/bin"])]
     for source,name in staged:
         if not (bundle/source).is_file():ap.error("missing bundle file: "+source)
         commands.append(adb("push",str(bundle/source),device+"/"+name))
     for directory in ["original-vendor","platform-candidates"]:
         if (bundle/directory).is_dir():commands.append(adb("push",str(bundle/directory),device+"/"+directory))
-    commands.append(shell(["chmod","700",device+"/recovery-native-clear"]))
+    commands.append(shell(["chmod","700",device+"/bin/recovery-native-clear",device+"/bin/recovery-native-stage"]))
     preflight=capture(["sh",device+"/recovery-native-preflight.sh","--inspect"],15000)
-    common=["env","A04_M111_CAPTURE="+device+"/capture-01.bin",
-            "LD_PRELOAD="+device+"/recovery-native-bridge-capture.so"]
-    direct=capture(common+["LD_LIBRARY_PATH="+device+"/platform-candidates:/vendor/lib64:/vendor/lib64/egl:/system/lib64",
-            device+"/recovery-native-clear","--run","/vendor/lib64/egl/libEGL_mtk.so",
-            "/vendor/lib64/egl/libGLESv2_mtk.so"],45000)
-    platform=capture(common+[device+"/recovery-native-clear","--run",
-            "/system/lib64/libEGL.so","/system/lib64/libGLESv2.so"],45000)
-    print(json.dumps({"executed":False,"requires_primary_recovery_authorization":True,
+    direct=capture([device+"/bin/recovery-native-stage","--run",device],45000)
+    result={"executed":False,"requires_primary_recovery_authorization":True,
         "serial_must_be_confirmed_by_primary":serial,"staging_commands_NOT_EXECUTED":commands,
         "rea_host_environment":{"TMPDIR":str(logs/"rea-runtime-tmp")},
         "rea_cli_capture_NOT_EXECUTED":["env","TMPDIR="+str(logs/"rea-runtime-tmp"),"rea","capture-process",str(bundle/"scenario-vendor-direct.json"),"--format","json","--full-output"],
         "rea_preflight":preflight,"rea_capture_vendor_direct":direct,
-        "rea_capture_platform_loader_alternative":platform,
+        "kernel_compatibility_must_be_confirmed":True,
+        "metadata_before_activation_NOT_EXECUTED":shell(["sh","-c",'for p in /proc/pvr/version /sys/kernel/debug/pvr/version /sys/module/pvrsrvkm/version /sys/module/firmware_class/parameters/path; do if [ -r "$p" ]; then echo "SOURCE $p"; cat "$p"; fi; done']),
         "staging_layout":{
             "vendor_candidate":device+"/original-vendor",
             "platform_candidate":device+"/platform-candidates",
             "required_absolute_alias":"/system/vendor/lib64/egl/libGLESv2_mtk.so",
             "required_firmware":"kernel firmware search path/rgx.fw.22.40.54.30",
-            "activation":"未実施。/tmp pushのみでは固定pathは解決しない。依存closureと主担当のnamespace配置承認が必要"},
-        "selection":"主担当が依存libraryとnamespaceを確認して片方だけを選ぶ。同じcapture名で両方を実行しない。",
-        "retrieval_command_NOT_EXECUTED":adb("pull",device+"/capture-01.bin",str(logs/"runtime-capture-01.bin")),
+            "activation":"recovery-native-stageがprivate mount namespaceと/tmp内chrootを作成。Recoveryの/system・Bionic・APEXを保持し/vendorと/system/vendor、/lib/firmwareを固定。/data/Windows/実partitionにはmountも書込みもしない。"},
+        "selection":"主担当が実KM互換を確認後、REAでvendor-direct scenarioを1回だけ実行。launcherは実機未試験。namespace不可/未知FW pathはGPU open前に終了。",
+        "retrieval_command_NOT_EXECUTED":adb("pull",device+"/runtime/capture-01.bin",str(logs/"runtime-capture-01.bin")),
         "evidence_export_path":str(logs/"runtime-rea-evidence.json"),
         "parse_after_retrieval":["python3","-B",str(bundle/"source/tools/gpu/read-recovery-native-capture.py"),str(logs/"runtime-capture-01.bin"),"--resources-directory",str(logs/"runtime-resources-01")],
-        "success":"PowerVR renderer, full readback match, complete pre/post pairs, ioctl/bridge success, broken=0. Native resource completeness separately requires every VDM/PPP/USC/PDS/region reference to be covered; unknown is not success. GPU/FW addresses cannot be replayed unchanged"},indent=2))
+        "success":"PowerVR renderer, full readback match, complete pre/post pairs, ioctl/bridge success, broken=0. Native resource completeness separately requires every VDM/PPP/USC/PDS/region reference to be covered; unknown is not success. GPU/FW addresses cannot be replayed unchanged"}
+    if args.plan_directory is not None:
+        output=args.plan_directory.resolve();output.mkdir(exist_ok=False)
+        result["rea_cli_capture_NOT_EXECUTED"][4]=str(output/"scenario-vendor-direct.json")
+        for name,key in [("scenario-vendor-direct.json","rea_capture_vendor_direct"),("scenario-preflight.json","rea_preflight")]:
+            (output/name).write_text(json.dumps(result[key],indent=2)+"\n")
+        (output/"command-manifest.json").write_text(json.dumps(result,indent=2)+"\n")
+    print(json.dumps(result,indent=2))
 if __name__=="__main__":main()
