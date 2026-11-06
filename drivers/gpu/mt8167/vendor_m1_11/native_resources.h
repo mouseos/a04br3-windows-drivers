@@ -66,6 +66,14 @@ struct a04_m111_native_bank {
     RGXFWIF_FREELIST freelist[2] __attribute__((aligned(64)));
     RGXFWIF_HWRTDATA hwrt[2] __attribute__((aligned(64)));
 };
+/* Frozen CPU/FW storage ABI used by NATIVE_COLD_CONTRACT.md. */
+_Static_assert(sizeof(struct a04_m111_native_bank)==0x400,"native bank size");
+_Static_assert(offsetof(struct a04_m111_native_bank,freelist)==0x40,"native freelists");
+_Static_assert(offsetof(struct a04_m111_native_bank,hwrt)==0xc0,"native HWRT slots");
+_Static_assert(sizeof(RGXFWIF_FREELIST)==0x40,"native freelist stride");
+_Static_assert(sizeof(RGXFWIF_HWRTDATA)==0x188,"native HWRT stride");
+_Static_assert(offsetof(RGXFWIF_HWRTDATA,sTACleanupState)==0xd0,"native TA cleanup");
+_Static_assert(offsetof(RGXFWIF_HWRTDATA,s3DCleanupState)==0xd8,"native 3D cleanup");
 struct a04_m111_native_addresses {
     uint32_t target, freelist[2], hwrt[2], ta_cleanup[2], three_d_cleanup[2];
 };
