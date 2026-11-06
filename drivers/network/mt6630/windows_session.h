@@ -12,6 +12,10 @@ struct a04_windows_session_platform {
  int (*connect_masked_irq)(void *,struct a04_windows_msdc2 *);
  int (*mask_and_drain_irq)(void *);
  int (*drain_io)(void *);
+ /* Called after IRQ and I/O drain, before unmap/release. Must establish that
+  * combo and firmware no longer use leased resources; a mask alone is not
+  * proof. Failure retains the mapping and lease. No SDIO after life stop. */
+ int (*quiesce_combo)(void *);
 };
 enum a04_windows_session_state { A04_SESSION_OFF,A04_SESSION_STARTING,A04_SESSION_READY,A04_SESSION_STOPPED,A04_SESSION_QUARANTINED,A04_SESSION_REJECTED };
 struct a04_windows_session {
