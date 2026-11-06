@@ -307,3 +307,31 @@ and [PutScatterGatherList](https://learn.microsoft.com/en-us/windows-hardware/dr
 as transfer-scoped operations, with Put flushing adapter buffers. Neither the
 CPU readback in the older 32x32 diagnostic nor a GPU fence proves the new
 display mapping is coherent.
+
+### Display resource acquisition UART diagnostics
+
+For diagnostic autostart builds, `A04DISP STEP=0000003F` is the exact
+`A04DisplayResources::Start` status (rather than the generic worker status).
+Steps 40–4A print integers in the existing STATUS field: 40 is input flags
+(PDO present bit 0, device-info present bit 1, matching PDO bit 2, existing
+adapter bit 3, existing OVL mapping bit 4, IRQL in bits 8+); 41 is the
+translated full-resource-descriptor count (`FFFFFFFF` means null); 42 is
+`full-index << 16 | partial-count`; and 43 is `full-index << 24 |
+partial-index << 16 | share-disposition << 8 | resource-type`. For each
+memory entry among the first 16 partial descriptors, 44/45/46 provide start
+low/high and length. 47 encodes OVL match count, IRQ count, and exclusive
+OVL/IRQ bits 16/17. Step 48 bits 0–5 indicate adapter, operations, operations
+size, GetScatterGatherList, PutScatterGatherList, and PutDmaAdapter; step 49
+is the returned map-register count, and 4A reports MMIO mapping status.
+Resource data is observational and does not authorize an IRQ or OVL write.
+
+The display ACPI device in the 6d0bfbd firmware had no local `_CCA`; its GPU
+sibling declares `_CCA=0`. ARM ACPI requires a coherency declaration for a
+DMA-capable device, subject to ancestor inheritance. Device-specific UEFI
+change `c19794d5` adds `_CCA=0` conservatively; its effect on Windows RT is
+not established until a newly built firmware is tested. The display DMA
+adapter request now declares `ScatterGather=FALSE`: OVL uses one linear
+address, not a scatter/gather descriptor list. This still requires the OS to
+return an appropriate mapping and does not establish bounce, cache, stop, or
+frame-boundary safety. An actual failure point cannot be identified from the
+old generic `STEP=30 STATUS=C00000A3` alone.
