@@ -216,6 +216,7 @@ typedef struct {
     struct a04_shared_scanout *shared_owner;
 #if A04_GE8300_SHARED_FULL_FRAME
     struct a04_shared_frame_sequence shared_frame;
+    ULONGLONG shared_frame_started;
 #endif
 #endif
 #endif
@@ -1157,6 +1158,7 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
         else {
             if(!a04_shared_frame_accept(&c->shared_frame,tile->frame,tile->index)) status=STATUS_INVALID_DEVICE_STATE;
             else {
+                if(!tile->index)c->shared_frame_started=KeQueryInterruptTime();
                 status=a04_vendor_render_copy_shared_tile(&c->vendor_copy,&c->vendor_start,
                     c->shared_owner,&c->shared_tables,tile->pixels,tile->index,&result);
                 if(NT_SUCCESS(status)) {
@@ -1165,6 +1167,10 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
                     else {c->shared_frame.last_task=tile->task;c->shared_frame.last_flush=tile->flush;}
                 }
                 a04_shared_frame_complete_tile(&c->shared_frame,NT_SUCCESS(status));
+                if(NT_SUCCESS(status) && tile->index==999u) {
+                    GpuPrint("GE8300 full frame ms=");
+                    GpuHex((ULONG)((KeQueryInterruptTime()-c->shared_frame_started)/10000u));GpuPrint("\n");
+                }
                 if(c->vendor_start.command_poisoned) {
                     c->vendor_service_online=FALSE;InterlockedExchange(&c->vendor_service_closed,1);
                 }
