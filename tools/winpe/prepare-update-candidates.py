@@ -5,6 +5,7 @@ This creates local candidate inputs only; it does not authorize installation.
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,8 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKSPACE = ROOT.parents[1]
+name_spec = importlib.util.spec_from_file_location('hardware_names', ROOT/'tools/winpe/verify-hardware-display-names.py')
+hardware_names = importlib.util.module_from_spec(name_spec); name_spec.loader.exec_module(hardware_names)
 WIM_HASH = '66b1db86efc8f4451ca487bd4837d249423edd4e87f5e93255599311d6674752'
 TOP_ZIP_HASH = 'b8ff87573ef02e0c39767aba062dcd3e00ae8613445999b259576bf472d00571'
 PINS = {
@@ -48,7 +51,7 @@ def main():
     out.mkdir(parents=True)
     scratch = out/'scratch'; scratch.mkdir()
     env = dict(os.environ, TMPDIR=str(scratch))
-    subprocess.run([str(wimlib), 'extract', str(wim), '1', '/a04br3/mt8167-shared', '/a04br3/bu21025-shared', '/Windows/System32/Drivers/mt8167-toprgu.sys', '--dest-dir='+str(scratch), '--no-acls'], env=env, check=True)
+    subprocess.run([str(wimlib), 'extract', str(wim), '1', '/a04br3/mt8167-shared', '/a04br3/bu21025-shared', '/Windows/System32/Drivers/mt8167-toprgu.sys', '/a04br3/a04-msdc-probe.inf', '--dest-dir='+str(scratch), '--no-acls'], env=env, check=True)
     for folder in ('parent','touch','toprgu'):
         (out/folder).mkdir()
     for name in ('mt8167-shared.sys','shared-parent.inf','shared-parent.cat'):
@@ -63,6 +66,12 @@ def main():
         if digest(out/name) != expected: raise ValueError('candidate hash mismatch: '+name)
     if digest(scratch/'mt8167-toprgu.sys') != PINS['toprgu/mt8167-toprgu.sys']:
         raise ValueError('TOPRGU WIM and package differ')
+    descriptions = {}
+    for name,(key,expected) in hardware_names.EXPECTED.items():
+        descriptions[name]=hardware_names.check(out/name,key,expected)
+    msdc=scratch/'a04-msdc-probe.inf'
+    if digest(msdc)!=hardware_names.BOOT_INF_SHA256:raise ValueError('MSDC WIM INF differs')
+    descriptions['msdc']=hardware_names.check(msdc,'devicedescription','MediaTek MT8167 MSDC eMMC Host Controller')
     signers = {}
     for folder, sysfile, catfile in (('toprgu','mt8167-toprgu.sys','mt8167-toprgu.cat'),('parent','mt8167-shared.sys','shared-parent.cat'),('touch','bu21025.sys','bu21025.cat')):
         d=out/folder; signature=scratch/(folder+'.p7'); pem=d/'signer.pem'; der=d/'signer.cer'
@@ -73,7 +82,7 @@ def main():
         for name in (sysfile,catfile):
             subprocess.run([str(verify),'verify','-CAfile',str(pem),'-in',str(d/name)],check=True,stdout=subprocess.DEVNULL)
         signers[folder]={'sha256':digest(der),'sha1':hashlib.sha1(der.read_bytes()).hexdigest().upper()}
-    result={'source_wim_sha256':WIM_HASH,'top_zip_sha256':TOP_ZIP_HASH,'files':PINS,'signers':signers,
+    result={'source_wim_sha256':WIM_HASH,'top_zip_sha256':TOP_ZIP_HASH,'files':PINS,'signers':signers,'device_display_names':descriptions,
             'status':'candidate hashes and signatures verified; catalog membership, offline binding, transaction recovery and target RT acceptance still require verification'}
     (out/'manifest.json').write_text(json.dumps(result,indent=2)+'\n')
     print(json.dumps(result,indent=2))

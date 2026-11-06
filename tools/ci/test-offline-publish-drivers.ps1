@@ -11,6 +11,9 @@ try {
  foreach($k in $files.Keys){$name=$files[$k];[IO.File]::WriteAllText("R:\Windows\System32\drivers\$name.a04restore","new-$name");$h=(Get-FileHash -Algorithm SHA256 "R:\Windows\System32\drivers\$name.a04restore").Hash;[IO.File]::WriteAllBytes("S:\a04br3\driver-trust\$k-sys.sha256",(Bytes $h))}
  [IO.File]::WriteAllText('R:\Windows\System32\drivers\mt8167-toprgu.sys','old-top')
  [IO.File]::WriteAllText('R:\Windows\System32\drivers\bu21025.sys','old-touch')
+ Set-Content -LiteralPath 'R:\Windows\System32\drivers\mt8167-toprgu.sys' -Stream 'fixture' -Value 'original-stream'
+ (Get-Item -Force 'R:\Windows\System32\drivers\mt8167-toprgu.sys').Attributes = 'Hidden'
+ $attrTop=(Get-Item -Force 'R:\Windows\System32\drivers\mt8167-toprgu.sys').Attributes
  $aclTop=(Get-Acl 'R:\Windows\System32\drivers\mt8167-toprgu.sys').Sddl;$aclTouch=(Get-Acl 'R:\Windows\System32\drivers\bu21025.sys').Sddl
  $src=[IO.File]::ReadAllText("$root\tools\winpe\offline-publish-drivers.c").Replace('L"C:\\','L"R:\\').Replace('L"X:\\','L"S:\\');[IO.File]::WriteAllText("$base\fixture.c",$src)
  $inc=Join-Path $kit 'Include';$lib=Join-Path $kit 'Lib\winv6.3\um\x64'
@@ -24,8 +27,10 @@ try {
  & "$base\fixture.exe";if($LASTEXITCODE){Write-Host "TOP_ACL_BEFORE=$aclTop";Write-Host "TOP_ACL_AFTER=$((Get-Acl 'R:\Windows\System32\drivers\mt8167-toprgu.sys').Sddl)";throw 'publish failed'}
  foreach($name in $files.Values){if([IO.File]::ReadAllText("R:\Windows\System32\drivers\$name") -ne "new-$name" -or (Test-Path "R:\Windows\System32\drivers\$name.a04restore")){throw 'published file mismatch'}}
  if((Get-Acl 'R:\Windows\System32\drivers\mt8167-toprgu.sys').Sddl -ne $aclTop -or (Get-Acl 'R:\Windows\System32\drivers\bu21025.sys').Sddl -ne $aclTouch){throw 'target ACL changed'}
+ if((Get-Item -Force 'R:\Windows\System32\drivers\mt8167-toprgu.sys').Attributes -ne $attrTop -or (Get-Content -LiteralPath 'R:\Windows\System32\drivers\mt8167-toprgu.sys' -Stream fixture -Raw).Trim() -ne 'original-stream'){throw 'target attribute or alternate stream changed'}
  # A protected descriptor that cannot be preserved exactly must fail closed.
  Remove-Item 'R:\Windows\System32\drivers\mt8167-shared.sys'
+ (Get-Item -Force 'R:\Windows\System32\drivers\mt8167-toprgu.sys').Attributes = 'Normal'
  [IO.File]::WriteAllText('R:\Windows\System32\drivers\mt8167-toprgu.sys','old-top')
  [IO.File]::WriteAllText('R:\Windows\System32\drivers\bu21025.sys','old-touch')
  $acl=Get-Acl 'R:\Windows\System32\drivers\mt8167-toprgu.sys';$acl.SetAccessRuleProtection($true,$true);Set-Acl 'R:\Windows\System32\drivers\mt8167-toprgu.sys' $acl
