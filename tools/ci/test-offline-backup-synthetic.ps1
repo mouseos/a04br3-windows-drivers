@@ -10,7 +10,7 @@ try {
  if($LASTEXITCODE){throw 'subst target failed'}
  & subst.exe S: "$base\esp"
  if($LASTEXITCODE){throw 'subst ESP failed'}
- New-Item -ItemType Directory -Force 'R:\Windows\System32\config','R:\Windows\System32\drivers','S:\EFI\Boot' | Out-Null
+ New-Item -ItemType Directory -Force 'R:\Windows\System32\config','R:\Windows\System32\config\TxR','R:\Windows\System32\drivers','S:\EFI\Boot' | Out-Null
  [IO.File]::WriteAllText('S:\EFI\Boot\bootarm.efi','fixture')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM','original-system')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM.LOG1','original-log')
@@ -31,35 +31,43 @@ try {
  if($LASTEXITCODE){throw 'fixture compilation failed'}
  & lld-link /subsystem:console /machine:x64 /entry:mainCRTStartup /nodefaultlib "$base\fixture.obj" "$lib\kernel32.lib" "$lib\advapi32.lib" "/out:$base\fixture.exe"
  if($LASTEXITCODE){throw 'fixture link failed'}
- [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM{fixture}.TM.blf','sidecar')
- & "$base\fixture.exe"
- if(!$LASTEXITCODE -or (Test-Path 'S:\A04BACKUP')){throw 'sidecar was not rejected before journal creation'}
- Remove-Item -LiteralPath 'R:\Windows\System32\config\SYSTEM{fixture}.TM.blf'
+ [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM{fixture}.TM.blf','original-system-sidecar')
+ [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE{fixture}.TMContainer01.regtrans-ms','original-software-sidecar')
+ [IO.File]::WriteAllText('R:\Windows\System32\config\TxR\{fixture}.TxR.0.regtrans-ms','original-txr')
  $env:A04_FAKE_FULL='1'
  & "$base\fixture.exe"
  if(!$LASTEXITCODE -or (Test-Path 'S:\A04BACKUP')){throw 'capacity failure did not stop before journal creation'}
  Remove-Item Env:A04_FAKE_FULL
  & "$base\fixture.exe"
  if($LASTEXITCODE){throw 'fixture backup failed'}
+ & "$base\fixture.exe" --probe
+ if($LASTEXITCODE){throw 'valid recovery journal probe failed'}
+ & "$base\fixture.exe" --unknown
+ if(!$LASTEXITCODE){throw 'unknown command accepted'}
  (Get-Item -Force 'R:\Windows\System32\config\SYSTEM').Attributes = 'Normal'
  [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM','changed')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE','changed')
  [IO.File]::WriteAllText('R:\Windows\System32\drivers\mt8167-shared.sys','new')
- [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE{new}.TM.blf','sidecar')
+ [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM{fixture}.TM.blf','changed-sidecar')
+ [IO.File]::WriteAllText('R:\Windows\System32\config\TxR\{fixture}.TxR.0.regtrans-ms','changed-txr')
+ [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE{new}.TM.blf','new-sidecar')
  & "$base\fixture.exe" --restore
- if(!$LASTEXITCODE -or [IO.File]::ReadAllText('R:\Windows\System32\config\SOFTWARE') -ne 'changed'){throw 'new sidecar did not block replay before mutation'}
+ if(!$LASTEXITCODE -or [IO.File]::ReadAllText('R:\Windows\System32\config\SOFTWARE') -ne 'changed'){throw 'unrecorded sidecar did not block replay before mutation'}
+ if([IO.File]::ReadAllText('R:\Windows\System32\config\SOFTWARE{new}.TM.blf') -ne 'new-sidecar'){throw 'unrecorded sidecar modified'}
  Remove-Item -LiteralPath 'R:\Windows\System32\config\SOFTWARE{new}.TM.blf'
  & "$base\fixture.exe" --restore
  if($LASTEXITCODE){throw 'fixture replay failed'}
  if([IO.File]::ReadAllText('R:\Windows\System32\config\SYSTEM') -ne 'original-system'){throw 'SYSTEM content mismatch'}
  if([IO.File]::ReadAllText('R:\Windows\System32\config\SOFTWARE') -ne 'original-software'){throw 'SOFTWARE content mismatch'}
+ if([IO.File]::ReadAllText('R:\Windows\System32\config\SYSTEM{fixture}.TM.blf') -ne 'original-system-sidecar'){throw 'SYSTEM sidecar mismatch'}
+ if([IO.File]::ReadAllText('R:\Windows\System32\config\TxR\{fixture}.TxR.0.regtrans-ms') -ne 'original-txr'){throw 'TxR mismatch'}
  if(Test-Path 'R:\Windows\System32\drivers\mt8167-shared.sys'){throw 'new file not removed'}
  if((Get-Acl 'R:\Windows\System32\config\SYSTEM').Sddl -ne $acl){throw 'ACL mismatch'}
  if(-not ((Get-Item -Force 'R:\Windows\System32\config\SYSTEM').Attributes -band [IO.FileAttributes]::Hidden)){throw 'attributes mismatch'}
  if((Get-Content -LiteralPath 'R:\Windows\System32\config\SYSTEM' -Stream fixture -Raw).Trim() -ne 'alternate stream'){throw 'alternate stream mismatch'}
  & "$base\fixture.exe" --restore
  if($LASTEXITCODE){throw 'fixture repeat replay failed'}
- foreach($index in 0..10){
+ foreach($index in 0..13){
    $env:A04_FAIL_AFTER="$index"
    & "$base\fixture.exe" --restore
    if($LASTEXITCODE -ne 98){throw "fixture interruption failed at $index"}
@@ -67,7 +75,7 @@ try {
    & "$base\fixture.exe" --restore
    if($LASTEXITCODE){throw "fixture resume failed at $index"}
  }
- foreach($index in @(0,2,4,10)){
+ foreach($index in @(0,2,4,10,11,12,13)){
    $env:A04_FAIL_TEMP="$index"
    & "$base\fixture.exe" --restore
    if($LASTEXITCODE -ne 98){throw "temporary-file interruption failed at $index"}
@@ -76,6 +84,8 @@ try {
    if($LASTEXITCODE){throw "temporary-file resume failed at $index"}
  }
  [IO.File]::AppendAllText('S:\A04BACKUP\item00.bin','corruption')
+ & "$base\fixture.exe" --probe
+ if(!$LASTEXITCODE){throw 'corrupted journal probe accepted'}
  [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE','do-not-overwrite')
  & "$base\fixture.exe" --restore
  if(!$LASTEXITCODE){throw 'corrupted journal accepted'}

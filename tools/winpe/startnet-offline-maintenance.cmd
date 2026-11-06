@@ -8,7 +8,19 @@ if exist E:\EFI\Boot\bootarm.efi goto ready
 mountvol E: /s
 if errorlevel 1 goto espfail
 :ready
+if exist E:\A04BACKUP\READY goto journal
+if exist E:\A04BACKUP goto incomplete
 echo OFFLINE_MAINTENANCE_READY_NO_UPDATE
+cmd.exe /k
+goto end
+:journal
+X:\a04br3\offline-backup.exe --probe
+if errorlevel 1 goto incomplete
+echo OFFLINE_RECOVERY_JOURNAL_AVAILABLE_NO_UPDATE
+cmd.exe /k
+goto end
+:incomplete
+echo OFFLINE_RECOVERY_JOURNAL_UNVERIFIED_NO_UPDATE
 cmd.exe /k
 goto end
 :initfail
