@@ -43,6 +43,7 @@ def main():
     p.add_argument('--package', type=Path, required=True)
     p.add_argument('--wimlib', type=Path, required=True)
     p.add_argument('--osslsigncode', type=Path, required=True)
+    p.add_argument('--driver-trust', type=Path, help='verified exact-driver trust payload')
     p.add_argument('--output', type=Path, required=True)
     a = p.parse_args()
     wim, esp, info, tool, verifier = map(builder.regular, (a.wim,a.esp,a.source_manifest,a.wimlib,a.osslsigncode))
@@ -52,14 +53,16 @@ def main():
     src = json.loads(info.read_text()); pkg = json.loads((package/'manifest.json').read_text(encoding='utf-8-sig'))
     if sha(wim)!=src['wim_sha256'] or sha(esp)!=src['esp_sha256']:
         raise ValueError('source manifest mismatch')
-    files = {n: builder.regular(package/n) for n in ('offline-backup.exe','release-offline-volume.exe','maintenance-test.cer')}
+    names=['offline-backup.exe','release-offline-volume.exe','maintenance-test.cer']
+    if a.driver_trust:names.append('offline-hive-apply.exe')
+    files = {n: builder.regular(package/n) for n in names}
     for n,f in files.items():
         if sha(f)!=pkg['files'][n].lower():raise ValueError('package hash mismatch')
     cert = files['maintenance-test.cer'].read_bytes(); thumb = hashlib.sha1(cert).hexdigest().upper()
     if thumb != pkg['thumbprint'].upper():raise ValueError('certificate thumbprint mismatch')
     out.mkdir(parents=True); scratch=out/'scratch';scratch.mkdir()
     pem=scratch/'test.pem';pem.write_text(ssl.DER_cert_to_PEM_cert(cert))
-    for n in ('offline-backup.exe','release-offline-volume.exe'):
+    for n in (x for x in names if x.endswith('.exe')):
         data=files[n].read_bytes(); pe=struct.unpack_from('<I',data,0x3c)[0]
         if data[:2]!=b'MZ' or data[pe:pe+4]!=b'PE\0\0' or struct.unpack_from('<H',data,pe+4)[0]!=0x1c4:
             raise ValueError('tool is not ARMNT')
@@ -70,6 +73,18 @@ def main():
            '/a04br3/restore-offline-backup.cmd':ROOT/'tools/winpe/restore-offline-backup.cmd',
            '/a04br3/maintenance-test.cer':files['maintenance-test.cer'],
            '/Windows/System32/startnet.cmd':ROOT/'tools/winpe/startnet-offline-maintenance.cmd'}
+    if a.driver_trust:
+        trust=a.driver_trust.resolve(strict=True)
+        if WORKSPACE not in trust.parents or not trust.is_dir():raise ValueError('driver trust path rejected')
+        trust_manifest=json.loads(builder.regular(trust/'manifest.json').read_text())
+        trust_names=('toprgu.cer','shared.cer','toprgu-cert.sha256','shared-cert.sha256','toprgu-sys.sha256','shared-sys.sha256','touch-sys.sha256')
+        for name in trust_names:
+            item=builder.regular(trust/name)
+            if sha(item)!=trust_manifest.get('files',{}).get(name):raise ValueError('driver trust payload hash mismatch')
+            dests['/a04br3/driver-trust/'+name]=item
+        dests['/a04br3/offline-hive-apply.exe']=files['offline-hive-apply.exe']
+        dests['/a04br3/apply-offline-hives.cmd']=ROOT/'tools/winpe/apply-offline-hives.cmd'
+
     if any(n in before for n in dests if n != '/Windows/System32/startnet.cmd'):
         raise ValueError('tool destination already exists')
     subprocess.run([str(tool),'extract',str(wim),'1','/Windows/System32/config/SOFTWARE',f'--dest-dir={scratch}'],check=True,stdout=subprocess.DEVNULL)
@@ -121,7 +136,7 @@ def main():
     free_bytes=(int(free_match.group(2))-int(free_match.group(1)))*cluster_size
     result={'source_wim_sha256':sha(wim),'source_esp_sha256':sha(esp),'source_package_manifest_sha256':sha(package/'manifest.json'),
             'output_wim_sha256':sha(output_wim),'output_esp_sha256':sha(output_esp),'test_certificate_sha256':sha(files['maintenance-test.cer']),
-            'test_certificate_thumbprint':thumb,'existing_certificate_stores_preserved':True,'fat_free_bytes':free_bytes,
+            'test_certificate_thumbprint':thumb,'driver_trust_manifest_sha256':sha(trust/'manifest.json') if a.driver_trust else None,'existing_certificate_stores_preserved':True,'fat_free_bytes':free_bytes,
             'wimlib_sha256':sha(tool),'osslsigncode_sha256':sha(verifier),
             'status':'WinPE test trust only; boot, RT policy, OS hive update and recovery unverified'}
     (out/'manifest.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result,indent=2))

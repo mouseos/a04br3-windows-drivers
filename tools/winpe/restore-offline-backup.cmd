@@ -8,6 +8,8 @@ X:\a04br3\offline-backup.exe --restore
 if errorlevel 1 goto restorefail
 X:\a04br3\release-offline-volume.exe
 if errorlevel 1 goto releasefail
+X:\a04br3\offline-backup.exe --complete
+if errorlevel 1 goto completefail
 echo OFFLINE_RECOVERY_RELEASED_NTFS_INTEGRITY_UNVERIFIED
 exit /b 0
 :missing
@@ -16,6 +18,9 @@ exit /b 2
 :restorefail
 echo OFFLINE_RECOVERY_FAILED_RETAIN_BACKUP
 exit /b 3
+:completefail
+echo HIVE_TRANSACTION_COMPLETE_MARKER_FAILED_RETAIN_JOURNAL
+exit /b 6
 :releasefail
 echo OFFLINE_RECOVERY_RELEASE_FAILED_RETAIN_BACKUP
 exit /b 4

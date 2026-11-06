@@ -27,12 +27,14 @@ BOOL DeviceIoControl(HANDLE h,DWORD code,void *in,DWORD ins,void *out,DWORD outs
 }
 BOOL FlushFileBuffers(HANDLE h) { (void)h;++flushed;return scenario!=6; }
 BOOL CloseHandle(HANDLE h) { (void)h;++closed;return scenario!=8; }
+BOOL DeleteVolumeMountPointW(const WCHAR *p) { (void)p;return scenario!=9; }
+DWORD GetLogicalDrives(void) { return scenario==10?4:16; }
 DWORD GetLastError(void) { return 123; }
 void ExitProcess(DWORD code) { exit_code=code;longjmp(done,1); }
 #include "../tools/winpe/release-offline-volume.c"
 int main(void) {
-    static const unsigned expected[]={0,2,3,4,5,6,7,8,9};
-    for (scenario=0;scenario<9;++scenario) {
+    static const unsigned expected[]={0,2,3,4,5,6,7,8,9,10,11};
+    for (scenario=0;scenario<11;++scenario) {
         locked=flushed=dismounted=closed=0;
         if (!setjmp(done)) mainCRTStartup();
         if (exit_code!=expected[scenario] || (scenario>=1 && scenario<=5 && dismounted) ||

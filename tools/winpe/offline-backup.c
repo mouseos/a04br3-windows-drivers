@@ -97,7 +97,8 @@ static int configure_sidecar(unsigned i,const WCHAR *name);
 static int verify_manifest(void){BYTE d[32];unsigned i;if(manifest.magic!=0x41303442||manifest.version!=3||manifest.count<BASE_COUNT||manifest.count>COUNT||manifest.reserved!=target_serial)return 0;if(!hash_mem(&manifest,(DWORD)offsetof(MANIFEST,digest),d)||!same(d,manifest.digest,32))return 0;active_count=BASE_COUNT;for(i=0;i<BASE_COUNT;++i)if(manifest.entries[i].name[0])return 0;
  for(i=BASE_COUNT;i<manifest.count;++i){unsigned j;if(manifest.entries[i].name[127]||!configure_sidecar(i,manifest.entries[i].name))return 0;for(j=BASE_COUNT;j<i;++j)if(!lstrcmpiW(manifest.entries[j].name,manifest.entries[i].name))return 0;++active_count;}
  for(i=0;i<manifest.count;++i)if(manifest.entries[i].present>1||(i>=BASE_COUNT&&!manifest.entries[i].present)||!verify_item(i))return 0;return manifest.entries[0].present&&manifest.entries[4].present;}
-static int load_manifest(void){HANDLE h;DWORD n;BYTE extra;h=CreateFileW(L"E:\\A04BACKUP\\READY",GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,0,0);if(h==INVALID_HANDLE_VALUE)return 0;if(!ReadFile(h,&manifest,sizeof(manifest),&n,0)||n!=sizeof(manifest)){CloseHandle(h);return 0;}if(!ReadFile(h,&extra,1,&n,0)||n){CloseHandle(h);return 0;}CloseHandle(h);return verify_manifest();}
+static int read_manifest_file(void){HANDLE h;DWORD n;BYTE extra;h=CreateFileW(L"E:\\A04BACKUP\\READY",GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,0,0);if(h==INVALID_HANDLE_VALUE)return 0;if(!ReadFile(h,&manifest,sizeof(manifest),&n,0)||n!=sizeof(manifest)){CloseHandle(h);return 0;}if(!ReadFile(h,&extra,1,&n,0)||n){CloseHandle(h);return 0;}return CloseHandle(h)!=0;}
+static int load_manifest(void){return read_manifest_file()&&verify_manifest();}
 static int verify_restored(unsigned i){
  HANDLE f;BY_HANDLE_FILE_INFORMATION info;HCRYPTHASH h;BYTE digest[32];void *ctx=0;DWORD n;ULONGLONG total=0;int ok=0;ENTRY *e=&manifest.entries[i];
  if(!e->present){if(GetFileAttributesW(target[i])!=INVALID_FILE_ATTRIBUTES)return 0;return GetLastError()==ERROR_FILE_NOT_FOUND;}
@@ -169,8 +170,8 @@ static int scan_sidecars(const WCHAR *pattern,int txr,int recovering){WIN32_FIND
   name[0]=0;if(txr)lstrcpyW(name,L"TxR\\");lstrcatW(name,data.cFileName);
   if(!sidecar_valid(name)){FindClose(h);return 0;}
   if(find_sidecar(name)>=0){if(!recovering){FindClose(h);return 0;}continue;}
-  /* No update-created-file ledger exists yet: never delete an unknown file. */
-  if(recovering){FindClose(h);return 0;}
+  /* Unknown files are removable only inside a validated armed transaction. */
+  if(recovering==1){FindClose(h);return 0;}
   if(active_count>=COUNT||!configure_sidecar(active_count,name)){FindClose(h);return 0;}
   lstrcpyW(manifest.entries[active_count].name,name);manifest.entries[active_count].present=0;++active_count;
  }while(FindNextFileW(h,&data));
@@ -204,24 +205,65 @@ static void backup(void){unsigned i;ULARGE_INTEGER free;ULONGLONG need=RESERVE,c
  if(!write_all(ready,(BYTE*)&manifest,sizeof(manifest))||!FlushFileBuffers(ready)){CloseHandle(ready);fail("BACKUP_READY_WRITE_FAILED");}if(!CloseHandle(ready)||!flush_volume(L'E'))fail("BACKUP_READY_FLUSH_FAILED");
  if(!load_manifest())fail("BACKUP_READY_VERIFY_FAILED");say("BACKUP_READY_NO_UPDATE_PERFORMED\r\n");
 }
+typedef struct {DWORD magic,version,serial;BYTE journal_digest[32],digest[32];} INTENT;
+static int intent_read(void){HANDLE h;INTENT in;BYTE extra,digest[32];DWORD n;DWORD error;
+ h=CreateFileW(L"E:\\A04BACKUP\\INTENT",GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,0,0);
+ if(h==INVALID_HANDLE_VALUE){error=GetLastError();return error==ERROR_FILE_NOT_FOUND?0:-1;}
+ if(!ReadFile(h,&in,sizeof(in),&n,0)||n!=sizeof(in)||!ReadFile(h,&extra,1,&n,0)||n){CloseHandle(h);return -1;}
+ if(!CloseHandle(h)||in.magic!=0x544e4934||in.version!=1||in.serial!=target_serial||!same(in.journal_digest,manifest.digest,32)||!hash_mem(&in,(DWORD)offsetof(INTENT,digest),digest)||!same(digest,in.digest,32))return -1;
+ return 1;
+}
+/* COMMIT is written only after the coordinator reports successful dismount.
+ * It binds the exact READY bytes and can be verified without opening C:. */
+static int commit_text(char *out,DWORD *size){BYTE digest[32];const char *prefix="A04COMMIT_V1 ";const char *hexchars="0123456789abcdef";DWORD i,n=0;
+ if(!hash_mem(&manifest,sizeof(manifest),digest))return 0;
+ while(prefix[n]){out[n]=prefix[n];++n;}for(i=0;i<32;++i){out[n++]=hexchars[digest[i]>>4];out[n++]=hexchars[digest[i]&15];}out[n++]='\n';*size=n;return 1;
+}
+static int commit_read(void){HANDLE h;char expected[96],actual[96];DWORD n,w;BYTE extra;
+ if(!commit_text(expected,&w))return -1;
+ h=CreateFileW(L"E:\\A04BACKUP\\COMMIT",GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,0,0);
+ if(h==INVALID_HANDLE_VALUE)return GetLastError()==ERROR_FILE_NOT_FOUND?0:-1;
+ if(!ReadFile(h,actual,sizeof(actual),&n,0)||n!=w||!ReadFile(h,&extra,1,&w,0)||w){CloseHandle(h);return -1;}
+ if(!CloseHandle(h)||!same((BYTE*)actual,(BYTE*)expected,n))return -1;return 1;
+}
+static void complete(void){HANDLE h;char text[96];DWORD n,drives=GetLogicalDrives();
+ if(!drives || (drives & (1u << (L'C'-L'A'))))fail("BACKUP_COMPLETE_TARGET_STILL_MOUNTED");
+ if(!volume(L'E',184549376LL,268435456LL,L"FAT32")||!CryptAcquireContextW(&provider,0,0,PROV_RSA_AES,CRYPT_VERIFYCONTEXT)||!read_manifest_file())fail("BACKUP_COMPLETE_PRECONDITION_FAILED");
+ target_serial=manifest.reserved;if(!target_serial||!verify_manifest()||intent_read()<0||commit_read()!=0||!commit_text(text,&n))fail("BACKUP_COMPLETE_JOURNAL_REJECTED");
+ h=CreateFileW(L"E:\\A04BACKUP\\COMMIT",GENERIC_WRITE,0,0,CREATE_NEW,FILE_FLAG_WRITE_THROUGH,0);if(h==INVALID_HANDLE_VALUE)fail("BACKUP_COMPLETE_CREATE_FAILED");
+ if(!write_all(h,(BYTE*)text,n)||!FlushFileBuffers(h)){CloseHandle(h);fail("BACKUP_COMPLETE_WRITE_FAILED");}
+ if(!CloseHandle(h)||!flush_volume(L'E')||commit_read()!=1)fail("BACKUP_COMPLETE_FLUSH_FAILED");
+ CryptReleaseContext(provider,0);say("BACKUP_COMPLETE_AFTER_DISMOUNT\r\n");
+}
 static int target_exclusive(unsigned i){HANDLE h;BY_HANDLE_FILE_INFORMATION info;DWORD e;
  h=CreateFileW(target[i],GENERIC_READ|READ_CONTROL,0,0,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_BACKUP_SEMANTICS,0);
  if(h==INVALID_HANDLE_VALUE){e=GetLastError();return e==ERROR_FILE_NOT_FOUND;}
  if(!GetFileInformationByHandle(h,&info)||info.nNumberOfLinks!=1||(info.dwFileAttributes&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY))){CloseHandle(h);return 0;}
  return CloseHandle(h)!=0;
 }
+static void arm(void){unsigned i;HANDLE h;INTENT in;BYTE *p=(BYTE*)&in;
+ if(!load_manifest()||!collect_sidecars(1)||intent_read()!=0||commit_read()!=0)fail("BACKUP_ARM_REJECTED");
+ for(i=0;i<active_count;++i)if(!target_exclusive(i)||!verify_restored(i))fail("BACKUP_ARM_TARGET_CHANGED");
+ for(i=0;i<sizeof(in);++i)p[i]=0;in.magic=0x544e4934;in.version=1;in.serial=target_serial;
+ for(i=0;i<32;++i)in.journal_digest[i]=manifest.digest[i];
+ if(!hash_mem(&in,(DWORD)offsetof(INTENT,digest),in.digest))fail("BACKUP_ARM_HASH_FAILED");
+ h=CreateFileW(L"E:\\A04BACKUP\\INTENT",GENERIC_WRITE,0,0,CREATE_NEW,FILE_FLAG_WRITE_THROUGH,0);if(h==INVALID_HANDLE_VALUE)fail("BACKUP_ARM_CREATE_FAILED");
+ if(!write_all(h,(BYTE*)&in,sizeof(in))||!FlushFileBuffers(h)){CloseHandle(h);fail("BACKUP_ARM_WRITE_FAILED");}
+ if(!CloseHandle(h)||!flush_volume(L'E')||intent_read()!=1)fail("BACKUP_ARM_FLUSH_FAILED");
+ say("BACKUP_ARMED_RECOVERY_REQUIRED_ON_FAILURE\r\n");
+}
 #ifdef A04_OFFLINE_FIXTURE
 static void fixture_fault(unsigned i){if(fixture_index("A04_FAIL_AFTER",i))ExitProcess(98);}
 #else
 static void fixture_fault(unsigned i){(void)i;}
 #endif
-static void restore(void){unsigned i;if(!load_manifest())fail("RECOVERY_JOURNAL_REJECTED");if(!collect_sidecars(1))fail("RECOVERY_SIDECAR_ENUMERATION_FAILED");for(i=0;i<active_count;++i)if(!target_exclusive(i))fail("RECOVERY_TARGET_BUSY_OR_UNSAFE");for(i=0;i<active_count;++i){if(!replay_item(i))fail("RECOVERY_REPLAY_FAILED_RETRY_FROM_WINPE");if(!flush_volume(L'C'))fail("RECOVERY_FLUSH_FAILED_RETRY_FROM_WINPE");if(!verify_restored(i))fail("RECOVERY_VERIFY_FAILED_RETRY_FROM_WINPE");fixture_fault(i);}say("RECOVERY_FILES_REPLAYED_DISMOUNT_REQUIRED\r\n");}
+static void restore(void){unsigned i;int intent;if(!load_manifest())fail("RECOVERY_JOURNAL_REJECTED");intent=intent_read();if(intent<0||commit_read()!=0)fail("RECOVERY_INTENT_OR_COMMIT_REJECTED");if(!collect_sidecars(intent?2:1))fail("RECOVERY_SIDECAR_ENUMERATION_FAILED");for(i=0;i<active_count;++i)if(!target_exclusive(i))fail("RECOVERY_TARGET_BUSY_OR_UNSAFE");for(i=0;i<active_count;++i){if(!replay_item(i))fail("RECOVERY_REPLAY_FAILED_RETRY_FROM_WINPE");if(!flush_volume(L'C'))fail("RECOVERY_FLUSH_FAILED_RETRY_FROM_WINPE");if(!verify_restored(i))fail("RECOVERY_VERIFY_FAILED_RETRY_FROM_WINPE");fixture_fault(i);}say("RECOVERY_FILES_REPLAYED_DISMOUNT_REQUIRED\r\n");}
 static int command_mode(void){const WCHAR *p=GetCommandLineW();
  if(*p==L'"'){++p;while(*p&&*p!=L'"')++p;if(!*p)return -1;++p;}else while(*p&&*p!=L' '&&*p!=L'\t')++p;
  while(*p==L' '||*p==L'\t')++p;
- if(!*p)return 0;if(!lstrcmpW(p,L"--restore"))return 1;if(!lstrcmpW(p,L"--probe"))return 2;return -1;
+ if(!*p)return 0;if(!lstrcmpW(p,L"--restore"))return 1;if(!lstrcmpW(p,L"--probe"))return 2;if(!lstrcmpW(p,L"--arm"))return 3;if(!lstrcmpW(p,L"--armed"))return 4;if(!lstrcmpW(p,L"--complete"))return 5;return -1;
 }
-void mainCRTStartup(void){int mode=command_mode();if(mode<0)fail("BACKUP_COMMAND_REJECTED");if(!prep())fail("BACKUP_IDENTITY_OR_PRIVILEGE_REJECTED");
- if(mode==1)restore();else if(mode==2){if(!load_manifest()||!collect_sidecars(1))fail("BACKUP_PROBE_JOURNAL_REJECTED");say("BACKUP_PROBE_JOURNAL_VALID_NOT_DISMOUNTED\r\n");}else backup();
+void mainCRTStartup(void){int mode=command_mode();if(mode<0)fail("BACKUP_COMMAND_REJECTED");if(mode==5){complete();ExitProcess(0);}if(!prep())fail("BACKUP_IDENTITY_OR_PRIVILEGE_REJECTED");
+ if(mode==1)restore();else if(mode==2){int intent;if(!load_manifest())fail("BACKUP_PROBE_JOURNAL_REJECTED");intent=intent_read();if(intent<0||commit_read()<0||!collect_sidecars(intent?2:1))fail("BACKUP_PROBE_JOURNAL_REJECTED");say("BACKUP_PROBE_JOURNAL_VALID_NOT_DISMOUNTED\r\n");}else if(mode==3)arm();else if(mode==4){if(!load_manifest()||intent_read()!=1||commit_read()!=0||!collect_sidecars(1))fail("BACKUP_ARMED_CHECK_REJECTED");say("BACKUP_ARMED_CHECK_OK\r\n");}else backup();
  CryptReleaseContext(provider,0);ExitProcess(0);
 }

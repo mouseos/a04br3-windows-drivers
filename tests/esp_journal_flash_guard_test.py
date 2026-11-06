@@ -17,7 +17,7 @@ with tempfile.TemporaryDirectory(prefix='esp-guard-',dir=root/'build') as td:
  adb=d/'adb';adb.write_text('''#!/bin/sh
 printf '%s\\n' "$*" >> "$CALLS"
 case "$*" in
- *'shell sh -s'*) n=0; [ ! -f "$COUNT" ] || n=$(cat "$COUNT"); n=$((n+1)); echo "$n" > "$COUNT"; if [ "$GUARD" = absent ] || { [ "$GUARD" = second ] && [ "$n" = 1 ]; }; then echo A04_ESP_JOURNAL_ABSENT; exit 0; fi; if [ "$GUARD" = present ]; then echo A04_ESP_JOURNAL_PRESENT; exit 4; fi; echo A04_ESP_JOURNAL_UNKNOWN; exit 5;;
+ *'shell sh -s'*) n=0; [ ! -f "$COUNT" ] || n=$(cat "$COUNT"); n=$((n+1)); echo "$n" > "$COUNT"; if [ "$GUARD" = complete ]; then echo A04_ESP_JOURNAL_COMPLETE; exit 0; fi; if [ "$GUARD" = absent ] || { [ "$GUARD" = second ] && [ "$n" = 1 ]; }; then echo A04_ESP_JOURNAL_ABSENT; exit 0; fi; if [ "$GUARD" = present ]; then echo A04_ESP_JOURNAL_PRESENT; exit 4; fi; echo A04_ESP_JOURNAL_UNKNOWN; exit 5;;
  *A04_RESTORE_GEOMETRY_OK*) echo A04_RESTORE_GEOMETRY_OK;; *A04_RESTORE_STAGING_OK*) echo A04_RESTORE_STAGING_OK;;
  *A04_RESTORE_BOOT_SYNCED*) echo A04_RESTORE_BOOT_SYNCED;; *A04_RESTORE_ESP_SYNCED*) echo A04_RESTORE_ESP_SYNCED;;
  *get-state*) echo recovery;; *'shell id -u'*) echo 0;; *'shell readlink'*) echo /dev/block/mmcblk0p18;;
@@ -35,7 +35,7 @@ exit 0
   'restore':['bash',str(root/'tools/recovery/restore-toprgu-diagnostic.sh'),'--execute','SERIAL',str(boot),sha(boot),str(esp),digest,str(d/'restore-log')],
  }
  for name,cmd in scripts.items():
-  for case in ('present','unknown','second','absent'):
+  for case in ('present','unknown','second','absent','complete'):
    for f in (calls,count,d/'flash.log'):
     if f.exists():f.unlink()
    log=d/'restore-log'
@@ -44,6 +44,6 @@ exit 0
    result=subprocess.run(cmd,env=dict(env,GUARD=case),capture_output=True,text=True)
    text=calls.read_text() if calls.exists() else ''
    writes=('shell dd' in text or 'A04_RESTORE_BOOT_SYNCED' in text or 'dd if=' in text)
-   if case=='absent':assert result.returncode==0 and writes,(name,case,result.stdout,result.stderr,text)
+   if case in ('absent','complete'):assert result.returncode==0 and writes,(name,case,result.stdout,result.stderr,text)
    else:assert result.returncode!=0 and not writes,(name,case,result.stdout,result.stderr,text)
 print('ESP journal guard: absent permits write; present/unknown/changed blocks writes')

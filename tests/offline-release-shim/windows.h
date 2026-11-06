@@ -23,5 +23,6 @@ int lstrcmpiW(const WCHAR*,const WCHAR*); DWORD GetFileAttributesW(const WCHAR*)
 HANDLE CreateFileW(const WCHAR*,DWORD,DWORD,void*,DWORD,DWORD,HANDLE);
 BOOL DeviceIoControl(HANDLE,DWORD,void*,DWORD,void*,DWORD,DWORD*,void*);
 BOOL FlushFileBuffers(HANDLE); BOOL CloseHandle(HANDLE); DWORD GetLastError(void);
+BOOL DeleteVolumeMountPointW(const WCHAR*); DWORD GetLogicalDrives(void);
 void ExitProcess(DWORD);
 #endif

@@ -38,6 +38,22 @@ name='SYSTEM{fixture}.TM.blf'.encode('utf-16le');data[off+72:off+72+len(name)]=n
 content['/A04BACKUP/READY']=bytes(data);content['/A04BACKUP/item11.bin']=payload
 files={k.lower():(k,hashlib.sha256(v).hexdigest()) for k,v in content.items()}
 assert m.verify_journal(Fat(content),files)['count']==12
+intent=struct.pack('<III',0x544e4934,1,42)+bytes(data[-32:]);intent+=hashlib.sha256(intent).digest()
+content['/A04BACKUP/INTENT']=intent;files['/a04backup/intent']=('/A04BACKUP/INTENT',hashlib.sha256(intent).hexdigest())
+assert m.verify_journal(Fat(content),files)['armed'] is True
+commit=('A04COMMIT_V1 '+hashlib.sha256(content['/A04BACKUP/READY']).hexdigest()+'\n').encode()
+content['/A04BACKUP/COMMIT']=commit;files['/a04backup/commit']=('/A04BACKUP/COMMIT',hashlib.sha256(commit).hexdigest())
+assert m.verify_journal(Fat(content),files)['complete'] is True
+content['/A04BACKUP/COMMIT']=b'bad'
+try:m.verify_journal(Fat(content),files)
+except ValueError:pass
+else:raise AssertionError('invalid completion marker accepted')
+content.pop('/A04BACKUP/COMMIT');files.pop('/a04backup/commit')
+bad_intent=bytearray(intent);bad_intent[12]^=1;content['/A04BACKUP/INTENT']=bytes(bad_intent)
+try:m.verify_journal(Fat(content),files)
+except ValueError:pass
+else:raise AssertionError('altered transaction intent accepted')
+content.pop('/A04BACKUP/INTENT');files.pop('/a04backup/intent')
 bad=bytearray(data);bad[off+72:off+328]=bytes(256);bad[-32:]=hashlib.sha256(bad[:-32]).digest();content['/A04BACKUP/READY']=bytes(bad)
 try:m.verify_journal(Fat(content),files)
 except ValueError:pass

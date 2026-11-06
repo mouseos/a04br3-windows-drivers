@@ -23,7 +23,8 @@ static int hive_absent(const WCHAR *name) {
 }
 void mainCRTStartup(void) {
     HANDLE h; DWORD n=0, err; VOLUME_DISK_EXTENTS ex; WCHAR label[64], fs[32];
-    if (!hive_absent(L"A04TOPRGUSYS") || !hive_absent(L"A04TOPRGUSW")) {
+    if (!hive_absent(L"A04TOPRGUSYS") || !hive_absent(L"A04TOPRGUSW") ||
+        !hive_absent(L"A04TXSYS") || !hive_absent(L"A04TXSW") || !hive_absent(L"A04TEMP")) {
         say("A04_RELEASE_HIVE_LOADED_OR_UNKNOWN\r\n"); ExitProcess(2);
     }
     if (!GetVolumeInformationW(L"C:\\",label,64,NULL,NULL,NULL,fs,32) ||
@@ -53,5 +54,8 @@ void mainCRTStartup(void) {
     }
     say("A04_RELEASE_DISMOUNTED\r\n");
     if (!CloseHandle(h)) { failure("A04_RELEASE_CLOSE_FAILED",GetLastError()); ExitProcess(9); }
-    say("A04_RELEASE_HANDLE_CLOSED_NO_INTEGRITY_CLAIM\r\n"); ExitProcess(0);
+    if (!DeleteVolumeMountPointW(L"C:\\")) { failure("A04_RELEASE_UNMOUNT_FAILED",GetLastError()); ExitProcess(10); }
+    n=GetLogicalDrives();
+    if (!n || (n & (1u << (L'C'-L'A')))) { say("A04_RELEASE_DRIVE_STILL_PRESENT_OR_UNKNOWN\r\n"); ExitProcess(11); }
+    say("A04_RELEASE_UNMOUNTED_NO_INTEGRITY_CLAIM\r\n"); ExitProcess(0);
 }

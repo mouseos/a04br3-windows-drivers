@@ -1,5 +1,6 @@
 param([Parameter(Mandatory=$true)][string]$BackupExe,
       [Parameter(Mandatory=$true)][string]$ReleaseExe,
+      [string]$HiveApplyExe,
       [Parameter(Mandatory=$true)][string]$OutputDirectory)
 $ErrorActionPreference='Stop'
 if(Test-Path $OutputDirectory){throw 'Output directory already exists'}
@@ -7,12 +8,14 @@ New-Item -ItemType Directory $OutputDirectory | Out-Null
 foreach($file in @($BackupExe,$ReleaseExe)){if(!(Test-Path -LiteralPath $file -PathType Leaf)){throw 'Input executable missing'}}
 Copy-Item -LiteralPath $BackupExe -Destination (Join-Path $OutputDirectory 'offline-backup.exe')
 Copy-Item -LiteralPath $ReleaseExe -Destination (Join-Path $OutputDirectory 'release-offline-volume.exe')
+$names=@('offline-backup.exe','release-offline-volume.exe')
+if($HiveApplyExe){if(!(Test-Path -LiteralPath $HiveApplyExe -PathType Leaf)){throw 'Hive apply executable missing'};Copy-Item -LiteralPath $HiveApplyExe -Destination (Join-Path $OutputDirectory 'offline-hive-apply.exe');$names+= 'offline-hive-apply.exe'}
 $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1"
 $sign=Join-Path $kit 'bin\x86\signtool.exe'
 $cert=New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=A04BR3 Offline Maintenance Test' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
 try {
  Export-Certificate -Cert $cert -FilePath (Join-Path $OutputDirectory 'maintenance-test.cer') | Out-Null
- foreach($name in @('offline-backup.exe','release-offline-volume.exe')){
+ foreach($name in $names){
   $p=Join-Path $OutputDirectory $name
   & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My $p
   if($LASTEXITCODE){throw "Signing failed: $name"}

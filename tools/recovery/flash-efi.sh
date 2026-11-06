@@ -34,7 +34,7 @@ guard=$(cd "$(dirname "$0")" && pwd -P)/check-esp-journal.sh
 require_no_journal() {
   local result
   result=$(adb -s "$serial" shell sh -s < "$guard") || { echo 'ESP復旧ジャーナルが存在するか確認できません' >&2; return 1; }
-  [[ $result == A04_ESP_JOURNAL_ABSENT ]] || { echo 'ESP復旧ジャーナルの状態が不明です' >&2; return 1; }
+  [[ $result == A04_ESP_JOURNAL_ABSENT || $result == A04_ESP_JOURNAL_COMPLETE ]] || { echo 'ESP復旧ジャーナルの状態が不明です' >&2; return 1; }
 }
 require_no_journal
 adb -s "$serial" push "$image" /tmp/a04-recovery-esp.img

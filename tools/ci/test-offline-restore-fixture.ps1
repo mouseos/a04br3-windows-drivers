@@ -8,15 +8,17 @@ $source=(Get-Content -Raw (Join-Path $root 'tools\winpe\restore-offline-backup.c
 foreach($name in @('offline-backup.exe','release-offline-volume.exe')){[IO.File]::WriteAllText((Join-Path $dir $name),'fixture')}
 $restore=[regex]::Escape((Join-Path $dir 'offline-backup.exe'))
 $release=[regex]::Escape((Join-Path $dir 'release-offline-volume.exe'))
-foreach($case in @('ok','restore','release')){
- $r=if($case -eq 'restore'){1}else{0};$d=if($case -eq 'release'){1}else{0}
+foreach($case in @('ok','restore','release','complete')){
+ $r=if($case -eq 'restore'){1}else{0};$d=if($case -eq 'release'){1}else{0};$c=if($case -eq 'complete'){1}else{0}
  $s=$source -replace "(?m)^$restore --restore\r?$", "cmd /c exit $r"
  $s=$s -replace "(?m)^$release\r?$", "cmd /c exit $d"
+ $s=$s -replace "(?m)^$restore --complete\r?$", "cmd /c exit $c"
  $file=Join-Path $dir "$case.cmd";[IO.File]::WriteAllText($file,$s,[Text.Encoding]::ASCII)
  $lines=& cmd.exe /c $file;$rc=$LASTEXITCODE
  if($case -eq 'ok' -and ($rc -ne 0 -or !($lines -match 'OFFLINE_RECOVERY_RELEASED_NTFS_INTEGRITY_UNVERIFIED'))){throw 'success flow mismatch'}
  if($case -eq 'restore' -and ($rc -ne 3 -or ($lines -match 'OFFLINE_RECOVERY_RELEASED'))){throw 'restore failure mismatch'}
  if($case -eq 'release' -and ($rc -ne 4 -or ($lines -match 'OFFLINE_RECOVERY_RELEASED'))){throw 'release failure mismatch'}
+ if($case -eq 'complete' -and ($rc -ne 6 -or ($lines -match 'OFFLINE_RECOVERY_RELEASED'))){throw 'completion failure mismatch'}
 }
 Write-Host 'OFFLINE_RESTORE_FIXTURE_PASS'
 $global:LASTEXITCODE=0

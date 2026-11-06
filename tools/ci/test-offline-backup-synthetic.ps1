@@ -50,6 +50,8 @@ try {
  if($LASTEXITCODE){throw 'fixture backup failed'}
  & "$base\fixture.exe" --probe
  if($LASTEXITCODE){throw 'valid recovery journal probe failed'}
+ & "$base\fixture.exe" --complete
+ if(!$LASTEXITCODE -or (Test-Path 'S:\A04BACKUP\COMMIT')){throw 'completion permitted while C remains mounted'}
  & "$base\fixture.exe" --unknown
  if(!$LASTEXITCODE){throw 'unknown command accepted'}
  (Get-Item -Force 'R:\Windows\System32\config\SYSTEM').Attributes = 'Normal'

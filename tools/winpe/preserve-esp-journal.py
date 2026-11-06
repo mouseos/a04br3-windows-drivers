@@ -48,7 +48,19 @@ def verify_journal(fat, files):
             item=f'/a04backup/item{i:02}.bin'
             if item not in files or files[item][1]!=digest or fat.getsize(files[item][0])!=length:
                 raise ValueError(f'journal item {i} mismatch')
-    return {'version':version,'count':count,'target_serial':reserved if version==3 else None,'manifest_sha256':hashlib.sha256(data).hexdigest()}
+    intent_key='/a04backup/intent'
+    if intent_key in files:
+        with fat.openbin(files[intent_key][0],'r') as f: intent=f.read()
+        if (len(intent)!=76 or struct.unpack_from('<III',intent)!=(0x544e4934,1,reserved) or
+            version!=3 or intent[12:44]!=data[-32:] or hashlib.sha256(intent[:-32]).digest()!=intent[-32:]):
+            raise ValueError('invalid transaction intent')
+    commit_key='/a04backup/commit'
+    if commit_key in files:
+        with fat.openbin(files[commit_key][0],'r') as f: committed=f.read()
+        expected=('A04COMMIT_V1 '+hashlib.sha256(data).hexdigest()+'\n').encode('ascii')
+        if committed!=expected:raise ValueError('invalid transaction completion marker')
+    return {'version':version,'count':count,'target_serial':reserved if version==3 else None,
+            'armed':intent_key in files,'complete':commit_key in files,'manifest_sha256':hashlib.sha256(data).hexdigest()}
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--journal-esp',type=Path,required=True);p.add_argument('--journal-esp-sha256',required=True)

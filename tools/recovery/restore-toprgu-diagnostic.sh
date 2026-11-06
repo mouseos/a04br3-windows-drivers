@@ -30,7 +30,7 @@ require_marker() {
 require_no_journal() {
   local result
   result=$(adb -s "$serial" shell sh -s < "$repo/tools/recovery/check-esp-journal.sh") || { echo RESTORE_JOURNAL_PRESENT_OR_UNKNOWN; return 1; }
-  [[ $result == A04_ESP_JOURNAL_ABSENT ]] || { echo RESTORE_JOURNAL_PRESENT_OR_UNKNOWN; return 1; }
+  [[ $result == A04_ESP_JOURNAL_ABSENT || $result == A04_ESP_JOURNAL_COMPLETE ]] || { echo RESTORE_JOURNAL_PRESENT_OR_UNKNOWN; return 1; }
 }
 require_no_journal
 # Both destinations and both staging paths must pass before either write.

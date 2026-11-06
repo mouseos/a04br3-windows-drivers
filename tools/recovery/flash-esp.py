@@ -47,7 +47,7 @@ def require_no_journal():
         result = subprocess.run(['adb', 'shell', 'sh', '-s'], stdin=source,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     lines = result.stdout.decode('utf-8', errors='replace').splitlines()
-    if result.returncode or lines != ['A04_ESP_JOURNAL_ABSENT']:
+    if result.returncode or lines not in (['A04_ESP_JOURNAL_ABSENT'], ['A04_ESP_JOURNAL_COMPLETE']):
         raise SystemExit('ESP復旧ジャーナルが存在するか、状態を確認できません')
 
 require_no_journal()
