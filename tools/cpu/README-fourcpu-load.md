@@ -13,3 +13,14 @@ is unsigned; the target's authorization and signature policy is unverified.
 A 60-second pass is evidence only of this workload on four logical CPUs. It
 does not establish interrupt correctness, physical CPU identity, long-term
 stability, suspend/resume, temperature margins, or watchdog recovery.
+
+The diagnostic opens `A04BR3ScreenUart` and emits `A04CU1` records three
+times with CRC32. Records carry run ID, sequence, CPU, observed CPU, loop
+count, state, elapsed milliseconds and CRC. CPU `FFFFFFFF` is a summary;
+sequence 0 starts the run and sequence `FFFFFFFF` ends it. Final summary
+state 0 and mask 0xF mean all four workers passed this bounded workload.
+CPU states 1/2/3 mean ready/running/completed, and 0x10/0x11/0x12 mean
+affinity/start-wait/wrong-CPU failure. Missing, corrupted, contradictory or
+incomplete frames are not a pass. UART open/transmission failure exits 4.
+The watchdog and the GPU may concurrently write UART; the receiver must
+validate complete lines and CRC. This does not request reset or volume release.
