@@ -22,6 +22,7 @@ try {
  $src=[IO.File]::ReadAllText("$root\tools\winpe\offline-backup.c")
  $src=$src.Replace('L"C:\\','L"R:\\').Replace('L"E:\\','L"S:\\')
  $src=$src.Replace('if(!volume(L''C'',469762048LL,15147204608LL,L"NTFS")||!volume(L''E'',184549376LL,268435456LL,L"FAT32"))return 0;','if(0)return 0;')
+ $src=$src.Replace('if(!clean_windows_volume())return 0;','if(0)return 0;')
  $src=$src.Replace('static int flush_volume(WCHAR drive){','static int flush_volume(WCHAR drive){ (void)drive; return 1;')
  if($src.Contains('L"C:\\Windows') -or $src.Contains('if(!volume(L''C''')){throw 'fixture path substitution failed'}
  [IO.File]::WriteAllText("$base\fixture.c",$src)

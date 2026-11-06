@@ -36,10 +36,16 @@ static int volume(WCHAR drive,LONGLONG offset,LONGLONG length,const WCHAR *fs){
  ok=DeviceIoControl(h,IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS,0,0,&x,sizeof(x),&n,0)&&n>=sizeof(x)&&x.NumberOfDiskExtents==1&&x.Extents[0].DiskNumber==0&&x.Extents[0].StartingOffset.QuadPart==offset&&x.Extents[0].ExtentLength.QuadPart==length;CloseHandle(h);return ok;
 }
 static int flush_volume(WCHAR drive){WCHAR dev[]=L"\\\\.\\C:";HANDLE h;int ok;dev[4]=drive;h=CreateFileW(dev,GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,0,OPEN_EXISTING,0,0);if(h==INVALID_HANDLE_VALUE)return 0;ok=FlushFileBuffers(h);if(!CloseHandle(h))ok=0;return ok;}
+static int clean_windows_volume(void){HANDLE h;DWORD flags=0,n=0;int ok;
+ h=CreateFileW(L"\\\\.\\C:",GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,0,OPEN_EXISTING,0,0);if(h==INVALID_HANDLE_VALUE)return 0;
+ ok=DeviceIoControl(h,FSCTL_IS_VOLUME_DIRTY,0,0,&flags,sizeof(flags),&n,0)&&n==sizeof(flags)&&flags==0;
+ if(!CloseHandle(h))ok=0;return ok;
+}
 static int privilege(const WCHAR *name){HANDLE t;TOKEN_PRIVILEGES p;LUID l;DWORD e;if(!OpenProcessToken(GetCurrentProcess(),TOKEN_ADJUST_PRIVILEGES|TOKEN_QUERY,&t))return 0;if(!LookupPrivilegeValueW(0,name,&l)){CloseHandle(t);return 0;}p.PrivilegeCount=1;p.Privileges[0].Luid=l;p.Privileges[0].Attributes=SE_PRIVILEGE_ENABLED;SetLastError(0);if(!AdjustTokenPrivileges(t,FALSE,&p,0,0,0)){CloseHandle(t);return 0;}e=GetLastError();CloseHandle(t);return e==ERROR_SUCCESS;}
 static int absent_hive(const WCHAR *name){HKEY k;LONG e=RegOpenKeyExW(HKEY_LOCAL_MACHINE,name,0,KEY_READ,&k);if(e==ERROR_SUCCESS){RegCloseKey(k);return 0;}return e==ERROR_FILE_NOT_FOUND;}
 static int prep(void){
  if(!volume(L'C',469762048LL,15147204608LL,L"NTFS")||!volume(L'E',184549376LL,268435456LL,L"FAT32"))return 0;
+ if(!clean_windows_volume())return 0;
  if(GetFileAttributesW(L"C:\\Windows\\System32\\config\\SYSTEM")==INVALID_FILE_ATTRIBUTES||GetFileAttributesW(L"E:\\EFI\\Boot\\bootarm.efi")==INVALID_FILE_ATTRIBUTES)return 0;
  if(!absent_hive(L"A04TOPRGUSYS")||!absent_hive(L"A04TOPRGUSW")||!absent_hive(L"A04TEMP")||!absent_hive(L"A04TXSYS")||!absent_hive(L"A04TXSW"))return 0;
  if(!privilege(SE_BACKUP_NAME)||!privilege(SE_RESTORE_NAME)||!privilege(SE_SECURITY_NAME))return 0;
