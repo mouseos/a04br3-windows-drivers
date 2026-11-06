@@ -21,6 +21,7 @@ def main():
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--workload', type=Path)
     p.add_argument('--workload-sha256')
+    p.add_argument('--quiet-success-reports', action='store_true')
     a = p.parse_args()
     base, package, out = (v.resolve() for v in (a.base, a.package, a.out))
     if any(not v.is_relative_to(ROOT) for v in (base, package, out)) or out.exists():
@@ -103,6 +104,15 @@ def main():
             'set GDI_WORKLOAD_RC=%errorlevel%\n'
             'echo GE8300_GDI_WORKLOAD_EXIT=%GDI_WORKLOAD_RC% >> X:\\a04br3\\toprgu-audit-result.txt\n'
             'X:\\a04br3\\uart-audit-stream.exe 9917000000000003')
+    if a.quiet_success_reports:
+        # GPU direct UART diagnostics and the audit sender share TX without
+        # a common lock. Avoid corrupting successful measurement lines;
+        # preserve an audit report for actual command failures.
+        for variable, token in (('GPU_LOAD_RC','9917000000000001'),
+                                ('DISPLAY_LOAD_RC','9917000000000002'),
+                                ('GDI_WORKLOAD_RC','9917000000000003')):
+            report = 'X:\\a04br3\\uart-audit-stream.exe '+token
+            text = text.replace(report,'if not "%'+variable+'%"=="0" '+report)
     start.write_bytes(text.replace('\n','\r\n').encode())
     image = out/'volume.wim'; shutil.copyfile(base/'volume.wim',image)
     changes = [(software,'/Windows/System32/config/SOFTWARE'),(start,'/Windows/System32/startnet.cmd'), (work/'uart-audit-stream.exe','/a04br3/uart-audit-stream.exe')]
@@ -119,6 +129,6 @@ def main():
          '--output',str(out/'volume-esp.img'),'--template-bcd-sha256',BCD,'--template-wim-sha256',WIM])
     (out/'manifest.json').write_text(json.dumps({'base_wim_sha256':WIM,'provider_sha256':a.provider_sha256,
        'display_sha256':a.display_sha256,'workload_sha256':a.workload_sha256,'test_signer_sha1':thumb,'wim_sha256':sha(image),'esp_sha256':sha(out/'volume-esp.img'),
-       'status':'built; device performance unverified'},indent=2)+'\n')
+       'quiet_success_reports':a.quiet_success_reports,'status':'built; device performance unverified'},indent=2)+'\n')
 
 if __name__ == '__main__': main()
