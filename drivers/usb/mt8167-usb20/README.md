@@ -226,3 +226,38 @@ WDK 8.1 and test-signs the shared-parent link probe. The generated certificate
 is not a trusted production signature; there is no installation package or
 claim of device operation. It does not activate the MUSB child or establish
 VBUS. The observations appear as `A04USB GPIO` debug messages.
+
+## Preparing the next touch/GPU WinPE integration
+
+The `work/rt-usb-power-observation` branch incorporates the current
+`work/rt-unified-gpu` baseline. Build the existing shared parent with the same
+flags and resources as the proven touch/GPU WinPE baseline, adding only
+`A04_USB_POWER_OBSERVATION=1` and `A04_AUDIO_DIAGNOSTIC_TRACE=1`; retain
+`A04_USB_GPIO22_SOURCE_EXPERIMENT=0`. The observation requires the already
+opt-in button D0 path. It does not itself require APMIXED, does not activate
+USB host or register a VBUS source, and does not change GPU or touch drivers.
+If the baseline already uses the audio trace, only the observation flag changes.
+Otherwise enabling the shared trace also enables the existing `A04AUD` debug
+messages, so the diagnostic is not literally a one-flag behavioral change.
+Preserve all other baseline options, firmware resources, driver versions and
+package signing/trust decisions; do not substitute the example package below
+without comparing its manifest with that baseline.
+
+The WDK workflow publishes `usb-touch-observation-parent-test-signed` as a
+reproducible candidate: button D0 and touch D0 enabled, APMIXED and all other
+optional parent flags disabled, observation and debug trace enabled. It
+contains the parent SYS, INF, test-signed catalog, public test certificate and
+manifest. This is not a complete WinPE image or the previously validated
+combined GPU configuration; the certificate's target acceptance and this
+particular build's touch/GPU behavior have not been tested. The main operator
+must use the matching established parent/child topology and preserve the
+existing WinPE setup.
+
+The two `A04USB GPIO` messages use `DbgPrintEx` at INFO level, not the touch
+UART path. A configured kernel debug collector and appropriate filter are
+needed to capture them; absence of a message is not a pin reading. Snapshot
+reads are sequential, not atomic. DIR/DOUT/DIN/MODE are raw controller values:
+GPIO22 DOUT is a latch and neither it nor GPIO34 alone confirms a 5 V source,
+connector voltage, current, power direction or physical wiring. Compare the
+snapshot with the platform's verified mux and detect definitions; establish
+VBUS separately before treating power as available.

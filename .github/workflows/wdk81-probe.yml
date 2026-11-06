@@ -113,6 +113,43 @@ jobs:
           name: usb-power-observation-test-signed
           path: ${{ runner.temp }}\usb-power-observation
           if-no-files-found: error
+      - name: Build touch parent with GPIO observation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:A04_SHARED_BUTTON_D0_EXPERIMENT='1'
+          $env:A04_SHARED_TOUCH_D0_EXPERIMENT='1'
+          $env:A04_USB_POWER_OBSERVATION='1'
+          $env:A04_AUDIO_DIAGNOSTIC_TRACE='1'
+          $env:A04_SHARED_APMIXED_RESOURCE='0'
+          $env:A04_USB_GPIO22_SOURCE_EXPERIMENT='0'
+          ./tools/ci/build-msdc-parent-probe.ps1
+      - name: Package test-signed touch parent with GPIO observation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
+          $output = Join-Path $env:RUNNER_TEMP 'usb-touch-observation-parent'
+          New-Item -ItemType Directory -Force $output | Out-Null
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'a04-msdc-parent-probe\mt8167-shared.sys') $output
+          Copy-Item 'drivers/bus/mt8167-shared/prototype/shared-parent.inf' $output
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=A04BR3 USB Touch Observation Test' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
+          Export-Certificate -Cert $cert -FilePath (Join-Path $output 'usb-touch-observation-test.cer') | Out-Null
+          $sign = Join-Path $kit 'bin\x86\signtool.exe'
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $output 'mt8167-shared.sys')
+          if ($LASTEXITCODE -ne 0) { throw 'SYS test signing failed' }
+          & (Join-Path $kit 'bin\x86\Inf2Cat.exe') "/driver:$output" /os:6_3_ARM /uselocaltime
+          if ($LASTEXITCODE -ne 0) { throw 'Catalog creation failed' }
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $output 'shared-parent.cat')
+          if ($LASTEXITCODE -ne 0) { throw 'Catalog test signing failed' }
+          $sig = Get-AuthenticodeSignature (Join-Path $output 'mt8167-shared.sys')
+          if (!$sig.SignerCertificate -or $sig.SignerCertificate.Thumbprint -ne $cert.Thumbprint) { throw 'Unexpected signer' }
+          [ordered]@{ source_commit=(git rev-parse HEAD); shared_query=1; shared_children=1; button_d0=1; touch_d0=1; usb_power_observation=1; trace=1; apmixed=0; gpio22_source=0; other_optional_flags=0; signer_sha1=$cert.Thumbprint; signature_status="$($sig.Status)"; files=@{ 'mt8167-shared.sys'=(Get-FileHash (Join-Path $output 'mt8167-shared.sys') -Algorithm SHA256).Hash; 'shared-parent.inf'=(Get-FileHash (Join-Path $output 'shared-parent.inf') -Algorithm SHA256).Hash; 'shared-parent.cat'=(Get-FileHash (Join-Path $output 'shared-parent.cat') -Algorithm SHA256).Hash }; note='Self-signed parent diagnostic candidate. GPIO latch is not VBUS voltage; debug output requires a configured collector. Target trust, PnP, touch and GPU are unverified for this build.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $output 'manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: usb-touch-observation-parent-test-signed
+          path: ${{ runner.temp }}\usb-touch-observation-parent
+          if-no-files-found: error
       - name: Build MT8167 parent and MT6630 query probes
         shell: pwsh
         run: |
