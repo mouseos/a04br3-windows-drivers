@@ -28,7 +28,8 @@ int a04_gce_prepare_primary(struct a04_gce_submit *,uint32_t event,uint32_t l0,u
 /* Kick must run under the same WDF interrupt lock as a04_gce_submit_irq.
  * It never sleeps. Success means started, not that OVL latched a frame. */
 int a04_gce_kick_primary(struct a04_gce_submit *);
-/* IRQ is only for the owned thread; an EOC is not an OVL latch proof. */
+/* IRQ result: 0=EOC acknowledged, 1=not ours, -2=error IRQ acknowledged,
+ * -1=uncertain read/ack. An EOC is not an OVL latch proof. */
 int a04_gce_submit_irq(struct a04_gce_submit *);
 void a04_gce_submit_timeout(struct a04_gce_submit *);
 #endif

@@ -57,12 +57,13 @@ int a04_gce_submit_irq(struct a04_gce_submit *s)
     uint32_t irq,enabled;
     if(!s || s->state!=A04_GCE_RUNNING || !s->read32 || !s->write32)return -1;
     if(s->read32(s->context,GCE_IRQ_STATUS,&irq)){s->state=A04_GCE_RETAIN;return -1;}
-    if(!(irq&0x13u))return -1; /* interrupt was not this thread */
+    if(!(irq&0x13u))return 1; /* interrupt was not this thread */
     if(s->read32(s->context,GCE_ENABLE,&enabled) || !(enabled&1u)) {
         s->state=A04_GCE_RETAIN;return -1;
     }
     s->state=A04_GCE_RETAIN;
-    if(s->write32(s->context,GCE_IRQ_STATUS,~irq) || (irq&0x12u) || !(irq&1u))return -1;
+    if(s->write32(s->context,GCE_IRQ_STATUS,~irq))return -1;
+    if((irq&0x12u) || !(irq&1u))return -2;
     s->state=A04_GCE_IRQ_DONE;return 0;
 }
 void a04_gce_submit_timeout(struct a04_gce_submit *s)
