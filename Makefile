@@ -842,3 +842,11 @@ test-gpu-native-backing: build/gpu_vendor_windows_native_backing_test
 build/gpu_vendor_windows_native_backing_test: tests/gpu_vendor_windows_native_backing_test.c $(addprefix drivers/gpu/mt8167/vendor_m1_11/,windows_native_cold.c windows_native_code.c windows_native_backing.c windows_uncached.c native_resources.c native_hwrt_profile.c native_clear_surface.c native_clear_codespace.c native_clear_pds.c native_eot_program.c native_terminate_stream.c) drivers/gpu/mt8167/gpu_mmu.c $(wildcard drivers/gpu/mt8167/vendor_m1_11/*.h) drivers/gpu/mt8167/gpu_mmu.h tests/gpu_windows_stubs/ntddk.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
+
+.PHONY: test-mt8167-brightness
+test-mt8167-brightness: build/mt8167_brightness_test
+	./build/mt8167_brightness_test
+
+build/mt8167_brightness_test: tests/mt8167_brightness_test.cpp drivers/gpu/mt8167/wddm-display/mt8167_brightness.cxx drivers/gpu/mt8167/wddm-display/mt8167_brightness.hxx $(wildcard tests/brightness_wdk_stubs/*.h)
+	@mkdir -p build
+	$(CXX) -std=c++11 -O2 -Wall -Wextra -Werror -Itests/brightness_wdk_stubs -Idrivers/gpu/mt8167/wddm-display $(filter %.cpp %.cxx,$^) -o $@
