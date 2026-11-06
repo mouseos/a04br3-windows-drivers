@@ -632,3 +632,13 @@ recovery surface and prove both its display mapping and the new surface's
 visibility and retirement. A thread EOC, register readback, or the observed
 CPU comparison cannot replace those proofs. Keep the GCE and direct OVL paths
 default-off and retain their mappings whenever transition or stop is uncertain.
+
+The version 5 GCE interface connects restore preparation to the same IRQ-locked
+kick, bounded completion wait and stop used for primary commands. The caller
+must provide an independent validator for command DMA quiescence and both saved
+display mappings. Validation is called at PASSIVE_LEVEL under the lease lock
+and cannot reenter the provider. A failed check leaves the stopped resources
+retained; timeout or uncertain submission retains them as well. This connects
+the conditional execution path, but the current platform supplies no such
+validator or ownership proof and has no WDDM restore caller. It does not prove
+that either plane latched or that either scanout surface can be released.

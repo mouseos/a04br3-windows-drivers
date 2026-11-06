@@ -12,7 +12,7 @@ static int restored(void *p,uint32_t l0,uint32_t l3)
 {return ((struct fake *)p)->authorized && l0==0x90000000 && l3==0x91000000;}
 int main(void)
 {
-    struct fake f={0};_Alignas(8) uint32_t buf[1024]={0};
+    struct fake f={0},validation={0};_Alignas(8) uint32_t buf[1024]={0};
     struct a04_gce_submit s={&f,auth,rd,wr,bar,delay,buf,0x80001000,A04_GCE_IDLE};
     assert(a04_gce_kick_primary(&s) && !f.writes);
     assert(a04_gce_prepare_primary(&s,27,0x90000000,0x91000000) && !f.writes && s.state==A04_GCE_IDLE);
@@ -35,7 +35,9 @@ int main(void)
     assert(a04_gce_stop_completed(&s) && s.state==A04_GCE_STOPPED);
     assert(a04_gce_prepare_restore(&s,27,0x90000000,0x91000000,0,&f) && s.state==A04_GCE_STOPPED && f.writes==12);
     assert(a04_gce_prepare_restore(&s,27,0x90000000,0x92000000,restored,&f) && s.state==A04_GCE_STOPPED && f.writes==12);
-    f.regs[0x110/4]=0;assert(!a04_gce_prepare_restore(&s,27,0x90000000,0x91000000,restored,&f));
+    f.regs[0x110/4]=0;
+    assert(a04_gce_prepare_restore(&s,27,0x90000000,0x91000000,restored,&validation) && s.state==A04_GCE_STOPPED);
+    validation.authorized=1;assert(!a04_gce_prepare_restore(&s,27,0x90000000,0x91000000,restored,&validation));
     assert(s.state==A04_GCE_PREPARED && buf[4]==0x90000000 && buf[6]==0x91000000 && f.writes==17);
     memset(&f,0,sizeof(f));s.state=A04_GCE_STOPPED;f.authorized=1;f.regs[0x110/4]=1;
     assert(a04_gce_prepare_restore(&s,27,0x90000000,0x91000000,restored,&f) && s.state==A04_GCE_RETAIN && !f.writes);
