@@ -69,13 +69,49 @@ int KbControlComplete(KB_ENUM *k,const unsigned char *p,unsigned n)
  }
  k->stage=KB_ERROR; return -1;
 }
+/* The output-enabled descriptor preserves the exact eight-byte input layout. */
+#define KB_INPUT_ITEMS \
+  0x05,0x01,0x09,0x06,0xa1,0x01,0x05,0x07,0x19,0xe0,0x29,0xe7, \
+  0x15,0x00,0x25,0x01,0x75,0x01,0x95,0x08,0x81,0x02,0x95,0x01, \
+  0x75,0x08,0x81,0x01,0x95,0x06,0x75,0x08,0x15,0x00,0x25,0x65, \
+  0x05,0x07,0x19,0x00,0x29,0x65,0x81,0x00
 const unsigned char *KbHidDescriptor(unsigned *length)
 {
- static const unsigned char d[]={
-  0x05,0x01,0x09,0x06,0xa1,0x01,0x05,0x07,0x19,0xe0,0x29,0xe7,
-  0x15,0x00,0x25,0x01,0x75,0x01,0x95,0x08,0x81,0x02,0x95,0x01,
-  0x75,0x08,0x81,0x01,0x95,0x06,0x75,0x08,0x15,0x00,0x25,0x65,
-  0x05,0x07,0x19,0x00,0x29,0x65,0x81,0x00,0xc0};
+ static const unsigned char d[]={KB_INPUT_ITEMS,0xc0};
  if(length)*length=(unsigned)sizeof(d);
  return d;
+}
+const unsigned char *KbHidOutputDescriptor(unsigned *length)
+{
+ static const unsigned char d[]={KB_INPUT_ITEMS,
+  /* LED usages 1..5: Num Lock, Caps Lock, Scroll Lock, Compose, Kana. */
+  0x05,0x08,0x19,0x01,0x29,0x05,0x15,0x00,0x25,0x01,
+  0x75,0x01,0x95,0x05,0x91,0x02,
+  0x75,0x03,0x95,0x01,0x91,0x01,0xc0};
+ if(length)*length=(unsigned)sizeof(d);
+ return d;
+}
+#undef KB_INPUT_ITEMS
+int KbOutputControl(const KB_ENUM *k,const unsigned char *report,
+ unsigned length,unsigned report_id,KB_CONTROL *c,unsigned char *led)
+{
+ KB_CONTROL next={0};
+ unsigned offset=length==2?1u:0u;
+ if(!k || !report || !c || !led || k->stage!=KB_READY ||
+    k->interface_number>255 || (length!=1 && length!=2) || report_id || (offset && report[0]) ||
+    (report[offset]&0xe0) || (k->max_packet0!=8 && k->max_packet0!=16 &&
+    k->max_packet0!=32 && k->max_packet0!=64))return -1;
+ next.setup[0]=0x21;next.setup[1]=9;next.setup[3]=2;
+ next.setup[4]=(unsigned char)k->interface_number;next.setup[6]=1;
+ next.length=1;next.address=1;next.max_packet0=k->max_packet0;
+ *c=next;*led=report[offset];return 0;
+}
+int KbCopyInputReport(unsigned char *report,unsigned length,const unsigned char input[8])
+{
+ unsigned i,offset=length==9?1u:0u;
+ if(!report || !input || (length!=8 && length!=9))return -1;
+ /* Copy backwards so even an in-place addition of the ID prefix is safe. */
+ for(i=8;i>0;--i)report[offset+i-1]=input[i-1];
+ if(offset)report[0]=0;
+ return 0;
 }

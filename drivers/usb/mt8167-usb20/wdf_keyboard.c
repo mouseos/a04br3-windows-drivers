@@ -24,7 +24,7 @@ typedef struct {
  unsigned head,count; BOOLEAN connected,overflow,draining; KB_SESSION session; A04_USB_WDF *usb; WDFWAITLOCK controller_lock; WDFTIMER poll; BOOLEAN rx_pending, board_owned, board_fault; A04_USB_BOARD board; A04_SHARED_USB_INTERFACE shared; BOOLEAN shared_valid; ULONGLONG next_poll;
 #if A04_MUSB_HID_CONTROL_EXPERIMENT
  WDFQUEUE controls; struct a04_control_host control; struct a04_control_request control_request;
- UCHAR control_data[8]; BOOLEAN control_ready,control_busy,control_poisoned; ULONGLONG control_deadline;
+ UCHAR control_data[8]; BOOLEAN control_ready,control_busy,control_poisoned,control_output; ULONGLONG control_deadline;
 #endif
 } KB_HID_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(KB_HID_CONTEXT,KbHidContext)
@@ -93,10 +93,11 @@ static void ControlComplete(KB_HID_CONTEXT *c,NTSTATUS status)
 {
  WDFREQUEST request; PIRP irp; PHID_XFER_PACKET packet;
  if(!NT_SUCCESS(WdfIoQueueRetrieveNextRequest(c->controls,&request)))return;
- if(NT_SUCCESS(status)) {
+ if(NT_SUCCESS(status) && c->control_output)WdfRequestSetInformation(request,1);
+ else if(NT_SUCCESS(status)) {
   irp=WdfRequestWdmGetIrp(request);packet=(PHID_XFER_PACKET)irp->UserBuffer;
-  if(!packet || !packet->reportBuffer || packet->reportId || packet->reportBufferLen<9)status=STATUS_INVALID_PARAMETER;
-  else {packet->reportBuffer[0]=0;RtlCopyMemory(packet->reportBuffer+1,c->control_data,8);WdfRequestSetInformation(request,8);}
+  if(!packet || packet->reportId || KbCopyInputReport(packet->reportBuffer,packet->reportBufferLen,c->control_data))status=STATUS_INVALID_PARAMETER;
+  else WdfRequestSetInformation(request,8);
  }
  WdfRequestComplete(request,status);
 }
@@ -108,15 +109,20 @@ static int ControlReady(KB_HID_CONTEXT *c,const MT8167_USB20_CONTROLLER *control
     a04_port_reset_begin(&c->control.port) || a04_port_reset_done(&c->control.port,speed) || a04_queue_online(&c->control.queue))return -1;
  c->control_ready=TRUE;return 0;
 }
-static NTSTATUS ControlSubmit(WDFDEVICE dev,WDFREQUEST request)
+static NTSTATUS ControlSubmit(WDFDEVICE dev,WDFREQUEST request,BOOLEAN output)
 {
- KB_HID_CONTEXT*c=KbHidContext(dev); PIRP irp;PHID_XFER_PACKET packet;NTSTATUS status;struct a04_control_request *r=&c->control_request;
+ KB_HID_CONTEXT*c=KbHidContext(dev); PIRP irp;PHID_XFER_PACKET packet;NTSTATUS status;KB_CONTROL led_control;UCHAR led=0;struct a04_control_request *r=&c->control_request;
  irp=WdfRequestWdmGetIrp(request);packet=(PHID_XFER_PACKET)irp->UserBuffer;
- if(!packet || !packet->reportBuffer || packet->reportId || packet->reportBufferLen<9)return STATUS_INVALID_PARAMETER;
+ if(!packet || !packet->reportBuffer || packet->reportId || (!output && packet->reportBufferLen!=8 && packet->reportBufferLen!=9))return STATUS_INVALID_PARAMETER;
  WdfWaitLockAcquire(c->controller_lock,NULL);
  if(!c->board_owned || c->board_fault || !c->control_ready || c->control_busy || c->control_poisoned || c->session.enumeration.stage!=KB_READY) {WdfWaitLockRelease(c->controller_lock);return STATUS_DEVICE_NOT_READY;}
+ if(output && KbOutputControl(&c->session.enumeration,packet->reportBuffer,packet->reportBufferLen,packet->reportId,&led_control,&led)) {
+  WdfWaitLockRelease(c->controller_lock);return STATUS_INVALID_PARAMETER;
+ }
  RtlZeroMemory(r,sizeof(*r));r->setup[0]=0xa1;r->setup[1]=1;r->setup[3]=1;
  r->setup[4]=(UCHAR)c->session.enumeration.interface_number;r->setup[5]=(UCHAR)(c->session.enumeration.interface_number>>8);r->setup[6]=8;
+ if(output) {RtlCopyMemory(r->setup,led_control.setup,8);c->control_data[0]=led;}
+ c->control_output=output;
  r->buffer=c->control_data;r->address=1;r->speed=c->session.speed;r->max_packet=c->session.enumeration.max_packet0;
  status=WdfRequestForwardToIoQueue(request,c->controls);
  if(!NT_SUCCESS(status)){WdfWaitLockRelease(c->controller_lock);return status;}
@@ -215,7 +221,7 @@ static void KbControllerEvents(void *context,MT8167_USB20_EVENTS events)
 #if A04_MUSB_HID_CONTROL_EXPERIMENT
    if(c->control_busy) {
     struct a04_control_request *done=NULL;result=a04_control_events(&c->control,events,&done);
-    if(result==1 && done) {c->control_busy=FALSE;ControlComplete(c,done->transfer.actual==8?STATUS_SUCCESS:STATUS_DEVICE_DATA_ERROR);}
+    if(result==1 && done) {c->control_busy=FALSE;ControlComplete(c,done->transfer.actual==(c->control_output?1u:8u)?STATUS_SUCCESS:STATUS_DEVICE_DATA_ERROR);}
     else if(result<0 || c->control_request.transfer.state==A04_XFER_ABORTING) {c->control_poisoned=TRUE;c->control_ready=FALSE;c->control_busy=FALSE;ControlComplete(c,STATUS_DEVICE_HARDWARE_ERROR);}
    } else
 #endif
@@ -317,6 +323,14 @@ NTSTATUS KbRelease(WDFDEVICE dev,WDFCMRESLIST translated)
  if(c->shared_valid) { c->shared.Header.InterfaceDereference(c->shared.Header.Context); c->shared_valid=FALSE; }
  A04UsbWdfRelease(c->usb); return STATUS_SUCCESS;
 }
+static const unsigned char *ReportDescriptor(unsigned *length)
+{
+#if A04_MUSB_HID_CONTROL_EXPERIMENT
+ return KbHidOutputDescriptor(length);
+#else
+ return KbHidDescriptor(length);
+#endif
+}
 VOID KbHidIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULONG code)
 {
  WDFDEVICE dev=WdfIoQueueGetDevice(queue); KB_HID_CONTEXT *c=KbHidContext(dev);
@@ -324,17 +338,19 @@ VOID KbHidIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULO
  UNREFERENCED_PARAMETER(outlen); UNREFERENCED_PARAMETER(inlen);
  switch(code) {
  case IOCTL_HID_GET_DEVICE_DESCRIPTOR:
-  (void)KbHidDescriptor(&len); h.bLength=sizeof(h); h.bDescriptorType=HID_HID_DESCRIPTOR_TYPE;
+  (void)ReportDescriptor(&len); h.bLength=sizeof(h); h.bDescriptorType=HID_HID_DESCRIPTOR_TYPE;
   h.bcdHID=0x0111; h.bNumDescriptors=1; h.DescriptorList[0].bReportType=HID_REPORT_DESCRIPTOR_TYPE;
   h.DescriptorList[0].wReportLength=(USHORT)len; status=CopyOutput(request,&h,sizeof(h)); break;
- case IOCTL_HID_GET_REPORT_DESCRIPTOR: desc=KbHidDescriptor(&len); status=CopyOutput(request,desc,len); break;
+ case IOCTL_HID_GET_REPORT_DESCRIPTOR: desc=ReportDescriptor(&len); status=CopyOutput(request,desc,len); break;
  case IOCTL_HID_GET_DEVICE_ATTRIBUTES: attr.Size=sizeof(attr); attr.VersionNumber=1; status=CopyOutput(request,&attr,sizeof(attr)); break;
  case IOCTL_HID_READ_REPORT:
   status=WdfRequestForwardToIoQueue(request,c->reads); if(NT_SUCCESS(status)) { Drain(dev); return; } break;
 #if A04_MUSB_HID_CONTROL_EXPERIMENT
  case IOCTL_HID_GET_INPUT_REPORT:
-  if(outlen<9){status=STATUS_BUFFER_TOO_SMALL;break;}
-  status=ControlSubmit(dev,request);if(status==STATUS_PENDING)return;break;
+  status=ControlSubmit(dev,request,FALSE);if(status==STATUS_PENDING)return;break;
+ case IOCTL_HID_WRITE_REPORT:
+ case IOCTL_HID_SET_OUTPUT_REPORT:
+  status=ControlSubmit(dev,request,TRUE);if(status==STATUS_PENDING)return;break;
 #endif
  }
  WdfRequestComplete(request,status);

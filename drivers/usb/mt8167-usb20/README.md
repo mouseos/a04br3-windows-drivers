@@ -218,3 +218,36 @@ establish connector power or provide general USB PnP. Neither WDF cancellation
 races nor the interrupt drain have been exercised under Windows Driver Verifier
 or on the device; ARM32 compilation/linking and host MMIO simulations do not
 establish those results. No new signed or installable package is produced.
+
+### キーボードLED出力
+
+`A04_MUSB_HID_CONTROL_EXPERIMENT=1` と既存ホストコア実験の両方を
+有効にした構成で、`IOCTL_HID_WRITE_REPORT` と
+`IOCTL_HID_SET_OUTPUT_REPORT` を既存EP0へ接続する。記述子にNum Lock、
+Caps Lock、Scroll Lock、Compose、Kanaの5bitと3bitの定数paddingを追加し、
+入力の8byte形式は維持する。既定OFF構成は従来の入力専用記述子を返す。
+
+要求は列挙完了後に1件だけ受け付け、既存GET_INPUT_REPORTと同じロック・
+手動キュー・2秒期限を使用する。ID 0の1byteレポート、または先頭に0を
+付けた2byte形式だけを受け付け、USBへはLEDの1byteだけを送る。
+非0のID、paddingの設定、不正な長さを拒否し、送信用バッファへコピーして
+からWDFへ要求を渡す。GET_INPUT_REPORTも8byteとID 0付き9byteの両方を
+検証し、バッファの範囲内へコピーする。実際のWindows 8.1 HIDClassから
+渡される形式とキャンセル競合は、このホスト試験では確認していない。
+
+USB SET_REPORTの値は、端末GPLソースの
+`kernel-4.4/drivers/hid/usbhid/usbkbd.c` のLED初期化にある
+`bmRequestType=0x21`、`bRequest=9`、`wValue=0x0200`、
+`wIndex=bInterfaceNumber`、`wLength=1` に基づく。
+[MicrosoftのHID_XFER_PACKET](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/hidclass/ns-hidclass-_hid_xfer_packet)、
+[IOCTL_HID_WRITE_REPORT](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/hidport/ni-hidport-ioctl_hid_write_report)、
+[IOCTL_HID_SET_OUTPUT_REPORT](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/hidclass/ni-hidclass-ioctl_hid_set_output_report)
+を参照。完了情報はUSBへ転送した1byte。ステータス段階まで完了してから
+成功を返し、STALL・切断・期限切れは既存の失敗経路へ渡す。
+
+`make test-mt8167-usb-keyboard-output` は全32値を実際のホストキューと
+EP0 PIOへ通し、SETUP、データ、ステータスの完了順序、IDの除去、
+不正要求、STALL、記述子の入力64bit・出力8bitを確認する。
+MMIOの模擬試験であり、WindowsでのWDF実行や実機LED点灯の確認ではない。
+給電のゲートは変更しない。汎用USBホスト、hub、電源・IRQの実機検証は
+引き続き未完了で、動作済みパッケージとして配布できない。
