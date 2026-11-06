@@ -7,6 +7,11 @@
 int a04_test_trace_count;
 #endif
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
+#if A04_SHARED_FIRST_PLAYBACK
+static ULONG firstAnalog[1024];static int firstIdleRefs;
+NTSTATUS WdfDeviceStopIdle(WDFDEVICE dev,int wait){(void)dev;assert(wait);firstIdleRefs++;return STATUS_SUCCESS;}
+void WdfDeviceResumeIdle(WDFDEVICE dev){(void)dev;assert(firstIdleRefs);firstIdleRefs--;}
+#endif
 static ULONG mockAfeRegs[1024];static int mockAfeIgnoreWrite;
 #define mockAfe mockAfeRegs[0]
 #endif
@@ -31,6 +36,9 @@ void ExInitializeFastMutex(FAST_MUTEX *m){m->held=0;}void ExAcquireFastMutex(FAS
 PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,int c){(void)n;(void)c;maps++;if(failMap && maps==failMap)return NULL;return (PVOID)(uintptr_t)a.QuadPart;}
 void MmUnmapIoSpace(PVOID p,ULONG n){(void)p;(void)n;unmaps++;}
 ULONG READ_REGISTER_ULONG(volatile ULONG *p){(void)p;reads++;
+#if A04_SHARED_FIRST_PLAYBACK
+ if((uintptr_t)p>=(uintptr_t)firstAnalog && (uintptr_t)p<(uintptr_t)(firstAnalog+1024))return *p;
+#endif
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
  if((uintptr_t)p>=(uintptr_t)usbGpio && (uintptr_t)p<(uintptr_t)(usbGpio+1024))return *p;
 #endif
@@ -42,6 +50,9 @@ ULONG READ_REGISTER_ULONG(volatile ULONG *p){(void)p;reads++;
  if((uintptr_t)p==0x2000f0a4){if(mockStopDuringRead)InterlockedExchange(&testContext.admissionClosed,1);return (mockFsm<<16)|(mockWacs?0x1234u:0);}
 #endif
  return 0;}void WRITE_REGISTER_ULONG(volatile ULONG *p,ULONG x){(void)p;(void)x;writes++;
+#if A04_SHARED_FIRST_PLAYBACK
+ if((uintptr_t)p>=(uintptr_t)firstAnalog && (uintptr_t)p<(uintptr_t)(firstAnalog+1024)){*p=x;return;}
+#endif
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
  if((uintptr_t)p>=(uintptr_t)mockAfeRegs && (uintptr_t)p<(uintptr_t)(mockAfeRegs+1024)) {
     if(!mockAfeIgnoreWrite) {
@@ -367,4 +378,5 @@ int main(void){
  }
 #endif
  input.InterfaceDereference(input.Context);saved.Header.InterfaceDereference(saved.Header.Context);assert(!refs);
+ return 0;
 }

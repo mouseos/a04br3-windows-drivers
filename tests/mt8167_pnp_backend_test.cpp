@@ -23,6 +23,10 @@ static int parent_mute(PVOID){return 0;}
 static int parent_drained(PVOID){return !drainProven;}
 #endif
 static int parent_unmutes;
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+static int firstVoiceStarts;
+static int first_voice_start(PVOID){firstVoiceStarts++;return 0;}
+#endif
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
 static int live_verified,voice_starts,voice_stops;
 #if defined(A04_AUDIO_WAVE_DMA_PROBE) && A04_AUDIO_WAVE_DMA_PROBE
@@ -85,6 +89,9 @@ extern "C" NTSTATUS Mt8167QueryAudioParent(PDEVICE_OBJECT p,A04_SHARED_AUDIO_INT
 #endif
 #if defined(A04_AUDIO_DIGITAL_PLAYBACK) && A04_AUDIO_DIGITAL_PLAYBACK
  out->PreparePlayback=parent_digital;
+#endif
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+ out->StartVoice=first_voice_start;
 #endif
  out->AcquireMuted=malformed?nullptr:parent_acquire;out->ReleaseQuiescent=parent_release;out->PrepareMaskedIrq=parent_prepare;out->BindAfe=parent_bind;out->Mute=parent_mute;out->UnmuteMin=parent_unmute;parent_refs++;return STATUS_SUCCESS;
 }
@@ -278,6 +285,13 @@ int main(){
  assert(!api->start(api->context,&exposure) && exposure && allocCalls==2);
 #if defined(A04_AUDIO_DIGITAL_PLAYBACK) && A04_AUDIO_DIGITAL_PLAYBACK
  assert(digitalCalls==1);
+#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+ assert(firstVoiceStarts==1);
+ DEVICE_DESCRIPTION description{};
+ assert(!api->getDeviceDescription(api->context,&description) && description.Dma32BitAddresses && description.Master);
+ BOOLEAN repeated=TRUE;
+ assert(api->start(api->context,&repeated)==STATUS_DEVICE_NOT_READY && allocCalls==2 && firstVoiceStarts==1);
+#endif
 #endif
 #endif
 #if defined(A04_AUDIO_UNMUTE_DIAGNOSTIC) && A04_AUDIO_UNMUTE_DIAGNOSTIC

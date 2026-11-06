@@ -467,3 +467,64 @@ PnP queryで公開された実parent callback、RUNからの呼出し、-1/-2で
 `ReleaseQuiescent`とparent unmapは拒否し、子も保持状態をquarantineする。
 既存の停止経路が成功してもこの保持を解除しない。通常のPnP remove/resumeや
 再生再開を完成したものとして扱わない。実機・SSH・REA・EDK2の操作は行っていない。
+
+## 資源を保持する初回再生プロバイダ（2026-11-07追記）
+
+前節の未接続callbackは、専用の `A04_SHARED_FIRST_PLAYBACK=1` ビルドでは
+実プロバイダへ接続した。従来の診断ビルドには有効化しない。
+親D0はPnP割当済みの共有bankとWACS2 readinessを確認してaudio admissionを開く。
+`AcquireMuted` は `WdfDeviceStopIdle(TRUE)` で親の電源参照を取得し、
+既存の再生・収録・ヘッドホンアンプ・Class Dが稼働していないことを確認する。
+VAUD22/VAUD28のbit14を設定し、Linux regulatorの264 us ramp後にQI bit15を
+有界待機する。電圧selectorは維持する。TOP audio/AFE clockとcodec domainを
+取得し、MT6392の実WACS2更新でgain muteとhardware trimを行う。
+trimの20 ms待機後、trimを切る前にSPK_CON1 bits4:0を読み取り記録する。
+副作用前の拒否だけは取得した電源参照を返し、成功または不確定な失敗は保持する。
+
+基板LinuxはAU_LOLをVoice AmpからMT6392内部Class Dへ接続する。
+`LINEOUT Mux` は `SND_SOC_NOPM` のソフトウェアmuxであり、推測のmuxレジスタは
+追加しない。提供された `mt8167-codec.c` のVoice gain初期値9（0 dB）を設定し、
+DC補償はLinuxの未校正cold-start状態（kzalloc配列の0→0）を明示して使用する。
+Linuxの `HP DC Offsets` は別途ヘッドホン回路をADC測定した場合に配列を設定する。
+**AU_LOL専用のADCチャンネル・測定手順は一次ソースにないため、AU_LOLの実測DC校正を
+実装済みとは扱わない。** 今回接続した校正動作はMT6392 Class Dのhardware trimであり、
+AU_LOLの測定値や0x4b4bの無条件適用ではない。
+
+子は `A04_AUDIO_FIRST_PLAYBACK=1` により、共有lease/IRQ取得後の最初のRUNで
+デジタル設定、Voice Amp、DL1、最小Class D gainの順に開始する。
+DMAは `AllocateCommonBuffer(CacheEnabled=FALSE)` の論理アドレスを使う。
+非公開・非cachedの別bufferへ48 kHz stereo S16_LE、1500 Hz、peak 128/32768の
+固定PCMを一度書き、既存の `KeFlushIoBuffers` とARM DMBを通してからDL1へ渡す。
+利用者に渡すWaveRT bufferとDMA用bufferは別であり、利用者の書込みや循環cache管理を
+この経路で成立させたとは主張しない。これは初回の固定PCM再生専用である。
+
+停止時はmuteとDL1停止・IRQ rundownを行うが、drainを証明せず、共有lease・
+parent電源参照・PMIC電源・clock・codec・DMA buffer・PDO・mappingをresetまで保持する。
+lease返却、DMA資源の解放、二度目のRUNは許可しない。parentのpower policyに対する
+idle防止はあるが、強制removeやシステム電源遷移で物理資源が維持されることまで保証しない。
+通常運用の音声ドライバ、live PCM、再開・suspend/resumeの完成形ではない。
+
+主担当が行うWDK 8.1 ARM32ビルド:
+
+```powershell
+./tools/ci/build-mt8167-first-playback.ps1
+```
+
+この入口だけで親子の一致するフラグを設定し、共有parent SYSとPortCls SYSを一括ビルドする。
+既存runnerを開始・停止する処理、実機へ接続する処理は含まない。
+出力・一時ファイル・build.logはcheckout内の `build/mt8167-first-playback/` へ置く。
+`-OutputDirectory` を使う場合もcheckout内だけを許可する。
+
+- `a04-msdc-parent-probe/mt8167-shared.sys` と `shared-parent.inf`
+- `audio/mt8167-audio.sys` と `mt8167-afe-first-playback.inf`
+- `manifest.json`: source commit、dirty状態、PCM設定、ビルドフラグと4ファイルのSHA-256
+
+INFは既存子ID `MT8167\AFE`、subdevice `Mt8167WaveRT` に一致し、表示名は
+`MediaTek MT8167 AFE / MT6392 Audio`。媒体への組込み前に、主担当側でCAT生成・署名と
+既存の競合するstandalone所有者の無効化、APMIXED 0x714を含む親resource割当、
+PnP開始を確認する。Windowsの通常のSpeaker endpoint列挙・topology接続や署名受理は
+今回未確認であり、SYS link成功だけで利用者向け音声出力が完成したとは扱わない。
+
+ローカルでは変更に直接関係する一括ホスト確認を実施。実parent callbackを用いた
+D0→AcquireMuted→PreparePlayback→StartVoice→DL1有効後のUnmute、停止後の資源保持と、
+既存PnP fixtureによる固定PCM RUN接続を確認した。WDK linkと実機試験は主担当が実施する。
