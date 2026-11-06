@@ -191,7 +191,15 @@ int main(void){
 #endif
  assert(audio.PrepareMaskedIrq(audio.Header.Context,(PVOID)&audio,0x1000)!=0 && !reads && !writes);
  assert(wifi.Header.Version==2 && wifi.Acquire && wifi.ReleaseQuiescent && wifi.Live && wifi.UpdateShared && wifi.WriteShared);
- {ULONG generation=0xdead;assert(!wifi.Live(wifi.Header.Context,generation));assert(wifi.UpdateShared(wifi.Header.Context,generation,1,0x300,7u<<12,0)!=0);assert(wifi.WriteShared(wifi.Header.Context,generation,0,0xa0,2)!=0);assert(wifi.Acquire(wifi.Header.Context,&generation)==STATUS_DEVICE_NOT_READY && generation==0xdead && !reads && !writes);}
+ {ULONG generation=0xdead;
+#if A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC
+ int traceBefore=a04_test_trace_count;
+#endif
+ assert(!wifi.Live(wifi.Header.Context,generation));assert(wifi.UpdateShared(wifi.Header.Context,generation,1,0x300,7u<<12,0)!=0);assert(wifi.WriteShared(wifi.Header.Context,generation,0,0xa0,2)!=0);assert(wifi.Acquire(wifi.Header.Context,&generation)==STATUS_DEVICE_NOT_READY && generation==0xdead && !reads && !writes);
+#if A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC
+ assert(a04_test_trace_count==traceBefore+1);
+#endif
+ }
  {
  struct Mt8167AudioParentClient wrapper={0};struct mt8167_audio_shared_client client={0};
  audio.Header.InterfaceReference(audio.Header.Context);assert(refs==1);
