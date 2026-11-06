@@ -46,12 +46,13 @@ copy /y X:\a04br3\shared-fw\mt6630-wlan.bin C:\Windows\System32\drivers\a04br3\ 
 if errorlevel 1 goto dismfail
 call :adddriver PARENT X:\a04br3\shared-io\parent\shared-parent.inf
 if errorlevel 1 goto dismfail
-call :adddriver AUDIO X:\a04br3\shared-io\audio\mt8167-afe-first-playback.inf
+call :adddriver AUDIO X:\a04br3\shared-io\audio\@AUDIO_INF@
 if errorlevel 1 goto dismfail
 call :adddriver USB X:\a04br3\shared-io\usb\mt8167-usb20.inf
 if errorlevel 1 goto dismfail
 call :adddriver WIFI X:\a04br3\shared-io\wifi\mt6630-runtime.inf
 if errorlevel 1 goto dismfail
+@OPTIONAL_DRIVERS@
 copy /y X:\a04br3\dism-*.txt "%A04_BK%\" >nul
 > "%A04_BK%\JOURNAL.txt" echo STATE=COMMITTED
 >> "%A04_REPORT%" echo UPDATE_STATUS=COMMITTED

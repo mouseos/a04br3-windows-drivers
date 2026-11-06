@@ -41,7 +41,10 @@ def clean_header(path):
     return {'major': major, 'minor': minor, 'clean': True, 'checksum_valid': True}
 
 
-def prepared_system_check(system, manifest, expected_sha256, root, backup):
+def prepared_system_check(system, manifest, expected_sha256, root, backup, selected_service="MT8167HardwareProbe"):
+    names = {'MT8167HardwareProbe': 'MediaTek MT8167 Hardware Probe', 'MT8167EngineProbe': 'MediaTek MT8167 Engine Probe'}
+    if selected_service not in names:
+        raise ValueError('未対応の固定serviceです')
     system = private_path(system, root).resolve(strict=True)
     manifest = private_path(manifest, root).resolve(strict=True)
     if not re.fullmatch('[0-9a-fA-F]{64}', expected_sha256 or ''):
@@ -49,7 +52,7 @@ def prepared_system_check(system, manifest, expected_sha256, root, backup):
     report = json.loads(manifest.read_text(encoding='utf-8-sig'))
     if (report.get('status') != 'verified-clean-system-services-only'
             or report.get('whole_system_audit') is not False or not report.get('audit_scope')
-            or report.get('services') != ['MT8167HardwareProbe']):
+            or report.get('services') != [selected_service]):
         raise ValueError('HardwareProbeだけをnative準備した成功manifestが必要です')
     candidate = report['candidate']
     native_path = candidate['path'].replace('\\', '/')
@@ -66,9 +69,9 @@ def prepared_system_check(system, manifest, expected_sha256, root, backup):
     # Native recipe compares these exact seven values on patch and clean reload.
     expected = {
         'Type': ('DWord', 16), 'Start': ('DWord', 2), 'ErrorControl': ('DWord', 1),
-        'ImagePath': ('ExpandString', '"C:\\Windows\\System32\\MT8167HardwareProbe.exe"'),
+        'ImagePath': ('ExpandString', '"C:\\Windows\\System32\\' + selected_service + '.exe"'),
         'ObjectName': ('String', 'LocalSystem'),
-        'DisplayName': ('String', 'MediaTek MT8167 Hardware Probe'),
+        'DisplayName': ('String', names[selected_service]),
         'DependOnService': ('MultiString', ['DeviceInstall', 'RpcSs']),
     }
     baseline = None
@@ -81,7 +84,7 @@ def prepared_system_check(system, manifest, expected_sha256, root, backup):
                 or state.get('whole_system_audit') is not False or not state.get('audit_scope')):
             raise ValueError('native patch/clean reload/unload成功の証拠が必要です')
         services = state['services']
-        if len(services) != 1 or services[0]['name'] != 'MT8167HardwareProbe':
+        if len(services) != 1 or services[0]['name'] != selected_service:
             raise ValueError('native workerの対象service不一致')
         values = services[0]['values']
         if set(values) != set(expected):
@@ -106,28 +109,54 @@ def prepared_system_check(system, manifest, expected_sha256, root, backup):
             'root_relative_path': str(system.relative_to(root.resolve())), 'header': header,
             'native_candidate_path': native_path, 'relocated_after_native_preparation': system != declared,
             'status': report['status'], 'whole_system_audit': False,
-            'audit_scope': report['audit_scope'], 'target_value_names': list(expected)}
+            'audit_scope': report['audit_scope'], 'selected_service': selected_service, 'target_value_names': list(expected)}
 
 
-def probe_check(executable, manifest, certificate, root):
+def probe_check(executable, manifest, certificate, root, audio_mode="Tone"):
     paths = [p.resolve(strict=True) for p in (executable, manifest, certificate)]
     if any(not p.is_relative_to(root.resolve()) or not p.is_file() for p in paths):
         raise ValueError('probe EXE/manifest/certは作業ルート内のfileが必要です')
     executable, manifest, certificate = paths
+    engine = audio_mode == 'EnginePcm'
+    service = 'MT8167EngineProbe' if engine else 'MT8167HardwareProbe'
+    audio = 'mt8167-audio-engine-probe.exe' if engine else 'mt8167-audio-first-playback.exe'
     report = json.loads(manifest.read_text(encoding='utf-8-sig'))
+    if engine:
+        if (report.get('audio_mode') != 'engine_pcm_retained' or report.get('engine_pcm_compatible') is not True
+                or report.get('fixed_clients') != ['mt6630-wlan-probe.exe', audio]
+                or report.get('build_defines', {}).get('A04_HARDWARE_PROBE_ENGINE_PCM') != '1'):
+            raise ValueError('Engine専用service binary/manifestが必要です')
+        if (report.get('service_destination') != 'System32\\MT8167EngineProbe.exe'
+                or report.get('client_directory') != 'System32\\MT8167EngineProbe\\clients'
+                or report.get('log_directory') != 'System32\\MT8167EngineProbe\\logs'
+                or report.get('marker_directory') != 'System32\\MT8167EngineProbe'):
+            raise ValueError('Engine専用service/client/log/marker path不一致')
+        pnp = report.get('pnp_rebind', {})
+        if (pnp.get('api') != 'UpdateDriverForPlugAndPlayDevicesW' or pnp.get('flags') != 5
+                or pnp.get('fixed_hardware_ids') != ['MT8167\\AFE', 'MT8167\\USB20', 'A04BR3\\MT6630SDIO']
+                or pnp.get('directory') != 'System32\\MT8167EngineProbe\\drivers'
+                or pnp.get('maximum_calls_per_id') != 1 or pnp.get('parent_updated') is not False
+                or pnp.get('reboot_required_stops_clients') is not True
+                or pnp.get('catalog_signature_required') is not True):
+            raise ValueError('Engine固定PnP再bind契約のあるserviceが必要です')
+        binary = executable.read_bytes()
+        if audio.encode('utf-16le') not in binary or 'mt8167-audio-first-playback.exe'.encode('utf-16le') in binary:
+            raise ValueError('旧tone binaryまたは別clientをEngineProbeへ混用できません')
     cert = certificate.read_bytes()
     thumbprint = hashlib.sha1(cert).hexdigest().upper()
     files = {item['name']: item['sha256'].lower() for item in report['files']}
-    if (report.get('service') != 'MT8167HardwareProbe' or report.get('signing_requested') is not True
+    if (report.get('service') != service or report.get('signing_requested') is not True
             or report.get('source_dirty') is not False or not cert.startswith(b'\x30')
             or report.get('signing_thumbprint', '').upper() != thumbprint
-            or files.get('MT8167HardwareProbe.exe') != sha(executable)
+            or files.get(service + '.exe') != sha(executable)
             or report.get('scm_start') != 2 or report.get('scm_arguments') != ''
-            or report.get('audio_interface') != 11 or report.get('engine_pcm_compatible') is True):
+            or report.get('audio_interface') != 11 or (not engine and report.get('engine_pcm_compatible') is True)):
         raise ValueError('probe EXE hash/署名manifest/cert thumbprint契約不一致')
-    return {'source_commit': report['source_commit'], 'exe_sha256': sha(executable),
+    return {'source_commit': report['source_commit'], 'service': service,
+            'audio_mode': 'engine_pcm_retained' if engine else 'private_fixed_tone_diagnostic', 'exe_sha256': sha(executable),
             'manifest_sha256': sha(manifest), 'certificate_sha256': sha(certificate),
-            'certificate_thumbprint': thumbprint, 'authenticode_verified_here': False}
+            'certificate_thumbprint': thumbprint, 'authenticode_verified_here': False,
+            'pnp_rebind': report.get('pnp_rebind') if engine else None}
 
 
 def certificate_trust_commands(certificates):

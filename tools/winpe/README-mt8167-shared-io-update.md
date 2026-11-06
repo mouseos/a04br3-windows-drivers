@@ -71,3 +71,72 @@ python3 tools/winpe/build-mt8167-shared-io-update-media.py \
 旧SYSTEM/LOGのnative入力は今回fresh Recovery backupと一致させる。
 回収したcandidateはnativeのcandidate/SYSTEM配置、または同じresult.json横のSYSTEMだけ。
 実機書込み前のRecovery boot_id照合とdiskログ回収は主担当が行い、このbuilderは実行しない。
+
+## Engine次構成の明示mode
+
+既定はToneのまま。`--audio-mode EnginePcm`を明示するときだけ、新しい固定service
+MT8167EngineProbe用のprivate媒体を作る。MT8167HardwareProbeや旧markerを再武装/削除しない。
+Engine compileしたservice EXE/manifest/cert、run27 fresh backup、EngineProbe単独native candidateが必要。
+古い27ad206 serviceや旧tone向けSYSTEMはEngine modeで拒否する。
+
+追加必須入力：`--package`は旧windows-rt-peripherals-f17b743-a016d53、
+`--engine-package`はwindows-rt-engine-pcm-de214c8-e4dff2b、
+`--engine-client-package`は署名済みwindows-rt-audio-engine-probe-d0eb436。
+既存の--probe-service/manifest/certificateには新MT8167EngineProbe EXEの署名出力を渡す。
+componentごとのhash/source/INF version/certを検査し、検査した固定ファイルだけをstageする。
+
+| component | runtime source / INF source | DriverVer | cert |
+| --- | --- | --- | --- |
+| 単一parent | de214c8 / e4dff2b | 11/06/2026,2026.11.6.1001 | BCBF... |
+| Engine audio | de214c8 / e4dff2b | 11/06/2026,2026.11.7.1004 | BCBF... |
+| USB/Wi-Fi | f17b743 / f17b743 | 11/06/2026,2026.11.6.1001 | 2655... |
+| WLAN client | 旧bundle f17b743（bundle KS fix=a016d53） | EXE | 2655... |
+| WASAPI client | d0eb436 | package2026.11.7.2 | BCBF... |
+| Engine service | この更新後の固定source | EXE | BCBF... |
+
+旧parent・旧audio・旧tone clientはstageしない。Engine親の実capability flagと単一parentを確認する。
+署名後SYSとunsigned parent-manifestのSYS hashは別物なので、signed manifestのhashを署名後の基準に使う。
+別certをroleごとに記録しRoot/TrustedPublisherへ両方登録する。chain検証は実Windows側で別途必要。
+
+Engineではnative prepared SYSTEMをDISM前にcopyし、4driverを親→Engine audio→USB→Wi-Fiの順に適用する。
+SYSTEM RegLoad禁止・freshbackupの状態/hash/bytes/native入力由来照合・Recovery boot_id照合方針を維持する。
+旧service結果だけでEngineが実行されたと推測せず、新serviceのrunid、marker、client別終了と
+WASAPI/API/DMAのdisk記録を対応づける。可聴は未確認として扱う。
+
+### Engine限定のoptional AddDriver
+
+`--brightness-package`と`--toprgu-package`はEngine modeだけで受理し、未指定なら何も追加しない。
+Toneへ渡す指定は拒否する。指定時は4driverの後に固定DISPLAY/TOPRGUだけをAddDriverする。
+任意driver directoryを受け付ける機能ではない。
+
+- brightness：windows-rt-brightness-0c73f27、INF11/06/2026,0.0.1.3、BCBF cert。
+  normal liveFull flag維持は主担当申告として記録。bootbrightness341894cdを前提候補と記録するが、
+  bootを媒体へ入れたりflashしたりしない。boot採用・resource確認は主担当が別に行う。
+- TOPRGU：windows-rt-toprgu-normal-uart-0821853、INF11/06/2026,0.0.11.0、BCBF cert。
+  4 CPU/HANDOFF1/DEADLINE0/THERMAL0/UART1と旧normal同一7 kernel git blobの宣言を検査し、
+  manifest/packageファイルhash/bytes/certを確認する。sleep/resumeやUART実在を検証済みとはしない。
+
+それぞれcomponent別source/hash/INF版/certと前提条件をmanifestへ残す。BT c715ad2はWi-Fi排他profileの
+別候補であり、今回のEngine/WLAN選択へは取り込まない。
+
+```sh
+# 前述のprivate/freshbackup/native引数を維持し、次を明示追加する。
+--audio-mode EnginePcm --engine-package "$SIGNED_ENGINE_DRIVERS" \
+--engine-client-package "$SIGNED_WASAPI_CLIENT" \
+--brightness-package "$SIGNED_BRIGHTNESS_CANDIDATE" \
+--toprgu-package "$SIGNED_NORMAL_UART_CANDIDATE"
+```
+
+Source-only実装であり、Engine service WDK link/署名、native Engine準備、媒体生成、実PnP、
+API/DMA/音声・UART・brightness実機確認は主担当の次工程。current run26r2の媒体は変更しない。
+
+### Engineの通常OS PnP開始
+
+Engine prepareは、選択・hash検証済みaudio/USB/Wi-FiのINF/SYS/CAT各3個も固定の
+System32\MT8167EngineProbe\drivers\{audio,usb,wifi}へcopyする。
+新service manifestに固定3IDs/flags=5/各1回/parent除外/reboot時client停止/CAT署名必須の
+契約が無い旧Engine serviceは入力検証で拒否する。旧tone serviceは変更しない。
+新serviceのCAT検証後、標準PnPの固定再bindを行う。3010は成功扱いせず後続を停止し、
+markerを残す。before/after CMとAPIのdiskログを主担当が回収する。
+Engine親と旧親は同版2026.11.6.1001なので、単一parentの選択と実ロードhash一致は別の確認事項。
+親のUpdateDriverはこのserviceで行わない。詳細とevent番号はhardware-probe READMEを参照。

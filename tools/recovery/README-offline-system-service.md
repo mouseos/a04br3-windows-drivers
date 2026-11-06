@@ -67,3 +67,19 @@ native APIを呼ぶ子プロセス全体を既定30秒で監督する。timeout�
 work/verify directoryや、その処理中に生成されたLOGを配備しない。入力の古いLOGをcandidateに添えてreplayさせない。EXE/INF/SYS/CAT配備、attempted.bin不存在の確認、private WinPE媒体によるclean SYSTEMコピーとvolume releaseは主担当で行う。依存サービスの存在はdevnode列挙完了の保証ではなく、実bindは通常Windowsで確認する。
 
 このレシピ・C# wrapperは公開可能だが、実SYSTEM/LOG・candidate・private resultを公開repoやCI公開artifactへ含めない。端末hiveを含む私用媒体の作成・配備は主担当の明示した私用運用として区別する。本レシピ自体のnative Windows実行・実機起動は未実施。
+
+## 第3の固定名：MT8167EngineProbe
+
+`-ServiceName MT8167EngineProbe`だけを明示したfresh native準備は、
+ImagePath="C:\Windows\System32\MT8167EngineProbe.exe"、
+DisplayName=MediaTek MT8167 Engine Probeを持つ別serviceを作る。
+Type=16/Start=2/ErrorControl=1/ObjectName=LocalSystem/DependOnService=DeviceInstall,RpcSsは同じ固定7値。
+既定ServiceName=MT8167DeviceInstallは変えず、任意名・EXE・argsを受け付けない。
+Engine選択と-IncludeHardwareProbeの併用は拒否し、旧service/keyの再武装をしない。
+監査範囲は従来のSelect・DeviceInstall/RpcSs直下raw値fingerprintと選択service7値だけ。
+全SYSTEM監査やACL迂回を追加しない。
+
+run27のfresh backupと同じSYSTEM/LOGからこのEngine単独候補を作り、
+媒体builderのEngine modeへSYSTEM/result/hashを渡す。旧tone対象のnative resultは拒否される。
+旧markerを削除せず、新markerはMT8167EngineProbe/attempted.binに独立する。
+このsource更新ではnative処理や端末へのコピーは実行していない。

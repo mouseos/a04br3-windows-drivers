@@ -199,3 +199,37 @@ open_uart失敗でresult=3として、ksuser load/KsCreatePin/RUNより前に終
 その結果を音声再生失敗や実RUN済みの証拠にしない。
 この任意UART修正は新EnginePcm専用probeだけで、旧tone service/SYS/INF/boot/current run26媒体へ
 混ぜない。旧tone診断の通知前提を解消する修正が必要なら、主担当が別の固定client更新として扱う。
+
+## 明示Engine service/media次構成
+
+Toneは既定のまま。service helper `-AudioMode EnginePcm` と媒体builder `--audio-mode EnginePcm` は、
+固定別名MT8167EngineProbe/System32\MT8167EngineProbe.exeと専用clients/logs/attempted.binを使う。
+旧MT8167HardwareProbeの使用済みkey/path/markerは変更・削除・再武装しない。
+native recipeへ追加した固定第3名だけを選び、run27 fresh backupからEngine単独candidateを作る。
+旧HardwareProbe向けresultはEngine媒体で拒否する。監査は関連3key＋選択service7値に限定する。
+
+Engine serviceは旧WLAN＋d0eb436専用WASAPI probeを各一回、引数なし、WinVerifyTrust後に起動する。
+SYSは固定de214c8、INFはe4dff2b、USB/Wi-Fi/WLANは旧f17b743-a016d53 bundleから検査済み分だけを選ぶ。
+旧parent/旧audio/旧tone clientは新媒体の選択リストへ入れない。component別source/hash/INF version/certを記録。
+Engine service/parent/audio/clientのBCBF certと、旧USB/Wi-Fi/WLANの2655 certを別信頼として保持する。
+署名済みclientはCI helperで再署名しない。Engine serviceだけの新しいWDK/署名buildが必要。
+
+媒体はprivate SYSTEM copy-before-DISM/freshbackup/boot_id方針を維持し、単一parentを選ぶ。
+旧service通知だけでEngine全体の完了を推定しない。新service/runid/child別終了/API/DMA/disk証拠を使う。
+current run26r2の既生成媒体・実行は変更しない。source-only更新で、runner/端末は非操作。
+
+Engine専用optional --brightness-package/--toprgu-packageは指定時だけ固定DISPLAY/TOPRGUを追加する。
+brightness0c73f27とTOPRGU0821853はBCBF certで、各INF版を別々に照合する。
+TOPRGUは4CPU/HANDOFF1/DEADLINE0/THERMAL0/UART1と旧normal同一7 kernel blobの固定manifest契約を検査。
+bootbrightness341894cdは主担当の前提候補として記録し、このbuilderはbootを生成・適用しない。
+Wi-Fi排他のBT c715ad2と後続audio runtime f64b4b4は今回採用せず、固定bundleを維持する。
+
+詳しい入力・固定パス・build手順はtools/winpe/README-mt8167-hardware-probe.md、
+README-mt8167-shared-io-update.md、tools/recovery/README-offline-system-service.mdを参照。
+
+Engine serviceは固定MT8167\AFE、MT8167\USB20、A04BR3\MT6630SDIOだけを標準PnP APIで各1回再bindする。
+固定packageを専用drivers以下にcopyし、CAT署名を検査する。before/after CM status/Problem/照会エラー/一致数と
+API/Win32/rebootをdiskへ記録。3010は後続更新とclient開始を停止し、自動reboot/marker削除/旧tone再armはしない。
+USBのdevice role開始拒否等は結果に残し、再起動不要ならWLAN/音声診断を続ける。親は再bindしない。
+選択Engine親も旧f17親も同DriverVer=2026.11.6.1001であり、DISM stagingだけでは実ロード親の交換を保証しない。
+主担当は実ロードhashを別途確認する。PnP API成功、CM_STARTED、実機I/O成功は別々に評価する。

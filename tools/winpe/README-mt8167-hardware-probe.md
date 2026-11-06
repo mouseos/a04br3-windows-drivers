@@ -3,7 +3,8 @@
 `MT8167HardwareProbe` は標準SCMのLocalSystemサービスとして動くARM32 EXE。
 物理入力や対話desktopを必要とせず、署名済みの固定clientをCreateProcessWで各1回起動する。
 `b508de8` のMT8167DeviceInstallのSCM登録・自サービス無効化・WDK署名build構造を利用する。
-PnP installerではなく、driver導入、UEFI変更、サービス再起動、書込み、復旧を行わない。
+既定Tone modeはdriver導入を行わない。明示EnginePcm modeだけは末尾の固定3対象PnP再bindを行う。
+UEFI変更、サービス再起動ループ、復旧は行わない。
 
 ## 固定配置と実引数
 
@@ -181,3 +182,72 @@ probeの同名UARTも利用可能と仮定しない。UART最終通知だけで�
 audio.stdout.txt、audio.stderr.txt、attempted.binをprivate diskログとして回収し、
 子プロセス開始/終了、終了コード、EV_POWER_SET/CLEAR/CLOSE、UART errorを対応づける。
 これらの実機ログやhiveを公開repo/CI artifactへ含めない。
+
+## 明示EnginePcm mode（別service）
+
+既定 `-AudioMode Tone` はMT8167HardwareProbeのまま。`-AudioMode EnginePcm` は
+compile-time A04_HARDWARE_PROBE_ENGINE_PCM=1で別の固定serviceを生成する。
+registry/起動引数から任意EXE・path・argsを選ぶbrokerは追加しない。
+
+| 項目 | Engine mode固定値 |
+| --- | --- |
+| service / EXE | MT8167EngineProbe / System32\MT8167EngineProbe.exe |
+| clients | System32\MT8167EngineProbe\clients\mt6630-wlan-probe.exe と mt8167-audio-engine-probe.exe |
+| service/子stdout・stderr | System32\MT8167EngineProbe\logs\ |
+| marker | System32\MT8167EngineProbe\attempted.bin |
+
+旧MT8167HardwareProbeのkey/path/attempted.binは削除も再武装もしない。
+Engine serviceは自身を無効化し、自分のmarkerをCREATE_NEW/flushしてから、
+2つの固定clientをそれぞれWinVerifyTrustで検査・write/deleteを拒否するhandleで保持し、
+WLAN→Engine音声の順に各一回・引数なしで起動する。旧tone名はEngine binaryへ入れない。
+既存job/timeouts/SCM STOP・SystemRequiredの設定/解除・disk flushを保持する。
+Engine serviceではUART errorを別記し、child exitとdisk failureを実行結果として扱う。
+service成功やUART最終通知だけでAPI/DMA/可聴まで成功したと推定しない。
+固定d0eb436 probe自身の必須ログは仕様どおりclients内にも作られるため、
+clients/audio-engine-probe-*.logもprivate回収対象とする。
+
+```powershell
+powershell -File tools/ci/build-mt8167-hardware-probe.ps1 -AudioMode EnginePcm -Sign -CertificateThumbprint BCBF6C456C6F0DD0818434763B189488FBF13570
+```
+
+この例は新serviceだけをbuild/署名する。既存client2本・SYSは再compile/再署名しない。
+任意のclient staging引数を使う場合もmodeで固定したbasename2個だけを許可し、
+Engine modeのSignはservice EXEだけを対象にする。modeの異なる出力directory再利用を拒否。
+生成manifestは固定service、client/log/marker path、mode define、client allowlist、certを記録する。
+新しいservice EXEはsource変更後のWDK build/link/署名が必要で、旧27ad206 EXEはEngine用に使えない。
+
+### Engine専用の固定PnP再bind
+
+run26r2では署名/service/PowerRequest/両client起動まで成功したが、WLANはINTERFACES=0、
+旧toneはUART error2でKS開始前に終了した（主担当実測）。installed audio SYS不存在、Wi-Fiの
+SetupAPI CM_PROB_FAILED_ADD=0x1fもあり、DISM stagingだけを開始済みの証拠にしない。
+raw SYSTEMのAFE ConfigFlags=64は未replayでありlive状態とは断定しない。
+
+新Engine serviceは自分のmarkerを消費後、clients開始前に次の3対象を順番に各最大1回だけ
+UpdateDriverForPlugAndPlayDevicesW(INSTALLFLAG_FORCE | INSTALLFLAG_NONINTERACTIVE=5)へ渡す。
+
+| ID / log ID | 固定HardwareID | System32\MT8167EngineProbe\drivers以下の固定INF |
+| --- | --- | --- |
+| 10 / 0000000A | MT8167\AFE | audio\mt8167-afe-engine-pcm.inf |
+| 11 / 0000000B | MT8167\USB20 | usb\mt8167-usb20.inf |
+| 12 / 0000000C | A04BR3\MT6630SDIO | wifi\mt6630-runtime.inf |
+
+各directoryとINF/SYS/CATを非reparse確認しwrite/deleteを拒否するhandleで保持する。
+全3 CATをWinVerifyTrustで確認してから更新を開始し、INF/SYSのcatalog membershipはWindows標準PnPが検証する。
+source/hash/cert別の入力pinは媒体builderが担う。CAT失敗/欠落、API解決失敗、disk failureやSTOPはclient開始を止める。
+APIのBOOL/Win32 error/reboot、before/afterのCM query結果・一致数・status・Problem・started数をdiskへflushする。
+present nodeのHardwareIDを厳密比較し、instance suffixを推測しない。照会失敗と対象不存在も区別する。
+一回のafter観測であり、再試行や待機ループはない。CM_STARTEDでもWLAN interface/USB入力/音声動作の証拠とはしない。
+
+reboot flagまたはERROR_SUCCESS_REBOOT_REQUIREDなら結果3010で後続更新と両clientを停止する。
+自動reboot、marker削除、再armはしない。再起動不要のAPI/CM失敗は最終結果へ残したまま、
+他対象の更新と2clientの独立診断を続ける。USB device role/外部VBUSでの開始拒否を音声試験の禁止条件にはしない。
+親は指示どおり更新対象外。同期PnP API実行中のSCM STOPはAPIを中断できず、戻った後で停止する。
+
+service.logのEVTはhex表記。13/14=before/after、15=list CR、16=locate CR、17=property CR、
+18=matches、19=status CR、1A=status、1B=Problem、1C=started数、1D=package、1E=API開始、
+1F=API BOOL、20=Win32、21=reboot、22=結果。複数一致時のstatus/Problemは列挙順に繰り返す。
+CM一覧取得失敗ではmatchesを確定できず、list CRと最終結果を見る。旧toneのEVT番号は変更しない。
+
+Engine親と旧f17親はともにDriverVer=2026.11.6.1001であるため、DISM完了だけでEngine親への
+交換を保証しない。実ロード親のhash照合/必要な親の導入は主担当が別途判断し、serviceは親を更新しない。
