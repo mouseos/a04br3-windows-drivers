@@ -1130,3 +1130,9 @@ test-mt6392-rtc32k:
 	@mkdir -p build
 	$(CC) $(CFLAGS) -DA04_MT6392_RTC32K_DIAGNOSTIC=1 drivers/input/a04br3-buttons/pmic_read.c tests/mt6392_rtc32k_test.c -o build/mt6392_rtc32k_test
 	./build/mt6392_rtc32k_test
+
+.PHONY: test-mt6630-windows-session
+test-mt6630-windows-session:
+	@mkdir -p build
+	$(CC) $(CFLAGS) -DA04_WIFI_SESSION_DIAGNOSTIC=1 -Itests/shared_wdf_stubs -Idrivers/network/mt6630 drivers/network/mt6630/windows_session.c tests/mt6630_windows_session_test.c -o build/mt6630_windows_session_test
+	./build/mt6630_windows_session_test

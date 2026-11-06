@@ -264,3 +264,21 @@ Windows 電源遷移は未確認。既定ではコンパイルされない。
 別の combo GPIO/EINT5 ではない。Windows の要求記述子は極性を指定できず、
 実際のルーティング・active-low・ISR/DPC と停止時の排出は未確認。
 共有親の Wi-Fi Acquire/D0 拒否は引き続き残る。
+
+
+`A04_WIFI_SESSION_DIAGNOSTIC=1` は、参照を保持する呼出元から親 interface を
+受け取り、実 lease の取得と世代確認、masked IRQ の provider 準備、MSDC2
+写像、既存 firmware 診断を順に呼ぶ接続部品。停止は IRQ 排出、I/O 排出、
+写像解除、親 release の順で、失敗時は残る資源を隔離する。初期化途中の
+不確定状態は自動 rollback しない。親 lease は RTC・combo・IRQ 等の実所有を
+保証しなければならず、現行親は Acquire を拒否する。`prepare_masked_irq` と
+排出 callback の実 Windows provider、親による RTC 保持接続、ISR/DPC は未実装。
+本接続は既定ではコンパイルされず、host mock と ARM32 リンク検査のみ。
+
+WDK の [interrupt enable/disable](https://learn.microsoft.com/en-us/windows-hardware/drivers/wdf/enabling-and-disabling-interrupts)
+では D0 停止時に PreInterruptsDisabled、EvtInterruptDisable、D0Exit の順で
+呼ぶ。[EvtInterruptDpc](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdfinterrupt/nc-wdfinterrupt-evt_wdf_interrupt_dpc)
+は複数 ISR が単一 DPC に統合され得ると規定するため、無効化だけでは DPC・
+work item の排出を示さない。Linux MT8167 の MSDC_INT は SDIOIRQ bit 7 を
+W1C とし、PIO の command completion bits と別々に扱う必要がある。物理 IRQ
+配送・極性や surprise removal と MMIO の競合は未検証。
