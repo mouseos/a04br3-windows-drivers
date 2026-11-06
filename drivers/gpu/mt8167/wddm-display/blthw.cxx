@@ -10,6 +10,7 @@
 
 #include "BDD.hxx"
 #include "ge8300_present.hxx"
+#include "ge8300_trace.hxx"
 #include "present_bounds.h"
 
 typedef struct
