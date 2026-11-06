@@ -46,11 +46,11 @@ int a04_usb_owner_vbus(struct a04_usb_owner *o,int on)
    if(!o->verify_overcurrent || o->verify_overcurrent(o->context)) {
     (void)off_locked(o);o->poisoned=1;
    } else if(o->otg_held) {
-    r=A04Gpio22Vbus(&o->gpio,1);if(r)o->poisoned=1;
+    r=A04Gpio22Vbus(&o->gpio,1);if(r){(void)off_locked(o);o->poisoned=1;}
    } else if(o->otg_acquire && o->otg_release) {
     source=o->otg_acquire(o->context);
     if(source==0) {
-     o->otg_held=1;r=A04Gpio22Vbus(&o->gpio,1);if(r)o->poisoned=1;
+     o->otg_held=1;r=A04Gpio22Vbus(&o->gpio,1);if(r){(void)off_locked(o);o->poisoned=1;}
     } else if(source!=-1) { o->otg_held=1;o->poisoned=1; }
    }
   }

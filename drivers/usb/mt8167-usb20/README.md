@@ -130,3 +130,16 @@ An absent host cable or detected external VBUS rejects D0; hotplug retry,
 actual PnP binding, signed package, IRQ delivery, electrical VBUS and keyboard
 operation remain unverified. `make test-mt8167-usb-source` exercises the actual
 parent callbacks with stub MMIO, not hardware.
+
+If GPIO22 enable readback fails, the owner now attempts an immediate verified
+switch-off before releasing the source. An unverified switch-off or source
+release retains the lease and poisons the owner. This is a software fault
+path test, not a measurement of connector voltage.
+
+The diagnostic uses PIO, not DMA. Its PnP callbacks, resource validation and
+ISR/DPC exist, but the parent deliberately rejects D0 and actual ACPI binding,
+interrupt routing and safe power ownership are not established. A general
+Windows USB host still requires a supported Windows 8.1 host-stack interface,
+root hub and device PnP, transfer scheduling and cancellation, and a verified
+DMA design if DMA is used. The XNU charger implementation observes the BQ24160
+and its board handoff; it does not establish the connector's 5 V source.
