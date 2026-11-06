@@ -198,7 +198,9 @@ VOID A04DisplayResources::Stop()
     }
 #endif
     if (Ovl) { MmUnmapIoSpace((void *)Ovl,0x1000); Ovl=NULL; }
-    if (Adapter && Adapter->DmaOperations && Adapter->DmaOperations->PutDmaAdapter)
+    if (Adapter && Adapter->DmaOperations && Adapter->DmaOperations->Size>=
+        FIELD_OFFSET(DMA_OPERATIONS,PutDmaAdapter)+sizeof(Adapter->DmaOperations->PutDmaAdapter) &&
+        Adapter->DmaOperations->PutDmaAdapter)
         Adapter->DmaOperations->PutDmaAdapter(Adapter);
     Adapter=NULL;
     MapRegisters=0;HasInterrupt=FALSE;DisplayPdo=NULL;
