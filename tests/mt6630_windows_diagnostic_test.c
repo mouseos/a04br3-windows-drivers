@@ -2,6 +2,8 @@
 #include <assert.h>
 #include <string.h>
 #include "windows_diagnostic.h"
+static int calibration_result,calibration_calls;
+int a04_windows_calibration_load(struct a04_wmt_bridge *b){(void)b;calibration_calls++;return calibration_result;}
 static int init_result,open_result,boot_result,stop_result,init_calls,open_calls,boot_calls,stop_calls,prepare_result,prepare_calls,releases;
 int a04_windows_wifi_board_init(struct a04_windows_wifi_board *b,A04_SHARED_WIFI_INTERFACE *p,struct a04_windows_msdc2 *h,struct a04_wifi_owner *o,ULONG g)
 { (void)b;(void)p;(void)h;(void)o;(void)g;init_calls++;return init_result; }
@@ -30,6 +32,15 @@ int main(void)
  assert(a04_windows_diagnostic_stop(&d));assert(stop_calls==2 && d.state==A04_DIAG_FAILED);
  stop_result=0;
  memset(&d,0,sizeof(d));boot_result=0;assert(!a04_windows_diagnostic_start(&d,&p,&h,&o,1,1,&ops,hash,&opts));
+#if defined(A04_WIFI_CALIBRATION_DIAGNOSTIC) && A04_WIFI_CALIBRATION_DIAGNOSTIC
+ assert(calibration_calls==1);
+#endif
  assert(d.state==A04_DIAG_READY && releases==2);assert(!a04_windows_diagnostic_stop(&d));assert(d.state==A04_DIAG_STOPPED && stop_calls==3);
+#if defined(A04_WIFI_CALIBRATION_DIAGNOSTIC) && A04_WIFI_CALIBRATION_DIAGNOSTIC
+ memset(&d,0,sizeof(d));calibration_result=-1;
+ assert(a04_windows_diagnostic_start(&d,&p,&h,&o,1,1,&ops,hash,&opts));
+ assert(calibration_calls==2&&d.state==A04_DIAG_FAILED);
+ assert(!a04_windows_diagnostic_stop(&d)&&d.state==A04_DIAG_STOPPED);
+#endif
  return 0;
 }

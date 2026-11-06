@@ -1019,7 +1019,7 @@ build/mt6630_power_bridge_test: drivers/network/mt6630/power_bridge.c drivers/ne
 
 test-mt6630: build/mt6630_power_bridge_test
 
-build/mt6630_nvram_test: drivers/network/mt6630/nvram.h drivers/network/mt6630/nvram_sector.h drivers/network/mt6630/nvram_sector.c drivers/network/mt6630/calibration.c tests/mt6630_nvram_test.c
+build/mt6630_nvram_test: drivers/network/mt6630/nvram.h drivers/network/mt6630/nvram_sector.h drivers/network/mt6630/nvram_sector.c drivers/network/mt6630/calibration.c tests/mt6630_nvram_test.c tests/mt6630_nvram_fixture.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/network/mt6630 drivers/network/mt6630/calibration.c drivers/network/mt6630/nvram_sector.c tests/mt6630_nvram_test.c -o $@
 
@@ -1057,7 +1057,7 @@ test-mt6630: build/mt6630_control_start_test
 
 build/mt6630_wmt_bridge_test: tests/mt6630_wmt_bridge_test.c drivers/network/mt6630/wmt_bridge.c drivers/network/mt6630/wmt_bridge.h drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c
 	@mkdir -p build
-	$(CC) $(CFLAGS) -Idrivers/network/mt6630 tests/mt6630_wmt_bridge_test.c drivers/network/mt6630/native_tx.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c -o $@
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 tests/mt6630_wmt_bridge_test.c drivers/network/mt6630/native_tx.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c drivers/network/mt6630/regulatory.c -o $@
 
 test-mt6630: build/mt6630_wmt_bridge_test
 
@@ -1073,19 +1073,19 @@ test-mt6630: build/mt6630_native_scan_test
 
 build/mt6630_native_bridge_test: tests/mt6630_native_bridge_test.c drivers/network/mt6630/native_oid.c drivers/network/mt6630/native_tx.c drivers/network/mt6630/native_scan.c drivers/network/mt6630/native_scan_bridge.c drivers/network/mt6630/wmt_bridge.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c
 	@mkdir -p build
-	$(CC) $(CFLAGS) -Itests/native_scan_stubs -Idrivers/network/mt6630 tests/mt6630_native_bridge_test.c drivers/network/mt6630/native_oid.c drivers/network/mt6630/native_tx.c drivers/network/mt6630/native_scan.c drivers/network/mt6630/native_scan_bridge.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c -o $@
+	$(CC) $(CFLAGS) -Itests/native_scan_stubs -Idrivers/network/mt6630 tests/mt6630_native_bridge_test.c drivers/network/mt6630/native_oid.c drivers/network/mt6630/native_tx.c drivers/network/mt6630/native_scan.c drivers/network/mt6630/native_scan_bridge.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c drivers/network/mt6630/regulatory.c -o $@
 
 test-mt6630: build/mt6630_native_bridge_test
 
 build/mt6630_data_bridge_test: tests/mt6630_data_bridge_test.c drivers/network/mt6630/wmt_bridge.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c
 	@mkdir -p build
-	$(CC) $(CFLAGS) -Idrivers/network/mt6630 tests/mt6630_data_bridge_test.c drivers/network/mt6630/native_tx.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c -o $@
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 tests/mt6630_data_bridge_test.c drivers/network/mt6630/native_tx.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c drivers/network/mt6630/regulatory.c -o $@
 
 test-mt6630: build/mt6630_data_bridge_test
 
 build/mt6630_native_nbl_test: tests/mt6630_native_nbl_test.c drivers/network/mt6630/native_nbl.c drivers/network/mt6630/native_nbl.h drivers/network/mt6630/wmt_bridge.c drivers/network/mt6630/native_tx.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c
 	@mkdir -p build
-	$(CC) $(CFLAGS) -Itests/native_scan_stubs -Idrivers/network/mt6630 tests/mt6630_native_nbl_test.c drivers/network/mt6630/native_nbl.c drivers/network/mt6630/native_tx.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c -o $@
+	$(CC) $(CFLAGS) -Itests/native_scan_stubs -Idrivers/network/mt6630 tests/mt6630_native_nbl_test.c drivers/network/mt6630/native_nbl.c drivers/network/mt6630/native_tx.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c drivers/network/mt6630/regulatory.c -o $@
 
 test-mt6630: build/mt6630_native_nbl_test
 
@@ -1351,3 +1351,25 @@ test-mt8167-usb-enumeration:
 	./build/mt8167_usb_keyboard_session_test
 
 test-mt8167-usb-keyboard-batch: test-mt8167-usb-enumeration
+.PHONY: test-mt6630-runtime
+test-mt6630-runtime: build/mt6630_calibration_bridge_test build/mt6630_windows_calibration_test build/mt6630_diagnostic_calibration_test
+	./build/mt6630_calibration_bridge_test
+	./build/mt6630_windows_calibration_test
+	./build/mt6630_diagnostic_calibration_test
+
+build/mt6630_calibration_bridge_test: tests/mt6630_calibration_bridge_test.c tests/mt6630_nvram_fixture.h drivers/network/mt6630/wmt_bridge.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 tests/mt6630_calibration_bridge_test.c drivers/network/mt6630/native_tx.c drivers/network/mt6630/calibration.c drivers/network/mt6630/nvram_sector.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c drivers/network/mt6630/regulatory.c -o $@
+
+build/mt6630_windows_calibration_test: tests/mt6630_windows_calibration_test.c drivers/network/mt6630/windows_calibration.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -Wno-multichar -Itests/firmware_wdk_stubs -Idrivers/network/mt6630 tests/mt6630_windows_calibration_test.c -o $@
+
+test-mt6630: test-mt6630-runtime
+
+build/mt6630_diagnostic_calibration_test: drivers/network/mt6630/windows_diagnostic.c tests/mt6630_windows_diagnostic_test.c
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_WIFI_CALIBRATION_DIAGNOSTIC=1 -Itests/shared_wdf_stubs -Idrivers/network/mt6630 $^ -o $@
+
+# Rebuild the existing bridge checks when the shared country codec/table changes.
+build/mt6630_wmt_bridge_test build/mt6630_native_bridge_test build/mt6630_data_bridge_test build/mt6630_native_nbl_test build/mt6630_calibration_bridge_test: drivers/network/mt6630/regulatory.c drivers/network/mt6630/regulatory.h drivers/network/mt6630/regulatory_data.h

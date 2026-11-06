@@ -1,6 +1,9 @@
 # TAB-A04-BR3 MT6630 / MSDC2 Windows向け基盤
 
-このディレクトリはWi-Fiドライバではない。無線・SDIOコントローラにアクセスせず、
+現在のNative miniportは [RUNTIME.md](RUNTIME.md)、WPA2の役割と限界は [WPA2.md](WPA2.md) を参照。
+以下の冒頭は旧candidate基盤の記録であり、別DriverEntryのruntimeの状態を示さない。
+
+旧candidateはWi-Fiドライバではない。無線・SDIOコントローラにアクセスせず、
 未完成の所有権や電源処理が実機上で有効になることを防ぐ。`wdf_sdio_probe.c` は
 常にPrepareHardwareを失敗させ、MMIO、GPIO、送受信、NDIS登録を行わない。
 対応する機種ACPI候補は別UEFI worktreeの `WifiSdioCandidate.asl` で、_STA=0かつ
@@ -442,3 +445,77 @@ session 停止は IRQ と非同期 I/O の排出後、combo と firmware の停�
 現行 WDF 接続には確認可能な provider がないため、その callback は拒否し、
 停止状態を隔離して lease と写像を保持する。host の注入 callback による成功・
 失敗の試験は実デバイスの停止根拠ではない。RTC の取得や放棄も有効化していない。
+
+### Linux と機種 UEFI の書込み経路（ソース調査）
+
+- CT3 Linux 4.4 `drivers/misc/mediatek/connectivity/common/common_detect/wmt_detect_pwr.c`:
+  power-on で任意 LDO、RTC 32 kHz、PMU、reset を扱い、power-off では任意 LDO、
+  reset、PMU の順に low を要求する。機種 `port/gsi/kernel-4.14/arch/arm64/boot/dts/mediatek/a04br3.dts`
+  は PMU=GPIO4、reset=GPIO7、Wi-Fi EINT=GPIO5 を記述し、combo LDO pin は記述しない。
+- 同 Linux `common_main/platform/wmt_plat_alps.c` は RTC を `RTC_GPIO_USER_GPS` で
+  有効化する。`include/linux/mfd/mt6397/rtc_misc.h` では GPS user は 9。別の
+  Wi-Fi user bit や他の user を Linux 側から引き継いだと仮定しない。
+- Linux 4.14 `drivers/mfd/mt6397-misc.c` は同一 mutex で RTC_PDN1 と RTC_CON を
+  read/modify/write し、WRTGR を発行する。ローカル mutex は Linux 以外の writer、
+  または UEFI/EL3 との排他の証拠ではない。
+- `uefi-a04br3` の `WindowsArm32/BootShim/EarlyRecovery.c`、`WindowsArm32/PrePi/Pi.c`、
+  `Library/A04BR3PlatformSecBoardLib` は各 build flag に応じて SEC/PrePi で RTC や
+  spare register を操作する。`A04BR3TestCycleDxe` は `A04BR3_TEST_CYCLE=1` の
+  場合、entry と ExitBootServices callback で RTC_PDN1 bit 13 を更新する。
+  `ThreeCpuDxe/A04BR3BootTraceDxe.c` にも条件付き bounded recovery の更新がある。
+- UEFI `DisplayInitDxe` は PWRAP WACS2 を使用し、条件付き `TouchPowerDxe` は
+  BeforeExitBootServices で VGP 電源を WACS2 で更新する。各イベント通知の存在、
+  同期、終了順序だけでは未知の EL3 writer や物理 GPIO の排他は証明されない。
+  上記はソース上の経路であり、現在端末に書かれているビルド設定の観測ではない。
+
+診断 session の IRQ と非同期 I/O が排出され、親の実 lease と board ready が
+有効な場合、`a04_wifi_board_poweroff_signals` は GPIO7 reset low、GPIO4 PMU low
+を順に要求する。GPIO の所有権が無効、起動途中、surprise removal、書込み失敗
+では停止または poison し、自動で次の操作に進まない。書込み受付は pad 電圧、
+RTC 停止、WLAN/Bluetooth/GPS の活動停止を証明しないため、現状は成功しても
+`quiesce_combo` が失敗を返して lease を保持する。親 Acquire と UEFI 移譲は
+未成立であり、この条件付き power-off は現時点では実デバイス上で呼ばれない。
+
+### 実行時NVRAMの転送段階
+
+Linux機種ドライバ [a04br3-linux-drivers](https://github.com/mouseos/a04br3-linux-drivers)
+の `3d2c74e252d6f34a5980deda96bdc04064108d74`、
+`pwrseq/a04br3-mt6630-pwrseq.c` に合わせ、起動はreset GPIO7を先にassertし、
+PMU GPIO4を落として250ms待つ。その後PMU有効化・100ms・reset解除・30msの順とする。
+停止時もreset、PMUの順で落として10ms待つ。Linuxでの150/200msの差の観測は
+Linuxソースに記載された根拠であり、Windows実測ではない。RTC32Kとcombo全体の
+排他的所有は依然呼出側の前提である。
+
+`windows_nvram_reader.c` はNDIS work itemから独立したPASSIVE_LEVELの読取り処理。
+システムボリュームの単一disk extentに一致するdisk interfaceを選び、GPTの`nvram`
+領域を探索する。固定disk番号、バックアップファイル、個体MAC・校正値の定数は使わない。
+領域・bitmap・全データとWIFIレコードのチェックサム検証は既存`nvram.h`を使う。
+失敗時は出力を消去する。従来のNDIS work itemもこの同じ実処理を呼ぶ。
+WinPEのRAM disk等、システムボリュームから対象diskを特定できない構成は拒否する。
+
+`windows_calibration.c` はこの動的読取りを`a04_wmt_bridge_load_calibration`へ渡す。
+WLAN起動済み・同一の有効leaseを要し、初期化時の送信資源返却を観測してruntime
+budgetへ切り替え、元の512バイトを変更せず送る。根拠はLinux gen3
+`common/wlan_lib.c` の `wlanLoadManufactureData` 手順9と
+`include/nic_cmd_event.h` の `CMD_ID_SET_NVRAM_SETTINGS=0x48`、
+`CMD_NVRAM_SETTING_T`。転送は同期HIF送信で、完了後に作業バッファとHIF payloadを
+消去する。失敗時はbridgeとleaseをpoisonし、二重送信と自動再試行を拒否する。
+
+`A04_WIFI_CALIBRATION_DIAGNOSTIC=1` をcoreビルドへ明示した場合だけ、既存の
+`windows_diagnostic_start` がfirmware起動後にこの処理を実行する。既定OFFで、
+親Acquire・board verified設定のゲートは変更しない。
+`calibration_submitted` はHIFへの送信受付だけを表し、firmwareの適用ACKではない。
+Linux手順のTX power・EFUSE・国別domain等の残り、NDIS登録・認証・通常通信、
+PnP/電源遷移と所有権引継ぎの実機検証は未完了。これだけでRF送信を許可しない。
+
+`make test-mt6630-runtime` は合成NVRAM→実parser→HIF wire payload、二重送信拒否、
+途中失敗と消去、Windows読取りadapter、診断開始失敗時の停止を検証する。
+`make test-mt6630` は従来の部品試験も実行する。これらはホスト上の模擬I/O試験で、
+Windows WDKビルド・SYS署名・実機無線動作を証明しない。
+INF表示名は `MediaTek MT6630 Wireless LAN SDIO Adapter`。
+
+### PnP接続runtime
+
+主要経路をまとめた新miniportと共有親の実取得・解放経路は [RUNTIME.md](RUNTIME.md) を参照。
+従来candidateと診断の既定設定は維持する。新runtimeは明示的な専用scriptでビルドする。
+実機scan・接続・Windows受理・WDK8.1 SYSリンクは未確認。

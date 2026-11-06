@@ -2,6 +2,7 @@
 #ifndef A04_WINDOWS_WMT_BRIDGE_H
 #define A04_WINDOWS_WMT_BRIDGE_H
 #include "lifetime.h"
+#include "regulatory.h"
 /* Isolate names that overlap with the Windows host's own transport. */
 #define a04_sdio_transport a04_xnu_sdio_transport
 #define a04_sdio_transfer a04_xnu_sdio_transfer
@@ -23,7 +24,8 @@ struct a04_wmt_bridge {
  struct a04_wmt_firmware_set wmt_fw;struct a04_wmt_download_state wmt_state;
  struct a04_wlan_host wlan;struct a04_wlan_firmware wlan_fw;struct a04_wlan_download_state wlan_state;
  struct a04_wlan_scan_state scan;
- unsigned identity_ready,wmt_ready,wlan_ready,failed;uint32_t pending_wlan_status;
+ struct a04_regulatory regulatory;
+ unsigned identity_ready,wmt_ready,wlan_ready,failed,calibration_submitted;uint32_t pending_wlan_status;
 };
 int a04_wmt_bridge_open(struct a04_wmt_bridge *,struct a04_wifi_life *,unsigned functions,void *,void (*)(void *,unsigned));
 /* Data is a stable, owned snapshot with a provenance-verified SHA-256; input
@@ -32,6 +34,10 @@ int a04_wmt_bridge_boot_wmt(struct a04_wmt_bridge *,const void *,unsigned,
  const uint8_t expected_sha256[32],int (*sha256)(const uint8_t *,size_t,uint8_t[32]),
  const struct a04_wmt_startup_options *);
 int a04_wmt_bridge_boot_wlan(struct a04_wmt_bridge *,const void *,unsigned,int (*sha256)(const uint8_t *,size_t,uint8_t[32]));
+/* Original checksum-verified runtime WIFI record only. Success means HIF
+ * submission of CMD_ID_SET_NVRAM_SETTINGS (no firmware ACK), not RF readiness.
+ * Does not configure regulatory domain, TX power commands or NDIS attributes. */
+int a04_wmt_bridge_load_calibration(struct a04_wmt_bridge *,const uint8_t [512]);
 /* Scan policy (channels, timing and calibration) must come from an actual
  * configured regulatory/runtime owner. Completion follows a real event. */
 int a04_wmt_bridge_scan_begin(struct a04_wmt_bridge *,const struct a04_wlan_scan *);

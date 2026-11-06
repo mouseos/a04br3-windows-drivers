@@ -46,5 +46,5 @@ KmdfLibraryVersion=1.13
 
 [Strings]
 Provider="mouseos"
-Device="MT6630 SDIO hardware diagnostic (gated)"
+Device="MediaTek MT6630 Wireless LAN SDIO Adapter"
 Disk="MT6630 diagnostic driver"

@@ -30,8 +30,9 @@ int a04_wifi_board_start(struct a04_wifi_board *s,const struct a04_wifi_board_io
 #define DELAY(ms) do{if(delay_checked(io,ms))goto fail;}while(0)
  WRITE(A04_WIFI_TOP,0xa0,2);if(update(io,A04_WIFI_TOP,0x40,7u<<3,0))goto fail;
  WRITE(A04_WIFI_TOP,0x9c,1);WRITE(A04_WIFI_TOP,0x6c,1u<<30);WRITE(A04_WIFI_TOP,0xb0,2);
- if(output(io,4,0)||output(io,7,0))goto fail;
- DELAY(10);
+ if(output(io,7,0)||output(io,4,0))goto fail;
+ /* Linux a04br3-mt6630-pwrseq requires a full inherited-power cycle. */
+ DELAY(250);
  if(output(io,4,1))goto fail;
  /* Board DTS regulator startup-delay-us is 100000. */
  DELAY(100);
@@ -50,4 +51,19 @@ int a04_wifi_board_start(struct a04_wifi_board *s,const struct a04_wifi_board_io
 fail:s->poisoned=1;return -1;
 #undef WRITE
 #undef DELAY
+}
+
+/* CT3 Linux wmt_detect_chip_pwr_off: reset low, then PMU low; a04br3 DTS
+ * assigns reset to GPIO7 and PMU to GPIO4 and declares no combo LDO pin.
+ * Caller must have drained I/O/IRQs and own the whole combo. This cannot
+ * prove pad voltage or chip power, and never releases RTC or shared clocks. */
+int a04_wifi_board_poweroff_signals(struct a04_wifi_board *s,const struct a04_wifi_board_io *io)
+{
+ if(!s||!io||!io->qualified||!io->write||!io->delay_ms||!s->ready||s->poisoned||!ready(io))return -1;
+ s->ready=0;
+ if(write_checked(io,A04_WIFI_GPIO,0x108,1u<<7) ||
+    write_checked(io,A04_WIFI_GPIO,0x108,1u<<4) || delay_checked(io,10)) {
+  s->poisoned=1;return -1;
+ }
+ return 0;
 }

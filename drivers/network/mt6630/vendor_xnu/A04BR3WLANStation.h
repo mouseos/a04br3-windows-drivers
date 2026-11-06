@@ -87,9 +87,10 @@ static inline int a04_wlan_bss_encode(const struct a04_wlan_local *l,const struc
  for(unsigned i=0;i<6;i++)p[36+i]=a->mac[i];
  a04_wmt_put16(p+44,all);a04_wmt_put16(p+46,basic);p[48]=(uint8_t)l->sta;
  /* Native nicTxUpdateBss/StaDefaultRate selects lowest basic rate index.
-  * ERP basic PHY1; open AUTH1/encryption-disabled1 or WPA2PSK8/CCMPabsent7. */
+  * ERP basic PHY1. Linux gen3 wlan_oid.h: OPEN0/RSNA-PSK7,
+  * encryption-disabled1/CCMP-enabled6; nic.c copies these directly. */
  a04_wmt_put16(p+50,a04_wlan_basic_rate_code(basic));
- p[52]=1;p[53]=(uint8_t)(secured?8:1);p[54]=(uint8_t)(secured?7:1);
+ p[52]=1;p[53]=(uint8_t)(secured?7:0);p[54]=(uint8_t)(secured?6:1);
  p[55]=3;p[58]=(uint8_t)l->bmc;
  p[68]=(uint8_t)l->bss;p[69]=1;p[70]=(uint8_t)a->channel;
  p[82]=(uint8_t)!!(a->capability&0x400);return 0;

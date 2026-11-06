@@ -18,4 +18,7 @@ struct a04_wifi_board_io {
 };
 struct a04_wifi_board { unsigned started,ready,poisoned; };
 int a04_wifi_board_start(struct a04_wifi_board *,const struct a04_wifi_board_io *);
+/* Request reset and PMU low after IRQ/I/O drain under the same live lease.
+ * Success means writes accepted, not physical power-off or firmware stop. */
+int a04_wifi_board_poweroff_signals(struct a04_wifi_board *,const struct a04_wifi_board_io *);
 #endif
