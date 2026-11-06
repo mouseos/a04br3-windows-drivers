@@ -5,8 +5,9 @@ NTSTATUS Mt8167AllocateBuffer(PPORTWAVERTSTREAM port, ULONG bytes, Mt8167WaveBuf
     PMDL mdl;
     PVOID mapped;
     ULONG pages, i;
-    if (!port || !buffer || buffer->mdl || bytes < 4096 || bytes > 1048576 ||
-        (bytes & (PAGE_SIZE - 1))) return STATUS_INVALID_PARAMETER;
+    if (!port || !buffer || buffer->mdl || !bytes || bytes > 1048576) return STATUS_INVALID_PARAMETER;
+    /* PortCls allocates pages; WaveRT requires actual >= requested. */
+    bytes = (bytes + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
     low.QuadPart = 0; high.QuadPart = 0xffffffffULL;
     mdl = port->AllocateContiguousPagesForMdl(low, high, bytes);
     if (!mdl) return STATUS_INSUFFICIENT_RESOURCES;

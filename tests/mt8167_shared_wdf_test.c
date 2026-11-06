@@ -73,9 +73,9 @@ NTSTATUS WdfFdoAddStaticChild(WDFDEVICE p,WDFDEVICE c){(void)p;(void)c;return 0;
 void WdfObjectDelete(void *p){(void)p;deleted++;}
 int main(void){
 #if A04_SHARED_VOICE_DIAGNOSTIC
- { int16_t value=123;unsigned cap=9;int n=writes;
-   assert(ParentVoiceVerify(&testContext,&value,&cap));
-   assert(ParentCodecStart(&testContext));assert(writes==n && value==123 && cap==9); }
+ { int16_t initial=321,value=123;unsigned cap=9;int n=writes;
+   assert(ParentVoiceVerify(&testContext,&initial,&value,&cap));
+   assert(ParentCodecStart(&testContext));assert(writes==n && initial==321 && value==123 && cap==9); }
 #endif
  CM_PARTIAL_RESOURCE_DESCRIPTOR entries[5]={0},translated[5]={0};struct test_list list={entries,4},translatedList={translated,4};USHORT value=0xeeee;
 #if A04_SHARED_APMIXED_RESOURCE
@@ -141,6 +141,11 @@ int main(void){
  children[1].base=0;assert(ChildRequirements(&children[1],NULL)==STATUS_DEVICE_CONFIGURATION_ERROR && appended==3);assert(saved.Header.Version==1 && saved.ReadButtons);
  assert(input.Version==1 && input.TouchPen && input.ButtonPmicRead);
  assert(audio.Header.Version==A04_SHARED_AUDIO_INTERFACE_VERSION && audio.AcquireMuted && audio.ReleaseQuiescent && audio.PrepareMaskedIrq && audio.BindAfe && audio.Mute && audio.UnmuteMin);
+#if A04_SHARED_VOICE_PCM_DIAGNOSTIC
+ assert(audio.VerifyLivePcm && audio.StartVoice && audio.StopVoice);
+ assert(audio.VerifyLivePcm(audio.Header.Context,(PVOID)&audio,0x100000,8192)!=0);
+ assert(audio.StartVoice(audio.Header.Context)!=0 && audio.StopVoice(audio.Header.Context)!=0 && !reads && !writes);
+#endif
  assert(audio.PrepareMaskedIrq(audio.Header.Context,(PVOID)&audio,0x1000)!=0 && !reads && !writes);
  assert(wifi.Header.Version==2 && wifi.Acquire && wifi.ReleaseQuiescent && wifi.Live && wifi.UpdateShared && wifi.WriteShared);
  {ULONG generation=0xdead;assert(!wifi.Live(wifi.Header.Context,generation));assert(wifi.UpdateShared(wifi.Header.Context,generation,1,0x300,7u<<12,0)!=0);assert(wifi.WriteShared(wifi.Header.Context,generation,0,0xa0,2)!=0);assert(wifi.Acquire(wifi.Header.Context,&generation)==STATUS_DEVICE_NOT_READY && generation==0xdead && !reads && !writes);}

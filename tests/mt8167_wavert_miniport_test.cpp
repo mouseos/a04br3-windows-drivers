@@ -22,6 +22,10 @@ static NTSTATUS start(void *c,BOOLEAN *exposed){Back*b=(Back*)c;b->starts++;if(b
 static NTSTATUS stop(void *c){Back*b=(Back*)c;b->stops++;return b->fail?STATUS_DEVICE_NOT_READY:STATUS_SUCCESS;}
 static NTSTATUS device(void *,PDEVICE_DESCRIPTION d){return d?STATUS_SUCCESS:STATUS_INVALID_PARAMETER;}
 static NTSTATUS pos(void *,PKSAUDIO_POSITION p){p->PlayOffset=4;p->WriteOffset=4;return STATUS_SUCCESS;}
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+static NTSTATUS bindwave(void *,PMDL mdl,PVOID mapping,ULONG size){return mdl && mapping && size==8192?STATUS_SUCCESS:STATUS_INVALID_PARAMETER;}
+static NTSTATUS unbindwave(void *c,PMDL){((Back*)c)->frees++;return STATUS_SUCCESS;}
+#endif
 int main(){
  PMINIPORTWAVERT m=nullptr; assert(!Mt8167NewMiniport(&m) && m);
  PPCFILTER_DESCRIPTOR d=nullptr;assert(!m->GetDescription(&d) && d->pinCount==2);
@@ -33,13 +37,18 @@ int main(){
  Port p; PMINIPORTWAVERTSTREAM st=nullptr;assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat));
  assert(st->SetState(KSSTATE_RUN)==STATUS_DEVICE_NOT_READY); assert(!st->SetState(KSSTATE_PAUSE));
  PMDL mdl=nullptr;ULONG actual=0,off=0;MEMORY_CACHING_TYPE cache;assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache) && actual==8192 && mdl);
- st->FreeAudioBuffer(mdl,actual); assert(p.freed==1);st->Release();assert(p.refs==1);
+ st->FreeAudioBuffer(mdl,actual); assert(p.freed==1);
+ assert(!st->AllocateAudioBuffer(4097,&mdl,&actual,&off,&cache) && actual==8192 && !off);
+ st->FreeAudioBuffer(mdl,actual);assert(p.freed==2);st->Release();assert(p.refs==1);
  fmt.WaveFormatEx.nChannels=1; assert(m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat)==STATUS_NO_MATCH && !st);m->Release();
- fmt.WaveFormatEx.nChannels=2; Back b{};Mt8167StreamBackend backend{&b,ref,deref,allocate,releasebuf,start,stop,pos,device};
+ fmt.WaveFormatEx.nChannels=2; Back b{};Mt8167StreamBackend backend{&b,ref,deref,allocate,releasebuf,start,stop,pos,device,nullptr,nullptr};
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+ backend.bindWaveBuffer=bindwave;backend.unbindWaveBuffer=unbindwave;
+#endif
  assert(!Mt8167NewMiniportWithBackend(&m,&backend) && b.refs==1);assert(!m->GetDeviceDescription(&b));
  assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat) && b.refs==2);
  assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
-#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+#if (defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC) || (defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC)
  assert(mdl==&p.mdl && mdl!=&b.mdl);
 #endif
  assert(!st->SetState(KSSTATE_RUN));KSAUDIO_POSITION position{};assert(!st->GetPosition(&position) && position.PlayOffset==4);

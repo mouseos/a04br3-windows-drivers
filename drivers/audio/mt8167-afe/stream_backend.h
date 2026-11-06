@@ -22,5 +22,9 @@ struct Mt8167StreamBackend {
     NTSTATUS (*stop)(void *);
     NTSTATUS (*position)(void *, PKSAUDIO_POSITION);
     NTSTATUS (*getDeviceDescription)(void *, PDEVICE_DESCRIPTION);
+    /* Optional PortCls-owned MDL; bind does not grant a DMA mapping. Caller
+     * holds allocation until unbind succeeds or the backend is quarantined. */
+    NTSTATUS (*bindWaveBuffer)(void *, PMDL, PVOID, ULONG);
+    NTSTATUS (*unbindWaveBuffer)(void *, PMDL);
 };
 #endif

@@ -10,6 +10,18 @@ static int parent_grant,parent_prepare_fail,parent_prepares,parent_releases,pare
 static PVOID parent_afe;
 static int parent_mute(PVOID){return 0;}
 static int parent_unmutes;
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+static int live_verified,voice_starts,voice_stops;
+static int verify_pcm(PVOID,PVOID mdl,ULONGLONG logical,ULONG size){return !(live_verified && mdl && logical==0x100000 && size==8192);}
+static int voice_start(PVOID){voice_starts++;
+#if defined(A04_TEST_VOICE_FAILURE) && A04_TEST_VOICE_FAILURE
+ return -1;
+#else
+ return 0;
+#endif
+}
+static int voice_stop(PVOID){voice_stops++;return 0;}
+#endif
 static int parent_unmute(PVOID){parent_unmutes++;
 #if defined(A04_TEST_UNMUTE_FAILURE) && A04_TEST_UNMUTE_FAILURE
  return -1;
@@ -31,6 +43,9 @@ extern "C" NTSTATUS Mt8167QueryAudioParent(PDEVICE_OBJECT p,A04_SHARED_AUDIO_INT
  if(query_failure)return STATUS_NOT_SUPPORTED;
  *out={};out->Header.Size=sizeof(*out);out->Header.Version=A04_SHARED_AUDIO_INTERFACE_VERSION;out->Header.Context=p;
  out->Header.InterfaceReference=parent_ref;out->Header.InterfaceDereference=parent_deref;
+ #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+ out->VerifyLivePcm=verify_pcm;out->StartVoice=voice_start;out->StopVoice=voice_stop;
+#endif
  out->AcquireMuted=malformed?nullptr:parent_acquire;out->ReleaseQuiescent=parent_release;out->PrepareMaskedIrq=parent_prepare;out->BindAfe=parent_bind;out->Mute=parent_mute;out->UnmuteMin=parent_unmute;parent_refs++;return STATUS_SUCCESS;
 }
 #endif
@@ -60,6 +75,12 @@ int Mt8167TransportStartMaskedParent(Mt8167Transport *t,uint32_t period,mt8167_a
 #else
  for(unsigned i=0;i<t->dma->size;i++)assert(((unsigned char *)t->dma->cpu)[i]==0);
 #endif
+ t->dma->exposed=TRUE;s->quarantined=1;t->state=AUDIO_RUNNING;return 0;
+}
+int Mt8167TransportStop(Mt8167Transport *t){assert(t->state==AUDIO_RUNNING);t->state=AUDIO_QUARANTINED;return 0;}
+#elif defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+int Mt8167TransportStartMaskedParent(Mt8167Transport *t,uint32_t period,mt8167_audio_shared_client *s){
+ assert(t && t->dma && t->dma->cpu && t->dma->logical.QuadPart==0x100000 && period==4096 && voice_starts==1);
  t->dma->exposed=TRUE;s->quarantined=1;t->state=AUDIO_RUNNING;return 0;
 }
 int Mt8167TransportStop(Mt8167Transport *t){assert(t->state==AUDIO_RUNNING);t->state=AUDIO_QUARANTINED;return 0;}
@@ -155,6 +176,16 @@ int main(){
 #endif
  assert(Mt8167PnpBackendAttachShared(owner,&shared)==STATUS_DEVICE_NOT_READY);
  const Mt8167StreamBackend *api=Mt8167PnpBackendInterface(owner);api->reference(api->context);
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+ { _MDL portMdl{data,8192};BOOLEAN exposed=TRUE;
+   assert(api->bindWaveBuffer && api->unbindWaveBuffer);
+   assert(!api->bindWaveBuffer(api->context,&portMdl,data,8192));
+   assert(api->bindWaveBuffer(api->context,&portMdl,data,8192)==STATUS_DEVICE_NOT_READY);
+   live_verified=1;assert(api->start(api->context,&exposed)==STATUS_DEVICE_NOT_READY && !exposed && !voice_starts);
+   assert(!api->unbindWaveBuffer(api->context,&portMdl));
+   Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);api->dereference(api->context);
+   assert(!freed && puts==1 && !parent_refs && !test_pdo_refs);return 0; }
+#endif
  PMDL mdl=nullptr;ULONG n=0,offset=9;MEMORY_CACHING_TYPE cache;
  test_audio_irql=1;assert(api->allocate(api->context,8192,&mdl,&n,&offset,&cache)==STATUS_DEVICE_NOT_READY && !mdl);test_audio_irql=0;
  assert(!api->allocate(api->context,8192,&mdl,&n,&offset,&cache) && mdl && n==8192 && !offset);
