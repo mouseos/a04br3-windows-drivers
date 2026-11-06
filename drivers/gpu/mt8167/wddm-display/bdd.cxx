@@ -34,6 +34,9 @@ BASIC_DISPLAY_DRIVER::BASIC_DISPLAY_DRIVER(_In_ DEVICE_OBJECT* pPhysicalDeviceOb
     RtlZeroMemory(&m_StartInfo, sizeof(m_StartInfo));
     RtlZeroMemory(m_CurrentModes, sizeof(m_CurrentModes));
     RtlZeroMemory(&m_DeviceInfo, sizeof(m_DeviceInfo));
+#if A04_GE8300_WDDM_DIRECT_EXPERIMENT
+    RtlZeroMemory(&m_DisplayResources, sizeof(m_DisplayResources));
+#endif
     KeInitializeMutex(&m_PresentMutex,0);
 
 
@@ -108,6 +111,13 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StartDevice(_In_  DXGK_START_INFO*   pDxgkStartIn
             (uint64_t)info->PhysicAddress.QuadPart>UINT64_MAX-(uint64_t)info->Pitch*info->Height)
             return STATUS_DEVICE_CONFIGURATION_ERROR;
     }
+#if A04_GE8300_WDDM_DIRECT_EXPERIMENT
+    /* Absence of explicit OVL resources keeps the CPU display path working. */
+    Status=m_DisplayResources.Start(m_pPhysicalDevice,&m_DeviceInfo);
+    if (!NT_SUCCESS(Status)) {
+        DbgPrint("A04 display: direct resources unavailable: 0x%08lx\n",Status);
+    }
+#endif
     m_Flags.DriverStarted = TRUE;
     *pNumberOfViews = MAX_VIEWS;
     *pNumberOfChildren = MAX_CHILDREN;
@@ -131,6 +141,9 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StopDevice(VOID)
 VOID BASIC_DISPLAY_DRIVER::CleanUp()
 {
     PAGED_CODE();
+#if A04_GE8300_WDDM_DIRECT_EXPERIMENT
+    m_DisplayResources.Stop();
+#endif
 
     for (UINT Source = 0; Source < MAX_VIEWS; ++Source)
     {

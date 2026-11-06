@@ -58,3 +58,27 @@ unimplemented. No production WDDM/provider entry point registers or calls it.
 The current screen diagnostic uses pitch 3328 and cannot use this 3200-pitch
 path. Thus enabling compilation does not enable scanout or demonstrate a
 working display. Its host test models DMA and MMIO; it is not a hardware test.
+
+## WDDM resource acquisition
+
+With `A04_GE8300_WDDM_DIRECT_EXPERIMENT=1`, WDDM StartDevice now obtains the
+translated PnP resources and, only when a unique exclusive OVL0 memory range
+is assigned, requests a 32-bit scatter/gather adapter from the same display
+PDO and maps that assigned range uncached. The adapter must provide at least
+1000 map registers. StopDevice releases these resources; no scanout mapping or
+hardware write is currently connected to this object, so no live DMA can be
+released by this cleanup. A missing or unsuitable resource falls back to the
+existing CPU display path. `DisplayProvider.asl` currently provides OVL0,
+RDMA0, DSI0 and display-mutex memory but no interrupt. An optional exclusive
+interrupt is recognized, but no ISR is registered or enabled by this change.
+Linux MT8167 DTS specifies OVL0 SPI 160 (ACPI GSIV 192); the translation and
+exclusive ownership must be established through PnP, not a hardcoded vector.
+
+The GPU provider and display miniport are separate device stacks. No shared
+surface/MDL lease connects them yet. The diagnostic TQ UFO, SLC flush and GP
+fence are not a WDDM present fence, and the new WDDM resource object does not
+supply the `ready` or `boundary` callbacks. OVL frame-complete bit 1 in Linux
+is an observation, not by itself proof of an atomic switch or retirement.
+A PnP interrupt, an ISR-safe transaction or hardware command queue, shared
+allocation lifetime, and device-to-device visibility are still required before
+this experimental code can safely submit a scanout switch.

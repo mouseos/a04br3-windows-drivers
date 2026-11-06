@@ -53,6 +53,7 @@ extern "C"
 #define EDID_V1_BLOCK_SIZE 128
 
 #include "BDD_ErrorLog.hxx"
+#include "ge8300_display_resources.hxx"
 
 #define MIN_WIDTH                    640
 #define MIN_HEIGHT                   480
@@ -203,6 +204,9 @@ private:
 
     // Device information
     DXGK_DEVICE_INFO m_DeviceInfo;
+#if A04_GE8300_WDDM_DIRECT_EXPERIMENT
+    A04DisplayResources m_DisplayResources;
+#endif
 
 public:
     BASIC_DISPLAY_DRIVER(_In_ DEVICE_OBJECT* pPhysicalDeviceObject);
