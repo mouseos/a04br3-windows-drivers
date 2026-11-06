@@ -17,6 +17,22 @@ static int hash(const WCHAR*path){HANDLE f;HCRYPTHASH h=0;BYTE d[32];DWORD n,z=3
  for(i=0;i<32;i++){const char*q="0123456789ABCDEF";char t[3];t[0]=q[d[i]>>4];t[1]=q[d[i]&15];t[2]=0;out(t);}ok=1;
  done:if(h)CryptDestroyHash(h);CloseHandle(f);if(!ok)out("HASH_FAILED");return ok;}
 static int value(HKEY k,const WCHAR*name,WCHAR*data,DWORD bytes){DWORD type=0,n=bytes;LONG x=RegQueryValueExW(k,name,0,&type,(BYTE*)data,&n);if(x!=ERROR_SUCCESS||type!=REG_SZ||n<sizeof(WCHAR)||n>bytes||data[n/sizeof(WCHAR)-1]!=0)return 0;return 1;}
+/* Catalogs can be retained in DriverStore rather than under the INF's
+ * original filename in CatRoot. Report all bounded filename matches, never
+ * infer a binding or catalog membership from a name alone. */
+static void catalog_store(const WCHAR *cat){WIN32_FIND_DATAW d;HANDLE h;DWORD error,count=0,seen=0,skipped=0;WCHAR path[512];
+ h=FindFirstFileW(L"C:\\Windows\\System32\\DriverStore\\FileRepository\\*",&d);
+ if(h==INVALID_HANDLE_VALUE){out("PNP_CATALOG_STORE_ENUM_ERROR=");hex(GetLastError());out("\r\n");return;}
+ do{DWORD attr;if(!lstrcmpW(d.cFileName,L".")||!lstrcmpW(d.cFileName,L".."))continue;
+ if(++seen>2048){out("PNP_CATALOG_STORE_ENUM_LIMIT\r\n");FindClose(h);return;}
+ if(!(d.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY))continue;
+ if((d.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT)||!safe(d.cFileName,0)){++skipped;continue;}
+ lstrcpyW(path,L"C:\\Windows\\System32\\DriverStore\\FileRepository\\");lstrcatW(path,d.cFileName);lstrcatW(path,L"\\");lstrcatW(path,cat);
+ attr=GetFileAttributesW(path);if(attr==INVALID_FILE_ATTRIBUTES){error=GetLastError();if(error!=ERROR_FILE_NOT_FOUND&&error!=ERROR_PATH_NOT_FOUND){out("PNP_CATALOG_STORE_STAT_ERROR=");hex(error);out("\r\n");++skipped;}continue;}
+ out("PNP_CATALOG_STORE_PATH=");wide(path);out(" SHA256=");if(hash(path))++count;out("\r\n");
+ }while(FindNextFileW(h,&d));error=GetLastError();if(!FindClose(h)||error!=ERROR_NO_MORE_FILES){out("PNP_CATALOG_STORE_ENUM_INCOMPLETE\r\n");return;}
+ out("PNP_CATALOG_STORE_MATCH_COUNT=");hex(count);out(" MEMBERSHIP_UNVERIFIED\r\n");
+ if(skipped){out("PNP_CATALOG_STORE_SKIPPED_COUNT=");hex(skipped);out(" ENUM_INCOMPLETE\r\n");}}
 static void instance(HKEY root,const WCHAR*cs,const WCHAR*id,const WCHAR*name){WCHAR path[512],driver[128],infname[128],inffile[320],cat[128],catfile[384];HKEY k,c;LONG rc;
  lstrcpyW(path,cs);lstrcatW(path,L"\\Enum\\");lstrcatW(path,id);lstrcatW(path,L"\\");lstrcatW(path,name);
  out("PNP_INSTANCE=");wide(id);out("\\");wide(name);out("\r\n");rc=RegOpenKeyExW(root,path,0,KEY_READ,&k);if(rc!=ERROR_SUCCESS){out("PNP_INSTANCE_OPEN_FAILED\r\n");return;}
@@ -29,6 +45,7 @@ static void instance(HKEY root,const WCHAR*cs,const WCHAR*id,const WCHAR*name){W
  cat[0]=0;GetPrivateProfileStringW(L"Version",L"CatalogFile.NTARM",L"",cat,128,inffile);if(!cat[0])GetPrivateProfileStringW(L"Version",L"CatalogFile",L"",cat,128,inffile);
  if(!safe(cat,0)){out("PNP_CATALOG_REFERENCE_UNRESOLVED\r\n");return;}
  lstrcpyW(catfile,L"C:\\Windows\\System32\\CatRoot\\{F750E6C3-38EE-11D1-85E5-00C04FC295EE}\\");lstrcatW(catfile,cat);out("PNP_CATALOG=");wide(cat);out(" SHA256=");hash(catfile);out("\r\n");
+ catalog_store(cat);
 }
 static void device(HKEY root,const WCHAR*cs,const WCHAR*id){WCHAR path[320],name[128];DWORD index=0,n;HKEY k;LONG rc;
  lstrcpyW(path,cs);lstrcatW(path,L"\\Enum\\");lstrcatW(path,id);rc=RegOpenKeyExW(root,path,0,KEY_READ,&k);if(rc!=ERROR_SUCCESS){out("PNP_ENUM_ABSENT_OR_ERROR=");wide(id);out("\r\n");return;}

@@ -3,7 +3,7 @@ $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1";$root=(Resolve-Path (Join-Path 
 $base=Join-Path $env:RUNNER_TEMP 'a04-pnp-inf-fixture'
 if(Test-Path $base){throw 'fixture exists'}
 if(Test-Path 'R:\'){throw 'fixture drive busy'}
-New-Item -ItemType Directory -Force "$base\target\Windows\INF","$base\target\Windows\System32\CatRoot\{F750E6C3-38EE-11D1-85E5-00C04FC295EE}" | Out-Null
+New-Item -ItemType Directory -Force "$base\target\Windows\INF","$base\target\Windows\System32\CatRoot\{F750E6C3-38EE-11D1-85E5-00C04FC295EE}","$base\target\Windows\System32\DriverStore\FileRepository\fixture.inf_arm_abc" | Out-Null
 function Reg([string[]]$a){& reg.exe @a | Out-Null;if($LASTEXITCODE){throw "registry error: $($a -join ' ')"}}
 try {
  & subst R: "$base\target";if($LASTEXITCODE){throw 'subst failed'}
@@ -16,6 +16,7 @@ try {
  Reg @('load','HKLM\A04AUDITSYS',"$base\SYSTEM")
  [IO.File]::WriteAllText('R:\Windows\INF\oem42.inf',"[Version]`r`nCatalogFile.NTARM=fixture.cat`r`n",[Text.Encoding]::ASCII)
  [IO.File]::WriteAllText('R:\Windows\System32\CatRoot\{F750E6C3-38EE-11D1-85E5-00C04FC295EE}\fixture.cat','fixture')
+ [IO.File]::WriteAllText('R:\Windows\System32\DriverStore\FileRepository\fixture.inf_arm_abc\fixture.cat','store fixture')
  $src=[IO.File]::ReadAllText("$root\tools\winpe\audit-pnp-inf.c").Replace('L"C:\\Windows','L"R:\\Windows')
  [IO.File]::WriteAllText("$base\fixture.c",$src)
  $inc=Join-Path $kit 'Include';$lib=Join-Path $kit 'Lib\winv6.3\um\x64'
@@ -26,6 +27,8 @@ try {
  $lines=& "$base\fixture.exe";if($LASTEXITCODE){throw 'audit failed'}
  $ih=(Get-FileHash -Algorithm SHA256 'R:\Windows\INF\oem42.inf').Hash;$ch=(Get-FileHash -Algorithm SHA256 'R:\Windows\System32\CatRoot\{F750E6C3-38EE-11D1-85E5-00C04FC295EE}\fixture.cat').Hash
  if(!($lines -contains 'PNP_CONTROLSET=ControlSet007') -or !($lines -contains 'SERVICE_START=00000000') -or !($lines -contains "PNP_INF=oem42.inf SHA256=$ih") -or !($lines -contains "PNP_CATALOG=fixture.cat SHA256=$ch")){throw "identity/hash mismatch: $($lines -join ' | ')"}
+ $sh=(Get-FileHash -Algorithm SHA256 'R:\Windows\System32\DriverStore\FileRepository\fixture.inf_arm_abc\fixture.cat').Hash
+ if(!($lines -contains "PNP_CATALOG_STORE_PATH=R:\Windows\System32\DriverStore\FileRepository\fixture.inf_arm_abc\fixture.cat SHA256=$sh") -or !($lines -contains 'PNP_CATALOG_STORE_MATCH_COUNT=00000001 MEMBERSHIP_UNVERIFIED')){throw 'DriverStore catalog discovery failed'}
  Remove-Item 'R:\Windows\System32\CatRoot\{F750E6C3-38EE-11D1-85E5-00C04FC295EE}\fixture.cat'
  $lines=& "$base\fixture.exe";if(!($lines -match 'PNP_CATALOG=fixture.cat SHA256=OPEN_ERROR_')){throw 'missing catalog not reported'}
  Reg @('add','HKLM\A04AUDITSYS\ControlSet007\Control\Class\{ABC}\0001','/v','InfPath','/t','REG_SZ','/d','..\escape.inf','/f')

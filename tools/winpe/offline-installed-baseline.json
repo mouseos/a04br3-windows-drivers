@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "source": "windows-rt-audit-readiness-v2-report.txt",
+  "scope": "observed baseline only; not authority to update",
+  "disk": {"number": 0, "offset_bytes": 469762048, "length_bytes": 15147204608, "ntfs_serial_hex": "1631A497", "dirty_flags_hex": "00000000"},
+  "files": {
+    "Windows/System32/drivers/mt8167-toprgu.sys": {"state": "present", "sha256": "6fc56829bdc93489a0888a395fa6f8736c4ff34ccaa35162bb6d940d20695fc1"},
+    "Windows/System32/drivers/mt8167-shared.sys": {"state": "open_error_file_not_found"},
+    "Windows/System32/drivers/bu21025.sys": {"state": "present", "sha256": "3c571c84872ad6fe59b21eb7bb2014d2ec286e8035c0a80d5f541abf0aa31b0f"},
+    "Windows/INF/oem33.inf": {"state": "present", "sha256": "c265a55a630d32d19db4ee6ba665b69e358c6f74e05108dc60e554b3c62a425d"},
+    "Windows/INF/oem35.inf": {"state": "present", "sha256": "9be0df792a48930d6d656411ed1c7abaeaf14680424b827794d8375c54cb18dd"}
+  },
+  "control_set": "ControlSet001",
+  "toprgu_service": {"name": "Mt8167Toprgu", "start": 0, "type": 1, "image_path": "System32\\drivers\\mt8167-toprgu.sys"},
+  "pnp": {"ACPI\\MOU0004\\0": "oem33.inf", "ACPI\\MOU0005\\0": "oem35.inf"},
+  "catalogs": {"a04touch.cat": "unresolved", "mt8167-toprgu.cat": "unresolved"},
+  "source_hive_copy": "verified read-only non-atomic; exclusive snapshot unproven",
+  "release": "lock, flush, dismount, unmount reported success",
+  "constraints": ["dirty zero does not prove integrity", "catalog membership and effective RT signing policy unverified", "DriverStore, PnP configuration and all affected files lack complete transaction coverage", "baseline must be reverified on the current target before any modification"]
+}
