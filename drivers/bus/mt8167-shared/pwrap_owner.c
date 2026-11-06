@@ -16,6 +16,9 @@ int a04_pwrap_owner_start(struct a04_pwrap_owner *o)
 int a04_pwrap_owner_stop(struct a04_pwrap_owner *o)
 {
     if (enter(o)) return -1;
+#if defined(A04_MT6392_RTC32K_DIAGNOSTIC) && A04_MT6392_RTC32K_DIAGNOSTIC
+    if (o->rtc_lease) { o->unlock(o->lock_context); return -1; }
+#endif
     o->online = 0;
     o->unlock(o->lock_context);
     return 0;
@@ -69,6 +72,7 @@ int a04_pwrap_owner_rtc32k_acquire(struct a04_pwrap_owner *o,struct a04_rtc32k_l
     if(!lease||enter(o))return -1;
     if(o->online && !o->rtc_lease && !lease->held && !lease->uncertain) {
         result=a04_pmic_rtc32k_acquire(&o->bus,lease);
+        if(result && o->bus.poisoned)lease->uncertain=1;
         if(lease->held || lease->uncertain)o->rtc_lease=lease;
     }
     o->unlock(o->lock_context);return result;

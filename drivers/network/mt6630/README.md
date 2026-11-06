@@ -333,3 +333,8 @@ Windows ARM32 機種 UEFI（調査時 HEAD `e8af0fb0`、作業ツリーの完全
 する。実際の PnP resource が保持される保証や物理除去の安全性ではない。
 親 Acquire、外部 writer の排他、firmware と GPIO の引継ぎは未確立のため、
 Wi-Fi 診断は引き続き開始しない。
+
+RTC lease が残る場合、PWRAP owner の明示 stop は拒否して online を維持する。
+取得中に WACS が poison された場合は lease を不確定として保持する。これは
+不確定な取引を完了済みと扱わないための局所的な寿命処理であり、UEFI・EL3・
+他のファームウェアからの所有移譲の証明や、親 Wi-Fi Acquire の許可ではない。
