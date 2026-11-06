@@ -725,6 +725,18 @@ static NTSTATUS ParentThermalVerifyHeadphone(PVOID p,ULONG generation)
  A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);NTSTATUS result=STATUS_DEVICE_NOT_READY;
  if(ParentLock(c))return result;
  if(a04_shared_thermal_valid(&c->thermal,generation) && c->thermal.inflight) {
+#if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC && A04_AUDIO_DIAGNOSTIC_TRACE
+  /* The active codec lease owns APMIXED and PWRAP while the shared mutex
+   * is held. These reads are observations only, not proof of board mute. */
+  if(c->audio.leased && !c->audio.poisoned && c->codecDomain.held &&
+     !c->codecDomain.poisoned && c->classd.active && !c->classd.poisoned && c->pmic.online) {
+   uint32_t con2;int readResult=ParentDomainRead(c,0x708,&con2);
+   int muteResult=a04_mt6392_classd_verify_muted(&c->classd);
+   if(c->classd.poisoned || c->pmic.bus.poisoned)c->audio.poisoned=1;
+   A04_TRACE("A04ADC codec observation route-read=%d hp-left-adc=%d gain-muted=%d; physical mute unknown\n",
+             readResult,readResult?0:!!(con2&(1u<<15)),muteResult==0);
+  }
+#endif
   /* No provider establishes both route and physical downstream mute yet. */
   result=STATUS_DEVICE_NOT_READY;
  }
