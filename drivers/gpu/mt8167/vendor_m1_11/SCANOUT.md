@@ -465,3 +465,26 @@ controls, sizes, pitches, addresses and interrupt state after the copy. These
 reads do not acknowledge an event or authorize a switch. No candidate should
 claim a synchronized OVL transition until the missing resource ownership and
 execution path are implemented and validated.
+
+### MT8167 CMDQ resource and packet preparation
+
+The device DTS provides GCE MMIO 0x1020a000/0x1000, non-secure GCE SPI 125,
+and OVL SPI 160. SPI 126 is the secure GCE IRQ and must not be claimed as a
+normal display IRQ. The board ASL has a separately gated resource description
+for GCE and GSIs 157/192; it defaults off and by itself grants neither clock
+nor thread ownership. Windows can separately opt in to mapping the assigned
+GCE range after checking the PnP resource list; that mapping issues no GCE
+read, write, interrupt connect or thread submission. Translated IRQ identity,
+interrupt routing, power/clock ownership and conflict with secure or firmware
+users remain unresolved.
+
+MT8167 DTS maps `disp_rdma0_frame_done` to 27 and `stream_done_0` to 38;
+these are hardware event values, unlike the abstract enum values 77 and 113
+in `cmdq_event_common.h`. Linux `cmdq_device.c` populates the runtime event
+table from DTS. The tested `mt8167_cmdq_packet.h` constructs a Linux-shaped
+non-clearing EOF wait, full L0 address write, EOC and relative JUMP; L3 is
+not touched and a packet for the saved L0 address can be built separately.
+It only creates an inert image: event freshness, display mode and exclusive
+GCE execution are not established. In particular a latched old event makes
+WAIT_NO_CLEAR inadequate as a fresh boundary by itself. There is no executor,
+ISR, timeout recovery, frame-latch proof or production caller yet.

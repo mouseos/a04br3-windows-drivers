@@ -9,6 +9,9 @@ NTSTATUS A04DisplayResources::Start(PDEVICE_OBJECT pdo,const DXGK_DEVICE_INFO *i
     PCM_RESOURCE_LIST list; PCM_PARTIAL_RESOURCE_LIST partial; PCM_FULL_RESOURCE_DESCRIPTOR full;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR ovl=NULL,irq=NULL;
     ULONG matches=0,interrupts=0,i,j,flags=0;DEVICE_DESCRIPTION desc;
+#if A04_GE8300_WDDM_GCE_RESOURCES
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR gce=NULL;ULONG gceMatches=0;BOOLEAN allIrqsExclusive=TRUE;
+#endif
     /* Trace raw PnP metadata, never a kernel pointer or an MMIO read. */
     flags=(pdo?1u:0u)|(info?2u:0u)|(info && info->PhysicalDeviceObject==pdo?4u:0u)|
         (Adapter?8u:0u)|(Ovl?16u:0u)|((ULONG)KeGetCurrentIrql()<<8);
@@ -36,6 +39,10 @@ NTSTATUS A04DisplayResources::Start(PDEVICE_OBJECT pdo,const DXGK_DEVICE_INFO *i
             if (item->Type==CmResourceTypeMemory &&
                 (ULONGLONG)item->u.Memory.Start.QuadPart==0x14007000ULL) { ovl=item; matches++; }
             if (item->Type==CmResourceTypeInterrupt) { irq=item; interrupts++; }
+#if A04_GE8300_WDDM_GCE_RESOURCES
+            if (item->Type==CmResourceTypeMemory && (ULONGLONG)item->u.Memory.Start.QuadPart==0x1020a000ULL) {gce=item;gceMatches++;}
+            if (item->Type==CmResourceTypeInterrupt && item->ShareDisposition!=CmResourceShareDeviceExclusive)allIrqsExclusive=FALSE;
+#endif
         }
         full=(PCM_FULL_RESOURCE_DESCRIPTOR)(void *)&partial->PartialDescriptors[partial->Count];
     }
@@ -43,11 +50,24 @@ NTSTATUS A04DisplayResources::Start(PDEVICE_OBJECT pdo,const DXGK_DEVICE_INFO *i
         (ovl && ovl->ShareDisposition==CmResourceShareDeviceExclusive?0x10000u:0u)|
         (irq && irq->ShareDisposition==CmResourceShareDeviceExclusive?0x20000u:0u);
     A04DisplayTrace(0x47,(NTSTATUS)flags);
-    if (!ovl || !a04_display_resources_valid(matches,interrupts,
+    if (!ovl || !a04_display_resources_valid(matches,
+#if A04_GE8300_WDDM_GCE_RESOURCES
+        0,
+#else
+        interrupts,
+#endif
         ovl->ShareDisposition==CmResourceShareDeviceExclusive,
         irq && irq->ShareDisposition==CmResourceShareDeviceExclusive,
         (uint64_t)ovl->u.Memory.Start.QuadPart,ovl->u.Memory.Length))
         return STATUS_DEVICE_CONFIGURATION_ERROR;
+#if A04_GE8300_WDDM_GCE_RESOURCES
+    if(!gce || !a04_gce_resources_valid(gceMatches,interrupts,
+       gce->ShareDisposition==CmResourceShareDeviceExclusive,allIrqsExclusive,
+       (uint64_t)gce->u.Memory.Start.QuadPart,gce->u.Memory.Length))return STATUS_DEVICE_CONFIGURATION_ERROR;
+    Gce=(volatile ULONG *)MmMapIoSpace(gce->u.Memory.Start,0x1000,MmNonCached);
+    A04DisplayTrace(0x4b,Gce?STATUS_SUCCESS:STATUS_INSUFFICIENT_RESOURCES);
+    if(!Gce)return STATUS_INSUFFICIENT_RESOURCES;
+#endif
     /* OVL has one linear layer address, not a hardware SG descriptor list.
      * GetScatterGatherList still works for a non-SG bus master: Windows must
      * provide an appropriate contiguous mapping or reject the request. */
@@ -479,6 +499,9 @@ VOID A04DisplayResources::Stop()
     }
 #endif
     if (Ovl) { MmUnmapIoSpace((void *)Ovl,0x1000); Ovl=NULL; }
+#if A04_GE8300_WDDM_GCE_RESOURCES
+    if (Gce) { MmUnmapIoSpace((void *)Gce,0x1000); Gce=NULL; }
+#endif
     if (Adapter && Adapter->DmaOperations && Adapter->DmaOperations->Size>=
         FIELD_OFFSET(DMA_OPERATIONS,PutDmaAdapter)+sizeof(Adapter->DmaOperations->PutDmaAdapter) &&
         Adapter->DmaOperations->PutDmaAdapter)
