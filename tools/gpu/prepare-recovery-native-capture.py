@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """REA capture用JSONと後日のstaging commandを生成する。ADBを実行しない。"""
 import argparse
+import hashlib
 import json
 import shlex
 from pathlib import Path
@@ -62,6 +63,13 @@ def main():
         "success":"PowerVR renderer, full readback match, complete pre/post pairs, ioctl/bridge success, broken=0. Native resource completeness separately requires every VDM/PPP/USC/PDS/region reference to be covered; unknown is not success. GPU/FW addresses cannot be replayed unchanged"}
     if args.plan_directory is not None:
         output=args.plan_directory.resolve();output.mkdir(exist_ok=False)
+        checks=[(bundle/source,name) for source,name in staged]
+        for directory in ["original-vendor","platform-candidates"]:
+            checks.extend((p,str(p.relative_to(bundle))) for p in sorted((bundle/directory).rglob("*")) if p.is_file())
+        sums=output/"DEVICE-SHA256SUMS"
+        sums.write_text("".join(hashlib.sha256(p.read_bytes()).hexdigest()+"  "+name+"\n" for p,name in checks))
+        commands.append(adb("push",str(sums),device+"/DEVICE-SHA256SUMS"))
+        commands.append(shell(["sh","-c","cd "+shlex.quote(device)+" && sha256sum -c DEVICE-SHA256SUMS"]))
         result["rea_cli_capture_NOT_EXECUTED"][4]=str(output/"scenario-vendor-direct.json")
         for name,key in [("scenario-vendor-direct.json","rea_capture_vendor_direct"),("scenario-preflight.json","rea_preflight")]:
             (output/name).write_text(json.dumps(result[key],indent=2)+"\n")

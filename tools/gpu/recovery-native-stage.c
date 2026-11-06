@@ -48,6 +48,7 @@ int main(int argc,char **argv)
     path(root,base,"root");directory(root);
     for(i=0;i<sizeof(dirs)/sizeof(dirs[0]);i++){path(target,root,dirs[i]);directory(target);}
     path(target,root,"system-origin");bind_dir("/system",target);
+    if(mount(0,target,0,MS_BIND|MS_REMOUNT|MS_RDONLY,0))fail("read-only system view");
     /* Preserve the real Recovery Bionic/linker and its absolute APEX symlinks. */
     system=opendir("/system");if(!system)fail("opendir system");
     while((entry=readdir(system))){
