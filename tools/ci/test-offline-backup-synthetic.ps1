@@ -45,6 +45,10 @@ try {
  [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM','changed')
  [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE','changed')
  [IO.File]::WriteAllText('R:\Windows\System32\drivers\mt8167-shared.sys','new')
+ [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE{new}.TM.blf','sidecar')
+ & "$base\fixture.exe" --restore
+ if(!$LASTEXITCODE -or [IO.File]::ReadAllText('R:\Windows\System32\config\SOFTWARE') -ne 'changed'){throw 'new sidecar did not block replay before mutation'}
+ Remove-Item -LiteralPath 'R:\Windows\System32\config\SOFTWARE{new}.TM.blf'
  & "$base\fixture.exe" --restore
  if($LASTEXITCODE){throw 'fixture replay failed'}
  if([IO.File]::ReadAllText('R:\Windows\System32\config\SYSTEM') -ne 'original-system'){throw 'SYSTEM content mismatch'}
