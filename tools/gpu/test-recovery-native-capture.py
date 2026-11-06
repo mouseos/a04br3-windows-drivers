@@ -20,7 +20,38 @@ def resource(status=0,data=b"\x11\x22\x33\x44",seq=1):
         len(data),len(data),1,1,0,1,2,10,10)
     return event(3,seq,[(7,meta),(8,data)])
 
+def sparse_fixture(index=7,offset=7*4096,parent_offset=0,cpu_offset=0):
+    inp=struct.pack("<QQIIQ",1024*1024,4096,1,256,0x12340000)+bytes(24)
+    out=struct.pack("<QI",0x31,0)
+    journal=event(4,0,[(9,struct.pack("<6I",6,9,10,56,12,0)+inp+out)])
+    witness=event(6,0,[(11,struct.pack("<IIQQQQIIQ",1,10,1,0x31,1024*1024,4096,1,256,0x12340000)+struct.pack("<I",index))])
+    meta=struct.pack("<II7Q4IQQII",2,8,0x31,0x100000+offset-cpu_offset,
+        0x65c01db000+offset-parent_offset,offset,1024*1024,1024*1024,4096,4096,1,1,0,1,2,10,10)
+    meta+=struct.pack("<7Q",1,0x65c01db000,parent_offset,1024*1024,4096,0x100000,cpu_offset)
+    return journal+witness,event(3,1,[(7,meta),(8,bytes(4096))])
+
 class CaptureTests(unittest.TestCase):
+    def test_sparse_nonzero_index_and_parent_offset(self):
+        witness,data=sparse_fixture(parent_offset=4096,cpu_offset=2*4096)
+        result=parser.parse(witness+data+format_only_pairs())
+        r=result["events"][2]
+        self.assertEqual(r["pmr_offset"],7*4096)
+        self.assertEqual(r["gpu_va"],hex(0x65c01db000+6*4096))
+        self.assertEqual(r["reason"],"backed-interval")
+        self.assertTrue(r["coverage"].endswith("unknown"))
+    def test_sparse_hole_and_missing_witness_are_rejected(self):
+        witness,data=sparse_fixture(index=3)
+        with self.assertRaises(ValueError):parser.parse(witness+data+format_only_pairs())
+        with self.assertRaises(ValueError):parser.parse(data+format_only_pairs())
+    def test_sparse_outside_vma_and_parent_are_rejected(self):
+        witness,data=sparse_fixture(cpu_offset=8*4096)
+        with self.assertRaises(ValueError):parser.parse(witness+data+format_only_pairs())
+        witness,data=sparse_fixture(parent_offset=8*4096)
+        with self.assertRaises(ValueError):parser.parse(witness+data+format_only_pairs())
+    def test_sparse_topology_requires_successful_matching_allocation(self):
+        witness,data=sparse_fixture()
+        broken=bytearray(witness);struct.pack_into("<I",broken,40+24+56+8,1)
+        with self.assertRaises(ValueError):parser.parse(bytes(broken)+data+format_only_pairs())
     def test_connect_packed17_and_partial_is_not_capture_success(self):
         inp=struct.pack("<4I",0,0x2010,0x1000b,5425693)
         out=struct.pack("<B4I",2,0,1,2,0)

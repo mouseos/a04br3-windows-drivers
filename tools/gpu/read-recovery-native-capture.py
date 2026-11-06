@@ -7,13 +7,13 @@ import struct
 from pathlib import Path
 
 def parse(raw,resources_directory=None,allow_incomplete=False):
-    pos=0;events=[];pending=set();seen=set();resources=set();read_total=0;kick_read={}
+    pos=0;events=[];pending=set();seen=set();resources=set();read_total=0;kick_read={};topologies={}
     while pos<len(raw):
         if len(raw)-pos<32:raise ValueError("truncated header")
         magic,version,kind,seq,rc,error,count=struct.unpack_from("<8sIIIiiI",raw,pos);pos+=32
-        if magic!=b"A04RGCAP" or version!=1 or kind not in (1,2,3,4,5) or not (seq==0 if kind==4 else 1<=seq<=32):
+        if magic!=b"A04RGCAP" or version!=1 or kind not in (1,2,3,4,5,6) or not (seq==0 if kind in (4,6) else 1<=seq<=32):
             raise ValueError("invalid header")
-        if count!={1:5,2:1,3:2,4:1,5:1}[kind]:raise ValueError("invalid component count")
+        if count!={1:5,2:1,3:2,4:1,5:1,6:1}[kind]:raise ValueError("invalid component count")
         components={};offsets={}
         for unused in range(count):
             if len(raw)-pos<8:raise ValueError("truncated TLV")
@@ -21,6 +21,25 @@ def parse(raw,resources_directory=None,allow_incomplete=False):
             if tag in components or size>(0x40000 if kind==3 and tag==8 else 0x1000) or size>len(raw)-pos:raise ValueError("invalid TLV")
             offsets[tag]=pos
             components[tag]=raw[pos:pos+size];pos+=size
+        if kind==6:
+            if set(components)!={11} or len(components[11])<56:raise ValueError("topology metadata")
+            w,fd,identity,pmr,size,chunk,phys,virt,pointer=struct.unpack_from("<IIQQQQIIQ",components[11])
+            if w!=1 or not identity or not 0<phys<=256 or not 0<virt<=4096 or not chunk or chunk%4096 or size!=chunk*virt or len(components[11])!=56+phys*4:
+                raise ValueError("topology bounds")
+            indices=struct.unpack_from(f"<{phys}I",components[11],56)
+            if len(set(indices))!=phys or any(x>=virt for x in indices):raise ValueError("topology indices")
+            key=(fd,identity)
+            if key in topologies:raise ValueError("duplicate topology generation")
+            if not events or events[-1]["phase"]!="memory-bridge":raise ValueError("topology lacks allocation journal")
+            allocation=events[-1];inp=bytes.fromhex(allocation["input_hex"]);out=bytes.fromhex(allocation["output_hex"])
+            if allocation["group"]!=6 or allocation["function"] not in (9,10) or allocation["fd"]!=fd or allocation["ioctl_result"]<0 or len(inp) not in (56,60) or len(out)!=12 or struct.unpack("<QI",out)!=(pmr,0) or struct.unpack_from("<QQIIQ",inp)!=(size,chunk,phys,virt,pointer):
+                raise ValueError("topology allocation mismatch")
+            topologies[key]=(pmr,size,chunk,set(indices))
+            events.append({"phase":"pmr-topology","fd":fd,"generation":identity,"pmr":hex(pmr),
+                "logical_size":size,"chunk_size":chunk,"physical_chunks":phys,"virtual_chunks":virt,
+                "mapping_table_pointer":hex(pointer),"backed_virtual_indices":list(indices),
+                "witness":"same-process fault-safe copies before/after successful NewRamBackedPMR agree"})
+            continue
         if kind==4:
             if set(components)!={9} or len(components[9])<24:raise ValueError("bridge journal")
             data=components[9];group,fn,fd,ni,no,unknown=struct.unpack_from("<6I",data)
@@ -39,26 +58,41 @@ def parse(raw,resources_directory=None,allow_incomplete=False):
             events.append(event)
             continue
         if kind==3:
-            if set(components)!={7,8} or len(components[7])!=104:raise ValueError("resource metadata")
+            if set(components)!={7,8} or len(components[7]) not in (104,160):raise ValueError("resource metadata")
             m=components[7];wire,status=struct.unpack_from("<II",m)
             pmr,cpu,gpu,offset,pmr_size,cpu_size,gpu_size=struct.unpack_from("<7Q",m,8)
             n,prot,source,unknown=struct.unpack_from("<4I",m,64)
             heap,mapping,fd,cpu_fd=struct.unpack_from("<QQII",m,80)
-            if wire!=1 or status>7 or n!=len(components[8]) or n%4:raise ValueError("resource data length")
-            if (status in (0,1))!=(n>0):raise ValueError("resource status/data mismatch")
+            if wire not in (1,2) or len(m)!={1:104,2:160}[wire] or status>(7 if wire==1 else 8) or n!=len(components[8]) or n%4:raise ValueError("resource data length")
+            if (status in (0,1,8))!=(n>0):raise ValueError("resource status/data mismatch")
             if n and (source not in (1,2) or not prot&1 or cpu%4 or offset>pmr_size or
                       n>pmr_size-offset or n>gpu_size or n>cpu_size):raise ValueError("resource provenance/bounds")
-            if n and (status==0)!=(n==gpu_size):raise ValueError("resource coverage/status")
+            if wire==1 and n and (status==0)!=(n==gpu_size):raise ValueError("resource coverage/status")
             read_total+=n;kick_read[seq]=kick_read.get(seq,0)+n
             if read_total>16*1024*1024 or kick_read[seq]>4*1024*1024:raise ValueError("resource read cap")
             resources.add(seq);event={"phase":"resource","seq":seq,"status":status,
-                "reason":["full-span","prefix-only","no-cpu-mapping","unsafe-or-sparse", "budget", "ambiguous", "unaligned", "journal-lost"][status],
+                "reason":["full-span","prefix-only","no-cpu-mapping","unsafe-or-sparse", "budget", "ambiguous", "unaligned", "journal-lost", "backed-interval"][status],
                 "pmr":hex(pmr),"cpu_va":hex(cpu),"gpu_va":hex(gpu),"pmr_offset":offset,
                 "pmr_size":pmr_size,"cpu_mapping_size":cpu_size,"gpu_mapping_size":gpu_size,
                 "cpu_prot":prot,"source":source,"unknown_count":unknown,"heap":hex(heap),
                 "mapping":hex(mapping),"drm_fd":fd,"cpu_fd":cpu_fd,"bytes":n,
                 "sha256":hashlib.sha256(components[8]).hexdigest(),"capture_data_offset":offsets[8],
                 "reference_coverage":"unknown: full-span does not mean every packet reference was resolved"}
+            if wire==2:
+                identity,parent_gpu,parent_offset,parent_size,chunk=struct.unpack_from("<5Q",m,104)
+                topology=topologies.get((fd,identity))
+                if not topology or topology[:3]!=(pmr,pmr_size,chunk):raise ValueError("missing topology witness")
+                if offset<parent_offset or gpu!=parent_gpu+offset-parent_offset or offset-parent_offset>parent_size or gpu_size>parent_size-(offset-parent_offset):
+                    raise ValueError("backed interval parent bounds")
+                if offset>pmr_size or gpu_size>pmr_size-offset:raise ValueError("backed interval PMR bounds")
+                if n and (status!=8 or any(x not in topology[3] for x in range(offset//chunk,(offset+n-1)//chunk+1))):
+                    raise ValueError("snapshot touches unbacked chunk")
+                cpu_base,cpu_offset=struct.unpack_from("<QQ",m,144)
+                if n and (offset<cpu_offset or cpu!=cpu_base+offset-cpu_offset or offset-cpu_offset>cpu_size or n>cpu_size-(offset-cpu_offset)):
+                    raise ValueError("backed interval CPU VMA bounds")
+                event.update({"cpu_mapping_base":hex(cpu_base),"cpu_mapping_pmr_offset":cpu_offset,"generation":identity,"parent_gpu_va":hex(parent_gpu),
+                    "parent_pmr_offset":parent_offset,"parent_gpu_mapping_size":parent_size,
+                    "chunk_size":chunk,"coverage":"only this backed interval; holes/other intervals remain unknown"})
             if resources_directory is not None and n:
                 target=resources_directory/f"resource-{seq:02d}-{len(events):04d}.bin"
                 with target.open("xb") as stream:stream.write(components[8])

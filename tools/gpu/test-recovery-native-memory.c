@@ -69,6 +69,39 @@ int main(int argc,char **argv)
     mem_map_result(a,size,PROT_READ,MAP_SHARED,10,0x31*4096);old=mem_cpus[0].id;
     mem_qword(input,0x31);call_mm(7,8,4);pmr(1);heap_and_map(0);
     assert(mem_pmrs[0].id!=old);mem_snapshot(1);assert(mem_read_total==0);
+    /* Exact source-bound sparse indices, including nonzero prefix offsets.
+     * Every hole really is PROT_NONE: reading a guessed prefix faults. */
+    {
+        uint32_t indices[3]={7,3,63},other[3]={7,4,63},copied[MEM_PHYS]={0};
+        struct mem_pmr *p;
+        reset_registry();pmr(0);heap_and_map(0);p=mem_pmr_handle(10,0x31);
+        assert(mprotect(a,size,PROT_NONE)==0);
+        for(i=0;i<3;i++){
+            assert(mprotect(a+indices[i]*1024,4096,PROT_READ|PROT_WRITE)==0);
+            a[indices[i]*1024]=0x10203040u+indices[i];
+        }
+        memset(input,0,64);mem_qword(input,size);mem_qword(input+8,4096);
+        word(input+16,3);word(input+20,256);mem_qword(input+24,(uintptr_t)indices);
+        assert(mem_indices_copy(input,copied) && !memcmp(copied,indices,sizeof(indices)));
+        mem_topology(p,input,indices,indices,1);assert(p->known && !p->dense);
+        mem_map_result(a,size,PROT_READ,MAP_SHARED,10,0x31*4096);
+        mem_snapshot(1);assert(mem_read_total==3*4096);
+        assert(u32(mem_scratch)==0x10203040u+63);
+        /* A map beginning inside the PMR retains parent VA and PMR offset. */
+        mem_gpus[0].offset=7*4096;mem_gpus[0].size=4096;
+        mem_snapshot(2);assert(mem_read_total==4*4096 && u32(mem_scratch)==0x10203047u);
+        mem_topology(p,input,indices,other,1);assert(!p->known && !p->dense);
+        old=mem_read_total;mem_snapshot(3);assert(mem_read_total==old);
+        mem_qword(input+24,(uintptr_t)b);assert(!mem_indices_copy(input,copied));
+        mem_qword(input+24,(uintptr_t)indices);word(input+16,MEM_PHYS+1);
+        assert(!mem_indices_copy(input,copied));word(input+16,3);
+        indices[1]=indices[0];assert(!mem_indices_copy(input,copied));indices[1]=3;
+        indices[1]=256;assert(!mem_indices_copy(input,copied));indices[1]=3;
+        mem_topology(p,input,indices,indices,1);
+        memset(input,0,64);mem_bridge_result(10,6,24,input,0,output,4,0,0);
+        assert(!p->known && !p->dense);old=mem_read_total;mem_snapshot(4);assert(mem_read_total==old);
+        assert(mprotect(a,size,PROT_READ|PROT_WRITE)==0);
+    }
     /* Per-process and per-kick caps bound actual volatile32 reads. */
     reset_registry();pmr(1);heap_and_map(0);
     mem_map_result(a,size,PROT_READ,MAP_SHARED,10,0x31*4096);

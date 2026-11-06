@@ -1,5 +1,32 @@
 # Recoveryで元MediaTek EGL/GLESのnative packetを捕捉する準備
 
+## 現在の到達点と疎PMR追加捕捉
+
+FWを最初のDRM open前から供給したRecoveryで、元vendorのpbuffer clearは成功した。
+UM/KM/FWは1.11@5425693、GE8300 22.40.54.30。800x600 RGBA8の全480000画素一致、
+TA0x88/PR0/3D0x150、kick1回、ioctl/bridge成功を同じrunで確認した。
+REA ev_0439df1de39db19b6b00eced22386ed550c616be825ae1aa8865cc3a4a2e39f8。
+これは元ドライバcapture成功であり、Windows 3D成功ではない。以下の初期準備・失敗記録は履歴である。
+
+不足VDM等の追加取得には、NewRamBackedPMR function9/10のpui32MappingTableを使う。
+同版pmr.c:_PMRCreateはnumPhys個のvirtual chunk indexだけをbacking済みとする。
+observerは自processへのprocess_vm_readvで前後をfault-safe copyし、成功したbridge結果と一致する場合だけ保存する。
+1配列256個、virtual chunks4096個、chunkは4KiB倍数が上限。重複index、範囲外、copy失敗、前後不一致はunknown。
+読み取りAPI自体の可否はvendor load前に自己RAMで検査し、使えなければGPU open前に停止する。
+別threadによる意図的なmetadata改変を扱う汎用debuggerではなく、固定single-process clear harness用である。
+
+追加wire kind6/tag11はPMR generation、handle、logical/chunk size、phys/virt数と実index witness。
+kind3のmetadata wire2（160 bytes）は各backed区間のGPU VA、PMR offset、実CPU VMA base/offsetと親GPU mappingを保持する。
+parserは直前の成功allocation journalとの一致とbacked index/CPU VMA/親map境界を検査する。
+読み取りは既知backed区間と一意なPROT_READ VMAのintersectionだけ。疎holeや未取得prefixをzeroにしない。
+free/reuse、unpin、ChangeSparseMemはknown topologyを無効化する。GPU-only mappingは新規作成しない。
+上限は1区間256KiB、1 kick4MiB、process16MiBを維持する。全参照先取得の成否は別途照合する。
+
+CPU検証は実PROT_NONEのhole、非zero/sortedでないindex、PMR/GPU/CPUの異なるoffset、
+fault-safe copy失敗、重複/範囲外/過大index、更新無効化、世代再利用、read上限とparser破損拒否を含む。
+Android29 native TLSと-z defsのNDK最終linkを必要とする。端末の再引渡し前に追加実行しない。
+
+
 実行は主担当がRecovery利用可能と明示してから。この準備では実機・ADB・runner・cameraを操作していない。通常Android起動、SurfaceFlinger起動、独自TA/3D packet送信は行わない。
 
 ## 実行可否

@@ -65,7 +65,15 @@ __attribute__((constructor)) static void trace_init(void)
 }
 /* The harness checks this before loading any vendor driver. */
 int a04_m111_capture_ready(void)
-{ return trace_fd>=0 && mem_pagesize>0 && !atomic_load(&trace_broken); }
+{
+    uint32_t original=0x514d5250,copy=0;
+    struct iovec local={&copy,sizeof(copy)},remote={&original,sizeof(original)};
+    if(trace_fd<0 || !mem_pagesize || atomic_load(&trace_broken))return 0;
+    if(syscall(SYS_process_vm_readv,getpid(),&local,1,&remote,1,0)!=(ssize_t)sizeof(copy) || copy!=original){
+        fprintf(stderr,"CAPTURE_SELF_COPY_UNAVAILABLE errno=%d; stop before vendor load\n",errno);return 0;
+    }
+    return 1;
+}
 __attribute__((destructor)) static void trace_done(void)
 {
     mem_inside++;pthread_mutex_lock(&lock);
