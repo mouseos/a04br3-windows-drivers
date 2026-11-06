@@ -4,8 +4,9 @@
 #include <stdint.h>
 /* ABB_AFE_CON3/11, Linux mt8167-codec-utils.c. Caller owns AFE, holds
  * the audio lease and proves the downstream Class D remains muted. Values
- * are signed 16-bit DC compensation codes, not millivolts. Linux uses a
- * fixed 0x4b4b for the initial DAC stage and measured values thereafter. */
+ * are signed 16-bit DC compensation codes, not millivolts. Linux populates
+ * the initial DAC stage with 0x4b4b when gathering calibration values; its
+ * zero-initialized arrays remain zero until that operation occurs. */
 struct a04_codec_dc_io {
  void *context;
  int (*read)(void *,unsigned,uint32_t *);

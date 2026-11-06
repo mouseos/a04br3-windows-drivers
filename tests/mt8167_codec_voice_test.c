@@ -8,7 +8,7 @@ static int aw(void *p,unsigned o,uint32_t v){struct fake *f=p;if(++f->writes==f-
 static int fr(void *p,unsigned o,uint32_t *v){struct fake *f=p;if(o<0xf00||o>0xf2c)return -1;*v=f->afe[(o-0xf00)/4];return 0;}
 static int fw(void *p,unsigned o,uint32_t v){struct fake *f=p;if(++f->writes==f->fail)return -1;f->afe[(o-0xf00)/4]=v;return 0;}
 static int delay(void *p,unsigned u){(void)p;(void)u;return 0;}
-static int verify(void *p,int16_t *v,unsigned *cap){struct fake *f=p;if(!f->allowed)return -1;*v=127;*cap=0;return 0;}
+static int verify(void *p,int16_t *initial,int16_t *v,unsigned *cap){struct fake *f=p;if(!f->allowed)return -1;*initial=0;*v=127;*cap=0;return 0;}
 int main(void){struct fake f;struct a04_codec_voice s;struct a04_codec_domain d;struct a04_codec_voice_io io={{&f,ar,aw},{&f,fr,fw,delay},verify};
  memset(&f,0,sizeof f);memset(&s,0,sizeof s);memset(&d,0,sizeof d);
  assert(!a04_codec_domain_start(&d,&io.analog));assert(!a04_codec_domain_stop(&d,&io.analog));f.writes=0;
