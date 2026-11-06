@@ -101,6 +101,9 @@
 #if A04_SHARED_APMIXED_RESOURCE != 0 && A04_SHARED_APMIXED_RESOURCE != 1
 #error A04_SHARED_APMIXED_RESOURCE must be 0 or 1
 #endif
+#ifndef A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC
+#define A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC 0
+#endif
 #ifndef A04_SHARED_WIFI_IRQ_DIAGNOSTIC
 #define A04_SHARED_WIFI_IRQ_DIAGNOSTIC 0
 #endif
@@ -521,7 +524,17 @@ done:
 #endif
 }
 /* No combo/firmware ownership or IRQ lifetime has been proven. */
-static NTSTATUS ParentWifiAcquire(PVOID context,ULONG *generation) { UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(generation);return STATUS_DEVICE_NOT_READY; }
+static NTSTATUS ParentWifiAcquire(PVOID context,ULONG *generation)
+{
+    UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(generation);
+#if A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC
+    /* These are missing proof categories, not observed register states. The
+     * interface deliberately does not inspect MMIO or change ownership. */
+    DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_INFO_LEVEL,
+      "A04WIFI handoff refused: firmware/EL3 RTC clock GPIO combo IRQ PnP ownership unverified\n");
+#endif
+    return STATUS_DEVICE_NOT_READY;
+}
 static NTSTATUS ParentWifiRelease(PVOID context,ULONG generation) { UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(generation);return STATUS_DEVICE_NOT_READY; }
 /* Board operations share the touch mutex. No lease is granted by this probe;
  * these callbacks become usable only after a real parent has established and

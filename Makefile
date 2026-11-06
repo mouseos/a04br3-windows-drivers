@@ -1262,3 +1262,9 @@ test-mt6630-wdf-lease-probe:
 test-mt6630-wdf-hardware:
 	$(CC) $(CFLAGS) -DA04_WIFI_WDF_LEASE_DIAGNOSTIC=1 -DA04_WIFI_WDF_HARDWARE_DIAGNOSTIC=1 -DA04_WIFI_SESSION_DIAGNOSTIC=1 -DA04_WIFI_IRQ_DIAGNOSTIC=1 -Itests/wifi_wdf_hardware_stubs tests/mt6630_wdf_hardware_test.c -o build/mt6630_wdf_hardware_test
 	./build/mt6630_wdf_hardware_test
+
+.PHONY: test-mt8167-wifi-handoff-refusal
+test-mt8167-wifi-handoff-refusal:
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_SHARED_WIFI_HANDOFF_DIAGNOSTIC=1 -DA04_AUDIO_DIAGNOSTIC_TRACE=1 -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 -Itests/shared_wdf_stubs drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/pwrap_owner.c drivers/bus/mt8167-shared/register_owner.c drivers/bus/mt8167-shared/audio_owner.c drivers/bus/mt8167-shared/mt6392_classd.c drivers/input/a04br3-buttons/pmic_read.c drivers/audio/mt8167-afe/audio_parent_client.c drivers/audio/mt8167-afe/shared_audio.c drivers/bus/mt8167-shared/usb_owner.c drivers/usb/mt8167-usb20/gpio22.c tests/mt8167_shared_wdf_test.c -o build/mt8167_wifi_handoff_refusal_test
+	./build/mt8167_wifi_handoff_refusal_test
