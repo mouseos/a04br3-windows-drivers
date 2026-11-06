@@ -15,14 +15,14 @@ function Invoke-SourceGit([string[]]$Arguments) {
     return $value
 }
 function Hash([string]$Path) { return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant() }
-$commit = Invoke-SourceGit @('rev-parse','HEAD')
-if (Invoke-SourceGit @('status','--porcelain','--untracked-files=normal')) { throw 'A clean committed checkout is required' }
+$commit = Invoke-SourceGit -Arguments @('rev-parse','HEAD')
+if (Invoke-SourceGit -Arguments @('status','--porcelain','--untracked-files=normal')) { throw 'A clean committed checkout is required' }
 $baseline = 'd6451d58ca82a4cbc888feaf1b716ce8f3398bc9'
 $runtime = @('wdf_toprgu.c','reset_command.c','reset_command.h','watchdog_policy.h','handoff_policy.h','thermal_stop.h','uart_screen.h')
 $prefix = 'drivers/system/mt8167-toprgu/'
 foreach ($name in $runtime) {
     $path = $prefix + $name
-    if ((Invoke-SourceGit @('rev-parse',"${baseline}:$path")) -ne (Invoke-SourceGit @('rev-parse',"${commit}:$path"))) {
+    if ((Invoke-SourceGit -Arguments @('rev-parse',"${baseline}:$path")) -ne (Invoke-SourceGit -Arguments @('rev-parse',"${commit}:$path"))) {
         throw "Runtime differs from four-CPU reference: $path"
     }
 }
@@ -48,7 +48,7 @@ $inputs = @($runtime | ForEach-Object { $prefix + $_ }) + @(
     ($prefix + 'mt8167-toprgu.inf'), 'tools/ci/build-mt8167-toprgu.ps1',
     'tools/ci/build-toprgu-normal-uart.ps1')
 foreach ($path in $inputs) {
-    $sources += [ordered]@{path=$path; git_blob=(Invoke-SourceGit @('rev-parse',"${commit}:$path")); sha256=(Hash (Join-Path $root $path))}
+    $sources += [ordered]@{path=$path; git_blob=(Invoke-SourceGit -Arguments @('rev-parse',"${commit}:$path")); sha256=(Hash (Join-Path $root $path))}
 }
 # 継承されたTOPRGU設定を除去し、終了時は元へ戻す。
 $saved = @{}
@@ -85,7 +85,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'CAT signing failed' }
         Export-Certificate -Cert $cert -FilePath (Join-Path $out 'development-public.cer') | Out-Null
     }
-    if (Invoke-SourceGit (@('diff','--name-only','HEAD','--') + $inputs)) { throw 'Inputs changed during build' }
+    if (Invoke-SourceGit -Arguments (@('diff','--name-only','HEAD','--') + $inputs)) { throw 'Inputs changed during build' }
     foreach ($source in $sources) {
         if ((Hash (Join-Path $root $source.path)) -ne $source.sha256) { throw 'Input bytes changed during build' }
     }
