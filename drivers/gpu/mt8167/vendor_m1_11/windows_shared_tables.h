@@ -14,6 +14,7 @@ struct a04_shared_tables {
     struct a04_vendor_uncached table[A04_SHARED_TABLE_COUNT];
 #if A04_GE8300_SHARED_WIDE_FRAME
     struct a04_vendor_uncached wide_source;
+    uint32_t *wide_shadow;ULONG last_upload_bytes;BOOLEAN wide_shadow_valid;
 #endif
     BOOLEAN ready,quarantined,published,mmu_ack;
 };

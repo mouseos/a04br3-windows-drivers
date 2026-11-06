@@ -18,6 +18,7 @@ NTSTATUS a04_shared_tables_release(struct a04_shared_tables *t)
     for(i=0;i<A04_SHARED_TABLE_COUNT;i++)a04_vendor_uncached_free(&t->table[i]);
 #if A04_GE8300_SHARED_WIDE_FRAME
     a04_vendor_uncached_free(&t->wide_source);
+    if(t->wide_shadow)ExFreePoolWithTag(t->wide_shadow,TAG);
 #endif
     RtlZeroMemory(t,sizeof(*t));return STATUS_SUCCESS;
 }
@@ -47,6 +48,8 @@ NTSTATUS a04_shared_tables_stage(struct a04_shared_tables *t,struct a04_shared_s
             a04_rgx_fw_overlap(s->gpu_pages[i],4096,(uint64_t)owned[j]->logical.QuadPart,owned[j]->bytes))goto alias;
     }
 #if A04_GE8300_SHARED_WIDE_FRAME
+    t->wide_shadow=ExAllocatePoolWithTag(NonPagedPoolNx,A04_VENDOR_WIDE_BYTES,TAG);
+    if(!t->wide_shadow){status=STATUS_INSUFFICIENT_RESOURCES;goto fail;}
     status=a04_vendor_uncached_allocate(&t->wide_source,s->gpu_adapter,A04_VENDOR_WIDE_BYTES);
     if(!NT_SUCCESS(status))goto fail;
     if(((uint64_t)t->wide_source.logical.QuadPart&4095u) || ((uintptr_t)t->wide_source.cpu&4095u)) {

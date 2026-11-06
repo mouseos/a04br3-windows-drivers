@@ -1232,8 +1232,9 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
             if(NT_SUCCESS(status)) {
                 c->shared_frame.next=1000u;c->shared_frame.last_task=frame->task;
                 c->shared_frame.last_flush=frame->flush;
-                GpuPrint("GE8300 full frame ms=");
-                GpuHex((ULONG)((KeQueryInterruptTime()-began)/10000u));GpuPrint("\n");
+                ULONG elapsed=(ULONG)((KeQueryInterruptTime()-began)/10000u);
+                GpuPrint("GE8300 upload bytes=");GpuHex(c->shared_tables.last_upload_bytes);GpuPrint("\n");
+                GpuPrint("GE8300 full frame ms=");GpuHex(elapsed);GpuPrint("\n");
             } else a04_shared_frame_complete_tile(&c->shared_frame,0);
             if(c->vendor_start.command_poisoned) {
                 c->vendor_service_online=FALSE;InterlockedExchange(&c->vendor_service_closed,1);

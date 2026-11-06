@@ -474,7 +474,7 @@ NTSTATUS a04_vendor_render_copy_wide_frame(struct a04_vendor_copy_scratch *o,
     const uint32_t *input,struct a04_vendor_clear_result *result)
 {
     struct a04_vendor_render_cold *r;struct a04_vendor_wide_state wide;
-    uint32_t saved_shared[9],actual_shared[9],pds[16];unsigned i;NTSTATUS status;
+    uint32_t saved_shared[9],actual_shared[9],pds[16];unsigned i,x,y,x0=800,y0=1280,x1=0,y1=0;NTSTATUS status;
     if(!result)return STATUS_INVALID_PARAMETER;
     RtlZeroMemory(result,sizeof(*result));
     if(!o || !s || !target || !tables || !input || ((uintptr_t)input&3u) ||
@@ -482,7 +482,7 @@ NTSTATUS a04_vendor_render_copy_wide_frame(struct a04_vendor_copy_scratch *o,
        !tables->quarantined || !target->exposed || !target->mdl || !target->gpu_sg ||
        !a04_shared_has_display_backing(target) || !(r=o->render) || r->copy_owner!=o ||
        !o->prepared || !o->exposed || !o->task_frozen || !o->usc_ready ||
-       !tables->wide_source.cpu || tables->wide_source.bytes!=A04_VENDOR_WIDE_BYTES ||
+       !tables->wide_source.cpu || !tables->wide_shadow || tables->wide_source.bytes!=A04_VENDOR_WIDE_BYTES ||
        !r->buffer[7].cpu || r->buffer[7].bytes!=65536u || r->poisoned || s->command_poisoned ||
        s->shutdown_started || r->cleanup_started || (r->clear_attempted && !r->clear_verified) ||
        !s->online || !s->memory || !s->memory->hardware_owned || r->firmware!=s->memory ||
@@ -498,8 +498,23 @@ NTSTATUS a04_vendor_render_copy_wide_frame(struct a04_vendor_copy_scratch *o,
     for(i=0;i<16;i++)if(pds[i]!=o->eot_pds[i]){status=STATUS_DEVICE_CONFIGURATION_ERROR;goto out;}
     for(i=0;i<9;i++)if(actual_shared[i]!=o->state.shared[i]){status=STATUS_DEVICE_CONFIGURATION_ERROR;goto out;}
     RtlCopyMemory(saved_shared,o->state.shared,sizeof(saved_shared));
-    if(a04_rgx_device_write_words(tables->wide_source.cpu,input,A04_VENDOR_WIDE_BYTES)) {
-        status=STATUS_IO_DEVICE_ERROR;goto poison;
+    /* Compare only cached CPU images. Reading the Device-memory source back
+     * would repeat the slow bus access this optimization removes. Keep the
+     * proven full-surface GPU task, changing only its CPU source upload. */
+    if(!tables->wide_shadow_valid){x0=0;y0=0;x1=800;y1=1280;}
+    else for(y=0;y<1280u;y++)for(x=0;x<800u;x++) {
+        i=y*800u+x;
+        if(input[i]!=tables->wide_shadow[i]) {
+            if(x<x0)x0=x;if(y<y0)y0=y;if(x+1u>x1)x1=x+1u;if(y+1u>y1)y1=y+1u;
+        }
+    }
+    tables->last_upload_bytes=0;
+    if(x0<x1 && y0<y1)for(y=y0;y<y1;y++) {
+        i=y*800u+x0;
+        if(a04_rgx_device_write_words((UCHAR *)tables->wide_source.cpu+i*4u,input+i,(x1-x0)*4u)) {
+            status=STATUS_IO_DEVICE_ERROR;goto poison;
+        }
+        tables->last_upload_bytes+=(x1-x0)*4u;
     }
     pds[2]=(uint32_t)(UINT64_C(0x8000000000)>>2);
     pds[3]=(uint32_t)(UINT64_C(0x8000000000)>>34)|(1u<<19);
@@ -522,9 +537,10 @@ NTSTATUS a04_vendor_render_copy_wide_frame(struct a04_vendor_copy_scratch *o,
         status=STATUS_IO_DEVICE_ERROR;goto poison;
     }
     RtlCopyMemory(o->state.shared,saved_shared,sizeof(saved_shared));
+    RtlCopyMemory(tables->wide_shadow,input,A04_VENDOR_WIDE_BYTES);tables->wide_shadow_valid=TRUE;
     o->wide_frame=FALSE;o->shared_gpu_only=FALSE;a04_gpu_dma_barrier();goto out;
 poison:
-    r->poisoned=TRUE;s->command_poisoned=TRUE;
+    tables->wide_shadow_valid=FALSE;r->poisoned=TRUE;s->command_poisoned=TRUE;
     if(NT_SUCCESS(status))status=STATUS_IO_DEVICE_ERROR;
 out:
     InterlockedExchange(&s->command_busy,0);return status;
