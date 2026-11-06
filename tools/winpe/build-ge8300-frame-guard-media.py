@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Replace the provider in the verified direct-POST WinPE image."""
+import argparse, hashlib, json, os, re, shutil, struct, subprocess
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[4]
+WIM = 'cc824c145c6bf7da880a492155ac0fa3b529678a648ce7916c57f2a59975a8a7'
+ESP = 'c574246676a94c11f032c4e67b15dc56ead574f406a92fd5e2b9f5dd18c239f9'
+BCD = '65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d'
+
+def sha(path):
+    with path.open('rb') as f: return hashlib.file_digest(f, 'sha256').hexdigest()
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument('--base', type=Path, required=True)
+    p.add_argument('--package', type=Path, required=True)
+    p.add_argument('--provider-sha256', required=True)
+    p.add_argument('--out', type=Path, required=True)
+    a = p.parse_args()
+    base, package, out = (v.resolve() for v in (a.base, a.package, a.out))
+    if any(not v.is_relative_to(ROOT) for v in (base, package, out)) or out.exists():
+        raise SystemExit('Use workspace inputs and a new output directory')
+    assert sha(base/'volume.wim') == WIM and sha(base/'volume-esp.img') == ESP
+    assert sha(package/'mt8167-ge8300.sys') == a.provider_sha256
+    assert sha(package/'ge8300-mips.fw') == '5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1'
+    out.mkdir(parents=True)
+    work = out/'stage'; work.mkdir()
+    tools = ROOT/'port/xnu/out/windows-rt-tools'
+    env = os.environ.copy()
+    env.update(TMPDIR=str(work), LD_LIBRARY_PATH=str(tools/'wimtools'),
+               PYTHONPATH=str(tools/'python-fat'), PYTHONDONTWRITEBYTECODE='1')
+    def run(argv, **kw):
+        return subprocess.run(argv, env=env, check=True, **kw)
+    def wim(*args, **kw):
+        return run([str(tools/'wimtools/wimlib-imagex'), *map(str,args)], **kw)
+    for path in ('/Windows/System32/config/SOFTWARE', '/Windows/System32/startnet.cmd'):
+        wim('extract', base/'volume.wim', '1', path, '--dest-dir='+str(work), '--no-acls')
+    software = work/'SOFTWARE'
+    cert = (package/'gpu-test.cer').read_bytes()
+    thumb = hashlib.sha1(cert).hexdigest().upper()
+    blob = struct.pack('<III',3,1,20)+hashlib.sha1(cert).digest()+struct.pack('<III',32,1,len(cert))+cert
+    for store in ('Root','TrustedPublisher'):
+        key = '\\Microsoft\\SystemCertificates\\'+store+'\\Certificates'
+        before = run(['hivexsh',str(software)], input='cd '+key+'\nls\n',text=True,capture_output=True).stdout
+        if thumb not in before.upper():
+            commands='cd '+key+'\nadd '+thumb+'\ncd '+thumb+'\nsetval 1\nBlob\nhex:3:'+blob.hex()+'\ncommit\nquit\n'
+            run(['hivexsh','-w',str(software)],input=commands,text=True,capture_output=True)
+        assert run(['hivexget',str(software),key+'\\'+thumb,'Blob'],capture_output=True).stdout == blob
+    start = work/'startnet.cmd'
+    text = start.read_text().replace('\r','')
+    text = re.sub(r'echo A04USB_OBSERVATION_START\n.*?(?= echo PnP and touch)', '', text, flags=re.S)
+    text = '\n'.join(line for line in text.split('\n') if
+                     'fourcpu-load.exe' not in line and not line.startswith('echo A04CPU_'))
+    text = re.sub(r'echo A04AUDIT_WAIT[^\n]*\nping[^\n]*\ncall[^\n]*run-audit-once.cmd\n?', '', text)
+    assert 'fourcpu-load.exe' not in text and 'usb-power-observe.cmd' not in text
+    assert 'run-audit-once.cmd' not in text and 'display-shared\\mt8167-display.inf' in text
+    start.write_bytes(text.replace('\n','\r\n').encode())
+    image = out/'volume.wim'; shutil.copyfile(base/'volume.wim',image)
+    changes = [(software,'/Windows/System32/config/SOFTWARE'),(start,'/Windows/System32/startnet.cmd')]
+    changes += [(package/name,'/a04br3/ge8300-copy/'+name) for name in
+                ('mt8167-ge8300.sys','mt8167-ge8300.inf','mt8167-ge8300.cat')]
+    wim('update',image,'1',input=''.join('add '+str(src)+' '+dst+'\n' for src,dst in changes),text=True)
+    wim('verify',image)
+    helper = ROOT/'windows-rt/a04br3-windows-ge8300-copy-safe-stop/tools/winpe/replace-esp-wim.py'
+    run(['python3',str(helper),'--template',str(base/'volume-esp.img'),'--wim',str(image),
+         '--output',str(out/'volume-esp.img'),'--template-bcd-sha256',BCD,'--template-wim-sha256',WIM])
+    (out/'manifest.json').write_text(json.dumps({'base_wim_sha256':WIM,'provider_sha256':a.provider_sha256,
+       'test_signer_sha1':thumb,'wim_sha256':sha(image),'esp_sha256':sha(out/'volume-esp.img'),
+       'status':'built; device performance unverified'},indent=2)+'\n')
+
+if __name__ == '__main__': main()
