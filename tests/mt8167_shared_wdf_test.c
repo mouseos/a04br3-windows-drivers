@@ -10,7 +10,7 @@ int a04_test_trace_count;
 static ULONG mockAfeRegs[1024];static int mockAfeIgnoreWrite;
 #define mockAfe mockAfeRegs[0]
 #endif
-#if A04_SHARED_VOICE_DIAGNOSTIC || A04_SHARED_VOICE_PCM_DIAGNOSTIC
+#if A04_SHARED_VOICE_DIAGNOSTIC || A04_SHARED_VOICE_PCM_DIAGNOSTIC || A04_SHARED_DIGITAL_PLAYBACK
 static int voiceGainReads,voiceGainFail;static uint16_t voiceGain;
 static int voiceReadGain(void *p,uint16_t reg,uint16_t *out){(void)p;assert(reg==0x64);voiceGainReads++;if(voiceGainFail)return -1;*out=voiceGain;return 0;}
 #endif
@@ -343,5 +343,28 @@ int main(void){
  assert(saved.ReadButtons(saved.Header.Context,&value)==STATUS_DEVICE_NOT_READY && !reads && !writes);
  {int down=7;assert(input.TouchPen(input.Context,&down)!=0 && down==7);
  assert(input.ButtonPmicRead(input.Context,&value)!=0 && value==0xeeee);}
+
+#if A04_SHARED_DIGITAL_PLAYBACK
+ /* Exercise the actual published parent callback, with an already acquired
+  * muted lease. The test does not bypass acquisition in production. */
+ { int oldReads=reads,oldWrites=writes,oldUnmaps=unmaps;
+   assert(audio.PreparePlayback);
+   assert(audio.PreparePlayback(&testContext,48000)==-1 && writes==oldWrites);
+   testContext.admissionClosed=0;testContext.audio.online=1;testContext.audio.leased=1;
+   testContext.pmic.online=1;testContext.audioAfe=mockAfeRegs;
+   testContext.afeClockHeld=1;testContext.audioTopClock.held=1;testContext.codecDomain.held=1;
+   testContext.classd.active=1;testContext.classd.read16=voiceReadGain;voiceGain=0;
+   memset(mockAfeRegs,0,sizeof(mockAfeRegs));
+   assert(!audio.PreparePlayback(&testContext,48000));
+   assert(testContext.digitalPlayback.prepared && mockAfeRegs[0x108/4]==0x83001803);
+   assert(audio.ReleaseQuiescent(&testContext)==-1);
+   assert(ParentUnmap(&testContext)==STATUS_DEVICE_BUSY && unmaps==oldUnmaps);
+   testContext.digitalPlayback=(struct a04_digital_playback){0};
+   testContext.afeClockHeld=0;testContext.audioTopClock.held=0;testContext.codecDomain.held=0;
+   testContext.classd.active=0;testContext.audio.leased=0;testContext.audio.poisoned=0;testContext.audioAfe=NULL;
+   testContext.pmic.online=0;testContext.audio.online=0;testContext.admissionClosed=1;
+   reads=oldReads;writes=oldWrites;
+ }
+#endif
  input.InterfaceDereference(input.Context);saved.Header.InterfaceDereference(saved.Header.Context);assert(!refs);
 }

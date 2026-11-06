@@ -423,3 +423,47 @@ WaveRT ring is supported; the verified parent contract must establish this
 independently. Neither DL1 disable nor IRQ disconnect is treated as drain.
 PnP surprise removal and the OS resource lifetime after quarantine remain
 unproven. No real parent callback admits this path and no playback is claimed.
+
+## INT ADDA共有サービス（2026-11-07）
+
+`A04_SHARED_DIGITAL_PLAYBACK=1` のparentは、バージョン10の
+`PreparePlayback(48000)` を公開する。子の
+`A04_AUDIO_DIGITAL_PLAYBACK=1` はRUN時、DMA開始とVoice Amp開始より前に
+このサービスを呼ぶ。表示名とPnP IDは既存のMediaTek MT8167 AFEを維持する。
+
+サービスは、取得済みのmuted audio lease、TOP/AFE clock、codec domainと
+MT6392 gain muteを確認してから、DAC/DAC_PREDIS gate、AFE_ON、S16_LE、
+DL1 I05/I06からO03/O04への接続、ADDA SRC、I2S出力、内蔵codecの48 kHz設定、
+DC補償初期値とlatchを設定する。I2Sのrate codeは10、ADDA/codecは8であり、
+同じ値を流用しない。アナログDAC、Voice Amp、Class D unmuteはこの操作では
+有効にしない。既存の稼働中DL1/capture/ADDA/I2S/codecを検出すると書込み前に
+拒否する。書込み後の失敗は-2、無変更の拒否は-1と区別する。
+
+根拠はボードLinuxの `sound/soc/mediatek/mt8167/mt8167-afe-pcm.c` の
+`mt8167_afe_int_adda_startup/hw_params/prepare`、`mt8167_afe_set_adda_out`、
+`mt8167_afe_set_i2s_out` とO03/O04のDAPM mixer、同ディレクトリの
+`mt8167-afe-regs.h`、`sound/soc/codecs/mt8167-codec.c` の
+`mt8167_codec_setup_dl_rate/hw_params`、`mt8167-codec-utils.c` の
+`mt8167_codec_update_dc_comp`。Linuxソースを配布物へコピーせず、これらの
+レジスタ仕様と順序に基づく限定実装とした。
+
+`make test-mt8167-digital-playback test-mt8167-digital-parent
+ test-mt8167-digital-pnp` で、設定成功、各書込みの失敗、latchの両status、
+PnP queryで公開された実parent callback、RUNからの呼出し、-1/-2で異なる
+資源保持をホスト検証する。ホスト試験は実機再生・Windows WDK linkの証明ではない。
+
+**残る欠落**: 既存parentの `audio.preflight`、`audio.verify_release`、
+`classd.verify_start/verify_quiescent/verify_unmute` とaudioのD0 admissionは
+未接続であり、実機用のAcquireMutedは依然成功しない。この変更は、その状態を
+解除するための推測によるcallbackを追加していない。PnPのresource assignment
+だけでは既存firmware/secure側の共有clock/PWRAP解放を証明できない。
+`ParentVoiceVerify`にはAU_LOLへ適用できる校正値取得経路がなく、
+`ParentVerifyLivePcm`には循環DMAのcoherency保証、`ParentVerifyDmaDrained`
+にはMT8167の未完了バストランザクション確認手段がない。
+ヘッドホンAUXADC 7/8の測定をAU_LOL校正と見なしたり、DL1の停止bitをdrainと
+見なしたりはしない。これらの欠落により可聴再生までは到達していない。
+
+デジタル設定後は共有clock・codec・AFE mappingをresetまで保持する。
+`ReleaseQuiescent`とparent unmapは拒否し、子も保持状態をquarantineする。
+既存の停止経路が成功してもこの保持を解除しない。通常のPnP remove/resumeや
+再生再開を完成したものとして扱わない。実機・SSH・REA・EDK2の操作は行っていない。

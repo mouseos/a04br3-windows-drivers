@@ -10,6 +10,15 @@
 #include "register_owner.h"
 #include "client_interface.h"
 #include "audio_interface.h"
+#ifndef A04_SHARED_DIGITAL_PLAYBACK
+#define A04_SHARED_DIGITAL_PLAYBACK 0
+#endif
+#if A04_SHARED_DIGITAL_PLAYBACK
+#if !defined(A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC) || !A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC || !defined(A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC) || !A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
+#error digital playback requires the shared AFE clock and MT8167 codec domain
+#endif
+#include "digital_playback.h"
+#endif
 #include "wifi_interface.h"
 #include "audio_owner.h"
 #include "usb_interface.h"
@@ -148,6 +157,9 @@ struct a04_shared_thermal_owner thermal;EX_RUNDOWN_REF thermalRundown;BOOLEAN th
 PVOID audioAfe;
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
 int afeClockHeld,afeClockRestore,afeClockPoisoned;
+#if A04_SHARED_DIGITAL_PLAYBACK
+struct a04_digital_playback digitalPlayback;
+#endif
 #endif
 #if A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC
 struct a04_audio_top_clock audioTopClock;
@@ -431,6 +443,45 @@ static int ParentAfeClockRelease(void *context) {
     c->afeClockHeld=0;c->afeClockRestore=0;return 0;
 }
 #endif
+#if A04_SHARED_DIGITAL_PLAYBACK
+static int ParentDigitalRead(void *context,unsigned off,uint32_t *value) {
+    A04_PARENT_CONTEXT *c=context;
+    if(!c || !c->audioAfe || !value || (off&3u) || off>=0x1000)return -1;
+    *value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->audioAfe+off));return 0;
+}
+static int ParentDigitalWrite(void *context,unsigned off,uint32_t value) {
+    A04_PARENT_CONTEXT *c=context;
+    if(!c || !c->audioAfe)return -1;
+    switch(off) {
+    case 0: case 0x10: case 0x24: case 0x28: case 0x34: case 0x6c:
+    case 0x108: case 0x10c: case 0x124: case 0x260: case 0x264:
+    case 0xf04: case 0xf0c: case 0xf10: case 0xf28: case 0xf2c: break;
+    default:return -1;
+    }
+    WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->audioAfe+off),value);return 0;
+}
+static int ParentDigitalDelay(void *context,unsigned us) {
+    if(!context || us!=100 || KeGetCurrentIrql()>APC_LEVEL)return -1;
+    KeStallExecutionProcessor(us);return 0;
+}
+static int ParentPreparePlayback(PVOID context,ULONG rate) {
+    A04_PARENT_CONTEXT *c;int result=-1;struct a04_digital_io io;
+    if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+    c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
+    if(c->audio.online && c->audio.leased && !c->audio.poisoned &&
+       c->pmic.online && c->audioAfe && c->afeClockHeld && !c->afeClockPoisoned &&
+       c->audioTopClock.held && !c->audioTopClock.poisoned &&
+       c->codecDomain.held && !c->codecDomain.poisoned &&
+       !a04_mt6392_classd_verify_muted(&c->classd)) {
+        io.context=c;io.read=ParentDigitalRead;io.write=ParentDigitalWrite;io.delay_us=ParentDigitalDelay;
+        result=a04_digital_prepare(&c->digitalPlayback,&io,rate);
+    }
+    if(c->digitalPlayback.poisoned || c->classd.poisoned || c->pmic.bus.poisoned) {
+        c->audio.poisoned=1;result=-2;
+    }
+    ParentUnlock(c);return result;
+}
+#endif
 static int ParentAudioAcquire(PVOID context,ULONG rate) {
     A04_PARENT_CONTEXT *c;int result;
     if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
@@ -491,6 +542,9 @@ static int ParentAudioRelease(PVOID context) {
     c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
 #if A04_SHARED_VOICE_PCM_DIAGNOSTIC
     if(c->voice.active || c->voice.poisoned){ParentUnlock(c);return -1;}
+#endif
+    #if A04_SHARED_DIGITAL_PLAYBACK
+    if(c->digitalPlayback.retained){ParentUnlock(c);return -1;}
 #endif
     result=a04_audio_owner_release(&c->audio);ParentUnlock(c);return result;
 }
@@ -819,6 +873,9 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
 #endif
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
     if(c->afeClockHeld || c->afeClockPoisoned)return STATUS_DEVICE_BUSY;
+#if A04_SHARED_DIGITAL_PLAYBACK
+    if(c->digitalPlayback.retained)return STATUS_DEVICE_BUSY;
+#endif
 #endif
 #if A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC
     if(c->audioTopClock.held || c->audioTopClock.poisoned)return STATUS_DEVICE_BUSY;
@@ -1202,6 +1259,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     audioIface.Header.InterfaceDereference=ParentInterfaceDereference;
     #if A04_SHARED_VOICE_PCM_DIAGNOSTIC
     audioIface.VerifyDmaDrained=ParentVerifyDmaDrained;audioIface.VerifyLivePcm=ParentVerifyLivePcm;audioIface.StartVoice=ParentStartVoice;audioIface.StopVoice=ParentStopVoice;
+#endif
+    #if A04_SHARED_DIGITAL_PLAYBACK
+    audioIface.PreparePlayback=ParentPreparePlayback;
 #endif
     audioIface.BindAfe=ParentBindAfe;audioIface.Mute=ParentAudioMute;audioIface.UnmuteMin=ParentAudioUnmute;audioIface.AcquireMuted=ParentAudioAcquire;audioIface.ReleaseQuiescent=ParentAudioRelease;audioIface.PrepareMaskedIrq=ParentAudioPrepareIrq;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&audioIface,&A04SharedAudioInterfaceGuid,NULL);
