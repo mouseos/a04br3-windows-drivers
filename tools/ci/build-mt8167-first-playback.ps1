@@ -1,13 +1,18 @@
 # Build one matched, retained first-playback parent/PortCls pair. No deployment.
-param([string]$OutputDirectory,[switch]$IntegratedUsb,[switch]$BluetoothProfile)
+param([string]$OutputDirectory,[switch]$IntegratedUsb,[switch]$BluetoothProfile,[switch]$ParentOnly,[string]$ReuseParentDirectory)
 $ErrorActionPreference='Stop'
+if($ReuseParentDirectory -and !$ParentOnly){throw 'ReuseParentDirectory requires explicit ParentOnly'}
+. (Join-Path $PSScriptRoot '..\bluetooth\parent-artifact.ps1')
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 if(!$OutputDirectory){$OutputDirectory=Join-Path $root 'build\mt8167-first-playback'}
 $out=[IO.Path]::GetFullPath($OutputDirectory)
 if(!$out.StartsWith($root+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){
     throw 'OutputDirectory must be inside this checkout'
 }
-New-Item -ItemType Directory -Force $out,(Join-Path $out 'tmp'),(Join-Path $out 'audio')|Out-Null
+New-Item -ItemType Directory -Force $out,(Join-Path $out 'tmp')|Out-Null
+if($ParentOnly -and (Test-Path (Join-Path $out 'manifest.json'))){
+    Move-Item (Join-Path $out 'manifest.json') (Join-Path $out ('manifest.previous.'+[Guid]::NewGuid().ToString('N')+'.json'))
+}
 $names=@('TEMP','TMP','RUNNER_TEMP','A04_AUDIO_CHILD_RESOURCES','A04_SHARED_QUERY_EXPERIMENTAL',
  'A04_SHARED_CHILD_PROBE','A04_SHARED_BUTTON_D0_EXPERIMENT','A04_SHARED_APMIXED_RESOURCE',
  'A04_SHARED_MT6392_DIAGNOSTIC','A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC',
@@ -49,7 +54,22 @@ try {
         $env:A04_MT6392_RTC32K_DIAGNOSTIC='1';$env:A04_SHARED_WIFI_IRQ_DIAGNOSTIC='1'
     }
     # Exactly one parent build: includes both the retained audio and USB owners.
-    & (Join-Path $PSScriptRoot 'build-msdc-parent-probe.ps1')
+    $parentDir=Join-Path $out 'a04-msdc-parent-probe'
+    $parentFlags=@{};foreach($name in $names){if($name.StartsWith('A04_')){$parentFlags[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}}
+    if(!$ReuseParentDirectory){
+        & (Join-Path $PSScriptRoot 'build-msdc-parent-probe.ps1')
+        Copy-Item (Join-Path $root 'drivers\bus\mt8167-shared\prototype\shared-parent.inf') $parentDir -Force
+    }
+    if($ParentOnly){
+        $parentManifest=Write-A04ParentArtifact -Root $root -Directory $parentDir -Flags $parentFlags `
+          -IntegratedUsb ([bool]$IntegratedUsb) -ReuseDirectory $ReuseParentDirectory
+        $wrapper=@{};foreach($key in $parentManifest.Keys){$wrapper[$key]=$parentManifest[$key]}
+        $wrapper.parent_artifact_directory='a04-msdc-parent-probe'
+        $wrapper.files=@($parentManifest.files|ForEach-Object{@{path=('a04-msdc-parent-probe/'+$_.path);sha256=$_.sha256}})
+        $wrapper|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+        return # No audio SYS, Direct KS client or USB child invocation.
+    }
+    New-Item -ItemType Directory -Force (Join-Path $out 'audio')|Out-Null
     $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1"
     $inc=Join-Path $kit 'Include';$lib=Join-Path $kit 'Lib\winv6.3\km\arm'
     $audio=Join-Path $root 'drivers\audio\mt8167-afe';$obj=Join-Path $out 'audio'

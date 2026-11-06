@@ -71,12 +71,12 @@ reset/PMU信号の受理、IRQ rundownを経て親へ返却する（物理停止
 ```powershell
 # BT SYS/INFのみ。親は同一commitのBluetoothProfileで一度だけbuildすること。
 .\tools\ci\build-mt6630-bluetooth.ps1
-# Audio v11/USB/inputを保持した単一親とmatching audio/USB成果物も作る場合:
+# Audio v11/USB/inputのflagsを保持した単一親だけを作る場合:
 .\tools\ci\build-mt6630-bluetooth.ps1 -BuildSharedParent
 ```
 
 必要物：Windows WDK8.1 ARM kernel headers/libs、KMDF1.13 headers/ARM libs、
-LLVM clang/lld-link（Audio同梱buildは既存clang++等も使用）、PowerShell、Git。
+LLVM clang/lld-link、PowerShell、Git。BTの親buildはParentOnlyで、clang++や音声clientを要求しない。
 全TUは既存ARM GS helper回避と同じ `-fno-stack-protector`。
 既定出力はcheckout内 `build/mt6630-bluetooth`、TEMP/TMPもその配下。
 署名/CAT作成・配置は主担当。leafが親をbuildしない場合は既存Wi-Fi親をそのまま

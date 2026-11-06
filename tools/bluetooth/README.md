@@ -103,3 +103,54 @@ SCO capabilitiesは従来どおりNoneで、BthMini受理が阻害される可�
 [BluetoothFindFirstRadio](https://learn.microsoft.com/en-us/windows/win32/api/bluetoothapis/nf-bluetoothapis-bluetoothfindfirstradio)、
 [SetupDiGetDeviceInterfaceDetailW](https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceinterfacedetailw)、
 [CM_Get_DevNode_Status](https://learn.microsoft.com/en-us/windows/win32/api/cfgmgr32/nf-cfgmgr32-cm_get_devnode_status)。
+
+## BT用の親buildを音声clientから切り離す
+
+`build-mt6630-bluetooth.ps1 -BuildSharedParent` は内部でfirst-playbackを
+`-IntegratedUsb -BluetoothProfile -ParentOnly` として呼び出す。
+親SYSとINF、flags／hash／runtime blob一覧のmanifestだけを生成し、
+audio SYS、旧Direct KS client、USB childは再buildしない。
+親のAudio v11／USB／touch／battery／buttonsのruntime flagsはそのまま保持する。
+旧Direct KS clientのGUID link失敗を修正する必要はBT buildにはない。
+
+```powershell
+# 新規に親だけをcompile/linkし、その後BT SYSへ進む
+.\tools\ci\build-mt6630-bluetooth.ps1 -BuildSharedParent
+# 親単独入口（BT SYSもbuildしない）
+.\tools\ci\build-mt8167-first-playback.ps1 -IntegratedUsb -BluetoothProfile -ParentOnly
+```
+
+主担当の既存c715ad2 checkoutを新固定commitへ更新し、gitignoredな既存build directoryを
+保持した場合は、次で親の再compileを省略できる。`-BuildSharedParent`とは排他。
+
+```powershell
+.\tools\ci\build-mt6630-bluetooth.ps1 -ReuseParentDirectory `
+  'C:\mt6630-bluetooth-c715ad2\src\build\mt6630-bluetooth\audio-usb\a04-msdc-parent-probe'
+```
+
+再利用元は同一checkout内の既存directoryに限定し、固定名のSYS／INF／manifest.jsonを読む。
+同じdirectoryを出力先として使う場合もSYS／INFを再生成せず、元manifestをhash名で保存する。
+別の出力先へcopyする場合もcopy後のSYS hashを照合する。
+
+再利用条件は、manifestのclean source申告、明示source commit、全親flags一致、
+SYS SHA-256一致、INFの固定source一致、Git上の親runtime blob集合の完全一致。
+`runtime_blobs`がmanifestにあれば、その記録も照合する。旧manifestにblob一覧がなくても、
+記載source commitと現HEADの実blob IDを比較する。旧SYSのbuild source自体はmanifestの
+申告に基づくものであり、SYS逆解析や実機確認による証明ではない。
+
+manifestは `source_dirty=false`、`source_commit`（再利用連鎖では`parent_source_commit`）、
+`parent_flags`、`sys_sha256` を必要とする。SYS hashは従来の `files[].path/sha256` の
+一意なmt8167-shared.sys記録でも受理する。不足・不一致時は拒否し、自動再compileへ
+fallbackしない。c715ad2の旧標準wrapperはKS終了後に全体manifestを書くため、今回
+runnerにあると申告されたmanifestの形式・必要項目の有無は、非操作条件のため未確認。
+証拠のないflags/hashを補って再利用成功にはしない。不足時は上記ParentOnlyで親だけを作る。
+
+BT最終manifestはBTの`source_commit`と別に`parent_source_commit`、親SYS／manifest hash、
+`shared_parent_built`／`shared_parent_reused`を記録する。c715ad2由来なら親sourceはc715ad2の
+完全commit IDのままで、新BT commitから親も再buildしたかのようには記録しない。
+親成果物をdirectory全体から一括回収せず、manifestで指した親SYS／INFだけを使用する。
+古い音声clientやUSB成果物が既存directoryに残っても今回の成果物には含めない。
+
+今回の変更はrecipeのみ。実WDK成功のユーザー申告は親／audio SYSまでであり、
+BT本体compile／link成功ではない。こちらではPowerShellのParentOnly再利用分岐・
+不一致拒否・構文をローカル確認し、runner／実機にはアクセスしていない。
