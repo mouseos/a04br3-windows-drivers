@@ -13,6 +13,16 @@
 #include "audio_owner.h"
 #include "usb_interface.h"
 #include "usb_owner.h"
+#ifndef A04_SHARED_CPU_OBSERVE
+#define A04_SHARED_CPU_OBSERVE 0
+#endif
+#if A04_SHARED_CPU_OBSERVE
+#if !defined(A04_SHARED_APMIXED_RESOURCE) || !A04_SHARED_APMIXED_RESOURCE || !defined(A04_SHARED_BUTTON_D0_EXPERIMENT) || !A04_SHARED_BUTTON_D0_EXPERIMENT
+#error CPU observation needs APMIXED and parent D0 ownership
+#endif
+#include "../../system/mt8167-cpu-observer/cpu_observer.h"
+#include "../../system/mt8167-cpu-observer/cpu_ioctl.h"
+#endif
 #ifndef A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 #define A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC 0
 #endif
@@ -126,6 +136,50 @@ static int ParentLock(void *context) {
     return 0;
 }
 static void ParentUnlock(void *context) { ExReleaseFastMutex(&((A04_PARENT_CONTEXT *)context)->pwrapLock); }
+#if A04_SHARED_CPU_OBSERVE
+struct cpu_read_context { A04_PARENT_CONTEXT *parent; uint32_t second[8]; unsigned calls; };
+static int ParentCpuRead(void *context,enum a04_cpu_field field,uint32_t *value)
+{
+    struct cpu_read_context *r=context; A04_PARENT_CONTEXT *c=r->parent;
+    uint16_t pmic; unsigned index=(unsigned)field;
+    if (!value || index>=A04_CPU_FIELD_COUNT || r->calls>=16 || index!=r->calls%8 ||
+        InterlockedCompareExchange(&c->removed,0,0) || !c->infra || !c->apmixed ||
+        c->apmixedLength<0x114 || !c->pmic.online || c->pmic.bus.poisoned) return -1;
+    if(index==0) *value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->infra));
+    else if(index<4) {
+        static const unsigned offs[]={0,0x100,0x104,0x110};
+        *value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+offs[index]));
+    } else {
+        if(a04_pmic_vproc_field(&c->pmic.bus,index-4,&pmic))return -1;
+        *value=pmic;
+    }
+    if(r->calls>=8)r->second[index]=*value;
+    ++r->calls;return 0;
+}
+EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL ParentCpuIoctl;
+VOID ParentCpuIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULONG code)
+{
+    A04_PARENT_CONTEXT *c=ParentContext(WdfIoQueueGetDevice(queue));
+    struct a04_cpu_response *out; struct a04_cpu_observation obs;
+    struct cpu_read_context reads; size_t len; NTSTATUS status;
+    UNREFERENCED_PARAMETER(inlen);UNREFERENCED_PARAMETER(outlen);
+    if(code!=A04_CPU_GET){WdfRequestComplete(request,STATUS_INVALID_DEVICE_REQUEST);return;}
+    status=WdfRequestRetrieveOutputBuffer(request,sizeof(*out),(PVOID *)&out,&len);
+    if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+    RtlZeroMemory(out,sizeof(*out));RtlZeroMemory(&reads,sizeof(reads));reads.parent=c;
+    if(ParentLock(c)){WdfRequestComplete(request,STATUS_DEVICE_NOT_READY);return;}
+    if(a04_cpu_capture(ParentCpuRead,&reads,0,0,&obs))status=STATUS_DEVICE_NOT_READY;
+    else {
+        out->version=1;out->valid=obs.valid;out->configured_pll_hz=obs.configured_pll_hz;
+        out->vproc_uv=obs.vproc_uv;out->devinfo_bin=obs.devinfo_bin;
+        out->mux=reads.second[0];out->pll0=reads.second[1];out->pll1=reads.second[2];
+        out->pll_power=reads.second[3];out->vproc_ctrl=reads.second[4];out->vproc_en=reads.second[5];
+        out->vosel=reads.second[6];out->vosel_on=reads.second[7];status=STATUS_SUCCESS;
+    }
+    ParentUnlock(c);
+    WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(*out):0);
+}
+#endif
 static uint32_t ParentPwrapRead(void *context,unsigned offset) {
     A04_PARENT_CONTEXT *c=(A04_PARENT_CONTEXT *)context;
     return READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->pwrap+offset));
@@ -689,6 +743,12 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     A04_SHARED_AUDIO_INTERFACE audioIface; A04_SHARED_USB_INTERFACE usbIface;
 #endif
     UNREFERENCED_PARAMETER(driver);
+#if A04_SHARED_CPU_OBSERVE
+    { DECLARE_CONST_UNICODE_STRING(name,A04_CPU_DEVICE);
+      DECLARE_CONST_UNICODE_STRING(sddl,L"D:P(A;;GA;;;SY)(A;;GA;;;BA)");
+      status=WdfDeviceInitAssignName(init,&name);if(!NT_SUCCESS(status))return status;
+      status=WdfDeviceInitAssignSDDLString(init,&sddl);if(!NT_SUCCESS(status))return status; }
+#endif
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
     pnp.EvtDevicePrepareHardware=ParentPrepare;pnp.EvtDeviceReleaseHardware=ParentRelease;pnp.EvtDeviceD0Entry=ParentD0;
     pnp.EvtDeviceD0Exit=ParentD0Exit;pnp.EvtDeviceSurpriseRemoval=ParentSurprise;
@@ -697,6 +757,13 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     attr.ExecutionLevel=WdfExecutionLevelPassive;
     status=WdfDeviceCreate(&init,&attr,&dev);
     if(!NT_SUCCESS(status))return status;
+#if A04_SHARED_CPU_OBSERVE
+    { DECLARE_CONST_UNICODE_STRING(link,A04_CPU_LINK); WDF_IO_QUEUE_CONFIG q;
+      status=WdfDeviceCreateSymbolicLink(dev,&link);if(!NT_SUCCESS(status))return status;
+      WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchSequential);
+      q.PowerManaged=WdfTrue;q.EvtIoDeviceControl=ParentCpuIoctl;
+      status=WdfIoQueueCreate(dev,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);if(!NT_SUCCESS(status))return status; }
+#endif
     {
         A04_PARENT_CONTEXT *c=ParentContext(dev);
         ExInitializeFastMutex(&c->pwrapLock);

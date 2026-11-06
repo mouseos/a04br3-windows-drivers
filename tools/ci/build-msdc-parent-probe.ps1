@@ -9,6 +9,7 @@ $temp=if($env:RUNNER_TEMP){$env:RUNNER_TEMP}else{$env:TEMP}
 $out=Join-Path $temp 'a04-msdc-parent-probe'
 New-Item -ItemType Directory -Force $out|Out-Null
 $src=Join-Path $root 'drivers\bus\mt8167-shared'
+$cpuObserve=if($env:A04_SHARED_CPU_OBSERVE -eq '1'){'1'}else{'0'}
 $audioResources=if($env:A04_AUDIO_CHILD_RESOURCES -eq '1'){'1'}else{'0'}
 $irqPrep=if($env:A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC -eq '1'){'1'}else{'0'}
 $afeClock=if($env:A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC -eq '1'){'1'}else{'0'}
@@ -23,7 +24,7 @@ $codec=if($env:A04_SHARED_MT6392_DIAGNOSTIC -eq '1'){'1'}else{'0'}
 if($unmute -eq '1' -and $codec -ne '1'){throw 'Unmute requires MT6392 diagnostics'}
 $buttonD0=if($env:A04_SHARED_BUTTON_D0_EXPERIMENT -eq '1'){'1'}else{'0'}
 $touchD0=if($env:A04_SHARED_TOUCH_D0_EXPERIMENT -eq '1'){'1'}else{'0'}
-& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 "-DA04_AUDIO_CHILD_RESOURCES=$audioResources" "-DA04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC=$topAudio" "-DA04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC=$afeClock" "-DA04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC=$irqPrep" "-DA04_SHARED_BUTTON_D0_EXPERIMENT=$buttonD0" "-DA04_SHARED_TOUCH_D0_EXPERIMENT=$touchD0" "-DA04_SHARED_APMIXED_RESOURCE=$apmixed" "-DA04_SHARED_MT6392_DIAGNOSTIC=$codec" "-DA04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC=$codecDomain" "-DA04_MT6392_UNMUTE_DIAGNOSTIC=$unmute" "-DA04_MT6392_WRITE_DIAGNOSTIC=$codec" "-DA04_MT6392_CLK_ALIAS_EXPERIMENT=$alias" "-DA04_AUDIO_DIAGNOSTIC_TRACE=$trace" "-DA04_AUDIO_PMIC_TRACE=$pmicTrace" -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$inc\wdf\kmdf\1.13" -c (Join-Path $src 'wdf_parent_probe.c') -o (Join-Path $out 'parent.obj')
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM "-DA04_SHARED_CPU_OBSERVE=$cpuObserve" -DA04_SHARED_QUERY_EXPERIMENTAL=1 -DA04_SHARED_CHILD_PROBE=1 "-DA04_AUDIO_CHILD_RESOURCES=$audioResources" "-DA04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC=$topAudio" "-DA04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC=$afeClock" "-DA04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC=$irqPrep" "-DA04_SHARED_BUTTON_D0_EXPERIMENT=$buttonD0" "-DA04_SHARED_TOUCH_D0_EXPERIMENT=$touchD0" "-DA04_SHARED_APMIXED_RESOURCE=$apmixed" "-DA04_SHARED_MT6392_DIAGNOSTIC=$codec" "-DA04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC=$codecDomain" "-DA04_MT6392_UNMUTE_DIAGNOSTIC=$unmute" "-DA04_MT6392_WRITE_DIAGNOSTIC=$codec" "-DA04_MT6392_CLK_ALIAS_EXPERIMENT=$alias" "-DA04_AUDIO_DIAGNOSTIC_TRACE=$trace" "-DA04_AUDIO_PMIC_TRACE=$pmicTrace" -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$inc\wdf\kmdf\1.13" -c (Join-Path $src 'wdf_parent_probe.c') -o (Join-Path $out 'parent.obj')
 if($LASTEXITCODE -ne 0){throw 'Parent ARM32 compilation failed'}
 & clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c (Join-Path $src 'parent_resources.c') -o (Join-Path $out 'resources.obj')
 if($LASTEXITCODE -ne 0){throw 'Resources ARM32 compilation failed'}
@@ -32,7 +33,14 @@ foreach ($part in @('pwrap_owner','pmic_read','register_owner','audio_owner','mt
     & clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 "-DA04_MT6392_WRITE_DIAGNOSTIC=$codec" "-DA04_MT6392_CLK_ALIAS_EXPERIMENT=$alias" "-DA04_MT6392_UNMUTE_DIAGNOSTIC=$unmute" -c $file -o (Join-Path $out "$part.obj")
     if($LASTEXITCODE -ne 0){throw "Parent shared core compilation failed: $part"}
 }
-& lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib (Join-Path $out 'parent.obj') (Join-Path $out 'resources.obj') (Join-Path $out 'pwrap_owner.obj') (Join-Path $out 'pmic_read.obj') (Join-Path $out 'register_owner.obj') (Join-Path $out 'audio_owner.obj') (Join-Path $out 'mt6392_classd.obj') (Join-Path $out 'usb_owner.obj') (Join-Path $out 'gpio22.obj') (Join-Path $wdf 'wdfdriverentry.lib') (Join-Path $wdf 'wdfldr.lib') (Join-Path $lib 'ntoskrnl.lib') (Join-Path $lib 'hal.lib') (Join-Path $lib 'bufferoverflowfastfailk.lib') "/out:$out\mt8167-shared.sys"
+$cpuObjects=@()
+if($cpuObserve -eq '1') {
+    $cpuObject=Join-Path $out 'cpu_observer.obj'
+    & clang --target=thumbv7-pc-windows-msvc -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -std=c11 -c (Join-Path $root 'drivers\system\mt8167-cpu-observer\cpu_observer.c') -o $cpuObject
+    if($LASTEXITCODE -ne 0){throw 'CPU observation ARM32 compile failed'}
+    $cpuObjects+= $cpuObject
+}
+& lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib (Join-Path $out 'parent.obj') (Join-Path $out 'resources.obj') (Join-Path $out 'pwrap_owner.obj') (Join-Path $out 'pmic_read.obj') (Join-Path $out 'register_owner.obj') (Join-Path $out 'audio_owner.obj') (Join-Path $out 'mt6392_classd.obj') (Join-Path $out 'usb_owner.obj') (Join-Path $out 'gpio22.obj') @cpuObjects (Join-Path $wdf 'wdfdriverentry.lib') (Join-Path $wdf 'wdfldr.lib') (Join-Path $lib 'ntoskrnl.lib') (Join-Path $lib 'hal.lib') (Join-Path $lib 'bufferoverflowfastfailk.lib') "/out:$out\mt8167-shared.sys"
 if($LASTEXITCODE -ne 0){throw 'Parent ARM32 link failed'}
 & llvm-readobj --file-headers --coff-imports (Join-Path $out 'mt8167-shared.sys')
 if($LASTEXITCODE -ne 0){throw 'Parent PE inspection failed'}

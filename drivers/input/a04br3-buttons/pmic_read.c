@@ -38,6 +38,13 @@ static int read_register(struct a04_pmic_read *bus, uint16_t address, uint16_t *
 int a04_pmic_chrstatus(struct a04_pmic_read *bus, uint16_t *value)
 { return read_register(bus, MT6392_CHRSTATUS, value); }
 
+int a04_pmic_vproc_field(struct a04_pmic_read *bus, unsigned field, uint16_t *value)
+{
+    static const uint16_t regs[] = {0x0216u,0x021au,0x021eu,0x0220u};
+    if (field >= sizeof(regs)/sizeof(regs[0])) return -1;
+    return read_register(bus, regs[field], value);
+}
+
 int a04_pmic_spk_clock_status(struct a04_pmic_read *bus,uint16_t *value)
 { return read_register(bus,0x0108u,value); }
 
