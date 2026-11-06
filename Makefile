@@ -1136,3 +1136,9 @@ test-mt6630-windows-session:
 	@mkdir -p build
 	$(CC) $(CFLAGS) -DA04_WIFI_SESSION_DIAGNOSTIC=1 -Itests/shared_wdf_stubs -Idrivers/network/mt6630 drivers/network/mt6630/windows_session.c tests/mt6630_windows_session_test.c -o build/mt6630_windows_session_test
 	./build/mt6630_windows_session_test
+
+.PHONY: test-mt6630-windows-irq
+test-mt6630-windows-irq:
+	@mkdir -p build
+	$(CC) $(CFLAGS) -DA04_WIFI_IRQ_DIAGNOSTIC=1 -Itests/wifi_irq_stubs -Idrivers/network/mt6630 drivers/network/mt6630/windows_irq.c tests/mt6630_windows_irq_test.c -o build/mt6630_windows_irq_test
+	./build/mt6630_windows_irq_test

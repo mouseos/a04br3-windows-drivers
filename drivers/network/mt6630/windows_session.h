@@ -10,6 +10,7 @@
 struct a04_windows_session_platform {
  void *context;
  int (*prepare_masked_irq)(void *);
+ int (*connect_masked_irq)(void *,struct a04_windows_msdc2 *);
  int (*mask_and_drain_irq)(void *);
  int (*drain_io)(void *);
 };

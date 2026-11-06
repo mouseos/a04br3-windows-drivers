@@ -18,7 +18,7 @@ int a04_windows_session_start(struct a04_windows_session *s,A04_SHARED_WIFI_INTE
  if(KeGetCurrentIrql()!=PASSIVE_LEVEL||!s||s->state!=A04_SESSION_OFF||!parent||
     parent->Header.Version!=A04_SHARED_WIFI_INTERFACE_VERSION||parent->Header.Size<sizeof(*parent)||
     !parent->Acquire||!parent->ReleaseQuiescent||!parent->Live||!parent->UpdateShared||!parent->WriteShared||
-    !platform||!platform->prepare_masked_irq||!platform->mask_and_drain_irq||!platform->drain_io||
+    !platform||!platform->prepare_masked_irq||!platform->connect_masked_irq||!platform->mask_and_drain_irq||!platform->drain_io||
     !raw||!translated||!ocr||(ocr&~0x00ff8000u)||!hash||!options)return -1;
  /* Acquire failure can be partial: quarantine, never silently retry. */
  s->state=A04_SESSION_STARTING;s->parent=parent;s->platform=*platform;
@@ -32,6 +32,7 @@ int a04_windows_session_start(struct a04_windows_session *s,A04_SHARED_WIFI_INTE
  if(a04_wifi_admit(&s->owner))goto fail;
  status=a04_windows_msdc2_map(&s->host,raw,translated,&s->owner,generation,1);
  if(!NT_SUCCESS(status))goto fail;
+ if(s->platform.connect_masked_irq(s->platform.context,&s->host))goto fail;
  s->life_ops.context=s;s->life_ops.mask_and_drain_irq=mask_irq;s->life_ops.drain_io=drain_io;
  s->life_ops.unmap_host=unmap;s->life_ops.release_lease=release;
  if(a04_windows_diagnostic_start(&s->diagnostic,parent,&s->host,&s->owner,generation,ocr,&s->life_ops,hash,options))goto fail;

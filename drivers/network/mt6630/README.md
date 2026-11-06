@@ -282,3 +282,18 @@ WDK の [interrupt enable/disable](https://learn.microsoft.com/en-us/windows-har
 work item の排出を示さない。Linux MT8167 の MSDC_INT は SDIOIRQ bit 7 を
 W1C とし、PIO の command completion bits と別々に扱う必要がある。物理 IRQ
 配送・極性や surprise removal と MMIO の競合は未検証。
+
+`A04_WIFI_IRQ_DIAGNOSTIC=1` の `windows_irq.c` は、排他的に割当てられた
+MSDC2 の raw GSIV 141 と translated IRQ を受け取り、IoConnectInterrupt で
+ISR を登録する。ISR は INTEN bit 7 をマスクし、SDIOIRQ bit 7 だけを W1C
+して DPC を投入する。DPC は DISPATCH_LEVEL の通知のみであり、PIO は行わない。
+再 arm は呼出元が明示する。停止は KeSynchronizeExecution でマスク・受付停止し、
+IoDisconnectInterrupt、KeRemoveQueueDpc、KeFlushQueuedDpcs の後に参照を消す。
+I/O work item の排出は別途必要。raw vector、排他、translated affinity、level
+を検査するが、実際の極性や配線、surprise removal と MMIO の安全性は未確認。
+
+両診断フラグの `windows_session_irq.c` は session の接続・排出 callback を
+この provider へ接続する。MSDC2 を写像する前に source がマスク済みである
+根拠は別の `pre_mask` provider が必要で、存在を仮定しない。親の Acquire は
+なお拒否し、RTC の取得・解放は親 lease に実接続されていない。ISR/DPC・
+firmware 診断と実 IRQ の同時運用も未実機検証で、インストール用ではない。
