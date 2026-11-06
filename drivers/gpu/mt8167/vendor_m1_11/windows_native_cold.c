@@ -44,6 +44,10 @@ static NTSTATUS release_contents(struct a04_vendor_native_cold *n)
     r=n->render;
     if(r && (!r->firmware || r->firmware->hardware_owned))return STATUS_DEVICE_BUSY;
     if(r && r->native_owner!=n)return STATUS_INVALID_DEVICE_STATE;
+    if(n->code_mapped) {
+        NTSTATUS code_status=a04_vendor_native_unmap_code_cold(n);
+        if(!NT_SUCCESS(code_status))return code_status;
+    }
     if(n->mapped) {
         /* Only our General-window directory entry was added. Never restore
          * an old whole-directory snapshot over another child's cold mapping. */
@@ -61,6 +65,7 @@ static NTSTATUS release_contents(struct a04_vendor_native_cold *n)
         }
         ExFreePoolWithTag(zeros,TAG);a04_gpu_dma_barrier();n->bank_prepared=FALSE;n->bank_touched=FALSE;
     }
+    a04_vendor_uncached_free(&n->code[1]);a04_vendor_uncached_free(&n->code[0]);
     a04_vendor_uncached_free(&n->pt);a04_vendor_uncached_free(&n->data);
     if(r)r->native_owner=NULL;
     RtlZeroMemory(n,sizeof(*n));return STATUS_SUCCESS;
@@ -184,6 +189,7 @@ NTSTATUS a04_vendor_native_allocate_cold(struct a04_vendor_native_cold **out,
         if(a04_m111_build_single_rt_hwrt_profile(profile,width,height,&n->target,&n->mlists))
             status=STATUS_DEVICE_CONFIGURATION_ERROR;
         else status=a04_vendor_native_bind_bank_cold(n,profile);
+        if(NT_SUCCESS(status))status=a04_vendor_native_reserve_code_cold(n,adapter);
         if(!NT_SUCCESS(status))(void)release_contents(n);
     }
     if(!NT_SUCCESS(status) && !n->render)ExFreePoolWithTag(n,TAG);

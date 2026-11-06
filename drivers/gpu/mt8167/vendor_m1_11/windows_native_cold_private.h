@@ -6,7 +6,8 @@
 #include "native_resources.h"
 struct a04_vendor_native_cold {
     struct a04_vendor_render_cold *render;
-    struct a04_vendor_uncached data,pt;
+    struct a04_vendor_uncached data,pt,code[2];
+    ULONG code_mapped; /* owned USC/PDS PTEs; retained after firmware exposure */
     struct a04_m111_target_storage target;
     struct a04_m111_mlist_storage mlists;
     struct a04_m111_auxiliary_layout auxiliary;
@@ -17,4 +18,6 @@ struct a04_vendor_native_cold {
     BOOLEAN mapped,prepared,bank_prepared,bank_touched;
 };
 
+NTSTATUS a04_vendor_native_reserve_code_cold(struct a04_vendor_native_cold *,PDMA_ADAPTER);
+NTSTATUS a04_vendor_native_unmap_code_cold(struct a04_vendor_native_cold *);
 #endif
