@@ -47,6 +47,22 @@ int a04_m111_layout_target_storage(uint32_t width,uint32_t height,
     made.tail_ptrs_gpu=tbase;made.vheap_gpu=tbase+((made.tpc_bytes+63u)&~63u);
     *out=made;return 0;
 }
+int a04_m111_layout_pm_mlists(uint32_t pb_bytes,uint64_t base,size_t bytes,
+    struct a04_m111_mlist_storage *out)
+{
+    struct a04_m111_mlist_storage made={0};uint32_t groups,upper;
+    if(!out || pb_bytes<0x4000u || pb_bytes>0x1000000u || (pb_bytes&4095u) ||
+       !gpu(base) || bytes>UINT64_C(0x10000000000)-base)return 1;
+    groups=(pb_bytes+0x28000u)>>21;
+    if(!groups)groups=1;
+    upper=groups>>9;
+    if(!upper)upper=1;
+    made.stride=(((upper+groups+1u)*8u)+4095u)&~4095u;
+    made.used=made.stride*2u;
+    if(bytes<made.used)return 1;
+    made.gpu[0]=base;made.gpu[1]=base+made.stride;
+    *out=made;return 0;
+}
 int a04_m111_build_freelist(RGXFWIF_FREELIST *out,uint32_t *entries,
     size_t capacity,const struct a04_m111_freelist_input *p,
     const uint64_t *physical_pages,int mirror)
@@ -83,7 +99,7 @@ int a04_m111_build_hwrt(RGXFWIF_HWRTDATA *out,const struct a04_m111_hwrt_input *
     RGXFWIF_HWRTDATA made={0};
     if(!out || !p || !fl || ((uintptr_t)out&7u) || !fw(target) ||
        !fw(fl[0]) || !fw(fl[1]) || fl[0]==fl[1] ||
-       !gpu(p->pm_mlist) || !gpu(p->tail_ptrs) || !gpu(p->macrotile) ||
+       !gpu(p->pm_mlist) || !gpu(p->tail_ptrs) || (p->macrotile && !gpu(p->macrotile)) ||
        !gpu(p->region_header) || (p->rtc && !gpu(p->rtc)) ||
        !p->tpc_size || !p->region_header_size ||
        alias(out,sizeof(*out),p,sizeof(*p)) || alias(out,sizeof(*out),fl,8u))return 1;
