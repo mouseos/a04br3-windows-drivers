@@ -11,15 +11,23 @@ try {
  $src=[IO.File]::ReadAllText("$root\tools\winpe\audit-copy-hives.c").Replace('L"C:\\Windows','L"R:\\Windows').Replace('L"X:\\a04br3','L"S:\\a04br3')
  [IO.File]::WriteAllText("$base\fixture.c",$src)
  $inc=Join-Path $kit 'Include';$lib=Join-Path $kit 'Lib\winv6.3\um\x64'
- & clang --target=x86_64-pc-windows-msvc -fms-extensions -Werror=incompatible-pointer-types -D_WIN32_WINNT=0x0603 "-I$inc\um" "-I$inc\shared" -c "$base\fixture.c" -o "$base\fixture.obj"
+ & clang --target=x86_64-pc-windows-msvc -fms-extensions -Werror=incompatible-pointer-types -DA04_TEST_FIXTURE -D_WIN32_WINNT=0x0603 "-I$inc\um" "-I$inc\shared" -c "$base\fixture.c" -o "$base\fixture.obj"
  if($LASTEXITCODE){throw 'compile failed'}
- & lld-link /subsystem:console /machine:x64 /entry:mainCRTStartup /nodefaultlib "$base\fixture.obj" "$lib\kernel32.lib" "/out:$base\fixture.exe"
+ & lld-link /subsystem:console /machine:x64 /entry:mainCRTStartup /nodefaultlib "$base\fixture.obj" "$lib\kernel32.lib" "$lib\advapi32.lib" "/out:$base\fixture.exe"
  if($LASTEXITCODE){throw 'link failed'}
- $lines=& "$base\fixture.exe";if($LASTEXITCODE -ne 4 -or !($lines -contains 'HIVE_COPY_REJECTED_DIRECTORY_EXCLUSION_UNPROVEN')){throw 'unproven directory exclusion accepted'}
+ $lines=& "$base\fixture.exe";if($LASTEXITCODE -ne 0 -or !($lines -contains 'HIVE_COPY_VERIFIED_READ_ONLY_NONATOMIC_SNAPSHOT_UNPROVEN')){throw 'observational copy failed'}
  foreach($name in @('SYSTEM','SYSTEM.LOG1','SOFTWARE','SYSTEM{abc}.TM.blf','TxR\{abc}.TxR.0.regtrans-ms')){if((Get-FileHash -Algorithm SHA256 "R:\Windows\System32\config\$name").Hash -ne (Get-FileHash -Algorithm SHA256 "S:\a04br3\audit-system\$name").Hash){throw "copy mismatch: $name"}}
  $lines=& "$base\fixture.exe";if($LASTEXITCODE -ne 2 -or !($lines -contains 'HIVE_COPY_DEST_EXISTS')){throw 'existing destination accepted'}
  Remove-Item -Recurse -Force 'S:\a04br3\audit-system'
+ $env:A04_COPY_CORRUPT='1'
+ $lines=& "$base\fixture.exe";Remove-Item Env:A04_COPY_CORRUPT
+ if($LASTEXITCODE -ne 3 -or !($lines -contains 'HIVE_COPY_COMPARE_FAILED') -or (Test-Path 'S:\a04br3\audit-system')){throw 'corrupt copy not rejected and discarded'}
  [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM{bad}.txt','unknown')
  $lines=& "$base\fixture.exe";if($LASTEXITCODE -ne 2 -or !($lines -contains 'HIVE_COPY_ENUMERATION_FAILED')){throw 'unknown sidecar accepted'}
- Write-Host 'HIVE_COPY_FIXTURE_PASS (unproven directory exclusion rejected)'
+ & clang --target=x86_64-pc-windows-msvc -fms-extensions -Werror=incompatible-pointer-types -D_WIN32_WINNT=0x0603 "-I$inc\um" "-I$inc\shared" -c "$root\tools\winpe\audit-copy-hives.c" -o "$base\production.obj"
+ if($LASTEXITCODE){throw 'production guard compile failed'}
+ & lld-link /subsystem:console /machine:x64 /entry:mainCRTStartup /nodefaultlib "$base\production.obj" "$lib\kernel32.lib" "$lib\advapi32.lib" "/out:$base\production.exe"
+ if($LASTEXITCODE){throw 'production guard link failed'}
+ $lines=& "$base\production.exe";if($LASTEXITCODE -ne 2 -or !($lines -contains 'HIVE_COPY_NOT_WINPE')){throw 'production guard accepted non-WinPE host'}
+ Write-Host 'HIVE_COPY_FIXTURE_PASS (observational non-atomic copy)'
 } finally {& subst R: /d | Out-Null;& subst S: /d | Out-Null}

@@ -8,6 +8,7 @@ function Reg([string[]]$a){& reg.exe @a | Out-Null;if($LASTEXITCODE){throw "regi
 try {
  & subst R: "$base\target";if($LASTEXITCODE){throw 'subst failed'}
  Reg @('add','HKLM\SOFTWARE\A04PNPFIX\Select','/v','Current','/t','REG_DWORD','/d','7','/f')
+ Reg @('add','HKLM\SOFTWARE\A04PNPFIX\ControlSet007\Services\Mt8167Toprgu','/v','Start','/t','REG_DWORD','/d','0','/f')
  Reg @('add','HKLM\SOFTWARE\A04PNPFIX\ControlSet007\Enum\ACPI\MOU0005\0&01','/v','Driver','/t','REG_SZ','/d','{ABC}\0001','/f')
  Reg @('add','HKLM\SOFTWARE\A04PNPFIX\ControlSet007\Control\Class\{ABC}\0001','/v','InfPath','/t','REG_SZ','/d','oem42.inf','/f')
  Reg @('save','HKLM\SOFTWARE\A04PNPFIX',"$base\SYSTEM",'/y')
@@ -24,7 +25,7 @@ try {
  if($LASTEXITCODE){throw 'link failed'}
  $lines=& "$base\fixture.exe";if($LASTEXITCODE){throw 'audit failed'}
  $ih=(Get-FileHash -Algorithm SHA256 'R:\Windows\INF\oem42.inf').Hash;$ch=(Get-FileHash -Algorithm SHA256 'R:\Windows\System32\CatRoot\{F750E6C3-38EE-11D1-85E5-00C04FC295EE}\fixture.cat').Hash
- if(!($lines -contains 'PNP_CONTROLSET=ControlSet007') -or !($lines -contains "PNP_INF=oem42.inf SHA256=$ih") -or !($lines -contains "PNP_CATALOG=fixture.cat SHA256=$ch")){throw "identity/hash mismatch: $($lines -join ' | ')"}
+ if(!($lines -contains 'PNP_CONTROLSET=ControlSet007') -or !($lines -contains 'SERVICE_START=00000000') -or !($lines -contains "PNP_INF=oem42.inf SHA256=$ih") -or !($lines -contains "PNP_CATALOG=fixture.cat SHA256=$ch")){throw "identity/hash mismatch: $($lines -join ' | ')"}
  Remove-Item 'R:\Windows\System32\CatRoot\{F750E6C3-38EE-11D1-85E5-00C04FC295EE}\fixture.cat'
  $lines=& "$base\fixture.exe";if(!($lines -match 'PNP_CATALOG=fixture.cat SHA256=OPEN_ERROR_')){throw 'missing catalog not reported'}
  Reg @('add','HKLM\A04AUDITSYS\ControlSet007\Control\Class\{ABC}\0001','/v','InfPath','/t','REG_SZ','/d','..\escape.inf','/f')

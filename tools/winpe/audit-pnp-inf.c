@@ -34,11 +34,17 @@ static void device(HKEY root,const WCHAR*cs,const WCHAR*id){WCHAR path[320],name
  lstrcpyW(path,cs);lstrcatW(path,L"\\Enum\\");lstrcatW(path,id);rc=RegOpenKeyExW(root,path,0,KEY_READ,&k);if(rc!=ERROR_SUCCESS){out("PNP_ENUM_ABSENT_OR_ERROR=");wide(id);out("\r\n");return;}
  for(;;){n=128;rc=RegEnumKeyExW(k,index++,name,&n,0,0,0,0);if(rc==ERROR_NO_MORE_ITEMS)break;if(rc!=ERROR_SUCCESS||!safe(name,0)){out("PNP_ENUM_INCOMPLETE\r\n");break;}instance(root,cs,id,name);}RegCloseKey(k);
 }
+static void service(HKEY root,const WCHAR*cs,const WCHAR*name){WCHAR p[320],data[512];HKEY k;DWORD n,type,v;LONG e;
+ lstrcpyW(p,cs);lstrcatW(p,L"\\Services\\");lstrcatW(p,name);out("SERVICE=");wide(name);out("\r\n");e=RegOpenKeyExW(root,p,0,KEY_READ,&k);if(e!=ERROR_SUCCESS){out("SERVICE_OPEN_ERROR=");hex(e);out("\r\n");return;}
+ n=sizeof(v);e=RegQueryValueExW(k,L"Start",0,&type,(BYTE*)&v,&n);out("SERVICE_START=");if(e==ERROR_SUCCESS&&type==REG_DWORD&&n==sizeof(v))hex(v);else out("UNRESOLVED");out("\r\n");
+ n=sizeof(v);e=RegQueryValueExW(k,L"Type",0,&type,(BYTE*)&v,&n);out("SERVICE_TYPE=");if(e==ERROR_SUCCESS&&type==REG_DWORD&&n==sizeof(v))hex(v);else out("UNRESOLVED");out("\r\n");
+ n=sizeof(data);e=RegQueryValueExW(k,L"ImagePath",0,&type,(BYTE*)data,&n);out("SERVICE_IMAGEPATH=");if(e==ERROR_SUCCESS&&(type==REG_SZ||type==REG_EXPAND_SZ)&&n>=2&&n<=sizeof(data)&&!(n%2)&&!data[n/2-1])wide(data);else out("UNRESOLVED");out("\r\n");RegCloseKey(k);}
 void mainCRTStartup(void){HKEY root,sel;DWORD current=0,n=sizeof(current),type=0;WCHAR cs[]=L"ControlSet000";
  if(RegOpenKeyExW(HKEY_LOCAL_MACHINE,L"A04AUDITSYS",0,KEY_READ,&root)!=ERROR_SUCCESS){out("PNP_RAM_HIVE_NOT_LOADED\r\n");ExitProcess(2);}
  if(RegOpenKeyExW(root,L"Select",0,KEY_READ,&sel)!=ERROR_SUCCESS){RegCloseKey(root);ExitProcess(2);}
  if(RegQueryValueExW(sel,L"Current",0,&type,(BYTE*)&current,&n)!=ERROR_SUCCESS||type!=REG_DWORD||n!=4||current<1||current>999){out("PNP_CONTROLSET_UNKNOWN\r\n");RegCloseKey(sel);RegCloseKey(root);ExitProcess(2);}RegCloseKey(sel);
  cs[10]=(WCHAR)(L'0'+current/100);cs[11]=(WCHAR)(L'0'+current/10%10);cs[12]=(WCHAR)(L'0'+current%10);out("PNP_CONTROLSET=");wide(cs);out("\r\n");
  if(!CryptAcquireContextW(&prov,0,0,PROV_RSA_AES,CRYPT_VERIFYCONTEXT)){RegCloseKey(root);ExitProcess(3);}
+ service(root,cs,L"Mt8167Toprgu");service(root,cs,L"Mt8167Shared");service(root,cs,L"Bu21025Shared");service(root,cs,L"mshidkmdf");
  device(root,cs,L"ACPI\\MOU0004");device(root,cs,L"ACPI\\MOU0005");device(root,cs,L"ACPI\\BEN0001");device(root,cs,L"MT8167\\BU21025");
  CryptReleaseContext(prov,0);RegCloseKey(root);out("PNP_SCOPE_KNOWN_IDS_ONLY_CATALOG_MEMBERSHIP_UNVERIFIED\r\n");ExitProcess(0);}

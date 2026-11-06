@@ -67,6 +67,9 @@ jobs:
             Write-Host "$path : $(Test-Path $full)"
             if (-not (Test-Path $full)) { throw "Missing required ARM32 WDK component: $path" }
           }
+      - name: Test observational audit integration
+        shell: pwsh
+        run: ./tools/ci/test-audit-observe-integration.ps1
       - name: Test audit orchestration control flow
         shell: pwsh
         run: ./tools/ci/test-run-audit-once.ps1
