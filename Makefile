@@ -1155,3 +1155,9 @@ test-mt8167-usb-source:
 	./build/mt8167_usb_source_test
 
 test: test-mt8167-usb-source test-mt8167-usb-faults test-mt8167-usb-controller-irq test-mt8167-usb-pnp-resources
+
+.PHONY: test-mt6630-windows-irq-firmware
+test-mt6630-windows-irq-firmware:
+	@mkdir -p build
+	$(CC) $(CFLAGS) -DA04_WIFI_SESSION_DIAGNOSTIC=1 -DA04_WIFI_IRQ_DIAGNOSTIC=1 -Itests/firmware_irq_stubs -Itests/shared_wdf_stubs -Idrivers/network/mt6630 drivers/network/mt6630/windows_irq_firmware.c tests/mt6630_windows_irq_firmware_test.c -o build/mt6630_windows_irq_firmware_test
+	./build/mt6630_windows_irq_firmware_test

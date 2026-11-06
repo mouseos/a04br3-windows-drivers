@@ -4,12 +4,11 @@
 #include "windows_diagnostic.h"
 /* Diagnostic plumbing only. All calls at PASSIVE_LEVEL under the same PnP/I/O
  * serialization. The referenced parent must retain the RTC/combo lease; the
- * platform must own a translated IRQ, have it masked and drained before map,
+ * platform must own a translated IRQ and mask it before PIO is enabled,
  * and must keep its context valid until stop has completed. */
 #if defined(A04_WIFI_SESSION_DIAGNOSTIC) && A04_WIFI_SESSION_DIAGNOSTIC
 struct a04_windows_session_platform {
  void *context;
- int (*prepare_masked_irq)(void *);
  int (*connect_masked_irq)(void *,struct a04_windows_msdc2 *);
  int (*mask_and_drain_irq)(void *);
  int (*drain_io)(void *);

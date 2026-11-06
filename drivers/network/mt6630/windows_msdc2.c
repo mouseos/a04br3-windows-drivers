@@ -22,21 +22,38 @@ static void delay(void *context,unsigned us)
  interval.QuadPart=-(LONGLONG)us*10;
  (void)KeDelayExecutionThread(KernelMode,FALSE,&interval);
 }
-NTSTATUS a04_windows_msdc2_map(struct a04_windows_msdc2 *m,
+NTSTATUS a04_windows_msdc2_map_prepare(struct a04_windows_msdc2 *m,
  const CM_PARTIAL_RESOURCE_DESCRIPTOR *raw,const CM_PARTIAL_RESOURCE_DESCRIPTOR *trans,
- struct a04_wifi_owner *owner,unsigned generation,int irq_quiesced)
+ struct a04_wifi_owner *owner,unsigned generation)
 {
  if(KeGetCurrentIrql()!=PASSIVE_LEVEL || !m || m->base || !raw || !trans || !owner ||
-    owner->poisoned || !owner->active || owner->generation!=generation || !irq_quiesced ||
+    owner->poisoned || !owner->active || owner->generation!=generation ||
     raw->Type!=CmResourceTypeMemory || trans->Type!=CmResourceTypeMemory ||
     raw->ShareDisposition!=CmResourceShareDeviceExclusive || trans->ShareDisposition!=CmResourceShareDeviceExclusive ||
     raw->u.Memory.Start.QuadPart!=0x11170000 || raw->u.Memory.Length!=0x1000 || trans->u.Memory.Length!=0x1000)
   return STATUS_DEVICE_NOT_READY;
  m->base=MmMapIoSpace(trans->u.Memory.Start,0x1000,MmNonCached);
  if(!m->base)return STATUS_INSUFFICIENT_RESOURCES;
+ return STATUS_SUCCESS;
+}
+NTSTATUS a04_windows_msdc2_activate(struct a04_windows_msdc2 *m,struct a04_wifi_owner *owner,unsigned generation,int irq_quiesced)
+{
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL || !m || !m->base || m->pio.owner || !owner ||
+    !owner->active || owner->poisoned || owner->generation!=generation || !irq_quiesced)return STATUS_DEVICE_NOT_READY;
  m->pio.context=m;m->pio.read=reg_read;m->pio.write=reg_write;m->pio.delay=delay;
  m->pio.owner=owner;m->pio.generation=generation;m->pio.poisoned=0;
  return STATUS_SUCCESS;
+}
+NTSTATUS a04_windows_msdc2_map(struct a04_windows_msdc2 *m,const CM_PARTIAL_RESOURCE_DESCRIPTOR *raw,
+ const CM_PARTIAL_RESOURCE_DESCRIPTOR *trans,struct a04_wifi_owner *owner,unsigned generation,int irq_quiesced)
+{
+ NTSTATUS status;
+ if(!irq_quiesced)return STATUS_DEVICE_NOT_READY;
+ status=a04_windows_msdc2_map_prepare(m,raw,trans,owner,generation);
+ if(!NT_SUCCESS(status))return status;
+ status=a04_windows_msdc2_activate(m,owner,generation,irq_quiesced);
+ if(!NT_SUCCESS(status))a04_windows_msdc2_unmap(m);
+ return status;
 }
 void a04_windows_msdc2_unmap(struct a04_windows_msdc2 *m)
 {

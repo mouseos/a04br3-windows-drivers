@@ -303,3 +303,13 @@ DPC の停止後に完了イベントを待って work item を解放する。�
 失敗は fault として隔離し、再 arm による再利用はしない。firmware の実処理は
 呼出側の callback が担う。通知前に割込み source の排他・マスクを実証する
 provider、親 RTC lease、実機配送は未接続のため、本構成を実行可能とは扱わない。
+
+
+診断セッションはホスト範囲を写像した後、排他的 IRQ provider が INTEN の
+SDIO bit をマスクし接続してから PIO を有効化する。起動時の pre-mask 外部
+callback は不要になった。中途失敗時は写像を隔離し自動解放しない。
+`windows_irq_firmware.c` は一回限りの work item を既存 WMT bridge の WLAN
+read-clear status 読取りへ接続する。競合時に待たない共通 try-lock を要求し、
+状態を保存するが、処理済みでない status は acknowledge しない。現在は
+この work item を実行する子ドライバ・親の RTC lease・親 Acquire は未接続。
+診断専用で実機・Windows IRQ 配送と firmware 状態は未検証。
