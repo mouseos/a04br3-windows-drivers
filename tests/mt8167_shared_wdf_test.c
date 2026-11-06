@@ -11,6 +11,9 @@ static ULONG mockAfeRegs[1024];static int mockAfeIgnoreWrite;
 #define mockAfe mockAfeRegs[0]
 #endif
 static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,assertClosedOnLock,closeDuringLock,failMap;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;static A04_SHARED_USB_INTERFACE usb;static A04_SHARED_WIFI_INTERFACE wifi;
+#if A04_USB_GPIO22_SOURCE_EXPERIMENT
+static ULONG usbGpio[1024];
+#endif
 #if A04_SHARED_BUTTON_D0_EXPERIMENT
 static ULONG mockInit,mockFsm;static int mockStopDuringRead,mockWacs;
 #if A04_AUDIO_PMIC_TRACE
@@ -24,6 +27,9 @@ void ExInitializeFastMutex(FAST_MUTEX *m){m->held=0;}void ExAcquireFastMutex(FAS
 PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,int c){(void)n;(void)c;maps++;if(failMap && maps==failMap)return NULL;return (PVOID)(uintptr_t)a.QuadPart;}
 void MmUnmapIoSpace(PVOID p,ULONG n){(void)p;(void)n;unmaps++;}
 ULONG READ_REGISTER_ULONG(volatile ULONG *p){(void)p;reads++;
+#if A04_USB_GPIO22_SOURCE_EXPERIMENT
+ if((uintptr_t)p>=(uintptr_t)usbGpio && (uintptr_t)p<(uintptr_t)(usbGpio+1024))return *p;
+#endif
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
  if((uintptr_t)p>=(uintptr_t)mockAfeRegs && (uintptr_t)p<(uintptr_t)(mockAfeRegs+1024))return *p;
 #endif
@@ -90,6 +96,19 @@ int main(void){
  entries[0].u.Memory.Length=entries[1].u.Memory.Length=entries[2].u.Memory.Length=entries[3].u.Memory.Length=0x1000;
  for(unsigned i=0;i<4;i++){translated[i]=entries[i];translated[i].u.Memory.Start.QuadPart+=0x10000000;}
  assert(!ParentAdd(NULL,NULL));
+#if A04_USB_GPIO22_SOURCE_EXPERIMENT
+ assert(testContext.usb.otg_acquire && testContext.usb.otg_release);
+ testContext.gpio=usbGpio;usbGpio[0x220/4]=1u<<2;usbGpio[0x210/4]=1u<<5;
+ assert(!ParentUsbSourceAcquire(&testContext) && !ParentUsbOvercurrent(&testContext));
+ usbGpio[0x220/4]=0;assert(ParentUsbSourceAcquire(&testContext)); /* external VBUS */
+ usbGpio[0x220/4]=(1u<<2)|(1u<<9);assert(ParentUsbSourceAcquire(&testContext) && ParentUsbOvercurrent(&testContext));
+ usbGpio[0x220/4]=1u<<2;usbGpio[0x20/4]=1u<<2;assert(ParentUsbSourceAcquire(&testContext));
+ usbGpio[0x20/4]=0;usbGpio[0x360/4]=1u<<12;assert(ParentUsbSourceAcquire(&testContext));
+ usbGpio[0x360/4]=0;usbGpio[0x210/4]=0;assert(ParentUsbOvercurrent(&testContext));
+ assert(!ParentUsbSourceRelease(&testContext));testContext.gpio=NULL;reads=0;
+#else
+ assert(!testContext.usb.otg_acquire && !testContext.usb.otg_release);
+#endif
 #if A04_SHARED_MT6392_DIAGNOSTIC
  assert(testContext.audio.codec_acquire_muted && testContext.audio.codec_release_quiescent);
 #if A04_MT6392_CLK_ALIAS_EXPERIMENT

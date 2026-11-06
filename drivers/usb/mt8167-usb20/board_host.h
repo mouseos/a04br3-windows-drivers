@@ -13,6 +13,10 @@ typedef struct {
  void (*delay_ms)(void *,unsigned);
 } A04_USB_BOARD;
 int A04UsbHostStart(const A04_USB_BOARD *);
+/* Prepare owns power and initializes the PHY. Arm the IRQ before Run so a
+ * device already connected when SESSION starts cannot lose CONNECT. */
+int A04UsbHostPrepare(const A04_USB_BOARD *);
+int A04UsbHostRun(const A04_USB_BOARD *);
 void A04UsbHostStop(const A04_USB_BOARD *);
 /* connect/disconnect is reported by MUSB INTRUSB, not by DEVCTL alone. */
 #endif
