@@ -30,3 +30,14 @@ GPU/MMA8652のINF日付・版・実ハード名はGPU基点を保持する。
 実際の署名/Inf2Cat/配置/通常OS PnPと実キー入力・Wi-Fi接続・可聴再生は主担当工程。
 主担当報告のf17b743全SYS WDK link成功はこの新統合commitのbuild成功を意味しない。
 統合commitのWDK実行・実機/SSH/runner操作は本作業では実施していない。
+
+## GPU追補と現在回収中のバイナリ
+
+GPU `7d57022` のprivate output初期値A5A5A5A5（3行）を追加取り込み。
+黒clear未実行なのにzero初期値との画素一致で成功と誤認することを防ぐ。
+GPUのその他のソースはd5f676dのまま。
+
+主担当申告で現在再署名・回収中のperipheral packageは、SYS=f17b743、
+client=a016d53の混在で、全SYSの再compileはしていない。
+この既存バイナリの出自と、新統合branchから将来buildするソースを区別する。
+具体的なSYS/EXE/CAT hashと署名結果は主担当の回収manifestが正本。

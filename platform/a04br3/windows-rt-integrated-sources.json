@@ -10,5 +10,13 @@
   "hardware_verified": false,
   "wdk_integrated_build_verified": false,
   "shared_parent_count_expected": 1,
-  "parent_driver_ver": "11/06/2026,2026.11.6.1001"
+  "parent_driver_ver": "11/06/2026,2026.11.6.1001",
+  "gpu_native_output_sentinel_fix": "7d57022c11850c6f2e8c6e8de66159289ca8ea76",
+  "current_binary_build_reported_by_primary_owner": {
+    "sys_source": "f17b743dbed1053451a89d03de805c27021b1cc5",
+    "client_source": "a016d53763b7872cd1235d5e96204d36ab48cca4",
+    "sys_recompiled": false,
+    "signing_and_collection": "in progress, user report",
+    "note": "Existing peripheral SYS/client artifacts; not built from this integrated GPU source commit"
+  }
 }
