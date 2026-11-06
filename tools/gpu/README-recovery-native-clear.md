@@ -25,9 +25,11 @@ AOSP recovery/minuiは通常EGLを必要としないため、Recoveryにこれ�
 - recovery-native-bridge-capture.c: ARM64 LD_PRELOAD ioctl observer。A04_M111_CAPTUREの絶対pathをO_EXCLで新規作成する。元ioctlをそのままsyscallへ渡す。group0x82/function12のみ、input0x160・TA0x88・PR0または0x150・3D0x150を送信前にdeep-copyし、ioctl後のoutput12 bytesと結果を保存。packetを生成・書換え・再送しない。最大32 kick、形式相違や書込み失敗はbrokenとして記録する。CPU pointerは捕捉時点でcaller自身が所有するものに限る。Android SP-HAL namespaceがdefaultのLD_PRELOADを参照しない可能性があるので、CAPTURE_SUMMARY kicks>0を実測するまでinterpose成功と扱わない。必要なら許可後にvendor direct library pathを使うstandalone構成を選び、その依存解決を確認する。
 - read-recovery-native-capture.py: 独自TLVの整合、pre/post pair、サイズを検査してJSONをstdoutへ出す。GPU成功とは判定せず、常に別途harnessのphase/readbackを要求する。
 
-`build-recovery-native-probe.py --ndk <完全NDK> --output <root内成果物dir>`でprobe/observerだけをローカルビルドできる。標準NDKのaarch64-linux-android26-clangでprobeをPIEとしてlibdlへlinkし、observerを-fPIC -sharedでlibcへlinkする。observerのpthreadはBionic libcに含まれる。sourceはhost syntax checkとAOSP Bionic headersによるARM64 object compileを確認済み。この作業rootの既存AOSP NDK prebuiltにはshared libc.so/libdl.soがなく、runnable executable/shared observerの最終linkは未実施。既存NDKの完全sysrootまたは主担当のAndroid build環境が必要。未解決symbolを無視するlinkや偽Bionic libraryは作らない。
+`build-recovery-native-probe.py --ndk <完全NDK> --output <root内成果物dir>`でprobe/observerだけをローカルビルドできる。標準NDKのaarch64-linux-android26-clangでprobeをPIEとしてlibdlへlinkし、observerを-fPIC -sharedでlibcへlinkする。observerのpthreadはBionic libcに含まれる。公式repository2-3.xmlのstable channelからNDK r30（30.0.16248370）を作業root内へ取得し、公式SHA-1一致とarchive sizeを検証済み。NDK API26の正規sysrootと-Wl,-z,defsでprobe PIE／observer shared libraryを最終linkした。DT_NEEDEDはlibc.so/libdl.soのみ、probe interpreterは/system/bin/linker64。未解決symbolを無視するlinkや偽Bionic libraryは使っていない。実行先にはAPI26以上の互換Bionicが必要で、実機起動・EGL依存解決・捕捉成功はまだ未検証。成果物はport/xnu/out/windows-rt-m111-recovery-linked-20261107/に固定ソースとhash manifestを含めて置く。
 
 ## 後日のREA runtime記録
+
+`prepare-recovery-native-capture.py --serial <主担当確認serial> --bundle <固定成果物dir> --device-directory <新規device側dir>`はstaging commandとREA tool引数JSONをstdoutへ生成するだけで、ADBもGPUも実行しない。serialは主担当が確認した実値を必ず指定し、実行許可前のtemplateにあるPRIMARY_APPROVED_SERIAL_REQUIREDを実値と誤認しない。
 
 現在のREA observe_native_callsはMach-O/LLDB用で、Linux ARM64への関数attachには使えない。Recovery許可後はREA capture_process_scenarioで明示したADB/harness commandを起動してphase/終了状態をEvidenceにし、捕捉fileも対応付けて回収する。これは今実行する指示ではない。hostへの回収先は必ず指定TAB-A04-BR3 root内のport/gsi/logs/ios-feasibility/とする。
 
@@ -40,3 +42,11 @@ packetのGPU VA/FW addressをWindowsへそのまま再送しない。captureは�
 ## 同版sourceからのcold zero条件
 
 config_kernel_user_mt8167.hとeng版はPVR_LINUX_PHYSMEM_ZERO_ALL_PAGESを定義。physmem_osmem_linux.c:3710はfresh PMRのbZeroをTRUE、poisonをFALSEへ上書きし、gfp生成で__GFP_ZEROへつなぐ。ただしUMの再利用suballocation全体が毎回zeroになる保証ではない。Windowsのfresh/cold arena zeroはこのsource構成と一致する初期policyであり、FW consumerの読出し・書込み順まで証明したとは扱わない。
+
+## run24 Recoveryの観測と/tmp stagingの条件
+
+主担当のread-onlyログではaarch64/Linux4.14.141+、SDK29/VNDK29、ro.hardware.egl=mtk。card0/renderD128/pvr_sync/ionあり、pvrsrvkmなし。linker64は存在するがEGL/GLES/vendor UM/FWは欠落。DRM nodeの存在はUM/KM互換やGPU実行成功を証明しない。
+
+libIMGeglのDT_NEEDEDはlibsrv_um/libm/libsync/libged/libgralloc_extra/libhardware/libz/libgpud/libc。ES2 driverは`/system/vendor/lib64/egl/libGLESv2_mtk.so`固定pathでdlopenする（REA dependency bundle参照）。LD_LIBRARY_PATHを/tmpに向けるだけでは固定pathを解決できない。元binaryを書換えず、主担当が別途承認するmount namespace/bindまたはRecovery imageへの正規配置が必要。firmwareもkernelの実際の検索pathを満たす必要がある。
+
+指定libsrv_um hashとstock backup内の別版を取り違えない。同梱libgedはHIDL GPU 1.0、libgpudはgraphics common1.1/1.2とmapper2.0/2.1/3.0に依存。これらの.soが存在してもサービスが必要かどうかは別途runtime観測が必要。NDK sysrootのstubをruntime代用として配置しない。platform library候補は既存Android10 system imageから別directoryに抽出し、互換性未検証のままvendor正本と混ぜない。
