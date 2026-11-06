@@ -17,8 +17,14 @@
 #ifndef A04_USB_GPIO22_SOURCE_EXPERIMENT
 #define A04_USB_GPIO22_SOURCE_EXPERIMENT 0
 #endif
-#if A04_USB_GPIO22_SOURCE_EXPERIMENT && (!defined(A04_SHARED_QUERY_EXPERIMENTAL) || !A04_SHARED_QUERY_EXPERIMENTAL || !defined(A04_SHARED_CHILD_PROBE) || !A04_SHARED_CHILD_PROBE || !defined(A04_SHARED_BUTTON_D0_EXPERIMENT) || !A04_SHARED_BUTTON_D0_EXPERIMENT || !defined(A04_SHARED_APMIXED_RESOURCE) || !A04_SHARED_APMIXED_RESOURCE)
-#error GPIO22 source experiment requires shared query, child, D0 and APMIXED
+#if A04_USB_GPIO22_SOURCE_EXPERIMENT
+#error GPIO22 source is unverified; enabling VBUS is prohibited
+#endif
+#ifndef A04_USB_POWER_OBSERVATION
+#define A04_USB_POWER_OBSERVATION 0
+#endif
+#if A04_USB_POWER_OBSERVATION && (!defined(A04_SHARED_BUTTON_D0_EXPERIMENT) || !A04_SHARED_BUTTON_D0_EXPERIMENT)
+#error USB power observation requires the shared parent D0 experiment
 #endif
 #ifndef A04_SHARED_THERMAL_DIAGNOSTIC
 #define A04_SHARED_THERMAL_DIAGNOSTIC 0
@@ -74,6 +80,9 @@
 #endif
 #ifndef A04_AUDIO_PMIC_TRACE
 #define A04_AUDIO_PMIC_TRACE 0
+#endif
+#if A04_USB_POWER_OBSERVATION && !A04_AUDIO_DIAGNOSTIC_TRACE
+#error USB power observation requires diagnostic trace
 #endif
 #if A04_AUDIO_PMIC_TRACE && !A04_AUDIO_DIAGNOSTIC_TRACE
 #error PMIC observation requires diagnostic trace
@@ -594,23 +603,6 @@ static int ParentUsbOvercurrent(void *p) {
 #endif
  return 0;
 }
-#if A04_USB_GPIO22_SOURCE_EXPERIMENT
-/* a04br3 Linux switches GPIO22 and its BQ24160 configuration has no action
- * in tbl_charger_otg_vbus. This is a board-specific, unverified assumption:
- * GPIO22 itself controls the source. Do not claim a BQ boost was enabled.
- * Called under the parent mutex, before GPIO22 is raised. */
-static int ParentUsbSourceAcquire(void *p)
-{
- A04_PARENT_CONTEXT*c=p; unsigned dir,in,mode;
- if(!c->gpio)return -1;
- dir=ParentUsbGpioRead(c,0x20);in=ParentUsbGpioRead(c,0x220);mode=ParentUsbGpioRead(c,0x360);
- /* ID41 grounded and USB-detect34 inactive before sourcing; do not drive
-  * into a detected external source. The latter is active low in Linux. */
- if((dir&((1u<<9)|(1u<<2))) || (in&(1u<<9)) || !(in&(1u<<2)) || (mode&(7u<<12)))return -1;
- return 0;
-}
-static int ParentUsbSourceRelease(void *p) { UNREFERENCED_PARAMETER(p);return 0; }
-#endif
 static int ParentUsbVerify(void *p) {
  A04_PARENT_CONTEXT*c=p; ULONG sel,con,pwr,rate;
  if(!c->topck || !c->apmixed)return -1;
@@ -879,6 +871,17 @@ NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
         A04_TRACE("A04AUD parent d0 TOP_CKPDN1=%04x; observation only\n",(unsigned)raw);
     }
 #endif
+#if A04_USB_POWER_OBSERVATION
+    /* Raw pin-controller snapshots only. No GPIO direction, output, MUSB,
+     * charger, clock or regulator writes and no inference of VBUS voltage. */
+    A04_TRACE("A04USB GPIO dir1=%08lx dout1=%08lx din1=%08lx mode21_22=%08lx\n",
+        (ULONG)ParentUsbGpioRead(c,0x10),(ULONG)ParentUsbGpioRead(c,0x110),
+        (ULONG)ParentUsbGpioRead(c,0x210),(ULONG)ParentUsbGpioRead(c,0x340));
+    A04_TRACE("A04USB GPIO dir2=%08lx dout2=%08lx din2=%08lx mode34=%08lx mode41=%08lx\n",
+        (ULONG)ParentUsbGpioRead(c,0x20),(ULONG)ParentUsbGpioRead(c,0x120),
+        (ULONG)ParentUsbGpioRead(c,0x220),(ULONG)ParentUsbGpioRead(c,0x360),
+        (ULONG)ParentUsbGpioRead(c,0x380));
+#endif
     c->pmic.online=1;
 #if A04_SHARED_THERMAL_DIAGNOSTIC
     /* No known provider proves release by EL3 or every AUXADC consumer. */
@@ -1099,9 +1102,6 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #endif
         c->usb.context=c;c->usb.lock=ParentUsbLock;c->usb.unlock=ParentUsbUnlock;
         c->usb.verify_upstream=ParentUsbVerify;c->usb.verify_overcurrent=ParentUsbOvercurrent;c->usb.top_read=ParentUsbTopRead;c->usb.top_write=ParentUsbTopWrite;
-#if A04_USB_GPIO22_SOURCE_EXPERIMENT
-        c->usb.otg_acquire=ParentUsbSourceAcquire;c->usb.otg_release=ParentUsbSourceRelease;
-#endif
         c->usb.pmic=&c->pmic.bus;c->usb.gpio.context=c;c->usb.gpio.read32=ParentUsbGpioRead;c->usb.gpio.write32=ParentUsbGpioWrite;
     }
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL

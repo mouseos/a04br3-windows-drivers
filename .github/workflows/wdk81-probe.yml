@@ -76,19 +76,21 @@ jobs:
           $env:A04_MT6392_UNMUTE_DIAGNOSTIC='1'
           $env:A04_MT6392_RTC32K_DIAGNOSTIC='1'
           $env:A04_SHARED_WIFI_IRQ_DIAGNOSTIC='1'
-          $env:A04_USB_GPIO22_SOURCE_EXPERIMENT='1'
+          $env:A04_USB_POWER_OBSERVATION='1'
+          $env:A04_AUDIO_DIAGNOSTIC_TRACE='1'
           $env:A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC='1'
           $env:A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC='1'
           $env:A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC='1'
           ./tools/ci/build-msdc-parent-probe.ps1
           ./tools/ci/build-mt8167-audio-portcls.ps1
-      - name: Build gated USB host and GPIO22 source
+      - name: Build gated USB host and read-only power observation
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $env:A04_SHARED_BUTTON_D0_EXPERIMENT='1'
           $env:A04_SHARED_APMIXED_RESOURCE='1'
-          $env:A04_USB_GPIO22_SOURCE_EXPERIMENT='1'
+          $env:A04_USB_POWER_OBSERVATION='1'
+          $env:A04_AUDIO_DIAGNOSTIC_TRACE='1'
           ./tools/ci/build-msdc-parent-probe.ps1
           ./tools/ci/build-mt8167-usb20.ps1 -OutputDirectory (Join-Path $env:RUNNER_TEMP 'a04-usb20-link')
       - name: Build MT8167 parent and MT6630 query probes

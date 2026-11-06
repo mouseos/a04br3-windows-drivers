@@ -1,0 +1,41 @@
+name: USB power observation WDK
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install verified Windows 8.1 SDK and WDK
+        shell: pwsh
+        run: ./tools/ci/install-wdk81.ps1
+      - name: Build read-only USB observation parent
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:A04_SHARED_BUTTON_D0_EXPERIMENT='1'
+          $env:A04_SHARED_APMIXED_RESOURCE='1'
+          $env:A04_USB_POWER_OBSERVATION='1'
+          $env:A04_AUDIO_DIAGNOSTIC_TRACE='1'
+          ./tools/ci/build-msdc-parent-probe.ps1
+      - name: Test-sign parent link probe and record provenance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $output = Join-Path $env:RUNNER_TEMP 'usb-power-observation'
+          New-Item -ItemType Directory -Force $output | Out-Null
+          $driver = Join-Path $output 'mt8167-shared.sys'
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'a04-msdc-parent-probe\mt8167-shared.sys') $driver
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=A04BR3 USB Power Observation Test' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
+          & (Join-Path "${env:ProgramFiles(x86)}\Windows Kits\8.1" 'bin\x86\signtool.exe') sign /fd SHA256 /sha1 $cert.Thumbprint /s My $driver
+          if ($LASTEXITCODE -ne 0) { throw 'Test signing failed' }
+          $signature = Get-AuthenticodeSignature $driver
+          if (!$signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $cert.Thumbprint) { throw 'Unexpected signature' }
+          Export-Certificate -Cert $cert -FilePath (Join-Path $output 'usb-observation-test.cer') | Out-Null
+          [ordered]@{ source_commit = (git rev-parse HEAD); sha256 = (Get-FileHash $driver -Algorithm SHA256).Hash; signer_thumbprint = $cert.Thumbprint; signature_status = "$($signature.Status)"; flags = 'shared query, children, button D0, APMIXED, GPIO read-only observation, trace'; note = 'Self-signed link probe without INF/catalog. RT trust, PnP and hardware operation not established.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $output 'manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: usb-power-observation-test-signed
+          path: ${{ runner.temp }}\usb-power-observation
+          if-no-files-found: error

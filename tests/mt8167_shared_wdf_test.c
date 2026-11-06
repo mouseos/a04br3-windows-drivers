@@ -14,7 +14,11 @@ static ULONG mockAfeRegs[1024];static int mockAfeIgnoreWrite;
 static int voiceGainReads,voiceGainFail;static uint16_t voiceGain;
 static int voiceReadGain(void *p,uint16_t reg,uint16_t *out){(void)p;assert(reg==0x64);voiceGainReads++;if(voiceGainFail)return -1;*out=voiceGain;return 0;}
 #endif
-static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,assertClosedOnLock,closeDuringLock,failMap;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;static A04_SHARED_USB_INTERFACE usb;static A04_SHARED_WIFI_INTERFACE wifi;
+static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,assertClosedOnLock,closeDuringLock,failMap;
+#if A04_USB_POWER_OBSERVATION
+static unsigned usbObservationReads;
+#endif
+static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;static A04_SHARED_USB_INTERFACE usb;static A04_SHARED_WIFI_INTERFACE wifi;
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
 static ULONG usbGpio[1024];
 #endif
@@ -31,6 +35,11 @@ void ExInitializeFastMutex(FAST_MUTEX *m){m->held=0;}void ExAcquireFastMutex(FAS
 PVOID MmMapIoSpace(PHYSICAL_ADDRESS a,ULONG n,int c){(void)n;(void)c;maps++;if(failMap && maps==failMap)return NULL;return (PVOID)(uintptr_t)a.QuadPart;}
 void MmUnmapIoSpace(PVOID p,ULONG n){(void)p;(void)n;unmaps++;}
 ULONG READ_REGISTER_ULONG(volatile ULONG *p){(void)p;reads++;
+#if A04_USB_POWER_OBSERVATION
+ { static const unsigned offsets[]={0x10,0x110,0x210,0x340,0x20,0x120,0x220,0x360,0x380};
+   unsigned i; for(i=0;i<sizeof(offsets)/sizeof(offsets[0]);i++)
+    if((uintptr_t)p==(uintptr_t)testContext.gpio+offsets[i])usbObservationReads|=1u<<i; }
+#endif
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
  if((uintptr_t)p>=(uintptr_t)usbGpio && (uintptr_t)p<(uintptr_t)(usbGpio+1024))return *p;
 #endif
@@ -261,7 +270,14 @@ int main(void){
  mockStatusFail=0;mockFsm=0;testContext.pmic.bus.poisoned=0;writes=0;
  mockWacs=1;
 #endif
+#if A04_USB_POWER_OBSERVATION
+ usbObservationReads=0;
+#endif
  assert(!ParentD0(&testContext,0) && testContext.pmic.online && !testContext.admissionClosed);
+#if A04_USB_POWER_OBSERVATION
+ assert(usbObservationReads==0x1ffu && a04_test_trace_count>=2);
+ assert(!testContext.usb.otg_acquire && !testContext.usb.otg_release);
+#endif
  assert(testContext.regs.online==(A04_SHARED_TOUCH_D0_EXPERIMENT ? 1 : 0));
  assert(testContext.usb.online==(testContext.apmixed!=NULL));
  assert(!ParentUsbLock(&testContext) && testContext.pwrapLock.held);ParentUsbUnlock(&testContext);assert(!testContext.pwrapLock.held);

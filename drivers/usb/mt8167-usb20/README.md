@@ -108,18 +108,20 @@ Sources: [TI BQ24160 datasheet](https://www.ti.com/lit/ds/symlink/bq24160.pdf),
 
 ## Guarded Windows source and session ordering
 
-The shared-parent WDF source can now register a board-specific GPIO22 source
-provider with `A04_USB_GPIO22_SOURCE_EXPERIMENT=1` (default 0). It requires
-the experimental shared query, child topology, button D0 and APMIXED resource.
-The provider checks ID41 low and USB-detect34 inactive before permitting the
-existing owner to raise GPIO22; health polls also check ID and overcurrent,
-and faults stop the MUSB session. The off path lowers GPIO22 before releasing
-the source lease. It makes no BQ24160 writes: the a04br3 Linux defconfig selects
-BQ24160 and the vendor `tbl_charger_otg_vbus` has no BQ24160 branch. GPIO22
-being an actual 5 V source enable, GPIO34 electrical behavior, ID/overcurrent
-polarity, pinmux and protection are not established by these software facts.
-The experiment is not authorized by detecting the flags alone and must remain
-disabled until the board wiring and exclusive ownership are established.
+The former GPIO22 source experiment is blocked at compile time: Linux names
+GPIO22 as DRVVBUS but does not identify the connected source or establish the
+BQ24160 lockout/watchdog coordination. No source callback is registered and
+VBUS-on is rejected. `A04_USB_POWER_OBSERVATION=1` and
+`A04_AUDIO_DIAGNOSTIC_TRACE=1` log raw GPIO direction, output, input and mux
+registers at shared-parent D0 after its normal admission checks, under the
+parent lock. These are pin-controller readings, not a VBUS voltage measurement;
+they do not authorize a source, alter GPIO, access I2C or prove pin polarity.
+The GPIO22 output latch does not establish that 5 V reaches the connector.
+BQ register 0x01 is not accessed: charger ownership and firmware handoff are
+not established. The snapshot is subject to normal concurrent hardware changes
+and is not an atomic capture. Source enable remains blocked until electrical
+wiring, source health, external VBUS isolation, watchdog and teardown are
+verified.
 
 The HID diagnostic now prepares clocks/PHY, arms and clears IRQs, and only
 then starts VBUS and the MUSB session; previously arm cleared CONNECT after
@@ -218,3 +220,9 @@ establish connector power or provide general USB PnP. Neither WDF cancellation
 races nor the interrupt drain have been exercised under Windows Driver Verifier
 or on the device; ARM32 compilation/linking and host MMIO simulations do not
 establish those results. No new signed or installable package is produced.
+
+The `usb-power-observation.yml` workflow builds this opt-in observation with
+WDK 8.1 and test-signs the shared-parent link probe. The generated certificate
+is not a trusted production signature; there is no installation package or
+claim of device operation. It does not activate the MUSB child or establish
+VBUS. The observations appear as `A04USB GPIO` debug messages.
