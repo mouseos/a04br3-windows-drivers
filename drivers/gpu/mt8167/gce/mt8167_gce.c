@@ -13,6 +13,12 @@
 #ifndef A04_GCE_DISPLAY_LEASE_INTERFACE
 #define A04_GCE_DISPLAY_LEASE_INTERFACE 0
 #endif
+#ifndef A04_GCE_IRQ_ATTACH
+#define A04_GCE_IRQ_ATTACH 0
+#endif
+#if A04_GCE_IRQ_ATTACH && (!A04_GCE_PARENT_CLOCK_INTERFACE || !A04_GCE_DISPLAY_LEASE_INTERFACE)
+#error GCE IRQ attach requires parent clock and display lease interfaces
+#endif
 #if A04_GCE_DISPLAY_LEASE_INTERFACE
 #include "gce_display_interface.h"
 #include "gce_display_lease.h"
@@ -84,7 +90,12 @@ NTSTATUS GceD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 {
     GCE_CONTEXT *c=GceContext(device);UNREFERENCED_PARAMETER(previous);
     ExAcquireFastMutex(&c->lease_lock);
+#if !A04_GCE_IRQ_ATTACH
     if(!c->lease.removed && c->adapter && c->command_cpu && c->registers)c->lease.online=1;
+#else
+    /* EvtInterruptEnable currently refuses unproved ownership. */
+    c->lease.online=0;
+#endif
     ExReleaseFastMutex(&c->lease_lock);return STATUS_SUCCESS;
 }
 NTSTATUS GceD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
@@ -93,6 +104,25 @@ NTSTATUS GceD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
     ExAcquireFastMutex(&c->lease_lock);c->lease.online=0;ExReleaseFastMutex(&c->lease_lock);
     return STATUS_SUCCESS; /* no commands or IRQ are started by this driver */
 }
+#endif
+#if A04_GCE_IRQ_ATTACH
+EVT_WDF_INTERRUPT_ISR GceInterruptIsr;
+EVT_WDF_INTERRUPT_ENABLE GceInterruptEnable;
+EVT_WDF_INTERRUPT_DISABLE GceInterruptDisable;
+BOOLEAN GceInterruptIsr(WDFINTERRUPT interrupt,ULONG message)
+{
+    /* No thread or event is owned and the clock is not proved. Do not read
+     * or acknowledge a potentially shared/firmware interrupt. */
+    UNREFERENCED_PARAMETER(interrupt);UNREFERENCED_PARAMETER(message);return FALSE;
+}
+NTSTATUS GceInterruptEnable(WDFINTERRUPT interrupt,WDFDEVICE device)
+{
+    UNREFERENCED_PARAMETER(interrupt);UNREFERENCED_PARAMETER(device);
+    /* Framework calls at DIRQL. No passive lock, MMIO, or assumed clock. */
+    return STATUS_DEVICE_NOT_READY;
+}
+NTSTATUS GceInterruptDisable(WDFINTERRUPT interrupt,WDFDEVICE device)
+{ UNREFERENCED_PARAMETER(interrupt);UNREFERENCED_PARAMETER(device);return STATUS_SUCCESS; }
 #endif
 #if A04_GCE_PARENT_CLOCK_INTERFACE
 static NTSTATUS GceConnectParent(WDFDEVICE device,struct gce_context *c)
@@ -209,6 +239,9 @@ NTSTATUS GceAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #if A04_GCE_DISPLAY_LEASE_INTERFACE
     A04_GCE_DISPLAY_INTERFACE iface;WDF_QUERY_INTERFACE_CONFIG query;NTSTATUS status;
 #endif
+#if A04_GCE_IRQ_ATTACH
+    WDF_INTERRUPT_CONFIG irqConfig;WDFINTERRUPT irq;
+#endif
     UNREFERENCED_PARAMETER(driver);
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&callbacks);callbacks.EvtDevicePrepareHardware=GcePrepare;
     callbacks.EvtDeviceReleaseHardware=GceRelease;
@@ -221,6 +254,13 @@ NTSTATUS GceAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #if A04_GCE_DISPLAY_LEASE_INTERFACE
     status=WdfDeviceCreate(&init,&attributes,&device);if(!NT_SUCCESS(status))return status;
     ExInitializeFastMutex(&GceContext(device)->lease_lock);
+#if A04_GCE_IRQ_ATTACH
+    WDF_INTERRUPT_CONFIG_INIT(&irqConfig,GceInterruptIsr,NULL);
+    irqConfig.EvtInterruptEnable=GceInterruptEnable;irqConfig.EvtInterruptDisable=GceInterruptDisable;
+    irqConfig.AutomaticSerialization=FALSE;
+    status=WdfInterruptCreate(device,&irqConfig,WDF_NO_OBJECT_ATTRIBUTES,&irq);
+    if(!NT_SUCCESS(status))return status;
+#endif
     RtlZeroMemory(&iface,sizeof(iface));iface.Header.Size=sizeof(iface);
     iface.Header.Version=A04_GCE_DISPLAY_INTERFACE_VERSION;iface.Header.Context=device;
     iface.Header.InterfaceReference=GceInterfaceReference;iface.Header.InterfaceDereference=GceInterfaceDereference;
