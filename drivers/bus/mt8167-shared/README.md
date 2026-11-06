@@ -407,3 +407,17 @@ not proof that headphone calibration is appropriate for AU_LOL. The fixed
 the ramp endpoint must be measured. Failure retains the active state and
 poisons the experiment, requiring explicit recovery. Host tests simulate the
 registers only and do not validate analog behavior or actual hardware.
+
+The default-off `A04_SHARED_VOICE_DIAGNOSTIC` connects the prototype to the
+parent: diagnostic DMA starts before Voice Amp and minimum Class D unmute;
+stop mutes Class D before stopping DMA, and verified quiescent release stops
+Voice Amp before its supplies. `ParentVoiceVerify` unconditionally rejects:
+there is no proven AU_LOL calibration, capacitance or downstream mute provider.
+The existing parent preflight and independent DMA/IRQ drain proof are also
+unavailable. This is a buildable sequencing candidate, not a playback driver.
+Linux measures 22 headphone ADC samples, discards a minimum and maximum, and
+computes B-to-C per headphone gain. Its 0x4b4b is 500 mV times 38.55, not a
+measured DAC endpoint; measured headphone OP compensation is not evidence of
+AU_LOL equivalence. Calibration may be requested through Linux HP DC Offsets
+control; neither that control nor its put path proves the value was measured
+on this boot. No per-device data is embedded here.

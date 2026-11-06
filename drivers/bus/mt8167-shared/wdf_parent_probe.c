@@ -29,6 +29,15 @@
 #if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 #include "codec_domain.h"
 #endif
+#ifndef A04_SHARED_VOICE_DIAGNOSTIC
+#define A04_SHARED_VOICE_DIAGNOSTIC 0
+#endif
+#if A04_SHARED_VOICE_DIAGNOSTIC && (!A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC || !defined(A04_MT6392_UNMUTE_DIAGNOSTIC) || !A04_MT6392_UNMUTE_DIAGNOSTIC)
+#error Voice diagnostic requires codec domain and Class D diagnostic unmute
+#endif
+#if A04_SHARED_VOICE_DIAGNOSTIC
+#include "codec_voice.h"
+#endif
 #ifndef A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC
 #define A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC 0
 #endif
@@ -106,6 +115,9 @@
 typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; struct a04_usb_owner usb;
 #if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 struct a04_codec_domain codecDomain;
+#if A04_SHARED_VOICE_DIAGNOSTIC
+struct a04_codec_voice voice;
+#endif
 #endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
 struct a04_shared_thermal_owner thermal;EX_RUNDOWN_REF thermalRundown;BOOLEAN thermalRundownClosed;
@@ -249,8 +261,41 @@ static int ParentDomainWrite(void *context,unsigned offset,uint32_t value) {
     WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+offset),value);return 0;
 }
 #endif
+#if A04_SHARED_VOICE_DIAGNOSTIC
+/* No AU_LOL calibration provider or downstream route proof exists yet.
+ * This must remain a rejection until both are independently established. */
+static int ParentVoiceVerify(void *context,int16_t *value,unsigned *cap) {
+    UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(value);UNREFERENCED_PARAMETER(cap);
+    return -1;
+}
+static int ParentVoiceAfeRead(void *context,unsigned offset,uint32_t *value) {
+    A04_PARENT_CONTEXT *c=context;
+    if(!c || !c->audioAfe || !value || (offset!=0xf00 && offset!=0xf0c && offset!=0xf2c))return -1;
+    *value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->audioAfe+offset));return 0;
+}
+static int ParentVoiceAfeWrite(void *context,unsigned offset,uint32_t value) {
+    A04_PARENT_CONTEXT *c=context;
+    if(!c || !c->audioAfe || (offset!=0xf00 && offset!=0xf0c && offset!=0xf2c))return -1;
+    WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->audioAfe+offset),value);return 0;
+}
+static int ParentVoiceDelay(void *context,unsigned us) {
+    LARGE_INTEGER interval;
+    if(!context || (us!=400 && us!=2000) || KeGetCurrentIrql()>APC_LEVEL)return -1;
+    interval.QuadPart=-(LONGLONG)us*10;
+    return KeDelayExecutionThread(KernelMode,FALSE,&interval)==STATUS_SUCCESS?0:-1;
+}
+static struct a04_codec_voice_io ParentVoiceIo(A04_PARENT_CONTEXT *c) {
+    struct a04_codec_voice_io io={{c,ParentDomainRead,ParentDomainWrite},
+        {c,ParentVoiceAfeRead,ParentVoiceAfeWrite,ParentVoiceDelay},ParentVoiceVerify};
+    return io;
+}
+#endif
 static int ParentCodecStart(void *context) {
     A04_PARENT_CONTEXT *c=context;struct a04_mt6392_audio_rails rails;
+#if A04_SHARED_VOICE_DIAGNOSTIC
+    { int16_t value;unsigned cap;
+      if(ParentVoiceVerify(c,&value,&cap))return -1; }
+#endif
     if(!c || !c->pmic.online || a04_pmic_audio_rails(&c->pmic.bus,&rails))return -1;
     A04_TRACE("A04AUD codec rails vaud22=%04x selector=%04x vaud28=%04x\n",(unsigned)rails.vaud22,(unsigned)rails.vaud22_selector,(unsigned)rails.vaud28);
     if(!a04_pmic_audio_rails_ready(&rails))return -1;
@@ -266,12 +311,27 @@ static int ParentCodecStart(void *context) {
     return a04_mt6392_classd_start_muted(&c->classd);
 }
 #if defined(A04_MT6392_UNMUTE_DIAGNOSTIC) && A04_MT6392_UNMUTE_DIAGNOSTIC
-static int ParentCodecUnmute(void *context) { return a04_mt6392_classd_unmute_min(&((A04_PARENT_CONTEXT *)context)->classd); }
+static int ParentCodecUnmute(void *context) {
+    A04_PARENT_CONTEXT *c=context;
+#if A04_SHARED_VOICE_DIAGNOSTIC
+    struct a04_codec_voice_io io=ParentVoiceIo(c);
+    /* Child calls unmute only after starting its diagnostic DMA; Class D is muted. */
+    if(a04_codec_voice_start(&c->voice,&io))return -1;
+#endif
+    return a04_mt6392_classd_unmute_min(&c->classd);
+}
 #endif
 static int ParentCodecMute(void *context) { return a04_mt6392_classd_mute(&((A04_PARENT_CONTEXT *)context)->classd); }
 static int ParentCodecStop(void *context) {
     A04_PARENT_CONTEXT *c=context;
-    if(!c || a04_mt6392_classd_stop(&c->classd))return -1;
+    if(!c)return -1;
+#if A04_SHARED_VOICE_DIAGNOSTIC
+    if(c->voice.active) {
+        struct a04_codec_voice_io io=ParentVoiceIo(c);
+        if(a04_codec_voice_stop(&c->voice,&io))return -1;
+    }
+#endif
+    if(a04_mt6392_classd_stop(&c->classd))return -1;
 #if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
     {
         struct a04_codec_domain_io io={c,ParentDomainRead,ParentDomainWrite};

@@ -72,6 +72,11 @@ NTSTATUS WdfIoResourceRequirementsListAppendIoResList(WDFIORESREQLIST r,WDFIORES
 NTSTATUS WdfFdoAddStaticChild(WDFDEVICE p,WDFDEVICE c){(void)p;(void)c;return 0;}
 void WdfObjectDelete(void *p){(void)p;deleted++;}
 int main(void){
+#if A04_SHARED_VOICE_DIAGNOSTIC
+ { int16_t value=123;unsigned cap=9;int n=writes;
+   assert(ParentVoiceVerify(&testContext,&value,&cap));
+   assert(ParentCodecStart(&testContext));assert(writes==n && value==123 && cap==9); }
+#endif
  CM_PARTIAL_RESOURCE_DESCRIPTOR entries[5]={0},translated[5]={0};struct test_list list={entries,4},translatedList={translated,4};USHORT value=0xeeee;
 #if A04_SHARED_APMIXED_RESOURCE
  list.count=translatedList.count=5;
