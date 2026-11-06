@@ -73,7 +73,7 @@ def main():
   if sha(verify)!=sha(wim):raise ValueError('ESP WIM mismatch')
   bcd=t/'BCD';run([tools/'mcopy','-i',image,'::/EFI/Microsoft/Boot/BCD',bcd],env=env)
   expect(bcd,base['bcd_sha256'])
-  shutil.copyfile(BASE/'boot.img',out/'boot.img');shutil.copyfile(BASE/'boot-manifest.json',out/'boot-manifest.json');shutil.copyfile(BASE/'firmware-manifest.json',out/'firmware-manifest.json')
+  shutil.copyfile(Path(__file__).with_name('README-cpu-usb-observation.md'),out/'README.md');shutil.copyfile(BASE/'boot.img',out/'boot.img');shutil.copyfile(BASE/'boot-manifest.json',out/'boot-manifest.json');shutil.copyfile(BASE/'firmware-manifest.json',out/'firmware-manifest.json')
   m={'source_commit':manifest['source_commit'],'base_cpu_commit':'5341b16','uefi_commit':base['uefi_commit'],'base_wim_sha256':WIM,'base_esp_sha256':ESP,'boot_sha256':sha(out/'boot.img'),'wim_sha256':sha(wim),'esp_sha256':sha(image),'bcd_sha256':sha(bcd),'signer_sha1':thumb,'candidate_files':manifest['files'],'startnet_sha256':sha(start),'limitations':['CPU and USB share the one parent and WACS lock; timeout may poison the bus','VCDT conversion and charger I2C control remain unavailable','BQHR diagnostic occupies MOU0008 function-driver binding and cannot coexist with the fuel gauge driver; record is not proof of ownership','CHRSTATUS and VUSB are register snapshots, not a connector voltage measurement','UART queue delivery, target trust, PnP and coexistence are unverified','No hardware access was performed']}
   (out/'manifest.json').write_text(json.dumps(m,indent=2)+'\n')
  print(out)
