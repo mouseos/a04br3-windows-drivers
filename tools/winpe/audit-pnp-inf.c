@@ -2,12 +2,51 @@
  * Read-only audit of an already-loaded RAM copy of SYSTEM.  Missing values,
  * unknown encodings and missing catalog paths are reported, never guessed. */
 #include <windows.h>
+#include <winioctl.h>
 #include <wincrypt.h>
 static BYTE buf[8192];static HCRYPTPROV prov;
 static void out(const char*s){DWORD n=0,w;while(s[n])n++;WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),s,n,&w,0);}
 static void wide(const WCHAR*s){char c[2];c[1]=0;while(*s){c[0]=(*s>=32&&*s<127)?(char)*s:'?';out(c);s++;}}
 static int safe(const WCHAR*s,int slash){unsigned n=0;for(;*s;s++,n++)if(!((*s>=L'0'&&*s<=L'9')||(*s>=L'a'&&*s<=L'z')||(*s>=L'A'&&*s<=L'Z')||*s==L'.'||*s==L'_'||*s==L'-'||*s==L'{'||*s==L'}'||*s==L'&'||(slash&&*s==L'\\')))return 0;return n>0&&n<128;}
 static void hex(DWORD v){const char*h="0123456789ABCDEF";char s[9];int i;for(i=0;i<8;i++)s[i]=h[(v>>(28-i*4))&15];s[8]=0;out(s);}
+/* Logical sizes only: directory security, streams, allocation rounding and
+ * servicing side effects are not captured. Never use this as an update gate. */
+typedef struct {ULONGLONG bytes,files,dirs;DWORD error;} TREE_SIZE;
+static int scan_tree(WCHAR *path,unsigned depth,TREE_SIZE *s){WIN32_FIND_DATAW d;HANDLE h;DWORD error;unsigned base=(unsigned)lstrlenW(path),len;
+ if(depth>24||base+3>=1024){s->error=ERROR_BUFFER_OVERFLOW;return 0;}
+ path[base]=L'\\';path[base+1]=L'*';path[base+2]=0;h=FindFirstFileW(path,&d);path[base]=0;
+ if(h==INVALID_HANDLE_VALUE){s->error=GetLastError();return 0;}
+ do{ULONGLONG size;if(!lstrcmpW(d.cFileName,L".")||!lstrcmpW(d.cFileName,L".."))continue;
+  if(d.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT){s->error=ERROR_REPARSE_TAG_INVALID;goto fail;}
+  len=(unsigned)lstrlenW(d.cFileName);if(!len||base+1+len>=1024){s->error=ERROR_BUFFER_OVERFLOW;goto fail;}
+  path[base]=L'\\';lstrcpyW(path+base+1,d.cFileName);
+  if(d.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY){++s->dirs;if(!scan_tree(path,depth+1,s)){path[base]=0;goto fail;}}
+  else{size=((ULONGLONG)d.nFileSizeHigh<<32)|d.nFileSizeLow;if(s->bytes>~(ULONGLONG)0-size){s->error=ERROR_ARITHMETIC_OVERFLOW;path[base]=0;goto fail;}s->bytes+=size;++s->files;}
+  path[base]=0;
+ }while(FindNextFileW(h,&d));error=GetLastError();if(!FindClose(h)){s->error=GetLastError();return 0;}if(error!=ERROR_NO_MORE_FILES){s->error=error;return 0;}return 1;
+ fail:FindClose(h);return 0;
+}
+static void size64(ULONGLONG n){hex((DWORD)(n>>32));hex((DWORD)n);}
+static void tree_size(const char *label,const WCHAR *root){WCHAR path[1024];TREE_SIZE s;BYTE *p=(BYTE*)&s;unsigned i;DWORD attr,error;
+ for(i=0;i<sizeof(s);++i)p[i]=0;lstrcpyW(path,root);attr=GetFileAttributesW(path);error=attr==INVALID_FILE_ATTRIBUTES?GetLastError():0;out("BACKUP_SCOPE=");out(label);
+ if(attr==INVALID_FILE_ATTRIBUTES){out(" STATUS=STAT_ERROR CODE=");hex(error);out("\r\n");return;}
+ if(!(attr&FILE_ATTRIBUTE_DIRECTORY)||(attr&FILE_ATTRIBUTE_REPARSE_POINT)){out(" STATUS=UNSAFE_ROOT\r\n");return;}
+ if(!scan_tree(path,0,&s)){out(" STATUS=INCOMPLETE CODE=");hex(s.error);out("\r\n");return;}
+ out(" STATUS=COMPLETE LOGICAL_BYTES_HEX=");size64(s.bytes);out(" FILES_HEX=");size64(s.files);out(" DIRS_HEX=");size64(s.dirs);out("\r\n");}
+static void esp_space(void){HANDLE h;VOLUME_DISK_EXTENTS x;WCHAR fs[32];DWORD n=0,error;ULARGE_INTEGER free;
+ h=CreateFileW(L"\\\\.\\E:",GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,0,OPEN_EXISTING,0,0);
+ if(h==INVALID_HANDLE_VALUE){error=GetLastError();out("BACKUP_ESP_STATUS=OPEN_ERROR CODE=");hex(error);out("\r\n");return;}
+ if(!DeviceIoControl(h,IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS,0,0,&x,sizeof(x),&n,0)){error=GetLastError();CloseHandle(h);out("BACKUP_ESP_STATUS=EXTENTS_ERROR CODE=");hex(error);out("\r\n");return;}
+ if(!CloseHandle(h)){error=GetLastError();out("BACKUP_ESP_STATUS=CLOSE_ERROR CODE=");hex(error);out("\r\n");return;}
+ if(n<sizeof(x)||x.NumberOfDiskExtents!=1||x.Extents[0].DiskNumber!=0||x.Extents[0].StartingOffset.QuadPart!=184549376LL||x.Extents[0].ExtentLength.QuadPart!=268435456LL){out("BACKUP_ESP_STATUS=IDENTITY_MISMATCH\r\n");return;}
+ if(!GetVolumeInformationW(L"E:\\",0,0,0,0,0,fs,32)){error=GetLastError();out("BACKUP_ESP_STATUS=FS_ERROR CODE=");hex(error);out("\r\n");return;}
+ if(lstrcmpiW(fs,L"FAT32")){out("BACKUP_ESP_STATUS=FS_MISMATCH\r\n");return;}
+ if(!GetDiskFreeSpaceExW(L"E:\\",&free,0,0)){error=GetLastError();out("BACKUP_ESP_STATUS=SPACE_ERROR CODE=");hex(error);out("\r\n");return;}
+ out("BACKUP_ESP_STATUS=IDENTIFIED FREE_BYTES_HEX=");size64(free.QuadPart);out("\r\n");}
+static void space(void){ULARGE_INTEGER free,total;DWORD error;BOOL ok=GetDiskFreeSpaceExW(L"C:\\",&free,&total,0);error=ok?0:GetLastError();out("BACKUP_WINDOWS_FREE_BYTES_HEX=");if(ok)size64(free.QuadPart);else{out("ERROR_");hex(error);}out("\r\n");
+ esp_space();
+ out("BACKUP_SCOPE_SIZE_LOGICAL_ONLY_NOT_AUTHORIZATION\r\n");
+ tree_size("DRIVERSTORE",L"C:\\Windows\\System32\\DriverStore");tree_size("INF",L"C:\\Windows\\INF");tree_size("CATROOT",L"C:\\Windows\\System32\\CatRoot");tree_size("CATROOT2",L"C:\\Windows\\System32\\CatRoot2");tree_size("REGISTRY_CONFIG",L"C:\\Windows\\System32\\config");}
 static int hash(const WCHAR*path){HANDLE f;HCRYPTHASH h=0;BYTE d[32];DWORD n,z=32,i;BY_HANDLE_FILE_INFORMATION inf;int ok=0;
  f=CreateFileW(path,GENERIC_READ,FILE_SHARE_READ,0,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,0);if(f==INVALID_HANDLE_VALUE){out("OPEN_ERROR_");hex(GetLastError());return 0;}
  if(!GetFileInformationByHandle(f,&inf)||inf.nNumberOfLinks!=1||(inf.dwFileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_OFFLINE)))goto done;
@@ -49,8 +88,8 @@ static void instance(HKEY root,const WCHAR*cs,const WCHAR*id,const WCHAR*name){W
  catalog_store(cat);
 }
 static void device(HKEY root,const WCHAR*cs,const WCHAR*id){WCHAR path[320],name[128];DWORD index=0,n;HKEY k;LONG rc;
- lstrcpyW(path,cs);lstrcatW(path,L"\\Enum\\");lstrcatW(path,id);rc=RegOpenKeyExW(root,path,0,KEY_READ,&k);if(rc!=ERROR_SUCCESS){out("PNP_ENUM_ABSENT_OR_ERROR=");wide(id);out("\r\n");return;}
- for(;;){n=128;rc=RegEnumKeyExW(k,index++,name,&n,0,0,0,0);if(rc==ERROR_NO_MORE_ITEMS)break;if(rc!=ERROR_SUCCESS||!safe(name,0)){out("PNP_ENUM_INCOMPLETE\r\n");break;}instance(root,cs,id,name);}RegCloseKey(k);
+ lstrcpyW(path,cs);lstrcatW(path,L"\\Enum\\");lstrcatW(path,id);rc=RegOpenKeyExW(root,path,0,KEY_READ,&k);if(rc!=ERROR_SUCCESS){out(rc==ERROR_FILE_NOT_FOUND?"PNP_ENUM_ABSENT=":"PNP_ENUM_OPEN_ERROR=");wide(id);if(rc!=ERROR_FILE_NOT_FOUND){out(" CODE=");hex((DWORD)rc);}out("\r\n");return;}
+ for(;;){n=128;rc=RegEnumKeyExW(k,index++,name,&n,0,0,0,0);if(rc==ERROR_NO_MORE_ITEMS){if(index==1){out("PNP_ENUM_EMPTY=");wide(id);out("\r\n");}break;}if(rc!=ERROR_SUCCESS||!safe(name,0)){out("PNP_ENUM_INCOMPLETE=");wide(id);out(" CODE=");hex((DWORD)rc);out("\r\n");break;}instance(root,cs,id,name);}RegCloseKey(k);
 }
 static void service(HKEY root,const WCHAR*cs,const WCHAR*name){WCHAR p[320],data[512];HKEY k;DWORD n,type,v;LONG e;
  lstrcpyW(p,cs);lstrcatW(p,L"\\Services\\");lstrcatW(p,name);out("SERVICE=");wide(name);out("\r\n");e=RegOpenKeyExW(root,p,0,KEY_READ,&k);if(e!=ERROR_SUCCESS){out("SERVICE_OPEN_ERROR=");hex(e);out("\r\n");return;}
@@ -65,4 +104,5 @@ void mainCRTStartup(void){HKEY root,sel;DWORD current=0,n=sizeof(current),type=0
  if(!CryptAcquireContextW(&prov,0,0,PROV_RSA_AES,CRYPT_VERIFYCONTEXT)){RegCloseKey(root);ExitProcess(3);}
  service(root,cs,L"Mt8167Toprgu");service(root,cs,L"Mt8167Shared");service(root,cs,L"Bu21025Shared");service(root,cs,L"mshidkmdf");
  device(root,cs,L"ACPI\\MOU0004");device(root,cs,L"ACPI\\MOU0005");device(root,cs,L"ACPI\\BEN0001");device(root,cs,L"MT8167\\BU21025");
+ space();
  CryptReleaseContext(prov,0);RegCloseKey(root);out("PNP_SCOPE_KNOWN_IDS_ONLY_CATALOG_MEMBERSHIP_UNVERIFIED\r\n");ExitProcess(0);}

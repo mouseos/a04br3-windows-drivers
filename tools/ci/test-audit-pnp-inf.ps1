@@ -25,6 +25,9 @@ try {
  & lld-link /subsystem:console /machine:x64 /entry:mainCRTStartup /nodefaultlib "$base\fixture.obj" "$lib\kernel32.lib" "$lib\advapi32.lib" "/out:$base\fixture.exe"
  if($LASTEXITCODE){throw 'link failed'}
  $lines=& "$base\fixture.exe";if($LASTEXITCODE){throw 'audit failed'}
+ if(!($lines -contains 'PNP_ENUM_ABSENT=ACPI\BEN0001')){throw 'missing parent enumeration not distinguished'}
+ if(!($lines -contains 'BACKUP_SCOPE=DRIVERSTORE STATUS=COMPLETE LOGICAL_BYTES_HEX=000000000000000D FILES_HEX=0000000000000001 DIRS_HEX=0000000000000002')){throw "DriverStore size mismatch: $($lines -join ' | ')"}
+ if(!($lines -match '^BACKUP_SCOPE=CATROOT2 STATUS=STAT_ERROR CODE=') -or !($lines -contains 'BACKUP_SCOPE_SIZE_LOGICAL_ONLY_NOT_AUTHORIZATION')){throw 'size failure or scope warning missing'}
  $ih=(Get-FileHash -Algorithm SHA256 'R:\Windows\INF\oem42.inf').Hash;$ch=(Get-FileHash -Algorithm SHA256 'R:\Windows\System32\CatRoot\{F750E6C3-38EE-11D1-85E5-00C04FC295EE}\fixture.cat').Hash
  if(!($lines -contains 'PNP_CONTROLSET=ControlSet007') -or !($lines -contains 'SERVICE_START=00000000') -or !($lines -contains "PNP_INF=oem42.inf SHA256=$ih") -or !($lines -contains "PNP_CATALOG=fixture.cat SHA256=$ch")){throw "identity/hash mismatch: $($lines -join ' | ')"}
  $sh=(Get-FileHash -Algorithm SHA256 'R:\Windows\System32\DriverStore\FileRepository\fixture.inf_arm_abc\fixture.cat').Hash

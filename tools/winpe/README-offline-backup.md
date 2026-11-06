@@ -85,6 +85,8 @@ recovery上でESPを一時的に読取り専用マウントし、`A04BACKUP` が
 
 `preflight-offline-update.cmd` は基準SYS・INFの照合、hiveのRAMコピー、PnP参照の確認とコピーのunload、候補3 SYS・証明書ピンとWinPE署名の確認を順に実行する。どの段階も搭載OSへの適用を行わない。PnP検査が失敗してもRAM hiveのunloadを試み、unload失敗を独立して報告する。成功は非原子的なRAMコピー、Driver Store全体の復旧、RT署名受理、OS更新の成功を意味しない。
 
+`audit-pnp-inf.exe` はRAM上のSYSTEMについて列挙キーの不在、列挙エラー、空キーを区別する。DriverStore・INF・CatRoot・CatRoot2・configの通常ファイルの論理サイズとC:空きを報告する。E:が既に存在する場合はディスク範囲・FAT32照合後に空きを報告し、それ以外は理由を出す。再解析点、読取エラー、過大な深さやパスは集計不完全として報告する。これはファイル内容の読取り、代替ストリーム・ACL・クラスタ丸め・DISMの変更範囲や排他的スナップショットを含む必要容量の証明ではなく、容量不足検査の成功や更新許可には使えない。
+
 更新前検査は `offline-package-pins.exe` で `X:\a04br3\update\packages` 内のtoprgu・parent・touch各SYS/INF/CAT計9ファイルを組込みSHA-256と照合する。これは事前のCAT所属検証と同一バイト列であることの確認であり、搭載RTの署名受理や対象PnPへの適合を証明しない。読取り中は各ファイルを共有書込みなしで開くが、検査終了後の変更や別経路のファイル使用は防がない。媒体生成時には同じ固定候補を所定のパスに配置し、実際の適用時にも入力の結び付きを保証する必要がある。現時点では未完成の適用経路に対するガードであり、実機更新可能を意味しない。
 
 `offline-stage-drivers.exe` は、有効なINTENT、現状基準、RAM hiveのPnP基準、候補SYS・証明書ピンおよびWinPE署名の各ガードが成功した場合に限り、3 SYSを固定の `.a04restore` 一時パスへ新規作成する。候補の読取り中に排他し、コピー前後のSHA-256、各ファイルとC:のflushを確認する。既存SYSは置換しない。一時配置途中の停止後は、INTENTを検証した復旧処理がこれらのパスを取り除き、元ファイル・不在状態を再生する。RAM hiveのロードとunloadは呼出側の責任である。これは完成したDriver Store/PnP適用経路ではなく、更新やOS起動の成功を意味しない。
