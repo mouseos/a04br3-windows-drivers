@@ -1,6 +1,12 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #ifndef A04_DISPLAY_RESOURCES_HXX
 #define A04_DISPLAY_RESOURCES_HXX
+#ifndef A04_GE8300_WDDM_LIVE_FULL_PRESENT
+#define A04_GE8300_WDDM_LIVE_FULL_PRESENT 0
+#endif
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT && (!A04_GE8300_WDDM_WIDE_REPEAT || !A04_GE8300_WDDM_GPU_DIRECT_POST || !A04_GE8300_WDDM_EXPLICIT_GPU_FLUSH)
+#error Live full presents require repeated wide frames and owned direct POST
+#endif
 #ifndef A04_GE8300_WDDM_WIDE_REPEAT
 #define A04_GE8300_WDDM_WIDE_REPEAT 0
 #endif
@@ -129,6 +135,10 @@ struct A04DisplayResources {
     BOOLEAN SharedCommonFinished;
     NTSTATUS SharedCommonResult;
     void *SharedCommonOwner;
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+    BOOLEAN LiveReady,LiveFaulted;uint32_t LiveFrames;
+    NTSTATUS SubmitLiveFrame(const void *pixels,uint32_t pitch);
+#endif
 #if A04_GE8300_WDDM_PRESENT_CAPTURE
     const uint32_t *PresentCapture;BOOLEAN PresentCaptureConsumed;
 #endif

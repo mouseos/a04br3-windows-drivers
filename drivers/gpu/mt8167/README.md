@@ -576,3 +576,15 @@ completed hardware sequences and lifetime state. This renews frame metadata;
 it does not retire the published MMU root or release either DMA mapping.
 Errors keep the mappings retained and stop the diagnostic. Default builds
 remain single-frame. This is not normal Windows rendering or a 3D driver.
+
+`A04_GE8300_WDDM_LIVE_FULL_PRESENT=1` additionally routes identity-oriented
+800x1280 full dirty rectangles from the synchronous Windows DOD path to the
+wide GPU copy after the startup diagnostic passes and POST is restored.
+The source MDL and present mutex stay held through upload, GPU completion and
+seal. The first three actual DOD source frames are compared pixel by pixel.
+Unsupported geometry and partial updates use the existing CPU path. Once a
+GPU error occurs, further presents fail instead of racing CPU writes against
+uncertain GPU access. Mappings stay retained; normal power/resume, removal,
+all partial-update acceleration and 3D remain unfinished. The accompanying
+Win32 GDI workload creates eight changing full-screen images without user
+input. Its successful exit alone is not evidence of GPU rendering.

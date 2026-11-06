@@ -526,6 +526,75 @@ done:
     if(file)ObDereferenceObject(file);ExFreePoolWithTag(tile,'fG4A');return status;
 }
 #endif
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+static NTSTATUS LiveFrameIoctl(HANDLE handle,ULONG code,void *data,ULONG input,ULONG output)
+{
+    IO_STATUS_BLOCK io={};PFILE_OBJECT file=NULL;NTSTATUS status;
+    status=ObReferenceObjectByHandle(handle,SYNCHRONIZE,*IoFileObjectType,KernelMode,(PVOID *)&file,NULL);
+    if(!NT_SUCCESS(status))return status;
+    status=ZwDeviceIoControlFile(handle,NULL,NULL,NULL,&io,code,data,input,data,output);
+    if(status==STATUS_PENDING) {
+        do{status=KeWaitForSingleObject(file,Executive,KernelMode,FALSE,NULL);}while(status!=STATUS_SUCCESS);
+        status=io.Status;
+    } else if(NT_SUCCESS(status))status=io.Status;
+    ObDereferenceObject(file);
+    if(NT_SUCCESS(status) && io.Information!=output)status=STATUS_IO_DEVICE_ERROR;
+    return status;
+}
+/* Present mutex and source MDL are held by the DOD caller until return.
+ * All mappings remain retained across frames and any failure. */
+NTSTATUS A04DisplayResources::SubmitLiveFrame(const void *pixels,uint32_t pitch)
+{
+    A04CommonFrameOwner *owner=(A04CommonFrameOwner *)SharedCommonOwner;
+    struct a04_ge8300_shared_wide_frame *image=NULL;
+    struct a04_ge8300_frame_begin begin={};struct a04_ge8300_frame_seal seal={};
+    NTSTATUS status;uint32_t matches=0;ULONGLONG began=KeQueryInterruptTime();
+    if(!LiveReady)return STATUS_NOT_SUPPORTED;
+    if(LiveFaulted)return STATUS_IO_DEVICE_ERROR;
+    if(!owner || !owner->sealed || !owner->cpu || !owner->shared.mdl ||
+       !owner->shared.gpu_adapter || !owner->mapRegisterBase || !GpuHandle ||
+       !DirectPostActive || !Lease.token || owner->frame==UINT32_MAX ||
+       !pixels || pitch<3200u || pitch>MAXULONG/1280u || (pitch&3u) ||
+       KeGetCurrentIrql()!=PASSIVE_LEVEL || KeAreAllApcsDisabled()) {
+        LiveFaulted=TRUE;return STATUS_INVALID_DEVICE_STATE;
+    }
+    image=(struct a04_ge8300_shared_wide_frame *)ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*image),'lG4A');
+    if(!image)return STATUS_INSUFFICIENT_RESOURCES;
+    image->token=Lease.token;image->frame=owner->frame+1u;image->task=0;image->flush=0;
+    for(uint32_t y=0;y<1280u;y++)RtlCopyMemory(image->pixels+y*800u,(const UCHAR *)pixels+y*pitch,3200u);
+    begin.token=Lease.token;begin.frame=owner->frame;begin.task=owner->task;begin.flush=owner->flush;
+    begin.next_frame=image->frame;
+    status=LiveFrameIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_FRAME_BEGIN,&begin,sizeof(begin),sizeof(begin));
+    if(!NT_SUCCESS(status))goto done;
+    owner->sealed=FALSE;owner->cpuMatches=0;
+    status=LiveFrameIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_WIDE_FRAME,image,sizeof(*image),A04_GE8300_WIDE_HEADER_BYTES);
+    if(!NT_SUCCESS(status) || !image->task || !image->flush) {
+        if(NT_SUCCESS(status))status=STATUS_IO_DEVICE_ERROR;goto done;
+    }
+    seal.token=Lease.token;seal.frame=image->frame;seal.task=image->task;seal.flush=image->flush;
+    status=LiveFrameIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_FRAME_SEAL,&seal,sizeof(seal),sizeof(seal));
+    if(!NT_SUCCESS(status))goto done;
+    status=owner->shared.gpu_adapter->DmaOperations->FlushAdapterBuffersEx(
+        owner->shared.gpu_adapter,owner->shared.mdl,owner->mapRegisterBase,0,4096000u,FALSE);
+    if(!NT_SUCCESS(status))goto done;
+    KeFlushIoBuffers(owner->shared.mdl,TRUE,TRUE);KeMemoryBarrier();
+    /* Verify actual DOD source frames, not the startup diagnostic pattern.
+     * Keep this bounded; subsequent frames still require GPU/flush fences. */
+    if(LiveFrames<3u) {
+        for(uint32_t i=0;i<1024000u;i++)if(((volatile uint32_t *)owner->cpu)[i]==image->pixels[i])matches++;
+        A04DisplayTrace(0xb2,(NTSTATUS)matches);
+        if(matches!=1024000u){status=STATUS_DATA_ERROR;goto done;}
+        owner->cpuMatches=matches;
+    }
+    owner->frame=image->frame;owner->task=image->task;owner->flush=image->flush;owner->sealed=TRUE;
+    LiveFrames++;
+done:
+    A04DisplayTrace(0xb0,(NTSTATUS)LiveFrames);A04DisplayTrace(0xb1,status);
+    A04DisplayTrace(0xb3,(NTSTATUS)((KeQueryInterruptTime()-began)/10000u));
+    if(!NT_SUCCESS(status))LiveFaulted=TRUE;
+    ExFreePoolWithTag(image,'lG4A');return status;
+}
+#endif
 NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(struct a04_ge8300_common_page *page)
 {
     PDMA_ADAPTER gpu=(PDMA_ADAPTER)page->gpu_adapter;PDEVICE_OBJECT gpuPdo=(PDEVICE_OBJECT)page->gpu_pdo;

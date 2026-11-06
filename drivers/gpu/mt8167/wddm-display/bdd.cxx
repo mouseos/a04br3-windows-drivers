@@ -180,6 +180,11 @@ NTSTATUS BASIC_DISPLAY_DRIVER::ShowVerifiedGpuFrame()
     (void)KeWaitForSingleObject(&m_SharedWorkerStop,Executive,KernelMode,FALSE,&timeout);
     RtlCopyMemory((void *)pixels,m_DisplayResources.PostBackup,4096000u);
     KeMemoryBarrier();A04DisplayTrace(0x82,STATUS_SUCCESS);
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+    if(!KeReadStateEvent(&m_SharedWorkerStop)) {
+        m_DisplayResources.LiveReady=TRUE;A04DisplayTrace(0xb4,STATUS_SUCCESS);
+    }
+#endif
     return STATUS_SUCCESS;
 #endif
     if(KeReadStateEvent(&m_SharedWorkerStop) || !m_Flags.DriverStarted ||
@@ -687,6 +692,19 @@ NTSTATUS BASIC_DISPLAY_DRIVER::SetPointerShape(_In_ CONST DXGKARG_SETPOINTERSHAP
 
     return STATUS_NOT_IMPLEMENTED;
 }
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+/* Called only by the synchronous DOD path with m_PresentMutex held. */
+NTSTATUS BASIC_DISPLAY_DRIVER::TryGpuFullPresent(const void *pixels,uint32_t pitch,void *destination,uint32_t stride)
+{
+    const CURRENT_BDD_MODE *mode=&m_CurrentModes[0];
+    if(!m_Flags.DriverStarted || m_AdapterPowerState!=PowerDeviceD0 ||
+       m_MonitorPowerState!=PowerDeviceD0 || KeReadStateEvent(&m_SharedWorkerStop) ||
+       mode->DispInfo.Width!=800u || mode->DispInfo.Height!=1280u || stride!=3200u ||
+       destination!=mode->FrameBuffer.Ptr || mode->DispInfo.PhysicAddress.QuadPart!=m_DisplayResources.PostPhys.QuadPart)
+        return STATUS_NOT_SUPPORTED;
+    return m_DisplayResources.SubmitLiveFrame(pixels,pitch);
+}
+#endif
 NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DISPLAYONLY* pPresentDisplayOnly)
 {
     PAGED_CODE();
@@ -698,6 +716,9 @@ NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DIS
     if (!pPresentDisplayOnly || pPresentDisplayOnly->VidPnSourceId >= MAX_VIEWS)
         return STATUS_INVALID_PARAMETER;
     if (!m_Flags.DriverStarted) return STATUS_DEVICE_NOT_READY;
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+    if(m_DisplayResources.LiveFaulted)return STATUS_IO_DEVICE_ERROR;
+#endif
 
     if (pPresentDisplayOnly->BytesPerPixel < MIN_BYTES_PER_PIXEL_REPORTED)
     {
@@ -800,6 +821,9 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StopDeviceAndReleasePostDisplayOwnership(_In_  D3
     if (!NT_SUCCESS(status)) return status;
     A04PresentGuard guard(&m_PresentMutex);
     if (!m_Flags.DriverStarted) return STATUS_DEVICE_NOT_READY;
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+    if(m_DisplayResources.LiveFaulted)return STATUS_IO_DEVICE_ERROR;
+#endif
     D3DDDI_VIDEO_PRESENT_SOURCE_ID SourceId = FindSourceForTarget(TargetId, TRUE);
     if (SourceId >= MAX_VIEWS) return STATUS_INVALID_DEVICE_STATE;
 

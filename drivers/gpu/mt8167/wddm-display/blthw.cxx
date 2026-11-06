@@ -78,7 +78,7 @@ struct DoPresentMemory
     BDD_HWBLT*                DisplaySource;
 };
 
-void
+NTSTATUS
 HwExecutePresentDisplayOnly(
     HANDLE Context);
 
@@ -414,8 +414,7 @@ BDD_HWBLT::ExecutePresentDisplayOnly(
         ctx->Mdl = mdl;
     }
 
-    HwExecutePresentDisplayOnly((PVOID)ctx);
-    return STATUS_SUCCESS;
+    return HwExecutePresentDisplayOnly((PVOID)ctx);
 }
 
 
@@ -486,7 +485,7 @@ HwContextWorkerThread(
 }
 
 
-void
+NTSTATUS
 HwExecutePresentDisplayOnly(
     HANDLE Context)
 /*++
@@ -541,6 +540,20 @@ HwExecutePresentDisplayOnly(
     }
 
 
+    NTSTATUS presentStatus=STATUS_NOT_SUPPORTED;
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+    if(ctx->SynchExecution && ctx->SourceID==0 && ctx->SrcWidth==800 && ctx->SrcHeight==1280 &&
+       ctx->Rotation==D3DKMDT_VPPR_IDENTITY && ctx->DstBitPerPixel==32 && !ctx->NumMoves) {
+        for(UINT i=0;i<ctx->NumDirtyRects;i++)if(ctx->DirtyRect[i].left==0 && ctx->DirtyRect[i].top==0 &&
+           ctx->DirtyRect[i].right==800 && ctx->DirtyRect[i].bottom==1280) {
+            presentStatus=((BASIC_DISPLAY_DRIVER *)ctx->hAdapter)->TryGpuFullPresent(
+                ctx->SrcAddr,(uint32_t)ctx->SrcPitch,ctx->DstAddr,ctx->DstStride);break;
+        }
+    }
+#endif
+    // A GPU error may leave hardware exposed. Never race it with CPU fallback.
+    // Only NOT_SUPPORTED means that no live GPU work was attempted.
+    if(presentStatus==STATUS_NOT_SUPPORTED) {
     // Copy all the scroll rects from source image to video frame buffer.
     for (UINT i = 0; i < ctx->NumMoves; i++)
     {
@@ -566,6 +579,8 @@ HwExecutePresentDisplayOnly(
        ctx->DirtyRect[0].right==800 && ctx->DirtyRect[0].bottom==1280 && ctx->SrcPitch>=3200)
         (void)((BASIC_DISPLAY_DRIVER *)ctx->hAdapter)->SubmitSharedPresent(ctx->SrcAddr,(uint32_t)ctx->SrcPitch);
 #endif
+    presentStatus=STATUS_SUCCESS;
+    }
     // Unmap unmap and unlock the pages.
     if (ctx->Mdl)
     {
@@ -583,8 +598,9 @@ HwExecutePresentDisplayOnly(
     {
         // TRUE == completed
         // This code is emulates interrupt which HW should generate
-        ReportPresentProgress(ctx->hAdapter,ctx->SourceID,TRUE);
+        ReportPresentProgress(ctx->hAdapter,ctx->SourceID,NT_SUCCESS(presentStatus));
     }
 
     delete [] reinterpret_cast<BYTE*>(ctx);
+    return presentStatus;
 }
