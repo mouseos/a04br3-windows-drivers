@@ -157,6 +157,14 @@ jobs:
           $env:A04_SHARED_BUTTON_D0_EXPERIMENT='1'
           $env:A04_SHARED_TOUCH_D0_EXPERIMENT='1'
           $env:A04_SHARED_APMIXED_RESOURCE='1'
+          $env:A04_AUDIO_CHILD_RESOURCES='1'
+          $env:A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC='1'
+          $env:A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC='1'
+          $env:A04_SHARED_AUDIO_IRQ_PREP_DIAGNOSTIC='1'
+          $env:A04_SHARED_MT6392_DIAGNOSTIC='1'
+          $env:A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC='1'
+          $env:A04_MT6392_CLK_ALIAS_EXPERIMENT='0'
+          $env:A04_MT6392_UNMUTE_DIAGNOSTIC='0'
           $env:A04_USB_POWER_OBSERVATION='1'
           $env:A04_USB_POWER_IOCTL='1'
           $env:A04_AUDIO_DIAGNOSTIC_TRACE='1'
@@ -200,7 +208,7 @@ jobs:
           $exeSig=Get-AuthenticodeSignature $exe
           if(!$exeSig.SignerCertificate -or $exeSig.SignerCertificate.Thumbprint -ne $cert.Thumbprint){throw 'Utility signer mismatch'}
           $hashes=@{}; Get-ChildItem $out -Recurse -File | ForEach-Object { $name=$_.FullName.Substring($out.Length+1).Replace('\','/');$hashes[$name]=(Get-FileHash $_.FullName -Algorithm SHA256).Hash }
-          [ordered]@{source_commit=(git rev-parse HEAD); parent_flags=@{query=1;children=1;button_d0=1;touch_d0=1;apmixed=1;observation=1;ioctl=1;audio_trace=1;gpio22_source=0;other_optional=0};touch_flags=@{shared_parent=1;trace=1;thermal_lease=0};signer_sha1=$cert.Thumbprint;files=$hashes;note='Self-signed candidate, not a complete WinPE image. Compare firmware resources and every parent/touch flag with the known-working GPU candidate. UART delivery and target trust/PnP are unverified.'} | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+          [ordered]@{source_commit=(git rev-parse HEAD); parent_flags=@{query=1;children=1;button_d0=1;touch_d0=1;apmixed=1;audio_child=1;audio_top=1;audio_afe=1;audio_irq=1;mt6392=1;codec_domain=1;clock_alias=0;unmute=0;observation=1;ioctl=1;audio_trace=1;gpio22_source=0;other_optional=0};touch_flags=@{shared_parent=1;trace=1;thermal_lease=0};signer_sha1=$cert.Thumbprint;files=$hashes;note='Self-signed candidate, not a complete WinPE image. Compare firmware resources and every parent/touch flag with the known-working GPU candidate. UART delivery and target trust/PnP are unverified.'} | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
       - uses: actions/upload-artifact@v4
         with:
           name: usb-power-touch-integration-test-signed
