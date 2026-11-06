@@ -77,3 +77,6 @@ recovery-native-stage --run /tmp/<fresh-stage>は主担当が実行する。自�
 namespace不可、未知custom FW path、chroot/bind失敗はvendor load前に明示終了。FW pathは空(default)、/vendor/firmware、/system/vendor/firmware、/lib/firmwareを扱う。これはsource firmware_classの同期filp_open経路向けのviewであり、実RecoveryのKM/FW互換確認を代替しない。launcher自体もNDKで最終link済みだが、実機のnamespace/chroot動作は未試験。
 
 prepare-recovery-native-capture.pyに--plan-directory <新規root内dir>を渡すと、実serialを埋めたcommand-manifest.jsonとREA scenario-vendor-direct.json/scenario-preflight.jsonも作る。生成だけでADBを実行しない。主担当がKM互換を確認し、staging_commands_NOT_EXECUTEDを順番に実行した後、rea_cli_capture_NOT_EXECUTEDを一回実行する。launcherが環境を設定するため、launcher自身へLD_PRELOADを設定しない。回収元は/tmp/<stage>/runtime/capture-01.bin。GPU-only資源などの未捕捉はunknownのまま残す。
+
+
+実Recovery試験で初回preloadはmain前にalarm終了した。API26 buildのobserverには__emutls_get_addressがあり、mmap等の入口で先にTLSを参照する実装はTLS用allocationと再入する。修正版は実SDK29に合わせAPI29 native initial-exec TLS、-fno-emulated-tlsを用い、trace_fd未初期化時はTLSに触れずsyscallへ転送する。これによりobserverの最低runtimeはAPI29。旧API26 binaryを今回のcaptureに使わない。

@@ -12,7 +12,7 @@ def main():
     ap.add_argument("--ndk",type=Path,required=True)
     ap.add_argument("--output",type=Path,required=True)
     args=ap.parse_args();source=Path(__file__).resolve().parent
-    compiler=args.ndk.resolve()/"toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang"
+    compiler=args.ndk.resolve()/"toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang"
     if not compiler.is_file():ap.error("complete NDK LLVM prebuilt/sysroot required")
     out=args.output.resolve();out.mkdir(parents=True,exist_ok=True)
     temporary=out/"tmp";temporary.mkdir(exist_ok=True)
@@ -26,7 +26,7 @@ def main():
     for name,flags in products.items():
         c=source/(name.removesuffix(".so")+".c")
         manifest["sources"][c.name]=hashlib.sha256(c.read_bytes()).hexdigest()
-        cmd=[str(compiler),"-std=gnu11","-O2","-Wall","-Wextra","-Werror",
+        cmd=[str(compiler),"-std=gnu11","-fno-emulated-tls","-O2","-Wall","-Wextra","-Werror",
              str(c),*flags,"-Wl,-z,defs","-o",str(out/name)]
         subprocess.run(cmd,env=env,check=True)
         manifest["commands"].append(cmd)

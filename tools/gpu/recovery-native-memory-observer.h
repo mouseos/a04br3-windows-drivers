@@ -24,7 +24,7 @@ static struct mem_cpu mem_cpus[MEM_SLOTS];
 static unsigned mem_epochs[MEM_FDS],mem_unknown,mem_journal,mem_read_total;
 static uint64_t mem_next_id;
 static size_t mem_pagesize;
-static _Thread_local int mem_inside;
+static _Thread_local int mem_inside __attribute__((tls_model("initial-exec")));
 static unsigned char mem_scratch[MEM_SPAN];
 static int mem_fd_ok(int fd) { return fd>=0 && (unsigned)fd<MEM_FDS; }
 static int mem_range(uint64_t a,uint64_t n) { return n && n<=UINT64_MAX-a; }
@@ -255,7 +255,7 @@ static void mem_snapshot(unsigned seq)
 #ifndef A04_MEMORY_REGISTRY_TEST
 void *mmap(void *addr,size_t size,int prot,int flags,int fd,off_t offset)
 {
-    void *v;int error;if(mem_inside || trace_fd<0)return (void *)syscall(SYS_mmap,addr,size,prot,flags,fd,offset);
+    void *v;int error;if(trace_fd<0 || mem_inside)return (void *)syscall(SYS_mmap,addr,size,prot,flags,fd,offset);
     mem_inside++;pthread_mutex_lock(&lock);
     v=(void *)syscall(SYS_mmap,addr,size,prot,flags,fd,offset);error=errno;
     mem_map_result(v,size,prot,flags,fd,(uint64_t)offset);
@@ -265,21 +265,21 @@ void *mmap64(void *addr,size_t size,int prot,int flags,int fd,off64_t offset)
 { return mmap(addr,size,prot,flags,fd,(off_t)offset); }
 int munmap(void *addr,size_t size)
 {
-    int rc,error;if(mem_inside || trace_fd<0)return (int)syscall(SYS_munmap,addr,size);
+    int rc,error;if(trace_fd<0 || mem_inside)return (int)syscall(SYS_munmap,addr,size);
     mem_inside++;pthread_mutex_lock(&lock);rc=(int)syscall(SYS_munmap,addr,size);error=errno;
     if(!rc)mem_unmap_result((uintptr_t)addr,size);
     pthread_mutex_unlock(&lock);mem_inside--;errno=error;return rc;
 }
 int mprotect(void *addr,size_t size,int prot)
 {
-    int rc,error;if(mem_inside || trace_fd<0)return (int)syscall(SYS_mprotect,addr,size,prot);
+    int rc,error;if(trace_fd<0 || mem_inside)return (int)syscall(SYS_mprotect,addr,size,prot);
     mem_inside++;pthread_mutex_lock(&lock);rc=(int)syscall(SYS_mprotect,addr,size,prot);error=errno;
     if(!rc)mem_protect_result((uintptr_t)addr,size,prot);
     pthread_mutex_unlock(&lock);mem_inside--;errno=error;return rc;
 }
 int close(int fd)
 {
-    int rc,error;if(mem_inside || trace_fd<0)return (int)syscall(SYS_close,fd);
+    int rc,error;if(trace_fd<0 || mem_inside)return (int)syscall(SYS_close,fd);
     mem_inside++;pthread_mutex_lock(&lock);rc=(int)syscall(SYS_close,fd);error=errno;
     if(!rc || error!=EBADF)mem_close_result(fd);
     pthread_mutex_unlock(&lock);mem_inside--;errno=error;return rc;
@@ -288,7 +288,7 @@ void *mremap(void *old,size_t before,size_t after,int flags,...)
 {
     void *target=0,*v;int error;
     if(flags&MREMAP_FIXED){va_list ap;va_start(ap,flags);target=va_arg(ap,void *);va_end(ap);}
-    if(mem_inside || trace_fd<0)return (void *)syscall(SYS_mremap,old,before,after,flags,target);
+    if(trace_fd<0 || mem_inside)return (void *)syscall(SYS_mremap,old,before,after,flags,target);
     mem_inside++;pthread_mutex_lock(&lock);
     v=(void *)syscall(SYS_mremap,old,before,after,flags,target);error=errno;
     if(v!=MAP_FAILED){mem_unmap_result((uintptr_t)old,before);mem_unmap_result((uintptr_t)v,after);mem_unknown++;}
@@ -299,14 +299,14 @@ int dup2(int old,int to)
     int rc,error;
     /* AArch64 has dup3, not dup2. Preserve the old==to validation semantics. */
     if(old==to)return syscall(SYS_fcntl,old,F_GETFD)<0?-1:to;
-    if(mem_inside || trace_fd<0)return (int)syscall(SYS_dup3,old,to,0);
+    if(trace_fd<0 || mem_inside)return (int)syscall(SYS_dup3,old,to,0);
     mem_inside++;pthread_mutex_lock(&lock);rc=(int)syscall(SYS_dup3,old,to,0);error=errno;
     if(rc>=0)mem_close_result(to);
     pthread_mutex_unlock(&lock);mem_inside--;errno=error;return rc;
 }
 int dup3(int old,int to,int flags)
 {
-    int rc,error;if(mem_inside || trace_fd<0)return (int)syscall(SYS_dup3,old,to,flags);
+    int rc,error;if(trace_fd<0 || mem_inside)return (int)syscall(SYS_dup3,old,to,flags);
     mem_inside++;pthread_mutex_lock(&lock);rc=(int)syscall(SYS_dup3,old,to,flags);error=errno;
     if(rc>=0)mem_close_result(to);
     pthread_mutex_unlock(&lock);mem_inside--;errno=error;return rc;

@@ -53,7 +53,9 @@ static void component(unsigned kind,const void *p,uint32_t bytes)
 #include "recovery-native-memory-observer.h"
 __attribute__((constructor)) static void trace_init(void)
 {
+    static const char entered[]="CAPTURE_INIT_ENTER\n";
     const char *path=getenv("A04_M111_CAPTURE");
+    (void)syscall(SYS_write,2,entered,sizeof(entered)-1);
     long page=sysconf(_SC_PAGESIZE);
     if(page>0)mem_pagesize=(size_t)page;
     if(!path)return;
@@ -86,7 +88,7 @@ int ioctl(int fd,unsigned long request,...)
     struct pvr_cmd pkg;unsigned char in[0x160];uint32_t ta,pr,three;
     uint64_t tap,prp,threep;
     va_start(ap,request);arg=va_arg(ap,void *);va_end(ap);
-    if(!mem_inside && trace_fd>=0 && !trace_broken && (uint32_t)request==PVR_IOCTL && arg){
+    if(trace_fd>=0 && !mem_inside && !trace_broken && (uint32_t)request==PVR_IOCTL && arg){
         memcpy(&pkg,arg,sizeof(pkg));
         if(pkg.group==6u || pkg.group==11u)return mem_bridge_ioctl(fd,request,arg,&pkg);
         if(pkg.group==0x82u && pkg.function==12u){
