@@ -98,7 +98,10 @@ EVT_WDF_DEVICE_D0_EXIT GceD0Exit;
 EVT_WDF_DEVICE_D0_ENTRY_POST_INTERRUPTS_ENABLED GceD0PostInterrupt;
 static NTSTATUS GceDisplaySubmit(PVOID,ULONG,ULONG,ULONG,ULONG);
 static NTSTATUS GceDisplayObserve(PVOID,ULONG,A04_GCE_THREAD_OBSERVATION *);
+static NTSTATUS GceDisplayRestore(PVOID,ULONG,ULONG,ULONG,ULONG,int (*)(void *,uint32_t,uint32_t),void *);
 #else
+static NTSTATUS GceDisplayRestore(PVOID p,ULONG t,ULONG e,ULONG a,ULONG b,int (*v)(void *,uint32_t,uint32_t),void *x)
+{UNREFERENCED_PARAMETER(p);UNREFERENCED_PARAMETER(t);UNREFERENCED_PARAMETER(e);UNREFERENCED_PARAMETER(a);UNREFERENCED_PARAMETER(b);UNREFERENCED_PARAMETER(v);UNREFERENCED_PARAMETER(x);return STATUS_NOT_SUPPORTED;}
 static NTSTATUS GceDisplaySubmit(PVOID p,ULONG token,ULONG event,ULONG l0,ULONG l3)
 {UNREFERENCED_PARAMETER(p);UNREFERENCED_PARAMETER(token);UNREFERENCED_PARAMETER(event);UNREFERENCED_PARAMETER(l0);UNREFERENCED_PARAMETER(l3);return STATUS_NOT_SUPPORTED;}
 static NTSTATUS GceDisplayObserve(PVOID p,ULONG token,A04_GCE_THREAD_OBSERVATION *out)
@@ -269,17 +272,19 @@ NTSTATUS GceInterruptDisable(WDFINTERRUPT interrupt,WDFDEVICE device)
     if(c->engine.state!=A04_GCE_IDLE){a04_gce_submit_timeout(&c->engine);return STATUS_DEVICE_BUSY;}
     return STATUS_SUCCESS;
 }
-static NTSTATUS GceDisplaySubmit(PVOID p,ULONG token,ULONG event,ULONG l0,ULONG l3)
+static NTSTATUS GceDisplayRun(PVOID p,ULONG token,ULONG event,ULONG l0,ULONG l3,
+                               int (*validate)(void *,uint32_t,uint32_t),void *validation_context,BOOLEAN restore)
 {
     GCE_CONTEXT *c;NTSTATUS status;LARGE_INTEGER timeout;GCE_STATE_QUERY q;
-    if(!p || !token || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
-    status=GceDisplayReady(p,token);if(!NT_SUCCESS(status))return status;
+    if(!p || !token || KeGetCurrentIrql()!=PASSIVE_LEVEL || (restore && !validate))return STATUS_INVALID_PARAMETER;
     c=GceContext((WDFDEVICE)p);(void)WdfWaitLockAcquire(c->lease_lock,NULL);
-    if(!a04_gce_display_is_live(&c->lease,token) || !GceAuthorized(c) || c->engine.state!=A04_GCE_IDLE) {
+    if(!a04_gce_display_is_live(&c->lease,token) || !c->interrupt || !GceAuthorized(c) ||
+       c->engine.state!=(restore?A04_GCE_STOPPED:A04_GCE_IDLE)) {
         status=STATUS_DEVICE_NOT_READY;goto done;
     }
     KeClearEvent(&c->command_done);
-    if(a04_gce_prepare_primary(&c->engine,event,l0,l3)) {status=STATUS_IO_DEVICE_ERROR;goto done;}
+    if(restore ? a04_gce_prepare_restore(&c->engine,event,l0,l3,validate,validation_context) :
+                 a04_gce_prepare_primary(&c->engine,event,l0,l3)) {status=STATUS_IO_DEVICE_ERROR;goto done;}
     if(!WdfInterruptSynchronize(c->interrupt,GceKickSync,c)) {status=STATUS_IO_DEVICE_ERROR;goto done;}
     timeout.QuadPart=-20000000LL;
     status=KeWaitForSingleObject(&c->command_done,Executive,KernelMode,FALSE,&timeout);
@@ -291,11 +296,15 @@ static NTSTATUS GceDisplaySubmit(PVOID p,ULONG token,ULONG event,ULONG l0,ULONG 
     if(!WdfInterruptSynchronize(c->interrupt,GceStateSync,&q) || q.state!=A04_GCE_IRQ_DONE)
         status=STATUS_IO_DEVICE_ERROR;
     else if(a04_gce_stop_completed(&c->engine))status=STATUS_IO_DEVICE_ERROR;
-    /* Even EOC and thread stop do not prove display latch or retirement.
-     * STOPPED, like RETAIN, keeps the lease and all DMA resources. */
+    /* EOC and stop prove neither latch nor surface retirement. */
 done:
     WdfWaitLockRelease(c->lease_lock);return status;
 }
+static NTSTATUS GceDisplaySubmit(PVOID p,ULONG token,ULONG event,ULONG l0,ULONG l3)
+{return GceDisplayRun(p,token,event,l0,l3,NULL,NULL,FALSE);}
+static NTSTATUS GceDisplayRestore(PVOID p,ULONG token,ULONG event,ULONG l0,ULONG l3,
+                                  int (*validate)(void *,uint32_t,uint32_t),void *validation_context)
+{return GceDisplayRun(p,token,event,l0,l3,validate,validation_context,TRUE);}
 static NTSTATUS GceDisplayObserve(PVOID p,ULONG token,A04_GCE_THREAD_OBSERVATION *out)
 {
     GCE_CONTEXT *c;GCE_OBSERVE_QUERY q;NTSTATUS status=STATUS_DEVICE_NOT_READY;
@@ -470,7 +479,7 @@ NTSTATUS GceAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     RtlZeroMemory(&iface,sizeof(iface));iface.Header.Size=sizeof(iface);
     iface.Header.Version=A04_GCE_DISPLAY_INTERFACE_VERSION;iface.Header.Context=device;
     iface.Header.InterfaceReference=GceInterfaceReference;iface.Header.InterfaceDereference=GceInterfaceDereference;
-    iface.Acquire=GceDisplayAcquire;iface.Release=GceDisplayRelease;iface.Ready=GceDisplayReady;iface.Submit=GceDisplaySubmit;iface.ObserveThread0=GceDisplayObserve;
+    iface.Acquire=GceDisplayAcquire;iface.Release=GceDisplayRelease;iface.Ready=GceDisplayReady;iface.Submit=GceDisplaySubmit;iface.Restore=GceDisplayRestore;iface.ObserveThread0=GceDisplayObserve;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&iface,&A04GceDisplayInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(device,&query);if(!NT_SUCCESS(status))return status;
     return WdfDeviceCreateDeviceInterface(device,&A04GceDeviceInterfaceGuid,NULL);

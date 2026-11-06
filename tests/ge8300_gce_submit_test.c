@@ -33,12 +33,12 @@ int main(void)
     assert(!a04_gce_stop_completed(&s) && s.state==A04_GCE_STOPPED);
     assert(f.off[8]==0x108 && f.off[9]==0x100 && f.off[10]==0x114 && f.off[11]==0x104);
     assert(a04_gce_stop_completed(&s) && s.state==A04_GCE_STOPPED);
-    assert(a04_gce_prepare_restore(&s,27,0x90000000,0x91000000,0) && s.state==A04_GCE_STOPPED && f.writes==12);
-    assert(a04_gce_prepare_restore(&s,27,0x90000000,0x92000000,restored) && s.state==A04_GCE_STOPPED && f.writes==12);
-    f.regs[0x110/4]=0;assert(!a04_gce_prepare_restore(&s,27,0x90000000,0x91000000,restored));
+    assert(a04_gce_prepare_restore(&s,27,0x90000000,0x91000000,0,&f) && s.state==A04_GCE_STOPPED && f.writes==12);
+    assert(a04_gce_prepare_restore(&s,27,0x90000000,0x92000000,restored,&f) && s.state==A04_GCE_STOPPED && f.writes==12);
+    f.regs[0x110/4]=0;assert(!a04_gce_prepare_restore(&s,27,0x90000000,0x91000000,restored,&f));
     assert(s.state==A04_GCE_PREPARED && buf[4]==0x90000000 && buf[6]==0x91000000 && f.writes==17);
     memset(&f,0,sizeof(f));s.state=A04_GCE_STOPPED;f.authorized=1;f.regs[0x110/4]=1;
-    assert(a04_gce_prepare_restore(&s,27,0x90000000,0x91000000,restored) && s.state==A04_GCE_RETAIN && !f.writes);
+    assert(a04_gce_prepare_restore(&s,27,0x90000000,0x91000000,restored,&f) && s.state==A04_GCE_RETAIN && !f.writes);
     memset(&f,0,sizeof(f));s.state=A04_GCE_IDLE;f.authorized=1;
     assert(!a04_gce_prepare_primary(&s,27,0x90000000,0x91000000));
     assert(!a04_gce_kick_primary(&s));

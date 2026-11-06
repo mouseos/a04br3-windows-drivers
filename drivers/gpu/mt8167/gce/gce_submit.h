@@ -41,5 +41,5 @@ int a04_gce_stop_completed(struct a04_gce_submit *);
  * display mappings. The caller holds the same clock/thread/event lease. A
  * successful prepare is not a restore latch or surface-retirement proof. */
 int a04_gce_prepare_restore(struct a04_gce_submit *,uint32_t event,uint32_t l0,uint32_t l3,
-                            int (*validate)(void *,uint32_t,uint32_t));
+                            int (*validate)(void *,uint32_t,uint32_t),void *validation_context);
 #endif
