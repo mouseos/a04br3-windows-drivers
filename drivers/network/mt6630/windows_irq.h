@@ -15,5 +15,8 @@ NTSTATUS a04_windows_irq_connect(struct a04_windows_irq *,volatile UCHAR *,
  const CM_PARTIAL_RESOURCE_DESCRIPTOR *,const CM_PARTIAL_RESOURCE_DESCRIPTOR *,a04_wifi_irq_notify,void *);
 int a04_windows_irq_arm(struct a04_windows_irq *);
 int a04_windows_irq_stop(struct a04_windows_irq *);
+/* Surprise removal: disconnect and drain without touching device registers.
+ * This does not prove the device interrupt source is masked or quiescent. */
+int a04_windows_irq_remove(struct a04_windows_irq *);
 #endif
 #endif

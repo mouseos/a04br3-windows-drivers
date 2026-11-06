@@ -25,12 +25,17 @@ void a04_irq_work_notify(void *context)
 }
 int a04_irq_work_drain(struct a04_irq_work *w)
 {
+ int fault;
  if(KeGetCurrentIrql()!=PASSIVE_LEVEL||!w||!w->work)return -1;
  /* Caller must first mask, disconnect and flush the IRQ DPC, so no notifier
   * can race this close and enqueue after the event has been observed. */
  InterlockedExchange(&w->closing,1);
  if(KeWaitForSingleObject(&w->idle,Executive,KernelMode,FALSE,NULL)!=STATUS_SUCCESS)return -1;
- if(InterlockedCompareExchange(&w->busy,0,0)==1||InterlockedCompareExchange(&w->fault,0,0))return -1;
- IoFreeWorkItem(w->work);w->work=NULL;w->process=NULL;w->context=NULL;return 0;
+ if(InterlockedCompareExchange(&w->busy,0,0)==1)return -1;
+ /* A processing fault means hardware state is uncertain, not that a drained
+  * work item may outlive the WDF device. Keep the fault result while freeing
+  * the now-dequeued work item and severing its context references. */
+ fault=InterlockedCompareExchange(&w->fault,0,0)!=0;
+ IoFreeWorkItem(w->work);w->work=NULL;w->process=NULL;w->context=NULL;return fault?-1:0;
 }
 #endif
