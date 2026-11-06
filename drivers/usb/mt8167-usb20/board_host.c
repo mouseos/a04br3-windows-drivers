@@ -90,3 +90,30 @@ int A04Bq24160OtgRelease(A04_BQ24160_OTG_LOCK *b)
  }
  b->held=0;b->uncertain=0;return 0;
 }
+
+/* Stock MT8167 PMIC AUXADC channel 2: 12-bit / 1.8 V, followed by the
+ * board battery-meter divider 330:39. These are charger-input estimates,
+ * not proof of the physical net feeding the USB receptacle. */
+int A04Mt6392VcdtRead(A04_MT6392_VCDT *a,A04_MT6392_VCDT_SAMPLE *out)
+{
+ unsigned i;unsigned short reg;A04_MT6392_VCDT_SAMPLE s;
+ if(!a || !out || !a->acquire || !a->release || !a->read16 || !a->write16 ||
+    !a->delay_us || a->held || a->uncertain || a->acquire(a->context))return -1;
+ a->held=1;
+ /* 0x0734 is the RQST0 SET alias: channel 2 is bit 2. */
+ if(a->write16(a->context,0x0734u,4u))goto uncertain;
+ a->delay_us(a->context,100u);
+ for(i=0;i<100u;i++) {
+  if(a->read16(a->context,0x0704u,&reg))goto uncertain;
+  if(reg&0x8000u)break;
+  a->delay_us(a->context,100u);
+ }
+ if(i==100u)goto uncertain;
+ /* Match stock driver's second read after ready; error remains ambiguous. */
+ if(a->read16(a->context,0x0704u,&reg) || !(reg&0x8000u))goto uncertain;
+ s.raw=reg&0x0fffu;s.adc_mv=(s.raw*1800u)/4096u;
+ s.charger_mv=(369u*100u*s.adc_mv/39u)/100u;
+ if(a->release(a->context))goto uncertain;
+ a->held=0;*out=s;return 0;
+uncertain: a->uncertain=1;return -2;
+}

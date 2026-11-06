@@ -37,6 +37,22 @@ typedef struct {
  * retain owner/watchdog resources on -2 until verified release succeeds. */
 int A04Bq24160OtgAcquire(A04_BQ24160_OTG_LOCK *);
 int A04Bq24160OtgRelease(A04_BQ24160_OTG_LOCK *);
+/* MT6392 VCDT channel 2 charger-input observation. This is not qualified
+ * as connector VBUS until the board wiring is independently established.
+ * acquire must obtain real exclusive AUXADC and PWRAP ownership including
+ * firmware/EL3; no ownership is inferred from a mutex alone. On -2 the
+ * caller must retain resources and perform owner-specific recovery. */
+typedef struct {
+ void *context;
+ int (*acquire)(void *);
+ int (*release)(void *);
+ int (*read16)(void *,unsigned,unsigned short *);
+ int (*write16)(void *,unsigned,unsigned short);
+ void (*delay_us)(void *,unsigned);
+ int held,uncertain;
+} A04_MT6392_VCDT;
+typedef struct { unsigned raw,adc_mv,charger_mv; } A04_MT6392_VCDT_SAMPLE;
+int A04Mt6392VcdtRead(A04_MT6392_VCDT *,A04_MT6392_VCDT_SAMPLE *);
 int A04UsbHostStart(const A04_USB_BOARD *);
 /* Prepare owns power and initializes the PHY. Arm the IRQ before Run so a
  * device already connected when SESSION starts cannot lose CONNECT. */
