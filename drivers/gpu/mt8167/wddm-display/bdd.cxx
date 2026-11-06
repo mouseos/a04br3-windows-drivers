@@ -168,6 +168,20 @@ NTSTATUS BASIC_DISPLAY_DRIVER::ShowVerifiedGpuFrame()
     LARGE_INTEGER timeout;ULONG row,bytes;
     status=m_DisplayResources.GetVerifiedGpuFrame(&pixels);
     if(!NT_SUCCESS(status))return status;
+#if A04_GE8300_WDDM_GPU_DIRECT_POST
+    /* The GPU already wrote the visible framebuffer; the CPU only restores
+     * the desktop saved before the copy. */
+    UNREFERENCED_PARAMETER(mode);UNREFERENCED_PARAMETER(info);UNREFERENCED_PARAMETER(mapped);
+    UNREFERENCED_PARAMETER(backup);UNREFERENCED_PARAMETER(temporary);UNREFERENCED_PARAMETER(row);
+    UNREFERENCED_PARAMETER(bytes);
+    if(!m_DisplayResources.DirectPostActive || !m_DisplayResources.PostBackup)return STATUS_DEVICE_NOT_READY;
+    A04DisplayTrace(0x8e,STATUS_SUCCESS);
+    timeout.QuadPart=-50000000LL;
+    (void)KeWaitForSingleObject(&m_SharedWorkerStop,Executive,KernelMode,FALSE,&timeout);
+    RtlCopyMemory((void *)pixels,m_DisplayResources.PostBackup,4096000u);
+    KeMemoryBarrier();A04DisplayTrace(0x82,STATUS_SUCCESS);
+    return STATUS_SUCCESS;
+#endif
     if(KeReadStateEvent(&m_SharedWorkerStop) || !m_Flags.DriverStarted ||
        m_AdapterPowerState!=PowerDeviceD0 || m_MonitorPowerState!=PowerDeviceD0 ||
        info->Width!=800u || info->Height!=1280u || info->Pitch<3200u ||
@@ -276,6 +290,10 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StartDevice(_In_  DXGK_START_INFO*   pDxgkStartIn
             return STATUS_DEVICE_CONFIGURATION_ERROR;
     }
 #if A04_GE8300_WDDM_DIRECT_EXPERIMENT
+#if A04_GE8300_WDDM_GPU_DIRECT_POST
+    m_DisplayResources.PostPhys=m_CurrentModes[0].DispInfo.PhysicAddress;
+    m_DisplayResources.PostPitch=m_CurrentModes[0].DispInfo.Pitch;
+#endif
     /* Absence of explicit OVL resources keeps the CPU display path working. */
     Status=m_DisplayResources.Start(m_pPhysicalDevice,&m_DeviceInfo);
     A04DisplayTrace(0x3f,Status);

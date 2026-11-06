@@ -510,8 +510,25 @@ NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(struct a04_ge8300_common_pa
        Adapter->DmaOperations->Size<FIELD_OFFSET(DMA_OPERATIONS,AllocateCommonBufferEx)+sizeof(Adapter->DmaOperations->AllocateCommonBufferEx) ||
        !Adapter->DmaOperations->AllocateCommonBufferEx || !Adapter->DmaOperations->FreeCommonBuffer) goto done;
     max.QuadPart=0xffffffffLL;logical.QuadPart=0;
+#if A04_GE8300_WDDM_GPU_DIRECT_POST
+    /* The visible POST framebuffer becomes the GPU copy destination. The
+     * display path is not reprogrammed; only memory OVL already scans out is
+     * written. The desktop is saved first so it can be restored by the CPU. */
+    UNREFERENCED_PARAMETER(max);
+    if(PostPitch!=3200u || !PostPhys.QuadPart || (PostPhys.QuadPart&4095) ||
+       (uint64_t)PostPhys.QuadPart>UINT64_C(0x100000000)-4096000u){
+        status=STATUS_DEVICE_CONFIGURATION_ERROR;A04DisplayTrace(0x8c,status);goto done;}
+    cpu=MmMapIoSpace(PostPhys,4096000u,MmNonCached);
+    if(!cpu){status=STATUS_INSUFFICIENT_RESOURCES;A04DisplayTrace(0x8c,status);goto done;}
+    logical=PostPhys;DirectPostActive=TRUE;
+    PostBackup=ExAllocatePoolWithTag(NonPagedPoolNx,4096000u,'bG4A');
+    if(!PostBackup){status=STATUS_INSUFFICIENT_RESOURCES;A04DisplayTrace(0x8c,status);goto done;}
+    RtlCopyMemory(PostBackup,cpu,4096000u);
+    A04DisplayTrace(0x8c,STATUS_SUCCESS);A04DisplayTrace(0x8d,(NTSTATUS)PostPhys.LowPart);
+#else
     cpu=Adapter->DmaOperations->AllocateCommonBufferEx(Adapter,&max,4096000u,&logical,FALSE,0);
     if(!cpu){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
+#endif
     if(!a04_display_common_range_valid((uint64_t)logical.QuadPart,(uintptr_t)cpu,4096000u)) {
         status=STATUS_DEVICE_CONFIGURATION_ERROR;A04DisplayTrace(0x57,status);goto done;
     }
@@ -666,10 +683,20 @@ cleanup_gpu:
     if(mdl)IoFreeMdl(mdl);
 done:
     if(!cpu)A04DisplayTrace(0x57,status);
+#if A04_GE8300_WDDM_GPU_DIRECT_POST
+    else {
+        /* Failure before publication: put the desktop back, then unmap. */
+        if(PostBackup){RtlCopyMemory(cpu,PostBackup,4096000u);KeMemoryBarrier();
+            ExFreePoolWithTag(PostBackup,'bG4A');PostBackup=NULL;}
+        MmUnmapIoSpace(cpu,4096000u);DirectPostActive=FALSE;
+        A04DisplayTrace(0x5a,STATUS_SUCCESS);
+    }
+#else
     else {
         Adapter->DmaOperations->FreeCommonBuffer(Adapter,4096000u,logical,cpu,FALSE);
         A04DisplayTrace(0x5a,STATUS_SUCCESS);
     }
+#endif
     return status;
 }
 

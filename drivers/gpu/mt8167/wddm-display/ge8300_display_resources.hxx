@@ -93,6 +93,15 @@ struct A04DisplayResources {
     ULONG MapRegisters;
     BOOLEAN HasInterrupt;
     PDEVICE_OBJECT DisplayPdo;
+#ifndef A04_GE8300_WDDM_GPU_DIRECT_POST
+#define A04_GE8300_WDDM_GPU_DIRECT_POST 0
+#endif
+#if A04_GE8300_WDDM_GPU_DIRECT_POST
+    /* POST framebuffer from DxgkCbAcquirePostDisplayOwnership. The GPU copy
+     * writes it directly; OVL keeps scanning the same address unchanged. */
+    PHYSICAL_ADDRESS PostPhys;ULONG PostPitch;
+    void *PostBackup;BOOLEAN DirectPostActive;
+#endif
     struct a04_shared_scanout Shared;
     struct a04_shared_ovl SharedOvl;
 #if A04_GE8300_WDDM_SHARED_LEASE
