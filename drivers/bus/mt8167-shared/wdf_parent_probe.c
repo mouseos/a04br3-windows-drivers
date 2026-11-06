@@ -289,7 +289,11 @@ static int ParentVoiceVerify(void *context,int16_t *initial,int16_t *value,unsig
     /* ParentLock serializes the WACS read with gain changes. This checks the
      * PMIC gain only; a board-route mute and voice calibration provider are
      * still absent and cannot be inferred from this register. */
-    if(!c || !c->pmic.online || a04_mt6392_classd_verify_muted(&c->classd))return -1;
+    if(!c || !c->pmic.online || a04_mt6392_classd_verify_muted(&c->classd)) {
+        A04_TRACE("A04AUD voice calibration rejected: classd mute unavailable or unverified\n");
+        return -1;
+    }
+    A04_TRACE("A04AUD voice calibration rejected: AU_LOL calibration and downstream mute unverified\n");
     return -1;
 }
 static int ParentVoiceAfeRead(void *context,unsigned offset,uint32_t *value) {
@@ -466,12 +470,14 @@ static int ParentStopVoice(PVOID context) { return ParentVoiceOperation(context,
 static int ParentVerifyDmaDrained(PVOID context) {
     UNREFERENCED_PARAMETER(context);
     /* DL1 disable/IRQ readback alone does not prove fabric or DMA drain. */
+    A04_TRACE("A04AUD DMA drain rejected: outstanding fabric transactions unverified\n");
     return -1;
 }
 static int ParentVerifyLivePcm(PVOID context,PVOID mdl,uint64_t logical,ULONG size) {
     UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(mdl);
     UNREFERENCED_PARAMETER(logical);UNREFERENCED_PARAMETER(size);
     /* No established CPU/AFE coherency or user-mapping attribute contract. */
+    A04_TRACE("A04AUD live PCM rejected: cyclic coherency and mapping attributes unverified\n");
     return -1;
 }
 #endif
