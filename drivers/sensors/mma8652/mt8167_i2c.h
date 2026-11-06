@@ -8,7 +8,8 @@ struct a04_mma_i2c { const struct a04_i2c_io *io; uint64_t (*now_ns)(void *); in
  * its lock throughout each transfer. Errors latch until ownership is reset. */
 int a04_mma_i2c_read(void *, uint8_t, uint8_t, uint8_t *, unsigned);
 int a04_mma_i2c_write(void *, uint8_t, uint8_t, uint8_t);
-/* Exclusive owner only: rearm a failed, already-stopped controller without
- * resetting it or changing shared clocks/pins. Never abort an active START. */
+/* Exclusive owner only, after revalidating HSTA: reset a failed, already-
+ * stopped controller and restore its timing. No shared clock/pin writes.
+ * Never abort an active START. */
 int a04_mma_i2c_recover_stopped(struct a04_mma_i2c *);
 #endif

@@ -28,8 +28,9 @@ entry it restores the controller from the handed-off timing and configures the
 sensor; on exit it stops and purges the report queue. If shared clock or pins
 are lost on resume, HSTA fails and D0 is refused: Windows does not own or
 restore the shared registers. A transient read error gets one retry only after HSTA revalidates ownership
-and START is observed idle. Rearming clears only FIFO/status, without a
-controller reset or shared clock/pin writes. An active controller or persistent
+and START is observed idle. Recovery uses the Linux/XNU MT8167 controller SOFTRESET register after
+START is idle, then restores the controller timing/configuration. No shared
+clock/pin writes are made. An active controller or persistent
 error still latches a failure. This handshake, including ACPI NVS resource allocation,
 cache attributes and ACPI method routing through the HID stack, was exercised
 by the single WinPE read above, but is not yet validated across power states.
@@ -81,3 +82,8 @@ Reference: https://learn.microsoft.com/en-us/windows-hardware/design/whitepapers
 The HID string request returns NXP Semiconductors and NXP MMA8652
 Accelerometer. Serial is empty because no chip serial is exported. Missing
 identification strings caused the installed Sensor HID class to report Code 10.
+
+Completion is checked before the wall-clock timeout: a descheduled passive
+thread must accept valid data already completed by the controller. Polling
+remains bounded if hardware has not completed. D0 re-entry revalidates HSTA
+and reinitializes the sensor before clearing a latched fault.

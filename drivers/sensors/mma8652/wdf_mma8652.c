@@ -128,7 +128,7 @@ NTSTATUS AccD0(WDFDEVICE dev, WDF_POWER_DEVICE_STATE previous)
     (VOID)KeQueryPerformanceCounter(&c->counter_frequency);
     if(c->counter_frequency.QuadPart<=0 || c->counter_frequency.QuadPart>1000000000)
         return fail(c,"COUNTER_FREQUENCY_FAIL",STATUS_DEVICE_CONFIGURATION_ERROR);
-    if (!c->i2c || c->faulted || !handoff_qualified(dev,c)) return fail(c,"D0_HANDOFF_FAIL",STATUS_DEVICE_NOT_READY);
+    if (!c->i2c || !handoff_qualified(dev,c)) return fail(c,"D0_HANDOFF_FAIL",STATUS_DEVICE_NOT_READY);
     timing=READ_REGISTER_ULONG(c->handoff+1);
     inverse=READ_REGISTER_ULONG(c->handoff+2);
     if (inverse!=~timing || (timing & ~0x073fu)) return fail(c,"D0_TIMING_FAIL",STATUS_DEVICE_CONFIGURATION_ERROR);
@@ -146,7 +146,7 @@ NTSTATUS AccD0(WDFDEVICE dev, WDF_POWER_DEVICE_STATE previous)
     c->bus.context=&c->adapter; c->bus.read_regs=a04_mma_i2c_read; c->bus.write_reg=a04_mma_i2c_write;
     WdfWaitLockAcquire(c->lock,NULL); r=a04_mma8652_start(&c->bus); WdfWaitLockRelease(c->lock);
     if (r) { trace(c,"SENSOR_START_RESULT",(ULONG)r); c->faulted=TRUE; return fail(c,"D0_SENSOR_FAIL",STATUS_DEVICE_HARDWARE_ERROR); }
-    c->have_last=FALSE; WdfIoQueueStart(c->reads); InterlockedExchange(&c->online,1); WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(20));
+    c->faulted=FALSE;c->have_last=FALSE; WdfIoQueueStart(c->reads); InterlockedExchange(&c->online,1); WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(20));
     trace(c,"D0_READY",0); return STATUS_SUCCESS;
 }
 NTSTATUS AccD0Exit(WDFDEVICE dev,WDF_POWER_DEVICE_STATE target)
@@ -170,6 +170,7 @@ static NTSTATUS Copy(WDFREQUEST request,const void *p,size_t len)
 static int ReadSample(WDFDEVICE dev,ACC_CONTEXT *c,struct a04_mma8652_sample *sample)
 {
  int r=a04_mma8652_read(&c->bus,sample);
+ if(r==A04_MMA_IO && c->adapter.faulted)trace(c,"READ_FAILURE_REASON",(ULONG)c->adapter.faulted);
  if(r==A04_MMA_IO && c->adapter.faulted && handoff_qualified(dev,c) &&
     !a04_mma_i2c_recover_stopped(&c->adapter)) {
   trace(c,"READ_RETRY",c->samples);
@@ -188,7 +189,7 @@ VOID AccTimer(WDFTIMER timer)
    r=ReadSample(dev,c,&sample);
    if(r==A04_MMA_OK) {
      ++c->samples;
-     if(c->samples==1 || c->samples==100 || c->samples==1000)trace(c,"SAMPLES",c->samples);
+     if(c->samples==1 || c->samples==100 || c->samples==1000 || !(c->samples%1000u))trace(c,"SAMPLES",c->samples);
    }
    if (r==A04_MMA_OK && a04_mma_hid_changed(&c->features,&sample,&c->last,c->have_last)) { c->last=sample; c->have_last=TRUE; a04_mma_hid_input(&sample,report); WdfRequestComplete(request,Copy(request,report,sizeof(report))); }
    else if (r==A04_MMA_OK) { NTSTATUS s=WdfRequestForwardToIoQueue(request,c->reads); if (!NT_SUCCESS(s)) WdfRequestComplete(request,s); }
