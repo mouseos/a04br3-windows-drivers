@@ -5,6 +5,7 @@ param(
     [string]$ExpectedSystemSha256,
     [string]$ExpectedLog1Sha256,
     [string]$ExpectedLog2Sha256,
+    [ValidateSet('MT8167DeviceInstall','MT8167HardwareProbe')][string]$ServiceName='MT8167DeviceInstall',
     [switch]$IncludeHardwareProbe,
     [ValidateRange(5,120)][int]$TimeoutSeconds=30,
     [ValidateRange(1,999)][int]$ExpectedCurrentControlSet=1,
@@ -44,11 +45,20 @@ function Hive-Header($Path) {
 function Require-Dword($Key,$Name,$Expected) {
     if($Key.GetValueKind($Name) -ne [Microsoft.Win32.RegistryValueKind]::DWord -or [int]$Key.GetValue($Name) -ne $Expected) { throw "Unexpected DWORD: $Name" }
 }
+function Fixed-ServiceSpec([string]$Name) {
+    switch($Name) {
+        'MT8167DeviceInstall' { return [ordered]@{name='MT8167DeviceInstall';display_name='MediaTek MT8167 Device Installation';image_path='"C:\Windows\System32\MT8167DeviceInstall.exe"'} }
+        'MT8167HardwareProbe' { return [ordered]@{name='MT8167HardwareProbe';display_name='MediaTek MT8167 Hardware Probe';image_path='"C:\Windows\System32\MT8167HardwareProbe.exe"'} }
+        default { throw 'Unknown service name; only the two fixed one-shot services are allowed' }
+    }
+}
 function Service-Values($Spec) {
+    $fixed=Fixed-ServiceSpec ([string]$Spec.name)
+    if($Spec.name -cne $fixed.name -or $Spec.display_name -cne $fixed.display_name) { throw 'Service plan differs from the fixed allowlist' }
     return [ordered]@{
         Type=@('DWord',16); Start=@('DWord',2); ErrorControl=@('DWord',1)
-        ImagePath=@('ExpandString',('"C:\Windows\System32\'+$Spec.name+'.exe"'))
-        ObjectName=@('String','LocalSystem'); DisplayName=@('String',[string]$Spec.display_name)
+        ImagePath=@('ExpandString',[string]$fixed.image_path)
+        ObjectName=@('String','LocalSystem'); DisplayName=@('String',[string]$fixed.display_name)
         DependOnService=@('MultiString',[string[]]@('DeviceInstall','RpcSs'))
     }
 }
@@ -176,9 +186,13 @@ if($out.StartsWith($source.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCas
 New-Item -ItemType Directory -Path $out | Out-Null
 $work=Join-Path $out 'work';$verify=Join-Path $out 'verify';$candidate=Join-Path $out 'candidate'
 New-Item -ItemType Directory -Path $work,$verify | Out-Null
-$report=[ordered]@{status='failed-do-not-deploy';whole_system_audit=$false;audit_scope='Select + existing DeviceInstall/RpcSs raw values and exact target service values only';source_files=[ordered]@{};timeout_seconds=$TimeoutSeconds;services=@('MT8167DeviceInstall');errors=@();driver_files_modified=$false}
-$plan=[ordered]@{control_set=$ExpectedCurrentControlSet;related_fingerprints='';services=@(@{name='MT8167DeviceInstall';display_name='MediaTek MT8167 Device Installation'})}
-if($IncludeHardwareProbe) { $plan.services+=@(@{name='MT8167HardwareProbe';display_name='MediaTek MT8167 Hardware Probe'});$report.services+=@('MT8167HardwareProbe') }
+$selected=@((Fixed-ServiceSpec $ServiceName))
+# Backwards-compatible explicit opt-in for both; selecting HardwareProbe alone
+# never implicitly creates or rearms MT8167DeviceInstall.
+if($IncludeHardwareProbe -and $selected[0].name -ne 'MT8167HardwareProbe') { $selected+=@((Fixed-ServiceSpec 'MT8167HardwareProbe')) }
+$names=@($selected | ForEach-Object { $_.name })
+$report=[ordered]@{status='failed-do-not-deploy';whole_system_audit=$false;audit_scope='Select + existing DeviceInstall/RpcSs raw values and exact selected target service values only';source_files=[ordered]@{};timeout_seconds=$TimeoutSeconds;services=$names;errors=@();driver_files_modified=$false}
+$plan=[ordered]@{control_set=$ExpectedCurrentControlSet;related_fingerprints='';services=$selected}
 $planFile=Join-Path $out 'plan.json';Save-Json $planFile $plan
 $expected=@{SYSTEM=$ExpectedSystemSha256;'SYSTEM.LOG1'=$ExpectedLog1Sha256;'SYSTEM.LOG2'=$ExpectedLog2Sha256}
 function Invoke-BoundedWorker($Mode,$Directory,$Name,[int]$Seconds) {
