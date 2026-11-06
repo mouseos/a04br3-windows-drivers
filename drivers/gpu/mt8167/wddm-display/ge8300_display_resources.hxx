@@ -72,6 +72,9 @@ struct A04DisplayResources {
     NTSTATUS PrepareViaGpu();
 #if A04_GE8300_WDDM_SHARED_COMMON_PAGE
     BOOLEAN SharedCommonRetained;
+    BOOLEAN SharedCommonFinished;
+    NTSTATUS SharedCommonResult;
+    void *SharedCommonOwner;
     struct a04_shared_common_once SharedCommonOnce;
 #if A04_GE8300_WDDM_SHARED_FULL_COMMON
     NTSTATUS ProbeDisplayFullCommon(struct a04_ge8300_common_page *page);

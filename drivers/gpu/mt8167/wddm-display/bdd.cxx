@@ -83,7 +83,12 @@ VOID BASIC_DISPLAY_DRIVER::SharedDiagnosticWorker(PVOID context)
             if(!a04_common_may_attempt(&self->m_DisplayResources.SharedCommonOnce))done=TRUE;
 #endif
         } else if(!self->m_Flags.DriverStarted || !self->m_DisplayResources.Adapter ||
-                  self->m_DisplayResources.Shared.mdl || self->m_DisplayResources.GpuHandle) done=TRUE;
+                  self->m_DisplayResources.Shared.mdl || self->m_DisplayResources.GpuHandle) {
+#if A04_GE8300_WDDM_SHARED_COMMON_PAGE
+            if(self->m_DisplayResources.SharedCommonFinished)status=self->m_DisplayResources.SharedCommonResult;
+#endif
+            done=TRUE;
+        }
         KeReleaseMutex(&self->m_PresentMutex,FALSE);
         if(i==0 || done || (i%10)==9) A04DisplayTrace(0x31,status);
         if(done)break;

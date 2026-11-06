@@ -19,8 +19,14 @@ int main(void)
       assert(!a04_shared_frame_accept(&s,1,1));
       for(uint32_t i=0;i<1000;i++){assert(a04_shared_frame_accept(&s,1,i));a04_shared_frame_complete_tile(&s,1);}
       assert(!a04_shared_frame_accept(&s,1,0));
+      s.last_task=41;s.last_flush=42;
+      assert(!a04_shared_frame_seal(&s,1,41,43));
       assert(a04_shared_frame_accept(&s,2,0));a04_shared_frame_complete_tile(&s,0);
+      s.last_task=41;s.last_flush=42;assert(!a04_shared_frame_seal(&s,2,41,42));
       assert(!a04_shared_frame_accept(&s,2,1));assert(a04_shared_frame_accept(&s,3,0));
+      for(uint32_t i=0;i<1000;i++){assert(a04_shared_frame_accept(&s,3,i));a04_shared_frame_complete_tile(&s,1);}
+      s.last_task=44;s.last_flush=45;assert(a04_shared_frame_seal(&s,3,44,45));
+      assert(!a04_shared_frame_accept(&s,4,0));assert(!a04_shared_frame_seal(&s,3,44,45));
     }
     return 0;
 }

@@ -427,3 +427,41 @@ comparison status. 5A/56 appear only when cleanup is permitted. On a GPU map
 failure no root or tile is submitted. A CPU match is an observation of this
 mapping, not a display-DMA visibility, no-bounce, frame boundary, or stop
 proof. OVL switching remains disabled. The common-frame flags default to zero.
+
+### Full-frame observation and freeze
+
+On d76005b hardware UART reports GPU map 5B=0, one element, root 5D=0,
+1000 completed tiles, task 0x3ec, flush 0x3ed, and 1,024,000 CPU matches.
+This is an observed GPU-to-CPU result for the display common allocation,
+not an observed OVL read. Step 31=C00000A3 can be the worker finding that
+Present already ran the diagnostic and retained the handle; it is not the
+copy result. The worker now reports the completed one-shot result instead.
+
+The provider can seal only a successful complete frame with its exact final
+task and flush under the same lock as tile submission. Failure or partial
+frame cannot seal; after sealing, later tiles are rejected. The display owner
+retains the resulting token, sequences and CPU comparison count separately
+from display readiness. Step 66 reports this seal. This prevents the target
+surface from being changed through the shared-tile interface after the CPU
+comparison, but does not prove PnP quiescence or display DMA visibility.
+
+Windows documents a common buffer as simultaneously accessible to its
+allocating device and the processor, with a contiguous device logical address:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_common_buffer
+and distinguishes processor cache maintenance from adapter flushing:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/flushing-cached-data-during-dma-operations
+The uncached display-owned allocation and successful CPU observation support
+the common-buffer interpretation, but the GPU SG transfer's possible bounce
+and the display fabric's actual read have not been independently observed.
+
+The firmware source configures both OVL layers 0 and 3. Linux MT8167
+`ddp_ovl.c` uses 0x20-byte layer strides and `ddp_path.c` queues an EOF wait
+and register update together through CMDQ. The current Windows ACPI device
+describes OVL, RDMA, DSI and display mutex but neither CMDQ nor an interrupt;
+the WDDM driver does not own a CMDQ thread or event. A CPU poll followed by
+an MMIO write cannot substitute for that transaction. Steps 70-7C now record
+a non-atomic, read-only snapshot of OVL enable, source mask, ROI, both layer
+controls, sizes, pitches, addresses and interrupt state after the copy. These
+reads do not acknowledge an event or authorize a switch. No candidate should
+claim a synchronized OVL transition until the missing resource ownership and
+execution path are implemented and validated.

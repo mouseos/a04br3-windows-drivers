@@ -1116,6 +1116,23 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
     }
 #endif
 #if A04_GE8300_SHARED_FULL_FRAME
+    if(control==A04_GE8300_IOCTL_SHARED_FRAME_SEAL) {
+        struct a04_ge8300_frame_seal *seal;
+        if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*seal) || output!=sizeof(*seal)) {
+            WdfRequestComplete(request,STATUS_ACCESS_DENIED);return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,sizeof(*seal),(void **)&seal,&size);
+        if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+        WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+        if(!seal->token || seal->token!=c->shared_lease.active || !c->shared_owner ||
+           !c->shared_owner->display_common || !c->shared_tables.mmu_ack ||
+           !c->vendor_service_online || c->vendor_start.command_poisoned ||
+           !a04_shared_frame_seal(&c->shared_frame,seal->frame,seal->task,seal->flush))
+            status=STATUS_INVALID_DEVICE_STATE;
+        else status=STATUS_SUCCESS;
+        WdfWaitLockRelease(c->vendor_lifetime);
+        WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(*seal):0);return;
+    }
     if(control==A04_GE8300_IOCTL_SHARED_TILE) {
         struct a04_ge8300_shared_tile *tile;struct a04_vendor_clear_result result;
         if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*tile) || output!=sizeof(*tile)) {
@@ -1135,6 +1152,7 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
                 if(NT_SUCCESS(status)) {
                     tile->task=result.completed_task;tile->flush=result.completed_flush;
                     if(!tile->task || !tile->flush)status=STATUS_IO_DEVICE_ERROR;
+                    else {c->shared_frame.last_task=tile->task;c->shared_frame.last_flush=tile->flush;}
                 }
                 a04_shared_frame_complete_tile(&c->shared_frame,NT_SUCCESS(status));
                 if(c->vendor_start.command_poisoned) {

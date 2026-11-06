@@ -220,10 +220,13 @@ struct A04CommonFrameOwner {
     PVOID cpu,context;
     PDEVICE_OBJECT displayPdo;
     HANDLE gpuHandle;
+    uint32_t frame,task,flush,cpuMatches;
+    BOOLEAN sealed;
 };
 static uint32_t CommonFramePixel(uint32_t x,uint32_t y)
 { return (y*800u+x)^0x6d3a59c7u; }
-static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile uint32_t *cpu)
+static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile uint32_t *cpu,
+    struct A04CommonFrameOwner *owner)
 {
     struct a04_ge8300_shared_tile *tile;IO_STATUS_BLOCK io={};PFILE_OBJECT file=NULL;
     NTSTATUS status;uint32_t index=0,matches=0,lastTask=0,lastFlush=0;
@@ -251,12 +254,25 @@ static NTSTATUS CommonFrameTiles(HANDLE handle,uint32_t token,PMDL mdl,volatile 
     A04DisplayTrace(0x5e,(NTSTATUS)index);A04DisplayTrace(0x5f,status);
     A04DisplayTrace(0x62,(NTSTATUS)lastTask);A04DisplayTrace(0x63,(NTSTATUS)lastFlush);
     if(NT_SUCCESS(status) && index==1000u) {
+        struct a04_ge8300_frame_seal seal={token,1,lastTask,lastFlush};
+        io.Information=0;io.Status=STATUS_PENDING;
+        status=ZwDeviceIoControlFile(handle,NULL,NULL,NULL,&io,A04_GE8300_IOCTL_SHARED_FRAME_SEAL,
+            &seal,sizeof(seal),&seal,sizeof(seal));
+        if(status==STATUS_PENDING) {
+            do {status=KeWaitForSingleObject(file,Executive,KernelMode,FALSE,NULL);} while(status!=STATUS_SUCCESS);
+            status=io.Status;
+        } else if(NT_SUCCESS(status))status=io.Status;
+        if(NT_SUCCESS(status) && io.Information!=sizeof(seal))status=STATUS_IO_DEVICE_ERROR;
+        A04DisplayTrace(0x66,status);
+        if(!NT_SUCCESS(status))goto done;
+        owner->frame=1;owner->task=lastTask;owner->flush=lastFlush;owner->sealed=TRUE;
         /* This is a CPU observation, not a display-adapter visibility proof.
          * A GPU DMA bounce mapping can cause a mismatch. */
         KeFlushIoBuffers(mdl,TRUE,TRUE);KeMemoryBarrier();
         for(uint32_t y=0;y<1280u;y++)for(uint32_t x=0;x<800u;x++)
             if(cpu[y*800u+x]==CommonFramePixel(x,y))matches++;
         status=matches==1024000u?STATUS_SUCCESS:STATUS_DATA_ERROR;
+        owner->cpuMatches=matches;
         A04DisplayTrace(0x60,(NTSTATUS)matches);A04DisplayTrace(0x61,status);
     }
 done:
@@ -332,12 +348,29 @@ NTSTATUS A04DisplayResources::ProbeDisplayFullCommon(struct a04_ge8300_common_pa
     A04DisplayTrace(0x64,status);
     if(!NT_SUCCESS(status))goto gpu_done;
     ObReferenceObject(DisplayPdo);
-    SharedCommonRetained=TRUE;
+    SharedCommonRetained=TRUE;SharedCommonOwner=owner;
     RtlZeroMemory(&Lease,sizeof(Lease));Lease.token=page->token;
     Lease.gpu_adapter=gpu;Lease.gpu_pdo=gpuPdo;Lease.shared_mdl_owner=&owner->shared;
     status=SharedLeaseIoctl(GpuHandle,A04_GE8300_IOCTL_SHARED_STAGE,&Lease);
     A04DisplayTrace(0x5d,status);
-    if(NT_SUCCESS(status))status=CommonFrameTiles(GpuHandle,Lease.token,mdl,(volatile uint32_t *)cpu);
+    if(NT_SUCCESS(status))status=CommonFrameTiles(GpuHandle,Lease.token,mdl,(volatile uint32_t *)cpu,owner);
+    /* Read-only, non-atomic snapshot; no acknowledgement, IRQ clearing or
+     * timing inference.  Firmware can enable both GOP L0 and overlay L3. */
+    if(Ovl) {
+        A04DisplayTrace(0x70,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0x00c/4));
+        A04DisplayTrace(0x71,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0x02c/4));
+        A04DisplayTrace(0x72,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0x020/4));
+        A04DisplayTrace(0x73,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0x030/4));
+        A04DisplayTrace(0x74,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0x038/4));
+        A04DisplayTrace(0x75,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0x044/4));
+        A04DisplayTrace(0x76,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0xf40/4));
+        A04DisplayTrace(0x77,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0x090/4));
+        A04DisplayTrace(0x78,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0x098/4));
+        A04DisplayTrace(0x79,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0x0a4/4));
+        A04DisplayTrace(0x7a,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0xfa0/4));
+        A04DisplayTrace(0x7b,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0x004/4));
+        A04DisplayTrace(0x7c,(NTSTATUS)READ_REGISTER_ULONG(Ovl+0x008/4));
+    }
     /* Even failed stage may have published or aliased a root: never unwind. */
     return status;
 #else
@@ -386,6 +419,7 @@ NTSTATUS A04DisplayResources::PrepareViaGpu()
     if(!NT_SUCCESS(status)) {GpuHandle=NULL;return status;}
 #if A04_GE8300_WDDM_SHARED_COMMON_PAGE
     status=ProbeSharedCommonPage();
+    SharedCommonResult=status;SharedCommonFinished=TRUE;
     /* A failed release leaves the provider's referenced lease alive. */
     if(!SharedCommonRetained){ZwClose(GpuHandle);GpuHandle=NULL;}
     return status;
