@@ -592,6 +592,7 @@ test-mt6630: build/mt6630_identity_test build/mt6630_sdio_args_test build/mt6630
 	./build/mt6630_windows_firmware_test
 	./build/mt6630_sha256_test
 	./build/mt6630_windows_board_test
+	./build/mt6630_windows_diagnostic_test
 	./build/mt6630_resource_lease_test
 	./build/mt6630_bringup_test
 	./build/mt6630_board_sequence_test
@@ -760,3 +761,7 @@ test-mt6630: build/mt6630_sha256_test
 build/mt6630_windows_firmware_test: tests/mt6630_windows_firmware_test.c drivers/network/mt6630/windows_firmware.c drivers/network/mt6630/sha256.c
 	$(CC) $(CFLAGS) -Wno-multichar -Itests/firmware_wdk_stubs -Idrivers/network/mt6630 tests/mt6630_windows_firmware_test.c drivers/network/mt6630/sha256.c -o $@
 test-mt6630: build/mt6630_windows_firmware_test
+
+build/mt6630_windows_diagnostic_test: drivers/network/mt6630/windows_diagnostic.c tests/mt6630_windows_diagnostic_test.c
+	$(CC) $(CFLAGS) -Itests/shared_wdf_stubs -Idrivers/network/mt6630 $^ -o $@
+test-mt6630: build/mt6630_windows_diagnostic_test
