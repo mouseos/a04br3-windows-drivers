@@ -89,6 +89,9 @@ remains bounded if hardware has not completed. D0 re-entry revalidates HSTA
 and reinitializes the sensor before clearing a latched fault.
 
 The Windows HID adapter rotates the stock landscape board frame 90 degrees
-counterclockwise into the native portrait panel frame: X=-board Y, Y=board X,
+clockwise into the native portrait panel frame: X=board Y, Y=-board X,
 Z=board Z. The installed Windows test rotated the display with its upper edge
 at the physical right when held upright before this mount transform.
+The opposite (counterclockwise) transform was then observed upside down by
+the user, so both in-plane signs are reversed in version 0.0.1.8.
+The corrected direction still requires installed-Windows verification.
