@@ -27,7 +27,8 @@ NTSTATUS a04_shared_tables_stage(struct a04_shared_tables *t,struct a04_shared_s
     void *shadow=NULL;unsigned i,j;
 #if A04_GE8300_SHARED_WIDE_FRAME
     uint64_t *source_pages=NULL;struct a04_gpu_mmu_leaf source_leaves[2];
-#endifNTSTATUS status=STATUS_INVALID_PARAMETER;
+#endif
+    NTSTATUS status=STATUS_INVALID_PARAMETER;
     struct a04_vendor_uncached *owned[3];
     if(!t || !s || !r || !copy || KeGetCurrentIrql()!=PASSIVE_LEVEL || t->ready || t->quarantined ||
        !s->mdl || !s->gpu_sg || !a04_shared_has_display_backing(s) || !s->gpu_pages || s->exposed ||
