@@ -68,6 +68,9 @@ try {
  & "$base\fixture.exe" --restore
  if(!$LASTEXITCODE -or [IO.File]::ReadAllText('R:\Windows\System32\config\SOFTWARE') -ne 'changed' -or !(Test-Path 'S:\A04BACKUP\READY')){throw 'dirty target did not reject replay without mutation'}
  Remove-Item Env:A04_FAKE_DIRTY
+ & "$base\fixture.exe" --restore
+ if(!$LASTEXITCODE -or [IO.File]::ReadAllText('R:\Windows\System32\drivers\mt8167-shared.sys') -ne 'new' -or [IO.File]::ReadAllText('R:\Windows\System32\config\SOFTWARE') -ne 'changed'){throw 'unarmed replay removed newly present target or mutated other files'}
+ Remove-Item 'R:\Windows\System32\drivers\mt8167-shared.sys'
  $locked=[IO.File]::Open('R:\Windows\System32\config\TxR\{fixture}.TxR.0.regtrans-ms',[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::None)
  try { & "$base\fixture.exe" --restore; if(!$LASTEXITCODE -or [IO.File]::ReadAllText('R:\Windows\System32\config\SOFTWARE') -ne 'changed'){throw 'busy TxR did not reject replay before mutation'} } finally { $locked.Dispose() }
  [IO.File]::WriteAllText('R:\Windows\System32\config\SOFTWARE{new}.TM.blf','new-sidecar')
@@ -81,12 +84,15 @@ try {
  if([IO.File]::ReadAllText('R:\Windows\System32\config\SOFTWARE') -ne 'original-software'){throw 'SOFTWARE content mismatch'}
  if([IO.File]::ReadAllText('R:\Windows\System32\config\SYSTEM{fixture}.TM.blf') -ne 'original-system-sidecar'){throw 'SYSTEM sidecar mismatch'}
  if([IO.File]::ReadAllText('R:\Windows\System32\config\TxR\{fixture}.TxR.0.regtrans-ms') -ne 'original-txr'){throw 'TxR mismatch'}
- if(Test-Path 'R:\Windows\System32\drivers\mt8167-shared.sys'){throw 'new file not removed'}
+ if(Test-Path 'R:\Windows\System32\drivers\mt8167-shared.sys'){throw 'absent shared file unexpectedly present'}
  if((Get-Acl 'R:\Windows\System32\config\SYSTEM').Sddl -ne $acl){throw 'ACL mismatch'}
  if(-not ((Get-Item -Force 'R:\Windows\System32\config\SYSTEM').Attributes -band [IO.FileAttributes]::Hidden)){throw 'attributes mismatch'}
  if((Get-Content -LiteralPath 'R:\Windows\System32\config\SYSTEM' -Stream fixture -Raw).Trim() -ne 'alternate stream'){throw 'alternate stream mismatch'}
+ & "$base\fixture.exe" --arm
+ if($LASTEXITCODE){throw 'fixture arm failed'}
+ [IO.File]::WriteAllText('R:\Windows\System32\drivers\mt8167-shared.sys','armed-new')
  & "$base\fixture.exe" --restore
- if($LASTEXITCODE){throw 'fixture repeat replay failed'}
+ if($LASTEXITCODE -or (Test-Path 'R:\Windows\System32\drivers\mt8167-shared.sys')){throw 'armed replay failed to remove new file'}
  foreach($index in 0..13){
    $env:A04_FAIL_AFTER="$index"
    & "$base\fixture.exe" --restore

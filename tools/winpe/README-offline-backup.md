@@ -74,3 +74,5 @@ recovery上でESPを一時的に読取り専用マウントし、`A04BACKUP` が
 ## 限定hive更新トランザクション
 
 `apply-offline-hives.cmd` は事前照合、バックアップ、INTENT記録、SYSTEMの既存TOPRGUサービスのStart変更とSOFTWAREへの証明書登録、C:のflush・dismount・解除、COMMIT記録を順に実行する。更新失敗時はバックアップを再生してから解除し、失敗時はジャーナルを保持する。3つのSYSのハッシュが指定値と一致し、既存サービスが条件を満たす場合だけ実行する。SYS・INF・CATの導入、PnP構成、実機の署名受理は行わない。Windows合成試験のボリュームidentity、flush、解除は模擬であり、停電後のdirty NTFSは復旧前に拒否する。COMMITの直接実行はC:不在を検査するが、別手段で解除された場合のflush・dismountを証明しない。
+
+2026-11-06の監査では共有SYSが未存在だった。復旧時、INTENTがないジャーナルに対して元は不在だった固定対象が出現している場合は、一切の再生に先立って拒否する。INTENTが検証された場合だけ、更新中に作成された対象として不在状態に戻す。この判定は他プロセスとの排他やDriver Store・PnP全体の復旧を保証しない。
