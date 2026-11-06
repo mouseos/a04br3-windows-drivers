@@ -1234,3 +1234,14 @@ test-mt8167-wave-dma-retained-wavert:
 	$(CXX) -O2 -Wall -Wextra -Werror -Wno-multichar -Wno-misleading-indentation -std=c++11 -DA04_MT8167_WAVERT_EXPERIMENTAL=1 -DA04_TEST_MINIPORT=1 -DA04_AUDIO_VOICE_PCM_DIAGNOSTIC=1 -DA04_AUDIO_WAVE_DMA_RETAINED=1 -DA04_TEST_WAVE_BIND_TIMEOUT=1 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/wavert_miniport.cpp drivers/audio/mt8167-afe/wavert_dma.cpp tests/mt8167_wavert_miniport_test.cpp -o build/mt8167_wave_dma_retained_wavert_timeout_test
 
 	./build/mt8167_wave_dma_retained_wavert_timeout_test
+.PHONY: test-mt8167-usb-host-core
+test-mt8167-usb-host-core:
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_MUSB_HOST_CORE_EXPERIMENT=1 -Idrivers/usb/mt8167-usb20 tests/usb/host_core_test.c drivers/usb/mt8167-usb20/host_core.c -o build/mt8167_usb_host_core_test
+	./build/mt8167_usb_host_core_test
+
+.PHONY: test-mt8167-usb-host-control
+test-mt8167-usb-host-control:
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_MUSB_HOST_CORE_EXPERIMENT=1 -Idrivers/usb/mt8167-usb20 tests/usb/host_control_test.c drivers/usb/mt8167-usb20/host_control.c drivers/usb/mt8167-usb20/host_core.c drivers/usb/mt8167-usb20/controller.c drivers/usb/mt8167-usb20/ep0_pio.c drivers/usb/mt8167-usb20/ep0.c -o build/mt8167_usb_host_control_test
+	./build/mt8167_usb_host_control_test
