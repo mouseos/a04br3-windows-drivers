@@ -17,16 +17,16 @@
 #define GCE_FIXED_END 0x1020ac00u
 int a04_gce_prepare_primary(struct a04_gce_submit *s,uint32_t event,uint32_t l0,uint32_t l3)
 {
-    uint32_t words[A04_CMDQ_TWO_LAYER_WORDS],enabled,irq,reset;unsigned i;
+    uint32_t words[A04_CMDQ_TWO_LAYER_FRAME_WORDS],enabled,irq,reset;unsigned i;
     if(!s || s->state!=A04_GCE_IDLE || !s->authorize || !s->read32 || !s->write32 ||
        !s->barrier || !s->delay || !s->command_cpu || !s->command_dma ||
        (s->command_dma&7u) || s->command_dma>UINT32_MAX-4095u ||
        ((uintptr_t)s->command_cpu&7u) || s->authorize(s->context)!=1 ||
-       !a04_mt8167_cmdq_layer_addresses(words,A04_CMDQ_TWO_LAYER_WORDS,event,l0,l3,1) ||
-       !a04_mt8167_cmdq_finalize(words,A04_CMDQ_TWO_LAYER_WORDS,0))return -1;
+       !a04_mt8167_cmdq_layer_frame(words,A04_CMDQ_TWO_LAYER_FRAME_WORDS,event,l0,l3,1) ||
+       !a04_mt8167_cmdq_finalize(words,A04_CMDQ_TWO_LAYER_FRAME_WORDS,0))return -1;
     if(s->read32(s->context,GCE_ENABLE,&enabled) || s->read32(s->context,GCE_IRQ_STATUS,&irq) ||
        (enabled&1u) || (irq&0x13u))return -1;
-    for(i=0;i<A04_CMDQ_TWO_LAYER_WORDS;i++)s->command_cpu[i]=words[i];
+    for(i=0;i<A04_CMDQ_TWO_LAYER_FRAME_WORDS;i++)s->command_cpu[i]=words[i];
     s->barrier(s->context);
     /* Hardware may observe reset or the command after the next write. */
     s->state=A04_GCE_RETAIN;

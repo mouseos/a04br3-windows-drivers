@@ -15,6 +15,19 @@ static unsigned run_until_wait(const uint32_t *w,unsigned pc,int *event,uint32_t
     }
     return pc;
 }
+static unsigned run_pair(const uint32_t *w,unsigned pc,int *event,uint32_t *l0,uint32_t *l3,int *eoc)
+{
+    while(pc<16) {
+        uint32_t value=w[pc],op=w[pc+1];
+        if((op>>24)==0x20 && value==0x80000000u)*event=0;
+        else if((op>>24)==0x20 && value==0x8001u){if(!*event)return pc;}
+        else if(op==0x04017f40u)*l0=value;
+        else if(op==0x04017fa0u)*l3=value;
+        else if(op==0x40000000u)*eoc=1;
+        pc+=2;
+    }
+    return pc;
+}
 int main(void)
 {
     uint32_t words[10]={0},restore[10]={0};
@@ -54,6 +67,18 @@ int main(void)
       assert(saved[4]==0x90000000 && saved[6]==0x91000000);
       assert(a04_mt8167_cmdq_finalize(saved,12,0));
       assert(saved[10]==0x1020ac00 && saved[11]==0x10000001);
+    }
+    {
+      uint32_t frame[16]={0},l0=0x1000,l3=0x2000;int event=1,eoc=0;unsigned pc;
+      assert(!a04_mt8167_cmdq_layer_frame(frame,15,27,0x3000,0x4000,1));
+      assert(a04_mt8167_cmdq_layer_frame(frame,16,27,0x3000,0x4000,1));
+      pc=run_pair(frame,0,&event,&l0,&l3,&eoc);
+      assert(pc==2 && l0==0x1000 && l3==0x2000 && !eoc);
+      event=1;pc=run_pair(frame,pc,&event,&l0,&l3,&eoc);
+      assert(pc==10 && l0==0x3000 && l3==0x4000 && !event && !eoc);
+      event=1;assert(run_pair(frame,pc,&event,&l0,&l3,&eoc)==16 && eoc);
+      assert(a04_mt8167_cmdq_finalize(frame,16,0));
+      assert(frame[14]==0x1020ac00 && frame[15]==0x10000001);
     }
     return 0;
 }

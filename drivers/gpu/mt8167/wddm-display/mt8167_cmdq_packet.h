@@ -8,6 +8,7 @@
 #define A04_CMDQ_MUTEX0_EOF 38u
 #define A04_CMDQ_FLIP_WORDS 10u
 #define A04_CMDQ_TWO_LAYER_WORDS 12u
+#define A04_CMDQ_TWO_LAYER_FRAME_WORDS 16u
 /* Construct an inert command image only. The caller must establish resource,
  * clock, thread and event ownership, freshness, DMA visibility, and prove the
  * active layer/layout before making this image reachable by the GCE. Clearing
@@ -47,6 +48,20 @@ static inline int a04_mt8167_cmdq_layer_addresses(uint32_t *words,uint32_t count
     words[10]=8u;words[11]=0x10000000u;
     return 1;
 }
+/* After both writes, clear the exclusively owned event again and wait for a
+ * fresh event before EOC. This proves command ordering only, not latch or
+ * display DMA visibility. The same encoding can carry saved restore addresses. */
+static inline int a04_mt8167_cmdq_layer_frame(uint32_t *words,uint32_t count,
+                                          uint32_t event,uint32_t l0,uint32_t l3,int exclusive_event)
+{
+    if(!words || count<A04_CMDQ_TWO_LAYER_FRAME_WORDS ||
+       !a04_mt8167_cmdq_layer_addresses(words,count,event,l0,l3,exclusive_event))return 0;
+    words[8]=0x80000000u;words[9]=0x20000000u|event;
+    words[10]=0x00008001u;words[11]=0x20000000u|event;
+    words[12]=1u;words[13]=0x40000000u;
+    words[14]=8u;words[15]=0x10000000u;
+    return 1;
+}
 /* Linux cmdq_core_task_finalize_end plus thread-specific fixup: convert the
  * terminal relative +8 jump to an absolute GCE end marker.  The caller still
  * needs exclusive ownership of primary-display thread 0 and its DMA domain.
@@ -55,7 +70,7 @@ static inline int a04_mt8167_cmdq_layer_addresses(uint32_t *words,uint32_t count
 static inline int a04_mt8167_cmdq_finalize(uint32_t *words,uint32_t count,uint32_t thread)
 {
     uint32_t end;
-    if(!words || (count!=A04_CMDQ_FLIP_WORDS && count!=A04_CMDQ_TWO_LAYER_WORDS) ||
+    if(!words || (count!=A04_CMDQ_FLIP_WORDS && count!=A04_CMDQ_TWO_LAYER_WORDS && count!=A04_CMDQ_TWO_LAYER_FRAME_WORDS) ||
        thread!=0u || words[count-4]!=1u || words[count-3]!=0x40000000u ||
        words[count-2]!=8u || words[count-1]!=0x10000000u)return 0;
     end=0x1020ac00u|(thread<<4);
