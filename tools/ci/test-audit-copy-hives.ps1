@@ -21,7 +21,7 @@ try {
  Remove-Item -Recurse -Force 'S:\a04br3\audit-system'
  $env:A04_COPY_CORRUPT='1'
  $lines=& "$base\fixture.exe";Remove-Item Env:A04_COPY_CORRUPT
- if($LASTEXITCODE -ne 3 -or !($lines -contains 'HIVE_COPY_COMPARE_FAILED') -or (Test-Path 'S:\a04br3\audit-system')){throw 'corrupt copy not rejected and discarded'}
+ if($LASTEXITCODE -ne 3 -or !($lines -contains 'HIVE_COPY_COMPARE_FAILED') -or (Test-Path 'S:\a04br3\audit-system') -or ($lines -match '^HIVE_COPY_SHA256 ')){throw 'corrupt copy not rejected and discarded'}
  [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM{bad}.txt','unknown')
  $lines=& "$base\fixture.exe";if($LASTEXITCODE -ne 2 -or !($lines -contains 'HIVE_COPY_ENUMERATION_FAILED')){throw 'unknown sidecar accepted'}
  & clang --target=x86_64-pc-windows-msvc -fms-extensions -Werror=incompatible-pointer-types -D_WIN32_WINNT=0x0603 "-I$inc\um" "-I$inc\shared" -c "$root\tools\winpe\audit-copy-hives.c" -o "$base\production.obj"

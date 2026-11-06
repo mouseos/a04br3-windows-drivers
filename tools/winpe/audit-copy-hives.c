@@ -8,7 +8,7 @@
 #define MAX_ITEMS 99
 #define MAX_NAME 128
 static WCHAR names[MAX_ITEMS][MAX_NAME];static HANDLE src[MAX_ITEMS];static unsigned count;
-static BYTE a[8192],b[8192];static HCRYPTPROV provider;static int created;
+static BYTE a[8192],b[8192],digests[MAX_ITEMS][32];static HCRYPTPROV provider;static int created;
 static void say(const char*s){DWORD n=0,w;while(s[n])n++;WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),s,n,&w,0);}
 static void filename(const WCHAR*s){char c[2];c[1]=0;while(*s){c[0]=(*s>=32&&*s<127)?(char)*s:'?';say(c);s++;}}
 static int is_winpe(void){
@@ -49,7 +49,7 @@ static int copyone(unsigned i){WCHAR dst[320];HANDLE f=INVALID_HANDLE_VALUE;DWOR
  do{if(!ReadFile(src[i],a,sizeof(a),&n,0)||!ReadFile(f,b,sizeof(b),&m,0)||n!=m)goto done;if(n&&(!CryptHashData(h2,a,n,0)||!CryptHashData(h3,b,n,0)))goto done;for(w=0;w<n;w++)if(a[w]!=b[w])goto done;}while(n);
  z=32;if(!CryptGetHashParam(h1,HP_HASHVAL,d1,&z,0)||z!=32)goto done;z=32;if(!CryptGetHashParam(h2,HP_HASHVAL,d2,&z,0)||z!=32)goto done;z=32;if(!CryptGetHashParam(h3,HP_HASHVAL,d3,&z,0)||z!=32)goto done;
  for(w=0;w<32;w++)if(d1[w]!=d2[w]||d1[w]!=d3[w])goto done;
- if(!GetFileInformationByHandle(src[i],&after)||!sameinfo(&before,&after))goto done;say("HIVE_COPY_SHA256 ");filename(names[i]);say(" ");digestprint(d1);say("\r\n");ok=1;
+ if(!GetFileInformationByHandle(src[i],&after)||!sameinfo(&before,&after))goto done;for(w=0;w<32;w++)digests[i][w]=d1[w];ok=1;
  done:if(h1)CryptDestroyHash(h1);if(h2)CryptDestroyHash(h2);if(h3)CryptDestroyHash(h3);if(!CloseHandle(f))ok=0;return ok;}
 static void discard(void){unsigned i;WCHAR p[320];if(!created)return;for(i=0;i<count;i++){path(p,L"X:\\a04br3\\audit-system\\",names[i]);if(!DeleteFileW(p)&&GetLastError()!=ERROR_FILE_NOT_FOUND)say("HIVE_COPY_DISCARD_FILE_FAILED\r\n");}if(!RemoveDirectoryW(L"X:\\a04br3\\audit-system\\TxR")&&GetLastError()!=ERROR_PATH_NOT_FOUND&&GetLastError()!=ERROR_FILE_NOT_FOUND)say("HIVE_COPY_DISCARD_DIR_FAILED\r\n");if(!RemoveDirectoryW(L"X:\\a04br3\\audit-system"))say("HIVE_COPY_DISCARD_DIR_FAILED\r\n");}
 void mainCRTStartup(void){static const WCHAR*fixed[]={L"SYSTEM",L"SYSTEM.LOG",L"SYSTEM.LOG1",L"SYSTEM.LOG2",L"SOFTWARE",L"SOFTWARE.LOG",L"SOFTWARE.LOG1",L"SOFTWARE.LOG2"};unsigned i;DWORD attr,error;WCHAR p[320];int ok=0;
@@ -65,5 +65,6 @@ void mainCRTStartup(void){static const WCHAR*fixed[]={L"SYSTEM",L"SYSTEM.LOG",L"
  if(!sidecars(1)){say("HIVE_COPY_SET_CHANGED\r\n");goto done;}
  for(i=0;i<count;i++){path(p,L"C:\\Windows\\System32\\config\\",names[i]);if(GetFileAttributesW(p)==INVALID_FILE_ATTRIBUTES){say("HIVE_COPY_SET_CHANGED\r\n");goto done;}}
  for(i=0;i<8;i++){path(p,L"C:\\Windows\\System32\\config\\",fixed[i]);attr=GetFileAttributesW(p);if((attr==INVALID_FILE_ATTRIBUTES && GetLastError()!=ERROR_FILE_NOT_FOUND)||((attr==INVALID_FILE_ATTRIBUTES)!=(indexof(fixed[i])<0))){say("HIVE_COPY_FIXED_SET_CHANGED\r\n");goto done;}}
+ for(i=0;i<count;i++){say("HIVE_COPY_SHA256 ");filename(names[i]);say(" ");digestprint(digests[i]);say("\r\n");}
  say("HIVE_COPY_VERIFIED_READ_ONLY_NONATOMIC_SNAPSHOT_UNPROVEN\r\n");ok=1;
  done:for(i=0;i<count;i++)if(src[i]!=INVALID_HANDLE_VALUE)CloseHandle(src[i]);if(!ok)discard();CryptReleaseContext(provider,0);ExitProcess(ok?0:3);}
