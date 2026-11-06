@@ -102,12 +102,13 @@ int ioctl(int fd,unsigned long request,...)
                 if(ta!=0x88 || (pr!=0 && pr!=0x150) || three!=0x150 || !tap || !threep || (pr && !prp)){
                     trace_broken=1;fprintf(stderr,"CAPTURE_UNSUPPORTED_PAYLOAD seq=%u\n",sequence);
                 }else{
-                    mem_snapshot((unsigned)seq);
                     header(1,(unsigned)seq,0,0,5);component(1,&pkg,sizeof(pkg));component(2,in,sizeof(in));
                     component(3,(const void *)(uintptr_t)tap,ta);
                     component(4,(const void *)(uintptr_t)prp,pr);
                     component(5,(const void *)(uintptr_t)threep,three);observed=1;
                     fprintf(stderr,"CAPTURE_PRE seq=%u ta=%u pr=%u three=%u\n",sequence,ta,pr,three);
+                    /* Preserve the record even if a later resource read faults. */
+                    mem_snapshot((unsigned)seq);
                 }
             }
             /* Keep one observed submission's pre/post records adjacent. */
