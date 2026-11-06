@@ -74,28 +74,30 @@ int a04_wmt_bridge_boot_wlan(struct a04_wmt_bridge *b,const void *data,unsigned 
  b->wlan_ready=b->wlan_state.ready;return b->wlan_ready?0:fault(b,-1);
 }
 
+static int manufacture_set(void *context,unsigned cid,const uint8_t *data,unsigned length)
+{
+ struct a04_wmt_bridge *b=context;int e=a04_wlan_set(&b->wlan,cid,data,length,NULL);
+ volatile uint8_t *p=b->wlan.tx+8;for(unsigned i=0;i<length;i++)p[i]=0;
+ return e;
+}
 int a04_wmt_bridge_load_calibration(struct a04_wmt_bridge *b,const uint8_t data[512])
 {
- unsigned any=0,i;int e;
+ struct a04_regulatory r;int e;
  if(!alive(b)||!b->wlan_ready||b->failed||!data||b->calibration_submitted||
-    b->scan.pending||b->pending_wlan_status)return -1;
- /* Reader has already checked the container/record checksums. Repeat the
-  * required device identity / TX-power-valid checks before touching HIF. */
- for(i=4;i<10;i++)any|=data[i];
- if(!any||(data[4]&1)||data[196]!=1)return -1;
+    b->scan.pending||b->pending_wlan_status||a04_regulatory_decode(data,&r))return -1;
  if(!b->wlan.runtime){e=a04_wlan_runtime_begin(&b->wlan);if(e)return fault(b,e);}
- /* Linux gen3 wlanLoadManufactureData step 9, CMD_NVRAM_SETTING_T is
-  * exactly the original 512-byte WIFI_CFG_PARAM_STRUCT, CID 0x48. */
- e=a04_wlan_set(&b->wlan,0x48,data,512,NULL);
- /* HIF transfer is synchronous; do not retain device data in scratch. */
- {volatile uint8_t *p=b->wlan.tx+8;for(i=0;i<512;i++)p[i]=0;}
- if(e)return fault(b,e);
- b->calibration_submitted=1;return 0;
+ e=a04_manufacture_submit(data,&r,b,manufacture_set);if(e)return fault(b,e);
+ b->regulatory=r;b->calibration_submitted=1;return 0;
 }
 
 int a04_wmt_bridge_scan_begin(struct a04_wmt_bridge *b,const struct a04_wlan_scan *request)
 {
  int e;if(!alive(b)||!b->wlan_ready||b->failed||!b->wlan.runtime||!request)return -1;
+ if(b->calibration_submitted){
+  unsigned mask=request->active?b->regulatory.active:b->regulatory.permitted;
+  if(request->channel_type!=4||!request->channels||!request->channel_count)return -1;
+  for(unsigned i=0;i<request->channel_count;i++){unsigned ch=request->channels[2*i+1];if(request->channels[2*i]!=1||ch>13||!ch||!(mask&(1u<<ch)))return -1;}
+ }
  e=a04_wlan_scan_begin(&b->wlan,&b->scan,request);
  if(e && (b->scan.failed||b->wlan.failed||b->transport.failed))return fault(b,e);
  return e;

@@ -101,6 +101,12 @@
 #if A04_SHARED_APMIXED_RESOURCE != 0 && A04_SHARED_APMIXED_RESOURCE != 1
 #error A04_SHARED_APMIXED_RESOURCE must be 0 or 1
 #endif
+#ifndef A04_SHARED_WIFI_RUNTIME
+#define A04_SHARED_WIFI_RUNTIME 0
+#endif
+#if A04_SHARED_WIFI_RUNTIME && (!defined(A04_MT6392_RTC32K_DIAGNOSTIC) || !A04_MT6392_RTC32K_DIAGNOSTIC || !defined(A04_SHARED_WIFI_IRQ_DIAGNOSTIC) || !A04_SHARED_WIFI_IRQ_DIAGNOSTIC)
+#error Wi-Fi runtime requires RTC32K and exclusive child MSDC2 IRQ resources
+#endif
 #ifndef A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC
 #define A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC 0
 #endif
@@ -135,6 +141,9 @@
 #include "shared_interface.h"
 #endif
 typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; struct a04_usb_owner usb; ULONG wifiGeneration; int wifiActive;
+#if A04_SHARED_WIFI_RUNTIME
+struct a04_rtc32k_lease wifiRtc;
+#endif
 #if A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 struct a04_codec_domain codecDomain;
 #if A04_SHARED_VOICE_DIAGNOSTIC || A04_SHARED_VOICE_PCM_DIAGNOSTIC
@@ -517,28 +526,49 @@ done:
     UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(afe);UNREFERENCED_PARAMETER(length);return -1;
 #endif
 }
-/* No combo/firmware ownership or IRQ lifetime has been proven. */
+/* Opt-in real lease. Parent PnP owns TOP/GPIO/PWRAP; the single MSDC2
+ * PDO owns the host/IRQ. This cold-start mode resets the whole combo, so no
+ * Bluetooth/FM child may share it. Not a firmware handoff certificate. */
 static NTSTATUS ParentWifiAcquire(PVOID context,ULONG *generation)
 {
-    UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(generation);
-#if A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC
-    /* These are missing proof categories, not observed register states. The
-     * interface deliberately does not inspect MMIO or change ownership. */
-    DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_INFO_LEVEL,
-      "A04WIFI handoff refused: firmware/EL3 RTC clock GPIO combo IRQ PnP ownership unverified\n");
+#if A04_SHARED_WIFI_RUNTIME
+ A04_PARENT_CONTEXT *c;int e;
+ if(!context||!generation||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ *generation=0;c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return STATUS_DEVICE_NOT_READY;
+ if(c->wifiActive||c->wifiRtc.held||c->wifiRtc.uncertain||!c->pmic.online||c->pmic.bus.poisoned||
+    !c->regs.online||c->regs.poisoned||!c->topck||!c->gpio||!c->pwrap){ParentUnlock(c);return STATUS_DEVICE_BUSY;}
+ if(c->wifiGeneration==0xffffffffu){ParentUnlock(c);return STATUS_DEVICE_NOT_READY;}
+ e=a04_pmic_rtc32k_acquire(&c->pmic.bus,&c->wifiRtc);
+ if(e&&!c->wifiRtc.held&&!c->wifiRtc.uncertain){ParentUnlock(c);return STATUS_DEVICE_NOT_READY;}
+ /* A partially changed RTC is a retained lease, never a clean rejection. */
+ c->pmic.rtc_lease=&c->wifiRtc;c->wifiGeneration++;c->wifiActive=e?-1:1;
+ *generation=c->wifiGeneration;ParentUnlock(c);return STATUS_SUCCESS;
+#else
+ UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(generation);return STATUS_DEVICE_NOT_READY;
 #endif
-    return STATUS_DEVICE_NOT_READY;
 }
-static NTSTATUS ParentWifiRelease(PVOID context,ULONG generation) { UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(generation);return STATUS_DEVICE_NOT_READY; }
-/* Board operations share the touch mutex. No lease is granted by this probe;
- * these callbacks become usable only after a real parent has established and
- * serialized the complete resource/IRQ/power contract. */
+static NTSTATUS ParentWifiRelease(PVOID context,ULONG generation)
+{
+#if A04_SHARED_WIFI_RUNTIME
+ A04_PARENT_CONTEXT *c;uint32_t value,dir;int e;
+ if(!context||!generation||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return STATUS_DEVICE_NOT_READY;
+ if(c->wifiActive!=1||generation!=c->wifiGeneration||c->regs.poisoned||c->pmic.bus.poisoned||
+    ParentRegRead(c,A04_SHARED_GPIO,0x100,&value)||ParentRegRead(c,A04_SHARED_GPIO,0,&dir)||
+    (value&0x90u)||(dir&0x90u)!=0x90u){ParentUnlock(c);return STATUS_DEVICE_BUSY;}
+ e=a04_pmic_rtc32k_release(&c->pmic.bus,&c->wifiRtc);
+ if(e){c->wifiActive=-1;ParentUnlock(c);return STATUS_DEVICE_NOT_READY;}
+ c->pmic.rtc_lease=NULL;c->wifiActive=0;ParentUnlock(c);return STATUS_SUCCESS;
+#else
+ UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(generation);return STATUS_DEVICE_NOT_READY;
+#endif
+}
 static int ParentWifiLive(PVOID context,ULONG generation)
 {
  A04_PARENT_CONTEXT *c;int ok;
  if(!context||KeGetCurrentIrql()!=PASSIVE_LEVEL)return 0;
  c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return 0;
- ok=c->wifiActive && c->regs.online && !c->regs.poisoned && generation && generation==c->wifiGeneration;
+ ok=c->wifiActive==1 && c->regs.online && !c->regs.poisoned && generation && generation==c->wifiGeneration;
  ExReleaseFastMutex(&c->pwrapLock);return ok;
 }
 static int ParentWifiUpdateAllowed(unsigned bank,unsigned off,ULONG clear,ULONG set)
@@ -569,7 +599,7 @@ static int ParentWifiOperation(PVOID context,ULONG generation,unsigned bank,unsi
  if(!context||KeGetCurrentIrql()!=PASSIVE_LEVEL || (update?!ParentWifiUpdateAllowed(bank,off,clear,value):!ParentWifiWriteAllowed(bank,off,value)))return -1;
  c=ParentContext((WDFDEVICE)context);b=bank==0?A04_SHARED_TOP:A04_SHARED_GPIO;
  if(ParentLock(c))return -1;
- if(!c->wifiActive||!generation||generation!=c->wifiGeneration||!c->regs.online||c->regs.poisoned)goto done;
+ if(c->wifiActive!=1||!generation||generation!=c->wifiGeneration||!c->regs.online||c->regs.poisoned)goto done;
  if(update){if(ParentRegRead(c,b,off,&old)||old==UINT32_MAX)goto fault;value=(old&~clear)|value;}
  if(ParentRegWrite(c,b,off,value))goto fault;
  result=0;goto done;

@@ -510,3 +510,9 @@ PnP/電源遷移と所有権引継ぎの実機検証は未完了。これだけ�
 `make test-mt6630` は従来の部品試験も実行する。これらはホスト上の模擬I/O試験で、
 Windows WDKビルド・SYS署名・実機無線動作を証明しない。
 INF表示名は `MediaTek MT6630 Wireless LAN SDIO Adapter`。
+
+### PnP接続runtime
+
+主要経路をまとめた新miniportと共有親の実取得・解放経路は [RUNTIME.md](RUNTIME.md) を参照。
+従来candidateと診断の既定設定は維持する。新runtimeは明示的な専用scriptでビルドする。
+実機scan・接続・Windows受理・WDK8.1 SYSリンクは未確認。

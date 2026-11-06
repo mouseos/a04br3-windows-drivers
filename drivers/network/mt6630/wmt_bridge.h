@@ -2,6 +2,7 @@
 #ifndef A04_WINDOWS_WMT_BRIDGE_H
 #define A04_WINDOWS_WMT_BRIDGE_H
 #include "lifetime.h"
+#include "regulatory.h"
 /* Isolate names that overlap with the Windows host's own transport. */
 #define a04_sdio_transport a04_xnu_sdio_transport
 #define a04_sdio_transfer a04_xnu_sdio_transfer
@@ -23,6 +24,7 @@ struct a04_wmt_bridge {
  struct a04_wmt_firmware_set wmt_fw;struct a04_wmt_download_state wmt_state;
  struct a04_wlan_host wlan;struct a04_wlan_firmware wlan_fw;struct a04_wlan_download_state wlan_state;
  struct a04_wlan_scan_state scan;
+ struct a04_regulatory regulatory;
  unsigned identity_ready,wmt_ready,wlan_ready,failed,calibration_submitted;uint32_t pending_wlan_status;
 };
 int a04_wmt_bridge_open(struct a04_wmt_bridge *,struct a04_wifi_life *,unsigned functions,void *,void (*)(void *,unsigned));

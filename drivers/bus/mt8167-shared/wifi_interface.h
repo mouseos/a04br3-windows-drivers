@@ -5,7 +5,8 @@
 /* Offline prototype. A real provider must guarantee the exclusive host,
  * shared GPIO/clock/reset, combo/firmware and IRQ lease until Release, and
  * serialize power transitions and PnP teardown. A referenced interface is
- * not itself a powered device. No provider currently grants this lease. */
+ * not itself a powered device. The explicit runtime parent grants a whole-combo cold-start lease.
+ * Bluetooth/FM coexistence and live firmware handoff are not supported. */
 static const GUID A04SharedWifiInterfaceGuid =
  {0x6210787e,0x11db,0x4a59,{0xb2,0x81,0x27,0x3b,0x59,0xf1,0x2e,0x33}};
 #define A04_SHARED_WIFI_INTERFACE_VERSION 2

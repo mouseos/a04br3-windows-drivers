@@ -5,7 +5,7 @@ struct fake {unsigned reads,writes,fail;uint8_t packet[1024];};
 static int bus_io(void *ctx,uint32_t arg,unsigned write,uint8_t *p,size_t n)
 {
  struct fake *f=ctx;unsigned address=(arg>>9)&0x1ffff;
- if(write){assert(address==0x34&&n==1024);memcpy(f->packet,p,n);f->writes++;return f->fail?9:0;}
+ if(write){assert(address==0x34&&n<=1024&&n>=8);memcpy(f->packet,p,n);f->writes++;return f->fail?9:0;}
  assert(n==4&&address>=0x130&&address<=0x14c);memset(p,0,n);f->reads++;return 0;
 }
 static int direct_io(void *ctx,uint32_t arg,uint32_t *v){(void)ctx;(void)arg;*v=0;return 0;}
@@ -30,14 +30,14 @@ int main(void)
  data[4]|=1;assert(a04_wmt_bridge_load_calibration(&b,data)&&!f.reads&&!f.writes);data[4]&=~1u;
  data[196]=0;assert(a04_wmt_bridge_load_calibration(&b,data)&&!f.reads&&!f.writes);data[196]=1;
  assert(!a04_wmt_bridge_load_calibration(&b,data));
- assert(b.calibration_submitted&&b.wlan.runtime&&f.reads==8&&f.writes==1);
+ assert(b.calibration_submitted&&b.wlan.runtime&&f.reads==8&&f.writes==4);
  assert(a04_wmt_le16(f.packet)==520&&f.packet[4]==0x48&&f.packet[5]==0xa0&&f.packet[6]==1);
  assert(!memcmp(f.packet+8,data,512));for(unsigned i=520;i<1024;i++)assert(!f.packet[i]);
  for(unsigned i=8;i<520;i++)assert(!b.wlan.tx[i]);
- assert(a04_wmt_bridge_load_calibration(&b,data)&&f.writes==1);
+ assert(a04_wmt_bridge_load_calibration(&b,data)&&f.writes==4);
  b.calibration_submitted=0;f.fail=1;
  assert(a04_wmt_bridge_load_calibration(&b,data)&&b.failed&&!b.calibration_submitted&&owner.poisoned);
  for(unsigned i=8;i<520;i++)assert(!b.wlan.tx[i]);
- assert(a04_wmt_bridge_load_calibration(&b,data)&&f.writes==2);
- puts("Synthetic runtime NVRAM -> CID 0x48 HIF submission, wipe and poison: OK");return 0;
+ assert(a04_wmt_bridge_load_calibration(&b,data)&&f.writes==5);
+ puts("NVRAM -> TX power/domain/country limit/original record; wipe and poison: OK");return 0;
 }

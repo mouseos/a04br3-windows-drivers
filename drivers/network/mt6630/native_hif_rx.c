@@ -19,13 +19,13 @@ NDIS_STATUS a04_native_hif_rx_decode(const uint8_t *p,ULONG n,unsigned allowed,
  if(g3>n || 24u>n-g3)return NDIS_STATUS_INVALID_LENGTH;
  offset=g3+24u+((p[6]&0x40u)?2u:0u);
  if(offset>n || n-offset<24 || (p[6]&63u)!=24u)return NDIS_STATUS_INVALID_LENGTH;
- if(p[offset]!=0x08u || p[offset+1]!=0x02u || (p[offset+22]&15u) || (p[offset+4]&1u))return NDIS_STATUS_NOT_SUPPORTED;
- {unsigned i;for(i=0;i<6;i++)if(p[offset+4+i]!=local[i] || p[offset+10+i]!=ap[i])return NDIS_STATUS_NOT_SUPPORTED;}
+ if(p[offset]!=0x08u || p[offset+1]!=0x02u || (p[offset+22]&15u))return NDIS_STATUS_NOT_SUPPORTED;
+ {unsigned i;for(i=0;i<6;i++)if((!(p[offset+4]&1u) && p[offset+4+i]!=local[i]) || p[offset+10+i]!=ap[i])return NDIS_STATUS_NOT_SUPPORTED;}
  vector=le32(p+g3);rcpi=p[g3+9];if(rcpi>220u)return NDIS_STATUS_NOT_SUPPORTED;
  NdisZeroMemory(&temp,sizeof(temp));
  if(lookup(context,(vector>>12)&7u,vector&0x7fu,&temp.info.phy,&temp.info.rate))return NDIS_STATUS_NOT_SUPPORTED;
  temp.mpdu=p+offset;temp.length=n-offset;temp.info.observed=A04_RX_OBS_REQUIRED;
- temp.info.frequency=channel==14?2484u:2407u+5u*channel;temp.info.fragments=1;temp.info.rssi=(LONG)(rcpi>>1)-110;
+ temp.info.frequency=(channel==14?2484u:2407u+5u*channel)*1000u;temp.info.fragments=1;temp.info.rssi=(LONG)(rcpi>>1)-110;
  *out=temp;return NDIS_STATUS_SUCCESS;
 }
 
