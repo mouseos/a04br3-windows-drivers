@@ -116,6 +116,7 @@ jobs:
         run: |
           $env:A04_TOPRGU_CPU1_HANDOFF='1'
           $env:A04_TOPRGU_UART_SCREEN='1'
+          $env:A04_TOPRGU_UART_VOLUME='1'
           $env:A04_TOPRGU_THERMAL_STOP='1'
           ./tools/ci/build-mt8167-toprgu.ps1
       - name: Test-sign combined watchdog and UART diagnostics
@@ -134,7 +135,7 @@ jobs:
             & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $dir 'mt8167-toprgu.cat'); if($LASTEXITCODE){throw 'CAT signing failed'}
             $files=@('mt8167-toprgu.sys','mt8167-toprgu.cat','mt8167-toprgu.inf','mt8167-toprgu-test.cer')
             $hashes=@($files | ForEach-Object { @{name=$_;sha256=(Get-FileHash (Join-Path $dir $_) -Algorithm SHA256).Hash} })
-            @{source_commit=(git rev-parse HEAD);cpu1_handoff=1;uart_screen=1;thermal_stop=1;files=$hashes;note='Test-signed prototype; target operation and trust unverified'} | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 (Join-Path $dir 'manifest.json')
+            @{source_commit=(git rev-parse HEAD);cpu1_handoff=1;uart_screen=1;uart_volume=1;thermal_stop=1;files=$hashes;note='Test-signed prototype; target operation and trust unverified'} | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 (Join-Path $dir 'manifest.json')
           } finally { Remove-Item "Cert:\CurrentUser\My\$($cert.Thumbprint)" -ErrorAction SilentlyContinue }
       - uses: actions/upload-artifact@v4
         with:
