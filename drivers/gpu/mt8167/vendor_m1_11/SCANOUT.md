@@ -673,3 +673,25 @@ bounded interval, and request restoration of both original addresses. It is
 not currently called: no provider proves secure GCE release, event exclusivity,
 both saved mappings, target visibility, or latch/retirement. EOC and a successful
 restore request report command progress only, not a displayed or retired frame.
+
+### One-shot WDDM present capture
+
+With `A04_GE8300_WDDM_PRESENT_CAPTURE=1` plus the common-frame, explicit GPU
+flush and autostart flags, the first completed WDDM present can be captured
+from the existing POST framebuffer under the present mutex. Capturing the
+already-composed image preserves the existing move/dirty ordering, but is a CPU
+snapshot and is not itself direct scanout. The worker uses that immutable
+snapshot for all 1000 GPU tiles and CPU comparison without holding the present
+mutex during the GPU work. Once claimed, later presents do not modify it.
+Stop/D3 joins the worker before resource cleanup. The captured frame is not
+painted back over newer presents. If no present is captured in 30 seconds,
+the existing one-shot synthetic POST demonstration remains available.
+
+`9B=0` records capture; `9C=1` identifies a captured present and `9C=0`
+identifies the synthetic fallback. `98` reports the exact GPU adapter flush
+status after seal and before comparison. `60/61` identify the CPU comparison;
+none of these establish GCE ownership, display DMA visibility, atomic L0/L3
+latch, or old-surface retirement. The GPU frame is still intentionally not
+scanned out: there is no board proof provider or production caller for the
+conditional GCE transaction. Snapshot lifetime, explicit-flush semantics, PnP
+and power transitions require device validation; the feature defaults off.
