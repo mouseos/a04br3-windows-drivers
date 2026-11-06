@@ -2,12 +2,17 @@
 #define A04_TEST_WINDOWS_H
 #include <stddef.h>
 #include <stdint.h>
-typedef uint32_t DWORD; typedef int BOOL; typedef int32_t LONG; typedef wchar_t WCHAR;
+typedef uint32_t DWORD; typedef unsigned int UINT; typedef int BOOL; typedef int32_t LONG; typedef wchar_t WCHAR;
 typedef void *HANDLE; typedef void *HKEY;
 #define INVALID_HANDLE_VALUE ((HANDLE)(intptr_t)-1)
 #define INVALID_FILE_ATTRIBUTES 0xffffffffu
 #define ERROR_SUCCESS 0
 #define ERROR_FILE_NOT_FOUND 2
+#define ERROR_NO_MORE_FILES 18
+#define FILE_ATTRIBUTE_HIDDEN 2
+#define FILE_ATTRIBUTE_SYSTEM 4
+#define FILE_ATTRIBUTE_DIRECTORY 16
+#define FILE_ATTRIBUTE_REPARSE_POINT 1024
 #define KEY_READ 1
 #define HKEY_LOCAL_MACHINE ((HKEY)1)
 #define STD_OUTPUT_HANDLE ((DWORD)-11)
@@ -24,5 +29,9 @@ HANDLE CreateFileW(const WCHAR*,DWORD,DWORD,void*,DWORD,DWORD,HANDLE);
 BOOL DeviceIoControl(HANDLE,DWORD,void*,DWORD,void*,DWORD,DWORD*,void*);
 BOOL FlushFileBuffers(HANDLE); BOOL CloseHandle(HANDLE); DWORD GetLastError(void);
 BOOL DeleteVolumeMountPointW(const WCHAR*); DWORD GetLogicalDrives(void);
+UINT GetWindowsDirectoryW(WCHAR*,UINT);
+int lstrlenW(const WCHAR*); WCHAR *lstrcpyW(WCHAR*,const WCHAR*); WCHAR *lstrcatW(WCHAR*,const WCHAR*);
+BOOL GetVolumeNameForVolumeMountPointW(const WCHAR*,WCHAR*,DWORD); BOOL SetVolumeMountPointW(const WCHAR*,const WCHAR*);
+HANDLE FindFirstVolumeW(WCHAR*,DWORD); BOOL FindNextVolumeW(HANDLE,WCHAR*,DWORD); BOOL FindVolumeClose(HANDLE);
 void ExitProcess(DWORD);
 #endif

@@ -30,7 +30,7 @@ try {
  $pnp=[IO.File]::ReadAllText("$root\tools\winpe\audit-pnp-inf.c").Replace('L"C:\\Windows','L"R:\\Windows')
  Compile 'audit-copy-hives' $copy $true;Compile 'audit-pnp-inf' $pnp $false
  $stub='#include <windows.h>' + "`n" + 'void mainCRTStartup(void){ExitProcess(0);}'
- foreach($name in @('guard-windows-volume','audit-volume-sys','release-offline-volume','uart-audit-stream')){Compile $name $stub $false}
+ foreach($name in @('map-offline-windows','guard-windows-volume','audit-volume-sys','release-offline-volume','uart-audit-stream')){Compile $name $stub $false}
  $batch=[IO.File]::ReadAllText("$root\tools\winpe\run-audit-once.cmd").Replace('X:\a04br3','S:\a04br3')
  [IO.File]::WriteAllText("$base\run.cmd",$batch,[Text.Encoding]::ASCII)
  & cmd.exe /c "$base\run.cmd" | Out-Null;$rc=$LASTEXITCODE

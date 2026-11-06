@@ -67,6 +67,9 @@ jobs:
             Write-Host "$path : $(Test-Path $full)"
             if (-not (Test-Path $full)) { throw "Missing required ARM32 WDK component: $path" }
           }
+      - name: Compile ARM32 offline volume mapper
+        shell: pwsh
+        run: ./tools/ci/build-map-offline-windows.ps1
       - name: Test observational audit integration
         shell: pwsh
         run: ./tools/ci/test-audit-observe-integration.ps1
@@ -136,7 +139,7 @@ jobs:
           if-no-files-found: error
       - name: Test sign audit components
         shell: pwsh
-        run: ./tools/ci/sign-audit-tools.ps1 -AuditExe "$env:RUNNER_TEMP\a04-audit-volume-sys\audit-volume-sys.exe" -ReleaseExe "$env:RUNNER_TEMP\a04-offline-release\release-offline-volume.exe" -SenderExe "$env:RUNNER_TEMP\a04-uart-audit-stream\uart-audit-stream.exe" -PnpExe "$env:RUNNER_TEMP\a04-audit-pnp-inf\audit-pnp-inf.exe" -CopyExe "$env:RUNNER_TEMP\a04-audit-copy-hives\audit-copy-hives.exe" -OutputDirectory "$env:RUNNER_TEMP\a04-audit-signed"
+        run: ./tools/ci/sign-audit-tools.ps1 -AuditExe "$env:RUNNER_TEMP\a04-audit-volume-sys\audit-volume-sys.exe" -ReleaseExe "$env:RUNNER_TEMP\a04-offline-release\release-offline-volume.exe" -SenderExe "$env:RUNNER_TEMP\a04-uart-audit-stream\uart-audit-stream.exe" -PnpExe "$env:RUNNER_TEMP\a04-audit-pnp-inf\audit-pnp-inf.exe" -CopyExe "$env:RUNNER_TEMP\a04-audit-copy-hives\audit-copy-hives.exe" -MapExe "$env:RUNNER_TEMP\a04-map-offline-windows\map-offline-windows.exe" -OutputDirectory "$env:RUNNER_TEMP\a04-audit-signed"
       - uses: actions/upload-artifact@v4
         with:
           name: audit-components-test-signed

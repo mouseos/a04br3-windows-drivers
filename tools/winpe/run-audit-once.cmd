@@ -3,6 +3,8 @@ setlocal EnableExtensions DisableDelayedExpansion
 rem Diagnostic prototype: all output is in RAM; never auto-reset.
 set "A04_REPORT=X:\a04br3\toprgu-audit-result.txt"
 > "%A04_REPORT%" echo AUDIT_BEGIN
+X:\a04br3\map-offline-windows.exe >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto mapfail
 X:\a04br3\guard-windows-volume.exe >> "%A04_REPORT%" 2>&1
 if errorlevel 1 goto guardfail
 X:\a04br3\audit-volume-sys.exe >> "%A04_REPORT%" 2>&1
@@ -47,6 +49,11 @@ set "A04_AUDIT_RC=7"
 X:\a04br3\release-offline-volume.exe >> "%A04_REPORT%" 2>&1
 set "A04_RELEASE_RC=%errorlevel%"
 >> "%A04_REPORT%" echo AUDIT_RELEASE_EXIT=%A04_RELEASE_RC%
+goto transmit
+:mapfail
+>> "%A04_REPORT%" echo AUDIT_STATUS=VOLUME_MAPPING_REJECTED
+set "A04_AUDIT_RC=2"
+set "A04_RELEASE_RC=NOT_ATTEMPTED"
 goto transmit
 :guardfail
 >> "%A04_REPORT%" echo AUDIT_STATUS=VOLUME_IDENTITY_REJECTED_NO_RELEASE

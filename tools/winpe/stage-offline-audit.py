@@ -52,7 +52,7 @@ def main():
     src = json.loads(info.read_text()); pkg = json.loads((package/'manifest.json').read_text(encoding='utf-8-sig'))
     if sha(wim)!=src['wim_sha256'] or sha(esp)!=src['esp_sha256']:
         raise ValueError('source manifest mismatch')
-    names=['audit-volume-sys.exe','release-offline-volume.exe','uart-audit-stream.exe','audit-pnp-inf.exe','audit-copy-hives.exe','audit-test.cer']
+    names=['audit-volume-sys.exe','release-offline-volume.exe','uart-audit-stream.exe','audit-pnp-inf.exe','audit-copy-hives.exe','map-offline-windows.exe','audit-test.cer']
     files = {n: builder.regular(package/n) for n in names}
     for n,f in files.items():
         if sha(f)!=pkg['files'][n].lower():raise ValueError('package hash mismatch')
