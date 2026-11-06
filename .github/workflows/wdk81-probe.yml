@@ -156,6 +156,7 @@ jobs:
           Copy-Item 'drivers/gpu/mt8167/wddm-display/mt8167-display.inf' $display
           $cert=New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=A04BR3 GCE Observation Test' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
           Export-Certificate -Cert $cert -FilePath (Join-Path $out 'gce-observation-test.cer') | Out-Null
+          Import-Certificate -FilePath (Join-Path $out 'gce-observation-test.cer') -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
           $sign=Join-Path $kit 'bin\x86\signtool.exe';$cat=Join-Path $kit 'bin\x86\Inf2Cat.exe'
           foreach($entry in @(@($gce,'mt8167-gce'),@($display,'mt8167-display'))) {
             $dir=$entry[0];$name=$entry[1]
@@ -166,6 +167,10 @@ jobs:
             if($LASTEXITCODE){throw "Catalog creation failed: $name"}
             & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $dir "$name.cat")
             if($LASTEXITCODE){throw "Catalog signing failed: $name"}
+            & $sign verify /pa /v (Join-Path $dir "$name.sys")
+            if($LASTEXITCODE){throw "SYS signature verification failed: $name"}
+            & $sign verify /pa /v /c (Join-Path $dir "$name.cat") (Join-Path $dir "$name.sys")
+            if($LASTEXITCODE){throw "Catalog membership verification failed: $name"}
           }
           $files=Get-ChildItem $out -File -Recurse | ForEach-Object { [ordered]@{path=$_.FullName.Substring($out.Length+1).Replace('\','/');sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash} }
           [ordered]@{source_commit=(git rev-parse HEAD);certificate_thumbprint=$cert.Thumbprint;gce_irq_attach=0;gce_handoff_observe=1;display_gce_lease=1;ovl_switch=0;files=@($files);note='Test signed; execution and secure ownership unverified.'} | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
