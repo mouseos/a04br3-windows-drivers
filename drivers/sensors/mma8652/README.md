@@ -87,3 +87,8 @@ Completion is checked before the wall-clock timeout: a descheduled passive
 thread must accept valid data already completed by the controller. Polling
 remains bounded if hardware has not completed. D0 re-entry revalidates HSTA
 and reinitializes the sensor before clearing a latched fault.
+
+The Windows HID adapter rotates the stock landscape board frame 90 degrees
+counterclockwise into the native portrait panel frame: X=-board Y, Y=board X,
+Z=board Z. The installed Windows test rotated the display with its upper edge
+at the physical right when held upright before this mount transform.

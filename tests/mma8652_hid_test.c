@@ -7,7 +7,11 @@ int main(void) {
  uint8_t in[A04_MMA_HID_INPUT_SIZE], feat[A04_MMA_HID_FEATURE_SIZE]; size_t n;
  assert(a04_mma_hid_descriptor(&n) && n>100);
  a04_mma_hid_input(&s,in); assert(in[0]==1 && in[1]==2 && in[2]==4);
- assert(in[3]==0x9c && in[4]==0xff && in[5]==0 && in[6]==0 && in[7]==100 && in[8]==0);
+ assert(in[3]==0 && in[4]==0 && in[5]==0x9c && in[6]==0xff && in[7]==100 && in[8]==0);
+ { struct a04_mma8652_sample y={0,1024,-1024};
+   a04_mma_hid_input(&y,in);
+   assert(in[3]==0x9c && in[4]==0xff && in[5]==0 && in[6]==0 && in[7]==0x9c && in[8]==0xff);
+ }
  a04_mma_hid_get_feature(&f,feat); assert(feat[3]==10 && feat[5]==20 && !a04_mma_hid_set_feature(&f,feat,sizeof(feat)));
  assert(feat[1]==2 && feat[2]==2 && feat[13]==1);
  /* SET_FEATURE must ignore read-only fields in a host-built report. */
