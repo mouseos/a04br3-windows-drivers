@@ -62,3 +62,19 @@ int a04_pwrap_owner_read_rtc32k(struct a04_pwrap_owner *o, struct a04_rtc32k_raw
     o->unlock(o->lock_context);
     return result;
 }
+#if defined(A04_MT6392_RTC32K_DIAGNOSTIC) && A04_MT6392_RTC32K_DIAGNOSTIC
+int a04_pwrap_owner_rtc32k_acquire(struct a04_pwrap_owner *o,struct a04_rtc32k_lease *lease)
+{
+    int result=-1;
+    if(!lease||enter(o))return -1;
+    if(o->online)result=a04_pmic_rtc32k_acquire(&o->bus,lease);
+    o->unlock(o->lock_context);return result;
+}
+int a04_pwrap_owner_rtc32k_release(struct a04_pwrap_owner *o,struct a04_rtc32k_lease *lease)
+{
+    int result=-1;
+    if(!lease||enter(o))return -1;
+    if(o->online)result=a04_pmic_rtc32k_release(&o->bus,lease);
+    o->unlock(o->lock_context);return result;
+}
+#endif

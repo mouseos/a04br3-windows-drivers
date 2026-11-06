@@ -313,3 +313,8 @@ read-clear status 読取りへ接続する。競合時に待たない共通 try-
 状態を保存するが、処理済みでない status は acknowledge しない。現在は
 この work item を実行する子ドライバ・親の RTC lease・親 Acquire は未接続。
 診断専用で実機・Windows IRQ 配送と firmware 状態は未検証。
+
+`A04_MT6392_RTC32K_DIAGNOSTIC=1` の共有 PWRAP owner は RTC の取得・解放を
+親の同一 mutex 内で実行する。これは他の親クライアントとの直列化であり、
+EL3・firmware や別の RTC writer の排他を保証しない。Wi-Fi の親 Acquire は
+依然拒否し、この補助関数は親 lease に接続されていない。

@@ -1128,7 +1128,7 @@ test-mt6630: build/mt6630_windows_diagnostic_test
 .PHONY: test-mt6392-rtc32k
 test-mt6392-rtc32k:
 	@mkdir -p build
-	$(CC) $(CFLAGS) -DA04_MT6392_RTC32K_DIAGNOSTIC=1 drivers/input/a04br3-buttons/pmic_read.c tests/mt6392_rtc32k_test.c -o build/mt6392_rtc32k_test
+	$(CC) $(CFLAGS) -DA04_MT6392_RTC32K_DIAGNOSTIC=1 drivers/bus/mt8167-shared/pwrap_owner.c drivers/input/a04br3-buttons/pmic_read.c tests/mt6392_rtc32k_test.c -o build/mt6392_rtc32k_test
 	./build/mt6392_rtc32k_test
 
 .PHONY: test-mt6630-windows-session

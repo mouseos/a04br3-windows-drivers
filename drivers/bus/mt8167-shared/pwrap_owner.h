@@ -29,4 +29,10 @@ int a04_pwrap_owner_read_buttons(struct a04_pwrap_owner *owner, uint16_t *status
 int a04_pwrap_owner_read_speaker_clocks(struct a04_pwrap_owner *,uint16_t *);
 /* Fixed, read-only MT6392 speaker register snapshot; not an audio lease. */
 int a04_pwrap_owner_read_audio(struct a04_pwrap_owner *,struct a04_mt6392_audio_raw *);
+#if defined(A04_MT6392_RTC32K_DIAGNOSTIC) && A04_MT6392_RTC32K_DIAGNOSTIC
+/* Serialize each full RTC transaction against other parent WACS clients.
+ * Caller must also establish ownership against firmware and other RTC writers. */
+int a04_pwrap_owner_rtc32k_acquire(struct a04_pwrap_owner *,struct a04_rtc32k_lease *);
+int a04_pwrap_owner_rtc32k_release(struct a04_pwrap_owner *,struct a04_rtc32k_lease *);
+#endif
 #endif
