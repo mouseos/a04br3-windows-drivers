@@ -12,8 +12,8 @@ def main():
     ap.add_argument("--log-directory",type=Path,required=True,help="root内ios-feasibilityログ保存先")
     ap.add_argument("--device-directory",required=True,help="新規のdevice側絶対directory")
     args=ap.parse_args();bundle=args.bundle.resolve();device=args.device_directory.rstrip("/")
-    if not device.startswith("/") or device=="/" or any(c in device for c in "\n\r\0"):
-        ap.error("device-directory must be an absolute non-root path")
+    if not device.startswith("/tmp/") or ".." in Path(device).parts or any(c in device for c in "\n\r\0"):
+        ap.error("device-directory must be a fresh path below /tmp")
     if not args.serial or any(c in args.serial for c in "\n\r\0"):
         ap.error("invalid serial")
     serial=args.serial
@@ -41,7 +41,7 @@ def main():
     preflight=capture(["sh",device+"/recovery-native-preflight.sh","--inspect"],15000)
     common=["env","A04_M111_CAPTURE="+device+"/capture-01.bin",
             "LD_PRELOAD="+device+"/recovery-native-bridge-capture.so"]
-    direct=capture(common+["LD_LIBRARY_PATH=/vendor/lib64:/vendor/lib64/egl:/system/lib64",
+    direct=capture(common+["LD_LIBRARY_PATH="+device+"/platform-candidates:/vendor/lib64:/vendor/lib64/egl:/system/lib64",
             device+"/recovery-native-clear","--run","/vendor/lib64/egl/libEGL_mtk.so",
             "/vendor/lib64/egl/libGLESv2_mtk.so"],45000)
     platform=capture(common+[device+"/recovery-native-clear","--run",

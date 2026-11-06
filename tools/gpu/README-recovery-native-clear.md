@@ -29,7 +29,7 @@ AOSP recovery/minuiは通常EGLを必要としないため、Recoveryにこれ�
 
 ## 後日のREA runtime記録
 
-`prepare-recovery-native-capture.py --serial <主担当確認serial> --bundle <固定成果物dir> --device-directory <新規device側dir>`はstaging commandとREA tool引数JSONをstdoutへ生成するだけで、ADBもGPUも実行しない。serialは主担当が確認した実値を必ず指定し、実行許可前のtemplateにあるPRIMARY_APPROVED_SERIAL_REQUIREDを実値と誤認しない。
+`prepare-recovery-native-capture.py --serial <主担当確認serial> --bundle <固定成果物dir> --device-directory /tmp/<新規device側dir> --log-directory <root内ios-feasibility>`はstaging commandとREA tool引数JSONをstdoutへ生成するだけで、ADBもGPUも実行しない。serialは主担当が確認した実値を必ず指定し、実行許可前のtemplateにあるPRIMARY_APPROVED_SERIAL_REQUIREDを実値と誤認しない。
 
 現在のREA observe_native_callsはMach-O/LLDB用で、Linux ARM64への関数attachには使えない。Recovery許可後はREA capture_process_scenarioで明示したADB/harness commandを起動してphase/終了状態をEvidenceにし、捕捉fileも対応付けて回収する。これは今実行する指示ではない。hostへの回収先は必ず指定TAB-A04-BR3 root内のport/gsi/logs/ios-feasibility/とする。
 
