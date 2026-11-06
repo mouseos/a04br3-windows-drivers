@@ -13,7 +13,6 @@ p.add_argument('--manifest', type=Path, required=True)
 p.add_argument('--flash-log', type=Path, required=True)
 p.add_argument('--reboot', action='store_true')
 a = p.parse_args()
-raise SystemExit('ESP全体の書込みは復旧ジャーナル保護と代替起動経路の検証まで停止しています')
 size = 268435456
 m = json.loads(a.manifest.read_text())
 if (a.image.stat().st_size != size or m.get('size') != size or
@@ -42,6 +41,16 @@ if any(len(fields) > 2 and fields[2] == device_id
        for fields in (line.split() for line in adb('shell', 'cat', '/proc/self/mountinfo').splitlines())):
     raise SystemExit('EFI領域がマウントされています')
 
+def require_no_journal():
+    guard = Path(__file__).with_name('check-esp-journal.sh')
+    with guard.open('rb') as source:
+        result = subprocess.run(['adb', 'shell', 'sh', '-s'], stdin=source,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    lines = result.stdout.decode('utf-8', errors='replace').splitlines()
+    if result.returncode or lines != ['A04_ESP_JOURNAL_ABSENT']:
+        raise SystemExit('ESP復旧ジャーナルが存在するか、状態を確認できません')
+
+require_no_journal()
 remote = '/tmp/a04br3-verified-esp.img'
 a.flash_log.parent.mkdir(parents=True, exist_ok=True)
 with a.flash_log.open('a+b') as log:
@@ -52,6 +61,7 @@ with a.flash_log.open('a+b') as log:
     remote_hash = adb('shell', 'sha256sum', remote).split()[0]
     if remote_hash != h.hexdigest():
         raise SystemExit('recoveryに転送したESPのSHA-256が一致しません')
+    require_no_journal()
     log.seek(0, 2)
     offset = log.tell()
     result = subprocess.run(['adb', 'shell', 'dd', f'if={remote}',

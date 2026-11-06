@@ -15,8 +15,6 @@ log=$(realpath -m "$log")
 [[ $(stat -c %s "$boot") -le 33554432 && $(head -c 8 "$boot") == ANDROID! ]] || exit 2
 [[ $(sha256sum "$boot" | cut -d ' ' -f1) == "$boot_hash" && $(sha256sum "$esp" | cut -d ' ' -f1) == "$esp_hash" ]] || { echo RESTORE_HASH_MISMATCH >&2; exit 2; }
 if [[ $mode == --verify-only ]]; then echo RESTORE_INPUTS_VALIDATED_NO_DEVICE_ACTION; exit 0; fi
-echo RESTORE_ESP_OVERWRITE_DISABLED_JOURNAL_PROTECTION_REQUIRED >&2
-exit 2
 [[ ! -e $log ]] || { echo RESTORE_LOG_ALREADY_EXISTS >&2; exit 2; }
 mkdir -m 700 "$log"
 exec > >(tee -a "$log/restore.log") 2>&1
@@ -29,12 +27,19 @@ require_marker() {
   printf '%s\n' "$output"
   printf '%s\n' "$output" | tr -d '\r' | grep -Fxq "$marker"
 }
+require_no_journal() {
+  local result
+  result=$(adb -s "$serial" shell sh -s < "$repo/tools/recovery/check-esp-journal.sh") || { echo RESTORE_JOURNAL_PRESENT_OR_UNKNOWN; return 1; }
+  [[ $result == A04_ESP_JOURNAL_ABSENT ]] || { echo RESTORE_JOURNAL_PRESENT_OR_UNKNOWN; return 1; }
+}
+require_no_journal
 # Both destinations and both staging paths must pass before either write.
 require_marker A04_RESTORE_GEOMETRY_OK "set -e; test \"\$(readlink -f /dev/block/by-name/boot)\" = /dev/block/mmcblk0p17; test \"\$(cat /sys/class/block/mmcblk0p17/start)\" = 294912; test \"\$(cat /sys/class/block/mmcblk0p17/size)\" = 65536; test \"\$(readlink -f /dev/block/by-name/EFI)\" = /dev/block/mmcblk0p18; test \"\$(cat /sys/class/block/mmcblk0p18/start)\" = 360448; test \"\$(cat /sys/class/block/mmcblk0p18/size)\" = 524288; while read src rest; do resolved=\$(readlink -f \"\$src\" 2>/dev/null || true); if [ \"\$resolved\" = /dev/block/mmcblk0p17 ] || [ \"\$resolved\" = /dev/block/mmcblk0p18 ]; then exit 1; fi; done < /proc/mounts; test ! -e /tmp/a04-toprgu-restore-boot.img; test ! -e /tmp/a04-toprgu-restore-esp.img; echo A04_RESTORE_GEOMETRY_OK"
 adb -s "$serial" push "$boot" /tmp/a04-toprgu-restore-boot.img
 adb -s "$serial" push "$esp" /tmp/a04-toprgu-restore-esp.img
 require_marker A04_RESTORE_STAGING_OK "set -e; test \"\$(sha256sum /tmp/a04-toprgu-restore-boot.img | cut -d ' ' -f1)\" = $boot_hash; test \"\$(sha256sum /tmp/a04-toprgu-restore-esp.img | cut -d ' ' -f1)\" = $esp_hash; echo A04_RESTORE_STAGING_OK"
 echo RESTORE_INPUTS_STAGED
+require_no_journal
 # Partial success remains visible; a failed command never triggers reset.
 require_marker A04_RESTORE_BOOT_SYNCED 'dd if=/tmp/a04-toprgu-restore-boot.img of=/dev/block/by-name/boot bs=1048576 conv=sync,fsync && sync && echo A04_RESTORE_BOOT_SYNCED'
 echo RESTORE_BOOT_COMMAND_SUCCEEDED

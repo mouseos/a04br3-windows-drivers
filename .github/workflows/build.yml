@@ -12,6 +12,11 @@ jobs:
         run: |
           cc -std=c11 -Wall -Wextra -Werror -Itests/offline-release-shim tests/offline_release_test.c -o "$RUNNER_TEMP/offline-release-test"
           "$RUNNER_TEMP/offline-release-test"
+      - name: Test conditional ESP journal guards
+        run: |
+          python3 tests/esp_journal_mount_guard_test.py
+          python3 tests/esp_journal_flash_guard_test.py
+          python3 tests/toprgu_restore_host_test.py
       - name: Check GPT snapshot parser
         run: python3 tests/gpt_snapshot_inspector_test.py
       - name: Check INF device names
