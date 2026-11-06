@@ -1,9 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #ifndef A04_DISPLAY_RESOURCES_HXX
 #define A04_DISPLAY_RESOURCES_HXX
-#ifndef A04_GE8300_WDDM_GCE_RESOURCES
-#define A04_GE8300_WDDM_GCE_RESOURCES 0
-#endif
 #ifndef A04_GE8300_WDDM_DIRECT_EXPERIMENT
 #define A04_GE8300_WDDM_DIRECT_EXPERIMENT 0
 #endif
@@ -60,9 +57,6 @@
 struct A04DisplayResources {
     PDMA_ADAPTER Adapter;
     volatile ULONG *Ovl;
-#if A04_GE8300_WDDM_GCE_RESOURCES
-    volatile ULONG *Gce;
-#endif
     ULONG MapRegisters;
     BOOLEAN HasInterrupt;
     PDEVICE_OBJECT DisplayPdo;

@@ -17,7 +17,7 @@ static int a04_display_resources_valid(unsigned matches, unsigned interrupts,
 static int a04_gce_resources_valid(unsigned matches,unsigned interrupts,
     int memory_exclusive,int interrupts_exclusive,uint64_t start,uint32_t length)
 {
-    return matches==1 && interrupts==2 && memory_exclusive && interrupts_exclusive &&
+    return matches==1 && interrupts==1 && memory_exclusive && interrupts_exclusive &&
         start==UINT64_C(0x1020a000) && length>=0x1000u;
 }
 #endif

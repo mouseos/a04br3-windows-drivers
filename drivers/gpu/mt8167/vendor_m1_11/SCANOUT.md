@@ -470,13 +470,14 @@ execution path are implemented and validated.
 
 The device DTS provides GCE MMIO 0x1020a000/0x1000, non-secure GCE SPI 125,
 and OVL SPI 160. SPI 126 is the secure GCE IRQ and must not be claimed as a
-normal display IRQ. The board ASL has a separately gated resource description
-for GCE and GSIs 157/192; it defaults off and by itself grants neither clock
-nor thread ownership. Windows can separately opt in to mapping the assigned
-GCE range after checking the PnP resource list; that mapping issues no GCE
-read, write, interrupt connect or thread submission. Translated IRQ identity,
-interrupt routing, power/clock ownership and conflict with secure or firmware
-users remain unresolved.
+normal display IRQ. The gated board ASL creates separate GCE and display PDOs,
+with GSIs 157 and 192 respectively. The GCE-only experimental KMDF resource
+owner validates its PnP resources, calls IoGetDmaAdapter with the GCE PDO,
+and allocates a 4 KiB GCE common buffer. It maps the assigned GCE MMIO but
+issues no GCE read, write, interrupt connect or thread submission. It has no
+shared lease interface and cannot be used by the display driver yet. Translated
+IRQ identity, interrupt routing, power/clock ownership and conflict with secure
+or firmware users remain unresolved. The device and driver are default off.
 
 MT8167 DTS maps `disp_rdma0_frame_done` to 27 and `stream_done_0` to 38;
 these are hardware event values, unlike the abstract enum values 77 and 113
