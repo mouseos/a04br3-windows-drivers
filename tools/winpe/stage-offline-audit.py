@@ -52,7 +52,7 @@ def main():
     src = json.loads(info.read_text()); pkg = json.loads((package/'manifest.json').read_text(encoding='utf-8-sig'))
     if sha(wim)!=src['wim_sha256'] or sha(esp)!=src['esp_sha256']:
         raise ValueError('source manifest mismatch')
-    names=['audit-volume-sys.exe','release-offline-volume.exe','uart-audit-stream.exe','audit-pnp-inf.exe','audit-copy-hives.exe','map-offline-windows.exe','audit-test.cer']
+    names=['audit-volume-sys.exe','release-offline-volume.exe','uart-audit-stream.exe','audit-pnp-inf.exe','audit-copy-hives.exe','map-offline-windows.exe','observe-msdc-storage.exe','audit-test.cer']
     files = {n: builder.regular(package/n) for n in names}
     for n,f in files.items():
         if sha(f)!=pkg['files'][n].lower():raise ValueError('package hash mismatch')
@@ -65,8 +65,25 @@ def main():
         if data[:2]!=b'MZ' or data[pe:pe+4]!=b'PE\0\0' or struct.unpack_from('<H',data,pe+4)[0]!=0x1c4:
             raise ValueError('tool is not ARMNT')
         subprocess.run([str(verifier),'verify','-CAfile',str(pem),'-in',str(files[n])],check=True,stdout=subprocess.DEVNULL)
+    # The historical INF filename is misleading: pin the actual boot driver
+    # package byte-for-byte and never substitute the non-operational probe.
+    storage_pins={'a04-msdc-probe.inf':'9bbf73d73c6dcad9f392e294a2cee7ca23209f80e4d36801e6b6a5781acb7192',
+                  'mt8167-msdc.sys':'28115a3ba588d3354e30faca4b37a7de28dcc0b288c7354e2dd3b1ddf3ef416f',
+                  'mt8167-msdc.cat':'e88b0514f64cdca47f5b12d6351df51518fbbf47c6253ff469609e96ef3f021c'}
+    storage_dir=scratch/'storage-input';storage_dir.mkdir()
+    for name,digest in storage_pins.items():
+        subprocess.run([str(tool),'extract',str(wim),'1','/a04br3/'+name,f'--dest-dir={storage_dir}'],check=True,stdout=subprocess.DEVNULL)
+        if sha(storage_dir/name)!=digest:raise ValueError('MSDC boot package mismatch: '+name)
+    msdc_sig=scratch/'msdc-signature.der';msdc_pem=scratch/'msdc-signer.pem';msdc_der=scratch/'msdc-signer.cer'
+    subprocess.run([str(verifier),'extract-signature','-in',str(storage_dir/'mt8167-msdc.sys'),'-out',str(msdc_sig)],check=True,stdout=subprocess.DEVNULL)
+    subprocess.run(['openssl','pkcs7','-inform','DER','-in',str(msdc_sig),'-print_certs','-out',str(msdc_pem)],check=True)
+    subprocess.run(['openssl','x509','-in',str(msdc_pem),'-outform','DER','-out',str(msdc_der)],check=True)
+    if sha(msdc_der)!='7120ebac5300d7d6d68b5d132f9b4d648ec7d14f475d655f07fccde207eba901':raise ValueError('MSDC signer mismatch')
+    for name in ('mt8167-msdc.sys','mt8167-msdc.cat'):
+        subprocess.run([str(verifier),'verify','-CAfile',str(msdc_pem),'-in',str(storage_dir/name)],check=True,stdout=subprocess.DEVNULL)
     before = builder.inventory(tool,wim)
     dests={'/a04br3/'+n:files[n] for n in names}
+    dests['/a04br3/msdc-development.cer']=msdc_der
     dests['/a04br3/run-audit-once.cmd']=ROOT/'tools/winpe/run-audit-once.cmd'
     startup_dir=scratch/'original-startup';startup_dir.mkdir()
     subprocess.run([str(tool),'extract',str(wim),'1','/Windows/System32/startnet.cmd',f'--dest-dir={startup_dir}'],check=True,stdout=subprocess.DEVNULL)
@@ -80,18 +97,23 @@ def main():
     subprocess.run([str(tool),'extract',str(wim),'1','/Windows/System32/config/SOFTWARE',f'--dest-dir={scratch}'],check=True,stdout=subprocess.DEVNULL)
     original=scratch/'SOFTWARE';updated=scratch/'SOFTWARE.updated';shutil.copyfile(original,updated)
     old=RegistryHive(str(original)); old_stores={s:store_snapshot(old,s) for s in ('Root','TrustedPublisher')}
-    if any('\\'+thumb in x for x in old_stores.values()):raise ValueError('certificate already present')
-    blob=struct.pack('<III',3,1,20)+hashlib.sha1(cert).digest()+struct.pack('<III',32,1,len(cert))+cert
+    certs={thumb:cert,hashlib.sha1(msdc_der.read_bytes()).hexdigest().upper():msdc_der.read_bytes()}
+    if len(certs)!=2 or any('\\'+t in x for x in old_stores.values() for t in certs):raise ValueError('certificate already present or collision')
     commands=''
+    blobs={}
+    for t,der in certs.items():blobs[t]=struct.pack('<III',3,1,20)+hashlib.sha1(der).digest()+struct.pack('<III',32,1,len(der))+der
     for store in ('Root','TrustedPublisher'):
-        commands+=f'cd \\Microsoft\\SystemCertificates\\{store}\\Certificates\nadd {thumb}\ncd {thumb}\nsetval 1\nBlob\nhex:3:{blob.hex()}\n'
+        for t,blob in blobs.items():
+            commands+=f'cd \\Microsoft\\SystemCertificates\\{store}\\Certificates\nadd {t}\ncd {t}\nsetval 1\nBlob\nhex:3:{blob.hex()}\n'
     commands+='commit\nquit\n'
     subprocess.run(['hivexsh','-w',str(updated)],input=commands,text=True,check=True,capture_output=True)
     changed=RegistryHive(str(updated))
     for store in ('Root','TrustedPublisher'):
-        current=store_snapshot(changed,store); entry=current.pop('\\'+thumb,None)
-        if entry is None or current!=old_stores[store] or len(entry)!=1 or entry[0][0]!='Blob' or entry[0][2]!=repr(blob.hex()):
-            raise ValueError('certificate store preservation failed: '+store)
+        current=store_snapshot(changed,store)
+        for t,blob in blobs.items():
+            entry=current.pop('\\'+t,None)
+            if entry is None or len(entry)!=1 or entry[0][0]!='Blob' or entry[0][2]!=repr(blob.hex()):raise ValueError('certificate entry mismatch: '+store)
+        if current!=old_stores[store]:raise ValueError('existing certificate store changed: '+store)
     dests['/Windows/System32/config/SOFTWARE']=updated
     output_wim=out/'maintenance-staged.wim';shutil.copyfile(wim,output_wim)
     update=''.join(f'add "{source}" "{dest}"\n' for dest,source in dests.items())
@@ -125,7 +147,7 @@ def main():
     cluster_size=struct.unpack_from('<H',boot,11)[0]*boot[13]
     free_bytes=(int(free_match.group(2))-int(free_match.group(1)))*cluster_size
     result={'source_wim_sha256':sha(wim),'source_esp_sha256':sha(esp),'source_package_manifest_sha256':sha(package/'manifest.json'),
-            'output_wim_sha256':sha(output_wim),'output_esp_sha256':sha(output_esp),'test_certificate_sha256':sha(files['audit-test.cer']),
+            'storage_pins':storage_pins,'storage_cert_sha256':sha(msdc_der),'storage_cert_thumbprint':hashlib.sha1(msdc_der.read_bytes()).hexdigest().upper(),'output_wim_sha256':sha(output_wim),'output_esp_sha256':sha(output_esp),'test_certificate_sha256':sha(files['audit-test.cer']),
             'test_certificate_thumbprint':thumb,'existing_certificate_stores_preserved':True,'fat_free_bytes':free_bytes,
             'wimlib_sha256':sha(tool),'osslsigncode_sha256':sha(verifier),
             'status':'read-only observational audit candidate; non-atomic; target boot, signature, C mount, report and dismount unverified'}

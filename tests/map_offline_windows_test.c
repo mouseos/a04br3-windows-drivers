@@ -25,4 +25,4 @@ BOOL SetVolumeMountPointW(const WCHAR*a,const WCHAR*b){(void)a;(void)b;assigned+
 DWORD GetLastError(void){return error;}
 void ExitProcess(DWORD v){code=v;longjmp(done,1);}
 #include "../tools/winpe/map-offline-windows.c"
-int main(void){static const unsigned expected[]={0,0,2,2,2,2,2,3,2,2,2,2,2};for(scenario=0;scenario<13;scenario++){assigned=drives_calls=0;error=0;if(!setjmp(done))mainCRTStartup();if(code!=expected[scenario]||(scenario!=0&&scenario!=7&&assigned)||(scenario==0&&assigned!=1)){fprintf(stderr,"scenario %u exit %u assigns %u\n",scenario,code,assigned);return 1;}}puts("offline volume mapper guards: PASS");return 0;}
+int main(void){static const unsigned expected[]={0,0,4,2,2,2,2,3,2,2,2,2,2};for(scenario=0;scenario<13;scenario++){assigned=drives_calls=0;error=0;if(!setjmp(done))mainCRTStartup();if(code!=expected[scenario]||(scenario!=0&&scenario!=7&&assigned)||(scenario==0&&assigned!=1)){fprintf(stderr,"scenario %u exit %u assigns %u\n",scenario,code,assigned);return 1;}}puts("offline volume mapper guards: PASS");return 0;}

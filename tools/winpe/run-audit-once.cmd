@@ -3,8 +3,32 @@ setlocal EnableExtensions DisableDelayedExpansion
 rem Diagnostic prototype: all output is in RAM; never auto-reset.
 set "A04_REPORT=X:\a04br3\toprgu-audit-result.txt"
 > "%A04_REPORT%" echo AUDIT_BEGIN
+X:\a04br3\observe-msdc-storage.exe >> "%A04_REPORT%" 2>&1
+set "A04_STORAGE_PRE_RC=%errorlevel%"
+>> "%A04_REPORT%" echo MSDC_OBSERVE_PRE_EXIT=%A04_STORAGE_PRE_RC%
+if "%A04_STORAGE_PRE_RC%"=="0" goto storageobserved
+X:\a04br3\observe-msdc-storage.exe --verify-package >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto packagefail
+drvload X:\a04br3\a04-msdc-probe.inf >> "%A04_REPORT%" 2>&1
+set "A04_DRVLOAD_RC=%errorlevel%"
+>> "%A04_REPORT%" echo MSDC_DRVLOAD_EXIT=%A04_DRVLOAD_RC%
+:storageobserved
+X:\a04br3\observe-msdc-storage.exe >> "%A04_REPORT%" 2>&1
+set "A04_STORAGE_POST_RC=%errorlevel%"
+>> "%A04_REPORT%" echo MSDC_OBSERVE_POST_EXIT=%A04_STORAGE_POST_RC%
+set /a A04_MAP_ATTEMPTS=0
+:mapretry
+set /a A04_MAP_ATTEMPTS+=1
+>> "%A04_REPORT%" echo A04MAP_ATTEMPT=%A04_MAP_ATTEMPTS%
 X:\a04br3\map-offline-windows.exe >> "%A04_REPORT%" 2>&1
-if errorlevel 1 goto mapfail
+set "A04_MAP_RC=%errorlevel%"
+>> "%A04_REPORT%" echo A04MAP_EXIT=%A04_MAP_RC%
+if "%A04_MAP_RC%"=="0" goto mapped
+if not "%A04_MAP_RC%"=="4" goto mapfail
+if %A04_MAP_ATTEMPTS% GEQ 6 goto mapfail
+X:\a04br3\observe-msdc-storage.exe --wait >> "%A04_REPORT%" 2>&1
+goto mapretry
+:mapped
 X:\a04br3\guard-windows-volume.exe >> "%A04_REPORT%" 2>&1
 if errorlevel 1 goto guardfail
 X:\a04br3\audit-volume-sys.exe >> "%A04_REPORT%" 2>&1
@@ -49,6 +73,11 @@ set "A04_AUDIT_RC=7"
 X:\a04br3\release-offline-volume.exe >> "%A04_REPORT%" 2>&1
 set "A04_RELEASE_RC=%errorlevel%"
 >> "%A04_REPORT%" echo AUDIT_RELEASE_EXIT=%A04_RELEASE_RC%
+goto transmit
+:packagefail
+>> "%A04_REPORT%" echo AUDIT_STATUS=MSDC_PACKAGE_PIN_REJECTED
+set "A04_AUDIT_RC=2"
+set "A04_RELEASE_RC=NOT_ATTEMPTED"
 goto transmit
 :mapfail
 >> "%A04_REPORT%" echo AUDIT_STATUS=VOLUME_MAPPING_REJECTED

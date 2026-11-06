@@ -2,7 +2,7 @@
 #define A04_TEST_WINDOWS_H
 #include <stddef.h>
 #include <stdint.h>
-typedef uint32_t DWORD; typedef unsigned int UINT; typedef int BOOL; typedef int32_t LONG; typedef wchar_t WCHAR;
+typedef uint64_t ULONGLONG; typedef uint32_t DWORD; typedef unsigned int UINT; typedef int BOOL; typedef int32_t LONG; typedef wchar_t WCHAR;
 typedef void *HANDLE; typedef void *HKEY;
 #define INVALID_HANDLE_VALUE ((HANDLE)(intptr_t)-1)
 #define INVALID_FILE_ATTRIBUTES 0xffffffffu

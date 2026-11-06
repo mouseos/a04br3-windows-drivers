@@ -1,0 +1,9 @@
+# オフライン監査のストレージ観測
+
+`mapped-v1` の実機CRC報告は `A04MAP_TARGET_NOT_FOUND` であり、MSDCの未ロード・PnP開始失敗・ディスク非列挙・ボリューム非列挙のどれかは判別できない。元のstartnetと同じ起動スクリプトを維持していたが、その後に追加した監査cmdはMSDCの明示的なdrvloadを呼んでいなかった。
+
+WinPE内の `/a04br3/a04-msdc-probe.inf` はリポジトリの同名の意図的失敗probeと別内容で、`a04msdcboot` と `mt8167-msdc.sys`、`mt8167-msdc.cat` を指す。元WIMとmapped-v1から抽出したINF、SYS、CATはそれぞれSHA-256 `9bbf73d73c6dcad9f392e294a2cee7ca23209f80e4d36801e6b6a5781acb7192`、`28115a3ba588d3354e30faca4b37a7de28dcc0b288c7354e2dd3b1ddf3ef416f`、`e88b0514f64cdca47f5b12d6351df51518fbbf47c6253ff469609e96ef3f021c` で一致。後者SYSは過去の搭載ドライバ照合記録にも一致するが、今回のWinPEで起動済みとは限らない。SYSとCATの署名は抽出した公開証明書で検証済み。Windows signtoolはSYSとINFのCAT所属を表示したが、自己署名証明書が未信頼のため終了1だった。RTの署名ポリシーの受理は別に未確認。
+
+観測処理はWinPEサービス状態、ACPI MOU0001のPnP状態・problem code、Disk 0のGPT列挙情報を報告する。MSDCが開始済みと確認できない場合だけ、上記の固定ハッシュ3件を実行前に照合して一致時に既存INFのdrvloadを試みる。続けてボリュームのGUIDとextentを報告し、未発見に限り5秒間隔で最大6回観測する。既存の範囲・NTFS・ラベル・SYSTEMガードと解除処理は変えない。CRC報告の成功はストレージの正常性やNTFS整合性を意味しない。
+
+別端末・別環境や再署名されたパッケージ、意図的失敗probeを同じ名前に置いても固定ハッシュ不一致で拒否する。対象端末の操作は主担当のみ。NTFSマウントやOS内部の書込みは排除できず、hiveコピーは非原子的な観測である。搭載OSへの更新や無人復旧を承認する結果ではない。
