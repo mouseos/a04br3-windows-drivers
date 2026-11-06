@@ -344,3 +344,10 @@ RTC lease が残る場合、PWRAP owner の明示 stop は拒否して online �
 を含む行を渡す。インスタンスが複数の場合は曖昧として拒否する。UART の
 IOCTL 成功は送信受付であって、ホスト側受信やセッション起動の証明ではない。
 子ドライバから session を起動する経路、RTC 引継ぎと実 firmware 実行は未完成。
+
+firmware 診断はボード初期化前に固定パスから WMT と WLAN の snapshot を
+取得し、WMT の固定 digest を照合する。取得・照合に失敗した場合、board
+初期化と SDIO 列挙を行わない。実機 identity に依存する bundle・WLAN の
+選択とハッシュ検証は列挙後、転送前に行い、snapshot は終了時に消去する。
+これは親 Acquire、IRQ の接続、WDF 子ドライバや停止時の資源隔離を完成させる
+ものではなく、実機試験も行っていない。

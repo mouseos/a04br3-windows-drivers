@@ -28,24 +28,48 @@ static NTSTATUS read_snapshot(PCWSTR path,ULONG maximum,struct snapshot *s)
  if(!NT_SUCCESS(status)||ios.Information!=length){if(NT_SUCCESS(status))status=STATUS_END_OF_FILE;release_snapshot(s);}
 done:ZwClose(file);return status;
 }
-int a04_windows_firmware_boot(struct a04_wmt_bridge *b,const uint8_t expected[32],
- const struct a04_wmt_startup_options *options)
+void a04_windows_firmware_release(struct a04_windows_fw_snapshot *s)
+{
+ struct snapshot wmt,wlan;if(!s)return;
+ wmt.bytes=s->wmt;wmt.length=s->wmt_length;wlan.bytes=s->wlan;wlan.length=s->wlan_length;
+ release_snapshot(&wmt);release_snapshot(&wlan);s->wmt=s->wlan=NULL;s->wmt_length=s->wlan_length=0;
+}
+int a04_windows_firmware_prepare(struct a04_windows_fw_snapshot *out,const uint8_t expected[32])
 {
  static const WCHAR wmt_path[]=L"\\SystemRoot\\System32\\drivers\\a04br3\\mt6630-wmt.bin";
  static const WCHAR wlan_path[]=L"\\SystemRoot\\System32\\drivers\\a04br3\\mt6630-wlan.bin";
- struct snapshot wmt={0},wlan={0};struct a04_wmt_firmware_set check_wmt={0};struct a04_wlan_firmware check_wlan={0};
- uint8_t digest[32];unsigned i,diff=0;int result=-1;
- if(!b||!b->identity_ready||b->failed||!expected||!options||KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+ struct snapshot wmt={0},wlan={0};uint8_t digest[32];unsigned i,diff=0;int result=-1;
+ if(!out||out->wmt||out->wlan||!expected||KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
  if(!NT_SUCCESS(read_snapshot(wmt_path,A04_WMT_FW_MAX_BUNDLE,&wmt)))goto done;
  if(!NT_SUCCESS(read_snapshot(wlan_path,237008,&wlan)))goto done;
  if(a04_sha256(wmt.bytes,wmt.length,digest))goto done;
  for(i=0;i<32;i++)diff|=digest[i]^expected[i];
- if(diff||a04_wmt_firmware_bundle(&b->identity,wmt.bytes,wmt.length,&check_wmt))goto done;
- if(a04_sha256(wlan.bytes,wlan.length,digest)||a04_wlan_firmware_select(&b->identity,wlan.bytes,wlan.length,digest,&check_wlan))goto done;
- /* Both immutable snapshots have passed identity and format checks before
-  * the first transfer. The bridge repeats its own verification. */
- if(a04_wmt_bridge_boot_wmt(b,wmt.bytes,wmt.length,expected,a04_sha256,options))goto done;
- if(a04_wmt_bridge_boot_wlan(b,wlan.bytes,wlan.length,a04_sha256))goto done;
- result=0;
+ if(diff)goto done;
+ out->wmt=wmt.bytes;out->wmt_length=wmt.length;out->wlan=wlan.bytes;out->wlan_length=wlan.length;
+ wmt.bytes=wlan.bytes=NULL;result=0;
 done:release_snapshot(&wlan);release_snapshot(&wmt);return result;
+}
+int a04_windows_firmware_boot_prepared(struct a04_wmt_bridge *b,struct a04_windows_fw_snapshot *s,
+ const uint8_t expected[32],const struct a04_wmt_startup_options *options)
+{
+ struct a04_wmt_firmware_set check_wmt={0};struct a04_wlan_firmware check_wlan={0};
+ uint8_t digest[32];unsigned i,diff=0;
+ if(!b||!b->identity_ready||b->failed||!s||!s->wmt||!s->wlan||!expected||!options||KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+ /* Verify again even if a caller mutated its retained snapshot. */
+ if(a04_sha256(s->wmt,s->wmt_length,digest))return -1;
+ for(i=0;i<32;i++)diff|=digest[i]^expected[i];
+ if(diff||a04_wmt_firmware_bundle(&b->identity,s->wmt,s->wmt_length,&check_wmt))return -1;
+ if(a04_sha256(s->wlan,s->wlan_length,digest)||a04_wlan_firmware_select(&b->identity,s->wlan,s->wlan_length,digest,&check_wlan))return -1;
+ if(a04_wmt_bridge_boot_wmt(b,s->wmt,s->wmt_length,expected,a04_sha256,options))return -1;
+ if(a04_wmt_bridge_boot_wlan(b,s->wlan,s->wlan_length,a04_sha256))return -1;
+ return 0;
+}
+int a04_windows_firmware_boot(struct a04_wmt_bridge *b,const uint8_t expected[32],
+ const struct a04_wmt_startup_options *options)
+{
+ struct a04_windows_fw_snapshot snapshot={0};int result;
+ if(!b||!b->identity_ready||b->failed||!expected||!options||KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+ if(a04_windows_firmware_prepare(&snapshot,expected))return -1;
+ result=a04_windows_firmware_boot_prepared(b,&snapshot,expected,options);
+ a04_windows_firmware_release(&snapshot);return result;
 }
