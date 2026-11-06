@@ -62,7 +62,11 @@ static void line(const char *tag,DWORD a,DWORD b,DWORD c){
  p=text(p,"A04AUDENG r=");p=hex(p,runid);*p++=' ';p=text(p,tag);
  p=text(p," a=");p=hex(p,a);p=text(p," b=");p=hex(p,b);p=text(p," c=");p=hex(p,c);*p++='\n';
  WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),row,(DWORD)(p-row),&written,NULL);
- if(logfile!=INVALID_HANDLE_VALUE&&(!WriteFile(logfile,row,(DWORD)(p-row),&written,NULL)||written!=(DWORD)(p-row)))log_error=GetLastError()?GetLastError():ERROR_WRITE_FAULT;
+ if(logfile!=INVALID_HANDLE_VALUE){
+  BOOL ok=WriteFile(logfile,row,(DWORD)(p-row),&written,NULL);
+  if(!ok&&!log_error){DWORD e=GetLastError();log_error=e?e:ERROR_WRITE_FAULT;}
+  else if(ok&&written!=(DWORD)(p-row)&&!log_error)log_error=ERROR_WRITE_FAULT;
+ }
  if(uart_error||uart==INVALID_HANDLE_VALUE)return;
  start=GetTickCount();
  while(!DeviceIoControl(uart,A04_UART_SCREEN_SEND,row,(DWORD)(p-row),NULL,0,&written,NULL)){
@@ -227,6 +231,9 @@ static HRESULT render_pass(IMMDevice *endpoint,DWORD pass){
  step=9;hr=IAudioClock_GetFrequency(clock,&frequency);line("clock-hz",pass,(DWORD)frequency,(DWORD)(frequency>>32));if(FAILED(hr)||!frequency){if(SUCCEEDED(hr))hr=E_UNEXPECTED;goto done;}
  step=10;hr=IAudioRenderClient_GetBuffer(render,capacity,&data);if(FAILED(hr))goto done;fill(data,capacity,0,kind,&hash);
  step=11;hr=IAudioRenderClient_ReleaseBuffer(render,capacity,0);if(FAILED(hr))goto done;submitted=capacity;
+ /* Disk evidence is mandatory before PCM; UART is an optional transport. */
+ if(!log_error&&!FlushFileBuffers(logfile))log_error=GetLastError()?GetLastError():ERROR_WRITE_FAULT;
+ if(log_error){hr=HRESULT_FROM_WIN32(log_error);goto done;}
  step=12;InterlockedExchange(&phase,(LONG)pass+1);hr=IAudioClient_Start(client);if(FAILED(hr)){InterlockedExchange(&phase,0);goto done;}
  running=TRUE;start=lastSample=GetTickCount();
  while(GetTickCount()-start<10000){
@@ -255,7 +262,10 @@ void mainCRTStartup(void){
  SC_HANDLE scm=NULL;IMMDeviceEnumerator *enumerator=NULL;IMMDevice *endpoint=NULL;HANDLE worker=NULL,mutex=NULL;
  HRESULT hr=E_FAIL;DWORD result=1,error=0,i,api=0,dma=0,joined=0;BOOL com=FALSE;
  open_outputs();line("begin",1,GetTickCount(),A04_ENGINE_PROBE_SOURCE);line("expected-src",0x0de214c8u,0x0e4dff2bu,1004);
- if(log_error||uart_error){line("output-error",log_error,uart_error,0);goto done;}
+ line("transport",log_error,uart_error,1); /* c=1: UART optional, disk mandatory */
+ if(uart_error)line("uart-optional",uart_error,0,0);
+ if(!log_error&&!FlushFileBuffers(logfile))log_error=GetLastError()?GetLastError():ERROR_WRITE_FAULT;
+ if(log_error){line("disk-required",log_error,0,0);goto done;}
  SetLastError(ERROR_SUCCESS);mutex=CreateMutexW(NULL,FALSE,L"A04BR3AudioEngineProbe");if(!mutex||GetLastError()==ERROR_ALREADY_EXISTS){line("singleton",GetLastError(),0,0);goto done;}
  scm=OpenSCManagerW(NULL,NULL,SC_MANAGER_CONNECT);if(!scm){line("scm",GetLastError(),0,0);goto done;}
  error=ensure_service(scm,L"AudioEndpointBuilder",0);if(!error)error=ensure_service(scm,L"AudioSrv",1);if(error){line("service-error",error,0,0);goto done;}
@@ -268,7 +278,7 @@ void mainCRTStartup(void){
  if(!stop_event||!ready_event||!diag_io.hEvent){line("event-error",GetLastError(),0,0);goto done;}
  worker=CreateThread(NULL,0,collect,NULL,0,NULL);if(!worker){line("thread-error",GetLastError(),0,0);goto done;}
  if(WaitForSingleObject(ready_event,2000)!=WAIT_OBJECT_0||diag_error){line("diag-ready",diag_error,0,0);goto done;}
- hr=render_pass(endpoint,0);if(FAILED(hr))goto done;api|=1;
+ hr=render_pass(endpoint,0);if(FAILED(hr))goto done;api|=1;if(log_error)goto done;
  hr=render_pass(endpoint,1);if(FAILED(hr))goto done;api|=2;
  result=0;
  done:
@@ -279,9 +289,9 @@ void mainCRTStartup(void){
  line("api-hr",hr,api,0);line("audible",0,0,0);
  RELEASE(IMMDevice,endpoint);RELEASE(IMMDeviceEnumerator,enumerator);if(com)CoUninitialize();if(scm)CloseServiceHandle(scm);if(mutex)CloseHandle(mutex);
  if(!worker||joined){if(filter!=INVALID_HANDLE_VALUE)CloseHandle(filter);if(stop_event)CloseHandle(stop_event);if(ready_event)CloseHandle(ready_event);if(diag_io.hEvent)CloseHandle(diag_io.hEvent);}
- if(!result&&(api!=3||dma!=3||diag_error||log_error||uart_error))result=3;
- line("summary",api,dma,result);line("output-state",log_error,uart_error,diag_error);if(log_error||uart_error)result=5;
- line("end",result,GetTickCount(),0);if(log_error||uart_error)result=5;
+ if(!result&&(api!=3||dma!=3||diag_error))result=3;
+ line("summary",api,dma,result);line("output-state",log_error,uart_error,diag_error);if(log_error)result=5;
+ line("end",result,GetTickCount(),uart_error);if(log_error)result=5;
  if(logfile!=INVALID_HANDLE_VALUE){if(!FlushFileBuffers(logfile))result=5;CloseHandle(logfile);}if(uart!=INVALID_HANDLE_VALUE)CloseHandle(uart);
  ExitProcess(result);
 }
