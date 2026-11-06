@@ -261,6 +261,8 @@ int main(void){
  assert(!wifi.WriteShared(wifi.Header.Context,9,0,0xa0,2));
  assert(wifi.WriteShared(wifi.Header.Context,9,0,0xa0,3)!=0);
  assert(reads==1 && writes==2);reads=writes=0;
+ closeDuringLock=1;assert(!wifi.Live(wifi.Header.Context,9) && !reads && !writes);closeDuringLock=0;
+ testContext.admissionClosed=0;closeDuringLock=1;assert(wifi.WriteShared(wifi.Header.Context,9,0,0xa0,2)!=0 && !reads && !writes);closeDuringLock=0;
  testContext.admissionClosed=0;closeDuringLock=1;
  assert(ParentLock(&testContext)!=0 && !testContext.pwrapLock.held);closeDuringLock=0;
  testContext.admissionClosed=0;assertClosedOnLock=1;

@@ -467,7 +467,7 @@ static int ParentWifiLive(PVOID context,ULONG generation)
 {
  A04_PARENT_CONTEXT *c;int ok;
  if(!context||KeGetCurrentIrql()!=PASSIVE_LEVEL)return 0;
- c=ParentContext((WDFDEVICE)context);ExAcquireFastMutex(&c->pwrapLock);
+ c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return 0;
  ok=c->wifiActive && c->regs.online && !c->regs.poisoned && generation && generation==c->wifiGeneration;
  ExReleaseFastMutex(&c->pwrapLock);return ok;
 }
@@ -498,7 +498,7 @@ static int ParentWifiOperation(PVOID context,ULONG generation,unsigned bank,unsi
  A04_PARENT_CONTEXT *c;enum a04_shared_bank b;uint32_t old;int result=-1;
  if(!context||KeGetCurrentIrql()!=PASSIVE_LEVEL || (update?!ParentWifiUpdateAllowed(bank,off,clear,value):!ParentWifiWriteAllowed(bank,off,value)))return -1;
  c=ParentContext((WDFDEVICE)context);b=bank==0?A04_SHARED_TOP:A04_SHARED_GPIO;
- ExAcquireFastMutex(&c->pwrapLock);
+ if(ParentLock(c))return -1;
  if(!c->wifiActive||!generation||generation!=c->wifiGeneration||!c->regs.online||c->regs.poisoned)goto done;
  if(update){if(ParentRegRead(c,b,off,&old)||old==UINT32_MAX)goto fault;value=(old&~clear)|value;}
  if(ParentRegWrite(c,b,off,value))goto fault;
