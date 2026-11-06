@@ -45,3 +45,9 @@ CPU側構築部のみが完成している。完全描画packet、ドライバ�
 到達目標はまずnative TA/3Dによる実GPUのclearまたは三角形描画。Windows D3D UMDと完全WDDM render miniportはまだなく、DOD転送成功は3D対応を意味しない。
 
 `a04_m111_layout_pm_mlists`は`RGXCreateGlobalPB`のMLIST容量式と`RGXAddRenderTarget`の2組配置を実装する。固定PB 16KiB〜16MiBの部分集合では各MLISTが4KiB、計8KiB。同版UMはHWRT作成bridgeのmacrotile引数へliteral 0を渡すため、単一RT builderでこの0を受け付ける。これは未確定fieldのゼロ埋めではなく、観測した引数の再現である。実GPU backingと初期内容はここでは生成しない。
+
+## clear依存PDSコード
+
+`native_clear_pds`はboard GLESの0x2025c4/0x2047e4/0x202600から、単一sample・追加task flagsなしのUSC taskと背景PDSの生成を実装する。背景は8 dwords data＋1 dword code。taskは先頭64 bits、codeは+32の0xf4000002。vendorが書かないdata words2〜7は保持する。EOT側のDMAなしdataはtaskの2 dwords。USC heapは既存0xba00000000から1GiB内、temporary countは4単位切上げで最大252。USC本体、uniform data、pixel-event PDS code/register bindingはこのAPIの入力・責任外であり、完全clear shader/packetではない。
+
+SetupBGObjectは0x1fe43cのCreateSpecialObjectPixelShaderを経由してPVRUniFlexCompileToHwでUSCを生成する。0x2047e4のPDSコードが確定しても、compilerが返すUSC bytes、temp数、constant bindingを推測で埋めない。
