@@ -239,6 +239,24 @@ NTSTATUS A04DisplayResources::SwitchShared(uint32_t expected,a04_shared_ovl_read
     return a04_shared_ovl_switch(&SharedOvl,&Shared,&Lease,Ovl,0x1000,expected,ready,boundary,context);
 }
 #if A04_GE8300_WDDM_SHARED_COMMON_PAGE
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+static NTSTATUS CommonFrameCapabilities(HANDLE handle)
+{
+    struct a04_ge8300_shared_capabilities caps={};IO_STATUS_BLOCK io={};PFILE_OBJECT file=NULL;NTSTATUS status;
+    status=ObReferenceObjectByHandle(handle,SYNCHRONIZE,*IoFileObjectType,KernelMode,(PVOID *)&file,NULL);
+    if(!NT_SUCCESS(status))return status;
+    status=ZwDeviceIoControlFile(handle,NULL,NULL,NULL,&io,A04_GE8300_IOCTL_SHARED_CAPABILITIES,
+        &caps,sizeof(caps),&caps,sizeof(caps));
+    if(status==STATUS_PENDING) {
+        do {status=KeWaitForSingleObject(file,Executive,KernelMode,FALSE,NULL);} while(status!=STATUS_SUCCESS);
+        status=io.Status;
+    } else if(NT_SUCCESS(status))status=io.Status;
+    ObDereferenceObject(file);
+    if(NT_SUCCESS(status) && (io.Information!=sizeof(caps) || caps.version!=1 || caps.bytes!=sizeof(caps) ||
+       !(caps.flags&A04_GE8300_SHARED_CAP_FRAME_SEAL) || caps.reserved))return STATUS_DEVICE_CONFIGURATION_ERROR;
+    return status;
+}
+#endif
 static NTSTATUS CommonPageIoctl(HANDLE handle,ULONG code,struct a04_ge8300_common_page *page)
 {
     IO_STATUS_BLOCK io={};NTSTATUS status;PFILE_OBJECT file=NULL;
@@ -542,6 +560,14 @@ NTSTATUS A04DisplayResources::PrepareViaGpu()
         FILE_NON_DIRECTORY_FILE|FILE_SYNCHRONOUS_IO_NONALERT,NULL,0);
     A04DisplayTrace(0x86,status);
     if(!NT_SUCCESS(status)) {GpuHandle=NULL;return status;}
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+    status=CommonFrameCapabilities(GpuHandle);A04DisplayTrace(0x8b,status);
+    if(!NT_SUCCESS(status)){
+        (void)a04_common_claim_attempt(&SharedCommonOnce);
+        SharedCommonFinished=TRUE;SharedCommonResult=status;
+        ZwClose(GpuHandle);GpuHandle=NULL;return status;
+    }
+#endif
 #if A04_GE8300_WDDM_SHARED_COMMON_PAGE
     status=ProbeSharedCommonPage();
     SharedCommonResult=status;SharedCommonFinished=TRUE;

@@ -1116,6 +1116,16 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
     }
 #endif
 #if A04_GE8300_SHARED_FULL_FRAME
+    if(control==A04_GE8300_IOCTL_SHARED_CAPABILITIES) {
+        struct a04_ge8300_shared_capabilities *caps;
+        if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*caps) || output!=sizeof(*caps)) {
+            WdfRequestComplete(request,STATUS_ACCESS_DENIED);return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,sizeof(*caps),(void **)&caps,&size);
+        if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+        caps->version=1;caps->bytes=sizeof(*caps);caps->flags=A04_GE8300_SHARED_CAP_FRAME_SEAL;caps->reserved=0;
+        WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(*caps));return;
+    }
     if(control==A04_GE8300_IOCTL_SHARED_FRAME_SEAL) {
         struct a04_ge8300_frame_seal *seal;
         if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*seal) || output!=sizeof(*seal)) {
