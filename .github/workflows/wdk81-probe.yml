@@ -111,6 +111,41 @@ jobs:
           $env:A04_USB_GPIO22_SOURCE_EXPERIMENT='1'
           ./tools/ci/build-msdc-parent-probe.ps1
           ./tools/ci/build-mt8167-usb20.ps1 -OutputDirectory (Join-Path $env:RUNNER_TEMP 'a04-usb20-link')
+      - name: Build combined watchdog and UART diagnostics
+        shell: pwsh
+        run: |
+          $env:A04_TOPRGU_CPU1_HANDOFF='1'
+          $env:A04_TOPRGU_UART_SCREEN='1'
+          $env:A04_TOPRGU_THERMAL_STOP='1'
+          ./tools/ci/build-mt8167-toprgu.ps1
+      - name: Test-sign combined watchdog and UART diagnostics
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir=Join-Path $env:RUNNER_TEMP 'mt8167-toprgu'
+          $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1"
+          $cert=New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=MT8167 TOPRGU UART Thermal Diagnostic' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
+          try {
+            Export-Certificate -Cert $cert -FilePath (Join-Path $dir 'mt8167-toprgu-test.cer') | Out-Null
+            $sign=Join-Path $kit 'bin\x86\signtool.exe'
+            & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $dir 'mt8167-toprgu.sys'); if($LASTEXITCODE){throw 'SYS signing failed'}
+            Remove-Item (Join-Path $dir 'mt8167-toprgu.cat')
+            & (Join-Path $kit 'bin\x86\Inf2Cat.exe') "/driver:$dir" /os:6_3_ARM /uselocaltime; if($LASTEXITCODE){throw 'Catalog generation failed'}
+            & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $dir 'mt8167-toprgu.cat'); if($LASTEXITCODE){throw 'CAT signing failed'}
+            $files=@('mt8167-toprgu.sys','mt8167-toprgu.cat','mt8167-toprgu.inf','mt8167-toprgu-test.cer')
+            $hashes=@($files | ForEach-Object { @{name=$_;sha256=(Get-FileHash (Join-Path $dir $_) -Algorithm SHA256).Hash} })
+            @{source_commit=(git rev-parse HEAD);cpu1_handoff=1;uart_screen=1;thermal_stop=1;files=$hashes;note='Test-signed prototype; target operation and trust unverified'} | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 (Join-Path $dir 'manifest.json')
+          } finally { Remove-Item "Cert:\CurrentUser\My\$($cert.Thumbprint)" -ErrorAction SilentlyContinue }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a04-toprgu-uart-thermal-test-signed
+          path: |
+            ${{ runner.temp }}\mt8167-toprgu\mt8167-toprgu.sys
+            ${{ runner.temp }}\mt8167-toprgu\mt8167-toprgu.cat
+            ${{ runner.temp }}\mt8167-toprgu\mt8167-toprgu.inf
+            ${{ runner.temp }}\mt8167-toprgu\mt8167-toprgu-test.cer
+            ${{ runner.temp }}\mt8167-toprgu\manifest.json
+          if-no-files-found: error
       - name: Build MT8167 parent and MT6630 query probes
         shell: pwsh
         run: |
