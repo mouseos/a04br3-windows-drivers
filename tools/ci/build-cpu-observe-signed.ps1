@@ -9,6 +9,7 @@ $env:A04_CPU_USB_OBSERVE='1'
 & (Join-Path $root 'tools\ci\build-msdc-parent-probe.ps1')
 & (Join-Path $root 'tools\ci\build-cpu-observe.ps1')
 & (Join-Path $root 'tools\ci\build-usb-power-uart.ps1')
+& (Join-Path $root 'tools\ci\build-usb-bqhr.ps1')
 $out=Join-Path $env:RUNNER_TEMP 'cpu-observe-signed'
 if(Test-Path $out){throw 'output exists'}
 New-Item -ItemType Directory -Path $out | Out-Null
@@ -17,11 +18,15 @@ Copy-Item (Join-Path $root 'drivers\bus\mt8167-shared\prototype\shared-parent.in
 Copy-Item (Join-Path $env:RUNNER_TEMP 'a04-cpu-observe\cpu-observe.exe') $out
 Copy-Item (Join-Path $env:RUNNER_TEMP 'a04-usb-power-uart\usb-power-uart.exe') $out
 Copy-Item (Join-Path $root 'tools\winpe\usb-power-observe.cmd') $out
+Copy-Item (Join-Path $env:RUNNER_TEMP 'a04-usb-power-uart\usb-bqhr-uart.exe') $out
+New-Item -ItemType Directory -Path (Join-Path $out 'bqhr') | Out-Null
+Copy-Item (Join-Path $env:RUNNER_TEMP 'usb-bqhr\bqhr-observe.sys') (Join-Path $out 'bqhr')
+Copy-Item (Join-Path $env:RUNNER_TEMP 'usb-bqhr\bqhr-observe.inf') (Join-Path $out 'bqhr')
 $cert=New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=MT8167 CPU Observation Test' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
 try {
  $sig=Join-Path $kit 'bin\x86\signtool.exe';$cat=Join-Path $kit 'bin\x86\Inf2Cat.exe'
  Export-Certificate -Cert $cert -FilePath (Join-Path $out 'cpu-observe-test.cer') | Out-Null
- foreach($f in @('mt8167-shared.sys','cpu-observe.exe','usb-power-uart.exe')) {
+ foreach($f in @('mt8167-shared.sys','cpu-observe.exe','usb-power-uart.exe','usb-bqhr-uart.exe','bqhr\bqhr-observe.sys')) {
   & $sig sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $out $f)
   if($LASTEXITCODE){throw "sign $f failed"}
   $signature=Get-AuthenticodeSignature (Join-Path $out $f)
@@ -33,5 +38,9 @@ try {
  if($LASTEXITCODE){throw 'catalog signing failed'}
  $signature=Get-AuthenticodeSignature (Join-Path $out 'shared-parent.cat')
  if(!$signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $cert.Thumbprint){throw 'catalog signer mismatch'}
+ & $cat "/driver:$out\bqhr" /os:6_3_ARM /uselocaltime
+ if($LASTEXITCODE){throw 'BQHR Inf2Cat failed'}
+ & $sig sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $out 'bqhr\bqhr-observe.cat')
+ if($LASTEXITCODE){throw 'BQHR catalog signing failed'}
  Write-Output ("SIGNER="+$cert.Thumbprint)
 } finally {Remove-Item (Join-Path 'Cert:\CurrentUser\My' $cert.Thumbprint) -ErrorAction SilentlyContinue}

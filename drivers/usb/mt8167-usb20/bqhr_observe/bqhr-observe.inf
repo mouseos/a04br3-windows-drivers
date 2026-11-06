@@ -1,0 +1,37 @@
+[Version]
+Signature="$WINDOWS NT$"
+Class=Battery
+ClassGuid={72631E54-78A4-11D0-BCF7-00AA00B7B32A}
+Provider=%Provider%
+DriverVer=11/06/2026,0.0.1.0
+CatalogFile=bqhr-observe.cat
+[Manufacturer]
+%Provider%=Models,NTARM
+[Models.NTARM]
+%Device%=Install,ACPI\MOU0008
+[DestinationDirs]
+DriverCopy=12
+[SourceDisksNames]
+1=%Disk%,,,
+[SourceDisksFiles]
+bqhr-observe.sys=1
+[Install.NT]
+CopyFiles=DriverCopy
+[DriverCopy]
+bqhr-observe.sys
+[Install.NT.Services]
+AddService=A04UsbBqhr,0x00000002,Service
+[Service]
+DisplayName=%Device%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\bqhr-observe.sys
+[Install.NT.Wdf]
+KmdfService=A04UsbBqhr,Wdf
+[Wdf]
+KmdfLibraryVersion=1.13
+[Strings]
+Provider="mouseos"
+Device="A04BR3 BQHR read-only diagnostic"
+Disk="A04BR3 BQHR diagnostic"

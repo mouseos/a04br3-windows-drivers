@@ -6,3 +6,8 @@ $out=Join-Path $temp 'a04-usb-power-uart';New-Item -ItemType Directory -Force $o
 if($LASTEXITCODE){throw 'USB observation utility compilation failed'}
 & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\usb-power-uart.obj" "$lib\kernel32.lib" "/out:$out\usb-power-uart.exe"
 if($LASTEXITCODE){throw 'USB observation utility link failed'}
+
+& clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 "-I$inc\um" "-I$inc\shared" -c (Join-Path $root 'tools\winpe\usb-bqhr-uart.c') -o "$out\usb-bqhr-uart.obj"
+if($LASTEXITCODE){throw 'BQHR observation utility compilation failed'}
+& lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\usb-bqhr-uart.obj" "$lib\kernel32.lib" "/out:$out\usb-bqhr-uart.exe"
+if($LASTEXITCODE){throw 'BQHR observation utility link failed'}
