@@ -613,3 +613,22 @@ BeforeExitBootServices. The GCE PDO can read it for diagnostics with
 fields are explicitly unknown because a gate bit alone does not establish safe
 nonsecure access to the GCE. Runtime variable contents are not authenticated
 and no such observation may authorize the experimental executor.
+
+### GPU copy displayed through POST: observed result
+
+The user reported a single boot with the paired `c16ad80` provider/display ESP
+and UEFI boot `e969a116`: steps 8B=0, 5E=3E8, 5F=0, 66=0, 60=FA000,
+61=0, 80=0, 82=0 and 81=0. The user also observed the color bars and the
+previous screen return on camera. This establishes the reported GPU-copy,
+CPU comparison and CPU-to-POST display/restore sequence under that setup.
+The POST path does not submit the common allocation as an OVL source; the
+observation therefore provides no evidence of GPU-to-display DMA visibility,
+GCE ownership, frame-boundary latch, scanout retirement, or 3D drawing. The
+CPU cache-handoff experiment in this boot is a separate change; this combined
+observation does not establish its behavior independently.
+
+The next direct-scanout path must retain the known-good POST target as the
+recovery surface and prove both its display mapping and the new surface's
+visibility and retirement. A thread EOC, register readback, or the observed
+CPU comparison cannot replace those proofs. Keep the GCE and direct OVL paths
+default-off and retain their mappings whenever transition or stop is uncertain.
