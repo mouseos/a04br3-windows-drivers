@@ -35,8 +35,11 @@ def main():
            shared/'parent/mt8167-shared.sys',shared/'parent/shared-parent.cat',shared/'parent/shared-parent.inf',
            shared/'touch/bu21025.sys',shared/'touch/bu21025.cat',shared/'touch/shared-touch.inf',shared/'shared-touch-test.cer']
     if not all(f.is_file() and f.resolve().is_relative_to(ROOT) for f in files):raise SystemExit('A signed package file is missing')
-    for d in (top,thermal):
-        m=json.loads((d/'manifest.json').read_text(encoding='utf-8-sig'))
+    manifests=[json.loads((d/'manifest.json').read_text(encoding='utf-8-sig')) for d in (top,thermal,packages/'shared')]
+    if len({m['source_commit'] for m in manifests})!=1:raise SystemExit('Package source commits differ')
+    if not all(manifests[0].get(k)==1 for k in ('cpu1_handoff','uart_screen','uart_volume','thermal_stop')) or not all(manifests[1].get(k)==1 for k in ('shared_parent','oneshot','codec_adc')) or not all(manifests[2].get(k)==1 for k in ('thermal_parent','touch_lease')):
+        raise SystemExit('Required diagnostic build flags missing')
+    for d,m in zip((top,thermal),manifests):
         for item in m['files']:
             if sha(d/item['name'])!=item['sha256'].lower():raise SystemExit('Package hash mismatch')
     with tempfile.TemporaryDirectory(prefix='adc-media-',dir=out) as td:
@@ -82,6 +85,6 @@ def main():
         run(['python3',str(Path(__file__).with_name('replace-esp-wim.py')),'--template',str(BASE/'volume-esp.img'),'--wim',str(wim),'--output',str(esp),'--template-bcd-sha256',BCD,'--template-wim-sha256',EXPECTED['volume.wim']])
         boot=out/'boot.img';shutil.copyfile(BASE/'boot.img',boot)
         if sha(boot)!=EXPECTED['boot.img']:raise ValueError('Boot image mismatch')
-        manifest={'base':EXPECTED,'package_files':{str(p.relative_to(packages)):sha(p) for p in files},'wim':sha(wim),'esp':sha(esp),'boot':sha(boot),'limitations':['Test signatures and device operation unverified','ADC route and mute gate rejects measurements','UART queue acceptance is not transmission','No device writes performed']}
+        manifest={'driver_source_commit':manifests[0]['source_commit'],'base':EXPECTED,'package_files':{str(p.relative_to(packages)):sha(p) for p in files},'wim':sha(wim),'esp':sha(esp),'boot':sha(boot),'limitations':['Test signatures and device operation unverified','ADC route and mute gate rejects measurements','UART queue acceptance is not transmission','No device writes performed']}
         (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 if __name__=='__main__':main()
