@@ -77,10 +77,11 @@ void WdfDeviceInitSetPnpPowerEventCallbacks(PWDFDEVICE_INIT i,WDF_PNPPOWER_EVENT
 NTSTATUS WdfDeviceCreate(PWDFDEVICE_INIT *i,WDF_OBJECT_ATTRIBUTES *a,WDFDEVICE *d){(void)a;if(*i){assert(child_count<6);*d=&children[child_count++];*i=NULL;}else *d=&testContext;return 0;}
 NTSTATUS WdfDriverCreate(PDRIVER_OBJECT d,PUNICODE_STRING p,void *a,WDF_DRIVER_CONFIG *c,void *h){(void)d;(void)p;(void)a;(void)c;(void)h;return 0;}
 #if A04_USB_POWER_IOCTL
-NTSTATUS WdfDeviceInitAssignName(PWDFDEVICE_INIT p,const UNICODE_STRING *u){(void)p;(void)u;return 0;}
-NTSTATUS WdfDeviceInitAssignSDDLString(PWDFDEVICE_INIT p,const UNICODE_STRING *u){(void)p;(void)u;return 0;}
+void WdfDeviceInitSetCharacteristics(PWDFDEVICE_INIT p,ULONG c,int set){(void)p;assert(c==FILE_DEVICE_SECURE_OPEN && set);}
+NTSTATUS WdfDeviceInitAssignName(PWDFDEVICE_INIT p,const UNICODE_STRING *u){(void)p;assert(!wcscmp(u->value,A04_USB_OBSERVATION_DEVICE));return 0;}
+NTSTATUS WdfDeviceInitAssignSDDLString(PWDFDEVICE_INIT p,const UNICODE_STRING *u){(void)p;assert(!wcscmp(u->value,L"D:P(A;;GA;;;SY)(A;;GA;;;BA)"));return 0;}
 NTSTATUS WdfDeviceCreateSymbolicLink(WDFDEVICE d,const UNICODE_STRING *u){(void)d;(void)u;return 0;}
-NTSTATUS WdfIoQueueCreate(WDFDEVICE d,WDF_IO_QUEUE_CONFIG *q,void *a,void *h){(void)d;(void)a;(void)h;assert(q->EvtIoDeviceControl==ParentUsbObservationIoctl);return 0;}
+NTSTATUS WdfIoQueueCreate(WDFDEVICE d,WDF_IO_QUEUE_CONFIG *q,void *a,void *h){(void)d;(void)a;(void)h;assert(q->EvtIoDeviceControl==ParentUsbObservationIoctl && q->PowerManaged==WdfFalse);return 0;}
 WDFDEVICE WdfIoQueueGetDevice(WDFQUEUE q){return q;}
 NTSTATUS WdfRequestRetrieveOutputBuffer(WDFREQUEST r,size_t min,PVOID *p,size_t *n){if(r->size<min)return STATUS_BUFFER_TOO_SMALL;*p=r->buffer;*n=r->size;return 0;}
 void WdfRequestComplete(WDFREQUEST r,NTSTATUS status){r->status=status;r->info=0;}

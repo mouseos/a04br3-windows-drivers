@@ -1115,6 +1115,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #if A04_USB_POWER_IOCTL
     { DECLARE_CONST_UNICODE_STRING(name,A04_USB_OBSERVATION_DEVICE);
       DECLARE_CONST_UNICODE_STRING(sddl,L"D:P(A;;GA;;;SY)(A;;GA;;;BA)");
+      WdfDeviceInitSetCharacteristics(init,FILE_DEVICE_SECURE_OPEN,TRUE);
       status=WdfDeviceInitAssignName(init,&name);if(!NT_SUCCESS(status))return status;
       status=WdfDeviceInitAssignSDDLString(init,&sddl);if(!NT_SUCCESS(status))return status; }
 #endif
@@ -1130,7 +1131,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     { DECLARE_CONST_UNICODE_STRING(link,A04_USB_OBSERVATION_LINK);WDF_IO_QUEUE_CONFIG q;
       status=WdfDeviceCreateSymbolicLink(dev,&link);if(!NT_SUCCESS(status))return status;
       WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchSequential);
-      q.PowerManaged=WdfTrue;q.EvtIoDeviceControl=ParentUsbObservationIoctl;
+      q.PowerManaged=WdfFalse;q.EvtIoDeviceControl=ParentUsbObservationIoctl;
       status=WdfIoQueueCreate(dev,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);
       if(!NT_SUCCESS(status))return status; }
 #endif

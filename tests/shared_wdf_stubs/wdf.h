@@ -33,7 +33,9 @@ typedef struct test_request {void *buffer;size_t size,info;NTSTATUS status;} *WD
 typedef struct {int PowerManaged;void (*EvtIoDeviceControl)(WDFQUEUE,WDFREQUEST,size_t,size_t,ULONG);} WDF_IO_QUEUE_CONFIG;
 #define WdfIoQueueDispatchSequential 0
 #define WdfTrue 1
+#define WdfFalse 0
 #define WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(p,mode) (memset((p),0,sizeof(*(p))),(void)(mode))
+void WdfDeviceInitSetCharacteristics(PWDFDEVICE_INIT,ULONG,int);
 NTSTATUS WdfDeviceInitAssignName(PWDFDEVICE_INIT,const UNICODE_STRING *);
 NTSTATUS WdfDeviceInitAssignSDDLString(PWDFDEVICE_INIT,const UNICODE_STRING *);
 NTSTATUS WdfDeviceCreateSymbolicLink(WDFDEVICE,const UNICODE_STRING *);

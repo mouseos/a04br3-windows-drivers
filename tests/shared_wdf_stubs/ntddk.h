@@ -18,6 +18,7 @@ static inline LONG InterlockedCompareExchange(volatile LONG *p,LONG v,LONG old){
 typedef struct { int64_t QuadPart; } PHYSICAL_ADDRESS;typedef PHYSICAL_ADDRESS LARGE_INTEGER;
 typedef struct {int held;} FAST_MUTEX;
 #define STATUS_BUFFER_TOO_SMALL (-12)
+#define FILE_DEVICE_SECURE_OPEN 0x100
 #define FILE_DEVICE_UNKNOWN 0x22
 #define METHOD_BUFFERED 0
 #define FILE_READ_ACCESS 1
