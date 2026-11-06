@@ -10,6 +10,10 @@ int a04_test_trace_count;
 static ULONG mockAfeRegs[1024];static int mockAfeIgnoreWrite;
 #define mockAfe mockAfeRegs[0]
 #endif
+#if A04_SHARED_VOICE_DIAGNOSTIC || A04_SHARED_VOICE_PCM_DIAGNOSTIC
+static int voiceGainReads,voiceGainFail;static uint16_t voiceGain;
+static int voiceReadGain(void *p,uint16_t reg,uint16_t *out){(void)p;assert(reg==0x64);voiceGainReads++;if(voiceGainFail)return -1;*out=voiceGain;return 0;}
+#endif
 static A04_PARENT_CONTEXT testContext;static int refs,reads,writes,maps,unmaps,assertClosedOnLock,closeDuringLock,failMap;static A04_LEGACY_SHARED_INTERFACE saved;static A04_SHARED_INTERFACE input;static A04_SHARED_AUDIO_INTERFACE audio;static A04_SHARED_USB_INTERFACE usb;static A04_SHARED_WIFI_INTERFACE wifi;
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
 static ULONG usbGpio[1024];
@@ -82,6 +86,17 @@ int main(void){
  { int16_t initial=321,value=123;unsigned cap=9;int n=writes;
    assert(ParentVoiceVerify(&testContext,&initial,&value,&cap));
    assert(ParentCodecStart(&testContext));assert(writes==n && initial==321 && value==123 && cap==9); }
+#endif
+#if A04_SHARED_VOICE_DIAGNOSTIC || A04_SHARED_VOICE_PCM_DIAGNOSTIC
+ { int16_t initial=321,value=123;unsigned cap=9;int n=writes;
+   testContext.pmic.online=1;testContext.classd.active=1;testContext.classd.read16=voiceReadGain;
+   voiceGain=0;assert(ParentVoiceVerify(&testContext,&initial,&value,&cap) && voiceGainReads==1);
+   assert(writes==n && initial==321 && value==123 && cap==9);
+   voiceGain=0x100;assert(ParentVoiceVerify(&testContext,&initial,&value,&cap) && voiceGainReads==2);
+   assert(writes==n && !testContext.classd.poisoned);
+   voiceGainFail=1;assert(ParentVoiceVerify(&testContext,&initial,&value,&cap) && testContext.classd.poisoned && voiceGainReads==3);
+   voiceGainFail=0;testContext.classd.poisoned=0;
+   testContext.pmic.online=0;testContext.classd.active=0;testContext.classd.read16=NULL; }
 #endif
  CM_PARTIAL_RESOURCE_DESCRIPTOR entries[5]={0},translated[5]={0};struct test_list list={entries,4},translatedList={translated,4};USHORT value=0xeeee;
 #if A04_SHARED_APMIXED_RESOURCE

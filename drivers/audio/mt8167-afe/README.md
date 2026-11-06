@@ -376,3 +376,14 @@ mapping for the PortCls pages, its map-register lifetime and DMA drain proof
 are not implemented. No PCM reaches hardware. A successful preflight cannot
 override this restriction. When mapping is added, it must preserve the PortCls
 allocation and mapping until the hardware and adapter are demonstrably done.
+
+The Linux board driver programs DL1 BASE/END from the DMA allocation's
+`runtime->dma_addr` and size. The XNU network IODMACommand example maps a
+buffer and uses an IOVM address; neither proves a numeric physical-address
+identity for the Windows AFE. Microsoft documents
+[GetScatterGatherList](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pget_scatter_gather_list)
+as retaining mapping resources and requiring `PutScatterGatherList` before CPU
+access to the buffer. That packet-DMA contract alone is not evidence that an
+actively written WaveRT cyclic buffer can safely use that mapping indefinitely.
+The PortCls-to-AFE adapter mapping, continuous synchronization and safe release
+remain unimplemented; RUN remains refused.
