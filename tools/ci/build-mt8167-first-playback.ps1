@@ -108,7 +108,7 @@ try {
     $commit=(& git -C $root rev-parse HEAD);if($LASTEXITCODE -ne 0){throw 'Cannot identify source commit'}
     $dirty=@(& git -C $root status --porcelain)
     $parentFlags=@{};foreach($name in $names){if($name.StartsWith('A04_')){$parentFlags[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}}
-    @{source_commit=$commit;source_dirty=($dirty.Count -ne 0);hardware='MediaTek MT8167 AFE / MT6392';
+    @{source_commit=$commit;source_dirty=($dirty.Count -ne 0);audio_mode='private_fixed_tone_diagnostic';engine_pcm=$false;hardware='MediaTek MT8167 AFE / MT6392';
       sample_rate=48000;pcm='private immutable stereo S16_LE, 1500 Hz, peak 128/32768';
       mode='one initial RUN, resources and D0 power reference pinned until reset';
       calibration='MT6392 hardware trim; Linux cold-start DC profile, no measured AU_LOL ADC calibration';

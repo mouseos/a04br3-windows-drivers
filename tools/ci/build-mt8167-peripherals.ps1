@@ -115,6 +115,7 @@ try {
       parent_hardware_id='ACPI\BEN0001';shared_parent_count=1;audio_interface=11;usb_interface=1;wifi_interface=2;
       driver_date=$inputs.driver_date;driver_version=$inputs.driver_version;driver_ver=$inputs.driver_ver;
       parent_flags=$audioManifest.parent_flags;audio_flags=$audioManifest.audio_flags;
+      audio_mode='private_fixed_tone_diagnostic';engine_pcm=$false;hardware_probe_engine_pcm_auto_registration_allowed=$false;
       hardware_probe_service='MT8167HardwareProbe';hardware_probe_path='hardware-probe';hardware_probe_one_attempt=$true;
       hardware_probe_exe_destination='System32\MT8167HardwareProbe.exe';hardware_probe_client_directory='System32\MT8167HardwareProbe';
       hardware_probe_scm_start=2;hardware_probe_scm_arguments='';hardware_probe_delayed_auto_start=$false;

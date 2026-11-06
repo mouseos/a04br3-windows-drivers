@@ -10,6 +10,26 @@ Makefileの末尾追加競合は両方のtarget/recipeを保持して解消し�
 GPU/MMA8652はGPU基点、parent/audio/USB/Wi-Fi/KS clientはperipheral基点の
 実装を変更せず保持する。新しいMMIO操作、ACPI変更、EDK2変更は追加しない。
 
+## 音声モードとGPU主試験の基点
+
+この統合branchの音声は**固定tone診断版**（`private_fixed_tone_diagnostic`）。
+主担当が回収したSYS=`f17b743`、KS client=`a016d53`も同モードであり、
+GPU主試験はこの現診断parent版のまま先行する。回収済みSYSをEnginePcm版と呼ばない。
+
+AudioSrv実PCM候補 `49d5c65` は別branch `work/rt-audio-engine-pcm-20261107` の
+新しい親/audio/endpoint実装で、この統合branchには取り込んでいない。
+親interfaceが同じv11であっても、固定tone版との互換性・通常音声成功の証拠にはならない。
+STOP→RUN・再openはHerschelが継続中で、完成済みとして扱わない。
+
+**EnginePcmを使う構成にはhardwareprobe `94e4d47`を自動登録しない。**
+このserviceは旧private-tone KS clientを自動起動し、保持する初回RUNを消費する。
+EnginePcmではTopology追加でAUDIO interfaceも複数になるため、旧clientによる
+自動列挙・起動を再利用しない。既存登録を引き継いだ構成でも、自動起動を有効なまま
+EnginePcmへ切り替えない。EnginePcm専用の起動・観測方法が確定するまでは別構成として扱う。
+
+下記のservice bundleとRecovery媒体builderは固定tone診断構成用。
+実行・登録をこのsource統合が行ったという意味ではない。
+
 ## 固定commitからのビルド
 
 clean checkoutで同じ統合commitを指定し、既存の各WDK8.1入口を使用する。
@@ -37,7 +57,7 @@ GPU `7d57022` のprivate output初期値A5A5A5A5（3行）を追加取り込み�
 黒clear未実行なのにzero初期値との画素一致で成功と誤認することを防ぐ。
 GPUのその他のソースはd5f676dのまま。
 
-主担当申告で現在再署名・回収中のperipheral packageは、SYS=f17b743、
+主担当申告で回収したperipheral SYSは固定tone診断版f17b743、
 client=a016d53の混在で、全SYSの再compileはしていない。
 この既存バイナリの出自と、新統合branchから将来buildするソースを区別する。
 具体的なSYS/EXE/CAT hashと署名結果は主担当の回収manifestが正本。

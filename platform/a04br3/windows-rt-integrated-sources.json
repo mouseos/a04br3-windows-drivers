@@ -16,8 +16,9 @@
     "sys_source": "f17b743dbed1053451a89d03de805c27021b1cc5",
     "client_source": "a016d53763b7872cd1235d5e96204d36ab48cca4",
     "sys_recompiled": false,
-    "signing_and_collection": "in progress, user report",
-    "note": "Existing peripheral SYS/client artifacts; not built from this integrated GPU source commit"
+    "note": "Existing peripheral SYS/client artifacts; not built from this integrated GPU source commit",
+    "audio_mode": "private_fixed_tone_diagnostic",
+    "sys_collected": true
   },
   "hardware_probe_service": "94e4d4725fb38e5ae9f780f5e00179695c3ac52c",
   "bulk_update_media_builder": "ba26a347abcf141f833a01e6b23256d21331c597",
@@ -25,5 +26,24 @@
   "emmc_write_batching_source": "6b5043e98c853ca6cb4af31f747732198183a933",
   "emmc_write_multiblock_default": 0,
   "emmc_applied_on_target": false,
-  "hardware_probe_service_build": "Primary owner building/signing 94e4d47; not executed here"
+  "hardware_probe_service_build": "Primary owner building/signing 94e4d47; not executed here",
+  "audio_mode": "private_fixed_tone_diagnostic",
+  "gpu_primary_test_parent_mode": "private_fixed_tone_diagnostic",
+  "hardware_probe_audio_policy": {
+    "service_source": "94e4d4725fb38e5ae9f780f5e00179695c3ac52c",
+    "automatic_client": "legacy private-tone KS client",
+    "compatible_audio_modes": [
+      "private_fixed_tone_diagnostic"
+    ],
+    "register_automatically_with_engine_pcm": false,
+    "reason": "The legacy client consumes the retained first RUN; EnginePcm has multiple AUDIO interfaces after Topology registration"
+  },
+  "engine_pcm_candidate": {
+    "branch": "work/rt-audio-engine-pcm-20261107",
+    "source_commit": "49d5c657b452b3085627f0e8e664edd441036b83",
+    "integrated": false,
+    "mode": "AudioSrv engine PCM with new parent/audio/endpoint implementation",
+    "stop_run_reopen_complete": false,
+    "hardware_verified": false
+  }
 }

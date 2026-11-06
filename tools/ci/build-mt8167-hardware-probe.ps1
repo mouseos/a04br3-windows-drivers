@@ -67,6 +67,7 @@ try {
   client_directory='System32\MT8167HardwareProbe';scm_arguments='';scm_start=2;scm_delayed_auto_start=$false;
   clients_staged=($inputs.Count -eq 2);signing_requested=[bool]$Sign;
   signing_thumbprint=$(if($Sign){$CertificateThumbprint}else{$null});target_signature_trust_verified=$false;
+  audio_mode='private_fixed_tone_diagnostic';engine_pcm_compatible=$false;engine_pcm_auto_registration_allowed=$false;
   marker='attempted.bin';startup='standard auto start; disabled before the only attempt';
   timeouts_ms=@(600000,120000);audio_interface=11;client_arguments=@('','');hardware_verified=$false;
   files=@($files|ForEach-Object{@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}})
