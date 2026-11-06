@@ -7,6 +7,7 @@
 struct worker { unsigned cpu; DWORD result; DWORD observed; DWORD iterations; };
 static struct worker workers[CPU_COUNT];
 static HANDLE start_event;
+static char line[]="A04CPU index=00000000 observed=00000000 loops=00000000 status=00000000\r\n";
 static void print(const char *s)
 {
     DWORD n=0,written; while (s[n]) ++n;
@@ -37,7 +38,7 @@ static DWORD WINAPI run_cpu(LPVOID param)
 void mainCRTStartup(void)
 {
     SYSTEM_INFO info;DWORD_PTR process_mask,system_mask;HANDLE threads[CPU_COUNT];
-    DWORD i,n=0,result=0,status;char line[]="A04CPU index=00000000 observed=00000000 loops=00000000 status=00000000\r\n";
+    DWORD i,n=0,result=0,status;
     GetSystemInfo(&info);
     if(info.dwNumberOfProcessors<CPU_COUNT || !GetProcessAffinityMask(GetCurrentProcess(),&process_mask,&system_mask) ||
        (process_mask&15u)!=15u || (system_mask&15u)!=15u){print("A04CPU AFFINITY_UNAVAILABLE\r\n");ExitProcess(2);}
