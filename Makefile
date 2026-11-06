@@ -1282,3 +1282,6 @@ test-mt6630: test-mt6630-runtime
 build/mt6630_diagnostic_calibration_test: drivers/network/mt6630/windows_diagnostic.c tests/mt6630_windows_diagnostic_test.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -DA04_WIFI_CALIBRATION_DIAGNOSTIC=1 -Itests/shared_wdf_stubs -Idrivers/network/mt6630 $^ -o $@
+
+# Rebuild the existing bridge checks when the shared country codec/table changes.
+build/mt6630_wmt_bridge_test build/mt6630_native_bridge_test build/mt6630_data_bridge_test build/mt6630_native_nbl_test build/mt6630_calibration_bridge_test: drivers/network/mt6630/regulatory.c drivers/network/mt6630/regulatory.h drivers/network/mt6630/regulatory_data.h
