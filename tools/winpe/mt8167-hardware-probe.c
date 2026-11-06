@@ -23,7 +23,7 @@ static SERVICE_STATUS service_status;
 static DWORD run_id,log_error,uart_error;
 static int uart_quarantined,child_uncertain;
 enum { EV_BEGIN=1,EV_DISABLED,EV_ATTEMPTED,EV_SIGNATURE,EV_START,EV_EXIT,
-       EV_TIMEOUT,EV_CANCEL,EV_ERROR,EV_END,EV_TERMINATE,EV_LOG_ERROR,EV_UART,EV_FINAL };
+       EV_TIMEOUT,EV_CANCEL,EV_ERROR,EV_END,EV_TERMINATE,EV_LOG_ERROR,EV_UART,EV_FINAL,EV_POWER_SET,EV_POWER_CLEAR,EV_POWER_CLOSE };
 
 void *memset(void *p,int v,size_t n){volatile BYTE *b=p;while(n--)*b++=(BYTE)v;return p;}
 void *memcpy(void *p,const void *q,size_t n){volatile BYTE *b=p;const volatile BYTE *a=q;while(n--)*b++=*a++;return p;}
@@ -210,17 +210,35 @@ done:
 }
 static DWORD once(void)
 {
- DWORD error,result=0;unsigned i;
+ DWORD error,result=0,cleanup_error;unsigned i;HANDLE power=INVALID_HANDLE_VALUE;REASON_CONTEXT reason;
  error=local_system();if(error)return error;
  error=disable_self();if(error){record(0,EV_DISABLED,error);return error;}
  error=paths();if(error)return error;
  error=open_log();if(error)return error;
  record(0,EV_DISABLED,0);record(0,EV_BEGIN,0);error=consume_attempt();record(0,EV_ATTEMPTED,error);
  if(error||log_error)return error?error:log_error;
+ /* Windows 7+ desktop API, also used by this native RT8.1 service.
+  * SystemRequired only: explicit user Sleep is still honored by Windows. */
+ memset(&reason,0,sizeof(reason));reason.Version=POWER_REQUEST_CONTEXT_VERSION;
+ reason.Flags=POWER_REQUEST_CONTEXT_SIMPLE_STRING;
+ reason.Reason.SimpleReasonString=L"MT8167 WLAN・音声の一回限り試験";
+ power=PowerCreateRequest(&reason);
+ if(power==INVALID_HANDLE_VALUE){result=GetLastError();record(0,EV_POWER_SET,result);return result;}
+ if(!PowerSetRequest(power,PowerRequestSystemRequired)){
+  result=GetLastError();record(0,EV_POWER_SET,result);goto close_power;
+ }
+ record(0,EV_POWER_SET,0);
  for(i=0;i<2;i++){
   if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){if(!result)result=ERROR_CANCELLED;break;}
   error=run_client(i);if(error&&!result)result=error;if(child_uncertain)break;
  }
+ /* Normal completion, timeout, signature/start failure and SCM STOP all
+  * converge here. Never reassert a request after explicit user Sleep. */
+ cleanup_error=PowerClearRequest(power,PowerRequestSystemRequired)?0:GetLastError();
+ record(0,EV_POWER_CLEAR,cleanup_error);if(cleanup_error&&!result)result=cleanup_error;
+close_power:
+ cleanup_error=CloseHandle(power)?0:GetLastError();power=INVALID_HANDLE_VALUE;
+ record(0,EV_POWER_CLOSE,cleanup_error);if(cleanup_error&&!result)result=cleanup_error;
  if(log_error&&!result)result=log_error;
  return result;
 }
