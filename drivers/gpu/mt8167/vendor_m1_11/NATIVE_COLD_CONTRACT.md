@@ -101,3 +101,10 @@ record側background triple、pixel event binding、PBE final emit wordsは本fac
 `a04_m111_build_clear_code_bindings`はこのcodespace専用のheap相対background tripleとevent info/code/dataを返す。PDS VA 0xa800010000の場合、background={0x0001005000010000,0x0001004000000000,0x0080000000010001}、event info=0x202、code=0x100a0、data=0x10080、background pixel data=32 bytes。PR/通常backgroundのどちらへ接続するかは未確定のためrecordへ自動patchしない。
 
 重要訂正: `FUN_00202600`のmetadata +0x24=N*2+3をPDS temp数5と解釈しない。`InitPixelEventCodeBlocks` 0x1c1a14がcode allocationのword数として消費する一次証拠ev_37321734325fed9a2e64d0359f96e085a1bc0a5215e61ea3e6bfd8a0c5dd2760で確認。今回のEOT命令列はconstant参照のみでPDS temp0、shared2、data8 wordsなのでEVENT_PIXEL_PDS_INFO=0x202。以前の解析候補0x242は不採用。background sizeinfoはSetupBGObjectのshared/data単位変換と0x204504の最低temp1を適用。コードbindingの確定は完全TA/3D payloadの確定ではない。
+
+
+## packed32 linear RTのPBE factory
+
+`native_clear_surface`は単一RT、single sample、linear layout3、packed8入力、output0、identity lane swizzle、norm/gamma/rotationなし、全extent clipの最終emit2wordとnative CSR2qwordを返す。同版GLES format helper 0x22c9c0（ev_a85befce74dbbd23327a59b658c855eab7b0ab00fce16487ae09aece873c2763）、format row0x22 at 0x26ac44（ev_76cf618c0315ebe655426b949e05d391fb66c064eb5dfe3b9ac336f9e1aab919）、layout table at0x265080（ev_f9776c4cf4ad0b451fd2c972655f47fa8e798d233dbc170979d57026a239cad7）を既存producer 0x20ff6cと照合。rowは1 plane、packmode0、norm0、swizzle0/1/2/3。API形式のRGBA float変換は行わない。
+
+output VA0x8000000000、pitch800の場合、emit={0,0x80020}、CSR0=0x0200063c68800000、CSR1=(799<<32)|(height-1)。800x600と800x1280を試験し、surface→EOT codespace連結をASan/UBSan、ARM32 COFFで検証。既存native22 wide-stateと同じCSR配置、modern 3qword形式は使わない。callerはemitをcodespaceへ渡し、CSR pairをRT0へ配置する。完全record・backing・publicationを本factoryは提供しない。
