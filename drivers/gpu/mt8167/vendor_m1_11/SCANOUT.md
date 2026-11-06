@@ -45,7 +45,8 @@ obtaining the list is not sufficient.
 The switch routine joins that mapping to the MT8167 OVL L0 address register.
 It requires a PnP-owned mapped OVL range and a display lease held by the caller,
 a real exact-fence/visibility operation, and a real safe-boundary operation.
-It validates enabled OVL, a single active layer, geometry, pitch, and the
+It validates enabled OVL, a single active layer, memory source, a 32-bit
+format, no hardware flip, geometry, pitch, and the
 expected existing address before writing. The caller must also establish that
 L0 format, rotation and pixel layout match the rendered surface. Current
 firmware config enables layer 3, so this implementation deliberately refuses

@@ -1,9 +1,11 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "windows_display_scanout.h"
+#include "../windows_hw.h"
 #if A04_GE8300_DISPLAY_SCANOUT_EXPERIMENT
 /* Offsets from Linux MT8167 ddp_reg.h; access only a PnP-owned OVL resource. */
 #define OVL_EN 0x00cu
 #define OVL_SRC_CON 0x02cu
+#define OVL_L0_CON 0x030u
 #define OVL_L0_SIZE 0x038u
 #define OVL_L0_PITCH 0x044u
 #define OVL_L0_ADDR 0xf40u
@@ -78,15 +80,18 @@ NTSTATUS a04_display_scanout_switch(struct a04_display_scanout *s,
     volatile void *base, ULONG length, uint32_t old, uint64_t fence,
     a04_display_ready_fn ready, a04_display_boundary_fn boundary, void *context)
 {
-    volatile ULONG *ovl=(volatile ULONG *)base;NTSTATUS status;
+    volatile ULONG *ovl=(volatile ULONG *)base;NTSTATUS status; ULONG con,format;
     if (!s || !s->sg || !s->surface || s->attempted || !base ||
         ((ULONG_PTR)base&3u) || length<OVL_REQUIRED_SIZE || !old || !fence ||
         !ready || !boundary || KeGetCurrentIrql()!=PASSIVE_LEVEL)
         return STATUS_INVALID_PARAMETER;
-    status=ready(context,fence);if(status!=STATUS_SUCCESS)return status;
-    status=boundary(context);if(status!=STATUS_SUCCESS)return status;
+    status=ready(context,fence);if(status!=STATUS_SUCCESS)return NT_SUCCESS(status)?STATUS_DEVICE_NOT_READY:status;
+    status=boundary(context);if(status!=STATUS_SUCCESS)return NT_SUCCESS(status)?STATUS_DEVICE_NOT_READY:status;
+    /* Linux defines memory source as LARC=0, and 32-bit formats as 2/3. */
+    con=READ_REGISTER_ULONG(ovl+OVL_L0_CON/4);format=(con>>12)&15u;
     /* Never guess how to compose with firmware layer 3 or any other layer. */
-    if (!(READ_REGISTER_ULONG(ovl+OVL_EN/4)&1u) ||
+    if ((con & ((3u<<28)|(3u<<9))) || (format!=2u && format!=3u) ||
+        !(READ_REGISTER_ULONG(ovl+OVL_EN/4)&1u) ||
         READ_REGISTER_ULONG(ovl+OVL_SRC_CON/4)!=1u ||
         READ_REGISTER_ULONG(ovl+OVL_L0_SIZE/4)!=((1280u<<16)|800u) ||
         (READ_REGISTER_ULONG(ovl+OVL_L0_PITCH/4)&0xffffu)!=3200u ||
@@ -99,7 +104,7 @@ NTSTATUS a04_display_scanout_switch(struct a04_display_scanout *s,
         if (!NT_SUCCESS(status)) return status;
     }
     s->attempted=TRUE;s->saved_address=old;s->ovl=ovl;s->ovl_length=length;
-    KeMemoryBarrier();
+    a04_gpu_dma_barrier();
     WRITE_REGISTER_ULONG(ovl+OVL_L0_ADDR/4,s->display_address);
     return STATUS_SUCCESS; /* write issued, not proof of latch or display */
 }

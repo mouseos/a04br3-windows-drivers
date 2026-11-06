@@ -4,6 +4,7 @@
 #include "../drivers/gpu/mt8167/vendor_m1_11/windows_display_scanout.h"
 static SCATTER_GATHER_LIST list;
 static int puts, readiness, boundary_count;
+void a04_gpu_dma_barrier(void) {}
 unsigned KeGetCurrentIrql(void) { return PASSIVE_LEVEL; }
 void KeInitializeEvent(KEVENT *e,int t,BOOLEAN b) { (void)t;(void)b;e->signaled=0; }
 void KeSetEvent(KEVENT *e,int p,BOOLEAN b) { (void)p;(void)b;e->signaled=1; }
@@ -33,12 +34,14 @@ int main(void)
     pages[9]++;assert(a04_display_scanout_map(&s,&surf,&adapter,(void *)1,&mdl)==STATUS_DEVICE_CONFIGURATION_ERROR);pages[9]--;
     list.Elements[1].Address.QuadPart++;assert(a04_display_scanout_map(&s,&surf,&adapter,(void *)1,&mdl)==STATUS_DEVICE_CONFIGURATION_ERROR);assert(puts==1);list.Elements[1].Address.QuadPart--;
     assert(NT_SUCCESS(a04_display_scanout_map(&s,&surf,&adapter,(void *)1,&mdl)));
-    regs[0x00c/4]=1;regs[0x02c/4]=9;regs[0x038/4]=(1280u<<16)|800;regs[0x044/4]=3200;regs[0xf40/4]=0x11100000;
+    regs[0x00c/4]=1;regs[0x030/4]=2u<<12;regs[0x02c/4]=9;regs[0x038/4]=(1280u<<16)|800;regs[0x044/4]=3200;regs[0xf40/4]=0x11100000;
     assert(a04_display_scanout_switch(&s,regs,sizeof(regs),0x11100000,7,ready,boundary,0)==STATUS_DEVICE_NOT_READY);
     assert(!boundary_count && regs[0xf40/4]==0x11100000);
     readiness=1;assert(a04_display_scanout_switch(&s,regs,sizeof(regs),0x11100000,7,ready,boundary,0)==STATUS_DEVICE_CONFIGURATION_ERROR);
     assert(!s.attempted && regs[0xf40/4]==0x11100000);
-    regs[0x02c/4]=1;
+    regs[0x02c/4]=1;regs[0x030/4]|=1u<<9;
+    assert(a04_display_scanout_switch(&s,regs,sizeof(regs),0x11100000,7,ready,boundary,0)==STATUS_DEVICE_CONFIGURATION_ERROR);
+    regs[0x030/4]=2u<<12;
     assert(NT_SUCCESS(a04_display_scanout_switch(&s,regs,sizeof(regs),0x11100000,7,ready,boundary,0)));
     assert(regs[0xf40/4]==0x30000000 && s.attempted && surf.hardware_exposed);
     assert(a04_display_scanout_unmap(&s)==STATUS_DEVICE_BUSY && puts==1);
