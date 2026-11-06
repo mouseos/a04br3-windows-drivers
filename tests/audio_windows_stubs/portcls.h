@@ -19,7 +19,7 @@ typedef struct { int64_t QuadPart; } PHYSICAL_ADDRESS;
 typedef struct _MDL { ULONG offset, bytes; } MDL, *PMDL;
 #define MmGetMdlByteOffset(p) ((p)->offset)
 #define MmGetMdlByteCount(p) ((p)->bytes)
-enum { MmNonCached };
+enum { MmNonCached, MmCached, MmWriteCombined };
 struct IPortWaveRTStream {
  virtual PMDL AllocateContiguousPagesForMdl(PHYSICAL_ADDRESS,PHYSICAL_ADDRESS,size_t)=0;
  virtual ULONG GetPhysicalPagesCount(PMDL)=0;

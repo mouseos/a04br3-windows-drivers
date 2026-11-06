@@ -9,12 +9,18 @@ const GUID KSDATAFORMAT_SUBTYPE_ANALOG={20},KSDATAFORMAT_SPECIFIER_NONE={21},KSN
 #include "wavert_miniport.h"
 const GUID IID_IUnknown{1},IID_IMiniport{2},IID_IMiniportWaveRT{3},IID_IMiniportWaveRTStream{4};
 const GUID KSDATAFORMAT_TYPE_AUDIO{5},KSDATAFORMAT_SUBTYPE_PCM{6},KSDATAFORMAT_SPECIFIER_WAVEFORMATEX{7},KSCATEGORY_AUDIO{8};
+#include "wavert_cache.h"
+NTSTATUS Mt8167VerifyWaveCache(PVOID,ULONG bytes,ULONG first) {
+ for(ULONG i=0;i<bytes;i+=PAGE_SIZE)
+  assert(mt8167_arm_par_normal_nc((uint64_t)(first+i),first+i));
+ return STATUS_SUCCESS;
+}
 struct Port : IPortWaveRTStream {
  MDL mdl{0,8192}; unsigned char data[8192];int refs=1,freed=0;
  PMDL AllocateContiguousPagesForMdl(PHYSICAL_ADDRESS,PHYSICAL_ADDRESS,size_t) override{return &mdl;}
  ULONG GetPhysicalPagesCount(PMDL) override{return 2;}
  PHYSICAL_ADDRESS GetPhysicalPageAddress(PMDL,ULONG n) override{return {0x100000+(int64_t)n*4096};}
- PVOID MapAllocatedPages(PMDL,int) override{return data;}
+ PVOID MapAllocatedPages(PMDL,int cache) override{assert(cache==MmWriteCombined);return data;}
  void UnmapAllocatedPages(PVOID,PMDL) override{}
  void FreePagesFromMdl(PMDL) override{freed++;}
  ULONG AddRef() override{return ++refs;} ULONG Release() override{return --refs;}
@@ -105,7 +111,7 @@ int main(){
  assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat) && b.refs==2);
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
  assert(!st->SetState(KSSTATE_ACQUIRE));
- assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
+ assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache) && cache==MmWriteCombined);
  assert(!st->SetState(KSSTATE_PAUSE) && !st->SetState(KSSTATE_RUN));
  assert(!st->SetState(KSSTATE_PAUSE) && !st->SetState(KSSTATE_RUN));
  assert(!st->SetState(KSSTATE_STOP) && !st->SetState(KSSTATE_RUN));
@@ -123,7 +129,7 @@ int main(){
  {int freed=p.freed;assert(st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache)==STATUS_IO_TIMEOUT && !mdl);
   st->Release();m->Release();assert(b.refs==1 && !b.frees && p.freed==freed);return 0;}
 #endif
- assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
+ assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache) && cache==MmWriteCombined);
 #if (defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC) || (defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC)
  assert(mdl==&p.mdl && mdl!=&b.mdl);
 #endif
@@ -141,16 +147,16 @@ int main(){
  assert(b.refs==1 && b.starts==1 && b.stops==1 && !b.frees);
 #endif
  Back b2{};b2.fail=true;backend.context=&b2;assert(!Mt8167NewMiniportWithBackend(&m,&backend));
- assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat));assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
+ assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat));assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache) && cache==MmWriteCombined);
  assert(st->SetState(KSSTATE_RUN)==STATUS_DEVICE_NOT_READY);st->FreeAudioBuffer(mdl,actual);st->Release();m->Release();
  assert(!b2.refs && b2.frees==1);
  Back b3{};backend.context=&b3;assert(!Mt8167NewMiniportWithBackend(&m,&backend));
- assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat));assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
+ assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat));assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache) && cache==MmWriteCombined);
  assert(!st->SetState(KSSTATE_RUN));b3.fail=true;assert(st->SetState(KSSTATE_STOP)==STATUS_DEVICE_NOT_READY);
  b3.fail=false;assert(st->SetState(KSSTATE_STOP)==STATUS_DEVICE_NOT_READY);assert(st->SetState(KSSTATE_PAUSE)==STATUS_DEVICE_NOT_READY);
  st->Release();m->Release();assert(b3.stops==1 && b3.refs==1 && !b3.frees);
  Back b4{};b4.fail=true;b4.uncertain=true;backend.context=&b4;assert(!Mt8167NewMiniportWithBackend(&m,&backend));
- assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat));assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache));
+ assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat));assert(!st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache) && cache==MmWriteCombined);
  assert(st->SetState(KSSTATE_RUN)==STATUS_DEVICE_NOT_READY);assert(st->SetState(KSSTATE_STOP)==STATUS_DEVICE_NOT_READY);st->FreeAudioBuffer(mdl,actual);st->Release();m->Release();
  assert(b4.refs==1 && !b4.frees);
 #endif

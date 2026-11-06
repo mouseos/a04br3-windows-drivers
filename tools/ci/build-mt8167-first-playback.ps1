@@ -135,12 +135,12 @@ try {
     $dirty=@(& git -C $root status --porcelain)
     $parentFlags=@{};foreach($name in $names){if($name.StartsWith('A04_')){$parentFlags[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}}
     @{source_commit=$commit;source_dirty=($dirty.Count -ne 0);hardware='MediaTek MT8167 AFE / MT6392';
-      sample_rate=48000;pcm=$(if($EnginePcm){'client-written PortCls noncached stereo S16_LE; identity SG DMA'}else{'private immutable stereo S16_LE, 1500 Hz, peak 128/32768'});
+      wave_cache=$(if($EnginePcm){'MmWriteCombined kernel+PortCls user request; CallMemoryBarrier required; PAR checks stage 1 only'}else{'private hardware buffer, separate PortCls WC client buffer'});sample_rate=48000;pcm=$(if($EnginePcm){'client-written PortCls MmWriteCombined; ARM stage-1 Normal-NC checked; identity SG DMA; stereo S16_LE'}else{'private immutable stereo S16_LE, 1500 Hz, peak 128/32768'});
       mode=$(if($EnginePcm){'retained STOP/RUN and reopen, one allocation; fault poison sticky; D0 pinned until reset'}else{'one initial RUN, resources and D0 power reference pinned until reset'});
       calibration='MT6392 hardware trim; Linux cold-start DC profile, no measured AU_LOL ADC calibration';
       installable=$false;note='Unsigned pair and INF only; primary owner must sign/package and validate on target';
       peripheral_binaries_included=(!$SkipPeripheralBuild);integrated_usb=[bool]$IntegratedUsb;integrated_wifi=[bool]$IntegratedWifi;shared_parent_count=$parents.Count;namespace='Reuse existing parent/touch/buttons/battery; no ACPI replacement';
-      driver_date=$(if($EnginePcm){'11/07/2026'}else{'11/06/2026'});driver_version=$(if($EnginePcm){'2026.11.7.1003'}else{'2026.11.6.1001'});
+      driver_date=$(if($EnginePcm){'11/07/2026'}else{'11/06/2026'});driver_version=$(if($EnginePcm){'2026.11.7.1004'}else{'2026.11.6.1001'});
       parent_flags=$parentFlags;audio_flags=$flags;diagnostic_interface=11;parent_reused=[bool]$ReuseParent;engine_pcm=[bool]$EnginePcm;client=$(if($EnginePcm){'AudioEndpointBuilder/AudioSrv; polling WaveRT, retained STOP/RUN and reopen; not the private-tone client'}else{'direct KS, AudioSrv not required; dynamic ksuser.dll'});files=$hashes}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
 } finally {
     if($transcript){Stop-Transcript|Out-Null}

@@ -1,6 +1,7 @@
 #include "wavert_miniport.h"
 #if defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
 #include "wavert_dma.h"
+#include "wavert_cache.h"
 #if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
 extern "C" int Mt8167SilentDmaMiniportEnabled(void) { return 1; }
 #endif
@@ -175,7 +176,7 @@ public:
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
             NTSTATUS result=backend.checkout(backend.context,port,size,mdl,actual);
             if(NT_SUCCESS(result)) {
-                backendMdl=*mdl;backendBytes=*actual;*offset=0;*cache=MmNonCached;
+                backendMdl=*mdl;backendBytes=*actual;*offset=0;*cache=MT8167_WAVE_CACHE;
             }
             return result;
 #elif defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
@@ -194,7 +195,7 @@ public:
                 (void)Mt8167ReleaseUnpublishedBuffer(&buffer);return result;
             }
             backendMdl=buffer.mdl;backendBytes=buffer.bytes;
-            *mdl=buffer.mdl;*actual=buffer.bytes;*offset=0;*cache=MmNonCached;
+            *mdl=buffer.mdl;*actual=buffer.bytes;*offset=0;*cache=MT8167_WAVE_CACHE;
             return STATUS_SUCCESS;
 #else
             NTSTATUS result=backend.allocate(backend.context,size,mdl,actual,offset,cache);
@@ -214,14 +215,14 @@ public:
                     backend.freeBuffer(backend.context,backendMdl,backendBytes);
                     backendMdl=NULL;backendBytes=0;*mdl=NULL;*actual=0;*offset=0;return stage;
                 }
-                *mdl=buffer.mdl;*actual=buffer.bytes;*offset=0;*cache=MmNonCached;
+                *mdl=buffer.mdl;*actual=buffer.bytes;*offset=0;*cache=MT8167_WAVE_CACHE;
 #endif
             }
             return result;
 #endif
         }
         NTSTATUS status=Mt8167AllocateBuffer(port,size,&buffer); if(!NT_SUCCESS(status)) return status;
-        *mdl=buffer.mdl;*actual=buffer.bytes;*cache=MmNonCached;return STATUS_SUCCESS;
+        *mdl=buffer.mdl;*actual=buffer.bytes;*cache=MT8167_WAVE_CACHE;return STATUS_SUCCESS;
     }
     STDMETHODIMP_(VOID) FreeAudioBuffer(PMDL mdl,ULONG size) override {
         if (useBackend) {

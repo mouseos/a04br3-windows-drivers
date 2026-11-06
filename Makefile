@@ -492,7 +492,7 @@ test-mt8167-wavert-dma: build/mt8167_wavert_dma_test
 	./build/mt8167_wavert_dma_test
 build/mt8167_wavert_dma_test: drivers/audio/mt8167-afe/wavert_dma.cpp drivers/audio/mt8167-afe/wavert_dma.h tests/mt8167_wavert_dma_test.cpp tests/audio_windows_stubs/portcls.h
 	mkdir -p build
-	$(CXX) -O2 -Wall -Wextra -Werror -std=c++11 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/wavert_dma.cpp tests/mt8167_wavert_dma_test.cpp -o $@
+	$(CXX) -O2 -Wall -Wextra -Werror -std=c++11 -DA04_TEST_WAVE_CACHE=1 -Itests/audio_windows_stubs -Idrivers/audio/mt8167-afe drivers/audio/mt8167-afe/wavert_dma.cpp tests/mt8167_wavert_dma_test.cpp -o $@
 
 build/thermal_freshness_test: drivers/power/mt8167-thermal/freshness.c drivers/power/mt8167-thermal/freshness.h tests/thermal_freshness_test.c
 	mkdir -p build
