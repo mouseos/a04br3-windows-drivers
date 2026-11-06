@@ -364,6 +364,9 @@ static int ParentAudioUnmute(PVOID context) {
     A04_PARENT_CONTEXT *c;int result;
     if(!context || KeGetCurrentIrql()>APC_LEVEL)return -1;
     c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
+#if A04_SHARED_VOICE_PCM_DIAGNOSTIC
+    if(!c->voice.active || c->voice.poisoned){ParentUnlock(c);return -1;}
+#endif
     result=a04_audio_owner_unmute(&c->audio);ParentUnlock(c);return result;
 }
 static int ParentAudioMute(PVOID context) {
@@ -424,6 +427,9 @@ static int ParentAudioRelease(PVOID context) {
     A04_PARENT_CONTEXT *c;int result;
     if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
     c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
+#if A04_SHARED_VOICE_PCM_DIAGNOSTIC
+    if(c->voice.active || c->voice.poisoned){ParentUnlock(c);return -1;}
+#endif
     result=a04_audio_owner_release(&c->audio);ParentUnlock(c);return result;
 }
 /* Only a fully acquired exclusive audio lease may mask and clear the IRQ.
