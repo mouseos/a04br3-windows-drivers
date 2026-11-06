@@ -86,7 +86,15 @@ typedef struct {KSDATAFORMAT DataFormat;WAVEFORMATEX WaveFormatEx;} KSDATAFORMAT
 typedef struct {KSDATAFORMAT DataRange; ULONG MaximumChannels,MinimumBitsPerSample,MaximumBitsPerSample,MinimumSampleFrequency,MaximumSampleFrequency;} KSDATARANGE_AUDIO;
 struct TestPin { ULONG a; const void *b; ULONG c; const void*d; ULONG e; PKSDATARANGE *ranges; int flow,communication; const GUID *category,*name; ULONG reserved; };
 struct PCPIN_DESCRIPTOR { ULONG a,b,c; const void *automation; TestPin pin; };
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+typedef KSDATAFORMAT KSDATARANGE;
+extern const GUID KSDATAFORMAT_SUBTYPE_ANALOG,KSDATAFORMAT_SPECIFIER_NONE,KSNODETYPE_DAC;
+#define WAVE_FORMAT_EXTENSIBLE 0xfffe
+struct WAVEFORMATEXTENSIBLE {WAVEFORMATEX Format;union {unsigned short wValidBitsPerSample;} Samples;ULONG dwChannelMask;GUID SubFormat;};
+struct PCNODE_DESCRIPTOR {ULONG flags;const void *automation;const GUID *type,*name;};
+#else
 struct PCNODE_DESCRIPTOR { int dummy; };
+#endif
 struct PCCONNECTION_DESCRIPTOR { ULONG a,b,c,d; };
 struct PCFILTER_DESCRIPTOR {ULONG version;void *automation;ULONG pinSize,pinCount;PCPIN_DESCRIPTOR *pins;ULONG nodeSize,nodeCount;PCNODE_DESCRIPTOR *nodes;ULONG connectionCount;PCCONNECTION_DESCRIPTOR *connections;ULONG categories;void *category;};
 typedef PCFILTER_DESCRIPTOR *PPCFILTER_DESCRIPTOR;
@@ -108,5 +116,16 @@ struct IMiniportWaveRT {
  virtual NTSTATUS Init(PUNKNOWN,PRESOURCELIST,PPORTWAVERT)=0;virtual NTSTATUS NewStream(PMINIPORTWAVERTSTREAM*,PPORTWAVERTSTREAM,ULONG,BOOLEAN,PKSDATAFORMAT)=0;virtual NTSTATUS GetDeviceDescription(PDEVICE_DESCRIPTION)=0;
 };
 typedef IMiniportWaveRT *PMINIPORTWAVERT;
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+extern const GUID KSNODETYPE_SPEAKER,IID_IMiniportTopology;
+typedef void *PPORTTOPOLOGY;
+struct IMiniportTopology {
+ virtual NTSTATUS QueryInterface(REFIID,PVOID*)=0;virtual ULONG AddRef()=0;virtual ULONG Release()=0;
+ virtual NTSTATUS GetDescription(PPCFILTER_DESCRIPTOR*)=0;
+ virtual NTSTATUS DataRangeIntersection(ULONG,PKSDATARANGE,PKSDATARANGE,ULONG,PVOID,PULONG)=0;
+ virtual NTSTATUS Init(PUNKNOWN,PRESOURCELIST,PPORTTOPOLOGY)=0;
+};
+typedef IMiniportTopology *PMINIPORTTOPOLOGY;
+#endif
 #endif
 #endif

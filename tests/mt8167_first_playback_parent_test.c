@@ -48,6 +48,14 @@ int main(void) {
    assert(firstPmic.writes==oldPmic && writes==oldWrites);testContext.gpio=oldGpio;
  }
 #endif
+#if defined(A04_SHARED_ENGINE_PCM) && A04_SHARED_ENGINE_PCM
+ {MDL pages={0,8192,{0x100,0x101}};
+  assert(!audio.VerifyLivePcm(&testContext,&pages,0x100000,8192));
+  assert(audio.VerifyLivePcm(&testContext,&pages,0x200000,8192));
+  pages.pfns[1]=0x102;assert(audio.VerifyLivePcm(&testContext,&pages,0x100000,8192));
+  assert(audio.VerifyDmaDrained(&testContext));
+ }
+#endif
  assert(testContext.audio.leased && testContext.audioPowerPinned && firstIdleRefs==1);
  assert(testContext.classd.active && testContext.trimCaptured && testContext.trimCode==0x13);
  assert((firstPmic.reg[0x404/2]&0xc000)==0xc000 && (firstPmic.reg[0x424/2]&0xc000)==0xc000);

@@ -67,6 +67,11 @@ extern "C" int Mt8167SilentDmaMiniportEnabled(void);
 #error first playback must not DMA a client-modifiable WaveRT buffer
 #endif
 #endif
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+#if !A04_AUDIO_VOICE_PCM_DIAGNOSTIC || !A04_AUDIO_WAVE_DMA_RETAINED || !A04_AUDIO_DIGITAL_PLAYBACK || A04_AUDIO_FIRST_PLAYBACK || A04_AUDIO_SILENT_DMA_DIAGNOSTIC || A04_AUDIO_PCM_PATTERN_DIAGNOSTIC
+#error engine PCM requires retained direct WaveRT DMA and excludes private tone
+#endif
+#endif
 #define OWNER_TAG 'OwnA'
 struct Mt8167PnpBackend {
     Mt8167StreamBackend iface;
@@ -77,7 +82,7 @@ struct Mt8167PnpBackend {
     BOOLEAN livePositionsClosed;
     BOOLEAN online;
     BOOLEAN digitalRetained;
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
     ULONG diagSequence,diagStage,diagFailedStage;NTSTATUS diagStatus;
 #endif
     PDEVICE_OBJECT pdo;
@@ -262,8 +267,8 @@ static NTSTATUS OwnerUnbindWave(void *ctx,PMDL mdl) {
     OwnerUnlock(o);return result;
 }
 #endif
-/* A single publish flush cannot prove live WaveRT circular-buffer coherence.
- * This platform-specific proof must be implemented before RUN can proceed. */
+/* Direct engine PCM uses retained identity DMA of noncached PortCls pages.
+ * A once-only flush alone never admits a client-modifiable cyclic buffer. */
 #if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
 static BOOLEAN OwnerLiveDmaVerified(Mt8167PnpBackend *o)
 {
@@ -312,13 +317,13 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
         /* The parent owns clocks, routing and codec hw_params. Retain the
          * lease after even partial writes; never infer quiescence from DL1. */
         if(!o->parentClient.parent.PreparePlayback) {OwnerUnlock(o);return result;}
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
         o->diagStage=A04_STAGE_DIGITAL;o->diagStatus=STATUS_DEVICE_NOT_READY;
 #endif
         int digital=o->parentClient.parent.PreparePlayback(o->parentClient.parent.Header.Context,48000);
         if(digital!= -1) {o->digitalRetained=TRUE;*possiblyExposed=TRUE;}
         if(digital) {
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
             o->diagFailedStage=o->diagStage;
 #endif
             if(o->digitalRetained)(void)mt8167_audio_shared_quarantine(&o->shared);
@@ -337,35 +342,47 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
             *possiblyExposed=TRUE;OwnerUnlock(o);return result;
         }
 #endif
-        /* The selected period is a diagnostic half-ring, not a WaveRT
-         * notification contract. No live-DMA verifier currently exists. */
+        /* The half-ring IRQ is used for hardware observation. Clients use
+         * polling GetPosition; no event-notification capability is advertised. */
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
         /* The owner mutex serializes PnP revoke. Quarantine on every
          * attempted voice operation, including a failed DMA preparation. */
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+        o->diagStage=A04_STAGE_VOICE;
+#endif
         if (!o->parentClient.parent.StartVoice(o->parentClient.parent.Header.Context)) {
 #if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
             /* Exposure precedes any synchronized DL1 register writes. */
             o->waveDma.exposed=TRUE;
 #endif
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+            o->diagStage=A04_STAGE_DMA;
+#endif
             if (!Mt8167TransportStartMaskedParent(&o->transport,o->buffer.size/2,&o->shared)) {
-                if(o->parentClient.parent.UnmuteMin(o->parentClient.parent.Header.Context))
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+                o->diagStage=A04_STAGE_UNMUTE;
+#endif
+                if(o->parentClient.parent.UnmuteMin(o->parentClient.parent.Header.Context)) {
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+                    o->diagFailedStage=A04_STAGE_UNMUTE;
+#endif
                     (void)OwnerStopRunning(o);
-                else result=STATUS_SUCCESS;
+                } else result=STATUS_SUCCESS;
             }
         }
         if (!o->shared.quarantined) (void)mt8167_audio_shared_quarantine(&o->shared);
 #else
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
         o->diagStage=A04_STAGE_DMA;
 #endif
         if (!Mt8167TransportStartMaskedParent(&o->transport,o->buffer.size/2,&o->shared)) {
 #if defined(A04_AUDIO_UNMUTE_DIAGNOSTIC) && A04_AUDIO_UNMUTE_DIAGNOSTIC
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
             o->diagStage=A04_STAGE_UNMUTE;
 #endif
             /* Failed/ambiguous unmute still stops DMA and retains the lease. */
             if(o->parentClient.parent.UnmuteMin(o->parentClient.parent.Header.Context)) {
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
                 o->diagFailedStage=A04_STAGE_UNMUTE;
 #endif
                 (void)OwnerStopRunning(o);
@@ -382,12 +399,12 @@ static NTSTATUS OwnerStart(void *ctx,BOOLEAN *possiblyExposed) {
         *possiblyExposed=(o->buffer.exposed || o->shared.quarantined) ? TRUE : FALSE;
 #endif
     }
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
     o->diagStatus=result;
     if(NT_SUCCESS(result))o->diagStage=A04_STAGE_RUNNING;
     else if(!o->diagFailedStage)o->diagFailedStage=o->diagStage;
 #endif
-    A04_TRACE("A04AUD run result=%08lx online=%d buffer=%d lease=%d irq=%d live-dma=isolated-or-refused exposed=%d\n",(ULONG)result,o->online,o->buffer.mdl!=NULL,o->shared.leased,o->irq.interrupt!=NULL,*possiblyExposed);
+    A04_TRACE("A04AUD run result=%08lx online=%d buffer=%d lease=%d irq=%d live-dma=selected-mode exposed=%d\n",(ULONG)result,o->online,o->buffer.mdl!=NULL,o->shared.leased,o->irq.interrupt!=NULL,*possiblyExposed);
     OwnerUnlock(o);return result;
 #else
     return STATUS_DEVICE_NOT_READY;
@@ -404,13 +421,19 @@ static NTSTATUS OwnerStopRunning(Mt8167PnpBackend *o)
         ExWaitForRundownProtectionRelease(&o->livePositions);
         o->livePositionsClosed=TRUE;
     }
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
     o->diagStage=A04_STAGE_STOP;
 #endif
     int mute=o->parentClient.parent.Mute(o->parentClient.parent.Header.Context);
     int stop=Mt8167TransportStop(&o->transport);
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
     if(mute || stop || !o->parentClient.parent.StopVoice)return STATUS_DEVICE_NOT_READY;
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+    /* STOP is a hardware disable, not a drain certificate. Keep voice, D0,
+     * MDL and SG mapping pinned; this backend admits one initial RUN only. */
+    o->diagStatus=STATUS_SUCCESS;o->diagStage=A04_STAGE_STOPPED_PINNED;
+    return STATUS_SUCCESS;
+#else
 #if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
     if(!o->parentClient.parent.VerifyDmaDrained ||
        o->parentClient.parent.VerifyDmaDrained(o->parentClient.parent.Header.Context))return STATUS_DEVICE_NOT_READY;
@@ -421,8 +444,9 @@ static NTSTATUS OwnerStopRunning(Mt8167PnpBackend *o)
     RtlZeroMemory(&o->buffer,sizeof(o->buffer));o->waveReleased=TRUE;
 #endif
     return STATUS_SUCCESS;
+#endif
 #else
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
     o->diagStatus=!mute && !stop ? STATUS_SUCCESS : STATUS_DEVICE_NOT_READY;
     if(NT_SUCCESS(o->diagStatus))o->diagStage=A04_STAGE_STOPPED_PINNED;
 #endif
@@ -459,7 +483,7 @@ static NTSTATUS OwnerPosition(void *ctx,PKSAUDIO_POSITION position)
     ExReleaseRundownProtection(&o->positions);return status;
 }
 static NTSTATUS OwnerDescription(void *context,PDEVICE_DESCRIPTION description) {
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(context);
     if(!o || !description || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
     OwnerLock(o);
@@ -578,7 +602,7 @@ NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt816
     status=OwnerConnectMaskedIrq(o);
     if (!NT_SUCCESS(status)) { o->online=FALSE;OwnerDereference(o);return status; }
 #endif
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
     o->diagStage=A04_STAGE_CREATED;o->diagStatus=STATUS_SUCCESS;
 #endif
     *out=o;return STATUS_SUCCESS;
@@ -614,7 +638,7 @@ NTSTATUS Mt8167PnpBackendAttachShared(Mt8167PnpBackend *o,const struct mt8167_au
     return result;
 }
 const Mt8167StreamBackend *Mt8167PnpBackendInterface(Mt8167PnpBackend *o) { return o?&o->iface:NULL; }
-#if defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK
+#if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
 NTSTATUS Mt8167PnpBackendSnapshot(Mt8167PnpBackend *o,struct a04_audio_snapshot *s) {
     if(!o || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
     RtlZeroMemory(s,sizeof(*s));s->size=sizeof(*s);s->version=A04_AUDIO_DIAG_VERSION;

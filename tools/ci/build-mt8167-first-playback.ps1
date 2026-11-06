@@ -1,9 +1,9 @@
 # Build one matched, retained first-playback parent/PortCls pair. No deployment.
-param([string]$OutputDirectory,[switch]$IntegratedUsb,[switch]$IntegratedWifi)
+param([string]$OutputDirectory,[switch]$IntegratedUsb,[switch]$IntegratedWifi,[switch]$EnginePcm,[switch]$SkipPeripheralBuild)
 $ErrorActionPreference='Stop'
 if($IntegratedWifi -and !$IntegratedUsb){throw 'IntegratedWifi requires IntegratedUsb for the single full-feature parent profile'}
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-if(!$OutputDirectory){$OutputDirectory=Join-Path $root 'build\mt8167-first-playback'}
+if(!$OutputDirectory){$OutputDirectory=Join-Path $root $(if($EnginePcm){'build\mt8167-engine-pcm'}else{'build\mt8167-first-playback'})}
 $out=[IO.Path]::GetFullPath($OutputDirectory)
 if(!$out.StartsWith($root+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){
     throw 'OutputDirectory must be inside this checkout'
@@ -19,7 +19,7 @@ $names=@('TEMP','TMP','RUNNER_TEMP','A04_AUDIO_CHILD_RESOURCES','A04_SHARED_QUER
  'A04_SHARED_TOUCH_D0_EXPERIMENT','A04_USB_GPIO22_SOURCE_EXPERIMENT','A04_MT6392_RTC32K_DIAGNOSTIC',
  'A04_SHARED_WIFI_IRQ_DIAGNOSTIC','A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC','A04_AUDIO_PMIC_TRACE',
  'A04_SHARED_USB_ONLY','A04_MUSB_HOST_CORE_EXPERIMENT','A04_MUSB_HID_CONTROL_EXPERIMENT',
- 'A04_SHARED_WIFI_RUNTIME')
+ 'A04_SHARED_WIFI_RUNTIME','A04_SHARED_ENGINE_PCM')
 $saved=@{};foreach($name in $names){$saved[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}
 $transcript=$false
 try {
@@ -34,6 +34,7 @@ try {
       'A04_MT6392_CLK_ALIAS_EXPERIMENT','A04_MT6392_UNMUTE_DIAGNOSTIC','A04_AUDIO_DIAGNOSTIC_TRACE')){
         [Environment]::SetEnvironmentVariable($name,'1','Process')
     }
+    if($EnginePcm){$env:A04_SHARED_ENGINE_PCM='1'}
     if($IntegratedUsb){
         $env:A04_SHARED_USB_ONLY='0';$env:A04_SHARED_TOUCH_D0_EXPERIMENT='1'
         $env:A04_USB_GPIO22_SOURCE_EXPERIMENT='1'
@@ -61,6 +62,12 @@ try {
       '-DA04_AUDIO_IRQ_DIAGNOSTIC=1','-DA04_AUDIO_RUN_DIAGNOSTIC=1','-DA04_AUDIO_SILENT_DMA_DIAGNOSTIC=1',
       '-DA04_AUDIO_PCM_PATTERN_DIAGNOSTIC=1','-DA04_AUDIO_UNMUTE_DIAGNOSTIC=1',
       '-DA04_AUDIO_DIGITAL_PLAYBACK=1','-DA04_AUDIO_FIRST_PLAYBACK=1','-DA04_AUDIO_VOICE_PCM_DIAGNOSTIC=0','-DA04_AUDIO_DIAGNOSTIC_TRACE=1')
+    $audioInf='mt8167-afe-first-playback.inf'
+    if($EnginePcm){
+        $flags=@($flags|Where-Object {$_ -notmatch 'A04_AUDIO_(SILENT_DMA_DIAGNOSTIC|PCM_PATTERN_DIAGNOSTIC|UNMUTE_DIAGNOSTIC|FIRST_PLAYBACK|VOICE_PCM_DIAGNOSTIC)='})
+        $flags+=@('-DA04_AUDIO_ENGINE_PCM=1','-DA04_AUDIO_VOICE_PCM_DIAGNOSTIC=1','-DA04_AUDIO_WAVE_DMA_RETAINED=1')
+        $audioInf='mt8167-afe-engine-pcm.inf'
+    }
     $objects=@()
     foreach($name in @('dl1','dl1_engine','shared_audio','audio_parent_client','audio_parent_query')){
         $file=Join-Path $obj "$name.obj";$objects+=$file
@@ -70,8 +77,10 @@ try {
     $file=Join-Path $obj 'clock_owner.obj';$objects+=$file
     & clang @common -c (Join-Path $root 'drivers\bus\mt8167-shared\clock_owner.c') -o $file
     if($LASTEXITCODE -ne 0){throw 'Clock owner compilation failed'}
-    foreach($name in @('adapter','wavert_miniport','wavert_registration','wavert_dma',
-      'common_dma','dma_adapter','stream_transport','pnp_backend','afe_mapping','irq_windows')){
+    $cpp=@('adapter','wavert_miniport','wavert_registration','wavert_dma',
+      'common_dma','dma_adapter','stream_transport','pnp_backend','afe_mapping','irq_windows')
+    if($EnginePcm){$cpp+=@('wave_dma_live','topology_miniport')}
+    foreach($name in $cpp){
         $file=Join-Path $obj "$name.obj";$objects+=$file
         & clang++ @common @flags -fms-compatibility -fno-exceptions -fno-rtti -c (Join-Path $audio "$name.cpp") -o $file
         if($LASTEXITCODE -ne 0){throw "Audio C++ compilation failed: $name"}
@@ -83,19 +92,19 @@ try {
     if($LASTEXITCODE -ne 0){throw 'First playback PortCls link failed'}
     & llvm-readobj --file-headers --coff-imports $binary
     if($LASTEXITCODE -ne 0){throw 'Audio PE inspection failed'}
-    Copy-Item (Join-Path $audio 'mt8167-afe-first-playback.inf') $obj
+    Copy-Item (Join-Path $audio $audioInf) $obj
     Copy-Item (Join-Path $root 'drivers\bus\mt8167-shared\prototype\shared-parent.inf') (Join-Path $out 'a04-msdc-parent-probe')
-    & (Join-Path $PSScriptRoot 'build-mt8167-audio-ks-client.ps1') -OutputDirectory (Join-Path $out 'client')
+    if(!$EnginePcm){& (Join-Path $PSScriptRoot 'build-mt8167-audio-ks-client.ps1') -OutputDirectory (Join-Path $out 'client')}
     $files=@((Join-Path $out 'a04-msdc-parent-probe\mt8167-shared.sys'),
-      (Join-Path $out 'a04-msdc-parent-probe\shared-parent.inf'),$binary,(Join-Path $obj 'mt8167-afe-first-playback.inf'),
-      (Join-Path $out 'client\mt8167-audio-first-playback.exe'),(Join-Path $out 'client\run-mt8167-audio-first-playback.cmd'))
-    if($IntegratedUsb){
+      (Join-Path $out 'a04-msdc-parent-probe\shared-parent.inf'),$binary,(Join-Path $obj $audioInf))
+    if(!$EnginePcm){$files+=@((Join-Path $out 'client\mt8167-audio-first-playback.exe'),(Join-Path $out 'client\run-mt8167-audio-first-playback.cmd'))}
+    if($IntegratedUsb -and !$SkipPeripheralBuild){
         $usbOut=Join-Path $out 'usb'
         & (Join-Path $PSScriptRoot 'build-mt8167-usb20.ps1') -OutputDirectory $usbOut
         Copy-Item (Join-Path $root 'drivers\usb\mt8167-usb20\mt8167-usb20.inf') $usbOut
         $files+=@((Join-Path $usbOut 'mt8167-usb20.sys'),(Join-Path $usbOut 'mt8167-usb20.inf'))
     }
-    if($IntegratedWifi){
+    if($IntegratedWifi -and !$SkipPeripheralBuild){
         $wifiOut=Join-Path $out 'wifi'
         & (Join-Path $PSScriptRoot 'build-mt6630-runtime.ps1') -OutputDirectory $wifiOut -SharedParentDirectory (Join-Path $out 'a04-msdc-parent-probe')
         $files+=@((Join-Path $wifiOut 'mt6630-runtime.sys'),(Join-Path $wifiOut 'mt6630-runtime.inf'),
@@ -109,13 +118,13 @@ try {
     $dirty=@(& git -C $root status --porcelain)
     $parentFlags=@{};foreach($name in $names){if($name.StartsWith('A04_')){$parentFlags[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}}
     @{source_commit=$commit;source_dirty=($dirty.Count -ne 0);hardware='MediaTek MT8167 AFE / MT6392';
-      sample_rate=48000;pcm='private immutable stereo S16_LE, 1500 Hz, peak 128/32768';
+      sample_rate=48000;pcm=$(if($EnginePcm){'client-written PortCls noncached stereo S16_LE; identity SG DMA'}else{'private immutable stereo S16_LE, 1500 Hz, peak 128/32768'});
       mode='one initial RUN, resources and D0 power reference pinned until reset';
       calibration='MT6392 hardware trim; Linux cold-start DC profile, no measured AU_LOL ADC calibration';
       installable=$false;note='Unsigned pair and INF only; primary owner must sign/package and validate on target';
-      integrated_usb=[bool]$IntegratedUsb;integrated_wifi=[bool]$IntegratedWifi;shared_parent_count=$parents.Count;namespace='Reuse existing parent/touch/buttons/battery; no ACPI replacement';
-      driver_date='11/06/2026';driver_version='2026.11.6.1001';driver_ver='11/06/2026,2026.11.6.1001';
-      parent_flags=$parentFlags;audio_flags=$flags;diagnostic_interface=11;client='direct KS, AudioSrv not required; dynamic ksuser.dll';files=$hashes}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+      peripheral_binaries_included=(!$SkipPeripheralBuild);integrated_usb=[bool]$IntegratedUsb;integrated_wifi=[bool]$IntegratedWifi;shared_parent_count=$parents.Count;namespace='Reuse existing parent/touch/buttons/battery; no ACPI replacement';
+      driver_date=$(if($EnginePcm){'11/07/2026'}else{'11/06/2026'});driver_version=$(if($EnginePcm){'2026.11.7.1002'}else{'2026.11.6.1001'});
+      parent_flags=$parentFlags;audio_flags=$flags;diagnostic_interface=11;engine_pcm=[bool]$EnginePcm;client=$(if($EnginePcm){'AudioEndpointBuilder/AudioSrv; polling WaveRT, one initial RUN; not the private-tone client'}else{'direct KS, AudioSrv not required; dynamic ksuser.dll'});files=$hashes}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
 } finally {
     if($transcript){Stop-Transcript|Out-Null}
     foreach($name in $names){[Environment]::SetEnvironmentVariable($name,$saved[$name],'Process')}

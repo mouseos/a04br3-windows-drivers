@@ -1,3 +1,9 @@
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+#include "wavert_miniport.h"
+#include "topology_miniport.h"
+const GUID KSNODETYPE_SPEAKER={23},IID_IMiniportTopology={24};
+const GUID KSDATAFORMAT_SUBTYPE_ANALOG={20},KSDATAFORMAT_SPECIFIER_NONE={21},KSNODETYPE_DAC={22};
+#endif
 #include <cassert>
 #include <cstring>
 #include "wavert_miniport.h"
@@ -33,6 +39,12 @@ static NTSTATUS bindwave(void *,PMDL mdl,PVOID mapping,ULONG size){
 static NTSTATUS unbindwave(void *c,PMDL){((Back*)c)->frees++;return STATUS_SUCCESS;}
 #endif
 int main(){
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+ PMINIPORTTOPOLOGY topo=nullptr;PPCFILTER_DESCRIPTOR topology=nullptr;
+ assert(!Mt8167NewTopology(&topo));assert(!topo->GetDescription(&topology));
+ assert(topology->pinCount==2 && topology->connectionCount==1);
+ assert(topology->pins[1].pin.category==&KSNODETYPE_SPEAKER);topo->Release();
+#endif
  PMINIPORTWAVERT m=nullptr; assert(!Mt8167NewMiniport(&m) && m);
  PPCFILTER_DESCRIPTOR d=nullptr;assert(!m->GetDescription(&d) && d->pinCount==2);
  KSDATARANGE_AUDIO range{};range.DataRange.FormatSize=sizeof(range);range.DataRange.MajorFormat=KSDATAFORMAT_TYPE_AUDIO;range.DataRange.SubFormat=KSDATAFORMAT_SUBTYPE_PCM;range.DataRange.Specifier=KSDATAFORMAT_SPECIFIER_WAVEFORMATEX;range.MaximumChannels=2;range.MinimumBitsPerSample=16;range.MaximumBitsPerSample=16;range.MinimumSampleFrequency=48000;range.MaximumSampleFrequency=48000;
@@ -47,11 +59,24 @@ int main(){
  assert(!st->AllocateAudioBuffer(4097,&mdl,&actual,&off,&cache) && actual==8192 && !off);
  st->FreeAudioBuffer(mdl,actual);assert(p.freed==2);st->Release();assert(p.refs==1);
  fmt.WaveFormatEx.nChannels=1; assert(m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat)==STATUS_NO_MATCH && !st);m->Release();
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+ assert(d->nodeCount==1 && d->connectionCount==2);
+#endif
  fmt.WaveFormatEx.nChannels=2; Back b{};Mt8167StreamBackend backend{&b,ref,deref,allocate,releasebuf,start,stop,pos,device,nullptr,nullptr};
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
  backend.bindWaveBuffer=bindwave;backend.unbindWaveBuffer=unbindwave;
 #endif
  assert(!Mt8167NewMiniportWithBackend(&m,&backend) && b.refs==1);assert(!m->GetDeviceDescription(&b));
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+ struct ExtFormat { KSDATAFORMAT data;WAVEFORMATEXTENSIBLE wave; } ext{};
+ ext.data=fmt.DataFormat;ext.data.FormatSize=sizeof(ext);
+ ext.wave.Format=fmt.WaveFormatEx;ext.wave.Format.wFormatTag=WAVE_FORMAT_EXTENSIBLE;
+ ext.wave.Format.cbSize=22;ext.wave.Samples.wValidBitsPerSample=16;
+ ext.wave.dwChannelMask=3;ext.wave.SubFormat=KSDATAFORMAT_SUBTYPE_PCM;
+ assert(!m->NewStream(&st,&p,0,FALSE,&ext.data));st->Release();
+ ext.wave.dwChannelMask=4;
+ assert(m->NewStream(&st,&p,0,FALSE,&ext.data)==STATUS_NO_MATCH);
+#endif
  assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat) && b.refs==2);
 #if defined(A04_TEST_WAVE_BIND_TIMEOUT) && A04_TEST_WAVE_BIND_TIMEOUT
  {int freed=p.freed;assert(st->AllocateAudioBuffer(8192,&mdl,&actual,&off,&cache)==STATUS_IO_TIMEOUT && !mdl);
@@ -63,13 +88,13 @@ int main(){
 #endif
  assert(!st->SetState(KSSTATE_RUN));KSAUDIO_POSITION position{};assert(!st->GetPosition(&position) && position.PlayOffset==4);
  assert(!st->SetState(KSSTATE_STOP));st->FreeAudioBuffer(mdl,actual);
-#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED && (!defined(A04_AUDIO_ENGINE_PCM) || !A04_AUDIO_ENGINE_PCM)
  assert(b.frees==1);
 #else
  assert(!b.frees);
 #endif
  assert(st->SetState(KSSTATE_RUN)==STATUS_DEVICE_NOT_READY);st->Release();m->Release();
-#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED && (!defined(A04_AUDIO_ENGINE_PCM) || !A04_AUDIO_ENGINE_PCM)
  assert(!b.refs && b.starts==1 && b.stops==1 && b.frees==1);
 #else
  assert(b.refs==1 && b.starts==1 && b.stops==1 && !b.frees);

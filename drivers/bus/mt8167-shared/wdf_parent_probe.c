@@ -13,6 +13,11 @@
 #ifndef A04_SHARED_FIRST_PLAYBACK
 #define A04_SHARED_FIRST_PLAYBACK 0
 #endif
+#if defined(A04_SHARED_ENGINE_PCM) && A04_SHARED_ENGINE_PCM
+#if !A04_SHARED_FIRST_PLAYBACK || !A04_SHARED_VOICE_PCM_DIAGNOSTIC
+#error engine PCM requires the retained first-playback power/codec provider
+#endif
+#endif
 #if A04_SHARED_FIRST_PLAYBACK
 #if !defined(A04_SHARED_DIGITAL_PLAYBACK) || !A04_SHARED_DIGITAL_PLAYBACK || !defined(A04_MT6392_CLK_ALIAS_EXPERIMENT) || !A04_MT6392_CLK_ALIAS_EXPERIMENT || !defined(A04_MT6392_UNMUTE_DIAGNOSTIC) || !A04_MT6392_UNMUTE_DIAGNOSTIC || !defined(A04_SHARED_VOICE_PCM_DIAGNOSTIC) || !A04_SHARED_VOICE_PCM_DIAGNOSTIC
 #error first playback requires digital playback, PMIC clock aliases, unmute and voice service
@@ -693,11 +698,32 @@ static int ParentVerifyDmaDrained(PVOID context) {
     return -1;
 }
 static int ParentVerifyLivePcm(PVOID context,PVOID mdl,uint64_t logical,ULONG size) {
+#if defined(A04_SHARED_ENGINE_PCM) && A04_SHARED_ENGINE_PCM
+    A04_PARENT_CONTEXT *c;PMDL pages=(PMDL)mdl;PPFN_NUMBER pfns;
+    ULONG i,count;int result=-1;
+    if(!context || !pages || !size || size>1048576 || (size&(PAGE_SIZE-1)) ||
+       !logical || (logical&(PAGE_SIZE-1)) || logical>0x100000000ULL-size ||
+       MmGetMdlByteOffset(pages) || MmGetMdlByteCount(pages)!=size ||
+       KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+    /* The matched child owns PortCls pages mapped MmNonCached in both
+     * kernel and user space. Reject HAL bounce/map-register copies: a
+     * once-only flush cannot keep an engine-written cyclic buffer current. */
+    pfns=MmGetMdlPfnArray(pages);count=size/PAGE_SIZE;
+    for(i=0;i<count;++i)
+        if(((uint64_t)pfns[i]<<PAGE_SHIFT)!=logical+(uint64_t)i*PAGE_SIZE)return -1;
+    c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
+    if(c->audio.leased && !c->audio.poisoned && c->afeClockHeld &&
+       !c->afeClockPoisoned && c->codecDomain.held && !c->codecDomain.poisoned &&
+       c->audioAfe)result=0;
+    ParentUnlock(c);
+    A04_TRACE("A04AUD engine PCM identity DMA admission=%d bytes=%lu; cache=child-noncached-contract drain=unknown\n",result,size);
+    return result;
+#else
     UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(mdl);
     UNREFERENCED_PARAMETER(logical);UNREFERENCED_PARAMETER(size);
-    /* No established CPU/AFE coherency or user-mapping attribute contract. */
-    A04_TRACE("A04AUD live PCM rejected: cyclic coherency and mapping attributes unverified\n");
+    A04_TRACE("A04AUD live PCM rejected: engine PCM profile not selected\n");
     return -1;
+#endif
 }
 #endif
 static int ParentAudioRelease(PVOID context) {

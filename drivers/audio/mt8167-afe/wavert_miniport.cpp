@@ -13,9 +13,18 @@ static bool ValidFormat(PKSDATAFORMAT f)
         !IsEqualGUIDAligned(f->SubFormat, KSDATAFORMAT_SUBTYPE_PCM) ||
         !IsEqualGUIDAligned(f->Specifier, KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)) return false;
     const WAVEFORMATEX *w = &reinterpret_cast<PKSDATAFORMAT_WAVEFORMATEX>(f)->WaveFormatEx;
-    return w->wFormatTag == WAVE_FORMAT_PCM && w->nChannels == 2 &&
+    bool pcm = w->wFormatTag == WAVE_FORMAT_PCM && !w->cbSize;
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+    if(w->wFormatTag==WAVE_FORMAT_EXTENSIBLE && w->cbSize==22 &&
+       f->FormatSize>=sizeof(KSDATAFORMAT)+sizeof(WAVEFORMATEXTENSIBLE)) {
+        const WAVEFORMATEXTENSIBLE *e=reinterpret_cast<const WAVEFORMATEXTENSIBLE *>(w);
+        pcm=e->Samples.wValidBitsPerSample==16 && e->dwChannelMask==3 &&
+            IsEqualGUIDAligned(e->SubFormat,KSDATAFORMAT_SUBTYPE_PCM);
+    }
+#endif
+    return pcm && w->nChannels == 2 &&
         w->nSamplesPerSec == 48000 && w->wBitsPerSample == 16 &&
-        w->nBlockAlign == 4 && w->nAvgBytesPerSec == 192000 && !w->cbSize;
+        w->nBlockAlign == 4 && w->nAvgBytesPerSec == 192000;
 }
 static KSDATARANGE_AUDIO Range = {
     {sizeof(KSDATARANGE_AUDIO),0,0,0, STATICGUIDOF(KSDATAFORMAT_TYPE_AUDIO),
@@ -23,6 +32,22 @@ static KSDATARANGE_AUDIO Range = {
     2,16,16,48000,48000
 };
 static PKSDATARANGE Ranges[] = {reinterpret_cast<PKSDATARANGE>(&Range)};
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+static KSDATARANGE AnalogRange = {sizeof(KSDATARANGE),0,0,0,
+    STATICGUIDOF(KSDATAFORMAT_TYPE_AUDIO),STATICGUIDOF(KSDATAFORMAT_SUBTYPE_ANALOG),
+    STATICGUIDOF(KSDATAFORMAT_SPECIFIER_NONE)};
+static PKSDATARANGE AnalogRanges[]={&AnalogRange};
+static PCPIN_DESCRIPTOR Pins[] = {
+    {1,1,0,NULL,{0,NULL,0,NULL,1,Ranges,KSPIN_DATAFLOW_IN,KSPIN_COMMUNICATION_SINK,&KSCATEGORY_AUDIO,NULL,0}},
+    {0,0,0,NULL,{0,NULL,0,NULL,1,AnalogRanges,KSPIN_DATAFLOW_OUT,KSPIN_COMMUNICATION_NONE,&KSCATEGORY_AUDIO,NULL,0}}
+};
+static PCNODE_DESCRIPTOR Nodes[]={{0,NULL,&KSNODETYPE_DAC,NULL}};
+static PCCONNECTION_DESCRIPTOR Connections[] = {
+    {PCFILTER_NODE,0,0,1},{0,0,PCFILTER_NODE,1}
+};
+static PCFILTER_DESCRIPTOR Filter={0,NULL,sizeof(PCPIN_DESCRIPTOR),2,Pins,
+    sizeof(PCNODE_DESCRIPTOR),1,Nodes,2,Connections,0,NULL};
+#else
 static PCPIN_DESCRIPTOR Pins[] = {
     {1,1,0,NULL,{0,NULL,0,NULL,1,Ranges,KSPIN_DATAFLOW_IN,KSPIN_COMMUNICATION_SINK,&KSCATEGORY_AUDIO,NULL,0}},
     {0,0,0,NULL,{0,NULL,0,NULL,1,Ranges,KSPIN_DATAFLOW_OUT,KSPIN_COMMUNICATION_NONE,&KSCATEGORY_AUDIO,NULL,0}}
@@ -30,6 +55,7 @@ static PCPIN_DESCRIPTOR Pins[] = {
 static PCCONNECTION_DESCRIPTOR Connections[] = {{PCFILTER_NODE,0,PCFILTER_NODE,1}};
 static PCFILTER_DESCRIPTOR Filter = {0,NULL,sizeof(PCPIN_DESCRIPTOR),2,Pins,
     sizeof(PCNODE_DESCRIPTOR),0,NULL,1,Connections,0,NULL};
+#endif
 class Stream : public IMiniportWaveRTStream {
     volatile LONG refs;
     PPORTWAVERTSTREAM port;
@@ -41,12 +67,12 @@ class Stream : public IMiniportWaveRTStream {
     volatile LONG started;
     bool everStarted;
     bool stopUncertain;
-#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED && (!defined(A04_AUDIO_ENGINE_PCM) || !A04_AUDIO_ENGINE_PCM)
     bool drained;
 #endif
 public:
     explicit Stream(PPORTWAVERTSTREAM p, const Mt8167StreamBackend *b): refs(1),port(p),buffer{},backend{},useBackend(b!=NULL),backendMdl(NULL),backendBytes(0),started(false),everStarted(false),stopUncertain(false)
-#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED && (!defined(A04_AUDIO_ENGINE_PCM) || !A04_AUDIO_ENGINE_PCM)
     ,drained(false)
 #endif
     {
@@ -56,7 +82,7 @@ public:
         if (useBackend) {
             if (InterlockedExchange(&started,0)) {
                 NTSTATUS stopResult=backend.stop(backend.context);
-#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED && (!defined(A04_AUDIO_ENGINE_PCM) || !A04_AUDIO_ENGINE_PCM)
                 if(NT_SUCCESS(stopResult))drained=true;
 #else
                 (void)stopResult;
@@ -65,7 +91,7 @@ public:
             /* No drain proof exists. Retain the backend reference and buffer
              * after any start or failure that may have exposed DMA. */
             if (!everStarted
-#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED && (!defined(A04_AUDIO_ENGINE_PCM) || !A04_AUDIO_ENGINE_PCM)
                 || drained
 #endif
                ) {
@@ -101,6 +127,9 @@ public:
             BOOLEAN possiblyExposed=TRUE;
             NTSTATUS result=backend.start(backend.context,&possiblyExposed);
             everStarted=NT_SUCCESS(result) || possiblyExposed;
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+            if(everStarted)buffer.handedToDevice=TRUE;
+#endif
             if (!NT_SUCCESS(result) && possiblyExposed) stopUncertain=true;
             if (NT_SUCCESS(result)) InterlockedExchange(&started,1);
             return result;
@@ -108,7 +137,7 @@ public:
         if (s!=KSSTATE_STOP && s!=KSSTATE_ACQUIRE && s!=KSSTATE_PAUSE) return STATUS_INVALID_PARAMETER;
         if (stopUncertain) return STATUS_DEVICE_NOT_READY;
         if (InterlockedExchange(&started,0)) { NTSTATUS result=backend.stop(backend.context); if (!NT_SUCCESS(result)) { stopUncertain=true; return result; }
-#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED && (!defined(A04_AUDIO_ENGINE_PCM) || !A04_AUDIO_ENGINE_PCM)
             drained=true;
 #endif
         }
@@ -169,7 +198,7 @@ public:
         if (useBackend) {
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
             if (mdl && mdl==backendMdl && size==backendBytes && (!everStarted
-#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
+#if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED && (!defined(A04_AUDIO_ENGINE_PCM) || !A04_AUDIO_ENGINE_PCM)
                 || drained
 #endif
                 ) && NT_SUCCESS(backend.unbindWaveBuffer(backend.context,mdl))) {
@@ -185,6 +214,8 @@ public:
 #endif
         } else if (mdl && mdl==buffer.mdl && size==buffer.bytes) (void)Mt8167ReleaseUnpublishedBuffer(&buffer);
     }
+    /* No measured codec/fabric latency is available. The inherited zero
+     * values are placeholders, not a calibrated latency contract. */
     STDMETHODIMP_(VOID) GetHWLatency(KSRTAUDIO_HWLATENCY *p) override { if(p) RtlZeroMemory(p,sizeof(*p)); }
     STDMETHODIMP_(NTSTATUS) GetPositionRegister(KSRTAUDIO_HWREGISTER *) override { return STATUS_NOT_SUPPORTED; }
     STDMETHODIMP_(NTSTATUS) GetClockRegister(KSRTAUDIO_HWREGISTER *) override { return STATUS_NOT_SUPPORTED; }
