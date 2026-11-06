@@ -123,6 +123,20 @@ jobs:
       - name: Compile non-installable ARM32 display-only build check
         shell: pwsh
         run: ./tools/ci/build-wddm-display-arm.ps1
+      - name: Compile display GCE observation diagnostic
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:A04_GE8300_WDDM_DIRECT_EXPERIMENT='1'
+          $env:A04_GE8300_WDDM_SHARED_LEASE='1'
+          $env:A04_GE8300_WDDM_SHARED_DIAGNOSTIC='1'
+          $env:A04_GE8300_WDDM_SHARED_AUTOSTART='1'
+          $env:A04_GE8300_WDDM_SHARED_COMMON_PAGE='1'
+          $env:A04_GE8300_WDDM_SHARED_FULL_COMMON='1'
+          $env:A04_GE8300_SHARED_DISPLAY_COMMON='1'
+          $env:A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC='1'
+          $env:A04_GE8300_WDDM_GCE_LEASE='1'
+          ./tools/ci/build-wddm-display-arm.ps1
       - name: Compile WinPE file comparison tool
         shell: pwsh
         run: ./tools/ci/build-compare-files.ps1 -Arch arm

@@ -6,6 +6,24 @@
 #if A04_GE8300_WDDM_GCE_LEASE
 #include "../gce/gce_display_interface.h"
 struct A04GceDisplayLeaseHolder { A04_GCE_DISPLAY_INTERFACE iface;PFILE_OBJECT file;ULONG token; };
+/* Firmware observation is a snapshot, never an ownership or access proof.
+ * Report it even if the GCE interface is absent or refuses the lease. */
+static void GceTraceFirmwareObservation()
+{
+    struct Record { ULONG version,bytes,valid,top2,thread_enable,thread_status,thread_irq,ownership; } r;
+    UNICODE_STRING name=RTL_CONSTANT_STRING(L"A04BR3GceObservation");
+    GUID guid={0xb0f4cc26,0x0ad6,0x48e9,{0x94,0x74,0xe0,0x37,0x2a,0xcf,0x32,0x41}};
+    ULONG bytes=sizeof(r),attributes=0;NTSTATUS status;
+    RtlZeroMemory(&r,sizeof(r));
+    status=ExGetFirmwareEnvironmentVariable(&name,&guid,&r,&bytes,&attributes);
+    if(NT_SUCCESS(status) && (bytes!=sizeof(r) || r.version!=1 || r.bytes!=sizeof(r) ||
+       r.valid!=1 || r.ownership || r.thread_enable!=MAXULONG ||
+       r.thread_status!=MAXULONG || r.thread_irq!=MAXULONG))status=STATUS_DATA_ERROR;
+    A04DisplayTrace(0x68,status);
+    if(NT_SUCCESS(status))A04DisplayTrace(0x69,(NTSTATUS)r.top2);
+    /* Zero means unknown, not idle or secure-world release. */
+    A04DisplayTrace(0x6a,(NTSTATUS)0);
+}
 static NTSTATUS GceQueryCompletion(PDEVICE_OBJECT device,PIRP irp,PVOID context)
 {
     UNREFERENCED_PARAMETER(device);UNREFERENCED_PARAMETER(irp);
@@ -17,7 +35,9 @@ static NTSTATUS GceDisplayAcquire(void **retained)
     PIO_STACK_LOCATION stack;KEVENT event;NTSTATUS status;size_t length;
     struct A04GceDisplayLeaseHolder *h=NULL;
     if(!retained || *retained || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+    GceTraceFirmwareObservation();
     status=IoGetDeviceInterfaces((LPGUID)&A04GceDeviceInterfaceGuid,NULL,0,&links);
+    A04DisplayTrace(0x6b,status);
     if(!NT_SUCCESS(status))return status;
     if(!links || !*links){status=STATUS_NO_SUCH_DEVICE;goto done;}
     RtlInitUnicodeString(&path,links);length=path.Length/sizeof(WCHAR);
@@ -26,6 +46,7 @@ static NTSTATUS GceDisplayAcquire(void **retained)
     if(!h){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
     RtlZeroMemory(h,sizeof(*h));
     status=IoGetDeviceObjectPointer(&path,FILE_READ_DATA|FILE_WRITE_DATA,&h->file,&target);
+    A04DisplayTrace(0x6c,status);
     if(!NT_SUCCESS(status))goto done;
     irp=IoAllocateIrp(target->StackSize,FALSE);
     if(!irp){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
@@ -42,13 +63,16 @@ static NTSTATUS GceDisplayAcquire(void **retained)
         do {status=KeWaitForSingleObject(&event,Executive,KernelMode,FALSE,NULL);} while(status!=STATUS_SUCCESS);
     }
     status=irp->IoStatus.Status;IoFreeIrp(irp);irp=NULL;
+    A04DisplayTrace(0x6d,status);
     if(!NT_SUCCESS(status))goto done;
     if(!h->iface.Header.InterfaceDereference || !h->iface.Acquire || !h->iface.Release || !h->iface.Ready) {
         status=STATUS_NOINTERFACE;goto done;
     }
     status=h->iface.Acquire(h->iface.Header.Context,&h->token);
+    A04DisplayTrace(0x6e,status);
     if(h->token && NT_SUCCESS(status)) {
         status=h->iface.Ready(h->iface.Header.Context,h->token);
+        A04DisplayTrace(0x6f,status);
         if(!NT_SUCCESS(status) && NT_SUCCESS(h->iface.Release(h->iface.Header.Context,h->token)))h->token=0;
     }
     if(h->token){*retained=h;h=NULL;goto done;} /* retain even on failure */
