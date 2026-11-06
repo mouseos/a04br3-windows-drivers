@@ -56,6 +56,9 @@ struct Mt8167PnpBackend {
     PDEVICE_OBJECT pdo;
     PDMA_ADAPTER adapter;
     Mt8167CommonDma buffer;
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+    PMDL waveMdl; PVOID waveMapping; ULONG waveBytes;
+#endif
 #if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
     Mt8167CommonDma silentBuffer;
 #endif
@@ -165,6 +168,29 @@ static void OwnerFree(void *ctx,PMDL mdl,ULONG bytes)
         (void)Mt8167CommonReleaseUnexposed(&o->buffer);
     OwnerUnlock(o);
 }
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+/* This records a PortCls allocation only. A physical page address is not a
+ * DMA logical address; no mapping is published by this operation. */
+static NTSTATUS OwnerBindWave(void *ctx,PMDL mdl,PVOID mapping,ULONG bytes) {
+    Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);NTSTATUS result=STATUS_DEVICE_NOT_READY;
+    if(!o || !mdl || !mapping || !bytes || bytes>1048576 || (bytes & (PAGE_SIZE-1)) ||
+       MmGetMdlByteOffset(mdl) || MmGetMdlByteCount(mdl)<bytes || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+    OwnerLock(o);
+    if(o->online && !o->waveMdl && !o->shared.quarantined) {
+        o->waveMdl=mdl;o->waveMapping=mapping;o->waveBytes=bytes;result=STATUS_SUCCESS;
+    }
+    OwnerUnlock(o);return result;
+}
+static NTSTATUS OwnerUnbindWave(void *ctx,PMDL mdl) {
+    Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);NTSTATUS result=STATUS_DEVICE_NOT_READY;
+    if(!o || !mdl || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+    OwnerLock(o);
+    if(o->waveMdl==mdl && !o->shared.quarantined && o->transport.state!=AUDIO_RUNNING) {
+        o->waveMdl=NULL;o->waveMapping=NULL;o->waveBytes=0;result=STATUS_SUCCESS;
+    }
+    OwnerUnlock(o);return result;
+}
+#endif
 /* A single publish flush cannot prove live WaveRT circular-buffer coherence.
  * This platform-specific proof must be implemented before RUN can proceed. */
 #if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
@@ -185,11 +211,9 @@ static BOOLEAN OwnerLiveDmaVerified(Mt8167PnpBackend *o)
     o->transport.dma=&o->silentBuffer;
     return TRUE;
 #elif defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
-    if(!o || !o->buffer.mdl || !o->parentClient.parent.VerifyLivePcm ||
-       !o->parentClient.parent.StartVoice || !o->parentClient.parent.StopVoice ||
-       o->parentClient.parent.VerifyLivePcm(o->parentClient.parent.Header.Context,
-           o->buffer.mdl,(ULONGLONG)o->buffer.logical.QuadPart,o->buffer.size))return FALSE;
-    o->transport.dma=&o->buffer;return TRUE;
+    /* PortCls pages require a DMA adapter mapping with a device logical
+     * address and retained map registers. That mapping is not implemented. */
+    UNREFERENCED_PARAMETER(o);return FALSE;
 #else
     UNREFERENCED_PARAMETER(o);return FALSE;
 #endif
@@ -388,6 +412,9 @@ NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt816
     o->transport.affinity=o->interrupt.affinity;o->transport.mode=o->interrupt.mode;
     o->iface.context=o;o->iface.reference=OwnerReference;o->iface.dereference=OwnerDereference;
     o->iface.allocate=OwnerAllocate;o->iface.freeBuffer=OwnerFree;
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+    o->iface.bindWaveBuffer=OwnerBindWave;o->iface.unbindWaveBuffer=OwnerUnbindWave;
+#endif
     o->iface.start=OwnerStart;o->iface.stop=OwnerStop;o->iface.position=OwnerPosition;o->iface.getDeviceDescription=OwnerDescription;
 #if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
     if (o->parentClient.parent.BindAfe(o->parentClient.parent.Header.Context,o->afe.base,0x1000)) {

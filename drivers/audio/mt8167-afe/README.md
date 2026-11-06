@@ -364,3 +364,15 @@ behavior on platform properties; neither the CPU mapping nor a single
 call proves continuous coherency or a matching user-mode mapping on this board.
 Preflight must also ensure initial publication cannot race client writes.
 These current Microsoft pages are API guidance, not proof of RT 8.1 behavior.
+
+
+The voice PCM variant now allocates its client MDL through PortCls
+`AllocateContiguousPagesForMdl`, maps it through `MapAllocatedPages`, rounds
+requests up to pages, and reports the actual size. The PnP owner binds the
+PortCls MDL without treating physical addresses as device logical addresses.
+The earlier description of directly using its common-buffer allocation for
+this variant is superseded. RUN currently refuses unconditionally: an adapter
+mapping for the PortCls pages, its map-register lifetime and DMA drain proof
+are not implemented. No PCM reaches hardware. A successful preflight cannot
+override this restriction. When mapping is added, it must preserve the PortCls
+allocation and mapping until the hardware and adapter are demonstrably done.

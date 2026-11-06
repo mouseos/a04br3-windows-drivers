@@ -176,25 +176,22 @@ int main(){
 #endif
  assert(Mt8167PnpBackendAttachShared(owner,&shared)==STATUS_DEVICE_NOT_READY);
  const Mt8167StreamBackend *api=Mt8167PnpBackendInterface(owner);api->reference(api->context);
+#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+ { _MDL portMdl{data,8192};BOOLEAN exposed=TRUE;
+   assert(api->bindWaveBuffer && api->unbindWaveBuffer);
+   assert(!api->bindWaveBuffer(api->context,&portMdl,data,8192));
+   assert(api->bindWaveBuffer(api->context,&portMdl,data,8192)==STATUS_DEVICE_NOT_READY);
+   live_verified=1;assert(api->start(api->context,&exposed)==STATUS_DEVICE_NOT_READY && !exposed && !voice_starts);
+   assert(!api->unbindWaveBuffer(api->context,&portMdl));
+   Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);api->dereference(api->context);
+   assert(!freed && puts==1 && !parent_refs && !test_pdo_refs);return 0; }
+#endif
  PMDL mdl=nullptr;ULONG n=0,offset=9;MEMORY_CACHING_TYPE cache;
  test_audio_irql=1;assert(api->allocate(api->context,8192,&mdl,&n,&offset,&cache)==STATUS_DEVICE_NOT_READY && !mdl);test_audio_irql=0;
  assert(!api->allocate(api->context,8192,&mdl,&n,&offset,&cache) && mdl && n==8192 && !offset);
  BOOLEAN exposure=TRUE;
  test_audio_irql=1;assert(api->start(api->context,&exposure)==STATUS_DEVICE_NOT_READY && !exposure);api->freeBuffer(api->context,mdl,8192);assert(!freed);test_audio_irql=0;
-#if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
- assert(api->start(api->context,&exposure)==STATUS_DEVICE_NOT_READY && !exposure && !voice_starts);
- live_verified=1;
-#if defined(A04_TEST_VOICE_FAILURE) && A04_TEST_VOICE_FAILURE
- assert(api->start(api->context,&exposure)==STATUS_DEVICE_NOT_READY && exposure && voice_starts==1 && !parent_unmutes && !voice_stops);
-#elif defined(A04_TEST_UNMUTE_FAILURE) && A04_TEST_UNMUTE_FAILURE
- assert(api->start(api->context,&exposure)==STATUS_DEVICE_NOT_READY && exposure && voice_starts==1 && parent_unmutes==1 && voice_stops==1);
-#else
- assert(!api->start(api->context,&exposure) && exposure && voice_starts==1 && parent_unmutes==1);
- assert(!api->stop(api->context) && voice_stops==1);
-#endif
- Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);api->dereference(api->context);
- assert(!freed && !puts && parent_refs==2 && test_pdo_refs==1);return 0;
-#elif defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
+#if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
 #if defined(A04_TEST_UNMUTE_FAILURE) && A04_TEST_UNMUTE_FAILURE
  assert(api->start(api->context,&exposure)==STATUS_DEVICE_NOT_READY && exposure && allocCalls==2 && parent_unmutes==1);
  Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);api->dereference(api->context);

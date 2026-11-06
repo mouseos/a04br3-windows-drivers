@@ -21,5 +21,8 @@ int main() {
  p.second=0x102000; assert(Mt8167AllocateBuffer(&p,8192,&b)==STATUS_DEVICE_CONFIGURATION_ERROR && p.freed==2 && !b.mdl);
  p.second=0x101000; p.base=0xfffff000LL; assert(Mt8167AllocateBuffer(&p,8192,&b)==STATUS_DEVICE_CONFIGURATION_ERROR);
  p.base=0x100000; p.map=false; assert(Mt8167AllocateBuffer(&p,8192,&b)==STATUS_DEVICE_CONFIGURATION_ERROR);
- assert(Mt8167AllocateBuffer(&p,4097,&b)==STATUS_INVALID_PARAMETER);
+ p.map=true; assert(Mt8167AllocateBuffer(&p,4097,&b)==STATUS_SUCCESS && b.bytes==8192);
+ assert(Mt8167ReleaseUnpublishedBuffer(&b)==STATUS_SUCCESS);
+ assert(Mt8167AllocateBuffer(&p,0,&b)==STATUS_INVALID_PARAMETER);
+ assert(Mt8167AllocateBuffer(&p,1048577,&b)==STATUS_INVALID_PARAMETER);
 }

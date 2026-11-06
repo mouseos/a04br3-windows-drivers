@@ -69,6 +69,8 @@ typedef struct { ULONG Version; BOOLEAN Master,ScatterGather,Dma32BitAddresses; 
 #define STATUS_NOT_SUPPORTED (-5)
 typedef struct {int64_t QuadPart;} PHYSICAL_ADDRESS;
 struct _MDL { void *address; ULONG size; }; typedef _MDL *PMDL;
+#define MmGetMdlByteOffset(p) 0u
+#define MmGetMdlByteCount(p) ((p)->size)
 struct _DMA_ADAPTER; typedef _DMA_ADAPTER *PDMA_ADAPTER;
 struct _DMA_OPERATIONS {
  void (*PutDmaAdapter)(PDMA_ADAPTER);
