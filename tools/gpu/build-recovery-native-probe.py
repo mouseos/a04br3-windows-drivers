@@ -20,8 +20,11 @@ def main():
     products={"recovery-native-clear":["-fPIE","-pie","-ldl"],
               "recovery-native-bridge-capture.so":["-fPIC","-shared","-pthread"]}
     manifest={"hardware_executed":False,"compiler":str(compiler),"commands":[],"products":{}}
+    manifest["sources"]={p.name:hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in sorted(source.glob("recovery-native-*.h"))}
     for name,flags in products.items():
         c=source/(name.removesuffix(".so")+".c")
+        manifest["sources"][c.name]=hashlib.sha256(c.read_bytes()).hexdigest()
         cmd=[str(compiler),"-std=gnu11","-O2","-Wall","-Wextra","-Werror",
              str(c),*flags,"-Wl,-z,defs","-o",str(out/name)]
         subprocess.run(cmd,env=env,check=True)

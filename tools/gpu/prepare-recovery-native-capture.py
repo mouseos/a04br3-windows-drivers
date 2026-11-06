@@ -61,6 +61,6 @@ def main():
         "selection":"主担当が依存libraryとnamespaceを確認して片方だけを選ぶ。同じcapture名で両方を実行しない。",
         "retrieval_command_NOT_EXECUTED":adb("pull",device+"/capture-01.bin",str(logs/"runtime-capture-01.bin")),
         "evidence_export_path":str(logs/"runtime-rea-evidence.json"),
-        "parse_after_retrieval":["python3","-B",str(bundle/"source/tools/gpu/read-recovery-native-capture.py"),str(logs/"runtime-capture-01.bin")],
-        "success":"PowerVR renderer, full readback match, complete pre/post pairs, ioctl/bridge success, broken=0; packet GPU/FW addresses cannot be replayed unchanged"},indent=2))
+        "parse_after_retrieval":["python3","-B",str(bundle/"source/tools/gpu/read-recovery-native-capture.py"),str(logs/"runtime-capture-01.bin"),"--resources-directory",str(logs/"runtime-resources-01")],
+        "success":"PowerVR renderer, full readback match, complete pre/post pairs, ioctl/bridge success, broken=0. Native resource completeness separately requires every VDM/PPP/USC/PDS/region reference to be covered; unknown is not success. GPU/FW addresses cannot be replayed unchanged"},indent=2))
 if __name__=="__main__":main()

@@ -52,3 +52,19 @@ libIMGeglのDT_NEEDEDはlibsrv_um/libm/libsync/libged/libgralloc_extra/libhardwa
 指定libsrv_um hashとstock backup内の別版を取り違えない。同梱libgedはHIDL GPU 1.0、libgpudはgraphics common1.1/1.2とmapper2.0/2.1/3.0に依存。これらの.soが存在してもサービスが必要かどうかは別途runtime観測が必要。NDK sysrootのstubをruntime代用として配置しない。platform library候補は既存Android10 system imageから別directoryに抽出し、互換性未検証のままvendor正本と混ぜない。
 
 REA providerの一時DB/PTY capture作業領域もroot内へ限定するため、既定/tmpで起動済みのserverは使用せず、root内TMPDIRを指定したREA CLIまたはREA MCP processを使う。capture-process CLIはscenario JSON pathを受け取る。生成planのrea_host_environmentとrea_cli_capture_NOT_EXECUTEDは起動条件の例で、実行はしない。root外の既存設定ファイルを変更する必要はない。
+
+## 同processの参照資源を同時に捕捉する
+
+TA/PR/3D recordだけではGPU VA参照先のcode/初期内容を再構築できないため、source observerにPMR topologyとbounded snapshotを追加した。これはREA scenario下の自作LD_PRELOAD observerで、元UMへのpacket生成・書換え・再送や追加GPU fd openは行わない。
+
+根拠はm1.11 generated/common_mm_bridge.h、common_dmabuf_bridge.h、services/include/pvr_bridge.h、pvr_bridge_k.c:PVRSRV_MMap、devicemem_server.c、mmu_common.c。MM group6ではNewRamBacked(PMR/Locked)、HeapCreate、ReserveRange、MapPMR、MapPagesと解放を追う。DMA-BUF group11では成功したimport/exportだけをfdとPMRの対応根拠にする。通常flags32とSUPPORT_VALIDATION flags64のpacked layoutは入力長で区別し、合わないものを推測decodeしない。
+
+DRMのmmap offset/page-sizeがPMR handleとなることはPVRSRV_MMapのvm_pgoff lookupから確定。DMA-BUFは成功したbridgeが示すfdと、そのfd自身のmmap offsetで対応付ける。mmap/mmap64の返した自processのVMAだけを登録し、PMR generation、fd epoch、munmap、mprotect、mremap、dup2/dup3、closeによる無効化を追う。DMA-BUFを閉じても、既にPMRへ結び付けた自分のVMAは保持できる。直接syscallや別namespaceによりinterposeされなかったmappingを、既知扱いして補完しない。未対応import/再配置は未確定として残す。
+
+各kickの直前に、成功したGPU mapとCPU VMAが同じPMRへ一意に対応し、dense、PROT_READ、4byte alignment、既知sizeの範囲内である場合だけaligned volatile uint32_tで読む。GPU VAをCPU pointerへcastしない。小さいGPU allocationから読み、1範囲256KiB・1 kick 4MiB・process全体16MiBを上限にする。registryは各256要素、fd epochは2048、bridge journalは2048件で固定。新しいGPU mappingを作ったり、GPU-only/疎なregionを強制的にCPU mapしたりしない。
+
+wire v1の追加kind3はPMR/CPU/GPU/offset/size/protection/provenanceと内容、kind4はbounded bridge input/output journal、kind5はread量とregistry/unknown数。no CPU mapping、unsafe/sparse、ambiguous、unaligned、prefix-only、budget、journal-lostを区別する。full-spanはそのGPU mapping範囲の全量という意味で、全packet参照先の網羅を意味しない。parserはGPU成功も全資源取得成功も常にunknownとして返し、解析者が全参照を照合する。
+
+`read-recovery-native-capture.py <capture> --resources-directory <新規root内dir>`でresource内容を別binへ抽出する。既存dirへの上書きは拒否し、JSONにはhash・capture内offset・未捕捉理由を記す。VDM/PPP/USC/PDS/regionの参照が全て入ったかはGPU VA/PMR offsetとsnapshot範囲で判断する。CPU mappingがない資源、prefix外のsuballocation、直接syscallやnamespaceによる見逃しは依然として阻害条件であり、未取得をzeroと推定しない。
+
+CPU-only試験はtest-recovery-native-memory.c（所有権、実PROT_NONE、疎、handle再利用、read上限）、test-recovery-native-mmap.c（通常fileでのsyscall転送）、test-recovery-native-capture.py（wire破損・上限・unknown維持）。人工metadataはunit fixtureだけでありGPUへ渡さない。これらの合格とNDK最終linkは実GPU成功の証拠ではない。
