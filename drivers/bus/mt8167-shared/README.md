@@ -421,6 +421,17 @@ measured DAC endpoint; measured headphone OP compensation is not evidence of
 AU_LOL equivalence. Calibration may be requested through Linux HP DC Offsets
 control; neither that control nor its put path proves the value was measured
 on this boot. No per-device data is embedded here.
+
+Linux allocates the codec private data with `devm_kzalloc`, so both DAC
+compensation arrays initially contain zero. `mt8167_codec_gather_comp_val`
+sets VCM-to-DAC entries to 0x4b4b only after an HP DC Offsets get or put;
+the latter can use supplied rather than freshly measured offsets. The left
+DAC DAPM event uses those arrays for both headphone and Voice Amp routes.
+The Voice helper therefore accepts the initial value as well as the target
+from its provider, and retains both through stop. This does not establish
+that headphone measurements characterize AU_LOL: the parent still rejects
+the operation and does not claim an AUXADC lease. Ramp timing uses CON02
+bits 20:19, read from hardware in Linux, rather than assuming the DTS default.
 already in progress, nor proof of retained rail or clock power. D0 remains
 unconditionally refused and a stop must never be interpreted as power control.
 

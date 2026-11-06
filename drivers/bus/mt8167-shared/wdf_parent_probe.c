@@ -271,8 +271,8 @@ static int ParentDomainWrite(void *context,unsigned offset,uint32_t value) {
 #if A04_SHARED_VOICE_DIAGNOSTIC
 /* No AU_LOL calibration provider or downstream route proof exists yet.
  * This must remain a rejection until both are independently established. */
-static int ParentVoiceVerify(void *context,int16_t *value,unsigned *cap) {
-    UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(value);UNREFERENCED_PARAMETER(cap);
+static int ParentVoiceVerify(void *context,int16_t *initial,int16_t *value,unsigned *cap) {
+    UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(initial);UNREFERENCED_PARAMETER(value);UNREFERENCED_PARAMETER(cap);
     return -1;
 }
 static int ParentVoiceAfeRead(void *context,unsigned offset,uint32_t *value) {
@@ -300,8 +300,8 @@ static struct a04_codec_voice_io ParentVoiceIo(A04_PARENT_CONTEXT *c) {
 static int ParentCodecStart(void *context) {
     A04_PARENT_CONTEXT *c=context;struct a04_mt6392_audio_rails rails;
 #if A04_SHARED_VOICE_DIAGNOSTIC
-    { int16_t value;unsigned cap;
-      if(ParentVoiceVerify(c,&value,&cap))return -1; }
+    { int16_t initial,value;unsigned cap;
+      if(ParentVoiceVerify(c,&initial,&value,&cap))return -1; }
 #endif
     if(!c || !c->pmic.online || a04_pmic_audio_rails(&c->pmic.bus,&rails))return -1;
     A04_TRACE("A04AUD codec rails vaud22=%04x selector=%04x vaud28=%04x\n",(unsigned)rails.vaud22,(unsigned)rails.vaud22_selector,(unsigned)rails.vaud28);

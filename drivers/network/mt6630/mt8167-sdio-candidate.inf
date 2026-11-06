@@ -33,5 +33,5 @@ KmdfService=A04SdioCandidate,Wdf
 KmdfLibraryVersion=1.13
 [Strings]
 Provider="mouseos"
-Device="MT8167 SDIO disabled candidate"
-Disk="A04BR3 SDIO candidate"
+Device="MediaTek MT8167 SDIO Controller"
+Disk="MediaTek MT8167 SDIO Controller Driver"
