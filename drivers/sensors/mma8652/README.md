@@ -57,3 +57,12 @@ host tests and ARM object compilation. `tools/ci/build-mma8652.ps1` builds an
 ARM32 WDK package and `tools/ci/sign-mma8652.ps1` creates a research-only
 self-signed package; acceptance outside the test-mode WinPE is not established. Do not treat
 host simulation, linking or a signature as evidence of hardware operation.
+
+## HID physical units
+
+The report descriptor explicitly declares G (0x1a) with exponent -2 for
+acceleration and absolute sensitivity, and milliseconds (0x19) for report
+intervals, following the Microsoft Sensor HID Class Driver sample. Unit
+state is cleared for sensor-state and event selectors. Raw HID sample reads
+do not establish that the Windows Sensor HID class can start or rotate the
+display. Reference: https://learn.microsoft.com/en-us/windows-hardware/drivers/hid/sensor-hid-class-driver
