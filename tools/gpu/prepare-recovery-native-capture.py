@@ -48,6 +48,8 @@ def main():
             "/system/lib64/libEGL.so","/system/lib64/libGLESv2.so"],45000)
     print(json.dumps({"executed":False,"requires_primary_recovery_authorization":True,
         "serial_must_be_confirmed_by_primary":serial,"staging_commands_NOT_EXECUTED":commands,
+        "rea_host_environment":{"TMPDIR":str(logs/"rea-runtime-tmp")},
+        "rea_cli_capture_NOT_EXECUTED":["env","TMPDIR="+str(logs/"rea-runtime-tmp"),"rea","capture-process",str(bundle/"scenario-vendor-direct.json"),"--format","json","--full-output"],
         "rea_preflight":preflight,"rea_capture_vendor_direct":direct,
         "rea_capture_platform_loader_alternative":platform,
         "staging_layout":{

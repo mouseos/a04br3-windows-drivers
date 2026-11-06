@@ -50,3 +50,5 @@ config_kernel_user_mt8167.hとeng版はPVR_LINUX_PHYSMEM_ZERO_ALL_PAGESを定義
 libIMGeglのDT_NEEDEDはlibsrv_um/libm/libsync/libged/libgralloc_extra/libhardware/libz/libgpud/libc。ES2 driverは`/system/vendor/lib64/egl/libGLESv2_mtk.so`固定pathでdlopenする（REA dependency bundle参照）。LD_LIBRARY_PATHを/tmpに向けるだけでは固定pathを解決できない。元binaryを書換えず、主担当が別途承認するmount namespace/bindまたはRecovery imageへの正規配置が必要。firmwareもkernelの実際の検索pathを満たす必要がある。
 
 指定libsrv_um hashとstock backup内の別版を取り違えない。同梱libgedはHIDL GPU 1.0、libgpudはgraphics common1.1/1.2とmapper2.0/2.1/3.0に依存。これらの.soが存在してもサービスが必要かどうかは別途runtime観測が必要。NDK sysrootのstubをruntime代用として配置しない。platform library候補は既存Android10 system imageから別directoryに抽出し、互換性未検証のままvendor正本と混ぜない。
+
+REA providerの一時DB/PTY capture作業領域もroot内へ限定するため、既定/tmpで起動済みのserverは使用せず、root内TMPDIRを指定したREA CLIまたはREA MCP processを使う。capture-process CLIはscenario JSON pathを受け取る。生成planのrea_host_environmentとrea_cli_capture_NOT_EXECUTEDは起動条件の例で、実行はしない。root外の既存設定ファイルを変更する必要はない。
