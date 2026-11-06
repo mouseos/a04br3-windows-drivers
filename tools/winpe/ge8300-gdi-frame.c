@@ -44,8 +44,8 @@ static LRESULT CALLBACK FrameProc(HWND w,UINT message,WPARAM wp,LPARAM lp)
 void WinMainCRTStartup(void)
 {
     WNDCLASSA wc;HWND window;MSG msg;HINSTANCE instance=GetModuleHandleA(NULL);
-    /* Startup diagnostic owns the present mutex until all sixteen frames and
-     * restoration complete. This wait avoids counting them as GDI presents. */
+    /* Let the bounded startup check restore the present state before the
+     * application begins its own real GDI updates. */
 #if A04_GE8300_GDI_D0_TRANSITION
     /* The matched provider's diagnostic-only S0 idle timeout is 30 s.
      * Hide the console caret, hold a real GDI frame for 40 s, then repaint

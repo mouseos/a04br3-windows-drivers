@@ -189,6 +189,15 @@
 #if A04_GE8300_VENDOR_STAGE && A04_GE8300_BOOT_TEST
 #error Vendor firmware staging cannot be combined with modern firmware boot
 #endif
+#ifndef A04_GE8300_VENDOR_NATIVE_BACKING
+#define A04_GE8300_VENDOR_NATIVE_BACKING 0
+#endif
+#if A04_GE8300_VENDOR_NATIVE_BACKING && (!A04_GE8300_VENDOR_RENDER_COLD || !A04_GE8300_VENDOR_UNCACHED_STAGE || !A04_GE8300_VENDOR_COPY_DIAGNOSTIC || !A04_GE8300_SHARED_LEASE)
+#error Native backing requires the matched cold uncached shared render owner
+#endif
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+#include "vendor_m1_11/windows_native_cold.h"
+#endif
 #define CORE_BASE 0x13000000u
 #define CORE_SIZE 0x80000u
 #define MFG_BASE  0x13ffe000u
@@ -203,6 +212,9 @@ typedef struct {
     struct a04_vendor_m1_11_memory vendor;
 #if A04_GE8300_VENDOR_RENDER_COLD
     struct a04_vendor_render_cold vendor_render;
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+    struct a04_vendor_native_cold vendor_native;
+#endif
 #if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
     struct a04_vendor_copy_scratch vendor_copy;
     BOOLEAN vendor_copy_device_ref;
@@ -719,19 +731,32 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         if(NT_SUCCESS(status))status=a04_vendor_copy_scratch_prepare(&c->vendor_copy,&c->vendor_render,copy_map_registers);
         if(NT_SUCCESS(status))status=a04_vendor_copy_scratch_stage_usc(&c->vendor_copy,a04_copy_usc_asset,sizeof(a04_copy_usc_asset));
         if(NT_SUCCESS(status))status=a04_vendor_copy_scratch_freeze(&c->vendor_copy);
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+        if(NT_SUCCESS(status))status=a04_vendor_native_prepare_cold(&c->vendor_native,
+            &c->vendor_render,adapter,copy_map_registers,800,1280);
+        GpuPrint("A04GPU NATIVE BACKING=");GpuHex((ULONG)status);
+        GpuPrint(" BYTES=");GpuHex(c->vendor_native.used);GpuPrint("\n");
+#endif
         /* Retain device context and adapter for the diagnostic boot.  A
          * reference alone does not establish physical-removal safety. */
         if(c->vendor_copy.exposed) {WdfObjectReference(device);c->vendor_copy_device_ref=TRUE;}
         if(!NT_SUCCESS(status) && c->vendor_copy.prepared && !c->vendor_copy.exposed)
             (void)a04_vendor_copy_scratch_release(&c->vendor_copy);
-        if(!NT_SUCCESS(status) && !c->vendor_copy.exposed)
-            (void)a04_vendor_render_release_cold(&c->vendor_render);
+        if(!NT_SUCCESS(status) && !c->vendor_copy.exposed) {
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+        if(c->vendor_native.render)(void)a04_vendor_native_release_cold(&c->vendor_native);
+#endif
+        (void)a04_vendor_render_release_cold(&c->vendor_render);
+        }
 #endif
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
         if(NT_SUCCESS(status))status=a04_vendor_surface_prepare(&c->vendor_screen,adapter,800,1280,3328,UINT64_C(0x8000000000));
         if(NT_SUCCESS(status))status=a04_vendor_render_attach_screen(&c->vendor_render,&c->vendor_screen);
         if(!NT_SUCCESS(status)) {
-            (void)a04_vendor_render_release_cold(&c->vendor_render);
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+        if(c->vendor_native.render)(void)a04_vendor_native_release_cold(&c->vendor_native);
+#endif
+        (void)a04_vendor_render_release_cold(&c->vendor_render);
             (void)a04_vendor_surface_release(&c->vendor_screen);
         }
 #endif
@@ -1057,6 +1082,9 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
        ) {
         a04_vendor_irq_set_power(c->vendor_irq,FALSE);
 #if A04_GE8300_VENDOR_RENDER_COLD
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+        if(c->vendor_native.render)(void)a04_vendor_native_release_cold(&c->vendor_native);
+#endif
         (void)a04_vendor_render_release_cold(&c->vendor_render);
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
         (void)a04_vendor_surface_release(&c->vendor_screen);

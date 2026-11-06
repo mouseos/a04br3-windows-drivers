@@ -18,7 +18,7 @@ NTSTATUS a04_vendor_render_release_cold(struct a04_vendor_render_cold *r)
 {
     unsigned i;
     if(!r || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
-    if(r->copy_owner || (r->firmware && r->firmware->hardware_owned))return STATUS_DEVICE_BUSY;
+    if(r->native_owner || r->copy_owner || (r->firmware && r->firmware->hardware_owned))return STATUS_DEVICE_BUSY;
     if(r->firmware && r->firmware->render_owner!=r)return STATUS_INVALID_DEVICE_STATE;
     if(r->mapped) {
         uint32_t zeros[16]={0};
@@ -78,7 +78,7 @@ NTSTATUS a04_vendor_render_prepare_cold(struct a04_vendor_render_cold *r,
 {
     void *shadow[17]={0};unsigned i,j;NTSTATUS status=STATUS_DEVICE_CONFIGURATION_ERROR;
     struct a04_vendor_render_layout layout={0};
-    if(!r || !f || !adapter || KeGetCurrentIrql()!=PASSIVE_LEVEL || r->firmware || r->mapped ||
+    if(!r || !f || !adapter || KeGetCurrentIrql()!=PASSIVE_LEVEL || r->firmware || r->mapped || r->native_owner ||
        !f->staged || !f->uncached || f->hardware_owned || f->render_owner || f->adapter!=adapter || !f->buffers[0].cpu)
         return STATUS_INVALID_PARAMETER;
     for(i=0;i<16;i++)if(r->buffer[i].cpu || r->buffer[i].adapter)return STATUS_INVALID_PARAMETER;

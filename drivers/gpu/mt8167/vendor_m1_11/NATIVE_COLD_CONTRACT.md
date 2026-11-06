@@ -65,3 +65,9 @@ GPU mapping/cache policyをallocation flagsから機械的に同一視しない�
 TA +0x3c/+0x44/+0x4c/+0x54/+0x80等の意味/初期化、3D clear/残りregister、USC/PDS/VDM/PPP/EOTが未確定。TPC以外の未確定初期内容を「全zeroが正解」と宣言しない。CPU allocationをzeroで確保する場合も安全なhost policyと記録し、GPU初期状態の一次証拠にはしない。
 
 packet担当はStartFrame 0x15e9c8、SetupBGObject 0x11372cのclear分岐、DoKickTA 0x1612a0とRGXKickTA 0x126354の間をREAで追い、clear専用の完全recordと依存コードを次に渡す。owner/backing担当は本契約でcold準備とqueue公開部を進められるが、dummy complete payloadを公開して試験しない。
+
+## Windows cold backingの実接続
+
+`windows_native_cold`は、親render所有者に子leaseを持ち、32bit adapter DMAの連続data領域と追加PTを確保する。PM local40/global256ページを実DMA addressから構成し、独立したfreelist表とmirrorを作る。PCの親directory一致、未使用leaf、既存FW/render/copy資源との非重複を確認してcold PD entryを公開する。PMページには同版RGXGrowFreeListのPMMETA_PROTECTを使う。使用量は800x1280で0x158000 bytes、別にPT 4KiB。
+
+`A04_GE8300_VENDOR_NATIVE_BACKING=1`は既定OFFで、providerの実cold準備へ接続する。完全なTA/3D packetを作成・送信するflagではない。region/MLIST/auxiliaryのゼロはhost allocation policyに限定し、TPC/VHeap以外の必須初期内容を推測しない。HWRT bank bindは独立して導出したregister値と所有GPU VAを検証し、MIPS bank+0x4800と専用UFOだけを初期化する。bank bindとTA/3D実行許可は別である。hardware_owned後は解放せず、cold解放でも親の他mappingを復元snapshotで上書きしない。
