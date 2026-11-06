@@ -82,9 +82,15 @@ int main(void)
       assert((((uint64_t *)tables.table[2].cpu)[0]&~4095ULL)==0x41000000);
       assert((((uint64_t *)tables.table[3].cpu)[487]&~4095ULL)==0x413e7000);
       assert(NT_SUCCESS(a04_shared_tables_release(&tables)) && table_frees==4);
+      {
+        struct a04_shared_scanout common=s;
+        common.display_sg=NULL;common.display_common=TRUE;
+        assert(NT_SUCCESS(a04_shared_tables_stage(&tables,&common,&render,&copy)) && tables.ready);
+        assert(NT_SUCCESS(a04_shared_tables_release(&tables)) && table_frees==8);
+      }
       table_alias=1;
       assert(a04_shared_tables_stage(&tables,&s,&render,&copy)==STATUS_DEVICE_CONFIGURATION_ERROR);
-      assert(tables.quarantined && a04_shared_tables_release(&tables)==STATUS_DEVICE_BUSY && table_frees==4);
+      assert(tables.quarantined && a04_shared_tables_release(&tables)==STATUS_DEVICE_BUSY && table_frees==8);
       /* Test teardown only: production deliberately retains aliases. */
       a04_vendor_uncached_free(&tables.table[0]);
       table_alias=0;
