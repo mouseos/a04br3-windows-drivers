@@ -106,14 +106,22 @@ function Inspect-Services($Root,$Plan,[bool]$Patch) {
         return ,$report
     } finally { $services.Dispose() }
 }
-function Allowed-Changes($Plan) {
-    $allowed=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
-    foreach($spec in $Plan.services) {
-        $path=('ControlSet{0:D3}\Services\' -f [int]$Plan.control_set)+$spec.name
-        [void]$allowed.Add('K|'+$path)
-        foreach($name in (Service-Values $spec).Keys) { [void]$allowed.Add('V|'+$path+[char]0+$name) }
+function Related-Fingerprints($Root,$Plan) {
+    $control='ControlSet{0:D3}\Services\' -f [int]$Plan.control_set
+    $paths=[ordered]@{select='Select';device_install=($control+'DeviceInstall');rpc_ss=($control+'RpcSs')}
+    $result=[ordered]@{}
+    foreach($name in $paths.Keys) {
+        $key=[MT8167OfflineHive.Native]::OpenPath($Root,$paths[$name],$false)
+        if(!$key) { throw ('Related key absent: '+$paths[$name]) }
+        try { $result[$name]=[MT8167OfflineHive.Native]::ValueFingerprint($key) }
+        finally { $key.Dispose() }
     }
-    return ,$allowed
+    return $result
+}
+function Check-RelatedFingerprints($Actual,$Expected) {
+    foreach($name in @('select','device_install','rpc_ss')) {
+        if($Actual.$name -cne $Expected.$name) { throw ('Related existing settings changed: '+$name) }
+    }
 }
 if([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT -or [IntPtr]::Size -ne 8) { throw 'Use an elevated 64-bit Windows PowerShell/pwsh process' }
 if($InternalMode) {
@@ -134,15 +142,15 @@ if($InternalMode) {
             if($state.load_rc -ne 0) { throw ('RegLoadKey failed: '+$state.load_rc) }
             $loaded=$true;$state.phase='loaded-replayed';Save-Json $StatePath $state
             $root=[MT8167OfflineHive.Native]::OpenRoot($MountName)
-            $allowed=Allowed-Changes $plan
-            $before=[MT8167OfflineHive.Native]::Snapshot($root)
-            $outsideBefore=[MT8167OfflineHive.Native]::OutsideDigest($before,$allowed)
+            $state.audit_scope='Select and raw values of Services/DeviceInstall and Services/RpcSs only; no subkeys or whole-SYSTEM audit'
+            $state.whole_system_audit=$false
+            $before=Related-Fingerprints $root $plan
             $state.services=Inspect-Services $root $plan ($InternalMode -eq 'Patch')
-            $after=[MT8167OfflineHive.Native]::Snapshot($root)
-            $outsideAfter=[MT8167OfflineHive.Native]::OutsideDigest($after,$allowed)
-            if($outsideBefore -cne $outsideAfter) { throw 'Unrelated registry keys or raw values changed' }
-            if($plan.outside_digest -and $outsideAfter -cne $plan.outside_digest) { throw 'Clean-hive reload changed unrelated registry content' }
-            $state.outside_digest=$outsideAfter;$state.snapshot_entries_before=$before.Count;$state.snapshot_entries_after=$after.Count
+            $after=Related-Fingerprints $root $plan
+            Check-RelatedFingerprints $after $before
+            if($plan.related_fingerprints) { Check-RelatedFingerprints $after $plan.related_fingerprints }
+            $state.related_fingerprints_before=$before
+            $state.related_fingerprints_after=$after
             $root.Flush()
         }
         $state.status='api-complete'
@@ -168,8 +176,8 @@ if($out.StartsWith($source.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCas
 New-Item -ItemType Directory -Path $out | Out-Null
 $work=Join-Path $out 'work';$verify=Join-Path $out 'verify';$candidate=Join-Path $out 'candidate'
 New-Item -ItemType Directory -Path $work,$verify | Out-Null
-$report=[ordered]@{status='failed-do-not-deploy';source_files=[ordered]@{};timeout_seconds=$TimeoutSeconds;services=@('MT8167DeviceInstall');errors=@();driver_files_modified=$false}
-$plan=[ordered]@{control_set=$ExpectedCurrentControlSet;outside_digest='';services=@(@{name='MT8167DeviceInstall';display_name='MediaTek MT8167 Device Installation'})}
+$report=[ordered]@{status='failed-do-not-deploy';whole_system_audit=$false;audit_scope='Select + existing DeviceInstall/RpcSs raw values and exact target service values only';source_files=[ordered]@{};timeout_seconds=$TimeoutSeconds;services=@('MT8167DeviceInstall');errors=@();driver_files_modified=$false}
+$plan=[ordered]@{control_set=$ExpectedCurrentControlSet;related_fingerprints='';services=@(@{name='MT8167DeviceInstall';display_name='MediaTek MT8167 Device Installation'})}
 if($IncludeHardwareProbe) { $plan.services+=@(@{name='MT8167HardwareProbe';display_name='MediaTek MT8167 Hardware Probe'});$report.services+=@('MT8167HardwareProbe') }
 $planFile=Join-Path $out 'plan.json';Save-Json $planFile $plan
 $expected=@{SYSTEM=$ExpectedSystemSha256;'SYSTEM.LOG1'=$ExpectedLog1Sha256;'SYSTEM.LOG2'=$ExpectedLog2Sha256}
@@ -214,7 +222,7 @@ try {
     $report.patched_header=$header;$patchedHash=Hash-File (Join-Path $work 'SYSTEM')
     # Reload a separate clean copy WITHOUT logs, proving that the candidate is self-contained.
     [IO.File]::Copy((Join-Path $work 'SYSTEM'),(Join-Path $verify 'SYSTEM'),$false)
-    $plan.outside_digest=$patch.state.outside_digest;Save-Json $planFile $plan
+    $plan.related_fingerprints=$patch.state.related_fingerprints_after;Save-Json $planFile $plan
     $check=Invoke-BoundedWorker 'Verify' $verify 'verify-state' $TimeoutSeconds;$report.verify=$check
     if(!$check.finished -or $check.exit_code -ne 0 -or !$check.state -or $check.state.status -ne 'success') {
         $report.cleanup=Invoke-BoundedWorker 'Cleanup' $check.mount 'verify-cleanup-state' 5

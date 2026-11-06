@@ -56,7 +56,6 @@ namespace MT8167OfflineHive {
         [DllImport("advapi32.dll")] static extern int RegCloseKey(IntPtr key);
         [DllImport("advapi32.dll",CharSet=CharSet.Unicode)] static extern int RegQueryValueEx(IntPtr key,string name,IntPtr reserved,out uint type,byte[] data,ref uint bytes);
         [DllImport("advapi32.dll",CharSet=CharSet.Unicode)] static extern int RegEnumValue(IntPtr key,uint index,StringBuilder name,ref uint chars,IntPtr reserved,out uint type,byte[] data,ref uint bytes);
-        [DllImport("advapi32.dll",CharSet=CharSet.Unicode)] static extern int RegEnumKeyEx(IntPtr key,uint index,StringBuilder name,ref uint chars,IntPtr reserved,IntPtr cls,IntPtr clsChars,IntPtr time);
         public static int Load(string name,string file) { return RegLoadKey(HKLM,name,file); }
         public static int Unload(string name) { return RegUnLoadKey(HKLM,name); }
         static void CheckLink(IntPtr key) {
@@ -89,42 +88,25 @@ namespace MT8167OfflineHive {
             } finally { if(current!=null) current.Dispose(); }
         }
         static string Hex(byte[] data) { return BitConverter.ToString(data).Replace("-","").ToLowerInvariant(); }
-        static void Walk(IntPtr key,string path,Dictionary<string,string> result,int depth) {
-            if(depth>256 || result.Count>1000000) throw new InvalidOperationException("Hive traversal limit");
-            result.Add("K|"+path,"");
+        // Deliberately shallow: raw values of an explicitly opened related key.
+        // Never enumerate child keys or traverse the full offline SYSTEM hive.
+        public static string ValueFingerprint(RegistryKey key) {
+            SortedDictionary<string,string> values=new SortedDictionary<string,string>(StringComparer.OrdinalIgnoreCase);
             using(SHA256 hash=SHA256.Create()) {
                 for(uint i=0;;++i) {
                     StringBuilder name=new StringBuilder(16384);uint chars=16384,type,bytes=4096;byte[] data=new byte[4096];
-                    int rc=RegEnumValue(key,i,name,ref chars,IntPtr.Zero,out type,data,ref bytes);
+                    int rc=RegEnumValue(key.Handle.DangerousGetHandle(),i,name,ref chars,IntPtr.Zero,out type,data,ref bytes);
                     if(rc==259) break;
                     if(rc==234) {
                         if(bytes>64*1024*1024) throw new InvalidOperationException("Registry value limit");
                         data=new byte[bytes];chars=16384;name.Length=0;
-                        rc=RegEnumValue(key,i,name,ref chars,IntPtr.Zero,out type,data,ref bytes);
+                        rc=RegEnumValue(key.Handle.DangerousGetHandle(),i,name,ref chars,IntPtr.Zero,out type,data,ref bytes);
                     }
                     if(rc!=0) throw new Win32Exception(rc);
-                    result.Add("V|"+path+"\0"+name.ToString(),type+":"+bytes+":"+Hex(hash.ComputeHash(data,0,(int)bytes)));
+                    values.Add(name.ToString(),type+":"+bytes+":"+Hex(hash.ComputeHash(data,0,(int)bytes)));
                 }
-            }
-            for(uint i=0;;++i) {
-                StringBuilder name=new StringBuilder(256);uint chars=256;
-                int rc=RegEnumKeyEx(key,i,name,ref chars,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero);
-                if(rc==259) break;if(rc!=0) throw new Win32Exception(rc);
-                IntPtr child;rc=RegOpenKeyEx(key,name.ToString(),OpenLink,Read,out child);
-                if(rc!=0) throw new Win32Exception(rc);
-                try { Walk(child,path.Length==0 ? name.ToString() : path+"\\"+name, result,depth+1); }
-                finally { RegCloseKey(child); }
-            }
-        }
-        public static Dictionary<string,string> Snapshot(RegistryKey root) {
-            Dictionary<string,string> result=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
-            Walk(root.Handle.DangerousGetHandle(),"",result,0);return result;
-        }
-        public static string OutsideDigest(Dictionary<string,string> values,HashSet<string> allowed) {
-            string[] keys=new string[values.Count];values.Keys.CopyTo(keys,0);Array.Sort(keys,StringComparer.OrdinalIgnoreCase);
-            using(SHA256 hash=SHA256.Create()) {
-                foreach(string key in keys) if(!allowed.Contains(key)) {
-                    byte[] b=Encoding.UTF8.GetBytes(key.ToUpperInvariant()+"\0"+values[key]+"\n");
+                foreach(KeyValuePair<string,string> item in values) {
+                    byte[] b=Encoding.UTF8.GetBytes(item.Key.ToUpperInvariant()+"\0"+item.Value+"\n");
                     hash.TransformBlock(b,0,b.Length,b,0);
                 }
                 hash.TransformFinalBlock(new byte[0],0,0);return Hex(hash.Hash);

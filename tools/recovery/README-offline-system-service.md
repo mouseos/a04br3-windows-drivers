@@ -26,7 +26,7 @@
 5. ControlSet001/Services/MT8167DeviceInstallを下表どおり登録する。未登録または互換性のある部分登録だけを許可し、既存Start=4等を勝手に再武装しない。
 6. registry handlesを閉じ、RegUnLoadKeyWを成功させる。process tokenの元のprivilege状態も復元する。
 7. 保存SYSTEMのregf、major=1/minor=5、primary/direct format、checksum、primary/secondary sequence一致を検査する。hostがformatを更新した場合は拒否し、版の書換えで取り繕わない。
-8. clean SYSTEMだけを別verify directoryへ複製し、LOG無しで再loadしてサービス値と無関係なregistry内容を確認、unloadする。原本とcandidateの不変・コピー一致を確認する。
+8. clean SYSTEMだけを別verify directoryへ複製し、LOG無しで再loadして新serviceの7値と、Select・既存DeviceInstall/RpcSsの関連設定fingerprintを確認、unloadする。原本とcandidateの不変・コピー一致を確認する。
 
 | 値 | 型 | 内容 |
 | --- | --- | --- |
@@ -38,13 +38,15 @@
 | DisplayName | REG_SZ | MediaTek MT8167 Device Installation |
 | DependOnService | REG_MULTI_SZ | DeviceInstall、RpcSsの2要素 |
 
-サービス登録前後で、対象サービスkeyと上記7値以外のraw registry値（型・長さ・SHA-256）とkey集合のdigestが一致することを確認する。比較基点はnative replay後なので、log replayによる正当な更新とサービス登録を区別する。registry linkは辿って変更しない。無関係なdriver registry値をまとめて書き換えたり、driverバイナリを更新したりしない。
+検査スコープは **Select、および既存Services/DeviceInstall・Services/RpcSsそれぞれの直下のraw値（名前・型・長さ・SHA-256）のfingerprint、新serviceに書く上記7値の型と内容の正確照合だけ**。関連既存設定は登録前後とclean candidate再load後に一致することを確認する。比較基点はnative replay後なので、log replayによる更新とservice登録を区別する。
+
+**全SYSTEMのkey列挙・監査は行わない。** Lsa等の保護keyや関連serviceの子keyへ再帰しない。ACL変更や保護keyを迂回する処理は追加しない。APIの書込み先は固定された新service keyだけで、driverバイナリは扱わないが、この限定検査を全SYSTEMの無変更証明とは呼ばない。resultとworker stateに `whole_system_audit=false` と `audit_scope` を明記する。registry linkは辿って変更しない。
 
 ## timeoutと配備可否
 
 native APIを呼ぶ子プロセス全体を既定30秒で監督する。timeout時は子を終了要求し、別の5秒上限のcleanup子プロセスで同じ一意aliasのunloadを試みる。親から無期限のRegLoad/UnLoadは呼ばない。停止したkernel callの即時終了やVM全体の復旧までは保証できず、解除確認不能時は配備不可。timeoutしたworkcopyを使用しない。
 
-成功条件はscript正常終了とprivate `result.json` の `status=verified-clean-system-services-only`。配備候補は **candidate/SYSTEMだけ**。resultには入力3ファイルhash/長さ、入力と出力の版/checksum/sequence、native API戻り値、30秒完了有無、正確なサービス値、無関係なregistry内容のdigest、candidate hash、recipe/native-source hashを保存する。
+成功条件はscript正常終了とprivate `result.json` の `status=verified-clean-system-services-only`。配備候補は **candidate/SYSTEMだけ**。resultには入力3ファイルhash/長さ、入力と出力の版/checksum/sequence、native API戻り値、30秒完了有無、正確なサービス値、関連既存設定だけのfingerprintと監査スコープ、candidate hash、recipe/native-source hashを保存する。
 
 work/verify directoryや、その処理中に生成されたLOGを配備しない。入力の古いLOGをcandidateに添えてreplayさせない。EXE/INF/SYS/CAT配備、attempted.bin不存在の確認、private WinPE媒体によるclean SYSTEMコピーとvolume releaseは主担当で行う。依存サービスの存在はdevnode列挙完了の保証ではなく、実bindは通常Windowsで確認する。
 
