@@ -22,4 +22,13 @@ struct a04_m111_clear_codespace {
 int a04_m111_build_clear_codespace(struct a04_m111_clear_codespace *out,
     uint64_t usc_gpu,uint64_t pds_gpu,uint32_t packed_colour,
     uint32_t emit_word0,uint32_t emit_word1);
+/* Binding for the exact programs above. Addresses are PDS heap-relative.
+ * Caller selects PR/background record slot; this does not patch a record. */
+struct a04_m111_clear_code_bindings {
+    uint64_t background[3];
+    uint32_t pixel_event_info,pixel_event_code,pixel_event_data;
+    uint32_t background_pixel_data_bytes;
+};
+int a04_m111_build_clear_code_bindings(struct a04_m111_clear_code_bindings *out,
+    uint64_t pds_gpu);
 #endif

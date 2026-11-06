@@ -96,3 +96,8 @@ code GPU VAは既存USC heap [0xba00000000,0xba40000000)、PDS heap [0xa80000000
 背景USCは`388a8087800800000020f3ffffffffff`、temp0/shared2。独立PCO recipe `tools/native_background_reference.c`はshared0からpacked32をoutput0へ書く。PDS shared-loaderはconstant64 slot0から色と未使用shared1=0を送り、control32 slot2=0x90000002。cc0/end1のDOUTW 0xf4020001はMesaの`pvr_pds_inst_encode_dout`で独立生成して照合した。pad zeroはhost packing policy。RGBA/format変換は行わず、入力は既にpacked済みのoutput register bit pattern。
 
 record側background triple、pixel event binding、PBE final emit wordsは本factoryの出力に含めない。CPU生成・ASan/UBSan・ARM32 COFF compile確認は、WDK compile/linkやGPU実行確認とは別。完全TA/3Dと必須data初期内容は依然未確定でpublish不可。
+
+
+`a04_m111_build_clear_code_bindings`はこのcodespace専用のheap相対background tripleとevent info/code/dataを返す。PDS VA 0xa800010000の場合、background={0x0001005000010000,0x0001004000000000,0x0080000000010001}、event info=0x202、code=0x100a0、data=0x10080、background pixel data=32 bytes。PR/通常backgroundのどちらへ接続するかは未確定のためrecordへ自動patchしない。
+
+重要訂正: `FUN_00202600`のmetadata +0x24=N*2+3をPDS temp数5と解釈しない。`InitPixelEventCodeBlocks` 0x1c1a14がcode allocationのword数として消費する一次証拠ev_37321734325fed9a2e64d0359f96e085a1bc0a5215e61ea3e6bfd8a0c5dd2760で確認。今回のEOT命令列はconstant参照のみでPDS temp0、shared2、data8 wordsなのでEVENT_PIXEL_PDS_INFO=0x202。以前の解析候補0x242は不採用。background sizeinfoはSetupBGObjectのshared/data単位変換と0x204504の最低temp1を適用。コードbindingの確定は完全TA/3D payloadの確定ではない。
