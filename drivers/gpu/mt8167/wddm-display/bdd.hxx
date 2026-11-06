@@ -189,6 +189,12 @@ private:
 
     BDD_HWBLT        m_HardwareBlt[MAX_VIEWS];
     KMUTEX           m_PresentMutex;
+#if A04_GE8300_WDDM_SHARED_AUTOSTART
+    KEVENT m_SharedWorkerStop;
+    HANDLE m_SharedWorker;
+    static VOID SharedDiagnosticWorker(PVOID context);
+    VOID StopSharedDiagnosticWorker();
+#endif
 
     // Current monitorpower state (this needs to be changed if MAX_CHILDREN != 1)
     DEVICE_POWER_STATE m_MonitorPowerState;

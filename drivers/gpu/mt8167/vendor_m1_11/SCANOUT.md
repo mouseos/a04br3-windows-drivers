@@ -263,3 +263,19 @@ RDMA0_DONE and IF_VSYNC with DSI0_EXT_TE. A CPU interrupt observed after an
 EOF alone does not provide the same serialized operation. CMDQ resources,
 event ownership, and safe GPU stop are not established here, so the existing
 OVL readiness and frame-boundary gates remain closed.
+
+### Starting the shared diagnostic without a present
+
+`A04_GE8300_WDDM_SHARED_AUTOSTART=1` is a separate, default-off WDDM
+option and requires `A04_GE8300_WDDM_SHARED_DIAGNOSTIC=1`. Once display
+resources start it creates a bounded worker that retries the existing shared
+lease/diagnostic path once per second for at most 120 seconds, independently
+of PresentDisplayOnly. It stops on the first successful or retained attempt;
+a published mapping is never retried or freed on an uncertain failure. The
+worker is stopped and joined before device cleanup and serializes with presents.
+UART trace `A04DISP STEP=00000030` records worker creation (or resource
+unavailability); `STEP=00000031` records the first attempt, every tenth retry,
+and the final result. GPU-side shared diagnostics retain their existing UART
+records. Neither starting the worker nor a successful kernel build proves that
+WinPE loaded the WDDM driver, owns the display resources, or completed the GPU
+diagnostic. This option does not initiate an OVL switch.

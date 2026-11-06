@@ -3,7 +3,7 @@
 #ifndef A04_GE8300_WDDM_COPY
 #define A04_GE8300_WDDM_COPY 0
 #endif
-#if A04_GE8300_WDDM_COPY
+#if A04_GE8300_WDDM_COPY || A04_GE8300_WDDM_SHARED_AUTOSTART
 static void WriteText(volatile ULONG* uart,const char* text)
 {
     while (*text) {
@@ -23,7 +23,7 @@ static void WriteHex(volatile ULONG* uart,ULONG value)
 #endif
 void A04DisplayTrace(ULONG stage,NTSTATUS status)
 {
-#if A04_GE8300_WDDM_COPY
+#if A04_GE8300_WDDM_COPY || A04_GE8300_WDDM_SHARED_AUTOSTART
     PHYSICAL_ADDRESS base; base.QuadPart=0x11005000u;
     volatile ULONG* uart=(volatile ULONG*)MmMapIoSpace(base,0x1000,MmNonCached);
     if (!uart) return;

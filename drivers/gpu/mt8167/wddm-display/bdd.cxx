@@ -10,6 +10,7 @@
 
 #include "BDD.hxx"
 #include "present_bounds.h"
+#include "ge8300_trace.hxx"
 
 #pragma code_seg("PAGE")
 
@@ -38,6 +39,10 @@ BASIC_DISPLAY_DRIVER::BASIC_DISPLAY_DRIVER(_In_ DEVICE_OBJECT* pPhysicalDeviceOb
     RtlZeroMemory(&m_DisplayResources, sizeof(m_DisplayResources));
 #endif
     KeInitializeMutex(&m_PresentMutex,0);
+#if A04_GE8300_WDDM_SHARED_AUTOSTART
+    KeInitializeEvent(&m_SharedWorkerStop,NotificationEvent,FALSE);
+    m_SharedWorker=NULL;
+#endif
 
 
     for (UINT i=0;i<MAX_VIEWS;i++)
@@ -51,9 +56,44 @@ BASIC_DISPLAY_DRIVER::~BASIC_DISPLAY_DRIVER()
     PAGED_CODE();
 
 
+#if A04_GE8300_WDDM_SHARED_AUTOSTART
+    StopSharedDiagnosticWorker();
+#endif
     CleanUp();
 }
-
+#if A04_GE8300_WDDM_SHARED_AUTOSTART
+VOID BASIC_DISPLAY_DRIVER::SharedDiagnosticWorker(PVOID context)
+{
+    BASIC_DISPLAY_DRIVER *self=(BASIC_DISPLAY_DRIVER *)context;
+    LARGE_INTEGER delay;delay.QuadPart=-10000000LL;
+    for(ULONG i=0;i<120;i++) {
+        NTSTATUS wait=KeWaitForSingleObject(&self->m_SharedWorkerStop,Executive,KernelMode,FALSE,&delay);
+        if(wait==STATUS_SUCCESS)break;
+        if(wait!=STATUS_TIMEOUT)break;
+        wait=KeWaitForSingleObject(&self->m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+        if(!NT_SUCCESS(wait))break;
+        NTSTATUS status=STATUS_DEVICE_NOT_READY;
+        BOOLEAN done=FALSE;
+        if(self->m_Flags.DriverStarted && self->m_DisplayResources.Adapter &&
+           !self->m_DisplayResources.Shared.mdl && !self->m_DisplayResources.GpuHandle) {
+            status=self->m_DisplayResources.PrepareViaGpu();
+            done=NT_SUCCESS(status) || self->m_DisplayResources.Shared.mdl || self->m_DisplayResources.GpuHandle;
+        } else if(!self->m_Flags.DriverStarted || !self->m_DisplayResources.Adapter ||
+                  self->m_DisplayResources.Shared.mdl || self->m_DisplayResources.GpuHandle) done=TRUE;
+        KeReleaseMutex(&self->m_PresentMutex,FALSE);
+        if(i==0 || done || (i%10)==9) A04DisplayTrace(0x31,status);
+        if(done)break;
+    }
+    PsTerminateSystemThread(STATUS_SUCCESS);
+}
+VOID BASIC_DISPLAY_DRIVER::StopSharedDiagnosticWorker()
+{
+    if(!m_SharedWorker)return;
+    KeSetEvent(&m_SharedWorkerStop,IO_NO_INCREMENT,FALSE);
+    (void)ZwWaitForSingleObject(m_SharedWorker,FALSE,NULL);
+    ZwClose(m_SharedWorker);m_SharedWorker=NULL;
+}
+#endif
 
 NTSTATUS BASIC_DISPLAY_DRIVER::StartDevice(_In_  DXGK_START_INFO*   pDxgkStartInfo,
                                            _In_  DXGKRNL_INTERFACE* pDxgkInterface,
@@ -119,6 +159,15 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StartDevice(_In_  DXGK_START_INFO*   pDxgkStartIn
     }
 #endif
     m_Flags.DriverStarted = TRUE;
+#if A04_GE8300_WDDM_SHARED_AUTOSTART
+    if(m_DisplayResources.Adapter && !m_SharedWorker) {
+        KeClearEvent(&m_SharedWorkerStop);
+        NTSTATUS workerStatus=PsCreateSystemThread(&m_SharedWorker,THREAD_ALL_ACCESS,NULL,NULL,NULL,
+            SharedDiagnosticWorker,this);
+        A04DisplayTrace(0x30,workerStatus);
+        if(!NT_SUCCESS(workerStatus))m_SharedWorker=NULL;
+    } else A04DisplayTrace(0x30,STATUS_DEVICE_NOT_READY);
+#endif
     *pNumberOfViews = MAX_VIEWS;
     *pNumberOfChildren = MAX_CHILDREN;
 
@@ -129,6 +178,9 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StartDevice(_In_  DXGK_START_INFO*   pDxgkStartIn
 NTSTATUS BASIC_DISPLAY_DRIVER::StopDevice(VOID)
 {
     PAGED_CODE();
+#if A04_GE8300_WDDM_SHARED_AUTOSTART
+    StopSharedDiagnosticWorker();
+#endif
 
     NTSTATUS status=KeWaitForSingleObject(&m_PresentMutex,Executive,KernelMode,FALSE,NULL);
     if (!NT_SUCCESS(status)) return status;
@@ -564,6 +616,9 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StopDeviceAndReleasePostDisplayOwnership(_In_  D3
     PAGED_CODE();
 
     if (TargetId >= MAX_CHILDREN || !pDisplayInfo) return STATUS_INVALID_PARAMETER;
+#if A04_GE8300_WDDM_SHARED_AUTOSTART
+    StopSharedDiagnosticWorker();
+#endif
     NTSTATUS status=KeWaitForSingleObject(&m_PresentMutex,Executive,KernelMode,FALSE,NULL);
     if (!NT_SUCCESS(status)) return status;
     A04PresentGuard guard(&m_PresentMutex);
