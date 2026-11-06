@@ -19,3 +19,4 @@ foreach($case in @('ok','restore','release')){
  if($case -eq 'release' -and ($rc -ne 4 -or ($lines -match 'OFFLINE_RECOVERY_RELEASED'))){throw 'release failure mismatch'}
 }
 Write-Host 'OFFLINE_RESTORE_FIXTURE_PASS'
+$global:LASTEXITCODE=0
