@@ -605,3 +605,10 @@ source still executes a fenced GPU task to restore any CPU-written POST data.
 The source shadow becomes valid only after GPU completion and private-state
 restoration; failures retain resources and close the live path. CPU shadows
 are not DMA-mapped. This remains test-only pending device validation.
+
+
+### MT8167の既存MMPLLクロック引継ぎ
+
+`vendor_m1_11/windows_clock.h`は機種UEFIのvolatile runtime変数`Mt8167GpuClock`を検証する。GUIDは`9c50bc94-6c80-4fa2-939d-9278d07f7010`、attributesはBS|RT（6）、版1で11個の32bitフィールド（44バイト）。順序はversion/bytes/parent/clock_hz/con0/con1/power/rail_control/rail_status/selector0/selector1。一次ソースのMT8167 PLLとMT6392 VCORE式で再計算し、既存MMPLL 253.5〜390MHz・1.15〜1.30Vだけ許可する。PLLやPMICを書き換えない。
+
+変数のない従来UEFIは26MHz/parent4として扱い、存在するが不正なrecordは拒否する。stageに実周波数を保存し、m1.11 FW runtimeのcore-clockへ渡す。GPU start直前に再取得してstage時と照合し、GPSTのparent/routeも突合する。スナップショットでありclockの所有権・電源遷移対応を保証しない。新経路は対応する機種UEFIの既定OFF設定と組にした診断WinPE用。3D、通常OS常用、DMA退役・電源遷移は未完了。
