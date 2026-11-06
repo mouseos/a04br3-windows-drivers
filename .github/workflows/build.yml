@@ -12,6 +12,8 @@ jobs:
         run: |
           cc -std=c11 -Wall -Wextra -Werror -Itests/offline-release-shim tests/offline_release_test.c -o "$RUNNER_TEMP/offline-release-test"
           "$RUNNER_TEMP/offline-release-test"
+      - name: Check GPT snapshot parser
+        run: python3 tests/gpt_snapshot_inspector_test.py
       - name: Check INF device names
         run: python3 tools/ci/check-device-names.py
       - name: Install Linux test dependencies

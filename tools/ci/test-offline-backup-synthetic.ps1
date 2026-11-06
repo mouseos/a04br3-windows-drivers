@@ -31,6 +31,14 @@ try {
  if($LASTEXITCODE){throw 'fixture compilation failed'}
  & lld-link /subsystem:console /machine:x64 /entry:mainCRTStartup /nodefaultlib "$base\fixture.obj" "$lib\kernel32.lib" "$lib\advapi32.lib" "/out:$base\fixture.exe"
  if($LASTEXITCODE){throw 'fixture link failed'}
+ [IO.File]::WriteAllText('R:\Windows\System32\config\SYSTEM{fixture}.TM.blf','sidecar')
+ & "$base\fixture.exe"
+ if(!$LASTEXITCODE -or (Test-Path 'S:\A04BACKUP')){throw 'sidecar was not rejected before journal creation'}
+ Remove-Item -LiteralPath 'R:\Windows\System32\config\SYSTEM{fixture}.TM.blf'
+ $env:A04_FAKE_FULL='1'
+ & "$base\fixture.exe"
+ if(!$LASTEXITCODE -or (Test-Path 'S:\A04BACKUP')){throw 'capacity failure did not stop before journal creation'}
+ Remove-Item Env:A04_FAKE_FULL
  & "$base\fixture.exe"
  if($LASTEXITCODE){throw 'fixture backup failed'}
  (Get-Item -Force 'R:\Windows\System32\config\SYSTEM').Attributes = 'Normal'

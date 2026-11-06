@@ -1,0 +1,29 @@
+param([Parameter(Mandatory=$true)][string]$BackupExe,
+      [Parameter(Mandatory=$true)][string]$ReleaseExe,
+      [Parameter(Mandatory=$true)][string]$OutputDirectory)
+$ErrorActionPreference='Stop'
+if(Test-Path $OutputDirectory){throw 'Output directory already exists'}
+New-Item -ItemType Directory $OutputDirectory | Out-Null
+foreach($file in @($BackupExe,$ReleaseExe)){if(!(Test-Path -LiteralPath $file -PathType Leaf)){throw 'Input executable missing'}}
+Copy-Item -LiteralPath $BackupExe -Destination (Join-Path $OutputDirectory 'offline-backup.exe')
+Copy-Item -LiteralPath $ReleaseExe -Destination (Join-Path $OutputDirectory 'release-offline-volume.exe')
+$kit="${env:ProgramFiles(x86)}\Windows Kits\8.1"
+$sign=Join-Path $kit 'bin\x86\signtool.exe'
+$cert=New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=A04BR3 Offline Maintenance Test' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
+try {
+ Export-Certificate -Cert $cert -FilePath (Join-Path $OutputDirectory 'maintenance-test.cer') | Out-Null
+ foreach($name in @('offline-backup.exe','release-offline-volume.exe')){
+  $p=Join-Path $OutputDirectory $name
+  & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My $p
+  if($LASTEXITCODE){throw "Signing failed: $name"}
+  $sig=Get-AuthenticodeSignature -LiteralPath $p
+  if(!$sig.SignerCertificate -or $sig.SignerCertificate.Thumbprint -ne $cert.Thumbprint){throw "Signer mismatch: $name"}
+ }
+ $items=Get-ChildItem -LiteralPath $OutputDirectory -File | Get-FileHash -Algorithm SHA256
+ $result=[ordered]@{thumbprint=$cert.Thumbprint; files=@{}; scope='test only; target signature acceptance unverified'}
+ foreach($item in $items){$result.files[(Split-Path $item.Path -Leaf)]=$item.Hash.ToLowerInvariant()}
+ $result | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 (Join-Path $OutputDirectory 'manifest.json')
+ Write-Host "TEST_CERT_THUMBPRINT=$($cert.Thumbprint)"
+} finally {
+ Remove-Item -LiteralPath ("Cert:\CurrentUser\My\"+$cert.Thumbprint) -Force -ErrorAction SilentlyContinue
+}

@@ -9,7 +9,7 @@
 
 #define COUNT 11
 #define CHUNK 65536
-#define RESERVE (32ULL*1024*1024)
+#define RESERVE (8ULL*1024*1024)
 static const WCHAR *target[COUNT]={
  L"C:\\Windows\\System32\\config\\SYSTEM",L"C:\\Windows\\System32\\config\\SYSTEM.LOG",L"C:\\Windows\\System32\\config\\SYSTEM.LOG1",L"C:\\Windows\\System32\\config\\SYSTEM.LOG2",
  L"C:\\Windows\\System32\\config\\SOFTWARE",L"C:\\Windows\\System32\\config\\SOFTWARE.LOG",L"C:\\Windows\\System32\\config\\SOFTWARE.LOG1",L"C:\\Windows\\System32\\config\\SOFTWARE.LOG2",
@@ -54,6 +54,24 @@ static int prep(void){
 }
 /* Exclusive access prevents taking a snapshot of a file another process holds.
  * BackupRead/BackupWrite preserve streams and security in the archive. */
+static int measure_item(unsigned i,ENTRY *e){
+ HANDLE src;BY_HANDLE_FILE_INFORMATION info;HCRYPTHASH h;void *ctx=0;DWORD n;int ok=0;
+ src=CreateFileW(target[i],GENERIC_READ|READ_CONTROL|ACCESS_SYSTEM_SECURITY,0,0,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_BACKUP_SEMANTICS,0);
+ if(src==INVALID_HANDLE_VALUE){DWORD x=GetLastError();return x==ERROR_FILE_NOT_FOUND && i!=0 && i!=4;}
+ if(!GetFileInformationByHandle(src,&info)||info.nNumberOfLinks!=1||(info.dwFileAttributes&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_ENCRYPTED|FILE_ATTRIBUTE_COMPRESSED|FILE_ATTRIBUTE_SPARSE_FILE|FILE_ATTRIBUTE_OFFLINE)))goto done;
+ e->present=1;e->attributes=info.dwFileAttributes;e->creation=info.ftCreationTime;e->access=info.ftLastAccessTime;e->write=info.ftLastWriteTime;
+ if(!hash_start(&h))goto done;
+ for(;;){if(!BackupRead(src,buf,CHUNK,&n,FALSE,TRUE,&ctx))goto hashfail;if(!n)break;if(e->length>~(ULONGLONG)0-n||!CryptHashData(h,buf,n,0))goto hashfail;e->length+=n;}
+ if(!BackupRead(src,0,0,&n,TRUE,TRUE,&ctx))goto hashfail;ctx=0;
+ if(!hash_end(h,e->digest))goto done;ok=1;goto done;
+ hashfail:CryptDestroyHash(h);if(ctx)BackupRead(src,0,0,&n,TRUE,TRUE,&ctx);
+ done:if(!CloseHandle(src))ok=0;return ok;
+}
+static int same_entry(const ENTRY *a,const ENTRY *b){
+ if(a->present!=b->present)return 0;if(!a->present)return 1;
+ return a->attributes==b->attributes && !CompareFileTime(&a->creation,&b->creation) &&
+        !CompareFileTime(&a->write,&b->write) && a->length==b->length && same(a->digest,b->digest,32);
+}
 static int save_item(unsigned i){
  HANDLE src,dst;BY_HANDLE_FILE_INFORMATION info;HCRYPTHASH h;void *ctx=0;DWORD n;WCHAR p[64];ENTRY *e=&manifest.entries[i];int ok=0;
  src=CreateFileW(target[i],GENERIC_READ|READ_CONTROL|ACCESS_SYSTEM_SECURITY,0,0,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_BACKUP_SEMANTICS,0);
@@ -113,18 +131,36 @@ static int replay_item(unsigned i){WCHAR p[64];HANDLE in,out;void *ctx=0;DWORD n
  if(!MoveFileExW(temp[i],target[i],MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))return 0;
  return SetFileAttributesW(target[i],e->attributes)!=0;
 }
-static void backup(void){unsigned i;ULARGE_INTEGER free;ULONGLONG need=RESERVE;WIN32_FILE_ATTRIBUTE_DATA d;HANDLE ready;DWORD n;
+#ifdef A04_OFFLINE_FIXTURE
+static int fixture_full(void){char value[4];return GetEnvironmentVariableA("A04_FAKE_FULL",value,sizeof(value))==1 && value[0]=='1';}
+#else
+static int fixture_full(void){return 0;}
+#endif
+/* The fixed journal does not yet capture transaction-manager sidecars.
+ * Refuse snapshotting when either hive has them; absence must be known. */
+static int no_hive_sidecars(const WCHAR *pattern){WIN32_FIND_DATAW data;HANDLE h=FindFirstFileW(pattern,&data);DWORD e;
+ if(h!=INVALID_HANDLE_VALUE){FindClose(h);return 0;}
+ e=GetLastError();return e==ERROR_FILE_NOT_FOUND;
+}
+static void backup(void){unsigned i;ULARGE_INTEGER free;ULONGLONG need=RESERVE,cluster,rounded;HANDLE ready;DWORD spc,bps,avail,total;static ENTRY measured[COUNT];
  if(GetFileAttributesW(L"E:\\A04BACKUP")!=INVALID_FILE_ATTRIBUTES)fail("BACKUP_DIRECTORY_EXISTS");
- for(i=0;i<COUNT;++i){if(GetFileAttributesW(temp[i])!=INVALID_FILE_ATTRIBUTES)fail("BACKUP_TEMP_EXISTS");if(GetFileAttributesExW(target[i],GetFileExInfoStandard,&d)){need+=((ULONGLONG)d.nFileSizeHigh<<32)|d.nFileSizeLow;}else if(GetLastError()!=ERROR_FILE_NOT_FOUND||i==0||i==4)fail("BACKUP_INPUT_MISSING_OR_UNKNOWN");}
- /* Reserve an additional copy for BackupRead streams and metadata. */
- if(need>~(ULONGLONG)0/2||!GetDiskFreeSpaceExW(L"E:\\",&free,0,0)||free.QuadPart<need*2)fail("BACKUP_CAPACITY_REJECTED");
+ if(!no_hive_sidecars(L"C:\\Windows\\System32\\config\\SYSTEM{*")||!no_hive_sidecars(L"C:\\Windows\\System32\\config\\SOFTWARE{*"))fail("BACKUP_UNSUPPORTED_HIVE_SIDECARS");
+ if(!GetDiskFreeSpaceW(L"E:\\",&spc,&bps,&avail,&total)||!spc||!bps)fail("BACKUP_CAPACITY_UNKNOWN");cluster=(ULONGLONG)spc*bps;if(!cluster || (cluster & (cluster-1)))fail("BACKUP_CLUSTER_REJECTED");
+ for(i=0;i<COUNT;++i){
+  if(GetFileAttributesW(temp[i])!=INVALID_FILE_ATTRIBUTES)fail("BACKUP_TEMP_EXISTS");
+  if(!measure_item(i,&measured[i]))fail("BACKUP_MEASURE_FAILED_NO_UPDATE");
+  if(measured[i].length>~(ULONGLONG)0-(cluster-1))fail("BACKUP_CAPACITY_OVERFLOW");
+  rounded=(measured[i].length+cluster-1)&~(cluster-1);
+  if(need>~(ULONGLONG)0-rounded)fail("BACKUP_CAPACITY_OVERFLOW");need+=rounded;
+ }
+ if(fixture_full()||!GetDiskFreeSpaceExW(L"E:\\",&free,0,0)||free.QuadPart<need)fail("BACKUP_CAPACITY_REJECTED");
  if(!CreateDirectoryW(L"E:\\A04BACKUP",0))fail("BACKUP_DIRECTORY_FAILED");
  manifest.magic=0x41303442;manifest.version=1;manifest.count=COUNT;
- for(i=0;i<COUNT;++i)if(!save_item(i))fail("BACKUP_ITEM_FAILED_NO_UPDATE");
+ for(i=0;i<COUNT;++i)if(!save_item(i)||!same_entry(&manifest.entries[i],&measured[i]))fail("BACKUP_ITEM_CHANGED_OR_FAILED_NO_UPDATE");
  if(!hash_mem(&manifest,(DWORD)offsetof(MANIFEST,digest),manifest.digest)||!verify_manifest()||!flush_volume(L'E'))fail("BACKUP_VERIFY_FAILED_NO_UPDATE");
  ready=CreateFileW(L"E:\\A04BACKUP\\READY",GENERIC_WRITE,0,0,CREATE_NEW,FILE_FLAG_WRITE_THROUGH,0);if(ready==INVALID_HANDLE_VALUE)fail("BACKUP_READY_CREATE_FAILED");
  if(!write_all(ready,(BYTE*)&manifest,sizeof(manifest))||!FlushFileBuffers(ready)){CloseHandle(ready);fail("BACKUP_READY_WRITE_FAILED");}if(!CloseHandle(ready)||!flush_volume(L'E'))fail("BACKUP_READY_FLUSH_FAILED");
- if(!load_manifest())fail("BACKUP_READY_VERIFY_FAILED");n=0;(void)n;say("BACKUP_READY_NO_UPDATE_PERFORMED\r\n");
+ if(!load_manifest())fail("BACKUP_READY_VERIFY_FAILED");say("BACKUP_READY_NO_UPDATE_PERFORMED\r\n");
 }
 static int target_exclusive(unsigned i){HANDLE h;BY_HANDLE_FILE_INFORMATION info;DWORD e;
  h=CreateFileW(target[i],GENERIC_READ|READ_CONTROL,0,0,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_BACKUP_SEMANTICS,0);
