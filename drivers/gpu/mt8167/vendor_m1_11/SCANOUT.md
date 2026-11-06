@@ -539,6 +539,13 @@ is ARM32-built and host-tested with a fake MMIO backend, but no KMDF callback
 supplies this authorization or invokes it. It does not currently submit a
 hardware command, prove a latch, or implement restoration.
 
+The core also has a bounded stop for a thread with an acknowledged EOC. It
+follows the Linux suspend/status, reset, and disable sequence, with IRQ disable
+and enable readback. An MMIO failure or timeout retains the resources. Even
+successful thread stop remains a retained state: it does not prove display
+DMA retirement, L0/L3 latch, restoration, or safe clock release. This path is
+host-tested only; it is not a proof of hardware quiescence on this device.
+
 Linux `cmdq_virtual_disp_thread` selects thread 0 for primary display; the
 same tree reserves 12-14 for secure work and can use 15 for secure notify.
 The packet finalizer now accepts only thread 0. That selection does not prove

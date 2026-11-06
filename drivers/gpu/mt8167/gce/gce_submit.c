@@ -7,6 +7,8 @@
 #define GCE_SLOT_CYCLES 0x030u
 #define GCE_RESET 0x100u
 #define GCE_ENABLE 0x104u
+#define GCE_SUSPEND 0x108u
+#define GCE_STATUS 0x10cu
 #define GCE_IRQ_STATUS 0x110u
 #define GCE_IRQ_ENABLE 0x114u
 #define GCE_CURRENT 0x120u
@@ -68,3 +70,33 @@ int a04_gce_submit_irq(struct a04_gce_submit *s)
 }
 void a04_gce_submit_timeout(struct a04_gce_submit *s)
 { if(s && (s->state==A04_GCE_RUNNING || s->state==A04_GCE_PREPARED))s->state=A04_GCE_RETAIN; }
+int a04_gce_stop_completed(struct a04_gce_submit *s)
+{
+    uint32_t enabled,status,reset;unsigned i;
+    if(!s || s->state!=A04_GCE_IRQ_DONE || !s->authorize || !s->read32 ||
+       !s->write32 || !s->delay || s->authorize(s->context)!=1)return -1;
+    /* Linux cmdq_core_suspend_HW_thread: suspend and wait for status bit 1;
+     * disable_HW_thread then resets and disables.  Keep all resources even
+     * on success: thread stop is not display-plane retirement. */
+    s->state=A04_GCE_RETAIN;
+    if(s->write32(s->context,GCE_SUSPEND,1u) ||
+       s->read32(s->context,GCE_ENABLE,&enabled))return -1;
+    if(enabled&1u) {
+        for(i=0;i<1000u;i++) {
+            if(s->read32(s->context,GCE_STATUS,&status))return -1;
+            if(status&2u)break;
+            s->delay(s->context);
+        }
+        if(i==1000u)return -1;
+    }
+    if(s->write32(s->context,GCE_RESET,1u))return -1;
+    for(i=0;i<1000u;i++) {
+        if(s->read32(s->context,GCE_RESET,&reset))return -1;
+        if(!(reset&1u))break;
+        s->delay(s->context);
+    }
+    if(i==1000u || s->write32(s->context,GCE_IRQ_ENABLE,0u) ||
+       s->write32(s->context,GCE_ENABLE,0u) ||
+       s->read32(s->context,GCE_ENABLE,&enabled) || (enabled&1u))return -1;
+    s->state=A04_GCE_STOPPED;return 0;
+}

@@ -21,6 +21,7 @@ struct a04_gce_submit {
 #define A04_GCE_RUNNING 2u
 #define A04_GCE_IRQ_DONE 3u
 #define A04_GCE_PREPARED 4u
+#define A04_GCE_STOPPED 5u
 /* Prepare is PASSIVE_LEVEL and may wait for reset. It must run while IRQs
  * for this thread are disabled and the lease is held. Once a register write
  * is attempted, failure retains the buffers. */
@@ -32,4 +33,7 @@ int a04_gce_kick_primary(struct a04_gce_submit *);
  * -1=uncertain read/ack. An EOC is not an OVL latch proof. */
 int a04_gce_submit_irq(struct a04_gce_submit *);
 void a04_gce_submit_timeout(struct a04_gce_submit *);
+/* PASSIVE_LEVEL, with the thread/IRQ and DMA lifetime exclusively held.
+ * Stopping the GCE thread does not prove an OVL latch or surface retirement. */
+int a04_gce_stop_completed(struct a04_gce_submit *);
 #endif

@@ -27,6 +27,10 @@ int main(void)
     assert(a04_gce_submit_irq(&s)==1 && s.state==A04_GCE_RUNNING && f.writes==7);
     f.regs[0x110/4]=1;assert(!a04_gce_submit_irq(&s) && s.state==A04_GCE_IRQ_DONE);
     assert(f.off[7]==0x110 && f.val[7]==~1u);
+    f.regs[0x10c/4]=2;
+    assert(!a04_gce_stop_completed(&s) && s.state==A04_GCE_STOPPED);
+    assert(f.off[8]==0x108 && f.off[9]==0x100 && f.off[10]==0x114 && f.off[11]==0x104);
+    assert(a04_gce_stop_completed(&s) && s.state==A04_GCE_STOPPED);
     memset(&f,0,sizeof(f));s.state=A04_GCE_IDLE;f.authorized=1;
     assert(!a04_gce_prepare_primary(&s,27,0x90000000,0x91000000));
     assert(!a04_gce_kick_primary(&s));
@@ -37,6 +41,12 @@ int main(void)
     assert(!a04_gce_kick_primary(&s));
     f.regs[0x110/4]=1;f.fail_at=8;
     assert(a04_gce_submit_irq(&s)==-1 && s.state==A04_GCE_RETAIN);
+    memset(&f,0,sizeof(f));s.state=A04_GCE_IRQ_DONE;f.authorized=1;f.regs[0x104/4]=1;
+    assert(a04_gce_stop_completed(&s) && s.state==A04_GCE_RETAIN && f.delays==1000);
+    memset(&f,0,sizeof(f));s.state=A04_GCE_IRQ_DONE;
+    assert(a04_gce_stop_completed(&s) && s.state==A04_GCE_IRQ_DONE && !f.writes);
+    f.authorized=1;f.fail_at=1;
+    assert(a04_gce_stop_completed(&s) && s.state==A04_GCE_RETAIN);
     memset(&f,0,sizeof(f));s.state=A04_GCE_IDLE;f.authorized=1;f.stuck=1;
     assert(a04_gce_prepare_primary(&s,38,0x90000000,0x91000000) && s.state==A04_GCE_RETAIN && f.writes==1 && f.delays==1000);
     memset(&f,0,sizeof(f));s.state=A04_GCE_IDLE;f.authorized=1;f.fail_at=7;
