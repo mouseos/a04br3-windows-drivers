@@ -338,3 +338,9 @@ RTC lease が残る場合、PWRAP owner の明示 stop は拒否して online �
 取得中に WACS が poison された場合は lease を不確定として保持する。これは
 不確定な取引を完了済みと扱わないための局所的な寿命処理であり、UEFI・EL3・
 他のファームウェアからの所有移譲の証明や、親 Wi-Fi Acquire の許可ではない。
+
+`tools/winpe/mt6630-pnp-uart.c` は子 PDO `A04BR3\\MT6630SDIO` の存在と PnP
+状態を照会し、TOPRGU の既存 UART 送信口へ `RTC=UNKNOWN SESSION=UNOBSERVED`
+を含む行を渡す。インスタンスが複数の場合は曖昧として拒否する。UART の
+IOCTL 成功は送信受付であって、ホスト側受信やセッション起動の証明ではない。
+子ドライバから session を起動する経路、RTC 引継ぎと実 firmware 実行は未完成。
