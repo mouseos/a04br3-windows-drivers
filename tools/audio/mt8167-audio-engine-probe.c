@@ -134,6 +134,31 @@ static HRESULT select_endpoint(IMMDeviceEnumerator *enumerator,IMMDevice **selec
  line("selected",matches,0,0);hr=matches==1?S_OK:HRESULT_FROM_WIN32(matches?ERROR_DUP_NAME:ERROR_NOT_FOUND);
  done:RELEASE(IMMDevice,candidate);RELEASE(IMMDeviceCollection,collection);if(FAILED(hr))RELEASE(IMMDevice,*selected);return hr;
 }
+/* Enumerate the devnode even when Code 10 prevented any KS interface or
+ * MMDevice endpoint. Unavailable ProblemStatus is never reported as success. */
+static void report_devnode(void){
+ static const DEVPROPKEY problem_key={{0x4340a6c5,0x93fa,0x4706,{0x97,0x2c,0x7b,0x64,0x80,0x08,0xa5,0xa7}},12};
+ HDEVINFO set=SetupDiGetClassDevsW(NULL,L"MT8167",NULL,DIGCF_PRESENT|DIGCF_ALLCLASSES);
+ SP_DEVINFO_DATA dev;DWORD i,matches=0;WCHAR id[512];
+ if(set==INVALID_HANDLE_VALUE){line("devnode-enum",GetLastError(),0,0);return;}
+ for(i=0;;i++){
+  ZeroMemory(&dev,sizeof(dev));dev.cbSize=sizeof(dev);
+  if(!SetupDiEnumDeviceInfo(set,i,&dev)){DWORD e=GetLastError();if(e!=ERROR_NO_MORE_ITEMS)line("devnode-enum",e,i,0);break;}
+  if(CM_Get_Device_IDW(dev.DevInst,id,512,0)!=CR_SUCCESS||!prefix(id,L"MT8167\\AFE\\"))continue;
+  {ULONG status=0,problem=0;DWORD raw=0,bytes=0,error=0;DEVPROPTYPE type=0;DEVINST parent;
+   CONFIGRET cr=CM_Get_DevNode_Status(&status,&problem,dev.DevInst,0);matches++;wide("devnode16",id);line("devnode",cr,status,problem);
+   if(!SetupDiGetDevicePropertyW(set,&dev,&problem_key,&type,(BYTE *)&raw,sizeof(raw),&bytes,0))error=GetLastError();
+   else if(type!=DEVPROP_TYPE_NTSTATUS||bytes!=sizeof(raw))error=ERROR_INVALID_DATA;
+   line("problem-status",error,type,error?0:raw);
+   cr=CM_Get_Parent(&parent,dev.DevInst,0);line("parent-query",cr,0,0);
+   if(cr==CR_SUCCESS){
+    if(CM_Get_Device_IDW(parent,id,512,0)==CR_SUCCESS)wide("parent16",id);
+    status=problem=0;cr=CM_Get_DevNode_Status(&status,&problem,parent,0);line("parent-node",cr,status,problem);
+   }
+  }
+ }
+ SetupDiDestroyDeviceInfoList(set);line("devnode-count",matches,0,0);
+}
 static HANDLE open_filter(void){
  HDEVINFO set;SP_DEVICE_INTERFACE_DATA iface;SP_DEVINFO_DATA dev;DWORD index,need,matches=0;HANDLE result=INVALID_HANDLE_VALUE;
  static union {ULONGLONG align;BYTE bytes[4096];} detail;static WCHAR id[512],path[1024];
@@ -267,6 +292,7 @@ void mainCRTStartup(void){
  if(!log_error&&!FlushFileBuffers(logfile))log_error=GetLastError()?GetLastError():ERROR_WRITE_FAULT;
  if(log_error){line("disk-required",log_error,0,0);goto done;}
  SetLastError(ERROR_SUCCESS);mutex=CreateMutexW(NULL,FALSE,L"A04BR3AudioEngineProbe");if(!mutex||GetLastError()==ERROR_ALREADY_EXISTS){line("singleton",GetLastError(),0,0);goto done;}
+ report_devnode();
  scm=OpenSCManagerW(NULL,NULL,SC_MANAGER_CONNECT);if(!scm){line("scm",GetLastError(),0,0);goto done;}
  error=ensure_service(scm,L"AudioEndpointBuilder",0);if(!error)error=ensure_service(scm,L"AudioSrv",1);if(error){line("service-error",error,0,0);goto done;}
  hr=CoInitializeEx(NULL,COINIT_MULTITHREADED);line("com",hr,0,0);if(FAILED(hr))goto done;com=TRUE;

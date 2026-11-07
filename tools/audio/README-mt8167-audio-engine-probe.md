@@ -14,7 +14,7 @@ WinPE標準音声サービスなしの構成では使用せず、EnginePcm用の
 | --- | --- |
 | parent/audio runtime SYS | de214c8b7495913d0716f149b24fd210ef42de8a |
 | 署名時INF source | e4dff2b25cc164892dce1d534cb564218845c29c |
-| INF DriverVer | 11/06/2026,2026.11.7.1004 |
+| audio INF DriverVer | 11/06/2026,2026.11.7.1004 |
 | signed-manifest audio_mode | engine_pcm_retained |
 | audio/mt8167-audio.sys SHA-256 | 2f56e9a4cb742c2d09284117d9e781493d827a2800a7925238bdc352b2b346ef |
 | parent/mt8167-shared.sys SHA-256 | 99338c1bbe30205b09af6c594a7c79cc4ef8a7c080a692330d36cdbb973f86ca |
@@ -66,7 +66,10 @@ service設定の変更や独自brokerによる代用はしない。
    disklogを確保できれば標準AudioSrv/WASAPIとDMA診断へ進み、UARTだけの失敗でabortしない。
    UART失敗後は再試行を繰り返さず、TOPRGUやboot設定を変更しない。
    各passのStart前にもdisklogをflushする。pass間で保存失敗を検出した場合は次のpassを開始しない。
-2. 固定のAudioEndpointBuilder / AudioSrvをqueryし、停止時のみ開始する。
+2. endpointの有無に依存せず、presentな`MT8167\AFE\` devnodeのCM status/problemと
+   `DEVPKEY_Device_ProblemStatus`のraw NTSTATUSを一度回収する。親のinstance/statusも記録する。
+   property読取り失敗や型/長さ不一致を成功やNTSTATUS=0へ読み替えない。
+   固定のAudioEndpointBuilder / AudioSrvをqueryし、停止時のみ開始する。
    サービス開始は各15秒、endpoint列挙は最大約10秒まで待つ。
    この待機はOSサービスの準備待ちであり、DMA静止を推定するwaitではない。
 3. render endpointをMMDeviceで列挙する。DeviceTopology connector 0から
@@ -122,6 +125,11 @@ UART不在runではhost側end受信を要求しない。run25通常OSでdevice�
 | uart-optional | UART open error / 0 / 0（音声失敗を意味しない） |
 | disk-required | 必須disklog error / 0 / 0（PCM未開始） |
 | expected-src | runtime source短縮値 / INF source短縮値 / version末尾（実ロード証明ではない） |
+| devnode | CONFIGRET / CM status / CM problem（endpoint列挙とは独立） |
+| problem-status | property Win32 error（0=取得成功） / DEVPROPTYPE / 取得できたraw NTSTATUS（error非0なら未取得） |
+| parent-query / parent-node | 親取得CONFIGRET / 0 / 0、または親CM CONFIGRET / status / problem |
+| devnode16 / parent16 | instance IDのUTF-16、通常のwide record形式 |
+| devnode-count | 対象devnode数 / 0 / 0 |
 | service | 0=EndpointBuilder,1=AudioSrv / SERVICE状態 / Win32 exit code |
 | endpoint, route | endpoint index / HRESULT / state等 |
 | instance16, endpoint16, friendly16 | UTF-16 code unit offset / 2 units packed / 次の2 units packed |
@@ -194,3 +202,22 @@ open_uartは約5秒間openを試す。初期openに成功してもRUN直前のua
 最後にもUART輸送失敗をresult=3へ反映する。したがってrun25のdevice名不在が続く構成では、
 旧tone clientも同じ理由でPCM試行前に止まる。
 この修正は新しい通常音声probeだけに適用し、旧tone入口とTOPRGUは変更していない。
+
+## run27のCode 10と親SYSの残留
+
+run27のSetupAPIはaudio bind成功、CM_PROB_FAILED_STARTを記録するが、
+開始失敗のNTSTATUSは記録しない。System.evtxのaudio関連記録はサービス登録と
+install成功であり、StartDeviceの戻り値ではない。endpoint0と80070490は
+endpoint選択失敗を示す。これらから開始失敗NTSTATUSを作らない。
+
+run28直前の回収済み実配置は、audioが上表の2f56e9a4...、parentが旧fixed-tone版の
+b64fe0af0ec1cb700159cf4c6b588eea4bd8c9591ad39bb031d2d37dbf92e201だった。
+run27媒体のparentは99338c1b...と一致し、媒体と実配置が食い違う。
+新旧parent INFも同一hash/DriverVerだったため、新しいEngine親が実際に選択された
+動作結果としてCode 10を扱わない。親の不一致が今回のCode 10の直接原因だとは未確定。
+Engine専用parent INFは11/06/2026,2026.11.7.1005として分離した。
+[親の再包装手順](../../drivers/audio/mt8167-afe/README-engine-parent-package.md)を参照。
+
+このprobe改良は、Code 10でKS interfaceもendpointも存在しない場合にも
+標準PnP propertyを取得するための最小追加で、PnP再bind、再起動、driver登録や
+独自kernel制御は行わない。propertyが未提供なら取得エラーを残すだけである。
