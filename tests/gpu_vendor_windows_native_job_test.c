@@ -30,13 +30,13 @@ int main(void)
     }
     assert(!memcmp(n->code[0].cpu,c->job.code.usc,sizeof(c->job.code.usc)));
     assert(!memcmp(n->code[1].cpu,c->job.code.pds,sizeof(c->job.code.pds)));
-    assert(!memcmp((UCHAR *)n->data.cpu+n->suffix_offset,c->job.data.bytes,sizeof(c->job.data.bytes)));
+    assert(!memcmp(a04_vendor_native_storage_pointer(n,0,n->suffix_offset,sizeof(c->job.data.bytes)),c->job.data.bytes,sizeof(c->job.data.bytes)));
     /* Corrupt actual dependency backing, not synthetic builder arguments. */
     for(i=0;i<4;i++){
-        UCHAR *byte=i==0?(UCHAR *)n->data.cpu+(size_t)(n->target.region_gpu[0]-A04_NATIVE_DATA_VA):
-            i==1?(UCHAR *)n->data.cpu+n->list_offset[1]+256u*4u:
+        UCHAR *byte=i==0?(UCHAR *)a04_vendor_native_storage_pointer(n,0,(ULONG)(n->target.region_gpu[0]-A04_NATIVE_DATA_VA),1):
+            i==1?(UCHAR *)a04_vendor_native_storage_pointer(n,0,n->list_offset[1]+256u*4u,1):
             i==2?(UCHAR *)x.r.buffer[0].cpu+0x4800u+0xc0u:
-            (UCHAR *)n->data.cpu+(size_t)(n->auxiliary.dummy_stencil_gpu-A04_NATIVE_DATA_VA);
+            (UCHAR *)a04_vendor_native_storage_pointer(n,0,(ULONG)(n->auxiliary.dummy_stencil_gpu-A04_NATIVE_DATA_VA),1);
         a04_vendor_native_free_job_cold(n);*byte^=1;
         assert(!NT_SUCCESS(a04_vendor_native_prepare_job_cold(n)) && !n->candidate);
         *byte^=1;assert(a04_vendor_native_prepare_job_cold(n)==STATUS_SUCCESS);

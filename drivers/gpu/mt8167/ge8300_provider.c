@@ -254,6 +254,7 @@ typedef struct {
     struct a04_vendor_render_cold vendor_render;
 #if A04_GE8300_VENDOR_NATIVE_BACKING
     struct a04_vendor_native_cold *vendor_native;
+    NTSTATUS vendor_native_prep_status;
 #if A04_GE8300_VENDOR_NATIVE_CLEAR_ACTIVATE
     BOOLEAN vendor_native_activation_attempted;
 #endif
@@ -801,14 +802,28 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         if(NT_SUCCESS(status))status=a04_vendor_copy_scratch_stage_usc(&c->vendor_copy,a04_copy_usc_asset,sizeof(a04_copy_usc_asset));
         if(NT_SUCCESS(status))status=a04_vendor_copy_scratch_freeze(&c->vendor_copy);
 #if A04_GE8300_VENDOR_NATIVE_BACKING
-        if(NT_SUCCESS(status))status=a04_vendor_native_allocate_cold(&c->vendor_native,
-            &c->vendor_render,adapter,copy_map_registers,800,A04_GE8300_VENDOR_NATIVE_CLEAR_JOB?600:1280);
-        GpuPrint("A04GPU NATIVE BACKING=");GpuHex((ULONG)status);
+        {
+            struct a04_vendor_native_diagnostic diag={0};
+            c->vendor_native_prep_status=status;
+            if(NT_SUCCESS(status))c->vendor_native_prep_status=a04_vendor_native_allocate_cold_ex(&c->vendor_native,
+                &c->vendor_render,adapter,copy_map_registers,800,A04_GE8300_VENDOR_NATIVE_CLEAR_JOB?600:1280,&diag);
+            GpuPrint("A04GPU NATIVE PREP STATUS=");GpuHex((ULONG)c->vendor_native_prep_status);
+            GpuPrint(" STEP=");GpuHex(diag.stage);GpuPrint(" INDEX=");GpuHex(diag.index);
+            GpuPrint(" REQUEST=");GpuHex(diag.request_bytes);GpuPrint(" MAPS=");GpuHex(diag.map_registers);
+            GpuPrint(" DATA_BYTES=");GpuHex(diag.data_bytes);GpuPrint(" DATA_BLOCKS=");GpuHex(diag.data_blocks);
+            GpuPrint(" PIXEL_BLOCKS=");GpuHex(diag.pixel_blocks);GpuPrint("\n");
+            /* A fully unwound optional child does not poison the working copy
+             * parent. A retained failed child blocks firmware start below. */
+            if(!NT_SUCCESS(c->vendor_native_prep_status) && c->vendor_native)
+                status=c->vendor_native_prep_status;
+        }
+        GpuPrint("A04GPU NATIVE BACKING=");GpuHex((ULONG)c->vendor_native_prep_status);
         GpuPrint(" BYTES=");GpuHex(a04_vendor_native_bytes(c->vendor_native));GpuPrint("\n");
 #if A04_GE8300_VENDOR_NATIVE_CLEAR_JOB
         GpuPrint("A04GPU NATIVE JOB STAGED=");GpuHex(a04_vendor_native_job_staged(c->vendor_native));
         #if A04_GE8300_VENDOR_NATIVE_CLEAR_ACTIVATE
-        GpuPrint(" TA3D_GATE=ARMED_ONE_SHOT\n");
+        GpuPrint(NT_SUCCESS(c->vendor_native_prep_status) && a04_vendor_native_job_staged(c->vendor_native)?
+            " TA3D_GATE=ARMED_ONE_SHOT\n":" TA3D_GATE=CLOSED_PREPARATION\n");
 #else
         GpuPrint(" TA3D_GATE=CLOSED\n");
 #endif
@@ -1012,6 +1027,12 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
      * turn permanent admission closure into a framework start failure. */
     if(InterlockedCompareExchange(&c->vendor_service_closed,0,0))return STATUS_SUCCESS;
 #endif
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+    if(c->vendor_native && !NT_SUCCESS(c->vendor_native_prep_status)) {
+        GpuPrint("A04GPU NATIVE PREP RETAINED FW_START_BLOCKED CPU_ADMISSION_FALLBACK\n");
+        return STATUS_SUCCESS;
+    }
+#endif
     if(!c->vendor.staged || !c->vendor.uncached || !c->vendor_irq) return STATUS_SUCCESS;
 #if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
     if(!c->vendor_copy.task_frozen) {GpuPrint("A04GPU COPY NOT PREPARED\n");return STATUS_SUCCESS;}
@@ -1045,6 +1066,7 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
          * still closed by online=FALSE. No display lease/token is invented. */
         if(a04_native_activation_allowed(KeGetCurrentIrql()==PASSIVE_LEVEL,
             c->vendor_native_activation_attempted,NT_SUCCESS(c->status.health_status),
+            NT_SUCCESS(c->vendor_native_prep_status) && a04_vendor_native_job_staged(c->vendor_native),
             c->vendor_copy_device_ref && c->vendor_copy.exposed && c->vendor_copy.prepared &&
               c->vendor_copy.task_frozen && c->vendor_copy.render==&c->vendor_render &&
               c->vendor_render.copy_owner==&c->vendor_copy,

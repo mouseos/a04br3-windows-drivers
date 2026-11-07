@@ -47,7 +47,7 @@ NTSTATUS a04_vendor_native_publish_candidate(struct a04_vendor_native_cold *n,
        r->native_owner!=n || !(c=n->candidate) || n->quarantined || r->poisoned ||
        r->cleanup_started || c->attempted || !n->mapped || !n->prepared || !n->bank_prepared ||
        !n->backing_staged || !n->output_mapped || n->code_mapped!=3u ||
-       n->width!=800u || n->height!=600u || !n->output[0].cpu || n->output[0].bytes!=A04_NATIVE_OUTPUT_BYTES ||
+       n->width!=800u || n->height!=600u || !n->output[0].cpu || n->pixel_blocks!=(A04_NATIVE_OUTPUT_BYTES+A04_NATIVE_BLOCK_BYTES-1u)/A04_NATIVE_BLOCK_BYTES ||
        !s->online || !s->core || s->memory!=r->firmware ||
        !s->memory || !s->memory->hardware_owned || !s->memory->uncached ||
        !(f=s->memory->runtime) || !f->kctl || !f->fctl || !f->kcommands || !f->command_sync ||
@@ -114,7 +114,7 @@ NTSTATUS a04_vendor_native_publish_candidate(struct a04_vendor_native_cold *n,
     }
     if(!NT_SUCCESS(status))goto poison;
     for(i=0;i<A04_NATIVE_OUTPUT_BYTES/4u;i+=64u){
-        if(a04_rgx_device_read_words(pixels,(UCHAR *)n->output[0].cpu+i*4u,sizeof(pixels)))goto poison;
+        if(a04_vendor_native_storage_read(n,1,i*4u,pixels,sizeof(pixels)))goto poison;
         for(j=0;j<64u;j++)if(i+j<480000u){
             if(pixels[j]==0xff332211u)out->matching_pixels++;else out->mismatched_pixels++;
         }else if(pixels[j]!=0xa5a5a5a5u)out->guard_errors++;

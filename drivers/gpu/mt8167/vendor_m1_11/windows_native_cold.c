@@ -56,9 +56,10 @@ static NTSTATUS release_contents(struct a04_vendor_native_cold *n)
 #if A04_GE8300_VENDOR_NATIVE_CLEAR_JOB
     a04_vendor_native_free_job_cold(n);
 #endif
-    for(unsigned i=0;i<4;i++)a04_vendor_uncached_free(&n->output[i]);
+    a04_vendor_native_storage_free(n,1);
+    for(unsigned i=1;i<4;i++)a04_vendor_uncached_free(&n->output[i]);
     a04_vendor_uncached_free(&n->code[1]);a04_vendor_uncached_free(&n->code[0]);
-    a04_vendor_uncached_free(&n->pt);a04_vendor_uncached_free(&n->data);
+    a04_vendor_uncached_free(&n->pt);a04_vendor_native_storage_free(n,0);
     if(r)r->native_owner=NULL;
     RtlZeroMemory(n,sizeof(*n));return STATUS_SUCCESS;
 }
@@ -91,45 +92,50 @@ static NTSTATUS prepare_contents(struct a04_vendor_native_cold *n,
     n->pm_offset[1]=at;at+=0x100000u;
     n->list_offset[0]=at;at+=4096u;n->list_offset[1]=at;at+=4096u;
     n->suffix_offset=at;at+=4096u;
-    if(at>A04_NATIVE_DATA_LIMIT || map_registers<at/4096u+1u)return STATUS_INSUFFICIENT_RESOURCES;
+    a04_vendor_native_diagnose(n,A04_NATIVE_PREP_CAPACITY,0,at);
+    if(n->diagnostic)n->diagnostic->data_bytes=at;
+    /* Each real common-buffer request covers at most 16 pages; the total
+     * linear GPU window is not one DMA transfer/common-buffer request. */
+    if(at>A04_NATIVE_DATA_LIMIT || map_registers<A04_NATIVE_BLOCK_BYTES/4096u)return STATUS_INSUFFICIENT_RESOURCES;
     n->used=at;n->width=width;n->height=height;n->render=r;r->native_owner=n;
-    status=a04_vendor_uncached_allocate(&n->data,adapter,at);
+    status=a04_vendor_native_storage_allocate(n,0,adapter,at);
     if(!NT_SUCCESS(status))goto done;
+    a04_vendor_native_diagnose(n,A04_NATIVE_PREP_PT,0,4096u);
     status=a04_vendor_uncached_allocate(&n->pt,adapter,4096u);
     if(!NT_SUCCESS(status))goto done;
     status=STATUS_DEVICE_CONFIGURATION_ERROR;
     if(!NT_SUCCESS(a04_vendor_native_validate_allocation_cold(n,&n->data)) ||
        !NT_SUCCESS(a04_vendor_native_validate_allocation_cold(n,&n->pt)))goto done;
-    shadow=ExAllocatePoolWithTag(NonPagedPoolNx,(size_t)at+3u*4096u,TAG);
+    a04_vendor_native_diagnose(n,A04_NATIVE_PREP_SHADOW,0,4u*4096u);
+    shadow=ExAllocatePoolWithTag(NonPagedPoolNx,4u*4096u,TAG);
     if(!shadow){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
-    /* TPC/VHeap zero is vendor-defined. Other zero-filled storage is only
-     * a host allocation policy; the future complete-record factory must
-     * supply any required region/MLIST/auxiliary initial contents. */
-    RtlZeroMemory(shadow,(size_t)at+3u*4096u);
-    pc=(uint32_t *)(void *)(shadow+at);pd=(uint64_t *)(void *)(shadow+at+4096u);
-    pt=(uint64_t *)(void *)(shadow+at+8192u);
+    /* Page-sized zero policy staging, never a multi-MiB CPU pool request. */
+    RtlZeroMemory(shadow,4u*4096u);
+    pc=(uint32_t *)(void *)shadow;pd=(uint64_t *)(void *)(shadow+4096u);
+    pt=(uint64_t *)(void *)(shadow+8192u);
+    for(i=0;i<at/4096u;i++)if(a04_vendor_native_storage_write(n,0,i*4096u,shadow+12288u,4096u))goto done;
     if(a04_rgx_device_read_words(pc,r->buffer[1].cpu,4096u) ||
        a04_rgx_device_read_words(pd,r->buffer[2].cpu,4096u) ||
        pc[A04_NATIVE_DATA_VA>>30]!=((uint32_t)((uint64_t)r->buffer[2].logical.QuadPart>>8)|1u) ||
        pd[(A04_NATIVE_DATA_VA>>21)&511u])goto done;
-    address=(uint64_t)n->data.logical.QuadPart;
-    for(i=0;i<40u;i++)n->pm_pages[i]=address+n->pm_offset[0]+i*4096u;
-    for(i=0;i<256u;i++)n->pm_pages[40u+i]=address+n->pm_offset[1]+i*4096u;
+    for(i=0;i<40u;i++)n->pm_pages[i]=a04_vendor_native_storage_dma(n,0,n->pm_offset[0]+i*4096u);
+    for(i=0;i<256u;i++)n->pm_pages[40u+i]=a04_vendor_native_storage_dma(n,0,n->pm_offset[1]+i*4096u);
     fl.list_gpu=A04_NATIVE_DATA_VA+n->list_offset[0];fl.pages=40;fl.id=1;
-    if(a04_m111_build_freelist(&n->freelist[0],(uint32_t *)(void *)(shadow+n->list_offset[0]),
-        1024u,&fl,n->pm_pages,1))goto done;
+    if(a04_m111_build_freelist(&n->freelist[0],(uint32_t *)(void *)(shadow+12288u),
+        1024u,&fl,n->pm_pages,1) || a04_vendor_native_storage_write(n,0,n->list_offset[0],shadow+12288u,4096u))goto done;
+    RtlZeroMemory(shadow+12288u,4096u);
     fl.list_gpu=A04_NATIVE_DATA_VA+n->list_offset[1];fl.pages=256;fl.id=2;
-    if(a04_m111_build_freelist(&n->freelist[1],(uint32_t *)(void *)(shadow+n->list_offset[1]),
-        1024u,&fl,n->pm_pages+40,1))goto done;
-    if(a04_gpu_mmu_map_4k(pc,pd,pt,(uint64_t)r->buffer[2].logical.QuadPart,
-          (uint64_t)n->pt.logical.QuadPart,A04_NATIVE_DATA_VA,address,n->pm_offset[0]/4096u,A04_GPU_MMU_SLC_BYPASS) ||
-       a04_gpu_mmu_map_4k(pc,pd,pt,(uint64_t)r->buffer[2].logical.QuadPart,
-          (uint64_t)n->pt.logical.QuadPart,A04_NATIVE_DATA_VA+n->pm_offset[0],address+n->pm_offset[0],296u,
-          A04_GPU_MMU_SLC_BYPASS|A04_GPU_MMU_PM_FW_PROTECT) ||
-       a04_gpu_mmu_map_4k(pc,pd,pt,(uint64_t)r->buffer[2].logical.QuadPart,
-          (uint64_t)n->pt.logical.QuadPart,A04_NATIVE_DATA_VA+n->list_offset[0],address+n->list_offset[0],3u,A04_GPU_MMU_SLC_BYPASS))goto done;
-    if(a04_rgx_device_write_words(n->data.cpu,shadow,at) ||
-       a04_rgx_device_write_words(n->pt.cpu,pt,4096u))goto done;
+    if(a04_m111_build_freelist(&n->freelist[1],(uint32_t *)(void *)(shadow+12288u),
+        1024u,&fl,n->pm_pages+40,1) || a04_vendor_native_storage_write(n,0,n->list_offset[1],shadow+12288u,4096u))goto done;
+    a04_vendor_native_diagnose(n,A04_NATIVE_PREP_MAP,0,at);
+    for(i=0;i<at/4096u;i++){
+        uint64_t flags=A04_GPU_MMU_SLC_BYPASS;
+        if(i*4096u>=n->pm_offset[0] && i*4096u<n->list_offset[0])flags|=A04_GPU_MMU_PM_FW_PROTECT;
+        address=a04_vendor_native_storage_dma(n,0,i*4096u);
+        if(!address || a04_gpu_mmu_map_4k(pc,pd,pt,(uint64_t)r->buffer[2].logical.QuadPart,
+           (uint64_t)n->pt.logical.QuadPart,A04_NATIVE_DATA_VA+i*4096u,address,1u,flags))goto done;
+    }
+    if(a04_rgx_device_write_words(n->pt.cpu,pt,4096u))goto done;
     a04_gpu_dma_barrier();
     /* Existing PC/PD must already name this parent directory. Publish only
      * the formerly empty leaf entry; FW has not been started at this point. */
@@ -155,6 +161,7 @@ NTSTATUS a04_vendor_native_bind_bank_cold(struct a04_vendor_native_cold *n,
     for(i=0;i<2;i++)if(hwrt[i].pm_mlist!=n->mlists.gpu[i] ||
        hwrt[i].tail_ptrs!=n->target.tail_ptrs_gpu || hwrt[i].region_header!=n->target.region_gpu[i] ||
        hwrt[i].macrotile || hwrt[i].rtc)return STATUS_INVALID_PARAMETER;
+    a04_vendor_native_diagnose(n,A04_NATIVE_PREP_BANK,0,sizeof(*bank)+63u);
     allocation=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*bank)+63u,TAG);
     if(!allocation)return STATUS_INSUFFICIENT_RESOURCES;
     bank=(struct a04_m111_native_bank *)(void *)(((uintptr_t)allocation+63u)&~(uintptr_t)63u);
@@ -174,15 +181,16 @@ BOOLEAN a04_vendor_native_job_staged(const struct a04_vendor_native_cold *n)
 
 ULONG a04_vendor_native_bytes(const struct a04_vendor_native_cold *n)
 { return n ? n->used : 0; }
-NTSTATUS a04_vendor_native_allocate_cold(struct a04_vendor_native_cold **out,
-    struct a04_vendor_render_cold *r,PDMA_ADAPTER adapter,ULONG maps,ULONG width,ULONG height)
+NTSTATUS a04_vendor_native_allocate_cold_ex(struct a04_vendor_native_cold **out,
+    struct a04_vendor_render_cold *r,PDMA_ADAPTER adapter,ULONG maps,ULONG width,ULONG height,struct a04_vendor_native_diagnostic *d)
 {
     struct a04_vendor_native_cold *n;NTSTATUS status;
     _Alignas(8) struct a04_m111_hwrt_input profile[2];
-    if(!out || *out || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+    if(d){RtlZeroMemory(d,sizeof(*d));d->stage=A04_NATIVE_PREP_OWNER;d->request_bytes=sizeof(*n);d->map_registers=maps;d->status=STATUS_INSUFFICIENT_RESOURCES;}
+    if(!out || *out || KeGetCurrentIrql()!=PASSIVE_LEVEL){if(d)d->status=STATUS_INVALID_PARAMETER;return STATUS_INVALID_PARAMETER;}
     n=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*n),TAG);
     if(!n)return STATUS_INSUFFICIENT_RESOURCES;
-    RtlZeroMemory(n,sizeof(*n));status=prepare_contents(n,r,adapter,maps,width,height);
+    RtlZeroMemory(n,sizeof(*n));n->diagnostic=d;status=prepare_contents(n,r,adapter,maps,width,height);
     if(NT_SUCCESS(status)) {
         if(a04_m111_build_single_rt_hwrt_profile(profile,width,height,&n->target,&n->mlists))
             status=STATUS_DEVICE_CONFIGURATION_ERROR;
@@ -194,6 +202,8 @@ NTSTATUS a04_vendor_native_allocate_cold(struct a04_vendor_native_cold **out,
 #endif
         if(!NT_SUCCESS(status))(void)release_contents(n);
     }
+    if(d){d->status=status;if(NT_SUCCESS(status))d->stage=A04_NATIVE_PREP_DONE;}
+    n->diagnostic=NULL;
     if(!NT_SUCCESS(status) && !n->render)ExFreePoolWithTag(n,TAG);
     else *out=n; /* Preserve a failed cold cleanup's ownership and allocation. */
     return status;
@@ -206,3 +216,7 @@ NTSTATUS a04_vendor_native_release_cold(struct a04_vendor_native_cold **owner)
     if(NT_SUCCESS(status)){ExFreePoolWithTag(*owner,TAG);*owner=NULL;}
     return status;
 }
+
+NTSTATUS a04_vendor_native_allocate_cold(struct a04_vendor_native_cold **out,
+    struct a04_vendor_render_cold *r,PDMA_ADAPTER a,ULONG maps,ULONG width,ULONG height)
+{ return a04_vendor_native_allocate_cold_ex(out,r,a,maps,width,height,NULL); }

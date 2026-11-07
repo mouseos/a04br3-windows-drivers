@@ -26,7 +26,7 @@ void KeStallExecutionProcessor(unsigned us)
             cleanup=(void *)((UCHAR *)active->r.buffer[0].cpu+
                 cmd->uCmdData.sCmdKickData.apsCleanupCtl[0].ui32Addr-0xc0080000u);
             cleanup->ui32SubmittedCommands=1;cleanup->ui32ExecutedCommands=(mode==3 && dm)?0:1;
-            if(dm)for(i=0;i<480000;i++)((uint32_t *)child_owner->output[0].cpu)[i]=mode==2?0xff332210u:0xff332211u;
+            if(dm)for(i=0;i<480000;i++)*(uint32_t *)a04_vendor_native_storage_pointer(child_owner,1,i*4u,4u)=mode==2?0xff332210u:0xff332211u;
         }else if(cmd->eCmdType==RGXFWIF_KCCB_CMD_SLCFLUSHINVAL){assert(commands==3);}
         else {assert(cmd->eCmdType==RGXFWIF_KCCB_CMD_SYNC && commands==4);
             *(uint32_t *)runtime.command_sync=cmd->uCmdData.sSyncData.uiUpdateVal;}

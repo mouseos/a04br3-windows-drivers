@@ -36,7 +36,7 @@ static int matches(volatile void *source,const void *expected,unsigned bytes)
 static volatile void *data_span(struct a04_vendor_native_cold *n,uint64_t gpu,unsigned bytes)
 {
     if(gpu<A04_NATIVE_DATA_VA || gpu-A04_NATIVE_DATA_VA>n->used || bytes>n->used-(gpu-A04_NATIVE_DATA_VA))return NULL;
-    return (UCHAR *)n->data.cpu+(size_t)(gpu-A04_NATIVE_DATA_VA);
+    return a04_vendor_native_storage_pointer(n,0,(ULONG)(gpu-A04_NATIVE_DATA_VA),bytes);
 }
 static int zeros(volatile void *source,unsigned bytes)
 {
@@ -87,10 +87,11 @@ NTSTATUS a04_vendor_native_prepare_job_cold(struct a04_vendor_native_cold *n)
     /* Verified Windows cold policy, NOT a claim about unread Android memory.
      * Matches same-version Linux fresh-PMR ZERO_ALL_PAGES/__GFP_ZERO and the
      * flags3 UM allocation path with no explicit CPU initialization. */
-    if(zeros((UCHAR *)n->data.cpu+(size_t)(n->auxiliary.dummy_region_gpu-A04_NATIVE_DATA_VA),128) ||
-       zeros((UCHAR *)n->data.cpu+(size_t)(n->auxiliary.dummy_stencil_gpu-A04_NATIVE_DATA_VA),2048) ||
+    if(zeros(data_span(n,n->auxiliary.dummy_region_gpu,128),128) ||
+       zeros(data_span(n,n->auxiliary.dummy_stencil_gpu,2048),2048) ||
        a04_rgx_device_read_words(native_sync,(UCHAR *)r->buffer[0].cpu+0x4c00u,sizeof(native_sync)) ||
        native_sync[0] || native_sync[1])return status;
+    a04_vendor_native_diagnose(n,A04_NATIVE_PREP_JOB,0,sizeof(*c)+8192u);
     c=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*c)+8192u,JOB_TAG);
     if(!c)return STATUS_INSUFFICIENT_RESOURCES;
     RtlZeroMemory(c,sizeof(*c)+8192u);
@@ -108,7 +109,7 @@ NTSTATUS a04_vendor_native_prepare_job_cold(struct a04_vendor_native_cold *n)
         fl_input=(struct a04_m111_freelist_input){A04_NATIVE_DATA_VA+n->list_offset[i],pages,i+1u};
         if(n->list_offset[i]>n->used || pages*8u>n->used-n->list_offset[i] ||
            a04_m111_build_freelist(&fl,entries,512u,&fl_input,n->pm_pages+(i?40:0),1) ||
-           matches((UCHAR *)n->data.cpu+n->list_offset[i],entries,pages*8u))goto fail;
+           matches(a04_vendor_native_storage_pointer(n,0,n->list_offset[i],pages*8u),entries,pages*8u))goto fail;
     }
     input.output_gpu=A04_NATIVE_OUTPUT_VA;input.data_page_gpu=A04_NATIVE_DATA_VA+n->suffix_offset;
     input.usc_page_gpu=A04_NATIVE_USC_VA;input.pds_page_gpu=A04_NATIVE_PDS_VA;
@@ -126,7 +127,7 @@ NTSTATUS a04_vendor_native_prepare_job_cold(struct a04_vendor_native_cold *n)
           (uint8_t *)c+sizeof(*c),8192u,&c->pair))goto fail;
     if(verified(n->code[0].cpu,c->job.code.usc,sizeof(c->job.code.usc)) ||
        verified(n->code[1].cpu,c->job.code.pds,sizeof(c->job.code.pds)) ||
-       verified((UCHAR *)n->data.cpu+n->suffix_offset,c->job.data.bytes,sizeof(c->job.data.bytes)) ||
+       verified(a04_vendor_native_storage_pointer(n,0,n->suffix_offset,sizeof(c->job.data.bytes)),c->job.data.bytes,sizeof(c->job.data.bytes)) ||
        verified((UCHAR *)r->buffer[0].cpu+r->layout.commands[0],c->rings,4096u) ||
        verified((UCHAR *)r->buffer[0].cpu+r->layout.commands[1],c->rings+4096,4096u)){
         /* Never free possibly staged DMA after an ambiguous write failure. */

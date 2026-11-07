@@ -16,8 +16,11 @@ struct a04_vendor_native_candidate;
 #define A04_NATIVE_PDS_VA UINT64_C(0xa800010000)
 struct a04_vendor_native_cold {
     struct a04_vendor_render_cold *render;
-    struct a04_vendor_uncached data,pt,code[2];
-    struct a04_vendor_uncached output[4]; /* pixels, PD, PT0, PT1 */
+    struct a04_vendor_uncached data,pt,code[2]; /* data is the FIRST real block only */
+    struct a04_vendor_uncached data_tail[31],pixel_tail[63];
+    ULONG data_blocks,pixel_blocks;
+    struct a04_vendor_native_diagnostic *diagnostic; /* only during cold preparation */
+    struct a04_vendor_uncached output[4]; /* first pixel block, PD, PT0, PT1 */
     struct a04_m111_clear_surface clear_surface;
     struct a04_m111_clear_code_bindings bindings;
     struct a04_vendor_native_candidate *candidate;
@@ -34,6 +37,15 @@ struct a04_vendor_native_cold {
     BOOLEAN mapped,prepared,bank_prepared,bank_touched;
 };
 
+#define A04_NATIVE_BLOCK_BYTES 65536u
+struct a04_vendor_uncached *a04_vendor_native_block(struct a04_vendor_native_cold *,int,ULONG);
+NTSTATUS a04_vendor_native_storage_allocate(struct a04_vendor_native_cold *,int,PDMA_ADAPTER,ULONG);
+void a04_vendor_native_storage_free(struct a04_vendor_native_cold *,int);
+void *a04_vendor_native_storage_pointer(struct a04_vendor_native_cold *,int,ULONG,ULONG);
+uint64_t a04_vendor_native_storage_dma(struct a04_vendor_native_cold *,int,ULONG);
+int a04_vendor_native_storage_write(struct a04_vendor_native_cold *,int,ULONG,const void *,ULONG);
+int a04_vendor_native_storage_read(struct a04_vendor_native_cold *,int,ULONG,void *,ULONG);
+void a04_vendor_native_diagnose(struct a04_vendor_native_cold *,ULONG,ULONG,ULONG);
 NTSTATUS a04_vendor_native_prepare_job_cold(struct a04_vendor_native_cold *);
 void a04_vendor_native_free_job_cold(struct a04_vendor_native_cold *);
 

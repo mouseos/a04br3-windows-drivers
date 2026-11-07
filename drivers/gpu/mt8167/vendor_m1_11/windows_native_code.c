@@ -37,11 +37,13 @@ NTSTATUS a04_vendor_native_reserve_code_cold(struct a04_vendor_native_cold *n,PD
        r->native_owner!=n || !n->prepared || !n->mapped || !(f=r->firmware) ||
        f->hardware_owned || f->adapter!=adapter || n->code_mapped || n->code[0].cpu || n->code[1].cpu)
         return STATUS_INVALID_DEVICE_STATE;
+    a04_vendor_native_diagnose(n,A04_NATIVE_PREP_CODE,0,4u*4096u);
     shadow=ExAllocatePoolWithTag(NonPagedPoolNx,4u*4096u,CODE_TAG);
     if(!shadow)return STATUS_INSUFFICIENT_RESOURCES;
     pc=(uint32_t *)(void *)shadow;pd=(uint64_t *)(void *)(shadow+4096u);
     pt=(uint64_t *)(void *)(shadow+8192u);
     for(i=0;i<2;i++) {
+        a04_vendor_native_diagnose(n,A04_NATIVE_PREP_CODE,i,4096u);
         status=a04_vendor_uncached_allocate(&n->code[i],adapter,4096u);
         if(!NT_SUCCESS(status))goto done;
         status=STATUS_DEVICE_CONFIGURATION_ERROR;

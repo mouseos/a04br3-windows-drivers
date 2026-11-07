@@ -16,6 +16,7 @@ void a04_gpu_dma_barrier(void){}
 void *ExAllocatePoolWithTag(int type,size_t size,unsigned tag)
 {
     void *p;(void)type;(void)tag;
+    assert(size<=65536u);
     if(++pool_calls==fail_pool)return NULL;
     p=aligned_alloc(4096,(size+4095)&~(size_t)4095);if(p)pools++;return p;
 }
@@ -23,6 +24,7 @@ void ExFreePoolWithTag(void *p,unsigned tag){(void)tag;assert(pools);pools--;fre
 static void *allocate(PDMA_ADAPTER a,PHYSICAL_ADDRESS *max,ULONG size,PHYSICAL_ADDRESS *pa,BOOLEAN cache,ULONG node)
 {
     (void)a;assert(max->QuadPart==0xffffffffLL && !cache && !node);
+    assert(size<=65536u); /* Allocator cannot supply a larger contiguous span. */
     if(++allocs==fail_at)return NULL;
     pa->QuadPart=allocs==alias_at ? 0x10000000LL : 0x30000000LL+(int64_t)allocs*0x1000000LL;
     return aligned_alloc(4096,size);
@@ -82,30 +84,53 @@ static void finish(struct fixture *x)
 }
 int main(void)
 {
-    struct fixture x;struct a04_vendor_native_cold *n=NULL;unsigned i;
+    struct fixture x;struct a04_vendor_native_cold *n=NULL;unsigned i,total;
+    struct a04_vendor_native_diagnostic diag;
     init(&x);
     assert(a04_vendor_native_allocate_cold(&n,&x.r,&x.adapter,1100u,800u,1280u)==STATUS_SUCCESS);
     assert(n && n->backing_staged && n->output_mapped && n->code_mapped==3u);
-    assert(n->output[0].bytes==4096000u && n->used==0x159000u && n->suffix_offset==0x158000u);
+    assert(n->pixel_blocks==63u && n->output[0].bytes==65536u && n->used==0x159000u && n->suffix_offset==0x158000u);
     preserved(&x,1);
     assert(((uint32_t *)x.r.buffer[1].cpu)[A04_NATIVE_OUTPUT_VA>>30]==
         ((uint32_t)((uint64_t)n->output[1].logical.QuadPart>>8)|1u));
     assert(((uint64_t *)n->output[1].cpu)[0]==((uint64_t)n->output[2].logical.QuadPart|1u));
     assert(((uint64_t *)n->output[1].cpu)[1]==((uint64_t)n->output[3].logical.QuadPart|1u));
     assert(((uint64_t *)n->pt.cpu)[((A04_NATIVE_DATA_VA+n->suffix_offset)>>12)&511u]==
-        (((uint64_t)n->data.logical.QuadPart+n->suffix_offset)|A04_GPU_MMU_SLC_BYPASS|1u));
+        (a04_vendor_native_storage_dma(n,0,n->suffix_offset)|A04_GPU_MMU_SLC_BYPASS|1u));
     assert(((uint64_t *)n->pt.cpu)[n->pm_offset[0]/4096u]&A04_GPU_MMU_PM_FW_PROTECT);
     {
         _Alignas(8) struct a04_m111_terminate_stream suffix;
         _Alignas(8) struct a04_m111_clear_codespace code;
         assert(!a04_m111_build_clear_terminate_stream(&suffix,A04_NATIVE_DATA_VA+n->suffix_offset,800,1280));
-        assert(!memcmp((UCHAR *)n->data.cpu+n->suffix_offset,suffix.data,sizeof(suffix.data)));
+        assert(!memcmp(a04_vendor_native_storage_pointer(n,0,n->suffix_offset,sizeof(suffix.data)),suffix.data,sizeof(suffix.data)));
         assert(!a04_m111_build_clear_codespace(&code,A04_NATIVE_USC_VA,A04_NATIVE_PDS_VA,0,n->clear_surface.emit[0],n->clear_surface.emit[1]));
         assert(!memcmp(n->code[0].cpu,code.usc,sizeof(code.usc)) && !memcmp(n->code[1].cpu,code.pds,sizeof(code.pds)));
         assert(n->bindings.pixel_event_info==0x202 && n->bindings.pixel_event_code==0x100a0u);
         assert(((uint64_t *)n->output[2].cpu)[511] && ((uint64_t *)n->output[3].cpu)[487]);
         assert(!((uint64_t *)n->output[3].cpu)[488]);
-        for(i=0;i<4096000u/4u;i++)assert(((uint32_t *)n->output[0].cpu)[i]==0xa5a5a5a5u);
+        for(i=0;i<4096000u/4u;i++)assert(*(uint32_t *)a04_vendor_native_storage_pointer(n,1,i*4u,4u)==0xa5a5a5a5u);
+    }
+    total=allocs;
+    for(i=0;i<n->used/4096u;i++) {
+        uint64_t dma=a04_vendor_native_storage_dma(n,0,i*4096u);
+        uint64_t protect=(i*4096u>=n->pm_offset[0] && i*4096u<n->list_offset[0])?A04_GPU_MMU_PM_FW_PROTECT:0;
+        assert(((uint64_t *)n->pt.cpu)[i]==(dma|A04_GPU_MMU_SLC_BYPASS|protect|1u));
+    }
+    for(i=0;i<1000;i++)assert(((uint64_t *)n->output[2+i/512].cpu)[i%512]==
+        (a04_vendor_native_storage_dma(n,1,i*4096u)|A04_GPU_MMU_SLC_BYPASS|1u));
+    for(i=0;i<296;i++) {
+        unsigned f=i<40?0:1,j=i<40?i:i-40;
+        uint64_t dma=a04_vendor_native_storage_dma(n,0,n->pm_offset[f]+j*4096u);
+        uint32_t *list=a04_vendor_native_storage_pointer(n,0,n->list_offset[f],4096);
+        assert(n->pm_pages[i]==dma && list[j]==(uint32_t)(dma>>12));
+        assert(list[j+(f?256:40)]==list[j]);
+    }
+    {
+        uint32_t input[4]={1,2,3,4},output[4]={0};
+        assert(!a04_vendor_native_storage_write(n,1,65528,input,sizeof(input)));
+        assert(!a04_vendor_native_storage_read(n,1,65528,output,sizeof(output)) && !memcmp(input,output,sizeof(input)));
+        assert(!a04_vendor_native_storage_pointer(n,1,65528,16));
+        assert(a04_vendor_native_storage_read(n,1,A04_NATIVE_OUTPUT_BYTES-4,output,16));
     }
     x.fw.hardware_owned=TRUE;i=frees;
     assert(a04_vendor_native_release_cold(&n)==STATUS_DEVICE_BUSY && n && frees==i);
@@ -124,11 +149,21 @@ int main(void)
     /* Fail the final bank-zero workspace: mappings removed, owner retained. */
     fail_pool=pool_calls+1;
     assert(a04_vendor_native_release_cold(&n)==STATUS_INSUFFICIENT_RESOURCES && n && frees==i && x.r.native_owner==n);
-    fail_pool=0;assert(a04_vendor_native_release_cold(&n)==STATUS_SUCCESS && !n && frees==8u);
+    fail_pool=0;assert(a04_vendor_native_release_cold(&n)==STATUS_SUCCESS && !n && frees==total);
     preserved(&x,0);finish(&x);
-    for(i=1;i<=8;i++) {
+    init(&x);
+    assert(a04_vendor_native_allocate_cold_ex(&n,&x.r,&x.adapter,15,800,1280,&diag)==STATUS_INSUFFICIENT_RESOURCES);
+    assert(!n && !allocs && !pools && diag.stage==A04_NATIVE_PREP_CAPACITY && diag.map_registers==15 && diag.data_bytes==0x159000u);
+    finish(&x);
+    init(&x);
+    assert(a04_vendor_native_allocate_cold_ex(&n,&x.r,&x.adapter,16,800,1280,&diag)==STATUS_SUCCESS);
+    assert(diag.stage==A04_NATIVE_PREP_DONE && diag.status==STATUS_SUCCESS && diag.data_blocks==22 && diag.pixel_blocks==63);
+    assert(a04_vendor_native_release_cold(&n)==STATUS_SUCCESS);finish(&x);
+    for(i=1;i<=total;i++) {
         init(&x);fail_at=i;
-        assert(!NT_SUCCESS(a04_vendor_native_allocate_cold(&n,&x.r,&x.adapter,1100,800,1280)));
+        assert(!NT_SUCCESS(a04_vendor_native_allocate_cold_ex(&n,&x.r,&x.adapter,16,800,1280,&diag)));
+        assert(diag.status==STATUS_INSUFFICIENT_RESOURCES && diag.request_bytes>0 && diag.request_bytes<=65536u);
+        assert(diag.stage==A04_NATIVE_PREP_DATA || diag.stage==A04_NATIVE_PREP_PT || diag.stage==A04_NATIVE_PREP_CODE || diag.stage==A04_NATIVE_PREP_OUTPUT);
         assert(!n && frees==i-1u);preserved(&x,0);finish(&x);
     }
     for(i=1;i<=5;i++) {
@@ -140,7 +175,7 @@ int main(void)
     assert(!NT_SUCCESS(a04_vendor_native_allocate_cold(&n,&x.r,&x.adapter,1100,800,1280)) && !n);
     assert(((uint32_t *)x.r.buffer[1].cpu)[A04_NATIVE_OUTPUT_VA>>30]==0xabcdef01u);
     ((uint32_t *)x.r.buffer[1].cpu)[A04_NATIVE_OUTPUT_VA>>30]=0;preserved(&x,0);finish(&x);
-    for(i=1;i<=8;i++) {
+    for(i=1;i<=total;i++) {
         pid_t child=fork();int status;assert(child>=0);
         if(!child) {
             init(&x);alias_at=i;

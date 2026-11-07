@@ -8,6 +8,25 @@
 struct a04_vendor_native_cold;
 struct a04_vendor_render_cold;
 struct a04_m111_hwrt_input;
+/* Returned even when the child was fully unwound; no raw CPU pointer. */
+struct a04_vendor_native_diagnostic {
+    ULONG stage,index,request_bytes,map_registers,data_bytes,data_blocks,pixel_blocks;
+    NTSTATUS status;
+};
+#define A04_NATIVE_PREP_OWNER 1u
+#define A04_NATIVE_PREP_CAPACITY 2u
+#define A04_NATIVE_PREP_DATA 3u
+#define A04_NATIVE_PREP_PT 4u
+#define A04_NATIVE_PREP_SHADOW 5u
+#define A04_NATIVE_PREP_MAP 6u
+#define A04_NATIVE_PREP_BANK 7u
+#define A04_NATIVE_PREP_CODE 8u
+#define A04_NATIVE_PREP_OUTPUT 9u
+#define A04_NATIVE_PREP_JOB 10u
+#define A04_NATIVE_PREP_DONE 11u
+NTSTATUS a04_vendor_native_allocate_cold_ex(struct a04_vendor_native_cold **,
+    struct a04_vendor_render_cold *,PDMA_ADAPTER,ULONG,ULONG,ULONG,
+    struct a04_vendor_native_diagnostic *);
 /* Opaque boundary: m1.11 DDK types must not enter the modern FWIF provider TU.
  * The allocation is retained once the parent is hardware-owned. */
 NTSTATUS a04_vendor_native_allocate_cold(struct a04_vendor_native_cold **,

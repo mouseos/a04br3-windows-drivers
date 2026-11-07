@@ -11,12 +11,12 @@ $env:A04_GE8300_VENDOR_NATIVE_BACKING='1'
 $env:A04_GE8300_VENDOR_NATIVE_CLEAR_JOB='1'
 $env:A04_GE8300_VENDOR_COPY_SERVICE='1'
 # 選択中packageのinventoryから設定する。保持ファイル名だけで決めない。
-$env:A04_GE8300_INSTALLED_DRIVER_VER='11/06/2026,0.0.1.3'
-$env:A04_GE8300_INSTALLED_SYS_SHA256='9c3c7d846565c0e5e73c2afe1d4d9900089f74bbe92d97ff8d1627729321265e'
+$env:A04_GE8300_INSTALLED_DRIVER_VER='11/07/2026,0.0.2.1'
+$env:A04_GE8300_INSTALLED_SYS_SHA256='13c8a9ca6b6d7fef921afd38d60cf84ea8e37b599b51af82d6e90342d8b9da07'
 ./tools/ci/build-ge8300-provider.ps1
 ```
 
-上記baselineのSYS hashはrun27 fresh backupと保持853abc2 packageで一致した値。INF DriverVerはその保持packageの値であり、実機で選択されたINF情報との照合を適用前に別途必須とする。新source INFは11/07/2026,0.0.2.1へ更新した。buildはbaselineより新しいversionと同日以降の日付を要求する。将来baselineが上がれば、再度source INFを更新してcommitする。同版packageを再配布しない。
+上記baselineはrun29で初回起動traceまで到達した04d0e57署名package。実機で選択されたINF情報と回収SYSの照合は適用前に別途必須とする。新source INFは11/07/2026,0.0.2.2へ更新した。buildはbaselineより新しいversionと同日以降の日付を要求する。将来baselineが上がれば、再度source INFを更新してcommitする。同版packageを再配布しない。
 
 既存のVendorStage/UncachedStage/RenderCold/CopyDiagnostic/SharedLease/CopyService依存は維持する。NativeClearJob未指定では従来1280 backing、指定時だけHWRTを含め800x600で準備する。output backingは従来4,096,000 bytesのまま、先頭480,000 pixelsをclear対象、残部544,000 pixelsをguardとして扱う。
 
@@ -28,7 +28,7 @@ $env:A04_GE8300_INSTALLED_SYS_SHA256='9c3c7d846565c0e5e73c2afe1d4d9900089f74bbe9
   -InstalledSysSha256 $env:A04_GE8300_INSTALLED_SYS_SHA256
 ```
 
-provider-package-manifest.jsonは最終署名済SYS/INF/catalog/FWのSHA256、DriverVer、source commit、baselineを固定する。build-config.jsonのSYS hashは署名前と明記し、署名後hashと混同しない。適用後のselected INF DriverVerとSYS hashが最終manifestに一致して初めてnative candidate適用済みとする。現在の実機GPU成功は旧copy providerで、native未適用。
+provider-package-manifest.jsonは最終署名済SYS/INF/catalog/FWのSHA256、DriverVer、source commit、baselineを固定する。build-config.jsonのSYS hashは署名前と明記し、署名後hashと混同しない。適用後のselected INF DriverVerとSYS hashが最終manifestに一致して初めてnative candidate適用済みとする。run29ではnative provider初回起動に到達したが、cold preparationがC000009Aで失敗し、TA/3Dは未実行。実GPUの3D成功証拠はまだない。
 
 ## cold準備とgate
 
@@ -49,9 +49,9 @@ $env:A04_GE8300_VENDOR_START_DIAGNOSTIC='1'
 $env:A04_GE8300_SHARED_LEASE='1'
 ```
 
-build-configと署名後manifestは`native_clear_activate=1`と`armed-one-shot-private-480000`を記録する。0なら`closed`。INF DriverVerは0.0.2.1へ更新済み。署名済SYS/INF/DriverVerが適用先と一致してから、この1回試験candidateと扱う。
+build-configと署名後manifestは`native_clear_activate=1`と`armed-one-shot-private-480000`を記録する。0なら`closed`。INF DriverVerは0.0.2.2へ更新済み。署名済SYS/INF/DriverVerが適用先と一致してから、この1回試験candidateと扱う。
 
-UARTはcold準備時`TA3D_GATE=ARMED_ONE_SHOT`、実行直前`NATIVE CLEAR BEGIN PRIVATE=480000`、終了時`NATIVE CLEAR STATUS/PHASE/MATCH/MISMATCH/GUARD`を出す。成功条件はstatus成功、phase4、match480000、mismatch0、guard0。実行前の所有条件不成立はSKIP=ADMISSIONであり成功ではない。
+UARTはcold準備成功かつjob staged時だけ`TA3D_GATE=ARMED_ONE_SHOT`、未準備時は`CLOSED_PREPARATION`、実行直前`NATIVE CLEAR BEGIN PRIVATE=480000`、終了時`NATIVE CLEAR STATUS/PHASE/MATCH/MISMATCH/GUARD`を出す。成功条件はstatus成功、phase4、match480000、mismatch0、guard0。実行前の所有条件不成立はSKIP=ADMISSIONであり成功ではない。preparation失敗かつchild完全cleanup時は、copy parentを維持してnative callerを呼ばない。失敗childが残存するときはFW start前に停止してDMAを保持する。
 
 試験失敗はpublic wrapperでもpoison/quarantineを維持し、GPU service onlineを許可せずadmissionを永久closedにする。既存D0 PostInterruptsはSTATUS_SUCCESSでPnPへ返し、GPU未取得のDODには通常のCPU pathを残す。FW所有DMAは解放せず、未証明の`vendor_cpu_fallback=TRUE`を強制しない。UART reset経路を変更しない。Engine/service/IOCTLから任意packetやrepeatを送るentryは追加しない。
 
@@ -64,3 +64,15 @@ Windows ownerが実際にzeroを書いたregion128/stencil2048 bytesをFW開始�
 ## 検証の範囲
 
 host OS stubはallocator/IRQL等だけ。実producer、mapper、Device-word helpers、pair builderを使うcold ownerテストを実施する。FWモデルでは正常完了、timeout、画素不一致、cleanup未完了、one-shotとDMA保持を検証する。モデルはGPU実行の証拠ではない。WDK compile/link、署名、実Windows適用と描画は主担当runner/実機で未実施。source/host review後、明示activation=1のWDK build/署名と1回のprivate clear試験へ進む。WDK/実機を実施する権限は主担当が所有する。
+
+## run29 preparation修正候補
+
+04d0e57はGeneral 0x13c000 bytes、output 4,096,000 bytesを各1回のcommon-bufferで確保し、General全量+3pagesのCPU shadowも要求していた。C000009Aはowner/CPU pool/common-buffer/map-register capacityのどこからでも返る。run29はBYTES=0/STAGED=0なので、cleanup済みという観測だけから失敗した個別allocationを断定できない。stagedを確認せずcallerへ進み、C0000184を実行失敗としてpoisonしたgate欠陥はsourceとtraceから確定する。
+
+新ownerは容量と正規化GPU VAを維持し、General/outputを最大64KiBの独立した実common-bufferへ分割する。800x600 Generalは20 blocks（最後48KiB）、outputは63 blocks（最後32KiB）。CPU pointerはblockを越えて合成せず、各PTEとPM PFN/mirrorは実adapter logical addressから作る。General zero/table stagingは16KiB、output table/sentinel stagingは20KiB。map-register capacityは最大の単一common-buffer要求16pagesに対して検査する。総数1000pagesを単一転送の必要数とは扱わない。これは総容量削減ではなく、連続確保依存の除去であり、実Windowsでの確保成功は未確認。
+
+`NATIVE PREP STATUS/STEP/INDEX/REQUEST/MAPS/DATA_BYTES/DATA_BLOCKS/PIXEL_BLOCKS`はcleanup後も残す。STEPはpublic headerのOWNER=1、CAPACITY=2、DATA=3、PT=4、SHADOW=5、MAP=6、BANK=7、CODE=8、OUTPUT=9、JOB=10、DONE=11。INDEXはblock/code番号、output tableは65..67、output shadowはFFFFFFFF。REQUESTはその操作の要求bytes。JOBはcandidate pool要求。失敗段階と正のallocation数を同一bootで観測し、同条件の無根拠retryを避ける。
+
+hostでは64KiB超のDMA/CPU pool要求を拒否し、block間DMAを16MiB離したallocatorを使用する。全PTE/PM PFN/mirror、block境界転送、全DMA確保箇所の失敗cleanup/alias quarantine、未prepared caller不実行、retained childのFW開始阻止、publish後timeout/画素不一致/cleanup未完了のpoison保持を確認する。host結果はWDK compile/linkや実GPU描画の代わりにはしない。
+
+次のWDKは既存copy flagsを保ちNATIVE_BACKING/JOB/CLEAR_ACTIVATE=1、baseline0.0.2.1/SYS13c8、新INF0.0.2.2で1回だけ固定sourceから生成する。署名後verifyと実選択package照合を済ませ、主担当のprivate clear試験へ渡す。実機UARTのpreparation結果が未確定の間はWindows 3D成功と報告しない。
