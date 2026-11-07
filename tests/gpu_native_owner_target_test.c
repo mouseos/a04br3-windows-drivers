@@ -3,6 +3,7 @@
 #include "gpu_vendor_windows_native_backing_test.c"
 #undef main
 #include "native_owner_mdl.h"
+#include "windows_native_job_private.h"
 static unsigned holds,sg_gets,sg_puts;
 void KeStallExecutionProcessor(unsigned us){(void)us;assert(!"cold target test must not execute GPU");}
 static NTSTATUS retain_mdl(void *ctx,PMDL mdl){assert(ctx==mdl && !holds);holds++;return STATUS_SUCCESS;}
@@ -20,7 +21,7 @@ static NTSTATUS get_sg(PDMA_ADAPTER a,PDEVICE_OBJECT pdo,PMDL m,void *va,ULONG b
     sg->Elements[0].Length=bytes;cb(pdo,NULL,sg,ctx);return STATUS_SUCCESS;
 }
 static void put_sg(PDMA_ADAPTER a,PSCATTER_GATHER_LIST sg,BOOLEAN w){(void)a;assert(!w);sg_puts++;free(sg);}
-static void run(int exposed)
+static void run(int exposed,uint64_t aperture_offset,uint32_t color)
 {
     struct fixture x;struct a04_vendor_native_cold *n=NULL;struct a04_native_mdl_binding *b=NULL;
     struct fake_mdl mdl={0};PFN_NUMBER pfns[469];struct a04_native_mdl_lease lease={&mdl,retain_mdl,drop_mdl};
@@ -32,12 +33,29 @@ static void run(int exposed)
     for(unsigned i=0;i<469;i++)pfns[i]=0x2000+i+(i/16)*0x100;
     assert(a04_native_mdl_bind(&b,&x.adapter,&x,&mdl,mdl.bytes,&lease)==STATUS_SUCCESS);
     unsigned old=frees;
-    assert(a04_vendor_native_attach_mdl_target_cold(n,b)==STATUS_SUCCESS && n->registered_target==b && !n->pixel_blocks && frees-old==63);
+    struct a04_native_target_aperture aperture;
+    assert(a04_vendor_native_target_aperture(n,&aperture)==STATUS_SUCCESS);
+    assert(aperture.gpu_base==A04_NATIVE_OUTPUT_VA && aperture.bytes==1024u*4096u &&
+        aperture.commit_limit==mdl.bytes && aperture.highest_dma_address==0xffffffffu);
+    assert(a04_vendor_native_attach_mdl_target_at_cold(n,b,1,color)==STATUS_INVALID_PARAMETER);
+    assert(a04_vendor_native_attach_mdl_target_at_cold(n,b,556u*4096u,color)==STATUS_INVALID_PARAMETER);
+    assert(a04_vendor_native_attach_mdl_target_at_cold(n,b,UINT64_MAX-4095u,color)==STATUS_INVALID_PARAMETER);
+    assert(!n->registered_target && n->pixel_blocks==63 && frees==old);
+    assert(a04_vendor_native_attach_mdl_target_at_cold(n,b,aperture_offset,color)==STATUS_SUCCESS &&
+        n->registered_target==b && !n->pixel_blocks && frees-old==63);
+    assert(a04_vendor_native_output_gpu(n)==A04_NATIVE_OUTPUT_VA+aperture_offset);
+    uint64_t eot=0;memcpy(&eot,n->candidate->job.code.pds+0x88,8);
+    assert((eot&UINT64_C(0x3fffffffff))==(A04_NATIVE_OUTPUT_VA+aperture_offset)/4u);
+    uint32_t shared=0,fast=0;
+    memcpy(&shared,n->candidate->job.code.pds+0x40,4);memcpy(&fast,n->candidate->job.three+4,4);
+    assert(shared==color && fast==color && n->candidate->clear_pixel==color);
+    assert(!memcmp(n->code[1].cpu,n->candidate->job.code.pds,sizeof(n->candidate->job.code.pds)));
     assert(a04_vendor_native_output_ready(n) && a04_vendor_native_output_bytes(n)==mdl.bytes);
     assert(a04_vendor_native_storage_pointer(n,1,0,mdl.bytes)==mdl.va);
     for(unsigned i=0;i<1024;i++){
         uint64_t observed=((uint64_t *)n->output[2+i/512].cpu)[i%512];
-        assert(observed==(i<469?((uint64_t)pfns[i]*4096|A04_GPU_MMU_SLC_BYPASS|1u):0));
+        unsigned first=(unsigned)(aperture_offset/4096u);
+        assert(observed==(i>=first && i-first<469?((uint64_t)pfns[i-first]*4096|A04_GPU_MMU_SLC_BYPASS|1u):0));
     }
     for(unsigned i=0;i<mdl.bytes;i++)assert(((UCHAR *)mdl.va)[i]==0xa5);
     assert(a04_native_mdl_release_cold(&b)==STATUS_DEVICE_BUSY && b);
@@ -52,7 +70,10 @@ static void run(int exposed)
 }
 int main(void)
 {
-    run(0);pid_t pid=fork();int status;assert(pid>=0);if(!pid)run(1);
+    run(0,0,0xff332211u);
+    run(0,500u*4096u,0x7f25a9e3u); /* crosses the actual two PT leaves */
+    run(0,555u*4096u,0u); /* last valid aperture interval, transparent black */
+    pid_t pid=fork();int status;assert(pid>=0);if(!pid)run(1,500u*4096u,0xffaabbccu);
     assert(waitpid(pid,&status,0)==pid && WIFEXITED(status) && !WEXITSTATUS(status));
-    puts("same-MDL native target: exact SG/PTE, no private output, Normal CPU sentinel, cold detach/exposed retain PASS; no GPU");return 0;
+    puts("same-MDL native target: exact aperture offset/cross-leaf SG/PTE, relocated PBE/packedARGB, bad ranges unchanged, cold detach/exposed retain PASS; no GPU");return 0;
 }

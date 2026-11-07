@@ -49,7 +49,7 @@ static int zeros(volatile void *source,unsigned bytes)
     }
     return 0;
 }
-NTSTATUS a04_vendor_native_prepare_job_cold(struct a04_vendor_native_cold *n)
+static NTSTATUS prepare_job_cold(struct a04_vendor_native_cold *n,uint32_t pixel)
 {
     struct a04_vendor_render_cold *r;struct a04_vendor_native_candidate *c;
     struct a04_m111_clear_job_input input={0};struct a04_m111_pair_input p={0};
@@ -111,11 +111,17 @@ NTSTATUS a04_vendor_native_prepare_job_cold(struct a04_vendor_native_cold *n)
            a04_m111_build_freelist(&fl,entries,512u,&fl_input,n->pm_pages+(i?40:0),1) ||
            matches(a04_vendor_native_storage_pointer(n,0,n->list_offset[i],pages*8u),entries,pages*8u))goto fail;
     }
-    input.output_gpu=A04_NATIVE_OUTPUT_VA;input.data_page_gpu=A04_NATIVE_DATA_VA+n->suffix_offset;
+    input.output_gpu=a04_vendor_native_output_gpu(n);input.data_page_gpu=A04_NATIVE_DATA_VA+n->suffix_offset;
     input.usc_page_gpu=A04_NATIVE_USC_VA;input.pds_page_gpu=A04_NATIVE_PDS_VA;
     input.dummy_region_gpu=n->auxiliary.dummy_region_gpu;input.dummy_stencil_gpu=n->auxiliary.dummy_stencil_gpu;
     input.hwrt_fw=n->addresses.hwrt[0];input.pr_fence_fw=0xc0084c00u;
-    input.rgba[0]=17;input.rgba[1]=34;input.rgba[2]=51;input.rgba[3]=255;
+    /* Native PBE output is byte-addressed RGBA8. For D3DDDIFMT_A8R8G8B8
+     * the desired memory bytes are B,G,R,A: use the packed DWORD verbatim,
+     * not a semantic channel swap hidden in the DOD/copy transport. */
+    for(i=0;i<4;i++)input.rgba[i]=(uint8_t)(pixel>>(i*8));
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+    c->clear_pixel=pixel;
+#endif
     if(a04_m111_build_clear_job_800x600_cold(&c->job,&input))goto fail;
 #if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
     if(a04_m111_build_triangle_suite(&c->triangle,&input,(uint8_t *)c+sizeof(*c),8192u))goto fail;
@@ -149,6 +155,12 @@ NTSTATUS a04_vendor_native_prepare_job_cold(struct a04_vendor_native_cold *n)
 fail:
     ExFreePoolWithTag(c,JOB_TAG);return status;
 }
+NTSTATUS a04_vendor_native_prepare_job_cold(struct a04_vendor_native_cold *n)
+{ return prepare_job_cold(n,0xff332211u); }
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+NTSTATUS a04_vendor_native_prepare_job_cold_colour(struct a04_vendor_native_cold *n,uint32_t argb)
+{ return prepare_job_cold(n,argb); }
+#endif
 void a04_vendor_native_free_job_cold(struct a04_vendor_native_cold *n)
 {
     /* Called only by release_contents after hardware-owned/quarantine checks. */

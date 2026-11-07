@@ -8,6 +8,15 @@
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
 #include "native_owner_mdl.h"
 #endif
+uint64_t a04_vendor_native_output_gpu(const struct a04_vendor_native_cold *n)
+{
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+    if(n && n->registered_target)return A04_NATIVE_OUTPUT_VA+n->target_offset;
+#else
+    (void)n;
+#endif
+    return A04_NATIVE_OUTPUT_VA;
+}
 ULONG a04_vendor_native_output_bytes(const struct a04_vendor_native_cold *n)
 {
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET

@@ -29,6 +29,9 @@ struct a04_vendor_native_cold {
     struct a04_m111_clear_code_bindings bindings;
     struct a04_vendor_native_candidate *candidate;
     struct a04_native_mdl_binding *registered_target;
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+    uint64_t target_offset;
+#endif
     ULONG suffix_offset;
     BOOLEAN output_mapped,backing_staged,quarantined;
     ULONG code_mapped; /* owned USC/PDS PTEs; retained after firmware exposure */
@@ -54,6 +57,10 @@ int a04_vendor_native_storage_write(struct a04_vendor_native_cold *,int,ULONG,co
 int a04_vendor_native_storage_read(struct a04_vendor_native_cold *,int,ULONG,void *,ULONG);
 void a04_vendor_native_diagnose(struct a04_vendor_native_cold *,ULONG,ULONG,ULONG);
 NTSTATUS a04_vendor_native_prepare_job_cold(struct a04_vendor_native_cold *);
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+NTSTATUS a04_vendor_native_prepare_job_cold_colour(struct a04_vendor_native_cold *,uint32_t);
+#endif
+uint64_t a04_vendor_native_output_gpu(const struct a04_vendor_native_cold *);
 void a04_vendor_native_free_job_cold(struct a04_vendor_native_cold *);
 
 NTSTATUS a04_vendor_native_reserve_code_cold(struct a04_vendor_native_cold *,PDMA_ADAPTER);

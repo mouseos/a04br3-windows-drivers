@@ -133,6 +133,8 @@ NTSTATUS a04_vendor_native_publish_candidate(struct a04_vendor_native_cold *n,
 #if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
                 expected=a04_m111_triangle_expected_pixel(c->completed_frames,index);
                 colored=c->completed_frames?0xffcc9933u:0xff6633ccu;
+#elif A04_GE8300_NATIVE_OWNER_MDL_TARGET
+                expected=colored=c->clear_pixel;
 #else
                 expected=colored=0xff332211u;
 #endif

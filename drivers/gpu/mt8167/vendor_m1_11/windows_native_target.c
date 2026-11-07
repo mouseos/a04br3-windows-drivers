@@ -17,11 +17,23 @@ static int clash(const struct a04_vendor_uncached *a,const uint64_t *pages,ULONG
     for(i=0;i<count;i++)if(a04_rgx_fw_overlap((uint64_t)a->logical.QuadPart,a->bytes,pages[i],4096))return 1;
     return 0;
 }
-NTSTATUS a04_vendor_native_attach_mdl_target_cold(struct a04_vendor_native_cold *n,
-    struct a04_native_mdl_binding *target)
+NTSTATUS a04_vendor_native_target_aperture(const struct a04_vendor_native_cold *n,
+    struct a04_native_target_aperture *out)
+{
+    struct a04_native_target_aperture made={A04_NATIVE_OUTPUT_VA,1024u*4096u,469u*4096u,UINT64_C(0xffffffff)};
+    if(!n || !out || KeGetCurrentIrql()!=PASSIVE_LEVEL || !n->render ||
+       !n->render->firmware || n->render->native_owner!=n || !n->prepared ||
+       !n->output_mapped || n->quarantined || n->render->poisoned ||
+       !n->output[1].cpu || !n->output[2].cpu || !n->output[3].cpu)
+        return STATUS_INVALID_DEVICE_STATE;
+    *out=made;return STATUS_SUCCESS;
+}
+NTSTATUS a04_vendor_native_attach_mdl_target_at_cold(struct a04_vendor_native_cold *n,
+    struct a04_native_mdl_binding *target,uint64_t aperture_offset,uint32_t packed_argb)
 {
     struct a04_vendor_render_cold *r;const uint64_t *pages;uint64_t *pt;
-    _Alignas(8) uint64_t seen[32];ULONG i,j,count,bytes;void *cpu;NTSTATUS status;
+    _Alignas(8) uint64_t seen[32];ULONG i,j,count,bytes,first;void *cpu;NTSTATUS status;
+    struct a04_m111_clear_surface surface;
     if(!n || !target || KeGetCurrentIrql()!=PASSIVE_LEVEL || !(r=n->render) || r->native_owner!=n ||
        !r->firmware || r->firmware->hardware_owned || n->quarantined || r->poisoned ||
        n->registered_target || !n->prepared || !n->backing_staged || !n->output_mapped ||
@@ -29,6 +41,16 @@ NTSTATUS a04_vendor_native_attach_mdl_target_cold(struct a04_vendor_native_cold 
        a04_native_mdl_adapter(target)!=r->firmware->adapter)return STATUS_INVALID_DEVICE_STATE;
     pages=a04_native_mdl_pages(target,&count);bytes=a04_native_mdl_extent(target);cpu=a04_native_mdl_cpu(target);
     if(!pages || !cpu || bytes!=((800u*600u*4u+4095u)&~4095u) || count!=bytes/4096u)return STATUS_INVALID_PARAMETER;
+    if((aperture_offset&4095u) || aperture_offset>1024u*4096u ||
+       bytes>1024u*4096u-aperture_offset ||
+       a04_m111_build_clear_surface(&surface,A04_NATIVE_OUTPUT_VA+aperture_offset,800,600,800))
+        return STATUS_INVALID_PARAMETER;
+    first=(ULONG)(aperture_offset/4096u);
+#if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
+    /* This is the packed-clear owner bind, not a way to relabel the private
+     * triangle diagnostic as a D3D clear operation. */
+    return STATUS_NOT_SUPPORTED;
+#endif
     if(a04_rgx_fw_alias(cpu,bytes,n,sizeof(*n)) || a04_rgx_fw_alias(cpu,bytes,r,sizeof(*r)))return STATUS_DEVICE_CONFIGURATION_ERROR;
     for(i=0;i<16;i++)if(clash(&r->buffer[i],pages,count,cpu,bytes))return STATUS_DEVICE_CONFIGURATION_ERROR;
     for(i=0;i<n->data_blocks;i++)if(clash(a04_vendor_native_block(n,0,i),pages,count,cpu,bytes))return STATUS_DEVICE_CONFIGURATION_ERROR;
@@ -49,8 +71,8 @@ NTSTATUS a04_vendor_native_attach_mdl_target_cold(struct a04_vendor_native_cold 
     }
     status=a04_native_mdl_hold_cold(target);if(!NT_SUCCESS(status))goto done;
     /* Record ownership before any potentially partial PT write. */
-    n->registered_target=target;
-    for(i=0;i<1024;i++)pt[i]=i<count?(pages[i]|A04_GPU_MMU_SLC_BYPASS|1u):0;
+    n->registered_target=target;n->target_offset=aperture_offset;
+    for(i=0;i<1024;i++)pt[i]=i>=first && i-first<count?(pages[i-first]|A04_GPU_MMU_SLC_BYPASS|1u):0;
     RtlFillMemory(cpu,bytes,0xa5);
     status=a04_native_mdl_sync_for_gpu(target);if(!NT_SUCCESS(status))goto poison;
     if(a04_rgx_device_write_words(n->output[2].cpu,pt,4096) ||
@@ -62,12 +84,22 @@ NTSTATUS a04_vendor_native_attach_mdl_target_cold(struct a04_vendor_native_cold 
     }
     /* Firmware was never started; both PTs now reference only the real MDL.
      * Drop the old private pixel common buffers; retain PD/PT/code/HWRT. */
-    a04_vendor_native_storage_free(n,1);status=STATUS_SUCCESS;goto done;
+    a04_vendor_native_storage_free(n,1);
+    /* The old job encoded a different output VA/colour. Rebuild and verify
+     * every dependent record, EOT/PBE program and ring while FW is still cold.
+     * No old private destination survives into an admitted owner job. */
+    a04_vendor_native_free_job_cold(n);
+    status=a04_vendor_native_prepare_job_cold_colour(n,packed_argb);
+    if(!NT_SUCCESS(status))goto poison;
+    n->clear_surface=surface;status=STATUS_SUCCESS;goto done;
 poison:
     n->quarantined=TRUE;r->poisoned=TRUE;
 done:
     ExFreePoolWithTag(pt,TAG);return status;
 }
+NTSTATUS a04_vendor_native_attach_mdl_target_cold(struct a04_vendor_native_cold *n,
+    struct a04_native_mdl_binding *target)
+{ return a04_vendor_native_attach_mdl_target_at_cold(n,target,0,0xff332211u); }
 NTSTATUS a04_vendor_native_target_before_fw_start(struct a04_vendor_native_cold *n)
 {
     if(!n || !n->render || !n->render->firmware || n->render->firmware->hardware_owned ||
