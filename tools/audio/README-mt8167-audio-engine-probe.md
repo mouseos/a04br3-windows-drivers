@@ -234,3 +234,7 @@ run49のd0ebは2 WASAPI pass/StopがS_OK、clock前進を記録した後、全sn
 per-row UART IOCTLは行わず、serviceのprocess start/endと保存ログ/nativeを使う。
 上限延長、kernel/parent再compile、任意path/argsや偽の可聴判定は追加しない。
 API Stopとterminal snapshotは別に記録し、bus drain/物理speaker音を証明しない。
+
+集計DMA/IRQ/API結果は代表dumpより先にevidence-summaryとして書き出しflushする。
+これは途中証拠であり、最終summary/end・process exit・file flushと区別する。
+Audio1007のSYS/親の動作は変更しない。
