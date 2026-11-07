@@ -21,6 +21,7 @@ struct a04_bq_owner {
     int handoff_pending; /* 0 established, 1 firmware handoff, 2 cold diagnostic */
     unsigned attempts, kicks, fault_history;
     int stopped;
+    unsigned cold_profile_attempted; /* private owner latch; not part of wire ABI */
 };
 enum a04_bq_result {
     A04_BQ_OK, A04_BQ_INVALID, A04_BQ_STOPPED, A04_BQ_DEADLINE,

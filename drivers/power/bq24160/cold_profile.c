@@ -11,10 +11,13 @@ int a04_bq_cold_profile(struct a04_bq_owner *o,const struct a04_bq_recovery_io *
     if(!r)return -1;
     memset(r,0,sizeof(*r));
     if(!o || !io || !io->now_ns || !io->read || !io->write || o->stopped ||
-       o->handoff_pending!=2 || o->attempts || o->kicks || o->firmware_kicks)return -1;
+       o->handoff_pending!=2 || o->attempts || o->kicks || o->firmware_kicks || o->cold_profile_attempted)return -1;
     start=previous=io->now_ns(io->context);r->before.at=start;
 #define TIME() do {now=io->now_ns(io->context);if(now<previous || now>=o->handoff_deadline || now-start>=1000000000ULL)goto fail;previous=now;}while(0)
     TIME();
+    /* First read can start the hardware watchdog. Consume before that read;
+     * success must not permit a second configuration before the first kick. */
+    o->cold_profile_attempted=1;
     for(i=0;i<8;i++) {
         TIME();if(io->read(io->context,(uint8_t)i,&r->before.raw[i]))goto fail;
         r->before.valid|=1u<<i;r->stage=i+1;

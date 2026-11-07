@@ -13,6 +13,9 @@ int main(void){
  struct fixture f;struct a04_bq_owner o;struct a04_bq_cold_profile_result r;
  struct a04_bq_recovery_io io={&f,clock_ns,read_reg,write_reg};
  setup(&f,&o);assert(!a04_bq_cold_profile(&o,&io,&r)&&r.stage==17&&f.writes==4&&o.handoff_pending==2&&!o.kicks);
+ { unsigned reads=f.reads,writes=f.writes;
+   assert(o.cold_profile_attempted && a04_bq_cold_profile(&o,&io,&r));
+   assert(f.reads==reads && f.writes==writes && !o.stopped); }
  setup(&f,&o);f.raw[1]=2;assert(a04_bq_cold_profile(&o,&io,&r)&&!f.writes&&o.stopped); /* BATOVP: no HiZ or restore */
  setup(&f,&o);f.fail_write=2;assert(a04_bq_cold_profile(&o,&io,&r)&&f.writes==2&&r.stage==10&&o.stopped&&o.latest.valid==255);
  setup(&f,&o);o.handoff_pending=0;assert(a04_bq_cold_profile(&o,&io,&r)&&!f.reads&&!f.writes);

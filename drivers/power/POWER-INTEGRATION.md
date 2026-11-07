@@ -116,3 +116,12 @@ wrapperで拒否する。親1012 thermal0.0.1.2を次batchに投入しない。
 詳細はmt8167-thermal/OWNERSHIP-EVIDENCE.mdのsuperseding節。
 新native0.0.1.3はPnP startを拒否し、温度interfaceを公開しない安全な未対応binding。
 BQの既存候補/署名SYS/CAT、SD1010 tupleは変更しない。この修正のために親を再buildしない。
+
+## BQ cold設定の一回消費修正
+
+cold_profileは成功後もattempts/kicksが0のため、従来は最初のkick前に
+同じownerから再設定できた。private cold_profile_attemptedを最初のread前に消費し、
+成功/失敗とも再実行を禁止する。wire ABIや設定値/入力制限/停止record資格は非変更。
+INFは0.0.1.3。新build-bq-only-candidate.ps1はObserve既定、ColdLinux100明示時だけ
+設定を行うcandidateを生成し、SYS署名後CAT再生成/SYS・INF所属検証まで実行する。
+親/thermalをbuildせず、既存SYS/ZIPを上書きしない。実充電・resume成功は未確認。
