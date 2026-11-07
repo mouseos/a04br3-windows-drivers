@@ -40,7 +40,7 @@ int KbSessionEp0Interrupt(KB_SESSION *s)
     (s->speed==0x40 && s->enumeration.max_packet0!=64)))return failed(s);
  if(prior==KB_ADDRESS)s->delay_ms(s->client,2);
  if(s->enumeration.stage!=KB_READY)return submit(s);
- if(KbRxConfigure(&s->io,1,s->enumeration.endpoint,s->enumeration.endpoint_packet,s->enumeration.interval,s->speed))return failed(s);
+ if(KbRxConfigureBoot(&s->io,1,s->enumeration.endpoint,s->enumeration.endpoint_packet,s->enumeration.interval,s->speed,s->enumeration.protocol))return failed(s);
  return 1;
 }
 int KbSessionRequestReport(KB_SESSION *s)
@@ -49,6 +49,6 @@ int KbSessionRxInterrupt(KB_SESSION *s)
 {
  unsigned char report[8]; int result;
  if(!s || s->enumeration.stage!=KB_READY)return -1;
- result=KbRxComplete(&s->io,report); if(result<0)return failed(s);if(result!=1)return result;
+ result=KbRxCompleteBoot(&s->io,report,s->enumeration.protocol,s->enumeration.endpoint_packet); if(result<0)return failed(s);if(result!=1)return result;
  return s->report(s->client,report)?failed(s):1;
 }

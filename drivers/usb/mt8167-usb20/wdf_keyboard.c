@@ -1,10 +1,11 @@
-/* Diagnostic HID transport for one MT8167 USB boot keyboard. This is not a
- * general USB host driver. It is not packaged until a board owner connects
- * KbHidReport/KbHidDisconnected to a qualified MUSB controller lifetime. */
+/* MediaTek MT8167 USB20 boot HID transport, owned by the shared parent.
+ * One directly attached boot interface; optional mouse support uses separate
+ * Windows report IDs/TLCs. No hub or general HID report-descriptor parser. */
 #include <ntddk.h>
 #include <wdf.h>
 #include <hidport.h>
 #include "keyboard.h"
+#include "boot_hid.h"
 #include "keyboard_session.h"
 #include "keyboard_port.h"
 #include "wdf_controller.h"
@@ -23,9 +24,9 @@
 C_ASSERT(sizeof(HID_DESCRIPTOR)==9);
 #define REPORT_SLOTS 32u
 typedef struct {
- WDFWAITLOCK lock; WDFQUEUE reads; UCHAR reports[REPORT_SLOTS][8];
+ WDFWAITLOCK lock; WDFQUEUE reads; UCHAR reports[REPORT_SLOTS][A04_HID_INPUT_BYTES];
  volatile LONG trace_seen,trace_write_status; LARGE_INTEGER trace_started;
- unsigned head,count,input_reports; BOOLEAN connected,overflow,draining; KB_SESSION session; KB_PORT port; A04_USB_WDF *usb; WDFWAITLOCK controller_lock; WDFTIMER poll; BOOLEAN board_owned, board_fault; int admission, last_admission; A04_USB_BOARD board; A04_SHARED_USB_INTERFACE shared; BOOLEAN shared_valid;
+ unsigned head,count,input_reports,mouse_buttons; BOOLEAN connected,overflow,draining; KB_SESSION session; KB_PORT port; A04_USB_WDF *usb; WDFWAITLOCK controller_lock; WDFTIMER poll; BOOLEAN board_owned, board_fault; int admission, last_admission; A04_USB_BOARD board; A04_SHARED_USB_INTERFACE shared; BOOLEAN shared_valid;
 #if A04_MUSB_HID_CONTROL_EXPERIMENT
  WDFQUEUE controls; struct a04_control_host control; struct a04_control_request control_request;
  UCHAR control_data[8]; BOOLEAN control_ready,control_busy,control_poisoned,control_output; ULONGLONG control_deadline;
@@ -88,7 +89,7 @@ static NTSTATUS CopyOutput(WDFREQUEST request,const void *p,size_t n)
 }
 static void Drain(WDFDEVICE dev)
 {
- KB_HID_CONTEXT *c=KbHidContext(dev); WDFREQUEST r; UCHAR report[8]; NTSTATUS status;
+ KB_HID_CONTEXT *c=KbHidContext(dev); WDFREQUEST r; UCHAR report[A04_HID_INPUT_BYTES]; NTSTATUS status;
  WdfWaitLockAcquire(c->lock,NULL);
  if(c->draining) { WdfWaitLockRelease(c->lock); return; }
  c->draining=TRUE; WdfWaitLockRelease(c->lock);
@@ -97,21 +98,33 @@ static void Drain(WDFDEVICE dev)
   if(!c->count || !NT_SUCCESS(WdfIoQueueRetrieveNextRequest(c->reads,&r))) {
    c->draining=FALSE; WdfWaitLockRelease(c->lock); return;
   }
-  RtlCopyMemory(report,c->reports[c->head],8); c->head=(c->head+1u)%REPORT_SLOTS; --c->count;
+  RtlCopyMemory(report,c->reports[c->head],A04_HID_INPUT_BYTES); c->head=(c->head+1u)%REPORT_SLOTS; --c->count;
   WdfWaitLockRelease(c->lock);
-  status=CopyOutput(r,report,8); WdfRequestComplete(r,status);
+  status=CopyOutput(r,report,A04_HID_INPUT_BYTES); WdfRequestComplete(r,status);
  }
 }
 /* Called at PASSIVE_LEVEL after a complete eight-byte boot report. */
 NTSTATUS KbHidReport(WDFDEVICE dev,const UCHAR report[8])
 {
  KB_HID_CONTEXT *c=KbHidContext(dev); unsigned slot;
+#if A04_MUSB_BOOT_MOUSE_EXPERIMENT
+ UCHAR encoded[A04_HID_INPUT_BYTES];
+ if(A04BootHidEncode(c->session.enumeration.protocol,report,encoded))return STATUS_INVALID_PARAMETER;
+#else
  if(!report)return STATUS_INVALID_PARAMETER;
+#endif
  WdfWaitLockAcquire(c->lock,NULL);
  if(c->overflow) { WdfWaitLockRelease(c->lock); return STATUS_DEVICE_DATA_ERROR; }
  if(c->count==REPORT_SLOTS) { c->overflow=TRUE; WdfWaitLockRelease(c->lock); WdfIoQueuePurge(c->reads,WDF_NO_EVENT_CALLBACK,WDF_NO_CONTEXT); return STATUS_BUFFER_OVERFLOW; }
- if(!c->input_reports++)DbgPrint("MT8167 USB20 first keyboard input report received\n");
- slot=(c->head+c->count)%REPORT_SLOTS; RtlCopyMemory(c->reports[slot],report,8); ++c->count; c->connected=TRUE;
+ if(!c->input_reports++)DbgPrint("MT8167 USB20 first boot HID input report received\n");
+ slot=(c->head+c->count)%REPORT_SLOTS;
+#if A04_MUSB_BOOT_MOUSE_EXPERIMENT
+ RtlCopyMemory(c->reports[slot],encoded,A04_HID_INPUT_BYTES);
+ if(c->session.enumeration.protocol==A04_BOOT_MOUSE)c->mouse_buttons=encoded[1];
+#else
+ RtlCopyMemory(c->reports[slot],report,8);
+#endif
+ ++c->count; c->connected=TRUE;
  WdfWaitLockRelease(c->lock); Drain(dev); return STATUS_SUCCESS;
 }
 /* On unplug queue a release report so a key cannot remain held. */
@@ -119,7 +132,13 @@ void KbHidDisconnected(WDFDEVICE dev)
 {
  KB_HID_CONTEXT *c=KbHidContext(dev); static const UCHAR release[8]={0};
  WdfWaitLockAcquire(c->lock,NULL); c->head=0; c->count=0; c->input_reports=0; c->overflow=FALSE; c->connected=FALSE;
+ c->mouse_buttons=0;
+#if A04_MUSB_BOOT_MOUSE_EXPERIMENT
+ (void)A04BootHidEncode(A04_BOOT_KEYBOARD,release,c->reports[0]);
+ (void)A04BootHidEncode(A04_BOOT_MOUSE,release,c->reports[1]);c->count=2;
+#else
  RtlCopyMemory(c->reports[0],release,8); c->count=1;
+#endif
  WdfWaitLockRelease(c->lock); WdfIoQueueStart(c->reads); Drain(dev);
 }
 /* Controller callbacks run at PASSIVE_LEVEL with external serialization.
@@ -136,11 +155,17 @@ static void ControlComplete(KB_HID_CONTEXT *c,NTSTATUS status)
 {
  WDFREQUEST request; PIRP irp; PHID_XFER_PACKET packet;
  if(!NT_SUCCESS(WdfIoQueueRetrieveNextRequest(c->controls,&request)))return;
- if(NT_SUCCESS(status) && c->control_output)WdfRequestSetInformation(request,1);
+ if(NT_SUCCESS(status) && c->control_output)WdfRequestSetInformation(request,A04_MUSB_BOOT_MOUSE_EXPERIMENT?2u:1u);
  else if(NT_SUCCESS(status)) {
   irp=WdfRequestWdmGetIrp(request);packet=(PHID_XFER_PACKET)irp->UserBuffer;
+#if A04_MUSB_BOOT_MOUSE_EXPERIMENT
+  if(!packet || !packet->reportBuffer || packet->reportId!=A04_BOOT_KEYBOARD ||
+     packet->reportBufferLen!=A04_HID_INPUT_BYTES || A04BootHidEncode(A04_BOOT_KEYBOARD,c->control_data,packet->reportBuffer))status=STATUS_INVALID_PARAMETER;
+  else WdfRequestSetInformation(request,A04_HID_INPUT_BYTES);
+#else
   if(!packet || packet->reportId || KbCopyInputReport(packet->reportBuffer,packet->reportBufferLen,c->control_data))status=STATUS_INVALID_PARAMETER;
   else WdfRequestSetInformation(request,8);
+#endif
  }
  WdfRequestComplete(request,status);
 }
@@ -158,10 +183,33 @@ static NTSTATUS ControlSubmit(WDFDEVICE dev,WDFREQUEST request,BOOLEAN output)
 {
  KB_HID_CONTEXT*c=KbHidContext(dev); PIRP irp;PHID_XFER_PACKET packet;NTSTATUS status;KB_CONTROL led_control;UCHAR led=0;struct a04_control_request *r=&c->control_request;
  irp=WdfRequestWdmGetIrp(request);packet=(PHID_XFER_PACKET)irp->UserBuffer;
- if(!packet || !packet->reportBuffer || packet->reportId || (!output && packet->reportBufferLen!=8 && packet->reportBufferLen!=9))return STATUS_INVALID_PARAMETER;
+ if(!packet || !packet->reportBuffer)return STATUS_INVALID_PARAMETER;
+#if A04_MUSB_BOOT_MOUSE_EXPERIMENT
+ if(!output && packet->reportId==A04_BOOT_MOUSE) {
+  UCHAR snapshot[A04_HID_INPUT_BYTES];
+  if(packet->reportBufferLen!=A04_HID_INPUT_BYTES)return STATUS_INVALID_PARAMETER;
+  WdfWaitLockAcquire(c->controller_lock,NULL);
+  if(!c->board_owned || c->board_fault || c->session.enumeration.stage!=KB_READY || c->session.enumeration.protocol!=A04_BOOT_MOUSE) {
+   WdfWaitLockRelease(c->controller_lock);return STATUS_DEVICE_NOT_READY;
+  }
+  WdfWaitLockAcquire(c->lock,NULL);
+  if(!c->connected){WdfWaitLockRelease(c->lock);WdfWaitLockRelease(c->controller_lock);return STATUS_DEVICE_NOT_READY;}
+  (void)A04BootHidMouseSnapshot(c->mouse_buttons,snapshot);
+  WdfWaitLockRelease(c->lock);WdfWaitLockRelease(c->controller_lock);
+  RtlCopyMemory(packet->reportBuffer,snapshot,sizeof(snapshot));WdfRequestSetInformation(request,sizeof(snapshot));return STATUS_SUCCESS;
+ }
+ if(packet->reportId!=A04_BOOT_KEYBOARD || (!output && packet->reportBufferLen!=A04_HID_INPUT_BYTES))return STATUS_INVALID_PARAMETER;
+#else
+ if(packet->reportId || (!output && packet->reportBufferLen!=8 && packet->reportBufferLen!=9))return STATUS_INVALID_PARAMETER;
+#endif
  WdfWaitLockAcquire(c->controller_lock,NULL);
  if(!c->board_owned || c->board_fault || !c->control_ready || c->control_busy || c->control_poisoned || c->session.enumeration.stage!=KB_READY) {WdfWaitLockRelease(c->controller_lock);return STATUS_DEVICE_NOT_READY;}
+#if A04_MUSB_BOOT_MOUSE_EXPERIMENT
+ if(c->session.enumeration.protocol!=A04_BOOT_KEYBOARD) {WdfWaitLockRelease(c->controller_lock);return STATUS_DEVICE_NOT_READY;}
+ if(output && A04BootHidKeyboardOutput(&c->session.enumeration,packet->reportBuffer,packet->reportBufferLen,packet->reportId,&led_control,&led)) {
+#else
  if(output && KbOutputControl(&c->session.enumeration,packet->reportBuffer,packet->reportBufferLen,packet->reportId,&led_control,&led)) {
+#endif
   WdfWaitLockRelease(c->controller_lock);return STATUS_INVALID_PARAMETER;
  }
  RtlZeroMemory(r,sizeof(*r));r->setup[0]=0xa1;r->setup[1]=1;r->setup[3]=1;
@@ -273,7 +321,7 @@ static void KbControllerEvents(void *context,MT8167_USB20_EVENTS events)
   result=KbPortEvents(&c->port,events,PortNowMs());
   if(result<0)PortFault(dev,STATUS_DEVICE_HARDWARE_ERROR);
   else if(result==1){
-   DbgPrint("MT8167 USB20 keyboard enumerated vid=%04x pid=%04x speed=%02x\n",c->session.enumeration.vid,c->session.enumeration.pid,c->session.speed);
+   DbgPrint("MT8167 USB20 boot HID enumerated vid=%04x pid=%04x speed=%02x\n",c->session.enumeration.vid,c->session.enumeration.pid,c->session.speed);
 #if A04_MUSB_HID_CONTROL_EXPERIMENT
    controller=A04UsbWdfController(c->usb);if(!controller || ControlReady(c,controller))c->control_ready=FALSE;
 #endif
@@ -411,10 +459,14 @@ NTSTATUS KbRelease(WDFDEVICE dev,WDFCMRESLIST translated)
 }
 static const unsigned char *ReportDescriptor(unsigned *length)
 {
+#if A04_MUSB_BOOT_MOUSE_EXPERIMENT
+ return A04BootHidDescriptor(A04_MUSB_HID_CONTROL_EXPERIMENT,length);
+#else
 #if A04_MUSB_HID_CONTROL_EXPERIMENT
  return KbHidOutputDescriptor(length);
 #else
  return KbHidDescriptor(length);
+#endif
 #endif
 }
 VOID KbHidIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULONG code)
@@ -426,7 +478,7 @@ VOID KbHidIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULO
  case IOCTL_HID_GET_STRING: {
   WDF_REQUEST_PARAMETERS parameters;ULONG id;
   static const WCHAR manufacturer[]=L"MediaTek";
-  static const WCHAR product[]=L"MediaTek MT8167 USB20 Boot Keyboard Controller";
+  static const WCHAR product[]=L"MediaTek MT8167 USB20 Boot HID Controller";
   static const WCHAR serial[]=L"";
   WDF_REQUEST_PARAMETERS_INIT(&parameters);WdfRequestGetParameters(request,&parameters);
   id=(ULONG)(ULONG_PTR)parameters.Parameters.DeviceIoControl.Type3InputBuffer & 0xffffu;

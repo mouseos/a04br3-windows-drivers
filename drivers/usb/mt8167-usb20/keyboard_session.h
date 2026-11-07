@@ -10,7 +10,7 @@ typedef struct {
 /* Caller initializes host, port reset, EP0 and endpoint 1 RX FIFO/IRQ.
  * Call only at PASSIVE_LEVEL under a single controller lock. */
 int KbSessionStart(KB_SESSION *,const MT8167_USB20_IO *,unsigned,void *,void (*)(void *,unsigned),int (*)(void *,const unsigned char *));
-int KbSessionEp0Interrupt(KB_SESSION *); /* 0=pending, 1=keyboard ready, -1=error */
+int KbSessionEp0Interrupt(KB_SESSION *); /* 0=pending, 1=boot interface ready, -1=error */
 int KbSessionRequestReport(KB_SESSION *); /* schedule no faster than bInterval */
 int KbSessionRxInterrupt(KB_SESSION *); /* 0=pending, 1=delivered, 2=NAK, -1=error */
 #endif

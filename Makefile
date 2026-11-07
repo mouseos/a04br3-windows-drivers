@@ -1590,3 +1590,11 @@ build/gpu_parent_spm_resources_test: tests/gpu_parent_spm_resources_test.c drive
 .PHONY: test-gpu-parent-spm-resources
 test-gpu-parent-spm-resources: build/gpu_parent_spm_resources_test
 	./build/gpu_parent_spm_resources_test
+
+.PHONY: test-mt8167-usb-boot-mouse
+test-mt8167-usb-boot-mouse:
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_MUSB_BOOT_MOUSE_EXPERIMENT=1 -Idrivers/usb/mt8167-usb20 tests/usb/boot_mouse_test.c drivers/usb/mt8167-usb20/boot_hid.c drivers/usb/mt8167-usb20/keyboard_port.c drivers/usb/mt8167-usb20/keyboard_session.c drivers/usb/mt8167-usb20/keyboard.c drivers/usb/mt8167-usb20/keyboard_rx.c drivers/usb/mt8167-usb20/ep0.c drivers/usb/mt8167-usb20/ep0_pio.c -o build/mt8167_usb_boot_mouse_test
+	./build/mt8167_usb_boot_mouse_test
+	$(CC) $(CFLAGS) -DA04_MUSB_BOOT_MOUSE_EXPERIMENT=1 -Idrivers/usb/mt8167-usb20 tests/usb/boot_hid_test.c drivers/usb/mt8167-usb20/boot_hid.c drivers/usb/mt8167-usb20/keyboard.c -o build/mt8167_usb_boot_hid_test
+	./build/mt8167_usb_boot_hid_test

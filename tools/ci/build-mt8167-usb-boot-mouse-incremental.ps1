@@ -1,0 +1,75 @@
+# MediaTek MT8167 USB20 leaf only; no parent/hardware operation.
+param([Parameter(Mandatory=$true)][string]$PreviousBuildDirectory,
+      [Parameter(Mandatory=$true)][string]$OutputDirectory,
+      [string]$CertificateThumbprint='BCBF6C456C6F0DD0818434763B189488FBF13570')
+$ErrorActionPreference='Stop'
+$root=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$before='e6852c687b7783b1d45c5a8ac373fda7825e99de';$parent='2d6231727e8ed72b6d7dca4148debc101ac5aeef'
+$commit=(& git -C $root rev-parse HEAD)
+if(@(& git -C $root status --porcelain).Count){throw 'Clean fixed source required'}
+$prior=[IO.Path]::GetFullPath($PreviousBuildDirectory);$out=[IO.Path]::GetFullPath($OutputDirectory)
+if(!$out.StartsWith($root+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase) -or (Test-Path $out)){throw 'Fresh source-local output required'}
+function Hash($path){(Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()}
+if((Hash "$prior\usb-manifest.json") -ne '144cb2fd89477ee6bfdc47a8c4107c1cc38027b99567eca5fe5b97568f4fa6b2'){throw 'Pinned1007 cache manifest required'}
+$m=Get-Content -Raw "$prior\usb-manifest.json"|ConvertFrom-Json
+if($m.source_commit -ne $before -or $m.driver_version -ne '2026.11.7.1007' -or $m.host_core -ne '1' -or $m.hid_control -ne '1'){throw 'Fixed1007 feature set required'}
+if((Hash "$prior\mt8167-usb20.sys") -ne 'e573cf3c31384b1cceb868e076f5f5ea140af3446c4de65c99d8963fa2ff9690'){throw 'Pinned1007 unsigned SYS changed'}
+$changed=@(& git -C $root diff --name-only $before HEAD -- drivers/usb/mt8167-usb20)
+$allowed=@('wdf_keyboard.c','keyboard.c','keyboard.h','keyboard_rx.c','keyboard_rx.h','keyboard_session.c','keyboard_session.h','boot_hid.c','boot_hid.h','mt8167-usb20.inf','README.md','BOOT-MOUSE.md')|ForEach-Object{'drivers/usb/mt8167-usb20/'+$_}
+if($LASTEXITCODE -or @($changed|Where-Object{$_ -notin $allowed}).Count){throw 'Unexpected USB source changes; cache reuse refused'}
+$parentChanges=@(& git -C $root diff --name-only $parent HEAD -- drivers/bus/mt8167-shared drivers/audio tools/ci/build-capture-rtc1015.ps1)
+if($LASTEXITCODE -or $parentChanges.Count){throw 'Parent1026 code/flags/resources must remain unchanged'}
+foreach($name in @('usb_interface.h','usb_admission.h')){
+ $path='drivers/bus/mt8167-shared/'+$name
+ if((& git -C $root rev-parse "${before}:$path") -ne (& git -C $root rev-parse "HEAD:$path")){throw 'USB parent interface changed'}
+}
+New-Item -ItemType Directory $out|Out-Null
+$objects=@(Get-ChildItem "$prior\mt8167-usb20-*.obj" -File)
+if($objects.Count -ne 14){throw 'Bounded1007 object cache mismatch'}
+$reused=@()
+foreach($f in $objects){
+ Copy-Item $f.FullName "$out\$($f.Name)"
+ if((Hash "$out\$($f.Name)") -ne (Hash $f.FullName)){throw 'Object copy mismatch'}
+ if($f.Name -notin @('mt8167-usb20-wdf_keyboard.obj','mt8167-usb20-keyboard.obj','mt8167-usb20-keyboard_rx.obj','mt8167-usb20-keyboard_session.obj','mt8167-usb20-keyboard_port.obj')){$reused+=@{path=$f.Name;sha256=(Hash $f.FullName)}}
+}
+$kit="${env:ProgramFiles(x86)}\Windows Kits\8.1";$inc="$kit\Include";$wdfInc="$inc\wdf\kmdf\1.13";$wdfLib="$kit\Lib\wdf\kmdf\arm\1.13";$km="$kit\Lib\winv6.3\km\arm"
+$oldTmp=$env:TMP;$oldTemp=$env:TEMP;$oldRunner=$env:RUNNER_TEMP
+try{
+ $env:TMP=$out;$env:TEMP=$out;$env:RUNNER_TEMP=$out
+ & clang --target=thumbv7-pc-windows-msvc -fno-vectorize -fno-slp-vectorize -mno-unaligned-access -mfpu=none -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 -DA04_MUSB_HOST_CORE_EXPERIMENT=1 -DA04_MUSB_HID_CONTROL_EXPERIMENT=1 -DA04_MUSB_BOOT_MOUSE_EXPERIMENT=1 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" -c "$root\drivers\usb\mt8167-usb20\wdf_keyboard.c" -o "$out\mt8167-usb20-wdf_keyboard.obj"
+ if($LASTEXITCODE){throw 'USB1008 leaf compile failed'}
+ foreach($name in @('keyboard','keyboard_rx','keyboard_session','keyboard_port','boot_hid')) {
+  & clang --target=thumbv7-pc-windows-msvc -fno-vectorize -fno-slp-vectorize -mno-unaligned-access -mfpu=none -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 -DA04_MUSB_BOOT_MOUSE_EXPERIMENT=1 "-I$inc\km" "-I$inc\shared" -include ntddk.h -c "$root\drivers\usb\mt8167-usb20\$name.c" -o "$out\mt8167-usb20-$name.obj"
+  if($LASTEXITCODE){throw "USB1008 boot HID compile failed: $name"}
+ }
+
+ $link=@('wdf_keyboard','wdf_controller','boot_hid','host_core','host_control','controller','board_host','keyboard','keyboard_session','keyboard_port','keyboard_rx','ep0','ep0_pio')|ForEach-Object{"$out\mt8167-usb20-$_.obj"}
+ & lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib $link "$wdfLib\wdfdriverentry.lib" "$wdfLib\wdfldr.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\bufferoverflowfastfailk.lib" "$km\libcntpr.lib" "/map:$out\mt8167-usb20.map" "/out:$out\mt8167-usb20.sys"
+ if($LASTEXITCODE){throw 'USB1008 leaf link failed'}
+ $pkg="$out\package";New-Item -ItemType Directory $pkg|Out-Null
+ Copy-Item "$out\mt8167-usb20.sys" $pkg
+ Copy-Item "$root\drivers\usb\mt8167-usb20\mt8167-usb20.inf" $pkg
+ Copy-Item "$root\drivers\usb\mt8167-usb20\README.md" $pkg
+ Copy-Item "$root\drivers\usb\mt8167-usb20\BOOT-MOUSE.md" $pkg
+ $inf=[IO.File]::ReadAllText("$pkg\mt8167-usb20.inf")
+ if($inf -notmatch '(?m)^DriverVer=11/08/2026,2026\.11\.8\.1008\r?$'){throw 'USB1008 INF required'}
+ $m.source_commit=$commit;$m.driver_date='11/08/2026';$m.driver_version='2026.11.8.1008';$m.driver_ver='11/08/2026,2026.11.8.1008';$m.sys_sha256=(Hash "$out\mt8167-usb20.sys")
+ $m|Add-Member -Force -NotePropertyName boot_mouse -NotePropertyValue '1'
+ $m|Add-Member -Force -NotePropertyName source_dirty -NotePropertyValue $false
+ $m|Add-Member -Force -NotePropertyName init_checkpoint_stage_count -NotePropertyValue 18
+ $m|Add-Member -Force -NotePropertyName incremental -NotePropertyValue @{previous_source=$before;previous_manifest_sha256=(Hash "$prior\usb-manifest.json");recompiled=@('wdf_keyboard','keyboard','keyboard_rx','keyboard_session','keyboard_port','boot_hid');reused_objects=$reused;parent_source=$parent;parent_code_flags_resources_unchanged=$true;parent_rebuilt=$false;source_diff_verified=$true}
+ $m|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 "$pkg\usb-manifest.json"
+ $cert=Get-Item "Cert:\CurrentUser\My\$CertificateThumbprint";if(!$cert.HasPrivateKey){throw 'Existing signing identity required'}
+ $sign="$kit\bin\x86\signtool.exe"
+ & $sign sign /fd SHA256 /s My /sha1 $CertificateThumbprint "$pkg\mt8167-usb20.sys";if($LASTEXITCODE){throw 'SYS signing failed'}
+ & "$kit\bin\x86\Inf2Cat.exe" "/driver:$pkg" /os:6_3_ARM /uselocaltime;if($LASTEXITCODE){throw 'Inf2Cat failed'}
+ & $sign sign /fd SHA256 /s My /sha1 $CertificateThumbprint "$pkg\mt8167-usb20.cat";if($LASTEXITCODE){throw 'CAT signing failed'}
+ & $sign verify /pa /v "$pkg\mt8167-usb20.sys";if($LASTEXITCODE){throw 'SYS signature verify failed'}
+ foreach($name in @('mt8167-usb20.sys','mt8167-usb20.inf')){
+  & $sign verify /pa /v /c "$pkg\mt8167-usb20.cat" "$pkg\$name";if($LASTEXITCODE){throw 'Catalog membership verify failed'}
+ }
+ Export-Certificate -Cert $cert -FilePath "$pkg\mt8167-development.cer"|Out-Null
+ $files=@(Get-ChildItem $pkg -File|Sort-Object Name|ForEach-Object{@{path=$_.Name;sha256=(Hash $_.FullName)}})
+ @{source_commit=$commit;binary_source_commit=$commit;inf_source_commit=$commit;source_dirty=$false;driver_ver='11/08/2026,2026.11.8.1008';driver_manifest='usb-manifest.json';signing_thumbprint=$CertificateThumbprint;signed=$true;hardware_verified=$false;parent_rebuilt=$false;parent_flags_modified=$false;parent_source=$parent;files=$files}|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 "$pkg\signed-manifest.json"
+ Write-Output 'MT8167_USB20_1008_BOOT_MOUSE_SIGNED_NO_HARDWARE_OPERATION'
+}finally{$env:TMP=$oldTmp;$env:TEMP=$oldTemp;$env:RUNNER_TEMP=$oldRunner}

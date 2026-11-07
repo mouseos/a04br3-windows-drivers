@@ -4,7 +4,7 @@ Signature="$WINDOWS NT$"
 Class=HIDClass
 ClassGuid={745a17a0-74d3-11d0-b6fe-00a0c90f57da}
 Provider=%Provider%
-DriverVer=11/07/2026,2026.11.7.1007
+DriverVer=11/08/2026,2026.11.8.1008
 CatalogFile=mt8167-usb20.cat
 [Manufacturer]
 %Provider%=Models,NTARM
@@ -44,5 +44,5 @@ KmdfService=A04Usb20Keyboard,Wdf
 KmdfLibraryVersion=1.13
 [Strings]
 Provider="mouseos"
-Device="MediaTek MT8167 USB20 Boot Keyboard Controller"
-Disk="MediaTek MT8167 USB20 Boot Keyboard Driver"
+Device="MediaTek MT8167 USB20 Boot HID Controller"
+Disk="MediaTek MT8167 USB20 Boot HID Driver"

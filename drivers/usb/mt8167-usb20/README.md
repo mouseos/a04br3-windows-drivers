@@ -443,3 +443,15 @@ parent/resources/HID成功とUSB給電・列挙成功は区別する。既存USB
 機種のusb20_host.c/usb20_phy.cとDTSのID41/GPIO22/detect34/MT6392 VUSBは
 既存実装と照合済み。UniXNU-a04br3のA04BR3Charger系はcharger監視であり、
 コネクタ5V成立やUSB host稼働を証明するものとしては使用しない。
+
+## USB1008: boot mouseの追加候補
+
+既定OFFの `A04_MUSB_BOOT_MOUSE_EXPERIMENT=1` で、直結1台の標準HID
+boot mouse（class3/subclass1/protocol2）を追加する。keyboardとLED、USB1007の
+idle待機を保持する。Windows側はID1 keyboard/ID2 mouseの2コレクションとなる。
+mouseは3ボタンと相対X/Yのみ。詳細な対応範囲・根拠・ビルド・検証は
+[BOOT-MOUSE.md](BOOT-MOUSE.md)を参照。USB1007の署名済み正本は別途保持する。
+
+1008のportable/WDF shimとビルド成功は、実機のhost移行・VBUS給電・列挙・
+mouhid/kbdhid経路の動作成功を意味しない。device-roleでの適切な待機を維持し、
+roleの強制切替、親1026/MT6392/PHY sequence/UEFI/GPUの変更は行わない。

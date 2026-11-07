@@ -26,23 +26,25 @@ int KbNextControl(const KB_ENUM *k, KB_CONTROL *c)
 static int parse_config(KB_ENUM *k, const unsigned char *p, unsigned n)
 {
  KB_ENUM candidate=*k;
- unsigned i=0, selected=0, iface=0,found=0;
+ unsigned i=0, selected=0, iface=0,found=0,protocol=0;
  if (n<9 || p[0]<9 || p[1]!=2 || le16(p+2)!=n || !p[5]) return -1;
  while(i<n) {
   unsigned len; if(n-i<2) return -1; len=p[i]; if(len<2 || len>n-i) return -1;
   if(p[i+1]==4) {
    if(len<9) return -1;
-   selected=(p[i+3]==0 && p[i+5]==3 && p[i+6]==1 && p[i+7]==1);
+   protocol=p[i+7];
+   selected=(p[i+3]==0 && p[i+5]==3 && p[i+6]==1 &&
+     (protocol==A04_BOOT_KEYBOARD || (A04_MUSB_BOOT_MOUSE_EXPERIMENT && protocol==A04_BOOT_MOUSE)));
    if(selected && !p[i+4])return -1;
    if(selected) iface=p[i+2];
   } else if(p[i+1]==5 && selected) {
    unsigned maxp,ep; if(len<7) return -1;
    ep=p[i+2]; maxp=le16(p+i+4);
    if((ep&0x80) && (ep&15) && !(ep&0x70) && (p[i+3]&3)==3 &&
-      maxp>=8 && maxp<=64 && p[i+6]) {
-    if(!found){
+      maxp>=(protocol==A04_BOOT_MOUSE?3u:8u) && maxp<=64 && p[i+6]) {
+    if(!found || (candidate.protocol==A04_BOOT_MOUSE && protocol==A04_BOOT_KEYBOARD)){
      candidate.configuration=p[5];candidate.interface_number=iface;candidate.endpoint=ep&15;
-     candidate.endpoint_packet=maxp;candidate.interval=p[i+6];found=1;
+     candidate.endpoint_packet=maxp;candidate.interval=p[i+6];candidate.protocol=protocol;found=1;
     }
    }
   }
