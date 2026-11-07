@@ -7,6 +7,7 @@
 #include "windows_native_job_private.h"
 #include "native_owner_mdl.h"
 #include "native_owner_irq.h"
+#include "native_owner_dispatch.h"
 #include "windows_start.h"
 #include "A04BR3RogueRuntimeLayout.h"
 static unsigned holds,sg_gets,sg_puts,cpu_flushes,commands,fault;
@@ -63,13 +64,21 @@ void KeStallExecutionProcessor(unsigned us)
         k->ui32ReadOffset=(k->ui32ReadOffset+1)&127;
     }
 }
-static void check(unsigned mode)
+static BOOLEAN synchronize_missing(void *ctx,a04_native_locked_routine routine,void *arg)
+{(void)ctx;(void)routine;(void)arg;return TRUE;} /* failed adapter double */
+static BOOLEAN synchronize_model(void *ctx,a04_native_locked_routine routine,void *arg)
+{
+    assert(ctx==&fw && host_irql==PASSIVE_LEVEL);
+    host_irql=5;BOOLEAN result=routine(arg);host_irql=PASSIVE_LEVEL;return result;
+}
+static void check(unsigned mode,unsigned dispatch)
 {
     struct fixture x;struct a04_vendor_native_cold *n=NULL;
     struct a04_native_mdl_binding *binding=NULL;struct fake_mdl mdl={0};
     PFN_NUMBER pfns[469];struct a04_native_mdl_lease lease={&mdl,retain,drop};
     struct a04_vendor_start s={0};struct a04_vendor_native_result result;
     struct a04_native_irq_core irq={0};struct a04_native_owner_event event;
+    struct a04_native_owner_dispatch d={0};
     RGXFWIF_CCB_CTL k={127,127,127,sizeof(RGXFWIF_KCCB_CMD)},q={0,0,31,sizeof(RGXFWIF_FWCCB_CMD)};
     RGXFWIF_KCCB_CMD queue[128];uint32_t sync=0;UCHAR core[0xc00]={0};
     init(&x);holds=sg_gets=sg_puts=cpu_flushes=commands=0;fault=mode;
@@ -88,19 +97,37 @@ static void check(unsigned mode)
     x.fw.runtime=&fw;x.fw.hardware_owned=TRUE;s.memory=&x.fw;s.core=core;s.online=TRUE;s.attempted=TRUE;
     active=&x;owner=n;register_base=core;
     assert(a04_native_irq_bind(&irq,core,sizeof(core),&fw,10)==STATUS_SUCCESS);
+    assert(a04_native_dispatch_initialize(&d,n,&s,&irq,10,&fw,synchronize_model)==STATUS_SUCCESS);
+    assert(a04_native_dispatch_service(&d)==STATUS_INVALID_DEVICE_STATE); /* no claimed source */
     unsigned a=allocs,p=pool_calls,flushes=cpu_flushes;
     assert(a04_vendor_native_owner_submit(n,&s,127)==STATUS_INVALID_DEVICE_STATE); /* wrong IRQL */
     host_irql=5;fail_at=allocs+1;fail_pool=pool_calls+1;
     assert(a04_vendor_native_owner_submit(n,&s,126)==STATUS_DEVICE_BUSY && !s.command_busy && !n->candidate->attempted);
-    assert(a04_vendor_native_owner_submit(n,&s,127)==STATUS_SUCCESS);
+    if(dispatch){
+        assert(a04_native_dispatch_submit(&d,99,7,127)==STATUS_INVALID_DEVICE_STATE); /* masked */
+        assert(a04_native_irq_rearm(&irq,10,0)==STATUS_SUCCESS);
+        assert(a04_native_dispatch_submit(&d,99,7,127)==STATUS_SUCCESS);
+        assert(d.state==A04_NATIVE_DISPATCH_SUBMITTED);
+    }else assert(a04_vendor_native_owner_submit(n,&s,127)==STATUS_SUCCESS);
     assert(allocs==a && pool_calls==p && !commands && s.command_busy==1 &&
            n->candidate->owner_pending && !n->candidate->verified && !n->candidate->completed_frames);
     assert(k.ui32WriteOffset==1 && queue[127].eDM==2 && queue[0].eDM==3);
     assert(a04_vendor_native_owner_submit(n,&s,1)==STATUS_INVALID_DEVICE_STATE);
     assert(a04_vendor_native_owner_finish_passive(n,&s,&result)==STATUS_INVALID_DEVICE_STATE);
     host_irql=PASSIVE_LEVEL;
-    NTSTATUS status=a04_vendor_native_owner_finish_passive(n,&s,&result);
-    assert(!s.command_busy && allocs==a && pool_calls==p && *(uint32_t *)(core+0x8ac)==0); /* no IRQ enable/notification */
+    NTSTATUS status;
+    if(dispatch){
+        host_irql=5;
+        assert(!a04_native_dispatch_interrupt(&d,&event)); /* no source */
+        *(ULONG *)(void *)(core+0x8a8)=1;
+        assert(a04_native_dispatch_interrupt(&d,&event) && !event.completed && !event.job);
+        host_irql=PASSIVE_LEVEL;
+        d.synchronize=synchronize_missing;
+        assert(a04_native_dispatch_service(&d)==STATUS_IO_DEVICE_ERROR && d.state==A04_NATIVE_DISPATCH_SUBMITTED);
+        d.synchronize=synchronize_model;
+        status=a04_native_dispatch_service(&d);result=d.result;
+    }else status=a04_vendor_native_owner_finish_passive(n,&s,&result);
+    assert(!s.command_busy && allocs==a && pool_calls==p && (dispatch && !mode ? *(uint32_t *)(core+0x8a0)==1 : *(uint32_t *)(core+0x8a0)==0)); /* no IRQ enable/notification */
     if(!mode){
         assert(status==STATUS_SUCCESS && result.phase==4 && result.matching_pixels==480000 && !result.mismatched_pixels &&
             !result.guard_errors && result.completed_frames==1 && commands==4 && cpu_flushes==flushes+1);
@@ -111,33 +138,40 @@ static void check(unsigned mode)
         assert(a04_vendor_native_owner_arm_visibility(n,&s,&irq,10,99,7)==STATUS_INVALID_DEVICE_STATE);
         host_irql=5;
         assert(a04_vendor_native_owner_arm_visibility(n,&s,&irq,11,99,7)==STATUS_INVALID_DEVICE_STATE);
-        assert(a04_vendor_native_owner_arm_visibility(n,&s,&irq,10,99,7)==STATUS_SUCCESS);
+        if(dispatch)assert(d.state==A04_NATIVE_DISPATCH_ARMED);
+        else assert(a04_vendor_native_owner_arm_visibility(n,&s,&irq,10,99,7)==STATUS_SUCCESS);
         assert(commands==4 && !a04_vendor_native_owner_interrupt_event(n,&s,&irq,&event) && !event.completed);
         *(ULONG *)(void *)(core+0x8a8)=1; /* earlier real-source model, fence still pending */
         assert(a04_vendor_native_owner_interrupt_event(n,&s,&irq,&event) && event.claimed &&
                !event.completed && !event.job && !event.epoch && !event.generation);
+        if(dispatch){host_irql=PASSIVE_LEVEL;assert(a04_native_dispatch_service(&d)==STATUS_SUCCESS);host_irql=5;
+            assert(d.state==A04_NATIVE_DISPATCH_ARMED && commands==4);
+            /* service rearmed only, did not finish/publish the render again */
+        }
         host_irql=PASSIVE_LEVEL;KeStallExecutionProcessor(50);host_irql=5;
         assert(commands==5 && sync==s.command_sequence);
         assert(a04_native_irq_rearm(&irq,10,irq.serial)==STATUS_SUCCESS);
         assert(!a04_vendor_native_owner_interrupt_event(n,&s,&irq,&event)); /* no source, no notification */
         *(ULONG *)(void *)(core+0x8a8)=1;
-        assert(a04_vendor_native_owner_interrupt_event(n,&s,&irq,&event) && event.completed &&
+        assert((dispatch?a04_native_dispatch_interrupt(&d,&event):a04_vendor_native_owner_interrupt_event(n,&s,&irq,&event)) && event.completed &&
                event.job==99 && event.epoch==10 && event.generation==7 && event.status==STATUS_SUCCESS);
         assert(cpu_flushes==flushes+1 && allocs==a && pool_calls==p);
+        if(dispatch)assert(d.state==A04_NATIVE_DISPATCH_COMPLETE);
         *(ULONG *)(void *)(core+0x8a8)=1;
         assert(a04_vendor_native_owner_interrupt_event(n,&s,&irq,&event) && !event.completed && !event.job);
         host_irql=PASSIVE_LEVEL;
     }else{
         assert(!NT_SUCCESS(status) && n->quarantined && s.command_poisoned && x.r.poisoned);
         assert(cpu_flushes==flushes+(mode==2));
+        if(dispatch)assert(d.state==A04_NATIVE_DISPATCH_FAULT && !NT_SUCCESS(d.failure));
     }
     assert(a04_native_mdl_release_cold(&binding)==STATUS_DEVICE_BUSY && binding && !sg_puts && holds);
     assert(a04_vendor_native_release_cold(&n)==STATUS_DEVICE_BUSY && n); /* no fabricated quiescence */
 }
 int main(void)
 {
-    for(unsigned mode=0;mode<3;mode++){
-        pid_t pid=fork();int status;assert(pid>=0);if(!pid){check(mode);_exit(0);}
+    for(unsigned dispatch=0;dispatch<2;dispatch++)for(unsigned mode=0;mode<3;mode++){
+        pid_t pid=fork();int status;assert(pid>=0);if(!pid){check(mode,dispatch);_exit(0);}
         assert(waitpid(pid,&status,0)==pid && WIFEXITED(status) && !WEXITSTATUS(status));
     }
     puts("same-MDL owner split: nonwaiting accept, wrap, PASSIVE actual fence/cache/readback, timeout/mismatch poison, retained DMA; no IRQ notification/GPU execution");

@@ -129,3 +129,37 @@ resource生成はnative_triangle_suiteの実VA入力と同じ4KiB heap3枚を再
 
 run40 baseline-retireはCLEANUP0xF/FAILED4/DMA RETAINED後、正規BOOT_REASON9に到達した。
 shutdown進行の実測であり、同一OS内のWDDM quiesce/fabric停止成功とは扱わない。
+
+
+## run40以後のcontrol-v2 execution接続
+
+H42c1834を読み、既存owner_ops/control-v2 ABIがclear中心のままであることを確認。
+`native_owner_dispatch.[ch]`に実coreの呼出順を統合した。factory/63capsは未公開。
+Hのprovider cookieへresidentな`a04_native_owner_dispatch`を埋め込み、
+保持済のnative/start/irq/epochと実Dxgk同期関数をinitializeへ渡す。
+
+- `ops.submit`は実同期lock内で`a04_native_dispatch_submit`。
+  初期IRQはreal startup/restart側でrearm済みであることが必要。
+  受理時にjob/generationを保持し、同じCCB/UFO/cleanupの実publisherへ送る。
+- `control.interrupt_event`は実ISRから`a04_native_dispatch_interrupt`。
+  FALSEならNOT_FOUND、claimedかつ非完了ならPENDING（GEO event.epochはlease epoch、
+  job/generation/visibilityは0）、completedのときだけ保持済IDと一致する
+  GPU_DONE|CPU_VISIBLEを返す。fault statusはそのまま伝搬する。
+- `control.service`は単一PASSIVE workerから`a04_native_dispatch_service`。
+  実source claimがないと拒否する。TA/3D→SLC/GP→同MDLcache/readbackを実行し、
+  実同期callback内で後続GPをarmする。ここでDxgk通知はしない。
+  fence前のIRQはserviceでsourceをrearmするだけでrender再送もcache再実行もしない。
+  FWCCB非emptyでBUSYなら本当のFW request serviceが必要。捨てたり成功に丸めない。
+- synchronizeは`BOOLEAN(void *context,BOOLEAN(*routine)(void *),void *arg)`。
+  実DxgkCbSynchronizeExecutionへ委譲し、同期callback完了後にだけ返す。
+  worker/lifecycleは外側で直列化し、停止中もpointed-to resourceを保持する。
+  serviceは外側callback失敗/未実行を成功扱いしない。
+- 現dispatchはcold-prepared one-jobの結合。live再prepare/discard/unbind、
+  D0取得、real Normal origin/MDL保持口、DMA停止+rundown、Create/Delete全体は残る。
+  この不足を成功stubで埋めない。H側draw/shader semanticとproducer結合も別途必要。
+
+hostのreal-core+OS/FW/MMIO doubleでdispatch経由の正常・timeout・pixel不一致を追加確認。
+受理≠完了、初期source必須、fence前IRQでrearmのみ、post-fence実sourceのID一致、
+失敗時DMA/MDL保持を確認した。WDK/実IRQ/一般D3D成功の証拠ではない。
+`build-ge8300-native-owner-core.ps1 -WithMdlTarget -LinkCheck`に新TU/4exportを追加。
+run40の2.5成功source860f697とは独立し、INF/installed providerは変更していない。
