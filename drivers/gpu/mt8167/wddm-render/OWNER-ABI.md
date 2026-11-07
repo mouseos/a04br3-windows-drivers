@@ -62,3 +62,7 @@ E coreの共有header/APIは手作業で再定義せず、factory private TUで�
 - `owner_control.h`: Interface.Version=2、厳密Size、STATUS_PENDING receiptとPASSIVE serviceを含む。service成功はDMA完了ではない。
 - 1 native DMA pairずつpublishする。未publish jobはowner tokenを保持し、preempt後の新nonpaging fenceで再submit、またはPASSIVE discardする。実completed/cancel/drain済みgenerationのみretire。quiesceは未publish tokenも失効させる。
 - `umd/bootstrap.h`の`geo_ge8300_frontend`は別の実shader/state/format実装。factory完成やkernel link成功だけでFL9_1を広告しない。
+
+## Hの実MDL pin/resolver入力
+
+最新factory呼出しはGeoNativeOwnerCreateV3へ変更（旧4argとの誤linkを拒否）。frontend_memory.hのversion1入力を渡す。出力binding/control/opsはversion2のまま。具体的なresolve-owned-reference→native acquire→resolve releaseと、独立PFN lock/解放責務はFRONTEND-MDL.mdが正本。EはCreate/Delete/native allocation/control/stop-rundown、Hはactual VidMm resolver/独立物理lockを実装する。

@@ -8,6 +8,10 @@
 #include "pco/pco_internal.h"
 #include "util/ralloc.h"
 #include <string.h>
+#ifdef GEO_PCO_EXPLICIT_USCLIB_LIFETIME
+void geo_pco_usclib_initialize(void);
+void geo_pco_usclib_finalize(void);
+#endif
 static nir_def *source(nir_builder *b,const struct geo_sm2_operand *s,nir_def **temp,nir_def **constants) {
  unsigned swizzle[4],i;nir_def *value;
  if(s->file==0)value=temp[s->index];
@@ -81,5 +85,18 @@ static void release_sm2(void *context,struct geo_compiled_shader *p) {
 int32_t geo_pco_compiler_init(struct geo_shader_compiler *out,void *context) {
  if(!out||!context)return GEO_INVALID;
  memset(out,0,sizeof(*out));out->size=sizeof(*out);out->version=1;out->context=context;
- out->compile=compile_sm2;out->release=release_sm2;return GEO_OK;
+ out->compile=compile_sm2;out->release=release_sm2;
+#ifdef GEO_PCO_EXPLICIT_USCLIB_LIFETIME
+ geo_pco_usclib_initialize();
+#endif
+ return GEO_OK;
+}
+
+void geo_pco_compiler_finish(struct geo_shader_compiler *compiler) {
+ if(!compiler||compiler->size!=sizeof(*compiler)||compiler->version!=1||compiler->compile!=compile_sm2)return;
+ /* Caller has released all compiled shaders and will destroy its PCO ctx. */
+#ifdef GEO_PCO_EXPLICIT_USCLIB_LIFETIME
+ geo_pco_usclib_finalize();
+#endif
+ memset(compiler,0,sizeof(*compiler));
 }

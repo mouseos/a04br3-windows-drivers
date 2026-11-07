@@ -27,6 +27,7 @@ static NTSTATUS GeoDestroyAllocationImpl(HANDLE adapter,const DXGKARG_DESTROYALL
  if(!a||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL||p->NumAllocations!=1||!p->pAllocationList)return STATUS_INVALID_PARAMETER;
  allocation=p->pAllocationList[0];if(!allocation)return STATUS_INVALID_PARAMETER;
  s=geo_destroy(&a->engine,allocation);if(s!=STATUS_SUCCESS)return s;
+ GeoEndVidMmMap(a,allocation);
  ExFreePoolWithTag(allocation,'rOeG');return STATUS_SUCCESS;
 }
 static NTSTATUS GeoBuildPagingBufferImpl(HANDLE adapter,DXGKARG_BUILDPAGINGBUFFER *p) {
@@ -48,7 +49,13 @@ static NTSTATUS GeoBuildPagingBufferImpl(HANDLE adapter,DXGKARG_BUILDPAGINGBUFFE
   /* Microsoft DDI defines MdlOffset in PAGES, not bytes. The provider must
    * retain this actual MDL/PFN backing and perform real CPU/GPU maintenance. */
   if(ROUND_TO_PAGES(bytes)!=MmGetMdlByteCount(p->MapApertureSegment.pMdl))return STATUS_INVALID_PARAMETER;
+  status=GeoBeginVidMmMap(a,allocation,p->MapApertureSegment.pMdl,bytes);if(status!=STATUS_SUCCESS)return status;
   status=geo_bind(&a->engine,allocation,p->MapApertureSegment.pMdl,p->MapApertureSegment.MdlOffset*PAGE_SIZE,bytes,(uint64_t)p->MapApertureSegment.OffsetInPages*PAGE_SIZE);
+  if(status==STATUS_SUCCESS) {
+   status=GeoConfirmVidMmBind(a,allocation);
+   if(status!=STATUS_SUCCESS){allocation->poisoned=1;a->engine.poisoned=1;return status;}
+  }
+  /* Failed/ambiguous native bind keeps the independent physical lock. */
   if(status==STATUS_SUCCESS){allocation->aperture_offset=p->MapApertureSegment.OffsetInPages;allocation->aperture_pages=(uint32_t)p->MapApertureSegment.NumberOfPages;}
   return status;
  }
@@ -57,7 +64,8 @@ static NTSTATUS GeoBuildPagingBufferImpl(HANDLE adapter,DXGKARG_BUILDPAGINGBUFFE
   if(!allocation||p->UnmapApertureSegment.SegmentId!=1||
      p->UnmapApertureSegment.OffsetInPages!=allocation->aperture_offset||
      p->UnmapApertureSegment.NumberOfPages!=allocation->aperture_pages)return STATUS_INVALID_PARAMETER;
-  return geo_unbind(&a->engine,allocation);
+  status=geo_unbind(&a->engine,allocation);
+  if(status==STATUS_SUCCESS)GeoEndVidMmMap(a,allocation);return status;
  }
  /* Fill/transfer/discard are not silently accepted without implementing them. */
  return STATUS_NOT_SUPPORTED;

@@ -16,4 +16,5 @@ struct geo_shader_compiler {
 /* Caller provides an actual PCO context and initialized fixed BVNC device
  * info. No host compile executable, arbitrary DLL or shader blob broker. */
 int32_t geo_pco_compiler_init(struct geo_shader_compiler *,void *pco_context);
+void geo_pco_compiler_finish(struct geo_shader_compiler *);
 #endif

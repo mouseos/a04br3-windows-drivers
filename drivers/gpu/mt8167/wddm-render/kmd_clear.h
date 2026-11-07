@@ -8,6 +8,8 @@
 #include <dispmprt.h>
 #include "clear_engine.h"
 #include "aperture.h"
+#include "frontend_memory.h"
+struct geo_mdl_record;
 /* These are DDI implementation modules, not a DriverEntry that registers an
  * incomplete WDDM adapter. The full miniport owns synchronization/rundown,
  * querycaps, paging and real DIRQL ISR/DPC routing. */
@@ -34,6 +36,11 @@ struct geo_kmd_adapter {
  KIRQL owner_irql;
  LONG dpc_pending,service_pending;
  UINT notifications_ready;
+ struct geo_frontend_memory memory_api;
+ struct geo_mdl_record *memory_records;
+ KMUTEX memory_lock;
+ LONG memory_record_count,memory_fault;
+ UINT memory_ready;
 };
 struct geo_kmd_context { struct geo_kmd_adapter *adapter;struct geo_kmd_device *device;struct geo_kmd_context *next;HANDLE runtime; };
 /* Full miniport must call completion only from its real registered ISR,

@@ -20,6 +20,7 @@ static NTSTATUS add_device(PDEVICE_OBJECT pdo,void **out) {
  if(!pdo||!out||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  d=ExAllocatePoolWithTag(NonPagedPool,sizeof(*d),'mOeG');if(!d)return STATUS_INSUFFICIENT_RESOURCES;
  RtlZeroMemory(d,sizeof(*d));ObReferenceObject(pdo);d->pdo=pdo;
+ GeoInitializeFrontendMemory(&d->adapter);
  d->work=IoAllocateWorkItem(pdo);
  if(!d->work){ObDereferenceObject(pdo);ExFreePoolWithTag(d,'mOeG');return STATUS_INSUFFICIENT_RESOURCES;}
  *out=d;return STATUS_SUCCESS;
@@ -31,7 +32,7 @@ static NTSTATUS start_device(void *context,DXGK_START_INFO *start,DXGKRNL_INTERF
  d->dxgk=*dxgk;RtlZeroMemory(&d->device_info,sizeof(d->device_info));
  status=dxgk->DxgkCbGetDeviceInformation(dxgk->DeviceHandle,&d->device_info);if(status!=STATUS_SUCCESS)return status;
  d->native.size=sizeof(d->native);d->native.version=2;
- status=GeoNativeOwnerCreate(d->pdo,dxgk,&d->device_info,&d->native);
+ status=GeoNativeOwnerCreateV3(d->pdo,dxgk,&d->device_info,&d->adapter.memory_api,&d->native);
  if(status!=STATUS_SUCCESS){if(d->native.native_context)d->native_created=1;return status;}
  d->native_created=1;
  if(d->native.size!=sizeof(d->native)||d->native.version!=2||!d->native.native_context)return STATUS_INVALID_DEVICE_STATE;
@@ -46,14 +47,15 @@ static NTSTATUS stop_device(void *context) {
  if(d->session.state!=GEO_SESSION_STOPPED){
   status=GeoStopOwnerSession(&d->session);if(status!=STATUS_SUCCESS)return status;
  }
+ if(InterlockedCompareExchange(&d->adapter.memory_record_count,0,0)||InterlockedCompareExchange(&d->adapter.memory_fault,0,0))return STATUS_DEVICE_BUSY;
  status=GeoNativeOwnerDelete(&d->native);if(status!=STATUS_SUCCESS)return status;
  d->native_created=0;d->started=0;RtlZeroMemory(&d->session,sizeof(d->session));
- RtlZeroMemory(&d->adapter,sizeof(d->adapter));return STATUS_SUCCESS;
+ RtlZeroMemory(&d->adapter,sizeof(d->adapter));GeoInitializeFrontendMemory(&d->adapter);return STATUS_SUCCESS;
 }
 static NTSTATUS remove_device(void *context) {
  struct geo_render_device *d=context;
  if(!d||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
- if(d->native_created||d->started||(d->adapter.engine.allocation_count||d->adapter.device_count)||InterlockedCompareExchange(&d->work_busy,0,0))return STATUS_DEVICE_BUSY;
+ if(InterlockedCompareExchange(&d->adapter.memory_record_count,0,0)||InterlockedCompareExchange(&d->adapter.memory_fault,0,0)||d->native_created||d->started||(d->adapter.engine.allocation_count||d->adapter.device_count)||InterlockedCompareExchange(&d->work_busy,0,0))return STATUS_DEVICE_BUSY;
  IoFreeWorkItem(d->work);ObDereferenceObject(d->pdo);ExFreePoolWithTag(d,'mOeG');return STATUS_SUCCESS;
 }
 static BOOLEAN interrupt_routine(void *context,ULONG message) {
