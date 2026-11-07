@@ -37,6 +37,9 @@ def main():
  ap=argparse.ArgumentParser()
  for n in ('workspace','base','package','firmware','backup','out','tools'):ap.add_argument('--'+n,type=Path,required=True)
  ap.add_argument('--deferred-package-map',type=Path)
+ ap.add_argument('--preparation-base-manifest',type=Path)
+ ap.add_argument('--preparation-base-manifest-sha256')
+ ap.add_argument('--preparation-base-membership-receipt',type=Path)
  ap.add_argument('--audio-mode',choices=('Tone','EnginePcm'),default='Tone')
  ap.add_argument('--brightness-package',type=Path)
  ap.add_argument('--brightness-manifest-sha256')
@@ -87,7 +90,8 @@ def main():
   private_path(out,root)
  elif any(private_args):raise SystemExit('native SYSTEM入力はHardwareProbe private媒体だけに指定できます')
  if out.exists() or any(not p.is_relative_to(root) for p in (base,pkg,fw,backup,out,tools)) or (probe and not probe.is_relative_to(root)):raise SystemExit('作業ルート内の入力と新規出力先が必要です')
- if sha(base/'maintenance-staged.wim')!='0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4' or sha(base/'maintenance-staged-esp.img')!='22ac309921bd9ae405bd48e65d8cb8a70506c90f0c08e6edda4f0150fb4993ce':raise SystemExit('base不一致')
+ from preparation_base_input import select_preparation_base
+ preparation_base=select_preparation_base(base,root,a.preparation_base_manifest,a.preparation_base_manifest_sha256,a.preparation_base_membership_receipt,a.private_media)
  b=backup_check(backup,root)
  native=None;probe_info=None
  if probe:
@@ -261,8 +265,8 @@ def main():
  commands=''.join('add "'+str(src)+'" '+dst+'\n' for src,dst in pairs)
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'update',str(image),'1'],input=commands,text=True,env=env,check=True)
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'verify',str(image)],env=env,check=True)
- subprocess.run(['python3',str(here/'replace-esp-wim.py'),'--template',str(base/'maintenance-staged-esp.img'),'--wim',str(image),'--output',str(out/'update-esp.img'),'--template-bcd-sha256','65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d','--template-wim-sha256','0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4'],env=env,check=True)
- (out/'manifest.json').write_text(json.dumps({'private_do_not_distribute':bool(a.private_media),'audio_mode':'engine_pcm_retained' if engine else 'private_fixed_tone_diagnostic','selected_service':service_name,'shared_parent_count':1,'engine_rearm_plan':rearm_plan,'expected_installed_sys':{name.rsplit('/',1)[-1]:digest for component in components.values() for name,digest in component.get('files',{}).items() if name.endswith('.sys')},'retained_files':deferred_policy.get('retained_files',{}) if a.deferred_package_map else {},'transaction':deferred_policy.get('transaction') if a.deferred_package_map else None,'installed_sys_hashes_verified':False,'components':components,'fixed_clients':list(deferred_policy['clients']) if a.deferred_package_map else ['mt6630-wlan-probe.exe',audio_client],'prepared_system':native,'probe':probe_info,'trusted_certificates':{role:hashlib.sha1(der).hexdigest().upper() for role,der in certificates.items()},'staging':staging_info,'source_commit':a.source_commit,'token':token,'files':files,'host_backup_manifest_sha256':sha(backup),'recovery_boot_id':b['recovery_boot_id'],'input_validator_sha256':sha(here/'private_hardware_probe_input.py'),'engine_selector_sha256':sha(here/'engine_io_package.py'),'builder_sha256':sha(Path(__file__).resolve()),'command_sha256':sha(stage/'run-update-once.cmd'),'esp_sha256':sha(out/'update-esp.img'),'signature_verification':'hash/source/certificate pins here; clients and Engine CAT WinVerifyTrust at runtime; INF/SYS catalog membership by Windows servicing/PnP','status':'generated; hardware operation unverified'},indent=2)+'\n')
+ subprocess.run(['python3',str(here/'replace-esp-wim.py'),'--template',str(base/'maintenance-staged-esp.img'),'--wim',str(image),'--output',str(out/'update-esp.img'),'--template-bcd-sha256','65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d','--template-wim-sha256',preparation_base['wim_sha256']],env=env,check=True)
+ (out/'manifest.json').write_text(json.dumps({'private_do_not_distribute':bool(a.private_media),'audio_mode':'engine_pcm_retained' if engine else 'private_fixed_tone_diagnostic','selected_service':service_name,'shared_parent_count':1,'engine_rearm_plan':rearm_plan,'expected_installed_sys':{name.rsplit('/',1)[-1]:digest for component in components.values() for name,digest in component.get('files',{}).items() if name.endswith('.sys')},'retained_files':deferred_policy.get('retained_files',{}) if a.deferred_package_map else {},'transaction':deferred_policy.get('transaction') if a.deferred_package_map else None,'installed_sys_hashes_verified':False,'components':components,'fixed_clients':list(deferred_policy['clients']) if a.deferred_package_map else ['mt6630-wlan-probe.exe',audio_client],'prepared_system':native,'probe':probe_info,'trusted_certificates':{role:hashlib.sha1(der).hexdigest().upper() for role,der in certificates.items()},'staging':staging_info,'source_commit':a.source_commit,'token':token,'files':files,'host_backup_manifest_sha256':sha(backup),'recovery_boot_id':b['recovery_boot_id'],'input_validator_sha256':sha(here/'private_hardware_probe_input.py'),'engine_selector_sha256':sha(here/'engine_io_package.py'),'builder_sha256':sha(Path(__file__).resolve()),'preparation_base':preparation_base,'preparation_base_selector_sha256':sha(here/'preparation_base_input.py'),'command_sha256':sha(stage/'run-update-once.cmd'),'esp_sha256':sha(out/'update-esp.img'),'signature_verification':'hash/source/certificate pins here; clients and Engine CAT WinVerifyTrust at runtime; INF/SYS catalog membership by Windows servicing/PnP','status':'generated; hardware operation unverified'},indent=2)+'\n')
  if a.private_media:
   for p in out.rglob('*'):p.chmod(0o700 if p.is_dir() else 0o600)
 if __name__=='__main__':main()
