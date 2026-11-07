@@ -477,7 +477,8 @@ clean:
 	rm -rf build
 
 # Linux-derived MT8167 thermal components are separately GPL-2.0-only.
-test-thermal: build/thermal_test build/thermal_devinfo_test build/thermal_hardware_test build/thermal_freshness_test build/thermal_lease_test build/thermal_completion_test build/thermal_monitor_test build/thermal_ownership_test build/thermal_readout_test build/thermal_oneshot_test
+test-thermal: build/auxadc_pio_test build/thermal_test build/thermal_devinfo_test build/thermal_hardware_test build/thermal_freshness_test build/thermal_lease_test build/thermal_completion_test build/thermal_monitor_test build/thermal_ownership_test build/thermal_readout_test build/thermal_oneshot_test
+	./build/auxadc_pio_test
 	./build/thermal_test
 	./build/thermal_devinfo_test
 	./build/thermal_hardware_test
@@ -1576,3 +1577,8 @@ test-mt8167-brightness-native: build/brightness_native_sequence_test
 build/brightness_native_sequence_test: tests/brightness_native_sequence_test.c tools/display/brightness_sequence.c tools/display/brightness_sequence.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(filter %.c,$^) -o $@
+
+# Linux AUXADC channel11 PIO state machine; no hardware admission in this test.
+build/auxadc_pio_test: drivers/power/mt8167-thermal/auxadc_pio.c drivers/power/mt8167-thermal/auxadc_pio.h tests/auxadc_pio_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal drivers/power/mt8167-thermal/auxadc_pio.c tests/auxadc_pio_test.c -o $@
