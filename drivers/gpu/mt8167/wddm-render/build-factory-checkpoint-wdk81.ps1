@@ -11,7 +11,7 @@ Verify "$KernelDirectory\ge8300-pair-kmd.lib" 'f9850487f2b634a23f6321f5e86890916
 Verify "$BaselinePackage\ge8300-umd.dll" 'f8a711915e878e7aeb58ef996db8abbeee15351bd10bf8e0fdcabe12009f922b'
 Verify "$BaselinePackage\ge8300-mips.fw" '5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1'
 $native=Get-Content -Raw "$NativeDirectory\native-checkpoint-manifest.json"|ConvertFrom-Json
-if($native.source_commit -ne 'fd1f36ff4ef8b869dc4e3e4d6d4d6b365cc67c9e' -or $native.changed_abi -ne $false){throw 'Fixed native checkpoint source required'}
+if($native.source_commit -ne '4260e420272198237aa4c5650a24404a12d36494' -or $native.changed_abi -ne $false){throw 'Fixed native checkpoint source required'}
 Verify "$NativeDirectory\ge8300-native-owner-core.lib" $native.outputs.sha256
 $out=[IO.Path]::GetFullPath($OutputDirectory)
 if(!$out.StartsWith([IO.Path]::GetFullPath($root)+[IO.Path]::DirectorySeparatorChar) -or (Test-Path $out)){throw 'Fresh source-local output required'}
@@ -26,7 +26,7 @@ try {
  & "$PSScriptRoot\link-kmd-msvc-wdk81.ps1" -KernelLibrary "$out\linked\ge8300-pair-kmd.lib" -NativeLibrary "$NativeDirectory\ge8300-native-owner-core.lib" -OutputFile "$out\linked\ge8300-render.sys" -MapFile "$out\linked\ge8300-render.map" -MetadataFile "$out\linked\linker.json"
  Copy-Item "$BaselinePackage\ge8300-umd.dll" "$out\linked\ge8300-umd.dll"
  $m=Get-Content -Raw "$BaselinePackage\linked-manifest.json"|ConvertFrom-Json
- $m.source_commit=(& git -C $root rev-parse HEAD);$m.native_source_commit=$native.source_commit;$m.native_owner_sha256=$native.outputs.sha256;$m.additional_compile_units=@('miniport','native_owner_factory','native_owner_factory_platform','native_owner_allocation')
+ $m.source_commit=(& git -C $root rev-parse HEAD);$m.native_source_commit=$native.source_commit;$m.native_owner_sha256=$native.outputs.sha256;$m.additional_compile_units=@('miniport','native_owner_factory','native_owner_factory_platform','native_owner_allocation','windows_render_cold','windows_native_code')
  $m.linker=Get-Content -Raw "$out\linked\linker.json"|ConvertFrom-Json
  $m|Add-Member -NotePropertyName native_checkpoint -NotePropertyValue @{schema=2;record_bytes=40;manifest_sha256=(Get-FileHash "$NativeDirectory\native-checkpoint-manifest.json" -Algorithm SHA256).Hash.ToLowerInvariant()}
  $m.outputs=@('ge8300-render.sys','ge8300-umd.dll','ge8300-pair-kmd.lib')|ForEach-Object {@{name=$_;sha256=(Get-FileHash "$out\linked\$_" -Algorithm SHA256).Hash}}
