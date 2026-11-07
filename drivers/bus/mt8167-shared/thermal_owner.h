@@ -31,6 +31,8 @@ static inline int a04_shared_thermal_quiescent(struct a04_shared_thermal_owner *
 { if(!a04_shared_thermal_valid(s,generation) || s->inflight)return -1;s->quiescent=1;return 0; }
 static inline int a04_shared_thermal_release(struct a04_shared_thermal_owner *s,uint32_t generation)
 { if(!a04_shared_thermal_valid(s,generation) || s->inflight || (s->clocks_ready && !s->quiescent))return -1;s->leased=0;s->clocks_ready=0;s->native_claim=0;return 0; }
+/* Admission closure is not physical clock stop. Keep the supplier clock and
+ * restoration accounting for any retained lease; never report it released. */
 static inline void a04_shared_thermal_stop(struct a04_shared_thermal_owner *s)
-{ if(!s)return;if(s->leased)s->poisoned=1;s->online=0;s->clocks_ready=0;s->firmware_released=0;s->adc_exclusive=0; }
+{ if(!s)return;if(s->leased)s->poisoned=1;s->online=0;if(!s->leased && !s->poisoned)s->clocks_ready=0;s->firmware_released=0;s->adc_exclusive=0; }
 #endif

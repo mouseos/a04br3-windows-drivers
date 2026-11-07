@@ -58,3 +58,24 @@ WDF backendへ無資格で接続・enableするflagは追加しない。既存�
 この外部境界で未完了。拒否専用SYSを再署名して測温候補と呼ばない。
 共有親を変更する場合はmain/Ramanと新parent版を予約し、1010/1012凍結SYSを変更しない。
 brightness/SD/BQ署名候補は別成果物で、その適用をthermalに依存させない。
+
+
+## Linux probe/remove追加確認と停止処理
+
+CT3 mtk_ts_cpu.c:4051-4145のprobeはclock enable/reset/初期化/IRQ登録を直接行う。
+FW所有移譲API/SMC/secure側完了待ちはこの経路にない。4251-4275のremoveは
+thermal framework/worker/timer停止とclock offで、shutdown=NULL。
+このLinux実装を「FW所有移譲とWindows削除時保持の資格化済み」と呼ばない。
+
+stop.cはqualified owner向けに、TEMPMONINT=0とreadback、supplier IRQ drain、
+AHB idle、pause readback、periodic disable readback、最終AHB idle/IRQ mask再確認を
+実装する。drain_irqは実装済みのOS/firmware側IRQ・rundown処理でなければならず、
+現在platform producerは未接続。statusへの推測W1C/GIC操作は行わない。
+I/O/write失敗やtimeoutではtouched/quarantineを保持し、leaseを返さずpanicもしない。
+これも局所停止処理であり、supplier lifetime/firmware排他の実装完成ではない。
+
+thermal_owner.hのsupplier stopは、retained leaseがある時にclocks_readyと
+restore_gated等の会計を消さない。閉じたonlineフラグを物理clock停止成功に変換しない。
+このheader変更は親SYSへ影響するため、既存1010/1012を再build/上書きしていない。
+親の新候補には別版予約とmain/Raman統合が必要。MMIO mappingを残すだけで
+PnP resource再割当て/clock/code lifetimeが保持できたとは扱わない。
