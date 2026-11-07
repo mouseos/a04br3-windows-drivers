@@ -57,7 +57,7 @@ def main():
    r'if not exist "C:\Windows\System32\MT8167DeviceInstall.exe" goto backupfail',
    r'mkdir "%A04_BK%\installer-before" >> "%A04_REPORT%" 2>&1',
    r'if errorlevel 1 goto backupfail',
-   r'xcopy /h /y "C:\Windows\System32\MT8167DeviceInstall.exe" "%A04_BK%\installer-before\" >> "%A04_REPORT%" 2>&1',
+   r'xcopy /h /y "C:\Windows\System32\MT8167DeviceInstall.exe" "%A04_BK%\installer-before" >> "%A04_REPORT%" 2>&1',
    r'if errorlevel 1 goto backupfail',
    r'mkdir "C:\Windows\System32\MT8167GpuUpdate\provider" >> "%A04_REPORT%" 2>&1',
    r'if errorlevel 1 goto dismfail']
