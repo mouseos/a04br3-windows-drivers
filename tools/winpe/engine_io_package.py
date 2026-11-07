@@ -11,6 +11,7 @@ ENGINE_INF = 'e4dff2b25cc164892dce1d534cb564218845c29c'
 LEGACY_RUNTIME = 'f17b743dbed1053451a89d03de805c27021b1cc5'
 LEGACY_CLIENT = 'a016d53763b7872cd1235d5e96204d36ab48cca4'
 ENGINE_CLIENT = 'd0eb43691b4358fb3dc165946da33d03a4ce1b29'
+BOUNDED_ENGINE_CLIENT = '9bce14680011b4f208144905823e777057da2a22'
 ENGINE_CERT = 'BCBF6C456C6F0DD0818434763B189488FBF13570'
 LEGACY_CERT = '2655FC89A7082D3BAB3F26EC556EE8A3C52F4358'
 BASE_VERSION = '11/06/2026,2026.11.6.1001'
@@ -176,9 +177,10 @@ def engine_package_check(legacy_path, engine_path, client_path, root, wifi_path=
             or engine.record.get('inf_source_commit') != ENGINE_INF
             or engine.record.get('audio_mode') != 'engine_pcm_retained'):
         raise ValueError('Engine SYS/INFの出自・mode不一致')
-    if (client.record.get('source_commit') != ENGINE_CLIENT or client.record.get('signed') is not True
+    client_source=client.record.get('source_commit')
+    if (client_source not in (ENGINE_CLIENT,BOUNDED_ENGINE_CLIENT) or client.record.get('signed') is not True
             or client.record.get('signing_thumbprint') != ENGINE_CERT):
-        raise ValueError('d0eb436の署名済みEngine clientが必要です')
+        raise ValueError('固定d0eb/9bceの署名済みEngine clientが必要です')
     old_cert_path, old_cert = legacy.certificate(LEGACY_CERT)
     engine_cert_path, engine_cert = engine.certificate(ENGINE_CERT)
     client_cert_path, client_cert = client.certificate(ENGINE_CERT)
@@ -199,11 +201,20 @@ def engine_package_check(legacy_path, engine_path, client_path, root, wifi_path=
     if old_build.get('driver_source_commit') != LEGACY_RUNTIME:
         raise ValueError('旧bundleのbuild出自不一致')
     probe_build = client.json('probe-manifest.json')
-    if (probe_build.get('source_commit') != ENGINE_CLIENT or probe_build.get('source_dirty') is not False
-            or probe_build.get('package_version') != '2026.11.7.2'
-            or probe_build.get('driver_runtime_source_expected') != ENGINE_RUNTIME
-            or probe_build.get('audio_inf_source_expected') != ENGINE_INF):
-        raise ValueError('通常音声専用probe profile不一致')
+    if probe_build.get('source_commit')!=client_source or probe_build.get('source_dirty') is not False:
+        raise ValueError('通常音声専用probe source不一致')
+    if client_source==ENGINE_CLIENT:
+        if (probe_build.get('package_version')!='2026.11.7.2'
+            or probe_build.get('driver_runtime_source_expected')!=ENGINE_RUNTIME
+            or probe_build.get('audio_inf_source_expected')!=ENGINE_INF):raise ValueError('旧通常音声専用probe profile不一致')
+    elif (probe_build.get('package_version')!='2026.11.7.4'
+        or probe_build.get('driver_runtime_source_expected')!='3d83f6fee554455434e2c03112c56bbf351e4c4b'
+        or probe_build.get('audio_inf_source_expected')!='3d83f6fee554455434e2c03112c56bbf351e4c4b'
+        or probe_build.get('audio_inf_driverver_expected')!='11/06/2026,2026.11.7.1007'
+        or probe_build.get('output_limit_bytes')!=16384 or probe_build.get('snapshot_period_ms')!=100
+        or probe_build.get('signed_audio_sys_sha256_expected')!='b917801c0f673aa5ab36be25c4133ad5d1370f1130936bbc4fda7086cf374edc'
+        or probe_build.get('signed_parent_sys_sha256_expected')!='4638ab23c614aa6537b54b321c2b3bea5e6c54ac02f3c61956a7b1102fac42a5'):
+        raise ValueError('bounded probeの固定Audio1007/親1010/出力契約不一致')
     selected, components = {}, {}
     definitions = (
         ('parent', engine, 'shared-parent', 'mt8167-shared', BASE_VERSION, ENGINE_RUNTIME, ENGINE_INF, ENGINE_CERT),
@@ -229,15 +240,19 @@ def engine_package_check(legacy_path, engine_path, client_path, root, wifi_path=
     selected['clients/mt8167-audio-engine-probe.exe'] = client.file('mt8167-audio-engine-probe.exe')
     for kind, name, package, source, certificate in (
             ('wlan_client', 'mt6630-wlan-probe.exe', legacy, LEGACY_RUNTIME, LEGACY_CERT),
-            ('audio_client', 'mt8167-audio-engine-probe.exe', client, ENGINE_CLIENT, ENGINE_CERT)):
+            ('audio_client', 'mt8167-audio-engine-probe.exe', client, client_source, ENGINE_CERT)):
         components[kind] = {'binary_source_commit': source, 'certificate_thumbprint': certificate,
                             'sha256': sha(selected['clients/' + name]),
                             'signed_manifest_sha256': sha(package.manifest), 'arguments': []}
     components['wlan_client']['legacy_bundle_client_fix_source'] = LEGACY_CLIENT
     for name, expected in (('parent/mt8167-shared.sys', probe_build['signed_parent_sys_sha256_expected']),
                            ('audio/mt8167-audio.sys', probe_build['signed_audio_sys_sha256_expected'])):
-        if sha(selected[name]) != expected.lower():
+        if client_source==ENGINE_CLIENT and sha(selected[name]) != expected.lower():
             raise ValueError('専用probeのexpected Engine SYS hashとpackageが不一致')
+    if client_source==BOUNDED_ENGINE_CLIENT:
+        components['audio_client']['expected_driver_sys']={
+            'parent/mt8167-shared.sys':probe_build['signed_parent_sys_sha256_expected'],
+            'audio/mt8167-audio.sys':probe_build['signed_audio_sys_sha256_expected']}
     selected.update({'mt8167-development.cer': old_cert_path, 'engine-development.cer': engine_cert_path,
                      'engine-client-development.cer': client_cert_path})
     certificates = {'legacy_usb_wifi_wlan': old_cert, 'engine_parent_audio': engine_cert,

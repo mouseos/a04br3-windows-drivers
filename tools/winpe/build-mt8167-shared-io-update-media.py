@@ -112,6 +112,8 @@ def main():
    if 'sd' in deferred_policy['packages']:optional_drivers+=['call :adddriver SD X:\\a04br3\\shared-io\\sd\\mt8167-sd.inf','if errorlevel 1 goto dismfail']
    optional_drivers+=['call :adddriver DISPLAY X:\\a04br3\\shared-io\\display\\mt8167-display.inf','if errorlevel 1 goto dismfail']
   elif probe_info and probe_info.get('deferred_update'):raise SystemExit('延期serviceには一致する明示package mapが必要です')
+  for rel,digest in components.get('audio_client',{}).get('expected_driver_sys',{}).items():
+   if rel not in sources or sha(sources[rel])!=digest:raise SystemExit('bounded audio clientと最終parent/Audioの実SYS pin不一致')
   files={rel:sha(path) for rel,path in sources.items()}
  else:
   stems={'parent':('shared-parent','mt8167-shared'),'audio':('mt8167-afe-first-playback','mt8167-audio'),'usb':('mt8167-usb20','mt8167-usb20'),'wifi':('mt6630-runtime','mt6630-runtime')}
