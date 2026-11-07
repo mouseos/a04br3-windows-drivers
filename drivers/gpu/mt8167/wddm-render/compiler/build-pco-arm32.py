@@ -105,7 +105,7 @@ def main():
             actual_source=out/'pco_usclib_explicit.c'
             actual_source.write_text(prefix+'\nvoid geo_pco_usclib_initialize(void) {'+match[1]+'\n}\nvoid geo_pco_usclib_finalize(void) {'+match[2]+'\n}\n')
         platform=['-isystem',str(a.windows_headers.resolve())]
-        if a.msvc_sdk and a.component=='util':
+        if a.msvc_sdk and (a.component=='util' or source.name=='pvr_device_info.c'):
             # MSVC exports the underscored CRT names; preserve actual CRT calls.
             platform+=['-Dstrdup=_strdup','-Dstricmp=_stricmp']
         # C-only compiler IR uses GNU packed bitfields (asserted by Mesa).
