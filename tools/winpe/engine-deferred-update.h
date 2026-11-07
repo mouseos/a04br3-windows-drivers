@@ -221,7 +221,9 @@ static DWORD deferred_selected_version(HDEVINFO set,SP_DEVINFO_DATA *dev,ULONGLO
  WCHAR value[128];DWORD bytes,n=0,i;DEVPROPTYPE type;ULONGLONG result=0;
  if(!SetupDiGetDevicePropertyW(set,dev,&key,&type,(BYTE *)value,sizeof(value),&bytes,0))return GetLastError();
  if(type!=DEVPROP_TYPE_STRING||bytes<2||bytes>sizeof(value)||(bytes&1)||value[bytes/2-1])return ERROR_INVALID_DATA;
- for(i=0;i<5;i++){
+ /* DriverVersion has four 16-bit components; the five package file slots
+  * (INF/SYS/CAT/FW/UMD) are unrelated to this parser. */
+ for(i=0;i<4;i++){
   DWORD part=0,digits=0;
   while(n<bytes/2-1&&value[n]>=L'0'&&value[n]<=L'9'){part=part*10+value[n++]-L'0';if(++digits>5||part>65535)return ERROR_INVALID_DATA;}
   if(!digits)return ERROR_INVALID_DATA;result=(result<<16)|part;

@@ -49,3 +49,14 @@ USB1005のEnum実選択Serviceは`mshidkmdf`。packageの補助サービス`A04U
 保持gateは同じ実HardwareID、HIDClass、実選択INF/date/version、SYS hashに加え、このEnum実値を照合する。
 USB source/SYS/INFは変更しない。GraphicsDriversの`DisableAutoAcpiPostDeivce`=DWORD1と
 `ValidateWDDMCaps`不在を7node receiptへ記録し、準備後のprivate SYSTEMでも同一を照合する。
+
+## 4target / 2client の現在の構成
+
+`codec1026-msdc-quiet-render313-v3` は親・音声・eMMC・GE8300登録3.13を
+一度の延期PnPと計画再起動で更新し、署名済みcaptureとPowerVR COLOR clientを実行する。
+新しい試行は主担当から明示返却された最新captureと同じSYSTEM由来の7node receiptを使う。
+既存run89は更新前に終了した。ドライバ版は4個の16bit成分なのに、INF/SYS/CAT/FW/UMDの
+5ファイル化に伴って版パーサーまで5回へ変わり、正常な版をERROR_INVALID_DATAにしていた。
+版パーサーを4回へ戻し、5ファイルの署名・hash検証は保持した。保持IDや版の検査は緩めない。
+回収済み7件の実選択版で旧処理の拒否と修正後の正しい64bit値を再現し、5成分・桁超過・欠損は拒否する。
+一般Direct3D描画と録音の成功は、この修正のビルド成功だけでは確認できない。
