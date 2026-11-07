@@ -90,9 +90,11 @@ static NTSTATUS set_power(void *p,uint64_t epoch,DEVICE_POWER_STATE power)
     }
     KeReleaseMutex(&c->mutex,FALSE);return s;
 }
+static struct e_native_resource *resource(struct e_native_owner *c,uint64_t id)
+{struct e_native_resource *r;for(r=c->resources;r && r->id!=id;r=r->next){}return r;}
 static int32_t create(void *p,const struct geo_surface_desc *d,uint64_t *id)
 {
-    struct e_native_owner *c=p;NTSTATUS s;
+    struct e_native_owner *c=p;struct e_native_resource *r;NTSTATUS s;
     if(!id)return STATUS_INVALID_PARAMETER;*id=0;
     BOOLEAN vertex=d && d->format==100u && d->usage==3u;
     if(vertex){
@@ -101,27 +103,53 @@ static int32_t create(void *p,const struct geo_surface_desc *d,uint64_t *id)
     }else if(!d || d->size!=sizeof(*d) || d->version!=1 || d->width!=800 || d->height!=600 ||
        d->pitch!=3200 || d->format!=GEO_FORMAT_A8R8G8B8 || d->usage!=GEO_USAGE_RENDER_TARGET || d->reserved)return STATUS_NOT_SUPPORTED;
     s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
-    if((vertex?c->vertex:c->surface) || c->next_id==UINT64_MAX)return leave(c,STATUS_DEVICE_BUSY);
-    if(vertex){c->vertex_description=*d;c->vertex=++c->next_id;*id=c->vertex;return leave(c,STATUS_SUCCESS);}
-    c->description=*d;c->surface=++c->next_id;*id=c->surface;return leave(c,STATUS_SUCCESS);
+    if(c->next_id==UINT64_MAX)return leave(c,STATUS_INTEGER_OVERFLOW);
+    /* Logical allocations are not current hardware bindings. In particular,
+     * the runtime's implicit backbuffer must not prevent CreateRenderTarget.
+     * Residency is bounded separately by the actual one-target aperture. */
+    r=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*r),E_FACTORY_TAG);
+    if(!r)return leave(c,STATUS_INSUFFICIENT_RESOURCES);
+    RtlZeroMemory(r,sizeof(*r));r->desc=*d;r->id=++c->next_id;
+    r->next=c->resources;c->resources=r;*id=r->id;return leave(c,STATUS_SUCCESS);
+}
+static NTSTATUS cold_for_bind(struct e_native_owner *c)
+{
+    NTSTATUS s;
+    if(c->job_state==E_JOB_NONE)return STATUS_SUCCESS;
+    if(c->job_state!=E_JOB_COMPLETE)return STATUS_DEVICE_BUSY;
+    /* Clear's retained target remains bound while the first real converted
+     * vertex allocation arrives. Completion is not NoDMA: perform the same
+     * normal stop/platform-off/IRQ close before editing any cold mapping. */
+    s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
+    if(NT_SUCCESS(s))c->job=0;else c->state=E_OWNER_FAILED;
+    return s;
 }
 static int32_t bind(void *p,uint64_t surface,void *mdl,uint32_t offset,uint32_t bytes,uint64_t aperture)
 {
-    struct e_native_owner *c=p;NTSTATUS s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
-    BOOLEAN vertex=surface && surface==c->vertex;
+    struct e_native_owner *c=p;struct e_native_resource *r;NTSTATUS s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
+    r=resource(c,surface);if(!r || offset)return leave(c,STATUS_INVALID_PARAMETER);
+    BOOLEAN vertex=r->desc.usage==3u;
     if(vertex){
-        if(offset || bytes!=c->vertex_description.width || c->allocation->vertex || c->job_state)return leave(c,STATUS_INVALID_PARAMETER);
+        if(bytes!=r->desc.width || c->allocation->vertex)return leave(c,STATUS_DEVICE_BUSY);
+        s=cold_for_bind(c);if(!NT_SUCCESS(s))return leave(c,s);
+        c->vertex=surface;c->vertex_description=r->desc;c->vertex_aperture_offset=aperture;
         s=e_native_build_graph_locked(c);
         if(NT_SUCCESS(s))s=a04_native_allocation_bind_frontend_vertex_cold(c->allocation,&c->memory,mdl,bytes,aperture);
-        if(NT_SUCCESS(s))c->vertex_aperture_offset=aperture;
-        else if(c->allocation->vertex || c->allocation->frontend_orphan)c->state=E_OWNER_FAILED;
+        if(!NT_SUCCESS(s)){
+            if(c->allocation->vertex || c->allocation->frontend_orphan)c->state=E_OWNER_FAILED;
+            else c->vertex=0;
+        }
         return leave(c,s);
     }
-    if(surface!=c->surface || !surface || offset || bytes!=1920000 || c->allocation->binding || c->job_state)return leave(c,STATUS_INVALID_PARAMETER);
+    if(bytes!=1920000 || c->allocation->binding)return leave(c,STATUS_DEVICE_BUSY);
+    s=cold_for_bind(c);if(!NT_SUCCESS(s))return leave(c,s);
+    c->surface=surface;c->description=r->desc;c->aperture_offset=aperture;
     s=e_native_build_graph_locked(c);
     if(NT_SUCCESS(s))s=a04_native_allocation_bind_frontend_cold(c->allocation,&c->memory,mdl,bytes,aperture,c->colour);
-    if(NT_SUCCESS(s))c->aperture_offset=aperture;
-    else if(c->allocation->binding || c->allocation->frontend_orphan)c->state=E_OWNER_FAILED;
+    if(!NT_SUCCESS(s)){
+        if(c->allocation->binding || c->allocation->frontend_orphan)c->state=E_OWNER_FAILED;
+        else c->surface=0;
+    }
     return leave(c,s);
 }
 static int32_t unbind(void *p,uint64_t surface)
@@ -129,25 +157,24 @@ static int32_t unbind(void *p,uint64_t surface)
     struct e_native_owner *c=p;NTSTATUS s=enter(c,TRUE);if(!NT_SUCCESS(s))return s;
     BOOLEAN vertex=surface && surface==c->vertex;
     if(!surface || (!vertex && surface!=c->surface))return leave(c,STATUS_INVALID_PARAMETER);
+    if(c->job_state==E_JOB_PREPARED || c->job_state==E_JOB_SUBMITTED)return leave(c,STATUS_DEVICE_BUSY);
     s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
     if(NT_SUCCESS(s)){
         struct a04_native_mdl_binding **b=vertex?&c->allocation->vertex:&c->allocation->binding;
         if(*b)s=a04_native_mdl_release_cold(b);
     }
-    if(NT_SUCCESS(s)){c->job=0;c->job_state=E_JOB_NONE;if(vertex)c->vertex_aperture_offset=0;else c->aperture_offset=0;}
+    if(NT_SUCCESS(s)){c->job=0;c->job_state=E_JOB_NONE;if(vertex){c->vertex_aperture_offset=0;c->vertex=0;}else{c->aperture_offset=0;c->surface=0;}}
     else c->state=E_OWNER_FAILED;
     return leave(c,s);
 }
 static int32_t destroy(void *p,uint64_t surface)
 {
-    struct e_native_owner *c=p;NTSTATUS s=enter(c,TRUE);if(!NT_SUCCESS(s))return s;
-    if(surface && surface==c->vertex){
-        if(c->allocation->vertex || c->job_state)return leave(c,STATUS_DEVICE_BUSY);
-        c->vertex=0;RtlZeroMemory(&c->vertex_description,sizeof(c->vertex_description));return leave(c,STATUS_SUCCESS);
-    }
-    if(!surface || surface!=c->surface)return leave(c,STATUS_INVALID_PARAMETER);
-    if(c->allocation->binding || c->job_state)return leave(c,STATUS_DEVICE_BUSY);
-    c->surface=0;RtlZeroMemory(&c->description,sizeof(c->description));return leave(c,STATUS_SUCCESS);
+    struct e_native_owner *c=p;struct e_native_resource **link,*r;
+    NTSTATUS s=enter(c,TRUE);if(!NT_SUCCESS(s))return s;
+    for(link=&c->resources;*link && (*link)->id!=surface;link=&(*link)->next){}
+    if(!*link)return leave(c,STATUS_INVALID_PARAMETER);r=*link;
+    if((surface==c->vertex && c->allocation->vertex) || (surface==c->surface && c->allocation->binding))return leave(c,STATUS_DEVICE_BUSY);
+    *link=r->next;ExFreePoolWithTag(r,E_FACTORY_TAG);return leave(c,STATUS_SUCCESS);
 }
 static int32_t prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
 {
@@ -170,10 +197,20 @@ static int32_t prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
     if(!NT_SUCCESS(s))c->state=E_OWNER_FAILED;
     return leave(c,s);
 }
+struct discard_call {struct e_native_owner *c;uint64_t job;NTSTATUS status;};
+static BOOLEAN discard_close(void *p)
+{
+    struct discard_call *d=p;
+    if(d->c->job!=d->job || d->c->job_state!=E_JOB_PREPARED)d->status=STATUS_DEVICE_BUSY;
+    else{d->c->job_state=E_JOB_NONE;d->status=STATUS_SUCCESS;}
+    return TRUE;
+}
 static int32_t discard(void *p,uint64_t job)
 {
     struct e_native_owner *c=p;NTSTATUS s=enter(c,TRUE);if(!NT_SUCCESS(s))return s;
-    if(job!=c->job || !job || c->job_state!=E_JOB_PREPARED)return leave(c,STATUS_DEVICE_BUSY);
+    struct discard_call call={c,job,STATUS_DEVICE_BUSY};
+    if(!job || !e_native_synchronize(c,discard_close,&call))return leave(c,STATUS_IO_DEVICE_ERROR);
+    if(!NT_SUCCESS(call.status))return leave(c,call.status);
     s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
     if(NT_SUCCESS(s)){c->job=0;c->job_state=E_JOB_NONE;}else c->state=E_OWNER_FAILED;
     return leave(c,s);
@@ -233,7 +270,7 @@ static NTSTATUS acquire(void *p,struct geo_owner_lease *out)
 static NTSTATUS release(void *p,uint64_t epoch)
 {
     struct e_native_owner *c=p;NTSTATUS s=transition_begin(c,epoch);if(!NT_SUCCESS(s))return s;
-    if(c->surface || c->vertex || c->job_state || c->allocation->vertex || c->allocation->binding || c->state!=E_OWNER_QUIESCED || !c->receipt_valid)s=STATUS_DEVICE_BUSY;
+    if(c->resources || c->job_state || c->allocation->vertex || c->allocation->binding || c->state!=E_OWNER_QUIESCED || !c->receipt_valid)s=STATUS_DEVICE_BUSY;
     else{c->leased=FALSE;dereference(c);s=STATUS_SUCCESS;}
     KeReleaseMutex(&c->mutex,FALSE);return s;
 }
@@ -270,7 +307,7 @@ NTSTATUS GeoNativeOwnerDelete(struct geo_native_binding *out)
 {
     struct e_native_owner *c;NTSTATUS s;
     if(!out || !(c=out->native_context) || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
-    if(c->leased || c->references!=1 || c->surface || c->vertex || c->job_state)return STATUS_DEVICE_BUSY;
+    if(c->leased || c->references!=1 || c->resources || c->job_state)return STATUS_DEVICE_BUSY;
     if(c->core && !e_native_synchronize(c,close_admission,c))return STATUS_IO_DEVICE_ERROR;
     if(!c->rundown_closed){ExWaitForRundownProtectionRelease(&c->operations);c->rundown_closed=TRUE;}
     if(c->allocation){

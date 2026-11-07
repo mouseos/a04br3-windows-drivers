@@ -147,3 +147,22 @@ GPU実fetchは同一aperture中の別の実vertex MDLを参照。PS constantsは
 同target MDLのCPU cache→padding guardを検査し、matching_pixelsを480000と偽らない。
 その後のfresh GP実IRQでのみCPU_VISIBLE/GPU_DONEを返す。raster正否の実機試験は別。
 未実装profileは正直にUNSUPPORTED、常時拒否stubではなくこの有限profileの実builderがある。
+
+
+## Clear完了後の初回vertex bind / metadata複数化
+
+Hの標準順序Clear→初回DrawではvertexがClearのGPU完了後に初めてbindされる。
+`bind`はPREPARED/SUBMITTEDを拒否し、COMPLETEなら実stop→IRQ close→platform-off→
+retire graphを通し、元target Shadow MDL/SG/CPU画像とIDを保持したままcold graphを
+再構築してvertex union PTを付ける。COMPLETEを単に許すlive remapではない。
+次Drawは同じtargetをLOAD。完了だけでNoDMAとは扱わない。
+
+またCreateDeviceの暗黙backbuffer＋明示RTのmetadataを別々の参照IDで保持する。
+metadata作成を単一current bindingの制約と混同しない。実active bindは
+one-target469pages＋one-input最大16pagesで、commit_limit485pagesは不変。
+VidMmが未residentの別RT metadataを作ることを理由にBUSYにしない。
+既存roleの実bindがまだ残る場合はBUSYであり、別のMDLへ黙ってredirectしない。
+prepared discardはactual Dxgk lockで当該tokenのsubmitを先に閉じてから正常stopする。
+
+H731のflat SM2 tokensはhostで実PCO実行し、Eのallowlist VS24/PS64と全bytes/metadataが
+一致した。source生成ログは指定ログ保存先 `windows-rt-native-h731-flat-pco-check.log`。

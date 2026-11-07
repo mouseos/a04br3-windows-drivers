@@ -16,7 +16,11 @@
 #define E_JOB_PREPARED 1u
 #define E_JOB_SUBMITTED 2u
 #define E_JOB_COMPLETE 3u
+struct e_native_resource {
+    struct e_native_resource *next;uint64_t id;struct geo_surface_desc desc;
+};
 struct e_native_owner {
+    struct e_native_resource *resources;
     DXGKRNL_INTERFACE dxgk;struct geo_frontend_memory memory;
     struct a04_native_owner_allocation *allocation;
     volatile UCHAR *core,*mfg;ULONG irq_level;
@@ -25,7 +29,8 @@ struct e_native_owner {
     void *firmware_image;ULONG firmware_bytes;
     KMUTEX mutex;EX_RUNDOWN_REF operations;
     volatile LONG references,closing,irq_gate;BOOLEAN rundown_closed,leased;
-    uint32_t state,power,job_state,colour,kick_write,generation;
+    volatile uint32_t state,power,job_state;
+    uint32_t colour,kick_write,generation;
     uint64_t epoch,hardware_epoch,next_id,surface,job,aperture_offset;
     struct geo_surface_desc description,vertex_description;
     uint64_t vertex,vertex_aperture_offset;
