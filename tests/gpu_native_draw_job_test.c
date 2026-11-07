@@ -6,25 +6,12 @@
 #include "native_draw_job.h"
 static uint64_t get(const uint8_t *p,unsigned at,unsigned n)
 {uint64_t v=0;for(unsigned i=0;i<n;i++)v|=(uint64_t)p[at+i]<<(i*8);return v;}
-static void put(uint8_t *p,unsigned at,uint32_t v)
-{for(unsigned i=0;i<4;i++)p[at+i]=(uint8_t)(v>>(i*8));}
+#include "gpu_native_draw_input.h"
 int main(int argc,char **argv)
 {
- assert(argc==2);FILE *f=fopen(argv[1],"r");assert(f);char line[1024];unsigned found=0;uint8_t code[2][64]={{0}};
- while(fgets(line,sizeof(line),f)){
-  size_t n=strcspn(line,"\r\n");if(n!=48 && n!=128)continue;
-  unsigned which=n==48?0:1;for(size_t i=0;i<n/2;i++){unsigned v;assert(sscanf(line+2*i,"%2x",&v)==1);code[which][i]=(uint8_t)v;}found|=1u<<which;
- }
- fclose(f);assert(found==3);
- _Alignas(8) uint8_t blob[1200]={0};
- struct geo_draw_request r={0};r.size=sizeof(r);r.version=1;r.blob_bytes=sizeof(blob);r.target=1;r.vertex=2;
- r.target_desc=(struct geo_surface_desc){sizeof(r.target_desc),1,800,600,3200,21,1,0};
- r.state.topology=1;r.state.vertex_count=3;r.state.vertex_stride=16;r.state.color_write_mask=15;
- r.state.viewport[2]=0x44480000;r.state.viewport[3]=0x44160000;r.state.viewport[5]=0x3f800000;
- r.vs=(struct geo_draw_shader){.format=2,.stage=0,.tokens={0,12},.usc={16,24},.constants={128,512},.vtxins=4,.vtxouts=4,.input_mask=1};
- r.ps=(struct geo_draw_shader){.format=2,.stage=1,.tokens={40,12},.usc={56,64},.constants={640,512},.temps=5,.shareds=4,.constant_mask=1};
- put(blob,0,0x10040);put(blob,4,3);put(blob,8,0x0100003e);put(blob,40,0x40);put(blob,44,3);put(blob,48,0x0100003e);
- memcpy(blob+16,code[0],24);memcpy(blob+56,code[1],64);put(blob,640,0x3f800000);put(blob,652,0x3f800000);
+ assert(argc==2);_Alignas(8) uint8_t blob[1200];
+ struct geo_draw_request r=draw_input(argv[1],blob);
+ const uint8_t *code[2]={blob+16,blob+56};
  struct a04_m111_draw_job *out=malloc(sizeof(*out)),*before=malloc(sizeof(*out));void *scratch=aligned_alloc(8,(A04_M111_DRAW_SCRATCH+7)&~7u);assert(out&&before&&scratch);
  struct a04_m111_clear_job_input in={.output_gpu=0x8200000000ULL,.data_page_gpu=0x65c0100000ULL,.usc_page_gpu=0xba00010000ULL,.pds_page_gpu=0xa800010000ULL,.dummy_region_gpu=0x65c0020000ULL,.dummy_stencil_gpu=0x65c0030000ULL,.hwrt_fw=0xc00848c0,.pr_fence_fw=0xc0084c00};
  for(unsigned test=0;test<2;test++){

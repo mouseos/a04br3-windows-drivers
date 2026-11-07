@@ -21,6 +21,7 @@ static NTSTATUS get_sg(PDMA_ADAPTER a,PDEVICE_OBJECT pdo,PMDL m,void *va,ULONG b
     sg->Elements[0].Length=bytes;cb(pdo,NULL,sg,ctx);return STATUS_SUCCESS;
 }
 static void put_sg(PDMA_ADAPTER a,PSCATTER_GATHER_LIST sg,BOOLEAN w){(void)a;assert(w==sg->Elements[1].Length);sg_puts++;free(sg);}
+#ifndef A04_TEST_NO_TARGET_MAIN
 static void run(int exposed,uint64_t aperture_offset,uint32_t color)
 {
     struct fixture x;struct a04_vendor_native_cold *n=NULL;struct a04_native_mdl_binding *b=NULL;
@@ -91,3 +92,5 @@ int main(void)
     assert(waitpid(pid,&status,0)==pid && WIFEXITED(status) && !WEXITSTATUS(status));
     puts("same-MDL native target: exact aperture offset/cross-leaf SG/PTE, relocated PBE/packedARGB, bad ranges unchanged, cold detach/exposed retain PASS; no GPU");return 0;
 }
+
+#endif
