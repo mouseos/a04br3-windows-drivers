@@ -26,7 +26,8 @@ $thermal=if($env:A04_SHARED_THERMAL_DIAGNOSTIC -eq '1'){'1'}else{'0'}
 $voicePcm=if($env:A04_SHARED_VOICE_PCM_DIAGNOSTIC -eq '1'){'1'}else{'0'}
 $enginePcm=if($env:A04_SHARED_ENGINE_PCM -eq '1'){'1'}else{'0'}
 # Engine and fixed-tone parents must not share a DriverStore package version.
-$parentInf=Join-Path $src $(if($enginePcm -eq '1'){'prototype\shared-parent-engine-pcm.inf'}else{'prototype\shared-parent.inf'})
+if($sdPower -eq '1' -and $enginePcm -ne '1'){throw 'SD matched tuple requires existing EnginePcm flags'}
+$parentInf=Join-Path $src $(if($sdPower -eq '1'){'prototype\shared-parent-engine-pcm-sd.inf'}elseif($enginePcm -eq '1'){'prototype\shared-parent-engine-pcm.inf'}else{'prototype\shared-parent.inf'})
 $parentDriverVer=[regex]::Match([IO.File]::ReadAllText($parentInf),'(?im)^DriverVer\s*=\s*([^\r\n]+)').Groups[1].Value.Trim()
 Copy-Item -LiteralPath $parentInf -Destination (Join-Path $out 'shared-parent.inf') -Force
 $parentVersionParts=$parentDriverVer.Split(',')

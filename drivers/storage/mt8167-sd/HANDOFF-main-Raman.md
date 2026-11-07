@@ -83,7 +83,7 @@ Carver固定UEFI source `f56b2c2c5cccb24084f6459665d4e792d33bc80c`:
 artifact: `port/xnu/out/mt8167-sd-acpi-f56b2c2c-preparation/manifest.json`。
 元ASL SHA256 `4b394dd193adfb57b5e0663236c168d5d04e901ee9b123b132da106969250892`、
 元AML SHA256 `a90b1aecca22e1d462837c1fbf16a015ed25dceb09d976ccd1f7b1d7117118c2`。
-8f0a ASLは`External(\\_SB.SHR0,DeviceObj)`と`_DEP`を追加しているので別hash/出自にする。
+8f0a ASLは`External(\_SB.SHR0,DeviceObj)`と`_DEP`を追加しているので別hash/出自にする。
 親SHR0/BEN0001/UID0はCarver sourceの根拠。実採用FDが同namespaceかmainで照合する。
 ASL/AML/iasl結果/元manifest hashをtupleへ入れるが、DSC/FDFへ勝手に接続しない。
 CD20/pin/mux read-only proofはrail leaseを証明しない。VMC/VMCH保持と混同しない。
@@ -99,3 +99,12 @@ source/script/全flags/全成果物hash・回収ZIP照合をtuplemanifestへ残�
 8f0a時点: ARM32公開参照header compile、strict core compile、PS構文、iaslは通過。
 新電源sourceの実WDK/署名/Windows SD動作やsleep/resumeはこの時点では未確認。
 以後のmatched build実績は別tuplemanifestで示し、この履歴を実機成功に書き換えない。
+
+
+## 独立tuple sourceでの版選択
+
+`shared-parent-engine-pcm.inf`のecaa1008は不変更。
+SD on時のみ`prototype/shared-parent-engine-pcm-sd.inf`（1010）をhelperが選択する。
+SD off時は元のINF選択を維持する。SD onではEnginePcm flagsが必要。
+Audio sourceはecaaそのままであり、この候補ではAudio SYSを再buildしない。
+SD INFは11/07/2026,2026.11.7.3。新tupleの実WDK・署名結果はtuplemanifestに記録する。
