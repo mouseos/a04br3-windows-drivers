@@ -88,7 +88,8 @@ public:
  STDMETHODIMP_(NTSTATUS) AllocateAudioBuffer(ULONG requested,PMDL *mdl,PULONG actual,PULONG offset,MEMORY_CACHING_TYPE *cache) override {
   if(!mdl||!actual||!offset||!cache||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
   *mdl=NULL;*actual=*offset=0;if(buffer.mdl||state==KSSTATE_RUN||!requested||(requested&1)||requested>65536)return STATUS_INVALID_PARAMETER;
-  NTSTATUS status=p()->allocate(p()->context,direction,requested,&buffer);
+  NTSTATUS status=a04_bt_hfp_status(session);if(!NT_SUCCESS(status))return status;
+  status=p()->allocate(p()->context,direction,requested,&buffer);
   if(!NT_SUCCESS(status)){if(buffer.mdl)p()->fault(p()->context,status);return status;}
   if(!buffer.mdl||!buffer.generation||buffer.bytes<requested||buffer.bytes>65536||(buffer.bytes&1)||
      buffer.cache!=MmNonCached||(buffer.bytes&(PAGE_SIZE-1))||MmGetMdlByteOffset(buffer.mdl)||MmGetMdlByteCount(buffer.mdl)!=buffer.bytes||!p()->buffer_live(p()->context,direction,buffer.generation)){
@@ -120,7 +121,8 @@ public:
  STDMETHODIMP_(NTSTATUS) GetDescription(PPCFILTER_DESCRIPTOR *out) override {if(!out)return STATUS_INVALID_PARAMETER;*out=&filters[direction];return STATUS_SUCCESS;}
  STDMETHODIMP_(NTSTATUS) Init(PUNKNOWN,PRESOURCELIST,PPORTWAVERT port) override {return port?STATUS_SUCCESS:STATUS_INVALID_PARAMETER;}
  STDMETHODIMP_(NTSTATUS) GetDeviceDescription(PDEVICE_DESCRIPTION out) override {
-  const struct a04_bt_hfp_provider *p=a04_bt_hfp_provider(session);return out?p->device_description(p->context,out):STATUS_INVALID_PARAMETER;
+  if(!out)return STATUS_INVALID_PARAMETER;NTSTATUS status=a04_bt_hfp_status(session);if(!NT_SUCCESS(status))return status;
+  const struct a04_bt_hfp_provider *p=a04_bt_hfp_provider(session);return p->device_description(p->context,out);
  }
  STDMETHODIMP_(NTSTATUS) NewStream(PMINIPORTWAVERTSTREAM *out,PPORTWAVERTSTREAM port,ULONG pin,BOOLEAN capture,PKSDATAFORMAT f) override {
   if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;if(!port||pin||!!capture!=!!direction||!format_ok(f))return STATUS_NO_MATCH;

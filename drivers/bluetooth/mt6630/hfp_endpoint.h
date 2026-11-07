@@ -6,7 +6,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define A04_BT_HFP_PROVIDER_VERSION 1u
+#define A04_BT_HFP_PROVIDER_VERSION 2u
 enum {A04_BT_HFP_SPEAKER=0,A04_BT_HFP_MIC=1};
 struct a04_bt_hfp_buffer {PMDL mdl;ULONG bytes,generation;MEMORY_CACHING_TYPE cache;};
 struct a04_bt_hfp_latency {ULONG fifo,chipset,codec;};
@@ -19,6 +19,10 @@ struct a04_bt_hfp_latency {ULONG fifo,chipset,codec;};
 struct a04_bt_hfp_provider {
  ULONG size,version;PVOID context;
  void (*reference)(PVOID);void (*dereference)(PVOID);
+ /* Must prove this live HFP stack belongs to the leased physical MT6630.
+  * GUID membership or a name match alone is not sufficient. No user IDs.
+  * Return STATUS_NOT_SUPPORTED for unrelated radios (no fault/rundown). */
+ NTSTATUS (*match_hfp_target)(PVOID,PDEVICE_OBJECT);
  struct a04_bt_sideband_ops sideband;
  /* Verify actual GORM/FC72 + controller PCM/master-clock configuration and
   * paired combo ownership for the actual WinBlue codec ID (CVSD=0), 8k/1/16.
@@ -54,7 +58,11 @@ struct a04_bt_hfp_provider {
   * One deferred cleanup attempt; failure is retained, not a retry loop. */
  NTSTATUS (*retire)(PVOID,PWORKER_THREAD_ROUTINE,PVOID);
 };
+struct a04_bt_hfp_metadata {GUID input_category,output_category,container;BOOLEAN volume,nrec;};
 struct a04_bt_hfp_session;
+/* Runtime metadata only: no name/address is returned or logged. */
+NTSTATUS a04_bt_hfp_metadata(struct a04_bt_hfp_session *,struct a04_bt_hfp_metadata *);
+NTSTATUS a04_bt_hfp_connection(struct a04_bt_hfp_session *,BOOLEAN *);
 /* Kernel only: link must currently enumerate under the Microsoft HFP bypass
  * interface GUID. No user interface accepts a path or arbitrary IOCTL. */
 NTSTATUS a04_bt_hfp_attach(PDEVICE_OBJECT owner,PCUNICODE_STRING interface_link,

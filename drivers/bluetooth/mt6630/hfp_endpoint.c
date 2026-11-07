@@ -11,12 +11,12 @@
 struct hfp_call;
 struct a04_bt_hfp_session {
  volatile LONG refs,failure,stopping,uncertain_io,detached,claims[2];KEVENT serial;
- PFILE_OBJECT file;PDEVICE_OBJECT target;PIO_WORKITEM finalize;
+ PFILE_OBJECT file;PDEVICE_OBJECT target,owner;PIO_WORKITEM finalize;
  struct a04_bt_hfp_provider provider;struct a04_bt_sideband sideband;
  ULONG running;BOOLEAN link_open;struct hfp_call *watch;
 };
 struct hfp_call {
- volatile LONG refs;PIRP irp;PFILE_OBJECT file;KEVENT done;UCHAR data[16];
+ volatile LONG refs;PIRP irp;PFILE_OBJECT file;KEVENT done;UCHAR data[4096];
  struct a04_bt_hfp_session *session;BOOLEAN watch;
 };
 static void lock(struct a04_bt_hfp_session *s){(void)KeWaitForSingleObject(&s->serial,Executive,KernelMode,FALSE,NULL);}
@@ -47,12 +47,13 @@ static NTSTATUS complete(PDEVICE_OBJECT device,PIRP irp,PVOID context)
 static struct hfp_call *make_call(struct a04_bt_hfp_session *s,ULONG code,ULONG in,ULONG out,ULONG value,BOOLEAN watch)
 {
  struct hfp_call *c;PIO_STACK_LOCATION sp;
+ if(in>4096||out>4096)return NULL;
  c=ExAllocatePoolWithTag(NonPagedPool,sizeof(*c),TAG);if(!c)return NULL;RtlZeroMemory(c,sizeof(*c));
  c->irp=IoAllocateIrp(s->target->StackSize,FALSE);if(!c->irp){ExFreePoolWithTag(c,TAG);return NULL;}
  c->refs=2;c->file=s->file;ObReferenceObject(c->file);c->watch=watch;
  if(watch){c->session=s;a04_bt_hfp_reference(s);}
  KeInitializeEvent(&c->done,NotificationEvent,FALSE);RtlCopyMemory(c->data,&value,sizeof(value));
- c->irp->RequestorMode=KernelMode;c->irp->UserBuffer=out?c->data:NULL;c->irp->IoStatus.Status=STATUS_NOT_SUPPORTED;
+ c->irp->RequestorMode=KernelMode;c->irp->UserBuffer=out?c->data:NULL;c->irp->IoStatus.Status=STATUS_NOT_SUPPORTED;c->irp->IoStatus.Information=0;
  sp=IoGetNextIrpStackLocation(c->irp);sp->MajorFunction=IRP_MJ_DEVICE_CONTROL;sp->FileObject=c->file;
  sp->Parameters.DeviceIoControl.IoControlCode=code;sp->Parameters.DeviceIoControl.InputBufferLength=in;
  sp->Parameters.DeviceIoControl.OutputBufferLength=out;sp->Parameters.DeviceIoControl.Type3InputBuffer=in?c->data:NULL;
@@ -62,7 +63,7 @@ static struct hfp_call *make_call(struct a04_bt_hfp_session *s,ULONG code,ULONG 
  * On timeout cancel and return; completion keeps its own call/file reference.
  * No retry and no destruction of late output memory. A timed-out command may
  * have changed link state: its session must remain quarantined, not reopened. */
-static NTSTATUS request(struct a04_bt_hfp_session *s,ULONG code,ULONG in,ULONG out,ULONG value,PVOID result)
+static NTSTATUS request_sized(struct a04_bt_hfp_session *s,ULONG code,ULONG in,ULONG out,ULONG value,PVOID result,ULONG_PTR *actual)
 {
  struct hfp_call *c=make_call(s,code,in,out,value,FALSE);NTSTATUS status;
  if(!c)return STATUS_INSUFFICIENT_RESOURCES;
@@ -70,10 +71,44 @@ static NTSTATUS request(struct a04_bt_hfp_session *s,ULONG code,ULONG in,ULONG o
  if(wait(&c->done)!=STATUS_SUCCESS){IoCancelIrp(c->irp);status=STATUS_IO_TIMEOUT;InterlockedExchange(&s->uncertain_io,1);failed(s,status);}
  else {
   status=c->irp->IoStatus.Status;
-  if(NT_SUCCESS(status)&&c->irp->IoStatus.Information!=out)status=STATUS_DATA_ERROR;
-  if(NT_SUCCESS(status)&&out)RtlCopyMemory(result,c->data,out);
+  if(actual)*actual=c->irp->IoStatus.Information;
+  if(NT_SUCCESS(status)&&c->irp->IoStatus.Information>out)status=STATUS_DATA_ERROR;
+  if(NT_SUCCESS(status)&&out)RtlCopyMemory(result,c->data,c->irp->IoStatus.Information);
  }
  drop_call(c);return status;
+}
+static NTSTATUS request(struct a04_bt_hfp_session *s,ULONG code,ULONG in,ULONG out,ULONG value,PVOID result)
+{
+ ULONG_PTR actual=0;NTSTATUS status=request_sized(s,code,in,out,value,result,&actual);
+ return NT_SUCCESS(status)&&actual!=out?STATUS_DATA_ERROR:status;
+}
+NTSTATUS a04_bt_hfp_metadata(struct a04_bt_hfp_session *s,struct a04_bt_hfp_metadata *out)
+{
+ ULONG_PTR needed=0,actual=0;BTHHFP_DESCRIPTOR2 *d=NULL;NTSTATUS status;
+ if(!s||!out||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ RtlZeroMemory(out,sizeof(*out));lock(s);status=a04_bt_hfp_status(s);if(!NT_SUCCESS(status))goto done;
+ status=request_sized(s,IOCTL_BTHHFP_DEVICE_GET_DESCRIPTOR2,0,0,0,NULL,&needed);
+ if(status!=STATUS_BUFFER_TOO_SMALL){if(NT_SUCCESS(status))status=STATUS_DATA_ERROR;goto done;}
+ if(needed<sizeof(*d)||needed>4096){status=STATUS_INVALID_BUFFER_SIZE;goto done;}
+ d=ExAllocatePoolWithTag(NonPagedPool,(SIZE_T)needed,TAG);if(!d){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
+ RtlZeroMemory(d,(SIZE_T)needed);
+ status=request_sized(s,IOCTL_BTHHFP_DEVICE_GET_DESCRIPTOR2,0,(ULONG)needed,0,d,&actual);
+ if(NT_SUCCESS(status)){
+  if(actual<sizeof(*d))status=STATUS_DATA_ERROR;
+  else {out->input_category=d->InputPinCategory;out->output_category=d->OutputPinCategory;
+   out->container=d->ContainerId;out->volume=!!d->SupportsVolume;out->nrec=!!d->SupportsNREC;}
+ }
+ /* FriendlyName is intentionally neither dereferenced, retained nor logged. */
+ if(d){RtlSecureZeroMemory(d,(SIZE_T)needed);ExFreePoolWithTag(d,TAG);}
+done:unlock(s);return status;
+}
+NTSTATUS a04_bt_hfp_connection(struct a04_bt_hfp_session *s,BOOLEAN *connected)
+{
+ NTSTATUS status;BOOL value=FALSE;
+ if(!s||!connected||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ *connected=FALSE;lock(s);status=a04_bt_hfp_status(s);
+ if(NT_SUCCESS(status))status=request(s,IOCTL_BTHHFP_DEVICE_GET_CONNECTION_STATUS_UPDATE,sizeof(BOOL),sizeof(BOOL),TRUE,&value);
+ if(NT_SUCCESS(status))*connected=!!value;unlock(s);return status;
 }
 static NTSTATUS start_watch(struct a04_bt_hfp_session *s)
 {
@@ -111,7 +146,7 @@ static void finalize(PDEVICE_OBJECT device,PVOID context)
  if(!s->detached||s->running||s->link_open||s->watch||s->uncertain_io||s->sideband.state==A04_BT_SB_FAULT){
   InterlockedExchange(&s->refs,1);failed(s,STATUS_INVALID_DEVICE_STATE);return;
  }
- s->provider.dereference(s->provider.context);ObDereferenceObject(s->file);IoFreeWorkItem(s->finalize);
+ s->provider.dereference(s->provider.context);ObDereferenceObject(s->file);IoFreeWorkItem(s->finalize);ObDereferenceObject(s->owner);
  RtlSecureZeroMemory(s,sizeof(*s));ExFreePoolWithTag(s,TAG);
 }
 void a04_bt_hfp_reference(struct a04_bt_hfp_session *s){InterlockedIncrement(&s->refs);}
@@ -183,7 +218,7 @@ NTSTATUS a04_bt_hfp_attach(PDEVICE_OBJECT owner,PCUNICODE_STRING link,const stru
  struct a04_bt_hfp_session *s;PWSTR links=NULL,at;BOOLEAN found=FALSE;NTSTATUS status;
  if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;
  if(!owner||!link||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL||p->size!=sizeof(*p)||p->version!=A04_BT_HFP_PROVIDER_VERSION||
-    !p->reference||!p->dereference||!p->validate_pcm||!p->allocate||!p->buffer_live||!p->free_drained||!p->set_pin_active||!p->position||!p->device_description||!p->latency||!p->fault||!p->retire||
+    !p->reference||!p->dereference||!p->match_hfp_target||!p->validate_pcm||!p->allocate||!p->buffer_live||!p->free_drained||!p->set_pin_active||!p->position||!p->device_description||!p->latency||!p->fault||!p->retire||
     !p->sideband.acquire||!p->sideband.live||!p->sideband.read_afe||!p->sideband.update_afe||!p->sideband.pins||
     !p->sideband.prepare_dma||!p->sideband.start_dma||!p->sideband.stop_dma_drained||!p->sideband.delay_us||!p->sideband.release_quiescent)return STATUS_INVALID_PARAMETER;
  status=IoGetDeviceInterfaces(&GUID_DEVINTERFACE_BLUETOOTH_HFP_SCO_HCIBYPASS,NULL,0,&links);if(!NT_SUCCESS(status))return status;
@@ -193,7 +228,11 @@ NTSTATUS a04_bt_hfp_attach(PDEVICE_OBJECT owner,PCUNICODE_STRING link,const stru
  status=IoGetDeviceObjectPointer((PUNICODE_STRING)link,FILE_READ_DATA|FILE_WRITE_DATA,&s->file,&s->target);
  if(!NT_SUCCESS(status)){ExFreePoolWithTag(s,TAG);return status;}
  s->finalize=IoAllocateWorkItem(owner);if(!s->finalize){ObDereferenceObject(s->file);ExFreePoolWithTag(s,TAG);return STATUS_INSUFFICIENT_RESOURCES;}
- s->provider=*p;s->provider.reference(s->provider.context);s->refs=1;KeInitializeEvent(&s->serial,SynchronizationEvent,TRUE);*out=s;return STATUS_SUCCESS;
+ s->owner=owner;ObReferenceObject(owner);
+ s->provider=*p;s->provider.reference(s->provider.context);
+ status=s->provider.match_hfp_target(s->provider.context,s->target);
+ if(!NT_SUCCESS(status)){s->provider.dereference(s->provider.context);IoFreeWorkItem(s->finalize);ObDereferenceObject(s->owner);ObDereferenceObject(s->file);ExFreePoolWithTag(s,TAG);return status;}
+ s->refs=1;KeInitializeEvent(&s->serial,SynchronizationEvent,TRUE);*out=s;return STATUS_SUCCESS;
 }
 NTSTATUS a04_bt_hfp_register_notifications(PDRIVER_OBJECT driver,PDRIVER_NOTIFICATION_CALLBACK_ROUTINE callback,PVOID context,PVOID *registration)
 {

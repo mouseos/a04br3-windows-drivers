@@ -3,7 +3,8 @@
 この単位は BT 固有の host source。`hfp_endpoint.c` が Windows HFP の固定
 IOCTL と既存 `sideband.c` の実 MRG core を接続し、`ks_endpoints.cpp` が
 speaker/render と mic/capture の独立 WaveRT miniport を提供する。
-**Audio v11 の実 provider、topology、PnP 登録は未接続。音声動作成功ではない。**
+`hfp_topology.cpp` / `hfp_pnp.cpp` は実topologyとPnP登録・撤去処理を提供する。
+**Audio v11 の実 providerとAudio FDO呼出し元は未接続。音声動作成功ではない。**
 `windows_driver.c` の BTHX SCO 能力は None/0 のまま。Windows 8.1 標準 stack
 の必須 HCIBypass 契約を満たした候補として扱わない。既存 02e3915 raw HCI
 候補／7999b7b 親／署名手順は変更しない。BT/WLAN は排他 profile を維持する。
@@ -43,7 +44,7 @@ watch を cancel、`STREAM_CLOSE` する。pin 作成だけでは SCO を開か�
 
 ## v11 Audio / IRQ / DMA owner に要求する具体 interface
 
-`hfp_endpoint.h` の `a04_bt_hfp_provider` version 1 を **新規の BT 専用契約**として
+`hfp_endpoint.h` の `a04_bt_hfp_provider` version 2 を **BT 専用契約**として
 定義した。`A04_SHARED_AUDIO_INTERFACE` version 11 の構造を変更／cast しない。
 既存 v11 は analog codec/DL1、48 kHz playback、masked IRQ と観測を提供するが、
 MRG duplex/DAI capture、方向別 ring rundown、paired combo ownership は提供しない。
@@ -52,6 +53,7 @@ MRG duplex/DAI capture、方向別 ring rundown、paired combo ownership は提�
 | callback | owner が実装する動作 |
 | --- | --- |
 | reference/dereference | Audio/BT 両 context、コード module と mapping の寿命を固定 |
+| match_hfp_target (v2追加) | 実HFP stackと保持中のMT6630 controllerのPnP親子関係を照合。GUID/名称一致だけでは許可しない。無関係radioはSTATUS_NOT_SUPPORTED、owner故障にしない |
 | validate_pcm | 実 GORM/FC72/controller PCM と CVSD0/8k/mono/16bit、master-clock 関係の整合を確認。checksum/version reply だけで通さない |
 | sideband.acquire/live | combo と Audio の世代付き排他 lease。GPIO36..39 function1、MRG/DAIBT、O02/I02/O11、clock、WMT DAI_PAD ACK/GORM 初期化を所有 |
 | sideband.read_afe/update_afe/pins/delay_us | 所有期間の masked read/write、実 pin snapshot の復元と実 100us 待機。MRG core が四 register を保存／復元 |
@@ -74,26 +76,44 @@ GetPosition は独立 gate により解放中の MDL に触れない。
 
 ## Audio adapter 側の接続順序と残依存
 
-1. owner admission を停止可能な PASSIVE worker を用意し、HFP interface 通知を
-   登録する。到着時に実 provider と `a04_bt_hfp_attach` で session を作る。
-2. `Mt6630NewHfpMiniport(session, A04_BT_HFP_SPEAKER/MIC, ...)` を使う。
-   streaming pin 0、bridge pin 1。WaveRT の KS state/format/buffer/position は
-   実装済み。render/capture それぞれ一 instance に限定する。
-3. PortCls 所有の Audio FDO に、runtime HFP descriptor2/container/node type と
-   合う topology、connection/volume/jack properties、二つの subdevice と
-   physical connection を登録する。これは未実装の adapter 側接続であり、
-   BT WDF FDO に PortCls を重ねない。名前/container 等は runtime のみ、ログ禁止。
-4. removal/D0 teardown で endpoint admission を止め、subdevice/stream を rundown、
-   session detach、miniport/creator reference を解放し、通知解除を待つ。
-   detach 失敗を解放成功にしない。provider.fault はこの順序を実際に起動する必要がある。
-5. owner/PCM/DMA と endpoint 登録が実装された固定構成で初めて HCIBypass 能力の
-   判断を更新する。能力判定に active HFP link を必須とすると列挙前に循環するので、
-   backend 実装／所有可能性と、個別 RUN の接続・codec 検証は分ける。
+1. 実provider v2を構成し、AudioのPortCls FDOに4 subdevice分の余裕を予約する。
+   既存endpointの枠を減らさない。`hfp-interfaces.inf.inc` の固定reference nameと
+   interface登録を、Audio owner側の署名INFへ統合する。本変更は既存INFを編集しない。
+2. ownerのPnP/D0開始で `Mt6630HfpPnpStart(audioFdo, resourceList, &provider, &handle)`。
+   成功は通知登録だけを意味する。HCIBypass能力やHFP接続成功ではない。
+   実到着をBT専用workerへFIFOで渡し、実descriptor2のcategory/containerを取得する。
+   FriendlyNameのpointerは参照・保持・ログしない。固定表示名は実IC MT6630。
+3. workerはspeaker/micのtopology/WaveRTを `PcNewPort` / `Init` /
+   `PcRegisterSubdevice` で登録し、speaker Wave bridge1→Topology input0、
+   mic Topology output1→Wave bridge1を `PcRegisterPhysicalConnection` で結ぶ。
+   部分登録失敗でもobjectを保持し、実unregisterの完了なしに解放しない。
+4. topologyは実category、`JACK_CONTAINERID` と都度実HFP照会する
+   `JACK_DESCRIPTION.IsConnected` を返す。未実装のhardware volume/mute、
+   jack-change event、NRECやdynamic format能力は広告しない。現実装はtransparent
+   topologyであり、headset側volume同期、connect/disconnect property、jack-change
+   event転送は残件。特にSupportsVolume機のremote volume処理は未接続と区別する。
+5. ownerのD0停止/REMOVE前に `Mt6630HfpPnpStop(handle)` をPASSIVEで呼ぶ。
+   通知解除をdrainし、workerを最大10秒待ち、sessionの新RUN受付を閉じて実MRGを
+   drain、physical connection/subdeviceを逆順に撤去する。成功時だけhandleを破棄。
+   ただし既存KS handleの最終Releaseは後発し得る。sessionがAudio FDOを参照保持し、
+   providerの全referenceが解放されるまでmodule/context/必要mappingを保持する。
+   Stop成功だけを全client reference消滅とみなさない。
+   失敗時はFDO/provider/resource/moduleを保持し実owner rundownへ。自動再試行なし。
+   Start/StopとownerのPnP/power操作は直列化し、faultからinlineでStopしない。
+6. profileは1 remote HFP pairのみ。無関係radioはproviderが拒否し、保持中のpairが
+   ある間の別arrivalは採用しない。全系故障時はworkerの新しいhardware操作を止める。
+   callback/workerの未処理linkはruntimeだけ保持し、解放前にzeroする。
+7. 実owner/codec/PCM/DMAとAudio FDO呼出し元が揃った固定構成で初めて
+   HCIBypass能力の判断を更新する。能力判定にactive HFP linkを必須とすると
+   列挙前に循環するので、backend所有可能性と個別RUNの検証は分ける。
 
-親／Audio 共有ファイルは本変更で編集していない。MRG の電気的連続性、controller
-PCM word format の実設定、DAI capture DMA と IRQ2 の v11 owner 統合、標準 stack
-列挙、音声入出力、電源遷移は未確認。Linux/board 出典と register 根拠は
-[SIDEBAND.md](SIDEBAND.md) を参照。
+**主担当へ必要な共有側ABI/変更**: `hfp_endpoint.h` provider v2の全callbackを実ownerで
+供給（特にMRG/DAI capture/IRQ2と方向別drain、match_hfp_target）、4 PortCls枠、
+Audio FDOのStart/Stop呼出し、INF fragment統合、最終driver linkにportcls.libを追加。
+BT WDF FDOをPortClsとして扱わない。親／Audio共有ファイルは本変更で編集しない。
+MRGの電気的連続性、controller PCM word formatの実設定、DAI capture DMAとIRQ2の
+v11統合、標準stack列挙、音声入出力、電源遷移は未確認。
+Linux/boardのregister根拠は [SIDEBAND.md](SIDEBAND.md) を参照。
 
 ## 固定 source のビルド単位
 
@@ -107,8 +127,8 @@ powershell -NoProfile -File tools\bluetooth\build-mt6630-hfp-endpoint-core.ps1
 
 `build/mt6630-hfp-endpoint-core/mt6630-hfp-endpoint-core.lib` と source/hash manifest
 を生成する。SYS/INF/CAT/新 probe/音声 client を再 build しない。Audio adapter 側で
-library を明示 link し、owner provider と subdevice 登録を実装する必要がある。
-ntoskrnl/hal の kernel import を使う。独自 CRT/例外/RTTI は不要。
+library を明示 link し、owner provider と Audio FDO の Start/Stop 呼出しを実装する必要がある。
+最終driverは ntoskrnl/hal/portcls の kernel import を使う。独自 CRT/例外/RTTI は不要。
 既存 source から同じ sideband object を最終 image に二重 link しない。
 
 host での WDK10 公開参照 header・WinBlue guards による ARM32 compile/archive は
