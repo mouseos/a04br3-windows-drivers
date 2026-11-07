@@ -82,3 +82,8 @@ SDK上のrevision/size定義をARM32 compileで照合し、既存scan parserと�
 限定host回帰でwildcard/境界/不一致event/失敗を確認する。新しい実機実験や大量模擬試験は追加しない。
 参照SDK headerによるcompileはWDK8.1 SYS最終link・実OS受理の代替ではない。
 このNDIS sourceは固定1002/77b53ac0候補とは別物なので、それへ同じ名前で上書き混入しない。
+
+## 後続1003候補
+
+上記は68a6f16時点の確認記録。実queue/MTU/SSID/excluded/統計の後続実装、
+一次根拠、残る阻害とbuild/sign手順は [NATIVE-1003.md](NATIVE-1003.md) を参照。

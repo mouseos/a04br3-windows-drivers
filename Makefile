@@ -1568,3 +1568,13 @@ test-mt8167-brightness: build/mt8167_brightness_test
 build/mt8167_brightness_test: tests/mt8167_brightness_test.cpp drivers/gpu/mt8167/wddm-display/mt8167_brightness.cxx drivers/gpu/mt8167/wddm-display/mt8167_brightness.hxx $(wildcard tests/brightness_wdk_stubs/*.h)
 	@mkdir -p build
 	$(CXX) -std=c++11 -O2 -Wall -Wextra -Werror -Itests/brightness_wdk_stubs -Idrivers/gpu/mt8167/wddm-display $(filter %.cpp %.cxx,$^) -o $@
+
+# Native runtime's real ownership ring; no device or runner access.
+build/mt6630_owned_queue_test: tests/mt6630_owned_queue_test.c drivers/network/mt6630/owned_queue.h drivers/network/mt6630/native_limits.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 $< -o $@
+
+.PHONY: test-mt6630-owned-queue
+test-mt6630-owned-queue: build/mt6630_owned_queue_test
+	./build/mt6630_owned_queue_test
+test-mt6630: test-mt6630-owned-queue

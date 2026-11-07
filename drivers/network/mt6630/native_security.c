@@ -8,7 +8,7 @@
 static int same(const uint8_t *a,const uint8_t *b,unsigned n){unsigned d=0;for(unsigned i=0;i<n;i++)d|=a[i]^b[i];return !d;}
 static int fail(struct a04_ndis_runtime *a){a->os_security.failed=1;a->os_security.port_open=0;return -1;}
 void a04_os_security_clear(struct a04_ndis_runtime *a)
-{RtlSecureZeroMemory(&a->os_security,sizeof(a->os_security));RtlSecureZeroMemory(&a->security,sizeof(a->security));}
+{a->receive_epoch++;RtlSecureZeroMemory(&a->os_security,sizeof(a->os_security));RtlSecureZeroMemory(&a->security,sizeof(a->security));}
 static int cipher_active(const struct a04_ndis_runtime *a)
 {return a->os_security.auth==DOT11_AUTH_ALGO_RSNA_PSK&&a->os_security.unicast==DOT11_CIPHER_ALGO_CCMP&&a->os_security.multicast==DOT11_CIPHER_ALGO_CCMP;}
 static unsigned exemption(struct a04_os_security *s,unsigned ethertype,unsigned group)
@@ -53,14 +53,14 @@ static NDIS_STATUS install(struct a04_ndis_runtime *a,unsigned pairwise,unsigned
  command[10]=(uint8_t)a->radio.station.local.bss;command[11]=4;command[12]=(uint8_t)id;command[13]=(uint8_t)(remove?0:16);command[14]=(uint8_t)wlan;
  if(!remove){for(unsigned i=0;i<16;i++)command[16+i]=key[i];for(unsigned i=0;i<6;i++){command[48+i]=rsc[i];pn|=(uint64_t)rsc[i]<<(8*i);}}
  /* Drain old events before publishing a new key transaction under this owner. */
- if(a04_station_runtime_poll(&a->radio))goto uncertain;
+ if(a04_ndis_poll(a))goto uncertain;
  slot->valid=0;slot->wlan=wlan;if(!remove)for(unsigned i=0;i<16;i++)slot->pn[i]=pn;if(pairwise&&!remove)s->ptk_pending=1;
  e=a04_wlan_set(&b->wlan,7,command,64,NULL);
  RtlSecureZeroMemory(command,sizeof(command));RtlSecureZeroMemory(b->wlan.tx,sizeof(b->wlan.tx));
  if(e)goto uncertain;
  if(pairwise&&!remove){
   deadline=a->radio.now(a)+2000000u;
-  while(s->ptk_pending&&!a->closing&&!a->cancelled&&a->radio.now(a)<deadline){if(a04_station_runtime_poll(&a->radio))goto uncertain;a->radio.wait(a,1000);}
+  while(s->ptk_pending&&!a->closing&&!a->cancelled&&a->radio.now(a)<deadline){if(a04_ndis_poll(a))goto uncertain;a->radio.wait(a,1000);}
   if(s->ptk_pending)goto uncertain;
  }
  if(remove){slot->valid=0;if(pairwise)s->port_open=0;status=NDIS_STATUS_SUCCESS;goto done;}
@@ -130,11 +130,19 @@ NDIS_STATUS a04_os_security_send(struct a04_ndis_runtime *a,PNET_BUFFER_LIST nbl
  if(eapol&&exempt==DOT11_EXEMPT_NO_EXEMPTION&&!s->ptk.valid)goto done;
  protect=s->ptk.valid&&!(eapol&&exempt==DOT11_EXEMPT_ALWAYS);
  if(deadline<=now||deadline-now>1000000u)goto done;
+ /* Matching TX_DONE is not a page return. Drain actual WTQCR/FFA
+  * credits before another encrypted data submission, just like OPEN. */
+ unsigned pages=((unsigned)bytes+28+127)/128;unsigned *free_pages=h->native_be?&h->tc1_free:&h->tc0_free;
+ for(unsigned tries=0;!eapol&&*free_pages<pages;tries++){
+  if(a->closing||a->cancelled){result=NDIS_STATUS_REQUEST_ABORTED;goto done;}
+  if(tries==100||a04_wlan_resources(h)){result=NDIS_STATUS_FAILURE;fail(a);goto done;}
+  if(*free_pages<pages)a->radio.wait(a,1000);
+ }
  pid=a->tx.state.next_pid%127+1;
- a04_wlan_zero(h->tx,28);a04_wmt_put16(h->tx,(unsigned)bytes+28);h->tx[2]=20;h->tx[3]=(uint8_t)(eapol?0x88:0);h->tx[4]=(uint8_t)a->radio.station.local.wlan;h->tx[5]=0x90;h->tx[6]=(uint8_t)(protect?0x80:0);h->tx[7]=(uint8_t)(a->radio.station.local.own<<2);a04_wmt_put16(h->tx+12,1u<<11);
+ a04_wlan_zero(h->tx,28);a04_wmt_put16(h->tx,(unsigned)bytes+28);h->tx[2]=20;h->tx[3]=(uint8_t)(eapol?0x88:(h->native_be?8:0));h->tx[4]=(uint8_t)a->radio.station.local.wlan;h->tx[5]=0x90;h->tx[6]=(uint8_t)(protect?0x80:0);h->tx[7]=(uint8_t)(a->radio.station.local.own<<2);a04_wmt_put16(h->tx+12,1u<<11);
  if(eapol){unsigned all,basic;if(a04_wlan_rate_mask(&a->radio.station.ap,&all,&basic))goto done;h->tx[11]=0x80;a04_wmt_put16(h->tx+26,a04_wlan_basic_rate_code(basic)<<2);}
  h->tx[20]=(uint8_t)pid;h->tx[21]=2;for(unsigned i=0;i<bytes;i++)h->tx[28+i]=a->ethernet[i];
- e=a04_wlan_send(h,(unsigned)bytes+28,eapol?1:0);if(e){fail(a);result=NDIS_STATUS_FAILURE;goto done;}
+ e=a04_wlan_send(h,(unsigned)bytes+28,eapol?1:(h->native_be?3:0));if(e){fail(a);result=NDIS_STATUS_FAILURE;goto done;}
  a->tx.state.pending=1;a->tx.state.pid=a->tx.state.next_pid=pid;a->tx.state.eapol_kind=0;a->tx.state.deadline_us=deadline;a->tx.pending=nbl;result=NDIS_STATUS_PENDING;
 done:RtlSecureZeroMemory(a->mpdu,sizeof(a->mpdu));RtlSecureZeroMemory(a->ethernet,sizeof(a->ethernet));RtlSecureZeroMemory(h->tx,sizeof(h->tx));return result;
 }

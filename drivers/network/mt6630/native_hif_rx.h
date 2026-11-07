@@ -8,6 +8,7 @@ typedef int (*a04_native_rate_lookup)(void *,unsigned hw_mode,unsigned hw_rate,U
 struct a04_native_hif_rx {const uint8_t *mpdu;ULONG length;struct a04_native_rx_info info;unsigned cipher,key,wlan,tid;uint64_t pn;};
 /* Strict open, directed/broadcast/multicast, unfragmented, non-QoS FromDS MPDU subset. No Ethernet header
  * translation, protected data, aggregated frames or unobserved metadata. */
+NDIS_STATUS a04_native_hif_rx_management(const uint8_t *,ULONG,unsigned,void *,a04_native_rate_lookup,struct a04_native_hif_rx *);
 NDIS_STATUS a04_native_hif_rx_decode(const uint8_t *,ULONG,unsigned allowed_channels,
  const uint8_t local[6],const uint8_t ap[6],void *,a04_native_rate_lookup,struct a04_native_hif_rx *);
 /* Raw plaintext LLC/SNAP from verified CCMP hardware metadata; caller must

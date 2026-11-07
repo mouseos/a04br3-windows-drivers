@@ -11,6 +11,7 @@ enum { A04_WLAN_ARGUMENT=80,A04_WLAN_FORMAT=81,A04_WLAN_CRC=82,
 struct a04_wlan_host {
  struct a04_sdio_transport *transport;
  unsigned initialized,ready,sequence,cpu_free,cpu_used,cpu_done,ffa,tc0_free,tc0_used,tc0_done,runtime;
+ unsigned native_be,tc1_free,tc1_used,tc1_done;
  uint32_t wcir,status,chlpcr;unsigned own_polls;int failed;
  uint32_t wasr;int wasr_error;
  unsigned last_cid,last_cmd_sequence,last_cmd_type,last_cmd_set,last_cmd_bytes;
@@ -30,7 +31,7 @@ static inline int a04_wlan_host_open(struct a04_wlan_host *h,struct a04_sdio_tra
  h->wasr=0;h->wasr_error=0;h->status=0;
  h->last_cid=h->last_cmd_sequence=h->last_cmd_type=h->last_cmd_set=h->last_cmd_bytes=0;
  h->transport=t;h->initialized=h->ready=h->sequence=0;h->failed=0;
- h->cpu_free=h->tc0_free=104;h->cpu_used=h->cpu_done=h->ffa=h->tc0_used=h->tc0_done=h->runtime=0;h->rx_length=h->own_polls=0;h->chlpcr=0;
+ h->cpu_free=h->tc0_free=104;h->cpu_used=h->cpu_done=h->ffa=h->tc0_used=h->tc0_done=h->runtime=0;h->native_be=h->tc1_free=h->tc1_used=h->tc1_done=0;h->rx_length=h->own_polls=0;h->chlpcr=0;
  int e=a04_sdio_enable(t,1);if(e)return a04_wlan_fail(h,e);
  if((e=a04_wlan_read(h,0,&h->wcir)))return e;
  if((h->wcir&0xffff)!=0x6630)return a04_wlan_fail(h,A04_WLAN_FORMAT);
@@ -61,24 +62,36 @@ static inline int a04_wlan_interrupt_status(struct a04_wlan_host *h,uint32_t *st
  }
  return 0;
 }
-/* WTQCR read-clear counters: AC0 index0, FFA14, CPU15. Only our two
- * queues are supported. Never mint a credit from a TX-done without FFA. */
-static inline int a04_wlan_resources(struct a04_wlan_host *h){
- uint32_t value=0;unsigned ac=0,cpu=0,ffa=0;
- for(unsigned i=0;i<8;i++){
-  int e=a04_wlan_read(h,0x130+4*i,&value);if(e)return e;
-  if(!i)ac=value&0xffff;
-  if(i==7){ffa=value&0xffff;cpu=value>>16;}
-  if((i==0 && (value>>16)) || (i>0 && i<7 && value))return a04_wlan_fail(h,A04_WLAN_CREDIT);
- }
- if(ac>h->tc0_used-h->tc0_done || cpu>h->cpu_used-h->cpu_done || ffa>65535-h->ffa)
-  return a04_wlan_fail(h,A04_WLAN_CREDIT);
- h->tc0_done+=ac;h->cpu_done+=cpu;h->ffa+=ffa;
+/* Published gen3 TC mapping: TC0/AC0, non-QoS BE TC1/AC1 and
+ * TC4/CPU. FFA14 is shared and TX_DONE is never a page credit. */
+static inline int a04_wlan_credit_return(struct a04_wlan_host *h,unsigned ac,unsigned be,unsigned cpu,unsigned ffa){
+ if((be&&!h->native_be)||ac>h->tc0_used-h->tc0_done||be>h->tc1_used-h->tc1_done||
+  cpu>h->cpu_used-h->cpu_done||ffa>65535-h->ffa)return a04_wlan_fail(h,A04_WLAN_CREDIT);
+ h->tc0_done+=ac;h->tc1_done+=be;h->cpu_done+=cpu;h->ffa+=ffa;
  unsigned r=h->tc0_done<h->ffa?h->tc0_done:h->ffa;
  h->tc0_done-=r;h->tc0_used-=r;h->tc0_free+=r;h->ffa-=r;
+ r=h->tc1_done<h->ffa?h->tc1_done:h->ffa;
+ h->tc1_done-=r;h->tc1_used-=r;h->tc1_free+=r;h->ffa-=r;
  r=h->cpu_done<h->ffa?h->cpu_done:h->ffa;
- h->cpu_done-=r;h->cpu_used-=r;h->cpu_free+=r;h->ffa-=r;
- return 0;
+ h->cpu_done-=r;h->cpu_used-=r;h->cpu_free+=r;h->ffa-=r;return 0;
+}
+static inline int a04_wlan_resources(struct a04_wlan_host *h){
+ uint32_t value=0;unsigned ac=0,be=0,cpu=0,ffa=0;
+ for(unsigned i=0;i<8;i++){
+  int e=a04_wlan_read(h,0x130+4*i,&value);if(e)return e;
+  if(!i){ac=value&0xffff;be=value>>16;}
+  if(i==7){ffa=value&0xffff;cpu=value>>16;}
+  if((i>0&&i<7&&value)||(be&&!h->native_be))return a04_wlan_fail(h,A04_WLAN_CREDIT);
+ }
+ return a04_wlan_credit_return(h,ac,be,cpu,ffa);
+}
+/* gen3 nic_tx.h NIC_TX_BUFF_COUNT_TC1=36 and MAX_PAGE_PER_FRAME=13;
+ * que_mgt.c maps AIS non-QoS to TC1, TXD queue index1 (bits3..6).
+ * Enable once, before any Native data submission. Other TC accounting and
+ * outstanding calibration/command pages are preserved, never reset away. */
+static inline int a04_wlan_native_be_enable(struct a04_wlan_host *h){
+ if(!h||!h->runtime||h->failed||h->native_be||h->tc0_used||h->tc1_used)return A04_WLAN_STATE;
+ h->native_be=1;h->tc1_free=36u*13u;h->tc1_done=0;return 0;
 }
 /* Native nicTxResetResource switches from INIT8 buffers to runtime TC4=2.
  * Drain observed init completions before changing the software budget. This
@@ -97,7 +110,7 @@ static inline int a04_wlan_runtime_begin(struct a04_wlan_host *h){
 }
 static inline int a04_wlan_send(struct a04_wlan_host *h,unsigned logical,unsigned tc){
  if(!h || !h->initialized || h->failed || h->transport->failed)return A04_WLAN_STATE;
- if(logical<8 || logical>4096 || tc>2)return A04_WLAN_ARGUMENT;
+ if(logical<8 || logical>4096 || tc>3 || (tc==3&&!h->native_be))return A04_WLAN_ARGUMENT;
  unsigned pages=(logical+127)/128;
  if(tc==1){
   unsigned n;for(n=0;n<100;n++){
@@ -111,6 +124,9 @@ static inline int a04_wlan_send(struct a04_wlan_host *h,unsigned logical,unsigne
  }else if(tc==0){
   if(h->tc0_free<pages)return a04_wlan_fail(h,A04_WLAN_CREDIT);
   h->tc0_free-=pages;h->tc0_used+=pages;
+ }else if(tc==3){
+  if(h->tc1_free<pages)return a04_wlan_fail(h,A04_WLAN_CREDIT);
+  h->tc1_free-=pages;h->tc1_used+=pages;
  }
  /* tc2 is PDA scatter: vendor wlanImageSectionDownload/nicTxInitCmd does
   * not acquire TC resources for scatter packets. Do not invent ACK/credits. */

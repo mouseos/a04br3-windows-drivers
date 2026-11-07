@@ -10,6 +10,7 @@ struct a04_native_tx {
  NDIS_HANDLE adapter;
  PNET_BUFFER_LIST pending;
  struct a04_wlan_data_state state;
+ void *completion_context;void (*completion)(void *,PNET_BUFFER_LIST,NDIS_STATUS);
 };
 NDIS_STATUS a04_native_nbl_send(struct a04_native_tx *,struct a04_wmt_bridge *,
  const struct a04_wlan_station *,struct a04_wlan_security *,PNET_BUFFER_LIST,

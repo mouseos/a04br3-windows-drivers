@@ -13,7 +13,7 @@ void NdisMIndicateStatusEx(NDIS_HANDLE handle,NDIS_STATUS_INDICATION *i)
 {assert(handle==active && i->StatusCode==NDIS_STATUS_DOT11_SCAN_CONFIRM && i->StatusBufferSize==sizeof(NDIS_STATUS));assert(*(NDIS_STATUS *)i->StatusBuffer==active->expected);active->indications++;}
 static int direct(void *c,uint32_t a,uint32_t *r){(void)c;(void)a;*r=0;return 0;}
 static int send(void *context,uint32_t arg,unsigned write,uint8_t *data,size_t n)
-{struct fake *f=context;assert(write && ((arg>>28)&7)==1 && ((arg>>9)&0x1ffff)==0x34 && n>=500);assert(data[4]==3 && data[5]==0xa0);f->sends++;return 0;}
+{struct fake *f=context;assert(write && ((arg>>28)&7)==1 && ((arg>>9)&0x1ffff)==0x34 && n>=234);assert(data[4]==3 && data[5]==0xa0);assert(data[8+7]==0);assert(data[8+158]==4);f->sends++;return 0;}
 static int done(void *c){(void)c;return 0;}
 int main(void)
 {
@@ -38,5 +38,12 @@ int main(void)
  p.sequence=8;assert(!a04_native_scan_start(&b,&request,(ULONG)offsetof(DOT11_SCAN_REQUEST_V2,ucBuffer),&p,&needed));
  f.expected=NDIS_STATUS_FAILURE;assert(!a04_native_scan_fail(&b,&f,NDIS_STATUS_FAILURE) && f.indications==2 && o.poisoned);
  assert(a04_native_scan_fail(&b,&f,NDIS_STATUS_FAILURE)==NDIS_STATUS_INVALID_DATA && f.indications==2);
+ /* Directly inspect the published gen3 four-SSID body, not four separate
+  * scans or an inflated advertised list capacity. */
+ uint8_t payload[826],names[4][32]={{'a'},{'b','b'},{'c','c','c'},{'d','d','d','d'}};unsigned lengths[4]={1,2,3,4},wire_bytes=0;
+ struct a04_wlan_scan scan={0};scan.wire_version=2;scan.active=1;scan.sequence=9;scan.bss=1;scan.ssid_count=4;scan.ssid_list=&names[0][0];scan.ssid_lengths=lengths;scan.timeout=2000;
+ assert(!a04_wlan_scan_gen3_encode(&scan,payload,sizeof(payload),&wire_bytes));assert(wire_bytes==226&&payload[4]==4&&payload[7]==0);
+ for(unsigned i=0;i<4;i++){assert(a04_wmt_get32(payload+8+36*i)==lengths[i]);assert(!memcmp(payload+12+36*i,names[i],lengths[i]));}
+ scan.ssid_count=5;assert(a04_wlan_scan_gen3_encode(&scan,payload,sizeof(payload),&wire_bytes));
  puts("Native scan to SDIO and matching event fixture: OK");return 0;
 }

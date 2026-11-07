@@ -10,12 +10,15 @@ NDIS_STATUS a04_native_scan_start(struct a04_wmt_bridge *b,const void *input,ULO
  if(!b||!policy||!needed)return NDIS_STATUS_INVALID_DATA;
  status=a04_native_scan_parse(input,bytes,&request,needed);if(status!=NDIS_STATUS_SUCCESS)return status;
  if(b->scan.pending)return NDIS_STATUS_DOT11_MEDIA_IN_USE;
- if(!policy->channel_count || policy->channel_count>54)return NDIS_STATUS_INVALID_DATA;
+ if(!policy->channel_count || policy->channel_count>32)return NDIS_STATUS_INVALID_DATA;
  scan.sequence=policy->sequence;scan.bss=policy->bss;
- scan.active=request.scan_type==dot11_scan_type_active;
+ scan.active=request.scan_type!=dot11_scan_type_passive;
  scan.probes=policy->probes;scan.min_dwell=policy->min_dwell;scan.dwell=policy->dwell;scan.timeout=policy->timeout;
  scan.ssid=request.ssid;scan.ssid_length=request.ssid_length;scan.ie=request.ie;scan.ie_length=request.ie_length;
- scan.channels=policy->channels;scan.channel_count=policy->channel_count;scan.channel_type=4;scan.wire_version=3;
+ scan.channels=policy->channels;scan.channel_count=policy->channel_count;scan.channel_type=4;scan.wire_version=2;
+ unsigned hidden_length=policy->hidden_ssid_length;
+ scan.ssid_count=request.ssid_count;scan.ssid_lengths=(const unsigned *)request.ssid_lengths;scan.ssid_list=&request.ssids[0][0];
+ if(!scan.ssid_count&&policy->hidden_ssid&&hidden_length){scan.ssid_count=1;scan.ssid_lengths=&hidden_length;scan.ssid_list=policy->hidden_ssid;}
  e=a04_wmt_bridge_scan_begin(b,&scan);
  return e?NDIS_STATUS_FAILURE:NDIS_STATUS_SUCCESS;
 }

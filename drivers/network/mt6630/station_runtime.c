@@ -24,14 +24,14 @@ static int packet(struct a04_station_runtime *r,const uint8_t *p,unsigned n)
   if(r->event&&r->event(r->context,p,n,now))return fail(r,-1);
   return 0;
  }
- if(r->station.sta_active&&r->data){e=r->data(r->context,p,n);if(e!=A04_WLAN_UNSUPPORTED)return e?fail(r,e):0;}
+ if(r->data){e=r->data(r->context,p,n);if(e!=A04_WLAN_UNSUPPORTED)return e?fail(r,e):0;}
  e=a04_wlan_rx_frame_parse(p,n,&frame);if(e==A04_WLAN_UNSUPPORTED)return 0;if(e)return fail(r,e);
  if(!frame.length)return fail(r,-1);
  if((frame.data[0]==0x80||frame.data[0]==0x50)&&b->scan.pending){
   struct a04_wlan_ap ap;unsigned i;
   e=a04_wlan_ap_parse(frame.data,frame.length,frame.channel,&ap);
   if(e)return e==A04_WLAN_UNSUPPORTED?0:fail(r,e);
-  if(!(b->regulatory.permitted&(1u<<ap.channel)))return 0;
+  if(!(b->regulatory.permitted&(1u<<ap.channel))||(r->exclude_bssid&&r->exclude_bssid(r->context,ap.mac)))return 0;
   if(frame.length-36>sizeof(r->bss[0].ies))return 0;
   for(i=0;i<r->bss_count;i++)if(a04_wlan_equal(r->bss[i].ap.mac,ap.mac,6))break;
   if(i==r->bss_count){if(i==A04_BSS_MAX)return 0;r->bss_count++;}
@@ -84,7 +84,7 @@ int a04_station_runtime_connect(struct a04_station_runtime *r,const uint8_t *ssi
 {
  unsigned i;uint64_t now,deadline;int e;
  if(!r||!r->initialized||r->failed||r->connected||r->connecting||!ssid||!length||length>32||r->bridge->scan.pending)return -1;
- for(i=0;i<r->bss_count;i++)if(r->bss[i].ap.ssid_length==length&&a04_wlan_equal(r->bss[i].ap.ssid,ssid,length))break;
+ for(i=0;i<r->bss_count;i++)if(!(r->exclude_bssid&&r->exclude_bssid(r->context,r->bss[i].ap.mac))&&(!r->selected_bssid_set||a04_wlan_equal(r->selected_bssid,r->bss[i].ap.mac,6))&&r->bss[i].ap.ssid_length==length&&a04_wlan_equal(r->bss[i].ap.ssid,ssid,length))break;
  if(i==r->bss_count)return A04_WLAN_UNSUPPORTED;
  if(!(r->station.local.active_channels&(1u<<r->bss[i].ap.channel)))return A04_WLAN_UNSUPPORTED;
  if(!!(r->bss[i].ap.capability&16u)!=!!r->desired_secured)return A04_WLAN_SECURITY;

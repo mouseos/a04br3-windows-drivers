@@ -59,3 +59,22 @@ NDIS_STATUS a04_native_hif_rx_indicate(NDIS_HANDLE adapter,PNET_BUFFER_LIST nbl,
  if(status!=NDIS_STATUS_SUCCESS)return status;
  return a04_native_indicate_mpdu(adapter,nbl,rx.mpdu,rx.length,&rx.info);
 }
+
+/* Same actual RX descriptor/vector contract as data, but management MAC
+ * headers do not require an associated AP or contain an LLC/SNAP body. */
+NDIS_STATUS a04_native_hif_rx_management(const uint8_t *p,ULONG n,unsigned allowed,
+ void *context,a04_native_rate_lookup lookup,struct a04_native_hif_rx *out)
+{
+ struct a04_native_hif_rx v;unsigned groups,g3,offset,channel;uint32_t vector;
+ if(!p||!lookup||!out||n<16||n>4096||le16(p)!=n)return NDIS_STATUS_INVALID_DATA;
+ groups=(le16(p+2)>>9)&15;channel=p[5];
+ if((le16(p+2)>>13)!=2||!(groups&4)||(p[6]&0x80)||(p[9]&0xf0)||(le16(p+10)&0x0ffe)||!channel||channel>14||!(allowed&(1u<<channel)))return NDIS_STATUS_NOT_SUPPORTED;
+ g3=16+((groups&8)?16:0)+((groups&1)?16:0)+((groups&2)?8:0);
+ if(g3>n||n-g3<24)return NDIS_STATUS_INVALID_LENGTH;
+ offset=g3+24+((p[6]&0x40)?2:0);
+ if(offset>n||n-offset<24||(p[6]&63)!=24||(p[offset]&0x0c)||(p[offset+1]&0x43)||(p[offset+22]&15))return NDIS_STATUS_NOT_SUPPORTED;
+ vector=le32(p+g3);if(p[g3+9]>220)return NDIS_STATUS_NOT_SUPPORTED;
+ NdisZeroMemory(&v,sizeof(v));if(lookup(context,(vector>>12)&7,vector&127,&v.info.phy,&v.info.rate))return NDIS_STATUS_NOT_SUPPORTED;
+ v.mpdu=p+offset;v.length=n-offset;v.info.observed=A04_RX_OBS_REQUIRED;v.info.frequency=(channel==14?2484:2407+5*channel)*1000;
+ v.info.fragments=1;v.info.rssi=(LONG)(p[g3+9]>>1)-110;*out=v;return NDIS_STATUS_SUCCESS;
+}

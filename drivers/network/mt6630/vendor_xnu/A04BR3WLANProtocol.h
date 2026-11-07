@@ -28,6 +28,7 @@ struct a04_wlan_scan {
  unsigned sequence,bss,active,probes,min_dwell,dwell,timeout;
  const uint8_t *ssid,*ie,*channels; /* channel list: band, channel pairs */
  unsigned ssid_length,ie_length,channel_count,channel_type,wire_version;
+ unsigned ssid_count;const unsigned *ssid_lengths;const uint8_t *ssid_list;
 };
 /* Native CMD_SCAN_REQ v1 variable length = OFFSET_OF(aucIE)114+IELen. */
 static inline int a04_wlan_scan_encode(const struct a04_wlan_scan *s,uint8_t *p,unsigned cap,unsigned *length){
@@ -54,8 +55,35 @@ static inline int a04_wlan_scan_encode(const struct a04_wlan_scan *s,uint8_t *p,
  for(unsigned i=0;i<s->ie_length;i++)p[114+i]=s->ie[i];
  *length=114+s->ie_length;return 0;
 }
-/* Native MT6630 AIS uses CMD_SCAN_REQ_V2 / struct version3,10 SSID
- * entries and54 channels. scnSendScanReqV2 uses aucIE offset494. */
+/* Published MT8167/MT6630 gen3 nic_cmd_event.h CMD_SCAN_REQ_V2:
+ * four PARAM_SSID_T entries at8, channel list at160, IE length224/data226.
+ * No invented version byte in reserved[2]. CID is3, same matching SCAN_DONE. */
+static inline int a04_wlan_scan_gen3_encode(const struct a04_wlan_scan *s,uint8_t *p,unsigned cap,unsigned *length){
+ if(!s||!p||!length)return A04_WLAN_ARGUMENT;
+ *length=0;
+ if(s->wire_version!=2||s->sequence>255||s->bss>3||s->active>1||s->probes>255||s->ssid_count>4||
+  (s->ssid_count&&(!s->ssid_list||!s->ssid_lengths))||s->ie_length>600||s->channel_type>4||s->channel_count>32||
+  (!s->channels&&s->channel_count)||s->min_dwell>s->dwell||s->dwell>65535||!s->timeout||s->timeout>65535||
+  (s->channel_type==4?!s->channel_count:s->channel_count!=0)||cap<226+s->ie_length)return A04_WLAN_ARGUMENT;
+ int e=a04_wlan_ies(s->ie,s->ie_length);if(e)return e;
+ for(unsigned i=0;i<s->ssid_count;i++)if(s->ssid_lengths[i]>32)return A04_WLAN_ARGUMENT;
+ for(unsigned i=0;i<s->channel_count;i++)if(s->channels[2*i]!=1||!s->channels[2*i+1]||s->channels[2*i+1]>14)return A04_WLAN_ARGUMENT;
+ a04_wlan_zero(p,226+s->ie_length);p[0]=(uint8_t)s->sequence;p[1]=(uint8_t)s->bss;p[2]=(uint8_t)s->active;
+ unsigned wildcard=!s->ssid_count;
+ unsigned empty=0;for(unsigned i=0;i<s->ssid_count;i++)if(!s->ssid_lengths[i])empty++;
+ if(empty&&empty<s->ssid_count)return A04_WLAN_UNSUPPORTED;
+ if(empty)wildcard=1;
+ p[3]=(uint8_t)(wildcard?(s->active?1:0):4);p[4]=(uint8_t)(wildcard?0:s->ssid_count);p[5]=(uint8_t)s->probes;
+ if(!wildcard)for(unsigned i=0;i<s->ssid_count;i++){a04_wmt_put32(p+8+36*i,s->ssid_lengths[i]);for(unsigned j=0;j<s->ssid_lengths[i];j++)p[12+36*i+j]=s->ssid_list[32*i+j];}
+ a04_wmt_put16(p+152,s->min_dwell);a04_wmt_put16(p+154,s->dwell);a04_wmt_put16(p+156,s->timeout);
+ p[158]=(uint8_t)s->channel_type;p[159]=(uint8_t)s->channel_count;
+ for(unsigned i=0;i<2*s->channel_count;i++)p[160+i]=s->channels[i];
+ a04_wmt_put16(p+224,s->ie_length);for(unsigned i=0;i<s->ie_length;i++)p[226+i]=s->ie[i];
+ *length=226+s->ie_length;return 0;
+}
+/* Retained extended compatibility codec:10 SSIDs/54 channels, IE494.
+ * The published board gen3 layout is the separate four-SSID/IE226 codec
+ * above. Native1003 selects only that evidenced layout (wire_version2). */
 static inline int a04_wlan_scan_v2_encode(const struct a04_wlan_scan *s,uint8_t *p,unsigned cap,unsigned *length){
  if(!s || !p || !length)return A04_WLAN_ARGUMENT;
  *length=0;
@@ -80,8 +108,8 @@ static inline int a04_wlan_scan_v2_encode(const struct a04_wlan_scan *s,uint8_t 
 struct a04_wlan_scan_state {unsigned pending,sequence,bss,complete;int failed;};
 static inline int a04_wlan_scan_begin(struct a04_wlan_host *h,struct a04_wlan_scan_state *s,const struct a04_wlan_scan *request){
  if(!h || !s || !request || !h->runtime || s->pending || s->complete || s->failed)return A04_WLAN_STATE;
- uint8_t payload[1094];unsigned n=0;int e=request->wire_version==3?a04_wlan_scan_v2_encode(request,payload,sizeof(payload),&n):a04_wlan_scan_encode(request,payload,sizeof(payload),&n);if(e)return e;
- unsigned seq=a04_wlan_sequence(h);e=a04_wlan_command(h,request->wire_version==3?3:0x1a,seq,A04_WLAN_CMD_PACKET,payload,n);if(e)return e;
+ uint8_t payload[1094];unsigned n=0;int e=request->wire_version==2?a04_wlan_scan_gen3_encode(request,payload,sizeof(payload),&n):(request->wire_version==3?a04_wlan_scan_v2_encode(request,payload,sizeof(payload),&n):a04_wlan_scan_encode(request,payload,sizeof(payload),&n));if(e)return e;
+ unsigned seq=a04_wlan_sequence(h);e=a04_wlan_command(h,request->wire_version>=2?3:0x1a,seq,A04_WLAN_CMD_PACKET,payload,n);if(e)return e;
  h->tx[6]=1;s->pending=1;s->sequence=request->sequence;s->bss=request->bss;
  e=a04_wlan_send(h,n+8,1);if(e)s->failed=e;return e;
 }

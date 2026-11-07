@@ -3,6 +3,7 @@
  * https://learn.microsoft.com/en-us/windows-hardware/drivers/network/native-802-11-send-operations
  */
 #include "native_tx.h"
+#include "native_limits.h"
 static int same(const uint8_t *a,const uint8_t *b,unsigned n)
 {unsigned i;for(i=0;i<n;i++)if(a[i]!=b[i])return 0;return 1;}
 int a04_native_tx_to_ethernet(const uint8_t *p,size_t n,const uint8_t ap[6],const uint8_t local[6],uint8_t *out,size_t cap,size_t *written)
@@ -11,9 +12,9 @@ int a04_native_tx_to_ethernet(const uint8_t *p,size_t n,const uint8_t ap[6],cons
  if(!written)return -1;
  *written=0;
  /* Exact data subtype, ToDS only; no retry, protected, fragments or QoS. */
- if(!p||!ap||!local||!out||n<32||n>1532||p[0]!=0x08||p[1]!=0x01||
+ if(!p||!ap||!local||!out||n<32||n>A04_NATIVE_MPDU_MAX||p[0]!=0x08||p[1]!=0x01||
     (p[22]&15)||!same(p+4,ap,6)||!same(p+10,local,6)||!same(p+24,snap,6))return -1;
- bytes=n-18;if(bytes>1514||cap<bytes)return -1;
+ bytes=n-18;if(bytes>A04_NATIVE_ETH_MAX||cap<bytes)return -1;
  in_addr=(uintptr_t)p;out_addr=(uintptr_t)out;
  if(out_addr>=in_addr ? out_addr-in_addr<n : in_addr-out_addr<bytes)return -1;
  /* Input/output may not overlap; caller provides a distinct owned snapshot. */

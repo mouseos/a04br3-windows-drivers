@@ -8,7 +8,10 @@ struct a04_station_runtime {
  struct a04_wmt_bridge *bridge;struct a04_wlan_station station;
  struct a04_wlan_slots slots;struct a04_bss_observation bss[A04_BSS_MAX];unsigned bss_count;
  uint8_t assoc_request[384],assoc_response[1024];unsigned assoc_request_length,assoc_response_length;
+ uint8_t selected_bssid[6];unsigned selected_bssid_set;
  unsigned desired_secured;
+ int (*exclude_bssid)(void *,const uint8_t *);
+ const uint8_t *association_ies;unsigned association_ies_length;
  unsigned initialized,connecting,connected,phase;int failed;
  void *context;uint64_t (*now)(void *);uint64_t (*system_time)(void *);void (*wait)(void *,unsigned);
  int (*cancelled)(void *);

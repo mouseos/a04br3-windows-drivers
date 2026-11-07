@@ -6,6 +6,7 @@
 /* The Windows adapter supplies these from a verified regulatory policy and
  * initialized/calibrated firmware. Channels are (band,number) pairs. */
 struct a04_native_scan_policy {
+ const UCHAR *hidden_ssid;ULONG hidden_ssid_length;
  unsigned bss,sequence,probes,min_dwell,dwell,timeout,channel_count;
  UCHAR channels[108];
 };

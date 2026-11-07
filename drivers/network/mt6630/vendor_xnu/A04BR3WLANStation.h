@@ -16,6 +16,7 @@ struct a04_wlan_ap {
  unsigned ssid_length,rate_count,rsn_length,channel,band,capability,beacon,rcpi_valid,rcpi;
 };
 struct a04_wlan_station {
+ const uint8_t *extra_assoc_ies;unsigned extra_assoc_ies_length;
  struct a04_wlan_local local;struct a04_wlan_ap ap;
  struct a04_wlan_scan_state scan;struct a04_wlan_channel channel;
  struct a04_wlan_open_join join;
@@ -261,9 +262,12 @@ static inline int a04_wlan_station_assoc(struct a04_wlan_station *s,struct a04_w
   a04_wlan_ies(security_ie,security_length) || (!!(capability&16)!=!!security_length))return A04_WLAN_ARGUMENT;
  uint8_t p[384];unsigned n=0;int e=a04_wlan_assoc_encode(&s->join,capability&~16u,listen,
   s->ap.ssid,s->ap.ssid_length,s->ap.rates,s->ap.rate_count,p,sizeof(p),&n);if(e)return e;
+ if(s->extra_assoc_ies_length>256||a04_wlan_ies(s->extra_assoc_ies,s->extra_assoc_ies_length)||
+  n+security_length+s->extra_assoc_ies_length>sizeof(p))return A04_WLAN_ARGUMENT;
  a04_wmt_put16(p+24,capability);
  for(unsigned i=0;i<security_length;i++)p[n+i]=security_ie[i];
- e=a04_wlan_station_mgmt_send(s,h,p,n+security_length);
+ for(unsigned i=0;i<s->extra_assoc_ies_length;i++)p[n+security_length+i]=s->extra_assoc_ies[i];
+ e=a04_wlan_station_mgmt_send(s,h,p,n+security_length+s->extra_assoc_ies_length);
  return e?a04_wlan_station_fail(s,h,e):0;
 }
 static inline int a04_wlan_station_assoc_rx(struct a04_wlan_station *s,struct a04_wlan_host *h,

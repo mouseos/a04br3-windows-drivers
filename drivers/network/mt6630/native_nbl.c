@@ -1,11 +1,13 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "native_nbl.h"
 #include "native_tx.h"
+#include "native_limits.h"
 static void complete(struct a04_native_tx *tx,NDIS_STATUS result)
 {
  PNET_BUFFER_LIST nbl=tx->pending;tx->pending=NULL;
  NET_BUFFER_LIST_STATUS(nbl)=result;
- NdisMSendNetBufferListsComplete(tx->adapter,nbl,0);
+ if(tx->completion)tx->completion(tx->completion_context,nbl,result);
+ else NdisMSendNetBufferListsComplete(tx->adapter,nbl,0);
 }
 NDIS_STATUS a04_native_nbl_send(struct a04_native_tx *tx,struct a04_wmt_bridge *b,
  const struct a04_wlan_station *station,struct a04_wlan_security *security,PNET_BUFFER_LIST nbl,
@@ -17,7 +19,7 @@ NDIS_STATUS a04_native_nbl_send(struct a04_native_tx *tx,struct a04_wmt_bridge *
  if(NET_BUFFER_LIST_NEXT_NBL(nbl))return NDIS_STATUS_NOT_SUPPORTED;
  nb=NET_BUFFER_LIST_FIRST_NB(nbl);if(!nb||NET_BUFFER_NEXT_NB(nb))return NDIS_STATUS_NOT_SUPPORTED;
  length=NET_BUFFER_DATA_LENGTH(nb);
- if(length<32||length>1532||length>mpdu_capacity)return NDIS_STATUS_INVALID_LENGTH;
+ if(length<32||length>A04_NATIVE_MPDU_MAX||length>mpdu_capacity)return NDIS_STATUS_INVALID_LENGTH;
  view=NdisGetDataBuffer(nb,length,mpdu,1,0);if(!view)return NDIS_STATUS_RESOURCES;
  if(view!=mpdu)NdisMoveMemory(mpdu,view,length);
  if(a04_native_tx_to_ethernet(mpdu,length,station->ap.mac,station->local.mac,ethernet,ethernet_capacity,&converted))return NDIS_STATUS_INVALID_DATA;

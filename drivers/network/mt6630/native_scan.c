@@ -30,13 +30,19 @@ NDIS_STATUS a04_native_scan_parse(const void *buffer,ULONG length,struct a04_nat
  /* This runtime does not enable multi-domain/802.11d. The Request IE
   * controls are ignored in that mode, as specified for SCAN_REQUEST_V2. */
  if(h.bRestrictedScan || h.uNumOfPhyTypeInfos)return NDIS_STATUS_NOT_SUPPORTED;
- if(h.uNumOfdot11SSIDs>1)return NDIS_STATUS_INVALID_LENGTH;
- if(h.uNumOfdot11SSIDs){
-  if(!span(available,h.udot11SSIDsOffset,sizeof(ssid),base,needed))return NDIS_STATUS_INVALID_LENGTH;
-  NdisMoveMemory(&ssid,payload+h.udot11SSIDsOffset,sizeof(ssid));
-  if(ssid.uSSIDLength>sizeof(temp.ssid))return NDIS_STATUS_INVALID_DATA;
-  temp.ssid_length=ssid.uSSIDLength;NdisMoveMemory(temp.ssid,ssid.ucSSID,temp.ssid_length);
+ if(h.uNumOfdot11SSIDs>A04_NATIVE_SCAN_SSIDS)return NDIS_STATUS_INVALID_LENGTH;
+ if(h.uNumOfdot11SSIDs && !span(available,h.udot11SSIDsOffset,h.uNumOfdot11SSIDs*sizeof(ssid),base,needed))return NDIS_STATUS_INVALID_LENGTH;
+ temp.ssid_count=h.uNumOfdot11SSIDs;
+ for(i=0;i<temp.ssid_count;i++){
+  NdisMoveMemory(&ssid,payload+h.udot11SSIDsOffset+i*sizeof(ssid),sizeof(ssid));
+  if(ssid.uSSIDLength>32)return NDIS_STATUS_INVALID_DATA;
+  temp.ssid_lengths[i]=ssid.uSSIDLength;NdisMoveMemory(temp.ssids[i],ssid.ucSSID,ssid.uSSIDLength);
  }
+ /* Firmware's named wildcard mode cannot prove directed probes for a
+  * mixed wildcard/specific list. Reject instead of dropping specific SSIDs. */
+ unsigned empty=0;for(i=0;i<temp.ssid_count;i++)if(!temp.ssid_lengths[i])empty++;
+ if(empty&&empty<temp.ssid_count)return NDIS_STATUS_NOT_SUPPORTED;
+ if(temp.ssid_count){temp.ssid_length=temp.ssid_lengths[0];NdisMoveMemory(temp.ssid,temp.ssids[0],temp.ssid_length);}
  if(h.uIEsLength>sizeof(temp.ie))return NDIS_STATUS_INVALID_LENGTH;
  if(h.uIEsLength && !span(available,h.uIEsOffset,h.uIEsLength,base,needed))return NDIS_STATUS_INVALID_LENGTH;
  if(h.uIEsLength){
