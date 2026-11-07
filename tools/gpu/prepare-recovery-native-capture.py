@@ -10,11 +10,14 @@ def main():
     ap=argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--plan-directory",type=Path,help="新規host directoryへmanifest/scenarioも保存。ADBは実行しない")
     ap.add_argument("--suite",action="store_true",help="同一contextでclear/warm-clear/solid/textureの固定4framesを捕捉")
+    ap.add_argument("--readonly-alias",action="store_true",help="suiteのみ: sourceに基づく4KiB dense PMR readonly aliasを有効化")
     ap.add_argument("--serial",required=True,help="主担当が確認した対象serial")
     ap.add_argument("--bundle",type=Path,required=True)
     ap.add_argument("--log-directory",type=Path,required=True,help="root内ios-feasibilityログ保存先")
     ap.add_argument("--device-directory",required=True,help="新規のdevice側絶対directory")
-    args=ap.parse_args();bundle=args.bundle.resolve();device=args.device_directory.rstrip("/")
+    args=ap.parse_args()
+    if args.readonly_alias and not args.suite:ap.error("--readonly-alias requires --suite")
+    bundle=args.bundle.resolve();device=args.device_directory.rstrip("/")
     if not device.startswith("/tmp/") or ".." in Path(device).parts or any(c in device for c in "\n\r\0"):
         ap.error("device-directory must be a fresh path below /tmp")
     if not args.serial or any(c in args.serial for c in "\n\r\0"):
@@ -43,8 +46,8 @@ def main():
         if (bundle/directory).is_dir():commands.append(adb("push",str(bundle/directory),device+"/"+directory))
     commands.append(shell(["chmod","700",device+"/bin/recovery-native-clear",device+"/bin/recovery-native-stage"]))
     preflight=capture(["sh",device+"/recovery-native-preflight.sh","--inspect"],15000)
-    direct=capture([device+"/bin/recovery-native-stage","--run-suite" if args.suite else "--run",device],45000)
-    result={"executed":False,"workload":"four-frame-suite" if args.suite else "single-clear","requires_primary_recovery_authorization":True,
+    direct=capture([device+"/bin/recovery-native-stage","--run-suite-alias" if args.readonly_alias else ("--run-suite" if args.suite else "--run"),device],45000)
+    result={"executed":False,"readonly_alias":args.readonly_alias,"workload":"four-frame-suite" if args.suite else "single-clear","requires_primary_recovery_authorization":True,
         "serial_must_be_confirmed_by_primary":serial,"staging_commands_NOT_EXECUTED":commands,
         "rea_host_environment":{"TMPDIR":str(logs/"rea-runtime-tmp")},
         "rea_cli_capture_NOT_EXECUTED":["env","TMPDIR="+str(logs/"rea-runtime-tmp"),"rea","capture-process",str(bundle/"scenario-vendor-direct.json"),"--format","json","--full-output"],
@@ -62,6 +65,17 @@ def main():
         "evidence_export_path":str(logs/"runtime-rea-evidence.json"),
         "parse_after_retrieval":["python3","-B",str(bundle/"source/tools/gpu/read-recovery-native-capture.py"),str(logs/"runtime-capture-01.bin"),"--resources-directory",str(logs/"runtime-resources-01")],
         "success":"PowerVR renderer, full readback match, complete pre/post pairs, ioctl/bridge success, broken=0. Native resource completeness separately requires every VDM/PPP/USC/PDS/region reference to be covered; unknown is not success. GPU/FW addresses cannot be replayed unchanged"}
+    if args.readonly_alias:
+        result["alias_contract"]={"allocation_flags_changed":False,"selector":"live source NewRamBackedPMR flags32, CPU_READABLE, !GPU_WRITEABLE, known dense 1x4096, no existing CPU VMA",
+            "max_attempts_per_kick":8,"max_attempts_per_process":32,"max_live_alias_bytes":32768,
+            "memory_caps":{"kick":4194304,"process":16777216,"span":262144},
+            "unmap":"all self-created aliases immediately after snapshot; failure sets broken",
+            "unknown":"alias failure or missing resource is not success; no flags mutation retry"}
+        result["wall_limits_seconds"]={"harness":30,"rea_scenario":45,"staging_capture_retrieval_release":300}
+        result["boot_id_before_and_after_NOT_EXECUTED"]=shell(["cat","/proc/sys/kernel/random/boot_id"])
+        result["retrieval_console"]="REA capture result retained as runtime-rea-evidence.json; preserve full stdout/stderr"
+        result["release_required"]=["target process absent","alias_live=0 or terminated process VMA release","no new global mounts","boot_id unchanged","GPU fd/context released"]
+        result["timeout_policy"]="terminate only this private capture process on fixed serial; no retry/reboot; verify process/mount release"
     if args.suite:
         result["expected_frames"]=["clear-cold","clear-warm-same-context","solid-triangle","sampled-1x1-texture-triangle"]
         result["success"]+="; require FRAME_END verified=1 for indices0..3 and each full480000pixel readback mismatch0; do not assume one kick per frame; memory caps remain4MiB/kick,16MiB/process, unknown/limit is not complete dependency capture"

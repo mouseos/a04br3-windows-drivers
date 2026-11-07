@@ -31,8 +31,8 @@ int main(int argc,char **argv)
         "capture","dev","proc","sys","apex","linkerconfig","lib","lib/firmware","sbin","bin","lib64","etc"};
     static const char *const inherited[]={"dev","proc","sys","apex","linkerconfig","sbin","bin","lib64","etc"};
     unsigned i;int inspect;
-    if(argc!=3 || ((strcmp(argv[1],"--run") && strcmp(argv[1],"--run-suite")) && strcmp(argv[1],"--inspect"))){
-        fprintf(stderr,"usage: recovery-native-stage --run|--run-suite|--inspect /tmp/fresh-stage\n");return 2;
+    if(argc!=3 || ((strcmp(argv[1],"--run") && strcmp(argv[1],"--run-suite") && strcmp(argv[1],"--run-suite-alias")) && strcmp(argv[1],"--inspect"))){
+        fprintf(stderr,"usage: recovery-native-stage --run|--run-suite|--run-suite-alias|--inspect /tmp/fresh-stage\n");return 2;
     }
     inspect=!strcmp(argv[1],"--inspect");
     base=realpath(argv[2],0);
@@ -83,6 +83,7 @@ int main(int argc,char **argv)
     path(source,base,"runtime");directory(source);path(target,root,"capture");bind_dir(source,target);
     path(source,base,"original-vendor/firmware");path(target,root,"lib/firmware");bind_dir(source,target);
     if(chroot(root) || chdir("/"))fail("chroot");
+    if(setenv("A04_M111_CAPTURE_ALIAS_READONLY",!strcmp(argv[1],"--run-suite-alias")?"1":"0",1))fail("alias mode");
     if(setenv("A04_M111_CAPTURE","/capture/capture-01.bin",1) ||
        setenv("LD_PRELOAD","/stage/recovery-native-bridge-capture.so",1) ||
        setenv("LD_LIBRARY_PATH","/deps:/vendor/lib64:/vendor/lib64/egl:/system/lib64",1))fail("environment");
@@ -90,7 +91,7 @@ int main(int argc,char **argv)
     {
         char *const command[]={"/stage/recovery-native-clear","--run",
             "/vendor/lib64/egl/libEGL_mtk.so","/vendor/lib64/egl/libGLESv2_mtk.so",
-            !strcmp(argv[1],"--run-suite")?"--suite":NULL,NULL};
+            (!strcmp(argv[1],"--run-suite") || !strcmp(argv[1],"--run-suite-alias"))?"--suite":NULL,NULL};
         execv(command[0],command);fail("exec clear harness");
     }
 }

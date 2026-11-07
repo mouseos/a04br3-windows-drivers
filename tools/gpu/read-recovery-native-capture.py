@@ -11,9 +11,9 @@ def parse(raw,resources_directory=None,allow_incomplete=False):
     while pos<len(raw):
         if len(raw)-pos<32:raise ValueError("truncated header")
         magic,version,kind,seq,rc,error,count=struct.unpack_from("<8sIIIiiI",raw,pos);pos+=32
-        if magic!=b"A04RGCAP" or version!=1 or kind not in (1,2,3,4,5,6) or not (seq==0 if kind in (4,6) else 1<=seq<=32):
+        if magic!=b"A04RGCAP" or version!=1 or kind not in (1,2,3,4,5,6,7) or not (seq==0 if kind in (4,6) else 1<=seq<=32):
             raise ValueError("invalid header")
-        if count!={1:5,2:1,3:2,4:1,5:1,6:1}[kind]:raise ValueError("invalid component count")
+        if count!={1:5,2:1,3:2,4:1,5:1,6:1,7:1}[kind]:raise ValueError("invalid component count")
         components={};offsets={}
         for unused in range(count):
             if len(raw)-pos<8:raise ValueError("truncated TLV")
@@ -21,6 +21,17 @@ def parse(raw,resources_directory=None,allow_incomplete=False):
             if tag in components or size>(0x40000 if kind==3 and tag==8 else 0x1000) or size>len(raw)-pos:raise ValueError("invalid TLV")
             offsets[tag]=pos
             components[tag]=raw[pos:pos+size];pos+=size
+        if kind==7:
+            if set(components)!={12} or len(components[12])!=64:raise ValueError("alias metadata")
+            wire,action,identity,pmr,cpu,size,fd,flags,attempts,live,offset=struct.unpack("<II4Q4IQ",components[12])
+            if wire!=1 or action not in (1,2) or not identity or size!=4096 or not flags&16 or flags&2 or not 1<=attempts<=32 or live>8 or offset!=pmr*4096 or rc not in (0,-1):
+                raise ValueError("alias contract")
+            events.append({"phase":"readonly-alias","seq":seq,"action":"map" if action==1 else "unmap",
+                "generation":identity,"pmr":hex(pmr),"cpu_va":hex(cpu),"size":size,"fd":fd,
+                "allocation_flags":hex(flags),"attempts":attempts,"live":live,"mmap_offset":offset,
+                "result":rc,"errno_only_if_failed":error if rc<0 else None,
+                "coverage":"only successful resource records establish captured bytes"})
+            continue
         if kind==6:
             if set(components)!={11} or len(components[11])<56:raise ValueError("topology metadata")
             w,fd,identity,pmr,size,chunk,phys,virt,pointer=struct.unpack_from("<IIQQQQIIQ",components[11])

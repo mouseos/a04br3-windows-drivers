@@ -31,6 +31,15 @@ def sparse_fixture(index=7,offset=7*4096,parent_offset=0,cpu_offset=0):
     return journal+witness,event(3,1,[(7,meta),(8,bytes(4096))])
 
 class CaptureTests(unittest.TestCase):
+    def test_readonly_alias_journal(self):
+        meta=struct.pack("<II4Q4IQ",1,1,1,0x20,0x100000,4096,5,0xb31,1,1,0x20000)
+        data=event(7,1,[(12,meta)])+format_only_pairs()
+        result=parser.parse(data)
+        self.assertEqual(result["events"][0]["phase"],"readonly-alias")
+        bad=bytearray(meta);struct.pack_into("<I",bad,44,0xb33)
+        with self.assertRaisesRegex(ValueError,"alias contract"):
+            parser.parse(event(7,1,[(12,bad)])+format_only_pairs())
+
     def test_sparse_nonzero_index_and_parent_offset(self):
         witness,data=sparse_fixture(parent_offset=4096,cpu_offset=2*4096)
         result=parser.parse(witness+data+format_only_pairs())

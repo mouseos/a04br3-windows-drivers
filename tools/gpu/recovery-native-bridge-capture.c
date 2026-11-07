@@ -58,6 +58,8 @@ __attribute__((constructor)) static void trace_init(void)
     (void)syscall(SYS_write,2,entered,sizeof(entered)-1);
     long page=sysconf(_SC_PAGESIZE);
     if(page>0)mem_pagesize=(size_t)page;
+    const char *alias=getenv("A04_M111_CAPTURE_ALIAS_READONLY");
+    mem_alias_enabled=alias && !strcmp(alias,"1");
     if(!path)return;
     if(path[0]!='/'){fprintf(stderr,"CAPTURE_PATH_MUST_BE_ABSOLUTE\n");return;}
     trace_fd=open(path,O_WRONLY|O_CREAT|O_EXCL|O_CLOEXEC,0600);
@@ -79,8 +81,8 @@ __attribute__((destructor)) static void trace_done(void)
     mem_inside++;pthread_mutex_lock(&lock);
     if(trace_fd>=0){
         int fd=trace_fd;
-        fprintf(stderr,"CAPTURE_SUMMARY kicks=%u broken=%d memory_unknown=%u memory_read=%u\n",
-            sequence,trace_broken,mem_unknown,mem_read_total);
+        fprintf(stderr,"CAPTURE_SUMMARY kicks=%u broken=%d memory_unknown=%u memory_read=%u alias_attempts=%u alias_live=%u\n",
+            sequence,trace_broken,mem_unknown,mem_read_total,mem_alias_attempts,mem_alias_live);
         trace_fd=-1;(void)syscall(SYS_close,fd);
     }
     pthread_mutex_unlock(&lock);mem_inside--;

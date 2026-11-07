@@ -15,7 +15,7 @@
 enum mem_reason { MEM_FULL, MEM_PREFIX, MEM_NO_CPU, MEM_UNSAFE,
     MEM_BUDGET, MEM_AMBIGUOUS, MEM_UNALIGNED, MEM_JOURNAL_LOST };
 struct mem_pmr { uint64_t handle,size,id;int fd,dense,dmafd;unsigned epoch,dmaepoch;
-    uint64_t chunk;unsigned phys,virt,known;uint32_t indices[MEM_PHYS];
+    uint64_t chunk;unsigned phys,virt,known;uint32_t indices[MEM_PHYS];uint32_t flags;unsigned flags_known;
 };
 struct mem_heap { uint64_t handle,context;int fd;unsigned log2; };
 struct mem_res { uint64_t handle,heap,va,size;int fd; };
@@ -29,6 +29,7 @@ static struct mem_cpu mem_cpus[MEM_SLOTS];
 static unsigned mem_epochs[MEM_FDS],mem_unknown,mem_journal,mem_read_total;
 static uint64_t mem_next_id;
 static size_t mem_pagesize;
+static unsigned mem_alias_enabled,mem_alias_attempts,mem_alias_live;
 static _Thread_local int mem_inside __attribute__((tls_model("initial-exec")));
 static unsigned char mem_scratch[MEM_SPAN];
 static int mem_fd_ok(int fd) { return fd>=0 && (unsigned)fd<MEM_FDS; }
@@ -54,7 +55,7 @@ static void mem_new_pmr(int fd,uint64_t h,uint64_t size,int dense,int dmafd)
     if(p){mem_invalidate_id(p->id);p->id=0;}
     for(i=0;i<MEM_SLOTS;i++)if(!mem_pmrs[i].id){
         p=&mem_pmrs[i];*p=(struct mem_pmr){h,size,++mem_next_id,fd,dense,dmafd,
-            mem_epochs[fd],mem_fd_ok(dmafd)?mem_epochs[dmafd]:0,0,0,0,0,{0}};return;
+            mem_epochs[fd],mem_fd_ok(dmafd)?mem_epochs[dmafd]:0,0,0,0,0,{0},0,0};return;
     }
     mem_unknown++;
 }
@@ -139,8 +140,11 @@ static void mem_bridge_result(int fd,unsigned group,unsigned fn,const unsigned c
             p->dmafd=(int32_t)u32(out);p->dmaepoch=mem_epochs[p->dmafd];
         }else mem_unknown++;
     }else if(group==6){
-        if((fn==9 || fn==10) && (ni==56 || ni==60) && no==12)
+        if((fn==9 || fn==10) && (ni==56 || ni==60) && no==12){
             mem_new_pmr(fd,u64(out),u64(in),u32(in+16)>0 && u32(in+16)==u32(in+20),-1);
+            p=mem_pmr_handle(fd,u64(out));
+            if(p && ni==56){p->flags=u32(in+36);p->flags_known=1;}
+        }
         else if(fn==5 && ni==28 && no==12)mem_new_pmr(fd,u64(out),u64(in+16),0,-1);
         else if(fn==6 && ni==8 && no==28)mem_new_pmr(fd,u64(out),u64(out+8),0,-1);
         else if((fn==7 || fn==8) && ni==8 && no==4){
@@ -306,9 +310,70 @@ static void mem_snapshot_backed(unsigned seq,struct mem_gpu *g,struct mem_pmr *p
         if(status==MEM_BUDGET)break;
     }
 }
+/* pvr_bridge_k.c:PVRSRV_MMap uses vm_pgoff as this connection's PMR
+ * handle; pmr_os.c maps offset zero using PMR CPU cache attributes.
+ * Do not modify allocation flags, import PMRs, map holes or use a GPU VA.
+ * Caller holds the registry lock, inside the intercepted pre-kick path. */
+struct mem_alias { void *va;struct mem_pmr *pmr; };
+static int mem_alias_candidate(const struct mem_pmr *p)
+{
+    unsigned j;
+    if(!p->id || !mem_fd_ok(p->fd) || p->epoch!=mem_epochs[p->fd] ||
+       !p->flags_known || !(p->flags&0x10u) || (p->flags&2u) ||
+       p->dmafd!=-1 || !p->known || !p->dense || p->size!=4096 ||
+       p->chunk!=4096 || p->phys!=1 || p->virt!=1 || p->indices[0]!=0 ||
+       mem_pagesize!=4096 || p->handle>INT64_MAX/mem_pagesize)return 0;
+    for(j=0;j<MEM_SLOTS;j++)
+        if(mem_cpus[j].size && mem_cpus[j].id==p->id)return 0;
+    for(j=0;j<MEM_SLOTS;j++)
+        if(mem_gpus[j].id==p->id)return 1;
+    return 0;
+}
+static void mem_alias_event(unsigned seq,unsigned action,struct mem_pmr *p,
+    void *va,int rc,int error)
+{
+    unsigned char m[64]={0};
+    word(m,1);word(m+4,action);mem_qword(m+8,p->id);
+    mem_qword(m+16,p->handle);mem_qword(m+24,(uintptr_t)va);
+    mem_qword(m+32,p->size);word(m+40,(unsigned)p->fd);
+    word(m+44,p->flags);word(m+48,mem_alias_attempts);word(m+52,mem_alias_live);
+    mem_qword(m+56,p->handle*mem_pagesize);
+    header(7,seq,rc,error,1);component(12,m,sizeof(m));
+}
+static unsigned mem_alias_begin(unsigned seq,struct mem_alias *aliases)
+{
+    unsigned i,n=0,attempts=0;
+    if(!mem_alias_enabled || trace_broken || mem_journal>2048)return 0;
+    for(i=0;i<MEM_SLOTS && attempts<8 && mem_alias_attempts<32;i++){
+        struct mem_pmr *p=&mem_pmrs[i];void *v;int error;
+        if(!mem_alias_candidate(p))continue;
+        attempts++;mem_alias_attempts++;
+        v=(void *)syscall(SYS_mmap,0,4096,PROT_READ,MAP_SHARED,p->fd,
+            (off_t)(p->handle*mem_pagesize));error=errno;
+        if(v!=MAP_FAILED){
+            mem_alias_live++;aliases[n++]=(struct mem_alias){v,p};
+            mem_map_result(v,4096,PROT_READ,MAP_SHARED,p->fd,p->handle*mem_pagesize);
+        }
+        mem_alias_event(seq,1,p,v,v==MAP_FAILED?-1:0,v==MAP_FAILED?error:0);
+    }
+    return n;
+}
+static void mem_alias_end(unsigned seq,struct mem_alias *aliases,unsigned n)
+{
+    unsigned i;
+    for(i=0;i<n;i++){
+        struct mem_alias *a=&aliases[i];int rc,error;
+        rc=(int)syscall(SYS_munmap,a->va,4096);error=errno;
+        if(!rc){mem_unmap_result((uintptr_t)a->va,4096);mem_alias_live--;}
+        else {mem_unknown++;atomic_store(&trace_broken,1);}
+        mem_alias_event(seq,2,a->pmr,a->va,rc,rc?error:0);
+    }
+}
 static void mem_snapshot(unsigned seq)
 {
-    unsigned i,j,kick_bytes=0,count=0,order[MEM_SLOTS];
+    unsigned i,j,kick_bytes=0,count=0,order[MEM_SLOTS],alias_count;
+    struct mem_alias aliases[8];
+    alias_count=mem_alias_begin(seq,aliases);
     /* Small code/stream allocations get budget before large image backings. */
     for(i=0;i<MEM_SLOTS;i++)if(mem_gpus[i].id){
         j=count;while(j && mem_gpus[order[j-1]].size>mem_gpus[i].size){order[j]=order[j-1];j--;}
@@ -352,6 +417,7 @@ static void mem_snapshot(unsigned seq)
         word(meta+96,(unsigned)g->fd);word(meta+100,c?(unsigned)c->fd:UINT32_MAX);
         header(3,seq,0,0,2);component(7,meta,sizeof(meta));component(8,mem_scratch,n);
     }
+    mem_alias_end(seq,aliases,alias_count);
     {
         unsigned char summary[32]={0};unsigned pmrs=0,gpus=0,cpus=0;
         for(i=0;i<MEM_SLOTS;i++){
