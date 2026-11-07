@@ -126,7 +126,8 @@ then starts VBUS and the MUSB session; previously arm cleared CONNECT after
 the device could already have connected. The lock keeps queued IRQ work from
 starting enumeration before startup completes. This remains a direct boot
 keyboard diagnostic, not a general Windows USB host controller/root hub.
-An absent host cable or detected external VBUS rejects D0; hotplug retry,
+The former implementation rejected D0 for absent host cable/external VBUS.
+The run27 correction below adds admission retry;
 actual PnP binding, signed package, IRQ delivery, electrical VBUS and keyboard
 operation remain unverified. `make test-mt8167-usb-source` exercises the actual
 parent callbacks with stub MMIO, not hardware.
@@ -262,3 +263,50 @@ MMIOの模擬試験であり、WindowsでのWDF実行や実機LED点灯の確認
 通常OSの既存入力・batteryを維持する構成は、同文書の「通常OSを維持する統合profile」を参照。
 `build-mt8167-usb-keyboard.ps1`の既定はIntegratedへ変更し、08faae5との
 単一parent＋audio＋USBは`build-mt8167-first-playback.ps1 -IntegratedUsb`で生成する。
+
+
+## run27: device-role待機と開始失敗の区別
+
+run27のSetupAPIはMT8167\USB20の登録成功とCode10を記録するが、
+Prepare/D0/親Acquireのどこで失敗したかは記録しない。System.evtxの
+UserPnp 20001もInstallStatus=0で、PCケーブルが原因だったとは確定できない。
+一方、従来コードが親の正常なhost admission拒否をすべて
+STATUS_DEVICE_POWER_FAILUREへ潰していたことはソースで確認できる。
+
+機種Linux一次ソースは上記固定commitのusb20_host.c:114–116でGPIO34の
+lowをUSB検出、同:245–278でID highをdevice-roleとする。
+a04br3.dts:686–691/751–752とmt8167.dtsi:944はID41、VBUS22、detect34を指定する。
+この修正は既存の拒否条件を変更せず、親のread-only preflightから
+1=device-role、2=external VBUSという副作用なしの待機だけを返す。
+VUSB/clock/GPIO22/PHY/MAC/leaseには触れず、poisonもしない。
+不明な正値・負値、clock/PMIC/configuration失敗は失敗のままにする。
+
+実KbD0はこの2理由だけをinputなしの正常D0として扱う。PASSIVE_LEVELの
+既存one-shot timerで500msごとに再admissionし、host資格を得たら既存の
+Prepare→IRQ arm→HostRunを通す。controller_lockを解放してからActivateを
+呼ぶため再入しない。D0Exit/Releaseは従来のWdfTimerStop(TRUE)でcallbackを
+joinしてからIRQ/interface/mappingを解放する。待機後の実失敗はfaultで停止。
+新しい失敗を以前の待機値で隠さないよう、各Activateの最初に理由を消す。
+実PnP startの成功だけをUSB列挙・給電・keyboard入力成功と扱わない。
+
+DbgPrintはadmission理由の変更時のみ出し、resource/query-interface/PIO-DMA拒否/
+PHY prepare/IRQ arm/HostRunを分けて失敗を出す。UARTやEVTXへ自動保存される
+保証はないため、主担当の既存収集経路で確認する。active hostからケーブルを
+抜いた際のhealth faultは従来どおり停止し、全面的なdual-role切替は実装しない。
+
+共有interface v1のlayout/GUIDは不変だが、戻り値の意味を拡張するため
+**更新した単一統合親とUSB SYSを対でbuild/適用する**。
+両INFはDriverVer=11/06/2026,2026.11.6.1002へ更新した。
+run27のUSB 2026.11.6.1001より新しい版であり、包装時に旧版で上書きしない。
+ユーザーのrun28報告では親/WiFiは旧SYSで、INF更新だけで適用済みとは扱わない。
+EnginePCM親de214 newcacheも未適用との追加報告があり、旧親のCode10を
+新親の結果として扱わない。新親の機能と既存flagを保持してから対で比較する。
+主担当の最新統合ソースへこのcommitだけを取り込み、audio/WiFi/入力/電池等を
+含む単一BEN0001 SYSを維持する。このbranchの親SYSで丸ごと置換しない。
+
+build recipeはtools/ci/build-mt8167-usb-keyboard.ps1 -Profile Integrated。
+既存audio/WiFi等の環境flagを保持した主担当の固定WDKで実行し、親子とも新INFで
+CAT生成/署名する。ホスト確認はmake test-mt8167-usb-keyboard-batch
+ test-mt8167-usb-integrated。read-only preflight、待機理由、未知値拒否、lease/poison/
+MMIO副作用なし、host再取得、単一USB/audio親の既存試験を確認する。
+WDK compile/link・新CAT・実PnP D0・電圧・入力・抜差しは未確認。

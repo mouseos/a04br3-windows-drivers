@@ -10,6 +10,7 @@
 #include "wdf_controller.h"
 #include "wdf_keyboard.h"
 #include "../../bus/mt8167-shared/usb_interface.h"
+#include "../../bus/mt8167-shared/usb_admission.h"
 #ifndef A04_MUSB_HID_CONTROL_EXPERIMENT
 #define A04_MUSB_HID_CONTROL_EXPERIMENT 0
 #endif
@@ -22,7 +23,7 @@
 #define REPORT_SLOTS 32u
 typedef struct {
  WDFWAITLOCK lock; WDFQUEUE reads; UCHAR reports[REPORT_SLOTS][8];
- unsigned head,count,input_reports; BOOLEAN connected,overflow,draining; KB_SESSION session; KB_PORT port; A04_USB_WDF *usb; WDFWAITLOCK controller_lock; WDFTIMER poll; BOOLEAN board_owned, board_fault; A04_USB_BOARD board; A04_SHARED_USB_INTERFACE shared; BOOLEAN shared_valid;
+ unsigned head,count,input_reports; BOOLEAN connected,overflow,draining; KB_SESSION session; KB_PORT port; A04_USB_WDF *usb; WDFWAITLOCK controller_lock; WDFTIMER poll; BOOLEAN board_owned, board_fault; int admission, last_admission; A04_USB_BOARD board; A04_SHARED_USB_INTERFACE shared; BOOLEAN shared_valid;
 #if A04_MUSB_HID_CONTROL_EXPERIMENT
  WDFQUEUE controls; struct a04_control_host control; struct a04_control_request control_request;
  UCHAR control_data[8]; BOOLEAN control_ready,control_busy,control_poisoned,control_output; ULONGLONG control_deadline;
@@ -180,6 +181,17 @@ VOID KbPoll(WDFTIMER timer)
 {
  WDFDEVICE dev=(WDFDEVICE)WdfTimerGetParentObject(timer); KB_HID_CONTEXT*c=KbHidContext(dev); ULONGLONG now;
  WdfWaitLockAcquire(c->controller_lock,NULL);
+ if(A04UsbAdmissionWait(c->admission) && !c->board_fault && c->shared_valid) {
+  NTSTATUS status;
+  /* Activation acquires controller_lock itself. D0Exit joins this callback
+   * with WdfTimerStop(TRUE) before releasing the interface or mappings. */
+  WdfWaitLockRelease(c->controller_lock);
+  status=KbHidActivate(dev,&c->board);
+  if(A04UsbAdmissionWait(c->admission))WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(500));
+  else if(NT_SUCCESS(status))WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(10));
+  else { c->board_fault=TRUE; DbgPrint("MT8167 USB20 admission retry failed status=%08lx\n",(ULONG)status); }
+  return;
+ }
  if(c->board_owned && !c->board_fault && c->shared_valid) {
   if(c->shared.Health(c->shared.Header.Context))PortFault(dev,STATUS_DEVICE_POWER_FAILURE);
   else {
@@ -231,9 +243,13 @@ static int BoardPower(void *p,int on)
 {
  KB_HID_CONTEXT*c=KbHidContext((WDFDEVICE)p);int result;
  if(!on)return c->shared.Release(c->shared.Header.Context);
- result=c->shared.Acquire(c->shared.Header.Context);if(result)return result;
+ result=c->shared.Acquire(c->shared.Header.Context);c->admission=result;
+ if(result!=c->last_admission) {
+  DbgPrint("MT8167 USB20 admission=%d\n",result);c->last_admission=result;
+ }
+ if(result)return result;
  /* Clocks are accessible now; reject active firmware DMA before PHY edits. */
- if(Mt8167UsbPioReady(A04UsbWdfController(c->usb))){(void)c->shared.Release(c->shared.Header.Context);return -1;}
+ if(Mt8167UsbPioReady(A04UsbWdfController(c->usb))){DbgPrint("MT8167 USB20 active firmware DMA rejected\n");(void)c->shared.Release(c->shared.Header.Context);return -1;}
  return 0;
 }
 static int BoardVbus(void *p,int on)
@@ -251,6 +267,7 @@ static void BoardMacWrite(void *p,unsigned off,unsigned char val)
 NTSTATUS KbHidActivate(WDFDEVICE dev,const A04_USB_BOARD *board)
 {
  KB_HID_CONTEXT*c=KbHidContext(dev); NTSTATUS status;
+ c->admission=0; /* Never let an earlier wait hide a new initialization error. */
  if(!board || !A04UsbWdfController(c->usb) || c->board_owned)return STATUS_INVALID_DEVICE_STATE;
  c->board=*board;
  WdfWaitLockAcquire(c->controller_lock,NULL);
@@ -258,9 +275,13 @@ NTSTATUS KbHidActivate(WDFDEVICE dev,const A04_USB_BOARD *board)
  if(KbPortInit(&c->port,&c->session,&A04UsbWdfController(c->usb)->io,dev,SessionDelay,SessionReport,SessionRelease)){
   WdfWaitLockRelease(c->controller_lock);return STATUS_INVALID_PARAMETER;
  }
- if(A04UsbHostPrepare(&c->board)){WdfWaitLockRelease(c->controller_lock);return STATUS_DEVICE_POWER_FAILURE;}
+ if(A04UsbHostPrepare(&c->board)){
+  if(!A04UsbAdmissionWait(c->admission))DbgPrint("MT8167 USB20 prepare failed admission=%d\n",c->admission);
+  WdfWaitLockRelease(c->controller_lock);return STATUS_DEVICE_POWER_FAILURE;
+ }
  status=A04UsbWdfArm(c->usb);
- if(NT_SUCCESS(status) && A04UsbHostRun(&c->board))status=STATUS_DEVICE_POWER_FAILURE;
+ if(!NT_SUCCESS(status))DbgPrint("MT8167 USB20 IRQ arm failed status=%08lx\n",(ULONG)status);
+ if(NT_SUCCESS(status) && A04UsbHostRun(&c->board)){DbgPrint("MT8167 USB20 host run failed\n");status=STATUS_DEVICE_POWER_FAILURE;}
  if(NT_SUCCESS(status))c->board_owned=TRUE;
  WdfWaitLockRelease(c->controller_lock);
  /* Never flush work while holding controller_lock: the IRQ worker takes it. */
@@ -287,12 +308,13 @@ void KbHidDeactivate(WDFDEVICE dev)
 NTSTATUS KbPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
  KB_HID_CONTEXT*c=KbHidContext(dev); NTSTATUS status;
- status=A04UsbWdfPrepare(c->usb,raw,translated); if(!NT_SUCCESS(status))return status;
+ status=A04UsbWdfPrepare(c->usb,raw,translated); if(!NT_SUCCESS(status)){DbgPrint("MT8167 USB20 resources failed status=%08lx\n",(ULONG)status);return status;}
  RtlZeroMemory(&c->shared,sizeof(c->shared));
  status=WdfFdoQueryForInterface(dev,&A04SharedUsbInterfaceGuid,(PINTERFACE)&c->shared,sizeof(c->shared),A04_SHARED_USB_INTERFACE_VERSION,NULL);
- if(!NT_SUCCESS(status)){A04UsbWdfRelease(c->usb);return status;}
+ if(!NT_SUCCESS(status)){DbgPrint("MT8167 USB20 parent query failed status=%08lx\n",(ULONG)status);A04UsbWdfRelease(c->usb);return status;}
  if(c->shared.Header.Size<sizeof(c->shared) || c->shared.Header.Version!=A04_SHARED_USB_INTERFACE_VERSION || !c->shared.Header.InterfaceDereference || !c->shared.Acquire || !c->shared.SetVbus || !c->shared.Health || !c->shared.Release) {
   if(c->shared.Header.InterfaceDereference)c->shared.Header.InterfaceDereference(c->shared.Header.Context);
+  DbgPrint("MT8167 USB20 parent interface invalid\n");
   A04UsbWdfRelease(c->usb);return STATUS_DEVICE_CONFIGURATION_ERROR;
  }
  c->shared_valid=TRUE; return STATUS_SUCCESS;
@@ -307,6 +329,11 @@ NTSTATUS KbD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
  RtlZeroMemory(&b,sizeof(b)); b.context=dev; b.power=BoardPower; b.vbus=BoardVbus;
  b.phy_read=BoardPhyRead; b.phy_write=BoardPhyWrite; b.mac_read=BoardMacRead; b.mac_write=BoardMacWrite; b.delay_ms=SessionDelay;b.phy_read32=BoardPhyRead32;
  { NTSTATUS status=KbHidActivate(dev,&b);
+   if(A04UsbAdmissionWait(c->admission)) {
+    /* No parent lease, PHY, MAC or VBUS was changed. Keep the HID PDO
+     * present with no reports until a host-qualified cable is observed. */
+    WdfTimerStart(c->poll,WDF_REL_TIMEOUT_IN_MS(500));return STATUS_SUCCESS;
+   }
    if(NT_SUCCESS(status))WdfTimerStart(c->poll,WDF_REL_TIMEOUT_IN_MS(10));
    return status;
  }

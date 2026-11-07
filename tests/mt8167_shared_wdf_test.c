@@ -127,8 +127,8 @@ int main(void){
  testContext.gpio=usbGpio;usbGpio[0x380/4]=2u<<3;usbGpio[0x220/4]=1u<<2;usbGpio[0x210/4]=1u<<5;
  assert(!ParentUsbSourceAcquire(&testContext) && !ParentUsbOvercurrent(&testContext));
  assert(!ParentUsbProbeSource(&testContext));
- usbGpio[0x220/4]=0;assert(ParentUsbProbeSource(&testContext));assert(ParentUsbSourceAcquire(&testContext)); /* external VBUS */
- usbGpio[0x220/4]=(1u<<2)|(1u<<9);assert(ParentUsbSourceAcquire(&testContext) && ParentUsbOvercurrent(&testContext));
+ usbGpio[0x220/4]=0;assert(ParentUsbProbeSource(&testContext)==A04_USB_WAIT_EXTERNAL_VBUS);assert(ParentUsbSourceAcquire(&testContext)); /* external VBUS */
+ usbGpio[0x220/4]=(1u<<2)|(1u<<9);assert(ParentUsbProbeSource(&testContext)==A04_USB_WAIT_DEVICE_ROLE);assert(ParentUsbSourceAcquire(&testContext) && ParentUsbOvercurrent(&testContext));
  usbGpio[0x220/4]=1u<<2;usbGpio[0x20/4]=1u<<2;assert(ParentUsbSourceAcquire(&testContext));
  usbGpio[0x20/4]=0;usbGpio[0x360/4]=1u<<12;assert(ParentUsbSourceAcquire(&testContext));
  usbGpio[0x360/4]=0;usbGpio[0x210/4]=0;assert(!ParentUsbOvercurrent(&testContext)); /* CONFIG_OC disabled in board source */
