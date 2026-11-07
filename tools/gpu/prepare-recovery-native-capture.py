@@ -76,6 +76,17 @@ def main():
         result["retrieval_console"]="REA capture result retained as runtime-rea-evidence.json; preserve full stdout/stderr"
         result["release_required"]=["target process absent","alias_live=0 or terminated process VMA release","no new global mounts","boot_id unchanged","GPU fd/context released"]
         result["timeout_policy"]="terminate only this private capture process on fixed serial; no retry/reboot; verify process/mount release"
+        own='for d in /proc/[0-9]*; do r=$(readlink "$d/root" 2>/dev/null) || continue; [ "$r" = '+shlex.quote(device+'/root')+' ] || continue; '
+        result["owned_process_check_NOT_EXECUTED"]=shell(["sh","-c",own+'echo "CAPTURE_PID ${d##*/}"; done'])
+        result["timeout_owned_process_cleanup_NOT_EXECUTED"]=shell(["sh","-c",own+'kill -TERM "${d##*/}"; done; sleep 1; '+own+'kill -KILL "${d##*/}"; done'])
+        result["run_order"]=["record boot_id/process/globalmount/kernel version without GPU open",
+            "stage fixed assets and verify DEVICE-SHA256SUMS",
+            "observe KM with inspect private namespace; require DDK1.11@5425693/BVNC22.40.54.30",
+            "execute scenario-vendor-direct.json exactly once via REA capture-process",
+            "retrieve capture and full console/evidence; no retry",
+            "verify owned process/globalmount release, unchanged boot_id, alias_live=0; cleanup only own chroot on timeout",
+            "notify primary device released; then prove all reference coverage on host"]
+
     if args.suite:
         result["expected_frames"]=["clear-cold","clear-warm-same-context","solid-triangle","sampled-1x1-texture-triangle"]
         result["success"]+="; require FRAME_END verified=1 for indices0..3 and each full480000pixel readback mismatch0; do not assume one kick per frame; memory caps remain4MiB/kick,16MiB/process, unknown/limit is not complete dependency capture"
