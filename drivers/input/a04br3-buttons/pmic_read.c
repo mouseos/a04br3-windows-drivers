@@ -278,15 +278,21 @@ int a04_pmic_rtc32k_release(struct a04_pmic_read *bus,struct a04_rtc32k_lease *l
 #if defined(MT6392_RTC_CALENDAR) && MT6392_RTC_CALENDAR
 int mt6392_pmic_read_calendar(struct a04_pmic_read *bus,struct mt6392_rtc_raw *out)
 {
-    struct mt6392_rtc_raw r; uint16_t sec; unsigned retry;
+    struct mt6392_rtc_raw r; uint16_t sec,busy; unsigned retry;
     if(!bus || !out)return MT6392_RTC_INVALID;
     for(retry=0;retry<3;retry++) {
+        /* BBPU.CBUSY (bit 6) is defined in stock rtc-mt6397.c. Do not
+         * sample while a prior RTC commit is pending. Never read IRQ_STA. */
+        if(read_register(bus,0x8000u,&busy))return MT6392_RTC_IO_ERROR;
+        if(busy&0x40u)return MT6392_RTC_UNSTABLE;
         /* Stock MT6392 RTC base 0x8000, RTC_TC_SEC +0x0a; 16-bit stride. */
         if(read_register(bus,0x800au,&r.sec) || read_register(bus,0x800cu,&r.min) ||
            read_register(bus,0x800eu,&r.hour) || read_register(bus,0x8010u,&r.day) ||
            read_register(bus,0x8012u,&r.dow) || read_register(bus,0x8014u,&r.month) ||
            read_register(bus,0x8016u,&r.year) || read_register(bus,0x800au,&sec))
             return MT6392_RTC_IO_ERROR;
+        if(read_register(bus,0x8000u,&busy))return MT6392_RTC_IO_ERROR;
+        if(busy&0x40u)return MT6392_RTC_UNSTABLE;
         /* Stricter than stock sec<first: accept only a single-second window.
          * Parent bounds each complete transaction well below one minute. */
         if(sec==r.sec) {*out=r;return 0;}

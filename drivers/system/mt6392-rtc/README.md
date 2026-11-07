@@ -29,7 +29,8 @@ TAB-A04-BR3のstock `a04br3.dts` は `mt6392.dtsi` をincludeする。
 `mt8167-shared-rtc.inf` は候補親 `2026.11.8.1100`。自動配置は行わない。
 
 子はMMIO/IRQを要求せず、既存親のPWRAPロック・D0 admission・poison判定を使う。
-読出し全体を一つのロックで保護し、0x800A〜0x8016を取得後に秒を再読する。
+読出し全体を一つのロックで保護し、BBPU.CBUSYを前後で検査する。
+0x800A〜0x8016を取得後に秒を再読する。
 秒が異なる場合は再試行し、最大3回で `STATUS_RETRY`。transport失敗は
 `STATUS_DEVICE_NOT_READY`、暦として不正な値は `STATUS_DATA_ERROR`。
 失敗時はIOCTL出力長0で、部分的な結果やホスト現在日時を返さない。
