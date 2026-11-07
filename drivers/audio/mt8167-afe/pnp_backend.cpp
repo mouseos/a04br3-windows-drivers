@@ -861,9 +861,13 @@ static NTSTATUS CaptureLatency(PVOID ctx,KSRTAUDIO_HWLATENCY*p) {
 NTSTATUS Mt8167PnpBackendCreateCapture(Mt8167PnpBackend*o,Mt8167CaptureOwner**out) {
  if(!o||!out||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  *out=NULL;OwnerLock(o);
+ if(o->captureParent.Header.InterfaceDereference){OwnerUnlock(o);return STATUS_DEVICE_BUSY;}
  NTSTATUS s=o->online?Mt8167QueryCaptureParent(o->pdo,&o->captureParent):STATUS_DEVICE_NOT_READY;
  if(NT_SUCCESS(s)){
-  if(!o->captureParent.AcquireInput||!o->captureParent.PrepareMaskedIrq||
+  if(o->captureParent.Header.Size!=sizeof(o->captureParent)||
+     o->captureParent.Header.Version!=A04_CAPTURE_INTERFACE_VERSION||
+     !o->captureParent.Header.InterfaceReference||!o->captureParent.Header.InterfaceDereference||
+     !o->captureParent.AcquireInput||!o->captureParent.PrepareMaskedIrq||
      !o->captureParent.ReleaseUnexposed||!o->captureParent.QueryLatency)s=STATUS_DEVICE_CONFIGURATION_ERROR;
   else {
    Mt8167CaptureResources r={};r.pdo=o->pdo;r.afe=o->afe.base;r.adapter=o->adapter;
@@ -871,6 +875,11 @@ NTSTATUS Mt8167PnpBackendCreateCapture(Mt8167PnpBackend*o,Mt8167CaptureOwner**ou
    r.context=o;r.reference=OwnerReference;r.dereference=OwnerDereference;
    r.queryLatency=CaptureLatency;r.acquireInput=CaptureAcquire;r.releaseUnexposed=CaptureRelease;
    s=Mt8167CaptureCreate(&r,out);
+  }
+  if(!NT_SUCCESS(s)){
+   if(o->captureParent.Header.InterfaceDereference)
+    o->captureParent.Header.InterfaceDereference(o->captureParent.Header.Context);
+   RtlZeroMemory(&o->captureParent,sizeof(o->captureParent));
   }
  }
  OwnerUnlock(o);return s;

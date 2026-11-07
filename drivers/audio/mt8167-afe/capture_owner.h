@@ -23,4 +23,6 @@ const Mt8167StreamBackend *Mt8167CaptureBackend(Mt8167CaptureOwner *);
  * an IRQ rundown/register stop does not certify independent bus drain. */
 NTSTATUS Mt8167CaptureSnapshot(Mt8167CaptureOwner *,struct a04_capture_status *);
 NTSTATUS Mt8167CaptureRevoke(Mt8167CaptureOwner *);
+/* Drops only the caller reference; exposed DMA retains its owner until reset. */
+void Mt8167CaptureRelease(Mt8167CaptureOwner *);
 #endif

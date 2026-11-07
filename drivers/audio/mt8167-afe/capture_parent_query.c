@@ -11,7 +11,7 @@ NTSTATUS Mt8167QueryCaptureParent(PDEVICE_OBJECT target,A04_CAPTURE_INTERFACE *o
     if(!target || !out || KeGetCurrentIrql()!=PASSIVE_LEVEL) return STATUS_INVALID_PARAMETER;
     RtlZeroMemory(out,sizeof(*out));KeInitializeEvent(&event,NotificationEvent,FALSE);
     irp=IoAllocateIrp(target->StackSize,FALSE);if(!irp)return STATUS_INSUFFICIENT_RESOURCES;
-    irp->IoStatus.Status=STATUS_NOT_SUPPORTED;
+    irp->IoStatus.Status=STATUS_NOT_SUPPORTED;irp->IoStatus.Information=0;
     stack=IoGetNextIrpStackLocation(irp);stack->MajorFunction=IRP_MJ_PNP;stack->MinorFunction=IRP_MN_QUERY_INTERFACE;
     stack->Parameters.QueryInterface.InterfaceType=&A04CaptureInterfaceGuid;
     stack->Parameters.QueryInterface.Size=sizeof(*out);stack->Parameters.QueryInterface.Version=A04_CAPTURE_INTERFACE_VERSION;

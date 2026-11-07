@@ -83,3 +83,31 @@ QUERY_INTERFACE、親clock/VAUD/ADC callback、lazy取得、PortCls録音pairの
 GetHWLatencyはvoidで未対応statusを返せないためKS queryの未対応gate草稿を含む。
 WaveRT一般互換/latency仕様適合は未検証。未測定ゼロlatencyは公開しない。
 51mediaと配置済み親1010/Audio1007は不変。
+
+## 1024の最終link・署名入口
+
+`tools/ci/build-mt8167-capture.ps1 -OutputDirectory <checkout内新規dir>
+-CertificateThumbprint <既存開発証明書>` は中断していたcapture専用profileを
+単一親・PortCls SYS・固定KS clientへ接続する。通常buildは既定OFFのまま。
+既存ul_engine/codec_capture/capture_input_ownerを再利用し、新たなADCや
+Bluetooth transportを重複実装しない。親のbuild helperがCapture flagと
+実codec owner objectsを同じbinaryへ含め、interface v1を公開する。
+
+録音leafの親queryはsize/version/reference/callback一式を検証し、重複queryと
+失敗時のinterface参照漏れを防ぐ。公開前のcapture ownerはPnPで解放する。
+DMA公開後のpage/adapter/power保持は維持し、register STOPをbus drainと扱わない。
+
+現行実機のRTC1015/WiFi1011/GPU71統合版への適用を許可するpackageではない。
+基点1067134dの1024中断branchを使った独立実験候補で、RTC1015修正の
+取り込みやGPU/MT6630/RTC実装の変更はしない。主担当がcapture固有差分を
+最新の単一親へ統合してから適用を判断する。INFは既存予約の1024を使う。
+
+FIFO/codec latencyは依然不明で、標準HWLATENCY queryを未対応とする既存gateと
+明示unknown sentinelを維持する。WaveRT一般互換、実録音、sleep/resume、
+独立DMA drainを保証するものではない。固定KS clientは2回のSTOP/RUNで
+実CURとIRQ2を検証し、PCMの集計のみを記録するが、自動実行しない。
+
+`tests/audio_capture/pipeline_test.c` はinput owner→analog codec→VUL DMA/IRQの
+実装を一つのfixtureで通す。48kのcodec/ADDA/VUL rateの区別、CH0経路、
+STOP/RUN、他owner排他、書込失敗の保持、独立drain未成立時の解放拒否、
+解放時の既存field復元を検証する。MMIO模擬試験であり実機証拠ではない。

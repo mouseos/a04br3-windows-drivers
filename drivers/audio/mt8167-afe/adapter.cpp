@@ -75,7 +75,8 @@ static NTSTATUS Mt8167PnpDispatch(PDEVICE_OBJECT device,PIRP irp)
 #endif
 #if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
         if(ext->capture){NTSTATUS s=Mt8167CaptureRevoke(ext->capture);if(!NT_SUCCESS(s)){
-          irp->IoStatus.Status=s;irp->IoStatus.Information=0;IoCompleteRequest(irp,IO_NO_INCREMENT);return s;}}
+          irp->IoStatus.Status=s;irp->IoStatus.Information=0;IoCompleteRequest(irp,IO_NO_INCREMENT);return s;}
+          Mt8167CaptureRelease(ext->capture);ext->capture=NULL;}
 #endif
         Mt8167PnpBackend *owner=static_cast<Mt8167PnpBackend *>(InterlockedExchangePointer(reinterpret_cast<PVOID volatile *>(&ext->owner),NULL));
         if (owner) { Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner); }

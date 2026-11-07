@@ -60,6 +60,8 @@ int mt8167_ul_position(struct mt8167_ul_engine *e,uint32_t *offset)
 int mt8167_ul_interrupt(struct mt8167_ul_engine *e,uint32_t *notify)
 {
  uint32_t v;if(!e||!notify||!e->prepared||e->fault)return -1;*notify=0;
- if(rd(e,0x3a4,&v))return fail(e);if(!(v&2))return 0;
- if(wr(e,0x3a8,2))return fail(e);*notify=e->running?1:0;return 1;
+ if(rd(e,0x3a4,&v))return fail(e);
+ if(!(v&2))return 0;
+ if(wr(e,0x3a8,2))return fail(e);
+ *notify=e->running?1:0;return 1;
 }

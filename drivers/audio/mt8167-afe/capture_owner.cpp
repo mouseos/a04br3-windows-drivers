@@ -128,6 +128,7 @@ NTSTATUS Mt8167CaptureCreate(const Mt8167CaptureResources *r,Mt8167CaptureOwner 
  o->api.position=Position;o->api.getDeviceDescription=Description;o->api.checkout=Checkout;o->api.checkin=Checkin;o->api.setState=SetState;
  *out=o;return STATUS_SUCCESS;
 }
+void Mt8167CaptureRelease(Mt8167CaptureOwner *o){if(o)Dereference(o);}
 const Mt8167StreamBackend *Mt8167CaptureBackend(Mt8167CaptureOwner *o){return o&&!o->closed&&!o->failure?&o->api:NULL;}
 NTSTATUS Mt8167CaptureSnapshot(Mt8167CaptureOwner*o,struct a04_capture_status*p) {
  if(!o||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;

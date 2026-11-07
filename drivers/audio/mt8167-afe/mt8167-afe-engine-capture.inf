@@ -4,7 +4,7 @@ Signature="$WINDOWS NT$"
 Class=MEDIA
 ClassGuid={4d36e96c-e325-11ce-bfc1-08002be10318}
 Provider=%Provider%
-DriverVer=11/07/2026,2026.11.7.1020
+DriverVer=11/07/2026,2026.11.7.1024
 CatalogFile=mt8167-afe-engine-capture.cat
 
 [Manufacturer]
