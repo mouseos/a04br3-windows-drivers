@@ -138,7 +138,7 @@ static HRESULT profile_state(struct frontend *s,const struct geo_surface_desc *t
 }
 static HRESULT read_vertex(struct geo_umd_device *d,struct frontend *s,UINT index,UINT byte_offset,BYTE out[64]) {
  uint64_t offset=(uint64_t)s->offset+(byte_offset?(uint64_t)index:(uint64_t)index*s->stride);
- if(!s->stride||offset>UINT32_MAX||(!byte_offset&&index>4095u))return E_INVALIDARG;
+ if(!s->stride||offset>UINT32_MAX||(!byte_offset&&index>65534u))return E_INVALIDARG;
  if(s->vertex_um){if(offset>UINTPTR_MAX-s->stride||(uintptr_t)s->vertex_um>UINTPTR_MAX-(uintptr_t)offset-s->stride)return E_INVALIDARG;
   memcpy(out,s->vertex_um+(UINT)offset,s->stride);return S_OK;}
  return geo_umd_read_buffer(d,s->vertex,(UINT)offset,s->stride,out);
@@ -227,7 +227,7 @@ static HRESULT draw_vertices(struct geo_umd_device *d,const UINT indices[3],UINT
   if(area==0.0f||(s->rs[D3DDDIRS_CULLMODE]==D3DCULL_CW&&area>0.0f)||
      (s->rs[D3DDDIRS_CULLMODE]==D3DCULL_CCW&&area<0.0f))return S_OK; /* truly culled geometry */
   if(s->rs[D3DDDIRS_SHADEMODE]!=D3DSHADE_FLAT&&(colors[0]!=colors[1]||colors[0]!=colors[2]))return E_NOTIMPL;
-  for(k=0;k<3u;k++){FLOAT color=(FLOAT)((colors[0]>>(16u-8u*k))&255u)/255.0f;flat_constants[k]=bits(color);}flat_constants[3]=0x3f800000u;
+  for(k=0;k<3u;k++){FLOAT color=(FLOAT)((colors[0]>>(16u-8u*k))&255u)/255.0f;flat_constants[k]=bits(color);}flat_constants[3]=bits((FLOAT)((colors[0]>>24)&255u)/255.0f);
   {
    FLOAT polygon[16][4],bounds[6];UINT n,j;
    bounds[0]=(FLOAT)vp.X;bounds[1]=(FLOAT)(vp.X+vp.Width);bounds[2]=(FLOAT)vp.Y;bounds[3]=(FLOAT)(vp.Y+vp.Height);
@@ -269,51 +269,79 @@ static HRESULT draw_vertices(struct geo_umd_device *d,const UINT indices[3],UINT
  return emit_triangle(d,target,target_allocation,vertices,vs,ps,vt,vb,pt,pb,vc,pc);
 }
 
-static HRESULT APIENTRY draw_primitive(HANDLE h,const D3DDDIARG_DRAWPRIMITIVE *p,const UINT *edge_flags) {
- UINT index[3];(void)edge_flags;if(!state(h)||!p||(p->PrimitiveType!=D3DPT_TRIANGLELIST&&p->PrimitiveType!=D3DPT_TRIANGLEFAN&&p->PrimitiveType!=D3DPT_TRIANGLESTRIP)||p->PrimitiveCount!=1u||p->VStart>4093u)return E_NOTIMPL;
- index[0]=p->VStart;index[1]=p->VStart+1;index[2]=p->VStart+2;return draw_vertices(h,index,0,0);
-}
-static HRESULT APIENTRY draw_indexed(HANDLE h,const D3DDDIARG_DRAWINDEXEDPRIMITIVE *p) {
- struct frontend *s=state(h);BYTE raw[12];UINT indices[3],i,offset;HRESULT hr;
- if(!s||!p||(p->PrimitiveType!=D3DPT_TRIANGLELIST&&p->PrimitiveType!=D3DPT_TRIANGLEFAN&&p->PrimitiveType!=D3DPT_TRIANGLESTRIP)||p->PrimitiveCount!=1u||!s->index_stride||p->StartIndex>UINT32_MAX/s->index_stride)return E_NOTIMPL;
- offset=p->StartIndex*s->index_stride;
- if(s->index_um){if(offset>UINTPTR_MAX-3u*s->index_stride||(uintptr_t)s->index_um>UINTPTR_MAX-offset-3u*s->index_stride)return E_INVALIDARG;memcpy(raw,s->index_um+offset,3u*s->index_stride);}
- else {hr=geo_umd_read_buffer(h,s->index,offset,3u*s->index_stride,raw);if(FAILED(hr))return hr;}
- for(i=0;i<3u;i++){
-  int64_t vertex;UINT v=0;if(s->index_stride==2u){USHORT short_index;memcpy(&short_index,raw+2u*i,2);v=short_index;}else memcpy(&v,raw+4u*i,4);
-  if(v<p->MinIndex||v-p->MinIndex>=p->NumVertices)return E_INVALIDARG;
-  vertex=(int64_t)p->BaseVertexIndex+v;if(vertex<0||vertex>4095)return E_INVALIDARG;indices[i]=(UINT)vertex;
- }
- return draw_vertices(h,indices,0,0);
-}
-static HRESULT APIENTRY draw_primitive2(HANDLE h,const D3DDDIARG_DRAWPRIMITIVE2 *p) {
- struct frontend *s=state(h);UINT offsets[3],j;HRESULT hr;
- if(!s||!p||!s->stride||!p->PrimitiveCount)return E_INVALIDARG;
- if(p->PrimitiveType!=D3DPT_TRIANGLELIST&&p->PrimitiveType!=D3DPT_TRIANGLEFAN&&p->PrimitiveType!=D3DPT_TRIANGLESTRIP)return E_NOTIMPL;
- /* The runtime's SWVP clipper may turn one advertised input triangle into
-  * a bounded fan. Supporting that expansion does not advertise larger draws. */
- if(p->PrimitiveCount>1u&&(p->PrimitiveType!=D3DPT_TRIANGLEFAN||p->PrimitiveCount>8u))return E_NOTIMPL;
- if(p->FirstVertexOffset>UINT32_MAX-(p->PrimitiveCount+1u)*s->stride)return E_INVALIDARG;
- for(j=0;j<p->PrimitiveCount;j++){
-  offsets[0]=p->FirstVertexOffset;offsets[1]=p->FirstVertexOffset+(j+1u)*s->stride;offsets[2]=p->FirstVertexOffset+(j+2u)*s->stride;
-  hr=draw_vertices(h,offsets,1,1);if(FAILED(hr))return hr;
- }
+/* Direct3D9 triangle order/provoking vertex follows Microsoft's triangle
+ * strips/fans specification. Fan vertex zero is the anchor, not the flat
+ * color source. The strip swaps only its final two vertices on odd triangles.
+ * Every emitted primitive reuses the same VidMm input via a real Lock fence;
+ * no CPU rasterization or fabricated GPU completion is introduced. */
+static HRESULT triangle_slots(UINT topology,UINT count,UINT triangle,UINT slots[3]) {
+ if(!count||count>65535u||triangle>=count)return E_INVALIDARG;
+ if(topology==D3DPT_TRIANGLELIST){slots[0]=3u*triangle;slots[1]=slots[0]+1u;slots[2]=slots[0]+2u;}
+ else if(topology==D3DPT_TRIANGLESTRIP){slots[0]=triangle;slots[1]=triangle+1u+(triangle&1u);slots[2]=triangle+2u-(triangle&1u);}
+ else if(topology==D3DPT_TRIANGLEFAN){slots[0]=triangle+1u;slots[1]=triangle+2u;slots[2]=0;}
+ else return E_NOTIMPL;
  return S_OK;
 }
-static HRESULT APIENTRY draw_indexed2(HANDLE h,const D3DDDIARG_DRAWINDEXEDPRIMITIVE2 *p,UINT stride,const void *data,const UINT *edge_flags) {
- struct frontend *s=state(h);UINT offsets[3],i;const BYTE *raw;UINT bytes;
- (void)edge_flags;
- if(!s||!p||!data||(p->PrimitiveType!=D3DPT_TRIANGLELIST&&p->PrimitiveType!=D3DPT_TRIANGLEFAN&&p->PrimitiveType!=D3DPT_TRIANGLESTRIP)||p->PrimitiveCount!=1u||(stride!=2u&&stride!=4u))return E_NOTIMPL;
- bytes=3u*stride;
- if(p->StartIndexOffset>UINTPTR_MAX-bytes||(uintptr_t)data>UINTPTR_MAX-p->StartIndexOffset-bytes)return E_INVALIDARG;
- raw=(const BYTE *)data+p->StartIndexOffset;
- for(i=0;i<3u;i++){
-  UINT v=0;int64_t offset;if(stride==2u){USHORT n;memcpy(&n,raw+i*2u,2);v=n;}else memcpy(&v,raw+i*4u,4);
-  if(v<p->MinIndex||v-p->MinIndex>=p->NumVertices||v>4095u)return E_INVALIDARG;
-  offset=(int64_t)p->BaseVertexOffset+(int64_t)v*s->stride;
-  if(offset<0||offset>UINT32_MAX-s->stride)return E_INVALIDARG;offsets[i]=(UINT)offset;
+static HRESULT APIENTRY draw_primitive(HANDLE h,const D3DDDIARG_DRAWPRIMITIVE *p,const UINT *edge_flags) {
+ UINT indices[3],j,i;HRESULT hr;(void)edge_flags;
+ if(!state(h)||!p)return E_INVALIDARG;
+ for(j=0;j<p->PrimitiveCount;j++){
+  hr=triangle_slots(p->PrimitiveType,p->PrimitiveCount,j,indices);if(FAILED(hr))return hr;
+  for(i=0;i<3u;i++){if(p->VStart>65534u||indices[i]>65534u-p->VStart)return E_INVALIDARG;indices[i]+=p->VStart;}
+  hr=draw_vertices(h,indices,0,0);if(FAILED(hr))return hr;
  }
- return draw_vertices(h,offsets,1,1);
+ return p->PrimitiveCount?S_OK:E_INVALIDARG;
+}
+static HRESULT APIENTRY draw_indexed(HANDLE h,const D3DDDIARG_DRAWINDEXEDPRIMITIVE *p) {
+ struct frontend *s=state(h);UINT slots[3],indices[3],i,j,offset;HRESULT hr;BYTE raw[4];
+ if(!s||!p||!s->index_stride)return E_INVALIDARG;
+ for(j=0;j<p->PrimitiveCount;j++){
+  hr=triangle_slots(p->PrimitiveType,p->PrimitiveCount,j,slots);if(FAILED(hr))return hr;
+  for(i=0;i<3u;i++){
+   int64_t vertex;UINT v=0;
+   if(p->StartIndex>UINT32_MAX/s->index_stride||slots[i]>UINT32_MAX/s->index_stride-p->StartIndex)return E_INVALIDARG;
+   offset=(p->StartIndex+slots[i])*s->index_stride;
+   if(s->index_um){if(offset>UINTPTR_MAX-s->index_stride||(uintptr_t)s->index_um>UINTPTR_MAX-offset-s->index_stride)return E_INVALIDARG;memcpy(raw,s->index_um+offset,s->index_stride);}
+   else {hr=geo_umd_read_buffer(h,s->index,offset,s->index_stride,raw);if(FAILED(hr))return hr;}
+   if(s->index_stride==2u){USHORT v16;memcpy(&v16,raw,2);v=v16;}else memcpy(&v,raw,4);
+   if(v<p->MinIndex||v-p->MinIndex>=p->NumVertices)return E_INVALIDARG;
+   vertex=(int64_t)p->BaseVertexIndex+v;if(vertex<0||vertex>65534)return E_INVALIDARG;indices[i]=(UINT)vertex;
+  }
+  hr=draw_vertices(h,indices,0,0);if(FAILED(hr))return hr;
+ }
+ return p->PrimitiveCount?S_OK:E_INVALIDARG;
+}
+static HRESULT APIENTRY draw_primitive2(HANDLE h,const D3DDDIARG_DRAWPRIMITIVE2 *p) {
+ struct frontend *s=state(h);UINT offsets[3],j,i;HRESULT hr;
+ if(!s||!p||!s->stride)return E_INVALIDARG;
+ for(j=0;j<p->PrimitiveCount;j++){
+  hr=triangle_slots(p->PrimitiveType,p->PrimitiveCount,j,offsets);if(FAILED(hr))return hr;
+  for(i=0;i<3u;i++){
+   if(offsets[i]>(UINT32_MAX-p->FirstVertexOffset)/s->stride)return E_INVALIDARG;
+   offsets[i]=p->FirstVertexOffset+offsets[i]*s->stride;
+  }
+  hr=draw_vertices(h,offsets,1,1);if(FAILED(hr))return hr;
+ }
+ return p->PrimitiveCount?S_OK:E_INVALIDARG;
+}
+static HRESULT APIENTRY draw_indexed2(HANDLE h,const D3DDDIARG_DRAWINDEXEDPRIMITIVE2 *p,UINT stride,const void *data,const UINT *edge_flags) {
+ struct frontend *s=state(h);UINT slots[3],offsets[3],i,j;const BYTE *raw;HRESULT hr;
+ (void)edge_flags;
+ if(!s||!p||!data||(stride!=2u&&stride!=4u))return E_INVALIDARG;
+ for(j=0;j<p->PrimitiveCount;j++){
+  hr=triangle_slots(p->PrimitiveType,p->PrimitiveCount,j,slots);if(FAILED(hr))return hr;
+  for(i=0;i<3u;i++){
+   UINT v=0;uint64_t byte_offset=(uint64_t)p->StartIndexOffset+(uint64_t)slots[i]*stride;int64_t offset;
+   if(byte_offset>UINTPTR_MAX-stride||(uintptr_t)data>UINTPTR_MAX-(UINT)byte_offset-stride)return E_INVALIDARG;
+   raw=(const BYTE *)data+(UINT)byte_offset;
+   if(stride==2u){USHORT n;memcpy(&n,raw,2);v=n;}else memcpy(&v,raw,4);
+   if(v<p->MinIndex||v-p->MinIndex>=p->NumVertices||v>65534u)return E_INVALIDARG;
+   offset=(int64_t)p->BaseVertexOffset+(int64_t)v*s->stride;
+   if(offset<0||offset>UINT32_MAX-s->stride)return E_INVALIDARG;offsets[i]=(UINT)offset;
+  }
+  hr=draw_vertices(h,offsets,1,1);if(FAILED(hr))return hr;
+ }
+ return p->PrimitiveCount?S_OK:E_INVALIDARG;
 }
 static HRESULT APIENTRY set_depth_stencil(HANDLE h,const D3DDDIARG_SETDEPTHSTENCIL *p) {
  if(!state(h)||!p)return E_INVALIDARG;return p->hZBuffer?E_NOTIMPL:S_OK;
@@ -350,7 +378,7 @@ static HRESULT get_caps(void *context,const D3DDDIARG_GETCAPS *p) {
   c->SrcBlendCaps=D3DPBLENDCAPS_ONE;c->DestBlendCaps=D3DPBLENDCAPS_ZERO;
   c->TextureOpCaps=D3DTEXOPCAPS_DISABLE|D3DTEXOPCAPS_SELECTARG1;c->MaxTextureBlendStages=1;
   c->RasterCaps=D3DPRASTERCAPS_SCISSORTEST;c->MaxTextureWidth=800;c->MaxTextureHeight=600;
-  c->MaxPrimitiveCount=1;c->MaxVertexIndex=4095;c->MaxStreams=1;c->MaxStreamStride=64;c->MaxVertexW=1.0e10f;c->MaxPointSize=1.0f;
+  c->MaxPrimitiveCount=65535;c->MaxVertexIndex=65534;c->NumSimultaneousRTs=1;c->MaxStreams=1;c->MaxStreamStride=64;c->MaxVertexW=1.0e10f;c->MaxPointSize=1.0f;
   /* Legacy TL/flat profile, not FL9_1. Flat shading is implicit in D3D9
    * ShadeCaps; no Gouraud/texture/shader-version cap is fabricated. */
   return S_OK;}
