@@ -152,3 +152,21 @@ native ancestor制約で拒否された。送信済みと偽らず、このfile�
 凍結SD3にはCID/CSD容量・READ完了の直接UART出力なし（CID serialは非出力）；実READ完了は
 SD `scsi.c:152–153`→`windows.c:171–175`、main側実READ status/転送byte数のUART結果が必要で、
 CM成功だけではRW成功としない。凍結SD source/署名tupleは変更しない。
+
+
+### Controller到着順の通知
+
+BTはprivate `A04BtHfpControllerReadyGuid` を実BGF PDOへIoRegisterDeviceInterfaceし、
+**親への実RegisterController成功後だけ**IoSetDeviceInterfaceState(TRUE)する。
+KMDFの自動start-time enableは使わない。StopはFALSEで通知を無効化してから
+親登録/参照を解除する。実HFP holdが残る間は解除/電源断を拒否する。
+GUIDの存在はtransport owner登録のみで、HCIBypass/PCM/DMA資格ではない。
+
+RamanはこのGUIDにINCLUDE_EXISTING_INTERFACESで登録し、到着callbackからPASSIVE workを
+一回queueしてGetControllerすることで、Audio先行/BT先行の両方を扱える。
+撤去callbackもinlineで待機せずowner rundownをqueueする。資格欠落の状態は明示未対応、
+timer retryを足さない。通知link自体はruntimeにのみ保持し、ログへ出さない。
+
+f6b7258の初回WDK compileでIoGetDeviceAttachmentBaseRefの宣言header不足を検出したため、
+公式DDI指定どおりBT-private matcher headerをntifs.hへ修正した。SDKやDDI定義を自作せず、
+同commitからSYSは生成されていない。INF2004の最終buildは後続固定sourceを用いる。

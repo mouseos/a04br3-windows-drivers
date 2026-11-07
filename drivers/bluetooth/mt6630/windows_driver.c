@@ -18,7 +18,7 @@
 struct bt_packet {unsigned type,length;uint8_t data[A04_BT_MAX_HCI];};
 typedef struct _BT_DEVICE {
  WDFDEVICE device,child;WDFWAITLOCK lock;WDFTIMER timer;WDFQUEUE reads[2];
- struct a04_bt_hfp_parent hfp;LONG hfp_holds;int hfp_referenced,hfp_registered;
+ struct a04_bt_hfp_parent hfp;UNICODE_STRING hfp_ready_link;int hfp_ready;LONG hfp_holds;int hfp_referenced,hfp_registered;
  A04_SHARED_WIFI_INTERFACE parent;ULONG generation;int referenced,leased,uncertain,removed,running,negotiated;
  CM_PARTIAL_RESOURCE_DESCRIPTOR mem,trans_mem,irq_resource,trans_irq;
  struct a04_wifi_owner owner;struct a04_windows_msdc2 host;struct a04_windows_irq irq;
@@ -37,6 +37,7 @@ EVT_WDF_DEVICE_SURPRISE_REMOVAL BtRemoved;
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL BtForward;
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL BtInternal;
 EVT_WDF_TIMER BtTimer;
+EVT_WDF_OBJECT_CONTEXT_CLEANUP BtCleanup;
 static void lock(BT_DEVICE *c){(void)WdfWaitLockAcquire(c->lock,NULL);}
 static void unlock(BT_DEVICE *c){WdfWaitLockRelease(c->lock);}
 static void controller_reference(PVOID p){BT_DEVICE *c=p;WdfObjectReference(c->device);}
@@ -96,13 +97,19 @@ static NTSTATUS controller_register(BT_DEVICE *c)
  /* Real FC72 decoding and measured codec latency are still missing. NULL
   * qualification fields are explicit absent capabilities, not callbacks. */
  status=c->hfp.RegisterController(c->hfp.Header.Context,&ops);
- if(NT_SUCCESS(status))c->hfp_registered=1;
+ if(NT_SUCCESS(status)){
+  c->hfp_registered=1;
+  status=IoSetDeviceInterfaceState(&c->hfp_ready_link,TRUE);
+  if(NT_SUCCESS(status))c->hfp_ready=1;
+ }
  return status;
 }
 static NTSTATUS controller_unregister(BT_DEVICE *c)
 {
  NTSTATUS status;
  if(c->hfp_holds)return STATUS_DEVICE_BUSY;
+ if(c->hfp_ready){status=IoSetDeviceInterfaceState(&c->hfp_ready_link,FALSE);
+  if(!NT_SUCCESS(status))return status;c->hfp_ready=0;}
  if(c->hfp_registered){status=c->hfp.UnregisterController(c->hfp.Header.Context,c);
   if(!NT_SUCCESS(status))return status;c->hfp_registered=0;}
  if(c->hfp_referenced){
@@ -404,6 +411,13 @@ static NTSTATUS child_create(WDFDEVICE device)
 delete_child:WdfObjectDelete(c->child);c->child=NULL;return status;
 fail:WdfDeviceInitFree(init);return status;
 }
+VOID BtCleanup(WDFOBJECT object)
+{
+ BT_DEVICE *c=BtContext((WDFDEVICE)object);
+ /* Registered owners/active references must have been removed by PnP Stop.
+  * This callback never declares DMA quiescence or releases a combo lease. */
+ if(c->hfp_ready_link.Buffer)RtlFreeUnicodeString(&c->hfp_ready_link);
+}
 NTSTATUS BtAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 {
  WDFDEVICE device;BT_DEVICE *c;WDF_OBJECT_ATTRIBUTES attr;WDF_PNPPOWER_EVENT_CALLBACKS pnp;
@@ -412,8 +426,12 @@ NTSTATUS BtAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
  WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);pnp.EvtDevicePrepareHardware=BtPrepare;pnp.EvtDeviceReleaseHardware=BtRelease;
  pnp.EvtDeviceD0Entry=BtStart;pnp.EvtDeviceD0Exit=BtStop;pnp.EvtDeviceSurpriseRemoval=BtRemoved;
  WdfDeviceInitSetPnpPowerEventCallbacks(init,&pnp);
- WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,BT_DEVICE);attr.ExecutionLevel=WdfExecutionLevelPassive;
+ WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,BT_DEVICE);attr.ExecutionLevel=WdfExecutionLevelPassive;attr.EvtCleanupCallback=BtCleanup;
  status=WdfDeviceCreate(&init,&attr,&device);if(!NT_SUCCESS(status))return status;c=BtContext(device);c->device=device;
+ /* Use manual IoRegister/IoSet state, not KMDF's automatic start-time enable:
+  * the signal must follow actual parent registration, never device presence. */
+ status=IoRegisterDeviceInterface(WdfDeviceWdmGetPhysicalDevice(device),&A04BtHfpControllerReadyGuid,NULL,&c->hfp_ready_link);
+ if(!NT_SUCCESS(status))return status;
  WDF_OBJECT_ATTRIBUTES_INIT(&attr);attr.ParentObject=device;
  status=WdfWaitLockCreate(&attr,&c->lock);if(!NT_SUCCESS(status))return status;
  WDF_TIMER_CONFIG_INIT(&timer,BtTimer);timer.AutomaticSerialization=FALSE;

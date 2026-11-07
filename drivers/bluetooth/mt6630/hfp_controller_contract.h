@@ -9,6 +9,10 @@
  * MUST NOT publish factories or advertise HCIBypass. No success/refusal stubs.
  * V1 parents are never asked to accept a V2 descriptor. */
 static const GUID A04BtSharedHfpGuid={0x84e4cb62,0xe9b8,0x47cc,{0x9f,0x62,0xa7,0xc3,0xe4,0xd5,0x82,0x40}};
+/* Presence means the real owner is registered, NOT that SCO is qualified.
+ * Audio registers INCLUDE_EXISTING_INTERFACES and queues passive GetController
+ * on arrival; removal stops admission and joins its normal owner rundown. */
+static const GUID A04BtHfpControllerReadyGuid={0xb33c97d1,0x4256,0x43d8,{0x98,0x71,0xe4,0x70,0x32,0xf4,0x3a,0x17}};
 #define A04_BT_CONTROLLER_VERSION 2u
 struct a04_bt_hfp_controller {
  ULONG size,version;PVOID context;PDEVICE_OBJECT controller;
