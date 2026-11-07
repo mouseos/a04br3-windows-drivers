@@ -214,3 +214,19 @@ normal={lease.context,lease.acquire,lease.release}を渡す。
 Hはresolver実装・最終factory呼出し・UMD/PCO/draw state側。
 この記録時点でHの新APIはworking-tree draft、固定commit待ちであり、
 未記録sourceを最終結合再現条件にしない。
+
+
+## H resolver f492756 固定版の実bind接続
+
+f492756の`frontend_memory.h`を同じblobで取り込み、provider側
+`native_owner_frontend_resolver.[ch]`に実transactionを実装した。
+`a04_native_allocation_bind_frontend_cold(owner,memory,original_mdl,active,offset,argb)`
+がH resolverを呼び、version/size/origin/active/page_bytes/独立MDLを照合し、
+実same-MDL/OS SG bindへ渡し、resolve参照を成否とも1回releaseする。
+正常bindはnative側の別acquireだけを保持する。
+成功なのにrelease口が欠ける壊れたresolver結果はowner内に保持し、
+そのownerのcold deleteを拒否する。所有したpages referenceを失わない。
+host試験はsource-linked H resolver doubleで正常、origin不一致、unreleaseable
+成功結果の保持を確認。HのSEH pin実行/GPU/WDKの成功とは区別する。
+Hのfixed commitは受領済みであり、以後はdraft待ちを阻害条件にしない。
+factory/controls/rundownの実装担当は引き続き当方。

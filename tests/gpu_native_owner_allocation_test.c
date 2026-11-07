@@ -4,7 +4,10 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
+#include <sys/wait.h>
 #include "native_owner_allocation_private.h"
+#include "native_owner_frontend_resolver.h"
 static unsigned fail,step,objects,refs,adapters,native,bound,render,firmware,normal;
 static int release_fail;
 static unsigned trace[16],at;
@@ -44,6 +47,16 @@ NTSTATUS a04_vendor_native_target_aperture(const struct a04_vendor_native_cold *
 {assert(n && out);out->gpu_base=UINT64_C(0x8200000000);return STATUS_SUCCESS;}
 static NTSTATUS acquire(void *ctx,PMDL m){assert(ctx && m);normal++;return STATUS_SUCCESS;}
 static void release(void *ctx,PMDL m){assert(ctx && m && normal);normal--;}
+static struct fake_mdl resolved_mdl;
+static unsigned resolver_invalid;
+static NTSTATUS resolve(void *context,PMDL source,ULONG active,struct geo_frontend_mdl_lease *out)
+{
+ assert(context && source && active==1920000);normal++; /* owned resolve reference */
+ *out=(struct geo_frontend_mdl_lease){sizeof(*out),1,
+     resolver_invalid?0:GEO_MDL_VIDMM_CACHED_SHADOW,active,1921024,&resolved_mdl,context,acquire,release};
+ if(resolver_invalid==2)out->release=NULL;
+ return STATUS_SUCCESS;
+}
 int main(void)
 {
     int pdo,ctx,image;struct fake_mdl mdl={0};
@@ -73,6 +86,33 @@ int main(void)
             assert(trace[at-1]==6 && trace[at-2]==5 && trace[at-3]==4 && trace[at-4]==3);
         }
         assert(!objects && !refs && !adapters && !native && !bound && !render && !firmware && !normal);
+    }
+    /* The real provider transaction, explicit H resolver and lower resource
+     * doubles. Wrong origin drops resolve ref; successful binding retains
+     * only native acquire, and cold deletion drops that remaining ref. */
+    for(resolver_invalid=0;resolver_invalid<2;resolver_invalid++){
+        struct a04_native_owner_allocation *a=NULL;
+        struct geo_frontend_memory memory={sizeof(memory),1,&ctx,resolve};fail=step=at=0;
+        assert(a04_native_allocation_create(&a,&pdo,&image,sizeof(image),NULL)==STATUS_SUCCESS);
+        NTSTATUS status=a04_native_allocation_bind_frontend_cold(a,&memory,&mdl,1920000,500u*4096,0xff123456);
+        if(resolver_invalid)assert(status==STATUS_INVALID_PARAMETER && !normal && !bound);
+        else assert(status==STATUS_SUCCESS && normal==1 && bound==1);
+        assert(a04_native_allocation_release_cold(&a)==STATUS_SUCCESS && !a);
+        assert(!objects && !refs && !adapters && !native && !bound && !normal);
+    }
+    {
+        pid_t child=fork();int status;assert(child>=0);
+        if(!child){
+            struct a04_native_owner_allocation *a=NULL;
+            struct geo_frontend_memory memory={sizeof(memory),1,&ctx,resolve};
+            resolver_invalid=2;fail=step=at=0;
+            assert(a04_native_allocation_create(&a,&pdo,&image,sizeof(image),NULL)==STATUS_SUCCESS);
+            assert(a04_native_allocation_bind_frontend_cold(a,&memory,&mdl,1920000,500u*4096,0xff123456)==STATUS_INVALID_DEVICE_STATE);
+            assert(a->frontend_orphan && normal==1 && !bound && adapters && refs);
+            assert(a04_native_allocation_release_cold(&a)==STATUS_DEVICE_BUSY && a && normal==1);
+            _exit(0); /* deliberate failed-owner retention, not a drain proof */
+        }
+        assert(waitpid(child,&status,0)==child && WIFEXITED(status) && !WEXITSTATUS(status));
     }
     puts("owner allocation: real production unwind against explicit failure doubles, exact adapter/MDL ownership retained on exposure/release failure PASS; no GPU");
 }

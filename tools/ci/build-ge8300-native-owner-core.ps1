@@ -44,7 +44,7 @@ if($WithMdlTarget){
 }
 if($WithOwnerAllocation){
  if(!$WithMdlTarget){throw 'Owner allocation requires -WithMdlTarget'}
- $units+=@('vendor_m1_11\native_owner_allocation','vendor_m1_11\stage','vendor_m1_11\windows_stage','vendor_m1_11\windows_stage_uncached','vendor_m1_11\windows_render_cold','vendor_m1_11\clear_image','vendor_m1_11\clear_tile')
+ $units+=@('vendor_m1_11\native_owner_frontend_resolver','vendor_m1_11\native_owner_allocation','vendor_m1_11\stage','vendor_m1_11\windows_stage','vendor_m1_11\windows_stage_uncached','vendor_m1_11\windows_render_cold','vendor_m1_11\clear_image','vendor_m1_11\clear_tile')
 }
 $oldTemp=$env:TEMP;$oldTmp=$env:TMP;$transcript=$false
 New-Item -ItemType Directory $out,(Join-Path $out 'tmp')|Out-Null
@@ -119,7 +119,7 @@ try {
   $exports=@('a04_native_mdl_bind','a04_native_mdl_pages','a04_native_mdl_cpu','a04_native_mdl_original','a04_native_mdl_release_cold','a04_native_mdl_sync_for_gpu','a04_native_mdl_sync_for_cpu','a04_native_mdl_mark_exposed',
    'a04_native_irq_bind','a04_native_irq_claim','a04_native_irq_rearm','a04_native_irq_mask_close','a04_native_irq_unbind_disconnected','a04_vendor_native_submit_prepared_pair','a04_gpu_dma_barrier')
   if($WithMdlTarget){$exports+=@('a04_native_dispatch_initialize','a04_native_dispatch_submit','a04_native_dispatch_interrupt','a04_native_dispatch_service','a04_vendor_native_attach_mdl_target_cold','a04_vendor_native_attach_mdl_target_at_cold','a04_vendor_native_target_aperture','a04_vendor_native_target_before_fw_start','a04_vendor_native_allocate_cold_ex','a04_vendor_native_run_clear_frames','a04_vendor_native_owner_submit','a04_vendor_native_owner_finish_passive','a04_vendor_native_owner_arm_visibility','a04_vendor_native_owner_interrupt_event')}
-  if($WithOwnerAllocation){$exports+=@('a04_native_allocation_create','a04_native_allocation_bind_lease_cold','a04_native_allocation_bind_cold','a04_native_allocation_release_cold','a04_native_allocation_aperture')}
+  if($WithOwnerAllocation){$exports+=@('a04_native_allocation_bind_frontend_cold','a04_native_allocation_create','a04_native_allocation_bind_lease_cold','a04_native_allocation_bind_cold','a04_native_allocation_release_cold','a04_native_allocation_aperture')}
   $link=@('/dll','/noentry','/subsystem:native','/machine:arm','/nodefaultlib')+$objects
   $link+=@((Join-Path $kmLib 'ntoskrnl.lib'),(Join-Path $kmLib 'hal.lib'),(Join-Path $kmLib 'libcntpr.lib'),(Join-Path $kmLib 'bufferoverflowfastfailk.lib'))
   $link+=@($exports|ForEach-Object{"/export:$_"});$link+="/out:$out\owner-core-linkcheck.dll"
