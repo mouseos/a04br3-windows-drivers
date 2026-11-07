@@ -6,7 +6,7 @@ function Read-Mt8167RenderStageLastDiagnostic($Root,[string]$ControlSet,[string]
  if($ControlSet -cnotmatch '^ControlSet[0-9]{3}$' -or $PolicyHash -cnotmatch '^[0-9a-f]{64}$'){throw 'Fixed receipt controlset/policy pin invalid'}
  $result=[ordered]@{}
  foreach($phase in @('Install','Diagnostic')){
-  $key=[MT8167OfflineHive.Native]::OpenPath($Root,"$ControlSet\Services\GE8300RenderFactory\Parameters\LastDiagnostic\$PolicyHash\$phase",$false)
+  $key=[MT8167OfflineHive.Native]::OpenPath($Root,"$ControlSet\Services\GE8300RenderMemory\Parameters\LastDiagnostic\$PolicyHash\$phase",$false)
   if(!$key){$result[$phase]=@{present=$false};continue}
   try {
    function Dword($name){
