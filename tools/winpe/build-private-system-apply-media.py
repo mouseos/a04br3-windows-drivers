@@ -10,6 +10,8 @@ def main():
  for n in ('workspace','base','system','patch-manifest','backup','out','tools'):ap.add_argument('--'+n,type=Path,required=True)
  ap.add_argument('--source-commit',required=True)
  ap.add_argument('--gpu-installer-package',type=Path)
+ ap.add_argument('--gpu-baseline-package',type=Path)
+ ap.add_argument('--gpu-candidate-package',type=Path)
  a=ap.parse_args();root=a.workspace.resolve(strict=True)
  base,system,patch,backup,out,tools=[getattr(a,n.replace('-','_')).resolve() for n in ('base','system','patch-manifest','backup','out','tools')]
  if out.exists() or any(not p.is_relative_to(root) for p in (base,system,patch,backup,out,tools)) or not re.fullmatch('[0-9a-f]{40}',a.source_commit):raise SystemExit('固定sourceとroot内入力・新規private出力が必要です')
@@ -35,6 +37,7 @@ def main():
  # Validate the patch record as JSON; the native patcher owns its detailed schema.
  json.loads(patch.read_text(encoding='utf-8-sig'))
  gpu_files={};gpu_record=None;native_record=None
+ if bool(a.gpu_installer_package)!=bool(a.gpu_baseline_package) or bool(a.gpu_installer_package)!=bool(a.gpu_candidate_package):raise ValueError('GPU updaterは署名済み新旧packageを共に明示してください')
  if a.gpu_installer_package:
   checkout=here.parents[1]
   if subprocess.check_output(['git','-C',str(checkout),'rev-parse','HEAD'],text=True).strip()!=a.source_commit or subprocess.check_output(['git','-C',str(checkout),'status','--porcelain'],text=True).strip():raise ValueError('GPU媒体はcleanな固定source checkoutから生成してください')
@@ -42,7 +45,12 @@ def main():
   from gpu_media_input import gpu_input
   private_path(out,root)
   native_record=prepared_system_check(system,patch,sha(system),root,b,'MT8167DeviceInstall')
-  gpu_files,gpu_record=gpu_input(a.gpu_installer_package,root)
+  gpu_files,gpu_record=gpu_input(a.gpu_installer_package,root,a.gpu_baseline_package,a.gpu_candidate_package)
+  plan_path=patch.parent/'gpu-rearm-plan.json'
+  plan=json.loads(plan_path.read_text(encoding='utf-8-sig'));report=json.loads(patch.read_text(encoding='utf-8-sig'))
+  if (sha(plan_path)!=report.get('gpu_rearm_plan_sha256') or plan.get('candidate_source_commit')!=gpu_record['candidate_source'] or plan.get('candidate_sys_sha256')!=gpu_record['files']['provider/mt8167-ge8300.sys'] or plan.get('candidate_cat_sha256')!=gpu_record['files']['provider/mt8167-ge8300.cat']):raise ValueError('native再arm planとGPU候補の不一致')
+  old_gpu=[item for item in b['files'] if item['source_path'].replace('\\','/').lower()=='windows/system32/drivers/mt8167-ge8300.sys']
+  if len(old_gpu)!=1 or old_gpu[0]['sha256'].lower()!=gpu_record['baseline_sys_sha256']:raise ValueError('fresh実配置GPUとbaselineの不一致')
  out.mkdir(mode=0o700);stage=out/'stage';stage.mkdir(mode=0o700)
  token=hashlib.sha256((sha(system)+sha(patch)+sha(backup)+sha(here/'run-private-system-apply.cmd.in')+sha(Path(__file__).resolve())+json.dumps(gpu_record,sort_keys=True)).encode()).hexdigest()[:16].upper()
  cmd=(here/'run-private-system-apply.cmd.in').read_text().replace('@TOKEN@',token).replace('@JOURNAL@',token.lower()).replace('@HOST_BACKUP_SHA@',sha(backup)).replace('@SYSTEM_SHA@',sha(system))
@@ -53,16 +61,17 @@ def main():
    dest=fixed/name;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(path,dest)
    if sha(dest)!=gpu_record['files'][name]:raise ValueError('GPU staging中の入力変更')
   extra_pairs.append((fixed,'/a04br3/gpu-fixed'))
-  commands=[r'if exist "C:\Windows\System32\MT8167GpuUpdate" goto backupfail',
+  data_directory=gpu_record['data_directory']
+  commands=['if exist "'+data_directory+'" goto backupfail',
    r'if not exist "C:\Windows\System32\MT8167DeviceInstall.exe" goto backupfail',
    r'mkdir "%A04_BK%\installer-before" >> "%A04_REPORT%" 2>&1',
    r'if errorlevel 1 goto backupfail',
    r'xcopy /h /y "C:\Windows\System32\MT8167DeviceInstall.exe" "%A04_BK%\installer-before" >> "%A04_REPORT%" 2>&1',
    r'if errorlevel 1 goto backupfail',
-   r'mkdir "C:\Windows\System32\MT8167GpuUpdate\provider" >> "%A04_REPORT%" 2>&1',
+   'mkdir "'+data_directory+'\\provider" >> "%A04_REPORT%" 2>&1',
    r'if errorlevel 1 goto dismfail']
   for name in sorted(gpu_files):
-   target=((r'C:\Windows\System32' if name=='MT8167DeviceInstall.exe' else r'C:\Windows\System32\MT8167GpuUpdate')+'\\'+name).replace('/','\\')
+   target=((r'C:\Windows\System32' if name=='MT8167DeviceInstall.exe' else data_directory)+'\\'+name).replace('/','\\')
    source=('X:\\a04br3\\gpu-fixed\\'+name).replace('/','\\')
    commands.extend(['copy /b /y "'+source+'" "'+target+'" >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail'])
   commands.append('>> "%A04_REPORT%" echo GPU_FIXED_FILES_COPY_EXIT=0')

@@ -128,3 +128,9 @@ SCM終了の最大30秒待機はDMA quiescence証明ではない。disklog必須
 新しいcandidateは未回収であり、新policy生成成功やWDK link/sign、次回実機更新成功は未確認。
 GPU/default両modeの実API headerによるARM32 source確認は、実機再試験とは別である。
 小試験の大量追加、runner/実機/REA/SSH操作は行わない。
+
+schema 2媒体では`--gpu-baseline-package`と`--gpu-candidate-package`も必須。
+最終署名manifest・sourceのINF・実fileを共通policy validatorで照合し、fresh backupの
+実GPU hashがbaselineに一致すること、native planの候補source/SYS/CATが同じ新候補を
+指すことを検査する。配置先はsource/transition由来の固定hex directoryであり、旧directoryを
+削除・上書きしない。同じ候補のmarkerが残る場合は再試行しない。
