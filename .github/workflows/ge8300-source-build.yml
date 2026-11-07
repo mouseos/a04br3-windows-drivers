@@ -22,4 +22,8 @@ jobs:
             build/ge8300-source/*.exe
             build/ge8300-source/*.json
             build/ge8300-source/compiler/*manifest.json
+            build/ge8300-source/native/build-manifest.json
+            build/ge8300-source/modules/build-manifest.json
+            build/ge8300-source/umd/build-manifest.json
+            build/ge8300-source/umd/*.pe.txt
           if-no-files-found: error

@@ -3113,8 +3113,10 @@
         "-I",
         "${REPO}/third_party/mesa-pco/mesa/src/imagination",
         "-I",
-        "${REPO}/third_party/mesa-pco/mesa/src/imagination/include"
-      ]
+        "${REPO}/third_party/mesa-pco/mesa/src/imagination/include",
+        "-Dstricmp=_stricmp"
+      ],
+      "portability_note": "Map obsolete non-underscore CRT alias to the supported same-semantics _stricmp entry in the installed ARM32 CRT."
     },
     {
       "component": "nir",

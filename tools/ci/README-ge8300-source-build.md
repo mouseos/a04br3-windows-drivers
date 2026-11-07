@@ -45,3 +45,13 @@ Mesa全体の再現や一般PCO機能対応を広告しない。対応範囲は�
 正規toolchainを準備したself-hosted Windows runner（wdk81-arm32 label）で同じsource手順を実行し、unsigned成果物を回収する。
 SDK installerやsecret署名鍵、device操作、過去driver cacheをCIへ埋め込まない。
 ビルド成功と実機描画成功は別。source-build-manifestのhardware_verifiedはfalseを維持する。
+
+## 現在の検証範囲
+
+このbranchのKMDは78ca6565/native fb217359/UMD3f8291d0を統合した、run101機能修正前のsource-build基点である。
+run101で判明したDMA pool契約の3.17修正は独立branchへ保持し、ここへ暗黙に混ぜない。
+生成物を実機更新候補と扱わず、配布・署名・媒体化には最新機能修正との明示統合と検証が必要。
+
+現行ARM32 CRTへ名前が残らない旧stricmp呼出しは、pvr_device_info TUだけで同じ契約の_stricmpへ対応する。
+生成NIRのfloat16_tローカル別名変更と合わせ、source-planにport設定を記録する。
+CI artifactには全componentのbuild/compile/link manifestとPE imports/exportsを含める。
