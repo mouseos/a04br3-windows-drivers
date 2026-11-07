@@ -4,7 +4,7 @@
  * Contract reference: Microsoft avstream/avssamp + WDK8.1 ks.h/ksmedia.h. */
 #define CINTERFACE
 #define COBJMACROS
-#include <ntddk.h>
+#include <ntifs.h>
 #include <windef.h>
 #define NOBITMAP
 #include <mmreg.h>
@@ -21,7 +21,8 @@
 #define INTERVAL UINT64_C(10000000) /* software maximum1fps, not a HW fps claim */
 static const GUID raw_guid=A04_HI556_CAPTURE_GUID_VALUES;
 static const GUID video={STATICGUIDOF(KSDATAFORMAT_TYPE_VIDEO)};
-static const GUID rgb24={STATICGUIDOF(KSDATAFORMAT_SUBTYPE_RGB24)};
+#define RGB24_GUID_VALUES {0xe436eb7d,0x524f,0x11ce,{0x9f,0x53,0x00,0x20,0xaf,0x0b,0xa7,0x70}}
+static const GUID rgb24=RGB24_GUID_VALUES;
 static const GUID vi={STATICGUIDOF(KSDATAFORMAT_SPECIFIER_VIDEOINFO)};
 static const GUID capture={STATICGUIDOF(PINNAME_VIDEO_CAPTURE)};
 static const GUID filter_guid={0x50655601,0x2b19,0x4637,{0x8c,0x2e,0x5e,0x56,0xd0,0x03,0x00,0x01}};
@@ -141,7 +142,7 @@ static NTSTATUS process(PKSPIN pin)
  ULONG_PTR bytes=0;A04_CAM_STATUS *raw;uint64_t now;
  if(!c||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
  p=KsPinGetLeadingEdgeStreamPointer(pin,KSSTREAM_POINTER_STATE_LOCKED);if(!p)return STATUS_PENDING;
- irp=KsStreamPointerGetIrp(p);
+ irp=KsStreamPointerGetIrp(p,NULL,NULL);
  KeWaitForSingleObject(&c->lock,Executive,KernelMode,FALSE,NULL);
  if(c->state!=KSSTATE_RUN||c->stopping||!c->raw){s=STATUS_CANCELLED;goto done;}
  if(!NT_SUCCESS(c->failed)){s=c->failed;goto done;}
@@ -193,7 +194,7 @@ done:
 }
 static const KS_DATARANGE_VIDEO range={
  {sizeof(KS_DATARANGE_VIDEO),0,A04_HI556_RGB_BYTES,0,
- {STATICGUIDOF(KSDATAFORMAT_TYPE_VIDEO)}, {STATICGUIDOF(KSDATAFORMAT_SUBTYPE_RGB24)},
+ {STATICGUIDOF(KSDATAFORMAT_TYPE_VIDEO)}, RGB24_GUID_VALUES,
  {STATICGUIDOF(KSDATAFORMAT_SPECIFIER_VIDEOINFO)}},
  TRUE,FALSE,0,0,
  {{STATICGUIDOF(KSDATAFORMAT_SPECIFIER_VIDEOINFO)},0,
