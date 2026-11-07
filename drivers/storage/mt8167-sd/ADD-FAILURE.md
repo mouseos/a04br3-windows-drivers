@@ -121,3 +121,11 @@ SHA256: `ade7c67557e2c13e54d4daeaa41482b89f47d8d6fd4f6311e7f69f74bb0c8d9c`
 
 親1010は再build/再署名していない。SD3も凍結維持。この候補を根因修正済み、CM成功、
 card init成功、RW成功とは扱わない。実失敗stage/statusの次の確認はmainの実機観測が必要。
+
+## run49による根因の確定と後続修正
+
+SD4実記録はAdd stage28/statusC0000033/complete1、DriverEntry成功、Prepare/D0未実行。
+SetCharacteristics(FALSE)による自動命名flag消失と、WDF InitializePdoのHasName失敗statusが
+一次sourceで対応した。後続は第三引数TRUEで既定の自動命名を保持する。
+詳細と固定sourceは [PDO-NAME-FIX.md](PDO-NAME-FIX.md)。旧「根因未特定」はrun49以前の履歴。
+修正後実機でのAdd成功やカードRWはまだ未確認。
