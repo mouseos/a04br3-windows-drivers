@@ -54,9 +54,11 @@ int main(void)
     assert(!NT_SUCCESS(a04_vendor_native_allocate_cold(&n,&x.r,&x.adapter,1100,800,1280)));
     assert(!n && frees==allocs);finish(&x);
     /* New candidate pool allocation failure must unwind all cold DMA. */
-    candidate_fixture(&x);fail_pool=5;
-    assert(!NT_SUCCESS(a04_vendor_native_allocate_cold(&n,&x.r,&x.adapter,1100,800,600)));
-    assert(!n && frees==allocs);finish(&x);
+    for(i=5;i<=6;i++){
+        candidate_fixture(&x);fail_pool=i;
+        assert(!NT_SUCCESS(a04_vendor_native_allocate_cold(&n,&x.r,&x.adapter,1100,800,600)));
+        assert(!n && frees==allocs);finish(&x);
+    }
     puts("Windows native complete-job cold owner / staged pair / unchanged controls / lifetime: PASS; gate closed");
     return 0;
 }
