@@ -16,20 +16,28 @@ try {
  if(Test-Path $manifest){Move-Item $manifest (Join-Path $out ('manifest.previous.'+[Guid]::NewGuid().ToString('N')+'.json'))}
  $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1";$inc=Join-Path $kit 'Include'
  $km=Join-Path $kit 'Lib\winv6.3\km\arm';$wdf=Join-Path $kit 'Lib\wdf\kmdf\arm\1.13'
+ $kernelCodegenFlags=@('-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-mfpu=none')
+ # E/H WDK8.1 recipe: rename only the obsolete SDK declaration; no intrinsic stub.
+ $intrinsicCompatFlags=@('-D__ldrexd=__sd_wdk81_ldrexd_declaration')
+ $kernelRuntime=Join-Path $km 'libcntpr.lib'
+ if(!(Test-Path -LiteralPath $kernelRuntime -PathType Leaf)){throw "Missing real WDK8.1 ARM kernel runtime: $kernelRuntime"}
  $objects=@();$sources=@()
  $paths=@('drivers/storage/mt8167-sd/sd.c','drivers/storage/mt8167-sd/windows.c','drivers/storage/mt8167-sd/scsi.c','drivers/storage/mt8167-sd/control.c',
   'drivers/storage/mt8167-msdc/cdb.c','drivers/storage/mt8167-msdc/scsi_capacity.c')
  foreach($path in $paths){
   $obj=Join-Path $out (([IO.Path]::GetFileNameWithoutExtension($path))+'.obj');$objects+=$obj
-  & clang --target=thumbv7-pc-windows-msvc -std=c11 -O2 -ffreestanding -fno-stack-protector -fms-extensions -ffunction-sections -fdata-sections -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$inc\wdf\kmdf\1.13" -c (Join-Path $root $path) -o $obj
+  & clang --target=thumbv7-pc-windows-msvc -std=c11 -O2 -ffreestanding -fno-stack-protector @kernelCodegenFlags @intrinsicCompatFlags -fms-extensions -ffunction-sections -fdata-sections -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$inc\wdf\kmdf\1.13" -c (Join-Path $root $path) -o $obj
   if($LASTEXITCODE){throw "microSD compile failed: $path"}
   $sources+=@{path=$path;sha256=(Get-FileHash (Join-Path $root $path) -Algorithm SHA256).Hash}
  }
- & lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib /opt:ref @objects "$wdf\wdfdriverentry.lib" "$wdf\wdfldr.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\bufferoverflowfastfailk.lib" "/out:$out\mt8167-sd.sys"
+ & lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib /opt:ref @objects "$wdf\wdfdriverentry.lib" "$wdf\wdfldr.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\bufferoverflowfastfailk.lib" $kernelRuntime "/out:$out\mt8167-sd.sys"
  if($LASTEXITCODE){throw 'microSD final driver link failed'}
  foreach($name in @('mt8167-sd.inf','README.md')){Copy-Item "$root\drivers\storage\mt8167-sd\$name" $out -Force}
  Copy-Item "$root\drivers\storage\mt8167-sd\acpi\MT8167-SD.asl" $out -Force
  @{source_commit=$commit;source_dirty=$false;sources=$sources;target='Windows RT8.1 ARM32';kmdf='1.13';
+   kernel_codegen_flags=$kernelCodegenFlags;kernel_intrinsic_compat_flags=$intrinsicCompatFlags;
+   kernel_intrinsic_compat='WDK8.1 obsolete __ldrexd declaration-only alias, matching E/H recipe; no replacement implementation';
+   kernel_runtime_path='Lib/winv6.3/km/arm/libcntpr.lib';kernel_runtime_sha256=(Get-FileHash $kernelRuntime -Algorithm SHA256).Hash;
    controller='MediaTek MT8167 MSDC1 microSD';mmio='0x11130000/0x1000';gic_spi=79;gic_intid=111;cd_gpio=20;cd_present_level=1;
    profile='native SD, PIO,1-bit,host clock divisor4 (source/16),512-byte sectors';dma_enabled=$false;boot_storage=$false;
    kernel_driver_link_succeeded=$true;acpi_compiled=$false;signed=$false;windows_enumeration_verified=$false;hardware_rw_verified=$false;

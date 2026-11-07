@@ -119,6 +119,13 @@ PowerShell、git。通常OSの標準disk stackが必要。実機/runnerへ接続
 powershell -NoProfile -File tools\storage\build-mt8167-sd.ps1
 ```
 
+全6 TU（SDの4 TUと非変更で再利用するeMMC共通2 TU）に
+`-fno-vectorize -fno-slp-vectorize -mno-unaligned-access -mfpu=none`を共通適用する。
+CRTは正規WDK8.1 ARMの`Lib/winv6.3/km/arm/libcntpr.lib`を必須としてlinkし、
+flags・runtimeのkit相対pathとSHA256をmanifestへ記録する。
+SDK8.1旧`__ldrexd`宣言はE/Hの実WDK成功recipeと同じcompile時aliasで回避する。
+SDK headerの改変や代替intrinsic/stubの実装は行わない。
+
 出力`build/mt8167-sd/mt8167-sd.sys`、実ハード名INF、source/hash manifest、ACPI source案。
 署名/CAT生成と配布前の実WDK最終link確認は主担当側。
 ACPI案のAML生成はiaslで別途行い、既存canonicalへ黙って挿入しない。
