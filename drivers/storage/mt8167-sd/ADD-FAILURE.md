@@ -77,3 +77,47 @@ partial install→サービスdisabled+3010により次bootの診断が無い経
 一次仕様の照合はMicrosoft Windows-Driver-Frameworks source
 b6191d9543441329154da32f7ab9bdd97228dd3cとDDI docsで実施した。
 現代の公開WDF sourceを対象実機WDF1.13の動作証拠とは扱わない。
+
+## USB C0200211との照合
+
+mainがUSB1004で確定したSTATUS_WDF_EXECUTION_LEVEL_INVALIDは、WdfWorkItemCreateの
+既定validationがExecutionLevel明示を拒否する契約。本SD codeにはWdfWorkItemCreateがない。
+SDの明示PassiveはWdfDeviceCreate(FDO/PDO)とWdfTimerCreateだけで、公開WDF sourceでは
+両方ともFX_VALIDATE_OPTION_EXECUTION_LEVEL_ALLOWEDを指定する。
+IoTargetCreateは親だけ指定しExecutionLevelはInheritのまま、IoQueueCreate/DriverCreateは
+attributes無し。根拠なくPassiveを削除する「同型修正」は行わない。
+
+## 初回class選択の別依存（Engine helper所有者へ）
+
+読取り参照したEngine source88a7875のtools/winpe/engine-deferred-update.h:229–231は
+SetupDiSetSelectedDriverW直後にDIF_INSTALLDEVICEを呼び、DIF_SELECTBESTCOMPATDRVはない。
+一方、後boot自動installログではDIF_SELECTBESTCOMPATDRVのSelect Best Driverが
+Class GUID変更を記録してからConfigure成功している。
+Microsoft公式SetupDiSelectBestCompatDrvは選択driverとdeviceのclassが異なるときに
+管理者としてdevice classをdriver classへ設定する契約を明示している。
+初回NULL classからの選択工程の差は確認できるが、E0000204の直接因果は未実証。
+
+Engine helperの変更は担当へ委ねる。修正時もsingle INF制限、hardware match、version/date/
+CAT/hash pinを維持したcompatible driver listを使い、標準DIF_SELECTBESTCOMPATDRV後に
+選択driverを再確認してからDIF_INSTALLDEVICEする。ClassInstall32新設やregistry class手書きで
+隠さない。これは後bootSD Code31の修正とは別。
+
+一次仕様:
+https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdiselectbestcompatdrv
+
+## 署名候補の回収
+
+source16ed4f853788f6810f5a4644f94c638fa6f8d2e7、INF2026.11.7.4。
+8TUを実WDK8.1 ARM32/NoFP/NEON flags/正規libcntprでcompile/linkし、SYS/CAT署名、
+SYS/INF membership検証、root内回収の全manifest hash一致を確認した。
+既存SD protocol fixtureの一括ASan/UBSan確認は通過。新しいmock/test fileは追加していない。
+
+root内ZIP:
+`port/xnu/out/windows-rt-sd-add-16ed4f8-signed/mt8167-sd-add-16ed4f8-signed.zip`
+
+SHA256: `ade7c67557e2c13e54d4daeaa41482b89f47d8d6fd4f6311e7f69f74bb0c8d9c`
+
+署名SYS SHA256: `f028660dc1bca998172f738bf023f5b8fbd8c4c3127e02d76d235db2069e0686`
+
+親1010は再build/再署名していない。SD3も凍結維持。この候補を根因修正済み、CM成功、
+card init成功、RW成功とは扱わない。実失敗stage/statusの次の確認はmainの実機観測が必要。
