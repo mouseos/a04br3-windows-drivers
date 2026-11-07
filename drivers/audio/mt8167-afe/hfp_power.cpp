@@ -6,7 +6,7 @@ struct HfpPowerPlacement {};
 inline void *operator new(size_t,void *p,HfpPowerPlacement){return p;}
 #define POWER_TAG 'Pf4M'
 struct Mt8167HfpPower : public IAdapterPowerManagement {
- volatile LONG refs;KMUTEX serial;Mt8167HfpOwner *hfp;
+ volatile LONG refs;KMUTEX serial;Mt8167HfpOwner *hfp;PIO_WORKITEM finalWork;
  PDEVICE_OBJECT fdo;Mt8167PnpBackend *owner;PRESOURCELIST resources;
  DEVICE_POWER_STATE power;BOOLEAN stopping,poisoned;
  STDMETHODIMP QueryInterface(REFIID iid,PVOID *out) {
@@ -16,9 +16,17 @@ struct Mt8167HfpPower : public IAdapterPowerManagement {
   return STATUS_NOINTERFACE;
  }
  STDMETHODIMP_(ULONG) AddRef(){return (ULONG)InterlockedIncrement(&refs);}
+ static VOID finalize(PDEVICE_OBJECT,PVOID context){
+  Mt8167HfpPower *o=(Mt8167HfpPower *)context;
+  if(o->hfp)return; /* unknown teardown retains references; never retry */
+  if(o->finalWork)IoFreeWorkItem(o->finalWork);
+  o->resources->Release();Mt8167PnpBackendRelease(o->owner);ObDereferenceObject(o->fdo);ExFreePoolWithTag(o,POWER_TAG);
+ }
  STDMETHODIMP_(ULONG) Release(){LONG n=InterlockedDecrement(&refs);if(!n){
-  if(hfp||KeGetCurrentIrql()!=PASSIVE_LEVEL)return 0; /* uncertain owner pinned */
-  resources->Release();Mt8167PnpBackendRelease(owner);ObDereferenceObject(fdo);ExFreePoolWithTag(this,POWER_TAG);
+  if(hfp)return 0;
+  if(KeGetCurrentIrql()==PASSIVE_LEVEL)finalize(NULL,this);
+  else if(KeGetCurrentIrql()<=DISPATCH_LEVEL&&finalWork)IoQueueWorkItem(finalWork,finalize,DelayedWorkQueue,this);
+  /* A noncompliant higher-IRQL Release retains its storage. */
  }return (ULONG)n;}
  void lock(){KeWaitForSingleObject(&serial,Executive,KernelMode,FALSE,NULL);}
  void unlock(){KeReleaseMutex(&serial,FALSE);}
@@ -57,8 +65,9 @@ NTSTATUS Mt8167HfpPowerCreate(PDEVICE_OBJECT fdo,Mt8167PnpBackend *owner,PRESOUR
  if(!out||!fdo||!owner||!resources||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;*out=NULL;
  PVOID memory=ExAllocatePoolWithTag(NonPagedPool,sizeof(Mt8167HfpPower),POWER_TAG);if(!memory)return STATUS_INSUFFICIENT_RESOURCES;
  Mt8167HfpPower *o=new(memory,HfpPowerPlacement()) Mt8167HfpPower();
- o->refs=1;o->hfp=NULL;o->stopping=FALSE;o->poisoned=FALSE;o->power=PowerDeviceD0;
+ o->refs=1;o->hfp=NULL;o->finalWork=NULL;o->stopping=FALSE;o->poisoned=FALSE;o->power=PowerDeviceD0;
  o->fdo=fdo;ObReferenceObject(fdo);o->owner=owner;Mt8167PnpBackendReference(owner);o->resources=resources;resources->AddRef();KeInitializeMutex(&o->serial,0);
+ o->finalWork=IoAllocateWorkItem(fdo);if(!o->finalWork){o->Release();return STATUS_INSUFFICIENT_RESOURCES;}
  NTSTATUS status=PcRegisterAdapterPowerManagement(static_cast<PUNKNOWN>(o),fdo);
  if(!NT_SUCCESS(status)){o->Release();return status;}
  o->lock();o->start();o->unlock();*out=o;return STATUS_SUCCESS;

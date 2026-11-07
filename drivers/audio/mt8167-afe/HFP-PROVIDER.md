@@ -81,3 +81,26 @@ DDK参照headersによるx64 syntax確認、PowerShell AST parse。
 参考header不足によるPcGetPhysicalDeviceObject宣言欠落、ARM専用WaveRT cache検証の
 host x64 #errorは迂回していない。親WDF compile、WDK8.1 ARM最終link、標準stack列挙、
 SCO双方向音声、電源遷移、電気的連続性はいずれも未検証。
+
+
+## 停止と最終解放の追加checkpoint
+
+BT sessionのserial gateだけではAudio fault/power workを排他できないため、
+sidebandのAcquire/Prepare/Start/Stop/ReleaseはAudio owner mutexで直列化する。
+fault/closed状態で新しいPrepare/Startを受けず、Stop/Releaseは不確実状態の
+cleanupを試みられるように分ける。DIRQLのposition/ISRは既存rundown/interrupt
+synchronizationを使用し、このPASSIVE mutexを取得しない。
+
+NashのPnpStop成功は通知/worker/endpoint登録の停止を表し、既存KS handleの
+最終Releaseとは別である。証明済みDMA/IRQ停止後は、未exposed/drainedのclient
+MDLがKS handleに残っていてもcreator参照を解放できる。実session/provider参照が
+backend/FDO/mappingを保持し、free_drainedと最後のReleaseが完了した時だけ解放する。
+exposed MDL、fallback MDL、未解放clock/combo/interruptがあればStopは成功にしない。
+
+PortCls power objectも最終ReleaseがDISPATCHなら専用work itemでPASSIVE解放する。
+生きたHFP ownerが残る異常終了はstorage/refを保持し、自動再試行しない。
+factory公開前に親・controller・DMA adapterの全使用callback/ABIを検証する。
+
+これらはowner/commonの寿命管理修正であり、run42の親1008/Audio1006、map、plan、
+媒体には取り込まない。run42 NativeStartの結果待ち中に開始失敗の仮説を変更しない。
+独立DMA drain、BT登録順序、実latencyは引き続き未完了で、成功stubは追加しない。

@@ -36,14 +36,16 @@ static int Write(void *c,unsigned off,uint32_t v)
  WRITE_REGISTER_ULONG((volatile ULONG *)((PUCHAR)o->r.afe+off),v);return 0;
 }
 static void Reference(PVOID c){InterlockedIncrement(&((Mt8167HfpOwner *)c)->refs);}
-/* Creator retains its own reference through successful Stop + final KS Release.
- * Last-reference cleanup is only PASSIVE; an invalid caller retains state. */
+/* Successful Stop drops the creator reference; retained KS/session references
+ * keep the owner/backend/mapping alive until their final Release. Last-reference
+ * cleanup runs only at PASSIVE, after proven DMA/IRQ quiescence. */
 static VOID Finalize(PDEVICE_OBJECT,PVOID c)
 {
  Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;
  if(o->pnp||o->clockHeld||o->comboHeld||o->interrupt)return;
  for(ULONG d=0;d<2;d++)if(o->client[d].mdl||o->fallback[d].mdl)return;
- if(o->controller.context)o->controller.Dereference(o->controller.context);
+ if(o->controller.context){if(!o->controller.Dereference)return;
+  o->controller.Dereference(o->controller.context);}
  if(o->parent.Header.InterfaceDereference)o->parent.Header.InterfaceDereference(o->parent.Header.Context);
  if(o->faultWork)IoFreeWorkItem(o->faultWork);if(o->finalWork)IoFreeWorkItem(o->finalWork);
  o->r.release(o->r.owner);ObDereferenceObject(o->r.fdo);ExFreePoolWithTag(o,TAG);
@@ -143,7 +145,7 @@ static VOID FaultWork(PDEVICE_OBJECT,PVOID c)
 static void Fault(PVOID c,NTSTATUS status)
 {Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;InterlockedCompareExchange(&o->failure,(LONG)status,0);
  if(!InterlockedCompareExchange(&o->faultQueued,1,0)){Reference(o);IoQueueWorkItem(o->faultWork,FaultWork,DelayedWorkQueue,o);}}
-static int Acquire(PVOID c,unsigned rate,unsigned channels,unsigned bits,unsigned *generation)
+static int AcquireLocked(PVOID c,unsigned rate,unsigned channels,unsigned bits,unsigned *generation)
 {
  Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;if(!generation||rate!=8000||channels!=1||bits!=16||o->closed||o->failure)return -1;
  NTSTATUS s=o->controller.Acquire(o->controller.context,&o->comboGeneration);
@@ -165,7 +167,7 @@ static VOID FaultDpc(PKDPC,PVOID c,PVOID,PVOID){Mt8167HfpOwner *o=(Mt8167HfpOwne
 static BOOLEAN Isr(PKINTERRUPT,PVOID c)
 {Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;uint32_t serviced=0;if(o->failure||!RegistersHeld(o)||!o->memif.prepared)return FALSE;
  if(mt8167_hfp_memif_irq(&o->memif,&serviced)){(void)mt8167_hfp_memif_stop_registers(&o->memif);KeInsertQueueDpc(&o->dpc,NULL,NULL);return FALSE;}return serviced?TRUE:FALSE;}
-static int Prepare(PVOID c,unsigned g,unsigned rate,unsigned channels,unsigned bits)
+static int PrepareLocked(PVOID c,unsigned g,unsigned rate,unsigned channels,unsigned bits)
 {
  Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;if(SbLive(c,g)!=1||rate!=8000||channels!=1||bits!=16)return -1;
  for(ULONG d=0;d<2;d++)if(!NT_SUCCESS(AllocateBuffer(o,PAGE_SIZE,&o->fallback[d])))return -2;
@@ -176,11 +178,11 @@ static int Prepare(PVOID c,unsigned g,unsigned rate,unsigned channels,unsigned b
 }
 static BOOLEAN StartSync(PVOID c){Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;return mt8167_hfp_memif_start(&o->memif)==0;}
 static BOOLEAN StopSync(PVOID c){Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;return mt8167_hfp_memif_stop_registers(&o->memif)==0;}
-static int Start(PVOID c,unsigned g)
+static int StartLocked(PVOID c,unsigned g)
 {Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;if(SbLive(c,g)!=1||!o->interrupt)return -1;
  for(ULONG d=0;d<2;d++)o->fallback[d].exposed=TRUE;
  return KeSynchronizeExecution(o->interrupt,StartSync,o)?0:-2;}
-static int Stop(PVOID c,unsigned g)
+static int StopLocked(PVOID c,unsigned g)
 {
  Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;if(SbLive(c,g)!=1)return -1;
  /* Block NEW position callbacks and wait for ones holding PKINTERRUPT before
@@ -200,10 +202,28 @@ static int Stop(PVOID c,unsigned g)
  if(!o->memif.prepared)return 0;
  return mt8167_hfp_memif_restore(&o->memif)?-2:0;
 }
-static int Release(PVOID c,unsigned g)
+static int ReleaseLocked(PVOID c,unsigned g)
 {Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;if(SbLive(c,g)!=1||o->memif.prepared||o->interrupt)return -1;
  NTSTATUS s=o->parent.Release(o->parent.Header.Context,g);if(!NT_SUCCESS(s))return -2;o->clockHeld=FALSE;
  s=o->controller.Release(o->controller.context,o->comboGeneration);if(!NT_SUCCESS(s))return -2;o->comboHeld=FALSE;return 0;}
+/* The BT session serializes its own stream calls, but does not exclude Audio
+ * fault/power work. All state-changing sideband calls share the Audio gate. */
+static int Acquire(PVOID c,unsigned r,unsigned n,unsigned bits,unsigned *g)
+{Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+ Lock(o);int result=o->closed||o->failure?-1:AcquireLocked(c,r,n,bits,g);Unlock(o);return result;}
+static int Prepare(PVOID c,unsigned g,unsigned r,unsigned n,unsigned bits)
+{Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+ Lock(o);int result=o->closed||o->failure?-1:PrepareLocked(c,g,r,n,bits);Unlock(o);return result;}
+static int Start(PVOID c,unsigned g)
+{Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+ Lock(o);int result=o->closed||o->failure?-1:StartLocked(c,g);Unlock(o);return result;}
+static int Stop(PVOID c,unsigned g)
+{Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+ Lock(o);int result=StopLocked(c,g);Unlock(o);return result;}
+static int Release(PVOID c,unsigned g)
+{Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
+ Lock(o);int result=ReleaseLocked(c,g);Unlock(o);return result;}
+
 struct Retire {Mt8167HfpOwner *o;PIO_WORKITEM work;PWORKER_THREAD_ROUTINE cleanup;PVOID context;};
 static VOID RetireWork(PDEVICE_OBJECT,PVOID c)
 {Retire *r=(Retire *)c;Mt8167HfpOwner *o=r->o;
@@ -233,13 +253,21 @@ static NTSTATUS Query(PDEVICE_OBJECT pdo,A04_SHARED_HFP_INTERFACE *out)
 NTSTATUS Mt8167HfpStart(const Mt8167HfpResources *r,Mt8167HfpOwner **out)
 {
  if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;
- if(!r||!r->fdo||!r->pdo||!r->resources||!r->afe||!r->adapter||!r->reference||!r->release||!r->vector||!r->affinity||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ if(!r||!r->fdo||!r->pdo||!r->resources||!r->afe||!r->adapter||!r->reference||!r->release||!r->vector||!r->affinity||!r->adapter->DmaOperations||
+    !r->adapter->DmaOperations->AllocateCommonBuffer||!r->adapter->DmaOperations->FreeCommonBuffer||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  Mt8167HfpOwner *o=(Mt8167HfpOwner *)ExAllocatePoolWithTag(NonPagedPool,sizeof(*o),TAG);if(!o)return STATUS_INSUFFICIENT_RESOURCES;
  RtlZeroMemory(o,sizeof(*o));o->r=*r;o->refs=1;r->reference(r->owner);ObReferenceObject(r->fdo);KeInitializeMutex(&o->mutex,0);KeInitializeDpc(&o->dpc,FaultDpc,o);
  o->finalWork=IoAllocateWorkItem(r->fdo);
  NTSTATUS status=o->finalWork?Query(r->pdo,&o->parent):STATUS_INSUFFICIENT_RESOURCES;if(!NT_SUCCESS(status))goto failed;
- if(o->parent.Header.Size!=sizeof(o->parent)||o->parent.Header.Version!=1||!o->parent.GetController||!o->parent.VerifyDmaQuiescent){status=STATUS_NOT_SUPPORTED;goto failed;}
+ if(o->parent.Header.Size!=sizeof(o->parent)||o->parent.Header.Version!=A04_SHARED_HFP_VERSION||
+    !o->parent.Header.InterfaceReference||!o->parent.Header.InterfaceDereference||
+    !o->parent.Acquire||!o->parent.Live||!o->parent.Pins||!o->parent.Release||
+    !o->parent.GetController||!o->parent.VerifyDmaQuiescent){status=STATUS_NOT_SUPPORTED;goto failed;}
  status=o->parent.GetController(o->parent.Header.Context,&o->controller);if(!NT_SUCCESS(status))goto failed;
+ if(o->controller.size!=sizeof(o->controller)||o->controller.version!=1||
+    !o->controller.context||!o->controller.controller||!o->controller.Reference||!o->controller.Dereference||
+    !o->controller.Acquire||!o->controller.Live||!o->controller.Release||
+    !o->controller.MatchHfpTarget||!o->controller.ValidatePcm||!o->controller.CodecLatency){status=STATUS_NOT_SUPPORTED;goto failed;}
  o->faultWork=IoAllocateWorkItem(r->fdo);if(!o->faultWork){status=STATUS_INSUFFICIENT_RESOURCES;goto failed;}
  o->provider.size=sizeof(o->provider);o->provider.version=2;o->provider.context=o;
  o->provider.reference=Reference;o->provider.dereference=Dereference;o->provider.match_hfp_target=Match;o->provider.validate_pcm=Validate;
@@ -252,12 +280,17 @@ NTSTATUS Mt8167HfpStart(const Mt8167HfpResources *r,Mt8167HfpOwner **out)
  failed:Dereference(o);return status;
 }
 BOOLEAN Mt8167HfpCanSuspend(Mt8167HfpOwner *o)
-{return o&&!o->clockHeld&&!o->comboHeld&&!o->interrupt&&!o->failure;}
+{if(!o||KeGetCurrentIrql()!=PASSIVE_LEVEL)return FALSE;Lock(o);
+ BOOLEAN quiescent=!o->clockHeld&&!o->comboHeld&&!o->interrupt&&!o->failure;
+ Unlock(o);return quiescent;}
 NTSTATUS Mt8167HfpStop(Mt8167HfpOwner *o)
 {
  if(!o||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  NTSTATUS status=o->pnp?Mt6630HfpPnpStop(o->pnp):STATUS_SUCCESS;if(!NT_SUCCESS(status))return status;o->pnp=NULL;
  InterlockedExchange(&o->closed,1);if(o->clockHeld||o->comboHeld||o->interrupt)return STATUS_DEVICE_BUSY;
- for(ULONG d=0;d<2;d++)if(o->client[d].mdl||o->fallback[d].mdl)return STATUS_DEVICE_BUSY;
+ for(ULONG d=0;d<2;d++)if(o->client[d].exposed||o->fallback[d].mdl)return STATUS_DEVICE_BUSY;
+ /* KS handles may retain unexposed/drained client MDLs after unregister. The
+  * session's real provider Reference pins this owner until free_drained and
+  * final Release. Do not require handle disappearance to complete PnP Stop. */
  Dereference(o);return STATUS_SUCCESS;
 }
