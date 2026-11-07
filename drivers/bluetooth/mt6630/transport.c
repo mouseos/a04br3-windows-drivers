@@ -24,9 +24,44 @@ static int own(struct a04_bt_transport *b)
  }
  return fail(b,-2);
 }
+/* Bluetooth Core HCI events: Synchronous Connection Complete (0x2c),
+ * Changed (0x2d), Disconnection Complete (0x05), and successful HCI Reset.
+ * No BD_ADDR bytes are retained or compared. Command Status never connects. */
+static int link_event(struct a04_bt_transport *b,const uint8_t *p,unsigned n)
+{
+ struct a04_bt_sco_state *s=&b->sco;unsigned handle;
+ if(n<2u||n!=2u+p[1])return fail(b,-5);
+ if(p[0]==0x2c){
+  if(n!=19u)return fail(b,-5);
+  s->events++;s->status=p[2];
+  if(p[2]){s->failures++;return 0;}
+  handle=a04_wmt_le16(p+3);
+  if(handle>0x0effu||(p[11]!=0&&p[11]!=2)||p[18]>3||(s->active&&s->handle!=handle)){
+   s->uncertain=1;return 0; /* no invented proof for an untracked/invalid link */
+  }
+  s->handle=(uint16_t)handle;s->link_type=p[11];s->interval=p[12];s->window=p[13];
+  s->rx_bytes=(uint16_t)a04_wmt_le16(p+14);s->tx_bytes=(uint16_t)a04_wmt_le16(p+16);
+  s->air_mode=p[18];s->active=1;s->connections++;
+ }else if(p[0]==0x2d){
+  if(n!=11u)return fail(b,-5);
+  s->events++;s->status=p[2];
+  if(p[2]){s->failures++;return 0;}
+  if(!s->active||s->handle!=a04_wmt_le16(p+3)){s->uncertain=1;return 0;}
+  s->interval=p[5];s->window=p[6];s->rx_bytes=(uint16_t)a04_wmt_le16(p+7);s->tx_bytes=(uint16_t)a04_wmt_le16(p+9);
+ }else if(p[0]==5){
+  if(n!=6u)return fail(b,-5);
+  if(!p[2]&&s->active&&s->handle==a04_wmt_le16(p+3)){
+   s->active=0;s->handle=0;s->disconnections++;
+  }
+ }else if(p[0]==0x0e&&n>=6u&&a04_wmt_le16(p+3)==0x0c03&&!p[5]){
+  s->active=0;s->handle=0;s->uncertain=0;s->resets++;b->pcm_command_applied=0;
+ }
+ return 0;
+}
 static int hci_packet(struct a04_bt_transport *b)
 {
  unsigned n=b->hci_expected-1,type=b->hci[0];const uint8_t *p=b->hci+1;
+ if(type==4&&link_event(b,p,n))return b->failed;
  if(type==4&&b->awaiting){
   /* Command Complete: command credits, opcode, return parameters. A matching
    * Command Status is only acceptance, never completion of initialization. */
@@ -81,6 +116,7 @@ int a04_bt_poll(struct a04_bt_transport *b)
  if(!valid(b))return -1;
  if(own(b))return b->failed;
  if(a04_sdio_read32(&b->bridge->transport,2,0x10,&status))return fail(b,-1);
+ b->last_rx_empty=!(status&2u);
  if(status&0xff80)return fail(b,-7);
  unsigned done=(status>>4)&7;
  if(done){if(done!=1||!b->pending)return fail(b,-8);b->pending=0;}
@@ -112,6 +148,7 @@ static int send(struct a04_bt_transport *b,unsigned task,const uint8_t *p,unsign
  unsigned written,logical=n+10,fifo=(logical+3)&~3u,bus=fifo>512?(fifo+511)&~511u:fifo;
  if(!valid(b)||!p||!n||n>A04_STP_MAX_PAYLOAD||fifo>2080)return -1;
  if(idle(b))return b->failed;
+ b->queue_stopped=0;
  memset(b->tx,0,bus);a04_wmt_put16(b->tx,logical);
  if(a04_stp_encode(A04_STP_SDIO,task,0,0,0,p,n,b->tx+4,sizeof(b->tx)-4,&written))return -1;
  b->pending=fifo;
@@ -183,7 +220,11 @@ int a04_bt_initialize(struct a04_bt_transport *b,const uint8_t nv[36])
  e=function(b,1);
  if(!e)e=command(b,0xfc1a,addr,6);
  for(volatile unsigned char *v=addr;v<addr+6;v++)*v=0;
- if(e||command(b,0xfc72,nv+8,4)||command(b,0xfc79,nv+12,6)||
+ if(e||command(b,0xfc72,nv+8,4))return fail(b,-10);
+ /* Vendor0c756f4 GORMcmd_HCC_Set_PCM copies exactly these dynamic four
+  * bytes. Its code defines no MT6630 bit semantics or codec latency. */
+ b->pcm_command_applied=1;
+ if(command(b,0xfc79,nv+12,6)||
     command(b,0xfc93,nv+27,3)||command(b,0xfc7a,nv+18,7)||command(b,0xfc22,nv+30,6)||
     command(b,0x1001,NULL,0))return fail(b,-10);
  if(b->reply_length!=9)return fail(b,-11);
@@ -192,4 +233,19 @@ int a04_bt_initialize(struct a04_bt_transport *b,const uint8_t nv[36])
  b->version.lmp_subversion=(uint16_t)a04_wmt_le16(b->reply+7);b->version_valid=1;b->ready=1;return 0;
 }
 int a04_bt_disable(struct a04_bt_transport *b)
-{if(!valid(b))return -1;b->ready=0;return b->enabled?function(b,0):idle(b);}
+{
+ uint64_t started;int e;
+ if(!valid(b))return -1;
+ b->ready=0;b->queue_stopped=0;
+ e=b->enabled?function(b,0):idle(b);if(e)return e;
+ started=b->now_us(b->context);
+ for(unsigned i=0;i<1000;i++){
+  if(a04_bt_poll(b))return b->failed;
+  if(b->now_us(b->context)-started>=1000000u)return fail(b,-2);
+  if(!b->enabled&&!b->pending&&b->last_rx_empty&&!b->hci_used&&!b->wmt_used&&!b->awaiting&&!b->func_wait){
+   b->queue_stopped=1;b->pcm_command_applied=0;return 0;
+  }
+  b->bridge->io.delay(b->bridge->io.ctx,1000);
+ }
+ return fail(b,-2);
+}

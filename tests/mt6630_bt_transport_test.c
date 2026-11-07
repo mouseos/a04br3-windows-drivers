@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "../drivers/bluetooth/mt6630/transport.h"
-struct fixture {struct a04_wmt_bridge bridge;uint8_t response[2560],nvram[36];unsigned length,step,received;uint64_t now;int reject;};
+struct fixture {struct a04_wmt_bridge bridge;uint8_t response[2560],nvram[36];unsigned length,step,received,tx_done;uint64_t now;int reject;};
 static struct fixture f;
 static struct a04_bt_transport bt;
 static int io_command(void *p,unsigned op,uint32_t arg,unsigned response,uint32_t *out)
@@ -21,7 +21,7 @@ static int transfer(void *context,uint32_t arg,void *buffer,unsigned length)
  assert(((arg>>28)&7)==2);
  if(!(arg>>31)){
   if(addr==4){if(s->reject==3)s->now+=600001; a04_wmt_put32(p,0x100);return 0;}
-  if(addr==0x10){a04_wmt_put32(p,s->length?(s->length<<16)|0x12:0);return 0;}
+  if(addr==0x10){a04_wmt_put32(p,(s->length?(s->length<<16)|2u:0)|(s->tx_done?0x10u:0));s->tx_done=0;return 0;}
   assert(addr==0x1c&&s->length);memcpy(p,s->response,length);s->length=0;return 0;
  }
  assert(addr==0x18);struct a04_stp_frame stp;
@@ -45,7 +45,7 @@ static int transfer(void *context,uint32_t arg,void *buffer,unsigned length)
   off+=frame(s->response+off,0,reply,2);off=(off+3)&~3u;
   off+=frame(s->response+off,0,reply+2,n-2);
  }
- a04_wmt_put16(s->response,off);s->length=off;return 0;
+ a04_wmt_put16(s->response,off);s->length=off;s->tx_done=1;return 0;
 }
 static int receive(void *context,unsigned type,const uint8_t *p,unsigned length)
 {struct fixture *s=context;(void)type;(void)p;(void)length;s->received++;return 0;}
@@ -57,12 +57,26 @@ static void init(void)
  f.bridge.transport.io=&f.bridge.io;f.bridge.transport.enabled=4;f.bridge.transport.transfer=transfer;
  assert(!a04_bt_open(&bt,&f.bridge,&f,receive,now_us));
 }
+static void inject(const uint8_t *event,unsigned bytes)
+{
+ memset(f.response,0,sizeof(f.response));unsigned off=4+frame(f.response+4,0,event,bytes);
+ a04_wmt_put16(f.response,off);f.length=off;assert(!a04_bt_poll(&bt));
+}
 int main(void)
 {
  init();assert(!a04_bt_initialize(&bt,f.nvram));assert(bt.ready&&f.step==7&&!f.received);
  assert(bt.version_sent&&bt.version_complete&&bt.version_status==0&&bt.version_length==9&&bt.version_valid);
  assert(bt.version.hci_revision==0x1234&&bt.version.manufacturer==0x46&&bt.version.lmp_subversion==0x5678);
- assert(!a04_bt_disable(&bt)&&!bt.enabled&&!bt.ready&&bt.version_valid);
+ assert(bt.pcm_command_applied&&!bt.queue_stopped);
+ /* Request acceptance is not a connection; only actual matching HCI events
+  * update the private state. No address from this fixture is logged. */
+ const uint8_t accepted[]={4,0x0f,4,0,1,0x28,4};inject(accepted,sizeof(accepted));assert(!bt.sco.active);
+ const uint8_t connected[]={4,0x2c,17,0,0x40,0,0,0,0,0,0,0,2,6,2,60,0,60,0,2};
+ inject(connected,sizeof(connected));assert(bt.sco.active&&bt.sco.connections==1&&bt.sco.air_mode==2&&bt.sco.rx_bytes==60);
+ const uint8_t disconnected[]={4,5,4,0,0x40,0,0x13};inject(disconnected,sizeof(disconnected));assert(!bt.sco.active&&bt.sco.disconnections==1);
+ assert(!a04_bt_disable(&bt)&&!bt.enabled&&!bt.ready&&bt.version_valid&&bt.queue_stopped&&!bt.pcm_command_applied);
+ init();assert(!a04_bt_initialize(&bt,f.nvram));bt.hci_used=1;
+ assert(a04_bt_disable(&bt)==-2&&!bt.queue_stopped); /* partial packet is NOT a drained queue */
  init();f.reject=1;assert(a04_bt_initialize(&bt,f.nvram)&&!bt.ready&&bt.failed&&!bt.version_sent);
  init();f.reject=2;assert(a04_bt_initialize(&bt,f.nvram)&&!bt.version_valid&&bt.version_sent&&bt.version_complete&&bt.version_status==0x0c);
  init();f.reject=3;assert(a04_bt_initialize(&bt,f.nvram)&&bt.failed==-2&&!bt.ready&&!bt.version_sent);

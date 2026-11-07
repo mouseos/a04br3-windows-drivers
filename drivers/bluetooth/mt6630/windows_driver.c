@@ -356,9 +356,12 @@ NTSTATUS BtStop(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
  BT_DEVICE *c=BtContext(device);NTSTATUS status=STATUS_SUCCESS;UNREFERENCED_PARAMETER(target);
  lock(c);
  status=controller_unregister(c);if(!NT_SUCCESS(status)){unlock(c);return status;}
- c->running=0;unlock(c);WdfTimerStop(c->timer,TRUE);lock(c);
+ c->running=0;unlock(c);WdfTimerStop(c->timer,TRUE);
+ /* Admission is closed under the FDO lock before joining the timer/manual
+  * queues. Join outside that lock; no retained READ may outlive shutdown.
+  * This proves WDF request rundown only, never AFE bus-master DMA drain. */
+ WdfIoQueuePurgeSynchronously(c->reads[0]);WdfIoQueuePurgeSynchronously(c->reads[1]);lock(c);
  /* DDI version negotiation belongs to this PDO lifetime, not each D0 epoch. */
- WdfIoQueuePurge(c->reads[0],NULL,NULL);WdfIoQueuePurge(c->reads[1],NULL,NULL);
  if(c->leased&&!c->uncertain&&!c->removed&&a04_wifi_life_stop(&c->life))c->uncertain=1;
  if(c->irq.interrupt&&a04_windows_irq_remove(&c->irq))c->uncertain=1;
  if(c->uncertain){if(c->host.base)a04_windows_msdc2_unmap(&c->host);status=STATUS_IO_DEVICE_ERROR;}
