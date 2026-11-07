@@ -25,10 +25,11 @@ D3D11 API FL9_1→10Level9/D3D9 DDIを最初の候補とする。FL10/11/11.1全
 機能を先に作るという要求ではない。ただしFL9_1を名乗るには公式の最小capsを
 実装する必要があり、現finite flat profileはその要件を満たしていない。
 
-現capsはPixelShaderVersion=0、MaxTexture=800x600、MaxPrimitiveCount=1、
+c1e21ca capsはPixelShaderVersion=0、MaxTexture=800x600、MaxPrimitiveCount=1、
 Gouraud/texture/filter/depth/stencil未広告。公式FL9_1はPS2.0、2048 texture、
 65535 primitive、65534 index、8 texture stages、1 RT、Gouraud、mipmap/cubemap、
 point/linear、wrap/mirror/clamp、複数blend、depth/stencil等を要求する。
+88624ffは実逐次triangle組立でMaxPrimitiveCount=65535/MaxVertexIndex=65534/1RTを実装したが、残る要件を満たしていない。
 一般SM2→PCO compilerの存在はnative draw/stateの対応を証明しない。
 E d13ce50のdraw prepareは有限pass-through VS＋constant FS allowlistであり、
 一般compiler出力、texture/depth、blend、複数primitiveに対応したとは扱わない。

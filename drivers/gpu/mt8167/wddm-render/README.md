@@ -1,6 +1,8 @@
 # PowerVR GE8300 WDDM render sidecar（既定無効）
 
-Windows RT 8.1 / ARM32 / WDDM 1.3向けの新規DDI実装部品です。run31のprivate GPU Clear成功を標準D3D成功とは扱いません。現在の成果物はKMD/UMDのstatic libraryと標準D3D clientで、インストール可能なrender miniport SYS / UMD DLLではありません。既存DOD、GPU provider、vendor_m1_11、shader/triangle/runtime、媒体生成には変更を加えません。
+Windows RT 8.1 / ARM32向けの既定オフrender candidateです。H c1e21caのKMD/UMDとE d13ce50の実native factoryを最終SYS/DLLへリンクし、8472244のpackage recipeでINF 0.0.3.1、既存FW5c1、CATと合わせ署名Valid・3件CAT membershipを確認しました。これは**source結合と署名の成果物**です。標準D3D runtimeでの列挙・CreateDevice・描画、WDDM必須caps、NoDMA停止は未qualifiedで、既存KMDF baselineを置換する実機候補にはまだ不適格です。過去の経過記録よりこの段落と[RUNTIME-ENTRY.md](RUNTIME-ENTRY.md)を優先します。
+
+標準entryは出力なしadapterの列挙を公式に保証するDXGIを基準とします。D3D9 flat clientのordinal/LUID一致はrender-only選択を保証しません。現在の有限flat profileはFL9_1に必要なPS2.0、Gouraud、texture/filter/depth等を実装していないため、clientだけD3D11 FL9_1へ切り替えても完成にはなりません。未対応capsを成功として広告しません。DOD/GPU provider/vendor_m1_11/main媒体4fileには変更を加えていません。
 
 ## 実装した経路
 
@@ -158,3 +160,30 @@ Clear→DrawPrimitiveUP(flat triangle)→GetRenderTargetData/LockRectを一度�
 - https://learn.microsoft.com/en-us/windows/win32/direct3d9/processing-vertex-data
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dumddi/nc-d3dumddi-pfnd3dddi_drawprimitive
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/display/required-direct3d-9-capabilities
+
+
+## 固定結合成果物と増分recipe（後続追記）
+
+* H runtime c1e21ca＋E native d13ce50の署名済package: `windows-rt-wddm-signed-8472244`。
+  package source 8472244、INF `11/06/2026,0.0.3.1`、実runtimeの出自はlinked-manifestに別記。
+* H 88624ff/3e3023eは実list/strip/fanを最大65535 primitive/65534 indexへ拡張。
+  各triangleを実RenderCb→同vertex allocationのLock fenceで直列化する。
+  fanのprovoking vertex、stripの交互winding、flat colorのalphaを維持。
+  新frontend一TUだけWDK増分compile/archive・PCO/staticCRT最終DLL relink済み。
+  この増分でFL9_1全capsを満たしたとはしない。
+* `build-frontend-incremental-wdk81.ps1`: manifest/source/旧archive hashを検証し、
+  KMD/entry/変更なしUMDを保持してfrontend一TUだけcompile。
+* `build-client-wdk81.ps1`: SYS/UMDを再compileせず既存DXGI clientだけcompile/link。
+  schema2はDXGI output count、同LUIDのD3D9 ordinal数、OSが返した
+  `D3DKMT_ADAPTERTYPE`のraw/RenderSupported/DisplaySupported/SoftwareDevice/PostDeviceを記録。
+  KMT補助inventoryの欠落は実D3D11CreateDeviceのHRESULTと分離する。
+* `compiler/link-pco-arm32.py --module-directory <verified-module-dir>`:
+  実OpenAdapter entry＋実frontend＋PCO/NIR/util/support＋MS ARM staticCRTを最終DLLへlink。
+  元のcompiler-only modeも維持。runtime C/Hは厳密照合し、GitのCRLF差のみ許容。
+* `package-linked-wdk81.ps1 -EnableCandidate`: linked-manifestのSHA、unsigned SYS/DLLのSHA、
+  FW5c1を検証して固定source INFを使用。既存BCBF identityでSYS/DLL/CAT署名、
+  最終ValidとCAT membershipを確認し、unsigned/signed hashを別々に保存。
+  install/reboot/実機アクセスは行わない。
+
+初回署名は実D3D9/FL9_1 profile qualificationの代替ではありません。
+実機flash前の不足はRUNTIME-ENTRY.mdに明記しています。
