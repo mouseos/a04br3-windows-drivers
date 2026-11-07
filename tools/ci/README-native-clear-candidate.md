@@ -102,3 +102,5 @@ hostでは実producer/mapper/publisherを使い1frameと16frames（3D ring wrap�
 `native_triangle_vdm`はcapture05のsolid/texture双方で共通の84bytes=21wordsをsourceのROGUE VDM field定義から生成する。PPP prefix/draw/terminateの40bit VA、PDS実行heap内data/code offsetを引数として再生成し、捕捉VAやraw task templateを埋め込まない。捕捉した両jobと全21wordsが一致した。CPU constructorのみであり、Windows publish gateやWDK source列には接続しない。
 
 prefix PPP48bytes、draw PPP104/108bytes、terminate PPP12bytes、PDS/USC/vertex/texture backingの完全性は別の契約。prefix PPPはcapture05のGPU VA0x65c0001000にrange/PMRはあるがCPU mapping無しで未取得。VDMに含まれる最初の2-index LINE_LIST taskのshader役割も未確定。これらをzeroや仮shaderで埋めた完全packetは作らない。取得済みdraw PPPのpresence bitsとPDS shader/texture/uniform pointersを追い、prefix生成元のGLES init functionをREAで確認してから完全producerへ進める。
+
+`native_triangle_texture`はcapture05の1x1・NEAREST・CLAMP_TO_EDGE U/V profileのsampler16bytes、image16bytes、RGBA texel4bytesをsource fieldから生成する。imageのtexaddrは引数VAから40bit検査後に再encodeする。capture05のPDS texture-state dataの2pointerはsampler→imageの順で、imageが参照するtexel実mappingの4bytesは33 99 cc ffだった。生成器はsampler/image/texel全36bytesで捕捉と一致した。sourceには捕捉VAを埋め込まない。PDS/USCやGPU-only prefixを代替しないため、これだけでtexture jobをpublishする経路はない。
