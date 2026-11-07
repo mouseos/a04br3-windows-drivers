@@ -5,7 +5,7 @@ Signature="$WINDOWS NT$"
 Class=System
 ClassGuid={4D36E97D-E325-11CE-BFC1-08002BE10318}
 Provider=%Provider%
-DriverVer=11/06/2026,2026.11.7.1002
+DriverVer=11/06/2026,2026.11.7.2001
 CatalogFile=shared-parent.cat
 [Manufacturer]
 %Provider%=Models,NTARM

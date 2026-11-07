@@ -125,7 +125,7 @@ audio SYS、旧Direct KS client、USB childは再buildしない。
 
 ```powershell
 .\tools\ci\build-mt6630-bluetooth.ps1 -ReuseParentDirectory `
-  'C:\mt6630-bluetooth-c715ad2\src\build\mt6630-bluetooth\audio-usb\a04-msdc-parent-probe'
+  'C:\mt6630-bluetooth-c715ad2\src\build\mt6630-bluetooth-7999b7b\audio-usb\a04-msdc-parent-probe'
 ```
 
 再利用元は同一checkout内の既存directoryに限定し、固定名のSYS／INF／manifest.jsonを読む。
@@ -162,7 +162,7 @@ BT ParentOnlyは固定source
 hardware IDは既存`ACPI\BEN0001`、表示名は実ICの
 `MediaTek MT8167 Shared Resource Controller`、既存サービス`Mt8167Shared`／
 SYS名／KMDF1.13は維持する。DriverVerは固定
-`11/06/2026,2026.11.7.1002`。同日付のnormal `2026.11.6.1001`より版を上げる。
+`11/06/2026,2026.11.7.2001`。同日付のEngine親 `2026.11.7.1003`（normal `2026.11.6.1001`も含む）より版を上げる。
 Bluetooth用排他profileであり、WLANとの同時使用を意味しない。
 EnginePcm／audio v11の新cache親との組合せはRamanの後続source統合対象。
 
@@ -171,7 +171,7 @@ clean checkoutで次を実行する。親SYS、BT SYS、audio、KS client、USB�
 
 ```powershell
 .\tools\bluetooth\prepare-mt6630-parent-profile.ps1 -ReuseParentDirectory `
-  'C:\mt6630-bluetooth-c715ad2\src\build\mt6630-bluetooth\audio-usb\a04-msdc-parent-probe'
+  'C:\mt6630-bluetooth-c715ad2\src\build\mt6630-bluetooth-7999b7b\audio-usb\a04-msdc-parent-probe'
 ```
 
 既定出力はcheckout内`build/mt6630-parent-profile/a04-msdc-parent-probe/`。

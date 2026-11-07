@@ -52,6 +52,7 @@ function Write-A04ParentArtifact {
     $infText=Get-Content -LiteralPath $fixedInf -Raw
     if($infText -notmatch '(?m)^DriverVer=([^\r\n]+)'){throw 'Profile INF DriverVer missing'}
     $driverVer=$Matches[1]
+    if($BluetoothProfile -and $driverVer -cne '11/06/2026,2026.11.7.2001'){throw 'Unexpected fixed Bluetooth profile DriverVer'}
     if($BluetoothProfile -and ($Flags['A04_SHARED_BT_PROFILE'] -ne '1' -or $Flags['A04_SHARED_WIFI_RUNTIME'] -ne '1')){throw 'Bluetooth INF requires the exclusive Bluetooth parent flags'}
     $parentCommit=$commit;$reused=$false;$inputManifestHash=$null;$archive=$null
     if($ReuseDirectory){

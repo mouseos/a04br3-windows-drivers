@@ -79,7 +79,7 @@ reset/PMU信号の受理、IRQ rundownを経て親へ返却する（物理停止
 LLVM clang/lld-link、PowerShell、Git。BTの親buildはParentOnlyで、clang++や音声clientを要求しない。
 全TUは既存ARM GS helper回避と同じ `-fno-stack-protector`。
 既定出力はcheckout内 `build/mt6630-bluetooth`、TEMP/TMPもその配下。
-BT ParentOnlyの親INFは正式profile `mt8167-shared-bluetooth.inf`、固定DriverVer `11/06/2026,2026.11.7.1002`。
+BT ParentOnlyの親INFは正式profile `mt8167-shared-bluetooth.inf`、固定DriverVer `11/06/2026,2026.11.7.2001`。
 既存親SYSからINFだけを更新する `tools/bluetooth/prepare-mt6630-parent-profile.ps1` も使用できる。
 署名/CAT作成・配置は主担当。leafが親をbuildしない場合は既存Wi-Fi親をそのまま
 代用できない。USB-only親も使用しない。SYS/INFの表示IC名はMT6630。
