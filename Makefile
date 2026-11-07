@@ -942,3 +942,17 @@ build/gpu_native_owner_allocation_test: tests/gpu_native_owner_allocation_test.c
 .PHONY: test-gpu-native-owner-allocation
 test-gpu-native-owner-allocation: build/gpu_native_owner_allocation_test
 	./build/gpu_native_owner_allocation_test
+
+build/gpu_core_reset_hold_test: tests/gpu_core_reset_hold_test.c drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueCoreResetHold.h drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueStop.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
+.PHONY: test-gpu-core-reset-hold
+test-gpu-core-reset-hold: build/gpu_core_reset_hold_test
+	./build/gpu_core_reset_hold_test
+
+build/gpu_native_irq_off_drain_test: tests/gpu_native_irq_off_drain_test.c drivers/gpu/mt8167/vendor_m1_11/native_owner_irq.c drivers/gpu/mt8167/vendor_m1_11/native_owner_irq.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -DA04_TEST_REGISTER_IO -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
+.PHONY: test-gpu-native-irq-off-drain
+test-gpu-native-irq-off-drain: build/gpu_native_irq_off_drain_test
+	./build/gpu_native_irq_off_drain_test

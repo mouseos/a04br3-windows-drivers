@@ -230,3 +230,18 @@ host試験はsource-linked H resolver doubleで正常、origin不一致、unrele
 成功結果の保持を確認。HのSEH pin実行/GPU/WDKの成功とは区別する。
 Hのfixed commitは受領済みであり、以後はdraft待ちを阻害条件にしない。
 factory/controls/rundownの実装担当は引き続き当方。
+
+
+## GPU0 core停止候補と実IRQ off-drain
+
+`NATIVE_CORE_STOP_REVIEW.md`に同版sourceと限界を記録した。
+`a04_native_irq_begin_off_drain`→既存poweroff transport→
+`a04_native_irq_close_off`は、実source ISR sampleのFW countとstable OFF/empty queuesを
+実Dxgk lockで照合する。drain中は実ISRがempty FWCCBだけrearmし、GEO completionを出さない。
+source mask/close後に`a04_vendor_m1_11_windows_core_hold_reset`でreset前idle/
+flush-pending→GPU0 SOFT_RESET hold/readback→IRQ quietを確認するcandidateを追加。
+両方ともsource-based host modelの検証で、外部write completion/OS rundown/NoDMA proofは
+未確定。exposed/hardware_ownedをclearせず、GEO停止成功/capsへ翻訳しない。
+H resolver固定f492756は501083bで実bind transactionへ接続済み。
+ownerのsemanticはpacked-clearのみ。固定private triangle/texture producerは別であり、
+動的PCO VS/FS/vertex/constantを受けるABIは未実装。

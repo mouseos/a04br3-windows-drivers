@@ -316,6 +316,7 @@ BOOLEAN a04_vendor_native_owner_interrupt_event(struct a04_vendor_native_cold *n
     if(!a04_native_irq_claim(q,&receipt))return FALSE;
     out->claimed=TRUE;out->irq_serial=receipt.serial;out->status=receipt.fault;
     if(!NT_SUCCESS(receipt.fault))goto poison;
+    if(q->draining)return TRUE; /* shutdown IRQ count only, never job completion */
     /* Pending receipts deliberately have job=epoch=generation=0. The outer
      * ISR may queue actual deferred service, never a DMA completion. */
     if(!c->visibility_armed || c->visibility_delivered || c->owner_irq!=q ||
