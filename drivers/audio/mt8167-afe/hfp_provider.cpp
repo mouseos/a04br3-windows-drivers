@@ -158,10 +158,31 @@ static NTSTATUS Description(PVOID c,PDEVICE_DESCRIPTION out)
 {Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;if(!out||o->closed||!o->r.adapter)return STATUS_DEVICE_NOT_READY;
  RtlZeroMemory(out,sizeof(*out));out->Version=DEVICE_DESCRIPTION_VERSION;out->Master=TRUE;out->Dma32BitAddresses=TRUE;out->InterfaceType=Internal;out->MaximumLength=65536;return STATUS_SUCCESS;}
 static NTSTATUS Latency(PVOID c,ULONG d,a04_bt_hfp_latency *out)
-{Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;UNREFERENCED_PARAMETER(o);UNREFERENCED_PARAMETER(d);UNREFERENCED_PARAMETER(out);
- /* AFE FIFO/transport latency needs a source-backed unit conversion. No zero
-  * latency success is fabricated; this property is not a capability advert. */
- return STATUS_NOT_SUPPORTED;}
+{
+ Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;A04_HFP_DMA_LATENCY dma={0};A04_HFP_CODEC_LATENCY codec={0};
+ if(!out||d>1||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ RtlZeroMemory(out,sizeof(*out));
+ if(o->closed||o->failure)return STATUS_DEVICE_NOT_READY;
+ if(!o->parent.QueryDmaLatency||!o->controller.CodecLatency)return STATUS_NOT_SUPPORTED;
+ NTSTATUS status=o->parent.QueryDmaLatency(o->parent.Header.Context,d,8000,1,16,&dma);
+ if(!NT_SUCCESS(status))return status;
+ const ULONG needed=A04_HFP_LATENCY_FIFO_VALID|A04_HFP_LATENCY_CHIPSET_VALID;
+ if(dma.valid!=needed)return STATUS_DATA_ERROR;
+ status=o->controller.CodecLatency(o->controller.context,d,&codec);if(!NT_SUCCESS(status))return status;
+ if(codec.valid!=A04_HFP_CODEC_LATENCY_VALID)return STATUS_DATA_ERROR;
+ /* Copy only completed real replies. No HCI-slot conversion, timing guess,
+  * default-zero success, extra fixed delay or PCM clock calculation. */
+ out->fifo=dma.fifo_bytes;out->chipset=dma.chipset_100ns;out->codec=codec.codec_100ns;return STATUS_SUCCESS;
+}
+static NTSTATUS CanUnbind(PVOID c)
+{
+ Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+ Lock(o);BOOLEAN idle=!o->failure&&!o->clockHeld&&!o->comboHeld&&!o->interrupt&&
+  !o->memif.prepared&&!o->memif.exposed;
+ for(ULONG d=0;d<2;d++)if(o->client[d].exposed||o->fallback[d].mdl)idle=FALSE;
+ Unlock(o);return idle?STATUS_SUCCESS:STATUS_DEVICE_BUSY;
+}
 static BOOLEAN StopSync(PVOID c);
 static VOID FaultWork(PDEVICE_OBJECT,PVOID c)
 {Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;Lock(o);
@@ -299,12 +320,12 @@ NTSTATUS Mt8167HfpStartWithController(const Mt8167HfpResources *r,const A04_HFP_
  if(o->controller.size!=sizeof(o->controller)||o->controller.version!=A04_SHARED_HFP_VERSION||
     !o->controller.context||!o->controller.controller||!o->controller.Reference||!o->controller.Dereference||
     !o->controller.Acquire||!o->controller.Live||!o->controller.Release||
-    !o->controller.MatchHfpTarget||!o->controller.ValidatePcm||!o->controller.CodecLatency||!o->parent.VerifyDmaQuiescent){status=STATUS_NOT_SUPPORTED;goto failed;}
+    !o->controller.MatchHfpTarget||!o->controller.ValidatePcm||!o->controller.CodecLatency||!o->parent.QueryDmaLatency||!o->parent.VerifyDmaQuiescent){status=STATUS_NOT_SUPPORTED;goto failed;}
  o->faultWork=IoAllocateWorkItem(r->fdo);if(!o->faultWork){status=STATUS_INSUFFICIENT_RESOURCES;goto failed;}
- o->provider.size=sizeof(o->provider);o->provider.version=2;o->provider.context=o;
+ o->provider.size=sizeof(o->provider);o->provider.version=A04_BT_HFP_PROVIDER_VERSION;o->provider.context=o;
  o->provider.reference=Reference;o->provider.dereference=Dereference;o->provider.match_hfp_target=Match;o->provider.validate_pcm=Validate;
  o->provider.allocate=Allocate;o->provider.buffer_live=BufferLive;o->provider.free_drained=Free;o->provider.set_pin_active=Active;
- o->provider.position=Position;o->provider.device_description=Description;o->provider.latency=Latency;o->provider.fault=Fault;o->provider.retire=RetireContext;
+ o->provider.position=Position;o->provider.device_description=Description;o->provider.latency=Latency;o->provider.fault=Fault;o->provider.retire=RetireContext;o->provider.can_unbind=CanUnbind;
  o->provider.sideband={o,Acquire,SbLive,SbRead,SbUpdate,Pins,Prepare,Start,Stop,Delay,Release};
  status=Mt6630ComboHfpAttach(o->controller.controller,r->fdo,r->resources,&o->provider,&o->pnp);
  if(!NT_SUCCESS(status)&&o->pnp){*out=o;return status;}

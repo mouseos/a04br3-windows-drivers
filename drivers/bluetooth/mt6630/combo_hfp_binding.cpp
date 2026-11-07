@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "combo_hfp_binding.h"
 #include "radio_binding.h"
+#include "provider_qualification.h"
 #define TAG 'bS6M'
 struct mt6630_combo_hfp_binding {
  struct a04_mt6630_sideband_interface radio;struct mt6630_hfp_pnp *pnp;ULONG generation;
@@ -24,6 +25,11 @@ NTSTATUS Mt6630ComboHfpAttach(PDEVICE_OBJECT radio,PDEVICE_OBJECT audio,PRESOURC
 {
  if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;
  if(!radio||!audio||!resources||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ /* No existing HFP arrival may publish endpoint factories before PCM and
+  * both directional latency replies have passed the same radio admission.
+  * Subscribe still precedes Bind/capability publication, avoiding missed
+  * first inbox HFP arrivals and requiring no already-connected peer. */
+ NTSTATUS qualification=a04_bt_hfp_qualified(p);if(!NT_SUCCESS(qualification))return qualification;
  auto b=(mt6630_combo_hfp_binding *)ExAllocatePoolWithTag(NonPagedPool,sizeof(mt6630_combo_hfp_binding),TAG);
  if(!b)return STATUS_INSUFFICIENT_RESOURCES;RtlZeroMemory(b,sizeof(*b));
  NTSTATUS s=Query(radio,&b->radio);if(!NT_SUCCESS(s)){ExFreePoolWithTag(b,TAG);return s;}

@@ -87,7 +87,7 @@ NTSTATUS a04_cp_begin(struct a04_checkpoint *c,ULONG channel,uint64_t parent)
  if(NT_SUCCESS(status)){
   struct a04_cp_record *r=c->record;r->magic=A04_CP_MAGIC;r->version=A04_CP_VERSION;r->bytes=sizeof(*r);r->channel=channel;
 #if defined(A04_WIFI_BT_BROKER) && A04_WIFI_BT_BROKER
- r->driver_build=1017;
+ r->driver_build=1018;
 #else
  r->driver_build=1013;
 #endif

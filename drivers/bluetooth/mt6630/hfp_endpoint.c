@@ -444,7 +444,7 @@ NTSTATUS a04_bt_hfp_attach(PDEVICE_OBJECT owner,PCUNICODE_STRING link,const stru
  struct a04_bt_hfp_session *s;PWSTR links=NULL,at;BOOLEAN found=FALSE;NTSTATUS status;
  if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;
  if(!owner||!link||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL||p->size!=sizeof(*p)||p->version!=A04_BT_HFP_PROVIDER_VERSION||
-    !p->reference||!p->dereference||!p->match_hfp_target||!p->validate_pcm||!p->allocate||!p->buffer_live||!p->free_drained||!p->set_pin_active||!p->position||!p->device_description||!p->latency||!p->fault||!p->retire||
+    !p->reference||!p->dereference||!p->match_hfp_target||!p->validate_pcm||!p->allocate||!p->buffer_live||!p->free_drained||!p->set_pin_active||!p->position||!p->device_description||!p->latency||!p->fault||!p->retire||!p->can_unbind||
     !p->sideband.acquire||!p->sideband.live||!p->sideband.read_afe||!p->sideband.update_afe||!p->sideband.pins||
     !p->sideband.prepare_dma||!p->sideband.start_dma||!p->sideband.stop_dma_drained||!p->sideband.delay_us||!p->sideband.release_quiescent)return STATUS_INVALID_PARAMETER;
  status=IoGetDeviceInterfaces(&GUID_DEVINTERFACE_BLUETOOTH_HFP_SCO_HCIBYPASS,NULL,0,&links);if(!NT_SUCCESS(status))return status;

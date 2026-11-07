@@ -6,7 +6,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define A04_BT_HFP_PROVIDER_VERSION 2u
+#define A04_BT_HFP_PROVIDER_VERSION 3u
 enum {A04_BT_HFP_SPEAKER=0,A04_BT_HFP_MIC=1};
 struct a04_bt_hfp_buffer {PMDL mdl;ULONG bytes,generation;MEMORY_CACHING_TYPE cache;};
 struct a04_bt_hfp_latency {ULONG fifo,chipset,codec;};
@@ -59,6 +59,10 @@ struct a04_bt_hfp_provider {
   * rundown. Pin module/context until callback returns; do not run inline.
   * One deferred cleanup attempt; failure is retained, not a retry loop. */
  NTSTATUS (*retire)(PVOID,PWORKER_THREAD_ROUTINE,PVOID);
+ /* PASSIVE, read-only owner rundown validation before unpublishing. Success
+  * means no active lease/IRQ/exposed ring; it does not manufacture bus drain.
+  * Exposed buffers must already have passed the independent drain callback. */
+ NTSTATUS (*can_unbind)(PVOID);
 };
 struct a04_bt_hfp_metadata {GUID input_category,output_category,container;BOOLEAN volume,nrec;ULONG volume_values_size;};
 struct a04_bt_hfp_session;

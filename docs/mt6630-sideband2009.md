@@ -84,3 +84,19 @@ scalar SCO_HOLD/RELEASEは同じbroker FileObjectと実NDIS workerで管理す�
 
 provider1017/client2010/Audio3002の最終SYSを増分生成する。親HFPはcompile-only、
 RTC/WiFi/GPU/USBの既存profile/媒体は変更しない。None/0、実機未投入を維持する。
+
+## controller2011・Audio3003：正常D0再結合と実latency転送
+
+正常なUnbindでも永久retiredにしていたため、次のD0で新しいAudio ownerをBindできなかった。
+provider v3のcan_unbindで実ownerのlease/IRQ/memif/露出ringが停止済みと確認した場合だけ
+参照と公開を解除し、新世代での再Bindを許す。失敗は旧参照/世代/公開状態を保持する。
+これは独立DMA drainの代替ではなく、その成功後のowner状態検査である。
+
+未使用だったcontroller CodecLatencyと、optional親の方向別QueryDmaLatencyをAudioへ接続。
+FIFO bytes/ChipsetDelay/CodecDelay(100ns)を変換せず転送し、各valid bitがない成功応答も拒否する。
+未知値や固定値を実装していない。現controller/親のcallbackはNULLなのでNone/0のまま。
+providerのPCM/方向別latency事前検査を、通知購読前と実Bind時に同じ共通実装で行う。
+既存HFP到着が資格検査前にfactoryへ進む窓を閉じ、購読→Bindの順序は維持する。
+
+private paired ABIはprovider3/親HFP3。旧ABIと混ぜない。provider1018/client2011/Audio3003のみを
+独立増分署名する。親はcompile-only、RTC/現在親profile/媒体/実機は変更しない。
