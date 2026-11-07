@@ -4,6 +4,7 @@
 #include "owner_abi.h"
 #define GEO_MAX_JOBS 32u
 struct geo_allocation {
+ struct geo_allocation *next;
  struct geo_surface_desc desc;
  uint64_t surface;
  uint32_t references,bound,poisoned;
@@ -16,6 +17,8 @@ struct geo_job {
 };
 struct geo_engine {
  struct geo_owner_ops owner;
+ struct geo_allocation *allocations;
+ uint32_t allocation_count;
  struct geo_job jobs[GEO_MAX_JOBS];
  uint32_t poisoned,submitted_ever,last_submitted,completed_ever,last_completed;
 };
@@ -35,6 +38,8 @@ int32_t geo_prepare_begin(struct geo_engine *,struct geo_allocation *,const stru
 int32_t geo_prepare_finish(struct geo_engine *,const struct geo_dma_ticket *,int32_t status,uint64_t owner_job);
 int32_t geo_cancel_prepared(struct geo_engine *,const struct geo_dma_ticket *);
 int32_t geo_submit(struct geo_engine *,const struct geo_dma_ticket *,uint32_t fence);
+/* Only after actual owner drain/reset proof; never reports aborted work complete. */
+int32_t geo_retire_after_owner_drain(struct geo_engine *);
 int32_t geo_complete(struct geo_engine *,uint64_t owner_job,uint32_t generation,int32_t status,uint32_t visibility,uint32_t *fence);
 #ifdef __cplusplus
 }

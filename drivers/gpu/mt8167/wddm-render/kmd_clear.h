@@ -11,7 +11,9 @@
 /* These are DDI implementation modules, not a DriverEntry that registers an
  * incomplete WDDM adapter. The full miniport owns synchronization/rundown,
  * querycaps, paging and real DIRQL ISR/DPC routing. */
+struct geo_owner_session;
 struct geo_kmd_adapter {
+ struct geo_owner_session *session;
  struct geo_engine engine;
  /* Must use the provider's real interrupt synchronization object. No manual
   * fabricated DIRQL and no sleeping callback at interrupt IRQL. */

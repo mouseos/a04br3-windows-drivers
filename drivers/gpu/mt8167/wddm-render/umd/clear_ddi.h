@@ -14,6 +14,9 @@
 struct geo_umd_resource;
 struct geo_umd_device {
  HANDLE runtime,context;
+ void *adapter,*frontend_private;
+ struct geo_umd_device *next;
+ UINT initialized;
  D3DDDI_DEVICECALLBACKS cb;
  void *commands;UINT command_bytes;
  D3DDDI_ALLOCATIONLIST *allocations;UINT allocation_count;

@@ -27,7 +27,8 @@ struct geo_owner_irq_event {
 };
 struct geo_owner_control_v2 {
  INTERFACE Interface;
- /* PASSIVE acquire: real D0/render ownership, never break an active DOD
+ /* PASSIVE acquire: real D0/render ownership, IRQ initially masked until
+  * restart after notification initialization. Never break an active DOD
   * lease. Output cookie/epoch/ops are valid until a proven release succeeds. */
  NTSTATUS (*acquire)(void *provider,struct geo_owner_lease *out);
  /* PASSIVE: return success only after real DMA stop + interrupt callback

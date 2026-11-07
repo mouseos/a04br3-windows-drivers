@@ -11,10 +11,12 @@ int32_t geo_create(struct geo_engine *e,struct geo_allocation *a,const struct ge
  uint64_t token=0;int32_t s;
  if(!e||!a||!geo_desc_valid(d)||a->surface)return GEO_INVALID;
  if(e->poisoned)return GEO_POISONED;
+ if(e->allocation_count==UINT32_MAX)return GEO_BUSY;
  s=e->owner.create(e->owner.context,d,&token);
  if(s!=GEO_OK)return s;
  if(!token){e->poisoned=1;return GEO_POISONED;}
- memset(a,0,sizeof(*a));a->desc=*d;a->surface=token;return GEO_OK;
+ memset(a,0,sizeof(*a));a->desc=*d;a->surface=token;
+ a->next=e->allocations;e->allocations=a;e->allocation_count++;return GEO_OK;
 }
 int32_t geo_bind(struct geo_engine *e,struct geo_allocation *a,void *mdl,uint32_t off,uint32_t bytes) {
  int32_t s;
@@ -35,13 +37,15 @@ int32_t geo_unbind(struct geo_engine *e,struct geo_allocation *a) {
  a->bound=0;return GEO_OK;
 }
 int32_t geo_destroy(struct geo_engine *e,struct geo_allocation *a) {
- int32_t s;
+ int32_t s;struct geo_allocation **link;
  if(!e||!a||!a->surface)return GEO_INVALID;
+ for(link=&e->allocations;*link&&*link!=a;link=&(*link)->next){}
+ if(!*link||!e->allocation_count)return GEO_INVALID;
  if(e->poisoned||a->poisoned)return GEO_POISONED;
  if(a->bound||a->references)return GEO_BUSY;
  s=e->owner.destroy(e->owner.context,a->surface);
  if(s!=GEO_OK){a->poisoned=1;e->poisoned=1;return s;}
- memset(a,0,sizeof(*a));return GEO_OK;
+ *link=a->next;e->allocation_count--;memset(a,0,sizeof(*a));return GEO_OK;
 }
 static struct geo_job *job(struct geo_engine *e,const struct geo_dma_ticket *t) {
  struct geo_job *j;
@@ -103,4 +107,23 @@ int32_t geo_complete(struct geo_engine *e,uint64_t token,uint32_t generation,int
  }
  *fence=j->fence;e->last_completed=j->fence;e->completed_ever=1;
  j->allocation->references--;j->state=0;j->allocation=0;j->owner_job=0;return GEO_OK;
+}
+
+int32_t geo_retire_after_owner_drain(struct geo_engine *e) {
+ struct geo_allocation *a;uint32_t i,count;
+ if(!e)return GEO_INVALID;
+ /* Validate all reference counts before changing any. External caller has
+  * closed operation rundown and obtained real IRQ/DMA/token drain proof. */
+ for(a=e->allocations;a;a=a->next) {
+  count=0;for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state&&e->jobs[i].allocation==a)count++;
+  if(a->references!=count){e->poisoned=1;return GEO_POISONED;}
+ }
+ for(i=0;i<GEO_MAX_JOBS;i++) {
+  e->jobs[i].state=0;e->jobs[i].owner_job=0;e->jobs[i].allocation=0;
+  /* Keep generation: a delayed old token must never match a new job. */
+ }
+ for(a=e->allocations;a;a=a->next){a->references=0;a->poisoned=0;}
+ e->poisoned=0;
+ /* last_completed is unchanged: aborted jobs are NOT completed fences. */
+ return GEO_OK;
 }

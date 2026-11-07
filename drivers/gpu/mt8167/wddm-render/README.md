@@ -63,3 +63,19 @@ hostの単一`tests/lifecycle.c`でpending解放拒否、古い世代拒否、�
 7f55deeの実WDK再buildではMmCopyMemory captureはcompileし、intrin.hの__ldrexd衝突だけが残りました。include順だけでは不十分でした。kernel TUに-D__ldrexd=__geo_wdk81_ldrexd_declarationを指定し、旧WDKの未使用宣言をClang builtinと異なる名前へ隔離する互換alias方式に修正。独自のintrinsic本体や成功stubは追加せず、このaliasを実行するsourceもありません。SDK実体は変更しません。再buildは主担当のみ、alias修正後の実WDK結果は未受領です。
 
 一次根拠: [DxgkDdiRender Remarks](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkddi_render)（pCommand=user、allocation list=kernel変換済み）、[MmCopyMemory](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/nf-ntddk-mmcopymemory)（Win8.1以降、非pageable target、current-process user VA、fault/partial-copy status）。
+
+## in-process単一render miniportへの接続実装
+
+主担当からc1a4a81の実WDK8.1 ARM32 module＋client生成成功を受領した。以下の後続source変更は別の候補で、同じbuild成功へ混在させない。
+
+`miniport.c`は同じMOU0006上でKMDF baselineと排他的に使う候補のDriverEntry→DxgkInitialize、Add/Start/Stop/Remove、実ISR/DPC、power、TDR registrationを実装。native ownerを同じSYSへsource-linkする。StartDeviceは実資源を取得してnative factory→参照付きcontrol→D0 lease→実IRQ通知初期化→owner restartを実行。sources/childrenは0、display系DDIはNULLを検査する。MOU0007 DODには触れない。
+
+`lifecycle.c`は操作rundownを閉じてから実owner quiesce/resetを呼ぶ。proofの全5項目・epochを検査し、旧job tokenを失効させる。aborted fenceをcompletedへ進めない。slot generationとlast_completedは保持する。D3は実drain後にowner set_power、D0は実power/restart後に再開。TDRは実reset＋新epochのproof後にだけrestartを許可。失敗はpoison/interface/lease/MDLを保持。生きたallocationがあるStopは成功を偽装せずDEVICE_BUSY、証明済みHALTEDでunmap/destroyだけ許可し再Stopでreleaseする。KMUTEXはPASSIVEでの操作直列化に用い、IRQでは待たない。
+
+UMD `bootstrap.c`は実OpenAdapter/GetCaps/CreateDevice/DestroyDevice/CloseAdapterのglue。実CreateContextCb/DestroyContextCbとruntime command/allocation bufferを使う。source-linked frontendに必須shader/state/formatの実capsとDDIを要求し、table不整合やrollback失敗では資源をpin。Clearだけでfeature levelを作らない。`umd/entry.c`は実geo_ge8300_frontendが最終linkに必要で、fallback実装なし。
+
+未接続の境界は`GeoNativeOwnerCreate/Delete`（Einsteinのcore/MDL/publish/完了可視性）、`geo_ge8300_render_contract`（この担当のmandatory render DDIs/caps/segment/preemptionの残り）、`geo_ge8300_frontend`（実shader/state/caps）。現時点で後二者の完全実装はない。このためインストール可能な完成候補や標準D3D到達とは扱わない。mandatory render DDIをNULLや成功stubで埋めず、最終linkには実sourceが必要。
+
+`build-wdk81.ps1 -EnableCandidate`は新wrapper/lifecycle/bootstrapもmoduleとしてcompileする。`build-linked-wdk81.ps1`は実native/core・render-contract・frontendの3libraryと各SHA256を明示して最終SYS/DLLへsource-linkする専用recipe。すべてcheckout内の固定入力だけを受け、hash/source/import/export/mapを記録、runtime任意binary loadingはない。依存library未提供の現状では最終link未実施。INF/CAT/署名/配置は行わない。
+
+一次資料 [WDDM Driver and Feature Caps](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/wddm-driver-and-feature-caps)はrender-onlyについてrender-specific DDI実装＋display-specific DDIをNULLとする方式を記載。[WDDM 1.2 and Windows 8](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/wddm-in-windows-8)はrender-onlyモデル導入を説明している。これはWindows RT 8.1での実enumerationや、WDDM1.3全mandatory機能が完成した証拠ではない。SupportNonVGA/preemption/offer-reclaim等のmandatory契約を埋めずにcapを広告しない。

@@ -33,5 +33,12 @@ int main(void) {
  assert(geo_complete(&e,token,t.generation,GEO_OK,GEO_COMPLETION_GPU_DONE,&fence)==GEO_POISONED);
  assert(e.poisoned&&a.references==1&&fence==10);
  assert(geo_unbind(&e,&a)==GEO_POISONED);assert(geo_destroy(&e,&a)==GEO_POISONED);
+ /* State-only check: the caller has independently obtained real owner drain
+  * proof. Retiring aborted jobs must NOT advance the completed fence. */
+ old=t;assert(geo_retire_after_owner_drain(&e)==GEO_OK);
+ assert(!e.poisoned&&a.references==0&&e.last_completed==10&&e.last_submitted==11);
+ assert(geo_complete(&e,token,old.generation,GEO_OK,3,&fence)==GEO_NOT_FOUND);
+ assert(geo_unbind(&e,&a)==GEO_OK);assert(geo_destroy(&e,&a)==GEO_OK);
+ assert(e.allocation_count==0&&e.allocations==0);
  return 0;
 }
