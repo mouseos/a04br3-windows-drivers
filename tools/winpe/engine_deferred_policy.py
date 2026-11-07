@@ -22,8 +22,10 @@ BRIGHTNESS_CLIENT='mt8167-brightness-native.exe'
 BRIGHTNESS_SOURCE='4fafe9a76271531c36a6071b3926e3ce2dd77a8e'
 BRIGHTNESS_RUN33_SOURCE='8a79f2735c27cf783b4d1d703b155dd80178f9b3'
 BRIGHTNESS_SCOPED_SOURCE='ccef15ae47ebae71577ba266bfa88bcae6476ca8'
+BRIGHTNESS_COMPLETION_SOURCE='8a9354a0f49788b45f72a7b512ce73e36da8e3bc'
+BRIGHTNESS_SCOPED_SOURCES=(BRIGHTNESS_SCOPED_SOURCE,BRIGHTNESS_COMPLETION_SOURCE)
 BRIGHTNESS_SCOPED_LOG=r'C:\Windows\System32\MT8167EngineProbe\logs\brightness-native.log'
-BRIGHTNESS_CLIENT_SOURCES=(BRIGHTNESS_SOURCE,BRIGHTNESS_RUN33_SOURCE,BRIGHTNESS_SCOPED_SOURCE)
+BRIGHTNESS_CLIENT_SOURCES=(BRIGHTNESS_SOURCE,BRIGHTNESS_RUN33_SOURCE,*BRIGHTNESS_SCOPED_SOURCES)
 
 def hexpin(value, n=64):
     if not isinstance(value,str) or not re.fullmatch('[0-9a-fA-F]{'+str(n)+'}', value):
@@ -190,8 +192,8 @@ def load_map(path, root):
         certpath,der=package.certificate(cert);image=package.file(BRIGHTNESS_CLIENT);metadata=package.json('manifest.json')
         if (metadata.get('commit')!=brightness_source or metadata.get('dirty') is not False
             or metadata.get('signed') is not True or metadata.get('arguments')!='none'
-            or metadata.get('log_path')!=(BRIGHTNESS_SCOPED_LOG if brightness_source==BRIGHTNESS_SCOPED_SOURCE else r'C:\MT8167EngineProbe\brightness-native.log')
-            or (brightness_source==BRIGHTNESS_SCOPED_SOURCE and (metadata.get('stdout_tee') is not True or metadata.get('stdout_max_bytes')!=16384 or metadata.get('legacy_root_log_modified') is not False or metadata.get('log_generation')!='Engine-state-archive'))
+            or metadata.get('log_path')!=(BRIGHTNESS_SCOPED_LOG if brightness_source in BRIGHTNESS_SCOPED_SOURCES else r'C:\MT8167EngineProbe\brightness-native.log')
+            or (brightness_source in BRIGHTNESS_SCOPED_SOURCES and (metadata.get('stdout_tee') is not True or metadata.get('stdout_max_bytes')!=16384 or metadata.get('legacy_root_log_modified') is not False or metadata.get('log_generation')!='Engine-state-archive'))
             or metadata.get('sys_or_cat_modified') is not False or metadata.get('machine')!='ARMNT'
             or metadata.get('exe_sha256','').lower()!=sha(image)):
             raise ValueError('固定brightness client build/log/no-argument契約不一致')
@@ -206,7 +208,7 @@ def cbytes(digest):return '{'+','.join('0x'+digest[i:i+2] for i in range(0,64,2)
 
 def generate(policy):
     if not 5<=len(policy['packages'])<=7:raise ValueError('固定target数は5..7だけです')
-    scoped=policy.get('brightness_client',{}).get('source_commit')==BRIGHTNESS_SCOPED_SOURCE
+    scoped=policy.get('brightness_client',{}).get('source_commit') in BRIGHTNESS_SCOPED_SOURCES
     if scoped and policy['brightness_client'].get('log_path')!=BRIGHTNESS_SCOPED_LOG:raise ValueError('scoped brightness source/log不一致')
     lines=['/* Generated fixed-target policy; compile into the signed Engine service. */',
            '#define DEFERRED_BRIGHTNESS_SCOPED_LOG '+('1' if scoped else '0'),

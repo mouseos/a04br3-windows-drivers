@@ -74,10 +74,12 @@ class SignedPackage:
             if ((r.get('source_commit'),r.get('status'),r.get('driver_ver')) not in (
                 ('bafafa9ea6d94fe6357616a3edfff66e568bfc7c','signed-native1006-not-device-validated','11/06/2026,2026.11.6.1006'),
                 ('2d726d42702831aedbcee136d901595f65b39eee','signed-native1007-not-device-validated','11/06/2026,2026.11.6.1007'),
-                ('8e5d01c748de275cd3560737c8897add05f0c2ab','signed-native1008-not-device-validated','11/06/2026,2026.11.6.1008'))
+                ('8e5d01c748de275cd3560737c8897add05f0c2ab','signed-native1008-not-device-validated','11/06/2026,2026.11.6.1008'),
+                ('08e3f5a832159d9dd93c30a88bb537b979c1c910','signed-native1009-not-device-validated','11/06/2026,2026.11.6.1009'))
                 or r.get('catalog_regenerated') is not True
                 or r.get('build_manifest',{}).get('source_dirty') is not False):raise ValueError('未知の署名manifest layout')
             if r.get('source_commit')=='8e5d01c748de275cd3560737c8897add05f0c2ab' and (r.get('expected_installed_sys_sha256')!='ff8bd2f035458974c15f035d1c62b5452d4789d5b615e995580bf3a7d8f88ed8' or r.get('build_manifest',{}).get('checkpoint_driver_build')!=1008):raise ValueError('固定WiFi1008 SYS/checkpoint出自不一致')
+            if r.get('source_commit')=='08e3f5a832159d9dd93c30a88bb537b979c1c910' and (r.get('expected_installed_sys_sha256')!='c862a37a6593278753902aadb0b462b332f574d569c3adca5b44553b99b56117' or r.get('build_manifest',{}).get('checkpoint_driver_build')!=1009):raise ValueError('固定WiFi1009 SYS/checkpoint出自不一致')
             entries=r.get('package_files',[])
             if {x.get('path') for x in entries}!={'package/mt6630-runtime.'+e for e in ('sys','inf','cat')} or len(entries)!=3:raise ValueError('WiFi1006/1007/1008 fixed package_files不一致')
             entries=[{'path':x['path'].removeprefix('package/'),'sha256':x['sha256']} for x in entries]
