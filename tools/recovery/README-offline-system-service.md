@@ -94,3 +94,16 @@ Start4の既知7値raw fingerprintと既存subkey無しが一致した場合だ�
 結果にplan SHAとpatch時のdisabled fingerprintを記録し、clean reloadにも同じplanを引き継ぐ。
 SYSTEM/LOG3fileの実hash/bytesをplanと照合する。監査は対象7値＋関連Select/DeviceInstall/RpcSsのまま。
 WinPE側の旧disklog/marker保存と再利用拒否は媒体READMEを参照。
+
+## GPU専用DeviceInstall：実fingerprint取得と限定再arm
+
+`-InspectFixedGpuDeviceInstall -ServiceName MT8167DeviceInstall` はStart4の正確な既存7値を
+workcopyのRegLoadKey/replay/Unloadで照会し、clean copy再loadでraw fingerprint一致を確認する。
+原SYSTEM/LOG1/LOG2の完全SHA256 pin3個を必須とし、サービス値を書かない。
+成功時はverified-disabled-deviceinstall-gpu-planとgpu-rearm-plan.json/そのSHAを出力する。
+この照会modeのwork/verify SYSTEMはdeploy候補として発行しない。
+
+続く `-RearmFixedGpuDeviceInstall -GpuRearmPlanPath ... -ExpectedGpuRearmPlanSha256 ...` は
+同じfresh input3fileと実fingerprintを照合してStart4→2だけを許す。
+ServiceName/IncludeHardwareProbe/Engine rearmの混用は拒否する。
+Engine既存分岐の挙動・固定fingerprint・限定監査は維持する。詳細はGPU README-provider-update.md。

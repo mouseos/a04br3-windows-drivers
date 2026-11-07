@@ -319,5 +319,25 @@
     "hardware_verified_here": false,
     "known_inputs_host_hash_validation_passed": true,
     "armnt_coff_compilation_passed": true
+  },
+  "gpu_fixed_native_rearm": {
+    "gpu_update_source": "d929cc8",
+    "service": "MT8167DeviceInstall",
+    "inspection_switch": "InspectFixedGpuDeviceInstall",
+    "inspection_status": "verified-disabled-deviceinstall-gpu-plan",
+    "inspection_writes_service_values": false,
+    "rearm_switch": "RearmFixedGpuDeviceInstall",
+    "plan": "gpu-rearm-plan.json",
+    "plan_hash_pinned": true,
+    "native_fingerprint_measured_not_guessed": true,
+    "original_system_log_hashes_required": true,
+    "engine_rearm_preserved": true,
+    "candidate_source_commit": "04d0e573bd1bee7b619d25441f8ac05d28d5ccd5",
+    "candidate_sys_sha256": "13c8a9ca6b6d7fef921afd38d60cf84ea8e37b599b51af82d6e90342d8b9da07",
+    "candidate_cat_sha256": "5d4cfad2d2b0e1758777c0d531aae92e172a1b4d53b206649b5f7f2b08c4d828",
+    "native_executed_here": false,
+    "private_media_built_here": false,
+    "main_owned_private_input_validator_modified": false,
+    "deferred_install_reference": "https://learn.microsoft.com/en-us/windows/win32/api/setupapi/ns-setupapi-sp_devinstall_params_w"
   }
 }

@@ -63,7 +63,7 @@ WinVerifyTrustで検証する。未信頼証明書、不一致、欠落はPnP操
 
 既に無効化されたMT8167DeviceInstallを再利用する場合、083021aの統合native準備helperへ
 tools/gpu/native-deviceinstall-gpu-rearm.patchの最小差分を統合する。
-この作業ではRaman/主担当の共通fileへ適用していない。
+統合branchではこの差分を適用済み。保存されたpatchは083021a向け履歴で、統合sourceへ再適用しない。
 追加switch -RearmFixedGpuDeviceInstallはDeviceInstall単独に限定し、
 GpuRearmPlanPathとExpectedGpuRearmPlanSha256で実native planをpinする。
 planはschema=1、service=MT8167DeviceInstall、maximum_rearms=1、
@@ -153,3 +153,33 @@ clean reloadの7値、fresh Recovery backupへの由来を検査する。
 SYSTEMのreg loadやPnP更新をWinPEで実行せず、ファイル配置成功後だけclean SYSTEMをcopyする。
 既存volume guard、COMMITTED、flush/dismount、CRC UART報告を再利用する。
 媒体には個体SYSTEMが含まれるため非配布とし、source checkout/CI公開artifactへ置かない。
+
+## 統合native helperでの実fingerprint取得→plan→再arm
+
+統合sourceは `-InspectFixedGpuDeviceInstall` を追加した。64bit native WindowsのRegLoadKeyで
+原SYSTEM/LOG1/LOG2のworkcopyをreplayし、既存DeviceInstallの正確な7値/型/依存を検証する。
+Start=4を要求して保持し、サービス値を書き換えず実raw fingerprintを取得する。
+別のclean copyをLOG無しで再loadし、同じfingerprintと関連Select/DeviceInstall/RpcSsの一致を確認する。
+原input3fileは処理前後のhash一致を要求する。RegLoadAppKeyやheader修正は使わない。
+
+```powershell
+powershell -File tools/recovery/prepare-offline-system-service.ps1 `
+ -SourceDirectory $FreshRun28Inputs -OutputDirectory $NewInspectionDirectory `
+ -ServiceName MT8167DeviceInstall -InspectFixedGpuDeviceInstall `
+ -ExpectedSystemSha256 $OriginalSystemSha256 `
+ -ExpectedLog1Sha256 $OriginalLog1Sha256 -ExpectedLog2Sha256 $OriginalLog2Sha256
+```
+
+成功statusは `verified-disabled-deviceinstall-gpu-plan`。
+このmodeはdeploy用candidateを発行せず、gpu-rearm-plan.jsonとその実SHA256を出力する。
+fingerprintを推測/固定値で補完せず、実native登録のStart4状態だけをplan化する。
+planには固定04d0e57 source、新SYS/CAT hash、原input3file hash/bytesとnative recipe出自を記録する。
+
+そのplanを既存の `-RearmFixedGpuDeviceInstall -GpuRearmPlanPath ... -ExpectedGpuRearmPlanSha256 ...` と
+同じfresh原inputへ渡し、別の新規directoryで通常のpatch/clean再loadを行う。
+成功status=verified-clean-system-services-onlyのcandidate/SYSTEMだけを主担当のcopy-only媒体へ渡す。
+reportとpatch/verify stateにgpu_rearm_plan_sha256、patch stateにdisabled_service_fingerprintが残る。
+親・Engineの再armは行わず、既存Engine分岐と固定fingerprintを保持する。
+
+この統合の確認はPowerShell Parser、既存Engine入力回帰、GPU policy実package hash照合まで。
+native Windows実行・GPU更新/実再起動の確認は主担当の次工程であり、実行成功とは扱わない。
