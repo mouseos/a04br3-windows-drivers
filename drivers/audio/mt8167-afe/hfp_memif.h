@@ -17,6 +17,9 @@ struct mt8167_hfp_memif {
  struct mt8167_hfp_ring client[2],fallback[2],current[2];
  uint32_t saved[11];unsigned prepared,running,active,exposed,fault;
 };
+#ifdef __cplusplus
+extern "C" {
+#endif
 int mt8167_hfp_memif_prepare(struct mt8167_hfp_memif *,const struct mt8167_hfp_io *,
  const struct mt8167_hfp_ring fallback[2]);
 int mt8167_hfp_memif_start(struct mt8167_hfp_memif *);
@@ -29,4 +32,7 @@ int mt8167_hfp_memif_irq(struct mt8167_hfp_memif *,uint32_t *);
 int mt8167_hfp_memif_stop_registers(struct mt8167_hfp_memif *);
 /* Only after actual external bus+IRQ/cache drain, not a caller Boolean. */
 int mt8167_hfp_memif_restore(struct mt8167_hfp_memif *);
+#ifdef __cplusplus
+}
+#endif
 #endif
