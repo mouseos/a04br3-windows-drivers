@@ -935,3 +935,10 @@ build/gpu_native_owner_split_test: tests/gpu_native_owner_split_test.c tests/gpu
 .PHONY: test-gpu-native-owner-split
 test-gpu-native-owner-split: build/gpu_native_owner_split_test
 	./build/gpu_native_owner_split_test
+
+build/gpu_native_owner_allocation_test: tests/gpu_native_owner_allocation_test.c drivers/gpu/mt8167/vendor_m1_11/native_owner_allocation.c drivers/gpu/mt8167/vendor_m1_11/native_owner_allocation_private.h drivers/gpu/mt8167/vendor_m1_11/native_owner_allocation.h drivers/gpu/mt8167/vendor_m1_11/native_owner_frontend.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -DA04_TEST_DISPLAY_SCANOUT -DA04_TEST_OWNER_ALLOCATION -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
+.PHONY: test-gpu-native-owner-allocation
+test-gpu-native-owner-allocation: build/gpu_native_owner_allocation_test
+	./build/gpu_native_owner_allocation_test

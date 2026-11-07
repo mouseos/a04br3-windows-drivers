@@ -51,10 +51,21 @@ typedef struct {
     NTSTATUS (*GetScatterGatherList)(PDMA_ADAPTER,PDEVICE_OBJECT,PMDL,void *,ULONG,PDRIVER_LIST_CONTROL,void *,BOOLEAN);
     void (*PutScatterGatherList)(PDMA_ADAPTER,PSCATTER_GATHER_LIST,BOOLEAN);
 #endif
+#ifdef A04_TEST_OWNER_ALLOCATION
+    void (*PutDmaAdapter)(PDMA_ADAPTER);
+#endif
     ULONG Size;
     void *(*AllocateCommonBufferEx)(PDMA_ADAPTER,PHYSICAL_ADDRESS *,ULONG,PHYSICAL_ADDRESS *,BOOLEAN,ULONG);
 } DMA_OPERATIONS;
 struct fake_adapter { DMA_OPERATIONS *DmaOperations; };
+#ifdef A04_TEST_OWNER_ALLOCATION
+#define DEVICE_DESCRIPTION_VERSION3 3
+#define Internal 0
+typedef struct {ULONG Version;BOOLEAN Master,ScatterGather;ULONG DmaAddressWidth,InterfaceType,MaximumLength;} DEVICE_DESCRIPTION;
+PDMA_ADAPTER IoGetDmaAdapter(PDEVICE_OBJECT,DEVICE_DESCRIPTION *,ULONG *);
+void ObReferenceObject(void *);
+void ObDereferenceObject(void *);
+#endif
 #define STATUS_SUCCESS ((NTSTATUS)0)
 #define STATUS_INVALID_PARAMETER ((NTSTATUS)0xc000000d)
 #define STATUS_DATA_ERROR ((NTSTATUS)0xc000003e)

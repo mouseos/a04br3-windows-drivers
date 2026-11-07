@@ -163,3 +163,35 @@ hostのreal-core+OS/FW/MMIO doubleでdispatch経由の正常・timeout・pixel�
 失敗時DMA/MDL保持を確認した。WDK/実IRQ/一般D3D成功の証拠ではない。
 `build-ge8300-native-owner-core.ps1 -WithMdlTarget -LinkCheck`に新TU/4exportを追加。
 run40の2.5成功source860f697とは独立し、INF/installed providerは変更していない。
+
+
+## provider-owned allocation / frontend最小ABI
+
+`native_owner_allocation.[ch]`はproviderが実PDO referenceとVersion3 DMA adapterを
+取得し、既存uncached FW stage→render contexts→native HWRT/freelist/code/packetを
+構築する。copy-provider、WDF DMA/IRQ、別PDOへの依存は無い。
+失敗時はnative→同MDL binding→render→FW→adapter→PDOの順に解放。
+下位解放失敗やhardware exposureではopaque ownerを残して保持する。
+createの成功はcold resourcesの成功のみ。GEO factory成功/capsではない。
+`a04_native_allocation_bind_cold`はfrontendの元MDLから実OS SGを取得し、
+既存same-MDL targetへaperture offset/packedARGBを使って接続する。
+
+H側に依頼する入力は`native_owner_frontend.h`のversion1:
+`{size,version,normal_mdl:{context,acquire,release}}`。
+acquire(context,original_mdl)はfrontendの実allocation registry内で元MDLをresolveし、
+Normal RAM由来とpages lifetimeを同時に確認・保持する。releaseはその参照だけを落とす。
+unknown MDLへ成功しない。provider側がSG/cache/VA/packetを構築するのでHが
+GPU packetを扱う必要は無い。context/callbackはbindingのpoison保持期間もresident。
+この入力を受け取る最終factory呼出しのABI更新はH、factory/owner実装は当方。
+
+現在のGPU0 ACPI正本はGPST（snapshot）とcore/MFG/IRQ217だけを公開し、
+SPM/INFRAの停止・保護ack操作を持たない。Linux mt8167のpower-offは
+MFG_2Dのbus_prot_mask BIT2|BIT5のset+ack等を含む。
+既存RGXStop/forced-power-off成功だけではこのfabric停止を代替できない。
+providerが共有INFRA/SPMを無断mapしてDMA_STOPPEDを返すことはしない。
+provider側で正規platform停止経路とIRQ rundown/epoch retirementを実装する作業は維持。
+
+WDK helperの`-WithOwnerAllocation -WithMdlTarget -LinkCheck`は実allocation APIを
+exportして下位FW/render実装ごとlinkする。host ownership testは明示的な下位doubleで
+各取得失敗・target bind失敗・解放失敗・exposure時の保持を確認するもの。
+成功profile/layout自体は既存real-core testsと区別する。
