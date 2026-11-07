@@ -41,4 +41,7 @@ NTSTATUS a04_vendor_m1_11_windows_start(struct a04_vendor_start *s,
     struct a04_vendor_m1_11_memory *m, volatile UCHAR *core, ULONG core_bytes,
     uint64_t observed_bvnc, const struct a04_vendor_power_snapshot *power,
     enum a04_vendor_irq_mode irq_mode);
+/* Only after the owning provider's full operational stop receipt made the
+ * firmware cold again. Does not manufacture that receipt or clear HW-owned. */
+NTSTATUS a04_vendor_m1_11_start_release_cold(struct a04_vendor_start *);
 #endif

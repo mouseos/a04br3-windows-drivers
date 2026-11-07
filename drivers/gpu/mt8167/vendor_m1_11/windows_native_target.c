@@ -28,8 +28,8 @@ NTSTATUS a04_vendor_native_target_aperture(const struct a04_vendor_native_cold *
         return STATUS_INVALID_DEVICE_STATE;
     *out=made;return STATUS_SUCCESS;
 }
-NTSTATUS a04_vendor_native_attach_mdl_target_at_cold(struct a04_vendor_native_cold *n,
-    struct a04_native_mdl_binding *target,uint64_t aperture_offset,uint32_t packed_argb)
+static NTSTATUS attach_target(struct a04_vendor_native_cold *n,
+    struct a04_native_mdl_binding *target,uint64_t aperture_offset,uint32_t packed_argb,BOOLEAN preserve_active)
 {
     struct a04_vendor_render_cold *r;const uint64_t *pages;uint64_t *pt;
     _Alignas(8) uint64_t seen[32];ULONG i,j,count,bytes,first;void *cpu;NTSTATUS status;
@@ -73,7 +73,8 @@ NTSTATUS a04_vendor_native_attach_mdl_target_at_cold(struct a04_vendor_native_co
     /* Record ownership before any potentially partial PT write. */
     n->registered_target=target;n->target_offset=aperture_offset;
     for(i=0;i<1024;i++)pt[i]=i>=first && i-first<count?(pages[i-first]|A04_GPU_MMU_SLC_BYPASS|1u):0;
-    RtlFillMemory(cpu,bytes,0xa5);
+    if(preserve_active)RtlFillMemory((UCHAR *)cpu+1920000u,bytes-1920000u,0xa5);
+    else RtlFillMemory(cpu,bytes,0xa5);
     status=a04_native_mdl_sync_for_gpu(target);if(!NT_SUCCESS(status))goto poison;
     if(a04_rgx_device_write_words(n->output[2].cpu,pt,4096) ||
        a04_rgx_device_write_words(n->output[3].cpu,pt+512,4096)){status=STATUS_IO_DEVICE_ERROR;goto poison;}
@@ -96,6 +97,23 @@ poison:
     n->quarantined=TRUE;r->poisoned=TRUE;
 done:
     ExFreePoolWithTag(pt,TAG);return status;
+}
+NTSTATUS a04_vendor_native_attach_mdl_target_at_cold(struct a04_vendor_native_cold *n,
+    struct a04_native_mdl_binding *target,uint64_t offset,uint32_t colour)
+{ return attach_target(n,target,offset,colour,FALSE); }
+NTSTATUS a04_vendor_native_attach_mdl_target_preserve_cold(struct a04_vendor_native_cold *n,
+    struct a04_native_mdl_binding *target,uint64_t offset,uint32_t colour)
+{ return attach_target(n,target,offset,colour,TRUE); }
+NTSTATUS a04_vendor_native_recolour_bound_cold(struct a04_vendor_native_cold *n,uint32_t colour)
+{
+    NTSTATUS status;
+    if(!n || !n->registered_target || !n->candidate || !n->render || !n->render->firmware ||
+       n->render->firmware->hardware_owned || n->quarantined || n->render->poisoned ||
+       KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+    a04_vendor_native_free_job_cold(n);
+    status=a04_vendor_native_prepare_job_cold_colour(n,colour);
+    if(!NT_SUCCESS(status)){n->quarantined=TRUE;n->render->poisoned=TRUE;}
+    return status;
 }
 NTSTATUS a04_vendor_native_attach_mdl_target_cold(struct a04_vendor_native_cold *n,
     struct a04_native_mdl_binding *target)

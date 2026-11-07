@@ -113,3 +113,9 @@ NTSTATUS a04_native_mdl_drop_cold(struct a04_native_mdl_binding *b)
     if(!b || b->exposed || b->targets!=1 || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
     b->targets=0;return STATUS_SUCCESS;
 }
+
+NTSTATUS a04_native_mdl_retire_after_gpu_off(struct a04_native_mdl_binding *b)
+{
+    if(!b || !b->retained || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+    b->exposed=FALSE;return STATUS_SUCCESS;
+}

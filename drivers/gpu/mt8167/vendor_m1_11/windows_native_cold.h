@@ -69,6 +69,12 @@ NTSTATUS a04_vendor_native_target_aperture(const struct a04_vendor_native_cold *
     struct a04_native_target_aperture *);
 NTSTATUS a04_vendor_native_attach_mdl_target_at_cold(struct a04_vendor_native_cold *,
     struct a04_native_mdl_binding *,uint64_t aperture_byte_offset,uint32_t packed_argb);
+/* Standard owner preparation preserves active pixels until actual submit;
+ * only the rounded-MDL padding guard is initialized. Legacy diagnostics keep
+ * their full-image sentinel and are unchanged. Colour rebuild is cold-only. */
+NTSTATUS a04_vendor_native_attach_mdl_target_preserve_cold(struct a04_vendor_native_cold *,
+    struct a04_native_mdl_binding *,uint64_t,uint32_t);
+NTSTATUS a04_vendor_native_recolour_bound_cold(struct a04_vendor_native_cold *,uint32_t);
 /* Native owner split path: submit only from the actual registered Dxgk
  * interrupt synchronization lock, retained D0/MDL lease and cold-prepared
  * mapped target. Accepted != complete. command_busy stays held until finish.

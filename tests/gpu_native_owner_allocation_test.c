@@ -39,7 +39,7 @@ NTSTATUS a04_vendor_native_release_cold(struct a04_vendor_native_cold **n)
 {assert(native && *n);if(release_fail)return STATUS_DEVICE_BUSY;native--;*n=NULL;trace[at++]=1;return STATUS_SUCCESS;}
 NTSTATUS a04_native_mdl_bind(struct a04_native_mdl_binding **b,PDMA_ADAPTER a,PDEVICE_OBJECT p,PMDL m,ULONG bytes,const struct a04_native_mdl_lease *l)
 {assert(native && a==&adapter && p && bytes==469u*4096);if(inject())return STATUS_INSUFFICIENT_RESOURCES;NTSTATUS s=l->acquire(l->context,m);if(!NT_SUCCESS(s))return s;held_lease=*l;held_mdl=m;*b=(void *)&bound;bound++;return STATUS_SUCCESS;}
-NTSTATUS a04_vendor_native_attach_mdl_target_at_cold(struct a04_vendor_native_cold *n,struct a04_native_mdl_binding *b,uint64_t offset,uint32_t color)
+NTSTATUS a04_vendor_native_attach_mdl_target_preserve_cold(struct a04_vendor_native_cold *n,struct a04_native_mdl_binding *b,uint64_t offset,uint32_t color)
 {assert(n && b && offset==500u*4096 && color==0xff123456);return inject()?STATUS_IO_DEVICE_ERROR:STATUS_SUCCESS;}
 NTSTATUS a04_native_mdl_release_cold(struct a04_native_mdl_binding **b)
 {assert(!native && bound && normal);bound--;held_lease.release(held_lease.context,held_mdl);*b=NULL;trace[at++]=2;return STATUS_SUCCESS;}

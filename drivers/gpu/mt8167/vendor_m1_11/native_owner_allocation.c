@@ -63,7 +63,7 @@ NTSTATUS a04_native_allocation_bind_lease_cold(struct a04_native_owner_allocatio
     status=a04_native_mdl_bind(&a->binding,a->adapter,a->pdo,mdl,469u*4096u,
         lease);
     if(!NT_SUCCESS(status))return status;
-    status=a04_vendor_native_attach_mdl_target_at_cold(a->native,a->binding,offset,color);
+    status=a04_vendor_native_attach_mdl_target_preserve_cold(a->native,a->binding,offset,color);
     /* On error leave the real binding owned. Native may hold a cold ref after
      * a partial target rebuild; ordered release must drop native first. */
     return status;

@@ -1,64 +1,60 @@
-# GPU0内停止／reset保持のsource照合
+# 所有GPU資源の正常停止・解放契約
 
-同版KM: port/gsi/kernel-4.14 eb47f42e1f84fe5716ef239620725f82718a620a、
-DDK m1.11ED5425693。binary逆解析ではなく通常source調査。
+固定source: kernel-4.14 eb47f42e1f84fe5716ef239620725f82718a620a、
+`drivers/misc/mediatek/gpu/gpu_rgx/m1.11ED5425693/`。
+通常source調査であり、実機停止成功の記録ではない。
 
-## 確定している順序
+## upstreamが実際にfreeへ進む順序
 
-- `rgxpower.c:RGXPrePowerState`はFW off request/ackとePowState OFFを確認し、
-  実host ISRでsampleしたIRQ countをFW countへ追い付かせてからRGXStopする。
-- `rgxstartstop.c:RGXStop`はSidekick/Garten、SLC idle、BIF/BIFPM MMU requests、
-  external reads、SLC_STATUS1をpoll。MTSのthread/DM関連付けを0にする。
-  MIPSでは最後にGARTEN idleも必要。FWackだけで終了する経路ではない。
-- `rgxinit.c:RGXSoftReset`はSOFT_RESETの各bitがresetするmoduleのmaskだと定義し、
-  許容maskを検査し、write64→read64 fence→deassert→read64 fenceする。
-- `rgxstartstop.c:RGXStart`の非S7/nonshared-SLC profileのmaskは
-  0x00e7fffffffffc1d。GARTEN/MIPS(bit32)、MMU(bit34)、BIF(bit16/33)、
-  SLC(bit27)、TA/3D/USC/PDS等を含む。SOFT_RESET2はS7側分岐のみ。
-- readbackについてsourceの説明は「fence previous write in order to clear
-  the SOCIF pipeline」。GPU0 RW range内だけで行える。
+1. `services/server/common/pvrsrv.c:PVRSRVDeviceDestroy` (2526以降) は
+   PowerLockを取り、forced idle (2617前後) の後、
+   `PVRSRVSetDevicePowerStateKM(OFF,TRUE)` (2635) を呼ぶ。
+   正常services-stateでの失敗はreturnする。bad-state/force-unloadの
+   失敗無視分岐は本契約に含めない。
+2. `common/power.c` のPrePowerStateはdevice callback (402以降) を先に、
+   platform callback (421以降) を後に実行する。
+   `rgxinit.c` (1265前後) が登録するdevice callbackはRGXPrePowerState。
+3. `rgxpower.c:RGXPrePowerState` (160以降) はFW off request/ACK、
+   ePowState OFF、実ISRのhost sample countとFW countの一致を確認し、RGXStopする。
+4. `rgxstartstop.c:RGXStop` (900〜1130) はSidekick/SLC idle、MTS association解除、
+   BIF/BIFPM MMU requests、external reads、SLC_STATUS1、SLC/Garten idleを確認する。
+5. `services/system/rgx_mtk/mt8167/mtk_mfgsys.c:MTKDevPrePowerState` (533以降)
+   はAPM/clockを停止し、`mtk_mfg_disable_clock` (222以降) のruntime putsが
+   MFG→MFG_2D→MFG_ASYNC (236〜239) のplatform-offへ進む。
+6. この正常power transition成功後に `DevDeInitRGX` (pvrsrv.c:2665) を呼ぶ。
+   `rgxinit.c:DevDeInitRGX` (3400以降) はLISR/MISR/process queues/APM ISRを
+   uninstall (3500前後)、MMU unregister/register unmapの後、FW code (3594)、
+   MIPS trampoline、FW data (3617)、FW kernel context (3646以降) を解放する。
 
-## 実装した範囲
+## Windowsへ実装する同等の運用条件
 
-`A04BR3RogueCoreResetHold.h`と`windows_stop.c`にGPU0限定candidateを追加。
-既存native admission closure＋実FW off ack＋IRQ counter drainを前提に、
-mask readback→reset前RGXStop→SLC flush/inval pending0→full reset write/readback→
-IRQ mask維持/clear/quietを確認し、resetを保持する。deassertしない。
-reset前pollでBUSYならresetを書かず、reset後のclear済statusを過去のdrain証拠にしない。
-reset readbackが必要maskを保持しない、all-ones、IRQ pendingなら失敗してDMA保持。
-物理bitのreadback挙動は未実測であり、未観測を成功扱いしない。
+対象は所有GPUとそのleaseであり、他SoC master全体の形式証明を追加条件にしない。
+`native_owner_factory*.c` はactual Dxgk lockで新submitを閉じ、PASSIVE operationsを
+rundownし、owner mutexでFW power/queue操作を直列化する。prepared/submitted tokenは
+retireし、保持する実MDLへのCPU visibilityも確立する。
 
-`native_owner_irq`は実IRQ claimでFW countをsampleする。off-drain中はFWCCBが
-空である時だけ実ISR内でsourceをrearmし、poweroff transportの複数IRQを追う。
-close_offはOFF、stable FW count==実sourceからsampleしたhost count、KCCB/FWCCB空、
-source deassertを同じ実Dxgk lockで照合してmask/closeする。
-これはOS ISR/work-item rundownやDMA停止の全proofではない。
+実IRQ counter drain→FW forced idle/OFF→実IRQ OFF stable count/empty queues/source close→
+RGXStopを含むGPU0 scoped reset保持→MFG clock gate→parent1014 platform-off→fresh VerifyOffの
+全成功後にのみhardware_owned/exposedを解除する。FW ACK、idle、IRQ mask、reset単独では
+解放しない。未知・timeout・late count・失敗ではDMA/MDL/adapter/parent leaseを保持する。
+passive内部graph再構築もmutex＋actual IRQ consumer gate closeで旧graphへの参照を止める。
+物理IRQはDxgkが所有し続け、IoDisconnectInterruptを実施したとは扱わない。
 
-## NoDMAについて未確定なこと
+masked未claim sourceが残る場合、off-drain開始はCLEARせずIRQ_ENABLEをreadback付きで
+再開し、実登録ISRがsampleするまでBUSYを返す。手動ISR/偽DIRQL/偽通知はない。
+初期root未publish・FW start未attemptのcold unwindは別の初期化失敗cleanup classであり、
+FW ACK/platform-offを観測したと偽らない。D3はcoldでも実platform-offを必要とする。
 
-SLC_STATUS1の同版field名はREADS0/1、READS0/1_EXT、PAUSED。
-BIF external statusもREADS系。SLC_IDLEにはIMGBV4/RBOFIFO/CBAR等があるが、
-このsource/headerだけでは「外部write responseをすべて回収した」の完全な
-意味・観測条件を独立に確定できていない。SOCIF fenceのコメントを、
-別masterのAXI write-response drainの証明へ拡大解釈しない。
+## 必須のmatched platform構成
 
-したがって現candidateは実reset保持の観測を返すが、NoDMA、DMA release、
-GEO_PROOF_DMA_STOPPED、63capsを返す実装ではない。反証が得られたわけでもない。
-reset保持後にhardware_owned/exposedをfalseへ書き換えたり、MDL/SGをfreeしない。
-失敗時にも保持する。正常source-pathのAXI completion契約または同版hardware資料が
-確定するまでは「FWack/idle/resetだけでfree可能」としない。
+core/resetだけでfreeへ進む同版正常経路は採用していない。正常MTK platform-offを用いる。
+parent branch `work/ge8300-platform-owner-1014` の2502364は、正規割当SPM第六resourceと
+既存INFRAだけを単一ownerが操作するV2 interfaceを提供する。GPUCore/MFG/IRQは二重mapしない。
+UEFI機種branch `work/windows-gpu-domain-owner` の2f6f73a3が既定OFFの
+A04BR3_GPU_DOMAIN_OWNER=1でSPMを割当。共通EDK2不変、ACPI storage GUIDは既存値を保持。
+旧ACPIでSPMをphysical fallback mapしない。PWRON_CONFIG_ENはread-onlyで既存unlockが
+無ければ拒否し、CPU4/watchdog/PLL/PMICを変更しない。
 
-## 共有platform側との関係
-
-parent1014別branchにsourceに沿うdomain off/on純moduleとINFRA-only最小hookを
-用意したが、ecaa1008/main/UEFIの既存parent割当にはSPMが無い。
-現在のhookにSPM・GPUCore・CPU4/watchdogの新map/writeは無く、共有ACPIも変更しない。
-GPU0内停止で十分と確定できるならこのparent依存を最終WDDMへ追加しない。
-CreateV3/control-v2/全lifetimeの完成は別途継続し、停止未完を成功stubで埋めない。
-
-
-IRQ closeにはsample→mask間のrace確認も追加した。beginで未claim sourceを
-clearしない。mask完了後にFW count/sourceを再確認し、late count/sourceなら
-closed/faultedのままerrorとして保持し、source_closed観測を成功返却しない。
-実WDKでKeMemoryBarrierの旧_ReadWriteBarrier外部symbolが出たため、既存acf523eの
-`a04_gpu_dma_barrier`（ARM DMB＋compiler barrier）へ統一。未解決無視やstubは使わない。
+host model testsはIRQ W1C、write failure、OFF readback、無関係bit保持を検査した。
+parent2502364の実WDK build/linkは成功。factoryを含む実WDK、full machine FD、
+最終KMD/UMD link、Windows実機の正常stop/reset/drawは別の検証段階であり未完。

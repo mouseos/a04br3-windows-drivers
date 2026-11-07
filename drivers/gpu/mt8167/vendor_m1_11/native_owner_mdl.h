@@ -41,4 +41,9 @@ NTSTATUS a04_native_mdl_sync_for_cpu(struct a04_native_mdl_binding *);
  * a future native drain/unmap/IRQ-rundown implementation proves retirement. */
 NTSTATUS a04_native_mdl_mark_exposed(struct a04_native_mdl_binding *);
 NTSTATUS a04_native_mdl_release_cold(struct a04_native_mdl_binding **);
+/* Provider-private retirement step. Caller must have completed the fixed
+ * FW off/real IRQ drain/RGXStop/platform-off + callback gate/rundown contract.
+ * This only drops the exposure marker; targets/SG/pages remain retained until
+ * ordered cold detach. Never call based only on idle, a mask, or CPU poll. */
+NTSTATUS a04_native_mdl_retire_after_gpu_off(struct a04_native_mdl_binding *);
 #endif

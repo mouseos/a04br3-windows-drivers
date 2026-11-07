@@ -82,12 +82,19 @@ NTSTATUS a04_native_irq_begin_off_drain(struct a04_native_irq_core *q,uint64_t e
 {
     NTSTATUS e;
     if(!q || !q->core || !q->runtime || !q->runtime->trace || !q->runtime->kctl ||
-       epoch!=q->epoch || !q->powered || q->closed || q->faulted || q->draining ||
+       epoch!=q->epoch || !q->powered || q->closed || q->faulted ||
        KeGetCurrentIrql()<DISPATCH_LEVEL)return STATUS_INVALID_DEVICE_STATE;
-    /* Do not clear an unclaimed source as a substitute for its real ISR. */
-    if(READ_REGISTER_ULONG(REG(q,ROGUE_CR_MIPS_WRAPPER_IRQ_STATUS))!=0)return STATUS_DEVICE_BUSY;
-    e=a04_native_irq_rearm(q,epoch,q->serial);if(!NT_SUCCESS(e))return e;
-    q->draining=TRUE;return STATUS_SUCCESS;
+    /* A worker may have left an actual source masked. Deliver it to the
+     * registered ISR, never CLEAR it here or manufacture an ISR sample. */
+    ULONG pending=READ_REGISTER_ULONG(REG(q,ROGUE_CR_MIPS_WRAPPER_IRQ_STATUS));
+    if(pending==0xffffffffu){q->faulted=TRUE;return STATUS_IO_DEVICE_ERROR;}
+    q->draining=TRUE;
+    if(pending&1u){
+        WRITE_REGISTER_ULONG(REG(q,ROGUE_CR_MIPS_WRAPPER_IRQ_ENABLE),1u);
+        if(READ_REGISTER_ULONG(REG(q,ROGUE_CR_MIPS_WRAPPER_IRQ_ENABLE))!=1u){q->faulted=TRUE;return STATUS_IO_DEVICE_ERROR;}
+        q->masked=FALSE;return STATUS_DEVICE_BUSY;
+    }
+    e=a04_native_irq_rearm(q,epoch,q->serial);return e;
 }
 NTSTATUS a04_native_irq_close_off(struct a04_native_irq_core *q,uint64_t epoch,
     struct a04_native_irq_off_observation *out)

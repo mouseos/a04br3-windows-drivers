@@ -155,3 +155,16 @@ fail:
     m->adapter->DmaOperations->FreeCommonBuffer(m->adapter,TRAMPOLINE_ALLOCATION,s->trampoline_logical,s->trampoline_allocation,FALSE);
     RtlZeroMemory(s,sizeof(*s));return status;
 }
+
+NTSTATUS a04_vendor_m1_11_start_release_cold(struct a04_vendor_start *s)
+{
+    if(!s || KeGetCurrentIrql()!=PASSIVE_LEVEL || s->online || s->command_busy ||
+       (s->memory && s->memory->hardware_owned))return STATUS_INVALID_DEVICE_STATE;
+    if(s->trampoline_allocation){
+        if(!s->memory || !s->memory->adapter || !s->memory->adapter->DmaOperations ||
+           !s->memory->adapter->DmaOperations->FreeCommonBuffer)return STATUS_INVALID_DEVICE_STATE;
+        s->memory->adapter->DmaOperations->FreeCommonBuffer(s->memory->adapter,TRAMPOLINE_ALLOCATION,
+            s->trampoline_logical,s->trampoline_allocation,FALSE);
+    }
+    RtlZeroMemory(s,sizeof(*s));return STATUS_SUCCESS;
+}

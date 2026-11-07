@@ -23,8 +23,9 @@ int main(void)
  assert(a04_native_irq_begin_off_drain(&q,10)==STATUS_INVALID_DEVICE_STATE);
  irql=5;assert(a04_native_irq_begin_off_drain(&q,9)==STATUS_INVALID_DEVICE_STATE);
  regs[0x8a8/4]=1;
- assert(a04_native_irq_begin_off_drain(&q,10)==STATUS_DEVICE_BUSY && regs[0x8a8/4]==1 && !q.draining);
- regs[0x8a8/4]=0;
+ assert(a04_native_irq_begin_off_drain(&q,10)==STATUS_DEVICE_BUSY && regs[0x8a8/4]==1 && q.draining && !q.masked && !q.sampled_fw_valid);
+ assert(a04_native_irq_claim(&q,&irq) && !irq.fault && q.sampled_fw_valid);
+ q.sampled_fw_valid=FALSE; /* isolate subsequent no-sample rejection */
  assert(a04_native_irq_begin_off_drain(&q,10)==STATUS_SUCCESS && q.draining && !q.masked);
  trace.ePowState=RGXFWIF_POW_OFF;trace.aui32InterruptCount[0]=3;
  assert(a04_native_irq_close_off(&q,10,&out)==STATUS_INVALID_DEVICE_STATE && !out.source_closed); /* no ISR sample */
@@ -38,7 +39,7 @@ int main(void)
  k.ui32ReadOffset=1;trace.ePowState=RGXFWIF_POW_ON;
  assert(a04_native_irq_close_off(&q,10,&out)==STATUS_DEVICE_BUSY);
  trace.ePowState=RGXFWIF_POW_OFF;
- assert(a04_native_irq_close_off(&q,10,&out)==STATUS_SUCCESS && out.source_closed && out.epoch==10 && out.fw_count==4 && out.serial==2);
+ assert(a04_native_irq_close_off(&q,10,&out)==STATUS_SUCCESS && out.source_closed && out.epoch==10 && out.fw_count==4 && out.serial==3);
  assert(!q.powered && q.closed && q.masked && !q.draining && !regs[0x8a0/4]);
  regs[0x8a8/4]=1;assert(!a04_native_irq_claim(&q,&irq));
  irql=0;assert(a04_native_irq_unbind_disconnected(&q)==STATUS_SUCCESS);
