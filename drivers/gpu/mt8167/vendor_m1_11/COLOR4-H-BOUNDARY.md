@@ -35,3 +35,33 @@ transport自身はIRQ接続、D0取得、mapper、完了生成を持たない。
 HはV1 packetをreinterpretせずGCD2を明示dispatchし、独立capture/size上限を守る。
 Eのcallable transport/prepare-v2は実装済みだが、H frontendへのdispatchはこの境界で別実装。
 全FL9_1適合やCOLOR実GPU成功は未確認。署名module候補を完成品SYS/UMDと混同しない。
+
+## 固定metadataとspan（Hへの採用値）
+
+|field|値|
+|---|---|
+|shader format/stage|format2、VS stage0 / PS stage1|
+|VS|usc88 bytes、temps0/shareds0/vtxins8/vtxouts8/input_mask3/constant_mask0|
+|FS|usc80 bytes、temps5/shareds0/vtxins0/vtxouts0/input_mask1/constant_mask0|
+|USC SHA256 VS|c623f3047d0dec747d81ab3b298979fdde89576403de6af66f89eb8bf65d710f|
+|USC SHA256 FS|2103c3048ed23a9dd336274c708a61b6fc21438e960e9766ee2e63d3de815796|
+|token bytes VS/FS|104/56（H公式FL9_1 SHDRと全byte一致）|
+|constants backing|各stage512 bytesのbounded span。mask0なのでshaderは参照しない|
+|span規則|blob先頭相対offset、4byte aligned、全体<=GEO_DRAW_MAX_BLOB、USC extentは8byte倍数|
+|link|size=sizeof、version2、varying_count1、reserved0|
+|VS link|vtxouts8、position start0/count4、f32_smooth4、他f32/f16数0|
+|FS link|coeffs20、usesZ0/usesW1、entry0/0|
+|varying|semanticCOLOR1/index0/components4/bit_size32/interpolationSMOOTH1、VS4/4/offset0、FS4/16/offset0|
+|vertex|実provider format100/usage3のlocked-MDL別allocation、active>=96、stride32/count3/first0/offset0|
+|target|既存実provider800x600/pitch3200/BGRA target同一MDL、target_indexとvertex_indexは別|
+
+定数spanはUSC/tokenと重ねないこと。packetは8byte aligned kernel capture、
+request.base.size=sizeof(geo_draw_request_v2)/version2/blob_bytes=packet残量。
+wire requestのtarget/vertexは0。解決後IDはHが実allocation listから渡す。
+入力layoutのsignature意味・slot/register/formatはHが実runtime値と照合する。
+Eはsnapshotを推測せずこの有限code/token/metadataとの一致を要求する。
+
+API: a04_native_color_transport_bind / _prepare / _submit。
+失敗は元のNTSTATUS/GEO statusを保持し、job0。prepareはPASSSIVE、submitは既存実Dxgk
+同期lockのみ。署名候補SYSにはH COLOR dispatcher/UMDがまだ含まれないので、
+単体で標準COLOR描画可能とは扱わない。H最終結合時にINF/CAT版を別固定する。
