@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
+#include <ntddk.h>
 #include <portcls.h>
 /* Capture matched profile only. The old render also has no measured latency.
  * WaveRT's void GetHWLatency cannot return an unsupported status. Reject the

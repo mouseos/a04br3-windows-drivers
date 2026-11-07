@@ -87,6 +87,12 @@ try {
    & $sign verify /pa /v /c $cat[0].FullName $f.FullName;if($LASTEXITCODE){throw 'CAT membership failed'}
   }
  }
+ $pmPath=Join-Path $package 'parent\parent-manifest.json'
+ $pm=Get-Content $pmPath -Raw|ConvertFrom-Json
+ $pm|Add-Member -NotePropertyName unsigned_sys_sha256 -NotePropertyValue $pm.sys_sha256 -Force
+ $pm.sys_sha256=(Get-FileHash "$package\parent\mt8167-shared.sys" -Algorithm SHA256).Hash
+ $pm|Add-Member -NotePropertyName signed -NotePropertyValue $true -Force
+ $pm|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 $pmPath
  Copy-Item "$client\mt8167-capture-probe.exe" "$package\client"
  & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My "$package\client\mt8167-capture-probe.exe"
  if($LASTEXITCODE){throw 'Client signing failed'}
