@@ -72,7 +72,7 @@ static BOOL control(HANDLE handle,DWORD code,void *in,DWORD inbytes,void *out,DW
   error=GetLastError();
   if(error==ERROR_IO_PENDING){if(WaitForSingleObject(operation.hEvent,5000)!=WAIT_OBJECT_0){
     CancelIoEx(handle,&operation);
-    if(WaitForSingleObject(operation.hEvent,5000)!=WAIT_OBJECT_0)ExitProcess(ERROR_IO_TIMEOUT);
+    if(WaitForSingleObject(operation.hEvent,5000)!=WAIT_OBJECT_0)ExitProcess(ERROR_TIMEOUT);
     GetOverlappedResult(handle,&operation,got,FALSE);error=ERROR_TIMEOUT;ok=FALSE;
    }else ok=GetOverlappedResult(handle,&operation,got,FALSE);if(error!=ERROR_TIMEOUT)error=ok?ERROR_SUCCESS:GetLastError();}
  }

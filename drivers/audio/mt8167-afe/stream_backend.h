@@ -10,9 +10,6 @@
  * Failure from allocate
  * must clean up its own partial allocation. No provider exists yet. */
 struct Mt8167StreamBackend {
-    /* Internal build-local discriminator; old playback owners initialize FALSE. */
-    BOOLEAN capture;
-    KSRTAUDIO_HWLATENCY captureLatency;
     void *context;
     void (*reference)(void *);
     void (*dereference)(void *);
@@ -36,6 +33,12 @@ struct Mt8167StreamBackend {
     NTSTATUS (*checkout)(void *,PPORTWAVERTSTREAM,ULONG,PMDL *,PULONG);
     NTSTATUS (*checkin)(void *,PPORTWAVERTSTREAM,PMDL);
     NTSTATUS (*setState)(void *,PPORTWAVERTSTREAM,KSSTATE);
+#endif
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+    /* Private extension only in a consistently compiled capture profile.
+     * The default playback layout and positional initializers stay intact. */
+    BOOLEAN capture;
+    KSRTAUDIO_HWLATENCY captureLatency;
 #endif
 };
 #endif
