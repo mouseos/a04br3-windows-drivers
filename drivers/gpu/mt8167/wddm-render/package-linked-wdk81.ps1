@@ -59,7 +59,7 @@ try {
   if($LASTEXITCODE){throw 'Final CAT membership verification failed'}
  }
  Export-Certificate -Cert $cert -FilePath (Join-Path $out 'mt8167-development.cer')|Out-Null
- @{package_source_commit=$commit;inf_driverver='11/07/2026,0.0.3.4';umd_resigned=(!$PreserveSignedUmd);linked_manifest_sha256=$LinkedManifestSha256;
+ @{package_source_commit=$commit;inf_driverver=([regex]::Match([IO.File]::ReadAllText((Join-Path $out 'ge8300-render.inf')),'(?im)^DriverVer\s*=\s*([^\r\n;]+)').Groups[1].Value.Trim());umd_resigned=(!$PreserveSignedUmd);linked_manifest_sha256=$LinkedManifestSha256;
   source_runtime=$m;unsigned_images=$unsigned;signer_thumbprint=$CertificateThumbprint;signature_status='Valid';
   default_off=$true;installed=$false;runtime_verified=$false;wddm_conformance_qualified=$false;
   required_parent_commit=$m.required_parent_commit;required_acpi_commit=$m.required_acpi_commit;display_policy='MOU0007 CPU present; never concurrent KMDF GPU IRQ owner';

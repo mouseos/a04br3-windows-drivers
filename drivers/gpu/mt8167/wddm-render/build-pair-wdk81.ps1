@@ -67,7 +67,7 @@ try {
  if($LASTEXITCODE){throw 'UMD archive failed'}
  & lld-link /dll /machine:arm /subsystem:windows,6.03 /entry:_DllMainCRTStartup /nodefaultlib "$out\umd_entry.obj" "$out\umd_typed_entry.obj" "$out\ge8300-pair-umd.lib" (Join-Path $PairDirectory 'pco_pair.obj') @libs "/out:$out\ge8300-umd.dll" "/map:$out\ge8300-umd.map"
  if($LASTEXITCODE){throw 'Final COLOR UMD link failed'}
- & lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib "$out\ge8300-pair-kmd.lib" $NativeOwnerLibrary "$km\displib.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\libcntpr.lib" "$km\bufferoverflowfastfailk.lib" "/out:$out\ge8300-render.sys" "/map:$out\ge8300-render.map"
+ & "$PSScriptRoot\link-kmd-msvc-wdk81.ps1" -KernelLibrary "$out\ge8300-pair-kmd.lib" -NativeLibrary $NativeOwnerLibrary -OutputFile "$out\ge8300-render.sys" -MapFile "$out\ge8300-render.map" -MetadataFile "$out\linker.json"
  if($LASTEXITCODE){throw 'Final COLOR KMD link failed'}
  foreach($name in @('ge8300-umd.dll','ge8300-render.sys')){
   $pe=@(& llvm-readobj --file-headers --coff-imports --coff-exports (Join-Path $out $name));if($LASTEXITCODE -or !($pe -match 'IMAGE_FILE_MACHINE_ARMNT')){throw 'Not ARMNT'}
@@ -77,6 +77,7 @@ try {
  }
  @{source_commit=(& git -C $root rev-parse HEAD);baseline_manifest_sha256=$BaselineManifestSha256;kmd_manifest_sha256=$KmdManifestSha256;compiler_manifest_sha256=$CompilerManifestSha256;pair_manifest_sha256=$PairManifestSha256;native_owner_sha256=$NativeOwnerSha256;
   native_source_commit='e83792d88485883130e137309b0ef027b3c7bc5e';required_parent_commit=$b.required_parent_commit;required_acpi_commit=$b.required_acpi_commit;compilation_performed=$true;additional_compile_units=@($kernel+$user);default_off=$true;limited_development_profile=$true;color_pair_profile=$true;runtime_verified=$false;standard_profile_qualified=$false;signed=$false;installed=$false;
+  linker=(Get-Content -Raw "$out\linker.json"|ConvertFrom-Json);
   outputs=@('ge8300-umd.dll','ge8300-render.sys','ge8300-pair-umd.lib','ge8300-pair-kmd.lib')|ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}}
  }|ConvertTo-Json -Depth 8|Set-Content "$out\linked-manifest.json"
 } finally {$env:TEMP=$oldTemp;$env:TMP=$oldTmp}

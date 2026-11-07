@@ -53,7 +53,7 @@ $oldTemp=$env:TEMP;$oldTmp=$env:TMP;$transcript=$false
 try {
  $env:TEMP=Join-Path $out 'tmp';$env:TMP=$env:TEMP
  Start-Transcript -Path (Join-Path $out 'linked-build.log') -Append|Out-Null;$transcript=$true
- & lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib "$modules\ge8300-kmd-clear.lib" $nativeLibrary "$km\displib.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\libcntpr.lib" "$km\bufferoverflowfastfailk.lib" "/out:$out\ge8300-render.sys" "/map:$out\ge8300-render.map"
+ & "$PSScriptRoot\link-kmd-msvc-wdk81.ps1" -KernelLibrary "$modules\ge8300-kmd-clear.lib" -NativeLibrary $NativeOwnerLibrary -OutputFile "$out\ge8300-render.sys" -MapFile "$out\ge8300-render.map" -MetadataFile "$out\linker.json"
  if($LASTEXITCODE -ne 0){throw 'Render SYS link failed: actual native factory/control is required'}
  & lld-link /dll /machine:arm /subsystem:windows,6.03 /entry:_DllMainCRTStartup /nodefaultlib "$modules\umd_entry.obj" "$modules\ge8300-umd-clear.lib" @frontendLibraries @compilerLibraries "/out:$out\ge8300-umd.dll" "/map:$out\ge8300-umd.map"
  if($LASTEXITCODE -ne 0){throw 'UMD link failed: real geo_ge8300_frontend must implement shader/caps contract'}
@@ -70,6 +70,7 @@ try {
   hardware='PowerVR GE8300 / ACPI MOU0006, exclusive KMDF replacement';
   display_policy='separate MOU0007 CPU-present DOD profile; see DOD-COEXISTENCE.md';
   default_off=$true;runtime_verified=$false;signed=$false;installed=$false;
+  linker=(Get-Content -Raw "$out\linker.json"|ConvertFrom-Json);
   outputs=@('ge8300-render.sys','ge8300-umd.dll')|ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}}
  }|ConvertTo-Json -Depth 7|Set-Content "$out\linked-manifest.json"
 } finally {if($transcript){Stop-Transcript|Out-Null};$env:TEMP=$oldTemp;$env:TMP=$oldTmp}

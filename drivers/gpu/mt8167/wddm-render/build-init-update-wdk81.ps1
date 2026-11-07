@@ -30,11 +30,12 @@ try {
  $members=@(& llvm-ar t "$out\linked\ge8300-pair-kmd.lib")
  if($LASTEXITCODE -or @($members|Where-Object {$_ -match '(^|[/\\])miniport\.obj$'}).Count -ne 1){throw 'Expected exactly one old miniport object'}
  & llvm-ar r "$out\linked\ge8300-pair-kmd.lib" "$out\miniport.obj";if($LASTEXITCODE){throw 'Object replacement failed'}
- & lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib "$out\linked\ge8300-pair-kmd.lib" $NativeOwnerLibrary "$km\displib.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\libcntpr.lib" "$km\bufferoverflowfastfailk.lib" "/out:$out\linked\ge8300-render.sys" "/map:$out\linked\ge8300-render.map"
+ & "$PSScriptRoot\link-kmd-msvc-wdk81.ps1" -KernelLibrary "$out\linked\ge8300-pair-kmd.lib" -NativeLibrary $NativeOwnerLibrary -OutputFile "$out\linked\ge8300-render.sys" -MapFile "$out\linked\ge8300-render.map" -MetadataFile "$out\linked\linker.json"
  if($LASTEXITCODE){throw 'Updated miniport link failed'}
  Copy-Item "$BaselinePackage\ge8300-umd.dll" "$out\linked\ge8300-umd.dll"
  $m=Get-Content -Raw "$BaselineDirectory\linked-manifest.json"|ConvertFrom-Json
  $m.source_commit=(& git -C $root rev-parse HEAD);$m.additional_compile_units=@('miniport');$m.outputs=@('ge8300-render.sys','ge8300-umd.dll','ge8300-pair-kmd.lib')|ForEach-Object {@{name=$_;sha256=(Get-FileHash "$out\linked\$_" -Algorithm SHA256).Hash}}
+ $m|Add-Member -NotePropertyName linker -NotePropertyValue (Get-Content -Raw "$out\linked\linker.json"|ConvertFrom-Json)
  $m|Add-Member -NotePropertyName initialization_checkpoint -NotePropertyValue 'fixed Services/GE8300Render/Parameters/NativeCheckpoint; real stage statuses'
  $m|Add-Member -NotePropertyName preserved_signed_umd_sha256 -NotePropertyValue 'f8a711915e878e7aeb58ef996db8abbeee15351bd10bf8e0fdcabe12009f922b'
  $m|ConvertTo-Json -Depth 12|Set-Content -Encoding UTF8 "$out\linked\linked-manifest.json"

@@ -76,7 +76,7 @@ try {
  if($LASTEXITCODE){throw 'Typed UMD archive failed'}
  & lld-link /dll /machine:arm /subsystem:windows,6.03 /entry:_DllMainCRTStartup /nodefaultlib "$out\umd_entry.obj" "$out\umd_typed_entry.obj" "$out\ge8300-typed-umd.lib" @libraries "/out:$out\ge8300-umd.dll" "/map:$out\ge8300-umd.map"
  if($LASTEXITCODE){throw 'Real typed UMD DLL link failed'}
- & lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib "$out\ge8300-typed-kmd.lib" $NativeOwnerLibrary "$km\displib.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\libcntpr.lib" "$km\bufferoverflowfastfailk.lib" "/out:$out\ge8300-render.sys" "/map:$out\ge8300-render.map"
+ & "$PSScriptRoot\link-kmd-msvc-wdk81.ps1" -KernelLibrary "$out\ge8300-typed-kmd.lib" -NativeLibrary $NativeOwnerLibrary -OutputFile "$out\ge8300-render.sys" -MapFile "$out\ge8300-render.map" -MetadataFile "$out\linker.json"
  if($LASTEXITCODE){throw 'Combined typed KMD SYS link failed'}
  foreach($name in @('ge8300-umd.dll','ge8300-render.sys')){
   $pe=@(& llvm-readobj --file-headers --coff-imports --coff-exports (Join-Path $out $name))
@@ -88,6 +88,7 @@ try {
  @{source_commit=(& git -C $root rev-parse HEAD);source_dirty=$false;compile_units=$units;reused_source_commit=$m.source_commit;
   module_manifest_sha256=$ModuleManifestSha256;state_source_commit=$sm.source_commit;state_manifest_sha256=$StateManifestSha256;compiler_manifest_sha256=$CompilerManifestSha256;
   native_owner_sha256=$NativeOwnerSha256;default_off=$true;limited_development_profile=[bool]$EnableLimitedDevelopmentProfile;development_negotiation_pipeline='9_1';standard_profile_qualified=$false;runtime_verified=$false;signed=$false;
+  linker=(Get-Content -Raw "$out\linker.json"|ConvertFrom-Json);
   outputs=@('ge8300-typed-kmd.lib','ge8300-typed-umd.lib','ge8300-umd.dll','ge8300-render.sys')|ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}}
  }|ConvertTo-Json -Depth 6|Set-Content "$out\build-manifest.json"
 } finally {$env:TEMP=$oldTemp;$env:TMP=$oldTmp}
