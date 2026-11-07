@@ -69,6 +69,15 @@ NTSTATUS a04_vendor_native_target_aperture(const struct a04_vendor_native_cold *
     struct a04_native_target_aperture *);
 NTSTATUS a04_vendor_native_attach_mdl_target_at_cold(struct a04_vendor_native_cold *,
     struct a04_native_mdl_binding *,uint64_t aperture_byte_offset,uint32_t packed_argb);
+/* Native owner split path: submit only from the actual registered Dxgk
+ * interrupt synchronization lock, retained D0/MDL lease and cold-prepared
+ * mapped target. Accepted != complete. command_busy stays held until finish.
+ * finish is PASSIVE SLC/GP/MDL cache + readback, NOT a DIRQL notification or
+ * quiescence receipt. GEO visibility still needs a subsequent real HW IRQ. */
+NTSTATUS a04_vendor_native_owner_submit(struct a04_vendor_native_cold *,
+    struct a04_vendor_start *,uint32_t expected_kernel_write);
+NTSTATUS a04_vendor_native_owner_finish_passive(struct a04_vendor_native_cold *,
+    struct a04_vendor_start *,struct a04_vendor_native_result *);
 /* Optional source-linked miniport profile: never started firmware, same
  * validated800x600 job, full rounded locked-MDL extent. No IRQ/cap publish. */
 NTSTATUS a04_vendor_native_attach_mdl_target_cold(struct a04_vendor_native_cold *,struct a04_native_mdl_binding *);

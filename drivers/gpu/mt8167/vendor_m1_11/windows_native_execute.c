@@ -37,54 +37,19 @@ static NTSTATUS wait_kernel(struct a04_rgx_fw_runtime *f,uint32_t next)
     }
     return STATUS_IO_TIMEOUT;
 }
-NTSTATUS a04_vendor_native_publish_candidate(struct a04_vendor_native_cold *n,
-    struct a04_vendor_start *s,struct a04_vendor_native_result *out)
+/* Shared PASSIVE finish: actual TA/3D/UFO/cleanup -> SLC/GP -> MDL cache
+ * -> pixel/guard proof. This returns CPU-side state only; it NEVER emits a
+ * Dxgk completion or invents a subsequent hardware interrupt. */
+static NTSTATUS finish_published(struct a04_vendor_native_cold *n,
+    struct a04_vendor_start *s,struct a04_vendor_native_result *out,uint32_t second)
 {
-    struct a04_vendor_render_cold *r;struct a04_vendor_native_candidate *c;
-    struct a04_rgx_fw_runtime *f;RGXFWIF_CCB_CTL k;RGXFWIF_CCCB_CTL ctl[2];
-    RGXFWIF_KCCB_CMD flush={0},fence={0};RGXFWIF_CLEANUP_CTL clean[2];
-    UCHAR *bank;uint32_t sync[2],next,second,seq;unsigned i,j;NTSTATUS status;
-    _Alignas(8) uint32_t pixels[64];
-    if(!out)return STATUS_INVALID_PARAMETER;
-    RtlZeroMemory(out,sizeof(*out));
-    if(!n || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !(r=n->render) ||
-       r->native_owner!=n || !(c=n->candidate) || n->quarantined || r->poisoned ||
-       r->cleanup_started || c->attempted || !n->mapped || !n->prepared || !n->bank_prepared ||
-       !n->backing_staged || !n->output_mapped || n->code_mapped!=3u ||
-       n->width!=800u || n->height!=600u || !a04_vendor_native_output_ready(n) ||
-       !s->online || !s->core || s->memory!=r->firmware ||
-       !s->memory || !s->memory->hardware_owned || !s->memory->uncached ||
-       !(f=s->memory->runtime) || !f->kctl || !f->fctl || !f->kcommands || !f->command_sync ||
-       s->command_sequence>=0xfffffffeu)return STATUS_INVALID_DEVICE_STATE;
-    out->completed_frames=c->completed_frames;
-    /* The external caller must hold the existing provider lifetime lock. */
-    if(InterlockedCompareExchange(&s->command_busy,1,0))return STATUS_DEVICE_BUSY;
-    RtlZeroMemory(&c->scan,sizeof(c->scan));
-    status=STATUS_INVALID_DEVICE_STATE;
-    if(r->poisoned || r->cleanup_started || n->quarantined || c->attempted ||
-       s->command_poisoned || s->shutdown_started)goto done;
-    bank=r->buffer[0].cpu;
-    if(read_queue(f,&k) || k.ui32ReadOffset!=k.ui32WriteOffset)goto done;
-    /* Reserve both KCCB slots while command_busy excludes other producers. */
-    next=(k.ui32WriteOffset+1u)&127u;second=(next+1u)&127u;
-    if(next==k.ui32ReadOffset || second==k.ui32ReadOffset)goto done;
-    for(i=0;i<2;i++){
-        if(r->client_write[i]!=c->start[i] || a04_rgx_device_read_words(&ctl[i],bank+r->layout.control[i],sizeof(ctl[i])) ||
-           ctl[i].ui32WrapMask!=4095u || ctl[i].ui32ReadOffset!=c->start[i] || ctl[i].ui32WriteOffset!=c->start[i] ||
-           ctl[i].ui32DepOffset>4095u || (ctl[i].ui32DepOffset&7u))
-            goto done;
-        /* Reject any context-priority command or overwrite since cold stage. */
-        for(j=0;j<4096u;j+=sizeof(pixels)){
-            if(a04_rgx_device_read_words(pixels,bank+r->layout.commands[i]+j,sizeof(pixels)))goto done;
-            for(unsigned b=0;b<sizeof(pixels);b++)if(((UCHAR *)pixels)[b]!=c->rings[i*4096u+j+b])goto done;
-        }
-        if(a04_rgx_device_read_words(&clean[i],bank+(i?n->addresses.three_d_cleanup[0]:n->addresses.ta_cleanup[0])-0xc0080000u,sizeof(clean[i])) ||
-           clean[i].ui32SubmittedCommands!=c->completed_frames || clean[i].ui32ExecutedCommands!=c->completed_frames)goto done;
-    }
-    if(a04_rgx_device_read_words(sync,bank+0x4c00u,sizeof(sync)) || sync[0]!=c->completed_frames || sync[1]!=c->completed_frames)goto done;
-    c->attempted=TRUE;out->phase=1;
-    status=a04_vendor_native_submit_prepared_pair(n,s,k.ui32WriteOffset);
-    if(!NT_SUCCESS(status))goto poison;
+    struct a04_vendor_render_cold *r=n->render;
+    struct a04_vendor_native_candidate *c=n->candidate;
+    struct a04_rgx_fw_runtime *f=s->memory->runtime;
+    RGXFWIF_CCB_CTL k;RGXFWIF_CCCB_CTL ctl[2];RGXFWIF_CLEANUP_CTL clean[2];
+    RGXFWIF_KCCB_CMD flush={0},fence={0};
+    UCHAR *bank=r->buffer[0].cpu;uint32_t sync[2],next,seq;
+    unsigned i,j;NTSTATUS status;_Alignas(8) uint32_t pixels[64];
     out->phase=2;
     status=wait_kernel(f,second);if(!NT_SUCCESS(status))goto poison;
     status=STATUS_IO_TIMEOUT;
@@ -175,6 +140,127 @@ done:
     if(c->scan.started && !NT_SUCCESS(status))c->scan.failed=1;
     InterlockedExchange(&s->command_busy,0);return status;
 }
+
+NTSTATUS a04_vendor_native_publish_candidate(struct a04_vendor_native_cold *n,
+    struct a04_vendor_start *s,struct a04_vendor_native_result *out)
+{
+    struct a04_vendor_render_cold *r;struct a04_vendor_native_candidate *c;
+    struct a04_rgx_fw_runtime *f;RGXFWIF_CCB_CTL k;RGXFWIF_CCCB_CTL ctl[2];
+    RGXFWIF_CLEANUP_CTL clean[2];
+    UCHAR *bank;uint32_t sync[2],next,second;unsigned i,j;NTSTATUS status;
+    _Alignas(8) uint32_t pixels[64];
+    if(!out)return STATUS_INVALID_PARAMETER;
+    RtlZeroMemory(out,sizeof(*out));
+    if(!n || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !(r=n->render) ||
+       r->native_owner!=n || !(c=n->candidate) || n->quarantined || r->poisoned ||
+       r->cleanup_started || c->attempted || !n->mapped || !n->prepared || !n->bank_prepared ||
+       !n->backing_staged || !n->output_mapped || n->code_mapped!=3u ||
+       n->width!=800u || n->height!=600u || !a04_vendor_native_output_ready(n) ||
+       !s->online || !s->core || s->memory!=r->firmware ||
+       !s->memory || !s->memory->hardware_owned || !s->memory->uncached ||
+       !(f=s->memory->runtime) || !f->kctl || !f->fctl || !f->kcommands || !f->command_sync ||
+       s->command_sequence>=0xfffffffeu)return STATUS_INVALID_DEVICE_STATE;
+    out->completed_frames=c->completed_frames;
+    /* The external caller must hold the existing provider lifetime lock. */
+    if(InterlockedCompareExchange(&s->command_busy,1,0))return STATUS_DEVICE_BUSY;
+    RtlZeroMemory(&c->scan,sizeof(c->scan));
+    status=STATUS_INVALID_DEVICE_STATE;
+    if(r->poisoned || r->cleanup_started || n->quarantined || c->attempted ||
+       s->command_poisoned || s->shutdown_started)goto done;
+    bank=r->buffer[0].cpu;
+    if(read_queue(f,&k) || k.ui32ReadOffset!=k.ui32WriteOffset)goto done;
+    /* Reserve both KCCB slots while command_busy excludes other producers. */
+    next=(k.ui32WriteOffset+1u)&127u;second=(next+1u)&127u;
+    if(next==k.ui32ReadOffset || second==k.ui32ReadOffset)goto done;
+    for(i=0;i<2;i++){
+        if(r->client_write[i]!=c->start[i] || a04_rgx_device_read_words(&ctl[i],bank+r->layout.control[i],sizeof(ctl[i])) ||
+           ctl[i].ui32WrapMask!=4095u || ctl[i].ui32ReadOffset!=c->start[i] || ctl[i].ui32WriteOffset!=c->start[i] ||
+           ctl[i].ui32DepOffset>4095u || (ctl[i].ui32DepOffset&7u))
+            goto done;
+        /* Reject any context-priority command or overwrite since cold stage. */
+        for(j=0;j<4096u;j+=sizeof(pixels)){
+            if(a04_rgx_device_read_words(pixels,bank+r->layout.commands[i]+j,sizeof(pixels)))goto done;
+            for(unsigned b=0;b<sizeof(pixels);b++)if(((UCHAR *)pixels)[b]!=c->rings[i*4096u+j+b])goto done;
+        }
+        if(a04_rgx_device_read_words(&clean[i],bank+(i?n->addresses.three_d_cleanup[0]:n->addresses.ta_cleanup[0])-0xc0080000u,sizeof(clean[i])) ||
+           clean[i].ui32SubmittedCommands!=c->completed_frames || clean[i].ui32ExecutedCommands!=c->completed_frames)goto done;
+    }
+    if(a04_rgx_device_read_words(sync,bank+0x4c00u,sizeof(sync)) || sync[0]!=c->completed_frames || sync[1]!=c->completed_frames)goto done;
+    c->attempted=TRUE;out->phase=1;
+    status=a04_vendor_native_submit_prepared_pair(n,s,k.ui32WriteOffset);
+    if(!NT_SUCCESS(status))goto poison;
+    return finish_published(n,s,out,second);
+poison:
+    if(NT_SUCCESS(status) || status==STATUS_INVALID_DEVICE_STATE)status=STATUS_IO_DEVICE_ERROR;
+    r->poisoned=TRUE;s->command_poisoned=TRUE;n->quarantined=TRUE;
+done:
+    InterlockedExchange(&s->command_busy,0);return status;
+}
+
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+/* Caller owns the real Dxgk interrupt lock and the retained D0 lease. No
+ * allocation, waiting, cache operation, callback, or CPU visibility claim. */
+NTSTATUS a04_vendor_native_owner_submit(struct a04_vendor_native_cold *n,
+    struct a04_vendor_start *s,uint32_t expected_kernel_write)
+{
+    struct a04_vendor_render_cold *r;struct a04_vendor_native_candidate *c;
+    struct a04_rgx_fw_runtime *f;RGXFWIF_CCB_CTL k;RGXFWIF_CCCB_CTL ctl;
+    RGXFWIF_CLEANUP_CTL clean;uint32_t sync[2];NTSTATUS status=STATUS_DEVICE_BUSY;
+    if(!n || !s || KeGetCurrentIrql()<DISPATCH_LEVEL || expected_kernel_write>127u ||
+       !(r=n->render) || r->native_owner!=n || !(c=n->candidate) ||
+       !n->registered_target || !a04_vendor_native_output_ready(n) ||
+       !n->mapped || !n->prepared || !n->bank_prepared || !n->backing_staged ||
+       !n->output_mapped || n->code_mapped!=3u || n->quarantined || r->poisoned ||
+       r->cleanup_started || c->attempted || c->published || c->verified || c->owner_pending ||
+       !s->online || !s->core || s->memory!=r->firmware || !s->memory ||
+       !s->memory->hardware_owned || !s->memory->uncached ||
+       s->command_poisoned || s->shutdown_started ||
+       !(f=s->memory->runtime) || !f->kctl || !f->fctl || !f->kcommands ||
+       !f->command_sync || s->command_sequence>=0xfffffffeu)return STATUS_INVALID_DEVICE_STATE;
+    if(InterlockedCompareExchange(&s->command_busy,1,0))return STATUS_DEVICE_BUSY;
+    if(read_queue(f,&k) || k.ui32ReadOffset!=expected_kernel_write ||
+       k.ui32WriteOffset!=expected_kernel_write)goto reject;
+    for(unsigned i=0;i<2;i++){
+        uint32_t cleanup=i?n->addresses.three_d_cleanup[0]:n->addresses.ta_cleanup[0];
+        if(r->client_write[i]!=c->start[i] ||
+           a04_rgx_device_read_words(&ctl,(UCHAR *)r->buffer[0].cpu+r->layout.control[i],sizeof(ctl)) ||
+           ctl.ui32WrapMask!=4095u || ctl.ui32ReadOffset!=c->start[i] ||
+           ctl.ui32WriteOffset!=c->start[i] || ctl.ui32DepOffset>4095u ||
+           (ctl.ui32DepOffset&7u) ||
+           a04_rgx_device_read_words(&clean,(UCHAR *)r->buffer[0].cpu+cleanup-0xc0080000u,sizeof(clean)) ||
+           clean.ui32SubmittedCommands!=c->completed_frames ||
+           clean.ui32ExecutedCommands!=c->completed_frames)goto reject;
+    }
+    if(a04_rgx_device_read_words(sync,(UCHAR *)r->buffer[0].cpu+0x4c00u,sizeof(sync)) ||
+       sync[0]!=c->completed_frames || sync[1]!=c->completed_frames)goto reject;
+    RtlZeroMemory(&c->scan,sizeof(c->scan));
+    c->attempted=TRUE;c->owner_pending=TRUE;
+    c->owner_second=(expected_kernel_write+2u)&127u;
+    status=a04_vendor_native_submit_prepared_pair(n,s,expected_kernel_write);
+    if(NT_SUCCESS(status))return status; /* busy remains held through finish */
+    n->quarantined=TRUE;r->poisoned=TRUE;s->command_poisoned=TRUE;
+reject:
+    InterlockedExchange(&s->command_busy,0);return status;
+}
+NTSTATUS a04_vendor_native_owner_finish_passive(struct a04_vendor_native_cold *n,
+    struct a04_vendor_start *s,struct a04_vendor_native_result *out)
+{
+    struct a04_vendor_native_candidate *c;NTSTATUS status;
+    if(!out)return STATUS_INVALID_PARAMETER;
+    RtlZeroMemory(out,sizeof(*out));
+    if(!n || !s || KeGetCurrentIrql()!=PASSIVE_LEVEL || !(c=n->candidate) ||
+       !n->registered_target || !n->render || n->render->native_owner!=n ||
+       n->quarantined || n->render->poisoned || !c->owner_pending ||
+       !c->attempted || !c->published || c->verified || s->command_busy!=1 ||
+       !s->memory || s->memory!=n->render->firmware || !s->memory->hardware_owned ||
+       !s->memory->uncached || !s->memory->runtime || !s->online ||
+       s->command_poisoned || s->shutdown_started)return STATUS_INVALID_DEVICE_STATE;
+    out->completed_frames=c->completed_frames;
+    status=finish_published(n,s,out,c->owner_second);
+    if(NT_SUCCESS(status))c->owner_pending=FALSE;
+    return status;
+}
+#endif
 
 BOOLEAN a04_vendor_native_failed_scan(const struct a04_vendor_native_cold *n,
     struct a04_vendor_native_scan_diagnostic *out)

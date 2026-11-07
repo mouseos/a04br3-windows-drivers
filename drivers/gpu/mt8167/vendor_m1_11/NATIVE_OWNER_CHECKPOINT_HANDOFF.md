@@ -63,3 +63,30 @@ H側で次に必要な接点（実装担当を重複させず主担当から中�
 
 このowner追加はGPU2.5最終候補860f697とは別のhost作業。
 主担当の2.5 buildは860f697固定のまま。owner commitを無断で混ぜて再buildしない。
+
+## nonwaiting submit / PASSIVE finishの実分離
+
+`a04_vendor_native_owner_submit(n,start,expected_kccb_write)`を追加。
+実Dxgk interrupt同期lock＋保持済D0/MDL leaseのcaller専用で、actual bound MDL、
+元CCB/UFO/cleanup/KCCB空状態を固定量だけ照合し、既存two-kick publisherを呼ぶ。
+allocation/wait/cache/callbackなし。accepted後はcommand_busyを保持し、
+candidateのattempted/published/owner_pendingで二重投入を拒否する。
+
+`a04_vendor_native_owner_finish_passive(n,start,&result)`は、既存validated
+publisherから共通化したfinishを実行する。TA/3D/UFO/cleanup完了→SLC flush→
+GP SYNC→元MDLのKeFlushIoBuffers→同じMDL上のpixel/guard確認を行う。
+成功はCPU側completion/cache/readbackの観測であり、
+GEO_COMPLETION_GPU_DONE|CPU_VISIBLEのDIRQL deliveryやquiescence proofではない。
+実source claim/serialに基づく後続hardware IRQへの結合は引き続き必要。
+同期private baselineも同じfinishを使い、host1/16frame・triangle2frameの回帰を確認。
+
+host試験はreal coreにOS/SG/FW RAMの明示的doubleを組み合わせたもの。
+aperture500pages・非連続実SGモデル・packedARGBの同MDLを使い、
+IRQL5モデルでzero allocation/waitのaccept（実ISRの証拠ではない）、
+127→0→1 wrap、accepted≠completed、PASSIVE fence/cache/readback、
+timeout/pixel mismatchのpoison、SG/MDL保持を確認。IRQ通知は作っていない。
+実WDK helper `-WithMdlTarget -LinkCheck`へ両entryをexport追加。
+
+現APIはone cold-prepared surface/jobを動かす実coreである。
+一般live prepare/discard、後続IRQ visibility、platform/fabric quiesce、
+frontend実MDL lease口を結合するまでGEO table/63capsは公開しない。

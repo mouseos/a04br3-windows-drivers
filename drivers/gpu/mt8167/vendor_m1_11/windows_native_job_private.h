@@ -15,7 +15,8 @@ struct a04_vendor_native_candidate {
     uint32_t completed_frames,start[2];
     struct a04_vendor_native_scan_diagnostic scan;
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
-    uint32_t clear_pixel;
+    uint32_t clear_pixel,owner_second;
+    BOOLEAN owner_pending;
 #endif
     struct a04_m111_clear_job job;
 #if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
