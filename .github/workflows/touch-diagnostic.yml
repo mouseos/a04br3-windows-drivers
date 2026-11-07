@@ -1,0 +1,52 @@
+name: ARM32 touch diagnostic build
+on:
+  workflow_dispatch:
+  push:
+    branches: [work/unified-bu21025-diagnostics, work/rt-unified-gpu]
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Windows 8.1 SDK and WDK
+        shell: pwsh
+        run: ./tools/ci/install-wdk81.ps1
+      - name: Test touch components
+        shell: pwsh
+        run: ./tools/ci/test-touch-windows.ps1
+      - name: Build shared-parent diagnostic driver
+        shell: pwsh
+        run: |
+          $env:A04_TOUCH_SHARED_PARENT='1'
+          $env:A04_TOUCH_TRACE='1'
+          $env:A04_TOUCH_THERMAL_LEASE='0'
+          ./tools/ci/build-wdf-touch.ps1
+          $driver = Join-Path $env:RUNNER_TEMP 'a04-wdf-touch\bu21025.sys'
+          [ordered]@{ source_commit = (git rev-parse HEAD); sha256 = (Get-FileHash $driver -Algorithm SHA256).Hash; shared_parent = 1; trace = 1; thermal_lease = 0; note = 'Unsigned diagnostic build; target operation unverified.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $env:RUNNER_TEMP 'a04-wdf-touch\manifest.json')
+      - name: Create test-signed touch package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
+          $out = Join-Path $env:RUNNER_TEMP 'a04-wdf-touch'
+          $driver = Join-Path $out 'bu21025.sys'
+          $package = Join-Path $env:RUNNER_TEMP 'a04-shared-touch-package'
+          New-Item -ItemType Directory -Force $package | Out-Null
+          Copy-Item $driver $package
+          Copy-Item 'drivers/bus/mt8167-shared/prototype/shared-touch.inf' $package
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=MT8167 BU21025 Diagnostic' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
+          Export-Certificate -Cert $cert -FilePath (Join-Path $package 'shared-touch-test.cer') | Out-Null
+          $sign = Join-Path $kit 'bin\x86\signtool.exe'
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $package 'bu21025.sys')
+          if ($LASTEXITCODE -ne 0) { throw 'SYS signing failed' }
+          & (Join-Path $kit 'bin\x86\Inf2Cat.exe') "/driver:$package" /os:6_3_ARM /uselocaltime
+          if ($LASTEXITCODE -ne 0) { throw 'Catalog generation failed' }
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $package 'bu21025.cat')
+          if ($LASTEXITCODE -ne 0) { throw 'Catalog signing failed' }
+          [ordered]@{ source_commit = (git rev-parse HEAD); shared_parent = 1; trace = 1; thermal_lease = 0; signer_sha1 = $cert.Thumbprint; files = @{ 'bu21025.sys' = (Get-FileHash (Join-Path $package 'bu21025.sys') -Algorithm SHA256).Hash; 'bu21025.cat' = (Get-FileHash (Join-Path $package 'bu21025.cat') -Algorithm SHA256).Hash; 'shared-touch.inf' = (Get-FileHash (Join-Path $package 'shared-touch.inf') -Algorithm SHA256).Hash }; note = 'Test-signed diagnostic; target signature acceptance and operation unverified.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $package 'manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bu21025-shared-diagnostic
+          path: ${{ runner.temp }}\a04-shared-touch-package
+          if-no-files-found: error

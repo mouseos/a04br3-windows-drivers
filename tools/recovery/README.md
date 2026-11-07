@@ -28,3 +28,7 @@ aarch64-linux-gnu-gcc -static -o ntfs-3g-static \
 ```
 
 リンク時の警告も確認し、対象recovery上での実行と使い捨てNTFSでのマウント・書込みを確認してから使用します。NTFS-3Gは未クリーンなボリュームを修復する場合があり、処理結果をログで確認してください。
+
+## Recoveryでの更新前ホスト退避
+
+`capture-windows-prebackup.py` は、serial固定・Recovery/UID0・Windows partition検査・ro mountの下で、SYSTEM/SOFTWARE/DRIVERSと各LOG1/LOG2、指定SYSをホストの新規private directoryへ回収し、SHA-256/長さを照合してunmountする。書込み・再起動は行わない。成功manifestは `captured-unmounted`。writer直前のread-only verify modeで固定manifest hashと同一Recovery boot IDを照合する。Windows起動や別の変更を挟むと旧バックアップは更新前証拠として失効する。privateデータをESP・公開repoへコピーしない。詳細は [README-windows-prebackup.md](README-windows-prebackup.md) を参照。

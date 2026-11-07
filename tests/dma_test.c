@@ -4,7 +4,7 @@
 #include <string.h>
 #include "dma.h"
 
-struct fake { uint32_t regs[64]; int command_error, data_error, no_stop, no_command, fifo_stuck, started; uint32_t first_command, delay, reads, observed; uint64_t time; uint32_t commands[4], command_count; int stop_error, stop_silent; };
+struct fake { uint32_t regs[64]; int command_error, data_error, no_stop, no_command, fifo_stuck, started; uint32_t first_command, delay, reads, observed; uint64_t time; uint32_t commands[4], command_count; int stop_error, stop_silent, no_xfer_done, bad_card_status; };
 static uint32_t rd(void *p, uint32_t off)
 {
     struct fake *f = p;
@@ -28,13 +28,14 @@ static void wr(void *p, uint32_t off, uint32_t val)
                 f->regs[0x00c / 4] |= 1u << 10;
                 return;
             }
-            if ((val & 0x3f) == 13) f->regs[0x040/4] = (1u << 8) | (4u << 9);
+            if ((val & 0x3f) == 13) f->regs[0x040/4] = f->bad_card_status ? (1u << 19) : (1u << 8) | (4u << 9);
             if (!f->no_command) f->regs[0x00c / 4] |= f->command_error ? 1u << 9 : 1u << 8;
         }
         if (off == 0x098 && (val & 1)) {
             f->started = 1;
             f->regs[0x09c / 4] |= 1;
-            if (!f->delay) f->regs[0x00c / 4] |= f->data_error == 3 ? (1u << 19) | (1u << 12) : f->data_error == 2 ? 1u << 14 : f->data_error ? 1u << 15 : 1u << 12;
+            if (f->no_xfer_done) { f->regs[0x09c / 4] = 4; f->regs[0x00c / 4] = 0x2040; }
+            else if (!f->delay) f->regs[0x00c / 4] |= f->data_error == 3 ? (1u << 19) | (1u << 12) : f->data_error == 2 ? 1u << 14 : f->data_error ? 1u << 15 : 1u << 12;
         }
         if (off == 0x098 && (val & 2) && !f->no_stop) f->regs[0x09c / 4] &= ~1u;
     }
@@ -59,6 +60,48 @@ int main(void)
     io = init(&f);
     assert(a04_msdc_dma_write_sector(&io, 5, 0x100040, 64, 10, 1) == A04_DMA_OK);
     assert((f.first_command & 0x3f) == 24 && (f.first_command & (1u << 13)));
+    /* One guarded 4KiB write uses CMD25/CMD12/CMD13 rather than eight
+     * independent CMD24/CMD13 pairs. All completion/error checks still apply. */
+    io = init(&f);
+    for (uint32_t sector = 0; sector < 8; ++sector)
+        assert(a04_msdc_dma_write_sector(&io, 100 + sector, 0x100000, 64, 10, 1) == A04_DMA_OK);
+    assert(f.command_count == 16);
+    io = init(&f);
+    assert(a04_msdc_dma_write_blocks_timed(&io, 100, 0x100000, 64, 10, 8, 1, 0) == A04_DMA_OK);
+    assert(f.command_count == 3 && (f.commands[0] & 63) == 25);
+    assert(((f.commands[0] >> 11) & 3) == 2 && (f.commands[0] & (1u << 13)));
+    assert((f.commands[1] & 63) == 12 && (f.commands[1] & (1u << 14)));
+    assert(((f.commands[1] >> 7) & 7) == 7 && (f.commands[2] & 63) == 13);
+    assert(f.regs[0x050/4] == 8 && f.regs[0x0a8/4] == 4096 && f.regs[0] == 9);
+    io = init(&f); f.no_xfer_done = 1;
+    assert(a04_msdc_dma_write_blocks_timed(&io, 100, 0x100000, 64, 10, 8, 1, 0) == A04_DMA_DATA_POLL_TIMEOUT);
+    assert(f.regs[0] != 9); /* int=0x2040 + DMA inactive is not completion. */
+    io = init(&f); f.bad_card_status = 1;
+    assert(a04_msdc_dma_write_blocks_timed(&io, 100, 0x100000, 64, 10, 8, 1, 0) == A04_DMA_CARD_ERROR);
+    assert(f.command_count == 3 && f.regs[0] != 9);
+    /* CRC/timeout/bus error cannot be hidden by stop or status success. */
+    for (int error = 1; error <= 3; ++error) {
+        io = init(&f); f.data_error = error;
+        assert(a04_msdc_dma_write_blocks_timed(&io, 100, 0x100000, 64, 10, 8, 1, 0) ==
+            (error == 1 ? A04_DMA_DATA_CRC : error == 2 ? A04_DMA_DATA_TIMEOUT : A04_DMA_BUS_ERROR));
+        assert(f.command_count == 2 && (f.commands[1] & 63) == 12 && f.regs[0] != 9);
+    }
+    io = init(&f); f.no_stop = 1;
+    assert(a04_msdc_dma_write_blocks_timed(&io, 100, 0x100000, 64, 10, 8, 1, 0) == A04_DMA_STOP_TIMEOUT);
+    assert(f.command_count == 1);
+    io = init(&f); f.stop_error = 1;
+    assert(a04_msdc_dma_write_blocks_timed(&io, 100, 0x100000, 64, 10, 8, 1, 0) == A04_DMA_STOP_ERROR);
+    assert(f.command_count == 2);
+    io = init(&f); f.regs[0x008/4] = 0;
+    assert(a04_msdc_dma_write_blocks_timed(&io, 100, 0x100000, 64, 10, 8, 1, 0) == A04_DMA_STOP_TIMEOUT);
+    assert(f.command_count == 2);
+    io = init(&f);
+    assert(a04_msdc_dma_write_blocks_timed(&io, 100, 0x100000, 64, 10, 0, 1, 0) == A04_DMA_INVALID);
+    assert(a04_msdc_dma_write_blocks_timed(&io, 100, 0x100000, 64, 10, 9, 1, 0) == A04_DMA_INVALID);
+    assert(a04_msdc_dma_write_blocks_timed(&io, UINT32_MAX, 0x100000, 64, 10, 8, 1, 0) == A04_DMA_INVALID);
+    assert(a04_msdc_dma_write_blocks_timed(&io, 100, 0xfffffe00u, 64, 10, 8, 1, 0) == A04_DMA_INVALID);
+    assert(a04_msdc_dma_write_blocks_timed(&io, 100, 0x100000, 64, 10, 8, 0, 0) == A04_DMA_INVALID);
+    assert(!f.command_count);
     io = init(&f); f.regs[0x008/4] = 0;
     assert(a04_msdc_dma_write_sector(&io, 5, 0x100040, 64, 10, 1) == A04_DMA_CARD_BUSY_TIMEOUT);
     io = init(&f); f.command_error = 1;

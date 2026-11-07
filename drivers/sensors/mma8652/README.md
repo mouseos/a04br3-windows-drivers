@@ -27,8 +27,11 @@ page and claims the sole I2C1 resource before accessing its registers. On D0
 entry it restores the controller from the handed-off timing and configures the
 sensor; on exit it stops and purges the report queue. If shared clock or pins
 are lost on resume, HSTA fails and D0 is refused: Windows does not own or
-restore the shared registers. I/O errors latch a failure instead of resetting
-an unknown bus state. This handshake, including ACPI NVS resource allocation,
+restore the shared registers. A transient read error gets one retry only after HSTA revalidates ownership
+and START is observed idle. Recovery uses the Linux/XNU MT8167 controller SOFTRESET register after
+START is idle, then restores the controller timing/configuration. No shared
+clock/pin writes are made. An active controller or persistent
+error still latches a failure. This handshake, including ACPI NVS resource allocation,
 cache attributes and ACPI method routing through the HID stack, was exercised
 by the single WinPE read above, but is not yet validated across power states.
 The marker is an integrity check, not authentication.
@@ -57,3 +60,38 @@ host tests and ARM object compilation. `tools/ci/build-mma8652.ps1` builds an
 ARM32 WDK package and `tools/ci/sign-mma8652.ps1` creates a research-only
 self-signed package; acceptance outside the test-mode WinPE is not established. Do not treat
 host simulation, linking or a signature as evidence of hardware operation.
+
+## Windows 8.1 sensor HID contract
+
+Microsoft's detailed HID Sensors Usages white paper requires one-based named
+array selectors: READY=2, DATA_UPDATED=4, NO_EVENTS=1 and ALL_EVENTS=2.
+The earlier zero-based values made raw WinPE reads look valid while exposing
+UNKNOWN/property-change values to the Windows sensor class. A PC-integrated
+connection feature is needed for Windows motion/orientation UX. The single
+sensor uses the documented Physical collection form.
+
+Acceleration retains the prescribed default G unit with exponent -2;
+intervals retain the prescribed default milliseconds. Explicit alternate
+units are prohibited by the detailed white paper, which supersedes the old
+Learn sample for these values. GET_INPUT_REPORT is supported even when
+asynchronous reporting is disabled. Read-only feature fields are ignored
+when processing SET_FEATURE.
+
+Reference: https://learn.microsoft.com/en-us/windows-hardware/design/whitepapers/hid-sensors-usages
+
+The HID string request returns NXP Semiconductors and NXP MMA8652
+Accelerometer. Serial is empty because no chip serial is exported. Missing
+identification strings caused the installed Sensor HID class to report Code 10.
+
+Completion is checked before the wall-clock timeout: a descheduled passive
+thread must accept valid data already completed by the controller. Polling
+remains bounded if hardware has not completed. D0 re-entry revalidates HSTA
+and reinitializes the sensor before clearing a latched fault.
+
+The Windows HID adapter rotates the stock landscape board frame 90 degrees
+clockwise into the native portrait panel frame: X=board Y, Y=-board X,
+Z=board Z. The installed Windows test rotated the display with its upper edge
+at the physical right when held upright before this mount transform.
+The opposite (counterclockwise) transform was then observed upside down by
+the user, so both in-plane signs are reversed in version 0.0.1.8.
+The corrected direction still requires installed-Windows verification.

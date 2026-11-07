@@ -53,6 +53,8 @@ extern "C"
 #define EDID_V1_BLOCK_SIZE 128
 
 #include "BDD_ErrorLog.hxx"
+#include "ge8300_display_resources.hxx"
+#include "mt8167_brightness.hxx"
 
 #define MIN_WIDTH                    640
 #define MIN_HEIGHT                   480
@@ -188,6 +190,22 @@ private:
 
     BDD_HWBLT        m_HardwareBlt[MAX_VIEWS];
     KMUTEX           m_PresentMutex;
+#if A04_MT8167_DISPLAY_BRIGHTNESS
+    A04Mt8167Brightness m_Brightness;
+#endif
+#if A04_GE8300_WDDM_SHARED_AUTOSTART
+    KEVENT m_SharedWorkerStop;
+    KMUTEX m_SharedWorkerStopMutex;
+    KEVENT *m_SharedWorkerDone;
+    HANDLE m_SharedWorker;
+    PVOID m_SharedWorkerObject;
+    static VOID SharedDiagnosticWorker(PVOID context);
+    VOID StopSharedDiagnosticWorker();
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+    NTSTATUS ShowVerifiedGpuFrame();
+    BOOLEAN m_GpuPostAttempted;
+#endif
+#endif
 
     // Current monitorpower state (this needs to be changed if MAX_CHILDREN != 1)
     DEVICE_POWER_STATE m_MonitorPowerState;
@@ -203,8 +221,19 @@ private:
 
     // Device information
     DXGK_DEVICE_INFO m_DeviceInfo;
+#if A04_GE8300_WDDM_DIRECT_EXPERIMENT
+    A04DisplayResources m_DisplayResources;
+#endif
 
 public:
+#if A04_GE8300_WDDM_SHARED_PRESENT
+    NTSTATUS SubmitSharedPresent(const void *pixels,uint32_t pitch)
+    { return m_DisplayResources.SubmitFullFrame(pixels,pitch); }
+#endif
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+    NTSTATUS TryGpuLogicalPresent(const BLT_INFO *source,const BLT_INFO *destination,
+        ULONG moves,const D3DKMT_MOVE_RECT *move,ULONG count,const RECT *rects);
+#endif
     BASIC_DISPLAY_DRIVER(_In_ DEVICE_OBJECT* pPhysicalDeviceObject);
     ~BASIC_DISPLAY_DRIVER();
 
@@ -222,6 +251,7 @@ public:
                          _Out_ ULONG*             pNumberOfChildren);
 
     NTSTATUS StopDevice(VOID);
+    NTSTATUS QueryBrightness(PQUERY_INTERFACE query);
 
     // Must be Non-Paged
     VOID ResetDevice(VOID);
@@ -352,7 +382,7 @@ private:
     NTSTATUS IsVidPnPathFieldsValid(CONST D3DKMDT_VIDPN_PRESENT_PATH* pPath) const;
     NTSTATUS IsVidPnSourceModeFieldsValid(CONST D3DKMDT_VIDPN_SOURCE_MODE* pSourceMode) const;
 
-    VOID BlackOutScreen(D3DDDI_VIDEO_PRESENT_SOURCE_ID SourceId);
+    NTSTATUS BlackOutScreen(D3DDDI_VIDEO_PRESENT_SOURCE_ID SourceId);
 
     // Returns the index into gBddBiosData.BddModes of the VBE mode that matches the given VidPnSourceMode.
     // If such a mode cannot be found, returns a number outside of [0, gBddBiosData.CountBddModes)
@@ -647,5 +677,7 @@ void  __cdecl operator delete[](void* pObject);
 
 // Pool allocation tag for the Sample Display Driver. All allocations use this tag.
 #define BDDTAG 'DDBS'
+
+DXGKDDI_QUERY_INTERFACE BddDdiQueryInterface;
 
 #endif // _BDD_HXX_

@@ -3,13 +3,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include "windows_surface.h"
-static unsigned allocs,frees,pools;
+static unsigned allocs,frees,pools,alias_dma;
 unsigned KeGetCurrentIrql(void){return PASSIVE_LEVEL;}
 void a04_gpu_dma_barrier(void){}
 void *ExAllocatePoolWithTag(int t,size_t n,unsigned tag){(void)t;(void)tag;void *p=aligned_alloc(4096,(n+4095)&~(size_t)4095);if(p)pools++;return p;}
 void ExFreePoolWithTag(void *p,unsigned tag){(void)tag;pools--;free(p);}
 static void *alloc(PDMA_ADAPTER a,PHYSICAL_ADDRESS *m,ULONG n,PHYSICAL_ADDRESS *p,BOOLEAN c,ULONG node)
-{(void)a;(void)m;(void)c;(void)node;allocs++;p->QuadPart=0x40000000LL+(int64_t)allocs*0x01000000LL;return aligned_alloc(4096,(n+4095)&~4095u);}
+{(void)a;(void)m;(void)c;(void)node;allocs++;p->QuadPart=0x40000000LL+(int64_t)(alias_dma ? 1 : allocs)*0x01000000LL;return aligned_alloc(4096,(n+4095)&~4095u);}
 static void release(PDMA_ADAPTER a,ULONG n,PHYSICAL_ADDRESS p,void *v,BOOLEAN c)
 {(void)a;(void)n;(void)p;(void)c;frees++;free(v);}
 int main(void)
@@ -23,6 +23,13 @@ int main(void)
     assert(a04_vendor_surface_prepare(&s,&adapter,800,1280,3328,UINT64_C(0x8000000000))==STATUS_SUCCESS);
     assert(a04_vendor_surface_mark_exposed(&s)==STATUS_SUCCESS);
     assert(a04_vendor_surface_release(&s)==STATUS_DEVICE_BUSY && frees==6);
+    {
+        struct a04_vendor_surface bad={0};unsigned before=frees;
+        alias_dma=1;
+        assert(a04_vendor_surface_prepare(&bad,&adapter,800,1280,3328,UINT64_C(0x8000000000))==STATUS_DEVICE_CONFIGURATION_ERROR);
+        assert(bad.hardware_exposed && frees==before);
+        assert(a04_vendor_surface_release(&bad)==STATUS_DEVICE_BUSY && frees==before);
+    }
     /* Test process exits with mocked retained allocations, like the real gate. */
     return 0;
 }

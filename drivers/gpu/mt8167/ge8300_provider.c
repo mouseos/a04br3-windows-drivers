@@ -7,6 +7,8 @@
 #include "windows_queue_test.h"
 #include "windows_linear_context.h"
 #include "ge8300_status.h"
+#include "present_trace_policy.h"
+#include "idle_transition_diagnostic.h"
 #include "vendor_m1_11/windows_stage.h"
 #include "vendor_m1_11/windows_power_acpi.h"
 #include "pvr_rogue_fwif.h"
@@ -52,6 +54,68 @@
 #endif
 #ifndef A04_GE8300_VENDOR_RENDER_COLD
 #define A04_GE8300_VENDOR_RENDER_COLD 0
+#endif
+#ifndef A04_GE8300_SHARED_COMMON_PAGE
+#define A04_GE8300_SHARED_COMMON_PAGE 0
+#endif
+#ifndef A04_GE8300_SHARED_FULL_FRAME
+#define A04_GE8300_SHARED_FULL_FRAME 0
+#endif
+#ifndef A04_GE8300_SHARED_GPU_DIAGNOSTIC
+#define A04_GE8300_SHARED_GPU_DIAGNOSTIC 0
+#endif
+#if A04_GE8300_SHARED_FULL_FRAME && !A04_GE8300_SHARED_GPU_DIAGNOSTIC
+#error Full frame requires shared GPU diagnostic
+#endif
+#ifndef A04_GE8300_SHARED_MMU_PUBLISH
+#define A04_GE8300_SHARED_MMU_PUBLISH 0
+#endif
+#ifndef A04_GE8300_SHARED_LEASE
+#define A04_GE8300_SHARED_LEASE 0
+#endif
+#if A04_GE8300_SHARED_FULL_FRAME
+#include "vendor_m1_11/shared_frame_sequence.h"
+#endif
+#if A04_GE8300_SHARED_COMMON_PAGE && !A04_GE8300_SHARED_LEASE
+#error Shared common page requires shared lease
+#endif
+#if A04_GE8300_SHARED_LEASE
+#include "vendor_m1_11/shared_lease.h"
+#include "vendor_m1_11/windows_shared_tables.h"
+#endif
+#ifndef A04_GE8300_VENDOR_FENCED_COPY
+#define A04_GE8300_VENDOR_FENCED_COPY 0
+#endif
+#ifndef A04_GE8300_VENDOR_COPY_SERVICE
+#define A04_GE8300_VENDOR_COPY_SERVICE 0
+#endif
+#ifndef A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+#define A04_GE8300_VENDOR_COPY_DIAGNOSTIC 0
+#endif
+#if A04_GE8300_SHARED_GPU_DIAGNOSTIC && !A04_GE8300_SHARED_MMU_PUBLISH
+#error Shared GPU diagnostic requires live MMU publication
+#endif
+#if A04_GE8300_SHARED_MMU_PUBLISH && !A04_GE8300_SHARED_LEASE
+#error Live MMU publication requires the shared lease
+#endif
+#if A04_GE8300_SHARED_LEASE && !A04_GE8300_VENDOR_COPY_SERVICE
+#error Shared lease requires the vendor copy service
+#endif
+#if A04_GE8300_VENDOR_FENCED_COPY && !A04_GE8300_VENDOR_COPY_SERVICE
+#error Fenced copy requires the vendor copy service
+#endif
+#if A04_GE8300_VENDOR_COPY_SERVICE && defined(A04_GE8300_COPY_SERVICE) && A04_GE8300_COPY_SERVICE
+#error Vendor and modern firmware copy services are exclusive
+#endif
+#if A04_GE8300_VENDOR_COPY_SERVICE && !A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+#error Vendor copy service requires native copy diagnostic resources
+#endif
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC && (!A04_GE8300_VENDOR_RENDER_COLD || A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC || A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC)
+#error Copy diagnostic requires cold render and excludes clear and screen diagnostics
+#endif
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+#include "vendor_m1_11/windows_copy_scratch.h"
+#include "a04_copy_usc_asset.h"
 #endif
 #if A04_GE8300_VENDOR_COLOR_DIAGNOSTIC && !A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC
 #error Native colour diagnostic requires clear diagnostic
@@ -126,6 +190,36 @@
 #if A04_GE8300_VENDOR_STAGE && A04_GE8300_BOOT_TEST
 #error Vendor firmware staging cannot be combined with modern firmware boot
 #endif
+#ifndef A04_GE8300_VENDOR_NATIVE_BACKING
+#define A04_GE8300_VENDOR_NATIVE_BACKING 0
+#endif
+#if A04_GE8300_VENDOR_NATIVE_BACKING && (!A04_GE8300_VENDOR_RENDER_COLD || !A04_GE8300_VENDOR_UNCACHED_STAGE || !A04_GE8300_VENDOR_COPY_DIAGNOSTIC || !A04_GE8300_SHARED_LEASE)
+#error Native backing requires the matched cold uncached shared render owner
+#endif
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+#include "vendor_m1_11/windows_native_cold.h"
+#endif
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC && !A04_GE8300_VENDOR_COPY_SERVICE
+#error Idle transition diagnostic requires the native copy service
+#endif
+
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+/* Driver-managed S0 idle is supported by KMDF 1.13. No callback invocation,
+ * external wake claim, PoFx policy or D3cold transition is fabricated here. */
+static NTSTATUS GpuAssignDiagnosticIdle(WDFDEVICE device,BOOLEAN enabled)
+{
+    WDF_DEVICE_POWER_POLICY_IDLE_SETTINGS settings;
+    WDF_DEVICE_POWER_POLICY_IDLE_SETTINGS_INIT(&settings,IdleCannotWakeFromS0);
+    settings.DxState=PowerDeviceD3;
+    settings.IdleTimeout=A04_GE8300_IDLE_DIAGNOSTIC_MS;
+    settings.IdleTimeoutType=DriverManagedIdleTimeout;
+    settings.UserControlOfIdleSettings=IdleDoNotAllowUserControl;
+    settings.Enabled=enabled?WdfTrue:WdfFalse;
+    settings.PowerUpIdleDeviceOnSystemWake=WdfFalse;
+    settings.ExcludeD3Cold=WdfTrue;
+    return WdfDeviceAssignS0IdleSettings(device,&settings);
+}
+#endif
 #define CORE_BASE 0x13000000u
 #define CORE_SIZE 0x80000u
 #define MFG_BASE  0x13ffe000u
@@ -140,11 +234,37 @@ typedef struct {
     struct a04_vendor_m1_11_memory vendor;
 #if A04_GE8300_VENDOR_RENDER_COLD
     struct a04_vendor_render_cold vendor_render;
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+    struct a04_vendor_native_cold *vendor_native;
+#endif
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+    struct a04_vendor_copy_scratch vendor_copy;
+    BOOLEAN vendor_copy_device_ref;
+#if A04_GE8300_VENDOR_COPY_SERVICE
+    volatile LONG vendor_service_closed; BOOLEAN vendor_service_online, vendor_cpu_fallback;
+#if A04_GE8300_SHARED_LEASE
+#if A04_GE8300_SHARED_COMMON_PAGE
+    BOOLEAN shared_common_active;
+#endif
+    struct a04_shared_lease_state shared_lease;
+    struct a04_shared_tables shared_tables;
+    struct a04_shared_scanout *shared_owner;
+#if A04_GE8300_SHARED_FULL_FRAME
+    struct a04_shared_frame_sequence shared_frame;
+    ULONGLONG shared_frame_started;
+    ULONG wide_present_reports;
+#endif
+#endif
+#endif
+#endif
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
     struct a04_vendor_surface vendor_screen;
 #endif
 #endif
     PDMA_ADAPTER vendor_adapter_v3;
+#if A04_GE8300_SHARED_LEASE
+    ULONG vendor_map_registers;
+#endif
 #if A04_GE8300_VENDOR_IRQ
     struct a04_vendor_start vendor_start;
     struct a04_vendor_irq *vendor_irq;
@@ -164,6 +284,11 @@ typedef struct {
     BOOLEAN copy_online;
 #endif
     struct a04_ge8300_status status;
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+    NTSTATUS idle_diag_policy_status;
+    BOOLEAN idle_diag_armed,idle_diag_exit_marked,idle_diag_d3_retired;
+    BOOLEAN idle_diag_reentry_marked,idle_diag_proof_marked;
+#endif
     BOOLEAN referenced, attempted;
 } GPU_CONTEXT;
 #if A04_GE8300_BOOT_TEST || A04_GE8300_VENDOR_START_DIAGNOSTIC
@@ -316,12 +441,92 @@ static void GpuBugCallback(PVOID buffer,ULONG length)
 }
 #endif
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(GPU_CONTEXT,GpuContext)
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+static void GpuObserveDiagnosticEntry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
+{
+    GPU_CONTEXT *c=GpuContext(device);NTSTATUS status;
+    if(!c->attempted) {
+        GpuPrint("A04GPU IDLE POLICY=");GpuHex((ULONG)c->idle_diag_policy_status);
+        GpuPrint(" MS=");GpuHex(A04_GE8300_IDLE_DIAGNOSTIC_MS);GpuPrint("\n");
+    } else if(previous==WdfPowerDeviceD3 && c->idle_diag_d3_retired && !c->idle_diag_reentry_marked) {
+        c->idle_diag_reentry_marked=TRUE;
+        GpuPrint("A04GPU IDLE REENTRY D3\n");
+        status=GpuAssignDiagnosticIdle(device,FALSE);
+        if(NT_SUCCESS(status))c->idle_diag_armed=FALSE;
+        GpuPrint("A04GPU IDLE DISARM=");GpuHex((ULONG)status);GpuPrint("\n");
+        /* Even a policy failure is diagnostic, not a cold FW restart. */
+    }
+
+}
+#endif
+#if A04_GE8300_VENDOR_COPY_SERVICE
+/* Caller holds vendor_lifetime. Acknowledged FW retirement permits CPU pixel
+ * writes, never DMA release or a new FW start. Failure is terminal/closed. */
+static NTSTATUS GpuRetireToCpu(GPU_CONTEXT *c)
+{
+    NTSTATUS status, idle=STATUS_NOT_SUPPORTED;unsigned failed=4;
+    InterlockedExchange(&c->vendor_service_closed,1);
+    c->vendor_service_online=FALSE;
+    if(c->vendor_cpu_fallback)return STATUS_SUCCESS;
+    if(!c->vendor.hardware_owned) {
+        if(c->vendor_copy.exposed)return STATUS_DEVICE_BUSY;
+        c->vendor_cpu_fallback=TRUE;return STATUS_SUCCESS;
+    }
+    if(!c->vendor_start.online || c->vendor_start.shutdown_started ||
+       c->vendor_start.command_poisoned || c->vendor_render.poisoned ||
+       InterlockedCompareExchange(&c->vendor_start.command_busy,0,0))return STATUS_DEVICE_BUSY;
+    /* Drain every client CCB and require CLEANUP RUN without BUSY before
+     * forced idle/off. These are the existing bounded m1.11 transports. */
+    if(!a04_vendor_irq_retire(c->vendor_irq))return STATUS_DEVICE_BUSY;
+    status=a04_vendor_render_cleanup_contexts(&c->vendor_render,&c->vendor_start,&failed);
+    if(NT_SUCCESS(status))status=a04_vendor_m1_11_windows_forced_power_off(&c->vendor_start,TRUE,&idle);
+    if(NT_SUCCESS(status) && (c->vendor_render.cleanup_mask!=15u ||
+       !c->vendor_start.power_off_ack || c->vendor_start.online))status=STATUS_IO_DEVICE_ERROR;
+    c->status.shutdown_status=status;
+    GpuPrint("A04GPU RETIRE CPU=");GpuHex((ULONG)status);
+    GpuPrint(" CLEANUP=");GpuHex(c->vendor_render.cleanup_mask);
+    GpuPrint(" FAILED=");GpuHex(failed);GpuPrint(" IDLE=");GpuHex((ULONG)idle);GpuPrint(" DMA RETAINED\n");
+    if(NT_SUCCESS(status)) {
+        c->vendor_cpu_fallback=TRUE;c->status.firmware_started=0;
+        a04_vendor_irq_set_power(c->vendor_irq,FALSE);
+    }
+    return status;
+}
+#endif
+#if A04_GE8300_SHARED_LEASE
+/* Caller holds vendor_lifetime. Establish the existing fenced-copy contract
+ * internally; sharing must not depend on an external diagnostic executable. */
+static NTSTATUS GpuEnsureSharedCopyReady(GPU_CONTEXT *c)
+{
+    struct a04_vendor_clear_result result;NTSTATUS status;
+    if(c->shared_lease.task && c->shared_lease.flush)return STATUS_SUCCESS;
+    if(!c->vendor_service_online || c->vendor_start.command_poisoned ||
+       InterlockedCompareExchange(&c->vendor_service_closed,0,0))return STATUS_DEVICE_NOT_READY;
+    status=a04_vendor_render_copy_once(&c->vendor_copy,&c->vendor_start,&result);
+    if(NT_SUCCESS(status) && (result.zeros!=1024u || result.guard_errors ||
+       !result.completed_task || !result.completed_flush))status=STATUS_DATA_ERROR;
+    if(NT_SUCCESS(status))a04_shared_lease_copy_complete(&c->shared_lease,
+        result.completed_task,result.completed_flush);
+    else {
+        c->vendor_service_online=FALSE;InterlockedExchange(&c->vendor_service_closed,1);
+    }
+    GpuPrint("A04GPU SHARED COPY READY=");GpuHex((ULONG)status);GpuPrint("\n");
+    return status;
+}
+#endif
+
 #if A04_GE8300_VENDOR_IRQ
 static NTSTATUS GpuVendorIrqService(void *context)
 {
     GPU_CONTEXT *c=context;NTSTATUS status;
     WdfWaitLockAcquire(c->vendor_lifetime,NULL);
-    status=a04_vendor_m1_11_windows_irq_snapshot(&c->vendor_start,TRUE,&c->vendor_irq_snapshot);
+    status=(c->vendor_start.shutdown_started
+#if A04_GE8300_VENDOR_COPY_SERVICE
+        || InterlockedCompareExchange(&c->vendor_service_closed,0,0)
+#endif
+        ) ? STATUS_DEVICE_NOT_READY :
+        a04_vendor_m1_11_windows_irq_snapshot(&c->vendor_start,TRUE,&c->vendor_irq_snapshot);
+    if(NT_SUCCESS(status)) (void)a04_vendor_irq_rearm(c->vendor_irq);
     WdfWaitLockRelease(c->vendor_lifetime);return status;
 }
 #endif
@@ -446,6 +651,12 @@ NTSTATUS GpuPrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
 NTSTATUS GpuRelease(WDFDEVICE device,WDFCMRESLIST translated)
 {
     GPU_CONTEXT *c=GpuContext(device); UNREFERENCED_PARAMETER(translated);
+#if A04_GE8300_SHARED_LEASE
+    if (c->shared_lease.active) return STATUS_DEVICE_BUSY;
+#endif
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+    if(c->vendor_copy.exposed) return STATUS_DEVICE_BUSY;
+#endif
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
     if(c->vendor_screen.hardware_exposed) return STATUS_DEVICE_BUSY;
 #endif
@@ -485,9 +696,15 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 {
     GPU_CONTEXT *c=GpuContext(device); NTSTATUS status; PVOID image=NULL; ULONG bytes=0,lo,hi;
     PDMA_ADAPTER adapter;
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+    ULONG copy_map_registers=0;
+#endif
     UNREFERENCED_PARAMETER(previous);
 #if A04_GE8300_VENDOR_START_DIAGNOSTIC
     GpuPrint("A04GPU NATIVE D0 ENTER\n");
+#endif
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+    GpuObserveDiagnosticEntry(device,previous);
 #endif
     if(c->attempted) return STATUS_SUCCESS;
     c->attempted=TRUE; c->status.version=5;
@@ -523,8 +740,17 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         desc.Version=DEVICE_DESCRIPTION_VERSION3;desc.Master=TRUE;
         desc.ScatterGather=TRUE;desc.DmaAddressWidth=32;
         desc.InterfaceType=Internal;desc.MaximumLength=A04_PVR_HEAP_SIZE;
+#if A04_GE8300_SHARED_WIDE_FRAME
+        if(desc.MaximumLength<A04_VENDOR_WIDE_BYTES)desc.MaximumLength=A04_VENDOR_WIDE_BYTES;
+#endif
         c->vendor_adapter_v3=IoGetDmaAdapter(WdfDeviceWdmGetPhysicalDevice(device),&desc,&map_registers);
         adapter=c->vendor_adapter_v3;
+#if A04_GE8300_SHARED_LEASE
+        c->vendor_map_registers=map_registers;
+#endif
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+        copy_map_registers=map_registers;
+#endif
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
         /* The screen common buffer needs one map register per page.  Keep
          * the adapter in the context so the failure path releases it. */
@@ -541,17 +767,44 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 #else
     else status=a04_vendor_m1_11_windows_stage(&c->vendor,adapter,image,bytes);
 #endif
+    GpuPrint("A04GPU CLOCK HZ=");GpuHex(c->vendor.clock_hz);
+    GpuPrint(" PARENT=");GpuHex(c->vendor.clock_parent);GpuPrint("\n");
     ExFreePoolWithTag(image,'0XGA');
 #if A04_GE8300_VENDOR_RENDER_COLD
     if(NT_SUCCESS(status)) {
         status=a04_vendor_render_prepare_cold(&c->vendor_render,&c->vendor,adapter,
-            A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC?TRUE:FALSE,
+            (A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC || A04_GE8300_VENDOR_COPY_DIAGNOSTIC)?TRUE:FALSE,
             A04_GE8300_VENDOR_COLOR_DIAGNOSTIC?0x78563412u:0u);
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+        if(NT_SUCCESS(status))status=a04_vendor_copy_scratch_prepare(&c->vendor_copy,&c->vendor_render,copy_map_registers);
+        if(NT_SUCCESS(status))status=a04_vendor_copy_scratch_stage_usc(&c->vendor_copy,a04_copy_usc_asset,sizeof(a04_copy_usc_asset));
+        if(NT_SUCCESS(status))status=a04_vendor_copy_scratch_freeze(&c->vendor_copy);
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+        if(NT_SUCCESS(status))status=a04_vendor_native_allocate_cold(&c->vendor_native,
+            &c->vendor_render,adapter,copy_map_registers,800,1280);
+        GpuPrint("A04GPU NATIVE BACKING=");GpuHex((ULONG)status);
+        GpuPrint(" BYTES=");GpuHex(a04_vendor_native_bytes(c->vendor_native));GpuPrint("\n");
+#endif
+        /* Retain device context and adapter for the diagnostic boot.  A
+         * reference alone does not establish physical-removal safety. */
+        if(c->vendor_copy.exposed) {WdfObjectReference(device);c->vendor_copy_device_ref=TRUE;}
+        if(!NT_SUCCESS(status) && c->vendor_copy.prepared && !c->vendor_copy.exposed)
+            (void)a04_vendor_copy_scratch_release(&c->vendor_copy);
+        if(!NT_SUCCESS(status) && !c->vendor_copy.exposed) {
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+        if(c->vendor_native)(void)a04_vendor_native_release_cold(&c->vendor_native);
+#endif
+        (void)a04_vendor_render_release_cold(&c->vendor_render);
+        }
+#endif
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
         if(NT_SUCCESS(status))status=a04_vendor_surface_prepare(&c->vendor_screen,adapter,800,1280,3328,UINT64_C(0x8000000000));
         if(NT_SUCCESS(status))status=a04_vendor_render_attach_screen(&c->vendor_render,&c->vendor_screen);
         if(!NT_SUCCESS(status)) {
-            (void)a04_vendor_render_release_cold(&c->vendor_render);
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+        if(c->vendor_native)(void)a04_vendor_native_release_cold(&c->vendor_native);
+#endif
+        (void)a04_vendor_render_release_cold(&c->vendor_render);
             (void)a04_vendor_surface_release(&c->vendor_screen);
         }
 #endif
@@ -725,7 +978,15 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     GPU_CONTEXT *c=GpuContext(device);struct a04_vendor_power_snapshot power;
     NTSTATUS status;uint64_t bvnc;UNREFERENCED_PARAMETER(previous);
     GpuPrint("A04GPU NATIVE POST ENTER\n");
+#if A04_GE8300_VENDOR_COPY_SERVICE
+    /* A retained CPU-only instance still resumes as a PnP device. Never
+     * turn permanent admission closure into a framework start failure. */
+    if(InterlockedCompareExchange(&c->vendor_service_closed,0,0))return STATUS_SUCCESS;
+#endif
     if(!c->vendor.staged || !c->vendor.uncached || !c->vendor_irq) return STATUS_SUCCESS;
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+    if(!c->vendor_copy.task_frozen) {GpuPrint("A04GPU COPY NOT PREPARED\n");return STATUS_SUCCESS;}
+#endif
     WdfWaitLockAcquire(c->vendor_lifetime,NULL);
     status=a04_vendor_m1_11_power_snapshot(device,c->mfg,MFG_SIZE,&power);
     if(NT_SUCCESS(status) && !a04_vendor_m1_11_power_valid(&power)) status=STATUS_DEVICE_NOT_READY;
@@ -761,6 +1022,22 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
                 if(!NT_SUCCESS(context_status)) {c->status.health_status=context_status;break;}
             }
         }
+#endif
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+#if !A04_GE8300_VENDOR_COPY_SERVICE
+        if(NT_SUCCESS(c->status.health_status)) {
+            struct a04_vendor_clear_result copy_result;
+            NTSTATUS copy_status=a04_vendor_render_copy_once(&c->vendor_copy,&c->vendor_start,&copy_result);
+            GpuPrint("A04GPU COPY STATUS=");GpuHex((ULONG)copy_status);
+            GpuPrint(" MATCH=");GpuHex(copy_result.zeros);GpuPrint(" GUARD=");GpuHex(copy_result.guard_errors);
+            GpuPrint(" PHASE=");GpuHex(copy_result.phase);GpuPrint(" UFO=");GpuHex(copy_result.ufo);
+            GpuPrint(" EXPECT=");GpuHex(copy_result.expected);GpuPrint("\n");
+            if(!NT_SUCCESS(copy_status))c->status.health_status=copy_status;
+        }
+#else
+        if(NT_SUCCESS(c->status.health_status) && !InterlockedCompareExchange(&c->vendor_service_closed,0,0))
+            c->vendor_service_online=TRUE;
+#endif
 #endif
 #if A04_GE8300_VENDOR_CLEAR_DIAGNOSTIC
         if(NT_SUCCESS(c->status.health_status)) {
@@ -819,7 +1096,7 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             }
         }
 #endif
-#if A04_GE8300_VENDOR_RENDER_COLD
+#if A04_GE8300_VENDOR_RENDER_COLD && !A04_GE8300_VENDOR_COPY_SERVICE
         if(NT_SUCCESS(c->status.health_status)) {
             unsigned failed=4;
             c->status.shutdown_status=a04_vendor_render_cleanup_contexts(&c->vendor_render,&c->vendor_start,&failed);
@@ -828,12 +1105,14 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             if(!NT_SUCCESS(c->status.shutdown_status)) c->status.health_status=c->status.shutdown_status;
         }
 #endif
+#if !A04_GE8300_VENDOR_COPY_SERVICE
         if(NT_SUCCESS(c->status.health_status)) {
             NTSTATUS idle_status;
             c->status.shutdown_status=a04_vendor_m1_11_windows_forced_power_off(&c->vendor_start,TRUE,&idle_status);
             GpuPrint("A04GPU FORCED IDLE=");GpuHex((ULONG)idle_status);GpuPrint("\n");
         }
         GpuPrint("A04GPU NATIVE OFF=");GpuHex(c->status.shutdown_status);GpuPrint("\n");
+#endif
         {
             ULONG snap[6];
             if(NT_SUCCESS(a04_vendor_m1_11_power_debug_snapshot(&c->vendor_start,snap))) {
@@ -851,6 +1130,9 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
        ) {
         a04_vendor_irq_set_power(c->vendor_irq,FALSE);
 #if A04_GE8300_VENDOR_RENDER_COLD
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+        if(c->vendor_native)(void)a04_vendor_native_release_cold(&c->vendor_native);
+#endif
         (void)a04_vendor_render_release_cold(&c->vendor_render);
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
         (void)a04_vendor_surface_release(&c->vendor_screen);
@@ -862,18 +1144,59 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             c->vendor_adapter_v3=NULL;
         }
     }
+    GpuPrint("A04GPU POST CALLBACK=");GpuHex((ULONG)(ULONG_PTR)GpuPostInterrupts);GpuPrint(" UNLOCK\n");
     WdfWaitLockRelease(c->vendor_lifetime);
+    GpuPrint("A04GPU POST UNLOCKED\n");
     if(c->vendor.hardware_owned) a04_vendor_irq_kick(c->vendor_irq);
+    GpuPrint("A04GPU POST COMPLETE\n");
     return STATUS_SUCCESS;
 }
 #endif
 NTSTATUS GpuD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
 {
     GPU_CONTEXT *c=GpuContext(device); UNREFERENCED_PARAMETER(target);
+#if A04_GE8300_VENDOR_STAGE
+#if A04_GE8300_VENDOR_START_DIAGNOSTIC
+    /* The bounded diagnostic and its IRQ service hold this same lock.  Do
+     * not admit new commands once D0 exit has acquired it. This preserves
+     * callback ordering, not a proof of physical-removal MMIO safety. */
+#if A04_GE8300_VENDOR_COPY_SERVICE
+    InterlockedExchange(&c->vendor_service_closed,1);
+#endif
+    WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+#if A04_GE8300_VENDOR_COPY_SERVICE
+    {
+        NTSTATUS retired;
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+        BOOLEAN observe=c->idle_diag_armed && target==WdfPowerDeviceD3 && !c->idle_diag_exit_marked;
+        if(observe) {c->idle_diag_exit_marked=TRUE;GpuPrint("A04GPU IDLE EXIT D3\n");}
+#endif
+        retired=GpuRetireToCpu(c);
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+        if(observe) {
+            c->idle_diag_d3_retired=NT_SUCCESS(retired) && c->vendor_cpu_fallback;
+            GpuPrint("A04GPU IDLE RETIRED=");GpuHex((ULONG)retired);GpuPrint("\n");
+        }
+#endif
+        WdfWaitLockRelease(c->vendor_lifetime);
+        return retired;
+    }
+#endif
+#if A04_GE8300_SHARED_LEASE
+    if (c->shared_lease.active) { WdfWaitLockRelease(c->vendor_lifetime); return STATUS_DEVICE_BUSY; }
+#endif
+#if A04_GE8300_VENDOR_COPY_SERVICE
+    c->vendor_service_online=FALSE;
+#endif
+    c->vendor_start.shutdown_started=TRUE;
+    WdfWaitLockRelease(c->vendor_lifetime);
+#endif
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
     if(c->vendor_screen.hardware_exposed) return STATUS_DEVICE_BUSY;
 #endif
-#if A04_GE8300_VENDOR_STAGE
+#if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
+    if(c->vendor_copy.exposed) return STATUS_DEVICE_BUSY;
+#endif
     if(c->vendor.hardware_owned) return STATUS_DEVICE_BUSY;
 #endif
 #if A04_GE8300_COPY_SERVICE
@@ -909,6 +1232,380 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
 {
     WDFDEVICE device=WdfIoQueueGetDevice(queue); GPU_CONTEXT *c=GpuContext(device);
     struct a04_ge8300_status *out; NTSTATUS status; size_t size;
+#if A04_GE8300_VENDOR_COPY_SERVICE
+#if A04_GE8300_SHARED_LEASE
+#if A04_GE8300_SHARED_COMMON_PAGE
+    if(control==A04_GE8300_IOCTL_SHARED_COMMON_PAGE
+#if A04_GE8300_SHARED_FULL_FRAME
+       || control==A04_GE8300_IOCTL_SHARED_COMMON_PROMOTE
+#endif
+       ) {
+        struct a04_ge8300_common_page *page;BOOLEAN drop=FALSE;uint32_t token;
+        if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*page) || output!=sizeof(*page)) {
+            WdfRequestComplete(request,STATUS_ACCESS_DENIED);return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,sizeof(*page),(void **)&page,&size);
+        if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+        token=page->token;WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+        if(!token && control==A04_GE8300_IOCTL_SHARED_COMMON_PAGE) {
+            if(page->cpu || page->gpu_va || page->task || page->flush || page->gpu_adapter || page->gpu_pdo || c->shared_common_active ||
+               !c->vendor_service_online || InterlockedCompareExchange(&c->vendor_service_closed,0,0) ||
+               !c->vendor.hardware_owned || c->vendor_start.command_poisoned ||
+               !c->vendor_copy.destination.cpu || c->vendor_copy.destination.bytes!=4096u ||
+               ((ULONG_PTR)c->vendor_copy.destination.cpu&4095u)) status=STATUS_DEVICE_NOT_READY;
+            else if(!NT_SUCCESS(status=GpuEnsureSharedCopyReady(c))) { /* Remain closed. */ }
+            else if(!(token=a04_shared_lease_acquire(&c->shared_lease)))status=STATUS_DEVICE_NOT_READY;
+            else {
+                c->shared_common_active=TRUE;WdfObjectReference(device);
+                page->cpu=c->vendor_copy.destination.cpu;page->gpu_va=A04_VENDOR_COPY_DEST_VA;
+                page->token=token;page->task=c->shared_lease.task;page->flush=c->shared_lease.flush;
+                page->gpu_adapter=c->vendor_adapter_v3;page->gpu_pdo=WdfDeviceWdmGetPhysicalDevice(device);
+                status=STATUS_SUCCESS;
+            }
+        } else if(!c->shared_common_active || token!=c->shared_lease.active ||
+                  page->cpu!=c->vendor_copy.destination.cpu || page->gpu_va!=A04_VENDOR_COPY_DEST_VA ||
+                  page->task!=c->shared_lease.task || page->flush!=c->shared_lease.flush ||
+                  page->gpu_adapter!=c->vendor_adapter_v3 || page->gpu_pdo!=WdfDeviceWdmGetPhysicalDevice(device)) status=STATUS_INVALID_DEVICE_STATE;
+        else if(control==A04_GE8300_IOCTL_SHARED_COMMON_PROMOTE) {
+#if A04_GE8300_SHARED_FULL_FRAME
+            /* Transfer the existing WDF reference and token into the normal
+             * shared lease; never drop the provider between DMA mappings. */
+            c->shared_common_active=FALSE;
+            RtlZeroMemory(&c->shared_frame,sizeof(c->shared_frame));
+            status=STATUS_SUCCESS;
+#else
+            status=STATUS_NOT_SUPPORTED;
+#endif
+        } else {
+            (void)a04_shared_lease_release(&c->shared_lease,token);c->shared_common_active=FALSE;
+            RtlZeroMemory(page,sizeof(*page));status=STATUS_SUCCESS;drop=TRUE;
+        }
+        WdfWaitLockRelease(c->vendor_lifetime);
+        WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(*page):0);
+        if(drop)WdfObjectDereference(device);return;
+    }
+#endif
+#if A04_GE8300_SHARED_FULL_FRAME
+    if(control==A04_GE8300_IOCTL_RETAINED_CPU) {
+        struct a04_ge8300_retained_cpu *proof;
+        if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*proof) || output!=sizeof(*proof)) {
+            WdfRequestComplete(request,STATUS_ACCESS_DENIED);return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,sizeof(*proof),(void **)&proof,&size);
+        if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+        WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+        if(proof->version!=1 || proof->bytes!=sizeof(*proof) || proof->flags || !proof->token ||
+           proof->token!=c->shared_lease.active || !c->shared_owner || !c->shared_owner->display_common)
+            status=STATUS_INVALID_PARAMETER;
+        else {
+            status=GpuRetireToCpu(c);
+            if(NT_SUCCESS(status))proof->flags=A04_GE8300_CPU_RETIRED|A04_GE8300_DMA_RETAINED;
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+            if(c->idle_diag_reentry_marked && !c->idle_diag_proof_marked) {
+                c->idle_diag_proof_marked=TRUE;
+                GpuPrint("A04GPU IDLE PROOF=");GpuHex((ULONG)status);GpuPrint("\n");
+            }
+#endif
+        }
+        WdfWaitLockRelease(c->vendor_lifetime);
+        WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(*proof):0);return;
+    }
+    if(control==A04_GE8300_IOCTL_SHARED_CAPABILITIES) {
+        struct a04_ge8300_shared_capabilities *caps;
+        if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*caps) || output!=sizeof(*caps)) {
+            WdfRequestComplete(request,STATUS_ACCESS_DENIED);return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,sizeof(*caps),(void **)&caps,&size);
+        if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+        caps->version=1;caps->bytes=sizeof(*caps);caps->flags=A04_GE8300_SHARED_CAP_FRAME_SEAL;
+#if A04_GE8300_SHARED_WIDE_FRAME
+        caps->flags|=A04_GE8300_SHARED_CAP_WIDE_FRAME;
+#if A04_GE8300_SHARED_WIDE_REPEAT
+        caps->flags|=A04_GE8300_SHARED_CAP_WIDE_REPEAT;
+#endif
+#endif
+        caps->reserved=0;
+        WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(*caps));return;
+    }
+    if(control==A04_GE8300_IOCTL_SHARED_FRAME_SEAL) {
+        struct a04_ge8300_frame_seal *seal;
+        if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*seal) || output!=sizeof(*seal)) {
+            WdfRequestComplete(request,STATUS_ACCESS_DENIED);return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,sizeof(*seal),(void **)&seal,&size);
+        if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+        WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+        if(!seal->token || seal->token!=c->shared_lease.active || !c->shared_owner ||
+           !c->shared_owner->display_common || !c->shared_tables.mmu_ack ||
+           !c->vendor_service_online || c->vendor_start.command_poisoned ||
+           !a04_shared_frame_seal(&c->shared_frame,seal->frame,seal->task,seal->flush))
+            status=STATUS_INVALID_DEVICE_STATE;
+        else status=STATUS_SUCCESS;
+        WdfWaitLockRelease(c->vendor_lifetime);
+        WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(*seal):0);return;
+    }
+#if A04_GE8300_SHARED_WIDE_REPEAT
+    if(control==A04_GE8300_IOCTL_SHARED_FRAME_BEGIN) {
+        struct a04_ge8300_frame_begin *begin;
+        if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*begin) || output!=sizeof(*begin)) {
+            WdfRequestComplete(request,STATUS_ACCESS_DENIED);return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,sizeof(*begin),(void **)&begin,&size);
+        if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+        WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+        if(!begin->token || begin->token!=c->shared_lease.active || !c->shared_owner ||
+           !c->shared_owner->display_common || !c->shared_tables.mmu_ack ||
+           !c->vendor_service_online || c->vendor_start.command_poisoned ||
+           c->vendor_start.shutdown_started || c->vendor_render.poisoned ||
+           !c->vendor_render.clear_verified || c->vendor_render.sequence!=begin->task ||
+           c->vendor_start.command_sequence!=begin->flush ||
+           InterlockedCompareExchange(&c->vendor_start.command_busy,0,0) ||
+           InterlockedCompareExchange(&c->vendor_service_closed,0,0) ||
+           !a04_shared_frame_begin(&c->shared_frame,begin->frame,begin->task,begin->flush,begin->next_frame))
+            status=STATUS_INVALID_DEVICE_STATE;
+        else status=STATUS_SUCCESS;
+        WdfWaitLockRelease(c->vendor_lifetime);
+        WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(*begin):0);return;
+    }
+#endif
+#if A04_GE8300_SHARED_WIDE_FRAME
+    if(control==A04_GE8300_IOCTL_SHARED_WIDE_FRAME) {
+        struct a04_ge8300_shared_wide_frame *frame;struct a04_vendor_clear_result result;
+        ULONGLONG began;
+        if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*frame) ||
+           output!=A04_GE8300_WIDE_HEADER_BYTES) {
+            WdfRequestComplete(request,STATUS_ACCESS_DENIED);return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,sizeof(*frame),(void **)&frame,&size);
+        if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+        WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+        if(!frame->token || frame->token!=c->shared_lease.active || frame->task || frame->flush ||
+           !c->shared_owner || !c->shared_owner->display_common || !c->shared_tables.mmu_ack ||
+           !c->vendor_service_online || c->vendor_start.command_poisoned ||
+           InterlockedCompareExchange(&c->vendor_service_closed,0,0) ||
+           !a04_shared_frame_accept(&c->shared_frame,frame->frame,0))status=STATUS_INVALID_DEVICE_STATE;
+        else {
+            began=KeQueryInterruptTime();
+            status=a04_vendor_render_copy_wide_frame(&c->vendor_copy,&c->vendor_start,
+                c->shared_owner,&c->shared_tables,frame->pixels,&result);
+            if(NT_SUCCESS(status)) {
+                frame->task=result.completed_task;frame->flush=result.completed_flush;
+                if(!frame->task || !frame->flush)status=STATUS_IO_DEVICE_ERROR;
+            }
+            if(NT_SUCCESS(status)) {
+                c->shared_frame.next=1000u;c->shared_frame.last_task=frame->task;
+                c->shared_frame.last_flush=frame->flush;
+                ULONG elapsed=(ULONG)((KeQueryInterruptTime()-began)/10000u);
+                if(c->wide_present_reports!=MAXULONG)c->wide_present_reports++;
+                if(a04_gpu_present_trace(c->wide_present_reports,(int32_t)status)) {
+                    GpuPrint("GE8300 upload bytes=");GpuHex(c->shared_tables.last_upload_bytes);GpuPrint("\n");
+                    GpuPrint("GE8300 full frame ms=");GpuHex(elapsed);GpuPrint("\n");
+                }
+            } else a04_shared_frame_complete_tile(&c->shared_frame,0);
+            if(c->vendor_start.command_poisoned) {
+                c->vendor_service_online=FALSE;InterlockedExchange(&c->vendor_service_closed,1);
+            }
+        }
+        WdfWaitLockRelease(c->vendor_lifetime);
+        if(!NT_SUCCESS(status)) {GpuPrint("A04GPU WIDE FAILED=");GpuHex((ULONG)status);GpuPrint("\n");}
+        WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?A04_GE8300_WIDE_HEADER_BYTES:0);return;
+    }
+#endif
+    if(control==A04_GE8300_IOCTL_SHARED_TILE) {
+        struct a04_ge8300_shared_tile *tile;struct a04_vendor_clear_result result;
+        if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*tile) || output!=sizeof(*tile)) {
+            WdfRequestComplete(request,STATUS_ACCESS_DENIED);return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,sizeof(*tile),(void **)&tile,&size);
+        if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+        WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+        if(!tile->token || tile->token!=c->shared_lease.active || !c->shared_owner ||
+           !c->vendor_service_online || InterlockedCompareExchange(&c->vendor_service_closed,0,0) ||
+           !tile->frame || tile->index>=1000u || tile->task || tile->flush) status=STATUS_INVALID_DEVICE_STATE;
+        else {
+            if(!a04_shared_frame_accept(&c->shared_frame,tile->frame,tile->index)) status=STATUS_INVALID_DEVICE_STATE;
+            else {
+                if(!tile->index)c->shared_frame_started=KeQueryInterruptTime();
+                status=a04_vendor_render_copy_shared_tile(&c->vendor_copy,&c->vendor_start,
+                    c->shared_owner,&c->shared_tables,tile->pixels,tile->index,&result);
+                if(NT_SUCCESS(status)) {
+                    tile->task=result.completed_task;tile->flush=result.completed_flush;
+                    if(!tile->task || !tile->flush)status=STATUS_IO_DEVICE_ERROR;
+                    else {c->shared_frame.last_task=tile->task;c->shared_frame.last_flush=tile->flush;}
+                }
+                a04_shared_frame_complete_tile(&c->shared_frame,NT_SUCCESS(status));
+                if(NT_SUCCESS(status) && tile->index==999u) {
+                    GpuPrint("GE8300 full frame ms=");
+                    GpuHex((ULONG)((KeQueryInterruptTime()-c->shared_frame_started)/10000u));GpuPrint("\n");
+                }
+                if(c->vendor_start.command_poisoned) {
+                    c->vendor_service_online=FALSE;InterlockedExchange(&c->vendor_service_closed,1);
+                }
+            }
+        }
+        WdfWaitLockRelease(c->vendor_lifetime);
+        WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(*tile):0);return;
+    }
+#endif
+    if (control==A04_GE8300_IOCTL_SHARED_ACQUIRE || control==A04_GE8300_IOCTL_SHARED_RELEASE ||
+        control==A04_GE8300_IOCTL_SHARED_STAGE || control==A04_GE8300_IOCTL_SHARED_UNSTAGE
+#if A04_GE8300_SHARED_GPU_DIAGNOSTIC
+        || control==A04_GE8300_IOCTL_SHARED_DIAGNOSTIC
+#endif
+        ) {
+        struct a04_ge8300_shared_lease *lease; uint32_t token; BOOLEAN drop=FALSE;
+        if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*lease) || output!=sizeof(*lease)) {
+            WdfRequestComplete(request,STATUS_ACCESS_DENIED);return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,sizeof(*lease),(void **)&lease,&size);
+        if (!NT_SUCCESS(status)) {WdfRequestComplete(request,status);return;}
+        token=lease->token;
+        WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+        if(control==A04_GE8300_IOCTL_SHARED_ACQUIRE) {
+            if(token || !c->vendor_service_online || InterlockedCompareExchange(&c->vendor_service_closed,0,0) ||
+               !c->vendor_adapter_v3 || c->vendor_map_registers<1000u || !c->vendor.hardware_owned ||
+               c->vendor_start.command_poisoned) {
+                GpuPrint("A04GPU SHARED LEASE UNAVAILABLE MAPS=");GpuHex(c->vendor_map_registers);GpuPrint("\n");
+                status=STATUS_DEVICE_NOT_READY;
+            }
+            else if(!NT_SUCCESS(status=GpuEnsureSharedCopyReady(c))) { /* Remain closed. */ }
+            else if(!(token=a04_shared_lease_acquire(&c->shared_lease)))status=STATUS_DEVICE_NOT_READY;
+            else {
+                WdfObjectReference(device);
+#if A04_GE8300_SHARED_FULL_FRAME
+                RtlZeroMemory(&c->shared_frame,sizeof(c->shared_frame));
+#endif
+                RtlZeroMemory(lease,sizeof(*lease));lease->token=token;
+                lease->gpu_adapter=c->vendor_adapter_v3;lease->gpu_pdo=WdfDeviceWdmGetPhysicalDevice(device);
+                lease->task_sequence=c->shared_lease.task;lease->flush_sequence=c->shared_lease.flush;
+                status=STATUS_SUCCESS;
+            }
+        } else if(control==A04_GE8300_IOCTL_SHARED_STAGE) {
+            if(!token || token!=c->shared_lease.active || !lease->shared_mdl_owner ||
+               !c->vendor_service_online || InterlockedCompareExchange(&c->vendor_service_closed,0,0) ||
+               c->vendor_start.command_poisoned || c->vendor_start.shutdown_started)
+                status=STATUS_INVALID_DEVICE_STATE;
+            else {
+                status=a04_shared_tables_stage(&c->shared_tables,
+                    (struct a04_shared_scanout *)lease->shared_mdl_owner,&c->vendor_render,&c->vendor_copy);
+#if A04_GE8300_SHARED_MMU_PUBLISH
+                if(NT_SUCCESS(status))status=a04_shared_tables_publish(&c->shared_tables,
+                    (struct a04_shared_scanout *)lease->shared_mdl_owner,&c->vendor_render,&c->vendor_start);
+                if(c->vendor_start.command_poisoned) {
+                    c->vendor_service_online=FALSE;InterlockedExchange(&c->vendor_service_closed,1);
+                }
+#endif
+                if(NT_SUCCESS(status)) {
+                    c->shared_owner=(struct a04_shared_scanout *)lease->shared_mdl_owner;
+                    lease->inactive_gpu_pc_dma=(uint64_t)c->shared_tables.table[0].logical.QuadPart;
+                }
+            }
+#if A04_GE8300_SHARED_GPU_DIAGNOSTIC
+        } else if(control==A04_GE8300_IOCTL_SHARED_DIAGNOSTIC) {
+            struct a04_vendor_clear_result result;
+            RtlZeroMemory(&result,sizeof(result));
+            if(!token || token!=c->shared_lease.active || !c->shared_owner ||
+               lease->shared_mdl_owner!=c->shared_owner || !c->vendor_service_online ||
+               InterlockedCompareExchange(&c->vendor_service_closed,0,0))status=STATUS_INVALID_DEVICE_STATE;
+            else status=a04_vendor_render_copy_shared_diagnostic(&c->vendor_copy,&c->vendor_start,
+                c->shared_owner,&c->shared_tables,&result);
+            GpuPrint("A04GPU SHARED COPY STATUS=");GpuHex((ULONG)status);
+            GpuPrint(" MATCH=");GpuHex(result.zeros);GpuPrint(" GUARD=");GpuHex(result.guard_errors);
+            GpuPrint(" PHASE=");GpuHex(result.phase);GpuPrint(" TASK=");GpuHex(result.completed_task);
+            GpuPrint(" FLUSH=");GpuHex(result.completed_flush);GpuPrint("\n");
+            GpuPrint("A04GPU OVL SNAP EN=");GpuHex(lease->ovl_enable);
+            GpuPrint(" SRC=");GpuHex(lease->ovl_sources);GpuPrint(" CON=");GpuHex(lease->ovl_l0_control);
+            GpuPrint(" SIZE=");GpuHex(lease->ovl_l0_size);GpuPrint(" PITCH=");GpuHex(lease->ovl_l0_pitch);
+            GpuPrint(" ADDR=");GpuHex(lease->ovl_l0_address);GpuPrint(" IRQ=");GpuHex(lease->ovl_interrupt_status);GpuPrint("\n");
+            if(NT_SUCCESS(status)) {
+                lease->diagnostic_task=result.completed_task;lease->diagnostic_flush=result.completed_flush;
+                lease->diagnostic_matches=result.zeros;
+            }
+            if(c->vendor_start.command_poisoned) {
+                c->vendor_service_online=FALSE;InterlockedExchange(&c->vendor_service_closed,1);
+            }
+#endif
+        } else if(control==A04_GE8300_IOCTL_SHARED_UNSTAGE) {
+            if(!token || token!=c->shared_lease.active)status=STATUS_INVALID_DEVICE_STATE;
+            else {status=a04_shared_tables_release(&c->shared_tables);if(NT_SUCCESS(status)){lease->inactive_gpu_pc_dma=0;c->shared_owner=NULL;}}
+        } else {
+            if(c->shared_tables.ready || c->shared_tables.quarantined)status=STATUS_DEVICE_BUSY;
+            else if(!a04_shared_lease_release(&c->shared_lease,token)) status=STATUS_INVALID_DEVICE_STATE;
+            else {RtlZeroMemory(lease,sizeof(*lease));status=STATUS_SUCCESS;drop=TRUE;}
+        }
+        WdfWaitLockRelease(c->vendor_lifetime);
+        WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(*lease):0);
+        if(drop)WdfObjectDereference(device);
+        return;
+    }
+#endif
+#if A04_GE8300_VENDOR_FENCED_COPY
+    if(control==A04_GE8300_IOCTL_VENDOR_FENCED_COPY) {
+        void *src; struct a04_ge8300_fenced_copy *dst; size_t in_bytes,out_bytes;
+        uint32_t task=0,flush=0;
+        if (WdfRequestGetRequestorMode(request)!=KernelMode ||
+            input!=A04_GE8300_VENDOR_COPY_BYTES || output!=sizeof(*dst) ||
+            InterlockedCompareExchange(&c->vendor_service_closed,0,0)) {
+            WdfRequestComplete(request,STATUS_INVALID_DEVICE_STATE);return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,A04_GE8300_VENDOR_COPY_BYTES,&src,&in_bytes);
+        if(NT_SUCCESS(status))status=WdfRequestRetrieveOutputBuffer(request,sizeof(*dst),(void **)&dst,&out_bytes);
+        if(NT_SUCCESS(status)) {
+            WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+            if(!c->vendor_service_online || InterlockedCompareExchange(&c->vendor_service_closed,0,0))
+                status=STATUS_INVALID_DEVICE_STATE;
+#if A04_GE8300_SHARED_LEASE && A04_GE8300_SHARED_COMMON_PAGE
+            else if(c->shared_common_active)status=STATUS_DEVICE_BUSY;
+#endif
+            else status=a04_vendor_render_copy_buffer_fenced(&c->vendor_copy,&c->vendor_start,
+                src,dst->pixels,input,&task,&flush);
+            if (!NT_SUCCESS(status) && (c->vendor_render.poisoned || c->vendor_start.command_poisoned)) {
+                c->vendor_service_online=FALSE;InterlockedExchange(&c->vendor_service_closed,1);
+            }
+            if (NT_SUCCESS(status)) {
+                dst->version=1;dst->task_sequence=task;dst->flush_sequence=flush;
+#if A04_GE8300_SHARED_LEASE
+                a04_shared_lease_copy_complete(&c->shared_lease,task,flush);
+#endif
+            }
+            WdfWaitLockRelease(c->vendor_lifetime);
+        }
+        WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(*dst):0);return;
+    }
+#endif
+    if(control==A04_GE8300_IOCTL_VENDOR_COPY) {
+        void *src,*dst;size_t in_bytes,out_bytes;
+#if A04_GE8300_SHARED_LEASE
+        uint32_t task=0,flush=0;
+#endif
+        if(input!=A04_GE8300_VENDOR_COPY_BYTES || output!=A04_GE8300_VENDOR_COPY_BYTES ||
+           InterlockedCompareExchange(&c->vendor_service_closed,0,0)) {
+            WdfRequestComplete(request,STATUS_INVALID_DEVICE_STATE);return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,A04_GE8300_VENDOR_COPY_BYTES,&src,&in_bytes);
+        if(NT_SUCCESS(status))status=WdfRequestRetrieveOutputBuffer(request,A04_GE8300_VENDOR_COPY_BYTES,&dst,&out_bytes);
+        if(NT_SUCCESS(status)) {
+            WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+            if(!c->vendor_service_online || InterlockedCompareExchange(&c->vendor_service_closed,0,0))
+                status=STATUS_INVALID_DEVICE_STATE;
+#if A04_GE8300_SHARED_LEASE && A04_GE8300_SHARED_COMMON_PAGE
+            else if(c->shared_common_active)status=STATUS_DEVICE_BUSY;
+#endif
+#if A04_GE8300_SHARED_LEASE
+            else status=a04_vendor_render_copy_buffer_fenced(&c->vendor_copy,&c->vendor_start,src,dst,input,&task,&flush);
+            if (NT_SUCCESS(status)) a04_shared_lease_copy_complete(&c->shared_lease,task,flush);
+#else
+            else status=a04_vendor_render_copy_buffer(&c->vendor_copy,&c->vendor_start,src,dst,input);
+#endif
+            if(!NT_SUCCESS(status) && (c->vendor_render.poisoned || c->vendor_start.command_poisoned)) {
+                c->vendor_service_online=FALSE;InterlockedExchange(&c->vendor_service_closed,1);
+            }
+            WdfWaitLockRelease(c->vendor_lifetime);
+        }
+        WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?A04_GE8300_VENDOR_COPY_BYTES:0);
+        return;
+    }
+#endif
 #if A04_GE8300_VENDOR_STAGE
     if(control==A04_GE8300_IOCTL_VENDOR_POWER_QUERY) {
         struct a04_ge8300_vendor_power_status *power;
@@ -970,6 +1667,10 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
     if(NT_SUCCESS(status)) { *out=c->status; WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(*out)); }
     else WdfRequestComplete(request,status);
 }
+#if A04_GE8300_VENDOR_COPY_SERVICE
+VOID GpuSurpriseRemoval(WDFDEVICE device)
+{ GPU_CONTEXT *c=GpuContext(device);InterlockedExchange(&c->vendor_service_closed,1); }
+#endif
 NTSTATUS GpuAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 {
     WDF_PNPPOWER_EVENT_CALLBACKS pnp; WDF_OBJECT_ATTRIBUTES attr;
@@ -984,6 +1685,9 @@ NTSTATUS GpuAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     WdfDeviceInitSetDeviceType(init,FILE_DEVICE_UNKNOWN);
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp); pnp.EvtDevicePrepareHardware=GpuPrepare;
     pnp.EvtDeviceReleaseHardware=GpuRelease; pnp.EvtDeviceD0Entry=GpuD0Entry; pnp.EvtDeviceD0Exit=GpuD0Exit;
+#if A04_GE8300_VENDOR_COPY_SERVICE
+    pnp.EvtDeviceSurpriseRemoval=GpuSurpriseRemoval;
+#endif
 #if A04_GE8300_VENDOR_START_DIAGNOSTIC
     pnp.EvtDeviceD0EntryPostInterruptsEnabled=GpuPostInterrupts;
 #endif
@@ -1003,7 +1707,15 @@ NTSTATUS GpuAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
      * is synchronous and bounded; no request is held for later completion. */
     queue_config.PowerManaged=WdfTrue;
     queue_config.EvtIoDeviceControl=GpuIoControl;
-    return WdfIoQueueCreate(device,&queue_config,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);
+    status=WdfIoQueueCreate(device,&queue_config,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);
+    if(!NT_SUCCESS(status))return status;
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+    c->idle_diag_policy_status=GpuAssignDiagnosticIdle(device,TRUE);
+    c->idle_diag_armed=NT_SUCCESS(c->idle_diag_policy_status);
+    /* A rejected policy must remain visible without failing device creation.
+     * Microsoft documents STATUS_POWER_STATE_INVALID as nonfatal here. */
+#endif
+    return STATUS_SUCCESS;
 }
 NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING path)
 {

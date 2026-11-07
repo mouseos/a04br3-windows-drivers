@@ -22,13 +22,58 @@ $tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
 $out = Join-Path $tempRoot 'a04br3-wddm-display-build-check'
 New-Item -ItemType Directory -Force $out | Out-Null
 $objects = @()
+$brightness = if ($env:A04_MT8167_DISPLAY_BRIGHTNESS -eq '1') { '1' } else { '0' }
+$sharedDiagnostic = if ($env:A04_GE8300_WDDM_SHARED_DIAGNOSTIC -eq '1') { '1' } else { '0' }
+$sharedFullCommon = if ($env:A04_GE8300_WDDM_SHARED_FULL_COMMON -eq '1') { '1' } else { '0' }
+$commonFrame = if ($env:A04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC -eq '1') { '1' } else { '0' }
+$idleDiagnostic = if ($env:A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC -eq '1') { '1' } else { '0' }
+if ($idleDiagnostic -eq '1' -and $env:A04_GE8300_WDDM_LIVE_FULL_PRESENT -ne '1') { throw 'Idle transition diagnostic requires A04_GE8300_WDDM_LIVE_FULL_PRESENT' }
+$presentTraceAll = if ($env:A04_GE8300_PRESENT_TRACE_ALL -eq '1') { '1' } else { '0' }
+$liveFull = if ($env:A04_GE8300_WDDM_LIVE_FULL_PRESENT -eq '1') { '1' } else { '0' }
+if ($liveFull -eq '1' -and ($env:A04_GE8300_WDDM_WIDE_REPEAT -ne '1' -or $env:A04_GE8300_WDDM_GPU_DIRECT_POST -ne '1')) { throw 'Live presents require repeat and direct POST' }
+$wideRepeat = if ($env:A04_GE8300_WDDM_WIDE_REPEAT -eq '1') { '1' } else { '0' }
+if ($wideRepeat -eq '1' -and $env:A04_GE8300_WDDM_WIDE_FRAME -ne '1') { throw 'Repeat requires wide frames' }
+$wideFrame = if ($env:A04_GE8300_WDDM_WIDE_FRAME -eq '1') { '1' } else { '0' }
+if ($wideFrame -eq '1' -and $commonFrame -ne '1') { throw 'Wide frame requires common frame support' }
+
+$gceLease = if ($env:A04_GE8300_WDDM_GCE_LEASE -eq '1') { '1' } else { '0' }
+$presentCapture = if ($env:A04_GE8300_WDDM_PRESENT_CAPTURE -eq '1') { '1' } else { '0' }
+$explicitGpuFlush = if ($env:A04_GE8300_WDDM_EXPLICIT_GPU_FLUSH -eq '1') { '1' } else { '0' }
+$ovlObserve = if ($env:A04_GE8300_WDDM_OVL_OBSERVE -eq '1') { '1' } else { '0' }
+$gpuPost = if ($env:A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC -eq '1') { '1' } else { '0' }
+$gpuDirectPost = if ($env:A04_GE8300_WDDM_GPU_DIRECT_POST -eq '1') { '1' } else { '0' }
+if ($gpuDirectPost -eq '1' -and $gpuPost -ne '1') { throw 'GPU direct POST requires the GPU POST diagnostic' }
+$sharedDisplayCommon = if ($env:A04_GE8300_SHARED_DISPLAY_COMMON -eq '1') { '1' } else { '0' }
+$sharedCommonPage = if ($env:A04_GE8300_WDDM_SHARED_COMMON_PAGE -eq '1') { '1' } else { '0' }
+$sharedPresent = if ($env:A04_GE8300_WDDM_SHARED_PRESENT -eq '1') { '1' } else { '0' }
+if ($sharedPresent -eq '1' -and $sharedDiagnostic -ne '1') { throw 'Shared present requires shared diagnostic' }
+$sharedAutostart = if ($env:A04_GE8300_WDDM_SHARED_AUTOSTART -eq '1') { '1' } else { '0' }
+if ($sharedAutostart -eq '1' -and $sharedDiagnostic -ne '1') { throw 'Shared autostart requires shared diagnostic' }
+$sharedLease = if ($env:A04_GE8300_WDDM_SHARED_LEASE -eq '1') { '1' } else { '0' }
+$direct = if ($env:A04_GE8300_WDDM_DIRECT_EXPERIMENT -eq '1') { '1' } else { '0' }
+$fencedTile = if ($env:A04_GE8300_WDDM_FENCED_TILE -eq '1') { '1' } else { '0' }
+if ($sharedDiagnostic -eq '1' -and $sharedLease -ne '1') { throw 'Shared diagnostic requires shared lease' }
+if ($sharedLease -eq '1' -and $direct -ne '1') { throw 'Shared lease requires direct resource experiment' }
+$vendorTile = if ($env:A04_GE8300_WDDM_VENDOR_TILE -eq '1') { '1' } else { '0' }
+if ($fencedTile -eq '1' -and $vendorTile -ne '1') { throw 'Fenced tile requires vendor tile' }
 $gpuCopy = if ($env:A04_GE8300_WDDM_COPY -eq '1') { '1' } else { '0' }
-foreach ($name in @('bdd','bdd_ddi','bdd_dmm','bdd_util','bltfuncs','blthw','memory','ge8300_present','ge8300_trace')) {
+foreach ($name in @('bdd','bdd_ddi','bdd_dmm','bdd_util','bltfuncs','blthw','memory','ge8300_present','ge8300_trace','ge8300_display_resources','mt8167_brightness')) {
     $obj = Join-Path $out "$name.obj"
-    & $cl /nologo /c /kernel /GS- /Zl /D_KERNEL_MODE /D_ARM_ /DARM /DNTDDI_VERSION=0x06030000 /D_WIN32_WINNT=0x0603 "/DA04_GE8300_WDDM_COPY=$gpuCopy" "/I$inc\km" "/I$inc\shared" "/I$inc\um" "/I$($vc.FullName)\include" "/I$($ucrt.FullName)\ucrt" "/I$src" "/Fo$obj" (Join-Path $src "$name.cxx")
+    & $cl /nologo /c /kernel /GS- /Zl /D_KERNEL_MODE /D_ARM_ /DARM /DNTDDI_VERSION=0x06030000 /D_WIN32_WINNT=0x0603 "/DA04_MT8167_DISPLAY_BRIGHTNESS=$brightness" "/DA04_GE8300_WDDM_PRESENT_CAPTURE=$presentCapture" "/DA04_GE8300_WDDM_EXPLICIT_GPU_FLUSH=$explicitGpuFlush" "/DA04_GE8300_WDDM_OVL_OBSERVE=$ovlObserve" "/DA04_GE8300_WDDM_GPU_POST_DIAGNOSTIC=$gpuPost" "/DA04_GE8300_WDDM_GPU_DIRECT_POST=$gpuDirectPost" "/DA04_GE8300_WDDM_GCE_LEASE=$gceLease" "/DA04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC=$commonFrame" "/DA04_GE8300_WDDM_WIDE_FRAME=$wideFrame" "/DA04_GE8300_WDDM_WIDE_REPEAT=$wideRepeat" "/DA04_GE8300_WDDM_LIVE_FULL_PRESENT=$liveFull" "/DA04_GE8300_PRESENT_TRACE_ALL=$presentTraceAll" "/DA04_GE8300_IDLE_TRANSITION_DIAGNOSTIC=$idleDiagnostic" "/DA04_GE8300_SHARED_DISPLAY_COMMON=$sharedDisplayCommon" "/DA04_GE8300_WDDM_SHARED_DIAGNOSTIC=$sharedDiagnostic" "/DA04_GE8300_WDDM_SHARED_AUTOSTART=$sharedAutostart" "/DA04_GE8300_WDDM_SHARED_PRESENT=$sharedPresent" "/DA04_GE8300_WDDM_SHARED_COMMON_PAGE=$sharedCommonPage" "/DA04_GE8300_WDDM_SHARED_FULL_COMMON=$sharedFullCommon" "/DA04_GE8300_WDDM_SHARED_LEASE=$sharedLease" "/DA04_GE8300_WDDM_DIRECT_EXPERIMENT=$direct" "/DA04_GE8300_WDDM_FENCED_TILE=$fencedTile" "/DA04_GE8300_WDDM_COPY=$gpuCopy" "/DA04_GE8300_WDDM_VENDOR_TILE=$vendorTile" "/I$inc\km" "/I$inc\shared" "/I$inc\um" "/I$($vc.FullName)\include" "/I$($ucrt.FullName)\ucrt" "/I$src" "/Fo$obj" (Join-Path $src "$name.cxx")
     if ($LASTEXITCODE -ne 0) { throw "ARM32 display source compilation failed: $name" }
     $objects += $obj
+}
+if ($direct -eq '1') {
+    foreach ($name in @('vendor_m1_11\windows_shared_scanout','vendor_m1_11\windows_shared_ovl','dma_pages','gpu_mmu')) {
+        $obj = Join-Path $out "$($name.Replace('\','-')).obj"
+        $gpu = Join-Path $root 'drivers\gpu\mt8167'
+        & $cl /nologo /c /TC /std:c11 /kernel /GS- /Zl /D_KERNEL_MODE /D_ARM_ /DARM /DNTDDI_VERSION=0x06030000 /D_WIN32_WINNT=0x0603 "/I$inc\km" "/I$inc\shared" "/I$inc\um" "/I$($vc.FullName)\include" "/I$($ucrt.FullName)\ucrt" "/Fo$obj" (Join-Path $gpu "$name.c")
+        if ($LASTEXITCODE -ne 0) { throw "ARM32 shared scanout compilation failed: $name" }
+        $objects += $obj
+    }
 }
 & $link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib @objects (Join-Path $lib 'displib.lib') (Join-Path $lib 'ntoskrnl.lib') (Join-Path $lib 'hal.lib') (Join-Path $lib 'bufferoverflowfastfailk.lib') (Join-Path $lib 'BufferOverflowGDI.lib') (Join-Path $lib 'libcntpr.lib') "/out:$out\wddm-display-build-check.sys"
 if ($LASTEXITCODE -ne 0) { throw 'ARM32 display build-check link failed' }
 Write-Host 'Display-only build check; no INF, no GPU acceleration, do not install.'
+
+@{ status='compile-link-only-not-device-validated'; hardware='MediaTek MT8167 DISP_PWM0'; brightness_enabled=[int]$brightness; supported_percent='1..100'; required_firmware_flag='A04BR3_DISPLAY_BRIGHTNESS_RESOURCES'; brightness_source_sha256=(Get-FileHash (Join-Path $src 'mt8167_brightness.cxx') -Algorithm SHA256).Hash; sys_sha256=(Get-FileHash (Join-Path $out 'wddm-display-build-check.sys') -Algorithm SHA256).Hash } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $out 'brightness-build-manifest.json')

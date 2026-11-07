@@ -352,3 +352,263 @@ cleanup開始・停止・異常時は再使用しない。PDS、GPU mappingとad
 FWIF手順の範囲であり、任意のsource-to-destination copy、Windows Present、
 scanout所有や停止時のDMA排出を実装・証明しない。画面サイズ版・反復版の
 実機結果は未取得。`_CCA` が制御するARM上の属性・可視性も未確認。
+
+m1.11 `native_copy_state.c` は、native22・32×32・pitch32・point samplingの
+source texture、sampler、９ DWORD shared data と secondary PDS data/code を
+CPU上に構築する未接続部品。REA の `FUN_0012d0bc`、`FUN_0012d28c`、
+`FUN_0013eeac`、`FUN_0013ca3c`、`FUN_0013c794` と XNU の
+`A04BR3RogueNative22State.h` を参照する。元の key8 検証例は source と
+destination が同一で、別領域を指定する copy taskの実行正当性は未確定。
+仮想アドレスの範囲・重複検査は実際のGPU mappingや物理排他を証明しない。
+この部品はCCB投入せず、必要な152-byte USC、ISP/EOT、完全208-byte task、
+実機向けcopy診断も生成しない。未知のcommandやshaderを補完しない。
+REA は `libsrv_um.so` SHA-256
+`d32a4a224d06302d9bec0a66cbb7d17dec663d3985f1c8592f5bb77353ca1d4b` を対象に、
+`0x12d0bc` (ev_b30091037b1e40d3642c580c9936020cc26ab5e3ad971330788b41d81ef3862b)、
+`0x13eeac` (ev_27b7274b45e533b120b308994cebf283481ddb0941a8d1fbf7e2cf579724d394)、
+`0x13c794` (ev_99cb17f3a482728df8955d7ec0da7af543d2469ffa93bebb8cca2cab3addc688)
+を確認した。元USC `0x151ce4` の152バイトはSHA-256
+`5c68917faa051238b23674b64c6b137ef7ff75425dbde9dbc5e1e5a36e02c4a3`
+(ev_910dc555760f50405b2c4dd9760a8681757e5dfaf091954580c73f0292857078)と
+一致するが、命令の意味や異なる入出力を伴う完全taskの正当性は証明しない。
+ローカルXNUの同一source profileで36-byte shared、16-byte PDS data、16-byte
+PDS codeをそれぞれバイト比較し一致した。GPU実行・表示の検証ではない。
+`a04_vendor_copy_kick_build` は同じ限定key8のfragment PDS DOUTU、raw00と
+raw38/40/48/50/58の候補をCPU上で組み立てる。REA `FUN_00129f88`
+(ev_2643ceb73416945ad436c7b84268c9896d78dc0314e525becf17a84eb2b4ae98)、
+`FUN_0012c568` (ev_bfd5db4bb483da5e455dea5ee2e31d2bc3b1a28b388699b659a061919bc6c744)、
+`FUN_0013c5f8` と `FUN_0013cd1c` および XNU `A04BR3RogueFragmentKick.h` を
+参照。first padded count 0の場合、元producerはfirstとsecondのdataアドレスを
+同じにする。fragment PDS 64 bytesはXNU生成器と全範囲の4-byte USC offsetsで
+バイト一致した。残りのtask fields・USCの実行意味は未確定であり、これらの
+部分fieldsを完全な208-byte packetとして扱わない。実機診断には未接続。
+
+`FUN_0012d28c` (ev_90d81796e142693943627bd3fde4b34cc55816263f51e23a7cd04f9e604c0da3)
+はsource textureの処理中にraw58を書き込む。`FUN_0013ee34`
+(ev_71a7d16da3b0957dc5ff3230530f624c743020b583913f128b237f07fb5df1ac)
+が参照するnative22の表値は0x08 (ev_c57ae674bb851dc59f2dc5ecfacab9dfee4eecfa6316eb0223321b920f764ed8)で、
+bit5は0のため、この固定経路ではraw58は0になる。ゼロ値の根拠は初期化だけでなく
+この書込みにある。別形式や別分岐には適用しない。
+
+追加REA: `FUN_00129f88` は source と destination のそれぞれに対する
+`PVRSRVAcquireDeviceMapping` の戻すベースを比較し、等しい場合は矩形・
+方向・オフセットに基づく別の重なり処理へ入る。`FUN_00128958` のcopy
+backendから同producerへ進む経路も確認した (ev_bfe4159ea96c8d50a84b27bee44073ca0cd519ad82300fd6248cea452aa4eade)。
+VA内の4 KiB範囲が離れていることだけでは元producerの独立mapping分岐を
+証明できない。固定copy診断では独立allocation・各GPU mapping・物理
+非重複・fenceまでの保持を実ownerで確定する必要がある。現在のCPU builderは
+これらを検証しないため、結果を投入可能なcopy taskとみなさない。
+
+`windows_copy_scratch.c` は未接続の起動前専用ownerで、3個の4 KiB common
+bufferをsource・destination・sharedに別々に確保し、既存general heapの未使用
+３ページへmappingする。Linux m1.11のpage table形式とSLC bypass指定は既存
+`gpu_mmu.c` に従う。REA `FUN_0012daec` (ev_b5ae3658f28e9e4754cb7e786cb89c5c0f42654718582dc7ca3c7ee2b08ca341) の
+32×32・32bit・pitch32範囲は4096 bytes、`FUN_00130108`
+(ev_8c470b285d2142c76e2114d379cd9945f4498530b5ded209b505410b9720b431) は
+PDS域の割当と完了位置に基づく再使用を示す。ownerはsource／destinationに
+異なる初期値を設定し、確認済みCPU stateをshared領域に置く。
+
+`render_owner` と `copy_owner` は親を先に解放しないための外部直列化前提の
+cold leaseで、exposedは一方向。公開前の解放ではPTEの内容を照合し消去を
+読戻してから子を解放する。公開後は現状常に解放を拒否する。仮想・DMA範囲の
+不一致、PTE不一致、allocation失敗では失敗し、競合・部分公開を安全とみなさない。
+これはWDF/PnP削除時のowner自体の寿命、実電源、cache可視性やGPU停止を保証しない。
+既定経路・CCBには未接続。完全208-byte taskとUSCの実行契約が未確定のため、
+このownerだけではGPU scratch copy診断は実施できない。
+
+copy scratch cold owner は既存clearのPDS offset 0..63を保持したまま、未使用の
+64..127へdestination向けEOT PDS、192..255へfragment PDS、256..271へ
+secondary data、272..287へsecondary codeを配置する。各領域は書込み前に全0、
+解放前に期待値と一致することを確認し、解放時は消去・読戻しする。既存USCの
+先頭12-byte EOTと一致することも検証する。152-byte background USCは、信頼された
+kernel callerが端末の元assetを渡す場合に限り、固定SHA-256を照合してUSC+128へ
+配置・読戻しできる。asset自体はソースに含めず、自動ロードや実行も行わない。
+PDSオフセットやCSRの保有は完全task、ISPまたは画像copyの
+正当性を意味しない。異常時はownerを保持し、releaseしない。
+
+REA `FUN_0013c634` (ev_cd99ca62374bf4818b7f0bfe20c52993261ff9dd2f33e522cd8e05377d26c00e)
+では１出力のpixel-event dataは５ DWORDを８ DWORDに揃え、続くcodeを配置する。
+固定32×32 ownerは、この配置と`FUN_00129f88`のheap相対値に従うtask部分値
+raw28=0x202、raw2c=96、raw30=64も保持する。残りのtaskやUSC・ISPの
+組合せは未証明のままで、これらをCCBへ渡していない。
+
+USC配置はcold ownerかつGPU起動前に限る。PDSのfragment参照先と同じoffsetを
+使い、配置前の未使用確認、固定SHA-256照合、配置後の読戻しを行う。公開前の
+releaseでは内容照合と消去・読戻しを行い、部分書込み・消去失敗時はownerを
+隔離する。これは152-byteコードの元バイナリとの同一性と領域のCPU側管理を示す
+のみで、shaderの意味、GPU cache可視性、PnP寿命や停止後のDMA排出は証明しない。
+
+`a04_vendor_copy_scratch_task_snapshot` はGPU起動前にPTE、共有state、PDS、
+EOT、元USCの読戻しを一括照合し、208バイト相当のCPU上の検証像と、根拠がある
+DWORDを示すmaskを返す。この固定profileでは52語全てを埋める。tailは固定offline requestの
+record word1=0、flags bit3=0、context hint=0を選び、`FUN_001326a8`
+(ev_81c5443c85f9a0d64be59e6b70c814460dac832358891dd322fedb68604cda18)に従って
+rawc8=0、rawcc=0を生成する。tailの意味や他の設定は未確定。
+他のprofileへ初期ゼロを一般化してはならず、これはCCB投入の承認ではない。
+Linux m1.11 `rgxtransfer.c` はユーザー側のtransfer commandをFWへ転送するため、
+検証像の内容やGPU可視性を保証しない。GPU実行、描画や停止の証明には使えない。
+
+残る21語は同じ固定条件でqueueのゼロ初期化とproducerの到達可能な書込みから導く。
+clear値の分岐は通らずraw08..14は0、`FUN_0012bfb4` の原点raw1cは0、
+single-sampleの `FUN_0012c310` はraw24=0、raw34は初期0のまま。出力数は1で、
+PBEがraw80..8fを書き、raw90..97を0にし、残りの未使用出力slot raw98..c7は
+初期0のままである。根拠はREA `FUN_00132f98`、`FUN_00129f88`、
+`FUN_0012c310`、`FUN_0012bfb4`。この静的再構成はfirmwareによる受理、元USCの
+動作意味、cache可視性や物理除去・停止時の資源寿命を証明しない。
+
+この固定profileに限定すると、queueはrecordをゼロ初期化し、形式0x22・layout0・
+整列済み別mapping・同寸32×32は通常copy backendから `FUN_00129f88` へ直接進む。
+その経路の呼出し先を含む書込み範囲ではraw68/70/78が変更されず、各0とする。
+これは `FUN_0012934c` と `FUN_0012dc50` のISP listを用いるfill経路の値ではない。
+REA `FUN_00132f98` (ev_bd42dad992c9241abb9720a023dc35a5ea59847a7613fc3a7cc580f650554521)、
+`FUN_00128958` (ev_bfe4159ea96c8d50a84b27bee44073ca0cd519ad82300fd6248cea452aa4eade)、
+`FUN_00129f88` (ev_2643ceb73416945ad436c7b84268c9896d78dc0314e525becf17a84eb2b4ae98)を参照する。
+
+native22のdestination PBE CSRは、元producer `FUN_00129f88` の後処理で
+`FUN_0013ed80(0x22)=8` (ev_33af4659902de45f1a6aa53d10fad5e263dbc5e4fc3d4a1eca2fe9405f2a30fd、
+表 ev_7fb559ceaad6b6dd68c07215f916bdab3d28e077306e0375349598036c3639a1) を得る。
+native22の４channel種別は各1 (ev_661e59d2180b4141c38bf9b6baad8dc7cf89d731bad45bd188a2ad2e524fe1a6)。
+この固定profileでは32-bit特例に入らず、destination flags 0でCSR書換えを行わない。
+したがって元 `FUN_0013e2e4` と一致する既存clearのCSR 4語を部分検証像に含める。
+source変換・他形式・非ゼロflagsについて一般化しない。
+
+独立source／destination allocationのPTE公開後は、３つのPTEを読戻して期待した
+DMAアドレス・属性に一致しなければownerを隔離し、解放を拒否する。一致した場合、
+`FUN_00129f88` のsource／destination mapping baseが異なる限定分岐に従い
+raw60=3を保持する。REA `PVRSRVAcquireDeviceMapping` (ev_b50fe9723f6017e0be1c96459b2564132a7f6a09a8b941b1f227ea873d95cf54)
+と `FUN_001137e8` (ev_b46814f2337abce19ae93424253aeeb6b280d00c04d04e8759863d8092633626)
+は参照を保持したmemdescのdevice仮想アドレスを返す。固定scratchではsourceと
+destinationの仮想アドレスが異なり、それぞれのPTEも照合する。この部分値は
+他のtaskやGPU完了の正当性を示さず、実行承認には使わない。
+
+固定profileのclip 0..32では `FUN_00129f88` が縦横2タイルを記録し、
+`FUN_0012bfb4` がraw18に格納する。対応するnative22のsource property 0は
+`FUN_0012e318` (ev_3f50b5af6ae0057d071edea77a20596556f42bbecb8a8a59235bba107dbb4c01)
+の表先頭値1 (ev_e6d3c0e767a07579fa1335cb18efffcd7916a05d9a058ea173934143282ea937)
+になり、`FUN_00135818` のslot・tile計算に用いられる。ownerは既存clearと
+一致するraw04=0x1ffc、raw18=0x20002、raw20=0xa3000を部分値として保持する。
+元producerの分岐と入力条件に限定した静的な導出であり、copy taskの完成や
+異なるprofileの正当性は示さない。
+
+copy ownerのlease中は、既存clear送出と反復clearのPDS・target書換えを拒否する。
+`command_busy` の取得後に確認するが、copy ownerの生成・解放とWDF PnPの直列化は
+呼出し側の責任であり、この検査だけではsurprise removalや停止時の資源寿命を保証しない。
+
+固定検証像はfirmware起動前に `a04_vendor_copy_scratch_freeze` で凍結できる。
+以後ownerの公開フラグは戻らず、成功・失敗いずれもbufferを解放しない。
+`a04_vendor_render_copy_once` は既存clearと同じTQ TASK/UPDATE、UFO待機、
+SLC flushおよび後続GP fenceを実行し、その後source・destination・sharedと
+直前の64KiB scratch guardを検査する。timeoutではcopy領域を読まず、
+ownerを保持し再試行を拒否する。既定OFFの `A04_GE8300_VENDOR_COPY_DIAGNOSTIC=1`
+はcold render専用で、clear・screen診断と同時に使えない。ビルド時に
+`A04_GE8300_COPY_USC` に元assetを指定し、SHA-256を確認してドライバへ組み込む。
+D0で凍結してdevice参照を保持し、interrupt有効後の同期callback内で一回だけ送出する。
+参照とadapterをboot中保持し、D0 exitでは同じlifetime lockで送出を排出する。
+これはsurprise removal後のMMIOやfabric DMA停止の保証ではない。実機copy、
+USC動作、cache可視性とGPU停止は未検証で、WinPE限定の実験である。
+
+copy scratchのsource初期値はindexごとに異なる固定パターンを使用する。
+`a04_vendor_copy_check` は取得済みCPU snapshotのsource・destination各1024語と
+shared 1024語を期待値に照合し、各不一致数と最初の位置を返す。sourceと出力が
+同じ位置で壊れた場合も不一致として数え、shared先頭9語と残りのguardも検査する。
+この関数はGPU終了・cache可視性・DMA停止を確立せず、実機読取りや解放を許可しない。
+実行可能copy診断への接続は未実装。
+
+
+### Deferred handling of persistent firmware IRQs
+
+The MIPS wrapper has STATUS at 0x8a8, CLEAR at 0x8b0 and ENABLE at 0x8a0
+(the MT8167 m1.11 register definitions). The ISR masks its device source before
+acknowledging it and queues deferred service. This prevents an asserted level
+from occupying DIRQL continuously and starving unrelated DPCs, including the
+watchdog. Register readbacks order the mask and acknowledgement writes.
+
+The firmware snapshot must succeed while holding the provider's power/lifetime
+lock before rearming under WdfInterruptSynchronize. An asserted or unknown
+source remains masked; no FWCCB request is discarded. Synchronous command
+completion already uses bounded polling. This policy does not establish DMA
+quiescence or authorize freeing any retained GPU allocation. Power-off must
+still clear powered under the same owner lock before interrupt disconnect and
+work-item flush. Hardware acceptance of this change remains to be verified.
+
+
+The provider build uses scalar ARM code generation at O2 by default, with
+vectorization and unaligned accesses disabled. The volatile 32-bit device-word
+helpers and explicit DMA barriers remain required. Set A04_GE8300_OPTIMIZE=0
+for an O0 debug comparison. Build logs record the exact codegen flags.
+Shared-surface acquisition now establishes its required first fenced copy
+inside the provider instead of requiring a separate test executable. Failure
+keeps the sharing service closed and preserves retained DMA allocations.
+
+### One-command full-surface copy candidate
+
+`A04_GE8300_SHARED_WIDE_FRAME=1` adds a read-only 4,096,000-byte source surface
+at GPU VA 0x8000400000 and two source leaf tables. Source, destination, firmware
+and table DMA ranges are checked for overlap before publication. Exposed source
+and table allocations remain retained on failure. The native22 descriptor and
+single-sample 16-pixel region packing follow the original producer; the
+unchanged native USC asset is still a required external build input.
+
+The kernel-only buffered request contains a fixed 800x1280 image and no nested
+pointer or caller-supplied GPU address. It submits one full-surface TQ data
+command, retains the separate SLC flush and GP fence, and only then restores the
+private descriptor/PDS. Timeout poisons the owner and retains changed state.
+The existing seal and WDDM all-pixel readback remain required. No repeated-frame
+or DMA retirement contract is added by this candidate.
+
+Build the provider with the above flag and the DOD with
+`A04_GE8300_WDDM_WIDE_FRAME=1`, alongside the existing full-common diagnostic
+flags. The DOD checks the provider capability before using the new request.
+Trace A0=1 selects the single-command path; A2 is CPU+GPU+verification elapsed
+milliseconds. Existing 5E/60 counts describe covered tiles/pixels, not GPU
+command counts. Run `make test-ge8300-wide-frame` for CPU-side geometry and
+mapping checks. Hardware execution of this candidate is not yet established.
+
+### Repeated wide-frame diagnostic
+
+`A04_GE8300_SHARED_WIDE_REPEAT=1` and the display-side
+`A04_GE8300_WDDM_WIDE_REPEAT=1` opt into a sixteen-image diagnostic. Each
+image has different RGB data and must pass a complete output comparison.
+Sixteen tasks cross the private 4 KiB client command-ring wrap. A kernel-only
+FRAME_BEGIN requires the previous sealed frame, exact task/flush fence IDs,
+and the next consecutive frame number. The provider also checks its current
+completed hardware sequences and lifetime state. This renews frame metadata;
+it does not retire the published MMU root or release either DMA mapping.
+Errors keep the mappings retained and stop the diagnostic. Default builds
+remain single-frame. This is not normal Windows rendering or a 3D driver.
+
+`A04_GE8300_WDDM_LIVE_FULL_PRESENT=1` additionally routes identity-oriented
+800x1280 full dirty rectangles from the synchronous Windows DOD path to the
+wide GPU copy after the startup diagnostic passes and POST is restored.
+The source MDL and present mutex stay held through upload, GPU completion and
+seal. The first three actual DOD source frames are compared pixel by pixel.
+Unsupported geometry and partial updates use the existing CPU path. Once a
+GPU error occurs, further presents fail instead of racing CPU writes against
+uncertain GPU access. Mappings stay retained; normal power/resume, removal,
+all partial-update acceleration and 3D remain unfinished. The accompanying
+Win32 GDI workload creates eight changing full-screen images without user
+input. Its successful exit alone is not evidence of GPU rendering.
+
+The GDI workload uses Windows' logical screen dimensions instead of assuming
+they equal native panel dimensions. Full presents rotated by the existing DOD
+blitter use private cached staging before GPU transfer; CPU rotation remains
+on the CPU. The visible framebuffer is written by the GPU only. Other source
+geometries and partial updates still fall back to the established CPU path.
+
+The live DOD path now applies move/dirty blits to a cached native shadow,
+including partial updates. It seeds from POST once and invalidates on CPU
+fallback, blackout or viewport/rotation changes. The provider compares two
+cached CPU images, uploads only their changed bounding rectangle to its
+retained DMA source, and executes the same proven full-surface GPU task.
+Neither the GPU task format nor its viewport/clip changes. Even an unchanged
+source still executes a fenced GPU task to restore any CPU-written POST data.
+The source shadow becomes valid only after GPU completion and private-state
+restoration; failures retain resources and close the live path. CPU shadows
+are not DMA-mapped. This remains test-only pending device validation.
+
+
+### MT8167の既存MMPLLクロック引継ぎ
+
+`vendor_m1_11/windows_clock.h`は機種UEFIのvolatile runtime変数`Mt8167GpuClock`を検証する。GUIDは`9c50bc94-6c80-4fa2-939d-9278d07f7010`、attributesはBS|RT（6）、版1で11個の32bitフィールド（44バイト）。順序はversion/bytes/parent/clock_hz/con0/con1/power/rail_control/rail_status/selector0/selector1。一次ソースのMT8167 PLLとMT6392 VCORE式で再計算し、既存MMPLL 253.5〜390MHz・1.15〜1.30Vだけ許可する。PLLやPMICを書き換えない。
+
+変数のない従来UEFIは26MHz/parent4として扱い、存在するが不正なrecordは拒否する。stageに実周波数を保存し、m1.11 FW runtimeのcore-clockへ渡す。GPU start直前に再取得してstage時と照合し、GPSTのparent/routeも突合する。スナップショットでありclockの所有権・電源遷移対応を保証しない。新経路は対応する機種UEFIの既定OFF設定と組にした診断WinPE用。3D、通常OS常用、DMA退役・電源遷移は未完了。

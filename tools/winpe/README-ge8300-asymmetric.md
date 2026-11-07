@@ -38,3 +38,5 @@ WIM全データ検証、追加ファイル抽出・元ファイル照合、boot 
 UART行が欠落・混線・重複した場合や、旧751df54の集計行しかない場合は不明とする。出力は背景・前景の分類マスクであり、生BOやホストアドレスを公開しない。画面のCRC完了はGPU描画成功の代替ではない。
 
 同じMesa由来USC・VDM・PPPを使い、元の64×64 scissorをMesaのIPF packingに従い49×64に派生させる。既存の２捕捉とMesa XML・16／32画素のregion clip境界を `tools/gpu/check-asymmetric-scissor.py` で照合した。非対称版自体のMesa再キャプチャとGPU実行は行っていない。Morton配置と実機命令意味・PBE書込み範囲は未証明。境界 `x+y=63` の該当41画素は前景または背景を許容し、それ以外の画素は位置と色を照合する。
+
+`replace-esp-wim.py` はESP作成前にWIMヘッダーを検査し、単一イメージかつboot index 1でない入力を拒否する。`wimlib-imagex export` でWIMを再作成する場合、bootable指定は自動継承されないため `--boot` を付け、出力のイメージ数・boot indexを再検査する。WIMの整合性検査やファイルのハッシュ一致だけでは、Windowsブート用イメージとして選択可能なことは保証できない。

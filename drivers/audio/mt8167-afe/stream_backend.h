@@ -15,9 +15,24 @@ struct Mt8167StreamBackend {
     void (*dereference)(void *);
     NTSTATUS (*allocate)(void *, ULONG, PMDL *, PULONG, PULONG, MEMORY_CACHING_TYPE *);
     void (*freeBuffer)(void *, PMDL, ULONG);
-    NTSTATUS (*start)(void *);
+    /* On entry *possiblyExposed is TRUE. Set FALSE only when failure is
+     * known to precede every DMA-address publication and hardware start;
+     * success or uncertain failure must leave it TRUE. */
+    NTSTATUS (*start)(void *,BOOLEAN *possiblyExposed);
     NTSTATUS (*stop)(void *);
     NTSTATUS (*position)(void *, PKSAUDIO_POSITION);
     NTSTATUS (*getDeviceDescription)(void *, PDEVICE_DESCRIPTION);
+    /* Optional PortCls-owned MDL; bind does not grant a DMA mapping. Caller
+     * holds allocation until unbind succeeds or the backend is quarantined. */
+    NTSTATUS (*bindWaveBuffer)(void *, PMDL, PVOID, ULONG);
+    NTSTATUS (*unbindWaveBuffer)(void *, PMDL);
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+    /* Returns a WC/verified Normal-NC PortCls MDL, never a common-buffer MDL.
+     * Owner retains the allocation across stream instances. Exactly
+     * one checked-out client; checkin never releases exposed pages or SG. */
+    NTSTATUS (*checkout)(void *,PPORTWAVERTSTREAM,ULONG,PMDL *,PULONG);
+    NTSTATUS (*checkin)(void *,PPORTWAVERTSTREAM,PMDL);
+    NTSTATUS (*setState)(void *,PPORTWAVERTSTREAM,KSSTATE);
+#endif
 };
 #endif

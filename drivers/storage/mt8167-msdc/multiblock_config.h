@@ -18,5 +18,13 @@
 #if A04_SCRATCH_MULTIBLOCK_EXPERIMENT && (!defined(A04_SCRATCH_IO) || !defined(A04_PASSIVE_IO) || !defined(A04_DMA_PROBE) || !defined(A04_DMA_DISK_PROBE) || !defined(A04_VIRTUAL_BOUNCE_EXPERIMENT) || !defined(A04_SERIAL_QUEUE_EXPERIMENT) || !defined(A04_ISOLATED_REQUEST_EXPERIMENT) || defined(A04_BOOT_PASSIVE_EXPERIMENT) || defined(A04_DMA_WRITE_TEST) || A04_DMA_MULTIBLOCK_EXPERIMENT || A04_BOOT_MULTIBLOCK_EXPERIMENT)
 #error Scratch multiblock requires the isolated bounded scratch configuration
 #endif
+/* Write batching is a separate opt-in; existing multiread builds stay unchanged.
+ * Require their 4KiB buffer and worker/DMA lifetime protection. */
+#ifndef A04_DMA_WRITE_MULTIBLOCK_EXPERIMENT
+#define A04_DMA_WRITE_MULTIBLOCK_EXPERIMENT 0
+#endif
+#if A04_DMA_WRITE_MULTIBLOCK_EXPERIMENT && (!defined(A04_ENABLE_WRITES) || !(A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT))
+#error Write multiblock requires guarded boot or scratch multiblock with writes enabled
+#endif
 #define A04_ANY_MULTIBLOCK (A04_DMA_MULTIBLOCK_EXPERIMENT || A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT)
 #endif

@@ -2,9 +2,12 @@
 #define MT8167_WAVERT_DMA_H
 #include <portcls.h>
 /* PASSIVE_LEVEL; caller serializes and holds a reference to the port stream.
+ * Kernel mapping is WC and must verify as Normal Inner/Outer NC before
+ * CPU access. AllocateAudioBuffer returns that same WC type to PortCls.
  * The physical address is not proven to be a device DMA address.
  * Never release after handing to hardware unless a platform-specific drain
- * proof has succeeded. This component is not connected to a miniport. */
+ * proof has succeeded. The miniport uses this PortCls allocation; a physical
+ * address must never be substituted for a DMA adapter logical address. */
 struct Mt8167WaveBuffer {
     PPORTWAVERTSTREAM port;
     PMDL mdl;

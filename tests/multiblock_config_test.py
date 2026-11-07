@@ -15,6 +15,11 @@ scratch = ['A04_SCRATCH_IO', 'A04_PASSIVE_IO', 'A04_DMA_PROBE', 'A04_DMA_DISK_PR
 cases += [(['A04_SCRATCH_MULTIBLOCK_EXPERIMENT=1'], False),
           (scratch + ['A04_SCRATCH_MULTIBLOCK_EXPERIMENT=1'], True),
           (scratch + ['A04_SCRATCH_MULTIBLOCK_EXPERIMENT=1', 'A04_BOOT_PASSIVE_EXPERIMENT'], False)]
+write_flag = ['A04_DMA_WRITE_MULTIBLOCK_EXPERIMENT=1']
+cases += [(write_flag, False),
+          (base + ['A04_BOOT_MULTIBLOCK_EXPERIMENT=1'] + write_flag, False),
+          (base + ['A04_BOOT_MULTIBLOCK_EXPERIMENT=1', 'A04_ENABLE_WRITES'] + write_flag, True),
+          (scratch + ['A04_SCRATCH_MULTIBLOCK_EXPERIMENT=1', 'A04_ENABLE_WRITES'] + write_flag, True)]
 for defines, expected in cases:
     result = subprocess.run(['cc', '-x', 'c', '-fsyntax-only', '-I', str(include),
                              *['-D' + d for d in defines], '-'],

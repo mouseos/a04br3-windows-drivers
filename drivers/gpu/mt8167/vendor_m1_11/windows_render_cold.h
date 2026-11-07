@@ -12,6 +12,8 @@ struct a04_vendor_render_cold {
     struct a04_vendor_render_layout layout;
     struct a04_vendor_m1_11_memory *firmware;
     struct a04_vendor_surface *screen_surface;
+    void *native_owner; /* native cold backing child; release before parent */
+    void *copy_owner; /* cold mapping lease; release child first */
     uint32_t client_write[4], sequence, cleanup_mask;
     uint32_t clear_first, clear_row_bytes, diagnostic_tile_index;
     BOOLEAN mapped, poisoned, clear_ready, clear_attempted, clear_verified, cleanup_started;
@@ -34,6 +36,10 @@ struct a04_vendor_clear_result {
     uint32_t zeros, guard_errors, first, last, phase; /* zeros = pixels matching requested value */
     uint32_t kread,kwrite,cread,cwrite,ufo,expected;
     uint32_t provisional,slc_status,slc_idle;
+    /* Diagnostic task UFO and subsequent SLC-flush GP fence; nonzero only
+     * after the complete task and pixel/guard verification. These are local
+     * sequence numbers, not a WDDM fence or proof of device-to-device sync. */
+    uint32_t completed_task,completed_flush;
 };
 /* One bounded owned 32x32 transfer, followed by SLC flush and CPU readback. */
 NTSTATUS a04_vendor_render_clear_once(struct a04_vendor_render_cold *render,

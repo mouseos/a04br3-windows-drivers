@@ -7,6 +7,12 @@
 #include "watchdog_policy.h"
 #include "handoff_policy.h"
 #include "thermal_stop.h"
+#ifndef A04_TOPRGU_UART_VOLUME
+#define A04_TOPRGU_UART_VOLUME 0
+#endif
+#if A04_TOPRGU_UART_VOLUME
+#include "uart_volume_command.h"
+#endif
 #if A04_TOPRGU_UART_SCREEN
 #include <wdmsec.h>
 #include "uart_screen.h"
@@ -23,8 +29,14 @@
 #ifndef A04_TOPRGU_THERMAL_STOP
 #define A04_TOPRGU_THERMAL_STOP 0
 #endif
-#if A04_TOPRGU_UART_SCREEN && (!A04_TOPRGU_CPU1_HANDOFF || A04_TOPRGU_THERMAL_STOP)
-#error UART screen requires CPU1 handoff and excludes thermal stop test
+#if A04_TOPRGU_UART_SCREEN && !A04_TOPRGU_CPU1_HANDOFF
+#error UART screen requires CPU1 handoff
+#endif
+#if A04_TOPRGU_UART_VOLUME != 0 && A04_TOPRGU_UART_VOLUME != 1
+#error invalid UART volume request option
+#endif
+#if A04_TOPRGU_UART_VOLUME && !A04_TOPRGU_UART_SCREEN
+#error UART volume request requires secured screen interface
 #endif
 #ifndef A04_TOPRGU_DEADLINE_SECONDS
 #define A04_TOPRGU_DEADLINE_SECONDS 0
@@ -46,7 +58,7 @@ typedef struct {
 #endif
     volatile LONG ownedFour;
 #if A04_TOPRGU_THERMAL_STOP
-    volatile LONG thermalHalt;
+    volatile LONG thermalHalt, thermalArmed, thermalLastTicks;
 #endif
     BOOLEAN suspendedWatchdog;
     ULONG savedMode;
@@ -55,6 +67,10 @@ typedef struct {
     BOOLEAN deadlineReported;
     ULONG backupCalls;
     struct mt8167_reset_parser parser;
+#if A04_TOPRGU_UART_VOLUME
+    struct mt8167_volume_parser volumeParser;
+    volatile LONG volumePending;
+#endif
 } TOPRGU_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(TOPRGU_CONTEXT, ToprguGetContext)
 EVT_WDF_DRIVER_DEVICE_ADD ToprguAdd;
@@ -181,6 +197,7 @@ NTSTATUS ToprguD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
     if (KeQueryActiveProcessorCount(NULL)==4 && InterlockedCompareExchange(&c->ownedFour,1,1) && c->wdt &&
 #if A04_TOPRGU_THERMAL_STOP
         !InterlockedCompareExchange(&c->thermalHalt,0,0) &&
+        !InterlockedCompareExchange(&c->thermalArmed,0,0) &&
 #endif
         (action==PowerActionSleep || action==PowerActionHibernate ||
          action==PowerActionShutdown || action==PowerActionShutdownOff)) {
@@ -208,6 +225,9 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
     if (InterlockedCompareExchange(&c->running,1,1) && c->wdt && c->uart) {
         four=KeQueryActiveProcessorCount(NULL) == 4;
         if (!four) {
+#if A04_TOPRGU_THERMAL_STOP
+            if(InterlockedCompareExchange(&c->thermalArmed,0,0))InterlockedExchange(&c->thermalHalt,1);
+#endif
             /* A previous CPU1 witness cannot authorize a later topology. */
             InterlockedExchange(&c->ownedFour,0);
             goto done;
@@ -237,6 +257,14 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
             Trace(c,"A04RGU backup DPC active\n");
         ++c->ticks;
         elapsed=KeQueryInterruptTime()-c->started;
+#if A04_TOPRGU_THERMAL_STOP
+        if (mt8167_thermal_must_stop(InterlockedCompareExchange(&c->thermalArmed,0,0),four,
+                (ULONG)KeQueryInterruptTime(),
+                (ULONG)InterlockedCompareExchange(&c->thermalLastTicks,0,0),30000000u)) {
+            InterlockedExchange(&c->thermalHalt,1);
+            WRITE_REGISTER_ULONG(c->wdt+5,0x1209u);
+        }
+#endif
         feed=mt8167_watchdog_thermal_may_feed(
 #if A04_TOPRGU_THERMAL_STOP
                  InterlockedCompareExchange(&c->thermalHalt,0,0),
@@ -267,9 +295,15 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
             for (i=0; i<16; ++i) {
                 if ((READ_REGISTER_ULONG(c->uart + 3) & 0x80u) ||
                     !(READ_REGISTER_ULONG(c->uart + 5) & 1u)) break;
-                if (mt8167_reset_consume(&c->parser,(UCHAR)READ_REGISTER_ULONG(c->uart))) {
+                { UCHAR byte=(UCHAR)READ_REGISTER_ULONG(c->uart);
+                  if (mt8167_reset_consume(&c->parser,byte)) {
                     WRITE_REGISTER_ULONG(c->wdt + 5,0x1209u);
                     break;
+                  }
+#if A04_TOPRGU_UART_VOLUME
+                  if (mt8167_volume_consume(&c->volumeParser,byte))
+                    InterlockedExchange(&c->volumePending,1);
+#endif
                 }
             }
         }
@@ -328,6 +362,7 @@ NTSTATUS ToprguD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
     if (InterlockedCompareExchange(&c->ownedFour,1,1) && c->wdt &&
 #if A04_TOPRGU_THERMAL_STOP
         !InterlockedCompareExchange(&c->thermalHalt,0,0) &&
+        !InterlockedCompareExchange(&c->thermalArmed,0,0) &&
 #endif
         (action==PowerActionSleep || action==PowerActionHibernate ||
          action==PowerActionShutdown || action==PowerActionShutdownOff)) {
@@ -351,6 +386,14 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
         ++c->ticks;
         four=KeQueryActiveProcessorCount(NULL) >= 4;
         elapsed=KeQueryInterruptTime()-c->started;
+#if A04_TOPRGU_THERMAL_STOP
+        if (mt8167_thermal_must_stop(InterlockedCompareExchange(&c->thermalArmed,0,0),four,
+                (ULONG)KeQueryInterruptTime(),
+                (ULONG)InterlockedCompareExchange(&c->thermalLastTicks,0,0),30000000u)) {
+            InterlockedExchange(&c->thermalHalt,1);
+            WRITE_REGISTER_ULONG(c->wdt+5,0x1209u);
+        }
+#endif
         feed=mt8167_watchdog_thermal_may_feed(
 #if A04_TOPRGU_THERMAL_STOP
                  InterlockedCompareExchange(&c->thermalHalt,0,0),
@@ -375,9 +418,15 @@ static VOID ToprguPoll(TOPRGU_CONTEXT *c, BOOLEAN backup)
             for (i=0; i<16; ++i) {
                 if ((READ_REGISTER_ULONG(c->uart + 3) & 0x80u) ||
                     !(READ_REGISTER_ULONG(c->uart + 5) & 1u)) break;
-                if (mt8167_reset_consume(&c->parser,(UCHAR)READ_REGISTER_ULONG(c->uart))) {
+                { UCHAR byte=(UCHAR)READ_REGISTER_ULONG(c->uart);
+                  if (mt8167_reset_consume(&c->parser,byte)) {
                     WRITE_REGISTER_ULONG(c->wdt + 5,0x1209u);
                     break;
+                  }
+#if A04_TOPRGU_UART_VOLUME
+                  if (mt8167_volume_consume(&c->volumeParser,byte))
+                    InterlockedExchange(&c->volumePending,1);
+#endif
                 }
             }
         }
@@ -418,6 +467,21 @@ VOID ToprguScreenIoctl(WDFQUEUE queue,WDFREQUEST request,size_t out,size_t in,UL
 {
     TOPRGU_CONTEXT *c=ToprguGetContext(WdfIoQueueGetDevice(queue));
     UCHAR *data; size_t length,i; NTSTATUS status=STATUS_INVALID_PARAMETER;
+#if A04_TOPRGU_UART_VOLUME
+    if (code==A04_UART_VOLUME_GET) {
+        ULONG *result; size_t available;
+        status=WdfRequestRetrieveOutputBuffer(request,sizeof(*result),(PVOID *)&result,&available);
+        if (!NT_SUCCESS(status)) goto finish;
+        if (available<sizeof(*result)) { status=STATUS_BUFFER_TOO_SMALL; goto finish; }
+        if (InterlockedCompareExchange(&c->busy,1,0)!=0) { status=STATUS_DEVICE_BUSY; goto finish; }
+        if (!InterlockedCompareExchange(&c->running,0,0) || !InterlockedCompareExchange(&c->ownedFour,0,0) || KeQueryActiveProcessorCount(NULL)!=4)
+            status=STATUS_DEVICE_NOT_READY;
+        else { *result=(ULONG)InterlockedExchange(&c->volumePending,0); status=STATUS_SUCCESS; }
+        InterlockedExchange(&c->busy,0);
+        if (NT_SUCCESS(status)) { WdfRequestCompleteWithInformation(request,status,sizeof(*result)); return; }
+        goto finish;
+    }
+#endif
     UNREFERENCED_PARAMETER(out);
     if (code!=A04_UART_SCREEN_SEND || in==0 || in>sizeof(c->screenBuf)) goto finish;
     status=WdfRequestRetrieveInputBuffer(request,in,(PVOID *)&data,&length);
@@ -446,6 +510,21 @@ VOID ToprguThermalControl(WDFQUEUE queue, WDFREQUEST request, size_t outputLengt
         status=(c->wdt && InterlockedCompareExchange(&c->running,0,0) &&
                 InterlockedCompareExchange(&c->ownedFour,0,0) &&
                 !InterlockedCompareExchange(&c->thermalHalt,0,0)) ? STATUS_SUCCESS : STATUS_DEVICE_NOT_READY;
+    } else if (code==A04_TOPRGU_THERMAL_ARM) {
+        if(c->wdt && InterlockedCompareExchange(&c->running,0,0) &&
+           InterlockedCompareExchange(&c->ownedFour,0,0) &&
+           !InterlockedCompareExchange(&c->thermalHalt,0,0) &&
+           !InterlockedCompareExchange(&c->thermalArmed,0,0)) {
+            InterlockedExchange(&c->thermalLastTicks,(LONG)(ULONG)KeQueryInterruptTime());
+            InterlockedExchange(&c->thermalArmed,1); status=STATUS_SUCCESS;
+        } else status=STATUS_DEVICE_NOT_READY;
+    } else if (code==A04_TOPRGU_THERMAL_PING) {
+        if(InterlockedCompareExchange(&c->thermalArmed,0,0) &&
+           KeQueryActiveProcessorCount(NULL)==4 && InterlockedCompareExchange(&c->ownedFour,0,0) &&
+           !InterlockedCompareExchange(&c->thermalHalt,0,0)) {
+            InterlockedExchange(&c->thermalLastTicks,(LONG)(ULONG)KeQueryInterruptTime());
+            status=STATUS_SUCCESS;
+        } else status=STATUS_DEVICE_NOT_READY;
     } else if (code==A04_TOPRGU_THERMAL_HALT) {
         InterlockedExchange(&c->thermalHalt,1);
         #if A04_TOPRGU_CPU1_HANDOFF
@@ -454,8 +533,12 @@ VOID ToprguThermalControl(WDFQUEUE queue, WDFREQUEST request, size_t outputLengt
 #else
         if (c->wdt && InterlockedCompareExchange(&c->running,0,0)) {
 #endif
-            WRITE_REGISTER_ULONG(c->wdt+5,0x1209u);
-            status=STATUS_SUCCESS; /* request sent; reset is not verified */
+            /* The latch prevents new feeds; never reset parallel to a poll. */
+            if(InterlockedCompareExchange(&c->busy,1,0)==0) {
+                WRITE_REGISTER_ULONG(c->wdt+5,0x1209u);
+                InterlockedExchange(&c->busy,0);
+            }
+            status=STATUS_SUCCESS; /* request, not reset completion */
         } else status=STATUS_DEVICE_NOT_READY;
     }
     WdfRequestComplete(request,status);
@@ -470,15 +553,17 @@ NTSTATUS ToprguAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     TOPRGU_CONTEXT *c;
     NTSTATUS status;
     UNREFERENCED_PARAMETER(driver);
-#if A04_TOPRGU_UART_SCREEN
-    { DECLARE_CONST_UNICODE_STRING(name,A04_UART_SCREEN_DEVICE);
-      DECLARE_CONST_UNICODE_STRING(sddl,L"D:P(A;;GA;;;SY)(A;;GA;;;BA)");
-      status=WdfDeviceInitAssignName(init,&name); if(!NT_SUCCESS(status)) return status;
-      status=WdfDeviceInitAssignSDDLString(init,&sddl); if(!NT_SUCCESS(status)) return status; }
-#endif
 #if A04_TOPRGU_THERMAL_STOP
     { DECLARE_CONST_UNICODE_STRING(name,A04_TOPRGU_THERMAL_NAME);
       status=WdfDeviceInitAssignName(init,&name); if (!NT_SUCCESS(status)) return status; }
+#elif A04_TOPRGU_UART_SCREEN
+    { DECLARE_CONST_UNICODE_STRING(name,A04_UART_SCREEN_DEVICE);
+      status=WdfDeviceInitAssignName(init,&name); if(!NT_SUCCESS(status)) return status; }
+#endif
+#if A04_TOPRGU_UART_SCREEN
+    {
+      DECLARE_CONST_UNICODE_STRING(sddl,L"D:P(A;;GA;;;SY)(A;;GA;;;BA)");
+      status=WdfDeviceInitAssignSDDLString(init,&sddl); if(!NT_SUCCESS(status)) return status; }
 #endif
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
     pnp.EvtDevicePrepareHardware=ToprguPrepare; pnp.EvtDeviceReleaseHardware=ToprguRelease;
@@ -491,8 +576,17 @@ NTSTATUS ToprguAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
 #if A04_TOPRGU_UART_SCREEN
     { DECLARE_CONST_UNICODE_STRING(link,A04_UART_SCREEN_LINK); WDF_IO_QUEUE_CONFIG q;
       status=WdfDeviceCreateSymbolicLink(device,&link); if(!NT_SUCCESS(status))return status;
+#if A04_TOPRGU_THERMAL_STOP
+      /* Thermal ping/halt must not queue behind user UART requests. UART
+       * state and hardware access remain serialized by c->busy. */
+      WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel);
+#else
       WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchSequential);
+#endif
       q.PowerManaged=WdfTrue;q.EvtIoDeviceControl=ToprguScreenIoctl;
+#if A04_TOPRGU_THERMAL_STOP
+      q.EvtIoInternalDeviceControl=ToprguThermalControl;
+#endif
       status=WdfIoQueueCreate(device,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE); if(!NT_SUCCESS(status))return status; }
     { WDF_TIMER_CONFIG screenConfig;
       WDF_TIMER_CONFIG_INIT_PERIODIC(&screenConfig,ToprguScreenTimer,1);
@@ -500,7 +594,7 @@ NTSTATUS ToprguAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
       WDF_OBJECT_ATTRIBUTES_INIT(&timerAttr);timerAttr.ParentObject=device;timerAttr.ExecutionLevel=WdfExecutionLevelDispatch;
       status=WdfTimerCreate(&screenConfig,&timerAttr,&c->screenTimer); if(!NT_SUCCESS(status))return status; }
 #endif
-#if A04_TOPRGU_THERMAL_STOP
+#if A04_TOPRGU_THERMAL_STOP && !A04_TOPRGU_UART_SCREEN
     { WDF_IO_QUEUE_CONFIG q;
       WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel);
       q.PowerManaged=WdfTrue; q.EvtIoInternalDeviceControl=ToprguThermalControl;

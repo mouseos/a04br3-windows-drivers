@@ -1,0 +1,98 @@
+name: MT6630 ARM32 WDF diagnostic package
+on:
+  workflow_dispatch:
+  push:
+    branches: [work/rt-wifi-wdf-diagnostic, work/rt-unified-gpu]
+jobs:
+  package:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Windows 8.1 SDK and WDK
+        shell: pwsh
+        run: ./tools/ci/install-wdk81.ps1
+      - name: Build disabled and lease rejection configurations
+        shell: pwsh
+        run: ./tools/ci/build-mt6630-wdf-lease-probe.ps1
+      - name: Build guarded hardware path
+        shell: pwsh
+        run: ./tools/ci/build-mt6630-wdf-hardware.ps1
+      - name: Record guarded hardware build
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'a04br3-wifi-wdf-hardware'
+          $driver = Join-Path $out 'wifi-hardware-config-disabled.sys'
+          [ordered]@{ source_commit = (git rev-parse HEAD); hardware_code = 1; verified_configuration = 0; sha256 = (Get-FileHash $driver -Algorithm SHA256).Hash; note = 'Unsigned ARM32 link check; hardware configuration disabled; not an installable package.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mt6630-wdf-hardware-link-check
+          path: ${{ runner.temp }}\a04br3-wifi-wdf-hardware
+          if-no-files-found: error
+      - name: Build shared parent handoff diagnostics OFF and ON
+        shell: pwsh
+        run: |
+          $env:A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC='0'
+          ./tools/ci/build-msdc-parent-probe.ps1
+          $env:A04_SHARED_WIFI_HANDOFF_DIAGNOSTIC='1'
+          ./tools/ci/build-msdc-parent-probe.ps1
+      - name: Sign shared parent diagnostic
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
+          $out = Join-Path $env:RUNNER_TEMP 'mt6630-parent-handoff-diagnostic'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'a04-msdc-parent-probe\mt8167-shared.sys') $out
+          Copy-Item 'drivers/bus/mt8167-shared/prototype/shared-parent.inf' $out
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=MT6630 Parent Handoff Diagnostic' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
+          Export-Certificate -Cert $cert -FilePath (Join-Path $out 'parent-test.cer') | Out-Null
+          $sign = Join-Path $kit 'bin\x86\signtool.exe'
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $out 'mt8167-shared.sys')
+          if ($LASTEXITCODE -ne 0) { throw 'Parent SYS signing failed' }
+          & (Join-Path $kit 'bin\x86\Inf2Cat.exe') "/driver:$out" /os:6_3_ARM /uselocaltime
+          if ($LASTEXITCODE -ne 0) { throw 'Parent catalog generation failed' }
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $out 'shared-parent.cat')
+          if ($LASTEXITCODE -ne 0) { throw 'Parent catalog signing failed' }
+          $signature=Get-AuthenticodeSignature (Join-Path $out 'shared-parent.cat')
+          if (!$signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $cert.Thumbprint) { throw 'Parent catalog signer mismatch' }
+          [ordered]@{ source_commit=(git rev-parse HEAD); wifi_handoff_diagnostic=1; wifi_acquire='always refuses'; parent_d0='disabled'; signer_sha1=$cert.Thumbprint; files=@{ 'mt8167-shared.sys'=(Get-FileHash (Join-Path $out 'mt8167-shared.sys') -Algorithm SHA256).Hash; 'shared-parent.inf'=(Get-FileHash (Join-Path $out 'shared-parent.inf') -Algorithm SHA256).Hash; 'shared-parent.cat'=(Get-FileHash (Join-Path $out 'shared-parent.cat') -Algorithm SHA256).Hash }; note='Self-signed diagnostic; no actual handoff or device operation; target trust unverified.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mt6630-parent-handoff-diagnostic
+          path: ${{ runner.temp }}\mt6630-parent-handoff-diagnostic
+          if-no-files-found: error
+      - name: Build read-only UART observer
+        shell: pwsh
+        run: ./tools/ci/build-mt6630-pnp-uart.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mt6630-pnp-uart
+          path: ${{ runner.temp }}\a04br3-wifi-pnp-uart\mt6630-pnp-uart.exe
+          if-no-files-found: error
+      - name: Create signed diagnostic package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
+          $out = Join-Path $env:RUNNER_TEMP 'mt6630-wdf-diagnostic-package'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'a04br3-wifi-wdf-hardware\wifi-hardware-config-disabled.sys') (Join-Path $out 'mt6630-wdf-diagnostic.sys')
+          Copy-Item 'drivers/network/mt6630/mt6630-wdf-diagnostic.inf' $out
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=MT6630 WDF Diagnostic' -CertStoreLocation 'Cert:\CurrentUser\My' -NotBefore (Get-Date).AddYears(-12) -NotAfter (Get-Date).AddYears(3)
+          Export-Certificate -Cert $cert -FilePath (Join-Path $out 'mt6630-wdf-diagnostic.cer') | Out-Null
+          $sign = Join-Path $kit 'bin\x86\signtool.exe'
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $out 'mt6630-wdf-diagnostic.sys')
+          if ($LASTEXITCODE -ne 0) { throw 'SYS signing failed' }
+          & (Join-Path $kit 'bin\x86\Inf2Cat.exe') "/driver:$out" /os:6_3_ARM /uselocaltime
+          if ($LASTEXITCODE -ne 0) { throw 'Catalog generation failed' }
+          & $sign sign /fd SHA256 /sha1 $cert.Thumbprint /s My (Join-Path $out 'mt6630-wdf-diagnostic.cat')
+          if ($LASTEXITCODE -ne 0) { throw 'Catalog signing failed' }
+          $signature = Get-AuthenticodeSignature (Join-Path $out 'mt6630-wdf-diagnostic.cat')
+          if (!$signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $cert.Thumbprint) { throw 'Catalog signer mismatch' }
+          [ordered]@{ source_commit = (git rev-parse HEAD); lease_diagnostic = 1; hardware_code = 1; verified_board_configuration = 0; firmware_included = 0; signer_sha1 = $cert.Thumbprint; files = @{ 'mt6630-wdf-diagnostic.sys' = (Get-FileHash (Join-Path $out 'mt6630-wdf-diagnostic.sys') -Algorithm SHA256).Hash; 'mt6630-wdf-diagnostic.cat' = (Get-FileHash (Join-Path $out 'mt6630-wdf-diagnostic.cat') -Algorithm SHA256).Hash; 'mt6630-wdf-diagnostic.inf' = (Get-FileHash (Join-Path $out 'mt6630-wdf-diagnostic.inf') -Algorithm SHA256).Hash }; note = 'Self-signed, hardware diagnostic compiled; board configuration disabled and parent lease refuses. Firmware distributed separately; target trust and operation unverified.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mt6630-wdf-diagnostic-package
+          path: ${{ runner.temp }}\mt6630-wdf-diagnostic-package
+          if-no-files-found: error

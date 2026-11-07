@@ -1,0 +1,20 @@
+{
+  "repository": "https://github.com/mouseos/a04br3-windows-drivers.git",
+  "usb_base": "5f8187223ed0988772fd659d208b6a47bced79fe",
+  "audio": "ae1c7164665d822967d10277f133fd1baad9d110",
+  "audio_interface": 11,
+  "wifi": "331cb2fa2a2fffcf1d5112a97574719e70537e11",
+  "wifi_interface": 2,
+  "shared_parent_hardware_id": "ACPI\\BEN0001",
+  "uefi_reference_from_primary_owner": "cc7c20fa",
+  "uefi_modified": false,
+  "hardware_verified": false,
+  "wifi_runtime_base": "0b2b60c",
+  "driver_date": "11/06/2026",
+  "driver_version": "2026.11.6.1001",
+  "driver_ver": "11/06/2026,2026.11.6.1001",
+  "audio_mode_default": "private_fixed_tone_diagnostic",
+  "engine_pcm_optional_source": "de214c8b7495913d0716f149b24fd210ef42de8a",
+  "engine_pcm_default_enabled": false,
+  "engine_pcm_inf_signing_source": "e4dff2b25cc164892dce1d534cb564218845c29c"
+}

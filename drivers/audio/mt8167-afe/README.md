@@ -85,14 +85,51 @@ KeSynchronizeExecution and accumulates serviced IRQ notifications across DPC
 coalescing. This count is only ISR calls serviced by software, not proof of
 elapsed hardware periods. Fault notification is sticky. Both transport and
 IRQ paths are experimental, unconnected and untested in Windows on this SoC.
+The IRQ helper also provides a nonblocking synchronized DL1 CUR read that
+rejects non-running, faulted, out-of-range and unaligned positions without
+changing its output. Its caller must keep the mapping and interrupt alive and
+exclude disconnect. The transport saves the active DMA plan and exposes this
+ring offset; it is not a monotonic elapsed-byte count. The diagnostic PnP
+backend forwards WaveRT position queries to its own transport under rundown
+protection; PnP revoke waits for these queries before unmapping AFE. Its
+transport never reaches RUNNING, so the query still returns not ready. The PnP
+backend stores the validated translated IRQ, but no operational PnP path
+connects or starts it. A future start/stop implementation must synchronize
+transport state with position readers as well as ISR and rundown.
+
+The board Linux IRQ handler reads AFE_IRQ_STATUS and AFE_DAC_CON0, reports a
+period only for an active memif, then clears pending AFE IRQ bits. The DL1
+experiment acknowledges only IRQ1, preserving other sources. A host integration
+test joins a mock parent lease, transport, IRQ wrapper and register engine; it
+is not evidence that the actual Windows interrupt or board codec works.
+
+`mt8167_dl1_prepare_masked_irq` implements a pre-connect DL1 mask, latch clear,
+and readback for an exclusive owner with a held clock. It refuses an active DL1
+and poisons on ambiguous I/O. It deliberately leaves other IRQ sources alone;
+the shared owner must exclude those sources and keep the mask stable until
+disconnect. It is not used directly by the PnP path.
+
+The separate `A04_AUDIO_IRQ_DIAGNOSTIC=1` path requires both the mapped child
+AFE resource and a version 4 shared-parent interface. It acquires a muted
+clock/codec lease and calls the parent's `PrepareMaskedIrq` contract, which
+must establish exclusive AFE ownership, initially mask every source, and keep
+all non-DL1 sources masked until lease release. After ISR connection only the
+child may unmask DL1; it must mask and synchronize it before releasing. Only then does the backend connect the PnP-translated IRQ.
+PnP revoke drains position requests, disconnects and flushes the IRQ, releases
+the lease, then unmaps AFE. Failed lease release retains the owner, mapping and
+parent references. The prototype parent rejects both acquisition and preparation
+without MMIO, so this path cannot connect on that parent. It does not start DMA,
+unmask interrupts or allow RUN. Version 4 intentionally rejects older parents.
 
 The miniport now accepts an optional internal `Mt8167StreamBackend` supplied by
 an owning PnP provider. It forwards allocation, format-independent start/stop,
 position and device-description requests and retains a backend reference for
 stream lifetime. The current adapter never supplies one. In its absence the
-diagnostic stream still refuses RUN. After any attempted start, the stream
-intentionally retains the backend reference and does not release its buffer,
-even if stop succeeds: the platform has no proven DMA drain procedure. A failed
+diagnostic stream still refuses RUN. Once a start may have exposed DMA, the
+stream intentionally retains the backend reference and buffer even if stop
+succeeds: the platform has no proven DMA drain procedure. The backend can
+explicitly report a failure before any possible exposure, allowing release.
+An ambiguous failure remains quarantined. A failed
 stop is not retried. This is a quarantine/leak, not a finished PnP removal or
 power-management solution. A future provider must enforce serialization,
 resource ownership and stop/failure recovery; the interface itself does not
@@ -131,8 +168,10 @@ freeing exposed DMA or unmapping registers.
 PnP IRQ parsing rejects message-signaled and edge-triggered descriptors,
 zero vector or affinity, levels above HIGH_LEVEL, and (where processor groups
 are enabled) a nonzero group that IoConnectInterrupt's group-zero affinity
-cannot represent. A translated Windows vector is not assumed to equal the raw
-ACPI GSI. This only validates the descriptor shape; the owner still does not
+cannot represent. It checks both raw and translated descriptors for exclusive,
+level-triggered line interrupts and uses only the translated vector for a future
+connection. A translated Windows vector is not assumed to equal the raw ACPI
+GSI. This only validates the descriptor shape; the owner still does not
 connect the interrupt. The existing button provider continues to directly own
 PWRAP, while the shared clock owner remains a non-PnP policy component.
 
@@ -152,11 +191,13 @@ into a release criterion without a device-specific specification or validation.
 single parent that owns the audio clocks and PMIC/codec mute together. PnP
 backend can retain that contract and refuses attachment after revocation. The
 existing input-client and offline parent interfaces do not implement this
-contract and are not assumed to be the same interface. There is no query IRP,
-child-PDO binding, provider, PWRAP codec write, or shared clock implementation.
+contract and are not assumed to be the same interface. There is no operational
+provider, PWRAP codec write, or shared clock implementation.
 `shared_transport.cpp` joins that hypothetical lease to the existing DL1/IRQ
-transport but has no caller. It quarantines the shared reference and lease
-before attempting any transport work; no drain proof or release path exists.
+transport but has no PnP caller. It releases the shared lease if validation or
+DMA preparation fails before IRQ connection; a failed release quarantines it.
+It quarantines the shared reference and lease before attempting IRQ connection,
+because an ISR may run immediately; no post-exposure drain proof exists.
 Neither this composition nor a successful callback proves the provider owns
 hardware. No actual IRQ is connected by the present PnP backend; RUN remains
 refused, and this code is not a safe device trial.
@@ -165,9 +206,334 @@ refused, and this code is not a safe device trial.
 `A04_SHARED_AUDIO_INTERFACE` to the internal audio shared-service contract.
 Binding transfers the query reference, attachment holds an additional parent
 reference, and close is refused while any clients remain. The caller must
-serialize lifecycle calls and supply a real PnP query result; the adapter does
-not yet send a query IRP or attach this object to its PnP backend. The parent
+serialize lifecycle calls. With `A04_AUDIO_QUERY_SHARED=1`, the diagnostic PnP
+backend sends a query to its child PDO and attaches this object. The parent
 prototype publishes and forwards the same versioned GUID to a gated audio
 child, but its audio callbacks always fail and never touch codec or clock.
-The child has no assigned AFE resources or driver binding. No actual audio
+The child's AFE resource candidates are gated and there is no installable driver binding. No actual audio
 clock/PWRAP lease, DMA start, interrupt connection or playback is enabled.
+
+The shared transport uses the parent's combined clock/codec lease as its sole
+clock ownership; it does not acquire the separate clock policy again. This is
+still a software-only path, not a live backend. An IRQ delivered before DL1
+start or after its synchronized stop is ignored instead of poisoning the
+engine. This neither identifies nor acknowledges a pending hardware interrupt,
+so IRQ routing and source quiescence must be established before connecting it.
+
+The optional `A04_AUDIO_MAP_AFE=1` diagnostic PnP path also requires the
+parent query. It identifies exact AFE/SRAM ranges in raw PnP descriptors,
+checks paired translated lengths, exclusive sharing and non-overlap, maps the
+translated AFE register page, and unmaps it on PnP revocation or
+final release. It performs no register accesses, does not map SRAM, and
+never connects the IRQ. Mapping a PnP resource is not a codec/clock lease or
+proof of safe hardware ownership. This path must remain disabled if any other
+driver or firmware can still touch AFE, and would require a new teardown
+design before adding an ISR, DMA or any asynchronous mapping user.
+
+The diagnostic PnP backend now gives the DL1 engine ordered 32-bit access to
+the PnP-translated AFE mapping. The callbacks allow only DL1/DAC/IRQ offsets
+used by the engine and deny writes to CUR and IRQ_STATUS. They are compiled
+only with `A04_AUDIO_IRQ_DIAGNOSTIC=1`, which requires parent query and AFE
+mapping; the mapping survives ISR disconnect and DPC rundown. The shared
+parent still does not grant the required clock/codec lease or masked IRQ
+contract, and backend RUN still rejects. The callbacks do not prove clock
+power, live buffer coherency, the speaker route, or a DMA drain. Host tests
+use simulated MMIO; there has been no Windows or device playback test.
+
+`Mt8167TransportStartMaskedParent` handles the PnP case where the IRQ was
+connected under the version 4 masked-source contract. It prepares the common
+buffer, quarantines the lease before publishing a DMA address, and starts the
+engine under IRQ synchronization without reconnecting the ISR. Failures after
+the exposure boundary retain the mapping, IRQ and lease. This is host-tested
+but is not wired to backend RUN: continuous cache synchronization, clock and
+codec ownership, muted startup and a DMA drain remain unresolved.
+
+`A04_AUDIO_RUN_DIAGNOSTIC=1` connects backend start/stop to the preconnected
+parent transport, but `OwnerLiveDmaVerified` always rejects: one pre-publish
+flush does not prove live WaveRT circular-buffer coherency. The current parent
+also refuses codec/clock ownership. The hypothetical start/stop path is not
+operational or hardware-tested; do not enable it for deployment. A successful
+stop still does not prove drain or permit freeing exposed DMA.
+
+Version 4 additionally distinguishes refusal before side effects (-1) from
+uncertain partial acquisition (any other failure). The latter quarantines
+the child lease/reference and causes the parent to retain mappings on release.
+This prevents ordinary software cleanup from freeing uncertain resources; it
+does not prove that Windows keeps the physical PnP resources assigned after
+release or surprise removal. No hardware audio lease is currently enabled.
+
+Diagnostic observation builds may set `A04_AUDIO_DIAGNOSTIC_TRACE=1` for the
+parent and audio build checks. They log parent admission and callback presence,
+RUN rejection, and AFE registers sampled under interrupt synchronization after
+STOP. `A04_AUDIO_PMIC_TRACE=1` additionally reads TOP_CKPDN1 over the parent
+PWRAP lock during the experimental D0 transition; failure rejects D0 and a
+WACS timeout poisons the bus. Both flags default to zero. These observations
+are not evidence of powered rails, clock ownership, codec quiescence, or DMA
+drain. The real parent still lacks the callbacks required to acquire audio and
+RUN remains unavailable; exposed DMA and the parent lease remain quarantined.
+
+The current parent contract is version 5 and includes the child's explicit
+AFE mapping bind/unbind. The diagnostic backend binds only its validated
+PnP-assigned mapping before lease acquisition and retains that mapping if the
+parent cannot release it. The parent still rejects real acquisition; this does
+not establish DMA drain, board mute, power retention or hardware playback.
+
+The current parent interface is version 6. Diagnostic stream stop requests a
+codec mute without releasing power before disabling DL1 and disconnecting its
+IRQ; even a mute failure does not skip the stop attempt. This path cannot run
+on the real parent until the retained-power, exclusive ownership, codec and
+live DMA prerequisites are established. DL1 enable readback is not DMA drain.
+
+`A04_AUDIO_SILENT_DMA_DIAGNOSTIC=1` is an opt-in, silent DMA prototype: it
+uses a private zero-filled hardware buffer and a separate PortCls buffer. It
+does not transfer application PCM to the device and must not be described as
+audio playback. The shared parent still refuses acquisition on hardware, and
+the new path has only host-side checks; WDK and target execution remain
+unverified. Any buffer exposed to DMA is retained because hardware drain has
+not been established.
+
+The PnP backend serializes passive-level operations with a kernel mutex rather
+than FAST_MUTEX. AllocateCommonBuffer and FreeCommonBuffer require
+PASSIVE_LEVEL, while FAST_MUTEX raises the caller to APC_LEVEL. Unexpected
+higher-IRQL allocation or start is rejected; an unexpected high-IRQL free
+retains the allocation. GetPosition remains protected by rundown and does not
+take this blocking mutex. See [AllocateCommonBuffer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_common_buffer)
+and [FreeCommonBuffer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pfree_common_buffer).
+
+`A04_AUDIO_PCM_PATTERN_DIAGNOSTIC=1` selects an immutable test waveform in the
+private diagnostic DMA ring instead of zeroes. It requires
+`A04_AUDIO_SILENT_DMA_DIAGNOSTIC=1`, uses 48 kHz stereo S16_LE at 1500 Hz and
+peak 128/32768, and never maps that DMA ring to the WaveRT client. The buffer
+is filled before the existing pre-publication flush. The WaveRT client's PCM
+is not rendered by this experiment; the codec remains muted. On exposure,
+the DMA mapping and ownership remain quarantined because DL1 disable and IRQ
+disconnect do not prove bus drain. Normal playback and all diagnostic flags
+remain off by default. Parent lease, board power, codec route and physical
+coherency still require separate establishment; no device run is claimed.
+
+`A04_AUDIO_UNMUTE_DIAGNOSTIC=1` additionally requests MT6392 gain code 1
+(Linux defines it as +0 dB, the lowest non-mute gain) only after the fixed PCM
+DMA starts. It requires the fixed-pattern and isolated-DMA flags. The parent
+requires an independently verified board route and retained power callback;
+the actual parent does not provide it, so the real device still rejects this
+operation. A failed request still stops DL1 and retains exposed DMA. This
+experiment does not connect WaveRT PCM or prove the MT8167 analog route.
+Linux's AIF RX, DAC, Vref, DAC clock, VCM and AU_LOL path must also be
+implemented and verified before any unmute is admitted.
+
+`voice_playback.h` is a host-tested experimental composition of the existing
+MT8167 Voice Amp sequence with DMA and downstream mute operations. It requires
+preflight to establish exclusive owners, actual voice-path calibration,
+downstream mute and live PCM coherence before touching the codec. Voice starts
+while muted, DMA starts next, and unmute follows only after both succeed. Stop
+requests mute and then DMA stop even when mute fails; analog shutdown is allowed
+only when both succeed and the codec helper verifies mute again. Any attempted
+start permanently retains resources; DMA stop does not establish bus drain.
+The callbacks have no production provider and this helper is not wired into PnP
+or WaveRT. Host tests model ordering and failure paths, not physical playback.
+Linux's `mt8167-codec.c` DAPM routes connect Left DAC through Voice Amp and
+LINEOUT Mux to AU_LOL; this does not establish the board's downstream route or
+prove headphone calibration applies to voice output.
+
+`A04_AUDIO_VOICE_PCM_DIAGNOSTIC=1` connects the existing WaveRT backend's
+client buffer to the PnP transport and DL1 common DMA, and invokes the shared
+parent's Voice Amp start before DMA and minimum-gain unmute after DMA starts.
+Stop mutes first, stops DMA even on mute failure, and only then stops Voice Amp
+if both succeeded. The flag requires the RUN/IRQ/shared-parent diagnostics and
+is incompatible with the private silent-buffer mode. The parent version 8
+provides optional `VerifyLivePcm`, `StartVoice` and `StopVoice` operations.
+Voice start failure and any DMA exposure quarantine the lease and buffer.
+
+This remains an integration build, not working audio. The parent implementation
+is compiled only with `A04_SHARED_VOICE_PCM_DIAGNOSTIC=1` and refuses both live
+PCM verification and voice-path calibration/mute verification unconditionally.
+No client buffer reaches DMA or codec registers on the real parent. The parent
+owns the codec sequence under its shared lock; AFE reads/writes are restricted
+to ABB CON0/3/11. A future provider must also handle PnP removal and prove DMA
+drain before resource release. No production or physical validation is implied.
+
+Microsoft documents WaveRT's cyclic buffer and RUN boundary in
+[AllocateAudioBuffer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/portcls/nf-portcls-iminiportwavertstream-allocateaudiobuffer):
+it describes allocation through PortCls page methods and requires the actual
+buffer to be at least the requested size. The present common-buffer/MDL route
+and its size behavior need independent Windows RT compatibility validation.
+[AllocateCommonBuffer](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pallocate_common_buffer)
+returns a device logical address and its current documentation bases ARM cache
+behavior on platform properties; neither the CPU mapping nor a single
+[KeFlushIoBuffers](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-keflushiobuffers)
+call proves continuous coherency or a matching user-mode mapping on this board.
+Preflight must also ensure initial publication cannot race client writes.
+These current Microsoft pages are API guidance, not proof of RT 8.1 behavior.
+
+
+The voice PCM variant now allocates its client MDL through PortCls
+`AllocateContiguousPagesForMdl`, maps it through `MapAllocatedPages`, rounds
+requests up to pages, and reports the actual size. The PnP owner binds the
+PortCls MDL without treating physical addresses as device logical addresses.
+The earlier description of directly using its common-buffer allocation for
+this variant is superseded. RUN currently refuses unconditionally: an adapter
+mapping for the PortCls pages, its map-register lifetime and DMA drain proof
+are not implemented. No PCM reaches hardware. A successful preflight cannot
+override this restriction. When mapping is added, it must preserve the PortCls
+allocation and mapping until the hardware and adapter are demonstrably done.
+
+The Linux board driver programs DL1 BASE/END from the DMA allocation's
+`runtime->dma_addr` and size. The XNU network IODMACommand example maps a
+buffer and uses an IOVM address; neither proves a numeric physical-address
+identity for the Windows AFE. Microsoft documents
+[GetScatterGatherList](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nc-wdm-pget_scatter_gather_list)
+as retaining mapping resources and requiring `PutScatterGatherList` before CPU
+access to the buffer. That packet-DMA contract alone is not evidence that an
+actively written WaveRT cyclic buffer can safely use that mapping indefinitely.
+The PortCls-to-AFE adapter mapping, continuous synchronization and safe release
+remain unimplemented; RUN remains refused.
+
+`A04_AUDIO_WAVE_DMA_PROBE=1` is an additional default-off PnP/WaveRT
+integration diagnostic. Before the PortCls MDL is returned to a client, it
+calls the DMA adapter's `GetScatterGatherList` at DISPATCH_LEVEL, requires a
+single complete aligned 32-bit device-address segment, and immediately calls
+`PutScatterGatherList` from the adapter callback. It never publishes that
+address to DL1, never enables DMA, and does not retain it as a live mapping.
+The test has a one-second bounded wait. On timeout an adapter callback may
+still arrive: the MDL, PortCls mapping, adapter, PDO and parent lease remain
+retained, and PnP unbind is refused. This is a deliberately conservative leak,
+not a cancellation or drain proof. Failed mapping without a callback is freed.
+The real parent still rejects the codec and live PCM prerequisites and RUN
+remains disabled. Host tests simulate immediate and late callbacks, invalid
+segments, timeout and PnP/WaveRT retention; no target execution is claimed.
+The packet-DMA API's CPU-access restrictions preclude using this short-lived
+probe as proof of continuous WaveRT ring coherence. The result is not kept as
+an AFE logical address and does not establish the next mapping's address.
+
+`A04_AUDIO_WAVE_DMA_RETAINED=1` is a separate default-off experimental path.
+It uses the DMA adapter mapping for the PortCls MDL and retains its scatter-
+gather list and map registers through RUN. The parent must first prove the
+mapping and Windows/board cache contract, including CPU writes during playback;
+the real parent rejects this verification. On stop the PnP backend requests
+mute, stops DL1 and disconnects IRQ, then requires an independent parent DMA
+and fabric drain proof before stopping Voice and returning the mapping through
+`PutScatterGatherList`. The real parent rejects that drain check. An exposed
+mapping is retained if any operation fails or drain is unknown; a timed-out
+mapping request also retains the MDL/adapter while its callback may arrive.
+Only a successful verified stop permits WaveRT to unbind and free its pages.
+
+This code path has host tests, not device proof. A packet-DMA scatter/gather
+mapping does not by itself establish that CPU access to a continuously updated
+WaveRT ring is supported; the verified parent contract must establish this
+independently. Neither DL1 disable nor IRQ disconnect is treated as drain.
+PnP surprise removal and the OS resource lifetime after quarantine remain
+unproven. No real parent callback admits this path and no playback is claimed.
+
+## INT ADDA共有サービス（2026-11-07）
+
+`A04_SHARED_DIGITAL_PLAYBACK=1` のparentは、バージョン10の
+`PreparePlayback(48000)` を公開する。子の
+`A04_AUDIO_DIGITAL_PLAYBACK=1` はRUN時、DMA開始とVoice Amp開始より前に
+このサービスを呼ぶ。表示名とPnP IDは既存のMediaTek MT8167 AFEを維持する。
+
+サービスは、取得済みのmuted audio lease、TOP/AFE clock、codec domainと
+MT6392 gain muteを確認してから、DAC/DAC_PREDIS gate、AFE_ON、S16_LE、
+DL1 I05/I06からO03/O04への接続、ADDA SRC、I2S出力、内蔵codecの48 kHz設定、
+DC補償初期値とlatchを設定する。I2Sのrate codeは10、ADDA/codecは8であり、
+同じ値を流用しない。アナログDAC、Voice Amp、Class D unmuteはこの操作では
+有効にしない。既存の稼働中DL1/capture/ADDA/I2S/codecを検出すると書込み前に
+拒否する。書込み後の失敗は-2、無変更の拒否は-1と区別する。
+
+根拠はボードLinuxの `sound/soc/mediatek/mt8167/mt8167-afe-pcm.c` の
+`mt8167_afe_int_adda_startup/hw_params/prepare`、`mt8167_afe_set_adda_out`、
+`mt8167_afe_set_i2s_out` とO03/O04のDAPM mixer、同ディレクトリの
+`mt8167-afe-regs.h`、`sound/soc/codecs/mt8167-codec.c` の
+`mt8167_codec_setup_dl_rate/hw_params`、`mt8167-codec-utils.c` の
+`mt8167_codec_update_dc_comp`。Linuxソースを配布物へコピーせず、これらの
+レジスタ仕様と順序に基づく限定実装とした。
+
+`make test-mt8167-digital-playback test-mt8167-digital-parent
+ test-mt8167-digital-pnp` で、設定成功、各書込みの失敗、latchの両status、
+PnP queryで公開された実parent callback、RUNからの呼出し、-1/-2で異なる
+資源保持をホスト検証する。ホスト試験は実機再生・Windows WDK linkの証明ではない。
+
+**残る欠落**: 既存parentの `audio.preflight`、`audio.verify_release`、
+`classd.verify_start/verify_quiescent/verify_unmute` とaudioのD0 admissionは
+未接続であり、実機用のAcquireMutedは依然成功しない。この変更は、その状態を
+解除するための推測によるcallbackを追加していない。PnPのresource assignment
+だけでは既存firmware/secure側の共有clock/PWRAP解放を証明できない。
+`ParentVoiceVerify`にはAU_LOLへ適用できる校正値取得経路がなく、
+`ParentVerifyLivePcm`には循環DMAのcoherency保証、`ParentVerifyDmaDrained`
+にはMT8167の未完了バストランザクション確認手段がない。
+ヘッドホンAUXADC 7/8の測定をAU_LOL校正と見なしたり、DL1の停止bitをdrainと
+見なしたりはしない。これらの欠落により可聴再生までは到達していない。
+
+デジタル設定後は共有clock・codec・AFE mappingをresetまで保持する。
+`ReleaseQuiescent`とparent unmapは拒否し、子も保持状態をquarantineする。
+既存の停止経路が成功してもこの保持を解除しない。通常のPnP remove/resumeや
+再生再開を完成したものとして扱わない。実機・SSH・REA・EDK2の操作は行っていない。
+
+## 資源を保持する初回再生プロバイダ（2026-11-07追記）
+
+前節の未接続callbackは、専用の `A04_SHARED_FIRST_PLAYBACK=1` ビルドでは
+実プロバイダへ接続した。従来の診断ビルドには有効化しない。
+親D0はPnP割当済みの共有bankとWACS2 readinessを確認してaudio admissionを開く。
+`AcquireMuted` は `WdfDeviceStopIdle(TRUE)` で親の電源参照を取得し、
+既存の再生・収録・ヘッドホンアンプ・Class Dが稼働していないことを確認する。
+VAUD22/VAUD28のbit14を設定し、Linux regulatorの264 us ramp後にQI bit15を
+有界待機する。電圧selectorは維持する。TOP audio/AFE clockとcodec domainを
+取得し、MT6392の実WACS2更新でgain muteとhardware trimを行う。
+trimの20 ms待機後、trimを切る前にSPK_CON1 bits4:0を読み取り記録する。
+副作用前の拒否だけは取得した電源参照を返し、成功または不確定な失敗は保持する。
+
+基板LinuxはAU_LOLをVoice AmpからMT6392内部Class Dへ接続する。
+`LINEOUT Mux` は `SND_SOC_NOPM` のソフトウェアmuxであり、推測のmuxレジスタは
+追加しない。提供された `mt8167-codec.c` のVoice gain初期値9（0 dB）を設定し、
+DC補償はLinuxの未校正cold-start状態（kzalloc配列の0→0）を明示して使用する。
+Linuxの `HP DC Offsets` は別途ヘッドホン回路をADC測定した場合に配列を設定する。
+**AU_LOL専用のADCチャンネル・測定手順は一次ソースにないため、AU_LOLの実測DC校正を
+実装済みとは扱わない。** 今回接続した校正動作はMT6392 Class Dのhardware trimであり、
+AU_LOLの測定値や0x4b4bの無条件適用ではない。
+
+子は `A04_AUDIO_FIRST_PLAYBACK=1` により、共有lease/IRQ取得後の最初のRUNで
+デジタル設定、Voice Amp、DL1、最小Class D gainの順に開始する。
+DMAは `AllocateCommonBuffer(CacheEnabled=FALSE)` の論理アドレスを使う。
+非公開・非cachedの別bufferへ48 kHz stereo S16_LE、1500 Hz、peak 128/32768の
+固定PCMを一度書き、既存の `KeFlushIoBuffers` とARM DMBを通してからDL1へ渡す。
+利用者に渡すWaveRT bufferとDMA用bufferは別であり、利用者の書込みや循環cache管理を
+この経路で成立させたとは主張しない。これは初回の固定PCM再生専用である。
+
+停止時はmuteとDL1停止・IRQ rundownを行うが、drainを証明せず、共有lease・
+parent電源参照・PMIC電源・clock・codec・DMA buffer・PDO・mappingをresetまで保持する。
+lease返却、DMA資源の解放、二度目のRUNは許可しない。parentのpower policyに対する
+idle防止はあるが、強制removeやシステム電源遷移で物理資源が維持されることまで保証しない。
+通常運用の音声ドライバ、live PCM、再開・suspend/resumeの完成形ではない。
+
+主担当が行うWDK 8.1 ARM32ビルド:
+
+```powershell
+./tools/ci/build-mt8167-first-playback.ps1
+```
+
+この入口だけで親子の一致するフラグを設定し、共有parent SYSとPortCls SYSを一括ビルドする。
+既存runnerを開始・停止する処理、実機へ接続する処理は含まない。
+出力・一時ファイル・build.logはcheckout内の `build/mt8167-first-playback/` へ置く。
+`-OutputDirectory` を使う場合もcheckout内だけを許可する。
+
+- `a04-msdc-parent-probe/mt8167-shared.sys` と `shared-parent.inf`
+- `audio/mt8167-audio.sys` と `mt8167-afe-first-playback.inf`
+- `manifest.json`: source commit、dirty状態、PCM設定、ビルドフラグと4ファイルのSHA-256
+
+INFは既存子ID `MT8167\AFE`、subdevice `Mt8167WaveRT` に一致し、表示名は
+`MediaTek MT8167 AFE / MT6392 Audio`。媒体への組込み前に、主担当側でCAT生成・署名と
+既存の競合するstandalone所有者の無効化、APMIXED 0x714を含む親resource割当、
+PnP開始を確認する。Windowsの通常のSpeaker endpoint列挙・topology接続や署名受理は
+今回未確認であり、SYS link成功だけで利用者向け音声出力が完成したとは扱わない。
+
+ローカルでは変更に直接関係する一括ホスト確認を実施。実parent callbackを用いた
+D0→AcquireMuted→PreparePlayback→StartVoice→DL1有効後のUnmute、停止後の資源保持と、
+既存PnP fixtureによる固定PCM RUN接続を確認した。WDK linkと実機試験は主担当が実施する。
+
+## WinPEのKS clientと観測（2026-11-07追記）
+
+08faae5の親・Audio SYSは主担当のWDK 8.1 runnerでcompile/link成功し、PE importsを回収済み。
+次の追加は共有音声interface v11のread-only snapshot、Audio filterの観測IOCTL、
+AudioSrvなしで直接KS pinを開くuserland clientと、既存TOPRGU経由のUART転送。
+[主担当向け手順と全レコード定義](../../../tools/winpe/README-mt8167-audio-first-playback.md) を参照。
+一括ビルド入口は同じで、今回の親子SYSとclientを対で生成する。旧v10 parentとの混用は不可。
+可聴成功と、KS受付・DMA CUR進行・codec状態の観測を区別する。今回の実機確認は未実施。

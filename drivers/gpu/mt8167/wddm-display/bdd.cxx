@@ -10,6 +10,7 @@
 
 #include "BDD.hxx"
 #include "present_bounds.h"
+#include "ge8300_trace.hxx"
 
 #pragma code_seg("PAGE")
 
@@ -34,7 +35,21 @@ BASIC_DISPLAY_DRIVER::BASIC_DISPLAY_DRIVER(_In_ DEVICE_OBJECT* pPhysicalDeviceOb
     RtlZeroMemory(&m_StartInfo, sizeof(m_StartInfo));
     RtlZeroMemory(m_CurrentModes, sizeof(m_CurrentModes));
     RtlZeroMemory(&m_DeviceInfo, sizeof(m_DeviceInfo));
+#if A04_GE8300_WDDM_DIRECT_EXPERIMENT
+    RtlZeroMemory(&m_DisplayResources, sizeof(m_DisplayResources));
+#endif
     KeInitializeMutex(&m_PresentMutex,0);
+#if A04_MT8167_DISPLAY_BRIGHTNESS
+    m_Brightness.Initialize();
+#endif
+#if A04_GE8300_WDDM_SHARED_AUTOSTART
+    KeInitializeEvent(&m_SharedWorkerStop,NotificationEvent,FALSE);
+    KeInitializeMutex(&m_SharedWorkerStopMutex,0);
+    m_SharedWorkerDone=NULL; m_SharedWorker=NULL; m_SharedWorkerObject=NULL;
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+    m_GpuPostAttempted=FALSE;
+#endif
+#endif
 
 
     for (UINT i=0;i<MAX_VIEWS;i++)
@@ -48,9 +63,183 @@ BASIC_DISPLAY_DRIVER::~BASIC_DISPLAY_DRIVER()
     PAGED_CODE();
 
 
+#if A04_GE8300_WDDM_SHARED_AUTOSTART
+    StopSharedDiagnosticWorker();
+#endif
     CleanUp();
 }
-
+#if A04_GE8300_WDDM_SHARED_AUTOSTART
+VOID BASIC_DISPLAY_DRIVER::SharedDiagnosticWorker(PVOID context)
+{
+    BASIC_DISPLAY_DRIVER *self=(BASIC_DISPLAY_DRIVER *)context;
+    KEVENT *done=self->m_SharedWorkerDone;
+    A04DisplayTrace(0x83,STATUS_SUCCESS);
+    LARGE_INTEGER delay;delay.QuadPart=-10000000LL;
+#if A04_GE8300_WDDM_PRESENT_CAPTURE
+    /* Snapshot publication and cleanup are protected by m_PresentMutex. GPU
+     * work runs without it so normal presents are not blocked for 1000 tiles.
+     * StopDevice/D3 join this worker before touching its resources. */
+    for(ULONG i=0;i<120;i++) {
+        NTSTATUS wait=KeWaitForSingleObject(&self->m_SharedWorkerStop,Executive,KernelMode,FALSE,&delay);
+        if(wait!=STATUS_TIMEOUT)break;
+        wait=KeWaitForSingleObject(&self->m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+        if(!NT_SUCCESS(wait))break;
+        if(!self->m_Flags.DriverStarted || !self->m_DisplayResources.Adapter) {
+            KeReleaseMutex(&self->m_PresentMutex,FALSE);break;
+        }
+        if(!self->m_DisplayResources.PresentCapture && !self->m_DisplayResources.PresentCaptureConsumed && i<29u) {
+            KeReleaseMutex(&self->m_PresentMutex,FALSE);continue;
+        }
+        BOOLEAN captured=self->m_DisplayResources.PresentCapture!=NULL;
+        self->m_DisplayResources.PresentCaptureConsumed=TRUE;
+        KeReleaseMutex(&self->m_PresentMutex,FALSE);
+        A04DisplayTrace(0x9c,captured?1:0);
+        NTSTATUS status=self->m_DisplayResources.PrepareViaGpu();
+        BOOLEAN finished=NT_SUCCESS(status) || self->m_DisplayResources.Shared.mdl ||
+            self->m_DisplayResources.GpuHandle || !a04_common_may_attempt(&self->m_DisplayResources.SharedCommonOnce);
+        if(i==0 || finished || (i%10)==9)A04DisplayTrace(0x31,status);
+        if(finished) {
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+            /* The synthetic fallback can reproduce the known POST display.
+             * Never paint an old captured present over newer presents. */
+            if(!captured && NT_SUCCESS(status)) {
+                wait=KeWaitForSingleObject(&self->m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+                if(NT_SUCCESS(wait)) {
+                    if(!self->m_GpuPostAttempted) {self->m_GpuPostAttempted=TRUE;
+                        NTSTATUS shown=self->ShowVerifiedGpuFrame();A04DisplayTrace(0x81,shown);}
+                    KeReleaseMutex(&self->m_PresentMutex,FALSE);
+                }
+            }
+#endif
+            break;
+        }
+    }
+    if(NT_SUCCESS(KeWaitForSingleObject(&self->m_PresentMutex,Executive,KernelMode,FALSE,NULL))) {
+        if(self->m_DisplayResources.PresentCapture) {
+            ExFreePoolWithTag((PVOID)self->m_DisplayResources.PresentCapture,'cG4A');
+            self->m_DisplayResources.PresentCapture=NULL;
+        }
+        self->m_DisplayResources.PresentCaptureConsumed=TRUE;
+        KeReleaseMutex(&self->m_PresentMutex,FALSE);
+    }
+#else
+    for(ULONG i=0;i<120;i++) {
+        NTSTATUS wait=KeWaitForSingleObject(&self->m_SharedWorkerStop,Executive,KernelMode,FALSE,&delay);
+        if(wait==STATUS_SUCCESS)break;
+        if(wait!=STATUS_TIMEOUT)break;
+        wait=KeWaitForSingleObject(&self->m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+        if(!NT_SUCCESS(wait))break;
+        NTSTATUS status=STATUS_DEVICE_NOT_READY;
+        BOOLEAN done=FALSE;
+        if(self->m_Flags.DriverStarted && self->m_DisplayResources.Adapter &&
+           !self->m_DisplayResources.Shared.mdl && !self->m_DisplayResources.GpuHandle) {
+            status=self->m_DisplayResources.PrepareViaGpu();
+            done=NT_SUCCESS(status) || self->m_DisplayResources.Shared.mdl || self->m_DisplayResources.GpuHandle;
+#if A04_GE8300_WDDM_SHARED_COMMON_PAGE
+            if(!a04_common_may_attempt(&self->m_DisplayResources.SharedCommonOnce))done=TRUE;
+#endif
+        } else if(!self->m_Flags.DriverStarted || !self->m_DisplayResources.Adapter ||
+                  self->m_DisplayResources.Shared.mdl || self->m_DisplayResources.GpuHandle) {
+#if A04_GE8300_WDDM_SHARED_COMMON_PAGE
+            if(self->m_DisplayResources.SharedCommonFinished)status=self->m_DisplayResources.SharedCommonResult;
+#endif
+            done=TRUE;
+        }
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+        if(done && NT_SUCCESS(status) && !self->m_GpuPostAttempted) {
+            self->m_GpuPostAttempted=TRUE;
+            NTSTATUS shown=self->ShowVerifiedGpuFrame();A04DisplayTrace(0x81,shown);
+        }
+#endif
+        KeReleaseMutex(&self->m_PresentMutex,FALSE);
+        if(i==0 || done || (i%10)==9) A04DisplayTrace(0x31,status);
+        if(done)break;
+    }
+#endif
+    KeSetEvent(done,IO_NO_INCREMENT,FALSE);
+    PsTerminateSystemThread(STATUS_SUCCESS);
+}
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+/* Caller holds m_PresentMutex. No OVL or display DMA configuration changes.
+ * StopDevice signals the event before waiting for this worker, so restoration
+ * also runs when removal begins during the timed display. */
+NTSTATUS BASIC_DISPLAY_DRIVER::ShowVerifiedGpuFrame()
+{
+    const uint32_t *pixels=NULL;CURRENT_BDD_MODE *mode=&m_CurrentModes[0];
+    const DXGK_DISPLAY_INFORMATION *info=&mode->DispInfo;
+    PVOID mapped=NULL,backup=NULL;BOOLEAN temporary=FALSE;NTSTATUS status;
+    LARGE_INTEGER timeout;ULONG row,bytes;
+    status=m_DisplayResources.GetVerifiedGpuFrame(&pixels);
+    if(!NT_SUCCESS(status))return status;
+#if A04_GE8300_WDDM_GPU_DIRECT_POST
+    /* The GPU already wrote the visible framebuffer; the CPU only restores
+     * the desktop saved before the copy. */
+    UNREFERENCED_PARAMETER(mode);UNREFERENCED_PARAMETER(info);UNREFERENCED_PARAMETER(mapped);
+    UNREFERENCED_PARAMETER(backup);UNREFERENCED_PARAMETER(temporary);UNREFERENCED_PARAMETER(row);
+    UNREFERENCED_PARAMETER(bytes);
+    if(!m_DisplayResources.DirectPostActive || !m_DisplayResources.PostBackup)return STATUS_DEVICE_NOT_READY;
+    A04DisplayTrace(0x8e,STATUS_SUCCESS);
+    timeout.QuadPart=-50000000LL;
+    (void)KeWaitForSingleObject(&m_SharedWorkerStop,Executive,KernelMode,FALSE,&timeout);
+    RtlCopyMemory((void *)pixels,m_DisplayResources.PostBackup,4096000u);
+    KeMemoryBarrier();A04DisplayTrace(0x82,STATUS_SUCCESS);
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+    if(!KeReadStateEvent(&m_SharedWorkerStop)) {
+        m_DisplayResources.LiveReady=TRUE;A04DisplayTrace(0xb4,STATUS_SUCCESS);
+    }
+#endif
+    return STATUS_SUCCESS;
+#endif
+    if(KeReadStateEvent(&m_SharedWorkerStop) || !m_Flags.DriverStarted ||
+       m_AdapterPowerState!=PowerDeviceD0 || m_MonitorPowerState!=PowerDeviceD0 ||
+       info->Width!=800u || info->Height!=1280u || info->Pitch<3200u ||
+       info->Pitch>MAXULONG/1280u ||
+       (info->ColorFormat!=D3DDDIFMT_X8R8G8B8 && info->ColorFormat!=D3DDDIFMT_A8R8G8B8))
+        return STATUS_DEVICE_NOT_READY;
+    bytes=info->Pitch*1280u;
+    backup=ExAllocatePoolWithTag(NonPagedPoolNx,4096000u,'pG4A');
+    if(!backup)return STATUS_INSUFFICIENT_RESOURCES;
+    mapped=mode->FrameBuffer.Ptr;
+    if(!mapped) {
+        status=MapFrameBuffer(info->PhysicAddress,bytes,&mapped);
+        if(!NT_SUCCESS(status))goto done;
+        temporary=TRUE;
+    }
+    if(KeReadStateEvent(&m_SharedWorkerStop)){status=STATUS_CANCELLED;goto done;}
+    for(row=0;row<1280u;row++)
+        RtlCopyMemory((UCHAR *)backup+row*3200u,(UCHAR *)mapped+row*info->Pitch,3200u);
+    for(row=0;row<1280u;row++)
+        RtlCopyMemory((UCHAR *)mapped+row*info->Pitch,(const UCHAR *)pixels+row*3200u,3200u);
+    KeMemoryBarrier();A04DisplayTrace(0x80,STATUS_SUCCESS);
+    timeout.QuadPart=-50000000LL;
+    (void)KeWaitForSingleObject(&m_SharedWorkerStop,Executive,KernelMode,FALSE,&timeout);
+    for(row=0;row<1280u;row++)
+        RtlCopyMemory((UCHAR *)mapped+row*info->Pitch,(UCHAR *)backup+row*3200u,3200u);
+    KeMemoryBarrier();A04DisplayTrace(0x82,STATUS_SUCCESS);status=STATUS_SUCCESS;
+done:
+    if(temporary)UnmapFrameBuffer(mapped,bytes);
+    ExFreePoolWithTag(backup,'pG4A');return status;
+}
+#endif
+VOID BASIC_DISPLAY_DRIVER::StopSharedDiagnosticWorker()
+{
+    NTSTATUS status=KeWaitForSingleObject(&m_SharedWorkerStopMutex,Executive,KernelMode,FALSE,NULL);
+    if(!NT_SUCCESS(status))return;
+    A04PresentGuard stopGuard(&m_SharedWorkerStopMutex);
+    if(!m_SharedWorker)return;
+    KeSetEvent(&m_SharedWorkerStop,IO_NO_INCREMENT,FALSE);
+    if(m_SharedWorkerObject) {
+        (void)KeWaitForSingleObject(m_SharedWorkerObject,Executive,KernelMode,FALSE,NULL);
+        ObDereferenceObject(m_SharedWorkerObject);m_SharedWorkerObject=NULL;
+        ExFreePoolWithTag(m_SharedWorkerDone,'wG4A');
+    } else {
+        /* Rare handle-reference failure: do not free the separately allocated
+         * event while KeSetEvent may still be returning on the worker CPU. */
+        (void)KeWaitForSingleObject(m_SharedWorkerDone,Executive,KernelMode,FALSE,NULL);
+    }
+    m_SharedWorkerDone=NULL;ZwClose(m_SharedWorker);m_SharedWorker=NULL;
+}
+#endif
 
 NTSTATUS BASIC_DISPLAY_DRIVER::StartDevice(_In_  DXGK_START_INFO*   pDxgkStartInfo,
                                            _In_  DXGKRNL_INTERFACE* pDxgkInterface,
@@ -108,7 +297,43 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StartDevice(_In_  DXGK_START_INFO*   pDxgkStartIn
             (uint64_t)info->PhysicAddress.QuadPart>UINT64_MAX-(uint64_t)info->Pitch*info->Height)
             return STATUS_DEVICE_CONFIGURATION_ERROR;
     }
+#if A04_GE8300_WDDM_DIRECT_EXPERIMENT
+#if A04_GE8300_WDDM_GPU_DIRECT_POST
+    m_DisplayResources.PostPhys=m_CurrentModes[0].DispInfo.PhysicAddress;
+    m_DisplayResources.PostPitch=m_CurrentModes[0].DispInfo.Pitch;
+#endif
+    /* Absence of explicit OVL resources keeps the CPU display path working. */
+    Status=m_DisplayResources.Start(m_pPhysicalDevice,&m_DeviceInfo);
+    A04DisplayTrace(0x3f,Status);
+    if (!NT_SUCCESS(Status)) {
+        DbgPrint("A04 display: direct resources unavailable: 0x%08lx\n",Status);
+    }
+#endif
+#if A04_MT8167_DISPLAY_BRIGHTNESS
+    m_CurrentModes[0].Flags.IsInternal=TRUE; // Fixed built-in A04BR3 portrait panel.
+    NTSTATUS brightnessStatus=m_Brightness.Start(m_DeviceInfo.TranslatedResourceList);
+    m_Brightness.SetPower(m_AdapterPowerState==PowerDeviceD0 && m_MonitorPowerState==PowerDeviceD0);
+    A04DisplayTrace(0xb2,brightnessStatus); // Optional PWM resource never blocks the POST display.
+#endif
     m_Flags.DriverStarted = TRUE;
+#if A04_GE8300_WDDM_SHARED_AUTOSTART
+    if(m_DisplayResources.Adapter && !m_SharedWorker) {
+        KeClearEvent(&m_SharedWorkerStop);
+        m_SharedWorkerDone=(KEVENT *)ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(KEVENT),'wG4A');
+        NTSTATUS workerStatus=STATUS_INSUFFICIENT_RESOURCES;
+        if(m_SharedWorkerDone) {
+            KeInitializeEvent(m_SharedWorkerDone,NotificationEvent,FALSE);
+            workerStatus=PsCreateSystemThread(&m_SharedWorker,THREAD_ALL_ACCESS,NULL,NULL,NULL,
+                SharedDiagnosticWorker,this);
+            if(NT_SUCCESS(workerStatus)) {
+                workerStatus=ObReferenceObjectByHandle(m_SharedWorker,THREAD_ALL_ACCESS,NULL,KernelMode,
+                    &m_SharedWorkerObject,NULL);
+                if(!NT_SUCCESS(workerStatus))StopSharedDiagnosticWorker();
+            } else { ExFreePoolWithTag(m_SharedWorkerDone,'wG4A');m_SharedWorkerDone=NULL; }
+        }
+        A04DisplayTrace(0x30,workerStatus);
+    } else A04DisplayTrace(0x30,STATUS_DEVICE_NOT_READY);
+#endif
     *pNumberOfViews = MAX_VIEWS;
     *pNumberOfChildren = MAX_CHILDREN;
 
@@ -119,6 +344,9 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StartDevice(_In_  DXGK_START_INFO*   pDxgkStartIn
 NTSTATUS BASIC_DISPLAY_DRIVER::StopDevice(VOID)
 {
     PAGED_CODE();
+#if A04_GE8300_WDDM_SHARED_AUTOSTART
+    StopSharedDiagnosticWorker();
+#endif
 
     NTSTATUS status=KeWaitForSingleObject(&m_PresentMutex,Executive,KernelMode,FALSE,NULL);
     if (!NT_SUCCESS(status)) return status;
@@ -131,6 +359,12 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StopDevice(VOID)
 VOID BASIC_DISPLAY_DRIVER::CleanUp()
 {
     PAGED_CODE();
+#if A04_MT8167_DISPLAY_BRIGHTNESS
+    m_Brightness.Stop();
+#endif
+#if A04_GE8300_WDDM_DIRECT_EXPERIMENT
+    m_DisplayResources.Stop();
+#endif
 
     for (UINT Source = 0; Source < MAX_VIEWS; ++Source)
     {
@@ -168,29 +402,52 @@ NTSTATUS BASIC_DISPLAY_DRIVER::SetPowerState(_In_  ULONG              HardwareUi
 
     if (HardwareUid == DISPLAY_ADAPTER_HW_ID)
     {
+#if A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC
+        A04DisplayTrace(0x84,(NTSTATUS)DevicePowerState);
+        if(DevicePowerState!=PowerDeviceD0)StopSharedDiagnosticWorker();
+#endif
+        NTSTATUS lockStatus=KeWaitForSingleObject(&m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+        if(!NT_SUCCESS(lockStatus))return lockStatus;
+        A04PresentGuard powerGuard(&m_PresentMutex);
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+        m_DisplayResources.LiveShadowValid=FALSE;
+#endif
         if (DevicePowerState == PowerDeviceD0)
         {
 
             // When returning from D3 the device visibility defined to be off for all targets
             if (m_AdapterPowerState == PowerDeviceD3)
             {
-                DXGKARG_SETVIDPNSOURCEVISIBILITY Visibility;
-                Visibility.VidPnSourceId = D3DDDI_ID_ALL;
-                Visibility.Visible = FALSE;
-                SetVidPnSourceVisibility(&Visibility);
+                /* No provider IOCTL or POST write in a power callback:
+                 * the independently powered provider may not be in D0 yet. */
+                for(UINT i=0;i<MAX_VIEWS;i++) {
+                    m_CurrentModes[i].Flags.SourceNotVisible=TRUE;
+                    m_CurrentModes[i].Flags.FullscreenPresent=TRUE;
+                }
             }
         }
 
         // Store new adapter power state
         m_AdapterPowerState = DevicePowerState;
+#if A04_MT8167_DISPLAY_BRIGHTNESS
+        m_Brightness.SetPower(m_AdapterPowerState==PowerDeviceD0 && m_MonitorPowerState==PowerDeviceD0);
+#endif
 
         // There is nothing to do to specifically power up/down the display adapter
         return STATUS_SUCCESS;
     }
     else
     {
-        // TODO: This is where the specified monitor should be powered up/down
-        NOTHING;
+        NTSTATUS lockStatus=KeWaitForSingleObject(&m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+        if(!NT_SUCCESS(lockStatus))return lockStatus;
+        A04PresentGuard monitorGuard(&m_PresentMutex);
+        m_MonitorPowerState=DevicePowerState;
+#if A04_MT8167_DISPLAY_BRIGHTNESS
+        m_Brightness.SetPower(m_AdapterPowerState==PowerDeviceD0 && m_MonitorPowerState==PowerDeviceD0);
+#endif
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+        m_DisplayResources.LiveShadowValid=FALSE;
+#endif
         return STATUS_SUCCESS;
     }
 }
@@ -466,6 +723,80 @@ NTSTATUS BASIC_DISPLAY_DRIVER::SetPointerShape(_In_ CONST DXGKARG_SETPOINTERSHAP
 
     return STATUS_NOT_IMPLEMENTED;
 }
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+/* Called only by the synchronous DOD path with m_PresentMutex held. */
+NTSTATUS BASIC_DISPLAY_DRIVER::TryGpuLogicalPresent(const BLT_INFO *source,const BLT_INFO *destination,
+    ULONG moves,const D3DKMT_MOVE_RECT *move,ULONG count,const RECT *rects)
+{
+    const CURRENT_BDD_MODE *mode=&m_CurrentModes[0];uint32_t w,h,offset;unsigned turns;
+    A04DisplayResources *resources=&m_DisplayResources;
+    if(resources->LiveCpuFallback)return STATUS_NOT_SUPPORTED;
+    if(resources->LiveReady && KeReadStateEvent(&m_SharedWorkerStop)) {
+        NTSTATUS retired=resources->RetireToCpu();
+        return NT_SUCCESS(retired)?STATUS_NOT_SUPPORTED:retired;
+    }
+    if(!source || !destination || (moves && !move) || (count && !rects) || !m_Flags.DriverStarted ||
+       m_AdapterPowerState!=PowerDeviceD0 || m_MonitorPowerState!=PowerDeviceD0 ||
+       KeReadStateEvent(&m_SharedWorkerStop) || mode->DispInfo.Width!=800u || mode->DispInfo.Height!=1280u ||
+       mode->DispInfo.Pitch!=3200u || !mode->FrameBuffer.Ptr ||
+       mode->DispInfo.PhysicAddress.QuadPart!=resources->PostPhys.QuadPart || !resources->LiveReady) {
+        resources->LiveShadowValid=FALSE;return STATUS_NOT_SUPPORTED;
+    }
+    switch(destination->Rotation) {
+    case D3DKMDT_VPPR_IDENTITY:turns=0;break;
+    case D3DKMDT_VPPR_ROTATE90:turns=1;break;
+    case D3DKMDT_VPPR_ROTATE180:turns=2;break;
+    case D3DKMDT_VPPR_ROTATE270:turns=3;break;
+    default:resources->LiveShadowValid=FALSE;return STATUS_NOT_SUPPORTED;
+    }
+    if(a04_present_layout(mode->SrcModeWidth,mode->SrcModeHeight,800,1280,3200,turns,
+           mode->Scaling==D3DKMDT_VPPS_CENTERED,&w,&h,&offset) ||
+       source->Width!=mode->SrcModeWidth || source->Height!=mode->SrcModeHeight ||
+       destination->Width!=w || destination->Height!=h || destination->Pitch!=3200 ||
+       destination->BitsPerPel!=32 || source->BitsPerPel!=32 ||
+       destination->pBits!=(UCHAR *)mode->FrameBuffer.Ptr+offset) {
+        resources->LiveShadowValid=FALSE;return STATUS_NOT_SUPPORTED;
+    }
+    if(!moves && !count)return STATUS_SUCCESS;
+    void *staging=ExAllocatePoolWithTag(NonPagedPoolNx,4096000u,'rG4A');
+    if(!staging)return STATUS_INSUFFICIENT_RESOURCES;
+    BOOLEAN cached=resources->LiveShadowValid && resources->LiveShadow &&
+        resources->LiveWidth==mode->SrcModeWidth && resources->LiveHeight==mode->SrcModeHeight &&
+        resources->LiveRotation==turns && resources->LiveOffset==offset;
+    /* Seed once from the owned native POST image. Subsequent presents update
+     * a cached native shadow with exactly the legacy DOD move/dirty blits.
+     * Unsupported CPU fallback, blackout and viewport changes invalidate it. */
+    RtlCopyMemory(staging,cached?resources->LiveShadow:mode->FrameBuffer.Ptr,4096000u);
+    BLT_INFO rotated=*destination;rotated.pBits=(UCHAR *)staging+offset;
+    for(ULONG i=0;i<moves;i++)BltBits(&rotated,source,1,&move[i].DestRect);
+    for(ULONG i=0;i<count;i++)BltBits(&rotated,source,1,&rects[i]);
+    NTSTATUS status=resources->SubmitLiveFrame(staging,3200u);
+    if(status==STATUS_NOT_SUPPORTED && resources->LiveCpuFallback) {
+        /* A failed full GPU copy may have written part of POST. Restore the
+         * entire intended frame after retirement, not only its dirty rects. */
+        WRITE_REGISTER_BUFFER_ULONG((volatile ULONG *)mode->FrameBuffer.Ptr,(ULONG *)staging,1024000u);
+        status=STATUS_SUCCESS;
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+        if(!resources->IdleRestoreChecked) {
+            ULONG matched=0;resources->IdleRestoreChecked=TRUE;KeMemoryBarrier();
+            for(ULONG i=0;i<1024000u;i++)
+                if(READ_REGISTER_ULONG((volatile ULONG *)mode->FrameBuffer.Ptr+i)==((ULONG *)staging)[i])matched++;
+            A04DisplayTrace(0xc5,(NTSTATUS)matched);
+            status=matched==1024000u?STATUS_SUCCESS:STATUS_DATA_ERROR;
+            A04DisplayTrace(0xc6,status);
+            if(!NT_SUCCESS(status))resources->LiveFaulted=TRUE;
+        }
+#endif
+    }
+    if(NT_SUCCESS(status)) {
+        void *previous=resources->LiveShadow;resources->LiveShadow=staging;staging=NULL;
+        resources->LiveShadowValid=TRUE;resources->LiveWidth=mode->SrcModeWidth;
+        resources->LiveHeight=mode->SrcModeHeight;resources->LiveRotation=turns;resources->LiveOffset=offset;
+        if(previous)ExFreePoolWithTag(previous,'rG4A');
+    }
+    if(staging)ExFreePoolWithTag(staging,'rG4A');return status;
+}
+#endif
 NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DISPLAYONLY* pPresentDisplayOnly)
 {
     PAGED_CODE();
@@ -477,6 +808,11 @@ NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DIS
     if (!pPresentDisplayOnly || pPresentDisplayOnly->VidPnSourceId >= MAX_VIEWS)
         return STATUS_INVALID_PARAMETER;
     if (!m_Flags.DriverStarted) return STATUS_DEVICE_NOT_READY;
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+    /* A previous unretired failure discarded its intended frame. Never
+     * treat a later power acknowledgement as recovery of those pixels. */
+    if(m_DisplayResources.LiveFaulted)return STATUS_IO_DEVICE_ERROR;
+#endif
 
     if (pPresentDisplayOnly->BytesPerPixel < MIN_BYTES_PER_PIXEL_REPORTED)
     {
@@ -486,7 +822,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DIS
     }
 
     // If it is in monitor off state or source is not supposed to be visible, don't present anything to the screen
-    if ((m_MonitorPowerState > PowerDeviceD0) ||
+    if ((m_AdapterPowerState > PowerDeviceD0) || (m_MonitorPowerState > PowerDeviceD0) ||
         (m_CurrentModes[pPresentDisplayOnly->VidPnSourceId].Flags.SourceNotVisible))
     {
         return STATUS_SUCCESS;
@@ -522,7 +858,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DIS
                 (uintptr_t)pDst>UINTPTR_MAX-(uint64_t)mode->DispInfo.Pitch*mode->DispInfo.Height)
                 return STATUS_INVALID_PARAMETER;
             pDst+=offset;
-            return m_HardwareBlt[pPresentDisplayOnly->VidPnSourceId].ExecutePresentDisplayOnly(pDst,
+            NTSTATUS presentStatus=m_HardwareBlt[pPresentDisplayOnly->VidPnSourceId].ExecutePresentDisplayOnly(pDst,
                                                                     DstBitPerPixel,
                                                                     (BYTE*)pPresentDisplayOnly->pSource,
                                                                     pPresentDisplayOnly->BytesPerPixel,
@@ -532,6 +868,35 @@ NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DIS
                                                                     pPresentDisplayOnly->NumDirtyRects,
                                                                     pPresentDisplayOnly->pDirtyRect,
                                                                     RotationNeededByFb);
+#if A04_GE8300_WDDM_PRESENT_CAPTURE
+            /* A snapshot of the completed POST image incorporates move and
+             * dirty rectangles. This is staging for GPU copy, not scanout. */
+            if(NT_SUCCESS(presentStatus) && pPresentDisplayOnly->VidPnSourceId==0 &&
+               m_SharedWorker && !m_DisplayResources.PresentCapture &&
+               !m_DisplayResources.PresentCaptureConsumed && !KeReadStateEvent(&m_SharedWorkerStop) &&
+               mode->DispInfo.Width==800u && mode->DispInfo.Height==1280u &&
+               mode->DispInfo.Pitch>=3200u && mode->DispInfo.Pitch<=MAXULONG/1280u &&
+               (mode->DispInfo.ColorFormat==D3DDDIFMT_X8R8G8B8 || mode->DispInfo.ColorFormat==D3DDDIFMT_A8R8G8B8)) {
+                uint8_t *snapshot=(uint8_t *)ExAllocatePoolWithTag(NonPagedPoolNx,4096000u,'cG4A');
+                if(snapshot) {
+                    for(ULONG row=0;row<1280u;row++)RtlCopyMemory(snapshot+row*3200u,
+                        (const uint8_t *)mode->FrameBuffer.Ptr+row*mode->DispInfo.Pitch,3200u);
+                    m_DisplayResources.PresentCapture=(const uint32_t *)snapshot;A04DisplayTrace(0x9b,STATUS_SUCCESS);
+                } else A04DisplayTrace(0x9b,STATUS_INSUFFICIENT_RESOURCES);
+            }
+#endif
+#if A04_GE8300_WDDM_SHARED_LEASE && !A04_GE8300_WDDM_PRESENT_CAPTURE
+            /* Diagnostic-only: the provider admits the lease only after a
+             * verified copy/fence. Retry while the copy service is not ready. */
+            if (NT_SUCCESS(presentStatus) && m_DisplayResources.Adapter &&
+                !m_DisplayResources.Shared.mdl && !m_DisplayResources.GpuHandle
+#if A04_GE8300_WDDM_SHARED_COMMON_PAGE
+                && a04_common_may_attempt(&m_DisplayResources.SharedCommonOnce)
+#endif
+                )
+                (void)m_DisplayResources.PrepareViaGpu();
+#endif
+            return presentStatus;
     }
 
     return STATUS_SUCCESS;
@@ -543,10 +908,18 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StopDeviceAndReleasePostDisplayOwnership(_In_  D3
     PAGED_CODE();
 
     if (TargetId >= MAX_CHILDREN || !pDisplayInfo) return STATUS_INVALID_PARAMETER;
+#if A04_GE8300_WDDM_SHARED_AUTOSTART
+    StopSharedDiagnosticWorker();
+#endif
     NTSTATUS status=KeWaitForSingleObject(&m_PresentMutex,Executive,KernelMode,FALSE,NULL);
     if (!NT_SUCCESS(status)) return status;
     A04PresentGuard guard(&m_PresentMutex);
     if (!m_Flags.DriverStarted) return STATUS_DEVICE_NOT_READY;
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+    if(m_AdapterPowerState==PowerDeviceD0 && m_DisplayResources.LiveFaulted &&
+       !NT_SUCCESS(m_DisplayResources.RetireToCpu()))
+        return STATUS_IO_DEVICE_ERROR;
+#endif
     D3DDDI_VIDEO_PRESENT_SOURCE_ID SourceId = FindSourceForTarget(TargetId, TRUE);
     if (SourceId >= MAX_VIEWS) return STATUS_INVALID_DEVICE_STATE;
 
@@ -558,7 +931,8 @@ NTSTATUS BASIC_DISPLAY_DRIVER::StopDeviceAndReleasePostDisplayOwnership(_In_  D3
     }
 
     // The driver has to black out the display and ensure it is visible when releasing ownership
-    BlackOutScreen(SourceId);
+    status=BlackOutScreen(SourceId);
+    if(!NT_SUCCESS(status))return status;
 
     *pDisplayInfo = m_CurrentModes[SourceId].DispInfo;
 
@@ -600,8 +974,14 @@ NTSTATUS BASIC_DISPLAY_DRIVER::GetEdid(D3DDDI_VIDEO_PRESENT_TARGET_ID TargetId)
     return Status;
 }
 
-VOID BASIC_DISPLAY_DRIVER::BlackOutScreen(D3DDDI_VIDEO_PRESENT_SOURCE_ID SourceId)
+NTSTATUS BASIC_DISPLAY_DRIVER::BlackOutScreen(D3DDDI_VIDEO_PRESENT_SOURCE_ID SourceId)
 {
+    if(m_AdapterPowerState!=PowerDeviceD0)return STATUS_DEVICE_NOT_READY;
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+    if(m_DisplayResources.LiveFaulted && !NT_SUCCESS(m_DisplayResources.RetireToCpu()))
+        return STATUS_IO_DEVICE_ERROR;
+    m_DisplayResources.LiveShadowValid=FALSE;
+#endif
     PAGED_CODE();
 
 
@@ -649,7 +1029,7 @@ VOID BASIC_DISPLAY_DRIVER::BlackOutScreen(D3DDDI_VIDEO_PRESENT_SOURCE_ID SourceI
 
     m_CurrentModes[SourceId].ZeroedOutStart.QuadPart = NewPhysAddrStart.QuadPart;
     m_CurrentModes[SourceId].ZeroedOutEnd.QuadPart = NewPhysAddrEnd.QuadPart;
-
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS BASIC_DISPLAY_DRIVER::WriteHWInfoStr(_In_ HANDLE DevInstRegKeyHandle, _In_ PCWSTR pszwValueName, _In_ PCSTR pszValue)
@@ -897,3 +1277,16 @@ VOID BASIC_DISPLAY_DRIVER::SystemDisplayWrite(_In_reads_bytes_(SourceHeight * So
 }
 
 #pragma code_seg(pop) // End Non-Paged Code
+
+NTSTATUS BASIC_DISPLAY_DRIVER::QueryBrightness(PQUERY_INTERFACE query)
+{
+    PAGED_CODE();
+#if A04_MT8167_DISPLAY_BRIGHTNESS
+    NTSTATUS status=KeWaitForSingleObject(&m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+    if(!NT_SUCCESS(status))return status;
+    A04PresentGuard guard(&m_PresentMutex);
+    return m_Flags.DriverStarted ? m_Brightness.QueryInterface(query) : STATUS_DEVICE_NOT_READY;
+#else
+    UNREFERENCED_PARAMETER(query);return STATUS_NOT_SUPPORTED;
+#endif
+}

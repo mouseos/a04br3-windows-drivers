@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #ifndef A04_GE8300_STATUS_H
 #define A04_GE8300_STATUS_H
+#include <stdint.h>
+#include <stddef.h>
 #define A04_GE8300_IOCTL_QUERY 0x00226004u
 /* CPU-only vendor FW staging; does not indicate a GPU boot. */
 #define A04_GE8300_IOCTL_VENDOR_STAGE_QUERY 0x00226010u
@@ -16,7 +18,82 @@ struct a04_ge8300_vendor_power_status {
  * only; provider-side enforcement is mandatory. Experimental opt-in. */
 #define A04_GE8300_IOCTL_COPY 0x00226008u
 #define A04_GE8300_COPY_BYTES 16384u
+/* WinPE only, METHOD_BUFFERED 4 KiB private m1.11 bounce transfer. */
+#define A04_GE8300_IOCTL_VENDOR_COPY 0x00226018u
+#define A04_GE8300_VENDOR_COPY_BYTES 4096u
+/* Kernel-only experimental bounded copy with local GPU completion evidence. */
+#define A04_GE8300_IOCTL_VENDOR_FENCED_COPY 0x0022601cu
+struct a04_ge8300_fenced_copy {
+    uint32_t version, task_sequence, flush_sequence;
+    uint8_t pixels[A04_GE8300_VENDOR_COPY_BYTES];
+};
 /* Diagnostic-only report from the administrator-owned WinPE status tool. */
+/* Internal kernel-only lifetime lease; opaque cookie, never for user mode. */
+#define A04_GE8300_IOCTL_SHARED_ACQUIRE 0x00226020u
+#define A04_GE8300_IOCTL_SHARED_RELEASE 0x00226024u
+#define A04_GE8300_IOCTL_SHARED_STAGE 0x00226028u
+#define A04_GE8300_IOCTL_SHARED_UNSTAGE 0x0022602cu
+#define A04_GE8300_IOCTL_SHARED_DIAGNOSTIC 0x00226030u
+#define A04_GE8300_IOCTL_SHARED_TILE 0x00226034u
+#define A04_GE8300_IOCTL_SHARED_COMMON_PAGE 0x00226038u
+#define A04_GE8300_IOCTL_SHARED_COMMON_PROMOTE 0x0022603cu
+#define A04_GE8300_IOCTL_SHARED_FRAME_SEAL 0x00226040u
+#define A04_GE8300_IOCTL_SHARED_CAPABILITIES 0x00226044u
+#define A04_GE8300_SHARED_CAP_FRAME_SEAL 1u
+#define A04_GE8300_SHARED_CAP_WIDE_FRAME 2u
+#define A04_GE8300_SHARED_CAP_WIDE_REPEAT 4u
+/* Kernel-only terminal retirement, never a DMA-unmap or power lease proof. */
+#define A04_GE8300_IOCTL_RETAINED_CPU 0x00226050u
+#define A04_GE8300_CPU_RETIRED 1u
+#define A04_GE8300_DMA_RETAINED 2u
+struct a04_ge8300_retained_cpu { uint32_t version,bytes,token,flags; };
+#define A04_GE8300_IOCTL_SHARED_FRAME_BEGIN 0x0022604cu
+struct a04_ge8300_frame_begin { uint32_t token,frame,task,flush,next_frame; };
+#define A04_GE8300_IOCTL_SHARED_WIDE_FRAME 0x00226048u
+#define A04_GE8300_WIDE_PIXELS 1024000u
+#define A04_GE8300_WIDE_HEADER_BYTES 16u
+/* Kernel-only METHOD_BUFFERED image, with no nested pointer or GPU address.
+ * The output is only the four-DWORD header, after a completed fenced copy. */
+struct a04_ge8300_shared_wide_frame {
+    uint32_t token,frame,task,flush;
+    uint32_t pixels[A04_GE8300_WIDE_PIXELS];
+};
+
+struct a04_ge8300_shared_capabilities { uint32_t version,bytes,flags,reserved; };
+struct a04_ge8300_frame_seal { uint32_t token,frame,task,flush; };
+/* Kernel-only, short-lived lease on the GPU common-buffer copy result. */
+struct a04_ge8300_common_page { void *cpu; uint64_t gpu_va; uint32_t token,task,flush; void *gpu_adapter,*gpu_pdo; };
+#if defined(_ARM_)
+#ifdef __cplusplus
+static_assert(sizeof(struct a04_ge8300_common_page)==40, "common page ABI");
+#else
+_Static_assert(sizeof(struct a04_ge8300_common_page)==40, "common page ABI");
+#endif
+#endif
+/* METHOD_BUFFERED, kernel callers; no display visibility claim. */
+struct a04_ge8300_shared_tile { uint32_t token,frame,index,task,flush; uint32_t pixels[1024]; };
+#if defined(_ARM_)
+#ifdef __cplusplus
+static_assert(sizeof(struct a04_ge8300_shared_tile)==4116, "shared tile ABI");
+#else
+_Static_assert(sizeof(struct a04_ge8300_shared_tile)==4116, "shared tile ABI");
+#endif
+#endif
+struct a04_ge8300_shared_lease {
+    void *gpu_adapter, *gpu_pdo, *shared_mdl_owner;
+    uint64_t inactive_gpu_pc_dma;
+    uint32_t token, task_sequence, flush_sequence;
+    uint32_t diagnostic_task, diagnostic_flush, diagnostic_matches;
+    uint32_t ovl_enable, ovl_sources, ovl_l0_control, ovl_l0_size;
+    uint32_t ovl_l0_pitch, ovl_l0_address, ovl_interrupt_status;
+};
+#if defined(_ARM_)
+#ifdef __cplusplus
+static_assert(sizeof(struct a04_ge8300_shared_lease)==80 && offsetof(struct a04_ge8300_shared_lease,inactive_gpu_pc_dma)==16, "shared lease ABI");
+#else
+_Static_assert(sizeof(struct a04_ge8300_shared_lease)==80 && offsetof(struct a04_ge8300_shared_lease,inactive_gpu_pc_dma)==16, "shared lease ABI");
+#endif
+#endif
 #define A04_GE8300_IOCTL_REPORT_DISPLAY 0x0022600cu
 struct a04_ge8300_status {
     unsigned long version, attempted, boot_status, health_status, shutdown_status;

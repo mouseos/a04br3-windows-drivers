@@ -1,12 +1,14 @@
 #include "wavert_dma.h"
+#include "wavert_cache.h"
 NTSTATUS Mt8167AllocateBuffer(PPORTWAVERTSTREAM port, ULONG bytes, Mt8167WaveBuffer *buffer)
 {
     PHYSICAL_ADDRESS low, high, physical, next;
     PMDL mdl;
     PVOID mapped;
     ULONG pages, i;
-    if (!port || !buffer || buffer->mdl || bytes < 4096 || bytes > 1048576 ||
-        (bytes & (PAGE_SIZE - 1))) return STATUS_INVALID_PARAMETER;
+    if (!port || !buffer || buffer->mdl || !bytes || bytes > 1048576) return STATUS_INVALID_PARAMETER;
+    /* PortCls allocates pages; WaveRT requires actual >= requested. */
+    bytes = (bytes + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
     low.QuadPart = 0; high.QuadPart = 0xffffffffULL;
     mdl = port->AllocateContiguousPagesForMdl(low, high, bytes);
     if (!mdl) return STATUS_INSUFFICIENT_RESOURCES;
@@ -20,8 +22,13 @@ NTSTATUS Mt8167AllocateBuffer(PPORTWAVERTSTREAM port, ULONG bytes, Mt8167WaveBuf
         next = port->GetPhysicalPageAddress(mdl, i);
         if (next.QuadPart < 0 || (ULONGLONG)next.QuadPart != (ULONGLONG)physical.QuadPart + (ULONGLONG)i * PAGE_SIZE) goto invalid;
     }
-    mapped = port->MapAllocatedPages(mdl, MmNonCached);
+    mapped = port->MapAllocatedPages(mdl, MT8167_WAVE_CACHE);
     if (!mapped) goto invalid;
+    /* No CPU buffer access, including zeroing, precedes the attribute check.
+     * MmNonCached can be Device memory on ARM32 and is not an audio ABI. */
+    if(Mt8167VerifyWaveCache(mapped,bytes,(ULONG)physical.QuadPart)!=STATUS_SUCCESS) {
+        port->UnmapAllocatedPages(mapped,mdl);goto invalid;
+    }
     RtlZeroMemory(mapped, bytes);
     buffer->port = port; port->AddRef();
     buffer->mdl = mdl; buffer->mapping = mapped; buffer->bytes = bytes;

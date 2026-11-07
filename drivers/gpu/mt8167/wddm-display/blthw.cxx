@@ -1,3 +1,4 @@
+#include "../present_trace_policy.h"
 /******************************Module*Header*******************************\
 * Module Name: blthw.cxx
 *
@@ -10,6 +11,7 @@
 
 #include "BDD.hxx"
 #include "ge8300_present.hxx"
+#include "ge8300_trace.hxx"
 #include "present_bounds.h"
 
 typedef struct
@@ -78,7 +80,7 @@ struct DoPresentMemory
     BDD_HWBLT*                DisplaySource;
 };
 
-void
+NTSTATUS
 HwExecutePresentDisplayOnly(
     HANDLE Context);
 
@@ -414,8 +416,7 @@ BDD_HWBLT::ExecutePresentDisplayOnly(
         ctx->Mdl = mdl;
     }
 
-    HwExecutePresentDisplayOnly((PVOID)ctx);
-    return STATUS_SUCCESS;
+    return HwExecutePresentDisplayOnly((PVOID)ctx);
 }
 
 
@@ -486,7 +487,7 @@ HwContextWorkerThread(
 }
 
 
-void
+NTSTATUS
 HwExecutePresentDisplayOnly(
     HANDLE Context)
 /*++
@@ -541,6 +542,21 @@ HwExecutePresentDisplayOnly(
     }
 
 
+    NTSTATUS presentStatus=STATUS_NOT_SUPPORTED;
+#if A04_GE8300_WDDM_LIVE_FULL_PRESENT
+    static volatile LONG observed=0;
+    if(A04_GE8300_PRESENT_TRACE_ALL || InterlockedCompareExchange(&observed,0,0)<3) {
+        InterlockedIncrement(&observed);
+        A04DisplayTrace(0xb8,(NTSTATUS)ctx->SrcWidth);A04DisplayTrace(0xb9,(NTSTATUS)ctx->SrcHeight);
+        A04DisplayTrace(0xba,(NTSTATUS)ctx->Rotation);A04DisplayTrace(0xbb,(NTSTATUS)ctx->NumDirtyRects);
+    }
+    if(ctx->SynchExecution && ctx->SourceID==0 && ctx->DstBitPerPixel==32)
+        presentStatus=((BASIC_DISPLAY_DRIVER *)ctx->hAdapter)->TryGpuLogicalPresent(
+            &SrcBltInfo,&DstBltInfo,ctx->NumMoves,ctx->Moves,ctx->NumDirtyRects,ctx->DirtyRect);
+#endif
+    // A GPU error may leave hardware exposed. Never race it with CPU fallback.
+    // Only NOT_SUPPORTED means that no live GPU work was attempted.
+    if(presentStatus==STATUS_NOT_SUPPORTED) {
     // Copy all the scroll rects from source image to video frame buffer.
     for (UINT i = 0; i < ctx->NumMoves; i++)
     {
@@ -556,6 +572,18 @@ HwExecutePresentDisplayOnly(
             BltBits(&DstBltInfo,&SrcBltInfo,1,&ctx->DirtyRect[i]);
     }
 
+#if A04_GE8300_WDDM_SHARED_PRESENT
+    /* Only a single explicit full dirty rect supplies a complete frame. Keep
+     * the source MDL locked and the present mutex held through submission.
+     * POST remains active; a completed GPU queue is not scanout readiness. */
+    if(ctx->SynchExecution && ctx->SrcWidth==800 && ctx->SrcHeight==1280 &&
+       ctx->Rotation==D3DKMDT_VPPR_IDENTITY && !ctx->NumMoves && ctx->NumDirtyRects==1 &&
+       ctx->DirtyRect[0].left==0 && ctx->DirtyRect[0].top==0 &&
+       ctx->DirtyRect[0].right==800 && ctx->DirtyRect[0].bottom==1280 && ctx->SrcPitch>=3200)
+        (void)((BASIC_DISPLAY_DRIVER *)ctx->hAdapter)->SubmitSharedPresent(ctx->SrcAddr,(uint32_t)ctx->SrcPitch);
+#endif
+    presentStatus=STATUS_SUCCESS;
+    }
     // Unmap unmap and unlock the pages.
     if (ctx->Mdl)
     {
@@ -573,8 +601,9 @@ HwExecutePresentDisplayOnly(
     {
         // TRUE == completed
         // This code is emulates interrupt which HW should generate
-        ReportPresentProgress(ctx->hAdapter,ctx->SourceID,TRUE);
+        ReportPresentProgress(ctx->hAdapter,ctx->SourceID,NT_SUCCESS(presentStatus));
     }
 
     delete [] reinterpret_cast<BYTE*>(ctx);
+    return presentStatus;
 }

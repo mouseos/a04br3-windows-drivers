@@ -4,10 +4,12 @@
 #include "../gpu_mmu.h"
 #include "../windows_hw.h"
 #define TAG 0x53524741u
-static int dma_overlap(const struct a04_vendor_uncached *a,const struct a04_vendor_uncached *b)
+static int allocation_overlap(const struct a04_vendor_uncached *a,const struct a04_vendor_uncached *b)
 {
     uint64_t x=(uint64_t)a->logical.QuadPart,y=(uint64_t)b->logical.QuadPart;
-    return x<y+(uint64_t)b->bytes && y<x+(uint64_t)a->bytes;
+    uintptr_t u=(uintptr_t)a->cpu,v=(uintptr_t)b->cpu;
+    return (x<=y ? y-x<a->bytes : x-y<b->bytes) ||
+           (u<=v ? v-u<a->bytes : u-v<b->bytes);
 }
 NTSTATUS a04_vendor_surface_release(struct a04_vendor_surface *s)
 {
@@ -37,20 +39,20 @@ NTSTATUS a04_vendor_surface_prepare(struct a04_vendor_surface *s,PDMA_ADAPTER ad
     status=a04_vendor_uncached_allocate(&s->pixels,adapter,(ULONG)bytes64);
     if(!NT_SUCCESS(status))goto fail;
     status=a04_vendor_uncached_allocate(&s->pc,adapter,4096);if(!NT_SUCCESS(status))goto fail;
+    if(allocation_overlap(&s->pixels,&s->pc)) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto quarantine;}
     status=a04_vendor_uncached_allocate(&s->pd,adapter,4096);if(!NT_SUCCESS(status))goto fail;
-    for(i=0;i<n;i++){status=a04_vendor_uncached_allocate(&s->pt[i],adapter,4096);if(!NT_SUCCESS(status))goto fail;}
-    if(((uint64_t)s->pixels.logical.QuadPart&4095u) || ((uint64_t)s->pc.logical.QuadPart&4095u) ||
-       ((uint64_t)s->pd.logical.QuadPart&4095u)) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;}
-    if(dma_overlap(&s->pixels,&s->pc) || dma_overlap(&s->pixels,&s->pd) || dma_overlap(&s->pc,&s->pd)) {
-        status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;
+    if(allocation_overlap(&s->pixels,&s->pd) || allocation_overlap(&s->pc,&s->pd)) {
+        status=STATUS_DEVICE_CONFIGURATION_ERROR;goto quarantine;
     }
     for(i=0;i<n;i++) {
         unsigned j;
-        if(dma_overlap(&s->pt[i],&s->pixels) || dma_overlap(&s->pt[i],&s->pc) || dma_overlap(&s->pt[i],&s->pd)) {
-            status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;
-        }
-        for(j=0;j<i;j++)if(dma_overlap(&s->pt[i],&s->pt[j])) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;}
+        status=a04_vendor_uncached_allocate(&s->pt[i],adapter,4096);if(!NT_SUCCESS(status))goto fail;
+        if(allocation_overlap(&s->pt[i],&s->pixels) || allocation_overlap(&s->pt[i],&s->pc) ||
+           allocation_overlap(&s->pt[i],&s->pd)) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto quarantine;}
+        for(j=0;j<i;j++)if(allocation_overlap(&s->pt[i],&s->pt[j])) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto quarantine;}
     }
+    if(((uint64_t)s->pixels.logical.QuadPart&4095u) || ((uint64_t)s->pc.logical.QuadPart&4095u) ||
+       ((uint64_t)s->pd.logical.QuadPart&4095u)) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;}
     shadow=ExAllocatePoolWithTag(NonPagedPoolNx,(2u+n)*4096u,TAG);
     pages=ExAllocatePoolWithTag(NonPagedPoolNx,(size_t)pages_count*sizeof(*pages),TAG);
     if(!shadow || !pages){status=STATUS_INSUFFICIENT_RESOURCES;goto fail;}
@@ -64,6 +66,11 @@ NTSTATUS a04_vendor_surface_prepare(struct a04_vendor_surface *s,PDMA_ADAPTER ad
     for(i=0;i<n;i++)if(a04_rgx_device_write_words(s->pt[i].cpu,leaves[i].cpu,4096)) {status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;}
     a04_gpu_dma_barrier();s->width=width;s->height=height;s->pitch=pitch;s->bytes=(ULONG)bytes64;
     s->gpu_va=va;s->leaves=n;s->prepared=TRUE;status=STATUS_SUCCESS;
+    goto fail;
+quarantine:
+    /* A broken allocator may have returned aliases. Freeing either could
+     * invalidate a different live allocation. Retain all of them. */
+    s->hardware_exposed=TRUE;
 fail:
     if(pages)ExFreePoolWithTag(pages,TAG);
     if(shadow)ExFreePoolWithTag(shadow,TAG);

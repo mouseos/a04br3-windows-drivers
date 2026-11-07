@@ -12,9 +12,10 @@ $package = Join-Path $out 'package'
 New-Item -ItemType Directory -Force $package | Out-Null
 $source = Join-Path $root 'drivers\sensors\mma8652'
 $objects = @()
+$trace = if ($env:MMA8652_UART_TRACE -eq '1') { '1' } else { '0' }
 foreach ($name in @('mma8652','mt8167_i2c','sensor_hid','wdf_mma8652')) {
     $obj = Join-Path $out "$name.obj"
-    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" -c (Join-Path $source "$name.c") -o $obj
+    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DMMA8652_UART_TRACE=$trace" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" -c (Join-Path $source "$name.c") -o $obj
     if ($LASTEXITCODE -ne 0) { throw "MMA8652 ARM compilation failed: $name" }
     $objects += $obj
 }

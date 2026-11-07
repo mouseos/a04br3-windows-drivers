@@ -5,14 +5,51 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include <wchar.h>
 typedef uint8_t UCHAR, BOOLEAN; typedef uint32_t ULONG; typedef int32_t LONG; typedef uintptr_t ULONG_PTR; typedef uint64_t ULONGLONG;
 typedef int32_t NTSTATUS;
+#ifdef A04_TEST_DISPLAY_SCANOUT
+typedef uintptr_t PFN_NUMBER; typedef size_t SIZE_T; typedef void *PVOID;
+typedef struct fake_mdl { unsigned short MdlFlags; ULONG offset,bytes; void *va; PFN_NUMBER *pfns; } *PMDL;
+typedef void *PDEVICE_OBJECT, *PIRP;
+
+#else
 typedef void *PMDL;
+#endif
 typedef union { int64_t QuadPart; } PHYSICAL_ADDRESS, LARGE_INTEGER;
+#ifdef A04_TEST_DISPLAY_SCANOUT
+typedef struct { PHYSICAL_ADDRESS Address; ULONG Length; } SCATTER_GATHER_ELEMENT;
+typedef struct { ULONG NumberOfElements; SCATTER_GATHER_ELEMENT Elements[4]; } SCATTER_GATHER_LIST, *PSCATTER_GATHER_LIST;
+typedef struct { int signaled; } KEVENT;
+typedef void (*PDRIVER_LIST_CONTROL)(PDEVICE_OBJECT,PIRP,PSCATTER_GATHER_LIST,PVOID);
+#define MDL_PAGES_LOCKED 1
+#define MmGetMdlByteOffset(m) ((m)->offset)
+#define MmGetMdlByteCount(m) ((m)->bytes)
+#define MmGetMdlPfnArray(m) ((m)->pfns)
+#define MmGetMdlVirtualAddress(m) ((m)->va)
+#define NotificationEvent 0
+#define Executive 0
+#define IO_NO_INCREMENT 0
+#define MmNonCached 0
+#define MM_ALLOCATE_FULLY_REQUIRED 1
+#define NormalPagePriority 0
+void *MmGetSystemAddressForMdlSafe(PMDL,int);
+PMDL MmAllocatePagesForMdlEx(PHYSICAL_ADDRESS,PHYSICAL_ADDRESS,PHYSICAL_ADDRESS,SIZE_T,int,ULONG);
+void MmFreePagesFromMdl(PMDL);
+void ExFreePool(void *);
+void KeInitializeEvent(KEVENT *,int,BOOLEAN);
+void KeSetEvent(KEVENT *,int,BOOLEAN);
+NTSTATUS KeWaitForSingleObject(void *,int,int,BOOLEAN,void *);
+PHYSICAL_ADDRESS MmGetPhysicalAddress(void *);
+#endif
 typedef struct fake_adapter *PDMA_ADAPTER;
 typedef struct {
     void *(*AllocateCommonBuffer)(PDMA_ADAPTER,ULONG,PHYSICAL_ADDRESS *,BOOLEAN);
     void (*FreeCommonBuffer)(PDMA_ADAPTER,ULONG,PHYSICAL_ADDRESS,void *,BOOLEAN);
+#ifdef A04_TEST_DISPLAY_SCANOUT
+    NTSTATUS (*GetScatterGatherList)(PDMA_ADAPTER,PDEVICE_OBJECT,PMDL,void *,ULONG,PDRIVER_LIST_CONTROL,void *,BOOLEAN);
+    void (*PutScatterGatherList)(PDMA_ADAPTER,PSCATTER_GATHER_LIST,BOOLEAN);
+#endif
     ULONG Size;
     void *(*AllocateCommonBufferEx)(PDMA_ADAPTER,PHYSICAL_ADDRESS *,ULONG,PHYSICAL_ADDRESS *,BOOLEAN,ULONG);
 } DMA_OPERATIONS;
@@ -64,4 +101,12 @@ PMDL IoAllocateMdl(void *,ULONG,BOOLEAN,BOOLEAN,void *);
 void MmBuildMdlForNonPagedPool(PMDL);
 void KeFlushIoBuffers(PMDL,BOOLEAN,BOOLEAN);
 void IoFreeMdl(PMDL);
+/* Older crystal-only firmware fixture: the optional MMPLL record is absent. */
+typedef struct { uint32_t a;uint16_t b,c;uint8_t d[8]; } GUID;
+typedef struct { const wchar_t *value; } UNICODE_STRING;
+#define RTL_CONSTANT_STRING(x) {x}
+#define STATUS_VARIABLE_NOT_FOUND ((NTSTATUS)0xc0000100)
+#define STATUS_NOT_IMPLEMENTED ((NTSTATUS)0xc0000002)
+static inline NTSTATUS ExGetFirmwareEnvironmentVariable(UNICODE_STRING *name,GUID *guid,void *value,ULONG *size,ULONG *attributes)
+{ (void)name;(void)guid;(void)value;(void)size;(void)attributes;return STATUS_VARIABLE_NOT_FOUND; }
 #endif

@@ -1,27 +1,51 @@
 #ifndef A04_TEST_NTDDK_H
 #define A04_TEST_NTDDK_H
 #include <stdint.h>
+#if defined(A04_AUDIO_DIAGNOSTIC_TRACE) && A04_AUDIO_DIAGNOSTIC_TRACE
+#define DPFLTR_IHVDRIVER_ID 0
+#define DPFLTR_INFO_LEVEL 0
+extern int a04_test_trace_count;
+static inline int DbgPrintEx(unsigned a,unsigned b,const char *fmt,...){(void)a;(void)b;(void)fmt;a04_test_trace_count++;return 0;}
+#endif
+
 #include <stddef.h>
 #include <string.h>
 #include <wchar.h>
 typedef const wchar_t *PCWSTR;
-typedef void VOID;typedef void *PVOID;typedef uint8_t UCHAR;typedef uint16_t USHORT;typedef uint32_t ULONG;typedef int32_t NTSTATUS;typedef int64_t LONGLONG;
-typedef struct { int64_t QuadPart; } PHYSICAL_ADDRESS;
+typedef void VOID;typedef void *PVOID;typedef uint8_t UCHAR;typedef uint16_t USHORT;typedef uint32_t ULONG;typedef int32_t NTSTATUS,LONG;typedef int64_t LONGLONG;
+static inline LONG InterlockedExchange(volatile LONG *p,LONG v){return __atomic_exchange_n(p,v,__ATOMIC_SEQ_CST);}
+static inline LONG InterlockedCompareExchange(volatile LONG *p,LONG v,LONG old){__atomic_compare_exchange_n(p,&old,v,0,__ATOMIC_SEQ_CST,__ATOMIC_SEQ_CST);return old;}
+typedef struct { int64_t QuadPart; } PHYSICAL_ADDRESS;typedef PHYSICAL_ADDRESS LARGE_INTEGER;
 typedef struct {int held;} FAST_MUTEX;
+#if defined(A04_SHARED_ENGINE_PCM) && A04_SHARED_ENGINE_PCM
+#define PAGE_SIZE 4096u
+#define PAGE_SHIFT 12
+typedef uintptr_t PFN_NUMBER,*PPFN_NUMBER;
+typedef struct {ULONG offset,bytes;PFN_NUMBER pfns[2];} MDL,*PMDL;
+#define MmGetMdlByteOffset(m) ((m)->offset)
+#define MmGetMdlByteCount(m) ((m)->bytes)
+#define MmGetMdlPfnArray(m) ((m)->pfns)
+#endif
 #define STATUS_SUCCESS 0
 #define STATUS_INVALID_PARAMETER (-1)
 #define STATUS_DEVICE_NOT_READY (-2)
+#define STATUS_DEVICE_BUSY (-9)
 #define STATUS_INVALID_DEVICE_STATE (-3)
 #define STATUS_DEVICE_CONFIGURATION_ERROR (-4)
 #define STATUS_INSUFFICIENT_RESOURCES (-5)
 #define NT_SUCCESS(x) ((x)>=0)
 #define PASSIVE_LEVEL 0
+#define APC_LEVEL 1
+#define KernelMode 0
 #define TRUE 1
+#define FALSE 0
 #define CmResourceTypeMemory 1
+#define CmResourceTypeInterrupt 2
+#define CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE 0
 #define CmResourceShareDeviceExclusive 1
 #define MmNonCached 0
 #define CM_RESOURCE_MEMORY_READ_WRITE 0
-typedef struct {UCHAR Type,ShareDisposition;USHORT Flags;struct {struct {ULONG Length,Alignment;PHYSICAL_ADDRESS MinimumAddress,MaximumAddress;} Memory;} u;} IO_RESOURCE_DESCRIPTOR;
+typedef struct {UCHAR Type,ShareDisposition;USHORT Flags;union {struct {ULONG Length,Alignment;PHYSICAL_ADDRESS MinimumAddress,MaximumAddress;} Memory;struct {ULONG MinimumVector,MaximumVector;} Interrupt;} u;} IO_RESOURCE_DESCRIPTOR;
 #define UNREFERENCED_PARAMETER(x) ((void)(x))
 #define RtlZeroMemory(p,n) memset(p,0,n)
 typedef struct {uint32_t a;uint16_t b,c;uint8_t d[8];} GUID;
@@ -37,4 +61,5 @@ void ExInitializeFastMutex(FAST_MUTEX *);void ExAcquireFastMutex(FAST_MUTEX *);v
 PVOID MmMapIoSpace(PHYSICAL_ADDRESS,ULONG,int);void MmUnmapIoSpace(PVOID,ULONG);
 ULONG READ_REGISTER_ULONG(volatile ULONG *);void WRITE_REGISTER_ULONG(volatile ULONG *,ULONG);
 void KeStallExecutionProcessor(ULONG);int KeGetCurrentIrql(void);
+NTSTATUS KeDelayExecutionThread(int,int,LARGE_INTEGER *);
 #endif

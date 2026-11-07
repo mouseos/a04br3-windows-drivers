@@ -18,6 +18,12 @@ NTSTATUS a04_vendor_irq_unbind(struct a04_vendor_irq *irq);
 /* The owner enables access only while core MMIO is mapped and GPU is powered.
  * Set FALSE while holding the lifecycle lock before disabling the interrupt;
  * call flush at PASSIVE_LEVEL only after the framework disconnects the ISR. */
+/* Called at PASSIVE_LEVEL with the owner's power/lifetime lock held, after
+ * a successful FWCCB snapshot. Never rearms an asserted/unknown source. */
+BOOLEAN a04_vendor_irq_rearm(struct a04_vendor_irq *irq);
+/* Permanent admission close while core MMIO is still powered. Serialize
+ * the source mask with ISR before issuing the polling-only FW shutdown. */
+BOOLEAN a04_vendor_irq_retire(struct a04_vendor_irq *irq);
 void a04_vendor_irq_set_power(struct a04_vendor_irq *irq,BOOLEAN powered);
 void a04_vendor_irq_kick(struct a04_vendor_irq *irq);
 void a04_vendor_irq_flush(struct a04_vendor_irq *irq);

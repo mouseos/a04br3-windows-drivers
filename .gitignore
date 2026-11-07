@@ -4,3 +4,16 @@
 *.sys
 *.cat
 __pycache__/
+
+# Private Recovery inputs/outputs are never source or CI artifacts.
+SYSTEM
+SYSTEM.*
+SOFTWARE
+SOFTWARE.LOG*
+DRIVERS
+DRIVERS.LOG*
+*.hiv
+*.hive
+*.img
+*.wim
+/private-recovery/
