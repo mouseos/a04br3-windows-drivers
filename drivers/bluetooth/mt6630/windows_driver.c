@@ -37,7 +37,7 @@ EVT_WDF_DEVICE_SURPRISE_REMOVAL BtRemoved;
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL BtForward;
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL BtInternal;
 EVT_WDF_TIMER BtTimer;
-EVT_WDF_OBJECT_CONTEXT_CLEANUP BtCleanup;
+EVT_WDF_OBJECT_CONTEXT_DESTROY BtDestroy;
 static void lock(BT_DEVICE *c){(void)WdfWaitLockAcquire(c->lock,NULL);}
 static void unlock(BT_DEVICE *c){WdfWaitLockRelease(c->lock);}
 static void controller_reference(PVOID p){BT_DEVICE *c=p;WdfObjectReference(c->device);}
@@ -411,7 +411,7 @@ static NTSTATUS child_create(WDFDEVICE device)
 delete_child:WdfObjectDelete(c->child);c->child=NULL;return status;
 fail:WdfDeviceInitFree(init);return status;
 }
-VOID BtCleanup(WDFOBJECT object)
+VOID BtDestroy(WDFOBJECT object)
 {
  BT_DEVICE *c=BtContext((WDFDEVICE)object);
  /* Registered owners/active references must have been removed by PnP Stop.
@@ -426,7 +426,7 @@ NTSTATUS BtAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
  WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);pnp.EvtDevicePrepareHardware=BtPrepare;pnp.EvtDeviceReleaseHardware=BtRelease;
  pnp.EvtDeviceD0Entry=BtStart;pnp.EvtDeviceD0Exit=BtStop;pnp.EvtDeviceSurpriseRemoval=BtRemoved;
  WdfDeviceInitSetPnpPowerEventCallbacks(init,&pnp);
- WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,BT_DEVICE);attr.ExecutionLevel=WdfExecutionLevelPassive;attr.EvtCleanupCallback=BtCleanup;
+ WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,BT_DEVICE);attr.ExecutionLevel=WdfExecutionLevelPassive;attr.EvtDestroyCallback=BtDestroy;
  status=WdfDeviceCreate(&init,&attr,&device);if(!NT_SUCCESS(status))return status;c=BtContext(device);c->device=device;
  /* Use manual IoRegister/IoSet state, not KMDF's automatic start-time enable:
   * the signal must follow actual parent registration, never device presence. */
