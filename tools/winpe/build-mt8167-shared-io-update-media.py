@@ -4,7 +4,7 @@ import argparse,hashlib,json,os,re,shutil,struct,subprocess
 from pathlib import Path
 from private_hardware_probe_input import prepared_system_check, probe_check, private_path, certificate_trust_commands
 from engine_rearm import make_plan, check_plan, archive_commands
-from engine_io_package import engine_package_check, engine_optional_check, parent_override_check, ENGINE_CERT
+from engine_io_package import engine_package_check, engine_optional_check, parent_override_check, check_final_audio_client, ENGINE_CERT
 
 def sha(p):
  with p.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
@@ -112,8 +112,7 @@ def main():
    if 'sd' in deferred_policy['packages']:optional_drivers+=['call :adddriver SD X:\\a04br3\\shared-io\\sd\\mt8167-sd.inf','if errorlevel 1 goto dismfail']
    optional_drivers+=['call :adddriver DISPLAY X:\\a04br3\\shared-io\\display\\mt8167-display.inf','if errorlevel 1 goto dismfail']
   elif probe_info and probe_info.get('deferred_update'):raise SystemExit('延期serviceには一致する明示package mapが必要です')
-  for rel,digest in components.get('audio_client',{}).get('expected_driver_sys',{}).items():
-   if rel not in sources or sha(sources[rel])!=digest:raise SystemExit('bounded audio clientと最終parent/Audioの実SYS pin不一致')
+  check_final_audio_client(sources,components)
   files={rel:sha(path) for rel,path in sources.items()}
  else:
   stems={'parent':('shared-parent','mt8167-shared'),'audio':('mt8167-afe-first-playback','mt8167-audio'),'usb':('mt8167-usb20','mt8167-usb20'),'wifi':('mt6630-runtime','mt6630-runtime')}

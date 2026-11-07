@@ -406,3 +406,37 @@ def parent_override_check(directory, manifest_sha256, root, selected, components
                      files={name: sha(path) for name, path in files.items()})
     files['parent-development.cer'] = cert_path
     return files, component, certificate
+
+
+def check_final_audio_client(sources, components):
+    """旧clientの作成時hashを保持し、既知1014親だけを互換候補に追加する。"""
+    client = components.get('audio_client', {})
+    for rel, expected in client.get('expected_driver_sys', {}).items():
+        if rel not in sources:
+            raise ValueError('bounded audio client対象SYS欠落')
+        actual = sha(sources[rel])
+        if actual == expected:
+            continue
+        parent = components.get('parent', {})
+        # The client uses public WASAPI, not an embedded parent-file hash check.
+        # Both fixed parents expose the identical audio_interface.h git blob
+        # 806057e1a82e34e9197581be136edee9bd1d10ae (version 11).
+        compatible = (
+            rel == 'parent/mt8167-shared.sys'
+            and expected == '4638ab23c614aa6537b54b321c2b3bea5e6c54ac02f3c61956a7b1102fac42a5'
+            and actual == '0498bd9f5cadb0e064e42fb80f4717d3cd04729d61a0e2763a77d45487bf8343'
+            and client.get('binary_source_commit') == BOUNDED_ENGINE_CLIENT
+            and parent.get('wrapper_source_commit') == '287241c37fa0eae538e5e2d136dea5df42de7e43'
+            and parent.get('driver_ver') == '11/07/2026,2026.11.7.1014'
+            and parent.get('certificate_thumbprint') == ENGINE_CERT
+            and parent.get('files', {}).get(rel) == actual
+        )
+        if not compatible:
+            raise ValueError('bounded audio clientと最終parent/Audioの実SYS pin不一致')
+        client['compatible_parent'] = {
+            'source_commit': parent['wrapper_source_commit'],
+            'sys_sha256': actual,
+            'audio_interface_git_blob': '806057e1a82e34e9197581be136edee9bd1d10ae',
+            'basis': 'fixed signed parent1014; identical audio interface; unchanged WASAPI client',
+            'hardware_verified_here': False,
+        }
