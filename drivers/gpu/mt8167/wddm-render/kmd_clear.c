@@ -93,7 +93,7 @@ static NTSTATUS GeoRenderDrawImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r) {
  struct geo_draw_packet *packet=NULL;struct prepare_call call;struct geo_allocation *a,*v;
  struct geo_dma_ticket t;NTSTATUS status;UINT i,header;void *blob;struct geo_draw_packet_v2 *v2;
  if(!c||!c->adapter||!c->adapter->notifications_ready||!c->adapter->synchronize||!r||KeGetCurrentIrql()!=PASSIVE_LEVEL||
-    !r->pCommand||r->DmaBufferSegmentId||r->MultipassOffset||r->AllocationListSize!=2u||!r->pAllocationList||
+    !r->pCommand||r->DmaBufferSegmentId||r->MultipassOffset||r->AllocationListSize<2u||!r->pAllocationList||
     r->PatchLocationListInSize||!r->pPatchLocationListOut||r->PatchLocationListOutSize<2u||
     !r->pDmaBuffer||((ULONG_PTR)r->pDmaBuffer&3u)||r->DmaSize<sizeof(t)||
     !r->pDmaBufferPrivateData||((ULONG_PTR)r->pDmaBufferPrivateData&3u)||r->DmaBufferPrivateDataSize<sizeof(t)||
@@ -126,7 +126,7 @@ static NTSTATUS GeoRenderDrawImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r) {
  if(!c->adapter->synchronize(c->adapter->sync_context,finish_prepare,&call)){status=STATUS_DEVICE_NOT_READY;goto done;}
  status=call.status;if(status!=STATUS_SUCCESS)goto done;t=call.ticket;
  if(GeoWriteTicket(r->pDmaBuffer,&t)!=STATUS_SUCCESS||GeoWriteTicket(r->pDmaBufferPrivateData,&t)!=STATUS_SUCCESS){status=STATUS_INVALID_PARAMETER;goto done;}
- r->pDmaBuffer=(UCHAR *)r->pDmaBuffer+sizeof(t);r->pDmaBufferPrivateData=(UCHAR *)r->pDmaBufferPrivateData+sizeof(t);
+ r->pDmaBuffer=(UCHAR *)r->pDmaBuffer+sizeof(t);/* pDmaBufferPrivateData is an input pointer, not a consumption cursor. */
  for(i=0;i<2u;i++){
   RtlZeroMemory(r->pPatchLocationListOut,sizeof(*r->pPatchLocationListOut));
   r->pPatchLocationListOut->AllocationIndex=i;r->pPatchLocationListOut->DriverId=GEO_DRAW_MAGIC;r->pPatchLocationListOut++;
@@ -138,7 +138,7 @@ static NTSTATUS GeoRenderImpl(HANDLE context,DXGKARG_RENDER *r) {
  struct geo_allocation *a;NTSTATUS capture_status;
  if(r&&r->CommandLength>=sizeof(struct geo_draw_packet))return GeoRenderDrawImpl(c,r);
  if(!c||!c->adapter||!c->adapter->notifications_ready||!c->adapter->synchronize||!r||KeGetCurrentIrql()!=PASSIVE_LEVEL||!r->pCommand||r->CommandLength!=sizeof(p)||
-    r->DmaBufferSegmentId||r->MultipassOffset||r->AllocationListSize!=1||!r->pAllocationList||r->PatchLocationListInSize||!r->pPatchLocationListOut||r->PatchLocationListOutSize<1||
+    r->DmaBufferSegmentId||r->MultipassOffset||r->AllocationListSize<1||!r->pAllocationList||r->PatchLocationListInSize||!r->pPatchLocationListOut||r->PatchLocationListOutSize<1||
     !r->pDmaBuffer||((ULONG_PTR)r->pDmaBuffer&3)||r->DmaSize<sizeof(t)||!r->pDmaBufferPrivateData||((ULONG_PTR)r->pDmaBufferPrivateData&3)||r->DmaBufferPrivateDataSize<sizeof(t))return STATUS_INVALID_PARAMETER;
  capture_status=GeoCaptureClearPacket(&p,r->pCommand);
  if(capture_status!=STATUS_SUCCESS)return capture_status;
@@ -155,7 +155,7 @@ static NTSTATUS GeoRenderImpl(HANDLE context,DXGKARG_RENDER *r) {
  if(call.status!=STATUS_SUCCESS)return call.status;t=call.ticket;
  if(GeoWriteTicket(r->pDmaBuffer,&t)!=STATUS_SUCCESS||GeoWriteTicket(r->pDmaBufferPrivateData,&t)!=STATUS_SUCCESS)return STATUS_INVALID_PARAMETER;
  r->pDmaBuffer=(UCHAR *)r->pDmaBuffer+sizeof(t);
- r->pDmaBufferPrivateData=(UCHAR *)r->pDmaBufferPrivateData+sizeof(t);
+ /* pDmaBufferPrivateData is an input pointer, not a consumption cursor. */
  /* Semantic residency reference. No physical address is stored in a ticket,
   * but VidMm must retain/track the actual referenced allocation. */
  RtlZeroMemory(r->pPatchLocationListOut,sizeof(*r->pPatchLocationListOut));
@@ -183,7 +183,7 @@ static NTSTATUS GeoPatchImpl(HANDLE adapter,const DXGKARG_PATCH *p) {
     !ticket_range(p->DmaBufferSize,p->DmaBufferSubmissionStartOffset,p->DmaBufferSubmissionEndOffset)||
     !ticket_range(p->DmaBufferPrivateDataSize,p->DmaBufferPrivateDataSubmissionStartOffset,p->DmaBufferPrivateDataSubmissionEndOffset))return STATUS_NOT_SUPPORTED;
  count=p->PatchLocationListSubmissionLength;
- if((count!=1u&&count!=2u)||p->AllocationListSize!=count)return STATUS_INVALID_PARAMETER;
+ if((count!=1u&&count!=2u)||p->AllocationListSize<count)return STATUS_INVALID_PARAMETER;
  kind=count==2u?GEO_DRAW_MAGIC:GEO_CLEAR_MAGIC;
  for(i=0;i<count;i++) {
   location=&p->pPatchLocationList[p->PatchLocationListSubmissionStart+i];
