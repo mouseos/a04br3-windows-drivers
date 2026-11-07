@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "native_owner_mdl.h"
 #include "../dma_pages.h"
+#include "../windows_hw.h"
 #include <stddef.h>
 #define TAG 0x644d474eu
 #define CHUNK 65536u
@@ -87,12 +88,12 @@ PMDL a04_native_mdl_original(const struct a04_native_mdl_binding *b){return b?b-
 NTSTATUS a04_native_mdl_sync_for_gpu(struct a04_native_mdl_binding *b)
 {
     if(!b || !b->retained || b->exposed || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
-    KeFlushIoBuffers(b->mdl,FALSE,TRUE);KeMemoryBarrier();return STATUS_SUCCESS;
+    KeFlushIoBuffers(b->mdl,FALSE,TRUE);a04_gpu_dma_barrier();return STATUS_SUCCESS;
 }
 NTSTATUS a04_native_mdl_sync_for_cpu(struct a04_native_mdl_binding *b)
 {
     if(!b || !b->retained || !b->exposed || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
-    KeFlushIoBuffers(b->mdl,TRUE,TRUE);KeMemoryBarrier();return STATUS_SUCCESS;
+    KeFlushIoBuffers(b->mdl,TRUE,TRUE);a04_gpu_dma_barrier();return STATUS_SUCCESS;
 }
 NTSTATUS a04_native_mdl_mark_exposed(struct a04_native_mdl_binding *b)
 {

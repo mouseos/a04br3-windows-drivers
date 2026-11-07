@@ -2,7 +2,8 @@
 #include <assert.h>
 #include <stdlib.h>
 #include "native_owner_mdl.h"
-static unsigned irql,gets,puts,holds,drops,pools,flushes,fail_get,bounce_get;
+static unsigned irql,gets,puts,holds,drops,pools,flushes,barriers,fail_get,bounce_get;
+void a04_gpu_dma_barrier(void){barriers++;}
 unsigned KeGetCurrentIrql(void){return irql;}
 void *ExAllocatePoolWithTag(int t,size_t n,unsigned tag){(void)t;(void)tag;void *p=calloc(1,n);if(p)pools++;return p;}
 void ExFreePoolWithTag(void *p,unsigned tag){(void)tag;assert(pools);pools--;free(p);}
@@ -25,7 +26,7 @@ static NTSTATUS get(PDMA_ADAPTER a,PDEVICE_OBJECT pdo,PMDL m,void *va,ULONG n,PD
     sg->Elements[0].Length=n;cb(pdo,NULL,sg,ctx);return STATUS_SUCCESS;
 }
 static void put(PDMA_ADAPTER a,PSCATTER_GATHER_LIST sg,BOOLEAN write){(void)a;assert(!write);puts++;free(sg);}
-static void setup(void){irql=gets=puts=holds=drops=pools=flushes=fail_get=bounce_get=0;}
+static void setup(void){irql=gets=puts=holds=drops=pools=flushes=barriers=fail_get=bounce_get=0;}
 int main(void)
 {
     DMA_OPERATIONS ops={.GetScatterGatherList=get,.PutScatterGatherList=put,.Size=sizeof(DMA_OPERATIONS)};
@@ -39,7 +40,7 @@ int main(void)
     assert(holds==1 && gets==3 && a04_native_mdl_original(b)==&mdl && a04_native_mdl_cpu(b)==cpu);
     pages=a04_native_mdl_pages(b,&count);assert(count==48);
     for(unsigned i=0;i<48;i++)assert(pages[i]==(uint64_t)pfns[i]*4096);
-    assert(a04_native_mdl_sync_for_gpu(b)==STATUS_SUCCESS && flushes==1);
+    assert(a04_native_mdl_sync_for_gpu(b)==STATUS_SUCCESS && flushes==1 && barriers==1);
     assert(a04_native_mdl_release_cold(&b)==STATUS_SUCCESS && !b && !holds && drops==1 && puts==3 && !pools);
     for(unsigned i=1;i<=3;i++){
         setup();fail_get=i;assert(!NT_SUCCESS(a04_native_mdl_bind(&b,&adapter,&mdl,&mdl,mdl.bytes,&lease)));
@@ -52,7 +53,7 @@ int main(void)
     mdl.MdlFlags=MDL_PAGES_LOCKED;
     assert(a04_native_mdl_bind(&b,&adapter,&mdl,&mdl,mdl.bytes,&lease)==STATUS_SUCCESS);
     assert(a04_native_mdl_mark_exposed(b)==STATUS_SUCCESS);
-    assert(a04_native_mdl_sync_for_cpu(b)==STATUS_SUCCESS && flushes==1);
+    assert(a04_native_mdl_sync_for_cpu(b)==STATUS_SUCCESS && flushes==1 && barriers==1);
     assert(a04_native_mdl_release_cold(&b)==STATUS_DEVICE_BUSY && b && holds && !puts);
     /* Exposed mapping intentionally remains retained; no fake drain proof. */
     return 0;

@@ -43,3 +43,7 @@ Hのnative_binding.hが宣言するGeoNativeOwnerCreate/Deleteとcontrol-v2 call
 残る実接続はsame-MDL native render target/prepare、real completion→cache visibility→その後のhardware IRQ、MMU/DMA drain+rundown/reset/quiesce。triangle shader/先頭PPP/PDSの未取得資源も推測で補完しない。
 
 現時点の検証はhost OS doublesとsource review。Linux hostに実WDK8.1/PowerShell実行環境はなく、このhelperの実ARM compile/linkは主担当runnerでこれから実施する。2.4をclear反復だけのために焼かず、WDDM/triangle候補への統合後に次試験を行う方針を維持する。
+
+## ba8実WDK linkcheckで得たARM barrier修正
+
+5 TUの実ARM compileは通過したが、native_owner_mdlのsync_for_gpu/sync_for_cpuにあるKeMemoryBarrierのWDK8.1展開が未解決_ReadWriteBarrierを残し、最終linkで停止した。両箇所を既存windows_hw.cのa04_gpu_dma_barrierへ接続した。この関数はClang ARMでcompiler memory clobber＋__builtin_arm_dmb(15)＋compiler memory clobberを使う、既存providerの実装である。新しいfake _ReadWriteBarrier定義やlink無視ではない。helperは既にwindows_hw.cを含むためsource list/flagsは同じでよい。host試験と、実関数bodyのthumbv7 ARM assemblyでdmb syを確認。修正後の実WDK再linkは主担当runnerで確認する。
