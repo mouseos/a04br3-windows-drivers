@@ -163,7 +163,7 @@ static DWORD paths(void)
  WCHAR system[MAX_PATH],module[MAX_PATH];DWORD n,error;
  n=GetSystemDirectoryW(system,MAX_PATH);if(!n||n>=MAX_PATH)return ERROR_INSUFFICIENT_BUFFER;
  #if A04_RENDER_SINGLE_GPU
- error=path(base_directory,system,L"MT8167RenderSingleGpuRun101");
+ error=path(base_directory,system,L"MT8167RenderSingleGpuRun103");
 #else
  error=path(base_directory,system,service_name);
 #endif
