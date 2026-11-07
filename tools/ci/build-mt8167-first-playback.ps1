@@ -110,7 +110,10 @@ try {
     & llvm-readobj --file-headers --coff-imports $binary
     if($LASTEXITCODE -ne 0){throw 'Audio PE inspection failed'}
     Copy-Item (Join-Path $audio $audioInf) $obj
-    Copy-Item (Join-Path $root 'drivers\bus\mt8167-shared\prototype\shared-parent.inf') (Join-Path $out 'a04-msdc-parent-probe')
+    $parentInfName=if($EnginePcm){'shared-parent-engine-pcm.inf'}else{'shared-parent.inf'}
+    Copy-Item (Join-Path $root ('drivers\bus\mt8167-shared\prototype\'+$parentInfName)) (Join-Path $out 'a04-msdc-parent-probe\shared-parent.inf')
+    # Reused runtime provenance stays intact; packaging provenance is separate.
+    $parentPackageVer=[regex]::Match([IO.File]::ReadAllText((Join-Path $out 'a04-msdc-parent-probe\shared-parent.inf')),'(?im)^DriverVer\s*=\s*([^\r\n]+)').Groups[1].Value.Trim()
     if(!$EnginePcm){& (Join-Path $PSScriptRoot 'build-mt8167-audio-ks-client.ps1') -OutputDirectory (Join-Path $out 'client')}
     $files=@((Join-Path $out 'a04-msdc-parent-probe\mt8167-shared.sys'),
       (Join-Path $out 'a04-msdc-parent-probe\shared-parent.inf'),$binary,(Join-Path $obj $audioInf))
@@ -142,7 +145,7 @@ try {
       peripheral_binaries_included=(!$SkipPeripheralBuild);integrated_usb=[bool]$IntegratedUsb;integrated_wifi=[bool]$IntegratedWifi;shared_parent_count=$parents.Count;namespace='Reuse existing parent/touch/buttons/battery; no ACPI replacement';
       driver_date='11/06/2026';driver_version=$(if($EnginePcm){'2026.11.7.1004'}else{'2026.11.6.1001'});
       driver_ver=$(if($EnginePcm){'11/06/2026,2026.11.7.1004'}else{'11/06/2026,2026.11.6.1001'});
-      parent_flags=$parentFlags;audio_flags=$flags;diagnostic_interface=11;parent_reused=[bool]$ReuseParent;engine_pcm=[bool]$EnginePcm;client=$(if($EnginePcm){'AudioEndpointBuilder/AudioSrv; polling WaveRT, retained STOP/RUN and reopen; not the private-tone client'}else{'direct KS, AudioSrv not required; dynamic ksuser.dll'});files=$hashes}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
+      parent_package_driver_ver=$parentPackageVer;parent_flags=$parentFlags;audio_flags=$flags;diagnostic_interface=11;parent_reused=[bool]$ReuseParent;engine_pcm=[bool]$EnginePcm;client=$(if($EnginePcm){'AudioEndpointBuilder/AudioSrv; polling WaveRT, retained STOP/RUN and reopen; not the private-tone client'}else{'direct KS, AudioSrv not required; dynamic ksuser.dll'});files=$hashes}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
 } finally {
     if($transcript){Stop-Transcript|Out-Null}
     foreach($name in $names){[Environment]::SetEnvironmentVariable($name,$saved[$name],'Process')}
