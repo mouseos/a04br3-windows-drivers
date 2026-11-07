@@ -1,7 +1,7 @@
 # Matched capture candidate only. Does not install, boot or access the tablet.
 [CmdletBinding()]
 param([Parameter(Mandatory=$true)][string]$OutputDirectory,
- [Parameter(Mandatory=$true)][string]$CertificateThumbprint)
+ [Parameter(Mandatory=$true)][string]$CertificateThumbprint,[string]$ReuseParentDirectory)
 $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $out=[IO.Path]::GetFullPath($OutputDirectory)
@@ -16,7 +16,18 @@ New-Item -ItemType Directory "$out\tmp","$out\audio","$out\client"|Out-Null
 try {
  $env:TEMP="$out\tmp";$env:TMP=$env:TEMP
  foreach($k in $values.Keys){[Environment]::SetEnvironmentVariable($k,$values[$k],'Process')}
- & (Join-Path $PSScriptRoot 'build-msdc-parent-probe.ps1')
+ if($ReuseParentDirectory){
+  $reuse=[IO.Path]::GetFullPath($ReuseParentDirectory)
+  if(!$reuse.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Reuse parent must be in the same checkout'}
+  $pm=Get-Content (Join-Path $reuse 'parent-manifest.json') -Raw|ConvertFrom-Json
+  if($pm.source_dirty -or $pm.flags.A04_SHARED_CAPTURE -ne '1' -or $pm.driver_version -ne '2026.11.7.1024'){throw 'Not a fixed capture parent'}
+  if((Get-FileHash (Join-Path $reuse 'mt8167-shared.sys') -Algorithm SHA256).Hash -ne $pm.sys_sha256){throw 'Reused parent hash mismatch'}
+  foreach($p in $baseline.flags.PSObject.Properties){if([string]$pm.flags.($p.Name) -ne [string]$p.Value){throw 'Reused parent flag mismatch'}}
+  & git -C $root diff --quiet $pm.source_commit HEAD -- drivers/bus drivers/input/a04br3-buttons/pmic_read.c drivers/usb/mt8167-usb20/gpio22.c drivers/storage/mt8167-sd/power_owner.c tools/ci/build-msdc-parent-probe.ps1
+  if($LASTEXITCODE){throw 'Parent source changed; rebuild required'}
+  $reusedOut=Join-Path $out 'a04-msdc-parent-probe';New-Item -ItemType Directory $reusedOut|Out-Null
+  foreach($n in @('mt8167-shared.sys','shared-parent.inf','parent-manifest.json')){Copy-Item (Join-Path $reuse $n) $reusedOut}
+ }else{ & (Join-Path $PSScriptRoot 'build-msdc-parent-probe.ps1') }
  $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1";$inc=Join-Path $kit 'Include';$lib=Join-Path $kit 'Lib\winv6.3\km\arm'
  $audio=Join-Path $root 'drivers\audio\mt8167-afe';$obj=Join-Path $out 'audio'
  $common=@('--target=thumbv7-pc-windows-msvc','-O2','-ffreestanding','-fno-builtin','-fno-stack-protector',
