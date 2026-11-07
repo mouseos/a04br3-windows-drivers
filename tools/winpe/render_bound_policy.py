@@ -6,7 +6,7 @@ from render_profile_policy import (SIGNER, BOOT, BASE_SYS, TARGETS, package,
                                   require, rooted, jsonfile, hexpin, sha, version, cbytes)
 from engine_io_package import require_armnt
 
-PROFILE = 'render-bound-update-v1'
+PROFILE = 'render-bound-update-v2'
 COLOR = '4f55794471a4008c1ceaa3a1da2679c0f3fefd2a'
 BASE_NAMES = {'parent':'mt8167-shared.sys', 'display':'mt8167-display.sys',
               'render':'mt8167-ge8300.sys'}
@@ -79,7 +79,7 @@ def load_map(path, root):
             'comparator':{'directory':compdir.relative_to(root).as_posix(),'manifest_sha256':sha(compm),**cp},
             'boot':{'source_commit':BOOT,'manifest_sha256':sha(boot),'sha256':sha(image),'path':image.relative_to(root).as_posix()},
             'normal_install_allowed':True,
-            'sequence':['WinPE stages fixed files and new MT8167RenderStage service only',
+            'sequence':['WinPE stages fixed files and new GE8300RenderSetup service only',
                         'Normal OS selects exact signed INF via standard DIF, without live device restart',
                         'One planned reboot, then exact binding/file gates and one standard DXGI COLOR client']}
 

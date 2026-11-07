@@ -190,6 +190,18 @@ static DWORD deferred_find(unsigned index,HDEVINFO set,SP_DEVINFO_DATA *found)
 
  return 0;
 }
+static DWORD render_candidate_binding(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev)
+{
+ WCHAR value[128];DWORD k,type,bytes;
+ const DWORD props[2]={SPDRP_CLASSGUID,SPDRP_SERVICE};
+ const WCHAR *classes[3]={L"{4D36E97D-E325-11CE-BFC1-08002BE10318}",L"{4D36E968-E325-11CE-BFC1-08002BE10318}",L"{4D36E968-E325-11CE-BFC1-08002BE10318}"};
+ const WCHAR *services[3]={L"Mt8167Shared",L"MT8167Display",L"GE8300Render"};
+ for(k=0;k<2;k++){
+  if(!SetupDiGetDeviceRegistryPropertyW(set,dev,props[k],&type,(BYTE*)value,sizeof(value),&bytes))return GetLastError();
+  if(type!=REG_SZ||bytes<2||bytes>sizeof(value)||(bytes&1)||value[bytes/2-1]||lstrcmpiW(value,k?services[i]:classes[i]))return ERROR_REVISION_MISMATCH;
+ }
+ return 0;
+}
 static DWORD deferred_selected_version(HDEVINFO set,SP_DEVINFO_DATA *dev,ULONGLONG *version)
 {
  static const DEVPROPKEY key={{0xa8b865dd,0x2e3d,0x4094,{0xad,0x97,0xe5,0x93,0xa7,0x0c,0x75,0xd6}},3};
@@ -214,7 +226,7 @@ static DWORD deferred_selected_date(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev
 }
 static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const WCHAR *inf)
 {
- static SP_DEVINSTALL_PARAMS_W params;static SP_DRVINFO_DATA_W driver,extra,chosen;DWORD error=0,type=0,bytes=0;DWORD list_type=SPDIT_CLASSDRIVER;BOOL list=FALSE;WCHAR class_name[64];
+ static SP_DEVINSTALL_PARAMS_W params;static SP_DRVINFO_DATA_W driver,extra,chosen;DWORD error=0;DWORD list_type=SPDIT_CLASSDRIVER;BOOL list=FALSE;
 #if A04_RENDER_PROFILE
  /* Select the fixed compatible driver through the standard DIF dispatcher.
   * The default administrator handler changes System -> Display class; do
@@ -238,16 +250,18 @@ static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const
   if(!SetupDiCallClassInstaller(DIF_SELECTBESTCOMPATDRV,set,dev)){error=GetLastError();goto done;}
   memset(&chosen,0,sizeof(chosen));chosen.cbSize=sizeof(chosen);
   if(!SetupDiGetSelectedDriverW(set,dev,&chosen)){error=GetLastError();goto done;}
-  if(chosen.DriverType!=SPDIT_COMPATDRIVER||chosen.DriverVersion!=driver.DriverVersion||
+  pnp_record(i,0x112,chosen.DriverType);
+  pnp_record(i,0x113,dev->ClassGuid.Data1);
+  deferred_current_step=0x21;
+  if((chosen.DriverType!=SPDIT_COMPATDRIVER&&chosen.DriverType!=SPDIT_CLASSDRIVER)||chosen.DriverVersion!=driver.DriverVersion||
      chosen.DriverDate.dwHighDateTime!=driver.DriverDate.dwHighDateTime||chosen.DriverDate.dwLowDateTime!=driver.DriverDate.dwLowDateTime||
      lstrcmpW(chosen.Description,driver.Description)||lstrcmpW(chosen.MfgName,driver.MfgName)||lstrcmpW(chosen.ProviderName,driver.ProviderName)){
    error=ERROR_REVISION_MISMATCH;goto done;
   }
-  /* Never invent ClassGUID registry keys. Confirm the standard selection
-   * established the fixed Display class before invoking class installers. */
-  if(!SetupDiGetDeviceRegistryPropertyW(set,dev,SPDRP_CLASSGUID,&type,(BYTE *)class_name,sizeof(class_name),&bytes)){error=GetLastError();goto done;}
-  if(type!=REG_SZ||bytes<2||bytes>sizeof(class_name)||(bytes&1)||class_name[bytes/2-1]||
-     lstrcmpiW(class_name,L"{4D36E968-E325-11CE-BFC1-08002BE10318}")){error=ERROR_REVISION_MISMATCH;goto done;}
+  /* Selection is transient SetupAPI state. The installed SPDRP_CLASSGUID
+   * still describes the old binding until DIF_INSTALLDEVICE commits it.
+   * Match the selected signed driver's identity above; validate the actual
+   * persisted class and service after installation and again next boot. */
   deferred_current_step=3;
   if(!SetupDiCallClassInstaller(DIF_REGISTER_COINSTALLERS,set,dev)){error=GetLastError();goto done;}
   deferred_current_step=4;
@@ -266,7 +280,9 @@ static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const
  memset(&params,0,sizeof(params));params.cbSize=sizeof(params);
  if(!SetupDiGetDeviceInstallParamsW(set,dev,&params)){error=GetLastError();goto done;}
  pnp_record(i,0x104,params.Flags);
+ deferred_current_step=6;
  if(!(params.Flags&DI_NEEDREBOOT))error=ERROR_INVALID_DATA;
+ if(!error)error=render_candidate_binding(i,set,dev);
  done:
  if(error){deferred_failure_target=i;deferred_failure_step=deferred_current_step;}
  pnp_record(i,0x105,error);if(list)SetupDiDestroyDriverInfoList(set,dev,list_type);return error;
@@ -341,7 +357,8 @@ static DWORD deferred_once(int diagnostic)
   if(version>deferred_pins[i].version){error=ERROR_REVISION_MISMATCH;goto done;}
   if(version==deferred_pins[i].version){
    error=deferred_selected_date(i,set,&devs[i],&deferred_pins[i]);if(error)goto done;
-   error=deferred_installed_sys(i,&deferred_pins[i]);if(error)goto done;skip[i]=1;
+   error=deferred_installed_sys(i,&deferred_pins[i]);if(error)goto done;
+   error=render_candidate_binding(i,set,&devs[i]);if(error)goto done;skip[i]=1;
   }
   if(diagnostic&&!skip[i]){error=ERROR_REVISION_MISMATCH;goto done;}
   if(diagnostic){
