@@ -53,3 +53,17 @@ checkpoint/combo_brokerの2TU、client/radio_bindingの2TUだけ再compileして
 HFP core5TU＋combo binding1TU＋Audio provider/memif2TUを同一checkoutからcompileし、
 単一paired libraryへ結合する。これは最終Audio SYS link/実endpoint登録とは別。
 親・既存Audio/GPU/SDK再build・媒体生成は行わない。
+
+## 最終PortCls SYSへの結合
+
+既存6b5decfeのadapter/pnp_backend/power lifecycleとDMA adapter/登録名寿命修正を
+独立worktreeへ再利用し、既存2 Engine slot＋4 HFP slotを持つDriverEntryの最終SYSをbuildする。
+標準KS/PortCls/PnP経路が実entryから到達する構成であり、noentry library検査だけで終えない。
+8 paired objectはe4b66080から固定再利用し、最終adapterに必要な19 TUだけ追加compileする。
+private INF3001は実機/現媒体へ適用しない。mainの現Audio/親選択を置換したものではない。
+HFP資格欠落時は従来どおりHFP endpointを公開せず、None/0の判定を維持する。
+
+stock mt8167-afe-util.cのemi_clk_on/offはidle禁止vote/reference管理で、DMA bus-drain APIではない。
+AFE_MEMIF_MON/IRQ_CNT_MONの定義に停止完了/latencyの単位保証はなく、名前だけから証明にしない。
+同機LinuxのFC72は4byte転送まで。XNU WMT co_clockは共有発振器の設定であり、
+SCO PCM clock-master/word-formatを確定するfieldではない。

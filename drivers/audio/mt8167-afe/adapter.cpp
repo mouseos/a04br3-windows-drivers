@@ -1,11 +1,18 @@
-/* Non-operational PortCls adapter skeleton: no subdevices and no MMIO. */
+/* MT8167 PortCls Engine adapter with optional qualified shared-radio HFP.
+ * The HFP path borrows the existing AFE/DMA owner, never a second mapping. */
 #include <portcls.h>
 #include "wavert_miniport.h"
 #include "wavert_registration.h"
 #if defined(A04_MT8167_OWNER_DIAGNOSTIC) && A04_MT8167_OWNER_DIAGNOSTIC && defined(A04_MT8167_WAVERT_DIAGNOSTIC) && A04_MT8167_WAVERT_DIAGNOSTIC && defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
 #include "pnp_backend.h"
+#if defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
+#include "hfp_power.h"
+#endif
 struct Mt8167DeviceExtension {
     ULONG_PTR portclsReserved[PORT_CLASS_DEVICE_EXTENSION_SIZE / sizeof(ULONG_PTR)]; Mt8167PnpBackend *owner;
+#if defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
+    Mt8167HfpPower *hfpPower;
+#endif
 #if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
     EX_RUNDOWN_REF diagRundown;volatile LONG diagInitialized,diagReady;
 #endif
@@ -36,6 +43,11 @@ static NTSTATUS Mt8167PnpDispatch(PDEVICE_OBJECT device,PIRP irp)
 #if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
         InterlockedExchange(&ext->diagReady,0);
         if(InterlockedCompareExchange(&ext->diagInitialized,0,0))ExWaitForRundownProtectionRelease(&ext->diagRundown);
+#endif
+#if defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
+        if(ext->hfpPower){NTSTATUS stop=Mt8167HfpPowerStop(ext->hfpPower);if(!NT_SUCCESS(stop)){
+            irp->IoStatus.Status=stop;irp->IoStatus.Information=0;IoCompleteRequest(irp,IO_NO_INCREMENT);return stop;}
+            Mt8167HfpPowerRelease(ext->hfpPower);ext->hfpPower=NULL;}
 #endif
         Mt8167PnpBackend *owner=static_cast<Mt8167PnpBackend *>(InterlockedExchangePointer(reinterpret_cast<PVOID volatile *>(&ext->owner),NULL));
         if (owner) { Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner); }
@@ -96,6 +108,10 @@ static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device, PIRP irp,
     if (NT_SUCCESS(status)) { status=Mt8167RegisterWaveRt(device,irp,resources,miniport);miniport->Release(); }
     if (!NT_SUCCESS(status)) { Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);return status; }
     ext->owner=owner;
+#if defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
+    NTSTATUS hfpStatus=Mt8167HfpPowerCreate(device,owner,resources,&ext->hfpPower);
+    if(!NT_SUCCESS(hfpStatus))return hfpStatus;
+#endif
 #if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
     InterlockedExchange(&ext->diagReady,1);
 #endif
@@ -119,7 +135,9 @@ NTSTATUS Mt8167AddDevice(PDRIVER_OBJECT driver, PDEVICE_OBJECT pdo)
 {
 #if defined(A04_MT8167_OWNER_DIAGNOSTIC) && A04_MT8167_OWNER_DIAGNOSTIC && defined(A04_MT8167_WAVERT_DIAGNOSTIC) && A04_MT8167_WAVERT_DIAGNOSTIC && defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
     return PcAddAdapterDevice(driver,pdo,PCPFNSTARTDEVICE(Mt8167StartDevice),
-#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+#if defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
+        6, /* Preserve the existing 2 Engine slots plus 4 HFP slots. */
+#elif defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
         2,
 #else
         1,
@@ -127,7 +145,9 @@ NTSTATUS Mt8167AddDevice(PDRIVER_OBJECT driver, PDEVICE_OBJECT pdo)
         sizeof(Mt8167DeviceExtension));
 #else
     return PcAddAdapterDevice(driver, pdo, PCPFNSTARTDEVICE(Mt8167StartDevice),
-#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+#if defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
+        6, /* Preserve the existing 2 Engine slots plus 4 HFP slots. */
+#elif defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
         2,
 #else
         1,
