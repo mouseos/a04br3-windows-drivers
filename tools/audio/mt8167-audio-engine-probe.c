@@ -227,7 +227,7 @@ static int sample_valid(const struct a04_audio_snapshot *s){
  return (s->valid&required)==required&&s->online&&s->dma_exposed&&s->dma_bytes&&s->dma_bytes<=1048576&&s->dma_end>=s->dma_base&&
   s->dma_end-s->dma_base==s->dma_bytes-1&&s->stage==A04_STAGE_RUNNING&&!s->last_status&&!s->failure_stage&&s->irq_active&&(s->dac0&2)&&s->dl1_cur>=s->dma_base&&s->dl1_cur<=s->dma_end&&s->position_bytes==s->dl1_cur-s->dma_base&&!(s->position_bytes&3);
 }
-static DWORD dump_diagnostics(void){DWORD i,observed=0;
+static void dump_representatives(void){DWORD i;
  for(i=0;i<SAMPLE_MAX;i++){struct diag_record *r=&records[i];struct a04_audio_snapshot *s=&r->s;DWORD p=r->phase_begin;
   if(!r->tick)continue;
   line("sample",i,r->tick,p);line("sample-end",i,r->phase_end,r->error);if(r->error)continue;
@@ -238,6 +238,8 @@ static DWORD dump_diagnostics(void){DWORD i,observed=0;
   line("speaker",s->codec.spk0,s->codec.spk9,s->codec.overcurrent);line("trim",s->codec.trim_captured,s->codec.trim_code,s->codec.trim_raw);
   line("rails",s->codec.vaud22,s->codec.vaud28,s->codec.power_pinned);line("lease",s->codec.online,s->codec.leased,s->shared_quarantined);
  }
+ }
+static DWORD aggregate_diagnostics(void){DWORD i,observed=0;
  for(i=0;i<2;i++){struct aggregate *g=&progress[i];
   line("dma-progress",i,g->valid,g->changes);line("irq-progress",i,g->irq_changes,g->observed);
   line("dma-fault",i,g->bad,0);line("sample-span",i,g->first,g->last);
@@ -339,7 +341,13 @@ void mainCRTStartup(void){
    ResetEvent(stop_event);records[6].tick=GetTickCount();records[6].error=read_snapshot(&records[6].s);
    line("stop-snapshot",records[6].error,records[6].s.stage,records[6].s.dac0);
    if(records[6].error&&!diag_error)diag_error=records[6].error;
-   dma=dump_diagnostics();CloseHandle(worker);
+   dma=aggregate_diagnostics();
+   if(!result&&(api!=3||dma!=3||diag_error))result=3;
+   line("api-hr",hr,api,0);line("evidence-summary",api,dma,result);
+   /* Authoritative counters first, before optional representative detail.
+    * This is not an END marker; normal completion still requires final flush. */
+   flush_output();if(logfile!=INVALID_HANDLE_VALUE&&!FlushFileBuffers(logfile)&&!log_error)log_error=ERROR_WRITE_FAULT;
+   dump_representatives();CloseHandle(worker);
   }else{line("diag-stuck",ERROR_TIMEOUT,0,0);result=4;}
  }
  for(i=0;i<4;i++){struct clock_record *r=&clocks[i];if(!clock_valid[i])continue;line("clock",r->pass,r->tick,r->hr);line("clock-pos",(DWORD)r->position,(DWORD)(r->position>>32),r->padding);line("clock-qpc",(DWORD)r->qpc,(DWORD)(r->qpc>>32),0);}
