@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "scsi.h"
+#include "cache_policy.h"
 int main(void)
 {
     uint8_t out[4096], c[16]={0}; struct a04_scsi_reply r;
@@ -35,5 +36,25 @@ int main(void)
     assert(r.action==A04_SCSI_ERROR && r.sense_key==7 && r.asc==0x27);
     r=a04_scsi_process(c,10,100,1,out,sizeof out);assert(r.action==A04_SCSI_WRITE);
     c[8]=9;r=a04_scsi_process(c,10,100,1,out,sizeof out);assert(r.action==A04_SCSI_ERROR);
+    /* Decoder acceptance is not persistence success. The transport must
+     * establish a current live EXT_CSD proof, including after a reset. */
+    memset(c,0,sizeof c);c[0]=0x35;
+    r=a04_scsi_process(c,10,100,1,out,sizeof out);assert(r.action==A04_SCSI_FLUSH && !r.transfer_length);
+    c[1]=2;r=a04_scsi_process(c,10,100,1,out,sizeof out);assert(r.action==A04_SCSI_ERROR);
+    c[1]=0;c[0]=0x91;r=a04_scsi_process(c,16,100,1,out,sizeof out);assert(r.action==A04_SCSI_FLUSH);
+    r=a04_scsi_process(c,10,100,1,out,sizeof out);assert(r.action==A04_SCSI_ERROR);
+    { struct a04_emmc_cache_policy policy={0};uint8_t ext[512]={0};
+      assert(!a04_emmc_cache_barrier(&policy,100));
+      ext[212]=100;ext[192]=7;ext[249]=0x34;ext[250]=0x12;
+      a04_emmc_cache_observe(&policy,ext,sizeof ext);
+      assert(a04_emmc_cache_barrier(&policy,100) && policy.cache_size_kib==0x1234 && policy.revision==7);
+      assert(!a04_emmc_cache_barrier(&policy,101));
+      a04_emmc_cache_forget(&policy);assert(!a04_emmc_cache_barrier(&policy,100));
+      ext[33]=1;a04_emmc_cache_observe(&policy,ext,sizeof ext);assert(!a04_emmc_cache_barrier(&policy,100));
+      ext[33]=2;a04_emmc_cache_observe(&policy,ext,sizeof ext);assert(!a04_emmc_cache_barrier(&policy,100));
+      ext[33]=0;ext[179]=1;a04_emmc_cache_observe(&policy,ext,sizeof ext);assert(!a04_emmc_cache_barrier(&policy,100));
+      ext[179]=0;a04_emmc_cache_observe(&policy,ext,511);assert(!a04_emmc_cache_barrier(&policy,100));
+      a04_emmc_cache_observe(&policy,ext,sizeof ext);assert(a04_emmc_cache_barrier(&policy,100));
+    }
     return 0;
 }

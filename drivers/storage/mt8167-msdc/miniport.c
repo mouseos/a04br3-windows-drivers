@@ -4,6 +4,7 @@
 #include <storport.h>
 #include <ntddscsi.h>
 #include "pio.h"
+#include "cache_policy.h"
 #include "io_gate.h"
 #include "multiblock_config.h"
 #ifdef A04_SYNC_PIO_MULTIREAD
@@ -65,6 +66,7 @@ static BOOLEAN A04EmmcIdentityValid;
 #endif
 struct a04_probe_extension {
     volatile ULONG *registers; UCHAR sector[512]; ULONG sectors; ULONG requests; BOOLEAN failed; BOOLEAN write_ready; BOOLEAN cache_disabled;
+    struct a04_emmc_cache_policy cache_policy;
     a04_msdc_gate ioBusy;
 #ifdef A04_SYNC_PIO_MULTIREAD
     UCHAR sync_staging[4096];
@@ -619,6 +621,23 @@ static BOOLEAN A04WriteTest(struct a04_probe_extension *probe, ULONG sectors)
 }
 #endif
 
+/* No controller access. Observation requires I/O ownership; ResetBus may
+ * revoke the proof under Storport serialization without issuing any command. */
+static VOID A04ForgetCache(struct a04_probe_extension *probe)
+{
+    a04_emmc_cache_forget(&probe->cache_policy);
+    probe->cache_disabled=FALSE;probe->write_ready=FALSE;
+}
+static VOID A04ObserveCache(struct a04_probe_extension *probe,ULONG sectors)
+{
+    a04_emmc_cache_observe(&probe->cache_policy,probe->sector,sizeof(probe->sector));
+    probe->cache_disabled=a04_emmc_cache_barrier(&probe->cache_policy,sectors)?TRUE:FALSE;
+    A04Trace("A04WIN CACHE_CTRL=");A04TraceHex(probe->cache_policy.cache_ctrl);
+    A04Trace(" CACHE_KIB=");A04TraceHex(probe->cache_policy.cache_size_kib);
+    A04Trace(" EXT_REV=");A04TraceHex(probe->cache_policy.revision);
+    A04Trace(" USER_PART=");A04TraceHex(probe->cache_policy.partition);
+    A04Trace(" DISABLED_PROVEN=");A04TraceHex(probe->cache_disabled?1u:0u);A04Trace("\n");
+}
 static BOOLEAN A04Initialize(PVOID extension)
 {
     struct a04_probe_extension *probe = (struct a04_probe_extension *)extension;
@@ -631,6 +650,7 @@ static BOOLEAN A04Initialize(PVOID extension)
     A04Trace("A04WIN multiblock lifetime gate refuses start\n");
     return FALSE;
 #endif
+    A04ForgetCache(probe);
     A04Trace("A04WIN HwInitialize registers cfg=");
     A04TraceHex(READ_REGISTER_ULONG(probe->registers + (0x000 / 4)));
     A04Trace(" sdc_cfg=");
@@ -672,12 +692,12 @@ static BOOLEAN A04Initialize(PVOID extension)
                                            sizeof(probe->sector), 200000);
             A04Write32(probe, 0x010, interruptEnable);
             if (result == A04_MSDC_OK) {
-                probe->cache_disabled = (probe->sector[33] & 1u) == 0;
                 probe->write_ready = FALSE;
                 sectors = (ULONG)probe->sector[212] |
                           ((ULONG)probe->sector[213] << 8) |
                           ((ULONG)probe->sector[214] << 16) |
                           ((ULONG)probe->sector[215] << 24);
+                A04ObserveCache(probe,sectors);
             }
             A04Trace("A04WIN EXT_CSD result=");
             A04TraceHex((ULONG)result);
@@ -760,7 +780,7 @@ static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControlOwned(PVOID extension,
     if (type == ScsiStopAdapter) {
         /* Storport may stop an adapter after surprise removal; touching
          * its registers here is unsafe even to mask interrupts. */
-        probe->failed = TRUE;
+        probe->failed = TRUE;A04ForgetCache(probe);
         return ScsiAdapterControlSuccess;
     }
     if (type == ScsiRestartAdapter) {
@@ -775,6 +795,7 @@ static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControlOwned(PVOID extension,
         struct a04_msdc_io io = {probe, A04Read32, A04Read8, A04Write32};
         enum a04_msdc_result result;
         ULONG sectors;
+        probe->failed=TRUE;A04ForgetCache(probe);
         if ((A04Read32(probe, 0x000) & 0x9u) != 0x9u ||
             (A04Read32(probe, 0x030) & 0x00030000u) != 0x00020000u)
             return ScsiAdapterControlUnsuccessful;
@@ -789,6 +810,12 @@ static SCSI_ADAPTER_CONTROL_STATUS A04AdapterControlOwned(PVOID extension,
         sectors = (ULONG)probe->sector[212] | ((ULONG)probe->sector[213] << 8) |
                   ((ULONG)probe->sector[214] << 16) | ((ULONG)probe->sector[215] << 24);
         if (!sectors || sectors != probe->sectors) return ScsiAdapterControlUnsuccessful;
+        A04ObserveCache(probe,sectors);
+        if (!probe->cache_disabled) return ScsiAdapterControlUnsuccessful;
+#ifdef A04_ENABLE_WRITES
+        probe->write_ready=A04ValidateWindowsRange(probe,&io,sectors);
+        if (!probe->write_ready) { A04ForgetCache(probe);return ScsiAdapterControlUnsuccessful; }
+#endif
         probe->failed = FALSE;
         return ScsiAdapterControlSuccess;
     }
@@ -893,7 +920,7 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
     UCHAR *data = (UCHAR *)request->DataBuffer;
     struct a04_request_extension *r = (struct a04_request_extension *)request->SrbExtension;
     ULONG available = request->DataTransferLength, i;
-    UCHAR opcode = request->Cdb[0];
+    UCHAR opcode = request->Function==SRB_FUNCTION_EXECUTE_SCSI ? request->Cdb[0] : 0;
     BOOLEAN trace = ++probe->requests <= 96 || (probe->requests & 127u) == 0;
     if (trace) { A04Trace("A04WIN StartIo fn="); A04TraceHex(request->Function);
         A04Trace(" opcode="); A04TraceHex(opcode); A04Trace("\n"); }
@@ -902,6 +929,11 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
     if (request->PathId || request->TargetId || request->Lun) {
         request->SrbStatus = SRB_STATUS_NO_DEVICE;
         request->DataTransferLength = 0;
+    } else if (request->Function==SRB_FUNCTION_FLUSH || request->Function==SRB_FUNCTION_SHUTDOWN) {
+        request->DataTransferLength=0;
+        if (probe->failed || !a04_emmc_cache_barrier(&probe->cache_policy,probe->sectors))
+            request->SrbStatus=SRB_STATUS_ERROR;
+        /* Same serialized barrier as SYNCHRONIZE CACHE; no new media command. */
     } else if (request->Function != SRB_FUNCTION_EXECUTE_SCSI) {
         A04Trace("A04WIN unsupported SRB function="); A04TraceHex(request->Function);
         A04Trace("\n");
@@ -915,7 +947,8 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         }
         request->SrbStatus = SRB_STATUS_INVALID_REQUEST;
         request->DataTransferLength = 0;
-    } else if (probe->failed) {
+    } else if (probe->failed || ((opcode==0x1a || opcode==0x5a) &&
+               !a04_emmc_cache_barrier(&probe->cache_policy,probe->sectors))) {
         A04Sense(request, 2, 4); /* NOT READY */
     } else {
         struct a04_scsi_reply result;
@@ -926,7 +959,7 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         UNREFERENCED_PARAMETER(r); /* Virtual miniports do not receive BuildIo. */
 #endif
         result = a04_scsi_process(request->Cdb, request->CdbLength, probe->sectors,
-                                  probe->write_ready, data, available);
+                                  probe->write_ready && a04_emmc_cache_barrier(&probe->cache_policy,probe->sectors), data, available);
 #ifdef A04_EMMC_IDENTITY_HANDOFF
         if (A04EmmcIdentityValid && opcode == 0x12 && !(request->Cdb[1] & 1u) &&
             result.action == A04_SCSI_REPLY)
@@ -949,6 +982,10 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
                 A04Trace("\n");
             }
             A04Sense(request, result.sense_key, result.asc);
+        } else if (result.action == A04_SCSI_FLUSH) {
+            request->DataTransferLength=0;
+            if (!a04_emmc_cache_barrier(&probe->cache_policy,probe->sectors))
+                A04Sense(request,2,4); /* NOT READY: cache-disabled not proven */
         } else if (result.action == A04_SCSI_REPLY) {
             request->DataTransferLength = result.transfer_length;
 #ifdef A04_ENABLE_WRITES
@@ -1040,7 +1077,7 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 #if A04_BOOT_MULTIBLOCK_EXPERIMENT || A04_SCRATCH_MULTIBLOCK_EXPERIMENT
                 InterlockedExchange(&probe->transfer_poisoned,1);
 #endif
-                probe->failed = TRUE;
+                probe->failed = TRUE;A04ForgetCache(probe);
                 A04Trace("A04WIN transfer failed result="); A04TraceHex(failure); A04Trace("\n");
                 A04Sense(request, 3, result.action == A04_SCSI_WRITE ? 0x0c : 0x11);
             } else {
@@ -1177,7 +1214,8 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 #endif
     /* PnP and other SRB formats do not have the SCSI request layout. Never
      * copy or interpret them as a full SCSI_REQUEST_BLOCK. */
-    if (request->Function!=SRB_FUNCTION_EXECUTE_SCSI || request->Length<sizeof(SCSI_REQUEST_BLOCK)) {
+    if ((request->Function!=SRB_FUNCTION_EXECUTE_SCSI && request->Function!=SRB_FUNCTION_FLUSH &&
+         request->Function!=SRB_FUNCTION_SHUTDOWN) || request->Length<sizeof(SCSI_REQUEST_BLOCK)) {
         request->SrbStatus=SRB_STATUS_INVALID_REQUEST;
         StorPortNotification(RequestComplete,extension,request);
         StorPortReleaseSpinLock(extension,&lock);
@@ -1338,14 +1376,8 @@ static BOOLEAN A04StartIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         StorPortNotification(RequestComplete,extension,request);
         return TRUE;
     }
-    if (request->Function==SRB_FUNCTION_FLUSH || request->Function==SRB_FUNCTION_SHUTDOWN) {
-        /* Read-only PIO has no pending writes or device cache to flush. */
-        request->SrbStatus=SRB_STATUS_SUCCESS;
-        a04_msdc_gate_release(&probe->ioBusy);
-        StorPortNotification(RequestComplete,extension,request);
-        return TRUE;
-    }
-    if (request->Function!=SRB_FUNCTION_EXECUTE_SCSI || request->Length<sizeof(SCSI_REQUEST_BLOCK)) {
+    if ((request->Function!=SRB_FUNCTION_EXECUTE_SCSI && request->Function!=SRB_FUNCTION_FLUSH &&
+         request->Function!=SRB_FUNCTION_SHUTDOWN) || request->Length<sizeof(SCSI_REQUEST_BLOCK)) {
         request->SrbStatus=SRB_STATUS_INVALID_REQUEST;
         a04_msdc_gate_release(&probe->ioBusy);
         StorPortNotification(RequestComplete,extension,request);
@@ -1387,6 +1419,10 @@ static BOOLEAN A04Interrupt(PVOID extension)
 
 static BOOLEAN A04ResetBus(PVOID extension, ULONG path)
 {
+    if (path==0) {
+        struct a04_probe_extension *state=(struct a04_probe_extension *)extension;
+        state->failed=TRUE;A04ForgetCache(state);
+    }
 #ifdef A04_SYNC_PIO_MULTIREAD
     struct a04_probe_extension *probe=(struct a04_probe_extension *)extension;
     if (path==0) a04_life_close(&probe->sync_lifetime,0);
@@ -1405,7 +1441,6 @@ static BOOLEAN A04ResetBus(PVOID extension, ULONG path)
         a04_life_close(&probe->lifetime,0);
         InterlockedExchange(&probe->transfer_poisoned,1);
 #endif
-        probe->failed=TRUE;
         if (original) {
             probe->pendingRequest=NULL;
             original->SrbStatus=SRB_STATUS_BUS_RESET;

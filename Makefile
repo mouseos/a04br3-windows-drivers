@@ -371,7 +371,7 @@ build/scsi_capacity_test: $(SRC)/scsi_capacity.c $(SRC)/scsi_capacity.h tests/sc
 	mkdir -p build
 	$(CC) $(CFLAGS) -I$(SRC) $(SRC)/scsi_capacity.c tests/scsi_capacity_test.c -o $@
 
-build/scsi_test: $(SRC)/scsi.c $(SRC)/scsi.h $(SRC)/cdb.c $(SRC)/scsi_capacity.c tests/scsi_test.c
+build/scsi_test: $(SRC)/scsi.c $(SRC)/scsi.h $(SRC)/cache_policy.h $(SRC)/cdb.c $(SRC)/scsi_capacity.c tests/scsi_test.c
 	mkdir -p build
 	$(CC) $(CFLAGS) -I$(SRC) $(SRC)/scsi.c $(SRC)/cdb.c $(SRC)/scsi_capacity.c tests/scsi_test.c -o $@
 

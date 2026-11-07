@@ -87,9 +87,9 @@ struct a04_scsi_reply a04_scsi_process(const uint8_t *c, size_t len,
         else { data[0]=(uint8_t)(n-1); if (!writable) data[2]=0x80; alloc=c[4]; }
         return reply(data,n,alloc,out,size);
     }
-    case 0x35: case 0x91: /* cache disabled: SYNCHRONIZE CACHE */
+    case 0x35: case 0x91: /* SYNCHRONIZE CACHE: transport must prove completion */
         if (len<(c[0]==0x35?10u:16u) || c[1]) return error(5,0x24);
-        r.action=A04_SCSI_REPLY; return r;
+        r.action=A04_SCSI_FLUSH; return r;
     case 0x28: case 0x2a: case 0x88: case 0x8a: {
         enum a04_cdb_status status=a04_decode_block_cdb(c,len,capacity,&r.blocks);
         if (status==A04_CDB_OUT_OF_RANGE) return error(5,0x21);
