@@ -17,9 +17,10 @@ SYS_NAMES = {'parent': 'mt8167-shared.sys', 'audio': 'mt8167-audio.sys',
              'gpu':'mt8167-ge8300.sys', 'display': 'mt8167-display.sys', 'toprgu': 'mt8167-toprgu.sys'}
 
 
-def version(value, gpu=False):
+def version(value, gpu=False, display=False):
     date, numbers = value.split(',')
-    if (not gpu and date != '11/06/2026') or not re.fullmatch(r'\d+\.\d+\.\d+\.\d+', numbers):
+    display_run33=display and value=='11/07/2026,0.0.1.5'
+    if (not gpu and not display_run33 and date != '11/06/2026') or not re.fullmatch(r'\d+\.\d+\.\d+\.\d+', numbers):
         raise ValueError('再arm INFは固定dateと4要素versionが必要です')
     if gpu:datetime.datetime.strptime(date,'%m/%d/%Y')
     return tuple(map(int, numbers.split('.')))
@@ -41,12 +42,12 @@ def require_progress(previous, following, backup):
             raise ValueError('旧版のcomponent/version metadataが必要です: ' + kind)
         before, after = previous[kind], following[kind]
         if before['files'] != after['files']:
-            if version(after['driver_ver'],kind=='gpu') <= version(before['driver_ver'],kind=='gpu'):
+            if version(after['driver_ver'],kind=='gpu',kind=='display') <= version(before['driver_ver'],kind=='gpu',kind=='display'):
                 raise ValueError('修正packageには旧版より高いDriverVerが必要です: ' + kind)
             changed.append(kind)
         path = 'windows/system32/drivers/' + SYS_NAMES[kind]
         expected = next(digest.lower() for name, digest in after['files'].items() if name.endswith('.sys'))
-        if actual.get(path) != expected and version(after['driver_ver'],kind=='gpu') <= version(before['driver_ver'],kind=='gpu'):
+        if actual.get(path) != expected and version(after['driver_ver'],kind=='gpu',kind=='display') <= version(before['driver_ver'],kind=='gpu',kind=='display'):
             raise ValueError('実SYS未適用/不存在の対象はINF昇版が必要です: ' + kind)
     if not changed:
         raise ValueError('修正package hashが無い同一構成の再armは拒否します')

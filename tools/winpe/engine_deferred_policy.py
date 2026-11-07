@@ -20,6 +20,8 @@ TARGETS = {
 CLIENTS = ('mt6630-wlan-probe.exe', 'mt8167-audio-engine-probe.exe')
 BRIGHTNESS_CLIENT='mt8167-brightness-native.exe'
 BRIGHTNESS_SOURCE='4fafe9a76271531c36a6071b3926e3ce2dd77a8e'
+BRIGHTNESS_RUN33_SOURCE='8a79f2735c27cf783b4d1d703b155dd80178f9b3'
+BRIGHTNESS_CLIENT_SOURCES=(BRIGHTNESS_SOURCE,BRIGHTNESS_RUN33_SOURCE)
 
 def hexpin(value, n=64):
     if not isinstance(value,str) or not re.fullmatch('[0-9a-fA-F]{'+str(n)+'}', value):
@@ -56,8 +58,11 @@ def load_map(path, root):
                 or any(flags.get(n)!='1' for n in ('A04_SHARED_ENGINE_PCM','A04_SHARED_WIFI_RUNTIME','A04_SHARED_TOUCH_D0_EXPERIMENT','A04_SHARED_BUTTON_D0_EXPERIMENT','A04_AUDIO_CHILD_RESOURCES','A04_USB_GPIO22_SOURCE_EXPERIMENT'))):
                 raise ValueError('既存touch/buttons/Engine/USB/WiFi保持parent profileが必要です')
         version=entry['driver_ver'];date,numbers=version.split(',');parts=tuple(map(int,numbers.split('.')))
-        if len(parts)!=4 or min(parts)<0 or max(parts)>65535 or parts<minimum or date!='11/06/2026':
+        run33_display=(role=='display' and source==BRIGHTNESS_RUN33_SOURCE and version=='11/07/2026,0.0.1.5')
+        if len(parts)!=4 or min(parts)<0 or max(parts)>65535 or parts<minimum or (date!='11/06/2026' and not run33_display):
             raise ValueError('固定target INF最低新版/date不一致: '+role)
+        if role=='display' and source==BRIGHTNESS_RUN33_SOURCE and not run33_display:
+            raise ValueError('8a79f27 displayは11/07/2026,0.0.1.5だけ許可します')
         names=(inf+'.inf',sys+'.sys',inf+'.cat')
         # Flat and component-folder signed outputs only; no caller-defined target path.
         chosen=[]
@@ -148,13 +153,14 @@ def load_map(path, root):
         if set(entry)!={'directory','manifest_sha256','source_commit','certificate_thumbprint'}:
             raise ValueError('固定brightness署名package fields不一致')
         package=SignedPackage(Path(entry['directory']),root)
-        if (sha(package.manifest)!=hexpin(entry['manifest_sha256']) or entry['source_commit']!=BRIGHTNESS_SOURCE
-            or package.record.get('source_commit')!=BRIGHTNESS_SOURCE or package.record.get('signed') is not True):
-            raise ValueError('4fafe9a brightness署名wrapper/source pin不一致')
+        brightness_source=entry['source_commit']
+        if (sha(package.manifest)!=hexpin(entry['manifest_sha256']) or brightness_source not in BRIGHTNESS_CLIENT_SOURCES
+            or package.record.get('source_commit')!=brightness_source or package.record.get('signed') is not True):
+            raise ValueError('固定brightness署名wrapper/source pin不一致')
         cert=hexpin(entry['certificate_thumbprint'],40).upper()
         if package.record.get('signing_thumbprint')!=cert:raise ValueError('brightness署名cert metadata不一致')
         certpath,der=package.certificate(cert);image=package.file(BRIGHTNESS_CLIENT);metadata=package.json('manifest.json')
-        if (metadata.get('commit')!=BRIGHTNESS_SOURCE or metadata.get('dirty') is not False
+        if (metadata.get('commit')!=brightness_source or metadata.get('dirty') is not False
             or metadata.get('signed') is not True or metadata.get('arguments')!='none'
             or metadata.get('log_path')!=r'C:\MT8167EngineProbe\brightness-native.log'
             or metadata.get('sys_or_cat_modified') is not False or metadata.get('machine')!='ARMNT'
@@ -162,7 +168,7 @@ def load_map(path, root):
             raise ValueError('固定brightness client build/log/no-argument契約不一致')
         selected['clients/'+BRIGHTNESS_CLIENT]=image;selected['brightness-client-development.cer']=certpath
         certificates['brightness_client']=der;policy['clients'][BRIGHTNESS_CLIENT]=sha(image)
-        binding={'source_commit':BRIGHTNESS_SOURCE,'signed_manifest_sha256':sha(package.manifest),
+        binding={'source_commit':brightness_source,'signed_manifest_sha256':sha(package.manifest),
                  'certificate_thumbprint':cert,'exe_sha256':sha(image),'log_path':metadata['log_path']}
         policy['brightness_client']=binding;components['brightness_client']=binding
     return selected,components,certificates,policy

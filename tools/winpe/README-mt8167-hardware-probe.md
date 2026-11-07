@@ -348,3 +348,10 @@ fresh backup manifest hashを束ねたmissing snapshot SHA256をplanへ固定す
 一度限定gateを保持する。既存state dir/marker/旧EXEとplanはarchiveし、marker削除はしない。
 媒体はexpected-absentを直前にも確認し、予期せずlogが存在すれば停止する。
 実Windows RegFlushKey永続化・WDK linkはhost compileだけでは未検証。
+
+次のbrightness候補はloaderだけに限定追加：DODとnative client sourceは
+`8a79f2735c27cf783b4d1d703b155dd80178f9b3`、DOD DriverVerは
+`11/07/2026,0.0.1.5`の正確な組合せ。旧4fafe9a clientと旧DOD1.4も保持する。
+任意client sourceへの緩和はしない。mapのsource、署名wrapper、build manifest、
+EXE/INF/SYS/CATの実hashとcertificate照合は従来どおり必須。
+新署名artifact自体の検証は回収後。今回loader変更は旧実署名mapでhost確認した。
