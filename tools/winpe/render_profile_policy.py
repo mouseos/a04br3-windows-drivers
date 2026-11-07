@@ -71,7 +71,12 @@ def package(root,entry,role,repo):
  else:
   require(v=='11/07/2026,0.0.3.2' and files['ge8300-mips.fw']==FW and m.get('default_off') is True,'render3.2/FW/default-off不一致')
   require(m.get('required_parent_commit')==PARENT and m.get('required_acpi_commit')==BOOT and m.get('signature_status')=='Valid','render matched依存/署名不一致')
-  require(sha(d/'linked-manifest.json')==hexpin(m['linked_manifest_sha256']),'linked provenance不一致')
+  baseline=jsonfile(d/'baseline-signed-manifest.json')
+  require(sha(d/'baseline-signed-manifest.json')==hexpin(m['baseline_manifest_sha256']),'0f8署名baseline provenance不一致')
+  require(baseline.get('package_source_commit')=='0f8f68d252820443b988b93ae5c2448fdc9a7d00' and m.get('compiled') is False and m.get('resigned_images') is False,'SYS/DLL再生成拒否')
+  require(sha(d/'linked-manifest.json')==hexpin(baseline['linked_manifest_sha256']) and jsonfile(d/'linked-manifest.json')==m.get('source_runtime'),'linked provenance不一致')
+  original={e['name']:e['sha256'].lower() for e in baseline['outputs']}
+  require(all(files[n]==original[n] for n in ('ge8300-render.sys','ge8300-umd.dll','ge8300-mips.fw')),'0f8実署名bytes変更拒否')
   flags={}
  return {'directory':str(d),'manifest_sha256':sha(p),'source_commit':source,'driver_ver':v,'version_u64':num,'date_filetime':date,'files':{n:files[n] for n in names},'effective_flags':flags,'certificate_sha256':files['mt8167-development.cer']}
 
