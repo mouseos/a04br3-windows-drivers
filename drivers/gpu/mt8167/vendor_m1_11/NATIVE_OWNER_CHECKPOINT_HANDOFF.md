@@ -195,3 +195,22 @@ WDK helperの`-WithOwnerAllocation -WithMdlTarget -LinkCheck`は実allocation AP
 exportして下位FW/render実装ごとlinkする。host ownership testは明示的な下位doubleで
 各取得失敗・target bind失敗・解放失敗・exposure時の保持を確認するもの。
 成功profile/layout自体は既存real-core testsと区別する。
+
+
+## H作業中CreateV3/resolverへの具体的な対応
+
+Hの作業中`GeoNativeOwnerCreateV3(...,const geo_frontend_memory *,...)`と
+`geo_frontend_mdl_lease`を読み、独立pinした同PFNのMDLを使うことを確認した。
+factoryのallocation_createはfrontend=NULLで作成可能（cold資源のみ）。
+GEO bind時にH入力memory.resolve(context,original_vidmm_mdl,1920000,&lease)を呼び、
+成功時はsize/version1/originGEO_MDL_VIDMM_CACHED_SHADOW/active1920000/
+page_bytes1921024/mdl/acquire/releaseを照合する。
+`a04_native_allocation_bind_lease_cold(owner,lease.mdl,offset,argb,&normal)`へ、
+normal={lease.context,lease.acquire,lease.release}を渡す。
+その後lease.release(lease.context,lease.mdl)でresolve参照を成否とも必ず1回落とす。
+成功bindingは別途acquireした参照を保持する。元VidMm metadataのMDLを
+独立pinの代わりに渡さない。providerのSG/PFN一致/cache検査は従来どおり行う。
+このbridgeを含むGEO factory本体とcontrol/停止は当方の担当を維持する。
+Hはresolver実装・最終factory呼出し・UMD/PCO/draw state側。
+この記録時点でHの新APIはworking-tree draft、固定commit待ちであり、
+未記録sourceを最終結合再現条件にしない。

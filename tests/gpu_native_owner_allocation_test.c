@@ -51,12 +51,17 @@ int main(void)
     for(fail=1;fail<=9;fail++){
         struct a04_native_owner_allocation *a=NULL;struct a04_native_target_aperture window;
         step=at=0;release_fail=0;
-        NTSTATUS s=a04_native_allocation_create(&a,&pdo,&image,sizeof(image),&f);
+        NTSTATUS s=a04_native_allocation_create(&a,&pdo,&image,sizeof(image),fail==9?NULL:&f);
         if(fail<=6){assert(!NT_SUCCESS(s) && !a);}
         else{
             assert(s==STATUS_SUCCESS && a && adapters==1 && refs==1);
             assert(a04_native_allocation_aperture(a,&window)==STATUS_SUCCESS && window.gpu_base==UINT64_C(0x8200000000));
-            s=a04_native_allocation_bind_cold(a,&mdl,500u*4096,0xff123456);
+            if(fail==9){
+                assert(a04_native_allocation_bind_cold(a,&mdl,500u*4096,0xff123456)==STATUS_INVALID_DEVICE_STATE);
+                normal++; /* explicit independently pinned resolve reference */
+                s=a04_native_allocation_bind_lease_cold(a,&mdl,500u*4096,0xff123456,&f.normal_mdl);
+                assert(normal==2);release(f.normal_mdl.context,&mdl);assert(normal==1);
+            }else s=a04_native_allocation_bind_cold(a,&mdl,500u*4096,0xff123456);
             assert((s==STATUS_SUCCESS)==(fail==9));
             if(fail==9){
                 a->firmware.hardware_owned=TRUE;
