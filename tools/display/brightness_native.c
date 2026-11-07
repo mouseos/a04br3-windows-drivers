@@ -64,6 +64,14 @@ static HRESULT number(IWbemClassObject *obj,const WCHAR *key,CIMTYPE type,unsign
  }
  VariantClear(&v);return hr;
 }
+static HRESULT signature_type(IWbemClassObject *obj,const WCHAR *key,CIMTYPE expected)
+{
+ VARIANT v;CIMTYPE actual=0;HRESULT hr;
+ if(!obj)return WBEM_E_INVALID_OBJECT;
+ VariantInit(&v);hr=IWbemClassObject_Get(obj,key,0,&v,&actual,NULL);
+ if(hr==S_OK && actual!=expected)hr=WBEM_E_TYPE_MISMATCH;
+ VariantClear(&v);return hr;
+}
 static HRESULT string_value(IWbemClassObject *obj,const WCHAR *key,BSTR *out)
 {
  VARIANT v;HRESULT hr;VariantInit(&v);hr=IWbemClassObject_Get(obj,key,0,&v,NULL,NULL);
@@ -124,7 +132,7 @@ static HRESULT identity_log(struct probe *p)
 }
 static int snapshot(void *context,unsigned *original)
 {
- struct probe *p=context;IEnumWbemClassObject *en=NULL;IWbemClassObject *obj=NULL,*other=NULL,*klass=NULL,*definition=NULL;
+ struct probe *p=context;IEnumWbemClassObject *en=NULL;IWbemClassObject *obj=NULL,*other=NULL,*klass=NULL,*definition=NULL,*output_definition=NULL;
  ULONG got=0;BSTR name=NULL,klass_name=NULL;HRESULT hr;unsigned i,matches=0;
  hr=query(p,L"SELECT * FROM WmiMonitorBrightness WHERE Active=TRUE",&en);if(FAILED(hr))goto done;
  hr=IEnumWbemClassObject_Next(en,WAIT_MS,1,&obj,&got);
@@ -159,11 +167,15 @@ static int snapshot(void *context,unsigned *original)
  klass_name=SysAllocString(L"WmiMonitorBrightnessMethods");p->method_name=SysAllocString(L"WmiSetBrightness");
  if(!klass_name || !p->method_name){hr=E_OUTOFMEMORY;goto done;}
  hr=object(p,klass_name,&klass);
- if(SUCCEEDED(hr))hr=IWbemClassObject_GetMethod(klass,p->method_name,0,&definition,NULL);
- if(SUCCEEDED(hr) && !definition)hr=E_UNEXPECTED;
+ if(SUCCEEDED(hr))hr=IWbemClassObject_GetMethod(klass,p->method_name,0,&definition,&output_definition);
+ if(SUCCEEDED(hr))hr=signature_type(definition,L"Timeout",CIM_UINT32);
+ if(SUCCEEDED(hr))hr=signature_type(definition,L"Brightness",CIM_UINT8);
+ if(SUCCEEDED(hr))hr=signature_type(output_definition,L"ReturnValue",CIM_UINT32);
+ (void)record(p,"wmi-method-signature",CIM_UINT32,CIM_UINT8,(int)hr);
  if(SUCCEEDED(hr))hr=IWbemClassObject_SpawnInstance(definition,0,&p->input);
  if(SUCCEEDED(hr))hr=identity_log(p);
 done:
+ if(output_definition)IWbemClassObject_Release(output_definition);
  if(definition)IWbemClassObject_Release(definition);if(klass)IWbemClassObject_Release(klass);
  if(obj)IWbemClassObject_Release(obj);if(other)IWbemClassObject_Release(other);if(en)IEnumWbemClassObject_Release(en);
  SysFreeString(name);SysFreeString(klass_name);return (int)hr;
@@ -176,6 +188,16 @@ static int method_exec(void *context,void **direct,void **call)
 }
 static int method_secure(void *context,void *call)
 {(void)context;return (int)secure((IUnknown *)call);}
+static int method_completion(void *context,void *call,int *operation)
+{
+ LONG status=(LONG)WBEM_E_FAILED;HRESULT hr;
+ (void)context;
+ hr=IWbemCallResult_GetCallStatus((IWbemCallResult *)call,WAIT_MS,&status);
+ /* On transport timeout/error, status is unspecified and must not authorize
+  * output decode or a retry. Preserve each result independently in stdout. */
+ if(hr==S_OK)*operation=(int)status;
+ return (int)exact(hr);
+}
 static int method_result(void *context,void *call,void **out)
 {(void)context;return (int)exact(IWbemCallResult_GetResultObject((IWbemCallResult *)call,WAIT_MS,(IWbemClassObject **)out));}
 static int method_value(void *context,void *reply,unsigned *value)
@@ -195,10 +217,10 @@ static int set(void *context,unsigned level)
  V_VT(&v)=VT_UI1;V_UI1(&v)=(BYTE)level;
  if(SUCCEEDED(hr))hr=IWbemClassObject_Put(p->input,L"Brightness",0,&v,0);
  if(record(p,"wmi-arguments",level,0,(int)hr))p->log_failed=1;
- ops.context=p;ops.exec=method_exec;ops.secure=method_secure;ops.result=method_result;
+ ops.context=p;ops.exec=method_exec;ops.secure=method_secure;ops.completion=method_completion;ops.result=method_result;
  ops.value=method_value;ops.release_object=method_release_object;ops.release_call=method_release_call;ops.trace=method_trace;
  if(hr==S_OK)hr=(HRESULT)a04_brightness_method_result(&ops,&result);
- if(record(p,"wmi-method-return",level,result,(int)hr))p->log_failed=1;
+ if(record(p,"wmi-method-output",level,result,(int)hr))p->log_failed=1;
  if(hr==S_OK && result)hr=WBEM_E_FAILED;
  return (int)hr;
 }

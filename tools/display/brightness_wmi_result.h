@@ -6,6 +6,9 @@ struct a04_wmi_result_ops {
  void *context;
  int (*exec)(void *,void **,void **);
  int (*secure)(void *,void *);
+ /* GetCallStatus transport HRESULT and original operation HRESULT are
+  * distinct. Both must succeed before asking for output parameters. */
+ int (*completion)(void *,void *,int *);
  int (*result)(void *,void *,void **);
  int (*value)(void *,void *,unsigned *);
  void (*release_object)(void *,void *);
