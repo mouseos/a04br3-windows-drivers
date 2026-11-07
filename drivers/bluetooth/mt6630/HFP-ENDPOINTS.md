@@ -158,3 +158,43 @@ library を明示 link し、owner provider と Audio FDO の Start/Stop 呼出�
 
 host での WDK10 公開参照 header・WinBlue guards による ARM32 compile/archive は
 実 WDK8.1 の最終 driver link、標準 stack 接続や実機 SCO 成功と区別する。
+
+
+## bf989後のBT専用継続checkpoint
+
+Audio側はRamanの`4b2a461`（owner/common）と`a94ee27`（Stop/最終解放分離）を
+読み取り照合した。共有Audio/親ファイルは本変更で編集せず、provider v2の構造/offsetと
+`Mt6630HfpPnpStart/Stop`契約を維持する。HCIBypass/MaxScoChannelsはNone/0のまま。
+凍結済みSD/USB署名tupleとrun42、eMMC/EDKは変更しない。
+
+- WaveRT streamの正常な最終ReleaseがDISPATCHで来ても、偽のDMA faultにしない。
+  BT-private cleanup workへ1回だけ転送し、session/FDO/providerをcallback完了まで固定。
+  PASSIVEで自方向の実free_drainedと必要なSCO suspendを行い、相手RUNを妨げない。
+  実drain失敗だけを既存fault/retire経路へ渡す。queue失敗はobject/MDLを保持し、
+  自動retry loopや不明DMA解放をしない。通常解放とowner rundown後のretireを混同しない。
+- sideband Acquireの`-1`かつtoken0は契約上の無副作用拒否。watch/STREAM_CLOSEを実完了
+  してからNOT_READYを返し、session全体へsticky faultを捏造しない。
+  次の明示RUNで再取得できる。`-1`でもtoken非0ならFAULT/保持とし、再取得しない。
+- [KSNODEPROPERTY_AUDIO_CHANNEL](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ksmedia/ns-ksmedia-ksnodeproperty_audio_channel)
+  のChannel=-1は全stream指定。本mono endpointではchannel0と同じ実volumeへ適用する。
+- [KSPROPERTY_AUDIO_VOLUMELEVEL](https://learn.microsoft.com/en-us/windows-hardware/drivers/audio/ksproperty-audio-volumelevel)
+  は範囲外SETを単に拒否する契約ではない。実HFPが返したrange/stepへclampし、
+  stepに沿う下側の値をSETする。GET/通知が実target値を返し、SET受付だけでcache/eventを
+  生成しない。固定0..15や架空のdB換算は使用しない。
+- [Exposing Multichannel Nodes](https://learn.microsoft.com/en-us/windows-hardware/drivers/audio/exposing-multichannel-nodes)
+  が要求するBASICSUPPORT_MULTICHANNELを明示し、MembersCount=1の実mono rangeを返す。
+- 全5 TUへNoFP/NEONの4flagsを同一適用し、source/header hashesとfinal link依存を
+  archive manifestへ記録する。正規libcntpr/portclsを使い、SDK改変やCRT stubを足さない。
+
+### Ramanへのsource統合要点
+
+Ramanの`build-hfp-portcls.ps1`は現在BT依存を63c32へ固定している。
+新BT commitの`drivers/bluetooth/mt6630`を**全体**でarchive/include/linkへ切替える必要がある。
+追加`hfp_volume.h`とBT-private `a04_bt_hfp_defer_cleanup`を含む同じ5 TUをまとめて使い、
+63/bf989のobjectや別sideband objectを混在・二重linkしない。Audio/shared親コードの
+置換はしない。provider v2自体の変更や新しいAudio callback追加は不要。
+
+残依存は実BT controller登録/到着順、FC72 PCM/master-slaveの実設定整合、独立DMA drain、
+実codec/FIFO latency。`4b2a461`はVerifyDmaQuiescent不在でfactory公開前に拒否しており、
+本BT変更はその資格を証明しない。登録やlatencyを常時成功/ゼロstubで補わない。
+標準Bluetooth列挙、SCO duplex、音声、電源遷移の実機成功は依然未確認。

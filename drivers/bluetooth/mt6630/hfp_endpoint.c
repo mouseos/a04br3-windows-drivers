@@ -314,6 +314,28 @@ static void finalize(PDEVICE_OBJECT device,PVOID context)
  s->provider.dereference(s->provider.context);ObDereferenceObject(s->file);IoFreeWorkItem(s->finalize);ObDereferenceObject(s->owner);
  RtlSecureZeroMemory(s,sizeof(*s));ExFreePoolWithTag(s,TAG);
 }
+struct hfp_cleanup {
+ struct a04_bt_hfp_session *session;PIO_WORKITEM work;PWORKER_THREAD_ROUTINE callback;PVOID context;
+};
+static void cleanup_work(PDEVICE_OBJECT device,PVOID context)
+{
+ struct hfp_cleanup *c=context;struct a04_bt_hfp_session *s=c->session;
+ UNREFERENCED_PARAMETER(device);
+ /* Normal final Release may drain just one ring while its peer still runs.
+  * Do not route it through provider.retire, which waits for owner rundown. */
+ c->callback(c->context);IoFreeWorkItem(c->work);
+ RtlSecureZeroMemory(c,sizeof(*c));ExFreePoolWithTag(c,TAG);a04_bt_hfp_dereference(s);
+}
+NTSTATUS a04_bt_hfp_defer_cleanup(struct a04_bt_hfp_session *s,PWORKER_THREAD_ROUTINE callback,PVOID context)
+{
+ struct hfp_cleanup *c;
+ if(!s||!callback||KeGetCurrentIrql()>DISPATCH_LEVEL)return STATUS_INVALID_PARAMETER;
+ c=ExAllocatePoolWithTag(NonPagedPool,sizeof(*c),TAG);if(!c)return STATUS_INSUFFICIENT_RESOURCES;
+ c->work=IoAllocateWorkItem(s->owner);
+ if(!c->work){ExFreePoolWithTag(c,TAG);return STATUS_INSUFFICIENT_RESOURCES;}
+ a04_bt_hfp_reference(s);c->session=s;c->callback=callback;c->context=context;
+ IoQueueWorkItem(c->work,cleanup_work,DelayedWorkQueue,c);return STATUS_SUCCESS;
+}
 void a04_bt_hfp_reference(struct a04_bt_hfp_session *s){InterlockedIncrement(&s->refs);}
 void a04_bt_hfp_dereference(struct a04_bt_hfp_session *s)
 {if(!InterlockedDecrement(&s->refs))IoQueueWorkItem(s->finalize,finalize,DelayedWorkQueue,s);}
@@ -349,8 +371,15 @@ NTSTATUS a04_bt_hfp_run(struct a04_bt_hfp_session *s,ULONG d)
  status=s->provider.validate_pcm(s->provider.context,codec,8000,1,16);if(!NT_SUCCESS(status))goto cleanup;
  status=start_watch(s);if(!NT_SUCCESS(status))goto cleanup;
  if(s->sideband.state==A04_BT_SB_CLOSED)RtlZeroMemory(&s->sideband,sizeof(s->sideband));
- if(a04_bt_sideband_prepare(&s->sideband,&s->provider.sideband)||a04_bt_sideband_start(&s->sideband)){
-  status=STATUS_IO_DEVICE_ERROR;failed(s,status);goto cleanup;
+ {
+  int prepared=a04_bt_sideband_prepare(&s->sideband,&s->provider.sideband);
+  /* -1 during this validated OFF -> prepare transition is the provider's
+   * documented no-effects refusal. Close the SCO/watch without poisoning
+   * a session which a later explicit RUN can legitimately reacquire. */
+  if(prepared==-1){status=STATUS_DEVICE_NOT_READY;goto cleanup;}
+  if(prepared||a04_bt_sideband_start(&s->sideband)){
+   status=STATUS_IO_DEVICE_ERROR;failed(s,status);goto cleanup;
+  }
  }
  status=a04_bt_hfp_status(s);if(!NT_SUCCESS(status))goto cleanup;
  status=s->provider.set_pin_active(s->provider.context,d,TRUE);

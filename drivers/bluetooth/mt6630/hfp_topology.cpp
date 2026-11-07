@@ -4,6 +4,7 @@
  */
 #include <initguid.h>
 #include "hfp_topology.h"
+#include "hfp_volume.h"
 #define TAG 't36M'
 struct HfpTopoPlacement {};
 inline void *operator new(size_t,void *p,HfpTopoPlacement){return p;}
@@ -109,15 +110,7 @@ static NTSTATUS value_size(PPCPROPERTY_REQUEST r,ULONG bytes)
  return !r->Value||provided<bytes?STATUS_BUFFER_TOO_SMALL:STATUS_SUCCESS;
 }
 static bool volume_valid(const struct a04_bt_hfp_volume_range *r,LONG value)
-{
- if(value<r->minimum||value>r->maximum||!r->step)return false;
- /* Ordered signed bounds make this unsigned difference exact through ULONG_MAX.
-  * Bounded shift/subtract avoids adding ARM __rt_sdiv64/udiv CRT dependencies. */
- ULONG delta=(ULONG)value-(ULONG)r->minimum,unit=r->step;int shifts=0;
- while(unit<=0x7fffffffu&&unit<=(delta>>1)){unit<<=1;shifts++;}
- for(;shifts>=0;shifts--){if(delta>=unit)delta-=unit;unit>>=1;}
- return delta==0;
-}
+{return a04_hfp_volume_aligned(r->minimum,r->maximum,r->step,value)!=0;}
 NTSTATUS HfpTopology::property(PPCPROPERTY_REQUEST r)
 {
  if(!r||!r->MajorTarget||!r->PropertyItem||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
@@ -131,21 +124,28 @@ NTSTATUS HfpTopology::property(PPCPROPERTY_REQUEST r)
     ULONG available=r->ValueSize;KSPROPERTY_DESCRIPTION *d=(KSPROPERTY_DESCRIPTION *)r->Value;RtlZeroMemory(d,sizeof(*d));
     d->AccessFlags=flags;d->DescriptionSize=full;d->PropTypeSet.Set=KSPROPTYPESETID_General;d->PropTypeSet.Id=3;d->MembersListCount=1;r->ValueSize=sizeof(*d);
     if(available>=full){KSPROPERTY_MEMBERSHEADER *h=(KSPROPERTY_MEMBERSHEADER *)(d+1);KSPROPERTY_STEPPING_LONG *v=(KSPROPERTY_STEPPING_LONG *)(h+1);
-     RtlZeroMemory(h,sizeof(*h)+sizeof(*v));h->MembersFlags=KSPROPERTY_MEMBER_STEPPEDRANGES;h->MembersSize=sizeof(*v);h->MembersCount=1;h->Flags=self->limits.member_flags;
+     RtlZeroMemory(h,sizeof(*h)+sizeof(*v));h->MembersFlags=KSPROPERTY_MEMBER_STEPPEDRANGES;h->MembersSize=sizeof(*v);h->MembersCount=1;h->Flags=self->limits.member_flags|KSPROPERTY_MEMBER_FLAG_BASICSUPPORT_MULTICHANNEL;
      v->SteppingDelta=self->limits.step;v->Bounds.SignedMinimum=self->limits.minimum;v->Bounds.SignedMaximum=self->limits.maximum;r->ValueSize=full;
     }return STATUS_SUCCESS;
    }
    NTSTATUS status=value_size(r,sizeof(flags));if(NT_SUCCESS(status))*(PULONG)r->Value=flags;return status;
   }
-  if(r->InstanceSize<sizeof(LONG)||!r->Instance||*(PLONG)r->Instance!=0)return STATUS_INVALID_PARAMETER;
+  if(r->InstanceSize<sizeof(LONG)||!r->Instance)return STATUS_INVALID_PARAMETER;
+  /* KSNODEPROPERTY_AUDIO_CHANNEL: ALL is the same real single channel for
+   * this mono endpoint. Do not reject the Windows master-volume request. */
+  LONG channel=*(PLONG)r->Instance;
+  if(channel!=0&&channel!=-1)return STATUS_INVALID_PARAMETER;
   NTSTATUS status=value_size(r,sizeof(LONG));if(!NT_SUCCESS(status))return status;
   if(r->Verb&KSPROPERTY_TYPE_GET){
    status=a04_bt_hfp_volume_get(self->session,self->direction,(PLONG)r->Value);if(!NT_SUCCESS(status))return status;
    LONG v=*(PLONG)r->Value;return !volume_valid(&self->limits,v)?STATUS_DATA_ERROR:STATUS_SUCCESS;
   }
-  if(r->Verb&KSPROPERTY_TYPE_SET){LONG v=*(PLONG)r->Value;
-   if(!volume_valid(&self->limits,v))return STATUS_INVALID_PARAMETER;
-   return a04_bt_hfp_volume_set(self->session,self->direction,v);
+  if(r->Verb&KSPROPERTY_TYPE_SET){int32_t selected;
+   /* KSPROPERTY_AUDIO_VOLUMELEVEL accepts requests outside the filter range.
+    * Use the actual negotiated range/step; GET/notification reports what
+    * the real HFP target applied, never a fabricated cached/event value. */
+   if(!a04_hfp_volume_select(self->limits.minimum,self->limits.maximum,self->limits.step,*(PLONG)r->Value,&selected))return STATUS_DATA_ERROR;
+   return a04_bt_hfp_volume_set(self->session,self->direction,(LONG)selected);
   }return STATUS_INVALID_DEVICE_REQUEST;
  }
  if(r->InstanceSize<sizeof(ULONG)||!r->Instance||*(PULONG)r->Instance!=(self->direction?0u:1u))return STATUS_INVALID_PARAMETER;

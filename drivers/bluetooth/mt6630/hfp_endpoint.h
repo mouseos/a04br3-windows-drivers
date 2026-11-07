@@ -81,6 +81,10 @@ NTSTATUS a04_bt_hfp_unobserve(struct a04_bt_hfp_session *,struct a04_bt_hfp_obse
  * interface GUID. No user interface accepts a path or arbitrary IOCTL. */
 NTSTATUS a04_bt_hfp_attach(PDEVICE_OBJECT owner,PCUNICODE_STRING interface_link,
  const struct a04_bt_hfp_provider *,struct a04_bt_hfp_session **);
+/* BT-private normal COM final-release deferral (not provider fault/retire).
+ * Queue once <=DISPATCH, invoke at PASSIVE, pin session/FDO/provider until
+ * callback returns. No public IOCTL/callback/path broker. */
+NTSTATUS a04_bt_hfp_defer_cleanup(struct a04_bt_hfp_session *,PWORKER_THREAD_ROUTINE,PVOID);
 void a04_bt_hfp_reference(struct a04_bt_hfp_session *);
 void a04_bt_hfp_dereference(struct a04_bt_hfp_session *);
 NTSTATUS a04_bt_hfp_detach(struct a04_bt_hfp_session *); /* stop first; caller owns creator reference */

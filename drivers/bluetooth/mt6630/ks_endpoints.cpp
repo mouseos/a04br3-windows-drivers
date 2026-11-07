@@ -34,7 +34,7 @@ static PCFILTER_DESCRIPTOR filters[]={
  {0,NULL,sizeof(PCPIN_DESCRIPTOR),2,renderPins,sizeof(PCNODE_DESCRIPTOR),0,NULL,1,renderConnections,0,NULL},
  {0,NULL,sizeof(PCPIN_DESCRIPTOR),2,capturePins,sizeof(PCNODE_DESCRIPTOR),0,NULL,1,captureConnections,0,NULL}};
 class HfpStream : public IMiniportWaveRTStream {
- volatile LONG refs,retiring;KSPIN_LOCK bufferLock;BOOLEAN readable;
+ volatile LONG refs,retiring,deferred;KSPIN_LOCK bufferLock;BOOLEAN readable;
  struct a04_bt_hfp_session *session;ULONG direction;PPORTWAVERTSTREAM port;
  struct a04_bt_hfp_buffer buffer;struct a04_bt_hfp_latency latency;KSSTATE state;
  const struct a04_bt_hfp_provider *p() {return a04_bt_hfp_provider(session);}
@@ -48,7 +48,7 @@ class HfpStream : public IMiniportWaveRTStream {
  }
  static void retired(PVOID context){static_cast<HfpStream *>(context)->Release();}
 public:
- HfpStream(struct a04_bt_hfp_session *s,ULONG d,PPORTWAVERTSTREAM pp,const struct a04_bt_hfp_latency *l):refs(1),retiring(0),readable(FALSE),session(s),direction(d),port(pp),buffer{},latency(*l),state(KSSTATE_STOP){KeInitializeSpinLock(&bufferLock);a04_bt_hfp_reference(s);port->AddRef();}
+ HfpStream(struct a04_bt_hfp_session *s,ULONG d,PPORTWAVERTSTREAM pp,const struct a04_bt_hfp_latency *l):refs(1),retiring(0),deferred(0),readable(FALSE),session(s),direction(d),port(pp),buffer{},latency(*l),state(KSSTATE_STOP){KeInitializeSpinLock(&bufferLock);a04_bt_hfp_reference(s);port->AddRef();}
  ~HfpStream(){a04_bt_hfp_pin_release(session,direction);port->Release();a04_bt_hfp_dereference(session);}
  STDMETHODIMP_(NTSTATUS) QueryInterface(REFIID id,PVOID *out) override {
   if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;
@@ -57,6 +57,16 @@ public:
  STDMETHODIMP_(ULONG) AddRef() override {return InterlockedIncrement(&refs);}
  STDMETHODIMP_(ULONG) Release() override {
   LONG n=InterlockedDecrement(&refs);if(n)return (ULONG)n;
+  if(KeGetCurrentIrql()!=PASSIVE_LEVEL){
+   /* COM final Release at DISPATCH is normal. Defer real ring/port teardown,
+    * rather than report a fake DMA fault or wait for the peer pin to stop. */
+   InterlockedExchange(&refs,1);
+   if(!InterlockedCompareExchange(&deferred,1,0)){
+    NTSTATUS queued=a04_bt_hfp_defer_cleanup(session,retired,this);
+    if(!NT_SUCCESS(queued))p()->fault(p()->context,queued);
+   }
+   return 1;
+  }
   NTSTATUS status=free_buffer();
   if(!NT_SUCCESS(status)){
    InterlockedExchange(&refs,1);p()->fault(p()->context,status);

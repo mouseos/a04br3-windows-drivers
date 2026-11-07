@@ -33,7 +33,7 @@ int a04_bt_sideband_prepare(struct a04_bt_sideband *s,const struct a04_bt_sideba
     !ops->pins||!ops->prepare_dma||!ops->start_dma||!ops->stop_dma_drained||!ops->delay_us||!ops->release_quiescent)return -1;
  s->ops=*ops;
  result=s->ops.acquire(s->ops.context,8000,1,16,&generation);
- if(result==-1)return -1; /* provider guarantees no side effects */
+ if(result==-1&&!generation)return -1; /* provider guarantees no effects AND no token */
  s->generation=generation;s->state=A04_BT_SB_ACQUIRED;
  if(result||!live(s))return fault(s);
  for(unsigned i=0;i<4;i++){

@@ -53,3 +53,23 @@ volume callbackやraw brokerは要求しない。
 - 全体の所有権、実FC72/PCM/master-clock整合、Windows DMAの二方向実装/IRQ drain、
   独立bus drain、電源遷移は依然provider側の実装条件。関数pointerが揃うことや
   WMT/version応答だけでHCIBypass能力を広告しない。
+
+
+## bf989以降のRaman source境界
+
+読み取り照合したAudio checkpointは`4b2a461245274728d01c86e2dad833b0fa398b5f`、
+停止修正は`a94ee27`。Audio/shared親sourceはBT側で変更しない。
+`a04_bt_hfp_provider` v2の構造は旧bf989と同一（field追加なし）。
+`Mt6630HfpPnpStart/Stop`呼出しと4 subdevice枠も同一。
+
+BT library内部で正常COM最終ReleaseのPASSIVE deferralを追加した。
+これはprovider.retireを置換するABIではない。通常の方向別buffer解放は、相手RUN中でも
+実free_drainedが成立すれば完了できる。DMA不明時のfault/retireは既存provider契約のまま。
+次の統合はRaman builderの63c32固定BT依存を新固定commitへ変更し、全5 TUと
+`hfp_volume.h`を同一sourceから取り込むこと。旧/新objectの混在・二重sideband link禁止。
+このBT-only修正を新親/Audioの能力資格やSCO成功証明に読み替えない。
+
+残る接続はBT FDOからの実RegisterController（親controller登録順も含む）、
+FC72の実PCM/master-slave fieldとHFP codecの一致、実codec/FIFO latency、
+独立方向別bus drainの一次根拠。これらは名称一致・disable write・固定0 delay・
+常時成功callbackで補わない。PWRAP/SD/USB凍結tupleやeMMC/EDKへ変更を広げない。

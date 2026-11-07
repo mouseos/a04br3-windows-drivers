@@ -6,12 +6,12 @@
 #include "../sideband.h"
 struct owner {
  uint32_t regs[16],initial[16];unsigned leased,pins,dma,release,delay,updates;
- int busy,drain_fail,lost;
+ int busy,refusal_token,drain_fail,lost;
 };
 static int acquire(void *p,unsigned rate,unsigned channels,unsigned bits,unsigned *generation)
 {
  struct owner *o=p;assert(rate==8000&&channels==1&&bits==16);
- if(o->busy)return -1;
+ if(o->busy){if(o->refusal_token){o->leased=1;*generation=7;}return -1;}
  o->leased=1;*generation=7;return 0;
 }
 static int live(void *p,unsigned g){struct owner *o=p;return o->leased&&g==7&&!o->lost;}
@@ -57,6 +57,9 @@ int main(void)
  reset(&o,&s);assert(!a04_bt_sideband_prepare(&s,&ops));assert(!a04_bt_sideband_start(&s));
  assert(!a04_bt_sideband_close(&s)&&s.state==A04_BT_SB_CLOSED&&o.release==1);
  reset(&o,&s);o.busy=1;assert(a04_bt_sideband_prepare(&s,&ops)==-1&&!o.updates&&!o.leased);
+ o.busy=0;assert(!a04_bt_sideband_prepare(&s,&ops));assert(!a04_bt_sideband_close(&s)&&o.release==1);
+ reset(&o,&s);o.busy=1;o.refusal_token=1;
+ assert(a04_bt_sideband_prepare(&s,&ops)==-2&&s.state==A04_BT_SB_FAULT&&o.leased&&!o.release&&!o.updates);
  reset(&o,&s);assert(!a04_bt_sideband_prepare(&s,&ops));assert(!a04_bt_sideband_start(&s));
  o.drain_fail=1;unsigned updates=o.updates;
  assert(a04_bt_sideband_close(&s)==-2&&s.state==A04_BT_SB_FAULT&&o.leased&&o.dma&&!o.release&&updates==o.updates);
