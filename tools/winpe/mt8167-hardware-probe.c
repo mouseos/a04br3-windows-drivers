@@ -10,6 +10,7 @@
 #include <wintrust.h>
 #include <softpub.h>
 #include <cfgmgr32.h>
+#include <devpropdef.h>
 #include <newdev.h>
 #include "../../drivers/system/mt8167-toprgu/uart_screen.h"
 
@@ -42,7 +43,7 @@ enum { EV_BEGIN=1,EV_DISABLED,EV_ATTEMPTED,EV_SIGNATURE,EV_START,EV_EXIT,
        EV_TIMEOUT,EV_CANCEL,EV_ERROR,EV_END,EV_TERMINATE,EV_LOG_ERROR,EV_UART,EV_FINAL,EV_POWER_SET,EV_POWER_CLEAR,EV_POWER_CLOSE,EV_MODE,
        EV_PNP_BEFORE,EV_PNP_AFTER,EV_PNP_LIST_CR,EV_PNP_LOCATE_CR,EV_PNP_PROPERTY_CR,
        EV_PNP_MATCHES,EV_PNP_STATUS_CR,EV_PNP_STATUS,EV_PNP_PROBLEM,EV_PNP_STARTED,
-       EV_PNP_PACKAGE,EV_PNP_API_BEGIN,EV_PNP_API_SUCCESS,EV_PNP_WIN32,EV_PNP_REBOOT,EV_PNP_RESULT };
+       EV_PNP_PACKAGE,EV_PNP_API_BEGIN,EV_PNP_API_SUCCESS,EV_PNP_WIN32,EV_PNP_REBOOT,EV_PNP_RESULT,EV_PNP_NT_CR,EV_PNP_NT_TYPE,EV_PNP_NT_BYTES,EV_PNP_NTSTATUS,EV_PNP_BIND_CR,EV_PNP_BIND_TYPE,EV_PNP_BIND_BYTES,EV_PNP_PARENT_ALREADY_SELECTED };
 
 void *memset(void *p,int v,size_t n){volatile BYTE *b=p;while(n--)*b++=(BYTE)v;return p;}
 void *memcpy(void *p,const void *q,size_t n){volatile BYTE *b=p;const volatile BYTE *a=q;while(n--)*b++=*a++;return p;}
@@ -185,8 +186,9 @@ static DWORD signed_image(const WCHAR *name,HANDLE *locked)
 }
 #if A04_HARDWARE_PROBE_ENGINE_PCM
 /* Fixed targets only; package selection is pinned by the private media builder.
- * No parent update or caller-supplied INF/ID/argument is accepted. */
-static const struct {const WCHAR *id,*folder,*inf,*sys,*cat;} pnp_targets[3]={
+ * Parent first, then its fixed children; no caller-supplied INF/ID/argument. */
+static const struct {const WCHAR *id,*folder,*inf,*sys,*cat;} pnp_targets[4]={
+ {L"ACPI\\BEN0001",L"parent",L"shared-parent.inf",L"mt8167-shared.sys",L"shared-parent.cat"},
  {L"MT8167\\AFE",L"audio",L"mt8167-afe-engine-pcm.inf",L"mt8167-audio.sys",L"mt8167-afe-engine-pcm.cat"},
  {L"MT8167\\USB20",L"usb",L"mt8167-usb20.inf",L"mt8167-usb20.sys",L"mt8167-usb20.cat"},
  {L"A04BR3\\MT6630SDIO",L"wifi",L"mt6630-runtime.inf",L"mt6630-runtime.sys",L"mt6630-runtime.cat"}
@@ -196,10 +198,13 @@ typedef CONFIGRET (WINAPI *pnp_size_fn)(PULONG,PCWSTR,ULONG);
 typedef CONFIGRET (WINAPI *pnp_list_fn)(PCWSTR,PWSTR,ULONG,ULONG);
 typedef CONFIGRET (WINAPI *pnp_locate_fn)(PDEVINST,DEVINSTID_W,ULONG);
 typedef CONFIGRET (WINAPI *pnp_status_fn)(PULONG,PULONG,DEVINST,ULONG);
+typedef CONFIGRET (WINAPI *pnp_devproperty_fn)(DEVINST,const DEVPROPKEY *,DEVPROPTYPE *,PBYTE,PULONG,ULONG);
+/* Windows 8.1 SDK devpkey.h: DEVPKEY_Device_ProblemStatus, pid 12. */
+static const DEVPROPKEY problem_status_key={{0x4340a6c5,0x93fa,0x4706,{0x97,0x2c,0x7b,0x64,0x80,0x08,0xa5,0xa7}},12};
 typedef CONFIGRET (WINAPI *pnp_property_fn)(DEVINST,ULONG,PULONG,PVOID,PULONG,ULONG);
 struct pnp_apis {
  HMODULE newdev,cm;pnp_update_fn update;pnp_size_fn size;pnp_list_fn list;
- pnp_locate_fn locate;pnp_status_fn status;pnp_property_fn property;
+ pnp_locate_fn locate;pnp_status_fn status;pnp_property_fn property;pnp_devproperty_fn devproperty;
 };
 static void pnp_record(unsigned index,unsigned event,DWORD value)
 {emit_record(10+index,event,value,0); /* Disk authoritative; UART optional. */}
@@ -215,12 +220,32 @@ static DWORD pnp_load(struct pnp_apis *a)
  a->locate=(pnp_locate_fn)GetProcAddress(a->cm,"CM_Locate_DevNodeW");
  a->status=(pnp_status_fn)GetProcAddress(a->cm,"CM_Get_DevNode_Status");
  a->property=(pnp_property_fn)GetProcAddress(a->cm,"CM_Get_DevNode_Registry_PropertyW");
- return a->update&&a->size&&a->list&&a->locate&&a->status&&a->property?0:ERROR_PROC_NOT_FOUND;
+ a->devproperty=(pnp_devproperty_fn)GetProcAddress(a->cm,"CM_Get_DevNode_PropertyW");
+ return a->devproperty&&a->update&&a->size&&a->list&&a->locate&&a->status&&a->property?0:ERROR_PROC_NOT_FOUND;
+}
+static ULONG pnp_last_started,pnp_last_matches;static int pnp_query_complete,pnp_parent_version_matches;
+static char pnp_parent_expected_version[64];
+static void pnp_bind_metadata(struct pnp_apis *a,unsigned index,DEVINST node,DWORD pid,const char *label)
+{
+ DEVPROPKEY key={{0xa8b865dd,0x2e3d,0x4094,{0xad,0x97,0xe5,0x93,0xa7,0x0c,0x75,0xd6}},0};
+ WCHAR value[128];DEVPROPTYPE type=0;ULONG bytes=sizeof(value);CONFIGRET cr;char line[224],*p=line;unsigned i;DWORD written;
+ key.pid=pid;memset(value,0,sizeof(value));cr=a->devproperty(node,&key,&type,(PBYTE)value,&bytes,0);
+ pnp_record(index,EV_PNP_BIND_CR,cr);pnp_record(index,EV_PNP_BIND_TYPE,type);pnp_record(index,EV_PNP_BIND_BYTES,bytes);
+ if(index==0&&pid==3&&cr==CR_SUCCESS&&type==DEVPROP_TYPE_STRING&&bytes>=2&&bytes<=sizeof(value)&&!(bytes&1)&&!value[bytes/2-1]){
+  pnp_parent_version_matches=1;
+  for(i=0;i<bytes/2-1;i++)if(i>=sizeof(pnp_parent_expected_version)-1||value[i]!=(BYTE)pnp_parent_expected_version[i])pnp_parent_version_matches=0;
+  if(bytes/2-1>=sizeof(pnp_parent_expected_version)||pnp_parent_expected_version[bytes/2-1])pnp_parent_version_matches=0;
+ }
+ if(cr!=CR_SUCCESS||type!=DEVPROP_TYPE_STRING||bytes<2||bytes>sizeof(value)||(bytes&1)||value[bytes/2-1])return;
+ p=text(p,"A04HW RUN=");p=hex(p,run_id);p=text(p," ID=");p=hex(p,10+index);p=text(p," FIELD=");p=text(p,label);p=text(p," VALUE=");
+ for(i=0;i<bytes/2-1;i++){if(value[i]<32||value[i]>126)return;*p++=(char)value[i];}*p++='\n';
+ if(!WriteFile(logfile,line,(DWORD)(p-line),&written,NULL)||written!=(DWORD)(p-line)||!FlushFileBuffers(logfile))log_error=ERROR_WRITE_FAULT;
 }
 static DWORD pnp_observe(struct pnp_apis *a,unsigned index,unsigned phase)
 {
  ULONG length=0,offset=0,matches=0,started=0;WCHAR *ids;CONFIGRET cr;DWORD error=0;
- pnp_record(index,phase,0);
+ if(index==0)pnp_parent_version_matches=0;
+ pnp_query_complete=0;pnp_last_started=0;pnp_last_matches=0;pnp_record(index,phase,0);
  /* Present list plus exact HWID match avoids guessing PDO instance suffixes. */
  cr=a->size(&length,NULL,CM_GETIDLIST_FILTER_PRESENT);pnp_record(index,EV_PNP_LIST_CR,cr);
  if(cr!=CR_SUCCESS)return ERROR_NOT_READY;
@@ -230,32 +255,42 @@ static DWORD pnp_observe(struct pnp_apis *a,unsigned index,unsigned phase)
  cr=a->list(NULL,ids,length,CM_GETIDLIST_FILTER_PRESENT);pnp_record(index,EV_PNP_LIST_CR,cr);
  if(cr!=CR_SUCCESS){error=ERROR_NOT_READY;goto done;}
  if(ids[length-1]){error=ERROR_INVALID_DATA;goto done;}
+ pnp_query_complete=1;
  while(offset<length&&ids[offset]){
   DEVINST node;ULONG n=offset,type=0,bytes,flags=0,problem=0,j;WCHAR hardware[512];int match=0;
   while(n<length&&ids[n])n++;
-  if(n>=length){error=ERROR_INVALID_DATA;break;}
+  if(n>=length){pnp_query_complete=0;error=ERROR_INVALID_DATA;break;}
   cr=a->locate(&node,ids+offset,CM_LOCATE_DEVNODE_NORMAL);offset=n+1;
-  if(cr!=CR_SUCCESS){pnp_record(index,EV_PNP_LOCATE_CR,cr);error=ERROR_NOT_READY;continue;}
+  if(cr!=CR_SUCCESS){pnp_query_complete=0;pnp_record(index,EV_PNP_LOCATE_CR,cr);error=ERROR_NOT_READY;continue;}
   memset(hardware,0,sizeof(hardware));bytes=sizeof(hardware);
   cr=a->property(node,CM_DRP_HARDWAREID,&type,hardware,&bytes,0);
   if(cr==CR_NO_SUCH_VALUE)continue;
-  if(cr!=CR_SUCCESS){pnp_record(index,EV_PNP_PROPERTY_CR,cr);error=ERROR_NOT_READY;continue;}
+  if(cr!=CR_SUCCESS){pnp_query_complete=0;pnp_record(index,EV_PNP_PROPERTY_CR,cr);error=ERROR_NOT_READY;continue;}
   if(type!=REG_MULTI_SZ||bytes<4||bytes>sizeof(hardware)||(bytes&1)||hardware[bytes/2-1]||hardware[bytes/2-2]){
-   pnp_record(index,EV_PNP_PROPERTY_CR,CR_INVALID_DATA);error=ERROR_INVALID_DATA;continue;
+   pnp_query_complete=0;pnp_record(index,EV_PNP_PROPERTY_CR,CR_INVALID_DATA);error=ERROR_INVALID_DATA;continue;
   }
   for(j=0;j<bytes/2&&hardware[j];){
    if(!lstrcmpiW(hardware+j,pnp_targets[index].id))match=1;
    while(j<bytes/2&&hardware[j])j++;j++;
   }
   if(!match)continue;
-  matches++;cr=a->status(&flags,&problem,node,0);
+  pnp_bind_metadata(a,index,node,5,"INF");pnp_bind_metadata(a,index,node,3,"VERSION");
+  matches++;cr=a->status(&flags,&problem,node,0);if(cr!=CR_SUCCESS)pnp_query_complete=0;
   pnp_record(index,EV_PNP_STATUS_CR,cr);pnp_record(index,EV_PNP_STATUS,flags);pnp_record(index,EV_PNP_PROBLEM,problem);
   if(cr==CR_SUCCESS&&(flags&DN_STARTED)&&!(flags&DN_HAS_PROBLEM)&&!problem)started++;
   else error=ERROR_NOT_READY;
+  {
+   DWORD ntstatus=0;DEVPROPTYPE property_type=0;ULONG property_bytes=sizeof(ntstatus);
+   CONFIGRET property_cr=a->devproperty(node,&problem_status_key,&property_type,(PBYTE)&ntstatus,&property_bytes,0);
+   pnp_record(index,EV_PNP_NT_CR,property_cr);pnp_record(index,EV_PNP_NT_TYPE,property_type);pnp_record(index,EV_PNP_NT_BYTES,property_bytes);
+   if(property_cr==CR_SUCCESS&&property_type==DEVPROP_TYPE_NTSTATUS&&property_bytes==sizeof(ntstatus))
+    pnp_record(index,EV_PNP_NTSTATUS,ntstatus);
+   else error=ERROR_NOT_READY; /* Never manufacture STATUS_SUCCESS on query failure. */
+  }
  }
  if(!matches)error=ERROR_NOT_FOUND;
  done:
- pnp_record(index,EV_PNP_MATCHES,matches);pnp_record(index,EV_PNP_STARTED,started);
+ pnp_last_matches=matches;pnp_last_started=started;pnp_record(index,EV_PNP_MATCHES,matches);pnp_record(index,EV_PNP_STARTED,started);
  HeapFree(GetProcessHeap(),0,ids);return error;
 }
 static DWORD pnp_hold(unsigned index,const WCHAR *drivers,WCHAR inf[MAX_PATH],HANDLE held[4])
@@ -278,21 +313,57 @@ static DWORD pnp_hold(unsigned index,const WCHAR *drivers,WCHAR inf[MAX_PATH],HA
  }
  return path(inf,folder,pnp_targets[index].inf);
 }
+static DWORD pnp_parent_inf_version(HANDLE inf)
+{
+ DWORD size=GetFileSize(inf,NULL),got,i,j,k,count=0,error=0;char *bytes;
+ if(size==INVALID_FILE_SIZE||!size||size>16384u)return ERROR_INVALID_DATA;
+ bytes=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,size+1);if(!bytes)return ERROR_NOT_ENOUGH_MEMORY;
+ if(!ReadFile(inf,bytes,size,&got,NULL)||got!=size){error=ERROR_READ_FAULT;goto done;}
+ for(i=0;i+9<size;i++){
+  if(i&&bytes[i-1]!='\n')continue;
+  if(bytes[i]!='D'||bytes[i+1]!='r'||bytes[i+2]!='i'||bytes[i+3]!='v'||bytes[i+4]!='e'||bytes[i+5]!='r'||bytes[i+6]!='V'||bytes[i+7]!='e'||bytes[i+8]!='r')continue;
+  j=i+9;while(j<size&&(bytes[j]==' '||bytes[j]=='\t'))j++;
+  if(j>=size||bytes[j++]!='=')continue;
+  while(j<size&&bytes[j]!=','&&bytes[j]!='\n')j++;
+  if(j>=size||bytes[j++]!=',')continue;
+  while(j<size&&(bytes[j]==' '||bytes[j]=='\t'))j++;
+  k=0;while(j<size&&((bytes[j]>='0'&&bytes[j]<='9')||bytes[j]=='.')){
+   if(k>=sizeof(pnp_parent_expected_version)-1){error=ERROR_INVALID_DATA;goto done;}
+   pnp_parent_expected_version[k++]=bytes[j++];
+  }
+  pnp_parent_expected_version[k]=0;if(k)count++;
+ }
+ if(count!=1)error=ERROR_INVALID_DATA;
+ done:HeapFree(GetProcessHeap(),0,bytes);return error;
+}
 static DWORD pnp_once(int *halt)
 {
- struct pnp_apis a;WCHAR drivers[MAX_PATH],infs[3][MAX_PATH];
- HANDLE root=INVALID_HANDLE_VALUE,held[3][4];unsigned i,j;DWORD error,result=0,observed;BOOL success,reboot;
- memset(&a,0,sizeof(a));for(i=0;i<3;i++)for(j=0;j<4;j++)held[i][j]=INVALID_HANDLE_VALUE;
+ struct pnp_apis a;WCHAR drivers[MAX_PATH],infs[4][MAX_PATH];
+ HANDLE root=INVALID_HANDLE_VALUE,held[4][4];unsigned i,j,first=0;DWORD error,result=0,observed;BOOL success,reboot;
+ memset(&a,0,sizeof(a));for(i=0;i<4;i++)for(j=0;j<4;j++)held[i][j]=INVALID_HANDLE_VALUE;
  *halt=1;error=pnp_load(&a);if(error){result=error;goto done;}
  error=path(drivers,base_directory,L"drivers");if(!error)error=hold_directory(drivers,&root);
  if(error){result=error;goto done;}
  /* All CAT signatures and non-reparse paths are checked before any update.
   * Locks deny write/delete; Windows checks INF/SYS catalog membership. */
- for(i=0;i<3;i++){
+ for(i=0;i<4;i++){
   error=pnp_hold(i,drivers,infs[i],held[i]);pnp_record(i,EV_PNP_PACKAGE,error);
   if(error){result=error;goto done;}
  }
- for(i=0;i<3;i++){
+ error=pnp_parent_inf_version(held[0][1]);if(error){result=error;goto done;}
+ observed=pnp_observe(&a,0,EV_PNP_BEFORE);
+ if(pnp_query_complete&&pnp_last_matches==1&&pnp_last_started==1&&pnp_parent_version_matches){
+  if(observed)result=observed;
+  first=1;pnp_record(0,EV_PNP_PARENT_ALREADY_SELECTED,0); /* SYS hash still requires post-boot verification. */
+ }
+ if(!first&&(!pnp_query_complete||pnp_last_matches!=1)){result=ERROR_NOT_READY;goto done;}
+ /* Never force-replace the parent under an already started I/O child. */
+ for(i=1;!first&&i<4;i++){
+  (void)pnp_observe(&a,i,EV_PNP_BEFORE);
+  if(!pnp_query_complete){result=ERROR_NOT_READY;goto done;}
+  if(pnp_last_started){result=ERROR_BUSY;pnp_record(i,EV_PNP_RESULT,result);goto done;}
+ }
+ for(i=first;i<4;i++){
   (void)pnp_observe(&a,i,EV_PNP_BEFORE);
   if(log_error){result=log_error;goto done;}
   if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){result=ERROR_CANCELLED;goto done;}
@@ -307,10 +378,11 @@ static DWORD pnp_once(int *halt)
   pnp_record(i,EV_PNP_RESULT,reboot?ERROR_SUCCESS_REBOOT_REQUIRED:error);
   if(reboot||error==ERROR_SUCCESS_REBOOT_REQUIRED){result=ERROR_SUCCESS_REBOOT_REQUIRED;goto done;}
   if(error&&!result)result=error;
+  if(i==0&&error)goto done; /* Do not run children behind an unverified parent start. */
  }
  *halt=0; /* Keep failures; permit independent WLAN/audio diagnostics. */
  done:
- for(i=0;i<3;i++)for(j=0;j<4;j++)if(held[i][j]!=INVALID_HANDLE_VALUE)CloseHandle(held[i][j]);
+ for(i=0;i<4;i++)for(j=0;j<4;j++)if(held[i][j]!=INVALID_HANDLE_VALUE)CloseHandle(held[i][j]);
  if(root!=INVALID_HANDLE_VALUE)CloseHandle(root);
  if(a.cm)FreeLibrary(a.cm);if(a.newdev)FreeLibrary(a.newdev);
  emit_record(0,EV_PNP_RESULT,result,0);return result;

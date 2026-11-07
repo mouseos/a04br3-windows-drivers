@@ -179,3 +179,77 @@ trusted_certificatesはlegacy_usb_wlanとwifi_overrideを別roleにし、同じB
 9d3a889はNDIS6.30必須direct OID callbacks欠落のsource修正であり、run26r2 status31の
 正確なNTSTATUS/原因確定ではない。65importsのRT exports全存在は主担当確認情報で、
 実ロード成功やWLAN interface作成の実機証明とは区別する。新SYSの実受理は主担当の次工程。
+
+## 次反復：明示1回Engine rearm
+
+既定はrearmしない。使い終わったEngine service/key/markerを単純削除する経路は追加しない。
+run27ではstage上のEngine親99338c1b…に対し後続backupの実配置親b64fe0af…が旧toneだった。
+Wi-Fiも同版1001の旧SYSが残り、brightness DODにも不一致があった。audio2f56…とTOPRGU8caa…は
+主担当の後続backupで新SYS一致。audio Code10を新Engine親の動作結果とは扱わない。
+raw SYSTEMのoem50/version0.0.1.0は未replay読取りであり、live loaded imageの証明とはしない。
+
+1. 主担当が新Recovery bootでfresh backupを取得する。既存captureへ `--engine-probe-state` を追加すると、
+   固定Engine attempted.bin、logs/service.log、service EXEもread-only回収する。
+   その他のdisklogはWinPE rearm時にEngine directory全体を保存する。旧toneは対象外。
+2. 修正packageと昇版を明示する。Wi-Fiは `--wifi-package` に署名済みd751c67/1002を使う。
+   Engine親は `--parent-package` と `--parent-manifest-sha256` を明示し、既知99338c1b…SYSを保持する
+   1005 INF/CAT/certを選択する。signed-manifest.jsonはflatの固定3file/cert/metadataをhash記録する。
+   a9f8631 wrapper/template a25f089/runtime de214c8、package-manifestとhistorical capabilityの一致も検査する。
+   brightness昇版候補には `--brightness-package` と `--brightness-manifest-sha256` を使う。
+   未知のGPU provider packageを受ける `--gpu-package` は今回追加しない。
+3. 新serviceをbuild/署名し、通常Engineの共通入力を指定して、prepared SYSTEM引数の代わりに
+   下記plan生成引数を渡す。mediaの `--out` はまだ存在しない予定先を指定する。
+
+```sh
+--rearm-previous-media "$PREVIOUS_PRIVATE_MEDIA/manifest.json" \
+--write-engine-rearm-plan "$NEW_PRIVATE_REARM_PLAN"
+```
+
+planはfresh backup manifest hash/Recovery boot_id、旧媒体manifest hash、旧service署名hash、
+既知marker hash、次packageの全固定file hash/DriverVerを結ぶ。旧媒体と同じbackup/bootは拒否する。
+修正package hashが無い場合、変更packageが同版以下の場合、実SYS不一致対象のINFが昇版していない場合は拒否する。
+plan生成だけではWIM/ESPを作らない。plan SHA256を表示し、private JSONを0600で新規作成する。
+
+4. native Windows recipeをfresh SYSTEM/LOG入力で実行する。
+
+```powershell
+-ServiceName MT8167EngineProbe -RearmEngineProbe `
+-EngineRearmPlanPath $PrivatePlan -ExpectedEngineRearmPlanSha256 $PlanSha256
+```
+
+既存EngineがStart=4かつ既知7値のraw fingerprint
+`dbbe363d2401dfc022606aba010c0e4888c5feab67c748ea5030b0eb3ba484c1` と一致する場合だけStart=2にする。
+未知の値/subkey/型、別サービス、無指定rearm、plan/native input hash不一致は拒否する。
+関連3keyの限定fingerprintと7値のpatch/clean reload確認は維持する。whole-SYSTEM監査は追加しない。
+
+5. 成功した新native候補を通常のprepared SYSTEM引数へ指定し、plan生成引数の代わりに下記を追加する。
+
+```sh
+--engine-rearm-plan "$NEW_PRIVATE_REARM_PLAN" \
+--engine-rearm-plan-sha256 "$PLAN_SHA256"
+```
+
+WinPEはSYSTEMをRegLoadせず、旧Engine directory全体を
+C:\a04backup\engine-rearm-<plan SHA256>へ同一volume内moveする。旧attempted.bin/logs/clients/driversを保存し、
+旧service EXEとplanも保存してから新Engine directoryを作る。同じarchiveが存在すれば永久拒否し、
+途中失敗も自動retryしない。plan/native/backup/package全binding一致後だけこのprepareを生成する。
+新serviceは自分を無効化し、新markerをCREATE_NEWして各対象を最大1回処理する。
+rebootrequiredは子/clientを止め、主担当の計画的再起動と確認へ渡す。marker自動削除やサービスrestart loopは無い。
+
+### 後続fresh backupの配置SYS照合を必須にする
+
+媒体manifestのexpected_installed_sysへparent/audio/USB/Wi-Fi、指定されたdisplay/TOPRGUを記録する。
+API成功、DISM COMMITTED、CM開始、INF版、実配置SYS一致、実ロードimage、実I/Oは別々の証拠。
+後続captureへ次を付けると、unmountとbackup manifest確定後に固定source manifestと全対象SYSを照合する。
+対象SYSすべてを `--target-sys` で回収すること。不一致/不存在ならcaptureは比較結果付きexit3を返す。
+backup自体のcaptured-unmounted状態を実配置成功へ書き換えない。
+
+```sh
+--compare-engine-media "$APPLIED_PRIVATE_MEDIA/manifest.json" \
+--compare-engine-media-sha256 "$APPLIED_MEDIA_MANIFEST_SHA256"
+```
+
+結果はprivate backup内engine-installed-verification.jsonへ保存する。
+既存回収物だけを比較する場合はverify-engine-installed.pyへworkspace/media/media-sha256/backup/backup-sha256を渡す。
+全SYS一致でもlive_loaded_image_verified=false/functional_io_verified=falseのまま。
+selected INF/versionは新serviceのbefore/after FIELD=INF/VERSIONと対応づけ、必要な再起動後に主担当が確認する。

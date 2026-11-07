@@ -233,7 +233,7 @@ run26r2では署名/service/PowerRequest/両client起動まで成功したが、
 SetupAPI CM_PROB_FAILED_ADD=0x1fもあり、DISM stagingだけを開始済みの証拠にしない。
 raw SYSTEMのAFE ConfigFlags=64は未replayでありlive状態とは断定しない。
 
-新Engine serviceは自分のmarkerを消費後、clients開始前に次の3対象を順番に各最大1回だけ
+924版Engine serviceは自分のmarkerを消費後、clients開始前に次の3対象を順番に各最大1回だけ
 UpdateDriverForPlugAndPlayDevicesW(INSTALLFLAG_FORCE | INSTALLFLAG_NONINTERACTIVE=5)へ渡す。
 
 | ID / log ID | 固定HardwareID | System32\MT8167EngineProbe\drivers以下の固定INF |
@@ -252,7 +252,7 @@ present nodeのHardwareIDを厳密比較し、instance suffixを推測しない�
 reboot flagまたはERROR_SUCCESS_REBOOT_REQUIREDなら結果3010で後続更新と両clientを停止する。
 自動reboot、marker削除、再armはしない。再起動不要のAPI/CM失敗は最終結果へ残したまま、
 他対象の更新と2clientの独立診断を続ける。USB device role/外部VBUSでの開始拒否を音声試験の禁止条件にはしない。
-親は指示どおり更新対象外。同期PnP API実行中のSCM STOPはAPIを中断できず、戻った後で停止する。
+924版の親は更新対象外。同期PnP API実行中のSCM STOPはAPIを中断できず、戻った後で停止する。
 
 service.logのEVTはhex表記。13/14=before/after、15=list CR、16=locate CR、17=property CR、
 18=matches、19=status CR、1A=status、1B=Problem、1C=started数、1D=package、1E=API開始、
@@ -260,4 +260,31 @@ service.logのEVTはhex表記。13/14=before/after、15=list CR、16=locate CR�
 CM一覧取得失敗ではmatchesを確定できず、list CRと最終結果を見る。旧toneのEVT番号は変更しない。
 
 Engine親と旧f17親はともにDriverVer=2026.11.6.1001であるため、DISM完了だけでEngine親への
-交換を保証しない。実ロード親のhash照合/必要な親の導入は主担当が別途判断し、serviceは親を更新しない。
+交換を保証しない。実ロード親のhash照合/必要な親の導入は主担当が別途判断し、924版serviceは親を更新しない。
+
+## 次反復の親bind・正確なProblemStatus
+
+次反復版はACPI\BEN0001親を先頭へ追加し、ID=10親、11音声、12USB、13Wi-Fiとなる。
+固定packageはdrivers/parent/{shared-parent.inf,mt8167-shared.sys,shared-parent.cat}を含む。
+旧924の3対象serviceは初回媒体の互換入力として残すが、新rearm planには使用できない。
+
+before/afterでCM_Get_DevNode_PropertyWをsystem cfgmgr32.dllから解決し、Windows 8.1 SDKの
+DEVPKEY_Device_ProblemStatus（4340a6c5-93fa-4706-972c-7b648008a5a7, pid12）を照会する。
+CONFIGRET成功、DEVPROP_TYPE_NTSTATUS、4 bytesの3条件が成立した場合だけraw DWORDを記録する。
+取得失敗は0のNTSTATUSに変換せず、CR/type/bytesを記録する。
+DEVPKEY_Device_DriverInfPath（pid5）とDriverVersion（pid3）の文字列も同じnodeから読み、
+FIELD=INF/VERSIONでdiskへ出す。before/after区切りとIDを対応づけ、古いoem INF残留を検出する。
+追加EVTはNT_CR=0x23、NT_TYPE=0x24、NT_BYTES=0x25、NTSTATUS=0x26、
+BIND_CR=0x27、BIND_TYPE=0x28、BIND_BYTES=0x29、PARENT_ALREADY_SELECTED=0x2A。
+
+WinPE staging後の次bootで、親の選択versionが固定staged INFと一致しCM開始済みなら親bindを省略する。
+これは実SYS hash/ロード済みimageの証明ではなく、後続backup照合が必須。
+親の更新が必要なら、音声/USB/Wi-Fi子のCM状態を確認し、開始済みまたは照会未完了なら強制交換を止める。
+親が必要な場合だけ標準UpdateDriver APIを最大1回呼び、親の失敗/未開始/rebootrequiredで子試験を止める。
+独自にtouch/GPU/audioのresource pinを解除したり、SYSを直接上書きしたりしない。
+既存touch/GPU等の停止可否は標準PnPへ委ねるため、in-place交換の安全性を保証したとは扱わない。
+3010は計画的再起動と選択INF/version/配置SYSの別確認へ渡す結果であり、自動再起動・自動再armはしない。
+
+nativeの既知disabled fingerprint、fresh backup、修正package/昇版と結び付いた明示rearm手順は
+README-mt8167-shared-io-update.mdを参照。新service EXEだけのWDK build/署名が必要。
+通常音声clientはd0eb436のままでよく、a9f8631 clientの再buildを前提にしない。

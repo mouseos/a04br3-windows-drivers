@@ -91,3 +91,10 @@ python3 tools/recovery/capture-windows-prebackup.py verify \
 **バックアップ後にWindowsを起動したら、更新前の証拠として失効する。** Recoveryへ戻ってもboot IDが異なるため、旧manifestを再利用せず新規captureする。RTC時刻やファイル時刻だけでは有効性を判定しない。Recovery再起動でも保守的に失効する。同じboot IDでも別プロセスがWindowsをrw mount・変更した場合や対象partitionを変更した場合は失効し、再回収が必要。boot IDだけであらゆる書込みの不存在を証明するものではない。
 
 主担当のWinPE媒体は、固定したhost backup manifestのhashとwriter直前検証を根拠に、大容量hive backup copyを省略する方針。builderとwriterへの接続は主担当が実装する。検証結果を保持し、WinPE処理中に通常Windowsを挟んだり、別のbackupへ自動fallbackしたりしない。private backupは更新成功後も任意に削除しない。
+
+Engine次反復ではcaptureの明示 `--engine-probe-state` が固定Engine attempted.bin/service.log/service EXEも回収する。
+任意path指定は受け付けない。書込みやservice再armは行わない。
+後続captureの `--compare-engine-media <private media manifest> --compare-engine-media-sha256 <hash>` は
+回収SYSを媒体expected_installed_sysと照合し、不一致ならexit3、private比較JSONを保存する。
+parent/audio/USB/Wi-Fiと採用display/TOPRGUの全basenameをtarget-sysへ指定する。
+read-only回収成功と新package実配置一致は別statusとして保持する。

@@ -83,6 +83,8 @@ def prepared_system_check(system, manifest, expected_sha256, root, backup, selec
                 or state.get('unload_rc') != 0 or state.get('errors')
                 or state.get('whole_system_audit') is not False or not state.get('audit_scope')):
             raise ValueError('native patch/clean reload/unload成功の証拠が必要です')
+        if report.get('engine_rearm_plan_sha256') and state.get('engine_rearm_plan_sha256') != report['engine_rearm_plan_sha256']:
+            raise ValueError('native patch/verifyの再arm plan binding不一致')
         services = state['services']
         if len(services) != 1 or services[0]['name'] != selected_service:
             raise ValueError('native workerの対象service不一致')
@@ -109,7 +111,9 @@ def prepared_system_check(system, manifest, expected_sha256, root, backup, selec
             'root_relative_path': str(system.relative_to(root.resolve())), 'header': header,
             'native_candidate_path': native_path, 'relocated_after_native_preparation': system != declared,
             'status': report['status'], 'whole_system_audit': False,
-            'audit_scope': report['audit_scope'], 'selected_service': selected_service, 'target_value_names': list(expected)}
+            'audit_scope': report['audit_scope'], 'selected_service': selected_service, 'target_value_names': list(expected),
+            'engine_rearm_plan_sha256': report.get('engine_rearm_plan_sha256'),
+            'disabled_service_fingerprint': report['patch']['state'].get('disabled_service_fingerprint')}
 
 
 def probe_check(executable, manifest, certificate, root, audio_mode="Tone"):
@@ -133,9 +137,10 @@ def probe_check(executable, manifest, certificate, root, audio_mode="Tone"):
             raise ValueError('Engine専用service/client/log/marker path不一致')
         pnp = report.get('pnp_rebind', {})
         if (pnp.get('api') != 'UpdateDriverForPlugAndPlayDevicesW' or pnp.get('flags') != 5
-                or pnp.get('fixed_hardware_ids') != ['MT8167\\AFE', 'MT8167\\USB20', 'A04BR3\\MT6630SDIO']
+                or pnp.get('fixed_hardware_ids') not in (['MT8167\\AFE', 'MT8167\\USB20', 'A04BR3\\MT6630SDIO'], ['ACPI\\BEN0001', 'MT8167\\AFE', 'MT8167\\USB20', 'A04BR3\\MT6630SDIO'])
                 or pnp.get('directory') != 'System32\\MT8167EngineProbe\\drivers'
-                or pnp.get('maximum_calls_per_id') != 1 or pnp.get('parent_updated') is not False
+                or pnp.get('maximum_calls_per_id') != 1
+                or pnp.get('parent_updated') is not (len(pnp.get('fixed_hardware_ids', [])) == 4)
                 or pnp.get('reboot_required_stops_clients') is not True
                 or pnp.get('catalog_signature_required') is not True):
             raise ValueError('Engine固定PnP再bind契約のあるserviceが必要です')

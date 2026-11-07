@@ -3,7 +3,8 @@
 import argparse,hashlib,json,os,re,shutil,struct,subprocess
 from pathlib import Path
 from private_hardware_probe_input import prepared_system_check, probe_check, private_path, certificate_trust_commands
-from engine_io_package import engine_package_check, engine_optional_check, ENGINE_CERT
+from engine_rearm import make_plan, check_plan, archive_commands
+from engine_io_package import engine_package_check, engine_optional_check, parent_override_check, ENGINE_CERT
 
 def sha(p):
  with p.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
@@ -31,9 +32,16 @@ def main():
  for n in ('workspace','base','package','firmware','backup','out','tools'):ap.add_argument('--'+n,type=Path,required=True)
  ap.add_argument('--audio-mode',choices=('Tone','EnginePcm'),default='Tone')
  ap.add_argument('--brightness-package',type=Path)
+ ap.add_argument('--brightness-manifest-sha256')
  ap.add_argument('--toprgu-package',type=Path)
  ap.add_argument('--engine-package',type=Path)
  ap.add_argument('--wifi-package',type=Path)
+ ap.add_argument('--parent-package',type=Path)
+ ap.add_argument('--parent-manifest-sha256')
+ ap.add_argument('--rearm-previous-media',type=Path)
+ ap.add_argument('--write-engine-rearm-plan',type=Path)
+ ap.add_argument('--engine-rearm-plan',type=Path)
+ ap.add_argument('--engine-rearm-plan-sha256')
  ap.add_argument('--engine-client-package',type=Path)
  ap.add_argument('--probe-service',type=Path)
  for n in ('probe-manifest','probe-certificate','prepared-system','prepared-system-manifest'):
@@ -45,14 +53,22 @@ def main():
  base,pkg,fw,backup,out,tools=[getattr(a,n).resolve() for n in ('base','package','firmware','backup','out','tools')]
  probe=a.probe_service.resolve() if a.probe_service else None
  engine=a.audio_mode=='EnginePcm'
+ plan_only=bool(a.write_engine_rearm_plan)
+ rearming=bool(a.engine_rearm_plan)
+ if (plan_only or rearming or a.rearm_previous_media) and not engine:raise SystemExit('再armはEngine mode専用です')
+ if plan_only and (not a.rearm_previous_media or rearming):raise SystemExit('plan生成は旧媒体manifestを明示し既存planと併用しないでください')
+ if a.rearm_previous_media and not plan_only:raise SystemExit('旧媒体指定はplan生成専用です')
+ if a.brightness_manifest_sha256 and not a.brightness_package:raise SystemExit('brightness manifest hashにはpackage指定も必要です')
+ if bool(a.parent_package)!=bool(a.parent_manifest_sha256):raise SystemExit('親overrideにはpackageとmanifest hash両方が必要です')
+ if bool(a.engine_rearm_plan)!=bool(a.engine_rearm_plan_sha256):raise SystemExit('再arm planとhash両方が必要です')
  service_name='MT8167EngineProbe' if engine else 'MT8167HardwareProbe'
  audio_inf='mt8167-afe-engine-pcm.inf' if engine else 'mt8167-afe-first-playback.inf'
  audio_client='mt8167-audio-engine-probe.exe' if engine else 'mt8167-audio-first-playback.exe'
  if engine and (not probe or not a.engine_package or not a.engine_client_package):raise SystemExit('EnginePcmは専用serviceとEngine driver/client packageを明示指定してください')
- if not engine and (a.engine_package or a.engine_client_package or a.brightness_package or a.toprgu_package or a.wifi_package):raise SystemExit('Engine専用入力をTone modeへ渡せません')
+ if not engine and (a.engine_package or a.engine_client_package or a.brightness_package or a.toprgu_package or a.wifi_package or a.parent_package):raise SystemExit('Engine専用入力をTone modeへ渡せません')
  private_args=(a.probe_manifest,a.probe_certificate,a.prepared_system,a.prepared_system_manifest,a.prepared_system_sha256)
  if probe:
-  if not a.private_media or not all(private_args):raise SystemExit('probeにはprivate媒体とnative SYSTEM/probe manifest/cert/hashの全入力が必要です')
+  if not a.private_media or not all(private_args[:2]) or (not plan_only and not all(private_args)):raise SystemExit('probeにはprivate媒体とnative SYSTEM/probe manifest/cert/hashの全入力が必要です')
   private_path(out,root)
  elif any(private_args):raise SystemExit('native SYSTEM入力はHardwareProbe private媒体だけに指定できます')
  if out.exists() or any(not p.is_relative_to(root) for p in (base,pkg,fw,backup,out,tools)) or (probe and not probe.is_relative_to(root)):raise SystemExit('作業ルート内の入力と新規出力先が必要です')
@@ -60,12 +76,15 @@ def main():
  b=backup_check(backup,root)
  native=None;probe_info=None
  if probe:
-  native=prepared_system_check(a.prepared_system,a.prepared_system_manifest,a.prepared_system_sha256,root,b,service_name)
+  if not plan_only:native=prepared_system_check(a.prepared_system,a.prepared_system_manifest,a.prepared_system_sha256,root,b,service_name)
   probe_info=probe_check(probe,a.probe_manifest,a.probe_certificate,root,a.audio_mode)
  components={};optional_drivers=[]
  if engine:
   sources,components,certificates=engine_package_check(pkg,a.engine_package,a.engine_client_package,root,a.wifi_package)
-  extra_files,extra_components,extra_certificates,optional_drivers=engine_optional_check(a.brightness_package,a.toprgu_package,root)
+  if a.parent_package:
+   parent_files,parent_component,parent_cert=parent_override_check(a.parent_package,a.parent_manifest_sha256,root,sources,components)
+   sources.update(parent_files);components['parent']=parent_component;certificates['parent_override']=parent_cert
+  extra_files,extra_components,extra_certificates,optional_drivers=engine_optional_check(a.brightness_package,a.toprgu_package,root,a.brightness_manifest_sha256)
   sources.update(extra_files);components.update(extra_components);certificates.update(extra_certificates)
   files={rel:sha(path) for rel,path in sources.items()}
  else:
@@ -99,11 +118,25 @@ def main():
  for name,digest in firmware.items():
   if sha(fw/name)!=digest:raise SystemExit('firmware不一致')
   files['firmware/'+name]=digest
+ rearm_plan=None
+ if plan_only or rearming:
+  pnp=probe_info.get('pnp_rebind',{}) if probe_info else {}
+  if not pnp.get('parent_updated') or pnp.get('problem_status')!='CM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatus/DEVPROP_TYPE_NTSTATUS':raise SystemExit('再armには親bind/ProblemStatus対応serviceが必要です')
+ if plan_only:
+  plan=make_plan(a.rearm_previous_media,backup,b,components,root)
+  destination=private_path(a.write_engine_rearm_plan,root)
+  with destination.open('x') as stream:
+   os.chmod(destination,0o600);json.dump(plan,stream,indent=2);stream.write('\n')
+  print('ENGINE_REARM_PLAN_SHA256='+sha(destination));return
+ if rearming:
+  rearm_plan=check_plan(a.engine_rearm_plan,a.engine_rearm_plan_sha256,backup,b,components,native,root)
+ elif native and native.get('engine_rearm_plan_sha256'):raise SystemExit('再arm native候補には対応する明示planが必要です')
  if probe:
   files[service_name+'.exe']=probe_info['exe_sha256']
   if engine and probe_info['certificate_thumbprint']!=ENGINE_CERT:raise SystemExit('Engine service署名certの固定thumbprint不一致')
   files['hardware-probe-development.cer']=probe_info['certificate_sha256']
   files['private-system/SYSTEM.patched']=native['sha256']
+ if rearming:files['engine-rearm-plan.json']=sha(a.engine_rearm_plan)
  prepare_name='prepare-mt8167-engine-probe.cmd.in' if engine else 'prepare-mt8167-hardware-probe.cmd.in'
  here=Path(__file__).resolve().parent;out.mkdir(mode=0o700 if a.private_media else 0o755);stage=out/'stage';stage.mkdir(mode=0o700 if a.private_media else 0o755)
  # Stage only the validated package/firmware files; never import arbitrary siblings.
@@ -124,11 +157,15 @@ def main():
   shutil.copyfile(probe,staged_probe);shutil.copyfile(a.probe_certificate.resolve(strict=True),staged_probe_cert)
   if sha(staged_probe)!=probe_info['exe_sha256'] or sha(staged_probe_cert)!=probe_info['certificate_sha256']:raise SystemExit('staging中のprobe/cert変更')
  token=hashlib.sha256((json.dumps(files,sort_keys=True)+sha(backup)+sha(here/'run-mt8167-shared-io-update.cmd.in')+(sha(here/prepare_name)+native['manifest_sha256']+probe_info['manifest_sha256'] if probe else '')).encode()).hexdigest()[:16].upper()
+ if rearming:
+  staged_rearm=stage/'engine-rearm-plan.json';shutil.copyfile(a.engine_rearm_plan,staged_rearm)
+  if sha(staged_rearm)!=a.engine_rearm_plan_sha256.lower():raise SystemExit('staging中のrearm plan変更')
  if probe:certificates['hardware_probe']=staged_probe_cert.read_bytes()
  trust=certificate_trust_commands(certificates)
  cmd=(here/'run-mt8167-shared-io-update.cmd.in').read_text().replace('@TOKEN@',token).replace('@JOURNAL@',token.lower()).replace('@HOST_BACKUP_SHA@',sha(backup)).replace('@TRUST_COMMANDS@','\n'.join(trust)).replace('@AUDIO_INF@',audio_inf).replace('@OPTIONAL_DRIVERS@','\n'.join(optional_drivers))
  if probe:
   prepare=(here/prepare_name).read_text().replace('@SYSTEM_SHA@',native['sha256']).replace('@SYSTEM_MANIFEST_SHA@',native['manifest_sha256'])
+  prepare=prepare.replace('@ENGINE_REARM@',archive_commands(a.engine_rearm_plan_sha256.lower()) if rearming else 'rem Explicit rearm not selected; refuse any existing marker.')
   cmd=cmd.replace('@PROBE_PREPARE@',prepare)
  else:cmd=cmd.replace('@PROBE_PREPARE@','rem Hardware probe service not included; PnP only.')
  if re.search('@[A-Z_]+@',cmd):raise SystemExit('未置換変数')
@@ -139,11 +176,12 @@ def main():
  env=os.environ.copy();env.update(TMPDIR=str(stage),LD_LIBRARY_PATH=str(tools/'wimtools'),PYTHONPATH=str(tools/'python-fat'),PYTHONDONTWRITEBYTECODE='1')
  pairs=[(stage/'startnet.cmd','/Windows/System32/startnet.cmd'),(stage/'run-update-once.cmd','/a04br3/run-update-once.cmd'),(staged_pkg,'/a04br3/shared-io'),(staged_fw,'/a04br3/shared-fw')]
  if probe:pairs.extend(((staged_probe,'/a04br3/'+service_name+'.exe'),(staged_probe_cert,'/a04br3/hardware-probe-development.cer'),(private_system,'/a04br3/private-system/SYSTEM.patched')))
+ if rearming:pairs.append((staged_rearm,'/a04br3/engine-rearm-plan.json'))
  commands=''.join('add "'+str(src)+'" '+dst+'\n' for src,dst in pairs)
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'update',str(image),'1'],input=commands,text=True,env=env,check=True)
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'verify',str(image)],env=env,check=True)
  subprocess.run(['python3',str(here/'replace-esp-wim.py'),'--template',str(base/'maintenance-staged-esp.img'),'--wim',str(image),'--output',str(out/'update-esp.img'),'--template-bcd-sha256','65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d','--template-wim-sha256','0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4'],env=env,check=True)
- (out/'manifest.json').write_text(json.dumps({'private_do_not_distribute':bool(a.private_media),'audio_mode':'engine_pcm_retained' if engine else 'private_fixed_tone_diagnostic','selected_service':service_name,'shared_parent_count':1,'components':components,'fixed_clients':['mt6630-wlan-probe.exe',audio_client],'prepared_system':native,'probe':probe_info,'trusted_certificates':{role:hashlib.sha1(der).hexdigest().upper() for role,der in certificates.items()},'source_commit':a.source_commit,'token':token,'files':files,'host_backup_manifest_sha256':sha(backup),'recovery_boot_id':b['recovery_boot_id'],'input_validator_sha256':sha(here/'private_hardware_probe_input.py'),'engine_selector_sha256':sha(here/'engine_io_package.py'),'builder_sha256':sha(Path(__file__).resolve()),'command_sha256':sha(stage/'run-update-once.cmd'),'esp_sha256':sha(out/'update-esp.img'),'signature_verification':'hash/source/certificate pins here; clients and Engine CAT WinVerifyTrust at runtime; INF/SYS catalog membership by Windows servicing/PnP','status':'generated; hardware operation unverified'},indent=2)+'\n')
+ (out/'manifest.json').write_text(json.dumps({'private_do_not_distribute':bool(a.private_media),'audio_mode':'engine_pcm_retained' if engine else 'private_fixed_tone_diagnostic','selected_service':service_name,'shared_parent_count':1,'engine_rearm_plan':rearm_plan,'expected_installed_sys':{name.rsplit('/',1)[-1]:digest for component in components.values() for name,digest in component.get('files',{}).items() if name.endswith('.sys')},'installed_sys_hashes_verified':False,'components':components,'fixed_clients':['mt6630-wlan-probe.exe',audio_client],'prepared_system':native,'probe':probe_info,'trusted_certificates':{role:hashlib.sha1(der).hexdigest().upper() for role,der in certificates.items()},'source_commit':a.source_commit,'token':token,'files':files,'host_backup_manifest_sha256':sha(backup),'recovery_boot_id':b['recovery_boot_id'],'input_validator_sha256':sha(here/'private_hardware_probe_input.py'),'engine_selector_sha256':sha(here/'engine_io_package.py'),'builder_sha256':sha(Path(__file__).resolve()),'command_sha256':sha(stage/'run-update-once.cmd'),'esp_sha256':sha(out/'update-esp.img'),'signature_verification':'hash/source/certificate pins here; clients and Engine CAT WinVerifyTrust at runtime; INF/SYS catalog membership by Windows servicing/PnP','status':'generated; hardware operation unverified'},indent=2)+'\n')
  if a.private_media:
   for p in out.rglob('*'):p.chmod(0o700 if p.is_dir() else 0o600)
 if __name__=='__main__':main()

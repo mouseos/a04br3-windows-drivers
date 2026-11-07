@@ -7,6 +7,7 @@ prove that another Recovery process did not modify Windows in the meantime.
 import argparse
 from datetime import datetime, timezone
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -25,6 +26,9 @@ START_SECTORS = 917504
 SIZE_SECTORS = 29584384
 CONFIG = 'Windows/System32/config/'
 DRIVERS = 'Windows/System32/Drivers/'
+ENGINE_STATE = ('Windows/System32/MT8167EngineProbe/attempted.bin',
+                'Windows/System32/MT8167EngineProbe/logs/service.log',
+                'Windows/System32/MT8167EngineProbe.exe')
 HIVES = ('SYSTEM', 'SOFTWARE', 'DRIVERS')
 UUID = re.compile(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}')
 SHA256 = re.compile(r'[0-9a-f]{64}')
@@ -149,12 +153,15 @@ class Recovery:
             raise BackupError('The Windows mount is not verified read-only NTFS')
 
     def snapshot(self, mount, specs):
-        for directory in ('Windows', 'Windows/System32', CONFIG.rstrip('/'), DRIVERS.rstrip('/')):
+        directories={'Windows', 'Windows/System32', CONFIG.rstrip('/'), DRIVERS.rstrip('/')}
+        for source, required in specs:
+            directories.update(str(parent) for parent in PurePosixPath(source).parents if str(parent) != '.')
+        for directory in sorted(directories):
             path = shlex.quote(mount + '/' + directory)
             self.shell('test -d ' + path + ' && test ! -L ' + path, label='source directory check')
         listings = {folder: set(self.shell('ls -1A ' + shlex.quote(mount + '/' + folder),
                                            label='source directory listing').splitlines())
-                    for folder in (CONFIG, DRIVERS)}
+                    for folder in sorted({source.rsplit('/', 1)[0] + '/' for source, required in specs})}
         result = {}
         for source, required in specs:
             folder, name = source.rsplit('/', 1)
@@ -181,7 +188,7 @@ class Recovery:
         return result
 
 
-def file_specs(sys_names, allow_missing_sys):
+def file_specs(sys_names, allow_missing_sys, engine_state=False):
     names = []
     for name in sys_names:
         if not SYS_NAME.fullmatch(name) or name.casefold() in [x.casefold() for x in names]:
@@ -189,7 +196,7 @@ def file_specs(sys_names, allow_missing_sys):
         names.append(name)
     specs = [(CONFIG + hive, True) for hive in HIVES]
     specs += [(CONFIG + hive + suffix, True) for hive in HIVES for suffix in ('.LOG1', '.LOG2')]
-    return specs + [(DRIVERS + name, not allow_missing_sys) for name in names]
+    return specs + [(DRIVERS + name, not allow_missing_sys) for name in names] + ([(name, True) for name in ENGINE_STATE] if engine_state else [])
 
 
 def write_manifest(out, manifest):
@@ -206,7 +213,10 @@ def capture(args, recovery=None):
     # An existing parent is required; the new private directory is never reused.
     if not out.parent.is_dir():
         raise BackupError('The host backup parent must already exist')
-    specs = file_specs(args.target_sys, args.allow_missing_sys)
+    compare_media=getattr(args,'compare_engine_media',None)
+    compare_sha=getattr(args,'compare_engine_media_sha256',None)
+    if bool(compare_media)!=bool(compare_sha):raise BackupError('Engine media comparison requires both manifest and SHA256')
+    specs = file_specs(args.target_sys, args.allow_missing_sys, getattr(args, 'engine_probe_state', False))
     recovery = recovery or Recovery(args.serial)
     out.mkdir(mode=0o700)
     os.chmod(out, 0o700)
@@ -289,6 +299,15 @@ def capture(args, recovery=None):
     path = write_manifest(out, manifest)
     # No serial, partition, boot ID or file contents on stdout.
     print(json.dumps({'status': manifest['status'], 'manifest_sha256': sha(path)}))
+    if compare_media and manifest['status']=='captured-unmounted':
+        spec=importlib.util.spec_from_file_location('engine_installed',Path(__file__).with_name('verify-engine-installed.py'))
+        verifier=importlib.util.module_from_spec(spec);spec.loader.exec_module(verifier)
+        result=verifier.verify(compare_media,compare_sha,path,sha(path),WORKSPACE)
+        result_path=out/'engine-installed-verification.json'
+        with result_path.open('x') as stream:
+            os.chmod(result_path,0o600);json.dump(result,stream,indent=2);stream.write('\n')
+        print(json.dumps({'engine_installed_status':result['status'],'functional_io_verified':False}))
+        if result['status']!='all-installed-sys-hashes-match':return 3
     return 0 if manifest['status'] == 'captured-unmounted' else 2
 
 
@@ -310,7 +329,7 @@ def verify_manifest(args, recovery=None):
     for item in manifest['files']:
         source = item['source_path']
         allowed_config = {CONFIG + hive + suffix for hive in HIVES for suffix in ('', '.LOG1', '.LOG2')}
-        if not (source in allowed_config or (source.startswith(DRIVERS) and SYS_NAME.fullmatch(source[len(DRIVERS):]))):
+        if not (source in allowed_config or source in ENGINE_STATE or (source.startswith(DRIVERS) and SYS_NAME.fullmatch(source[len(DRIVERS):]))):
             raise BackupError('Unexpected source path in pinned manifest')
         if item['backup_path'] != 'files/' + source or source in seen:
             raise BackupError('Invalid or repeated backup path')
@@ -340,6 +359,9 @@ def main():
     capture_parser.add_argument('--out', type=Path, required=True)
     capture_parser.add_argument('--target-sys', action='append', required=True)
     capture_parser.add_argument('--allow-missing-sys', action='store_true')
+    capture_parser.add_argument('--compare-engine-media',type=Path)
+    capture_parser.add_argument('--compare-engine-media-sha256')
+    capture_parser.add_argument('--engine-probe-state', action='store_true', help='capture fixed Engine marker, service.log and service EXE for explicit rearm')
     capture_parser.add_argument('--mount-driver', choices=('kernel-ntfs', 'ntfs-3g'), default='kernel-ntfs')
     capture_parser.add_argument('--ntfs3g-remote', default='/sbin/ntfs-3g', help='resident binary only; never pushed')
     verify_parser = sub.add_parser('verify', help='read-only writer preflight; performs no write')

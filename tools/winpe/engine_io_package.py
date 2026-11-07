@@ -16,6 +16,7 @@ LEGACY_CERT = '2655FC89A7082D3BAB3F26EC556EE8A3C52F4358'
 BASE_VERSION = '11/06/2026,2026.11.6.1001'
 AUDIO_VERSION = '11/06/2026,2026.11.7.1004'
 WIFI_REGISTRATION_SOURCE = '37a5bb1cc0d34b95d065bbe7bcb3e3a467e93f81'
+WIFI_INF1002_SOURCE = 'd751c6792af4e8c01b0d9442c2e462a54c4d8624'
 WIFI_DIRECT_OID_SOURCE = '9d3a88907b1ac9286d730b1efc8a58b21072462c'
 BRIGHTNESS_SOURCE = '0c73f273dc470dd3cb07c254808d534709dd711f'
 BRIGHTNESS_BOOT = '341894cdcbc90c696e9d8b5b8733314f107e03c1'
@@ -98,32 +99,44 @@ def wifi_override_check(directory, root):
     and any parent/client siblings are never selected or imported.
     """
     package = SignedPackage(directory, root)
-    if (package.record.get('source_commit') != WIFI_REGISTRATION_SOURCE
-            or package.record.get('signing_thumbprint') != ENGINE_CERT):
-        raise ValueError('37a5bb1/BCBF署名Wi-Fi packageのmanifestが必要です')
-    if package.record.get('signed') is not True:
-        # The recovered 37a5bb1 signing manifest omits the optional `signed`
-        # boolean. Accept its fixed schema only with the hashed WDK metadata.
-        if ('signed' in package.record
-                or package.record.get('driver_source_commit') != WIFI_DIRECT_OID_SOURCE
-                or package.record.get('parent_rebuilt') is not False):
-            raise ValueError('Wi-Fi署名manifestの固定回収schema不一致')
+    wifi_source = package.record.get('source_commit')
+    wifi_version = BASE_VERSION if wifi_source == WIFI_REGISTRATION_SOURCE else '11/06/2026,2026.11.6.1002'
+    if wifi_source not in (WIFI_REGISTRATION_SOURCE, WIFI_INF1002_SOURCE):
+        raise ValueError('固定Wi-Fi source以外です')
+    if wifi_source == WIFI_INF1002_SOURCE:
         build = package.json('manifest.json')
-        if (build.get('source_commit') != WIFI_REGISTRATION_SOURCE
-                or build.get('driver_ver') != BASE_VERSION
-                or build.get('wdk_link_succeeded') != 1 or build.get('native_runtime') != 1
-                or build.get('shared_parent_reused') is not True
-                or build.get('shared_parent_source_commit') != ENGINE_RUNTIME
-                or build.get('shared_parent_interface_blob') != '8d1ad9e6221e673a94afdf96af2f099baacb906c'):
-            raise ValueError('回収Wi-Fi packageのhash済みbuild/親interface metadata不一致')
+        if (package.record.get('binary_source_commit') != WIFI_REGISTRATION_SOURCE
+                or package.record.get('binary_rebuilt') is not False
+                or build.get('source_commit') != wifi_source or build.get('driver_ver') != wifi_version
+                or build.get('binary_rebuilt') is not False or build.get('catalog_regenerated') is not True
+                or build.get('catalog_certificate_thumbprint') != ENGINE_CERT
+                or build.get('expected_installed_sys_sha256') != '77b53ac0b902d5d6c864247707e9f319585ebb64d3a17b8a14696c8153e1a821'):
+            raise ValueError('Wi-Fi1002再CAT署名recipeの固定出自不一致')
+    else:
+        if package.record.get('signing_thumbprint') != ENGINE_CERT:
+            raise ValueError('37a5bb1/BCBF署名Wi-Fi packageのmanifestが必要です')
+        if package.record.get('signed') is not True:
+            if ('signed' in package.record
+                    or package.record.get('driver_source_commit') != WIFI_DIRECT_OID_SOURCE
+                    or package.record.get('parent_rebuilt') is not False):
+                raise ValueError('Wi-Fi署名manifestの固定回収schema不一致')
+            build = package.json('manifest.json')
+            if (build.get('source_commit') != wifi_source or build.get('driver_ver') != wifi_version
+                    or build.get('wdk_link_succeeded') != 1 or build.get('native_runtime') != 1
+                    or build.get('shared_parent_reused') is not True
+                    or build.get('shared_parent_source_commit') != ENGINE_RUNTIME
+                    or build.get('shared_parent_interface_blob') != '8d1ad9e6221e673a94afdf96af2f099baacb906c'):
+                raise ValueError('回収Wi-Fi packageのhash済みbuild/親interface metadata不一致')
     cert_path, certificate = package.certificate(ENGINE_CERT)
     names = ['mt6630-runtime.' + extension for extension in ('inf', 'sys', 'cat')]
     selected = {'wifi/' + name: package.file(name) for name in names}
-    check_inf(selected['wifi/mt6630-runtime.inf'], BASE_VERSION)
+    check_inf(selected['wifi/mt6630-runtime.inf'], wifi_version)
+    if wifi_source == WIFI_INF1002_SOURCE and sha(selected['wifi/mt6630-runtime.sys']) != build['expected_installed_sys_sha256']:
+        raise ValueError('Wi-Fi1002の保持すべき署名SYS hash不一致')
     component = {'binary_source_commit': WIFI_REGISTRATION_SOURCE,
-                 'inf_source_commit': WIFI_REGISTRATION_SOURCE,
+                 'inf_source_commit': wifi_source,
                  'direct_oid_fix_source_commit': WIFI_DIRECT_OID_SOURCE,
-                 'driver_ver': BASE_VERSION, 'certificate_thumbprint': ENGINE_CERT,
+                 'driver_ver': wifi_version, 'certificate_thumbprint': ENGINE_CERT,
                  'signed_manifest_sha256': sha(package.manifest), 'explicit_override': True,
                  'replaces_binary_source_commit': LEGACY_RUNTIME,
                  'parent_replaced': False, 'wlan_client_replaced': False,
@@ -219,21 +232,46 @@ def engine_package_check(legacy_path, engine_path, client_path, root, wifi_path=
     return selected, components, certificates
 
 
-def engine_optional_check(brightness_path, toprgu_path, root):
+def engine_optional_check(brightness_path, toprgu_path, root, brightness_manifest_sha256=None):
     selected, components, certificates, commands = {}, {}, {}, []
     if brightness_path:
         package = SignedPackage(brightness_path, root)
-        if package.record.get('source_commit') != BRIGHTNESS_SOURCE or package.record.get('brightness_enabled') != 1:
-            raise ValueError('固定brightness DOD source/profileが必要です')
+        if brightness_manifest_sha256 is not None and (not re.fullmatch('[0-9a-fA-F]{64}',brightness_manifest_sha256) or sha(package.manifest)!=brightness_manifest_sha256.lower()):
+            raise ValueError('brightness manifest SHA256 pin不一致')
+        brightness_source=package.record.get('source_commit')
+        repack=brightness_source != BRIGHTNESS_SOURCE
+        known_repack=brightness_source=='6c665d43bf4a123605f83f6436562dffce25722f'
+        if ((not known_repack and package.record.get('brightness_enabled') != 1) or (repack and
+                (not re.fullmatch('[0-9a-f]{40}', brightness_source or '')
+                 or not re.fullmatch('[0-9a-fA-F]{64}', brightness_manifest_sha256 or '')
+                 or sha(package.manifest) != brightness_manifest_sha256.lower()))):
+            raise ValueError('brightness source/profileと更新manifest hash pinが必要です')
+        if known_repack:
+            metadata=package.json('manifest.json')
+            if (package.record.get('binary_source_commit')!=BRIGHTNESS_SOURCE or package.record.get('sys_resigned') is not False
+                    or package.record.get('signing_thumbprint')!=ENGINE_CERT or metadata.get('binary_recompiled') is not False
+                    or metadata.get('cat_signer_thumbprint')!=ENGINE_CERT or metadata.get('driver_version')!='0.0.1.4'
+                    or metadata.get('expected_sys_sha256')!='71f4ddaec639045a8b7dc1aaa7bc4c341e3f5955e2bec3b00f7a1a91528c7dce'):
+                raise ValueError('brightness14の既知SYS保持/INF出自不一致')
         cert_path, der = package.certificate(ENGINE_CERT)
         names = ['mt8167-display.' + extension for extension in ('sys', 'inf', 'cat')]
         for name in names:
             selected['display/' + name] = package.file(name)
-        check_inf(selected['display/mt8167-display.inf'], '11/06/2026,0.0.1.3')
+        brightness_version='11/06/2026,0.0.1.3'
+        if repack:
+            text=selected['display/mt8167-display.inf'].read_text()
+            found=re.search(r'(?m)^DriverVer\s*=\s*([^\r\n]+)', text)
+            brightness_version=found[1].strip() if found else ''
+            from engine_rearm import version
+            if version(brightness_version) <= version('11/06/2026,0.0.1.3'):
+                raise ValueError('brightness更新には旧版より高いINF版が必要です')
+        check_inf(selected['display/mt8167-display.inf'], brightness_version)
+        if known_repack and sha(selected['display/mt8167-display.sys']) != metadata['expected_sys_sha256']:
+            raise ValueError('brightness14の署名SYS保持hash不一致')
         selected['display-development.cer'] = cert_path
         certificates['optional_brightness'] = der
-        components['display'] = {'binary_source_commit': BRIGHTNESS_SOURCE, 'inf_source_commit': BRIGHTNESS_SOURCE,
-            'driver_ver': '11/06/2026,0.0.1.3', 'certificate_thumbprint': ENGINE_CERT,
+        components['display'] = {'binary_source_commit': brightness_source, 'inf_source_commit': brightness_source,
+            'driver_ver': brightness_version, 'certificate_thumbprint': ENGINE_CERT,
             'signed_manifest_sha256': sha(package.manifest), 'prerequisite_boot_source': BRIGHTNESS_BOOT,
             'boot_installed_verified_here': False, 'normal_live_full_preserved_reported_by_owner': True,
             'files': {'display/' + name: sha(selected['display/' + name]) for name in names}}
@@ -286,3 +324,43 @@ def engine_optional_check(brightness_path, toprgu_path, root):
             'files': {name: sha(path) for name, path in selected.items() if name.startswith('toprgu/')}}
         commands += ['call :adddriver TOPRGU X:\\a04br3\\shared-io\\toprgu\\mt8167-toprgu.inf', 'if errorlevel 1 goto dismfail']
     return selected, components, certificates, commands
+
+
+def parent_override_check(directory, manifest_sha256, root, selected, components):
+    package = SignedPackage(directory, root)
+    if (not re.fullmatch('[0-9a-fA-F]{64}', manifest_sha256 or '')
+            or sha(package.manifest) != manifest_sha256.lower()
+            or not re.fullmatch('[0-9a-f]{40}', package.record.get('source_commit', ''))
+            or package.record.get('signed') is False):
+        raise ValueError('親repackageには固定manifest hash/source/BCBF署名が必要です')
+    if package.record.get('signing_thumbprint') != ENGINE_CERT:
+        if (package.record.get('source_commit') != 'a9f86314f4c63c8c41091682e593e04d3fd0ac2a'
+                or package.record.get('template_commit') != 'a25f089061f2adee487e32c20a397ee5f1060cc6'
+                or package.record.get('binary_source_commit') != ENGINE_RUNTIME):
+            raise ValueError('親1005の固定署名wrapper出自不一致')
+        repack=package.json('package-manifest.json')
+        if (repack.get('binary_source_commit') != ENGINE_RUNTIME
+                or repack.get('inf_source_commit') != package.record['source_commit']
+                or repack.get('inf_source_dirty') is not False or repack.get('runtime_recompiled') is not False
+                or repack.get('driver_ver') != '11/06/2026,2026.11.7.1005'
+                or repack.get('signed_parent_sys_sha256') != sha(selected['parent/mt8167-shared.sys'])
+                or sha(package.file('runtime-parent-manifest.json')) != components['parent']['capability_manifest_sha256']):
+            raise ValueError('親1005のruntime保持/capability/INF出自不一致')
+    cert_path, certificate = package.certificate(ENGINE_CERT)
+    files = {'parent/' + name: package.file(name) for name in
+             ('shared-parent.inf', 'mt8167-shared.sys', 'shared-parent.cat')}
+    if sha(files['parent/mt8167-shared.sys']) != sha(selected['parent/mt8167-shared.sys']):
+        raise ValueError('親repackageは既知Engine署名SYSを保持してください')
+    text = files['parent/shared-parent.inf'].read_text()
+    match = re.search(r'(?m)^DriverVer\s*=\s*([^\r\n]+)', text)
+    driver_ver = match[1].strip() if match else ''
+    from engine_rearm import version
+    if version(driver_ver) <= version(components['parent']['driver_ver']):
+        raise ValueError('親repackageにはEngine旧親より高いDriverVerが必要です')
+    check_inf(files['parent/shared-parent.inf'], driver_ver)
+    component = dict(components['parent'])
+    component.update(inf_source_commit=package.record['source_commit'], driver_ver=driver_ver,
+                     signed_manifest_sha256=sha(package.manifest), explicit_override=True,
+                     files={name: sha(path) for name, path in files.items()})
+    files['parent-development.cer'] = cert_path
+    return files, component, certificate

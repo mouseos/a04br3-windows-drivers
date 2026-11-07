@@ -7,6 +7,9 @@ param(
     [string]$ExpectedLog2Sha256,
     [ValidateSet('MT8167DeviceInstall','MT8167HardwareProbe','MT8167EngineProbe')][string]$ServiceName='MT8167DeviceInstall',
     [switch]$IncludeHardwareProbe,
+    [switch]$RearmEngineProbe,
+    [string]$EngineRearmPlanPath,
+    [string]$ExpectedEngineRearmPlanSha256,
     [ValidateRange(5,120)][int]$TimeoutSeconds=30,
     [ValidateRange(1,999)][int]$ExpectedCurrentControlSet=1,
     [ValidateSet('','Patch','Verify','Cleanup')][string]$InternalMode='',
@@ -83,11 +86,21 @@ function Inspect-Services($Root,$Plan,[bool]$Patch) {
         foreach($spec in $Plan.services) {
             $values=Service-Values $spec
             $key=[MT8167OfflineHive.Native]::OpenPath($Root,($control+'\'+$spec.name),$true)
+            $beforeFingerprint=$null
+            $rearm=$Patch -and $null -ne $Plan.engine_rearm
+            if($rearm) {
+                if($spec.name -cne 'MT8167EngineProbe' -or !$key) { throw 'Rearm requires the existing fixed Engine service' }
+                $beforeFingerprint=[MT8167OfflineHive.Native]::ValueFingerprint($key)
+                if($beforeFingerprint -cne 'dbbe363d2401dfc022606aba010c0e4888c5feab67c748ea5030b0eb3ba484c1' -or
+                   $beforeFingerprint -cne $Plan.engine_rearm.disabled_service_fingerprint -or $key.GetValueNames().Count -ne 7) {
+                    $key.Dispose();throw 'Disabled Engine service raw fingerprint differs from the known exact seven-value registration'
+                }
+            }
             if($key) {
                 # Accept an absent or compatible partial registration only; do not rearm disabled services.
                 foreach($name in $key.GetValueNames()) {
                     if(!$values.Contains($name)) { $key.Dispose();throw 'Unexpected existing one-shot service value' }
-                    $expected=$values[$name];$kind=[Microsoft.Win32.RegistryValueKind]$expected[0]
+                    $expected=$values[$name];if($rearm -and $name -eq 'Start') { $expected=@('DWord',4) };$kind=[Microsoft.Win32.RegistryValueKind]$expected[0]
                     $actual=$key.GetValue($name,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
                     $compatible=$key.GetValueKind($name) -eq $kind
                     if($kind -eq [Microsoft.Win32.RegistryValueKind]::MultiString) {
@@ -111,7 +124,7 @@ function Inspect-Services($Root,$Plan,[bool]$Patch) {
                     elseif($actual -cne $expected[1]) { throw ('Service value mismatch: '+$name) }
                     $actualValues[$name]=@{kind=[string]$key.GetValueKind($name);value=$actual}
                 }
-                $report+=@{name=$spec.name;values=$actualValues}
+                $report+=@{name=$spec.name;values=$actualValues;before_fingerprint=$beforeFingerprint}
             } finally { $key.Dispose() }
         }
         return ,$report
@@ -157,6 +170,10 @@ if($InternalMode) {
             $state.whole_system_audit=$false
             $before=Related-Fingerprints $root $plan
             $state.services=Inspect-Services $root $plan ($InternalMode -eq 'Patch')
+            if($plan.engine_rearm) {
+                $state.engine_rearm_plan_sha256=$plan.engine_rearm_plan_sha256
+                if($InternalMode -eq 'Patch') { $state.disabled_service_fingerprint=$state.services[0].before_fingerprint }
+            }
             $after=Related-Fingerprints $root $plan
             Check-RelatedFingerprints $after $before
             if($plan.related_fingerprints) { Check-RelatedFingerprints $after $plan.related_fingerprints }
@@ -180,6 +197,16 @@ if($InternalMode) {
     if($state.status -ne 'success') { exit 1 };exit 0
 }
 if($ServiceName -eq 'MT8167EngineProbe' -and $IncludeHardwareProbe) { throw 'EngineProbe cannot register or rearm the legacy HardwareProbe service' }
+$engineRearmPlan=$null;$engineRearmPlanHash=$null
+if($RearmEngineProbe) {
+    if($ServiceName -cne 'MT8167EngineProbe' -or $IncludeHardwareProbe -or !$EngineRearmPlanPath -or
+       $ExpectedEngineRearmPlanSha256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'Explicit Engine-only rearm requires a pinned private rearm plan' }
+    $engineRearmPlanHash=Hash-File $EngineRearmPlanPath
+    if($engineRearmPlanHash -cne $ExpectedEngineRearmPlanSha256.ToLowerInvariant()) { throw 'Engine rearm plan SHA256 mismatch' }
+    $engineRearmPlan=Get-Content -Raw -LiteralPath $EngineRearmPlanPath | ConvertFrom-Json
+    if($engineRearmPlan.schema -ne 1 -or $engineRearmPlan.service -cne 'MT8167EngineProbe' -or $engineRearmPlan.maximum_rearms -ne 1 -or
+       $engineRearmPlan.disabled_service_fingerprint -cne 'dbbe363d2401dfc022606aba010c0e4888c5feab67c748ea5030b0eb3ba484c1') { throw 'Only the known disabled Engine registration can be rearmed' }
+} elseif($EngineRearmPlanPath -or $ExpectedEngineRearmPlanSha256) { throw 'Rearm plan requires explicit RearmEngineProbe opt-in' }
 if(!$SourceDirectory -or !$OutputDirectory) { throw 'SourceDirectory and a new OutputDirectory are required' }
 $source=(Resolve-Path -LiteralPath $SourceDirectory).Path
 $out=[IO.Path]::GetFullPath($OutputDirectory)
@@ -195,6 +222,10 @@ if($IncludeHardwareProbe -and $selected[0].name -ne 'MT8167HardwareProbe') { $se
 $names=@($selected | ForEach-Object { $_.name })
 $report=[ordered]@{status='failed-do-not-deploy';whole_system_audit=$false;audit_scope='Select + existing DeviceInstall/RpcSs raw values and exact selected target service values only';source_files=[ordered]@{};timeout_seconds=$TimeoutSeconds;services=$names;errors=@();driver_files_modified=$false}
 $plan=[ordered]@{control_set=$ExpectedCurrentControlSet;related_fingerprints='';services=$selected}
+if($engineRearmPlan) {
+    $plan.engine_rearm=$engineRearmPlan;$plan.engine_rearm_plan_sha256=$engineRearmPlanHash
+    $report.engine_rearm_plan_sha256=$engineRearmPlanHash
+}
 $planFile=Join-Path $out 'plan.json';Save-Json $planFile $plan
 $expected=@{SYSTEM=$ExpectedSystemSha256;'SYSTEM.LOG1'=$ExpectedLog1Sha256;'SYSTEM.LOG2'=$ExpectedLog2Sha256}
 function Invoke-BoundedWorker($Mode,$Directory,$Name,[int]$Seconds) {
@@ -226,6 +257,12 @@ try {
         $report.source_files[$name]=@{sha256=$hash;bytes=(Get-Item -LiteralPath $path).Length}
         [IO.File]::Copy($path,(Join-Path $work $name),$false)
         if((Hash-File (Join-Path $work $name)) -cne $hash) { throw "Workcopy hash mismatch: $name" }
+    }
+    if($engineRearmPlan) {
+        foreach($name in @('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')) {
+            $pin=$engineRearmPlan.source_files.$name
+            if(!$pin -or $pin.sha256.ToLowerInvariant() -cne $report.source_files[$name].sha256 -or $pin.bytes -ne $report.source_files[$name].bytes) { throw 'Rearm plan and fresh native input differ' }
+        }
     }
     $report.input_header=Hive-Header (Join-Path $work 'SYSTEM')
     $patch=Invoke-BoundedWorker 'Patch' $work 'patch-state' $TimeoutSeconds;$report.patch=$patch

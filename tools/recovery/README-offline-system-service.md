@@ -83,3 +83,14 @@ run27のfresh backupと同じSYSTEM/LOGからこのEngine単独候補を作り�
 媒体builderのEngine modeへSYSTEM/result/hashを渡す。旧tone対象のnative resultは拒否される。
 旧markerを削除せず、新markerはMT8167EngineProbe/attempted.binに独立する。
 このsource更新ではnative処理や端末へのコピーは実行していない。
+
+## 明示Engine再arm（次反復）
+
+`-RearmEngineProbe -EngineRearmPlanPath <private plan> -ExpectedEngineRearmPlanSha256 <64桁SHA256>` は
+ServiceName=MT8167EngineProbeだけで使用できる。旧HardwareProbeには適用しない。
+媒体builderのplan生成modeでfresh backup/修正package/昇版に結び付けたplanを先に作る。
+Start4の既知7値raw fingerprintと既存subkey無しが一致した場合だけStart2へ戻す。
+未知の登録、Start2の再利用、無指定でのdisabled service再armは引き続き拒否する。
+結果にplan SHAとpatch時のdisabled fingerprintを記録し、clean reloadにも同じplanを引き継ぐ。
+SYSTEM/LOG3fileの実hash/bytesをplanと照合する。監査は対象7値＋関連Select/DeviceInstall/RpcSsのまま。
+WinPE側の旧disklog/marker保存と再利用拒否は媒体READMEを参照。
