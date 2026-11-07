@@ -34,7 +34,7 @@ try {
  $m.source_commit=(& git -C $root rev-parse HEAD);$m.native_source_commit=$native.source_commit;$m.native_owner_sha256=$native.outputs.sha256;$m.additional_compile_units=@('miniport','query_adapter','native_owner_factory','native_owner_factory_platform','native_owner_allocation','windows_render_cold','windows_native_code')
  $m.linker=Get-Content -Raw "$out\linked\linker.json"|ConvertFrom-Json
  $m|Add-Member -NotePropertyName native_checkpoint -NotePropertyValue @{schema=2;record_bytes=40;manifest_sha256=(Get-FileHash "$NativeDirectory\native-checkpoint-manifest.json" -Algorithm SHA256).Hash.ToLowerInvariant()}
- $m|Add-Member -NotePropertyName poststart_contract -NotePropertyValue @{wddm_version=4096;node_count=1;node_type='3D';node_metadata=$true;owns_post_display=$false;support_non_vga=$false;query_checkpoint_schema=2}
+ $m|Add-Member -NotePropertyName poststart_contract -NotePropertyValue @{wddm_version=4608;node_count=1;node_type='3D';node_metadata=$true;owns_post_display=$false;support_non_vga=$false;query_checkpoint_schema=2}
  $m.outputs=@('ge8300-render.sys','ge8300-umd.dll','ge8300-pair-kmd.lib')|ForEach-Object {@{name=$_;sha256=(Get-FileHash "$out\linked\$_" -Algorithm SHA256).Hash}}
  $m|ConvertTo-Json -Depth 12|Set-Content -Encoding UTF8 "$out\linked\linked-manifest.json"
  & "$PSScriptRoot\package-linked-wdk81.ps1" -EnableCandidate -PreserveSignedUmd -LinkedDirectory "$out\linked" -LinkedManifestSha256 (Get-FileHash "$out\linked\linked-manifest.json" -Algorithm SHA256).Hash -Firmware "$BaselinePackage\ge8300-mips.fw" -OutputDirectory "$out\package"

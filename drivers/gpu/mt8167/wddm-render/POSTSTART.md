@@ -71,3 +71,14 @@ with CancelCommandAware zero and legacy packet-boundary preemption retained.
 This decision follows the exact helper condition, rather than testing arbitrary
 version numbers. Callback ABI remains 0x4002. Standard Direct3D rendering and
 DOD registration remain unverified until the next device receipt.
+
+
+### 3.11 superseded before device testing by 3.12
+
+Further REA of FUN_00014de0 and FUN_00087534 rejects a hardware render-only
+interface below model1.2. Thus 3.11 is not a valid device candidate and was never
+flashed. FUN_0008db28 shows the extra-capability gate is the existing registry
+ValidateWDDMCaps option, default zero. The captured GraphicsDrivers key is empty,
+so there is no evidence that this diagnostic gate was active. Restore model1.2
+and CancelCommandAware=1; retain the two missing interface slots as the actual
+contract repair. No ValidateWDDMCaps policy modification is introduced.
