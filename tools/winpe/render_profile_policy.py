@@ -5,7 +5,7 @@ from pathlib import Path
 from engine_io_package import require_armnt
 
 SIGNER='BCBF6C456C6F0DD0818434763B189488FBF13570'
-FRESH52='93316eb592e8ac9eadabf9805ff7535ac968d816489f3c3875b6460900e615a8'
+FRESH54='521124fdab3b7c3759ee790b76afca18e4988123e6dadc0f5c11e9958d59a1d2'
 FW='5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1'
 PARENT='287241c37fa0eae538e5e2d136dea5df42de7e43'
 BOOT='6e852b1ff13e16609957afc7a2e03da3d371dfe8'
@@ -83,11 +83,11 @@ def package(root,entry,role,repo):
 def load_map(path,root):
  root=root.resolve(strict=True);spec=jsonfile(rooted(root,path));repo=Path(__file__).resolve().parents[2]
  require(set(spec)=={'schema','profile','backup','packages','boot','client'} and spec['schema']==1 and spec['profile']=='offline-render-diagnostic-v1','固定Render profile必須')
- backup=rooted(root,spec['backup']);require(backup.name=='manifest.json' and backup.parent.name=='private-windows-rt-prebackup-run52' and sha(backup)==FRESH52,'fresh52唯一gate不一致')
- b=jsonfile(backup);require(b.get('status')=='captured-unmounted','fresh52未完了')
+ backup=rooted(root,spec['backup']);require(backup.name=='manifest.json' and backup.parent.name=='private-windows-rt-prebackup-run54' and sha(backup)==FRESH54,'fresh54唯一gate不一致')
+ b=jsonfile(backup);require(b.get('status')=='captured-unmounted','fresh54未完了')
  source={x['source_path'].replace('\\','/').lower():x for x in b['files']};base=source['windows/system32/drivers/mt8167-ge8300.sys'];require(base['sha256']==BASE_SYS,'旧2.5実SYS不一致')
  for e in b['files']:
-  p=rooted(root,backup.parent/e['backup_path']);require(sha(p)==e['sha256'] and p.stat().st_size==e['bytes'],'fresh52file不一致')
+  p=rooted(root,backup.parent/e['backup_path']);require(sha(p)==e['sha256'] and p.stat().st_size==e['bytes'],'fresh54file不一致')
  require(set(spec['packages'])==set(TARGETS),'固定3package必須');packages={k:package(root,spec['packages'][k],k,repo) for k in TARGETS}
  boot=rooted(root,spec['boot']);bm=jsonfile(boot);require(bm.get('uefi_source_commit')==BOOT,'matched boot6e852b1必須')
  image=rooted(root,boot.parent/'boot.img');require(sha(image)==bm.get('boot_img_sha256'),'boot image hash不一致')
@@ -96,7 +96,7 @@ def load_map(path,root):
  build=cd/'build-manifest.json';require(sha(build)==hexpin(cr['build_manifest_sha256']),'client build manifest不一致');cb=jsonfile(build);cs=hexpin(c['source_commit'],40);require(cb.get('source_commit')==cs,'client fullsource不一致')
  committed=subprocess.check_output(['git','-C',str(repo),'show',cs+':drivers/gpu/mt8167/wddm-render/testclient/d3d-clear.c']);require(b'PowerVR' in committed and b'hardware=' in committed,'新固定auto選択clientが必要（旧0f8付属clientは不可）')
  exe=cd/'ge8300-d3d-clear.exe';require(sha(exe)==hexpin(cr['signed_sha256']),'client EXE不一致');require_armnt(exe)
- policy={'schema':1,'profile':spec['profile'],'default_off':True,'backup_manifest_sha256':FRESH52,'backup_path':backup.relative_to(root).as_posix(),'packages':packages,'client':{'directory':cd.relative_to(root).as_posix(),'source_commit':cs,'sha256':sha(exe),'manifest_sha256':sha(cm),'arguments':'--hardware=PowerVR','timeout_ms':120000},'boot':{'source_commit':BOOT,'manifest_sha256':sha(boot),'sha256':sha(image),'path':image.relative_to(root).as_posix()},'sequence':['WinPE copy native clean SYSTEM before three DISM AddDriver operations','release report0 exit0','main Recovery writes matched boot6e852b1 and normal ESP','normal service validates exact selected versions and SYS/FW/UMD then fixed client once'],'normal_install_allowed':False,'retained_gpu_baseline_sha256':BASE_SYS}
+ policy={'schema':1,'profile':spec['profile'],'default_off':True,'backup_manifest_sha256':FRESH54,'backup_path':backup.relative_to(root).as_posix(),'packages':packages,'client':{'directory':cd.relative_to(root).as_posix(),'source_commit':cs,'sha256':sha(exe),'manifest_sha256':sha(cm),'arguments':'--hardware=PowerVR','timeout_ms':120000},'boot':{'source_commit':BOOT,'manifest_sha256':sha(boot),'sha256':sha(image),'path':image.relative_to(root).as_posix()},'sequence':['WinPE copy native clean SYSTEM before three DISM AddDriver operations','release report0 exit0','main Recovery writes matched boot6e852b1 and normal ESP','normal service validates exact selected versions and SYS/FW/UMD then fixed client once'],'normal_install_allowed':False,'retained_gpu_baseline_sha256':BASE_SYS}
  return policy
 
 def cbytes(h):return '{'+','.join('0x'+h[i:i+2] for i in range(0,64,2))+'}'
