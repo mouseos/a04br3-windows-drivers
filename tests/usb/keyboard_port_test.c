@@ -55,7 +55,21 @@ int main(void)
  assert(!event(&p,0x20,1,2,now+12) && p.stage==KB_PORT_WAIT && !p.rx_pending && m.releases==2);
  /* Same powered host accepts a second plug, discarding stale endpoint causes. */
  m.fo=0;m.ep0=3;m.rx=0x21;now=connect(&p,&m,now+20);enumerate(&p,&m,now);
- assert(!KbPortTick(&p,now) && p.rx_pending);assert(KbPortTick(&p,now+2000)<0 && p.stage==KB_PORT_FAULT);
+ assert(!KbPortTick(&p,now) && p.rx_pending);
+ /* No changed report is legal, including beyond the old 2-second cutoff. */
+ {unsigned releases=m.releases;unsigned waits[]={2000u,4096u,300000u,0x80000000u,0xfffffff0u};unsigned i;
+  for(i=0;i<sizeof(waits)/sizeof(waits[0]);++i)
+   assert(!KbPortTick(&p,now+waits[i]) && p.stage==KB_PORT_READY && p.rx_pending && m.releases==releases);
+ }
+ m.rx=1;m.count=8;m.fi=0;memset(m.fifo,0,8);m.fifo[2]=4;
+ assert(!event(&p,0,0,2,now+300001u) && m.reports==2 && !p.rx_pending);
+ /* A high-speed endpoint may legally poll only once per 4096 ms. */
+ p.session->speed=0x40;p.session->enumeration.interval=16;p.next_poll=now;
+ assert(!KbPortTick(&p,now) && p.rx_pending);
+ assert(!KbPortTick(&p,now+2000) && p.stage==KB_PORT_READY);
+ m.rx=8;assert(!event(&p,0,0,2,now+4096) && !p.rx_pending);
+ assert(!KbPortTick(&p,now+4096) && p.rx_pending);
+ m.rx=0x40;assert(event(&p,0,0,2,now+4097)<0 && p.stage==KB_PORT_FAULT);
  init(&p,&s,&m);now=connect(&p,&m,0);m.ep0=0x80a;assert(!event(&p,0,1,0,now+1999)); /* stale IRQ cannot extend deadline */
  assert(KbPortTick(&p,now+2000)<0 && p.stage==KB_PORT_FAULT);
  init(&p,&s,&m);assert(!event(&p,0x10,0,0,0));m.ep0=3;m.stuck=1;

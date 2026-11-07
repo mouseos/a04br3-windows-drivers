@@ -411,3 +411,35 @@ USB1006は待機をSTATUS_PENDINGとして表し、InitActivation(stage17)へact
 workitem修正を保持したleaf候補。親コード・flags・資源・interface ABIは1026から
 変更せず、親SYSはbuild/署名/置換しない。Linux/XNU根拠と未解決の境界は
 [ADMISSION-1006.md](ADMISSION-1006.md)を参照。実機未投入、host給電改善は未確認。
+
+## USB1007: interrupt INの待機期限
+
+USB1006のadmission/D0記録修正とUSB1005のHID/workitem修正を保持する。
+READYで発行したinterrupt INを、レポートが来ないという理由だけで2秒後に
+失敗させる処理を削除した。キーボードの無変化・NAKは故障ではない。既存の
+KbRxConfigureが受理するhigh-speed bInterval=16だけでも周期は4096msとなり、
+従来の2000ms期限と矛盾していた。Linux MT8167 vendor musb_host.cの
+musb_host_rxも、non-iso NAKをエラーとせず要求を継続する。
+
+列挙/EP0の進捗期限、HID controlの期限、STALL/protocol error、不正レポート長、
+disconnect、親のhealth検査、device-role/外部VBUS admission guardは変更しない。
+IRQ喪失だけをidleと区別して検出する機構は本修正では追加しない。
+KB_PORTのメンバー配置を保持し、親1026・MT6392・GPIO22・PLL・PHY sequence・
+資源・EDK2・GPUを変更しない。
+
+回帰試験は実keyboard_port/session/EP0を使用し、2000ms、4096ms、300000ms、
+32bit時計のwrapをまたぐ無レポート待機後にも入力できること、NAK再試行、
+STALLの失敗、切断、列挙の2000ms期限を確認する。旧1006は同fixtureの
+2000ms待機で失敗する。ASAN/UBSANと既存USB portable試験を使用する。
+
+これはhost移行後の候補修正であり、run97のID41 device-role待機を解消しない。
+run97のInitParent status0/detail0=32/detail1=1はinterface size/version、
+InitAdmissionWaitと旧InitD0のstatusC000009E/detail0=1は既知待機理由1である。
+parent/resources/HID成功とUSB給電・列挙成功は区別する。既存USB1005を実機で
+保持し、本候補の実機投入は主担当の判断に委ねる。
+
+根拠: Linux vendor kernel-4.4/drivers/misc/mediatek/usb20/musb_host.c
+(musb_host_rxのMUSB_RXCSR_DATAERROR処理、interrupt bIntervalの速度別encoding)。
+機種のusb20_host.c/usb20_phy.cとDTSのID41/GPIO22/detect34/MT6392 VUSBは
+既存実装と照合済み。UniXNU-a04br3のA04BR3Charger系はcharger監視であり、
+コネクタ5V成立やUSB host稼働を証明するものとしては使用しない。

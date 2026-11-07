@@ -116,10 +116,13 @@ int KbPortTick(KB_PORT *p,unsigned now)
   p->stage=KB_PORT_ENUM;p->deadline=now+2000u;break;
  case KB_PORT_ENUM:if(due(now,p->deadline))return fail(p);break;
  case KB_PORT_READY:
-  if(p->rx_pending){if(due(now,p->rx_deadline))return fail(p);}
-  else if(due(now,p->next_poll)){
+  /* Interrupt IN may NAK indefinitely while the keyboard is idle. Linux
+   * musb_host.c keeps the request posted; bInterval is a polling cadence,
+   * not a report deadline (HS interval 16 alone is 4096 ms). Disconnect,
+   * STALL and protocol errors still terminate through KbPortEvents. */
+  if(!p->rx_pending && due(now,p->next_poll)){
    if(KbSessionRequestReport(p->session))return fail(p);
-   p->rx_pending=1;p->rx_deadline=now+2000u;p->next_poll=now+interval(p->session);
+   p->rx_pending=1;p->next_poll=now+interval(p->session);
   }break;
  default:break;
  }
