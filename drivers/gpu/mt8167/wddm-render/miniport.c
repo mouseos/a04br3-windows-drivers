@@ -3,6 +3,7 @@
 #include "kmd_objects.h"
 #include "query_adapter.h"
 #include "init_checkpoint.h"
+#include "../vendor_m1_11/native_factory_checkpoint.h"
 #ifndef GEO_LINKED_NATIVE_CORE
 #error Build this wrapper only with the reviewed in-process native owner core
 #endif
@@ -108,6 +109,29 @@ static NTSTATUS dispatch_io_request(void *const context,ULONG source,PVIDEO_REQU
  packet->StatusBlock->Information=0;
  return STATUS_INVALID_PARAMETER;
 }
+/* WDDM 1.3 requires metadata for every real scheduling node. This adapter
+ * exposes one 3D node and no video/presentation engine or proprietary flags. */
+static NTSTATUS get_node_metadata(HANDLE context,UINT ordinal,PDXGKARG_GETNODEMETADATA metadata) {
+ NTSTATUS status=STATUS_INVALID_PARAMETER;
+ if(context&&metadata&&!ordinal&&KeGetCurrentIrql()==PASSIVE_LEVEL){
+  RtlZeroMemory(metadata,sizeof(*metadata));metadata->EngineType=DXGK_ENGINE_TYPE_3D;status=STATUS_SUCCESS;
+ }
+ GeoFactoryCheckpoint(61,status,ordinal,NT_SUCCESS(status)?DXGK_ENGINE_TYPE_3D:0,0,0);
+ return status;
+}
+/* Record the real OS query and result without changing acceptance or exposing
+ * pointers. This also separates a post-StartDevice failure from owner startup. */
+static NTSTATUS observed_query_adapter_info(HANDLE context,const DXGKARG_QUERYADAPTERINFO *query) {
+ NTSTATUS status=GeoQueryAdapterInfo(context,query);ULONG type=query?(ULONG)query->Type:0xffffffffu;
+ GeoFactoryCheckpoint(type<=20u?40u+type:63u,status,type,query?query->InputDataSize:0,query?query->OutputDataSize:0,0);
+ if(NT_SUCCESS(status)&&type==DXGKQAITYPE_DRIVERCAPS&&query->OutputDataSize>=sizeof(DXGK_DRIVERCAPS)){
+  const DXGK_DRIVERCAPS *caps=query->pOutputData;
+  GeoFactoryCheckpoint(62,status,caps->SchedulingCaps.Value,(ULONG)caps->WDDMVersion,
+   caps->GpuEngineTopology.NbAsymetricProcessingNodes,
+   (caps->SupportNonVGA?1u:0u)|(caps->SupportPerEngineTDR?2u:0u)|(caps->FlipCaps.FlipOnVSyncMmIo?4u:0u));
+ }
+ return status;
+}
 static NTSTATUS query_child_relations(void *const context,PDXGK_CHILD_DESCRIPTOR children,ULONG bytes) {
  const struct geo_render_device *d=context;
  if(!d||!children||bytes!=sizeof(*children)||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
@@ -154,7 +178,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry) {
  table.DxgkDdiAddDevice=add_device;table.DxgkDdiStartDevice=start_device;
  table.DxgkDdiStopDevice=stop_device;table.DxgkDdiRemoveDevice=remove_device;
  table.DxgkDdiSetPowerState=power_state;table.DxgkDdiInterruptRoutine=interrupt_routine;table.DxgkDdiDpcRoutine=dpc_routine;
- table.DxgkDdiQueryAdapterInfo=GeoQueryAdapterInfo;table.DxgkDdiPreemptCommand=GeoPreemptCommand;
+ table.DxgkDdiQueryAdapterInfo=observed_query_adapter_info;table.DxgkDdiPreemptCommand=GeoPreemptCommand;
  table.DxgkDdiCancelCommand=GeoCancelCommand;
  table.DxgkDdiDescribeAllocation=GeoDescribeAllocation;table.DxgkDdiGetStandardAllocationDriverData=GeoGetStandardAllocationDriverData;
  table.DxgkDdiCollectDbgInfo=GeoCollectDbgInfo;
@@ -166,6 +190,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry) {
  table.DxgkDdiSubmitCommand=GeoSubmitCommand;table.DxgkDdiQueryCurrentFence=GeoQueryCurrentFence;
  table.DxgkDdiResetFromTimeout=GeoResetFromTimeout;table.DxgkDdiRestartFromTimeout=GeoRestartFromTimeout;
  table.DxgkDdiDispatchIoRequest=dispatch_io_request;
+ table.DxgkDdiGetNodeMetadata=get_node_metadata;
  table.DxgkDdiQueryChildRelations=query_child_relations;
  table.DxgkDdiQueryChildStatus=query_child_status;table.DxgkDdiQueryDeviceDescriptor=query_device_descriptor;
  table.DxgkDdiResetDevice=reset_display_to_vga;table.DxgkDdiUnload=unload_driver;

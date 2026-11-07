@@ -53,7 +53,7 @@ NTSTATUS APIENTRY GeoQueryAdapterInfo(HANDLE handle,const DXGKARG_QUERYADAPTERIN
   if(status!=STATUS_SUCCESS)break;
   /* Never overwrite an overclaim with a silently more plausible cap set. */
   if(caps.HighestAcceptableAddress.QuadPart!=(LONGLONG)a->aperture.highest_dma_address||
-     caps.ApertureSegmentCommitLimit!=a->aperture.commit_limit||!caps.SupportNonVGA||
+     caps.ApertureSegmentCommitLimit!=a->aperture.commit_limit||caps.SupportNonVGA||
      !caps.SchedulingCaps.MultiEngineAware||caps.GpuEngineTopology.NbAsymetricProcessingNodes!=1||
      caps.MaxPointerWidth||caps.MaxPointerHeight||caps.MaxOverlays||caps.SupportDirectFlip||caps.SupportMultiPlaneOverlay||
      caps.MemoryManagementCaps.CrossAdapterResource||caps.HybridDiscrete){status=STATUS_INVALID_PARAMETER;break;}
@@ -71,7 +71,10 @@ NTSTATUS GeoBuildRequiredDriverCaps(struct geo_kmd_adapter *a,DXGK_DRIVERCAPS *c
  /* Actual packet-boundary preemption uses the documented Windows 7 policy.
   * Do not claim Win8 mid-packet/context-save support or NoDmaPatching. */
  caps->SchedulingCaps.PreemptionAware=0;caps->GpuEngineTopology.NbAsymetricProcessingNodes=1;
- caps->SupportNonVGA=TRUE;
+ /* SupportNonVGA claims StopDeviceAndReleasePostDisplayOwnership support;
+  * it does not mean that this is a non-VGA render adapter. This device owns
+  * no POST scanout and exposes no such display DDI. */
+ caps->SupportNonVGA=FALSE;
  /* WDDMVersion is RESERVED and zero for Win7+ DDIs (Microsoft contract).
   * Target API version is DRIVER_INITIALIZATION_DATA.Version=0x4002. Display,
   * overlays, flips, runtime F-states and per-engine TDR stay unadvertised. */
