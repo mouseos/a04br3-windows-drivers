@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "windows_start.h"
+#include "windows_clock.h"
 #include "A04BR3RogueRuntimeLayout.h"
 #include "A04BR3RogueStartupExecutor.h"
 #include "A04BR3RogueDeviceWords.h"
@@ -45,9 +46,11 @@ static uint32_t shared(void *ctx,uint32_t physical)
 int a04_vendor_m1_11_power_valid(const struct a04_vendor_power_snapshot *p)
 {
     const uint32_t domains=(1u<<25)|(1u<<24)|(1u<<4);
+    ULONG hz,parent;
+    if(!NT_SUCCESS(mt8167_gpu_clock_read(&hz,&parent))) return 0;
     return p && (p->spm_status&domains)==domains &&
         (p->spm_status_2&domains)==domains && !(p->mfg_clock_status&15u) &&
-        ((p->top_mux0>>8)&7u)==4u && ((p->top_mux1>>8)&63u)==8u &&
+        ((p->top_mux0>>8)&7u)==parent && ((p->top_mux1>>8)&63u)==8u &&
         !(p->top_slow&((3u<<18)|(3u<<20)));
 }
 NTSTATUS a04_vendor_m1_11_windows_start(struct a04_vendor_start *s,
@@ -58,12 +61,16 @@ NTSTATUS a04_vendor_m1_11_windows_start(struct a04_vendor_start *s,
     struct start_io context;struct a04_rgx_exec_io io;
     uint64_t addr,off;unsigned i,tries;uint32_t irq=0,updated;int result;
     NTSTATUS status=STATUS_DEVICE_CONFIGURATION_ERROR;
+    ULONG clock_hz,clock_parent;
     if(!s || !m || !core || KeGetCurrentIrql()!=PASSIVE_LEVEL || s->attempted ||
        s->trampoline_allocation || !m->adapter || !m->staged || m->hardware_owned ||
        core_bytes<0xa104u || ((ULONG_PTR)core&3u) || !a04_vendor_m1_11_power_valid(power) ||
        (irq_mode!=A04_VENDOR_IRQ_MASKED && irq_mode!=A04_VENDOR_IRQ_HANDLER_OWNS) ||
        observed_bvnc!=0x001600280036001eULL || !m->runtime || !m->runtime->init)
         return STATUS_INVALID_DEVICE_STATE;
+    status=mt8167_gpu_clock_read(&clock_hz,&clock_parent);
+    if(!NT_SUCCESS(status) || m->clock_hz!=clock_hz || m->clock_parent!=clock_parent)
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
     s->memory=m;s->core=core;
     if(m->uncached) {
         struct a04_vendor_uncached allocation={0};

@@ -6,9 +6,19 @@ int main(void) {
  struct a04_mma8652_sample s={-1024,0,1024}; struct a04_mma_hid_features f={1,10,20};
  uint8_t in[A04_MMA_HID_INPUT_SIZE], feat[A04_MMA_HID_FEATURE_SIZE]; size_t n;
  assert(a04_mma_hid_descriptor(&n) && n>100);
- a04_mma_hid_input(&s,in); assert(in[0]==1 && in[1]==1 && in[2]==3);
- assert(in[3]==0x9c && in[4]==0xff && in[5]==0 && in[6]==0 && in[7]==100 && in[8]==0);
+ a04_mma_hid_input(&s,in); assert(in[0]==1 && in[1]==2 && in[2]==4);
+ assert(in[3]==0 && in[4]==0 && in[5]==100 && in[6]==0 && in[7]==100 && in[8]==0);
+ { struct a04_mma8652_sample y={0,1024,-1024};
+   a04_mma_hid_input(&y,in);
+   assert(in[3]==100 && in[4]==0 && in[5]==0 && in[6]==0 && in[7]==0x9c && in[8]==0xff);
+ }
  a04_mma_hid_get_feature(&f,feat); assert(feat[3]==10 && feat[5]==20 && !a04_mma_hid_set_feature(&f,feat,sizeof(feat)));
+ assert(feat[1]==2 && feat[2]==2 && feat[13]==1);
+ /* SET_FEATURE must ignore read-only fields in a host-built report. */
+ feat[2]=0; feat[13]=0;
+ assert(!a04_mma_hid_set_feature(&f,feat,sizeof(feat)) && f.reporting==1);
+ feat[1]=1; assert(!a04_mma_hid_set_feature(&f,feat,sizeof(feat)) && !f.reporting);
+ feat[1]=2;
  feat[5]=19; assert(a04_mma_hid_set_feature(&f,feat,sizeof(feat)) && f.interval_ms==20);
  { struct a04_mma8652_sample prev={0,0,0}, cur={101,0,0};
    f.reporting=2; f.sensitivity=10;

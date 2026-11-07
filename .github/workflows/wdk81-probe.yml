@@ -6,8 +6,17 @@ on:
         description: Keep the Windows runner available over SSH
         type: boolean
         default: false
+      dev_ssh_only:
+        description: Open one reusable development runner without unrelated build checks
+        type: boolean
+        default: false
+      ssh_keep_minutes:
+        description: Development SSH lifetime, at most 330 minutes
+        type: number
+        default: 330
 jobs:
   probe:
+    if: ${{ !(inputs.ssh_debug && inputs.dev_ssh_only) }}
     runs-on: windows-2022
     timeout-minutes: 210
     steps:
@@ -53,6 +62,7 @@ jobs:
             if ($process.ExitCode -ne 0) { throw "$name installation failed or requires reboot" }
           }
       - name: Inspect ARM32 WDK headers and import libraries
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -63,9 +73,11 @@ jobs:
             if (-not (Test-Path $full)) { throw "Missing required ARM32 WDK component: $path" }
           }
       - name: Compile non-operational Storport interface probe
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: ./tools/ci/build-wdk81-probe.ps1
       - name: Compile isolated boot storage with and without multiblock reads
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: |
           $env:A04_BOOT_EXPERIMENT='1'
@@ -83,29 +95,37 @@ jobs:
           $env:A04_BOOT_MULTIBLOCK_EXPERIMENT='1'
           ./tools/ci/build-wdk81-probe.ps1
       - name: Compile non-operational ARM32 touch link probe
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: ./tools/ci/build-touch-link-probe.ps1
       - name: Compile non-operational ARM32 KMDF probe
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: ./tools/ci/build-kmdf-touch-probe.ps1
       - name: Compile experimental button interface probe
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: ./tools/ci/build-button-kernel-probe.ps1
       - name: Compile experimental KMDF button provider
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: ./tools/ci/build-button-provider.ps1
       - name: Compile LC709203F battery components
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: ./tools/ci/build-lc709203f-probe.ps1
       - name: Compile button provider PnP status tool
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: ./tools/ci/build-button-provider-status.ps1
       - name: Compile GE8300 firmware provider and status tool
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: |
           ./tools/ci/build-ge8300-provider.ps1
           ./tools/ci/build-ge8300-status.ps1
       - name: Compile default and ownership-gated GCE provider
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -121,9 +141,11 @@ jobs:
           $env:A04_GCE_IRQ_ATTACH='1'
           ./tools/ci/build-mt8167-gce.ps1
       - name: Compile non-installable ARM32 display-only build check
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: ./tools/ci/build-wddm-display-arm.ps1
       - name: Compile display GCE observation diagnostic
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -139,6 +161,7 @@ jobs:
           $env:A04_GE8300_WDDM_GPU_POST_DIAGNOSTIC='1'
           ./tools/ci/build-wddm-display-arm.ps1
       - name: Build and test-sign observation packages
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -176,9 +199,11 @@ jobs:
           path: ${{ runner.temp }}\gce-observation-signed
           if-no-files-found: error
       - name: Compile WinPE file comparison tool
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: ./tools/ci/build-compare-files.ps1 -Arch arm
       - name: Sign and stage experimental button probe
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -192,20 +217,24 @@ jobs:
           Copy-Item $driver $output
           [ordered]@{ source_commit = (git rev-parse HEAD); sha256 = (Get-FileHash $driver -Algorithm SHA256).Hash; note = 'Experimental test-signed diagnostic; not a production driver.' } | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $output 'manifest.json')
       - name: Upload experimental button probe
+        if: ${{ !inputs.ssh_debug }}
         uses: actions/upload-artifact@v4
         with:
           name: a04-button-kernel-probe
           path: ${{ runner.temp }}\a04-button-artifact
           if-no-files-found: error
       - name: Test guarded cleanup with a missing driver file
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: |
           ./tools/ci/build-compare-files.ps1 -Arch x64
           ./tools/ci/test-button-kernel-missing.ps1
       - name: Test button provider staging guards
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: ./tools/ci/test-button-provider-stage.ps1
       - name: Test button provider removal guards
+        if: ${{ !inputs.ssh_debug }}
         shell: pwsh
         run: ./tools/ci/test-button-provider-remove.ps1
       - name: Open restricted SSH for intervention
@@ -214,3 +243,16 @@ jobs:
         uses: ./.github/actions/open-ssh
         with:
           authorized-key: ${{ secrets.A04BR3_RUNNER_SSH_PUBLIC_KEY }}
+
+  development:
+    if: ${{ inputs.ssh_debug && inputs.dev_ssh_only }}
+    runs-on: windows-2022
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - name: Keep one SSH runner through setup and hardware debugging
+        uses: ./.github/actions/open-ssh
+        with:
+          authorized-key: ${{ secrets.A04BR3_RUNNER_SSH_PUBLIC_KEY }}
+          keep-minutes: ${{ inputs.ssh_keep_minutes }}
+          on-ready-script: tools/ci/hold-wdk81-development.ps1

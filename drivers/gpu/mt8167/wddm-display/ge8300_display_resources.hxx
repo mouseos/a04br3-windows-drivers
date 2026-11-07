@@ -1,3 +1,4 @@
+#include "../idle_transition_diagnostic.h"
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #ifndef A04_DISPLAY_RESOURCES_HXX
 #define A04_DISPLAY_RESOURCES_HXX
@@ -100,6 +101,9 @@
 #if A04_GE8300_WDDM_SHARED_LEASE && !A04_GE8300_WDDM_DIRECT_EXPERIMENT
 #error Shared lease requires WDDM direct experiment
 #endif
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC && !A04_GE8300_WDDM_LIVE_FULL_PRESENT
+#error Idle transition diagnostic requires live full presents
+#endif
 #if A04_GE8300_WDDM_DIRECT_EXPERIMENT
 #include "../ge8300_status.h"
 #include "shared_common_policy.h"
@@ -136,7 +140,12 @@ struct A04DisplayResources {
     NTSTATUS SharedCommonResult;
     void *SharedCommonOwner;
 #if A04_GE8300_WDDM_LIVE_FULL_PRESENT
-    BOOLEAN LiveReady,LiveFaulted;uint32_t LiveFrames;
+    BOOLEAN LiveReady,LiveFaulted,LiveShadowValid,LiveCpuFallback;uint32_t LiveFrames;
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+    BOOLEAN IdleRetirementMarked,IdleRestoreChecked;
+#endif
+    void *LiveShadow;uint32_t LiveWidth,LiveHeight,LiveRotation,LiveOffset;
+    NTSTATUS RetireToCpu();
     NTSTATUS SubmitLiveFrame(const void *pixels,uint32_t pitch);
 #endif
 #if A04_GE8300_WDDM_PRESENT_CAPTURE

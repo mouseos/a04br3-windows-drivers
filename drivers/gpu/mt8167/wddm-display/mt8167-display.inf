@@ -5,7 +5,7 @@ Signature="$WINDOWS NT$"
 Class=Display
 ClassGuid={4D36E968-E325-11CE-BFC1-08002BE10318}
 Provider=%Provider%
-DriverVer=11/04/2026,0.0.1.0
+DriverVer=11/06/2026,0.0.1.2
 CatalogFile=mt8167-display.cat
 
 [Manufacturer]
@@ -23,14 +23,14 @@ DriverCopy=12
 [SourceDisksFiles]
 mt8167-display.sys=1
 
-[Install]
+[Install.NTarm]
 FeatureScore=F9
 CopyFiles=DriverCopy
 
 [DriverCopy]
 mt8167-display.sys
 
-[Install.Services]
+[Install.NTarm.Services]
 AddService=MT8167Display,0x00000002,Service
 
 [Service]

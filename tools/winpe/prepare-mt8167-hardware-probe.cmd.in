@@ -1,0 +1,33 @@
+if exist C:\Windows\System32\MT8167HardwareProbe\attempted.bin goto dismfail
+mkdir C:\Windows\System32\MT8167HardwareProbe >> "%A04_REPORT%" 2>&1
+copy /y X:\a04br3\shared-io\clients\*.exe C:\Windows\System32\MT8167HardwareProbe\ >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /y X:\a04br3\MT8167HardwareProbe.exe C:\Windows\System32\MT8167HardwareProbe.exe >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+reg.exe load HKLM\Mt8167InstallSystem C:\Windows\System32\config\SYSTEM >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+rem This media targets the observed installed image; reject another active control set.
+reg.exe query HKLM\Mt8167InstallSystem\Select /v Current | findstr /r /c:"0x1$" >nul
+if errorlevel 1 goto probefail
+set "A04_SVC=HKLM\Mt8167InstallSystem\ControlSet001\Services\MT8167HardwareProbe"
+reg.exe query "%A04_SVC%" >nul 2>&1
+if not errorlevel 1 goto probefail
+reg.exe add "%A04_SVC%" /v Type /t REG_DWORD /d 16 /f >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto probefail
+reg.exe add "%A04_SVC%" /v Start /t REG_DWORD /d 2 /f >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto probefail
+reg.exe add "%A04_SVC%" /v ErrorControl /t REG_DWORD /d 1 /f >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto probefail
+reg.exe add "%A04_SVC%" /v ImagePath /t REG_EXPAND_SZ /d C:\Windows\System32\MT8167HardwareProbe.exe /f >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto probefail
+reg.exe add "%A04_SVC%" /v ObjectName /t REG_SZ /d LocalSystem /f >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto probefail
+reg.exe add "%A04_SVC%" /v DisplayName /t REG_SZ /d "MediaTek MT8167 Hardware Probe" /f >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto probefail
+reg.exe unload HKLM\Mt8167InstallSystem >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+goto probeprepared
+:probefail
+reg.exe unload HKLM\Mt8167InstallSystem >> "%A04_REPORT%" 2>&1
+goto dismfail
+:probeprepared

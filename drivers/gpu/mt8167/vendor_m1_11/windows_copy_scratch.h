@@ -34,6 +34,7 @@ struct a04_vendor_copy_scratch {
 #if A04_GE8300_SHARED_WIDE_FRAME
     struct a04_vendor_wide_state wide_state;
     BOOLEAN wide_frame;
+    ULONG wide_guard_samples; /* bounded scratch checks, not DMA-retirement proof */
 #endif
     BOOLEAN prepared,exposed,usc_ready,task_frozen;
 };

@@ -7,6 +7,8 @@
 #include "windows_queue_test.h"
 #include "windows_linear_context.h"
 #include "ge8300_status.h"
+#include "present_trace_policy.h"
+#include "idle_transition_diagnostic.h"
 #include "vendor_m1_11/windows_stage.h"
 #include "vendor_m1_11/windows_power_acpi.h"
 #include "pvr_rogue_fwif.h"
@@ -188,6 +190,36 @@
 #if A04_GE8300_VENDOR_STAGE && A04_GE8300_BOOT_TEST
 #error Vendor firmware staging cannot be combined with modern firmware boot
 #endif
+#ifndef A04_GE8300_VENDOR_NATIVE_BACKING
+#define A04_GE8300_VENDOR_NATIVE_BACKING 0
+#endif
+#if A04_GE8300_VENDOR_NATIVE_BACKING && (!A04_GE8300_VENDOR_RENDER_COLD || !A04_GE8300_VENDOR_UNCACHED_STAGE || !A04_GE8300_VENDOR_COPY_DIAGNOSTIC || !A04_GE8300_SHARED_LEASE)
+#error Native backing requires the matched cold uncached shared render owner
+#endif
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+#include "vendor_m1_11/windows_native_cold.h"
+#endif
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC && !A04_GE8300_VENDOR_COPY_SERVICE
+#error Idle transition diagnostic requires the native copy service
+#endif
+
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+/* Driver-managed S0 idle is supported by KMDF 1.13. No callback invocation,
+ * external wake claim, PoFx policy or D3cold transition is fabricated here. */
+static NTSTATUS GpuAssignDiagnosticIdle(WDFDEVICE device,BOOLEAN enabled)
+{
+    WDF_DEVICE_POWER_POLICY_IDLE_SETTINGS settings;
+    WDF_DEVICE_POWER_POLICY_IDLE_SETTINGS_INIT(&settings,IdleCannotWakeFromS0);
+    settings.DxState=PowerDeviceD3;
+    settings.IdleTimeout=A04_GE8300_IDLE_DIAGNOSTIC_MS;
+    settings.IdleTimeoutType=DriverManagedIdleTimeout;
+    settings.UserControlOfIdleSettings=IdleDoNotAllowUserControl;
+    settings.Enabled=enabled?WdfTrue:WdfFalse;
+    settings.PowerUpIdleDeviceOnSystemWake=WdfFalse;
+    settings.ExcludeD3Cold=WdfTrue;
+    return WdfDeviceAssignS0IdleSettings(device,&settings);
+}
+#endif
 #define CORE_BASE 0x13000000u
 #define CORE_SIZE 0x80000u
 #define MFG_BASE  0x13ffe000u
@@ -202,11 +234,14 @@ typedef struct {
     struct a04_vendor_m1_11_memory vendor;
 #if A04_GE8300_VENDOR_RENDER_COLD
     struct a04_vendor_render_cold vendor_render;
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+    struct a04_vendor_native_cold *vendor_native;
+#endif
 #if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
     struct a04_vendor_copy_scratch vendor_copy;
     BOOLEAN vendor_copy_device_ref;
 #if A04_GE8300_VENDOR_COPY_SERVICE
-    volatile LONG vendor_service_closed; BOOLEAN vendor_service_online;
+    volatile LONG vendor_service_closed; BOOLEAN vendor_service_online, vendor_cpu_fallback;
 #if A04_GE8300_SHARED_LEASE
 #if A04_GE8300_SHARED_COMMON_PAGE
     BOOLEAN shared_common_active;
@@ -217,6 +252,7 @@ typedef struct {
 #if A04_GE8300_SHARED_FULL_FRAME
     struct a04_shared_frame_sequence shared_frame;
     ULONGLONG shared_frame_started;
+    ULONG wide_present_reports;
 #endif
 #endif
 #endif
@@ -248,6 +284,11 @@ typedef struct {
     BOOLEAN copy_online;
 #endif
     struct a04_ge8300_status status;
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+    NTSTATUS idle_diag_policy_status;
+    BOOLEAN idle_diag_armed,idle_diag_exit_marked,idle_diag_d3_retired;
+    BOOLEAN idle_diag_reentry_marked,idle_diag_proof_marked;
+#endif
     BOOLEAN referenced, attempted;
 } GPU_CONTEXT;
 #if A04_GE8300_BOOT_TEST || A04_GE8300_VENDOR_START_DIAGNOSTIC
@@ -400,6 +441,58 @@ static void GpuBugCallback(PVOID buffer,ULONG length)
 }
 #endif
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(GPU_CONTEXT,GpuContext)
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+static void GpuObserveDiagnosticEntry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
+{
+    GPU_CONTEXT *c=GpuContext(device);NTSTATUS status;
+    if(!c->attempted) {
+        GpuPrint("A04GPU IDLE POLICY=");GpuHex((ULONG)c->idle_diag_policy_status);
+        GpuPrint(" MS=");GpuHex(A04_GE8300_IDLE_DIAGNOSTIC_MS);GpuPrint("\n");
+    } else if(previous==WdfPowerDeviceD3 && c->idle_diag_d3_retired && !c->idle_diag_reentry_marked) {
+        c->idle_diag_reentry_marked=TRUE;
+        GpuPrint("A04GPU IDLE REENTRY D3\n");
+        status=GpuAssignDiagnosticIdle(device,FALSE);
+        if(NT_SUCCESS(status))c->idle_diag_armed=FALSE;
+        GpuPrint("A04GPU IDLE DISARM=");GpuHex((ULONG)status);GpuPrint("\n");
+        /* Even a policy failure is diagnostic, not a cold FW restart. */
+    }
+
+}
+#endif
+#if A04_GE8300_VENDOR_COPY_SERVICE
+/* Caller holds vendor_lifetime. Acknowledged FW retirement permits CPU pixel
+ * writes, never DMA release or a new FW start. Failure is terminal/closed. */
+static NTSTATUS GpuRetireToCpu(GPU_CONTEXT *c)
+{
+    NTSTATUS status, idle=STATUS_NOT_SUPPORTED;unsigned failed=4;
+    InterlockedExchange(&c->vendor_service_closed,1);
+    c->vendor_service_online=FALSE;
+    if(c->vendor_cpu_fallback)return STATUS_SUCCESS;
+    if(!c->vendor.hardware_owned) {
+        if(c->vendor_copy.exposed)return STATUS_DEVICE_BUSY;
+        c->vendor_cpu_fallback=TRUE;return STATUS_SUCCESS;
+    }
+    if(!c->vendor_start.online || c->vendor_start.shutdown_started ||
+       c->vendor_start.command_poisoned || c->vendor_render.poisoned ||
+       InterlockedCompareExchange(&c->vendor_start.command_busy,0,0))return STATUS_DEVICE_BUSY;
+    /* Drain every client CCB and require CLEANUP RUN without BUSY before
+     * forced idle/off. These are the existing bounded m1.11 transports. */
+    if(!a04_vendor_irq_retire(c->vendor_irq))return STATUS_DEVICE_BUSY;
+    status=a04_vendor_render_cleanup_contexts(&c->vendor_render,&c->vendor_start,&failed);
+    if(NT_SUCCESS(status))status=a04_vendor_m1_11_windows_forced_power_off(&c->vendor_start,TRUE,&idle);
+    if(NT_SUCCESS(status) && (c->vendor_render.cleanup_mask!=15u ||
+       !c->vendor_start.power_off_ack || c->vendor_start.online))status=STATUS_IO_DEVICE_ERROR;
+    c->status.shutdown_status=status;
+    GpuPrint("A04GPU RETIRE CPU=");GpuHex((ULONG)status);
+    GpuPrint(" CLEANUP=");GpuHex(c->vendor_render.cleanup_mask);
+    GpuPrint(" FAILED=");GpuHex(failed);GpuPrint(" IDLE=");GpuHex((ULONG)idle);GpuPrint(" DMA RETAINED\n");
+    if(NT_SUCCESS(status)) {
+        c->vendor_cpu_fallback=TRUE;c->status.firmware_started=0;
+        a04_vendor_irq_set_power(c->vendor_irq,FALSE);
+    }
+    return status;
+}
+#endif
 #if A04_GE8300_SHARED_LEASE
 /* Caller holds vendor_lifetime. Establish the existing fenced-copy contract
  * internally; sharing must not depend on an external diagnostic executable. */
@@ -427,7 +520,12 @@ static NTSTATUS GpuVendorIrqService(void *context)
 {
     GPU_CONTEXT *c=context;NTSTATUS status;
     WdfWaitLockAcquire(c->vendor_lifetime,NULL);
-    status=a04_vendor_m1_11_windows_irq_snapshot(&c->vendor_start,TRUE,&c->vendor_irq_snapshot);
+    status=(c->vendor_start.shutdown_started
+#if A04_GE8300_VENDOR_COPY_SERVICE
+        || InterlockedCompareExchange(&c->vendor_service_closed,0,0)
+#endif
+        ) ? STATUS_DEVICE_NOT_READY :
+        a04_vendor_m1_11_windows_irq_snapshot(&c->vendor_start,TRUE,&c->vendor_irq_snapshot);
     if(NT_SUCCESS(status)) (void)a04_vendor_irq_rearm(c->vendor_irq);
     WdfWaitLockRelease(c->vendor_lifetime);return status;
 }
@@ -605,6 +703,9 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 #if A04_GE8300_VENDOR_START_DIAGNOSTIC
     GpuPrint("A04GPU NATIVE D0 ENTER\n");
 #endif
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+    GpuObserveDiagnosticEntry(device,previous);
+#endif
     if(c->attempted) return STATUS_SUCCESS;
     c->attempted=TRUE; c->status.version=5;
 #if !A04_GE8300_BOOT_TEST
@@ -666,6 +767,8 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 #else
     else status=a04_vendor_m1_11_windows_stage(&c->vendor,adapter,image,bytes);
 #endif
+    GpuPrint("A04GPU CLOCK HZ=");GpuHex(c->vendor.clock_hz);
+    GpuPrint(" PARENT=");GpuHex(c->vendor.clock_parent);GpuPrint("\n");
     ExFreePoolWithTag(image,'0XGA');
 #if A04_GE8300_VENDOR_RENDER_COLD
     if(NT_SUCCESS(status)) {
@@ -676,19 +779,32 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         if(NT_SUCCESS(status))status=a04_vendor_copy_scratch_prepare(&c->vendor_copy,&c->vendor_render,copy_map_registers);
         if(NT_SUCCESS(status))status=a04_vendor_copy_scratch_stage_usc(&c->vendor_copy,a04_copy_usc_asset,sizeof(a04_copy_usc_asset));
         if(NT_SUCCESS(status))status=a04_vendor_copy_scratch_freeze(&c->vendor_copy);
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+        if(NT_SUCCESS(status))status=a04_vendor_native_allocate_cold(&c->vendor_native,
+            &c->vendor_render,adapter,copy_map_registers,800,1280);
+        GpuPrint("A04GPU NATIVE BACKING=");GpuHex((ULONG)status);
+        GpuPrint(" BYTES=");GpuHex(a04_vendor_native_bytes(c->vendor_native));GpuPrint("\n");
+#endif
         /* Retain device context and adapter for the diagnostic boot.  A
          * reference alone does not establish physical-removal safety. */
         if(c->vendor_copy.exposed) {WdfObjectReference(device);c->vendor_copy_device_ref=TRUE;}
         if(!NT_SUCCESS(status) && c->vendor_copy.prepared && !c->vendor_copy.exposed)
             (void)a04_vendor_copy_scratch_release(&c->vendor_copy);
-        if(!NT_SUCCESS(status) && !c->vendor_copy.exposed)
-            (void)a04_vendor_render_release_cold(&c->vendor_render);
+        if(!NT_SUCCESS(status) && !c->vendor_copy.exposed) {
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+        if(c->vendor_native)(void)a04_vendor_native_release_cold(&c->vendor_native);
+#endif
+        (void)a04_vendor_render_release_cold(&c->vendor_render);
+        }
 #endif
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
         if(NT_SUCCESS(status))status=a04_vendor_surface_prepare(&c->vendor_screen,adapter,800,1280,3328,UINT64_C(0x8000000000));
         if(NT_SUCCESS(status))status=a04_vendor_render_attach_screen(&c->vendor_render,&c->vendor_screen);
         if(!NT_SUCCESS(status)) {
-            (void)a04_vendor_render_release_cold(&c->vendor_render);
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+        if(c->vendor_native)(void)a04_vendor_native_release_cold(&c->vendor_native);
+#endif
+        (void)a04_vendor_render_release_cold(&c->vendor_render);
             (void)a04_vendor_surface_release(&c->vendor_screen);
         }
 #endif
@@ -863,7 +979,9 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
     NTSTATUS status;uint64_t bvnc;UNREFERENCED_PARAMETER(previous);
     GpuPrint("A04GPU NATIVE POST ENTER\n");
 #if A04_GE8300_VENDOR_COPY_SERVICE
-    if(InterlockedCompareExchange(&c->vendor_service_closed,0,0))return STATUS_DEVICE_NOT_READY;
+    /* A retained CPU-only instance still resumes as a PnP device. Never
+     * turn permanent admission closure into a framework start failure. */
+    if(InterlockedCompareExchange(&c->vendor_service_closed,0,0))return STATUS_SUCCESS;
 #endif
     if(!c->vendor.staged || !c->vendor.uncached || !c->vendor_irq) return STATUS_SUCCESS;
 #if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
@@ -1012,6 +1130,9 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
        ) {
         a04_vendor_irq_set_power(c->vendor_irq,FALSE);
 #if A04_GE8300_VENDOR_RENDER_COLD
+#if A04_GE8300_VENDOR_NATIVE_BACKING
+        if(c->vendor_native)(void)a04_vendor_native_release_cold(&c->vendor_native);
+#endif
         (void)a04_vendor_render_release_cold(&c->vendor_render);
 #if A04_GE8300_VENDOR_SCREEN_DIAGNOSTIC
         (void)a04_vendor_surface_release(&c->vendor_screen);
@@ -1043,6 +1164,24 @@ NTSTATUS GpuD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
     InterlockedExchange(&c->vendor_service_closed,1);
 #endif
     WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+#if A04_GE8300_VENDOR_COPY_SERVICE
+    {
+        NTSTATUS retired;
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+        BOOLEAN observe=c->idle_diag_armed && target==WdfPowerDeviceD3 && !c->idle_diag_exit_marked;
+        if(observe) {c->idle_diag_exit_marked=TRUE;GpuPrint("A04GPU IDLE EXIT D3\n");}
+#endif
+        retired=GpuRetireToCpu(c);
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+        if(observe) {
+            c->idle_diag_d3_retired=NT_SUCCESS(retired) && c->vendor_cpu_fallback;
+            GpuPrint("A04GPU IDLE RETIRED=");GpuHex((ULONG)retired);GpuPrint("\n");
+        }
+#endif
+        WdfWaitLockRelease(c->vendor_lifetime);
+        return retired;
+    }
+#endif
 #if A04_GE8300_SHARED_LEASE
     if (c->shared_lease.active) { WdfWaitLockRelease(c->vendor_lifetime); return STATUS_DEVICE_BUSY; }
 #endif
@@ -1147,6 +1286,30 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
     }
 #endif
 #if A04_GE8300_SHARED_FULL_FRAME
+    if(control==A04_GE8300_IOCTL_RETAINED_CPU) {
+        struct a04_ge8300_retained_cpu *proof;
+        if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*proof) || output!=sizeof(*proof)) {
+            WdfRequestComplete(request,STATUS_ACCESS_DENIED);return;
+        }
+        status=WdfRequestRetrieveInputBuffer(request,sizeof(*proof),(void **)&proof,&size);
+        if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+        WdfWaitLockAcquire(c->vendor_lifetime,NULL);
+        if(proof->version!=1 || proof->bytes!=sizeof(*proof) || proof->flags || !proof->token ||
+           proof->token!=c->shared_lease.active || !c->shared_owner || !c->shared_owner->display_common)
+            status=STATUS_INVALID_PARAMETER;
+        else {
+            status=GpuRetireToCpu(c);
+            if(NT_SUCCESS(status))proof->flags=A04_GE8300_CPU_RETIRED|A04_GE8300_DMA_RETAINED;
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+            if(c->idle_diag_reentry_marked && !c->idle_diag_proof_marked) {
+                c->idle_diag_proof_marked=TRUE;
+                GpuPrint("A04GPU IDLE PROOF=");GpuHex((ULONG)status);GpuPrint("\n");
+            }
+#endif
+        }
+        WdfWaitLockRelease(c->vendor_lifetime);
+        WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?sizeof(*proof):0);return;
+    }
     if(control==A04_GE8300_IOCTL_SHARED_CAPABILITIES) {
         struct a04_ge8300_shared_capabilities *caps;
         if(WdfRequestGetRequestorMode(request)!=KernelMode || input!=sizeof(*caps) || output!=sizeof(*caps)) {
@@ -1232,14 +1395,19 @@ void GpuIoControl(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,U
             if(NT_SUCCESS(status)) {
                 c->shared_frame.next=1000u;c->shared_frame.last_task=frame->task;
                 c->shared_frame.last_flush=frame->flush;
-                GpuPrint("GE8300 full frame ms=");
-                GpuHex((ULONG)((KeQueryInterruptTime()-began)/10000u));GpuPrint("\n");
+                ULONG elapsed=(ULONG)((KeQueryInterruptTime()-began)/10000u);
+                if(c->wide_present_reports!=MAXULONG)c->wide_present_reports++;
+                if(a04_gpu_present_trace(c->wide_present_reports,(int32_t)status)) {
+                    GpuPrint("GE8300 upload bytes=");GpuHex(c->shared_tables.last_upload_bytes);GpuPrint("\n");
+                    GpuPrint("GE8300 full frame ms=");GpuHex(elapsed);GpuPrint("\n");
+                }
             } else a04_shared_frame_complete_tile(&c->shared_frame,0);
             if(c->vendor_start.command_poisoned) {
                 c->vendor_service_online=FALSE;InterlockedExchange(&c->vendor_service_closed,1);
             }
         }
         WdfWaitLockRelease(c->vendor_lifetime);
+        if(!NT_SUCCESS(status)) {GpuPrint("A04GPU WIDE FAILED=");GpuHex((ULONG)status);GpuPrint("\n");}
         WdfRequestCompleteWithInformation(request,status,NT_SUCCESS(status)?A04_GE8300_WIDE_HEADER_BYTES:0);return;
     }
 #endif
@@ -1539,7 +1707,15 @@ NTSTATUS GpuAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
      * is synchronous and bounded; no request is held for later completion. */
     queue_config.PowerManaged=WdfTrue;
     queue_config.EvtIoDeviceControl=GpuIoControl;
-    return WdfIoQueueCreate(device,&queue_config,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);
+    status=WdfIoQueueCreate(device,&queue_config,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);
+    if(!NT_SUCCESS(status))return status;
+#if A04_GE8300_IDLE_TRANSITION_DIAGNOSTIC
+    c->idle_diag_policy_status=GpuAssignDiagnosticIdle(device,TRUE);
+    c->idle_diag_armed=NT_SUCCESS(c->idle_diag_policy_status);
+    /* A rejected policy must remain visible without failing device creation.
+     * Microsoft documents STATUS_POWER_STATE_INVALID as nonfatal here. */
+#endif
+    return STATUS_SUCCESS;
 }
 NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING path)
 {

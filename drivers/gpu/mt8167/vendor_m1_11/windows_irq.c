@@ -120,6 +120,21 @@ BOOLEAN a04_vendor_irq_rearm(struct a04_vendor_irq *q)
     if(!q || !q->interrupt || !InterlockedCompareExchange(&q->powered,0,0))return FALSE;
     return WdfInterruptSynchronize(q->interrupt,a04_vendor_rearm_synchronized,q);
 }
+static BOOLEAN a04_vendor_retire_synchronized(WDFINTERRUPT interrupt,WDFCONTEXT context)
+{
+    struct a04_vendor_irq *q=context;ULONG enabled;
+    UNREFERENCED_PARAMETER(interrupt);
+    if(!q || !q->core || !InterlockedCompareExchange(&q->powered,0,0))return FALSE;
+    WRITE_REGISTER_ULONG((volatile ULONG *)(void *)(q->core+ROGUE_CR_MIPS_WRAPPER_IRQ_ENABLE),0);
+    enabled=READ_REGISTER_ULONG((volatile ULONG *)(void *)(q->core+ROGUE_CR_MIPS_WRAPPER_IRQ_ENABLE));
+    if(enabled!=0)return FALSE;
+    InterlockedExchange(&q->masked,1);InterlockedExchange(&q->powered,0);return TRUE;
+}
+BOOLEAN a04_vendor_irq_retire(struct a04_vendor_irq *q)
+{
+    if(!q || !q->interrupt)return FALSE;
+    return WdfInterruptSynchronize(q->interrupt,a04_vendor_retire_synchronized,q);
+}
 void a04_vendor_irq_set_power(struct a04_vendor_irq *q,BOOLEAN powered)
 { if(q) InterlockedExchange(&q->powered,powered?1:0); }
 void a04_vendor_irq_kick(struct a04_vendor_irq *q)

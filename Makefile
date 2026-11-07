@@ -4,7 +4,7 @@ CFLAGS ?= -O2 -Wall -Wextra -Werror -std=c11
 SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test-gpu-m111-native
-test-gpu-m111-native: build/gpu_m111_native_clear_job_test build/gpu_m111_native_terminate_stream_test build/gpu_m111_native_clear_surface_test build/gpu_m111_native_clear_codespace_test build/gpu_m111_native_eot_program_test build/gpu_m111_native_hwrt_profile_test build/gpu_m111_native_clear_pds_test build/gpu_m111_native_resources_test build/gpu_m111_native_fields_test build/gpu_m111_native_ccb_test build/gpu_m111_native_pair_test
+test-gpu-m111-native: test-gpu-native-backing build/gpu_m111_native_clear_job_test build/gpu_m111_native_terminate_stream_test build/gpu_m111_native_clear_surface_test build/gpu_m111_native_clear_codespace_test build/gpu_m111_native_eot_program_test build/gpu_m111_native_hwrt_profile_test build/gpu_m111_native_clear_pds_test build/gpu_m111_native_resources_test build/gpu_m111_native_fields_test build/gpu_m111_native_ccb_test build/gpu_m111_native_pair_test
 	./build/gpu_m111_native_clear_job_test
 	./build/gpu_m111_native_terminate_stream_test
 	./build/gpu_m111_native_clear_surface_test
@@ -830,3 +830,21 @@ NATIVE_CLEAR_JOB_SRC := $(addprefix drivers/gpu/mt8167/vendor_m1_11/,native_clea
 build/gpu_m111_native_clear_job_test: tests/gpu_m111_native_clear_job_test.c $(NATIVE_CLEAR_JOB_SRC) $(wildcard drivers/gpu/mt8167/vendor_m1_11/native*.h)
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
+
+.PHONY: test-gpu-d0-fallback
+test: test-gpu-d0-fallback
+test-gpu-d0-fallback:
+	mkdir -p build/gpu-d0-tmp
+	TMPDIR="$(CURDIR)/build/gpu-d0-tmp" python3 tests/gpu_vendor_d0_fallback_test.py
+	TMPDIR="$(CURDIR)/build/gpu-d0-tmp" python3 tests/gpu_dod_retained_fallback_test.py
+	TMPDIR="$(CURDIR)/build/gpu-d0-tmp" python3 tests/gpu_irq_retire_test.py
+	TMPDIR="$(CURDIR)/build/gpu-d0-tmp" python3 tests/gpu_dod_power_test.py
+	TMPDIR="$(CURDIR)/build/gpu-d0-tmp" python3 tests/gpu_dod_restore_test.py
+
+.PHONY: test-gpu-native-backing
+test-gpu-native-backing: build/gpu_vendor_windows_native_backing_test
+	./build/gpu_vendor_windows_native_backing_test
+
+build/gpu_vendor_windows_native_backing_test: tests/gpu_vendor_windows_native_backing_test.c $(addprefix drivers/gpu/mt8167/vendor_m1_11/,windows_native_cold.c windows_native_code.c windows_native_backing.c windows_uncached.c native_resources.c native_hwrt_profile.c native_clear_surface.c native_clear_codespace.c native_clear_pds.c native_eot_program.c native_terminate_stream.c) drivers/gpu/mt8167/gpu_mmu.c $(wildcard drivers/gpu/mt8167/vendor_m1_11/*.h) drivers/gpu/mt8167/gpu_mmu.h tests/gpu_windows_stubs/ntddk.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@

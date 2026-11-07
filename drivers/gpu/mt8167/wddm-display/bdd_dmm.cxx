@@ -501,7 +501,8 @@ NTSTATUS BASIC_DISPLAY_DRIVER::SetVidPnSourceVisibility(_In_ CONST DXGKARG_SETVI
         }
         else
         {
-            BlackOutScreen(SourceId);
+            NTSTATUS blackout=BlackOutScreen(SourceId);
+            if(!NT_SUCCESS(blackout))return blackout;
         }
 
         // Store current visibility so it can be dealt with during Present call
@@ -713,7 +714,8 @@ NTSTATUS BASIC_DISPLAY_DRIVER::SetSourceModeAndPath(CONST D3DKMDT_VIDPN_SOURCE_M
     {
 
         pCurrentBddMode->Flags.FrameBufferIsActive = TRUE;
-        BlackOutScreen(pPath->VidPnSourceId);
+        Status=BlackOutScreen(pPath->VidPnSourceId);
+        if(!NT_SUCCESS(Status))return Status;
 
         // Mark that the next present should be fullscreen so the screen doesn't go from black to actual pixels one dirty rect at a time.
         pCurrentBddMode->Flags.FullscreenPresent = TRUE;

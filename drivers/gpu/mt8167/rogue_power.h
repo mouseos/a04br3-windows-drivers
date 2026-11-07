@@ -13,7 +13,7 @@ struct a04_rgx_io {
     void (*delay)(void *,unsigned);
 };
 enum { A04_RGX_SPM, A04_RGX_INFRA, A04_RGX_TOP, A04_RGX_MFG };
-static int a04_rgx_wait(const struct a04_rgx_io *io,unsigned bank,unsigned reg,uint32_t mask,uint32_t value)
+static inline int a04_rgx_wait(const struct a04_rgx_io *io,unsigned bank,unsigned reg,uint32_t mask,uint32_t value)
 {
     for(unsigned n=0;n<10000;n++){
         if((io->read(io->ctx,bank,reg)&mask)==value)return 0;
@@ -21,7 +21,7 @@ static int a04_rgx_wait(const struct a04_rgx_io *io,unsigned bank,unsigned reg,u
     }
     return 1;
 }
-static int a04_rgx_domain(const struct a04_rgx_io *io,unsigned off,uint32_t status,int sram)
+static inline int a04_rgx_domain(const struct a04_rgx_io *io,unsigned off,uint32_t status,int sram)
 {
     uint32_t v=io->read(io->ctx,A04_RGX_SPM,off);
     io->write(io->ctx,A04_RGX_SPM,off,v|4);v|=12;
@@ -39,7 +39,7 @@ static int a04_rgx_domain(const struct a04_rgx_io *io,unsigned off,uint32_t stat
  * Only accept an already-running parent at the stock <=390-MHz / >=1.15-V operating point.
  * No PLL/PMIC writes are performed by this policy. VCORE is shared with the SoC.
  */
-static uint32_t a04_rgx_mmpll_hz(uint32_t con0,uint32_t con1,uint32_t power,
+static inline uint32_t a04_rgx_mmpll_hz(uint32_t con0,uint32_t con1,uint32_t power,
                                uint16_t rail_control,uint16_t rail_status,uint16_t selector0,uint16_t selector1)
 {
     if(!(con0&1) || (power&3)!=1 || (rail_status&0x2001)!=0x2001)return 0;
@@ -52,7 +52,7 @@ static uint32_t a04_rgx_mmpll_hz(uint32_t con0,uint32_t con1,uint32_t power,
     if(hz<253500000 || hz>390000000)return 0;
     return (uint32_t)hz;
 }
-static int a04_rgx_power_on_parent(const struct a04_rgx_io *io,unsigned parent)
+static inline int a04_rgx_power_on_parent(const struct a04_rgx_io *io,unsigned parent)
 {
     if(parent!=4 && parent!=7)return 6;
     /* Non-glitch-free AXI/slow muxes must be gated before selection.
@@ -82,6 +82,6 @@ static int a04_rgx_power_on_parent(const struct a04_rgx_io *io,unsigned parent)
     if(a04_rgx_wait(io,A04_RGX_MFG,0,0xf,0))return 5;
     return 0;
 }
-static int a04_rgx_power_on(const struct a04_rgx_io *io)
+static inline int a04_rgx_power_on(const struct a04_rgx_io *io)
 { return a04_rgx_power_on_parent(io,4); }
 #endif
