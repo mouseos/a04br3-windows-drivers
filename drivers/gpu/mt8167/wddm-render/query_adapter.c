@@ -2,7 +2,7 @@
 #include "query_adapter.h"
 #include "adapter_info.h"
 _Static_assert(FIELD_OFFSET(DXGK_DRIVERCAPS,WDDMVersion)==0x148,"RT8.1 ARM driver caps WDDMVersion offset");
-_Static_assert(DXGKDDI_WDDMv1_2==0x1200,"RT8.1 ARM WDDM1.2 capability model value");
+_Static_assert(DXGKDDI_WDDMv1_0==0x1000,"RT8.1 ARM WDDM1.0 capability model value");
 NTSTATUS GeoConfigureAperture(struct geo_kmd_adapter *a,const struct geo_aperture_config *p) {
  if(!a||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL||a->aperture_ready||p->size!=sizeof(*p)||p->version!=1||
     !p->bytes||p->bytes>UINT32_MAX||!p->commit_limit||p->commit_limit>p->bytes||
@@ -69,7 +69,7 @@ NTSTATUS GeoBuildRequiredDriverCaps(struct geo_kmd_adapter *a,DXGK_DRIVERCAPS *c
  if(!a||!caps||!a->aperture_ready)return STATUS_INVALID_DEVICE_STATE;
  RtlZeroMemory(caps,sizeof(*caps));caps->HighestAcceptableAddress.QuadPart=(LONGLONG)a->aperture.highest_dma_address;
  caps->MaxAllocationListSlotId=2;caps->ApertureSegmentCommitLimit=(SIZE_T)a->aperture.commit_limit;
- caps->SchedulingCaps.MultiEngineAware=1;caps->SchedulingCaps.CancelCommandAware=1;
+ caps->SchedulingCaps.MultiEngineAware=1;caps->SchedulingCaps.CancelCommandAware=0;
  /* Actual packet-boundary preemption uses the documented Windows 7 policy.
   * Do not claim Win8 mid-packet/context-save support or NoDmaPatching. */
  caps->SchedulingCaps.PreemptionAware=0;caps->GpuEngineTopology.NbAsymetricProcessingNodes=1;
@@ -81,10 +81,13 @@ NTSTATUS GeoBuildRequiredDriverCaps(struct geo_kmd_adapter *a,DXGK_DRIVERCAPS *c
   * offset 0x148 and accepts only 0x1000/0x1200/0x1300 for Win8+ DDIs.
   * Modern documentation calling it reserved does not match that binary.
   * REA: dxgkrnl 2f0fe1db..., FUN_000862d4 after QueryAdapterInfo(DRIVERCAPS).
-  * Model1.3 additionally enters the RT platform MPO feature gate. This
-  * render implementation has no overlay/presentation path; report its older
-  * model instead of manufacturing MPO/DirectFlip capability bits. The 0x4002
-  * callback ABI and actual node metadata remain available. */
- caps->WDDMVersion=DXGKDDI_WDDMv1_2;
+  * FUN_0008775c additionally requires nonzero graphics/compute preemption,
+  * per-engine TDR and MMIO-vsync flip when the RT platform flag is set and
+  * model >=1.2. This render adapter has no scanout/vsync, so claiming those
+  * flags would be false. Model1.0 is explicitly accepted by the same helper
+  * and matches the existing legacy packet-boundary scheduler. CancelAware
+  * is therefore also zero; Win8-only capabilities stay unadvertised.
+  * Callback ABI0x4002 remains separate from the capability model. */
+ caps->WDDMVersion=DXGKDDI_WDDMv1_0;
  return STATUS_SUCCESS;
 }

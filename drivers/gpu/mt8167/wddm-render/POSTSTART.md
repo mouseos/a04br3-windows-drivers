@@ -55,3 +55,19 @@ validation rather than inferring success from this source analysis.
 REA references: FUN_000862d4, classification helpers12a88/1d0bc/12aa4 and
 FUN_00087bbc. Microsoft basic/soft flags are distinct from a hardware render
 adapter with zero display sources. Do not use a software/WARP fallback.
+
+
+## RT8.1 render interface completeness (3.11)
+
+REA on the same RT8.1 dxgkrnl shows FUN_0008775c requires Present and
+ControlInterrupt even with zero display sources. Both now explicitly reject
+unsupported display operations; they never return false presentation success,
+consume a DMA buffer, control native DMA interrupts, or touch the separate DOD.
+
+That helper also enforces graphics/compute preemption, per-engine TDR and MMIO
+vsync flip for platform-enabled model >=1.2. The existing render-only owner has
+no vsync flip. The capability model is therefore the explicitly accepted 1.0,
+with CancelCommandAware zero and legacy packet-boundary preemption retained.
+This decision follows the exact helper condition, rather than testing arbitrary
+version numbers. Callback ABI remains 0x4002. Standard Direct3D rendering and
+DOD registration remain unverified until the next device receipt.

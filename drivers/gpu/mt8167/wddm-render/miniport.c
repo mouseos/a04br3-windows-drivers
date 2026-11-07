@@ -132,6 +132,19 @@ static NTSTATUS observed_query_adapter_info(HANDLE context,const DXGKARG_QUERYAD
  }
  return status;
 }
+/* RT8.1 requires these slots even when StartDevice exposes no sources.
+ * Their absence rejects the entire render interface before VidMm queries.
+ * No Present packet or display IRQ can exist on this render-only device:
+ * reject them explicitly without consuming buffers or touching MOU0007. */
+static NTSTATUS APIENTRY render_present(HANDLE context,DXGKARG_PRESENT *present) {
+ NTSTATUS status=context&&present?STATUS_NOT_SUPPORTED:STATUS_INVALID_PARAMETER;
+ GeoFactoryCheckpoint(60,status,0,0,0,0);return status;
+}
+static NTSTATUS APIENTRY control_display_interrupt(HANDLE context,DXGK_INTERRUPT_TYPE type,BOOLEAN enable) {
+ NTSTATUS status=context?STATUS_NOT_SUPPORTED:STATUS_INVALID_PARAMETER;
+ /* This controls display/vsync interrupts, not native DMA completion IRQs. */
+ GeoFactoryCheckpoint(59,status,(ULONG)type,(ULONG)enable,0,0);return status;
+}
 static NTSTATUS query_child_relations(void *const context,PDXGK_CHILD_DESCRIPTOR children,ULONG bytes) {
  const struct geo_render_device *d=context;
  if(!d||!children||bytes!=sizeof(*children)||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
@@ -180,6 +193,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry) {
  table.DxgkDdiSetPowerState=power_state;table.DxgkDdiInterruptRoutine=interrupt_routine;table.DxgkDdiDpcRoutine=dpc_routine;
  table.DxgkDdiQueryAdapterInfo=observed_query_adapter_info;table.DxgkDdiPreemptCommand=GeoPreemptCommand;
  table.DxgkDdiCancelCommand=GeoCancelCommand;
+ table.DxgkDdiPresent=render_present;table.DxgkDdiControlInterrupt=control_display_interrupt;
  table.DxgkDdiDescribeAllocation=GeoDescribeAllocation;table.DxgkDdiGetStandardAllocationDriverData=GeoGetStandardAllocationDriverData;
  table.DxgkDdiCollectDbgInfo=GeoCollectDbgInfo;
  table.DxgkDdiCreateDevice=GeoCreateDevice;table.DxgkDdiDestroyDevice=GeoDestroyDevice;
@@ -194,5 +208,10 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry) {
  table.DxgkDdiQueryChildRelations=query_child_relations;
  table.DxgkDdiQueryChildStatus=query_child_status;table.DxgkDdiQueryDeviceDescriptor=query_device_descriptor;
  table.DxgkDdiResetDevice=reset_display_to_vga;table.DxgkDdiUnload=unload_driver;
+ /* RT8.1 FUN_0008775c checks this complete render contract separately
+  * from DxgkInitialize's base callbacks. Do not retry a known NULL gate. */
+ if(!table.DxgkDdiPresent||!table.DxgkDdiControlInterrupt||!table.DxgkDdiRender||
+    !table.DxgkDdiPatch||!table.DxgkDdiCreateAllocation||!table.DxgkDdiDestroyAllocation)
+  return STATUS_INVALID_PARAMETER;
  status=DxgkInitialize(driver,registry,&table);GeoInitCheckpoint(2,status);return status;
 }
