@@ -67,6 +67,9 @@ struct geo_typed_device *geo_typed_device(D3D10DDI_HDEVICE h) {
  struct geo_typed_device *d=h.pDrvPrivate?((struct geo_typed_handle *)h.pDrvPrivate)->object:NULL;
  return d&&d->magic==GEO_TYPED_DEVICE_MAGIC?d:NULL;
 }
+void geo_typed_device_trace(struct geo_typed_device *d,const char *key,UINT value) {
+ if(d&&d->magic==GEO_TYPED_DEVICE_MAGIC)trace_value(d->adapter,key,value);
+}
 void geo_typed_resource_trace(D3D10DDI_HDEVICE h,const char *key,UINT value) {
  struct geo_typed_device *d=geo_typed_device(h);
  if(d)trace_value(d->adapter,key,value);

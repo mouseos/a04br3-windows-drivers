@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "typed_device.h"
+void geo_typed_device_trace(struct geo_typed_device *,const char *,UINT);
 #include "../memory.h"
 static struct geo_typed_rtv *view(D3D10DDI_HDEVICE h,D3D10DDI_HRENDERTARGETVIEW v) {
  struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_rtv *r,*want=v.pDrvPrivate?((struct geo_typed_handle *)v.pDrvPrivate)->object:NULL;
@@ -52,7 +53,7 @@ static void APIENTRY clear_rtv(D3D10DDI_HDEVICE h,D3D10DDI_HRENDERTARGETVIEW han
  memset(&q,0,sizeof(q));q.hRenderTarget=v->resource->backend;hr=d->memory.pfnSetRenderTarget(&d->backend,&q);
  if(SUCCEEDED(hr)){
   memset(&c,0,sizeof(c));c.Flags=D3DCLEAR_TARGET;c.FillColor=unorm8(color[2])|(unorm8(color[1])<<8)|(unorm8(color[0])<<16)|(unorm8(color[3])<<24);
-  hr=d->memory.pfnClear(&d->backend,&c,0,NULL);if(SUCCEEDED(hr))d->pending=1;
+  hr=d->memory.pfnClear(&d->backend,&c,0,NULL);geo_typed_device_trace(d,"CLEAR_RENDER_HRESULT",(UINT)hr);if(SUCCEEDED(hr))d->pending=1;
  }
  q.hRenderTarget=d->target?d->target->resource->backend:NULL;restore=d->memory.pfnSetRenderTarget(&d->backend,&q);
  if(SUCCEEDED(hr)&&FAILED(restore))hr=restore;if(FAILED(hr))geo_typed_error(h,hr);

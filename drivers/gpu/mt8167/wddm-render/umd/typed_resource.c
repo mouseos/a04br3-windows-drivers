@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "typed_device.h"
+void geo_typed_device_trace(struct geo_typed_device *,const char *,UINT);
 #include "../memory.h"
 /* Internal development trace only; no resource/handle ABI change. Log the
  * real runtime descriptor before validation so the staging failure is not
@@ -80,12 +81,14 @@ static HRESULT map_backend(struct geo_typed_resource *r,D3D10_DDI_MAP mode,UINT 
  memset(out,0,sizeof(*out));memset(&q,0,sizeof(q));q.hResource=r->backend;
  q.Flags.ReadOnly=mode==D3D10_DDI_MAP_READ;q.Flags.DoNotWait=(flags&D3D10_DDI_MAP_FLAG_DONOTWAIT)!=0;
  hr=r->device->memory.pfnLock(&r->device->backend,&q);
+ geo_typed_device_trace(r->device,"RESOURCE_LOCK_MODE",mode);
+ geo_typed_device_trace(r->device,"RESOURCE_LOCK_HRESULT",(UINT)hr);
  if(SUCCEEDED(hr)){r->mapped=1;out->pData=q.pSurfData;out->RowPitch=q.Pitch;out->DepthPitch=q.SlicePitch;}
  return hr;
 }
 static HRESULT unmap_backend(struct geo_typed_resource *r) {
  D3DDDIARG_UNLOCK q;HRESULT hr;if(!r->mapped)return E_INVALIDARG;
- memset(&q,0,sizeof(q));q.hResource=r->backend;hr=r->device->memory.pfnUnlock(&r->device->backend,&q);if(SUCCEEDED(hr))r->mapped=0;return hr;
+ memset(&q,0,sizeof(q));q.hResource=r->backend;hr=r->device->memory.pfnUnlock(&r->device->backend,&q);geo_typed_device_trace(r->device,"RESOURCE_UNLOCK_HRESULT",(UINT)hr);if(SUCCEEDED(hr))r->mapped=0;return hr;
 }
 static void APIENTRY create_resource(D3D10DDI_HDEVICE h,const D3D11DDIARG_CREATERESOURCE *p,D3D10DDI_HRESOURCE handle,D3D10DDI_HRTRESOURCE runtime) {
  struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_resource *r;D3DDDIARG_CREATERESOURCE q;D3DDDI_SURFACEINFO surf;HRESULT hr;
@@ -147,7 +150,7 @@ static void APIENTRY copy_resource(D3D10DDI_HDEVICE h,D3D10DDI_HRESOURCE dst,D3D
  struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_resource *a=geo_typed_resource(h,src),*b=geo_typed_resource(h,dst);D3DDDIARG_BLT q;HRESULT hr;
  if(!d||!a||!b||a==b||a->format!=b->format||a->width!=b->width||a->height!=b->height||b->dimension!=D3D10DDIRESOURCE_TEXTURE2D||b->usage!=D3D10_DDI_USAGE_STAGING){geo_typed_error(h,E_NOTIMPL);return;}
  memset(&q,0,sizeof(q));q.hSrcResource=a->backend;q.hDstResource=b->backend;q.SrcRect.right=q.DstRect.right=a->width;q.SrcRect.bottom=q.DstRect.bottom=a->height;
- hr=d->memory.pfnBlt(&d->backend,&q);if(FAILED(hr))geo_typed_error(h,hr);
+ hr=d->memory.pfnBlt(&d->backend,&q);geo_typed_device_trace(d,"RESOURCE_COPY_HRESULT",(UINT)hr);if(FAILED(hr))geo_typed_error(h,hr);
 }
 static BOOL APIENTRY staging_busy(D3D10DDI_HDEVICE h,D3D10DDI_HRESOURCE handle) {
  struct geo_typed_resource *r=geo_typed_resource(h,handle);D3D10DDI_MAPPED_SUBRESOURCE map;HRESULT hr;
