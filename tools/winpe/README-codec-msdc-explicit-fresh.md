@@ -42,3 +42,10 @@ WDK入口も`build-codec-msdc-explicit-fresh.ps1`へ変更し、同じ4つの明
 run85の欠落DODコピーを拒否する事前検査、旧installed SYS保存、標準延期PnP、planned reboot1回、
 親32flags/RTC borrow保持、ADC/VUL/IRQ2/PortCls/KS、MSDC error/init/checkpoint/DMA poll保持は引き継ぐ。
 この変更でdriver sourceは変更しない。旧fresh84版READMEと署名候補は履歴であり新入口として使用しない。
+
+## fresh88の7node実読取り
+
+USB1005のEnum実選択Serviceは`mshidkmdf`。packageの補助サービス`A04Usb20Keyboard`と混同しない。
+保持gateは同じ実HardwareID、HIDClass、実選択INF/date/version、SYS hashに加え、このEnum実値を照合する。
+USB source/SYS/INFは変更しない。GraphicsDriversの`DisableAutoAcpiPostDeivce`=DWORD1と
+`ValidateWDDMCaps`不在を7node receiptへ記録し、準備後のprivate SYSTEMでも同一を照合する。

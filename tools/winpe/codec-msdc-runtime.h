@@ -2,7 +2,7 @@
  * Fixed TAB-A04-BR3 identities. No device restart, raw disk write or error injection.
  * Called only by the existing one-shot deferred Engine transaction. */
 static const WCHAR *const codec_retained_ids[4]={L"MT8167\\USB20",L"A04BR3\\MT6630SDIO",L"ACPI\\MOU0007",L"ACPI\\MOU0006"};
-static const WCHAR *const codec_retained_services[4]={L"A04Usb20Keyboard",L"MT6630Runtime",L"MT8167Display",L"GE8300Render"};
+static const WCHAR *const codec_retained_services[4]={L"mshidkmdf",L"MT6630Runtime",L"MT8167Display",L"GE8300Render"};
 static const WCHAR *const codec_retained_files[8]={L"mt8167-usb20.sys",L"mt6630-runtime.sys",L"mt8167-display.sys",L"ge8300-render.sys",L"mt8167-ge8300.sys",L"mt8167-toprgu.sys",L"ge8300-mips.fw",L"ge8300-umd.dll"};
 static DWORD codec_selected_inf(HDEVINFO set,SP_DEVINFO_DATA *dev,const WCHAR *expected)
 {

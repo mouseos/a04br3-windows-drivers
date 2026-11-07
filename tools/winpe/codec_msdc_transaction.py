@@ -20,7 +20,7 @@ BASELINES={
 BASELINE_DATES={'parent':'11/07/2026','audio':'11/06/2026','emmc':'11/02/2026'}
 # Actual installed USB1005 is 44899b9, not the re-signed audit build.
 RETAINED={
- 'usb':('MT8167\\USB20','A04Usb20Keyboard','2026.11.7.1005','mt8167-usb20.sys','db1e26ebb856d197022e284f42da5669128e3bf58b25b3080563c4288ffc9fdf'),
+ 'usb':('MT8167\\USB20','mshidkmdf','2026.11.7.1005','mt8167-usb20.sys','db1e26ebb856d197022e284f42da5669128e3bf58b25b3080563c4288ffc9fdf'),
  'wifi':('A04BR3\\MT6630SDIO','MT6630Runtime','2026.11.6.1012','mt6630-runtime.sys','5044f8b47b5e89383923c36af8c5a29e21bf1224885b42ede55155a59fce4351'),
  'display':('ACPI\\MOU0007','MT8167Display','0.0.1.6','mt8167-display.sys','8a2cf298b782acad669cf95b6dd81ced062761e1e9ecd5d095316dedfff3a4b0'),
  'render':('ACPI\\MOU0006','GE8300Render','0.0.3.12','ge8300-render.sys','adf92be2b28f2b353eb0a247620cc23e8d9051841bea9aacbd2522ae08525d4b')}
