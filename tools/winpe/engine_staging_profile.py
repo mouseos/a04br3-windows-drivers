@@ -9,6 +9,16 @@ def apply_profile(cmd,policy,backup,previous,components):
         raise ValueError('normal-deferredは既存Engine媒体/freshbackup再arm専用です')
     actual={x['source_path'].replace('\\','/').lower():x['sha256'].lower() for x in backup['files']}
     expected=dict(previous.get('expected_installed_sys',{}))
+    # The GPU updater may already have advanced the shared parent since the
+    # last Engine run. Accept only this signed fixed tuple when the fresh
+    # backup actually contains its SYS; never infer it from a version alone.
+    parent=components.get('parent',{})
+    if (parent.get('wrapper_source_commit')=='287241c37fa0eae538e5e2d136dea5df42de7e43'
+        and parent.get('driver_ver')=='11/07/2026,2026.11.7.1014'):
+        digest=parent.get('files',{}).get('parent/mt8167-shared.sys')
+        if digest!='0498bd9f5cadb0e064e42fb80f4717d3cd04729d61a0e2763a77d45487bf8343':
+            raise ValueError('GPU1014 parent signature tuple mismatch')
+        expected['mt8167-shared.sys']=digest
     expected['mt8167-ge8300.sys']=policy.get('gpu_transition',{}).get('baseline_sys_sha256','a8f226b33fa11915e88b3424c5ad3ed3aaa62ff35deb7f91902b04e7df4bf090')
     for name in ('mt8167-shared.sys','mt8167-toprgu.sys','mt8167-ge8300.sys'):
         if not expected.get(name) or actual.get('windows/system32/drivers/'+name)!=expected[name].lower():

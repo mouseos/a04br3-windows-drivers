@@ -65,8 +65,10 @@ def load_map(path, root):
                 raise ValueError('既存touch/buttons/Engine/USB/WiFi保持parent profileが必要です')
         version=entry['driver_ver'];date,numbers=version.split(',');parts=tuple(map(int,numbers.split('.')))
         run33_display=(role=='display' and source==BRIGHTNESS_RUN33_SOURCE and version=='11/07/2026,0.0.1.5')
+        gpu_companion=(role=='display' and source=='6a99ec7d444180e150208d508dfaf203eb734d77' and version=='11/07/2026,0.0.1.6')
+        gpu_parent=(role=='parent' and source=='287241c37fa0eae538e5e2d136dea5df42de7e43' and version=='11/07/2026,2026.11.7.1014')
         usb1004=(role=='usb' and (source,version) in (('c04c795caf5b722628174fda86608ab38049b93f','11/07/2026,2026.11.7.1004'),('44899b9755cdb081954a8d4ccb6271b839b9dd0d','11/07/2026,2026.11.7.1005')))
-        if len(parts)!=4 or min(parts)<0 or max(parts)>65535 or parts<minimum or (date!='11/06/2026' and not run33_display and not usb1004):
+        if len(parts)!=4 or min(parts)<0 or max(parts)>65535 or parts<minimum or (date!='11/06/2026' and not run33_display and not usb1004 and not gpu_companion and not gpu_parent):
             raise ValueError('固定target INF最低新版/date不一致: '+role)
         if role=='display' and source==BRIGHTNESS_RUN33_SOURCE and not run33_display:
             raise ValueError('8a79f27 displayは11/07/2026,0.0.1.5だけ許可します')
@@ -98,7 +100,7 @@ def load_map(path, root):
             'date_filetime':int((datetime.datetime.strptime(date,'%m/%d/%Y')-datetime.datetime(1601,1,1)).total_seconds())*10000000}
     if 'staging_profile' in spec:
         policy['staging_profile']=staging
-        if 'gpu' not in spec:policy['retained_gpu']={'source_commit':'860f697b296558c30ee59d26d2a040dd5af87e0b','driver_version':'0.0.2.5','sys_sha256':'a8f226b33fa11915e88b3424c5ad3ed3aaa62ff35deb7f91902b04e7df4bf090','updated':False}
+        if 'gpu' not in spec:policy['retained_gpu']={'legacy_file_source_commit':'860f697b296558c30ee59d26d2a040dd5af87e0b','legacy_file_version':'0.0.2.5','sys_sha256':'a8f226b33fa11915e88b3424c5ad3ed3aaa62ff35deb7f91902b04e7df4bf090','updated':False,'active_renderer_queried':False}
     if 'sd_tuple' in spec:
         from engine_sd_tuple import load_sd_tuple
         sd_files,sd_components,sd_cert=load_sd_tuple(spec['sd_tuple'],root)
