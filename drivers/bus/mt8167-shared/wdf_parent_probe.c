@@ -5,6 +5,7 @@
 #include <initguid.h>
 #include <ntddk.h>
 #include <wdf.h>
+#include <wdmguid.h>
 #include "parent_resources.h"
 #include "usb_admission.h"
 #include "pwrap_owner.h"
@@ -1438,6 +1439,17 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
     if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    if(base==0xffffffffu) {
+        /* AFE is a synthesized child, not an ACPI PDO. Preserve the real
+         * parent-bus DMA/translation interface, including its ref callbacks;
+         * never return fabricated bus methods or an identity-translation stub.
+         * WDF_QUERY_INTERFACE_CONFIG.SendQueryToParentStack is the documented
+         * PDO forwarding path. Existing touch/USB/WiFi interfaces are unchanged. */
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&GUID_BUS_INTERFACE_STANDARD,NULL);
+        query.SendQueryToParentStack=TRUE;
+        status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    }
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedAudioInterfaceGuid,NULL);
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);

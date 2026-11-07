@@ -2,6 +2,7 @@
 #include <portcls.h>
 #include "wavert_miniport.h"
 #include "wavert_registration.h"
+#include "start_record.h"
 #if defined(A04_MT8167_OWNER_DIAGNOSTIC) && A04_MT8167_OWNER_DIAGNOSTIC && defined(A04_MT8167_WAVERT_DIAGNOSTIC) && A04_MT8167_WAVERT_DIAGNOSTIC && defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
 #include "pnp_backend.h"
 struct Mt8167DeviceExtension {
@@ -71,8 +72,11 @@ static BOOLEAN Mt8167ResourcesValid(PRESOURCELIST resources)
         !(irq->Flags & CM_RESOURCE_INTERRUPT_LATCHED)) ? TRUE : FALSE;
 }
 #endif
-static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device, PIRP irp,
-                                   PRESOURCELIST resources)
+static NTSTATUS StartDeviceBody(PDEVICE_OBJECT device,PIRP irp,PRESOURCELIST resources
+#if A04_AUDIO_START_PERSIST
+ ,Mt8167AudioStartRecord *record
+#endif
+ )
 {
 #if defined(A04_MT8167_WAVERT_DIAGNOSTIC) && A04_MT8167_WAVERT_DIAGNOSTIC && defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
     if (!Mt8167ResourcesValid(resources)) return STATUS_DEVICE_CONFIGURATION_ERROR;
@@ -88,12 +92,26 @@ static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device, PIRP irp,
     if(InterlockedCompareExchange(&ext->diagInitialized,0,0))return STATUS_DEVICE_BUSY;
     ExInitializeRundownProtection(&ext->diagRundown);InterlockedExchange(&ext->diagInitialized,1);
 #endif
+#if A04_AUDIO_START_PERSIST
+    record->stage=A04_START_PDO;
+#endif
     status=PcGetPhysicalDeviceObject(device,&pdo);
     if (!NT_SUCCESS(status) || !pdo) return NT_SUCCESS(status)?STATUS_DEVICE_CONFIGURATION_ERROR:status;
+#if A04_AUDIO_START_PERSIST
+    status=Mt8167PnpBackendCreateWithRecord(pdo,resources,&owner,record);
+#else
     status=Mt8167PnpBackendCreate(pdo,resources,&owner);
+#endif
     if (!NT_SUCCESS(status)) return status;
+#if A04_AUDIO_START_PERSIST
+    record->stage=A04_START_MINIPORT;
+#endif
     status=Mt8167NewMiniportWithBackend(&miniport,Mt8167PnpBackendInterface(owner));
-    if (NT_SUCCESS(status)) { status=Mt8167RegisterWaveRt(device,irp,resources,miniport);miniport->Release(); }
+    if (NT_SUCCESS(status)) {
+#if A04_AUDIO_START_PERSIST
+        record->stage=A04_START_REGISTER;
+#endif
+        status=Mt8167RegisterWaveRt(device,irp,resources,miniport);miniport->Release(); }
     if (!NT_SUCCESS(status)) { Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);return status; }
     ext->owner=owner;
 #if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
@@ -115,6 +133,22 @@ static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device, PIRP irp,
     return STATUS_DEVICE_NOT_READY;
 #endif
 }
+static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device,PIRP irp,PRESOURCELIST resources)
+{
+#if A04_AUDIO_START_PERSIST
+ Mt8167AudioStartRecord record;RtlZeroMemory(&record,sizeof(record));
+ LARGE_INTEGER time;KeQuerySystemTime(&time);record.system_time_low=time.LowPart;record.system_time_high=(ULONG)time.HighPart;
+ record.schema=1;record.bytes=sizeof(record);record.inf_revision=1006;record.stage=A04_START_RESOURCES;
+ NTSTATUS result=StartDeviceBody(device,irp,resources,&record);record.result=result;
+ if(NT_SUCCESS(result))record.stage=A04_START_READY;
+ NTSTATUS saved=Mt8167PersistStartRecord(&record);
+ DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_INFO_LEVEL,"A04AUD START stage=%lu status=%08lx dma=%lu adapter=%lu maps=%lu snapshot=%08lx\n",record.stage,(ULONG)result,record.dma_called,record.adapter_present,record.map_registers,(ULONG)saved);
+ return result;
+#else
+ return StartDeviceBody(device,irp,resources);
+#endif
+}
+
 NTSTATUS Mt8167AddDevice(PDRIVER_OBJECT driver, PDEVICE_OBJECT pdo)
 {
 #if defined(A04_MT8167_OWNER_DIAGNOSTIC) && A04_MT8167_OWNER_DIAGNOSTIC && defined(A04_MT8167_WAVERT_DIAGNOSTIC) && A04_MT8167_WAVERT_DIAGNOSTIC && defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL

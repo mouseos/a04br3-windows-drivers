@@ -64,8 +64,9 @@ inline void IoDisconnectInterrupt(PKINTERRUPT) { test_interrupt.fn=0; }
 #include <string.h>
 typedef uint64_t ULONGLONG;
 typedef ULONG *PULONG; typedef void *PDEVICE_OBJECT;
-typedef struct { ULONG Version; BOOLEAN Master,ScatterGather,Dma32BitAddresses; int InterfaceType; ULONG MaximumLength; } DEVICE_DESCRIPTION;
+typedef struct { ULONG Version; BOOLEAN Master,ScatterGather,Dma32BitAddresses; int InterfaceType; ULONG MaximumLength,DmaAddressWidth; } DEVICE_DESCRIPTION;
 #define DEVICE_DESCRIPTION_VERSION 0
+#define DEVICE_DESCRIPTION_VERSION3 3
 #define Internal 1
 #define STATUS_NOT_SUPPORTED (-5)
 typedef struct {int64_t QuadPart;} PHYSICAL_ADDRESS;
