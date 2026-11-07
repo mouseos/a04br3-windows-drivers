@@ -2,7 +2,7 @@
 #include "query_adapter.h"
 #include "adapter_info.h"
 _Static_assert(FIELD_OFFSET(DXGK_DRIVERCAPS,WDDMVersion)==0x148,"RT8.1 ARM driver caps WDDMVersion offset");
-_Static_assert(DXGKDDI_WDDMv1_3==0x1300,"RT8.1 ARM WDDM1.3 version value");
+_Static_assert(DXGKDDI_WDDMv1_2==0x1200,"RT8.1 ARM WDDM1.2 capability model value");
 NTSTATUS GeoConfigureAperture(struct geo_kmd_adapter *a,const struct geo_aperture_config *p) {
  if(!a||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL||a->aperture_ready||p->size!=sizeof(*p)||p->version!=1||
     !p->bytes||p->bytes>UINT32_MAX||!p->commit_limit||p->commit_limit>p->bytes||
@@ -81,7 +81,10 @@ NTSTATUS GeoBuildRequiredDriverCaps(struct geo_kmd_adapter *a,DXGK_DRIVERCAPS *c
   * offset 0x148 and accepts only 0x1000/0x1200/0x1300 for Win8+ DDIs.
   * Modern documentation calling it reserved does not match that binary.
   * REA: dxgkrnl 2f0fe1db..., FUN_000862d4 after QueryAdapterInfo(DRIVERCAPS).
-  * This is the DDI model version, not a claim of a complete feature level. */
- caps->WDDMVersion=DXGKDDI_WDDMv1_3;
+  * Model1.3 additionally enters the RT platform MPO feature gate. This
+  * render implementation has no overlay/presentation path; report its older
+  * model instead of manufacturing MPO/DirectFlip capability bits. The 0x4002
+  * callback ABI and actual node metadata remain available. */
+ caps->WDDMVersion=DXGKDDI_WDDMv1_2;
  return STATUS_SUCCESS;
 }

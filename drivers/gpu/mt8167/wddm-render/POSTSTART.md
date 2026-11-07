@@ -35,3 +35,23 @@ Use DXGKDDI_WDDMv1_3 and compile-time assertions for the actual WDK8.1 ARM
 field offset0x148 and enum0x1300. Current documentation describing the field
 as reserved is retained as a conflicting newer contract, not silently applied
 to this shipped RT binary. Evidence ev_6607dcaa56c726ae672f608b800609f97d07c1042238ed5e6f1e22e425767f06.
+
+## Capability model1.2 with the existing callback ABI
+
+run81 recorded the real DRIVERCAPS query success (output0x220), version1300,
+scheduler0x11, one node and no POST/TDR/MPO/flip flags, then Code43 before any
+segment or node-metadata query. Standard drawing remains unverified.
+
+FUN_000862d4 also has an RT platform feature gate for model1300, requiring
+MPO with multiple overlay planes on hardware adapters unless a software/basic
+adapter exemption applies. The candidate owns no presentation/overlay path;
+it must not fabricate those flags or mark itself as a software adapter.
+Report model1200, which is separately accepted by the actual version gate,
+while retaining the current0x4002 callback ABI, actual node metadata, existing
+packet-boundary scheduler, native library, UMD, and firmware. This is a model
+contract correction; the exact rejected runtime branch still requires device
+validation rather than inferring success from this source analysis.
+
+REA references: FUN_000862d4, classification helpers12a88/1d0bc/12aa4 and
+FUN_00087bbc. Microsoft basic/soft flags are distinct from a hardware render
+adapter with zero display sources. Do not use a software/WARP fallback.
