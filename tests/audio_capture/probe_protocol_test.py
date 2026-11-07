@@ -6,7 +6,12 @@ root=Path(__file__).resolve().parents[2];out=Path(sys.argv[1]).resolve();out.mkd
 current=(root/'tools/audio/mt8167-audio-capture-probe.c').read_text()
 old=subprocess.check_output(['git','-C',str(root),'show','2d6231727e8ed72b6d7dca4148debc101ac5aeef:tools/audio/mt8167-audio-capture-probe.c'],text=True)
 fixture=r'''
-__declspec(dllimport) ULONG __stdcall RtlNtStatusToDosError(LONG Status);
+static ULONG capture_status_to_dos(LONG status){
+ typedef ULONG (WINAPI*MAP_STATUS)(LONG);
+ MAP_STATUS map=(MAP_STATUS)GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"RtlNtStatusToDosError");
+ if(!map)ExitProcess(68);return map(status);
+}
+#define RtlNtStatusToDosError capture_status_to_dos
 static BYTE fake_buffer[16384];static DWORD mode,allocated,sets,runs,irq,position,pcm;
 static KSSTATE current_state;
 static int same(const GUID*a,const GUID*b){unsigned i;for(i=0;i<sizeof(*a);i++)if(((const BYTE*)a)[i]!=((const BYTE*)b)[i])return 0;return 1;}
