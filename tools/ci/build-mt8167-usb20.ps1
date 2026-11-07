@@ -58,4 +58,5 @@ Write-Host 'USB20 SYS/INF built; catalog signing and hardware remain unverified.
   driver_date=$usbVersion[0];driver_version=$usbVersion[1];driver_ver=$usbDriverVer;
   kernel_codegen_flags=@('-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-mfpu=none');kernel_runtime_sha256=(Get-FileHash (Join-Path $kmLib 'libcntpr.lib') -Algorithm SHA256).Hash;
   host_core=$hostCore;hid_control=$hidControl;hardware_verified=$false;
+  init_checkpoint_schema=1;init_checkpoint_scope='Services/A04Usb20Keyboard/Parameters';
   sys_sha256=(Get-FileHash $sys -Algorithm SHA256).Hash}|ConvertTo-Json|Set-Content -Encoding UTF8 (Join-Path $out 'usb-manifest.json')

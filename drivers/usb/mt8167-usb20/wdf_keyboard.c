@@ -20,9 +20,11 @@
 #error A04_MUSB_HID_CONTROL_EXPERIMENT requires A04_MUSB_HOST_CORE_EXPERIMENT
 #endif
 #endif
+C_ASSERT(sizeof(HID_DESCRIPTOR)==9);
 #define REPORT_SLOTS 32u
 typedef struct {
  WDFWAITLOCK lock; WDFQUEUE reads; UCHAR reports[REPORT_SLOTS][8];
+ volatile LONG trace_seen,trace_write_status; LARGE_INTEGER trace_started;
  unsigned head,count,input_reports; BOOLEAN connected,overflow,draining; KB_SESSION session; KB_PORT port; A04_USB_WDF *usb; WDFWAITLOCK controller_lock; WDFTIMER poll; BOOLEAN board_owned, board_fault; int admission, last_admission; A04_USB_BOARD board; A04_SHARED_USB_INTERFACE shared; BOOLEAN shared_valid;
 #if A04_MUSB_HID_CONTROL_EXPERIMENT
  WDFQUEUE controls; struct a04_control_host control; struct a04_control_request control_request;
@@ -37,15 +39,52 @@ EVT_WDF_DEVICE_D0_EXIT KbD0Exit;
 EVT_WDF_DEVICE_D0_ENTRY KbD0;
 EVT_WDF_TIMER KbPoll;
 EVT_WDF_IO_QUEUE_IO_INTERNAL_DEVICE_CONTROL KbHidIoctl;
+/* Fixed initialization records in this driver's own service Parameters.
+ * No hardware values are read here, no pointers/reports/identifiers recorded,
+ * and registry failures never replace the real operation's return status. */
+enum { TraceAdd,TraceResources,TraceParent,TracePower,TracePio,
+ TraceBoardPrepare,TraceArm,TraceRun,TraceD0,TraceAdmissionWait,
+ TraceHidDescriptor,TraceHidAttributes,TraceHidReport,TraceHidString,
+ TraceFault,TraceRetryFailure,TraceHidOther,TraceCount };
+static void InitCheckpoint(WDFDEVICE dev,unsigned stage,NTSTATUS status,ULONG a,ULONG b)
+{
+ static const PCWSTR names[TraceCount]={L"InitAdd",L"InitResources",L"InitParent",
+  L"InitPower",L"InitPio",L"InitBoardPrepare",L"InitArm",L"InitRun",L"InitD0",
+  L"InitAdmissionWait",L"InitHidDescriptor",L"InitHidAttributes",
+  L"InitHidReport",L"InitHidString",L"InitFault",L"InitRetryFailure",L"InitHidOther"};
+ KB_HID_CONTEXT*c=KbHidContext(dev);WDFKEY key;UNICODE_STRING name;NTSTATUS s;
+ struct { ULONG version,stage,status,detail0,detail1,prior_write_status,start_low,start_high; } record;
+ LONG bit;
+ if(stage>=TraceCount)return;
+ bit=(LONG)(1u<<stage);
+ /* One record per stage per device lifetime, including admission wait. No
+  * per-poll/report writes, flush loops, or storage-dependent start policy. */
+ if(InterlockedOr(&c->trace_seen,bit)&bit)return;
+ record.version=1;record.stage=stage;record.status=(ULONG)status;
+ record.detail0=a;record.detail1=b;
+ record.start_low=c->trace_started.LowPart;record.start_high=(ULONG)c->trace_started.HighPart;
+ record.prior_write_status=(ULONG)InterlockedCompareExchange(&c->trace_write_status,0,0);
+ s=WdfDriverOpenParametersRegistryKey(WdfDeviceGetDriver(dev),KEY_SET_VALUE,
+                                    WDF_NO_OBJECT_ATTRIBUTES,&key);
+ if(NT_SUCCESS(s)) {
+  RtlInitUnicodeString(&name,names[stage]);
+  s=WdfRegistryAssignValue(key,&name,REG_BINARY,sizeof(record),&record);
+  WdfRegistryClose(key);
+ }
+ InterlockedExchange(&c->trace_write_status,s);
+}
 static NTSTATUS CopyOutput(WDFREQUEST request,const void *p,size_t n)
 {
- PIRP irp=WdfRequestWdmGetIrp(request);
- PIO_STACK_LOCATION stack=IoGetCurrentIrpStackLocation(irp);
- if(!irp->UserBuffer || stack->Parameters.DeviceIoControl.OutputBufferLength<n)
-  return STATUS_BUFFER_TOO_SMALL;
- /* HIDClass supplies a system-resident buffer for these internal IOCTLs. */
- RtlCopyMemory(irp->UserBuffer,p,n); WdfRequestSetInformation(request,n);
- return STATUS_SUCCESS;
+ WDFMEMORY memory;size_t length;NTSTATUS status;
+ /* Microsoft vhidmini2 RequestCopyFromBuffer: use the framework's actual
+  * output memory, preserve retrieve/copy errors and set bytes only on success. */
+ status=WdfRequestRetrieveOutputMemory(request,&memory);
+ if(!NT_SUCCESS(status))return status;
+ WdfMemoryGetBuffer(memory,&length);
+ if(length<n)return STATUS_BUFFER_TOO_SMALL;
+ status=WdfMemoryCopyFromBuffer(memory,0,(PVOID)p,n);
+ if(NT_SUCCESS(status))WdfRequestSetInformation(request,n);
+ return status;
 }
 static void Drain(WDFDEVICE dev)
 {
@@ -157,6 +196,7 @@ static void PortFault(WDFDEVICE dev,NTSTATUS status)
 {
  KB_HID_CONTEXT*c=KbHidContext(dev);
  DbgPrint("MT8167 USB20 port fault state=%u enum=%u status=%08lx\n",(unsigned)c->port.stage,(unsigned)c->session.enumeration.stage,(ULONG)status);
+ InitCheckpoint(dev,TraceFault,status,(ULONG)c->port.stage,(ULONG)c->session.enumeration.stage);
  c->board_fault=TRUE;c->port.stage=KB_PORT_FAULT;
  c->session.enumeration.stage=KB_ERROR;c->port.rx_pending=FALSE;
  A04UsbWdfMask(c->usb);
@@ -171,6 +211,8 @@ static void PortFault(WDFDEVICE dev,NTSTATUS status)
 #endif
  KbHidDisconnected(dev);
  if(c->board_owned){A04UsbHostStop(&c->board);c->board_owned=FALSE;}
+ /* Report a terminal transport failure to PnP without an automatic restart loop. */
+ WdfDeviceSetFailed(dev,WdfDeviceFailedNoRestart);
 }
 static unsigned PortNowMs(void)
 {
@@ -189,7 +231,7 @@ VOID KbPoll(WDFTIMER timer)
   status=KbHidActivate(dev,&c->board);
   if(A04UsbAdmissionWait(c->admission))WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(500));
   else if(NT_SUCCESS(status))WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(10));
-  else { c->board_fault=TRUE; DbgPrint("MT8167 USB20 admission retry failed status=%08lx\n",(ULONG)status); }
+  else { c->board_fault=TRUE; InitCheckpoint(dev,TraceRetryFailure,status,(ULONG)c->admission,0); WdfDeviceSetFailed(dev,WdfDeviceFailedNoRestart); DbgPrint("MT8167 USB20 admission retry failed status=%08lx\n",(ULONG)status); }
   return;
  }
  if(c->board_owned && !c->board_fault && c->shared_valid) {
@@ -244,12 +286,16 @@ static int BoardPower(void *p,int on)
  KB_HID_CONTEXT*c=KbHidContext((WDFDEVICE)p);int result;
  if(!on)return c->shared.Release(c->shared.Header.Context);
  result=c->shared.Acquire(c->shared.Header.Context);c->admission=result;
+ InitCheckpoint((WDFDEVICE)p,A04UsbAdmissionWait(result)?TraceAdmissionWait:TracePower,
+                result?STATUS_DEVICE_POWER_FAILURE:STATUS_SUCCESS,(ULONG)result,0);
  if(result!=c->last_admission) {
   DbgPrint("MT8167 USB20 admission=%d\n",result);c->last_admission=result;
  }
  if(result)return result;
  /* Clocks are accessible now; reject active firmware DMA before PHY edits. */
- if(Mt8167UsbPioReady(A04UsbWdfController(c->usb))){DbgPrint("MT8167 USB20 active firmware DMA rejected\n");(void)c->shared.Release(c->shared.Header.Context);return -1;}
+ result=Mt8167UsbPioReady(A04UsbWdfController(c->usb));
+ InitCheckpoint((WDFDEVICE)p,TracePio,result?STATUS_DEVICE_HARDWARE_ERROR:STATUS_SUCCESS,(ULONG)result,0);
+ if(result){DbgPrint("MT8167 USB20 active firmware DMA rejected\n");(void)c->shared.Release(c->shared.Header.Context);return -1;}
  return 0;
 }
 static int BoardVbus(void *p,int on)
@@ -275,13 +321,21 @@ NTSTATUS KbHidActivate(WDFDEVICE dev,const A04_USB_BOARD *board)
  if(KbPortInit(&c->port,&c->session,&A04UsbWdfController(c->usb)->io,dev,SessionDelay,SessionReport,SessionRelease)){
   WdfWaitLockRelease(c->controller_lock);return STATUS_INVALID_PARAMETER;
  }
- if(A04UsbHostPrepare(&c->board)){
+ { int result=A04UsbHostPrepare(&c->board);
+   if(!A04UsbAdmissionWait(c->admission))InitCheckpoint(dev,TraceBoardPrepare,
+        result?STATUS_DEVICE_POWER_FAILURE:STATUS_SUCCESS,(ULONG)c->admission,(ULONG)result);
+ if(result){
   if(!A04UsbAdmissionWait(c->admission))DbgPrint("MT8167 USB20 prepare failed admission=%d\n",c->admission);
   WdfWaitLockRelease(c->controller_lock);return STATUS_DEVICE_POWER_FAILURE;
- }
+ }}
  status=A04UsbWdfArm(c->usb);
+ InitCheckpoint(dev,TraceArm,status,0,0);
  if(!NT_SUCCESS(status))DbgPrint("MT8167 USB20 IRQ arm failed status=%08lx\n",(ULONG)status);
- if(NT_SUCCESS(status) && A04UsbHostRun(&c->board)){DbgPrint("MT8167 USB20 host run failed\n");status=STATUS_DEVICE_POWER_FAILURE;}
+ if(NT_SUCCESS(status)) {
+  int result=A04UsbHostRun(&c->board);
+  if(result){DbgPrint("MT8167 USB20 host run failed\n");status=STATUS_DEVICE_POWER_FAILURE;}
+  InitCheckpoint(dev,TraceRun,status,(ULONG)result,0);
+ }
  if(NT_SUCCESS(status))c->board_owned=TRUE;
  WdfWaitLockRelease(c->controller_lock);
  /* Never flush work while holding controller_lock: the IRQ worker takes it. */
@@ -308,21 +362,25 @@ void KbHidDeactivate(WDFDEVICE dev)
 NTSTATUS KbPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
  KB_HID_CONTEXT*c=KbHidContext(dev); NTSTATUS status;
- status=A04UsbWdfPrepare(c->usb,raw,translated); if(!NT_SUCCESS(status)){DbgPrint("MT8167 USB20 resources failed status=%08lx\n",(ULONG)status);return status;}
+ status=A04UsbWdfPrepare(c->usb,raw,translated);
+ InitCheckpoint(dev,TraceResources,status,raw?WdfCmResourceListGetCount(raw):0,
+                translated?WdfCmResourceListGetCount(translated):0); if(!NT_SUCCESS(status)){DbgPrint("MT8167 USB20 resources failed status=%08lx\n",(ULONG)status);return status;}
  RtlZeroMemory(&c->shared,sizeof(c->shared));
  status=WdfFdoQueryForInterface(dev,&A04SharedUsbInterfaceGuid,(PINTERFACE)&c->shared,sizeof(c->shared),A04_SHARED_USB_INTERFACE_VERSION,NULL);
- if(!NT_SUCCESS(status)){DbgPrint("MT8167 USB20 parent query failed status=%08lx\n",(ULONG)status);A04UsbWdfRelease(c->usb);return status;}
+ if(!NT_SUCCESS(status)){InitCheckpoint(dev,TraceParent,status,0,0);DbgPrint("MT8167 USB20 parent query failed status=%08lx\n",(ULONG)status);A04UsbWdfRelease(c->usb);return status;}
  if(c->shared.Header.Size<sizeof(c->shared) || c->shared.Header.Version!=A04_SHARED_USB_INTERFACE_VERSION || !c->shared.Header.InterfaceDereference || !c->shared.Acquire || !c->shared.SetVbus || !c->shared.Health || !c->shared.Release) {
   if(c->shared.Header.InterfaceDereference)c->shared.Header.InterfaceDereference(c->shared.Header.Context);
+  InitCheckpoint(dev,TraceParent,STATUS_DEVICE_CONFIGURATION_ERROR,c->shared.Header.Size,c->shared.Header.Version);
   DbgPrint("MT8167 USB20 parent interface invalid\n");
   A04UsbWdfRelease(c->usb);return STATUS_DEVICE_CONFIGURATION_ERROR;
  }
+ InitCheckpoint(dev,TraceParent,STATUS_SUCCESS,c->shared.Header.Size,c->shared.Header.Version);
  c->shared_valid=TRUE; return STATUS_SUCCESS;
 }
 NTSTATUS KbD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
 {
  KB_HID_CONTEXT*c=KbHidContext(dev); A04_USB_BOARD b; UNREFERENCED_PARAMETER(previous);
- if(!c->shared_valid)return STATUS_DEVICE_NOT_READY;
+ if(!c->shared_valid){InitCheckpoint(dev,TraceD0,STATUS_DEVICE_NOT_READY,0,0);return STATUS_DEVICE_NOT_READY;}
 #if A04_MUSB_HID_CONTROL_EXPERIMENT
  WdfIoQueueStart(c->controls);
 #endif
@@ -332,8 +390,12 @@ NTSTATUS KbD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
    if(A04UsbAdmissionWait(c->admission)) {
     /* No parent lease, PHY, MAC or VBUS was changed. Keep the HID PDO
      * present with no reports until a host-qualified cable is observed. */
+    /* Record the actual activation status separately from the intentional
+     * no-host-cable admission policy; waiting is not host/keyboard success. */
+    InitCheckpoint(dev,TraceD0,status,(ULONG)c->admission,0);
     WdfTimerStart(c->poll,WDF_REL_TIMEOUT_IN_MS(500));return STATUS_SUCCESS;
    }
+   InitCheckpoint(dev,TraceD0,status,(ULONG)c->admission,c->board_owned);
    if(NT_SUCCESS(status))WdfTimerStart(c->poll,WDF_REL_TIMEOUT_IN_MS(10));
    return status;
  }
@@ -358,14 +420,29 @@ VOID KbHidIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULO
 {
  WDFDEVICE dev=WdfIoQueueGetDevice(queue); KB_HID_CONTEXT *c=KbHidContext(dev);
  HID_DESCRIPTOR h={0}; HID_DEVICE_ATTRIBUTES attr={0}; const unsigned char *desc; unsigned len; NTSTATUS status=STATUS_NOT_SUPPORTED;
- UNREFERENCED_PARAMETER(outlen); UNREFERENCED_PARAMETER(inlen);
+ UNREFERENCED_PARAMETER(inlen);
  switch(code) {
+ case IOCTL_HID_GET_STRING: {
+  WDF_REQUEST_PARAMETERS parameters;ULONG id;
+  static const WCHAR manufacturer[]=L"MediaTek";
+  static const WCHAR product[]=L"MediaTek MT8167 USB20 Boot Keyboard Controller";
+  static const WCHAR serial[]=L"";
+  WDF_REQUEST_PARAMETERS_INIT(&parameters);WdfRequestGetParameters(request,&parameters);
+  id=(ULONG)(ULONG_PTR)parameters.Parameters.DeviceIoControl.Type3InputBuffer & 0xffffu;
+  /* Identify this fixed HID transport, not an attached keyboard's identity.
+   * In particular never invent/expose a device-specific serial string. */
+  if(id==HID_STRING_ID_IMANUFACTURER)status=CopyOutput(request,manufacturer,sizeof(manufacturer));
+  else if(id==HID_STRING_ID_IPRODUCT)status=CopyOutput(request,product,sizeof(product));
+  else if(id==HID_STRING_ID_ISERIALNUMBER)status=CopyOutput(request,serial,sizeof(serial));
+  else status=STATUS_INVALID_PARAMETER;
+  InitCheckpoint(dev,TraceHidString,status,id,(ULONG)outlen);break;
+ }
  case IOCTL_HID_GET_DEVICE_DESCRIPTOR:
   (void)ReportDescriptor(&len); h.bLength=sizeof(h); h.bDescriptorType=HID_HID_DESCRIPTOR_TYPE;
   h.bcdHID=0x0111; h.bNumDescriptors=1; h.DescriptorList[0].bReportType=HID_REPORT_DESCRIPTOR_TYPE;
-  h.DescriptorList[0].wReportLength=(USHORT)len; status=CopyOutput(request,&h,sizeof(h)); break;
- case IOCTL_HID_GET_REPORT_DESCRIPTOR: desc=ReportDescriptor(&len); status=CopyOutput(request,desc,len); break;
- case IOCTL_HID_GET_DEVICE_ATTRIBUTES: attr.Size=sizeof(attr); attr.VersionNumber=1; status=CopyOutput(request,&attr,sizeof(attr)); break;
+  h.DescriptorList[0].wReportLength=(USHORT)len; status=CopyOutput(request,&h,sizeof(h)); InitCheckpoint(dev,TraceHidDescriptor,status,(ULONG)sizeof(h),len);break;
+ case IOCTL_HID_GET_REPORT_DESCRIPTOR: desc=ReportDescriptor(&len); status=CopyOutput(request,desc,len); InitCheckpoint(dev,TraceHidReport,status,len,(ULONG)outlen);break;
+ case IOCTL_HID_GET_DEVICE_ATTRIBUTES: attr.Size=sizeof(attr); attr.VersionNumber=1; status=CopyOutput(request,&attr,sizeof(attr)); InitCheckpoint(dev,TraceHidAttributes,status,(ULONG)sizeof(attr),(ULONG)outlen);break;
  case IOCTL_HID_READ_REPORT:
   status=WdfRequestForwardToIoQueue(request,c->reads); if(NT_SUCCESS(status)) { Drain(dev); return; } break;
 #if A04_MUSB_HID_CONTROL_EXPERIMENT
@@ -375,6 +452,7 @@ VOID KbHidIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULO
  case IOCTL_HID_SET_OUTPUT_REPORT:
   status=ControlSubmit(dev,request,TRUE);if(status==STATUS_PENDING)return;break;
 #endif
+ default: InitCheckpoint(dev,TraceHidOther,status,code,(ULONG)outlen);break;
  }
  WdfRequestComplete(request,status);
 }
@@ -386,20 +464,22 @@ NTSTATUS KbHidAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
  WdfDeviceInitSetPnpPowerEventCallbacks(init,&pnp);
  WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,KB_HID_CONTEXT); attr.ExecutionLevel=WdfExecutionLevelPassive;
  s=WdfDeviceCreate(&init,&attr,&dev); if(!NT_SUCCESS(s))return s; c=KbHidContext(dev);
- WDF_OBJECT_ATTRIBUTES_INIT(&child); child.ParentObject=dev; s=WdfWaitLockCreate(&child,&c->lock); if(!NT_SUCCESS(s))return s;
- s=WdfWaitLockCreate(&child,&c->controller_lock); if(!NT_SUCCESS(s))return s;
- s=A04UsbWdfCreate(dev,KbControllerEvents,dev,&c->usb); if(!NT_SUCCESS(s))return s;
+ KeQuerySystemTime(&c->trace_started);
+ WDF_OBJECT_ATTRIBUTES_INIT(&child); child.ParentObject=dev; s=WdfWaitLockCreate(&child,&c->lock); if(!NT_SUCCESS(s)){InitCheckpoint(dev,TraceAdd,s,__LINE__,0);return s;}
+ s=WdfWaitLockCreate(&child,&c->controller_lock); if(!NT_SUCCESS(s)){InitCheckpoint(dev,TraceAdd,s,__LINE__,0);return s;}
+ s=A04UsbWdfCreate(dev,KbControllerEvents,dev,&c->usb); if(!NT_SUCCESS(s)){InitCheckpoint(dev,TraceAdd,s,__LINE__,0);return s;}
  c->session.enumeration.stage=KB_ERROR;
  WDF_TIMER_CONFIG_INIT(&timer,KbPoll); timer.AutomaticSerialization=FALSE;
  WDF_OBJECT_ATTRIBUTES_INIT(&child); child.ParentObject=dev; child.ExecutionLevel=WdfExecutionLevelPassive;
- s=WdfTimerCreate(&timer,&child,&c->poll); if(!NT_SUCCESS(s))return s;
+ s=WdfTimerCreate(&timer,&child,&c->poll); if(!NT_SUCCESS(s)){InitCheckpoint(dev,TraceAdd,s,__LINE__,0);return s;}
  WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel); q.EvtIoInternalDeviceControl=KbHidIoctl;
- s=WdfIoQueueCreate(dev,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE); if(!NT_SUCCESS(s))return s;
- WDF_IO_QUEUE_CONFIG_INIT(&q,WdfIoQueueDispatchManual); s=WdfIoQueueCreate(dev,&q,WDF_NO_OBJECT_ATTRIBUTES,&c->reads);if(!NT_SUCCESS(s))return s;
+ s=WdfIoQueueCreate(dev,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE); if(!NT_SUCCESS(s)){InitCheckpoint(dev,TraceAdd,s,__LINE__,0);return s;}
+ WDF_IO_QUEUE_CONFIG_INIT(&q,WdfIoQueueDispatchManual); s=WdfIoQueueCreate(dev,&q,WDF_NO_OBJECT_ATTRIBUTES,&c->reads);if(!NT_SUCCESS(s)){InitCheckpoint(dev,TraceAdd,s,__LINE__,0);return s;}
 #if A04_MUSB_HID_CONTROL_EXPERIMENT
- WDF_IO_QUEUE_CONFIG_INIT(&q,WdfIoQueueDispatchManual);return WdfIoQueueCreate(dev,&q,WDF_NO_OBJECT_ATTRIBUTES,&c->controls);
+ WDF_IO_QUEUE_CONFIG_INIT(&q,WdfIoQueueDispatchManual);s=WdfIoQueueCreate(dev,&q,WDF_NO_OBJECT_ATTRIBUTES,&c->controls);
+ InitCheckpoint(dev,TraceAdd,s,__LINE__,1);return s;
 #else
- return STATUS_SUCCESS;
+ InitCheckpoint(dev,TraceAdd,STATUS_SUCCESS,__LINE__,0);return STATUS_SUCCESS;
 #endif
 }
 NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry)
