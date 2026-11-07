@@ -33,4 +33,17 @@ struct geo_draw_request_v2 {
  struct geo_draw_request base;
  struct geo_draw_pair_link link;
 };
+#ifdef __cplusplus
+extern "C" {
+#endif
+int32_t geo_draw_validate_capture_v2(const struct geo_draw_request_v2 *,const void *,uint32_t);
+struct geo_native_draw_ops_v2 {
+ uint32_t size,version;void *context;
+ /* Same PASSIVE/no-publish/immutable-capture and lifetime contract as V1. */
+ int32_t (*prepare_draw)(void *,const struct geo_draw_request_v2 *,const void *,uint32_t,uint64_t *);
+};
+int32_t GeoNativeOwnerGetDrawOpsV2(struct geo_native_binding *,struct geo_native_draw_ops_v2 *);
+#ifdef __cplusplus
+}
+#endif
 #endif

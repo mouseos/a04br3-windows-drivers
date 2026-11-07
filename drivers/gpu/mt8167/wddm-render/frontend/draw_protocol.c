@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
-#include "draw_abi.h"
+#include "draw_link_abi.h"
 static int span(const struct geo_draw_span *s,uint32_t total,uint32_t maximum) {
  return s->bytes && !(s->offset&3u) && !(s->bytes&3u) && s->bytes<=maximum && s->offset<=total && s->bytes<=total-s->offset;
 }
@@ -42,24 +42,39 @@ static int shader(const struct geo_draw_shader *s,const unsigned char *b,uint32_
  } else return 0;
  return 1;
 }
-int32_t geo_draw_validate_capture(const struct geo_draw_request *r,const void *blob,uint32_t bytes) {
+static int32_t capture(const struct geo_draw_request *r,const void *blob,uint32_t bytes,uint32_t size,uint32_t version,uint32_t stride) {
  const unsigned char *b=blob;uint32_t i;
- if(!r || !b || r->size!=sizeof(*r) || r->version!=GEO_DRAW_ABI_VERSION || r->reserved ||
+ if(!r || !b || r->size!=size || r->version!=version || r->reserved ||
     r->blob_bytes!=bytes || !bytes || bytes>GEO_DRAW_MAX_BLOB || !r->target || !r->vertex ||
     r->target==r->vertex || !geo_desc_valid(&r->target_desc) || r->target_desc.usage!=GEO_USAGE_RENDER_TARGET)return GEO_INVALID;
  /* V1 non-indexed float4 POSITION0 triangle list. No texture/blend/depth/clip
   * success claim; E may support a narrower profile and must reject it honestly. */
  if(r->state.topology!=GEO_DRAW_TRIANGLE_LIST || !r->state.vertex_count || r->state.vertex_count%3u ||
-    r->state.vertex_stride!=16u || (r->state.vertex_offset&3u) ||
+    r->state.vertex_stride!=stride || (r->state.vertex_offset&3u) ||
     r->state.cull || r->state.front_ccw || r->state.scissor_enable || r->state.blend_enable ||
     r->state.color_write_mask!=15u || r->state.depth_enable || r->state.depth_write || r->state.stencil_enable)return GEO_UNSUPPORTED;
  if(r->state.first_vertex>0xffffffffu-r->state.vertex_count ||
-    r->state.first_vertex+r->state.vertex_count>(0xffffffffu-r->state.vertex_offset)/16u)return GEO_INVALID;
+    r->state.first_vertex+r->state.vertex_count>(0xffffffffu-r->state.vertex_offset)/stride)return GEO_INVALID;
  for(i=0;i<6u;i++)if((r->state.viewport[i]&0x7f800000u)==0x7f800000u)return GEO_INVALID;
  if((r->state.viewport[2]&0x80000000u) || !(r->state.viewport[2]&0x7fffffffu) ||
     (r->state.viewport[3]&0x80000000u) || !(r->state.viewport[3]&0x7fffffffu))return GEO_INVALID;
  if((r->state.viewport[4]&0x80000000u)||(r->state.viewport[5]&0x80000000u)||
     r->state.viewport[4]>r->state.viewport[5]||r->state.viewport[5]>0x3f800000u)return GEO_INVALID;
  if(!shader(&r->vs,b,bytes,0u)||!shader(&r->ps,b,bytes,1u))return GEO_INVALID;
+ return GEO_OK;
+}
+
+int32_t geo_draw_validate_capture(const struct geo_draw_request *r,const void *blob,uint32_t bytes)
+{ return capture(r,blob,bytes,sizeof(*r),GEO_DRAW_ABI_VERSION,16); }
+int32_t geo_draw_validate_capture_v2(const struct geo_draw_request_v2 *r,const void *blob,uint32_t bytes)
+{
+ if(!r)return GEO_INVALID;
+ int32_t s=capture(&r->base,blob,bytes,sizeof(*r),2,32);if(s)return s;
+ const struct geo_draw_pair_link *l=&r->link;
+ if(l->size!=sizeof(*l) || l->version!=2 || l->reserved || l->varying_count!=1 ||
+    l->fs_uses_z>1 || l->fs_uses_w>1 || l->vs_vtxouts!=r->base.vs.vtxouts ||
+    (l->vs_entry_offset&3) || (l->fs_entry_offset&3) ||
+    l->vs_entry_offset>=r->base.vs.usc.bytes || l->fs_entry_offset>=r->base.ps.usc.bytes)
+    return GEO_INVALID;
  return GEO_OK;
 }

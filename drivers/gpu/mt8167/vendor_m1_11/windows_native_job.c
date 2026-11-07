@@ -169,8 +169,8 @@ void a04_vendor_native_free_job_cold(struct a04_vendor_native_cold *n)
 
 #if A04_GE8300_NATIVE_OWNER_DRAW
 #include "native_draw_job.h"
-NTSTATUS a04_vendor_native_prepare_draw_cold(struct a04_vendor_native_cold *n,
- const struct geo_draw_request *request,const void *blob,uint32_t bytes,uint64_t vertex)
+static NTSTATUS prepare_draw_cold(struct a04_vendor_native_cold *n,
+ const struct geo_draw_request *request,const void *blob,uint32_t bytes,uint64_t vertex,const struct geo_draw_request_v2 *linked)
 {
     struct a04_vendor_native_candidate *c;struct a04_vendor_render_cold *r;
     struct a04_m111_clear_job_input in={0};struct a04_m111_draw_job *job;
@@ -187,7 +187,8 @@ NTSTATUS a04_vendor_native_prepare_draw_cold(struct a04_vendor_native_cold *n,
     in.usc_page_gpu=A04_NATIVE_USC_VA;in.pds_page_gpu=A04_NATIVE_PDS_VA;
     in.dummy_region_gpu=n->auxiliary.dummy_region_gpu;in.dummy_stencil_gpu=n->auxiliary.dummy_stencil_gpu;
     in.hwrt_fw=n->addresses.hwrt[0];in.pr_fence_fw=0xc0084c00u;
-    status=a04_m111_build_draw_job(job,&in,vertex,request,blob,bytes,scratch,A04_M111_DRAW_SCRATCH);
+    status=linked?a04_m111_build_draw_job_v2(job,&in,vertex,linked,blob,bytes,scratch,A04_M111_DRAW_SCRATCH):
+        a04_m111_build_draw_job(job,&in,vertex,request,blob,bytes,scratch,A04_M111_DRAW_SCRATCH);
     if(!NT_SUCCESS(status))goto done;
     p.ta_context=0xc0080000u+r->layout.context;
     p.three_d_context=p.ta_context+(uint32_t)offsetof(RGXFWIF_FWRENDERCONTEXT,s3DContext);
@@ -207,4 +208,14 @@ NTSTATUS a04_vendor_native_prepare_draw_cold(struct a04_vendor_native_cold *n,
     c->draw_job=TRUE;status=STATUS_SUCCESS;
 done:ExFreePoolWithTag(job,JOB_TAG);return status;
 }
+NTSTATUS a04_vendor_native_prepare_draw_cold(struct a04_vendor_native_cold *n,
+ const struct geo_draw_request *r,const void *blob,uint32_t bytes,uint64_t vertex)
+{ return prepare_draw_cold(n,r,blob,bytes,vertex,NULL); }
+NTSTATUS a04_vendor_native_prepare_draw_v2_cold(struct a04_vendor_native_cold *n,
+ const struct geo_draw_request_v2 *r,const void *blob,uint32_t bytes,uint64_t vertex)
+{
+ if(!r)return STATUS_INVALID_PARAMETER;
+ return prepare_draw_cold(n,&r->base,blob,bytes,vertex,r);
+}
+
 #endif

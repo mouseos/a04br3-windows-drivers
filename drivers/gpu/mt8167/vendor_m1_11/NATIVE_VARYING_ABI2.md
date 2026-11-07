@@ -2,7 +2,8 @@
 
 この契約はABI1 finite flatを変更しない。`frontend/draw_link_abi.h` の別
 `geo_draw_request_v2` を使用する。ABI1 callbackへversion2を渡しても受理されない。
-GPUへの完全draw接続とISA検証は別工程で、係数builder単体はcapabilityを公開しない。
+係数builder単体はcapabilityを公開しない。後述の有限source pairについては
+完全producerと実owner prepare-v2へ接続済み。実GPU・標準アプリの検証は未実施。
 
 ## HからEへ渡す固定snapshot
 
@@ -70,3 +71,58 @@ DOUTU tempを4DWORD単位で切上げる。既存2/3/4成分fixture builderの�
 
 再現検査: project root内TMPDIRを指定して
 `sh tools/gpu/test-native-varying-pds.sh`。
+
+
+## 実owner接続と有限source pair
+
+`GeoNativeOwnerGetDrawOpsV2(binding, ops)` → `ops.prepare_draw` →
+`a04_vendor_native_prepare_draw_v2_cold` → `a04_m111_build_draw_job_v2`。
+公開control-v2のsubmit/actual IRQ/service/visibility/quiesceを共用し、
+prepare自体はpublishしない。旧V1 callback/clear/DOD ABIは変更しない。
+
+Hの最終compiler snapshot到着前にもproducerを検査できるよう、Eの
+`tools/gpu/shaders/native-color-pair.c` で同固定PCOのpreprocess/link/reverse-link/
+lower/postprocess/encodeを実行した。PCOに渡すNIRはsourceで構築した参照pairであり、
+HのSM4 decoderが生成したNIRを実行したものとは区別する。
+D3DCompile側の対応HLSL:
+
+```
+struct V { float4 p:SV_Position; float4 c:COLOR; };
+V main(float4 p:POSITION, float4 c:COLOR) { V v; v.p=p; v.c=c; return v; }
+float4 main(float4 c:COLOR):SV_Target { return c; }
+```
+
+Windows official d3dcompiler_47の実出力tokenと、上記NIRから生成したUSCの
+双方を有限allowlistとして検査。PCO同2process出力一致。
+
+|stage|USC bytes|temps/shareds|vtxins/out|coeffs|
+|---|---|---|---|---|
+|VS|88|0/0|8/8|0|
+|FS|80|5/0|0/0|20|
+
+FS uses.z=0/uses.w=1、COLOR係数start4/count16。実smooth translatorは
+`pco_trans_nir.c` でuses.wを要求するので、producerはこの実値に限る。
+低level係数encoderのZ/W全組を実shader対応の広告に使わない。
+
+USC SHA256: VS c623f3047d0dec747d81ab3b298979fdde89576403de6af66f89eb8bf65d710f、
+FS 2103c3048ed23a9dd336274c708a61b6fc21438e960e9766ee2e63d3de815796。
+
+ownerの既存各4096-byte USC/PDS allocation内で再配置する。
+USC: first0x40、VS0x80..0xd8、FS0x100..0x150、背景LOAD0x200..0x2d0。
+PDS: VS data0x140/code0x160、FS0x180、背景0x300、係数data0x380/code0x390。
+新たなGPUVA/MDL allocationは不要、PDS書込extentを0x400へ拡張。
+頂点入力は実別MDLの96 bytes。main VDM_STATE4 outputs8、STATE5 input8/4=2。
+CAM/max instancesはpvr_arch_calculate_vertex_cam_sizeの8XE条件で
+(8+1+4)*4=52 <14*4なので既存31/16の範囲。
+format2のviewportはD3D Y=-300/+300、Z=1/0。旧format1は変更しない。
+
+Hは実compilerのpairが上記code/metadataへ一致することを確認し、
+request_v2のspanとshader fields、link snapshotを渡す。
+一致しない場合は実artifactをEへ渡して比較し、未検査USCを許可しない。
+初回のtyped flat開発候補は引き続きV1 opsで進められる。
+限定開発profileと全FL9_1適合は区別し、未対応operationはエラーで返す。
+
+再現生成: `tools/gpu/build-native-color-pair.py --help`。
+検査: `sh tools/gpu/test-native-draw-v2.sh <explicit-source-pair-artifact-dir>`。
+実cold MDL/SG/PT/resource/ring write/readbackはhost doublesで検査済み。
+実FW start・GPU draw・標準runtime成功をこの検査結果から主張しない。

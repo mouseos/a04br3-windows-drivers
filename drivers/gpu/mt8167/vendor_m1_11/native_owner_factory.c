@@ -340,28 +340,30 @@ NTSTATUS GeoNativeOwnerDelete(struct geo_native_binding *out)
 
 #if A04_GE8300_NATIVE_OWNER_DRAW
 #include "windows_native_cold_private.h"
-#include "../wddm-render/frontend/draw_abi.h"
-static int32_t prepare_draw(void *p,const struct geo_draw_request *request,
- const void *blob,uint32_t bytes,uint64_t *job)
+#include "../wddm-render/frontend/draw_link_abi.h"
+static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
+ const void *blob,uint32_t bytes,uint64_t *job,const struct geo_draw_request_v2 *linked)
 {
     struct e_native_owner *c=p;RGXFWIF_CCB_CTL k;NTSTATUS s;uint64_t end,offset;
     if(!job)return STATUS_INVALID_PARAMETER;*job=0;
-    s=geo_draw_validate_capture(request,blob,bytes);if(!NT_SUCCESS(s))return s;
+    s=linked?geo_draw_validate_capture_v2(linked,blob,bytes):geo_draw_validate_capture(request,blob,bytes);if(!NT_SUCCESS(s))return s;
     s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     if(request->target!=c->surface || request->vertex!=c->vertex || !c->vertex ||
        !c->allocation->binding || !c->allocation->vertex || c->next_id==UINT64_MAX ||
        RtlCompareMemory(&c->description,&request->target_desc,sizeof(c->description))!=sizeof(c->description))return leave(c,STATUS_INVALID_DEVICE_STATE);
     s=wait_boundary_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
-    offset=(uint64_t)request->state.first_vertex*16u+request->state.vertex_offset;
-    end=offset+(uint64_t)request->state.vertex_count*16u;
+    offset=(uint64_t)request->state.first_vertex*request->state.vertex_stride+request->state.vertex_offset;
+    end=offset+(uint64_t)request->state.vertex_count*request->state.vertex_stride;
     if(request->state.vertex_count!=3 || end>c->vertex_description.width)return leave(c,STATUS_INVALID_PARAMETER);
     /* Immutable transformed input is a distinct H-owned VidMm allocation;
      * its independent MDL/SG is pinned through actual fence/retirement. */
     const uint32_t *vertices=(const uint32_t *)((const UCHAR *)a04_native_mdl_cpu(c->allocation->vertex)+(size_t)offset);
-    for(unsigned i=0;i<12;i++)if((vertices[i]&0x7f800000u)==0x7f800000u)return leave(c,STATUS_INVALID_PARAMETER);
+    for(unsigned i=0;i<(end-offset)/4;i++)if((vertices[i]&0x7f800000u)==0x7f800000u)return leave(c,STATUS_INVALID_PARAMETER);
     s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
     if(NT_SUCCESS(s))s=e_native_build_graph_locked(c);
-    if(NT_SUCCESS(s))s=a04_vendor_native_prepare_draw_cold(c->allocation->native,request,blob,bytes,
+    if(NT_SUCCESS(s))s=linked?a04_vendor_native_prepare_draw_v2_cold(c->allocation->native,linked,blob,bytes,
+        A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset):
+        a04_vendor_native_prepare_draw_cold(c->allocation->native,request,blob,bytes,
         A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset);
     if(!NT_SUCCESS(s)){
         /* Unsupported shader/state never publishes a job. A real resource
@@ -378,6 +380,13 @@ static int32_t prepare_draw(void *p,const struct geo_draw_request *request,
     if(!NT_SUCCESS(s))c->state=E_OWNER_FAILED;
     return leave(c,s);
 }
+static int32_t prepare_draw(void *p,const struct geo_draw_request *r,const void *blob,uint32_t bytes,uint64_t *job)
+{ return prepare_draw_impl(p,r,blob,bytes,job,NULL); }
+static int32_t prepare_draw_v2(void *p,const struct geo_draw_request_v2 *r,const void *blob,uint32_t bytes,uint64_t *job)
+{
+ if(!r){if(job)*job=0;return GEO_INVALID;}
+ return prepare_draw_impl(p,&r->base,blob,bytes,job,r);
+}
 int32_t GeoNativeOwnerGetDrawOpsV1(struct geo_native_binding *binding,struct geo_native_draw_ops_v1 *out)
 {
     struct e_native_owner *c;
@@ -388,4 +397,13 @@ int32_t GeoNativeOwnerGetDrawOpsV1(struct geo_native_binding *binding,struct geo
     out->size=sizeof(*out);out->version=1;out->context=c;out->prepare_draw=prepare_draw;
     return GEO_OK;
 }
+int32_t GeoNativeOwnerGetDrawOpsV2(struct geo_native_binding *binding,struct geo_native_draw_ops_v2 *out)
+{
+ struct geo_native_draw_ops_v1 v1;int32_t status;
+ if(!out)return GEO_INVALID;RtlZeroMemory(out,sizeof(*out));
+ status=GeoNativeOwnerGetDrawOpsV1(binding,&v1);if(status)return status;
+ out->size=sizeof(*out);out->version=2;out->context=v1.context;out->prepare_draw=prepare_draw_v2;
+ return GEO_OK;
+}
+
 #endif

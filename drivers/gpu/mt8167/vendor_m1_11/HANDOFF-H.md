@@ -222,3 +222,18 @@ yscale/offset=-300/300、zscale/offset=1/0を使用する。
 D3D clip Zは0..w。format1の旧TL変換済みprofileは従来300/300,.5/.5を保持。
 Mesa pvr_arch_cmd_buffer.c:7810-7843のheight/2とmaxDepth-minDepthを根拠とし、
 D3DのYを負height viewportとして扱う。cullNONEは維持。
+
+
+### prepare-v2実接続（有限source COLOR pair）
+
+実API `GeoNativeOwnerGetDrawOpsV2` と `geo_native_draw_ops_v2.prepare_draw` を追加。
+request_v2はbase.size=sizeof(request_v2)/version2、stride32、3vertices=96bytes。
+全field契約・実source USC hash/サイズ/配置はNATIVE_VARYING_ABI2.md末尾。
+E参照artifactはROOT/port/xnu/out/windows-rt-native-color-pair-source-v2/。
+H最終SM4pair compilerの生成物とは別で、source NIRを実PCOへ通した参照pair。
+USC VS88/FS80、0/5temps、0/0shareds、VS8in/out、FS20coeff/usesW1。
+同一USCとofficial color SM4token列を検査して実cold ownerへ接続する。
+Hは自身の実pair outputを比較してからV2へ接続すること。
+任意USC admission、caps拡大、偽completion、準備時publishは追加しない。
+同じMDL/SG、既存FW power/platform stop/rundown、poison保持を使用。
+first typed flatは30b71470のV1 opsで先に進められる。
