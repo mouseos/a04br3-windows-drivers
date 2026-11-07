@@ -41,3 +41,13 @@ DOD1.6 CPUおよび親1014の取り込みはmain/Raman所有。
 - [D3DKMT_OPENADAPTERFROMDEVICENAME](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmthk/ns-d3dkmthk-_d3dkmt_openadapterfromdevicename)：device nameと実AdapterLuidのmapping。
 - [SetupDiGetDeviceInterfaceDetailW](https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceinterfacedetailw)：同interfaceのSP_DEVINFO_DATAを返す。
 - 実WDK8.1 km/d3dkmthk.hのD3DKMT_OPENADAPTERFROMDEVICENAME／KMTQAITYPE_ADAPTERTYPEでcompile確認する。
+
+## Raman serviceとのtimeout固定
+
+外部待機上限は **120000ms、retry0**。Ramanが同値を採用した。
+client内部のblocking標準Mapに独自のtimeoutは設けていない。
+期限到達はserviceの失敗結果として保存する。プロセス終了・強制終了をGPU停止／IRQ drainの
+証明にせず、成功や自動retryへ変換しない。今回の自動client sourceは
+`6303fe54dc745950ea79658c35677c820adeddac`、署名済EXE SHA256は
+`fd6b20243bd991ba1c91c9d5c452ac3a29ddf1cc0cd23e630f928f2d288889d4`。
+実WDK compile/link・BCBF署名Valid・回収hash照合済み。実機未確認。
