@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "main_source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
-  "kmd_source_commit": "78ca65653d4c9452b50e0ca455bd9c96a27fe2fb",
+  "kmd_source_commit": "f77f4b0787b6158a31f992f2a95881aa6c0825dc",
   "native_owner_source_commit": "fb2173597de9acc12af8f06fd771037e02093360",
   "legacy_vendor_files_unchanged": true,
   "native_unit_sources": {
@@ -1963,5 +1963,7 @@
       ],
       "rewrite_includes_only": true
     }
-  ]
+  ],
+  "kmd_base_source_commit": "78ca65653d4c9452b50e0ca455bd9c96a27fe2fb",
+  "kmd_contract_cherry_pick": "a4b59606"
 }
