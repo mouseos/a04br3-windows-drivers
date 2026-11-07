@@ -254,7 +254,8 @@ typedef struct {
  PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio;
 #if A04_SHARED_CAPTURE
 struct a04_capture_input_owner captureInput;
-#endif struct a04_usb_owner usb; ULONG wifiGeneration; int wifiActive;
+#endif
+ struct a04_usb_owner usb; ULONG wifiGeneration; int wifiActive;
 #if A04_SHARED_WIFI_RUNTIME
 struct a04_rtc32k_lease wifiRtc;
 #endif
