@@ -132,6 +132,7 @@ try {
   build_defines=@{A04_HARDWARE_PROBE_ENGINE_PCM=$engineDefine;A04_ENGINE_DEFERRED_UPDATE=$deferredDefine;A04_ENGINE_BRIGHTNESS_CLIENT=$brightnessDefine};
   registry_diagnostics=$(if($deferred){@{schema=2;maximum_targets=7;volume_flush='fixed C: once before final registry flush; no lock/dismount';fixed_key='HKLM\SYSTEM\CurrentControlSet\Services\MT8167EngineProbe\Parameters\LastDiagnostic';
    generation='canonical-policy-SHA256/Install-or-Diagnostic; CREATE_NEW only';
+   brightness_log_guard='compile-time signed-policy source/log mode; legacy root retained for ccef; selected log CREATE_NEW';
    operation_result='PnpBatchResult/CompletionResult preserve first operation error independently of ServiceResult3010';
    install_progress='fixed target/step, all-install-succeeded, diagnostic-armed, reboot-pending, three marker query results';flush='one RegFlushKey before SCM STOPPED';
    stdout_stderr_limit_per_stream=65536;source_sha256=(Get-FileHash (Join-Path $root 'tools\winpe\engine-registry-diagnostic.h') -Algorithm SHA256).Hash.ToLowerInvariant()}}else{$null});

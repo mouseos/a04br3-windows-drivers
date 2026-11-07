@@ -206,7 +206,10 @@ def cbytes(digest):return '{'+','.join('0x'+digest[i:i+2] for i in range(0,64,2)
 
 def generate(policy):
     if not 5<=len(policy['packages'])<=7:raise ValueError('固定target数は5..7だけです')
+    scoped=policy.get('brightness_client',{}).get('source_commit')==BRIGHTNESS_SCOPED_SOURCE
+    if scoped and policy['brightness_client'].get('log_path')!=BRIGHTNESS_SCOPED_LOG:raise ValueError('scoped brightness source/log不一致')
     lines=['/* Generated fixed-target policy; compile into the signed Engine service. */',
+           '#define DEFERRED_BRIGHTNESS_SCOPED_LOG '+('1' if scoped else '0'),
            '#define DEFERRED_TARGET_COUNT '+str(len(policy['packages'])), '#define DEFERRED_SD_UPDATE '+('1' if 'sd' in policy['packages'] else '0'), '#define DEFERRED_GPU_UPDATE '+('1' if 'gpu' in policy['packages'] else '0'),
            'static const struct deferred_pin deferred_pins[DEFERRED_TARGET_COUNT]={']
     for role in (*TARGETS,'gpu','sd'):

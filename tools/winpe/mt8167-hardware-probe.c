@@ -469,9 +469,18 @@ static DWORD run_client(unsigned index)
  if(index>=A04_CLIENT_COUNT)return ERROR_INVALID_PARAMETER;
 #if A04_ENGINE_BRIGHTNESS_CLIENT
  if(index==2){
-  if(!CreateDirectoryW(L"C:\\MT8167EngineProbe",NULL)&&GetLastError()!=ERROR_ALREADY_EXISTS)return GetLastError();
+  WCHAR brightness_log[MAX_PATH];
+#if A04_ENGINE_DEFERRED_UPDATE && DEFERRED_BRIGHTNESS_SCOPED_LOG
+  /* ccef's signed contract uses this generation's archived Engine/logs.
+   * Preserve the old root file without testing/moving/deleting it here. */
+  error=hold_directory(log_directory,&brightness_directory);if(error)goto done;
+  error=path(brightness_log,log_directory,L"brightness-native.log");if(error)goto done;
+#else
+  if(!CreateDirectoryW(L"C:\\MT8167EngineProbe",NULL)&&GetLastError()!=ERROR_ALREADY_EXISTS){error=GetLastError();goto done;}
   error=hold_directory(L"C:\\MT8167EngineProbe",&brightness_directory);if(error)goto done;
-  if(GetFileAttributesW(L"C:\\MT8167EngineProbe\\brightness-native.log")!=INVALID_FILE_ATTRIBUTES){error=ERROR_ALREADY_EXISTS;goto done;}
+  error=path(brightness_log,L"C:\\MT8167EngineProbe",L"brightness-native.log");if(error)goto done;
+#endif
+  if(GetFileAttributesW(brightness_log)!=INVALID_FILE_ATTRIBUTES){error=ERROR_ALREADY_EXISTS;goto done;}
   error=GetLastError();if(error!=ERROR_FILE_NOT_FOUND)goto done;error=0;
  }
 #endif

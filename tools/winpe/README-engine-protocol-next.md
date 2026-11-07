@@ -146,3 +146,13 @@ WiFi校正次候補はsource `2d726d42702831aedbcee136d901595f65b39eee`、版
 `11/06/2026,2026.11.6.1007`の既知署名manifest layoutだけを1006に追加して許可する。
 全3artifactとbuild-manifest実hash/certを検査し、親1010はtuple側で選択した署名bytesを使う。
 WiFi単独buildで使用した既存親1008を媒体へ持ち込まない。起動改善は実機未確認。
+
+
+## run49 brightness launch guard
+
+run49 ccefはEngine/logsへ書く契約だが旧serviceのrun_clientにroot logの存在拒否が残り、
+旧root189Bを保持するprotocolと矛盾してB7となった。次serviceは生成済み署名policyの
+正確なccef source/logからDEFERRED_BRIGHTNESS_SCOPED_LOGを決定する。
+scoped時だけEngine/logs/brightness-native.logをguardし、旧rootは検査/移動/削除しない。
+旧4f/8a sourceは従来root guardを維持。新log既存/reparse/予期しない属性errorは拒否し、
+CREATE_NEW/旧Engine state archive/明示再armは維持する。任意path指定は追加しない。
