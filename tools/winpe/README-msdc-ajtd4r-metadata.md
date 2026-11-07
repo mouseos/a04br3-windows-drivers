@@ -17,3 +17,11 @@ Provider=mouseos、DeviceDescription/ServiceDescription=MediaTek MT8167 MSDC0 / 
 
 run95 GPU媒体、quiet WinPE完成base、現eMMC1.8、署名packageは変更しない。
 実機操作・新媒体生成・次回eMMC更新の実行はこの命名準備に含まれない。
+
+次回実更新用の再包装recipeは`tools/ci/package-msdc-ajtd4r-metadata.ps1`。
+固定quiet1.8署名packageと準備済みmetadata-planの明示hashを検査し、上位DriverVersionと
+非未来DriverDateを呼出側が明示した場合だけ新CATを作成・署名する。
+SYSは既存署名と元CAT所属を確認してbyteコピーし、compileや再署名を行わない。
+旧CATはコピーせず、新INF/SYSのCAT所属を標準signtoolで確認する。
+source288b9315由来の固定テンプレートを逆置換し、名称以外の旧INF byte/文字列一致も確認する。
+このrecipeの追加だけでは候補生成・署名を実行しない。WinPE alias/CAT/observer pin変更は別工程。
