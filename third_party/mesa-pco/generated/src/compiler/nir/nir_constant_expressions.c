@@ -391,7 +391,7 @@ msad(uint32_t src0, uint32_t src1, uint32_t src2) {
 /* Some typed vector structures to make things like src0.y work */
 typedef int8_t int1_t;
 typedef uint8_t uint1_t;
-typedef float float16_t;
+typedef float nir_const_float16_t;
 typedef float float32_t;
 typedef double float64_t;
 typedef bool bool1_t;
@@ -417,22 +417,22 @@ util_sub_check_overflow_int1_t(int1_t a, int1_t b)
 }
 
 struct float16_vec {
-   float16_t x;
-   float16_t y;
-   float16_t z;
-   float16_t w;
-   float16_t e;
-   float16_t f;
-   float16_t g;
-   float16_t h;
-   float16_t i;
-   float16_t j;
-   float16_t k;
-   float16_t l;
-   float16_t m;
-   float16_t n;
-   float16_t o;
-   float16_t p;
+   nir_const_float16_t x;
+   nir_const_float16_t y;
+   nir_const_float16_t z;
+   nir_const_float16_t w;
+   nir_const_float16_t e;
+   nir_const_float16_t f;
+   nir_const_float16_t g;
+   nir_const_float16_t h;
+   nir_const_float16_t i;
+   nir_const_float16_t j;
+   nir_const_float16_t k;
+   nir_const_float16_t l;
+   nir_const_float16_t m;
+   nir_const_float16_t n;
+   nir_const_float16_t o;
+   nir_const_float16_t p;
 };
 struct float32_vec {
    float32_t x;
@@ -1601,7 +1601,7 @@ evaluate_b2f16(nir_const_value *_dst_val,
                const bool1_t src0 =
                   _src[0][_i].b;
 
-            float16_t dst = src0;
+            nir_const_float16_t dst = src0;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -1629,7 +1629,7 @@ evaluate_b2f16(nir_const_value *_dst_val,
                const bool32_t src0 =
                   _src[0][_i].i32;
 
-            float16_t dst = src0;
+            nir_const_float16_t dst = src0;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -7795,9 +7795,9 @@ evaluate_b32fcsel_mdg(nir_const_value *_dst_val,
          bool poison = false;
                const bool32_t src0 =
                   _src[0][_i].i32;
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
-               const float16_t src2 =
+               const nir_const_float16_t src2 =
                   get_float_source(_src[2][_i], execution_mode, 16);
 
             uint16_t dst = src0 ? src1 : src2;
@@ -17616,10 +17616,10 @@ evaluate_f2f16(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
                       if (bit_size > 32) {
@@ -17663,7 +17663,7 @@ evaluate_f2f16(nir_const_value *_dst_val,
                const float32_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 32);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
                       if (bit_size > 32) {
@@ -17707,7 +17707,7 @@ evaluate_f2f16(nir_const_value *_dst_val,
                const float64_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 64);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
                       if (bit_size > 32) {
@@ -17765,10 +17765,10 @@ evaluate_f2f16_rd(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
                       if (bit_size > 16) {
@@ -17804,7 +17804,7 @@ evaluate_f2f16_rd(nir_const_value *_dst_val,
                const float32_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 32);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
                       if (bit_size > 16) {
@@ -17840,7 +17840,7 @@ evaluate_f2f16_rd(nir_const_value *_dst_val,
                const float64_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 64);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
                       if (bit_size > 16) {
@@ -17890,10 +17890,10 @@ evaluate_f2f16_rtne(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
                       if (bit_size > 32) {
@@ -17931,7 +17931,7 @@ evaluate_f2f16_rtne(nir_const_value *_dst_val,
                const float32_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 32);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
                       if (bit_size > 32) {
@@ -17969,7 +17969,7 @@ evaluate_f2f16_rtne(nir_const_value *_dst_val,
                const float64_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 64);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
                       if (bit_size > 32) {
@@ -18021,10 +18021,10 @@ evaluate_f2f16_rtz(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
                       if (bit_size > 32) {
@@ -18062,7 +18062,7 @@ evaluate_f2f16_rtz(nir_const_value *_dst_val,
                const float32_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 32);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
                       if (bit_size > 32) {
@@ -18100,7 +18100,7 @@ evaluate_f2f16_rtz(nir_const_value *_dst_val,
                const float64_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 64);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
                       if (bit_size > 32) {
@@ -18152,10 +18152,10 @@ evaluate_f2f16_ru(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
                       if (bit_size > 16) {
@@ -18191,7 +18191,7 @@ evaluate_f2f16_ru(nir_const_value *_dst_val,
                const float32_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 32);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
                       if (bit_size > 16) {
@@ -18227,7 +18227,7 @@ evaluate_f2f16_ru(nir_const_value *_dst_val,
                const float64_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 64);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
                       if (bit_size > 16) {
@@ -18277,7 +18277,7 @@ evaluate_f2f32(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             float32_t dst;
@@ -18390,7 +18390,7 @@ evaluate_f2f64(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             float64_t dst = src0;
@@ -18480,7 +18480,7 @@ evaluate_f2fmp(nir_const_value *_dst_val,
                const float32_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 32);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
                       if (bit_size > 32) {
@@ -18532,7 +18532,7 @@ evaluate_f2i1(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             int1_t dst;
@@ -18642,7 +18642,7 @@ evaluate_f2i16(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             int16_t dst;
@@ -18749,7 +18749,7 @@ evaluate_f2i16_sat(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             int16_t dst = (int16_t) isnan(src0) ? 0.0 : fmin(fmax(src0, (double)u_intN_min(16)), (double)u_intN_max(16));
@@ -18829,7 +18829,7 @@ evaluate_f2i32(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             int32_t dst;
@@ -18966,7 +18966,7 @@ evaluate_f2i32_sat(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             int32_t dst = (int32_t) isnan(src0) ? 0.0 : fmin(fmax(src0, (double)u_intN_min(32)), (double)u_intN_max(32));
@@ -19046,7 +19046,7 @@ evaluate_f2i64(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             int64_t dst;
@@ -19153,7 +19153,7 @@ evaluate_f2i8(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             int8_t dst;
@@ -19260,7 +19260,7 @@ evaluate_f2i8_sat(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             int8_t dst = (int8_t) isnan(src0) ? 0.0 : fmin(fmax(src0, (double)u_intN_min(8)), (double)u_intN_max(8));
@@ -19409,7 +19409,7 @@ evaluate_f2u1(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             uint1_t dst;
@@ -19519,7 +19519,7 @@ evaluate_f2u16(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             uint16_t dst;
@@ -19626,7 +19626,7 @@ evaluate_f2u16_sat(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             uint16_t dst = (uint16_t)fmin(fmax(src0, 0.0), (double)u_uintN_max(16));
@@ -19706,7 +19706,7 @@ evaluate_f2u32(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             uint32_t dst;
@@ -19843,7 +19843,7 @@ evaluate_f2u32_sat(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             uint32_t dst = (uint32_t)fmin(fmax(src0, 0.0), (double)u_uintN_max(32));
@@ -19923,7 +19923,7 @@ evaluate_f2u64(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             uint64_t dst;
@@ -20030,7 +20030,7 @@ evaluate_f2u8(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             uint8_t dst;
@@ -20137,7 +20137,7 @@ evaluate_f2u8_sat(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             uint8_t dst = (uint8_t)fmin(fmax(src0, 0.0), (double)u_uintN_max(8));
@@ -20286,10 +20286,10 @@ evaluate_fabs(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = fabs(src0);
+            nir_const_float16_t dst = fabs(src0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -20379,12 +20379,12 @@ evaluate_fadd(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
 if (nir_is_rounding_mode_rtz(execution_mode, bit_size)) {
@@ -20511,12 +20511,12 @@ evaluate_fadd_rtne(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
 dst = src0 + src1;
@@ -20622,10 +20622,10 @@ evaluate_fcanonicalize(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = src0;
+            nir_const_float16_t dst = src0;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -20715,10 +20715,10 @@ evaluate_fceil(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = bit_size == 64 ? ceil(src0) : ceilf(src0);
+            nir_const_float16_t dst = bit_size == 64 ? ceil(src0) : ceilf(src0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -20808,10 +20808,10 @@ evaluate_fclamp_pos(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = fmax(src0, 0.0);
+            nir_const_float16_t dst = fmax(src0, 0.0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -20901,12 +20901,12 @@ evaluate_fcopysign_pco(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
-            float16_t dst = bit_size == 64 ? copysign(src0, src1) : copysignf(src0, src1);
+            nir_const_float16_t dst = bit_size == 64 ? copysign(src0, src1) : copysignf(src0, src1);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -21000,10 +21000,10 @@ evaluate_fcos(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = bit_size == 64 ? cos(src0) : cosf(src0);
+            nir_const_float16_t dst = bit_size == 64 ? cos(src0) : cosf(src0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -21093,10 +21093,10 @@ evaluate_fcos_mdg(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = cosf(3.141592653589793 * src0);
+            nir_const_float16_t dst = cosf(3.141592653589793 * src0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -21186,10 +21186,10 @@ evaluate_fcos_normalized_2_pi(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = cosf(6.2831853 * src0);
+            nir_const_float16_t dst = cosf(6.2831853 * src0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -21390,12 +21390,12 @@ evaluate_fdiv(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
-            float16_t dst = src0 / src1;
+            nir_const_float16_t dst = src0 / src1;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -21714,7 +21714,7 @@ evaluate_fdot16_replicated(nir_const_value *_dst_val,
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
                               
-            float16_t dst = ((src0.p * src1.p) + (src0.o * src1.o) + (src0.n * src1.n) + (src0.m * src1.m) + (src0.l * src1.l) + (src0.k * src1.k) + (src0.j * src1.j) + (src0.i * src1.i) + (src0.h * src1.h) + (src0.g * src1.g) + (src0.f * src1.f) + (src0.e * src1.e) + (src0.w * src1.w) + (src0.z * src1.z) + (src0.y * src1.y) + (src0.x * src1.x));
+            nir_const_float16_t dst = ((src0.p * src1.p) + (src0.o * src1.o) + (src0.n * src1.n) + (src0.m * src1.m) + (src0.l * src1.l) + (src0.k * src1.k) + (src0.j * src1.j) + (src0.i * src1.i) + (src0.h * src1.h) + (src0.g * src1.g) + (src0.f * src1.f) + (src0.e * src1.e) + (src0.w * src1.w) + (src0.z * src1.z) + (src0.y * src1.y) + (src0.x * src1.x));
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -22101,7 +22101,7 @@ evaluate_fdot2_replicated(nir_const_value *_dst_val,
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
                               
-            float16_t dst = ((src0.y * src1.y) + (src0.x * src1.x));
+            nir_const_float16_t dst = ((src0.y * src1.y) + (src0.x * src1.x));
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -22488,7 +22488,7 @@ evaluate_fdot3_replicated(nir_const_value *_dst_val,
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
                               
-            float16_t dst = ((src0.z * src1.z) + (src0.y * src1.y) + (src0.x * src1.x));
+            nir_const_float16_t dst = ((src0.z * src1.z) + (src0.y * src1.y) + (src0.x * src1.x));
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -22875,7 +22875,7 @@ evaluate_fdot4_replicated(nir_const_value *_dst_val,
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
                               
-            float16_t dst = ((src0.w * src1.w) + (src0.z * src1.z) + (src0.y * src1.y) + (src0.x * src1.x));
+            nir_const_float16_t dst = ((src0.w * src1.w) + (src0.z * src1.z) + (src0.y * src1.y) + (src0.x * src1.x));
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -23262,7 +23262,7 @@ evaluate_fdot5_replicated(nir_const_value *_dst_val,
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
                               
-            float16_t dst = ((src0.e * src1.e) + (src0.w * src1.w) + (src0.z * src1.z) + (src0.y * src1.y) + (src0.x * src1.x));
+            nir_const_float16_t dst = ((src0.e * src1.e) + (src0.w * src1.w) + (src0.z * src1.z) + (src0.y * src1.y) + (src0.x * src1.x));
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -23649,7 +23649,7 @@ evaluate_fdot8_replicated(nir_const_value *_dst_val,
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
                               
-            float16_t dst = ((src0.h * src1.h) + (src0.g * src1.g) + (src0.f * src1.f) + (src0.e * src1.e) + (src0.w * src1.w) + (src0.z * src1.z) + (src0.y * src1.y) + (src0.x * src1.x));
+            nir_const_float16_t dst = ((src0.h * src1.h) + (src0.g * src1.g) + (src0.f * src1.f) + (src0.e * src1.e) + (src0.w * src1.w) + (src0.z * src1.z) + (src0.y * src1.y) + (src0.x * src1.x));
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -24036,7 +24036,7 @@ evaluate_fdph_replicated(nir_const_value *_dst_val,
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
                               
-            float16_t dst = src0.x * src1.x + src0.y * src1.y + src0.z * src1.z + src1.w;
+            nir_const_float16_t dst = src0.x * src1.x + src0.y * src1.y + src0.z * src1.z + src1.w;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -24198,9 +24198,9 @@ evaluate_feq(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool1_t dst = src0 == src1;
@@ -24284,9 +24284,9 @@ evaluate_feq32(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool32_t dst = src0 == src1;
@@ -24370,9 +24370,9 @@ evaluate_feq_pan(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             uint16_t dst = src0 == src1 ? -1 : 0;
@@ -24456,9 +24456,9 @@ evaluate_fequ(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool1_t dst = isnan(src0) || isnan(src1) || src0 == src1;
@@ -24542,9 +24542,9 @@ evaluate_fequ32(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool32_t dst = isnan(src0) || isnan(src1) || src0 == src1;
@@ -24628,9 +24628,9 @@ evaluate_fequ_pan(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             uint16_t dst = isnan(src0) || isnan(src1) || src0 == src1 ? -1 : 0;
@@ -24714,10 +24714,10 @@ evaluate_fexp2(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = exp2f(src0);
+            nir_const_float16_t dst = exp2f(src0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -24807,10 +24807,10 @@ evaluate_ffloor(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = bit_size == 64 ? floor(src0) : floorf(src0);
+            nir_const_float16_t dst = bit_size == 64 ? floor(src0) : floorf(src0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -24900,14 +24900,14 @@ evaluate_ffma(nir_const_value *_dst_val,
                            
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
-               const float16_t src2 =
+               const nir_const_float16_t src2 =
                   get_float_source(_src[2][_i], execution_mode, 16);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
 if (nir_is_rounding_mode_rtz(execution_mode, bit_size)) {
@@ -25053,14 +25053,14 @@ evaluate_ffma_weak(nir_const_value *_dst_val,
                            
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
-               const float16_t src2 =
+               const nir_const_float16_t src2 =
                   get_float_source(_src[2][_i], execution_mode, 16);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
 if (nir_is_rounding_mode_rtz(execution_mode, bit_size)) {
@@ -25252,10 +25252,10 @@ evaluate_ffract(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = src0 - (bit_size == 64 ? floor(src0) : floorf(src0));
+            nir_const_float16_t dst = src0 - (bit_size == 64 ? floor(src0) : floorf(src0));
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -25345,9 +25345,9 @@ evaluate_fge(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool1_t dst = src0 >= src1;
@@ -25431,9 +25431,9 @@ evaluate_fge32(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool32_t dst = src0 >= src1;
@@ -25517,9 +25517,9 @@ evaluate_fge_pan(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             uint16_t dst = src0 >= src1 ? -1 : 0;
@@ -25603,9 +25603,9 @@ evaluate_fgeu(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool1_t dst = isnan(src0) || isnan(src1) || src0 >= src1;
@@ -25689,9 +25689,9 @@ evaluate_fgeu32(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool32_t dst = isnan(src0) || isnan(src1) || src0 >= src1;
@@ -25775,9 +25775,9 @@ evaluate_fgeu_pan(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             uint16_t dst = isnan(src0) || isnan(src1) || src0 >= src1 ? -1 : 0;
@@ -26033,7 +26033,7 @@ evaluate_fisfinite(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             bool1_t dst = isfinite(src0);
@@ -26113,7 +26113,7 @@ evaluate_fisfinite32(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             bool32_t dst = isfinite(src0);
@@ -26193,7 +26193,7 @@ evaluate_fisnormal(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             bool1_t dst = isnormal(src0);
@@ -26273,10 +26273,10 @@ evaluate_flog2(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = log2f(src0);
+            nir_const_float16_t dst = log2f(src0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -26366,14 +26366,14 @@ evaluate_flrp(nir_const_value *_dst_val,
                            
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
-               const float16_t src2 =
+               const nir_const_float16_t src2 =
                   get_float_source(_src[2][_i], execution_mode, 16);
 
-            float16_t dst = src0 * (1 - src2) + src1 * src2;
+            nir_const_float16_t dst = src0 * (1 - src2) + src1 * src2;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -26471,9 +26471,9 @@ evaluate_flt(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool1_t dst = src0 < src1;
@@ -26557,9 +26557,9 @@ evaluate_flt32(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool32_t dst = src0 < src1;
@@ -26643,9 +26643,9 @@ evaluate_flt_pan(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             uint16_t dst = src0 < src1 ? -1 : 0;
@@ -26729,9 +26729,9 @@ evaluate_fltu(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool1_t dst = isnan(src0) || isnan(src1) || src0 < src1;
@@ -26815,9 +26815,9 @@ evaluate_fltu32(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool32_t dst = isnan(src0) || isnan(src1) || src0 < src1;
@@ -26901,9 +26901,9 @@ evaluate_fltu_pan(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             uint16_t dst = isnan(src0) || isnan(src1) || src0 < src1 ? -1 : 0;
@@ -26987,14 +26987,14 @@ evaluate_fmad(nir_const_value *_dst_val,
                            
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
-               const float16_t src2 =
+               const nir_const_float16_t src2 =
                   get_float_source(_src[2][_i], execution_mode, 16);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
 if (nir_is_rounding_mode_rtz(execution_mode, bit_size)) {
@@ -27206,12 +27206,12 @@ evaluate_fmax(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
-            float16_t dst = util_max_num(src0, src1);
+            nir_const_float16_t dst = util_max_num(src0, src1);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -27345,12 +27345,12 @@ evaluate_fmin(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
-            float16_t dst = util_min_num(src0, src1);
+            nir_const_float16_t dst = util_min_num(src0, src1);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -27484,12 +27484,12 @@ evaluate_fmod(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
-            float16_t dst = src0 - src1 * floorf(src0 / src1);
+            nir_const_float16_t dst = src0 - src1 * floorf(src0 / src1);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -27583,12 +27583,12 @@ evaluate_fmul(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
 if (nir_is_rounding_mode_rtz(execution_mode, bit_size)) {
@@ -27798,10 +27798,10 @@ evaluate_fneg(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = -src0;
+            nir_const_float16_t dst = -src0;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -27891,9 +27891,9 @@ evaluate_fneo(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool1_t dst = !isnan(src0) && !isnan(src1) && src0 != src1;
@@ -27977,9 +27977,9 @@ evaluate_fneo32(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool32_t dst = !isnan(src0) && !isnan(src1) && src0 != src1;
@@ -28063,9 +28063,9 @@ evaluate_fneo_pan(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             uint16_t dst = !isnan(src0) && !isnan(src1) && src0 != src1 ? -1 : 0;
@@ -28149,9 +28149,9 @@ evaluate_fneu(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool1_t dst = src0 != src1;
@@ -28235,9 +28235,9 @@ evaluate_fneu32(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool32_t dst = src0 != src1;
@@ -28321,9 +28321,9 @@ evaluate_fneu_pan(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             uint16_t dst = src0 != src1 ? -1 : 0;
@@ -28407,9 +28407,9 @@ evaluate_ford(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool1_t dst = !isnan(src0) && !isnan(src1);
@@ -28493,9 +28493,9 @@ evaluate_ford32(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool32_t dst = !isnan(src0) && !isnan(src1);
@@ -28579,9 +28579,9 @@ evaluate_ford_pan(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             uint16_t dst = !isnan(src0) && !isnan(src1) ? -1 : 0;
@@ -28665,12 +28665,12 @@ evaluate_fpow(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
-            float16_t dst = bit_size == 64 ? pow(src0, src1) : powf(src0, src1);
+            nir_const_float16_t dst = bit_size == 64 ? pow(src0, src1) : powf(src0, src1);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -28797,10 +28797,10 @@ evaluate_frcp(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = bit_size == 64 ? 1.0 / src0 : 1.0f / src0;
+            nir_const_float16_t dst = bit_size == 64 ? 1.0 / src0 : 1.0f / src0;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -28890,12 +28890,12 @@ evaluate_frem(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
-            float16_t dst = src0 - src1 * truncf(src0 / src1);
+            nir_const_float16_t dst = src0 - src1 * truncf(src0 / src1);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -28989,7 +28989,7 @@ evaluate_frexp_exp(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
             int32_t dst;
@@ -29075,10 +29075,10 @@ evaluate_frexp_sig(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             int n; dst = frexp(src0, &n);
 
@@ -29174,10 +29174,10 @@ evaluate_fround_even(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = bit_size == 64 ? _mesa_roundeven(src0) : _mesa_roundevenf(src0);
+            nir_const_float16_t dst = bit_size == 64 ? _mesa_roundeven(src0) : _mesa_roundevenf(src0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -29267,10 +29267,10 @@ evaluate_frsq(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = bit_size == 64 ? 1.0 / sqrt(src0) : 1.0f / sqrtf(src0);
+            nir_const_float16_t dst = bit_size == 64 ? 1.0 / sqrt(src0) : 1.0f / sqrtf(src0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -29360,10 +29360,10 @@ evaluate_fsat(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = util_min_num(util_max_num(src0, 0.0), 1.0);
+            nir_const_float16_t dst = util_min_num(util_max_num(src0, 0.0), 1.0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -29453,10 +29453,10 @@ evaluate_fsat_signed(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = fmin(fmax(src0, -1.0), 1.0);
+            nir_const_float16_t dst = fmin(fmax(src0, -1.0), 1.0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -29546,10 +29546,10 @@ evaluate_fsign(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = bit_size == 64 ? (isnan(src0) ? 0.0  : ((src0 == 0.0 ) ? src0 : (src0 > 0.0 ) ? 1.0  : -1.0 )) : (isnan(src0) ? 0.0f : ((src0 == 0.0f) ? src0 : (src0 > 0.0f) ? 1.0f : -1.0f));
+            nir_const_float16_t dst = bit_size == 64 ? (isnan(src0) ? 0.0  : ((src0 == 0.0 ) ? src0 : (src0 > 0.0 ) ? 1.0  : -1.0 )) : (isnan(src0) ? 0.0f : ((src0 == 0.0f) ? src0 : (src0 > 0.0f) ? 1.0f : -1.0f));
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -29639,10 +29639,10 @@ evaluate_fsin(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = bit_size == 64 ? sin(src0) : sinf(src0);
+            nir_const_float16_t dst = bit_size == 64 ? sin(src0) : sinf(src0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -29732,10 +29732,10 @@ evaluate_fsin_agx(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = sinf(src0 * (6.2831853/4.0));
+            nir_const_float16_t dst = sinf(src0 * (6.2831853/4.0));
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -29825,10 +29825,10 @@ evaluate_fsin_mdg(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = sinf(3.141592653589793 * src0);
+            nir_const_float16_t dst = sinf(3.141592653589793 * src0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -29918,10 +29918,10 @@ evaluate_fsin_normalized_2_pi(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = sinf(6.2831853 * src0);
+            nir_const_float16_t dst = sinf(6.2831853 * src0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -30011,10 +30011,10 @@ evaluate_fsqrt(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = bit_size == 64 ? sqrt(src0) : sqrtf(src0);
+            nir_const_float16_t dst = bit_size == 64 ? sqrt(src0) : sqrtf(src0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -30104,12 +30104,12 @@ evaluate_fsub(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
 if (nir_is_rounding_mode_rtz(execution_mode, bit_size)) {
@@ -30623,10 +30623,10 @@ evaluate_ftanh(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = bit_size == 64 ? tanh(src0) : tanhf(src0);
+            nir_const_float16_t dst = bit_size == 64 ? tanh(src0) : tanhf(src0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -30716,10 +30716,10 @@ evaluate_ftrunc(nir_const_value *_dst_val,
          
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
 
-            float16_t dst = bit_size == 64 ? trunc(src0) : truncf(src0);
+            nir_const_float16_t dst = bit_size == 64 ? trunc(src0) : truncf(src0);
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -30809,9 +30809,9 @@ evaluate_funord(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool1_t dst = isnan(src0) || isnan(src1);
@@ -30895,9 +30895,9 @@ evaluate_funord32(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             bool32_t dst = isnan(src0) || isnan(src1);
@@ -30981,9 +30981,9 @@ evaluate_funord_pan(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
             uint16_t dst = isnan(src0) || isnan(src1) ? -1 : 0;
@@ -31070,7 +31070,7 @@ evaluate_i2f16(nir_const_value *_dst_val,
                /* 1-bit integers use a 0/-1 convention */
                const int1_t src0 = -(int1_t)_src[0][_i].b;
 
-            float16_t dst = src0;
+            nir_const_float16_t dst = src0;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -31098,7 +31098,7 @@ evaluate_i2f16(nir_const_value *_dst_val,
                const int8_t src0 =
                   _src[0][_i].i8;
 
-            float16_t dst = src0;
+            nir_const_float16_t dst = src0;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -31126,7 +31126,7 @@ evaluate_i2f16(nir_const_value *_dst_val,
                const int16_t src0 =
                   _src[0][_i].i16;
 
-            float16_t dst = src0;
+            nir_const_float16_t dst = src0;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -31154,7 +31154,7 @@ evaluate_i2f16(nir_const_value *_dst_val,
                const int32_t src0 =
                   _src[0][_i].i32;
 
-            float16_t dst = src0;
+            nir_const_float16_t dst = src0;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -31182,7 +31182,7 @@ evaluate_i2f16(nir_const_value *_dst_val,
                const int64_t src0 =
                   _src[0][_i].i64;
 
-            float16_t dst = src0;
+            nir_const_float16_t dst = src0;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -31499,7 +31499,7 @@ evaluate_i2fmp(nir_const_value *_dst_val,
                const int32_t src0 =
                   _src[0][_i].i32;
 
-            float16_t dst = src0;
+            nir_const_float16_t dst = src0;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -38790,12 +38790,12 @@ evaluate_ldexp(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
                const int32_t src1 =
                   _src[1][_i].i32;
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
 dst = (bit_size == 64) ? ldexp(src0, src1) : ldexpf(src0, src1);
@@ -38908,12 +38908,12 @@ evaluate_ldexp16_pan(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
                const int16_t src1 =
                   _src[1][_i].i16;
 
-            float16_t dst;
+            nir_const_float16_t dst;
 
             
 dst = ldexpf(src0, src1);
@@ -42696,12 +42696,12 @@ evaluate_seq(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
-            float16_t dst = (src0 == src1) ? 1.0f : 0.0f;
+            nir_const_float16_t dst = (src0 == src1) ? 1.0f : 0.0f;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -42795,12 +42795,12 @@ evaluate_sge(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
-            float16_t dst = (src0 >= src1) ? 1.0f : 0.0f;
+            nir_const_float16_t dst = (src0 >= src1) ? 1.0f : 0.0f;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -43506,12 +43506,12 @@ evaluate_slt(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
-            float16_t dst = (src0 < src1) ? 1.0f : 0.0f;
+            nir_const_float16_t dst = (src0 < src1) ? 1.0f : 0.0f;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -43605,12 +43605,12 @@ evaluate_sne(nir_const_value *_dst_val,
                   
       for (unsigned _i = 0; _i < num_components; _i++) {
          bool poison = false;
-               const float16_t src0 =
+               const nir_const_float16_t src0 =
                   get_float_source(_src[0][_i], execution_mode, 16);
-               const float16_t src1 =
+               const nir_const_float16_t src1 =
                   get_float_source(_src[1][_i], execution_mode, 16);
 
-            float16_t dst = (src0 != src1) ? 1.0f : 0.0f;
+            nir_const_float16_t dst = (src0 != src1) ? 1.0f : 0.0f;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -43833,7 +43833,7 @@ evaluate_u2f16(nir_const_value *_dst_val,
                const uint1_t src0 =
                   _src[0][_i].b;
 
-            float16_t dst = src0;
+            nir_const_float16_t dst = src0;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -43861,7 +43861,7 @@ evaluate_u2f16(nir_const_value *_dst_val,
                const uint8_t src0 =
                   _src[0][_i].u8;
 
-            float16_t dst = src0;
+            nir_const_float16_t dst = src0;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -43889,7 +43889,7 @@ evaluate_u2f16(nir_const_value *_dst_val,
                const uint16_t src0 =
                   _src[0][_i].u16;
 
-            float16_t dst = src0;
+            nir_const_float16_t dst = src0;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -43917,7 +43917,7 @@ evaluate_u2f16(nir_const_value *_dst_val,
                const uint32_t src0 =
                   _src[0][_i].u32;
 
-            float16_t dst = src0;
+            nir_const_float16_t dst = src0;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -43945,7 +43945,7 @@ evaluate_u2f16(nir_const_value *_dst_val,
                const uint64_t src0 =
                   _src[0][_i].u64;
 
-            float16_t dst = src0;
+            nir_const_float16_t dst = src0;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);
@@ -44262,7 +44262,7 @@ evaluate_u2fmp(nir_const_value *_dst_val,
                const uint32_t src0 =
                   _src[0][_i].u32;
 
-            float16_t dst = src0;
+            nir_const_float16_t dst = src0;
 
             if (nir_is_rounding_mode_rtz(execution_mode, 16)) {
                _dst_val[_i].u16 = _mesa_float_to_float16_rtz(dst);

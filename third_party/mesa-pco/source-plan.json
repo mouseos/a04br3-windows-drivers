@@ -27661,8 +27661,15 @@
     },
     {
       "path": "third_party/mesa-pco/generated/src/compiler/nir/nir_constant_expressions.c",
-      "sha256": "fe2d02c8bf3f817f4323ee78a6d5bd225dce46b7765034fbde535edace436eda",
-      "origin": "generated:src/compiler/nir/nir_constant_expressions.c"
+      "sha256": "bfc38afe4f66afbfc7ce2c87cbadde98f0f6585455e6845f79c7b82434c48db9",
+      "origin": "generated:src/compiler/nir/nir_constant_expressions.c",
+      "unpatched_generated_sha256": "fe2d02c8bf3f817f4323ee78a6d5bd225dce46b7765034fbde535edace436eda",
+      "port_identifier_rename": {
+        "from": "float16_t",
+        "to": "nir_const_float16_t",
+        "reason": "avoid ACLE arm_neon.h __fp16 typedef collision; NIR evaluator keeps float arithmetic",
+        "patch": "third_party/mesa-pco/ports/generated-float16-name.patch"
+      }
     },
     {
       "path": "third_party/mesa-pco/generated/src/compiler/nir/nir_intrinsics.c",
@@ -30571,6 +30578,11 @@
       "path": "third_party/mesa-pco/mesa/src/util/xxhash.h",
       "sha256": "17973c0dc49d9854ca26caa191f0e12f7a424b68858d9a78de3860d959d85e4b",
       "origin": "mesa:src/util/xxhash.h"
+    },
+    {
+      "path": "third_party/mesa-pco/ports/generated-float16-name.patch",
+      "sha256": "e424589b5b96d730408265ba544570f93da0765eda15a4969a7b8af311c98fb7",
+      "origin": "driver-port:generated-local-type-rename"
     },
     {
       "path": "third_party/mesa-pco/ports/pco_context_windows.c",
