@@ -15,6 +15,8 @@ NTSTATUS a04_vendor_native_allocate_cold(struct a04_vendor_native_cold **,
     ULONG width,ULONG height);
 NTSTATUS a04_vendor_native_release_cold(struct a04_vendor_native_cold **);
 ULONG a04_vendor_native_bytes(const struct a04_vendor_native_cold *);
+/* Complete CPU candidate and cold ring image staged; does not open publish gate. */
+BOOLEAN a04_vendor_native_job_staged(const struct a04_vendor_native_cold *);
 /* Independently derived HWRT register input; bank bind is not drawing. */
 NTSTATUS a04_vendor_native_bind_bank_cold(struct a04_vendor_native_cold *,
     const struct a04_m111_hwrt_input *);

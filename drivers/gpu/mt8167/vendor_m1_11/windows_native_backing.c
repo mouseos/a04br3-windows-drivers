@@ -90,7 +90,7 @@ NTSTATUS a04_vendor_native_prepare_backing_cold(struct a04_vendor_native_cold *n
        !(r=n->render) || r->native_owner!=n || !r->firmware || r->firmware->adapter!=adapter ||
        r->firmware->hardware_owned || r->firmware->render_owner!=r || !n->prepared || !n->mapped || !n->bank_prepared ||
        n->code_mapped!=3u || n->output_mapped || n->backing_staged || maps<1000u ||
-       n->width!=800u || n->height!=1280u || n->suffix_offset+4096u!=n->used)
+       n->width!=800u || n->height!=(A04_GE8300_VENDOR_NATIVE_CLEAR_JOB?600u:1280u) || n->suffix_offset+4096u!=n->used)
         return STATUS_INVALID_DEVICE_STATE;
     for(i=0;i<4;i++)if(n->output[i].cpu || n->output[i].adapter)return STATUS_INVALID_DEVICE_STATE;
     shadow=ExAllocatePoolWithTag(NonPagedPoolNx,5u*4096u,BACKING_TAG);
@@ -122,10 +122,10 @@ NTSTATUS a04_vendor_native_prepare_backing_cold(struct a04_vendor_native_cold *n
     a04_gpu_dma_barrier();entry=pc[A04_NATIVE_OUTPUT_VA>>30];
     n->output_mapped=TRUE; /* Retain ownership through any partial PC write. */
     if(write_verified((UCHAR *)r->buffer[1].cpu+(A04_NATIVE_OUTPUT_VA>>30)*4u,&entry,4u))goto done;
-    if(a04_m111_build_clear_surface(&surface,A04_NATIVE_OUTPUT_VA,800u,1280u,800u) ||
+    if(a04_m111_build_clear_surface(&surface,A04_NATIVE_OUTPUT_VA,800u,n->height,800u) ||
        a04_m111_build_clear_codespace(&code,A04_NATIVE_USC_VA,A04_NATIVE_PDS_VA,0u,surface.emit[0],surface.emit[1]) ||
        a04_m111_build_clear_code_bindings(&bindings,A04_NATIVE_PDS_VA) ||
-       a04_m111_build_clear_terminate_stream(&suffix,A04_NATIVE_DATA_VA+n->suffix_offset,800u,1280u))goto done;
+       a04_m111_build_clear_terminate_stream(&suffix,A04_NATIVE_DATA_VA+n->suffix_offset,800u,n->height))goto done;
     if(write_verified(n->code[0].cpu,code.usc,sizeof(code.usc)) ||
        write_verified(n->code[1].cpu,code.pds,sizeof(code.pds)) ||
        write_verified((UCHAR *)n->data.cpu+n->suffix_offset,suffix.data,sizeof(suffix.data)))goto done;
