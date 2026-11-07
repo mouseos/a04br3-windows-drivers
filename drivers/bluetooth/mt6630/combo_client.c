@@ -16,7 +16,7 @@ EVT_WDF_DRIVER_DEVICE_ADD Add;
 EVT_WDF_DEVICE_D0_ENTRY Start;
 EVT_WDF_DEVICE_D0_EXIT Stop;
 EVT_WDF_TIMER Timer;
-EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL Internal;
+EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL ComboInternal;
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL Forward;
 static void lock(CLIENT *c){(void)WdfWaitLockAcquire(c->lock,NULL);}
 static void unlock(CLIENT *c){WdfWaitLockRelease(c->lock);}
@@ -62,7 +62,7 @@ VOID Timer(WDFTIMER timer)
  }
  unlock(c);
 }
-VOID Internal(WDFQUEUE q,WDFREQUEST r,size_t outlen,size_t inlen,ULONG code)
+VOID ComboInternal(WDFQUEUE q,WDFREQUEST r,size_t outlen,size_t inlen,ULONG code)
 {
  CLIENT *c=Context(WdfIoQueueGetDevice(q));PVOID in,out;size_t bytes;NTSTATUS s=STATUS_INVALID_PARAMETER;ULONG_PTR used=0;
  UNREFERENCED_PARAMETER(outlen);UNREFERENCED_PARAMETER(inlen);
@@ -140,7 +140,7 @@ static NTSTATUS child(CLIENT *c)
  RtlInitUnicodeString(&id,L"MS_BTHX_BTHMINI");s=WdfPdoInitAddCompatibleID(init,&id);if(!NT_SUCCESS(s))goto fail;
  RtlInitUnicodeString(&id,L"0");s=WdfPdoInitAssignInstanceID(init,&id);if(!NT_SUCCESS(s))goto fail;
  WDF_OBJECT_ATTRIBUTES_INIT(&a);a.ExecutionLevel=WdfExecutionLevelPassive;s=WdfDeviceCreate(&init,&a,&c->child);if(!NT_SUCCESS(s))goto fail;
- WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel);q.PowerManaged=WdfFalse;q.EvtIoDeviceControl=Forward;q.EvtIoInternalDeviceControl=Forward;
+ WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel);q.PowerManaged=WdfFalse;q.EvtIoDeviceControl=Forward;q.EvtIoComboInternalDeviceControl=Forward;
  s=WdfIoQueueCreate(c->child,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);if(NT_SUCCESS(s))s=WdfFdoAddStaticChild(c->device,c->child);return s;
 fail:WdfDeviceInitFree(init);return s;
 }
@@ -155,7 +155,7 @@ NTSTATUS Add(WDFDRIVER driver,PWDFDEVICE_INIT init)
  WDF_TIMER_CONFIG_INIT(&timer,Timer);timer.AutomaticSerialization=FALSE;a.ExecutionLevel=WdfExecutionLevelPassive;
  s=WdfTimerCreate(&timer,&a,&c->timer);if(!NT_SUCCESS(s))return s;
  for(unsigned i=0;i<2;i++){WDF_IO_QUEUE_CONFIG_INIT(&q,WdfIoQueueDispatchManual);q.PowerManaged=WdfFalse;s=WdfIoQueueCreate(d,&q,WDF_NO_OBJECT_ATTRIBUTES,&c->reads[i]);if(!NT_SUCCESS(s))return s;}
- WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel);q.PowerManaged=WdfFalse;q.EvtIoDeviceControl=Internal;q.EvtIoInternalDeviceControl=Internal;
+ WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel);q.PowerManaged=WdfFalse;q.EvtIoDeviceControl=ComboInternal;q.EvtIoComboInternalDeviceControl=ComboInternal;
  s=WdfIoQueueCreate(d,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);return NT_SUCCESS(s)?child(c):s;
 }
 NTSTATUS DriverEntry(PDRIVER_OBJECT object,PUNICODE_STRING path)
