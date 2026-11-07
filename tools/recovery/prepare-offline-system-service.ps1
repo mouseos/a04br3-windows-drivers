@@ -5,7 +5,7 @@ param(
     [string]$ExpectedSystemSha256,
     [string]$ExpectedLog1Sha256,
     [string]$ExpectedLog2Sha256,
-    [ValidateSet('MT8167DeviceInstall','MT8167HardwareProbe','MT8167EngineProbe')][string]$ServiceName='MT8167DeviceInstall',
+    [ValidateSet('MT8167DeviceInstall','MT8167HardwareProbe','MT8167EngineProbe','MT8167RenderProbe')][string]$ServiceName='MT8167DeviceInstall',
     [switch]$IncludeHardwareProbe,
     [switch]$RearmFixedGpuDeviceInstall,
     [switch]$InspectFixedGpuDeviceInstall,
@@ -61,7 +61,8 @@ function Fixed-ServiceSpec([string]$Name) {
         'MT8167DeviceInstall' { return [ordered]@{name='MT8167DeviceInstall';display_name='MediaTek MT8167 Device Installation';image_path='"C:\Windows\System32\MT8167DeviceInstall.exe"'} }
         'MT8167HardwareProbe' { return [ordered]@{name='MT8167HardwareProbe';display_name='MediaTek MT8167 Hardware Probe';image_path='"C:\Windows\System32\MT8167HardwareProbe.exe"'} }
         'MT8167EngineProbe' { return [ordered]@{name='MT8167EngineProbe';display_name='MediaTek MT8167 Engine Probe';image_path='"C:\Windows\System32\MT8167EngineProbe.exe"'} }
-        default { throw 'Unknown service name; only three fixed one-shot services are allowed' }
+        'MT8167RenderProbe' { return [ordered]@{name='MT8167RenderProbe';display_name='PowerVR GE8300 Render Probe';image_path='"C:\Windows\System32\MT8167RenderProbe.exe"'} }
+        default { throw 'Unknown fixed one-shot service name' }
     }
 }
 function Service-Values($Spec) {
