@@ -8,6 +8,7 @@ SIGNER='BCBF6C456C6F0DD0818434763B189488FBF13570'
 FRESH54='521124fdab3b7c3759ee790b76afca18e4988123e6dadc0f5c11e9958d59a1d2'
 FW='5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1'
 PARENT='287241c37fa0eae538e5e2d136dea5df42de7e43'
+PARENT1015='13ae9f85c37331a3dd7324278e932956b9a840ef'
 BOOT='6e852b1ff13e16609957afc7a2e03da3d371dfe8'
 DOD='6a99ec7d444180e150208d508dfaf203eb734d77'
 BASE_SYS='a8f226b33fa11915e88b3424c5ad3ed3aaa62ff35deb7f91902b04e7df4bf090'
@@ -50,7 +51,7 @@ def package(root,entry,role,repo,render_color=False):
  require(hashlib.sha1((d/'mt8167-development.cer').read_bytes()).hexdigest().upper()==SIGNER,'固定private入力cert不一致')
  for n in names:
   if n.endswith(('.sys','.dll')):require_armnt(d/n)
- inf=textinf(d/names[0]);raw=subprocess.check_output(['git','-C',str(repo),'show',source+':'+TARGETS[role][4]])
+ inf=textinf(d/names[0]);inf_path='drivers/bus/mt8167-shared/prototype/shared-parent-engine-pcm-gpu-sd-rtc1015.inf' if role=='parent' and source==PARENT1015 else TARGETS[role][4];raw=subprocess.check_output(['git','-C',str(repo),'show',source+':'+inf_path])
  committed=raw.decode('utf-16' if raw[:2]==b'\xff\xfe' else 'utf-8-sig').replace('\r\n','\n');require(inf==committed,'実INFとsource不一致')
  v=re.search(r'(?im)^DriverVer\s*=\s*([^\n;]+)',inf);require(v,'DriverVer欠落');v=v[1].strip();num,date=version(v)
  for field,wanted in [('ClassGuid',TARGETS[role][2]),('ServiceBinary','%12%\\'+names[1])]:
@@ -59,26 +60,30 @@ def package(root,entry,role,repo,render_color=False):
  require(re.search(r'(?im)^\[Install\.NT(?:ARM)?\]',inf),'ARM DDInstall装飾不足')
  require(not re.search(r'(?i)\b(CoInstallers32|RegisterDlls|UnregisterDlls|RunPreSetupCommands|RunPostSetupCommands)\b',inf),'実行性INF拡張拒否')
  if role=='parent':
-  require(source==PARENT and v=='11/07/2026,2026.11.7.1014','固定SD1/SPM親1014以外拒否')
+  require((source,v) in ((PARENT,'11/07/2026,2026.11.7.1014'),(PARENT1015,'11/07/2026,2026.11.7.1015')),'固定SD1/SPM親1014/1015以外拒否')
   cap=jsonfile(d/'parent-manifest.json');require('parent-manifest.json' in files,'親capability非hash')
   flags=cap['flags'];require(flags.get('A04_SHARED_SD_POWER')=='1' and flags.get('A04_SHARED_GPU_DOMAIN_SPM')=='1' and flags.get('A04_SHARED_GPU_PLATFORM')=='1','SPM/SD1必須')
   baseline=json.loads(subprocess.check_output(['git','-C',str(repo),'show',source+':drivers/bus/mt8167-shared/prototype/gpu-parent1014-spm-profile.json']))
+  if source==PARENT1015:
+   require(files[names[1]]=='e7df942265a8216ba393152f1fe781e47d48ebe09b6da02f235dd8c2ba7d9752' and flags==dict(baseline['flags'],A04_SHARED_WIFI_RTC_BORROW='1'),'Fixed parent1015 bytes and unchanged GPU profile required')
   # Exact flags are recorded, and the source profile pins the 1010 baseline.
   require(all(flags.get(k)=='1' for k in ('A04_SHARED_TOUCH_D0_EXPERIMENT','A04_SHARED_BUTTON_D0_EXPERIMENT','A04_SHARED_ENGINE_PCM','A04_SHARED_WIFI_RUNTIME','A04_AUDIO_CHILD_RESOURCES')) and flags.get('A04_SHARED_THERMAL_DIAGNOSTIC')=='0','通常OS保持flags不一致')
  elif role=='display':
   require(source==DOD and v=='11/07/2026,0.0.1.6' and files[names[1]]=='8a2cf298b782acad669cf95b6dd81ced062761e1e9ecd5d095316dedfff3a4b0','CPU DOD1.6固定pin不一致')
   flags=m.get('effective_flags',{});require(flags and flags.get('A04_MT8167_DISPLAY_BRIGHTNESS')==1 and all(value==0 for key,value in flags.items() if key!='A04_MT8167_DISPLAY_BRIGHTNESS'),'CPU present専用flags不一致')
  elif render_color:
-  require(role=='render' and (source,v) in (('4f55794471a4008c1ceaa3a1da2679c0f3fefd2a','11/07/2026,0.0.3.3'),('0406393650f68c6c4d704f4e6e40e58225d5b8d3','11/07/2026,0.0.3.4'),('f06f5398b55791505946f1640a1c90c7e5b1ed1f','11/07/2026,0.0.3.5')),'固定COLOR3.3 source/version不一致')
+  require(role=='render' and (source,v) in (('4f55794471a4008c1ceaa3a1da2679c0f3fefd2a','11/07/2026,0.0.3.3'),('0406393650f68c6c4d704f4e6e40e58225d5b8d3','11/07/2026,0.0.3.4'),('f06f5398b55791505946f1640a1c90c7e5b1ed1f','11/07/2026,0.0.3.5'),('c63ec476e9bbcef3ec04576a58317df40de93564','11/07/2026,0.0.3.6')),'固定COLOR3.3 source/version不一致')
   require(files['ge8300-mips.fw']==FW and m.get('default_off') is True and m.get('signature_status')=='Valid','COLOR署名/FW不一致')
   require(m.get('required_parent_commit')==PARENT and m.get('required_acpi_commit')==BOOT,'COLOR matched親/UEFI不一致')
   linked=jsonfile(d/'linked-manifest.json');require(sha(d/'linked-manifest.json')==hexpin(m['linked_manifest_sha256']) and linked==m.get('source_runtime'),'COLOR linked provenance不一致')
   require(linked.get('native_source_commit')=='e83792d88485883130e137309b0ef027b3c7bc5e' and linked.get('limited_development_profile') is True and linked.get('standard_profile_qualified') is False,'COLOR native/profile不一致')
-  if v in ('11/07/2026,0.0.3.4','11/07/2026,0.0.3.5'):
+  if v in ('11/07/2026,0.0.3.4','11/07/2026,0.0.3.5','11/07/2026,0.0.3.6'):
    require(files['ge8300-umd.dll']=='f8a711915e878e7aeb58ef996db8abbeee15351bd10bf8e0fdcabe12009f922b' and m.get('umd_resigned') is False,'UMD signed bytes must remain unchanged')
    require('LoadOrderGroup=Video' in inf and linked.get('initialization_checkpoint'),'Real initialization status evidence and Video group required')
   if v=='11/07/2026,0.0.3.5':
    require(linked.get('linker',{}).get('name')=='Microsoft LINK' and linked.get('kernel_source_commit')=='0406393650f68c6c4d704f4e6e40e58225d5b8d3' and linked.get('compilation_performed') is False,'MSVC linker and unchanged kernel archive required')
+  if v=='11/07/2026,0.0.3.6':
+   require(linked.get('linker',{}).get('name')=='Microsoft LINK' and linked.get('additional_compile_units')==['miniport'] and files['ge8300-render.sys']=='4caec0e7ef7714db918745cd43de41dfc83920128fd96ccf9de491b53433b116','Fixed zero-output base callback miniport required')
   flags={}
  else:
   require(v=='11/07/2026,0.0.3.2' and files['ge8300-mips.fw']==FW and m.get('default_off') is True,'render3.2/FW/default-off不一致')
