@@ -82,3 +82,22 @@ ValidateWDDMCaps option, default zero. The captured GraphicsDrivers key is empty
 so there is no evidence that this diagnostic gate was active. Restore model1.2
 and CancelCommandAware=1; retain the two missing interface slots as the actual
 contract repair. No ValidateWDDMCaps policy modification is introduced.
+
+
+## Direct3D11 driver-name registration (3.13)
+
+run87 registered both render and DOD with Code0. Its new standard client log
+clear-0001a340-00000930 identifies ACPI MOU0006, opens the real PowerVR LUID and
+confirms hardware render-only type1. CreateDevice returns DXGI_ERROR_UNSUPPORTED.
+Older client logs must not be substituted: the initial collector consumed its
+stdin inside adb shell/stat and recovered only the first old file. The collector
+was corrected and the actual new log was read without another device experiment.
+
+Microsoft requires a third UserModeDriverName MULTI_SZ entry for D3D11 even
+when D3D9/10/11 share one DLL. The former single entry exposed only the legacy
+slot. 3.13 fills all three names and corresponding InstalledDisplayDrivers entries.
+SYS/DLL/FW remain byte-identical to signed3.12; only INF/CAT are refreshed.
+No unsupported operations or feature caps are added. Actual D3D11 rendering
+remains unverified pending the next combined peripheral update.
+
+Primary source: https://learn.microsoft.com/en-us/windows-hardware/drivers/display/enabling-support-for-the-direct3d-version-11-ddi
