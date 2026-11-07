@@ -354,8 +354,8 @@ static void WINAPI service_main(DWORD argc, WCHAR **argv)
     notify_end(error);
 #if defined(A04_GPU_PROVIDER_UPDATE) && A04_GPU_PROVIDER_UPDATE
     if(error==ERROR_SUCCESS_REBOOT_REQUIRED) {
-        DWORD reboot_error=gpu_request_reboot();
-        number("PLANNED_REBOOT_ERROR",reboot_error);
+        DWORD reboot_error=gpu_start_reboot_waiter();
+        number("REBOOT_WAITER_START_ERROR",reboot_error);
         if(reboot_error)error=reboot_error;
     }
 #endif
@@ -364,8 +364,14 @@ static void WINAPI service_main(DWORD argc, WCHAR **argv)
     number("SCM_EXIT_WIN32", error);
 #if defined(A04_GPU_PROVIDER_UPDATE) && A04_GPU_PROVIDER_UPDATE
     gpu_service_exit=log_ok?error:ERROR_WRITE_FAULT;
+    service_status.dwWin32ExitCode=gpu_service_exit;
 #endif
-    if (!SetServiceStatus(status_handle, &service_status)) number("SCM_STOP_ERROR", GetLastError());
+    if (!SetServiceStatus(status_handle, &service_status)) {
+        DWORD status_error=GetLastError();number("SCM_STOP_ERROR",status_error);
+#if defined(A04_GPU_PROVIDER_UPDATE) && A04_GPU_PROVIDER_UPDATE
+        gpu_service_exit=status_error;
+#endif
+    }
 }
 static DWORD register_service(void)
 {
@@ -403,6 +409,10 @@ void mainCRTStartup(void)
 {
     DWORD error = paths(); const WCHAR *args = arguments();
     if (!error) {
+#if defined(A04_GPU_PROVIDER_UPDATE) && A04_GPU_PROVIDER_UPDATE
+        if (!lstrcmpW(args,L"--reboot-after-stop")) { error=gpu_finish_reboot(); }
+        else
+#endif
         if (!lstrcmpW(args, L"--install")) { error = register_service(); number("SCM_REGISTER_ERROR", error); }
         else if (!lstrcmpW(args, L"--start")) { error = start_service(); number("SCM_START_ERROR", error); }
         else if (*args) { error = ERROR_INVALID_PARAMETER; number("ARGUMENT_ERROR", error); }

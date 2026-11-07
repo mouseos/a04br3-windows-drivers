@@ -14,8 +14,12 @@ Engine媒体・共通service source、DOD package、共有親、TOPRGUは変更�
   9c3c7d846565c0e5e73c2afe1d4d9900089f74bbe92d97ff8d1627729321265e。
 - firmwareは既存vendor版5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1。
 
-実candidate SYS/CAT/最終署名manifestは未回収。架空hashや成功stubを埋めず、
-実candidateがないとpolicy生成とinstaller buildを拒否する。
+実candidateをport/xnu/out/windows-rt-gpu-native-04d0e57で回収し、signed-manifestと
+provider-package-manifest、build-config、実4fileのhash一致を確認した。
+新SYSは13c8a9ca6b6d7fef921afd38d60cf84ea8e37b599b51af82d6e90342d8b9da07、
+CATは5d4cfad2d2b0e1758777c0d531aae92e172a1b4d53b206649b5f7f2b08c4d828。
+この実packageをpolicyへ固定し、候補欠落/別fileではbuildを拒否する。
+署名Validは主担当のrunner検証結果で、hostのhash照合とtargetのWinVerifyTrustは別確認である。
 未replay SYSTEMやRegLoadAppKeyのBADDBから選択INFを確定しない。
 主担当の既存native RegLoadKey成功helperによる照会結果と、確定済み実SYS hashを区別する。
 
@@ -57,16 +61,22 @@ WinVerifyTrustで検証する。未信頼証明書、不一致、欠落はPnP操
 
 ## 主担当の既存native準備とWinPEへの固定map
 
-既に無効化されたMT8167DeviceInstallを再利用する場合、c98875bのnative準備helperへ
+既に無効化されたMT8167DeviceInstallを再利用する場合、083021aの統合native準備helperへ
 tools/gpu/native-deviceinstall-gpu-rearm.patchの最小差分を統合する。
 この作業ではRaman/主担当の共通fileへ適用していない。
-追加switch -RearmFixedGpuDeviceInstallはDeviceInstall単独に限定し、native replay後、
-従来の正確なservice値検査を維持したままStart=4だけをStart=2へ戻す。
+追加switch -RearmFixedGpuDeviceInstallはDeviceInstall単独に限定し、
+GpuRearmPlanPathとExpectedGpuRearmPlanSha256で実native planをpinする。
+planはschema=1、service=MT8167DeviceInstall、maximum_rearms=1、
+candidate_source_commit=04d0e573bd1bee7b619d25441f8ac05d28d5ccd5、
+disabled_service_fingerprintとsource_files（SYSTEM/LOG1/LOG2のhash/bytes）が必要。
+親和性を推測せず、fingerprintはnative RegLoadKeyでreplay後の実登録から取得する。
+従来の正確な7値/型/依存とfresh backup照合を維持したままStart=4だけをStart=2へ戻す。
+Engineの既存rearm分岐と固定fingerprintはそのまま維持する。
 他の値・依存service・Selectの変更や、HardwareProbe/Engineの再武装は許さない。
 clean candidateの再loadでは全値が正確に一致しなければ失敗する。
 
 ```powershell
-powershell -File tools/recovery/prepare-offline-system-service.ps1 -SourceDirectory <回収SYSTEMとLOGのdirectory> -OutputDirectory <新directory> -ServiceName MT8167DeviceInstall -RearmFixedGpuDeviceInstall
+powershell -File tools/recovery/prepare-offline-system-service.ps1 -SourceDirectory <回収SYSTEMとLOGのdirectory> -OutputDirectory <新directory> -ServiceName MT8167DeviceInstall -RearmFixedGpuDeviceInstall -GpuRearmPlanPath <実GPU plan> -ExpectedGpuRearmPlanSha256 <plan実hash>
 ```
 
 既存native RegLoadKey成功手順でreplay・unload・clean再loadが完了したcandidateだけを使う。
@@ -101,10 +111,20 @@ active GPU/DOD leaseを手動で破棄せず、Windows標準インストール�
 
 成功範囲はINSTALL_ACCEPTED_REBOOT_PENDING。稼働候補確認は常に0として記録し、
 インストール前後のCM状態とinstall flags、実Win32 errorを保存する。
-disklogをflush後にSeShutdownPrivilegeを取得し、InitiateSystemShutdownExWで
-30秒後のplanned rebootを要求する。ForceAppsClosed=FALSE、独自resetは使わない。
+disklog/結果とUART補助通知の試行完了後、同じ署名EXEを固定引数
+--reboot-after-stopで1つだけ開始する。任意ImagePath/command/引数は受け付けない。
+service自身はSCMへSERVICE_STOPPEDとERROR_SUCCESS_REBOOT_REQUIREDを報告して終了する。
+固定workerはLocalSystemを確認し、同じserviceのSTOPPED＋3010を標準SCM APIで
+確認してからdisklogをflush、SeShutdownPrivilegeを取得し、InitiateSystemShutdownExWで
+30秒後のplanned rebootを要求する。STOPPED後にSCMがservice processを終了させる
+可能性があるため、service callback自身に再起動処理を残さない。
+workerはCREATE_NEWのreboot-attempted.binもwrite/flushし、同じ候補での自動再起動要求を
+反復しない。workerの待機はSCM終了の最大30秒だけで、DMA quiescenceを推定するwaitではない。
+ForceAppsClosed=FALSE、独自resetは使わない。
 要求成功・失敗を別記し、要求受付を実再起動や新provider起動成功とは扱わない。
 UART通知は補助であり、その不在だけでは更新や計画再起動を拒否しない。
+workerの開始失敗、serviceの失敗終了や終了待ちtimeout、disklog/privilege/再起動APIの
+失敗はそれぞれ記録する。通常の更新にUART hard resetを代用しない。
 
 再起動後の選択INF/DriverVer、実配置SYS hash、PnP状態、DOD leaseとGPU観測は主担当回収。
 このserviceはprivate-clear実行brokerではなく、opt-in providerを正式更新するだけである。
@@ -112,7 +132,8 @@ UART通知は補助であり、その不在だけでは更新や計画再起動�
 ## 検証範囲と一次仕様
 
 既存display/GPU両modeを実Windows API headerでARM32構文確認した。
-GPU側はcandidate配列を宣言だけにした未リンクCOFFで、ARM helper/CRT不足も確認した。
+GPU側は初期の宣言だけのCOFFに加え、回収済み実candidate policyを使うARMNT COFF生成も確認した。
+新たなARM/CRT helper参照はない。native再武装patchは083021aへ適用確認したが、実行していない。
 これは実candidate、実署名installer、WDKリンク、更新成功や再生/3D成功の証拠ではない。
 大量の模擬試験・実機/runner/REA操作は行っていない。
 
