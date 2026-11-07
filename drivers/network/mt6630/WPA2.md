@@ -30,3 +30,5 @@ BSS wire値をOPEN=0、WPA2-PSK=7、CCMP encryption status=6へ修正した。
 
 ARM32 COFF compileの確認と実接続は別である。最新WDK8.1 SYS link、OSの属性/OID受理、
 EAPOL往復、鍵event、暗号化データ送受信、DHCPは主担当の実機確認が残る。
+
+Native1013のscan→接続境界と既存認証/NDIS経路の確認は [CONNECT-DATA-1013.md](CONNECT-DATA-1013.md) を参照。接続・暗号化通信は実機未確認のまま扱う。

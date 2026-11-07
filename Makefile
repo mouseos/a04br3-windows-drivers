@@ -1606,3 +1606,9 @@ test-mt6630-scan-candidate:
 	mkdir -p build
 	$(CC) $(CFLAGS) -Wno-unused-parameter -Wno-misleading-indentation -ffunction-sections -fdata-sections tests/mt6630_scan_candidate_test.c -Wl,--gc-sections -o build/mt6630_scan_candidate_test
 	./build/mt6630_scan_candidate_test
+
+.PHONY: test-mt6630-scan-connect
+test-mt6630-scan-connect:
+	mkdir -p build
+	$(CC) $(CFLAGS) -Wno-misleading-indentation -ffunction-sections -fdata-sections -Itests/native_scan_stubs -Idrivers/network/mt6630 tests/mt6630_scan_connect_test.c drivers/network/mt6630/native_scan.c drivers/network/mt6630/native_scan_bridge.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c drivers/network/mt6630/regulatory.c -Wl,--gc-sections -o build/mt6630_scan_connect_test
+	./build/mt6630_scan_connect_test

@@ -16,4 +16,14 @@ static inline int a04_os_rsn_policy(const uint8_t *p,unsigned n)
  if(off==n)return 0;if(n-off<2)return -1;count=a04_wmt_le16(p+off);off+=2;if(count>(n-off)/16)return -1;off+=16*count;
  if(off==n)return 0;return (n-off==4&&(caps&0x80)&&p[off]==0&&p[off+1]==15&&p[off+2]==172&&p[off+3]==6)?0:-1;
 }
+/* Linux gen3 scanSearchBssDescByPolicy checks security before selecting a
+ * same-SSID candidate. Cache order must not override the OS cipher choice. */
+static inline int a04_os_candidate_policy(const struct a04_wlan_ap *ap,unsigned active,unsigned secured)
+{
+ if(!ap||secured>1)return A04_WLAN_ARGUMENT;
+ if(!ap->channel||ap->channel>14||!(active&(1u<<ap->channel)))return A04_WLAN_UNSUPPORTED;
+ if(!!(ap->capability&16u)!=!!secured)return A04_WLAN_SECURITY;
+ if(secured&&a04_os_rsn_policy(ap->rsn,ap->rsn_length))return A04_WLAN_SECURITY;
+ return 0;
+}
 #endif

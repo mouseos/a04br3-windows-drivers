@@ -139,12 +139,19 @@ static NDIS_STATUS connect(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
 {
  DOT11_CONNECTION_START_PARAMETERS start;DOT11_CONNECTION_COMPLETION_PARAMETERS done;DOT11_ASSOCIATION_START_PARAMETERS ast;
  union {DOT11_ASSOCIATION_COMPLETION_PARAMETERS align;uint8_t bytes[sizeof(DOT11_ASSOCIATION_COMPLETION_PARAMETERS)+384+1024+1024+sizeof(ULONG)];} buffer;uint8_t *storage=buffer.bytes;DOT11_ASSOCIATION_COMPLETION_PARAMETERS *ac=&buffer.align;ULONG offset=sizeof(*ac),phy=0;int e;unsigned index;
- for(index=0;index<a->radio.bss_count;index++)if(!a04_ndis_excluded(a,a->radio.bss[index].ap.mac)&&(!a->desired_bssid_set||a04_wlan_equal(a->desired_bssid,a->radio.bss[index].ap.mac,6))&&(!a04_wlan_mac_valid(a->assoc_bssid)||a04_wlan_equal(a->assoc_bssid,a->radio.bss[index].ap.mac,6))&&a->desired.uSSIDLength==a->radio.bss[index].ap.ssid_length&&a04_wlan_equal(a->desired.ucSSID,a->radio.bss[index].ap.ssid,a->desired.uSSIDLength))break;
- if(a->safe_mode&&a->os_security.auth!=DOT11_AUTH_ALGO_RSNA_PSK)return NDIS_STATUS_NOT_SUPPORTED;
- if(index==a->radio.bss_count)return NDIS_STATUS_FAILURE;
- unsigned secured=a->os_security.auth==DOT11_AUTH_ALGO_RSNA_PSK;
- if(secured){if(a->os_security.unicast!=DOT11_CIPHER_ALGO_CCMP||a->os_security.multicast!=DOT11_CIPHER_ALGO_CCMP||a04_os_rsn_policy(a->radio.bss[index].ap.rsn,a->radio.bss[index].ap.rsn_length))return NDIS_STATUS_NOT_SUPPORTED;}
- else if(a->os_security.unicast||a->os_security.multicast||(a->radio.bss[index].ap.capability&16))return NDIS_STATUS_NOT_SUPPORTED;
+ unsigned secured=a->os_security.auth==DOT11_AUTH_ALGO_RSNA_PSK,matched=0;
+ if(a->safe_mode&&!secured)return NDIS_STATUS_NOT_SUPPORTED;
+ if(secured){if(a->os_security.unicast!=DOT11_CIPHER_ALGO_CCMP||a->os_security.multicast!=DOT11_CIPHER_ALGO_CCMP)return NDIS_STATUS_NOT_SUPPORTED;}
+ else if(a->os_security.unicast||a->os_security.multicast)return NDIS_STATUS_NOT_SUPPORTED;
+ for(index=0;index<a->radio.bss_count;index++){
+  const struct a04_wlan_ap *ap=&a->radio.bss[index].ap;
+  if(a04_ndis_excluded(a,ap->mac)||(a->desired_bssid_set&&!a04_wlan_equal(a->desired_bssid,ap->mac,6))||
+    (a04_wlan_mac_valid(a->assoc_bssid)&&!a04_wlan_equal(a->assoc_bssid,ap->mac,6))||
+    a->desired.uSSIDLength!=ap->ssid_length||!a04_wlan_equal(a->desired.ucSSID,ap->ssid,ap->ssid_length))continue;
+  matched=1;
+  if(!a04_os_candidate_policy(ap,a->radio.station.local.active_channels,secured))break;
+ }
+ if(index==a->radio.bss_count)return matched?NDIS_STATUS_NOT_SUPPORTED:NDIS_STATUS_FAILURE;
  a->ps_activity=1;
  if(a04_ndis_rf_wake(a)){a->ps_activity=0;return NDIS_STATUS_FAILURE;}
  a->radio.desired_secured=secured;a->association_reported=0;
