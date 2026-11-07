@@ -27,3 +27,11 @@ profile render-single-gpu314-run97-v1、service MT8167RenderSingleGpu。
 render3.13→3.14だけPnP更新、同SYS/FW、新UMD、GPUclient1回、planned reboot最大1。
 親/Audio1026、MSDC1.8、USB1005、WiFi1012、DOD1.6、Engine/boot/GPTを保持する。
 quiet WinPEとeMMC命名候補は混入しない。実機操作はmainのみ。
+
+専用stageのjournalはPRECHECK→CANDIDATE_WRITE_STARTED→COMMITTED。
+比較/既存専用service directory拒否はBASELINE_REJECTED_NO_CHANGE（候補書込み0）、
+候補書込み開始後の失敗はCANDIDATE_WRITE_FAILEDと表示する。NO_CHANGEは候補を変更していない意味で、
+journal directory作成やfilesystem mount自体の無書込みを主張しない。
+旧DISM_STARTED/DISM_FAILED_RESTORE_FROM_HOST_IMAGEと未使用DISM関数は削除する。
+このラベル修正でdriver/serviceを再buildしない。builder sourceと署名runtime sourceを別記し、
+差分が専用media builder/このREADMEだけで、祖先関係とcompile policy一致を確認した場合だけ既成署名を使う。
