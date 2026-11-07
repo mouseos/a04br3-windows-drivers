@@ -59,7 +59,7 @@ static int selection_arg(LUID *id) {
  * interfaces and display names cannot establish this relationship.
  * No guessed PCI VendorId/DeviceId or private QueryAdapterInfo payload. */
 static HRESULT hardware_luid(LUID *wanted) {
- HDEVINFO set;SP_DEVICE_INTERFACE_DATA interface;SP_DEVINFO_DATA node;
+ HDEVINFO set;SP_DEVICE_INTERFACE_DATA device_interface;SP_DEVINFO_DATA node;
  PSP_DEVICE_INTERFACE_DETAIL_DATA_W detail=NULL;DWORD index,needed,type,bytes,error;UINT count=0;HRESULT result=S_OK;
  WCHAR hardware[4096],service[256],instance[512];HMODULE gdi=NULL;
  PFND3DKMT_OPENADAPTERFROMDEVICENAME open_fn;PFND3DKMT_QUERYADAPTERINFO query_fn;PFND3DKMT_CLOSEADAPTER close_fn;
@@ -73,15 +73,15 @@ static HRESULT hardware_luid(LUID *wanted) {
  if(set==INVALID_HANDLE_VALUE){error=GetLastError();FreeLibrary(gdi);return HRESULT_FROM_WIN32(error);}
  for(index=0;;index++){
   UINT match=0;DWORD at;
-  memset(&interface,0,sizeof(interface));interface.cbSize=sizeof(interface);
-  if(!SetupDiEnumDeviceInterfaces(set,NULL,&GUID_DISPLAY_DEVICE_ARRIVAL,index,&interface)){
+  memset(&device_interface,0,sizeof(device_interface));device_interface.cbSize=sizeof(device_interface);
+  if(!SetupDiEnumDeviceInterfaces(set,NULL,&GUID_DISPLAY_DEVICE_ARRIVAL,index,&device_interface)){
    error=GetLastError();if(error!=ERROR_NO_MORE_ITEMS)result=HRESULT_FROM_WIN32(error);break;
   }
   line("PNP_INTERFACE_INDEX",index);needed=0;
-  if(SetupDiGetDeviceInterfaceDetailW(set,&interface,NULL,0,&needed,NULL)||GetLastError()!=ERROR_INSUFFICIENT_BUFFER||needed<sizeof(*detail)||needed>65536){result=E_UNEXPECTED;break;}
+  if(SetupDiGetDeviceInterfaceDetailW(set,&device_interface,NULL,0,&needed,NULL)||GetLastError()!=ERROR_INSUFFICIENT_BUFFER||needed<sizeof(*detail)||needed>65536){result=E_UNEXPECTED;break;}
   detail=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,needed);if(!detail){result=E_OUTOFMEMORY;break;}
   detail->cbSize=sizeof(*detail);memset(&node,0,sizeof(node));node.cbSize=sizeof(node);
-  if(!SetupDiGetDeviceInterfaceDetailW(set,&interface,detail,needed,NULL,&node)){result=HRESULT_FROM_WIN32(GetLastError());goto next;}
+  if(!SetupDiGetDeviceInterfaceDetailW(set,&device_interface,detail,needed,NULL,&node)){result=HRESULT_FROM_WIN32(GetLastError());goto next;}
   text_line("PNP_INTERFACE",detail->DevicePath);
   if(!SetupDiGetDeviceInstanceIdW(set,&node,instance,512,NULL)){result=HRESULT_FROM_WIN32(GetLastError());goto next;}
   text_line("PNP_INSTANCE",instance);
