@@ -138,7 +138,7 @@ static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device,PIRP irp,PRESOURCELIST r
 #if A04_AUDIO_START_PERSIST
  Mt8167AudioStartRecord record;RtlZeroMemory(&record,sizeof(record));
  LARGE_INTEGER time;KeQuerySystemTime(&time);record.system_time_low=time.LowPart;record.system_time_high=(ULONG)time.HighPart;
- record.schema=1;record.bytes=sizeof(record);record.inf_revision=1006;record.stage=A04_START_RESOURCES;
+ record.schema=1;record.bytes=sizeof(record);record.inf_revision=1007;record.stage=A04_START_RESOURCES;
  NTSTATUS result=StartDeviceBody(device,irp,resources,&record);record.result=result;
  if(NT_SUCCESS(result))record.stage=A04_START_READY;
  NTSTATUS saved=Mt8167PersistStartRecord(&record);
