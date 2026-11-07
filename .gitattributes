@@ -1,2 +1,5 @@
-# Windows driver INF bytes must agree with the catalog produced on Windows.
-*.inf text eol=crlf
+# Fixed source snapshots must retain their manifest bytes on Windows.
+third_party/mesa-pco/** -text
+drivers/gpu/mt8167/vendor_m1_11/render_owner/** -text
+drivers/gpu/mt8167/wddm-render/compiler/*.[ch] text eol=lf
+tools/ci/ge8300-native-source-map.json -text

@@ -1,0 +1,1967 @@
+{
+  "schema": 1,
+  "main_source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+  "kmd_source_commit": "78ca65653d4c9452b50e0ca455bd9c96a27fe2fb",
+  "native_owner_source_commit": "fb2173597de9acc12af8f06fd771037e02093360",
+  "legacy_vendor_files_unchanged": true,
+  "native_unit_sources": {
+    "dma_pages": "drivers/gpu/mt8167/dma_pages.c",
+    "windows_hw": "drivers/gpu/mt8167/windows_hw.c",
+    "vendor_m1_11\\native_owner_mdl": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_mdl.c",
+    "vendor_m1_11\\native_owner_irq": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_irq.c",
+    "vendor_m1_11\\windows_native_submit": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_submit.c",
+    "gpu_mmu": "drivers/gpu/mt8167/gpu_mmu.c",
+    "vendor_m1_11\\native_owner_dispatch": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_dispatch.c",
+    "vendor_m1_11\\windows_native_target": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_target.c",
+    "vendor_m1_11\\windows_native_storage": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_storage.c",
+    "vendor_m1_11\\windows_native_cold": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_cold.c",
+    "vendor_m1_11\\windows_native_code": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_code.c",
+    "vendor_m1_11\\windows_native_backing": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_backing.c",
+    "vendor_m1_11\\windows_native_job": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_job.c",
+    "vendor_m1_11\\windows_native_execute": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_execute.c",
+    "vendor_m1_11\\windows_uncached": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_uncached.c",
+    "vendor_m1_11\\native_resources": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_resources.c",
+    "vendor_m1_11\\native_hwrt_profile": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_hwrt_profile.c",
+    "vendor_m1_11\\render_resources": "drivers/gpu/mt8167/vendor_m1_11/render_owner/render_resources.c",
+    "vendor_m1_11\\native_clear_job": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_clear_job.c",
+    "vendor_m1_11\\native_clear_data": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_clear_data.c",
+    "vendor_m1_11\\native_terminate_stream": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_terminate_stream.c",
+    "vendor_m1_11\\native_clear_surface": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_clear_surface.c",
+    "vendor_m1_11\\native_clear_codespace": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_clear_codespace.c",
+    "vendor_m1_11\\native_clear_pds": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_clear_pds.c",
+    "vendor_m1_11\\native_eot_program": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_eot_program.c",
+    "vendor_m1_11\\native_record_fields": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_record_fields.c",
+    "vendor_m1_11\\native_pair": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_pair.c",
+    "vendor_m1_11\\native_ccb": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_ccb.c",
+    "vendor_m1_11\\windows_stop": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_stop.c",
+    "vendor_m1_11\\native_owner_frontend_resolver": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_frontend_resolver.c",
+    "vendor_m1_11\\native_owner_allocation": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_allocation.c",
+    "vendor_m1_11\\stage": "drivers/gpu/mt8167/vendor_m1_11/render_owner/stage.c",
+    "vendor_m1_11\\windows_stage": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_stage.c",
+    "vendor_m1_11\\windows_stage_uncached": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_stage_uncached.c",
+    "vendor_m1_11\\windows_render_cold": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_render_cold.c",
+    "vendor_m1_11\\clear_image": "drivers/gpu/mt8167/vendor_m1_11/render_owner/clear_image.c",
+    "vendor_m1_11\\clear_tile": "drivers/gpu/mt8167/vendor_m1_11/render_owner/clear_tile.c",
+    "vendor_m1_11\\native_d3d_viewport": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_d3d_viewport.c",
+    "vendor_m1_11\\native_varying_pds": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_varying_pds.c",
+    "vendor_m1_11\\native_draw_job": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_draw_job.c",
+    "vendor_m1_11\\native_triangle_suite": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_suite.c",
+    "vendor_m1_11\\native_triangle_vdm": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_vdm.c",
+    "vendor_m1_11\\native_triangle_pds": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_pds.c",
+    "vendor_m1_11\\native_triangle_ppp": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_ppp.c",
+    "vendor_m1_11\\native_triangle_texture": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_texture.c",
+    "wddm-render\\clear_protocol": "drivers/gpu/mt8167/wddm-render/clear_protocol.c",
+    "wddm-render\\frontend\\draw_protocol": "drivers/gpu/mt8167/wddm-render/frontend/draw_protocol.c",
+    "wddm-render\\frontend\\draw_link_protocol": "drivers/gpu/mt8167/wddm-render/frontend/draw_link_protocol.c",
+    "vendor_m1_11\\native_owner_factory": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_factory.c",
+    "vendor_m1_11\\native_owner_factory_platform": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_factory_platform.c",
+    "vendor_m1_11\\native_owner_factory_runtime": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_factory_runtime.c",
+    "vendor_m1_11\\windows_start": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_start.c",
+    "vendor_m1_11\\windows_command": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_command.c",
+    "vendor_m1_11\\windows_render_context": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_render_context.c"
+  },
+  "files": [
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_render_context.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_render_context.c",
+      "source_sha256": "3e18038e27cf76ad9f1c046262460c5f382560beb7ab1cdc89c7ca2b9b5d2ce1",
+      "sha256": "73d4f437a8715306ee6e14b94ae89d35a5cb163ca8c95165265825cb50403c92",
+      "include_rewrites": [
+        [
+          "windows_render_cold.h",
+          "windows_render_cold.h"
+        ],
+        [
+          "windows_start.h",
+          "windows_start.h"
+        ],
+        [
+          "A04BR3RogueCommand.h",
+          "A04BR3RogueCommand.h"
+        ],
+        [
+          "A04BR3RogueDeviceWords.h",
+          "A04BR3RogueDeviceWords.h"
+        ],
+        [
+          "../windows_hw.h",
+          "../../windows_hw.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueDeviceWords.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/A04BR3RogueDeviceWords.h",
+      "source_sha256": "1dea5796e724743b34bb9672af24e102bd926bd43d241d38b1fca8f3c0076b93",
+      "sha256": "1dea5796e724743b34bb9672af24e102bd926bd43d241d38b1fca8f3c0076b93",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueCommand.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/A04BR3RogueCommand.h",
+      "source_sha256": "0af7b452b7fc7ff0e55fd15189b2d00313b3bb38b775059531f44902a3a96312",
+      "sha256": "0af7b452b7fc7ff0e55fd15189b2d00313b3bb38b775059531f44902a3a96312",
+      "include_rewrites": [
+        [
+          "A04BR3RogueRuntimeLayout.h",
+          "A04BR3RogueRuntimeLayout.h"
+        ],
+        [
+          "A04BR3RogueDeviceWords.h",
+          "A04BR3RogueDeviceWords.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueRuntimeLayout.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/A04BR3RogueRuntimeLayout.h",
+      "source_sha256": "326a94b3a85809c46719757cee202e415c32b95d386bd1bc5b7204b420ed997d",
+      "sha256": "326a94b3a85809c46719757cee202e415c32b95d386bd1bc5b7204b420ed997d",
+      "include_rewrites": [
+        [
+          "A04BR3RogueDDKABI.h",
+          "A04BR3RogueDDKABI.h"
+        ],
+        [
+          "A04BR3RogueFirmware.h",
+          "A04BR3RogueFirmware.h"
+        ],
+        [
+          "A04BR3RogueMipsMMU.h",
+          "A04BR3RogueMipsMMU.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueMipsMMU.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/A04BR3RogueMipsMMU.h",
+      "source_sha256": "d51eea1bb621999b2c210aff185fba90d0594f4ba8a54090aa3872693d3c9f31",
+      "sha256": "d51eea1bb621999b2c210aff185fba90d0594f4ba8a54090aa3872693d3c9f31",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueFirmware.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/A04BR3RogueFirmware.h",
+      "source_sha256": "2b36c5d958750b3544a63e11c70f76f9aa6e83bac575ffe956f71b07f7582f8a",
+      "sha256": "2b36c5d958750b3544a63e11c70f76f9aa6e83bac575ffe956f71b07f7582f8a",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueDDKABI.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/A04BR3RogueDDKABI.h",
+      "source_sha256": "c851320cff2624851b3c5f51a9f67a0dd738373197052aea7e17e8e818df1c04",
+      "sha256": "c851320cff2624851b3c5f51a9f67a0dd738373197052aea7e17e8e818df1c04",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_start.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_start.h",
+      "source_sha256": "0fe53405252854cc020dce1dea1325faea808727e91fc5b49272eed7deb017c4",
+      "sha256": "0fe53405252854cc020dce1dea1325faea808727e91fc5b49272eed7deb017c4",
+      "include_rewrites": [
+        [
+          "windows_stage.h",
+          "windows_stage.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_stage.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_stage.h",
+      "source_sha256": "cb308af0d997845579654f4e2063e3abfa4016ebe7fccab46b71d90f56f9baa6",
+      "sha256": "cb308af0d997845579654f4e2063e3abfa4016ebe7fccab46b71d90f56f9baa6",
+      "include_rewrites": [
+        [
+          "stage.h",
+          "stage.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/stage.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/stage.h",
+      "source_sha256": "8949c9c49159ee007d90c398199d4b19355f815b4bf32e452e8d4b948a434d16",
+      "sha256": "8949c9c49159ee007d90c398199d4b19355f815b4bf32e452e8d4b948a434d16",
+      "include_rewrites": [
+        [
+          "A04BR3RogueFirmware.h",
+          "A04BR3RogueFirmware.h"
+        ],
+        [
+          "A04BR3RogueMipsMMU.h",
+          "A04BR3RogueMipsMMU.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_render_cold.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_render_cold.h",
+      "source_sha256": "3a06a993b8dda50a89b04e66302a16a5e91108e52b20faf5efa9f6d210fadd52",
+      "sha256": "3a06a993b8dda50a89b04e66302a16a5e91108e52b20faf5efa9f6d210fadd52",
+      "include_rewrites": [
+        [
+          "windows_stage.h",
+          "windows_stage.h"
+        ],
+        [
+          "windows_uncached.h",
+          "windows_uncached.h"
+        ],
+        [
+          "render_resources.h",
+          "render_resources.h"
+        ],
+        [
+          "clear_image.h",
+          "clear_image.h"
+        ],
+        [
+          "windows_surface.h",
+          "windows_surface.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_surface.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_surface.h",
+      "source_sha256": "29fa431754dade7ca2760de3b82a2c94f5b28036c1f26db47b550f3e674ef915",
+      "sha256": "29fa431754dade7ca2760de3b82a2c94f5b28036c1f26db47b550f3e674ef915",
+      "include_rewrites": [
+        [
+          "windows_uncached.h",
+          "windows_uncached.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_uncached.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_uncached.h",
+      "source_sha256": "37239d4a7b23cfa55d68f2080fca4677375a49259e59e43f7103d7b554ae8fcf",
+      "sha256": "37239d4a7b23cfa55d68f2080fca4677375a49259e59e43f7103d7b554ae8fcf",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/clear_image.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/clear_image.h",
+      "source_sha256": "1403fba09f4b486aede36d6ef169b17f908a2e11be5035d77a77432b8fa57a35",
+      "sha256": "1403fba09f4b486aede36d6ef169b17f908a2e11be5035d77a77432b8fa57a35",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/render_resources.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/render_resources.h",
+      "source_sha256": "22b775aaea965e434e5346eae3f7e3c576e9399244c59ee30e5bafe03fc1d112",
+      "sha256": "22b775aaea965e434e5346eae3f7e3c576e9399244c59ee30e5bafe03fc1d112",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_command.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_command.c",
+      "source_sha256": "2a7a4a25e280d30ada782160b2f125d75922aea0b1039f6140e7d1bab3023a51",
+      "sha256": "02d088314ffa281f3b7ffe10ec24d1d73429a6a530fc0e636b3a8b611aa5c225",
+      "include_rewrites": [
+        [
+          "windows_command.h",
+          "windows_command.h"
+        ],
+        [
+          "A04BR3RogueCommand.h",
+          "A04BR3RogueCommand.h"
+        ],
+        [
+          "A04BR3RogueFirmwareRequests.h",
+          "A04BR3RogueFirmwareRequests.h"
+        ],
+        [
+          "../windows_hw.h",
+          "../../windows_hw.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueFirmwareRequests.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/A04BR3RogueFirmwareRequests.h",
+      "source_sha256": "ced63f6de419c25e11e64b855e289964992f8522a87d97fe0a9ea588a44174d2",
+      "sha256": "ced63f6de419c25e11e64b855e289964992f8522a87d97fe0a9ea588a44174d2",
+      "include_rewrites": [
+        [
+          "A04BR3RogueCommand.h",
+          "A04BR3RogueCommand.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_command.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_command.h",
+      "source_sha256": "2bb70933a7fbeb179618d9f49ab17c374bba30dbfddfbbaabfb2d6073fdf8954",
+      "sha256": "2bb70933a7fbeb179618d9f49ab17c374bba30dbfddfbbaabfb2d6073fdf8954",
+      "include_rewrites": [
+        [
+          "windows_start.h",
+          "windows_start.h"
+        ],
+        [
+          "windows_irq_snapshot.h",
+          "windows_irq_snapshot.h"
+        ],
+        [
+          "A04BR3RogueDDKABI.h",
+          "A04BR3RogueDDKABI.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_irq_snapshot.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_irq_snapshot.h",
+      "source_sha256": "4baffe0949dd901a96af88f5b4d4991cce8f48cbe679378b2c6f1dfbd6b15f04",
+      "sha256": "4baffe0949dd901a96af88f5b4d4991cce8f48cbe679378b2c6f1dfbd6b15f04",
+      "include_rewrites": [
+        [
+          "windows_start.h",
+          "windows_start.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_start.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_start.c",
+      "source_sha256": "fbc58b1c4d2bea2cd19a1139ceb64a1b2ee7add8bf643d357bfed26e290c215c",
+      "sha256": "1e49d05cdba53c1d18a1cf6128380f6e631f8df0e2ffb97a0f1c4d0049e4dac8",
+      "include_rewrites": [
+        [
+          "windows_render_cold.h",
+          "windows_render_cold.h"
+        ],
+        [
+          "windows_native_cold.h",
+          "windows_native_cold.h"
+        ],
+        [
+          "windows_start.h",
+          "windows_start.h"
+        ],
+        [
+          "windows_clock.h",
+          "windows_clock.h"
+        ],
+        [
+          "A04BR3RogueRuntimeLayout.h",
+          "A04BR3RogueRuntimeLayout.h"
+        ],
+        [
+          "A04BR3RogueStartupExecutor.h",
+          "A04BR3RogueStartupExecutor.h"
+        ],
+        [
+          "A04BR3RogueDeviceWords.h",
+          "A04BR3RogueDeviceWords.h"
+        ],
+        [
+          "windows_uncached.h",
+          "windows_uncached.h"
+        ],
+        [
+          "../windows_hw.h",
+          "../../windows_hw.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueStartupExecutor.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/A04BR3RogueStartupExecutor.h",
+      "source_sha256": "5c223b7f86cf48aca4ba41839a2c35f3160454052b74e6eb3f078c88c4b0b856",
+      "sha256": "5c223b7f86cf48aca4ba41839a2c35f3160454052b74e6eb3f078c88c4b0b856",
+      "include_rewrites": [
+        [
+          "A04BR3RogueStartupPlan.h",
+          "A04BR3RogueStartupPlan.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueStartupPlan.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/A04BR3RogueStartupPlan.h",
+      "source_sha256": "1da158370d4f9c827cf7d384b97b3b3f786e841ac067b0b9ca545a113671c075",
+      "sha256": "1da158370d4f9c827cf7d384b97b3b3f786e841ac067b0b9ca545a113671c075",
+      "include_rewrites": [
+        [
+          "A04BR3RogueMipsMMU.h",
+          "A04BR3RogueMipsMMU.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_clock.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_clock.h",
+      "source_sha256": "94445593163a86f2bde08a8a1ddb3d2026cf5e793a215ca7fba663b5193a8b19",
+      "sha256": "a8f500e80d37461c30a8a0d810952ccf0068e38a63b9f17e3dbe6218b2c068cb",
+      "include_rewrites": [
+        [
+          "../rogue_power.h",
+          "../../rogue_power.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_native_cold.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_cold.h",
+      "source_sha256": "e6a7687f177e320ebcfe7f712dc263fef0192bcdb861a33dfc04789e4a79eb7b",
+      "sha256": "e6a7687f177e320ebcfe7f712dc263fef0192bcdb861a33dfc04789e4a79eb7b",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_owner_factory_runtime.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_factory_runtime.c",
+      "source_sha256": "140ac4dd8ba32df18c00aeb3936ae062260c7af5cf97d3ad727379ec8f6cb38b",
+      "sha256": "bd9cfafb76a229da281ce23799c94592376ba8cd589a3a27744a41cad424d64e",
+      "include_rewrites": [
+        [
+          "native_owner_factory_private.h",
+          "native_owner_factory_private.h"
+        ],
+        [
+          "windows_native_cold_private.h",
+          "windows_native_cold_private.h"
+        ],
+        [
+          "../windows_hw.h",
+          "../../windows_hw.h"
+        ],
+        [
+          "A04BR3RogueRuntimeLayout.h",
+          "A04BR3RogueRuntimeLayout.h"
+        ],
+        [
+          "A04BR3RogueDeviceWords.h",
+          "A04BR3RogueDeviceWords.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_native_cold_private.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_cold_private.h",
+      "source_sha256": "8b9258c1552d2e8284befc4fa2827eec27949505fe63896c9f7cdb7662aabfe9",
+      "sha256": "8b9258c1552d2e8284befc4fa2827eec27949505fe63896c9f7cdb7662aabfe9",
+      "include_rewrites": [
+        [
+          "windows_native_cold.h",
+          "windows_native_cold.h"
+        ],
+        [
+          "windows_render_cold.h",
+          "windows_render_cold.h"
+        ],
+        [
+          "native_resources.h",
+          "native_resources.h"
+        ],
+        [
+          "native_clear_surface.h",
+          "native_clear_surface.h"
+        ],
+        [
+          "native_clear_codespace.h",
+          "native_clear_codespace.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_clear_codespace.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_clear_codespace.h",
+      "source_sha256": "553f4075a5b0b1a89896648501c0b6ccf3073afd5552708c2dd57bd55e43597a",
+      "sha256": "553f4075a5b0b1a89896648501c0b6ccf3073afd5552708c2dd57bd55e43597a",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_clear_surface.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_clear_surface.h",
+      "source_sha256": "78409fe41e679134b4896cc13c8dbb9e78378f2dcf487f6181506438d209cc0e",
+      "sha256": "78409fe41e679134b4896cc13c8dbb9e78378f2dcf487f6181506438d209cc0e",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_resources.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_resources.h",
+      "source_sha256": "e517e38514f0a196ea2476405db6b2804431d37f5ec6730577df32689788954f",
+      "sha256": "e517e38514f0a196ea2476405db6b2804431d37f5ec6730577df32689788954f",
+      "include_rewrites": [
+        [
+          "A04BR3RogueDDKABI.h",
+          "A04BR3RogueDDKABI.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_owner_factory_private.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_factory_private.h",
+      "source_sha256": "fd345fb9670613605a59d35f95c1a9400656913f2dcebc0d1e4657c585f4464a",
+      "sha256": "d5df9374d1b6e1c2281368d0f5a55158893a7bef1c0eb131f747701ed7a4a028",
+      "include_rewrites": [
+        [
+          "../wddm-render/native_binding.h",
+          "../../wddm-render/native_binding.h"
+        ],
+        [
+          "../../../bus/mt8167-shared/gpu_platform_interface.h",
+          "../../../../bus/mt8167-shared/gpu_platform_interface.h"
+        ],
+        [
+          "native_owner_allocation_private.h",
+          "native_owner_allocation_private.h"
+        ],
+        [
+          "native_owner_frontend_resolver.h",
+          "native_owner_frontend_resolver.h"
+        ],
+        [
+          "windows_command.h",
+          "windows_command.h"
+        ],
+        [
+          "windows_stop.h",
+          "windows_stop.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_stop.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_stop.h",
+      "source_sha256": "aa104aaf91ff03ff56d9de5e0238fa3f72da7c41798360c3253bc311abde6a0e",
+      "sha256": "aa104aaf91ff03ff56d9de5e0238fa3f72da7c41798360c3253bc311abde6a0e",
+      "include_rewrites": [
+        [
+          "windows_start.h",
+          "windows_start.h"
+        ],
+        [
+          "A04BR3RogueCoreResetHold.h",
+          "A04BR3RogueCoreResetHold.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueCoreResetHold.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/A04BR3RogueCoreResetHold.h",
+      "source_sha256": "8fe157e0227928cc217fc9953c74b262a38280b7c0de532293e98415ee1d5478",
+      "sha256": "8fe157e0227928cc217fc9953c74b262a38280b7c0de532293e98415ee1d5478",
+      "include_rewrites": [
+        [
+          "A04BR3RogueStop.h",
+          "A04BR3RogueStop.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueStop.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/A04BR3RogueStop.h",
+      "source_sha256": "7cbc9b3e0a6d16b5254691a3426b2ac1fe42a747e5ead725290366df1b0a0099",
+      "sha256": "7cbc9b3e0a6d16b5254691a3426b2ac1fe42a747e5ead725290366df1b0a0099",
+      "include_rewrites": [
+        [
+          "A04BR3RogueStartupExecutor.h",
+          "A04BR3RogueStartupExecutor.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_owner_frontend_resolver.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_frontend_resolver.h",
+      "source_sha256": "06ab2a2518a507961c43a357fd266e926d5940a5816a6100a5b2c2c73afcd577",
+      "sha256": "fe5295b19d1dceb2cf4b2dc785d4ce0abb79a2110791489ba0d6498e5b69a0b0",
+      "include_rewrites": [
+        [
+          "native_owner_allocation.h",
+          "native_owner_allocation.h"
+        ],
+        [
+          "../wddm-render/frontend_memory.h",
+          "../../wddm-render/frontend_memory.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_owner_allocation.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_allocation.h",
+      "source_sha256": "3fec76ab4b1168c2ab3c0ee9054cc277f9d099bcbe3c0500203c83ff96bc2cc0",
+      "sha256": "3fec76ab4b1168c2ab3c0ee9054cc277f9d099bcbe3c0500203c83ff96bc2cc0",
+      "include_rewrites": [
+        [
+          "native_owner_frontend.h",
+          "native_owner_frontend.h"
+        ],
+        [
+          "windows_native_cold.h",
+          "windows_native_cold.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_owner_frontend.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_frontend.h",
+      "source_sha256": "f7aec1fce3f5c3e13e064eea7cf05a2af0704a818f68e07d0abfe3a525c34fd8",
+      "sha256": "f7aec1fce3f5c3e13e064eea7cf05a2af0704a818f68e07d0abfe3a525c34fd8",
+      "include_rewrites": [
+        [
+          "native_owner_mdl.h",
+          "native_owner_mdl.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_owner_mdl.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_mdl.h",
+      "source_sha256": "ee2518ee6c5c4af5a9d6b20afc68c7311bd34845c53688b9dd88742cb3ac0f75",
+      "sha256": "ee2518ee6c5c4af5a9d6b20afc68c7311bd34845c53688b9dd88742cb3ac0f75",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_owner_allocation_private.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_allocation_private.h",
+      "source_sha256": "f18b50c40ba4075dbad1dc897437ee063ba8b1acea80bdf9fc57aff709424b6a",
+      "sha256": "f18b50c40ba4075dbad1dc897437ee063ba8b1acea80bdf9fc57aff709424b6a",
+      "include_rewrites": [
+        [
+          "native_owner_allocation.h",
+          "native_owner_allocation.h"
+        ],
+        [
+          "windows_render_cold.h",
+          "windows_render_cold.h"
+        ],
+        [
+          "windows_start.h",
+          "windows_start.h"
+        ],
+        [
+          "native_owner_dispatch.h",
+          "native_owner_dispatch.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_owner_dispatch.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_dispatch.h",
+      "source_sha256": "f44a55f5001d1532ff594f51a618d83e19026b6609ad8abc3229cdb3b226c291",
+      "sha256": "f44a55f5001d1532ff594f51a618d83e19026b6609ad8abc3229cdb3b226c291",
+      "include_rewrites": [
+        [
+          "windows_native_cold.h",
+          "windows_native_cold.h"
+        ],
+        [
+          "native_owner_irq.h",
+          "native_owner_irq.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_owner_irq.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_irq.h",
+      "source_sha256": "8d2eb5ceb374ac8acd3df4ca24d85380c5bb47bc875a9acaf06423ba1152b785",
+      "sha256": "8d2eb5ceb374ac8acd3df4ca24d85380c5bb47bc875a9acaf06423ba1152b785",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/bus/mt8167-shared/gpu_platform_interface.h",
+      "destination": "drivers/bus/mt8167-shared/gpu_platform_interface.h",
+      "sha256": "310d408ebb637db7f3bad9e53888a34b35ca98080013ce0554f02782b7d51965",
+      "rewrite_includes_only": false
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_owner_factory_platform.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_factory_platform.c",
+      "source_sha256": "60408accaea96f9f7ef9471b35e9976119aca551ecb6d9cab749350b9a8d6b2c",
+      "sha256": "60408accaea96f9f7ef9471b35e9976119aca551ecb6d9cab749350b9a8d6b2c",
+      "include_rewrites": [
+        [
+          "native_owner_factory_private.h",
+          "native_owner_factory_private.h"
+        ],
+        [
+          "native_factory_checkpoint.h",
+          "native_factory_checkpoint.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_factory_checkpoint.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_factory_checkpoint.h",
+      "source_sha256": "4a984233ab61c0fb3038b73f9b07c93b819ffff2461d86b38e6c36d1e37db119",
+      "sha256": "4a984233ab61c0fb3038b73f9b07c93b819ffff2461d86b38e6c36d1e37db119",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_owner_factory.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_factory.c",
+      "source_sha256": "19f8283d8f10752ad1d824db250cb1f069b0fd3f2c57c566eafd816db9f90399",
+      "sha256": "a36152b277772a74d0a8a64cb5dd4358bb60986df19348f0bfd37283e266d39c",
+      "include_rewrites": [
+        [
+          "native_owner_factory_private.h",
+          "native_owner_factory_private.h"
+        ],
+        [
+          "native_factory_checkpoint.h",
+          "native_factory_checkpoint.h"
+        ],
+        [
+          "A04BR3RogueRuntimeLayout.h",
+          "A04BR3RogueRuntimeLayout.h"
+        ],
+        [
+          "A04BR3RogueDeviceWords.h",
+          "A04BR3RogueDeviceWords.h"
+        ],
+        [
+          "windows_native_cold_private.h",
+          "windows_native_cold_private.h"
+        ],
+        [
+          "../wddm-render/frontend/draw_link_abi.h",
+          "../../wddm-render/frontend/draw_link_abi.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_triangle_texture.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_texture.c",
+      "source_sha256": "8b4788d7a178121dbe85b6d24f9b777abc679a17a567af91d502dc1e15822b58",
+      "sha256": "8b4788d7a178121dbe85b6d24f9b777abc679a17a567af91d502dc1e15822b58",
+      "include_rewrites": [
+        [
+          "native_triangle_texture.h",
+          "native_triangle_texture.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_triangle_texture.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_texture.h",
+      "source_sha256": "578e07d82fb8afeb9426b7481a39a24ef96165f9ff644222ef61cb2bf15306a9",
+      "sha256": "578e07d82fb8afeb9426b7481a39a24ef96165f9ff644222ef61cb2bf15306a9",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_triangle_ppp.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_ppp.c",
+      "source_sha256": "ad6cbbd9842806cff9b2d3b10cc1cf55affc9ea8abab46ed1f82066befb602cc",
+      "sha256": "ad6cbbd9842806cff9b2d3b10cc1cf55affc9ea8abab46ed1f82066befb602cc",
+      "include_rewrites": [
+        [
+          "native_triangle_ppp.h",
+          "native_triangle_ppp.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_triangle_ppp.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_ppp.h",
+      "source_sha256": "bb34a3c026ca5f6998a9d82b5ad623d56cdc3de07d2a1723887d5ce35917f52f",
+      "sha256": "bb34a3c026ca5f6998a9d82b5ad623d56cdc3de07d2a1723887d5ce35917f52f",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_triangle_pds.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_pds.c",
+      "source_sha256": "7e2b9f90eb13b8001cc473f5e6dfb46e32b74dfb469cdb1fa7ba62ed533197a0",
+      "sha256": "7e2b9f90eb13b8001cc473f5e6dfb46e32b74dfb469cdb1fa7ba62ed533197a0",
+      "include_rewrites": [
+        [
+          "native_triangle_pds.h",
+          "native_triangle_pds.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_triangle_pds.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_pds.h",
+      "source_sha256": "21039204bde1139391498e10dfce57fc67d331d72b7ad5f371c126038deae708",
+      "sha256": "21039204bde1139391498e10dfce57fc67d331d72b7ad5f371c126038deae708",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_triangle_vdm.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_vdm.c",
+      "source_sha256": "237d1999c45ede57b20e39fee480e20f2bc6bc3769a330641fc59196a53dc09b",
+      "sha256": "237d1999c45ede57b20e39fee480e20f2bc6bc3769a330641fc59196a53dc09b",
+      "include_rewrites": [
+        [
+          "native_triangle_vdm.h",
+          "native_triangle_vdm.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_triangle_vdm.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_vdm.h",
+      "source_sha256": "b70b4bcb6c4381f7d269fa493d345edc4204578f0ff6eb968792890389bf88f4",
+      "sha256": "b70b4bcb6c4381f7d269fa493d345edc4204578f0ff6eb968792890389bf88f4",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_triangle_suite.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_suite.c",
+      "source_sha256": "05c873d4a60d8258dd8699ec0892089ea78bfac524d8b9702576cc4ff285567e",
+      "sha256": "05c873d4a60d8258dd8699ec0892089ea78bfac524d8b9702576cc4ff285567e",
+      "include_rewrites": [
+        [
+          "native_triangle_suite.h",
+          "native_triangle_suite.h"
+        ],
+        [
+          "native_triangle_vdm.h",
+          "native_triangle_vdm.h"
+        ],
+        [
+          "native_triangle_ppp.h",
+          "native_triangle_ppp.h"
+        ],
+        [
+          "native_triangle_pds.h",
+          "native_triangle_pds.h"
+        ],
+        [
+          "native_triangle_texture.h",
+          "native_triangle_texture.h"
+        ],
+        [
+          "native_clear_pds.h",
+          "native_clear_pds.h"
+        ],
+        [
+          "native_triangle_usc_generated.h",
+          "native_triangle_usc_generated.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_triangle_usc_generated.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_usc_generated.h",
+      "source_sha256": "ef98e815138d79bea07314b9d85b5ece3227e7a9506aff3cb8634cc75c062804",
+      "sha256": "ef98e815138d79bea07314b9d85b5ece3227e7a9506aff3cb8634cc75c062804",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_clear_pds.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_clear_pds.h",
+      "source_sha256": "3f7601c985c0010bd3bb9093556e105232c8b437ae2b388b122b383c939fd374",
+      "sha256": "3f7601c985c0010bd3bb9093556e105232c8b437ae2b388b122b383c939fd374",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_triangle_suite.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_suite.h",
+      "source_sha256": "61ab752a2a67e7f88baffc7a055d6ba6c4918b5e6dae7a25870ac5cfd9c83475",
+      "sha256": "61ab752a2a67e7f88baffc7a055d6ba6c4918b5e6dae7a25870ac5cfd9c83475",
+      "include_rewrites": [
+        [
+          "native_clear_job.h",
+          "native_clear_job.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_clear_job.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_clear_job.h",
+      "source_sha256": "b754d4e46a4d6eb923ee9504881edc9d2abc7067399506255863aef3df85a5ba",
+      "sha256": "b754d4e46a4d6eb923ee9504881edc9d2abc7067399506255863aef3df85a5ba",
+      "include_rewrites": [
+        [
+          "native_clear_codespace.h",
+          "native_clear_codespace.h"
+        ],
+        [
+          "native_clear_data.h",
+          "native_clear_data.h"
+        ],
+        [
+          "native_record_fields.h",
+          "native_record_fields.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_record_fields.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_record_fields.h",
+      "source_sha256": "feb70e9e4068e6966dbca1de8510ad255b6afdfe730c45def619c01cf61dac37",
+      "sha256": "feb70e9e4068e6966dbca1de8510ad255b6afdfe730c45def619c01cf61dac37",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_clear_data.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_clear_data.h",
+      "source_sha256": "7ab7ee1f38d8cad73c37889a081b3668fbf3dffcd00cf14dd1a4137637aba5b1",
+      "sha256": "7ab7ee1f38d8cad73c37889a081b3668fbf3dffcd00cf14dd1a4137637aba5b1",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_draw_job.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_draw_job.c",
+      "source_sha256": "e51bc1bfde053d806cf9af1652e08197f2067b30d0b6696501efa7d3bf4c6251",
+      "sha256": "e51bc1bfde053d806cf9af1652e08197f2067b30d0b6696501efa7d3bf4c6251",
+      "include_rewrites": [
+        [
+          "native_draw_job.h",
+          "native_draw_job.h"
+        ],
+        [
+          "native_triangle_pds.h",
+          "native_triangle_pds.h"
+        ],
+        [
+          "native_clear_pds.h",
+          "native_clear_pds.h"
+        ],
+        [
+          "native_load_usc_generated.h",
+          "native_load_usc_generated.h"
+        ],
+        [
+          "native_color_usc_generated.h",
+          "native_color_usc_generated.h"
+        ],
+        [
+          "native_varying_pds.h",
+          "native_varying_pds.h"
+        ],
+        [
+          "native_d3d_viewport.h",
+          "native_d3d_viewport.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_d3d_viewport.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_d3d_viewport.h",
+      "source_sha256": "12efe5e335074bd6debf70e75afe319afc794bf9252da5bb926dcbad6146c3b7",
+      "sha256": "12efe5e335074bd6debf70e75afe319afc794bf9252da5bb926dcbad6146c3b7",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_varying_pds.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_varying_pds.h",
+      "source_sha256": "0444ca53e88e3e03f810bef994027215c12c77958758e24c11a79db47304faa9",
+      "sha256": "4862294edd593929d602027566e849fb8cd23b85b7f0b88e63892dc32c727286",
+      "include_rewrites": [
+        [
+          "../wddm-render/frontend/draw_link_abi.h",
+          "../../wddm-render/frontend/draw_link_abi.h"
+        ],
+        [
+          "native_triangle_ppp.h",
+          "native_triangle_ppp.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_color_usc_generated.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_color_usc_generated.h",
+      "source_sha256": "55b91f27a95fcc86f9484bdd58c15dca6fdd560c7661ad7bd61d9f44e358ad08",
+      "sha256": "55b91f27a95fcc86f9484bdd58c15dca6fdd560c7661ad7bd61d9f44e358ad08",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_load_usc_generated.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_load_usc_generated.h",
+      "source_sha256": "c2239ef9cf36a6fd40eb51f673e1937feb1d6eca403d7e1eec5ebd1b1cbc667a",
+      "sha256": "c2239ef9cf36a6fd40eb51f673e1937feb1d6eca403d7e1eec5ebd1b1cbc667a",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_draw_job.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_draw_job.h",
+      "source_sha256": "6598f50ba0e6fa50127136c87e2b9757b621bdcc2a93b2603fcff323e2840365",
+      "sha256": "d9c11d66989d5b755d1ee53fc1319b1c3ffa0318308b9eb0f9a76afd41c1f8fa",
+      "include_rewrites": [
+        [
+          "native_triangle_suite.h",
+          "native_triangle_suite.h"
+        ],
+        [
+          "../wddm-render/frontend/draw_link_abi.h",
+          "../../wddm-render/frontend/draw_link_abi.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_varying_pds.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_varying_pds.c",
+      "source_sha256": "0473a6e1aceebb82e3e1bc00c608671949929f60684e2191fae676fc67562756",
+      "sha256": "0473a6e1aceebb82e3e1bc00c608671949929f60684e2191fae676fc67562756",
+      "include_rewrites": [
+        [
+          "native_varying_pds.h",
+          "native_varying_pds.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_d3d_viewport.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_d3d_viewport.c",
+      "source_sha256": "333d8e5a88acc29e9eb7eb3adb27ccd77ff8909b81b571f008c25ffe6711eaad",
+      "sha256": "fa8c0660378e1b5a5d352c8e39102c4cf6a46ff0fb072536132a66b2eb98dae1",
+      "include_rewrites": [
+        [
+          "native_d3d_viewport.h",
+          "native_d3d_viewport.h"
+        ],
+        [
+          "../wddm-render/clear_protocol.h",
+          "../../wddm-render/clear_protocol.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/clear_tile.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/clear_tile.c",
+      "source_sha256": "345b35cde35cd20e6bcab20afbed7096b4fb7ad7ce135a207b8ee88f902cffc3",
+      "sha256": "345b35cde35cd20e6bcab20afbed7096b4fb7ad7ce135a207b8ee88f902cffc3",
+      "include_rewrites": [
+        [
+          "clear_tile.h",
+          "clear_tile.h"
+        ],
+        [
+          "render_resources.h",
+          "render_resources.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/clear_tile.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/clear_tile.h",
+      "source_sha256": "c23a2d39ba3fccb7bc6a2de877a831324b956f7a03f69c562a73ce0f6af9dbdc",
+      "sha256": "c23a2d39ba3fccb7bc6a2de877a831324b956f7a03f69c562a73ce0f6af9dbdc",
+      "include_rewrites": [
+        [
+          "clear_image.h",
+          "clear_image.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/clear_image.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/clear_image.c",
+      "source_sha256": "e06cdf23a8355ff3f8168bcaa11cc2c49034cbe3bf224a3fa131cd62cf7430ff",
+      "sha256": "e06cdf23a8355ff3f8168bcaa11cc2c49034cbe3bf224a3fa131cd62cf7430ff",
+      "include_rewrites": [
+        [
+          "clear_image.h",
+          "clear_image.h"
+        ],
+        [
+          "render_resources.h",
+          "render_resources.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_render_cold.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_render_cold.c",
+      "source_sha256": "37d200b625b18a1aa2b4542bf23bc171faaf31b755ea4e3363ac3d4ce4a8a7a7",
+      "sha256": "9f371df64a04d6ed251d8bbf3b8427f6603072795a6e4de74fc0fe9a5686d0de",
+      "include_rewrites": [
+        [
+          "windows_render_cold.h",
+          "windows_render_cold.h"
+        ],
+        [
+          "clear_tile.h",
+          "clear_tile.h"
+        ],
+        [
+          "A04BR3RogueRuntimeLayout.h",
+          "A04BR3RogueRuntimeLayout.h"
+        ],
+        [
+          "A04BR3RogueDeviceWords.h",
+          "A04BR3RogueDeviceWords.h"
+        ],
+        [
+          "../gpu_mmu.h",
+          "../../gpu_mmu.h"
+        ],
+        [
+          "../windows_hw.h",
+          "../../windows_hw.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_stage_uncached.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_stage_uncached.c",
+      "source_sha256": "206eb20d4928e985cd7f4bf108b6dc20ace66b4c6dc3323307b4a3cb9258ef29",
+      "sha256": "11497760ba3b6d484225add6a5f2673e12e3e58f0a58d063fc26bbccafcfaac5",
+      "include_rewrites": [
+        [
+          "windows_stage.h",
+          "windows_stage.h"
+        ],
+        [
+          "windows_clock.h",
+          "windows_clock.h"
+        ],
+        [
+          "windows_uncached.h",
+          "windows_uncached.h"
+        ],
+        [
+          "A04BR3RogueRuntimeRebase.h",
+          "A04BR3RogueRuntimeRebase.h"
+        ],
+        [
+          "A04BR3RogueDeviceWords.h",
+          "A04BR3RogueDeviceWords.h"
+        ],
+        [
+          "../windows_hw.h",
+          "../../windows_hw.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/A04BR3RogueRuntimeRebase.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/A04BR3RogueRuntimeRebase.h",
+      "source_sha256": "71f39d919fd81bf7b08877a2aaae03b76635cc0881ffe43eef01222b8b551315",
+      "sha256": "71f39d919fd81bf7b08877a2aaae03b76635cc0881ffe43eef01222b8b551315",
+      "include_rewrites": [
+        [
+          "A04BR3RogueRuntimeLayout.h",
+          "A04BR3RogueRuntimeLayout.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_stage.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_stage.c",
+      "source_sha256": "9d513709f7e6846d3b74ac0d00f18ec53d7e618f4bac1061b3741ab0f05ea814",
+      "sha256": "d7e9358dad6ef98ce8f2a8163dc7a7283f1b36069929c3601be6f38eb088bae1",
+      "include_rewrites": [
+        [
+          "windows_stage.h",
+          "windows_stage.h"
+        ],
+        [
+          "windows_clock.h",
+          "windows_clock.h"
+        ],
+        [
+          "A04BR3RogueRuntimeLayout.h",
+          "A04BR3RogueRuntimeLayout.h"
+        ],
+        [
+          "../windows_hw.h",
+          "../../windows_hw.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/stage.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/stage.c",
+      "source_sha256": "18ce38d1546899e26a5ec70704dfbf9b8081cc5d047c76ef2f001fd6a7f4f858",
+      "sha256": "18ce38d1546899e26a5ec70704dfbf9b8081cc5d047c76ef2f001fd6a7f4f858",
+      "include_rewrites": [
+        [
+          "stage.h",
+          "stage.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_owner_allocation.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_allocation.c",
+      "source_sha256": "96c36a12c51e89314ed950f19ddde59eb3749629af6c0d59e5eb53786bdeb1a7",
+      "sha256": "96c36a12c51e89314ed950f19ddde59eb3749629af6c0d59e5eb53786bdeb1a7",
+      "include_rewrites": [
+        [
+          "native_owner_allocation_private.h",
+          "native_owner_allocation_private.h"
+        ],
+        [
+          "native_factory_checkpoint.h",
+          "native_factory_checkpoint.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_owner_frontend_resolver.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_frontend_resolver.c",
+      "source_sha256": "c77fe9ebcd9c58b41c80613a3a130ffdac493a6c158d87ac6463a40200c2e529",
+      "sha256": "c77fe9ebcd9c58b41c80613a3a130ffdac493a6c158d87ac6463a40200c2e529",
+      "include_rewrites": [
+        [
+          "native_owner_frontend_resolver.h",
+          "native_owner_frontend_resolver.h"
+        ],
+        [
+          "native_owner_allocation_private.h",
+          "native_owner_allocation_private.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_stop.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_stop.c",
+      "source_sha256": "8385627368ab3eb5b0ae5f96f260dfaecafe662d8e8cd3c7665680779ea4fc5f",
+      "sha256": "8385627368ab3eb5b0ae5f96f260dfaecafe662d8e8cd3c7665680779ea4fc5f",
+      "include_rewrites": [
+        [
+          "windows_stop.h",
+          "windows_stop.h"
+        ],
+        [
+          "A04BR3RogueStop.h",
+          "A04BR3RogueStop.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_ccb.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_ccb.c",
+      "source_sha256": "bb91492e08b193c45d87e610030051e1a6a9a670e6a2abf808f2579cec7c7200",
+      "sha256": "bb91492e08b193c45d87e610030051e1a6a9a670e6a2abf808f2579cec7c7200",
+      "include_rewrites": [
+        [
+          "native_ccb.h",
+          "native_ccb.h"
+        ],
+        [
+          "native_record_fields.h",
+          "native_record_fields.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_ccb.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_ccb.h",
+      "source_sha256": "9bcb97a3e0ffdc69c0154aee0011a8e7ca7da94d75cd70fdfb4cfaca2504a72a",
+      "sha256": "9bcb97a3e0ffdc69c0154aee0011a8e7ca7da94d75cd70fdfb4cfaca2504a72a",
+      "include_rewrites": [
+        [
+          "A04BR3RogueDDKABI.h",
+          "A04BR3RogueDDKABI.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_pair.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_pair.c",
+      "source_sha256": "11a114bb31b6810e283ffb4edf54e93ebcd54f6a9e72f81c2533619aaccada8d",
+      "sha256": "11a114bb31b6810e283ffb4edf54e93ebcd54f6a9e72f81c2533619aaccada8d",
+      "include_rewrites": [
+        [
+          "native_pair.h",
+          "native_pair.h"
+        ],
+        [
+          "native_record_fields.h",
+          "native_record_fields.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_pair.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_pair.h",
+      "source_sha256": "c28792fdef7c631855aaccfc9d654c306fdd5ae04973b93ccace16e7bc389226",
+      "sha256": "c28792fdef7c631855aaccfc9d654c306fdd5ae04973b93ccace16e7bc389226",
+      "include_rewrites": [
+        [
+          "native_ccb.h",
+          "native_ccb.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_record_fields.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_record_fields.c",
+      "source_sha256": "fefa97af9b497a29dfca37aa5a3d31edd49c493ebffe4f662c413b5842863fe2",
+      "sha256": "fefa97af9b497a29dfca37aa5a3d31edd49c493ebffe4f662c413b5842863fe2",
+      "include_rewrites": [
+        [
+          "native_record_fields.h",
+          "native_record_fields.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_eot_program.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_eot_program.c",
+      "source_sha256": "55daf700302d332e0126a8379e0df0151ef58c1f01a3b09842b76b394692e52d",
+      "sha256": "55daf700302d332e0126a8379e0df0151ef58c1f01a3b09842b76b394692e52d",
+      "include_rewrites": [
+        [
+          "native_eot_program.h",
+          "native_eot_program.h"
+        ],
+        [
+          "native_clear_pds.h",
+          "native_clear_pds.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_eot_program.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_eot_program.h",
+      "source_sha256": "4c6bd93e261b654440da4afc64bb11cd56d902aa458b9df38dbdf951657af2d1",
+      "sha256": "4c6bd93e261b654440da4afc64bb11cd56d902aa458b9df38dbdf951657af2d1",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_clear_pds.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_clear_pds.c",
+      "source_sha256": "c50506fb2fc6a93ed8042569c711a5dbe69b1669013f5acee448008e15b0fc5c",
+      "sha256": "c50506fb2fc6a93ed8042569c711a5dbe69b1669013f5acee448008e15b0fc5c",
+      "include_rewrites": [
+        [
+          "native_clear_pds.h",
+          "native_clear_pds.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_clear_codespace.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_clear_codespace.c",
+      "source_sha256": "5439edeb6361a97b798f91078fa2dc3afea0664a6cfe3aab3000124e0855db76",
+      "sha256": "5439edeb6361a97b798f91078fa2dc3afea0664a6cfe3aab3000124e0855db76",
+      "include_rewrites": [
+        [
+          "native_clear_codespace.h",
+          "native_clear_codespace.h"
+        ],
+        [
+          "native_clear_pds.h",
+          "native_clear_pds.h"
+        ],
+        [
+          "native_eot_program.h",
+          "native_eot_program.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_clear_surface.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_clear_surface.c",
+      "source_sha256": "89d4e587d4d54ae8d7b4b0f65fdf5fef3d38bb7d17a62b9087049bfe950678c7",
+      "sha256": "89d4e587d4d54ae8d7b4b0f65fdf5fef3d38bb7d17a62b9087049bfe950678c7",
+      "include_rewrites": [
+        [
+          "native_clear_surface.h",
+          "native_clear_surface.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_terminate_stream.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_terminate_stream.c",
+      "source_sha256": "3183297998a9f49973396a12d897afa1dc5e51b17b1e08c4931945dc0f338c0a",
+      "sha256": "3183297998a9f49973396a12d897afa1dc5e51b17b1e08c4931945dc0f338c0a",
+      "include_rewrites": [
+        [
+          "native_terminate_stream.h",
+          "native_terminate_stream.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_terminate_stream.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_terminate_stream.h",
+      "source_sha256": "ba1e0462f5d619116cd526eb82f646b292feace3003931bc6411897234ba285d",
+      "sha256": "ba1e0462f5d619116cd526eb82f646b292feace3003931bc6411897234ba285d",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_clear_data.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_clear_data.c",
+      "source_sha256": "70180d04b59f183c09483a1ff15855b251dad43d5e1848695d70d6f53ff76dbb",
+      "sha256": "70180d04b59f183c09483a1ff15855b251dad43d5e1848695d70d6f53ff76dbb",
+      "include_rewrites": [
+        [
+          "native_clear_data.h",
+          "native_clear_data.h"
+        ],
+        [
+          "native_terminate_stream.h",
+          "native_terminate_stream.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_clear_job.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_clear_job.c",
+      "source_sha256": "9c31d52880955f33b42e314dee44bdb140f51f941b6b913dbed4248d0fc3197c",
+      "sha256": "9c31d52880955f33b42e314dee44bdb140f51f941b6b913dbed4248d0fc3197c",
+      "include_rewrites": [
+        [
+          "native_clear_job.h",
+          "native_clear_job.h"
+        ],
+        [
+          "native_clear_surface.h",
+          "native_clear_surface.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/render_resources.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/render_resources.c",
+      "source_sha256": "e1735a4049c851e5a551ee8de3171d98f471ba7ade299acf735263976794d9e9",
+      "sha256": "e1735a4049c851e5a551ee8de3171d98f471ba7ade299acf735263976794d9e9",
+      "include_rewrites": [
+        [
+          "render_resources.h",
+          "render_resources.h"
+        ],
+        [
+          "A04BR3RogueRuntimeLayout.h",
+          "A04BR3RogueRuntimeLayout.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_hwrt_profile.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_hwrt_profile.c",
+      "source_sha256": "d9983b610d80219ccbb4d18d779b4bde3fd5f71cebee1cb47bd0298ac76ea253",
+      "sha256": "d9983b610d80219ccbb4d18d779b4bde3fd5f71cebee1cb47bd0298ac76ea253",
+      "include_rewrites": [
+        [
+          "native_hwrt_profile.h",
+          "native_hwrt_profile.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_hwrt_profile.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_hwrt_profile.h",
+      "source_sha256": "b0f6ae98931f9ae639ea46b34fecee65f6d78a1d08b75969b64d51c311e47ec5",
+      "sha256": "b0f6ae98931f9ae639ea46b34fecee65f6d78a1d08b75969b64d51c311e47ec5",
+      "include_rewrites": [
+        [
+          "native_resources.h",
+          "native_resources.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_resources.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_resources.c",
+      "source_sha256": "8c7df0ff753a93690b58b260c77f7a2d4fc72fbc64913d2a96ed76782e7c6ef2",
+      "sha256": "8c7df0ff753a93690b58b260c77f7a2d4fc72fbc64913d2a96ed76782e7c6ef2",
+      "include_rewrites": [
+        [
+          "native_resources.h",
+          "native_resources.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_uncached.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_uncached.c",
+      "source_sha256": "c479b612f87a2293074417ee12f189898a7bd74bbec85b8d5d7e27891eb94e9e",
+      "sha256": "c479b612f87a2293074417ee12f189898a7bd74bbec85b8d5d7e27891eb94e9e",
+      "include_rewrites": [
+        [
+          "windows_uncached.h",
+          "windows_uncached.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_native_execute.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_execute.c",
+      "source_sha256": "561105bf650a1095f34385614e2ae797e5d372a2dae90af22eb71fa18629700f",
+      "sha256": "8507cb86538081962f59de9142608012fc660a46da5fbe8e22eb1f76e902b068",
+      "include_rewrites": [
+        [
+          "windows_native_job_private.h",
+          "windows_native_job_private.h"
+        ],
+        [
+          "windows_native_submit.h",
+          "windows_native_submit.h"
+        ],
+        [
+          "native_owner_mdl.h",
+          "native_owner_mdl.h"
+        ],
+        [
+          "native_owner_irq.h",
+          "native_owner_irq.h"
+        ],
+        [
+          "windows_start.h",
+          "windows_start.h"
+        ],
+        [
+          "A04BR3RogueRuntimeLayout.h",
+          "A04BR3RogueRuntimeLayout.h"
+        ],
+        [
+          "A04BR3RogueDeviceWords.h",
+          "A04BR3RogueDeviceWords.h"
+        ],
+        [
+          "../windows_hw.h",
+          "../../windows_hw.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_native_submit.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_submit.h",
+      "source_sha256": "0d03b63e10102ce707e6212422fc5d0fec964b6c8616bac5c1ce62ee0800d782",
+      "sha256": "0d03b63e10102ce707e6212422fc5d0fec964b6c8616bac5c1ce62ee0800d782",
+      "include_rewrites": [
+        [
+          "windows_native_cold.h",
+          "windows_native_cold.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_native_job_private.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_job_private.h",
+      "source_sha256": "6428582558ba83fd24366f2651f3cdfd62b8c669ec2f35bb5b86c376b71bbd25",
+      "sha256": "6428582558ba83fd24366f2651f3cdfd62b8c669ec2f35bb5b86c376b71bbd25",
+      "include_rewrites": [
+        [
+          "windows_native_cold_private.h",
+          "windows_native_cold_private.h"
+        ],
+        [
+          "native_clear_job.h",
+          "native_clear_job.h"
+        ],
+        [
+          "native_pair.h",
+          "native_pair.h"
+        ],
+        [
+          "native_triangle_suite.h",
+          "native_triangle_suite.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_native_job.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_job.c",
+      "source_sha256": "467d756facb7f196f82b73bf09b2df07399805a073bcdb91278ace0136bc3165",
+      "sha256": "88412ddcd5dcdfe7a2f76e5b73bee1fe495b65aa02f4097275fd2531470ed94e",
+      "include_rewrites": [
+        [
+          "windows_native_job_private.h",
+          "windows_native_job_private.h"
+        ],
+        [
+          "A04BR3RogueDeviceWords.h",
+          "A04BR3RogueDeviceWords.h"
+        ],
+        [
+          "native_hwrt_profile.h",
+          "native_hwrt_profile.h"
+        ],
+        [
+          "../windows_hw.h",
+          "../../windows_hw.h"
+        ],
+        [
+          "native_draw_job.h",
+          "native_draw_job.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_native_backing.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_backing.c",
+      "source_sha256": "a50d81d675bd9738be5969e4b9760a7c310e42072a67be229f280f984385273f",
+      "sha256": "621cb41a5adffb213e9550fb85ae11a974b2fceb8516d42e8d5614d01bbe1a56",
+      "include_rewrites": [
+        [
+          "windows_native_cold_private.h",
+          "windows_native_cold_private.h"
+        ],
+        [
+          "windows_copy_scratch.h",
+          "windows_copy_scratch.h"
+        ],
+        [
+          "native_terminate_stream.h",
+          "native_terminate_stream.h"
+        ],
+        [
+          "A04BR3RogueRuntimeLayout.h",
+          "A04BR3RogueRuntimeLayout.h"
+        ],
+        [
+          "A04BR3RogueDeviceWords.h",
+          "A04BR3RogueDeviceWords.h"
+        ],
+        [
+          "../gpu_mmu.h",
+          "../../gpu_mmu.h"
+        ],
+        [
+          "../windows_hw.h",
+          "../../windows_hw.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_copy_scratch.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_copy_scratch.h",
+      "source_sha256": "13acc6f4791665fdff2aab1802841511c17b4ce85b64a89eed10d4f94260f494",
+      "sha256": "13acc6f4791665fdff2aab1802841511c17b4ce85b64a89eed10d4f94260f494",
+      "include_rewrites": [
+        [
+          "windows_render_cold.h",
+          "windows_render_cold.h"
+        ],
+        [
+          "native_copy_state.h",
+          "native_copy_state.h"
+        ],
+        [
+          "native_copy_usc.h",
+          "native_copy_usc.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_copy_usc.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_copy_usc.h",
+      "source_sha256": "b6563e5fe75c054a22d9c3ab8df3c9f6108f252e784cd61c28cab9a612cf01b1",
+      "sha256": "b6563e5fe75c054a22d9c3ab8df3c9f6108f252e784cd61c28cab9a612cf01b1",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_copy_state.h",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_copy_state.h",
+      "source_sha256": "e7afa05c526b9524748601945bdfe80a994b3a922914651f7eea1604bac4d159",
+      "sha256": "e7afa05c526b9524748601945bdfe80a994b3a922914651f7eea1604bac4d159",
+      "include_rewrites": [],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_native_code.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_code.c",
+      "source_sha256": "7f03ccb7a7925f5f34640c1a9c072246e533e79d55d0760de30894b3284db5b6",
+      "sha256": "66341cfc011bb0b1500f252827b7ed771b7eb53662de28b3c4bd25613d3ee78f",
+      "include_rewrites": [
+        [
+          "windows_native_cold_private.h",
+          "windows_native_cold_private.h"
+        ],
+        [
+          "windows_copy_scratch.h",
+          "windows_copy_scratch.h"
+        ],
+        [
+          "A04BR3RogueRuntimeLayout.h",
+          "A04BR3RogueRuntimeLayout.h"
+        ],
+        [
+          "A04BR3RogueDeviceWords.h",
+          "A04BR3RogueDeviceWords.h"
+        ],
+        [
+          "../gpu_mmu.h",
+          "../../gpu_mmu.h"
+        ],
+        [
+          "../windows_hw.h",
+          "../../windows_hw.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_native_cold.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_cold.c",
+      "source_sha256": "a8cfb37a7ff9fb02226f2632b77a37c5e7b9b6af42ea25f35b350ce2493c3175",
+      "sha256": "c1ff326e00612a99d956deccb72a94c365b68e3987c228ba5ac19b5f731b9d6f",
+      "include_rewrites": [
+        [
+          "windows_native_cold_private.h",
+          "windows_native_cold_private.h"
+        ],
+        [
+          "native_hwrt_profile.h",
+          "native_hwrt_profile.h"
+        ],
+        [
+          "windows_copy_scratch.h",
+          "windows_copy_scratch.h"
+        ],
+        [
+          "A04BR3RogueRuntimeLayout.h",
+          "A04BR3RogueRuntimeLayout.h"
+        ],
+        [
+          "A04BR3RogueDeviceWords.h",
+          "A04BR3RogueDeviceWords.h"
+        ],
+        [
+          "../gpu_mmu.h",
+          "../../gpu_mmu.h"
+        ],
+        [
+          "../windows_hw.h",
+          "../../windows_hw.h"
+        ],
+        [
+          "native_owner_mdl.h",
+          "native_owner_mdl.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_native_storage.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_storage.c",
+      "source_sha256": "cf6198365751b6a3845cdd710cea3c267f0ea6e73f5d537911fe10db2bef1e26",
+      "sha256": "cf6198365751b6a3845cdd710cea3c267f0ea6e73f5d537911fe10db2bef1e26",
+      "include_rewrites": [
+        [
+          "windows_native_cold_private.h",
+          "windows_native_cold_private.h"
+        ],
+        [
+          "A04BR3RogueDeviceWords.h",
+          "A04BR3RogueDeviceWords.h"
+        ],
+        [
+          "native_owner_mdl.h",
+          "native_owner_mdl.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_native_target.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_target.c",
+      "source_sha256": "7695f5d1936c19bd760e11d72c27a4ec980269cc94b06d8c46dc71ae3c501854",
+      "sha256": "5204f8225ff5ba303f4241d9d8f801be5876f10e3f2da072702e2b822c74eeb0",
+      "include_rewrites": [
+        [
+          "windows_native_cold_private.h",
+          "windows_native_cold_private.h"
+        ],
+        [
+          "native_owner_mdl.h",
+          "native_owner_mdl.h"
+        ],
+        [
+          "A04BR3RogueDeviceWords.h",
+          "A04BR3RogueDeviceWords.h"
+        ],
+        [
+          "../gpu_mmu.h",
+          "../../gpu_mmu.h"
+        ],
+        [
+          "../windows_hw.h",
+          "../../windows_hw.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_owner_dispatch.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_dispatch.c",
+      "source_sha256": "440e6995dfbc8622803ed807ad604ee9410fd271cbe79a7d89f15d1590ae1018",
+      "sha256": "440e6995dfbc8622803ed807ad604ee9410fd271cbe79a7d89f15d1590ae1018",
+      "include_rewrites": [
+        [
+          "native_owner_dispatch.h",
+          "native_owner_dispatch.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/windows_native_submit.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_submit.c",
+      "source_sha256": "e00071e8fba9271e5be945964ba0cba0dd6d7638b6150d569ddee19a60b9c4cf",
+      "sha256": "6321332f0acf5819aa65f96936f00e12fe4566a31a9f8e7311e891d78660e6d1",
+      "include_rewrites": [
+        [
+          "windows_native_submit.h",
+          "windows_native_submit.h"
+        ],
+        [
+          "windows_native_job_private.h",
+          "windows_native_job_private.h"
+        ],
+        [
+          "windows_start.h",
+          "windows_start.h"
+        ],
+        [
+          "A04BR3RogueRuntimeLayout.h",
+          "A04BR3RogueRuntimeLayout.h"
+        ],
+        [
+          "A04BR3RogueDeviceWords.h",
+          "A04BR3RogueDeviceWords.h"
+        ],
+        [
+          "../windows_hw.h",
+          "../../windows_hw.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_owner_irq.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_irq.c",
+      "source_sha256": "90d3b49ad60e58e3effa94f3a7427db6f9dd60ba43efe8d2b613ee9ebc819eb2",
+      "sha256": "5f48779a3b35a5a70971f88febfe04bf3076a3dda1699798abf1c874261e7d45",
+      "include_rewrites": [
+        [
+          "native_owner_irq.h",
+          "native_owner_irq.h"
+        ],
+        [
+          "../windows_hw.h",
+          "../../windows_hw.h"
+        ],
+        [
+          "A04BR3RogueRuntimeLayout.h",
+          "A04BR3RogueRuntimeLayout.h"
+        ],
+        [
+          "A04BR3RogueDeviceWords.h",
+          "A04BR3RogueDeviceWords.h"
+        ],
+        [
+          "../fwif/pvr_rogue_cr_defs.h",
+          "../../fwif/pvr_rogue_cr_defs.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    },
+    {
+      "source": "drivers/gpu/mt8167/vendor_m1_11/native_owner_mdl.c",
+      "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_mdl.c",
+      "source_sha256": "68080dc39323cb772ea726c90b21c1166ff39a50de6ac821f5a273728e61d21b",
+      "sha256": "fccd79e10942ba155e483c588a849c3943b851f081b04f1703bd4f12c30d54b8",
+      "include_rewrites": [
+        [
+          "native_owner_mdl.h",
+          "native_owner_mdl.h"
+        ],
+        [
+          "../dma_pages.h",
+          "../../dma_pages.h"
+        ],
+        [
+          "../windows_hw.h",
+          "../../windows_hw.h"
+        ]
+      ],
+      "rewrite_includes_only": true
+    }
+  ]
+}

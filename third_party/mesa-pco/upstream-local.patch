@@ -1,0 +1,105 @@
+diff --git a/src/imagination/common/device_info/ge8300.h b/src/imagination/common/device_info/ge8300.h
+index d620ee6..91bb006 100644
+--- a/src/imagination/common/device_info/ge8300.h
++++ b/src/imagination/common/device_info/ge8300.h
+@@ -136,6 +136,40 @@ static const struct pvr_device_info pvr_device_info_22_68_54_30 = {
+    .quirks = pvr_device_quirks_22_68_54_30,
+ };
+ 
++/* 22.40.54.30 (MediaTek MT8167). The features are those of the 22.V.54.30 configuration above: the DDK defines
++ * them per B.N.C (rgxconfig_km_22.V.54.30.h). No user-mode errata list for V 40 is available, so the enhancements
++ * and quirks below are those of 22.67 and 22.68, which are identical. The kernel-mode core files of the PowerVR DDK
++ * in the MT8167 Android kernel (drivers/misc/mediatek/gpu/gpu_rgx/m1.11ED5425693/hwdefs/km/cores,
++ * rgxcore_km_22.40.54.30.h and rgxcore_km_22.67.54.30.h) differ only in BRN 61450 (22.40) and ERN 61389 (22.67),
++ * neither of which this driver models. pvr_drm_override_quirks() and pvr_drm_override_enhancements() replace
++ * BRN 48545, 49927, 51764, 62269 and ERN 35421 with the kernel's answer. */
++static const struct pvr_device_enhancements
++   pvr_device_enhancements_22_40_54_30 = {
++      .has_ern35421 = true,
++      .has_ern38748 = true,
++      .has_ern42307 = true,
++   };
++
++static const struct pvr_device_quirks pvr_device_quirks_22_40_54_30 = {
++   .has_brn49927 = true,
++   .has_brn66011 = true,
++   .has_brn70165 = true,
++   .has_brn74056 = true,
++};
++
++static const struct pvr_device_info pvr_device_info_22_40_54_30 = {
++   .ident = {
++      PVR_DEVICE_IDENT_22_V_54_30,
++      .b = 22,
++      .v = 40,
++      .n = 54,
++      .c = 30,
++   },
++   .features = pvr_device_features_22_V_54_30,
++   .enhancements = pvr_device_enhancements_22_40_54_30,
++   .quirks = pvr_device_quirks_22_40_54_30,
++};
++
+ #define PVR_DEVICE_IDENT_22_V_54_38 \
+    .device_id = 0x22054038, .series_name = "Rogue", \
+    .public_name = "GE8300", .arch = PVR_DEVICE_ARCH_ROGUE
+diff --git a/src/imagination/common/pvr_device_info.c b/src/imagination/common/pvr_device_info.c
+index eb586eb..3f11440 100644
+--- a/src/imagination/common/pvr_device_info.c
++++ b/src/imagination/common/pvr_device_info.c
+@@ -51,6 +51,7 @@ static const struct pvr_device_info *device_infos[] = {
+    &pvr_device_info_4_46_6_62,
+    &pvr_device_info_5_9_1_46,
+    &pvr_device_info_15_5_1_64,
++   &pvr_device_info_22_40_54_30,
+    &pvr_device_info_22_67_54_30,
+    &pvr_device_info_22_68_54_30,
+    &pvr_device_info_22_102_54_38,
+@@ -85,6 +86,7 @@ int pvr_device_info_init(struct pvr_device_info *info, uint64_t bvnc)
+       CASE_PACKED_BVNC_DEVICE_INFO(4, 46, 6, 62);
+       CASE_PACKED_BVNC_DEVICE_INFO(5, 9, 1, 46);
+       CASE_PACKED_BVNC_DEVICE_INFO(15, 5, 1, 64);
++      CASE_PACKED_BVNC_DEVICE_INFO(22, 40, 54, 30);
+       CASE_PACKED_BVNC_DEVICE_INFO(22, 67, 54, 30);
+       CASE_PACKED_BVNC_DEVICE_INFO(22, 68, 54, 30);
+       CASE_PACKED_BVNC_DEVICE_INFO(22, 102, 54, 38);
+diff --git a/src/imagination/pco/pco_data.h b/src/imagination/pco/pco_data.h
+index ab4129b..bc8f7f6 100644
+--- a/src/imagination/pco/pco_data.h
++++ b/src/imagination/pco/pco_data.h
+@@ -107,6 +107,7 @@ typedef struct _pco_fs_data {
+ 
+    pco_range tile_buffers;
+ 
++   bool roa_color; /** Pipeline requires ordered color access, even without fetch. */
+    pco_range sample_locations;
+ 
+    gl_varying_slot view_index_slot;
+diff --git a/src/imagination/pco/pco_nir.c b/src/imagination/pco/pco_nir.c
+index 6115d6b..fadb9de 100644
+--- a/src/imagination/pco/pco_nir.c
++++ b/src/imagination/pco/pco_nir.c
+@@ -291,7 +291,7 @@ static void gather_fs_data(nir_shader *nir, pco_data *data)
+       }
+    }
+ 
+-   data->fs.uses.fbfetch = nir->info.fs.uses_fbfetch_output;
++   data->fs.uses.fbfetch = nir->info.fs.uses_fbfetch_output || data->fs.roa_color;
+    data->fs.uses.fbfetch |= data->fs.meta_present.color_write_enable;
+ 
+    data->fs.uses.sample_shading |= nir->info.fs.uses_sample_shading;
+diff --git a/src/imagination/pco/pco_nir_tex.c b/src/imagination/pco/pco_nir_tex.c
+index 19addc4..5265c5f 100644
+--- a/src/imagination/pco/pco_nir_tex.c
++++ b/src/imagination/pco/pco_nir_tex.c
+@@ -1197,8 +1197,8 @@ lower_image(nir_builder *b, nir_intrinsic_instr *intr, void *cb_data)
+                                               .component = 0,
+                                               .dest_type = nir_intrinsic_dest_type(intr),
+                                               .io_semantics.location = FRAG_RESULT_COLOR,
+-                                              .io_semantics.num_slots = 1/*,
+-                                              .io_semantics.fb_fetch_output = true*/);
++                                              .io_semantics.num_slots = 1,
++                                              .io_semantics.fb_fetch_output = data->fs.roa_color);
+          nir_def_rewrite_uses(&intr->def, loaded_ia);
+          nir_instr_remove(&intr->instr);
+          return true;

@@ -16,12 +16,11 @@ int32_t geo_create(struct geo_engine *e,struct geo_allocation *a,const struct ge
  if(!e||!a||!geo_desc_valid(d)||a->surface)return GEO_INVALID;
  if(e->poisoned)return GEO_POISONED;
  if(e->allocation_count==UINT32_MAX)return GEO_BUSY;
- if(d->usage==GEO_USAGE_INDEX_BUFFER||d->usage==GEO_USAGE_STAGING){memset(a,0,sizeof(*a));a->desc=*d;a->logical_width=d->width;a->logical_height=d->height;a->cpu_only=1;a->next=e->allocations;e->allocations=a;e->allocation_count++;return GEO_OK;}
  s=e->owner.create(e->owner.context,d,&token);
  if(s!=GEO_OK)return s;
  if(!token){e->poisoned=1;return GEO_POISONED;}
  for(scan=e->allocations;scan;scan=scan->next)if(scan->surface==token){e->poisoned=1;return GEO_POISONED;}
- memset(a,0,sizeof(*a));a->desc=*d;a->logical_width=d->width;a->logical_height=d->height;a->surface=token;
+ memset(a,0,sizeof(*a));a->desc=*d;a->logical_width=d->width;a->logical_height=d->height;a->surface=token;a->cpu_only=d->usage==GEO_USAGE_INDEX_BUFFER||d->usage==GEO_USAGE_STAGING;
  a->next=e->allocations;e->allocations=a;e->allocation_count++;return GEO_OK;
 }
 int32_t geo_bind(struct geo_engine *e,struct geo_allocation *a,void *mdl,uint32_t off,uint32_t bytes,uint64_t aperture_offset) {
@@ -50,7 +49,7 @@ int32_t geo_destroy(struct geo_engine *e,struct geo_allocation *a) {
  if(!*link||!e->allocation_count)return GEO_INVALID;
  if(e->poisoned||a->poisoned)return GEO_POISONED;
  if(a->bound||a->references||a->open_count)return GEO_BUSY;
- s=a->cpu_only?GEO_OK:e->owner.destroy(e->owner.context,a->surface);
+ s=e->owner.destroy(e->owner.context,a->surface);
  if(s!=GEO_OK){a->poisoned=1;e->poisoned=1;return s;}
  *link=a->next;e->allocation_count--;memset(a,0,sizeof(*a));return GEO_OK;
 }
