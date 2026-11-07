@@ -55,3 +55,10 @@ parent1014別branchにsourceに沿うdomain off/on純moduleとINFRA-only最小ho
 現在のhookにSPM・GPUCore・CPU4/watchdogの新map/writeは無く、共有ACPIも変更しない。
 GPU0内停止で十分と確定できるならこのparent依存を最終WDDMへ追加しない。
 CreateV3/control-v2/全lifetimeの完成は別途継続し、停止未完を成功stubで埋めない。
+
+
+IRQ closeにはsample→mask間のrace確認も追加した。beginで未claim sourceを
+clearしない。mask完了後にFW count/sourceを再確認し、late count/sourceなら
+closed/faultedのままerrorとして保持し、source_closed観測を成功返却しない。
+実WDKでKeMemoryBarrierの旧_ReadWriteBarrier外部symbolが出たため、既存acf523eの
+`a04_gpu_dma_barrier`（ARM DMB＋compiler barrier）へ統一。未解決無視やstubは使わない。

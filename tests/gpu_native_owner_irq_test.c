@@ -5,6 +5,7 @@
 #include "A04BR3RogueRuntimeLayout.h"
 #include "pvr_rogue_cr_defs.h"
 static unsigned irql;
+void a04_gpu_dma_barrier(void){__sync_synchronize();} /* host fence double */
 unsigned KeGetCurrentIrql(void){return irql;}
 int main(void)
 {
