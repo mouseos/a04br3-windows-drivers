@@ -1,7 +1,7 @@
 param([switch]$EnableCandidate,[Parameter(Mandatory=$true)][string]$BaselineDirectory,[Parameter(Mandatory=$true)][string]$KernelDirectory,[Parameter(Mandatory=$true)][string]$TraceDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory)
 $ErrorActionPreference='Stop'
 if(!$EnableCandidate){throw 'Explicit candidate required'}
-$psRoot=(& git -C $PSScriptRoot rev-parse --show-toplevel)
+$psRoot=[IO.Path]::GetFullPath((& git -C $PSScriptRoot rev-parse --show-toplevel))
 if(@(& git -C $psRoot status --porcelain).Count){throw 'Clean source required'}
 function Sha($p){(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()}
 function Pinned($p,$h){if((Sha $p) -cne $h){throw "Hash mismatch: $p"}}
