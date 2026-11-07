@@ -227,3 +227,11 @@ SD helperは全7 TUをcompileし、manifestにABI v1/PowerRelations/sourceを記
 Raman側の`wdf_parent_probe.c`/親helperと競合する可能性があるため、同等の単一owner
 hookへsource統合すること。独立serviceを増やしてPWRAPへ二重アクセスしない。
 BQ/thermalはSD上記専用rail bitsを変更せず、同じ親lockとbus poisonを共有する。
+
+### 単一consumer後続候補
+
+SD4 checkpointは凍結し、INF6は別source候補として単一system thread＋上限8の標準CSQへ変更。
+共有work itemは上位完了通知だけに集約し、PIO/serial/hardware rundown待ちを行わない。
+受付時deadline、cancel、rundown、power停止とtimeout時の資源保持は
+[SINGLE-CONSUMER.md](SINGLE-CONSUMER.md) を参照。SD helperはconsumer/checkpointを含む
+9TUを実WDK8.1でbuildする。この変更をtrial47 Code31の根因修正やSD実動作成功とは扱わない。

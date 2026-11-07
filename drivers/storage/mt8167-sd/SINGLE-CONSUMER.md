@@ -76,3 +76,25 @@ flagを消す自動retryは追加しない。
 
 初版INF5/sourcefdd8f3dは実WDK署名まで完了したが、この起動競合の修正でSYSが変わるため
 最終候補をINF6へ上げる。同名同版異SYSを作らない。SD4は変更しない。
+
+## 固定候補と回収結果
+
+最終driver source: `9240607dcfd5a6e67e9d762f5f8d1980a13bf028`、INF2026.11.7.6。
+実WDK8.1 ARM32の全9TU compile/link、正規CSQ/thread imports、SYS/CAT SHA256署名、
+SYS/INF catalog membership検証を通過。全TUに既存NoFP/NEON flagsとstack protector無効を
+維持し、正規libcntprを使用した。rootへ回収し、manifest全6fileのhash一致を確認した。
+
+回収ZIP:
+`port/xnu/out/windows-rt-sd-consumer-9240607-signed/mt8167-sd-consumer-9240607-signed.zip`
+
+SHA256: `cd308f8bce60d8cc4006a6651e604b7aec0fba52e47041725586101e65ca94b4`
+
+署名SYS SHA256: `a15b00ed3edbafd4cd467b3c41d58961e61250831dfcd2f5550767c5fb8b3266`
+
+SD4 ZIP hash `ade7c67557e2c13e54d4daeaa41482b89f47d8d6fd4f6311e7f69f74bb0c8d9c`
+が不変であることを再確認。mainの次一括はSD4のfirstAdd checkpoint回収のまま、SD6を
+勝手に混ぜない。実Code31の失敗stageが判明して必要な修正が得られた場合だけ、別固定版へ
+統合する。親1010は同一power interface v1の依存であり再build/再署名していない。
+
+本候補のcancel/CSQ/power競合は実Windowsで未検証。Code31原因・列挙・カードinit・RW成功は
+未確認。単独実機試験・runnerでの疑似hardware実行や大量mockを追加していない。
