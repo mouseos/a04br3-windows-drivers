@@ -34,9 +34,11 @@ function Compile([string]$source,[string]$object,[object[]]$flags){
  $script:records+=@{source=$source;source_sha256=(Get-FileHash "$root\$source" -Algorithm SHA256).Hash;object=$object;sha256=(Get-FileHash "$out\$object" -Algorithm SHA256).Hash}
 }
 function Reuse([string]$dir,$r,[string]$object){
- if((Get-FileHash "$root\$($r.source)" -Algorithm SHA256).Hash -ne $r.source_sha256){throw "Reused source changed $($r.source)"}
+ $sourceHash=(Get-FileHash "$root\$($r.source)" -Algorithm SHA256).Hash
+ if($r.source_sha256){if($sourceHash -ne $r.source_sha256){throw "Reused source changed $($r.source)"}}
+ else {& git -C $root diff --quiet e4b66080c9c9f486e0c36eb54228deabe7f88815 HEAD -- $r.source;if($LASTEXITCODE){throw "Unhashed legacy source changed $($r.source)"}}
  Copy-Item "$dir\$($r.object)" "$out\$object"
- $script:reused+=@{source=$r.source;source_sha256=$r.source_sha256;object=$object;sha256=(Get-FileHash "$out\$object" -Algorithm SHA256).Hash}
+ $script:reused+=@{source=$r.source;source_sha256=$sourceHash;object=$object;sha256=(Get-FileHash "$out\$object" -Algorithm SHA256).Hash}
 }
 $saveTemp=$env:TEMP;$saveTmp=$env:TMP
 try{
