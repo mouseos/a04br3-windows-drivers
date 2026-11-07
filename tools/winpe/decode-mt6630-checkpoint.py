@@ -25,7 +25,7 @@ STAGES = {
     54: 'FW_BOOT_WLAN', 55: 'DIAGNOSTIC_CALIBRATION',
     56: 'CALIBRATION_ALLOCATION', 57: 'CAL_SYSTEM_EXTENTS', 59: 'CAL_DISK_MATCH',
     65: 'CAL_NVRAM_READ', 66: 'CAL_REGULATORY_DECODE', 67: 'CAL_RUNTIME_BEGIN',
-    68: 'CAL_MANUFACTURE_SUBMIT',
+    68: 'CAL_MANUFACTURE_SUBMIT', 69: 'CAL_RECORD_VERSIONS',
 }
 KINDS = {0: 'UNOBSERVED', 1: 'NDIS_STATUS', 2: 'NTSTATUS', 3: 'BACKEND_INT', 4: 'OBSERVATION'}
 PHASES = {1: 'BEGIN', 2: 'RESULT', 3: 'RETURN_PREPARED'}
@@ -51,6 +51,13 @@ def decode(data, after_generation=None):
         events.append(dict(stage=STAGES[stage], phase=PHASES[phase], kind=KINDS[kind],
                            observed=bool(observed), raw_status=f'0x{raw:08x}' if observed and kind else None,
                            detail=detail))
+        if observed and stage == 69:
+            events[-1]['record_versions'] = dict(part1_own=raw & 65535, part2_own=raw >> 16,
+                                                 part1_peer=detail & 65535, part2_peer=detail >> 16)
+        if observed and stage == 66 and build >= 1008:
+            events[-1]['regulatory_inspection'] = dict(reason=detail & 255, selection=(detail >> 8) & 15,
+                                                       country_class=(detail >> 12) & 15,
+                                                       map=(detail >> 16) & 255, index=detail >> 24)
     return dict(schema=version, driver_build=build, channel=('DriverEntry', 'Initialize')[channel],
                 generation=generation, parent_generation=parent, interrupt_time=ticks,
                 system_time=system_time,

@@ -5,7 +5,7 @@
 struct cal_observer {a04_session_trace_fn callback;void *context;};
 static void cal_progress(void *p,unsigned stage,int raw,unsigned detail)
 {
- struct cal_observer *o=p;if(o->callback&&o->context)o->callback(o->context,stage,A04_CP_RESULT,A04_CP_BACKEND,(ULONG)raw,detail);
+ struct cal_observer *o=p;if(o->callback&&o->context)o->callback(o->context,stage,A04_CP_RESULT,stage==A04_CP_CAL_VERSIONS?A04_CP_OBSERVATION:A04_CP_BACKEND,(ULONG)raw,detail);
 }
 int a04_windows_calibration_load_traced(struct a04_wmt_bridge *b,a04_session_trace_fn observe,void *observation)
 {

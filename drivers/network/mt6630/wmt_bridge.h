@@ -36,7 +36,7 @@ int a04_wmt_bridge_boot_wmt(struct a04_wmt_bridge *,const void *,unsigned,
 int a04_wmt_bridge_boot_wlan(struct a04_wmt_bridge *,const void *,unsigned,int (*sha256)(const uint8_t *,size_t,uint8_t[32]));
 /* Original checksum-verified runtime WIFI record only. Success means HIF
  * submission of CMD_ID_SET_NVRAM_SETTINGS (no firmware ACK), not RF readiness.
- * Does not configure regulatory domain, TX power commands or NDIS attributes. */
+ * Submits source regulatory/TX power commands; does not register NDIS attributes. */
 int a04_wmt_bridge_load_calibration(struct a04_wmt_bridge *,const uint8_t [512]);
 typedef void (*a04_calibration_progress)(void *,unsigned stage,int raw,unsigned detail);
 int a04_wmt_bridge_load_calibration_traced(struct a04_wmt_bridge *,const uint8_t [512],a04_calibration_progress,void *);

@@ -84,10 +84,17 @@ static int manufacture_set(void *context,unsigned cid,const uint8_t *data,unsign
 }
 int a04_wmt_bridge_load_calibration_traced(struct a04_wmt_bridge *b,const uint8_t data[512],a04_calibration_progress observe,void *context)
 {
- struct a04_regulatory r;int e;struct manufacture_context m;
+ struct a04_regulatory r;struct a04_regulatory_inspection inspected;int e;struct manufacture_context m;
  if(!alive(b)||!b->wlan_ready||b->failed||!data||b->calibration_submitted||b->scan.pending||b->pending_wlan_status)return -1;
- e=a04_regulatory_decode(data,&r);if(observe)observe(context,A04_CP_CAL_DECODE,e,0);if(e)return -1;
- if(!b->wlan.runtime){e=a04_wlan_runtime_begin(&b->wlan);if(observe)observe(context,A04_CP_CAL_RUNTIME,e,0);if(e)return fault(b,e);}
+ e=a04_regulatory_decode_inspect(data,&r,&inspected);
+ if(observe){
+  observe(context,A04_CP_CAL_VERSIONS,(int)((unsigned)inspected.own1|((unsigned)inspected.own2<<16)),(unsigned)inspected.peer1|((unsigned)inspected.peer2<<16));
+  observe(context,A04_CP_CAL_DECODE,e,inspected.reason|(inspected.selection<<8)|(inspected.country_class<<12)|(inspected.map<<16)|(inspected.index<<24));
+ }
+ if(e)return -1;
+ if(!b->wlan.runtime){e=a04_wlan_runtime_begin(&b->wlan);/* Keep the64-event ABI: record runtime boundary only on failure.
+   * Success is not invented; later submit is a separate real observation. */
+  if(e){if(observe)observe(context,A04_CP_CAL_RUNTIME,e,0);return fault(b,e);}}
  m.bridge=b;m.last_cid=0;e=a04_manufacture_submit(data,&r,&m,manufacture_set);
  if(observe)observe(context,A04_CP_CAL_SUBMIT,e,m.last_cid);
  if(e)return fault(b,e);
