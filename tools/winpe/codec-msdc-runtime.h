@@ -4,6 +4,14 @@
 static const WCHAR *const codec_retained_ids[4]={L"MT8167\\USB20",L"A04BR3\\MT6630SDIO",L"ACPI\\MOU0007",L"ACPI\\MOU0006"};
 static const WCHAR *const codec_retained_services[4]={L"A04Usb20Keyboard",L"MT6630Runtime",L"MT8167Display",L"GE8300Render"};
 static const WCHAR *const codec_retained_files[8]={L"mt8167-usb20.sys",L"mt6630-runtime.sys",L"mt8167-display.sys",L"ge8300-render.sys",L"mt8167-ge8300.sys",L"mt8167-toprgu.sys",L"ge8300-mips.fw",L"ge8300-umd.dll"};
+static DWORD codec_selected_inf(HDEVINFO set,SP_DEVINFO_DATA *dev,const WCHAR *expected)
+{
+ static const DEVPROPKEY key={{0xa8b865dd,0x2e3d,0x4094,{0xad,0x97,0xe5,0x93,0xa7,0x0c,0x75,0xd6}},5};
+ WCHAR name[128];DWORD bytes;DEVPROPTYPE type;
+ if(!SetupDiGetDevicePropertyW(set,dev,&key,&type,(BYTE *)name,sizeof(name),&bytes,0))return GetLastError();
+ if(type!=DEVPROP_TYPE_STRING||bytes<2||bytes>sizeof(name)||(bytes&1)||name[bytes/2-1]||lstrcmpiW(name,expected))return ERROR_REVISION_MISMATCH;
+ return 0;
+}
 static DWORD codec_retained_check(HDEVINFO set)
 {
  DWORD k,i,matches,type,bytes,error;ULONGLONG version;SP_DEVINFO_DATA dev,found;
@@ -22,6 +30,7 @@ static DWORD codec_retained_check(HDEVINFO set)
   if(matches!=1)return ERROR_NOT_FOUND;
   error=deferred_selected_version(set,&found,&version);if(error)return error;
   if(version!=codec_retained_versions[k])return ERROR_REVISION_MISMATCH;
+  error=codec_selected_inf(set,&found,codec_retained_infs[k]);if(error)return error;
   {static struct deferred_pin actual;actual.date=codec_retained_dates[k];error=deferred_selected_date(0,set,&found,&actual);if(error)return error;}
   if(!SetupDiGetDeviceRegistryPropertyW(set,&found,SPDRP_SERVICE,&type,(BYTE *)service,sizeof(service),&bytes))return GetLastError();
   if(type!=REG_SZ||bytes<2||bytes>sizeof(service)||(bytes&1)||service[bytes/2-1]||lstrcmpiW(service,codec_retained_services[k]))return ERROR_REVISION_MISMATCH;

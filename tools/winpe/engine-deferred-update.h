@@ -332,6 +332,7 @@ static DWORD deferred_once(int diagnostic)
 #if DEFERRED_CODEC_MSDC
   if(!diagnostic){
    if(version!=codec_baselines[i].version){error=ERROR_REVISION_MISMATCH;goto done;}
+   error=codec_selected_inf(set,&devs[i],codec_baseline_infs[i]);if(error)goto done;
    error=deferred_selected_date(i,set,&devs[i],&codec_baselines[i]);if(error)goto done;
    error=deferred_installed_sys(i,&codec_baselines[i]);if(error)goto done;
   }
