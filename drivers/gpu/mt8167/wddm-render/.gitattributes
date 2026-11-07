@@ -1,1 +1,3 @@
 ge8300-render.inf -text
+*.c text eol=lf
+*.h text eol=lf

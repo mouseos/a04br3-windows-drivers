@@ -40,7 +40,7 @@ try {
  $objects=@();$compiled=@()
  foreach($u in $units){
   $flags=@($common);$obj=($u -replace '/','_')+'.obj'
-  if($u -ne 'umd/typed_state'){$flags+='-D_D3D10_CONSTANTS';$flags+='-D_D3D10_1_CONSTANTS'}
+  if($u -ne 'umd/typed_state' -and !$u.StartsWith('testclient/')){$flags+='-D_D3D10_CONSTANTS';$flags+='-D_D3D10_1_CONSTANTS'}
   if($u -eq 'umd/typed_entry'){$flags+='-DGEO_TYPED_LIMITED_DEVELOPMENT=1';$flags+='-DGEO_TYPED_NATIVE_PIPELINE10=1'}
   if($u -eq 'umd/entry'){$flags+='-DGEO_LINKED_REAL_FRONTEND=1'}
   if($u -eq 'testclient/d3d-clear'){$flags+='-DGEO_COLOR_PAIR_CLIENT=1';$flags+='-DGEO_NATIVE_PIPELINE10_CLIENT=1'}
