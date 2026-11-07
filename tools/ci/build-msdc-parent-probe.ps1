@@ -22,13 +22,13 @@ $trace=if($env:A04_AUDIO_DIAGNOSTIC_TRACE -eq '1'){'1'}else{'0'}
 $pmicTrace=if($env:A04_AUDIO_PMIC_TRACE -eq '1'){'1'}else{'0'}
 $alias=if($env:A04_MT6392_CLK_ALIAS_EXPERIMENT -eq '1'){'1'}else{'0'}
 $nativeThermal=if($env:A04_SHARED_THERMAL_NATIVE_EXPERIMENT -eq '1'){'1'}else{'0'}
-if($env:A04_SHARED_SD_POWER -and $env:A04_SHARED_SD_POWER -ne '0'){throw 'Parent1012 tuple excludes SD'}
+if($env:A04_SHARED_SD_POWER -and $env:A04_SHARED_SD_POWER -ne '0'){throw 'Parent1016 tuple excludes SD'}
 $thermal=if($env:A04_SHARED_THERMAL_DIAGNOSTIC -eq '1'){'1'}else{'0'}
 $voicePcm=if($env:A04_SHARED_VOICE_PCM_DIAGNOSTIC -eq '1'){'1'}else{'0'}
 $enginePcm=if($env:A04_SHARED_ENGINE_PCM -eq '1'){'1'}else{'0'}
 # Engine and fixed-tone parents must not share a DriverStore package version.
 if($nativeThermal -eq '1' -and ($enginePcm -ne '1' -or $thermal -ne '1')){throw 'Native thermal requires matched EnginePcm thermal resources'}
-$parentInf=Join-Path $src $(if($nativeThermal -eq '1'){'prototype\shared-parent-thermal-bq.inf'}elseif($enginePcm -eq '1'){'prototype\shared-parent-engine-pcm.inf'}else{'prototype\shared-parent.inf'})
+$parentInf=Join-Path $src $(if($nativeThermal -eq '1'){'prototype\shared-parent-thermal-pio1016.inf'}elseif($enginePcm -eq '1'){'prototype\shared-parent-engine-pcm.inf'}else{'prototype\shared-parent.inf'})
 $parentDriverVer=[regex]::Match([IO.File]::ReadAllText($parentInf),'(?im)^DriverVer\s*=\s*([^\r\n]+)').Groups[1].Value.Trim()
 Copy-Item -LiteralPath $parentInf -Destination (Join-Path $out 'shared-parent.inf') -Force
 $parentVersionParts=$parentDriverVer.Split(',')

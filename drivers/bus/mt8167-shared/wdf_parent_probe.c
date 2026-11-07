@@ -203,7 +203,11 @@ struct a04_codec_voice voice;
 #endif
 #endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
-struct a04_shared_thermal_owner thermal;EX_RUNDOWN_REF thermalRundown;BOOLEAN thermalRundownClosed;
+struct a04_shared_thermal_owner thermal;
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+    PVOID thermalPioMappings[2];volatile LONG thermalPioUsed;
+#endif
+EX_RUNDOWN_REF thermalRundown;BOOLEAN thermalRundownClosed;
 #endif
 PVOID audioAfe;
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
@@ -1553,10 +1557,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     nativeIface.Header.Size=sizeof(nativeIface);nativeIface.Header.Version=A04_THERMAL_NATIVE_VERSION;
     nativeIface.Header.Context=dev;nativeIface.Header.InterfaceReference=ParentInterfaceReference;nativeIface.Header.InterfaceDereference=ParentInterfaceDereference;
     nativeIface.ParentBuild=A04_THERMAL_NATIVE_PARENT_BUILD;
-    nativeIface.Acquire=ParentThermalNativeAcquire;nativeIface.Clock=ParentThermalNativeClock;nativeIface.Reset=ParentThermalReset;
-    nativeIface.Begin=ParentThermalNativeBegin;nativeIface.End=ParentThermalEnd;
-    nativeIface.ReadAnalog=ParentThermalReadAnalog;nativeIface.WriteAnalog=ParentThermalWriteAnalog;
-    nativeIface.Quiescent=ParentThermalQuiescent;nativeIface.Release=ParentThermalNativeRelease;
+    nativeIface.Measure=ParentThermalPioMeasure;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&nativeIface,&A04SharedThermalNativeGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
 #endif

@@ -24,7 +24,7 @@ if ($oneshot -eq '1' -and $monitor -ne '1') { throw 'one-shot requires monitor i
 if ($monitor -eq '1' -and $lease -ne '1') { throw 'monitor requires lease diagnostic' }
 $native = if ($env:A04_THERMAL_NATIVE_PARENT -eq '1') { '1' } else { '0' }
 $names = @('wdf_thermal','thermal','boot_record')
-if ($native -eq '1') { $names=@('wdf_native_thermal') }
+if ($native -eq '1') { $names=@('wdf_native_thermal','thermal','boot_record','readout') }
 elseif ($monitor -eq '1') { $names += @('monitor','completion','freshness','hardware','readout') }
 if ($native -ne '1' -and $oneshot -eq '1') { $names += 'oneshot' }
 foreach($name in $names) {

@@ -5,19 +5,19 @@
 #include "auxadc_pio.h"
 #define CH11 0x0800u
 #define READY 0x1000u
-static int rd(const struct a04_auxadc_pio_io *io,unsigned reg,uint16_t *v)
+static int adc_pio_rd(const struct a04_auxadc_pio_io *io,unsigned reg,uint16_t *v)
 { return !io->qualified(io->context) || io->read16(io->context,reg,v) || *v==UINT16_MAX ? -1:0; }
-static int wr(const struct a04_auxadc_pio_io *io,unsigned reg,uint16_t v)
+static int adc_pio_wr(const struct a04_auxadc_pio_io *io,unsigned reg,uint16_t v)
 { return !io->qualified(io->context) || io->write16(io->context,reg,v) ? -1:0; }
-static int wait(const struct a04_auxadc_pio_io *io,unsigned us)
+static int adc_pio_wait(const struct a04_auxadc_pio_io *io,unsigned us)
 { return !io->qualified(io->context) || io->wait_us(io->context,us) ? -1:0; }
-static int poll(const struct a04_auxadc_pio_io *io,unsigned reg,uint16_t mask,int set,uint16_t *v)
+static int adc_pio_poll(const struct a04_auxadc_pio_io *io,unsigned reg,uint16_t mask,int set,uint16_t *v)
 {
  unsigned n;
  for(n=0;n<32;n++) {
-  if(rd(io,reg,v))return -1;
+  if(adc_pio_rd(io,reg,v))return -1;
   if(!!(*v&mask)==set)return 0;
-  if(n!=31 && wait(io,1000))return -1;
+  if(n!=31 && adc_pio_wait(io,1000))return -1;
  }
  return -1;
 }
@@ -29,20 +29,20 @@ enum a04_auxadc_pio_result a04_auxadc_pio_channel11(
     s->quarantined||s->touched||!io->qualified(io->context))return A04_PIO_REJECTED;
  /* Do not modify an existing automatic mode/trigger program or another user's
   * active conversion. These observations do not establish firmware exclusion. */
- if(rd(io,0,&mode)||(mode&CH11)||rd(io,4,&control)||control||
-    poll(io,0x10,1,0,&busy))return A04_PIO_REJECTED;
+ if(adc_pio_rd(io,0,&mode)||(mode&CH11)||adc_pio_rd(io,4,&control)||control||
+    adc_pio_poll(io,0x10,1,0,&busy))return A04_PIO_REJECTED;
  /* A write failure may have reached the ADC. Mark touched before attempting. */
  s->touched=1;
- if(wr(io,4,0))goto retain;
- if(poll(io,0x40,READY,0,&value))goto cleanup;
- if(wr(io,4,CH11))goto retain;
- if(wait(io,25))goto cleanup;
- if(!poll(io,0x40,READY,1,&value))sampled=1;
+ if(adc_pio_wr(io,4,0))goto retain;
+ if(adc_pio_poll(io,0x40,READY,0,&value))goto cleanup;
+ if(adc_pio_wr(io,4,CH11))goto retain;
+ if(adc_pio_wait(io,25))goto cleanup;
+ if(!adc_pio_poll(io,0x40,READY,1,&value))sampled=1;
 cleanup:
  /* Local ADC proof only, not IRQ/fabric/firmware drain. Preserve unrelated
   * bits and reject a newly active channel rather than clearing its request. */
- if(rd(io,4,&trigger)||(trigger&~CH11)||wr(io,4,0))goto retain;
- if(poll(io,0x10,1,0,&busy)||rd(io,4,&trigger)||trigger)goto retain;
+ if(adc_pio_rd(io,4,&trigger)||(trigger&~CH11)||adc_pio_wr(io,4,0))goto retain;
+ if(adc_pio_poll(io,0x10,1,0,&busy)||adc_pio_rd(io,4,&trigger)||trigger)goto retain;
  s->touched=0;
  if(!sampled || !(value&0xfffu))return A04_PIO_SAMPLE_FAILED_ADC_IDLE;
  *raw=value&0xfffu;return A04_PIO_OK;
