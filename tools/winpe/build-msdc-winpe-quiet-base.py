@@ -42,6 +42,8 @@ def main():
  ap=argparse.ArgumentParser()
  for n in ('workspace','base','package','membership-receipt','tools','output'):ap.add_argument('--'+n,type=Path,required=True)
  ap.add_argument('--membership-receipt-sha256',required=True);a=ap.parse_args();root=a.workspace.resolve(strict=True)
+ source=Path(__file__).resolve().parents[2]
+ if run(['git','-C',source,'status','--porcelain'],capture_output=True,text=True).stdout:raise ValueError('Committed clean builder source required')
  base,pkg,receipt,tools=[getattr(a,n).resolve(strict=True) for n in ('base','package','membership_receipt','tools')];out=a.output.resolve()
  if any(not x.is_relative_to(root) or x==root for x in (base,pkg,receipt,tools,out)) or out.exists():raise ValueError('Root内入力と新private出力が必要')
  for p in (base,pkg,receipt,tools,out):
@@ -88,7 +90,7 @@ def main():
  if edited.stderr:raise ValueError('Certificate hive edit diagnostics: '+edited.stderr)
  for s in stores:
   current=store_snapshot(RegistryHive(str(updated)),s);entry=current.pop('\\'+THUMB,None)
-  if entry!=(('Blob',3,repr(blob.hex())),) or current!=oldstores[s]:raise ValueError('既存certificate store changed')
+  if entry!=(('Blob','REG_BINARY',repr(blob.hex())),) or current!=oldstores[s]:raise ValueError('既存certificate store changed')
  dests={'/a04br3/'+n:pkg/n for n in NAMES};dests['/Windows/System32/config/SOFTWARE']=updated
  image=out/'maintenance-staged.wim';shutil.copyfile(wim,image)
  update=''.join(f'add "{p}" "{dst}"\n' for dst,p in dests.items())
@@ -101,12 +103,12 @@ def main():
  finalhive=scratch/'check-5/SOFTWARE'
  for s in stores:
   current=store_snapshot(RegistryHive(str(finalhive)),s);entry=current.pop('\\'+THUMB,None)
-  if entry!=(('Blob',3,repr(blob.hex())),) or current!=oldstores[s]:raise ValueError('Final WIM certificate mismatch')
+  if entry!=(('Blob','REG_BINARY',repr(blob.hex())),) or current!=oldstores[s]:raise ValueError('Final WIM certificate mismatch')
  run([sys.executable,Path(__file__).with_name('replace-esp-wim.py'),'--template',esp,'--wim',image,'--output',out/'maintenance-staged-esp.img','--template-bcd-sha256',BCD,'--template-wim-sha256',BASE_WIM],env=env)
  with PyFatFS(str(out/'maintenance-staged-esp.img'),read_only=True,preserve_case=True) as fat:newfat=fat_files(fat)
  if set(newfat)!=set(oldfat) or any(newfat[n]!=(sha(image) if n=='/sources/boot.wim' else h) for n,h in oldfat.items()):raise ValueError('Unrelated EFI/FAT file changed')
  if sha(wim)!=BASE_WIM or sha(esp)!=BASE_ESP or sha(pkg/'signed-manifest.json')!=PACKAGE_MANIFEST:raise ValueError('Frozen inputs changed')
  source=Path(__file__).resolve().parents[2];commit=run(['git','-C',source,'rev-parse','HEAD'],capture_output=True,text=True).stdout.strip()
- result={'schema':1,'private_do_not_distribute':True,'kind':'fixed-preparation-winpe-msdc-quiet-base','source_commit':commit,'builder_sha256':sha(Path(__file__)),'parent_wim_sha256':BASE_WIM,'parent_esp_sha256':BASE_ESP,'wim_sha256':sha(image),'esp_sha256':sha(out/'maintenance-staged-esp.img'),'bcd_sha256':BCD,'package_source_commit':PACKAGE_SOURCE,'package_manifest_sha256':PACKAGE_MANIFEST,'membership_receipt_sha256':sha(receipt),'flat_driver_files':pins,'signer':THUMB,'certificate_stores':['Root','TrustedPublisher'],'existing_certificate_stores_preserved':True,'unrelated_wim_records_preserved':True,'all_other_esp_files_preserved':True,'frozen_inputs_preserved':True,'replaced_wim_paths':list(dests),'system_hive_modified':False,'driver_logic_modified':False,'dma_timeout_clock_acpi_modified':False,'hardware_verified':False,'performance_change_measured':False,'status':'generated-and-verified; hardware unverified','next_input_scope':'new base input only; existing GPU media builders retain their fixed original base gate'}
+ result={'schema':1,'private_do_not_distribute':True,'kind':'fixed-preparation-winpe-msdc-quiet-base','source_commit':commit,'source_dirty':False,'builder_sha256':sha(Path(__file__)),'parent_wim_sha256':BASE_WIM,'parent_esp_sha256':BASE_ESP,'wim_sha256':sha(image),'esp_sha256':sha(out/'maintenance-staged-esp.img'),'bcd_sha256':BCD,'package_source_commit':PACKAGE_SOURCE,'package_manifest_sha256':PACKAGE_MANIFEST,'membership_receipt_sha256':sha(receipt),'flat_driver_files':pins,'signer':THUMB,'certificate_stores':['Root','TrustedPublisher'],'existing_certificate_stores_preserved':True,'unrelated_wim_records_preserved':True,'all_other_esp_files_preserved':True,'frozen_inputs_preserved':True,'replaced_wim_paths':list(dests),'system_hive_modified':False,'driver_logic_modified':False,'dma_timeout_clock_acpi_modified':False,'hardware_verified':False,'performance_change_measured':False,'status':'generated-and-verified; hardware unverified','next_input_scope':'new base input only; existing GPU media builders retain their fixed original base gate'}
  (out/'manifest.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n');print(json.dumps(result,ensure_ascii=False,indent=2))
 if __name__=='__main__':main()
