@@ -138,7 +138,11 @@ static int mask(void *p){BT_DEVICE *c=p;return c->irq.interrupt?a04_windows_irq_
 static int drain(void *p)
 {
  BT_DEVICE *c=p;
- if(c->removed||a04_bt_disable(&c->bt))return -1;
+ /* lifetime_stop has already revoked CMD52/53 admission. Protocol OFF
+  * must have completed before entering it; this callback only consumes that
+  * evidence and applies the existing board power-off sequence. */
+ if(c->removed||c->bt.failed||!c->bt.queue_stopped||c->bt.enabled||c->bt.pending||
+    !c->bt.last_rx_empty||c->bt.hci_used||c->bt.wmt_used||c->bt.awaiting||c->bt.func_wait)return -1;
  return a04_wifi_board_poweroff_signals(&c->board,&c->board_io.io);
 }
 static int unmap(void *p){BT_DEVICE *c=p;a04_windows_msdc2_unmap(&c->host);return 0;}
@@ -362,7 +366,13 @@ NTSTATUS BtStop(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
   * This proves WDF request rundown only, never AFE bus-master DMA drain. */
  WdfIoQueuePurgeSynchronously(c->reads[0]);WdfIoQueuePurgeSynchronously(c->reads[1]);lock(c);
  /* DDI version negotiation belongs to this PDO lifetime, not each D0 epoch. */
- if(c->leased&&!c->uncertain&&!c->removed&&a04_wifi_life_stop(&c->life))c->uncertain=1;
+ if(c->leased&&!c->uncertain&&!c->removed){
+  /* Reads, writes and the polling timer are joined. While life is still IO,
+   * drain IRQs then perform the real function-off/credit/RX handshake. Once
+   * lifetime_stop enters STOPPING its CMD52/53 wrappers reject all traffic.
+   * Do not weaken that shared gate or release on a failed OFF handshake. */
+  if(mask(c)||a04_bt_disable(&c->bt)||a04_wifi_life_stop(&c->life))c->uncertain=1;
+ }
  if(c->irq.interrupt&&a04_windows_irq_remove(&c->irq))c->uncertain=1;
  if(c->uncertain){if(c->host.base)a04_windows_msdc2_unmap(&c->host);status=STATUS_IO_DEVICE_ERROR;}
  RtlSecureZeroMemory(c->packets,sizeof(c->packets));c->packet_count=0;
