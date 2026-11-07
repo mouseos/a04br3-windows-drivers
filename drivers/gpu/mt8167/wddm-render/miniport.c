@@ -98,14 +98,53 @@ static NTSTATUS power_state(void *context,ULONG uid,DEVICE_POWER_STATE power,POW
  if(!d||uid!=0xffffffffu)return STATUS_NOT_SUPPORTED;
  return GeoPowerOwnerSession(&d->session,power);
 }
+/* The RT8.1 ARM initialization gate requires these base callbacks even for
+ * an adapter with no video sources or children. MOU0007 owns all scanout.
+ * Never invent a connector, mode, EDID or a successful source operation. */
+static NTSTATUS dispatch_io_request(const void *context,ULONG source,PVIDEO_REQUEST_PACKET packet) {
+ UNREFERENCED_PARAMETER(source);
+ if(!context||!packet||!packet->StatusBlock)return STATUS_INVALID_PARAMETER;
+ packet->StatusBlock->Status=87u; /* VP_STATUS ERROR_INVALID_PARAMETER */
+ packet->StatusBlock->Information=0;
+ return STATUS_GRAPHICS_INVALID_VIDPN_SOURCE_ID;
+}
+static NTSTATUS query_child_relations(const void *context,PDXGK_CHILD_DESCRIPTOR children,ULONG bytes) {
+ const struct geo_render_device *d=context;
+ if(!d||!children||bytes!=sizeof(*children)||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ if(!d->started)return STATUS_DEVICE_NOT_READY;
+ /* StartDevice reports zero children; the caller supplies one terminator. */
+ RtlZeroMemory(children,sizeof(*children));return STATUS_SUCCESS;
+}
+static NTSTATUS query_child_status(const void *context,PDXGK_CHILD_STATUS status,BOOLEAN nondestructive) {
+ UNREFERENCED_PARAMETER(nondestructive);
+ if(!context||!status)return STATUS_INVALID_PARAMETER;
+ return STATUS_INVALID_PARAMETER; /* Every ChildUid is absent on this adapter. */
+}
+static NTSTATUS query_device_descriptor(const void *context,ULONG child,PDXGK_DEVICE_DESCRIPTOR descriptor) {
+ UNREFERENCED_PARAMETER(child);
+ if(!context||!descriptor)return STATUS_INVALID_PARAMETER;
+ return STATUS_INVALID_PARAMETER; /* No output device, hence no EDID bytes. */
+}
+static void reset_display_to_vga(const void *context) {
+ /* Any IRQL. This non-VGA render adapter owns no display or POST surface.
+  * VGA restoration belongs to the separate MOU0007 display miniport. Do not
+  * touch its scanout or invoke the PASSIVE-only GPU/TDR owner reset here. */
+ UNREFERENCED_PARAMETER(context);
+}
+static void unload_driver(void) {
+ /* DriverEntry allocates no pools/handles; per-device resources were already
+  * retired by RemoveDevice. Clear only the driver-global checkpoint state. */
+ RtlZeroMemory(geo_checkpoint_path_buffer,sizeof(geo_checkpoint_path_buffer));
+ RtlZeroMemory(&geo_checkpoint_path,sizeof(geo_checkpoint_path));
+ InterlockedExchange(&geo_checkpoint_reached,0);
+}
 static int render_contract_valid(const DRIVER_INITIALIZATION_DATA *p) {
  /* Required render operations cannot be replaced with NULL/success stubs.
   * Capability implementation must also validate every feature it advertises;
   * pointer presence alone is not evidence of shader/preemption support. */
  return p->Version==DXGKDDI_INTERFACE_VERSION&&p->DxgkDdiPreemptCommand&&
   !p->DxgkDdiSetVidPnSourceAddress&&!p->DxgkDdiCommitVidPn&&!p->DxgkDdiPresent&&
-  !p->DxgkDdiSetPointerShape&&!p->DxgkDdiSetPointerPosition&&!p->DxgkDdiQueryChildRelations&&
-  !p->DxgkDdiQueryChildStatus&&!p->DxgkDdiQueryDeviceDescriptor&&!p->DxgkDdiGetScanLine;
+  !p->DxgkDdiSetPointerShape&&!p->DxgkDdiSetPointerPosition&&!p->DxgkDdiGetScanLine;
 }
 NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry) {
  DRIVER_INITIALIZATION_DATA table=geo_ge8300_render_contract;NTSTATUS status;
@@ -126,5 +165,9 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry) {
  table.DxgkDdiBuildPagingBuffer=GeoBuildPagingBuffer;table.DxgkDdiRender=GeoRender;table.DxgkDdiPatch=GeoPatch;
  table.DxgkDdiSubmitCommand=GeoSubmitCommand;table.DxgkDdiQueryCurrentFence=GeoQueryCurrentFence;
  table.DxgkDdiResetFromTimeout=GeoResetFromTimeout;table.DxgkDdiRestartFromTimeout=GeoRestartFromTimeout;
+ table.DxgkDdiDispatchIoRequest=dispatch_io_request;
+ table.DxgkDdiQueryChildRelations=query_child_relations;
+ table.DxgkDdiQueryChildStatus=query_child_status;table.DxgkDdiQueryDeviceDescriptor=query_device_descriptor;
+ table.DxgkDdiResetDevice=reset_display_to_vga;table.DxgkDdiUnload=unload_driver;
  status=DxgkInitialize(driver,registry,&table);GeoInitCheckpoint(2,status);return status;
 }
