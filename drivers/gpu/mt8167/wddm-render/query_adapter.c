@@ -2,7 +2,7 @@
 #include "query_adapter.h"
 #include "adapter_info.h"
 _Static_assert(FIELD_OFFSET(DXGK_DRIVERCAPS,WDDMVersion)==0x148,"RT8.1 ARM driver caps WDDMVersion offset");
-_Static_assert(DXGKDDI_WDDMv1_0==0x1000,"RT8.1 ARM WDDM1.0 capability model value");
+_Static_assert(DXGKDDI_WDDMv1==0x1000,"RT8.1 ARM WDDM1.0 capability model value");
 NTSTATUS GeoConfigureAperture(struct geo_kmd_adapter *a,const struct geo_aperture_config *p) {
  if(!a||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL||a->aperture_ready||p->size!=sizeof(*p)||p->version!=1||
     !p->bytes||p->bytes>UINT32_MAX||!p->commit_limit||p->commit_limit>p->bytes||
@@ -88,6 +88,6 @@ NTSTATUS GeoBuildRequiredDriverCaps(struct geo_kmd_adapter *a,DXGK_DRIVERCAPS *c
   * and matches the existing legacy packet-boundary scheduler. CancelAware
   * is therefore also zero; Win8-only capabilities stay unadvertised.
   * Callback ABI0x4002 remains separate from the capability model. */
- caps->WDDMVersion=DXGKDDI_WDDMv1_0;
+ caps->WDDMVersion=DXGKDDI_WDDMv1;
  return STATUS_SUCCESS;
 }
