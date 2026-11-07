@@ -1,10 +1,11 @@
 ; Exclusive MSDC2 Bluetooth profile. Requires the matching shared parent.
+; Raw HCI diagnostic: None/0 does not meet the documented BTHX stack load contract.
 [Version]
 Signature="$WINDOWS NT$"
 Class=System
 ClassGuid={4d36e97d-e325-11ce-bfc1-08002be10318}
 Provider=%Provider%
-DriverVer=11/06/2026,2026.11.7.2001
+DriverVer=11/06/2026,2026.11.7.2002
 CatalogFile=mt6630-bluetooth.cat
 
 [Manufacturer]

@@ -97,7 +97,8 @@ process exitは0=kernel現在起動/version条件成立、2=その条件未成�
 公開WDK/KMDF参照headerでのARM32 compile、限定した既存BT protocol回帰、
 PowerShell Parserを使用。WDK8.1最終署名SYS／実probe起動／RT8.1でのDLL export／
 実PnP受理／実UART回収は主担当の未確認事項。実機／runner／REAは操作していない。
-SCO capabilitiesは従来どおりNoneで、BthMini受理が阻害される可能性は未解決。
+SCO capabilitiesは従来どおりNone/0で、公式のWindows 8/8.1 BTHX load契約に不適合。
+実機受理未確認というだけでなく、公開契約上の標準stack対応候補ではない。
 
 一次仕様：
 [BluetoothFindFirstRadio](https://learn.microsoft.com/en-us/windows/win32/api/bluetoothapis/nf-bluetoothapis-bluetoothfindfirstradio)、
@@ -190,3 +191,33 @@ INF更新だけをkernel変更と誤認して再compileさせず、新kernelか�
 `wifi_bluetooth_simultaneous=false`、`catalog_requires_regeneration=true`を記録する。
 元manifest／元INFのhash名archiveは出自確認用で、署名packageへ混ぜない。
 元INF archiveは`.inf-source`拡張子とし、Inf2Catが別の旧INFとして拾うことを避ける。
+
+
+## 実capabilities応答とSCO契約を分離して記録する
+
+新SYSは同じ固定read-only deviceの別IOCTLから40byteのcapabilities観測snapshotを返す。
+旧80byteの起動時HCI snapshot ABI1は維持する。双方とも入力0byte・固定構造体のみで、
+新queryはSCO route設定やHCI送信、power-up、radio探索を実行しない。
+
+`BTHX_CAPS_QUERIES`はkernelから受けた実QUERY_CAPABILITIES回数。
+`BTHX_CAPS_RETURNED`は最後の問い合わせに構造体を正常に返したか、
+`BTHX_CAPS_STATUS`はそのNTSTATUS（ULONG表現）。実advertised mode/channelと、
+公式必須mode2（HCIBypass）/channel1を別の数値行で記録する。
+metadata IOCTL自体がSTATUS_SUCCESSでも、この契約へ適合したことやstack loadの証拠にはしない。
+
+`BTHX_CONTRACT_SATISFIED`は実応答を比較した0/1。
+問い合わせ未受信または構造体を返していなければ4294967295（未観測）とする。
+現在のNone/0を実際に返した場合は0で、`BTHX_CONTRACT_BLOCKED=1`となる。
+BLOCKED=0だけでは成功を意味せず、問い合わせ前かもしれない。
+現在のsource構成は公式契約に不適合と確定しているが、kernelに実問い合わせが来たかは
+この観測で別に確認する。単なるenum定義をSCO無し許容の根拠として扱わない。
+
+古い02e3915以前のSYSで新queryが未対応なら`BTHX_CONTRACT_QUERY_ERROR`を記録し、
+起動時HCI snapshot／radio API判定と混同しない。観測できない値をNoneや成功に補完しない。
+`KERNEL_START_VERSION_OK`とprocess exit0は引き続きraw HCIの条件だけであり、
+BTHX契約適合、標準interface受理、pairing、無線／SCO動作の成功を意味しない。
+必須SCO bypass経路が成立していない限り、このpackageを標準Bluetooth利用可能として配布しない。
+
+build手順は前述のkernel helperと独立probe helperのまま。
+新機能はSYSとEXEの両方をbuild/署名する。親SYS／親INF、HardwareProbe、native、
+一括builderは変更していない。実機／runner／REAは主担当の専有を維持する。

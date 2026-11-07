@@ -91,7 +91,7 @@ BT ParentOnlyの親INFは正式profile `mt8167-shared-bluetooth.inf`、固定Dri
 - 実AllMapでのBT_Addr可用性、初期化後のOS HCI Reset／電源遷移時の校正保持。
 - SCOの実配線・別audio経路が未確定。capabilitiesは `ScoSupportNone`。
   MicrosoftのBthMiniに記載されるHCIBypass要件を偽って広告しないため、
-  標準Bluetooth stackがこのcapabilitiesを受け入れるかは未確認／阻害条件になりうる。
+  公開されたWindows 8/8.1 BTHX load契約には不適合。NoneをSCO無しでの標準stack対応と扱わない。
 - Wi-Fi／Bluetooth同時動作。現状は排他的BT profileのみ。共存にはfn2を単一consumerに
   保つcombo brokerが必要。既存Wi-Fi leaseを横取りする実装はない。
 - pairing、鍵保存、SCO、RF操作、実機のsleep/resumeは未検証。controller versionを
@@ -152,7 +152,7 @@ INF hashを記録する。主担当が署名中の親INF／親SYS／Engine27媒�
 
 残る阻害条件：一次仕様BTHX_CAPABILITIESは`ScoSupportHCIBypass`／`MaxScoChannels=1`を
 要求するが、基板のSCO bypass音声経路の成立は未確認なので現在の`ScoSupportNone`を
-実装根拠なしで置き換えない。このため今回のqueue接続修正後もBthMini受理を保証しない。
+実装根拠なしで置き換えない。このNone/0設定は公開load契約を満たさず、queue接続修正だけでは標準stack対応にならない。
 OS HCI Reset後の個体設定保持、電源復帰、pairing／RF／SCO実動作も未確認。
 今回のsource確認や生HCI version取得を、Windows標準列挙や実機接続成功と混同しない。
 
@@ -161,3 +161,37 @@ OS HCI Reset後の個体設定保持、電源復帰、pairing／RF／SCO実動�
 [WdfRequestForwardToParentDeviceIoQueue](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdfrequest/nf-wdfrequest-wdfrequestforwardtoparentdeviceioqueue)、
 [BTHX_CAPABILITIES](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/bthxddi/ns-bthxddi-_bthx_capabilities)、
 [Microsoft serialhcibus/pdo.c](https://github.com/microsoft/Windows-driver-samples/blob/main/bluetooth/serialhcibus/pdo.c)。
+
+
+## SCO無しのBTHX load契約の確認
+
+公式の `BTHX_SCO_SUPPORT` enumにはNone/HCI/Bypassが定義されるが、同ページの
+RemarksはtransportにHCIBypassを必須とする。`IOCTL_BTHX_QUERY_CAPABILITIES`のRemarksは
+`MaxScoChannels=1`と`ScoSupportHCIBypass`を必須とし、満たさなければstackをloadしないと明記。
+Microsoft serialhcibus/Fdo.cもHCIBypassを「Only option」、channelを1としている。
+Windows 8.1向けtransport guidelinesは、Windows 8導入のextensible transport DDIが
+8.1でも変更されないことを明記する。SCO無しだからNone/0を許容する例外契約は確認できない。
+公開契約上、現在のNone/0を標準stack対応候補とする判断は誤りである。
+
+HCIBypassは単に「HCI packet type3を処理しない」という意味ではなく、SCO dataが
+I2S等のsideband経路を通るという定義。実配線／codec／audio transportが確定していない
+現状でmode2/channel1へ変更してload条件だけを満たす処理は追加しない。
+raw HCIとvendor initは維持し、常時拒否する新しいHCI/所有権stubは作らない。
+
+代わりに、実際のBTHX capabilities要求に返したmode/channel、IOCTLのNTSTATUS、
+問い合わせ回数、公開契約への適合を40byteの独立read-only診断へ記録する。
+生ReadLocalVersion用の80byte snapshot ABI1は変更しない。
+新probeは両者と標準radio列挙を別記する（詳細はtools/bluetooth/README.md）。
+まだcapabilities要求を受けていない場合は未観測値であり、成功にも失敗実測にも補完しない。
+manifestも`standard_stack_contract_satisfied=false`／`standard_stack_load_candidate=false`とし、
+Noneでの受理を単に「未検証なので成功の可能性あり」とは表現しない。
+
+新transport INFは`11/06/2026,2026.11.7.2002`。親INFの2001と7999b7b親SYSは非変更。
+02e3915のWDK compile/link/CAT署名完了は主担当申告の前版成果で、新診断SYS/EXEには
+別のWDK buildと署名が必要。こちらの実機/runner/REA操作は行っていない。
+
+一次資料：
+[QUERY_CAPABILITIES必須値とload失敗条件](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/bthxddi/ni-bthxddi-ioctl_bthx_query_capabilities)、
+[SCO enumの意味と必須Bypass](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/bthxddi/ne-bthxddi-_bthx_sco_support)、
+[Windows 8.1 transport DDI不変](https://learn.microsoft.com/en-us/windows-hardware/drivers/bluetooth/transport-bus-driver-for-bluetooth-power-control-handling-guidelines)、
+[Microsoft sample Fdo.c](https://github.com/microsoft/Windows-driver-samples/blob/main/bluetooth/serialhcibus/Fdo.c)。

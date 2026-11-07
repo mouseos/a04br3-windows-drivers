@@ -19,7 +19,7 @@ try {
  & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\probe.obj" "$lib\kernel32.lib" "/out:$out\mt6630-bluetooth-probe.exe"
  if($LASTEXITCODE){throw 'MT6630 read-only probe link failed'}
  Copy-Item "$PSScriptRoot\README.md" (Join-Path $out 'README-bluetooth-probe.md')
- @{source_commit=$commit;source_dirty=$false;target='Windows RT 8.1 ARM32 normal OS';status_abi=1;
+ @{source_commit=$commit;source_dirty=$false;target='Windows RT 8.1 ARM32 normal OS';status_abi=1;bthx_contract_query_abi=1;
    exe='mt6630-bluetooth-probe.exe';arguments=@();log_name='mt6630-bluetooth-probe.txt';
    kernel_prerequisite='Matching MT6630 Bluetooth driver with fixed cached-status control device';
    standard_api='System32 bthprops.cpl, setupapi.dll, cfgmgr32.dll; dynamically loaded';

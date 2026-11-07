@@ -60,7 +60,9 @@ try {
    bthx_device_control=$true;bthx_parent_queue_forwarding=$true;standard_bluetooth_verified=$false;
    physical_transport='MSDC2 SDIO function 2 / STP task 0';radio_profile='exclusive Bluetooth; WLAN PDO absent';
    firmware_embedded=$false;individual_nvram_embedded=$false;hardware_verified=$false;wdk_link_succeeded=$true;
-   sco_support='None (unverified wiring; BthMini acceptance remains unverified)';
+   sco_support='None; documented Windows 8/8.1 BTHX load contract not satisfied';
+   advertised_sco=0;advertised_max_sco_channels=0;required_sco='HCIBypass';required_max_sco_channels=1;
+   standard_stack_contract_satisfied=$false;standard_stack_load_candidate=$false;bthx_contract_query_abi=1;
    sys_sha256=(Get-FileHash (Join-Path $out 'mt6630-bluetooth.sys') -Algorithm SHA256).Hash
  }|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 $manifest
 } finally {foreach($name in $saved.Keys){[Environment]::SetEnvironmentVariable($name,$saved[$name],'Process')}}

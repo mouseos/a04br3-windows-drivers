@@ -113,6 +113,22 @@ done:
  line("TARGET_RADIO_INTERFACES",count);line("TARGET_STARTED_INTERFACES",started);
  line("TARGET_INTERFACE_ACCEPTED",!error&&complete&&started>0);
 }
+static void bthx_contract(HANDLE device)
+{
+ MT6630_BTHX_CONTRACT c;DWORD bytes=0,error=0;wipe(&c,sizeof(c));
+ if(!DeviceIoControl(device,MT6630_QUERY_BTHX_CONTRACT,NULL,0,&c,sizeof(c),&bytes,NULL))error=GetLastError();
+ if(!error&&(bytes!=sizeof(c)||c.size!=sizeof(c)||c.version!=MT6630_BTHX_CONTRACT_VERSION))error=ERROR_REVISION_MISMATCH;
+ line("BTHX_CONTRACT_QUERY_ERROR",error);
+ if(!error){
+  line("BTHX_CAPS_QUERIES",c.queries);line("BTHX_CAPS_RETURNED",c.returned_capabilities);
+  line("BTHX_CAPS_STATUS",c.last_query_status);line("BTHX_ADVERTISED_SCO",c.advertised_sco);
+  line("BTHX_ADVERTISED_CHANNELS",c.advertised_channels);line("BTHX_REQUIRED_SCO",c.required_sco);
+  line("BTHX_REQUIRED_CHANNELS",c.required_channels);line("BTHX_CONTRACT_SATISFIED",c.contract_satisfied);
+  /* A successful capabilities query alone is not acceptance or radio presence. */
+  line("BTHX_CONTRACT_BLOCKED",c.queries&&c.returned_capabilities&&c.contract_satisfied==0);
+ }
+ wipe(&c,sizeof(c));
+}
 void mainCRTStartup(void)
 {
  HANDLE device;MT6630_STATUS s;DWORD bytes=0,error=0,result=2;
@@ -123,10 +139,10 @@ void mainCRTStartup(void)
  if(uart==INVALID_HANDLE_VALUE)uart_error=GetLastError();
  line("BEGIN",1);line("UART_OPEN_ERROR",uart_error);
  device=CreateFileW(MT6630_STATUS_PATH,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,0,NULL);
- if(device==INVALID_HANDLE_VALUE)error=GetLastError();
+ if(device==INVALID_HANDLE_VALUE){error=GetLastError();line("BTHX_CONTRACT_QUERY_ERROR",error);}
  else {
   if(!DeviceIoControl(device,MT6630_QUERY_STATUS,NULL,0,&s,sizeof(s),&bytes,NULL))error=GetLastError();
-  CloseHandle(device);
+  bthx_contract(device);CloseHandle(device);
   if(!error&&(bytes!=sizeof(s)||s.size!=sizeof(s)||s.version!=MT6630_STATUS_VERSION))error=ERROR_REVISION_MISMATCH;
  }
  line("SNAPSHOT_ERROR",error);

@@ -143,7 +143,10 @@ VOID BtInternal(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULO
    /* SCO wiring and alternate audio path have not been established. Do not
     * advertise HCIBypass just to make BthMini accept this controller. */
    caps->ScoSupport=ScoSupportNone;used=sizeof(*caps);
-  }break;
+  }
+  /* The documented Windows 8/8.1 load contract rejects None/0. Preserve the
+   * truthful reply, but record it as incompatible, never as stack success. */
+  a04_bt_status_capabilities(NT_SUCCESS(status)?(PBTHX_CAPABILITIES)out:NULL,status);break;
  case IOCTL_BTHX_WRITE_HCI:
   if(!c->running||!c->negotiated){status=STATUS_DEVICE_NOT_READY;break;}
   status=WdfRequestRetrieveOutputBuffer(request,sizeof(ULONG),&out,&length);if(!NT_SUCCESS(status))break;
