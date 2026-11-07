@@ -82,3 +82,40 @@ boundedな例外を追加する。service直下の七値の既知raw fingerprint
 階層形状から自身の診断subtree fingerprintを計算し、別clean copyの再load後に一致確認。
 既存診断は変更/削除しない。Select/DeviceInstall/RpcSsの限定fingerprint監査も維持。
 これは全SYSTEM監査ではない。最初の旧recipe拒否結果はfailed-do-not-deployのまま保存する。
+
+
+## run47 SD初回installとpartial failureの区別
+
+run47はSDのDIF_INSTALLDEVICEだけE0000204となり、既に延期した他対象のため
+ServiceResult3010で正規rebootした。診断phaseはarmされず、次bootのEngine Startは4。
+第二boot自動PnPでのSD Configure成功/Code31は別のkernel開始問題である。
+Audio1007はNativeStart stage14/result0だがclient未実行なのでendpoint成否は未観測。
+
+次serviceではSDだけSPDIT_COMPATDRIVERを使い、固定INF内の唯一nodeと版/dateを検査し、
+SetupDiSetSelectedDriver後の正確なSCSIAdapter ClassGUIDを確認する。
+DIF_REGISTER_COINSTALLERS、DIF_INSTALLINTERFACESを一度ずつ呼び、
+DI_DONOTCALLCONFIGMG/DI_NEEDREBOOTを再設定してDIF_INSTALLDEVICEを一度だけ呼ぶ。
+他対象の既存class-list経路、CAT membership/hash、live親交換禁止は維持する。
+ClassGUID/keyの直接作成、任意INF/class、失敗後のretryは無い。
+この変更は初回class選択/登録の標準契約を補う候補であり、E0000204の唯一原因や
+実機修復成功とはまだ確認していない。
+
+根拠はMicrosoftの[SetupDiBuildDriverInfoList](https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdibuilddriverinfolist)、
+[SetupDiSetSelectedDriverW](https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdisetselecteddriverw)、
+[DIF_REGISTER_COINSTALLERS](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/dif-register-coinstallers)、
+[DIF_INSTALLINTERFACES](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/dif-installinterfaces)、
+[SetupDiInstallDevice](https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdiinstalldevice)。
+
+Schema2のPnpBatchResult/CompletionResultは元のoperation errorを保持し、
+SCMのServiceResult3010を全対象成功と解釈しない。InstallFailureValid/Target/Step、
+AllInstallStepsSucceeded、DiagnosticArmed、RebootPending、3markerの実query結果を保存する。
+Targetは0-based、特定不能はFFFFFFFF。Stepは0=準備/照合、1=list、2=選択、
+3=coinstaller、4=interfaces、5=install。Completeはsnapshot完了であってinstall成功ではない。
+旧schemaで存在しない追加値はreaderでunavailable。最大7node/3clientでも64値以内。
+
+全driver不変の再armは既定拒否を保持する。plan生成の明示
+`--allow-known-sd-protocol-repair`だけ、旧88aの固定署名EXE、freshbackupの実EXE/log hash、
+単一RUN内のSD E0000204/batch E0000204/END3010、全package不変、
+別commit/別EXEかつ延期runtime実source変更を検査する。最終builderでも旧媒体/新service/
+同snapshotを再照合する。これは旧run47一回のprotocol修正専用であり一般retryではない。
+旧log/marker/registry世代は既存の明示archive/fingerprint契約で保存する。

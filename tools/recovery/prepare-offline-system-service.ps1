@@ -107,7 +107,7 @@ function Engine-DiagnosticFingerprint($ServiceKey,$Plan) {
                             if($schema -notin @(1,2) -or $count -lt 5 -or $count -gt $(if($schema -eq 1){6}else{7}) -or $clients -notin @(2,3) -or $leaf.GetValue('PolicyHash') -cne $policy) { throw 'Diagnostic schema/count/policy mismatch' }
                             foreach($name in $leaf.GetValueNames()) {
                                 $kind=$leaf.GetValueKind($name);$v=$leaf.GetValue($name,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
-                                if($name -cmatch '^(Schema|Complete|RunId|Phase|TargetCount|ClientCount|ServiceResult|FileLogError|UartError|SnapshotWriteError)$' -or ($schema -eq 2 -and $name -cmatch '^(SystemVolumeFlushError|CompletionResult)$')) {
+                                if($name -cmatch '^(Schema|Complete|RunId|Phase|TargetCount|ClientCount|ServiceResult|FileLogError|UartError|SnapshotWriteError)$' -or ($schema -eq 2 -and $name -cmatch '^(SystemVolumeFlushError|CompletionResult|PnpBatchResult|InstallFailureValid|InstallFailureTarget|InstallFailureStep|AllInstallStepsSucceeded|DiagnosticArmed|RebootPending|DeferredPendingStatus|DiagnosticAttemptedStatus|RebootAttemptedStatus)$')) {
                                     if($kind -ne [Microsoft.Win32.RegistryValueKind]::DWord) { throw 'Diagnostic DWORD type mismatch' }
                                 } elseif($name -ceq 'PolicyHash') {
                                     if($kind -ne [Microsoft.Win32.RegistryValueKind]::String -or $v -cne $policy) { throw 'Diagnostic policy value mismatch' }

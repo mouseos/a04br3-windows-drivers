@@ -120,6 +120,16 @@ static DWORD diagnostic_finish(DWORD result)
   WCHAR client[]=L"Client0";client[6]=(WCHAR)(L'0'+i);
   diagnostic_write(client,REG_BINARY,&diagnostic_clients[i],sizeof(diagnostic_clients[i]));
  }
+ diagnostic_dword(L"PnpBatchResult",deferred_batch_error);
+ diagnostic_dword(L"InstallFailureValid",deferred_batch_error!=0);
+ diagnostic_dword(L"InstallFailureTarget",deferred_failure_target);
+ diagnostic_dword(L"InstallFailureStep",deferred_failure_step);
+ diagnostic_dword(L"AllInstallStepsSucceeded",deferred_all_install_succeeded);
+ diagnostic_dword(L"DiagnosticArmed",deferred_diagnostic_armed);
+ diagnostic_dword(L"RebootPending",deferred_reboot_needed);
+ diagnostic_dword(L"DeferredPendingStatus",deferred_marker(L"deferred-pending.bin",0));
+ diagnostic_dword(L"DiagnosticAttemptedStatus",deferred_marker(L"diagnostic-attempted.bin",0));
+ diagnostic_dword(L"RebootAttemptedStatus",deferred_marker(L"reboot-attempted.bin",0));
  diagnostic_dword(L"ServiceResult",result);diagnostic_dword(L"FileLogError",log_error);diagnostic_dword(L"UartError",uart_error);
  /* All client/service files have been flushed and closed by service_main.
   * Flush the fixed system volume once, then persist its actual result in
@@ -130,6 +140,7 @@ static DWORD diagnostic_finish(DWORD result)
   diagnostic_write(L"SystemVolumeFlush",REG_BINARY,&volume_flush,sizeof(volume_flush));
   diagnostic_dword(L"SystemVolumeFlushError",volume_error);
   emit_record(0,0x111,volume_error,0);
+  if(deferred_batch_error)result=deferred_batch_error;
   if(volume_error&&!result)result=volume_error;
   diagnostic_dword(L"CompletionResult",result);
  }

@@ -131,7 +131,9 @@ try {
   fixed_clients=$fixedClients;client_signatures_preserved=[bool]$enginePcm;
   build_defines=@{A04_HARDWARE_PROBE_ENGINE_PCM=$engineDefine;A04_ENGINE_DEFERRED_UPDATE=$deferredDefine;A04_ENGINE_BRIGHTNESS_CLIENT=$brightnessDefine};
   registry_diagnostics=$(if($deferred){@{schema=2;maximum_targets=7;volume_flush='fixed C: once before final registry flush; no lock/dismount';fixed_key='HKLM\SYSTEM\CurrentControlSet\Services\MT8167EngineProbe\Parameters\LastDiagnostic';
-   generation='canonical-policy-SHA256/Install-or-Diagnostic; CREATE_NEW only';flush='one RegFlushKey before SCM STOPPED';
+   generation='canonical-policy-SHA256/Install-or-Diagnostic; CREATE_NEW only';
+   operation_result='PnpBatchResult/CompletionResult preserve first operation error independently of ServiceResult3010';
+   install_progress='fixed target/step, all-install-succeeded, diagnostic-armed, reboot-pending, three marker query results';flush='one RegFlushKey before SCM STOPPED';
    stdout_stderr_limit_per_stream=65536;source_sha256=(Get-FileHash (Join-Path $root 'tools\winpe\engine-registry-diagnostic.h') -Algorithm SHA256).Hash.ToLowerInvariant()}}else{$null});
   deferred_update=$deferredPolicy;
   deferred_header_sha256=$(if($deferred){(Get-FileHash (Join-Path $policyDirectory 'engine-deferred-policy.h') -Algorithm SHA256).Hash.ToLowerInvariant()}else{$null});
@@ -143,7 +145,8 @@ try {
    directory='System32\MT8167EngineProbe\drivers';maximum_calls_per_id=1;parent_updated=$true;
    parent_policy='DI_DONOTCALLCONFIGMG-deferred-reboot-only';reboot_required_stops_clients=$true;catalog_signature_required=$true;
    problem_status='CM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatus/DEVPROP_TYPE_NTSTATUS';
-   phases=@('install-once','planned-reboot-once','verify-and-diagnose-once');live_parent_replacement=$false}}elseif($enginePcm){@{api='UpdateDriverForPlugAndPlayDevicesW';flags=5;
+   phases=@('install-once','planned-reboot-once','verify-and-diagnose-once');live_parent_replacement=$false;
+   sd_first_class_selection='fixed INF compatible list; exact SCSIAdapter class; REGISTER_COINSTALLERS/INSTALLINTERFACES before INSTALLDEVICE'}}elseif($enginePcm){@{api='UpdateDriverForPlugAndPlayDevicesW';flags=5;
    fixed_hardware_ids=@('MT8167\AFE','MT8167\USB20','A04BR3\MT6630SDIO');
    directory='System32\MT8167EngineProbe\drivers';maximum_calls_per_id=1;
    parent_updated=$false;observed_parent='ACPI\BEN0001';parent_policy='verify-selected-version-and-installed-bytes-only';problem_status='CM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatus/DEVPROP_TYPE_NTSTATUS';reboot_required_stops_clients=$true;catalog_signature_required=$true;

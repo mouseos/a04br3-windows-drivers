@@ -195,7 +195,8 @@ def probe_check(executable, manifest, certificate, root, audio_mode="Tone"):
             'certificate_thumbprint': thumbprint, 'authenticode_verified_here': False,
             'pnp_rebind': report.get('pnp_rebind') if engine else None,
             'deferred_update': report.get('deferred_update') if engine else None,
-            'deferred_policy_manifest_sha256': report.get('deferred_policy_manifest_sha256') if engine else None}
+            'deferred_policy_manifest_sha256': report.get('deferred_policy_manifest_sha256') if engine else None,
+            'deferred_runtime_source_sha256':report.get('deferred_runtime_source_sha256') if engine else None}
 
 
 def certificate_trust_commands(certificates):

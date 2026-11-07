@@ -40,6 +40,7 @@ def main():
  ap.add_argument('--parent-package',type=Path)
  ap.add_argument('--parent-manifest-sha256')
  ap.add_argument('--allow-missing-engine-service-log',action='store_true')
+ ap.add_argument('--allow-known-sd-protocol-repair',action='store_true')
  ap.add_argument('--rearm-previous-media',type=Path)
  ap.add_argument('--write-engine-rearm-plan',type=Path)
  ap.add_argument('--engine-rearm-plan',type=Path)
@@ -57,6 +58,7 @@ def main():
  engine=a.audio_mode=='EnginePcm'
  plan_only=bool(a.write_engine_rearm_plan)
  rearming=bool(a.engine_rearm_plan)
+ if a.allow_known_sd_protocol_repair and not plan_only:raise SystemExit('known SD repair opt-inはplan生成専用です')
  if a.allow_missing_engine_service_log and not plan_only:raise SystemExit('missing log opt-inは明示再arm plan生成専用です')
  if (plan_only or rearming or a.rearm_previous_media) and not engine:raise SystemExit('再armはEngine mode専用です')
  if plan_only and (not a.rearm_previous_media or rearming):raise SystemExit('plan生成は旧媒体manifestを明示し既存planと併用しないでください')
@@ -147,13 +149,13 @@ def main():
   pnp=probe_info.get('pnp_rebind',{}) if probe_info else {}
   if not a.deferred_package_map and (pnp.get('parent_updated') is not False or pnp.get('parent_policy')!='verify-selected-version-and-installed-bytes-only' or pnp.get('problem_status')!='CM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatus/DEVPROP_TYPE_NTSTATUS'):raise SystemExit('再armには親選択/配置照合・ProblemStatus対応serviceが必要です')
  if plan_only:
-  plan=make_plan(a.rearm_previous_media,backup,b,components,root,a.allow_missing_engine_service_log)
+  plan=make_plan(a.rearm_previous_media,backup,b,components,root,a.allow_missing_engine_service_log,probe_info,a.allow_known_sd_protocol_repair)
   destination=private_path(a.write_engine_rearm_plan,root)
   with destination.open('x') as stream:
    os.chmod(destination,0o600);json.dump(plan,stream,indent=2);stream.write('\n')
   print('ENGINE_REARM_PLAN_SHA256='+sha(destination));return
  if rearming:
-  rearm_plan=check_plan(a.engine_rearm_plan,a.engine_rearm_plan_sha256,backup,b,components,native,root)
+  rearm_plan=check_plan(a.engine_rearm_plan,a.engine_rearm_plan_sha256,backup,b,components,native,root,probe_info,a.rearm_previous_media)
  elif native and native.get('engine_rearm_plan_sha256'):raise SystemExit('再arm native候補には対応する明示planが必要です')
  if probe:
   files[service_name+'.exe']=probe_info['exe_sha256']

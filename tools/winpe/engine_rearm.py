@@ -32,7 +32,7 @@ def package_state(components):
                    'files': components[kind]['files']} for kind in (*KINDS, 'display', 'toprgu', 'gpu', 'sd') if kind in components}
 
 
-def require_progress(previous, following, backup):
+def require_progress(previous, following, backup, permit_unchanged=False):
     changed = []
     actual = {entry['source_path'].replace('\\', '/').casefold(): entry['sha256'].lower()
               for entry in backup['files']}
@@ -55,7 +55,7 @@ def require_progress(previous, following, backup):
         expected = next(digest.lower() for name, digest in after['files'].items() if name.endswith('.sys'))
         if actual.get(path) != expected and version(after['driver_ver'],kind=='gpu',kind=='display',kind=='sd',kind=='parent',kind=='usb') <= version(before['driver_ver'],kind=='gpu',kind=='display',kind=='sd',kind=='parent',kind=='usb'):
             raise ValueError('実SYS未適用/不存在の対象はINF昇版が必要です: ' + kind)
-    if not changed:
+    if not changed and not permit_unchanged:
         raise ValueError('修正package hashが無い同一構成の再armは拒否します')
     return changed
 
@@ -78,7 +78,40 @@ def missing_log_binding(backup, backup_path, exe_hash, allowed):
         json.dumps(snapshot, sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
 
 
-def make_plan(previous_path, backup_path, backup, components, root, allow_missing_service_log=False):
+def sd_protocol_repair(previous,backup,backup_path,following,next_probe,root):
+    """One known failed transaction, not a generic same-driver retry switch."""
+    import subprocess
+    if (not next_probe or previous.get('source_commit')!='88a787566123e22ce24a902221e86c0089042f03'
+        or previous.get('probe',{}).get('exe_sha256')!='660cdf08991654771a52a695025b9c572ad6c73660c2416ee89cafde18c8ca5b'
+        or next_probe.get('exe_sha256')==previous['probe']['exe_sha256']
+        or next_probe.get('source_commit')==previous['probe']['source_commit']):raise ValueError('既知run47 partial failureと別sourceの修正serviceが必要です')
+    if package_state(previous['components'])!=package_state(following):raise ValueError('protocol-only再armは全driver package不変に限定します')
+    entries={x['source_path'].replace('\\','/'):x for x in backup['files']}
+    log=entries.get(STATE_FILES[1]);oldexe=entries.get(STATE_FILES[2])
+    if not log or not oldexe or oldexe['sha256'].lower()!=previous['probe']['exe_sha256'] or log['bytes']>4*1024*1024:raise ValueError('旧service/logの固定snapshot欠落')
+    oldpath=(backup_path.parent/oldexe['backup_path']).resolve(strict=True)
+    if not oldpath.is_relative_to(backup_path.parent.resolve()) or sha(oldpath)!=oldexe['sha256'].lower():raise ValueError('旧service EXEの実backup hash不一致')
+    path=(backup_path.parent/log['backup_path']).resolve(strict=True)
+    if not path.is_relative_to(backup_path.parent.resolve()) or sha(path)!=log['sha256'].lower():raise ValueError('partial failure log hash不一致')
+    rows=re.findall(rb'^A04HW RUN=([0-9A-F]{8}) ID=([0-9A-F]{8}) EVT=([0-9A-F]{8}) CODE=([0-9A-F]{8})\r?$',path.read_bytes(),re.M)
+    rows=[tuple(int(v,16) for v in row) for row in rows]
+    runs={r for r,i,e,c in rows if e==1 and i==0}
+    if len(runs)!=1:raise ValueError('単一install RUNの根拠が必要です')
+    run=next(iter(runs));events={(i,e,c) for r,i,e,c in rows if r==run}
+    if not {(15,0x105,0xe0000204),(10,0x22,0xe0000204),(0,10,3010)}.issubset(events):raise ValueError('SD初回E0000204/元batch error/END3010の既知組合せ不一致')
+    repo=Path(__file__).resolve().parents[2]
+    newsource=next_probe.get('source_commit','')
+    if not re.fullmatch('[0-9a-f]{40}',newsource):raise ValueError('修正service source pin不一致')
+    raw=subprocess.check_output(['git','-C',str(repo),'show',newsource+':tools/winpe/engine-deferred-update.h'])
+    old=subprocess.check_output(['git','-C',str(repo),'show','88a787566123e22ce24a902221e86c0089042f03:tools/winpe/engine-deferred-update.h'])
+    if raw==old or hashlib.sha256(raw).hexdigest()!=next_probe.get('deferred_runtime_source_sha256'):raise ValueError('延期runtime自体を修正した署名sourceが必要です')
+    return {'kind':'known-run47-sd-first-install-protocol-repair','maximum_rearms':1,'previous_run_id':f'{run:08x}',
+            'old_service_exe_sha256':oldexe['sha256'].lower(),'old_log_sha256':log['sha256'].lower(),
+            'old_pnp_error':0xe0000204,'old_transport_result':3010,'next_service_exe_sha256':next_probe['exe_sha256'],
+            'next_service_source_commit':newsource,'next_runtime_source_sha256':hashlib.sha256(raw).hexdigest()}
+
+
+def make_plan(previous_path, backup_path, backup, components, root, allow_missing_service_log=False, next_probe=None, allow_sd_protocol_repair=False):
     previous_path = private_path(previous_path, root).resolve(strict=True)
     previous = json.loads(previous_path.read_text())
     if (previous.get('audio_mode') != 'engine_pcm_retained'
@@ -94,7 +127,9 @@ def make_plan(previous_path, backup_path, backup, components, root, allow_missin
     if 'gpu' in after:
         actual={x['source_path'].replace('\\','/').lower():x['sha256'].lower() for x in backup['files']}
         if actual.get('windows/system32/drivers/mt8167-ge8300.sys')!=next(v for k,v in before['gpu']['files'].items() if k.endswith('.sys')):raise ValueError('GPU baselineとfreshbackup実SYS hash不一致')
-    changed = require_progress(before, after, backup)
+    repair=sd_protocol_repair(previous,backup,backup_path,components,next_probe,root) if allow_sd_protocol_repair else None
+    changed = require_progress(before, after, backup,permit_unchanged=bool(repair))
+    if repair:changed.append('engine_protocol')
     entries = {entry['source_path'].replace('\\', '/'): entry for entry in backup['files']}
     if not {MARKER, STATE_FILES[2]}.issubset(entries):
         raise ValueError('fresh backupへ--engine-probe-stateでmarker/service.log/EXEを回収してください')
@@ -132,6 +167,7 @@ def make_plan(previous_path, backup_path, backup, components, root, allow_missin
         if token not in history:history.append(token)
     if len(history)>16 or any(not re.fullmatch('[0-9a-f]{64}',x) for x in history):raise ValueError('既知診断policy世代の上限/hex不一致')
     plan['diagnostic_policies']=history
+    if repair:plan['protocol_repair']=repair
     plan['previous_service_exe_sha256'] = old_service_hash.lower()
     if components.get('brightness_client',{}).get('log_path')==r'C:\Windows\System32\MT8167EngineProbe\logs\brightness-native.log':plan['brightness_log_mode']='engine-generation-preserve-legacy-root'
     if 'gpu' in components:
@@ -140,7 +176,7 @@ def make_plan(previous_path, backup_path, backup, components, root, allow_missin
     return plan
 
 
-def check_plan(path, expected_sha, backup_path, backup, components, native, root):
+def check_plan(path, expected_sha, backup_path, backup, components, native, root, next_probe=None, previous_media_path=None):
     path = private_path(path, root).resolve(strict=True)
     if not re.fullmatch('[0-9a-fA-F]{64}', expected_sha or '') or sha(path) != expected_sha.lower():
         raise ValueError('再arm plan SHA256 pin不一致')
@@ -160,7 +196,11 @@ def check_plan(path, expected_sha, backup_path, backup, components, native, root
     if 'gpu' in components and plan['previous_packages'].get('gpu')!={k:components['gpu']['baseline'][k] for k in ('driver_ver','files')}:raise ValueError('再arm GPU baseline metadata不一致')
     scoped=components.get('brightness_client',{}).get('log_path')==r'C:\Windows\System32\MT8167EngineProbe\logs\brightness-native.log'
     if (plan.get('brightness_log_mode')=='engine-generation-preserve-legacy-root')!=scoped:raise ValueError('brightness log mode/署名client不一致')
-    require_progress(plan['previous_packages'], plan['next_packages'], backup)
+    if plan.get('protocol_repair'):
+        if not previous_media_path or sha(previous_media_path)!=plan['previous_media_manifest_sha256']:raise ValueError('protocol repairには元媒体hashの再照合が必要です')
+        previous=json.loads(previous_media_path.read_text())
+        if sd_protocol_repair(previous,backup,backup_path,components,next_probe,root)!=plan['protocol_repair']:raise ValueError('protocol repairの実snapshot/service不一致')
+    require_progress(plan['previous_packages'], plan['next_packages'], backup,permit_unchanged=bool(plan.get('protocol_repair')))
     entries = {x['source_path'].replace('\\', '/'): x for x in backup['files']}
     if plan['old_state_files'].get(MARKER,{}).get('sha256','').lower() != hashlib.sha256(b'MT8167EngineProbe attempted\n').hexdigest():
         raise ValueError('旧markerの既知fingerprint不一致')

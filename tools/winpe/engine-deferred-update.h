@@ -12,6 +12,11 @@ struct deferred_pin { ULONGLONG version,date; BYTE hash[4][32]; };
 #include "engine-deferred-policy.h"
 static int deferred_reboot_needed;
 static DWORD deferred_diagnostic_status;
+/* Preserve the operation result independently of the transport reboot code. */
+static DWORD deferred_batch_error,deferred_failure_target=0xffffffffu,deferred_failure_step;
+static DWORD deferred_current_step,deferred_current_target=0xffffffffu;
+static int deferred_all_install_succeeded,deferred_diagnostic_armed;
+static DWORD deferred_marker(const WCHAR *,int);
 static const struct {const WCHAR *id,*folder,*inf,*sys,*cat,*firmware;} deferred_targets[DEFERRED_TARGET_COUNT]={
  {L"ACPI\\BEN0001",L"parent",L"shared-parent.inf",L"mt8167-shared.sys",L"shared-parent.cat"},
  {L"MT8167\\AFE",L"audio",L"mt8167-afe-engine-pcm.inf",L"mt8167-audio.sys",L"mt8167-afe-engine-pcm.cat"},
@@ -216,17 +221,43 @@ static DWORD deferred_selected_date(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev
 }
 static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const WCHAR *inf)
 {
- static SP_DEVINSTALL_PARAMS_W params;static SP_DRVINFO_DATA_W driver,extra;DWORD error=0;BOOL list=FALSE;
+ static SP_DEVINSTALL_PARAMS_W params;static SP_DRVINFO_DATA_W driver,extra;DWORD error=0,type=0,bytes=0;DWORD list_type=SPDIT_CLASSDRIVER;BOOL list=FALSE;WCHAR class_name[64];
+#if DEFERRED_SD_UPDATE
+ /* A hardware-initiated, previously classless SD node needs a compatible
+  * driver list. BuildDriverInfoList updates SP_DEVINFO_DATA.ClassGuid for
+  * that path; a class list does not establish this first-device contract. */
+ if(i==DEFERRED_TARGET_COUNT-1)list_type=SPDIT_COMPATDRIVER;
+#endif
+ deferred_current_target=i;deferred_current_step=1;
  memset(&params,0,sizeof(params));params.cbSize=sizeof(params);
- if(!SetupDiGetDeviceInstallParamsW(set,dev,&params))return GetLastError();
+ if(!SetupDiGetDeviceInstallParamsW(set,dev,&params)){error=GetLastError();goto done;}
  params.Flags|=DI_ENUMSINGLEINF|DI_DONOTCALLCONFIGMG|DI_QUIETINSTALL|DI_NEEDREBOOT;
  params.FlagsEx|=DI_FLAGSEX_ALLOWEXCLUDEDDRVS;lstrcpyW(params.DriverPath,inf);
- if(!SetupDiSetDeviceInstallParamsW(set,dev,&params)||!SetupDiBuildDriverInfoList(set,dev,SPDIT_CLASSDRIVER)){error=GetLastError();goto done;}
+ if(!SetupDiSetDeviceInstallParamsW(set,dev,&params)||!SetupDiBuildDriverInfoList(set,dev,list_type)){error=GetLastError();goto done;}
  list=TRUE;memset(&driver,0,sizeof(driver));driver.cbSize=sizeof(driver);memset(&extra,0,sizeof(extra));extra.cbSize=sizeof(extra);
- if(!SetupDiEnumDriverInfoW(set,dev,SPDIT_CLASSDRIVER,0,&driver)){error=GetLastError();goto done;}
- if(SetupDiEnumDriverInfoW(set,dev,SPDIT_CLASSDRIVER,1,&extra)||GetLastError()!=ERROR_NO_MORE_ITEMS){error=ERROR_DUP_NAME;goto done;}
+ if(!SetupDiEnumDriverInfoW(set,dev,list_type,0,&driver)){error=GetLastError();goto done;}
+ if(SetupDiEnumDriverInfoW(set,dev,list_type,1,&extra)||GetLastError()!=ERROR_NO_MORE_ITEMS){error=ERROR_DUP_NAME;goto done;}
  if(driver.DriverVersion!=deferred_pins[i].version||(((ULONGLONG)driver.DriverDate.dwHighDateTime<<32)|driver.DriverDate.dwLowDateTime)!=deferred_pins[i].date){error=ERROR_REVISION_MISMATCH;goto done;}
+ deferred_current_step=2;
  if(!SetupDiSetSelectedDriverW(set,dev,&driver)){error=GetLastError();goto done;}
+ if(list_type==SPDIT_COMPATDRIVER){
+  /* Never invent ClassGUID registry keys. Confirm the standard selection
+   * established the fixed SCSIAdapter class before invoking class installers. */
+  if(!SetupDiGetDeviceRegistryPropertyW(set,dev,SPDRP_CLASSGUID,&type,(BYTE *)class_name,sizeof(class_name),&bytes)){error=GetLastError();goto done;}
+  if(type!=REG_SZ||bytes<2||bytes>sizeof(class_name)||(bytes&1)||class_name[bytes/2-1]||
+     lstrcmpiW(class_name,L"{4D36E97B-E325-11CE-BFC1-08002BE10318}")){error=ERROR_REVISION_MISMATCH;goto done;}
+  deferred_current_step=3;
+  if(!SetupDiCallClassInstaller(DIF_REGISTER_COINSTALLERS,set,dev)){error=GetLastError();goto done;}
+  deferred_current_step=4;
+  if(!SetupDiCallClassInstaller(DIF_INSTALLINTERFACES,set,dev)){error=GetLastError();goto done;}
+ }
+ deferred_current_step=5;
+ /* Keep no-live-reenumeration even if a preparatory default handler changed
+  * its install parameters. No parent/child restart request is issued. */
+ memset(&params,0,sizeof(params));params.cbSize=sizeof(params);
+ if(!SetupDiGetDeviceInstallParamsW(set,dev,&params)){error=GetLastError();goto done;}
+ params.Flags|=DI_DONOTCALLCONFIGMG|DI_NEEDREBOOT|DI_QUIETINSTALL;
+ if(!SetupDiSetDeviceInstallParamsW(set,dev,&params)){error=GetLastError();goto done;}
  pnp_record(i,EV_PNP_API_BEGIN,params.Flags);if(log_error){error=log_error;goto done;}
  if(!SetupDiCallClassInstaller(DIF_INSTALLDEVICE,set,dev)){error=GetLastError();goto done;}
  deferred_reboot_needed=1; /* Includes partial-batch failure: never diagnose it. */
@@ -234,7 +265,9 @@ static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const
  if(!SetupDiGetDeviceInstallParamsW(set,dev,&params)){error=GetLastError();goto done;}
  pnp_record(i,0x104,params.Flags);
  if(!(params.Flags&DI_NEEDREBOOT))error=ERROR_INVALID_DATA;
- done:pnp_record(i,0x105,error);if(list)SetupDiDestroyDriverInfoList(set,dev,SPDIT_CLASSDRIVER);return error;
+ done:
+ if(error){deferred_failure_target=i;deferred_failure_step=deferred_current_step;}
+ pnp_record(i,0x105,error);if(list)SetupDiDestroyDriverInfoList(set,dev,list_type);return error;
 }
 static DWORD deferred_once(int diagnostic)
 {
@@ -250,6 +283,7 @@ static DWORD deferred_once(int diagnostic)
  set=SetupDiGetClassDevsW(NULL,NULL,NULL,DIGCF_ALLCLASSES|DIGCF_PRESENT);
  if(set==INVALID_HANDLE_VALUE){error=GetLastError();goto done;}
  for(i=0;i<DEFERRED_TARGET_COUNT;i++){
+  deferred_current_target=i;deferred_current_step=0;
   const WCHAR *names[4]={deferred_targets[i].inf,deferred_targets[i].sys,deferred_targets[i].cat,deferred_targets[i].firmware};const WCHAR *paths[4]={NULL,NULL,NULL,NULL};
   error=path(folders[i],drivers,deferred_targets[i].folder);if(!error)error=hold_directory(folders[i],&dirs[i]);if(error)goto done;
   for(j=0;j<4;j++){if(!names[j])continue;error=path(full[i][j],folders[i],names[j]);if(!error)error=deferred_file(full[i][j],deferred_pins[i].hash[j],&files[i][j]);if(error)goto done;paths[j]=full[i][j];}
@@ -286,8 +320,10 @@ static DWORD deferred_once(int diagnostic)
  }
  /* Even an already-current set takes the planned boot boundary once. */
  deferred_reboot_needed=1;
- error=deferred_marker(L"deferred-pending.bin",1);if(!error)error=deferred_arm_diagnostics();
+ error=deferred_marker(L"deferred-pending.bin",1);if(!error){error=deferred_arm_diagnostics();if(!error){deferred_diagnostic_armed=1;deferred_all_install_succeeded=1;}}
  done:
+ deferred_batch_error=error;
+ if(error&&deferred_failure_target==0xffffffffu){deferred_failure_target=deferred_current_target;deferred_failure_step=deferred_current_step;}
  pnp_record(0,0x100,diagnostic?2:1);pnp_record(0,EV_PNP_RESULT,error);
  for(i=0;i<DEFERRED_TARGET_COUNT;i++){for(j=0;j<4;j++)if(files[i][j]!=INVALID_HANDLE_VALUE)CloseHandle(files[i][j]);if(dirs[i]!=INVALID_HANDLE_VALUE)CloseHandle(dirs[i]);}
  if(root!=INVALID_HANDLE_VALUE)CloseHandle(root);if(set!=INVALID_HANDLE_VALUE)SetupDiDestroyDeviceInfoList(set);
