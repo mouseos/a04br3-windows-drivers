@@ -60,7 +60,7 @@ try {
   source_runtime=$m;unsigned_images=$unsigned;signer_thumbprint=$CertificateThumbprint;signature_status='Valid';
   default_off=$true;installed=$false;runtime_verified=$false;wddm_conformance_qualified=$false;
   required_parent_commit=$m.required_parent_commit;required_acpi_commit=$m.required_acpi_commit;display_policy='MOU0007 CPU present; never concurrent KMDF GPU IRQ owner';
-  limitations=@('D3D9 legacy TL flat caps require runtime validation','WDDM1.2 mandatory engine-TDR/preemption/GDI contracts remain unqualified','NoDMA stop remains unqualified; do not auto-install');
+  limitations=@('Standard runtime negotiation and limited operation profile require runtime validation','WDDM1.2 mandatory engine-TDR/preemption/GDI contracts remain unqualified','NoDMA stop remains unqualified; do not auto-install');
   outputs=@('ge8300-render.inf','ge8300-render.sys','ge8300-umd.dll','ge8300-mips.fw','ge8300-render.cat','mt8167-development.cer')|ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}}
  }|ConvertTo-Json -Depth 12|Set-Content (Join-Path $out 'signed-manifest.json')
 } finally {$env:TEMP=$oldTemp;$env:TMP=$oldTmp}
