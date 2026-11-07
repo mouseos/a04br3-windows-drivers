@@ -31,7 +31,10 @@ VOID SdControl(WDFQUEUE queue,WDFREQUEST request,size_t outbytes,size_t inbytes,
       d->Version=sizeof(*d);d->Size=sizeof(bytes);d->RemovableMedia=TRUE;d->BusType=BusTypeSd;
       d->VendorIdOffset=sizeof(*d);d->ProductIdOffset=sizeof(*d)+12;d->ProductRevisionOffset=sizeof(*d)+36;
       RtlCopyMemory(bytes+d->VendorIdOffset,"MediaTek",8);RtlCopyMemory(bytes+d->ProductIdOffset,"MT8167 microSD Socket",20);RtlCopyMemory(bytes+d->ProductRevisionOffset,"0001",4);
-      KeWaitForSingleObject(&h->serial,Executive,KernelMode,FALSE,NULL);
+      LARGE_INTEGER no_wait;no_wait.QuadPart=0;
+      if(KeWaitForSingleObject(&h->serial,Executive,KernelMode,FALSE,&no_wait)!=STATUS_SUCCESS){
+       WdfRequestCompleteWithInformation(request,STATUS_DEVICE_BUSY,0);return;
+      }
       if(h->card.ready&&h->present==1&&h->card_generation==h->generation){
        static const char hex[]="0123456789ABCDEF";UCHAR *v=bytes+d->VendorIdOffset;RtlZeroMemory(v,12);v[0]='S';v[1]='D';v[2]=(UCHAR)hex[h->card.mid>>4];v[3]=(UCHAR)hex[h->card.mid&15];
        UCHAR *p=bytes+d->ProductIdOffset;RtlZeroMemory(p,24);for(unsigned i=0;i<5;i++)p[i]=h->card.product[i]>=32&&h->card.product[i]<=126?h->card.product[i]:'?';

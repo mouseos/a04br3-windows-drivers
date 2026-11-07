@@ -62,7 +62,7 @@ VOID SdTimer(WDFTIMER timer)
  if(InterlockedCompareExchange(&h->closing,0,0))return;
  NTSTATUS status=SdPowerHealth(h);
  if(!NT_SUCCESS(status)){
-  InterlockedExchange(&h->closing,1);InterlockedExchange(&h->blocked,1);
+  SdStopAdmission(h);InterlockedExchange(&h->blocked,1);
   set_presence(h,-1);WdfDeviceSetFailed(h->device,WdfDeviceFailedNoRestart);return;
  }
  status=SdAcpi(h,"SDCD",&present);set_presence(h,NT_SUCCESS(status)&&present<=1?(LONG)present:-1);
@@ -94,8 +94,9 @@ NTSTATUS SdPrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
 NTSTATUS SdRelease(WDFDEVICE device,WDFCMRESLIST resources)
 {
  struct sd_host *h=SdHost(device);UNREFERENCED_PARAMETER(resources);
- InterlockedExchange(&h->closing,1);WdfTimerStop(h->timer,TRUE);
- NTSTATUS status=SdPowerDisconnect(h);if(!NT_SUCCESS(status))return status;
+ SdStopAdmission(h);WdfTimerStop(h->timer,TRUE);
+ NTSTATUS status=SdConsumerStop(h);if(!NT_SUCCESS(status))return status;
+ status=SdPowerDisconnect(h);if(!NT_SUCCESS(status))return status;
  /* D0Exit has joined every accepted IRP/worker before resource release. */
  if(h->registers){MmUnmapIoSpace((PVOID)h->registers,0x1000);h->registers=NULL;}
  RtlSecureZeroMemory(&h->card,sizeof(h->card));return STATUS_SUCCESS;
@@ -121,7 +122,7 @@ static NTSTATUS d0_impl(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
  if(h->had_d0)ExReInitializeRundownProtection(&h->requests);h->had_d0=TRUE;
  InterlockedIncrement(&h->generation);InterlockedExchange(&h->present,(LONG)present);InterlockedExchange(&h->attention,1);
  InterlockedExchange(&h->absent_seen,present==0);if(present==0)InterlockedExchange(&h->blocked,0);
- InterlockedExchange(&h->closing,0);
+ status=SdConsumerStart(h);if(!NT_SUCCESS(status))return status;
  WdfTimerStart(h->timer,WDF_REL_TIMEOUT_IN_MS(100));return STATUS_SUCCESS;
 }
 NTSTATUS SdD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
@@ -132,9 +133,10 @@ NTSTATUS SdD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 NTSTATUS SdD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
 {
  struct sd_host *h=SdHost(device);UNREFERENCED_PARAMETER(target);
- InterlockedExchange(&h->closing,1);InterlockedIncrement(&h->generation);WdfTimerStop(h->timer,TRUE);WdfTimerStop(h->timer,TRUE);
- ExWaitForRundownProtectionRelease(&h->requests);
- KeWaitForSingleObject(&h->serial,Executive,KernelMode,FALSE,NULL);
+ SdStopAdmission(h);InterlockedIncrement(&h->generation);WdfTimerStop(h->timer,TRUE);
+ NTSTATUS joined=SdConsumerStop(h);if(!NT_SUCCESS(joined))return joined;
+ LARGE_INTEGER serial_wait;serial_wait.QuadPart=-10000000;
+ if(KeWaitForSingleObject(&h->serial,Executive,KernelMode,FALSE,&serial_wait)!=STATUS_SUCCESS)return STATUS_IO_TIMEOUT;
  /* Join CPU users, wait for card programming, then reset the private PIO
   * host before asking the supplier to restore only SD-owned resources. */
  h->active_irp=NULL;h->quiescing=TRUE;
@@ -155,37 +157,29 @@ NTSTATUS SdD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
 }
 VOID SdSurprise(WDFDEVICE device)
 {
- struct sd_host *h=SdHost(device);InterlockedExchange(&h->surprised,1);InterlockedExchange(&h->closing,1);InterlockedExchange(&h->present,0);InterlockedIncrement(&h->generation);
+ struct sd_host *h=SdHost(device);InterlockedExchange(&h->surprised,1);SdStopAdmission(h);InterlockedExchange(&h->present,0);InterlockedIncrement(&h->generation);
  /* No MMIO, reset, unmap or early IRP completion on surprise notification. */
 }
-static VOID work(PDEVICE_OBJECT device,PVOID context)
+VOID SdExecute(struct sd_work *w)
 {
- UNREFERENCED_PARAMETER(device);
- struct sd_work *w=context;struct sd_host *h=w->host;ULONG_PTR information=0;NTSTATUS status;
- KeWaitForSingleObject(&h->serial,Executive,KernelMode,FALSE,NULL);
+ struct sd_host *h=w->host;ULONG_PTR information=0;NTSTATUS status;LARGE_INTEGER timeout;
+ uint64_t now=KeQueryInterruptTime();
+ if(w->irp->Cancel){SdFinish(w,STATUS_CANCELLED,0);return;}
+ if(h->closing||w->generation!=h->generation){SdFinish(w,STATUS_DEVICE_NOT_CONNECTED,0);return;}
+ if(now>=w->deadline){SdFinish(w,STATUS_IO_TIMEOUT,0);return;}
+ timeout.QuadPart=-(LONGLONG)(w->deadline-now);
+ status=KeWaitForSingleObject(&h->serial,Executive,KernelMode,FALSE,&timeout);
+ if(status!=STATUS_SUCCESS){SdFinish(w,STATUS_IO_TIMEOUT,0);return;}
  if(h->closing||w->generation!=h->generation)status=STATUS_DEVICE_NOT_CONNECTED;
  else if(w->irp->Cancel)status=STATUS_CANCELLED;
  else if(KeQueryInterruptTime()>=w->deadline)status=STATUS_IO_TIMEOUT;
  else if(!NT_SUCCESS(status=SdPowerHealth(h)))InterlockedExchange(&h->blocked,1);
  else {h->run_generation=w->generation;h->active_irp=w->irp;status=SdProcess(w,&information);
-  if(h->card.poisoned&&(w->generation==h->generation||h->closing))InterlockedExchange(&h->blocked,1);h->active_irp=NULL;}
- KeReleaseMutex(&h->serial,FALSE);
- if(!NT_SUCCESS(status)){
-  PIO_STACK_LOCATION stack=IoGetCurrentIrpStackLocation(w->irp);
-  if(stack->MajorFunction==IRP_MJ_SCSI&&stack->Parameters.Scsi.Srb&&stack->Parameters.Scsi.Srb->Length>=sizeof(SCSI_REQUEST_BLOCK)){
-   PSCSI_REQUEST_BLOCK srb=stack->Parameters.Scsi.Srb;srb->DataTransferLength=0;
-   if(srb->SrbStatus==SRB_STATUS_PENDING||srb->SrbStatus==SRB_STATUS_SUCCESS)srb->SrbStatus=status==STATUS_CANCELLED?SRB_STATUS_ABORTED:status==STATUS_IO_TIMEOUT?SRB_STATUS_TIMEOUT:SRB_STATUS_NO_DEVICE;
-  }
+  if(h->card.poisoned&&(w->generation==h->generation||h->closing))InterlockedExchange(&h->blocked,1);h->active_irp=NULL;
+  if(w->irp->Cancel){status=STATUS_CANCELLED;information=0;}
  }
- /* We alone complete this IRP. Cancel/stop cannot detach an SRB while the CPU
-  * still accesses its MDL or the caller's sense/data buffers. */
- w->irp->IoStatus.Status=status;w->irp->IoStatus.Information=information;
- /* CPU/MDL/MMIO access is finished. Release hardware rundown before invoking
-  * an upper completion which may itself request a power transition. Object
-  * references and IoWorkItem still pin our context/module until return. */
- ExReleaseRundownProtection(&h->requests);IoCompleteRequest(w->irp,IO_DISK_INCREMENT);
- InterlockedDecrement(&h->inflight);
- IoFreeWorkItem(w->item);WdfObjectDereference(w->child);WdfObjectDereference(h->device);ExFreePoolWithTag(w,SD_TAG);
+ KeReleaseMutex(&h->serial,FALSE);
+ SdFinish(w,status,information);
 }
 /* Standard classpnp management without card/MMIO effects. PDO identity is
  * borrowed from the live PnP stack; no fabricated card identifier is returned. */
@@ -224,25 +218,7 @@ NTSTATUS SdScsi(WDFDEVICE child,PIRP irp)
 {
  struct sd_host *h=SdChild(child)->host;NTSTATUS status=STATUS_DEVICE_NOT_READY;
  if(management(child,irp,&status)){irp->IoStatus.Status=status;irp->IoStatus.Information=0;IoCompleteRequest(irp,IO_NO_INCREMENT);return status;}
- if(!h->closing&&ExAcquireRundownProtection(&h->requests)){
-  if(InterlockedIncrement(&h->inflight)<=8){
-   struct sd_work *w=ExAllocatePoolWithTag(NonPagedPool,sizeof(*w),SD_TAG);
-   if(w)w->item=IoAllocateWorkItem(WdfDeviceWdmGetDeviceObject(h->device));
-   if(w&&w->item){w->host=h;w->child=child;w->irp=irp;w->generation=InterlockedCompareExchange(&h->generation,0,0);
-    ULONG seconds=5;PIO_STACK_LOCATION stack=IoGetCurrentIrpStackLocation(irp);
-    if(stack->MajorFunction==IRP_MJ_SCSI&&stack->Parameters.Scsi.Srb&&stack->Parameters.Scsi.Srb->Length>=sizeof(SCSI_REQUEST_BLOCK)&&stack->Parameters.Scsi.Srb->TimeOutValue)seconds=stack->Parameters.Scsi.Srb->TimeOutValue;
-    if(seconds>10)seconds=10;w->deadline=KeQueryInterruptTime()+(uint64_t)seconds*10000000u;
-    WdfObjectReference(child);WdfObjectReference(h->device);IoMarkIrpPending(irp);IoQueueWorkItem(w->item,work,DelayedWorkQueue,w);return STATUS_PENDING;}
-   if(w)ExFreePoolWithTag(w,SD_TAG);status=STATUS_INSUFFICIENT_RESOURCES;
-  }else status=STATUS_DEVICE_BUSY;
-  InterlockedDecrement(&h->inflight);ExReleaseRundownProtection(&h->requests);
- }
- PIO_STACK_LOCATION stack=IoGetCurrentIrpStackLocation(irp);
- if(stack->MajorFunction==IRP_MJ_SCSI&&stack->Parameters.Scsi.Srb&&stack->Parameters.Scsi.Srb->Length>=sizeof(SCSI_REQUEST_BLOCK)){
-  PSCSI_REQUEST_BLOCK s=stack->Parameters.Scsi.Srb;s->DataTransferLength=0;if(s->Function!=SRB_FUNCTION_POWER)s->ScsiStatus=0;
-  s->SrbStatus=status==STATUS_DEVICE_BUSY||status==STATUS_INSUFFICIENT_RESOURCES?SRB_STATUS_BUSY:SRB_STATUS_NO_DEVICE;
- }
- irp->IoStatus.Status=status;irp->IoStatus.Information=0;IoCompleteRequest(irp,IO_NO_INCREMENT);return status;
+ return SdSubmit(child,irp);
 }
 NTSTATUS SdCreateChild(struct sd_host *h,ULONG *stage)
 {
@@ -275,11 +251,12 @@ static NTSTATUS add_impl(WDFDRIVER driver,PWDFDEVICE_INIT init,ULONG *stage)
  *stage=1;status=WdfDeviceInitAssignWdmIrpPreprocessCallback(init,SdPowerPnp,IRP_MJ_PNP,pnpMinor,sizeof(pnpMinor));if(!NT_SUCCESS(status))return status;
  WdfDeviceInitSetDeviceType(init,FILE_DEVICE_CONTROLLER);WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
  pnp.EvtDevicePrepareHardware=SdPrepare;pnp.EvtDeviceReleaseHardware=SdRelease;pnp.EvtDeviceD0Entry=SdD0Entry;pnp.EvtDeviceD0Exit=SdD0Exit;pnp.EvtDeviceSurpriseRemoval=SdSurprise;
- WdfDeviceInitSetPnpPowerEventCallbacks(init,&pnp);WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attributes,SD_HOST);attributes.ExecutionLevel=WdfExecutionLevelPassive;attributes.SynchronizationScope=WdfSynchronizationScopeNone;
+ WdfDeviceInitSetPnpPowerEventCallbacks(init,&pnp);WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attributes,SD_HOST);attributes.ExecutionLevel=WdfExecutionLevelPassive;attributes.SynchronizationScope=WdfSynchronizationScopeNone;attributes.EvtDestroyCallback=SdConsumerDestroy;
  *stage=2;status=WdfDeviceCreate(&init,&attributes,&device);if(!NT_SUCCESS(status))return status;
  PNP_BUS_INFORMATION bus;RtlZeroMemory(&bus,sizeof(bus));bus.BusTypeGuid=GUID_BUS_TYPE_SD;bus.LegacyBusType=PNPBus;bus.BusNumber=1;
  WdfDeviceSetBusInformationForChildren(device,&bus);
  struct sd_host *h=SdHost(device);h->device=device;h->closing=1;h->child_online=1;h->card_generation=-1;ExInitializeFastMutex(&h->power_relations_lock);ExInitializeRundownProtection(&h->requests);KeInitializeMutex(&h->serial,0);
+ *stage=4;status=SdConsumerInitialize(h);if(!NT_SUCCESS(status))return status;
  WDF_TIMER_CONFIG timer;WDF_TIMER_CONFIG_INIT(&timer,SdTimer);timer.AutomaticSerialization=FALSE;WDF_OBJECT_ATTRIBUTES_INIT(&attributes);attributes.ParentObject=device;attributes.ExecutionLevel=WdfExecutionLevelPassive;
  *stage=3;status=WdfTimerCreate(&timer,&attributes,&h->timer);if(!NT_SUCCESS(status))return status;
  return SdCreateChild(h,stage);

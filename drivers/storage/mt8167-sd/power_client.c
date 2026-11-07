@@ -3,7 +3,7 @@
 static void lost(WDFIOTARGET target)
 {
  struct sd_host*h=SdHost(WdfIoTargetGetDevice(target));
- InterlockedExchange(&h->closing,1);InterlockedExchange(&h->blocked,1);
+ SdStopAdmission(h);InterlockedExchange(&h->blocked,1);
  InterlockedExchange(&h->present,-1);InterlockedIncrement(&h->generation);
  WdfDeviceSetFailed(h->device,WdfDeviceFailedNoRestart);
 }

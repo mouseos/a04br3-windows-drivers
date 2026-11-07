@@ -8,10 +8,14 @@
 #include <ntddstor.h>
 #include "sd.h"
 #include "power_interface.h"
+#define SD_QUEUE_LIMIT 8
 #define SD_TAG 's61M'
 struct sd_host {
  WDFDEVICE device,child;WDFTIMER timer;volatile ULONG *registers;
  EX_RUNDOWN_REF requests;KMUTEX serial;
+ IO_CSQ csq;KSPIN_LOCK queue_lock;LIST_ENTRY pending,completions;
+ KEVENT consumer_wake,hardware_idle;HANDLE consumer_thread;PIO_WORKITEM completion_item;
+ LONG hardware_users;BOOLEAN consumer_online,consumer_stop,completion_scheduled;
  volatile LONG closing,present,generation,attention,ejected,inflight,surprised,blocked,absent_seen,claimed,child_online;
  FAST_MUTEX power_relations_lock;WDFIOTARGET power_target;PDEVICE_OBJECT supplier;struct a04_sd_power_interface power;ULONG power_token;BOOLEAN power_valid;
  BOOLEAN had_d0,quiescing;LONG card_generation,run_generation;
@@ -22,7 +26,15 @@ WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(SD_HOST,SdHost)
 struct sd_child {struct sd_host *host;};
 typedef struct sd_child SD_CHILD;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(SD_CHILD,SdChild)
-struct sd_work {PIO_WORKITEM item;struct sd_host *host;WDFDEVICE child;PIRP irp;LONG generation;uint64_t deadline;};
+struct sd_work {LIST_ENTRY link;PVOID saved_context;volatile LONG refs,finished;struct sd_host *host;WDFDEVICE child;PIRP irp;LONG generation;uint64_t deadline;};
+NTSTATUS SdConsumerInitialize(struct sd_host *);
+NTSTATUS SdConsumerStart(struct sd_host *);
+void SdStopAdmission(struct sd_host *);
+NTSTATUS SdConsumerStop(struct sd_host *);
+NTSTATUS SdSubmit(WDFDEVICE,PIRP);
+void SdExecute(struct sd_work *);
+void SdFinish(struct sd_work *,NTSTATUS,ULONG_PTR);
+EVT_WDF_OBJECT_CONTEXT_DESTROY SdConsumerDestroy;
 NTSTATUS SdPowerConnect(struct sd_host*);
 NTSTATUS SdPowerDisconnect(struct sd_host*);
 NTSTATUS SdPowerHealth(struct sd_host*);
