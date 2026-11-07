@@ -45,7 +45,7 @@ try {
  Copy-Item "$root\drivers\bluetooth\mt6630\hfp-interfaces.inf.inc" $out -Force
  Copy-Item "$root\drivers\bluetooth\mt6630\PROVIDER-EVIDENCE.md" $out -Force
  @{source_commit=$commit;source_dirty=$false;sources=$sources;target='Windows RT 8.1 ARM32';
-   library='mt6630-hfp-endpoint-core.lib';provider_contract_version=2;
+   library='mt6630-hfp-endpoint-core.lib';provider_contract_version=2;codec_profile='WinBlue narrowband CVSD; no Windows10 GET_CODEC_ID request';
    kernel_codegen_flags=$kernelCodegenFlags;kernel_compile_flags=$common;
    final_link_dependencies=@('ntoskrnl.lib','hal.lib','portcls.lib','libcntpr.lib','bufferoverflowfastfailk.lib');
    hfp_oneshot_slc_requests=$true;hfp_request_acceptance_is_connection_success=$false;bt_private_normal_final_release_deferred=$true;no_effects_acquire_refusal_retryable=$true;mono_all_channel_volume=$true;wdk_compile_archive_succeeded=$true;

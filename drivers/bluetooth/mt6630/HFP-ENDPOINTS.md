@@ -254,3 +254,18 @@ HFP coreは別archiveであり、このraw SYSへendpointを二重linkしない�
 HCIBypass None/0は維持。raw候補を標準stack/HFP動作候補とは呼ばない。
 
 Raman/main向けの残依存と固定build手順は [HFP-INTEGRATION-HANDOFF.md](HFP-INTEGRATION-HANDOFF.md)。
+
+
+### 実WDK8.1で確認したcodec DDIの訂正
+
+旧checkpointは新しいheaderのWinBlue guardを根拠に `GET_CODEC_ID` を必須化していたが、
+実WDK8.1には型/IOCTLがない。Microsoft公式の対応開始もWindows 10。
+その要求をWin8.1 sourceから除去し、本機Windows RT8.1の狭帯域CVSD profile
+（provider引数0/8000/1/16）へ直接接続した。0は要求profileであり、受信codec応答ではない。
+実FC72/PCM/clock照合はproviderの必須条件として残し、未知設定で成功させない。
+WBS/mSBCを広告しない。これより上の旧記述にある「codec ID query必須」は撤回する。
+
+- [GET_CODEC_IDの公式対応OS・入出力](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/bthhfpddi/ni-bthhfpddi-ioctl_bthhfp_device_get_codec_id)
+- [ONESHOT_RECONNECTの受付と実接続の区別](https://learn.microsoft.com/en-us/windows-hardware/drivers/audio/ksproperty-oneshot-reconnect)
+- [REQUEST_CONNECTの固定入出力・Windows 8対応](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/bthhfpddi/ni-bthhfpddi-ioctl_bthhfp_device_request_connect)
+- [Sysvad: WBS非対応stackでCVSDを用いる経路](https://github.com/microsoft/Windows-driver-samples/blob/main/audio/sysvad/BthhfpDevice.cpp)

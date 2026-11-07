@@ -364,7 +364,7 @@ NTSTATUS a04_bt_hfp_pin_claim(struct a04_bt_hfp_session *s,ULONG d)
 void a04_bt_hfp_pin_release(struct a04_bt_hfp_session *s,ULONG d){if(s&&d<2)InterlockedExchange(&s->claims[d],0);}
 NTSTATUS a04_bt_hfp_run(struct a04_bt_hfp_session *s,ULONG d)
 {
- NTSTATUS status;BOOL connected=TRUE;UCHAR codec=0xff;
+ NTSTATUS status;BOOL connected=TRUE;
  if(!s||d>1||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  lock(s);status=a04_bt_hfp_status(s);
  if(!NT_SUCCESS(status)||s->detached||!s->claims[d]){if(NT_SUCCESS(status))status=STATUS_DEVICE_NOT_READY;goto done;}
@@ -377,10 +377,13 @@ NTSTATUS a04_bt_hfp_run(struct a04_bt_hfp_session *s,ULONG d)
  if(!NT_SUCCESS(status))goto done;if(!connected){status=STATUS_DEVICE_NOT_CONNECTED;goto done;}
  status=request(s,IOCTL_BTHHFP_STREAM_OPEN,0,0,0,NULL);
  if(!NT_SUCCESS(status))goto done;s->link_open=TRUE;
- /* WinBlue codec 0 is CVSD (Sysvad); this is not the wire HFP codec enum. */
- status=request(s,IOCTL_BTHHFP_DEVICE_GET_CODEC_ID,sizeof(HFP_BYPASS_CODEC_ID_VERSION),sizeof(HFP_BYPASS_CODEC_ID_V1),REQ_HFP_BYPASS_CODEC_ID_V1,&codec);
- if(!NT_SUCCESS(status))goto cleanup;if(codec!=0){status=STATUS_NOT_SUPPORTED;goto cleanup;}
- status=s->provider.validate_pcm(s->provider.context,codec,8000,1,16);if(!NT_SUCCESS(status))goto cleanup;
+ /* Windows RT 8.1 profile is narrowband CVSD only. GET_CODEC_ID is a
+  * Windows 10 DDI, absent from the real WDK8.1; do not invent its definition
+  * or send an unsupported query then fabricate a negotiated reply. Sysvad
+  * uses CVSD=0 for the narrowband profile. The provider must STILL validate
+  * real FC72/controller PCM/clock ownership against 8k/mono/S16. This value
+  * identifies the requested profile, not a received controller codec ACK. */
+ status=s->provider.validate_pcm(s->provider.context,0,8000,1,16);if(!NT_SUCCESS(status))goto cleanup;
  status=start_watch(s);if(!NT_SUCCESS(status))goto cleanup;
  if(s->sideband.state==A04_BT_SB_CLOSED)RtlZeroMemory(&s->sideband,sizeof(s->sideband));
  {

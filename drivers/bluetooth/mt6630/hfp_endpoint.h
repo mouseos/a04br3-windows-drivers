@@ -25,7 +25,9 @@ struct a04_bt_hfp_provider {
  NTSTATUS (*match_hfp_target)(PVOID,PDEVICE_OBJECT);
  struct a04_bt_sideband_ops sideband;
  /* Verify actual GORM/FC72 + controller PCM/master-clock configuration and
-  * paired combo ownership for the actual WinBlue codec ID (CVSD=0), 8k/1/16.
+  * paired combo ownership for this WinBlue narrowband profile (CVSD=0), 8k/1/16.
+  * codec_id identifies the requested profile, not a GET_CODEC_ID response;
+  * GET_CODEC_ID is Windows 10+, not a WDK8.1 DDI.
   * A caller flag, a version reply or record checksum alone is not this proof. */
  NTSTATUS (*validate_pcm)(PVOID,UCHAR codec_id,ULONG rate,ULONG channels,ULONG bits);
  /* Exact client/DMA common buffer, no separate tone/mock shadow mapping.
