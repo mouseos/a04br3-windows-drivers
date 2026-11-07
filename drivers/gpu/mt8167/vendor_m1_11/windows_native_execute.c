@@ -59,6 +59,7 @@ NTSTATUS a04_vendor_native_publish_candidate(struct a04_vendor_native_cold *n,
     out->completed_frames=c->completed_frames;
     /* The external caller must hold the existing provider lifetime lock. */
     if(InterlockedCompareExchange(&s->command_busy,1,0))return STATUS_DEVICE_BUSY;
+    RtlZeroMemory(&c->scan,sizeof(c->scan));
     status=STATUS_INVALID_DEVICE_STATE;
     if(r->poisoned || r->cleanup_started || n->quarantined || c->attempted ||
        s->command_poisoned || s->shutdown_started)goto done;
@@ -121,16 +122,47 @@ NTSTATUS a04_vendor_native_publish_candidate(struct a04_vendor_native_cold *n,
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
     if(n->registered_target){status=a04_native_mdl_sync_for_cpu(n->registered_target);if(!NT_SUCCESS(status))goto poison;}
 #endif
+    c->scan.started=1;c->scan.frame_index=c->completed_frames;
     for(i=0;i<a04_vendor_native_output_bytes(n)/4u;i+=64u){
         if(a04_vendor_native_storage_read(n,1,i*4u,pixels,sizeof(pixels)))goto poison;
-        for(j=0;j<64u;j++)if(i+j<480000u){
+        for(j=0;j<64u;j++){
+            uint32_t index=i+j,expected=0xa5a5a5a5u;
+            c->scan.scanned_words++;
+            if(index<480000u){
+                uint32_t colored;
 #if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
-            uint32_t expected=a04_m111_triangle_expected_pixel(c->completed_frames,i+j);
+                expected=a04_m111_triangle_expected_pixel(c->completed_frames,index);
+                colored=c->completed_frames?0xffcc9933u:0xff6633ccu;
 #else
-            uint32_t expected=0xff332211u;
+                expected=colored=0xff332211u;
 #endif
-            if(pixels[j]==expected)out->matching_pixels++;else out->mismatched_pixels++;
-        }else if(pixels[j]!=0xa5a5a5a5u)out->guard_errors++;
+                c->scan.scanned_pixels++;
+                if(pixels[j]==colored)c->scan.colored_pixels++;
+                else if(pixels[j]==0xff000000u)c->scan.black_pixels++;
+                else c->scan.other_pixels++;
+                if(pixels[j]==expected)out->matching_pixels++;else out->mismatched_pixels++;
+                /* Fixed five positions. No additional memory read or output
+                 * in the scan loop, including on a successful frame. */
+                unsigned sample=5;
+                switch(index){
+                case 0:sample=0;break;
+                case 799:sample=1;break;
+                case 479200:sample=2;break;
+                case 479999:sample=3;break;
+                case 240400:sample=4;break; /* x400,y300 */
+                default:break;
+                }
+                if(sample<5){
+                    c->scan.sample[sample]=(struct a04_vendor_native_scan_sample){index,expected,pixels[j]};
+                    c->scan.sample_mask|=1u<<sample;
+                }
+            }else if(pixels[j]!=expected)out->guard_errors++;
+            if(!c->scan.first_valid && pixels[j]!=expected){
+                c->scan.first_valid=1;c->scan.first_index=index;
+                c->scan.first_expected=expected;c->scan.first_observed=pixels[j];
+                c->scan.first_is_guard=index>=480000u;
+            }
+        }
     }
     if(out->mismatched_pixels || out->guard_errors || out->matching_pixels!=480000u)goto poison;
     c->verified=TRUE;c->completed_frames++;out->completed_frames=c->completed_frames;out->phase=4;status=STATUS_SUCCESS;goto done;
@@ -138,7 +170,16 @@ poison:
     if(NT_SUCCESS(status) || status==STATUS_INVALID_DEVICE_STATE)status=STATUS_IO_DEVICE_ERROR;
     r->poisoned=TRUE;s->command_poisoned=TRUE;n->quarantined=TRUE;
 done:
+    if(c->scan.started && !NT_SUCCESS(status))c->scan.failed=1;
     InterlockedExchange(&s->command_busy,0);return status;
+}
+
+BOOLEAN a04_vendor_native_failed_scan(const struct a04_vendor_native_cold *n,
+    struct a04_vendor_native_scan_diagnostic *out)
+{
+    if(!n || !out || !n->candidate || !n->candidate->scan.started ||
+       !n->candidate->scan.failed)return FALSE;
+    *out=n->candidate->scan;return TRUE;
 }
 
 NTSTATUS a04_vendor_native_run_once(struct a04_vendor_native_cold *n,

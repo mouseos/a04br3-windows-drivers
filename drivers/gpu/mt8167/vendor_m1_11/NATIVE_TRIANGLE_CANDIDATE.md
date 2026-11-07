@@ -80,3 +80,23 @@ invalid inputでout不変、source shader metadata/IR/再現性、2frame lifetim
 poison/guardモデル、baseline1/16frameとMDL target回帰に合格。
 5 producer TUはlocal ARM32 COFF compileに合格。これらはGPU実行ではない。
 Windows triangle/texture、一般D3D/WDDM owner、実IRQ visibility/quiesceは未検証/未完成。
+
+
+## 失敗時のbounded scan診断
+
+GPU readbackは従来の全画素/guard scanだけ。追加GPU job・DMA read・mapperはない。
+public DOD/copy interface、既存native resultの5word layoutは変更しない。
+別のsource-linked private accessorで現在失敗frameのscan結果だけをUARTへ渡す。
+
+失敗時のみ最大7行：SCAN(FRAME0=solid/1=texture、PIXELS、WORDS、
+COLORED/BLACK/OTHER)、FIRST_MISMATCH(VALID、INDEX、EXPECTED、OBSERVED、
+GUARD)、有効なSAMPLE最大5行。slot0..4は(0,0),(799,0),(0,599),(799,599),
+(400,300)。indexはrow-major DWORD index、値はlittle-endian packedRGBA。
+COLOREDは現在frameの正しいforeground値そのもの、BLACKはff000000、
+OTHERはそれ以外。counts合計は読み終えたactive pixel数でありguardは含めない。
+guardの最初の不一致もFIRST_MISMATCHへ記録し、GUARD=1で区別する。
+
+read途中失敗ではPIXELS/WORDSとsample maskの実取得分だけを報告する。
+未取得sampleをzeroとしない。まだ画素不一致を観測していなければVALID=0。
+scan前の失敗、成功時、次jobへのrearm前失敗で前frameのsampleを再利用しない。
+既存status/phase/guard/poisonと合わせて判定する。DriverVer2.5は未deployのため維持。

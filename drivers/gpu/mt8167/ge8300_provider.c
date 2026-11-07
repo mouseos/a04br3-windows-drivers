@@ -1117,6 +1117,31 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             GpuPrint(" GUARD=");GpuHex(native_result.guard_errors);
             GpuPrint(" COMPLETED_FRAMES=");GpuHex(native_result.completed_frames);GpuPrint("\n");
             if(!NT_SUCCESS(native_status)) {
+                struct a04_vendor_native_scan_diagnostic scan;
+                if(a04_vendor_native_failed_scan(c->vendor_native,&scan)){
+                    GpuPrint("A04GPU NATIVE SCAN FRAME=");GpuHex(scan.frame_index);
+                    GpuPrint(" PIXELS=");GpuHex(scan.scanned_pixels);
+                    GpuPrint(" WORDS=");GpuHex(scan.scanned_words);
+                    GpuPrint(" COLORED=");GpuHex(scan.colored_pixels);
+                    GpuPrint(" BLACK=");GpuHex(scan.black_pixels);
+                    GpuPrint(" OTHER=");GpuHex(scan.other_pixels);GpuPrint("\n");
+                    GpuPrint("A04GPU NATIVE FIRST_MISMATCH VALID=");GpuHex(scan.first_valid);
+                    if(scan.first_valid){
+                        GpuPrint(" INDEX=");GpuHex(scan.first_index);
+                        GpuPrint(" EXPECTED=");GpuHex(scan.first_expected);
+                        GpuPrint(" OBSERVED=");GpuHex(scan.first_observed);
+                        GpuPrint(" GUARD=");GpuHex(scan.first_is_guard);
+                    }
+                    GpuPrint("\n");
+                    /* At most five sample lines; an unset bit is unread,
+                     * never an observed zero. No GPU reread on failure. */
+                    for(unsigned sample=0;sample<5;sample++)if(scan.sample_mask&(1u<<sample)){
+                        GpuPrint("A04GPU NATIVE SAMPLE SLOT=");GpuHex(sample);
+                        GpuPrint(" INDEX=");GpuHex(scan.sample[sample].index);
+                        GpuPrint(" EXPECTED=");GpuHex(scan.sample[sample].expected);
+                        GpuPrint(" OBSERVED=");GpuHex(scan.sample[sample].observed);GpuPrint("\n");
+                    }
+                }
                 c->status.health_status=native_status;c->vendor_service_online=FALSE;
                 InterlockedExchange(&c->vendor_service_closed,1);
                 GpuPrint("A04GPU NATIVE CLEAR POISON DMA_RETAINED CPU_ADMISSION_FALLBACK\n");

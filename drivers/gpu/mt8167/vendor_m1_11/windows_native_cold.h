@@ -38,6 +38,20 @@ ULONG a04_vendor_native_bytes(const struct a04_vendor_native_cold *);
 BOOLEAN a04_vendor_native_job_staged(const struct a04_vendor_native_cold *);
 struct a04_vendor_start;
 struct a04_vendor_native_result {uint32_t phase,matching_pixels,mismatched_pixels,guard_errors,completed_frames;};
+/* Source-linked private activation diagnostic only. Existing result, DOD/copy
+ * interface and WDDM owner ABI are unchanged. Values come from the existing
+ * completed-DMA scan; valid bits distinguish unread/partial data. */
+struct a04_vendor_native_scan_sample {uint32_t index,expected,observed;};
+struct a04_vendor_native_scan_diagnostic {
+    uint32_t started,failed,frame_index,scanned_pixels,scanned_words;
+    uint32_t colored_pixels,black_pixels,other_pixels;
+    uint32_t first_valid,first_index,first_expected,first_observed,first_is_guard;
+    uint32_t sample_mask;
+    struct a04_vendor_native_scan_sample sample[5]; /* TL/TR/BL/BR/centre */
+};
+BOOLEAN a04_vendor_native_failed_scan(const struct a04_vendor_native_cold *,
+    struct a04_vendor_native_scan_diagnostic *);
+
 /* Activation-only first private clear. Caller holds the provider lifetime
  * and pinned copy owner, with no display lease and GP fence already passed. */
 NTSTATUS a04_vendor_native_run_once(struct a04_vendor_native_cold *,

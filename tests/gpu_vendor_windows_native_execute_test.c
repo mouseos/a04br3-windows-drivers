@@ -36,11 +36,15 @@ void KeStallExecutionProcessor(unsigned us)
 #else
                 uint32_t value=mode==2?0xff332210u:0xff332211u;
 #endif
+                if(mode==7 && i==240400)value=0x12345678u;
                 *(uint32_t *)a04_vendor_native_storage_pointer(child_owner,1,i*4u,4u)=value;
+                if(mode==6 && i==479999)
+                    *(uint32_t *)a04_vendor_native_storage_pointer(child_owner,1,480000u*4u,4u)=0xffffffffu;
             }
         }else if(cmd->eCmdType==RGXFWIF_KCCB_CMD_SLCFLUSHINVAL){assert(commands%4==3);}
         else {assert(cmd->eCmdType==RGXFWIF_KCCB_CMD_SYNC && commands%4==0);
             *(uint32_t *)runtime.command_sync=cmd->uCmdData.sSyncData.uiUpdateVal;
+            if(mode==8 && commands==4)child_owner->pixel_blocks=1; /* next storage block unreadable */
             if(mode==5 && commands==4){
                 RGXFWIF_CLEANUP_CTL *bad=(void *)((UCHAR *)active->r.buffer[0].cpu+child_owner->addresses.ta_cleanup[0]-0xc0080000u);
                 bad->ui32ExecutedCommands=0;
@@ -64,7 +68,17 @@ static void run(unsigned fault,unsigned frames)
     x.fw.runtime=&runtime;x.fw.hardware_owned=TRUE;start.memory=&x.fw;start.core=core;start.online=TRUE;
     active=&x;child_owner=n;mode=fault;commands=0;
     status=a04_vendor_native_run_clear_frames(n,&start,frames,&result);
+    struct a04_vendor_native_scan_diagnostic scan;
+    assert(sizeof(struct a04_vendor_native_result)==5u*sizeof(uint32_t)); /* existing ABI */
     if(!fault){
+        assert(!a04_vendor_native_failed_scan(n,&scan));
+        assert(n->candidate->scan.scanned_pixels==480000 &&
+               n->candidate->scan.colored_pixels+n->candidate->scan.black_pixels+n->candidate->scan.other_pixels==480000);
+#if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
+        assert(n->candidate->scan.colored_pixels==240000 && n->candidate->scan.black_pixels==240000 && !n->candidate->scan.other_pixels);
+#else
+        assert(n->candidate->scan.colored_pixels==480000 && !n->candidate->scan.black_pixels && !n->candidate->scan.other_pixels);
+#endif
         assert(status==STATUS_SUCCESS && result.phase==4 && result.matching_pixels==480000);
         assert(!result.mismatched_pixels && !result.guard_errors && commands%4==0 && n->candidate->verified);
         assert(!start.command_busy && !start.command_poisoned && !n->quarantined);
@@ -73,7 +87,32 @@ static void run(unsigned fault,unsigned frames)
         x.fw.hardware_owned=FALSE;assert(a04_vendor_native_release_cold(&n)==STATUS_SUCCESS && !n);finish(&x);
     }else{
         assert(!NT_SUCCESS(status) && start.command_poisoned && x.r.poisoned && n->quarantined);
-        if(fault>=4)assert(result.completed_frames==1);
+        if(fault==4 || fault==5)assert(result.completed_frames==1);
+        if(fault==2 || fault==6 || fault==7 || fault==8){
+            assert(a04_vendor_native_failed_scan(n,&scan) && scan.started && scan.failed && scan.frame_index==0);
+            assert(scan.colored_pixels+scan.black_pixels+scan.other_pixels==scan.scanned_pixels);
+            if(fault==8){
+                assert(scan.scanned_pixels==16384 && scan.scanned_words==16384);
+                assert(scan.sample_mask==3 && !scan.first_valid); /* unread is unknown */
+            }else{
+                assert(scan.scanned_pixels==480000 && scan.sample_mask==31 && scan.first_valid);
+                const uint32_t indices[5]={0,799,479200,479999,240400};
+                for(unsigned si=0;si<5;si++)assert(scan.sample[si].index==indices[si]);
+                if(fault==2){
+                    assert(scan.first_index==0 && !scan.first_is_guard &&
+                           scan.first_observed==(scan.first_expected^1u));
+                    assert(scan.other_pixels==480000);
+                }else if(fault==6){
+                    assert(scan.first_index==480000 && scan.first_is_guard &&
+                           scan.first_expected==0xa5a5a5a5u && scan.first_observed==0xffffffffu);
+                    assert(result.guard_errors==1 && !result.mismatched_pixels);
+                }else{
+                    assert(scan.first_index==240400 && !scan.first_is_guard &&
+                           scan.first_observed==0x12345678u && scan.other_pixels==1);
+                    assert(scan.sample[4].observed==0x12345678u && result.mismatched_pixels==1);
+                }
+            }
+        }else assert(!a04_vendor_native_failed_scan(n,&scan)); /* no stale prior scan */
         assert(a04_vendor_native_release_cold(&n)==STATUS_DEVICE_BUSY && !frees && !start.command_busy);
         _exit(0); /* Deliberately retained DMA in this isolated test process. */
     }
@@ -86,7 +125,7 @@ int main(void)
 #else
     run(0,1);run(0,16);
 #endif
-    for(fault=1;fault<=5;fault++){
+    for(fault=1;fault<=8;fault++){
         pid_t p=fork();int status;assert(p>=0);if(!p)run(fault,
 #if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
         2

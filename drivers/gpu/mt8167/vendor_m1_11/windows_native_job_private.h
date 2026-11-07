@@ -13,6 +13,7 @@
 struct a04_vendor_native_candidate {
     BOOLEAN attempted,verified,published;
     uint32_t completed_frames,start[2];
+    struct a04_vendor_native_scan_diagnostic scan;
     struct a04_m111_clear_job job;
 #if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
     struct a04_m111_triangle_suite triangle;
