@@ -36,13 +36,15 @@ def main():
  json.loads(patch.read_text(encoding='utf-8-sig'))
  gpu_files={};gpu_record=None;native_record=None
  if a.gpu_installer_package:
+  checkout=here.parents[1]
+  if subprocess.check_output(['git','-C',str(checkout),'rev-parse','HEAD'],text=True).strip()!=a.source_commit or subprocess.check_output(['git','-C',str(checkout),'status','--porcelain'],text=True).strip():raise ValueError('GPU媒体はcleanな固定source checkoutから生成してください')
   from private_hardware_probe_input import prepared_system_check,private_path
   from gpu_media_input import gpu_input
   private_path(out,root)
   native_record=prepared_system_check(system,patch,sha(system),root,b,'MT8167DeviceInstall')
   gpu_files,gpu_record=gpu_input(a.gpu_installer_package,root)
  out.mkdir(mode=0o700);stage=out/'stage';stage.mkdir(mode=0o700)
- token=hashlib.sha256((sha(system)+sha(patch)+sha(backup)+sha(here/'run-private-system-apply.cmd.in')+json.dumps(gpu_record,sort_keys=True)).encode()).hexdigest()[:16].upper()
+ token=hashlib.sha256((sha(system)+sha(patch)+sha(backup)+sha(here/'run-private-system-apply.cmd.in')+sha(Path(__file__).resolve())+json.dumps(gpu_record,sort_keys=True)).encode()).hexdigest()[:16].upper()
  cmd=(here/'run-private-system-apply.cmd.in').read_text().replace('@TOKEN@',token).replace('@JOURNAL@',token.lower()).replace('@HOST_BACKUP_SHA@',sha(backup)).replace('@SYSTEM_SHA@',sha(system))
  extra_pairs=[]
  if gpu_files:
