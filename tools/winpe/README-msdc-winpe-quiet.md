@@ -29,3 +29,13 @@ powershell -NoProfile -File tools\ci\build-msdc-winpe-quiet.ps1 `
 - DMA error/init/checkpointを残す。今回のpoll抑制は新しい準備packageだけに限定する。完了bit、W1C、timeout、cache/MDL、guard範囲、worker、キュー、リトライ、DMA停止処理は変更しない。
 
 UARTの混線・出力量は実観測。出力を除去することによる速度改善量は未測定で、DMAそのものの待機原因を解消したとも扱わない。DMA成功/失敗の未観測値を補完しない。
+
+## private base生成
+
+`build-msdc-winpe-quiet-base.py`はoriginal baseのWIM/ESP SHA256、91ee3ce6署名package manifest、WDK8.1の署名/CAT所属receiptとその生成recipe hashを固定検査する。新しい出力directory以外へ書かない。alias INF/SYS/CAT/observer/公開certのflat5fileと、Root/TrustedPublisherへ同じ公開certを追加したWinPE SOFTWAREだけを置換する。WinPE SYSTEMは変更しない。旧署名者も含め既存store全entry、その他全WIM record、BCD/EFIを含むWIM以外の全ESP fileを前後比較する。
+
+regipyの値型はWin32の数値3ではなく文字列`REG_BINARY`を返すため、その型名とBlob byteを完全一致で検査する。型・member/hash gateを省略しない。未コミットbuilderでは生成を拒否する。既存`replace-esp-wim.py`（source074と同byte）を再利用し、WIM verifyとFAT修復後の読取り検証を行う。
+
+membership receiptは`tools/ci/verify-msdc-winpe-quiet.ps1`を既存WDK環境で一度実行して回収する。固定packageのSYS/observer/CAT署名・署名者、alias INF/SYSのCAT所属を全て成功した後だけreceiptを生成する。Linuxのosslsigncodeではalias INFのCAT所属検証に未対応のため、それを無検証で通過させず、固定package hashに結合したWDK receiptを必須にする。
+
+出力は`maintenance-staged.wim`、`maintenance-staged-esp.img`、`manifest.json`。これは次回更新の**新base入力候補**であり、旧base hash固定のGPU/private media builderへ無条件に投入できるものではない。次のbuilder統合では、この新base manifestと生成出自を明示して専用型として追加する必要がある。original base許容gateの削除や任意base許可は行っていない。起動・速度改善は未測定。
