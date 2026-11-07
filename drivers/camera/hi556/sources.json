@@ -1,0 +1,51 @@
+{
+  "vendor_commit": "7c4782127d4ea11965be00ce1343056be9bfb769",
+  "board_linux_commit": "3d2c74e252d6f34a5980deda96bdc04064108d74",
+  "vendor_files": [
+    {
+      "path": "kernel-4.4/arch/arm64/boot/dts/mediatek/a04br3.dts",
+      "sha256": "993fc4926fa5cc709d4791da2aadd3c386851f83ea390899e1f88cbbd5801d1f"
+    },
+    {
+      "path": "kernel-4.4/arch/arm64/configs/a04br3_defconfig",
+      "sha256": "3a2ad48113c1351a6032d0ded02b091b450ec6ba207055c5fdb2460140d5d340"
+    },
+    {
+      "path": "kernel-4.4/drivers/misc/mediatek/imgsensor/src/mt8167/hi556_mipi_raw/hi556_mipi_Sensor.c",
+      "sha256": "3d60f93ea4a550b39f8493273f515fd8b8911177ebebc559ac65d28d9166b262"
+    },
+    {
+      "path": "kernel-4.4/drivers/misc/mediatek/imgsensor/src/mt8167/camera_hw/kd_camera_hw.c",
+      "sha256": "e6f2f16cdfcebb2566d4582cddd696c80be6c955e45a4d5a6ebb5d8315716091"
+    },
+    {
+      "path": "kernel-4.4/drivers/misc/mediatek/imgsensor/inc/kd_imgsensor.h",
+      "sha256": "878a9a4207afae38511eeff5d4a1e2824ecc5d7aad9850914ca5857ecbb7eca4"
+    }
+  ],
+  "board_linux_files": [
+    {
+      "path": "docs-camera-self-audit-2026-09-01.md",
+      "sha256": "163ed72ef64470aee6b91827be870d687c092bf2b8ee19e4f3b03f892058204d"
+    },
+    {
+      "path": "camera-a04br3-hi556.c",
+      "sha256": "187fab1488d4a431e60146ecd00f436142fb5100df36ffbe07b4ec2dbe2e9272"
+    },
+    {
+      "path": "config-modprobe.d-a04br3-camera-bringup.conf",
+      "sha256": "7eba2199690a1f1043e4033015d2f0744ca8ea90edf36dfe0f011ec454abfe4c"
+    },
+    {
+      "path": "docs-camera-bringup.md",
+      "sha256": "ee1ccdff8567ab526e634e43ef61a4e119fa6689c6bd1983c32beb5f4e570e98"
+    }
+  ],
+  "small_sensor_presence": "No board-specific ALS/proximity/gyro/magnetometer/barometer IC found; common generic nodes do not prove presence",
+  "rear_camera": "HI556 chip0556 I2C1 address28, prior Linux hardware evidence",
+  "front_camera": "Unknown; generic camera_sub placeholder must not be bound as a second HI556",
+  "hardware_operated": false,
+  "repository": "https://github.com/mouseos/a04br3-windows-drivers.git",
+  "default_enabled": false,
+  "windows_bindable": false
+}

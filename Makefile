@@ -665,3 +665,11 @@ test-gpu-wddm-staged-present: build/gpu_wddm_staged_present_test
 build/gpu_wddm_staged_present_test: tests/gpu_wddm_staged_present_test.cpp drivers/gpu/mt8167/wddm-display/ge8300_present.cxx drivers/gpu/mt8167/wddm-display/present_bounds.h
 	mkdir -p build
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -Wno-multichar $< -o $@
+
+.PHONY: test-hi556-identity
+test-hi556-identity:
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/camera/hi556 drivers/camera/hi556/hi556_identity.c tests/hi556_identity_test.c -o build/hi556_identity_disabled_test
+	./build/hi556_identity_disabled_test
+	$(CC) $(CFLAGS) -DA04_HI556_IDENTITY_EXPERIMENT=1 -Idrivers/camera/hi556 drivers/camera/hi556/hi556_identity.c tests/hi556_identity_test.c -o build/hi556_identity_optin_test
+	./build/hi556_identity_optin_test
