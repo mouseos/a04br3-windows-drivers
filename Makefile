@@ -971,3 +971,10 @@ test-gpu-native-owner-draw: build/gpu_native_owner_draw_test
 build/gpu_native_owner_draw_test: tests/gpu_native_owner_draw_test.c tests/gpu_native_draw_input.h $(NATIVE_CLEAR_JOB_SRC) $(NATIVE_TRIANGLE_SRC) $(addprefix drivers/gpu/mt8167/vendor_m1_11/,windows_native_job.c windows_native_storage.c windows_native_cold.c windows_native_code.c windows_native_backing.c windows_native_target.c windows_native_execute.c windows_native_submit.c native_owner_irq.c native_owner_mdl.c windows_uncached.c native_resources.c native_hwrt_profile.c render_resources.c native_draw_job.c) drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/dma_pages.c drivers/gpu/mt8167/wddm-render/clear_protocol.c drivers/gpu/mt8167/wddm-render/frontend/draw_protocol.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -DA04_TEST_DISPLAY_SCANOUT -DA04_GE8300_NATIVE_OWNER_MDL_TARGET=1 -DA04_GE8300_NATIVE_OWNER_DRAW=1 -DA04_GE8300_VENDOR_NATIVE_CLEAR_JOB=1 -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
+
+.PHONY: test-gpu-native-varying-pds
+test-gpu-native-varying-pds: build/gpu_native_varying_pds_test
+	./build/gpu_native_varying_pds_test
+build/gpu_native_varying_pds_test: tests/gpu_native_varying_pds_test.c drivers/gpu/mt8167/vendor_m1_11/native_varying_pds.c drivers/gpu/mt8167/vendor_m1_11/native_varying_pds.h drivers/gpu/mt8167/wddm-render/frontend/draw_link_abi.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -std=c11 -Wall -Wextra -Werror $< drivers/gpu/mt8167/vendor_m1_11/native_varying_pds.c -o $@
