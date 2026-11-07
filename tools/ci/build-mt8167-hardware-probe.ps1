@@ -69,7 +69,7 @@ $fixedClients=@('mt6630-wlan-probe.exe',$audioName)
 $deferredIds=@('ACPI\BEN0001','MT8167\AFE','MT8167\USB20','A04BR3\MT6630SDIO','ACPI\MOU0007')
 if($deferred){
  $map=Get-Content -Raw -LiteralPath $DeferredPackageMap|ConvertFrom-Json
- if($map.transaction -eq 'codec1026-msdc-quiet-render313-v3'){$codecDefine='1';$fixedClients=@('mt8167-capture-probe.exe');$deferredIds=@('ACPI\BEN0001','MT8167\AFE','ACPI\MOU0001','ACPI\MOU0006')}
+ if($map.transaction -eq 'codec1026-msdc-quiet-render313-v3'){$codecDefine='1';$fixedClients=@('mt8167-capture-probe.exe','ge8300-d3d-clear.exe');$deferredIds=@('ACPI\BEN0001','MT8167\AFE','ACPI\MOU0001','ACPI\MOU0006')}
  if($map.gpu){
   foreach($source in @($map.gpu.baseline_source_commit,$map.gpu.candidate_source_commit)){
    if($source -notmatch '^[0-9a-f]{40}$'){throw 'GPU source pin must be a full hexadecimal commit'}
@@ -157,7 +157,7 @@ try {
   power_request='PowerRequestSystemRequired; scoped to the single attempt; clear/close on exit';
   explicit_user_sleep_overridden=$false;power_policy_changed=$false;
   marker='attempted.bin';marker_directory=('System32\'+$serviceName);startup='standard auto start; disabled before the only attempt';
-  timeouts_ms=$(if($brightnessDefine -eq '1'){@(600000,120000,120000)}else{@(600000,120000)});audio_interface=11;client_arguments=$(if($brightnessDefine -eq '1'){@('','','')}else{@('','')});hardware_verified=$false;
+  timeouts_ms=$(if($codecDefine -eq '1'){@(120000,120000)}elseif($brightnessDefine -eq '1'){@(600000,120000,120000)}else{@(600000,120000)});audio_interface=11;client_arguments=$(if($codecDefine -eq '1'){@('','--hardware=PowerVR')}elseif($brightnessDefine -eq '1'){@('','','')}else{@('','')});hardware_verified=$false;
   files=@($files|ForEach-Object{@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}})
  }|ConvertTo-Json -Depth 12|Set-Content -Encoding UTF8 (Join-Path $out 'hardware-probe-manifest.json')
  Write-Host "One-shot hardware service package: $out. Signing, staging and SCM registration on target remain primary-owner actions."

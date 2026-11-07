@@ -37,6 +37,7 @@ RETAINED_FILES={
  'ge8300-umd.dll':'f8a711915e878e7aeb58ef996db8abbeee15351bd10bf8e0fdcabe12009f922b'}
 GPU_SOURCE='9f31ddcf89fbe6d5c3a7b5abcceadb223212d378'
 CLIENT='mt8167-capture-probe.exe'
+GPU_CLIENT='ge8300-d3d-clear.exe'
 def version(v):
  p=tuple(map(int,v.split('.')))
  if len(p)!=4 or any(x<0 or x>65535 for x in p):raise ValueError('DriverVersion不正')
@@ -44,7 +45,7 @@ def version(v):
 def datevalue(s):return int((datetime.datetime.strptime(s,'%m/%d/%Y')-datetime.datetime(1601,1,1)).total_seconds())*10000000
 def load(path,root,*,draft=False):
  spec=json.loads(path.read_text(encoding='utf-8-sig'))
- if set(spec)!={'schema','transaction','backup_manifest','backup_manifest_sha256','bindings','boot','packages'} or spec['schema']!=1 or spec['transaction']!=PROFILE:raise ValueError('codec/eMMC固定map schema不一致')
+ if set(spec)!={'schema','transaction','backup_manifest','backup_manifest_sha256','bindings','boot','gpu_client','packages'} or spec['schema']!=1 or spec['transaction']!=PROFILE:raise ValueError('codec/eMMC固定map schema不一致')
  if set(spec['packages'])!={'capture','emmc','parent1015','render312','render313'}:raise ValueError('固定4署名inputが必要です')
  selected={};components={};certs={};packages={}
  for key,source in [('capture',CAPTURE),('emmc',MSDC),('parent1015',BASE_PARENT)]:
@@ -90,11 +91,15 @@ def load(path,root,*,draft=False):
   item={'wrapper_source_commit':p.record['source_commit'],'source_commit':p.record['source_commit'],'driver_ver':ver,'signed_manifest_sha256':sha(p.manifest),'certificate_thumbprint':CERT,'files':files,'version_u64':version(v),'date_filetime':datevalue('11/07/2026')}
   components[role]=item;components[role]['binary_source_commit']=p.record['source_commit'];packages[role]=item
  client=packages['capture'].file('client/'+CLIENT);selected['clients/'+CLIENT]=client
+ from codec_render313_package import load_clear_client
+ gpu_client,gpu_client_cert,gpu_client_manifest=load_clear_client(spec['gpu_client'],root)
+ selected['clients/'+GPU_CLIENT]=gpu_client;selected['gpu-client-development.cer']=gpu_client_cert;certs['gpu_client']=gpu_client_cert.read_bytes()
+
  from codec_returned_baseline import load_boot
  boot_path,boot_info=load_boot(spec['boot'],root)
  if draft:
   if any(spec[n] is not None for n in ('backup_manifest','backup_manifest_sha256','bindings')):raise ValueError('draftに旧backupを結合してはいけません')
-  return selected,components,certs,{'schema':1,'transaction':PROFILE,'ready_for_build':False,'retained_boot':{'manifest_sha256':sha(boot_path),'source_commit':boot_info['uefi_source_commit'],'image_sha256':boot_info['boot_img_sha256'],'action':'preserve only; hardware state unverified'},'status':'source-policy-only; 返却fresh未結合、署名service/媒体未生成','packages':{r:packages[r] for r in TARGETS},'clients':{CLIENT:sha(client)},'baseline_sources':{'parent':BASE_PARENT,'audio':'3d83f6fee554455434e2c03112c56bbf351e4c4b','emmc':BASE_MSDC},'baseline':BASELINES,'retained_gpu_source_commit':GPU_SOURCE,'retained_gpu_signed_manifest_sha256':sha(gm),'retained':{k:list(v) for k,v in RETAINED.items()},'retained_files':RETAINED_FILES,'existing_parent_flags':oldflags,'added_parent_flags':{'A04_SHARED_CAPTURE':'1'},'planned_reboot_count':1,'hardware_operations_performed':False}
+  return selected,components,certs,{'schema':1,'transaction':PROFILE,'ready_for_build':False,'retained_boot':{'manifest_sha256':sha(boot_path),'source_commit':boot_info['uefi_source_commit'],'image_sha256':boot_info['boot_img_sha256'],'action':'preserve only; hardware state unverified'},'status':'source-policy-only; 返却fresh未結合、署名service/媒体未生成','packages':{r:packages[r] for r in TARGETS},'clients':{CLIENT:sha(client),GPU_CLIENT:sha(gpu_client)},'gpu_client_manifest_sha256':gpu_client_manifest,'client_arguments':['','--hardware=PowerVR'],'baseline_sources':{'parent':BASE_PARENT,'audio':'3d83f6fee554455434e2c03112c56bbf351e4c4b','emmc':BASE_MSDC},'baseline':BASELINES,'retained_gpu_source_commit':GPU_SOURCE,'retained_gpu_signed_manifest_sha256':sha(gm),'retained':{k:list(v) for k,v in RETAINED.items()},'retained_files':RETAINED_FILES,'existing_parent_flags':oldflags,'added_parent_flags':{'A04_SHARED_CAPTURE':'1'},'planned_reboot_count':1,'hardware_operations_performed':False}
  from codec_returned_baseline import load_returned
  backup,record,selection,retained_boot,bindings_sha=load_returned(spec,root,TARGETS,RETAINED)
  actual={f['source_path'].replace('\\','/').lower():f for f in record['files']}
@@ -106,7 +111,7 @@ def load(path,root,*,draft=False):
   if not item or item['sha256'].lower()!=digest:raise ValueError('返却fresh配置SYS/FW/DLL不一致: '+name)
   oldfiles[name]={'sha256':digest,'backup_path':item['backup_path'],'bytes':item['bytes']}
  # Read capture bytes already hash-checked by backup_check; never load SYSTEM.
- policy={'schema':1,'mode':'engine_fixed_deferred_v1','returned_selection':selection,'bindings_sha256':bindings_sha,'retained_boot':retained_boot,'transaction':PROFILE,'staging_profile':'normal-deferred','backup_manifest_sha256':sha(backup),'recovery_boot_id':record['recovery_boot_id'],'packages':{r:packages[r] for r in TARGETS},'clients':{CLIENT:sha(client)},'baseline':{r:{'version_u64':selection[r]['version_u64'],'date_filetime':selection[r]['date_filetime'],'sys_sha256':h} for r,(v,h) in BASELINES.items()},'retained_gpu_source_commit':GPU_SOURCE,'retained_gpu_signed_manifest_sha256':sha(gm),'retained':{k:list(v) for k,v in RETAINED.items()},'retained_files':RETAINED_FILES,'installed_before':oldfiles,'existing_parent_flags':oldflags,'added_parent_flags':{'A04_SHARED_CAPTURE':'1'},'msdc_baseline_source_commit':BASE_MSDC,'msdc_baseline_sys_sha256':BASELINES['emmc'][1],'msdc_candidate_sys_sha256':packages['emmc']['files']['emmc/mt8167-msdc.sys'],'dma_poll_trace_changed':False,'physical_operations_authorized':False,'planned_reboot_count':1}
+ policy={'schema':1,'mode':'engine_fixed_deferred_v1','returned_selection':selection,'bindings_sha256':bindings_sha,'retained_boot':retained_boot,'transaction':PROFILE,'staging_profile':'normal-deferred','backup_manifest_sha256':sha(backup),'recovery_boot_id':record['recovery_boot_id'],'packages':{r:packages[r] for r in TARGETS},'clients':{CLIENT:sha(client),GPU_CLIENT:sha(gpu_client)},'gpu_client_manifest_sha256':gpu_client_manifest,'client_arguments':['','--hardware=PowerVR'],'baseline':{r:{'version_u64':selection[r]['version_u64'],'date_filetime':selection[r]['date_filetime'],'sys_sha256':h} for r,(v,h) in BASELINES.items()},'retained_gpu_source_commit':GPU_SOURCE,'retained_gpu_signed_manifest_sha256':sha(gm),'retained':{k:list(v) for k,v in RETAINED.items()},'retained_files':RETAINED_FILES,'installed_before':oldfiles,'existing_parent_flags':oldflags,'added_parent_flags':{'A04_SHARED_CAPTURE':'1'},'msdc_baseline_source_commit':BASE_MSDC,'msdc_baseline_sys_sha256':BASELINES['emmc'][1],'msdc_candidate_sys_sha256':packages['emmc']['files']['emmc/mt8167-msdc.sys'],'dma_poll_trace_changed':False,'physical_operations_authorized':False,'planned_reboot_count':1}
  return selected,components,certs,policy
 
 def generate(policy):
@@ -119,7 +124,7 @@ def generate(policy):
  for r in TARGETS:
   p=policy['baseline'][r];extra=','+cbytes(RETAINED_FILES['ge8300-mips.fw'])+','+cbytes(RETAINED_FILES['ge8300-umd.dll']) if r=='render' else ''
   lines.append('{'+str(p['version_u64'])+'ULL,'+str(p['date_filetime'])+'ULL,{{0},'+cbytes(p['sys_sha256'])+',{0}'+extra+'}},')
- lines+=['};','static const WCHAR *const codec_baseline_infs[4]={'+','.join('L"'+policy['returned_selection'][r]['selected']['InfPath']+'"' for r in TARGETS)+'};','static const WCHAR *const codec_retained_infs[3]={'+','.join('L"'+policy['returned_selection'][r]['selected']['InfPath']+'"' for r in RETAINED)+'};','static const ULONGLONG codec_retained_dates[3]={'+','.join(str(policy['returned_selection'][r]['date_filetime'])+'ULL' for r in RETAINED)+'};','static const ULONGLONG codec_retained_versions[3]={'+','.join(str(version(x[2]))+'ULL' for x in RETAINED.values())+'};','static const BYTE codec_retained_hashes[][32]={'+','.join(cbytes(h) for h in RETAINED_FILES.values())+'};','static const BYTE deferred_client_hashes[1][32]={'+cbytes(policy['clients'][CLIENT])+'};','static const char deferred_token[]="'+hashlib.sha256(json.dumps(policy,sort_keys=True,separators=(',',':')).encode()).hexdigest()+'";']
+ lines+=['};','static const WCHAR *const codec_baseline_infs[4]={'+','.join('L"'+policy['returned_selection'][r]['selected']['InfPath']+'"' for r in TARGETS)+'};','static const WCHAR *const codec_retained_infs[3]={'+','.join('L"'+policy['returned_selection'][r]['selected']['InfPath']+'"' for r in RETAINED)+'};','static const ULONGLONG codec_retained_dates[3]={'+','.join(str(policy['returned_selection'][r]['date_filetime'])+'ULL' for r in RETAINED)+'};','static const ULONGLONG codec_retained_versions[3]={'+','.join(str(version(x[2]))+'ULL' for x in RETAINED.values())+'};','static const BYTE codec_retained_hashes[][32]={'+','.join(cbytes(h) for h in RETAINED_FILES.values())+'};','static const BYTE deferred_client_hashes[2][32]={'+cbytes(policy['clients'][CLIENT])+','+cbytes(policy['clients'][GPU_CLIENT])+'};','static const char deferred_token[]="'+hashlib.sha256(json.dumps(policy,sort_keys=True,separators=(',',':')).encode()).hexdigest()+'";']
  return '\n'.join(lines)+'\n'
 
 def staging(cmd,policy,backup,previous):

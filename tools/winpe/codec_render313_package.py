@@ -35,3 +35,16 @@ def load_render313(entry,root,retained_files):
  files={'render/'+n:sha(p/n) for n in names}
  component={'source_commit':SOURCE,'wrapper_source_commit':SOURCE,'binary_source_commit':BINARY_SOURCE,'driver_ver':'11/07/2026,0.0.3.13','version_u64':version('0.0.3.13'),'date_filetime':datevalue('11/07/2026'),'certificate_thumbprint':CERT,'signed_manifest_sha256':MANIFEST,'registration_only':True,'files':files}
  return {'component':component,'selected':{**{'render/'+n:p/n for n in names},'render313-development.cer':p/'mt8167-development.cer'},'certificate':der}
+
+def load_clear_client(entry,root):
+ from engine_io_package import require_armnt
+ if set(entry)!={'directory','manifest_sha256'} or entry['manifest_sha256']!='f1aa7d2be60ea6ab2e517c27a0f2ad537db5fe9bc2dc40df61d4cf8820f1d3d0':raise ValueError('run87 fixed signed client manifest pin required')
+ d=Path(entry['directory']).resolve(strict=True)
+ if not d.is_relative_to(root.resolve()):raise ValueError('root外client')
+ mf=d/'signed-client-manifest.json';m=json.loads(mf.read_text(encoding='utf-8-sig'))
+ if sha(mf)!=entry['manifest_sha256'] or m.get('source_commit')!='4f55794471a4008c1ceaa3a1da2679c0f3fefd2a' or m.get('signature_status')!='Valid' or m.get('signer_thumbprint')!=CERT or m.get('fixed_arguments')!='--hardware=PowerVR' or m.get('retry_count')!=0 or m.get('external_timeout_ms')!=120000:raise ValueError('run87 standard clear client contract mismatch')
+ exe=d/'ge8300-d3d-clear.exe';require_armnt(exe)
+ if sha(exe)!='28e8e0155bb2982f87ab2b64d5fa049c5d17d639cf22ba0d6f3dcab8597d9cbd' or sha(exe)!=m['signed_sha256'].lower() or sha(d/'client-build-manifest.json')!=m['build_manifest_sha256'].lower():raise ValueError('run87 signed client byte/source mismatch')
+ cert=d/'mt8167-development.cer'
+ if hashlib.sha1(cert.read_bytes()).hexdigest().upper()!=CERT:raise ValueError('clear client cert mismatch')
+ return exe,cert,sha(mf)
