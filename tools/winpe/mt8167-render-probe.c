@@ -162,7 +162,12 @@ static DWORD paths(void)
 {
  WCHAR system[MAX_PATH],module[MAX_PATH];DWORD n,error;
  n=GetSystemDirectoryW(system,MAX_PATH);if(!n||n>=MAX_PATH)return ERROR_INSUFFICIENT_BUFFER;
- error=path(base_directory,system,service_name);if(error)return error;
+ #if A04_RENDER_SINGLE_GPU
+ error=path(base_directory,system,L"MT8167RenderSingleGpuRun99");
+#else
+ error=path(base_directory,system,service_name);
+#endif
+ if(error)return error;
  error=path(executable,system,service_exe);if(error)return error;
  error=path(marker,base_directory,L"attempted.bin");if(error)return error;
  n=GetModuleFileNameW(NULL,module,MAX_PATH);if(!n||n>=MAX_PATH||lstrcmpiW(module,executable))return ERROR_BAD_PATHNAME;

@@ -103,6 +103,9 @@ def prepared_system_check(system, manifest, expected_sha256, root, backup, selec
                     or not re.fullmatch('[0-9a-f]{64}',before.get('engine_ledger',''))):
                 raise ValueError('single GPUの既存Engine保持証拠が必要です')
             related_names|={'engine_service','engine_ledger'}
+            if report.get('single_gpu_rearm'):
+                if not re.fullmatch('[0-9a-f]{64}',before.get('single_gpu_ledger','')) or services[0].get('diagnostic_fingerprint')!=before['single_gpu_ledger']:raise ValueError('single GPU ledger preservation missing')
+                related_names.add('single_gpu_ledger')
         if set(before) != related_names or before != after:
             raise ValueError('関連既存設定の限定fingerprint不一致')
         if baseline is not None and before != baseline:
