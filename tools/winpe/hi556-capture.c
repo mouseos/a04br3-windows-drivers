@@ -3,6 +3,7 @@
  * activation. Output uses CREATE_NEW and never overwrites an existing file. */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <winioctl.h>
 #include <setupapi.h>
 #include <stdarg.h>
 #include <stddef.h>
