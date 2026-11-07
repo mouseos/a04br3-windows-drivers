@@ -63,10 +63,13 @@ foreach($item in @(@{path=$WlanProbePath;name='mt6630-wlan-probe.exe'},@{path=$A
 New-Item -ItemType Directory -Force $out,(Join-Path $out 'tmp')|Out-Null
 $policyDirectory=Join-Path $out 'deferred-policy'
 $deferredPolicy=$null
+$brightnessDefine='0'
+$fixedClients=@('mt6630-wlan-probe.exe',$audioName)
 if($deferred){
  & python -B (Join-Path $root 'tools\winpe\engine_deferred_policy.py') --package-map $DeferredPackageMap --workspace $WorkspaceRoot --output $policyDirectory
  if($LASTEXITCODE){throw 'Fixed deferred package policy generation failed'}
  $deferredPolicy=Get-Content -Raw (Join-Path $policyDirectory 'deferred-policy-manifest.json')|ConvertFrom-Json
+ if($deferredPolicy.clients.PSObject.Properties.Name -contains 'mt8167-brightness-native.exe'){$brightnessDefine='1';$fixedClients+='mt8167-brightness-native.exe'}
  Copy-Item (Join-Path $policyDirectory 'deferred-policy-manifest.json') (Join-Path $out 'deferred-policy-manifest.json')
 }
 $priorTmp=$env:TMP;$priorTemp=$env:TEMP
@@ -76,7 +79,7 @@ try {
  $source=Join-Path $root 'tools\winpe\mt8167-hardware-probe.c'
  $object=Join-Path $out 'hardware-probe.obj';$exe=Join-Path $out ($serviceName+'.exe')
  & clang --target=thumbv7-pc-windows-msvc -O2 -fno-builtin -fno-stack-protector -w -fms-extensions -ffreestanding `
-  "-DA04_ENGINE_DEFERRED_UPDATE=$deferredDefine" "-I$policyDirectory" "-DA04_HARDWARE_PROBE_ENGINE_PCM=$engineDefine" -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DNTDDI_VERSION=0x06030000 "-I$inc\um" "-I$inc\shared" -c $source -o $object
+  "-DA04_ENGINE_BRIGHTNESS_CLIENT=$brightnessDefine" "-DA04_ENGINE_DEFERRED_UPDATE=$deferredDefine" "-I$policyDirectory" "-DA04_HARDWARE_PROBE_ENGINE_PCM=$engineDefine" -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DNTDDI_VERSION=0x06030000 "-I$inc\um" "-I$inc\shared" -c $source -o $object
  if($LASTEXITCODE){throw 'ARM32 hardware service compilation failed'}
  & lld-link /subsystem:console,6.3 /machine:arm /entry:mainCRTStartup /nodefaultlib /dynamicbase /nxcompat `
   $object (Join-Path $lib 'kernel32.lib') (Join-Path $lib 'advapi32.lib') $(if($deferred){@((Join-Path $lib 'setupapi.lib'),(Join-Path $lib 'wintrust.lib'),(Join-Path $lib 'bcrypt.lib'))}) "/out:$exe"
@@ -108,11 +111,11 @@ try {
   target='Windows RT 8.1 ARM32 LocalSystem';service_destination=('System32\'+$serviceName+'.exe');
   client_directory=$(if($enginePcm){'System32\MT8167EngineProbe\clients'}else{'System32\MT8167HardwareProbe'});
   log_directory=$(if($enginePcm){'System32\MT8167EngineProbe\logs'}else{'System32\MT8167HardwareProbe'});scm_arguments='';scm_start=2;scm_delayed_auto_start=$false;
-  clients_staged=($inputs.Count -eq 2);signing_requested=[bool]$Sign;
+  clients_staged=($inputs.Count -eq $fixedClients.Count);signing_requested=[bool]$Sign;
   signing_thumbprint=$signingThumbprint;target_signature_trust_verified=$false;
   audio_mode=$modeName;engine_pcm_compatible=[bool]$enginePcm;engine_pcm_auto_registration_allowed=[bool]$enginePcm;
-  fixed_clients=@('mt6630-wlan-probe.exe',$audioName);client_signatures_preserved=[bool]$enginePcm;
-  build_defines=@{A04_HARDWARE_PROBE_ENGINE_PCM=$engineDefine;A04_ENGINE_DEFERRED_UPDATE=$deferredDefine};
+  fixed_clients=$fixedClients;client_signatures_preserved=[bool]$enginePcm;
+  build_defines=@{A04_HARDWARE_PROBE_ENGINE_PCM=$engineDefine;A04_ENGINE_DEFERRED_UPDATE=$deferredDefine;A04_ENGINE_BRIGHTNESS_CLIENT=$brightnessDefine};
   deferred_update=$deferredPolicy;
   deferred_header_sha256=$(if($deferred){(Get-FileHash (Join-Path $policyDirectory 'engine-deferred-policy.h') -Algorithm SHA256).Hash.ToLowerInvariant()}else{$null});
   deferred_runtime_source_sha256=$(if($deferred){(Get-FileHash (Join-Path $root 'tools\winpe\engine-deferred-update.h') -Algorithm SHA256).Hash.ToLowerInvariant()}else{$null});
@@ -130,7 +133,7 @@ try {
   power_request='PowerRequestSystemRequired; scoped to the single attempt; clear/close on exit';
   explicit_user_sleep_overridden=$false;power_policy_changed=$false;
   marker='attempted.bin';marker_directory=('System32\'+$serviceName);startup='standard auto start; disabled before the only attempt';
-  timeouts_ms=@(600000,120000);audio_interface=11;client_arguments=@('','');hardware_verified=$false;
+  timeouts_ms=$(if($brightnessDefine -eq '1'){@(600000,120000,120000)}else{@(600000,120000)});audio_interface=11;client_arguments=$(if($brightnessDefine -eq '1'){@('','','')}else{@('','')});hardware_verified=$false;
   files=@($files|ForEach-Object{@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}})
  }|ConvertTo-Json -Depth 12|Set-Content -Encoding UTF8 (Join-Path $out 'hardware-probe-manifest.json')
  Write-Host "One-shot hardware service package: $out. Signing, staging and SCM registration on target remain primary-owner actions."

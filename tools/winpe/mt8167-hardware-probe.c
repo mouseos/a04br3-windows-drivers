@@ -20,6 +20,17 @@
 #ifndef A04_ENGINE_DEFERRED_UPDATE
 #define A04_ENGINE_DEFERRED_UPDATE 0
 #endif
+#ifndef A04_ENGINE_BRIGHTNESS_CLIENT
+#define A04_ENGINE_BRIGHTNESS_CLIENT 0
+#endif
+#if A04_ENGINE_BRIGHTNESS_CLIENT && !A04_ENGINE_DEFERRED_UPDATE
+#error Fixed brightness client requires explicit deferred Engine mode
+#endif
+#if A04_ENGINE_BRIGHTNESS_CLIENT
+#define A04_CLIENT_COUNT 3
+#else
+#define A04_CLIENT_COUNT 2
+#endif
 #if A04_ENGINE_DEFERRED_UPDATE && !A04_HARDWARE_PROBE_ENGINE_PCM
 #error Deferred install is explicit EnginePcm only
 #endif
@@ -29,15 +40,19 @@
 #if A04_HARDWARE_PROBE_ENGINE_PCM
 static const WCHAR service_name[]=L"MT8167EngineProbe";
 static const WCHAR service_exe[]=L"MT8167EngineProbe.exe";
-static const WCHAR *const clients[2]={L"mt6630-wlan-probe.exe",L"mt8167-audio-engine-probe.exe"};
+static const WCHAR *const clients[A04_CLIENT_COUNT]={L"mt6630-wlan-probe.exe",L"mt8167-audio-engine-probe.exe"
+#if A04_ENGINE_BRIGHTNESS_CLIENT
+ ,L"mt8167-brightness-native.exe"
+#endif
+};
 #else
 static const WCHAR service_name[]=L"MT8167HardwareProbe";
 static const WCHAR service_exe[]=L"MT8167HardwareProbe.exe";
 static const WCHAR *const clients[2]={L"mt6630-wlan-probe.exe",L"mt8167-audio-first-playback.exe"};
 #endif
-static const WCHAR *const stdout_names[2]={L"wlan.stdout.txt",L"audio.stdout.txt"};
-static const WCHAR *const stderr_names[2]={L"wlan.stderr.txt",L"audio.stderr.txt"};
-static const DWORD limits[2]={600000u,120000u};
+static const WCHAR *const stdout_names[3]={L"wlan.stdout.txt",L"audio.stdout.txt",L"brightness.stdout.txt"};
+static const WCHAR *const stderr_names[3]={L"wlan.stderr.txt",L"audio.stderr.txt",L"brightness.stderr.txt"};
+static const DWORD limits[3]={600000u,120000u,120000u};
 static WCHAR directory[MAX_PATH],log_directory[MAX_PATH],base_directory[MAX_PATH],executable[MAX_PATH],marker[MAX_PATH];
 static HANDLE base_handle=INVALID_HANDLE_VALUE,log_directory_handle=INVALID_HANDLE_VALUE;
 static HANDLE directory_handle=INVALID_HANDLE_VALUE,logfile=INVALID_HANDLE_VALUE,stop_event;
@@ -441,8 +456,19 @@ static DWORD run_client(unsigned index)
  SECURITY_ATTRIBUTES sa;STARTUPINFOEXW startup;PROCESS_INFORMATION child;JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit;
  LPPROC_THREAD_ATTRIBUTE_LIST attributes=NULL;SIZE_T bytes=0;HANDLE inherit[3],waits[2];DWORD error=0,wait,exit_code=0,got;unsigned n;
  int created=0,resumed=0,finished=0;
- if(index>=2)return ERROR_INVALID_PARAMETER;
- error=path(image,directory,clients[index]);if(error)return error;
+#if A04_ENGINE_BRIGHTNESS_CLIENT
+ HANDLE brightness_directory=INVALID_HANDLE_VALUE;
+#endif
+ if(index>=A04_CLIENT_COUNT)return ERROR_INVALID_PARAMETER;
+#if A04_ENGINE_BRIGHTNESS_CLIENT
+ if(index==2){
+  if(!CreateDirectoryW(L"C:\\MT8167EngineProbe",NULL)&&GetLastError()!=ERROR_ALREADY_EXISTS)return GetLastError();
+  error=hold_directory(L"C:\\MT8167EngineProbe",&brightness_directory);if(error)goto done;
+  if(GetFileAttributesW(L"C:\\MT8167EngineProbe\\brightness-native.log")!=INVALID_FILE_ATTRIBUTES){error=ERROR_ALREADY_EXISTS;goto done;}
+  error=GetLastError();if(error!=ERROR_FILE_NOT_FOUND)goto done;error=0;
+ }
+#endif
+ error=path(image,directory,clients[index]);if(error)goto done;
  error=signed_image(image,&image_lock);record(index+1,EV_SIGNATURE,error);if(error)goto done;
 #if A04_ENGINE_DEFERRED_UPDATE
  error=deferred_hash(image_lock,deferred_client_hashes[index]);if(error)goto done;
@@ -491,6 +517,9 @@ done:
  if(output!=INVALID_HANDLE_VALUE){if(!FlushFileBuffers(output)){record(index+1,EV_LOG_ERROR,GetLastError());if(!error)error=ERROR_WRITE_FAULT;}CloseHandle(output);}
  if(error_output!=INVALID_HANDLE_VALUE){if(!FlushFileBuffers(error_output)){record(index+1,EV_LOG_ERROR,GetLastError());if(!error)error=ERROR_WRITE_FAULT;}CloseHandle(error_output);}
  if(image_lock!=INVALID_HANDLE_VALUE)CloseHandle(image_lock);
+#if A04_ENGINE_BRIGHTNESS_CLIENT
+ if(brightness_directory!=INVALID_HANDLE_VALUE)CloseHandle(brightness_directory);
+#endif
  if(!created||!resumed)record(index+1,EV_ERROR,error);
  return error;
 }
@@ -530,7 +559,7 @@ static DWORD once(void)
 #elif A04_HARDWARE_PROBE_ENGINE_PCM
  {int halt;result=pnp_once(&halt);if(halt)goto clear_power;}
 #endif
- for(i=0;i<2;i++){
+ for(i=0;i<A04_CLIENT_COUNT;i++){
   if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){if(!result)result=ERROR_CANCELLED;break;}
   error=run_client(i);if(error&&!result)result=error;if(child_uncertain)break;
  }

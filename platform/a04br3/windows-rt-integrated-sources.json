@@ -422,6 +422,22 @@
     "minimum_parent_driver_ver": "11/06/2026,2026.11.7.1006",
     "minimum_usb_driver_ver": "11/06/2026,2026.11.6.1003",
     "previous_parent1005_993_candidate_retained": true,
-    "audio2f_recompiled_here": false
+    "audio2f_recompiled_here": false,
+    "brightness_native_optional_third_client": {
+      "source_commit": "4fafe9a76271531c36a6071b3926e3ce2dd77a8e",
+      "source_integrated_commit": "46095f6",
+      "executable": "mt8167-brightness-native.exe",
+      "log_path": "C:\\MT8167EngineProbe\\brightness-native.log",
+      "arguments": [],
+      "maximum_calls": 1,
+      "timeout_ms": 120000,
+      "existing_log_archived_on_explicit_rearm": true
+    },
+    "wifi_native1003_nonfpu_source": "1bd250c6f6e857469de15d1fcbbc860d40b69228",
+    "retained_audio_sys_sha256": "2f56e9a4cb742c2d09284117d9e781493d827a2800a7925238bdc352b2b346ef",
+    "actual_five_driver_three_client_host_selector_verified": true,
+    "actual_five_driver_three_client_media_generated_here": false,
+    "brightness_native_authenticode_verified_here": false,
+    "brightness_native_hardware_verified_here": false
   }
 }

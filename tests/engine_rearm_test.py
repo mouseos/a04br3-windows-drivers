@@ -9,7 +9,7 @@ from pathlib import Path
 
 repo = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo / 'tools/winpe'))
-from engine_rearm import make_plan, check_plan, archive_commands, DISABLED_FINGERPRINT, KINDS, SYS_NAMES, STATE_FILES
+from engine_rearm import make_plan, check_plan, archive_commands, DISABLED_FINGERPRINT, KINDS, SYS_NAMES, STATE_FILES, BRIGHTNESS_LOG
 from private_hardware_probe_input import sha
 spec = importlib.util.spec_from_file_location('installed', repo / 'tools/recovery/verify-engine-installed.py')
 installed = importlib.util.module_from_spec(spec)
@@ -68,6 +68,17 @@ with tempfile.TemporaryDirectory(dir=args.scratch, prefix='engine-rearm-contract
         raise AssertionError('unknown service fingerprint accepted')
     commands = archive_commands(sha(plan_path))
     assert 'move C:\\Windows\\System32\\MT8167EngineProbe' in commands
+    assert 'del ' not in commands.lower() and 'rmdir ' not in commands.lower()
+    # The fixed third client's separate root log is pinned and archived too.
+    backup['files'].append({'source_path': BRIGHTNESS_LOG, 'sha256': hashlib.sha256(b'old brightness evidence').hexdigest(), 'bytes': 23})
+    backup_path.write_text(json.dumps(backup))
+    brightness_plan = make_plan(old_path, backup_path, backup, components, root)
+    assert BRIGHTNESS_LOG in brightness_plan['old_state_files']
+    plan_path.write_text(json.dumps(brightness_plan))
+    native['engine_rearm_plan_sha256'] = sha(plan_path)
+    assert check_plan(plan_path, sha(plan_path), backup_path, backup, components, native, root) == brightness_plan
+    commands = archive_commands(sha(plan_path), brightness_plan)
+    assert 'move C:\\MT8167EngineProbe\\brightness-native.log ' in commands
     assert 'del ' not in commands.lower() and 'rmdir ' not in commands.lower()
     # A newer backup can still contain an old SYS: capture success is not installation success.
     media = dict(previous, expected_installed_sys=plan['expected_installed_sys'])

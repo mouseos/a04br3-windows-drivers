@@ -98,3 +98,8 @@ Engine次反復ではcaptureの明示 `--engine-probe-state` が固定Engine att
 回収SYSを媒体expected_installed_sysと照合し、不一致ならexit3、private比較JSONを保存する。
 parent/audio/USB/Wi-Fiと採用display/TOPRGUの全basenameをtarget-sysへ指定する。
 read-only回収成功と新package実配置一致は別statusとして保持する。
+
+明示Engine batchの固定第3clientを使う場合、`--engine-probe-state`は
+`MT8167EngineProbe/brightness-native.log`もoptionalとして回収する。
+存在時はhash/bytesを保存し、不存在時もmissing_filesへ記録する。旧必須3stateは維持する。
+Engine再armはこの固定root logをbackupに結び付けて退避し、削除・上書きをしない。

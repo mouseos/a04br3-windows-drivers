@@ -10,6 +10,7 @@ KINDS = ('parent', 'audio', 'usb', 'wifi')
 MARKER = 'Windows/System32/MT8167EngineProbe/attempted.bin'
 STATE_FILES = (MARKER, 'Windows/System32/MT8167EngineProbe/logs/service.log',
                'Windows/System32/MT8167EngineProbe.exe')
+BRIGHTNESS_LOG='MT8167EngineProbe/brightness-native.log'
 SYS_NAMES = {'parent': 'mt8167-shared.sys', 'audio': 'mt8167-audio.sys',
              'usb': 'mt8167-usb20.sys', 'wifi': 'mt6630-runtime.sys',
              'display': 'mt8167-display.sys', 'toprgu': 'mt8167-toprgu.sys'}
@@ -73,6 +74,11 @@ def make_plan(previous_path, backup_path, backup, components, root):
         raise ValueError('既知Engine attempted.binのfingerprintと一致しません')
     if not entries[STATE_FILES[1]]['bytes']:
         raise ValueError('旧service.logが空です')
+    old_state_names=list(STATE_FILES)
+    if BRIGHTNESS_LOG in entries:old_state_names.append(BRIGHTNESS_LOG)
+    elif 'mt8167-brightness-native.exe' in previous.get('fixed_clients',[]):
+        if BRIGHTNESS_LOG not in {x['source_path'].replace('\\','/') for x in backup.get('missing_files',[])}:
+            raise ValueError('旧固定brightness logの回収または明示absent記録が必要です')
     return {'schema': 1, 'service': 'MT8167EngineProbe', 'maximum_rearms': 1,
             'disabled_service_fingerprint': DISABLED_FINGERPRINT,
             'backup_manifest_sha256': sha(backup_path), 'recovery_boot_id': backup['recovery_boot_id'],
@@ -82,7 +88,7 @@ def make_plan(previous_path, backup_path, backup, components, root):
                                     'bytes': entries['Windows/System32/config/' + name]['bytes']}
                              for name in ('SYSTEM', 'SYSTEM.LOG1', 'SYSTEM.LOG2')},
             'old_state_files': {name: {'sha256': entries[name]['sha256'], 'bytes': entries[name]['bytes']}
-                                for name in STATE_FILES},
+                                for name in old_state_names},
             'expected_installed_sys': {SYS_NAMES[kind]: next(digest.lower() for name, digest in after[kind]['files'].items()
                                                             if name.endswith('.sys')) for kind in (*KINDS, 'display', 'toprgu') if kind in components}}
 
@@ -105,18 +111,19 @@ def check_plan(path, expected_sha, backup_path, backup, components, native, root
     if plan['old_state_files'].get(MARKER,{}).get('sha256','').lower() != hashlib.sha256(b'MT8167EngineProbe attempted\n').hexdigest():
         raise ValueError('旧markerの既知fingerprint不一致')
     for name, old in plan['old_state_files'].items():
-        if name not in STATE_FILES or entries[name]['sha256'].lower() != old['sha256'].lower() or entries[name]['bytes'] != old['bytes']:
+        if name not in (*STATE_FILES,BRIGHTNESS_LOG) or name not in entries or entries[name]['sha256'].lower() != old['sha256'].lower() or entries[name]['bytes'] != old['bytes']:
             raise ValueError('旧Engine state backup fingerprint不一致')
-    if set(plan['old_state_files']) != set(STATE_FILES):
+    expected_state=set(STATE_FILES)|({BRIGHTNESS_LOG} if BRIGHTNESS_LOG in entries else set())
+    if set(plan['old_state_files']) != expected_state:
         raise ValueError('旧Engine state保存対象欠落')
     return plan
 
 
-def archive_commands(plan_sha):
+def archive_commands(plan_sha, plan=None):
     # A destination collision is permanent refusal, even following partial failure.
     archive = 'C:\\a04backup\\engine-rearm-' + plan_sha
     base = 'C:\\Windows\\System32\\MT8167EngineProbe'
-    return '\n'.join([
+    commands=[
         'if not exist ' + base + '\\attempted.bin goto dismfail',
         'if not exist ' + base + '\\logs\\service.log goto dismfail',
         'if exist ' + archive + ' goto dismfail',
@@ -131,4 +138,10 @@ def archive_commands(plan_sha):
         'copy /b /y X:\\a04br3\\engine-rearm-plan.json ' + archive + '\\rearm-plan.json >> "%A04_REPORT%" 2>&1',
         'if errorlevel 1 goto dismfail',
         '>> "%A04_REPORT%" echo ENGINE_REARM_PLAN_SHA256=' + plan_sha,
-    ])
+    ]
+    if plan and BRIGHTNESS_LOG in plan.get('old_state_files',{}):
+        commands+=['if not exist C:\\MT8167EngineProbe\\brightness-native.log goto dismfail',
+            'move C:\\MT8167EngineProbe\\brightness-native.log '+archive+'\\brightness-native.log >> "%A04_REPORT%" 2>&1',
+            'if errorlevel 1 goto dismfail','if exist C:\\MT8167EngineProbe\\brightness-native.log goto dismfail',
+            'if not exist '+archive+'\\brightness-native.log goto dismfail']
+    return '\n'.join(commands)

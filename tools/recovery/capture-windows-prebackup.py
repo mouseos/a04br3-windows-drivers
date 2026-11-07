@@ -29,6 +29,7 @@ DRIVERS = 'Windows/System32/Drivers/'
 ENGINE_STATE = ('Windows/System32/MT8167EngineProbe/attempted.bin',
                 'Windows/System32/MT8167EngineProbe/logs/service.log',
                 'Windows/System32/MT8167EngineProbe.exe')
+ENGINE_OPTIONAL_STATE = ('MT8167EngineProbe/brightness-native.log',)
 HIVES = ('SYSTEM', 'SOFTWARE', 'DRIVERS')
 UUID = re.compile(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}')
 SHA256 = re.compile(r'[0-9a-f]{64}')
@@ -196,7 +197,7 @@ def file_specs(sys_names, allow_missing_sys, engine_state=False):
         names.append(name)
     specs = [(CONFIG + hive, True) for hive in HIVES]
     specs += [(CONFIG + hive + suffix, True) for hive in HIVES for suffix in ('.LOG1', '.LOG2')]
-    return specs + [(DRIVERS + name, not allow_missing_sys) for name in names] + ([(name, True) for name in ENGINE_STATE] if engine_state else [])
+    return specs + [(DRIVERS + name, not allow_missing_sys) for name in names] + ([(name, True) for name in ENGINE_STATE]+[(name,False) for name in ENGINE_OPTIONAL_STATE] if engine_state else [])
 
 
 def write_manifest(out, manifest):
@@ -329,7 +330,7 @@ def verify_manifest(args, recovery=None):
     for item in manifest['files']:
         source = item['source_path']
         allowed_config = {CONFIG + hive + suffix for hive in HIVES for suffix in ('', '.LOG1', '.LOG2')}
-        if not (source in allowed_config or source in ENGINE_STATE or (source.startswith(DRIVERS) and SYS_NAME.fullmatch(source[len(DRIVERS):]))):
+        if not (source in allowed_config or source in ENGINE_STATE or source in ENGINE_OPTIONAL_STATE or (source.startswith(DRIVERS) and SYS_NAME.fullmatch(source[len(DRIVERS):]))):
             raise BackupError('Unexpected source path in pinned manifest')
         if item['backup_path'] != 'files/' + source or source in seen:
             raise BackupError('Invalid or repeated backup path')
@@ -361,7 +362,7 @@ def main():
     capture_parser.add_argument('--allow-missing-sys', action='store_true')
     capture_parser.add_argument('--compare-engine-media',type=Path)
     capture_parser.add_argument('--compare-engine-media-sha256')
-    capture_parser.add_argument('--engine-probe-state', action='store_true', help='capture fixed Engine marker, service.log and service EXE for explicit rearm')
+    capture_parser.add_argument('--engine-probe-state', action='store_true', help='capture fixed Engine marker/log/EXE plus optional fixed brightness root log for explicit rearm')
     capture_parser.add_argument('--mount-driver', choices=('kernel-ntfs', 'ntfs-3g'), default='kernel-ntfs')
     capture_parser.add_argument('--ntfs3g-remote', default='/sbin/ntfs-3g', help='resident binary only; never pushed')
     verify_parser = sub.add_parser('verify', help='read-only writer preflight; performs no write')

@@ -18,6 +18,8 @@ TARGETS = {
     'display': ('ACPI\\MOU0007', 'mt8167-display', 'mt8167-display', 'MT8167Display', (0,0,1,4)),
 }
 CLIENTS = ('mt6630-wlan-probe.exe', 'mt8167-audio-engine-probe.exe')
+BRIGHTNESS_CLIENT='mt8167-brightness-native.exe'
+BRIGHTNESS_SOURCE='4fafe9a76271531c36a6071b3926e3ce2dd77a8e'
 
 def hexpin(value, n=64):
     if not isinstance(value,str) or not re.fullmatch('[0-9a-fA-F]{'+str(n)+'}', value):
@@ -31,7 +33,7 @@ def load_map(path, root):
     if set(spec) != {'schema','backup_manifest_sha256','packages','clients'} or spec['schema'] != 1:
         raise ValueError('固定Engine policy map schema不一致')
     hexpin(spec['backup_manifest_sha256'])
-    if set(spec['packages']) != set(TARGETS) or set(spec['clients']) != set(CLIENTS):
+    if set(spec['packages']) != set(TARGETS) or set(spec['clients']) not in (set(CLIENTS),set((*CLIENTS,BRIGHTNESS_CLIENT))):
         raise ValueError('固定5targetと固定2clientをすべて明示してください')
     selected={};components={};certificates={};policy={'schema':1,'mode':'engine_fixed_deferred_v1',
         'backup_manifest_sha256':spec['backup_manifest_sha256'].lower(),'packages':{},'clients':{}}
@@ -75,8 +77,9 @@ def load_map(path, root):
         files={role+'/'+name:sha(p) for name,p in zip(names,chosen)}
         selected.update({role+'/'+name:p for name,p in zip(names,chosen)})
         selected['deferred-'+role+'-development.cer']=certpath
-        components[role]={'binary_source_commit':package.record.get('binary_source_commit',source),
-            'inf_source_commit':source,'driver_ver':version,'certificate_thumbprint':cert,
+        components[role]={'wrapper_source_commit':source,
+            'binary_source_commit':package.record.get('binary_source_commit',package.record.get('driver_source_commit',source)),
+            'inf_source_commit':package.record.get('inf_source_commit',package.record.get('template_commit',source)),'driver_ver':version,'certificate_thumbprint':cert,
             'signed_manifest_sha256':sha(package.manifest),'files':files}
         policy['packages'][role]={**components[role],'source_commit':source,
             'version_u64':sum(v << ((3-i)*16) for i,v in enumerate(parts)),
@@ -88,6 +91,28 @@ def load_map(path, root):
         if p.name!=name or not p.is_relative_to(root.resolve()) or sha(p)!=hexpin(entry['sha256']):
             raise ValueError('固定client path/hash不一致')
         selected['clients/'+name]=p;policy['clients'][name]=sha(p)
+    if BRIGHTNESS_CLIENT in spec['clients']:
+        entry=spec['clients'][BRIGHTNESS_CLIENT]
+        if set(entry)!={'directory','manifest_sha256','source_commit','certificate_thumbprint'}:
+            raise ValueError('固定brightness署名package fields不一致')
+        package=SignedPackage(Path(entry['directory']),root)
+        if (sha(package.manifest)!=hexpin(entry['manifest_sha256']) or entry['source_commit']!=BRIGHTNESS_SOURCE
+            or package.record.get('source_commit')!=BRIGHTNESS_SOURCE or package.record.get('signed') is not True):
+            raise ValueError('4fafe9a brightness署名wrapper/source pin不一致')
+        cert=hexpin(entry['certificate_thumbprint'],40).upper()
+        if package.record.get('signing_thumbprint')!=cert:raise ValueError('brightness署名cert metadata不一致')
+        certpath,der=package.certificate(cert);image=package.file(BRIGHTNESS_CLIENT);metadata=package.json('manifest.json')
+        if (metadata.get('commit')!=BRIGHTNESS_SOURCE or metadata.get('dirty') is not False
+            or metadata.get('signed') is not True or metadata.get('arguments')!='none'
+            or metadata.get('log_path')!=r'C:\MT8167EngineProbe\brightness-native.log'
+            or metadata.get('sys_or_cat_modified') is not False or metadata.get('machine')!='ARMNT'
+            or metadata.get('exe_sha256','').lower()!=sha(image)):
+            raise ValueError('固定brightness client build/log/no-argument契約不一致')
+        selected['clients/'+BRIGHTNESS_CLIENT]=image;selected['brightness-client-development.cer']=certpath
+        certificates['brightness_client']=der;policy['clients'][BRIGHTNESS_CLIENT]=sha(image)
+        binding={'source_commit':BRIGHTNESS_SOURCE,'signed_manifest_sha256':sha(package.manifest),
+                 'certificate_thumbprint':cert,'exe_sha256':sha(image),'log_path':metadata['log_path']}
+        policy['brightness_client']=binding;components['brightness_client']=binding
     return selected,components,certificates,policy
 
 def cbytes(digest):return '{'+','.join('0x'+digest[i:i+2] for i in range(0,64,2))+'}'
@@ -99,7 +124,7 @@ def generate(policy):
         p=policy['packages'][role]
         names=list(p['files'])
         lines.append('{'+str(p['version_u64'])+'ULL,'+str(p['date_filetime'])+'ULL,{'+','.join(cbytes(p['files'][n]) for n in names)+'}},')
-    lines+=['};','static const char deferred_token[]="'+hashlib.sha256(json.dumps(policy,sort_keys=True,separators=(',',':')).encode()).hexdigest()+'";','static const BYTE deferred_client_hashes[2][32]={'+','.join(cbytes(policy['clients'][n]) for n in CLIENTS)+'};']
+    lines+=['};','static const char deferred_token[]="'+hashlib.sha256(json.dumps(policy,sort_keys=True,separators=(',',':')).encode()).hexdigest()+'";','static const BYTE deferred_client_hashes['+str(len(policy['clients']))+'][32]={'+','.join(cbytes(policy['clients'][n]) for n in (*CLIENTS,BRIGHTNESS_CLIENT) if n in policy['clients'])+'};']
     return '\n'.join(lines)+'\n'
 
 def main():

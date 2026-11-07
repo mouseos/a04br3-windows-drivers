@@ -126,8 +126,11 @@ def probe_check(executable, manifest, certificate, root, audio_mode="Tone"):
     audio = 'mt8167-audio-engine-probe.exe' if engine else 'mt8167-audio-first-playback.exe'
     report = json.loads(manifest.read_text(encoding='utf-8-sig'))
     if engine:
+        brightness=report.get('build_defines',{}).get('A04_ENGINE_BRIGHTNESS_CLIENT')=='1'
+        expected_clients=['mt6630-wlan-probe.exe',audio]+(['mt8167-brightness-native.exe'] if brightness else [])
+        if brightness and not report.get('deferred_update'):raise ValueError('brightness clientは明示延期batch専用です')
         if (report.get('audio_mode') != 'engine_pcm_retained' or report.get('engine_pcm_compatible') is not True
-                or report.get('fixed_clients') != ['mt6630-wlan-probe.exe', audio]
+                or report.get('fixed_clients') != expected_clients
                 or report.get('build_defines', {}).get('A04_HARDWARE_PROBE_ENGINE_PCM') != '1'):
             raise ValueError('Engine専用service binary/manifestが必要です')
         if (report.get('service_destination') != 'System32\\MT8167EngineProbe.exe'
@@ -154,6 +157,7 @@ def probe_check(executable, manifest, certificate, root, audio_mode="Tone"):
                     or pnp.get('reboot_required_stops_clients') is not True
                     or report.get('build_defines',{}).get('A04_ENGINE_DEFERRED_UPDATE') != '1'):
                 raise ValueError('固定Engine延期更新phase契約不一致')
+            if set(deferred.get('clients',{}))!=set(expected_clients):raise ValueError('固定batch client数/名前不一致')
             policy_path=manifest.parent/'deferred-policy-manifest.json'
             if (sha(policy_path) != report.get('deferred_policy_manifest_sha256')
                     or json.loads(policy_path.read_text(encoding='utf-8-sig')) != deferred):
@@ -171,6 +175,7 @@ def probe_check(executable, manifest, certificate, root, audio_mode="Tone"):
         binary = executable.read_bytes()
         if audio.encode('utf-16le') not in binary or 'mt8167-audio-first-playback.exe'.encode('utf-16le') in binary:
             raise ValueError('旧tone binaryまたは別clientをEngineProbeへ混用できません')
+    if engine and brightness and 'mt8167-brightness-native.exe'.encode('utf-16le') not in executable.read_bytes():raise ValueError('固定第3clientがbinaryにありません')
     cert = certificate.read_bytes()
     thumbprint = hashlib.sha1(cert).hexdigest().upper()
     files = {item['name']: item['sha256'].lower() for item in report['files']}
