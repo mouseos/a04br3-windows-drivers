@@ -125,6 +125,13 @@ def make_plan(previous_path, backup_path, backup, components, root, allow_missin
                                                             if name.endswith('.sys')) for kind in (*KINDS, 'display', 'toprgu', 'gpu', 'sd') if kind in components}}
     if missing_log:
         plan['missing_service_log'] = missing_log
+    history=list(previous.get('engine_rearm_plan',{}).get('diagnostic_policies',[]))
+    old_policy=previous.get('probe',{}).get('deferred_update')
+    if old_policy:
+        token=hashlib.sha256(json.dumps(old_policy,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        if token not in history:history.append(token)
+    if len(history)>16 or any(not re.fullmatch('[0-9a-f]{64}',x) for x in history):raise ValueError('既知診断policy世代の上限/hex不一致')
+    plan['diagnostic_policies']=history
     plan['previous_service_exe_sha256'] = old_service_hash.lower()
     if components.get('brightness_client',{}).get('log_path')==r'C:\Windows\System32\MT8167EngineProbe\logs\brightness-native.log':plan['brightness_log_mode']='engine-generation-preserve-legacy-root'
     if 'gpu' in components:

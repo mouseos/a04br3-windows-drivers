@@ -74,6 +74,70 @@ function Service-Values($Spec) {
         DependOnService=@('MultiString',[string[]]@('DeviceInstall','RpcSs'))
     }
 }
+# Read ONLY this fixed service's known logger subtree. Never mutate its values.
+# Raw value fingerprints include names/types/data; directory shape is bounded.
+function Engine-DiagnosticFingerprint($ServiceKey,$Plan) {
+    if(!$Plan.engine_rearm) { throw 'Engine diagnostic preservation requires explicit rearm' }
+    $allowed=@($Plan.engine_rearm.diagnostic_policies)
+    if($allowed.Count -gt 16 -or @($allowed|Where-Object {$_ -cnotmatch '^[0-9a-f]{64}$'}).Count) { throw 'Invalid known diagnostic policy list' }
+    $parts=New-Object 'Collections.Generic.List[string]'
+    $serviceChildren=@($ServiceKey.GetSubKeyNames())
+    if($serviceChildren.Count -eq 0) { return 'absent' }
+    if($serviceChildren.Count -ne 1 -or $serviceChildren[0] -cne 'Parameters') { throw 'Unexpected Engine subkey outside fixed Parameters' }
+    $parameters=$ServiceKey.OpenSubKey('Parameters',$false)
+    try {
+        if($parameters.GetValueNames().Count -or @($parameters.GetSubKeyNames()).Count -ne 1 -or $parameters.GetSubKeyNames()[0] -cne 'LastDiagnostic') { throw 'Unexpected Engine Parameters shape' }
+        $last=$parameters.OpenSubKey('LastDiagnostic',$false)
+        try {
+            if($last.GetValueNames().Count) { throw 'Unexpected LastDiagnostic root values' }
+            $policies=@($last.GetSubKeyNames()|Sort-Object)
+            if(!$policies.Count -or $policies.Count -gt 16) { throw 'Bounded diagnostic history exceeded' }
+            foreach($policy in $policies) {
+                if($policy -cnotmatch '^[0-9a-f]{64}$' -or $policy -cnotin $allowed) { throw 'Unpinned Engine diagnostic generation' }
+                $generation=$last.OpenSubKey($policy,$false)
+                try {
+                    if($generation.GetValueNames().Count) { throw 'Unexpected diagnostic generation values' }
+                    $phases=@($generation.GetSubKeyNames()|Sort-Object)
+                    if(!$phases.Count -or $phases.Count -gt 2 -or @($phases|Where-Object {$_ -cnotin @('Install','Diagnostic')}).Count) { throw 'Unknown diagnostic phase' }
+                    foreach($phase in $phases) {
+                        $leaf=$generation.OpenSubKey($phase,$false)
+                        try {
+                            if($leaf.GetSubKeyNames().Count -or $leaf.GetValueNames().Count -gt 64) { throw 'Diagnostic leaf bound exceeded' }
+                            $schema=[int]$leaf.GetValue('Schema',-1);$count=[int]$leaf.GetValue('TargetCount',-1);$clients=[int]$leaf.GetValue('ClientCount',-1)
+                            if($schema -notin @(1,2) -or $count -lt 5 -or $count -gt $(if($schema -eq 1){6}else{7}) -or $clients -notin @(2,3) -or $leaf.GetValue('PolicyHash') -cne $policy) { throw 'Diagnostic schema/count/policy mismatch' }
+                            foreach($name in $leaf.GetValueNames()) {
+                                $kind=$leaf.GetValueKind($name);$v=$leaf.GetValue($name,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+                                if($name -cmatch '^(Schema|Complete|RunId|Phase|TargetCount|ClientCount|ServiceResult|FileLogError|UartError|SnapshotWriteError)$' -or ($schema -eq 2 -and $name -cmatch '^(SystemVolumeFlushError|CompletionResult)$')) {
+                                    if($kind -ne [Microsoft.Win32.RegistryValueKind]::DWord) { throw 'Diagnostic DWORD type mismatch' }
+                                } elseif($name -ceq 'PolicyHash') {
+                                    if($kind -ne [Microsoft.Win32.RegistryValueKind]::String -or $v -cne $policy) { throw 'Diagnostic policy value mismatch' }
+                                } elseif($name -cmatch '^Node([0-6])HardwareId$') {
+                                    $index=[int]$Matches[1]
+                                    if($index -ge $count -or $kind -ne [Microsoft.Win32.RegistryValueKind]::String) { throw 'Diagnostic node ID bound/type mismatch' }
+                                    $ids=@('ACPI\BEN0001','MT8167\AFE','MT8167\USB20','A04BR3\MT6630SDIO','ACPI\MOU0007')
+                                    if($index -lt 5) { if($v -cne $ids[$index]) { throw 'Diagnostic fixed node mismatch' } }
+                                    elseif($index -eq 5) { if($v -cnotin @('ACPI\MOU0006','ACPI\MOU0013') -or ($schema -eq 1 -and $v -cne 'ACPI\MOU0006')) { throw 'Diagnostic optional node mismatch' } }
+                                    elseif($v -cne 'ACPI\MOU0013' -or $leaf.GetValue('Node5HardwareId') -cne 'ACPI\MOU0006') { throw 'Diagnostic GPU/SD order mismatch' }
+                                } else {
+                                    $size=-1
+                                    if($name -cmatch '^Node([0-6])(Before|After)$') { if([int]$Matches[1] -ge $count) { throw 'Node bound exceeded' };$size=44 }
+                                    elseif($name -cmatch '^Client([0-2])$') { if([int]$Matches[1] -ge $clients) { throw 'Client bound exceeded' };$size=28 }
+                                    elseif($name -cmatch '^Client([0-2])(Stdout|Stderr)Info$') { if([int]$Matches[1] -ge $clients) { throw 'Stream bound exceeded' };$size=20 }
+                                    elseif($name -cmatch '^Client([0-2])(Stdout|Stderr)$') { if([int]$Matches[1] -ge $clients) { throw 'Stream bound exceeded' };$size=-2 }
+                                    elseif($schema -eq 2 -and $name -ceq 'SystemVolumeFlush') { $size=28 }
+                                    if($size -eq -1 -or $kind -ne [Microsoft.Win32.RegistryValueKind]::Binary -or $v.Length -gt 65536 -or ($size -ge 0 -and $v.Length -ne $size)) { throw 'Unknown diagnostic value/type/size' }
+                                }
+                            }
+                            $parts.Add($policy+'/'+$phase+'='+[MT8167OfflineHive.Native]::ValueFingerprint($leaf))
+                        } finally { $leaf.Dispose() }
+                    }
+                } finally { $generation.Dispose() }
+            }
+        } finally { $last.Dispose() }
+    } finally { $parameters.Dispose() }
+    $hash=[Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes(($parts -join "`n"))))).Replace('-','').ToLowerInvariant() } finally { $hash.Dispose() }
+}
 function Inspect-Services($Root,$Plan,[bool]$Patch) {
     $select=[MT8167OfflineHive.Native]::OpenPath($Root,'Select',$false)
     if(!$select) { throw 'Missing Select key' }
@@ -94,7 +158,7 @@ function Inspect-Services($Root,$Plan,[bool]$Patch) {
         foreach($spec in $Plan.services) {
             $values=Service-Values $spec
             $key=[MT8167OfflineHive.Native]::OpenPath($Root,($control+'\'+$spec.name),$true)
-            $beforeFingerprint=$null
+            $beforeFingerprint=$null;$diagnosticFingerprint=$null
             $gpuInspect=[bool]$Plan.gpu_inspect
             if($gpuInspect) {
                 if($Patch -or $spec.name -cne 'MT8167DeviceInstall' -or !$key -or $key.GetValueNames().Count -ne 7) {
@@ -137,7 +201,10 @@ function Inspect-Services($Root,$Plan,[bool]$Patch) {
                     } else { $compatible=$compatible -and ($actual -ceq $expected[1]) }
                     if(!$compatible) { $key.Dispose();throw ('Conflicting existing service value: '+$spec.name+'/'+$name) }
                 }
-                if($key.GetSubKeyNames().Count -ne 0) { $key.Dispose();throw 'Unexpected one-shot service subkeys' }
+                if($spec.name -ceq 'MT8167EngineProbe' -and $Plan.engine_rearm) {
+                    try { $diagnosticFingerprint=Engine-DiagnosticFingerprint $key $Plan } catch { $key.Dispose();throw }
+                    if($Plan.engine_diagnostic_fingerprint -and $diagnosticFingerprint -cne $Plan.engine_diagnostic_fingerprint) { $key.Dispose();throw 'Engine diagnostics changed on clean reload' }
+                } elseif($key.GetSubKeyNames().Count -ne 0) { $key.Dispose();throw 'Unexpected one-shot service subkeys' }
             } elseif($Patch) { $key=$services.CreateSubKey([string]$spec.name) }
             else { throw 'One-shot service absent after clean-hive reload' }
             try {
@@ -154,7 +221,7 @@ function Inspect-Services($Root,$Plan,[bool]$Patch) {
                     elseif($actual -cne $expected[1]) { throw ('Service value mismatch: '+$name) }
                     $actualValues[$name]=@{kind=[string]$key.GetValueKind($name);value=$actual}
                 }
-                $report+=@{name=$spec.name;values=$actualValues;before_fingerprint=$beforeFingerprint}
+                $report+=@{name=$spec.name;values=$actualValues;before_fingerprint=$beforeFingerprint;diagnostic_fingerprint=$diagnosticFingerprint}
             } finally { $key.Dispose() }
         }
         return ,$report
@@ -398,7 +465,7 @@ $selected=@((Fixed-ServiceSpec $ServiceName))
 # never implicitly creates or rearms MT8167DeviceInstall.
 if($IncludeHardwareProbe -and $selected[0].name -ne 'MT8167HardwareProbe') { $selected+=@((Fixed-ServiceSpec 'MT8167HardwareProbe')) }
 $names=@($selected | ForEach-Object { $_.name })
-$report=[ordered]@{status='failed-do-not-deploy';whole_system_audit=$false;audit_scope='Select + existing DeviceInstall/RpcSs raw values and exact selected target service values only';source_files=[ordered]@{};timeout_seconds=$TimeoutSeconds;services=$names;errors=@();driver_files_modified=$false}
+$report=[ordered]@{status='failed-do-not-deploy';whole_system_audit=$false;audit_scope='Select + DeviceInstall/RpcSs raw values + selected service seven values; Engine-only known bounded LastDiagnostic subtree fingerprint when explicitly rearming';source_files=[ordered]@{};timeout_seconds=$TimeoutSeconds;services=$names;errors=@();driver_files_modified=$false}
 $plan=[ordered]@{control_set=$ExpectedCurrentControlSet;related_fingerprints='';services=$selected}
 if($engineRearmPlan) {
     $plan.engine_rearm=$engineRearmPlan;$plan.engine_rearm_plan_sha256=$engineRearmPlanHash
@@ -468,6 +535,11 @@ try {
     # Reload a separate clean copy WITHOUT logs, proving that the candidate is self-contained.
     [IO.File]::Copy((Join-Path $work 'SYSTEM'),(Join-Path $verify 'SYSTEM'),$false)
     $plan.related_fingerprints=$patch.state.related_fingerprints_after
+    if($engineRearmPlan) {
+        $fp=[string]$patch.state.services[0].diagnostic_fingerprint
+        if($fp -cne 'absent' -and $fp -cnotmatch '^[0-9a-f]{64}$') { throw 'Missing actual Engine diagnostic fingerprint' }
+        $plan.engine_diagnostic_fingerprint=$fp;$report.engine_diagnostic_fingerprint=$fp
+    }
     if($InspectFixedGpuDeviceInstall) {
         $fingerprint=[string]$patch.state.gpu_inspected_service_fingerprint
         if($fingerprint -cnotmatch '^[0-9a-f]{64}$') { throw 'Native GPU inspection did not return a real raw fingerprint' }

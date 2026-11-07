@@ -70,3 +70,15 @@ SD初回の再armはfreshbackupへ固定mt8167-sd.sysの明示ENOENTが必要。
 captureの`--sd-component-state`でこの1ファイルだけoptional記録し、従来7SYSは必須維持。
 full45はこの追加scopeが無いのでSD有効のfinal gateには使わない。SD無効候補はfull45を利用できる。
 実機read-only再captureとACPI適用はmain専有、盲単独試験はしない。
+
+## 既知LastDiagnosticを残すnative再arm
+
+run42後のfull45はserviceに自身のParameters/LastDiagnosticを持つ。旧native recipeの
+「subkeyは全て拒否」ではこの正規状態も拒否されるため、Engine明示再armだけに
+boundedな例外を追加する。service直下の七値の既知raw fingerprintは従来どおり必須。
+許可するのはParameters/LastDiagnosticの、旧署名policyと過去の固定rearm planから
+引き継いだ最大16個の64hex世代、Install/Diagnosticだけ。値名/type/record長/nodeIDと
+個数はSchema1/2に限定し、未知subkey/valueは拒否する。全leafのraw value fingerprintと
+階層形状から自身の診断subtree fingerprintを計算し、別clean copyの再load後に一致確認。
+既存診断は変更/削除しない。Select/DeviceInstall/RpcSsの限定fingerprint監査も維持。
+これは全SYSTEM監査ではない。最初の旧recipe拒否結果はfailed-do-not-deployのまま保存する。
