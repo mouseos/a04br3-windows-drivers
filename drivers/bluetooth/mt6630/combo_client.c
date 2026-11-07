@@ -200,11 +200,19 @@ static NTSTATUS child(CLIENT *c)
  if(NT_SUCCESS(s))s=WdfFdoAddStaticChild(c->device,c->child);return s;
 fail:WdfDeviceInitFree(init);return s;
 }
+/* Root removal is independent of physical parent removal. Revoke liveness
+ * even while uncertain SCO references deliberately retain object storage. */
+static VOID Surprise(WDFDEVICE device)
+{
+ CLIENT *c=Context(device);lock(c);InterlockedExchange(&c->controller.removed,1);c->running=FALSE;
+ if(c->controller.ready&&NT_SUCCESS(IoSetDeviceInterfaceState(&c->controller.ready_link,FALSE)))c->controller.ready=FALSE;
+ unlock(c);WdfIoQueuePurge(c->reads[0],NULL,NULL);WdfIoQueuePurge(c->reads[1],NULL,NULL);
+}
 static VOID Destroy(WDFOBJECT object){a04_combo_controller_destroy(&Context((WDFDEVICE)object)->controller);}
 NTSTATUS Add(WDFDRIVER driver,PWDFDEVICE_INIT init)
 {
  WDFDEVICE d;CLIENT *c;WDF_OBJECT_ATTRIBUTES a;WDF_PNPPOWER_EVENT_CALLBACKS p;WDF_TIMER_CONFIG timer;WDF_IO_QUEUE_CONFIG q;NTSTATUS s;UNREFERENCED_PARAMETER(driver);
- WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&p);p.EvtDeviceD0Entry=Start;p.EvtDeviceD0Exit=Stop;WdfDeviceInitSetPnpPowerEventCallbacks(init,&p);
+ WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&p);p.EvtDeviceD0Entry=Start;p.EvtDeviceD0Exit=Stop;p.EvtDeviceSurpriseRemoval=Surprise;WdfDeviceInitSetPnpPowerEventCallbacks(init,&p);
  WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&a,CLIENT);a.EvtDestroyCallback=Destroy;a.ExecutionLevel=WdfExecutionLevelPassive;
  s=WdfDeviceCreate(&init,&a,&d);if(!NT_SUCCESS(s))return s;c=Context(d);c->device=d;
  WDF_OBJECT_ATTRIBUTES_INIT(&a);a.ParentObject=d;s=WdfWaitLockCreate(&a,&c->lock);if(!NT_SUCCESS(s))return s;
