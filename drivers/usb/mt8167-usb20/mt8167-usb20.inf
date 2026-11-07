@@ -4,7 +4,7 @@ Signature="$WINDOWS NT$"
 Class=HIDClass
 ClassGuid={745a17a0-74d3-11d0-b6fe-00a0c90f57da}
 Provider=%Provider%
-DriverVer=11/06/2026,2026.11.6.1002
+DriverVer=11/06/2026,2026.11.6.1003
 CatalogFile=mt8167-usb20.cat
 [Manufacturer]
 %Provider%=Models,NTARM
