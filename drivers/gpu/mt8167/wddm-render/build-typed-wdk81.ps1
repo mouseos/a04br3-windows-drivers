@@ -55,7 +55,10 @@ try {
  Copy-Item (Join-Path $StateDirectory 'typed_state.obj') $out
  Copy-Item (Join-Path $ModuleDirectory 'umd_entry.obj') $out
  $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1";$inc=Join-Path $kit 'Include';$km=Join-Path $kit 'Lib\winv6.3\km\arm'
- $common=@('--target=thumbv7-pc-windows-msvc','-std=c11','-fms-extensions','-ffreestanding','-fno-builtin','-fno-stack-protector','-O2','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-D_ARM_','-DARM','-D__ldrexd=__geo_typed_wdk81_ldrexd_declaration','-D_WIN32_WINNT=0x0603','-DNTDDI_VERSION=0x06030000','-DD3D_UMD_INTERFACE_VERSION=0x4002','-DDXGKDDI_INTERFACE_VERSION=0x4002',"-I$inc\shared","-I$inc\um","-I$inc\km")
+ # WDK d3d10umddi.h emits C const definitions under this guard. The
+ # verified Nash state object owns their single definition; other C TUs
+ # must not emit duplicate external definitions. No SDK bytes are patched.
+ $common=@('--target=thumbv7-pc-windows-msvc','-std=c11','-fms-extensions','-ffreestanding','-fno-builtin','-fno-stack-protector','-O2','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-D_ARM_','-DARM','-D_D3D10_CONSTANTS','-D__ldrexd=__geo_typed_wdk81_ldrexd_declaration','-D_WIN32_WINNT=0x0603','-DNTDDI_VERSION=0x06030000','-DD3D_UMD_INTERFACE_VERSION=0x4002','-DDXGKDDI_INTERFACE_VERSION=0x4002',"-I$inc\shared","-I$inc\um","-I$inc\km")
  if($EnableLimitedDevelopmentProfile){$common+='-DGEO_TYPED_LIMITED_DEVELOPMENT=1'}
  $units=@('frontend/draw_protocol','umd/tokenized_shader','umd/typed_entry','umd/typed_resource','umd/typed_view','umd/typed_shader','umd/typed_draw','umd/typed_runtime','umd/typed_dxgi')
  foreach($unit in $units){
