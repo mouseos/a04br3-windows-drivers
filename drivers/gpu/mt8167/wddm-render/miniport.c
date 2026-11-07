@@ -111,7 +111,7 @@ static NTSTATUS dispatch_io_request(void *const context,ULONG source,PVIDEO_REQU
 }
 /* WDDM 1.3 requires metadata for every real scheduling node. This adapter
  * exposes one 3D node and no video/presentation engine or proprietary flags. */
-static NTSTATUS get_node_metadata(HANDLE context,UINT ordinal,PDXGKARG_GETNODEMETADATA metadata) {
+static NTSTATUS get_node_metadata(HANDLE context,UINT ordinal,DXGKARG_GETNODEMETADATA *metadata) {
  NTSTATUS status=STATUS_INVALID_PARAMETER;
  if(context&&metadata&&!ordinal&&KeGetCurrentIrql()==PASSIVE_LEVEL){
   RtlZeroMemory(metadata,sizeof(*metadata));metadata->EngineType=DXGK_ENGINE_TYPE_3D;status=STATUS_SUCCESS;
