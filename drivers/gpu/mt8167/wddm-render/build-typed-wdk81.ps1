@@ -70,7 +70,7 @@ try {
  Copy-Item (Join-Path $ModuleDirectory 'ge8300-kmd-clear.lib') "$out\ge8300-typed-kmd.lib"
  & llvm-ar r "$out\ge8300-typed-kmd.lib" "$out\frontend_draw_protocol.obj"
  if($LASTEXITCODE){throw 'KMD framing object replacement failed'}
- $names=@('clear_protocol','frontend_draw_protocol','umd_clear_ddi','umd_bootstrap','umd_frontend','umd_shader_state','umd_tokenized_shader','compiler_sm2','testclient_memory','typed_state','umd_typed_resource','umd_typed_view','umd_typed_shader','umd_typed_draw','umd_typed_runtime','umd_typed_dxgi')
+ $names=@('clear_protocol','frontend_draw_protocol','umd_clear_ddi','umd_bootstrap','umd_frontend','umd_shader_state','umd_tokenized_shader','compiler_sm2','typed_state','umd_typed_resource','umd_typed_view','umd_typed_shader','umd_typed_draw','umd_typed_runtime','umd_typed_dxgi')
  $objects=@($names|ForEach-Object {Join-Path $out ($_+'.obj')})
  & llvm-lib /machine:arm "/out:$out\ge8300-typed-umd.lib" @objects
  if($LASTEXITCODE){throw 'Typed UMD archive failed'}
