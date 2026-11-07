@@ -3,6 +3,7 @@
  * completion work item invokes upper completions outside the hardware thread,
  * so an inline upper power transition cannot join the thread completing it.
  * No shared worker performs PIO, waits for serial, or drains hardware. */
+#include <ntifs.h>
 #include "windows.h"
 static IO_CSQ_INSERT_IRP_EX insert;
 static IO_CSQ_REMOVE_IRP remove_irp;
