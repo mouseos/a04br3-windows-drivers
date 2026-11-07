@@ -48,7 +48,7 @@ def main():
   gpu_files,gpu_record=gpu_input(a.gpu_installer_package,root,a.gpu_baseline_package,a.gpu_candidate_package)
   plan_path=patch.parent/'gpu-rearm-plan.json'
   plan=json.loads(plan_path.read_text(encoding='utf-8-sig'));report=json.loads(patch.read_text(encoding='utf-8-sig'))
-  if (sha(plan_path)!=report.get('gpu_rearm_plan_sha256') or plan.get('candidate_source_commit')!=gpu_record['candidate_source'] or plan.get('candidate_sys_sha256')!=gpu_record['files']['provider/mt8167-ge8300.sys'] or plan.get('candidate_cat_sha256')!=gpu_record['files']['provider/mt8167-ge8300.cat']):raise ValueError('native再arm planとGPU候補の不一致')
+  if (sha(plan_path)!=report.get('gpu_rearm_plan_sha256') or plan.get('policy_sha256')!=gpu_record['policy_manifest_sha256'] or plan.get('data_directory')!=gpu_record['data_directory'] or plan.get('transition_id')!=gpu_record['transition_id'] or plan.get('candidate_source_commit')!=gpu_record['candidate_source'] or plan.get('candidate_sys_sha256')!=gpu_record['files']['provider/mt8167-ge8300.sys'] or plan.get('candidate_cat_sha256')!=gpu_record['files']['provider/mt8167-ge8300.cat']):raise ValueError('native再arm planとGPU候補の不一致')
   old_gpu=[item for item in b['files'] if item['source_path'].replace('\\','/').lower()=='windows/system32/drivers/mt8167-ge8300.sys']
   if len(old_gpu)!=1 or old_gpu[0]['sha256'].lower()!=gpu_record['baseline_sys_sha256']:raise ValueError('fresh実配置GPUとbaselineの不一致')
  out.mkdir(mode=0o700);stage=out/'stage';stage.mkdir(mode=0o700)
