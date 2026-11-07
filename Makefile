@@ -891,3 +891,17 @@ test-gpu-native-submit: build/gpu_vendor_windows_native_submit_test
 build/gpu_vendor_windows_native_submit_test: tests/gpu_vendor_windows_native_submit_test.c tests/gpu_vendor_windows_native_backing_test.c $(NATIVE_CLEAR_JOB_SRC) $(addprefix drivers/gpu/mt8167/vendor_m1_11/,windows_native_job.c windows_native_storage.c windows_native_cold.c windows_native_code.c windows_native_backing.c windows_native_submit.c windows_uncached.c native_resources.c native_hwrt_profile.c render_resources.c) drivers/gpu/mt8167/gpu_mmu.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -DA04_GE8300_VENDOR_NATIVE_CLEAR_JOB=1 -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter-out tests/gpu_vendor_windows_native_backing_test.c,$(filter %.c,$^)) -o $@
+
+.PHONY: test-gpu-native-owner-mdl
+test-gpu-native-owner-mdl: build/gpu_native_owner_mdl_test
+	./build/gpu_native_owner_mdl_test
+build/gpu_native_owner_mdl_test: tests/gpu_native_owner_mdl_test.c drivers/gpu/mt8167/vendor_m1_11/native_owner_mdl.c drivers/gpu/mt8167/vendor_m1_11/native_owner_mdl.h drivers/gpu/mt8167/dma_pages.c tests/gpu_windows_stubs/ntddk.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -DA04_TEST_DISPLAY_SCANOUT -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
+
+.PHONY: test-gpu-native-owner-irq
+test-gpu-native-owner-irq: build/gpu_native_owner_irq_test
+	./build/gpu_native_owner_irq_test
+build/gpu_native_owner_irq_test: tests/gpu_native_owner_irq_test.c drivers/gpu/mt8167/vendor_m1_11/native_owner_irq.c drivers/gpu/mt8167/vendor_m1_11/native_owner_irq.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/fwif -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@

@@ -23,6 +23,7 @@ typedef struct { ULONG NumberOfElements; SCATTER_GATHER_ELEMENT Elements[4]; } S
 typedef struct { int signaled; } KEVENT;
 typedef void (*PDRIVER_LIST_CONTROL)(PDEVICE_OBJECT,PIRP,PSCATTER_GATHER_LIST,PVOID);
 #define MDL_PAGES_LOCKED 1
+#define MDL_IO_SPACE 2
 #define MmGetMdlByteOffset(m) ((m)->offset)
 #define MmGetMdlByteCount(m) ((m)->bytes)
 #define MmGetMdlPfnArray(m) ((m)->pfns)

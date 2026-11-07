@@ -28,3 +28,7 @@ hostではIRQL5モデル・pool拒否・stall禁止でallocation/wait無し、em
 provider側ではexact MDL/SG mapping、native prepare/submit/visibility/poison、epochとqueue lifetimeを引き続き担当する。HerschelはDDI/context/allocation/consumer rundownを担当し、標準DDIから任意GPU packetやVAを渡さない。主担当はGPU IRQ/PnPの単一owner構成を調整する必要がある。現KMDF providerのIRQを維持したままsidecar側でも同じIRQを登録する案には接続できない。
 
 triangle/textureは別のproducer義務であり、このABI着手で完成扱いしない。capture05 VDM84bytesと1x1 image/sampler/texel factoryは確定実装済み。GPU-only prefix PPP48bytesと先行PDS code/data、VS/FS・PDS DMA一式の正規化生成は引き続き解析中。実機追加captureは主担当への事前handoff後だけ行う。
+
+## IRQ方針確定とKMDF非依存coreへの着手
+
+主担当指示で、同じMOU0006を排他的に所有するWDDM variant内にnative coreを組み込み、DxgkだけがIRQ所有する方針に確定した。既存KMDF実証providerは復帰baselineとして保持。具体的な共有header、locked MDL/SG実binding、実IRQ transport、残るprepare/visibility/quiesce義務は`NATIVE_OWNER_MINIPORT_CORE.md`を参照する。これらはno-op/常時成功callbackではなく実OS DMA/cacheと実MMIOを使うmoduleだが、GEO control v2全体の完成・実WDDM成功とは扱わない。
