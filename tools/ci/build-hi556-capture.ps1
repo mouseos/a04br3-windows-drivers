@@ -1,7 +1,8 @@
 # Integrated opt-in rear HI556 RAW capture candidate, not an AVStream camera.
 [CmdletBinding()]
-param([Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$CaptureExperiment,[string]$CertificateThumbprint)
+param([Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$CaptureExperiment,[string]$SharedOwnerDirectory,[string]$CertificateThumbprint)
 $ErrorActionPreference='Stop'
+if($SharedOwnerDirectory -and !$CaptureExperiment){throw 'Shared owner reuse requires CaptureExperiment'}
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $out=[IO.Path]::GetFullPath($OutputDirectory)
 if(!$out.StartsWith($root+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase) -or (Test-Path $out)){throw 'Require new output within fixed checkout'}
@@ -29,7 +30,32 @@ try {
  & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\client.obj" "$um\kernel32.lib" "$um\setupapi.lib" "$um\shell32.lib" "$um\user32.lib" "/out:$out\client\hi556-capture.exe"
  if($LASTEXITCODE){throw 'HI556 explicit client link failed'}
  if($CaptureExperiment){
-  & "$PSScriptRoot\build-mma8652-shared-identity.ps1" -OutputDirectory "$out\mma" -SharedIdentity -SharedCameraStream -CertificateThumbprint $CertificateThumbprint
+  if($SharedOwnerDirectory){
+   $shared=[IO.Path]::GetFullPath($SharedOwnerDirectory)
+   if(!$shared.StartsWith($root+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'Shared owner input must be within checkout'}
+   $m=Get-Content -Raw (Join-Path $shared 'manifest.json')|ConvertFrom-Json
+   if($m.source_dirty -ne $false -or $m.source_commit -notmatch '^[0-9a-f]{40}$' -or $m.version -ne '0.0.2.1' -or !$m.signed -or !$m.axis_hid_identity_core_blobs_preserved){throw 'Require fixed signed shared MMA2.1'}
+   foreach($flag in @('A04_MMA_SHARED_IDENTITY','A04_MMA_SHARED_CAMERA_STREAM')){if($m.critical_flags.$flag -ne 1){throw "Missing shared owner flag: $flag"}}
+   foreach($path in @('drivers/bus/mt8167-i2c/shared_identity_interface.h','drivers/sensors/mma8652/shared_identity.inc','drivers/sensors/mma8652/wdf_mma8652.c','drivers/sensors/mma8652/mma8652.c','drivers/sensors/mma8652/mma8652.h','drivers/sensors/mma8652/mt8167_i2c.c','drivers/sensors/mma8652/mt8167_i2c.h','drivers/sensors/mma8652/sensor_hid.c','drivers/sensors/mma8652/sensor_hid.h')){
+    $prior=(& git -C $root rev-parse "$($m.source_commit):$path");if($LASTEXITCODE){throw 'Shared owner source unavailable'}
+    $current=(& git -C $root rev-parse "HEAD:$path");if($LASTEXITCODE -or $prior -ne $current){throw "Shared owner source differs: $path"}
+   }
+   New-Item -ItemType Directory "$out\mma\package"|Out-Null
+   foreach($name in @('mma8652.sys','mma8652.inf','mma8652.cat')){
+    $entry=@($m.files|Where-Object {$_.path -eq "package/$name"})
+    if($entry.Count -ne 1 -or (Hash "$shared\package\$name") -ne $entry[0].sha256){throw "Shared owner hash mismatch: $name"}
+    Copy-Item -LiteralPath "$shared\package\$name" -Destination "$out\mma\package\$name"
+   }
+   foreach($name in @('mma8652.sys','mma8652.inf')){
+    & "$kit\bin\x86\signtool.exe" verify /pa /v /c "$out\mma\package\mma8652.cat" "$out\mma\package\$name"
+    if($LASTEXITCODE){throw 'Reused MMA catalog/signature verification failed'}
+   }
+   $m|Add-Member -NotePropertyName reused_by_source_commit -NotePropertyValue $commit
+   $m|Add-Member -NotePropertyName original_manifest_sha256 -NotePropertyValue (Hash "$shared\manifest.json")
+   $m|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 "$out\mma\manifest.json"
+  }else{
+   & "$PSScriptRoot\build-mma8652-shared-identity.ps1" -OutputDirectory "$out\mma" -SharedIdentity -SharedCameraStream -CertificateThumbprint $CertificateThumbprint
+  }
  }
  if($CertificateThumbprint){
   foreach($file in @("$out\package\hi556-capture.sys","$out\client\hi556-capture.exe")){
@@ -50,9 +76,9 @@ try {
 } finally {$env:TEMP=$priorTemp;$env:TMP=$priorTmp;$env:RUNNER_TEMP=$priorRunner}
 [ordered]@{
  status='integrated-raw-capture-candidate-not-hardware-validated';source_commit=$commit;source_dirty=$false
- recipe_sha256=(Hash $PSCommandPath);camera_version='0.0.1.0';mma_version=$(if($CaptureExperiment){'0.0.2.1'}else{$null})
+ recipe_sha256=(Hash $PSCommandPath);camera_version='0.0.1.1';status_schema=2;power_stop_rundown='EvtIoStop atomic request; sole original owner completes after hardware quiesce';total_servicing_deadline_seconds=32;mma_version=$(if($CaptureExperiment){'0.0.2.1'}else{$null})
  critical_flags=@{A04_HI556_CAPTURE_EXPERIMENT=$flag;A04_MMA_SHARED_IDENTITY=$flag;A04_MMA_SHARED_CAMERA_STREAM=$flag}
- camera_default_enabled=$false;required_firmware='uefi-a04br3 work/windows-camera-handoff, including ISP quiesce ACK before publishing NVS'
+ shared_owner_reused=[bool]$SharedOwnerDirectory;camera_default_enabled=$false;required_firmware='uefi-a04br3 work/windows-camera-handoff, including ISP quiesce ACK before publishing NVS'
  model='rear Hynix HI556 chip0556 I2C1 addr28';front_camera_bound=$false
  sensor_tables_manifest_sha256=(Hash "$root\drivers\camera\hi556\vendor\tables-provenance.json")
  receiver_source_sha256=(Hash "$root\drivers\camera\hi556\receiver.c")

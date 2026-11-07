@@ -92,3 +92,39 @@ MMA/他deviceの退行無しを含める。library/driverのbuild成功やNCSI2�
 
 未完了はWindows実非ゼロframe、元Linux停止境界の解明、AVStream/WinRT camera公開、
 camera rail省電力、前面IC識別。実機を所有する主担当の統合試験結果を待ち、同じ盲試験を増やさない。
+
+## 後続0.0.1.1：power-managed queueの停止
+
+統合候補0.0.1.0の署名bytesは保持し、後続INFは0.0.1.1、固定status schemaは2。
+`EvtIoStop`はatomic stop flagだけを立てる。元のCameraIoがrequestの唯一の完了者であり、
+別threadからrequestを同時complete/requeue/ackしない。
+framework同期scopeをNone、実行IRQLをPASSIVEに明示する。
+
+sensor tableの各bounded呼出し間とframe pollでcancel/stopを確認し、sensor off→DMA drainを
+終えてから元requestをcompleteする。hardwareが動いたままStopAcknowledgeを返してD0へ
+進めない。active captureが残る間はD0 exit/resource release/freeを拒否する。
+
+table初期化を含む全体にも32秒のsoftware servicing deadlineを設定する。
+これはsensor timingの推測値ではない。in-flight ACPI/I2C呼出しは従来の有限boundで完了を待ち、
+その後は新しいtable書込みを止め、既存stop手順を実行する。
+stop要求が来ても既存power leaseはcleanup完了までliveに保ち、途中でmappingを解放しない。
+
+schema2はsensor/stopの観測有無、stop要求/deadline、receiverの実backend結果を区別する。
+reset ACK timeoutだけをIO_TIMEOUTへ対応させ、livenessやreadback失敗をtimeoutと捏造しない。
+最初のreceiver失敗を後続stop成功で上書きしない。statusの0だけで未到達stageを成功扱いしない。
+
+共有SPMとの境界と調整案は[SHARED-SPM-CONTRACT.md](SHARED-SPM-CONTRACT.md)。
+GPU parent/機種ACPI側は変更せず、Windows cameraのSPM二重mapは追加していない。
+
+WDF一次資料:
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdfio/nc-wdfio-evt_wdf_io_queue_io_stop
+
+NVS/HSTAの実検証が失敗した場合もstickyにpower_lostを保持し、既存tokenのLiveを閉じる。
+元markerがRAMに残っていても、以後のreceiver MMIO/再試行を許可しない。
+停止証明を失ったDMA資源はquarantineする。実ACPI/helper NTSTATUSと観測flagをschema2に保持し、
+不明な失敗を一律timeoutへ変換しない。既存IMG power ownerのない状態でclockを推測修復しない。
+
+署名済みMMA2.1の再利用は`-SharedOwnerDirectory`へcheckout内のinputを渡す。
+inputのmanifest.jsonとpackage/{mma8652.sys,inf,cat}を固定し、実hash/CAT署名、critical flags、
+interfaceとMMA9source blob一致を検証する。cameraだけの変更でMMAを再署名しない。
+旧source commitと元manifest hashを派生manifestへ保持する。条件が違えば再利用せず停止する。

@@ -18,7 +18,7 @@ typedef struct {
  A04_I2C1_IDENTITY_INTERFACE identity;
  A04_I2C1_CAMERA_INTERFACE sensor;
  PDMA_ADAPTER adapter;PVOID common;PHYSICAL_ADDRESS logical;
- volatile LONG online,leases;ULONG generation;
+ volatile LONG online,leases,stop_requested,active_capture,power_lost;ULONG generation;
  BOOLEAN quarantined;
  A04_CAM_STATUS status;
 } A04_CAM_CONTEXT;

@@ -10,20 +10,28 @@ static BOOLEAN nvs(A04_CAM_CONTEXT *c)
   READ_REGISTER_ULONG(p+2)==~A04_CAM_MAGIC&&READ_REGISTER_ULONG(p+3)==0&&
   READ_REGISTER_ULONG(p+5)==48000&&READ_REGISTER_ULONG(p+6)==0x0556;
 }
+static NTSTATUS qualified_result(A04_CAM_CONTEXT *c,NTSTATUS status)
+{
+ if(!c->status.qualification_observed||NT_SUCCESS(c->status.qualification_status))c->status.qualification_status=status;
+ c->status.qualification_observed=1;
+ if(!NT_SUCCESS(status)){InterlockedExchange(&c->power_lost,1);c->status.power_lost=1;}
+ return status;
+}
 NTSTATUS a04_cam_qualified(A04_CAM_CONTEXT *c)
 {
  ACPI_EVAL_INPUT_BUFFER input;ACPI_EVAL_OUTPUT_BUFFER output;
  WDF_MEMORY_DESCRIPTOR in,out;WDF_REQUEST_SEND_OPTIONS options;ULONG_PTR bytes=0;NTSTATUS s;
- if(KeGetCurrentIrql()!=PASSIVE_LEVEL||!nvs(c))return STATUS_DEVICE_NOT_READY;
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+ if(c->power_lost||!nvs(c))return qualified_result(c,STATUS_DEVICE_NOT_READY);
  RtlZeroMemory(&input,sizeof(input));RtlZeroMemory(&output,sizeof(output));
  input.Signature=ACPI_EVAL_INPUT_BUFFER_SIGNATURE;input.MethodNameAsUlong='ATSH';
  WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&in,&input,sizeof(input));WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&out,&output,sizeof(output));
  WDF_REQUEST_SEND_OPTIONS_INIT(&options,WDF_REQUEST_SEND_OPTION_TIMEOUT);WDF_REQUEST_SEND_OPTIONS_SET_TIMEOUT(&options,WDF_REL_TIMEOUT_IN_MS(1000));
  s=WdfIoTargetSendIoctlSynchronously(WdfDeviceGetIoTarget(c->device),NULL,IOCTL_ACPI_EVAL_METHOD,&in,&out,&options,&bytes);
- if(!NT_SUCCESS(s))return s;
+ if(!NT_SUCCESS(s))return qualified_result(c,s);
  if(bytes<sizeof(output)||output.Signature!=ACPI_EVAL_OUTPUT_BUFFER_SIGNATURE||output.Count!=1||
-  output.Argument[0].Type!=ACPI_METHOD_ARGUMENT_INTEGER||output.Argument[0].Argument!=1||!nvs(c))return STATUS_DEVICE_NOT_READY;
- return STATUS_SUCCESS;
+  output.Argument[0].Type!=ACPI_METHOD_ARGUMENT_INTEGER||output.Argument[0].Argument!=1||!nvs(c))return qualified_result(c,STATUS_DEVICE_NOT_READY);
+ return qualified_result(c,STATUS_SUCCESS);
 }
 static VOID reference(PVOID p){A04_CAM_CONTEXT *c=p;WdfObjectReference(c->device);}
 static VOID dereference(PVOID p){A04_CAM_CONTEXT *c=p;WdfObjectDereference(c->device);}
@@ -42,7 +50,7 @@ static BOOLEAN live(PVOID p,ULONG token)
  A04_CAM_CONTEXT *c=p;
  /* Power transitions drain the power-managed queue and forbid new leases.
   * Firmware pins rails/MCLK; HSTA is checked on acquire and frame boundaries. */
- return KeGetCurrentIrql()==PASSIVE_LEVEL&&c->online&&!c->quarantined&&c->leases>0&&
+ return KeGetCurrentIrql()==PASSIVE_LEVEL&&c->online&&!c->quarantined&&!c->power_lost&&c->leases>0&&
   token!=0&&token==c->generation&&nvs(c);
 }
 static NTSTATUS release(PVOID p,ULONG token)

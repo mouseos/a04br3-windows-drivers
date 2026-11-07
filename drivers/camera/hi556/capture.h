@@ -6,6 +6,8 @@
 #define A04_HI556_HEIGHT 972u
 #define A04_HI556_STRIDE 1630u
 #define A04_HI556_FRAME_BYTES (A04_HI556_STRIDE*A04_HI556_HEIGHT)
+enum {A04_CAM_ARGUMENT=-1,A04_CAM_NOT_LIVE=-2,A04_CAM_MMU_UNASSIGNED=-3,
+ A04_CAM_RESET_TIMEOUT=-4,A04_CAM_READBACK=-5,A04_CAM_DELAY=-6,A04_CAM_STALE_STATUS=-7,A04_CAM_HARDWARE_ERROR=-8};
 /* Fixed model/format only. No arbitrary register/address/program interface. */
 struct a04_hi556_receiver_io {
  void *context;

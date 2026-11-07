@@ -11,6 +11,7 @@ EVT_WDF_DEVICE_RELEASE_HARDWARE CameraRelease;
 EVT_WDF_DEVICE_D0_ENTRY CameraD0;
 EVT_WDF_DEVICE_D0_EXIT CameraOff;
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL CameraIo;
+EVT_WDF_IO_QUEUE_IO_STOP CameraIoStop;
 DRIVER_INITIALIZE DriverEntry;
 static void unmap(A04_CAM_CONTEXT *c)
 {for(unsigned i=0;i<4;i++)if(c->region[i]){MmUnmapIoSpace(c->region[i],c->region_size[i]);c->region[i]=NULL;}}
@@ -50,7 +51,7 @@ NTSTATUS CameraD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
  A04_CAM_CONTEXT *c=CameraContext(dev);NTSTATUS s;UNREFERENCED_PARAMETER(previous);
  if(c->quarantined||c->leases||c->generation==MAXULONG)return STATUS_DEVICE_NOT_READY;
  s=a04_cam_qualified(c);if(!NT_SUCCESS(s))return s;
- c->generation++;a04_cam_power_init(c);InterlockedExchange(&c->online,1);
+ c->generation++;a04_cam_power_init(c);InterlockedExchange(&c->stop_requested,0);InterlockedExchange(&c->online,1);
  s=a04_hi556_owner_open(&c->identity);if(!NT_SUCCESS(s))goto fail;
  s=a04_cam_identify(c);if(!NT_SUCCESS(s))goto fail;
  s=a04_hi556_camera_open(&c->sensor);if(!NT_SUCCESS(s))goto fail;
@@ -64,7 +65,7 @@ NTSTATUS CameraOff(WDFDEVICE dev,WDF_POWER_DEVICE_STATE target)
  A04_CAM_CONTEXT *c=CameraContext(dev);UNREFERENCED_PARAMETER(target);
  /* The power-managed sequential queue has completed its bounded request.
   * Capture always stops/ACKs DMA before completion, including cancellation. */
- if(c->quarantined||c->leases||c->status.receiver.armed){
+ if(c->quarantined||c->leases||c->active_capture||c->status.receiver.armed){
   if(!c->quarantined){c->quarantined=TRUE;WdfObjectReference(dev);}return STATUS_DEVICE_BUSY;
  }
  InterlockedExchange(&c->online,0);a04_hi556_camera_close(&c->sensor);a04_hi556_owner_close(&c->identity);
@@ -73,7 +74,7 @@ NTSTATUS CameraOff(WDFDEVICE dev,WDF_POWER_DEVICE_STATE target)
 NTSTATUS CameraRelease(WDFDEVICE dev,WDFCMRESLIST translated)
 {
  A04_CAM_CONTEXT *c=CameraContext(dev);UNREFERENCED_PARAMETER(translated);
- if(c->quarantined||c->leases||c->status.receiver.armed)return STATUS_DEVICE_BUSY;
+ if(c->quarantined||c->leases||c->active_capture||c->status.receiver.armed)return STATUS_DEVICE_BUSY;
  a04_cam_free_dma(c);unmap(c);return STATUS_SUCCESS;
 }
 VOID CameraIo(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,ULONG code)
@@ -82,12 +83,26 @@ VOID CameraIo(WDFQUEUE queue,WDFREQUEST request,size_t output,size_t input,ULONG
  if(input||!A04_HI556_CAPTURE_EXPERIMENT){WdfRequestComplete(request,STATUS_INVALID_PARAMETER);return;}
  if(code==A04_CAM_IOCTL_CAPTURE){
   s=WdfRequestRetrieveOutputBuffer(request,sizeof(A04_CAM_STATUS)+A04_HI556_FRAME_BYTES,&buffer,NULL);
-  if(NT_SUCCESS(s))s=a04_cam_frame(c,request,buffer,output,&used);
+  if(NT_SUCCESS(s)){
+   InterlockedIncrement(&c->active_capture);
+   s=a04_cam_frame(c,request,buffer,output,&used);
+   InterlockedDecrement(&c->active_capture);
+  }
  }else if(code==A04_CAM_IOCTL_STATUS){
   s=WdfRequestRetrieveOutputBuffer(request,sizeof(A04_CAM_STATUS),&buffer,NULL);
   if(NT_SUCCESS(s)){RtlCopyMemory(buffer,&c->status,sizeof(c->status));used=sizeof(c->status);}
  }else s=STATUS_INVALID_DEVICE_REQUEST;
  WdfRequestCompleteWithInformation(request,s,NT_SUCCESS(s)?used:0);
+}
+VOID CameraIoStop(WDFQUEUE queue,WDFREQUEST request,ULONG flags)
+{
+ A04_CAM_CONTEXT *c=CameraContext(WdfIoQueueGetDevice(queue));
+ UNREFERENCED_PARAMETER(request);UNREFERENCED_PARAMETER(flags);
+ /* The original CameraIo callback remains sole owner of the request. Do
+  * not complete/requeue/ack it here while sensor or DMA I/O is in flight.
+  * It sees this atomic flag between bounded calls, drains hardware, then
+  * completes the request. Only that completion permits power rundown. */
+ InterlockedExchange(&c->stop_requested,1);
 }
 NTSTATUS CameraAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 {
@@ -97,10 +112,10 @@ NTSTATUS CameraAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
  WdfDeviceInitSetExclusive(init,TRUE);WdfDeviceInitSetIoType(init,WdfDeviceIoDirect);
  WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&callbacks);callbacks.EvtDevicePrepareHardware=CameraPrepare;callbacks.EvtDeviceReleaseHardware=CameraRelease;
  callbacks.EvtDeviceD0Entry=CameraD0;callbacks.EvtDeviceD0Exit=CameraOff;WdfDeviceInitSetPnpPowerEventCallbacks(init,&callbacks);
- WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,A04_CAM_CONTEXT);attr.ExecutionLevel=WdfExecutionLevelPassive;
+ WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,A04_CAM_CONTEXT);attr.ExecutionLevel=WdfExecutionLevelPassive;attr.SynchronizationScope=WdfSynchronizationScopeNone;
  s=WdfDeviceCreate(&init,&attr,&dev);if(!NT_SUCCESS(s))return s;CameraContext(dev)->device=dev;
  s=WdfDeviceCreateDeviceInterface(dev,&A04Hi556CaptureGuid,NULL);if(!NT_SUCCESS(s))return s;
- WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&queue,WdfIoQueueDispatchSequential);queue.EvtIoDeviceControl=CameraIo;
+ WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&queue,WdfIoQueueDispatchSequential);queue.EvtIoDeviceControl=CameraIo;queue.EvtIoStop=CameraIoStop;
  return WdfIoQueueCreate(dev,&queue,WDF_NO_OBJECT_ATTRIBUTES,NULL);
 }
 NTSTATUS DriverEntry(PDRIVER_OBJECT object,PUNICODE_STRING path)

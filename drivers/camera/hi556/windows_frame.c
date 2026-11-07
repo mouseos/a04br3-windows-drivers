@@ -18,12 +18,23 @@ static struct a04_hi556_receiver_io io(A04_CAM_CONTEXT *c)
 {struct a04_hi556_receiver_io o={c,read_reg,write_reg,delay_us,live};return o;}
 static NTSTATUS reg(A04_CAM_CONTEXT *c,USHORT address,USHORT value)
 {return c->sensor.Register(c->sensor.Header.Context,&c->power,address,&value,TRUE);}
-static NTSTATUS tables(A04_CAM_CONTEXT *c)
+/* Software servicing limit, not a guessed sensor/firmware timeout. Each
+ * in-flight ACPI/I2C call keeps its own established finite completion bound. */
+#define A04_CAM_TOTAL_100NS (UINT64_C(32)*10000000u)
+static NTSTATUS cancelled(A04_CAM_CONTEXT *c,WDFREQUEST request,uint64_t started)
+{
+ uint64_t now=KeQueryInterruptTime();
+ if(c->stop_requested||WdfRequestIsCanceled(request)){c->status.stop_requested=1;return STATUS_CANCELLED;}
+ if(now<started||now-started>=A04_CAM_TOTAL_100NS){c->status.deadline_expired=1;return STATUS_IO_TIMEOUT;}
+ return STATUS_SUCCESS;
+}
+static NTSTATUS tables(A04_CAM_CONTEXT *c,WDFREQUEST request,uint64_t started)
 {
  const struct a04_hi556_reg *list[]={a04_hi556_global,a04_hi556_preview};
  const unsigned count[]={sizeof(a04_hi556_global)/sizeof(*a04_hi556_global),sizeof(a04_hi556_preview)/sizeof(*a04_hi556_preview)};
  for(unsigned t=0;t<2;t++)for(unsigned i=0;i<count[t];i++){
-  NTSTATUS s=reg(c,list[t][i].reg,list[t][i].value);if(!NT_SUCCESS(s))return s;
+  NTSTATUS s=cancelled(c,request,started);if(!NT_SUCCESS(s))return s;
+  s=reg(c,list[t][i].reg,list[t][i].value);if(!NT_SUCCESS(s))return s;
  }
  return STATUS_SUCCESS;
 }
@@ -49,41 +60,55 @@ void a04_cam_free_dma(A04_CAM_CONTEXT *c)
  if(c->common){RtlSecureZeroMemory(c->common,A04_CAM_ALLOC_BYTES);c->adapter->DmaOperations->FreeCommonBuffer(c->adapter,A04_CAM_ALLOC_BYTES,c->logical,c->common,FALSE);c->common=NULL;}
  if(c->adapter){if(c->adapter->DmaOperations&&c->adapter->DmaOperations->PutDmaAdapter)c->adapter->DmaOperations->PutDmaAdapter(c->adapter);c->adapter=NULL;}
 }
+static NTSTATUS receiver_status(A04_CAM_CONTEXT *c,int result)
+{
+ if(!c->status.receiver_observed||c->status.receiver_result>=0)c->status.receiver_result=result;
+ c->status.receiver_observed=1;
+ if(result>=0)return STATUS_SUCCESS;
+ if(result==A04_CAM_RESET_TIMEOUT)return STATUS_IO_TIMEOUT;
+ if(result==A04_CAM_NOT_LIVE||result==A04_CAM_MMU_UNASSIGNED)return STATUS_DEVICE_NOT_READY;
+ if(result==A04_CAM_ARGUMENT)return STATUS_INVALID_PARAMETER;
+ if(result==A04_CAM_STALE_STATUS)return STATUS_DATA_ERROR;
+ return STATUS_IO_DEVICE_ERROR;
+}
 NTSTATUS a04_cam_frame(A04_CAM_CONTEXT *c,WDFREQUEST request,void *out,size_t outbytes,ULONG_PTR *used)
 {
  NTSTATUS status=STATUS_DEVICE_NOT_READY,stopped=STATUS_SUCCESS;ULONG token=0;int result=-1;BOOLEAN sensor_touched=FALSE,filled=FALSE;
- struct a04_hi556_receiver_io o=io(c);unsigned done=0;uint64_t start;
+ struct a04_hi556_receiver_io o=io(c);unsigned done=0;uint64_t start,started=KeQueryInterruptTime();
  *used=0;
  if(outbytes<sizeof(A04_CAM_STATUS)+A04_HI556_FRAME_BYTES)return STATUS_BUFFER_TOO_SMALL;
  if(!c->online||c->quarantined)return STATUS_DEVICE_NOT_READY;
- RtlZeroMemory(&c->status,sizeof(c->status));c->status.version=1;c->status.bytes=sizeof(c->status);c->status.generation=c->generation;c->status.attempted=1;
+ RtlZeroMemory(&c->status,sizeof(c->status));c->status.version=A04_CAM_STATUS_VERSION;c->status.bytes=sizeof(c->status);c->status.generation=c->generation;c->status.attempted=1;
  c->status.width=A04_HI556_WIDTH;c->status.height=A04_HI556_HEIGHT;c->status.stride=A04_HI556_STRIDE;c->status.format=1;
+ status=cancelled(c,request,started);if(!NT_SUCCESS(status))goto finish;
  status=c->power.Acquire(c,&token);if(!NT_SUCCESS(status))goto finish;
+ status=cancelled(c,request,started);if(!NT_SUCCESS(status))goto release;
  /* Reset/ACK makes any inherited DMA quiescent before touching the buffer. */
- if(a04_hi556_receiver_stop(&o,&c->status.receiver)){status=STATUS_IO_TIMEOUT;goto quarantine;}
+ status=receiver_status(c,a04_hi556_receiver_stop(&o,&c->status.receiver));if(!NT_SUCCESS(status))goto quarantine;
  status=allocate(c);if(!NT_SUCCESS(status)){a04_cam_free_dma(c);goto release;}
  status=a04_cam_identify(c);if(!NT_SUCCESS(status))goto release;
- sensor_touched=TRUE;status=tables(c);c->status.sensor_status=status;if(!NT_SUCCESS(status))goto stop;
+ sensor_touched=TRUE;status=tables(c,request,started);c->status.sensor_status=status;c->status.sensor_observed=1;if(!NT_SUCCESS(status))goto stop;
  RtlFillMemory(c->common,A04_CAM_ALLOC_BYTES,0xa5);filled=TRUE;__atomic_thread_fence(__ATOMIC_SEQ_CST);
- if(a04_hi556_receiver_arm(&o,&c->status.receiver,(uint64_t)c->logical.QuadPart+4096,A04_HI556_FRAME_BYTES)){status=STATUS_DEVICE_NOT_READY;goto stop;}
+ status=receiver_status(c,a04_hi556_receiver_arm(&o,&c->status.receiver,(uint64_t)c->logical.QuadPart+4096,A04_HI556_FRAME_BYTES));if(!NT_SUCCESS(status))goto stop;
+ status=cancelled(c,request,started);if(!NT_SUCCESS(status))goto stop;
  status=reg(c,0x0114,0x0100);c->status.sensor_status=status;if(!NT_SUCCESS(status))goto stop;
  /* A monotonic 3s deadline AND a finite iteration cap. Polling does not
   * convert an IRQ-only observation or unchanged sentinel into a frame. */
  start=KeQueryInterruptTime();status=STATUS_IO_TIMEOUT;
  for(unsigned i=0;i<3000;i++){
-  if(WdfRequestIsCanceled(request)){status=STATUS_CANCELLED;break;}
+  {NTSTATUS aborted=cancelled(c,request,started);if(!NT_SUCCESS(aborted)){status=aborted;break;}}
   result=a04_hi556_receiver_poll(&o,&c->status.receiver);
-  if(result<0){status=STATUS_IO_DEVICE_ERROR;break;}
+  if(result<0){status=receiver_status(c,result);break;}
   if(result==1){done=1;status=STATUS_SUCCESS;break;}
-  uint64_t now=KeQueryInterruptTime();if(now<start||now-start>=30000000u)break;
+  uint64_t now=KeQueryInterruptTime();if(now<start||now-start>=30000000u){c->status.deadline_expired=1;break;}
   if(delay_us(c,1000)){status=STATUS_IO_DEVICE_ERROR;break;}
  }
 stop:
  if(sensor_touched){stopped=reg(c,0x0114,0);if(!NT_SUCCESS(stopped)&&NT_SUCCESS(status))status=stopped;}
- if(a04_hi556_receiver_stop(&o,&c->status.receiver)){c->status.stop_status=STATUS_IO_TIMEOUT;status=STATUS_IO_TIMEOUT;goto quarantine;}
- c->status.stop_status=stopped;
+ {NTSTATUS drained=receiver_status(c,a04_hi556_receiver_stop(&o,&c->status.receiver));if(!NT_SUCCESS(drained)){c->status.stop_status=drained;c->status.stop_observed=1;status=drained;goto quarantine;}}
+ c->status.stop_status=stopped;c->status.stop_observed=1;
  if(done&&(uint32_t)(c->status.receiver.sof_end-c->status.receiver.sof_start)!=1&&NT_SUCCESS(status))status=STATUS_DATA_ERROR;
- if(!NT_SUCCESS(a04_cam_qualified(c))){if(NT_SUCCESS(status))status=STATUS_DEVICE_NOT_READY;}
+ {NTSTATUS qualified=a04_cam_qualified(c);if(!NT_SUCCESS(qualified)&&NT_SUCCESS(status))status=qualified;}
  __atomic_thread_fence(__ATOMIC_SEQ_CST);
  if(c->common&&filled){
   UCHAR *p=c->common;
@@ -101,7 +126,7 @@ release:
 quarantine:
  if(!c->quarantined){c->quarantined=TRUE;WdfObjectReference(c->device);}
 finish:
- c->status.status=status;
+ c->status.status=status;c->status.power_lost=!!c->power_lost;
  if(NT_SUCCESS(status)&&done&&c->status.receiver.quiesced&&!c->status.receiver.uncertain){
   c->status.frame_bytes=A04_HI556_FRAME_BYTES;RtlCopyMemory((UCHAR *)out+sizeof(c->status),(UCHAR *)c->common+4096,A04_HI556_FRAME_BYTES);
   *used=sizeof(c->status)+A04_HI556_FRAME_BYTES;
