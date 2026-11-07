@@ -248,3 +248,12 @@ Hは既存typed_draw.cのfull viewport制限をこの範囲に限って緩和し
 request.state.viewportへ実runtime値をcopyできる。前処理でvertexを変換しない。
 これは任意サイズHWRT/target allocationやdepth bufferの実装とは区別する。
 未対応fractional viewport/矩形外/depth rangeはエラーで返す。
+
+### 親profile台帳更新
+
+主担当の現在値はboot53d6/親1010。Eの停止/電源候補は
+固定287241c/1014 WithSpm＋SD1、ACPI6e852b1を引き続き使用。
+1016はwithdrawn署名で再使用不可、1018thermalはSD0専用候補、1020はmiccapture予約。
+thermal同時profileにする場合はSDpower/audio DMA forwardingを含む全effective flagsを
+統合した新versionが必要。1018を単純採用してEのSD1条件を失わないこと。
+これは台帳の記録であり、現在の実機へ新tupleを適用した記録ではない。
