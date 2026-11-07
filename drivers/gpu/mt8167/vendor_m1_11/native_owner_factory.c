@@ -90,7 +90,7 @@ static NTSTATUS set_power(void *p,uint64_t epoch,DEVICE_POWER_STATE power)
     }
     KeReleaseMutex(&c->mutex,FALSE);return s;
 }
-static NTSTATUS create(void *p,const struct geo_surface_desc *d,uint64_t *id)
+static int32_t create(void *p,const struct geo_surface_desc *d,uint64_t *id)
 {
     struct e_native_owner *c=p;NTSTATUS s;
     if(!id)return STATUS_INVALID_PARAMETER;*id=0;
@@ -100,7 +100,7 @@ static NTSTATUS create(void *p,const struct geo_surface_desc *d,uint64_t *id)
     if(c->surface || c->next_id==UINT64_MAX)return leave(c,STATUS_DEVICE_BUSY);
     c->description=*d;c->surface=++c->next_id;*id=c->surface;return leave(c,STATUS_SUCCESS);
 }
-static NTSTATUS bind(void *p,uint64_t surface,void *mdl,uint32_t offset,uint32_t bytes,uint64_t aperture)
+static int32_t bind(void *p,uint64_t surface,void *mdl,uint32_t offset,uint32_t bytes,uint64_t aperture)
 {
     struct e_native_owner *c=p;NTSTATUS s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     if(surface!=c->surface || !surface || offset || bytes!=1920000 || c->allocation->binding || c->job_state)return leave(c,STATUS_INVALID_PARAMETER);
@@ -110,7 +110,7 @@ static NTSTATUS bind(void *p,uint64_t surface,void *mdl,uint32_t offset,uint32_t
     else if(c->allocation->binding || c->allocation->frontend_orphan)c->state=E_OWNER_FAILED;
     return leave(c,s);
 }
-static NTSTATUS unbind(void *p,uint64_t surface)
+static int32_t unbind(void *p,uint64_t surface)
 {
     struct e_native_owner *c=p;NTSTATUS s=enter(c,TRUE);if(!NT_SUCCESS(s))return s;
     if(!surface || surface!=c->surface)return leave(c,STATUS_INVALID_PARAMETER);
@@ -120,14 +120,14 @@ static NTSTATUS unbind(void *p,uint64_t surface)
     else c->state=E_OWNER_FAILED;
     return leave(c,s);
 }
-static NTSTATUS destroy(void *p,uint64_t surface)
+static int32_t destroy(void *p,uint64_t surface)
 {
     struct e_native_owner *c=p;NTSTATUS s=enter(c,TRUE);if(!NT_SUCCESS(s))return s;
     if(!surface || surface!=c->surface)return leave(c,STATUS_INVALID_PARAMETER);
     if(c->allocation->binding || c->job_state)return leave(c,STATUS_DEVICE_BUSY);
     c->surface=0;RtlZeroMemory(&c->description,sizeof(c->description));return leave(c,STATUS_SUCCESS);
 }
-static NTSTATUS prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
+static int32_t prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
 {
     struct e_native_owner *c=p;RGXFWIF_CCB_CTL k;NTSTATUS s;
     if(!job)return STATUS_INVALID_PARAMETER;*job=0;s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
@@ -148,7 +148,7 @@ static NTSTATUS prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
     if(!NT_SUCCESS(s))c->state=E_OWNER_FAILED;
     return leave(c,s);
 }
-static NTSTATUS discard(void *p,uint64_t job)
+static int32_t discard(void *p,uint64_t job)
 {
     struct e_native_owner *c=p;NTSTATUS s=enter(c,TRUE);if(!NT_SUCCESS(s))return s;
     if(job!=c->job || !job || c->job_state!=E_JOB_PREPARED)return leave(c,STATUS_DEVICE_BUSY);
@@ -156,7 +156,7 @@ static NTSTATUS discard(void *p,uint64_t job)
     if(NT_SUCCESS(s)){c->job=0;c->job_state=E_JOB_NONE;}else c->state=E_OWNER_FAILED;
     return leave(c,s);
 }
-static NTSTATUS submit(void *p,uint64_t job,uint32_t fence,uint32_t generation)
+static int32_t submit(void *p,uint64_t job,uint32_t fence,uint32_t generation)
 {
     struct e_native_owner *c=p;NTSTATUS s;
     if(!c || KeGetCurrentIrql()!=c->irq_level || c->closing || !c->leased || !c->irq_gate ||
