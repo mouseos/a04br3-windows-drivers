@@ -13,7 +13,7 @@ def main():
  out=a.output.resolve()
  if not out.is_relative_to(root) or out.exists():raise ValueError('root内新規出力が必要です')
  m=json.loads(a.media.read_text());b=json.loads(a.backup.read_text());policy=m['probe']['deferred_update']
- if policy.get('transaction')!='codec1026-msdc-quiet-fresh82' or b.get('status')!='captured-unmounted' or b['recovery_boot_id']==policy['recovery_boot_id']:raise ValueError('異なるbootで回収した適用後backupが必要です')
+ if policy.get('transaction')!='codec1026-msdc-quiet-fresh84' or b.get('status')!='captured-unmounted' or b['recovery_boot_id']==policy['recovery_boot_id']:raise ValueError('異なるbootで回収した適用後backupが必要です')
  records={}
  for f in b['files']:
   p=(a.backup.parent/f['backup_path']).resolve(strict=True)

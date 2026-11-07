@@ -5,7 +5,7 @@ param([Parameter(Mandatory=$true)][string]$PackageMap,
 $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $spec=Get-Content $PackageMap -Raw|ConvertFrom-Json
-if($spec.transaction -ne 'codec1026-msdc-quiet-fresh82' -or !$spec.backup_manifest -or !$spec.backup_manifest_sha256){throw 'fresh82 binding required; draft is not buildable'}
+if($spec.transaction -ne 'codec1026-msdc-quiet-fresh84' -or !$spec.backup_manifest -or !$spec.backup_manifest_sha256){throw 'fresh84 binding required; draft is not buildable'}
 if(@(& git -C $root status --porcelain).Count){throw 'Committed clean service source required'}
 $cert='BCBF6C456C6F0DD0818434763B189488FBF13570'
 $out=[IO.Path]::GetFullPath($OutputDirectory)
@@ -36,4 +36,4 @@ $names=@('MT8167EngineProbe.exe','hardware-probe-manifest.json','deferred-policy
 }|ConvertTo-Json -Depth 12|Set-Content -Encoding UTF8 (Join-Path $out 'signed-manifest.json')
 $zipFiles=@($names|ForEach-Object{Join-Path $out $_})+@((Join-Path $out 'signed-manifest.json'))
 Compress-Archive -Path $zipFiles -DestinationPath (Join-Path $out 'codec-msdc-engine-service-signed.zip')
-Write-Host 'CODEC1026_MSDC_QUIET_FRESH82_SERVICE_SIGNED'
+Write-Host 'CODEC1026_MSDC_QUIET_FRESH84_SERVICE_SIGNED'

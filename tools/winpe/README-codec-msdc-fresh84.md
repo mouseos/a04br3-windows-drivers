@@ -1,20 +1,20 @@
 # TAB-A04-BR3 codec1026 / MSDC quiet0.0.1.8 一括延期更新
 
-固定profile `codec1026-msdc-quiet-fresh82` は既存Engine媒体/サービスの明示opt-in。
+固定profile `codec1026-msdc-quiet-fresh84` は既存Engine媒体/サービスの明示opt-in。
 親1015からcapture1026への選択統合済み署名tupleと、配置済みf8f54c9を基点とした
 ログ限定のMSDC quiet1.8だけを使用する。他の候補や旧capture親を探索・選択しない。
 
 更新対象は ACPI\BEN0001 / Mt8167Shared、MT8167\AFE / Mt8167Audio、
 ACPI\MOU0001 / a04msdcboot。親の既存32flags・RTC borrow=1は保持し、capture=1だけ追加。
 移行前Audioはendpoint1007。USB1005は44899b9の配置SYSを保持し、監査用再署名版に替えない。
-MT6630 Wi-Fi1012、MOU0007 CPU DOD、MOU0006 GE8300Render3.9、旧GE8300 provider、TOPRGU、
+MT6630 Wi-Fi1012、MOU0007 CPU DOD、MOU0006 GE8300Render3.10、旧GE8300 provider、TOPRGU、
 GE8300 firmware/UMDを固定hashと実service/versionで保持する。Code43をCode0に置換して扱わない。
 UMDの配置先はSystem32、SYS/FWはSystem32/drivers。GPU sourceやドライバsourceは編集しない。
 
 `codec_msdc_transaction.py --draft` は署名packageのsource/manifest/artifact/cert/INFと
 1015 flagsを確認したdraft JSONだけを出す。backup fieldsはnullが必須。実行可能headerは出さない。
-通常のpolicy入口はfresh82の完了manifestと全file hash/bytesを確認し、配置SYSを照合する。
-`private-windows-rt-prebackup-run82/manifest.json`以外のbackupは拒否する。旧SYSTEMへfallbackしない。
+通常のpolicy入口はfresh84の完了manifestと全file hash/bytesを確認し、配置SYSを照合する。
+`private-windows-rt-prebackup-run84/manifest.json`以外のbackupは拒否する。旧SYSTEMへfallbackしない。
 FW/UMDがbackupへ未収録でも、runtimeの固定hash gateと旧file保存を省略しない。
 
 既存 `build-mt8167-shared-io-update-media.py` に同mapを渡す。Engine modeの既存引数と
@@ -23,7 +23,7 @@ FW/UMDがbackupへ未収録でも、runtimeの固定hash gateと旧file保存を
 `prepare-codec-msdc-engine.cmd.in`は新service/clientと3packageをEngine専用領域へ置く。
 既存marker/log/serviceの保存とnative SYSTEMの7値限定監査は元のEngine frameworkを保持する。
 
-WDK入口 `tools/ci/build-codec-msdc-fresh82.ps1` はfresh82結合mapだけを受け付ける。
+WDK入口 `tools/ci/build-codec-msdc-fresh84.ps1` はfresh84結合mapだけを受け付ける。
 同じ既存runner/SDK/署名鍵でservice TUだけをcompileし、既存driver/clientを再buildしない。
 実SYS/INFのCATmembershipを再照合し、サービス署名packageを生成する。
 

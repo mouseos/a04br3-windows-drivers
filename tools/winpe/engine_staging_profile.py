@@ -3,7 +3,7 @@ import re
 NONBOOT={'PARENT','AUDIO','USB','WIFI','DISPLAY','SD'}
 
 def apply_profile(cmd,policy,backup,previous,components):
-    if policy and policy.get('transaction')=='codec1026-msdc-quiet-fresh82':
+    if policy and policy.get('transaction')=='codec1026-msdc-quiet-fresh84':
         from codec_msdc_transaction import staging
         return staging(cmd,policy,backup,previous)
     profile=policy.get('staging_profile','offline-all') if policy else 'offline-all'

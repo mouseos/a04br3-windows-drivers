@@ -124,7 +124,7 @@ def make_plan(previous_path, backup_path, backup, components, root, allow_missin
         raise ValueError('使用済み媒体と同じbackupは再armに使えません')
     before, after = package_state(previous['components']), package_state(components)
     codec_policy=(next_probe or {}).get('deferred_update',{})
-    if codec_policy.get('transaction')=='codec1026-msdc-quiet-fresh82':
+    if codec_policy.get('transaction')=='codec1026-msdc-quiet-fresh84':
         from codec_msdc_transaction import BASELINES,BASELINE_DATES,TARGETS
         before={r:{'driver_ver':BASELINE_DATES[r]+','+v,'files':{r+'/'+TARGETS[r][2]+'.sys':h}} for r,(v,h) in BASELINES.items()}
     if 'gpu' in after and 'gpu' not in before:
