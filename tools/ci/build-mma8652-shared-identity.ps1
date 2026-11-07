@@ -36,6 +36,10 @@ try {
  }
  & lld-link /lib /machine:arm @camera "/out:$out\hi556-owner-client.lib"
  if($LASTEXITCODE){throw 'Camera modules archive failed'}
+ # A library alone does not resolve imports. Link a non-installable native
+ # no-entry verification image, preserving client/power exports for /opt:ref.
+ & lld-link /dll /noentry /subsystem:native /machine:arm /nodefaultlib @camera "$km\ntoskrnl.lib" "$km\libcntpr.lib" /export:a04_hi556_owner_open /export:a04_hi556_owner_close /export:a04_hi556_owner_identify /export:a04_hi556_power_start "/out:$out\hi556-owner-linkcheck.dll"
+ if($LASTEXITCODE){throw 'Camera kernel import link check failed'}
  Copy-Item "$root\drivers\sensors\mma8652\mma8652.inf" "$out\package"
  & "$kit\bin\x86\Inf2Cat.exe" "/driver:$out\package" /os:6_3_ARM /uselocaltime
  if($LASTEXITCODE){throw 'Inf2Cat failed'}
@@ -62,5 +66,6 @@ try {
  signed=[bool]$CertificateThumbprint;signing_thumbprint=$CertificateThumbprint
  recipe_sha256=(Get-FileHash $PSCommandPath -Algorithm SHA256).Hash
  files=@(Get-ChildItem "$out\package" -File|ForEach-Object{@{path=('package/'+$_.Name);bytes=$_.Length;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash}})
+ camera_import_linkcheck_sha256=(Get-FileHash "$out\hi556-owner-linkcheck.dll" -Algorithm SHA256).Hash
  camera_library_sha256=(Get-FileHash "$out\hi556-owner-client.lib" -Algorithm SHA256).Hash
 }|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 "$out\manifest.json"

@@ -68,6 +68,9 @@ goto unlock;
 quarantine:
  /* An active transfer or uncertain rail teardown must retain the actual
   * provider reference/token until reboot/recovery, not pretend release. */
+ /* Keep the owner context and retained token/mapping alive too; a client
+  * closing its query interface must not destroy quarantine evidence. */
+ WdfObjectReference(dev);
  out->quarantined=1;c->quarantined_power=*power;c->quarantined_token=token;c->power_quarantined=TRUE;
  c->faulted=TRUE;InterlockedExchange(&c->online,0);
  if(NT_SUCCESS(status))status=out->power_release_status;

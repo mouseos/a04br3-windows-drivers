@@ -25,7 +25,7 @@ MMA read/axis/HID coreの6filesは基点と同じblobであることをbuild hel
    completionをelapsed checkより先に確認する実績MMAの規則を維持。
    各transfer最大2000poll/100ms判定、無限retry/resetなし。
 6. power lease解放成功後だけ成功を返す。STARTが残る/解放が失敗する場合は
-   tokenとprovider参照を保持して隔離し、MMA poll/D0再開/MMIO解放を拒否する。
+   tokenとpower provider参照およびMMA owner自身の参照を保持して隔離し、MMA poll/D0再開/MMIO解放を拒否する。
    不十分な解放を成功にしない。隔離はreboot/recoveryで解消する対象で、自動再試行しない。
 
 `online=0`後のD0ExitとReleaseHardwareは同じlockで進行中batchを排出する。
@@ -67,6 +67,7 @@ OTP/校正は未読であり、固定値/別個体dataを組み込まない。
 
 実績MMA6core blob、source40hex/clean、WDK8.1/KMDF1.13、ARM scalar flagsを検査し、
 MMA provider SYS/INF/CATとcamera client/power/identity libraryを生成する。
+camera libraryは非配備用no-entry native imageでもlinkし、kernel importの未解決を検査する。
 署名する場合は既存certのthumbをCertificateThumbprintへ明示する。生成・trust変更はしない。
 root内の専用固定sourceから実buildし、回収manifestとhashを記録する。
 単独実機試験は行わず、配備可否は未成立power providerと統合結果を含めて判断する。
