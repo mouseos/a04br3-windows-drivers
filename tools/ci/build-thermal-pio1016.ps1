@@ -52,6 +52,6 @@ try {
  $pm|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 $pmPath
  @{source_commit=$commit;parent_ver='2026.11.7.1016';thermal_ver='0.0.1.4';signer=$CertificateThumbprint;utc=[DateTime]::UtcNow.ToString('o');flags=$values;device_verified=$false;
   handoff_record_sha256=(Get-FileHash (Join-Path $root 'drivers\bus\mt8167-shared\thermal_pio_record.h') -Algorithm SHA256).Hash;
-  files=@(foreach($d in $packages){Get-ChildItem $d -File|Where-Object {$_.Extension -in @('.sys','.inf','.cat','.json')}|ForEach-Object {@{path=$_.FullName.Substring($out.Length+1);bytes=$_.Length;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash}})
+  files=@(foreach($d in $packages){Get-ChildItem $d -File|Where-Object {$_.Extension -in @('.sys','.inf','.cat','.json')}|ForEach-Object {@{path=$_.FullName.Substring($out.Length+1);bytes=$_.Length;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash}}})
  }|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 "$out\signed-manifest.json"
 }finally{foreach($k in $previous.Keys){[Environment]::SetEnvironmentVariable($k,$previous[$k],'Process')}}
