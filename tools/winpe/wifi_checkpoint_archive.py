@@ -18,7 +18,7 @@ def validate_archive(path, backup_path, backup):
     expected = {name: {k: entries['Windows/System32/config/'+name][k] for k in ('bytes', 'sha256')}
                 for name in ('SYSTEM', 'SYSTEM.LOG1', 'SYSTEM.LOG2')}
     if d.get('source_files') != expected:
-        raise ValueError('旧WiFi記録とfresh72の元入力不一致')
+        raise ValueError('旧WiFi記録と固定基点の元入力不一致')
     c = d.get('checkpoint', {})
     if c.get('present') is False:
         return d
