@@ -33,6 +33,14 @@ try {
  $root=[MT8167OfflineHive.Native]::OpenRoot($mount);$select=[MT8167OfflineHive.Native]::OpenPath($root,'Select',$false)
  try{$current=[int]$select.GetValue('Current');if($current -lt 1 -or $current -gt 999){throw 'Invalid controlset'}}finally{$select.Dispose()}
  $cs='ControlSet'+$current.ToString('000')
+ $graphics=[MT8167OfflineHive.Native]::OpenPath($root,"$cs\Control\GraphicsDrivers",$false)
+ $result.graphics_drivers_policy=[ordered]@{}
+ try {
+  foreach($name in @('DisableAutoAcpiPostDeivce','DisableAutoAcpiPostDevice','ValidateWDDMCaps')){
+   $present=$graphics -and @($graphics.GetValueNames()) -contains $name
+   $result.graphics_drivers_policy[$name]=if($present){@{present=$true;kind=[string]$graphics.GetValueKind($name);value=$graphics.GetValue($name)}}else{@{present=$false}}
+  }
+ }finally{if($graphics){$graphics.Dispose()}}
  foreach($id in @('ACPI\BEN0001','MT8167\AFE','ACPI\MOU0001','MT8167\USB20','A04BR3\MT6630SDIO','ACPI\MOU0007','ACPI\MOU0006')){
   $base=[MT8167OfflineHive.Native]::OpenPath($root,"$cs\Enum\$id",$false);if(!$base){throw "Missing fixed node: $id"}
   try{
