@@ -32,5 +32,5 @@ EVT_WDFDEVICE_WDM_IRP_PREPROCESS SdScsi;
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL SdControl;
 NTSTATUS SdProcess(struct sd_work *,ULONG_PTR *);
 NTSTATUS SdAcpi(struct sd_host *,const char name[4],ULONG *);
-NTSTATUS SdCreateChild(struct sd_host *);
+NTSTATUS SdCreateChild(struct sd_host *,ULONG *stage);
 #endif

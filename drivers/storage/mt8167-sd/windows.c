@@ -5,6 +5,7 @@
  */
 #include <initguid.h>
 #include "windows.h"
+#include "checkpoint.h"
 #include <acpiioct.h>
 #include <wdmguid.h>
 EVT_WDF_DRIVER_DEVICE_ADD SdAdd;
@@ -67,7 +68,7 @@ VOID SdTimer(WDFTIMER timer)
  status=SdAcpi(h,"SDCD",&present);set_presence(h,NT_SUCCESS(status)&&present<=1?(LONG)present:-1);
  if(!InterlockedCompareExchange(&h->closing,0,0))WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(100));
 }
-NTSTATUS SdPrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
+static NTSTATUS prepare_impl(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
  struct sd_host *h=SdHost(device);BOOLEAN memory=FALSE,irq=FALSE;PHYSICAL_ADDRESS address={0};
  if(WdfCmResourceListGetCount(raw)!=WdfCmResourceListGetCount(translated))return STATUS_DEVICE_CONFIGURATION_ERROR;
@@ -85,6 +86,11 @@ NTSTATUS SdPrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
  if(!NT_SUCCESS(status)){MmUnmapIoSpace((PVOID)h->registers,0x1000);h->registers=NULL;}
  return status;
 }
+NTSTATUS SdPrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
+{
+ SdCheckpoint(L"PrepareHardware",1,STATUS_PENDING,FALSE);
+ NTSTATUS status=prepare_impl(device,raw,translated);SdCheckpoint(L"PrepareHardware",2,status,TRUE);return status;
+}
 NTSTATUS SdRelease(WDFDEVICE device,WDFCMRESLIST resources)
 {
  struct sd_host *h=SdHost(device);UNREFERENCED_PARAMETER(resources);
@@ -94,7 +100,7 @@ NTSTATUS SdRelease(WDFDEVICE device,WDFCMRESLIST resources)
  if(h->registers){MmUnmapIoSpace((PVOID)h->registers,0x1000);h->registers=NULL;}
  RtlSecureZeroMemory(&h->card,sizeof(h->card));return STATUS_SUCCESS;
 }
-NTSTATUS SdD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
+static NTSTATUS d0_impl(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 {
  struct sd_host *h=SdHost(device);ULONG proof=0,present=0;UNREFERENCED_PARAMETER(previous);
  NTSTATUS status=SdAcpi(h,"SDCF",&proof);if(!NT_SUCCESS(status))return status;
@@ -117,6 +123,11 @@ NTSTATUS SdD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
  InterlockedExchange(&h->absent_seen,present==0);if(present==0)InterlockedExchange(&h->blocked,0);
  InterlockedExchange(&h->closing,0);
  WdfTimerStart(h->timer,WDF_REL_TIMEOUT_IN_MS(100));return STATUS_SUCCESS;
+}
+NTSTATUS SdD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
+{
+ SdCheckpoint(L"D0Entry",1,STATUS_PENDING,FALSE);
+ NTSTATUS status=d0_impl(device,previous);SdCheckpoint(L"D0Entry",2,status,TRUE);return status;
 }
 NTSTATUS SdD0Exit(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
 {
@@ -233,45 +244,58 @@ NTSTATUS SdScsi(WDFDEVICE child,PIRP irp)
  }
  irp->IoStatus.Status=status;irp->IoStatus.Information=0;IoCompleteRequest(irp,IO_NO_INCREMENT);return status;
 }
-NTSTATUS SdCreateChild(struct sd_host *h)
+NTSTATUS SdCreateChild(struct sd_host *h,ULONG *stage)
 {
- PWDFDEVICE_INIT init=WdfPdoInitAllocate(h->device);WDFDEVICE child;WDF_OBJECT_ATTRIBUTES attributes;NTSTATUS status;
+ *stage=20;PWDFDEVICE_INIT init=WdfPdoInitAllocate(h->device);WDFDEVICE child;WDF_OBJECT_ATTRIBUTES attributes;NTSTATUS status;
  if(!init)return STATUS_INSUFFICIENT_RESOURCES;
  DECLARE_CONST_UNICODE_STRING(id,L"MT8167\\SDMEM");DECLARE_CONST_UNICODE_STRING(compatible,L"GenDisk");
  DECLARE_CONST_UNICODE_STRING(instance,L"MSDC1-Socket");DECLARE_CONST_UNICODE_STRING(text,L"MediaTek MT8167 MSDC1 microSD Card");
  WdfDeviceInitSetDeviceType(init,FILE_DEVICE_DISK);WdfDeviceInitSetCharacteristics(init,FILE_REMOVABLE_MEDIA,FALSE);WdfDeviceInitSetIoType(init,WdfDeviceIoDirect);
- status=WdfPdoInitAssignDeviceID(init,&id);if(!NT_SUCCESS(status))goto fail;
- status=WdfPdoInitAddHardwareID(init,&id);if(!NT_SUCCESS(status))goto fail;
- status=WdfPdoInitAddCompatibleID(init,&compatible);if(!NT_SUCCESS(status))goto fail;
- status=WdfPdoInitAssignInstanceID(init,&instance);if(!NT_SUCCESS(status))goto fail;
- status=WdfPdoInitAddDeviceText(init,&text,&text,0x409);if(!NT_SUCCESS(status))goto fail;WdfPdoInitSetDefaultLocale(init,0x409);
- status=WdfDeviceInitAssignWdmIrpPreprocessCallback(init,SdScsi,IRP_MJ_SCSI,NULL,0);if(!NT_SUCCESS(status))goto fail;
- status=WdfDeviceInitAssignWdmIrpPreprocessCallback(init,SdScsi,IRP_MJ_FLUSH_BUFFERS,NULL,0);if(!NT_SUCCESS(status))goto fail;
- WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attributes,SD_CHILD);attributes.ExecutionLevel=WdfExecutionLevelPassive;status=WdfDeviceCreate(&init,&attributes,&child);if(!NT_SUCCESS(status))goto fail;
+ *stage=21;status=WdfPdoInitAssignDeviceID(init,&id);if(!NT_SUCCESS(status))goto fail;
+ *stage=22;status=WdfPdoInitAddHardwareID(init,&id);if(!NT_SUCCESS(status))goto fail;
+ *stage=23;status=WdfPdoInitAddCompatibleID(init,&compatible);if(!NT_SUCCESS(status))goto fail;
+ *stage=24;status=WdfPdoInitAssignInstanceID(init,&instance);if(!NT_SUCCESS(status))goto fail;
+ *stage=25;status=WdfPdoInitAddDeviceText(init,&text,&text,0x409);if(!NT_SUCCESS(status))goto fail;WdfPdoInitSetDefaultLocale(init,0x409);
+ *stage=26;status=WdfDeviceInitAssignWdmIrpPreprocessCallback(init,SdScsi,IRP_MJ_SCSI,NULL,0);if(!NT_SUCCESS(status))goto fail;
+ *stage=27;status=WdfDeviceInitAssignWdmIrpPreprocessCallback(init,SdScsi,IRP_MJ_FLUSH_BUFFERS,NULL,0);if(!NT_SUCCESS(status))goto fail;
+ *stage=28;WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attributes,SD_CHILD);attributes.ExecutionLevel=WdfExecutionLevelPassive;status=WdfDeviceCreate(&init,&attributes,&child);if(!NT_SUCCESS(status))goto fail;
  SdChild(child)->host=h;h->child=child;
  WDF_DEVICE_PNP_CAPABILITIES caps;WDF_DEVICE_PNP_CAPABILITIES_INIT(&caps);caps.Removable=WdfTrue;caps.EjectSupported=WdfFalse;caps.SurpriseRemovalOK=WdfTrue;caps.UniqueID=WdfFalse;caps.Address=0;caps.UINumber=0;
  WdfDeviceSetPnpCapabilities(child,&caps);
  WdfDeviceSetSpecialFileSupport(child,WdfSpecialFilePaging,FALSE);WdfDeviceSetSpecialFileSupport(child,WdfSpecialFileHibernation,FALSE);WdfDeviceSetSpecialFileSupport(child,WdfSpecialFileDump,FALSE);
  WDF_IO_QUEUE_CONFIG queue;WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&queue,WdfIoQueueDispatchParallel);queue.EvtIoDeviceControl=SdControl;
- status=WdfIoQueueCreate(child,&queue,WDF_NO_OBJECT_ATTRIBUTES,NULL);if(!NT_SUCCESS(status)){WdfObjectDelete(child);h->child=NULL;return status;}
- status=WdfFdoAddStaticChild(h->device,child);if(!NT_SUCCESS(status)){WdfObjectDelete(child);h->child=NULL;}return status;
+ *stage=30;status=WdfIoQueueCreate(child,&queue,WDF_NO_OBJECT_ATTRIBUTES,NULL);if(!NT_SUCCESS(status)){WdfObjectDelete(child);h->child=NULL;return status;}
+ *stage=31;status=WdfFdoAddStaticChild(h->device,child);if(!NT_SUCCESS(status)){WdfObjectDelete(child);h->child=NULL;}return status;
 fail:if(init)WdfDeviceInitFree(init);return status;
 }
-NTSTATUS SdAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
+static NTSTATUS add_impl(WDFDRIVER driver,PWDFDEVICE_INIT init,ULONG *stage)
 {
  WDFDEVICE device;WDF_OBJECT_ATTRIBUTES attributes;WDF_PNPPOWER_EVENT_CALLBACKS pnp;NTSTATUS status;UNREFERENCED_PARAMETER(driver);
  UCHAR pnpMinor[]={IRP_MN_QUERY_DEVICE_RELATIONS,IRP_MN_DEVICE_USAGE_NOTIFICATION};
- status=WdfDeviceInitAssignWdmIrpPreprocessCallback(init,SdPowerPnp,IRP_MJ_PNP,pnpMinor,sizeof(pnpMinor));if(!NT_SUCCESS(status))return status;
+ *stage=1;status=WdfDeviceInitAssignWdmIrpPreprocessCallback(init,SdPowerPnp,IRP_MJ_PNP,pnpMinor,sizeof(pnpMinor));if(!NT_SUCCESS(status))return status;
  WdfDeviceInitSetDeviceType(init,FILE_DEVICE_CONTROLLER);WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
  pnp.EvtDevicePrepareHardware=SdPrepare;pnp.EvtDeviceReleaseHardware=SdRelease;pnp.EvtDeviceD0Entry=SdD0Entry;pnp.EvtDeviceD0Exit=SdD0Exit;pnp.EvtDeviceSurpriseRemoval=SdSurprise;
  WdfDeviceInitSetPnpPowerEventCallbacks(init,&pnp);WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attributes,SD_HOST);attributes.ExecutionLevel=WdfExecutionLevelPassive;attributes.SynchronizationScope=WdfSynchronizationScopeNone;
- status=WdfDeviceCreate(&init,&attributes,&device);if(!NT_SUCCESS(status))return status;
+ *stage=2;status=WdfDeviceCreate(&init,&attributes,&device);if(!NT_SUCCESS(status))return status;
  PNP_BUS_INFORMATION bus;RtlZeroMemory(&bus,sizeof(bus));bus.BusTypeGuid=GUID_BUS_TYPE_SD;bus.LegacyBusType=PNPBus;bus.BusNumber=1;
  WdfDeviceSetBusInformationForChildren(device,&bus);
  struct sd_host *h=SdHost(device);h->device=device;h->closing=1;h->child_online=1;h->card_generation=-1;ExInitializeFastMutex(&h->power_relations_lock);ExInitializeRundownProtection(&h->requests);KeInitializeMutex(&h->serial,0);
  WDF_TIMER_CONFIG timer;WDF_TIMER_CONFIG_INIT(&timer,SdTimer);timer.AutomaticSerialization=FALSE;WDF_OBJECT_ATTRIBUTES_INIT(&attributes);attributes.ParentObject=device;attributes.ExecutionLevel=WdfExecutionLevelPassive;
- status=WdfTimerCreate(&timer,&attributes,&h->timer);if(!NT_SUCCESS(status))return status;
- return SdCreateChild(h);
+ *stage=3;status=WdfTimerCreate(&timer,&attributes,&h->timer);if(!NT_SUCCESS(status))return status;
+ return SdCreateChild(h,stage);
 }
+NTSTATUS SdAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
+{
+ ULONG stage=0;SdCheckpoint(L"AddDevice",0x100,STATUS_PENDING,FALSE);
+ NTSTATUS status=add_impl(driver,init,&stage);SdCheckpoint(L"AddDevice",stage,status,TRUE);return status;
+}
+EVT_WDF_DRIVER_UNLOAD SdUnload;
+VOID SdUnload(WDFDRIVER driver){UNREFERENCED_PARAMETER(driver);SdCheckpointClose();}
 NTSTATUS DriverEntry(PDRIVER_OBJECT object,PUNICODE_STRING registry)
-{WDF_DRIVER_CONFIG config;WDF_DRIVER_CONFIG_INIT(&config,SdAdd);return WdfDriverCreate(object,registry,WDF_NO_OBJECT_ATTRIBUTES,&config,WDF_NO_HANDLE);}
+{
+ WDF_DRIVER_CONFIG config;NTSTATUS status;SdCheckpointInitialize(registry);
+ SdCheckpoint(L"AddDevice",0,STATUS_PENDING,FALSE);SdCheckpoint(L"PrepareHardware",0,STATUS_PENDING,FALSE);SdCheckpoint(L"D0Entry",0,STATUS_PENDING,FALSE);
+ SdCheckpoint(L"DriverEntry",1,STATUS_PENDING,FALSE);WDF_DRIVER_CONFIG_INIT(&config,SdAdd);config.EvtDriverUnload=SdUnload;
+ status=WdfDriverCreate(object,registry,WDF_NO_OBJECT_ATTRIBUTES,&config,WDF_NO_HANDLE);
+ SdCheckpoint(L"DriverEntry",2,status,TRUE);if(!NT_SUCCESS(status))SdCheckpointClose();return status;
+}
