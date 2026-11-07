@@ -956,3 +956,11 @@ build/gpu_native_irq_off_drain_test: tests/gpu_native_irq_off_drain_test.c drive
 .PHONY: test-gpu-native-irq-off-drain
 test-gpu-native-irq-off-drain: build/gpu_native_irq_off_drain_test
 	./build/gpu_native_irq_off_drain_test
+
+# Official source-generated H63 shader output is passed explicitly; no target binary executes.
+.PHONY: test-gpu-native-draw-job
+test-gpu-native-draw-job: build/gpu_native_draw_job_test
+	./build/gpu_native_draw_job_test ../../port/xnu/out/windows-rt-wddm-sm4-pco-source-v1/official-sm4-output.txt
+build/gpu_native_draw_job_test: tests/gpu_native_draw_job_test.c $(NATIVE_CLEAR_JOB_SRC) $(NATIVE_TRIANGLE_SRC) drivers/gpu/mt8167/vendor_m1_11/native_draw_job.c drivers/gpu/mt8167/vendor_m1_11/native_load_usc_generated.h drivers/gpu/mt8167/wddm-render/clear_protocol.c drivers/gpu/mt8167/wddm-render/frontend/draw_protocol.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@

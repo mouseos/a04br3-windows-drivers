@@ -122,3 +122,28 @@ vertex create/bind実装の契約:
   WriteToDevice=TRUE。targetと同じ参照を偽装せず、正常停止まで両方保持。
 - targetのactive bytesはbind/discard/rebootstrap時に変更しない。paddingだけA5 guard。
 - GetDrawOps/prepare_drawは依然未公開。vertex登録をdraw成功としない。
+
+
+## flat draw実producer（上記「未公開」を更新）
+
+`GeoNativeOwnerGetDrawOpsV1`→実`prepare_draw`→`a04_vendor_native_prepare_draw_cold`を追加。
+factory buildのA04_GE8300_NATIVE_OWNER_DRAW=1でsource-linkする（通常provider既定OFF）。
+有限profile: physical800x600/pitch3200、float4/stride16の1triangle、H63の実PCO
+VS24/temp0/input4/output4とBGRA PS64/temp5/shared4/constantmask1のみ。
+metadataと全ISA bytesを固定source生成結果へ照合し、任意memory shaderは受理しない。
+Hの半画素補正/TL変換を受領し、E PPPの+400/+300/.5 scale/offsetは変更しない。
+public小RTはHが同じ本物MDLのphysical800x600に正規化する。index/staging CPU-onlyは
+E native allocationへ登録しない。両owner ID/元MDL/patch/job参照はHが保持する。
+
+診断用黒clear背景は使わず、source `pvr_uscgen_loadop`と同じX/Y special-registerを
+使う非正規化nearest loaderをPCO生成。target自身のlinear800x600 descriptorを
+正規化GPU VAから組み、通常/PR背景を両方loadへ結合。source208bytes/temp5/shared8、
+2process生成一致。背景のGPU実動作はまだ未検証でありrun40固定fixture成功とは別。
+GPU実fetchは同一aperture中の別の実vertex MDLを参照。PS constantsはimmutable blobから
+実General backingへcopy/readback。USC/PDS/PPP/VDM/recordsも全てcopy/readback後にFW boot。
+実prepareはGPU publishせず、既存bounded submit/actual IRQ/visibility経路を再利用する。
+
+任意triangleには固定pixel oracleが無い。draw finishは実UFO/cleanup/CCB→SLC/GP fence→
+同target MDLのCPU cache→padding guardを検査し、matching_pixelsを480000と偽らない。
+その後のfresh GP実IRQでのみCPU_VISIBLE/GPU_DONEを返す。raster正否の実機試験は別。
+未実装profileは正直にUNSUPPORTED、常時拒否stubではなくこの有限profileの実builderがある。

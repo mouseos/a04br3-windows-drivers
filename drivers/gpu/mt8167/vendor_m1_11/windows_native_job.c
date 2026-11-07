@@ -166,3 +166,45 @@ void a04_vendor_native_free_job_cold(struct a04_vendor_native_cold *n)
     /* Called only by release_contents after hardware-owned/quarantine checks. */
     if(n && n->candidate){ExFreePoolWithTag(n->candidate,JOB_TAG);n->candidate=NULL;}
 }
+
+#if A04_GE8300_NATIVE_OWNER_DRAW
+#include "native_draw_job.h"
+NTSTATUS a04_vendor_native_prepare_draw_cold(struct a04_vendor_native_cold *n,
+ const struct geo_draw_request *request,const void *blob,uint32_t bytes,uint64_t vertex)
+{
+    struct a04_vendor_native_candidate *c;struct a04_vendor_render_cold *r;
+    struct a04_m111_clear_job_input in={0};struct a04_m111_draw_job *job;
+    struct a04_m111_shadow_ring ta,three;struct a04_m111_pair_input p={0};
+    NTSTATUS status;void *scratch;
+    if(!n || !(r=n->render) || !r->firmware || r->firmware->hardware_owned ||
+       r->poisoned || n->quarantined || !n->registered_target || !n->registered_vertex ||
+       !(c=n->candidate) || c->attempted || c->published || c->verified ||
+       KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+    job=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*job)+A04_M111_DRAW_SCRATCH+8192u,JOB_TAG);
+    if(!job)return STATUS_INSUFFICIENT_RESOURCES;
+    scratch=(uint8_t *)job+((sizeof(*job)+7u)&~7u);
+    in.output_gpu=a04_vendor_native_output_gpu(n);in.data_page_gpu=A04_NATIVE_DATA_VA+n->suffix_offset;
+    in.usc_page_gpu=A04_NATIVE_USC_VA;in.pds_page_gpu=A04_NATIVE_PDS_VA;
+    in.dummy_region_gpu=n->auxiliary.dummy_region_gpu;in.dummy_stencil_gpu=n->auxiliary.dummy_stencil_gpu;
+    in.hwrt_fw=n->addresses.hwrt[0];in.pr_fence_fw=0xc0084c00u;
+    status=a04_m111_build_draw_job(job,&in,vertex,request,blob,bytes,scratch,A04_M111_DRAW_SCRATCH);
+    if(!NT_SUCCESS(status))goto done;
+    p.ta_context=0xc0080000u+r->layout.context;
+    p.three_d_context=p.ta_context+(uint32_t)offsetof(RGXFWIF_FWRENDERCONTEXT,s3DContext);
+    p.hwrt=in.hwrt_fw;p.ta_sync=in.pr_fence_fw;p.three_d_sync=0xc0084c04u;
+    p.three_d_update_value=1;p.external_job=1;p.internal_job=1;
+    ta=(struct a04_m111_shadow_ring){c->rings,0,0};three=(struct a04_m111_shadow_ring){c->rings+4096,0,0};
+    if(a04_m111_prepare_shadow_pair(&ta,&three,&p,job->ta,job->three,scratch,8192,&c->pair)){
+        status=STATUS_DEVICE_CONFIGURATION_ERROR;goto done;
+    }
+    if(verified(n->code[0].cpu,job->usc,sizeof(job->usc)) || verified(n->code[1].cpu,job->pds,sizeof(job->pds)) ||
+       verified(a04_vendor_native_storage_pointer(n,0,n->suffix_offset,sizeof(job->data)),job->data,sizeof(job->data)) ||
+       verified((UCHAR *)r->buffer[0].cpu+r->layout.commands[0],c->rings,4096) ||
+       verified((UCHAR *)r->buffer[0].cpu+r->layout.commands[1],c->rings+4096,4096)){
+        n->quarantined=TRUE;r->poisoned=TRUE;status=STATUS_IO_DEVICE_ERROR;goto done;
+    }
+    RtlCopyMemory(c->job.ta,job->ta,sizeof(c->job.ta));RtlCopyMemory(c->job.three,job->three,sizeof(c->job.three));
+    c->draw_job=TRUE;status=STATUS_SUCCESS;
+done:ExFreePoolWithTag(job,JOB_TAG);return status;
+}
+#endif

@@ -74,6 +74,9 @@ NTSTATUS a04_vendor_native_attach_mdl_target_at_cold(struct a04_vendor_native_co
  * their full-image sentinel and are unchanged. Colour rebuild is cold-only. */
 NTSTATUS a04_vendor_native_attach_mdl_target_preserve_cold(struct a04_vendor_native_cold *,
     struct a04_native_mdl_binding *,uint64_t,uint32_t);
+struct geo_draw_request;
+NTSTATUS a04_vendor_native_prepare_draw_cold(struct a04_vendor_native_cold *,
+ const struct geo_draw_request *,const void *,uint32_t,uint64_t);
 NTSTATUS a04_vendor_native_recolour_bound_cold(struct a04_vendor_native_cold *,uint32_t);
 /* Native owner split path: submit only from the actual registered Dxgk
  * interrupt synchronization lock, retained D0/MDL lease and cold-prepared

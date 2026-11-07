@@ -49,6 +49,8 @@ if($WithOwnerAllocation){
 }
 if($WithFactory){
  if(!$WithOwnerAllocation){throw 'Factory requires -WithOwnerAllocation'}
+ $common+='-DA04_GE8300_NATIVE_OWNER_DRAW=1'
+ $units+=@('vendor_m1_11\native_draw_job','vendor_m1_11\native_triangle_suite','vendor_m1_11\native_triangle_vdm','vendor_m1_11\native_triangle_pds','vendor_m1_11\native_triangle_ppp','vendor_m1_11\native_triangle_texture','wddm-render\clear_protocol','wddm-render\frontend\draw_protocol')
  $units+=@('vendor_m1_11\native_owner_factory','vendor_m1_11\native_owner_factory_platform','vendor_m1_11\native_owner_factory_runtime','vendor_m1_11\windows_start','vendor_m1_11\windows_command','vendor_m1_11\windows_render_context')
 }
 $oldTemp=$env:TEMP;$oldTmp=$env:TMP;$transcript=$false
@@ -125,7 +127,7 @@ try {
    'a04_native_irq_begin_off_drain','a04_native_irq_close_off','a04_native_irq_bind','a04_native_irq_claim','a04_native_irq_rearm','a04_native_irq_mask_close','a04_native_irq_unbind_disconnected','a04_vendor_native_submit_prepared_pair','a04_gpu_dma_barrier')
   if($WithMdlTarget){$exports+=@('a04_native_dispatch_initialize','a04_native_dispatch_submit','a04_native_dispatch_interrupt','a04_native_dispatch_service','a04_vendor_native_attach_mdl_target_cold','a04_vendor_native_attach_mdl_target_at_cold','a04_vendor_native_target_aperture','a04_vendor_native_target_before_fw_start','a04_vendor_native_allocate_cold_ex','a04_vendor_native_run_clear_frames','a04_vendor_native_owner_submit','a04_vendor_native_owner_finish_passive','a04_vendor_native_owner_arm_visibility','a04_vendor_native_owner_interrupt_event')}
   if($WithOwnerAllocation){$exports+=@('a04_vendor_m1_11_windows_core_hold_reset','a04_native_allocation_bind_frontend_cold','a04_native_allocation_create','a04_native_allocation_bind_lease_cold','a04_native_allocation_bind_cold','a04_native_allocation_release_cold','a04_native_allocation_aperture')}
-  if($WithFactory){$exports+=@('GeoNativeOwnerCreateV3','GeoNativeOwnerDelete')}
+  if($WithFactory){$exports+=@('GeoNativeOwnerCreateV3','GeoNativeOwnerDelete','GeoNativeOwnerGetDrawOpsV1')}
   $link=@('/dll','/noentry','/subsystem:native','/machine:arm','/nodefaultlib')+$objects
   $link+=@((Join-Path $kmLib 'ntoskrnl.lib'),(Join-Path $kmLib 'hal.lib'),(Join-Path $kmLib 'libcntpr.lib'),(Join-Path $kmLib 'bufferoverflowfastfailk.lib'))
   $link+=@($exports|ForEach-Object{"/export:$_"});$link+="/out:$out\owner-core-linkcheck.dll"

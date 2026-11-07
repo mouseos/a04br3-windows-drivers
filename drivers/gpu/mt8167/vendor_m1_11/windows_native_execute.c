@@ -95,6 +95,14 @@ static NTSTATUS finish_published(struct a04_vendor_native_cold *n,
             uint32_t index=i+j,expected=0xa5a5a5a5u;
             c->scan.scanned_words++;
             if(index<480000u){
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+                if(c->draw_job){
+                    /* Arbitrary triangle coverage is not a fixed-clear
+                     * pixel oracle. Real fence/cache and padding guard are
+                     * checked; do not fabricate matching_pixels. */
+                    c->scan.scanned_pixels++;continue;
+                }
+#endif
                 uint32_t colored;
 #if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
                 expected=a04_m111_triangle_expected_pixel(c->completed_frames,index);
@@ -132,7 +140,13 @@ static NTSTATUS finish_published(struct a04_vendor_native_cold *n,
             }
         }
     }
-    if(out->mismatched_pixels || out->guard_errors || out->matching_pixels!=480000u)goto poison;
+    if(out->mismatched_pixels || out->guard_errors ||
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+       (c->draw_job?c->scan.scanned_pixels!=480000u:out->matching_pixels!=480000u)
+#else
+       out->matching_pixels!=480000u
+#endif
+       )goto poison;
     c->verified=TRUE;c->completed_frames++;out->completed_frames=c->completed_frames;out->phase=4;status=STATUS_SUCCESS;goto done;
 poison:
     if(NT_SUCCESS(status) || status==STATUS_INVALID_DEVICE_STATE)status=STATUS_IO_DEVICE_ERROR;

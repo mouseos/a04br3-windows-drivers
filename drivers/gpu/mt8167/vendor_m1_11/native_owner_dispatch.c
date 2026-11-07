@@ -51,8 +51,14 @@ static BOOLEAN begin_service(void *argument)
 {
     struct service_call *c=argument;struct a04_native_owner_dispatch *d=c->d;
     c->invoked=TRUE;c->status=STATUS_INVALID_DEVICE_STATE;
-    if(!valid(d) || KeGetCurrentIrql()<DISPATCH_LEVEL || !d->irq->masked ||
-       !d->irq->serial)return TRUE; /* requires a real claimed source */
+    if(!valid(d) || KeGetCurrentIrql()<DISPATCH_LEVEL)return TRUE;
+    if(!d->irq->masked && (d->state==A04_NATIVE_DISPATCH_READY || d->state==A04_NATIVE_DISPATCH_COMPLETE)){
+        /* Old queued PASSIVE request after graph replacement, or after the
+         * ISR already consumed/rearmed completion. No source or DMA result
+         * is fabricated; nothing needs servicing in this hardware epoch. */
+        c->status=STATUS_SUCCESS;return TRUE;
+    }
+    if(!d->irq->masked || !d->irq->serial)return TRUE; /* real claim required */
     if(d->state==A04_NATIVE_DISPATCH_SUBMITTED){
         d->state=A04_NATIVE_DISPATCH_FINISHING;c->finish=TRUE;c->status=STATUS_SUCCESS;
     }else if(d->state==A04_NATIVE_DISPATCH_ARMED || d->state==A04_NATIVE_DISPATCH_COMPLETE){

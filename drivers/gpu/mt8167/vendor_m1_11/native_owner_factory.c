@@ -181,9 +181,10 @@ static int32_t discard(void *p,uint64_t job)
 static int32_t submit(void *p,uint64_t job,uint32_t fence,uint32_t generation)
 {
     struct e_native_owner *c=p;NTSTATUS s;
+    UNREFERENCED_PARAMETER(fence); /* H owns scheduler-fence translation. */
     if(!c || KeGetCurrentIrql()!=c->irq_level || c->closing || !c->leased || !c->irq_gate ||
        c->state!=E_OWNER_ACTIVE || c->power!=PowerDeviceD0 || !job || job!=c->job ||
-       c->job_state!=E_JOB_PREPARED || !fence || !generation)return STATUS_INVALID_DEVICE_STATE;
+       c->job_state!=E_JOB_PREPARED || !generation)return STATUS_INVALID_DEVICE_STATE;
     s=a04_native_dispatch_submit(&c->allocation->dispatch,job,generation,c->kick_write);
     if(NT_SUCCESS(s)){c->generation=generation;c->job_state=E_JOB_SUBMITTED;}
     else{c->state=E_OWNER_FAILED;InterlockedExchange(&c->closing,1);}
@@ -210,7 +211,12 @@ static NTSTATUS interrupt_event(void *p,ULONG message,struct geo_owner_irq_event
 static NTSTATUS service(void *p,uint64_t epoch)
 {
     struct e_native_owner *c=p;NTSTATUS s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
-    if(c->epoch!=epoch || !c->irq_gate)return leave(c,STATUS_INVALID_DEVICE_STATE);
+    if(c->epoch!=epoch)return leave(c,STATUS_INVALID_DEVICE_STATE);
+    /* A deferred request from the previous hardware graph may have waited
+     * on this mutex during rebootstrap. No graph/source remains to service;
+     * this retires only the work request, never a GPU completion. */
+    if(!c->irq_gate && c->job_state==E_JOB_NONE)return leave(c,STATUS_SUCCESS);
+    if(!c->irq_gate)return leave(c,STATUS_INVALID_DEVICE_STATE);
     s=a04_native_dispatch_service(&c->allocation->dispatch);return leave(c,s);
 }
 static NTSTATUS acquire(void *p,struct geo_owner_lease *out)
@@ -276,3 +282,55 @@ NTSTATUS GeoNativeOwnerDelete(struct geo_native_binding *out)
     if(c->mfg)MmUnmapIoSpace((void *)c->mfg,0x1000);if(c->core)MmUnmapIoSpace((void *)c->core,0x80000);
     ExFreePoolWithTag(c,E_FACTORY_TAG);RtlZeroMemory(out,sizeof(*out));return STATUS_SUCCESS;
 }
+
+#if A04_GE8300_NATIVE_OWNER_DRAW
+#include "windows_native_cold_private.h"
+#include "../wddm-render/frontend/draw_abi.h"
+static int32_t prepare_draw(void *p,const struct geo_draw_request *request,
+ const void *blob,uint32_t bytes,uint64_t *job)
+{
+    struct e_native_owner *c=p;RGXFWIF_CCB_CTL k;NTSTATUS s;uint64_t end,offset;
+    if(!job)return STATUS_INVALID_PARAMETER;*job=0;
+    s=geo_draw_validate_capture(request,blob,bytes);if(!NT_SUCCESS(s))return s;
+    s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
+    if(request->target!=c->surface || request->vertex!=c->vertex || !c->vertex ||
+       !c->allocation->binding || !c->allocation->vertex || c->next_id==UINT64_MAX ||
+       RtlCompareMemory(&c->description,&request->target_desc,sizeof(c->description))!=sizeof(c->description) ||
+       (c->job_state!=E_JOB_NONE && c->job_state!=E_JOB_COMPLETE))return leave(c,STATUS_INVALID_DEVICE_STATE);
+    offset=(uint64_t)request->state.first_vertex*16u+request->state.vertex_offset;
+    end=offset+(uint64_t)request->state.vertex_count*16u;
+    if(request->state.vertex_count!=3 || end>c->vertex_description.width)return leave(c,STATUS_INVALID_PARAMETER);
+    /* Immutable transformed input is a distinct H-owned VidMm allocation;
+     * its independent MDL/SG is pinned through actual fence/retirement. */
+    const uint32_t *vertices=(const uint32_t *)((const UCHAR *)a04_native_mdl_cpu(c->allocation->vertex)+(size_t)offset);
+    for(unsigned i=0;i<12;i++)if((vertices[i]&0x7f800000u)==0x7f800000u)return leave(c,STATUS_INVALID_PARAMETER);
+    s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
+    if(NT_SUCCESS(s))s=e_native_build_graph_locked(c);
+    if(NT_SUCCESS(s))s=a04_vendor_native_prepare_draw_cold(c->allocation->native,request,blob,bytes,
+        A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset);
+    if(!NT_SUCCESS(s)){
+        /* Unsupported shader/state never publishes a job. A real resource
+         * write/retirement failure keeps all backing and closes admission. */
+        if(s!=STATUS_NOT_SUPPORTED && s!=STATUS_INVALID_PARAMETER)c->state=E_OWNER_FAILED;
+        return leave(c,s);
+    }
+    s=e_native_boot_locked(c);
+    if(NT_SUCCESS(s)){
+        if(a04_rgx_device_read_words(&k,c->allocation->firmware.runtime->kctl,sizeof(k)) ||
+           k.ui32WrapMask!=127 || k.ui32ReadOffset>127 || k.ui32ReadOffset!=k.ui32WriteOffset)s=STATUS_DEVICE_BUSY;
+        else{c->kick_write=k.ui32WriteOffset;c->job=++c->next_id;c->job_state=E_JOB_PREPARED;*job=c->job;}
+    }
+    if(!NT_SUCCESS(s))c->state=E_OWNER_FAILED;
+    return leave(c,s);
+}
+int32_t GeoNativeOwnerGetDrawOpsV1(struct geo_native_binding *binding,struct geo_native_draw_ops_v1 *out)
+{
+    struct e_native_owner *c;
+    if(!out)return GEO_INVALID;RtlZeroMemory(out,sizeof(*out));
+    if(!binding || binding->size!=sizeof(*binding) || binding->version!=2 ||
+       !(c=binding->native_context) || binding->control.Interface.Context!=c ||
+       c->state==E_OWNER_FAILED)return GEO_NOT_READY;
+    out->size=sizeof(*out);out->version=1;out->context=c;out->prepare_draw=prepare_draw;
+    return GEO_OK;
+}
+#endif

@@ -12,6 +12,9 @@
 #ifndef A04_GE8300_NATIVE_OWNER_MDL_TARGET
 #define A04_GE8300_NATIVE_OWNER_MDL_TARGET 0
 #endif
+#ifndef A04_GE8300_NATIVE_OWNER_DRAW
+#define A04_GE8300_NATIVE_OWNER_DRAW 0
+#endif
 struct a04_native_mdl_binding;
 struct a04_vendor_native_candidate;
 #define A04_NATIVE_OUTPUT_VA UINT64_C(0x8200000000)

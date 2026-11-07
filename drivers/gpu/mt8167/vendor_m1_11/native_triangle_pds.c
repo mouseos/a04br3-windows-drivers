@@ -14,7 +14,7 @@ int a04_m111_build_triangle_vertex_pds(struct a04_m111_triangle_vertex_pds *out,
     const uint64_t ub=UINT64_C(0xba00000000);
     if(!out || usc<ub || usc-ub>=0x40000000u || (usc&3u) ||
        vertex<4096 || vertex>=(UINT64_C(1)<<40) || (vertex&3u) ||
-       (components!=2 && components!=3) || stride!=components*4u ||
+       (components!=2 && components!=3 && components!=4) || stride!=components*4u ||
        vertex>(UINT64_C(1)<<40)-3u*stride)return 1;
     put(made.data,0,(uint32_t)(usc-ub)); /* task, zero temps */
     put(made.data,2,stride);

@@ -16,7 +16,7 @@ struct a04_vendor_native_candidate {
     struct a04_vendor_native_scan_diagnostic scan;
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
     uint32_t clear_pixel,owner_second;
-    BOOLEAN owner_pending,visibility_armed,visibility_delivered;
+    BOOLEAN owner_pending,visibility_armed,visibility_delivered,draw_job;
     uint32_t visibility_fence,owner_generation;
     uint64_t owner_epoch,owner_job,visibility_serial;
     struct a04_native_irq_core *owner_irq;

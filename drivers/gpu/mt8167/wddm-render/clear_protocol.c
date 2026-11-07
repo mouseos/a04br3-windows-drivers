@@ -1,0 +1,13 @@
+/* SPDX-License-Identifier: BSD-2-Clause-Patent */
+#include "clear_protocol.h"
+int geo_desc_valid(const struct geo_surface_desc *d) {
+ uint64_t bytes;
+ if(!d||d->size!=sizeof(*d)||d->version!=GEO_ABI_VERSION||!d->width||!d->height||
+    d->width>1024||d->height>1024||d->pitch<d->width*4u||(d->pitch&3u)||d->reserved||
+    d->format!=GEO_FORMAT_A8R8G8B8||(d->usage!=GEO_USAGE_RENDER_TARGET&&d->usage!=GEO_USAGE_STAGING))return 0;
+ bytes=(uint64_t)d->pitch*d->height;return bytes<=4u*1024u*1024u;
+}
+int geo_packet_valid(const struct geo_clear_packet *p,uint32_t count) {
+ return p&&p->magic==GEO_CLEAR_MAGIC&&p->size==sizeof(*p)&&p->version==GEO_ABI_VERSION&&
+   p->allocation_index<count&&!p->flags&&!p->reserved[0]&&!p->reserved[1];
+}
