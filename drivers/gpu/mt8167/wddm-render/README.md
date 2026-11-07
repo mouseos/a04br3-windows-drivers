@@ -60,6 +60,6 @@ hostの単一`tests/lifecycle.c`でpending解放拒否、古い世代拒否、�
 
 `pCommand`はMicrosoft DxgkDdiRender仕様で未加工user VAです。`capture.c`はuser範囲を全長検査し、Windows 8.1からのMmCopyMemory(MM_COPY_MEMORY_VIRTUAL)で固定32byteだけを実NonPagedPoolへ回収します。全量コピー成功後のみkernel snapshotを解析。invalid/unmap/partial copyはstatusを返し、元user bufferを直接dereferenceしません。ProbeForReadだけでraceを防いだとは扱わず、SEHを単に除去したunsafe copyにも置換しません。
 
-buildはClangの実resource/includeをkm/crtより先に指定し、compiler builtinと整合するintrin.hを選びます。旧宣言の改名やSDK改変、偽intrinsic実装はありません。再buildは主担当のみ、現修正の実WDK build/link結果は未受領です。
+7f55deeの実WDK再buildではMmCopyMemory captureはcompileし、intrin.hの__ldrexd衝突だけが残りました。include順だけでは不十分でした。kernel TUに-D__ldrexd=__geo_wdk81_ldrexd_declarationを指定し、旧WDKの未使用宣言をClang builtinと異なる名前へ隔離する互換alias方式に修正。独自のintrinsic本体や成功stubは追加せず、このaliasを実行するsourceもありません。SDK実体は変更しません。再buildは主担当のみ、alias修正後の実WDK結果は未受領です。
 
 一次根拠: [DxgkDdiRender Remarks](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkddi_render)（pCommand=user、allocation list=kernel変換済み）、[MmCopyMemory](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/nf-ntddk-mmcopymemory)（Win8.1以降、非pageable target、current-process user VA、fault/partial-copy status）。

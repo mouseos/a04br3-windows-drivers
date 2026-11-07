@@ -20,7 +20,7 @@ try {
  $common=@('--target=thumbv7-pc-windows-msvc','-std=c11','-fms-extensions','-ffreestanding','-fno-builtin','-fno-stack-protector','-O2','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-mfpu=none','-D_ARM_','-DARM','-D_WIN32_WINNT=0x0603','-DNTDDI_VERSION=0x06030000','-DDXGKDDI_INTERFACE_VERSION=0x4002','-DD3D_UMD_INTERFACE_VERSION=0x4002',"-I$inc\shared")
  foreach($unit in @('clear_protocol','clear_engine','capture','kmd_clear','umd/clear_ddi','testclient/d3d-clear','testclient/memory')) {
   $name=($unit -replace '/','_');$includes=@("-I$inc\um")
-  if($unit -in @('capture','kmd_clear')){$includes=@("-D_KERNEL_MODE","-I$resource\include","-I$inc\km","-I$inc\km\crt")}
+  if($unit -in @('capture','kmd_clear')){$includes=@("-D_KERNEL_MODE","-D__ldrexd=__geo_wdk81_ldrexd_declaration","-I$resource\include","-I$inc\km","-I$inc\km\crt")}
   & clang @common @includes -c (Join-Path $PSScriptRoot "$unit.c") -o (Join-Path $out "$name.obj")
   if($LASTEXITCODE -ne 0){throw "ARM32 compile failed: $unit"}
  }
@@ -35,7 +35,7 @@ try {
  $commit=(& git -C $root rev-parse HEAD);if($LASTEXITCODE -ne 0){throw 'Missing source revision'}
  $sources=@(Get-ChildItem $PSScriptRoot -File -Recurse | Where-Object {$_.Extension -in '.c','.h','.ps1','.md'} | ForEach-Object {@{path=$_.FullName.Substring($root.Length+1);sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash}})
  $outputs=@('ge8300-kmd-clear.lib','ge8300-umd-clear.lib','ge8300-d3d-clear.exe')|ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}}
- @{source_commit=$commit;source_dirty=(@(& git -C $root status --porcelain).Count -ne 0);candidate_default_off=$true;kind='DDI implementation archives plus standard D3D client; no installable miniport/UMD';owner_abi='draft v1, not connected';runtime_verified=$false;sources=$sources;outputs=$outputs}|ConvertTo-Json -Depth 6|Set-Content "$out\build-manifest.json"
+ @{source_commit=$commit;source_dirty=(@(& git -C $root status --porcelain).Count -ne 0);candidate_default_off=$true;wdk81_intrinsic_compat='__ldrexd declaration-only alias; no replacement implementation';kind='DDI implementation archives plus standard D3D client; no installable miniport/UMD';owner_abi='draft v1, not connected';runtime_verified=$false;sources=$sources;outputs=$outputs}|ConvertTo-Json -Depth 6|Set-Content "$out\build-manifest.json"
 } finally {
  if($transcript){Stop-Transcript|Out-Null}
  $env:TEMP=$oldTemp;$env:TMP=$oldTmp
