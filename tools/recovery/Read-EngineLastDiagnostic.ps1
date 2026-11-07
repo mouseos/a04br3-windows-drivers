@@ -31,8 +31,11 @@ function Read-Mt8167EngineLastDiagnostic($Root,[string]$ControlSet,[string]$Poli
     $value=$key.GetValue($name,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
     if($null -eq $value){$values[$name]=@{available=$false};continue}
     $kind=[string]$key.GetValueKind($name)
+    $expected=if($name -match '^Node[0-6](Before|After)$'){44}elseif($name -match '^Client[0-2]$'){28}elseif($name -match '^Client[0-2](Stdout|Stderr)Info$'){20}elseif($name -ceq 'SystemVolumeFlush'){28}elseif($name -match '^Client[0-2](Stdout|Stderr)$'){-2}else{-1}
+    if($expected -ne -1){if($kind -cne 'Binary'){throw 'Fixed diagnostic binary type mismatch'}}
+    elseif($name -ceq 'PolicyHash' -or $name -match '^Node[0-6]HardwareId$'){if($kind -cne 'String'){throw 'Fixed diagnostic string type mismatch'}}
+    elseif($kind -cne 'DWord'){throw 'Fixed diagnostic scalar type mismatch'}
     if($value -is [byte[]]){
-     $expected=if($name -match '^Node[0-6](Before|After)$'){44}elseif($name -match '^Client[0-2]$'){28}elseif($name -match '^Client[0-2](Stdout|Stderr)Info$'){20}elseif($name -ceq 'SystemVolumeFlush'){28}else{-1}
      if($value.Length -gt 65536 -or ($expected -ge 0 -and $value.Length -ne $expected)){throw 'Fixed binary receipt length mismatch'}
      $value=[BitConverter]::ToString($value).Replace('-','')
     }
