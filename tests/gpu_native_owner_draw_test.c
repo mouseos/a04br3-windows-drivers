@@ -20,7 +20,7 @@ int main(int argc,char **argv)
  assert(a04_native_mdl_bind_input(&v,&x.adapter,&x,&vertex,vertex.bytes,&vl)==STATUS_SUCCESS);
  assert(a04_vendor_native_attach_vertex_cold(n,v,1023u*4096u)==STATUS_SUCCESS);
  assert(a04_vendor_native_attach_mdl_target_preserve_cold(n,b,0,0xff000000)==STATUS_SUCCESS);
- _Alignas(8) uint8_t blob[1200];struct geo_draw_request r=draw_input(argv[1],blob);
+ _Alignas(8) uint8_t blob[1400];struct geo_draw_request r=draw_input(argv[1],blob);
  assert(a04_vendor_native_prepare_draw_cold(n,&r,blob,sizeof(blob),A04_NATIVE_OUTPUT_VA+1023u*4096u)==STATUS_SUCCESS);
  assert(n->candidate->draw_job && !n->candidate->attempted && !n->candidate->published);
  struct a04_m111_draw_job *expected=malloc(sizeof(*expected));void *scratch=aligned_alloc(8,(A04_M111_DRAW_SCRATCH+7)&~7u);assert(expected&&scratch);

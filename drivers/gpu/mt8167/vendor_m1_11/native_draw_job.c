@@ -14,6 +14,24 @@ static void copy(void *to,const void *from,size_t n)
 {for(size_t i=0;i<n;i++)((uint8_t *)to)[i]=((const uint8_t *)from)[i];}
 static int same(const void *a,const void *b,size_t n)
 {for(size_t i=0;i<n;i++)if(((const uint8_t *)a)[i]!=((const uint8_t *)b)[i])return 0;return 1;}
+/* Official D3DCompile SM4 token streams, H63bbe0b verified inputs.
+ * Admit this finite semantic program only; ABI2 uses a separately linked pair.
+ * Words are read as LE bytes, independent of host alignment. */
+static int sm4_profile(const struct geo_draw_shader *shader,const uint8_t *blob)
+{
+ static const uint32_t vs[]={0x10040u,0xfu,0x300005fu,0x1010f2u,0x0u,0x4000067u,0x1020f2u,0x0u,0x1u,0x5000036u,0x1020f2u,0x0u,0x101e46u,0x0u,0x100003eu};
+ static const uint32_t ps[]={0x40u,0x10u,0x4000059u,0x208e46u,0x0u,0x1u,0x3000065u,0x1020f2u,0x0u,0x6000036u,0x1020f2u,0x0u,0x208e46u,0x0u,0x0u,0x100003eu};
+ const uint32_t *words=shader->stage?ps:vs;
+ uint32_t count=shader->stage?(uint32_t)(sizeof(ps)/4):(uint32_t)(sizeof(vs)/4);
+ if(shader->format!=GEO_SHADER_D3D10_TOKENS)return 1;
+ if(shader->tokens.bytes!=count*4)return 0;
+ const uint8_t *b=blob+shader->tokens.offset;
+ for(uint32_t i=0;i<count;i++) {
+  uint32_t w=(uint32_t)b[4*i]|((uint32_t)b[4*i+1]<<8)|((uint32_t)b[4*i+2]<<16)|((uint32_t)b[4*i+3]<<24);
+  if(w!=words[i])return 0;
+ }
+ return 1;
+}
 static int overlap(uintptr_t a,size_t n,uintptr_t b,size_t m)
 {return n>UINTPTR_MAX-a || m>UINTPTR_MAX-b || (a<b+m && b<a+n);}
 int32_t a04_m111_build_draw_job(struct a04_m111_draw_job *out,
@@ -33,6 +51,7 @@ int32_t a04_m111_build_draw_job(struct a04_m111_draw_job *out,
     overlap((uintptr_t)scratch,scratch_bytes,(uintptr_t)r,sizeof(*r)) ||
     overlap((uintptr_t)scratch,scratch_bytes,(uintptr_t)blob,bytes))return GEO_INVALID;
  int32_t status=geo_draw_validate_capture(r,blob,bytes);if(status)return status;
+ if(!sm4_profile(&r->vs,b) || !sm4_profile(&r->ps,b))return GEO_UNSUPPORTED;
  if(r->target_desc.width!=800 || r->target_desc.height!=600 || r->target_desc.pitch!=3200 ||
     r->state.vertex_count!=3 || !same(r->state.viewport,viewport,sizeof(viewport)) ||
     r->vs.temps || r->vs.shareds || r->vs.vtxins!=4 || r->vs.vtxouts!=4 || r->vs.input_mask!=1 || r->vs.constant_mask ||

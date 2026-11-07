@@ -9,7 +9,7 @@ static uint64_t get(const uint8_t *p,unsigned at,unsigned n)
 #include "gpu_native_draw_input.h"
 int main(int argc,char **argv)
 {
- assert(argc==2);_Alignas(8) uint8_t blob[1200];
+ assert(argc==2);_Alignas(8) uint8_t blob[1400];
  struct geo_draw_request r=draw_input(argv[1],blob);
  const uint8_t *code[2]={blob+16,blob+56};
  struct a04_m111_draw_job *out=malloc(sizeof(*out)),*before=malloc(sizeof(*out));void *scratch=aligned_alloc(8,(A04_M111_DRAW_SCRATCH+7)&~7u);assert(out&&before&&scratch);
@@ -26,6 +26,15 @@ int main(int argc,char **argv)
   assert(!memcmp(out->data+0x4a0,blob+640,16) && !memcmp(out->usc+0x80,code[0],24) && !memcmp(out->usc+0xc0,code[1],64));
   assert(get(out->data,0x280,4)==0x43960000u && get(out->data,0x284,4)==0x3f000000u && get(out->data,0x288,4)==0x3f000000u);
   memcpy(before,out,sizeof(*out));
+  /* Malformed SM4 instruction extent fails framing; a different legal
+   * token sequence with the old USC cannot impersonate the finite profile. */
+  blob[r.vs.tokens.offset+11]^=0x40;
+  assert(a04_m111_build_draw_job(out,&in,vertex,&r,blob,sizeof(blob),scratch,A04_M111_DRAW_SCRATCH)==GEO_INVALID);
+  blob[r.vs.tokens.offset+11]^=0x40;
+  blob[r.vs.tokens.offset+8]^=1;
+  assert(a04_m111_build_draw_job(out,&in,vertex,&r,blob,sizeof(blob),scratch,A04_M111_DRAW_SCRATCH)==GEO_UNSUPPORTED);
+  blob[r.vs.tokens.offset+8]^=1;
+  assert(!memcmp(before,out,sizeof(*out)));
   blob[56]^=1;assert(a04_m111_build_draw_job(out,&in,vertex,&r,blob,sizeof(blob),scratch,A04_M111_DRAW_SCRATCH)==GEO_UNSUPPORTED);blob[56]^=1;
   assert(!memcmp(before,out,sizeof(*out)));
   r.ps.constants.offset=sizeof(blob)-4;assert(a04_m111_build_draw_job(out,&in,vertex,&r,blob,sizeof(blob),scratch,A04_M111_DRAW_SCRATCH)==GEO_INVALID);r.ps.constants.offset=640;
