@@ -197,3 +197,7 @@ mockで成功30→70→50、設定error/timeout後の復元、readback不一致�
 非対応level/複数instance/method不在で書込みゼロ、復元失敗の独立判定を確認する。
 PowerShell parserと実scriptをホストPowerShell 7.4.6で実行する試験であり、
 Windows PowerShell 3/4の実CIM・ARM32通常OS・実WMI/実PWM成功は未検証。
+
+PS1を起動できない通常Windows RT向けには、独立EXEの固定COM版を追加した。
+source helper/固定log/one-shot接続/WDK recipeは`tools/display/BRIGHTNESS-NATIVE.md`を参照。
+既存署名済みDODを変更せず、主担当の既存起動/回収経路へ接続する準備だけである。

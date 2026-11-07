@@ -850,3 +850,11 @@ test-mt8167-brightness: build/mt8167_brightness_test
 build/mt8167_brightness_test: tests/mt8167_brightness_test.cpp drivers/gpu/mt8167/wddm-display/mt8167_brightness.cxx drivers/gpu/mt8167/wddm-display/mt8167_brightness.hxx $(wildcard tests/brightness_wdk_stubs/*.h)
 	@mkdir -p build
 	$(CXX) -std=c++11 -O2 -Wall -Wextra -Werror -Itests/brightness_wdk_stubs -Idrivers/gpu/mt8167/wddm-display $(filter %.cpp %.cxx,$^) -o $@
+
+.PHONY: test-mt8167-brightness-native
+test-mt8167-brightness-native: build/brightness_native_sequence_test
+	./build/brightness_native_sequence_test
+
+build/brightness_native_sequence_test: tests/brightness_native_sequence_test.c tools/display/brightness_sequence.c tools/display/brightness_sequence.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(filter %.c,$^) -o $@
