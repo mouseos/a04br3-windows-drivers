@@ -21,6 +21,7 @@ def main():
     for name in ('workspace', 'package-map', 'backup', 'previous', 'output', 'media-output'):
         ap.add_argument('--' + name, required=True, type=Path)
     ap.add_argument('--remote-root', required=True)
+    ap.add_argument('--wifi-checkpoint', type=Path)
     a = ap.parse_args()
     root = a.workspace.resolve(strict=True)
     source = Path(__file__).resolve().parents[2]
@@ -122,6 +123,9 @@ Get-Content "$base\native-completion.json"
         native = out/'native-prepared'
         result = json.loads((native/'result.json').read_text(encoding='utf-8-sig'))
         opts.update({'engine-rearm-plan': out/'engine-rearm-plan.json', 'engine-rearm-plan-sha256': sha(out/'engine-rearm-plan.json'), 'prepared-system': native/'candidate/SYSTEM', 'prepared-system-manifest': native/'result.json', 'prepared-system-sha256': result['candidate']['sha256']})
+    if a.wifi_checkpoint and a.phase=='media':
+        opts['preupdate-wifi-checkpoint']=a.wifi_checkpoint
+        opts['preupdate-wifi-checkpoint-sha256']=sha(a.wifi_checkpoint)
     cmd = [sys.executable, '-B', str(source/'tools/winpe/build-mt8167-shared-io-update-media.py'), '--private-media']
     for k, v in opts.items():
         cmd.extend(['--'+k, str(v)])

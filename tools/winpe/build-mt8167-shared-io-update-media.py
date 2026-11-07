@@ -50,6 +50,8 @@ def main():
  for n in ('probe-manifest','probe-certificate','prepared-system','prepared-system-manifest'):
   ap.add_argument('--'+n,type=Path)
  ap.add_argument('--prepared-system-sha256')
+ ap.add_argument('--preupdate-wifi-checkpoint',type=Path)
+ ap.add_argument('--preupdate-wifi-checkpoint-sha256')
  ap.add_argument('--private-media',action='store_true')
  ap.add_argument('--source-commit',required=True);a=ap.parse_args();root=a.workspace.resolve(strict=True)
  if not re.fullmatch('[0-9a-f]{40}',a.source_commit):raise SystemExit('完全な固定source commitが必要です')
@@ -145,6 +147,14 @@ def main():
  for name,digest in firmware.items():
   if sha(fw/name)!=digest:raise SystemExit('firmware不一致')
   files['firmware/'+name]=digest
+ wifi_archive=None
+ if bool(a.preupdate_wifi_checkpoint)!=bool(a.preupdate_wifi_checkpoint_sha256):raise SystemExit('旧WiFi記録とhash両方が必要です')
+ if a.preupdate_wifi_checkpoint:
+  if not rearming or not a.private_media:raise SystemExit('旧WiFi記録保存はprivate再arm媒体だけです')
+  wifi_archive=private_path(a.preupdate_wifi_checkpoint,root).resolve(strict=True)
+  if sha(wifi_archive)!=a.preupdate_wifi_checkpoint_sha256:raise SystemExit('旧WiFi記録hash不一致')
+  from wifi_checkpoint_archive import validate_archive
+  validate_archive(wifi_archive,backup,b)
  rearm_plan=None
  if plan_only or rearming:
   pnp=probe_info.get('pnp_rebind',{}) if probe_info else {}
@@ -164,6 +174,7 @@ def main():
   files['hardware-probe-development.cer']=probe_info['certificate_sha256']
   files['private-system/SYSTEM.patched']=native['sha256']
  if rearming:files['engine-rearm-plan.json']=sha(a.engine_rearm_plan)
+ if wifi_archive:files['previous-wifi-checkpoints.json']=sha(wifi_archive)
  prepare_name='prepare-mt8167-engine-probe.cmd.in' if engine else 'prepare-mt8167-hardware-probe.cmd.in'
  here=Path(__file__).resolve().parent;out.mkdir(mode=0o700 if a.private_media else 0o755);stage=out/'stage';stage.mkdir(mode=0o700 if a.private_media else 0o755)
  # Stage only the validated package/firmware files; never import arbitrary siblings.
@@ -187,12 +198,19 @@ def main():
  if rearming:
   staged_rearm=stage/'engine-rearm-plan.json';shutil.copyfile(a.engine_rearm_plan,staged_rearm)
   if sha(staged_rearm)!=a.engine_rearm_plan_sha256.lower():raise SystemExit('staging中のrearm plan変更')
+ if wifi_archive:
+  staged_wifi_archive=stage/'previous-wifi-checkpoints.json';shutil.copyfile(wifi_archive,staged_wifi_archive)
+  if sha(staged_wifi_archive)!=files['previous-wifi-checkpoints.json']:raise SystemExit('staging旧WiFi記録hash不一致')
  if probe:certificates['hardware_probe']=staged_probe_cert.read_bytes()
  trust=certificate_trust_commands(certificates)
  cmd=(here/'run-mt8167-shared-io-update.cmd.in').read_text().replace('@TOKEN@',token).replace('@JOURNAL@',token.lower()).replace('@HOST_BACKUP_SHA@',sha(backup)).replace('@TRUST_COMMANDS@','\n'.join(trust)).replace('@AUDIO_INF@',audio_inf).replace('@OPTIONAL_DRIVERS@','\n'.join(optional_drivers))
  if probe:
   prepare=(here/prepare_name).read_text().replace('@SYSTEM_SHA@',native['sha256']).replace('@SYSTEM_MANIFEST_SHA@',native['manifest_sha256'])
   prepare=prepare.replace('@ENGINE_REARM@',archive_commands(a.engine_rearm_plan_sha256.lower(),rearm_plan) if rearming else 'rem Explicit rearm not selected; refuse any existing marker.')
+  if wifi_archive:
+   archive='C:\\a04backup\\engine-rearm-'+a.engine_rearm_plan_sha256.lower()
+   extra_archive=['copy /b /y X:\\a04br3\\previous-wifi-checkpoints.json '+archive+'\\previous-wifi-checkpoints.json >> \"%A04_REPORT%\" 2>&1','if errorlevel 1 goto dismfail','if not exist '+archive+'\\previous-wifi-checkpoints.json goto dismfail','>> \"%A04_REPORT%\" echo PREVIOUS_WIFI_CHECKPOINT_SHA256='+files['previous-wifi-checkpoints.json']]
+   prepare=prepare.replace('if exist C:\\Windows\\System32\\MT8167EngineProbe\\attempted.bin goto dismfail','\n'.join(extra_archive)+'\nif exist C:\\Windows\\System32\\MT8167EngineProbe\\attempted.bin goto dismfail',1)
   if a.deferred_package_map:
    extra=['if not exist C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\display mkdir C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\display >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
    for extension in ('inf','sys','cat'):
@@ -224,6 +242,7 @@ def main():
  pairs=[(stage/'startnet.cmd','/Windows/System32/startnet.cmd'),(stage/'run-update-once.cmd','/a04br3/run-update-once.cmd'),(staged_pkg,'/a04br3/shared-io'),(staged_fw,'/a04br3/shared-fw')]
  if probe:pairs.extend(((staged_probe,'/a04br3/'+service_name+'.exe'),(staged_probe_cert,'/a04br3/hardware-probe-development.cer'),(private_system,'/a04br3/private-system/SYSTEM.patched')))
  if rearming:pairs.append((staged_rearm,'/a04br3/engine-rearm-plan.json'))
+ if wifi_archive:pairs.append((staged_wifi_archive,'/a04br3/previous-wifi-checkpoints.json'))
  commands=''.join('add "'+str(src)+'" '+dst+'\n' for src,dst in pairs)
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'update',str(image),'1'],input=commands,text=True,env=env,check=True)
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'verify',str(image)],env=env,check=True)
