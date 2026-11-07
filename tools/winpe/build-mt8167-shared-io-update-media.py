@@ -96,7 +96,7 @@ def main():
  components={};optional_drivers=[]
  codec_batch=False
  if a.deferred_package_map:
-  codec_batch=json.loads(a.deferred_package_map.read_text(encoding='utf-8-sig')).get('transaction')=='codec1026-msdc-quiet-fresh84'
+  codec_batch=json.loads(a.deferred_package_map.read_text(encoding='utf-8-sig')).get('transaction')=='codec1026-msdc-quiet-explicit-fresh-v2'
  if engine:
   if codec_batch:
    from engine_deferred_policy import load_map

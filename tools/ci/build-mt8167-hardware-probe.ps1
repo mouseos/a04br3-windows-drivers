@@ -69,7 +69,7 @@ $fixedClients=@('mt6630-wlan-probe.exe',$audioName)
 $deferredIds=@('ACPI\BEN0001','MT8167\AFE','MT8167\USB20','A04BR3\MT6630SDIO','ACPI\MOU0007')
 if($deferred){
  $map=Get-Content -Raw -LiteralPath $DeferredPackageMap|ConvertFrom-Json
- if($map.transaction -eq 'codec1026-msdc-quiet-fresh84'){$codecDefine='1';$fixedClients=@('mt8167-capture-probe.exe');$deferredIds=@('ACPI\BEN0001','MT8167\AFE','ACPI\MOU0001')}
+ if($map.transaction -eq 'codec1026-msdc-quiet-explicit-fresh-v2'){$codecDefine='1';$fixedClients=@('mt8167-capture-probe.exe');$deferredIds=@('ACPI\BEN0001','MT8167\AFE','ACPI\MOU0001')}
  if($map.gpu){
   foreach($source in @($map.gpu.baseline_source_commit,$map.gpu.candidate_source_commit)){
    if($source -notmatch '^[0-9a-f]{40}$'){throw 'GPU source pin must be a full hexadecimal commit'}

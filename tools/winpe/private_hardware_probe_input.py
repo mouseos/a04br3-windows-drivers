@@ -130,7 +130,7 @@ def probe_check(executable, manifest, certificate, root, audio_mode="Tone"):
         if codec:audio='mt8167-capture-probe.exe'
         brightness=report.get('build_defines',{}).get('A04_ENGINE_BRIGHTNESS_CLIENT')=='1'
         expected_clients=[audio] if codec else ['mt6630-wlan-probe.exe',audio]+(['mt8167-brightness-native.exe'] if brightness else [])
-        if codec and (brightness or report.get('deferred_update',{}).get('transaction')!='codec1026-msdc-quiet-fresh84'):raise ValueError('codec/eMMC専用profile不一致')
+        if codec and (brightness or report.get('deferred_update',{}).get('transaction')!='codec1026-msdc-quiet-explicit-fresh-v2'):raise ValueError('codec/eMMC専用profile不一致')
         if brightness and not report.get('deferred_update'):raise ValueError('brightness clientは明示延期batch専用です')
         if (report.get('audio_mode') != 'engine_pcm_retained' or report.get('engine_pcm_compatible') is not True
                 or report.get('fixed_clients') != expected_clients

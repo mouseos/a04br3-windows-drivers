@@ -7,7 +7,7 @@ static const WCHAR *const codec_retained_files[8]={L"mt8167-usb20.sys",L"mt6630-
 static DWORD codec_retained_check(HDEVINFO set)
 {
  DWORD k,i,matches,type,bytes,error;ULONGLONG version;SP_DEVINFO_DATA dev,found;
- WCHAR ids[1024],service[128],system[MAX_PATH],drivers[MAX_PATH],full[MAX_PATH];HANDLE held;
+ static WCHAR ids[1024],service[128],system[MAX_PATH],drivers[MAX_PATH],full[MAX_PATH];HANDLE held;
  for(k=0;k<4;k++){
   matches=0;
   for(i=0;;i++){
@@ -22,6 +22,7 @@ static DWORD codec_retained_check(HDEVINFO set)
   if(matches!=1)return ERROR_NOT_FOUND;
   error=deferred_selected_version(set,&found,&version);if(error)return error;
   if(version!=codec_retained_versions[k])return ERROR_REVISION_MISMATCH;
+  {static struct deferred_pin actual;actual.date=codec_retained_dates[k];error=deferred_selected_date(0,set,&found,&actual);if(error)return error;}
   if(!SetupDiGetDeviceRegistryPropertyW(set,&found,SPDRP_SERVICE,&type,(BYTE *)service,sizeof(service),&bytes))return GetLastError();
   if(type!=REG_SZ||bytes<2||bytes>sizeof(service)||(bytes&1)||service[bytes/2-1]||lstrcmpiW(service,codec_retained_services[k]))return ERROR_REVISION_MISMATCH;
   /* GPU Code43 is observed by its owner; retention is NOT a Code0 claim. */

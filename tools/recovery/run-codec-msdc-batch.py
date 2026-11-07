@@ -1,4 +1,5 @@
 """委任されたcodec/MSDC試験: EFIだけ更新し、boot/GPTの前後hashを保持する。"""
+raise SystemExit('旧run85 controllerは再実行禁止。main返却の最新freshと再署名serviceに結合した新試験だけを使用してください。')
 from pathlib import Path
 import hashlib,importlib.util,json,os,re,subprocess,sys,time
 ROOT=Path(__file__).resolve().parents[4];LOG=ROOT/'port/gsi/logs/ios-feasibility';UART=LOG/'windows-rt-uart-workspace.log'

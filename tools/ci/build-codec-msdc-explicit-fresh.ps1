@@ -1,11 +1,17 @@
 # Incremental service-only build. Drivers/client are existing signed immutable inputs.
 param([Parameter(Mandatory=$true)][string]$PackageMap,
+      [Parameter(Mandatory=$true)][string]$FreshManifest,
+      [Parameter(Mandatory=$true)][string]$ExpectedFreshManifestSha256,
+      [Parameter(Mandatory=$true)][string]$BindingReceipt,
+      [Parameter(Mandatory=$true)][string]$ExpectedBindingReceiptSha256,
       [Parameter(Mandatory=$true)][string]$WorkspaceRoot,
       [Parameter(Mandatory=$true)][string]$OutputDirectory)
 $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $spec=Get-Content $PackageMap -Raw|ConvertFrom-Json
-if($spec.transaction -ne 'codec1026-msdc-quiet-fresh84' -or !$spec.backup_manifest -or !$spec.backup_manifest_sha256){throw 'fresh84 binding required; draft is not buildable'}
+if($spec.transaction -ne 'codec1026-msdc-quiet-explicit-fresh-v2' -or !$spec.backup_manifest -or !$spec.backup_manifest_sha256){throw 'Explicit returned fresh binding required; draft is not buildable'}
+if([IO.Path]::GetFullPath($FreshManifest) -ine [IO.Path]::GetFullPath($spec.backup_manifest) -or $ExpectedFreshManifestSha256 -cne $spec.backup_manifest_sha256 -or [IO.Path]::GetFullPath($BindingReceipt) -ine [IO.Path]::GetFullPath($spec.bindings.path) -or $ExpectedBindingReceiptSha256 -cne $spec.bindings.sha256){throw 'Explicit returned manifest/receipt arguments must match pinned map'}
+foreach($pin in @(@{path=$FreshManifest;hash=$ExpectedFreshManifestSha256},@{path=$BindingReceipt;hash=$ExpectedBindingReceiptSha256})){if($pin.hash -cnotmatch '^[0-9a-f]{64}$' -or (Get-FileHash $pin.path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $pin.hash){throw 'Returned file hash mismatch'}}
 if(@(& git -C $root status --porcelain).Count){throw 'Committed clean service source required'}
 $cert='BCBF6C456C6F0DD0818434763B189488FBF13570'
 $out=[IO.Path]::GetFullPath($OutputDirectory)
@@ -36,4 +42,4 @@ $names=@('MT8167EngineProbe.exe','hardware-probe-manifest.json','deferred-policy
 }|ConvertTo-Json -Depth 12|Set-Content -Encoding UTF8 (Join-Path $out 'signed-manifest.json')
 $zipFiles=@($names|ForEach-Object{Join-Path $out $_})+@((Join-Path $out 'signed-manifest.json'))
 Compress-Archive -Path $zipFiles -DestinationPath (Join-Path $out 'codec-msdc-engine-service-signed.zip')
-Write-Host 'CODEC1026_MSDC_QUIET_FRESH84_SERVICE_SIGNED'
+Write-Host 'CODEC1026_MSDC_QUIET_EXPLICIT_FRESH_SERVICE_SIGNED'
