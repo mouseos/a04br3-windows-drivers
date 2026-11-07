@@ -72,3 +72,20 @@ Audio用HFP leaseはこのcombo leaseとは別で、実GPIO/AFE/DMA ownerが必�
 実Audio providerの障害条件が解決するまでHFP統合親の署名・実機試験を要求しない。
 署名は正規WDK8.1 Inf2Cat `/os:6_3_ARM`、固定証明書でSYS/CATへSHA256署名し、
 CAT membershipとsource/hash manifestを確認する。実機はmainのみ。
+
+
+## Ramanとのsource非変更の組合せ確認
+
+`tools/bluetooth/build-mt6630-hfp-paired-core.ps1 -OutputDirectory "$PWD/build/hfp-paired"`
+はRaman固定 `4b2a461` のAudio/親headersをarchiveし、Audio sourceを一切編集せずに
+本BT headersでowner3TUをcompileする。本BT5TUと合わせて明示8objectsだけを
+単一libraryへarchiveする。旧63c32のobjectを混ぜない。依存全file hashと両source commitを
+paired manifestへ記録する。親SYS/INF・版予約・flagsは変更しない。
+これはAudio commonとBT coreのWDK組合せ確認であり、既存Audio backendとの最終SYS link、
+controller登録、DMA drain、HCIBypass資格や実音声を証明するものではない。
+
+raw署名候補は `2452d9885654a13138d01d5c5cd5dee54e99f351` のSYS/INF2003、
+HFP coreは `28529e63e176076029b10e7c94fd65a2981a1259` の実WDK8.1全5TU archive。
+raw source/flags/hash一致を確認し、同一SYSを再利用した。両者の出自は署名manifestに分けた。
+回収ZIP SHA256: `860c4407189fa610353b5a08e1a4a8e1f9253da044ad93cec017ddf6a8d7f6e2`。
+このZIPに親は同梱しない。旧02e raw候補の自動置換・実機試験は要求しない。

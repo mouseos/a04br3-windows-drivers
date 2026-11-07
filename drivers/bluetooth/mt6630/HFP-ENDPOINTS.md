@@ -29,7 +29,7 @@ speaker/render と mic/capture の独立 WaveRT miniport を提供する。
 転送し、callback 内で blocking attach/detach しない。
 
 最初の KS RUN で実 connection status を取得し `STREAM_OPEN`、
-`GET_CODEC_ID(version=1)`、実 PCM 整合検証、非同期 status watch、
+WinBlue狭帯域CVSD profileの実 PCM 整合検証、非同期 status watch、
 MRG prepare/start、方向別 client DMA 接続を行う。Windows bypass codec **0** が
 CVSD。無線 HFP codec ID 1 と混同しない。8 kHz mono S16_LE だけを受理する。
 `STATUS_DEVICE_BUSY` は他 owner の可能性があるため成功へ変換しない。
