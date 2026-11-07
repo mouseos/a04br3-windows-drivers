@@ -67,3 +67,42 @@ mainの既存runnerで一括実行し、実機投入はmainが行う。署名だ
 `python3 tests/check_power_candidate.py`で新しいcold設定/拒否/部分失敗とstrict校正の
 ASan/UBSanを一括実行し、既存thermal/charger/gauge検証を同じbatchで確認する。
 小さい変更ごとに実機投入を繰り返すためのものではない。
+
+## 親1012 native tuple（追加）
+
+mainへ親2026.11.7.1012を予約通知、Nashが競合なしと確認。SD親は1010へ分離。
+親1008のecaa7b7全flagsをparent1008-baseline-flags.jsonへ固定し、差はthermal診断1と
+native実験1だけ、SDは明示0。既存engine親INF1008は保持し、1012専用
+shared-parent-thermal-bq.infを選ぶ。親1008を別SYSとして再包装しない。
+
+`-ThermalProfile NativeOneShot`を明示した場合、実thermal子PDOから専用ABI v1を
+WdfFdoQueryForInterfaceで直接取得する。touch経由の旧診断ABIを流用しない。
+親はStopIdle参照と世代tokenを保持し、同一parent lock/mappingでclock/reset/analogを
+実施する。Windows PnPの実親子関係でsupplierは実shared parentであり、別ACPI siblingの
+SDに必要なPowerRelationsを、この子へ偽装して作らない。
+
+これはLinuxと同じ正常世界のMMIO/reset/initを使う**明示native OS実験**である。
+旧firmware_released/adc_exclusive flagsは0のままで、旧VerifyOwnershipはnative claimを
+認証済みfirmware解放と返さない。EL3無干渉・全電源条件の実証とは扱わない。
+親はresetをassert/readbackしてからthermal/AUXADC用gate bit1/30だけを解除し、
+未知の旧thermal AHB programをungateで再開しない。ADC/thermal私有pagesはPnPで
+排他割当てされた子だけがmapし、shared clock/analog/PWRAPを重複mapしない。
+
+有限one-shotは実校正→親1012照会→native claim→Linux fast init/通常init→実3点採取→
+thermal AHB idle/periodic停止→ADC channel11 trigger clear/ADC idleを確認する。
+この後だけ親へquiescent/releaseを報告し、元のanalog bit0x30、reset bit0、clock gated
+差分を復元する。他bit・SD dedicated masks・PMIC電源設定には触れない。
+途中失敗でshutdown不明ならclock/lease/mappingを返さず、既存TOPRGU復旧を前提とする
+bugcheckを要求する。bugcheck自体を実reset完了の証拠としない。
+
+UARTは既存TOPRGU queueへSTART/CLAIM/実millidegree3値/QUIESCENT等を短く送る。
+queue受理とUART送信完了は別であり、校正・tuple不一致も拒否として記録する。
+温度値は既存readout interfaceでもfresh期間だけ取得できる。連続監視、冷却、周波数制御、
+独立hardware熱停止の完成品ではない。実機はmainがこの明示profileだけで検証する。
+
+matched batch例は`-ChargerProfile ColdLinux100 -ThermalProfile NativeOneShot`。
+BQのBATOVP/HiZ拒否は維持し、TS異常時に設定を強行しない。100mAという値はUSB入力制限で、
+IN入力能力や実充電電流の検証ではない。thermal native INFは0.0.1.2、BQ INFも0.0.1.2。
+署名tupleには親1012を含め、最終SYS/CAT対応とARMNTを検査してhashを固定する。
+
+主担当の最新予約でthermal/BQ親は1012に変更。1009はsource作業中の旧予約だけでSYS未生成。SD専用1010とrun42親1008は保持する。

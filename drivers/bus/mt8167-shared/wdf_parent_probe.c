@@ -5,6 +5,7 @@
 #include <initguid.h>
 #include <ntddk.h>
 #include <wdf.h>
+#include <wdmguid.h>
 #include "parent_resources.h"
 #include "usb_admission.h"
 #include "pwrap_owner.h"
@@ -59,6 +60,18 @@
 #include "thermal_interface.h"
 #include "thermal_owner.h"
 #include "adc_observation.h"
+#endif
+#ifndef A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+#define A04_SHARED_THERMAL_NATIVE_EXPERIMENT 0
+#endif
+#ifndef A04_SHARED_SD_POWER
+#define A04_SHARED_SD_POWER 0
+#endif
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT && (!A04_SHARED_THERMAL_DIAGNOSTIC || A04_SHARED_SD_POWER)
+#error Parent1009 requires thermal resources and excludes the SD tuple
+#endif
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+#include "thermal_native_interface.h"
 #endif
 #ifndef A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 #define A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC 0
@@ -1068,6 +1081,9 @@ static NTSTATUS ParentThermalRelease(PVOID p,ULONG generation)
  return result?STATUS_DEVICE_NOT_READY:STATUS_SUCCESS;
 }
 #endif
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+#include "thermal_native_parent.inc"
+#endif
 static void ParentStop(A04_PARENT_CONTEXT *c,int can_access)
 {
     /* Both owners share this mutex. Close admission in one critical section
@@ -1404,6 +1420,24 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
     if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+    if(base==0xfffffffeu) {
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedThermalNativeGuid,NULL);
+        query.SendQueryToParentStack=TRUE;status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    }
+#endif
+    if(base==0xffffffffu) {
+        /* AFE is a synthesized child, not an ACPI PDO. Preserve the real
+         * parent-bus DMA/translation interface, including its ref callbacks;
+         * never return fabricated bus methods or an identity-translation stub.
+         * WDF_QUERY_INTERFACE_CONFIG.SendQueryToParentStack is the documented
+         * PDO forwarding path. Existing touch/USB/WiFi interfaces are unchanged. */
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&GUID_BUS_INTERFACE_STANDARD,NULL);
+        query.SendQueryToParentStack=TRUE;
+        status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    }
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedAudioInterfaceGuid,NULL);
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
@@ -1430,6 +1464,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     A04_SHARED_INTERFACE inputIface;
 #if A04_SHARED_THERMAL_DIAGNOSTIC
     A04_SHARED_THERMAL_INTERFACE thermalIface;
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+    A04_THERMAL_NATIVE_INTERFACE nativeIface;
+#endif
 #endif
     A04_SHARED_AUDIO_INTERFACE audioIface; A04_SHARED_USB_INTERFACE usbIface;
     A04_SHARED_WIFI_INTERFACE wifiIface;
@@ -1511,6 +1548,19 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&thermalIface,&A04SharedThermalInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
 #endif
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+    RtlZeroMemory(&nativeIface,sizeof(nativeIface));
+    nativeIface.Header.Size=sizeof(nativeIface);nativeIface.Header.Version=A04_THERMAL_NATIVE_VERSION;
+    nativeIface.Header.Context=dev;nativeIface.Header.InterfaceReference=ParentInterfaceReference;nativeIface.Header.InterfaceDereference=ParentInterfaceDereference;
+    nativeIface.ParentBuild=A04_THERMAL_NATIVE_PARENT_BUILD;
+    nativeIface.Acquire=ParentThermalNativeAcquire;nativeIface.Clock=ParentThermalNativeClock;nativeIface.Reset=ParentThermalReset;
+    nativeIface.Begin=ParentThermalNativeBegin;nativeIface.End=ParentThermalEnd;
+    nativeIface.ReadAnalog=ParentThermalReadAnalog;nativeIface.WriteAnalog=ParentThermalWriteAnalog;
+    nativeIface.Quiescent=ParentThermalQuiescent;nativeIface.Release=ParentThermalNativeRelease;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&nativeIface,&A04SharedThermalNativeGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
+#endif
+
     RtlZeroMemory(&audioIface,sizeof(audioIface));
     audioIface.Header.Size=sizeof(audioIface);audioIface.Header.Version=A04_SHARED_AUDIO_INTERFACE_VERSION;
     audioIface.Header.Context=dev;audioIface.Header.InterfaceReference=ParentInterfaceReference;

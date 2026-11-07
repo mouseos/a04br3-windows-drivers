@@ -3,6 +3,7 @@
 #include <string.h>
 #include "cold_profile.h"
 #include "boot_record.h"
+#include "../drivers/bus/mt8167-shared/thermal_owner.h"
 struct fixture { uint8_t raw[8];unsigned reads,writes,fail_write;uint64_t now; };
 static uint64_t clock_ns(void *p){return ((struct fixture *)p)->now++;}
 static int read_reg(void *p,uint8_t reg,uint8_t *v){struct fixture *f=p;assert(reg<8);f->reads++;*v=f->raw[reg];return 0;}
@@ -23,5 +24,14 @@ int main(void){
  cal=old;assert(a04_thermal_boot_calibration(&cal,&v,sizeof(v),0x16)&&!memcmp(&cal,&old,sizeof(cal)));
  assert(a04_thermal_boot_calibration(&cal,&v,sizeof(v)-1,6)&&!memcmp(&cal,&old,sizeof(cal)));
  v.version=2;assert(a04_thermal_boot_calibration(&cal,&v,sizeof(v),6)&&!memcmp(&cal,&old,sizeof(cal)));
+ struct a04_shared_thermal_owner owner={0};uint32_t token=0;
+ owner.online=1;assert(a04_shared_thermal_acquire(&owner,&token));
+ assert(!a04_shared_thermal_native_acquire(&owner,&token));
+ assert(!owner.firmware_released&&!owner.adc_exclusive&&owner.native_claim);
+ assert(a04_shared_thermal_native_acquire(&owner,&token));
+ owner.clocks_ready=1;assert(a04_shared_thermal_release(&owner,owner.generation));
+ assert(!a04_shared_thermal_quiescent(&owner,owner.generation));
+ assert(!a04_shared_thermal_release(&owner,owner.generation)&&!owner.native_claim);
+ owner.poisoned=1;assert(a04_shared_thermal_native_acquire(&owner,&token));
  return 0;
 }
