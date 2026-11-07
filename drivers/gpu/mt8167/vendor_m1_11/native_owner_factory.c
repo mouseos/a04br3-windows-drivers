@@ -305,7 +305,7 @@ NTSTATUS GeoNativeOwnerCreateV3(PDEVICE_OBJECT pdo,const DXGKRNL_INTERFACE *dxgk
     c->closing=1;c->state=E_OWNER_ACTIVE;c->power=PowerDeviceD0;c->colour=0xff000000;
     KeInitializeMutex(&c->mutex,0);ExInitializeRundownProtection(&c->operations);
     /* Publish only retained context on failure. Never expose partial ops/caps. */
-    out->native_context=c;
+    out->native_context=c;GeoFactoryCheckpoint(0,STATUS_SUCCESS,0,0,0,0);
     s=e_native_map_resources(c,pdo,info);GeoFactoryCheckpoint(1,s,0,0,0,0);if(!NT_SUCCESS(s))goto fail;
     s=e_native_platform_open(c);GeoFactoryCheckpoint(2,s,0,0,0,0);if(!NT_SUCCESS(s))goto fail;
     s=e_native_load_firmware(c);GeoFactoryCheckpoint(3,s,0,0,0,0);if(!NT_SUCCESS(s))goto fail;
