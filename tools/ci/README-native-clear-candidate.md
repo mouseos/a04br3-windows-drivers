@@ -16,7 +16,7 @@ $env:A04_GE8300_INSTALLED_SYS_SHA256='9c3c7d846565c0e5e73c2afe1d4d9900089f74bbe9
 ./tools/ci/build-ge8300-provider.ps1
 ```
 
-上記baselineのSYS hashはrun27 fresh backupと保持853abc2 packageで一致した値。INF DriverVerはその保持packageの値であり、実機で選択されたINF情報との照合を適用前に別途必須とする。新source INFは11/07/2026,0.0.2.0へ更新した。buildはbaselineより新しいversionと同日以降の日付を要求する。将来baselineが上がれば、再度source INFを更新してcommitする。同版packageを再配布しない。
+上記baselineのSYS hashはrun27 fresh backupと保持853abc2 packageで一致した値。INF DriverVerはその保持packageの値であり、実機で選択されたINF情報との照合を適用前に別途必須とする。新source INFは11/07/2026,0.0.2.1へ更新した。buildはbaselineより新しいversionと同日以降の日付を要求する。将来baselineが上がれば、再度source INFを更新してcommitする。同版packageを再配布しない。
 
 既存のVendorStage/UncachedStage/RenderCold/CopyDiagnostic/SharedLease/CopyService依存は維持する。NativeClearJob未指定では従来1280 backing、指定時だけHWRTを含め800x600で準備する。output backingは従来4,096,000 bytesのまま、先頭480,000 pixelsをclear対象、残部544,000 pixelsをguardとして扱う。
 
@@ -36,9 +36,24 @@ provider-package-manifest.jsonは最終署名済SYS/INF/catalog/FWのSHA256、Dr
 
 NativeClearJob時は通常のTA/3D priority commandをskipし、staged ringが上書きされるのを防ぐ。GP/TQとcopy-serviceは維持する。正常cold準備のUARTはNATIVE JOB STAGED=1 TA3D_GATE=CLOSED。これは描画成功ではない。
 
-`windows_native_execute.c`には未接続の実publisher本体を用意した。command_busyと既存lifetime所有を前提に2 KCCB slotを予約し、TA/3D、UFO、cleanup、SLC flush→GP fence、480,000画素とguardをboundedに検査する。one-shotであり、publish後timeout/未知FW要求/画素不一致はowner+commandをpoisonし全DMAを保持する。ui32SubmittedCommands/ui32ExecutedCommandsは同版rgx_fwif_shared.hのFW所有counterで、hostから増加させない。
+`windows_native_execute.c`には実publisher本体を用意した。command_busyと既存lifetime所有を前提に2 KCCB slotを予約し、TA/3D、UFO、cleanup、SLC flush→GP fence、480,000画素とguardをboundedに検査する。one-shotであり、publish後timeout/未知FW要求/画素不一致はowner+commandをpoisonし全DMAを保持する。ui32SubmittedCommands/ui32ExecutedCommandsは同版rgx_fwif_shared.hのFW所有counterで、hostから増加させない。
 
-**provider、D0、IOCTL、Engine/serviceからpublisherを呼ぶ経路は追加していない。NativeClearJob=1だけでは実行gateは開かない。** 実機向けactivationは別途、lifetime/lease・現在のqueue・対象package・実行上限を確認した変更が必要。
+**NativeClearJob=1だけでは実行gateは開かない。** 別の`A04_GE8300_VENDOR_NATIVE_CLEAR_ACTIVATE`は既定0。1を明示したbuildだけ、既存D0 PostInterrupts callbackのvendor_lifetime内、GP fence成功直後でpublic opaque wrapperを1回呼ぶ。PASSIVE、pinned copy owner/device referenceの一致、display lease/ownerなし、service未公開・未closedを必須とする。display-copy完了を偽装したlease tokenは作らない。初期FW/native mapping所有は既存copy ownerと親render/FW leaseで保持する。
+
+実機用の1回candidateは上の構成に以下を追加する。別途cold-only bootを挟む必要はない。
+
+```powershell
+$env:A04_GE8300_VENDOR_NATIVE_CLEAR_ACTIVATE='1'
+# 既存startup profileでも1だが、activationでは明示確認を必須にする。
+$env:A04_GE8300_VENDOR_START_DIAGNOSTIC='1'
+$env:A04_GE8300_SHARED_LEASE='1'
+```
+
+build-configと署名後manifestは`native_clear_activate=1`と`armed-one-shot-private-480000`を記録する。0なら`closed`。INF DriverVerは0.0.2.1へ更新済み。署名済SYS/INF/DriverVerが適用先と一致してから、この1回試験candidateと扱う。
+
+UARTはcold準備時`TA3D_GATE=ARMED_ONE_SHOT`、実行直前`NATIVE CLEAR BEGIN PRIVATE=480000`、終了時`NATIVE CLEAR STATUS/PHASE/MATCH/MISMATCH/GUARD`を出す。成功条件はstatus成功、phase4、match480000、mismatch0、guard0。実行前の所有条件不成立はSKIP=ADMISSIONであり成功ではない。
+
+試験失敗はpublic wrapperでもpoison/quarantineを維持し、GPU service onlineを許可せずadmissionを永久closedにする。既存D0 PostInterruptsはSTATUS_SUCCESSでPnPへ返し、GPU未取得のDODには通常のCPU pathを残す。FW所有DMAは解放せず、未証明の`vendor_cpu_fallback=TRUE`を強制しない。UART reset経路を変更しない。Engine/service/IOCTLから任意packetやrepeatを送るentryは追加しない。
 
 ## dummy region/stencilの最終cold policy
 
@@ -48,4 +63,4 @@ Windows ownerが実際にzeroを書いたregion128/stencil2048 bytesをFW開始�
 
 ## 検証の範囲
 
-host OS stubはallocator/IRQL等だけ。実producer、mapper、Device-word helpers、pair builderを使うcold ownerテストを実施する。FWモデルでは正常完了、timeout、画素不一致、cleanup未完了、one-shotとDMA保持を検証する。モデルはGPU実行の証拠ではない。WDK compile/link、署名、実Windows適用と描画は主担当runner/実機で未実施。gateを閉じた状態のWDK buildとcold準備確認から進める。
+host OS stubはallocator/IRQL等だけ。実producer、mapper、Device-word helpers、pair builderを使うcold ownerテストを実施する。FWモデルでは正常完了、timeout、画素不一致、cleanup未完了、one-shotとDMA保持を検証する。モデルはGPU実行の証拠ではない。WDK compile/link、署名、実Windows適用と描画は主担当runner/実機で未実施。source/host review後、明示activation=1のWDK build/署名と1回のprivate clear試験へ進む。WDK/実機を実施する権限は主担当が所有する。

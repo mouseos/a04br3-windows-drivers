@@ -34,7 +34,7 @@ $catalogSignature=Get-AuthenticodeSignature (Join-Path $packagePath 'mt8167-ge83
 if ($catalogSignature.Status -ne 'Valid') { throw "Final catalog signature is not valid: $($catalogSignature.Status)" }
 @{source_commit=$config.source_commit;driver_ver=$driverVer;files=$files;
   selected_installed_driver_ver=$InstalledDriverVer;selected_installed_sys_sha256=$InstalledSysSha256.ToLowerInvariant();
-  native_clear_job=$config.native_clear_job;native_ta3d_publish_gate='closed';
+  native_clear_job=$config.native_clear_job;native_clear_activate=$config.native_clear_activate;native_ta3d_publish_gate=$config.native_ta3d_publish_gate;
   signer_thumbprint=$signature.SignerCertificate.Thumbprint;signature_status=[string]$signature.Status;
   windows_native_applied=$false;windows_3d_success=$false;fingerprint_state='final-signed-package'} |
     ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 (Join-Path $packagePath 'provider-package-manifest.json')

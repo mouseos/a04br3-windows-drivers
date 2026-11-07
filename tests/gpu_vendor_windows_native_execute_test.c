@@ -48,12 +48,12 @@ static void run(unsigned fault)
     runtime.command_sync=&sync;runtime.command_sync_addr.ui32Addr=0xc0010000u;
     x.fw.runtime=&runtime;x.fw.hardware_owned=TRUE;start.memory=&x.fw;start.core=core;start.online=TRUE;
     active=&x;child_owner=n;mode=fault;commands=0;
-    status=a04_vendor_native_publish_candidate(n,&start,&result);
+    status=a04_vendor_native_run_once(n,&start,&result);
     if(!fault){
         assert(status==STATUS_SUCCESS && result.phase==4 && result.matching_pixels==480000);
         assert(!result.mismatched_pixels && !result.guard_errors && commands==4 && n->candidate->verified);
         assert(!start.command_busy && !start.command_poisoned && !n->quarantined);
-        assert(a04_vendor_native_publish_candidate(n,&start,&result)==STATUS_INVALID_DEVICE_STATE);
+        assert(a04_vendor_native_run_once(n,&start,&result)==STATUS_INVALID_DEVICE_STATE);
         assert(a04_vendor_native_release_cold(&n)==STATUS_DEVICE_BUSY && !frees);
         x.fw.hardware_owned=FALSE;assert(a04_vendor_native_release_cold(&n)==STATUS_SUCCESS && !n);finish(&x);
     }else{

@@ -862,3 +862,11 @@ test-gpu-native-execute-model: build/gpu_vendor_windows_native_execute_test
 build/gpu_vendor_windows_native_execute_test:  tests/gpu_vendor_windows_native_execute_test.c tests/gpu_vendor_windows_native_backing_test.c $(NATIVE_CLEAR_JOB_SRC) drivers/gpu/mt8167/vendor_m1_11/windows_native_job.c drivers/gpu/mt8167/vendor_m1_11/windows_native_job_private.h drivers/gpu/mt8167/vendor_m1_11/windows_native_cold.c drivers/gpu/mt8167/vendor_m1_11/windows_native_code.c drivers/gpu/mt8167/vendor_m1_11/windows_native_backing.c drivers/gpu/mt8167/vendor_m1_11/windows_uncached.c drivers/gpu/mt8167/vendor_m1_11/native_resources.c drivers/gpu/mt8167/vendor_m1_11/native_hwrt_profile.c drivers/gpu/mt8167/vendor_m1_11/render_resources.c drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/vendor_m1_11/windows_native_execute.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -DA04_GE8300_VENDOR_NATIVE_CLEAR_JOB=1 -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter-out tests/gpu_vendor_windows_native_backing_test.c,$(filter %.c,$^)) -o $@
+
+.PHONY: test-gpu-native-activation
+test-gpu-native-activation: build/gpu_native_activation_policy_test
+	./build/gpu_native_activation_policy_test
+	PYTHONDONTWRITEBYTECODE=1 python3 tests/gpu_native_activation_wiring_test.py
+build/gpu_native_activation_policy_test: tests/gpu_native_activation_policy_test.c drivers/gpu/mt8167/vendor_m1_11/native_activation_policy.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $< -o $@
