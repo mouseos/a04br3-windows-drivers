@@ -5,7 +5,7 @@ param(
     [string]$ExpectedSystemSha256,
     [string]$ExpectedLog1Sha256,
     [string]$ExpectedLog2Sha256,
-    [ValidateSet('MT8167DeviceInstall','MT8167HardwareProbe','MT8167EngineProbe','MT8167RenderProbe','MT8167RenderStage')][string]$ServiceName='MT8167DeviceInstall',
+    [ValidateSet('MT8167DeviceInstall','MT8167HardwareProbe','MT8167EngineProbe','MT8167RenderProbe','MT8167RenderStage','MT8167RenderSingleGpu')][string]$ServiceName='MT8167DeviceInstall',
     [switch]$IncludeHardwareProbe,
     [switch]$RearmFixedGpuDeviceInstall,
     [switch]$InspectFixedGpuDeviceInstall,
@@ -15,6 +15,8 @@ param(
     [string]$ExpectedGpuPolicySha256,
     [string]$GpuRearmPlanPath,
     [string]$ExpectedGpuRearmPlanSha256,
+    [string]$EnginePreservationPlanPath,
+    [string]$ExpectedEnginePreservationPlanSha256,
     [switch]$RearmEngineProbe,
     [string]$EngineRearmPlanPath,
     [string]$ExpectedEngineRearmPlanSha256,
@@ -63,6 +65,7 @@ function Fixed-ServiceSpec([string]$Name) {
         'MT8167EngineProbe' { return [ordered]@{name='MT8167EngineProbe';display_name='MediaTek MT8167 Engine Probe';image_path='"C:\Windows\System32\MT8167EngineProbe.exe"'} }
         'MT8167RenderProbe' { return [ordered]@{name='MT8167RenderProbe';display_name='PowerVR GE8300 Render Probe';image_path='"C:\Windows\System32\MT8167RenderProbe.exe"'} }
         'MT8167RenderStage' { return [ordered]@{name='MT8167RenderStage';display_name='PowerVR GE8300 Driver Update';image_path='"C:\Windows\System32\MT8167RenderStage.exe"'} }
+        'MT8167RenderSingleGpu' { return [ordered]@{name='MT8167RenderSingleGpu';display_name='PowerVR GE8300 Single GPU Update';image_path='"C:\Windows\System32\MT8167RenderSingleGpu.exe"'} }
         default { throw 'Unknown fixed one-shot service name' }
     }
 }
@@ -79,8 +82,8 @@ function Service-Values($Spec) {
 # Read ONLY this fixed service's known logger subtree. Never mutate its values.
 # Raw value fingerprints include names/types/data; directory shape is bounded.
 function Engine-DiagnosticFingerprint($ServiceKey,$Plan) {
-    if(!$Plan.engine_rearm) { throw 'Engine diagnostic preservation requires explicit rearm' }
-    $allowed=@($Plan.engine_rearm.diagnostic_policies)
+    $context=if($Plan.engine_rearm){$Plan.engine_rearm}elseif($Plan.engine_preserve){$Plan.engine_preserve}else{throw 'Explicit Engine preservation context required'}
+    $allowed=@($context.diagnostic_policies)
     if($allowed.Count -gt 16 -or @($allowed|Where-Object {$_ -cnotmatch '^[0-9a-f]{64}$'}).Count) { throw 'Invalid known diagnostic policy list' }
     $parts=New-Object 'Collections.Generic.List[string]'
     $serviceChildren=@($ServiceKey.GetSubKeyNames())
@@ -175,6 +178,7 @@ function Inspect-Services($Root,$Plan,[bool]$Patch) {
         foreach($spec in $Plan.services) {
             $values=Service-Values $spec
             $key=[MT8167OfflineHive.Native]::OpenPath($Root,($control+'\'+$spec.name),$true)
+            if($Patch -and $spec.name -ceq 'MT8167RenderSingleGpu' -and $key){$key.Dispose();throw 'Single GPU service must be absent before first registration'}
             $beforeFingerprint=$null;$diagnosticFingerprint=$null
             $gpuInspect=[bool]$Plan.gpu_inspect
             if($gpuInspect) {
@@ -254,10 +258,20 @@ function Related-Fingerprints($Root,$Plan) {
         try { $result[$name]=[MT8167OfflineHive.Native]::ValueFingerprint($key) }
         finally { $key.Dispose() }
     }
+    if($Plan.engine_preserve){
+        $engine=[MT8167OfflineHive.Native]::OpenPath($Root,($control+'MT8167EngineProbe'),$false)
+        if(!$engine){throw 'Preserved Engine absent'}
+        try {
+            if($engine.GetValueNames().Count -ne 7 -or [MT8167OfflineHive.Native]::ValueFingerprint($engine) -cne 'dbbe363d2401dfc022606aba010c0e4888c5feab67c748ea5030b0eb3ba484c1'){throw 'Preserved Engine is not the known disabled registration'}
+            $result.engine_service=[MT8167OfflineHive.Native]::ValueFingerprint($engine)
+            $result.engine_ledger=Engine-DiagnosticFingerprint $engine $Plan
+        } finally {$engine.Dispose()}
+    }
     return $result
 }
 function Check-RelatedFingerprints($Actual,$Expected) {
-    foreach($name in @('select','device_install','rpc_ss')) {
+    $relatedNames=@('select','device_install','rpc_ss');if($Expected.engine_service){$relatedNames+=@('engine_service','engine_ledger')}
+    foreach($name in $relatedNames) {
         if($Actual.$name -cne $Expected.$name) { throw ('Related existing settings changed: '+$name) }
     }
 }
@@ -420,6 +434,13 @@ if($InternalMode) {
     if($state.status -ne 'success') { exit 1 };exit 0
 }
 if($ServiceName -eq 'MT8167EngineProbe' -and $IncludeHardwareProbe) { throw 'EngineProbe cannot register or rearm the legacy HardwareProbe service' }
+$enginePreservePlan=$null
+if($ServiceName -ceq 'MT8167RenderSingleGpu') {
+    if($IncludeHardwareProbe -or $RearmEngineProbe -or $RearmFixedGpuDeviceInstall -or $InspectFixedGpuDeviceInstall -or !$EnginePreservationPlanPath -or $ExpectedEnginePreservationPlanSha256 -cnotmatch '^[0-9a-f]{64}$'){throw 'Single GPU requires explicit Engine-preservation-only plan'}
+    if((Hash-File $EnginePreservationPlanPath) -cne $ExpectedEnginePreservationPlanSha256){throw 'Engine preservation plan hash mismatch'}
+    $enginePreservePlan=Get-Content $EnginePreservationPlanPath -Raw|ConvertFrom-Json
+    if($enginePreservePlan.schema -ne 1 -or $enginePreservePlan.profile -cne 'render-single-gpu314-run95-v1' -or $enginePreservePlan.backup_manifest_sha256 -cne '4ff327d3fba781c377dc98615424daa1d90d0df305fac375ae639342589d817c'){throw 'Fixed fresh94 native preservation required'}
+} elseif($EnginePreservationPlanPath -or $ExpectedEnginePreservationPlanSha256){throw 'Engine preserve plan is single-GPU only'}
 $engineRearmPlan=$null;$engineRearmPlanHash=$null
 if($RearmEngineProbe) {
     if($ServiceName -cne 'MT8167EngineProbe' -or $IncludeHardwareProbe -or !$EngineRearmPlanPath -or
@@ -484,6 +505,7 @@ if($IncludeHardwareProbe -and $selected[0].name -ne 'MT8167HardwareProbe') { $se
 $names=@($selected | ForEach-Object { $_.name })
 $report=[ordered]@{status='failed-do-not-deploy';whole_system_audit=$false;audit_scope='Select + DeviceInstall/RpcSs raw values + selected service seven values; Engine-only known bounded LastDiagnostic subtree fingerprint when explicitly rearming';source_files=[ordered]@{};timeout_seconds=$TimeoutSeconds;services=$names;errors=@();driver_files_modified=$false}
 $plan=[ordered]@{control_set=$ExpectedCurrentControlSet;related_fingerprints='';services=$selected}
+if($enginePreservePlan){$plan.engine_preserve=$enginePreservePlan;$report.engine_preservation_plan_sha256=$ExpectedEnginePreservationPlanSha256}
 if($engineRearmPlan) {
     $plan.engine_rearm=$engineRearmPlan;$plan.engine_rearm_plan_sha256=$engineRearmPlanHash
     $report.engine_rearm_plan_sha256=$engineRearmPlanHash
@@ -527,6 +549,10 @@ try {
         [IO.File]::Copy($path,(Join-Path $work $name),$false)
         if((Hash-File (Join-Path $work $name)) -cne $hash) { throw "Workcopy hash mismatch: $name" }
     }
+    if($enginePreservePlan){foreach($name in @('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')){
+        $pin=$enginePreservePlan.source_files.$name
+        if(!$pin -or $pin.sha256 -cne $report.source_files[$name].sha256 -or $pin.bytes -ne $report.source_files[$name].bytes){throw 'Engine preserve plan and fresh input differ'}
+    }}
     if($engineRearmPlan) {
         foreach($name in @('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')) {
             $pin=$engineRearmPlan.source_files.$name

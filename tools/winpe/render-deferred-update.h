@@ -19,9 +19,11 @@ static int deferred_all_install_succeeded,deferred_diagnostic_armed;
 static DWORD deferred_marker(const WCHAR *,int);
 /* File slots: INF, SYS, CAT, FW, UMD DLL. Every hash remains exactly 32 bytes. */
 #define RENDER_FILE_COUNT 5u
-static const struct {const WCHAR *id,*folder,*inf,*sys,*cat,*firmware,*umd;} deferred_targets[3]={
+static const struct {const WCHAR *id,*folder,*inf,*sys,*cat,*firmware,*umd;} deferred_targets[DEFERRED_TARGET_COUNT]={
+#if !A04_RENDER_SINGLE_GPU
  {L"ACPI\\BEN0001",L"parent",L"shared-parent.inf",L"mt8167-shared.sys",L"shared-parent.cat",NULL,NULL},
  {L"ACPI\\MOU0007",L"display",L"mt8167-display.inf",L"mt8167-display.sys",L"mt8167-display.cat",NULL,NULL},
+#endif
  {L"ACPI\\MOU0006",L"render",L"ge8300-render.inf",L"ge8300-render.sys",L"ge8300-render.cat",L"ge8300-mips.fw",L"ge8300-umd.dll"}
 };
 #include "render-registry-diagnostic.h"
@@ -166,7 +168,7 @@ static DWORD deferred_observe(struct pnp_apis *a,unsigned i,DEVINST node)
  cr=a->devproperty(node,&problem_status_key,&type,(BYTE *)&nt,&bytes,0);
  pnp_record(i,0x108,cr);pnp_record(i,EV_PNP_NT_TYPE,type);pnp_record(i,EV_PNP_NT_BYTES,bytes);
  if(cr==CR_SUCCESS&&type==DEVPROP_TYPE_NTSTATUS&&bytes==sizeof(nt)){pnp_record(i,0x109,nt);if(nt)error=ERROR_NOT_READY;}
- else error=ERROR_NOT_READY;
+ else if(!(cr==CR_NO_SUCH_VALUE&&status_cr==CR_SUCCESS&&(status&DN_STARTED)&&!problem&&!(status&DN_HAS_PROBLEM)))error=ERROR_NOT_READY;
  diagnostic_node(i,status_cr,status,problem,cr,type,bytes,nt);
  pnp_bind_metadata(a,i,node,5,"INF");pnp_bind_metadata(a,i,node,3,"VERSION");
  return error;
@@ -219,7 +221,7 @@ static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const
  /* Select the fixed compatible driver through the standard DIF dispatcher.
   * The default administrator handler changes System -> Display class; do
   * not synthesize ClassGUID registry values. */
- if(i==2)list_type=SPDIT_COMPATDRIVER;
+ if(i==2||A04_RENDER_SINGLE_GPU)list_type=SPDIT_COMPATDRIVER;
 #endif
  deferred_current_target=i;deferred_current_step=1;
  memset(&params,0,sizeof(params));params.cbSize=sizeof(params);
@@ -302,6 +304,9 @@ static DWORD render_bound_baseline(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,
  return error;
 }
 #endif
+#if A04_RENDER_SINGLE_GPU
+#include "render-single-retained.h"
+#endif
 static DWORD deferred_once(int diagnostic)
 {
  static WCHAR drivers[MAX_PATH],folders[DEFERRED_TARGET_COUNT][MAX_PATH],full[DEFERRED_TARGET_COUNT][5][MAX_PATH];
@@ -315,6 +320,9 @@ static DWORD deferred_once(int diagnostic)
   * and versions before changing ANY selected driver. Locks span the batch. */
  set=SetupDiGetClassDevsW(NULL,NULL,NULL,DIGCF_ALLCLASSES|DIGCF_PRESENT);
  if(set==INVALID_HANDLE_VALUE){error=GetLastError();goto done;}
+#if A04_RENDER_SINGLE_GPU
+ error=render_single_retained(set);if(error)goto done;
+#endif
  for(i=0;i<DEFERRED_TARGET_COUNT;i++){
   deferred_current_target=i;deferred_current_step=0;
   const WCHAR *names[5]={deferred_targets[i].inf,deferred_targets[i].sys,deferred_targets[i].cat,deferred_targets[i].firmware,deferred_targets[i].umd};const WCHAR *paths[5]={NULL,NULL,NULL,NULL,NULL};
@@ -337,6 +345,9 @@ static DWORD deferred_once(int diagnostic)
 #endif
 #if A04_RENDER_BIND_UPDATE
   if(!diagnostic&&version!=deferred_pins[i].version){error=render_bound_baseline(i,set,&devs[i],version);if(error)goto done;}
+#if A04_RENDER_SINGLE_GPU
+  if(!diagnostic){error=single_before_umdfw(set,&devs[i]);if(error)goto done;}
+#endif
 #endif
   if(version>deferred_pins[i].version){error=ERROR_REVISION_MISMATCH;goto done;}
   if(version==deferred_pins[i].version){
@@ -345,8 +356,16 @@ static DWORD deferred_once(int diagnostic)
   }
   if(diagnostic&&!skip[i]){error=ERROR_REVISION_MISMATCH;goto done;}
   if(diagnostic){
-   const WCHAR*classes[3]={L"{4D36E97D-E325-11CE-BFC1-08002BE10318}",L"{4D36E968-E325-11CE-BFC1-08002BE10318}",L"{4D36E968-E325-11CE-BFC1-08002BE10318}"};
-   const WCHAR*services[3]={L"MT8167Shared",L"MT8167Display",L"GE8300Render"};
+   const WCHAR*classes[DEFERRED_TARGET_COUNT]={
+#if !A04_RENDER_SINGLE_GPU
+    L"{4D36E97D-E325-11CE-BFC1-08002BE10318}",L"{4D36E968-E325-11CE-BFC1-08002BE10318}",
+#endif
+    L"{4D36E968-E325-11CE-BFC1-08002BE10318}"};
+   const WCHAR*services[DEFERRED_TARGET_COUNT]={
+#if !A04_RENDER_SINGLE_GPU
+    L"MT8167Shared",L"MT8167Display",
+#endif
+    L"GE8300Render"};
    const DWORD props[2]={SPDRP_CLASSGUID,SPDRP_SERVICE};const WCHAR*want[2]={classes[i],services[i]};
    WCHAR value[128];DWORD k,type,bytes;
    for(k=0;k<2;k++){
@@ -358,6 +377,9 @@ static DWORD deferred_once(int diagnostic)
   if(diagnostic&&observed&&!deferred_diagnostic_status)deferred_diagnostic_status=observed;
   pnp_record(i,0x103,skip[i]);
  }
+#if A04_RENDER_SINGLE_GPU
+ if(!diagnostic&&skip[0]){error=ERROR_REVISION_MISMATCH;goto done;} /* Never reinstall already-current 3.14. */
+#endif
  if(diagnostic)goto done;
 #if RENDER_OFFLINE_DIAGNOSTIC
  error=ERROR_ACCESS_DENIED;goto done;
@@ -395,6 +417,9 @@ static DWORD diagnostic_after_clients(void)
   error=first?first:deferred_find(i,set,&dev);
   if(error)diagnostic_discovery(i,error);else (void)deferred_observe(&a,i,dev.DevInst);
  }
+#if A04_RENDER_SINGLE_GPU
+ if(set!=INVALID_HANDLE_VALUE){DWORD retain=render_single_retained(set);if(retain&&!first)first=retain;}
+#endif
  if(set!=INVALID_HANDLE_VALUE)SetupDiDestroyDeviceInfoList(set);
  if(a.cm)FreeLibrary(a.cm);if(a.newdev)FreeLibrary(a.newdev);
  return first;

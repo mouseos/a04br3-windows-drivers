@@ -42,7 +42,10 @@
 #error Only fixed tone or EnginePcm probe builds are supported
 #endif
 #if A04_HARDWARE_PROBE_ENGINE_PCM
-#if A04_RENDER_BIND_UPDATE
+#if A04_RENDER_SINGLE_GPU
+#define A04_RENDER_SERVICE_NAME L"MT8167RenderSingleGpu"
+#define A04_RENDER_SERVICE_EXE L"MT8167RenderSingleGpu.exe"
+#elif A04_RENDER_BIND_UPDATE
 #define A04_RENDER_SERVICE_NAME L"MT8167RenderStage"
 #define A04_RENDER_SERVICE_EXE L"MT8167RenderStage.exe"
 #else
