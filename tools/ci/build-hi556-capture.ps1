@@ -78,7 +78,7 @@ try {
 } finally {$env:TEMP=$priorTemp;$env:TMP=$priorTmp;$env:RUNNER_TEMP=$priorRunner}
 [ordered]@{
  status='integrated-raw-capture-candidate-not-hardware-validated';source_commit=$commit;source_dirty=$false
- recipe_sha256=(Hash $PSCommandPath);camera_version='0.0.1.1';status_schema=2;power_stop_rundown='EvtIoStop atomic request; sole original owner completes after hardware quiesce';total_servicing_deadline_seconds=32;mma_version=$(if($CaptureExperiment){'0.0.2.1'}else{$null})
+ recipe_sha256=(Hash $PSCommandPath);camera_version='0.0.1.2';status_schema=2;power_stop_rundown='EvtIoStop atomic request; sole original owner completes after hardware quiesce';total_servicing_deadline_seconds=32;mma_version=$(if($CaptureExperiment){'0.0.2.1'}else{$null})
  critical_flags=@{A04_HI556_CAPTURE_EXPERIMENT=$flag;A04_MMA_SHARED_IDENTITY=$flag;A04_MMA_SHARED_CAMERA_STREAM=$flag}
  shared_owner_reused=[bool]$SharedOwnerDirectory;camera_default_enabled=$false;required_firmware='uefi-a04br3 work/windows-camera-handoff, including ISP quiesce ACK before publishing NVS'
  model='rear Hynix HI556 chip0556 I2C1 addr28';front_camera_bound=$false

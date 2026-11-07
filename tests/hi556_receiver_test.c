@@ -17,7 +17,11 @@ int main(void)
  assert(!a04_hi556_receiver_poll(&o,&s));f.r[0][0x24/4]=1u<<10;assert(!a04_hi556_receiver_poll(&o,&s));
  f.r[0][0x28/4]=1;assert(a04_hi556_receiver_poll(&o,&s)==1);
  f.r[0][0x24/4]|=1u<<20;assert(a04_hi556_receiver_poll(&o,&s)<0);
- assert(!a04_hi556_receiver_stop(&o,&s)&&s.quiesced&&!s.armed);
+ f.r[0][0x430/4]=1;
+ assert(!a04_hi556_receiver_gate(&o,&s)&&s.gated&&s.sof_end==1&&!(f.r[0][0x414/4]&1u));
+ /* Later sensor-stop latency must not replace the first gated SOF snapshot. */
+ f.r[0][0x430/4]=7;
+ assert(!a04_hi556_receiver_stop(&o,&s)&&s.quiesced&&!s.armed&&s.sof_end==1);
  f.ack=0;assert(a04_hi556_receiver_arm(&o,&s,0x20000000,A04_HI556_FRAME_BYTES)==A04_CAM_RESET_TIMEOUT&&s.uncertain);
  f.online=0;unsigned writes=f.writes;
  assert(a04_hi556_receiver_stop(&o,&s)==A04_CAM_NOT_LIVE&&s.uncertain&&f.writes==writes);

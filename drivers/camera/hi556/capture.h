@@ -17,7 +17,7 @@ struct a04_hi556_receiver_io {
  int (*live)(void *);
 };
 struct a04_hi556_capture_state {
- unsigned stage,armed,quiesced,uncertain,pass1,imgo,changed,guard_errors;
+ unsigned stage,armed,quiesced,uncertain,pass1,imgo,changed,guard_errors,gated;
  uint32_t int_status,dma_status,imgo_error,ncsi_status,mux_status,mux_count,tg_count,sof_start,sof_end;
 };
 /* regions:0=15004000 ISP+SENINF,1=10011000 analog page,2=15001000 LARB1.
@@ -25,5 +25,6 @@ struct a04_hi556_capture_state {
  * Poll mode leaves the assigned IRQ source masked; no fake ISR completion. */
 int a04_hi556_receiver_arm(const struct a04_hi556_receiver_io *,struct a04_hi556_capture_state *,uint64_t dma,unsigned bytes);
 int a04_hi556_receiver_poll(const struct a04_hi556_receiver_io *,struct a04_hi556_capture_state *);
+int a04_hi556_receiver_gate(const struct a04_hi556_receiver_io *,struct a04_hi556_capture_state *);
 int a04_hi556_receiver_stop(const struct a04_hi556_receiver_io *,struct a04_hi556_capture_state *);
 #endif

@@ -23,7 +23,7 @@ static int reset(const struct a04_hi556_receiver_io *o)
  W(0x5c,4);W(0x5c,0);
  return (R(0x5c)&5u)||(R(0x0c)&1u)||(R(0x414)&1u)||(R(0x410)&1u)?A04_CAM_READBACK:0;
 }
-int a04_hi556_receiver_stop(const struct a04_hi556_receiver_io *o,struct a04_hi556_capture_state *s)
+int a04_hi556_receiver_gate(const struct a04_hi556_receiver_io *o,struct a04_hi556_capture_state *s)
 {
  if(!o||!s||!o->read||!o->write||!o->delay_us||!o->live){if(s)s->uncertain=1;return A04_CAM_ARGUMENT;}
  if(o->live(o->context)!=1){s->uncertain=1;return A04_CAM_NOT_LIVE;}
@@ -31,7 +31,13 @@ int a04_hi556_receiver_stop(const struct a04_hi556_receiver_io *o,struct a04_hi5
   * frame started before stop, a direct single-buffer image is ambiguous. */
  W(0x414,R(0x414)&~1u);W(0x410,R(0x410)&~1u);
  if((R(0x414)|R(0x410))&1u){s->uncertain=1;return A04_CAM_READBACK;}
- s->sof_end=R(0x430);
+ s->sof_end=R(0x430);s->gated=1;return 0;
+}
+int a04_hi556_receiver_stop(const struct a04_hi556_receiver_io *o,struct a04_hi556_capture_state *s)
+{
+ if(!o||!s||!o->read||!o->write||!o->delay_us||!o->live)return A04_CAM_ARGUMENT;
+ if(o->live(o->context)!=1){s->uncertain=1;return A04_CAM_NOT_LIVE;}
+ if(!s->gated){int e=a04_hi556_receiver_gate(o,s);if(e)return e;}
  {int e=reset(o);if(e){s->uncertain=1;return e;}}
  s->armed=0;s->quiesced=1;return 0;
 }
@@ -78,7 +84,7 @@ int a04_hi556_receiver_arm(const struct a04_hi556_receiver_io *o,struct a04_hi55
  /* Clear only status observed before arming. No stale done accepted. */
  W(0x24,R(0x24));W(0x28,R(0x28));
  if((R(0x24)&(1u<<10))||(R(0x28)&1u))return A04_CAM_STALE_STATUS;
- s->pass1=s->imgo=0;s->sof_start=R(0x430);s->stage=3;s->quiesced=0;s->armed=1;
+ s->pass1=s->imgo=0;s->sof_start=R(0x430);s->stage=3;s->quiesced=0;s->armed=1;s->gated=0;
  /* Source single available IMGO buffer, no software requeue while owned. */
  W(0xf4,(R(0xf4)&~0x000f4000u)|0x00010000u);
  if(o->delay_us(o->context,10))return A04_CAM_DELAY;

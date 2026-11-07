@@ -128,3 +128,12 @@ NVS/HSTAの実検証が失敗した場合もstickyにpower_lostを保持し、�
 inputのmanifest.jsonとpackage/{mma8652.sys,inf,cat}を固定し、実hash/CAT署名、critical flags、
 interfaceとMMA/PIO11source blob一致を検証する。cameraだけの変更でMMAを再署名しない。
 旧source commitと元manifest hashを派生manifestへ保持する。条件が違えば再利用せず停止する。
+
+## 0.0.1.2：DMA bufferを返す前の順序
+
+単一bufferではI2C stream-offの待ち時間中に次フレームが始まると画像が曖昧になる。
+sourceのVFDATA/CMOS disableを先に実行してreadbackし、その時点のSOFを保持する。
+その後sensor stream-off、ISP reset ACK、guard/content検証、最後にbuffer copyとする。
+停止の再呼出しで最初のSOF snapshotを上書きしない。
+新しいMMIO値やone-shot bitを推測追加せず、既存sourceの停止操作の役割を分離した。
+前候補0.0.1.1はhost build履歴として保持し、次候補のINFは0.0.1.2と区別する。

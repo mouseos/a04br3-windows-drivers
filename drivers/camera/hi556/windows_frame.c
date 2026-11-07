@@ -104,6 +104,12 @@ NTSTATUS a04_cam_frame(A04_CAM_CONTEXT *c,WDFREQUEST request,void *out,size_t ou
   if(delay_us(c,1000)){status=STATUS_IO_DEVICE_ERROR;break;}
  }
 stop:
+ /* Gate take-picture requests before a potentially blocking I2C stream-off.
+  * Preserve the first post-DONE SOF snapshot, then reset/drain before copying. */
+ if(!c->status.receiver.gated){
+  NTSTATUS gated=receiver_status(c,a04_hi556_receiver_gate(&o,&c->status.receiver));
+  if(!NT_SUCCESS(gated)){c->status.stop_status=gated;c->status.stop_observed=1;status=gated;goto quarantine;}
+ }
  if(sensor_touched){stopped=reg(c,0x0114,0);if(!NT_SUCCESS(stopped)&&NT_SUCCESS(status))status=stopped;}
  {NTSTATUS drained=receiver_status(c,a04_hi556_receiver_stop(&o,&c->status.receiver));if(!NT_SUCCESS(drained)){c->status.stop_status=drained;c->status.stop_observed=1;status=drained;goto quarantine;}}
  c->status.stop_status=stopped;c->status.stop_observed=1;
