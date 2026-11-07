@@ -13,6 +13,7 @@ struct hfp_call;struct hfp_events;struct hfp_notice;
 static void notice_complete(struct hfp_notice *);
 struct a04_bt_hfp_session {
  volatile LONG refs,failure,stopping,uncertain_io,detached,claims[2];KEVENT serial;
+ volatile LONG connection,connection_valid;
  PFILE_OBJECT file;PDEVICE_OBJECT target,owner;PIO_WORKITEM finalize;
  struct a04_bt_hfp_provider provider;struct a04_bt_sideband sideband;
  ULONG running;BOOLEAN link_open;struct hfp_call *watch;struct hfp_events *events;
@@ -25,7 +26,7 @@ static void lock(struct a04_bt_hfp_session *s){(void)KeWaitForSingleObject(&s->s
 static void unlock(struct a04_bt_hfp_session *s){KeSetEvent(&s->serial,IO_NO_INCREMENT,FALSE);}
 static NTSTATUS wait(KEVENT *done){LARGE_INTEGER t;t.QuadPart=-20000000;return KeWaitForSingleObject(done,Executive,KernelMode,FALSE,&t);}
 static void failed(struct a04_bt_hfp_session *s,NTSTATUS status)
-{InterlockedExchange(&s->failure,(LONG)status);s->provider.fault(s->provider.context,status);}
+{InterlockedExchange(&s->connection_valid,0);InterlockedExchange(&s->failure,(LONG)status);s->provider.fault(s->provider.context,status);}
 static void drop_call(struct hfp_call *c)
 {
  if(!InterlockedDecrement(&c->refs)){
@@ -104,12 +105,22 @@ NTSTATUS a04_bt_hfp_metadata(struct a04_bt_hfp_session *s,struct a04_bt_hfp_meta
  if(d){RtlSecureZeroMemory(d,(SIZE_T)needed);ExFreePoolWithTag(d,TAG);}
 done:unlock(s);return status;
 }
+/* Session serial is held. Like Sysvad GetConnectionStatus, read the last
+ * completed status notification while that chain is active. Before the real
+ * baseline/chain exists use the standard immediate query, never a default. */
+static NTSTATUS connection_locked(struct a04_bt_hfp_session *s,BOOL *value)
+{
+ if(InterlockedCompareExchange(&s->connection_valid,0,0)){
+  *value=!!InterlockedCompareExchange(&s->connection,0,0);return STATUS_SUCCESS;
+ }
+ return request(s,IOCTL_BTHHFP_DEVICE_GET_CONNECTION_STATUS_UPDATE,sizeof(BOOL),sizeof(BOOL),TRUE,value);
+}
 NTSTATUS a04_bt_hfp_connection(struct a04_bt_hfp_session *s,BOOLEAN *connected)
 {
  NTSTATUS status;BOOL value=FALSE;
  if(!s||!connected||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  *connected=FALSE;lock(s);status=a04_bt_hfp_status(s);
- if(NT_SUCCESS(status))status=request(s,IOCTL_BTHHFP_DEVICE_GET_CONNECTION_STATUS_UPDATE,sizeof(BOOL),sizeof(BOOL),TRUE,&value);
+ if(NT_SUCCESS(status))status=connection_locked(s,&value);
  if(NT_SUCCESS(status))*connected=!!value;unlock(s);return status;
 }
 NTSTATUS a04_bt_hfp_request_connection(struct a04_bt_hfp_session *s,BOOLEAN connect)
@@ -221,7 +232,7 @@ static void events_worker(PDEVICE_OBJECT device,PVOID context)
   if(NT_SUCCESS(status)&&++budget>64)status=STATUS_DATA_ERROR;
   n->call=NULL;drop_call(c);
   if(!NT_SUCCESS(status)){InterlockedExchange(&e->stopping,1);failed(e->session,status);continue;}
-  if(!index)value=!!value;
+  if(!index){value=!!value;InterlockedExchange(&e->session->connection,value);}
   if(value!=n->last){n->last=value;emit_change(e,index);}
   status=arm_notice(n);
   if(!NT_SUCCESS(status)){InterlockedExchange(&e->stopping,1);failed(e->session,status);}
@@ -243,7 +254,11 @@ NTSTATUS a04_bt_hfp_events_start(struct a04_bt_hfp_session *s,BOOLEAN volume)
   if(!NT_SUCCESS(status))break;if(!i)n->last=!!n->last;
  }
  if(NT_SUCCESS(status))for(ULONG i=0;i<(volume?3u:1u);i++){status=arm_notice(&e->notices[i]);if(!NT_SUCCESS(status))break;}
- if(!NT_SUCCESS(status))InterlockedExchange(&e->stopping,1);events_unlock(e);
+ if(NT_SUCCESS(status)){
+  InterlockedExchange(&s->connection,!!e->notices[0].last);
+  InterlockedExchange(&s->connection_valid,1); /* actual baseline AND armed chain */
+ }else {InterlockedExchange(&s->connection_valid,0);InterlockedExchange(&e->stopping,1);}
+ events_unlock(e);
 done:unlock(s);return status;
 }
 NTSTATUS a04_bt_hfp_observe(struct a04_bt_hfp_session *s,ULONG d,void (*changed)(PVOID,ULONG),PVOID context,struct a04_bt_hfp_observer **out)
@@ -273,7 +288,7 @@ NTSTATUS a04_bt_hfp_events_stop(struct a04_bt_hfp_session *s)
  if(!s||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  lock(s);e=s->events;if(!e)goto done;
  events_lock(e);KIRQL irql;KeAcquireSpinLock(&e->gate,&irql);BOOLEAN observed=e->observers[0]||e->observers[1];
- if(!observed)e->stopping=1;KeReleaseSpinLock(&e->gate,irql);
+ if(!observed){e->stopping=1;InterlockedExchange(&s->connection_valid,0);}KeReleaseSpinLock(&e->gate,irql);
  if(observed){events_unlock(e);status=STATUS_DEVICE_BUSY;goto done;}
  for(ULONG i=0;i<3;i++)if(e->notices[i].call){struct hfp_call *c=e->notices[i].call;IoCancelIrp(c->irp);if(wait(&c->done)!=STATUS_SUCCESS)status=STATUS_IO_TIMEOUT;}
  events_unlock(e);
@@ -373,7 +388,7 @@ NTSTATUS a04_bt_hfp_run(struct a04_bt_hfp_session *s,ULONG d)
   status=s->provider.set_pin_active(s->provider.context,d,TRUE);
   if(NT_SUCCESS(status))s->running|=1u<<d;else failed(s,status);goto done;
  }
- status=request(s,IOCTL_BTHHFP_DEVICE_GET_CONNECTION_STATUS_UPDATE,sizeof(BOOL),sizeof(BOOL),TRUE,&connected);
+ status=connection_locked(s,&connected);
  if(!NT_SUCCESS(status))goto done;if(!connected){status=STATUS_DEVICE_NOT_CONNECTED;goto done;}
  status=request(s,IOCTL_BTHHFP_STREAM_OPEN,0,0,0,NULL);
  if(!NT_SUCCESS(status))goto done;s->link_open=TRUE;

@@ -192,3 +192,20 @@ ZIP SHA256: `3fdc70366b83a81b0d2b9030e7ab59885fc01a62d55000280244486e11c42b1d`
 限定確認は既存transport regressionの時計入力更新と、下位SDIOの時間消費が所有権deadlineを
 超える一条件だけを追加してASan/UBSanで実行した。失敗-2がinit一般失敗に上書きされない
 ことを確認。新しい模擬test fileや多数の小試験を追加していない。
+
+## 通知済み接続状態をjack/stream照会へ接続
+
+Microsoft sysvad `BthhfpDevice.cpp:GetConnectionStatus` は実通知で更新した
+`m_ConnectionStatusLong`をInterlockedで読む。本BTも、標準HFPの初回即時statusを
+取得し、非即時通知IRPのarmが全部成立した時だけprivate connection snapshotを有効にする。
+通知workerは実完了BOOLをsnapshotへ反映してからjack通知を出す。
+
+jack照会と最初のstream RUNは、有効な通知chainの間その実statusを読む。
+chain開始前は従来の固定即時IOCTLで取得し、未取得のFALSE/TRUEを返さない。
+終了・初期化失敗・実I/O faultではsnapshotを無効にする。
+connect/disconnect要求の受付やStreamOpenの受付でconnection値を更新しない。
+実SLC/標準stack/音声成功の代替にはせず、StreamOpen等の実失敗も保持する。
+
+provider v2/親controller ABI、FC72設定、latency、DMA drain、HCIBypass None/0、
+WiFi排他は不変更。Audio/shared親sourceも不変更。raw SYS/INF2004は凍結し、
+本変更はHFP endpoint coreだけの結合候補である。新しいmock fixtureは追加しない。

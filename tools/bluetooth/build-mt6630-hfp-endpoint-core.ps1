@@ -48,7 +48,7 @@ try {
    library='mt6630-hfp-endpoint-core.lib';provider_contract_version=2;codec_profile='WinBlue narrowband CVSD; no Windows10 GET_CODEC_ID request';
    kernel_codegen_flags=$kernelCodegenFlags;kernel_compile_flags=$common;
    final_link_dependencies=@('ntoskrnl.lib','hal.lib','portcls.lib','libcntpr.lib','bufferoverflowfastfailk.lib');
-   hfp_oneshot_slc_requests=$true;hfp_request_acceptance_is_connection_success=$false;bt_private_normal_final_release_deferred=$true;no_effects_acquire_refusal_retryable=$true;mono_all_channel_volume=$true;wdk_compile_archive_succeeded=$true;
+   hfp_connection_snapshot_from_real_status_notifications=$true;hfp_oneshot_slc_requests=$true;hfp_request_acceptance_is_connection_success=$false;bt_private_normal_final_release_deferred=$true;no_effects_acquire_refusal_retryable=$true;mono_all_channel_volume=$true;wdk_compile_archive_succeeded=$true;
    final_driver_link_verified=$false;audio_v11_provider_connected=$false;pnp_endpoints_registered=$false;topology_source_implemented=$true;hfp_volume_sync_source_implemented=$true;hfp_jack_notifications_source_implemented=$true;pnp_lifecycle_source_implemented=$true;audio_fdo_callsite_connected=$false;
    standard_stack_contract_satisfied=$false;hardware_verified=$false;
    advertised_sco='None (unchanged)';exclusive_bluetooth=$true;wifi_coexistence_verified=$false;

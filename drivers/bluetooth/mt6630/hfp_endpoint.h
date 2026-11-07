@@ -64,6 +64,8 @@ struct a04_bt_hfp_metadata {GUID input_category,output_category,container;BOOLEA
 struct a04_bt_hfp_session;
 /* Runtime metadata only: no name/address is returned or logged. */
 NTSTATUS a04_bt_hfp_metadata(struct a04_bt_hfp_session *,struct a04_bt_hfp_metadata *);
+/* Latest real completed HFP status while notifications run; otherwise perform
+ * the fixed standard immediate query. Request-connect acceptance is not data. */
 NTSTATUS a04_bt_hfp_connection(struct a04_bt_hfp_session *,BOOLEAN *);
 /* Fixed HFP service-level operation on the already matched target only.
  * Completion is request acceptance, NOT a connected/disconnected indication.
