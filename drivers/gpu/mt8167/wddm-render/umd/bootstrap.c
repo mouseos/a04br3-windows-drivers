@@ -33,6 +33,7 @@ static HRESULT APIENTRY destroy_device(HANDLE handle) {
  if(!d||!(a=d->adapter))return E_INVALIDARG;
  if(d->resources)return E_FAIL; /* Never hide a live runtime allocation. */
  hr=a->frontend->quiesce_device(d);if(FAILED(hr))return hr;
+ if(d->shaders)return E_UNEXPECTED; /* Real frontend must release its shader state first. */
  memset(&q,0,sizeof(q));q.hContext=d->context;
  hr=d->cb.pfnDestroyContextCb(d->runtime,&q);if(FAILED(hr))return hr;
  a->frontend->destroy_device(d);
@@ -55,16 +56,16 @@ static HRESULT APIENTRY create_device(HANDLE handle,D3DDDIARG_CREATEDEVICE *p) {
  d->runtime=p->hDevice;d->context=context.hContext;d->cb=*p->pCallbacks;d->adapter=a;
  if(SUCCEEDED(hr)) {
   memset(&funcs,0,sizeof(funcs));hr=a->frontend->initialize_device(a->frontend_context,d,&funcs);
-  if(SUCCEEDED(hr)){d->initialized=1;if(!required_frontend(&funcs))hr=E_NOTIMPL;}
+  if(SUCCEEDED(hr)){d->initialized=1;d->frontend_flush=funcs.pfnFlush;if(!required_frontend(&funcs))hr=E_NOTIMPL;}
   if(d->resources)hr=E_UNEXPECTED;
  }
  if(FAILED(hr)) {
   /* An ambiguous frontend partial allocation is pinned. initialize failure
    * must leave frontend_private NULL if it has already undone its effects. */
-  if(d->resources||!context.hContext||(d->frontend_private&&!d->initialized)){d->next=a->devices;a->devices=d;return hr;}
+  if(d->resources||!context.hContext||((d->frontend_private||d->shaders)&&!d->initialized)){d->next=a->devices;a->devices=d;return hr;}
   if(d->initialized) {
    cleanup=a->frontend->quiesce_device(d);
-   if(FAILED(cleanup)){d->next=a->devices;a->devices=d;return hr;}
+   if(FAILED(cleanup)||d->shaders){d->next=a->devices;a->devices=d;return hr;}
   }
   memset(&rollback,0,sizeof(rollback));rollback.hContext=context.hContext;
   cleanup=p->pCallbacks->pfnDestroyContextCb(p->hDevice,&rollback);

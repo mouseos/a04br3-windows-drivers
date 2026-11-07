@@ -119,3 +119,7 @@ powershell -NoProfile -File drivers\gpu\mt8167\wddm-render\build-linked-wdk81.ps
 link recipeは同commit/clean/source/output hash、ARMNT、KMDF import不在を検証し、map/import/export/manifestを保存します。署名/INF/配置は行いません。実owner/frontend未提供ならlink失敗のままとし、代替libraryを生成しません。今回のhost確認は既存単一state test、KMDのx64実header構文、UMDのARM構文のみ。hostにPowerShellがないためPS AST parse/実WDK追加TU buildは主担当側で未実施です。
 
 一次資料: [GPU preemption](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/gpu-preemption)、[DxgkDdiPreemptCommand](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkddi_preemptcommand)、[DXGK_VIDSCHCAPS](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/ns-d3dkmddi-_dxgk_vidschcaps)、[DXGK_DRIVERCAPS](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/ns-d3dkmddi-_dxgk_drivercaps)。
+
+## D3D shader → PCO接続の追加
+
+実SM2 bytecode検証→NIR→PCO USC変換とUMD shader/float constant寿命管理を追加。対応命令はstraight-line subsetであり、ShaderModel2/FL9_1 capsを広告しない。実host PCOでVS/PS/演算のcode生成を確認。Windows ARM32 PCO library、varying/texture/render state/draw KMD経路は未完成で、geo_ge8300_frontendは引き続き未定義です。固定NIRのnative triangle成功から一般D3D成功へ飛躍しません。実装・E向け接続条件・増分recipeは[FRONTEND-PCO.md](FRONTEND-PCO.md)を参照。最新の再利用既定commitは5a26a0d（b29を使う場合はReuseSourceCommitを明示）です。

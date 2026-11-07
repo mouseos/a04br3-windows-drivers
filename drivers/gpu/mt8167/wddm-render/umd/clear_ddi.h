@@ -12,9 +12,11 @@
 #include <d3dumddi.h>
 #include "../clear_protocol.h"
 struct geo_umd_resource;
+struct geo_umd_shader_state;
 struct geo_umd_device {
  HANDLE runtime,context;
  void *adapter,*frontend_private;
+ struct geo_umd_shader_state *shaders;
  struct geo_umd_device *next;
  UINT initialized;
  D3DDDI_DEVICECALLBACKS cb;
