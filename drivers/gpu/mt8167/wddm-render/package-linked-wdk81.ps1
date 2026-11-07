@@ -22,7 +22,10 @@ foreach($name in @('ge8300-render.sys','ge8300-umd.dll')){
 if((Get-FileHash $Firmware -Algorithm SHA256).Hash -ne '5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1'){throw 'Require exact source-compatible existing GE8300 firmware'}
 $out=[IO.Path]::GetFullPath($OutputDirectory)
 if(!$out.StartsWith([IO.Path]::GetFullPath($root)+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase) -or (Test-Path $out)){throw 'Use a fresh output directory inside checkout'}
-$cert=Get-Item "Cert:\LocalMachine\My\$CertificateThumbprint"
+$machineStore=Test-Path "Cert:\LocalMachine\My\$CertificateThumbprint"
+$certPath=if($machineStore){"Cert:\LocalMachine\My\$CertificateThumbprint"}else{"Cert:\CurrentUser\My\$CertificateThumbprint"}
+$cert=Get-Item $certPath
+$storeFlags=@();if($machineStore){$storeFlags+='/sm'}
 if(!$cert.HasPrivateKey){throw 'Signing identity unavailable'}
 $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1"
 $sign=Join-Path $kit 'bin\x64\signtool.exe';$cat=Join-Path $kit 'bin\x86\Inf2Cat.exe'
@@ -36,12 +39,12 @@ try {
  Copy-Item $manifestPath (Join-Path $out 'linked-manifest.json')
  $unsigned=@('ge8300-render.sys','ge8300-umd.dll')|ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}}
  foreach($name in @('ge8300-render.sys','ge8300-umd.dll')){
-  & $sign sign /fd SHA256 /sha1 $CertificateThumbprint /s My /sm (Join-Path $out $name)
+  & $sign sign /fd SHA256 /sha1 $CertificateThumbprint /s My @storeFlags (Join-Path $out $name)
   if($LASTEXITCODE){throw 'Image signing failed'}
  }
  & $cat "/driver:$out" /os:6_3_ARM /uselocaltime
  if($LASTEXITCODE){throw 'Inf2Cat failed'}
- & $sign sign /fd SHA256 /sha1 $CertificateThumbprint /s My /sm (Join-Path $out 'ge8300-render.cat')
+ & $sign sign /fd SHA256 /sha1 $CertificateThumbprint /s My @storeFlags (Join-Path $out 'ge8300-render.cat')
  if($LASTEXITCODE){throw 'Catalog signing failed'}
  foreach($name in @('ge8300-render.sys','ge8300-umd.dll','ge8300-render.cat')){
   $sig=Get-AuthenticodeSignature (Join-Path $out $name)
