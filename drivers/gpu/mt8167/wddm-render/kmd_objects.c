@@ -94,20 +94,25 @@ NTSTATUS APIENTRY GeoDescribeAllocation(HANDLE handle,DXGKARG_DESCRIBEALLOCATION
 NTSTATUS APIENTRY GeoGetStandardAllocationDriverData(HANDLE handle,DXGKARG_GETSTANDARDALLOCATIONDRIVERDATA *p) {
  struct geo_kmd_adapter *a=handle;struct geo_surface_desc d;struct geo_allocation_data data;NTSTATUS status=STATUS_SUCCESS;
  if(!p)return STATUS_INVALID_PARAMETER;
- /* No primary/GDI/present path on this render-only adapter. The standard
-  * staging format is X8R8G8B8, which this A8R8G8B8-only candidate cannot claim.
-  * A matching linear shadow surface has an actual implemented allocation. */
- if(p->StandardAllocationType!=D3DKMDT_STANDARDALLOCATION_SHADOWSURFACE||!p->pCreateShadowSurfaceData||
-    p->pCreateShadowSurfaceData->Format!=D3DDDIFMT_A8R8G8B8)return STATUS_NOT_SUPPORTED;
+ /* d3dkmdt.h: standard staging is implicitly X8R8G8B8 and lockable.
+  * This describes CPU-only storage, not GPU render-format support. */
+ RtlZeroMemory(&d,sizeof(d));d.size=sizeof(d);d.version=GEO_ABI_VERSION;d.usage=GEO_USAGE_STAGING;
+ if(p->StandardAllocationType==D3DKMDT_STANDARDALLOCATION_SHADOWSURFACE) {
+  if(!p->pCreateShadowSurfaceData||p->pCreateShadowSurfaceData->Format!=D3DDDIFMT_A8R8G8B8)return STATUS_NOT_SUPPORTED;
+  d.width=p->pCreateShadowSurfaceData->Width;d.height=p->pCreateShadowSurfaceData->Height;d.format=GEO_FORMAT_A8R8G8B8;
+ } else if(p->StandardAllocationType==D3DKMDT_STANDARDALLOCATION_STAGINGSURFACE) {
+  if(!p->pCreateStagingSurfaceData)return STATUS_INVALID_PARAMETER;
+  d.width=p->pCreateStagingSurfaceData->Width;d.height=p->pCreateStagingSurfaceData->Height;d.format=GEO_FORMAT_X8R8G8B8;
+ } else return STATUS_NOT_SUPPORTED;
+ /* Validate the multiplication before publishing Pitch or private data. */
+ if(!d.width||!d.height||d.width>1024||d.height>1024)return STATUS_NOT_SUPPORTED;
+ d.pitch=d.width*4u;
  if(!GeoSessionEnter(a,1))return STATUS_DEVICE_NOT_READY;
- RtlZeroMemory(&d,sizeof(d));d.size=sizeof(d);d.version=1;d.width=p->pCreateShadowSurfaceData->Width;
- d.height=p->pCreateShadowSurfaceData->Height;
- if(d.width>1024){status=STATUS_NOT_SUPPORTED;goto done;}
- d.pitch=d.width*4;d.format=GEO_FORMAT_A8R8G8B8;d.usage=GEO_USAGE_STAGING;
  if(!geo_desc_valid(&d)){status=STATUS_NOT_SUPPORTED;goto done;}
  RtlZeroMemory(&data,sizeof(data));data.size=sizeof(data);data.version=1;data.logical_width=d.width;data.logical_height=d.height;data.storage=d;
  p->AllocationPrivateDriverDataSize=sizeof(data);p->ResourcePrivateDriverDataSize=0;
- p->pCreateShadowSurfaceData->Pitch=d.pitch;
+ if(p->StandardAllocationType==D3DKMDT_STANDARDALLOCATION_STAGINGSURFACE)p->pCreateStagingSurfaceData->Pitch=d.pitch;
+ else p->pCreateShadowSurfaceData->Pitch=d.pitch;
  if(p->pAllocationPrivateDriverData) {
   RtlCopyMemory(p->pAllocationPrivateDriverData,&data,sizeof(data));
  }
