@@ -52,8 +52,8 @@ try{
  Copy-Item "$root\drivers\usb\mt8167-usb20\README.md" $pkg
  Copy-Item "$root\drivers\usb\mt8167-usb20\BOOT-MOUSE.md" $pkg
  $inf=[IO.File]::ReadAllText("$pkg\mt8167-usb20.inf")
- if($inf -notmatch '(?m)^DriverVer=11/08/2026,2026\.11\.8\.1008\r?$'){throw 'USB1008 INF required'}
- $m.source_commit=$commit;$m.driver_date='11/08/2026';$m.driver_version='2026.11.8.1008';$m.driver_ver='11/08/2026,2026.11.8.1008';$m.sys_sha256=(Hash "$out\mt8167-usb20.sys")
+ if($inf -notmatch '(?m)^DriverVer=11/07/2026,2026\.11\.8\.1008\r?$'){throw 'USB1008 INF required'}
+ $m.source_commit=$commit;$m.driver_date='11/07/2026';$m.driver_version='2026.11.8.1008';$m.driver_ver='11/07/2026,2026.11.8.1008';$m.sys_sha256=(Hash "$out\mt8167-usb20.sys")
  $m|Add-Member -Force -NotePropertyName boot_mouse -NotePropertyValue '1'
  $m|Add-Member -Force -NotePropertyName source_dirty -NotePropertyValue $false
  $m|Add-Member -Force -NotePropertyName init_checkpoint_stage_count -NotePropertyValue 18
@@ -70,6 +70,6 @@ try{
  }
  Export-Certificate -Cert $cert -FilePath "$pkg\mt8167-development.cer"|Out-Null
  $files=@(Get-ChildItem $pkg -File|Sort-Object Name|ForEach-Object{@{path=$_.Name;sha256=(Hash $_.FullName)}})
- @{source_commit=$commit;binary_source_commit=$commit;inf_source_commit=$commit;source_dirty=$false;driver_ver='11/08/2026,2026.11.8.1008';driver_manifest='usb-manifest.json';signing_thumbprint=$CertificateThumbprint;signed=$true;hardware_verified=$false;parent_rebuilt=$false;parent_flags_modified=$false;parent_source=$parent;files=$files}|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 "$pkg\signed-manifest.json"
+ @{source_commit=$commit;binary_source_commit=$commit;inf_source_commit=$commit;source_dirty=$false;driver_ver='11/07/2026,2026.11.8.1008';driver_manifest='usb-manifest.json';signing_thumbprint=$CertificateThumbprint;signed=$true;hardware_verified=$false;parent_rebuilt=$false;parent_flags_modified=$false;parent_source=$parent;files=$files}|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 "$pkg\signed-manifest.json"
  Write-Output 'MT8167_USB20_1008_BOOT_MOUSE_SIGNED_NO_HARDWARE_OPERATION'
 }finally{$env:TMP=$oldTmp;$env:TEMP=$oldTemp;$env:RUNNER_TEMP=$oldRunner}
