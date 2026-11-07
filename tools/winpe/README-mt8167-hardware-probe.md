@@ -262,9 +262,9 @@ CM一覧取得失敗ではmatchesを確定できず、list CRと最終結果を�
 Engine親と旧f17親はともにDriverVer=2026.11.6.1001であるため、DISM完了だけでEngine親への
 交換を保証しない。実ロード親のhash照合/必要な親の導入は主担当が別途判断し、924版serviceは親を更新しない。
 
-## 次反復の親bind・正確なProblemStatus
+## 次反復の親選択確認・正確なProblemStatus
 
-次反復版はACPI\BEN0001親を先頭へ追加し、ID=10親、11音声、12USB、13Wi-Fiとなる。
+次反復版はACPI\BEN0001親の観測を先頭へ追加し、ID=10親、11音声、12USB、13Wi-Fiとなる。
 固定packageはdrivers/parent/{shared-parent.inf,mt8167-shared.sys,shared-parent.cat}を含む。
 旧924の3対象serviceは初回媒体の互換入力として残すが、新rearm planには使用できない。
 
@@ -277,13 +277,18 @@ FIELD=INF/VERSIONでdiskへ出す。before/after区切りとIDを対応づけ、
 追加EVTはNT_CR=0x23、NT_TYPE=0x24、NT_BYTES=0x25、NTSTATUS=0x26、
 BIND_CR=0x27、BIND_TYPE=0x28、BIND_BYTES=0x29、PARENT_ALREADY_SELECTED=0x2A。
 
-WinPE staging後の次bootで、親の選択versionが固定staged INFと一致しCM開始済みなら親bindを省略する。
-これは実SYS hash/ロード済みimageの証明ではなく、後続backup照合が必須。
-親の更新が必要なら、音声/USB/Wi-Fi子のCM状態を確認し、開始済みまたは照会未完了なら強制交換を止める。
-親が必要な場合だけ標準UpdateDriver APIを最大1回呼び、親の失敗/未開始/rebootrequiredで子試験を止める。
-独自にtouch/GPU/audioのresource pinを解除したり、SYSを直接上書きしたりしない。
-既存touch/GPU等の停止可否は標準PnPへ委ねるため、in-place交換の安全性を保証したとは扱わない。
-3010は計画的再起動と選択INF/version/配置SYSの別確認へ渡す結果であり、自動再起動・自動再armはしない。
+WinPE staging後の次bootで、親の選択versionがstaged INFと一致し、CM開始済みで、
+配置System32/drivers/mt8167-shared.sysがstaged署名SYSと全byte一致することを確認してから子試験へ進む。
+配置byte一致もlive loaded imageの証明ではなく、後続fresh backupのhash照合と起動対応付けが必要。
+親にtouch/buttons/GPU等の他のresource利用者が存在し得るため、serviceは親のUpdateDriverを呼ばない。
+音声/USB/Wi-Fi3件が未開始でも全childのlifetime停止を証明したとは扱わない。
+親の版/CM/配置が不一致ならPARENT_SELECTION_REQUIRED/ERROR_REVISION_MISMATCHで停止する。
+APIを呼んでいないこの状態をWindows由来のreboot-requiredとして記録しない。
+親の正規更新・次boot選択は主担当の別工程。INF昇版とoffline stagingだけで既存nodeが必ず切り替わるとは保証しない。
+独自resource解除、直接SYS上書き、起動中の親強制交換、自動rebootは行わない。
+子の標準APIがreboot-requiredを返した場合は後続子/clientを停止する。
+PARENT_ALREADY_SELECTED=0x2A、PARENT_SELECTION_REQUIRED=0x2B、PARENT_SYS_MATCH=0x2Cを追加し、
+PARENT_SYS_MATCHのCODE=0は配置全byte一致を表す。実I/Oの成功とは別。
 
 nativeの既知disabled fingerprint、fresh backup、修正package/昇版と結び付いた明示rearm手順は
 README-mt8167-shared-io-update.mdを参照。新service EXEだけのWDK build/署名が必要。

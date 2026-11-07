@@ -277,5 +277,47 @@
     "artifact_hashes_verified_here": true,
     "signature_chain_verified_here": false,
     "signed_sys_sha256": "77b53ac0b902d5d6c864247707e9f319585ebb64d3a17b8a14696c8153e1a821"
+  },
+  "engine_rearm_iteration": {
+    "default_enabled": false,
+    "maximum_rearms_per_plan": 1,
+    "preserve_old_engine_directory_and_marker": true,
+    "native_disabled_fingerprint": "dbbe363d2401dfc022606aba010c0e4888c5feab67c748ea5030b0eb3ba484c1",
+    "binding": [
+      "fresh_backup_manifest_sha256",
+      "recovery_boot_id",
+      "previous_media_manifest_sha256",
+      "old_service_signed_sha256",
+      "next_package_hashes_and_versions",
+      "native_plan_sha256"
+    ],
+    "parent_policy": "verify-selected-version-and-installed-bytes-only",
+    "parent_runtime_update": false,
+    "parent_selection_update_resolved": false,
+    "offline_configflag_reinstall_written": false,
+    "configflags_reference": "https://learn.microsoft.com/en-us/windows-hardware/drivers/install/devpkey-device-configflags",
+    "problem_status_api": "CM_Get_DevNode_PropertyW",
+    "problem_status_key": "DEVPKEY_Device_ProblemStatus",
+    "valid_status_conditions": [
+      "CR_SUCCESS",
+      "DEVPROP_TYPE_NTSTATUS",
+      "4 bytes"
+    ],
+    "record_selected_inf_version": true,
+    "postbackup_sys_comparison_connected": true,
+    "current_parent_package_source": "a9f86314f4c63c8c41091682e593e04d3fd0ac2a",
+    "current_parent_version": "11/06/2026,2026.11.7.1005",
+    "wifi_package_source": "d751c6792af4e8c01b0d9442c2e462a54c4d8624",
+    "wifi_version": "11/06/2026,2026.11.6.1002",
+    "brightness_package_source": "6c665d43bf4a123605f83f6436562dffce25722f",
+    "brightness_version": "11/06/2026,0.0.1.4",
+    "usb_owner_source_integrated": "5290ebb6c57457105747733a46e24d61245cbad5",
+    "usb_new_combined_pair_selected": false,
+    "gpu_provider_package_input_added": false,
+    "wdk_build_verified_here": false,
+    "native_rearm_executed_here": false,
+    "hardware_verified_here": false,
+    "known_inputs_host_hash_validation_passed": true,
+    "armnt_coff_compilation_passed": true
   }
 }

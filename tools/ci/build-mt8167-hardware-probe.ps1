@@ -99,9 +99,9 @@ try {
   fixed_clients=@('mt6630-wlan-probe.exe',$audioName);client_signatures_preserved=[bool]$enginePcm;
   build_defines=@{A04_HARDWARE_PROBE_ENGINE_PCM=$engineDefine};
   pnp_rebind=$(if($enginePcm){@{api='UpdateDriverForPlugAndPlayDevicesW';flags=5;
-   fixed_hardware_ids=@('ACPI\BEN0001','MT8167\AFE','MT8167\USB20','A04BR3\MT6630SDIO');
+   fixed_hardware_ids=@('MT8167\AFE','MT8167\USB20','A04BR3\MT6630SDIO');
    directory='System32\MT8167EngineProbe\drivers';maximum_calls_per_id=1;
-   parent_updated=$true;problem_status='CM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatus/DEVPROP_TYPE_NTSTATUS';reboot_required_stops_clients=$true;catalog_signature_required=$true;
+   parent_updated=$false;observed_parent='ACPI\BEN0001';parent_policy='verify-selected-version-and-installed-bytes-only';problem_status='CM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatus/DEVPROP_TYPE_NTSTATUS';reboot_required_stops_clients=$true;catalog_signature_required=$true;
    status_observation='before/after CM status, problem, query errors, match count; no retries'}}else{$null});
   power_request='PowerRequestSystemRequired; scoped to the single attempt; clear/close on exit';
   explicit_user_sleep_overridden=$false;power_policy_changed=$false;

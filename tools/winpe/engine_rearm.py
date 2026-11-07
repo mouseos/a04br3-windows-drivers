@@ -33,6 +33,8 @@ def require_progress(previous, following, backup):
               for entry in backup['files']}
     for kind in following:
         if kind not in previous:
+            expected=next(digest.lower() for name,digest in following[kind]['files'].items() if name.endswith('.sys'))
+            if actual.get('windows/system32/drivers/'+SYS_NAMES[kind])==expected:continue
             raise ValueError('旧版のcomponent/version metadataが必要です: ' + kind)
         before, after = previous[kind], following[kind]
         if before['files'] != after['files']:
@@ -118,10 +120,12 @@ def archive_commands(plan_sha):
         'if not exist ' + base + '\\attempted.bin goto dismfail',
         'if not exist ' + base + '\\logs\\service.log goto dismfail',
         'if exist ' + archive + ' goto dismfail',
-        'move ' + base + ' ' + archive + ' >> "%A04_REPORT%" 2>&1',
+        'mkdir ' + archive + ' >> "%A04_REPORT%" 2>&1',
+        'if errorlevel 1 goto dismfail',
+        'move ' + base + ' ' + archive + '\\state >> "%A04_REPORT%" 2>&1',
         'if errorlevel 1 goto dismfail',
         'if exist ' + base + ' goto dismfail',
-        'if not exist ' + archive + '\\attempted.bin goto dismfail',
+        'if not exist ' + archive + '\\state\\attempted.bin goto dismfail',
         'copy /b /y C:\\Windows\\System32\\MT8167EngineProbe.exe ' + archive + '\\previous-service.exe >> "%A04_REPORT%" 2>&1',
         'if errorlevel 1 goto dismfail',
         'copy /b /y X:\\a04br3\\engine-rearm-plan.json ' + archive + '\\rearm-plan.json >> "%A04_REPORT%" 2>&1',

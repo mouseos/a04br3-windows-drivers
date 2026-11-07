@@ -230,7 +230,7 @@ plan生成だけではWIM/ESPを作らない。plan SHA256を表示し、private
 ```
 
 WinPEはSYSTEMをRegLoadせず、旧Engine directory全体を
-C:\a04backup\engine-rearm-<plan SHA256>へ同一volume内moveする。旧attempted.bin/logs/clients/driversを保存し、
+C:\a04backup\engine-rearm-<plan SHA256>\stateへ同一volume内moveする。旧attempted.bin/logs/clients/driversを保存し、
 旧service EXEとplanも保存してから新Engine directoryを作る。同じarchiveが存在すれば永久拒否し、
 途中失敗も自動retryしない。plan/native/backup/package全binding一致後だけこのprepareを生成する。
 新serviceは自分を無効化し、新markerをCREATE_NEWして各対象を最大1回処理する。
@@ -253,3 +253,27 @@ backup自体のcaptured-unmounted状態を実配置成功へ書き換えない�
 既存回収物だけを比較する場合はverify-engine-installed.pyへworkspace/media/media-sha256/backup/backup-sha256を渡す。
 全SYS一致でもlive_loaded_image_verified=false/functional_io_verified=falseのまま。
 selected INF/versionは新serviceのbefore/after FIELD=INF/VERSIONと対応づけ、必要な再起動後に主担当が確認する。
+
+現反復で採用する修正packageは親993 SYS保持/1005、Wi-Fi d751c67の1002、brightness6c665d4の0.0.1.4。
+Carver USB5290ebbのdevice-role/外部VBUS待機修正は統合sourceへ取り込んだが、現媒体には旧f17 USBを使う。
+新USBには新combined Engine親との対WDK build/署名が必要で、旧993親へ新USBだけを混ぜない。
+Engine専用親INF1005とnormal prototype親INF1002は別templateとして保持する。
+親単独buildはde214 parent-manifestのflags全値を復元し、MUSB_HOST_CORE/HID_CONTROL=1で
+build-msdc-parent-probe.ps1→build-mt8167-usb20.ps1の順に主担当が実行する。audio SYS再compileは不要。
+新combined親/USB selectorは次候補へ分離し、今回の親993固定overrideを緩めない。
+Wi-Fi68a6f16以降の未完成修正と新GPU provider inputは今回取り込まない。
+
+親service方針はruntime強制bindから選択・配置検証へ変更した。親1005をstagingしただけで
+既存devnodeが更新済みとは扱わない。新serviceは次bootの親version/CM/署名SYSとのbyte一致を確認し、
+不一致なら子/clientを停止する。起動中のtouch/GPU等のpinを無視した交換を避けるため、親API更新はしない。
+親の正規再bindと必要な再起動は主担当の別工程であり、本sourceでその安全性を確立したとは報告しない。
+
+### offline CONFIGFLAG_REINSTALLの採用判断
+
+[Microsoft DEVPKEY_Device_ConfigFlags](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/devpkey-device-configflags)
+はinstallers向けread/write APIとSPDRP_CONFIGFLAGS対応を示す一方、configuration flagsをinternal use onlyと記す。
+SDK互換regstr.hではCONFIGFLAG_REINSTALL=0x20だが、これだけではoffline Enum値変更による
+次boot再選択の契約・rollback・既存device nodeの扱いを確定できない。このsourceではConfigFlagsを変更しない。
+親専用bootで全非bootcritical consumerを止める方式も、固定service集合と復元契約が未確定のため未実装。
+単に3子の未開始を見るだけでtouch/buttons等まで停止済みとは扱わない。
+親の安全な選択更新は未解決として主担当へ引き継ぎ、GPUの独立試験や既知のsource統合を待たせない。

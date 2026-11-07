@@ -917,7 +917,7 @@ static int ParentUsbVerify(void *p) {
 #if A04_USB_GPIO22_SOURCE_EXPERIMENT
  if(!c->gpio || A04UsbPinsPrepare(&c->usb.gpio))return -1;
 #endif
- sel=ParentUsbTopRead(c,4); con=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x140));
+ sel=ParentUsbTopRead(c,4); (void)sel; /* Used by the optional mux switch below. */ con=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x140));
  pwr=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x150));
  rate=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x144));
  /* Verify the shared PLL; never retune it on behalf of USB. */

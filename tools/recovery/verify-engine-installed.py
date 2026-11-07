@@ -20,7 +20,8 @@ def verify(media_path, media_sha, backup_path, backup_sha, root):
     if (media.get('audio_mode') != 'engine_pcm_retained' or backup.get('status') != 'captured-unmounted'
             or backup_sha.lower() == media.get('host_backup_manifest_sha256')):
         raise ValueError('A new completed post-update backup is required')
-    expected = media.get('expected_installed_sys', {})
+    expected = media.get('expected_installed_sys') or {name.rsplit('/',1)[-1]:digest
+        for component in media.get('components',{}).values() for name,digest in component.get('files',{}).items() if name.endswith('.sys')}
     if not {'mt8167-shared.sys', 'mt8167-audio.sys', 'mt8167-usb20.sys', 'mt6630-runtime.sys'}.issubset(expected):
         raise ValueError('Expected fixed SYS source manifest is incomplete')
     entries = {entry['source_path'].replace('\\', '/').casefold(): entry for entry in backup['files']}

@@ -99,6 +99,7 @@ def wifi_override_check(directory, root):
     and any parent/client siblings are never selected or imported.
     """
     package = SignedPackage(directory, root)
+    if package.record.get('signed') is False:raise ValueError('明示未署名Wi-Fi packageは使用できません')
     wifi_source = package.record.get('source_commit')
     wifi_version = BASE_VERSION if wifi_source == WIFI_REGISTRATION_SOURCE else '11/06/2026,2026.11.6.1002'
     if wifi_source not in (WIFI_REGISTRATION_SOURCE, WIFI_INF1002_SOURCE):
@@ -238,6 +239,7 @@ def engine_optional_check(brightness_path, toprgu_path, root, brightness_manifes
         package = SignedPackage(brightness_path, root)
         if brightness_manifest_sha256 is not None and (not re.fullmatch('[0-9a-fA-F]{64}',brightness_manifest_sha256) or sha(package.manifest)!=brightness_manifest_sha256.lower()):
             raise ValueError('brightness manifest SHA256 pin不一致')
+        if package.record.get('signed') is False:raise ValueError('明示未署名brightness packageは使用できません')
         brightness_source=package.record.get('source_commit')
         repack=brightness_source != BRIGHTNESS_SOURCE
         known_repack=brightness_source=='6c665d43bf4a123605f83f6436562dffce25722f'

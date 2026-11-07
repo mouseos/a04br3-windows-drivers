@@ -43,7 +43,7 @@ enum { EV_BEGIN=1,EV_DISABLED,EV_ATTEMPTED,EV_SIGNATURE,EV_START,EV_EXIT,
        EV_TIMEOUT,EV_CANCEL,EV_ERROR,EV_END,EV_TERMINATE,EV_LOG_ERROR,EV_UART,EV_FINAL,EV_POWER_SET,EV_POWER_CLEAR,EV_POWER_CLOSE,EV_MODE,
        EV_PNP_BEFORE,EV_PNP_AFTER,EV_PNP_LIST_CR,EV_PNP_LOCATE_CR,EV_PNP_PROPERTY_CR,
        EV_PNP_MATCHES,EV_PNP_STATUS_CR,EV_PNP_STATUS,EV_PNP_PROBLEM,EV_PNP_STARTED,
-       EV_PNP_PACKAGE,EV_PNP_API_BEGIN,EV_PNP_API_SUCCESS,EV_PNP_WIN32,EV_PNP_REBOOT,EV_PNP_RESULT,EV_PNP_NT_CR,EV_PNP_NT_TYPE,EV_PNP_NT_BYTES,EV_PNP_NTSTATUS,EV_PNP_BIND_CR,EV_PNP_BIND_TYPE,EV_PNP_BIND_BYTES,EV_PNP_PARENT_ALREADY_SELECTED };
+       EV_PNP_PACKAGE,EV_PNP_API_BEGIN,EV_PNP_API_SUCCESS,EV_PNP_WIN32,EV_PNP_REBOOT,EV_PNP_RESULT,EV_PNP_NT_CR,EV_PNP_NT_TYPE,EV_PNP_NT_BYTES,EV_PNP_NTSTATUS,EV_PNP_BIND_CR,EV_PNP_BIND_TYPE,EV_PNP_BIND_BYTES,EV_PNP_PARENT_ALREADY_SELECTED,EV_PNP_PARENT_SELECTION_REQUIRED,EV_PNP_PARENT_SYS_MATCH };
 
 void *memset(void *p,int v,size_t n){volatile BYTE *b=p;while(n--)*b++=(BYTE)v;return p;}
 void *memcpy(void *p,const void *q,size_t n){volatile BYTE *b=p;const volatile BYTE *a=q;while(n--)*b++=*a++;return p;}
@@ -336,6 +336,30 @@ static DWORD pnp_parent_inf_version(HANDLE inf)
  if(count!=1)error=ERROR_INVALID_DATA;
  done:HeapFree(GetProcessHeap(),0,bytes);return error;
 }
+static DWORD pnp_parent_installed_matches(HANDLE staged)
+{
+ WCHAR system[MAX_PATH],drivers[MAX_PATH],name[MAX_PATH];HANDLE directory=INVALID_HANDLE_VALUE,file=INVALID_HANDLE_VALUE;
+ DWORD n,error=0,left,right;LARGE_INTEGER a,b;BY_HANDLE_FILE_INFORMATION info;BYTE *buffer=NULL;unsigned i;
+ n=GetSystemDirectoryW(system,MAX_PATH);if(!n||n>=MAX_PATH)return ERROR_INSUFFICIENT_BUFFER;
+ error=path(drivers,system,L"drivers");if(error)return error;
+ error=hold_directory(drivers,&directory);if(error)goto done;
+ error=path(name,drivers,L"mt8167-shared.sys");if(error)goto done;
+ file=CreateFileW(name,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,NULL);
+ if(file==INVALID_HANDLE_VALUE){error=GetLastError();goto done;}
+ if(!GetFileInformationByHandle(file,&info)||(info.dwFileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT))){error=ERROR_INVALID_DATA;goto done;}
+ if(!GetFileSizeEx(file,&a)||!GetFileSizeEx(staged,&b)){error=GetLastError();goto done;}
+ if(a.QuadPart!=b.QuadPart){error=ERROR_REVISION_MISMATCH;goto done;}
+ buffer=HeapAlloc(GetProcessHeap(),0,8192);if(!buffer){error=ERROR_NOT_ENOUGH_MEMORY;goto done;}
+ for(;;){
+  if(!ReadFile(file,buffer,4096,&left,NULL)||!ReadFile(staged,buffer+4096,4096,&right,NULL)){error=GetLastError();break;}
+  if(left!=right){error=ERROR_REVISION_MISMATCH;break;}
+  for(i=0;i<left;i++)if(buffer[i]!=buffer[4096+i]){error=ERROR_REVISION_MISMATCH;break;}
+  if(error||!left)break;
+ }
+ done:
+ if(buffer)HeapFree(GetProcessHeap(),0,buffer);if(file!=INVALID_HANDLE_VALUE)CloseHandle(file);if(directory!=INVALID_HANDLE_VALUE)CloseHandle(directory);
+ return error;
+}
 static DWORD pnp_once(int *halt)
 {
  struct pnp_apis a;WCHAR drivers[MAX_PATH],infs[4][MAX_PATH];
@@ -352,17 +376,16 @@ static DWORD pnp_once(int *halt)
  }
  error=pnp_parent_inf_version(held[0][1]);if(error){result=error;goto done;}
  observed=pnp_observe(&a,0,EV_PNP_BEFORE);
- if(pnp_query_complete&&pnp_last_matches==1&&pnp_last_started==1&&pnp_parent_version_matches){
-  if(observed)result=observed;
-  first=1;pnp_record(0,EV_PNP_PARENT_ALREADY_SELECTED,0); /* SYS hash still requires post-boot verification. */
+ /* The parent's touch/buttons/GPU/other consumers may hold resource leases.
+  * No synchronous runtime parent replacement is attempted. Verify the result
+  * of offline staging plus next-boot selection before testing any child. */
+ if(!pnp_query_complete||pnp_last_matches!=1||pnp_last_started!=1||!pnp_parent_version_matches){
+  result=ERROR_REVISION_MISMATCH;pnp_record(0,EV_PNP_PARENT_SELECTION_REQUIRED,result);goto done;
  }
- if(!first&&(!pnp_query_complete||pnp_last_matches!=1)){result=ERROR_NOT_READY;goto done;}
- /* Never force-replace the parent under an already started I/O child. */
- for(i=1;!first&&i<4;i++){
-  (void)pnp_observe(&a,i,EV_PNP_BEFORE);
-  if(!pnp_query_complete){result=ERROR_NOT_READY;goto done;}
-  if(pnp_last_started){result=ERROR_BUSY;pnp_record(i,EV_PNP_RESULT,result);goto done;}
- }
+ if(observed)result=observed;
+ error=pnp_parent_installed_matches(held[0][2]);pnp_record(0,EV_PNP_PARENT_SYS_MATCH,error);
+ if(error){result=error;goto done;}
+ first=1;pnp_record(0,EV_PNP_PARENT_ALREADY_SELECTED,0);
  for(i=first;i<4;i++){
   (void)pnp_observe(&a,i,EV_PNP_BEFORE);
   if(log_error){result=log_error;goto done;}
@@ -378,7 +401,6 @@ static DWORD pnp_once(int *halt)
   pnp_record(i,EV_PNP_RESULT,reboot?ERROR_SUCCESS_REBOOT_REQUIRED:error);
   if(reboot||error==ERROR_SUCCESS_REBOOT_REQUIRED){result=ERROR_SUCCESS_REBOOT_REQUIRED;goto done;}
   if(error&&!result)result=error;
-  if(i==0&&error)goto done; /* Do not run children behind an unverified parent start. */
  }
  *halt=0; /* Keep failures; permit independent WLAN/audio diagnostics. */
  done:

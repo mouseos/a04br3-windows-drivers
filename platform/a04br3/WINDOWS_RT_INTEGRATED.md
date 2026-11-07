@@ -239,3 +239,23 @@ Engine媒体は明示 `--wifi-package` で37a5bb1の署名済みmt6630-runtime�
 旧USB/旧WLAN client2655とEngine親を保持する。overrideに別親/clientを混ぜない。
 9d3a889のNDIS direct OID登録修正を含む候補だがstatus31の正確なNTSTATUSは未確認。
 回収package候補はport/xnu/out/windows-rt-wifi-registration-37a5bb1。manifest契約は媒体READMEを参照。
+
+## run27後の次反復・明示rearm
+
+親993署名SYS/INF1005、Wi-Fi d751c67/1002、brightness6c665d4/0.0.1.4を別hash/cert/versionで選択できる。
+旧Engine audio2f56、d0eb client、TOPRGU、旧USB/WLAN clientは保持する。
+次serviceはCM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatusをbefore/afterへ記録し、
+CR成功＋NTSTATUS型＋4byteだけをraw statusとして採用する。選択INF/versionもdiskへ記録する。
+親はtouch/GPU等の全consumer lifetimeを証明できないためruntime強制更新しない。
+次bootの親version/CM開始/配置SYS byte一致を検証してから子試験へ進み、不一致は明示停止する。
+既存nodeの親選択更新は主担当の別工程。offline importだけで更新成功とは扱わない。
+
+明示rearmはfresh backup/旧媒体/修正package hash/昇版/native既知7値fingerprintを結ぶprivate planで1回に限定する。
+旧Engine directory全体とmarker/disklogをplan hash付きarchiveへmoveして保持し、同じarchiveで再実行しない。
+次の回収にはsource manifest対SYS比較を接続し、捕捉済みでも実SYS不一致ならexit3にする。
+全SYS一致もlive imageやUSB/WLAN/可聴成功とは別。新native recipe/新serviceのWindows/WDK実行は未検証。
+
+Carver USB5290ebbをsource統合した。device role/外部VBUS待機はD0成功＋500ms再判定、実故障は失敗として分離する。
+normal parent/USB INF1002、Engine親専用INF1005を区別する。新USBを使う場合はde214 flagsを保持した
+新combined Engine親＋USBを主担当が対build/署名する。現媒体は旧993親＋旧USBの構成を維持し、
+新combined selectorは次候補へ分離する。未完成Wi-Fi68以降と新GPU providerは混ぜない。

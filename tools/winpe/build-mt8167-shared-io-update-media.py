@@ -121,7 +121,7 @@ def main():
  rearm_plan=None
  if plan_only or rearming:
   pnp=probe_info.get('pnp_rebind',{}) if probe_info else {}
-  if not pnp.get('parent_updated') or pnp.get('problem_status')!='CM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatus/DEVPROP_TYPE_NTSTATUS':raise SystemExit('再armには親bind/ProblemStatus対応serviceが必要です')
+  if pnp.get('parent_updated') is not False or pnp.get('parent_policy')!='verify-selected-version-and-installed-bytes-only' or pnp.get('problem_status')!='CM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatus/DEVPROP_TYPE_NTSTATUS':raise SystemExit('再armには親選択/配置照合・ProblemStatus対応serviceが必要です')
  if plan_only:
   plan=make_plan(a.rearm_previous_media,backup,b,components,root)
   destination=private_path(a.write_engine_rearm_plan,root)
