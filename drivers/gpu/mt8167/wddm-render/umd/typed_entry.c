@@ -41,8 +41,14 @@ HRESULT geo_typed_validate_native_state(D3D10DDI_HDEVICE h) {
   * compiler contract, not from ignoring currently bound SRV/sampler state. */
  s=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*s));if(!s)return E_OUTOFMEMORY;
  s->size=sizeof(*s);s->abi=GEO_TYPED_STATE_ABI;hr=geo_typed_state_snapshot(d->state,s);
+ if(SUCCEEDED(hr)&&s->raster.ScissorEnable){
+  if(!d->scissor_set||d->scissor.left||d->scissor.top||d->scissor.right!=800||d->scissor.bottom!=600)hr=E_NOTIMPL;
+  /* Only the exact full extent of the existing 800x600 draw profile has no
+   * clipping effect. Normalize the temporary snapshot, never the bound state.
+   * All other raster/depth/blend/texture restrictions remain in flat preflight. */
+  else s->raster.ScissorEnable=FALSE;
+ }
  if(SUCCEEDED(hr))hr=geo_typed_state_validate_flat(s,used,FALSE,&unsupported);
- if(SUCCEEDED(hr)&&s->raster.ScissorEnable&&(!d->scissor_set||d->scissor.left||d->scissor.top||d->scissor.right!=800||d->scissor.bottom!=600))hr=E_NOTIMPL;
  HeapFree(GetProcessHeap(),0,s);return hr;
 }
 static BOOL APIENTRY flush(D3D10DDI_HDEVICE h,UINT flags) {

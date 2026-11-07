@@ -36,9 +36,16 @@ static void APIENTRY set_topology(D3D10DDI_HDEVICE h,D3D10_DDI_PRIMITIVE_TOPOLOG
  if(topology!=D3D10_DDI_PRIMITIVE_TOPOLOGY_UNDEFINED&&topology!=D3D10_DDI_PRIMITIVE_TOPOLOGY_TRIANGLELIST&&topology!=D3D10_DDI_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP){geo_typed_error(h,E_NOTIMPL);return;}d->topology=topology;
 }
 static void APIENTRY set_vertices(D3D10DDI_HDEVICE h,UINT start,UINT count,const D3D10DDI_HRESOURCE *handles,const UINT *strides,const UINT *offsets) {
- struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_resource *v=NULL,*old;HRESULT hr;
- if(!d||start||count>1||(count&&(!handles||!strides||!offsets))){geo_typed_error(h,E_NOTIMPL);return;}
- if(count&&handles[0].pDrvPrivate){v=geo_typed_resource(h,handles[0]);if(!v||!(v->bind&D3D10_DDI_BIND_VERTEX_BUFFER)||strides[0]<16u||strides[0]>65536u||offsets[0]>v->bytes){geo_typed_error(h,E_INVALIDARG);return;}}
+ struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_resource *v=NULL,*old;HRESULT hr;UINT i;
+ /* The D3D10.1/11 IA API has 32 slots. This finite profile only binds slot0,
+  * but NULL updates of the remaining, permanently unbound slots are valid. */
+ if(!d||start>32u||count>32u-start||(count&&(!handles||!strides||!offsets))){geo_typed_error(h,E_INVALIDARG);return;}
+ if(!count)return; /* no array access, binding mutation or reference release */
+ /* Validate the whole batch before changing slot0; never silently accept a
+  * non-NULL unsupported slot after partially applying a preceding update. */
+ for(i=0;i<count;i++)if(start+i&&handles[i].pDrvPrivate){geo_typed_error(h,E_NOTIMPL);return;}
+ if(start)return; /* all addressed slots were already genuinely unbound */
+ if(handles[0].pDrvPrivate){v=geo_typed_resource(h,handles[0]);if(!v||!(v->bind&D3D10_DDI_BIND_VERTEX_BUFFER)||strides[0]<16u||strides[0]>65536u||offsets[0]>v->bytes){geo_typed_error(h,E_INVALIDARG);return;}}
  if(v)geo_typed_resource_ref(v);old=d->vertex;d->vertex=v;d->vertex_stride=v?strides[0]:0;d->vertex_offset=v?offsets[0]:0;
  if(old){hr=geo_typed_resource_unref(old);if(FAILED(hr))geo_typed_error(h,hr);}
 }
