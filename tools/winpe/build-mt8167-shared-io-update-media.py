@@ -39,6 +39,7 @@ def main():
  ap.add_argument('--wifi-package',type=Path)
  ap.add_argument('--parent-package',type=Path)
  ap.add_argument('--parent-manifest-sha256')
+ ap.add_argument('--allow-missing-engine-service-log',action='store_true')
  ap.add_argument('--rearm-previous-media',type=Path)
  ap.add_argument('--write-engine-rearm-plan',type=Path)
  ap.add_argument('--engine-rearm-plan',type=Path)
@@ -56,6 +57,7 @@ def main():
  engine=a.audio_mode=='EnginePcm'
  plan_only=bool(a.write_engine_rearm_plan)
  rearming=bool(a.engine_rearm_plan)
+ if a.allow_missing_engine_service_log and not plan_only:raise SystemExit('missing log opt-inは明示再arm plan生成専用です')
  if (plan_only or rearming or a.rearm_previous_media) and not engine:raise SystemExit('再armはEngine mode専用です')
  if plan_only and (not a.rearm_previous_media or rearming):raise SystemExit('plan生成は旧媒体manifestを明示し既存planと併用しないでください')
  if a.rearm_previous_media and not plan_only:raise SystemExit('旧媒体指定はplan生成専用です')
@@ -144,7 +146,7 @@ def main():
   pnp=probe_info.get('pnp_rebind',{}) if probe_info else {}
   if not a.deferred_package_map and (pnp.get('parent_updated') is not False or pnp.get('parent_policy')!='verify-selected-version-and-installed-bytes-only' or pnp.get('problem_status')!='CM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatus/DEVPROP_TYPE_NTSTATUS'):raise SystemExit('再armには親選択/配置照合・ProblemStatus対応serviceが必要です')
  if plan_only:
-  plan=make_plan(a.rearm_previous_media,backup,b,components,root)
+  plan=make_plan(a.rearm_previous_media,backup,b,components,root,a.allow_missing_engine_service_log)
   destination=private_path(a.write_engine_rearm_plan,root)
   with destination.open('x') as stream:
    os.chmod(destination,0o600);json.dump(plan,stream,indent=2);stream.write('\n')

@@ -80,6 +80,25 @@ with tempfile.TemporaryDirectory(dir=args.scratch, prefix='engine-rearm-contract
     commands = archive_commands(sha(plan_path), brightness_plan)
     assert 'move C:\\MT8167EngineProbe\\brightness-native.log ' in commands
     assert 'del ' not in commands.lower() and 'rmdir ' not in commands.lower()
+    # Missing service.log is allowed ONLY with capture + plan opt-in and pinned evidence.
+    missing_backup=copy.deepcopy(backup)
+    missing_backup['files']=[e for e in missing_backup['files'] if e['source_path']!=STATE_FILES[1]]
+    missing_backup['missing_files']=[{'source_path':STATE_FILES[1],'reason':'absent'}]
+    missing_backup['engine_missing_service_log_opt_in']=True
+    missing_path=root/'missing-backup.json';missing_path.write_text(json.dumps(missing_backup))
+    try:
+        make_plan(old_path,missing_path,missing_backup,components,root)
+    except ValueError:pass
+    else:raise AssertionError('implicit missing-log rearm accepted')
+    missing_plan=make_plan(old_path,missing_path,missing_backup,components,root,True)
+    plan_path.write_text(json.dumps(missing_plan));native['engine_rearm_plan_sha256']=sha(plan_path)
+    assert check_plan(plan_path,sha(plan_path),missing_path,missing_backup,components,native,root)==missing_plan
+    assert 'if exist C:\\Windows\\System32\\MT8167EngineProbe\\logs\\service.log goto dismfail' in archive_commands(sha(plan_path),missing_plan)
+    bad=copy.deepcopy(missing_plan);bad['missing_service_log']['snapshot_sha256']='0'*64
+    plan_path.write_text(json.dumps(bad));native['engine_rearm_plan_sha256']=sha(plan_path)
+    try:check_plan(plan_path,sha(plan_path),missing_path,missing_backup,components,native,root)
+    except ValueError:pass
+    else:raise AssertionError('changed missing-state snapshot accepted')
     # A newer backup can still contain an old SYS: capture success is not installation success.
     media = dict(previous, expected_installed_sys=plan['expected_installed_sys'])
     media_path = root / 'next-media.json'

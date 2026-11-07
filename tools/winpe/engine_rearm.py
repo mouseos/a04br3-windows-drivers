@@ -53,7 +53,25 @@ def require_progress(previous, following, backup):
     return changed
 
 
-def make_plan(previous_path, backup_path, backup, components, root):
+def missing_log_binding(backup, backup_path, exe_hash, allowed):
+    log = STATE_FILES[1]
+    entries = {e['source_path'].replace('\\', '/'): e for e in backup['files']}
+    missing = [e for e in backup.get('missing_files', []) if e.get('source_path', '').replace('\\', '/') == log]
+    if log in entries:
+        if missing or not entries[log]['bytes']:
+            raise ValueError('旧service.logのpresent/absent状態が矛盾または空です')
+        return None
+    if (not allowed or backup.get('engine_missing_service_log_opt_in') is not True
+            or missing != [{'source_path': log, 'reason': 'absent'}]):
+        raise ValueError('旧service.log欠落は明示opt-in captureとabsent記録が必要です')
+    snapshot = {'backup_manifest_sha256': sha(backup_path), 'service_log': missing[0],
+                'previous_service_exe_sha256': exe_hash,
+                'marker': {k: entries[MARKER][k] for k in ('sha256', 'bytes')}}
+    return {'snapshot': snapshot, 'snapshot_sha256': hashlib.sha256(
+        json.dumps(snapshot, sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
+
+
+def make_plan(previous_path, backup_path, backup, components, root, allow_missing_service_log=False):
     previous_path = private_path(previous_path, root).resolve(strict=True)
     previous = json.loads(previous_path.read_text())
     if (previous.get('audio_mode') != 'engine_pcm_retained'
@@ -71,7 +89,7 @@ def make_plan(previous_path, backup_path, backup, components, root):
         if actual.get('windows/system32/drivers/mt8167-ge8300.sys')!=next(v for k,v in before['gpu']['files'].items() if k.endswith('.sys')):raise ValueError('GPU baselineとfreshbackup実SYS hash不一致')
     changed = require_progress(before, after, backup)
     entries = {entry['source_path'].replace('\\', '/'): entry for entry in backup['files']}
-    if not set(STATE_FILES).issubset(entries):
+    if not {MARKER, STATE_FILES[2]}.issubset(entries):
         raise ValueError('fresh backupへ--engine-probe-stateでmarker/service.log/EXEを回収してください')
     old_service_hash=previous.get('probe',{}).get('exe_sha256')
     if not old_service_hash or entries[STATE_FILES[2]]['sha256'].lower()!=old_service_hash.lower():
@@ -79,9 +97,8 @@ def make_plan(previous_path, backup_path, backup, components, root):
     marker = entries[MARKER]
     if marker['sha256'].lower() != hashlib.sha256(b'MT8167EngineProbe attempted\n').hexdigest():
         raise ValueError('既知Engine attempted.binのfingerprintと一致しません')
-    if not entries[STATE_FILES[1]]['bytes']:
-        raise ValueError('旧service.logが空です')
-    old_state_names=list(STATE_FILES)
+    missing_log = missing_log_binding(backup, backup_path, old_service_hash, allow_missing_service_log)
+    old_state_names=[n for n in STATE_FILES if n in entries]
     if BRIGHTNESS_LOG in entries:old_state_names.append(BRIGHTNESS_LOG)
     elif 'mt8167-brightness-native.exe' in previous.get('fixed_clients',[]):
         if BRIGHTNESS_LOG not in {x['source_path'].replace('\\','/') for x in backup.get('missing_files',[])}:
@@ -98,6 +115,9 @@ def make_plan(previous_path, backup_path, backup, components, root):
                                 for name in old_state_names},
             'expected_installed_sys': {SYS_NAMES[kind]: next(digest.lower() for name, digest in after[kind]['files'].items()
                                                             if name.endswith('.sys')) for kind in (*KINDS, 'display', 'toprgu', 'gpu') if kind in components}}
+    if missing_log:
+        plan['missing_service_log'] = missing_log
+    plan['previous_service_exe_sha256'] = old_service_hash.lower()
     if 'gpu' in components:
         gpu=components['gpu'];plan['gpu_transition']={k:gpu[k] for k in ('source_commit','policy_manifest_sha256','transition_id')}
         plan['gpu_transition'].update(candidate_source_commit=gpu['source_commit'],candidate_sys_sha256=gpu['files']['gpu/mt8167-ge8300.sys'],candidate_cat_sha256=gpu['files']['gpu/mt8167-ge8300.cat'])
@@ -129,7 +149,14 @@ def check_plan(path, expected_sha, backup_path, backup, components, native, root
     for name, old in plan['old_state_files'].items():
         if name not in (*STATE_FILES,BRIGHTNESS_LOG) or name not in entries or entries[name]['sha256'].lower() != old['sha256'].lower() or entries[name]['bytes'] != old['bytes']:
             raise ValueError('旧Engine state backup fingerprint不一致')
-    expected_state=set(STATE_FILES)|({BRIGHTNESS_LOG} if BRIGHTNESS_LOG in entries else set())
+    if not {MARKER, STATE_FILES[2]}.issubset(entries):
+        raise ValueError('既知marker/旧EXEの実snapshot欠落')
+    missing_log=missing_log_binding(backup, backup_path, plan.get('previous_service_exe_sha256'), 'missing_service_log' in plan)
+    if missing_log != plan.get('missing_service_log'):
+        raise ValueError('旧log欠落snapshot/hashとfreshbackup不一致')
+    if missing_log and entries[STATE_FILES[2]]['sha256'].lower()!=plan.get('previous_service_exe_sha256'):
+        raise ValueError('旧service EXE pin不一致')
+    expected_state={n for n in STATE_FILES if n in entries}|({BRIGHTNESS_LOG} if BRIGHTNESS_LOG in entries else set())
     if set(plan['old_state_files']) != expected_state:
         raise ValueError('旧Engine state保存対象欠落')
     return plan
@@ -141,7 +168,7 @@ def archive_commands(plan_sha, plan=None):
     base = 'C:\\Windows\\System32\\MT8167EngineProbe'
     commands=[
         'if not exist ' + base + '\\attempted.bin goto dismfail',
-        'if not exist ' + base + '\\logs\\service.log goto dismfail',
+        ('if exist ' if plan and plan.get('missing_service_log') else 'if not exist ') + base + '\\logs\\service.log goto dismfail',
         'if exist ' + archive + ' goto dismfail',
         'mkdir ' + archive + ' >> "%A04_REPORT%" 2>&1',
         'if errorlevel 1 goto dismfail',

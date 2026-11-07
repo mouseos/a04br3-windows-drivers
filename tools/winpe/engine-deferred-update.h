@@ -22,6 +22,7 @@ static const struct {const WCHAR *id,*folder,*inf,*sys,*cat,*firmware;} deferred
  ,{L"ACPI\\MOU0006",L"gpu",L"mt8167-ge8300.inf",L"mt8167-ge8300.sys",L"mt8167-ge8300.cat",L"ge8300-mips.fw"}
 #endif
 };
+#include "engine-registry-diagnostic.h"
 /* Extra events are disk-only, with the fixed target index (10..14).
  * 0x100 phase; 101 hash; 102 CAT membership; 103 selected version match;
  * 104 install flags; 105 install error; 106 CM status; 107 CM problem;
@@ -148,13 +149,14 @@ static DWORD deferred_installed_sys(unsigned index,const struct deferred_pin *pi
 static DWORD deferred_observe(struct pnp_apis *a,unsigned i,DEVINST node)
 {
  ULONG status=0,problem=0,bytes=sizeof(DWORD);DWORD nt=0;DEVPROPTYPE type=0;
- CONFIGRET cr=a->status(&status,&problem,node,0);DWORD error=0;
+ CONFIGRET cr=a->status(&status,&problem,node,0);CONFIGRET status_cr=cr;DWORD error=0;
  pnp_record(i,EV_PNP_STATUS_CR,cr);pnp_record(i,0x106,status);pnp_record(i,0x107,problem);
  if(cr!=CR_SUCCESS||!(status&DN_STARTED)||problem||status&DN_HAS_PROBLEM)error=ERROR_NOT_READY;
  cr=a->devproperty(node,&problem_status_key,&type,(BYTE *)&nt,&bytes,0);
  pnp_record(i,0x108,cr);pnp_record(i,EV_PNP_NT_TYPE,type);pnp_record(i,EV_PNP_NT_BYTES,bytes);
  if(cr==CR_SUCCESS&&type==DEVPROP_TYPE_NTSTATUS&&bytes==sizeof(nt)){pnp_record(i,0x109,nt);if(nt)error=ERROR_NOT_READY;}
  else error=ERROR_NOT_READY;
+ diagnostic_node(i,status_cr,status,problem,cr,type,bytes,nt);
  pnp_bind_metadata(a,i,node,5,"INF");pnp_bind_metadata(a,i,node,3,"VERSION");
  return error;
 }
@@ -249,7 +251,7 @@ static DWORD deferred_once(int diagnostic)
   error=path(folders[i],drivers,deferred_targets[i].folder);if(!error)error=hold_directory(folders[i],&dirs[i]);if(error)goto done;
   for(j=0;j<4;j++){if(!names[j])continue;error=path(full[i][j],folders[i],names[j]);if(!error)error=deferred_file(full[i][j],deferred_pins[i].hash[j],&files[i][j]);if(error)goto done;paths[j]=full[i][j];}
   error=deferred_members(i,full[i][2],paths,files[i]);if(error)goto done;
-  error=deferred_find(i,set,&devs[i]);if(error)goto done;
+  error=deferred_find(i,set,&devs[i]);if(error){diagnostic_discovery(i,error);goto done;}
   observed=deferred_observe(&apis,i,devs[i].DevInst);
   error=deferred_selected_version(set,&devs[i],&version);
   /* A failed-install child may have no selected version; permit the fixed
@@ -290,6 +292,20 @@ static DWORD deferred_once(int diagnostic)
  if(log_error&&!error)error=log_error;
  if(error){(void)disable_self();return deferred_reboot_needed?ERROR_SUCCESS_REBOOT_REQUIRED:error;}
  return diagnostic?0:ERROR_SUCCESS_REBOOT_REQUIRED;
+}
+/* Read-only second observation, after fixed clients, never bind/restart. */
+static DWORD diagnostic_after_clients(void)
+{
+ struct pnp_apis a;HDEVINFO set=INVALID_HANDLE_VALUE;SP_DEVINFO_DATA dev;
+ DWORD i,error,first;memset(&a,0,sizeof(a));error=pnp_load(&a);first=error;
+ if(!error){set=SetupDiGetClassDevsW(NULL,NULL,NULL,DIGCF_ALLCLASSES|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE)first=GetLastError();}
+ for(i=0;i<DEFERRED_TARGET_COUNT;i++){
+  error=first?first:deferred_find(i,set,&dev);
+  if(error)diagnostic_discovery(i,error);else (void)deferred_observe(&a,i,dev.DevInst);
+ }
+ if(set!=INVALID_HANDLE_VALUE)SetupDiDestroyDeviceInfoList(set);
+ if(a.cm)FreeLibrary(a.cm);if(a.newdev)FreeLibrary(a.newdev);
+ return first;
 }
 static DWORD deferred_reboot_waiter(void)
 {

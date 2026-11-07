@@ -297,3 +297,54 @@ README-mt8167-shared-io-update.mdを参照。新service EXEだけのWDK build/�
 明示Engine専用の固定5package延期install→正規再起動→一回診断は
 [README-engine-deferred-update.md](README-engine-deferred-update.md)を参照。
 `-DeferredPackageMap`未指定では既存動作を維持する。この周辺機器版は実機未検証。
+
+
+### Engine deferred: SYSTEM diagnostic snapshot (schema 1)
+
+`-AudioMode EnginePcm -DeferredPackageMap <fixed-map> -WorkspaceRoot <root>`
+のservice buildでは追加switchなしで有効。Tone/従来Engineの動作は維持する。
+既存04ce固定checkout、SYS、clientは変更しない。HFP実装は別checkpoint。
+
+保存先は固定
+`HKLM\SYSTEM\CurrentControlSet\Services\MT8167EngineProbe\Parameters\LastDiagnostic\<policy64>\{Install|Diagnostic}`。
+LocalSystem確認後、SCM workerのuser-mode PASSIVE contextだけで作成する。
+`policy64`は生成policy全体のcanonical JSON SHA256（既存`deferred_token`）であり、
+policy-manifest.jsonの実ファイルSHA256とは異なる。fresh backup pinもpolicyに含む。
+同一世代keyが既存なら拒否し、上書き・削除・自動再試行しない。
+旧世代は保持する。読出し側は期待policy64、Schema=1、Phase=1/2、
+TargetCount/ClientCount、Complete=1を照合し、stale世代を使用しない。
+Completeは収集終了を表し、driver成功を表さない。
+
+`Node0..5HardwareId`は親/AFE/USB/WiFi/DOD/optional GPUの固定順。
+`NodeNBefore`/`NodeNAfter`はREG_BINARY little-endian DWORD列：
+`observed, discovery_rc(Win32), status_cr(CONFIGRET), status_valid, status, problem,
+property_cr(CONFIGRET), property_type, property_bytes, nt_valid, ntstatus`。
+未照会はobserved=0/valid=0、値0xffffffff。失敗queryのstatus/problem/NTSTATUSを
+0に置換しない。Beforeはpreflight、Afterはinstall後、診断bootでは全client終了後の
+read-only照会。optional GPUなしではTargetCount=5。
+
+`Client0..2`はWLAN/Engine audio/optional brightness固定順、同DWORD列：
+`observed, created, resumed, wait_finished, exit_valid, exit_code, result`。
+exit_validが0ならexit_codeを使用しない。resultはlaunch/wait/I/O等の最終Win32結果。
+`ClientNStdout`/`ClientNStderr`は同じ継承file handleから読んだ最大65536 bytesのraw REG_BINARY。
+対応`...Info`は`read_error, file_size_low, file_size_high, captured_bytes, truncated`。
+不確実な子終了時は読出しを行わずERROR_IO_INCOMPLETE。不存在・読出し失敗は
+明示error、data valueの不存在を空出力成功と扱わない。元ファイルは保持する。
+`ServiceResult/FileLogError/UartError/SnapshotWriteError`もDWORD。
+全書込み後に一度だけRegFlushKeyし、closeしてからSCM STOPPED。
+flush/close失敗はSCM errorとUART EVT=0x110で報告する。
+Complete=1だけではflushの実成功や次Recoveryでの回収を証明しない。
+
+run33消失原因は未確定。service.logのFILE_APPEND_DATAだけのopenを、
+FlushFileBuffers文書が要求するGENERIC_WRITE＋明示EOF seekへ修正した。
+既にGENERIC_WRITEだった全stdout/stderrの消失まで説明する修正ではない。
+path誤生成・削除・越境書込みによる全消失はsourceから確認できていない。
+
+旧service.log欠落時だけ、captureの既存`--engine-probe-state`に
+`--allow-missing-engine-service-log`を明示追加する。marker/EXEは必須のまま。
+plan生成も同名switchを明示し、既知旧EXE hash、既知marker、absent記録、
+fresh backup manifest hashを束ねたmissing snapshot SHA256をplanへ固定する。
+通常capture/planは欠落拒否を維持。旧packageより高版の修正hash、native既知七値fingerprint、
+一度限定gateを保持する。既存state dir/marker/旧EXEとplanはarchiveし、marker削除はしない。
+媒体はexpected-absentを直前にも確認し、予期せずlogが存在すれば停止する。
+実Windows RegFlushKey永続化・WDK linkはhost compileだけでは未検証。
