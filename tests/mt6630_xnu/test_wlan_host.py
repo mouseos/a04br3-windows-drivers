@@ -10,7 +10,7 @@ FAKE = r'''
 struct card {
  unsigned enable,own,ownership_timeout,reads,txs,pda,configs,start,ready_polls;
  unsigned seq,rx_size,corrupt_seq,status,fail_tx,ready_timeout,cpu,ac,ffa,no_credit;
- unsigned section_offset,section_index;
+ unsigned section_offset,section_index,whisr,release_reads,fail_read;
  const struct a04_wlan_firmware *fw;
 };
 static inline int command(void *ctx,unsigned cmd,uint32_t arg,unsigned response,uint32_t *out){
@@ -28,6 +28,8 @@ static inline int transfer(void *ctx,uint32_t arg,void *buffer,unsigned n){
  struct card *c=(struct card *)ctx;uint8_t *p=(uint8_t *)buffer;
  unsigned fn=(arg>>28)&7,addr=(arg>>9)&0x1ffff,w=arg>>31;
  assert(fn==1);c->reads+=!w;
+ if(!w && c->fail_read && addr==c->fail_read)return 24;
+ if(!w && addr>=0x130 && addr<=0x14c)c->release_reads++;
  if(w && addr==0x34){
   c->txs++;if(c->fail_tx==c->txs)return 24;
   unsigned size=a04_wmt_le16(p);assert(size<=n && !(arg&(1u<<26)));
@@ -59,6 +61,8 @@ static inline int transfer(void *ctx,uint32_t arg,void *buffer,unsigned n){
  assert(n==4 && (arg&(1u<<26)));uint32_t v=0;
  if(!w){
   if(addr==0){v=0x16630;if(c->start && !c->ready_timeout && ++c->ready_polls>=3)v|=1u<<21;}
+  else if(addr==0x10){v=c->whisr;c->whisr=0;}
+  else if(addr==0x20)v=0x1234;
   else if(addr==4)v=c->own&&!c->ownership_timeout?0x100:0;
   else if(addr==0x90)v=c->rx_size;
   else if(addr==0x130 && !c->no_credit){v=c->ac;c->ac=0;}
@@ -95,7 +99,7 @@ int main(void){
  setup(&c,&io,&t);assert(!a04_wlan_host_open(&h,&t));assert(c.enable==6 && h.initialized);
  c.fw=&fw;struct a04_wlan_download_state s;memset(&s,0,sizeof(s));assert(!a04_wlan_download(&h,&fw,&s));
  assert(s.configured==2 && s.packets==4 && s.started && s.ready && h.ready && c.txs==7);
- assert(!a04_wlan_runtime_begin(&h) && h.runtime && h.cpu_free==26 && h.tc0_free==13);
+ c.whisr=1;assert(!a04_wlan_runtime_begin(&h) && c.release_reads==8 && h.runtime && h.cpu_free==26 && h.tc0_free==13);
  assert(!h.cpu_used && !h.tc0_used && !h.ffa);
  unsigned txs=c.txs;assert(a04_wlan_download(&h,&fw,&s)==A04_WLAN_STATE && c.txs==txs);
  assert(a04_wlan_runtime_begin(&h)==A04_WLAN_STATE);
@@ -108,7 +112,7 @@ int main(void){
 int main(void){
  uint8_t blob[4800];make_fw(blob,sizeof(blob));struct a04_wlan_firmware fw;
  assert(!a04_wlan_firmware_parse(blob,sizeof(blob),&fw));
- for(unsigned fault=0;fault<5;fault++){
+ for(unsigned fault=0;fault<12;fault++){
   struct card c;struct a04_sdio_io io;struct a04_sdio_transport t;struct a04_wlan_host h;
   setup(&c,&io,&t);assert(!a04_wlan_host_open(&h,&t));c.fw=&fw;
   if(fault==0)c.corrupt_seq=1;
@@ -121,7 +125,29 @@ int main(void){
    assert(a04_wlan_send(&h,16,1)==A04_WLAN_STATE);
    assert(c.reads<30000);
   }else{assert(!a04_wlan_download(&h,&fw,&s));c.no_credit=1;
-   assert(a04_wlan_runtime_begin(&h)==A04_WLAN_TIMEOUT && t.failed && c.reads<2000);}
+   unsigned cpu=h.cpu_used,ac=h.tc0_used,reads=c.reads;
+   if(fault==5)c.ready_timeout=1;
+   if(fault==6)c.whisr=0x40;
+   if(fault==7){c.whisr=1;c.fail_read=0x13c;}
+   if(fault==8)h.boot_ready_observed=0;
+   if(fault==9)h.native_be=1;
+   if(fault==10)c.fail_read=0x10;
+   if(fault==11){c.fail_read=0x130;c.whisr=1;}
+   int e=a04_wlan_runtime_begin(&h);
+   if(fault==4){assert(!e && h.runtime && !h.cpu_used && !h.tc0_used);
+    assert(c.reads==reads+2 && !c.release_reads && h.runtime_phase==5);
+    h.cpu_used=1;reads=c.reads;assert(a04_wlan_runtime_begin(&h)==A04_WLAN_STATE);
+    assert(h.cpu_used==1 && reads==c.reads); /* cannot reset active runtime */
+   }else{
+    assert(e==(fault==6?A04_WLAN_STATUS:(fault==7||fault>=10)?24:A04_WLAN_STATE));
+    assert(!h.runtime && h.cpu_used==cpu && h.tc0_used==ac);
+    if(fault==7)assert(h.runtime_reads==3 && c.release_reads==3 && h.runtime_phase==4);
+    if(fault==6)assert(h.status==0x40 && h.wasr==0x1234 && t.failed);
+    if(fault==10)assert(h.runtime_observed==1);
+    if(fault==11)assert(h.runtime_reads==0 && h.runtime_observed==7);
+    if(fault==8||fault==9)assert(reads==c.reads); /* no I/O without verified gate */
+   }
+  }
  }
  struct card c;struct a04_sdio_io io;struct a04_sdio_transport t;struct a04_wlan_host h;
  setup(&c,&io,&t);c.ownership_timeout=1;

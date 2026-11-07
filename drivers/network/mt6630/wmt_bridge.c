@@ -94,9 +94,9 @@ int a04_wmt_bridge_load_calibration_traced(struct a04_wmt_bridge *b,const uint8_
  if(e)return -1;
  if(!b->wlan.runtime){e=a04_wlan_runtime_begin(&b->wlan);/* Keep the64-event ABI: record runtime boundary only on failure.
    * Success is not invented; later submit is a separate real observation. */
-  if(e){if(observe)observe(context,A04_CP_CAL_RUNTIME,e,0);return fault(b,e);}}
+  if(e){if(observe)observe(context,A04_CP_CAL_RUNTIME,e,a04_wlan_runtime_receipt(&b->wlan));return fault(b,e);}}
  m.bridge=b;m.last_cid=0;e=a04_manufacture_submit(data,&r,&m,manufacture_set);
- if(observe)observe(context,A04_CP_CAL_SUBMIT,e,m.last_cid);
+ if(observe)observe(context,A04_CP_CAL_SUBMIT,e,m.last_cid|(a04_wlan_runtime_receipt(&b->wlan)<<8));
  if(e)return fault(b,e);
  b->regulatory=r;b->calibration_submitted=1;return 0;
 }

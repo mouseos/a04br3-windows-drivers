@@ -10,16 +10,19 @@
     "A04BR3WMTFirmware.h": "0e6b0f8beefc9bf587e4db7222c8618e754a3af7a2068e6458b8d6d152ccc2ed",
     "A04BR3WMTDownload.h": "f3a2e0a045664cb984a5f1be32289030f5ae9777fbeab77002cd1a2f96b21762",
     "A04BR3WLANProtocol.h": "68cf12452d664a39d6c3786ca8b9284eb4bc8df68c6abbe257dc9c5ac9349062",
-    "A04BR3WLANHost.h": "1b04ad9b5a19b985a459027419315ab678821b317cad88706f9738a9a0b90e5b",
-    "A04BR3WLANFirmware.h": "a584a97f244eaa99eba23baa9869c22338a00279ce9f764ef890bfc27b64471b",
+    "A04BR3WLANHost.h": "d91d6866ac5136afd3bc217c9254535cee30ddc56fefa08ed930a23f36d67106",
+    "A04BR3WLANFirmware.h": "1614329953e25e9aa7cb17408c242cafa4b69489282e43f7a23e536abdb864ea",
     "A04BR3WLANStation.h": "3bc0361d4ffd690c9e14aca9a6b0058a198bd4832a0859e94b90ada63e1c71da",
     "A04BR3WLANSecurity.h": "d321dc8b83308185cbd0f4adcc74996f3c2c05eebc4551a23791530d337853b0",
     "A04BR3WLANData.h": "867de20edcbd25d6240110cf1e0e890b5257e3424260c44fffb2c6094179b17c"
   },
   "original_sha256": {
-    "A04BR3WLANStation.h": "2ed29ef61ecd543d4be3b71384ff60fef5c045215610610125153dc34fc95eab"
+    "A04BR3WLANStation.h": "2ed29ef61ecd543d4be3b71384ff60fef5c045215610610125153dc34fc95eab",
+    "A04BR3WLANHost.h": "1b04ad9b5a19b985a459027419315ab678821b317cad88706f9738a9a0b90e5b",
+    "A04BR3WLANFirmware.h": "a584a97f244eaa99eba23baa9869c22338a00279ce9f764ef890bfc27b64471b"
   },
   "local_patches": [
-    "BSS AuthMode/EncStatusを同型番Linux gen3 wlan_oid.hとnic.cの0/7および1/6へ修正。元hashをoriginal_sha256へ保持。"
+    "BSS AuthMode/EncStatusを同型番Linux gen3 wlan_oid.hとnic.cの0/7および1/6へ修正。元hashをoriginal_sha256へ保持。",
+    "1009: CT3 gen3 wlanAdapterStart/nicTxResetResourceのFW-ready INIT退役境界へ合わせる。実Start送信/READY証拠とfresh WCIR/WHISR、TX_DONE時のみ8counter read成功を要求。runtime返却会計は保持。"
   ]
 }

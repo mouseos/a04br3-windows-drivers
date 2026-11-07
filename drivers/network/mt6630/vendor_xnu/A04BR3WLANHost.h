@@ -11,6 +11,7 @@ enum { A04_WLAN_ARGUMENT=80,A04_WLAN_FORMAT=81,A04_WLAN_CRC=82,
 struct a04_wlan_host {
  struct a04_sdio_transport *transport;
  unsigned initialized,ready,sequence,cpu_free,cpu_used,cpu_done,ffa,tc0_free,tc0_used,tc0_done,runtime;
+ unsigned boot_ready_observed,runtime_phase,runtime_reads,runtime_observed;
  unsigned native_be,tc1_free,tc1_used,tc1_done,fw_owned;
  uint32_t wcir,status,chlpcr;unsigned own_polls;int failed;
  uint32_t wasr;int wasr_error;
@@ -29,6 +30,7 @@ static inline int a04_wlan_write(struct a04_wlan_host *h,unsigned reg,uint32_t v
 static inline int a04_wlan_host_open(struct a04_wlan_host *h,struct a04_sdio_transport *t){
  if(!h || !t || t->failed)return A04_WLAN_ARGUMENT;
  h->wasr=0;h->wasr_error=0;h->status=0;
+ h->boot_ready_observed=h->runtime_phase=h->runtime_reads=h->runtime_observed=0;
  h->last_cid=h->last_cmd_sequence=h->last_cmd_type=h->last_cmd_set=h->last_cmd_bytes=0;
  h->transport=t;h->initialized=h->ready=h->sequence=0;h->failed=0;
  h->cpu_free=h->tc0_free=104;h->cpu_used=h->cpu_done=h->ffa=h->tc0_used=h->tc0_done=h->runtime=0;h->native_be=h->tc1_free=h->tc1_used=h->tc1_done=h->fw_owned=0;h->rx_length=h->own_polls=0;h->chlpcr=0;
@@ -132,20 +134,51 @@ static inline int a04_wlan_driver_own(struct a04_wlan_host *h){
  }
  return a04_wlan_fail(h,A04_WLAN_TIMEOUT);
 }
-/* Native nicTxResetResource switches from INIT8 buffers to runtime TC4=2.
- * Drain observed init completions before changing the software budget. This
- * conservative boundary may fail on unobserved hardware; never assume return. */
+/* gen3 wlanAdapterStart: after a completed firmware start and WCIR READY,
+ * read-clear WHISR; only TX_DONE retires the eight INIT release counters.
+ * wlanQueryNicResourceInformation/nicTxResetResource then switches budgets.
+ * INIT counts do not obey runtime FFA accounting. Never use this to recover
+ * an active runtime, failed bus, firmware ownership or outstanding Native TX.
+ * phase:1 gate,2 WCIR,3 WHISR,4 release reads,5 committed. observed:WCIR1,
+ * WHISR2, TX_DONE4. Reads counts only successful release-register reads. */
 static inline int a04_wlan_runtime_begin(struct a04_wlan_host *h){
- if(!h || !h->ready || h->runtime || h->failed)return A04_WLAN_STATE;
- for(unsigned n=0;n<100;n++){
-  int e=a04_wlan_resources(h);if(e)return e;
-  if(!h->cpu_used && !h->tc0_used){
-   if(h->ffa)return a04_wlan_fail(h,A04_WLAN_CREDIT);
-   h->cpu_free=26;h->tc0_free=13;h->runtime=1;return 0;
-  }
-  h->transport->io->delay(h->transport->io->ctx,1000);
+ uint32_t value=0,status=0;int e;
+ if(!h)return A04_WLAN_STATE;
+ /* Preserve the original boundary receipt on a forbidden second call. */
+ if(h->runtime)return A04_WLAN_STATE;
+ h->runtime_phase=1;h->runtime_reads=h->runtime_observed=0;
+ if(!h->initialized || !h->ready || !h->boot_ready_observed || !h->transport ||
+    h->failed || h->transport->failed || h->fw_owned || h->native_be || h->tc1_used)
+  return A04_WLAN_STATE;
+ h->runtime_phase=2;
+ if((e=a04_wlan_read(h,0,&value)))return e;
+ h->wcir=value;h->runtime_observed|=1;
+ if((value&0xffff)!=0x6630 || !(value&(1u<<21)))return a04_wlan_fail(h,A04_WLAN_STATE);
+ h->runtime_phase=3;
+ if((e=a04_wlan_read(h,0x10,&status)))return e;
+ h->status=status;h->runtime_observed|=2;
+ /* Same WASR-before-poison rule as a04_wlan_interrupt_status. Record the
+  * read itself, never infer observation from a backend integer value. */
+ if(status&0x80000040u){
+  h->wasr_error=a04_wlan_read(h,0x20,&h->wasr);
+  return a04_wlan_fail(h,A04_WLAN_STATUS);
  }
- return a04_wlan_fail(h,A04_WLAN_TIMEOUT);
+ if(status&1){
+  h->runtime_observed|=4;h->runtime_phase=4;
+  for(unsigned i=0;i<8;i++){
+   if((e=a04_wlan_read(h,0x130+4*i,&value)))return e;
+   h->runtime_reads++;
+  }
+ }
+ /* No hardware reset and no manufactured transfer completion: all INIT
+  * SDIO writes and firmware ACK/READY have already completed successfully. */
+ h->cpu_free=26;h->tc0_free=13;
+ h->cpu_used=h->cpu_done=h->tc0_used=h->tc0_done=h->ffa=0;
+ h->runtime=1;h->runtime_phase=5;return 0;
+}
+/* Fits existing checkpoint detail without increasing the fixed event budget. */
+static inline unsigned a04_wlan_runtime_receipt(const struct a04_wlan_host *h){
+ return h->runtime_phase|(h->runtime_reads<<8)|(h->runtime_observed<<16);
 }
 static inline int a04_wlan_send(struct a04_wlan_host *h,unsigned logical,unsigned tc){
  if(!h || !h->initialized || h->failed || h->transport->failed)return A04_WLAN_STATE;

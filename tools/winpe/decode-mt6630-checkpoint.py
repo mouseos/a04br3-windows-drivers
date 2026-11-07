@@ -58,6 +58,15 @@ def decode(data, after_generation=None):
             events[-1]['regulatory_inspection'] = dict(reason=detail & 255, selection=(detail >> 8) & 15,
                                                        country_class=(detail >> 12) & 15,
                                                        map=(detail >> 16) & 255, index=detail >> 24)
+        if observed and stage in (67, 68) and build >= 1009:
+            receipt = detail if stage == 67 else detail >> 8
+            mask = (receipt >> 16) & 7
+            events[-1]['runtime_boundary'] = dict(phase=receipt & 255,
+                release_register_reads=(receipt >> 8) & 255,
+                wcir_observed=bool(mask & 1), whisr_observed=bool(mask & 2),
+                tx_done_observed=bool(mask & 4), completed=(receipt & 255) == 5)
+            if stage == 68:
+                events[-1]['last_manufacture_cid'] = detail & 255
     return dict(schema=version, driver_build=build, channel=('DriverEntry', 'Initialize')[channel],
                 generation=generation, parent_generation=parent, interrupt_time=ticks,
                 system_time=system_time,

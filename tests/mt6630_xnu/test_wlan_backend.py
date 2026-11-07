@@ -68,7 +68,7 @@ int main(void){
         self.run_c(SETUP+r'''
 int main(void){
  struct card c;struct a04_sdio_io io;struct a04_sdio_transport t;struct a04_wlan_host h;
- setup(&c,&io,&t);assert(!a04_wlan_host_open(&h,&t));h.ready=1;assert(!a04_wlan_runtime_begin(&h));
+ setup(&c,&io,&t);assert(!a04_wlan_host_open(&h,&t));h.ready=h.boot_ready_observed=1;c.start=1;c.ready_polls=3;assert(!a04_wlan_runtime_begin(&h));
  struct a04_wlan_station s;memset(&s,0,sizeof(s));struct a04_wlan_local l;local_profile(&l);
  assert(!a04_wlan_station_setup(&s,&h,&l) && s.configured && c.txs==3 && !s.sta_active);
  assert(h.tx[4]==0x0a && a04_wmt_get32(h.tx+8)==13);
@@ -130,7 +130,7 @@ int main(void){
  p[25]=255;assert(!a04_wlan_scan_observe(&s,p,n,&a) && !a.rcpi_valid);
  s.local.permitted_channels&=~(1u<<6);assert(a04_wlan_scan_observe(&s,p,n,&a)==A04_WLAN_UNSUPPORTED);
  struct card c;struct a04_sdio_io io;struct a04_sdio_transport t;struct a04_wlan_host h;
- setup(&c,&io,&t);assert(!a04_wlan_host_open(&h,&t));h.ready=1;assert(!a04_wlan_runtime_begin(&h));
+ setup(&c,&io,&t);assert(!a04_wlan_host_open(&h,&t));h.ready=h.boot_ready_observed=1;c.start=1;c.ready_polls=3;assert(!a04_wlan_runtime_begin(&h));
  memset(&s,0,sizeof(s));local_profile(&s.local);s.configured=1;s.local.active_channels=1u<<1;
  struct a04_wlan_scan req;memset(&req,0,sizeof(req));req.bss=s.local.bss;req.timeout=100;req.active=1;
  req.channel_type=4;const uint8_t channels[]={1,6};req.channels=channels;req.channel_count=1;

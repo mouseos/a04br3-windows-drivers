@@ -84,7 +84,7 @@ static inline int a04_wlan_download(struct a04_wlan_host *h,const struct a04_wla
  }
  for(unsigned i=0;i<106;i++){
   e=a04_wlan_read(h,0,&h->wcir);if(e)goto fail;
-  if(h->wcir&(1u<<21)){s->ready=h->ready=1;return 0;}
+  if(h->wcir&(1u<<21)){s->ready=h->ready=h->boot_ready_observed=1;return 0;}
   h->transport->io->delay(h->transport->io->ctx,10000);
  }
  e=A04_WLAN_TIMEOUT;
