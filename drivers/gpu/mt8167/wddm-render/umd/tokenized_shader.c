@@ -17,7 +17,7 @@ static HRESULT compile(struct geo_shader_compiler *compiler,uint32_t stage,const
  if(!s->tokens){HeapFree(GetProcessHeap(),0,s);return E_OUTOFMEMORY;}
  memcpy(s->tokens,code,s->token_bytes);
  status=geo_pco_compile_tokenized(compiler->context,stage,s->tokens,s->token_bytes,&s->signatures,&s->compiled,&error);
- if(status!=GEO_OK){geo_umd_release_tokenized_shader(s);return status==GEO_BUSY?E_OUTOFMEMORY:E_INVALIDARG;}
+ if(status!=GEO_OK){geo_umd_release_tokenized_shader(s);return status==GEO_BUSY?E_OUTOFMEMORY:(status==GEO_UNSUPPORTED?E_NOTIMPL:E_INVALIDARG);}
  *out=s;return S_OK;
 }
 void geo_umd_release_tokenized_shader(struct geo_umd_tokenized_shader *s) {

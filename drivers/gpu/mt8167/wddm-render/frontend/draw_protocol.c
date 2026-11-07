@@ -6,6 +6,21 @@ static int span(const struct geo_draw_span *s,uint32_t total,uint32_t maximum) {
 static uint32_t word(const unsigned char *b,uint32_t n) {
  return (uint32_t)b[n]|((uint32_t)b[n+1]<<8)|((uint32_t)b[n+2]<<16)|((uint32_t)b[n+3]<<24);
 }
+static int sm4_framing(const unsigned char *b,uint32_t off,uint32_t bytes) {
+ uint32_t n=bytes/4u,i=2u;
+ while(i<n) {
+  uint32_t token=word(b,off+4u*i),len=(token>>24)&127u;
+  /* CUSTOMDATA has its DWORD count in the next word. */
+  if((token&0x7ffu)==53u) {
+   if(i+1u>=n)return 0;
+   len=word(b,off+4u*(i+1u));
+   if(len<2u)return 0;
+  }
+  if(!len || len>n-i)return 0;
+  i+=len;
+ }
+ return i==n;
+}
 static int shader(const struct geo_draw_shader *s,const unsigned char *b,uint32_t total,uint32_t stage) {
  uint32_t ver;
  if(s->stage!=stage || !span(&s->tokens,total,GEO_DRAW_MAX_TOKENS*4u) ||
@@ -22,7 +37,8 @@ static int shader(const struct geo_draw_shader *s,const unsigned char *b,uint32_
   /* WDK tokenized program, not DXBC container and not SM2 re-tagged. */
   if(s->tokens.bytes<8u || (ver>>16)!=(stage?0u:1u) || (ver&0xff00u) ||
      !((major==4u && minor<=1u)||(major==5u && minor==0u)) ||
-     word(b,s->tokens.offset+4u)!=s->tokens.bytes/4u)return 0;
+     word(b,s->tokens.offset+4u)!=s->tokens.bytes/4u ||
+     !sm4_framing(b,s->tokens.offset,s->tokens.bytes))return 0;
  } else return 0;
  return 1;
 }

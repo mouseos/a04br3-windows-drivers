@@ -1,0 +1,123 @@
+/* SPDX-License-Identifier: MIT */
+#include "typed_device.h"
+#include "../memory.h"
+static struct geo_typed_resource *resource_handle(D3D10DDI_HRESOURCE h) {
+ return h.pDrvPrivate?((struct geo_typed_handle *)h.pDrvPrivate)->object:NULL;
+}
+struct geo_typed_resource *geo_typed_resource(D3D10DDI_HDEVICE h,D3D10DDI_HRESOURCE r) {
+ struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_resource *p=resource_handle(r),*i;
+ if(!d||!p)return NULL;
+ for(i=d->resources;i&&i!=p;i=i->next){}
+ return i&&i->magic==GEO_TYPED_RESOURCE_MAGIC&&!i->deleted?i:NULL;
+}
+void geo_typed_resource_ref(struct geo_typed_resource *r){if(r)r->refs++;}
+HRESULT geo_typed_resource_unref(struct geo_typed_resource *r) {
+ struct geo_typed_resource **link;HRESULT hr;struct geo_typed_device *d;
+ if(!r||!r->refs||!(d=r->device))return E_INVALIDARG;
+ if(--r->refs)return S_OK;
+ hr=d->memory.pfnDestroyResource(&d->backend,r->backend);
+ if(FAILED(hr)){r->refs=1;return hr;} /* ambiguous allocation stays pinned */
+ for(link=&d->resources;*link&&*link!=r;link=&(*link)->next){}
+ if(!*link)return E_UNEXPECTED;*link=r->next;r->magic=0;HeapFree(GetProcessHeap(),0,r);return S_OK;
+}
+static HRESULT desc_valid(const D3D11DDIARG_CREATERESOURCE *p) {
+ const D3D10DDI_MIPINFO *m;
+ if(!p||!p->pMipInfoList||p->MipLevels!=1||p->ArraySize!=1||p->MiscFlags||p->pPrimaryDesc||p->ByteStride||p->DecoderBufferType)return E_NOTIMPL;
+ m=p->pMipInfoList;
+ if(!m->TexelWidth||!m->TexelHeight||m->TexelDepth!=1||m->PhysicalWidth!=m->TexelWidth||m->PhysicalHeight!=m->TexelHeight||m->PhysicalDepth!=1)return E_INVALIDARG;
+ if(p->Usage>D3D10_DDI_USAGE_STAGING||(p->MapFlags&~D3D10_DDI_CPU_ACCESS_MASK))return E_INVALIDARG;
+ if(p->ResourceDimension==D3D10DDIRESOURCE_BUFFER){
+  if(m->TexelWidth>GEO_VERTEX_MAX_BYTES||m->TexelHeight!=1||p->Format!=DXGI_FORMAT_UNKNOWN||
+     !(p->BindFlags&(D3D10_DDI_BIND_VERTEX_BUFFER|D3D10_DDI_BIND_INDEX_BUFFER|D3D10_DDI_BIND_CONSTANT_BUFFER))||
+     (p->BindFlags&~(D3D10_DDI_BIND_VERTEX_BUFFER|D3D10_DDI_BIND_INDEX_BUFFER|D3D10_DDI_BIND_CONSTANT_BUFFER)))return E_NOTIMPL;
+ } else if(p->ResourceDimension==D3D10DDIRESOURCE_TEXTURE2D){
+  if(p->Format!=DXGI_FORMAT_B8G8R8A8_UNORM||m->TexelWidth>800u||m->TexelHeight>600u||
+     p->SampleDesc.Count!=1||p->SampleDesc.Quality||(p->BindFlags&~D3D10_DDI_BIND_RENDER_TARGET))return E_NOTIMPL;
+ } else return E_NOTIMPL;
+ if(p->Usage==D3D10_DDI_USAGE_STAGING&&(p->BindFlags||!p->MapFlags))return E_INVALIDARG;
+ if(p->Usage==D3D10_DDI_USAGE_IMMUTABLE&&(!p->pInitialDataUP||p->MapFlags))return E_INVALIDARG;
+ if(p->Usage==D3D10_DDI_USAGE_DEFAULT&&p->MapFlags)return E_INVALIDARG;
+ if(p->Usage==D3D10_DDI_USAGE_DYNAMIC&&p->MapFlags!=D3D10_DDI_CPU_ACCESS_WRITE)return E_INVALIDARG;
+ return S_OK;
+}
+static SIZE_T APIENTRY resource_size(D3D10DDI_HDEVICE h,const D3D11DDIARG_CREATERESOURCE *p) {
+ HRESULT hr=desc_valid(p);if(!geo_typed_device(h))return 0;if(FAILED(hr)){geo_typed_error(h,hr);return 0;}return sizeof(struct geo_typed_handle);
+}
+static HRESULT map_backend(struct geo_typed_resource *r,D3D10_DDI_MAP mode,UINT flags,D3D10DDI_MAPPED_SUBRESOURCE *out) {
+ D3DDDIARG_LOCK q;HRESULT hr;
+ if(!out||r->mapped||(flags&~D3D10_DDI_MAP_FLAG_DONOTWAIT))return E_INVALIDARG;
+ memset(out,0,sizeof(*out));memset(&q,0,sizeof(q));q.hResource=r->backend;
+ q.Flags.ReadOnly=mode==D3D10_DDI_MAP_READ;q.Flags.DoNotWait=(flags&D3D10_DDI_MAP_FLAG_DONOTWAIT)!=0;
+ hr=r->device->memory.pfnLock(&r->device->backend,&q);
+ if(SUCCEEDED(hr)){r->mapped=1;out->pData=q.pSurfData;out->RowPitch=q.Pitch;out->DepthPitch=q.SlicePitch;}
+ return hr;
+}
+static HRESULT unmap_backend(struct geo_typed_resource *r) {
+ D3DDDIARG_UNLOCK q;HRESULT hr;if(!r->mapped)return E_INVALIDARG;
+ memset(&q,0,sizeof(q));q.hResource=r->backend;hr=r->device->memory.pfnUnlock(&r->device->backend,&q);if(SUCCEEDED(hr))r->mapped=0;return hr;
+}
+static void APIENTRY create_resource(D3D10DDI_HDEVICE h,const D3D11DDIARG_CREATERESOURCE *p,D3D10DDI_HRESOURCE handle,D3D10DDI_HRTRESOURCE runtime) {
+ struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_resource *r;D3DDDIARG_CREATERESOURCE q;D3DDDI_SURFACEINFO surf;HRESULT hr;
+ if(!d||!handle.pDrvPrivate){geo_typed_error(h,E_INVALIDARG);return;}
+ ((struct geo_typed_handle *)handle.pDrvPrivate)->object=NULL;
+ hr=desc_valid(p);if(FAILED(hr)){geo_typed_error(h,hr);return;}
+ r=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*r));if(!r){geo_typed_error(h,E_OUTOFMEMORY);return;}
+ r->magic=GEO_TYPED_RESOURCE_MAGIC;r->refs=1;r->device=d;r->usage=p->Usage;r->bind=p->BindFlags;r->map_flags=p->MapFlags;r->format=p->Format;r->dimension=p->ResourceDimension;
+ r->width=p->pMipInfoList[0].TexelWidth;r->height=p->pMipInfoList[0].TexelHeight;r->bytes=r->width*r->height*(r->dimension==D3D10DDIRESOURCE_BUFFER?1u:4u);
+ memset(&q,0,sizeof(q));memset(&surf,0,sizeof(surf));surf.Width=r->width;surf.Height=r->height;surf.Depth=1;
+ q.Format=r->dimension==D3D10DDIRESOURCE_BUFFER?D3DDDIFMT_VERTEXDATA:D3DDDIFMT_A8R8G8B8;
+ q.Pool=(p->BindFlags&D3D10_DDI_BIND_RENDER_TARGET)?D3DDDIPOOL_VIDEOMEMORY:D3DDDIPOOL_SYSTEMMEM;
+ q.hResource=runtime.handle;q.pSurfList=&surf;q.SurfCount=q.MipLevels=1;q.Rotation=D3DDDI_ROTATION_IDENTITY;
+ q.Flags.VertexBuffer=r->dimension==D3D10DDIRESOURCE_BUFFER;q.Flags.RenderTarget=(p->BindFlags&D3D10_DDI_BIND_RENDER_TARGET)!=0;
+ hr=d->memory.pfnCreateResource(&d->backend,&q);
+ if(FAILED(hr)){HeapFree(GetProcessHeap(),0,r);geo_typed_error(h,hr);return;}
+ r->backend=q.hResource;r->next=d->resources;d->resources=r;((struct geo_typed_handle *)handle.pDrvPrivate)->object=r;
+ if(p->pInitialDataUP){
+  D3D10DDI_MAPPED_SUBRESOURCE map;UINT y,row=r->dimension==D3D10DDIRESOURCE_BUFFER?r->width:r->width*4u;
+  if(!p->pInitialDataUP->pSysMem||(r->height>1&&p->pInitialDataUP->SysMemPitch<row)){geo_typed_error(h,E_INVALIDARG);return;}
+  hr=map_backend(r,D3D10_DDI_MAP_WRITE,0,&map);
+  if(SUCCEEDED(hr)){
+   for(y=0;y<r->height;y++)memcpy((BYTE *)map.pData+y*map.RowPitch,(const BYTE *)p->pInitialDataUP->pSysMem+y*p->pInitialDataUP->SysMemPitch,row);
+   hr=unmap_backend(r);
+  }
+  if(FAILED(hr))geo_typed_error(h,hr);
+ }
+}
+static void APIENTRY destroy_resource(D3D10DDI_HDEVICE h,D3D10DDI_HRESOURCE handle) {
+ struct geo_typed_resource *r=geo_typed_resource(h,handle);HRESULT hr;
+ if(!r){geo_typed_error(h,E_INVALIDARG);return;}if(r->mapped){geo_typed_error(h,E_FAIL);return;}
+ r->deleted=1;((struct geo_typed_handle *)handle.pDrvPrivate)->object=NULL;hr=geo_typed_resource_unref(r);if(FAILED(hr))geo_typed_error(h,hr);
+}
+static void APIENTRY map_resource(D3D10DDI_HDEVICE h,D3D10DDI_HRESOURCE handle,UINT sub,D3D10_DDI_MAP mode,UINT flags,D3D10DDI_MAPPED_SUBRESOURCE *out) {
+ struct geo_typed_resource *r=geo_typed_resource(h,handle);HRESULT hr=E_INVALIDARG;if(out)memset(out,0,sizeof(*out));
+ if(r&&!sub&&out&&r->usage!=D3D10_DDI_USAGE_IMMUTABLE&&r->usage!=D3D10_DDI_USAGE_DEFAULT){
+  UINT read=mode==D3D10_DDI_MAP_READ||mode==D3D10_DDI_MAP_READWRITE,write=mode!=D3D10_DDI_MAP_READ;
+  if(mode>=D3D10_DDI_MAP_READ&&mode<=D3D10_DDI_MAP_WRITE_NOOVERWRITE&&(!read||(r->map_flags&D3D10_DDI_CPU_ACCESS_READ))&&(!write||(r->map_flags&D3D10_DDI_CPU_ACCESS_WRITE)))
+   /* Current backend takes a real serialized Lock. It does not pretend
+    * NOOVERWRITE/DISCARD renaming; waiting is conservative and preserves data. */
+   hr=map_backend(r,mode,flags,out);
+ }
+ if(FAILED(hr))geo_typed_error(h,hr);
+}
+static void APIENTRY unmap_resource(D3D10DDI_HDEVICE h,D3D10DDI_HRESOURCE handle,UINT sub) {
+ struct geo_typed_resource *r=geo_typed_resource(h,handle);HRESULT hr=r&&!sub?unmap_backend(r):E_INVALIDARG;if(FAILED(hr))geo_typed_error(h,hr);
+}
+HRESULT geo_typed_read_resource(struct geo_typed_resource *r,UINT offset,UINT bytes,void *data) {
+ D3D10DDI_MAPPED_SUBRESOURCE map;HRESULT hr;
+ if(!r||!data||offset>r->bytes||bytes>r->bytes-offset||r->dimension!=D3D10DDIRESOURCE_BUFFER)return E_INVALIDARG;
+ hr=map_backend(r,D3D10_DDI_MAP_READ,0,&map);if(FAILED(hr))return hr;
+ memcpy(data,(BYTE *)map.pData+offset,bytes);return unmap_backend(r);
+}
+static void APIENTRY copy_resource(D3D10DDI_HDEVICE h,D3D10DDI_HRESOURCE dst,D3D10DDI_HRESOURCE src) {
+ struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_resource *a=geo_typed_resource(h,src),*b=geo_typed_resource(h,dst);D3DDDIARG_BLT q;HRESULT hr;
+ if(!d||!a||!b||a==b||a->format!=b->format||a->width!=b->width||a->height!=b->height||b->dimension!=D3D10DDIRESOURCE_TEXTURE2D||b->usage!=D3D10_DDI_USAGE_STAGING){geo_typed_error(h,E_NOTIMPL);return;}
+ memset(&q,0,sizeof(q));q.hSrcResource=a->backend;q.hDstResource=b->backend;q.SrcRect.right=q.DstRect.right=a->width;q.SrcRect.bottom=q.DstRect.bottom=a->height;
+ hr=d->memory.pfnBlt(&d->backend,&q);if(FAILED(hr))geo_typed_error(h,hr);
+}
+void geo_typed_resources_install(D3D11_1DDI_DEVICEFUNCS *f) {
+ f->pfnCalcPrivateResourceSize=resource_size;f->pfnCreateResource=create_resource;f->pfnDestroyResource=destroy_resource;
+ f->pfnResourceMap=map_resource;f->pfnResourceUnmap=unmap_resource;f->pfnStagingResourceMap=map_resource;f->pfnStagingResourceUnmap=unmap_resource;
+ f->pfnDynamicIABufferMapDiscard=map_resource;f->pfnDynamicIABufferMapNoOverwrite=map_resource;f->pfnDynamicIABufferUnmap=unmap_resource;
+ f->pfnDynamicConstantBufferMapDiscard=map_resource;f->pfnDynamicConstantBufferUnmap=unmap_resource;f->pfnDynamicConstantBufferMapNoOverwrite=map_resource;
+ f->pfnDynamicResourceMapDiscard=map_resource;f->pfnResourceCopy=copy_resource;
+}

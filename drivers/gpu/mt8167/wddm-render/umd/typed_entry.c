@@ -1,0 +1,124 @@
+/* SPDX-License-Identifier: MIT */
+#include "typed_device.h"
+#include "typed_state.h"
+#include "../memory.h"
+/* Every advertised feature level is a complete runtime contract. These are
+ * implementation obligations, not registry options or opt-in fake caps. */
+#define GEO_NEED_SM4_COMPLETE 1u
+#define GEO_NEED_TEXTURE_2048 2u
+#define GEO_NEED_DEPTH_STENCIL 4u
+#define GEO_NEED_BLEND 8u
+#define GEO_NEED_NATIVE_STATE 16u
+#define GEO_NEED_REQUIRED_DDI 32u
+#define GEO_NEED_KMD_RECOVERY 64u
+UINT geo_typed_profile_missing(void) {
+ /* See TYPED-COMPATIBILITY.md. Remove a bit only with the real corresponding
+  * implementation and native contract, never because the smoke client omits it. */
+ return GEO_NEED_SM4_COMPLETE|GEO_NEED_TEXTURE_2048|GEO_NEED_DEPTH_STENCIL|GEO_NEED_BLEND|
+        GEO_NEED_NATIVE_STATE|GEO_NEED_REQUIRED_DDI|GEO_NEED_KMD_RECOVERY;
+}
+struct geo_typed_device *geo_typed_device(D3D10DDI_HDEVICE h) {
+ struct geo_typed_device *d=h.pDrvPrivate?((struct geo_typed_handle *)h.pDrvPrivate)->object:NULL;
+ return d&&d->magic==GEO_TYPED_DEVICE_MAGIC?d:NULL;
+}
+struct geo_typed_state *geo_typed_state_from_device(D3D10DDI_HDEVICE h){struct geo_typed_device *d=geo_typed_device(h);return d?d->state:NULL;}
+void geo_typed_error(D3D10DDI_HDEVICE h,HRESULT hr) {
+ struct geo_typed_device *d=geo_typed_device(h);if(!d||SUCCEEDED(hr))return;
+ if(SUCCEEDED(d->error))d->error=hr;
+ if(d->callbacks.pfnSetErrorCb)d->callbacks.pfnSetErrorCb(d->core,hr);
+}
+HRESULT geo_typed_validate_native_state(D3D10DDI_HDEVICE h) {
+ struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_state_snapshot *s;UINT used[GEO_TYPED_STATE_STAGES]={0},unsupported;HRESULT hr;
+ if(!d||!d->state)return E_INVALIDARG;
+ /* Current compiler rejects sampler instructions; zero comes from that real
+  * compiler contract, not from ignoring currently bound SRV/sampler state. */
+ s=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*s));if(!s)return E_OUTOFMEMORY;
+ s->size=sizeof(*s);s->abi=GEO_TYPED_STATE_ABI;hr=geo_typed_state_snapshot(d->state,s);
+ if(SUCCEEDED(hr))hr=geo_typed_state_validate_flat(s,used,FALSE,&unsupported);
+ if(SUCCEEDED(hr)&&s->raster.ScissorEnable&&(!d->scissor_set||d->scissor.left||d->scissor.top||d->scissor.right!=800||d->scissor.bottom!=600))hr=E_NOTIMPL;
+ HeapFree(GetProcessHeap(),0,s);return hr;
+}
+static BOOL APIENTRY flush(D3D10DDI_HDEVICE h,UINT flags) {
+ struct geo_typed_device *d=geo_typed_device(h);(void)flags;
+ if(!d)return FALSE;if(FAILED(d->error))return FALSE;
+ /* Clear/Draw submit immediately via real RenderCb; no deferred commands
+  * require this process to run after return. TRUE is flushed, never idle or
+  * GPU completion. Unknown flags conservatively flush per WDK contract. */
+ d->pending=0;return TRUE;
+}
+static void APIENTRY relocate(D3D10DDI_HDEVICE h,D3D11_1DDI_DEVICEFUNCS *table){struct geo_typed_device *d=geo_typed_device(h);if(!d||!table){geo_typed_error(h,E_INVALIDARG);return;}*table=d->functions;}
+static void APIENTRY check_format(D3D10DDI_HDEVICE h,DXGI_FORMAT format,UINT *support) {
+ if(!support){geo_typed_error(h,E_INVALIDARG);return;}*support=0;
+ if(format==DXGI_FORMAT_B8G8R8A8_UNORM)*support=D3D10_DDI_FORMAT_SUPPORT_RENDERTARGET;
+ /* No texture/filter/blend/depth support follows merely from an allocation. */
+}
+static void APIENTRY check_samples(D3D10DDI_HDEVICE h,DXGI_FORMAT format,UINT samples,UINT *levels) {
+ if(!levels){geo_typed_error(h,E_INVALIDARG);return;}*levels=(format==DXGI_FORMAT_B8G8R8A8_UNORM&&samples==1)?1u:0u;
+}
+static void APIENTRY destroy_device(D3D10DDI_HDEVICE h) {
+ struct geo_typed_device *d=geo_typed_device(h);D3DDDICB_DESTROYCONTEXT q;HRESULT hr;
+ if(!d)return;
+ hr=geo_typed_views_unbind(h);if(SUCCEEDED(hr))hr=geo_typed_shaders_unbind(h);if(SUCCEEDED(hr))hr=geo_typed_draw_unbind(h);
+ if(FAILED(hr)||d->resources||d->views||d->shaders||d->layouts){geo_typed_error(h,FAILED(hr)?hr:E_FAIL);return;}
+ memset(&q,0,sizeof(q));q.hContext=d->backend.context;hr=d->backend.cb.pfnDestroyContextCb(d->backend.runtime,&q);
+ if(FAILED(hr)){geo_typed_error(h,hr);return;}
+ geo_typed_state_delete(d->state);geo_pco_device_destroy(&d->compiler,d->compiler_device);d->adapter->devices--;d->magic=0;
+ ((struct geo_typed_handle *)h.pDrvPrivate)->object=NULL;HeapFree(GetProcessHeap(),0,d);
+}
+static SIZE_T APIENTRY device_size(D3D10DDI_HADAPTER h,const D3D10DDIARG_CALCPRIVATEDEVICESIZE *p) {
+ if(!h.pDrvPrivate||!p||p->Interface!=D3D11_1_DDI_INTERFACE_VERSION)return 0;
+ return sizeof(struct geo_typed_handle);
+}
+static HRESULT APIENTRY create_device(D3D10DDI_HADAPTER h,D3D10DDIARG_CREATEDEVICE *p) {
+ struct geo_typed_adapter *a=h.pDrvPrivate;struct geo_typed_device *d;D3DDDICB_CREATECONTEXT q;D3DDDICB_DESTROYCONTEXT rollback;HRESULT hr,cleanup;
+ if(!a||!p||!p->hDrvDevice.pDrvPrivate||p->Interface!=D3D11_1_DDI_INTERFACE_VERSION||!p->p11_1DeviceFuncs||!p->pKTCallbacks||!p->p11UMCallbacks||!p->p11UMCallbacks->pfnSetErrorCb||
+    !p->pKTCallbacks->pfnCreateContextCb||!p->pKTCallbacks->pfnDestroyContextCb)return E_INVALIDARG;
+ ((struct geo_typed_handle *)p->hDrvDevice.pDrvPrivate)->object=NULL;
+ if(D3D11DDI_EXTRACT_3DPIPELINELEVEL_FROM_FLAGS(p->Flags)!=D3D11_1DDI_3DPIPELINELEVEL_9_1||geo_typed_profile_missing())return DXGI_ERROR_UNSUPPORTED;
+ d=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*d));if(!d)return E_OUTOFMEMORY;
+ d->magic=GEO_TYPED_DEVICE_MAGIC;d->adapter=a;d->core=p->hRTCoreLayer;d->callbacks=*p->p11UMCallbacks;
+ ((struct geo_typed_handle *)p->hDrvDevice.pDrvPrivate)->object=d;
+ memset(&q,0,sizeof(q));q.NodeOrdinal=0;q.EngineAffinity=1;hr=p->pKTCallbacks->pfnCreateContextCb(p->hRTDevice.handle,&q);
+ if(FAILED(hr))goto failed;
+ hr=geo_umd_clear_init(&d->backend,p->hRTDevice.handle,p->pKTCallbacks,&q);
+ if(SUCCEEDED(hr))geo_umd_install_clear_ddis(&d->memory);
+ if(SUCCEEDED(hr))hr=geo_pco_device_create(a->info.compiler_bvnc,&d->compiler,&d->compiler_device)==GEO_OK?S_OK:E_FAIL;
+ if(SUCCEEDED(hr))hr=geo_typed_state_create(&d->state);
+ if(FAILED(hr)){
+  memset(&rollback,0,sizeof(rollback));rollback.hContext=q.hContext;cleanup=p->pKTCallbacks->pfnDestroyContextCb(p->hRTDevice.handle,&rollback);
+  if(FAILED(cleanup)){a->devices++;return hr;} /* retain actual ambiguous context */
+  goto failed;
+ }
+ geo_typed_resources_install(&d->functions);geo_typed_views_install(&d->functions);geo_typed_shaders_install(&d->functions);geo_typed_draw_install(&d->functions);geo_typed_state_install(&d->functions);
+ d->functions.pfnFlush=flush;d->functions.pfnRelocateDeviceFuncs=relocate;d->functions.pfnDestroyDevice=destroy_device;d->functions.pfnCheckFormatSupport=check_format;d->functions.pfnCheckMultisampleQualityLevels=check_samples;
+ *p->p11_1DeviceFuncs=d->functions;a->devices++;return S_OK;
+ failed:
+ if(d->state)geo_typed_state_delete(d->state);if(d->compiler_device)geo_pco_device_destroy(&d->compiler,d->compiler_device);
+ ((struct geo_typed_handle *)p->hDrvDevice.pDrvPrivate)->object=NULL;d->magic=0;HeapFree(GetProcessHeap(),0,d);return hr;
+}
+static HRESULT APIENTRY close_adapter(D3D10DDI_HADAPTER h){struct geo_typed_adapter *a=h.pDrvPrivate;if(!a||a->devices)return E_FAIL;HeapFree(GetProcessHeap(),0,a);return S_OK;}
+static HRESULT APIENTRY versions(D3D10DDI_HADAPTER h,UINT32 *count,UINT64 *out) {
+ UINT required=geo_typed_profile_missing()?0u:1u;
+ if(!h.pDrvPrivate||!count)return E_INVALIDARG;
+ if(out&&*count<required){*count=required;return HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER);}
+ if(out&&required)out[0]=D3D11_1_DDI_SUPPORTED;*count=required;return S_OK;
+}
+static HRESULT APIENTRY caps(D3D10DDI_HADAPTER h,const D3D10_2DDIARG_GETCAPS *p) {
+ if(!h.pDrvPrivate||!p||!p->pData)return E_INVALIDARG;
+ if(p->DataSize!=sizeof(UINT))return E_INVALIDARG;
+ switch(p->Type){
+ case D3D11DDICAPS_3DPIPELINESUPPORT:*(UINT *)p->pData=geo_typed_profile_missing()?0:D3D11DDI_ENCODE_3DPIPELINESUPPORT_CAP(D3D11_1DDI_3DPIPELINELEVEL_9_1);return S_OK;
+ case D3D11DDICAPS_THREADING:case D3D11DDICAPS_SHADER:*(UINT *)p->pData=0;return S_OK;
+ default:return E_NOTIMPL;
+ }
+}
+__declspec(dllexport) HRESULT APIENTRY OpenAdapter10_2(D3D10DDIARG_OPENADAPTER *p) {
+ struct geo_typed_adapter *a;D3DDDICB_QUERYADAPTERINFO q;D3D10_2DDI_ADAPTERFUNCS table;HRESULT hr;
+ if(!p||!p->pAdapterCallbacks||!p->pAdapterCallbacks->pfnQueryAdapterInfoCb||!p->pAdapterFuncs_2)return E_INVALIDARG;
+ a=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*a));if(!a)return E_OUTOFMEMORY;a->runtime=p->hRTAdapter;
+ memset(&q,0,sizeof(q));q.pPrivateDriverData=&a->info;q.PrivateDriverDataSize=sizeof(a->info);hr=p->pAdapterCallbacks->pfnQueryAdapterInfoCb(p->hRTAdapter.handle,&q);
+ if(FAILED(hr)){HeapFree(GetProcessHeap(),0,a);return hr;}
+ if(a->info.size!=sizeof(a->info)||a->info.version!=2||a->info.magic!=GEO_ADAPTER_INFO_MAGIC||a->info.compiler_bvnc!=GEO_COMPILER_BVNC||a->info.draw_version!=1){HeapFree(GetProcessHeap(),0,a);return E_UNEXPECTED;}
+ memset(&table,0,sizeof(table));table.pfnCalcPrivateDeviceSize=device_size;table.pfnCreateDevice=create_device;table.pfnCloseAdapter=close_adapter;table.pfnGetSupportedVersions=versions;table.pfnGetCaps=caps;
+ *p->pAdapterFuncs_2=table;p->hAdapter.pDrvPrivate=a;return S_OK;
+}
