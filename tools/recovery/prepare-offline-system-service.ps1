@@ -261,7 +261,7 @@ function Read-GpuInstalledSelection($Root,$Plan) {
     try {
         foreach($name in @('InfPath','DriverVersion','DriverDate')) { if($class.GetValueKind($name) -ne [Microsoft.Win32.RegistryValueKind]::String) { throw 'GPU class metadata type mismatch' } }
         $inf=[string]$class.GetValue('InfPath');$version=[string]$class.GetValue('DriverVersion');$date=[string]$class.GetValue('DriverDate')
-        if($inf -notmatch '^oem[0-9]+\.inf$') { throw 'GPU selected INF is not an OEM package' }
+        if($inf -notmatch '^oem[0-9]+\.inf$' -and $inf -cne 'mt8167-ge8300.inf') { throw 'GPU selected INF is neither an OEM package nor the fixed GPU INF basename' }
         $parsedDate=[DateTime]::ParseExact($date,[string[]]@('M-d-yyyy','MM-dd-yyyy','M/d/yyyy','MM/dd/yyyy','yyyy-MM-dd'),[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::None)
         $installed=Get-GpuVersion ($parsedDate.ToString('MM/dd/yyyy')+','+$version)
         return [ordered]@{instance_id='ACPI\MOU0006\0';driver_class_key=$driver;inf_path=$inf;driver_ver=$installed.driver_ver;
