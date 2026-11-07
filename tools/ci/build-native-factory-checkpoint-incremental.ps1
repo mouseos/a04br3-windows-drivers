@@ -4,7 +4,7 @@ $ErrorActionPreference='Stop'
 if(!$EnableCandidate){throw 'Explicit native initialization evidence opt-in required'}
 $root=(& git -C $PSScriptRoot rev-parse --show-toplevel)
 if(@(& git -C $root status --porcelain).Count){throw 'Clean source required'}
-$allowed=@('drivers/gpu/mt8167/vendor_m1_11/native_factory_checkpoint.h','drivers/gpu/mt8167/vendor_m1_11/native_owner_factory.c','drivers/gpu/mt8167/vendor_m1_11/native_owner_factory_platform.c','drivers/gpu/mt8167/vendor_m1_11/native_owner_allocation.c','tools/ci/build-native-factory-checkpoint-incremental.ps1')
+$allowed=@('drivers/gpu/mt8167/vendor_m1_11/native_factory_checkpoint.h','drivers/gpu/mt8167/vendor_m1_11/native_owner_factory.c','drivers/gpu/mt8167/vendor_m1_11/native_owner_factory_platform.c','drivers/gpu/mt8167/vendor_m1_11/native_owner_allocation.c','tools/ci/build-native-factory-checkpoint-incremental.ps1','drivers/gpu/mt8167/vendor_m1_11/windows_render_cold.c','drivers/gpu/mt8167/vendor_m1_11/windows_native_code.c','tests/gpu_vendor_windows_native_job_test.c','tests/gpu_vendor_windows_render_cold_test.c')
 foreach($p in @(& git -C $root diff --name-only e83792d88485883130e137309b0ef027b3c7bc5e HEAD)){if($p -notin $allowed){throw 'Unreviewed native source change'}}
 if((Get-FileHash $BaselineLibrary -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'cee101f279430ff214e853d1104017941fb4df884e75d0e0a764c0eb22b54a87'){throw 'Native baseline archive mismatch'}
 $out=[IO.Path]::GetFullPath($OutputDirectory)
@@ -16,7 +16,7 @@ $oldTemp=$env:TEMP;$oldTmp=$env:TMP
 try{
  $env:TEMP="$out\tmp";$env:TMP=$env:TEMP;$lib="$out\ge8300-native-owner-core.lib";Copy-Item $BaselineLibrary $lib
  $members=@(& llvm-ar t $lib);$objects=@()
- foreach($unit in @('native_owner_factory','native_owner_factory_platform','native_owner_allocation')){
+ foreach($unit in @('native_owner_factory','native_owner_factory_platform','native_owner_allocation','windows_render_cold','windows_native_code')){
   $member='vendor_m1_11-'+$unit+'.obj';if(@($members|Where-Object {[IO.Path]::GetFileName($_) -eq $member}).Count -ne 1){throw 'Expected one fixed native archive member'}
   $obj="$out\$member";& clang @common -c "$gpu\vendor_m1_11\$unit.c" -o $obj;if($LASTEXITCODE){throw 'Native checkpoint compile failed'}
   & llvm-ar r $lib $obj;if($LASTEXITCODE){throw 'Native member replacement failed'};$after=@(& llvm-ar t $lib);if($after.Count -ne $members.Count -or @($after|Where-Object {[IO.Path]::GetFileName($_) -eq $member}).Count -ne 1){throw 'Archive member replacement not unique'};$objects+=@{member=$member;sha256=(Get-FileHash $obj -Algorithm SHA256).Hash.ToLowerInvariant()}

@@ -12,8 +12,29 @@ static void candidate_fixture(struct fixture *x)
         (uint64_t)x->r.buffer[0].logical.QuadPart,
         (uint64_t)x->r.buffer[1].logical.QuadPart,UINT64_C(0x65c0000000),1,&x->r.layout));
 }
+static void native_without_clear_program(void)
+{
+ struct fixture x;struct a04_vendor_native_cold *n=NULL;
+ candidate_fixture(&x);
+ /* Real render_prepare(FALSE) has no diagnostic program buffers and starts
+  * with empty code ancestors. Native must create its own USC/PDS mappings. */
+ free(x.r.buffer[7].cpu);memset(&x.r.buffer[7],0,sizeof(x.r.buffer[7]));
+ free(x.r.buffer[10].cpu);memset(&x.r.buffer[10],0,sizeof(x.r.buffer[10]));
+ x.r.clear_ready=FALSE;
+ ((uint32_t *)x.r.buffer[1].cpu)[A04_NATIVE_USC_VA>>30]=0;
+ ((uint32_t *)x.r.buffer[1].cpu)[A04_NATIVE_PDS_VA>>30]=0;
+ memset(x.r.buffer[5].cpu,0,4096);memset(x.r.buffer[6].cpu,0,4096);
+ memset(x.r.buffer[8].cpu,0,4096);memset(x.r.buffer[9].cpu,0,4096);
+ assert(a04_vendor_native_allocate_cold(&n,&x.r,&x.adapter,64,800,600)==STATUS_SUCCESS);
+ assert(n && a04_vendor_native_job_staged(n));
+ assert(((uint32_t *)x.r.buffer[1].cpu)[A04_NATIVE_USC_VA>>30]==((uint32_t)((uint64_t)x.r.buffer[8].logical.QuadPart>>8)|1u));
+ assert(((uint64_t *)x.r.buffer[8].cpu)[0]==((uint64_t)x.r.buffer[9].logical.QuadPart|1u));
+ assert(a04_vendor_native_release_cold(&n)==STATUS_SUCCESS && !n);
+ finish(&x);
+}
 int main(void)
 {
+    native_without_clear_program();
     struct fixture x;struct a04_vendor_native_cold *n=NULL;struct a04_vendor_native_candidate *c;
     RGXFWIF_CCCB_CTL before[2];unsigned i,allocated;
     candidate_fixture(&x);

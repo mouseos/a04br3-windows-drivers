@@ -48,11 +48,13 @@ int main(void)
     fail_at=3;assert(a04_vendor_render_prepare_cold(&r,&f,&adapter,FALSE,0)==STATUS_INSUFFICIENT_RESOURCES);
     assert(frees==2 && !pools && !r.firmware && table[0]==0x1234 && !table[128]);
     fail_at=0;assert(a04_vendor_render_prepare_cold(&r,&f,&adapter,FALSE,0)==STATUS_SUCCESS);
+    assert(r.buffer[5].cpu && r.buffer[6].cpu && r.buffer[8].cpu && r.buffer[9].cpu);
+    assert(!r.buffer[7].cpu && !r.buffer[10].cpu);
     assert(r.mapped && table[0]==0x1234 && table[128] && r.layout.used<32768);
     assert(((uint32_t *)r.buffer[1].cpu)[A04_VENDOR_RENDER_SCRATCH_VA>>30]);
     f.hardware_owned=TRUE;assert(a04_vendor_render_release_cold(&r)==STATUS_DEVICE_BUSY && table[128]);
     f.hardware_owned=FALSE;assert(a04_vendor_render_release_cold(&r)==STATUS_SUCCESS && !table[128]);
-    assert(frees==12 && !pools && !r.firmware);
+    assert(frees==16 && !pools && !r.firmware);
     assert(a04_vendor_render_prepare_cold(&r,&f,&adapter,TRUE,0)==STATUS_SUCCESS);
     assert(r.clear_ready && ((unsigned char *)r.buffer[4].cpu)[0]==0xa5);
     assert(((uint32_t *)r.buffer[1].cpu)[UINT64_C(0xa800000000)>>30]);
@@ -172,8 +174,8 @@ int main(void)
     assert(((uint32_t *)r.buffer[1].cpu)[512]==((uint32_t)((uint64_t)surface.pd.logical.QuadPart>>8)|1u));
     assert(((uint32_t *)surface.pixels.cpu)[0]==0xa5a5a5a5u &&
            ((uint32_t *)surface.pixels.cpu)[surface.bytes/4u-1]==0xa5a5a5a5u);
-    assert(a04_vendor_render_release_cold(&r)==STATUS_SUCCESS && frees==32 && !pools);
-    assert(a04_vendor_surface_release(&surface)==STATUS_SUCCESS && frees==38);
+    assert(a04_vendor_render_release_cold(&r)==STATUS_SUCCESS && frees==36 && !pools);
+    assert(a04_vendor_surface_release(&surface)==STATUS_SUCCESS && frees==42);
     {
         struct a04_vendor_copy_scratch retained={0};unsigned oldfrees;
         assert(a04_vendor_render_prepare_cold(&r,&f,&adapter,TRUE,0)==STATUS_SUCCESS);

@@ -53,8 +53,7 @@ NTSTATUS a04_vendor_native_reserve_code_cold(struct a04_vendor_native_cold *n,PD
            a04_rgx_device_read_words(pc,r->buffer[1].cpu,4096u) ||
            a04_rgx_device_read_words(pd,r->buffer[directory[i]].cpu,4096u) ||
            a04_rgx_device_read_words(pt,r->buffer[leaf[i]].cpu,4096u) ||
-           pc[code_va[i]>>30]!=((uint32_t)((uint64_t)r->buffer[directory[i]].logical.QuadPart>>8)|1u) ||
-           !pd[(code_va[i]>>21)&511u] || pt[(code_va[i]>>12)&511u] ||
+           pt[(code_va[i]>>12)&511u] ||
            a04_gpu_mmu_map_4k(pc,pd,pt,(uint64_t)r->buffer[directory[i]].logical.QuadPart,
              (uint64_t)r->buffer[leaf[i]].logical.QuadPart,code_va[i],
              (uint64_t)n->code[i].logical.QuadPart,1u,
@@ -63,8 +62,17 @@ NTSTATUS a04_vendor_native_reserve_code_cold(struct a04_vendor_native_cold *n,PD
         a04_gpu_dma_barrier();
         /* Claim before the write so even a partial failure retains ownership. */
         n->code_mapped|=1u<<i;
+        /* Child before parent: the native-only base has empty code tables.
+         * map_4k already rejects conflicting nonzero ancestors/leaf slots.
+         * These pages remain owned by the render parent through teardown. */
         if(a04_rgx_device_write_words((UCHAR *)r->buffer[leaf[i]].cpu+
             (((code_va[i]>>12)&511u)*8u),pt+((code_va[i]>>12)&511u),8u))goto done;
+        a04_gpu_dma_barrier();
+        if(a04_rgx_device_write_words((UCHAR *)r->buffer[directory[i]].cpu+
+            (((code_va[i]>>21)&511u)*8u),pd+((code_va[i]>>21)&511u),8u))goto done;
+        a04_gpu_dma_barrier();
+        if(a04_rgx_device_write_words((UCHAR *)r->buffer[1].cpu+
+            (code_va[i]>>30)*4u,pc+(code_va[i]>>30),4u))goto done;
         a04_gpu_dma_barrier();
     }
     status=STATUS_SUCCESS;

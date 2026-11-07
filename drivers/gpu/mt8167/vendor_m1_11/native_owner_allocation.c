@@ -50,7 +50,8 @@ NTSTATUS a04_native_allocation_create(struct a04_native_owner_allocation **out,
     if(!NT_SUCCESS(status))goto fail;
     status=a04_vendor_native_allocate_cold_ex(&a->native,&a->render,a->adapter,
         a->map_registers,800,600,&a->diagnostic);
-    GeoFactoryCheckpoint(32,status,0,0,0,0);
+    GeoFactoryCheckpoint(32,status,a->diagnostic.stage,a->diagnostic.index,a->diagnostic.request_bytes,a->diagnostic.map_registers);
+    GeoFactoryCheckpoint(33,status,a->diagnostic.data_bytes,a->diagnostic.data_blocks,a->diagnostic.pixel_blocks,(ULONG)a->diagnostic.status);
     if(!NT_SUCCESS(status))goto fail;
     if(!a04_vendor_native_job_staged(a->native)){status=STATUS_INVALID_DEVICE_STATE;goto fail;}
     return STATUS_SUCCESS;

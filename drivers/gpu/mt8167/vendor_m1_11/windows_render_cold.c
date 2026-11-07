@@ -84,7 +84,9 @@ NTSTATUS a04_vendor_render_prepare_cold(struct a04_vendor_render_cold *r,
     for(i=0;i<16;i++)if(r->buffer[i].cpu || r->buffer[i].adapter)return STATUS_INVALID_PARAMETER;
     r->firmware=f;f->render_owner=r;
     for(i=0;i<16;i++) {
-        if(!prepare_clear && i>=5u && i<=10u)continue;
+        /* Native USC/PDS still need owned directory/leaf pages. Only the
+         * diagnostic program data allocations are optional. */
+        if(!prepare_clear && (i==7u || i==10u))continue;
         status=a04_vendor_uncached_allocate(&r->buffer[i],adapter,sizes[i]);
         if(!NT_SUCCESS(status))goto done;
         if(!a04_rgx_mips_physical_range((uint64_t)r->buffer[i].logical.QuadPart,sizes[i],4096) ||
