@@ -42,8 +42,15 @@
 #error Only fixed tone or EnginePcm probe builds are supported
 #endif
 #if A04_HARDWARE_PROBE_ENGINE_PCM
-static const WCHAR service_name[]=L"MT8167RenderProbe";
-static const WCHAR service_exe[]=L"MT8167RenderProbe.exe";
+#if A04_RENDER_BIND_UPDATE
+#define A04_RENDER_SERVICE_NAME L"MT8167RenderStage"
+#define A04_RENDER_SERVICE_EXE L"MT8167RenderStage.exe"
+#else
+#define A04_RENDER_SERVICE_NAME L"MT8167RenderProbe"
+#define A04_RENDER_SERVICE_EXE L"MT8167RenderProbe.exe"
+#endif
+static const WCHAR service_name[]=A04_RENDER_SERVICE_NAME;
+static const WCHAR service_exe[]=A04_RENDER_SERVICE_EXE;
 static const WCHAR *const clients[A04_CLIENT_COUNT]={L"ge8300-d3d-clear.exe"
 #if A04_ENGINE_BRIGHTNESS_CLIENT
  ,L"mt8167-brightness-native.exe"

@@ -108,7 +108,7 @@ static DWORD deferred_marker(const WCHAR *name,int create)
 static DWORD deferred_boot_fence(int create)
 {
  HKEY key;DWORD disposition;LONG status;
- const WCHAR *name=L"SYSTEM\\CurrentControlSet\\Services\\MT8167RenderProbe\\DeferredInstallBoot";
+ const WCHAR *name=L"SYSTEM\\CurrentControlSet\\Services\\" A04_RENDER_SERVICE_NAME L"\\DeferredInstallBoot";
  if(create){
   status=RegCreateKeyExW(HKEY_LOCAL_MACHINE,name,0,NULL,REG_OPTION_VOLATILE,KEY_QUERY_VALUE,NULL,&key,&disposition);
   if(status)return status;RegCloseKey(key);return disposition==REG_CREATED_NEW_KEY?0:ERROR_ALREADY_EXISTS;
@@ -216,9 +216,9 @@ static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const
 {
  static SP_DEVINSTALL_PARAMS_W params;static SP_DRVINFO_DATA_W driver,extra,chosen;DWORD error=0,type=0,bytes=0;DWORD list_type=SPDIT_CLASSDRIVER;BOOL list=FALSE;WCHAR class_name[64];
 #if A04_RENDER_PROFILE
- /* A hardware-initiated, previously classless SD node needs a compatible
-  * driver list. BuildDriverInfoList updates SP_DEVINFO_DATA.ClassGuid for
-  * that path; a class list does not establish this first-device contract. */
+ /* Select the fixed compatible driver through the standard DIF dispatcher.
+  * The default administrator handler changes System -> Display class; do
+  * not synthesize ClassGUID registry values. */
  if(i==2)list_type=SPDIT_COMPATDRIVER;
 #endif
  deferred_current_target=i;deferred_current_step=1;
@@ -244,7 +244,7 @@ static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const
    error=ERROR_REVISION_MISMATCH;goto done;
   }
   /* Never invent ClassGUID registry keys. Confirm the standard selection
-   * established the fixed SCSIAdapter class before invoking class installers. */
+   * established the fixed Display class before invoking class installers. */
   if(!SetupDiGetDeviceRegistryPropertyW(set,dev,SPDRP_CLASSGUID,&type,(BYTE *)class_name,sizeof(class_name),&bytes)){error=GetLastError();goto done;}
   if(type!=REG_SZ||bytes<2||bytes>sizeof(class_name)||(bytes&1)||class_name[bytes/2-1]||
      lstrcmpiW(class_name,L"{4D36E968-E325-11CE-BFC1-08002BE10318}")){error=ERROR_REVISION_MISMATCH;goto done;}
@@ -278,6 +278,30 @@ static DWORD render_disk_baseline(void){
  if(!e)e=deferred_file(full,deferred_render_baseline.hash[1],&held);
  if(held!=INVALID_HANDLE_VALUE)CloseHandle(held);return e;
 }
+#if A04_RENDER_BIND_UPDATE
+/* Compare the observed installed binding before selecting any replacement.
+ * Files and selected metadata are separate: offline DISM can replace the former
+ * while leaving the installed node's INF/version unchanged. */
+static DWORD render_bound_baseline(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,ULONGLONG version)
+{
+ WCHAR value[128],system[MAX_PATH],drivers[MAX_PATH],full[MAX_PATH];
+ const DWORD props[2]={SPDRP_CLASSGUID,SPDRP_SERVICE};
+ const WCHAR *wanted[2]={deferred_baseline_classes[i],deferred_baseline_services[i]};
+ DWORD k,type,bytes,error;HANDLE directory=INVALID_HANDLE_VALUE,file=INVALID_HANDLE_VALUE;
+ if(version!=deferred_baselines[i].version)return ERROR_REVISION_MISMATCH;
+ error=deferred_selected_date(i,set,dev,&deferred_baselines[i]);if(error)return error;
+ for(k=0;k<2;k++){
+  if(!SetupDiGetDeviceRegistryPropertyW(set,dev,props[k],&type,(BYTE*)value,sizeof(value),&bytes))return GetLastError();
+  if(type!=REG_SZ||bytes<2||bytes>sizeof(value)||(bytes&1)||value[bytes/2-1]||lstrcmpiW(value,wanted[k]))return ERROR_REVISION_MISMATCH;
+ }
+ if(!GetSystemDirectoryW(system,MAX_PATH))return GetLastError();
+ error=path(drivers,system,L"drivers");if(!error)error=hold_directory(drivers,&directory);
+ if(!error)error=path(full,drivers,deferred_baseline_sysnames[i]);
+ if(!error)error=deferred_file(full,deferred_baselines[i].hash[1],&file);
+ if(file!=INVALID_HANDLE_VALUE)CloseHandle(file);if(directory!=INVALID_HANDLE_VALUE)CloseHandle(directory);
+ return error;
+}
+#endif
 static DWORD deferred_once(int diagnostic)
 {
  static WCHAR drivers[MAX_PATH],folders[DEFERRED_TARGET_COUNT][MAX_PATH],full[DEFERRED_TARGET_COUNT][5][MAX_PATH];
@@ -303,12 +327,17 @@ static DWORD deferred_once(int diagnostic)
   /* A failed-install child may have no selected version; permit the fixed
    * signed candidate in install phase, but never infer success from absence. */
   if(error){if(diagnostic||i==0||!(error==ERROR_NOT_FOUND||error==ERROR_INVALID_DATA))goto done;error=0;version=0;}
+#if !A04_RENDER_BIND_UPDATE
   if(i==2&&!diagnostic){
    if(version!=deferred_render_baseline.version){error=ERROR_REVISION_MISMATCH;goto done;}
    error=deferred_selected_date(i,set,&devs[i],&deferred_render_baseline);if(error)goto done;
    error=render_disk_baseline();if(error)goto done;
   }
 
+#endif
+#if A04_RENDER_BIND_UPDATE
+  if(!diagnostic&&version!=deferred_pins[i].version){error=render_bound_baseline(i,set,&devs[i],version);if(error)goto done;}
+#endif
   if(version>deferred_pins[i].version){error=ERROR_REVISION_MISMATCH;goto done;}
   if(version==deferred_pins[i].version){
    error=deferred_selected_date(i,set,&devs[i],&deferred_pins[i]);if(error)goto done;

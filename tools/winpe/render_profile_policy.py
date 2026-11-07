@@ -34,7 +34,7 @@ def version(v):
  for n in nums:number=(number<<16)|n
  return number,ticks
 
-def package(root,entry,role,repo):
+def package(root,entry,role,repo,render_color=False):
  require(set(entry)=={'directory','manifest_sha256','source_commit'},'component field不一致: '+role)
  d=rooted(root,entry['directory']);p=d/'signed-manifest.json';require(sha(p)==hexpin(entry['manifest_sha256']),'署名manifest pin不一致')
  m=jsonfile(p);source=hexpin(entry['source_commit'],40)
@@ -68,6 +68,13 @@ def package(root,entry,role,repo):
  elif role=='display':
   require(source==DOD and v=='11/07/2026,0.0.1.6' and files[names[1]]=='8a2cf298b782acad669cf95b6dd81ced062761e1e9ecd5d095316dedfff3a4b0','CPU DOD1.6固定pin不一致')
   flags=m.get('effective_flags',{});require(flags and flags.get('A04_MT8167_DISPLAY_BRIGHTNESS')==1 and all(value==0 for key,value in flags.items() if key!='A04_MT8167_DISPLAY_BRIGHTNESS'),'CPU present専用flags不一致')
+ elif render_color:
+  require(role=='render' and source=='4f55794471a4008c1ceaa3a1da2679c0f3fefd2a' and v=='11/07/2026,0.0.3.3','固定COLOR3.3 source/version不一致')
+  require(files['ge8300-mips.fw']==FW and m.get('default_off') is True and m.get('signature_status')=='Valid','COLOR署名/FW不一致')
+  require(m.get('required_parent_commit')==PARENT and m.get('required_acpi_commit')==BOOT,'COLOR matched親/UEFI不一致')
+  linked=jsonfile(d/'linked-manifest.json');require(sha(d/'linked-manifest.json')==hexpin(m['linked_manifest_sha256']) and linked==m.get('source_runtime'),'COLOR linked provenance不一致')
+  require(linked.get('native_source_commit')=='e83792d88485883130e137309b0ef027b3c7bc5e' and linked.get('limited_development_profile') is True and linked.get('standard_profile_qualified') is False,'COLOR native/profile不一致')
+  flags={}
  else:
   require(v=='11/07/2026,0.0.3.2' and files['ge8300-mips.fw']==FW and m.get('default_off') is True,'render3.2/FW/default-off不一致')
   require(m.get('required_parent_commit')==PARENT and m.get('required_acpi_commit')==BOOT and m.get('signature_status')=='Valid','render matched依存/署名不一致')

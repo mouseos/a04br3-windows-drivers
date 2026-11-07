@@ -27,7 +27,7 @@ static void diagnostic_dword(const WCHAR *name,DWORD value)
 {diagnostic_write(name,REG_DWORD,&value,sizeof(value));}
 static DWORD diagnostic_begin(int phase)
 {
- static const WCHAR prefix[]=L"SYSTEM\\CurrentControlSet\\Services\\MT8167RenderProbe\\Parameters\\LastDiagnostic\\";
+ static const WCHAR prefix[]=L"SYSTEM\\CurrentControlSet\\Services\\" A04_RENDER_SERVICE_NAME L"\\Parameters\\LastDiagnostic\\";
  WCHAR key[256],policy[65];DWORD disposition;unsigned i,n=0;LSTATUS rc;
  if(diagnostic_key)return ERROR_ALREADY_EXISTS;
  while(prefix[n]){key[n]=prefix[n];n++;}
