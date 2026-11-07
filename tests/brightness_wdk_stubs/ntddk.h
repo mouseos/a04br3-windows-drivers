@@ -37,6 +37,7 @@ static inline size_t RtlCompareMemory(const void*a,const void*b,size_t n){const 
 static inline LONG InterlockedIncrement(volatile LONG*p){return __sync_add_and_fetch(p,1);}
 static inline LONG InterlockedDecrement(volatile LONG*p){return __sync_sub_and_fetch(p,1);}
 #define KeMemoryBarrier() __sync_synchronize()
+ULONG DbgPrint(const char*,...);
 ULONG KeGetCurrentIrql(void);
 void KeInitializeMutex(KMUTEX*,ULONG);
 NTSTATUS KeWaitForSingleObject(void*,int,int,BOOLEAN,void*);

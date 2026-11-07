@@ -9,6 +9,7 @@
 #include <wbemidl.h>
 #include "brightness_sequence.h"
 #include "brightness_native.h"
+#include "brightness_wmi_result.h"
 #define WAIT_MS 3000
 /* Freestanding ARM32 entry: do not depend on an MSVC CRT installation. */
 void *memset(void *dst,int value,size_t length)
@@ -152,23 +153,38 @@ done:
  if(obj)IWbemClassObject_Release(obj);if(other)IWbemClassObject_Release(other);if(en)IEnumWbemClassObject_Release(en);
  SysFreeString(name);SysFreeString(klass_name);return (int)hr;
 }
+static int method_exec(void *context,void **direct,void **call)
+{
+ struct probe *p=context;
+ return (int)IWbemServices_ExecMethod(p->services,p->method_path,p->method_name,
+   WBEM_FLAG_RETURN_IMMEDIATELY,NULL,p->input,(IWbemClassObject **)direct,(IWbemCallResult **)call);
+}
+static int method_secure(void *context,void *call)
+{(void)context;return (int)secure((IUnknown *)call);}
+static int method_result(void *context,void *call,void **out)
+{(void)context;return (int)exact(IWbemCallResult_GetResultObject((IWbemCallResult *)call,WAIT_MS,(IWbemClassObject **)out));}
+static int method_value(void *context,void *reply,unsigned *value)
+{(void)context;return (int)number((IWbemClassObject *)reply,L"ReturnValue",CIM_UINT32,value);}
+static void method_release_object(void *context,void *reply)
+{(void)context;IWbemClassObject_Release((IWbemClassObject *)reply);}
+static void method_release_call(void *context,void *call)
+{(void)context;IWbemCallResult_Release((IWbemCallResult *)call);}
+static void method_trace(void *context,const char *phase,unsigned value,int hr)
+{(void)record(context,phase,0,value,hr);}
 static int set(void *context,unsigned level)
 {
- struct probe *p=context;VARIANT v;IWbemCallResult *call=NULL;IWbemClassObject *reply=NULL;unsigned result=~0u;HRESULT hr;
- VariantInit(&v);V_VT(&v)=VT_I4;V_I4(&v)=0; /* MOF uint32 maps to VT_I4. */
+ struct probe *p=context;VARIANT v;unsigned result=~0u;HRESULT hr;
+ struct a04_wmi_result_ops ops;
+ VariantInit(&v);V_VT(&v)=VT_I4;V_I4(&v)=0;
  hr=IWbemClassObject_Put(p->input,L"Timeout",0,&v,0);
  V_VT(&v)=VT_UI1;V_UI1(&v)=(BYTE)level;
  if(SUCCEEDED(hr))hr=IWbemClassObject_Put(p->input,L"Brightness",0,&v,0);
- if(SUCCEEDED(hr))hr=IWbemServices_ExecMethod(p->services,p->method_path,p->method_name,WBEM_FLAG_RETURN_IMMEDIATELY,NULL,p->input,NULL,&call);
- if(hr==S_OK && !call)hr=E_UNEXPECTED;
- if(hr==S_OK)hr=secure((IUnknown *)call);
- if(hr==S_OK)hr=exact(IWbemCallResult_GetResultObject(call,WAIT_MS,&reply));
- if(hr==S_OK && !reply)hr=E_UNEXPECTED;
- if(hr==S_OK)hr=number(reply,L"ReturnValue",CIM_UINT32,&result);
- /* Record both transport HRESULT and raw WMI method status. */
+ if(record(p,"wmi-arguments",level,0,(int)hr))p->log_failed=1;
+ ops.context=p;ops.exec=method_exec;ops.secure=method_secure;ops.result=method_result;
+ ops.value=method_value;ops.release_object=method_release_object;ops.release_call=method_release_call;ops.trace=method_trace;
+ if(hr==S_OK)hr=(HRESULT)a04_brightness_method_result(&ops,&result);
  if(record(p,"wmi-method-return",level,result,(int)hr))p->log_failed=1;
  if(hr==S_OK && result)hr=WBEM_E_FAILED;
- if(reply)IWbemClassObject_Release(reply);if(call)IWbemCallResult_Release(call);
  return (int)hr;
 }
 static int read_level(void *context,unsigned *value)

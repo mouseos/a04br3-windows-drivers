@@ -19,7 +19,7 @@ $oldTemp=$env:TEMP;$oldTmp=$env:TMP
 try {
  $temporary=Join-Path $out 'tmp';New-Item -ItemType Directory -Path $temporary | Out-Null
  $env:TEMP=$temporary;$env:TMP=$temporary
- $objects=@();$sources=@('brightness_native','brightness_sequence')
+ $objects=@();$sources=@('brightness_native','brightness_sequence','brightness_wmi_result')
  foreach($source in $sources) {
   $src=Join-Path $root "tools\display\$source.c";$obj=Join-Path $out "$source.obj";$objects+=$obj
   & clang --target=thumbv7-pc-windows-msvc -O2 -fms-extensions -fno-builtin -fno-stack-protector -D_ARM_ -DARM -D_WIN32_DCOM -D_WIN32_WINNT=0x0603 "-I$inc\um" "-I$inc\shared" -c $src -o $obj
@@ -42,7 +42,7 @@ try {
   log_path='C:\MT8167EngineProbe\brightness-native.log';arguments='none';raw_pwm_observed=$false;
   exe_sha256=(Get-FileHash $exe -Algorithm SHA256).Hash;
   source_hashes=@($sources | ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $root "tools\display\$_.c") -Algorithm SHA256).Hash}});
-  header_hashes=@(@('brightness_sequence.h','brightness_native.h') | ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $root "tools\display\$_") -Algorithm SHA256).Hash}});
+  header_hashes=@(@('brightness_sequence.h','brightness_native.h','brightness_wmi_result.h') | ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $root "tools\display\$_") -Algorithm SHA256).Hash}});
   library_hashes=@($libraries | ForEach-Object {@{name=[IO.Path]::GetFileName($_);sha256=(Get-FileHash $_ -Algorithm SHA256).Hash}});
   certificate_trust='must already be configured by main owner';sys_or_cat_modified=$false
  } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $out 'manifest.json') -Encoding UTF8

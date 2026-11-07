@@ -10,6 +10,7 @@ ULONG KeGetCurrentIrql(void){return irql;}
 void KeInitializeMutex(KMUTEX*m,ULONG){m->held=0;}
 NTSTATUS KeWaitForSingleObject(void*m,int,int,BOOLEAN,void*){KMUTEX*k=(KMUTEX*)m;assert(!k->held);k->held=1;return STATUS_SUCCESS;}
 void KeReleaseMutex(KMUTEX*m,BOOLEAN){assert(m->held);m->held=0;}
+ULONG DbgPrint(const char*,...){return 0;}
 void* ExAllocatePoolWithTag(int,size_t n,ULONG){void*p=calloc(1,n);if(p)pools++;return p;}
 void ExFreePoolWithTag(void*p,ULONG){assert(pools);pools--;free(p);}
 void* MmMapIoSpace(PHYSICAL_ADDRESS p,size_t n,int){assert(p.QuadPart==0x1100f000 && n==4096);maps++;return regs;}
@@ -43,9 +44,9 @@ int main()
     q.Version=2;assert(owner.QueryInterface(&q)==STATUS_NOT_SUPPORTED);q.Version=1;
     q.Size--;assert(owner.QueryInterface(&q)==STATUS_NOT_SUPPORTED);q.Size++;
     assert(owner.QueryInterface(&q)==STATUS_SUCCESS && pools==1);
-    UCHAR level=0,count=0,levels[100]={};
-    assert(b.GetPossibleBrightness(b.Context,0,&count,NULL)==STATUS_BUFFER_TOO_SMALL && count==100);
-    assert(b.GetPossibleBrightness(b.Context,100,&count,levels)==STATUS_SUCCESS && levels[0]==1 && levels[99]==100);
+    UCHAR level=0,count=0,levels[102]={};
+    assert(b.GetPossibleBrightness(b.Context,0,&count,NULL)==STATUS_BUFFER_TOO_SMALL && count==102);
+    assert(b.GetPossibleBrightness(b.Context,102,&count,levels)==STATUS_SUCCESS && count==102 && levels[0]==50 && levels[1]==50 && levels[2]==1 && levels[101]==100);
     assert(b.GetBrightness(b.Context,&level)==STATUS_SUCCESS && level==50);
     assert(!NT_SUCCESS(b.SetBrightness(b.Context,0)) && !NT_SUCCESS(b.SetBrightness(b.Context,101)) && !writes);
     for(unsigned i=1;i<=100;i++){
@@ -53,6 +54,7 @@ int main()
         assert(b.GetBrightness(b.Context,&level)==STATUS_SUCCESS && level==i);
         assert((regs[5]&~(0x1fffu<<16))==(baseline[5]&~(0x1fffu<<16)));
     }
+    assert(b.GetPossibleBrightness(b.Context,102,&count,levels)==STATUS_SUCCESS && levels[0]==50 && levels[1]==50); /* Defaults must not follow user Set. */
     for(unsigned i=0;i<1024;i++)if(i!=5)assert(regs[i]==baseline[i]);
     unsigned before=writes;owner.SetPower(FALSE);
     assert(b.SetBrightness(b.Context,20)==STATUS_DEVICE_NOT_READY && writes==before);

@@ -858,3 +858,11 @@ test-mt8167-brightness-native: build/brightness_native_sequence_test
 build/brightness_native_sequence_test: tests/brightness_native_sequence_test.c tools/display/brightness_sequence.c tools/display/brightness_sequence.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(filter %.c,$^) -o $@
+
+.PHONY: test-mt8167-brightness-wmi-result
+test-mt8167-brightness-wmi-result: build/brightness_wmi_result_test
+	./build/brightness_wmi_result_test
+
+build/brightness_wmi_result_test: tests/brightness_wmi_result_test.c tools/display/brightness_wmi_result.c tools/display/brightness_wmi_result.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(filter %.c,$^) -o $@
