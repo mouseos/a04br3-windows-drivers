@@ -39,3 +39,23 @@ regipyの値型はWin32の数値3ではなく文字列`REG_BINARY`を返すた�
 membership receiptは`tools/ci/verify-msdc-winpe-quiet.ps1`を既存WDK環境で一度実行して回収する。固定packageのSYS/observer/CAT署名・署名者、alias INF/SYSのCAT所属を全て成功した後だけreceiptを生成する。Linuxのosslsigncodeではalias INFのCAT所属検証に未対応のため、それを無検証で通過させず、固定package hashに結合したWDK receiptを必須にする。
 
 出力は`maintenance-staged.wim`、`maintenance-staged-esp.img`、`manifest.json`。これは次回更新の**新base入力候補**であり、旧base hash固定のGPU/private media builderへ無条件に投入できるものではない。次のbuilder統合では、この新base manifestと生成出自を明示して専用型として追加する必要がある。original base許容gateの削除や任意base許可は行っていない。起動・速度改善は未測定。
+
+## 最新Engineとの統合と生成済みbaseの引渡し
+
+ObserveOnly source66996e88を起点とする独立branchで、この生成経路と
+`preparation_base_input.py`の固定selectorを統合した。run93 source/媒体は編集しない。
+新builderの`--preparation-base-manifest`、`--preparation-base-manifest-sha256`、
+`--preparation-base-membership-receipt`をすべて明示したprivate媒体だけでquiet baseを選べる。
+指定無しは従来originalのhashに限定し、任意baseを受け入れない。
+
+生成済みbaseの正本はmanifest be3bdabe、WIM dee7bf64、ESP0e23cdb1。
+`verify-msdc-winpe-quiet-base.py`はこれらの実体をoriginalと再比較し、flat5file、
+SOFTWARE公開証明書追加、既存store全値、変更外WIM stream/security/attrs、
+WIM以外の全ESP file、BCD、WinPE SYSTEM保持を確認する。
+旧準備source2371bd09と再利用quiet e2db926fのDMA/PIO/CDB/SCSI/guardソースのbyte一致も確認する。
+既存SYSは再compile・再署名せず、member/signature正本receiptへ結合する。
+
+これは完成済みの**準備WinPE base WIM/ESP**と次更新builder入力の引渡し。
+run93開始後にfresh92を使って別のOS SYSTEMや実行可能transactionは生成しない。
+次のnative SYSTEM・target/client結合はmainが返却するrun93後の新freshを使う。
+DMA成功や速度改善量、実機での選択driverは未検証。
