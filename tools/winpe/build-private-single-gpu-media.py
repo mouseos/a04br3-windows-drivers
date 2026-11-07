@@ -3,11 +3,13 @@
 import argparse, hashlib, importlib.util, json, os, re, shutil, subprocess
 from pathlib import Path
 from render_single_gpu_policy import load_map, generate, rooted, sha, require, SIGNER
+from preparation_base_input import select_preparation_base
 from private_hardware_probe_input import prepared_system_check, certificate_trust_commands, private_path
 
 def main():
  ap=argparse.ArgumentParser()
  for n in ('workspace','base','package-map','service-package','prepared-system','prepared-system-manifest','out','tools'):ap.add_argument('--'+n,type=Path,required=True)
+ ap.add_argument('--preparation-base-manifest',type=Path);ap.add_argument('--preparation-base-manifest-sha256');ap.add_argument('--preparation-base-membership-receipt',type=Path);ap.add_argument('--private-media',action='store_true')
  ap.add_argument('--prepared-system-sha256',required=True);ap.add_argument('--source-commit',required=True);ap.add_argument('--enable-render-profile',action='store_true');a=ap.parse_args()
  root=a.workspace.resolve(strict=True);require(a.enable_render_profile,'既定OFF/明示opt-in必須');require(re.fullmatch('[0-9a-f]{40}',a.source_commit),'固定source必須')
  here=Path(__file__).resolve().parent;repo=here.parents[1]
@@ -15,12 +17,12 @@ def main():
  require(not subprocess.check_output(['git','-C',str(repo),'status','--porcelain'],text=True).strip(),'dirty source拒否')
  policy=load_map(a.package_map,root);fresh=policy['backup_manifest_sha256'];backup=root/policy['backup_path'];b=json.loads(backup.read_text());base=rooted(root,a.base);tools=rooted(root,a.tools);service=rooted(root,a.service_package)
  out=a.out.resolve();private_path(out,root);require(not out.exists(),'既存出力を変更しません')
- require(sha(base/'maintenance-staged.wim')=='0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4' and sha(base/'maintenance-staged-esp.img')=='22ac309921bd9ae405bd48e65d8cb8a70506c90f0c08e6edda4f0150fb4993ce','既知base不一致')
+ preparation_base=select_preparation_base(base,root,a.preparation_base_manifest,a.preparation_base_manifest_sha256,a.preparation_base_membership_receipt,a.private_media)
  sm=json.loads((service/'render-service-manifest.json').read_text(encoding='utf-8-sig'));require(sm.get('profile')=='render-single-gpu315-run99-v1' and sm.get('service')=='MT8167RenderSingleGpu' and sm.get('signed') is True and sm.get('signature_status')=='Valid' and sm.get('signing_thumbprint')==SIGNER and sm.get('source_dirty') is False,'固定署名service不一致')
  service_source=sm.get('source_commit','');require(re.fullmatch('[0-9a-f]{40}',service_source),'固定signed runtime source必須')
  require(subprocess.run(['git','-C',str(repo),'merge-base','--is-ancestor',service_source,a.source_commit],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0,'signed runtime source ancestry不一致')
  tooling_changes=subprocess.check_output(['git','-C',str(repo),'diff','--name-only',service_source,a.source_commit],text=True).splitlines()
- require(set(tooling_changes).issubset({'tools/winpe/build-private-single-gpu-media.py','tools/winpe/README-run97-preflight.md'}),'runtime/policy/native source差分がある場合は再署名が必要')
+ require(set(tooling_changes).issubset({'tools/winpe/build-private-single-gpu-media.py','tools/winpe/README-run97-preflight.md','tools/winpe/preparation_base_input.py','tools/ci/verify-msdc-winpe-quiet.ps1','tools/winpe/README-single-gpu-quiet-base.md'}),'runtime/policy/native source差分がある場合は再署名が必要')
  require(sm.get('policy')==policy and sha(service/'render-policy-manifest.json')==sm['policy_manifest_sha256'] and sha(service/'MT8167RenderSingleGpu.exe')==sm['exe_sha256'],'service/policy/EXE pin不一致')
  require((service/'render-deferred-policy.h').read_text()==generate(policy),'compile policy不一致')
  require(sha(service/'compare-files.exe')==sm.get('comparator',{}).get('exe_sha256') and sm['comparator'].get('signature_status')=='Valid' and sm['comparator'].get('signer_thumbprint')==SIGNER,'同梱native comparator署名/hash不一致')
@@ -83,9 +85,9 @@ def main():
   if p.is_file() and p.name!='startnet.cmd':commands+='add "'+str(p)+'" /a04br3/'+str(p.relative_to(stage))+'\n'
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'update',str(image),'1'],input=commands,text=True,env=env,check=True)
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'verify',str(image)],env=env,check=True)
- subprocess.run(['python3','-B',str(here/'replace-esp-wim.py'),'--template',str(base/'maintenance-staged-esp.img'),'--wim',str(image),'--output',str(out/'update-esp.img'),'--template-bcd-sha256','65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d','--template-wim-sha256','0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4'],env=env,check=True)
+ subprocess.run(['python3','-B',str(here/'replace-esp-wim.py'),'--template',str(base/'maintenance-staged-esp.img'),'--wim',str(image),'--output',str(out/'update-esp.img'),'--template-bcd-sha256','65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d','--template-wim-sha256',preparation_base['wim_sha256']],env=env,check=True)
  expected={n:h for role in policy['packages'].values() for n,h in role['files'].items() if n.endswith(('.sys','.dll','.fw'))}
- manifest={'private_do_not_distribute':True,'source_commit':a.source_commit,'service_source_commit':service_source,'tooling_only_changes_since_signed_service':tooling_changes,'preflight_journal_state':'PRECHECK','baseline_rejection_state':'BASELINE_REJECTED_NO_CHANGE','candidate_failure_state':'CANDIDATE_WRITE_FAILED','profile':policy['profile'],'selected_service':'MT8167RenderSingleGpu','host_backup_manifest_sha256':fresh,'recovery_boot_id':b['recovery_boot_id'],'token':token,'policy':policy,'policy_manifest_sha256':sha(service/'render-policy-manifest.json'),'service_exe_sha256':sha(service/'MT8167RenderSingleGpu.exe'),'backup_comparator':sm['comparator'],'probe':sm,'expected_installed_sys':{k:v for k,v in expected.items() if k.endswith('.sys')},'prepared_system':native,'files':files,'esp_sha256':sha(out/'update-esp.img'),'wim_sha256':sha(image),'expected_installed_files':expected,'offline_dism_packages':[],'software_or_trust_written':False,'native_candidate_reuse':False,'single_gpu_rearm':policy['engine_preservation']['single_gpu_rearm'],'normal_install_allowed':True,'boot_sequence':policy['sequence'],'required_next_boot':policy['boot'],'hardware_verified':False,'status':'generated-host-verified-runtime-unverified'}
+ manifest={'private_do_not_distribute':True,'preparation_base':preparation_base,'preparation_base_selector_sha256':sha(here/'preparation_base_input.py'),'source_commit':a.source_commit,'service_source_commit':service_source,'tooling_only_changes_since_signed_service':tooling_changes,'preflight_journal_state':'PRECHECK','baseline_rejection_state':'BASELINE_REJECTED_NO_CHANGE','candidate_failure_state':'CANDIDATE_WRITE_FAILED','profile':policy['profile'],'selected_service':'MT8167RenderSingleGpu','host_backup_manifest_sha256':fresh,'recovery_boot_id':b['recovery_boot_id'],'token':token,'policy':policy,'policy_manifest_sha256':sha(service/'render-policy-manifest.json'),'service_exe_sha256':sha(service/'MT8167RenderSingleGpu.exe'),'backup_comparator':sm['comparator'],'probe':sm,'expected_installed_sys':{k:v for k,v in expected.items() if k.endswith('.sys')},'prepared_system':native,'files':files,'esp_sha256':sha(out/'update-esp.img'),'wim_sha256':sha(image),'expected_installed_files':expected,'offline_dism_packages':[],'software_or_trust_written':False,'native_candidate_reuse':False,'single_gpu_rearm':policy['engine_preservation']['single_gpu_rearm'],'normal_install_allowed':True,'boot_sequence':policy['sequence'],'required_next_boot':policy['boot'],'hardware_verified':False,'status':'generated-host-verified-runtime-unverified'}
  (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
  for p in out.rglob('*'):
   if p.is_file():p.chmod(0o600)
