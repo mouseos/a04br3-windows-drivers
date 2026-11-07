@@ -11,7 +11,7 @@ for unit in native_clear_job native_clear_data native_terminate_stream native_cl
  sources="$sources $vendor/$unit.c"
 done
 ${CC:-cc} -O2 -std=c11 -Wall -Wextra -Werror -I"$vendor" tests/gpu_native_draw_v2_test.c $sources \
- drivers/gpu/mt8167/wddm-render/clear_protocol.c drivers/gpu/mt8167/wddm-render/frontend/draw_protocol.c \
+ drivers/gpu/mt8167/wddm-render/clear_protocol.c drivers/gpu/mt8167/wddm-render/frontend/draw_protocol.c drivers/gpu/mt8167/wddm-render/frontend/draw_link_protocol.c \
  -o build/gpu_native_draw_v2_test
 ./build/gpu_native_draw_v2_test "$1"
 
@@ -23,6 +23,6 @@ ${CC:-cc} -O2 -std=c11 -Wall -Wextra -Werror -DA04_TEST_DISPLAY_SCANOUT \
  -DA04_GE8300_NATIVE_OWNER_MDL_TARGET=1 -DA04_GE8300_NATIVE_OWNER_DRAW=1 -DA04_GE8300_VENDOR_NATIVE_CLEAR_JOB=1 \
  -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -I"$vendor" tests/gpu_native_owner_draw_v2_test.c $sources $owner_sources \
  drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/dma_pages.c \
- drivers/gpu/mt8167/wddm-render/clear_protocol.c drivers/gpu/mt8167/wddm-render/frontend/draw_protocol.c \
+ drivers/gpu/mt8167/wddm-render/clear_protocol.c drivers/gpu/mt8167/wddm-render/frontend/draw_protocol.c drivers/gpu/mt8167/wddm-render/frontend/draw_link_protocol.c \
  -o build/gpu_native_owner_draw_v2_test
 ./build/gpu_native_owner_draw_v2_test "$1"

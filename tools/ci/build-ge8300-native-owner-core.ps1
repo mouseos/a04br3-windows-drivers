@@ -50,7 +50,7 @@ if($WithOwnerAllocation){
 if($WithFactory){
  if(!$WithOwnerAllocation){throw 'Factory requires -WithOwnerAllocation'}
  $common+='-DA04_GE8300_NATIVE_OWNER_DRAW=1'
- $units+=@('vendor_m1_11\native_d3d_viewport','vendor_m1_11\native_varying_pds','vendor_m1_11\native_draw_job','vendor_m1_11\native_triangle_suite','vendor_m1_11\native_triangle_vdm','vendor_m1_11\native_triangle_pds','vendor_m1_11\native_triangle_ppp','vendor_m1_11\native_triangle_texture','wddm-render\clear_protocol','wddm-render\frontend\draw_protocol')
+ $units+=@('vendor_m1_11\native_d3d_viewport','vendor_m1_11\native_varying_pds','vendor_m1_11\native_draw_job','vendor_m1_11\native_triangle_suite','vendor_m1_11\native_triangle_vdm','vendor_m1_11\native_triangle_pds','vendor_m1_11\native_triangle_ppp','vendor_m1_11\native_triangle_texture','wddm-render\clear_protocol','wddm-render\frontend\draw_protocol','wddm-render\frontend\draw_link_protocol')
  $units+=@('vendor_m1_11\native_owner_factory','vendor_m1_11\native_owner_factory_platform','vendor_m1_11\native_owner_factory_runtime','vendor_m1_11\windows_start','vendor_m1_11\windows_command','vendor_m1_11\windows_render_context')
 }
 $oldTemp=$env:TEMP;$oldTmp=$env:TMP;$transcript=$false

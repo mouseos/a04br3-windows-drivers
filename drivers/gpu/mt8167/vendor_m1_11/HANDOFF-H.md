@@ -257,3 +257,11 @@ request.state.viewportへ実runtime値をcopyできる。前処理でvertexを�
 thermal同時profileにする場合はSDpower/audio DMA forwardingを含む全effective flagsを
 統合した新versionが必要。1018を単純採用してEのSD1条件を失わないこと。
 これは台帳の記録であり、現在の実機へ新tupleを適用した記録ではない。
+
+### 最終KMD link時のvalidator所有
+
+H KMD archiveが既存`geo_draw_validate_capture`を提供していても結合できるよう、
+EのV2 entryは`frontend/draw_link_protocol.c`の独立objectに分離。
+共通のframing/state実装はTU-private `draw_validation_private.h`。
+V1 symbolを差し替えたりduplicate/unresolvedを無視するlink flagは使わない。
+E factory helperのLinkCheckはGetDrawOpsV1/V2双方をexportして実参照を検査する。
