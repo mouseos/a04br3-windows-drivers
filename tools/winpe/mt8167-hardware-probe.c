@@ -23,10 +23,18 @@
 #ifndef A04_ENGINE_BRIGHTNESS_CLIENT
 #define A04_ENGINE_BRIGHTNESS_CLIENT 0
 #endif
+#ifndef A04_ENGINE_CODEC_MSDC
+#define A04_ENGINE_CODEC_MSDC 0
+#endif
+#if A04_ENGINE_CODEC_MSDC && (!A04_ENGINE_DEFERRED_UPDATE || A04_ENGINE_BRIGHTNESS_CLIENT)
+#error Codec/MSDC requires dedicated deferred mode without other clients
+#endif
 #if A04_ENGINE_BRIGHTNESS_CLIENT && !A04_ENGINE_DEFERRED_UPDATE
 #error Fixed brightness client requires explicit deferred Engine mode
 #endif
-#if A04_ENGINE_BRIGHTNESS_CLIENT
+#if A04_ENGINE_CODEC_MSDC
+#define A04_CLIENT_COUNT 1
+#elif A04_ENGINE_BRIGHTNESS_CLIENT
 #define A04_CLIENT_COUNT 3
 #else
 #define A04_CLIENT_COUNT 2
@@ -40,19 +48,29 @@
 #if A04_HARDWARE_PROBE_ENGINE_PCM
 static const WCHAR service_name[]=L"MT8167EngineProbe";
 static const WCHAR service_exe[]=L"MT8167EngineProbe.exe";
+#if A04_ENGINE_CODEC_MSDC
+static const WCHAR *const clients[A04_CLIENT_COUNT]={L"mt8167-capture-probe.exe"};
+#else
 static const WCHAR *const clients[A04_CLIENT_COUNT]={L"mt6630-wlan-probe.exe",L"mt8167-audio-engine-probe.exe"
 #if A04_ENGINE_BRIGHTNESS_CLIENT
  ,L"mt8167-brightness-native.exe"
 #endif
 };
+#endif
 #else
 static const WCHAR service_name[]=L"MT8167HardwareProbe";
 static const WCHAR service_exe[]=L"MT8167HardwareProbe.exe";
 static const WCHAR *const clients[2]={L"mt6630-wlan-probe.exe",L"mt8167-audio-first-playback.exe"};
 #endif
+#if A04_ENGINE_CODEC_MSDC
+static const WCHAR *const stdout_names[1]={L"capture.stdout.txt"};
+static const WCHAR *const stderr_names[1]={L"capture.stderr.txt"};
+static const DWORD limits[1]={120000u};
+#else
 static const WCHAR *const stdout_names[3]={L"wlan.stdout.txt",L"audio.stdout.txt",L"brightness.stdout.txt"};
 static const WCHAR *const stderr_names[3]={L"wlan.stderr.txt",L"audio.stderr.txt",L"brightness.stderr.txt"};
 static const DWORD limits[3]={600000u,120000u,120000u};
+#endif
 static WCHAR directory[MAX_PATH],log_directory[MAX_PATH],base_directory[MAX_PATH],executable[MAX_PATH],marker[MAX_PATH];
 static HANDLE base_handle=INVALID_HANDLE_VALUE,log_directory_handle=INVALID_HANDLE_VALUE;
 static HANDLE directory_handle=INVALID_HANDLE_VALUE,logfile=INVALID_HANDLE_VALUE,stop_event;
@@ -589,6 +607,9 @@ static DWORD once(void)
   error=run_client(i);if(error&&!result)result=error;if(child_uncertain)break;
  }
 #if A04_ENGINE_DEFERRED_UPDATE
+#if A04_ENGINE_CODEC_MSDC
+ if(diagnostic){error=codec_emmc_file_reads();if(error&&!result)result=error;}
+#endif
  if(diagnostic){error=diagnostic_after_clients();if(error&&!result)result=error;}
 #endif
  /* Normal completion, timeout, signature/start failure and SCM STOP all

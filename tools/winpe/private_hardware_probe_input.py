@@ -126,8 +126,11 @@ def probe_check(executable, manifest, certificate, root, audio_mode="Tone"):
     audio = 'mt8167-audio-engine-probe.exe' if engine else 'mt8167-audio-first-playback.exe'
     report = json.loads(manifest.read_text(encoding='utf-8-sig'))
     if engine:
+        codec=report.get('build_defines',{}).get('A04_ENGINE_CODEC_MSDC')=='1'
+        if codec:audio='mt8167-capture-probe.exe'
         brightness=report.get('build_defines',{}).get('A04_ENGINE_BRIGHTNESS_CLIENT')=='1'
-        expected_clients=['mt6630-wlan-probe.exe',audio]+(['mt8167-brightness-native.exe'] if brightness else [])
+        expected_clients=[audio] if codec else ['mt6630-wlan-probe.exe',audio]+(['mt8167-brightness-native.exe'] if brightness else [])
+        if codec and (brightness or report.get('deferred_update',{}).get('transaction')!='codec1026-msdc-quiet-fresh82'):raise ValueError('codec/eMMC専用profile不一致')
         if brightness and not report.get('deferred_update'):raise ValueError('brightness clientは明示延期batch専用です')
         if (report.get('audio_mode') != 'engine_pcm_retained' or report.get('engine_pcm_compatible') is not True
                 or report.get('fixed_clients') != expected_clients
@@ -141,7 +144,10 @@ def probe_check(executable, manifest, certificate, root, audio_mode="Tone"):
         pnp = report.get('pnp_rebind', {})
         deferred = report.get('deferred_update')
         if deferred is not None:
-            from engine_deferred_policy import TARGETS
+            if codec:
+                from codec_msdc_transaction import TARGETS
+            else:
+                from engine_deferred_policy import TARGETS
             has_gpu='gpu' in deferred.get('packages',{})
             has_sd='sd' in deferred.get('packages',{})
             expected_ids=[x[0] for x in TARGETS.values()]+(['ACPI\\MOU0006'] if has_gpu else [])+(['ACPI\\MOU0013'] if has_sd else [])
@@ -166,6 +172,7 @@ def probe_check(executable, manifest, certificate, root, audio_mode="Tone"):
                     or json.loads(policy_path.read_text(encoding='utf-8-sig')) != deferred):
                 raise ValueError('署名serviceの延期policy実file pin不一致')
         else:
+            if codec:raise ValueError('codec専用policyが必要です')
             if report.get('build_defines',{}).get('A04_ENGINE_DEFERRED_UPDATE') == '1':raise ValueError('延期buildのpolicy欠落')
             if (pnp.get('api') != 'UpdateDriverForPlugAndPlayDevicesW' or pnp.get('flags') != 5
                     or pnp.get('fixed_hardware_ids') not in (['MT8167\\AFE', 'MT8167\\USB20', 'A04BR3\\MT6630SDIO'], ['ACPI\\BEN0001', 'MT8167\\AFE', 'MT8167\\USB20', 'A04BR3\\MT6630SDIO'])

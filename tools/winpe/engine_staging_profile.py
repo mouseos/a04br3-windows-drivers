@@ -3,6 +3,9 @@ import re
 NONBOOT={'PARENT','AUDIO','USB','WIFI','DISPLAY','SD'}
 
 def apply_profile(cmd,policy,backup,previous,components):
+    if policy and policy.get('transaction')=='codec1026-msdc-quiet-fresh82':
+        from codec_msdc_transaction import staging
+        return staging(cmd,policy,backup,previous)
     profile=policy.get('staging_profile','offline-all') if policy else 'offline-all'
     if profile=='offline-all':return cmd,{'profile':profile,'offline_driver_policy':'legacy-all'}
     if profile!='normal-deferred' or not previous or previous.get('audio_mode')!='engine_pcm_retained':

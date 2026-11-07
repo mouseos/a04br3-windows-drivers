@@ -88,11 +88,19 @@ def main():
   if not plan_only:native=prepared_system_check(a.prepared_system,a.prepared_system_manifest,a.prepared_system_sha256,root,b,service_name)
   probe_info=probe_check(probe,a.probe_manifest,a.probe_certificate,root,a.audio_mode)
  components={};optional_drivers=[]
+ codec_batch=False
+ if a.deferred_package_map:
+  codec_batch=json.loads(a.deferred_package_map.read_text(encoding='utf-8-sig')).get('transaction')=='codec1026-msdc-quiet-fresh82'
  if engine:
-  sources,components,certificates=engine_package_check(pkg,a.engine_package,a.engine_client_package,root,a.wifi_package)
+  if codec_batch:
+   from engine_deferred_policy import load_map
+   sources,components,certificates,deferred_policy=load_map(a.deferred_package_map,root)
+  else:
+   sources,components,certificates=engine_package_check(pkg,a.engine_package,a.engine_client_package,root,a.wifi_package)
   if a.parent_package:
    parent_files,parent_component,parent_cert=parent_override_check(a.parent_package,a.parent_manifest_sha256,root,sources,components)
    sources.update(parent_files);components['parent']=parent_component;certificates['parent_override']=parent_cert
+  if codec_batch and (a.brightness_package or a.toprgu_package):raise SystemExit('codec/eMMC保持profileへ他driver overrideは禁止です')
   extra_files,extra_components,extra_certificates,optional_drivers=engine_optional_check(a.brightness_package,a.toprgu_package,root,a.brightness_manifest_sha256)
   sources.update(extra_files);components.update(extra_components);certificates.update(extra_certificates)
   if a.deferred_package_map:
@@ -103,7 +111,7 @@ def main():
    if 'gpu' in deferred_components:
     installed={x['source_path'].replace('\\','/').lower():x['sha256'].lower() for x in b['files']}
     if installed.get('windows/system32/drivers/mt8167-ge8300.sys')!=deferred_components['gpu']['baseline']['files']['gpu/mt8167-ge8300.sys']:raise SystemExit('freshbackupのGPU SYSが標準policy baselineと不一致')
-   for name in ('mt6630-wlan-probe.exe','mt8167-audio-engine-probe.exe'):
+   for name in (() if codec_batch else ('mt6630-wlan-probe.exe','mt8167-audio-engine-probe.exe')):
     if sha(deferred_sources['clients/'+name])!=sha(sources['clients/'+name]):raise SystemExit('延期policy clientは既存固定WLAN/d0eb署名clientと一致が必要です')
    # Replace only the exact five targets and fixed clients, preserving TOPRGU and firmware.
    for role,component in deferred_components.items():
@@ -114,7 +122,7 @@ def main():
    if 'sd' in deferred_policy['packages']:optional_drivers+=['call :adddriver SD X:\\a04br3\\shared-io\\sd\\mt8167-sd.inf','if errorlevel 1 goto dismfail']
    optional_drivers+=['call :adddriver DISPLAY X:\\a04br3\\shared-io\\display\\mt8167-display.inf','if errorlevel 1 goto dismfail']
   elif probe_info and probe_info.get('deferred_update'):raise SystemExit('延期serviceには一致する明示package mapが必要です')
-  check_final_audio_client(sources,components)
+  if not codec_batch:check_final_audio_client(sources,components)
   files={rel:sha(path) for rel,path in sources.items()}
  else:
   stems={'parent':('shared-parent','mt8167-shared'),'audio':('mt8167-afe-first-playback','mt8167-audio'),'usb':('mt8167-usb20','mt8167-usb20'),'wifi':('mt6630-runtime','mt6630-runtime')}
@@ -175,7 +183,7 @@ def main():
   files['private-system/SYSTEM.patched']=native['sha256']
  if rearming:files['engine-rearm-plan.json']=sha(a.engine_rearm_plan)
  if wifi_archive:files['previous-wifi-checkpoints.json']=sha(wifi_archive)
- prepare_name='prepare-mt8167-engine-probe.cmd.in' if engine else 'prepare-mt8167-hardware-probe.cmd.in'
+ prepare_name='prepare-codec-msdc-engine.cmd.in' if codec_batch else ('prepare-mt8167-engine-probe.cmd.in' if engine else 'prepare-mt8167-hardware-probe.cmd.in')
  here=Path(__file__).resolve().parent;out.mkdir(mode=0o700 if a.private_media else 0o755);stage=out/'stage';stage.mkdir(mode=0o700 if a.private_media else 0o755)
  # Stage only the validated package/firmware files; never import arbitrary siblings.
  staged_pkg=stage/'shared-io';staged_fw=stage/'shared-fw'
@@ -247,7 +255,7 @@ def main():
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'update',str(image),'1'],input=commands,text=True,env=env,check=True)
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'verify',str(image)],env=env,check=True)
  subprocess.run(['python3',str(here/'replace-esp-wim.py'),'--template',str(base/'maintenance-staged-esp.img'),'--wim',str(image),'--output',str(out/'update-esp.img'),'--template-bcd-sha256','65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d','--template-wim-sha256','0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4'],env=env,check=True)
- (out/'manifest.json').write_text(json.dumps({'private_do_not_distribute':bool(a.private_media),'audio_mode':'engine_pcm_retained' if engine else 'private_fixed_tone_diagnostic','selected_service':service_name,'shared_parent_count':1,'engine_rearm_plan':rearm_plan,'expected_installed_sys':{name.rsplit('/',1)[-1]:digest for component in components.values() for name,digest in component.get('files',{}).items() if name.endswith('.sys')},'installed_sys_hashes_verified':False,'components':components,'fixed_clients':list(deferred_policy['clients']) if a.deferred_package_map else ['mt6630-wlan-probe.exe',audio_client],'prepared_system':native,'probe':probe_info,'trusted_certificates':{role:hashlib.sha1(der).hexdigest().upper() for role,der in certificates.items()},'staging':staging_info,'source_commit':a.source_commit,'token':token,'files':files,'host_backup_manifest_sha256':sha(backup),'recovery_boot_id':b['recovery_boot_id'],'input_validator_sha256':sha(here/'private_hardware_probe_input.py'),'engine_selector_sha256':sha(here/'engine_io_package.py'),'builder_sha256':sha(Path(__file__).resolve()),'command_sha256':sha(stage/'run-update-once.cmd'),'esp_sha256':sha(out/'update-esp.img'),'signature_verification':'hash/source/certificate pins here; clients and Engine CAT WinVerifyTrust at runtime; INF/SYS catalog membership by Windows servicing/PnP','status':'generated; hardware operation unverified'},indent=2)+'\n')
+ (out/'manifest.json').write_text(json.dumps({'private_do_not_distribute':bool(a.private_media),'audio_mode':'engine_pcm_retained' if engine else 'private_fixed_tone_diagnostic','selected_service':service_name,'shared_parent_count':1,'engine_rearm_plan':rearm_plan,'expected_installed_sys':{name.rsplit('/',1)[-1]:digest for component in components.values() for name,digest in component.get('files',{}).items() if name.endswith('.sys')},'retained_files':deferred_policy.get('retained_files',{}) if a.deferred_package_map else {},'transaction':deferred_policy.get('transaction') if a.deferred_package_map else None,'installed_sys_hashes_verified':False,'components':components,'fixed_clients':list(deferred_policy['clients']) if a.deferred_package_map else ['mt6630-wlan-probe.exe',audio_client],'prepared_system':native,'probe':probe_info,'trusted_certificates':{role:hashlib.sha1(der).hexdigest().upper() for role,der in certificates.items()},'staging':staging_info,'source_commit':a.source_commit,'token':token,'files':files,'host_backup_manifest_sha256':sha(backup),'recovery_boot_id':b['recovery_boot_id'],'input_validator_sha256':sha(here/'private_hardware_probe_input.py'),'engine_selector_sha256':sha(here/'engine_io_package.py'),'builder_sha256':sha(Path(__file__).resolve()),'command_sha256':sha(stage/'run-update-once.cmd'),'esp_sha256':sha(out/'update-esp.img'),'signature_verification':'hash/source/certificate pins here; clients and Engine CAT WinVerifyTrust at runtime; INF/SYS catalog membership by Windows servicing/PnP','status':'generated; hardware operation unverified'},indent=2)+'\n')
  if a.private_media:
   for p in out.rglob('*'):p.chmod(0o700 if p.is_dir() else 0o600)
 if __name__=='__main__':main()

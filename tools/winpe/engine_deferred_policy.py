@@ -37,6 +37,9 @@ def load_map(path, root):
     path=path.resolve(strict=True)
     if not path.is_relative_to(root.resolve()):raise ValueError('package mapは作業ルート内が必要です')
     spec=json.loads(path.read_text(encoding='utf-8-sig'))
+    if spec.get('transaction')=='codec1026-msdc-quiet-fresh82':
+        from codec_msdc_transaction import load
+        return load(path,root)
     if not {'schema','backup_manifest_sha256','packages','clients'}.issubset(spec) or set(spec)-{'schema','backup_manifest_sha256','packages','clients','gpu','sd_tuple','sd_package','staging_profile'} or spec['schema'] != 1:
         raise ValueError('固定Engine policy map schema不一致')
     hexpin(spec['backup_manifest_sha256'])
@@ -212,6 +215,9 @@ def load_map(path, root):
 def cbytes(digest):return '{'+','.join('0x'+digest[i:i+2] for i in range(0,64,2))+'}'
 
 def generate(policy):
+    if policy.get('transaction')=='codec1026-msdc-quiet-fresh82':
+        from codec_msdc_transaction import generate as codec_generate
+        return codec_generate(policy)
     if not 5<=len(policy['packages'])<=7:raise ValueError('固定target数は5..7だけです')
     scoped=policy.get('brightness_client',{}).get('source_commit') in BRIGHTNESS_SCOPED_SOURCES
     if scoped and policy['brightness_client'].get('log_path')!=BRIGHTNESS_SCOPED_LOG:raise ValueError('scoped brightness source/log不一致')

@@ -1,0 +1,44 @@
+rem Separate fixed Engine service; never delete/rearm the old tone marker or service.
+@ENGINE_REARM@
+if exist C:\Windows\System32\MT8167EngineProbe\attempted.bin goto dismfail
+if not exist C:\Windows\System32\MT8167EngineProbe mkdir C:\Windows\System32\MT8167EngineProbe >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+if not exist C:\Windows\System32\MT8167EngineProbe\clients mkdir C:\Windows\System32\MT8167EngineProbe\clients >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+if not exist C:\Windows\System32\MT8167EngineProbe\logs mkdir C:\Windows\System32\MT8167EngineProbe\logs >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /b X:\a04br3\shared-io\clients\mt8167-capture-probe.exe C:\Windows\System32\MT8167EngineProbe\clients\ >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+if not exist C:\Windows\System32\MT8167EngineProbe\drivers\parent mkdir C:\Windows\System32\MT8167EngineProbe\drivers\parent >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /b X:\a04br3\shared-io\parent\shared-parent.inf C:\Windows\System32\MT8167EngineProbe\drivers\parent\shared-parent.inf >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /b X:\a04br3\shared-io\parent\mt8167-shared.sys C:\Windows\System32\MT8167EngineProbe\drivers\parent\mt8167-shared.sys >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /b X:\a04br3\shared-io\parent\shared-parent.cat C:\Windows\System32\MT8167EngineProbe\drivers\parent\shared-parent.cat >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+if not exist C:\Windows\System32\MT8167EngineProbe\drivers\audio mkdir C:\Windows\System32\MT8167EngineProbe\drivers\audio >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /b X:\a04br3\shared-io\audio\mt8167-afe-engine-capture.inf C:\Windows\System32\MT8167EngineProbe\drivers\audio\mt8167-afe-engine-capture.inf >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /b X:\a04br3\shared-io\audio\mt8167-audio.sys C:\Windows\System32\MT8167EngineProbe\drivers\audio\mt8167-audio.sys >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /b X:\a04br3\shared-io\audio\mt8167-afe-engine-capture.cat C:\Windows\System32\MT8167EngineProbe\drivers\audio\mt8167-afe-engine-capture.cat >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+if not exist C:\Windows\System32\MT8167EngineProbe\drivers\emmc mkdir C:\Windows\System32\MT8167EngineProbe\drivers\emmc >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /b X:\a04br3\shared-io\emmc\mt8167-msdc.inf C:\Windows\System32\MT8167EngineProbe\drivers\emmc\mt8167-msdc.inf >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /b X:\a04br3\shared-io\emmc\mt8167-msdc.sys C:\Windows\System32\MT8167EngineProbe\drivers\emmc\mt8167-msdc.sys >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /b X:\a04br3\shared-io\emmc\mt8167-msdc.cat C:\Windows\System32\MT8167EngineProbe\drivers\emmc\mt8167-msdc.cat >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /y X:\a04br3\MT8167EngineProbe.exe C:\Windows\System32\MT8167EngineProbe.exe >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+>> "%A04_REPORT%" echo SYSTEM_INPUT_SHA256=@SYSTEM_SHA@
+>> "%A04_REPORT%" echo SYSTEM_NATIVE_MANIFEST_SHA256=@SYSTEM_MANIFEST_SHA@
+copy /b /y X:\a04br3\private-system\SYSTEM.patched C:\Windows\System32\config\SYSTEM >> "%A04_REPORT%" 2>&1
+set "A04_SYSTEM_COPY_RC=%errorlevel%"
+>> "%A04_REPORT%" echo UPDATE_ENGINE_SYSTEM_COPY_EXIT=%A04_SYSTEM_COPY_RC%
+if not "%A04_SYSTEM_COPY_RC%"=="0" goto dismfail
+rem No driver DISM: normal OS performs exactly three fixed deferred installs.

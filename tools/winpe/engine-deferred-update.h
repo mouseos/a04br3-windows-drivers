@@ -10,6 +10,12 @@
 #include <reason.h>
 struct deferred_pin { ULONGLONG version,date; BYTE hash[4][32]; };
 #include "engine-deferred-policy.h"
+#ifndef DEFERRED_CODEC_MSDC
+#define DEFERRED_CODEC_MSDC 0
+#endif
+#if DEFERRED_CODEC_MSDC != A04_ENGINE_CODEC_MSDC
+#error Codec transaction policy and service mode must match
+#endif
 static int deferred_reboot_needed;
 static DWORD deferred_diagnostic_status;
 /* Preserve the operation result independently of the transport reboot code. */
@@ -18,6 +24,11 @@ static DWORD deferred_current_step,deferred_current_target=0xffffffffu;
 static int deferred_all_install_succeeded,deferred_diagnostic_armed;
 static DWORD deferred_marker(const WCHAR *,int);
 static const struct {const WCHAR *id,*folder,*inf,*sys,*cat,*firmware;} deferred_targets[DEFERRED_TARGET_COUNT]={
+#if DEFERRED_CODEC_MSDC
+ {L"ACPI\\BEN0001",L"parent",L"shared-parent.inf",L"mt8167-shared.sys",L"shared-parent.cat"},
+ {L"MT8167\\AFE",L"audio",L"mt8167-afe-engine-capture.inf",L"mt8167-audio.sys",L"mt8167-afe-engine-capture.cat"},
+ {L"ACPI\\MOU0001",L"emmc",L"mt8167-msdc.inf",L"mt8167-msdc.sys",L"mt8167-msdc.cat"}
+#else
  {L"ACPI\\BEN0001",L"parent",L"shared-parent.inf",L"mt8167-shared.sys",L"shared-parent.cat"},
  {L"MT8167\\AFE",L"audio",L"mt8167-afe-engine-pcm.inf",L"mt8167-audio.sys",L"mt8167-afe-engine-pcm.cat"},
  {L"MT8167\\USB20",L"usb",L"mt8167-usb20.inf",L"mt8167-usb20.sys",L"mt8167-usb20.cat"},
@@ -28,6 +39,7 @@ static const struct {const WCHAR *id,*folder,*inf,*sys,*cat,*firmware;} deferred
 #endif
 #if DEFERRED_SD_UPDATE
  ,{L"ACPI\\MOU0013",L"sd",L"mt8167-sd.inf",L"mt8167-sd.sys",L"mt8167-sd.cat"}
+#endif
 #endif
 };
 #include "engine-registry-diagnostic.h"
@@ -278,6 +290,9 @@ static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const
  if(error){deferred_failure_target=i;deferred_failure_step=deferred_current_step;}
  pnp_record(i,0x105,error);if(list)SetupDiDestroyDriverInfoList(set,dev,list_type);return error;
 }
+#if DEFERRED_CODEC_MSDC
+#include "codec-msdc-runtime.h"
+#endif
 static DWORD deferred_once(int diagnostic)
 {
  static WCHAR drivers[MAX_PATH],folders[DEFERRED_TARGET_COUNT][MAX_PATH],full[DEFERRED_TARGET_COUNT][4][MAX_PATH];
@@ -291,6 +306,10 @@ static DWORD deferred_once(int diagnostic)
   * and versions before changing ANY selected driver. Locks span the batch. */
  set=SetupDiGetClassDevsW(NULL,NULL,NULL,DIGCF_ALLCLASSES|DIGCF_PRESENT);
  if(set==INVALID_HANDLE_VALUE){error=GetLastError();goto done;}
+#if DEFERRED_CODEC_MSDC
+ error=codec_retained_check(set);if(error)goto done;
+ error=codec_msdc_boot_service();if(error)goto done;
+#endif
  for(i=0;i<DEFERRED_TARGET_COUNT;i++){
   deferred_current_target=i;deferred_current_step=0;
   const WCHAR *names[4]={deferred_targets[i].inf,deferred_targets[i].sys,deferred_targets[i].cat,deferred_targets[i].firmware};const WCHAR *paths[4]={NULL,NULL,NULL,NULL};
@@ -310,6 +329,13 @@ static DWORD deferred_once(int diagnostic)
    error=deferred_installed_sys(i,&deferred_gpu_baseline);if(error)goto done;
   }
 #endif
+#if DEFERRED_CODEC_MSDC
+  if(!diagnostic){
+   if(version!=codec_baselines[i].version){error=ERROR_REVISION_MISMATCH;goto done;}
+   error=deferred_selected_date(i,set,&devs[i],&codec_baselines[i]);if(error)goto done;
+   error=deferred_installed_sys(i,&codec_baselines[i]);if(error)goto done;
+  }
+#endif
   if(version>deferred_pins[i].version){error=ERROR_REVISION_MISMATCH;goto done;}
   if(version==deferred_pins[i].version){
    error=deferred_selected_date(i,set,&devs[i],&deferred_pins[i]);if(error)goto done;
@@ -320,6 +346,9 @@ static DWORD deferred_once(int diagnostic)
   pnp_record(i,0x103,skip[i]);
  }
  if(diagnostic)goto done;
+#if DEFERRED_CODEC_MSDC
+ error=codec_save_before();if(error)goto done;
+#endif
  for(i=0;i<DEFERRED_TARGET_COUNT;i++){
   deferred_current_target=i;deferred_current_step=0;
   if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){error=ERROR_CANCELLED;goto done;}
@@ -353,6 +382,9 @@ static DWORD diagnostic_after_clients(void)
   error=first?first:deferred_find(i,set,&dev);
   if(error)diagnostic_discovery(i,error);else (void)deferred_observe(&a,i,dev.DevInst);
  }
+#if DEFERRED_CODEC_MSDC
+ if(set!=INVALID_HANDLE_VALUE){DWORD retain_error=codec_retained_check(set);if(retain_error&&!first)first=retain_error;}
+#endif
  if(set!=INVALID_HANDLE_VALUE)SetupDiDestroyDeviceInfoList(set);
  if(a.cm)FreeLibrary(a.cm);if(a.newdev)FreeLibrary(a.newdev);
  return first;

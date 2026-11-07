@@ -30,7 +30,11 @@ ENGINE_STATE = ('Windows/System32/MT8167EngineProbe/attempted.bin',
                 'Windows/System32/MT8167EngineProbe/logs/service.log',
                 'Windows/System32/MT8167EngineProbe.exe')
 ENGINE_OPTIONAL_STATE = ('MT8167EngineProbe/brightness-native.log',
-                         'Windows/System32/MT8167EngineProbe/logs/brightness-native.log',)
+                         'Windows/System32/MT8167EngineProbe/logs/brightness-native.log',
+                         'Windows/System32/MT8167CaptureProbe/capture.log',
+                         'Windows/System32/MT8167EngineProbe/logs/capture.stdout.txt',
+                         'Windows/System32/MT8167EngineProbe/logs/capture.stderr.txt',
+                         'Windows/System32/MT8167EngineProbe/logs/reboot.log',)
 HIVES = ('SYSTEM', 'SOFTWARE', 'DRIVERS')
 UUID = re.compile(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}')
 SHA256 = re.compile(r'[0-9a-f]{64}')
