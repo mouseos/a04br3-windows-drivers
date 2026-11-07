@@ -63,7 +63,7 @@ def load_map(path, root):
                 raise ValueError('既存touch/buttons/Engine/USB/WiFi保持parent profileが必要です')
         version=entry['driver_ver'];date,numbers=version.split(',');parts=tuple(map(int,numbers.split('.')))
         run33_display=(role=='display' and source==BRIGHTNESS_RUN33_SOURCE and version=='11/07/2026,0.0.1.5')
-        usb1004=(role=='usb' and source=='c04c795caf5b722628174fda86608ab38049b93f' and version=='11/07/2026,2026.11.7.1004')
+        usb1004=(role=='usb' and (source,version) in (('c04c795caf5b722628174fda86608ab38049b93f','11/07/2026,2026.11.7.1004'),('44899b9755cdb081954a8d4ccb6271b839b9dd0d','11/07/2026,2026.11.7.1005')))
         if len(parts)!=4 or min(parts)<0 or max(parts)>65535 or parts<minimum or (date!='11/06/2026' and not run33_display and not usb1004):
             raise ValueError('固定target INF最低新版/date不一致: '+role)
         if role=='display' and source==BRIGHTNESS_RUN33_SOURCE and not run33_display:

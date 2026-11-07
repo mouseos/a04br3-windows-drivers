@@ -110,7 +110,7 @@ Schema2のPnpBatchResult/CompletionResultは元のoperation errorを保持し、
 SCMのServiceResult3010を全対象成功と解釈しない。InstallFailureValid/Target/Step、
 AllInstallStepsSucceeded、DiagnosticArmed、RebootPending、3markerの実query結果を保存する。
 Targetは0-based、特定不能はFFFFFFFF。Stepは0=準備/照合、1=list、2=選択、
-3=coinstaller、4=interfaces、5=install。Completeはsnapshot完了であってinstall成功ではない。
+3=coinstaller、4=interfaces、5=install、6=pending marker/診断arm。Completeはsnapshot完了であってinstall成功ではない。
 旧schemaで存在しない追加値はreaderでunavailable。最大7node/3clientでも64値以内。
 
 全driver不変の再armは既定拒否を保持する。plan生成の明示
@@ -119,3 +119,8 @@ Targetは0-based、特定不能はFFFFFFFF。Stepは0=準備/照合、1=list、2
 別commit/別EXEかつ延期runtime実source変更を検査する。最終builderでも旧媒体/新service/
 同snapshotを再照合する。これは旧run47一回のprotocol修正専用であり一般retryではない。
 旧log/marker/registry世代は既存の明示archive/fingerprint契約で保存する。
+
+USB次候補はsource `44899b9755cdb081954a8d4ccb6271b839b9dd0d`と
+`11/07/2026,2026.11.7.1005`の組だけ追加許可する。新署名manifest/hashが必要で、
+旧1004/既存親の再compile/再署名はしない。StartのWDF execution-level問題の修正は
+USB owner側であり、本protocolの初回SD処理とは独立する。

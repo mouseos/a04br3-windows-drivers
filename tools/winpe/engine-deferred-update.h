@@ -312,6 +312,7 @@ static DWORD deferred_once(int diagnostic)
  }
  if(diagnostic)goto done;
  for(i=0;i<DEFERRED_TARGET_COUNT;i++){
+  deferred_current_target=i;deferred_current_step=0;
   if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){error=ERROR_CANCELLED;goto done;}
   if(skip[i])continue;
   if(!SetupCopyOEMInfW(full[i][0],folders[i],SPOST_PATH,0,NULL,0,NULL,NULL)){error=GetLastError();goto done;}
@@ -320,15 +321,16 @@ static DWORD deferred_once(int diagnostic)
  }
  /* Even an already-current set takes the planned boot boundary once. */
  deferred_reboot_needed=1;
+ deferred_current_target=0xffffffffu;deferred_current_step=6;
  error=deferred_marker(L"deferred-pending.bin",1);if(!error){error=deferred_arm_diagnostics();if(!error){deferred_diagnostic_armed=1;deferred_all_install_succeeded=1;}}
  done:
- deferred_batch_error=error;
- if(error&&deferred_failure_target==0xffffffffu){deferred_failure_target=deferred_current_target;deferred_failure_step=deferred_current_step;}
  pnp_record(0,0x100,diagnostic?2:1);pnp_record(0,EV_PNP_RESULT,error);
  for(i=0;i<DEFERRED_TARGET_COUNT;i++){for(j=0;j<4;j++)if(files[i][j]!=INVALID_HANDLE_VALUE)CloseHandle(files[i][j]);if(dirs[i]!=INVALID_HANDLE_VALUE)CloseHandle(dirs[i]);}
  if(root!=INVALID_HANDLE_VALUE)CloseHandle(root);if(set!=INVALID_HANDLE_VALUE)SetupDiDestroyDeviceInfoList(set);
  if(apis.cm)FreeLibrary(apis.cm);if(apis.newdev)FreeLibrary(apis.newdev);
  if(log_error&&!error)error=log_error;
+ deferred_batch_error=error;
+ if(error&&deferred_failure_target==0xffffffffu){deferred_failure_target=deferred_current_target;deferred_failure_step=deferred_current_step;}
  if(error){(void)disable_self();return deferred_reboot_needed?ERROR_SUCCESS_REBOOT_REQUIRED:error;}
  return diagnostic?0:ERROR_SUCCESS_REBOOT_REQUIRED;
 }

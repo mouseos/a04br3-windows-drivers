@@ -121,7 +121,7 @@ static DWORD diagnostic_finish(DWORD result)
   diagnostic_write(client,REG_BINARY,&diagnostic_clients[i],sizeof(diagnostic_clients[i]));
  }
  diagnostic_dword(L"PnpBatchResult",deferred_batch_error);
- diagnostic_dword(L"InstallFailureValid",deferred_batch_error!=0);
+ diagnostic_dword(L"InstallFailureValid",diagnostic_phase==1&&deferred_batch_error!=0);
  diagnostic_dword(L"InstallFailureTarget",deferred_failure_target);
  diagnostic_dword(L"InstallFailureStep",deferred_failure_step);
  diagnostic_dword(L"AllInstallStepsSucceeded",deferred_all_install_succeeded);
