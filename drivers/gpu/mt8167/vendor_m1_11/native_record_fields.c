@@ -77,3 +77,16 @@ int a04_m111_patch_3d_background(void *p,size_t bytes,const uint64_t a[3],const 
     for(i=0;i<3;i++){word(p,0xf8u+i*8u,a[i],8);word(p,0x110u+i*8u,b[i],8);}
     return 0;
 }
+
+/* GLES 0x1621d4 passes surface+0x5c4 to 0x200edc. RGBA8 branch
+ * packs each clamped lane into R | G<<8 | B<<16 | A<<24.
+ * REA ev_66ed74a8cb7f8bae745867bb7fe94d75038c28abd178d53d5f58c0d3d458bd4a;
+ * runtime ev_0439df1de39db19b6b00eced22386ed550c616be825ae1aa8865cc3a4a2e39f8.
+ * Integer lanes avoid FPU use in the Windows kernel. Other formats excluded. */
+int a04_m111_patch_3d_fast_clear_rgba8(void *p,size_t bytes,
+    uint8_t r,uint8_t g,uint8_t b,uint8_t a)
+{
+    if(!p || bytes!=A04_M111_3D_BYTES)return 1;
+    word(p,4,(uint32_t)r|((uint32_t)g<<8)|((uint32_t)b<<16)|((uint32_t)a<<24),4);
+    return 0;
+}

@@ -190,6 +190,15 @@
 #if A04_GE8300_VENDOR_STAGE && A04_GE8300_BOOT_TEST
 #error Vendor firmware staging cannot be combined with modern firmware boot
 #endif
+#ifndef A04_GE8300_VENDOR_NATIVE_CLEAR_JOB
+#define A04_GE8300_VENDOR_NATIVE_CLEAR_JOB 0
+#endif
+#if A04_GE8300_VENDOR_NATIVE_CLEAR_JOB && !A04_GE8300_VENDOR_COPY_SERVICE
+#error Native clear preparation requires retained copy-service lifetime
+#endif
+#if A04_GE8300_VENDOR_NATIVE_CLEAR_JOB && !A04_GE8300_VENDOR_NATIVE_BACKING
+#error Native clear job preparation requires native backing
+#endif
 #ifndef A04_GE8300_VENDOR_NATIVE_BACKING
 #define A04_GE8300_VENDOR_NATIVE_BACKING 0
 #endif
@@ -781,9 +790,13 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         if(NT_SUCCESS(status))status=a04_vendor_copy_scratch_freeze(&c->vendor_copy);
 #if A04_GE8300_VENDOR_NATIVE_BACKING
         if(NT_SUCCESS(status))status=a04_vendor_native_allocate_cold(&c->vendor_native,
-            &c->vendor_render,adapter,copy_map_registers,800,1280);
+            &c->vendor_render,adapter,copy_map_registers,800,A04_GE8300_VENDOR_NATIVE_CLEAR_JOB?600:1280);
         GpuPrint("A04GPU NATIVE BACKING=");GpuHex((ULONG)status);
         GpuPrint(" BYTES=");GpuHex(a04_vendor_native_bytes(c->vendor_native));GpuPrint("\n");
+#if A04_GE8300_VENDOR_NATIVE_CLEAR_JOB
+        GpuPrint("A04GPU NATIVE JOB STAGED=");GpuHex(a04_vendor_native_job_staged(c->vendor_native));
+        GpuPrint(" TA3D_GATE=CLOSED\n");
+#endif
 #endif
         /* Retain device context and adapter for the diagnostic boot.  A
          * reference alone does not establish physical-removal safety. */
@@ -1015,6 +1028,9 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         if(NT_SUCCESS(c->status.health_status)) {
             unsigned index;
             for(index=0;index<4;index++) {
+#if A04_GE8300_VENDOR_NATIVE_CLEAR_JOB
+                if(index<2)continue; /* Preserve staged native TA/3D rings; no publish gate. */
+#endif
                 NTSTATUS context_status=a04_vendor_render_context_command(&c->vendor_render,
                     &c->vendor_start,index,index==2?0xffffffffu:0u);
                 GpuPrint("A04GPU CONTEXT INDEX=");GpuHex(index);

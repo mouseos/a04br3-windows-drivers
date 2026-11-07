@@ -127,6 +127,7 @@ Windows選定例として、data arenaが[0x65c0200000,0x65c0400000)で現alloca
 
 clip入力の追加確定: `a04_m111_build_clear_terminate_stream(out,page_gpu,width,height)`はAddRTと同版getterを接続し、single sampleのceil(width/16)-1 / ceil(height/16)-1からclip wordを構築する。getter 0x1258b8、証拠ev_2a52e0ae5f4979e58962d3a101e91d124fc30380ece2c3640ad842414a2c4178はdataset+0x34/+0x38をそのまま返す。AddRT 0x124a34の既存証拠ev_f33018709a2c5a26acbe7e73ed517452c2a058a13e38b56f1fdac9c58fbc5752はceil(/16)-1を当該2fieldへ保存。StartFrame 0x15e9c8がX<<18|Yへ変換。800x600=0x00c40025、800x1280=0x00c4004f。直前の「寸法profile照合は未完了」はこの追加証拠で解決済み。空TA streamの成立・先頭state・完全recordは未確定のまま。
 
+
 ## Windows coldコード用ページの予約
 
 `windows_native_code`はnative backing既定OFFフラグの内側で、USC0xba00010000/PDS0xa800010000に各4KiBのuncached DMA pageを予約する。既存PC/PD/PTの親と空PTEを確認し、自分の1entryだけを書き込む。USCはread-only、両方SLC bypass。既存TQの先頭64KiBとは非重複。コード・完全packetはまだ書かず実行しない。FW所有後はunmap/freeを拒否し、失敗途中のPTEも所有して保持する。完全producerと実ターゲットmappingが揃うまで、この予約を描画可能と扱わない。
@@ -172,3 +173,109 @@ private outputやpage tablesを含む総DMA量ではない。追加codeを含む
 既存PC/TQ code/screen不変、8箇所のDMA確保失敗、5箇所のpool失敗、全DMA確保位置でのalias quarantine、
 外国PC/PTEのcleanup拒否、bank-zero失敗retention/再試行、FW所有後解放拒否を確認する。
 ホスト試験・ASan/UBSanとWindows WDK build/実機成功を区別する。完全packet/queue公開は引き続き未実装・禁止。
+
+
+## TA PPP-state update programの追加（有効量更新）
+
+同版InitPPPStateCodeBlocks 0x1c1b54（ev_5eda239ac555d3583d60b3d6f906f9109163e784ecbdbd250d02d23476938340）はUSC8 bytesを0x2628d2からコピーし、temp0のtaskとDOUTU-only PDSを生成してcontext+0x7208へ保持する。USC一次bytesは44a08005000000ff（ev_8df7dad9414e7836dc3e7f2cdb90b9f6589046fe632b35faa2cd968b134e3221）。StartFrameがこのPDS allocation baseをTA+0x40へ設定する。field旧名pds_code40は単独code addressではなくdata+code一体programのbase。
+
+native_clear_codespaceへUSC+0x20の8 bytes、PDS+0xc0のdata32 bytes／+0xe0のcode4 bytesを追加。**最新有効量はUSC40 bytes、PDS0xe4 bytes**。各4KiB allocation・既存VA案は変更なし。bindings.ta_ppp_pds_baseはPDS VA0xa800010000で0x100c0。以前の32/0xa8は背景＋EOTのみの量として保持する。完全producerへ至るために必要なTA依存programであり、成功を装うhost stubではない。
+
+
+## 全record初期化とclear-only経路の追跡
+
+GLES ComputeFrameBufferCompleteness 0x13b680（ev_6bebd477c4efb285c7df4f57da94141286f2be25838e3c93a378efeefe93c778）はrender surfaceをcalloc(1,0x710)で作る。TA [0x538,0x5c0)、3D [0x5c0,0x710)を含むCPU初期値zeroは一次証拠で確認できた。ただし後続storeの網羅とfieldの未使用性をこのcallocだけで保証しない。
+
+DoClear 0x125ca0（ev_1626a79a9018691d78ef6dd7e19fbfe85bf5826ba9e1e121e66bb1ff5d904b53）、fast-clear elision 0x16043c（ev_887ae4a56b753963ae0bd9599971feb219e482d1de296cc323e050c47d9dd020）は、色clear maskを消した場合にclear primitivesを送らず終了する分岐を持つ。その分岐は0x1621d4→0x200edcのfast clear register設定を必要とする。単に背景shader＋terminatorへ色を渡すだけの完全clear成立とは別なので、全profile確定前にpublishしない。TA+0x80（surface+0x5b8）はDoClearのmulti-sample/multi-targetループからindexが書かれるfieldであり、無条件paddingではない。single sample profileの初期値0はcalloc経路と照合する。
+
+同版KM source configはPVR_LINUX_PHYSMEM_ZERO_ALL_PAGESを定義し、physmem_osmem_linux.cのfresh PMR allocationはbZero=TRUEへ上書きする。region/MLIST/auxのfresh physical pages zeroと一致するcold policyを取れるが、UM suballocatorで再利用される範囲まで毎回zeroと断定しない。
+
+FW consumerを確認するため同梱rgx.fw.22.40.54.30（SHA256 5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1）をREAで開いたが、現在providerはMIPS16/microMIPS ASEをarchitecture_unsupportedとして拒否。別disassemblerによる迂回は行っていない。診断は指定logのwindows-rt-m111-fw-micromips-rea-blocker-20261107.json。
+
+残る完全producer確定の別経路としてtools/gpu/README-recovery-native-clear.mdと元EGL/GLES pbuffer harness、DRM ioctl observerを準備。実機利用は主担当のRecovery許可後のみ。現状ARM64 object compileまででrunnable link未実施、runtime packetは未取得。
+
+
+## 元vendor成功captureから確定したfast-clear色
+
+元vendor runのTA/PR/3Dは0x88/0/0x150、800x600の全480000画素RGBA={17,34,51,255}一致。
+これはWindows 3D成功ではない。captureはGPU VAの再送用テンプレートではない。
+3D+4の0xff332211は同版caller0x1621d4がsurface+0x5c4を0x200edcへ渡す経路と一致する。
+REA ev_66ed74a8cb7f8bae745867bb7fe94d75038c28abd178d53d5f58c0d3d458bd4a。
+`a04_m111_patch_3d_fast_clear_rgba8`は確定した8bit laneのR|G<<8|B<<16|A<<24を+4へ配置する。
+FPUを使わず、入力は既に量子化済みのRGBA8。+0のcontrolや他形式をこの関数で生成しない。
+
+完全producerの阻害は、TA+0x10のVDM本体とPPP参照、3D+0x38/+0x40の疎資源内容・役割、
+GPU-only dummy region/stencilの初期状態、残りregisterを含む生成順の網羅である。
+取得済みPDS/USCは各programを個別に照合し、Windowsが所有するheap相対VAへ明示relocateする。
+未取得をzeroにせず、完全producer提供までTA/3D publishを開けない。
+
+
+## capture04に基づく初回800x600 clear CPU producer
+
+`native_clear_job.h`の`a04_m111_build_clear_job_800x600_cold`はTA0x88/3D0x150の全bytes、
+USC40 bytes/PDS0xe4 bytes、VDM/PPP/scissor/depth-biasのdata160 bytesを生成する。
+常時拒否stubやcaller任せの未知word入力ではない。scalarは同一BVNC/同版の成功した
+初回800x600 RGBA8、pitch800、1RT、MSAA/Z/S/query/streamoutなしのprofileに限定する。
+初回frame0、PR fence初値0。繰返しframe、800x1280、任意drawへの一般化はしていない。
+
+runtime一次証拠はev_23a2611a79b90fdc1374766579b6795f0c473575fdd08b59e53b719d77707fc6。
+元vendorで全480000画素一致、kick1回。疎PMRの実indexとCPU VMAから取得したVDMは
+PPP参照2wordとSTREAM_TERMINATE1wordのみ。PPPは既存terminate factoryと完全一致。
+3D+0x38はCBUF type8 SCISSOR、+0x40はtype9 DEPTHBIAS。DoKickTAがcontextの
+CBUF baseから各fieldへ設定し、name table0x282028のindex8/9はSCISSOR/DEPTHBIAS。
+scissor2組は各{800,600}、depth-biasの最初12 bytesは実取得値0。
+このdataは未取得のzero補完ではない。scissor storeの0x164ed4とRogue IPF sourceを照合。
+
+新しいdata allocationは従来terminate用4KiBのまま。host選定配置はVDM+0、PPP+64、
+scissor+128（16 bytes）、depth-bias+144（12 bytes）、有効160 bytes。
+USC/PDSも従来各4KiBのまま、FWbank追加offset/容量に変更なし。
+ownerの実data/USC/PDS page、output、dummy region/stencil、HWRT FW、PR fence FWを入力する。
+GPU VAはWindows ownerのinventoryに照合した実map値を使う。capture VAはコードに含めない。
+
+background/EOTは既存のsource-generated programへ置換する。captureのtexture-reading
+backgroundや即値EOTをそのままコピーしない。生成した背景はpacked色をoutput0へ、
+EOTは共有regから単一PBE emit。従ってevent infoは生成したprogramに対応する0x202
+（captureの即値EOTは0x201）。PDS/USC tasks、背景triple、event code/data、TA PPP base、
+VDM/PPP、table VA、output emit、FW/UFO addressを全て再生成する。
+この代替program一式をWindowsやRecoveryで実行したとは主張しない。
+
+CPU検証はcaptureの全record bytesに対して、明示した再配置とprogram binding変更だけを
+適用して一致を確認。実取得VDM/PPP/scissor/depth-biasとも照合した。
+別VA配置で再生成、失敗時output保持、既存shadow pairへの接続（TA224/3D472 bytes、
+cleanup HWRT+0xd0/+0xd8）をASan/UBSanで検証。ARM32 Windows COFF compileも通過。
+これらはWDK link・Windows実GPU描画の成功ではない。
+
+### ownerへの接続順と残る実行条件
+
+既存cold HWRT/freelist ownerを800x600で作り、その実addressで本producerを呼ぶ。
+code.usc / code.pdsを各owned code pageへ、data.bytesだけをGeneral pageへcopyする。
+`data` struct末尾の4 addressはhost metadataなのでGPUへcopyしない。
+output2D mapとの共有、code heap、HWRT/auxiliary/PM dataとの非重複はownerが照合する。
+既存native_pairへta/threeを渡し、PR/3D syncとcleanup lifetimeは従来契約を維持する。
+
+GPU-only dummy region/stencilは今回もCPU snapshot無し。同版RGXCreateGlobalPB0x12454c
+（ev_df8635ad497a611e1425a6febbb3719080341d6e1bfda8c1ebde555af01856c0）と
+RGXCreateRenderContext0x1276fcはflags3でallocate/map後に戻る。DevmemSubAllocate0x112a80
+（ev_5577c6ea749b8567880aca64f35df36f8e39cc0c0cebe6fd5ec8edffd1457c22）はflags3では
+CPU zero/poison branchへ入らない。KM sourceのPVR_LINUX_PHYSMEM_ZERO_ALL_PAGESと
+fresh PMR __GFP_ZEROはcold zero policyを支持するが、未取得のruntime内容を観測済みzeroへ
+変更しない。本producerはauxiliaryやHWRT依存dataの内容を証明・補完しない。
+owner側のcold初期化条件と実行ゲートの最終確認、source-generated代替programの実GPU検証は残る。
+CPU return0だけでTA/3D publishを有効にしない。Windows D3D UMD/WDDM render miniport対応とも別。
+
+
+## 最新runtime owner接続candidate（gateは閉じたまま）
+
+`tools/ci/README-native-clear-candidate.md`に1e1c87dの実ownerへの接続とWDK recipeをまとめた。
+NativeClearJob既定OFF。指定時はHWRTを含む800x600 profileを選び、全依存のcold readback、
+complete jobとpairのDevice copy/readbackを行う。HWRT bank全体、PM tables/mirror、
+region/MLIST/TPC、auxiliaryを実owner上で検査する。TA/3D priority commandによる上書きはskip。
+KCCB/UFO/client controlは公開しない。未接続publisher本体は正常・timeout・画素不一致・
+cleanup未完了のhostモデル検証済みだがprovider/IOCTL/Engineからのcallerは無い。
+cleanup counterは同版shared.hでFW受領/実行数と定義され、hostから増加させない。
+
+auxiliaryはfresh cold zero policyを採用し、Windows側に書いたzeroをFW開始前に実readbackする。
+Android GPU-only runtime contentsが未観測という事実は維持する。source-generated代替programの
+Windows実GPU検証と、review後のbounded activationは未完了。WDK/署名/実機は主担当占有のため未実行。
+新INFは11/07/2026,0.0.2.0。最終署名後SYS/INF hashとDriverVerをmanifestに固定し、
+選択中packageより新しい版であることと適用後の一致を必須とする。

@@ -15,6 +15,9 @@ $vendorStage = if ($env:A04_GE8300_VENDOR_STAGE -eq '1') { '1' } else { '0' }
 $uncachedStage = if ($env:A04_GE8300_VENDOR_UNCACHED_STAGE -eq '1') { '1' } else { '0' }
 $vendorIrq = if ($env:A04_GE8300_VENDOR_IRQ -eq '1') { '1' } else { '0' }
 $vendorStartDiagnostic = if ($env:A04_GE8300_VENDOR_START_DIAGNOSTIC -eq '1') { '1' } else { '0' }
+$nativeClearJob = if ($env:A04_GE8300_VENDOR_NATIVE_CLEAR_JOB -eq '1') { '1' } else { '0' }
+if ($nativeClearJob -eq '1' -and $env:A04_GE8300_VENDOR_COPY_SERVICE -ne '1') { throw 'Native clear preparation requires retained copy-service lifetime' }
+if ($nativeClearJob -eq '1' -and $env:A04_GE8300_VENDOR_NATIVE_BACKING -ne '1') { throw 'Native clear job requires NativeBacking=1; preparation only, no publish gate' }
 $nativeBacking = if ($env:A04_GE8300_VENDOR_NATIVE_BACKING -eq '1') { '1' } else { '0' }
 $vendorRenderCold = if ($env:A04_GE8300_VENDOR_RENDER_COLD -eq '1') { '1' } else { '0' }
 $sharedGpuDiagnostic = if ($env:A04_GE8300_SHARED_GPU_DIAGNOSTIC -eq '1') { '1' } else { '0' }
@@ -94,9 +97,10 @@ if ($nativeBacking -eq '1') { $sources += @('vendor_m1_11\native_resources','ven
 if ($sharedLease -eq '1') { $sources += @('vendor_m1_11\windows_shared_scanout','vendor_m1_11\windows_shared_tables') }
 if ($sharedMmuPublish -eq '1') { $sources += @('vendor_m1_11\windows_shared_publish') }
 if ($render -eq '1') { $sources += @('windows_render_memory','windows_render_diagnostic','render_pds_data','render_context_pds','render_context_static','render_shared_size','render_execution','render_fixed_vdm','render_fixed_ppp','render_fixed_command') }
+if ($nativeClearJob -eq '1') { $sources += @('vendor_m1_11\windows_native_job','vendor_m1_11\windows_native_execute','vendor_m1_11\native_clear_job','vendor_m1_11\native_clear_data','vendor_m1_11\native_record_fields','vendor_m1_11\native_pair','vendor_m1_11\native_ccb') }
 foreach ($name in $sources) {
     $obj = Join-Path $out "$($name.Replace('\','-')).obj"
-    & clang --target=thumbv7-pc-windows-msvc @codegen -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_GE8300_SHARED_DISPLAY_COMMON=$sharedDisplayCommon" "-DA04_GE8300_DISPLAY_SCANOUT_EXPERIMENT=$displayScanout" "-DA04_GE8300_VENDOR_STAGE=$vendorStage" "-DA04_GE8300_VENDOR_UNCACHED_STAGE=$uncachedStage" "-DA04_GE8300_VENDOR_IRQ=$vendorIrq" "-DA04_GE8300_VENDOR_START_DIAGNOSTIC=$vendorStartDiagnostic" "-DA04_GE8300_VENDOR_RENDER_COLD=$vendorRenderCold" "-DA04_GE8300_VENDOR_NATIVE_BACKING=$nativeBacking" "-DA04_GE8300_VENDOR_COPY_DIAGNOSTIC=$vendorCopyDiagnostic" "-DA04_GE8300_SHARED_GPU_DIAGNOSTIC=$sharedGpuDiagnostic" "-DA04_GE8300_SHARED_FULL_FRAME=$sharedFullFrame" "-DA04_GE8300_SHARED_WIDE_FRAME=$wideFrame" "-DA04_GE8300_SHARED_WIDE_REPEAT=$wideRepeat" "-DA04_GE8300_PRESENT_TRACE_ALL=$presentTraceAll" "-DA04_GE8300_IDLE_TRANSITION_DIAGNOSTIC=$idleDiagnostic" "-DA04_GE8300_SHARED_COMMON_PAGE=$sharedCommonPage" "-DA04_GE8300_SHARED_MMU_PUBLISH=$sharedMmuPublish" "-DA04_GE8300_SHARED_LEASE=$sharedLease" "-DA04_GE8300_VENDOR_FENCED_COPY=$vendorFencedCopy" "-DA04_GE8300_VENDOR_COPY_SERVICE=$vendorCopyService" "-DA04_GE8300_VENDOR_CLEAR_DIAGNOSTIC=$vendorClearDiagnostic" "-DA04_GE8300_VENDOR_COLOR_DIAGNOSTIC=$vendorColorDiagnostic" "-DA04_GE8300_VENDOR_TILE_DIAGNOSTIC=$vendorTileDiagnostic" "-DA04_GE8300_VENDOR_MULTI_TILE_DIAGNOSTIC=$vendorMultiTileDiagnostic" "-DA04_GE8300_VENDOR_SCREEN_DIAGNOSTIC=$vendorScreenDiagnostic" "-DA04_GE8300_VENDOR_SCREEN_REPEAT_DIAGNOSTIC=$vendorScreenRepeat" "-DA04_GE8300_BOOT_TEST=$boot" "-DA04_GE8300_ALLOW_MISMATCH=$mismatch" "-DA04_GE8300_CLEAR_TEST=$clear" "-DA04_GE8300_COPY_TEST=$copy" "-DA04_GE8300_LINEAR_TEST=$linear" "-DA04_GE8300_COPY_SERVICE=$service" "-DA04_GE8300_SHARED_TRACE_DIAGNOSTIC=$sharedTrace" "-DA04_GE8300_RENDER_EXPERIMENT=$render" "-DA04_GE8300_RENDER_DIAGNOSTIC=$renderDiagnostic" "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$gpu\compat" "-I$gpu\fwif" -c (Join-Path $gpu "$name.c") -o $obj
+    & clang --target=thumbv7-pc-windows-msvc @codegen -w -fms-extensions -ffreestanding -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_GE8300_SHARED_DISPLAY_COMMON=$sharedDisplayCommon" "-DA04_GE8300_DISPLAY_SCANOUT_EXPERIMENT=$displayScanout" "-DA04_GE8300_VENDOR_STAGE=$vendorStage" "-DA04_GE8300_VENDOR_UNCACHED_STAGE=$uncachedStage" "-DA04_GE8300_VENDOR_IRQ=$vendorIrq" "-DA04_GE8300_VENDOR_START_DIAGNOSTIC=$vendorStartDiagnostic" "-DA04_GE8300_VENDOR_RENDER_COLD=$vendorRenderCold" "-DA04_GE8300_VENDOR_NATIVE_BACKING=$nativeBacking" "-DA04_GE8300_VENDOR_NATIVE_CLEAR_JOB=$nativeClearJob" "-DA04_GE8300_VENDOR_COPY_DIAGNOSTIC=$vendorCopyDiagnostic" "-DA04_GE8300_SHARED_GPU_DIAGNOSTIC=$sharedGpuDiagnostic" "-DA04_GE8300_SHARED_FULL_FRAME=$sharedFullFrame" "-DA04_GE8300_SHARED_WIDE_FRAME=$wideFrame" "-DA04_GE8300_SHARED_WIDE_REPEAT=$wideRepeat" "-DA04_GE8300_PRESENT_TRACE_ALL=$presentTraceAll" "-DA04_GE8300_IDLE_TRANSITION_DIAGNOSTIC=$idleDiagnostic" "-DA04_GE8300_SHARED_COMMON_PAGE=$sharedCommonPage" "-DA04_GE8300_SHARED_MMU_PUBLISH=$sharedMmuPublish" "-DA04_GE8300_SHARED_LEASE=$sharedLease" "-DA04_GE8300_VENDOR_FENCED_COPY=$vendorFencedCopy" "-DA04_GE8300_VENDOR_COPY_SERVICE=$vendorCopyService" "-DA04_GE8300_VENDOR_CLEAR_DIAGNOSTIC=$vendorClearDiagnostic" "-DA04_GE8300_VENDOR_COLOR_DIAGNOSTIC=$vendorColorDiagnostic" "-DA04_GE8300_VENDOR_TILE_DIAGNOSTIC=$vendorTileDiagnostic" "-DA04_GE8300_VENDOR_MULTI_TILE_DIAGNOSTIC=$vendorMultiTileDiagnostic" "-DA04_GE8300_VENDOR_SCREEN_DIAGNOSTIC=$vendorScreenDiagnostic" "-DA04_GE8300_VENDOR_SCREEN_REPEAT_DIAGNOSTIC=$vendorScreenRepeat" "-DA04_GE8300_BOOT_TEST=$boot" "-DA04_GE8300_ALLOW_MISMATCH=$mismatch" "-DA04_GE8300_CLEAR_TEST=$clear" "-DA04_GE8300_COPY_TEST=$copy" "-DA04_GE8300_LINEAR_TEST=$linear" "-DA04_GE8300_COPY_SERVICE=$service" "-DA04_GE8300_SHARED_TRACE_DIAGNOSTIC=$sharedTrace" "-DA04_GE8300_RENDER_EXPERIMENT=$render" "-DA04_GE8300_RENDER_DIAGNOSTIC=$renderDiagnostic" "-I$out" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$gpu\compat" "-I$gpu\fwif" -c (Join-Path $gpu "$name.c") -o $obj
     if ($LASTEXITCODE -ne 0) { throw "ARM GE8300 provider compilation failed: $name" }
     $objects += $obj
 }
@@ -118,10 +122,32 @@ if ($vendorStage -eq '1') {
 }
 if ((Get-FileHash $firmware -Algorithm SHA256).Hash -ne $expectedFirmware) { throw 'GE8300 firmware SHA-256 mismatch' }
 Copy-Item (Join-Path $gpu 'mt8167-ge8300.inf') $package -Force
+# Every new SYS needs a newer, source-committed INF, including native candidates.
+# Baseline must come from the selected target package inventory, not a file name.
+if (-not $env:A04_GE8300_INSTALLED_DRIVER_VER -or -not $env:A04_GE8300_INSTALLED_SYS_SHA256) {
+    throw 'Set A04_GE8300_INSTALLED_DRIVER_VER and A04_GE8300_INSTALLED_SYS_SHA256 from target inventory'
+}
+$driverVer = [regex]::Match((Get-Content (Join-Path $package 'mt8167-ge8300.inf') -Raw), '(?im)^DriverVer\s*=\s*([^\r\n]+)').Groups[1].Value.Trim()
+function Read-DriverVersion([string]$value) {
+    $parts = $value.Split(',')
+    if ($parts.Count -ne 2) { throw 'DriverVer must be MM/dd/yyyy,a.b.c.d' }
+    $date = [datetime]::ParseExact($parts[0].Trim(),'MM/dd/yyyy',[cultureinfo]::InvariantCulture)
+    $version = [version]$parts[1].Trim()
+    if ($version.Revision -lt 0) { throw 'DriverVer must contain four version components' }
+    return @{date=$date;version=$version}
+}
+$newVersion=Read-DriverVersion $driverVer
+$oldVersion=Read-DriverVersion $env:A04_GE8300_INSTALLED_DRIVER_VER
+if ($newVersion.date -lt $oldVersion.date -or $newVersion.version -le $oldVersion.version) {
+    throw "Source INF DriverVer $driverVer must be newer than selected target $env:A04_GE8300_INSTALLED_DRIVER_VER"
+}
+if ($env:A04_GE8300_INSTALLED_SYS_SHA256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'Invalid installed SYS SHA256' }
+$sysSha=(Get-FileHash (Join-Path $package 'mt8167-ge8300.sys') -Algorithm SHA256).Hash.ToLowerInvariant()
+$infSha=(Get-FileHash (Join-Path $package 'mt8167-ge8300.inf') -Algorithm SHA256).Hash.ToLowerInvariant()
 $profile=@{};Get-ChildItem Env:A04_GE8300_* | ForEach-Object{$profile[$_.Name]=$_.Value}
-@{source_commit=(& git -C $root rev-parse HEAD);native_backing=$nativeBacking;
+@{source_commit=(& git -C $root rev-parse HEAD);driver_ver=$driverVer;sys_sha256_pre_sign=$sysSha;fingerprint_state="pre-sign; run verify-ge8300-package.ps1 after signing SYS/catalog";inf_sha256=$infSha;installed_driver_ver=$env:A04_GE8300_INSTALLED_DRIVER_VER;installed_sys_sha256=$env:A04_GE8300_INSTALLED_SYS_SHA256;native_backing=$nativeBacking;native_clear_job=$nativeClearJob;native_ta3d_publish_gate="closed";
   vendor_stage=$vendorStage;uncached_stage=$uncachedStage;codegen=$codegen;environment=$profile;
-  native_status='Cold resources only; no complete native payload or 3D submission'} |
+  native_status='Cold complete job and native pair staging available; dormant publisher has no provider caller; Windows 3D unverified'} |
   ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 (Join-Path $package 'build-config.json')
 & (Join-Path $kit 'bin\x86\Inf2Cat.exe') "/driver:$package" /os:6_3_ARM /uselocaltime
 if ($LASTEXITCODE -ne 0) { throw 'GE8300 provider catalog generation failed' }

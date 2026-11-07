@@ -37,6 +37,11 @@ int a04_m111_patch_3d_fields(void *record,size_t bytes,const struct a04_m111_3d_
  * 64-bit PBE CSR registers, not modern FWIF's eight triples. EOT emit words
  * live separately from this record and must be generated independently. */
 int a04_m111_patch_3d_pbe(void *record,size_t bytes,const uint64_t csr[8][2]);
+/* Single-RT packed RGBA8 fast-clear colour at 3D+4. The API caller has
+ * already quantized/clamped colour channels to 8-bit output lanes.
+ * Does not construct the fast-clear control at +0 or a complete record. */
+int a04_m111_patch_3d_fast_clear_rgba8(void *record,size_t bytes,
+    uint8_t red,uint8_t green,uint8_t blue,uint8_t alpha);
 /* FUN_0015e9c8 calls FUN_0011372c with surface+0x6b8/+0x6d0.
  * Preserve offset names until PR/background roles are fully reconciled. */
 int a04_m111_patch_3d_background(void *record,size_t bytes,

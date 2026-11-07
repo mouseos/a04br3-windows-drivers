@@ -6,6 +6,10 @@
 #include "native_resources.h"
 #include "native_clear_surface.h"
 #include "native_clear_codespace.h"
+#ifndef A04_GE8300_VENDOR_NATIVE_CLEAR_JOB
+#define A04_GE8300_VENDOR_NATIVE_CLEAR_JOB 0
+#endif
+struct a04_vendor_native_candidate;
 #define A04_NATIVE_OUTPUT_VA UINT64_C(0x8200000000)
 #define A04_NATIVE_OUTPUT_BYTES 4096000u
 #define A04_NATIVE_USC_VA UINT64_C(0xba00010000)
@@ -16,6 +20,7 @@ struct a04_vendor_native_cold {
     struct a04_vendor_uncached output[4]; /* pixels, PD, PT0, PT1 */
     struct a04_m111_clear_surface clear_surface;
     struct a04_m111_clear_code_bindings bindings;
+    struct a04_vendor_native_candidate *candidate;
     ULONG suffix_offset;
     BOOLEAN output_mapped,backing_staged,quarantined;
     ULONG code_mapped; /* owned USC/PDS PTEs; retained after firmware exposure */
@@ -28,6 +33,9 @@ struct a04_vendor_native_cold {
     ULONG width,height,pm_offset[2],list_offset[2],used;
     BOOLEAN mapped,prepared,bank_prepared,bank_touched;
 };
+
+NTSTATUS a04_vendor_native_prepare_job_cold(struct a04_vendor_native_cold *);
+void a04_vendor_native_free_job_cold(struct a04_vendor_native_cold *);
 
 NTSTATUS a04_vendor_native_reserve_code_cold(struct a04_vendor_native_cold *,PDMA_ADAPTER);
 NTSTATUS a04_vendor_native_unmap_code_cold(struct a04_vendor_native_cold *);

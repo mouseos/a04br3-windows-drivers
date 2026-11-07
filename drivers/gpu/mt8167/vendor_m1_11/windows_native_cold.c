@@ -53,6 +53,9 @@ static NTSTATUS release_contents(struct a04_vendor_native_cold *n)
         }
         ExFreePoolWithTag(zeros,TAG);a04_gpu_dma_barrier();n->bank_prepared=FALSE;n->bank_touched=FALSE;
     }
+#if A04_GE8300_VENDOR_NATIVE_CLEAR_JOB
+    a04_vendor_native_free_job_cold(n);
+#endif
     for(unsigned i=0;i<4;i++)a04_vendor_uncached_free(&n->output[i]);
     a04_vendor_uncached_free(&n->code[1]);a04_vendor_uncached_free(&n->code[0]);
     a04_vendor_uncached_free(&n->pt);a04_vendor_uncached_free(&n->data);
@@ -70,7 +73,7 @@ static NTSTATUS prepare_contents(struct a04_vendor_native_cold *n,
        n->pt.cpu || n->prepared || n->mapped || !r->mapped || !r->firmware ||
        !r->firmware->staged || !r->firmware->uncached || r->firmware->hardware_owned ||
        r->firmware->adapter!=adapter || r->firmware->render_owner!=r || r->native_owner || r->layout.used>0x4800u ||
-       r->buffer[0].bytes<0x4c40u || width!=800u || height!=1280u)
+       r->buffer[0].bytes<0x4c40u || width!=800u || height!=(A04_GE8300_VENDOR_NATIVE_CLEAR_JOB?600u:1280u))
         return STATUS_INVALID_PARAMETER;
     tiles_x=(width+15u)/16u;tiles_y=(height+15u)/16u;
     region=ROUND_PAGE(((tiles_x*tiles_y*5u+63u)&~63u)*2u);
@@ -166,6 +169,9 @@ NTSTATUS a04_vendor_native_bind_bank_cold(struct a04_vendor_native_cold *n,
     ExFreePoolWithTag(allocation,TAG);return status;
 }
 
+BOOLEAN a04_vendor_native_job_staged(const struct a04_vendor_native_cold *n)
+{ return n && n->candidate ? TRUE : FALSE; }
+
 ULONG a04_vendor_native_bytes(const struct a04_vendor_native_cold *n)
 { return n ? n->used : 0; }
 NTSTATUS a04_vendor_native_allocate_cold(struct a04_vendor_native_cold **out,
@@ -183,6 +189,9 @@ NTSTATUS a04_vendor_native_allocate_cold(struct a04_vendor_native_cold **out,
         else status=a04_vendor_native_bind_bank_cold(n,profile);
         if(NT_SUCCESS(status))status=a04_vendor_native_reserve_code_cold(n,adapter);
         if(NT_SUCCESS(status))status=a04_vendor_native_prepare_backing_cold(n,adapter,maps);
+#if A04_GE8300_VENDOR_NATIVE_CLEAR_JOB
+        if(NT_SUCCESS(status))status=a04_vendor_native_prepare_job_cold(n);
+#endif
         if(!NT_SUCCESS(status))(void)release_contents(n);
     }
     if(!NT_SUCCESS(status) && !n->render)ExFreePoolWithTag(n,TAG);
