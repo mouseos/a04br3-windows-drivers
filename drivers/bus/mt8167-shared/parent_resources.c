@@ -65,3 +65,29 @@ int a04_parent_translate_audio_resources(const struct a04_parent_resource *raw,
     if(k!=4 || !a || a04_parent_translate_resources(r,t,4,&m))return -1;
     *out=m;*apmixed=a;return 0;
 }
+
+int a04_parent_translate_gpu_domain_resources(const struct a04_parent_resource *raw,
+ const struct a04_parent_resource *translated,size_t count,struct a04_parent_mapping *out,
+ uint64_t *apmixed,uint64_t *spm)
+{
+ struct a04_parent_resource r[5],t[5];struct a04_parent_mapping map;
+ uint64_t s=0,a=0;size_t k=0;
+ if(!raw || !translated || !out || !apmixed || !spm || count!=6)return -1;
+ for(size_t i=0;i<count;i++){
+  uint64_t base=translated[i].base;uint32_t bytes=translated[i].length;
+  if(!base || !bytes || base>UINT64_MAX-(bytes-1) || translated[i].exclusive!=1)return -1;
+  for(size_t j=0;j<i;j++){
+   uint64_t other=translated[j].base;uint32_t len=translated[j].length;
+   if(base<=other ? other-base<bytes : base-other<len)return -1;
+  }
+  if(raw[i].base==0x10006000u){
+   if(s || raw[i].length!=0x1000 || raw[i].exclusive!=1 || bytes!=0x1000)return -1;
+   s=base;
+  }else{
+   if(k==5)return -1;
+   r[k]=raw[i];t[k]=translated[i];k++;
+  }
+ }
+ if(k!=5 || !s || a04_parent_translate_audio_resources(r,t,k,&map,&a))return -1;
+ *out=map;*apmixed=a;*spm=s;return 0;
+}

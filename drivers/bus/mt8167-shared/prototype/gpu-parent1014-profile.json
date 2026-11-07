@@ -32,7 +32,8 @@
     "A04_MT6392_CLK_ALIAS_EXPERIMENT": "1",
     "A04_AUDIO_DIAGNOSTIC_TRACE": "1",
     "A04_AUDIO_PMIC_TRACE": "0",
-    "A04_SHARED_GPU_PLATFORM": "1"
+    "A04_SHARED_GPU_PLATFORM": "1",
+    "A04_SHARED_GPU_DOMAIN_SPM": "0"
   },
   "profile_kind": "parent1014 candidate, exact ecaa1008 feature flags plus GPU platform",
   "target_driver_ver": "11/06/2026,2026.11.7.1014",

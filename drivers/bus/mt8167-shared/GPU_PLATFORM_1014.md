@@ -64,3 +64,29 @@ powered-idle quiesceに絶対必要だとする一般証明も得ていない。
 現在割当の外へSPMを追加mapして成立したことにはしない。
 最終GEO proofはproviderのFW/IRQ/RGXStop・実platform観測・rundown・epochを
 結合してから評価する。未確認のstop capsを成功公開しない。
+
+## Optional assigned-SPM profile
+
+The separate machine-only UEFI branch `work/windows-gpu-domain-owner` adds
+`A04BR3_GPU_DOMAIN_OWNER=1` (default OFF). It adds SPM to SHR0's actual PnP
+resources and preserves the shared ACPI storage GUID. The existing default
+profile and GPU0 core/MFG/IRQ assignments are unchanged.
+
+`build-gpu-parent1014.ps1 -WithSpm` chooses gpu-parent1014-spm-profile.json.
+It preserves ecaa1008 flags plus GPU flags, requires the explicit sixth raw/
+translated exclusive SPM window before mapping, and publishes the separate
+V2 A04SharedGpuDomainGuid. The original V1 INFRA interface is unchanged.
+Acquire/Observe/Off/On/VerifyOff/ReleaseOff/ReleaseOn all use the same parent
+mutex and actual D0 lease. Observe includes TOP snapshots, never clock writes.
+ReleaseOff keeps hardware OFF and permits a later acquire of a fully observed
+OFF state; it never restarts stale firmware while freeing native resources.
+
+PWRON_CONFIG_EN bit0 must already be enabled by firmware. It is read only.
+No shared unlock/key, CPU4/watchdog/wakeup bit is written. The MMIO wrapper
+rejects any write outside three fixed GPU power offsets or INFRA masks0x24/0x80.
+VerifyOff re-reads all three controls, BOTH power status registers, protection
+request/ack and SI1 way, rather than trusting software flags. It still does
+not claim native FW/IRQ/cache/epoch rundown or advertise GEO proof by itself.
+This full vendor platform-off route is a conservative alternative while the
+GPU0-only external write-response contract is unresolved; it is not evidence
+that every possible powered-reset solution requires SPM collapse.

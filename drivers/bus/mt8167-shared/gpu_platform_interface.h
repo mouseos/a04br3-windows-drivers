@@ -20,4 +20,24 @@ typedef struct _A04_SHARED_GPU_PLATFORM_INTERFACE {
  NTSTATUS (*Unprotect)(PVOID,ULONGLONG);
  NTSTATUS (*Release)(PVOID,ULONGLONG);
 } A04_SHARED_GPU_PLATFORM_INTERFACE;
+/* V2 is a different GUID: only registered for the actually assigned SPM
+ * profile. Resource presence is not a claim of completed hardware shutdown. */
+static const GUID A04SharedGpuDomainGuid=
+ {0x21a5ad67,0xfed5,0x413d,{0x99,0x14,0xc9,0x22,0x01,0x14,0x16,0x67}};
+#define A04_SHARED_GPU_DOMAIN_VERSION 2
+struct a04_gpu_domain_snapshot {
+ ULONG size,version;ULONGLONG token;
+ ULONG spm_status,spm_status2,control[3],unlock,protect,protect_ack,way;
+ ULONG mux0,mux1,slow;
+};
+typedef struct _A04_SHARED_GPU_DOMAIN_INTERFACE {
+ INTERFACE Header;
+ NTSTATUS (*Acquire)(PVOID,ULONGLONG *);
+ NTSTATUS (*Observe)(PVOID,ULONGLONG,struct a04_gpu_domain_snapshot *);
+ NTSTATUS (*Off)(PVOID,ULONGLONG);
+ NTSTATUS (*On)(PVOID,ULONGLONG);
+ NTSTATUS (*VerifyOff)(PVOID,ULONGLONG);
+ NTSTATUS (*ReleaseOff)(PVOID,ULONGLONG);
+ NTSTATUS (*ReleaseOn)(PVOID,ULONGLONG);
+} A04_SHARED_GPU_DOMAIN_INTERFACE;
 #endif

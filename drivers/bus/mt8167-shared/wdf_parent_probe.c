@@ -193,6 +193,12 @@
 #include "gpu_domain_owner.h"
 #include "gpu_platform_interface.h"
 #endif
+#ifndef A04_SHARED_GPU_DOMAIN_SPM
+#define A04_SHARED_GPU_DOMAIN_SPM 0
+#endif
+#if A04_SHARED_GPU_DOMAIN_SPM && (!A04_SHARED_GPU_PLATFORM || !A04_SHARED_APMIXED_RESOURCE)
+#error SPM profile requires GPU platform and matched APMIXED parent
+#endif
 typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; struct a04_usb_owner usb; ULONG wifiGeneration; int wifiActive;
 #if A04_SHARED_WIFI_RUNTIME
 struct a04_rtc32k_lease wifiRtc;
@@ -208,6 +214,9 @@ struct a04_shared_thermal_owner thermal;EX_RUNDOWN_REF thermalRundown;BOOLEAN th
 #endif
 #if A04_SHARED_GPU_PLATFORM
 struct a04_gpu_domain_owner gpuDomain;
+#if A04_SHARED_GPU_DOMAIN_SPM
+PVOID gpuSpm;
+#endif
 #endif
 PVOID audioAfe;
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
@@ -1152,6 +1161,9 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
 #if A04_MT6392_CLK_ALIAS_EXPERIMENT
     if(c->speakerClock.held)return STATUS_DEVICE_BUSY;
 #endif
+#if A04_SHARED_GPU_DOMAIN_SPM
+    if(c->gpuSpm){MmUnmapIoSpace(c->gpuSpm,0x1000);c->gpuSpm=NULL;}
+#endif
     if(c->apmixed){MmUnmapIoSpace(c->apmixed,c->apmixedLength);c->apmixed=NULL;c->apmixedLength=0;}
     if(c->pwrap){MmUnmapIoSpace(c->pwrap,0x1000);c->pwrap=NULL;}
     if(c->gpio){MmUnmapIoSpace(c->gpio,0x1000);c->gpio=NULL;}
@@ -1161,10 +1173,16 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
 }
 NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
-    A04_PARENT_CONTEXT *c=ParentContext(dev);struct a04_parent_resource r[5],t[5];
+    A04_PARENT_CONTEXT *c=ParentContext(dev);struct a04_parent_resource r[6],t[6];
     struct a04_parent_mapping mapping;ULONG i,n=0;PHYSICAL_ADDRESS pa;
 #if A04_SHARED_APMIXED_RESOURCE
     uint64_t apmixed=0;
+#if A04_SHARED_GPU_DOMAIN_SPM
+    uint64_t gpuSpm=0;
+#endif
+#endif
+#if A04_SHARED_GPU_DOMAIN_SPM
+    if(c->gpuSpm)return STATUS_INVALID_DEVICE_STATE;
 #endif
     if(c->topck||c->infra||c->gpio||c->pwrap||c->apmixed)return STATUS_INVALID_DEVICE_STATE;
     if(!raw || !translated || WdfCmResourceListGetCount(raw)!=WdfCmResourceListGetCount(translated))return STATUS_DEVICE_CONFIGURATION_ERROR;
@@ -1173,7 +1191,7 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
         PCM_PARTIAL_RESOURCE_DESCRIPTOR original=WdfCmResourceListGetDescriptor(raw,i);
         if(!d || !original || d->Type!=original->Type)return STATUS_DEVICE_CONFIGURATION_ERROR;
         if(d->Type!=CmResourceTypeMemory)continue;
-        if(n>=5)return STATUS_DEVICE_CONFIGURATION_ERROR;
+        if(n>=(A04_SHARED_GPU_DOMAIN_SPM?6u:5u))return STATUS_DEVICE_CONFIGURATION_ERROR;
         if(d->u.Memory.Start.QuadPart<0 || original->u.Memory.Start.QuadPart<0)return STATUS_DEVICE_CONFIGURATION_ERROR;
         r[n].base=(uint64_t)original->u.Memory.Start.QuadPart;r[n].length=original->u.Memory.Length;
         r[n].exclusive=original->ShareDisposition==CmResourceShareDeviceExclusive ? 1u:0u;
@@ -1181,11 +1199,15 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
         t[n].exclusive=d->ShareDisposition==CmResourceShareDeviceExclusive ? 1u:0u;++n;
     }
 #if A04_SHARED_APMIXED_RESOURCE
+#if A04_SHARED_GPU_DOMAIN_SPM
+    if(a04_parent_translate_gpu_domain_resources(r,t,n,&mapping,&apmixed,&gpuSpm))return STATUS_DEVICE_CONFIGURATION_ERROR;
+#else
     /* Integrated parent keeps the platform's existing four/five windows.
      * Absence of APMIXED only withholds USB/audio admission, not input D0. */
     if(!A04_SHARED_USB_ONLY && n==4){
         if(a04_parent_translate_resources(r,t,n,&mapping))return STATUS_DEVICE_CONFIGURATION_ERROR;
     } else if(a04_parent_translate_audio_resources(r,t,n,&mapping,&apmixed))return STATUS_DEVICE_CONFIGURATION_ERROR;
+#endif
 #else
     if(a04_parent_translate_resources(r,t,n,&mapping))return STATUS_DEVICE_CONFIGURATION_ERROR;
 #endif
@@ -1205,6 +1227,10 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
         pa.QuadPart=(LONGLONG)apmixed;c->apmixed=MmMapIoSpace(pa,c->apmixedLength,MmNonCached);
         if(!c->apmixed)goto fail;
     }
+#endif
+#if A04_SHARED_GPU_DOMAIN_SPM
+    pa.QuadPart=(LONGLONG)gpuSpm;c->gpuSpm=MmMapIoSpace(pa,0x1000,MmNonCached);
+    if(!c->gpuSpm)goto fail;
 #endif
     /* Mapping alone does not admit clients; D0 must establish readiness. */
     return STATUS_SUCCESS;

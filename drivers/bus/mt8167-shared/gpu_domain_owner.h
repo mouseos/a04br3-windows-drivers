@@ -35,6 +35,9 @@ int a04_gpu_domain_unprotect(struct a04_gpu_domain_owner *,const struct a04_gpu_
  * Caller closes native admission and finishes FW/IRQ/RGXStop first. */
 int a04_gpu_domain_off(struct a04_gpu_domain_owner *,const struct a04_gpu_domain_io *,uint64_t);
 int a04_gpu_domain_on(struct a04_gpu_domain_owner *,const struct a04_gpu_domain_io *,uint64_t);
+/* Fresh actual OFF observations; no write and not an OS/IRQ/DMA receipt. */
+int a04_gpu_domain_verify_off(struct a04_gpu_domain_owner *,const struct a04_gpu_domain_io *,uint64_t);
+int a04_gpu_domain_release_off(struct a04_gpu_domain_owner *,const struct a04_gpu_domain_io *,uint64_t);
 int a04_gpu_domain_release(struct a04_gpu_domain_owner *,uint64_t);
 /* Revoke is software-only. Ambiguous/held resources remain pinned. */
 void a04_gpu_domain_revoke(struct a04_gpu_domain_owner *);

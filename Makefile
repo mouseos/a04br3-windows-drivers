@@ -1583,3 +1583,10 @@ build/gpu_domain_owner_test: tests/gpu_domain_owner_test.c drivers/bus/mt8167-sh
 .PHONY: test-gpu-domain-owner
 test-gpu-domain-owner: build/gpu_domain_owner_test
 	./build/gpu_domain_owner_test
+
+build/gpu_parent_spm_resources_test: tests/gpu_parent_spm_resources_test.c drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/parent_resources.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared $(filter %.c,$^) -o $@
+.PHONY: test-gpu-parent-spm-resources
+test-gpu-parent-spm-resources: build/gpu_parent_spm_resources_test
+	./build/gpu_parent_spm_resources_test

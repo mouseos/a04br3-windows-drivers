@@ -34,7 +34,7 @@ static int write32(void *ctx,enum a04_gpu_domain_bank bank,unsigned off,uint32_t
 static void delay(void *ctx,unsigned us){assert(us==10);((struct model *)ctx)->waits++;}
 static void init(struct model *m)
 {
- memset(m,0,sizeof(*m));m->infra[0x220/4]=0x81000000;m->infra[0x228/4]=0x81000000;
+ memset(m,0,sizeof(*m));m->spm[0]=1;m->infra[0x220/4]=0x81000000;m->infra[0x228/4]=0x81000000;
  m->infra[0x204/4]=0xa0000080;
  m->spm[0x214/4]=0x4000000d;m->spm[0x2c0/4]=0x4000000d;m->spm[0x2c4/4]=0x4000000d;
  m->spm[0x60c/4]=m->spm[0x610/4]=(1u<<25)|(1u<<24)|(1u<<4)|0x2000;
@@ -66,6 +66,14 @@ int main(void)
   assert(e==A04_GPU_DOMAIN_IO && s.poisoned && s.held);
   assert(a04_gpu_domain_release(&s,token)==A04_GPU_DOMAIN_INPUT);
  }
+ memset(&s,0,sizeof(s));init(&m);io.has_spm=1;m.spm[0]=0;
+ assert(a04_gpu_domain_acquire(&s,&io,&token)==A04_GPU_DOMAIN_BUSY && !m.writes && !s.held);
+ memset(&s,0,sizeof(s));init(&m);assert(!a04_gpu_domain_acquire(&s,&io,&token));
+ assert(!a04_gpu_domain_off(&s,&io,token));unsigned offwrites=m.writes;
+ assert(!a04_gpu_domain_verify_off(&s,&io,token));assert(!a04_gpu_domain_release_off(&s,&io,token) && !s.held && m.writes==offwrites);
+ memset(&s,0,sizeof(s)); /* fresh legitimate parent assignment, hardware remains fully OFF */
+ assert(!a04_gpu_domain_acquire(&s,&io,&token) && s.domains_off && s.protected_bus && m.writes==offwrites);
+ assert(!a04_gpu_domain_on(&s,&io,token));assert(!a04_gpu_domain_release(&s,token));
  memset(&s,0,sizeof(s));init(&m);io.has_spm=0;m.no_ack=1;
  assert(!a04_gpu_domain_acquire(&s,&io,&token));assert(a04_gpu_domain_protect(&s,&io,token)==A04_GPU_DOMAIN_TIMEOUT);
  assert(m.waits==10000 && s.poisoned && s.held && !m.spm_access);
