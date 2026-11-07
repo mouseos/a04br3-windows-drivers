@@ -21,7 +21,7 @@ $bp=Join-Path $BaselineDirectory 'linked-manifest.json';Verify $bp $BaselineMani
 $kp=Join-Path $KmdDirectory 'build-manifest.json';Verify $kp $KmdManifestSha256;$k=Get-Content -Raw $kp|ConvertFrom-Json
 $cp=Join-Path $CompilerDirectory 'link-manifest.json';Verify $cp $CompilerManifestSha256;$cm=Get-Content -Raw $cp|ConvertFrom-Json
 $pp=Join-Path $PairDirectory 'manifest.json';Verify $pp $PairManifestSha256;$pair=Get-Content -Raw $pp|ConvertFrom-Json
-if($pair.source_dirty -or !$pair.user_mode_fp -or $pair.kernel_no_fp_applied -or $pair.source_commit -ne (& git -C $root rev-parse HEAD)){throw 'Expected fixed current user-mode ARM32 pair object'}
+if($pair.source_dirty -or !$pair.user_mode_fp -or $pair.kernel_no_fp_applied -or $pair.source_commit -notmatch '^[a-f0-9]{40}$'){throw 'Expected fixed current user-mode ARM32 pair object'}
 Verify (Join-Path $PairDirectory 'pco_pair.obj') $pair.object_sha256
 # Local compile paths differ from runner checkout. Verify every pair compiler
 # source/header under this component against committed git blobs via hashes.

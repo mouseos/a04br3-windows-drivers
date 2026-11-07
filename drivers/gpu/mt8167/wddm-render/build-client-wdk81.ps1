@@ -12,7 +12,11 @@ $m=Get-Content -Raw $manifestPath|ConvertFrom-Json
 if($m.source_dirty){throw 'Dirty module baseline'}
 $memory='drivers/gpu/mt8167/wddm-render/testclient/memory.c'
 $record=@($m.sources|Where-Object {($_.path -replace '\\','/') -eq $memory})
-if($record.Count -ne 1 -or (Get-FileHash (Join-Path $root $memory) -Algorithm SHA256).Hash -ne $record[0].sha256){throw 'Client memory implementation changed'}
+if($record.Count -ne 1){throw 'Missing client memory provenance'}
+$oldMemory=(& git -C $root rev-parse ($m.source_commit+':'+$memory))
+if($LASTEXITCODE){throw 'Missing fixed memory source commit'}
+$newMemory=(& git -C $root hash-object (Join-Path $root $memory))
+if($LASTEXITCODE -or $newMemory -ne $oldMemory){throw 'Client memory implementation changed'}
 $archive=Join-Path $VerifiedModuleDirectory 'ge8300-umd-clear.lib'
 $record=@($m.outputs|Where-Object {$_.name -eq 'ge8300-umd-clear.lib'})
 if($record.Count -ne 1 -or (Get-FileHash $archive -Algorithm SHA256).Hash -ne $record[0].sha256){throw 'Memory archive hash mismatch'}
