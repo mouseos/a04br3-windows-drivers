@@ -374,3 +374,18 @@ helperの既存NoFP/NEON flagsと正規WDK ARM runtime linkを維持する。
 `A04_MUSB_HID_CONTROL_EXPERIMENT=1`を指定して
 `tools/ci/build-mt8167-usb20.ps1 -OutputDirectory <checkout内の専用出力>`を実行する。
 実WDK build・署名・Windows再起動/実機確認はこのsource変更では未実施。
+
+## WDF work-item creation
+
+The 1004 runtime checkpoint returned STATUS_WDF_EXECUTION_LEVEL_INVALID
+(0xC0200211) from controller creation, before hardware preparation or HID IOCTLs.
+WdfWorkItemCreate validates attributes without allowing an ExecutionLevel override.
+Keep its initialized InheritFromParent value; EvtWorkItem already runs at PASSIVE_LEVEL.
+Keep AutomaticSerialization disabled and the existing explicit controller lock,
+IRQ/DPC handoff, work-item flush, and device execution level unchanged.
+This corrects object creation; host power, enumeration, and keyboard input still
+require hardware verification.
+
+Sources: Microsoft Windows-Driver-Frameworks shared/core/fxworkitemapi.cpp and
+shared/object/fxvalidatefunctions.cpp; WDK 8.1 KMDF 1.13 wdfstatus.h;
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdfworkitem/nf-wdfworkitem-wdfworkitemcreate

@@ -53,7 +53,9 @@ NTSTATUS A04UsbWdfCreate(WDFDEVICE device,A04_USB_EVENT_CALLBACK callback,void *
  c=UsbIrqContext(irq); RtlZeroMemory(c,sizeof(*c)); c->irq=irq; c->callback=callback; c->callback_context=context;
  c->controller.io.context=c; c->controller.io.read8=Rd8; c->controller.io.read16=Rd16; c->controller.io.write8=Wr8; c->controller.io.write16=Wr16; c->controller.read32=Rd32; c->controller.write32=Wr32;
  WDF_WORKITEM_CONFIG_INIT(&wc,UsbWork); wc.AutomaticSerialization=FALSE;
- WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&a,USB_WORK_CONTEXT); a.ParentObject=irq; a.ExecutionLevel=WdfExecutionLevelPassive;
+ /* Work items already run at PASSIVE_LEVEL. KMDF only accepts inherited
+  * ExecutionLevel for this object type; an explicit Passive value is invalid. */
+ WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&a,USB_WORK_CONTEXT); a.ParentObject=irq;
  s=WdfWorkItemCreate(&wc,&a,&c->work); if(!NT_SUCCESS(s)){WdfObjectDelete(irq);return s;}
  UsbWorkContext(c->work)->owner=c; *out=c; return STATUS_SUCCESS;
 }
