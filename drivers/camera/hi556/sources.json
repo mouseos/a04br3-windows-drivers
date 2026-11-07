@@ -47,5 +47,16 @@
   "hardware_operated": false,
   "repository": "https://github.com/mouseos/a04br3-windows-drivers.git",
   "default_enabled": false,
-  "windows_bindable": false
+  "windows_bindable": false,
+  "receiver_alignment": {
+    "source": "MT8365_Q0_Ayla_bsp/vendor/mediatek/proprietary/hardware/mtkcam/legacy/platform/mt8167/hal/sensor/seninf_drv.cpp",
+    "sha256": "1ae38768c2a5e66495074a90fc92bc7aa4e5be16adf14ced60366ece2cf4e691",
+    "scope": "MT8167 NCSI2 field RMW/CAL3C preservation; not proof of real-sensor frame",
+    "redistributed": false
+  },
+  "packing_evidence": {
+    "source": "a04br3-linux-drivers/docs/camera-t12-raw10-packing.md",
+    "committed_in_board_linux_commit": false,
+    "scope": "internal TM DMA little-endian consecutive10bit; real HI556 frame not proven"
+  }
 }

@@ -1,5 +1,8 @@
 # HI556 統合RAW撮像候補
 
+> 後続RAW0.0.1.3/schema3とAVStream標準capture接続は[AVSTREAM-CANDIDATE.md](AVSTREAM-CANDIDATE.md)。
+> 以下は0.0.1.0〜1.2の履歴。実sensorの非ゼロframeは依然未確認。
+
 これは部品libraryだけではなく、電源/MCLK provider、唯一のI2C ownerへのclient、
 センサー設定、受信/DMA、明示取得EXEを一つのWDK buildで結ぶ候補。
 AVStream/WinRT cameraとしては公開せず、System classの診断RAW取得deviceとする。

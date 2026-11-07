@@ -1,0 +1,46 @@
+[Version]
+Signature="$Windows NT$"
+Class=Image
+ClassGuid={6BDD1FC6-810F-11D0-BEC7-08002BE2092F}
+Provider=%Provider%
+CatalogFile=hi556-avstream.cat
+DriverVer=11/07/2026,0.0.1.0
+
+[Manufacturer]
+%Provider%=Models,NTarm
+[Models.NTarm]
+%Device%=Install,ROOT\A04BR3HI556Capture
+[DestinationDirs]
+DriverCopy=12
+[SourceDisksNames]
+1=%Disk%,,,
+[SourceDisksFiles]
+hi556-avstream.sys=1
+[Install.NTarm]
+Include=ks.inf,kscaptur.inf
+Needs=KS.Registration,KSCAPTUR.Registration.NT
+CopyFiles=DriverCopy
+[DriverCopy]
+hi556-avstream.sys
+[Install.NTarm.Services]
+AddService=Hi556AVStream,0x00000002,Service
+[Service]
+DisplayName=%Device%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\hi556-avstream.sys
+Dependencies=Hi556Capture
+[Install.NTarm.Interfaces]
+AddInterface={65E8773D-8F56-11D0-A3B9-00A0C9223196},GLOBAL,Interface
+AddInterface={6994AD05-93EF-11D0-A3CC-00A0C9223196},GLOBAL,Interface
+AddInterface={E5323777-F976-4F5B-9B55-B94699C46E44},GLOBAL,Interface
+[Interface]
+AddReg=InterfaceReg
+[InterfaceReg]
+HKR,,CLSID,0x00000000,"{17CCA71B-ECD7-11D0-B908-00A0C9223196}"
+HKR,,FriendlyName,0x00000000,%Device%
+[Strings]
+Provider="mouseos"
+Device="Hynix HI556 Rear Camera"
+Disk="Hynix HI556 AVStream Driver"

@@ -51,7 +51,8 @@ NTSTATUS CameraD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
  A04_CAM_CONTEXT *c=CameraContext(dev);NTSTATUS s;UNREFERENCED_PARAMETER(previous);
  if(c->quarantined||c->leases||c->generation==MAXULONG)return STATUS_DEVICE_NOT_READY;
  s=a04_cam_qualified(c);if(!NT_SUCCESS(s))return s;
- c->generation++;a04_cam_power_init(c);InterlockedExchange(&c->stop_requested,0);InterlockedExchange(&c->online,1);
+ c->generation++;c->status.version=A04_CAM_STATUS_VERSION;c->status.bytes=sizeof(c->status);
+ a04_cam_power_init(c);InterlockedExchange(&c->stop_requested,0);InterlockedExchange(&c->online,1);
  s=a04_hi556_owner_open(&c->identity);if(!NT_SUCCESS(s))goto fail;
  s=a04_cam_identify(c);if(!NT_SUCCESS(s))goto fail;
  s=a04_hi556_camera_open(&c->sensor);if(!NT_SUCCESS(s))goto fail;

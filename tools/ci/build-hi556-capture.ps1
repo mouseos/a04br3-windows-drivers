@@ -17,7 +17,7 @@ try {
  $flag=[int][bool]$CaptureExperiment
  $flags=@('--target=thumbv7-pc-windows-msvc','-std=c11','-O2','-w','-ffreestanding','-fms-extensions','-fno-stack-protector','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-mfpu=none','-D_KERNEL_MODE','-D_ARM_','-DARM','-DKMDF_VERSION_MAJOR=1','-DKMDF_VERSION_MINOR=13','-DNTDDI_VERSION=0x06030000','-D_WIN32_WINNT=0x0603',"-I$inc\km","-I$inc\shared","-I$inc\um","-I$inc\wdf\kmdf\1.13")
  $objects=@()
- foreach($name in @('wdf_capture','windows_power','windows_frame','windows_owner_client','receiver')){
+ foreach($name in @('wdf_capture','windows_power','windows_frame','windows_owner_client','receiver','frame_codec')){
   $obj="$out\$name.obj"
   & clang @flags "-DA04_HI556_CAPTURE_EXPERIMENT=$flag" -c "$root\drivers\camera\hi556\$name.c" -o $obj
   if($LASTEXITCODE){throw "HI556 compile failed: $name"};$objects+=$obj
@@ -78,7 +78,7 @@ try {
 } finally {$env:TEMP=$priorTemp;$env:TMP=$priorTmp;$env:RUNNER_TEMP=$priorRunner}
 [ordered]@{
  status='integrated-raw-capture-candidate-not-hardware-validated';source_commit=$commit;source_dirty=$false
- recipe_sha256=(Hash $PSCommandPath);camera_version='0.0.1.2';status_schema=2;power_stop_rundown='EvtIoStop atomic request; sole original owner completes after hardware quiesce';total_servicing_deadline_seconds=32;mma_version=$(if($CaptureExperiment){'0.0.2.1'}else{$null})
+ recipe_sha256=(Hash $PSCommandPath);camera_version='0.0.1.3';status_schema=3;power_stop_rundown='EvtIoStop atomic request; sole original owner completes after hardware quiesce';total_servicing_deadline_seconds=32;mma_version=$(if($CaptureExperiment){'0.0.2.1'}else{$null})
  critical_flags=@{A04_HI556_CAPTURE_EXPERIMENT=$flag;A04_MMA_SHARED_IDENTITY=$flag;A04_MMA_SHARED_CAMERA_STREAM=$flag}
  shared_owner_reused=[bool]$SharedOwnerDirectory;camera_default_enabled=$false;required_firmware='uefi-a04br3 work/windows-camera-handoff, including ISP quiesce ACK before publishing NVS'
  model='rear Hynix HI556 chip0556 I2C1 addr28';front_camera_bound=$false
@@ -87,7 +87,7 @@ try {
  sole_i2c_mmio_owner='MMA8652';camera_private_mmio=@('ISP/SENINF','MIPI analog','LARB1');shared_top_gpio_pmic_windows_writes=$false
  power_mode='pinned verified boot rails/MCLK; ACPI HSTA plus referenced token; no guessed rail-off'
  dma_mode='DMA adapter v3 noncached common buffer,32bit logical; require IMGO M4U/security bypass already established'
- completion='fresh Pass1 AND IMGO done, no error, no second SOF, sensor stop + ISP reset ACK,guard intact,content changed'
+ completion='fresh Pass1 AND IMGO done, no error, no second SOF, sensor stop + ISP reset ACK,guard intact,content changed AND decoded payload nonzero/nonconstant'
  capture_on_load=$false;avstream_implemented=$false;otp_values_embedded=$false;device_calibration_embedded=$false;hardware_verified=$false
  blockers=@('No nonzero frame proven on Windows or source Linux baseline; NCSI2->MUX remains unresolved','Requires matched opt-in camera handoff firmware and MMA shared owner; not for current normal firmware','No front IC identification or AVStream/WinRT API; no fabricated OTP calibration')
  signed=[bool]$CertificateThumbprint;certificate_thumbprint=$CertificateThumbprint

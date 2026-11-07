@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only
  * MT8167 Pass1 RAW10 configuration port, a04br3-linux-drivers 3d2c74e.
- * This is the source baseline, NOT a fix for its unresolved NCSI2->MUX
- * no-frame boundary. Do not import MT2712 CAMSV offsets or failed tunings.
+ * Source-aligned NCSI2 lifecycle; real-sensor no-frame remains unproven.
+ * Do not import MT2712 CAMSV offsets or failed tunings.
  * Register semantics: CT3 7c478212 cameraisp/src/mt8167/inc/camera_isp.h.
  * No shared TOP/GPIO/PMIC writes, no M4U/security reprogramming. */
 #include "capture.h"
@@ -70,13 +70,20 @@ int a04_hi556_receiver_arm(const struct a04_hi556_receiver_io *o,struct a04_hi55
  update(o,1,0x824,1,1);if(o->delay_us(o->context,30))return A04_CAM_DELAY;
  update(o,1,0x820,15,3);if(o->delay_us(o->context,1))return A04_CAM_DELAY;
  W(0x4100,0x8001);
- update(o,0,0x43d8,31,31);W(0x4338,1);W(0x433c,0x1541);W(0x4338,5);
+ update(o,0,0x43d8,31,31);update(o,0,0x4338,1,1);W(0x433c,0x1541);update(o,0,0x4338,4,4);
  if(o->delay_us(o->context,500))return A04_CAM_DELAY;
- W(0x4338,4);W(0x433c,0);update(o,0,0x43d8,31,0);
- W(0x43b8,0x11);W(0x43ac,0);W(0x43a0,0x05896173);W(0x43a8,0x1400);
+ /* MT8167 setSeninf1NCSI2 clears only SW_CTRL_MODE; it retains CAL3C
+  * and hardware-selected/readonly calibration fields. No zero trim table. */
+ update(o,0,0x4338,1,0);update(o,0,0x43d8,31,0);
+ W(0x43ac,0);
+ /* CT3: NCSI2, two lanes(enum1), ECC order1. Vendor updates these fields
+  * over the real reset state, never synthesizes the remaining decoder bits. */
+ update(o,0,0x43a0,0x04010093u,0x04010013u);W(0x43a8,0x1400);
  W(0x43b4,0x7fff);W(0x43b0,0); /* no NCSI2 interrupt handler */
- update(o,0,0x4324,0xff000000,0xe4000000);update(o,0,0x43b8,255,0x45);update(o,0,0x43d8,0x10,0);
- W(0x43e4,0);W(0x43dc,0);W(0x43b8,0x12);
+ update(o,0,0x4324,0xff000000,0xe4000000);update(o,0,0x43d8,0x10,0);
+ W(0x43e4,0);W(0x43dc,0);
+ /* Normal NCSI2 setter has no DBG_SEL programming. Preserve the selector;
+  * auto-deskew/debug-scan writes are not a streaming data-path recipe. */
  update(o,0,0x4000,0x10c00,0xc00);W(0x4004,0);W(0x4008,0);
  W(0x4120,0x9eff8600);W(0x4120,0x9eff8603);
  if(o->delay_us(o->context,1))return A04_CAM_DELAY;

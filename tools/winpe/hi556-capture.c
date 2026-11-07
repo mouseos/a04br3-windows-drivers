@@ -32,6 +32,7 @@ done:
 }
 static void status(const A04_CAM_STATUS *s)
 {
+ printf("HI556 CONTENT MIN%lu MAX%lu NONZERO%lu VARIED%lu FORMAT%lu\n",(ULONG)s->content.minimum,(ULONG)s->content.maximum,(ULONG)s->content.nonzero,(ULONG)s->content.nonconstant,(ULONG)s->format);
  printf("HI556 QUAL_OBS%lu QUAL_NT%08lX POWER_LOST%lu\n",(ULONG)s->qualification_observed,(ULONG)s->qualification_status,(ULONG)s->power_lost);
  printf("HI556 RX_OBS%lu RX_RESULT%08lX\n",(ULONG)s->receiver_observed,(ULONG)s->receiver_result);
  printf("HI556 SENSOR_OBS%lu STOP_OBS%lu STOP_REQUESTED%lu DEADLINE%lu\n",(ULONG)s->sensor_observed,(ULONG)s->stop_observed,(ULONG)s->stop_requested,(ULONG)s->deadline_expired);
@@ -61,7 +62,7 @@ int wmain(int argc,wchar_t **argv)
   if(file==INVALID_HANDLE_VALUE){printf("CREATE_WIN32=%lu\n",GetLastError());HeapFree(GetProcessHeap(),0,buffer);goto done;}
   if(DeviceIoControl(camera_handle,A04_CAM_IOCTL_CAPTURE,NULL,0,buffer,capacity,&bytes,NULL)&&bytes==capacity){
    CopyMemory(&s,buffer,sizeof(s));status(&s);
-   if(s.version==A04_CAM_STATUS_VERSION&&s.bytes==sizeof(s)&&s.attempted&&s.status==0&&s.frame_bytes==A04_HI556_FRAME_BYTES&&s.receiver.quiesced&&!s.receiver.uncertain){
+   if(s.version==A04_CAM_STATUS_VERSION&&s.bytes==sizeof(s)&&s.attempted&&s.status==0&&s.frame_bytes==A04_HI556_FRAME_BYTES&&s.receiver.quiesced&&!s.receiver.uncertain&&s.content.nonzero&&s.content.nonconstant&&s.format==2){
     DWORD wrote=0;if(WriteFile(file,buffer+sizeof(s),s.frame_bytes,&wrote,NULL)&&wrote==s.frame_bytes&&FlushFileBuffers(file))result=0;
    }
   }else{

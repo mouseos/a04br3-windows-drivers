@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 #include "windows_capture.h"
+#include "frame_codec.h"
 #include "vendor/hi556_tables.h"
 static uint32_t read_reg(void *p,unsigned region,unsigned off)
 {A04_CAM_CONTEXT *c=p;return READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->region[region]+off));}
@@ -79,7 +80,7 @@ NTSTATUS a04_cam_frame(A04_CAM_CONTEXT *c,WDFREQUEST request,void *out,size_t ou
  if(outbytes<sizeof(A04_CAM_STATUS)+A04_HI556_FRAME_BYTES)return STATUS_BUFFER_TOO_SMALL;
  if(!c->online||c->quarantined)return STATUS_DEVICE_NOT_READY;
  RtlZeroMemory(&c->status,sizeof(c->status));c->status.version=A04_CAM_STATUS_VERSION;c->status.bytes=sizeof(c->status);c->status.generation=c->generation;c->status.attempted=1;
- c->status.width=A04_HI556_WIDTH;c->status.height=A04_HI556_HEIGHT;c->status.stride=A04_HI556_STRIDE;c->status.format=1;
+ c->status.width=A04_HI556_WIDTH;c->status.height=A04_HI556_HEIGHT;c->status.stride=A04_HI556_STRIDE;c->status.format=2;
  status=cancelled(c,request,started);if(!NT_SUCCESS(status))goto finish;
  status=c->power.Acquire(c,&token);if(!NT_SUCCESS(status))goto finish;
  status=cancelled(c,request,started);if(!NT_SUCCESS(status))goto release;
@@ -122,6 +123,7 @@ stop:
   for(unsigned i=4096+A04_HI556_FRAME_BYTES;i<A04_CAM_ALLOC_BYTES;i++)if(p[i]!=0xa5)c->status.receiver.guard_errors++;
   if(done)for(unsigned i=0;i<A04_HI556_FRAME_BYTES;i++)if(p[4096+i]!=0xa5)c->status.receiver.changed++;
   if((c->status.receiver.guard_errors||(done&&!c->status.receiver.changed))&&NT_SUCCESS(status))status=STATUS_DATA_ERROR;
+  if(done&&NT_SUCCESS(status)&&a04_hi556_content_check(p+4096,A04_HI556_FRAME_BYTES,&c->status.content))status=STATUS_DATA_ERROR;
  }
 release:
  /* MMA may retain a token on uncertain I2C teardown. Keep this device and

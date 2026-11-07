@@ -37,3 +37,14 @@ register根拠はCT3 `7c4782127d4ea11965be00ce1343056be9bfb769`の
 `drivers/soc/mediatek/mtk-scpsys-mt8167.c`のISP domain。
 新GUID/ABI/profile名と親側実装commitは担当者との合意後に固定する。
 現在のsourceは上記APIの存在を広告せず、未実装broker/stubや第二SPM writerを作らない。
+
+## main経由でCarver thermal1022へ渡す追加条件
+
+AVStream consumerを追加してもSPM/INFRA/TOPの割当やmapは増やさない。
+RAW owner0.0.1.3は既存pinned NVS/HSTA/power token契約をそのまま要求し、
+AVStreamはそのownerの固定IOCTLへだけ接続する。thermal1022のABIを推測で宣言しない。
+
+mainがthermal1022とcameraを同時に統合する場合、親側でIMG domain/関連clockをoff/resetする
+可能性があるかを確認し、off可能なら既述のIMG leaseとDMA rundownを同じ単一ownerへ実装・
+合意してからcameraを有効化する必要がある。cameraへGPU専用leaseを貸用しない。
+今回新しい資源要求はない。合意済みやthermal1022検証済みとは扱わない。
