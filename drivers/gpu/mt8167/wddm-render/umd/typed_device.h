@@ -13,6 +13,7 @@ struct geo_typed_resource;
 struct geo_typed_shader;
 struct geo_typed_rtv;
 struct geo_typed_layout;
+struct geo_typed_query;
 struct geo_typed_state;
 /* Runtime owns the handle storage; referenced implementation objects live on
  * the heap and may outlive Destroy* when still bound or ambiguously pinned. */
@@ -42,6 +43,7 @@ struct geo_typed_device {
  struct geo_typed_shader *shaders,*bound_shader[2];
  struct geo_typed_rtv *views,*target;
  struct geo_typed_layout *layouts,*layout;
+ struct geo_typed_query *queries;
  UINT vertex_stride,vertex_offset,index_offset,index_stride,first_constant[2],constant_count[2];
  D3D10_DDI_PRIMITIVE_TOPOLOGY topology;
  D3D10_DDI_VIEWPORT viewport;D3D10_DDI_RECT scissor;
@@ -54,6 +56,10 @@ struct geo_typed_adapter {
 struct geo_typed_device *geo_typed_device(D3D10DDI_HDEVICE);
 struct geo_typed_state *geo_typed_state_from_device(D3D10DDI_HDEVICE);
 void geo_typed_error(D3D10DDI_HDEVICE,HRESULT);
+void geo_typed_runtime_install(D3D11_1DDI_DEVICEFUNCS *);
+void geo_typed_dxgi_install(DXGI1_2_DDI_BASE_FUNCTIONS *);
+HRESULT geo_typed_wait_resource(struct geo_typed_resource *);
+HRESULT geo_typed_allocation(struct geo_typed_resource *,D3DKMT_HANDLE *);
 void geo_typed_resources_install(D3D11_1DDI_DEVICEFUNCS *);
 void geo_typed_views_install(D3D11_1DDI_DEVICEFUNCS *);
 HRESULT geo_typed_views_unbind(D3D10DDI_HDEVICE);

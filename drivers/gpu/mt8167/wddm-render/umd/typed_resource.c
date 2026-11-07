@@ -121,3 +121,12 @@ void geo_typed_resources_install(D3D11_1DDI_DEVICEFUNCS *f) {
  f->pfnDynamicConstantBufferMapDiscard=map_resource;f->pfnDynamicConstantBufferUnmap=unmap_resource;f->pfnDynamicConstantBufferMapNoOverwrite=map_resource;
  f->pfnDynamicResourceMapDiscard=map_resource;f->pfnResourceCopy=copy_resource;
 }
+
+HRESULT geo_typed_wait_resource(struct geo_typed_resource *r) {
+ D3D10DDI_MAPPED_SUBRESOURCE map;HRESULT hr=map_backend(r,D3D10_DDI_MAP_READ,0,&map);return FAILED(hr)?hr:unmap_backend(r);
+}
+HRESULT geo_typed_allocation(struct geo_typed_resource *r,D3DKMT_HANDLE *out) {
+ struct geo_surface_desc desc;UINT usage;if(!r||!out)return E_INVALIDARG;
+ usage=(r->bind&D3D10_DDI_BIND_RENDER_TARGET)?GEO_USAGE_RENDER_TARGET:(r->dimension==D3D10DDIRESOURCE_BUFFER?GEO_USAGE_VERTEX_BUFFER:GEO_USAGE_STAGING);
+ return geo_umd_resource_info(&r->device->backend,r->backend,usage,&desc,out);
+}

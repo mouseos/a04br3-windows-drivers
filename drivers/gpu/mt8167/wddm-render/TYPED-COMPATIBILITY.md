@@ -16,11 +16,13 @@ SM4 token/signatureを実PCOへ渡すためD3D9 ordinalの列挙は前提とし�
 | DXGI | 出力なしadapterの標準列挙をclient実装 | DXGI base resource callbacksと必要機能のtable閉包未完 |
 | KMD | 実MDL resolver、single Dxgk IRQ、native control-v2 | WDDM1.2必須engine TDR/GDI契約未qualified |
 
-`geo_typed_profile_missing()`は未完了義務を列挙する。現状の
-GetSupportedVersionsは0件、3DPIPELINESUPPORTは0。Clearが動くはずという理由で
-不完全なFL9_1を広告するoverrideやregistry switchは置かない。これは標準runtime
-完成を主張する入口ではない。実DDI機能を順次接続し、このmatrixの欠落を解消して
-初めて公開する。単独component build/署名で作業を終えない。
+`geo_typed_profile_missing()`は製品互換性の欠落を保持する。ユーザー承認の
+`-EnableLimitedDevelopmentProfile`でのみ、既定OFFの開発版をbuildする。
+そのDLLは標準runtime交渉にD3D11.1 DDI/9_1 pipeline識別子を使うが、FL9_1全機能の
+適合宣言ではない。既知の署名clientが使うClear/triangle/readbackを実bring-up対象とし、
+未対応shader/state/resource操作は実ErrorCb/unsupported結果を返す。未対応処理を
+成功にせず、全互換matrix完成を最初の実GPU確認の一律門にしない。
+通常buildではversions/pipelineを広告しない。registryで製品capsを上書きする経路は無い。
 
 一次資料は固定WDK8.1 d3d10umddi.h/dxgiddi.h、
 [OpenAdapter10_2](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3d10umddi/nc-d3d10umddi-pfnd3d10ddi_openadapter)、

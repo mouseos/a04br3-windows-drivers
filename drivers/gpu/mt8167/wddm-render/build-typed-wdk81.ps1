@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Incremental typed WinBlue closure. No installation, signing or hardware access.
-param([switch]$EnableCandidate,
+param([switch]$EnableCandidate,[switch]$EnableLimitedDevelopmentProfile,
  [Parameter(Mandatory=$true)][string]$ModuleDirectory,
  [Parameter(Mandatory=$true)][string]$ModuleManifestSha256,
  [Parameter(Mandatory=$true)][string]$StateDirectory,
@@ -56,7 +56,8 @@ try {
  Copy-Item (Join-Path $ModuleDirectory 'umd_entry.obj') $out
  $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1";$inc=Join-Path $kit 'Include';$km=Join-Path $kit 'Lib\winv6.3\km\arm'
  $common=@('--target=thumbv7-pc-windows-msvc','-std=c11','-fms-extensions','-ffreestanding','-fno-builtin','-fno-stack-protector','-O2','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-D_ARM_','-DARM','-D__ldrexd=__geo_typed_wdk81_ldrexd_declaration','-D_WIN32_WINNT=0x0603','-DNTDDI_VERSION=0x06030000','-DD3D_UMD_INTERFACE_VERSION=0x4002','-DDXGKDDI_INTERFACE_VERSION=0x4002',"-I$inc\shared","-I$inc\um","-I$inc\km")
- $units=@('frontend/draw_protocol','umd/tokenized_shader','umd/typed_entry','umd/typed_resource','umd/typed_view','umd/typed_shader','umd/typed_draw')
+ if($EnableLimitedDevelopmentProfile){$common+='-DGEO_TYPED_LIMITED_DEVELOPMENT=1'}
+ $units=@('frontend/draw_protocol','umd/tokenized_shader','umd/typed_entry','umd/typed_resource','umd/typed_view','umd/typed_shader','umd/typed_draw','umd/typed_runtime','umd/typed_dxgi')
  foreach($unit in $units){
   $name=($unit -replace '/','_')+'.obj';$flags=@($common)
   if($unit -eq 'frontend/draw_protocol'){$flags+='-mfpu=none'}
@@ -66,7 +67,7 @@ try {
  Copy-Item (Join-Path $ModuleDirectory 'ge8300-kmd-clear.lib') "$out\ge8300-typed-kmd.lib"
  & llvm-ar r "$out\ge8300-typed-kmd.lib" "$out\frontend_draw_protocol.obj"
  if($LASTEXITCODE){throw 'KMD framing object replacement failed'}
- $names=@('clear_protocol','frontend_draw_protocol','umd_clear_ddi','umd_bootstrap','umd_frontend','umd_shader_state','umd_tokenized_shader','compiler_sm2','testclient_memory','typed_state','umd_typed_resource','umd_typed_view','umd_typed_shader','umd_typed_draw')
+ $names=@('clear_protocol','frontend_draw_protocol','umd_clear_ddi','umd_bootstrap','umd_frontend','umd_shader_state','umd_tokenized_shader','compiler_sm2','testclient_memory','typed_state','umd_typed_resource','umd_typed_view','umd_typed_shader','umd_typed_draw','umd_typed_runtime','umd_typed_dxgi')
  $objects=@($names|ForEach-Object {Join-Path $out ($_+'.obj')})
  & llvm-lib /machine:arm "/out:$out\ge8300-typed-umd.lib" @objects
  if($LASTEXITCODE){throw 'Typed UMD archive failed'}
@@ -83,7 +84,7 @@ try {
  }
  @{source_commit=(& git -C $root rev-parse HEAD);source_dirty=$false;compile_units=$units;reused_source_commit=$m.source_commit;
   module_manifest_sha256=$ModuleManifestSha256;state_source_commit=$sm.source_commit;state_manifest_sha256=$StateManifestSha256;compiler_manifest_sha256=$CompilerManifestSha256;
-  native_owner_sha256=$NativeOwnerSha256;default_off=$true;standard_profile_qualified=$false;runtime_verified=$false;signed=$false;
+  native_owner_sha256=$NativeOwnerSha256;default_off=$true;limited_development_profile=[bool]$EnableLimitedDevelopmentProfile;development_negotiation_pipeline='9_1';standard_profile_qualified=$false;runtime_verified=$false;signed=$false;
   outputs=@('ge8300-typed-kmd.lib','ge8300-typed-umd.lib','ge8300-umd.dll','ge8300-render.sys')|ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}}
  }|ConvertTo-Json -Depth 6|Set-Content "$out\build-manifest.json"
 } finally {$env:TEMP=$oldTemp;$env:TMP=$oldTmp}
