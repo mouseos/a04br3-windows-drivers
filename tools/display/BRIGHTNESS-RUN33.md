@@ -41,7 +41,7 @@ Set callbackのPVOID/UCHAR/NTSTATUSとPASSIVE_LEVELは
 初回3回と失敗時に出す。新UART mappingは追加しない。DbgPrintがUARTへ出る保証は
 既存収集経路次第。成功時の毎present出力は増やさない。
 
-DriverVer=11/06/2026,0.0.1.5。callbackを変えたので**新SYSのbuild/署名/CATが必要**。
+DriverVer=11/07/2026,0.0.1.5。UTC実日付11/07を確認し、既存INF14より日付も新しくする。callbackを変えたので**新SYSのbuild/署名/CATが必要**。
 旧71f4署名SYSを再利用するINF14 recipeは今回の候補生成に使わない。
 mainの最新GPU/DODへ差分を取り込み、既存liveFull/repeat/directPOST等とbrightness=1を
 維持する。この古いbaseのGPU全体でmainを置き換えない。
