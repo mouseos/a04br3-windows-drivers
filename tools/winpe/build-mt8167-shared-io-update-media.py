@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Recoveryで退避済みのhiveを根拠に、単一親の周辺機器packageを更新する媒体。"""
 import argparse,hashlib,json,os,re,shutil,struct,subprocess
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from private_hardware_probe_input import prepared_system_check, probe_check, private_path, certificate_trust_commands
 from engine_rearm import make_plan, check_plan, archive_commands
 from engine_io_package import engine_package_check, engine_optional_check, parent_override_check, check_final_audio_client, ENGINE_CERT
@@ -26,6 +26,12 @@ def backup_check(manifest,root):
   seq=struct.unpack_from('<II',header,4)
   if seq[0]!=seq[1] and not any(stem+suffix in found and found[stem+suffix].stat().st_size>512 for suffix in ('.LOG1','.LOG2')):raise ValueError('dirty hiveのトランザクションログ欠落')
  return b
+
+def validate_staged_package_copies(command, staged_pkg):
+ for name in re.findall(r'(?im)^copy[^\r\n]*?X:\\a04br3\\shared-io\\([^ \r\n]+)',command):
+  p=(staged_pkg/Path(*PureWindowsPath(name).parts)).resolve()
+  if not p.is_relative_to(staged_pkg.resolve()) or not p.is_file():
+   raise ValueError('WinPE copy参照の署名package実体がありません: '+name)
 
 def main():
  ap=argparse.ArgumentParser()
@@ -219,7 +225,7 @@ def main():
    archive='C:\\a04backup\\engine-rearm-'+a.engine_rearm_plan_sha256.lower()
    extra_archive=['copy /b /y X:\\a04br3\\previous-wifi-checkpoints.json '+archive+'\\previous-wifi-checkpoints.json >> \"%A04_REPORT%\" 2>&1','if errorlevel 1 goto dismfail','if not exist '+archive+'\\previous-wifi-checkpoints.json goto dismfail','>> \"%A04_REPORT%\" echo PREVIOUS_WIFI_CHECKPOINT_SHA256='+files['previous-wifi-checkpoints.json']]
    prepare=prepare.replace('if exist C:\\Windows\\System32\\MT8167EngineProbe\\attempted.bin goto dismfail','\n'.join(extra_archive)+'\nif exist C:\\Windows\\System32\\MT8167EngineProbe\\attempted.bin goto dismfail',1)
-  if a.deferred_package_map:
+  if a.deferred_package_map and not codec_batch:
    extra=['if not exist C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\display mkdir C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\display >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
    for extension in ('inf','sys','cat'):
     extra+=['copy /b /y X:\\a04br3\\shared-io\\display\\mt8167-display.'+extension+' C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\display\\mt8167-display.'+extension+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
@@ -235,6 +241,7 @@ def main():
     extra+=['copy /b /y X:\\a04br3\\shared-io\\clients\\mt8167-brightness-native.exe C:\\Windows\\System32\\MT8167EngineProbe\\clients\\mt8167-brightness-native.exe >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail',
             'if exist '+(r'C:\Windows\System32\MT8167EngineProbe\logs\brightness-native.log' if deferred_policy.get('brightness_client',{}).get('log_path')==r'C:\Windows\System32\MT8167EngineProbe\logs\brightness-native.log' else r'C:\MT8167EngineProbe\brightness-native.log')+' goto dismfail']
    prepare=prepare.replace('copy /y X:\\a04br3\\MT8167EngineProbe.exe','\n'.join(extra)+'\ncopy /y X:\\a04br3\\MT8167EngineProbe.exe')
+  validate_staged_package_copies(prepare,staged_pkg)
   cmd=cmd.replace('@PROBE_PREPARE@',prepare)
  else:cmd=cmd.replace('@PROBE_PREPARE@','rem Hardware probe service not included; PnP only.')
  from engine_staging_profile import apply_profile
