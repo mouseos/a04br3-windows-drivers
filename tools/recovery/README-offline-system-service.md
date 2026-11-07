@@ -107,3 +107,12 @@ workcopyのRegLoadKey/replay/Unloadで照会し、clean copy再loadでraw finger
 同じfresh input3fileと実fingerprintを照合してStart4→2だけを許す。
 ServiceName/IncludeHardwareProbe/Engine rearmの混用は拒否する。
 Engine既存分岐の挙動・固定fingerprint・限定監査は維持する。詳細はGPU README-provider-update.md。
+
+GPU roll-forwardではInspect/Rearmの両方へGpuCandidateDirectory、ExpectedGpuCandidateManifestSha256、
+GpuCandidateSourceCommitを渡す。新planはschema2で、最終署名候補source/hash/新版をbindingする。
+固定MOU0006の選択情報はreplayed SYSTEMからread-only取得し、候補baseline一致と厳密な新版を要求する。
+04d0/13c8定数は候補判定に使わない。固定DeviceInstall7値/一回限定/原SYSTEM・LOG pins/Engine分岐は維持する。
+
+ExpectedGpuPolicySha256は必須のcaller pinで、署名installer出力policy-manifest.jsonの実file SHA256。
+内部policy.policy_sha256のheader hashとは別物。Inspect/Rearmへ同じ値を渡し、媒体側が
+plan.policy_sha256とその実file hashをcrosslinkする。native helper自体はopaqueなHex pinとして扱う。

@@ -172,3 +172,57 @@ reportとpatch/verify stateにgpu_rearm_plan_sha256、patch stateにdisabled_ser
 
 この統合の確認はPowerShell Parser、既存Engine入力回帰、GPU policy実package hash照合まで。
 native Windows実行・GPU更新/実再起動の確認は主担当の次工程であり、実行成功とは扱わない。
+
+## run30以降のroll-forward native plan（schema 2）
+
+run29では主担当の実logでCAT membership3件=0、DIF flags=0x00830120、INSTALL_ACCEPTED_REBOOT_PENDING、
+SCM STOPPED/3010、planned reboot受付=1/error0、waiter exit0を確認し、次bootで13c8独自traceと
+run30 backup実SYS13c8一致を確認した。延期install経路は実機で成立した。
+JOBSTAGED=0/STAGE=C000009A、CLEAR=C0000184/phase0は別の3D準備失敗であり、native command成功とは扱わない。
+
+shared native PSは04d0/13c8の候補定数を外し、両GPU modeへ次の限定入力を必須にした。
+
+```powershell
+-GpuCandidateDirectory $FinalSignedCandidate `
+-ExpectedGpuCandidateManifestSha256 $SignedManifestSha256 `
+-GpuCandidateSourceCommit $FullHexSourceCommit `
+-ExpectedGpuPolicySha256 $PolicyManifestFileSha256
+```
+
+sourceは40桁hex、signed-manifest.json pinは64桁SHA256。固定7fileだけの完全manifestを読み、
+実hash/bytes、final-signed provider/config/cert、MOU0006/MT8167GE8300のINF、新版とbaselineの整合を検査する。
+service/instance/commandを外部指定する入力は追加しない。署名chainの実検証はinstaller側の責務として残す。
+
+Inspectはreplayed SYSTEMの固定Enum/ACPI/MOU0006/0と、そのDriverが指すSystem-class keyだけもread-onlyで照会する。
+取得した選択INF/DriverVerと候補manifestのbaselineが一致し、候補versionが厳密に高くdateが旧くない場合だけ進む。
+class fingerprintもclean再loadで一致することを確認する。DeviceInstallのStart4/7値実fingerprintとfresh3file pinは維持。
+SYSTEMだけから実配置SYSやloaded imageのhashを得たとはしない。manifestのbaseline SYS hashは主担当がfresh backup実SYSと照合する。
+
+新planはschema=2でcandidate_source_commit/candidate_sys_sha256/candidate_cat_sha256/candidate_driver_verを動的記録する。
+candidate_bindingには全固定file hash/bytes、signed manifest SHA、source、新版、baselineを保存し、
+candidate_binding_sha256をworker state/reportにも記録する。installed_selectionは実replayから取得した値とfingerprint。
+Rearmにも同じ候補3引数を渡し、plan全体SHA、binding、選択情報、fresh inputを再照合してからStart4→2を許す。
+旧schema1/既適用と同版/別候補/別source/変更fileでは拒否する。Engineのschema1は変更しない。
+
+Herschel所有のinstaller/policyは次候補に合わせて別途更新する。旧GPU markerの無断削除はnative helperでは行わない。
+候補別の一回attempt/旧log保存と、主担当所有の媒体input validator側schema2照合は各ownerの経路で合わせる。
+親/USB/Wi-Fi/DODの固定延期一括更新は次工程。子Start一時disable方式は採用せず、親ライブ交換も禁止を維持する。
+
+### policy SHA256の正確な意味
+
+`ExpectedGpuPolicySha256` は、署名済みinstaller出力にある **policy-manifest.jsonファイル全体の実SHA256**。
+JSON内部の `policy.policy_sha256`（gpu-provider-candidate.hの生成header hash）ではない。
+Inspect/Rearmの両modeで同じ実file hashを渡す。
+
+```powershell
+$PolicyManifestFileSha256=(Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $SignedInstallerOutput 'policy-manifest.json')).Hash
+# 両modeの共通引数:
+# -ExpectedGpuPolicySha256 $PolicyManifestFileSha256
+```
+
+native helperはこれをcaller pinとして候補binding・plan.policy_sha256・worker/reportのgpu_policy_sha256へ記録し、
+Rearmで再照合する。native側でpolicy生成headerや署名installerを独立検証したとは主張しない。
+媒体側はplan.policy_sha256 == sha256(policy-manifest.jsonの実bytes)をcrosslinkし、
+署名installer metadataのschema2 data_directory/transition_id/baselineもplanと照合する。
+候補別directoryはC:\Windows\System32\MT8167GpuUpdate-<source40>-<transition64>に限定する。
+旧初回directoryや過去marker/logは削除・再利用しない。

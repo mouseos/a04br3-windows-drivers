@@ -339,5 +339,43 @@
     "private_media_built_here": false,
     "main_owned_private_input_validator_modified": false,
     "deferred_install_reference": "https://learn.microsoft.com/en-us/windows/win32/api/setupapi/ns-setupapi-sp_devinstall_params_w"
+  },
+  "gpu_native_rollforward": {
+    "plan_schema": 2,
+    "fixed_hardware_id": "ACPI\\MOU0006",
+    "fixed_instance_id": "ACPI\\MOU0006\\0",
+    "fixed_service": "MT8167DeviceInstall",
+    "candidate_inputs": [
+      "GpuCandidateDirectory",
+      "ExpectedGpuCandidateManifestSha256",
+      "GpuCandidateSourceCommit",
+      "ExpectedGpuPolicySha256"
+    ],
+    "candidate_binding": [
+      "signed_manifest_sha256",
+      "source_commit",
+      "fixed_file_hashes_and_bytes",
+      "driver_ver",
+      "installed_baseline_driver_ver",
+      "installed_baseline_sys_sha256"
+    ],
+    "requires_strict_version_progress": true,
+    "reads_replayed_gpu_selection": true,
+    "gpu_registration_writes": false,
+    "deviceinstall_seven_values_preserved": true,
+    "engine_rearm_preserved": true,
+    "native_replay_verified_here": false,
+    "next_candidate_verified_here": false,
+    "run29_deferred_install_path_verified_by_owner": true,
+    "run29_new_provider_disk_hash_verified_by_owner": true,
+    "run29_native_command_executed": false,
+    "run29_native_preparation_status": "C000009A",
+    "parent_batch_update_pending": true,
+    "policy_sha256_semantics": "SHA256 of policy-manifest.json file bytes, not its internal policy_sha256 generated-header hash",
+    "data_directory_format": "C:\\Windows\\System32\\MT8167GpuUpdate-<source40>-<transition64>",
+    "native_ps_commits": [
+      "8c36273b0c654dcf3be2534b01d4f613cf80b335",
+      "6a14e9604c1effaf9100943873062043768239ac"
+    ]
   }
 }
