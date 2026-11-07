@@ -187,3 +187,28 @@ Clear→DrawPrimitiveUP(flat triangle)→GetRenderTargetData/LockRectを一度�
 
 初回署名は実D3D9/FL9_1 profile qualificationの代替ではありません。
 実機flash前の不足はRUNTIME-ENTRY.mdに明記しています。
+
+### 最新の結合署名checkpoint aa01577
+
+同じ進行中runner jobで、H KMD c1e21ca（変更なし）＋H frontend 88624ff/3e3023e＋
+E factory `3587b6edae14239fffb7e5700026e5d8b8fb96c4`へ更新して再link/署名した。
+回収先 `windows-rt-wddm-signed-aa01577`、package source
+`aa01577327472fdddc456ad548407b7c0f15e7c5`。
+
+* signed SYS: `3ce705bf5170d4c041cf0620274704a88158a4c19b7c9024b92a82e7e92fd5f1`
+* signed UMD: `b5fbf757fb305f1101fb7f04d20cab315465d4d44e0f135db7d7c0214428f01d`
+* signed standard client: `28b1df5cd8d7ed72fe22d885471c7f0b5fc8ad0d2b90a480d9b3cae26116493b`
+* ZIP: `089576fac369a615d0c063a2981eb7bd2f6ee73c994ed19aeede2e385027c895`
+* parent: `287241c37fa0eae538e5e2d136dea5df42de7e43`
+* ACPI: `6e852b1ff13e16609957afc7a2e03da3d371dfe8`
+
+EはClear非同期完了まで実boundaryを待ち、mutexを解放してworker/IRQを進め、
+完了したtarget画像とMDLを保持して初回vertex bindをcold再構築する。
+各triangle後のLOADを保持。ISA/metadata allowlistは有限flatのまま。
+H/E共通binding/control/ops/aperture/memoryのheaderは一致。
+Hだけのwire packetとlogical allocation metadata追加はEの共有構造体を変更しない。
+
+SYS/DLL/CAT/clientは署名Valid、3件CAT membership、回収7file hash照合成功。
+標準描画成功・FL9_1適格・NoDMA hardware qualificationは未完了。
+次の新規buildはrunner 42355353070の専用immutable directoryへ進める。
+旧runnerの完了済み成果物を再compileするために環境を破棄しない。
