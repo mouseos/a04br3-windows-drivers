@@ -87,3 +87,9 @@ SDK上のrevision/size定義をARM32 compileで照合し、既存scan parserと�
 
 上記は68a6f16時点の確認記録。実queue/MTU/SSID/excluded/統計の後続実装、
 一次根拠、残る阻害とbuild/sign手順は [NATIVE-1003.md](NATIVE-1003.md) を参照。
+
+## 後続1004の残件更新
+
+027f31d以後の未接続PSP・実BSS停止/LP ownership・scan復帰の実装と現在の
+source/実機残件は [NATIVE-1004.md](NATIVE-1004.md) の「現在の残件一覧」を参照。
+68a6f16当時の上表を現行実装の未反映項目として再試験しない。

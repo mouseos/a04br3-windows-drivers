@@ -11,7 +11,7 @@ enum { A04_WLAN_ARGUMENT=80,A04_WLAN_FORMAT=81,A04_WLAN_CRC=82,
 struct a04_wlan_host {
  struct a04_sdio_transport *transport;
  unsigned initialized,ready,sequence,cpu_free,cpu_used,cpu_done,ffa,tc0_free,tc0_used,tc0_done,runtime;
- unsigned native_be,tc1_free,tc1_used,tc1_done;
+ unsigned native_be,tc1_free,tc1_used,tc1_done,fw_owned;
  uint32_t wcir,status,chlpcr;unsigned own_polls;int failed;
  uint32_t wasr;int wasr_error;
  unsigned last_cid,last_cmd_sequence,last_cmd_type,last_cmd_set,last_cmd_bytes;
@@ -19,11 +19,11 @@ struct a04_wlan_host {
 };
 static inline int a04_wlan_fail(struct a04_wlan_host *h,int e){h->failed=e;h->transport->failed=e;return e;}
 static inline int a04_wlan_read(struct a04_wlan_host *h,unsigned reg,uint32_t *v){
- if(h->failed || h->transport->failed)return A04_WLAN_STATE;
+ if(h->failed || h->transport->failed || (h->fw_owned&&reg!=4))return A04_WLAN_STATE;
  int e=a04_sdio_read32(h->transport,1,reg,v);return e?a04_wlan_fail(h,e):0;
 }
 static inline int a04_wlan_write(struct a04_wlan_host *h,unsigned reg,uint32_t v){
- if(h->failed || h->transport->failed)return A04_WLAN_STATE;
+ if(h->failed || h->transport->failed || (h->fw_owned&&reg!=4))return A04_WLAN_STATE;
  int e=a04_sdio_write32(h->transport,1,reg,v);return e?a04_wlan_fail(h,e):0;
 }
 static inline int a04_wlan_host_open(struct a04_wlan_host *h,struct a04_sdio_transport *t){
@@ -31,7 +31,7 @@ static inline int a04_wlan_host_open(struct a04_wlan_host *h,struct a04_sdio_tra
  h->wasr=0;h->wasr_error=0;h->status=0;
  h->last_cid=h->last_cmd_sequence=h->last_cmd_type=h->last_cmd_set=h->last_cmd_bytes=0;
  h->transport=t;h->initialized=h->ready=h->sequence=0;h->failed=0;
- h->cpu_free=h->tc0_free=104;h->cpu_used=h->cpu_done=h->ffa=h->tc0_used=h->tc0_done=h->runtime=0;h->native_be=h->tc1_free=h->tc1_used=h->tc1_done=0;h->rx_length=h->own_polls=0;h->chlpcr=0;
+ h->cpu_free=h->tc0_free=104;h->cpu_used=h->cpu_done=h->ffa=h->tc0_used=h->tc0_done=h->runtime=0;h->native_be=h->tc1_free=h->tc1_used=h->tc1_done=h->fw_owned=0;h->rx_length=h->own_polls=0;h->chlpcr=0;
  int e=a04_sdio_enable(t,1);if(e)return a04_wlan_fail(h,e);
  if((e=a04_wlan_read(h,0,&h->wcir)))return e;
  if((h->wcir&0xffff)!=0x6630)return a04_wlan_fail(h,A04_WLAN_FORMAT);
@@ -93,6 +93,45 @@ static inline int a04_wlan_native_be_enable(struct a04_wlan_host *h){
  if(!h||!h->runtime||h->failed||h->native_be||h->tc0_used||h->tc1_used)return A04_WLAN_STATE;
  h->native_be=1;h->tc1_free=36u*13u;h->tc1_done=0;return 0;
 }
+/* Same CMD52 byte1 access as the established cold-start path; preserve
+ * the combo CHLPCR workaround and the low-byte interrupt mask. */
+static inline int a04_wlan_lp_request(struct a04_wlan_host *h,unsigned request){
+ if(!h||!h->initialized||h->failed||h->transport->failed||(request!=1&&request!=2))return A04_WLAN_STATE;
+ uint8_t value=(uint8_t)request;
+ int e=a04_sdio_direct(h->transport->io,1,5,1,&value);
+ return e?a04_wlan_fail(h,e):0;
+}
+/* gen3 nicpmSetFWOwn(FALSE): caller has deactivated AIS, drained IST and
+ * actual page returns. WHLPCR bit8 reads DRIVER_OWN, writes FW_OWN_REQ_SET.
+ * A refused handoff is failure, not evidence that RF entered idle. */
+static inline int a04_wlan_firmware_own(struct a04_wlan_host *h){
+ uint32_t value;int e;
+ if(!h||!h->runtime||h->failed||h->fw_owned||h->cpu_used||h->tc0_used||h->tc1_used||h->ffa)return A04_WLAN_STATE;
+ if((e=a04_wlan_read(h,4,&value)))return e;
+ if(!(value&0x100))return A04_WLAN_STATE;
+ if((e=a04_wlan_lp_request(h,1)))return e;
+ if((e=a04_wlan_read(h,4,&value)))return e;
+ h->chlpcr=value;
+ if(value&0x100){
+  e=a04_wlan_lp_request(h,2);return e?e:A04_WLAN_STATE;
+ }
+ h->fw_owned=1;return 0;
+}
+/* gen3 nicpmSetDriverOwn: real LP acknowledgement, bounded2048ms, no reset,
+ * firmware reload, credit reset or enabling the masked SDIO interrupt. */
+static inline int a04_wlan_driver_own(struct a04_wlan_host *h){
+ if(!h||!h->runtime||h->failed)return A04_WLAN_STATE;
+ if(!h->fw_owned)return 0;
+ for(unsigned i=0;i<2048;i++){
+  uint32_t value;int e;
+  if(!(i&255)&&(e=a04_wlan_lp_request(h,2)))return e;
+  if((e=a04_wlan_read(h,4,&value)))return e;
+  h->chlpcr=value;
+  if(value&0x100){h->fw_owned=0;return 0;}
+  h->transport->io->delay(h->transport->io->ctx,1000);
+ }
+ return a04_wlan_fail(h,A04_WLAN_TIMEOUT);
+}
 /* Native nicTxResetResource switches from INIT8 buffers to runtime TC4=2.
  * Drain observed init completions before changing the software budget. This
  * conservative boundary may fail on unobserved hardware; never assume return. */
@@ -110,6 +149,7 @@ static inline int a04_wlan_runtime_begin(struct a04_wlan_host *h){
 }
 static inline int a04_wlan_send(struct a04_wlan_host *h,unsigned logical,unsigned tc){
  if(!h || !h->initialized || h->failed || h->transport->failed)return A04_WLAN_STATE;
+ if(h->fw_owned)return A04_WLAN_STATE;
  if(logical<8 || logical>4096 || tc>3 || (tc==3&&!h->native_be))return A04_WLAN_ARGUMENT;
  unsigned pages=(logical+127)/128;
  if(tc==1){
@@ -139,7 +179,7 @@ static inline int a04_wlan_send(struct a04_wlan_host *h,unsigned logical,unsigne
  return e?a04_wlan_fail(h,e):0;
 }
 static inline int a04_wlan_receive(struct a04_wlan_host *h,unsigned port,unsigned polls){
- if(!h || !h->initialized || port>1 || !polls || polls>20000)return A04_WLAN_ARGUMENT;
+ if(!h || !h->initialized || h->fw_owned || port>1 || !polls || polls>20000)return A04_WLAN_ARGUMENT;
  h->rx_length=0;
  for(unsigned i=0;i<polls;i++){
   uint32_t lengths=0;int e=a04_wlan_read(h,0x90,&lengths);if(e)return e;

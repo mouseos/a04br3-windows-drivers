@@ -59,7 +59,7 @@ static void link_state(struct a04_ndis_runtime *a)
 void a04_ndis_peer_disconnect(struct a04_ndis_runtime *a,ULONG reason)
 {
  DOT11_DISASSOCIATION_PARAMETERS v;NdisZeroMemory(&v,sizeof(v));HDR(v,DOT11_DISASSOCIATION_PARAMETERS,1);NdisMoveMemory(v.MacAddr,a->radio.station.ap.mac,6);v.uReason=reason;
- a->os_security.port_open=0;a->radio.connected=0;a->radio.failed=-1;a->peer_loss.suspected=0;
+ a->os_security.port_open=0;a->radio.connected=0;a->radio.failed=-1;a->peer_loss.suspected=0;a->peer_reset_pending=1;
  a04_os_security_clear(a);link_state(a);a04_ndis_status(a,NDIS_STATUS_DOT11_DISASSOCIATION,&v,sizeof(v));
 }
 /* List setters accept the WDK 8.1 revision-1 wire structures only. */
@@ -87,15 +87,32 @@ static NDIS_STATUS scan(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  if(s!=NDIS_STATUS_SUCCESS){q->DATA.SET_INFORMATION.BytesNeeded=needed;return s;}
  unsigned channels=parsed.scan_type!=dot11_scan_type_passive?b->regulatory.active:b->regulatory.permitted;
  for(unsigned ch=1;ch<=13;ch++)if(channels&(1u<<ch)){policy.channels[2*policy.channel_count]=1;policy.channels[2*policy.channel_count+1]=(UCHAR)ch;policy.channel_count++;}
+ /* No wake for malformed/unsupported requests. Real activation precedes
+  * scan command submission, without clearing the ExtSTA cache or MIB. */
+ a->ps_activity=1;
+ if(a04_ndis_rf_wake(a)){a->ps_activity=0;return NDIS_STATUS_FAILURE;}
  /* Retain the ExtSTA cache; only FLUSH_BSS_LIST clears an explicit scan cache. */
  s=a04_native_scan_start(b,q->DATA.SET_INFORMATION.InformationBuffer,q->DATA.SET_INFORMATION.InformationBufferLength,&policy,&needed);
- q->DATA.SET_INFORMATION.BytesNeeded=needed;if(s!=NDIS_STATUS_SUCCESS)return s;
+ q->DATA.SET_INFORMATION.BytesNeeded=needed;if(s!=NDIS_STATUS_SUCCESS){
+  a->ps_activity=0;if(!a->radio.failed&&a04_ndis_idle_reconcile(a))return NDIS_STATUS_FAILURE;return s;
+ }
  q->DATA.SET_INFORMATION.BytesRead=q->DATA.SET_INFORMATION.InformationBufferLength;
  /* OID completes when scan is queued; confirmation follows the real event. */
  NdisAcquireSpinLock(&a->lock);a->request=NULL;NdisReleaseSpinLock(&a->lock);NdisMOidRequestComplete(a->adapter,q,NDIS_STATUS_SUCCESS);
  end=a->radio.now(a)+3000000;
  while(b->scan.pending&&!a->closing&&!a->cancelled&&a->radio.now(a)<end){if(a04_ndis_poll(a))break;a->radio.wait(a,1000);}
- if(b->scan.complete)(void)a04_native_scan_indicate(b,a->adapter);else{(void)a04_native_scan_fail(b,a->adapter,NDIS_STATUS_FAILURE);a->radio.failed=-1;}
+ a->ps_activity=0;
+ if(b->scan.complete){
+  if(a04_ndis_idle_reconcile(a)){
+   NDIS_STATUS failed=NDIS_STATUS_FAILURE;b->scan.complete=0;
+   a04_ndis_status(a,NDIS_STATUS_DOT11_SCAN_CONFIRM,&failed,sizeof(failed));
+  }else (void)a04_native_scan_indicate(b,a->adapter);
+ }else{
+  (void)a04_native_scan_fail(b,a->adapter,NDIS_STATUS_FAILURE);a->radio.failed=-1;
+  /* No guessed scan-abort opcode. Recovery is the existing actual reset,
+   * once for this failed operation; no polling retry/reconnect loop. */
+  if(a->power_request&&!a->closing)(void)a04_ndis_radio_reset(a);
+ }
  return NDIS_STATUS_PENDING; /* already completed above */
 }
 static NDIS_STATUS bss_list(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
@@ -121,6 +138,8 @@ static NDIS_STATUS connect(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  unsigned secured=a->os_security.auth==DOT11_AUTH_ALGO_RSNA_PSK;
  if(secured){if(a->os_security.unicast!=DOT11_CIPHER_ALGO_CCMP||a->os_security.multicast!=DOT11_CIPHER_ALGO_CCMP||a04_os_rsn_policy(a->radio.bss[index].ap.rsn,a->radio.bss[index].ap.rsn_length))return NDIS_STATUS_NOT_SUPPORTED;}
  else if(a->os_security.unicast||a->os_security.multicast||(a->radio.bss[index].ap.capability&16))return NDIS_STATUS_NOT_SUPPORTED;
+ a->ps_activity=1;
+ if(a04_ndis_rf_wake(a)){a->ps_activity=0;return NDIS_STATUS_FAILURE;}
  a->radio.desired_secured=secured;a->association_reported=0;
  NdisAcquireSpinLock(&a->lock);a->request=NULL;NdisReleaseSpinLock(&a->lock);NdisMOidRequestComplete(a->adapter,q,NDIS_STATUS_SUCCESS);
  NdisZeroMemory(&start,sizeof(start));HDR(start,DOT11_CONNECTION_START_PARAMETERS,1);start.BSSType=dot11_BSS_type_infrastructure;a04_ndis_status(a,NDIS_STATUS_DOT11_CONNECTION_START,&start,sizeof(start));
@@ -139,6 +158,8 @@ static NDIS_STATUS connect(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  }
  a04_ndis_status(a,NDIS_STATUS_DOT11_ASSOCIATION_COMPLETION,ac,offset);NdisZeroMemory(&done,sizeof(done));HDR(done,DOT11_CONNECTION_COMPLETION_PARAMETERS,1);done.uStatus=e?DOT11_CONNECTION_STATUS_FAILURE:DOT11_CONNECTION_STATUS_SUCCESS;link_state(a);a04_ndis_status(a,NDIS_STATUS_DOT11_CONNECTION_COMPLETION,&done,sizeof(done));
  if(!e){a->association_started=KeQueryInterruptTime()/10u;a04_peer_observed(&a->peer_loss,a->association_started);NdisAcquireSpinLock(&a->lock);a->association_base=a->stats;NdisReleaseSpinLock(&a->lock);a04_ndis_association_reported(a);}
+ a->ps_activity=0;
+ if(e&&a->power_request&&!a->closing)(void)a04_ndis_radio_reset(a);
  return NDIS_STATUS_PENDING; /* association != OS handshake/authorization */
 }
 static NDIS_STATUS reset_request(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
@@ -151,6 +172,7 @@ static NDIS_STATUS reset_request(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  if(input.dot11ResetType!=dot11_reset_type_phy_and_mac)return NDIS_STATUS_NOT_SUPPORTED;
  for(unsigned i=0;i<6;i++)any|=input.dot11MacAddress[i];
  if(any&&!a04_wlan_equal(input.dot11MacAddress,a->radio.bridge->regulatory.mac,6))return NDIS_STATUS_NOT_SUPPORTED;
+ unsigned activity=a->ps_activity;a->ps_activity=1;
  e=a04_ndis_radio_reset(a);
  if(!e&&input.bSetDefaultMIB){
   NdisZeroMemory(&a->desired,sizeof(a->desired));a->desired_bssid_set=FALSE;
@@ -159,6 +181,7 @@ static NDIS_STATUS reset_request(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
   if(a04_ndis_power_profile(a,0,FALSE,0))e=-1;
   a04_os_security_clear(a);a->os_security.auth=DOT11_AUTH_ALGO_80211_OPEN;
  }
+ a->ps_activity=activity;if(!e&&a04_ndis_idle_reconcile(a))e=-1;
  output.uStatusType=DOT11_STATUS_RESET_CONFIRM;output.ndisStatus=e?NDIS_STATUS_FAILURE:NDIS_STATUS_SUCCESS;
  NdisMoveMemory(q->DATA.METHOD_INFORMATION.InformationBuffer,&output,sizeof(output));
  q->DATA.METHOD_INFORMATION.BytesRead=sizeof(input);q->DATA.METHOD_INFORMATION.BytesWritten=sizeof(output);q->DATA.METHOD_INFORMATION.BytesNeeded=0;

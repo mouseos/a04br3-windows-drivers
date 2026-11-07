@@ -35,7 +35,12 @@ static int exclude_bssid(void *context,const uint8_t *mac)
 
 int a04_ndis_poll(struct a04_ndis_runtime *a)
 {
- int result=a04_station_runtime_poll(&a->radio);
+ int result=0;
+ if(!a->radio.bridge->wlan.fw_owned)result=a04_station_runtime_poll(&a->radio);
+ if(a->peer_reset_pending){a->peer_reset_pending=0;
+  if(a->tx.pending)(void)a04_native_nbl_abort(&a->tx,&a->session.diagnostic.bridge);
+  result=a04_ndis_radio_reset(a);
+ }
  if(!result&&a04_ndis_unreachable_check(a))result=-1;
  /* A poll consumes at most64 actual HIF packets. All admitted RX frames
   * have independent nonpaged bytes/MDLs/NBLs until synchronous RESOURCES
@@ -178,6 +183,42 @@ static int hardware_start(struct a04_ndis_runtime *a)
  if(a04_station_runtime_init(&a->radio,&a->session.diagnostic.bridge))return -1;
  return a04_ndis_power_profile(a,a->power_request,a->media_streaming,1);
 }
+/* Only this PASSIVE owner can change BSS/LP state. Software NIC power,
+ * cache, regulatory identity and the parent's combo lease remain unchanged. */
+int a04_ndis_rf_wake(struct a04_ndis_runtime *a)
+{
+ struct a04_wlan_host *h=&a->radio.bridge->wlan;uint8_t body[12];
+ if(!a->power||a->radio.failed)return -1;
+ if(a04_wlan_driver_own(h))goto failed;
+ if(a->idle_bss){
+  if(a04_wlan_activate_encode(&a->radio.station.local,1,body)||a04_wlan_set(h,0x11,body,sizeof(body),NULL))goto failed;
+  a->idle_bss=0;
+ }
+ return 0;
+failed:a->radio.failed=-1;return -1;
+}
+int a04_ndis_idle_reconcile(struct a04_ndis_runtime *a)
+{
+ struct a04_wmt_bridge *b=a->radio.bridge;struct a04_wlan_host *h=&b->wlan;uint8_t body[12];
+ if(!a->power||!a->power_request||a->ps_activity||a->radio.connected||a->radio.connecting||b->scan.pending||a->closing)return 0;
+ if(a->radio.failed||a->tx.pending||a->radio.station.sta_active)return -1;
+ if(h->fw_owned)return a->idle_bss?0:-1;
+ if(!a->idle_bss){
+  if(a04_wlan_deactivate_encode(&a->radio.station.local,body)||a04_wlan_set(h,0x11,body,sizeof(body),NULL))goto failed;
+  a->idle_bss=1;
+ }
+ /* nicpmSetFWOwn first services IST. Drain real WTQCR/FFA returns and
+  * RX/events until an empty WHISR observation; never manufacture credits. */
+ for(unsigned i=0;i<100;i++){
+  if(a04_station_runtime_poll(&a->radio))goto failed;
+  if(!h->cpu_used&&!h->tc0_used&&!h->tc1_used&&!h->ffa&&!h->status&&!b->pending_wlan_status){
+   if(a04_wlan_firmware_own(h))goto failed;
+   return 0;
+  }
+  wait_us(a,1000);
+ }
+failed:a->radio.failed=-1;return -1;
+}
 /* gen3 CMD_ID_POWER_SAVE_MODE/CMD_PS_PROFILE_T, nicConfigPowerSaveProfile:
  * set, no response. Success means complete HIF submission, never a FW ACK.
  * Only the named Native levels with a direct gen3 counterpart are accepted. */
@@ -187,11 +228,13 @@ int a04_ndis_power_profile(struct a04_ndis_runtime *a,ULONG request,BOOLEAN stre
  _Static_assert(DOT11_POWER_SAVING_NO_POWER_SAVING==0&&DOT11_POWER_SAVING_FAST_PSP==8&&DOT11_POWER_SAVING_MAX_PSP==16&&DOT11_POWER_SAVING_MAXIMUM_LEVEL==24,"Native power wire values");
  if(a04_native_power_profile(request,&profile))return -1;
  if(streaming)profile=0;
+ if(a->power&&!force&&a->radio.initialized&&a04_ndis_rf_wake(a))return -1;
  if((a->power||force)&&a->radio.initialized){
   uint8_t body[4]={(uint8_t)a->radio.station.local.bss,(uint8_t)profile,0,0};
   if(a04_wlan_set(&a->radio.bridge->wlan,5,body,sizeof(body),NULL))return -1;
  }
- a->power_request=request;a->media_streaming=streaming;return 0;
+ a->power_request=request;a->media_streaming=streaming;
+ return force?0:a04_ndis_idle_reconcile(a);
 }
 static int radio_setting(struct a04_ndis_runtime *a,int write)
 {
@@ -221,25 +264,27 @@ int a04_ndis_radio_power(struct a04_ndis_runtime *a,int on)
   a->os_security.auth=old.auth;a->os_security.unicast=old.unicast;a->os_security.multicast=old.multicast;
   a->os_security.default_id=old.default_id;a->os_security.exclude_unencrypted=old.exclude_unencrypted;
   a->os_security.exemption_count=old.exemption_count;NdisMoveMemory(a->os_security.exemptions,old.exemptions,sizeof(old.exemptions));RtlSecureZeroMemory(&old,sizeof(old));
-  a->radio.connected=a->radio.connecting=0;a->power=FALSE;return radio_setting(a,1);
+  a->radio.connected=a->radio.connecting=0;a->idle_bss=0;a->peer_reset_pending=0;a->power=FALSE;return radio_setting(a,1);
  }
+ a->idle_bss=0;
  RtlZeroMemory(&a->session,sizeof(a->session));RtlZeroMemory(&a->irq,sizeof(a->irq));RtlZeroMemory(&a->radio,sizeof(a->radio));
  RtlZeroMemory(&a->tx,sizeof(a->tx));a->tx.adapter=a->adapter;a->tx.completion_context=a;a->tx.completion=a04_ndis_tx_complete;
- if(hardware_start(a)){a->radio.failed=-1;return -1;}a->power=TRUE;return radio_setting(a,1);
+ if(hardware_start(a)){a->radio.failed=-1;return -1;}a->power=TRUE;if(a04_ndis_idle_reconcile(a))return -1;return radio_setting(a,1);
 }
 int a04_ndis_radio_reset(struct a04_ndis_runtime *a)
 {
- a->peer_loss.suspected=0;
+ a->peer_loss.suspected=0;a->peer_reset_pending=0;
  if(!a->power&&(a->session.state==A04_SESSION_OFF||a->session.state==A04_SESSION_STOPPED)){
   a04_os_security_clear(a);return 0; /* quiescent OFF epoch; do not turn RF on */
  }
  if(a04_windows_session_stop(&a->session)){a->uncertain=1;a->radio.failed=-1;return -1;}
+ a->idle_bss=0;
  RtlZeroMemory(&a->session,sizeof(a->session));RtlZeroMemory(&a->irq,sizeof(a->irq));
  RtlZeroMemory(&a->radio,sizeof(a->radio));
  {struct a04_os_security old=a->os_security;a04_os_security_clear(a);a->os_security.auth=old.auth;a->os_security.unicast=old.unicast;a->os_security.multicast=old.multicast;a->os_security.default_id=old.default_id;a->os_security.exclude_unencrypted=old.exclude_unencrypted;a->os_security.exemption_count=old.exemption_count;NdisMoveMemory(a->os_security.exemptions,old.exemptions,sizeof(old.exemptions));RtlSecureZeroMemory(&old,sizeof(old));}
  a->association_reported=a->early_length=0;RtlSecureZeroMemory(a->early_rx,sizeof(a->early_rx));
  RtlZeroMemory(&a->tx,sizeof(a->tx));a->tx.adapter=a->adapter;a->tx.completion_context=a;a->tx.completion=a04_ndis_tx_complete;
- if(hardware_start(a)){a->radio.failed=-1;return -1;}return 0;
+ if(hardware_start(a)){a->radio.failed=-1;return -1;}return a04_ndis_idle_reconcile(a);
 }
 /* Sole PASSIVE owner, after station polling has finished using its state.
  * Perform real teardown/cold reset, with key epoch invalidation, before the
@@ -291,7 +336,9 @@ again:
 static void poll_dpc(PKDPC dpc,PVOID context,PVOID x,PVOID y)
 {
  struct a04_ndis_runtime *a=context;UNREFERENCED_PARAMETER(dpc);UNREFERENCED_PARAMETER(x);UNREFERENCED_PARAMETER(y);
- NdisAcquireSpinLock(&a->lock);if(!a->closing&&!a->paused&&!a->busy){(void)queue_work(a);}NdisReleaseSpinLock(&a->lock);
+ NdisAcquireSpinLock(&a->lock);
+ if(!a->closing&&!a->paused&&!a->busy&&(!a->session.diagnostic.bridge.wlan.fw_owned||a->rx_count||a->peer_reset_pending))(void)queue_work(a);
+ NdisReleaseSpinLock(&a->lock);
 }
 static void close_worker(struct a04_ndis_runtime *a)
 {

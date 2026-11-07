@@ -28,7 +28,7 @@ struct a04_ndis_runtime {
  DOT11_MAC_ADDRESS excluded[A04_NATIVE_EXCLUDED],multicast[A04_NATIVE_MULTICAST];ULONG excluded_count,multicast_count;
  DOT11_MAC_ADDRESS desired_bssid;BOOLEAN desired_bssid_set,hidden_network,media_streaming,safe_mode;
  UCHAR assoc_ies[600];ULONG assoc_ies_length;DOT11_MAC_ADDRESS assoc_bssid;
- uint64_t association_started;struct a04_peer_loss peer_loss;ULONG power_request;
+ uint64_t association_started;struct a04_peer_loss peer_loss;ULONG power_request;unsigned idle_bss,ps_activity,peer_reset_pending;
  DOT11_SSID desired;ULONG filter,lookahead;BOOLEAN power;
 };
 void a04_ndis_tx_complete(void *,PNET_BUFFER_LIST,NDIS_STATUS);
@@ -39,6 +39,8 @@ NDIS_STATUS a04_ndis_contract_oid(struct a04_ndis_runtime *,PNDIS_OID_REQUEST);
 int a04_ndis_rate_lookup(void *,unsigned,unsigned,ULONG *,UCHAR *);
 void a04_ndis_peer_disconnect(struct a04_ndis_runtime *,ULONG);
 void a04_ndis_association_reported(struct a04_ndis_runtime *);
+int a04_ndis_idle_reconcile(struct a04_ndis_runtime *);
+int a04_ndis_rf_wake(struct a04_ndis_runtime *);
 int a04_ndis_power_profile(struct a04_ndis_runtime *,ULONG,BOOLEAN,int);
 int a04_ndis_radio_power(struct a04_ndis_runtime *,int);
 int a04_ndis_radio_reset(struct a04_ndis_runtime *);

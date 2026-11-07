@@ -62,6 +62,12 @@ static inline int a04_wlan_activate_encode(const struct a04_wlan_local *l,unsign
  for(unsigned i=0;i<6;i++)p[4+i]=l->mac[i];
  p[10]=(uint8_t)l->bmc;return 0; /* AIS network0 */
 }
+/* gen3 nicDeactivateNetwork zeros the whole CMD_BSS_ACTIVATE_CTRL,
+ * retaining only BSS and OwnMAC index. In particular BMC/MAC are not sent. */
+static inline int a04_wlan_deactivate_encode(const struct a04_wlan_local *l,uint8_t p[12]){
+ if(!a04_wlan_local_valid(l)||!p)return A04_WLAN_ARGUMENT;
+ a04_wlan_zero(p,12);p[0]=(uint8_t)l->bss;p[3]=(uint8_t)l->own;return 0;
+}
 static inline int a04_wlan_rate_mask(const struct a04_wlan_ap *a,unsigned *all,unsigned *basic){
  static const uint8_t rates[12]={2,4,11,22,12,18,24,36,48,72,96,108};
  if(!a || !all || !basic || !a->rate_count || a->rate_count>12)return A04_WLAN_ARGUMENT;

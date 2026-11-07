@@ -1579,7 +1579,7 @@ test-mt6630-owned-queue: build/mt6630_owned_queue_test
 	./build/mt6630_owned_queue_test
 test-mt6630: test-mt6630-owned-queue
 
-build/mt6630_native_policy_test: tests/mt6630_native_policy_test.c drivers/network/mt6630/native_policy.h
+build/mt6630_native_policy_test: tests/mt6630_native_policy_test.c drivers/network/mt6630/native_policy.h drivers/network/mt6630/vendor_xnu/A04BR3WLANHost.h drivers/network/mt6630/vendor_xnu/A04BR3WLANStation.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/network/mt6630 $< -o $@
 
