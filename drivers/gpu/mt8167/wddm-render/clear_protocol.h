@@ -5,6 +5,7 @@
 #define GEO_ABI_VERSION 1u
 #define GEO_CLEAR_MAGIC 0x31434f47u
 #define GEO_FORMAT_A8R8G8B8 21u /* D3DDDIFMT_A8R8G8B8, BGRA bytes on ARM LE. */
+#define GEO_FORMAT_X8R8G8B8 22u /* Standard lockable staging only; never a GPU render target. */
 #define GEO_USAGE_RENDER_TARGET 1u
 #define GEO_USAGE_STAGING 2u
 #define GEO_USAGE_VERTEX_BUFFER 3u
