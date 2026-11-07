@@ -9,11 +9,14 @@ int a04_windows_wifi_board_init(struct a04_windows_wifi_board *b,A04_SHARED_WIFI
 { (void)b;(void)p;(void)h;(void)o;(void)g;init_calls++;return init_result; }
 int a04_windows_wifi_control_open(struct a04_windows_wifi_board *b,struct a04_wifi_board *x,struct a04_wifi_life *l,struct a04_wmt_bridge *w,uint32_t o,const struct a04_wifi_life_ops *ops,struct a04_sdio_card_info *c)
 { (void)b;(void)x;(void)w;(void)o;(void)ops;(void)c;open_calls++;if(!open_result)l->state=A04_WIFI_LIFE_IO;return open_result; }
-int a04_windows_firmware_prepare(struct a04_windows_fw_snapshot *s,const uint8_t e[32]){(void)s;(void)e;prepare_calls++;return prepare_result;}
+int a04_windows_firmware_prepare_traced(struct a04_windows_fw_snapshot *s,const uint8_t e[32],a04_session_trace_fn trace,void *ctx){(void)trace;(void)ctx;(void)s;(void)e;prepare_calls++;return prepare_result;}
 void a04_windows_firmware_release(struct a04_windows_fw_snapshot *s){(void)s;releases++;}
-int a04_windows_firmware_boot_prepared(struct a04_wmt_bridge *b,struct a04_windows_fw_snapshot *s,const uint8_t e[32],const struct a04_wmt_startup_options *o)
-{ (void)b;(void)s;(void)e;(void)o;boot_calls++;return boot_result; }
+int a04_windows_firmware_boot_prepared_traced(struct a04_wmt_bridge *b,struct a04_windows_fw_snapshot *s,const uint8_t e[32],const struct a04_wmt_startup_options *o,a04_session_trace_fn trace,void *ctx)
+{ (void)trace;(void)ctx;(void)b;(void)s;(void)e;(void)o;boot_calls++;return boot_result; }
 int a04_wifi_life_stop(struct a04_wifi_life *l){(void)l;stop_calls++;return stop_result;}
+static unsigned traced_stage,traced_raw;
+static void trace(void *context,unsigned stage,unsigned phase,unsigned kind,ULONG raw,ULONG detail)
+{(void)context;(void)detail;assert(phase==A04_CP_RESULT&&kind==A04_CP_BACKEND);traced_stage=stage;traced_raw=raw;}
 static int callback(void *p){(void)p;return 0;}
 int main(void)
 {
@@ -42,5 +45,9 @@ int main(void)
  assert(calibration_calls==2&&d.state==A04_DIAG_FAILED);
  assert(!a04_windows_diagnostic_stop(&d)&&d.state==A04_DIAG_STOPPED);
 #endif
+ memset(&d,0,sizeof(d));init_result=-7;prepare_result=0;
+ int previous_releases=releases;
+ assert(a04_windows_diagnostic_start_traced(&d,&p,&h,&o,1,1,&ops,hash,&opts,trace,&d)==-1);
+ assert(traced_stage==A04_CP_DIAG_BOARD&&traced_raw==(ULONG)-7&&releases==previous_releases+1);
  return 0;
 }

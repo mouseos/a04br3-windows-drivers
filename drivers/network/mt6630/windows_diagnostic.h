@@ -18,5 +18,8 @@ struct a04_windows_diagnostic {
 int a04_windows_diagnostic_start(struct a04_windows_diagnostic *, A04_SHARED_WIFI_INTERFACE *,
  struct a04_windows_msdc2 *, struct a04_wifi_owner *, ULONG, uint32_t,
  const struct a04_wifi_life_ops *, const uint8_t [32], const struct a04_wmt_startup_options *);
+int a04_windows_diagnostic_start_traced(struct a04_windows_diagnostic *, A04_SHARED_WIFI_INTERFACE *,
+ struct a04_windows_msdc2 *, struct a04_wifi_owner *, ULONG, uint32_t,
+ const struct a04_wifi_life_ops *, const uint8_t [32], const struct a04_wmt_startup_options *,a04_session_trace_fn,void *);
 int a04_windows_diagnostic_stop(struct a04_windows_diagnostic *);
 #endif

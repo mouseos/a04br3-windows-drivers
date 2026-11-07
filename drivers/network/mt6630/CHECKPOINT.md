@@ -122,3 +122,9 @@ decoderも原status/未観測/flush失敗/stale baselineを限定確認。WDK8.1
 Native build helperはcheckpoint.cを含め、INF1004/既存scalar flags/kernel runtimeを維持する。
 PSP/RF休止・scan復帰のsource実装はb470f3cから保持し、実測未確認事項はNATIVE-1004.md参照。
 未実装cap広告、未知FW opcode、rootcause不明の推測修正は追加しない。
+
+## run42を受けた1006観測候補
+
+1004記録/selected INF1005の確定失敗範囲、追加RESULT stage45..55と新SYS1006の
+build手順は[RUN42-DIAGNOSTIC-1006.md](RUN42-DIAGNOSTIC-1006.md)を参照。
+旧recordのbuild1004を1006として読まない。schema/容量/末尾flushの解釈は維持する。

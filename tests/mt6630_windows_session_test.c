@@ -18,8 +18,8 @@ NTSTATUS a04_windows_msdc2_map_prepare(struct a04_windows_msdc2 *m,const CM_PART
 NTSTATUS a04_windows_msdc2_activate(struct a04_windows_msdc2 *m,struct a04_wifi_owner *o,unsigned g,int q)
 {assert(stage++==3&&m->base&&o->active&&o->generation==g&&q);return 0;}
 void a04_windows_msdc2_unmap(struct a04_windows_msdc2 *m){assert(stage++==8&&m->base);m->base=0;}
-int a04_windows_diagnostic_start(struct a04_windows_diagnostic *d,A04_SHARED_WIFI_INTERFACE *p,struct a04_windows_msdc2 *h,struct a04_wifi_owner *o,ULONG g,uint32_t ocr,const struct a04_wifi_life_ops *ops,const uint8_t hash[32],const struct a04_wmt_startup_options *opts)
-{(void)p;(void)h;(void)ocr;(void)hash;(void)opts;assert(stage++==4&&o->active&&g==7);d->life.ops=*ops;d->life.state=A04_WIFI_LIFE_IO;d->state=fail_start?A04_DIAG_FAILED:A04_DIAG_READY;return fail_start;}
+int a04_windows_diagnostic_start_traced(struct a04_windows_diagnostic *d,A04_SHARED_WIFI_INTERFACE *p,struct a04_windows_msdc2 *h,struct a04_wifi_owner *o,ULONG g,uint32_t ocr,const struct a04_wifi_life_ops *ops,const uint8_t hash[32],const struct a04_wmt_startup_options *opts,a04_session_trace_fn trace,void *observation)
+{(void)trace;(void)observation;(void)p;(void)h;(void)ocr;(void)hash;(void)opts;assert(stage++==4&&o->active&&g==7);d->life.ops=*ops;d->life.state=A04_WIFI_LIFE_IO;d->state=fail_start?A04_DIAG_FAILED:A04_DIAG_READY;return fail_start;}
 int a04_windows_diagnostic_stop(struct a04_windows_diagnostic *d){struct a04_wifi_life_ops *o=&d->life.ops;return o->mask_and_drain_irq(o->context)||o->drain_io(o->context)||o->unmap_host(o->context)||o->release_lease(o->context);}
 int main(void){struct a04_windows_session s={0};A04_SHARED_WIFI_INTERFACE p={0};struct a04_windows_session_platform f={0};CM_PARTIAL_RESOURCE_DESCRIPTOR r={0},t={0};uint8_t hash[32]={0};struct a04_wmt_startup_options opts={0};
  p.Header.Size=sizeof(p);p.Header.Version=A04_SHARED_WIFI_INTERFACE_VERSION;p.Acquire=acquire;p.ReleaseQuiescent=release;p.Live=live;p.UpdateShared=update;p.WriteShared=write_shared;f.connect_masked_irq=connect_irq;f.mask_and_drain_irq=irq;f.drain_io=io;f.quiesce_combo=combo;

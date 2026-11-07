@@ -49,7 +49,7 @@ int a04_windows_session_start_traced(struct a04_windows_session *s,A04_SHARED_WI
  s->life_ops.context=s;s->life_ops.mask_and_drain_irq=mask_irq;s->life_ops.drain_io=drain_io;
  s->life_ops.unmap_host=unmap;s->life_ops.release_lease=release;
  TRACE(A04_CP_SESSION_DIAG,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
- result=a04_windows_diagnostic_start(&s->diagnostic,parent,&s->host,&s->owner,generation,ocr,&s->life_ops,hash,options);
+ result=a04_windows_diagnostic_start_traced(&s->diagnostic,parent,&s->host,&s->owner,generation,ocr,&s->life_ops,hash,options,observe,observation);
  TRACE(A04_CP_SESSION_DIAG,A04_CP_RESULT,A04_CP_BACKEND,result,s->diagnostic.state);if(result)goto fail;
  s->state=A04_SESSION_READY;return 0;
 fail:s->state=A04_SESSION_QUARANTINED;return -1;
