@@ -5,7 +5,8 @@ param(
  [string]$OutputDirectory,
  [string]$WdkRoot="${env:ProgramFiles(x86)}\Windows Kits\8.1",
  [switch]$LinkCheck,
- [switch]$WithMdlTarget
+ [switch]$WithMdlTarget,
+ [string]$ReuseVerifiedDirectory
 )
 $ErrorActionPreference='Stop'
 if(!$EnableCandidate){throw 'Native owner module build is default off; pass -EnableCandidate'}
@@ -45,12 +46,52 @@ New-Item -ItemType Directory $out,(Join-Path $out 'tmp')|Out-Null
 try {
  $env:TEMP=Join-Path $out 'tmp';$env:TMP=$env:TEMP
  Start-Transcript -Path (Join-Path $out 'build.log')|Out-Null;$transcript=$true
- $commands=@();$objects=@()
+ $commands=@();$objects=@();$reuse=@();$previous=$null
+ if($ReuseVerifiedDirectory){
+  $prior=[IO.Path]::GetFullPath($ReuseVerifiedDirectory)
+  $previous=Get-Content (Join-Path $prior 'build-manifest.json') -Raw|ConvertFrom-Json
+  if($previous.target -ne 'thumbv7-pc-windows-msvc' -or !$previous.linkcheck_requested){throw 'Reuse requires prior successful ARM LinkCheck manifest'}
+  foreach($inputHash in @($previous.tools)+@($previous.wdk_inputs)){
+   if(!(Test-Path $inputHash.path) -or (Get-FileHash $inputHash.path -Algorithm SHA256).Hash -ne $inputHash.sha256){throw 'Prior tool/WDK input changed; refusing object reuse'}
+  }
+ }
  foreach($unit in $units){
   $source=Join-Path $gpu "$unit.c";$obj=Join-Path $out ($unit.Replace('\','-')+'.obj')
   $compileArgs=@($common)+@('-c',$source,'-o',$obj)
-  & clang @compileArgs
-  if($LASTEXITCODE -ne 0){throw "ARM32 native core compile failed: $unit"}
+  $reused=$false
+  if($previous){
+   $old=@($previous.commands|Where-Object{$_.tool -eq 'clang' -and $_.arguments[-1].EndsWith([IO.Path]::GetFileName($obj))})
+   if($old.Count -eq 1){
+    $oldArgs=@($old[0].arguments);$oldObj=Join-Path $prior ([IO.Path]::GetFileName($obj))
+    $oldHash=@($previous.outputs|Where-Object{$_.path -eq [IO.Path]::GetFileName($obj)})
+    # Compare real preprocessed translation units under each build's own
+    # flags/includes. Exact bytes only; __FILE__ differences force rebuild.
+    # Also require identical code generation flags (excluding -I/-D).
+    $newCode=@($common|Where-Object{!$_.StartsWith('-I') -and !$_.StartsWith('-D')})
+    $oldCode=@($oldArgs[0..($oldArgs.Count-5)]|Where-Object{!$_.StartsWith('-I') -and !$_.StartsWith('-D')})
+    if($oldHash.Count -eq 1 -and (Test-Path $oldObj) -and
+       (Get-FileHash $oldObj -Algorithm SHA256).Hash -eq $oldHash[0].sha256 -and
+       ($newCode -join "`n") -eq ($oldCode -join "`n") -and (Test-Path $oldArgs[-3])){
+     $oldPP=Join-Path $out 'tmp\prior.i';$newPP=Join-Path $out 'tmp\current.i'
+     $oldPPArgs=@($oldArgs[0..($oldArgs.Count-5)])+@('-E','-P',$oldArgs[-3],'-o',$oldPP)
+     & clang @oldPPArgs
+     if($LASTEXITCODE -ne 0){throw 'Prior preprocessing failed; no object reuse'}
+     $newPPArgs=@($common)+@('-E','-P',$source,'-o',$newPP)
+     & clang @newPPArgs
+     if($LASTEXITCODE -ne 0){throw 'Current preprocessing failed'}
+     $ppHash=(Get-FileHash $newPP -Algorithm SHA256).Hash
+     if($ppHash -eq (Get-FileHash $oldPP -Algorithm SHA256).Hash){
+      Copy-Item $oldObj $obj;$reused=$true
+      $reuse+=@{unit=$unit;prior_commit=$previous.source_commit;object_sha256=$oldHash[0].sha256;preprocessed_sha256=$ppHash;prior_arguments=$oldArgs}
+      Write-Output "REUSE_VERIFIED_TRANSLATION_UNIT $unit"
+     }
+    }
+   }
+  }
+  if(!$reused){
+   & clang @compileArgs
+   if($LASTEXITCODE -ne 0){throw "ARM32 native core compile failed: $unit"}
+  }
   $commands+=,@{tool='clang';arguments=$compileArgs};$objects+=$obj
  }
  & llvm-lib /machine:arm "/out:$out\ge8300-native-owner-core.lib" @objects
@@ -87,7 +128,7 @@ try {
  $sources=@(Get-ChildItem $gpu -File -Recurse|Where-Object{$_.Extension -in '.c','.h'}|ForEach-Object{@{path=$_.FullName.Substring($root.Length+1);sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash}})
  $sources+=@{path=$MyInvocation.MyCommand.Path.Substring($root.Length+1);sha256=(Get-FileHash $MyInvocation.MyCommand.Path -Algorithm SHA256).Hash}
  $productHashes=@($outputs|ForEach-Object{@{path=$_.Substring($out.Length+1);sha256=(Get-FileHash $_ -Algorithm SHA256).Hash}})
- @{source_commit=$commit;source_dirty=$false;candidate_default_off=$true;wdk_root=$WdkRoot;target='thumbv7-pc-windows-msvc';kmdf_dependency=$false;units=$units;compile_flags=$common;commands=$commands;tools=$toolHashes;wdk_inputs=$wdkHashes;
+ @{source_commit=$commit;source_dirty=$false;candidate_default_off=$true;wdk_root=$WdkRoot;target='thumbv7-pc-windows-msvc';kmdf_dependency=$false;units=$units;compile_flags=$common;commands=$commands;reused_objects=$reuse;tools=$toolHashes;wdk_inputs=$wdkHashes;
   intrinsic_compat='obsolete WDK __ldrexd declaration-only alias, matching H c1a4a81; no replacement intrinsic implementation';
   linkcheck_requested=[bool]$LinkCheck;mdl_target_requested=[bool]$WithMdlTarget;kind='COFF objects/static library; optional native DLL solely for API link validation, not an installable driver';
   owner_create_delete_implemented=$false;geo_full_control_ready=$false;runtime_verified=$false;sources=$sources;outputs=$productHashes}|ConvertTo-Json -Depth 8|Set-Content "$out\build-manifest.json"
