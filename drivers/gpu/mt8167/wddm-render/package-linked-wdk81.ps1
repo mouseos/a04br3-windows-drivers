@@ -19,6 +19,7 @@ foreach($name in @('ge8300-render.sys','ge8300-umd.dll')){
  $record=@($m.outputs|Where-Object {$_.name -eq $name})
  if($record.Count -ne 1 -or (Get-FileHash (Join-Path $LinkedDirectory $name) -Algorithm SHA256).Hash -ne $record[0].sha256){throw 'Linked artifact hash mismatch'}
 }
+if($m.required_parent_commit -notmatch '^[0-9a-f]{40}$' -or $m.required_acpi_commit -notmatch '^[0-9a-f]{40}$'){throw 'Fixed full parent/ACPI dependency commits required'}
 if((Get-FileHash $Firmware -Algorithm SHA256).Hash -ne '5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1'){throw 'Require exact source-compatible existing GE8300 firmware'}
 $out=[IO.Path]::GetFullPath($OutputDirectory)
 if(!$out.StartsWith([IO.Path]::GetFullPath($root)+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase) -or (Test-Path $out)){throw 'Use a fresh output directory inside checkout'}
@@ -58,7 +59,7 @@ try {
  @{package_source_commit=$commit;inf_driverver='11/06/2026,0.0.3.1';linked_manifest_sha256=$LinkedManifestSha256;
   source_runtime=$m;unsigned_images=$unsigned;signer_thumbprint=$CertificateThumbprint;signature_status='Valid';
   default_off=$true;installed=$false;runtime_verified=$false;wddm_conformance_qualified=$false;
-  required_parent_commit='287241c';required_acpi_commit='32bda39d';display_policy='MOU0007 CPU present; never concurrent KMDF GPU IRQ owner';
+  required_parent_commit=$m.required_parent_commit;required_acpi_commit=$m.required_acpi_commit;display_policy='MOU0007 CPU present; never concurrent KMDF GPU IRQ owner';
   limitations=@('D3D9 legacy TL flat caps require runtime validation','WDDM1.2 mandatory engine-TDR/preemption/GDI contracts remain unqualified','NoDMA stop remains unqualified; do not auto-install');
   outputs=@('ge8300-render.inf','ge8300-render.sys','ge8300-umd.dll','ge8300-mips.fw','ge8300-render.cat','mt8167-development.cer')|ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}}
  }|ConvertTo-Json -Depth 12|Set-Content (Join-Path $out 'signed-manifest.json')
