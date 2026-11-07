@@ -202,3 +202,52 @@ static DWORD gpu_request_reboot(void)
 done:
     CloseHandle(token);return log_ok?error:ERROR_WRITE_FAULT;
 }
+
+/* Same signed EXE, one fixed mode and no inherited package handles. A separate
+ * process is needed because SCM may terminate a service after SERVICE_STOPPED. */
+static DWORD gpu_start_reboot_waiter(void)
+{
+    WCHAR command[MAX_PATH+40];STARTUPINFOW startup;PROCESS_INFORMATION process;
+    lstrcpyW(command,L"\"");lstrcatW(command,executable);lstrcatW(command,L"\" --reboot-after-stop");
+    memset(&startup,0,sizeof(startup));memset(&process,0,sizeof(process));startup.cb=sizeof(startup);
+    if(!CreateProcessW(executable,command,NULL,NULL,FALSE,CREATE_NO_WINDOW,NULL,system_dir,&startup,&process))return GetLastError();
+    number("REBOOT_WAITER_PID",process.dwProcessId);CloseHandle(process.hThread);CloseHandle(process.hProcess);
+    return NO_ERROR;
+}
+static DWORD gpu_claim_reboot(void)
+{
+    static const char intent[]="GPU_REBOOT_ATTEMPT " GPU_SOURCE_COMMIT "\r\n";
+    WCHAR path[MAX_PATH];HANDLE file;DWORD error=NO_ERROR,written=0;
+    lstrcpyW(path,directory);lstrcatW(path,L"\\reboot-attempted.bin");
+    file=CreateFileW(path,GENERIC_WRITE,0,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,NULL);
+    if(file==INVALID_HANDLE_VALUE)return GetLastError();
+    if(!WriteFile(file,intent,sizeof(intent)-1,&written,NULL)||written!=sizeof(intent)-1||!FlushFileBuffers(file))error=ERROR_WRITE_FAULT;
+    CloseHandle(file);number("REBOOT_CLAIM_ERROR",error);return error;
+}
+static DWORD gpu_finish_reboot(void)
+{
+    SC_HANDLE manager=NULL,service=NULL;DWORD error=local_system(),start=GetTickCount(),bytes;
+    SERVICE_STATUS_PROCESS state;
+    if(error)return error;
+    manager=OpenSCManagerW(NULL,NULL,SC_MANAGER_CONNECT);if(!manager)return GetLastError();
+    service=OpenServiceW(manager,service_name,SERVICE_QUERY_STATUS);
+    if(!service){error=GetLastError();goto done;}
+    for(;;){
+        if(!QueryServiceStatusEx(service,SC_STATUS_PROCESS_INFO,(BYTE *)&state,sizeof(state),&bytes)){
+            error=GetLastError();break;
+        }
+        if(state.dwCurrentState==SERVICE_STOPPED){
+            number("REBOOT_SERVICE_EXIT",state.dwWin32ExitCode);
+            if(state.dwWin32ExitCode!=ERROR_SUCCESS_REBOOT_REQUIRED){error=ERROR_NOT_READY;break;}
+            record("SERVICE_STOPPED_CONFIRMED_BEFORE_REBOOT=1\r\n");
+            if(!log_ok){error=ERROR_WRITE_FAULT;break;}
+            error=gpu_claim_reboot();if(error)break;
+            error=gpu_request_reboot();number("PLANNED_REBOOT_ERROR",error);break;
+        }
+        if(GetTickCount()-start>=30000){error=ERROR_TIMEOUT;break;}
+        Sleep(250);
+    }
+done:
+    if(service)CloseServiceHandle(service);if(manager)CloseServiceHandle(manager);
+    number("REBOOT_WAITER_EXIT",error);return log_ok?error:ERROR_WRITE_FAULT;
+}
