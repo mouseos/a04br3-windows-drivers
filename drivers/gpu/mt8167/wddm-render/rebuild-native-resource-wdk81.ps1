@@ -44,9 +44,11 @@ try {
   $compiled+=@{unit=('umd/'+$unit);source_sha256=(Get-FileHash "$PSScriptRoot\umd\$unit.c" -Algorithm SHA256).Hash;object_sha256=(Get-FileHash "$out\umd_$unit.obj" -Algorithm SHA256).Hash}
  }
  $before=@(& llvm-ar t "$out\ge8300-native-umd.lib")
- if(@($before|Where-Object {$_ -eq 'umd_typed_resource.obj'}).Count -ne 1){throw 'Unique resource archive member required'}
+ if(@($before|Where-Object {[IO.Path]::GetFileName($_) -eq 'umd_typed_resource.obj'}).Count -ne 1){throw 'Unique resource archive member required'}
  & llvm-ar r "$out\ge8300-native-umd.lib" "$out\umd_typed_resource.obj"
- if($LASTEXITCODE -or @(& llvm-ar t "$out\ge8300-native-umd.lib").Count -ne $before.Count){throw 'Archive replacement failed'}
+ if($LASTEXITCODE){throw 'Archive replacement failed'}
+ $after=@(& llvm-ar t "$out\ge8300-native-umd.lib")
+ if($after.Count -ne $before.Count -or @($after|Where-Object {[IO.Path]::GetFileName($_) -eq 'umd_typed_resource.obj'}).Count -ne 1){throw 'Unique archive replacement failed'}
  & lld-link /dll /machine:arm /subsystem:windows,6.03 /entry:_DllMainCRTStartup /nodefaultlib "$out\umd_entry.obj" "$out\umd_typed_entry.obj" "$out\ge8300-native-umd.lib" (Join-Path $PairDirectory 'pco_pair.obj') @libs "/out:$out\ge8300-umd.dll" "/map:$out\ge8300-umd.map"
  if($LASTEXITCODE){throw 'UMD link failed'}
  @{source_commit=(& git -C $root rev-parse HEAD);source_dirty=$false;baseline_source_commit=$b.source_commit;baseline_manifest_sha256=$BaselineManifestSha256;compiler_manifest_sha256=$CompilerManifestSha256;pair_manifest_sha256=$PairManifestSha256;compiled=$compiled;limited_development_profile=$true;development_negotiation_pipeline='10_0';standard_profile_qualified=$false;runtime_verified=$false;kernel_changed=$false;client_changed=$false;outputs=@('ge8300-native-umd.lib','ge8300-umd.dll')|ForEach-Object {@{name=$_;sha256=(Get-FileHash "$out\$_" -Algorithm SHA256).Hash.ToLowerInvariant()}}}|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 "$out\build-manifest.json"
