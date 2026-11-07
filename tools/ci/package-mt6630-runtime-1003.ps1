@@ -26,6 +26,10 @@ if($m.source_commit -ne $commit -or $m.source_dirty -ne $false -or $m.wdk_link_s
 foreach($flag in @('A04_WIFI_SESSION_DIAGNOSTIC','A04_WIFI_IRQ_DIAGNOSTIC','A04_WIFI_CALIBRATION_DIAGNOSTIC')){
  if($m.critical_flags.$flag -ne 1){throw "Missing build flag: $flag"}
 }
+foreach($flag in @('-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-mfpu=none')){
+ if($m.kernel_codegen_flags -notcontains $flag){throw "Missing ARM kernel codegen flag: $flag"}
+}
+if($m.kernel_runtime_libraries -notcontains 'libcntpr.lib'){throw 'WDK kernel runtime manifest required'}
 $sys=Join-Path $build 'mt6630-runtime.sys';$inf=Join-Path $build 'mt6630-runtime.inf'
 if((Hash $sys) -ne $m.sys_sha256 -or (Hash $inf) -ne $m.inf_sha256 -or (Hash $inf) -ne (Hash (Join-Path $root 'drivers\network\mt6630\mt6630-runtime.inf'))){throw 'Build input hashes disagree'}
 if([IO.File]::ReadAllText($inf) -notmatch '(?m)^DriverVer=11/06/2026,2026\.11\.6\.1003\r?$'){throw 'Require version1003 INF'}

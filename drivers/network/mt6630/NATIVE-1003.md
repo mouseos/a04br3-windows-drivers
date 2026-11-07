@@ -107,3 +107,61 @@ manifest hashと署名後SYS hashを保存する。実適用判定はINF1003と�
 独立credit返却、既存receive/HIF/data/WMT/calibration/diagnosticの限定回帰を行う。
 ARM32/WinBlue設定で参照SDK headersによる変更TUのcompileも行う。
 これはWDK8.1最終SYS linkと実OS上の動作試験の代替ではない。
+
+## WDK ARM runtimeとscalar codegenの修正
+
+b6b715fの実WDK compile成功後、linkが `ntoskrnl.lib(helpexcept.obj)` の
+`fphelper_r/helper_div` から参照する `__security_push_cookie` /
+`__security_pop_cookie` 未解決で停止した（主担当回収stderr確認）。
+この名前だけからWiFi sourceに浮動小数点演算があるとは断定できない。
+64bit整数除算もARM runtime helperを要求しうる。自前のcookie/除算/FP成功stub、
+user-mode CRTで置き換えず、WDK8.1 `km/arm/libcntpr.lib` を既存の
+`ntoskrnl.lib` / `hal.lib` / `bufferoverflowfastfailk.lib` と一緒にlinkする。
+同repoの既存GE8300 providerもこのkernel runtime構成を使う。
+`-fno-stack-protector` はWiFi自身の生成設定であり、WDK archive内部のGS参照を
+消すものではない。runtimeの本来の例外・cookie処理を保持する。
+
+大きいbufferのcopy/clearとqueue処理がoptimizerによりVFP/NEONへ変換されないよう、
+Nativeとcoreの全TUを `-O2 -fno-vectorize -fno-slp-vectorize
+-mno-unaligned-access -mfpu=none -fno-stack-protector` で生成する。
+vectorizerを止めるだけでなくVFP自体をtarget機能から外し、wide unaligned accessも
+禁止する。既存のMMIO APIやNDISの所有・rundown処理は変更しない。
+manifestにこれらflags、core/runtime recipe hash、使用kernel library名と
+ntoskrnl/GS/libcntpr実hashを保存し、link mapも出力する。
+host clang18/参照headersで旧flagsの生成assemblyを比較すると、ndis_runtimeは
+44命令、native_contractは7命令、wmt_bridgeは420命令のVFP/NEONを生成した。
+native_contractには `__rt_udiv64` 参照もある。これは保持runner objの逆アセンブルや
+使用clang版一致を意味しないが、旧flagsで再linkするだけでは不十分という具体的根拠。
+新flagsで全40 TUをcompileし、生成assemblyでVFP/NEON命令0を確認した。
+参照headersによるhost compile/生成assembly検査は、WDK archiveを含む最終SYSの
+link・実行検証とは別。helper名だけで最終SYSにFP命令がないとは主張しない。
+
+### 保持済みobjから一回だけlink原因を切り分ける手順
+
+主担当の既存runnerで実施する場合のみ。以下はb6b715fのobjを読んで別名の診断用SYSと
+mapを作る最小再linkで、source provenanceを新commitへ付け替えたり、署名packageを
+生成したりしない。既存objのcodegen flagsは旧設定のままなので、これだけ通っても
+新scalar候補の完成ではない。objや親SYSを消さない。
+
+```powershell
+$old='C:\mt6630-native1003-b6b715f\src\build\native1003'
+$km="${env:ProgramFiles(x86)}\Windows Kits\8.1\Lib\winv6.3\km\arm"
+$names=@('ndis_runtime','native_control','native_contract','native_security',
+ 'station_runtime','native_tx','native_scan','native_scan_bridge','native_nbl',
+ 'native_receive','native_hif_rx')
+$objects=@($names | ForEach-Object {Join-Path $old "$_.obj"})
+$objects+=Get-ChildItem (Join-Path $old 'a04br3-mt6630-core\*.obj') |
+ Where-Object {$_.BaseName -ne 'native_tx'} | ForEach-Object {$_.FullName}
+foreach($obj in $objects){if(!(Test-Path -LiteralPath $obj)){throw "Missing obj: $obj"}}
+if(Test-Path "$old\runtime-link-only.sys"){throw 'Use a new diagnostic output name'}
+& lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib `
+ /opt:ref @objects "$km\ndis.lib" "$km\ntoskrnl.lib" "$km\hal.lib" `
+ "$km\bufferoverflowfastfailk.lib" "$km\libcntpr.lib" `
+ "/map:$old\runtime-link-only.map" "/out:$old\runtime-link-only.sys"
+if($LASTEXITCODE){throw 'WDK ARM runtime relink failed'}
+```
+
+正式候補は修正commitのclean checkout、新規output dirで前掲build helperを実行する。
+scalar設定は全WiFi objへ影響するためNative/coreだけ再compileする。既存の検証済み
+shared parentは `-SharedParentDirectory` で再利用し、GPU/親/SDKを再buildしない。
+INFは1003を維持し、build/sign manifestのsource/flags/hashでb6b715f未link候補と区別する。
