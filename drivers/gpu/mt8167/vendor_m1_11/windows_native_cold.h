@@ -37,11 +37,15 @@ ULONG a04_vendor_native_bytes(const struct a04_vendor_native_cold *);
 /* Complete CPU candidate and cold ring image staged; does not open publish gate. */
 BOOLEAN a04_vendor_native_job_staged(const struct a04_vendor_native_cold *);
 struct a04_vendor_start;
-struct a04_vendor_native_result {uint32_t phase,matching_pixels,mismatched_pixels,guard_errors;};
+struct a04_vendor_native_result {uint32_t phase,matching_pixels,mismatched_pixels,guard_errors,completed_frames;};
 /* Activation-only first private clear. Caller holds the provider lifetime
  * and pinned copy owner, with no display lease and GP fence already passed. */
 NTSTATUS a04_vendor_native_run_once(struct a04_vendor_native_cold *,
     struct a04_vendor_start *,struct a04_vendor_native_result *);
+/* One bounded private run, 1..16 frames. Same clear/code/owner; no arbitrary
+ * packet entry. Requires the same lifetime/admission as run_once. */
+NTSTATUS a04_vendor_native_run_clear_frames(struct a04_vendor_native_cold *,
+    struct a04_vendor_start *,ULONG,struct a04_vendor_native_result *);
 /* Independently derived HWRT register input; bank bind is not drawing. */
 NTSTATUS a04_vendor_native_bind_bank_cold(struct a04_vendor_native_cold *,
     const struct a04_m111_hwrt_input *);

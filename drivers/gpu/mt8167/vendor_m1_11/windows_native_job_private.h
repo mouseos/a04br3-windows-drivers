@@ -6,6 +6,7 @@
 #include "native_pair.h"
 struct a04_vendor_native_candidate {
     BOOLEAN attempted,verified;
+    uint32_t completed_frames,start[2];
     struct a04_m111_clear_job job;
     struct a04_m111_pair_result pair;
     uint8_t rings[8192];

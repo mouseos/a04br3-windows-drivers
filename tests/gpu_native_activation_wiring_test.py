@@ -41,7 +41,9 @@ unsigned KeGetCurrentIrql(void){return irql;}
 void GpuPrint(const char *s){assert(strlen(uart)+strlen(s)<sizeof(uart));strcat(uart,s);}
 void GpuHex(uint32_t x){(void)x;}
 NTSTATUS a04_vendor_native_run_once(struct a04_vendor_native_cold *n,struct a04_vendor_start *s,struct a04_vendor_native_result *r)
-{(void)n;(void)s;calls++;r->phase=4;r->matching_pixels=480000;return wanted;}
+{(void)n;(void)s;calls++;r->phase=4;r->matching_pixels=480000;r->completed_frames=1;return wanted;}
+NTSTATUS a04_vendor_native_run_clear_frames(struct a04_vendor_native_cold *n,struct a04_vendor_start *s,ULONG frames,struct a04_vendor_native_result *r)
+{assert(frames==A04_GE8300_VENDOR_NATIVE_CLEAR_FRAMES);NTSTATUS status=a04_vendor_native_run_once(n,s,r);if(status==STATUS_SUCCESS)r->completed_frames=frames;return status;}
 NTSTATUS a04_vendor_native_allocate_cold_ex(struct a04_vendor_native_cold **n,struct a04_vendor_render_cold *r,PDMA_ADAPTER adapter,ULONG maps,ULONG width,ULONG height,struct a04_vendor_native_diagnostic *d)
 {(void)r;(void)adapter;(void)maps;(void)width;(void)height;*n=(wanted==STATUS_SUCCESS || retain)?(void *)n:NULL;d->status=wanted;return wanted;}
 ULONG a04_vendor_native_bytes(const struct a04_vendor_native_cold *n){return n?0x13c000:0;}
@@ -98,7 +100,7 @@ tmp=root/'build/native-activation-wiring';tmp.mkdir(parents=True,exist_ok=True)
 env=os.environ.copy();env['TMPDIR']=str(tmp)
 with tempfile.TemporaryDirectory(dir=tmp) as directory:
  p=Path(directory);(p/'test.c').write_text(pre+prepare+middle+retained+activation+block+postlude)
- for enabled in [0,1]:
-  cmd=['cc','-std=c11','-Wall','-Wextra','-Werror',f'-DA04_GE8300_VENDOR_NATIVE_CLEAR_ACTIVATE={enabled}','-DA04_GE8300_VENDOR_NATIVE_BACKING=1','-DA04_GE8300_VENDOR_NATIVE_CLEAR_JOB=1','-DA04_GE8300_SHARED_COMMON_PAGE=1','-I'+str(root/'tests/gpu_windows_stubs'),'-I'+str(root/'drivers/gpu/mt8167/vendor_m1_11'),str(p/'test.c'),'-o',str(p/'test')]
+ for enabled,frames in [(0,1),(1,1),(1,4)]:
+  cmd=['cc','-std=c11','-Wall','-Wextra','-Werror',f'-DA04_GE8300_VENDOR_NATIVE_CLEAR_ACTIVATE={enabled}',f'-DA04_GE8300_VENDOR_NATIVE_CLEAR_FRAMES={frames}','-DA04_GE8300_VENDOR_NATIVE_BACKING=1','-DA04_GE8300_VENDOR_NATIVE_CLEAR_JOB=1','-DA04_GE8300_SHARED_COMMON_PAGE=1','-I'+str(root/'tests/gpu_windows_stubs'),'-I'+str(root/'drivers/gpu/mt8167/vendor_m1_11'),str(p/'test.c'),'-o',str(p/'test')]
   subprocess.run(cmd,env=env,check=True);subprocess.run([str(p/'test')],env=env,check=True)
 print('Production D0 activation block: flag0/1, PASSIVE/GP/lease/admission, UART, one-shot/failure closure PASS; host model only')

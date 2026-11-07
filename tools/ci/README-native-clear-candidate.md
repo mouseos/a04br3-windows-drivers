@@ -11,8 +11,8 @@ $env:A04_GE8300_VENDOR_NATIVE_BACKING='1'
 $env:A04_GE8300_VENDOR_NATIVE_CLEAR_JOB='1'
 $env:A04_GE8300_VENDOR_COPY_SERVICE='1'
 # 選択中packageのinventoryから設定する。保持ファイル名だけで決めない。
-$env:A04_GE8300_INSTALLED_DRIVER_VER='11/07/2026,0.0.2.1'
-$env:A04_GE8300_INSTALLED_SYS_SHA256='13c8a9ca6b6d7fef921afd38d60cf84ea8e37b599b51af82d6e90342d8b9da07'
+$env:A04_GE8300_INSTALLED_DRIVER_VER='11/07/2026,0.0.2.2'
+$env:A04_GE8300_INSTALLED_SYS_SHA256='3a5b1a0553dae7e09852432f838c3de255487a4b63d4c95f0a7be960eedeeaef'
 ./tools/ci/build-ge8300-provider.ps1
 ```
 
@@ -76,3 +76,23 @@ host OS stubはallocator/IRQL等だけ。実producer、mapper、Device-word help
 hostでは64KiB超のDMA/CPU pool要求を拒否し、block間DMAを16MiB離したallocatorを使用する。全PTE/PM PFN/mirror、block境界転送、全DMA確保箇所の失敗cleanup/alias quarantine、未prepared caller不実行、retained childのFW開始阻止、publish後timeout/画素不一致/cleanup未完了のpoison保持を確認する。host結果はWDK compile/linkや実GPU描画の代わりにはしない。
 
 次のWDKは既存copy flagsを保ちNATIVE_BACKING/JOB/CLEAR_ACTIVATE=1、baseline0.0.2.1/SYS13c8、新INF0.0.2.2で1回だけ固定sourceから生成する。署名後verifyと実選択package照合を済ませ、主担当のprivate clear試験へ渡す。実機UARTのpreparation結果が未確定の間はWindows 3D成功と報告しない。
+
+## run31成功後のbounded warm候補
+
+run31はf1af516でPREP0/STEP0B/MAPS40/DATA_BYTES13C000/DATA_BLOCKS14/PIXEL_BLOCKS3F、JOBSTAGED1、CLEAR STATUS0/PHASE4/MATCH75300/MISMATCH0/GUARD0を実測した（数値はUARTの16進表記）。fresh32実SYS3a5b1a0553dae7e09852432f838c3de255487a4b63d4c95f0a7be960eedeeaefが署名候補と一致した。これは固定3D clear成功であり一般D3D対応ではない。
+
+元vendor capture05 ev_7266a0cd35c075c4598512415d1d4037ec0695ab2eb8926eb5ef84b821ff7c4bは同一contextでcold/warm clear、solid/texture triangleの4jobs、各480000pixels mismatch0を観測した。HWRTはA/B/A/B、TA prior-fenceは0/0/2/2。Windows側は既存の独立TA-update→3D-fence/update契約を維持する。cold bank/HWRT/freelistは一切再初期化せず、完全完了後だけ同じ所有HWRT Aを直列再利用する候補であり、元UMのdouble-buffer運用と同じschedulerを再現したという意味ではない。このWindows warm経路は実機未検証。
+
+`a04_vendor_native_run_clear_frames`は1..16の固定上限を持つ。実CCB read/writeが前回終端で一致し、TA/3D UFOとcleanup submitted/executedが完了数に一致し、前回flush+GP fenceが完了した場合のみ次pairを生成する。native_pairの同版reserve/paddingにより3D ring wrapを扱い、TA prior-fence/UPDATE/3D UPDATEとjob IDを次の値へ進める。cleanup counterをホストでincrementしない。新packetのscalar/code/VAはcold成功profileのままで、shaderやHWRT初期値を推測で差替えない。
+
+各frame前にprivate output全容量をA5へ書きreadbackして確認し、各frame後に480000pixelsと残guard全量を再検査する。前回の同色結果が次回を成功させることはない。任意段階の失敗はpoison+DMA保持。callerは従来のD0 lifetime/PASSIVE/GP/pinned copy owner/lease無しを維持し、service公開前に一度だけbounded runを呼ぶ。
+
+次のbuildは現baseline0.0.2.2/SYS3a5bに対してINF **11/07/2026,0.0.2.3**。全copy flagsを維持し、NATIVE_BACKING/JOB/CLEAR_ACTIVATE=1に加えて次を指定する。
+
+```powershell
+$env:A04_GE8300_VENDOR_NATIVE_CLEAR_FRAMES='4'
+```
+
+未指定は1のまま。activation無しで複数frameや1..16外の指定はbuildで拒否する。build-config/署名後manifestへnative_clear_framesを保存する。UARTはBEGIN FRAMESと最終COMPLETED_FRAMESを出す。4frame試験の成功条件はSTATUS0/PHASE4/MATCH75300/MISMATCH0/GUARD0/COMPLETED_FRAMES4。new SYSを既存packageと同版INFで配布しない。
+
+hostでは実producer/mapper/publisherを使い1frameと16frames（3D ring wrap）、2frame目timeout、前回cleanup破損、画素不一致、one-run制限と保持を検証した。実providerの準備/admission/caller blockをactivation0/1とframes1/4でcompile/runした。WDKとWindows warm clearは主担当の次試験であり未確認。triangle/textureのWindows producerはまだ未完成で、今回のwarm flagからは投入できない。

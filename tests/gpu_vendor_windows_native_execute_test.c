@@ -15,25 +15,29 @@ void KeStallExecutionProcessor(unsigned us)
     RGXFWIF_CCB_CTL *k=runtime.kctl;RGXFWIF_KCCB_CMD *cmd;
     RGXFWIF_CCCB_CTL *ctl;RGXFWIF_CLEANUP_CTL *cleanup;unsigned dm,i;
     assert(us==50);
-    if(mode==1)return; /* FW timeout, no execution. */
+    if(mode==1 || (mode==4 && commands>=4))return; /* FW timeout, no execution. */
     while(k->ui32ReadOffset!=k->ui32WriteOffset){
         cmd=&runtime.kcommands[k->ui32ReadOffset];commands++;
         if(cmd->eCmdType==RGXFWIF_KCCB_CMD_KICK){
             assert(cmd->eDM==2 || cmd->eDM==3);dm=cmd->eDM==2?0:1;
             ctl=(void *)((UCHAR *)active->r.buffer[0].cpu+active->r.layout.control[dm]);
             ctl->ui32ReadOffset=ctl->ui32WriteOffset=cmd->uCmdData.sCmdKickData.ui32CWoffUpdate;
-            ((uint32_t *)((UCHAR *)active->r.buffer[0].cpu+0x4c00))[dm]=1;
+            ((uint32_t *)((UCHAR *)active->r.buffer[0].cpu+0x4c00))[dm]++;
             cleanup=(void *)((UCHAR *)active->r.buffer[0].cpu+
                 cmd->uCmdData.sCmdKickData.apsCleanupCtl[0].ui32Addr-0xc0080000u);
-            cleanup->ui32SubmittedCommands=1;cleanup->ui32ExecutedCommands=(mode==3 && dm)?0:1;
+            cleanup->ui32SubmittedCommands++;if(!(mode==3 && dm))cleanup->ui32ExecutedCommands++;
             if(dm)for(i=0;i<480000;i++)*(uint32_t *)a04_vendor_native_storage_pointer(child_owner,1,i*4u,4u)=mode==2?0xff332210u:0xff332211u;
-        }else if(cmd->eCmdType==RGXFWIF_KCCB_CMD_SLCFLUSHINVAL){assert(commands==3);}
-        else {assert(cmd->eCmdType==RGXFWIF_KCCB_CMD_SYNC && commands==4);
-            *(uint32_t *)runtime.command_sync=cmd->uCmdData.sSyncData.uiUpdateVal;}
+        }else if(cmd->eCmdType==RGXFWIF_KCCB_CMD_SLCFLUSHINVAL){assert(commands%4==3);}
+        else {assert(cmd->eCmdType==RGXFWIF_KCCB_CMD_SYNC && commands%4==0);
+            *(uint32_t *)runtime.command_sync=cmd->uCmdData.sSyncData.uiUpdateVal;
+            if(mode==5 && commands==4){
+                RGXFWIF_CLEANUP_CTL *bad=(void *)((UCHAR *)active->r.buffer[0].cpu+child_owner->addresses.ta_cleanup[0]-0xc0080000u);
+                bad->ui32ExecutedCommands=0;
+            }}
         k->ui32ReadOffset=(k->ui32ReadOffset+1)&127;
     }
 }
-static void run(unsigned fault)
+static void run(unsigned fault,unsigned frames)
 {
     struct fixture x;struct a04_vendor_native_cold *n=NULL;struct a04_vendor_start start={0};
     struct a04_vendor_native_result result;RGXFWIF_CCB_CTL k={0,0,127,sizeof(RGXFWIF_KCCB_CMD)};
@@ -48,27 +52,28 @@ static void run(unsigned fault)
     runtime.command_sync=&sync;runtime.command_sync_addr.ui32Addr=0xc0010000u;
     x.fw.runtime=&runtime;x.fw.hardware_owned=TRUE;start.memory=&x.fw;start.core=core;start.online=TRUE;
     active=&x;child_owner=n;mode=fault;commands=0;
-    status=a04_vendor_native_run_once(n,&start,&result);
+    status=a04_vendor_native_run_clear_frames(n,&start,frames,&result);
     if(!fault){
         assert(status==STATUS_SUCCESS && result.phase==4 && result.matching_pixels==480000);
-        assert(!result.mismatched_pixels && !result.guard_errors && commands==4 && n->candidate->verified);
+        assert(!result.mismatched_pixels && !result.guard_errors && commands%4==0 && n->candidate->verified);
         assert(!start.command_busy && !start.command_poisoned && !n->quarantined);
         assert(a04_vendor_native_run_once(n,&start,&result)==STATUS_INVALID_DEVICE_STATE);
         assert(a04_vendor_native_release_cold(&n)==STATUS_DEVICE_BUSY && !frees);
         x.fw.hardware_owned=FALSE;assert(a04_vendor_native_release_cold(&n)==STATUS_SUCCESS && !n);finish(&x);
     }else{
         assert(!NT_SUCCESS(status) && start.command_poisoned && x.r.poisoned && n->quarantined);
+        if(fault>=4)assert(result.completed_frames==1);
         assert(a04_vendor_native_release_cold(&n)==STATUS_DEVICE_BUSY && !frees && !start.command_busy);
         _exit(0); /* Deliberately retained DMA in this isolated test process. */
     }
 }
 int main(void)
 {
-    unsigned fault;run(0);
-    for(fault=1;fault<=3;fault++){
-        pid_t p=fork();int status;assert(p>=0);if(!p)run(fault);
+    unsigned fault;run(0,1);run(0,16);
+    for(fault=1;fault<=5;fault++){
+        pid_t p=fork();int status;assert(p>=0);if(!p)run(fault,fault>=4?3:1);
         assert(waitpid(p,&status,0)==p && WIFEXITED(status) && WEXITSTATUS(status)==0);
     }
-    puts("Dormant native publisher model: success / timeout / pixel mismatch / missing cleanup / one-shot / DMA retention PASS; no GPU executed");
+    puts("Native publisher host model: 1/16 frames, ring wrap, late timeout, corrupt cleanup, pixel mismatch, one-shot and DMA retention PASS; no GPU executed");
     return 0;
 }

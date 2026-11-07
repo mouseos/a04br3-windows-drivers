@@ -193,6 +193,15 @@
 #ifndef A04_GE8300_VENDOR_NATIVE_CLEAR_ACTIVATE
 #define A04_GE8300_VENDOR_NATIVE_CLEAR_ACTIVATE 0
 #endif
+#ifndef A04_GE8300_VENDOR_NATIVE_CLEAR_FRAMES
+#define A04_GE8300_VENDOR_NATIVE_CLEAR_FRAMES 1
+#endif
+#if A04_GE8300_VENDOR_NATIVE_CLEAR_FRAMES < 1 || A04_GE8300_VENDOR_NATIVE_CLEAR_FRAMES > 16
+#error Native clear frame bound must be 1..16
+#endif
+#if A04_GE8300_VENDOR_NATIVE_CLEAR_FRAMES > 1 && !A04_GE8300_VENDOR_NATIVE_CLEAR_ACTIVATE
+#error Multiple native frames require explicit activation
+#endif
 #if A04_GE8300_VENDOR_NATIVE_CLEAR_ACTIVATE && (!A04_GE8300_VENDOR_NATIVE_CLEAR_JOB || !A04_GE8300_VENDOR_START_DIAGNOSTIC || !A04_GE8300_SHARED_LEASE)
 #error Native activation requires explicit cold job, matched startup, and shared lifetime ownership
 #endif
@@ -1078,13 +1087,19 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
             )) {
             struct a04_vendor_native_result native_result={0};NTSTATUS native_status;
             c->vendor_native_activation_attempted=TRUE;
-            GpuPrint("A04GPU NATIVE CLEAR BEGIN PRIVATE=480000\n");
+            GpuPrint("A04GPU NATIVE CLEAR BEGIN PRIVATE=480000 FRAMES=");GpuHex(A04_GE8300_VENDOR_NATIVE_CLEAR_FRAMES);GpuPrint("\n");
+#if A04_GE8300_VENDOR_NATIVE_CLEAR_FRAMES > 1
+            native_status=a04_vendor_native_run_clear_frames(c->vendor_native,&c->vendor_start,
+                A04_GE8300_VENDOR_NATIVE_CLEAR_FRAMES,&native_result);
+#else
             native_status=a04_vendor_native_run_once(c->vendor_native,&c->vendor_start,&native_result);
+#endif
             GpuPrint("A04GPU NATIVE CLEAR STATUS=");GpuHex((ULONG)native_status);
             GpuPrint(" PHASE=");GpuHex(native_result.phase);
             GpuPrint(" MATCH=");GpuHex(native_result.matching_pixels);
             GpuPrint(" MISMATCH=");GpuHex(native_result.mismatched_pixels);
-            GpuPrint(" GUARD=");GpuHex(native_result.guard_errors);GpuPrint("\n");
+            GpuPrint(" GUARD=");GpuHex(native_result.guard_errors);
+            GpuPrint(" COMPLETED_FRAMES=");GpuHex(native_result.completed_frames);GpuPrint("\n");
             if(!NT_SUCCESS(native_status)) {
                 c->status.health_status=native_status;c->vendor_service_online=FALSE;
                 InterlockedExchange(&c->vendor_service_closed,1);
