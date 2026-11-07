@@ -87,6 +87,19 @@ namespace MT8167OfflineHive {
                 RegistryKey result=current;current=null;return result;
             } finally { if(current!=null) current.Dispose(); }
         }
+        // Exact small raw values only; used for the opt-in interrupted diagnostic header.
+        public static string ReadFixedRawValue(RegistryKey key,string name,uint expectedType,int expectedBytes) {
+            if(expectedBytes<0 || expectedBytes>65536) throw new ArgumentOutOfRangeException("expectedBytes");
+            uint type, bytes=0;
+            int rc=RegQueryValueEx(key.Handle.DangerousGetHandle(),name,IntPtr.Zero,out type,null,ref bytes);
+            if(rc!=0) throw new Win32Exception(rc);
+            if(type!=expectedType || bytes!=(uint)expectedBytes) throw new InvalidOperationException("Partial diagnostic raw type/size mismatch");
+            byte[] data=new byte[bytes];
+            rc=RegQueryValueEx(key.Handle.DangerousGetHandle(),name,IntPtr.Zero,out type,data,ref bytes);
+            if(rc!=0) throw new Win32Exception(rc);
+            if(type!=expectedType || bytes!=(uint)expectedBytes) throw new InvalidOperationException("Partial diagnostic changed during read");
+            return Hex(data);
+        }
         static string Hex(byte[] data) { return BitConverter.ToString(data).Replace("-","").ToLowerInvariant(); }
         // Deliberately shallow: raw values of an explicitly opened related key.
         // Never enumerate child keys or traverse the full offline SYSTEM hive.
