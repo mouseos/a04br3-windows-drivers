@@ -31,7 +31,8 @@ EVT_WDF_DEVICE_RELEASE_HARDWARE BtRelease;
 EVT_WDF_DEVICE_D0_ENTRY BtStart;
 EVT_WDF_DEVICE_D0_EXIT BtStop;
 EVT_WDF_DEVICE_SURPRISE_REMOVAL BtRemoved;
-EVT_WDF_IO_QUEUE_IO_INTERNAL_DEVICE_CONTROL BtInternal;
+EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL BtForward;
+EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL BtInternal;
 EVT_WDF_TIMER BtTimer;
 static void lock(BT_DEVICE *c){(void)WdfWaitLockAcquire(c->lock,NULL);}
 static void unlock(BT_DEVICE *c){WdfWaitLockRelease(c->lock);}
@@ -100,9 +101,30 @@ VOID BtTimer(WDFTIMER timer)
  }
  unlock(c);
 }
+/* BthXDDI.h calls these kernel-level IOCTLs, but the documented major is
+ * IRP_MJ_DEVICE_CONTROL. Only forward the five fixed BTHX operations from a
+ * kernel caller. KMDF 1.9+ parent forwarding changes request ownership before
+ * the FDO moves a READ to one of its own cancelable manual queues. */
+VOID BtForward(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULONG code)
+{
+ WDF_REQUEST_FORWARD_OPTIONS options;NTSTATUS status;
+ UNREFERENCED_PARAMETER(outlen);UNREFERENCED_PARAMETER(inlen);
+ if(WdfRequestGetRequestorMode(request)!=KernelMode){WdfRequestComplete(request,STATUS_ACCESS_DENIED);return;}
+ switch(code){
+ case IOCTL_BTHX_GET_VERSION:case IOCTL_BTHX_SET_VERSION:case IOCTL_BTHX_QUERY_CAPABILITIES:
+ case IOCTL_BTHX_WRITE_HCI:case IOCTL_BTHX_READ_HCI:break;
+ default:WdfRequestComplete(request,STATUS_NOT_SUPPORTED);return;
+ }
+ WDF_REQUEST_FORWARD_OPTIONS_INIT(&options);options.Flags=WDF_REQUEST_FORWARD_OPTION_SEND_AND_FORGET;
+ status=WdfRequestForwardToParentDeviceIoQueue(request,
+  WdfDeviceGetDefaultQueue(WdfPdoGetParent(WdfIoQueueGetDevice(queue))),&options);
+ if(!NT_SUCCESS(status))WdfRequestComplete(request,status);
+}
+/* Both normal and internal kernel IOCTL majors are supported. The standard
+ * stack uses the normal major; neither path accepts user HCI requests. */
 VOID BtInternal(WDFQUEUE queue,WDFREQUEST request,size_t outlen,size_t inlen,ULONG code)
 {
- WDFDEVICE child=WdfIoQueueGetDevice(queue);BT_DEVICE *c=BtContext(WdfPdoGetParent(child));
+ BT_DEVICE *c=BtContext(WdfIoQueueGetDevice(queue));
  PVOID in=NULL,out=NULL;size_t length;NTSTATUS status=STATUS_INVALID_PARAMETER;ULONG_PTR used=0;
  UNREFERENCED_PARAMETER(inlen);UNREFERENCED_PARAMETER(outlen);
  if(WdfRequestGetRequestorMode(request)!=KernelMode){WdfRequestComplete(request,STATUS_ACCESS_DENIED);return;}
@@ -230,7 +252,8 @@ done:
 NTSTATUS BtStop(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
 {
  BT_DEVICE *c=BtContext(device);NTSTATUS status=STATUS_SUCCESS;UNREFERENCED_PARAMETER(target);
- lock(c);c->running=0;unlock(c);WdfTimerStop(c->timer,TRUE);lock(c);c->negotiated=0;
+ lock(c);c->running=0;unlock(c);WdfTimerStop(c->timer,TRUE);lock(c);
+ /* DDI version negotiation belongs to this PDO lifetime, not each D0 epoch. */
  WdfIoQueuePurge(c->reads[0],NULL,NULL);WdfIoQueuePurge(c->reads[1],NULL,NULL);
  if(c->leased&&!c->uncertain&&!c->removed&&a04_wifi_life_stop(&c->life))c->uncertain=1;
  if(c->irq.interrupt&&a04_windows_irq_remove(&c->irq))c->uncertain=1;
@@ -259,7 +282,8 @@ static NTSTATUS child_create(WDFDEVICE device)
  BT_DEVICE *c=BtContext(device);PWDFDEVICE_INIT init=WdfPdoInitAllocate(device);UNICODE_STRING s;
  WDF_OBJECT_ATTRIBUTES attr;WDF_IO_QUEUE_CONFIG queue;NTSTATUS status;
  if(!init)return STATUS_INSUFFICIENT_RESOURCES;
- WdfDeviceInitSetDeviceType(init,FILE_DEVICE_BLUETOOTH);
+ WdfDeviceInitSetDeviceType(init,FILE_DEVICE_BUS_EXTENDER);
+ WdfPdoInitAllowForwardingRequestToParent(init);
  RtlInitUnicodeString(&s,L"A04BR3\\MT6630HCI");status=WdfPdoInitAssignDeviceID(init,&s);if(!NT_SUCCESS(status))goto fail;
  status=WdfPdoInitAddHardwareID(init,&s);if(!NT_SUCCESS(status))goto fail;
  RtlInitUnicodeString(&s,L"MS_BTHX_BTHMINI");status=WdfPdoInitAddCompatibleID(init,&s);if(!NT_SUCCESS(status))goto fail;
@@ -270,7 +294,10 @@ static NTSTATUS child_create(WDFDEVICE device)
  WdfPdoInitSetDefaultLocale(init,0x409);
  WDF_OBJECT_ATTRIBUTES_INIT(&attr);attr.ExecutionLevel=WdfExecutionLevelPassive;
  status=WdfDeviceCreate(&init,&attr,&c->child);if(!NT_SUCCESS(status))goto fail;
- WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&queue,WdfIoQueueDispatchParallel);queue.EvtIoInternalDeviceControl=BtInternal;
+ /* BthMini queries DDI version/capabilities before entering D0. Gating this
+  * queue on D0 deadlocks its start. Data admission is checked by the FDO. */
+ WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&queue,WdfIoQueueDispatchParallel);queue.PowerManaged=WdfFalse;
+ queue.EvtIoDeviceControl=BtForward;queue.EvtIoInternalDeviceControl=BtForward;
  status=WdfIoQueueCreate(c->child,&queue,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);if(!NT_SUCCESS(status))goto delete_child;
  status=WdfFdoAddStaticChild(device,c->child);if(NT_SUCCESS(status))return status;
 delete_child:WdfObjectDelete(c->child);c->child=NULL;return status;
@@ -294,6 +321,11 @@ NTSTATUS BtAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
   WDF_IO_QUEUE_CONFIG_INIT(&queue,WdfIoQueueDispatchManual);queue.PowerManaged=WdfFalse;
   status=WdfIoQueueCreate(device,&queue,WDF_NO_OBJECT_ATTRIBUTES,&c->reads[i]);if(!NT_SUCCESS(status))return status;
  }
+ /* Match the child queue: metadata calls must reach the FDO before D0.
+  * READ/WRITE explicitly require running + negotiated and do not power up HIF. */
+ WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&queue,WdfIoQueueDispatchParallel);queue.PowerManaged=WdfFalse;
+ queue.EvtIoDeviceControl=BtInternal;queue.EvtIoInternalDeviceControl=BtInternal;
+ status=WdfIoQueueCreate(device,&queue,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);if(!NT_SUCCESS(status))return status;
  return child_create(device);
 }
 EVT_WDF_DRIVER_UNLOAD BtUnload;

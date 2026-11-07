@@ -51,8 +51,13 @@ try {
  & lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib /opt:ref $objects "$wdf\wdfdriverentry.lib" "$wdf\wdfldr.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\bufferoverflowfastfailk.lib" "/out:$out\mt6630-bluetooth.sys"
  if($LASTEXITCODE){throw 'MT6630 Bluetooth SYS link failed'}
  Copy-Item "$root\drivers\bluetooth\mt6630\mt6630-bluetooth.inf" $out -Force
+ $transportInf=Get-Content (Join-Path $out 'mt6630-bluetooth.inf') -Raw
+ if($transportInf -notmatch '(?m)^DriverVer=([^\r\n]+)'){throw 'Transport INF DriverVer missing'}
+ $transportDriverVer=$Matches[1]
  @{source_commit=$commit;source_dirty=$false;required_parent_bt_profile=1;shared_parent_built=[bool]$BuildSharedParent;shared_parent_reused=[bool]$ReuseParentDirectory;
    parent_inf=$parentInf;parent_source_commit=$parentSource;parent_sys_sha256=$parentHash;parent_manifest_sha256=$parentManifestHash;
+   transport_driver_ver=$transportDriverVer;transport_inf_sha256=(Get-FileHash (Join-Path $out 'mt6630-bluetooth.inf') -Algorithm SHA256).Hash;
+   bthx_device_control=$true;bthx_parent_queue_forwarding=$true;standard_bluetooth_verified=$false;
    physical_transport='MSDC2 SDIO function 2 / STP task 0';radio_profile='exclusive Bluetooth; WLAN PDO absent';
    firmware_embedded=$false;individual_nvram_embedded=$false;hardware_verified=$false;wdk_link_succeeded=$true;
    sco_support='None (unverified wiring; BthMini acceptance remains unverified)';

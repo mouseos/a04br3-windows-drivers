@@ -115,3 +115,49 @@ make build/mt6630_bt_transport_test build/mt6630_nvram_test
 `tools/ci/build-msdc-parent-probe.ps1`、`build-mt8167-first-playback.ps1`、`Makefile`。
 変更はprofile選択／汎用record lookup／WMT単独snapshot／明示build入口に限定する。
 最新audio実装をこのbranchの古いfile全体で上書きせず、対応する追加差分だけ統合する。
+
+## 標準stackへのBTHX要求経路の修正
+
+Microsoft一次仕様のIOCTL_BTHX_WRITE_HCIはmajorを`IRP_MJ_DEVICE_CONTROL`と規定する。
+BthXDDI.hの「kernel-level (internal)」というコメントをIRP majorの意味で扱い、
+`EvtIoInternalDeviceControl`だけを登録していた欠落を修正した。
+子PDOと親FDOの両queueで通常DeviceControlを受け、従来のInternalも同じ経路に接続する。
+いずれもKernelMode要求と既知5本のBTHX IOCTLだけを受理し、user-mode HCI送信口は追加しない。
+
+一次sample `serialhcibus/pdo.c`はBthMiniがD0前にversion/capabilitiesを要求するため、
+子queueをpower-managedにするとdeadlockすると明記している。
+子queue／転送先の親default queueをともに`PowerManaged=WdfFalse`とした。
+HIFを使うREAD/WRITEは従来どおり実runningとDDI version合意を必要とする。
+metadata要求を受けても起動・lease取得・HCI送信はしない。
+
+以前は子PDOに属するREAD requestを、別deviceである親のmanual queueへ
+`WdfRequestForwardToIoQueue`で直接移そうとしていた。現在は
+`WdfPdoInitAllowForwardingRequestToParent`と
+`WdfRequestForwardToParentDeviceIoQueue`（KMDF1.9以降）で親default queueへ所有権を移し、
+親側handlerから同じ親のevent/ACL manual queueへ移す。
+親へ転送した後に子resourceを参照するrequest cleanupは登録しない。
+DDI version合意はPDO lifetimeの情報なので、D0Exitで破棄しない。
+物理controllerの再起動とBTHX DDI versionの再交渉は別である。
+
+今回変えたBT transport INFのDriverVerは`11/06/2026,2026.11.7.2001`。
+同じ旧0.0.1.0 packageのまま新SYSを登録させることを避け、manifestにもtransport版と
+INF hashを記録する。主担当が署名中の親INF／親SYS／Engine27媒体は変更していない。
+新transport SYSには変更TUのWDK再compile/linkと新CAT/署名が必要。
+既存7999b7bの「BT SYS compile/link済み」はこの変更SYSのbuild成功とは扱わない。
+
+標準radio interfaceをtransport自身が登録して列挙成功を作る処理は追加しない。
+`MS_BTHX_BTHMINI` compatible IDへの実inbox bindと、既存probeでの標準radio API／
+同MT6630 hardware IDのactive/started interfaceを別に確認する必要がある。
+生ReadLocalVersionのsnapshot ABI1とprobeの判定は変更していない。
+
+残る阻害条件：一次仕様BTHX_CAPABILITIESは`ScoSupportHCIBypass`／`MaxScoChannels=1`を
+要求するが、基板のSCO bypass音声経路の成立は未確認なので現在の`ScoSupportNone`を
+実装根拠なしで置き換えない。このため今回のqueue接続修正後もBthMini受理を保証しない。
+OS HCI Reset後の個体設定保持、電源復帰、pairing／RF／SCO実動作も未確認。
+今回のsource確認や生HCI version取得を、Windows標準列挙や実機接続成功と混同しない。
+
+一次資料：
+[IOCTL_BTHX_WRITE_HCI](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/bthxddi/ni-bthxddi-ioctl_bthx_write_hci)、
+[WdfRequestForwardToParentDeviceIoQueue](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdfrequest/nf-wdfrequest-wdfrequestforwardtoparentdeviceioqueue)、
+[BTHX_CAPABILITIES](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/bthxddi/ns-bthxddi-_bthx_capabilities)、
+[Microsoft serialhcibus/pdo.c](https://github.com/microsoft/Windows-driver-samples/blob/main/bluetooth/serialhcibus/pdo.c)。
