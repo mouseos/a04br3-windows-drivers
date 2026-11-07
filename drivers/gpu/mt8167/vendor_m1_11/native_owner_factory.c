@@ -94,15 +94,29 @@ static int32_t create(void *p,const struct geo_surface_desc *d,uint64_t *id)
 {
     struct e_native_owner *c=p;NTSTATUS s;
     if(!id)return STATUS_INVALID_PARAMETER;*id=0;
-    if(!d || d->size!=sizeof(*d) || d->version!=1 || d->width!=800 || d->height!=600 ||
+    BOOLEAN vertex=d && d->format==100u && d->usage==3u;
+    if(vertex){
+        if(d->size!=sizeof(*d) || d->version!=1 || d->width<4 || d->width>65536 ||
+           d->height!=1 || d->pitch!=d->width || d->reserved)return STATUS_INVALID_PARAMETER;
+    }else if(!d || d->size!=sizeof(*d) || d->version!=1 || d->width!=800 || d->height!=600 ||
        d->pitch!=3200 || d->format!=GEO_FORMAT_A8R8G8B8 || d->usage!=GEO_USAGE_RENDER_TARGET || d->reserved)return STATUS_NOT_SUPPORTED;
     s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
-    if(c->surface || c->next_id==UINT64_MAX)return leave(c,STATUS_DEVICE_BUSY);
+    if((vertex?c->vertex:c->surface) || c->next_id==UINT64_MAX)return leave(c,STATUS_DEVICE_BUSY);
+    if(vertex){c->vertex_description=*d;c->vertex=++c->next_id;*id=c->vertex;return leave(c,STATUS_SUCCESS);}
     c->description=*d;c->surface=++c->next_id;*id=c->surface;return leave(c,STATUS_SUCCESS);
 }
 static int32_t bind(void *p,uint64_t surface,void *mdl,uint32_t offset,uint32_t bytes,uint64_t aperture)
 {
     struct e_native_owner *c=p;NTSTATUS s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
+    BOOLEAN vertex=surface && surface==c->vertex;
+    if(vertex){
+        if(offset || bytes!=c->vertex_description.width || c->allocation->vertex || c->job_state)return leave(c,STATUS_INVALID_PARAMETER);
+        s=e_native_build_graph_locked(c);
+        if(NT_SUCCESS(s))s=a04_native_allocation_bind_frontend_vertex_cold(c->allocation,&c->memory,mdl,bytes,aperture);
+        if(NT_SUCCESS(s))c->vertex_aperture_offset=aperture;
+        else if(c->allocation->vertex || c->allocation->frontend_orphan)c->state=E_OWNER_FAILED;
+        return leave(c,s);
+    }
     if(surface!=c->surface || !surface || offset || bytes!=1920000 || c->allocation->binding || c->job_state)return leave(c,STATUS_INVALID_PARAMETER);
     s=e_native_build_graph_locked(c);
     if(NT_SUCCESS(s))s=a04_native_allocation_bind_frontend_cold(c->allocation,&c->memory,mdl,bytes,aperture,c->colour);
@@ -113,16 +127,24 @@ static int32_t bind(void *p,uint64_t surface,void *mdl,uint32_t offset,uint32_t 
 static int32_t unbind(void *p,uint64_t surface)
 {
     struct e_native_owner *c=p;NTSTATUS s=enter(c,TRUE);if(!NT_SUCCESS(s))return s;
-    if(!surface || surface!=c->surface)return leave(c,STATUS_INVALID_PARAMETER);
+    BOOLEAN vertex=surface && surface==c->vertex;
+    if(!surface || (!vertex && surface!=c->surface))return leave(c,STATUS_INVALID_PARAMETER);
     s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
-    if(NT_SUCCESS(s) && c->allocation->binding)s=a04_native_mdl_release_cold(&c->allocation->binding);
-    if(NT_SUCCESS(s)){c->job=0;c->job_state=E_JOB_NONE;c->aperture_offset=0;}
+    if(NT_SUCCESS(s)){
+        struct a04_native_mdl_binding **b=vertex?&c->allocation->vertex:&c->allocation->binding;
+        if(*b)s=a04_native_mdl_release_cold(b);
+    }
+    if(NT_SUCCESS(s)){c->job=0;c->job_state=E_JOB_NONE;if(vertex)c->vertex_aperture_offset=0;else c->aperture_offset=0;}
     else c->state=E_OWNER_FAILED;
     return leave(c,s);
 }
 static int32_t destroy(void *p,uint64_t surface)
 {
     struct e_native_owner *c=p;NTSTATUS s=enter(c,TRUE);if(!NT_SUCCESS(s))return s;
+    if(surface && surface==c->vertex){
+        if(c->allocation->vertex || c->job_state)return leave(c,STATUS_DEVICE_BUSY);
+        c->vertex=0;RtlZeroMemory(&c->vertex_description,sizeof(c->vertex_description));return leave(c,STATUS_SUCCESS);
+    }
     if(!surface || surface!=c->surface)return leave(c,STATUS_INVALID_PARAMETER);
     if(c->allocation->binding || c->job_state)return leave(c,STATUS_DEVICE_BUSY);
     c->surface=0;RtlZeroMemory(&c->description,sizeof(c->description));return leave(c,STATUS_SUCCESS);
@@ -205,7 +227,7 @@ static NTSTATUS acquire(void *p,struct geo_owner_lease *out)
 static NTSTATUS release(void *p,uint64_t epoch)
 {
     struct e_native_owner *c=p;NTSTATUS s=transition_begin(c,epoch);if(!NT_SUCCESS(s))return s;
-    if(c->surface || c->job_state || c->allocation->binding || c->state!=E_OWNER_QUIESCED || !c->receipt_valid)s=STATUS_DEVICE_BUSY;
+    if(c->surface || c->vertex || c->job_state || c->allocation->vertex || c->allocation->binding || c->state!=E_OWNER_QUIESCED || !c->receipt_valid)s=STATUS_DEVICE_BUSY;
     else{c->leased=FALSE;dereference(c);s=STATUS_SUCCESS;}
     KeReleaseMutex(&c->mutex,FALSE);return s;
 }
@@ -242,7 +264,7 @@ NTSTATUS GeoNativeOwnerDelete(struct geo_native_binding *out)
 {
     struct e_native_owner *c;NTSTATUS s;
     if(!out || !(c=out->native_context) || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
-    if(c->leased || c->references!=1 || c->surface || c->job_state)return STATUS_DEVICE_BUSY;
+    if(c->leased || c->references!=1 || c->surface || c->vertex || c->job_state)return STATUS_DEVICE_BUSY;
     if(c->core && !e_native_synchronize(c,close_admission,c))return STATUS_IO_DEVICE_ERROR;
     if(!c->rundown_closed){ExWaitForRundownProtectionRelease(&c->operations);c->rundown_closed=TRUE;}
     if(c->allocation){

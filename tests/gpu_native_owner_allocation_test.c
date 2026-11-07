@@ -45,15 +45,19 @@ NTSTATUS a04_native_mdl_release_cold(struct a04_native_mdl_binding **b)
 {assert(!native && bound && normal);bound--;held_lease.release(held_lease.context,held_mdl);*b=NULL;trace[at++]=2;return STATUS_SUCCESS;}
 NTSTATUS a04_vendor_native_target_aperture(const struct a04_vendor_native_cold *n,struct a04_native_target_aperture *out)
 {assert(n && out);out->gpu_base=UINT64_C(0x8200000000);return STATUS_SUCCESS;}
+NTSTATUS a04_native_mdl_bind_input(struct a04_native_mdl_binding **b,PDMA_ADAPTER a,PDEVICE_OBJECT p,PMDL m,ULONG bytes,const struct a04_native_mdl_lease *l)
+{assert(native && a==&adapter && p && bytes && bytes<=65536 && !(bytes&4095));NTSTATUS s=l->acquire(l->context,m);if(!NT_SUCCESS(s))return s;held_lease=*l;held_mdl=m;*b=(void *)&bound;bound++;return STATUS_SUCCESS;}
+NTSTATUS a04_vendor_native_attach_vertex_cold(struct a04_vendor_native_cold *n,struct a04_native_mdl_binding *v,uint64_t offset)
+{assert(n && v && offset==500u*4096);return STATUS_SUCCESS;}
 static NTSTATUS acquire(void *ctx,PMDL m){assert(ctx && m);normal++;return STATUS_SUCCESS;}
 static void release(void *ctx,PMDL m){assert(ctx && m && normal);normal--;}
 static struct fake_mdl resolved_mdl;
 static unsigned resolver_invalid;
 static NTSTATUS resolve(void *context,PMDL source,ULONG active,struct geo_frontend_mdl_lease *out)
 {
- assert(context && source && active==1920000);normal++; /* owned resolve reference */
+ assert(context && source && active>=4 && active<=1920000);normal++; /* owned resolve reference */
  *out=(struct geo_frontend_mdl_lease){sizeof(*out),1,
-     resolver_invalid?0:GEO_MDL_VIDMM_CACHED_SHADOW,active,1921024,&resolved_mdl,context,acquire,release};
+     resolver_invalid?0:GEO_MDL_VIDMM_CACHED_SHADOW,active,(active+4095u)&~4095u,&resolved_mdl,context,acquire,release};
  if(resolver_invalid==2)out->release=NULL;
  return STATUS_SUCCESS;
 }
@@ -99,6 +103,15 @@ int main(void)
         else assert(status==STATUS_SUCCESS && normal==1 && bound==1);
         assert(a04_native_allocation_release_cold(&a)==STATUS_SUCCESS && !a);
         assert(!objects && !refs && !adapters && !native && !bound && !normal);
+    }
+    /* Non16-byte input extent (real XYZRHW+diffuse three-vertex stream). */
+    {
+        struct a04_native_owner_allocation *a=NULL;struct geo_frontend_memory memory={sizeof(memory),1,&ctx,resolve};
+        resolver_invalid=fail=step=at=0;
+        assert(a04_native_allocation_create(&a,&pdo,&image,sizeof(image),NULL)==STATUS_SUCCESS);
+        assert(a04_native_allocation_bind_frontend_vertex_cold(a,&memory,&mdl,60,500u*4096)==STATUS_SUCCESS);
+        assert(a->vertex && normal==1 && bound==1);
+        assert(a04_native_allocation_release_cold(&a)==STATUS_SUCCESS && !a && !normal && !bound && !objects);
     }
     {
         pid_t child=fork();int status;assert(child>=0);

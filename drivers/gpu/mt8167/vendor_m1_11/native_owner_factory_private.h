@@ -27,7 +27,8 @@ struct e_native_owner {
     volatile LONG references,closing,irq_gate;BOOLEAN rundown_closed,leased;
     uint32_t state,power,job_state,colour,kick_write,generation;
     uint64_t epoch,hardware_epoch,next_id,surface,job,aperture_offset;
-    struct geo_surface_desc description;
+    struct geo_surface_desc description,vertex_description;
+    uint64_t vertex,vertex_aperture_offset;
     struct a04_native_irq_off_observation off_irq;
     struct a04_rgx_core_reset_observation reset;
     BOOLEAN hardware_off,receipt_valid;

@@ -91,3 +91,34 @@ H f492756はH報告で17 Clang TU＋Microsoft ARM SEH mdl_pin成功。
 H SEH TUは正式Microsoft ARM compiler、他TUは既存LLVM/WDK契約。
 最終同一SYSでのfactory/full-control linkは未実施。既存copy/DOD public ABIは変えない。
 モジュールlink成功は実GPU IRQ/WDDM/D3D成功ではない。
+
+
+## 2026-11-07 factory実結合の追記
+
+7e09f6f はCreateV3/Deleteとcontrol-v2全callbackを実allocation/queue/IRQへ接続。
+実WDK ARM32 43TU＋kernel API LinkCheck成功、runtime未検証。
+親2502364＋機種UEFI2f6f73a3のSPM正規割当が必須（同版正常free callchain相当）。
+新 `wddm-render/lifecycle.c` はH63bbe0b同blobを基に、release成功後に
+actual control.synchronizeのIRQ lockでnotifications_ready/lease.cookie/service_pendingを
+消去し、その後InterfaceDereferenceする。Delete前のconsumer pointer rundownに必要。
+H canonicalへこの小変更を反映すること。H checkoutは直接変更していない。
+
+最新TL flat profileとvertex byte_count>=4..64KiB、GPU input float4/stride16/48bytesを受領。
+Eはvertex union PT＋実GetDrawOps prepareを継続。clear opsが実在することをdraw完成としない。
+追加確認: 既存固定triangle producerは黒背景を初期化する診断profileである。
+標準Renderへそのまま使えば既存target内容を壊す。drawでは背景load/preserveが必要であり、
+黒clearとRenderの混同をしない。canonical flat入力USC/metadataは公式SM4→PCO生成24/64bytesに
+限定検査可能だが、任意ISAを通さず実PDS/PPP/shared countを構築する。
+直接H送信toolはserialization errorのため、main中継依頼（再送ループ無し）。
+
+
+vertex create/bind実装の契約:
+- format100/usage3、width=pitch=active bytes、height1、4..65536 bytes。16倍数制限なし。
+- target469pages+vertex最大16pages、aperture4MiB内の任意aligned非重複区間。
+  commit_limit485pages。target/vertexのPFN/CPU aliasと全native/FW resource aliasを拒否。
+- target-firstは実PTをreadbackしてunion map、vertex-firstはcold保持しtarget attach時に
+  private pixel mappingを除去して完全union PTを作る。vertexだけのFW startは禁止。
+- vertexは独立Shadow MDLをresolve→native acquire→resolve release、実SGは
+  WriteToDevice=TRUE。targetと同じ参照を偽装せず、正常停止まで両方保持。
+- targetのactive bytesはbind/discard/rebootstrap時に変更しない。paddingだけA5 guard。
+- GetDrawOps/prepare_drawは依然未公開。vertex登録をdraw成功としない。

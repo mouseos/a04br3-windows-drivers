@@ -11,6 +11,7 @@ NTSTATUS a04_native_allocation_release_cold(struct a04_native_owner_allocation *
     if(a->frontend_orphan || a->firmware.hardware_owned || a->start.attempted || a->irq.core ||
        a->dispatch.state)return STATUS_DEVICE_BUSY;
     if(a->native){status=a04_vendor_native_release_cold(&a->native);if(!NT_SUCCESS(status))return status;}
+    if(a->vertex){status=a04_native_mdl_release_cold(&a->vertex);if(!NT_SUCCESS(status))return status;}
     if(a->binding){status=a04_native_mdl_release_cold(&a->binding);if(!NT_SUCCESS(status))return status;}
     if(a->render.firmware){status=a04_vendor_render_release_cold(&a->render);if(!NT_SUCCESS(status))return status;}
     status=a04_vendor_m1_11_windows_free(&a->firmware);if(!NT_SUCCESS(status))return status;

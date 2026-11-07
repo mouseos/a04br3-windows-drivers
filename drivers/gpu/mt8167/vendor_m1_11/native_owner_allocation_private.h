@@ -12,7 +12,7 @@ struct a04_native_owner_allocation {
     struct a04_vendor_m1_11_memory firmware;
     struct a04_vendor_render_cold render;
     struct a04_vendor_native_cold *native;
-    struct a04_native_mdl_binding *binding;
+    struct a04_native_mdl_binding *binding,*vertex;
     struct geo_frontend_mdl_lease *frontend_orphan; /* unreleaseable resolver result: retain owner */
     struct a04_vendor_start start;
     struct a04_native_irq_core irq;

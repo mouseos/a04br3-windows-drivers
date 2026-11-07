@@ -102,6 +102,8 @@ BOOLEAN a04_vendor_native_owner_interrupt_event(struct a04_vendor_native_cold *,
 /* Optional source-linked miniport profile: never started firmware, same
  * validated800x600 job, full rounded locked-MDL extent. No IRQ/cap publish. */
 NTSTATUS a04_vendor_native_attach_mdl_target_cold(struct a04_vendor_native_cold *,struct a04_native_mdl_binding *);
+NTSTATUS a04_vendor_native_attach_vertex_cold(struct a04_vendor_native_cold *,
+    struct a04_native_mdl_binding *,uint64_t);
 NTSTATUS a04_vendor_native_target_before_fw_start(struct a04_vendor_native_cold *);
 /* Independently derived HWRT register input; bank bind is not drawing. */
 NTSTATUS a04_vendor_native_bind_bank_cold(struct a04_vendor_native_cold *,

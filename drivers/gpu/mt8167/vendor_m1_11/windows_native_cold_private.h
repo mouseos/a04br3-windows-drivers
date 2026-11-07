@@ -28,7 +28,8 @@ struct a04_vendor_native_cold {
     struct a04_m111_clear_surface clear_surface;
     struct a04_m111_clear_code_bindings bindings;
     struct a04_vendor_native_candidate *candidate;
-    struct a04_native_mdl_binding *registered_target;
+    struct a04_native_mdl_binding *registered_target,*registered_vertex;
+    uint64_t vertex_offset;
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
     uint64_t target_offset;
 #endif

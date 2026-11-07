@@ -60,6 +60,11 @@ static NTSTATUS release_contents(struct a04_vendor_native_cold *n)
     a04_vendor_native_free_job_cold(n);
 #endif
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+    if(n->registered_vertex){
+        NTSTATUS vertex_status=a04_native_mdl_drop_cold(n->registered_vertex);
+        if(!NT_SUCCESS(vertex_status))return vertex_status;
+        n->registered_vertex=NULL;
+    }
     if(n->registered_target){
         NTSTATUS target_status=a04_native_mdl_drop_cold(n->registered_target);
         if(!NT_SUCCESS(target_status))return target_status;

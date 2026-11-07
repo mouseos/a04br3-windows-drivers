@@ -10,7 +10,7 @@
 struct a04_native_mdl_binding {
     PDMA_ADAPTER adapter;PMDL mdl;void *cpu;ULONG bytes,pages,maps,targets;
     struct a04_native_mdl_lease lease;
-    PSCATTER_GATHER_LIST sg[64];uint64_t dma[1024];BOOLEAN retained,exposed;
+    PSCATTER_GATHER_LIST sg[64];uint64_t dma[1024];BOOLEAN retained,exposed,to_device;
 };
 struct map_wait { KEVENT event;PSCATTER_GATHER_LIST sg; };
 static void mapped(PDEVICE_OBJECT dev,PIRP irp,PSCATTER_GATHER_LIST sg,PVOID context)
@@ -23,12 +23,12 @@ NTSTATUS a04_native_mdl_release_cold(struct a04_native_mdl_binding **owner)
     struct a04_native_mdl_binding *b;
     if(!owner || !(b=*owner) || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
     if(b->exposed || b->targets)return STATUS_DEVICE_BUSY;
-    while(b->maps){b->maps--;b->adapter->DmaOperations->PutScatterGatherList(b->adapter,b->sg[b->maps],FALSE);}
+    while(b->maps){b->maps--;b->adapter->DmaOperations->PutScatterGatherList(b->adapter,b->sg[b->maps],b->to_device);}
     if(b->retained)b->lease.release(b->lease.context,b->mdl);
     ExFreePoolWithTag(b,TAG);*owner=NULL;return STATUS_SUCCESS;
 }
-NTSTATUS a04_native_mdl_bind(struct a04_native_mdl_binding **out,PDMA_ADAPTER a,
-    PDEVICE_OBJECT pdo,PMDL mdl,ULONG bytes,const struct a04_native_mdl_lease *lease)
+static NTSTATUS bind_pages(struct a04_native_mdl_binding **out,PDMA_ADAPTER a,
+    PDEVICE_OBJECT pdo,PMDL mdl,ULONG bytes,const struct a04_native_mdl_lease *lease,BOOLEAN to_device)
 {
     struct a04_native_mdl_binding *b;struct a04_gpu_dma_segment *segments;
     struct map_wait w;ULONG at,i,j,pages;NTSTATUS status;PFN_NUMBER *pfns;
@@ -42,7 +42,7 @@ NTSTATUS a04_native_mdl_bind(struct a04_native_mdl_binding **out,PDMA_ADAPTER a,
     for(i=0;i<bytes/4096u;i++)if(!pfns[i] || (uint64_t)pfns[i]>0xfffffu)return STATUS_DEVICE_CONFIGURATION_ERROR;
     b=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*b),TAG);
     if(!b)return STATUS_INSUFFICIENT_RESOURCES;
-    RtlZeroMemory(b,sizeof(*b));b->adapter=a;b->mdl=mdl;b->bytes=bytes;b->pages=bytes/4096u;b->lease=*lease;
+    RtlZeroMemory(b,sizeof(*b));b->adapter=a;b->mdl=mdl;b->bytes=bytes;b->pages=bytes/4096u;b->lease=*lease;b->to_device=to_device;
     status=lease->acquire(lease->context,mdl);if(!NT_SUCCESS(status))goto fail;
     b->retained=TRUE;b->cpu=MmGetSystemAddressForMdlSafe(mdl,NormalPagePriority);
     if(!b->cpu){status=STATUS_INSUFFICIENT_RESOURCES;goto fail;}
@@ -53,7 +53,7 @@ NTSTATUS a04_native_mdl_bind(struct a04_native_mdl_binding **out,PDMA_ADAPTER a,
         ULONG n=bytes-at;if(n>CHUNK)n=CHUNK;
         KeInitializeEvent(&w.event,NotificationEvent,FALSE);w.sg=NULL;
         status=a->DmaOperations->GetScatterGatherList(a,pdo,mdl,
-            (UCHAR *)MmGetMdlVirtualAddress(mdl)+at,n,mapped,&w,FALSE);
+            (UCHAR *)MmGetMdlVirtualAddress(mdl)+at,n,mapped,&w,to_device);
         if(!NT_SUCCESS(status))goto done;
         /* OS owns the callback until completion. Do not timeout/free a stack
          * callback context while it may still be invoked by DMA support. */
@@ -119,3 +119,10 @@ NTSTATUS a04_native_mdl_retire_after_gpu_off(struct a04_native_mdl_binding *b)
     if(!b || !b->retained || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
     b->exposed=FALSE;return STATUS_SUCCESS;
 }
+
+NTSTATUS a04_native_mdl_bind(struct a04_native_mdl_binding **out,PDMA_ADAPTER a,
+ PDEVICE_OBJECT pdo,PMDL mdl,ULONG bytes,const struct a04_native_mdl_lease *lease)
+{return bind_pages(out,a,pdo,mdl,bytes,lease,FALSE);}
+NTSTATUS a04_native_mdl_bind_input(struct a04_native_mdl_binding **out,PDMA_ADAPTER a,
+ PDEVICE_OBJECT pdo,PMDL mdl,ULONG bytes,const struct a04_native_mdl_lease *lease)
+{return bind_pages(out,a,pdo,mdl,bytes,lease,TRUE);}

@@ -22,6 +22,9 @@ struct a04_native_mdl_lease {
  * Maximum4MiB, page-aligned start/extent, at most64KiB per DMA map request. */
 NTSTATUS a04_native_mdl_bind(struct a04_native_mdl_binding **,PDMA_ADAPTER,
     PDEVICE_OBJECT,PMDL,ULONG bytes,const struct a04_native_mdl_lease *);
+/* Input SG retains WriteToDevice=TRUE for the real DMA adapter. */
+NTSTATUS a04_native_mdl_bind_input(struct a04_native_mdl_binding **,PDMA_ADAPTER,
+ PDEVICE_OBJECT,PMDL,ULONG,const struct a04_native_mdl_lease *);
 ULONG a04_native_mdl_extent(const struct a04_native_mdl_binding *);
 PDMA_ADAPTER a04_native_mdl_adapter(const struct a04_native_mdl_binding *);
 /* A native cold target holds an additional logical reference. Caller must
