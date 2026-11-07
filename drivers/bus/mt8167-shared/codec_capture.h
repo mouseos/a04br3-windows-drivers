@@ -13,7 +13,7 @@ struct a04_capture_codec_io {
  int (*afe_read)(void *,unsigned,uint32_t *);
  int (*afe_write)(void *,unsigned,uint32_t);
 };
-struct a04_capture_codec {uint32_t saved[6];unsigned retained,prepared,poisoned;};
+struct a04_capture_codec {uint32_t saved[7];unsigned retained,prepared,poisoned;};
 #ifdef __cplusplus
 extern "C" {
 #endif

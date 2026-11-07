@@ -12,6 +12,7 @@ int a04_capture_codec_prepare(struct a04_capture_codec *s,const struct a04_captu
  uint32_t v,ctrl;unsigned n;static const unsigned ar[3]={0x700,0x704,0x70c},fr[3]={0xf00,0xf04,0xf2c};
  if(!s||!i||!i->analog_read||!i->analog_write||!i->afe_read||!i->afe_write||s->retained||s->poisoned)return -1;
  for(n=0;n<3;n++)if(i->analog_read(i->context,ar[n],&s->saved[n])||i->afe_read(i->context,fr[n],&s->saved[n+3]))return -1;
+ if(i->afe_read(i->context,0,&s->saved[6]))return -1;
  if((s->saved[0]&((1u<<24)|(1u<<23)|(1u<<6)|(1u<<5)))||(s->saved[2]&(1u<<28))||(s->saved[3]&3)||
     i->afe_read(i->context,0x10,&v)||(v&0xfe)||i->afe_read(i->context,0x114,&v)||(v&1))return -1;
  s->retained=1;
@@ -35,14 +36,20 @@ int a04_capture_codec_prepare(struct a04_capture_codec *s,const struct a04_captu
 }
 int a04_capture_codec_stop(struct a04_capture_codec *s,const struct a04_capture_codec_io *i)
 {
- uint32_t v;
- if(!s||!i||!s->prepared||s->poisoned)return -1;
+ uint32_t v,ctrl;
+ if(!s||!i||!i->analog_read||!i->analog_write||!i->afe_read||!i->afe_write||!s->prepared||s->poisoned)return -1;
  if(i->afe_read(i->context,0x10,&v)||(v&8)||i->afe_read(i->context,0x114,&v)||(v&1))return -1;
  if(afe(i,0xf00,2,0)||analog(i,0x700,(1u<<23)|(1u<<5),0)||
     analog(i,0x700,(1u<<24)|(1u<<6),0)||analog(i,0x70c,1u<<17,s->saved[2])||
     analog(i,0x700,(1u<<20)|(1u<<2),s->saved[0])||
     analog(i,0x700,(1u<<19)|(1u<<1),s->saved[0])||
+    analog(i,0x700,(3u<<28)|(3u<<10),s->saved[0])||
+    afe(i,0xf04,0xf0,s->saved[4])||i->afe_read(i->context,0xf2c,&ctrl)||
+    /* Rate is latched by toggling against current status, not replaying a
+     * stale command bit from the original snapshot (Linux valid_new_rate). */
+    afe(i,0xf2c,0x100,(ctrl&1)?0:0x100)||
+    afe(i,0,1u<<24,s->saved[6])||
     analog(i,0x70c,1u<<21,s->saved[2])||analog(i,0x70c,1u<<30,s->saved[2])||
     analog(i,0x704,1u<<20,s->saved[1])){s->poisoned=1;return -2;}
- s->prepared=0;return 0;
+ s->prepared=0;s->retained=0;return 0;
 }

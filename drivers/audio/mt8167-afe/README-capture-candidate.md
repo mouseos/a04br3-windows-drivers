@@ -14,7 +14,11 @@ Mic1→AU_VIN0、Mic2→AU_VIN2、headset→AU_VIN1。codec DAPMでは
 AU_MICBIAS0→VIN0/2→左右PGA(CH0)→左右ADC→AIF TX、AFE/AD clockへ依存する。
 `dmic-wire-mode=1`だけでは物理micがDMICであるとは証明できない。
 DTS aud_pins_default/pmicclkは空であり、任意GPIOをmic-enableと仮定しない。
-Android HALの実選択/回路上の内蔵mic実装はまだ照合が必要である。
+stock OTA 02.00.000 の `/vendor/etc/mixer_paths.xml` も初期値で
+AIF TX=Analog MIC、AIN=INT ADC、O09 I03/O10 I04=1、builtin-micでは
+左右PGA=CH0を選ぶ（SHA256
+`75779a31ffca5563a42c0135ae4a126f1fdfa445b8a74d5dcc7c30c62b82de07`）。
+これは実機向け設定の経路根拠であり、micの物理実装数・録音成功の実測ではない。
 
 `mt8167-afe-pcm.c` memif_data[VUL]ではBASE80/END88/CUR8c、DAC_CON1のfs16/
 mono27、DAC_CON0 enable3、format PBUF22、IRQ2 fs8/count3b0/clear1。
@@ -54,3 +58,17 @@ queryLatencyも実FIFO/codec timingが必要。現在のv11 playback interface�
 Nash HFPは23ee ABI/provider v2 checkpointを保持。HFP DAI/IRQ2とVULの同時所有は
 禁止。物理radio一致/FC72 PCM/独立DMA drain/codec latencyの未資格は保持する。
 4 base audio portsとHFP4 portsを無条件に同時登録しない。将来統合には枠と新版予約が必要。
+
+## 親側入力ownerの接続候補
+
+`capture_input_owner` は既存親のresource lock内/PASSIVEで、排他予約→既存
+VAUD/audio clock取得→実codec UL準備を行う。既存playbackのAcquireMutedを
+録音準備の代用にしない。予約はrender/HFP/他AFE ownerも排他にする。
+変更途中の失敗では電源・予約を保持しpoisonを残す。online停止は新取得を禁止し、
+既存leaseの独立DMA/IRQ drain検証後の解放は可能にする。
+codec停止時は取得前のCH0選択field・UL rate・AD_CLKを復元し、rateは現在の
+statusから再latchしてからcodec clockを戻す。STOPレジスタだけでdrain成功にはしない。
+
+このstate machineは親WDF callbackへ未接続。実resource予約/電源/drain callbackと
+実FIFO/codec latencyの根拠が揃うまでcapture endpointの生成は行わない。
+親版未予約、既存1010/Audio1007およびtrial51のbytesは変更しない。

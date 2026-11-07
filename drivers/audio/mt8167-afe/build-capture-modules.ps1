@@ -15,7 +15,7 @@ try {
  '-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-mfpu=none','-fms-extensions',
  '-D__ldrexd=__capture_wdk81_ldrexd_declaration','-D_KERNEL_MODE','-D_ARM_','-DARM','-DNTDDI_VERSION=0x06030000','-D_WIN32_WINNT=0x0603',
  '-DA04_MT8167_WAVERT_EXPERIMENTAL=1','-DA04_AUDIO_ENGINE_PCM=1','-DA04_AUDIO_CAPTURE=1',"-I$inc\km","-I$inc\shared","-I$inc\um")
- $units=@('ul_engine.c','capture_owner.cpp','wave_dma_live.cpp','wavert_dma.cpp','dma_adapter.cpp','wavert_miniport.cpp','topology_miniport.cpp','wavert_registration.cpp','../../bus/mt8167-shared/codec_capture.c')
+ $units=@('ul_engine.c','capture_owner.cpp','wave_dma_live.cpp','wavert_dma.cpp','dma_adapter.cpp','wavert_miniport.cpp','topology_miniport.cpp','wavert_registration.cpp','../../bus/mt8167-shared/codec_capture.c','../../bus/mt8167-shared/capture_input_owner.c')
  $objects=@();$sources=@()
  foreach($name in $units){
   $source=Join-Path $PSScriptRoot $name;$obj=Join-Path $out ([IO.Path]::GetFileName($name)+'.obj');$objects+=$obj
@@ -31,6 +31,6 @@ try {
   objects=@($objects|ForEach-Object{@{path=[IO.Path]::GetFileName($_);sha256=(Get-FileHash $_ -Algorithm SHA256).Hash.ToLowerInvariant()}});
   library_sha256=(Get-FileHash $lib -Algorithm SHA256).Hash.ToLowerInvariant();compile_archive_succeeded=$true;final_driver_link_verified=$false;
   parent_recompiled=$false;parent_version_reserved=$false;pnp_capture_endpoint_registered=$false;physical_mic_verified=$false;hardware_verified=$false;
-  missing_integration=@('real parent capture clock/rail/codec/pin ownership and rollback','board-selected analog/digital mic route evidence','actual FIFO/codec latency','version reservation before any SYS/INF/CAT build')
+  missing_integration=@('real parent capture clock/rail/codec/pin ownership and rollback','actual FIFO/codec latency','version reservation before any SYS/INF/CAT build')
  }|ConvertTo-Json -Depth 7|Set-Content -Encoding UTF8 (Join-Path $out 'capture-module-manifest.json')
 }finally{$env:TEMP=$oldTemp;$env:TMP=$oldTmp}
