@@ -61,7 +61,7 @@ int A04UsbHostPrepare(const A04_USB_BOARD *b)
 }
 int A04UsbHostRun(const A04_USB_BOARD *b)
 {
- unsigned char v;
+ unsigned char v;unsigned attempt;
  if(!valid(b) || b->vbus(b->context,1))return -1;
  b->delay_ms(b->context,100);
  v=b->mac_read(b->context,DEVCTL); b->mac_write(b->context,DEVCTL,(unsigned char)(v&~1u));
@@ -71,10 +71,29 @@ int A04UsbHostRun(const A04_USB_BOARD *b)
  b->delay_ms(b->context,5);
  v=b->mac_read(b->context,DEVCTL); b->mac_write(b->context,DEVCTL,(unsigned char)(v|1u));
  phy_update(b,0x6c,0x10,0x2c); phy_update(b,0x6d,0,0x3e);
+ /* The board Linux role driver polls BDEVICE clear for <=1s
+  * after the existing PHY/session re-latch. A POWER write echo cannot prove
+  * this transition. Require SESSION to remain latched, but do not require
+  * HOSTMODE before CONNECT: that old prerequisite rejected an empty port.
+  * These reads do not grant admission or force a different cable role. */
+ for(attempt=0;attempt<=200;++attempt) {
+  v=b->mac_read(b->context,DEVCTL);
+  if((v&0x81u)==1u)break;
+  if(attempt==200)return A04_USB_HOST_TRANSITION_TIMEOUT;
+  b->delay_ms(b->context,5);
+ }
  /* musb_core.c musb_start: enable suspend signalling and HS negotiation.
   * Do not retain a firmware RESET/SUSPEND/RESUME or device SOFTCONN. */
  b->mac_write(b->context,1,0x21);
- return (b->mac_read(b->context,1)&0x21)==0x21 ? 0:-1;
+ /* HSMODE (bit4) is read-only and may already be set. A stuck RESET,
+  * SUSPENDM, RESUME or device SOFTCONN must not count as host readiness. */
+ return (b->mac_read(b->context,1)&0x6fu)==0x21u ? 0:A04_USB_HOST_POWER_STATE;
+}
+int A04UsbHostHealth(const A04_USB_BOARD *b,unsigned *devctl)
+{
+ if(!valid(b) || !devctl)return -1;
+ *devctl=b->mac_read(b->context,DEVCTL);
+ return (*devctl&0x81u)==1u ? 0:-1;
 }
 int A04UsbHostStart(const A04_USB_BOARD *b)
 {

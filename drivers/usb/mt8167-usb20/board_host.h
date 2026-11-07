@@ -17,7 +17,14 @@ int A04UsbHostStart(const A04_USB_BOARD *);
 /* Prepare owns power and initializes the PHY. Arm the IRQ before Run so a
  * device already connected when SESSION starts cannot lose CONNECT. */
 int A04UsbHostPrepare(const A04_USB_BOARD *);
+/* Run reports actual MAC convergence, not connector voltage or attachment.
+ * On failure the caller must first disarm/join IRQ work, then call Stop. */
+#define A04_USB_HOST_TRANSITION_TIMEOUT (-2)
+#define A04_USB_HOST_POWER_STATE (-3)
 int A04UsbHostRun(const A04_USB_BOARD *);
+/* Read-only invariant while the caller holds the live board lease. Neither
+ * HOSTMODE nor VBUSVALID are required; reset is a legitimate port operation. */
+int A04UsbHostHealth(const A04_USB_BOARD *,unsigned *devctl);
 void A04UsbHostStop(const A04_USB_BOARD *);
 /* connect/disconnect is reported by MUSB INTRUSB, not by DEVCTL alone. */
 #endif

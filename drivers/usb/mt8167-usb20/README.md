@@ -455,3 +455,10 @@ mouseは3ボタンと相対X/Yのみ。詳細な対応範囲・根拠・ビル�
 1008のportable/WDF shimとビルド成功は、実機のhost移行・VBUS給電・列挙・
 mouhid/kbdhid経路の動作成功を意味しない。device-roleでの適切な待機を維持し、
 roleの強制切替、親1026/MT6392/PHY sequence/UEFI/GPUの変更は行わない。
+
+## USB1009: host MACの開始・継続条件
+
+BDEVICE/SESSIONの期限付き確認と、稼働中MAC role/session喪失時の停止を追加した
+候補。詳細は[HOST-CONVERGENCE.md](HOST-CONVERGENCE.md)。USB1007/1008の正本を
+保持する。PC接続中のdevice-role待機は解除せず、5V給電・実列挙成功とは扱わない。
+親1026・GPIO/PMIC/PLL/PHY書込み列・資源・EDK2・GPUは変更しない。

@@ -1598,3 +1598,9 @@ test-mt8167-usb-boot-mouse:
 	./build/mt8167_usb_boot_mouse_test
 	$(CC) $(CFLAGS) -DA04_MUSB_BOOT_MOUSE_EXPERIMENT=1 -Idrivers/usb/mt8167-usb20 tests/usb/boot_hid_test.c drivers/usb/mt8167-usb20/boot_hid.c drivers/usb/mt8167-usb20/keyboard.c -o build/mt8167_usb_boot_hid_test
 	./build/mt8167_usb_boot_hid_test
+
+.PHONY: test-mt8167-usb-host-convergence
+test-mt8167-usb-host-convergence:
+	mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/usb/mt8167-usb20 tests/usb/host_convergence_test.c drivers/usb/mt8167-usb20/board_host.c -o build/mt8167_usb_host_convergence_test
+	./build/mt8167_usb_host_convergence_test

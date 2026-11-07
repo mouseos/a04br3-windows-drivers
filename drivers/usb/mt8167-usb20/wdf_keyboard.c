@@ -46,13 +46,13 @@ EVT_WDF_IO_QUEUE_IO_INTERNAL_DEVICE_CONTROL KbHidIoctl;
 enum { TraceAdd,TraceResources,TraceParent,TracePower,TracePio,
  TraceBoardPrepare,TraceArm,TraceRun,TraceD0,TraceAdmissionWait,
  TraceHidDescriptor,TraceHidAttributes,TraceHidReport,TraceHidString,
- TraceFault,TraceRetryFailure,TraceHidOther,TraceActivation,TraceCount };
+ TraceFault,TraceRetryFailure,TraceHidOther,TraceActivation,TraceHostHealth,TraceCount };
 static void InitCheckpoint(WDFDEVICE dev,unsigned stage,NTSTATUS status,ULONG a,ULONG b)
 {
  static const PCWSTR names[TraceCount]={L"InitAdd",L"InitResources",L"InitParent",
   L"InitPower",L"InitPio",L"InitBoardPrepare",L"InitArm",L"InitRun",L"InitD0",
   L"InitAdmissionWait",L"InitHidDescriptor",L"InitHidAttributes",
-  L"InitHidReport",L"InitHidString",L"InitFault",L"InitRetryFailure",L"InitHidOther",L"InitActivation"};
+  L"InitHidReport",L"InitHidString",L"InitFault",L"InitRetryFailure",L"InitHidOther",L"InitActivation",L"InitHostHealth"};
  KB_HID_CONTEXT*c=KbHidContext(dev);WDFKEY key;UNICODE_STRING name;NTSTATUS s;
  struct { ULONG version,stage,status,detail0,detail1,prior_write_status,start_low,start_high; } record;
  LONG bit;
@@ -269,7 +269,7 @@ static unsigned PortNowMs(void)
 }
 VOID KbPoll(WDFTIMER timer)
 {
- WDFDEVICE dev=(WDFDEVICE)WdfTimerGetParentObject(timer); KB_HID_CONTEXT*c=KbHidContext(dev); ULONGLONG now;
+ WDFDEVICE dev=(WDFDEVICE)WdfTimerGetParentObject(timer); KB_HID_CONTEXT*c=KbHidContext(dev); ULONGLONG now;unsigned host_state=0xffffffffu;
  WdfWaitLockAcquire(c->controller_lock,NULL);
  if(A04UsbAdmissionWait(c->admission) && !c->board_fault && c->shared_valid) {
   NTSTATUS status;
@@ -284,7 +284,10 @@ VOID KbPoll(WDFTIMER timer)
  }
  if(c->board_owned && !c->board_fault && c->shared_valid) {
   if(c->shared.Health(c->shared.Header.Context))PortFault(dev,STATUS_DEVICE_POWER_FAILURE);
-  else {
+  else if(A04UsbHostHealth(&c->board,&host_state)) {
+   InitCheckpoint(dev,TraceHostHealth,STATUS_DEVICE_HARDWARE_ERROR,(ULONG)host_state,(ULONG)c->port.stage);
+   PortFault(dev,STATUS_DEVICE_HARDWARE_ERROR);
+  } else {
    now=KeQueryInterruptTime();
 #if A04_MUSB_HID_CONTROL_EXPERIMENT
    if(c->control_busy && now>=c->control_deadline)PortFault(dev,STATUS_IO_TIMEOUT);
@@ -382,7 +385,10 @@ NTSTATUS KbHidActivate(WDFDEVICE dev,const A04_USB_BOARD *board)
  if(NT_SUCCESS(status)) {
   int result=A04UsbHostRun(&c->board);
   if(result){DbgPrint("MT8167 USB20 host run failed\n");status=STATUS_DEVICE_POWER_FAILURE;}
-  InitCheckpoint(dev,TraceRun,status,(ULONG)result,0);
+  /* Raw MAC readback at the real Run boundary, while the parent lease
+   * is still held. This is neither admission nor a VBUS voltage sample. */
+  InitCheckpoint(dev,TraceRun,status,(ULONG)result,
+   (ULONG)c->board.mac_read(c->board.context,0x60)|((ULONG)c->board.mac_read(c->board.context,1)<<8));
  }
  if(NT_SUCCESS(status))c->board_owned=TRUE;
  WdfWaitLockRelease(c->controller_lock);
