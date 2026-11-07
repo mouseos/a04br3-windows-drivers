@@ -29,7 +29,7 @@ foreach($name in @('ge8300-kmd-clear.lib','ge8300-umd-clear.lib','umd_entry.obj'
 }
 $sp=Join-Path $StateDirectory 'manifest.json';Verify-Hash $sp $StateManifestSha256
 $sm=Get-Content -Raw $sp|ConvertFrom-Json
-foreach($r in $sm.outputs){Verify-Hash (Join-Path $StateDirectory $r.path) $r.sha256}
+foreach($r in $sm.files){Verify-Hash (Join-Path $StateDirectory $r.path) $r.sha256}
 foreach($p in @('umd/typed_state.c','umd/typed_state.h')){
  $old=(& git -C $root rev-parse ($sm.source_commit+':drivers/gpu/mt8167/wddm-render/'+$p));if($LASTEXITCODE){throw 'Missing original state source commit'}
  $now=(& git -C $root hash-object (Join-Path $PSScriptRoot $p));if($LASTEXITCODE -or $old -ne $now){throw 'State source differs from compiled module'}
