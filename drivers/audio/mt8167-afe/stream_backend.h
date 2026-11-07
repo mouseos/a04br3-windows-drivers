@@ -10,6 +10,9 @@
  * Failure from allocate
  * must clean up its own partial allocation. No provider exists yet. */
 struct Mt8167StreamBackend {
+    /* Internal build-local discriminator; old playback owners initialize FALSE. */
+    BOOLEAN capture;
+    KSRTAUDIO_HWLATENCY captureLatency;
     void *context;
     void (*reference)(void *);
     void (*dereference)(void *);

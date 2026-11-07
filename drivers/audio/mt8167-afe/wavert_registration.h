@@ -9,3 +9,7 @@ NTSTATUS Mt8167RegisterWaveRt(PDEVICE_OBJECT device, PIRP irp,
                               PRESOURCELIST resources, PMINIPORTWAVERT miniport);
 #endif
 #endif
+
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+NTSTATUS Mt8167RegisterCaptureWaveRt(PDEVICE_OBJECT,PIRP,PRESOURCELIST,PMINIPORTWAVERT);
+#endif

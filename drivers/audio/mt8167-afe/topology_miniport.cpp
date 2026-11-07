@@ -16,10 +16,18 @@ static PCPIN_DESCRIPTOR Pins[]={
 static PCCONNECTION_DESCRIPTOR Connections[]={{PCFILTER_NODE,0,PCFILTER_NODE,1}};
 static PCFILTER_DESCRIPTOR Filter={0,NULL,sizeof(PCPIN_DESCRIPTOR),2,Pins,
     sizeof(PCNODE_DESCRIPTOR),0,NULL,1,Connections,0,NULL};
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+static PCPIN_DESCRIPTOR CapturePins[]={
+    {0,0,0,NULL,{0,NULL,0,NULL,1,Ranges,KSPIN_DATAFLOW_IN,KSPIN_COMMUNICATION_NONE,&KSNODETYPE_MICROPHONE,NULL,0}},
+    {0,0,0,NULL,{0,NULL,0,NULL,1,Ranges,KSPIN_DATAFLOW_OUT,KSPIN_COMMUNICATION_NONE,&KSCATEGORY_AUDIO,NULL,0}}
+};
+static PCFILTER_DESCRIPTOR CaptureFilter={0,NULL,sizeof(PCPIN_DESCRIPTOR),2,CapturePins,
+    sizeof(PCNODE_DESCRIPTOR),0,NULL,1,Connections,0,NULL};
+#endif
 class Mt8167Topology : public IMiniportTopology {
-    volatile LONG refs;
+    volatile LONG refs;BOOLEAN capture;
 public:
-    Mt8167Topology():refs(1) {}
+    explicit Mt8167Topology(BOOLEAN c=FALSE):refs(1),capture(c) {}
     STDMETHODIMP_(NTSTATUS) QueryInterface(REFIID id,PVOID *out) override {
         if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;
         if(IsEqualGUIDAligned(id,IID_IUnknown)||IsEqualGUIDAligned(id,IID_IMiniport)||
@@ -34,7 +42,13 @@ public:
         if(!n){this->~Mt8167Topology();ExFreePoolWithTag(this,TOPO_TAG);}return (ULONG)n;
     }
     STDMETHODIMP_(NTSTATUS) GetDescription(PPCFILTER_DESCRIPTOR *out) override {
-        if(!out)return STATUS_INVALID_PARAMETER;*out=&Filter;return STATUS_SUCCESS;
+        if(!out)return STATUS_INVALID_PARAMETER;
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+        *out=capture?&CaptureFilter:&Filter;
+#else
+        *out=&Filter;
+#endif
+        return STATUS_SUCCESS;
     }
     STDMETHODIMP_(NTSTATUS) DataRangeIntersection(ULONG,PKSDATARANGE,PKSDATARANGE,
         ULONG,PVOID,PULONG required) override {
@@ -44,10 +58,14 @@ public:
         return port?STATUS_SUCCESS:STATUS_INVALID_PARAMETER;
     }
 };
-NTSTATUS Mt8167NewTopology(PMINIPORTTOPOLOGY *out) {
+static NTSTATUS NewTopology(PMINIPORTTOPOLOGY *out,BOOLEAN capture) {
     if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;
     void *mem=ExAllocatePoolWithTag(NonPagedPool,sizeof(Mt8167Topology),TOPO_TAG);
     if(!mem)return STATUS_INSUFFICIENT_RESOURCES;
-    *out=new(mem) Mt8167Topology;return STATUS_SUCCESS;
+    *out=new(mem) Mt8167Topology(capture);return STATUS_SUCCESS;
 }
+NTSTATUS Mt8167NewTopology(PMINIPORTTOPOLOGY *out){return NewTopology(out,FALSE);}
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+NTSTATUS Mt8167NewCaptureTopology(PMINIPORTTOPOLOGY *out){return NewTopology(out,TRUE);}
+#endif
 #endif

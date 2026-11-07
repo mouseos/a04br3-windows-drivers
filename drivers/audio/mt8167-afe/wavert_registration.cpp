@@ -43,4 +43,25 @@ NTSTATUS Mt8167RegisterWaveRt(PDEVICE_OBJECT device, PIRP irp,
     port->Release();
     return status;
 }
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+/* Caller supplies an actual capture backend with ADC/clock lease and RX DMA.
+ * No endpoint is registered merely because descriptors are available. */
+static WCHAR CaptureWaveName[]=L"Mt8167CaptureWaveRT";
+static WCHAR CaptureTopologyName[]=L"Mt8167CaptureTopology";
+NTSTATUS Mt8167RegisterCaptureWaveRt(PDEVICE_OBJECT device,PIRP irp,
+    PRESOURCELIST resources,PMINIPORTWAVERT miniport)
+{
+    if(!device||!irp||!resources||!miniport)return STATUS_INVALID_PARAMETER;
+    PPORT wave=NULL,topo=NULL;PMINIPORTTOPOLOGY topology=NULL;
+    NTSTATUS s=PcNewPort(&wave,CLSID_PortWaveRT);
+    if(NT_SUCCESS(s))s=wave->Init(device,irp,static_cast<PUNKNOWN>(miniport),NULL,resources);
+    if(NT_SUCCESS(s))s=PcRegisterSubdevice(device,CaptureWaveName,static_cast<PUNKNOWN>(wave));
+    if(NT_SUCCESS(s))s=Mt8167NewCaptureTopology(&topology);
+    if(NT_SUCCESS(s))s=PcNewPort(&topo,CLSID_PortTopology);
+    if(NT_SUCCESS(s))s=topo->Init(device,irp,static_cast<PUNKNOWN>(topology),NULL,resources);
+    if(NT_SUCCESS(s))s=PcRegisterSubdevice(device,CaptureTopologyName,static_cast<PUNKNOWN>(topo));
+    if(NT_SUCCESS(s))s=PcRegisterPhysicalConnection(device,static_cast<PUNKNOWN>(topo),1,static_cast<PUNKNOWN>(wave),1);
+    if(topo)topo->Release();if(topology)topology->Release();if(wave)wave->Release();return s;
+}
+#endif
 #endif
