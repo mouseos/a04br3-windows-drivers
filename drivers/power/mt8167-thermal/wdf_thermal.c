@@ -4,6 +4,7 @@
 #include <ntddk.h>
 #include <wdf.h>
 #include "thermal.h"
+#include "boot_record.h"
 #include "manager.h"
 #include "ownership.h"
 #include "resources.h"
@@ -21,6 +22,13 @@
 #endif
 #ifndef A04_THERMAL_CODEC_ADC_DIAGNOSTIC
 #define A04_THERMAL_CODEC_ADC_DIAGNOSTIC 0
+#endif
+/* These backends cannot survive an uncertain stop without relying on a
+ * whole-system crash. Do not compile them into a deployable package until
+ * IRQ/fabric drain and supplier/consumer removal lifetime are qualified.
+ * Calibration-only builds make no hardware claim and remain supported. */
+#if A04_THERMAL_MONITOR_TEST || A04_THERMAL_ONESHOT_TEST || A04_THERMAL_LEASE_DIAG || A04_THERMAL_CODEC_ADC_DIAGNOSTIC || A04_THERMAL_SHARED_PARENT
+#error Unqualified thermal hardware backend: use calibration-only or rejection-only native package
 #endif
 #if A04_THERMAL_CODEC_ADC_DIAGNOSTIC && (!A04_THERMAL_SHARED_PARENT || !A04_THERMAL_ONESHOT_TEST)
 #error codec ADC diagnostic requires the shared-parent one-shot path
@@ -54,7 +62,7 @@ EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL ThermalReadoutIoctl;
 #include "../../input/bu21025/thermal_broker.h"
 #endif
 #define THERMAL_VAR_NAME L"A04BR3ThermalCalibration"
-typedef struct { ULONG version, d60, d61, d62; } BOOT_CAL;
+typedef struct a04_thermal_boot_cal BOOT_CAL;
 typedef struct { struct a04_thermal_cal cal; struct a04_thermal_owner ownership; BOOLEAN calibrated, pnp_resources; WDFIOTARGET watchdog;
 #if A04_THERMAL_LEASE_DIAG
  WDFIOTARGET touch; BOOLEAN lease_owned;
@@ -83,8 +91,6 @@ EVT_WDF_DEVICE_D0_EXIT ThermalExit;
 static const GUID thermalHandoffGuid={0xb2dd7543,0x9b8a,0x4580,{0xb8,0x22,0x14,0x35,0x09,0xa0,0x47,0xc1}};
 typedef struct { ULONG version,bytes,observation,ownership; } THERMAL_HANDOFF_RECORD;
 static const GUID calGuid={0x92d56a32,0xc847,0x4fdc,{0x83,0x62,0xf2,0x77,0xc7,0x10,0xa0,0x43}};
-static int read_cal(void *p,unsigned index,uint32_t *value)
-{ const BOOT_CAL *v=p; if(index==60)*value=v->d60; else if(index==61)*value=v->d61; else if(index==62)*value=v->d62; else return -1; return 0; }
 NTSTATUS ThermalPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
  static const ULONGLONG addresses[]={0x1100d000,0x11003000,0x10018000,0x10009000};
@@ -379,7 +385,7 @@ NTSTATUS ThermalD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE prior)
  a04_owner_revoke(&c->ownership);
  c->ownership.resources=c->pnp_resources ? 1 : 0; RtlZeroMemory(&v,sizeof(v));
  status=ExGetFirmwareEnvironmentVariable(&name,&guid,&v,&size,&attributes);
- if(!NT_SUCCESS(status) || size!=sizeof(v) || v.version!=1 || (attributes&7u)!=6u || a04_thermal_calibrate(&c->cal,read_cal,&v)) {
+ if(!NT_SUCCESS(status) || a04_thermal_boot_calibration(&c->cal,&v,size,attributes)) {
   DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"A04THERM boot calibration unavailable or invalid\n");
   return STATUS_DEVICE_NOT_READY;
  }
