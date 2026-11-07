@@ -213,3 +213,12 @@ geo_full_control_ready=falseはmatched hardware qualification未完を意味し�
 - Eはその実生成コードを検査してowner prepare-v2と完全producerへ接続する。
   現ABI2 builder単体で実GPU成功/FL9_1 qualificationとは扱わない。
   Eの親1014停止契約、実MDL lease、actual IRQ/visibility/rundownは維持する。
+
+
+### Typed SM4 viewport（有限800x600）
+
+format2はCPUで座標を変更しない。PPPでxscale/offset=400/400、
+yscale/offset=-300/300、zscale/offset=1/0を使用する。
+D3D clip Zは0..w。format1の旧TL変換済みprofileは従来300/300,.5/.5を保持。
+Mesa pvr_arch_cmd_buffer.c:7810-7843のheight/2とmaxDepth-minDepthを根拠とし、
+D3DのYを負height viewportとして扱う。cullNONEは維持。

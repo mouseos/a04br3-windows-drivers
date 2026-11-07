@@ -24,7 +24,7 @@ int main(int argc,char **argv)
   assert(get(out->three,0xf8,8)==((in.pds_page_gpu-0xa800000000ULL+0x350)<<32 | (in.pds_page_gpu-0xa800000000ULL+0x300)));
   assert(get(out->three,0x110,8)==get(out->three,0xf8,8));
   assert(!memcmp(out->data+0x4a0,blob+640,16) && !memcmp(out->usc+0x80,code[0],24) && !memcmp(out->usc+0xc0,code[1],64));
-  assert(get(out->data,0x280,4)==0x43960000u && get(out->data,0x284,4)==0x3f000000u && get(out->data,0x288,4)==0x3f000000u);
+  assert(get(out->data,0x280,4)==0x43960000u && get(out->data,0x27c,4)==0xc3960000u && get(out->data,0x284,4)==0x3f800000u && !get(out->data,0x288,4));
   memcpy(before,out,sizeof(*out));
   /* Malformed SM4 instruction extent fails framing; a different legal
    * token sequence with the old USC cannot impersonate the finite profile. */
@@ -42,6 +42,13 @@ int main(int argc,char **argv)
   r.state.vertex_count=6;assert(a04_m111_build_draw_job(out,&in,vertex,&r,blob,sizeof(blob),scratch,A04_M111_DRAW_SCRATCH)==GEO_UNSUPPORTED);r.state.vertex_count=3;
   assert(a04_m111_build_draw_job(out,&in,in.output_gpu,&r,blob,sizeof(blob),scratch,A04_M111_DRAW_SCRATCH)==GEO_INVALID);
   assert(!memcmp(before,out,sizeof(*out)));
+  /* Legacy SM2 TL was already lowered to native Y-down and GL-Z. */
+  struct geo_draw_request legacy=r;
+  legacy.vs.format=legacy.ps.format=GEO_SHADER_D3D9_SM2;
+  legacy.vs.tokens=(struct geo_draw_span){0,8};legacy.ps.tokens=(struct geo_draw_span){40,8};
+  put(blob,0,0xfffe0200u);put(blob,4,0xffffu);put(blob,40,0xffff0200u);put(blob,44,0xffffu);
+  assert(a04_m111_build_draw_job(out,&in,vertex,&legacy,blob,sizeof(blob),scratch,A04_M111_DRAW_SCRATCH)==GEO_OK);
+  assert(get(out->data,0x27c,4)==0x43960000u && get(out->data,0x284,4)==0x3f000000u && get(out->data,0x288,4)==0x3f000000u);
   in.output_gpu+=0x100000;in.data_page_gpu+=0x100000;in.usc_page_gpu+=0x1000;in.pds_page_gpu+=0x2000;
  }
  free(out);free(before);free(scratch);

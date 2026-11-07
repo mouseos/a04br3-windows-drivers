@@ -76,8 +76,16 @@ int32_t a04_m111_build_draw_job(struct a04_m111_draw_job *out,
     a04_m111_patch_background_pds(m->pds+0x300,36,in->usc_page_gpu+0x200,A04_NATIVE_LOAD_TEMPS))return GEO_INVALID;
  copy(m->data+0x4a0,b+r->ps.constants.offset,16);put(m->pds,0x208,0x90000004u,4);
  /* Four output registers; no interpolated user varyings/texture/depth state. */
- /* Keep proven +400/+300/.5 viewport scales/offsets. H's TL lowering
-  * supplies native clip coordinates including D3D9 half-pixel adjustment. */
+ /* Typed SM4 consumes native D3D clip coordinates, unlike old SM2 TL
+  * preconversion. D3D viewport: x=400*x/w+400,y=-300*y/w+300,z=z/w.
+  * pvr_arch_cmd_buffer.c:7825 uses height/2 and maxDepth-minDepth;
+  * D3D Y is the negative-height viewport equivalent. Keep format1 unchanged.
+  * No CPU input-coordinate rewrite can preserve arbitrary VS semantics. */
+ if(r->vs.format==GEO_SHADER_D3D10_TOKENS) {
+  put(m->data,0x27c,0xc3960000u,4); /* Y scale -300 */
+  put(m->data,0x284,0x3f800000u,4); /* Z scale1 */
+  put(m->data,0x288,0,4); /* Z offset0 */
+ }
  put(m->data,0x500,(UINT64_C(1)<<49)|(UINT64_C(2)<<44)|(UINT64_C(2)<<41)|(UINT64_C(1)<<23)|0xfffu,8);
  put(m->data,0x510,(UINT64_C(599)<<48)|(UINT64_C(799)<<34)|(UINT64_C(12)<<27)|(UINT64_C(1)<<11)|(UINT64_C(2)<<8)|(UINT64_C(3)<<5)|4u,8);
  put(m->data,0x518,(UINT64_C(1)<<60)|(UINT64_C(1)<<59)|((in->output_gpu>>2)<<16)|799u,8);
