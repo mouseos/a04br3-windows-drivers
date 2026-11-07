@@ -89,3 +89,66 @@ HFP coreは `28529e63e176076029b10e7c94fd65a2981a1259` の実WDK8.1全5TU archiv
 raw source/flags/hash一致を確認し、同一SYSを再利用した。両者の出自は署名manifestに分けた。
 回収ZIP SHA256: `860c4407189fa610353b5a08e1a4a8e1f9253da044ad93cec017ddf6a8d7f6e2`。
 このZIPに親は同梱しない。旧02e raw候補の自動置換・実機試験は要求しない。
+
+## 今回のRaman宛結合要求: transport登録v2
+
+`hfp_controller_contract.h` はRamanのv1と**同じfield順/size**の提案v2。
+BT startupはreal WMT/FC72/ReadLocalVersion後に同GUID/version2だけをqueryし、
+実Reference/Dereference/Acquire/Live/Release/MatchHfpTargetを登録する。
+Acquire/Releaseは本物のKMDF D0 holdと現combo generationを保持する。
+BT Stopは未解放holdや親Unregister失敗で電源/leaseを解放しない。
+radio surprise removalはLiveを失効し、Audio DMA drainの証明に代用しない。
+
+FC72の実PCM解釈とcodec latencyは未確定のため、ValidatePcm/CodecLatencyはNULL。
+常時成功/常時拒否callbackを足さない。現在の親v1へv2descriptorを渡さず、query非対応は
+raw HCIのみ継続する。v2登録成功もHFP factory/標準stack資格を意味しない。
+
+Ramanへ必要な変更（BT側では共有sourceを編集しない）:
+
+1. 親query version2を同layoutで追加し、RegisterControllerはv2の実owner callbacksと
+   MatchHfpTargetを必須、ValidatePcm/CodecLatencyのNULLは未資格として受ける。
+   登録失敗時は参照/登録の副作用なし、成功時は親が参照を保持する契約。
+2. Audio GetControllerはversion2を認識する。資格NULL/VerifyDmaQuiescent欠落の間は
+   factoryを公開しない。登録到着・資格の後発更新とD0起動順について、Audio側の
+   明示再接続契約が別途必要。無限retry/timerや成功stubを入れない。
+3. MatchHfpTargetはPASSIVE_LEVEL。v1 headerの「match <=DISPATCH」という記述は
+   実attach呼出し元と一致しない。Live/ref/derefだけを<=DISPATCHに保つ。
+4. 親/Audioの新SYS/INF版はmain予約が必要。旧1007や凍結1008/1010で別SYSを包装しない。
+
+## 物理target照合の具体実装
+
+`hfp_target.c` はIoGetDeviceAttachmentBaseRefで実target PDOを保持し、
+IoGetDevicePropertyDataのDEVPKEY_Device_InstanceId/Parent/Childrenを取得する。
+同一radio PDO、直接parentがradio ID、または実parent IDがradioのChildrenに存在する場合
+だけを受理する。関係を再読出しして撤去/reparentを拒否する。名前/ID prefix/アドレス形式を
+仮定しない。深い/公開されない関係は未対応であり、GUID一致へfallbackしない。
+取得IDにはMAC等が入る可能性があるため、出力・永続保存せず全allocationを消去する。
+BusRelations IRPの自発送信は禁止と一次仕様で確定し、実装には含めない。
+
+一次仕様:
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/irp-mn-query-device-relations
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-iogetdevicepropertydata
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/install/devpkey-device-parent
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/install/devpkey-device-children
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/install/devpkey-device-instanceid
+
+これは実PnPで関係propertyが取れるかのWindows実行結果ではない。HFP GUID membershipの
+既存確認と組み合わせる実照合sourceであり、標準stack接続成功とは別。
+
+## E宛REA依頼（1件、main中継可）
+
+公開vendor0c756f4のroot内 `vendor-reference/libbluetooth_mtk.so`
+（SHA256 `77e897889ea40a09ced2baf0194b92edc97720c963c7a484a8529962e7bea429`）を対象とする。
+FC72 command emissionからGORM bytes8..11のPCM rate/word幅/frame/極性/master-slave設定、
+merge DAI pad選択時の値の意味を特定し、関数/offsetと参照fieldを返してほしい。
+必要なら同manifestのpure/vendor SOを参照する。個体NVRAM record/MAC/校正値を出力しない。
+依頼はFC72のみ。Windows未公開GET_DEVICEOBJECTの解析を同じ依頼へ混ぜない。
+
+Raman/Eの子担当はこのsessionのlist_threadsに出ず、mainへのsend_message_to_threadも
+native ancestor制約で拒否された。送信済みと偽らず、このfileをmain中継用とする。
+
+## SD trial47への一行handoff
+
+凍結SD3にはCID/CSD容量・READ完了の直接UART出力なし（CID serialは非出力）；実READ完了は
+SD `scsi.c:152–153`→`windows.c:171–175`、main側実READ status/転送byte数のUART結果が必要で、
+CM成功だけではRW成功としない。凍結SD source/署名tupleは変更しない。

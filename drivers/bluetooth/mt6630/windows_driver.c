@@ -5,6 +5,8 @@
 #include <bthxddi.h>
 #include "transport.h"
 #include "status.h"
+#include "hfp_target.h"
+#include "hfp_controller_contract.h"
 #include "../../network/mt6630/windows_board.h"
 #include "../../network/mt6630/windows_irq.h"
 #include "../../network/mt6630/windows_firmware.h"
@@ -16,6 +18,7 @@
 struct bt_packet {unsigned type,length;uint8_t data[A04_BT_MAX_HCI];};
 typedef struct _BT_DEVICE {
  WDFDEVICE device,child;WDFWAITLOCK lock;WDFTIMER timer;WDFQUEUE reads[2];
+ struct a04_bt_hfp_parent hfp;LONG hfp_holds;int hfp_referenced,hfp_registered;
  A04_SHARED_WIFI_INTERFACE parent;ULONG generation;int referenced,leased,uncertain,removed,running,negotiated;
  CM_PARTIAL_RESOURCE_DESCRIPTOR mem,trans_mem,irq_resource,trans_irq;
  struct a04_wifi_owner owner;struct a04_windows_msdc2 host;struct a04_windows_irq irq;
@@ -36,6 +39,78 @@ EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL BtInternal;
 EVT_WDF_TIMER BtTimer;
 static void lock(BT_DEVICE *c){(void)WdfWaitLockAcquire(c->lock,NULL);}
 static void unlock(BT_DEVICE *c){WdfWaitLockRelease(c->lock);}
+static void controller_reference(PVOID p){BT_DEVICE *c=p;WdfObjectReference(c->device);}
+static void controller_dereference(PVOID p){BT_DEVICE *c=p;WdfObjectDereference(c->device);}
+static BOOLEAN controller_live(PVOID p,ULONG generation)
+{
+ BT_DEVICE *c=p;
+ return generation&&generation==c->generation&&InterlockedCompareExchange(&c->hfp_holds,0,0)>0&&
+  c->running&&c->leased&&!c->removed&&!c->uncertain&&c->parent.Live(c->parent.Header.Context,generation)==1;
+}
+static NTSTATUS controller_acquire(PVOID p,PULONG generation)
+{
+ BT_DEVICE *c=p;NTSTATUS status;
+ if(!generation||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;*generation=0;
+ status=WdfDeviceStopIdle(c->device,TRUE);if(!NT_SUCCESS(status))return status;
+ lock(c);
+ if(!c->running||!c->leased||c->removed||c->uncertain||!c->generation||
+    c->hfp_holds==MAXLONG||!c->parent.Live(c->parent.Header.Context,c->generation))status=STATUS_DEVICE_NOT_READY;
+ else {InterlockedIncrement(&c->hfp_holds);*generation=c->generation;status=STATUS_SUCCESS;}
+ unlock(c);if(!NT_SUCCESS(status))WdfDeviceResumeIdle(c->device);return status;
+}
+static NTSTATUS controller_release(PVOID p,ULONG generation)
+{
+ BT_DEVICE *c=p;
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ lock(c);
+ if(!generation||generation!=c->generation||c->hfp_holds<=0){unlock(c);return STATUS_INVALID_DEVICE_STATE;}
+ InterlockedDecrement(&c->hfp_holds);unlock(c);WdfDeviceResumeIdle(c->device);return STATUS_SUCCESS;
+}
+static NTSTATUS controller_match(PVOID p,PDEVICE_OBJECT target)
+{
+ BT_DEVICE *c=p;ULONG generation;NTSTATUS status=controller_acquire(c,&generation),released;
+ if(!NT_SUCCESS(status))return status;
+ status=a04_bt_hfp_match_radio(WdfDeviceWdmGetDeviceObject(c->child),target);
+ released=controller_release(c,generation);return NT_SUCCESS(released)?status:released;
+}
+/* Called under the BT lock after real WMT/FC72/ReadLocalVersion completion.
+ * V2 parents may register real ownership without inventing PCM/latency proof.
+ * Old V1 parents remain usable for raw HCI and receive no registration call. */
+static NTSTATUS controller_register(BT_DEVICE *c)
+{
+ struct a04_bt_hfp_controller ops;NTSTATUS status;
+ if(c->hfp_referenced||c->hfp_registered)return STATUS_INVALID_DEVICE_STATE;
+ RtlZeroMemory(&c->hfp,sizeof(c->hfp));
+ status=WdfFdoQueryForInterface(c->device,&A04BtSharedHfpGuid,(PINTERFACE)&c->hfp,
+  sizeof(c->hfp),A04_BT_CONTROLLER_VERSION,NULL);
+ if(!NT_SUCCESS(status))return status;
+ c->hfp_referenced=1;
+ if(c->hfp.Header.Size!=sizeof(c->hfp)||c->hfp.Header.Version!=A04_BT_CONTROLLER_VERSION||
+    !c->hfp.Header.InterfaceDereference||!c->hfp.RegisterController||!c->hfp.UnregisterController){
+  return STATUS_DEVICE_CONFIGURATION_ERROR;
+ }
+ RtlZeroMemory(&ops,sizeof(ops));ops.size=sizeof(ops);ops.version=A04_BT_CONTROLLER_VERSION;
+ ops.context=c;ops.controller=WdfDeviceWdmGetDeviceObject(c->child);
+ ops.Reference=controller_reference;ops.Dereference=controller_dereference;
+ ops.Acquire=controller_acquire;ops.Live=controller_live;ops.Release=controller_release;ops.MatchHfpTarget=controller_match;
+ /* Real FC72 decoding and measured codec latency are still missing. NULL
+  * qualification fields are explicit absent capabilities, not callbacks. */
+ status=c->hfp.RegisterController(c->hfp.Header.Context,&ops);
+ if(NT_SUCCESS(status))c->hfp_registered=1;
+ return status;
+}
+static NTSTATUS controller_unregister(BT_DEVICE *c)
+{
+ NTSTATUS status;
+ if(c->hfp_holds)return STATUS_DEVICE_BUSY;
+ if(c->hfp_registered){status=c->hfp.UnregisterController(c->hfp.Header.Context,c);
+  if(!NT_SUCCESS(status))return status;c->hfp_registered=0;}
+ if(c->hfp_referenced){
+  if(!c->hfp.Header.InterfaceDereference)return STATUS_DEVICE_CONFIGURATION_ERROR;
+  c->hfp.Header.InterfaceDereference(c->hfp.Header.Context);c->hfp_referenced=0;
+ }
+ RtlZeroMemory(&c->hfp,sizeof(c->hfp));return STATUS_SUCCESS;
+}
 /* Called with the FDO lock. Only allowlisted scalar fields enter the ABI. */
 static void observe(BT_DEVICE *c,unsigned state)
 {
@@ -240,14 +315,25 @@ NTSTATUS BtStart(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
  if(a04_wmt_bridge_boot_wmt(&c->bridge,fw.wmt,fw.wmt_length,a04_wifi_wdf_wmt_sha256,a04_sha256,&options))goto fail;
  stage=7;
  if(a04_bt_open(&c->bt,&c->bridge,c,receive,bt_now_us)||a04_bt_initialize(&c->bt,nvram))goto fail;
- c->running=1;WdfIoQueueStart(c->reads[0]);WdfIoQueueStart(c->reads[1]);
+ c->running=1;
+ /* Registration is transport ownership only; it never qualifies HCIBypass.
+  * Absence of the proposed V2 parent does not break the raw HCI profile. */
+ status=controller_register(c);
+ if(!NT_SUCCESS(status)){
+  NTSTATUS cleanup=controller_unregister(c);
+  if(!NT_SUCCESS(cleanup)){status=cleanup;goto fail;}
+  if(status!=STATUS_NOT_SUPPORTED&&status!=STATUS_NOINTERFACE&&status!=STATUS_INVALID_PARAMETER&&status!=STATUS_REVISION_MISMATCH){goto fail;}
+ }
+ WdfIoQueueStart(c->reads[0]);WdfIoQueueStart(c->reads[1]);
  DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_INFO_LEVEL,
   "MT6630BT: ReadLocalVersion complete hci=%u revision=%u lmp=%u manufacturer=%u subversion=%u\n",
   c->bt.version.hci_version,c->bt.version.hci_revision,c->bt.version.lmp_version,c->bt.version.manufacturer,c->bt.version.lmp_subversion);
  WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(5));status=STATUS_SUCCESS;goto done;
 fail:
+ c->running=0;
  /* Preserve a concrete timeout rather than the last successful parent call. */
- status=c->bt.failed==-2?STATUS_IO_TIMEOUT:STATUS_IO_DEVICE_ERROR;
+ if(c->bt.failed)status=c->bt.failed==-2?STATUS_IO_TIMEOUT:STATUS_IO_DEVICE_ERROR;
+ else if(NT_SUCCESS(status)||status==STATUS_DEVICE_NOT_READY)status=STATUS_IO_DEVICE_ERROR;
  c->uncertain=1; /* no lease release on ambiguous initialization or failed PIO */
  if(c->irq.interrupt)(void)a04_windows_irq_remove(&c->irq);
  if(c->host.base)a04_windows_msdc2_unmap(&c->host);
@@ -261,7 +347,9 @@ done:
 NTSTATUS BtStop(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
 {
  BT_DEVICE *c=BtContext(device);NTSTATUS status=STATUS_SUCCESS;UNREFERENCED_PARAMETER(target);
- lock(c);c->running=0;unlock(c);WdfTimerStop(c->timer,TRUE);lock(c);
+ lock(c);
+ status=controller_unregister(c);if(!NT_SUCCESS(status)){unlock(c);return status;}
+ c->running=0;unlock(c);WdfTimerStop(c->timer,TRUE);lock(c);
  /* DDI version negotiation belongs to this PDO lifetime, not each D0 epoch. */
  WdfIoQueuePurge(c->reads[0],NULL,NULL);WdfIoQueuePurge(c->reads[1],NULL,NULL);
  if(c->leased&&!c->uncertain&&!c->removed&&a04_wifi_life_stop(&c->life))c->uncertain=1;
@@ -275,6 +363,9 @@ VOID BtRemoved(WDFDEVICE device)
 {
  BT_DEVICE *c=BtContext(device);lock(c);c->running=0;unlock(c);WdfTimerStop(c->timer,TRUE);lock(c);
  c->removed=1;if(c->leased)c->uncertain=1;
+ /* Liveness is revoked first. Retain a busy registered owner until Audio
+  * has drained; surprise removal is never proof that its DMA was stopped. */
+ (void)controller_unregister(c);
  if(c->irq.interrupt)(void)a04_windows_irq_remove(&c->irq);
  /* No register access following surprise removal. */
  if(c->host.base)a04_windows_msdc2_unmap(&c->host);observe(c,MT6630_STATE_REMOVED);unlock(c);
@@ -283,6 +374,7 @@ NTSTATUS BtRelease(WDFDEVICE device,WDFCMRESLIST translated)
 {
  BT_DEVICE *c=BtContext(device);UNREFERENCED_PARAMETER(translated);
  WdfTimerStop(c->timer,TRUE);lock(c);
+ NTSTATUS hfp_status=controller_unregister(c);if(!NT_SUCCESS(hfp_status)){unlock(c);return hfp_status;}
  if(c->referenced&&!c->leased&&!c->uncertain){c->parent.Header.InterfaceDereference(c->parent.Header.Context);c->referenced=0;}
  unlock(c);return STATUS_SUCCESS;
 }

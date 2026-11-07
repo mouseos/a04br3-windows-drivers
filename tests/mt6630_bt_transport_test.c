@@ -4,12 +4,13 @@
 #include <stdio.h>
 #include <string.h>
 #include "../drivers/bluetooth/mt6630/transport.h"
-struct fixture {struct a04_wmt_bridge bridge;uint8_t response[2560],nvram[36];unsigned length,step,received;int reject;};
+struct fixture {struct a04_wmt_bridge bridge;uint8_t response[2560],nvram[36];unsigned length,step,received;uint64_t now;int reject;};
 static struct fixture f;
 static struct a04_bt_transport bt;
 static int io_command(void *p,unsigned op,uint32_t arg,unsigned response,uint32_t *out)
 {(void)p;(void)op;(void)arg;(void)response;*out=0;return 0;}
-static void delay(void *p,unsigned us){(void)p;(void)us;}
+static void delay(void *p,unsigned us){((struct fixture *)p)->now+=us;}
+static uint64_t now_us(void *p){return ((struct fixture *)p)->now;}
 static unsigned frame(uint8_t *p,unsigned task,const uint8_t *data,unsigned length)
 {
  unsigned n=0;assert(!a04_stp_encode(A04_STP_SDIO,task,0,0,0,data,length,p,256,&n));return n;
@@ -54,7 +55,7 @@ static void init(void)
  f.bridge.wmt_ready=1;f.bridge.channel.initialized=1;f.bridge.channel.free_bytes=2080;
  f.bridge.io.ctx=&f;f.bridge.io.command=io_command;f.bridge.io.delay=delay;
  f.bridge.transport.io=&f.bridge.io;f.bridge.transport.enabled=4;f.bridge.transport.transfer=transfer;
- assert(!a04_bt_open(&bt,&f.bridge,&f,receive));
+ assert(!a04_bt_open(&bt,&f.bridge,&f,receive,now_us));
 }
 int main(void)
 {
