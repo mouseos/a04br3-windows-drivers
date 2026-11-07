@@ -5,7 +5,7 @@ param(
     [string]$ExpectedSystemSha256,
     [string]$ExpectedLog1Sha256,
     [string]$ExpectedLog2Sha256,
-    [ValidateSet('MT8167DeviceInstall','MT8167HardwareProbe','MT8167EngineProbe','MT8167RenderProbe','MT8167RenderStage','GE8300RenderSetup')][string]$ServiceName='MT8167DeviceInstall',
+    [ValidateSet('MT8167DeviceInstall','MT8167HardwareProbe','MT8167EngineProbe','MT8167RenderProbe','MT8167RenderStage','GE8300RenderSetup','GE8300RenderUpdate')][string]$ServiceName='MT8167DeviceInstall',
     [switch]$IncludeHardwareProbe,
     [switch]$RearmFixedGpuDeviceInstall,
     [switch]$InspectFixedGpuDeviceInstall,
@@ -64,6 +64,7 @@ function Fixed-ServiceSpec([string]$Name) {
         'MT8167RenderProbe' { return [ordered]@{name='MT8167RenderProbe';display_name='PowerVR GE8300 Render Probe';image_path='"C:\Windows\System32\MT8167RenderProbe.exe"'} }
         'MT8167RenderStage' { return [ordered]@{name='MT8167RenderStage';display_name='PowerVR GE8300 Driver Update';image_path='"C:\Windows\System32\MT8167RenderStage.exe"'} }
         'GE8300RenderSetup' { return [ordered]@{name='GE8300RenderSetup';display_name='PowerVR GE8300 Driver Update';image_path='"C:\Windows\System32\GE8300RenderSetup.exe"'} }
+        'GE8300RenderUpdate' { return [ordered]@{name='GE8300RenderUpdate';display_name='PowerVR GE8300 Driver Update';image_path='"C:\Windows\System32\GE8300RenderUpdate.exe"'} }
         default { throw 'Unknown fixed one-shot service name' }
     }
 }

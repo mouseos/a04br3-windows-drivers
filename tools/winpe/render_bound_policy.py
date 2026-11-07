@@ -6,7 +6,7 @@ from render_profile_policy import (SIGNER, BOOT, BASE_SYS, TARGETS, package,
                                   require, rooted, jsonfile, hexpin, sha, version, cbytes)
 from engine_io_package import require_armnt
 
-PROFILE = 'render-bound-update-v2'
+PROFILE = 'render-bound-update-v3'
 COLOR = '4f55794471a4008c1ceaa3a1da2679c0f3fefd2a'
 BASE_NAMES = {'parent':'mt8167-shared.sys', 'display':'mt8167-display.sys',
               'render':'mt8167-ge8300.sys'}
@@ -40,17 +40,20 @@ def load_map(path, root):
         require(len(rows) == 1, 'Ambiguous observed device binding')
         row = rows[0]
         require(target[0].lower() in [x.lower() for x in row['HardwareID']], 'Binding hardware ID mismatch')
-        require(row['Service'].lower() == BASE_SERVICES[role].lower(), 'Unexpected existing service')
-        expected_class = TARGETS['display' if role == 'display' else 'parent'][2]
+        modern_render=role=='render' and row['Service'].lower()=='ge8300render'
+        require(modern_render or row['Service'].lower() == BASE_SERVICES[role].lower(), 'Unexpected existing service')
+        expected_class = TARGETS['display' if role == 'display' or modern_render else 'parent'][2]
         require(row['ClassGUID'].lower() == expected_class.lower(), 'Unexpected existing class')
         selected = row['selected']
         num, date = version('11/07/2026,' + selected['DriverVersion'])
         require(struct.unpack('<Q', bytes.fromhex(selected['DriverDateData']))[0] == date, 'Observed driver date mismatch')
-        e = source['windows/system32/drivers/' + BASE_NAMES[role]]
+        sys_name='ge8300-render.sys' if modern_render else BASE_NAMES[role]
+        e = source['windows/system32/drivers/' + sys_name]
         baselines[role] = {'driver_version':selected['DriverVersion'], 'version_u64':num,
                            'date_filetime':date, 'service':row['Service'], 'class_guid':row['ClassGUID'],
-                           'sys_name':BASE_NAMES[role], 'sys_sha256':e['sha256'], 'inf':selected['InfPath']}
-    require(baselines['render']['sys_sha256'] == BASE_SYS, 'Existing KMDF GPU bytes mismatch')
+                           'sys_name':sys_name, 'sys_sha256':e['sha256'], 'inf':selected['InfPath']}
+    expected_gpu='51f92e0975a5274b620769e2c6b45628ae3effd5ef82da080b9af939dd1f4f55' if baselines['render']['service'].lower()=='ge8300render' else BASE_SYS
+    require(baselines['render']['sys_sha256']==expected_gpu, 'Existing GPU baseline bytes mismatch')
     repo = Path(__file__).resolve().parents[2]
     require(set(spec['packages']) == set(TARGETS), 'Exactly three signed packages required')
     packages = {k: package(root, spec['packages'][k], k, repo, render_color=(k=='render')) for k in TARGETS}
@@ -79,7 +82,7 @@ def load_map(path, root):
             'comparator':{'directory':compdir.relative_to(root).as_posix(),'manifest_sha256':sha(compm),**cp},
             'boot':{'source_commit':BOOT,'manifest_sha256':sha(boot),'sha256':sha(image),'path':image.relative_to(root).as_posix()},
             'normal_install_allowed':True,
-            'sequence':['WinPE stages fixed files and new GE8300RenderSetup service only',
+            'sequence':['WinPE stages fixed files and new GE8300RenderUpdate service only',
                         'Normal OS selects exact signed INF via standard DIF, without live device restart',
                         'One planned reboot, then exact binding/file gates and one standard DXGI COLOR client']}
 
