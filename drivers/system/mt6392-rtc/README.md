@@ -10,7 +10,8 @@ TAB-A04-BR3のstock `a04br3.dts` は `mt6392.dtsi` をincludeする。
 `mediatek,mt6392` と `mediatek,mt6392-rtc` がある。
 
 一次根拠はBenesse配布GPLソース `CT3_GPL_LGPL_Src/kernel-4.4/`。
-下記はそのソースツリー内のパス。
+固定commit `7c4782127d4ea11965be00ce1343056be9bfb769`、正式remoteは
+<https://github.com/s1204IT/CT3_GPL_LGPL_Src>。下記はそのkernel-4.4内のパス。
 
 - `arch/arm64/boot/dts/mediatek/a04br3.dts`: MT6392機種設定。
 - `arch/arm64/boot/dts/mediatek/mt8167.dtsi`: PWRAP `0x1000f000`。

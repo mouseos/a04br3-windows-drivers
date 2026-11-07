@@ -38,8 +38,9 @@ try {
   $cache=Get-Content (Join-Path $reuse 'parent-cache.json') -Raw|ConvertFrom-Json
   if($cache.compiler -ne ((& clang --version)-join "`n") -or
      ($cache.flags -join '|') -ne ($flags -join '|') -or
-     ($cache.common -join '|') -ne ($common -join '|')){throw 'Cache compiler/flags changed'}
-  & git -C $root diff --quiet $cache.source_commit HEAD -- drivers
+     ($cache.common -join '|') -ne ($common -join '|') -or
+     ($cache.kernel -join '|') -ne ($kernel -join '|')){throw 'Cache compiler/flags changed'}
+  & git -C $root diff --quiet $cache.source_commit HEAD -- drivers/bus drivers/input drivers/audio drivers/usb drivers/storage drivers/system/mt6392-rtc/calendar.h drivers/system/mt6392-rtc/rtc_interface.h
   if($LASTEXITCODE){throw 'Parent source/include changed; cache reuse refused'}
   foreach($p in $cache.sdk.PSObject.Properties){if((Get-FileHash $p.Name -Algorithm SHA256).Hash -ne $p.Value){throw 'WDK cache input changed'}}
  }
@@ -61,7 +62,7 @@ try {
  foreach($path in @("$wdf\wdfdriverentry.lib","$wdf\wdfldr.lib","$km\ntoskrnl.lib","$km\hal.lib","$km\libcntpr.lib")){$sdk[$path]=(Get-FileHash $path -Algorithm SHA256).Hash}
  # Headers are immutable installed WDK inputs; pin their full tree too.
  foreach($file in Get-ChildItem $inc -Recurse -File){$sdk[$file.FullName]=(Get-FileHash $file.FullName -Algorithm SHA256).Hash}
- [ordered]@{source_commit=$commit;compiler=((& clang --version)-join "`n");common=$common;flags=$flags;sdk=$sdk;
+ [ordered]@{source_commit=$commit;compiler=((& clang --version)-join "`n");common=$common;kernel=$kernel;flags=$flags;sdk=$sdk;
   objects=@(foreach($name in $sources.Keys){@{name=$name;sha256=(Get-FileHash (Join-Path $out "obj\$name.obj") -Algorithm SHA256).Hash}})}|
   ConvertTo-Json -Depth 5|Set-Content -Encoding UTF8 "$out\parent-cache.json"
  $parent="$out\package\parent\mt8167-shared.sys"

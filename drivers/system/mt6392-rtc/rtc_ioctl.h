@@ -10,4 +10,5 @@ struct mt6392_rtc_sample {
  struct mt6392_rtc_raw raw;
  struct mt6392_rtc_calendar calendar;
 };
+_Static_assert(sizeof(struct mt6392_rtc_sample)==36,"RTC v1 ABI must be 36 bytes");
 #endif

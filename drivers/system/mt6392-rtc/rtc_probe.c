@@ -10,7 +10,7 @@ void mainCRTStartup(void)
 {
     HANDLE device;struct mt6392_rtc_sample sample;DWORD bytes=0,error=0;
     output=GetStdHandle(STD_OUTPUT_HANDLE);
-    device=CreateFileW(L"\\.\MT6392Rtc",GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,0,NULL);
+    device=CreateFileW(L"\\\\.\\MT6392Rtc",GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,0,NULL);
     if(device==INVALID_HANDLE_VALUE) {field("OPEN_ERROR=",GetLastError());ExitProcess(1);}
     ZeroMemory(&sample,sizeof(sample));
     if(!DeviceIoControl(device,IOCTL_MT6392_RTC_READ,NULL,0,&sample,sizeof(sample),&bytes,NULL))error=GetLastError();
