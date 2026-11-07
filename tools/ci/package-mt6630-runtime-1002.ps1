@@ -23,6 +23,7 @@ $dirty=(& git -C $root status --porcelain --untracked-files=normal)
 if($LASTEXITCODE -or $dirty){throw 'Use a clean committed source checkout'}
 $out=[IO.Path]::GetFullPath($OutputDirectory)
 if(Test-Path -LiteralPath $out){throw 'OutputDirectory must be new'}
+if(!$out.StartsWith($root+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'OutputDirectory must be inside this checkout'}
 $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1"
 $sign=Join-Path $kit 'bin\x86\signtool.exe'
 $inf2cat=Join-Path $kit 'bin\x86\Inf2Cat.exe'
@@ -33,11 +34,19 @@ New-Item -ItemType Directory -Path $package -Force | Out-Null
 Copy-Item -LiteralPath $SignedSys -Destination (Join-Path $package 'mt6630-runtime.sys')
 Copy-Item -LiteralPath $inf -Destination (Join-Path $package 'mt6630-runtime.inf')
 if((Get-Sha256 (Join-Path $package 'mt6630-runtime.sys')) -ne $expectedSys){throw 'Copied SYS hash mismatch'}
-# Fresh directory contains no old CAT. Catalog covers the new INF and signed SYS.
-& $inf2cat "/driver:$package" /os:6_3_ARM /uselocaltime
-if($LASTEXITCODE){throw 'Inf2Cat failed'}
-& $sign sign /fd SHA256 /s My /sha1 $CertificateThumbprint (Join-Path $package 'mt6630-runtime.cat')
-if($LASTEXITCODE){throw 'Catalog signing failed'}
+$work=Join-Path $out 'work'
+New-Item -ItemType Directory -Path $work | Out-Null
+$priorTemp=$env:TEMP;$priorTmp=$env:TMP;$priorRunner=$env:RUNNER_TEMP
+try {
+ $env:TEMP=$work;$env:TMP=$work;$env:RUNNER_TEMP=$work
+ # Fresh directory contains no old CAT. Catalog covers the new INF and signed SYS.
+ & $inf2cat "/driver:$package" /os:6_3_ARM /uselocaltime
+ if($LASTEXITCODE){throw 'Inf2Cat failed'}
+ & $sign sign /fd SHA256 /s My /sha1 $CertificateThumbprint (Join-Path $package 'mt6630-runtime.cat')
+ if($LASTEXITCODE){throw 'Catalog signing failed'}
+} finally {
+ $env:TEMP=$priorTemp;$env:TMP=$priorTmp;$env:RUNNER_TEMP=$priorRunner
+}
 if((Get-Sha256 (Join-Path $package 'mt6630-runtime.sys')) -ne $expectedSys){throw 'SYS changed during packaging'}
 Export-Certificate -Cert $cert -FilePath (Join-Path $out 'catalog-public.cer') | Out-Null
 $files=@(Get-ChildItem -LiteralPath $package -File | Sort-Object Name | ForEach-Object {
