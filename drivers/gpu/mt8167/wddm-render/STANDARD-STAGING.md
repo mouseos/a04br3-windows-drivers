@@ -50,3 +50,15 @@ WDK8.1にあるDXGK_SEGMENT_SET_SYSTEMMEMORY=0x80000000はheader自身がWDDM v2
 - https://learn.microsoft.com/windows-hardware/drivers/ddi/d3dkmddi/ns-d3dkmddi-_dxgk_allocationinfo
 - https://learn.microsoft.com/windows-hardware/drivers/ddi/d3dkmddi/ns-d3dkmddi-_dxgk_allocationinfoflags
 - https://learn.microsoft.com/windows-hardware/drivers/display/specifying-segments-when-creating-allocations
+
+## 統合ソースと実機状態
+
+`work/ge8300-staging-integrated-20261108`はUMD実resource traceのd653e495と、
+KMDの1a8c57e1/b27164a1、3.15 package helperを同じソースへ統合したbranch。
+実変更TUのbytesは各独立ビルド入力と同一と照合した。
+この統合checkoutをビルドしたartifactと、独立ビルドartifactを混同しない。
+
+実機run97では限定FL10開発構成の標準D3D11 CreateDevice/target/viewが成功し、
+staging texture生成はDXGI_ERROR_DEVICE_REMOVED、UMD ErrorCbはE_INVALIDARGだった。
+描画成功の証拠にはならない。今回の修正とtraceを組み合わせたrun99は実機検証中。
+一般FL10適合、任意アプリ、Present、電源遷移の完了を意味しない。
