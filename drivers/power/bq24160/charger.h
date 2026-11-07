@@ -18,7 +18,7 @@ struct a04_bq_owner {
     uint64_t handoff_deadline;
     uint64_t firmware_kicks;
     struct a04_bq_snapshot firmware_first, firmware_latest;
-    int handoff_pending;
+    int handoff_pending; /* 0 established, 1 firmware handoff, 2 cold diagnostic */
     unsigned attempts, kicks, fault_history;
     int stopped;
 };
@@ -43,6 +43,10 @@ int a04_bq_publish_handoff(uint8_t *out, unsigned size,
 int a04_bq_adopt_handoff(struct a04_bq_owner *owner, const uint8_t *record,
                          unsigned size, uint64_t now_ns,
                          uint64_t physical_counter, uint64_t frequency);
+/* Explicit diagnostic new-owner preparation. The caller must first establish
+ * exclusive hardware ownership, bounded scheduling and the meaning of the
+ * stopped firmware record. Does not perform I2C or claim a previous kick. */
+int a04_bq_prepare_cold_diagnostic(struct a04_bq_owner *,uint64_t now,uint64_t deadline);
 /* Offline comparison against independently bounded elapsed real time.  The
  * reference bounds must include sampling uncertainty and must not be derived
  * from the counter under test. This detects a mismatch in this interval only;

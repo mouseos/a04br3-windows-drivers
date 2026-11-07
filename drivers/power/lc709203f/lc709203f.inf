@@ -3,7 +3,7 @@ Signature="$WINDOWS NT$"
 Class=Battery
 ClassGuid={72631E54-78A4-11D0-BCF7-00AA00B7B32A}
 Provider=%Provider%
-DriverVer=11/04/2026,0.0.1.0
+DriverVer=11/07/2026,0.0.1.1
 CatalogFile=lc709203f.cat
 
 [Manufacturer]

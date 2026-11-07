@@ -39,7 +39,7 @@ enum a04_bq_result a04_bq_step(struct a04_bq_owner *o, const struct a04_bq_bus *
     /* Windows has no safe first-access path: even a read starts the BQ
      * watchdog. Require an adopted handoff before any bus callback. This is
      * an additional invariant, not evidence that adoption is authorized. */
-    if (!o->firmware_kicks || (!o->handoff_pending && !o->kicks)) {
+    if ((!o->firmware_kicks && o->handoff_pending!=2 && !o->kicks) || (!o->handoff_pending && !o->kicks)) {
         o->stopped = 1;
         return A04_BQ_STOPPED;
     }
@@ -81,6 +81,15 @@ enum a04_bq_result a04_bq_step(struct a04_bq_owner *o, const struct a04_bq_bus *
     }
     o->last_kick = kick_started; ++o->kicks; o->handoff_pending = 0;
     return A04_BQ_OK;
+}
+
+int a04_bq_prepare_cold_diagnostic(struct a04_bq_owner *o,uint64_t now,uint64_t deadline)
+{
+    if (!o || o->stopped || o->attempts || o->kicks || o->handoff_pending ||
+        o->firmware_kicks || !deadline || now>=deadline ||
+        deadline-now>10ULL*SECOND_NS) return -1;
+    o->handoff_pending=2;o->handoff_deadline=deadline;
+    return 0;
 }
 
 /* Format and validation derived from A04BR3ChargerHandoff.h, MIT.  This
