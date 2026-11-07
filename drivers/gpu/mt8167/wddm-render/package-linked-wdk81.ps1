@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Seal already-linked immutable artifacts. Does not install, reboot or access hardware.
-param([switch]$EnableCandidate,
+param([switch]$EnableCandidate,[switch]$PreserveSignedUmd,
  [Parameter(Mandatory=$true)][string]$LinkedDirectory,
  [Parameter(Mandatory=$true)][string]$LinkedManifestSha256,
  [Parameter(Mandatory=$true)][string]$Firmware,
@@ -38,8 +38,11 @@ try {
  foreach($name in @('ge8300-render.sys','ge8300-umd.dll')){Copy-Item (Join-Path $LinkedDirectory $name) $out}
  Copy-Item $Firmware (Join-Path $out 'ge8300-mips.fw')
  Copy-Item $manifestPath (Join-Path $out 'linked-manifest.json')
- $unsigned=@('ge8300-render.sys','ge8300-umd.dll')|ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}}
- foreach($name in @('ge8300-render.sys','ge8300-umd.dll')){
+ $inputNames=if($PreserveSignedUmd){@('ge8300-render.sys')}else{@('ge8300-render.sys','ge8300-umd.dll')}
+ $unsigned=$inputNames|ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}}
+ if($PreserveSignedUmd){$existing=Get-AuthenticodeSignature (Join-Path $out 'ge8300-umd.dll');if($existing.Status -ne 'Valid' -or $existing.SignerCertificate.Thumbprint -ne $CertificateThumbprint){throw 'Existing UMD signature rejected'}}
+ $imagesToSign=if($PreserveSignedUmd){@('ge8300-render.sys')}else{@('ge8300-render.sys','ge8300-umd.dll')}
+ foreach($name in $imagesToSign){
   & $sign sign /fd SHA256 /sha1 $CertificateThumbprint /s My @storeFlags (Join-Path $out $name)
   if($LASTEXITCODE){throw 'Image signing failed'}
  }
@@ -56,7 +59,7 @@ try {
   if($LASTEXITCODE){throw 'Final CAT membership verification failed'}
  }
  Export-Certificate -Cert $cert -FilePath (Join-Path $out 'mt8167-development.cer')|Out-Null
- @{package_source_commit=$commit;inf_driverver='11/07/2026,0.0.3.3';linked_manifest_sha256=$LinkedManifestSha256;
+ @{package_source_commit=$commit;inf_driverver='11/07/2026,0.0.3.4';umd_resigned=(!$PreserveSignedUmd);linked_manifest_sha256=$LinkedManifestSha256;
   source_runtime=$m;unsigned_images=$unsigned;signer_thumbprint=$CertificateThumbprint;signature_status='Valid';
   default_off=$true;installed=$false;runtime_verified=$false;wddm_conformance_qualified=$false;
   required_parent_commit=$m.required_parent_commit;required_acpi_commit=$m.required_acpi_commit;display_policy='MOU0007 CPU present; never concurrent KMDF GPU IRQ owner';
