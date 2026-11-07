@@ -1,8 +1,11 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "clear_engine.h"
 #include "memory.h"
+static int serial_after(uint32_t a,uint32_t b) {
+ uint32_t delta=a-b;return delta&&delta<0x80000000u;
+}
 int32_t geo_engine_init(struct geo_engine *e,const struct geo_owner_ops *o) {
- if(!e||!o||o->size!=sizeof(*o)||o->version!=1||o->reserved||
+ if(!e||!o||o->size!=sizeof(*o)||o->version!=GEO_OWNER_OPS_VERSION||o->reserved||
     (o->capabilities&GEO_OWNER_REQUIRED)!=GEO_OWNER_REQUIRED||!o->context||!o->create||!o->bind||
     !o->unbind||!o->destroy||!o->prepare||!o->discard_prepared||!o->submit)return GEO_UNSUPPORTED;
  memset(e,0,sizeof(*e));e->owner=*o;return GEO_OK;
@@ -18,11 +21,12 @@ int32_t geo_create(struct geo_engine *e,struct geo_allocation *a,const struct ge
  memset(a,0,sizeof(*a));a->desc=*d;a->surface=token;
  a->next=e->allocations;e->allocations=a;e->allocation_count++;return GEO_OK;
 }
-int32_t geo_bind(struct geo_engine *e,struct geo_allocation *a,void *mdl,uint32_t off,uint32_t bytes) {
+int32_t geo_bind(struct geo_engine *e,struct geo_allocation *a,void *mdl,uint32_t off,uint32_t bytes,uint64_t aperture_offset) {
  int32_t s;
+ if((aperture_offset&4095u)||aperture_offset>UINT64_MAX-(((uint64_t)bytes+4095u)&~UINT64_C(4095)))return GEO_INVALID;
  if(!e||!a||!a->surface||!mdl||a->bound||a->references||off>UINT32_MAX-bytes||bytes!=(uint64_t)a->desc.pitch*a->desc.height)return GEO_INVALID;
  if(e->poisoned||a->poisoned)return GEO_POISONED;
- s=e->owner.bind(e->owner.context,a->surface,mdl,off,bytes);
+ s=e->owner.bind(e->owner.context,a->surface,mdl,off,bytes,aperture_offset);
  if(s!=GEO_OK){a->poisoned=1;e->poisoned=1;return s;}
  a->bound=1;return GEO_OK;
 }
@@ -78,18 +82,62 @@ int32_t geo_cancel_prepared(struct geo_engine *e,const struct geo_dma_ticket *t)
  if(j->state!=1)return GEO_BUSY;
  s=e->owner.discard_prepared(e->owner.context,j->owner_job);
  if(s!=GEO_OK){j->allocation->poisoned=1;e->poisoned=1;return s;}
- j->allocation->references--;j->state=0;j->allocation=0;j->context=0;j->open_handle=0;j->owner_job=0;return GEO_OK;
+ j->allocation->references--;j->retired_generation=j->generation;j->state=0;j->allocation=0;j->context=0;j->open_handle=0;j->owner_job=0;return GEO_OK;
+}
+static int active(const struct geo_engine *e) {
+ uint32_t i;for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state==2)return 1;return 0;
+}
+static void publish_next(struct geo_engine *e) {
+ uint32_t i;struct geo_job *next=0;int32_t status;
+ if(e->poisoned||e->preempt_pending||active(e))return;
+ for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state==5&&(!next||serial_after(next->fence,e->jobs[i].fence)))next=&e->jobs[i];
+ if(!next)return;
+ status=e->owner.submit(e->owner.context,next->owner_job,next->fence,next->generation);
+ if(status!=GEO_OK){next->state=3;next->allocation->poisoned=1;e->poisoned=1;return;}
+ next->state=2;
 }
 int32_t geo_submit(struct geo_engine *e,const struct geo_dma_ticket *t,uint32_t fence) {
- struct geo_job *j=job(e,t);int32_t s;
+ struct geo_job *j=job(e,t);
  if(!j)return GEO_NOT_FOUND;
  if(e->poisoned)return GEO_POISONED;
  if(j->state!=1)return GEO_BUSY;
- /* One scheduler engine: no wrap/reset until a real reset/quiescence contract exists. */
- if(e->submitted_ever&&fence<=e->last_submitted)return GEO_INVALID;
- s=e->owner.submit(e->owner.context,j->owner_job,fence,j->generation);
- if(s!=GEO_OK){j->allocation->poisoned=1;j->state=3;e->poisoned=1;return s;}
- j->state=2;j->fence=fence;e->last_submitted=fence;e->submitted_ever=1;return GEO_OK;
+ if(e->submitted_ever&&!serial_after(fence,e->last_submitted))return GEO_INVALID;
+ /* Render already reserved a real prepared job and all resources. Accept
+  * into this bounded owned FIFO, publish at most ONE native DMA pair. */
+ j->state=5;j->fence=fence;e->last_submitted=fence;e->submitted_ever=1;
+ publish_next(e);return e->poisoned?GEO_POISONED:GEO_OK;
+}
+int32_t geo_request_preempt(struct geo_engine *e,uint32_t fence) {
+ if(!e)return GEO_INVALID;
+ if(e->preempt_pending)return e->preempt_fence==fence?GEO_OK:GEO_BUSY;
+ e->preempt_pending=1;e->preempt_fence=fence;
+ /* A poisoned owner cannot supply even an idle proof; keep request pending
+  * for real completion or OS TDR. Never manufacture DMA_PREEMPTED. */
+ if(!e->poisoned&&!active(e))e->preempt_ready=1;
+ return GEO_OK;
+}
+int32_t geo_take_preemption(struct geo_engine *e,uint32_t *fence,uint32_t *last) {
+ uint32_t i;
+ if(!e||!fence||!last)return GEO_INVALID;
+ if(e->poisoned||!e->preempt_pending||!e->preempt_ready||active(e))return GEO_NOT_READY;
+ /* These packets were accepted into software but NEVER hardware-published.
+  * Retain tokens/pages for scheduler resubmit with a new nonpaging fence. */
+ for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state==5){e->jobs[i].state=1;e->jobs[i].fence=0;}
+ *fence=e->preempt_fence;*last=e->completed_ever?e->last_completed:0;
+ e->preempt_pending=0;e->preempt_ready=0;return GEO_OK;
+}
+int32_t geo_cancel_begin(struct geo_engine *e,const struct geo_dma_ticket *t,uint64_t *token) {
+ struct geo_job *j=job(e,t);
+ if(!j||!token)return GEO_NOT_FOUND;
+ if(e->poisoned)return GEO_POISONED;
+ if(j->state!=1)return GEO_BUSY;
+ j->state=6;*token=j->owner_job;return GEO_OK;
+}
+int32_t geo_cancel_finish(struct geo_engine *e,const struct geo_dma_ticket *t,int32_t status) {
+ struct geo_job *j=job(e,t);
+ if(!j||j->state!=6)return GEO_NOT_FOUND;
+ if(status!=GEO_OK){j->state=3;j->allocation->poisoned=1;e->poisoned=1;return status;}
+ j->allocation->references--;j->retired_generation=j->generation;j->state=0;j->allocation=0;j->context=0;j->open_handle=0;j->owner_job=0;return GEO_OK;
 }
 int32_t geo_complete(struct geo_engine *e,uint64_t token,uint32_t generation,int32_t status,uint32_t visibility,uint32_t *fence) {
  uint32_t i;struct geo_job *j;
@@ -102,11 +150,13 @@ int32_t geo_complete(struct geo_engine *e,uint64_t token,uint32_t generation,int
   j->state=3;j->allocation->poisoned=1;e->poisoned=1;return status!=GEO_OK?status:GEO_POISONED;
  }
  /* Never advance past an earlier outstanding scheduler fence. */
- for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state==2&&e->jobs[i].fence<j->fence) {
+ for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state==2&&serial_after(j->fence,e->jobs[i].fence)) {
   j->allocation->poisoned=1;j->state=3;e->poisoned=1;return GEO_POISONED;
  }
  *fence=j->fence;e->last_completed=j->fence;e->completed_ever=1;
- j->allocation->references--;j->state=0;j->allocation=0;j->context=0;j->open_handle=0;j->owner_job=0;return GEO_OK;
+ j->allocation->references--;j->retired_generation=j->generation;j->state=0;j->allocation=0;j->context=0;j->open_handle=0;j->owner_job=0;
+ if(e->preempt_pending)e->preempt_ready=1;else publish_next(e);
+ return GEO_OK;
 }
 
 int32_t geo_retire_after_owner_drain(struct geo_engine *e) {
@@ -119,11 +169,12 @@ int32_t geo_retire_after_owner_drain(struct geo_engine *e) {
   if(a->references!=count){e->poisoned=1;return GEO_POISONED;}
  }
  for(i=0;i<GEO_MAX_JOBS;i++) {
+  if(e->jobs[i].state)e->jobs[i].retired_generation=e->jobs[i].generation;
   e->jobs[i].state=0;e->jobs[i].owner_job=0;e->jobs[i].allocation=0;e->jobs[i].context=0;e->jobs[i].open_handle=0;
   /* Keep generation: a delayed old token must never match a new job. */
  }
  for(a=e->allocations;a;a=a->next){a->references=0;a->poisoned=0;}
- e->poisoned=0;
+ e->poisoned=0;e->preempt_pending=0;e->preempt_ready=0;
  /* last_completed is unchanged: aborted jobs are NOT completed fences. */
  return GEO_OK;
 }

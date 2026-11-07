@@ -18,6 +18,7 @@ struct geo_umd_device {
  struct geo_umd_device *next;
  UINT initialized;
  D3DDDI_DEVICECALLBACKS cb;
+ PFND3DDDI_FLUSH frontend_flush;
  void *commands;UINT command_bytes;
  D3DDDI_ALLOCATIONLIST *allocations;UINT allocation_count;
  D3DDDI_PATCHLOCATIONLIST *patches;UINT patch_count;

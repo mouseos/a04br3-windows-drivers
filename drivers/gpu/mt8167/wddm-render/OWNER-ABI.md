@@ -17,7 +17,7 @@
 | restart/set_power | PASSIVE | 実D0/IRQ再開、または証明済みdrain後の実D3。metadata flagだけをpower成功にしない |
 | release | PASSIVE | surface/binding/job/callbackが全てなく、leaseを実返却できたときのみ成功。失敗ならinterface/lease/MDLを保持 |
 
-opsは既存v1 `geo_owner_ops`をleaseごとに返す。`acquire`が成功しても返却値不正ならcookieを失わずpinし、無根拠にreleaseしない。失敗したbind/submit/reset/powerはpoisonを維持する。quiesce/reset proofのepoch/flagsが不足したらsidecarは再開・解放を拒否する。
+opsはv2 `geo_owner_ops`をleaseごとに返す。`acquire`が成功しても返却値不正ならcookieを失わずpinし、無根拠にreleaseしない。失敗したbind/submit/reset/powerはpoisonを維持する。quiesce/reset proofのepoch/flagsが不足したらsidecarは再開・解放を拒否する。
 
 ## IRQについて決定が必要な点
 
@@ -37,12 +37,28 @@ CPU可視性の成立にPASSIVEのSLC/FW処理が必須なら、interrupt_event�
 
 native factoryに渡すのは実PDO、StartDeviceのDXGKRNL_INTERFACE、DxgkCbGetDeviceInformationが返す実資源。factoryはIRQを接続せず、acquire後もsourceをmaskしたまま、sidecar通知初期化後のrestartで有効化する。削除は実lease解放後のみ、失敗ならbase owner contextを保持する。GeoNativeOwnerCreate/Deleteは現時点でnative担当が実装する未解決symbolで、fallback定義はない。
 
-sidecar側はDriverEntry/Start/Stop/Remove/ISR/DPC/power/TDRと、実runtime contextを使うUMD初期化を追加した。残るgeo_ge8300_render_contractは**このWindows frontend担当が埋める**mandatory render DDI/caps/segment/preemption契約で、native担当へWindows caps偽装を依頼するものではない。geo_ge8300_frontendも必須shader/format/stateが実装できるまで定義しない。いずれも未解決symbolを残して最終linkを拒否し、空の表や成功stubで代替しない。
+sidecar側はDriverEntry/Start/Stop/Remove/ISR/DPC/power/TDRと、実runtime contextを使うUMD初期化を追加した。残るgeo_ge8300_render_contractは**このWindows frontend担当が埋める**mandatory render DDI/caps/segment/preemption契約で、native担当へWindows caps偽装を依頼するものではない。geo_ge8300_frontendも必須shader/format/stateが実装できるまで定義しない。当初の未解決render contractは今回sidecarで定義した。実frontendは引き続き未解決で、空の表や成功stubで代替しない。
 
 ## f62bc96との照合後の接続差分
 
-E固定source f62bc96525f4acbe9c4c8afa9d622fe1969ea7acのnative_owner_mdl/irqを読み取った。native_owner_mdl_bindはoffset0・全MDL・page-aligned extent・bytecount完全一致を要求するため、sidecar MapApertureもMdlOffset0/ByteOffset0/丸めextent完全一致へ制限した。v1 bind callbackのbytesは有効画像bytes、native glueはROUND_TO_PAGES(bytes)をE APIへ渡す。800×600ならactive 1,920,000byte、full mapping 1,921,024byte（469pages）。勝手に別PFN・別private outputへ置換しない。
+E固定source f62bc96525f4acbe9c4c8afa9d622fe1969ea7acのnative_owner_mdl/irqを読み取った。native_owner_mdl_bindはoffset0・全MDL・page-aligned extent・bytecount完全一致を要求するため、sidecar MapApertureもMdlOffset0/ByteOffset0/丸めextent完全一致へ制限した。ops v2 bind callbackのbytesは有効画像bytes、native glueはROUND_TO_PAGES(bytes)をE APIへ渡す。800×600ならactive 1,920,000byte、full mapping 1,921,024byte（469pages）。勝手に別PFN・別private outputへ置換しない。
 
 IRQ receiptはcompletionではない。control_v2のinterrupt_eventにSTATUS_PENDING＝実sourceをclaim/mask済み・完了なしを追加し、service(cookie,epoch)を追加した。pendingではinitialized event/current epoch/job0/visibility0を返す。sidecarは実DPCからoperations rundown参照を取得してIoWorkItemのPASSIVE serviceへ渡す。queued workerも参照を保持し、stop/reset/powerは実rundown待ちする。service成功をGeoCompleteFromInterruptへ変換しない。後続の実HW IRQでだけGPU_DONE＋CPU_VISIBLEを配信する。v2はまだ実provider binaryへ公開しておらず、sizeofによる版固定を要求する。
 
 E coreの共有header/APIは手作業で再定義せず、factory private TUでそのままincludeする。現E coreは低水準MDL/SGと実IRQ mask/ack/rearmであり、同じMDLへのClear factory、任意色/寸法、GP/SLC/cache後の実IRQ完了、quiesce/reset proofはまだ未接続。GEO_OWNER_REQUIRED/GEO_PROOF_REQUIREDを先に満たしたことにしない。現在はcombined module compileの段階で、標準D3D実機用combined SYSの最終link段階ではない。
+
+## apertureとops版の更新
+
+現factory出力は`geo_native_binding.version=2`。新`aperture.h`のGPU VA base/bytes/commit limit/highest DMA addressを実native ownerから返す。値を推測して埋めない。sidecarはPAGE_SIZE整列、ARM32 extent、範囲overflow、重複mapを検査し、VidMm指定のGPU aperture offsetをbindの末尾引数でnativeへ渡す。`geo_owner_ops.version=GEO_OWNER_OPS_VERSION(2)`を必須化した。旧v1 bind署名は拒否する。controlのInterface.Versionは2のまま、sizeとservice callbackも厳密照合する。
+
+新bind署名: `bind(context,surface,locked_mdl,mdl_byte_offset,active_bytes,aperture_byte_offset)`。MDL offset0/full rounded extent、destinationは実GPU baseに相対。nativeはこの指定範囲へ同じPFNをredirectする。任意の別GPU VAにmapしてVidMm segment addressを無視しない。
+
+`QueryAdapterInfo`は実apertureを元にQUERYSEGMENT/QUERYSEGMENT3と、公開adapter_info.h形式のmemory/protocol snapshotを返す。CpuVisible/CacheCoherentのsegment flagは立てず、CPUはVidMmのcached backing storeをLockで使う。allocation側Cached/CpuVisible/SynchronousPagingはMicrosoftのbacking-store/実fence待ち契約に基づく。SLC/GP完了と元MDL cache処理は引き続きnativeの実責務。GeoBuildRequiredDriverCapsと実PreemptCommandはWindows frontend側で実装済み。実frontend/shader/capsは未接続で、native factoryへWindows caps偽装を求めない。
+
+## 結合時の固定確認
+
+- `owner_abi.h`: `GEO_OWNER_OPS_VERSION=2`。bind末尾の64bit aperture offset追加を古い関数pointer castで回避しない。
+- `native_binding.h`: factory出力version=2。`aperture.h`の実reserved GPU window/commit/highest DMA addressを返す。
+- `owner_control.h`: Interface.Version=2、厳密Size、STATUS_PENDING receiptとPASSIVE serviceを含む。service成功はDMA完了ではない。
+- 1 native DMA pairずつpublishする。未publish jobはowner tokenを保持し、preempt後の新nonpaging fenceで再submit、またはPASSIVE discardする。実completed/cancel/drain済みgenerationのみretire。quiesceは未publish tokenも失効させる。
+- `umd/bootstrap.h`の`geo_ge8300_frontend`は別の実shader/state/format実装。factory完成やkernel link成功だけでFL9_1を広告しない。

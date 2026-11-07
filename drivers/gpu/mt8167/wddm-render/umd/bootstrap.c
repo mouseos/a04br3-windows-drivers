@@ -72,7 +72,7 @@ static HRESULT APIENTRY create_device(HANDLE handle,D3DDDIARG_CREATEDEVICE *p) {
   if(d->initialized)a->frontend->destroy_device(d);
   HeapFree(GetProcessHeap(),0,d);return hr;
  }
- geo_umd_install_clear_ddis(&funcs);funcs.pfnDestroyDevice=destroy_device;
+ d->frontend_flush=funcs.pfnFlush;geo_umd_install_clear_ddis(&funcs);funcs.pfnDestroyDevice=destroy_device;
  d->next=a->devices;a->devices=d;
  *p->pDeviceFuncs=funcs;p->hDevice=d;
  p->pCommandBuffer=context.pCommandBuffer;p->CommandBufferSize=context.CommandBufferSize;

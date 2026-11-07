@@ -86,7 +86,7 @@ NTSTATUS APIENTRY GeoDescribeAllocation(HANDLE handle,DXGKARG_DESCRIBEALLOCATION
  done:GeoSessionLeave(a,2);return status;
 }
 NTSTATUS APIENTRY GeoGetStandardAllocationDriverData(HANDLE handle,DXGKARG_GETSTANDARDALLOCATIONDRIVERDATA *p) {
- struct geo_kmd_adapter *a=handle;struct geo_surface_desc d;NTSTATUS status=STATUS_SUCCESS;UINT capacity;
+ struct geo_kmd_adapter *a=handle;struct geo_surface_desc d;NTSTATUS status=STATUS_SUCCESS;
  if(!p)return STATUS_INVALID_PARAMETER;
  /* No primary/GDI/present path on this render-only adapter. The standard
   * staging format is X8R8G8B8, which this A8R8G8B8-only candidate cannot claim.
@@ -99,10 +99,9 @@ NTSTATUS APIENTRY GeoGetStandardAllocationDriverData(HANDLE handle,DXGKARG_GETST
  if(d.width>1024){status=STATUS_NOT_SUPPORTED;goto done;}
  d.pitch=d.width*4;d.format=GEO_FORMAT_A8R8G8B8;d.usage=GEO_USAGE_STAGING;
  if(!geo_desc_valid(&d)){status=STATUS_NOT_SUPPORTED;goto done;}
- capacity=p->AllocationPrivateDriverDataSize;p->AllocationPrivateDriverDataSize=sizeof(d);p->ResourcePrivateDriverDataSize=0;
+ p->AllocationPrivateDriverDataSize=sizeof(d);p->ResourcePrivateDriverDataSize=0;
  p->pCreateShadowSurfaceData->Pitch=d.pitch;
  if(p->pAllocationPrivateDriverData) {
-  if(capacity<sizeof(d)){status=STATUS_BUFFER_TOO_SMALL;goto done;}
   RtlCopyMemory(p->pAllocationPrivateDriverData,&d,sizeof(d));
  }
  done:GeoSessionLeave(a,1);return status;

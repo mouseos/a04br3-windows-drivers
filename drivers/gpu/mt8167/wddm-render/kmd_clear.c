@@ -3,6 +3,7 @@
 #include "capture.h"
 #include "lifecycle.h"
 #include "kmd_objects.h"
+#include "ticket_io.h"
 static int ticket_range(UINT size,UINT begin,UINT end) {
  return begin<=size&&end>=begin&&end-begin==sizeof(struct geo_dma_ticket)&&end<=size;
 }
@@ -11,14 +12,14 @@ static NTSTATUS GeoCreateAllocationImpl(HANDLE adapter,DXGKARG_CREATEALLOCATION 
  if(!a||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL||p->NumAllocations!=1||!p->pAllocationInfo||p->PrivateDriverDataSize)return STATUS_INVALID_PARAMETER;
  info=p->pAllocationInfo;
  if(info->PrivateDriverDataSize!=sizeof(desc)||!info->pPrivateDriverData)return STATUS_INVALID_PARAMETER;
- RtlCopyMemory(&desc,info->pPrivateDriverData,sizeof(desc));if(!geo_desc_valid(&desc))return STATUS_NOT_SUPPORTED;
+ RtlCopyMemory(&desc,info->pPrivateDriverData,sizeof(desc));if(!a->aperture_ready||!geo_desc_valid(&desc)||ROUND_TO_PAGES(desc.pitch*desc.height)>a->aperture.commit_limit)return STATUS_NOT_SUPPORTED;
  allocation=ExAllocatePoolWithTag(NonPagedPool,sizeof(*allocation),'rOeG');if(!allocation)return STATUS_INSUFFICIENT_RESOURCES;
  RtlZeroMemory(allocation,sizeof(*allocation));s=geo_create(&a->engine,allocation,&desc);
  if(s!=STATUS_SUCCESS){ExFreePoolWithTag(allocation,'rOeG');return s;}
  info->hAllocation=allocation;info->Alignment=PAGE_SIZE;info->Size=ROUND_TO_PAGES(desc.pitch*desc.height);
  info->PitchAlignedSize=info->Size;info->PreferredSegment.Value=0;info->PreferredSegment.SegmentId0=1;
  info->SupportedReadSegmentSet=1;info->SupportedWriteSegmentSet=1;info->EvictionSegmentSet=0;
- info->Flags.Value=0;info->Flags.CpuVisible=1;info->Flags.Cached=1;
+ info->Flags.Value=0;info->Flags.CpuVisible=1;info->Flags.Cached=1;info->Flags.SynchronousPaging=1;
  info->AllocationPriority=D3DDDI_ALLOCATIONPRIORITY_NORMAL;return STATUS_SUCCESS;
 }
 static NTSTATUS GeoDestroyAllocationImpl(HANDLE adapter,const DXGKARG_DESTROYALLOCATION *p) {
@@ -29,7 +30,7 @@ static NTSTATUS GeoDestroyAllocationImpl(HANDLE adapter,const DXGKARG_DESTROYALL
  ExFreePoolWithTag(allocation,'rOeG');return STATUS_SUCCESS;
 }
 static NTSTATUS GeoBuildPagingBufferImpl(HANDLE adapter,DXGKARG_BUILDPAGINGBUFFER *p) {
- struct geo_kmd_adapter *a=adapter;struct geo_allocation *allocation;uint32_t bytes;NTSTATUS status;
+ struct geo_kmd_adapter *a=adapter;struct geo_allocation *allocation,*scan;uint32_t bytes;uint64_t begin,extent,other;NTSTATUS status;
  if(!a||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  if(p->Operation==DXGK_OPERATION_MAP_APERTURE_SEGMENT) {
   allocation=p->MapApertureSegment.hAllocation;
@@ -37,10 +38,17 @@ static NTSTATUS GeoBuildPagingBufferImpl(HANDLE adapter,DXGKARG_BUILDPAGINGBUFFE
      !p->MapApertureSegment.pMdl||MmGetMdlByteOffset(p->MapApertureSegment.pMdl)||p->MapApertureSegment.MdlOffset)return STATUS_NOT_SUPPORTED;
   bytes=allocation->desc.pitch*allocation->desc.height;
   if(p->MapApertureSegment.NumberOfPages!=BYTES_TO_PAGES(bytes))return STATUS_NOT_SUPPORTED;
+  if(!a->aperture_ready)return STATUS_DEVICE_NOT_READY;
+  begin=(uint64_t)p->MapApertureSegment.OffsetInPages*PAGE_SIZE;extent=ROUND_TO_PAGES(bytes);
+  if(begin>a->aperture.bytes||extent>a->aperture.bytes-begin)return STATUS_INVALID_PARAMETER;
+  for(scan=a->engine.allocations;scan;scan=scan->next)if(scan->bound) {
+   other=scan->aperture_offset*PAGE_SIZE;
+   if(begin<other+(uint64_t)scan->aperture_pages*PAGE_SIZE&&other<begin+extent)return STATUS_DEVICE_BUSY;
+  }
   /* Microsoft DDI defines MdlOffset in PAGES, not bytes. The provider must
    * retain this actual MDL/PFN backing and perform real CPU/GPU maintenance. */
   if(ROUND_TO_PAGES(bytes)!=MmGetMdlByteCount(p->MapApertureSegment.pMdl))return STATUS_INVALID_PARAMETER;
-  status=geo_bind(&a->engine,allocation,p->MapApertureSegment.pMdl,p->MapApertureSegment.MdlOffset*PAGE_SIZE,bytes);
+  status=geo_bind(&a->engine,allocation,p->MapApertureSegment.pMdl,p->MapApertureSegment.MdlOffset*PAGE_SIZE,bytes,(uint64_t)p->MapApertureSegment.OffsetInPages*PAGE_SIZE);
   if(status==STATUS_SUCCESS){allocation->aperture_offset=p->MapApertureSegment.OffsetInPages;allocation->aperture_pages=(uint32_t)p->MapApertureSegment.NumberOfPages;}
   return status;
  }
@@ -67,7 +75,7 @@ static NTSTATUS GeoRenderImpl(HANDLE context,DXGKARG_RENDER *r) {
  struct geo_allocation *a;NTSTATUS capture_status;
  if(!c||!c->adapter||!c->adapter->notifications_ready||!c->adapter->synchronize||!r||KeGetCurrentIrql()!=PASSIVE_LEVEL||!r->pCommand||r->CommandLength!=sizeof(p)||
     r->DmaBufferSegmentId||r->MultipassOffset||r->AllocationListSize!=1||!r->pAllocationList||r->PatchLocationListInSize||!r->pPatchLocationListOut||r->PatchLocationListOutSize<1||
-    !r->pDmaBuffer||r->DmaSize<sizeof(t)||!r->pDmaBufferPrivateData||r->DmaBufferPrivateDataSize<sizeof(t))return STATUS_INVALID_PARAMETER;
+    !r->pDmaBuffer||((ULONG_PTR)r->pDmaBuffer&3)||r->DmaSize<sizeof(t)||!r->pDmaBufferPrivateData||((ULONG_PTR)r->pDmaBufferPrivateData&3)||r->DmaBufferPrivateDataSize<sizeof(t))return STATUS_INVALID_PARAMETER;
  capture_status=GeoCaptureClearPacket(&p,r->pCommand);
  if(capture_status!=STATUS_SUCCESS)return capture_status;
  if(!geo_packet_valid(&p,1)||!r->pAllocationList[0].WriteOperation)return STATUS_INVALID_PARAMETER;
@@ -81,7 +89,7 @@ static NTSTATUS GeoRenderImpl(HANDLE context,DXGKARG_RENDER *r) {
  call.status=c->adapter->engine.owner.prepare(c->adapter->engine.owner.context,a->surface,p.color,&call.token);
  if(!c->adapter->synchronize(c->adapter->sync_context,finish_prepare,&call))return STATUS_DEVICE_NOT_READY;
  if(call.status!=STATUS_SUCCESS)return call.status;t=call.ticket;
- RtlCopyMemory(r->pDmaBuffer,&t,sizeof(t));RtlCopyMemory(r->pDmaBufferPrivateData,&t,sizeof(t));
+ if(GeoWriteTicket(r->pDmaBuffer,&t)!=STATUS_SUCCESS||GeoWriteTicket(r->pDmaBufferPrivateData,&t)!=STATUS_SUCCESS)return STATUS_INVALID_PARAMETER;
  r->pDmaBuffer=(UCHAR *)r->pDmaBuffer+sizeof(t);
  r->pDmaBufferPrivateData=(UCHAR *)r->pDmaBufferPrivateData+sizeof(t);
  /* Semantic residency reference. No physical address is stored in a ticket,
@@ -101,7 +109,7 @@ static BOOLEAN inspect_prepared(void *arg) {
  return TRUE;
 }
 static NTSTATUS GeoPatchImpl(HANDLE adapter,const DXGKARG_PATCH *p) {
- struct geo_dma_ticket t;struct geo_kmd_adapter *a=adapter;struct inspect_ticket inspect;
+ struct geo_dma_ticket t,private_ticket;struct geo_kmd_adapter *a=adapter;struct inspect_ticket inspect;
  const D3DDDI_PATCHLOCATIONLIST *location;
  if(!p||!p->hContext||!a||!a->synchronize||p->EngineOrdinal||p->DmaBufferSegmentId||p->Flags.Value||p->PatchLocationListSubmissionLength!=1||!p->pPatchLocationList||
     p->PatchLocationListSubmissionStart>=p->PatchLocationListSize||p->AllocationListSize!=1||!p->pAllocationList||
@@ -110,9 +118,10 @@ static NTSTATUS GeoPatchImpl(HANDLE adapter,const DXGKARG_PATCH *p) {
     !ticket_range(p->DmaBufferPrivateDataSize,p->DmaBufferPrivateDataSubmissionStartOffset,p->DmaBufferPrivateDataSubmissionEndOffset))return STATUS_NOT_SUPPORTED;
  location=&p->pPatchLocationList[p->PatchLocationListSubmissionStart];
  if(location->AllocationIndex||location->Value||location->DriverId!=GEO_CLEAR_MAGIC||location->AllocationOffset||location->PatchOffset||location->SplitOffset)return STATUS_INVALID_PARAMETER;
- RtlCopyMemory(&t,(UCHAR *)p->pDmaBuffer+p->DmaBufferSubmissionStartOffset,sizeof(t));
+ if(GeoReadTicket((UCHAR *)p->pDmaBuffer+p->DmaBufferSubmissionStartOffset,&t)!=STATUS_SUCCESS||
+    GeoReadTicket((UCHAR *)p->pDmaBufferPrivateData+p->DmaBufferPrivateDataSubmissionStartOffset,&private_ticket)!=STATUS_SUCCESS)return STATUS_INVALID_PARAMETER;
  if(t.magic!=GEO_TICKET_MAGIC||t.reserved||t.slot>=GEO_MAX_JOBS||
-    RtlCompareMemory(&t,(UCHAR *)p->pDmaBufferPrivateData+p->DmaBufferPrivateDataSubmissionStartOffset,sizeof(t))!=sizeof(t))return STATUS_INVALID_PARAMETER;
+    (t.magic!=private_ticket.magic||t.slot!=private_ticket.slot||t.generation!=private_ticket.generation||t.reserved!=private_ticket.reserved))return STATUS_INVALID_PARAMETER;
  /* No address is patched, but the exact generation/context/allocation
   * reference must still match the prepared job whose MDL is retained. */
  if(!p->pAllocationList[0].WriteOperation)return STATUS_INVALID_PARAMETER;
@@ -133,7 +142,7 @@ static NTSTATUS GeoSubmitCommandImpl(HANDLE adapter,const DXGKARG_SUBMITCOMMAND 
  if(!a||!a->notifications_ready||!a->synchronize||!p||KeGetCurrentIrql()>DISPATCH_LEVEL||p->EngineOrdinal||p->NodeOrdinal||p->DmaBufferSegmentId||
     p->Flags.Value||!p->pDmaBufferPrivateData||
     !ticket_range(p->DmaBufferPrivateDataSize,p->DmaBufferPrivateDataSubmissionStartOffset,p->DmaBufferPrivateDataSubmissionEndOffset))return STATUS_NOT_SUPPORTED;
- RtlCopyMemory(&t,(UCHAR *)p->pDmaBufferPrivateData+p->DmaBufferPrivateDataSubmissionStartOffset,sizeof(t));
+ if(GeoReadTicket((UCHAR *)p->pDmaBufferPrivateData+p->DmaBufferPrivateDataSubmissionStartOffset,&t)!=STATUS_SUCCESS)return STATUS_INVALID_PARAMETER;
  RtlZeroMemory(&call,sizeof(call));call.adapter=a;call.ticket=t;call.fence=p->SubmissionFenceId;call.context=p->hContext;
  if(!a->synchronize(a->sync_context,submit_locked,&call))return STATUS_DEVICE_NOT_READY;
  return call.status;
@@ -176,7 +185,7 @@ NTSTATUS GeoCompleteFromInterrupt(struct geo_kmd_adapter *a,uint64_t token,uint3
  InterlockedExchange(&a->dpc_pending,1);
  /* QueueDpc may return FALSE when a DPC is already queued. The registered
   * DPC wrapper must always call GeoClearDpc; no timer substitutes for it. */
- a->queue_dpc(a->dxgk_device);return STATUS_SUCCESS;
+ a->queue_dpc(a->dxgk_device);GeoNotifyReadyPreemption(a);return STATUS_SUCCESS;
 }
 void GeoClearDpc(struct geo_kmd_adapter *a) {
  if(!a||!a->notifications_ready||KeGetCurrentIrql()!=DISPATCH_LEVEL)return;

@@ -14,7 +14,7 @@ struct geo_job {
  struct geo_allocation *allocation;
  void *context,*open_handle;
  uint64_t owner_job;
- uint32_t generation,state,fence;
+ uint32_t generation,state,fence,retired_generation;
 };
 struct geo_engine {
  struct geo_owner_ops owner;
@@ -22,6 +22,7 @@ struct geo_engine {
  uint32_t allocation_count;
  struct geo_job jobs[GEO_MAX_JOBS];
  uint32_t poisoned,submitted_ever,last_submitted,completed_ever,last_completed;
+ uint32_t preempt_pending,preempt_fence,preempt_ready;
 };
 /* External serialization is mandatory. PASSIVE calls use an owner rundown;
  * submit/completion use the same interrupt-synchronized nonpaged state.
@@ -32,11 +33,15 @@ extern "C" {
 #endif
 int32_t geo_engine_init(struct geo_engine *,const struct geo_owner_ops *);
 int32_t geo_create(struct geo_engine *,struct geo_allocation *,const struct geo_surface_desc *);
-int32_t geo_bind(struct geo_engine *,struct geo_allocation *,void *mdl,uint32_t offset,uint32_t bytes);
+int32_t geo_bind(struct geo_engine *,struct geo_allocation *,void *mdl,uint32_t offset,uint32_t bytes,uint64_t aperture_offset);
 int32_t geo_unbind(struct geo_engine *,struct geo_allocation *);
 int32_t geo_destroy(struct geo_engine *,struct geo_allocation *);
 int32_t geo_prepare_begin(struct geo_engine *,struct geo_allocation *,const struct geo_clear_packet *,struct geo_dma_ticket *);
 int32_t geo_prepare_finish(struct geo_engine *,const struct geo_dma_ticket *,int32_t status,uint64_t owner_job);
+int32_t geo_cancel_begin(struct geo_engine *,const struct geo_dma_ticket *,uint64_t *owner_job);
+int32_t geo_cancel_finish(struct geo_engine *,const struct geo_dma_ticket *,int32_t status);
+int32_t geo_request_preempt(struct geo_engine *,uint32_t fence);
+int32_t geo_take_preemption(struct geo_engine *,uint32_t *preempt_fence,uint32_t *last_completed);
 int32_t geo_cancel_prepared(struct geo_engine *,const struct geo_dma_ticket *);
 int32_t geo_submit(struct geo_engine *,const struct geo_dma_ticket *,uint32_t fence);
 /* Only after actual owner drain/reset proof; never reports aborted work complete. */

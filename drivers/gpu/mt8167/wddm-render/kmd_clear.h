@@ -7,7 +7,7 @@
 #include <ntddk.h>
 #include <dispmprt.h>
 #include "clear_engine.h"
-#include "owner_interface.h"
+#include "aperture.h"
 /* These are DDI implementation modules, not a DriverEntry that registers an
  * incomplete WDDM adapter. The full miniport owns synchronization/rundown,
  * querycaps, paging and real DIRQL ISR/DPC routing. */
@@ -17,6 +17,8 @@ struct geo_kmd_adapter {
  struct geo_owner_session *session;
  struct geo_kmd_device *devices;
  UINT device_count;
+ struct geo_aperture_config aperture;
+ UINT aperture_ready;
  DXGKCB_GETHANDLEDATA get_handle_data;
  struct geo_engine engine;
  /* Must use the provider's real interrupt synchronization object. No manual
@@ -47,4 +49,7 @@ DXGKDDI_RENDER GeoRender;
 DXGKDDI_PATCH GeoPatch;
 DXGKDDI_SUBMITCOMMAND GeoSubmitCommand;
 DXGKDDI_QUERYCURRENTFENCE GeoQueryCurrentFence;
+DXGKDDI_PREEMPTCOMMAND GeoPreemptCommand;
+DXGKDDI_CANCELCOMMAND GeoCancelCommand;
+void GeoNotifyReadyPreemption(struct geo_kmd_adapter *);
 #endif

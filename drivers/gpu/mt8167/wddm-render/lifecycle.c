@@ -3,14 +3,14 @@
 static LONG state(struct geo_owner_session *s){return InterlockedCompareExchange(&s->state,0,0);}
 static void set_state(struct geo_owner_session *s,LONG value){InterlockedExchange(&s->state,value);}
 static BOOLEAN allowed(struct geo_owner_session *s,UINT mode) {
- LONG value=state(s);return value==GEO_SESSION_ACTIVE||(mode==2&&value==GEO_SESSION_HALTED);
+ LONG value=state(s);return value==GEO_SESSION_ACTIVE||(mode==2&&value==GEO_SESSION_HALTED)||(mode==3&&value==GEO_SESSION_FAILED);
 }
 BOOLEAN GeoSessionEnter(struct geo_kmd_adapter *a,UINT mode) {
- struct geo_owner_session *s;
- if(!a||!(s=a->session)||mode>2||KeGetCurrentIrql()>(mode?PASSIVE_LEVEL:DISPATCH_LEVEL))return FALSE;
+ struct geo_owner_session *s;UINT passive=mode==1||mode==2;
+ if(!a||!(s=a->session)||mode>3||KeGetCurrentIrql()>(passive?PASSIVE_LEVEL:DISPATCH_LEVEL))return FALSE;
  if(!ExAcquireRundownProtection(&s->operations))return FALSE;
  if(!allowed(s,mode)){ExReleaseRundownProtection(&s->operations);return FALSE;}
- if(mode) {
+ if(passive) {
   KeWaitForSingleObject(&s->passive_lock,Executive,KernelMode,FALSE,NULL);
   if(!allowed(s,mode)){KeReleaseMutex(&s->passive_lock,FALSE);ExReleaseRundownProtection(&s->operations);return FALSE;}
  }
@@ -18,7 +18,7 @@ BOOLEAN GeoSessionEnter(struct geo_kmd_adapter *a,UINT mode) {
 }
 void GeoSessionLeave(struct geo_kmd_adapter *a,UINT mode) {
  struct geo_owner_session *s=a->session;
- if(mode)KeReleaseMutex(&s->passive_lock,FALSE);ExReleaseRundownProtection(&s->operations);
+ if(mode==1||mode==2)KeReleaseMutex(&s->passive_lock,FALSE);ExReleaseRundownProtection(&s->operations);
 }
 static void close_operations(struct geo_owner_session *s) {
  set_state(s,GEO_SESSION_TRANSITION);
@@ -37,17 +37,20 @@ static int proof_valid(const struct geo_owner_proof *p,uint64_t epoch,int reset)
  return p->size==sizeof(*p)&&p->version==2&&!p->reserved&&p->flags==GEO_PROOF_REQUIRED&&
   (reset?p->epoch>epoch:p->epoch==epoch);
 }
-struct retire_call {struct geo_owner_session *session;NTSTATUS status;uint64_t epoch;};
+struct retire_call {struct geo_owner_session *session;NTSTATUS status;uint64_t epoch;UINT reset;};
 static BOOLEAN retire(void *context) {
  struct retire_call *c=context;c->status=geo_retire_after_owner_drain(&c->session->adapter->engine);
- if(c->status==STATUS_SUCCESS){c->session->lease.epoch=c->epoch;InterlockedExchange(&c->session->adapter->service_pending,0);}return TRUE;
+ if(c->status==STATUS_SUCCESS){
+  if(c->reset){c->session->adapter->engine.submitted_ever=0;c->session->adapter->engine.completed_ever=0;
+   c->session->adapter->engine.last_submitted=0;c->session->adapter->engine.last_completed=0;}
+  c->session->lease.epoch=c->epoch;InterlockedExchange(&c->session->adapter->service_pending,0);}return TRUE;
 }
 static NTSTATUS apply_proof(struct geo_owner_session *s,const struct geo_owner_proof *p,int reset) {
  struct retire_call c;
  if(!proof_valid(p,s->lease.epoch,reset))return failed(s,STATUS_INVALID_DEVICE_STATE);
  /* Actual owner proof says no new ISR/callback can arrive. Drain previously
   * queued scheduler DPCs before retiring software tokens or lease state. */
- KeFlushQueuedDpcs();c.session=s;c.status=STATUS_UNSUCCESSFUL;c.epoch=p->epoch;
+ KeFlushQueuedDpcs();c.session=s;c.status=STATUS_UNSUCCESSFUL;c.epoch=p->epoch;c.reset=reset!=0;
  if(!s->adapter->synchronize(s->lease.cookie,retire,&c)||c.status!=STATUS_SUCCESS)return failed(s,c.status);
  return STATUS_SUCCESS;
 }

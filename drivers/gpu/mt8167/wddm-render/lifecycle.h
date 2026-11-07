@@ -32,7 +32,7 @@ NTSTATUS GeoRestartOwnerSession(struct geo_owner_session *);
 /* Caller holds an acquired operations rundown reference while queued/running. */
 NTSTATUS GeoServiceOwnerWork(struct geo_owner_session *);
 BOOLEAN GeoOwnerInterrupt(struct geo_owner_session *,ULONG message);
-/* mode: 0=DISPATCH operation, 1=PASSIVE GPU operation, 2=PASSIVE cleanup.
+/* mode: 0=DISPATCH operation, 1=PASSIVE GPU operation, 2=PASSIVE cleanup, 3=DISPATCH fault/preempt control.
  * Cleanup also works in proven HALTED D0, so retained allocations can be
  * unmapped/destroyed before a subsequent Stop releases the actual lease. */
 BOOLEAN GeoSessionEnter(struct geo_kmd_adapter *,UINT mode);

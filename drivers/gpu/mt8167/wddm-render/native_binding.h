@@ -7,6 +7,7 @@
 struct geo_native_binding {
  UINT size,version;
  struct geo_owner_control_v2 control;
+ struct geo_aperture_config aperture;
  void *native_context;
 };
 /* PASSIVE. Uses DxgkCbGetDeviceInformation resources and Dxgk callback memory
@@ -16,9 +17,8 @@ struct geo_native_binding {
  * base reference is retained until delete after successful session stop. */
 NTSTATUS GeoNativeOwnerCreate(PDEVICE_OBJECT,const DXGKRNL_INTERFACE *,const DXGK_DEVICE_INFO *,struct geo_native_binding *);
 NTSTATUS GeoNativeOwnerDelete(struct geo_native_binding *);
-/* Remaining render DDIs come from the reviewed rendering frontend, NOT the
- * native register/firmware core. Missing implementations are final link errors.
- * DriverEntry checks mandatory render entries and display entries before
- * registration, so a Clear-only table cannot masquerade as a WDDM adapter. */
+/* Kernel render contract/caps/preemption are implemented by this sidecar.
+ * Native factory must implement actual memory/command/IRQ/control operations,
+ * not Windows feature-level claims. No fallback factory definition exists. */
 extern const DRIVER_INITIALIZATION_DATA geo_ge8300_render_contract;
 #endif

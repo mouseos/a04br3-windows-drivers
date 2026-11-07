@@ -1,5 +1,5 @@
 # Opt-in module-only ARM32 build. Does not build/install a render SYS or UMD DLL.
-param([switch]$EnableCandidate,[string]$OutputDirectory)
+param([switch]$EnableCandidate,[string]$OutputDirectory,[string]$ReuseDirectory,[string]$ReuseSourceCommit='b29be98d397ad4d892ffc2bd0761dbdea5afec75')
 $ErrorActionPreference='Stop'
 if(!$EnableCandidate){throw 'WDDM render candidate is default off; pass -EnableCandidate explicitly'}
 $root=(& git -C $PSScriptRoot rev-parse --show-toplevel)
@@ -9,6 +9,28 @@ if(!$OutputDirectory){$OutputDirectory=Join-Path $root 'build\ge8300-wddm-render
 $out=[IO.Path]::GetFullPath($OutputDirectory)
 if(!$out.StartsWith($root+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'Output must be inside checkout'}
 New-Item -ItemType Directory -Force $out,(Join-Path $out 'tmp')|Out-Null
+$reuse=$null;$reuseRecords=@();$reuseClient=$false
+function Same-ReuseSource([string]$relative) {
+ if(!$reuse){return $false}
+ $entry=@($reuse.sources|Where-Object {($_.path -replace '\\','/') -eq $relative})
+ return $entry.Count -eq 1 -and (Get-FileHash (Join-Path $root $relative) -Algorithm SHA256).Hash -eq $entry[0].sha256
+}
+function Reuse-Output([string]$name) {
+ $entry=@($reuse.outputs|Where-Object {$_.name -eq $name})
+ $file=Join-Path $ReuseDirectory $name
+ if($entry.Count -ne 1 -or !(Test-Path $file) -or (Get-FileHash $file -Algorithm SHA256).Hash -ne $entry[0].sha256){throw "Reuse artifact hash mismatch: $name"}
+ return $file
+}
+if($ReuseDirectory){
+ $ReuseDirectory=[IO.Path]::GetFullPath($ReuseDirectory)
+ if($ReuseDirectory -eq $out -or $ReuseSourceCommit -notmatch '^[0-9a-f]{40}$'){throw 'Use a distinct fixed reuse directory and commit'}
+ $reuse=Get-Content -Raw (Join-Path $ReuseDirectory 'build-manifest.json')|ConvertFrom-Json
+ if($reuse.source_commit -ne $ReuseSourceCommit -or $reuse.source_dirty){throw 'Reuse source provenance is not fixed/clean'}
+ $reuseKmd=Reuse-Output 'ge8300-kmd-clear.lib';$reuseUmd=Reuse-Output 'ge8300-umd-clear.lib'
+ if((Same-ReuseSource 'drivers/gpu/mt8167/wddm-render/testclient/d3d-clear.c') -and (Same-ReuseSource 'drivers/gpu/mt8167/wddm-render/testclient/memory.c')){
+  $reuseExe=Reuse-Output 'ge8300-d3d-clear.exe';$reuseClient=$true
+ }
+}
 $oldTemp=$env:TEMP;$oldTmp=$env:TMP;$transcript=$false
 try {
  $env:TEMP=Join-Path $out 'tmp';$env:TMP=$env:TEMP
@@ -18,25 +40,46 @@ try {
  $resource=(& clang -print-resource-dir)
  if($LASTEXITCODE -ne 0 -or !(Test-Path (Join-Path $resource 'include\intrin.h'))){throw 'Missing compiler intrinsic headers'}
  $common=@('--target=thumbv7-pc-windows-msvc','-std=c11','-fms-extensions','-ffreestanding','-fno-builtin','-fno-stack-protector','-O2','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-mfpu=none','-D_ARM_','-DARM','-D_WIN32_WINNT=0x0603','-DNTDDI_VERSION=0x06030000','-DDXGKDDI_INTERFACE_VERSION=0x4002','-DD3D_UMD_INTERFACE_VERSION=0x4002',"-I$inc\shared")
- foreach($unit in @('clear_protocol','clear_engine','capture','kmd_clear','kmd_objects','lifecycle','miniport','umd/clear_ddi','umd/bootstrap','umd/entry','testclient/d3d-clear','testclient/memory')) {
-  $name=($unit -replace '/','_');$includes=@("-I$inc\um")
+ foreach($unit in @('clear_protocol','clear_engine','capture','kmd_clear','kmd_objects','query_adapter','preempt','render_contract','lifecycle','miniport','umd/clear_ddi','umd/bootstrap','umd/entry','testclient/d3d-clear','testclient/memory')) {
+  $name=($unit -replace '/','_');$relative="drivers/gpu/mt8167/wddm-render/$unit.c"
+  if($reuseClient -and $unit -eq 'testclient/d3d-clear'){$reuseRecords+=@{unit=$unit;kind='verified existing EXE';origin=$ReuseSourceCommit};continue}
+  $archive=$null;$object=$name+'.obj';$reuseUnit=$false
+  if($reuse -and (Same-ReuseSource $relative)){
+   if($unit -eq 'clear_protocol' -and (Same-ReuseSource 'drivers/gpu/mt8167/wddm-render/clear_protocol.h')){$archive=$reuseKmd;$reuseUnit=$true}
+   if($unit -eq 'capture' -and (Same-ReuseSource 'drivers/gpu/mt8167/wddm-render/capture.h') -and (Same-ReuseSource 'drivers/gpu/mt8167/wddm-render/clear_protocol.h')){$archive=$reuseKmd;$reuseUnit=$true}
+   if($unit -eq 'testclient/memory'){$archive=$reuseUmd;$reuseUnit=$true}
+   # entry.c forwards two opaque pointers only. bootstrap.h and export ABI are
+   # unchanged; it does not inspect the expanded device-private structure.
+   if($unit -eq 'umd/entry' -and (Same-ReuseSource 'drivers/gpu/mt8167/wddm-render/umd/bootstrap.h')){
+    $entryObject=Reuse-Output 'umd_entry.obj';Copy-Item $entryObject (Join-Path $out $object)
+    $reuseRecords+=@{unit=$unit;kind='verified opaque export object';origin=$ReuseSourceCommit};continue
+   }
+  }
+  if($reuseUnit){
+   & llvm-ar x "--output=$out" $archive $object
+   if($LASTEXITCODE -ne 0 -or !(Test-Path (Join-Path $out $object))){throw "Verified archive extraction failed: $object"}
+   $reuseRecords+=@{unit=$unit;kind='member of hash-verified archive';origin=$ReuseSourceCommit};continue
+  }
+  $includes=@("-I$inc\um")
   if($unit -eq 'umd/entry'){$includes+='-DGEO_LINKED_REAL_FRONTEND=1'}
-  if($unit -in @('capture','kmd_clear','kmd_objects','lifecycle','miniport')){$includes=@("-DGEO_LINKED_NATIVE_CORE=1","-D_KERNEL_MODE","-D__ldrexd=__geo_wdk81_ldrexd_declaration","-I$resource\include","-I$inc\km","-I$inc\km\crt")}
+  if($unit -in @('capture','kmd_clear','kmd_objects','query_adapter','preempt','render_contract','lifecycle','miniport')){$includes=@("-DGEO_LINKED_NATIVE_CORE=1","-D_KERNEL_MODE","-D__ldrexd=__geo_wdk81_ldrexd_declaration","-I$resource\include","-I$inc\km","-I$inc\km\crt")}
   & clang @common @includes -c (Join-Path $PSScriptRoot "$unit.c") -o (Join-Path $out "$name.obj")
   if($LASTEXITCODE -ne 0){throw "ARM32 compile failed: $unit"}
  }
- & llvm-lib /machine:arm "/out:$out\ge8300-kmd-clear.lib" "$out\clear_protocol.obj" "$out\clear_engine.obj" "$out\capture.obj" "$out\kmd_clear.obj" "$out\kmd_objects.obj" "$out\lifecycle.obj" "$out\miniport.obj"
+ & llvm-lib /machine:arm "/out:$out\ge8300-kmd-clear.lib" "$out\clear_protocol.obj" "$out\clear_engine.obj" "$out\capture.obj" "$out\kmd_clear.obj" "$out\kmd_objects.obj" "$out\query_adapter.obj" "$out\preempt.obj" "$out\render_contract.obj" "$out\lifecycle.obj" "$out\miniport.obj"
  if($LASTEXITCODE -ne 0){throw 'KMD module archive failed'}
  & llvm-lib /machine:arm "/out:$out\ge8300-umd-clear.lib" "$out\clear_protocol.obj" "$out\umd_clear_ddi.obj" "$out\umd_bootstrap.obj" "$out\testclient_memory.obj"
  if($LASTEXITCODE -ne 0){throw 'UMD module archive failed'}
+ if($reuseClient){Copy-Item $reuseExe "$out\ge8300-d3d-clear.exe"}else{
  & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\testclient_d3d-clear.obj" "$out\testclient_memory.obj" "$lib\kernel32.lib" "$lib\dxgi.lib" "$lib\d3d11.lib" "/out:$out\ge8300-d3d-clear.exe"
  if($LASTEXITCODE -ne 0){throw 'D3D client link failed'}
+ }
  & llvm-readobj --file-headers --coff-imports "$out\ge8300-d3d-clear.exe" | Set-Content "$out\pe-imports.txt"
  if($LASTEXITCODE -ne 0){throw 'PE inspection failed'}
  $commit=(& git -C $root rev-parse HEAD);if($LASTEXITCODE -ne 0){throw 'Missing source revision'}
  $sources=@(Get-ChildItem $PSScriptRoot -File -Recurse | Where-Object {$_.Extension -in '.c','.h','.ps1','.md'} | ForEach-Object {@{path=$_.FullName.Substring($root.Length+1);sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash}})
  $outputs=@('ge8300-kmd-clear.lib','ge8300-umd-clear.lib','umd_entry.obj','ge8300-d3d-clear.exe')|ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}}
- @{source_commit=$commit;source_dirty=(@(& git -C $root status --porcelain).Count -ne 0);candidate_default_off=$true;wdk81_intrinsic_compat='__ldrexd declaration-only alias; no replacement implementation';kind='DDI implementation archives plus standard D3D client; no installable miniport/UMD';owner_abi='in-process control-v2; native factory and full caps/frontend not linked';runtime_verified=$false;compile_units=@('clear_protocol','clear_engine','capture','kmd_clear','kmd_objects','lifecycle','miniport','umd/clear_ddi','umd/bootstrap','umd/entry','testclient/d3d-clear','testclient/memory');sources=$sources;outputs=$outputs}|ConvertTo-Json -Depth 6|Set-Content "$out\build-manifest.json"
+ @{source_commit=$commit;source_dirty=(@(& git -C $root status --porcelain).Count -ne 0);candidate_default_off=$true;wdk81_intrinsic_compat='__ldrexd declaration-only alias; no replacement implementation';kind='DDI implementation archives plus standard D3D client; no installable miniport/UMD';owner_abi='in-process control-v2; native factory and full caps/frontend not linked';runtime_verified=$false;reuse_records=$reuseRecords;compile_units=@('clear_protocol','clear_engine','capture','kmd_clear','kmd_objects','query_adapter','preempt','render_contract','lifecycle','miniport','umd/clear_ddi','umd/bootstrap','umd/entry','testclient/d3d-clear','testclient/memory');sources=$sources;outputs=$outputs}|ConvertTo-Json -Depth 6|Set-Content "$out\build-manifest.json"
 } finally {
  if($transcript){Stop-Transcript|Out-Null}
  $env:TEMP=$oldTemp;$env:TMP=$oldTmp

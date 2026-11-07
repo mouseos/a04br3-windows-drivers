@@ -5,20 +5,25 @@ Windows RT 8.1 / ARM32 / WDDM 1.3向けの新規DDI実装部品です。run31の
 ## 実装した経路
 
 - `clear_protocol.[ch]`: 単一linear A8R8G8B8、最大1024×1024/4MiB。user packetにはallocation indexとpacked colorだけを許可。VA/PA/GPU command/shader blobを受け付けません。
-- `clear_engine.[ch]`: 実ownerのcreate/bind/prepare/submit/completionを使う状態管理。prepareをPASSIVEと割込同期下の予約/確定に分離。slot世代、単調fence、古い完了の拒否、参照中解放拒否、障害時poison/pin保持を実装。GPU_DONEとCPU_VISIBLE両方の証拠が揃うまで完了にしません。fence wrap/reset、順不同完了は未対応です。
+- `clear_engine.[ch]`: 実ownerのcreate/bind/prepare/submit/completionを使う状態管理。prepareをPASSIVEと割込同期下の予約/確定に分離。slot世代、32bit wrap対応fence、古い完了の拒否、参照中解放拒否、障害時poison/pin保持を実装。GPU_DONEとCPU_VISIBLE両方の証拠が揃うまで完了にしません。reset proofでのみfence epochを初期化し、実hardware publishは一件ずつです。
 - `kmd_clear.[ch]`: CreateAllocation/DestroyAllocation/BuildPagingBuffer/Render/Patch/SubmitCommand/QueryCurrentFenceのDDI部品。VidMm allocation listでhandleを解決。DMA/private dataには世代ticketを置き、実ownerが準備済みjobをpublishします。アドレスを含まないためPatchはticket一致を検査。MapApertureのMdlOffsetはページ単位、MDL byte extentを検査。全mapと同じaperture offset/ページ数の全unmapのみ受け付けます。fill/transfer/discardは未実装として拒否します。
 - `umd/clear_ddi.[ch]`: D3D9 DDIのresource/target/full Clear/Lock/Unlock/全域Blt readback。Allocate/Render/Lockは実runtime callbackへ渡し、GPUが書いた対象をruntime lockしてstagingへcopyします。CPUでClear結果を捏造しません。OpenAdapter/CreateDevice成功stubや架空capsを置きません。
-- `owner_abi.h` / `owner_interface.h`: kernel専用の**未合意draft v1**。GUIDは本sidecar提案の識別子で、現providerが公開するGUIDではありません。PnP query成功やD0取得はまだ実装していません。
+- `owner_abi.h` / `owner_interface.h`: kernel専用のops v2/control v2。最終構成はnative_binding.hのin-process factoryで、PnP QueryInterfaceを必須にしません。単一miniportだけがIRQを所有します。
 
-## 接続前に必要な実装（現候補の欠落）
+## 現在の接続と残件
 
-1. miniportのDriverEntry/StartDevice/StopDevice、device/context/allocation rundown、segment/query-adapter/caps、paging、preemption/TDR/resetとPnP/D0所有権。PASSIVE資源操作はadapter寿命と直列化し、ISRのjob参照との二段階状態遷移が必要です。現DDI部品単独でこれを提供しません。DestroyAllocationエラーだけを根拠にVidMmやPnP removal後のページ寿命が保証されるとは扱いません。
-2. UMD OpenAdapter/GetCaps/CreateDevice/DestroyDevice/CloseAdapter、実context作成/破棄と必須DDI（CreateResource2等を含むruntime経路）、必須shader/caps。ClearだけではFL9_1を満たせません。shader担当と実能力を揃えるまでfeature levelを広告しません。Microsoft RenderOnlySampleが示すhardware FL9.xのD3D9 DDI経由を参考にしていますが、WDDM版番号だけでD3D11 DDI対応を意味しません。
-3. GPU ownerによる同一VidMm locked MDL/PFN backingの実登録。別の固定private outputに書いて成功とはしません。CPU側はNormal RAM mapping、GPU側は同じページへの正式mappingと実cache処理が必要です。Cached flagは属性の実証ではありません。Device memory共通バッファを一般のuser PCM/SIMD/unalignedアクセスへ公開しません。非page-aligned MDLと部分mapは現候補では扱いません。
-4. ownerのPASSIVE prepareと、実interrupt同期IRQLで待たないsubmit。既存private同期poll APIをそのまま呼べません。新しいGeoInitializeClearNotifications/GeoCompleteFromInterrupt/GeoClearDpcが、実GPU完了＋CPU可視性確認後のgeo_complete→DxgkCbNotifyInterrupt(DMA_COMPLETED)、DxgkCbQueueDpc→DxgkCbNotifyDpcを実装しています。StartDeviceで実DXGKRNL interfaceと実割込IRQLを一度だけ渡し、GeoCompleteFromInterruptは本物のDxgkDdiInterruptRoutineからowner割込lock下で呼び、登録DPC wrapperからGeoClearDpcを呼ぶ接続が必要です。通知初期化前のRender/Submit/fence queryは拒否します。古い世代・障害・CPU可視性不足はscheduler完了へ変換しません。IRQL一致検査だけでは実ISR由来の証明にならず、手動で上げるだけではISRの代替になりません。DPC pendingはInterlockedで管理し、QueueDpcが既存queueを理由にFALSEを返すMicrosoft契約に従います。fault時のscheduler fault/TDR通知とadapter stop/resetはまだ未実装です。owner submit中の再入完了は禁止、tokenは未完了job間で一意、世代を完了へそのまま返す契約です。
-5. 取消/未submit prepared jobの破棄経路とowner rundown。`geo_cancel_prepared`は実ISR/callback rundown後のPASSIVE teardownへ接続する必要があります。割込を動かしたままPASSIVE関数とISRの参照更新を並行させてはいけません。未証明の停止・ドレインではreleaseせず保持します。現状でsleep/removal/recovery対応を広告できません。
+単一miniportのDriverEntry/Start/Stop/Remove/D0/D3/TDR、runtime device/context/allocation/open/close、実Dxgk ISR/DPC、segment/query/capsとpacket境界preemptionを実装。native factoryの実apertureをQUERYSEGMENT/QUERYSEGMENT3へ返し、VidMm指定offsetと同じlocked MDLをops v2 bindへ渡します。allocationのCachedはVidMm backing-store要求です。GPU apertureをCPU BARやcache coherentと扱いません。
 
-このため現provider/DODへINFでbindしません。ABIはEinsteinへの調整依頼をRamanへ送付していますが、provider側実装や合意済みとの報告はまだありません。
+preemptionは実行中DMAのGPU_DONE＋CPU_VISIBLE後に通知し、未publishのsoftware FIFOをpreparedへ戻します。idle時は公式に認められる実interrupt synchronization下の通知だけを使います。取消は同期下で予約し、PASSIVEの実owner discard後に確定。失敗はpoison/pinとTDRへ残し、未完了fenceをcompletedにしません。prepared jobの資源は実owner drain proofが揃うまで保持します。
+
+最終リンクの外部残件は次の2つです。
+
+1. Einstein担当の実`GeoNativeOwnerCreate/Delete`とcontrol/ops。任意色・寸法、同一MDL/PFN、指定GPU apertureへのmapping、bounded publish、実IRQ完了＋CPU可視性、停止/reset proofが必要です。acf523eの5TU kernel API linkcheck成功はfactory全契約成立の証拠ではありません。
+2. 実shader/state/format/capsを持つ`geo_ge8300_frontend`。UMD側はOpenAdapter/CreateDevice/GetCaps、CreateResource2、Offer/Reclaimと実runtime callbacksを接続済みですが、ClearだけではFL9_1を広告できません。標準D3D11のFL9.xはD3D9 DDI経由を想定し、未実装DDIを成功stubで埋めません。
+
+`geo_ge8300_render_contract`と`GeoBuildRequiredDriverCaps`はこのsidecarで定義済みです。WDDM登録versionは0x4002、Win7+でreservedのcaps.WDDMVersionは0。MultiEngineAware/CancelCommandAware、1 logical node、SupportNonVGA、実aperture制限だけを設定し、PreemptionAware/CacheCoherent/display/flip/overlayは広告しません。未対応paging operationは明示拒否するため、全runtime経路対応を意味しません。
+
+既存KMDF providerと同時bindせず、既定無効を維持します。MOU0007との表示共存の根拠と次候補のCPU-present設定は[DOD-COEXISTENCE.md](DOD-COEXISTENCE.md)、Einsteinへ渡す固定ABIは[OWNER-ABI.md](OWNER-ABI.md)を参照してください。
 
 ## WDK 8.1 ARM32ビルド単位
 
@@ -40,11 +45,11 @@ ge8300-d3d-clear.exe --luid=hhhhhhhh:llllllll
 
 8桁hex high:lowのみ。D3D11CreateDeviceへ選択adapterとD3D_DRIVER_TYPE_UNKNOWN、要求FL9_1を渡します。WARP fallbackなし。256×256 BGRA8 render targetにmagentaとgreenを順にClearし、CopyResource→staging Mapで各65,536画素を検査。第二色も同じresourceへ出し、固定出力の読み違いを検出します。APIのHRESULT、Map直前、match/mismatch、GetDeviceRemovedReasonを保存。失敗をCPU描画へ迂回しません。現DODや未完成adapterではCreateDevice失敗が正しい結果です。
 
-`C:\MT8167D3DClear\clear-<tick8hex>-<pid8hex>.log`をCREATE_NEW/WRITE_THROUGHで確保し、各記録をFlush。既存logは上書きしません。UARTは不要。任意ファイル/command/payloadを実行しません。exit0は両色のAPI readback成功＋disklog成功、1はAPI/選択失敗、2は必須disklog確保失敗、3は書込み/Flush失敗です。Mapが停止すればMAP_BEGINが最後に残り、成功とは判定しません。client結果だけでGPU実行を立証できないため、実owner fence/job/CPU可視性traceとの照合も必要です。providerのhang recoveryはまだ未実装で、現状の実機実行対象にはしません。
+`C:\MT8167D3DClear\clear-<tick8hex>-<pid8hex>.log`をCREATE_NEW/WRITE_THROUGHで確保し、各記録をFlush。既存logは上書きしません。UARTは不要。任意ファイル/command/payloadを実行しません。exit0は両色のAPI readback成功＋disklog成功、1はAPI/選択失敗、2は必須disklog確保失敗、3は書込み/Flush失敗です。Mapが停止すればMAP_BEGINが最後に残り、成功とは判定しません。client結果だけでGPU実行を立証できないため、実owner fence/job/CPU可視性traceとの照合も必要です。wrapperのTDR入口は実装済みですが、ownerの実reset/drain proofは未接続です。現状の実機実行対象にはしません。
 
 ## 確認の範囲と一次資料
 
-hostの単一`tests/lifecycle.c`でpending解放拒否、古い世代拒否、実完了flags不足時のpoison/pinをまとめて確認。Win32/DDI実headerによるUMDとclientのARM32構文確認・ARMNT COFF生成は通過。clientの未解決参照は標準Win32/DXGI/D3D11 APIと付属memory.cのmemcpy/memsetのみ。参照headerはWindows 10初期SDK mirror＋WinBlue version guardで、実WDK8.1ビルドの代用ではありません。host KMDのARM構文確認はMinGW DDKのarmddk.h欠落で停止。追加でx64 targetの実DDI/DDK header構文確認は-Wall/-Wextra/-Werrorで通過しました（MinGWにないSAL注記_Pre_opt_bytecap_だけを無効化、DDI型/field/関数signatureは改変なし）。このx64確認をARM32/WDK8.1成功とは扱いません。WDK8.1 compile/link、ARM mapping、実IRQ、標準D3D実機成功はいずれも未確認です。
+hostの単一`tests/lifecycle.c`でpending解放拒否、古い世代拒否、実完了flags不足時のpoison/pinをまとめて確認。Win32/DDI実headerによるUMDとclientのARM32構文確認・ARMNT COFF生成は通過。clientの未解決参照は標準Win32/DXGI/D3D11 APIと付属memory.cのmemcpy/memsetのみ。参照headerはWindows 10初期SDK mirror＋WinBlue version guardで、実WDK8.1ビルドの代用ではありません。host KMDのARM構文確認はMinGW DDKのarmddk.h欠落で停止。追加でx64 targetの実DDI/DDK header構文確認は-Wall/-Wextra/-Werrorで通過しました（MinGWにないSAL注記_Pre_opt_bytecap_だけを無効化、DDI型/field/関数signatureは改変なし）。このx64確認をARM32/WDK8.1成功とは扱いません。主担当報告ではc1a4a81、b29be98の実WDK8.1 ARM32 module/client build成功。今回の追加source、最終SYS/DLL、ARM mapping、実IRQ、標準D3D実機成功へこの結果を流用しません。
 
 - Microsoft [graphics-driver-samples RenderOnlySample](https://github.com/microsoft/graphics-driver-samples/tree/de4a2161991eda254013da6c18226f5ea06e4a9c/render-only-sample): ros UMD resource/context/DDIとFL9.x経路。参考読み取りのみ、sampleコードは複写していません。
 - Microsoft [DXGKARG_BUILDPAGINGBUFFER](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/ns-d3dkmddi-_dxgkarg_buildpagingbuffer): MdlOffsetはページ単位。
@@ -74,9 +79,9 @@ hostの単一`tests/lifecycle.c`でpending解放拒否、古い世代拒否、�
 
 UMD `bootstrap.c`は実OpenAdapter/GetCaps/CreateDevice/DestroyDevice/CloseAdapterのglue。実CreateContextCb/DestroyContextCbとruntime command/allocation bufferを使う。source-linked frontendに必須shader/state/formatの実capsとDDIを要求し、table不整合やrollback失敗では資源をpin。Clearだけでfeature levelを作らない。`umd/entry.c`は実geo_ge8300_frontendが最終linkに必要で、fallback実装なし。
 
-未接続の境界は`GeoNativeOwnerCreate/Delete`（Einsteinのcore/MDL/publish/完了可視性）、`geo_ge8300_render_contract`（この担当のmandatory render DDIs/caps/segment/preemptionの残り）、`geo_ge8300_frontend`（実shader/state/caps）。現時点で後二者の完全実装はない。このためインストール可能な完成候補や標準D3D到達とは扱わない。mandatory render DDIをNULLや成功stubで埋めず、最終linkには実sourceが必要。
+未接続の外部境界は`GeoNativeOwnerCreate/Delete`（Einsteinのcore/MDL/publish/完了可視性）と`geo_ge8300_frontend`（実shader/state/caps）。kernel render contract/caps/preemptionはsidecarで定義済みです。このためインストール可能な完成候補や標準D3D到達とは扱わない。mandatory render DDIをNULLや成功stubで埋めず、最終linkには実sourceが必要。
 
-`build-wdk81.ps1 -EnableCandidate`は新wrapper/lifecycle/bootstrapもmoduleとしてcompileする。`build-linked-wdk81.ps1`は実native/core・render-contract・frontendの3libraryと各SHA256を明示して最終SYS/DLLへsource-linkする専用recipe。すべてcheckout内の固定入力だけを受け、hash/source/import/export/mapを記録、runtime任意binary loadingはない。依存library未提供の現状では最終link未実施。INF/CAT/署名/配置は行わない。
+`build-wdk81.ps1 -EnableCandidate`は新wrapper/lifecycle/bootstrapもmoduleとしてcompileする。`build-linked-wdk81.ps1`は同commitの検証済module directoryと、実native/core・frontendの2library＋各SHA256を明示して最終SYS/DLLへlinkする専用recipe。再compileはしません。すべてcheckout内の固定入力だけを受け、hash/source/import/export/mapを記録、runtime任意binary loadingはない。依存library未提供の現状では最終link未実施。INF/CAT/署名/配置は行わない。
 
 一次資料 [WDDM Driver and Feature Caps](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/wddm-driver-and-feature-caps)はrender-onlyについてrender-specific DDI実装＋display-specific DDIをNULLとする方式を記載。[WDDM 1.2 and Windows 8](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/wddm-in-windows-8)はrender-onlyモデル導入を説明している。これはWindows RT 8.1での実enumerationや、WDDM1.3全mandatory機能が完成した証拠ではない。SupportNonVGA/preemption/offer-reclaim等のmandatory契約を埋めずにcapを広告しない。
 
@@ -86,6 +91,31 @@ UMD `bootstrap.c`は実OpenAdapter/GetCaps/CreateDevice/DestroyDevice/CloseAdapt
 
 f62bc96のIRQ coreに合わせ、IRQ sourceだけをclaimした状態をSTATUS_PENDINGで表す。実DPCがrundown参照を先に確保し、PASSIVE IoWorkItemでcontrol.serviceを呼ぶ。worker成功からDMA_COMPLETEDを作らず、後続実IRQのcompletion eventだけを使う。stop/reset/powerはqueued workerの参照も待ち、所有が曖昧なnative/MDLを解放しない。pending receiptにGPU_DONE/CPU_VISIBLEを足さない。
 
-残るrender contractの主な未実装はQueryAdapterInfo（実aperture/segment・mandatory caps）とPreemptCommand（実DMA packet境界のpreempt/IRQ receipt）。必須WDDM offer/reclaim等の全matrixも未完成。native capabilityの実証なしにPreemptionAware/CacheCoherent等を広告しない。E sourceはshared MDL/IRQ部品までで、同じMDLへのtarget factoryと完了可視性・drain proofが未接続。clientの256×256二色をEの実証済800×600固定profileへ黙って置換しない。
+QueryAdapterInfo、packet境界PreemptCommand、CancelCommand、CreateResource2、Offer/Reclaimを実装済み。全runtime必須matrixと実frontendは未完成です。native capabilityの実証なしにPreemptionAware/CacheCoherent等を広告しない。E sourceはshared MDL/IRQ部品までで、同じMDLへのtarget factoryと完了可視性・drain proofが未接続。clientの256×256二色をEの実証済800×600固定profileへ黙って置換しない。
 
-一度のcombined compile用は`build-combined-modules-wdk81.ps1 -EnableCandidate -NativeSourceDirectory <E固定checkout> -NativeCommit f62bc96525f4acbe9c4c8afa9d622fe1969ea7ac -OutputDirectory build\ge8300-combined-modules`。このsidecar sourceとEのclean固定sourceを分けて記録し、MDL/IRQ/非待機submit/DMA-pagesの実4TUを追加compile/archiveする。core headerを複製しない。native factoryや最終render capsの未接続をmanifestのfactory_linked=false/standard_d3d_connected=falseへ残す。これは次のsource統合compileの段階で、追加privateclear実験や完成SYSの代わりではない。
+一度のcombined compile用は`build-combined-modules-wdk81.ps1 -EnableCandidate -NativeSourceDirectory <E固定checkout> -NativeCommit f62bc96525f4acbe9c4c8afa9d622fe1969ea7ac -OutputDirectory build\ge8300-combined-modules`。このsidecar sourceとEのclean固定sourceを分けて記録し、MDL/IRQ/非待機submit/DMA-pagesの実4TUを追加compile/archiveする。core headerを複製しない。native factoryや実shader/frontendの未接続をmanifestのfactory_linked=false/standard_d3d_connected=falseへ残す。これは次のsource統合compileの段階で、追加privateclear実験や完成SYSの代わりではない。
+
+## 標準resource/メモリ契約の追加
+
+CreateResource2の同じlinear BGRA resource生成、実runtime OfferAllocationsCb/ReclaimAllocationsCbへの接続を追加。offer前に実frontend Flushを呼び、offered resourceのGPU/CPUアクセスを拒否。reclaimの実discard flagとHRESULTを返し、成功や内容保持を捏造しない。対応外Flags2は明示拒否。
+
+QueryAdapterInfoのQUERYSEGMENT/QUERYSEGMENT3、UMDRIVERPRIVATE memory infoを追加。実native apertureをfactory v2で受け、範囲/整列/commit/重複を検査し、VidMm OffsetInPagesを新ops v2 bindへ渡す。CachedはVidMm backing-store allocation要求であり、CacheCoherent segmentを広告する意味ではない。SynchronousPagingで実GPU fence前のunmapを防ぐ。元MDLのlease/Normal RAM由来とSLC/GP/cacheの成立は実ownerとの接続検証がなお必要。
+
+GeoBuildRequiredDriverCapsと実PreemptCommandは実装済み。完全なshader/state/caps frontendは未実装。新sourceも完成SYS/標準D3D成功とは扱わない。単一miniport/native factory/opsの最新版接口はOWNER-ABI.md末尾、native_binding.h、owner_abi.h、owner_control.hを参照。
+
+一次資料: [Video memory offer and reclaim](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/video-memory-offer-and-reclaim)、[Linear aperture-space segments](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/linear-aperture-space-segments)、[DXGK_SEGMENTDESCRIPTOR](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/ns-d3dkmddi-_dxgk_segmentdescriptor)、[DXGK_ALLOCATIONINFOFLAGS](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/ns-d3dkmddi-_dxgk_allocationinfoflags)。
+
+## 増分compileと最終link
+
+b29be98の実WDK成果物を保持し、次のmodule buildでは`-ReuseDirectory <b29成果物directory> -ReuseSourceCommit b29be98d397ad4d892ffc2bd0761dbdea5afec75`を指定できます。manifestのclean commit/source hash/archive hashを検証し、同一のclear_protocol/capture/memory/opaque UMD entry/clientだけ再利用します。ABI/header変更の影響するTUは再compile。source/output/reuse originを新manifestへ記録します。
+
+```powershell
+# 新固定commitのclean checkout上。出力先を分離する。
+powershell -NoProfile -File drivers\gpu\mt8167\wddm-render\build-wdk81.ps1 -EnableCandidate -OutputDirectory build\ge8300-wddm-next -ReuseDirectory build\ge8300-wddm-b29
+# 実factoryと実frontendが揃った後のみ。module再compileなし。
+powershell -NoProfile -File drivers\gpu\mt8167\wddm-render\build-linked-wdk81.ps1 -EnableCandidate -ModuleDirectory build\ge8300-wddm-next -NativeOwnerLibrary build\fixed-native\owner.lib -NativeOwnerSha256 <64hex> -FrontendLibrary build\fixed-frontend\frontend.lib -FrontendSha256 <64hex> -OutputDirectory build\ge8300-wddm-linked
+```
+
+link recipeは同commit/clean/source/output hash、ARMNT、KMDF import不在を検証し、map/import/export/manifestを保存します。署名/INF/配置は行いません。実owner/frontend未提供ならlink失敗のままとし、代替libraryを生成しません。今回のhost確認は既存単一state test、KMDのx64実header構文、UMDのARM構文のみ。hostにPowerShellがないためPS AST parse/実WDK追加TU buildは主担当側で未実施です。
+
+一次資料: [GPU preemption](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/gpu-preemption)、[DxgkDdiPreemptCommand](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkddi_preemptcommand)、[DXGK_VIDSCHCAPS](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/ns-d3dkmddi-_dxgk_vidschcaps)、[DXGK_DRIVERCAPS](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/ns-d3dkmddi-_dxgk_drivercaps)。

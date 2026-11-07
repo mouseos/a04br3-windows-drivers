@@ -1,0 +1,79 @@
+/* SPDX-License-Identifier: BSD-2-Clause-Patent */
+#include "query_adapter.h"
+#include "adapter_info.h"
+NTSTATUS GeoConfigureAperture(struct geo_kmd_adapter *a,const struct geo_aperture_config *p) {
+ if(!a||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL||a->aperture_ready||p->size!=sizeof(*p)||p->version!=1||
+    !p->bytes||p->bytes>UINT32_MAX||!p->commit_limit||p->commit_limit>p->bytes||
+    ((p->gpu_base|p->bytes|p->commit_limit)&(PAGE_SIZE-1))||p->gpu_base>INT64_MAX-p->bytes||
+    p->highest_dma_address<PAGE_SIZE-1||p->highest_dma_address>UINT32_MAX)return STATUS_INVALID_PARAMETER;
+ a->aperture=*p;a->aperture_ready=1;return STATUS_SUCCESS;
+}
+static NTSTATUS query_segment(struct geo_kmd_adapter *a,const DXGKARG_QUERYADAPTERINFO *p) {
+ DXGK_QUERYSEGMENTOUT *out=p->pOutputData;DXGK_SEGMENTDESCRIPTOR *segment;
+ if(p->OutputDataSize<sizeof(*out))return STATUS_BUFFER_TOO_SMALL;
+ segment=out->pSegmentDescriptor;out->NbSegment=1;
+ out->PagingBufferSegmentId=0;out->PagingBufferSize=sizeof(struct geo_dma_ticket);
+ out->PagingBufferPrivateDataSize=sizeof(struct geo_dma_ticket);
+ if(!segment)return STATUS_SUCCESS; /* First pass asks for descriptor count. */
+ RtlZeroMemory(segment,sizeof(*segment));segment->BaseAddress.QuadPart=(LONGLONG)a->aperture.gpu_base;
+ segment->Size=(SIZE_T)a->aperture.bytes;segment->CommitLimit=(SIZE_T)a->aperture.commit_limit;
+ segment->Flags.Aperture=1;
+ /* CPU accesses original cached VidMm backing via runtime Lock. This GPU
+  * virtual aperture is NOT a CPU BAR and is NOT cache coherent hardware. */
+ return STATUS_SUCCESS;
+}
+static NTSTATUS query_segment3(struct geo_kmd_adapter *a,const DXGKARG_QUERYADAPTERINFO *p) {
+ DXGK_QUERYSEGMENTOUT3 *out=p->pOutputData;DXGK_SEGMENTDESCRIPTOR3 *segment;
+ if(p->OutputDataSize<sizeof(*out))return STATUS_BUFFER_TOO_SMALL;
+ segment=out->pSegmentDescriptor;out->NbSegment=1;
+ out->PagingBufferSegmentId=0;out->PagingBufferSize=sizeof(struct geo_dma_ticket);
+ out->PagingBufferPrivateDataSize=sizeof(struct geo_dma_ticket);
+ if(!segment)return STATUS_SUCCESS;
+ RtlZeroMemory(segment,sizeof(*segment));segment->BaseAddress.QuadPart=(LONGLONG)a->aperture.gpu_base;
+ segment->Size=(SIZE_T)a->aperture.bytes;segment->CommitLimit=(SIZE_T)a->aperture.commit_limit;segment->Flags.Aperture=1;
+ return STATUS_SUCCESS;
+}
+NTSTATUS APIENTRY GeoQueryAdapterInfo(HANDLE handle,const DXGKARG_QUERYADAPTERINFO *p) {
+ struct geo_kmd_adapter *a=handle;NTSTATUS status=STATUS_NOT_SUPPORTED;DXGK_DRIVERCAPS caps;struct geo_adapter_memory_info info;
+ if(!p||!p->pOutputData)return STATUS_INVALID_PARAMETER;
+ if(!GeoSessionEnter(a,1))return STATUS_DEVICE_NOT_READY;
+ if(!a->aperture_ready){status=STATUS_DEVICE_NOT_READY;goto done;}
+ switch(p->Type) {
+ case DXGKQAITYPE_QUERYSEGMENT:status=query_segment(a,p);break;
+ case DXGKQAITYPE_QUERYSEGMENT3:status=query_segment3(a,p);break;
+ case DXGKQAITYPE_UMDRIVERPRIVATE:
+  if(p->OutputDataSize<sizeof(info)){status=STATUS_BUFFER_TOO_SMALL;break;}
+  RtlZeroMemory(&info,sizeof(info));info.size=sizeof(info);info.version=1;info.magic=GEO_ADAPTER_INFO_MAGIC;
+  info.owner_ops_version=GEO_OWNER_OPS_VERSION;info.control_version=2;info.format=GEO_FORMAT_A8R8G8B8;
+  info.max_allocation_bytes=(UINT)(a->aperture.commit_limit<4194304?a->aperture.commit_limit:4194304);
+  info.aperture=a->aperture;RtlCopyMemory(p->pOutputData,&info,sizeof(info));status=STATUS_SUCCESS;break;
+ case DXGKQAITYPE_DRIVERCAPS:
+  if(p->OutputDataSize<sizeof(caps)){status=STATUS_BUFFER_TOO_SMALL;break;}
+  RtlZeroMemory(&caps,sizeof(caps));status=GeoBuildRequiredDriverCaps(a,&caps);
+  if(status!=STATUS_SUCCESS)break;
+  /* Never overwrite an overclaim with a silently more plausible cap set. */
+  if(caps.HighestAcceptableAddress.QuadPart!=(LONGLONG)a->aperture.highest_dma_address||
+     caps.ApertureSegmentCommitLimit!=a->aperture.commit_limit||!caps.SupportNonVGA||
+     !caps.SchedulingCaps.MultiEngineAware||caps.GpuEngineTopology.NbAsymetricProcessingNodes!=1||
+     caps.MaxPointerWidth||caps.MaxPointerHeight||caps.MaxOverlays||caps.SupportDirectFlip||caps.SupportMultiPlaneOverlay||
+     caps.MemoryManagementCaps.CrossAdapterResource||caps.HybridDiscrete){status=STATUS_INVALID_PARAMETER;break;}
+  RtlCopyMemory(p->pOutputData,&caps,sizeof(caps));break;
+ default:break; /* Unimplemented optional/higher-model queries are explicit. */
+ }
+ done:GeoSessionLeave(a,1);return status;
+}
+
+NTSTATUS GeoBuildRequiredDriverCaps(struct geo_kmd_adapter *a,DXGK_DRIVERCAPS *caps) {
+ if(!a||!caps||!a->aperture_ready)return STATUS_INVALID_DEVICE_STATE;
+ RtlZeroMemory(caps,sizeof(*caps));caps->HighestAcceptableAddress.QuadPart=(LONGLONG)a->aperture.highest_dma_address;
+ caps->MaxAllocationListSlotId=1;caps->ApertureSegmentCommitLimit=(SIZE_T)a->aperture.commit_limit;
+ caps->SchedulingCaps.MultiEngineAware=1;caps->SchedulingCaps.CancelCommandAware=1;
+ /* Actual packet-boundary preemption uses the documented Windows 7 policy.
+  * Do not claim Win8 mid-packet/context-save support or NoDmaPatching. */
+ caps->SchedulingCaps.PreemptionAware=0;caps->GpuEngineTopology.NbAsymetricProcessingNodes=1;
+ caps->SupportNonVGA=TRUE;
+ /* WDDMVersion is RESERVED and zero for Win7+ DDIs (Microsoft contract).
+  * Target API version is DRIVER_INITIALIZATION_DATA.Version=0x4002. Display,
+  * overlays, flips, runtime F-states and per-engine TDR stay unadvertised. */
+ return STATUS_SUCCESS;
+}

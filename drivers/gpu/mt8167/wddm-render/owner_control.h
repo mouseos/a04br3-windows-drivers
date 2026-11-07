@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #ifndef GEO_OWNER_CONTROL_H
 #define GEO_OWNER_CONTROL_H
-#include "owner_interface.h"
-/* Proposed v2 control interface. Existing v1 operations retain version=1.
+#include <ntddk.h>
+#include "owner_abi.h"
+/* Proposed v2 control interface. Operations require GEO_OWNER_OPS_VERSION=2; old bind signatures are refused.
  * QueryInterface returns ONE referenced interface. No user-mode transport. */
 DEFINE_GUID(GUID_GEO_RENDER_OWNER_CONTROL_V2,0x36871ace,0x58aa,0x49b8,0xb6,0xf3,0x2e,0x51,0xd5,0xe7,0xf8,0x93);
 #define GEO_OWNER_CONTROL_VERSION 2u

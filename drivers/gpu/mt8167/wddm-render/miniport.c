@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "native_binding.h"
 #include "kmd_objects.h"
+#include "query_adapter.h"
 #ifndef GEO_LINKED_NATIVE_CORE
 #error Build this wrapper only with the reviewed in-process native owner core
 #endif
@@ -29,11 +30,12 @@ static NTSTATUS start_device(void *context,DXGK_START_INFO *start,DXGKRNL_INTERF
     KeGetCurrentIrql()!=PASSIVE_LEVEL||dxgk->Size<sizeof(*dxgk)||!dxgk->DxgkCbGetDeviceInformation)return STATUS_INVALID_PARAMETER;
  d->dxgk=*dxgk;RtlZeroMemory(&d->device_info,sizeof(d->device_info));
  status=dxgk->DxgkCbGetDeviceInformation(dxgk->DeviceHandle,&d->device_info);if(status!=STATUS_SUCCESS)return status;
- d->native.size=sizeof(d->native);d->native.version=1;
+ d->native.size=sizeof(d->native);d->native.version=2;
  status=GeoNativeOwnerCreate(d->pdo,dxgk,&d->device_info,&d->native);
  if(status!=STATUS_SUCCESS){if(d->native.native_context)d->native_created=1;return status;}
  d->native_created=1;
- if(d->native.size!=sizeof(d->native)||d->native.version!=1||!d->native.native_context)return STATUS_INVALID_DEVICE_STATE;
+ if(d->native.size!=sizeof(d->native)||d->native.version!=2||!d->native.native_context)return STATUS_INVALID_DEVICE_STATE;
+ status=GeoConfigureAperture(&d->adapter,&d->native.aperture);if(status!=STATUS_SUCCESS)return status;
  status=GeoStartInProcessOwnerSession(&d->session,&d->adapter,&d->native.control,dxgk);
  if(status!=STATUS_SUCCESS)return status; /* Ambiguous resources remain pinned. */
  *sources=0;*children=0;d->started=1;return STATUS_SUCCESS;
@@ -89,7 +91,7 @@ static int render_contract_valid(const DRIVER_INITIALIZATION_DATA *p) {
  /* Required render operations cannot be replaced with NULL/success stubs.
   * Capability implementation must also validate every feature it advertises;
   * pointer presence alone is not evidence of shader/preemption support. */
- return p->Version==DXGKDDI_INTERFACE_VERSION&&p->DxgkDdiQueryAdapterInfo&&p->DxgkDdiPreemptCommand&&
+ return p->Version==DXGKDDI_INTERFACE_VERSION&&p->DxgkDdiPreemptCommand&&
   !p->DxgkDdiSetVidPnSourceAddress&&!p->DxgkDdiCommitVidPn&&!p->DxgkDdiPresent&&
   !p->DxgkDdiSetPointerShape&&!p->DxgkDdiSetPointerPosition&&!p->DxgkDdiQueryChildRelations&&
   !p->DxgkDdiQueryChildStatus&&!p->DxgkDdiQueryDeviceDescriptor&&!p->DxgkDdiGetScanLine;
@@ -100,6 +102,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry) {
  table.DxgkDdiAddDevice=add_device;table.DxgkDdiStartDevice=start_device;
  table.DxgkDdiStopDevice=stop_device;table.DxgkDdiRemoveDevice=remove_device;
  table.DxgkDdiSetPowerState=power_state;table.DxgkDdiInterruptRoutine=interrupt_routine;table.DxgkDdiDpcRoutine=dpc_routine;
+ table.DxgkDdiQueryAdapterInfo=GeoQueryAdapterInfo;table.DxgkDdiPreemptCommand=GeoPreemptCommand;
+ table.DxgkDdiCancelCommand=GeoCancelCommand;
  table.DxgkDdiDescribeAllocation=GeoDescribeAllocation;table.DxgkDdiGetStandardAllocationDriverData=GeoGetStandardAllocationDriverData;
  table.DxgkDdiCollectDbgInfo=GeoCollectDbgInfo;
  table.DxgkDdiCreateDevice=GeoCreateDevice;table.DxgkDdiDestroyDevice=GeoDestroyDevice;
