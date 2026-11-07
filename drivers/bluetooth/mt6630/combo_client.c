@@ -6,10 +6,15 @@
 #include <wdf.h>
 #include <bthxddi.h>
 #include "broker_abi.h"
+#include "radio_binding.h"
 #define CONTEXT_BYTES FIELD_OFFSET(BTHX_HCI_READ_WRITE_CONTEXT,Data)
+C_ASSERT(sizeof(BTHX_VERSION)==4);
+C_ASSERT(sizeof(BTHX_CAPABILITIES)==16);
+C_ASSERT(CONTEXT_BYTES==5);
 typedef struct _CLIENT {
  WDFDEVICE device,child;WDFIOTARGET target;WDFWAITLOCK lock;WDFTIMER timer;WDFQUEUE reads[2];
- BOOLEAN running,negotiated,open;unsigned count;struct a04_bt_broker_packet packets[32],scratch;
+ struct a04_mt6630_radio_binding sideband;
+ BOOLEAN running,negotiated,open,binding_active;unsigned count;struct a04_bt_broker_packet packets[32],scratch;
 } CLIENT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(CLIENT,Context)
 EVT_WDF_DRIVER_DEVICE_ADD Add;
@@ -28,6 +33,36 @@ static NTSTATUS call(CLIENT *c,ULONG code,struct a04_bt_broker_packet *packet)
   code==A04_BT_BROKER_WRITE?&buffer:NULL,code==A04_BT_BROKER_READ?&buffer:NULL,NULL,&used);
  if(NT_SUCCESS(s)&&used!=(code==A04_BT_BROKER_READ?sizeof(*packet):0))return STATUS_DATA_ERROR;
  return s;
+}
+static void RadioReference(PVOID p){CLIENT *c=p;WdfObjectReference(c->device);}
+static void RadioDereference(PVOID p){CLIENT *c=p;WdfObjectDereference(c->device);}
+static NTSTATUS BindSideband(PVOID p,const struct a04_bt_hfp_provider *provider,PULONG generation)
+{
+ CLIENT *c=p;NTSTATUS s=WdfDeviceStopIdle(c->device,TRUE);if(!NT_SUCCESS(s))return s;lock(c);
+ if(!c->running||c->binding_active){unlock(c);WdfDeviceResumeIdle(c->device);return STATUS_DEVICE_NOT_READY;}
+ /* Reserve D0 before callbacks. Stop consults this gate without acquiring
+  * the binding mutex, so provider/controller callbacks may take c->lock. */
+ c->binding_active=TRUE;unlock(c);
+ s=a04_mt6630_binding_bind(&c->sideband,provider,generation);
+ if(!NT_SUCCESS(s)){lock(c);c->binding_active=FALSE;unlock(c);WdfDeviceResumeIdle(c->device);}return s;
+}
+static NTSTATUS UnbindSideband(PVOID p,ULONG generation)
+{
+ CLIENT *c=p;NTSTATUS s=a04_mt6630_binding_unbind(&c->sideband,generation);
+ if(NT_SUCCESS(s)){lock(c);c->binding_active=FALSE;unlock(c);WdfDeviceResumeIdle(c->device);}return s;
+}
+static BOOLEAN SidebandCapable(CLIENT *c)
+{
+ struct a04_bt_broker_state state={0};WDF_MEMORY_DESCRIPTOR buffer;ULONG_PTR used=0;NTSTATUS s;
+ WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&buffer,&state,sizeof(state));lock(c);
+ if(!c->running||!c->open){unlock(c);return FALSE;}
+ s=WdfIoTargetSendIoctlSynchronously(c->target,WDF_NO_HANDLE,A04_BT_BROKER_GET_STATE,NULL,&buffer,NULL,&used);
+ unlock(c);
+ if(!NT_SUCCESS(s)||used!=sizeof(state)||state.version!=1||!state.ready||!state.pcm_command_applied)return FALSE;
+ /* Actual provider callbacks execute outside the transport lock: controller
+  * ownership validation may itself acquire that lock. No active peer gate. */
+ if(!a04_mt6630_binding_capable(&c->sideband))return FALSE;
+ lock(c);BOOLEAN ready=c->running&&c->open;unlock(c);return ready;
 }
 static void deliver(CLIENT *c)
 {
@@ -67,6 +102,16 @@ VOID ComboInternal(WDFQUEUE q,WDFREQUEST r,size_t outlen,size_t inlen,ULONG code
  CLIENT *c=Context(WdfIoQueueGetDevice(q));PVOID in,out;size_t bytes;NTSTATUS s=STATUS_INVALID_PARAMETER;ULONG_PTR used=0;
  UNREFERENCED_PARAMETER(outlen);UNREFERENCED_PARAMETER(inlen);
  if(WdfRequestGetRequestorMode(r)!=KernelMode){WdfRequestComplete(r,STATUS_ACCESS_DENIED);return;}
+ if(code==IOCTL_BTHX_QUERY_CAPABILITIES){
+  s=WdfRequestRetrieveOutputBuffer(r,sizeof(BTHX_CAPABILITIES),&out,&bytes);
+  if(NT_SUCCESS(s)){PBTHX_CAPABILITIES caps=out;RtlZeroMemory(caps,sizeof(*caps));
+   caps->MaxAclTransferInSize=A04_BT_BROKER_MAX_HCI;
+   if(SidebandCapable(c)){caps->ScoSupport=ScoSupportHCIBypass;caps->MaxScoChannels=1;}
+   else caps->ScoSupport=ScoSupportNone;
+   used=sizeof(*caps);
+  }
+  WdfRequestCompleteWithInformation(r,s,used);return;
+ }
  lock(c);
  switch(code){
  case IOCTL_BTHX_GET_VERSION:
@@ -75,12 +120,6 @@ VOID ComboInternal(WDFQUEUE q,WDFREQUEST r,size_t outlen,size_t inlen,ULONG code
  case IOCTL_BTHX_SET_VERSION:
   s=WdfRequestRetrieveInputBuffer(r,sizeof(BTHX_VERSION),&in,&bytes);
   if(NT_SUCCESS(s)){s=((PBTHX_VERSION)in)->Version==BTHX_DDI_VERSION_1?STATUS_SUCCESS:STATUS_REVISION_MISMATCH;c->negotiated=NT_SUCCESS(s);}break;
- case IOCTL_BTHX_QUERY_CAPABILITIES:
-  s=WdfRequestRetrieveOutputBuffer(r,sizeof(BTHX_CAPABILITIES),&out,&bytes);
-  if(NT_SUCCESS(s)){PBTHX_CAPABILITIES caps=out;RtlZeroMemory(caps,sizeof(*caps));caps->MaxAclTransferInSize=A04_BT_BROKER_MAX_HCI;caps->ScoSupport=ScoSupportNone;used=sizeof(*caps);}
-  /* Windows RT load requirement remains unmet. Shared HCI is not proof of
-   * FC72 PCM tuple, codec/FIFO latency or independent AFE DMA drain. */
-  break;
  case IOCTL_BTHX_WRITE_HCI:
   if(!c->running||!c->negotiated){s=STATUS_DEVICE_NOT_READY;break;}
   s=WdfRequestRetrieveOutputBuffer(r,sizeof(ULONG),&out,&bytes);if(!NT_SUCCESS(s))break;
@@ -126,7 +165,9 @@ done:unlock(c);return s;
 NTSTATUS Stop(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
 {
  CLIENT *c=Context(device);NTSTATUS s=STATUS_SUCCESS;UNREFERENCED_PARAMETER(target);
- lock(c);c->running=FALSE;unlock(c);WdfTimerStop(c->timer,TRUE);
+ /* Audio must first remove its HFP endpoints and prove both DMA directions
+  * quiescent. Keep transport/clock ownership while the binding remains. */
+ lock(c);if(c->binding_active){unlock(c);return STATUS_DEVICE_BUSY;}c->running=FALSE;unlock(c);WdfTimerStop(c->timer,TRUE);
  WdfIoQueuePurgeSynchronously(c->reads[0]);WdfIoQueuePurgeSynchronously(c->reads[1]);lock(c);
  if(c->open){s=call(c,A04_BT_BROKER_CLOSE,NULL);WdfIoTargetClose(c->target);c->open=FALSE;}
  RtlSecureZeroMemory(c->packets,sizeof(c->packets));c->count=0;unlock(c);return s;
@@ -141,7 +182,14 @@ static NTSTATUS child(CLIENT *c)
  RtlInitUnicodeString(&id,L"0");s=WdfPdoInitAssignInstanceID(init,&id);if(!NT_SUCCESS(s))goto fail;
  WDF_OBJECT_ATTRIBUTES_INIT(&a);a.ExecutionLevel=WdfExecutionLevelPassive;s=WdfDeviceCreate(&init,&a,&c->child);if(!NT_SUCCESS(s))goto fail;
  WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel);q.PowerManaged=WdfFalse;q.EvtIoDeviceControl=Forward;q.EvtIoInternalDeviceControl=Forward;
- s=WdfIoQueueCreate(c->child,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);if(NT_SUCCESS(s))s=WdfFdoAddStaticChild(c->device,c->child);return s;
+ s=WdfIoQueueCreate(c->child,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);if(!NT_SUCCESS(s))return s;
+ a04_mt6630_binding_init(&c->sideband,WdfDeviceWdmGetDeviceObject(c->child));
+ struct a04_mt6630_sideband_interface iface;WDF_QUERY_INTERFACE_CONFIG query;RtlZeroMemory(&iface,sizeof(iface));
+ iface.Header.Size=sizeof(iface);iface.Header.Version=A04_MT6630_SIDEBAND_VERSION;iface.Header.Context=c;
+ iface.Header.InterfaceReference=RadioReference;iface.Header.InterfaceDereference=RadioDereference;
+ iface.Bind=BindSideband;iface.Unbind=UnbindSideband;
+ WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&iface,&A04Mt6630SidebandInterfaceGuid,NULL);
+ s=WdfDeviceAddQueryInterface(c->child,&query);if(NT_SUCCESS(s))s=WdfFdoAddStaticChild(c->device,c->child);return s;
 fail:WdfDeviceInitFree(init);return s;
 }
 NTSTATUS Add(WDFDRIVER driver,PWDFDEVICE_INIT init)

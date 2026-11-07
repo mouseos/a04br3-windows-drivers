@@ -108,6 +108,13 @@ void a04_combo_worker(struct a04_ndis_runtime *a)
   /* Keep attachment metadata after a clean OFF for reopening this fn2 owner.
    * A failure keeps bt.failed/bridge.failed and cannot create a new lease. */
   {PFILE_OBJECT file=b->file;b->file=NULL;ObDereferenceObject(file);}RtlSecureZeroMemory(b->rx,sizeof(b->rx));b->count=0;
+ }else if(code==A04_BT_BROKER_GET_STATE){
+  struct a04_bt_broker_state *state=irp->AssociatedIrp.SystemBuffer;
+  if(in||out!=sizeof(*state)||!state){s=STATUS_INVALID_PARAMETER;goto done;}
+  RtlZeroMemory(state,sizeof(*state));state->version=1;
+  state->ready=a->power&&a->radio.initialized&&!a->radio.failed&&!a->uncertain&&b->bt.ready&&!b->bt.failed;
+  state->pcm_command_applied=state->ready&&b->bt.pcm_command_applied;
+  used=sizeof(*state);s=STATUS_SUCCESS;
  }else if(code==A04_BT_BROKER_WRITE){
   struct a04_bt_broker_packet *packet=irp->AssociatedIrp.SystemBuffer;
   if(in!=sizeof(*packet)||out||!packet||packet->version!=1||packet->length>sizeof(packet->data)){s=STATUS_INVALID_PARAMETER;goto done;}
