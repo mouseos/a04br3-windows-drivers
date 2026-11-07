@@ -6,4 +6,6 @@
  * Runtime HFP categories/container, no manufactured jack connection/volume. */
 NTSTATUS Mt6630NewHfpTopology(struct a04_bt_hfp_session *,ULONG,
  const struct a04_bt_hfp_metadata *,PMINIPORTTOPOLOGY *);
+/* PASSIVE: stop observer and drain callbacks before PortCls unregister/Release. */
+NTSTATUS Mt6630StopHfpTopology(PMINIPORTTOPOLOGY);
 #endif

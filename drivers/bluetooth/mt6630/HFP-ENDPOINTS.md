@@ -88,12 +88,14 @@ GetPosition は独立 gate により解放中の MDL に触れない。
    mic Topology output1→Wave bridge1を `PcRegisterPhysicalConnection` で結ぶ。
    部分登録失敗でもobjectを保持し、実unregisterの完了なしに解放しない。
 4. topologyは実category、`JACK_CONTAINERID` と都度実HFP照会する
-   `JACK_DESCRIPTION.IsConnected` を返す。未実装のhardware volume/mute、
-   jack-change event、NRECやdynamic format能力は広告しない。現実装はtransparent
-   topologyであり、headset側volume同期、connect/disconnect property、jack-change
-   event転送は残件。特にSupportsVolume機のremote volume処理は未接続と区別する。
+   `JACK_DESCRIPTION.IsConnected` を返す。connection変更通知を2 endpointへ転送し、
+   `JACK_DESCRIPTION2` のpresence detectionとjack-info-change eventを接続する。
+   SupportsVolume機には実HFP取得のrange/stepによるvolume nodeを追加し、speaker/mic
+   GET/SETとvolume-change eventを転送する。非対応機はvolume nodeを追加しない。
+   未実装のmute、NREC、dynamic format、connect/disconnect propertyは広告しない。
 5. ownerのD0停止/REMOVE前に `Mt6630HfpPnpStop(handle)` をPASSIVEで呼ぶ。
-   通知解除をdrainし、workerを最大10秒待ち、sessionの新RUN受付を閉じて実MRGを
+   通知解除をdrainし、PnP workerを最大10秒待ち、topology observerをrundown、
+   HFP変更通知IRPをcancel/completion join（各2秒）し、sessionの新RUN受付を閉じて実MRGを
    drain、physical connection/subdeviceを逆順に撤去する。成功時だけhandleを破棄。
    ただし既存KS handleの最終Releaseは後発し得る。sessionがAudio FDOを参照保持し、
    providerの全referenceが解放されるまでmodule/context/必要mappingを保持する。
@@ -114,6 +116,29 @@ BT WDF FDOをPortClsとして扱わない。親／Audio共有ファイルは本�
 MRGの電気的連続性、controller PCM word formatの実設定、DAI capture DMAとIRQ2の
 v11統合、標準stack列挙、音声入出力、電源遷移は未確認。
 Linux/boardのregister根拠は [SIDEBAND.md](SIDEBAND.md) を参照。
+
+## volume同期・jack通知
+
+Microsoftの[GET_VOLUMEPROPERTYVALUES仕様](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/bthhfpddi/ni-bthhfpddi-ioctl_bthhfp_device_get_volumepropertyvalues)
+は、返却するKSPROPERTY_VALUESとそれが参照するデータを同一buffer内に置く。
+本実装はIRP-owned buffer内でpointer/長さ/型を検証し、LONGの単一stepped rangeを
+取り出してBASICSUPPORTへ直列化する。外部pointerをuserへ返さず、0～15やdB換算を
+埋め込まない。未知のrange形式は明示的に未対応とする。
+GET_VOLUME_STATUS_UPDATEはbImmediate=TRUE、変更通知はFALSE。SET成功だけで
+cached値やeventを捏造せず、実GET／実notification completionの値を採用する。
+
+connection、speaker volume、mic volumeの3 IRP（volume非対応機はconnectionのみ）を
+1 workerで処理・再armする。real値の変更時だけIPortEventsへ通知。notification失敗や
+異常な連続completionは停止してowner faultへ送り、自動再試行loopにしない。
+observerはrundown保護し、PortCls unregister前に通知callbackをdrainする。
+キャンセル未完了時はIRP/buffer/engine/session/moduleを保持し、解除成功と扱わない。
+PortClsがevent entryの解除を所有する。HCIBypass/MaxScoChannels広告は従来通りNone/0。
+
+provider **v2の構造は変更しない**。BT-private metadata/observer APIのみ追加。
+Ramanは同じ固定sourceのheader/libraryをまとめて統合する。topology factoryを直接
+使う場合はsession events開始と`Mt6630StopHfpTopology`が必要だが、通常の
+`Mt6630HfpPnpStart/Stop`内では実装済み。新しいAudio volume callbackは不要。
+provider用Linux根拠・IRQ2共有の注意は [PROVIDER-EVIDENCE.md](PROVIDER-EVIDENCE.md)。
 
 ## 固定 source のビルド単位
 

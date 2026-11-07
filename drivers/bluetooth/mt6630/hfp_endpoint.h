@@ -58,11 +58,25 @@ struct a04_bt_hfp_provider {
   * One deferred cleanup attempt; failure is retained, not a retry loop. */
  NTSTATUS (*retire)(PVOID,PWORKER_THREAD_ROUTINE,PVOID);
 };
-struct a04_bt_hfp_metadata {GUID input_category,output_category,container;BOOLEAN volume,nrec;};
+struct a04_bt_hfp_metadata {GUID input_category,output_category,container;BOOLEAN volume,nrec;ULONG volume_values_size;};
 struct a04_bt_hfp_session;
 /* Runtime metadata only: no name/address is returned or logged. */
 NTSTATUS a04_bt_hfp_metadata(struct a04_bt_hfp_session *,struct a04_bt_hfp_metadata *);
 NTSTATUS a04_bt_hfp_connection(struct a04_bt_hfp_session *,BOOLEAN *);
+/* BT-private control/event ABI; provider v2 layout stays unchanged.
+ * Changes are real HFP completion values. Callback is PASSIVE, nonblocking,
+ * and must not call this session or synchronously run provider teardown. */
+enum {A04_BT_HFP_CHANGE_CONNECTION=1,A04_BT_HFP_CHANGE_VOLUME=2};
+struct a04_bt_hfp_observer;
+struct a04_bt_hfp_volume_range {LONG minimum,maximum;ULONG step,member_flags;};
+NTSTATUS a04_bt_hfp_volume_range(struct a04_bt_hfp_session *,ULONG values_size,struct a04_bt_hfp_volume_range *);
+NTSTATUS a04_bt_hfp_volume_get(struct a04_bt_hfp_session *,ULONG direction,LONG *);
+NTSTATUS a04_bt_hfp_volume_set(struct a04_bt_hfp_session *,ULONG direction,LONG);
+NTSTATUS a04_bt_hfp_events_start(struct a04_bt_hfp_session *,BOOLEAN volume);
+NTSTATUS a04_bt_hfp_events_stop(struct a04_bt_hfp_session *);
+NTSTATUS a04_bt_hfp_observe(struct a04_bt_hfp_session *,ULONG direction,
+ void (*changed)(PVOID,ULONG),PVOID,struct a04_bt_hfp_observer **);
+NTSTATUS a04_bt_hfp_unobserve(struct a04_bt_hfp_session *,struct a04_bt_hfp_observer *);
 /* Kernel only: link must currently enumerate under the Microsoft HFP bypass
  * interface GUID. No user interface accepts a path or arbitrary IOCTL. */
 NTSTATUS a04_bt_hfp_attach(PDEVICE_OBJECT owner,PCUNICODE_STRING interface_link,

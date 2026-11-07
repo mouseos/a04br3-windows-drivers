@@ -38,9 +38,10 @@ try {
  if($LASTEXITCODE){throw 'HFP endpoint integration library archive failed'}
  Copy-Item "$root\drivers\bluetooth\mt6630\HFP-ENDPOINTS.md" $out -Force
  Copy-Item "$root\drivers\bluetooth\mt6630\hfp-interfaces.inf.inc" $out -Force
+ Copy-Item "$root\drivers\bluetooth\mt6630\PROVIDER-EVIDENCE.md" $out -Force
  @{source_commit=$commit;source_dirty=$false;sources=$sources;target='Windows RT 8.1 ARM32';
    library='mt6630-hfp-endpoint-core.lib';provider_contract_version=2;wdk_compile_archive_succeeded=$true;
-   final_driver_link_verified=$false;audio_v11_provider_connected=$false;pnp_endpoints_registered=$false;topology_source_implemented=$true;pnp_lifecycle_source_implemented=$true;audio_fdo_callsite_connected=$false;
+   final_driver_link_verified=$false;audio_v11_provider_connected=$false;pnp_endpoints_registered=$false;topology_source_implemented=$true;hfp_volume_sync_source_implemented=$true;hfp_jack_notifications_source_implemented=$true;pnp_lifecycle_source_implemented=$true;audio_fdo_callsite_connected=$false;
    standard_stack_contract_satisfied=$false;hardware_verified=$false;
    advertised_sco='None (unchanged)';exclusive_bluetooth=$true;wifi_coexistence_verified=$false;
    format='CVSD (Windows bypass codec 0), 8000 Hz mono S16_LE';

@@ -7,12 +7,14 @@
 #include <wdmguid.h>
 #define TAG 'p36M'
 struct endpoint_set {
- struct a04_bt_hfp_session *session;PPORT ports[4];BOOLEAN registered[4],connected[2];
+ struct a04_bt_hfp_session *session;PPORT ports[4];PMINIPORTTOPOLOGY topologies[2];BOOLEAN registered[4],connected[2];
 };
 static WCHAR names[4][32]={L"MT6630SpeakerTopology",L"MT6630SpeakerWave",L"MT6630MicTopology",L"MT6630MicWave"};
 static NTSTATUS unregister_set(PDEVICE_OBJECT device,struct endpoint_set *set)
 {
- NTSTATUS status=a04_bt_hfp_detach(set->session);if(!NT_SUCCESS(status))return status;
+ NTSTATUS status;
+ for(ULONG d=0;d<2;d++)if(set->topologies[d]){status=Mt6630StopHfpTopology(set->topologies[d]);if(!NT_SUCCESS(status))return status;}
+ status=a04_bt_hfp_detach(set->session);if(!NT_SUCCESS(status))return status;
  for(ULONG d=0;d<2;d++)if(set->connected[d]){
   PUNREGISTERPHYSICALCONNECTION remove=NULL;ULONG from=d?2:1,to=d?3:0;
   status=set->ports[from]->QueryInterface(IID_IUnregisterPhysicalConnection,(PVOID *)&remove);
@@ -28,6 +30,7 @@ static NTSTATUS unregister_set(PDEVICE_OBJECT device,struct endpoint_set *set)
   if(!NT_SUCCESS(status))return status;set->registered[i]=FALSE;
  }
  for(ULONG i=0;i<4;i++)if(set->ports[i])set->ports[i]->Release();
+ for(ULONG d=0;d<2;d++)if(set->topologies[d])set->topologies[d]->Release();
  a04_bt_hfp_dereference(set->session);ExFreePoolWithTag(set,TAG);return STATUS_SUCCESS;
 }
 /* *out survives any partial registration failure so teardown cannot lose it. */
@@ -39,11 +42,13 @@ static NTSTATUS register_set(PDEVICE_OBJECT device,PRESOURCELIST resources,
  struct endpoint_set *set=(struct endpoint_set *)ExAllocatePoolWithTag(NonPagedPool,sizeof(*set),TAG);
  if(!set)return STATUS_INSUFFICIENT_RESOURCES;RtlZeroMemory(set,sizeof(*set));
  set->session=session;a04_bt_hfp_reference(session);*out=set;
+ status=a04_bt_hfp_events_start(session,metadata.volume);if(!NT_SUCCESS(status))return status;
  for(ULONG i=0;i<4;i++){
   PUNKNOWN miniport=NULL;
   if(i&1){PMINIPORTWAVERT wave=NULL;status=Mt6630NewHfpMiniport(session,i/2,&wave);miniport=wave;}
   else {PMINIPORTTOPOLOGY topo=NULL;status=Mt6630NewHfpTopology(session,i/2,&metadata,&topo);miniport=topo;}
   if(!NT_SUCCESS(status))return status;
+  if(!(i&1)){set->topologies[i/2]=static_cast<PMINIPORTTOPOLOGY>(miniport);set->topologies[i/2]->AddRef();}
   status=PcNewPort(&set->ports[i],(i&1)?CLSID_PortWaveRT:CLSID_PortTopology);
   if(NT_SUCCESS(status))status=set->ports[i]->Init(device,NULL,miniport,NULL,resources);
   miniport->Release();if(!NT_SUCCESS(status))return status;
