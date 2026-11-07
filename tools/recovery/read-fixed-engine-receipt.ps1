@@ -60,6 +60,29 @@ try {
   $count=if($Profile -ceq 'legacy-five'){5}else{6}
   if($v.TargetCount.value -ne $count -or ($Profile -ceq 'run47-sdon' -and ($v.Schema.value -ne 2 -or $v.Node5HardwareId.value -cne 'ACPI\MOU0013'))){throw 'Expected fixed receipt profile mismatch'}
  }
+ $service=[MT8167OfflineHive.Native]::OpenPath($root,"$cs\Services\MT8167EngineProbe",$false)
+ if(!$service){$result.engine_service=@{present=$false}}
+ else {try {
+  $fixed=@('Type','Start','ErrorControl','ImagePath','ObjectName','DisplayName','DependOnService')
+  $sv=[ordered]@{}
+  foreach($name in $fixed){
+   $v=$service.GetValue($name,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+   if($null -eq $v){$sv[$name]=@{available=$false};continue}
+   $sv[$name]=@{available=$true;kind=[string]$service.GetValueKind($name);value=$v}
+  }
+  $result.engine_service=@{present=$true;values=$sv;value_count=$service.GetValueNames().Count;raw_fingerprint=[MT8167OfflineHive.Native]::ValueFingerprint($service);scope='seven fixed SCM values, no service mutation'}
+ }finally{$service.Dispose()}}
+ # Exactly the SD host Enum instance. Never enumerate Enum or protected Properties.
+ $sd=[MT8167OfflineHive.Native]::OpenPath($root,"$cs\Enum\ACPI\MOU0013\0",$false)
+ if(!$sd){$result.sd_enum=@{present=$false;scope='fixed ACPI\MOU0013\0 only'}}
+ else {try {
+  $ev=[ordered]@{}
+  foreach($name in @('HardwareID','CompatibleIDs','ClassGUID','Driver','Service','ConfigFlags','Problem','StatusFlags')){
+   try {$v=$sd.GetValue($name,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames);if($null -eq $v){$ev[$name]=@{available=$false}}else{$ev[$name]=@{available=$true;kind=[string]$sd.GetValueKind($name);value=$v}}}
+   catch {$ev[$name]=@{available=$false;error=$_.Exception.Message}}
+  }
+  $result.sd_enum=@{present=$true;values=$ev;live_cm_query=$false;properties_read=$false;scope='fixed Enum raw values only, missing Problem is unavailable'}
+ }finally{$sd.Dispose()}}
  $result.wifi=FixedDriverValues $root $cs 'Mt6630Runtime';$result.audio=FixedDriverValues $root $cs 'Mt8167Audio'
 }catch{$result.errors+=@($_.Exception.Message)}
 finally {

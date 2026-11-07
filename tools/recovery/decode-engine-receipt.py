@@ -74,6 +74,12 @@ def decode(receipt,out,policy_hash,audio_revision=1007,wifi_build=1006,wifi_base
                     if info.get('available') and info.get('error')==0 and len(data)!=info['captured_bytes']:raise ValueError('Captured stream length mismatch')
                     file=phase+'-'+name+'.txt';(out/file).write_bytes(data);rec['streams'][name].update(file=file,bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
         result['phases'][phase]=rec
+    result['sd_enum']=receipt.get('sd_enum',{'present':False})
+    service=receipt.get('engine_service',{});result['engine_service']=service
+    if service.get('present'):
+        result['engine_service']['start']=value(service.get('values',{}),'Start','DWord')
+        result['engine_service']['automatic_start']=result['engine_service']['start']==2
+        result['engine_service']['disabled']=result['engine_service']['start']==4
     a=receipt.get('audio',{});result['audio_start']={'present':bool(a.get('present')),'valid':False,'expected_inf_revision':audio_revision}
     if a.get('present'):
         v=a['values'];a=record(v,'NativeStart',AUDIO);a['complete']=value(v,'NativeStartComplete','DWord');a['valid']=bool(a.get('available') and a['complete']==1 and a['schema']==1 and a['bytes']==56 and a['inf_revision']==audio_revision)
