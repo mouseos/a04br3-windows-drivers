@@ -62,7 +62,10 @@ int a04_station_runtime_poll(struct a04_station_runtime *r)
  struct a04_wmt_bridge *b;uint32_t status,lengths;int e;unsigned port,packets=0;
  if(!r||!r->initialized||r->failed)return -1;b=r->bridge;
  e=a04_wmt_bridge_poll_wlan_status(b,&status);if(e)return fail(r,e);
- if(status&~7u)return fail(r,A04_WLAN_STATUS);
+ /* gen3 mt6630_reg.h: bit7 is FW_OWN_BACK, a normal notification.
+  * WHISR is read-clear. It carries no TX credit and does not itself prove
+  * host ownership; leave the WHLPCR handshake and all fault bits intact. */
+ if(status&~0x87u)return fail(r,A04_WLAN_STATUS);
  if(status&1u){e=a04_wlan_resources(&b->wlan);if(e)return fail(r,e);}
  for(port=0;port<2;port++)if(status&(2u<<port)){
   for(;;){const uint8_t *p;unsigned n;

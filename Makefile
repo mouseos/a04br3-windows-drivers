@@ -1594,3 +1594,9 @@ build/mt6630_checkpoint_test: tests/mt6630_checkpoint_test.c drivers/network/mt6
 .PHONY: test-mt6630-checkpoint
 test-mt6630-checkpoint: build/mt6630_checkpoint_test
 	./build/mt6630_checkpoint_test
+
+.PHONY: test-mt6630-station-notification
+test-mt6630-station-notification:
+	mkdir -p build
+	$(CC) $(CFLAGS) -Wno-unused-parameter -Wno-misleading-indentation -ffunction-sections -fdata-sections drivers/network/mt6630/station_runtime.c tests/mt6630_station_notification_test.c -Wl,--gc-sections -o build/mt6630_station_notification_test
+	./build/mt6630_station_notification_test
