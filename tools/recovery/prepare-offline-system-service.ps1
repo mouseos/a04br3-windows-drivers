@@ -9,6 +9,9 @@ param(
     [switch]$IncludeHardwareProbe,
     [switch]$RearmFixedGpuDeviceInstall,
     [switch]$InspectFixedGpuDeviceInstall,
+    [string]$GpuCandidateDirectory,
+    [string]$ExpectedGpuCandidateManifestSha256,
+    [string]$GpuCandidateSourceCommit,
     [string]$GpuRearmPlanPath,
     [string]$ExpectedGpuRearmPlanSha256,
     [switch]$RearmEngineProbe,
@@ -173,6 +176,102 @@ function Check-RelatedFingerprints($Actual,$Expected) {
         if($Actual.$name -cne $Expected.$name) { throw ('Related existing settings changed: '+$name) }
     }
 }
+function Get-GpuVersion([string]$Value) {
+    if($Value -notmatch '^(\d{1,2}/\d{1,2}/\d{4}),(\d+)\.(\d+)\.(\d+)\.(\d+)$') { throw 'GPU DriverVer must contain a date and four version components' }
+    $date=[DateTime]::ParseExact($Matches[1],'M/d/yyyy',[Globalization.CultureInfo]::InvariantCulture)
+    $parts=@([int]$Matches[2],[int]$Matches[3],[int]$Matches[4],[int]$Matches[5])
+    foreach($part in $parts) { if($part -lt 0 -or $part -gt 65535) { throw 'GPU version component outside UINT16' } }
+    return @{date=$date;version=(New-Object Version($parts[0],$parts[1],$parts[2],$parts[3]));driver_ver=($date.ToString('MM/dd/yyyy')+','+($parts -join '.'))}
+}
+function Get-GpuBindingHash($Binding) {
+    $hash=[Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes(($Binding|ConvertTo-Json -Depth 8 -Compress))))).Replace('-','').ToLowerInvariant() }
+    finally { $hash.Dispose() }
+}
+function Read-GpuCandidateBinding([string]$Directory,[string]$ManifestSha256,[string]$SourceCommit) {
+    if($ManifestSha256 -notmatch '^[0-9a-fA-F]{64}$' -or $SourceCommit -notmatch '^[0-9a-fA-F]{40}$') { throw 'GPU input requires explicit full manifest SHA256 and hexadecimal source commit' }
+    $directory=(Resolve-Path -LiteralPath $Directory).Path
+    if([IO.File]::GetAttributes($directory) -band [IO.FileAttributes]::ReparsePoint) { throw 'GPU candidate directory must not be a reparse point' }
+    $manifestPath=Join-Path $directory 'signed-manifest.json'
+    if((Hash-File $manifestPath) -cne $ManifestSha256.ToLowerInvariant()) { throw 'GPU signed manifest SHA256 mismatch' }
+    $signed=Get-Content -Raw -LiteralPath $manifestPath|ConvertFrom-Json
+    $source=$SourceCommit.ToLowerInvariant()
+    if($signed.source_commit -cne $source -or $signed.native_clear_activate -ne $true -or $signed.signing_thumbprint -notmatch '^[0-9a-fA-F]{40}$') { throw 'GPU candidate source/activation/signing identity mismatch' }
+    $allowed=@('mt8167-ge8300.inf','mt8167-ge8300.sys','mt8167-ge8300.cat','ge8300-mips.fw','build-config.json','provider-package-manifest.json','mt8167-development.cer')
+    $files=[ordered]@{}
+    foreach($item in $signed.files) {
+        $name=[string]$item.path
+        if($name -cnotin $allowed -or $files.Contains($name) -or $item.sha256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'GPU manifest must contain only the fixed unique package files' }
+        $path=Join-Path $directory $name
+        if(!(Test-Path -LiteralPath $path -PathType Leaf) -or ([IO.File]::GetAttributes($path) -band [IO.FileAttributes]::ReparsePoint)) { throw 'GPU package file absent or reparse' }
+        $length=(Get-Item -LiteralPath $path).Length
+        if($length -le 0 -or $length -gt 16777216 -or (Hash-File $path) -cne $item.sha256.ToLowerInvariant()) { throw ('GPU final package hash/size mismatch: '+$name) }
+        $files[$name]=[ordered]@{sha256=$item.sha256.ToLowerInvariant();bytes=$length}
+    }
+    if($files.Count -ne $allowed.Count) { throw 'GPU final signed manifest is incomplete' }
+    $provider=Get-Content -Raw -LiteralPath (Join-Path $directory 'provider-package-manifest.json')|ConvertFrom-Json
+    $config=Get-Content -Raw -LiteralPath (Join-Path $directory 'build-config.json')|ConvertFrom-Json
+    if($provider.source_commit -cne $source -or $config.source_commit -cne $source -or $provider.fingerprint_state -cne 'final-signed-package' -or $provider.signature_status -cne 'Valid' -or $provider.signer_thumbprint -cne $signed.signing_thumbprint) { throw 'GPU final-signed provider/config provenance mismatch' }
+    $cert=[IO.File]::ReadAllBytes((Join-Path $directory 'mt8167-development.cer'))
+    $hasher=[Security.Cryptography.SHA1]::Create()
+    try { $thumb=([BitConverter]::ToString($hasher.ComputeHash($cert))).Replace('-','') } finally { $hasher.Dispose() }
+    if($thumb -ine $signed.signing_thumbprint) { throw 'GPU public certificate thumbprint mismatch' }
+    if(@($provider.files.PSObject.Properties.Name).Count -ne 4) { throw 'GPU provider manifest must name exactly four package files' }
+    foreach($name in $allowed[0..3]) {
+        $entry=$provider.files.$name
+        if(!$entry -or $entry.sha256.ToLowerInvariant() -cne $files[$name].sha256 -or $entry.bytes -ne $files[$name].bytes) { throw 'GPU provider and signed file records differ' }
+    }
+    if($config.installed_sys_sha256.ToLowerInvariant() -cne $provider.selected_installed_sys_sha256.ToLowerInvariant() -or $config.installed_driver_ver -cne $provider.selected_installed_driver_ver) { throw 'GPU build config baseline differs from final provider metadata' }
+    $inf=[IO.File]::ReadAllText((Join-Path $directory 'mt8167-ge8300.inf'))
+    if($inf -notmatch '(?im)^DriverVer\s*=\s*([^\r\n;]+)') { throw 'GPU INF DriverVer is missing' }
+    $candidate=Get-GpuVersion $Matches[1].Trim()
+    $baseline=Get-GpuVersion ([string]$provider.selected_installed_driver_ver)
+    if($candidate.version.CompareTo($baseline.version) -le 0 -or $candidate.date -lt $baseline.date) { throw 'GPU candidate must have a higher version and non-older date than the declared installed baseline' }
+    if($provider.driver_ver -cne $candidate.driver_ver -or $config.driver_ver -cne $candidate.driver_ver -or $config.inf_sha256.ToLowerInvariant() -cne $files['mt8167-ge8300.inf'].sha256 -or $provider.selected_installed_sys_sha256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'GPU candidate/baseline version metadata mismatch' }
+    if($inf -notmatch '(?im)^%Device%\s*=\s*Install\s*,\s*ACPI\\MOU0006\s*$' -or
+       $inf -notmatch '(?im)^AddService\s*=\s*MT8167GE8300\s*,' -or
+       $inf -notmatch '(?im)^ServiceBinary\s*=\s*%12%\\mt8167-ge8300\.sys\s*$' -or
+       $inf -match '(?i)\b(CoInstallers32|RegisterDlls|UnregisterDlls|RunPreSetupCommands|RunPostSetupCommands)\b') { throw 'GPU INF must remain the fixed MOU0006 provider without executable directives' }
+    if((Hash-File $manifestPath) -cne $ManifestSha256.ToLowerInvariant()) { throw 'GPU signed manifest changed during inspection' }
+    foreach($name in $allowed) { if((Hash-File (Join-Path $directory $name)) -cne $files[$name].sha256) { throw 'GPU package changed during inspection' } }
+    if($files['mt8167-ge8300.sys'].sha256 -ceq $provider.selected_installed_sys_sha256.ToLowerInvariant()) { throw 'GPU candidate SYS must differ from the installed baseline' }
+    $transitionHasher=[Security.Cryptography.SHA256]::Create()
+    try { $transition=([BitConverter]::ToString($transitionHasher.ComputeHash([Text.Encoding]::ASCII.GetBytes($source+$provider.selected_installed_sys_sha256.ToLowerInvariant()+$files['mt8167-ge8300.sys'].sha256+$files['mt8167-ge8300.inf'].sha256)))).Replace('-','').ToLowerInvariant() } finally { $transitionHasher.Dispose() }
+    $suffix='\MT8167GpuUpdate-'+$source+'-'+$transition
+    return [ordered]@{source_commit=$source;transition_id=$transition;data_directory_suffix=$suffix;data_directory=('C:\Windows\System32'+$suffix);hardware_id='ACPI\MOU0006';instance_id='ACPI\MOU0006\0';driver_service='MT8167GE8300';
+        driver_ver=$candidate.driver_ver;installed_baseline_driver_ver=$baseline.driver_ver;
+        installed_baseline_sys_sha256=$provider.selected_installed_sys_sha256.ToLowerInvariant();
+        signed_manifest_sha256=$ManifestSha256.ToLowerInvariant();signer_thumbprint=$thumb;files=$files;
+        signature_trust_verified_by_native=$false;live_loaded_image_verified=$false}
+}
+function Read-GpuInstalledSelection($Root,$Plan) {
+    $control='ControlSet{0:D3}' -f [int]$Plan.control_set
+    $key=[MT8167OfflineHive.Native]::OpenPath($Root,($control+'\Enum\ACPI\MOU0006\0'),$false)
+    if(!$key) { throw 'Fixed MOU0006 instance is missing from replayed SYSTEM' }
+    try {
+        if($key.GetValueKind('HardwareID') -ne [Microsoft.Win32.RegistryValueKind]::MultiString -or @($key.GetValue('HardwareID')) -inotcontains 'ACPI\MOU0006' -or
+           $key.GetValueKind('Service') -ne [Microsoft.Win32.RegistryValueKind]::String -or $key.GetValue('Service') -ine 'MT8167GE8300' -or
+           $key.GetValueKind('Driver') -ne [Microsoft.Win32.RegistryValueKind]::String) { throw 'Fixed GPU hardware/service registration differs' }
+        $driver=[string]$key.GetValue('Driver')
+        if($driver -notmatch '^\{4d36e97d-e325-11ce-bfc1-08002be10318\}\\[0-9]{4}$') { throw 'GPU selected class key is not the fixed System class' }
+    } finally { $key.Dispose() }
+    $class=[MT8167OfflineHive.Native]::OpenPath($Root,($control+'\Control\Class\'+$driver),$false)
+    if(!$class) { throw 'GPU selected class registration is absent' }
+    try {
+        foreach($name in @('InfPath','DriverVersion','DriverDate')) { if($class.GetValueKind($name) -ne [Microsoft.Win32.RegistryValueKind]::String) { throw 'GPU class metadata type mismatch' } }
+        $inf=[string]$class.GetValue('InfPath');$version=[string]$class.GetValue('DriverVersion');$date=[string]$class.GetValue('DriverDate')
+        if($inf -notmatch '^oem[0-9]+\.inf$') { throw 'GPU selected INF is not an OEM package' }
+        $parsedDate=[DateTime]::ParseExact($date,[string[]]@('M-d-yyyy','MM-dd-yyyy','M/d/yyyy','MM/dd/yyyy','yyyy-MM-dd'),[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::None)
+        $installed=Get-GpuVersion ($parsedDate.ToString('MM/dd/yyyy')+','+$version)
+        return [ordered]@{instance_id='ACPI\MOU0006\0';driver_class_key=$driver;inf_path=$inf;driver_ver=$installed.driver_ver;
+            class_fingerprint=[MT8167OfflineHive.Native]::ValueFingerprint($class);replayed_system_only=$true;live_loaded_image_verified=$false}
+    } finally { $class.Dispose() }
+}
+function Check-GpuCandidateProgress($Binding,$Selection) {
+    $candidate=Get-GpuVersion ([string]$Binding.driver_ver)
+    $installed=Get-GpuVersion ([string]$Selection.driver_ver)
+    if($Binding.installed_baseline_driver_ver -cne $installed.driver_ver -or $candidate.version.CompareTo($installed.version) -le 0 -or $candidate.date -lt $installed.date) { throw 'GPU candidate is not a roll-forward from the replayed installed selection' }
+}
 if([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT -or [IntPtr]::Size -ne 8) { throw 'Use an elevated 64-bit Windows PowerShell/pwsh process' }
 if($InternalMode) {
     $state=[ordered]@{status='failed';phase='initializing';load_rc=$null;unload_rc=$null;errors=@()}
@@ -195,6 +294,13 @@ if($InternalMode) {
             $state.audit_scope='Select and raw values of Services/DeviceInstall and Services/RpcSs only; no subkeys or whole-SYSTEM audit'
             $state.whole_system_audit=$false
             $before=Related-Fingerprints $root $plan
+            if($plan.gpu_candidate_binding) {
+                $state.audit_scope='Select + DeviceInstall/RpcSs + exact selected service seven values; fixed MOU0006 Enum and selected System-class key read-only'
+                $state.gpu_installed_selection=Read-GpuInstalledSelection $root $plan
+                Check-GpuCandidateProgress $plan.gpu_candidate_binding $state.gpu_installed_selection
+                if($plan.gpu_installed_selection -and (Get-GpuBindingHash $state.gpu_installed_selection) -cne (Get-GpuBindingHash $plan.gpu_installed_selection)) { throw 'GPU replayed selection changed from the pinned inspection' }
+                $state.gpu_candidate_binding_sha256=Get-GpuBindingHash $plan.gpu_candidate_binding
+            }
             $state.services=Inspect-Services $root $plan ($InternalMode -eq 'Patch')
             if($plan.engine_rearm) {
                 $state.engine_rearm_plan_sha256=$plan.engine_rearm_plan_sha256
@@ -238,6 +344,12 @@ if($RearmEngineProbe) {
     if($engineRearmPlan.schema -ne 1 -or $engineRearmPlan.service -cne 'MT8167EngineProbe' -or $engineRearmPlan.maximum_rearms -ne 1 -or
        $engineRearmPlan.disabled_service_fingerprint -cne 'dbbe363d2401dfc022606aba010c0e4888c5feab67c748ea5030b0eb3ba484c1') { throw 'Only the known disabled Engine registration can be rearmed' }
 } elseif($EngineRearmPlanPath -or $ExpectedEngineRearmPlanSha256) { throw 'Rearm plan requires explicit RearmEngineProbe opt-in' }
+$gpuCandidateBinding=$null;$gpuCandidateBindingHash=$null
+if($InspectFixedGpuDeviceInstall -or $RearmFixedGpuDeviceInstall) {
+    if(!$GpuCandidateDirectory -or !$ExpectedGpuCandidateManifestSha256 -or !$GpuCandidateSourceCommit) { throw 'GPU native operations require the final signed candidate directory, manifest SHA256 and hexadecimal source commit' }
+    $gpuCandidateBinding=Read-GpuCandidateBinding $GpuCandidateDirectory $ExpectedGpuCandidateManifestSha256 $GpuCandidateSourceCommit
+    $gpuCandidateBindingHash=Get-GpuBindingHash $gpuCandidateBinding
+} elseif($GpuCandidateDirectory -or $ExpectedGpuCandidateManifestSha256 -or $GpuCandidateSourceCommit) { throw 'GPU candidate input is allowed only with explicit GPU inspect/rearm' }
 $gpuRearmPlan=$null;$gpuRearmPlanHash=$null
 if($RearmFixedGpuDeviceInstall) {
     if($RearmEngineProbe -or $ServiceName -cne 'MT8167DeviceInstall' -or $IncludeHardwareProbe -or !$GpuRearmPlanPath -or
@@ -245,8 +357,20 @@ if($RearmFixedGpuDeviceInstall) {
     $gpuRearmPlanHash=Hash-File $GpuRearmPlanPath
     if($gpuRearmPlanHash -cne $ExpectedGpuRearmPlanSha256.ToLowerInvariant()) { throw 'GPU rearm plan SHA256 mismatch' }
     $gpuRearmPlan=Get-Content -Raw -LiteralPath $GpuRearmPlanPath | ConvertFrom-Json
-    if($gpuRearmPlan.schema -ne 1 -or $gpuRearmPlan.service -cne 'MT8167DeviceInstall' -or $gpuRearmPlan.maximum_rearms -ne 1 -or
-       $gpuRearmPlan.candidate_source_commit -cne '04d0e573bd1bee7b619d25441f8ac05d28d5ccd5' -or
+    if($gpuRearmPlan.schema -ne 2 -or $gpuRearmPlan.service -cne 'MT8167DeviceInstall' -or $gpuRearmPlan.maximum_rearms -ne 1 -or
+       $gpuRearmPlan.hardware_id -cne 'ACPI\MOU0006' -or $gpuRearmPlan.instance_id -cne 'ACPI\MOU0006\0' -or
+       $gpuRearmPlan.candidate_source_commit -cne $gpuCandidateBinding.source_commit -or
+       $gpuRearmPlan.candidate_driver_ver -cne $gpuCandidateBinding.driver_ver -or
+       $gpuRearmPlan.transition_id -cne $gpuCandidateBinding.transition_id -or
+       $gpuRearmPlan.data_directory -cne $gpuCandidateBinding.data_directory -or
+       $gpuRearmPlan.data_directory_suffix -cne $gpuCandidateBinding.data_directory_suffix -or
+       $gpuRearmPlan.candidate_sys_sha256 -cne $gpuCandidateBinding.files.'mt8167-ge8300.sys'.sha256 -or
+       $gpuRearmPlan.candidate_cat_sha256 -cne $gpuCandidateBinding.files.'mt8167-ge8300.cat'.sha256 -or
+       $gpuRearmPlan.candidate_binding_sha256 -cne $gpuCandidateBindingHash -or
+       (Get-GpuBindingHash $gpuRearmPlan.candidate_binding) -cne $gpuCandidateBindingHash -or
+       $gpuRearmPlan.installed_selection.instance_id -cne 'ACPI\MOU0006\0' -or
+       $gpuRearmPlan.installed_selection.driver_ver -cne $gpuCandidateBinding.installed_baseline_driver_ver -or
+       $gpuRearmPlan.installed_selection.class_fingerprint -cnotmatch '^[0-9a-f]{64}$' -or
        $gpuRearmPlan.disabled_service_fingerprint -cnotmatch '^[0-9a-f]{64}$') { throw 'Invalid fixed GPU rearm plan' }
 } elseif($GpuRearmPlanPath -or $ExpectedGpuRearmPlanSha256) { throw 'GPU plan requires explicit fixed GPU rearm opt-in' }
 if($InspectFixedGpuDeviceInstall) {
@@ -280,6 +404,8 @@ if($gpuRearmPlan) {
     $report.gpu_rearm_plan_sha256=$gpuRearmPlanHash
 }
 if($InspectFixedGpuDeviceInstall) { $plan.gpu_inspect=$true;$report.service_values_written=$false }
+if($gpuCandidateBinding) { $report.audit_scope='Select + DeviceInstall/RpcSs + exact selected service seven values; fixed MOU0006 Enum and selected System-class key read-only';$plan.gpu_candidate_binding=$gpuCandidateBinding;$report.gpu_candidate_binding=$gpuCandidateBinding;$report.gpu_candidate_binding_sha256=$gpuCandidateBindingHash }
+if($gpuRearmPlan) { $plan.gpu_installed_selection=$gpuRearmPlan.installed_selection }
 $planFile=Join-Path $out 'plan.json';Save-Json $planFile $plan
 $expected=@{SYSTEM=$ExpectedSystemSha256;'SYSTEM.LOG1'=$ExpectedLog1Sha256;'SYSTEM.LOG2'=$ExpectedLog2Sha256}
 function Invoke-BoundedWorker($Mode,$Directory,$Name,[int]$Seconds) {
@@ -341,6 +467,7 @@ try {
         $fingerprint=[string]$patch.state.gpu_inspected_service_fingerprint
         if($fingerprint -cnotmatch '^[0-9a-f]{64}$') { throw 'Native GPU inspection did not return a real raw fingerprint' }
         $plan.gpu_inspect_fingerprint=$fingerprint
+        $plan.gpu_installed_selection=$patch.state.gpu_installed_selection
     }
     Save-Json $planFile $plan
     $check=Invoke-BoundedWorker 'Verify' $verify 'verify-state' $TimeoutSeconds;$report.verify=$check
@@ -353,10 +480,12 @@ try {
     foreach($name in $report.source_files.Keys) { if((Hash-File (Join-Path $source $name)) -cne $report.source_files[$name].sha256) { throw 'Original input changed' } }
     if($InspectFixedGpuDeviceInstall) {
         if($check.state.gpu_inspected_service_fingerprint -cne $fingerprint) { throw 'Native clean reload GPU fingerprint differs' }
-        $gpuPlan=[ordered]@{schema=1;service='MT8167DeviceInstall';maximum_rearms=1;
-            candidate_source_commit='04d0e573bd1bee7b619d25441f8ac05d28d5ccd5';
-            candidate_sys_sha256='13c8a9ca6b6d7fef921afd38d60cf84ea8e37b599b51af82d6e90342d8b9da07';
-            candidate_cat_sha256='5d4cfad2d2b0e1758777c0d531aae92e172a1b4d53b206649b5f7f2b08c4d828';
+        $gpuPlan=[ordered]@{schema=2;service='MT8167DeviceInstall';maximum_rearms=1;hardware_id='ACPI\MOU0006';instance_id='ACPI\MOU0006\0';
+            candidate_source_commit=$gpuCandidateBinding.source_commit;
+            candidate_sys_sha256=$gpuCandidateBinding.files.'mt8167-ge8300.sys'.sha256;
+            candidate_cat_sha256=$gpuCandidateBinding.files.'mt8167-ge8300.cat'.sha256;
+            candidate_driver_ver=$gpuCandidateBinding.driver_ver;transition_id=$gpuCandidateBinding.transition_id;data_directory=$gpuCandidateBinding.data_directory;data_directory_suffix=$gpuCandidateBinding.data_directory_suffix;baseline_driver_ver=$gpuCandidateBinding.installed_baseline_driver_ver;baseline_sys_sha256=$gpuCandidateBinding.installed_baseline_sys_sha256;candidate_binding=$gpuCandidateBinding;candidate_binding_sha256=$gpuCandidateBindingHash;
+            installed_selection=$check.state.gpu_installed_selection;
             disabled_service_fingerprint=$fingerprint;source_files=$report.source_files;
             native_inspection_recipe_sha256=(Hash-File $PSCommandPath);native_source_sha256=(Hash-File $nativeSource);
             whole_system_audit=$false;service_values_written=$false}
