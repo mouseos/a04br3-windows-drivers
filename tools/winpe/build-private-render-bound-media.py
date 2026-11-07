@@ -25,6 +25,7 @@ def main():
  native=prepared_system_check(system,result,a.prepared_system_sha256,root,b,'GE8300RenderBase');require(not native.get('engine_rearm_plan_sha256'),'初回Render専用、既存Engine再arm不可')
  if policy['boot']['source_commit']=='e3b18c0ff1e35dfae54f00c54b6ae2203313c4d3':
   require(native.get('fixed_post_ownership')=={'source_commit':policy['boot']['source_commit'],'boot_sha256':policy['boot']['sha256']},'POST framebuffer firmware requires paired native policy')
+ else:require(not native.get('fixed_post_ownership'),'POST policy requires its paired framebuffer firmware')
  out.mkdir(mode=0o700);stage=out/'stage';stage.mkdir(mode=0o700);files={}
  def copy(src,dest):
   target=stage/dest;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(src,target);files[dest]=sha(target)

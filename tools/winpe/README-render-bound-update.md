@@ -18,10 +18,12 @@ policy入力はroot内の固定backup/hash、nativeで読んだ3デバイスのb
 選択途中のSPDRP_CLASSGUIDは既存インストールの値を表すため、この時点で新Displayクラスとの一致を要求しない。選択された署名ドライバの版・日付・説明・メーカー・提供元を検査し、DIF_INSTALLDEVICE後と次の起動で実際のclass/serviceを検査する。SP_DRVINFO_DATAのDriverTypeは仕様にあるCLASSDRIVER/COMPATDRIVERを受理する。旧MT8167RenderStageの失敗記録は保持する。
 
 
-v10はGE8300 3.11と既知の親1026（RTC借用とcaptureを保持）を受理する。
+v10はGE8300 3.12と既知の親1026（RTC借用とcaptureを保持）を受理する。
 追加のPOST資源firmware e3b18c0fを選ぶときは、native SYSTEM準備へ
 `-DisableAutoAcpiPostFallback`を明示する。実RTで使われる綴り
 `DisableAutoAcpiPostDeivce`だけを1に設定し、兄弟値の保持、clean reloadを確認する。
 同firmwareはGOPの実16MiB予約をDIS0へ割り当て、GPUや親には渡さない。
 固定boot SHAとnative policyの対応をbuilderが検証する。これは実機でPOST所有権が
 解決した証明ではない。元6e852b1f firmwareを使う場合はこの変更を行わない。
+
+3.11は追加の静的検査でrender-only/model1.0不適合と判明し、実機未投入で撤回した。3.12は既存model1.2とCancelCommandAwareを保持し、実際に不足した2slotを補う。ValidateWDDMCapsの変更はしない。
