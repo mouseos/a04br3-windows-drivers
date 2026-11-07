@@ -13,6 +13,7 @@ struct geo_umd_tokenized_shader {
  uint32_t *tokens,token_bytes;
  struct geo_sm4_signatures signatures;
  struct geo_compiled_shader compiled;
+ uint32_t pair_stage; /* 0=independent; 1/2=validated deferred pair VS/PS */
 };
 HRESULT geo_umd_compile_shader10(struct geo_shader_compiler *,uint32_t stage,const UINT *,
  const D3D10DDIARG_STAGE_IO_SIGNATURES *,struct geo_umd_tokenized_shader **);

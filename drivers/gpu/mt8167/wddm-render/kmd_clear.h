@@ -9,7 +9,7 @@
 #include "clear_engine.h"
 #include "aperture.h"
 #include "frontend_memory.h"
-#include "frontend/draw_abi.h"
+#include "frontend/draw_link_abi.h"
 struct geo_mdl_record;
 /* These are DDI implementation modules, not a DriverEntry that registers an
  * incomplete WDDM adapter. The full miniport owns synchronization/rundown,
@@ -43,6 +43,7 @@ struct geo_kmd_adapter {
  KMUTEX memory_lock;
  LONG memory_record_count,memory_fault;
  UINT memory_ready;
+ struct geo_native_draw_ops_v2 draw_v2; /* append: preserve original field offsets */
 };
 struct geo_kmd_context { struct geo_kmd_adapter *adapter;struct geo_kmd_device *device;struct geo_kmd_context *next;HANDLE runtime; };
 /* Full miniport must call completion only from its real registered ISR,

@@ -89,7 +89,7 @@ static BOOLEAN finish_prepare(void *ctx) {
 }
 static NTSTATUS GeoRenderDrawImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r) {
  struct geo_draw_packet *packet=NULL;struct prepare_call call;struct geo_allocation *a,*v;
- struct geo_dma_ticket t;NTSTATUS status;UINT i;
+ struct geo_dma_ticket t;NTSTATUS status;UINT i,header;void *blob;struct geo_draw_packet_v2 *v2;
  if(!c||!c->adapter||!c->adapter->notifications_ready||!c->adapter->synchronize||!r||KeGetCurrentIrql()!=PASSIVE_LEVEL||
     !r->pCommand||r->DmaBufferSegmentId||r->MultipassOffset||r->AllocationListSize!=2u||!r->pAllocationList||
     r->PatchLocationListInSize||!r->pPatchLocationListOut||r->PatchLocationListOutSize<2u||
@@ -97,23 +97,30 @@ static NTSTATUS GeoRenderDrawImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r) {
     !r->pDmaBufferPrivateData||((ULONG_PTR)r->pDmaBufferPrivateData&3u)||r->DmaBufferPrivateDataSize<sizeof(t)||
     !c->adapter->draw.prepare_draw)return STATUS_INVALID_PARAMETER;
  status=GeoCaptureDrawPacket(&packet,r->pCommand,r->CommandLength);if(status!=STATUS_SUCCESS)return status;
- if(packet->magic!=GEO_DRAW_MAGIC||packet->size!=r->CommandLength||packet->version!=GEO_DRAW_ABI_VERSION||
+ header=packet->version==2?sizeof(struct geo_draw_packet_v2):sizeof(*packet);
+ v2=(struct geo_draw_packet_v2 *)packet;
+ if(r->CommandLength<header){status=STATUS_INVALID_PARAMETER;goto done;}
+ blob=(UCHAR *)packet+header;
+ if(packet->version==2&&!c->adapter->draw_v2.prepare_draw){status=STATUS_NOT_SUPPORTED;goto done;}
+ if(packet->magic!=GEO_DRAW_MAGIC||packet->size!=r->CommandLength||(packet->version!=GEO_DRAW_ABI_VERSION&&packet->version!=2)||
     packet->reserved||packet->target_index||packet->vertex_index!=1u||packet->request.target||packet->request.vertex||
-    packet->request.blob_bytes!=r->CommandLength-sizeof(*packet)||
+    packet->request.blob_bytes!=r->CommandLength-header||
     !r->pAllocationList[0].WriteOperation||r->pAllocationList[1].WriteOperation){status=STATUS_INVALID_PARAMETER;goto done;}
  a=GeoResolveWriteAllocation(c,r->pAllocationList[0].hDeviceSpecificAllocation);
  v=GeoResolveReadAllocation(c,r->pAllocationList[1].hDeviceSpecificAllocation);
  if(!a||!v||a==v||v->desc.usage!=GEO_USAGE_VERTEX_BUFFER||
     RtlCompareMemory(&a->desc,&packet->request.target_desc,sizeof(a->desc))!=sizeof(a->desc)){status=STATUS_INVALID_PARAMETER;goto done;}
  packet->request.target=a->surface;packet->request.vertex=v->surface;
- status=geo_draw_validate_capture(&packet->request,packet+1,packet->request.blob_bytes);if(status!=STATUS_SUCCESS)goto done;
- if((uint64_t)packet->request.state.vertex_offset+((uint64_t)packet->request.state.first_vertex+packet->request.state.vertex_count)*16u>
+ status=packet->version==2?geo_draw_validate_capture_v2(&v2->request,blob,packet->request.blob_bytes):geo_draw_validate_capture(&packet->request,blob,packet->request.blob_bytes);if(status!=STATUS_SUCCESS)goto done;
+ if((uint64_t)packet->request.state.vertex_offset+((uint64_t)packet->request.state.first_vertex+packet->request.state.vertex_count)*packet->request.state.vertex_stride>
     (uint64_t)v->desc.pitch*v->desc.height){status=STATUS_INVALID_PARAMETER;goto done;}
  RtlZeroMemory(&call,sizeof(call));call.adapter=c->adapter;call.allocation=a;call.vertex=v;call.context=c;
  call.open_handle=r->pAllocationList[0].hDeviceSpecificAllocation;call.vertex_open_handle=r->pAllocationList[1].hDeviceSpecificAllocation;
  if(!c->adapter->synchronize(c->adapter->sync_context,begin_prepare,&call)){status=STATUS_DEVICE_NOT_READY;goto done;}
  if(call.status!=STATUS_SUCCESS){status=call.status;goto done;}
- call.status=c->adapter->draw.prepare_draw(c->adapter->draw.context,&packet->request,packet+1,packet->request.blob_bytes,&call.token);
+ call.status=packet->version==2?
+  c->adapter->draw_v2.prepare_draw(c->adapter->draw_v2.context,&v2->request,blob,packet->request.blob_bytes,&call.token):
+  c->adapter->draw.prepare_draw(c->adapter->draw.context,&packet->request,blob,packet->request.blob_bytes,&call.token);
  if(!c->adapter->synchronize(c->adapter->sync_context,finish_prepare,&call)){status=STATUS_DEVICE_NOT_READY;goto done;}
  status=call.status;if(status!=STATUS_SUCCESS)goto done;t=call.ticket;
  if(GeoWriteTicket(r->pDmaBuffer,&t)!=STATUS_SUCCESS||GeoWriteTicket(r->pDmaBufferPrivateData,&t)!=STATUS_SUCCESS){status=STATUS_INVALID_PARAMETER;goto done;}

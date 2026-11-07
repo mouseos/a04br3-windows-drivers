@@ -11,6 +11,9 @@
 #include <winternl.h>
 #include <d3dkmthk.h>
 #include "fixed_shaders.h"
+#ifdef GEO_COLOR_PAIR_CLIENT
+#include "color_shaders.h"
+#endif
 /* Freestanding fixed-operation probe; no private device IOCTL or payload. */
 static HANDLE disk;
 static int log_ok=1;
@@ -206,6 +209,52 @@ static HRESULT triangle_probe(ID3D11Device *device,ID3D11DeviceContext *ctx,ID3D
  ID3D11DeviceContext_VSSetShader(ctx,NULL,NULL,0);ID3D11DeviceContext_PSSetShader(ctx,NULL,NULL,0);ID3D11DeviceContext_PSSetConstantBuffers(ctx,0,1,(ID3D11Buffer *const[]){NULL});ID3D11DeviceContext_RSSetState(ctx,NULL);
  if(raster)ID3D11RasterizerState_Release(raster);if(constants)ID3D11Buffer_Release(constants);if(vertices)ID3D11Buffer_Release(vertices);if(layout)ID3D11InputLayout_Release(layout);if(ps)ID3D11PixelShader_Release(ps);if(vs)ID3D11VertexShader_Release(vs);return hr;
 }
+#ifdef GEO_COLOR_PAIR_CLIENT
+static HRESULT color_probe(ID3D11Device *device,ID3D11DeviceContext *ctx,ID3D11RenderTargetView *view,ID3D11Texture2D *target,ID3D11Texture2D *staging) {
+ ID3D11VertexShader *vs=NULL;ID3D11PixelShader *ps=NULL;ID3D11InputLayout *layout=NULL;ID3D11Buffer *vertices=NULL;ID3D11RasterizerState *raster=NULL;
+ D3D11_INPUT_ELEMENT_DESC elements[2]={{"POSITION",0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,0,D3D11_INPUT_PER_VERTEX_DATA,0},{"COLOR",0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,16,D3D11_INPUT_PER_VERTEX_DATA,0}};
+ static const FLOAT data[3][8]={{-.8f,.8f,.5f,1,1,0,0,1},{.8f,.8f,.5f,1,0,1,0,1},{0,-.8f,.5f,1,0,0,1,1}},black[4]={0,0,0,1};
+ D3D11_BUFFER_DESC buffer={0};D3D11_SUBRESOURCE_DATA initial={0};D3D11_RASTERIZER_DESC rs={0};D3D11_VIEWPORT viewport={0};D3D11_MAPPED_SUBRESOURCE map;
+ UINT stride=32,offset=0,x,y,interior=0,exterior=0,edge=0,mismatch=0,hash=2166136261u;HRESULT hr;
+ hr=ID3D11Device_CreateVertexShader(device,geo_color_vs,sizeof(geo_color_vs),NULL,&vs);line("COLOR_VS_HRESULT",hr);if(FAILED(hr))goto done;
+ hr=ID3D11Device_CreatePixelShader(device,geo_color_ps,sizeof(geo_color_ps),NULL,&ps);line("COLOR_PS_HRESULT",hr);if(FAILED(hr))goto done;
+ hr=ID3D11Device_CreateInputLayout(device,elements,2,geo_color_vs,sizeof(geo_color_vs),&layout);line("COLOR_LAYOUT_HRESULT",hr);if(FAILED(hr))goto done;
+ buffer.ByteWidth=sizeof(data);buffer.Usage=D3D11_USAGE_IMMUTABLE;buffer.BindFlags=D3D11_BIND_VERTEX_BUFFER;initial.pSysMem=data;
+ hr=ID3D11Device_CreateBuffer(device,&buffer,&initial,&vertices);line("COLOR_VERTEX_HRESULT",hr);if(FAILED(hr))goto done;
+ rs.FillMode=D3D11_FILL_SOLID;rs.CullMode=D3D11_CULL_NONE;rs.DepthClipEnable=TRUE;
+ hr=ID3D11Device_CreateRasterizerState(device,&rs,&raster);line("COLOR_RASTER_HRESULT",hr);if(FAILED(hr))goto done;
+ viewport.Width=800;viewport.Height=600;viewport.MaxDepth=1;
+ ID3D11DeviceContext_OMSetRenderTargets(ctx,1,&view,NULL);ID3D11DeviceContext_RSSetViewports(ctx,1,&viewport);ID3D11DeviceContext_RSSetState(ctx,raster);
+ ID3D11DeviceContext_IASetInputLayout(ctx,layout);ID3D11DeviceContext_IASetPrimitiveTopology(ctx,D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);ID3D11DeviceContext_IASetVertexBuffers(ctx,0,1,&vertices,&stride,&offset);
+ ID3D11DeviceContext_VSSetShader(ctx,vs,NULL,0);ID3D11DeviceContext_PSSetShader(ctx,ps,NULL,0);ID3D11DeviceContext_PSSetConstantBuffers(ctx,0,1,(ID3D11Buffer *const[]){NULL});
+ if(!log_ok){hr=E_FAIL;goto done;}
+ ID3D11DeviceContext_ClearRenderTargetView(ctx,view,black);ID3D11DeviceContext_Draw(ctx,3,0);line("COLOR_DRAW_ISSUED",1);
+ hr=ID3D11Device_GetDeviceRemovedReason(device);line("COLOR_DEVICE_REASON",hr);if(FAILED(hr))goto done;
+ ID3D11DeviceContext_CopyResource(ctx,(ID3D11Resource *)staging,(ID3D11Resource *)target);ID3D11DeviceContext_Flush(ctx);
+ line("COLOR_MAP_BEGIN",1);if(!log_ok){hr=E_FAIL;goto done;}
+ hr=ID3D11DeviceContext_Map(ctx,(ID3D11Resource *)staging,0,D3D11_MAP_READ,0,&map);line("COLOR_MAP_HRESULT",hr);if(FAILED(hr))goto done;
+ if(!map.pData||map.RowPitch<3200){ID3D11DeviceContext_Unmap(ctx,(ID3D11Resource *)staging,0);hr=E_UNEXPECTED;goto done;}
+ for(y=0;y<600;y++)for(x=0;x<800;x++){
+  const BYTE *p=(const BYTE *)map.pData+y*map.RowPitch+4*x;UINT value=p[0]|((UINT)p[1]<<8)|((UINT)p[2]<<16)|((UINT)p[3]<<24);INT w[3],bad=0;UINT c;
+  /* Pixel-center barycentrics for (80,60),(720,60),(400,540), W=1.
+   * denominator3840; exclude only the narrow +/-16 edge band. */
+  w[2]=8*(INT)y-476;w[1]=6*(INT)x-4*(INT)y-239;w[0]=3840-w[1]-w[2];hash=(hash^value)*16777619u;
+  if(w[0]>16&&w[1]>16&&w[2]>16){
+   interior++;for(c=0;c<3;c++){INT expect=(w[c]*255+1920)/3840;INT actual=p[2-c];INT delta=actual-expect;if(delta < -2||delta > 2)bad=1;}if(p[3]!=255)bad=1;
+   if(bad)mismatch++;
+  }else if(w[0]<-16||w[1]<-16||w[2]<-16){exterior++;if(value!=0xff000000u)mismatch++;}
+  else edge++;
+ }
+ ID3D11DeviceContext_Unmap(ctx,(ID3D11Resource *)staging,0);
+ line("COLOR_INTERIOR",interior);line("COLOR_EXTERIOR",exterior);line("COLOR_EDGE_EXCLUDED",edge);line("COLOR_TOLERANCE_UNORM8",2);line("COLOR_MISMATCH",mismatch);line("COLOR_HASH",hash);
+ hr=interior>140000&&exterior>300000&&!mismatch?S_OK:E_FAIL;
+ done:
+ line("COLOR_HRESULT",hr);
+ ID3D11DeviceContext_OMSetRenderTargets(ctx,0,NULL,NULL);ID3D11DeviceContext_IASetInputLayout(ctx,NULL);ID3D11DeviceContext_IASetVertexBuffers(ctx,0,1,(ID3D11Buffer *const[]){NULL},&stride,&offset);
+ ID3D11DeviceContext_VSSetShader(ctx,NULL,NULL,0);ID3D11DeviceContext_PSSetShader(ctx,NULL,NULL,0);ID3D11DeviceContext_RSSetState(ctx,NULL);
+ if(raster)ID3D11RasterizerState_Release(raster);if(vertices)ID3D11Buffer_Release(vertices);if(layout)ID3D11InputLayout_Release(layout);if(ps)ID3D11PixelShader_Release(ps);if(vs)ID3D11VertexShader_Release(vs);return hr;
+}
+#endif
 static HRESULT probe(IDXGIAdapter *adapter) {
  ID3D11Device *device=NULL;ID3D11DeviceContext *ctx=NULL;ID3D11Texture2D *target=NULL,*staging=NULL;
  ID3D11RenderTargetView *view=NULL;D3D_FEATURE_LEVEL level,wanted=D3D_FEATURE_LEVEL_9_1;
@@ -247,6 +296,9 @@ static HRESULT probe(IDXGIAdapter *adapter) {
  }
  hr=S_OK;
  hr=triangle_probe(device,ctx,view,target,staging);
+#ifdef GEO_COLOR_PAIR_CLIENT
+ if(SUCCEEDED(hr))hr=color_probe(device,ctx,view,target,staging);
+#endif
  done:
  if(view)ID3D11RenderTargetView_Release(view);
  if(staging)ID3D11Texture2D_Release(staging);
@@ -264,7 +316,13 @@ void mainCRTStartup(void) {
  CreateDirectoryW(L"C:\\MT8167D3DClear",NULL);
  disk=CreateFileW(path,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,NULL);
  if(disk==INVALID_HANDLE_VALUE)ExitProcess(2);
- line("SCHEMA",4);line("SELECTION_MODE",(UINT)selected);line("EXPLICIT_LUID",selected==1);
+
+#ifdef GEO_COLOR_PAIR_CLIENT
+ line("SCHEMA",5);line("COLOR_PAIR_PROFILE",1);
+#else
+ line("SCHEMA",4);
+#endif
+ line("SELECTION_MODE",(UINT)selected);line("EXPLICIT_LUID",selected==1);
  if(selected==2){auto_hr=hardware_luid(&id);line("AUTO_IDENTITY_HRESULT",auto_hr);}
  hr=CreateDXGIFactory(&IID_IDXGIFactory,(void **)&factory);line("FACTORY_HRESULT",hr);if(FAILED(hr)||!log_ok)goto done;
  for(i=0;;i++) {

@@ -49,6 +49,7 @@ struct geo_typed_device {
  D3D10_DDI_VIEWPORT viewport;D3D10_DDI_RECT scissor;
  UINT viewport_set,scissor_set;HANDLE converted;
  HRESULT error;
+ HANDLE converted_color;
 };
 struct geo_typed_adapter {
  D3D10DDI_HRTADAPTER runtime;struct geo_adapter_memory_info info;UINT devices;HANDLE trace;
@@ -74,4 +75,5 @@ HRESULT geo_typed_read_resource(struct geo_typed_resource *,UINT,UINT,void *);
 HRESULT geo_typed_draw_unbind(D3D10DDI_HDEVICE);
 HRESULT geo_typed_validate_native_state(D3D10DDI_HDEVICE);
 HRESULT geo_typed_submit_draw(D3D10DDI_HDEVICE,const FLOAT [3][4]);
+HRESULT geo_typed_submit_pair(D3D10DDI_HDEVICE,const FLOAT [3][8]);
 #endif

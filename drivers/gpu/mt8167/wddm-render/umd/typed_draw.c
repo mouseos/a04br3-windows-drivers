@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include "typed_device.h"
 #include "../memory.h"
-struct geo_typed_layout {struct geo_typed_layout *next;struct geo_typed_device *device;UINT refs,deleted,offset;};
+struct geo_typed_layout {struct geo_typed_layout *next;struct geo_typed_device *device;UINT refs,deleted,offset[2],elements;};
 static UINT bits(FLOAT f){UINT v;memcpy(&v,&f,4);return v;}
 static void layout_unref(struct geo_typed_layout *v) {
  struct geo_typed_layout **p;if(!v||!v->refs||--v->refs)return;
@@ -12,16 +12,22 @@ static struct geo_typed_layout *layout(D3D10DDI_HDEVICE h,D3D10DDI_HELEMENTLAYOU
  if(!d||!want)return NULL;for(v=d->layouts;v&&v!=want;v=v->next){}return v&&!v->deleted?v:NULL;
 }
 static HRESULT layout_desc(const D3D10DDIARG_CREATEELEMENTLAYOUT *p) {
- const D3D10DDIARG_INPUT_ELEMENT_DESC *e;if(!p||p->NumElements!=1||!p->pVertexElements)return E_NOTIMPL;e=p->pVertexElements;
- if(e->InputSlot||e->InputRegister||e->Format!=DXGI_FORMAT_R32G32B32A32_FLOAT||e->InputSlotClass!=D3D10_DDI_INPUT_PER_VERTEX_DATA||e->InstanceDataStepRate||e->AlignedByteOffset>65520u)return E_NOTIMPL;return S_OK;
+ const D3D10DDIARG_INPUT_ELEMENT_DESC *e;UINT i,mask=0;
+ if(!p||!p->NumElements||p->NumElements>2||!p->pVertexElements)return E_NOTIMPL;
+ for(i=0;i<p->NumElements;i++){
+  e=p->pVertexElements+i;
+  if(e->InputSlot||e->InputRegister>=p->NumElements||(mask&(1u<<e->InputRegister))||e->Format!=DXGI_FORMAT_R32G32B32A32_FLOAT||e->InputSlotClass!=D3D10_DDI_INPUT_PER_VERTEX_DATA||e->InstanceDataStepRate||e->AlignedByteOffset>65520u)return E_NOTIMPL;
+  mask|=1u<<e->InputRegister;
+ }
+ return S_OK;
 }
 static SIZE_T APIENTRY layout_size(D3D10DDI_HDEVICE h,const D3D10DDIARG_CREATEELEMENTLAYOUT *p) {HRESULT hr=layout_desc(p);if(FAILED(hr)){geo_typed_error(h,hr);return 0;}return sizeof(struct geo_typed_handle);}
 static void APIENTRY create_layout(D3D10DDI_HDEVICE h,const D3D10DDIARG_CREATEELEMENTLAYOUT *p,D3D10DDI_HELEMENTLAYOUT handle,D3D10DDI_HRTELEMENTLAYOUT runtime) {
- struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_layout *v;HRESULT hr;(void)runtime;
+ struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_layout *v;HRESULT hr;UINT i;(void)runtime;
  if(!d||!handle.pDrvPrivate){geo_typed_error(h,E_INVALIDARG);return;}((struct geo_typed_handle *)handle.pDrvPrivate)->object=NULL;
  hr=layout_desc(p);if(FAILED(hr)){geo_typed_error(h,hr);return;}
  v=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*v));if(!v){geo_typed_error(h,E_OUTOFMEMORY);return;}
- v->refs=1;v->device=d;v->offset=p->pVertexElements[0].AlignedByteOffset;v->next=d->layouts;d->layouts=v;((struct geo_typed_handle *)handle.pDrvPrivate)->object=v;
+ v->refs=1;v->device=d;v->elements=p->NumElements;for(i=0;i<p->NumElements;i++)v->offset[p->pVertexElements[i].InputRegister]=p->pVertexElements[i].AlignedByteOffset;v->next=d->layouts;d->layouts=v;((struct geo_typed_handle *)handle.pDrvPrivate)->object=v;
 }
 static void APIENTRY set_layout(D3D10DDI_HDEVICE h,D3D10DDI_HELEMENTLAYOUT handle) {
  struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_layout *v=NULL,*old;
@@ -100,9 +106,13 @@ HRESULT geo_typed_submit_draw(D3D10DDI_HDEVICE h,const FLOAT vertices[3][4]) {
  return hr;
 }
 static void draw(D3D10DDI_HDEVICE h,UINT count,UINT start,INT base,UINT indexed) {
- struct geo_typed_device *d=geo_typed_device(h);UINT triangles,j,k;FLOAT v[3][4];HRESULT hr;
+ struct geo_typed_device *d=geo_typed_device(h);UINT triangles,j,k;FLOAT v[3][4],cv[3][8];HRESULT hr;UINT pair;
  if(!d||!d->layout||!d->vertex||(indexed&&!d->index)){geo_typed_error(h,E_INVALIDARG);return;}
  if(!count)return;
+ pair=d->layout->elements==2;
+ if(!d->bound_shader[0]||!d->bound_shader[1]||
+    (pair?(d->bound_shader[0]->code->pair_stage!=1||d->bound_shader[1]->code->pair_stage!=2):
+    (d->bound_shader[0]->code->pair_stage||d->bound_shader[1]->code->pair_stage))){geo_typed_error(h,E_NOTIMPL);return;}
  if(d->topology==D3D10_DDI_PRIMITIVE_TOPOLOGY_TRIANGLELIST){if(count%3){geo_typed_error(h,E_INVALIDARG);return;}triangles=count/3;}
  else if(d->topology==D3D10_DDI_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP){if(count<3)return;triangles=count-2;}
  else {geo_typed_error(h,E_NOTIMPL);return;}
@@ -117,11 +127,16 @@ static void draw(D3D10DDI_HDEVICE h,UINT count,UINT start,INT base,UINT indexed)
     if(d->index_stride==2){USHORT s;memcpy(&s,raw,2);n=s;}else memcpy(&n,raw,4);vertex=(int64_t)n+base;
    }else vertex=(int64_t)index;
    if(vertex<0||vertex>65534){geo_typed_error(h,E_INVALIDARG);return;}
-   offset=(uint64_t)d->vertex_offset+(uint64_t)vertex*d->vertex_stride+d->layout->offset;
+   offset=(uint64_t)d->vertex_offset+(uint64_t)vertex*d->vertex_stride+d->layout->offset[0];
    if(offset>UINT32_MAX){geo_typed_error(h,E_INVALIDARG);return;}
-   hr=geo_typed_read_resource(d->vertex,(UINT)offset,16,v[k]);if(FAILED(hr)){geo_typed_error(h,hr);return;}
+   hr=geo_typed_read_resource(d->vertex,(UINT)offset,16,pair?cv[k]:v[k]);if(FAILED(hr)){geo_typed_error(h,hr);return;}
+   if(pair){
+    offset=(uint64_t)d->vertex_offset+(uint64_t)vertex*d->vertex_stride+d->layout->offset[1];
+    if(offset>UINT32_MAX){geo_typed_error(h,E_INVALIDARG);return;}
+    hr=geo_typed_read_resource(d->vertex,(UINT)offset,16,cv[k]+4);if(FAILED(hr)){geo_typed_error(h,hr);return;}
+   }
   }
-  hr=geo_typed_submit_draw(h,v);if(FAILED(hr)){geo_typed_error(h,hr);return;}
+  hr=pair?geo_typed_submit_pair(h,cv):geo_typed_submit_draw(h,v);if(FAILED(hr)){geo_typed_error(h,hr);return;}
  }
 }
 static void APIENTRY draw_vertices(D3D10DDI_HDEVICE h,UINT count,UINT first){draw(h,count,first,0,0);}
@@ -130,7 +145,8 @@ HRESULT geo_typed_draw_unbind(D3D10DDI_HDEVICE h) {
  struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_resource *v,*i;struct geo_typed_layout *l;HRESULT hr;if(!d)return E_INVALIDARG;
  v=d->vertex;i=d->index;l=d->layout;d->vertex=d->index=NULL;d->layout=NULL;if(l)layout_unref(l);
  if(v){hr=geo_typed_resource_unref(v);if(FAILED(hr))return hr;}if(i){hr=geo_typed_resource_unref(i);if(FAILED(hr))return hr;}
- return geo_umd_destroy_private_vertex(&d->backend,&d->converted);
+ hr=geo_umd_destroy_private_vertex(&d->backend,&d->converted);
+ if(FAILED(hr))return hr;return geo_umd_destroy_private_vertex(&d->backend,&d->converted_color);
 }
 void geo_typed_draw_install(D3D11_1DDI_DEVICEFUNCS *f) {
  f->pfnCalcPrivateElementLayoutSize=layout_size;f->pfnCreateElementLayout=create_layout;f->pfnDestroyElementLayout=destroy_layout;f->pfnIaSetInputLayout=set_layout;

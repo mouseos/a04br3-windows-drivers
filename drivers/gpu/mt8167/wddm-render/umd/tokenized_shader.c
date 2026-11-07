@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "tokenized_shader.h"
+#include "../compiler/pair_compiler.h"
 #include "../clear_protocol.h"
 #include "../memory.h"
 static HRESULT compile(struct geo_shader_compiler *compiler,uint32_t stage,const UINT *code,
@@ -17,6 +18,9 @@ static HRESULT compile(struct geo_shader_compiler *compiler,uint32_t stage,const
  if(!s->tokens){HeapFree(GetProcessHeap(),0,s);return E_OUTOFMEMORY;}
  memcpy(s->tokens,code,s->token_bytes);
  status=geo_pco_compile_tokenized(compiler->context,stage,s->tokens,s->token_bytes,&s->signatures,&s->compiled,&error);
+ if(status!=GEO_OK&&geo_pco_pair_validate_stage(stage,s->tokens,s->token_bytes,&s->signatures)==GEO_OK){
+  s->pair_stage=stage+1u;s->compiled.stage=stage;s->compiled.input_mask=stage?1u:3u;status=GEO_OK;
+ }
  if(status!=GEO_OK){geo_umd_release_tokenized_shader(s);return status==GEO_BUSY?E_OUTOFMEMORY:(status==GEO_UNSUPPORTED?E_NOTIMPL:E_INVALIDARG);}
  *out=s;return S_OK;
 }

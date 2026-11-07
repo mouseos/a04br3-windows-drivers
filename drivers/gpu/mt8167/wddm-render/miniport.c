@@ -43,6 +43,10 @@ static NTSTATUS start_device(void *context,DXGK_START_INFO *start,DXGKRNL_INTERF
  if(status!=STATUS_SUCCESS)return status;
  if(d->adapter.draw.size!=sizeof(d->adapter.draw)||d->adapter.draw.version!=GEO_DRAW_ABI_VERSION||
     !d->adapter.draw.context||!d->adapter.draw.prepare_draw)return STATUS_INVALID_DEVICE_STATE;
+ status=GeoNativeOwnerGetDrawOpsV2(&d->native,&d->adapter.draw_v2);
+ if(status!=STATUS_SUCCESS)return status;
+ if(d->adapter.draw_v2.size!=sizeof(d->adapter.draw_v2)||d->adapter.draw_v2.version!=2||
+    !d->adapter.draw_v2.context||!d->adapter.draw_v2.prepare_draw)return STATUS_INVALID_DEVICE_STATE;
  *sources=0;*children=0;d->started=1;return STATUS_SUCCESS;
 }
 static NTSTATUS stop_device(void *context) {

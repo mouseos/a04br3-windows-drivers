@@ -23,7 +23,7 @@ NTSTATUS GeoCaptureDrawPacket(struct geo_draw_packet **output,const void *user_s
  ULONG_PTR start=(ULONG_PTR)user_source,limit=(ULONG_PTR)MmUserProbeAddress;NTSTATUS status;
  if(!output)return STATUS_INVALID_PARAMETER;
  *output=NULL;
- if(KeGetCurrentIrql()!=PASSIVE_LEVEL||bytes<sizeof(*snapshot)||bytes>GEO_DRAW_COMMAND_MAX||!start||start>=limit||bytes>limit-start)return STATUS_INVALID_PARAMETER;
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL||bytes<sizeof(*snapshot)||bytes>GEO_DRAW_LINK_COMMAND_MAX||!start||start>=limit||bytes>limit-start)return STATUS_INVALID_PARAMETER;
  snapshot=ExAllocatePoolWithTag(NonPagedPool,bytes,'dCeG');if(!snapshot)return STATUS_INSUFFICIENT_RESOURCES;
  RtlZeroMemory(&source,sizeof(source));source.VirtualAddress=(void *)user_source;
  status=MmCopyMemory(snapshot,source,bytes,MM_COPY_MEMORY_VIRTUAL,&copied);

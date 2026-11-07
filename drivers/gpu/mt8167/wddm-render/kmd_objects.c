@@ -24,7 +24,7 @@ NTSTATUS APIENTRY GeoCreateContext(HANDLE handle,DXGKARG_CREATECONTEXT *p) {
  a=d->adapter;if(!GeoSessionEnter(a,1))return STATUS_DEVICE_NOT_READY;
  c=ExAllocatePoolWithTag(NonPagedPool,sizeof(*c),'xOeG');if(!c){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
  RtlZeroMemory(c,sizeof(*c));c->adapter=a;c->device=d;c->runtime=p->hContext;c->next=d->contexts;d->contexts=c;
- RtlZeroMemory(&p->ContextInfo,sizeof(p->ContextInfo));p->ContextInfo.DmaBufferSize=GEO_DRAW_COMMAND_MAX;
+ RtlZeroMemory(&p->ContextInfo,sizeof(p->ContextInfo));p->ContextInfo.DmaBufferSize=GEO_DRAW_LINK_COMMAND_MAX;
  p->ContextInfo.DmaBufferPrivateDataSize=sizeof(struct geo_dma_ticket);p->ContextInfo.AllocationListSize=2;p->ContextInfo.PatchLocationListSize=2;p->hContext=c;
  done:GeoSessionLeave(a,1);return status;
 }

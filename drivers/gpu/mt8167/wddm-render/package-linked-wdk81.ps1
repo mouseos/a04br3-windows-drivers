@@ -43,7 +43,7 @@ try {
   & $sign sign /fd SHA256 /sha1 $CertificateThumbprint /s My @storeFlags (Join-Path $out $name)
   if($LASTEXITCODE){throw 'Image signing failed'}
  }
- & $cat "/driver:$out" /os:6_3_ARM /uselocaltime
+ & $cat "/driver:$out" /os:6_3_ARM
  if($LASTEXITCODE){throw 'Inf2Cat failed'}
  & $sign sign /fd SHA256 /sha1 $CertificateThumbprint /s My @storeFlags (Join-Path $out 'ge8300-render.cat')
  if($LASTEXITCODE){throw 'Catalog signing failed'}
@@ -56,7 +56,7 @@ try {
   if($LASTEXITCODE){throw 'Final CAT membership verification failed'}
  }
  Export-Certificate -Cert $cert -FilePath (Join-Path $out 'mt8167-development.cer')|Out-Null
- @{package_source_commit=$commit;inf_driverver='11/07/2026,0.0.3.2';linked_manifest_sha256=$LinkedManifestSha256;
+ @{package_source_commit=$commit;inf_driverver='11/07/2026,0.0.3.3';linked_manifest_sha256=$LinkedManifestSha256;
   source_runtime=$m;unsigned_images=$unsigned;signer_thumbprint=$CertificateThumbprint;signature_status='Valid';
   default_off=$true;installed=$false;runtime_verified=$false;wddm_conformance_qualified=$false;
   required_parent_commit=$m.required_parent_commit;required_acpi_commit=$m.required_acpi_commit;display_policy='MOU0007 CPU present; never concurrent KMDF GPU IRQ owner';
