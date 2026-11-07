@@ -40,7 +40,7 @@ try {
   '-DA04_AUDIO_ENGINE_PCM=1','-DA04_AUDIO_VOICE_PCM_DIAGNOSTIC=1','-DA04_AUDIO_WAVE_DMA_RETAINED=1',
   '-DA04_AUDIO_START_PERSIST=1','-DA04_AUDIO_DIAGNOSTIC_TRACE=1','-DA04_AUDIO_CAPTURE=1')
  $objects=@();$sources=@()
- foreach($name in @('dl1','dl1_engine','shared_audio','audio_parent_client','audio_parent_query','capture_parent_query','capture_latency_gate','ul_engine')){
+ foreach($name in @('dl1','dl1_engine','shared_audio','audio_parent_client','audio_parent_query','capture_parent_query','ul_engine')){
   $file=Join-Path $obj ($name+'.obj');$source=Join-Path $audio ($name+'.c');$objects+=$file;$sources+=$source
   & clang @common @flags -c $source -o $file
   if($LASTEXITCODE){throw "Capture C compilation failed: $name"}
@@ -49,7 +49,7 @@ try {
  & clang @common -c $source -o $file
  if($LASTEXITCODE){throw 'Clock helper compilation failed'}
  foreach($name in @('adapter','wavert_miniport','wavert_registration','wavert_dma','common_dma','dma_adapter',
-  'stream_transport','pnp_backend','afe_mapping','irq_windows','wave_dma_live','topology_miniport','start_record','capture_owner')){
+  'capture_latency_gate','stream_transport','pnp_backend','afe_mapping','irq_windows','wave_dma_live','topology_miniport','start_record','capture_owner')){
   $file=Join-Path $obj ($name+'.obj');$source=Join-Path $audio ($name+'.cpp');$objects+=$file;$sources+=$source
   & clang++ @common @flags -std=c++14 -fms-compatibility -fno-exceptions -fno-rtti -c $source -o $file
   if($LASTEXITCODE){throw "Capture C++ compilation failed: $name"}
