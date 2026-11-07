@@ -14,8 +14,9 @@
   mask、AHB idle、pause、periodic disable/readback、INFRA reset保持へ移行。
   gated/既reset状態ではLinuxと同じreset先行で旧AHB programを再開しない。
   ADC channel triggerをclearしてidle確認。PLL/PMICを変更しない。
-- ready時だけA04BR3ThermalPioHandoff v2（全18 UINT32/72bytes、attrs6）を発行。
-  失敗はready0/stage/raw状態であり、停止成功を捏造しない。旧v1 ownership0観測recordは維持。
+- 停止試行結果をA04BR3ThermalPioHandoff v2（全18 UINT32/72bytes、attrs6）で発行。
+  全停止条件の成立時だけready1。停止試行失敗はready0/stage/raw状態を保持し、
+  校正未取得では停止試行を行わない。旧v1 ownership0観測recordは維持。
 - 親1018はactual query interface v2のMeasureで受領recordとlive reset/clocks/ADCを検証。
   volatile recordを消費し、一回だけ使用する。runtime variable操作はPASSIVE_LEVELで
   parent mutexより前に行う。old record/boot、消費失敗では測定しない。
