@@ -66,18 +66,20 @@ class SignedPackage:
         self.manifest = self.directory / manifest_name
         self.record = json.loads(self.manifest.read_text(encoding='utf-8-sig'))
         self.files = {}
-        self.native1006_layout = False
+        self.native_wifi_layout = False
         entries=self.record.get('files')
         if entries is None:
             r=self.record
-            if (r.get('source_commit')!='bafafa9ea6d94fe6357616a3edfff66e568bfc7c' or r.get('status')!='signed-native1006-not-device-validated'
-                or r.get('driver_ver')!='11/06/2026,2026.11.6.1006' or r.get('catalog_regenerated') is not True
+            if ((r.get('source_commit'),r.get('status'),r.get('driver_ver')) not in (
+                ('bafafa9ea6d94fe6357616a3edfff66e568bfc7c','signed-native1006-not-device-validated','11/06/2026,2026.11.6.1006'),
+                ('2d726d42702831aedbcee136d901595f65b39eee','signed-native1007-not-device-validated','11/06/2026,2026.11.6.1007'))
+                or r.get('catalog_regenerated') is not True
                 or r.get('build_manifest',{}).get('source_dirty') is not False):raise ValueError('未知の署名manifest layout')
             entries=r.get('package_files',[])
-            if {x.get('path') for x in entries}!={'package/mt6630-runtime.'+e for e in ('sys','inf','cat')} or len(entries)!=3:raise ValueError('WiFi1006 fixed package_files不一致')
+            if {x.get('path') for x in entries}!={'package/mt6630-runtime.'+e for e in ('sys','inf','cat')} or len(entries)!=3:raise ValueError('WiFi1006/1007 fixed package_files不一致')
             entries=[{'path':x['path'].removeprefix('package/'),'sha256':x['sha256']} for x in entries]
             entries.append({'path':'build-manifest.json','sha256':r['build_manifest_sha256']})
-            self.native1006_layout=True
+            self.native_wifi_layout=True
         for entry in entries:
             name = entry['path'].replace('\\', '/')
             rel = PurePosixPath(name)
@@ -99,8 +101,8 @@ class SignedPackage:
         return json.loads(self.file(name).read_text(encoding='utf-8-sig'))
 
     def certificate(self, expected):
-        if self.native1006_layout:
-            if self.record.get('certificate_thumbprint')!=expected:raise ValueError('WiFi1006証明書metadata不一致')
+        if self.native_wifi_layout:
+            if self.record.get('certificate_thumbprint')!=expected:raise ValueError('WiFi1006/1007証明書metadata不一致')
             self.file('build-manifest.json')
             path=(self.directory/'mt8167-development.cer').resolve(strict=True)
             if not path.is_relative_to(self.directory):raise ValueError('証明書path逸脱')

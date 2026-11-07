@@ -140,3 +140,9 @@ SD初回selectionは[公式DIF_SELECTBESTCOMPATDRV](https://learn.microsoft.com/
 のclass移行契約と、run47第二bootのhardwarePnP selection順序に合わせる。
 SetupDiSetSelectedDriver自体にも管理者によるclass変更契約があるため、旧直呼びだけを
 E0000204唯一の原因と断定しない。固定唯一driverは選択前後に照合し、未知候補は拒否する。
+
+
+WiFi校正次候補はsource `2d726d42702831aedbcee136d901595f65b39eee`、版
+`11/06/2026,2026.11.6.1007`の既知署名manifest layoutだけを1006に追加して許可する。
+全3artifactとbuild-manifest実hash/certを検査し、親1010はtuple側で選択した署名bytesを使う。
+WiFi単独buildで使用した既存親1008を媒体へ持ち込まない。起動改善は実機未確認。
