@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #ifndef A04_BT_HFP_TARGET_H
 #define A04_BT_HFP_TARGET_H
-#include <ntifs.h>
+#include <ntddk.h>
 /* PASSIVE, caller retains radio D0/combo lease and target file until return.
  * Proves either same PDO, direct PnP parent, or parent in radio's actual
  * Device_Children property. Deeper/unpublished ancestry is unsupported.

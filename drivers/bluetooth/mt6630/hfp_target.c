@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
+#include <ntifs.h>
 #include <initguid.h>
 #include "hfp_target.h"
 #include <devpkey.h>
