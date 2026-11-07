@@ -34,3 +34,19 @@ actual geo_create/destroy/prepare/bindでCPU-onlyかつGPU owner call0を確認�
 
 MapFlagsは本変更と独立であり、CPU_ACCESS直接通過の既存契約を変更しない。
 実機はmain所有。ビルド成功と標準stagingの実機利用成功を区別する。
+
+## CPU-only allocationのsegment metadata
+
+DXGK_ALLOCATIONINFO仕様は、pitch-aligned segmentに対応しないallocationのPitchAlignedSizeを0とする。
+WDK8.1 headerの同fieldコメントも「for aperture segment requiring Pitch alignment only」と明記する。
+CPU-onlyのSupportedRead/WriteSegmentSet0・Preferred0を維持し、そのPitchAlignedSizeを0へ修正する。
+GPU側のPitchAlignedSize=Sizeは変更しない。
+
+PermanentSysMem仕様は、設定時のCpuVisible必須とsystem backingのlock semanticsを明記する。
+これだけからzero segment時の必須bitや実validator拒否条件までは断定しない。
+実dxgkrnl validatorのREAはmain所有で、重複解析しない。MapFlagsも変更しない。
+WDK8.1にあるDXGK_SEGMENT_SET_SYSTEMMEMORY=0x80000000はheader自身がWDDM v2用と明記し、WDDM1.2へ流用しない。
+
+- https://learn.microsoft.com/windows-hardware/drivers/ddi/d3dkmddi/ns-d3dkmddi-_dxgk_allocationinfo
+- https://learn.microsoft.com/windows-hardware/drivers/ddi/d3dkmddi/ns-d3dkmddi-_dxgk_allocationinfoflags
+- https://learn.microsoft.com/windows-hardware/drivers/display/specifying-segments-when-creating-allocations

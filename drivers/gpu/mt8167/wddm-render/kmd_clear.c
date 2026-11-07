@@ -24,7 +24,9 @@ if(!a->aperture_ready||!geo_desc_valid(&desc)||ROUND_TO_PAGES(desc.pitch*desc.he
  if(s!=STATUS_SUCCESS){ExFreePoolWithTag(allocation,'rOeG');return s;}
  allocation->logical_width=data.logical_width;allocation->logical_height=data.logical_height;
  info->hAllocation=allocation;info->Alignment=PAGE_SIZE;info->Size=ROUND_TO_PAGES(desc.pitch*desc.height);
- info->PitchAlignedSize=info->Size;info->PreferredSegment.Value=0;info->PreferredSegment.SegmentId0=1;
+ /* A CPU-only allocation supports no pitch-aligned GPU segment.
+  * WDK8.1 DXGK_ALLOCATIONINFO.PitchAlignedSize is zero in that case. */
+ info->PitchAlignedSize=allocation->cpu_only?0:info->Size;info->PreferredSegment.Value=0;info->PreferredSegment.SegmentId0=1;
  info->SupportedReadSegmentSet=allocation->cpu_only?0:1;info->SupportedWriteSegmentSet=allocation->cpu_only?0:1;
  if(allocation->cpu_only)info->PreferredSegment.Value=0;info->EvictionSegmentSet=0;
  info->Flags.Value=0;info->Flags.CpuVisible=1;info->Flags.Cached=1;info->Flags.SynchronousPaging=1;
