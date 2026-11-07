@@ -65,7 +65,7 @@ try {
  @{source_commit=(& git -C $root rev-parse HEAD);baseline_source_commit=$b.source_commit;contract_source_commit=$c.source_commit;native_source_commit=$n.native_source_commit;
   baseline_manifest_sha256=$BaselineManifestSha256;contract_manifest_sha256=$ContractManifestSha256;compiler_manifest_sha256=$CompilerManifestSha256;native_combined_manifest_sha256=$NativeCombinedManifestSha256;
   native_owner_sha256=$n.native_owner_sha256;required_parent_commit=$n.parent_source;required_acpi_commit=$n.acpi_source;parent_profile=$n.parent_profile;
-  compilation_performed=$false;additional_compile_units=@('umd/typed_view.c');reused_objects=$reused;default_off=$true;limited_development_profile=$true;runtime_verified=$false;standard_profile_qualified=$false;signed=$false;installed=$false;
+  compilation_performed=$true;additional_compile_units=@('umd/typed_view.c');reused_objects=$reused;default_off=$true;limited_development_profile=$true;runtime_verified=$false;standard_profile_qualified=$false;signed=$false;installed=$false;
   outputs=@('ge8300-umd.dll','ge8300-render.sys','ge8300-typed-umd.lib')|ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}}
  }|ConvertTo-Json -Depth 8|Set-Content "$out\linked-manifest.json"
 } finally {$env:TEMP=$oldTemp;$env:TMP=$oldTmp}

@@ -14,7 +14,7 @@ $commit=(& git -C $root rev-parse HEAD)
 $manifestPath=Join-Path $LinkedDirectory 'linked-manifest.json'
 if($LinkedManifestSha256 -notmatch '^[0-9a-fA-F]{64}$' -or (Get-FileHash $manifestPath -Algorithm SHA256).Hash -ne $LinkedManifestSha256){throw 'Fixed linked provenance mismatch'}
 $m=Get-Content -Raw $manifestPath|ConvertFrom-Json
-if($m.compilation_performed -or !$m.default_off -or $m.runtime_verified -or $m.signed -or $m.installed){throw 'Expected unsigned link-only candidate, not a runtime qualification claim'}
+if(($m.compilation_performed -and !@($m.additional_compile_units).Count) -or !$m.default_off -or $m.runtime_verified -or $m.signed -or $m.installed){throw 'Expected unsigned link-only candidate, not a runtime qualification claim'}
 foreach($name in @('ge8300-render.sys','ge8300-umd.dll')){
  $record=@($m.outputs|Where-Object {$_.name -eq $name})
  if($record.Count -ne 1 -or (Get-FileHash (Join-Path $LinkedDirectory $name) -Algorithm SHA256).Hash -ne $record[0].sha256){throw 'Linked artifact hash mismatch'}
