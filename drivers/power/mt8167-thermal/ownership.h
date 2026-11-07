@@ -10,9 +10,11 @@ static inline int a04_owner_activate(struct a04_thermal_owner *s)
  s->active=1;return 0;
 }
 static inline void a04_owner_revoke(struct a04_thermal_owner *s)
-{ s->active=0;s->resources=0;s->touch_lease=0;s->firmware_handoff=0;s->generation++; }
+{ if(s->quarantined)return;s->active=0;s->resources=0;s->touch_lease=0;s->firmware_handoff=0;s->generation++; }
 /* Failure after possible MMIO effects is not reversible by a new D0 cycle.
- * Retaining this software latch is not a guarantee that PnP preserves power. */
+ * Keep lease/resource accounting intact, but revoke permission to access MMIO.
+ * Retaining this software latch is not a guarantee that PnP preserves power.
+ * It cannot qualify a backend that lacks parent-owned removal retention. */
 static inline void a04_owner_quarantine(struct a04_thermal_owner *s)
-{ if(s) { a04_owner_revoke(s);s->quarantined=1; } }
+{ if(s) { s->active=0;s->quarantined=1;s->generation++; } }
 #endif

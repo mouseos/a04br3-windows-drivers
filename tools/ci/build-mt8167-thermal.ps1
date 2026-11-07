@@ -18,12 +18,13 @@ $lease = if ($env:A04_THERMAL_LEASE_DIAG -eq '1') { '1' } else { '0' }
 $oneshot = if ($env:A04_THERMAL_ONESHOT_TEST -eq '1') { '1' } else { '0' }
 $monitor = if ($env:A04_THERMAL_MONITOR_TEST -eq '1') { '1' } else { '0' }
 $codecAdc = if ($env:A04_THERMAL_CODEC_ADC_DIAGNOSTIC -eq '1') { '1' } else { '0' }
+if ($shared -eq '1' -or $lease -eq '1' -or $oneshot -eq '1' -or $monitor -eq '1' -or $codecAdc -eq '1') { throw 'Unqualified thermal hardware backend: IRQ/fabric drain and removal retention are not established' }
 if ($codecAdc -eq '1' -and ($shared -ne '1' -or $oneshot -ne '1')) { throw 'codec ADC requires shared one-shot' }
 if ($oneshot -eq '1' -and $monitor -ne '1') { throw 'one-shot requires monitor infrastructure' }
 if ($monitor -eq '1' -and $lease -ne '1') { throw 'monitor requires lease diagnostic' }
 $native = if ($env:A04_THERMAL_NATIVE_PARENT -eq '1') { '1' } else { '0' }
 $names = @('wdf_thermal','thermal','boot_record')
-if ($native -eq '1') { $names=@('wdf_native_thermal','thermal','boot_record','oneshot','completion','freshness','hardware','readout') }
+if ($native -eq '1') { $names=@('wdf_native_thermal') }
 elseif ($monitor -eq '1') { $names += @('monitor','completion','freshness','hardware','readout') }
 if ($native -ne '1' -and $oneshot -eq '1') { $names += 'oneshot' }
 foreach($name in $names) {

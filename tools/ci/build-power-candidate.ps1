@@ -4,6 +4,7 @@ param([Parameter(Mandatory=$true)][string]$CertificateThumbprint,
       [ValidateSet('Observe','ColdLinux100')][string]$ChargerProfile='Observe',
       [ValidateSet('Calibration','SharedOneShot','NativeOneShot')][string]$ThermalProfile='Calibration')
 $ErrorActionPreference='Stop'
+if ($ThermalProfile -ne 'Calibration') { throw 'Hardware thermal profiles withdrawn: no qualified IRQ/drain/removal quarantine contract; do not rebuild parent1012' }
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $out=Join-Path $root 'build\power-candidate'
 if (Test-Path $out) { throw 'Use a fresh checkout/output: build\power-candidate already exists' }

@@ -22,6 +22,9 @@ int main(void){struct a04_thermal_owner s={0};
  assert(a04_owner_activate(&s));
  s.resources=s.touch_lease=s.firmware_handoff=1;assert(!a04_owner_activate(&s));
  a04_owner_quarantine(&s);assert(s.quarantined && !s.active);
+ assert(s.resources && s.touch_lease && s.firmware_handoff);
+ { unsigned generation=s.generation;a04_owner_revoke(&s);
+   assert(s.resources && s.touch_lease && s.firmware_handoff && s.generation==generation); }
  a04_owner_revoke(&s);s.resources=s.touch_lease=s.firmware_handoff=1;
  assert(a04_owner_activate(&s));
  puts("AUXADC resource, touch and firmware ownership all required: OK");}

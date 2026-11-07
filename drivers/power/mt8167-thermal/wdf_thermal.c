@@ -23,6 +23,13 @@
 #ifndef A04_THERMAL_CODEC_ADC_DIAGNOSTIC
 #define A04_THERMAL_CODEC_ADC_DIAGNOSTIC 0
 #endif
+/* These backends cannot survive an uncertain stop without relying on a
+ * whole-system crash. Do not compile them into a deployable package until
+ * IRQ/fabric drain and supplier/consumer removal lifetime are qualified.
+ * Calibration-only builds make no hardware claim and remain supported. */
+#if A04_THERMAL_MONITOR_TEST || A04_THERMAL_ONESHOT_TEST || A04_THERMAL_LEASE_DIAG || A04_THERMAL_CODEC_ADC_DIAGNOSTIC || A04_THERMAL_SHARED_PARENT
+#error Unqualified thermal hardware backend: use calibration-only or rejection-only native package
+#endif
 #if A04_THERMAL_CODEC_ADC_DIAGNOSTIC && (!A04_THERMAL_SHARED_PARENT || !A04_THERMAL_ONESHOT_TEST)
 #error codec ADC diagnostic requires the shared-parent one-shot path
 #endif

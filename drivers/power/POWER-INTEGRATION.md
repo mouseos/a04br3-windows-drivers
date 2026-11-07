@@ -106,3 +106,13 @@ IN入力能力や実充電電流の検証ではない。thermal native INFは0.0
 署名tupleには親1012を含め、最終SYS/CAT対応とARMNTを検査してhashを固定する。
 
 主担当の最新予約でthermal/BQ親は1012に変更。1009はsource作業中の旧予約だけでSYS未生成。SD専用1010とrun42親1008は保持する。
+
+
+## 最新の配布制約：thermal hardware profile撤回
+
+上のNativeOneShot/SharedOneShotの署名例は履歴であり、次batchへの適用許可ではない。
+IRQ/drainとPnP removal quarantineの未資格を解消できていないため、両profileを
+wrapperで拒否する。親1012 thermal0.0.1.2を次batchに投入しない。
+詳細はmt8167-thermal/OWNERSHIP-EVIDENCE.mdのsuperseding節。
+新native0.0.1.3はPnP startを拒否し、温度interfaceを公開しない安全な未対応binding。
+BQの既存候補/署名SYS/CAT、SD1010 tupleは変更しない。この修正のために親を再buildしない。
