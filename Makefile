@@ -1576,3 +1576,10 @@ test-mt8167-brightness-native: build/brightness_native_sequence_test
 build/brightness_native_sequence_test: tests/brightness_native_sequence_test.c tools/display/brightness_sequence.c tools/display/brightness_sequence.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(filter %.c,$^) -o $@
+
+.PHONY: test-bq-d0
+test-bq-d0: build/bq24160_d0_session_test
+	./build/bq24160_d0_session_test
+build/bq24160_d0_session_test: tests/bq24160_d0_session_test.c drivers/power/bq24160/d0_session.c drivers/power/bq24160/d0_session.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/power/bq24160 tests/bq24160_d0_session_test.c drivers/power/bq24160/d0_session.c drivers/power/bq24160/cold_profile.c drivers/power/bq24160/charger.c drivers/power/bq24160/owner_broker.c drivers/power/bq24160/broker_lifecycle.c drivers/power/bq24160/broker_mailbox.c drivers/power/bq24160/broker_handoff.c drivers/power/bq24160/owner_transfer.c drivers/power/lc709203f/gauge.c -o $@

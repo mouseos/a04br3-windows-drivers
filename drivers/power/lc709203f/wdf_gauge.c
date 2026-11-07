@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT
  * Default-off LC709203F battery function driver. I2C2 must have one owner;
- * this first version never changes clocks, pinmux, charger, or gauge settings.
+ * Optional BQ profiles write charger settings; no gauge settings are changed.
+ * Clock/pin setup remains firmware-owned and is checked before each D0 use.
  */
 #include <ntddk.h>
 #include <wdf.h>
@@ -24,6 +25,12 @@
 #ifndef A04_BQ_COLD_DIAGNOSTIC
 #define A04_BQ_COLD_DIAGNOSTIC 0
 #endif
+#ifndef A04_BQ_D0_DEFAULT_DIAGNOSTIC
+#define A04_BQ_D0_DEFAULT_DIAGNOSTIC 0
+#endif
+#if A04_BQ_D0_DEFAULT_DIAGNOSTIC
+#include "../bq24160/d0_session.h"
+#endif
 #ifndef A04_BQ_STOPPED_GAUGE_DIAGNOSTIC
 #define A04_BQ_STOPPED_GAUGE_DIAGNOSTIC 0
 #endif
@@ -44,6 +51,9 @@
 #endif
 #if A04_BQ_COLD_DIAGNOSTIC && (!A04_BROKER_OWNER_EXPERIMENTAL || !A04_BQ_DEFAULT_EXIT_EXPERIMENTAL || A04_BQ_STOPPED_GAUGE_DIAGNOSTIC)
 #error Cold diagnostic requires broker owner, DEFAULT exit, and no gauge-only fallback
+#endif
+#if A04_BQ_D0_DEFAULT_DIAGNOSTIC && (!A04_BQ_COLD_DIAGNOSTIC || !A04_BQ_LINUX_PROFILE_BOOT || !A04_BQ_DEFAULT_EXIT_EXPERIMENTAL || !A04_BROKER_OWNER_EXPERIMENTAL || A04_BROKER_CLIENT_EXPERIMENTAL || A04_BQ_STOPPED_GAUGE_DIAGNOSTIC)
+#error D0 DEFAULT diagnostic requires local cold Linux owner and exact DEFAULT exit
 #endif
 #if A04_BQ_STOPPED_GAUGE_DIAGNOSTIC && !A04_BROKER_OWNER_EXPERIMENTAL
 #error Stopped-record gauge diagnostic requires broker owner build
@@ -101,6 +111,10 @@ typedef struct {
     struct a04_broker_lifecycle owner_lifecycle;
     uint64_t owner_lifetime, owner_epoch;
     WDFQUEUE owner_queue;
+#if A04_BQ_D0_DEFAULT_DIAGNOSTIC
+    struct a04_bq_d0_session d0_session;
+    ULONG report_count;
+#endif
 #if A04_BQ_STOPPED_GAUGE_DIAGNOSTIC
     BOOLEAN owner_fallback;
 #endif
@@ -248,6 +262,30 @@ static NTSTATUS owner_platform_start(GAUGE_CONTEXT *c,uint64_t *lifetime,uint64_
 static NTSTATUS owner_prepare_handoff(GAUGE_CONTEXT *c)
 {
     UCHAR record[128]; NTSTATUS status; uint64_t counter=0,frequency=0,now;
+#if A04_BQ_D0_DEFAULT_DIAGNOSTIC
+    {
+        int entry=a04_bq_d0_begin(&c->d0_session);
+        if (!entry) return STATUS_DEVICE_NOT_READY;
+        if (entry==2) {
+            uint64_t begin=now_ns(c);
+            /* Only local endpoint storage exists in this profile; the timer
+             * was stopped synchronously on exit. Do not replay boot BQHR or
+             * reset a transport fault. Previous DEFAULT closed the endpoint. */
+            if (c->adapter.faulted || c->owner_lifecycle.state!=A04_LIFE_STOPPED ||
+                !c->owner_endpoint.closed || !c->charger.stopped ||
+                begin>UINT64_MAX-10000000000ULL) return STATUS_DEVICE_NOT_READY;
+            RtlZeroMemory(&c->charger,sizeof(c->charger));
+            RtlZeroMemory(&c->owner_endpoint,sizeof(c->owner_endpoint));
+            RtlZeroMemory(&c->owner_broker,sizeof(c->owner_broker));
+            RtlZeroMemory(&c->owner_lifecycle,sizeof(c->owner_lifecycle));
+            if (a04_bq_prepare_cold_diagnostic(&c->charger,begin,begin+10000000000ULL))
+                return STATUS_DEVICE_NOT_READY;
+            c->owner_lifetime=UINT64_MAX;c->owner_epoch=c->d0_session.generation;
+            trace(c,"A04BAT D0 NEW LOCAL EPOCH=");trace_hex(c,(ULONG)c->owner_epoch);trace(c,"\n");
+            return STATUS_SUCCESS;
+        }
+    }
+#endif
     /* BQHR reads the firmware NVS copy only, not the charger. Stopped records
      * are explicitly non-adoptable, even when their checksum is valid. */
     {
@@ -267,7 +305,11 @@ static NTSTATUS owner_prepare_handoff(GAUGE_CONTEXT *c)
             /* PnP exclusive mapping was checked by PrepareHardware. This is
              * an explicit experiment, not proof against firmware/other CPUs. */
             c->owner_lifetime=UINT64_MAX;
+            #if A04_BQ_D0_DEFAULT_DIAGNOSTIC
+            c->owner_epoch=c->d0_session.generation;
+#else
             c->owner_epoch=cold_now ? cold_now : 1;
+#endif
             trace(c,"A04BAT COLD OWNER EXPERIMENT\n");
             return STATUS_SUCCESS;
         }
@@ -366,6 +408,17 @@ static void poll(GAUGE_CONTEXT *c)
                  * its watchdog. Linux reports STAT 3/4 as charging. */
                 changed=a04_battery_publish_power(&c->battery,&sample,
                     BATTERY_POWER_ON_LINE | (a04_bq_status_charging(c->charger.latest.raw[0]) ? BATTERY_CHARGING : 0));
+#if A04_BQ_D0_DEFAULT_DIAGNOSTIC
+                if (c->report_count<3) {
+                    ++c->report_count;
+                    trace(c,"A04BAT POWER epoch=");trace_hex(c,(ULONG)c->owner_epoch);
+                    trace(c," stat=");trace_hex(c,(c->charger.latest.raw[0]>>4)&7u);
+                    trace(c," source=");trace_hex(c,c->charger.latest.raw[1]);
+                    trace(c," mv=");trace_hex(c,sample.voltage_mv);
+                    trace(c," pct=");trace_hex(c,sample.percent);
+                    trace(c," gauge=PEC_VALID rate=UNKNOWN\n");
+                }
+#endif
             } else if (error>0) {
                 /* Invalid gauge data does not invalidate a healthy shared bus. */
                 changed=a04_battery_invalidate(&c->battery);
@@ -514,6 +567,9 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
 #elif A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
     if (!charger_handoff_is_qualified()) return STATUS_DEVICE_NOT_READY;
 #endif
+#if A04_BQ_D0_DEFAULT_DIAGNOSTIC
+    c->report_count=0;
+#endif
     trace(c, "A04BAT D0 ENTRY\n");
     c->io.context = c; c->io.read16 = rd; c->io.write16 = wr; c->io.delay_us = delay;
     c->adapter.io = &c->io; c->adapter.monotonic_ns = now_ns; c->adapter.faulted = 0;
@@ -564,6 +620,9 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
                 DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,
                     "A04BAT PROFILE FAILED stage=%u valid=%02x attempted=%d\n",
                     profile.stage,profile.before.valid,profile.write_attempted);
+                trace(c,"A04BAT PROFILE FAILED stage=");trace_hex(c,profile.stage);
+                trace(c," valid=");trace_hex(c,profile.before.valid);
+                trace(c," attempted=");trace_hex(c,profile.write_attempted);trace(c,"\n");
                 WdfTimerStop(c->timer,TRUE);WdfTimerStop(c->timer,FALSE);
                 return STATUS_DEVICE_HARDWARE_ERROR;
             }
@@ -641,6 +700,9 @@ NTSTATUS GaugeD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
             int result;
             result=a04_broker_lifecycle_default(&c->owner_lifecycle,
                                                     a04_bq_mt8167_reset_default,&c->adapter);
+#if A04_BQ_D0_DEFAULT_DIAGNOSTIC
+            a04_bq_d0_default_result(&c->d0_session,result);
+#endif
             trace(c, result ? "A04BAT DEFAULT UNCONFIRMED\n" : "A04BAT DEFAULT WRITE OK\n");
             trace_owner(c,"POST_RESET_CACHED");
 #else
@@ -648,17 +710,26 @@ NTSTATUS GaugeD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
 #endif
         } else if (a04_broker_lifecycle_handoff(&c->owner_lifecycle,next,transfer,ops,deadline))
             a04_broker_lifecycle_stop(&c->owner_lifecycle);
+#if A04_BQ_D0_DEFAULT_DIAGNOSTIC
+        c->faulted=!a04_bq_d0_can_resume(&c->d0_session);
+#else
         c->faulted=TRUE;
+#endif
     }
 #endif
 #if A04_BROKER_CLIENT_EXPERIMENTAL
     a04_broker_wdf_stop(&c->broker);
 #endif
 #if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
-    /* Do not pretend the charger was restored or restart after D0 loss. */
+    /* BQ13 stays terminal. The local D0 diagnostic may create a fresh epoch
+     * only after this object's exact DEFAULT write completed successfully. */
     if (c->charger.attempts || c->charger.kicks || c->charger.handoff_pending) {
         c->charger.stopped = 1;
+#if A04_BQ_D0_DEFAULT_DIAGNOSTIC
+        if (!a04_bq_d0_can_resume(&c->d0_session)) c->faulted=TRUE;
+#else
         c->faulted = TRUE;
+#endif
     }
 #endif
     WdfWaitLockRelease(c->bus_lock);
@@ -762,7 +833,7 @@ NTSTATUS GaugeAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     WDF_OBJECT_ATTRIBUTES_INIT(&child); child.ParentObject = device; child.ExecutionLevel = WdfExecutionLevelPassive;
     status=WdfTimerCreate(&timer, &child, &c->timer);
     if (!NT_SUCCESS(status)) return status;
-#if A04_BROKER_OWNER_EXPERIMENTAL
+#if A04_BROKER_OWNER_EXPERIMENTAL && !A04_BQ_D0_DEFAULT_DIAGNOSTIC
     /* Register only an unbound, non-operational endpoint. It rejects every
      * request until a separately proven owner is adopted and initialized. */
     status=a04_broker_wdf_register_receiver(device,&c->owner_endpoint,c->bus_lock,
