@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "native_owner_factory_private.h"
+#include "native_factory_checkpoint.h"
 struct query_wait {KEVENT event;NTSTATUS status;};
 static NTSTATUS query_done(PDEVICE_OBJECT device,PIRP irp,void *context)
 {
@@ -114,11 +115,18 @@ done:ZwClose(file);return status;
 NTSTATUS e_native_map_resources(struct e_native_owner *c,PDEVICE_OBJECT pdo,const DXGK_DEVICE_INFO *info)
 {
     PHYSICAL_ADDRESS core={0},mfg={0};ULONG irqs=0;
+    GeoFactoryCheckpoint(10,STATUS_SUCCESS,pdo?1:0,info?1:0,info && info->PhysicalDeviceObject==pdo,info && info->TranslatedResourceList?info->TranslatedResourceList->Count:0xffffffffu);
     if(!pdo || !info || info->PhysicalDeviceObject!=pdo || !info->TranslatedResourceList ||
        info->TranslatedResourceList->Count!=1)return STATUS_DEVICE_CONFIGURATION_ERROR;
     PCM_PARTIAL_RESOURCE_LIST list=&info->TranslatedResourceList->List[0].PartialResourceList;
+    GeoFactoryCheckpoint(11,STATUS_SUCCESS,list->Count,0,0,0);
+    if(list->Count>16)return STATUS_DEVICE_CONFIGURATION_ERROR;
     for(ULONG i=0;i<list->Count;i++){
         PCM_PARTIAL_RESOURCE_DESCRIPTOR d=&list->PartialDescriptors[i];
+        ULONG x=0,y=0,z=0;
+        if(d->Type==CmResourceTypeMemory){x=d->u.Memory.Start.LowPart;y=d->u.Memory.Start.HighPart;z=d->u.Memory.Length;}
+        if(d->Type==CmResourceTypeInterrupt){x=d->u.Interrupt.Level;y=d->u.Interrupt.Vector;z=(ULONG)d->u.Interrupt.Affinity;}
+        GeoFactoryCheckpoint(12+i,STATUS_SUCCESS,((ULONG)d->Flags<<16)|((ULONG)d->ShareDisposition<<8)|d->Type,x,y,z);
         if(d->ShareDisposition!=CmResourceShareDeviceExclusive)return STATUS_DEVICE_CONFIGURATION_ERROR;
         if(d->Type==CmResourceTypeMemory){
             if(d->u.Memory.Start.QuadPart==0x13000000 && d->u.Memory.Length==0x80000 && !core.QuadPart)core=d->u.Memory.Start;

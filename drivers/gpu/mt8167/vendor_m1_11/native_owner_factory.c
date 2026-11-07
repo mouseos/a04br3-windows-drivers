@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent
  * Source-linked Dxgk owner. No WDF, second IRQ connection or user payload. */
 #include "native_owner_factory_private.h"
+#include "native_factory_checkpoint.h"
 #include "A04BR3RogueRuntimeLayout.h"
 #include "A04BR3RogueDeviceWords.h"
 static void reference(void *p){struct e_native_owner *c=p;InterlockedIncrement(&c->references);}
@@ -305,11 +306,11 @@ NTSTATUS GeoNativeOwnerCreateV3(PDEVICE_OBJECT pdo,const DXGKRNL_INTERFACE *dxgk
     KeInitializeMutex(&c->mutex,0);ExInitializeRundownProtection(&c->operations);
     /* Publish only retained context on failure. Never expose partial ops/caps. */
     out->native_context=c;
-    s=e_native_map_resources(c,pdo,info);if(!NT_SUCCESS(s))goto fail;
-    s=e_native_platform_open(c);if(!NT_SUCCESS(s))goto fail;
-    s=e_native_load_firmware(c);if(!NT_SUCCESS(s))goto fail;
-    s=a04_native_allocation_create(&c->allocation,pdo,c->firmware_image,c->firmware_bytes,NULL);if(!NT_SUCCESS(s))goto fail;
-    s=a04_native_allocation_aperture(c->allocation,&aperture);if(!NT_SUCCESS(s))goto fail;
+    s=e_native_map_resources(c,pdo,info);GeoFactoryCheckpoint(1,s,0,0,0,0);if(!NT_SUCCESS(s))goto fail;
+    s=e_native_platform_open(c);GeoFactoryCheckpoint(2,s,0,0,0,0);if(!NT_SUCCESS(s))goto fail;
+    s=e_native_load_firmware(c);GeoFactoryCheckpoint(3,s,0,0,0,0);if(!NT_SUCCESS(s))goto fail;
+    s=a04_native_allocation_create(&c->allocation,pdo,c->firmware_image,c->firmware_bytes,NULL);GeoFactoryCheckpoint(4,s,0,0,0,0);if(!NT_SUCCESS(s))goto fail;
+    s=a04_native_allocation_aperture(c->allocation,&aperture);GeoFactoryCheckpoint(5,s,0,0,0,0);if(!NT_SUCCESS(s))goto fail;
     out->size=sizeof(*out);out->version=2;
     out->aperture=(struct geo_aperture_config){sizeof(out->aperture),1,aperture.gpu_base,aperture.bytes,aperture.commit_limit,aperture.highest_dma_address};
     out->control.Interface.Size=sizeof(out->control);out->control.Interface.Version=2;

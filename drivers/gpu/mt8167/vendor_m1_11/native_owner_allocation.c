@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "native_owner_allocation_private.h"
+#include "native_factory_checkpoint.h"
 #define TAG 0x6f4e4741u
 NTSTATUS a04_native_allocation_release_cold(struct a04_native_owner_allocation **pointer)
 {
@@ -42,11 +43,14 @@ NTSTATUS a04_native_allocation_create(struct a04_native_owner_allocation **out,
         return STATUS_INVALID_DEVICE_STATE;
     }
     status=a04_vendor_m1_11_windows_stage_uncached(&a->firmware,a->adapter,image,bytes);
+    GeoFactoryCheckpoint(30,status,a->firmware.stage_step,0,0,0);
     if(!NT_SUCCESS(status))goto fail;
     status=a04_vendor_render_prepare_cold(&a->render,&a->firmware,a->adapter,FALSE,0);
+    GeoFactoryCheckpoint(31,status,a->firmware.stage_step,0,0,0);
     if(!NT_SUCCESS(status))goto fail;
     status=a04_vendor_native_allocate_cold_ex(&a->native,&a->render,a->adapter,
         a->map_registers,800,600,&a->diagnostic);
+    GeoFactoryCheckpoint(32,status,0,0,0,0);
     if(!NT_SUCCESS(status))goto fail;
     if(!a04_vendor_native_job_staged(a->native)){status=STATUS_INVALID_DEVICE_STATE;goto fail;}
     return STATUS_SUCCESS;
