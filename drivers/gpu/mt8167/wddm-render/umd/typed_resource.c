@@ -127,7 +127,7 @@ void geo_typed_resources_install(D3D11_1DDI_DEVICEFUNCS *f) {
  f->pfnResourceIsStagingBusy=staging_busy;f->pfnResourceMap=map_resource;f->pfnResourceUnmap=unmap_resource;f->pfnStagingResourceMap=map_resource;f->pfnStagingResourceUnmap=unmap_resource;
  f->pfnDynamicIABufferMapDiscard=map_resource;f->pfnDynamicIABufferMapNoOverwrite=map_resource;f->pfnDynamicIABufferUnmap=unmap_resource;
  f->pfnDynamicConstantBufferMapDiscard=map_resource;f->pfnDynamicConstantBufferUnmap=unmap_resource;f->pfnDynamicConstantBufferMapNoOverwrite=map_resource;
- f->pfnDynamicResourceMapDiscard=map_resource;f->pfnResourceCopy=copy_resource;
+ f->pfnDynamicResourceMapDiscard=map_resource;f->pfnDynamicResourceUnmap=unmap_resource;f->pfnResourceCopy=copy_resource;
 }
 
 HRESULT geo_typed_wait_resource(struct geo_typed_resource *r) {
