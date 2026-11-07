@@ -25,6 +25,12 @@
 #ifndef A04_BQ_COLD_DIAGNOSTIC
 #define A04_BQ_COLD_DIAGNOSTIC 0
 #endif
+#ifndef A04_BQ_DEFAULT_READBACK_DIAGNOSTIC
+#define A04_BQ_DEFAULT_READBACK_DIAGNOSTIC 0
+#endif
+#if A04_BQ_DEFAULT_READBACK_DIAGNOSTIC
+#include "../bq24160/default_profile.h"
+#endif
 #ifndef A04_BQ_D0_DEFAULT_DIAGNOSTIC
 #define A04_BQ_D0_DEFAULT_DIAGNOSTIC 0
 #endif
@@ -54,6 +60,9 @@
 #endif
 #if A04_BQ_D0_DEFAULT_DIAGNOSTIC && (!A04_BQ_COLD_DIAGNOSTIC || !A04_BQ_LINUX_PROFILE_BOOT || !A04_BQ_DEFAULT_EXIT_EXPERIMENTAL || !A04_BROKER_OWNER_EXPERIMENTAL || A04_BROKER_CLIENT_EXPERIMENTAL || A04_BQ_STOPPED_GAUGE_DIAGNOSTIC)
 #error D0 DEFAULT diagnostic requires local cold Linux owner and exact DEFAULT exit
+#endif
+#if A04_BQ_DEFAULT_READBACK_DIAGNOSTIC && !A04_BQ_D0_DEFAULT_DIAGNOSTIC
+#error DEFAULT readback requires the local-only D0 diagnostic
 #endif
 #if A04_BQ_STOPPED_GAUGE_DIAGNOSTIC && !A04_BROKER_OWNER_EXPERIMENTAL
 #error Stopped-record gauge diagnostic requires broker owner build
@@ -114,6 +123,10 @@ typedef struct {
 #if A04_BQ_D0_DEFAULT_DIAGNOSTIC
     struct a04_bq_d0_session d0_session;
     ULONG report_count;
+#if A04_BQ_DEFAULT_READBACK_DIAGNOSTIC
+    struct a04_bq_default_result default_exit, default_resume;
+    BOOLEAN resume_verified;
+#endif
 #endif
 #if A04_BQ_STOPPED_GAUGE_DIAGNOSTIC
     BOOLEAN owner_fallback;
@@ -190,6 +203,54 @@ static uint64_t charger_now(void *context)
     return a->monotonic_ns(a->io->context);
 }
 #endif
+#if A04_BQ_DEFAULT_READBACK_DIAGNOSTIC
+static void trace_default(GAUGE_CONTEXT *c,const char *phase,const struct a04_bq_default_result *r)
+{
+    unsigned i;
+    trace(c,"A04BAT DEFAULT ");trace(c,phase);
+    trace(c," ack=");trace_hex(c,r->reset_acked);
+    trace(c," match=");trace_hex(c,r->matched);
+    trace(c," reason=");trace_hex(c,r->reason);
+    trace(c," stage=");trace_hex(c,r->stage);
+    trace(c," valid=");trace_hex(c,r->snapshot.valid);
+    trace(c," mismatch=");trace_hex(c,r->mismatch);trace(c," regs=");
+    for(i=0;i<8;++i)trace_hex(c,r->snapshot.raw[i]);
+    trace(c," read_rearms_WD; charge_current=UNKNOWN\n");
+}
+static int owner_reset_read_default(void *context)
+{
+    GAUGE_CONTEXT *c=context;uint64_t begin=now_ns(c);int result;
+    struct a04_bq_default_io io={&c->adapter,charger_now,a04_bq_mt8167_read,a04_bq_mt8167_reset_default};
+    if(begin>UINT64_MAX-1000000000ULL)return -1;
+    result=a04_bq_reset_read_default(&io,begin+1000000000ULL,&c->default_exit);
+    trace_default(c,"EXIT_READBACK",&c->default_exit);
+    /* No final unobserved RESET: preserve what was actually read. Supported
+     * chips can expire watchdog into autonomous defaults in D3. That future
+     * event/input detector/safety timer is not claimed observed by this read. */
+    return result;
+}
+static NTSTATUS owner_read_default_on_resume(GAUGE_CONTEXT *c)
+{
+    uint64_t begin;int result;
+    struct a04_bq_default_io io={&c->adapter,charger_now,a04_bq_mt8167_read,NULL};
+    if(!c->d0_session.generation)return STATUS_SUCCESS;
+    if(!a04_bq_d0_can_resume(&c->d0_session)||c->adapter.faulted||!c->default_exit.matched)
+        return STATUS_DEVICE_NOT_READY;
+    /* Temporarily arm BEFORE the read (which can rearm watchdog). All I/O is
+     * bounded to <1s; failure stops admission and makes no recovery promise. */
+    WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(10000));
+    WdfWaitLockAcquire(c->bus_lock,NULL);
+    begin=now_ns(c);
+    result=begin>UINT64_MAX-1000000000ULL ? -1 :
+        a04_bq_read_default(&io,begin+1000000000ULL,&c->default_resume);
+    c->resume_verified=!result;
+    if(result){c->faulted=TRUE;c->d0_session.failed=1;}
+    WdfWaitLockRelease(c->bus_lock);
+    trace_default(c,"RESUME_READBACK",&c->default_resume);
+    if(result){WdfTimerStop(c->timer,TRUE);WdfTimerStop(c->timer,FALSE);return STATUS_DEVICE_NOT_READY;}
+    return STATUS_SUCCESS;
+}
+#endif
 #if A04_BROKER_OWNER_EXPERIMENTAL && A04_LC709203F_TRACE
 /* Report only cached data already acquired by the owner. In particular this
  * does not touch BQ after RESET, which would start its watchdog again. */
@@ -264,6 +325,12 @@ static NTSTATUS owner_prepare_handoff(GAUGE_CONTEXT *c)
     UCHAR record[128]; NTSTATUS status; uint64_t counter=0,frequency=0,now;
 #if A04_BQ_D0_DEFAULT_DIAGNOSTIC
     {
+#if A04_BQ_DEFAULT_READBACK_DIAGNOSTIC
+        if (c->d0_session.generation &&
+            (!c->default_exit.matched || !c->resume_verified || !c->default_resume.matched))
+            return STATUS_DEVICE_NOT_READY;
+        c->resume_verified=FALSE;
+#endif
         int entry=a04_bq_d0_begin(&c->d0_session);
         if (!entry) return STATUS_DEVICE_NOT_READY;
         if (entry==2) {
@@ -548,10 +615,14 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
     }
 #else
     if (!c->i2c || c->faulted) return STATUS_DEVICE_NOT_READY;
+#if A04_BQ_DEFAULT_READBACK_DIAGNOSTIC
+    if(c->adapter.faulted)return STATUS_DEVICE_NOT_READY;
+#endif
 #if A04_BQHR_DIAGNOSTIC
     diagnose_bqhr(c);
 #endif
 #if A04_BROKER_OWNER_EXPERIMENTAL
+#if !A04_BQ_DEFAULT_READBACK_DIAGNOSTIC
     {
         NTSTATUS admission=owner_prepare_handoff(c);
 #if A04_BQ_STOPPED_GAUGE_DIAGNOSTIC
@@ -564,6 +635,7 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
             return STATUS_DEVICE_NOT_READY;
         }
     }
+#endif
 #elif A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
     if (!charger_handoff_is_qualified()) return STATUS_DEVICE_NOT_READY;
 #endif
@@ -583,6 +655,13 @@ NTSTATUS GaugeD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previous)
         trace(c, "A04BAT I2C NOT READY\n"); return STATUS_DEVICE_NOT_READY;
     }
     trace(c, "A04BAT I2C READY\n");
+#if A04_BQ_DEFAULT_READBACK_DIAGNOSTIC
+    if(!NT_SUCCESS(owner_read_default_on_resume(c)) || !NT_SUCCESS(owner_prepare_handoff(c))) {
+        c->faulted=TRUE;
+        WdfTimerStop(c->timer,TRUE);WdfTimerStop(c->timer,FALSE);
+        trace(c,"A04BAT VERIFIED OWNER ADMISSION REFUSED\n");return STATUS_DEVICE_NOT_READY;
+    }
+#endif
 #if A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL
     c->charger_bus.context = &c->adapter;
     c->charger_bus.now_ns = charger_now;
@@ -698,12 +777,21 @@ NTSTATUS GaugeD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE target)
             /* Timer stopped, queue quiesced, bus lock held. Do not read BQ
              * after RESET: I2C access starts its watchdog again. */
             int result;
+#if A04_BQ_DEFAULT_READBACK_DIAGNOSTIC
+            result=a04_broker_lifecycle_default(&c->owner_lifecycle,owner_reset_read_default,c);
+#else
             result=a04_broker_lifecycle_default(&c->owner_lifecycle,
                                                     a04_bq_mt8167_reset_default,&c->adapter);
+#endif
 #if A04_BQ_D0_DEFAULT_DIAGNOSTIC
             a04_bq_d0_default_result(&c->d0_session,result);
 #endif
+#if A04_BQ_DEFAULT_READBACK_DIAGNOSTIC
+            trace(c,result ? "A04BAT DEFAULT READBACK REJECTED\n" :
+                "A04BAT DEFAULT PROFILE MATCH; CHIP_AUTONOMY_PENDING\n");
+#else
             trace(c, result ? "A04BAT DEFAULT UNCONFIRMED\n" : "A04BAT DEFAULT WRITE OK\n");
+#endif
             trace_owner(c,"POST_RESET_CACHED");
 #else
             a04_broker_lifecycle_stop(&c->owner_lifecycle);
