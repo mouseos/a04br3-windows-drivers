@@ -4,7 +4,9 @@
 #include <windows.h>
 #include <initguid.h>
 #include <d3d11.h>
-#include <dxgi.h>
+#include <dxgi1_2.h>
+#include <setupapi.h>
+#include <ntddvdeo.h>
 #include <d3d9.h>
 #include <winternl.h>
 #include <d3dkmthk.h>
@@ -29,18 +31,94 @@ static void description(const WCHAR *name) {
  i+=(UINT)n-1;b[i++]='\r';b[i++]='\n';
  if(!WriteFile(disk,b,i,&written,NULL)||written!=i||!FlushFileBuffers(disk))log_ok=0;
 }
+static void text_line(const char *key,const WCHAR *value) {
+ char b[8192];UINT i=0;int n;DWORD written;
+ while(*key&&i<100)b[i++]=*key++;b[i++]='=';
+ n=WideCharToMultiByte(CP_UTF8,0,value,-1,b+i,(int)sizeof(b)-(int)i-2,NULL,NULL);
+ if(n<=0){log_ok=0;return;}i+=(UINT)n-1;b[i++]='\r';b[i++]='\n';
+ if(!WriteFile(disk,b,i,&written,NULL)||written!=i||!FlushFileBuffers(disk))log_ok=0;
+}
 static int hex8(const WCHAR **p,UINT *v) {
  UINT i,x;*v=0;
  for(i=0;i<8;i++) {WCHAR c=*(*p)++;if(c>='0'&&c<='9')x=c-'0';else if(c>='a'&&c<='f')x=c-'a'+10;else if(c>='A'&&c<='F')x=c-'A'+10;else return 0;*v=(*v<<4)|x;}return 1;
 }
-static int luid_arg(LUID *id) {
+static int selection_arg(LUID *id) {
  const WCHAR *p=GetCommandLineW();UINT high,low;
  if(*p=='"'){p++;while(*p&&*p!='"')p++;if(*p)p++;}else while(*p&&*p!=' ')p++;
  while(*p==' ')p++;
- if(*p++!='-'||*p++!='-'||*p++!='l'||*p++!='u'||*p++!='i'||*p++!='d'||*p++!='=')return 0;
- if(!hex8(&p,&high)||*p++!=':'||!hex8(&p,&low))return 0;
+ if(!*p)return 0;
+ if(!lstrcmpW(p,L"--hardware=PowerVR"))return 2;
+ if(lstrlenW(p)!=24)return -1; /* --luid= plus exactly 8:8 hex */
+ if(*p++!='-'||*p++!='-'||*p++!='l'||*p++!='u'||*p++!='i'||*p++!='d'||*p++!='=')return -1;
+ if(!hex8(&p,&high)||*p++!=':'||!hex8(&p,&low))return -1;
  while(*p==' ')p++;if(*p)return 0;
  id->HighPart=(LONG)high;id->LowPart=low;return 1;
+}
+/* Standard PnP-to-adapter identity join, available on Vista/WinBlue.
+ * GUID_DISPLAY_DEVICE_ARRIVAL includes render-only adapters; display-view
+ * interfaces and display names cannot establish this relationship.
+ * No guessed PCI VendorId/DeviceId or private QueryAdapterInfo payload. */
+static HRESULT hardware_luid(LUID *wanted) {
+ HDEVINFO set;SP_DEVICE_INTERFACE_DATA interface;SP_DEVINFO_DATA node;
+ PSP_DEVICE_INTERFACE_DETAIL_DATA_W detail=NULL;DWORD index,needed,type,bytes,error;UINT count=0;HRESULT result=S_OK;
+ WCHAR hardware[4096],service[256],instance[512];HMODULE gdi=NULL;
+ PFND3DKMT_OPENADAPTERFROMDEVICENAME open_fn;PFND3DKMT_QUERYADAPTERINFO query_fn;PFND3DKMT_CLOSEADAPTER close_fn;
+ gdi=LoadLibraryExW(L"gdi32.dll",NULL,LOAD_LIBRARY_SEARCH_SYSTEM32);
+ if(!gdi){error=GetLastError();line("AUTO_GDI_ERROR",error);return HRESULT_FROM_WIN32(error);}
+ open_fn=(PFND3DKMT_OPENADAPTERFROMDEVICENAME)GetProcAddress(gdi,"D3DKMTOpenAdapterFromDeviceName");
+ query_fn=(PFND3DKMT_QUERYADAPTERINFO)GetProcAddress(gdi,"D3DKMTQueryAdapterInfo");
+ close_fn=(PFND3DKMT_CLOSEADAPTER)GetProcAddress(gdi,"D3DKMTCloseAdapter");
+ if(!open_fn||!query_fn||!close_fn){FreeLibrary(gdi);return HRESULT_FROM_WIN32(ERROR_PROC_NOT_FOUND);}
+ set=SetupDiGetClassDevsW(&GUID_DISPLAY_DEVICE_ARRIVAL,NULL,NULL,DIGCF_PRESENT|DIGCF_DEVICEINTERFACE);
+ if(set==INVALID_HANDLE_VALUE){error=GetLastError();FreeLibrary(gdi);return HRESULT_FROM_WIN32(error);}
+ for(index=0;;index++){
+  UINT match=0;DWORD at;
+  memset(&interface,0,sizeof(interface));interface.cbSize=sizeof(interface);
+  if(!SetupDiEnumDeviceInterfaces(set,NULL,&GUID_DISPLAY_DEVICE_ARRIVAL,index,&interface)){
+   error=GetLastError();if(error!=ERROR_NO_MORE_ITEMS)result=HRESULT_FROM_WIN32(error);break;
+  }
+  line("PNP_INTERFACE_INDEX",index);needed=0;
+  if(SetupDiGetDeviceInterfaceDetailW(set,&interface,NULL,0,&needed,NULL)||GetLastError()!=ERROR_INSUFFICIENT_BUFFER||needed<sizeof(*detail)||needed>65536){result=E_UNEXPECTED;break;}
+  detail=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,needed);if(!detail){result=E_OUTOFMEMORY;break;}
+  detail->cbSize=sizeof(*detail);memset(&node,0,sizeof(node));node.cbSize=sizeof(node);
+  if(!SetupDiGetDeviceInterfaceDetailW(set,&interface,detail,needed,NULL,&node)){result=HRESULT_FROM_WIN32(GetLastError());goto next;}
+  text_line("PNP_INTERFACE",detail->DevicePath);
+  if(!SetupDiGetDeviceInstanceIdW(set,&node,instance,512,NULL)){result=HRESULT_FROM_WIN32(GetLastError());goto next;}
+  text_line("PNP_INSTANCE",instance);
+  memset(hardware,0,sizeof(hardware));bytes=0;
+  if(!SetupDiGetDeviceRegistryPropertyW(set,&node,SPDRP_HARDWAREID,&type,(BYTE *)hardware,sizeof(hardware),&bytes)){
+   result=HRESULT_FROM_WIN32(GetLastError());goto next;
+  }
+  if(type!=REG_MULTI_SZ||bytes<4||bytes>sizeof(hardware)||bytes%2||hardware[bytes/2-1]||hardware[bytes/2-2]){result=E_UNEXPECTED;goto next;}
+  for(at=0;at<bytes/2&&hardware[at];at+=(DWORD)lstrlenW(hardware+at)+1){
+   text_line("PNP_HARDWARE_ID",hardware+at);if(!lstrcmpiW(hardware+at,L"ACPI\\MOU0006"))match=1;
+  }
+  line("PNP_FIXED_HARDWARE_MATCH",match);if(!match)goto next;
+  memset(service,0,sizeof(service));bytes=0;
+  if(!SetupDiGetDeviceRegistryPropertyW(set,&node,SPDRP_SERVICE,&type,(BYTE *)service,sizeof(service),&bytes)){result=HRESULT_FROM_WIN32(GetLastError());goto next;}
+  if(type!=REG_SZ||bytes<2||bytes>sizeof(service)||bytes%2||service[bytes/2-1]){result=E_UNEXPECTED;goto next;}
+  text_line("PNP_SERVICE",service);
+  if(lstrcmpiW(service,L"GE8300Render")){line("PNP_RENDER_SERVICE_MATCH",0);goto next;}
+  line("PNP_RENDER_SERVICE_MATCH",1);
+  {
+   D3DKMT_OPENADAPTERFROMDEVICENAME open={0};D3DKMT_QUERYADAPTERINFO query={0};D3DKMT_ADAPTERTYPE caps={0};D3DKMT_CLOSEADAPTER close={0};NTSTATUS status,closed;
+   open.pDeviceName=detail->DevicePath;status=open_fn(&open);line("PNP_KMT_OPEN_STATUS",(UINT)status);
+   if(status<0){result=E_FAIL;goto next;}
+   query.hAdapter=open.hAdapter;query.Type=KMTQAITYPE_ADAPTERTYPE;query.pPrivateDriverData=&caps;query.PrivateDriverDataSize=sizeof(caps);
+   status=query_fn(&query);line("PNP_KMT_TYPE_STATUS",(UINT)status);line("PNP_KMT_TYPE_RAW",caps.Value);
+   line("PNP_KMT_LUID_HIGH",(UINT)open.AdapterLuid.HighPart);line("PNP_KMT_LUID_LOW",open.AdapterLuid.LowPart);
+   close.hAdapter=open.hAdapter;closed=close_fn(&close);line("PNP_KMT_CLOSE_STATUS",(UINT)closed);
+   if(status<0||closed<0){result=E_FAIL;goto next;}
+   if(!caps.RenderSupported||caps.SoftwareDevice){line("PNP_HARDWARE_RENDER_MATCH",0);goto next;}
+   line("PNP_HARDWARE_RENDER_MATCH",1);count++;*wanted=open.AdapterLuid;
+  }
+ next:
+  HeapFree(GetProcessHeap(),0,detail);detail=NULL;
+  /* Keep inventory after an unreadable interface; sticky failure still rejects selection. */
+ }
+ line("PNP_MATCH_COUNT",count);line("PNP_ENUM_HRESULT",result);
+ SetupDiDestroyDeviceInfoList(set);FreeLibrary(gdi);
+ if(FAILED(result))return result;return count==1?S_OK:E_INVALIDARG;
 }
 /* Observation only: a D3D9 ordinal cannot be manufactured from a DXGI LUID.
  * Failure of optional inventory transport never replaces the actual D3D11
@@ -176,15 +254,16 @@ static HRESULT probe(IDXGIAdapter *adapter) {
  return hr;
 }
 void mainCRTStartup(void) {
- IDXGIFactory *factory=NULL;IDXGIAdapter *a=NULL,*chosen=NULL;DXGI_ADAPTER_DESC desc;
- LUID id={0};UINT i,count=0,result=1;HRESULT hr;int selected=luid_arg(&id);
+ IDXGIFactory *factory=NULL;IDXGIAdapter *a=NULL,*chosen=NULL;DXGI_ADAPTER_DESC desc;DXGI_ADAPTER_DESC1 desc1;IDXGIAdapter1 *a1=NULL;
+ LUID id={0};UINT i,count=0,result=1;HRESULT hr;int selected=selection_arg(&id);HRESULT auto_hr=S_FALSE;UINT eligible;
  WCHAR path[]=L"C:\\MT8167D3DClear\\clear-00000000-00000000.log";
  const WCHAR hex[]=L"0123456789abcdef";UINT tick=GetTickCount(),pid=GetCurrentProcessId();
  for(i=0;i<8;i++){path[24+i]=hex[(tick>>(28-i*4))&15];path[33+i]=hex[(pid>>(28-i*4))&15];}
  CreateDirectoryW(L"C:\\MT8167D3DClear",NULL);
  disk=CreateFileW(path,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,NULL);
  if(disk==INVALID_HANDLE_VALUE)ExitProcess(2);
- line("SCHEMA",3);line("EXPLICIT_LUID",selected);
+ line("SCHEMA",4);line("SELECTION_MODE",(UINT)selected);line("EXPLICIT_LUID",selected==1);
+ if(selected==2){auto_hr=hardware_luid(&id);line("AUTO_IDENTITY_HRESULT",auto_hr);}
  hr=CreateDXGIFactory(&IID_IDXGIFactory,(void **)&factory);line("FACTORY_HRESULT",hr);if(FAILED(hr)||!log_ok)goto done;
  for(i=0;;i++) {
   hr=IDXGIFactory_EnumAdapters(factory,i,&a);
@@ -194,13 +273,25 @@ void mainCRTStartup(void) {
   if(FAILED(hr)){IDXGIAdapter_Release(a);a=NULL;goto done;}
   line("ADAPTER",i);description(desc.Description);line("LUID_HIGH",(UINT)desc.AdapterLuid.HighPart);line("LUID_LOW",desc.AdapterLuid.LowPart);
   line("VENDOR",desc.VendorId);line("DEVICE",desc.DeviceId);
-  /* LUID is selected by the principal from PnP/DXGI evidence, never by index,
-   * guessed PCI identity, display name substring, or first-adapter fallback. */
-  if(selected&&desc.AdapterLuid.HighPart==id.HighPart&&desc.AdapterLuid.LowPart==id.LowPart){count++;if(!chosen)chosen=a;else IDXGIAdapter_Release(a);}else IDXGIAdapter_Release(a);
+  eligible=selected==1||(selected==2&&SUCCEEDED(auto_hr));
+  if(selected==2){
+   hr=IDXGIAdapter_QueryInterface(a,&IID_IDXGIAdapter1,(void **)&a1);line("DXGI_ADAPTER1_HRESULT",hr);
+   if(FAILED(hr)){IDXGIAdapter_Release(a);a=NULL;goto done;}
+   hr=IDXGIAdapter1_GetDesc1(a1,&desc1);IDXGIAdapter1_Release(a1);a1=NULL;line("DXGI_DESC1_HRESULT",hr);
+   if(FAILED(hr)){IDXGIAdapter_Release(a);a=NULL;goto done;}
+   line("DXGI_ADAPTER_FLAGS",desc1.Flags);
+   if(desc1.AdapterLuid.HighPart!=desc.AdapterLuid.HighPart||desc1.AdapterLuid.LowPart!=desc.AdapterLuid.LowPart||desc1.VendorId!=desc.VendorId||desc1.DeviceId!=desc.DeviceId){hr=E_UNEXPECTED;IDXGIAdapter_Release(a);a=NULL;goto done;}
+   if(desc1.Flags&DXGI_ADAPTER_FLAG_SOFTWARE)eligible=0;
+  }
+  line("DXGI_IDENTITY_MATCH",eligible&&desc.AdapterLuid.HighPart==id.HighPart&&desc.AdapterLuid.LowPart==id.LowPart);
+  if(eligible&&desc.AdapterLuid.HighPart==id.HighPart&&desc.AdapterLuid.LowPart==id.LowPart){count++;if(!chosen)chosen=a;else IDXGIAdapter_Release(a);}else IDXGIAdapter_Release(a);
   a=NULL;
  }
  line("SELECTED_COUNT",count);
  if(count!=1||!log_ok){hr=E_INVALIDARG;goto done;}
+ line("SELECTED_LUID_HIGH",(UINT)id.HighPart);line("SELECTED_LUID_LOW",id.LowPart);
+ /* reason1=explicit LUID; reason2=PnP HWID+service -> KMT LUID -> DXGI nonsoftware. */
+ line("SELECTION_REASON",(UINT)selected);
  runtime_inventory(chosen,&id);
  if(!log_ok){hr=E_FAIL;goto done;}
  hr=probe(chosen);if(SUCCEEDED(hr)&&log_ok)result=0;

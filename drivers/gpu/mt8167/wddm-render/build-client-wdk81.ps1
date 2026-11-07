@@ -28,7 +28,7 @@ try {
  $source=Join-Path $PSScriptRoot 'testclient\d3d-clear.c'
  & clang --target=thumbv7-pc-windows-msvc -std=c11 -fms-extensions -ffreestanding -fno-builtin -fno-stack-protector -O2 -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DNTDDI_VERSION=0x06030000 "-I$inc\shared" "-I$inc\um" "-I$inc\km" -c $source -o "$out\d3d-clear.obj"
  if($LASTEXITCODE){throw 'Standard client compile failed'}
- & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\d3d-clear.obj" "$out\testclient_memory.obj" "$lib\kernel32.lib" "$lib\dxgi.lib" "$lib\d3d11.lib" "/out:$out\ge8300-d3d-clear.exe"
+ & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\d3d-clear.obj" "$out\testclient_memory.obj" "$lib\kernel32.lib" "$lib\setupapi.lib" "$lib\dxgi.lib" "$lib\d3d11.lib" "/out:$out\ge8300-d3d-clear.exe"
  if($LASTEXITCODE){throw 'Standard client link failed'}
  $pe=@(& llvm-readobj --file-headers --coff-imports "$out\ge8300-d3d-clear.exe")
  if($LASTEXITCODE -or !($pe -match 'IMAGE_FILE_MACHINE_ARMNT')){throw 'Client is not ARMNT'}
