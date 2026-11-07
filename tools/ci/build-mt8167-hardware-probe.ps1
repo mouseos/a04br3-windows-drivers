@@ -2,6 +2,8 @@
 param(
  [string]$OutputDirectory,
  [ValidateSet('Tone','EnginePcm')][string]$AudioMode='Tone',
+ [string]$DeferredPackageMap,
+ [string]$WorkspaceRoot,
  [string]$WlanProbePath,
  [string]$AudioClientPath,
  [switch]$Sign,
@@ -11,6 +13,10 @@ param(
 $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $enginePcm=$AudioMode -eq 'EnginePcm'
+$deferred=[bool]$DeferredPackageMap
+if($deferred -and !$enginePcm){throw 'Deferred packages require explicit EnginePcm mode'}
+if($deferred -and !$WorkspaceRoot){throw 'Explicit task WorkspaceRoot is required for deferred package input'}
+$deferredDefine=if($deferred){'1'}else{'0'}
 $engineDefine=if($enginePcm){'1'}else{'0'}
 $modeName=if($enginePcm){'engine_pcm_retained'}else{'private_fixed_tone_diagnostic'}
 $serviceName=if($enginePcm){'MT8167EngineProbe'}else{'MT8167HardwareProbe'}
@@ -55,6 +61,14 @@ foreach($item in @(@{path=$WlanProbePath;name='mt6630-wlan-probe.exe'},@{path=$A
  $inputs+=@{path=$full;name=$item.name}
 }
 New-Item -ItemType Directory -Force $out,(Join-Path $out 'tmp')|Out-Null
+$policyDirectory=Join-Path $out 'deferred-policy'
+$deferredPolicy=$null
+if($deferred){
+ & python -B (Join-Path $root 'tools\winpe\engine_deferred_policy.py') --package-map $DeferredPackageMap --workspace $WorkspaceRoot --output $policyDirectory
+ if($LASTEXITCODE){throw 'Fixed deferred package policy generation failed'}
+ $deferredPolicy=Get-Content -Raw (Join-Path $policyDirectory 'deferred-policy-manifest.json')|ConvertFrom-Json
+ Copy-Item (Join-Path $policyDirectory 'deferred-policy-manifest.json') (Join-Path $out 'deferred-policy-manifest.json')
+}
 $priorTmp=$env:TMP;$priorTemp=$env:TEMP
 try {
  $env:TMP=Join-Path $out 'tmp';$env:TEMP=$env:TMP
@@ -62,10 +76,10 @@ try {
  $source=Join-Path $root 'tools\winpe\mt8167-hardware-probe.c'
  $object=Join-Path $out 'hardware-probe.obj';$exe=Join-Path $out ($serviceName+'.exe')
  & clang --target=thumbv7-pc-windows-msvc -O2 -fno-builtin -fno-stack-protector -w -fms-extensions -ffreestanding `
-  "-DA04_HARDWARE_PROBE_ENGINE_PCM=$engineDefine" -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DNTDDI_VERSION=0x06030000 "-I$inc\um" "-I$inc\shared" -c $source -o $object
+  "-DA04_ENGINE_DEFERRED_UPDATE=$deferredDefine" "-I$policyDirectory" "-DA04_HARDWARE_PROBE_ENGINE_PCM=$engineDefine" -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DNTDDI_VERSION=0x06030000 "-I$inc\um" "-I$inc\shared" -c $source -o $object
  if($LASTEXITCODE){throw 'ARM32 hardware service compilation failed'}
  & lld-link /subsystem:console,6.3 /machine:arm /entry:mainCRTStartup /nodefaultlib /dynamicbase /nxcompat `
-  $object (Join-Path $lib 'kernel32.lib') (Join-Path $lib 'advapi32.lib') "/out:$exe"
+  $object (Join-Path $lib 'kernel32.lib') (Join-Path $lib 'advapi32.lib') $(if($deferred){@((Join-Path $lib 'setupapi.lib'),(Join-Path $lib 'wintrust.lib'),(Join-Path $lib 'bcrypt.lib'))}) "/out:$exe"
  if($LASTEXITCODE){throw 'ARM32 hardware service link failed'}
  foreach($item in $inputs){
   $destination=Join-Path $out $item.name
@@ -88,6 +102,7 @@ try {
   }
  }
  $files+='README-mt8167-hardware-probe.md'
+ if($deferred){$files+='deferred-policy-manifest.json'}
  [ordered]@{source_commit=(& git -C $root rev-parse HEAD);source_sha256=(Get-FileHash $source -Algorithm SHA256).Hash;
   source_dirty=(@(& git -C $root status --porcelain).Count -ne 0);service=$serviceName;
   target='Windows RT 8.1 ARM32 LocalSystem';service_destination=('System32\'+$serviceName+'.exe');
@@ -97,8 +112,17 @@ try {
   signing_thumbprint=$signingThumbprint;target_signature_trust_verified=$false;
   audio_mode=$modeName;engine_pcm_compatible=[bool]$enginePcm;engine_pcm_auto_registration_allowed=[bool]$enginePcm;
   fixed_clients=@('mt6630-wlan-probe.exe',$audioName);client_signatures_preserved=[bool]$enginePcm;
-  build_defines=@{A04_HARDWARE_PROBE_ENGINE_PCM=$engineDefine};
-  pnp_rebind=$(if($enginePcm){@{api='UpdateDriverForPlugAndPlayDevicesW';flags=5;
+  build_defines=@{A04_HARDWARE_PROBE_ENGINE_PCM=$engineDefine;A04_ENGINE_DEFERRED_UPDATE=$deferredDefine};
+  deferred_update=$deferredPolicy;
+  deferred_header_sha256=$(if($deferred){(Get-FileHash (Join-Path $policyDirectory 'engine-deferred-policy.h') -Algorithm SHA256).Hash.ToLowerInvariant()}else{$null});
+  deferred_runtime_source_sha256=$(if($deferred){(Get-FileHash (Join-Path $root 'tools\winpe\engine-deferred-update.h') -Algorithm SHA256).Hash.ToLowerInvariant()}else{$null});
+  deferred_policy_manifest_sha256=$(if($deferred){(Get-FileHash (Join-Path $out 'deferred-policy-manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant()}else{$null});
+  pnp_rebind=$(if($deferred){@{api='SetupDiCallClassInstaller/DIF_INSTALLDEVICE';
+   fixed_hardware_ids=@('ACPI\BEN0001','MT8167\AFE','MT8167\USB20','A04BR3\MT6630SDIO','ACPI\MOU0007');
+   directory='System32\MT8167EngineProbe\drivers';maximum_calls_per_id=1;parent_updated=$true;
+   parent_policy='DI_DONOTCALLCONFIGMG-deferred-reboot-only';reboot_required_stops_clients=$true;catalog_signature_required=$true;
+   problem_status='CM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatus/DEVPROP_TYPE_NTSTATUS';
+   phases=@('install-once','planned-reboot-once','verify-and-diagnose-once');live_parent_replacement=$false}}elseif($enginePcm){@{api='UpdateDriverForPlugAndPlayDevicesW';flags=5;
    fixed_hardware_ids=@('MT8167\AFE','MT8167\USB20','A04BR3\MT6630SDIO');
    directory='System32\MT8167EngineProbe\drivers';maximum_calls_per_id=1;
    parent_updated=$false;observed_parent='ACPI\BEN0001';parent_policy='verify-selected-version-and-installed-bytes-only';problem_status='CM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatus/DEVPROP_TYPE_NTSTATUS';reboot_required_stops_clients=$true;catalog_signature_required=$true;
@@ -108,6 +132,6 @@ try {
   marker='attempted.bin';marker_directory=('System32\'+$serviceName);startup='standard auto start; disabled before the only attempt';
   timeouts_ms=@(600000,120000);audio_interface=11;client_arguments=@('','');hardware_verified=$false;
   files=@($files|ForEach-Object{@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}})
- }|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 (Join-Path $out 'hardware-probe-manifest.json')
+ }|ConvertTo-Json -Depth 12|Set-Content -Encoding UTF8 (Join-Path $out 'hardware-probe-manifest.json')
  Write-Host "One-shot hardware service package: $out. Signing, staging and SCM registration on target remain primary-owner actions."
 } finally {$env:TMP=$priorTmp;$env:TEMP=$priorTemp}

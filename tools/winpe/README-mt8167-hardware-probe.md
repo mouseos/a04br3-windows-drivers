@@ -293,3 +293,7 @@ PARENT_SYS_MATCHのCODE=0は配置全byte一致を表す。実I/Oの成功とは
 nativeの既知disabled fingerprint、fresh backup、修正package/昇版と結び付いた明示rearm手順は
 README-mt8167-shared-io-update.mdを参照。新service EXEだけのWDK build/署名が必要。
 通常音声clientはd0eb436のままでよく、a9f8631 clientの再buildを前提にしない。
+
+明示Engine専用の固定5package延期install→正規再起動→一回診断は
+[README-engine-deferred-update.md](README-engine-deferred-update.md)を参照。
+`-DeferredPackageMap`未指定では既存動作を維持する。この周辺機器版は実機未検証。

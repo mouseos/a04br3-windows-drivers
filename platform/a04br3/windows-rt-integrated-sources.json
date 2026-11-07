@@ -377,5 +377,39 @@
       "8c36273b0c654dcf3be2534b01d4f613cf80b335",
       "6a14e9604c1effaf9100943873062043768239ac"
     ]
+  },
+  "engine_fixed_deferred_update": {
+    "mode": "explicit-opt-in",
+    "service": "MT8167EngineProbe",
+    "fixed_targets": [
+      "ACPI\\BEN0001",
+      "MT8167\\AFE",
+      "MT8167\\USB20",
+      "A04BR3\\MT6630SDIO",
+      "ACPI\\MOU0007"
+    ],
+    "api": "SetupDiCallClassInstaller/DIF_INSTALLDEVICE",
+    "flags": [
+      "DI_ENUMSINGLEINF",
+      "DI_DONOTCALLCONFIGMG",
+      "DI_QUIETINSTALL",
+      "DI_NEEDREBOOT"
+    ],
+    "live_parent_update": false,
+    "child_service_start_changes": false,
+    "maximum_install_calls_per_target": 1,
+    "maximum_planned_reboots": 1,
+    "maximum_diagnostic_attempts": 1,
+    "rearm": "existing explicit freshbackup/package-progress plan; archive complete old Engine state",
+    "policy": "five separately signed manifests/source/hash/cert/version; fixed clients; freshbackup SHA; compiled into signed EXE",
+    "usb_source_integrated": "63cbd9f967b770c5f5727954489c38f2a374e28f",
+    "wifi1003_candidate_source": "b6b715f88a3ebd2ffceda72f32ae0ec72422447b",
+    "wifi1002_candidate_retained": true,
+    "combined_parent_usb_signed_package_verified_here": false,
+    "wdk_build_verified_here": false,
+    "native_execution_verified_here": false,
+    "hardware_verified_here": false,
+    "power_request": "SystemRequired scoped to install, diagnosis and bounded reboot waiter",
+    "readme": "tools/winpe/README-engine-deferred-update.md"
   }
 }

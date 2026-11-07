@@ -136,14 +136,38 @@ def probe_check(executable, manifest, certificate, root, audio_mode="Tone"):
                 or report.get('marker_directory') != 'System32\\MT8167EngineProbe'):
             raise ValueError('Engine専用service/client/log/marker path不一致')
         pnp = report.get('pnp_rebind', {})
-        if (pnp.get('api') != 'UpdateDriverForPlugAndPlayDevicesW' or pnp.get('flags') != 5
-                or pnp.get('fixed_hardware_ids') not in (['MT8167\\AFE', 'MT8167\\USB20', 'A04BR3\\MT6630SDIO'], ['ACPI\\BEN0001', 'MT8167\\AFE', 'MT8167\\USB20', 'A04BR3\\MT6630SDIO'])
-                or pnp.get('directory') != 'System32\\MT8167EngineProbe\\drivers'
-                or pnp.get('maximum_calls_per_id') != 1
-                or pnp.get('parent_updated') is not (len(pnp.get('fixed_hardware_ids', [])) == 4)
-                or pnp.get('reboot_required_stops_clients') is not True
-                or pnp.get('catalog_signature_required') is not True):
-            raise ValueError('Engine固定PnP再bind契約のあるserviceが必要です')
+        deferred = report.get('deferred_update')
+        if deferred is not None:
+            from engine_deferred_policy import TARGETS
+            if (deferred.get('mode') != 'engine_fixed_deferred_v1' or deferred.get('schema') != 1
+                    or set(deferred.get('packages', {})) != set(TARGETS)
+                    or pnp.get('api') != 'SetupDiCallClassInstaller/DIF_INSTALLDEVICE'
+                    or pnp.get('fixed_hardware_ids') != [x[0] for x in TARGETS.values()]
+                    or pnp.get('parent_policy') != 'DI_DONOTCALLCONFIGMG-deferred-reboot-only'
+                    or pnp.get('live_parent_replacement') is not False
+                    or pnp.get('parent_updated') is not True
+                    or pnp.get('directory') != 'System32\\MT8167EngineProbe\\drivers'
+                    or pnp.get('phases') != ['install-once','planned-reboot-once','verify-and-diagnose-once']
+                    or pnp.get('problem_status') != 'CM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatus/DEVPROP_TYPE_NTSTATUS'
+                    or pnp.get('maximum_calls_per_id') != 1
+                    or pnp.get('catalog_signature_required') is not True
+                    or pnp.get('reboot_required_stops_clients') is not True
+                    or report.get('build_defines',{}).get('A04_ENGINE_DEFERRED_UPDATE') != '1'):
+                raise ValueError('固定Engine延期更新phase契約不一致')
+            policy_path=manifest.parent/'deferred-policy-manifest.json'
+            if (sha(policy_path) != report.get('deferred_policy_manifest_sha256')
+                    or json.loads(policy_path.read_text(encoding='utf-8-sig')) != deferred):
+                raise ValueError('署名serviceの延期policy実file pin不一致')
+        else:
+            if report.get('build_defines',{}).get('A04_ENGINE_DEFERRED_UPDATE') == '1':raise ValueError('延期buildのpolicy欠落')
+            if (pnp.get('api') != 'UpdateDriverForPlugAndPlayDevicesW' or pnp.get('flags') != 5
+                    or pnp.get('fixed_hardware_ids') not in (['MT8167\\AFE', 'MT8167\\USB20', 'A04BR3\\MT6630SDIO'], ['ACPI\\BEN0001', 'MT8167\\AFE', 'MT8167\\USB20', 'A04BR3\\MT6630SDIO'])
+                    or pnp.get('directory') != 'System32\\MT8167EngineProbe\\drivers'
+                    or pnp.get('maximum_calls_per_id') != 1
+                    or pnp.get('parent_updated') is not (len(pnp.get('fixed_hardware_ids', [])) == 4)
+                    or pnp.get('reboot_required_stops_clients') is not True
+                    or pnp.get('catalog_signature_required') is not True):
+                raise ValueError('Engine固定PnP再bind契約のあるserviceが必要です')
         binary = executable.read_bytes()
         if audio.encode('utf-16le') not in binary or 'mt8167-audio-first-playback.exe'.encode('utf-16le') in binary:
             raise ValueError('旧tone binaryまたは別clientをEngineProbeへ混用できません')
@@ -161,7 +185,9 @@ def probe_check(executable, manifest, certificate, root, audio_mode="Tone"):
             'audio_mode': 'engine_pcm_retained' if engine else 'private_fixed_tone_diagnostic', 'exe_sha256': sha(executable),
             'manifest_sha256': sha(manifest), 'certificate_sha256': sha(certificate),
             'certificate_thumbprint': thumbprint, 'authenticode_verified_here': False,
-            'pnp_rebind': report.get('pnp_rebind') if engine else None}
+            'pnp_rebind': report.get('pnp_rebind') if engine else None,
+            'deferred_update': report.get('deferred_update') if engine else None,
+            'deferred_policy_manifest_sha256': report.get('deferred_policy_manifest_sha256') if engine else None}
 
 
 def certificate_trust_commands(certificates):

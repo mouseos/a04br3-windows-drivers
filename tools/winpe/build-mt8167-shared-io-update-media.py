@@ -30,6 +30,7 @@ def backup_check(manifest,root):
 def main():
  ap=argparse.ArgumentParser()
  for n in ('workspace','base','package','firmware','backup','out','tools'):ap.add_argument('--'+n,type=Path,required=True)
+ ap.add_argument('--deferred-package-map',type=Path)
  ap.add_argument('--audio-mode',choices=('Tone','EnginePcm'),default='Tone')
  ap.add_argument('--brightness-package',type=Path)
  ap.add_argument('--brightness-manifest-sha256')
@@ -65,6 +66,8 @@ def main():
  audio_inf='mt8167-afe-engine-pcm.inf' if engine else 'mt8167-afe-first-playback.inf'
  audio_client='mt8167-audio-engine-probe.exe' if engine else 'mt8167-audio-first-playback.exe'
  if engine and (not probe or not a.engine_package or not a.engine_client_package):raise SystemExit('EnginePcmは専用serviceとEngine driver/client packageを明示指定してください')
+ if a.deferred_package_map and (a.parent_package or a.wifi_package or a.brightness_package):raise SystemExit('延期mapと個別parent/WiFi/brightness overrideは併用できません')
+ if a.deferred_package_map and (not engine or not probe):raise SystemExit('延期更新は明示Engine service専用です')
  if not engine and (a.engine_package or a.engine_client_package or a.brightness_package or a.toprgu_package or a.wifi_package or a.parent_package):raise SystemExit('Engine専用入力をTone modeへ渡せません')
  private_args=(a.probe_manifest,a.probe_certificate,a.prepared_system,a.prepared_system_manifest,a.prepared_system_sha256)
  if probe:
@@ -86,6 +89,21 @@ def main():
    sources.update(parent_files);components['parent']=parent_component;certificates['parent_override']=parent_cert
   extra_files,extra_components,extra_certificates,optional_drivers=engine_optional_check(a.brightness_package,a.toprgu_package,root,a.brightness_manifest_sha256)
   sources.update(extra_files);components.update(extra_components);certificates.update(extra_certificates)
+  if a.deferred_package_map:
+   from engine_deferred_policy import load_map
+   deferred_sources,deferred_components,deferred_certificates,deferred_policy=load_map(a.deferred_package_map,root)
+   if (deferred_policy['backup_manifest_sha256']!=sha(backup)
+       or not probe_info or probe_info.get('deferred_update')!=deferred_policy):raise SystemExit('延期policy/署名service/freshbackup不一致')
+   for name in ('mt6630-wlan-probe.exe','mt8167-audio-engine-probe.exe'):
+    if sha(deferred_sources['clients/'+name])!=sha(sources['clients/'+name]):raise SystemExit('延期policy clientは既存固定WLAN/d0eb署名clientと一致が必要です')
+   # Replace only the exact five targets and fixed clients, preserving TOPRGU and firmware.
+   for role,component in deferred_components.items():
+    for rel in list(sources):
+     if rel.startswith(role+'/'):del sources[rel]
+    components[role]=component
+   sources.update(deferred_sources);certificates.update({'deferred_'+k:v for k,v in deferred_certificates.items()})
+   optional_drivers+=['call :adddriver DISPLAY X:\\a04br3\\shared-io\\display\\mt8167-display.inf','if errorlevel 1 goto dismfail']
+  elif probe_info and probe_info.get('deferred_update'):raise SystemExit('延期serviceには一致する明示package mapが必要です')
   files={rel:sha(path) for rel,path in sources.items()}
  else:
   stems={'parent':('shared-parent','mt8167-shared'),'audio':('mt8167-afe-first-playback','mt8167-audio'),'usb':('mt8167-usb20','mt8167-usb20'),'wifi':('mt6630-runtime','mt6630-runtime')}
@@ -121,7 +139,7 @@ def main():
  rearm_plan=None
  if plan_only or rearming:
   pnp=probe_info.get('pnp_rebind',{}) if probe_info else {}
-  if pnp.get('parent_updated') is not False or pnp.get('parent_policy')!='verify-selected-version-and-installed-bytes-only' or pnp.get('problem_status')!='CM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatus/DEVPROP_TYPE_NTSTATUS':raise SystemExit('再armには親選択/配置照合・ProblemStatus対応serviceが必要です')
+  if not a.deferred_package_map and (pnp.get('parent_updated') is not False or pnp.get('parent_policy')!='verify-selected-version-and-installed-bytes-only' or pnp.get('problem_status')!='CM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatus/DEVPROP_TYPE_NTSTATUS'):raise SystemExit('再armには親選択/配置照合・ProblemStatus対応serviceが必要です')
  if plan_only:
   plan=make_plan(a.rearm_previous_media,backup,b,components,root)
   destination=private_path(a.write_engine_rearm_plan,root)
@@ -166,6 +184,11 @@ def main():
  if probe:
   prepare=(here/prepare_name).read_text().replace('@SYSTEM_SHA@',native['sha256']).replace('@SYSTEM_MANIFEST_SHA@',native['manifest_sha256'])
   prepare=prepare.replace('@ENGINE_REARM@',archive_commands(a.engine_rearm_plan_sha256.lower()) if rearming else 'rem Explicit rearm not selected; refuse any existing marker.')
+  if a.deferred_package_map:
+   extra=['if not exist C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\display mkdir C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\display >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
+   for extension in ('inf','sys','cat'):
+    extra+=['copy /b /y X:\\a04br3\\shared-io\\display\\mt8167-display.'+extension+' C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\display\\mt8167-display.'+extension+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
+   prepare=prepare.replace('copy /y X:\\a04br3\\MT8167EngineProbe.exe','\n'.join(extra)+'\ncopy /y X:\\a04br3\\MT8167EngineProbe.exe')
   cmd=cmd.replace('@PROBE_PREPARE@',prepare)
  else:cmd=cmd.replace('@PROBE_PREPARE@','rem Hardware probe service not included; PnP only.')
  if re.search('@[A-Z_]+@',cmd):raise SystemExit('未置換変数')

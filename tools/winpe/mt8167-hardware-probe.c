@@ -17,6 +17,12 @@
 #ifndef A04_HARDWARE_PROBE_ENGINE_PCM
 #define A04_HARDWARE_PROBE_ENGINE_PCM 0
 #endif
+#ifndef A04_ENGINE_DEFERRED_UPDATE
+#define A04_ENGINE_DEFERRED_UPDATE 0
+#endif
+#if A04_ENGINE_DEFERRED_UPDATE && !A04_HARDWARE_PROBE_ENGINE_PCM
+#error Deferred install is explicit EnginePcm only
+#endif
 #if A04_HARDWARE_PROBE_ENGINE_PCM != 0 && A04_HARDWARE_PROBE_ENGINE_PCM != 1
 #error Only fixed tone or EnginePcm probe builds are supported
 #endif
@@ -210,18 +216,26 @@ static void pnp_record(unsigned index,unsigned event,DWORD value)
 {emit_record(10+index,event,value,0); /* Disk authoritative; UART optional. */}
 static DWORD pnp_load(struct pnp_apis *a)
 {
+#if !A04_ENGINE_DEFERRED_UPDATE
  a->newdev=LoadLibraryExW(L"newdev.dll",NULL,LOAD_LIBRARY_SEARCH_SYSTEM32);
  if(!a->newdev)return GetLastError();
+#endif
  a->cm=LoadLibraryExW(L"cfgmgr32.dll",NULL,LOAD_LIBRARY_SEARCH_SYSTEM32);
  if(!a->cm)return GetLastError();
+#if !A04_ENGINE_DEFERRED_UPDATE
  a->update=(pnp_update_fn)GetProcAddress(a->newdev,"UpdateDriverForPlugAndPlayDevicesW");
+#endif
  a->size=(pnp_size_fn)GetProcAddress(a->cm,"CM_Get_Device_ID_List_SizeW");
  a->list=(pnp_list_fn)GetProcAddress(a->cm,"CM_Get_Device_ID_ListW");
  a->locate=(pnp_locate_fn)GetProcAddress(a->cm,"CM_Locate_DevNodeW");
  a->status=(pnp_status_fn)GetProcAddress(a->cm,"CM_Get_DevNode_Status");
  a->property=(pnp_property_fn)GetProcAddress(a->cm,"CM_Get_DevNode_Registry_PropertyW");
  a->devproperty=(pnp_devproperty_fn)GetProcAddress(a->cm,"CM_Get_DevNode_PropertyW");
+#if A04_ENGINE_DEFERRED_UPDATE
+ return a->devproperty&&a->size&&a->list&&a->locate&&a->status&&a->property?0:ERROR_PROC_NOT_FOUND;
+#else
  return a->devproperty&&a->update&&a->size&&a->list&&a->locate&&a->status&&a->property?0:ERROR_PROC_NOT_FOUND;
+#endif
 }
 static ULONG pnp_last_started,pnp_last_matches;static int pnp_query_complete,pnp_parent_version_matches;
 static char pnp_parent_expected_version[64];
@@ -360,6 +374,7 @@ static DWORD pnp_parent_installed_matches(HANDLE staged)
  if(buffer)HeapFree(GetProcessHeap(),0,buffer);if(file!=INVALID_HANDLE_VALUE)CloseHandle(file);if(directory!=INVALID_HANDLE_VALUE)CloseHandle(directory);
  return error;
 }
+#if !A04_ENGINE_DEFERRED_UPDATE
 static DWORD pnp_once(int *halt)
 {
  struct pnp_apis a;WCHAR drivers[MAX_PATH],infs[4][MAX_PATH];
@@ -410,6 +425,10 @@ static DWORD pnp_once(int *halt)
  emit_record(0,EV_PNP_RESULT,result,0);return result;
 }
 #endif
+#endif
+#if A04_ENGINE_DEFERRED_UPDATE
+#include "engine-deferred-update.h"
+#endif
 static HANDLE child_log(const WCHAR *name,SECURITY_ATTRIBUTES *sa)
 {
  WCHAR full[MAX_PATH];if(path(full,log_directory,name)){SetLastError(ERROR_INSUFFICIENT_BUFFER);return INVALID_HANDLE_VALUE;}
@@ -425,6 +444,9 @@ static DWORD run_client(unsigned index)
  if(index>=2)return ERROR_INVALID_PARAMETER;
  error=path(image,directory,clients[index]);if(error)return error;
  error=signed_image(image,&image_lock);record(index+1,EV_SIGNATURE,error);if(error)goto done;
+#if A04_ENGINE_DEFERRED_UPDATE
+ error=deferred_hash(image_lock,deferred_client_hashes[index]);if(error)goto done;
+#endif
  memset(&sa,0,sizeof(sa));sa.nLength=sizeof(sa);sa.bInheritHandle=TRUE;
  output=child_log(stdout_names[index],&sa);if(output==INVALID_HANDLE_VALUE){error=GetLastError();goto done;}
  error_output=child_log(stderr_names[index],&sa);if(error_output==INVALID_HANDLE_VALUE){error=GetLastError();goto done;}
@@ -474,12 +496,22 @@ done:
 }
 static DWORD once(void)
 {
- DWORD error,result=0,cleanup_error;unsigned i;HANDLE power=INVALID_HANDLE_VALUE;REASON_CONTEXT reason;
+ DWORD error,result=0,cleanup_error;
+#if A04_ENGINE_DEFERRED_UPDATE
+ int diagnostic=0;
+#endif
+ unsigned i;HANDLE power=INVALID_HANDLE_VALUE;REASON_CONTEXT reason;
  error=local_system();if(error)return error;
  error=disable_self();if(error){record(0,EV_DISABLED,error);return error;}
  error=paths();if(error)return error;
  error=open_log();if(error)return error;
- record(0,EV_DISABLED,0);record(0,EV_BEGIN,0);record(0,EV_MODE,A04_HARDWARE_PROBE_ENGINE_PCM);error=consume_attempt();record(0,EV_ATTEMPTED,error);
+ record(0,EV_DISABLED,0);record(0,EV_BEGIN,0);record(0,EV_MODE,A04_HARDWARE_PROBE_ENGINE_PCM);
+#if A04_ENGINE_DEFERRED_UPDATE
+ error=deferred_phase(&diagnostic);
+#else
+ error=consume_attempt();
+#endif
+ record(0,EV_ATTEMPTED,error);
  if(error||log_error)return error?error:log_error;
  /* Windows 7+ desktop API, also used by this native RT8.1 service.
   * SystemRequired only: explicit user Sleep is still honored by Windows. */
@@ -492,7 +524,10 @@ static DWORD once(void)
   result=GetLastError();record(0,EV_POWER_SET,result);goto close_power;
  }
  record(0,EV_POWER_SET,0);
-#if A04_HARDWARE_PROBE_ENGINE_PCM
+#if A04_ENGINE_DEFERRED_UPDATE
+ result=deferred_once(diagnostic);if(result||!diagnostic)goto clear_power;
+ result=deferred_diagnostic_status; /* Keep observed CM failures while collecting fixed client logs. */
+#elif A04_HARDWARE_PROBE_ENGINE_PCM
  {int halt;result=pnp_once(&halt);if(halt)goto clear_power;}
 #endif
  for(i=0;i<2;i++){
@@ -527,6 +562,11 @@ static void WINAPI service_main(DWORD argc,WCHAR **argv)
  error=stop_event?once():event_error;record(0,EV_UART,uart_error);
  #if !A04_HARDWARE_PROBE_ENGINE_PCM
  if(!error&&uart_error)error=uart_error;
+#endif
+ #if A04_ENGINE_DEFERRED_UPDATE
+ if(log_error){(void)disable_self();error=log_error;}
+ if(error&&error!=ERROR_SUCCESS_REBOOT_REQUIRED)(void)disable_self();
+ if(error==ERROR_SUCCESS_REBOOT_REQUIRED){DWORD waiter=deferred_start_waiter();if(waiter){(void)disable_self();error=waiter;}}
 #endif
  record(0,EV_END,error);
  #if !A04_HARDWARE_PROBE_ENGINE_PCM
@@ -575,6 +615,9 @@ void mainCRTStartup(void)
  DWORD error=0;const WCHAR *args=arguments();run_id=GetTickCount();SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOOPENFILEERRORBOX);
  if(!lstrcmpW(args,L"--install"))error=register_service();
  else if(!lstrcmpW(args,L"--start"))error=start_service();
+ #if A04_ENGINE_DEFERRED_UPDATE
+ else if(!lstrcmpW(args,L"--reboot-after-stop"))error=deferred_reboot_waiter();
+#endif
  else if(*args)error=ERROR_INVALID_PARAMETER;
  else {SERVICE_TABLE_ENTRYW table[2]={{(LPWSTR)service_name,service_main},{NULL,NULL}};if(!StartServiceCtrlDispatcherW(table))error=GetLastError();}
  if(logfile!=INVALID_HANDLE_VALUE)CloseHandle(logfile);
