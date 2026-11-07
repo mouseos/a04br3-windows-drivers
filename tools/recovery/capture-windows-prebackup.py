@@ -156,17 +156,31 @@ class Recovery:
     def snapshot(self, mount, specs):
         directories={'Windows', 'Windows/System32', CONFIG.rstrip('/'), DRIVERS.rstrip('/')}
         for source, required in specs:
+            if not required:continue
             directories.update(str(parent) for parent in PurePosixPath(source).parents if str(parent) != '.')
         for directory in sorted(directories):
             path = shlex.quote(mount + '/' + directory)
             self.shell('test -d ' + path + ' && test ! -L ' + path, label='source directory check')
+        absent_directories=set()
+        optional_parents={str(parent) for source,required in specs if not required
+                          for parent in PurePosixPath(source).parents if str(parent)!='.'}
+        for directory in sorted(optional_parents-directories,key=lambda p:(len(PurePosixPath(p).parts),p)):
+            if any(str(parent) in absent_directories for parent in PurePosixPath(directory).parents):
+                absent_directories.add(directory);continue
+            path=shlex.quote(mount+'/'+directory)
+            state=self.shell('if test -L '+path+'; then exit 1; elif test -d '+path+
+                             '; then echo PRESENT; elif test ! -e '+path+
+                             '; then echo ABSENT; else exit 1; fi',label='optional source directory check')
+            if state=='ABSENT':absent_directories.add(directory)
+            elif state!='PRESENT':raise BackupError('Invalid optional directory state')
         listings = {folder: set(self.shell('ls -1A ' + shlex.quote(mount + '/' + folder),
                                            label='source directory listing').splitlines())
-                    for folder in sorted({source.rsplit('/', 1)[0] + '/' for source, required in specs})}
+                    for folder in sorted({source.rsplit('/', 1)[0] + '/' for source, required in specs})
+                    if folder.rstrip('/') not in absent_directories}
         result = {}
         for source, required in specs:
             folder, name = source.rsplit('/', 1)
-            if name not in listings[folder + '/']:
+            if folder in absent_directories or name not in listings[folder + '/']:
                 if required:
                     raise BackupError('A required backup file is absent')
                 result[source] = None
