@@ -130,3 +130,70 @@ scriptは固定SYS hash・埋込署名の存在、source INF新版、空の新�
 CAT生成/署名後も入力/出力SYSが同一hashであることを確認する。環境時計・証明書storeは変更しない。
 OS側の既存証明書信頼とPnP適用は主担当の既存transaction方式で別途扱う。
 recipeは今回Windows/runnerで未実行。新INF/CAT作成と、適用後の実SYS hash確認を区別する。
+
+## 標準Windows APIの単発30%/70% probe
+
+`tools/display/test-mt8167-brightness.ps1`はWindows PowerShell 3以上とCimCmdletsを
+使うローカル専用client。Windows 8.1/ARM32の通常OS向けで、追加native DLLや
+Dxva2/DDC/CI、private IOCTL、MMIO mapping、署名済みSYS変更は不要。
+Monitor.sysが内蔵panelへ公開する`root\wmi`の`WmiMonitorBrightness`と
+`WmiMonitorBrightnessMethods.WmiSetBrightness`を使う。
+対応WMI instanceが公開されていなければ、別経路へ迂回せず失敗を記録する。
+
+公式根拠（確認2026-11-07）：
+
+- [内蔵panelとMonitor.sys/WMI、KMD brightness interfaceの関係](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/supporting-brightness-controls-on-integrated-display-panels)
+- [WmiMonitorBrightnessのCurrentBrightness/Level/InstanceName](https://learn.microsoft.com/en-us/windows/win32/wmicoreprov/wmimonitorbrightness)
+- [WmiSetBrightnessのuint32 Timeout/uint8 Brightness、戻り値0=成功](https://learn.microsoft.com/en-us/windows/win32/wmicoreprov/wmisetbrightness-method-in-class-wmimonitorbrightnessmethods)
+- [Invoke-CimMethodのnamed ArgumentsとOperationTimeoutSec](https://learn.microsoft.com/en-us/powershell/module/cimcmdlets/invoke-cimmethod?view=powershell-5.1)
+- [Get-CimInstanceによるsnapshotの再取得](https://learn.microsoft.com/en-us/powershell/module/cimcmdlets/get-ciminstance?view=powershell-5.1)
+
+```powershell
+# ソースcheckout、またはtools/display以下の配置を保ったdeployment rootで実行。
+# 出力は同root内の未作成directoryを指定する。
+powershell.exe -NoProfile -NonInteractive -File .\tools\display\test-mt8167-brightness.ps1 `
+  -OutputDirectory "$PWD\out\brightness-api-once"
+# Active instanceが複数の場合だけ、WMIの実InstanceNameを完全一致で指定：
+#   -InstanceName '<実際のWMI InstanceName>'
+```
+
+Activeなbrightness instanceを1つに限定し、同じInstanceNameのActive methodsを
+1つ要求する。30、70、初期値がすべてLevel配列に存在することを確認し、近似levelへ
+丸めない。元のpercentと復元情報をresult.jsonへ保存した後、Timeout=uint32 0 /
+Brightness=uint8を名前付きで渡し、30→70→元percentを実行する。
+各設定の戻り値0だけでなく、新しいGet-CimInstanceによるCurrentBrightness一致を
+確認する。初期snapshotの再利用はしない。成功には30/70/復元の全readbackが必要。
+
+各CIM操作はOperationTimeoutSec既定3秒、readback最大4回、間隔250ms。
+通信・provider timeoutも失敗として記録し、最初のSetが失敗・timeoutを返しても
+副作用の可能性があるためfinallyで元percentのSet/readbackを試みる。
+復元失敗は独立restore_error/restore_verified=falseと非zero終了で残す。
+OS停止・process強制終了・応答しないkernel/providerからの復元までは保証しない。
+hard-kill watchdogでfinallyを潰す設計にはしない。電源policy/ALS/サービスは変更せず、
+競合で値が戻ればreadback不一致として扱う。常駐・連続試験にはしない。
+
+**このAPIは生PWMDUTY/CON1を公開しない。** result.jsonのCurrentBrightnessは
+標準WMI結果であり、Monitor.sys/providerのcacheを排除したraw register観測とは
+断定できない。既存DODのGetはCON1を読むが、WMIの毎照会がGetへ直結することは
+今回未実測。`expected_duty_from_source`の30%=307、70%=716は0c73f27の式からの
+予測値だけで、`raw_pwm_observed=false`を常に記録する。
+復元も元の標準percentの復元であり、初期PWMがpercent境界でなければ元raw bitsと
+完全一致する保証はない。raw PWMDUTYの証拠には別の正規kernel観測口が必要だが、
+今回その追加やSYS再署名はしない。光学的な輝度の証明とも区別する。
+
+result.jsonには対象、対応levels、初期percent、各設定status、各readback、時刻、
+復元結果とclient SHA256を保存する。失敗でも保存しPowerShellの終了を失敗にする。
+主担当は既存transactionの実採用SYS hash/INF14確認と結果を対で回収する。
+署名済み71f4 SYS/新CATの作成成功だけをWMI成功へ読み替えない。
+
+ホスト試験（実CIM/実機アクセスなし）：
+
+```powershell
+pwsh -NoProfile -NonInteractive -File .\tests\brightness_client_test.ps1 `
+  -OutputDirectory "$PWD\build\brightness-client-tests-unique"
+```
+
+mockで成功30→70→50、設定error/timeout後の復元、readback不一致の有界停止、
+非対応level/複数instance/method不在で書込みゼロ、復元失敗の独立判定を確認する。
+PowerShell parserと実scriptをホストPowerShell 7.4.6で実行する試験であり、
+Windows PowerShell 3/4の実CIM・ARM32通常OS・実WMI/実PWM成功は未検証。
