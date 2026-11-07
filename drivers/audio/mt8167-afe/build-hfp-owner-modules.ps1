@@ -56,7 +56,11 @@ try {
  [ordered]@{source_commit=$commit;source_dirty=$false;target='Windows RT 8.1 ARM32';bt_dependency_source_commit=$bt;
   provider_contract_version=2;paired_bt_core=[bool]$PairBluetoothCore;base_audio_contracts=[bool]$IncludeBaseAudioContracts;explicit_object_count=$objects.Count;library='mt8167-hfp-owner-common.lib';sources=$sources;
   wdk_compile_archive_succeeded=$true;final_driver_link_verified=$false;
-  required_external_module='Nash MT6630 HFP PnP/endpoint core + existing Audio backend';
+  required_external_module=$(if($PairBluetoothCore){'existing Audio backend and qualified controller/drain provider'}else{'Nash MT6630 HFP PnP/endpoint core + existing Audio backend'});
+  kernel_compile_flags=$common;bt_archive_sha256=(Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant();
+  dependency_headers=@(Get-ChildItem $headers -Filter '*.h' -File|ForEach-Object{@{path=$_.Name;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}});
+  audio_headers=@(Get-ChildItem $PSScriptRoot -Filter '*.h' -File|ForEach-Object{@{path=$_.Name;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}});
+  objects=@($objects|ForEach-Object{@{path=[IO.Path]::GetFileName($_);sha256=(Get-FileHash $_ -Algorithm SHA256).Hash.ToLowerInvariant()}});
   independent_dma_drain_implemented=$false;controller_registration_implemented=$false;
   pnp_endpoints_registered=$false;hci_bypass_capability_advertised=$false;hardware_verified=$false;
   existing_trial_media_modified=$false;sha256=(Get-FileHash $library -Algorithm SHA256).Hash.ToLowerInvariant()
