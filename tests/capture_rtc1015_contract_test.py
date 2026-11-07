@@ -22,8 +22,14 @@ def off(m):
  return body.split('#else\n',1)[1] if '#else\n' in body else ''
 s=re.sub(r'#if A04_SHARED_CAPTURE\n(.*?)#endif\n',off,s,flags=re.S)
 # Preserve strings/character literals while ignoring only C token whitespace.
-lex=r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[A-Za-z_][A-Za-z_0-9]*|\d+|==|!=|<=|>=|->|&&|\|\||\+\+|--|[^\s]'
-assert re.findall(lex,s)==re.findall(lex,old(p)), 'Capture OFF must retain every old parent token'
+def tokens(text):
+    # Remove comments as complete tokens before recognizing char literals;
+    # apostrophes in comments must not swallow changed line whitespace.
+    pattern=r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|/\*.*?\*/|//[^\n]*'
+    text=re.sub(pattern,lambda m: '' if m[0].startswith(('/*','//')) else m[0],text,flags=re.S)
+    lex=r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[A-Za-z_][A-Za-z_0-9]*|\d+|==|!=|<=|>=|->|&&|\|\||\+\+|--|[^\s]'
+    return re.findall(lex,text)
+assert tokens(s)==tokens(old(p)), 'Capture OFF must retain every old parent token'
 unchanged=['drivers/usb','drivers/network','drivers/gpu','drivers/storage','drivers/bus/mt8167-shared/pwrap_owner.c','drivers/bus/mt8167-shared/pwrap_owner.h','drivers/bus/mt8167-shared/parent_resources.c','drivers/bus/mt8167-shared/parent_resources.h','drivers/bus/mt8167-shared/wifi_interface.h','drivers/bus/mt8167-shared/WIFI_RTC1015.md']
 assert not subprocess.check_output(['git','-C',str(r),'diff',base,'--',*unchanged],text=True)
 profile=json.loads((r/'drivers/bus/mt8167-shared/prototype/capture-rtc1015-profile.json').read_text())

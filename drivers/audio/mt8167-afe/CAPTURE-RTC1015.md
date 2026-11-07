@@ -4,7 +4,7 @@
 SHA256 e7df942265a8216ba393152f1fe781e47d48ebe09b6da02f235dd8c2ba7d9752。
 旧capture1024親をコピーせず、ADC/VUL/IRQ2/PortCls/KSに必要な変更だけを統合した。
 
-`prototype/capture-rtc1015-profile.json`は署名済み1015 manifestの実効31flagを固定する。
+`prototype/capture-rtc1015-profile.json`は署名済み1015 manifestの実効32flagを固定する。
 A04_SHARED_WIFI_RTC_BORROW=1を含む既存値をすべて保持し、A04_SHARED_CAPTURE=1だけを追加。
 RTC/PWRAP owner、GPU、WiFi、USB、SD resource/driverは変更しない。USB1005の取り込みもない。
 新しいcapture ownerは親contextの末尾に追加し、既存fieldの位置を保持する。
