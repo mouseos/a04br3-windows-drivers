@@ -837,14 +837,16 @@ NTSTATUS Mt8167PnpBackendSnapshot(Mt8167PnpBackend *o,struct a04_audio_snapshot 
 }
 #endif
 #if defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
-NTSTATUS Mt8167PnpBackendHfpStart(Mt8167PnpBackend *o,PDEVICE_OBJECT fdo,PRESOURCELIST resources,Mt8167HfpOwner **out)
+NTSTATUS Mt8167PnpBackendHfpStartWithController(Mt8167PnpBackend *o,PDEVICE_OBJECT fdo,PRESOURCELIST resources,const A04_HFP_CONTROLLER *controller,Mt8167HfpOwner **out)
 {
  if(!o||!fdo||!out||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  *out=NULL;OwnerLock(o);
  if(!o->online||o->shared.leased||o->shared.quarantined||o->irq.interrupt){OwnerUnlock(o);return STATUS_DEVICE_BUSY;}
  Mt8167HfpResources r={fdo,o->pdo,resources,o->afe.base,o->adapter,o->interrupt.vector,o->interrupt.level,o->interrupt.affinity,o,OwnerReference,OwnerDereference};
- NTSTATUS status=Mt8167HfpStart(&r,out);OwnerUnlock(o);return status;
+ NTSTATUS status=Mt8167HfpStartWithController(&r,controller,out);OwnerUnlock(o);return status;
 }
+NTSTATUS Mt8167PnpBackendHfpStart(Mt8167PnpBackend *o,PDEVICE_OBJECT fdo,PRESOURCELIST resources,Mt8167HfpOwner **out)
+{return Mt8167PnpBackendHfpStartWithController(o,fdo,resources,NULL,out);}
 #endif
 void Mt8167PnpBackendRevoke(Mt8167PnpBackend *o) {
     if (!o)return;

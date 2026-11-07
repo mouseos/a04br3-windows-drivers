@@ -316,6 +316,7 @@ int a04_ndis_radio_power(struct a04_ndis_runtime *a,int on)
  a->peer_loss.suspected=0;
  if(!on){
   #if A04_WIFI_BT_BROKER
+ if(a04_combo_held(a))return -1; /* active SCO retains the existing epoch */
  if(a04_combo_stop(a,0)){a->uncertain=1;a->radio.failed=-1;return -1;}
 #endif
  if(a04_windows_session_stop(&a->session)){a->uncertain=1;a->radio.failed=-1;return -1;}
@@ -337,6 +338,7 @@ int a04_ndis_radio_reset(struct a04_ndis_runtime *a)
   a04_os_security_clear(a);return 0; /* quiescent OFF epoch; do not turn RF on */
  }
  #if A04_WIFI_BT_BROKER
+ if(a04_combo_held(a))return -1; /* active SCO retains the existing epoch */
  if(a04_combo_stop(a,0)){a->uncertain=1;a->radio.failed=-1;return -1;}
 #endif
  if(a04_windows_session_stop(&a->session)){a->uncertain=1;a->radio.failed=-1;return -1;}

@@ -4,10 +4,10 @@
 #include <ntddk.h>
 /* Separate from Audio v11 and WiFi v2. Kernel-only, paired BT profile.
  * BT owns controller provenance/FC72/GORM; Audio owns AFE/DMA/IRQ.
- * Reference/dereference/live/match-position lifetime at <=DISPATCH;
+ * Reference/dereference/live at <=DISPATCH; MatchHfpTarget is PASSIVE;
  * other methods PASSIVE. Never expose a callback/path/command user broker. */
 static const GUID A04SharedHfpInterfaceGuid={0x84e4cb62,0xe9b8,0x47cc,{0x9f,0x62,0xa7,0xc3,0xe4,0xd5,0x82,0x40}};
-#define A04_SHARED_HFP_VERSION 1
+#define A04_SHARED_HFP_VERSION 2
 struct A04_HFP_CONTROLLER {
  ULONG size,version;PVOID context;PDEVICE_OBJECT controller;
  void (*Reference)(PVOID);void (*Dereference)(PVOID);
@@ -22,6 +22,7 @@ struct A04_SHARED_HFP_INTERFACE {
  INTERFACE Header;
  /* BT registers its real combo owner after pad ACK/GORM/FC72 completion.
   * Registration alone does not establish PCM format or HCIBypass support.
+  * V2 permits NULL ValidatePcm/CodecLatency: explicit absent qualification.
   * GetController returns a Reference owned by the caller. */
  NTSTATUS (*RegisterController)(PVOID,const struct A04_HFP_CONTROLLER *);
  NTSTATUS (*UnregisterController)(PVOID,PVOID controllerContext);

@@ -7,13 +7,14 @@
 #include <bthxddi.h>
 #include "broker_abi.h"
 #include "radio_binding.h"
+#include "combo_controller.h"
 #define CONTEXT_BYTES FIELD_OFFSET(BTHX_HCI_READ_WRITE_CONTEXT,Data)
 C_ASSERT(sizeof(BTHX_VERSION)==4);
 C_ASSERT(sizeof(BTHX_CAPABILITIES)==16);
 C_ASSERT(CONTEXT_BYTES==5);
 typedef struct _CLIENT {
  WDFDEVICE device,child;WDFIOTARGET target;WDFWAITLOCK lock;WDFTIMER timer;WDFQUEUE reads[2];
- struct a04_mt6630_radio_binding sideband;
+ struct a04_mt6630_radio_binding sideband;struct a04_combo_controller controller;NTSTATUS controller_status;
  BOOLEAN running,negotiated,open,binding_active;unsigned count;struct a04_bt_broker_packet packets[32],scratch;
 } CLIENT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(CLIENT,Context)
@@ -58,7 +59,7 @@ static BOOLEAN SidebandCapable(CLIENT *c)
  if(!c->running||!c->open){unlock(c);return FALSE;}
  s=WdfIoTargetSendIoctlSynchronously(c->target,WDF_NO_HANDLE,A04_BT_BROKER_GET_STATE,NULL,&buffer,NULL,&used);
  unlock(c);
- if(!NT_SUCCESS(s)||used!=sizeof(state)||state.version!=1||!state.ready||!state.pcm_command_applied)return FALSE;
+ if(!NT_SUCCESS(s)||used!=sizeof(state)||state.version!=2||!state.ready||!state.pcm_command_applied)return FALSE;
  /* Actual provider callbacks execute outside the transport lock: controller
   * ownership validation may itself acquire that lock. No active peer gate. */
  if(!a04_mt6630_binding_capable(&c->sideband))return FALSE;
@@ -159,7 +160,11 @@ NTSTATUS Start(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
  WDF_IO_TARGET_OPEN_PARAMS_INIT_OPEN_BY_NAME(&o,&name,GENERIC_READ|GENERIC_WRITE);o.ShareAccess=FILE_SHARE_READ|FILE_SHARE_WRITE;
  s=WdfIoTargetOpen(c->target,&o);if(!NT_SUCCESS(s))goto done;c->open=TRUE;
  s=call(c,A04_BT_BROKER_OPEN,NULL);if(!NT_SUCCESS(s)){WdfIoTargetClose(c->target);c->open=FALSE;goto done;}
- c->running=TRUE;WdfIoQueueStart(c->reads[0]);WdfIoQueueStart(c->reads[1]);WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(5));
+ c->running=TRUE;
+ /* Optional controller registration is separate from a real raw HCI OPEN.
+  * An absent/failed interface never advertises SCO capability. */
+ c->controller_status=a04_combo_controller_start_locked(&c->controller);
+ WdfIoQueueStart(c->reads[0]);WdfIoQueueStart(c->reads[1]);WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(5));
 done:unlock(c);return s;
 }
 NTSTATUS Stop(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
@@ -167,7 +172,8 @@ NTSTATUS Stop(WDFDEVICE device,WDF_POWER_DEVICE_STATE target)
  CLIENT *c=Context(device);NTSTATUS s=STATUS_SUCCESS;UNREFERENCED_PARAMETER(target);
  /* Audio must first remove its HFP endpoints and prove both DMA directions
   * quiescent. Keep transport/clock ownership while the binding remains. */
- lock(c);if(c->binding_active){unlock(c);return STATUS_DEVICE_BUSY;}c->running=FALSE;unlock(c);WdfTimerStop(c->timer,TRUE);
+ lock(c);if(c->binding_active){unlock(c);return STATUS_DEVICE_BUSY;}
+ s=a04_combo_controller_stop_locked(&c->controller);if(!NT_SUCCESS(s)){unlock(c);return s;}c->running=FALSE;unlock(c);WdfTimerStop(c->timer,TRUE);
  WdfIoQueuePurgeSynchronously(c->reads[0]);WdfIoQueuePurgeSynchronously(c->reads[1]);lock(c);
  if(c->open){s=call(c,A04_BT_BROKER_CLOSE,NULL);WdfIoTargetClose(c->target);c->open=FALSE;}
  RtlSecureZeroMemory(c->packets,sizeof(c->packets));c->count=0;unlock(c);return s;
@@ -189,14 +195,17 @@ static NTSTATUS child(CLIENT *c)
  iface.Header.InterfaceReference=RadioReference;iface.Header.InterfaceDereference=RadioDereference;
  iface.Bind=BindSideband;iface.Unbind=UnbindSideband;
  WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&iface,&A04Mt6630SidebandInterfaceGuid,NULL);
- s=WdfDeviceAddQueryInterface(c->child,&query);if(NT_SUCCESS(s))s=WdfFdoAddStaticChild(c->device,c->child);return s;
+ s=WdfDeviceAddQueryInterface(c->child,&query);if(!NT_SUCCESS(s))return s;
+ s=a04_combo_controller_init(&c->controller,c->device,c->child,c->target,c->lock);
+ if(NT_SUCCESS(s))s=WdfFdoAddStaticChild(c->device,c->child);return s;
 fail:WdfDeviceInitFree(init);return s;
 }
+static VOID Destroy(WDFOBJECT object){a04_combo_controller_destroy(&Context((WDFDEVICE)object)->controller);}
 NTSTATUS Add(WDFDRIVER driver,PWDFDEVICE_INIT init)
 {
  WDFDEVICE d;CLIENT *c;WDF_OBJECT_ATTRIBUTES a;WDF_PNPPOWER_EVENT_CALLBACKS p;WDF_TIMER_CONFIG timer;WDF_IO_QUEUE_CONFIG q;NTSTATUS s;UNREFERENCED_PARAMETER(driver);
  WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&p);p.EvtDeviceD0Entry=Start;p.EvtDeviceD0Exit=Stop;WdfDeviceInitSetPnpPowerEventCallbacks(init,&p);
- WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&a,CLIENT);a.ExecutionLevel=WdfExecutionLevelPassive;
+ WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&a,CLIENT);a.EvtDestroyCallback=Destroy;a.ExecutionLevel=WdfExecutionLevelPassive;
  s=WdfDeviceCreate(&init,&a,&d);if(!NT_SUCCESS(s))return s;c=Context(d);c->device=d;
  WDF_OBJECT_ATTRIBUTES_INIT(&a);a.ParentObject=d;s=WdfWaitLockCreate(&a,&c->lock);if(!NT_SUCCESS(s))return s;
  s=WdfIoTargetCreate(d,WDF_NO_OBJECT_ATTRIBUTES,&c->target);if(!NT_SUCCESS(s))return s;

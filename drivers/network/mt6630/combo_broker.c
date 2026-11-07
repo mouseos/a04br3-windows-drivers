@@ -4,6 +4,7 @@
  * I/O remains on the pre-existing NDIS PASSIVE worker. No second lease/map. */
 #include "ndis_runtime.h"
 #include "windows_nvram_reader.h"
+#include "../../bluetooth/mt6630/physical_owner.h"
 static NDIS_SPIN_LOCK registry_lock;
 static NDIS_HANDLE registration;
 static struct a04_ndis_runtime *registered;
@@ -62,9 +63,13 @@ int a04_combo_poll(struct a04_ndis_runtime *a)
  if(a04_bt_poll(&a->combo.bt)){a->radio.failed=-1;return -1;}return 0;
 }
 static int service(void *p){return a04_combo_poll(p);}
+int a04_combo_held(struct a04_ndis_runtime *a){return a->combo.sco_holds!=0;}
 int a04_combo_stop(struct a04_ndis_runtime *a,int removed)
 {
  struct a04_combo_broker *b=&a->combo;int result=b->bt.failed?-1:0;
+ /* A real Audio controller hold forbids physical shutdown. Halt/removal
+  * retains the existing quarantined session instead of certifying DMA drain. */
+ if(b->sco_holds)return -1;
  if(a->radio.bridge){a->radio.bridge->service_other=NULL;a->radio.bridge->service_context=NULL;}
  if(b->file){
   /* Before lifetime STOPPING. Never reset/PMU-off a combo from a BT close. */
@@ -103,6 +108,7 @@ void a04_combo_worker(struct a04_ndis_runtime *a)
  }else if(!b->file||b->file!=sp->FileObject){s=cleanup?STATUS_SUCCESS:STATUS_DEVICE_NOT_READY;}
  else if(code==A04_BT_BROKER_CLOSE){
   if(in||out){s=STATUS_INVALID_PARAMETER;goto done;}
+  if(b->sco_holds){s=STATUS_DEVICE_BUSY;goto done;}
   a->radio.bridge->service_other=NULL;a->radio.bridge->service_context=NULL;
   s=a04_bt_disable(&b->bt)?STATUS_IO_DEVICE_ERROR:STATUS_SUCCESS;
   /* Keep attachment metadata after a clean OFF for reopening this fn2 owner.
@@ -111,10 +117,34 @@ void a04_combo_worker(struct a04_ndis_runtime *a)
  }else if(code==A04_BT_BROKER_GET_STATE){
   struct a04_bt_broker_state *state=irp->AssociatedIrp.SystemBuffer;
   if(in||out!=sizeof(*state)||!state){s=STATUS_INVALID_PARAMETER;goto done;}
-  RtlZeroMemory(state,sizeof(*state));state->version=1;
-  state->ready=a->power&&a->radio.initialized&&!a->radio.failed&&!a->uncertain&&b->bt.ready&&!b->bt.failed;
+  RtlZeroMemory(state,sizeof(*state));state->version=2;
+  state->ready=a->power&&a->radio.initialized&&!a->radio.failed&&!a->uncertain&&b->bt.ready&&!b->bt.failed&&
+   a->session.generation&&a->parent.Live(a->parent.Header.Context,a->session.generation)==1;
   state->pcm_command_applied=state->ready&&b->bt.pcm_command_applied;
+  state->generation=a->session.generation;
   used=sizeof(*state);s=STATUS_SUCCESS;
+ }else if(code==A04_BT_BROKER_GET_PHYSICAL_OWNER){
+  struct a04_bt_physical_owner *owner=irp->UserBuffer;
+  if(in||out!=sizeof(*owner)||!owner){s=STATUS_INVALID_PARAMETER;goto done;}
+  if(!a->parent.Header.InterfaceReference||!a->parent.Header.InterfaceDereference||!a->parent.Live||
+     !a->session.generation||a->parent.Live(a->parent.Header.Context,a->session.generation)!=1){s=STATUS_DEVICE_NOT_READY;goto done;}
+  /* Direct kernel output remains visible even if a late cancellation changes
+   * completion status. Caller dereferences any returned interface on failure. */
+  RtlZeroMemory(owner,sizeof(*owner));a->parent.Header.InterfaceReference(a->parent.Header.Context);
+  owner->Header=a->parent.Header;owner->Header.Size=sizeof(*owner);owner->Header.Version=A04_BT_PHYSICAL_OWNER_VERSION;
+  owner->generation=a->session.generation;owner->Live=a->parent.Live;used=sizeof(*owner);s=STATUS_SUCCESS;
+ }else if(code==A04_BT_BROKER_SCO_HOLD){
+  struct a04_bt_broker_state *state=irp->AssociatedIrp.SystemBuffer;
+  if(in||out!=sizeof(*state)||!state){s=STATUS_INVALID_PARAMETER;goto done;}
+  if(!a->power||a->radio.failed||a->uncertain||!b->bt.ready||!b->bt.pcm_command_applied||
+     !a->session.generation||a->parent.Live(a->parent.Header.Context,a->session.generation)!=1){s=STATUS_DEVICE_NOT_READY;goto done;}
+  if(b->sco_holds==MAXULONG){s=STATUS_DEVICE_BUSY;goto done;}
+  b->sco_holds++;RtlZeroMemory(state,sizeof(*state));state->version=2;state->ready=1;
+  state->pcm_command_applied=1;state->generation=a->session.generation;used=sizeof(*state);s=STATUS_SUCCESS;
+ }else if(code==A04_BT_BROKER_SCO_RELEASE){
+  ULONG *generation=irp->AssociatedIrp.SystemBuffer;
+  if(in!=sizeof(*generation)||out||!generation||!*generation||*generation!=a->session.generation||!b->sco_holds){s=STATUS_INVALID_PARAMETER;goto done;}
+  b->sco_holds--;s=STATUS_SUCCESS;
  }else if(code==A04_BT_BROKER_WRITE){
   struct a04_bt_broker_packet *packet=irp->AssociatedIrp.SystemBuffer;
   if(in!=sizeof(*packet)||out||!packet||packet->version!=1||packet->length>sizeof(packet->data)){s=STATUS_INVALID_PARAMETER;goto done;}

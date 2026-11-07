@@ -11,6 +11,7 @@ struct Mt8167HfpResources {
  PDMA_ADAPTER adapter;ULONG vector;KIRQL level;KAFFINITY affinity;
  PVOID owner;void (*reference)(PVOID);void (*release)(PVOID);
 };
+NTSTATUS Mt8167HfpStartWithController(const Mt8167HfpResources *,const A04_HFP_CONTROLLER *,Mt8167HfpOwner **);
 NTSTATUS Mt8167HfpStart(const Mt8167HfpResources *,Mt8167HfpOwner **);
 /* PASSIVE, before original backend revoke, D0 teardown or resource release.
  * Failure retains *owner/FDO/module/mappings. Never retries automatically. */

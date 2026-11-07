@@ -2,10 +2,12 @@
 #include "hfp_power.h"
 #include "hfp_provider.h"
 #include "pnp_backend.h"
+#include "controller_watch.h"
 struct HfpPowerPlacement {};
 inline void *operator new(size_t,void *p,HfpPowerPlacement){return p;}
 #define POWER_TAG 'Pf4M'
 struct Mt8167HfpPower : public IAdapterPowerManagement {
+ Mt6630ControllerWatch *watch;const A04_HFP_CONTROLLER *controller;
  volatile LONG refs;KMUTEX serial;Mt8167HfpOwner *hfp;PIO_WORKITEM finalWork;
  PDEVICE_OBJECT fdo;Mt8167PnpBackend *owner;PRESOURCELIST resources;
  DEVICE_POWER_STATE power;BOOLEAN stopping,poisoned;
@@ -18,12 +20,12 @@ struct Mt8167HfpPower : public IAdapterPowerManagement {
  STDMETHODIMP_(ULONG) AddRef(){return (ULONG)InterlockedIncrement(&refs);}
  static VOID finalize(PDEVICE_OBJECT,PVOID context){
   Mt8167HfpPower *o=(Mt8167HfpPower *)context;
-  if(o->hfp)return; /* unknown teardown retains references; never retry */
+  if(o->hfp||o->watch)return; /* unknown teardown retains references; never retry */
   if(o->finalWork)IoFreeWorkItem(o->finalWork);
   o->resources->Release();Mt8167PnpBackendRelease(o->owner);ObDereferenceObject(o->fdo);ExFreePoolWithTag(o,POWER_TAG);
  }
  STDMETHODIMP_(ULONG) Release(){LONG n=InterlockedDecrement(&refs);if(!n){
-  if(hfp)return 0;
+  if(hfp||watch)return 0;
   if(KeGetCurrentIrql()==PASSIVE_LEVEL)finalize(NULL,this);
   else if(KeGetCurrentIrql()<=DISPATCH_LEVEL&&finalWork)IoQueueWorkItem(finalWork,finalize,DelayedWorkQueue,this);
   /* A noncompliant higher-IRQL Release retains its storage. */
@@ -35,16 +37,23 @@ struct Mt8167HfpPower : public IAdapterPowerManagement {
   if(NT_SUCCESS(s))hfp=NULL;else poisoned=TRUE;return s;
  }
  void start(){
-  if(hfp||stopping||poisoned)return;
-  NTSTATUS s=Mt8167PnpBackendHfpStart(owner,fdo,resources,&hfp);
+  if(hfp||!controller||stopping||poisoned||power!=PowerDeviceD0)return;
+  NTSTATUS s=Mt8167PnpBackendHfpStartWithController(owner,fdo,resources,controller,&hfp);
   if(!NT_SUCCESS(s))DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"MT8167 HFP unavailable status=%08lx retained=%d\n",(ULONG)s,hfp!=NULL);
+ }
+ static NTSTATUS changed(PVOID context,const A04_HFP_CONTROLLER *next){
+  Mt8167HfpPower *o=(Mt8167HfpPower *)context;o->lock();
+  NTSTATUS status=STATUS_SUCCESS;
+  if(!next){status=o->stop();if(NT_SUCCESS(status))o->controller=NULL;}
+  else if(!o->stopping&&!o->poisoned){o->controller=next;o->start();}
+  o->unlock();return status;
  }
  STDMETHODIMP_(void) PowerChangeState(POWER_STATE next){
   if(KeGetCurrentIrql()!=PASSIVE_LEVEL){poisoned=TRUE;return;}
   lock();if(next.DeviceState!=power){
+   power=next.DeviceState;
    if(next.DeviceState==PowerDeviceD0){if(!stopping)start();}
    else (void)stop();
-   power=next.DeviceState;
   }unlock();
  }
  STDMETHODIMP QueryPowerChangeState(POWER_STATE next){
@@ -65,13 +74,22 @@ NTSTATUS Mt8167HfpPowerCreate(PDEVICE_OBJECT fdo,Mt8167PnpBackend *owner,PRESOUR
  if(!out||!fdo||!owner||!resources||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;*out=NULL;
  PVOID memory=ExAllocatePoolWithTag(NonPagedPool,sizeof(Mt8167HfpPower),POWER_TAG);if(!memory)return STATUS_INSUFFICIENT_RESOURCES;
  Mt8167HfpPower *o=new(memory,HfpPowerPlacement()) Mt8167HfpPower();
- o->refs=1;o->hfp=NULL;o->finalWork=NULL;o->stopping=FALSE;o->poisoned=FALSE;o->power=PowerDeviceD0;
+ o->watch=NULL;o->controller=NULL;o->refs=1;o->hfp=NULL;o->finalWork=NULL;o->stopping=FALSE;o->poisoned=FALSE;o->power=PowerDeviceD0;
  o->fdo=fdo;ObReferenceObject(fdo);o->owner=owner;Mt8167PnpBackendReference(owner);o->resources=resources;resources->AddRef();KeInitializeMutex(&o->serial,0);
  o->finalWork=IoAllocateWorkItem(fdo);if(!o->finalWork){o->Release();return STATUS_INSUFFICIENT_RESOURCES;}
  NTSTATUS status=PcRegisterAdapterPowerManagement(static_cast<PUNKNOWN>(o),fdo);
  if(!NT_SUCCESS(status)){o->Release();return status;}
- o->lock();o->start();o->unlock();*out=o;return STATUS_SUCCESS;
+ /* Hold power context until notification rundown and owner teardown finish. */
+ o->AddRef();status=Mt6630ControllerWatchStart(fdo,Mt8167HfpPower::changed,o,&o->watch);
+ if(!NT_SUCCESS(status)){o->poisoned=TRUE;if(!o->watch)o->Release();}
+ *out=o;return STATUS_SUCCESS;
 }
 NTSTATUS Mt8167HfpPowerStop(Mt8167HfpPower *o)
-{if(!o||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;o->lock();o->stopping=TRUE;NTSTATUS s=o->stop();o->unlock();return s;}
+{
+ if(!o||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ o->lock();o->stopping=TRUE;o->unlock();
+ /* Never wait for the notification worker while holding its callback mutex. */
+ if(o->watch){NTSTATUS s=Mt6630ControllerWatchStop(o->watch);if(!NT_SUCCESS(s))return s;o->watch=NULL;o->Release();}
+ o->lock();NTSTATUS s=o->stop();o->unlock();return s;
+}
 void Mt8167HfpPowerRelease(Mt8167HfpPower *o){if(o)o->Release();}

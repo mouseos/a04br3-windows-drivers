@@ -28,7 +28,7 @@ struct Mt8167HfpOwner {
  KMUTEX mutex;PKINTERRUPT interrupt;KDPC dpc;PIO_WORKITEM faultWork,finalWork;
  volatile LONG refs,faultQueued,failure,closed;ULONG generation,comboGeneration,bufferGeneration;
  mt8167_hfp_memif memif;HfpBuffer client[2],fallback[2];
- BOOLEAN started,clockHeld,comboHeld;
+ BOOLEAN started,clockHeld,comboHeld,registeredController;
 };
 static void Lock(Mt8167HfpOwner *o){KeWaitForSingleObject(&o->mutex,Executive,KernelMode,FALSE,NULL);}
 static void Unlock(Mt8167HfpOwner *o){KeReleaseMutex(&o->mutex,FALSE);}
@@ -56,6 +56,10 @@ static VOID Finalize(PDEVICE_OBJECT,PVOID c)
  Mt8167HfpOwner *o=(Mt8167HfpOwner *)c;
  if(o->pnp||o->clockHeld||o->comboHeld||o->interrupt)return;
  for(ULONG d=0;d<2;d++)if(o->client[d].mdl||o->fallback[d].mdl)return;
+ if(o->registeredController){
+  NTSTATUS status=o->parent.UnregisterController(o->parent.Header.Context,o->controller.context);
+  if(!NT_SUCCESS(status))return;o->registeredController=FALSE;
+ }
  if(o->controller.context){if(!o->controller.Dereference)return;
   o->controller.Dereference(o->controller.context);}
  if(o->parent.Header.InterfaceDereference)o->parent.Header.InterfaceDereference(o->parent.Header.Context);
@@ -274,7 +278,7 @@ static NTSTATUS Query(PDEVICE_OBJECT pdo,A04_SHARED_HFP_INTERFACE *out)
  NTSTATUS status=IoCallDriver(pdo,irp);if(status==STATUS_PENDING)KeWaitForSingleObject(&event,Executive,KernelMode,FALSE,NULL);
  status=irp->IoStatus.Status;IoFreeIrp(irp);return status;
 }
-NTSTATUS Mt8167HfpStart(const Mt8167HfpResources *r,Mt8167HfpOwner **out)
+NTSTATUS Mt8167HfpStartWithController(const Mt8167HfpResources *r,const A04_HFP_CONTROLLER *controller,Mt8167HfpOwner **out)
 {
  if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;
  if(!r||!r->fdo||!r->pdo||!r->resources||!r->afe||!r->adapter||!r->reference||!r->release||!r->vector||!r->affinity||!r->adapter->DmaOperations||
@@ -286,12 +290,16 @@ NTSTATUS Mt8167HfpStart(const Mt8167HfpResources *r,Mt8167HfpOwner **out)
  if(o->parent.Header.Size!=sizeof(o->parent)||o->parent.Header.Version!=A04_SHARED_HFP_VERSION||
     !o->parent.Header.InterfaceReference||!o->parent.Header.InterfaceDereference||
     !o->parent.Acquire||!o->parent.Live||!o->parent.Pins||!o->parent.Release||
-    !o->parent.GetController||!o->parent.VerifyDmaQuiescent){status=STATUS_NOT_SUPPORTED;goto failed;}
- status=o->parent.GetController(o->parent.Header.Context,&o->controller);if(!NT_SUCCESS(status))goto failed;
- if(o->controller.size!=sizeof(o->controller)||o->controller.version!=1||
+    !o->parent.GetController||!o->parent.RegisterController||!o->parent.UnregisterController){status=STATUS_NOT_SUPPORTED;goto failed;}
+ if(controller){
+  if(controller->size!=sizeof(*controller)||controller->version!=A04_SHARED_HFP_VERSION||!controller->context||!controller->Reference||!controller->Dereference){status=STATUS_INVALID_PARAMETER;goto failed;}
+  status=o->parent.RegisterController(o->parent.Header.Context,controller);if(!NT_SUCCESS(status))goto failed;
+  o->registeredController=TRUE;controller->Reference(controller->context);o->controller=*controller;
+ }else {status=o->parent.GetController(o->parent.Header.Context,&o->controller);if(!NT_SUCCESS(status))goto failed;}
+ if(o->controller.size!=sizeof(o->controller)||o->controller.version!=A04_SHARED_HFP_VERSION||
     !o->controller.context||!o->controller.controller||!o->controller.Reference||!o->controller.Dereference||
     !o->controller.Acquire||!o->controller.Live||!o->controller.Release||
-    !o->controller.MatchHfpTarget||!o->controller.ValidatePcm||!o->controller.CodecLatency){status=STATUS_NOT_SUPPORTED;goto failed;}
+    !o->controller.MatchHfpTarget||!o->controller.ValidatePcm||!o->controller.CodecLatency||!o->parent.VerifyDmaQuiescent){status=STATUS_NOT_SUPPORTED;goto failed;}
  o->faultWork=IoAllocateWorkItem(r->fdo);if(!o->faultWork){status=STATUS_INSUFFICIENT_RESOURCES;goto failed;}
  o->provider.size=sizeof(o->provider);o->provider.version=2;o->provider.context=o;
  o->provider.reference=Reference;o->provider.dereference=Dereference;o->provider.match_hfp_target=Match;o->provider.validate_pcm=Validate;
@@ -301,8 +309,15 @@ NTSTATUS Mt8167HfpStart(const Mt8167HfpResources *r,Mt8167HfpOwner **out)
  status=Mt6630ComboHfpAttach(o->controller.controller,r->fdo,r->resources,&o->provider,&o->pnp);
  if(!NT_SUCCESS(status)&&o->pnp){*out=o;return status;}
  if(!NT_SUCCESS(status))goto failed;*out=o;return STATUS_SUCCESS;
- failed:Dereference(o);return status;
+ failed:
+ if(o->registeredController){
+  NTSTATUS cleanup=o->parent.UnregisterController(o->parent.Header.Context,o->controller.context);
+  if(!NT_SUCCESS(cleanup)){*out=o;return cleanup;}o->registeredController=FALSE;
+ }
+ Dereference(o);return status;
 }
+NTSTATUS Mt8167HfpStart(const Mt8167HfpResources *r,Mt8167HfpOwner **out)
+{return Mt8167HfpStartWithController(r,NULL,out);}
 BOOLEAN Mt8167HfpCanSuspend(Mt8167HfpOwner *o)
 {if(!o||KeGetCurrentIrql()!=PASSIVE_LEVEL)return FALSE;Lock(o);
  BOOLEAN quiescent=!o->clockHeld&&!o->comboHeld&&!o->interrupt&&!o->failure;
@@ -316,5 +331,6 @@ NTSTATUS Mt8167HfpStop(Mt8167HfpOwner *o)
  /* KS handles may retain unexposed/drained client MDLs after unregister. The
   * session's real provider Reference pins this owner until free_drained and
   * final Release. Do not require handle disappearance to complete PnP Stop. */
+ if(o->registeredController){status=o->parent.UnregisterController(o->parent.Header.Context,o->controller.context);if(!NT_SUCCESS(status))return status;o->registeredController=FALSE;}
  Dereference(o);return STATUS_SUCCESS;
 }

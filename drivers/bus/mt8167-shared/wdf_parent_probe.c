@@ -10,6 +10,15 @@
 #include "register_owner.h"
 #include "client_interface.h"
 #include "audio_interface.h"
+#ifndef A04_SHARED_HFP
+#define A04_SHARED_HFP 0
+#endif
+#if A04_SHARED_HFP
+#include "hfp_interface.h"
+#if !A04_SHARED_AUDIO_TOP_GATE_DIAGNOSTIC || !A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
+#error HFP needs existing Audio top and AFE clock owners
+#endif
+#endif
 #ifndef A04_SHARED_FIRST_PLAYBACK
 #define A04_SHARED_FIRST_PLAYBACK 0
 #endif
@@ -192,6 +201,10 @@ struct a04_codec_voice voice;
 struct a04_shared_thermal_owner thermal;EX_RUNDOWN_REF thermalRundown;BOOLEAN thermalRundownClosed;
 #endif
 PVOID audioAfe;
+#if A04_SHARED_HFP
+struct A04_HFP_CONTROLLER hfpController;volatile LONG hfpActive,hfpGeneration;
+struct a04_audio_top_clock hfpTopClock;ULONG hfpClockSaved,hfpModeSaved,hfpPullSaved;BOOLEAN hfpPins;
+#endif
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
 int afeClockHeld,afeClockRestore,afeClockPoisoned;
 #if A04_SHARED_DIGITAL_PLAYBACK
@@ -648,7 +661,11 @@ static int ParentAudioAcquire(PVOID context,ULONG rate) {
 #endif
         return -1;
     }
+    #if A04_SHARED_HFP
+    result=c->hfpActive?-1:a04_audio_owner_acquire(&c->audio,rate);
+#else
     result=a04_audio_owner_acquire(&c->audio,rate);
+#endif
 #if A04_SHARED_FIRST_PLAYBACK
     if((!result || c->audio.poisoned) && !c->audioPowerPinned) {c->audioPowerPinned=1;keepPower=1;}
 #endif
@@ -856,6 +873,9 @@ static int ParentWifiWrite(PVOID c,ULONG g,unsigned b,unsigned o,ULONG v)
 {return ParentWifiOperation(c,g,b,o,0,v,0);}
 static VOID ParentInterfaceReference(PVOID context) { WdfObjectReference((WDFDEVICE)context); }
 static VOID ParentInterfaceDereference(PVOID context) { WdfObjectDereference((WDFDEVICE)context); }
+#if A04_SHARED_HFP
+#include "hfp_parent.inc"
+#endif
 static NTSTATUS ParentReadButtons(PVOID context,USHORT *value) {
     A04_PARENT_CONTEXT *c;
     if(!context || !value || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
@@ -1114,6 +1134,9 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
     if(c->codecDomain.held || c->codecDomain.poisoned)return STATUS_DEVICE_BUSY;
 #endif
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
+#if A04_SHARED_HFP
+    if(c->hfpActive || c->hfpController.context)return STATUS_DEVICE_BUSY;
+#endif
     if(c->afeClockHeld || c->afeClockPoisoned)return STATUS_DEVICE_BUSY;
 #if A04_SHARED_DIGITAL_PLAYBACK
     if(c->digitalPlayback.retained)return STATUS_DEVICE_BUSY;
@@ -1199,7 +1222,11 @@ VOID ParentSurprise(WDFDEVICE dev)
 }
 NTSTATUS ParentD0Exit(WDFDEVICE dev,WDF_POWER_DEVICE_STATE target)
 {
-    UNREFERENCED_PARAMETER(target);ParentStop(ParentContext(dev),1);return STATUS_SUCCESS;
+    UNREFERENCED_PARAMETER(target);
+#if A04_SHARED_HFP
+    if(InterlockedCompareExchange(&ParentContext(dev)->hfpActive,0,0))return STATUS_DEVICE_BUSY;
+#endif
+    ParentStop(ParentContext(dev),1);return STATUS_SUCCESS;
 }
 NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
 {
@@ -1403,6 +1430,11 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
     if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+#if A04_SHARED_HFP
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedHfpInterfaceGuid,NULL);
+    query.SendQueryToParentStack=TRUE;status=WdfDeviceAddQueryInterface(child,&query);
+    if(!NT_SUCCESS(status))return status;
+#endif
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedAudioInterfaceGuid,NULL);
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
@@ -1432,6 +1464,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #endif
     A04_SHARED_AUDIO_INTERFACE audioIface; A04_SHARED_USB_INTERFACE usbIface;
     A04_SHARED_WIFI_INTERFACE wifiIface;
+#if A04_SHARED_HFP
+    struct A04_SHARED_HFP_INTERFACE hfpIface;
+#endif
 #endif
     UNREFERENCED_PARAMETER(driver);
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
@@ -1508,6 +1543,15 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     thermalIface.VerifyHeadphone=ParentThermalVerifyHeadphone;
     thermalIface.VerifyOwnership=ParentThermalVerifyOwnership;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&thermalIface,&A04SharedThermalInterfaceGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
+#endif
+#if A04_SHARED_HFP
+    RtlZeroMemory(&hfpIface,sizeof(hfpIface));hfpIface.Header.Size=sizeof(hfpIface);hfpIface.Header.Version=A04_SHARED_HFP_VERSION;
+    hfpIface.Header.Context=dev;hfpIface.Header.InterfaceReference=ParentInterfaceReference;hfpIface.Header.InterfaceDereference=ParentInterfaceDereference;
+    hfpIface.RegisterController=ParentHfpRegister;hfpIface.UnregisterController=ParentHfpUnregister;hfpIface.GetController=ParentHfpGet;
+    hfpIface.Acquire=ParentHfpAcquire;hfpIface.Live=ParentHfpLive;hfpIface.Pins=ParentHfpPins;hfpIface.Release=ParentHfpRelease;
+    /* No independently established AFE bus drain: NULL, never a success stub. */
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&hfpIface,&A04SharedHfpInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
 #endif
     RtlZeroMemory(&audioIface,sizeof(audioIface));
