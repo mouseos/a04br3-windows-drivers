@@ -17,7 +17,7 @@ struct geo_owner_session {
  struct geo_owner_lease lease;
  KMUTEX control_lock,passive_lock;
  EX_RUNDOWN_REF operations;
- volatile LONG state;
+ volatile LONG state,last_service_status;
  UINT initialized,rundown_closed;
 };
 /* In-process native core inside the SAME render miniport. No second FDO,
@@ -29,6 +29,8 @@ NTSTATUS GeoStopOwnerSession(struct geo_owner_session *);
 NTSTATUS GeoPowerOwnerSession(struct geo_owner_session *,DEVICE_POWER_STATE);
 NTSTATUS GeoResetOwnerSession(struct geo_owner_session *);
 NTSTATUS GeoRestartOwnerSession(struct geo_owner_session *);
+/* Caller holds an acquired operations rundown reference while queued/running. */
+NTSTATUS GeoServiceOwnerWork(struct geo_owner_session *);
 BOOLEAN GeoOwnerInterrupt(struct geo_owner_session *,ULONG message);
 /* mode: 0=DISPATCH operation, 1=PASSIVE GPU operation, 2=PASSIVE cleanup.
  * Cleanup also works in proven HALTED D0, so retained allocations can be

@@ -22,6 +22,9 @@ struct geo_owner_ops {
   * bind retains the MDL/pages and validates usable Normal CPU memory plus
   * cache maintenance. A separate private output ring is forbidden. */
  int32_t (*create)(void *,const struct geo_surface_desc *,uint64_t *surface);
+ /* Current native full-MDL profile: offset=0, MDL byte count equals
+  * round_up(bytes,PAGE_SIZE). bytes is the active image extent; native SG/GPU
+  * mapping covers the full rounded MDL, including padding. No partial MDL. */
  int32_t (*bind)(void *,uint64_t surface,void *locked_mdl,uint32_t mdl_byte_offset,uint32_t bytes);
  int32_t (*unbind)(void *,uint64_t surface);
  int32_t (*destroy)(void *,uint64_t surface);

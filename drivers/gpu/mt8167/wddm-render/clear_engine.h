@@ -7,11 +7,12 @@ struct geo_allocation {
  struct geo_allocation *next;
  struct geo_surface_desc desc;
  uint64_t surface;
- uint32_t references,bound,poisoned;
+ uint32_t references,bound,poisoned,open_count;
  uint64_t aperture_offset;uint32_t aperture_pages;
 };
 struct geo_job {
  struct geo_allocation *allocation;
+ void *context,*open_handle;
  uint64_t owner_job;
  uint32_t generation,state,fence;
 };

@@ -79,3 +79,13 @@ UMD `bootstrap.c`は実OpenAdapter/GetCaps/CreateDevice/DestroyDevice/CloseAdapt
 `build-wdk81.ps1 -EnableCandidate`は新wrapper/lifecycle/bootstrapもmoduleとしてcompileする。`build-linked-wdk81.ps1`は実native/core・render-contract・frontendの3libraryと各SHA256を明示して最終SYS/DLLへsource-linkする専用recipe。すべてcheckout内の固定入力だけを受け、hash/source/import/export/mapを記録、runtime任意binary loadingはない。依存library未提供の現状では最終link未実施。INF/CAT/署名/配置は行わない。
 
 一次資料 [WDDM Driver and Feature Caps](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/wddm-driver-and-feature-caps)はrender-onlyについてrender-specific DDI実装＋display-specific DDIをNULLとする方式を記載。[WDDM 1.2 and Windows 8](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/wddm-in-windows-8)はrender-onlyモデル導入を説明している。これはWindows RT 8.1での実enumerationや、WDDM1.3全mandatory機能が完成した証拠ではない。SupportNonVGA/preemption/offer-reclaim等のmandatory契約を埋めずにcapを広告しない。
+
+## runtime objectとsource-only IRQの接続
+
+`kmd_objects.c`が実device/context/open/close/describeと、A8R8G8B8 shadow用standard private-data生成、実状態だけのdebug snapshotを実装。D3DKMT handleは実DxgkCbGetHandleDataでdriver allocationへ変換し、deviceごとのread-only openを検証する。contextは未完了jobが参照していれば解放せず、allocationはopen/job参照があれば解放しない。Stopはdevice/context/openが残る間もHALTED cleanupを通して保持する。RenderはVidMm参照用patch locationを出し、Patch/Submitがkernel ticketの世代/context/openを実割込lock下で照合する。semantic ticketにPAを書き込まない。
+
+f62bc96のIRQ coreに合わせ、IRQ sourceだけをclaimした状態をSTATUS_PENDINGで表す。実DPCがrundown参照を先に確保し、PASSIVE IoWorkItemでcontrol.serviceを呼ぶ。worker成功からDMA_COMPLETEDを作らず、後続実IRQのcompletion eventだけを使う。stop/reset/powerはqueued workerの参照も待ち、所有が曖昧なnative/MDLを解放しない。pending receiptにGPU_DONE/CPU_VISIBLEを足さない。
+
+残るrender contractの主な未実装はQueryAdapterInfo（実aperture/segment・mandatory caps）とPreemptCommand（実DMA packet境界のpreempt/IRQ receipt）。必須WDDM offer/reclaim等の全matrixも未完成。native capabilityの実証なしにPreemptionAware/CacheCoherent等を広告しない。E sourceはshared MDL/IRQ部品までで、同じMDLへのtarget factoryと完了可視性・drain proofが未接続。clientの256×256二色をEの実証済800×600固定profileへ黙って置換しない。
+
+一度のcombined compile用は`build-combined-modules-wdk81.ps1 -EnableCandidate -NativeSourceDirectory <E固定checkout> -NativeCommit f62bc96525f4acbe9c4c8afa9d622fe1969ea7ac -OutputDirectory build\ge8300-combined-modules`。このsidecar sourceとEのclean固定sourceを分けて記録し、MDL/IRQ/非待機submit/DMA-pagesの実4TUを追加compile/archiveする。core headerを複製しない。native factoryや最終render capsの未接続をmanifestのfactory_linked=false/standard_d3d_connected=falseへ残す。これは次のsource統合compileの段階で、追加privateclear実験や完成SYSの代わりではない。

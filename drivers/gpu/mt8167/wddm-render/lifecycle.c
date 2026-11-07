@@ -37,18 +37,19 @@ static int proof_valid(const struct geo_owner_proof *p,uint64_t epoch,int reset)
  return p->size==sizeof(*p)&&p->version==2&&!p->reserved&&p->flags==GEO_PROOF_REQUIRED&&
   (reset?p->epoch>epoch:p->epoch==epoch);
 }
-struct retire_call {struct geo_owner_session *session;NTSTATUS status;};
+struct retire_call {struct geo_owner_session *session;NTSTATUS status;uint64_t epoch;};
 static BOOLEAN retire(void *context) {
- struct retire_call *c=context;c->status=geo_retire_after_owner_drain(&c->session->adapter->engine);return TRUE;
+ struct retire_call *c=context;c->status=geo_retire_after_owner_drain(&c->session->adapter->engine);
+ if(c->status==STATUS_SUCCESS){c->session->lease.epoch=c->epoch;InterlockedExchange(&c->session->adapter->service_pending,0);}return TRUE;
 }
 static NTSTATUS apply_proof(struct geo_owner_session *s,const struct geo_owner_proof *p,int reset) {
  struct retire_call c;
  if(!proof_valid(p,s->lease.epoch,reset))return failed(s,STATUS_INVALID_DEVICE_STATE);
  /* Actual owner proof says no new ISR/callback can arrive. Drain previously
   * queued scheduler DPCs before retiring software tokens or lease state. */
- KeFlushQueuedDpcs();c.session=s;c.status=STATUS_UNSUCCESSFUL;
+ KeFlushQueuedDpcs();c.session=s;c.status=STATUS_UNSUCCESSFUL;c.epoch=p->epoch;
  if(!s->adapter->synchronize(s->lease.cookie,retire,&c)||c.status!=STATUS_SUCCESS)return failed(s,c.status);
- s->lease.epoch=p->epoch;return STATUS_SUCCESS;
+ return STATUS_SUCCESS;
 }
 NTSTATUS GeoStartInProcessOwnerSession(struct geo_owner_session *s,struct geo_kmd_adapter *a,const struct geo_owner_control_v2 *control,const DXGKRNL_INTERFACE *dxgk) {
  NTSTATUS status;
@@ -60,7 +61,7 @@ NTSTATUS GeoStartInProcessOwnerSession(struct geo_owner_session *s,struct geo_km
  if(s->control.Interface.Size!=sizeof(s->control)||s->control.Interface.Version!=2||
     !s->control.Interface.Context||!s->control.Interface.InterfaceReference||!s->control.Interface.InterfaceDereference||
     !s->control.acquire||!s->control.quiesce||!s->control.reset||!s->control.restart||!s->control.set_power||
-    !s->control.release||!s->control.interrupt_event||!s->control.synchronize)return failed(s,STATUS_NOT_SUPPORTED);
+    !s->control.release||!s->control.interrupt_event||!s->control.service||!s->control.synchronize)return failed(s,STATUS_NOT_SUPPORTED);
  s->control.Interface.InterfaceReference(s->control.Interface.Context);s->interface_referenced=1;
  s->lease.size=sizeof(s->lease);s->lease.version=2;
  status=s->control.acquire(s->control.Interface.Context,&s->lease);
@@ -88,7 +89,7 @@ NTSTATUS GeoStopOwnerSession(struct geo_owner_session *s) {
  if(!s||!s->initialized||!s->lease.cookie||!s->adapter->notifications_ready||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  KeWaitForSingleObject(&s->control_lock,Executive,KernelMode,FALSE,NULL);
  status=drain(s,GEO_QUIESCE_STOP);
- if(status==STATUS_SUCCESS&&s->adapter->engine.allocation_count) {
+ if(status==STATUS_SUCCESS&&(s->adapter->engine.allocation_count||s->adapter->device_count)) {
   /* Real drain succeeded but live VidMm surfaces still own the lease. Allow
    * only unmap/destroy, then retry Stop. No successful release is reported. */
   reopen(s,GEO_SESSION_HALTED);status=STATUS_DEVICE_BUSY;
@@ -145,6 +146,12 @@ BOOLEAN GeoOwnerInterrupt(struct geo_owner_session *s,ULONG message) {
   RtlZeroMemory(&event,sizeof(event));event.size=sizeof(event);event.version=2;
   status=s->control.interrupt_event(s->lease.cookie,message,&event);
   if(status==STATUS_NOT_FOUND)break;
+  if(status==STATUS_PENDING) {
+   handled=TRUE;
+   if(event.size!=sizeof(event)||event.version!=2||event.reserved||event.job||event.visibility){poison(s);break;}
+   if(event.epoch==s->lease.epoch){InterlockedExchange(&s->adapter->service_pending,1);s->adapter->queue_dpc(s->adapter->dxgk_device);}
+   break;
+  }
   if(status!=STATUS_SUCCESS){poison(s);break;}
   handled=TRUE;
   if(event.size!=sizeof(event)||event.version!=2||event.reserved){poison(s);break;}
@@ -153,6 +160,16 @@ BOOLEAN GeoOwnerInterrupt(struct geo_owner_session *s,ULONG message) {
   if(status!=STATUS_SUCCESS&&status!=STATUS_NOT_FOUND)break;
  }
  return handled;
+}
+NTSTATUS GeoServiceOwnerWork(struct geo_owner_session *s) {
+ NTSTATUS status;
+ if(!s||!s->lease.cookie||!s->control.service||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+ /* The work item's pre-acquired rundown reference prevents reset/power/stop
+  * from changing epoch or releasing the native context while service runs. */
+ status=s->control.service(s->lease.cookie,s->lease.epoch);
+ InterlockedExchange(&s->last_service_status,status);
+ if(status!=STATUS_SUCCESS)return failed(s,status);
+ return status; /* Never invoke GeoCompleteFromInterrupt here. */
 }
 NTSTATUS APIENTRY CALLBACK GeoResetFromTimeout(HANDLE adapter) {
  struct geo_kmd_adapter *a=adapter;return a&&a->session?GeoResetOwnerSession(a->session):STATUS_INVALID_DEVICE_STATE;

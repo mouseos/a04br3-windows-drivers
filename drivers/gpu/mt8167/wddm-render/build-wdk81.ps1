@@ -18,13 +18,13 @@ try {
  $resource=(& clang -print-resource-dir)
  if($LASTEXITCODE -ne 0 -or !(Test-Path (Join-Path $resource 'include\intrin.h'))){throw 'Missing compiler intrinsic headers'}
  $common=@('--target=thumbv7-pc-windows-msvc','-std=c11','-fms-extensions','-ffreestanding','-fno-builtin','-fno-stack-protector','-O2','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-mfpu=none','-D_ARM_','-DARM','-D_WIN32_WINNT=0x0603','-DNTDDI_VERSION=0x06030000','-DDXGKDDI_INTERFACE_VERSION=0x4002','-DD3D_UMD_INTERFACE_VERSION=0x4002',"-I$inc\shared")
- foreach($unit in @('clear_protocol','clear_engine','capture','kmd_clear','lifecycle','miniport','umd/clear_ddi','umd/bootstrap','testclient/d3d-clear','testclient/memory')) {
+ foreach($unit in @('clear_protocol','clear_engine','capture','kmd_clear','kmd_objects','lifecycle','miniport','umd/clear_ddi','umd/bootstrap','testclient/d3d-clear','testclient/memory')) {
   $name=($unit -replace '/','_');$includes=@("-I$inc\um")
-  if($unit -in @('capture','kmd_clear','lifecycle','miniport')){$includes=@("-DGEO_LINKED_NATIVE_CORE=1","-D_KERNEL_MODE","-D__ldrexd=__geo_wdk81_ldrexd_declaration","-I$resource\include","-I$inc\km","-I$inc\km\crt")}
+  if($unit -in @('capture','kmd_clear','kmd_objects','lifecycle','miniport')){$includes=@("-DGEO_LINKED_NATIVE_CORE=1","-D_KERNEL_MODE","-D__ldrexd=__geo_wdk81_ldrexd_declaration","-I$resource\include","-I$inc\km","-I$inc\km\crt")}
   & clang @common @includes -c (Join-Path $PSScriptRoot "$unit.c") -o (Join-Path $out "$name.obj")
   if($LASTEXITCODE -ne 0){throw "ARM32 compile failed: $unit"}
  }
- & llvm-lib /machine:arm "/out:$out\ge8300-kmd-clear.lib" "$out\clear_protocol.obj" "$out\clear_engine.obj" "$out\capture.obj" "$out\kmd_clear.obj" "$out\lifecycle.obj" "$out\miniport.obj"
+ & llvm-lib /machine:arm "/out:$out\ge8300-kmd-clear.lib" "$out\clear_protocol.obj" "$out\clear_engine.obj" "$out\capture.obj" "$out\kmd_clear.obj" "$out\kmd_objects.obj" "$out\lifecycle.obj" "$out\miniport.obj"
  if($LASTEXITCODE -ne 0){throw 'KMD module archive failed'}
  & llvm-lib /machine:arm "/out:$out\ge8300-umd-clear.lib" "$out\clear_protocol.obj" "$out\umd_clear_ddi.obj" "$out\umd_bootstrap.obj" "$out\testclient_memory.obj"
  if($LASTEXITCODE -ne 0){throw 'UMD module archive failed'}

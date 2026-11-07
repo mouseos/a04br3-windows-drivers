@@ -48,7 +48,13 @@ struct geo_owner_control_v2 {
   * It must not wait for FW, perform pageable cache work, or invent CPU_VISIBLE.
   * If completion needs PASSIVE service the owner needs an actual hardware
   * completion interrupt after that work, not a manually raised IRQL. */
+ /* STATUS_PENDING: real source claimed/masked, but no completed DMA.
+  * Return initialized event with current epoch, job=visibility=0. Caller
+  * queues its actual DPC/PASSIVE service, never a completion notification. */
  NTSTATUS (*interrupt_event)(void *cookie,ULONG message,struct geo_owner_irq_event *out);
+ /* PASSIVE after a claimed source. Real FWCCB/cache/rearm work only;
+  * success is service completion, NOT GPU_DONE or CPU_VISIBLE delivery. */
+ NTSTATUS (*service)(void *cookie,uint64_t epoch);
  BOOLEAN (*synchronize)(void *cookie,PKSYNCHRONIZE_ROUTINE,void *argument);
 };
 /* acquire irq_route must be GEO_IRQ_DXGK_REGISTERED: owner has explicitly

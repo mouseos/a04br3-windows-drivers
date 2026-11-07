@@ -42,7 +42,7 @@ int32_t geo_destroy(struct geo_engine *e,struct geo_allocation *a) {
  for(link=&e->allocations;*link&&*link!=a;link=&(*link)->next){}
  if(!*link||!e->allocation_count)return GEO_INVALID;
  if(e->poisoned||a->poisoned)return GEO_POISONED;
- if(a->bound||a->references)return GEO_BUSY;
+ if(a->bound||a->references||a->open_count)return GEO_BUSY;
  s=e->owner.destroy(e->owner.context,a->surface);
  if(s!=GEO_OK){a->poisoned=1;e->poisoned=1;return s;}
  *link=a->next;e->allocation_count--;memset(a,0,sizeof(*a));return GEO_OK;
@@ -59,7 +59,7 @@ int32_t geo_prepare_begin(struct geo_engine *e,struct geo_allocation *a,const st
  if(!a->surface||!a->bound)return GEO_NOT_READY;
  for(i=0;i<GEO_MAX_JOBS;i++)if(!e->jobs[i].state&&e->jobs[i].generation!=UINT32_MAX)break;
  if(i==GEO_MAX_JOBS||a->references==UINT32_MAX)return GEO_BUSY;
- j=&e->jobs[i];j->generation++;j->allocation=a;j->owner_job=0;j->state=4;a->references++;
+ j=&e->jobs[i];j->generation++;j->allocation=a;j->context=0;j->open_handle=0;j->owner_job=0;j->state=4;a->references++;
  t->magic=GEO_TICKET_MAGIC;t->slot=i;t->generation=j->generation;t->reserved=0;return GEO_OK;
 }
 int32_t geo_prepare_finish(struct geo_engine *e,const struct geo_dma_ticket *t,int32_t status,uint64_t token) {
@@ -78,7 +78,7 @@ int32_t geo_cancel_prepared(struct geo_engine *e,const struct geo_dma_ticket *t)
  if(j->state!=1)return GEO_BUSY;
  s=e->owner.discard_prepared(e->owner.context,j->owner_job);
  if(s!=GEO_OK){j->allocation->poisoned=1;e->poisoned=1;return s;}
- j->allocation->references--;j->state=0;j->allocation=0;j->owner_job=0;return GEO_OK;
+ j->allocation->references--;j->state=0;j->allocation=0;j->context=0;j->open_handle=0;j->owner_job=0;return GEO_OK;
 }
 int32_t geo_submit(struct geo_engine *e,const struct geo_dma_ticket *t,uint32_t fence) {
  struct geo_job *j=job(e,t);int32_t s;
@@ -106,7 +106,7 @@ int32_t geo_complete(struct geo_engine *e,uint64_t token,uint32_t generation,int
   j->allocation->poisoned=1;j->state=3;e->poisoned=1;return GEO_POISONED;
  }
  *fence=j->fence;e->last_completed=j->fence;e->completed_ever=1;
- j->allocation->references--;j->state=0;j->allocation=0;j->owner_job=0;return GEO_OK;
+ j->allocation->references--;j->state=0;j->allocation=0;j->context=0;j->open_handle=0;j->owner_job=0;return GEO_OK;
 }
 
 int32_t geo_retire_after_owner_drain(struct geo_engine *e) {
@@ -119,7 +119,7 @@ int32_t geo_retire_after_owner_drain(struct geo_engine *e) {
   if(a->references!=count){e->poisoned=1;return GEO_POISONED;}
  }
  for(i=0;i<GEO_MAX_JOBS;i++) {
-  e->jobs[i].state=0;e->jobs[i].owner_job=0;e->jobs[i].allocation=0;
+  e->jobs[i].state=0;e->jobs[i].owner_job=0;e->jobs[i].allocation=0;e->jobs[i].context=0;e->jobs[i].open_handle=0;
   /* Keep generation: a delayed old token must never match a new job. */
  }
  for(a=e->allocations;a;a=a->next){a->references=0;a->poisoned=0;}

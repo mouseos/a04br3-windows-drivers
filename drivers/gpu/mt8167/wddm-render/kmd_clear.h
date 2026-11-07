@@ -12,8 +12,12 @@
  * incomplete WDDM adapter. The full miniport owns synchronization/rundown,
  * querycaps, paging and real DIRQL ISR/DPC routing. */
 struct geo_owner_session;
+struct geo_kmd_device;
 struct geo_kmd_adapter {
  struct geo_owner_session *session;
+ struct geo_kmd_device *devices;
+ UINT device_count;
+ DXGKCB_GETHANDLEDATA get_handle_data;
  struct geo_engine engine;
  /* Must use the provider's real interrupt synchronization object. No manual
   * fabricated DIRQL and no sleeping callback at interrupt IRQL. */
@@ -26,10 +30,10 @@ struct geo_kmd_adapter {
  DXGKCB_QUEUE_DPC queue_dpc;
  DXGKCB_NOTIFY_DPC notify_dpc;
  KIRQL owner_irql;
- LONG dpc_pending;
+ LONG dpc_pending,service_pending;
  UINT notifications_ready;
 };
-struct geo_kmd_context { struct geo_kmd_adapter *adapter; };
+struct geo_kmd_context { struct geo_kmd_adapter *adapter;struct geo_kmd_device *device;struct geo_kmd_context *next;HANDLE runtime; };
 /* Full miniport must call completion only from its real registered ISR,
  * holding the same owner interrupt lock as submit. IRQL equality is an
  * additional check, not a proof that the caller really came from that ISR. */
