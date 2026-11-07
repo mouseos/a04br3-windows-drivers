@@ -126,5 +126,5 @@ NVS/HSTAの実検証が失敗した場合もstickyにpower_lostを保持し、�
 
 署名済みMMA2.1の再利用は`-SharedOwnerDirectory`へcheckout内のinputを渡す。
 inputのmanifest.jsonとpackage/{mma8652.sys,inf,cat}を固定し、実hash/CAT署名、critical flags、
-interfaceとMMA9source blob一致を検証する。cameraだけの変更でMMAを再署名しない。
+interfaceとMMA/PIO11source blob一致を検証する。cameraだけの変更でMMAを再署名しない。
 旧source commitと元manifest hashを派生manifestへ保持する。条件が違えば再利用せず停止する。

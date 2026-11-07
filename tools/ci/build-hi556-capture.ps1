@@ -35,8 +35,10 @@ try {
    if(!$shared.StartsWith($root+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'Shared owner input must be within checkout'}
    $m=Get-Content -Raw (Join-Path $shared 'manifest.json')|ConvertFrom-Json
    if($m.source_dirty -ne $false -or $m.source_commit -notmatch '^[0-9a-f]{40}$' -or $m.version -ne '0.0.2.1' -or !$m.signed -or !$m.axis_hid_identity_core_blobs_preserved){throw 'Require fixed signed shared MMA2.1'}
+   if($m.critical_flags.MMA8652_UART_TRACE -ne 0){throw 'Require matching silent MMA UART policy'}
+   foreach($flag in @('-mfpu=none','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access')){if($m.kernel_codegen_flags -notcontains $flag){throw 'Shared owner ARM codegen differs'}}
    foreach($flag in @('A04_MMA_SHARED_IDENTITY','A04_MMA_SHARED_CAMERA_STREAM')){if($m.critical_flags.$flag -ne 1){throw "Missing shared owner flag: $flag"}}
-   foreach($path in @('drivers/bus/mt8167-i2c/shared_identity_interface.h','drivers/sensors/mma8652/shared_identity.inc','drivers/sensors/mma8652/wdf_mma8652.c','drivers/sensors/mma8652/mma8652.c','drivers/sensors/mma8652/mma8652.h','drivers/sensors/mma8652/mt8167_i2c.c','drivers/sensors/mma8652/mt8167_i2c.h','drivers/sensors/mma8652/sensor_hid.c','drivers/sensors/mma8652/sensor_hid.h')){
+   foreach($path in @('drivers/bus/mt8167-i2c/shared_identity_interface.h','drivers/sensors/mma8652/shared_identity.inc','drivers/sensors/mma8652/wdf_mma8652.c','drivers/sensors/mma8652/mma8652.c','drivers/sensors/mma8652/mma8652.h','drivers/sensors/mma8652/mt8167_i2c.c','drivers/sensors/mma8652/mt8167_i2c.h','drivers/sensors/mma8652/sensor_hid.c','drivers/sensors/mma8652/sensor_hid.h','drivers/bus/mt8167-i2c/pio.c','drivers/bus/mt8167-i2c/pio.h')){
     $prior=(& git -C $root rev-parse "$($m.source_commit):$path");if($LASTEXITCODE){throw 'Shared owner source unavailable'}
     $current=(& git -C $root rev-parse "HEAD:$path");if($LASTEXITCODE -or $prior -ne $current){throw "Shared owner source differs: $path"}
    }
