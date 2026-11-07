@@ -124,3 +124,22 @@ REA証拠: 初回ev_a725d023e34bb4971b6e1397602437ab64f59fff6491d8d0e1a390e07bfc
 生成済み入力はport/xnu/out/windows-rt-recovery-fw-before-drm-20261107/。system cpioによる一覧・展開、展開後hash/mode、archiveのuid/gid/mtime、誤ったFWの拒否を検証した。これはramdisk入力でありboot/recovery imageではない。実行中Recoveryの正本buildまたは固定されたbase imageの出自を確認してからramdiskへ組み込み、kernel・DTB・boot headerを保持して別imageを生成する。overlayをそのままflashしない。既存hostの別Recovery imageを、実機で稼働した同じbuildと無条件に扱わない。
 
 次回はFWを組み込んだRecoveryの最初のDRM open前から/lib/firmwareを供給し、boot時dmesgでFW成功/BADなしを確認してから同じUM/KM/FW識別とprivate captureへ進む。今回の実機解放後はADB/REA実機呼出しを行わず、host artifact生成だけを行った。
+
+## run31後の固定4frame捕捉
+
+run31はf1af516のWindows native clearでPHASE4/MATCH480000/MISMATCH0/GUARD0を観測した。一般D3D対応とは別。MAPS0x40=64に対し旧04dのGeneral要求は0x13c000/4096+1=317だったため、旧早期拒否条件と整合する。旧bootのMAPSを直接観測したわけではない。f1は容量を維持して16pages/blockでstageと3Dに成功した。fresh32回収SYS3a5b1a0553dae7e09852432f838c3de255487a4b63d4c95f0a7be960eedeeaefはf1署名候補と一致した（主担当報告）。
+
+追加捕捉は`prepare-recovery-native-capture.py --suite`で明示選択する。launcherの`--run-suite`だけがharnessの`--suite`へ接続し、従来の単発`--run`は維持する。同一800x600 pbuffer/contextで次を順にglFinishと全画素readbackで区切る。
+
+1. RGBA17/34/51/255のcold clear。
+2. RGBA68/85/102/255のwarm clear。
+3. 黒背景、uniform fragment shaderのRGBA204/51/102/255 triangle。
+4. 黒背景、1x1 RGBA51/153/204/255 textureをfragment shaderでsampleするtriangle。
+
+triangleはclip頂点(-1,-1),(1,-1),(-1,1)。CPUはpixel centreを整数式で判定し、480000pixels全量を検査する。800x600では斜辺上にsample centreがないため、top-left境界規則の曖昧さを避ける。1x1 textureはNEAREST/CLAMP_TO_EDGE、blend/dither/depth/stencil/cullは無効。shader compile/link失敗、uniform欠落、GL error、1pixel不一致も失敗とする。4回のFRAME_END verified=1とREADBACK mismatch0を要求し、kick数がframe数と同じとは仮定しない。
+
+harness上限30秒、REA上限45秒、staging/回収を含め5分。既存observerのMapPages/sparse実backing/実CPU VMA対応、aligned reads、4MiB/kick・16MiB/process・256KiB/span上限を増やさない。unknown/limitを成功扱いしない。GPU VA参照先をWindowsへそのままreplayしない。
+
+目的はcold/warm TA+3D word差分、同一context/HWRTの選択・更新、cleanup/UFO連番とclient ring位置、triangle VDM→PPP→PDS/USC/vertex backing、texture PDS/USC/descriptor/texel backingの対応を同版source/REAへ戻すこと。FW-only HWRT/freelist内部状態の未捕捉は明記し、one-shot禁止を単に削除しない。新Windows warm runtimeやtriangle packetはまだ実装・検証済みではない。
+
+端末占有を明示受領した場合だけ固定serialで実行し、Windows/ESP/bootに書かず同bootを維持する。前後boot_idを保存し、終了後は実processとglobal mountが残らないこと、harnessのEGL context/surface/terminate teardownを確認して端末返却を通知する。firmware-owned PMR全解放の内部状態はprocess終了だけから断定しない。

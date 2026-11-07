@@ -16,8 +16,14 @@
  X(eglQueryString) X(eglDestroyContext) X(eglDestroySurface) X(eglTerminate)
 #define GL_FUNCS(X) X(glGetString) X(glGetError) X(glDisable) X(glColorMask) \
  X(glClearColor) X(glClear) X(glFinish) X(glReadPixels)
+#define GL_SUITE_FUNCS(X) X(glViewport) X(glCreateShader) X(glShaderSource) X(glCompileShader) \
+ X(glGetShaderiv) X(glGetShaderInfoLog) X(glCreateProgram) X(glAttachShader) X(glBindAttribLocation) \
+ X(glLinkProgram) X(glGetProgramiv) X(glGetProgramInfoLog) X(glDeleteShader) X(glUseProgram) \
+ X(glGetUniformLocation) X(glUniform4f) X(glUniform1i) X(glVertexAttribPointer) \
+ X(glEnableVertexAttribArray) X(glDrawArrays) X(glGenTextures) X(glBindTexture) \
+ X(glTexParameteri) X(glTexImage2D) X(glActiveTexture)
 #define DECL(n) __typeof__(&n) n;
-struct api { EGL_FUNCS(DECL) GL_FUNCS(DECL) };
+struct api { EGL_FUNCS(DECL) GL_FUNCS(DECL) GL_SUITE_FUNCS(DECL) };
 #undef DECL
 static int symbol(void *lib,const char *name,void *dst,size_t bytes)
 {
@@ -25,9 +31,10 @@ static int symbol(void *lib,const char *name,void *dst,size_t bytes)
     if(!p || bytes!=sizeof(p)){fprintf(stderr,"MISSING_SYMBOL %s\n",name);return 1;}
     memcpy(dst,&p,bytes);return 0;
 }
+#include "recovery-native-suite.h"
 int main(int argc,char **argv)
 {
-    struct api a={0};void *el=0,*gl=0;int result=1,ready=0;
+    struct api a={0};void *el=0,*gl=0;int result=1,ready=0,suite=0;
     EGLDisplay display=EGL_NO_DISPLAY;EGLSurface surface=EGL_NO_SURFACE;
     EGLContext context=EGL_NO_CONTEXT;EGLConfig config;EGLint major,minor,count;
     unsigned char *pixels=0;size_t i,mismatch=0,first=(size_t)-1;
@@ -37,10 +44,11 @@ int main(int argc,char **argv)
         EGL_DEPTH_SIZE,0,EGL_STENCIL_SIZE,0,EGL_SAMPLES,0,EGL_NONE};
     const EGLint shape[]={EGL_WIDTH,WIDTH,EGL_HEIGHT,HEIGHT,EGL_NONE};
     const EGLint version[]={EGL_CONTEXT_CLIENT_VERSION,2,EGL_NONE};
-    if(argc!=4 || strcmp(argv[1],"--run")){
-        fprintf(stderr,"usage: %s --run /absolute/libEGL.so /absolute/libGLESv2.so\n",argv[0]);
+    if((argc!=4 && argc!=5) || strcmp(argv[1],"--run") || (argc==5 && strcmp(argv[4],"--suite"))){
+        fprintf(stderr,"usage: %s --run /absolute/libEGL.so /absolute/libGLESv2.so [--suite]\n",argv[0]);
         return 2;
     }
+    suite=argc==5;
     if(argv[2][0]!='/' || argv[3][0]!='/')return 2;
     /* No default execution: only the explicit --run path can load the driver. */
     setvbuf(stderr,0,_IONBF,0);alarm(30);
@@ -58,6 +66,7 @@ int main(int argc,char **argv)
 #define LOAD_E(n) if(symbol(el,#n,&a.n,sizeof(a.n)))goto done;
 #define LOAD_G(n) if(symbol(gl,#n,&a.n,sizeof(a.n)))goto done;
     EGL_FUNCS(LOAD_E) GL_FUNCS(LOAD_G)
+    if(suite){GL_SUITE_FUNCS(LOAD_G)}
 #undef LOAD_E
 #undef LOAD_G
     fprintf(stderr,"PHASE egl-init\n");
@@ -98,21 +107,30 @@ int main(int argc,char **argv)
     }
     pixels=malloc((size_t)WIDTH*HEIGHT*4u);if(!pixels)goto done;
     a.glDisable(GL_SCISSOR_TEST);a.glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
-    a.glClearColor(17.0f/255.0f,34.0f/255.0f,51.0f/255.0f,1.0f);
-    fprintf(stderr,"PHASE clear-begin\n");a.glClear(GL_COLOR_BUFFER_BIT);a.glFinish();
-    if(a.glGetError()!=GL_NO_ERROR){fprintf(stderr,"GL_CLEAR_FAILED\n");goto done;}
-    fprintf(stderr,"PHASE clear-finished readback-begin\n");
-    a.glReadPixels(0,0,WIDTH,HEIGHT,GL_RGBA,GL_UNSIGNED_BYTE,pixels);
-    if(a.glGetError()!=GL_NO_ERROR){fprintf(stderr,"GL_READBACK_FAILED\n");goto done;}
-    for(i=0;i<(size_t)WIDTH*HEIGHT;i++){
-        const unsigned char *p=pixels+i*4u;
-        if(p[0]!=17 || p[1]!=34 || p[2]!=51 || p[3]!=255){
-            if(!mismatch)first=i;
-            mismatch++;
+    for(unsigned frame=0;frame<(suite?4u:1u);frame++){
+        static const unsigned char colours[4][4]={{17,34,51,255},{68,85,102,255},{204,51,102,255},{51,153,204,255}};
+        const unsigned char *rgba=colours[frame];mismatch=0;first=(size_t)-1;
+        fprintf(stderr,"FRAME_BEGIN index=%u role=%s\n",frame,frame<2?"clear":frame==2?"solid-triangle":"texture-triangle");
+        if(frame<2){
+            a.glClearColor(rgba[0]/255.0f,rgba[1]/255.0f,rgba[2]/255.0f,1.0f);
+            a.glClear(GL_COLOR_BUFFER_BIT);
+        }else if(suite_draw(&a,frame==3,rgba))goto done;
+        a.glFinish();
+        if(a.glGetError()!=GL_NO_ERROR){fprintf(stderr,"GL_FRAME_FAILED index=%u\n",frame);goto done;}
+        a.glReadPixels(0,0,WIDTH,HEIGHT,GL_RGBA,GL_UNSIGNED_BYTE,pixels);
+        if(a.glGetError()!=GL_NO_ERROR){fprintf(stderr,"GL_READBACK_FAILED index=%u\n",frame);goto done;}
+        for(i=0;i<(size_t)WIDTH*HEIGHT;i++){
+            const unsigned char *px=pixels+i*4u;
+            unsigned x=(unsigned)(i%WIDTH),y=(unsigned)(i/WIDTH);
+            int inside=frame<2 || suite_inside(x,y);
+            if(px[0]!=(inside?rgba[0]:0) || px[1]!=(inside?rgba[1]:0) ||
+               px[2]!=(inside?rgba[2]:0) || px[3]!=255){if(!mismatch)first=i;mismatch++;}
         }
+        fprintf(stderr,"READBACK frame=%u pixels=%u mismatch=%zu first=%zu\n",frame,WIDTH*HEIGHT,mismatch,first);
+        if(mismatch)goto done;
+        fprintf(stderr,"FRAME_END index=%u verified=1\n",frame);
     }
-    fprintf(stderr,"READBACK pixels=%u mismatch=%zu first=%zu\n",WIDTH*HEIGHT,mismatch,first);
-    result=mismatch?1:0;goto done;
+    result=0;goto done;
 egl_fail:
     fprintf(stderr,"EGL_FAILED error=0x%x\n",a.eglGetError());
 done:

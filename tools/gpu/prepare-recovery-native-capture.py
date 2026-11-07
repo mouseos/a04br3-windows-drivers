@@ -9,6 +9,7 @@ from pathlib import Path
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--plan-directory",type=Path,help="新規host directoryへmanifest/scenarioも保存。ADBは実行しない")
+    ap.add_argument("--suite",action="store_true",help="同一contextでclear/warm-clear/solid/textureの固定4framesを捕捉")
     ap.add_argument("--serial",required=True,help="主担当が確認した対象serial")
     ap.add_argument("--bundle",type=Path,required=True)
     ap.add_argument("--log-directory",type=Path,required=True,help="root内ios-feasibilityログ保存先")
@@ -42,8 +43,8 @@ def main():
         if (bundle/directory).is_dir():commands.append(adb("push",str(bundle/directory),device+"/"+directory))
     commands.append(shell(["chmod","700",device+"/bin/recovery-native-clear",device+"/bin/recovery-native-stage"]))
     preflight=capture(["sh",device+"/recovery-native-preflight.sh","--inspect"],15000)
-    direct=capture([device+"/bin/recovery-native-stage","--run",device],45000)
-    result={"executed":False,"requires_primary_recovery_authorization":True,
+    direct=capture([device+"/bin/recovery-native-stage","--run-suite" if args.suite else "--run",device],45000)
+    result={"executed":False,"workload":"four-frame-suite" if args.suite else "single-clear","requires_primary_recovery_authorization":True,
         "serial_must_be_confirmed_by_primary":serial,"staging_commands_NOT_EXECUTED":commands,
         "rea_host_environment":{"TMPDIR":str(logs/"rea-runtime-tmp")},
         "rea_cli_capture_NOT_EXECUTED":["env","TMPDIR="+str(logs/"rea-runtime-tmp"),"rea","capture-process",str(bundle/"scenario-vendor-direct.json"),"--format","json","--full-output"],
@@ -56,11 +57,16 @@ def main():
             "required_absolute_alias":"/system/vendor/lib64/egl/libGLESv2_mtk.so",
             "required_firmware":"kernel firmware search path/rgx.fw.22.40.54.30",
             "activation":"recovery-native-stageがprivate mount namespaceと/tmp内chrootを作成。Recoveryの/system・Bionic・APEXを保持し/vendorと/system/vendor、/lib/firmwareを固定。/data/Windows/実partitionにはmountも書込みもしない。"},
-        "selection":"主担当が実KM互換を確認後、REAでvendor-direct scenarioを1回だけ実行。launcherは実機未試験。namespace不可/未知FW pathはGPU open前に終了。",
+        "selection":"主担当が実KM互換を確認後、REAでvendor-direct scenarioを1回だけ実行。追加suiteは実機未試験。namespace不可/未知FW pathはGPU open前に終了。",
         "retrieval_command_NOT_EXECUTED":adb("pull",device+"/runtime/capture-01.bin",str(logs/"runtime-capture-01.bin")),
         "evidence_export_path":str(logs/"runtime-rea-evidence.json"),
         "parse_after_retrieval":["python3","-B",str(bundle/"source/tools/gpu/read-recovery-native-capture.py"),str(logs/"runtime-capture-01.bin"),"--resources-directory",str(logs/"runtime-resources-01")],
         "success":"PowerVR renderer, full readback match, complete pre/post pairs, ioctl/bridge success, broken=0. Native resource completeness separately requires every VDM/PPP/USC/PDS/region reference to be covered; unknown is not success. GPU/FW addresses cannot be replayed unchanged"}
+    if args.suite:
+        result["expected_frames"]=["clear-cold","clear-warm-same-context","solid-triangle","sampled-1x1-texture-triangle"]
+        result["success"]+="; require FRAME_END verified=1 for indices0..3 and each full480000pixel readback mismatch0; do not assume one kick per frame; memory caps remain4MiB/kick,16MiB/process, unknown/limit is not complete dependency capture"
+        result["post_process_check_NOT_EXECUTED"]=shell(["sh","-c","ps -A -o PID,PPID,ARGS | grep -E 'recovery-native|a04br3-native' || true"])
+        result["global_mount_check_NOT_EXECUTED"]=shell(["sh","-c","cat /proc/1/mountinfo | grep -F "+shlex.quote(device)+" || true"])
     if args.plan_directory is not None:
         output=args.plan_directory.resolve();output.mkdir(exist_ok=False)
         checks=[(bundle/source,name) for source,name in staged]

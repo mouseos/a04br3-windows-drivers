@@ -31,8 +31,8 @@ int main(int argc,char **argv)
         "capture","dev","proc","sys","apex","linkerconfig","lib","lib/firmware","sbin","bin","lib64","etc"};
     static const char *const inherited[]={"dev","proc","sys","apex","linkerconfig","sbin","bin","lib64","etc"};
     unsigned i;int inspect;
-    if(argc!=3 || (strcmp(argv[1],"--run") && strcmp(argv[1],"--inspect"))){
-        fprintf(stderr,"usage: recovery-native-stage --run|--inspect /tmp/fresh-stage\n");return 2;
+    if(argc!=3 || ((strcmp(argv[1],"--run") && strcmp(argv[1],"--run-suite")) && strcmp(argv[1],"--inspect"))){
+        fprintf(stderr,"usage: recovery-native-stage --run|--run-suite|--inspect /tmp/fresh-stage\n");return 2;
     }
     inspect=!strcmp(argv[1],"--inspect");
     base=realpath(argv[2],0);
@@ -89,7 +89,8 @@ int main(int argc,char **argv)
     fprintf(stderr,"NATIVE_STAGE_PRIVATE_ROOT fw_path=%s default=/lib/firmware fixed_egl=/system/vendor/lib64/egl/libGLESv2_mtk.so\n",fw[0]?fw:"(default)");
     {
         char *const command[]={"/stage/recovery-native-clear","--run",
-            "/vendor/lib64/egl/libEGL_mtk.so","/vendor/lib64/egl/libGLESv2_mtk.so",0};
+            "/vendor/lib64/egl/libEGL_mtk.so","/vendor/lib64/egl/libGLESv2_mtk.so",
+            !strcmp(argv[1],"--run-suite")?"--suite":NULL,NULL};
         execv(command[0],command);fail("exec clear harness");
     }
 }
