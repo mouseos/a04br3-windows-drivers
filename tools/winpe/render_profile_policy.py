@@ -78,7 +78,7 @@ def package(root,entry,role,repo):
   original={e['name']:e['sha256'].lower() for e in baseline['outputs']}
   require(all(files[n]==original[n] for n in ('ge8300-render.sys','ge8300-umd.dll','ge8300-mips.fw')),'0f8実署名bytes変更拒否')
   flags={}
- return {'directory':str(d),'manifest_sha256':sha(p),'source_commit':source,'driver_ver':v,'version_u64':num,'date_filetime':date,'files':{n:files[n] for n in names},'effective_flags':flags,'certificate_sha256':files['mt8167-development.cer']}
+ return {'directory':str(d.relative_to(root)),'manifest_sha256':sha(p),'source_commit':source,'driver_ver':v,'version_u64':num,'date_filetime':date,'files':{n:files[n] for n in names},'effective_flags':flags,'certificate_sha256':files['mt8167-development.cer']}
 
 def load_map(path,root):
  root=root.resolve(strict=True);spec=jsonfile(rooted(root,path));repo=Path(__file__).resolve().parents[2]
@@ -96,7 +96,7 @@ def load_map(path,root):
  build=cd/'build-manifest.json';require(sha(build)==hexpin(cr['build_manifest_sha256']),'client build manifest不一致');cb=jsonfile(build);cs=hexpin(c['source_commit'],40);require(cb.get('source_commit')==cs,'client fullsource不一致')
  committed=subprocess.check_output(['git','-C',str(repo),'show',cs+':drivers/gpu/mt8167/wddm-render/testclient/d3d-clear.c']);require(b'PowerVR' in committed and b'hardware=' in committed,'新固定auto選択clientが必要（旧0f8付属clientは不可）')
  exe=cd/'ge8300-d3d-clear.exe';require(sha(exe)==hexpin(cr['signed_sha256']),'client EXE不一致');require_armnt(exe)
- policy={'schema':1,'profile':spec['profile'],'default_off':True,'backup_manifest_sha256':FRESH52,'backup_path':str(backup),'packages':packages,'client':{'directory':str(cd),'source_commit':cs,'sha256':sha(exe),'manifest_sha256':sha(cm),'arguments':'--hardware=PowerVR','timeout_ms':120000},'boot':{'source_commit':BOOT,'manifest_sha256':sha(boot),'sha256':sha(image),'path':str(image)},'sequence':['WinPE copy native clean SYSTEM before three DISM AddDriver operations','release report0 exit0','main Recovery writes matched boot6e852b1 and normal ESP','normal service validates exact selected versions and SYS/FW/UMD then fixed client once'],'normal_install_allowed':False,'retained_gpu_baseline_sha256':BASE_SYS}
+ policy={'schema':1,'profile':spec['profile'],'default_off':True,'backup_manifest_sha256':FRESH52,'backup_path':str(backup.relative_to(root)),'packages':packages,'client':{'directory':str(cd.relative_to(root)),'source_commit':cs,'sha256':sha(exe),'manifest_sha256':sha(cm),'arguments':'--hardware=PowerVR','timeout_ms':120000},'boot':{'source_commit':BOOT,'manifest_sha256':sha(boot),'sha256':sha(image),'path':str(image.relative_to(root))},'sequence':['WinPE copy native clean SYSTEM before three DISM AddDriver operations','release report0 exit0','main Recovery writes matched boot6e852b1 and normal ESP','normal service validates exact selected versions and SYS/FW/UMD then fixed client once'],'normal_install_allowed':False,'retained_gpu_baseline_sha256':BASE_SYS}
  return policy
 
 def cbytes(h):return '{'+','.join('0x'+h[i:i+2] for i in range(0,64,2))+'}'

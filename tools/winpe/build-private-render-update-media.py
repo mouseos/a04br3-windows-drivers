@@ -13,7 +13,7 @@ def main():
  here=Path(__file__).resolve().parent;repo=here.parents[1]
  require(subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip()==a.source_commit,'builder source不一致')
  require(not subprocess.check_output(['git','-C',str(repo),'status','--porcelain'],text=True).strip(),'dirty source拒否')
- policy=load_map(a.package_map,root);backup=Path(policy['backup_path']);b=json.loads(backup.read_text());base=rooted(root,a.base);tools=rooted(root,a.tools);service=rooted(root,a.service_package)
+ policy=load_map(a.package_map,root);backup=root/policy['backup_path'];b=json.loads(backup.read_text());base=rooted(root,a.base);tools=rooted(root,a.tools);service=rooted(root,a.service_package)
  out=a.out.resolve();private_path(out,root);require(not out.exists(),'既存出力を変更しません')
  require(sha(base/'maintenance-staged.wim')=='0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4' and sha(base/'maintenance-staged-esp.img')=='22ac309921bd9ae405bd48e65d8cb8a70506c90f0c08e6edda4f0150fb4993ce','既知base不一致')
  sm=json.loads((service/'render-service-manifest.json').read_text(encoding='utf-8-sig'));require(sm.get('profile')=='offline-render-diagnostic-v1' and sm.get('service')=='MT8167RenderProbe' and sm.get('signed') is True and sm.get('signature_status')=='Valid' and sm.get('signing_thumbprint')==SIGNER and sm.get('source_commit')==a.source_commit and sm.get('source_dirty') is False,'固定署名service不一致')
@@ -26,9 +26,9 @@ def main():
  def copy(src,dest):
   target=stage/dest;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(src,target);files[dest]=sha(target)
  copy(system,'private-system/SYSTEM.patched');copy(service/'MT8167RenderProbe.exe','MT8167RenderProbe.exe');copy(service/'mt8167-development.cer','render-development.cer')
- copy(Path(policy['client']['directory'])/'ge8300-d3d-clear.exe','render-io/clients/ge8300-d3d-clear.exe')
+ copy((root/policy['client']['directory'])/'ge8300-d3d-clear.exe','render-io/clients/ge8300-d3d-clear.exe')
  for role,p in policy['packages'].items():
-  for name in p['files']:copy(Path(p['directory'])/name,'render-io/'+role+'/'+name)
+  for name in p['files']:copy((root/p['directory'])/name,'render-io/'+role+'/'+name)
  # Copy/compare only fixed core files. No sibling directory enumeration or old
  # Engine state mutation. NTFS replay-induced changes cause a real refusal.
  allowed_sys={'mt8167-shared.sys','mt8167-audio.sys','mt8167-usb20.sys','mt6630-runtime.sys','mt8167-display.sys','mt8167-ge8300.sys','mt8167-toprgu.sys','mt8167-sd.sys','mt8167-msdc.sys'}
