@@ -51,3 +51,20 @@ cc -std=c11 -O2 -Wall -Wextra -Werror tests/mt6630_bt_stop_test.c \
 make build/mt6630_bt_transport_test
 ./build/mt6630_bt_transport_test
 ```
+
+## 2007: 個体設定ACKと読戻しを分離
+
+vendor FC1Aの成功ACKだけでは、実controllerのBD_ADDRが動的NVRAMと一致するとは
+確認できない。既存初期化末尾のRead Local Version後に標準HCI Read BD_ADDR
+(opcode0x1009、引数なし)を接続する。成功statusを含む7byteの実Command Completeを
+要求し、6bytesをFC1Aと同じwire順でNVRAMと比較する。不一致/長さ不正は
+transport error -13、controller拒否/timeoutは従来の実エラーを伝播し、readyにしない。
+全経路でprivate replyを消去し、アドレス自体はsnapshotやログへ追加しない。
+
+根拠はBluetooth Core HCI Read BD_ADDR、および同機Linux4.4の
+`include/net/bluetooth/hci.h:HCI_OP_READ_BD_ADDR/hci_rp_read_bd_addr`と
+`net/bluetooth/hci_event.c:hci_cc_read_bd_addr`。既存の個体設定コマンド順は保持する。
+この読戻しは初期化時だけ。OS Reset後の保持、SCO資格、共存、RF/pairingの証明ではない。
+
+既存transport回帰に一致、不一致、短い成功reply、controller拒否とreply消去の検査を追加。
+合成応答による検証であり、実MT6630との通信成功ではない。

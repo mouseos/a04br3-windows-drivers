@@ -230,7 +230,18 @@ int a04_bt_initialize(struct a04_bt_transport *b,const uint8_t nv[36])
  if(b->reply_length!=9)return fail(b,-11);
  b->version.hci_version=b->reply[1];b->version.hci_revision=(uint16_t)a04_wmt_le16(b->reply+2);
  b->version.lmp_version=b->reply[4];b->version.manufacturer=(uint16_t)a04_wmt_le16(b->reply+5);
- b->version.lmp_subversion=(uint16_t)a04_wmt_le16(b->reply+7);b->version_valid=1;b->ready=1;return 0;
+ b->version.lmp_subversion=(uint16_t)a04_wmt_le16(b->reply+7);b->version_valid=1;
+ /* Standard HCI Read BD_ADDR (Core, Linux hci_rp_read_bd_addr): status +
+  * six wire-order bytes. FC1A acceptance alone is not readback evidence.
+  * Compare against the checksum-verified dynamic record, never a default.
+  * Always erase the private command reply, including failure/short replies. */
+ e=command(b,0x1009,NULL,0);unsigned different=b->reply_length!=7;
+ if(!e&&!different)for(unsigned i=0;i<6;i++)different|=b->reply[1+i]^nv[5-i];
+ for(volatile unsigned char *v=b->reply;v<b->reply+sizeof(b->reply);v++)*v=0;
+ b->reply_length=0;
+ if(e)return e;
+ if(different)return fail(b,-13);
+ b->ready=1;return 0;
 }
 int a04_bt_disable(struct a04_bt_transport *b)
 {
