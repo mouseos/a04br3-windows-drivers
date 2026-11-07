@@ -4,8 +4,9 @@
 UEFIの既存SD ready証拠はWindows成功とは区別する。「SD2」という表示をMSDC2と
 読み替えない。実配線は **MSDC1 / Linux mmc1 / 0x11130000**。
 
-このfolderと`tools/storage/build-mt8167-sd.ps1`だけを追加する。
-eMMC driver、MSDC2/Wi-Fi/BT、共有Audio/親、canonical/EDK2共通sourceは変更しない。
+SD実装はこのfolderと`tools/storage/build-mt8167-sd.ps1`へ分離する。
+電源provider接続に限り、既存shared親とそのhelperへ既定OFFの最小hookを追加する。
+eMMC driver、MSDC2/Wi-Fi/BT、Audio実装、canonical/EDK2共通sourceは変更しない。
 
 ## 一次sourceと確定資源
 
@@ -119,7 +120,7 @@ PowerShell、git。通常OSの標準disk stackが必要。実機/runnerへ接続
 powershell -NoProfile -File tools\storage\build-mt8167-sd.ps1
 ```
 
-全6 TU（SDの4 TUと非変更で再利用するeMMC共通2 TU）に
+SD側全7 TU（SDの5 TUと非変更で再利用するeMMC共通2 TU）に
 `-fno-vectorize -fno-slp-vectorize -mno-unaligned-access -mfpu=none`を共通適用する。
 CRTは正規WDK8.1 ARMの`Lib/winv6.3/km/arm/libcntpr.lib`を必須としてlinkし、
 flags・runtimeのkit相対pathとSHA256をmanifestへ記録する。
@@ -140,3 +141,89 @@ source参照compile（ARM32、public WDK10/WinBlue guardsとKMDF参照header）�
 実WDK8.1最終link、standard disk stackへのPDO列挙、標準OSでのpartition/volume認識、
 RW内容、物理抜去/再挿入、電源遷移、ACPI CD極性の実機照合、実電源owner/rail保持、
 source clock実周波数・sampling余裕は未確認。UEFIのready証拠をこれらへ流用しない。
+
+## Windows単一ownerによるD0電源契約 v1
+
+`f729a77`は実WDK8.1 compile/link・SYS/CAT署名/検証済みの旧handoff候補。
+以下の新電源consumer/providerは、その署名済みSYSに含まれない。新candidateは
+SDとmatched parentを同じ固定sourceからbuildし直す必要がある。
+Windows列挙/RW、rail復元、system sleep/resumeは未確認である。
+
+### 一次sourceから確定した専用範囲
+
+Linux `mt6392-regulator.c`のLDOはenable bitとQI bit15を別に確認する。
+VMCは`0504 bit12`、selectorは`052a bit4`（0=1.8V/1=3.3V）。
+VMCHは`0506 bit14`、selectorは`052c bit7`（0=3.0V/1=3.3V）。
+VEMC3V3 `0508/052e`、VIO18 `0556`はeMMC用であり触れない。
+Linux `msdc_ops_set_ios`に合わせ、VMMC=VMCH、VQMMC=VMCの順に有効化する。
+
+TOP+24 bit18は通常gate（1=off、54 SET/84 CLR）。
+TOP+3c bit29のMSDC1_INFRAは**inverted**（1=on、6c SET/9c CLR）。
+同じTOP+24上のthermal bits1/30を含む他consumerのbitへ書かず、RMWしない。
+TOP mux0 bits20..22はselector2=`mainpll_d8`を要求し、live muxは変更しない。
+MAINPLLはAPMIXED+120のEN bit0/RST_BAR bit27、+130のPWR_ON=1/ISO=0を観測。
++124のPCW/post-dividerとAHB_INFRA selectorも取得時に保存し、lease中の変更を検出する。
+PLLの起動・retuneや実周波数の成功広告は行わない。
+UEFIの`SdUngateClock`にも同じSD専用gate/selectorがあるが、UEFIの準備だけで
+Windowsでの所有/保持を証明したとは扱わない。
+
+### providerとconsumerの実接続
+
+- `power_owner.[ch]`: 親の同じPWRAP bus object/poison、同じblocking lockを借用する。
+  新たなPWRAP/TOP/APMIXED mappingや別driverを作らない。
+  Acquireは無変更のclaimだけを作り、UEFI-readyで両clockが既にonの場合だけ受理する。
+  gated cold handoffをungateして未知のfirmware DMAを再開することはしない。
+  consumerがMSDC+09c bit0をread-onlyで検査してDMA idleを確認後、Enableを呼ぶ。
+  active DMAならtokenを保持してunsupportedを返し、firmware descriptorをabortしない。
+  Enableは無効なrailだけselectorを
+  3.3Vに設定してenable/QIをbounded確認し、clock gateをenableする。
+  既に有効なrailのlive voltage切替や、software-disabledなのにQI=onのforeign制御を拒否。
+  元々有効なrailはreleaseでも有効のまま、元々無効ならVQMMC→VMMCの順で停止し
+  QI offを確認して元selectorへ戻す。QI待機は各回のWACS2 bounded timeoutに加え、
+  Enable/Release各100msの全体budgetを持つ。常時給電policyを追加しない。
+- `power_parent.inc`: 既存`ParentLock`と同じ`pmic.bus`だけを使うfixed interface v1。
+  `Acquire(token*)` / `Enable(token)` / `Health(token)` / `ReleaseQuiescent(token)`以外の操作は公開しない。
+  任意register/voltage/path IOCTLはない。Acquireは親に`WdfDeviceStopIdle(TRUE)`を取り、
+  releaseが実成功した場合だけ`WdfDeviceResumeIdle`を1回対応させる。
+  Acquire/Enable失敗でもtoken非0ならclaim/部分変更が残るquarantineであり、失敗statusを返して
+  親power referenceとmappingを保持する。共有bus timeoutは同じpoisonへ伝播する。
+- `power_client.c`: 固定interface GUIDから唯一のproviderだけを開き、kernel queryを行う。
+  raw pointer/任意path指定を利用者へ要求しない。D0でacquire、SD要求前とCD timerでhealth。
+  supplier消失/終端faultは失敗伝播し、自動restartしない。
+- SD D0Exitは新規要求を止め、IRP rundown/workerをjoinし、必要なDAT0/CMD13 barrierと
+  private PIO reset完了後だけ`ReleaseQuiescent`を呼ぶ。カードが残りwrite状態不明、
+  poison、timeout、host surprise removal、supplier喪失ならleaseを保持し失敗を返す。
+  Unknownをquiescent成功に変えない。強制PnP removeが物理資源を撤去することまで
+  object参照で防げるとは主張しない。
+
+### power ordering
+
+[Microsoft IRP_MN_QUERY_DEVICE_RELATIONS](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/irp-mn-query-device-relations)
+の`PowerRelations`（Windows7以降）は、独立nodeのsupplierをsystem S1..S5で先ON/後OFFに
+する契約。S0 runtime Dxの保持は保証しないため、上記StopIdle leaseを別に持つ。
+SD FDOのPowerRelationsへsupplier PDOを参照付きで追加し、既存relationを保持する。
+remote targetのremove通知を処理し、paging/hibernate/dump等のspecial file使用は拒否する。
+関係PDO参照は専用mutexで保護する。driver file/Interface参照だけで電源保持としない。
+
+ACPI案の`_DEP=\_SB.SHR0`は列挙依存のためであり、PowerRelations/leaseの代替ではない。
+Carverが示した`WindowsArm32/Acpi/SharedParentIo.asl`のSHR0/BEN0001/UID0を根拠にする。
+**実採用FDのnamespaceが同じことをmainが確認する必要がある。** このsource変更で
+DSC/FDF/正本EDKへ接続しない。GPIO/pin bias/driveのhandoff条件は引き続きSDCFと
+機種側で満たす必要があり、架空の`_PSx/_PRx`を作らない。
+
+### buildと統合hook
+
+親`wdf_parent_probe.c`への変更はSD専用context、include、publish、D0Exit/Unmap保持判定のみ。
+`A04_SHARED_SD_POWER=1`を新たに指定し、既存1006のAudio/USB/touch/buttons等の
+**既存全flagsをそのまま保持**して`tools/ci/build-msdc-parent-probe.ps1`を使う。
+`A04_SHARED_BUTTON_D0_EXPERIMENT=1`と`A04_SHARED_APMIXED_RESOURCE=1`が必須。
+新core TUもNoFP/NEON flagsでcompileし、正規WDK `libcntpr.lib` linkを維持する。
+manifestは新flag、ABI version、SD provider source hashesを記録する。
+古い親binaryの再利用や、旧manifestへ新flagを書き足すだけの統合は禁止。
+このhelperは音声/KS clientやUSBを再buildしない。既定OFFなら新providerは公開しない。
+SD helperは全7 TUをcompileし、manifestにABI v1/PowerRelations/sourceを記録する。
+親INFのrank/version調整と署名はmain/Ramanの統合契約に従う。
+
+Raman側の`wdf_parent_probe.c`/親helperと競合する可能性があるため、同等の単一owner
+hookへsource統合すること。独立serviceを増やしてPWRAPへ二重アクセスしない。
+BQ/thermalはSD上記専用rail bitsを変更せず、同じ親lockとbus poisonを共有する。

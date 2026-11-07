@@ -3,12 +3,14 @@
 // VMC/VMCH 3.3V supplies and mux2 source clock while this device is in D0.
 DefinitionBlock ("", "SSDT", 2, "MOUSEO", "MTKSD001", 1)
 {
+    External (\_SB.SHR0, DeviceObj)
     Scope (\_SB)
     {
         Device (SDH1)
         {
             Name (_HID, "MOU0013") // project-assigned ACPI binding, not an IC ID
             Name (_UID, One)
+            Name (_DEP, Package () {\_SB.SHR0}) // actual FD must match this namespace
             Name (_DDN, "MediaTek MT8167 MSDC1 microSD Host")
             Name (_CCA, Zero) // PIO profile never creates a DMA mapping
             Method (_STA, 0) { Return (0x0F) } // socket exists even when empty

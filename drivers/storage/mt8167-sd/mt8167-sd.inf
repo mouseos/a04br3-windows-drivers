@@ -4,7 +4,7 @@ Signature="$WINDOWS NT$"
 Class=SCSIAdapter
 ClassGuid={4d36e97b-e325-11ce-bfc1-08002be10318}
 Provider=%Provider%
-DriverVer=11/07/2026,2026.11.7.1
+DriverVer=11/07/2026,2026.11.7.2
 CatalogFile=mt8167-sd.cat
 [Manufacturer]
 %Provider%=Models,NTarm

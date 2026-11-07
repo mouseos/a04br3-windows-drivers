@@ -11,6 +11,16 @@
 #include "register_owner.h"
 #include "client_interface.h"
 #include "audio_interface.h"
+#ifndef A04_SHARED_SD_POWER
+#define A04_SHARED_SD_POWER 0
+#endif
+#if A04_SHARED_SD_POWER
+#include "../../storage/mt8167-sd/power_owner.h"
+#include "../../storage/mt8167-sd/power_interface.h"
+#if !defined(A04_SHARED_BUTTON_D0_EXPERIMENT) || !A04_SHARED_BUTTON_D0_EXPERIMENT || !defined(A04_SHARED_APMIXED_RESOURCE) || !A04_SHARED_APMIXED_RESOURCE
+#error SD power requires the single active PWRAP/TOP/APMIXED parent owner
+#endif
+#endif
 #ifndef A04_SHARED_FIRST_PLAYBACK
 #define A04_SHARED_FIRST_PLAYBACK 0
 #endif
@@ -179,7 +189,11 @@
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
-typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; struct a04_usb_owner usb; ULONG wifiGeneration; int wifiActive;
+typedef struct {
+#if A04_SHARED_SD_POWER
+ struct a04_sd_power sdPower;
+#endif
+ PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; struct a04_usb_owner usb; ULONG wifiGeneration; int wifiActive;
 #if A04_SHARED_WIFI_RUNTIME
 struct a04_rtc32k_lease wifiRtc;
 #endif
@@ -857,6 +871,9 @@ static int ParentWifiWrite(PVOID c,ULONG g,unsigned b,unsigned o,ULONG v)
 {return ParentWifiOperation(c,g,b,o,0,v,0);}
 static VOID ParentInterfaceReference(PVOID context) { WdfObjectReference((WDFDEVICE)context); }
 static VOID ParentInterfaceDereference(PVOID context) { WdfObjectDereference((WDFDEVICE)context); }
+#if A04_SHARED_SD_POWER
+#include "../../storage/mt8167-sd/power_parent.inc"
+#endif
 static NTSTATUS ParentReadButtons(PVOID context,USHORT *value) {
     A04_PARENT_CONTEXT *c;
     if(!context || !value || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
@@ -1077,6 +1094,9 @@ static void ParentStop(A04_PARENT_CONTEXT *c,int can_access)
     if(!c->thermalRundownClosed){ExWaitForRundownProtectionRelease(&c->thermalRundown);c->thermalRundownClosed=TRUE;}
 #endif
     ExAcquireFastMutex(&c->pwrapLock);
+#if A04_SHARED_SD_POWER
+    if(c->sdPower.held)c->sdPower.poisoned=1;
+#endif
 #if A04_SHARED_FIRST_PLAYBACK
     if(can_access && !c->removed && c->classd.active && c->pmic.online)
         (void)a04_mt6392_classd_mute(&c->classd);
@@ -1104,6 +1124,9 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
     /* Failed/partial audio ownership cannot be interpreted as quiescent.
      * Retain mappings; this is not proof PnP retains physical resources. */
     if(c->audio.poisoned || c->audio.leased || c->audioAfe || c->usb.leased)return STATUS_DEVICE_BUSY;
+#if A04_SHARED_SD_POWER
+    if(c->sdPower.held || c->sdPower.poisoned)return STATUS_DEVICE_BUSY;
+#endif
 #if defined(A04_MT6392_RTC32K_DIAGNOSTIC) && A04_MT6392_RTC32K_DIAGNOSTIC
     /* A retained or ambiguous RTC lease must outlive the PWRAP mapping. */
     if(c->pmic.rtc_lease)return STATUS_DEVICE_BUSY;
@@ -1200,7 +1223,18 @@ VOID ParentSurprise(WDFDEVICE dev)
 }
 NTSTATUS ParentD0Exit(WDFDEVICE dev,WDF_POWER_DEVICE_STATE target)
 {
-    UNREFERENCED_PARAMETER(target);ParentStop(ParentContext(dev),1);return STATUS_SUCCESS;
+    UNREFERENCED_PARAMETER(target);
+#if A04_SHARED_SD_POWER
+    /* PowerRelations must put the consumer through quiesce/release first.
+     * An unresolved lease is a real failure, never an orderly power-off. */
+    {
+     A04_PARENT_CONTEXT*c=ParentContext(dev);int held;
+     InterlockedExchange(&c->admissionClosed,1);ExAcquireFastMutex(&c->pwrapLock);
+     held=c->sdPower.held;ExReleaseFastMutex(&c->pwrapLock);
+     if(held)return STATUS_DEVICE_BUSY;
+    }
+#endif
+    ParentStop(ParentContext(dev),1);return STATUS_SUCCESS;
 }
 NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
 {
@@ -1542,6 +1576,10 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     wifiIface.Live=ParentWifiLive;wifiIface.UpdateShared=ParentWifiUpdate;wifiIface.WriteShared=ParentWifiWrite;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&wifiIface,&A04SharedWifiInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
+#endif
+#if A04_SHARED_SD_POWER
+    if(!NT_SUCCESS(status))return status;
+    status=ParentSdPublish(dev);if(!NT_SUCCESS(status))return status;
 #endif
 #if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE
     if(!NT_SUCCESS(status))return status;

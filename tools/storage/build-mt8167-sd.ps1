@@ -22,7 +22,7 @@ try {
  $kernelRuntime=Join-Path $km 'libcntpr.lib'
  if(!(Test-Path -LiteralPath $kernelRuntime -PathType Leaf)){throw "Missing real WDK8.1 ARM kernel runtime: $kernelRuntime"}
  $objects=@();$sources=@()
- $paths=@('drivers/storage/mt8167-sd/sd.c','drivers/storage/mt8167-sd/windows.c','drivers/storage/mt8167-sd/scsi.c','drivers/storage/mt8167-sd/control.c',
+ $paths=@('drivers/storage/mt8167-sd/sd.c','drivers/storage/mt8167-sd/windows.c','drivers/storage/mt8167-sd/scsi.c','drivers/storage/mt8167-sd/control.c','drivers/storage/mt8167-sd/power_client.c',
   'drivers/storage/mt8167-msdc/cdb.c','drivers/storage/mt8167-msdc/scsi_capacity.c')
  foreach($path in $paths){
   $obj=Join-Path $out (([IO.Path]::GetFileNameWithoutExtension($path))+'.obj');$objects+=$obj
@@ -38,10 +38,11 @@ try {
    kernel_codegen_flags=$kernelCodegenFlags;kernel_intrinsic_compat_flags=$intrinsicCompatFlags;
    kernel_intrinsic_compat='WDK8.1 obsolete __ldrexd declaration-only alias, matching E/H recipe; no replacement implementation';
    kernel_runtime_path='Lib/winv6.3/km/arm/libcntpr.lib';kernel_runtime_sha256=(Get-FileHash $kernelRuntime -Algorithm SHA256).Hash;
+   sd_power_interface_version=1;power_relations_implemented=$true;
    controller='MediaTek MT8167 MSDC1 microSD';mmio='0x11130000/0x1000';gic_spi=79;gic_intid=111;cd_gpio=20;cd_present_level=1;
    profile='native SD, PIO,1-bit,host clock divisor4 (source/16),512-byte sectors';dma_enabled=$false;boot_storage=$false;
    kernel_driver_link_succeeded=$true;acpi_compiled=$false;signed=$false;windows_enumeration_verified=$false;hardware_rw_verified=$false;
-   platform_dependency='Matched SDCD/SDCF ACPI methods and retained VMC/VMCH3.3V/mux2-source clock/pins during D0';
+   platform_dependency='Matched SDCD/SDCF and shared SD power interface v1, PowerRelations + S0 StopIdle lease';
    sha256=(Get-FileHash (Join-Path $out 'mt8167-sd.sys') -Algorithm SHA256).Hash
  }|ConvertTo-Json -Depth 5|Set-Content -Encoding UTF8 $manifest
 } finally {$env:TMP=$priorTmp;$env:TEMP=$priorTemp}
