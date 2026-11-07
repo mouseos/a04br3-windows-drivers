@@ -58,6 +58,10 @@ void a04_ndis_runtime_snapshot(struct a04_ndis_runtime *a,ULONG channel,ULONG re
  (void)a04_cp_emit(&c,A04_CP_LAST_OID,A04_CP_RESULT,A04_CP_NDIS,a->runtime_last_oid_status,a->runtime_last_oid);
  (void)a04_cp_emit(&c,A04_CP_SCAN_STATE,A04_CP_RESULT,A04_CP_OBSERVATION,
    (!!b->scan.pending)|((!!b->scan.complete)<<1),b->scan.failed);
+ (void)a04_cp_emit(&c,A04_CP_RX_RESULT,A04_CP_RESULT,A04_CP_BACKEND,a->radio.rx_error,a->radio.rx_phase);
+ (void)a04_cp_emit(&c,A04_CP_RX_DESCRIPTOR,A04_CP_RESULT,A04_CP_OBSERVATION,a->radio.rx_bytes,a->radio.rx_descriptor);
+ (void)a04_cp_emit(&c,A04_CP_AP_REJECT,A04_CP_RESULT,A04_CP_BACKEND,a->radio.rejected_ap_error,a->radio.rejected_aps);
+ (void)a04_cp_emit(&c,A04_CP_AP_REJECT_DESCRIPTOR,A04_CP_RESULT,A04_CP_OBSERVATION,a->radio.rejected_ap_bytes,a->radio.rejected_ap_descriptor);
  (void)a04_cp_emit(&c,A04_CP_RUNTIME_RESULT,A04_CP_RESULT,A04_CP_BACKEND,result,phase);
  (void)a04_cp_finish(&c,A04_CP_RUNTIME_RESULT,A04_CP_BACKEND,result);
 }

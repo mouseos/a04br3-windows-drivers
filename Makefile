@@ -1600,3 +1600,9 @@ test-mt6630-station-notification:
 	mkdir -p build
 	$(CC) $(CFLAGS) -Wno-unused-parameter -Wno-misleading-indentation -ffunction-sections -fdata-sections drivers/network/mt6630/station_runtime.c tests/mt6630_station_notification_test.c -Wl,--gc-sections -o build/mt6630_station_notification_test
 	./build/mt6630_station_notification_test
+
+.PHONY: test-mt6630-scan-candidate
+test-mt6630-scan-candidate:
+	mkdir -p build
+	$(CC) $(CFLAGS) -Wno-unused-parameter -Wno-misleading-indentation -ffunction-sections -fdata-sections tests/mt6630_scan_candidate_test.c -Wl,--gc-sections -o build/mt6630_scan_candidate_test
+	./build/mt6630_scan_candidate_test

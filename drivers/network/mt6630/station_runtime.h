@@ -13,6 +13,9 @@ struct a04_station_runtime {
  int (*exclude_bssid)(void *,const uint8_t *);
  const uint8_t *association_ies;unsigned association_ies_length;
  unsigned initialized,connecting,connected,phase;int failed;
+ /* Descriptor-only observations; no MAC/SSID/key material. First rejected AP retained. */
+ unsigned rx_phase,rx_bytes,rx_descriptor,rx_error;
+ unsigned rejected_aps,rejected_ap_error,rejected_ap_bytes,rejected_ap_descriptor;
  void *context;uint64_t (*now)(void *);uint64_t (*system_time)(void *);void (*wait)(void *,unsigned);
  int (*cancelled)(void *);
  int (*event)(void *,const uint8_t *,unsigned,uint64_t);

@@ -1,0 +1,9 @@
+# run73後のscan候補拒否の分離
+
+run73 build1011の初回RuntimeFailureはpoll phase1 / A04_WLAN_FORMAT81、WHISR2、host/transport failed0。Initialize generation48とRuntimeFailure50/Scan53のparent48が一致する。0x51はエラー値でRX lengthではない。正確なparser分岐は実記録にないため原因確定とはしない。
+
+Linux gen3 nicRxProcessRFBsとscanProcessBeaconAndProbeResp/scanAddToBssDescは受信候補の拒否をscanトランザクションの失敗と分ける。本実装はbeacon/probe responseのAP解釈拒否でradio全体をfailedにしていた。厳格なAP parserは維持し、不適合候補を破棄する。firmware scan-done、transport/descriptorの失敗処理とtimeoutは維持する。実結果とscan-doneは合成しない。
+
+1624byte/schema1の4channelにRX_RESULT89/RX_DESCRIPTOR90/AP_REJECT91/AP_REJECT_DESCRIPTOR92を追加。descriptor種別と長さ・parser段階・最初の候補拒否と飽和件数だけを記録し、MAC/SSID/鍵は保存しない。追加HIF readなし。
+
+実parserのchannel不一致/不正IE破棄→正規候補受理、scan未完了保持、descriptor不整合のfatal維持をhost検証。構造体変更があるためNDIS側12objを再compileし、変更のないcoreだけhash照合して再利用する。実機未投入。

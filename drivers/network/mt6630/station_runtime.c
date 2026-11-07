@@ -17,20 +17,30 @@ int a04_station_runtime_init(struct a04_station_runtime *r,struct a04_wmt_bridge
 static int packet(struct a04_station_runtime *r,const uint8_t *p,unsigned n)
 {
  struct a04_wmt_bridge *b=r->bridge;struct a04_wlan_rx_frame frame;uint64_t now=r->now(r->context);int e;
+ r->rx_bytes=n;r->rx_descriptor=n>=4?a04_wmt_le16(p+2):0;r->rx_error=0;r->rx_phase=1;
  if(n>=8&&a04_wmt_le16(p+2)==0xe000){
-  struct a04_wlan_event v;e=a04_wlan_event_parse(p,n,&v);if(e)return fail(r,e);
+  struct a04_wlan_event v;e=a04_wlan_event_parse(p,n,&v);if(e){r->rx_error=e;return fail(r,e);}
   if(v.id==0x0d&&b->scan.pending){e=a04_wmt_bridge_scan_event(b,p,n);if(e)return fail(r,e);}
   else if(r->connecting){e=a04_wmt_bridge_station_event(b,&r->station,p,n,now);if(e&&e!=A04_WLAN_UNSUPPORTED)return fail(r,e);}
   if(r->event&&r->event(r->context,p,n,now))return fail(r,-1);
   return 0;
  }
  if(r->data){e=r->data(r->context,p,n);if(e!=A04_WLAN_UNSUPPORTED)return e?fail(r,e):0;}
- e=a04_wlan_rx_frame_parse(p,n,&frame);if(e==A04_WLAN_UNSUPPORTED)return 0;if(e)return fail(r,e);
+ r->rx_phase=2;
+ e=a04_wlan_rx_frame_parse(p,n,&frame);if(e==A04_WLAN_UNSUPPORTED)return 0;if(e){r->rx_error=e;return fail(r,e);}
  if(!frame.length)return fail(r,-1);
  if((frame.data[0]==0x80||frame.data[0]==0x50)&&b->scan.pending){
   struct a04_wlan_ap ap;unsigned i;
-  e=a04_wlan_ap_parse(frame.data,frame.length,frame.channel,&ap);
-  if(e)return e==A04_WLAN_UNSUPPORTED?0:fail(r,e);
+  r->rx_phase=3;e=a04_wlan_ap_parse(frame.data,frame.length,frame.channel,&ap);
+  /* Linux gen3 scanProcessBeaconAndProbeResp/scanAddToBssDesc reject a
+   * candidate without aborting the scan. An untrusted/mismatched beacon
+   * must not poison the combo owner. Keep the strict parser and discard
+   * its output; only the actual firmware scan-done event completes scan. */
+  if(e){
+   if(!r->rejected_aps){r->rejected_ap_error=e;r->rejected_ap_bytes=n;r->rejected_ap_descriptor=r->rx_descriptor;}
+   if(r->rejected_aps!=0xffffffffu)r->rejected_aps++;
+   return 0;
+  }
   if(!(b->regulatory.permitted&(1u<<ap.channel))||(r->exclude_bssid&&r->exclude_bssid(r->context,ap.mac)))return 0;
   if(frame.length-36>sizeof(r->bss[0].ies))return 0;
   for(i=0;i<r->bss_count;i++)if(a04_wlan_equal(r->bss[i].ap.mac,ap.mac,6))break;
@@ -72,7 +82,8 @@ int a04_station_runtime_poll(struct a04_station_runtime *r)
    e=a04_wlan_read(&b->wlan,0x90,&lengths);if(e)return fail(r,e);
    if(!((lengths>>(16*port))&0xffffu))break;
    if(++packets>64)return fail(r,A04_WLAN_STATUS);
-   e=a04_wmt_bridge_receive(b,port,1,&p,&n);if(e)return fail(r,e);
+   r->rx_phase=4;
+   e=a04_wmt_bridge_receive(b,port,1,&p,&n);if(e){r->rx_error=e;return fail(r,e);}
    e=packet(r,p,n);a04_wlan_secret_clear(b->wlan.rx,sizeof(b->wlan.rx));if(e)return fail(r,e);
   }
  }
