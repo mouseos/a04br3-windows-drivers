@@ -53,3 +53,13 @@ hostの単一`tests/lifecycle.c`でpending解放拒否、古い世代拒否、�
 - Microsoft [D3D11CreateDevice](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-d3d11createdevice)、[Map](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-map)。
 
 ソースはBSD-2-Clause-Patent。一次資料・生ログはソースへ混ぜず作業ルートのport/gsi/logs/ios-feasibility/windows-rt-wddm-render-source-20261107/へ保存しています。
+
+## a40a5d3の実WDK8.1エラー修正
+
+主担当のa40固定ARM32 buildは`__try`非対応と旧WDK intrin.hの`__ldrexd`宣言衝突で失敗。host x64構文成功をARM build成功とは扱いません。
+
+`pCommand`はMicrosoft DxgkDdiRender仕様で未加工user VAです。`capture.c`はuser範囲を全長検査し、Windows 8.1からのMmCopyMemory(MM_COPY_MEMORY_VIRTUAL)で固定32byteだけを実NonPagedPoolへ回収します。全量コピー成功後のみkernel snapshotを解析。invalid/unmap/partial copyはstatusを返し、元user bufferを直接dereferenceしません。ProbeForReadだけでraceを防いだとは扱わず、SEHを単に除去したunsafe copyにも置換しません。
+
+buildはClangの実resource/includeをkm/crtより先に指定し、compiler builtinと整合するintrin.hを選びます。旧宣言の改名やSDK改変、偽intrinsic実装はありません。再buildは主担当のみ、現修正の実WDK build/link結果は未受領です。
+
+一次根拠: [DxgkDdiRender Remarks](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkddi_render)（pCommand=user、allocation list=kernel変換済み）、[MmCopyMemory](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/nf-ntddk-mmcopymemory)（Win8.1以降、非pageable target、current-process user VA、fault/partial-copy status）。

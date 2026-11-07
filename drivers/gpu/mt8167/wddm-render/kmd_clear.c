@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "kmd_clear.h"
+#include "capture.h"
 static int ticket_range(UINT size,UINT begin,UINT end) {
  return begin<=size&&end>=begin&&end-begin==sizeof(struct geo_dma_ticket)&&end<=size;
 }
@@ -60,12 +61,12 @@ static BOOLEAN finish_prepare(void *ctx) {
 }
 NTSTATUS APIENTRY GeoRender(HANDLE context,DXGKARG_RENDER *r) {
  struct geo_kmd_context *c=context;struct prepare_call call;struct geo_clear_packet p;struct geo_dma_ticket t;
- struct geo_allocation *a;
+ struct geo_allocation *a;NTSTATUS capture_status;
  if(!c||!c->adapter||!c->adapter->notifications_ready||!c->adapter->synchronize||!r||KeGetCurrentIrql()!=PASSIVE_LEVEL||!r->pCommand||r->CommandLength!=sizeof(p)||
     r->DmaBufferSegmentId||r->MultipassOffset||r->AllocationListSize!=1||!r->pAllocationList||r->PatchLocationListInSize||
     !r->pDmaBuffer||r->DmaSize<sizeof(t)||!r->pDmaBufferPrivateData||r->DmaBufferPrivateDataSize<sizeof(t))return STATUS_INVALID_PARAMETER;
- __try { RtlCopyMemory(&p,r->pCommand,sizeof(p)); }
- __except(EXCEPTION_EXECUTE_HANDLER) { return GetExceptionCode(); }
+ capture_status=GeoCaptureClearPacket(&p,r->pCommand);
+ if(capture_status!=STATUS_SUCCESS)return capture_status;
  if(!geo_packet_valid(&p,1)||!r->pAllocationList[0].WriteOperation)return STATUS_INVALID_PARAMETER;
  a=r->pAllocationList[0].hDeviceSpecificAllocation;
  /* Full CreateAllocation/DestroyAllocation owns and validates this handle.
