@@ -7,9 +7,9 @@ run29のGPU更新で実機確認された `DI_ENUMSINGLEINF | DI_DONOTCALLCONFIG
 
 | 順序 | 固定hardware ID | package role | INF最低版（dateは全て11/06/2026） |
 | --- | --- | --- | --- |
-| 1 | `ACPI\BEN0001` | parent | 2026.11.7.1005 |
+| 1 | `ACPI\BEN0001` | parent | 2026.11.7.1006 |
 | 2 | `MT8167\AFE` | audio | 2026.11.7.1004 |
-| 3 | `MT8167\USB20` | usb | 2026.11.6.1002 |
+| 3 | `MT8167\USB20` | usb | 2026.11.6.1003 |
 | 4 | `A04BR3\MT6630SDIO` | wifi | 2026.11.6.1003 |
 | 5 | `ACPI\MOU0007` | display (brightness DOD) | 0.0.1.4 |
 
@@ -21,10 +21,12 @@ APIの文書契約: [SP_DEVINSTALL_PARAMS_W](https://learn.microsoft.com/windows
 ## 固定署名入力とビルド
 
 新combined親/USBは `63cbd9f`（Carver `5290ebb`の統合済み変更）を含むsourceから
-別途WDKでbuildする。Engine親INF1005をprototype親INF1002と混同しない。
+別途WDKでbuildする。新batchはEngine親INF1006とUSB INF1003を必須とする。旧親1005/993候補は保持するが選択しない。
 既存Engine親manifestの全flagを復元し、USBは
 `A04_MUSB_HOST_CORE_EXPERIMENT=1` / `A04_MUSB_HID_CONTROL_EXPERIMENT=1`を指定する。
-音声SYSの再compileは不要。USBだけ新しくして旧993親と組み合わせた成功を推定しない。
+正式standalone helperは実INFを出力へコピーし、実INFのDriverVerをmanifestへ取得する。
+親/USB双方に非VFP/NEON codegen flagsとWDK `libcntpr.lib`を追加した
+`cb8e662` / `8d0f8ec` を統合済み。音声2f SYSの再compileは不要。USBだけ新しくして旧993親と組み合わせた成功を推定しない。
 WiFiはTesla `b6b715f88a3ebd2ffceda72f32ae0ec72422447b` / INF1003以降の新SYSを用意する。
 旧d751c67/1002はこのモードでは拒否し、旧候補自体は変更しない。
 
@@ -41,7 +43,7 @@ WiFiはTesla `b6b715f88a3ebd2ffceda72f32ae0ec72422447b` / INF1003以降の新SYS
       "manifest_sha256": "<signed-manifest.jsonの実SHA256>",
       "source_commit": "<wrapper source_commitの完全40桁hex>",
       "certificate_thumbprint": "<このpackageの実cert SHA1>",
-      "driver_ver": "11/06/2026,2026.11.7.1005"
+      "driver_ver": "11/06/2026,2026.11.7.1006"
     }
   },
   "clients": {

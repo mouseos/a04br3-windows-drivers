@@ -11,9 +11,9 @@ from private_hardware_probe_input import sha
 
 # Target paths/IDs are source constants, never supplied by a package or command.
 TARGETS = {
-    'parent': ('ACPI\\BEN0001', 'shared-parent', 'mt8167-shared', 'MT8167Shared', (2026,11,7,1005)),
+    'parent': ('ACPI\\BEN0001', 'shared-parent', 'mt8167-shared', 'MT8167Shared', (2026,11,7,1006)),
     'audio': ('MT8167\\AFE', 'mt8167-afe-engine-pcm', 'mt8167-audio', 'Mt8167Audio', (2026,11,7,1004)),
-    'usb': ('MT8167\\USB20', 'mt8167-usb20', 'mt8167-usb20', 'A04Usb20Keyboard', (2026,11,6,1002)),
+    'usb': ('MT8167\\USB20', 'mt8167-usb20', 'mt8167-usb20', 'A04Usb20Keyboard', (2026,11,6,1003)),
     'wifi': ('A04BR3\\MT6630SDIO', 'mt6630-runtime', 'mt6630-runtime', 'MT6630Runtime', (2026,11,6,1003)),
     'display': ('ACPI\\MOU0007', 'mt8167-display', 'mt8167-display', 'MT8167Display', (0,0,1,4)),
 }

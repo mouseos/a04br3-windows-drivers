@@ -410,6 +410,18 @@
     "native_execution_verified_here": false,
     "hardware_verified_here": false,
     "power_request": "SystemRequired scoped to install, diagnosis and bounded reboot waiter",
-    "readme": "tools/winpe/README-engine-deferred-update.md"
+    "readme": "tools/winpe/README-engine-deferred-update.md",
+    "matched_parent_usb_recipe_original_commits": [
+      "cb8e6620f9a55a8738716617b24c801a5798736a",
+      "8d0f8ecba41e2bb9e6482a174fecf189b0881204"
+    ],
+    "matched_parent_usb_recipe_integrated_commits": [
+      "278840b",
+      "b346d63"
+    ],
+    "minimum_parent_driver_ver": "11/06/2026,2026.11.7.1006",
+    "minimum_usb_driver_ver": "11/06/2026,2026.11.6.1003",
+    "previous_parent1005_993_candidate_retained": true,
+    "audio2f_recompiled_here": false
   }
 }
