@@ -95,7 +95,15 @@ def prepared_system_check(system, manifest, expected_sha256, root, backup, selec
             if values[name]['kind'] != kind or values[name]['value'] != value:
                 raise ValueError('HardwareProbe値または型不一致: ' + name)
         before, after = state['related_fingerprints_before'], state['related_fingerprints_after']
-        if set(before) != {'select', 'device_install', 'rpc_ss'} or before != after:
+        related_names={'select','device_install','rpc_ss'}
+        if selected_service=='MT8167RenderSingleGpu':
+            if (not re.fullmatch('[0-9a-f]{64}',report.get('engine_preservation_plan_sha256',''))
+                    or report.get('engine_rearm_plan_sha256')
+                    or before.get('engine_service')!='dbbe363d2401dfc022606aba010c0e4888c5feab67c748ea5030b0eb3ba484c1'
+                    or not re.fullmatch('[0-9a-f]{64}',before.get('engine_ledger',''))):
+                raise ValueError('single GPUの既存Engine保持証拠が必要です')
+            related_names|={'engine_service','engine_ledger'}
+        if set(before) != related_names or before != after:
             raise ValueError('関連既存設定の限定fingerprint不一致')
         if baseline is not None and before != baseline:
             raise ValueError('native patchとclean reloadの関連設定不一致')
