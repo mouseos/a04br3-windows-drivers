@@ -64,7 +64,7 @@ NTSTATUS a04_vendor_native_prepare_job_cold(struct a04_vendor_native_cold *n)
        !n->backing_staged || !n->output_mapped || n->code_mapped!=3u ||
        n->width!=800u || n->height!=600u || r->buffer[0].bytes!=65536u ||
        n->suffix_offset>n->used || n->used-n->suffix_offset!=4096u ||
-       !n->code[0].cpu || !n->code[1].cpu || !n->data.cpu || !n->output[0].cpu)
+       !n->code[0].cpu || !n->code[1].cpu || !n->data.cpu || !a04_vendor_native_output_ready(n))
         return STATUS_INVALID_DEVICE_STATE;
     if(a04_m111_build_single_rt_hwrt_profile(profile,800,600,&n->target,&n->mlists))return status;
     if(!data_span(n,n->target.region_gpu[0],n->target.region_used) ||

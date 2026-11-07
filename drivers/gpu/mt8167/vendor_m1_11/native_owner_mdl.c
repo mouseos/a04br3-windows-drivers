@@ -8,7 +8,7 @@
 #define MAX_BYTES 4194304u
 #define MAX_SG 256u
 struct a04_native_mdl_binding {
-    PDMA_ADAPTER adapter;PMDL mdl;void *cpu;ULONG bytes,pages,maps;
+    PDMA_ADAPTER adapter;PMDL mdl;void *cpu;ULONG bytes,pages,maps,targets;
     struct a04_native_mdl_lease lease;
     PSCATTER_GATHER_LIST sg[64];uint64_t dma[1024];BOOLEAN retained,exposed;
 };
@@ -22,7 +22,7 @@ NTSTATUS a04_native_mdl_release_cold(struct a04_native_mdl_binding **owner)
 {
     struct a04_native_mdl_binding *b;
     if(!owner || !(b=*owner) || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
-    if(b->exposed)return STATUS_DEVICE_BUSY;
+    if(b->exposed || b->targets)return STATUS_DEVICE_BUSY;
     while(b->maps){b->maps--;b->adapter->DmaOperations->PutScatterGatherList(b->adapter,b->sg[b->maps],FALSE);}
     if(b->retained)b->lease.release(b->lease.context,b->mdl);
     ExFreePoolWithTag(b,TAG);*owner=NULL;return STATUS_SUCCESS;
@@ -87,7 +87,7 @@ void *a04_native_mdl_cpu(const struct a04_native_mdl_binding *b){return b?b->cpu
 PMDL a04_native_mdl_original(const struct a04_native_mdl_binding *b){return b?b->mdl:NULL;}
 NTSTATUS a04_native_mdl_sync_for_gpu(struct a04_native_mdl_binding *b)
 {
-    if(!b || !b->retained || b->exposed || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+    if(!b || !b->retained || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
     KeFlushIoBuffers(b->mdl,FALSE,TRUE);a04_gpu_dma_barrier();return STATUS_SUCCESS;
 }
 NTSTATUS a04_native_mdl_sync_for_cpu(struct a04_native_mdl_binding *b)
@@ -99,4 +99,17 @@ NTSTATUS a04_native_mdl_mark_exposed(struct a04_native_mdl_binding *b)
 {
     if(!b || !b->retained || b->exposed || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
     b->exposed=TRUE;return STATUS_SUCCESS;
+}
+
+ULONG a04_native_mdl_extent(const struct a04_native_mdl_binding *b){return b?b->bytes:0;}
+PDMA_ADAPTER a04_native_mdl_adapter(const struct a04_native_mdl_binding *b){return b?b->adapter:NULL;}
+NTSTATUS a04_native_mdl_hold_cold(struct a04_native_mdl_binding *b)
+{
+    if(!b || !b->retained || b->exposed || b->targets || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+    b->targets=1;return STATUS_SUCCESS;
+}
+NTSTATUS a04_native_mdl_drop_cold(struct a04_native_mdl_binding *b)
+{
+    if(!b || b->exposed || b->targets!=1 || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+    b->targets=0;return STATUS_SUCCESS;
 }

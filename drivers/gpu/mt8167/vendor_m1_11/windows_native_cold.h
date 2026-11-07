@@ -46,6 +46,11 @@ NTSTATUS a04_vendor_native_run_once(struct a04_vendor_native_cold *,
  * packet entry. Requires the same lifetime/admission as run_once. */
 NTSTATUS a04_vendor_native_run_clear_frames(struct a04_vendor_native_cold *,
     struct a04_vendor_start *,ULONG,struct a04_vendor_native_result *);
+struct a04_native_mdl_binding;
+/* Optional source-linked miniport profile: never started firmware, same
+ * validated800x600 job, full rounded locked-MDL extent. No IRQ/cap publish. */
+NTSTATUS a04_vendor_native_attach_mdl_target_cold(struct a04_vendor_native_cold *,struct a04_native_mdl_binding *);
+NTSTATUS a04_vendor_native_target_before_fw_start(struct a04_vendor_native_cold *);
 /* Independently derived HWRT register input; bank bind is not drawing. */
 NTSTATUS a04_vendor_native_bind_bank_cold(struct a04_vendor_native_cold *,
     const struct a04_m111_hwrt_input *);

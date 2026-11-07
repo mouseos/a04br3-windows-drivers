@@ -1,3 +1,7 @@
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+#include "windows_render_cold.h"
+#include "windows_native_cold.h"
+#endif
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "windows_start.h"
 #include "windows_clock.h"
@@ -114,6 +118,15 @@ NTSTATUS a04_vendor_m1_11_windows_start(struct a04_vendor_start *s,
     io.wait_us=delay;io.shared32=shared;
     /* From this point neither the stage nor trampoline may be freed until a
      * separate implementation proves both GPU reset and fabric quiescence. */
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+    if(m->render_owner){
+        struct a04_vendor_render_cold *render=m->render_owner;
+        if(render->native_owner){
+            status=a04_vendor_native_target_before_fw_start(render->native_owner);
+            if(!NT_SUCCESS(status))goto fail;
+        }
+    }
+#endif
     m->hardware_owned=TRUE;s->attempted=TRUE;
     result=a04_rgx_execute_start(&input,&io,&irq,irq_mode==A04_VENDOR_IRQ_HANDLER_OWNS);
     if(!result) {

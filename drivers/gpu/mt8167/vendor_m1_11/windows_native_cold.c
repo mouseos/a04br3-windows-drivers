@@ -9,6 +9,9 @@
 #include "A04BR3RogueDeviceWords.h"
 #include "../gpu_mmu.h"
 #include "../windows_hw.h"
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+#include "native_owner_mdl.h"
+#endif
 #define TAG 0x6e47504du
 #define ROUND_PAGE(n) (((n)+4095u)&~4095u)
 _Static_assert(sizeof(struct a04_m111_native_bank)==0x400,"native FW bank ABI");
@@ -55,6 +58,13 @@ static NTSTATUS release_contents(struct a04_vendor_native_cold *n)
     }
 #if A04_GE8300_VENDOR_NATIVE_CLEAR_JOB
     a04_vendor_native_free_job_cold(n);
+#endif
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+    if(n->registered_target){
+        NTSTATUS target_status=a04_native_mdl_drop_cold(n->registered_target);
+        if(!NT_SUCCESS(target_status))return target_status;
+        n->registered_target=NULL;
+    }
 #endif
     a04_vendor_native_storage_free(n,1);
     for(unsigned i=1;i<4;i++)a04_vendor_uncached_free(&n->output[i]);

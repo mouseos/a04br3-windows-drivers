@@ -5,6 +5,9 @@
  */
 #include "windows_native_job_private.h"
 #include "windows_native_submit.h"
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+#include "native_owner_mdl.h"
+#endif
 #include "windows_start.h"
 #include "A04BR3RogueRuntimeLayout.h"
 #include "A04BR3RogueDeviceWords.h"
@@ -48,7 +51,7 @@ NTSTATUS a04_vendor_native_publish_candidate(struct a04_vendor_native_cold *n,
        r->native_owner!=n || !(c=n->candidate) || n->quarantined || r->poisoned ||
        r->cleanup_started || c->attempted || !n->mapped || !n->prepared || !n->bank_prepared ||
        !n->backing_staged || !n->output_mapped || n->code_mapped!=3u ||
-       n->width!=800u || n->height!=600u || !n->output[0].cpu || n->pixel_blocks!=(A04_NATIVE_OUTPUT_BYTES+A04_NATIVE_BLOCK_BYTES-1u)/A04_NATIVE_BLOCK_BYTES ||
+       n->width!=800u || n->height!=600u || !a04_vendor_native_output_ready(n) ||
        !s->online || !s->core || s->memory!=r->firmware ||
        !s->memory || !s->memory->hardware_owned || !s->memory->uncached ||
        !(f=s->memory->runtime) || !f->kctl || !f->fctl || !f->kcommands || !f->command_sync ||
@@ -115,7 +118,10 @@ NTSTATUS a04_vendor_native_publish_candidate(struct a04_vendor_native_cold *n,
         KeStallExecutionProcessor(50);
     }
     if(!NT_SUCCESS(status))goto poison;
-    for(i=0;i<A04_NATIVE_OUTPUT_BYTES/4u;i+=64u){
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+    if(n->registered_target){status=a04_native_mdl_sync_for_cpu(n->registered_target);if(!NT_SUCCESS(status))goto poison;}
+#endif
+    for(i=0;i<a04_vendor_native_output_bytes(n)/4u;i+=64u){
         if(a04_vendor_native_storage_read(n,1,i*4u,pixels,sizeof(pixels)))goto poison;
         for(j=0;j<64u;j++)if(i+j<480000u){
             if(pixels[j]==0xff332211u)out->matching_pixels++;else out->mismatched_pixels++;
@@ -186,12 +192,15 @@ static NTSTATUS rearm_clear(struct a04_vendor_native_cold *n,struct a04_vendor_s
     /* Prove each frame changed the full owned target, even for equal colours.
      * No previous frame may satisfy the next frame's pixel check. */
     for(i=0;i<64;i++)words[i]=0xa5a5a5a5u;
-    for(i=0;i<A04_NATIVE_OUTPUT_BYTES;i+=sizeof(words)){
+    for(i=0;i<a04_vendor_native_output_bytes(n);i+=sizeof(words)){
         if(a04_vendor_native_storage_write(n,1,i,words,sizeof(words)))goto done;
         a04_gpu_dma_barrier();
         if(a04_vendor_native_storage_read(n,1,i,seen,sizeof(seen)))goto done;
         for(j=0;j<64;j++)if(seen[j]!=words[j])goto done;
     }
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+    if(n->registered_target){status=a04_native_mdl_sync_for_gpu(n->registered_target);if(!NT_SUCCESS(status))goto done;}
+#endif
     for(i=0;i<2;i++){
         if(a04_rgx_device_write_words((UCHAR *)r->buffer[0].cpu+r->layout.commands[i],c->rings+i*4096u,4096u))goto done;
         a04_gpu_dma_barrier();
