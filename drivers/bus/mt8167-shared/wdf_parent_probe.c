@@ -6,6 +6,7 @@
 #include <ntddk.h>
 #include <wdf.h>
 #include "parent_resources.h"
+#include "usb_admission.h"
 #include "pwrap_owner.h"
 #include "register_owner.h"
 #include "client_interface.h"
@@ -896,7 +897,7 @@ static int ParentUsbProbeSource(void *p)
  input=ParentUsbGpioRead(c,0x220);
  /* PC cable: ID41 is high or external VBUS detect34 is low. Decline before
   * any pin, clock, rail or PHY change. This is eligibility, not a fault. */
- return (input&(1u<<9)) || !(input&(1u<<2)) ? -1:0;
+ return A04UsbAdmission(input);
 }
 static int ParentUsbSourceAcquire(void *p)
 {

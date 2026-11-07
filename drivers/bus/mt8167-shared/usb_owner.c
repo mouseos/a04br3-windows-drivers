@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "usb_owner.h"
+#include "usb_admission.h"
 #define USB_GATE (1u<<13)
 #define USBIF_GATE (1u<<24)
 #define USB78_GATE (1u<<31)
@@ -10,7 +11,10 @@ int a04_usb_owner_acquire(struct a04_usb_owner *o)
  int r=-1, gpio_attempted=0; unsigned clk1,clk2; uint16_t rail;
  if(enter(o))return -1;
  if(!o->online || o->leased || o->poisoned || !o->verify_upstream || !o->top_read || !o->top_write || !o->pmic || o->pmic->poisoned)goto done;
- if(o->probe_source && o->probe_source(o->context))goto done;
+ if(o->probe_source) {
+  int admission=o->probe_source(o->context);
+  if(admission) { r=A04UsbAdmissionWait(admission)?admission:-1; goto done; }
+ }
  if(o->verify_upstream(o->context) || a04_pmic_vusb_get(o->pmic,&rail))goto fail;
  /* Configure GPIO low before enabling the output. Never repurpose its mux. */
  gpio_attempted=1; if(A04Gpio22Prepare(&o->gpio))goto fail;

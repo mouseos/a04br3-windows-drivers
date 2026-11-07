@@ -9,7 +9,8 @@
 struct a04_usb_owner {
  void *context; int (*lock)(void *); void (*unlock)(void *);
  /* Optional read-only eligibility probe. Rejection is temporary and occurs
-  * before GPIO/clock/PMIC changes; it must not poison the shared parent. */
+  * before GPIO/clock/PMIC changes; it must not poison the shared parent.
+  * Only usb_admission.h positive wait codes are propagated to the child. */
  int (*probe_source)(void *);
  int (*verify_upstream)(void *);
  int (*verify_overcurrent)(void *);
