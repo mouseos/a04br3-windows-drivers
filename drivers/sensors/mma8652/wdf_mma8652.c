@@ -9,6 +9,12 @@
 #include "mma8652.h"
 #include "mt8167_i2c.h"
 #include "sensor_hid.h"
+#ifndef A04_MMA_SHARED_CAMERA_STREAM
+#define A04_MMA_SHARED_CAMERA_STREAM 0
+#endif
+#if A04_MMA_SHARED_CAMERA_STREAM && !A04_MMA_SHARED_IDENTITY
+#error Camera register interface requires shared identity owner
+#endif
 #ifndef A04_MMA_SHARED_IDENTITY
 #define A04_MMA_SHARED_IDENTITY 0
 #endif
@@ -28,7 +34,7 @@ typedef struct {
     volatile ULONG *uart; ULONG trace_count;
     LARGE_INTEGER counter_frequency; ULONG samples;
 #if A04_MMA_SHARED_IDENTITY
-    A04_HI556_POWER_INTERFACE quarantined_power;ULONG quarantined_token;BOOLEAN power_quarantined;
+    A04_HI556_POWER_INTERFACE quarantined_power;ULONG quarantined_token;BOOLEAN power_quarantined,camera_identified;
 #endif
 } ACC_CONTEXT;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(ACC_CONTEXT, AccContext)
@@ -145,6 +151,7 @@ NTSTATUS AccD0(WDFDEVICE dev, WDF_POWER_DEVICE_STATE previous)
     UNREFERENCED_PARAMETER(previous);
 #if A04_MMA_SHARED_IDENTITY
     if(c->power_quarantined)return STATUS_DEVICE_NOT_READY;
+    c->camera_identified=FALSE;
 #endif
     trace(c,"D0_ENTRY",previous);
     (VOID)KeQueryPerformanceCounter(&c->counter_frequency);

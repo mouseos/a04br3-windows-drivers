@@ -1,5 +1,8 @@
 # HI556 背面カメラの最小source port準備
 
+> 後続の統合RAW候補は[CAPTURE-CANDIDATE.md](CAPTURE-CANDIDATE.md)を参照。
+> 以下はidentity/shared-owner段階の履歴で、未実装との記述は当時の状態。
+
 ## センサー調査の結論
 
 A04BR3専用DTSとdefconfigでは、追加のALS/近接/gyro/磁気/気圧ICを特定できない。

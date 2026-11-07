@@ -1,7 +1,8 @@
 # Fixed-source WDK8.1 ARM package, sole I2C1 owner remains the MMA provider.
 [CmdletBinding()]
-param([Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$SharedIdentity,[string]$CertificateThumbprint)
+param([Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$SharedIdentity,[switch]$SharedCameraStream,[string]$CertificateThumbprint)
 $ErrorActionPreference='Stop'
+if($SharedCameraStream -and !$SharedIdentity){throw 'Camera stream requires SharedIdentity'}
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $out=[IO.Path]::GetFullPath($OutputDirectory)
 if(!$out.StartsWith($root+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase) -or (Test-Path $out)){throw 'Require a new output inside this checkout'}
@@ -19,10 +20,10 @@ $oldTemp=$env:TEMP;$oldTmp=$env:TMP;$oldRunner=$env:RUNNER_TEMP
 try {
  $env:TEMP="$out\tmp";$env:TMP=$env:TEMP;$env:RUNNER_TEMP=$env:TEMP
  $flags=@('--target=thumbv7-pc-windows-msvc','-std=c11','-O2','-w','-fms-extensions','-ffreestanding','-fno-stack-protector','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-mfpu=none','-D_KERNEL_MODE','-D_ARM_','-DARM','-DKMDF_VERSION_MAJOR=1','-DKMDF_VERSION_MINOR=13','-DNTDDI_VERSION=0x06030000','-D_WIN32_WINNT=0x0603',"-I$inc\km","-I$inc\shared","-I$inc\um","-I$inc\wdf\kmdf\1.13")
- $objects=@();$flag=[int][bool]$SharedIdentity
+ $objects=@();$flag=[int][bool]$SharedIdentity;$stream=[int][bool]$SharedCameraStream
  foreach($name in @('mma8652','mt8167_i2c','sensor_hid','wdf_mma8652')){
   $obj="$out\$name.obj"
-  & clang @flags "-DA04_MMA_SHARED_IDENTITY=$flag" -DMMA8652_UART_TRACE=0 -c "$root\drivers\sensors\mma8652\$name.c" -o $obj
+  & clang @flags "-DA04_MMA_SHARED_IDENTITY=$flag" "-DA04_MMA_SHARED_CAMERA_STREAM=$stream" -DMMA8652_UART_TRACE=0 -c "$root\drivers\sensors\mma8652\$name.c" -o $obj
   if($LASTEXITCODE){throw "Compile failed $name"};$objects+=$obj
  }
  & clang @flags -c "$root\drivers\bus\mt8167-i2c\pio.c" -o "$out\pio.obj"
@@ -41,6 +42,9 @@ try {
  & lld-link /dll /noentry /subsystem:native /machine:arm /nodefaultlib @camera "$km\ntoskrnl.lib" "$km\hal.lib" "$km\bufferoverflowfastfailk.lib" "$km\libcntpr.lib" /export:a04_hi556_owner_open /export:a04_hi556_owner_close /export:a04_hi556_owner_identify /export:a04_hi556_power_start "/out:$out\hi556-owner-linkcheck.dll"
  if($LASTEXITCODE){throw 'Camera kernel import link check failed'}
  Copy-Item "$root\drivers\sensors\mma8652\mma8652.inf" "$out\package"
+ if($SharedCameraStream){
+  $inf="$out\package\mma8652.inf";[IO.File]::WriteAllText($inf,[IO.File]::ReadAllText($inf).Replace('0.0.2.0','0.0.2.1'),[Text.Encoding]::ASCII)
+ }
  & "$kit\bin\x86\Inf2Cat.exe" "/driver:$out\package" /os:6_3_ARM /uselocaltime
  if($LASTEXITCODE){throw 'Inf2Cat failed'}
  if($CertificateThumbprint){
@@ -58,10 +62,10 @@ try {
 } finally {$env:TEMP=$oldTemp;$env:TMP=$oldTmp;$env:RUNNER_TEMP=$oldRunner}
 [ordered]@{
  source_commit=$commit;source_dirty=$false;mma_runtime_baseline=$baseline
- version='0.0.2.0';shared_identity=[bool]$SharedIdentity;shared_identity_default=$false
+ version=$(if($SharedCameraStream){'0.0.2.1'}else{'0.0.2.0'});shared_camera_stream=[bool]$SharedCameraStream;shared_identity=[bool]$SharedIdentity;shared_identity_default=$false
  sole_mmio_owner='MMA8652 existing I2C1 FDO';transport='referenced IRP_MN_QUERY_INTERFACE'
  board_power_provider_implemented=$false;camera_bindable=$false;hardware_verified=$false
- axis_hid_identity_core_blobs_preserved=$true;critical_flags=@{A04_MMA_SHARED_IDENTITY=$flag;MMA8652_UART_TRACE=0}
+ axis_hid_identity_core_blobs_preserved=$true;critical_flags=@{A04_MMA_SHARED_IDENTITY=$flag;A04_MMA_SHARED_CAMERA_STREAM=$stream;MMA8652_UART_TRACE=0}
  kernel_codegen_flags=@('-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-mfpu=none')
  signed=[bool]$CertificateThumbprint;signing_thumbprint=$CertificateThumbprint
  recipe_sha256=(Get-FileHash $PSCommandPath -Algorithm SHA256).Hash

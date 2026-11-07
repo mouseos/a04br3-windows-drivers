@@ -1,0 +1,43 @@
+[Version]
+Signature="$WINDOWS NT$"
+Class=System
+ClassGuid={4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider=%Provider%
+DriverVer=11/07/2026,0.0.1.0
+CatalogFile=hi556-capture.cat
+
+[Manufacturer]
+%Provider%=Models,NTarm
+[Models.NTarm]
+%Device%=Install,ACPI\MOU0020
+[DestinationDirs]
+DriverCopy=12
+[SourceDisksNames]
+1=%Disk%,,,
+[SourceDisksFiles]
+hi556-capture.sys=1
+[Install.NTarm]
+CopyFiles=DriverCopy
+[DriverCopy]
+hi556-capture.sys
+[Install.NTarm.HW]
+AddReg=Security
+[Security]
+HKR,,Security,0x00000000,"D:P(A;;GA;;;SY)(A;;GA;;;BA)"
+[Install.NTarm.Services]
+AddService=Hi556Capture,0x00000002,Service
+[Service]
+DisplayName=%Device%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\hi556-capture.sys
+Dependencies=A04Mma8652
+[Install.NTarm.Wdf]
+KmdfService=Hi556Capture,Wdf
+[Wdf]
+KmdfLibraryVersion=1.13
+[Strings]
+Provider="mouseos"
+Device="Hynix HI556 RAW Capture"
+Disk="Hynix HI556 RAW Capture Driver"

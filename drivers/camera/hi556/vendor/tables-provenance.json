@@ -1,0 +1,12 @@
+{
+  "vendor_commit": "7c4782127d4ea11965be00ce1343056be9bfb769",
+  "source_path": "kernel-4.4/drivers/misc/mediatek/imgsensor/src/mt8167/hi556_mipi_raw/hi556_mipi_Sensor.c",
+  "source_sha256": "3d60f93ea4a550b39f8493273f515fd8b8911177ebebc559ac65d28d9166b262",
+  "source_call_counts": {
+    "global": 166,
+    "preview": 41
+  },
+  "preview_stream_on_sequenced_after_receiver_arm": true,
+  "header_sha256": "0f8ee75af0a75a3fd22aa13693bad736fc42924d51b05246f7d603e94656df00",
+  "device_specific_data": false
+}

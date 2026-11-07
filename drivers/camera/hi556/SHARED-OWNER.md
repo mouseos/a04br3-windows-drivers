@@ -1,5 +1,8 @@
 # MMA I2C1単一ownerを保つHI556共有候補
 
+> 後続の統合RAW候補は[CAPTURE-CANDIDATE.md](CAPTURE-CANDIDATE.md)を参照。
+> 以下はidentity/shared-owner段階の履歴で、未実装との記述は当時の状態。
+
 基点は署名/稼働MMA0.0.1.8のmanifestが指す`2eea34ede8c18b4a3093de255b4f7ace9a695d0b`。
 mainの旧MMA0.0.1.0を共有化の基点にすると、識別文字列、portrait軸、hardware counter、
 完了優先deadline、idleだけの復旧が失われるため、その実績版を明示的に取り込んだ。

@@ -8,7 +8,7 @@ static VOID SharedDereference(PVOID p){WdfObjectDereference((WDFDEVICE)p);}
 static NTSTATUS SharedStop(ACC_CONTEXT *c,int read,uint8_t *data,unsigned length)
 {
  unsigned i,n;uint16_t status;uint64_t start;
- if((length!=1&&length!=2)||(rd(c,0x24)&1u))return STATUS_DEVICE_BUSY;
+ if((!length||length>4)||(rd(c,0x24)&1u))return STATUS_DEVICE_BUSY;
  wr(c,0x0c,7);wr(c,0x38,1);wr(c,0x08,0);wr(c,0x10,0x28);
  wr(c,0x04,(uint16_t)(0x50u|read));wr(c,0x14,(uint16_t)length);wr(c,0x6c,0);
  wr(c,0x18,1);wr(c,0x1c,2);
@@ -76,8 +76,42 @@ quarantine:
  if(NT_SUCCESS(status))status=out->power_release_status;
  WdfWaitLockRelease(c->lock);return status;
 unlock:
+ if(NT_SUCCESS(status)&&out->id_observed)c->camera_identified=TRUE;
  WdfWaitLockRelease(c->lock);power->Header.InterfaceDereference(power->Header.Context);return status;
 }
+#if A04_MMA_SHARED_CAMERA_STREAM
+static NTSTATUS SharedCameraRegister(PVOID p,const A04_HI556_POWER_INTERFACE *power,USHORT reg,USHORT *value,BOOLEAN write)
+{
+ WDFDEVICE dev=(WDFDEVICE)p;ACC_CONTEXT *c=AccContext(dev);NTSTATUS status,released;ULONG token=0;
+ LONGLONG timeout=WDF_REL_TIMEOUT_IN_MS(1000);uint8_t data[4];
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL||!value)return STATUS_INVALID_DEVICE_STATE;
+ if(!power||power->Header.Size<sizeof(*power)||power->Header.Version!=1||!power->Header.InterfaceReference||
+    !power->Header.InterfaceDereference||!power->Acquire||!power->Live||!power->Release)return STATUS_NOINTERFACE;
+ power->Header.InterfaceReference(power->Header.Context);status=WdfWaitLockAcquire(c->lock,&timeout);
+ if(status!=STATUS_SUCCESS){power->Header.InterfaceDereference(power->Header.Context);return status==STATUS_TIMEOUT?STATUS_IO_TIMEOUT:status;}
+ if(c->power_quarantined||!c->online||c->faulted||!c->camera_identified||!c->i2c||!handoff_qualified(dev,c)){status=STATUS_DEVICE_NOT_READY;goto unlock;}
+ status=power->Acquire(power->Header.Context,&token);if(!NT_SUCCESS(status))goto unlock;
+ if(!token||!power->Live(power->Header.Context,token)){status=STATUS_DEVICE_NOT_READY;goto release;}
+ data[0]=(uint8_t)(reg>>8);data[1]=(uint8_t)reg;data[2]=(uint8_t)(*value>>8);data[3]=(uint8_t)*value;
+ status=SharedStop(c,0,data,write?4:2);
+ if(NT_SUCCESS(status)&&!power->Live(power->Header.Context,token))status=STATUS_DEVICE_NOT_READY;
+ if(NT_SUCCESS(status)&&!write){
+  status=SharedStop(c,1,data,1);if(NT_SUCCESS(status))*value=data[0];
+ }
+ if(!NT_SUCCESS(status)){c->faulted=TRUE;c->adapter.faulted=1;c->camera_identified=FALSE;InterlockedExchange(&c->online,0);}
+ if(NT_SUCCESS(status)&&!power->Live(power->Header.Context,token))status=STATUS_DEVICE_NOT_READY;
+release:
+ if(rd(c,0x24)&1u){released=STATUS_DEVICE_BUSY;goto quarantine;}
+ released=power->Release(power->Header.Context,token);if(!NT_SUCCESS(released))goto quarantine;
+ goto unlock;
+quarantine:
+ WdfObjectReference(dev);c->quarantined_power=*power;c->quarantined_token=token;c->power_quarantined=TRUE;
+ c->faulted=TRUE;InterlockedExchange(&c->online,0);if(NT_SUCCESS(status))status=released;
+ WdfWaitLockRelease(c->lock);return status;
+unlock:
+ WdfWaitLockRelease(c->lock);power->Header.InterfaceDereference(power->Header.Context);return status;
+}
+#endif
 static NTSTATUS SharedRegister(WDFDEVICE dev)
 {
  A04_I2C1_IDENTITY_INTERFACE iface;WDF_QUERY_INTERFACE_CONFIG query;NTSTATUS status;
@@ -85,5 +119,12 @@ static NTSTATUS SharedRegister(WDFDEVICE dev)
  iface.Header.Context=dev;iface.Header.InterfaceReference=SharedReference;iface.Header.InterfaceDereference=SharedDereference;iface.Identify=SharedIdentify;
  WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&iface,&A04I2c1IdentityInterfaceGuid,NULL);
  status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
+ #if A04_MMA_SHARED_CAMERA_STREAM
+ {
+ A04_I2C1_CAMERA_INTERFACE camera;RtlZeroMemory(&camera,sizeof(camera));camera.Header=iface.Header;camera.Header.Size=sizeof(camera);camera.Register=SharedCameraRegister;
+ WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&camera,&A04I2c1CameraRegisterGuid,NULL);
+ status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
+ }
+#endif
  return WdfDeviceCreateDeviceInterface(dev,&A04I2c1OwnerDeviceGuid,NULL);
 }

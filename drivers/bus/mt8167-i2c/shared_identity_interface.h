@@ -30,3 +30,13 @@ typedef struct {
 /* PASSIVE, referenced query-interface power object retained by caller for
  * this whole synchronous call. No arbitrary address/write/scan operations. */
 #endif
+
+/* Separate versioned interface: keep the original identity ABI intact. */
+#ifndef A04_I2C1_CAMERA_REGISTER_INTERFACE
+#define A04_I2C1_CAMERA_REGISTER_INTERFACE
+static const GUID A04I2c1CameraRegisterGuid={0xd1a58873,0x2cad,0x4f3b,{0x94,0x04,0x55,0x60,0x02,0x00,0x00,0x01}};
+typedef struct {
+ INTERFACE Header;
+ NTSTATUS (*Register)(PVOID,const A04_HI556_POWER_INTERFACE *,USHORT reg,USHORT *value,BOOLEAN write);
+} A04_I2C1_CAMERA_INTERFACE;
+#endif
