@@ -9,8 +9,17 @@
 #include "../../drivers/system/mt8167-toprgu/uart_screen.h"
 
 static const WCHAR service_name[] = L"MT8167DeviceInstall";
+#if defined(A04_GPU_PROVIDER_UPDATE) && A04_GPU_PROVIDER_UPDATE
+static const WCHAR instance_id[] = L"ACPI\\MOU0006\\0";
+static const WCHAR hardware_id[] = L"ACPI\\MOU0006";
+#define TARGET_SERVICE L"MT8167GE8300"
+#define TARGET_CLASS L"{4D36E97D-E325-11CE-BFC1-08002BE10318}"
+#else
+#define TARGET_SERVICE L"MT8167Display"
+#define TARGET_CLASS L"{4D36E968-E325-11CE-BFC1-08002BE10318}"
 static const WCHAR instance_id[] = L"ACPI\\MOU0007\\0";
 static const WCHAR hardware_id[] = L"ACPI\\MOU0007";
+#endif
 static WCHAR system_dir[MAX_PATH], directory[MAX_PATH], package_dir[MAX_PATH];
 static WCHAR executable[MAX_PATH], inf_path[MAX_PATH], log_path[MAX_PATH], marker_path[MAX_PATH];
 static HANDLE logfile = INVALID_HANDLE_VALUE;
@@ -18,12 +27,20 @@ static BOOL log_ok = TRUE;
 static const char *result_text = "FAILED";
 static SERVICE_STATUS_HANDLE status_handle;
 static SERVICE_STATUS service_status;
-static HMODULE newdev_module, cm_module;
+#if defined(A04_GPU_PROVIDER_UPDATE) && A04_GPU_PROVIDER_UPDATE
+static DWORD gpu_service_exit=ERROR_GEN_FAILURE;
+#endif
+static HMODULE cm_module;
+#if !defined(A04_GPU_PROVIDER_UPDATE) || !A04_GPU_PROVIDER_UPDATE
+static HMODULE newdev_module;
+#endif
 typedef BOOL (WINAPI *update_fn)(HWND, LPCWSTR, LPCWSTR, DWORD, PBOOL);
 typedef CONFIGRET (WINAPI *locate_fn)(PDEVINST, DEVINSTID_W, ULONG);
 typedef CONFIGRET (WINAPI *status_fn)(PULONG, PULONG, DEVINST, ULONG);
 typedef CONFIGRET (WINAPI *property_fn)(DEVINST, ULONG, PULONG, PVOID, PULONG, ULONG);
+#if !defined(A04_GPU_PROVIDER_UPDATE) || !A04_GPU_PROVIDER_UPDATE
 static update_fn update_driver;
+#endif
 static locate_fn locate_node;
 static status_fn node_status;
 static property_fn node_property;
@@ -71,10 +88,28 @@ static DWORD paths(void)
     DWORD n = GetSystemDirectoryW(system_dir, MAX_PATH), error;
     BY_HANDLE_FILE_INFORMATION info;
     if (!n || n >= MAX_PATH - 85) return ERROR_INSUFFICIENT_BUFFER;
-    lstrcpyW(directory, system_dir); lstrcatW(directory, L"\\MT8167DeviceInstall");
-    lstrcpyW(package_dir, directory); lstrcatW(package_dir, L"\\display");
+    lstrcpyW(directory, system_dir); lstrcatW(directory,
+#if defined(A04_GPU_PROVIDER_UPDATE) && A04_GPU_PROVIDER_UPDATE
+        L"\\MT8167GpuUpdate"
+#else
+        L"\\MT8167DeviceInstall"
+#endif
+    );
+    lstrcpyW(package_dir, directory); lstrcatW(package_dir,
+#if defined(A04_GPU_PROVIDER_UPDATE) && A04_GPU_PROVIDER_UPDATE
+        L"\\provider"
+#else
+        L"\\display"
+#endif
+    );
     lstrcpyW(executable, system_dir); lstrcatW(executable, L"\\MT8167DeviceInstall.exe");
-    lstrcpyW(inf_path, package_dir); lstrcatW(inf_path, L"\\mt8167-display.inf");
+    lstrcpyW(inf_path, package_dir); lstrcatW(inf_path,
+#if defined(A04_GPU_PROVIDER_UPDATE) && A04_GPU_PROVIDER_UPDATE
+        L"\\mt8167-ge8300.inf"
+#else
+        L"\\mt8167-display.inf"
+#endif
+    );
     lstrcpyW(log_path, directory); lstrcatW(log_path, L"\\install.log");
     lstrcpyW(marker_path, directory); lstrcatW(marker_path, L"\\attempted.bin");
     error = check_directory(directory, TRUE); if (error) return error;
@@ -131,13 +166,21 @@ static HMODULE system_library(const WCHAR *name)
 }
 static DWORD load_apis(void)
 {
+#if !defined(A04_GPU_PROVIDER_UPDATE) || !A04_GPU_PROVIDER_UPDATE
     newdev_module = system_library(L"newdev.dll"); if (!newdev_module) return GetLastError();
+#endif
     cm_module = system_library(L"cfgmgr32.dll"); if (!cm_module) return GetLastError();
+#if !defined(A04_GPU_PROVIDER_UPDATE) || !A04_GPU_PROVIDER_UPDATE
     update_driver = (update_fn)GetProcAddress(newdev_module, "UpdateDriverForPlugAndPlayDevicesW");
+#endif
     locate_node = (locate_fn)GetProcAddress(cm_module, "CM_Locate_DevNodeW");
     node_status = (status_fn)GetProcAddress(cm_module, "CM_Get_DevNode_Status");
     node_property = (property_fn)GetProcAddress(cm_module, "CM_Get_DevNode_Registry_PropertyW");
-    return update_driver && locate_node && node_status && node_property ? NO_ERROR : ERROR_PROC_NOT_FOUND;
+    return
+#if !defined(A04_GPU_PROVIDER_UPDATE) || !A04_GPU_PROVIDER_UPDATE
+        update_driver &&
+#endif
+        locate_node && node_status && node_property ? NO_ERROR : ERROR_PROC_NOT_FOUND;
 }
 static BOOL string_property(DEVINST node, ULONG property, const WCHAR *expected, BOOL nonempty)
 {
@@ -170,8 +213,8 @@ static struct observation observe(void)
     o.status = node_status(&o.flags, &o.problem, node, 0);
     o.hardware = hardware_matches(node);
     o.driver = string_property(node, CM_DRP_DRIVER, NULL, TRUE);
-    o.service = string_property(node, CM_DRP_SERVICE, L"MT8167Display", FALSE);
-    o.display_class = string_property(node, CM_DRP_CLASSGUID, L"{4D36E968-E325-11CE-BFC1-08002BE10318}", FALSE);
+    o.service = string_property(node, CM_DRP_SERVICE, TARGET_SERVICE, FALSE);
+    o.display_class = string_property(node, CM_DRP_CLASSGUID, TARGET_CLASS, FALSE);
     return o;
 }
 static void log_observation(const char *phase, const struct observation *o)
@@ -184,8 +227,13 @@ static void log_observation(const char *phase, const struct observation *o)
 }
 static BOOL bound(const struct observation *o)
 { return o->locate == CR_SUCCESS && o->status == CR_SUCCESS && o->hardware && o->driver && o->service && o->display_class; }
+#if !defined(A04_GPU_PROVIDER_UPDATE) || !A04_GPU_PROVIDER_UPDATE
 static BOOL started(const struct observation *o)
 { return bound(o) && (o->flags & DN_STARTED) && !(o->flags & DN_HAS_PROBLEM) && !o->problem; }
+#endif
+#if defined(A04_GPU_PROVIDER_UPDATE) && A04_GPU_PROVIDER_UPDATE
+#include "gpu-provider-update.h"
+#else
 static DWORD hold_package(HANDLE files[3])
 {
     static const WCHAR *names[] = {L"\\mt8167-display.inf", L"\\mt8167-display.sys", L"\\mt8167-display.cat"};
@@ -252,6 +300,7 @@ done:
     timestamp(); number("FINAL_WIN32_ERROR", error); record("SERVICE_END\r\n");
     return log_ok ? error : ERROR_WRITE_FAULT;
 }
+#endif
 /* METHOD_BUFFERED queue contract: ASCII input, immediate enqueue or error.
  * One overlapped request; timeout never waits indefinitely for cancellation.
  * Storage/event remain alive until this one-shot process exits if pending. */
@@ -303,9 +352,19 @@ static void WINAPI service_main(DWORD argc, WCHAR **argv)
     if (!SetServiceStatus(status_handle, &service_status)) { number("SCM_RUNNING_ERROR", GetLastError()); (void)disable_self(); return; }
     record("SCM_RUNNING\r\n"); error = install_once();
     notify_end(error);
+#if defined(A04_GPU_PROVIDER_UPDATE) && A04_GPU_PROVIDER_UPDATE
+    if(error==ERROR_SUCCESS_REBOOT_REQUIRED) {
+        DWORD reboot_error=gpu_request_reboot();
+        number("PLANNED_REBOOT_ERROR",reboot_error);
+        if(reboot_error)error=reboot_error;
+    }
+#endif
     service_status.dwCurrentState = SERVICE_STOPPED;
     service_status.dwWin32ExitCode = error;
     number("SCM_EXIT_WIN32", error);
+#if defined(A04_GPU_PROVIDER_UPDATE) && A04_GPU_PROVIDER_UPDATE
+    gpu_service_exit=log_ok?error:ERROR_WRITE_FAULT;
+#endif
     if (!SetServiceStatus(status_handle, &service_status)) number("SCM_STOP_ERROR", GetLastError());
 }
 static DWORD register_service(void)
@@ -350,6 +409,9 @@ void mainCRTStartup(void)
         else {
             SERVICE_TABLE_ENTRYW table[2] = {{(LPWSTR)service_name, service_main}, {NULL, NULL}};
             if (!StartServiceCtrlDispatcherW(table)) { error = GetLastError(); number("DISPATCH_ERROR", error); }
+#if defined(A04_GPU_PROVIDER_UPDATE) && A04_GPU_PROVIDER_UPDATE
+            else error=gpu_service_exit;
+#endif
         }
     }
     if (error && !*args) (void)disable_self();
