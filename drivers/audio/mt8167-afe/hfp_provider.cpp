@@ -5,6 +5,18 @@
 #include "hfp_provider.h"
 #include "hfp_memif.h"
 #include <combo_hfp_binding.h>
+/* Same ARM publication barrier as existing common_dma.cpp. Clang ARM does
+ * not lower the WDK8.1 _ReadWriteBarrier declaration as an intrinsic. */
+static void PublishBarrier()
+{
+#if defined(__clang__) && defined(_ARM_)
+ __asm__ volatile ("" ::: "memory");
+ __builtin_arm_dmb(15);
+ __asm__ volatile ("" ::: "memory");
+#else
+ KeMemoryBarrier();
+#endif
+}
 #define TAG 'Hf4M'
 struct HfpBuffer {
  PVOID cpu;PMDL mdl;PHYSICAL_ADDRESS logical;ULONG bytes,generation;
@@ -73,7 +85,7 @@ static NTSTATUS AllocateBuffer(Mt8167HfpOwner *o,ULONG bytes,HfpBuffer *b)
  RtlZeroMemory(b->cpu,bytes);b->mdl=IoAllocateMdl(b->cpu,bytes,FALSE,FALSE,NULL);
  if(!b->mdl)goto invalid;MmBuildMdlForNonPagedPool(b->mdl);
  if(MmGetMdlByteOffset(b->mdl)||MmGetMdlByteCount(b->mdl)!=bytes)goto invalid;
- KeMemoryBarrier();b->generation=++o->bufferGeneration;ExInitializeRundownProtection(&b->positions);return STATUS_SUCCESS;
+ PublishBarrier();b->generation=++o->bufferGeneration;ExInitializeRundownProtection(&b->positions);return STATUS_SUCCESS;
  invalid:if(b->mdl)IoFreeMdl(b->mdl);o->r.adapter->DmaOperations->FreeCommonBuffer(o->r.adapter,bytes,b->logical,b->cpu,FALSE);RtlZeroMemory(b,sizeof(*b));return STATUS_DEVICE_CONFIGURATION_ERROR;
 }
 static NTSTATUS DrainBuffer(Mt8167HfpOwner *o,ULONG d,HfpBuffer *b)
