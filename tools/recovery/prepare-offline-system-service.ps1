@@ -12,6 +12,7 @@ param(
     [string]$GpuCandidateDirectory,
     [string]$ExpectedGpuCandidateManifestSha256,
     [string]$GpuCandidateSourceCommit,
+    [string]$ExpectedGpuPolicySha256,
     [string]$GpuRearmPlanPath,
     [string]$ExpectedGpuRearmPlanSha256,
     [switch]$RearmEngineProbe,
@@ -300,6 +301,7 @@ if($InternalMode) {
                 Check-GpuCandidateProgress $plan.gpu_candidate_binding $state.gpu_installed_selection
                 if($plan.gpu_installed_selection -and (Get-GpuBindingHash $state.gpu_installed_selection) -cne (Get-GpuBindingHash $plan.gpu_installed_selection)) { throw 'GPU replayed selection changed from the pinned inspection' }
                 $state.gpu_candidate_binding_sha256=Get-GpuBindingHash $plan.gpu_candidate_binding
+                $state.gpu_policy_sha256=$plan.gpu_candidate_binding.policy_sha256
             }
             $state.services=Inspect-Services $root $plan ($InternalMode -eq 'Patch')
             if($plan.engine_rearm) {
@@ -346,10 +348,12 @@ if($RearmEngineProbe) {
 } elseif($EngineRearmPlanPath -or $ExpectedEngineRearmPlanSha256) { throw 'Rearm plan requires explicit RearmEngineProbe opt-in' }
 $gpuCandidateBinding=$null;$gpuCandidateBindingHash=$null
 if($InspectFixedGpuDeviceInstall -or $RearmFixedGpuDeviceInstall) {
-    if(!$GpuCandidateDirectory -or !$ExpectedGpuCandidateManifestSha256 -or !$GpuCandidateSourceCommit) { throw 'GPU native operations require the final signed candidate directory, manifest SHA256 and hexadecimal source commit' }
+    if(!$GpuCandidateDirectory -or !$ExpectedGpuCandidateManifestSha256 -or !$GpuCandidateSourceCommit -or $ExpectedGpuPolicySha256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'GPU native operations require the final signed candidate directory, manifest SHA256, hexadecimal source and signed-installer policy SHA256 pin' }
     $gpuCandidateBinding=Read-GpuCandidateBinding $GpuCandidateDirectory $ExpectedGpuCandidateManifestSha256 $GpuCandidateSourceCommit
+    $gpuCandidateBinding['policy_sha256']=$ExpectedGpuPolicySha256.ToLowerInvariant()
+    $gpuCandidateBinding['policy_hash_source']='caller pin from signed installer metadata; host must crosslink'
     $gpuCandidateBindingHash=Get-GpuBindingHash $gpuCandidateBinding
-} elseif($GpuCandidateDirectory -or $ExpectedGpuCandidateManifestSha256 -or $GpuCandidateSourceCommit) { throw 'GPU candidate input is allowed only with explicit GPU inspect/rearm' }
+} elseif($GpuCandidateDirectory -or $ExpectedGpuCandidateManifestSha256 -or $GpuCandidateSourceCommit -or $ExpectedGpuPolicySha256) { throw 'GPU candidate input is allowed only with explicit GPU inspect/rearm' }
 $gpuRearmPlan=$null;$gpuRearmPlanHash=$null
 if($RearmFixedGpuDeviceInstall) {
     if($RearmEngineProbe -or $ServiceName -cne 'MT8167DeviceInstall' -or $IncludeHardwareProbe -or !$GpuRearmPlanPath -or
@@ -361,6 +365,7 @@ if($RearmFixedGpuDeviceInstall) {
        $gpuRearmPlan.hardware_id -cne 'ACPI\MOU0006' -or $gpuRearmPlan.instance_id -cne 'ACPI\MOU0006\0' -or
        $gpuRearmPlan.candidate_source_commit -cne $gpuCandidateBinding.source_commit -or
        $gpuRearmPlan.candidate_driver_ver -cne $gpuCandidateBinding.driver_ver -or
+       $gpuRearmPlan.policy_sha256 -cne $gpuCandidateBinding.policy_sha256 -or
        $gpuRearmPlan.transition_id -cne $gpuCandidateBinding.transition_id -or
        $gpuRearmPlan.data_directory -cne $gpuCandidateBinding.data_directory -or
        $gpuRearmPlan.data_directory_suffix -cne $gpuCandidateBinding.data_directory_suffix -or
@@ -404,7 +409,7 @@ if($gpuRearmPlan) {
     $report.gpu_rearm_plan_sha256=$gpuRearmPlanHash
 }
 if($InspectFixedGpuDeviceInstall) { $plan.gpu_inspect=$true;$report.service_values_written=$false }
-if($gpuCandidateBinding) { $report.audit_scope='Select + DeviceInstall/RpcSs + exact selected service seven values; fixed MOU0006 Enum and selected System-class key read-only';$plan.gpu_candidate_binding=$gpuCandidateBinding;$report.gpu_candidate_binding=$gpuCandidateBinding;$report.gpu_candidate_binding_sha256=$gpuCandidateBindingHash }
+if($gpuCandidateBinding) { $report.audit_scope='Select + DeviceInstall/RpcSs + exact selected service seven values; fixed MOU0006 Enum and selected System-class key read-only';$plan.gpu_candidate_binding=$gpuCandidateBinding;$report.gpu_candidate_binding=$gpuCandidateBinding;$report.gpu_candidate_binding_sha256=$gpuCandidateBindingHash;$report.gpu_policy_sha256=$gpuCandidateBinding.policy_sha256 }
 if($gpuRearmPlan) { $plan.gpu_installed_selection=$gpuRearmPlan.installed_selection }
 $planFile=Join-Path $out 'plan.json';Save-Json $planFile $plan
 $expected=@{SYSTEM=$ExpectedSystemSha256;'SYSTEM.LOG1'=$ExpectedLog1Sha256;'SYSTEM.LOG2'=$ExpectedLog2Sha256}
@@ -484,7 +489,7 @@ try {
             candidate_source_commit=$gpuCandidateBinding.source_commit;
             candidate_sys_sha256=$gpuCandidateBinding.files.'mt8167-ge8300.sys'.sha256;
             candidate_cat_sha256=$gpuCandidateBinding.files.'mt8167-ge8300.cat'.sha256;
-            candidate_driver_ver=$gpuCandidateBinding.driver_ver;transition_id=$gpuCandidateBinding.transition_id;data_directory=$gpuCandidateBinding.data_directory;data_directory_suffix=$gpuCandidateBinding.data_directory_suffix;baseline_driver_ver=$gpuCandidateBinding.installed_baseline_driver_ver;baseline_sys_sha256=$gpuCandidateBinding.installed_baseline_sys_sha256;candidate_binding=$gpuCandidateBinding;candidate_binding_sha256=$gpuCandidateBindingHash;
+            candidate_driver_ver=$gpuCandidateBinding.driver_ver;policy_sha256=$gpuCandidateBinding.policy_sha256;transition_id=$gpuCandidateBinding.transition_id;data_directory=$gpuCandidateBinding.data_directory;data_directory_suffix=$gpuCandidateBinding.data_directory_suffix;baseline_driver_ver=$gpuCandidateBinding.installed_baseline_driver_ver;baseline_sys_sha256=$gpuCandidateBinding.installed_baseline_sys_sha256;candidate_binding=$gpuCandidateBinding;candidate_binding_sha256=$gpuCandidateBindingHash;
             installed_selection=$check.state.gpu_installed_selection;
             disabled_service_fingerprint=$fingerprint;source_files=$report.source_files;
             native_inspection_recipe_sha256=(Hash-File $PSCommandPath);native_source_sha256=(Hash-File $nativeSource);
