@@ -57,6 +57,13 @@ try {
    & $sign sign /fd SHA256 /sha1 $CertificateThumbprint /s My $file.FullName
    if($LASTEXITCODE -ne 0){throw "Signing failed: $($file.Name)"}
   }
+  if($nativeParent -and $package -eq $parentPackage) {
+   $pmPath=Join-Path $package 'parent-manifest.json';$pm=Get-Content $pmPath -Raw|ConvertFrom-Json
+   $pm | Add-Member -NotePropertyName unsigned_sys_sha256 -NotePropertyValue $pm.sys_sha256 -Force
+   $pm.sys_sha256=(Get-FileHash (Join-Path $package 'mt8167-shared.sys') -Algorithm SHA256).Hash
+   $pm | Add-Member -NotePropertyName signed -NotePropertyValue $true -Force
+   $pm|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 $pmPath
+  }
   # Existing CAT hashes are stale after SYS signing; regenerate using real UTC.
   Remove-Item (Join-Path $package '*.cat') -ErrorAction SilentlyContinue
   & $cat "/driver:$package" /os:6_3_ARM
