@@ -28,7 +28,7 @@ typedef void *HANDLE;typedef int32_t NTSTATUS;
 #define ExAllocatePoolWithTag(pool,n,tag) calloc(1,n)
 #define ExFreePoolWithTag(p,tag) free(p)
 #define D3DDDI_ALLOCATIONPRIORITY_NORMAL 0x78000000u
-typedef struct {void*pPrivateDriverData;uint32_t PrivateDriverDataSize;HANDLE hAllocation;size_t Alignment,Size,PitchAlignedSize;union {uint32_t Value;struct {uint32_t SegmentId0:5;};} PreferredSegment;uint32_t SupportedReadSegmentSet,SupportedWriteSegmentSet,EvictionSegmentSet;union {uint32_t Value;struct {uint32_t CpuVisible:1,PermanentSysMem:1,Cached:1,reserved:8,SynchronousPaging:1;};} Flags;uint32_t AllocationPriority;} DXGK_ALLOCATIONINFO;
+typedef struct {void*pPrivateDriverData;uint32_t PrivateDriverDataSize;HANDLE hAllocation;size_t Alignment,Size,PitchAlignedSize;union {uint32_t Value;struct {uint32_t SegmentId0:5;};} PreferredSegment;union {uint32_t Value;} HintedBank;uint32_t MaximumRenamingListLength;void *pAllocationUsageHint;uint32_t SupportedReadSegmentSet,SupportedWriteSegmentSet,EvictionSegmentSet;union {uint32_t Value;struct {uint32_t CpuVisible:1,PermanentSysMem:1,Cached:1,reserved:8,SynchronousPaging:1;};} Flags;uint32_t AllocationPriority;} DXGK_ALLOCATIONINFO;
 typedef struct {uint32_t NumAllocations;DXGK_ALLOCATIONINFO*pAllocationInfo;uint32_t PrivateDriverDataSize;} DXGKARG_CREATEALLOCATION;
 struct geo_kmd_adapter {int aperture_ready;struct {size_t commit_limit;} aperture;struct geo_engine engine;};
 static unsigned creates,destroys;
@@ -46,11 +46,11 @@ int main(void){
   memset(&i,0xa5,sizeof(i));i.pPrivateDriverData=&data;i.PrivateDriverDataSize=sizeof(data);
   assert(GeoCreateAllocationImpl(&a,&p)==0);struct geo_allocation *al=i.hAllocation;
   assert(i.Size==1921024&&i.Alignment==4096&&i.Flags.Value==0x805&&i.EvictionSegmentSet==0);
-  assert(i.SupportedReadSegmentSet==(n==2)&&i.SupportedWriteSegmentSet==(n==2)&&i.PreferredSegment.Value==(n==2));
-  assert(i.PitchAlignedSize==(n==2?i.Size:0));assert(al->cpu_only==(n!=2));assert(creates==(n==2));
+  assert(i.SupportedReadSegmentSet==1&&i.SupportedWriteSegmentSet==1&&i.PreferredSegment.Value==1);assert(!i.HintedBank.Value&&!i.MaximumRenamingListLength&&!i.pAllocationUsageHint);
+  assert(i.PitchAlignedSize==(n==2?i.Size:0));assert(al->cpu_only==(n!=2));assert(creates==n+1);
   assert(geo_destroy(&a.engine,al)==0);free(al);
  }
- assert(creates==1&&destroys==1&&a.engine.allocation_count==0);return 0;
+ assert(creates==3&&destroys==3&&a.engine.allocation_count==0);return 0;
 }
 '''
 (out/'allocation.c').write_text(prefix+body+suffix)

@@ -27,8 +27,9 @@ if(!a->aperture_ready||!geo_desc_valid(&desc)||ROUND_TO_PAGES(desc.pitch*desc.he
  /* A CPU-only allocation supports no pitch-aligned GPU segment.
   * WDK8.1 DXGK_ALLOCATIONINFO.PitchAlignedSize is zero in that case. */
  info->PitchAlignedSize=allocation->cpu_only?0:info->Size;info->PreferredSegment.Value=0;info->PreferredSegment.SegmentId0=1;
- info->SupportedReadSegmentSet=allocation->cpu_only?0:1;info->SupportedWriteSegmentSet=allocation->cpu_only?0:1;
- if(allocation->cpu_only)info->PreferredSegment.Value=0;info->EvictionSegmentSet=0;
+ info->SupportedReadSegmentSet=1;info->SupportedWriteSegmentSet=1;
+ info->EvictionSegmentSet=0;
+ info->HintedBank.Value=0;info->MaximumRenamingListLength=0;info->pAllocationUsageHint=NULL;
  info->Flags.Value=0;info->Flags.CpuVisible=1;info->Flags.Cached=1;info->Flags.SynchronousPaging=1;
  info->AllocationPriority=D3DDDI_ALLOCATIONPRIORITY_NORMAL;return STATUS_SUCCESS;
 }
@@ -47,7 +48,6 @@ static NTSTATUS GeoBuildPagingBufferImpl(HANDLE adapter,DXGKARG_BUILDPAGINGBUFFE
   allocation=p->MapApertureSegment.hAllocation;
   if(!allocation||p->MapApertureSegment.SegmentId!=1||p->MapApertureSegment.Flags.Value||
      !p->MapApertureSegment.pMdl||MmGetMdlByteOffset(p->MapApertureSegment.pMdl)||p->MapApertureSegment.MdlOffset)return STATUS_NOT_SUPPORTED;
-  if(allocation->cpu_only)return STATUS_NOT_SUPPORTED;
   bytes=allocation->desc.pitch*allocation->desc.height;
   if(p->MapApertureSegment.NumberOfPages!=BYTES_TO_PAGES(bytes))return STATUS_NOT_SUPPORTED;
   if(!a->aperture_ready)return STATUS_DEVICE_NOT_READY;

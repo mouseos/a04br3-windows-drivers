@@ -62,3 +62,13 @@ KMDの1a8c57e1/b27164a1、3.15 package helperを同じソースへ統合したbr
 staging texture生成はDXGI_ERROR_DEVICE_REMOVED、UMD ErrorCbはE_INVALIDARGだった。
 描画成功の証拠にはならない。今回の修正とtraceを組み合わせたrun99は実機検証中。
 一般FL10適合、任意アプリ、Present、電源遷移の完了を意味しない。
+
+## 実VidMm拒否条件確定後の修正
+
+main REA093により実dxgmms1はReadSegmentSet0を無条件拒否することが確定した。
+以前のzero-mask成立性未確定という記録は履歴として保持する。PermanentSysMem追加では解消しない。
+staging/indexにも実owner resourceを作成し、segment1を支持する。native新候補の実MDL/PTE bindが必須。
+CPU-onlyはdraw/clearに使わない分類として保持するが、owner token/MapAperture/lease lifecycleは省略しない。
+MDL pagecount/offset/activebyte/extent/VA重複とGeoConfirmVidMmBindの実native lease確認を保持する。
+HintedBank0/pAllocationUsageHintNULL/MaximumRenamingListLength0も明示し未設定out値を返さない。
+PermanentSysMem/flagsの既存意味は維持。UMDやminiport/query_adapterは未編集。

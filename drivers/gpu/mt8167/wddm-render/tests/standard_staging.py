@@ -31,8 +31,10 @@ static void GeoSessionLeave(struct geo_kmd_adapter*a,int reason){(void)a;(void)r
 #define RtlCopyMemory memcpy
 '''
 suffix=r'''
-static int32_t no_create(void*c,const struct geo_surface_desc*d,uint64_t*t){(void)c;(void)d;(void)t;owner_calls++;return GEO_UNSUPPORTED;}
-static int32_t no_destroy(void*c,uint64_t t){(void)c;(void)t;owner_calls++;return GEO_UNSUPPORTED;}
+static int32_t no_create(void*c,const struct geo_surface_desc*d,uint64_t*t){(void)c;(void)d;(void)t;owner_calls++;*t=1;return GEO_OK;}
+static int32_t no_destroy(void*c,uint64_t t){(void)c;(void)t;owner_calls++;return GEO_OK;}
+static int32_t native_bind(void*c,uint64_t t,void*m,uint32_t o,uint32_t b,uint64_t a){(void)c;(void)t;(void)m;(void)o;(void)b;(void)a;return GEO_OK;}
+static int32_t native_unbind(void*c,uint64_t t){(void)c;(void)t;return GEO_OK;}
 int main(void){
  struct geo_kmd_adapter adapter={1};D3DKMDT_STAGINGSURFACEDATA stage={800,600,0xdeadbeef};
  DXGKARG_GETSTANDARDALLOCATIONDRIVERDATA p={0};struct {uint32_t before;struct geo_allocation_data data;uint32_t after;} guarded;
@@ -45,11 +47,11 @@ int main(void){
  for(unsigned i=0;i<sizeof(resource);i++)assert(resource[i]==0xa5);
  assert(guarded.data.logical_width==800&&guarded.data.logical_height==600);
  assert(guarded.data.storage.format==GEO_FORMAT_X8R8G8B8&&guarded.data.storage.usage==GEO_USAGE_STAGING&&geo_desc_valid(&guarded.data.storage));
- engine.owner.create=no_create;engine.owner.destroy=no_destroy;
- assert(geo_create(&engine,&alloc,&guarded.data.storage)==GEO_OK);assert(alloc.cpu_only&&alloc.surface==0&&engine.allocation_count==1&&owner_calls==0);
- assert(geo_bind(&engine,&alloc,&engine,0,3200*600,0)==GEO_INVALID&&owner_calls==0);
- assert(geo_prepare_begin(&engine,&alloc,&packet,&ticket)==GEO_INVALID&&owner_calls==0);
- assert(geo_destroy(&engine,&alloc)==GEO_OK&&engine.allocation_count==0&&owner_calls==0);
+ engine.owner.create=no_create;engine.owner.destroy=no_destroy;engine.owner.bind=native_bind;engine.owner.unbind=native_unbind;
+ assert(geo_create(&engine,&alloc,&guarded.data.storage)==GEO_OK);assert(alloc.cpu_only&&alloc.surface==1&&engine.allocation_count==1&&owner_calls==1);
+ assert(geo_bind(&engine,&alloc,&engine,0,3200*600,0)==GEO_OK&&owner_calls==1);
+ assert(geo_prepare_begin(&engine,&alloc,&packet,&ticket)==GEO_INVALID&&owner_calls==1);
+ assert(geo_unbind(&engine,&alloc)==GEO_OK);assert(geo_destroy(&engine,&alloc)==GEO_OK&&engine.allocation_count==0&&owner_calls==2);
  guarded.data.storage.usage=GEO_USAGE_RENDER_TARGET;assert(!geo_desc_valid(&guarded.data.storage));
  guarded.data.storage.format=GEO_FORMAT_A8R8G8B8;assert(geo_desc_valid(&guarded.data.storage));
  guarded.data.storage.usage=GEO_USAGE_STAGING;guarded.data.storage.format=22;guarded.data.storage.pitch=0xfffffffcu;assert(!geo_desc_valid(&guarded.data.storage));
@@ -71,5 +73,5 @@ int main(void){
 c=out/'callback.c';c.write_text(prefix+callback+suffix)
 cmd=['cc','-std=c11','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-I'+str(d),str(c),str(d/'clear_protocol.c'),str(d/'clear_engine.c'),'-o',str(out/'standard-staging')]
 subprocess.run(cmd,check=True);subprocess.run([str(out/'standard-staging')],check=True)
-(out/'result.json').write_text(json.dumps({'actual_callback_executed':True,'actual_cpu_only_engine_executed':True,'two_call_size_fill_and_canaries':True,'x8_staging_only':True,'gpu_owner_calls':0,'bounds_and_legacy_shadow_checked':True,'asan_ubsan':True,'real_gpu_tested':False},indent=2)+'\n')
+(out/'result.json').write_text(json.dumps({'actual_callback_executed':True,'actual_cpu_only_engine_executed':True,'two_call_size_fill_and_canaries':True,'x8_staging_only':True,'gpu_owner_create_and_destroy_calls':2,'bounds_and_legacy_shadow_checked':True,'asan_ubsan':True,'real_gpu_tested':False},indent=2)+'\n')
 print('ACTUAL_STANDARD_STAGING_CALLBACK_AND_CPU_ONLY_ENGINE_PASS')
