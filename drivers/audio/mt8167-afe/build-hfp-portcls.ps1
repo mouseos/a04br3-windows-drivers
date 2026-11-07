@@ -13,7 +13,12 @@ if($profile.source_dirty -ne $false -or $profile.flags.A04_SHARED_ENGINE_PCM -ne
    $profile.flags.A04_SHARED_BUTTON_D0_EXPERIMENT -ne '1' -or $profile.flags.A04_SHARED_WIFI_RUNTIME -ne '1'){
  throw 'An actual matched full Engine parent profile is required'
 }
-$btCommit='63c32fdc829a8ba65152a49e30ffdc8a1131ae17'
+$candidateParentInf=Join-Path $root 'drivers\bus\mt8167-shared\prototype\shared-parent-engine-hfp.inf'
+$candidateVer=[regex]::Match([IO.File]::ReadAllText($candidateParentInf),'(?im)^DriverVer\s*=\s*[^,]+,([^\r\n]+)').Groups[1].Value.Trim()
+if(!$profile.driver_version -or ([version]$candidateVer -le [version]$profile.driver_version)){
+ throw 'HFP parent needs a newly reserved version before SYS build; use owner/common module build meanwhile'
+}
+$btCommit='23eeea70805f15c12fa3f9ed8346d2ae5c057649'
 & git -C $root cat-file -e ($btCommit+'^{commit}') 2>$null
 if($LASTEXITCODE){& git -C $root fetch --no-tags origin $btCommit;if($LASTEXITCODE){throw 'Pinned BT dependency fetch failed'}}
 New-Item -ItemType Directory $out,(Join-Path $out 'tmp'),(Join-Path $out 'parent'),(Join-Path $out 'audio')|Out-Null

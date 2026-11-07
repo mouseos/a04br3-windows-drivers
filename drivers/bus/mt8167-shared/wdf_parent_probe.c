@@ -5,6 +5,7 @@
 #include <initguid.h>
 #include <ntddk.h>
 #include <wdf.h>
+#include <wdmguid.h>
 #include "parent_resources.h"
 #include "usb_admission.h"
 #include "pwrap_owner.h"
@@ -1423,6 +1424,14 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     status=WdfDeviceCreate(&init,&attr,&child);
     if(!NT_SUCCESS(status))goto fail;
     ChildContext(child)->base=base;
+    if(base==0xffffffffu) {
+        /* AFE synthesized PDO forwards only the real parent-bus DMA interface,
+         * exactly as Engine1006; no fabricated translation/provider methods. */
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&GUID_BUS_INTERFACE_STANDARD,NULL);
+        query.SendQueryToParentStack=TRUE;
+        status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    }
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedInterfaceGuid,NULL);
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);

@@ -4,6 +4,11 @@
 #include "topology_miniport.h"
 #endif
 #if defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
+/* PortCls borrows reference names for the full device lifetime. */
+static WCHAR WaveReferenceName[]=L"Mt8167WaveRT";
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+static WCHAR TopologyReferenceName[]=L"Mt8167Topology";
+#endif
 NTSTATUS Mt8167RegisterWaveRt(PDEVICE_OBJECT device, PIRP irp,
                               PRESOURCELIST resources, PMINIPORTWAVERT miniport)
 {
@@ -14,8 +19,7 @@ NTSTATUS Mt8167RegisterWaveRt(PDEVICE_OBJECT device, PIRP irp,
     if (!NT_SUCCESS(status)) return status;
     status = port->Init(device, irp, static_cast<PUNKNOWN>(miniport), NULL, resources);
     if (NT_SUCCESS(status)) {
-        WCHAR name[] = L"Mt8167WaveRT";
-        status = PcRegisterSubdevice(device, name, static_cast<PUNKNOWN>(port));
+        status = PcRegisterSubdevice(device, WaveReferenceName, static_cast<PUNKNOWN>(port));
     }
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
     if(NT_SUCCESS(status)) {
@@ -25,8 +29,7 @@ NTSTATUS Mt8167RegisterWaveRt(PDEVICE_OBJECT device, PIRP irp,
         if(NT_SUCCESS(status))
             status=topoPort->Init(device,irp,static_cast<PUNKNOWN>(topology),NULL,resources);
         if(NT_SUCCESS(status)) {
-            WCHAR name[]=L"Mt8167Topology";
-            status=PcRegisterSubdevice(device,name,static_cast<PUNKNOWN>(topoPort));
+            status=PcRegisterSubdevice(device,TopologyReferenceName,static_cast<PUNKNOWN>(topoPort));
         }
         if(NT_SUCCESS(status))
             status=PcRegisterPhysicalConnection(device,static_cast<PUNKNOWN>(port),1,
