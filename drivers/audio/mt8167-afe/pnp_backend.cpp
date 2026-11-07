@@ -284,12 +284,18 @@ static NTSTATUS OwnerUnbindWave(void *ctx,PMDL mdl) {
 }
 #endif
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+#if defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
+static NTSTATUS OwnerConnectMaskedIrq(Mt8167PnpBackend *);
+#endif
 static NTSTATUS OwnerCheckout(void *ctx,PPORTWAVERTSTREAM port,ULONG bytes,PMDL *mdl,PULONG actual)
 {
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
     if(!o || !port || !mdl || !actual || !bytes || bytes>1048576 ||
        KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
     *mdl=NULL;*actual=0;OwnerLock(o);NTSTATUS result=STATUS_DEVICE_NOT_READY;
+#if defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
+    if(o->online&&!o->shared.leased){result=OwnerConnectMaskedIrq(o);if(!NT_SUCCESS(result)){OwnerUnlock(o);return result;}}
+#endif
     if(o->online && !o->enginePoison && !o->waveProbePending &&
        !o->engineClient && (o->transport.state==AUDIO_READY ||
         o->transport.state==AUDIO_STOPPED_RETAINED)) {
@@ -761,8 +767,10 @@ NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt816
         o->online=FALSE;OwnerDereference(o);return STATUS_DEVICE_NOT_READY;
     }
     o->afeBound=TRUE;
+#if !defined(A04_AUDIO_HFP_PROVIDER) || !A04_AUDIO_HFP_PROVIDER
     status=OwnerConnectMaskedIrq(o);
     if (!NT_SUCCESS(status)) { o->online=FALSE;OwnerDereference(o);return status; }
+#endif
 #endif
 #if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
     o->diagStage=A04_STAGE_CREATED;o->diagStatus=STATUS_SUCCESS;
@@ -828,6 +836,16 @@ NTSTATUS Mt8167PnpBackendSnapshot(Mt8167PnpBackend *o,struct a04_audio_snapshot 
     OwnerUnlock(o);return STATUS_SUCCESS;
 }
 #endif
+#if defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
+NTSTATUS Mt8167PnpBackendHfpStart(Mt8167PnpBackend *o,PDEVICE_OBJECT fdo,PRESOURCELIST resources,Mt8167HfpOwner **out)
+{
+ if(!o||!fdo||!out||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ *out=NULL;OwnerLock(o);
+ if(!o->online||o->shared.leased||o->shared.quarantined||o->irq.interrupt){OwnerUnlock(o);return STATUS_DEVICE_BUSY;}
+ Mt8167HfpResources r={fdo,o->pdo,resources,o->afe.base,o->adapter,o->interrupt.vector,o->interrupt.level,o->interrupt.affinity,o,OwnerReference,OwnerDereference};
+ NTSTATUS status=Mt8167HfpStart(&r,out);OwnerUnlock(o);return status;
+}
+#endif
 void Mt8167PnpBackendRevoke(Mt8167PnpBackend *o) {
     if (!o)return;
     OwnerLock(o);o->online=FALSE;OwnerUnlock(o);
@@ -854,5 +872,6 @@ void Mt8167PnpBackendRevoke(Mt8167PnpBackend *o) {
 #endif
     OwnerUnlock(o);
 }
+void Mt8167PnpBackendReference(Mt8167PnpBackend *o){if(o)OwnerReference(o);}
 void Mt8167PnpBackendRelease(Mt8167PnpBackend *o) { if(o)OwnerDereference(o); }
 #endif

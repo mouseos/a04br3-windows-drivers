@@ -11,6 +11,16 @@
 #include "register_owner.h"
 #include "client_interface.h"
 #include "audio_interface.h"
+#include "hfp_interface.h"
+#ifndef A04_SHARED_HFP
+#define A04_SHARED_HFP 0
+#endif
+#ifndef A04_SHARED_BT_PROFILE
+#define A04_SHARED_BT_PROFILE 0
+#endif
+#if A04_SHARED_HFP && (!A04_SHARED_BT_PROFILE || !A04_SHARED_ENGINE_PCM)
+#error HFP requires matched Engine and exclusive BT profile
+#endif
 #ifndef A04_SHARED_FIRST_PLAYBACK
 #define A04_SHARED_FIRST_PLAYBACK 0
 #endif
@@ -193,6 +203,10 @@ struct a04_codec_voice voice;
 struct a04_shared_thermal_owner thermal;EX_RUNDOWN_REF thermalRundown;BOOLEAN thermalRundownClosed;
 #endif
 PVOID audioAfe;
+#if A04_SHARED_HFP
+volatile LONG hfpActive,hfpGeneration;ULONG hfpModeSaved,hfpPullSaved,hfpClockSaved;BOOLEAN hfpPins;
+struct a04_audio_top_clock hfpTopClock;struct A04_HFP_CONTROLLER hfpController;
+#endif
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
 int afeClockHeld,afeClockRestore,afeClockPoisoned;
 #if A04_SHARED_DIGITAL_PLAYBACK
@@ -475,6 +489,9 @@ static int ParentBindAfe(PVOID context,PVOID afe,ULONG length) {
     A04_PARENT_CONTEXT *c;int result=-1;
     if(!context || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
     c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
+#if A04_SHARED_HFP
+    if(c->hfpActive){ParentUnlock(c);return -1;}
+#endif
     if(afe && length==0x1000 && !c->audioAfe && !c->audio.leased && !c->audio.poisoned) {
         c->audioAfe=afe;result=0;
     } else if(!afe && !length && c->audioAfe && !c->audio.leased && !c->audio.poisoned) {
@@ -649,6 +666,9 @@ static int ParentAudioAcquire(PVOID context,ULONG rate) {
 #endif
         return -1;
     }
+#if A04_SHARED_HFP
+    if(c->hfpActive){ParentUnlock(c);WdfDeviceResumeIdle((WDFDEVICE)context);return -1;}
+#endif
     result=a04_audio_owner_acquire(&c->audio,rate);
 #if A04_SHARED_FIRST_PLAYBACK
     if((!result || c->audio.poisoned) && !c->audioPowerPinned) {c->audioPowerPinned=1;keepPower=1;}
@@ -798,6 +818,9 @@ static NTSTATUS ParentWifiRelease(PVOID context,ULONG generation)
  A04_PARENT_CONTEXT *c;uint32_t value,dir;int e;
  if(!context||!generation||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return STATUS_DEVICE_NOT_READY;
+#if A04_SHARED_HFP
+ if(c->hfpActive||c->hfpController.context){ParentUnlock(c);return STATUS_DEVICE_BUSY;}
+#endif
  if(c->wifiActive!=1||generation!=c->wifiGeneration||c->regs.poisoned||c->pmic.bus.poisoned||
     ParentRegRead(c,A04_SHARED_GPIO,0x100,&value)||ParentRegRead(c,A04_SHARED_GPIO,0,&dir)||
     (value&0x90u)||(dir&0x90u)!=0x90u){ParentUnlock(c);return STATUS_DEVICE_BUSY;}
@@ -857,6 +880,9 @@ static int ParentWifiWrite(PVOID c,ULONG g,unsigned b,unsigned o,ULONG v)
 {return ParentWifiOperation(c,g,b,o,0,v,0);}
 static VOID ParentInterfaceReference(PVOID context) { WdfObjectReference((WDFDEVICE)context); }
 static VOID ParentInterfaceDereference(PVOID context) { WdfObjectDereference((WDFDEVICE)context); }
+#if A04_SHARED_HFP
+#include "hfp_parent.inc"
+#endif
 static NTSTATUS ParentReadButtons(PVOID context,USHORT *value) {
     A04_PARENT_CONTEXT *c;
     if(!context || !value || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
@@ -1103,6 +1129,9 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
     ParentStop(c,1);
     /* Failed/partial audio ownership cannot be interpreted as quiescent.
      * Retain mappings; this is not proof PnP retains physical resources. */
+#if A04_SHARED_HFP
+    if(c->hfpActive||c->hfpController.context)return STATUS_DEVICE_BUSY;
+#endif
     if(c->audio.poisoned || c->audio.leased || c->audioAfe || c->usb.leased)return STATUS_DEVICE_BUSY;
 #if defined(A04_MT6392_RTC32K_DIAGNOSTIC) && A04_MT6392_RTC32K_DIAGNOSTIC
     /* A retained or ambiguous RTC lease must outlive the PWRAP mapping. */
@@ -1200,6 +1229,9 @@ VOID ParentSurprise(WDFDEVICE dev)
 }
 NTSTATUS ParentD0Exit(WDFDEVICE dev,WDF_POWER_DEVICE_STATE target)
 {
+#if A04_SHARED_HFP
+    if(InterlockedCompareExchange(&ParentContext(dev)->hfpActive,0,0))return STATUS_DEVICE_BUSY;
+#endif
     UNREFERENCED_PARAMETER(target);ParentStop(ParentContext(dev),1);return STATUS_SUCCESS;
 }
 NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
@@ -1404,6 +1436,10 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
     if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+#if A04_SHARED_HFP
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedHfpInterfaceGuid,NULL);query.SendQueryToParentStack=TRUE;
+    status=WdfDeviceAddQueryInterface(child,&query);if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+#endif
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedAudioInterfaceGuid,NULL);
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
@@ -1528,6 +1564,17 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&audioIface,&A04SharedAudioInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
     if(!NT_SUCCESS(status))return status;
+#if A04_SHARED_HFP
+    {struct A04_SHARED_HFP_INTERFACE hfp;RtlZeroMemory(&hfp,sizeof(hfp));
+     hfp.Header.Size=sizeof(hfp);hfp.Header.Version=A04_SHARED_HFP_VERSION;hfp.Header.Context=dev;
+     hfp.Header.InterfaceReference=ParentInterfaceReference;hfp.Header.InterfaceDereference=ParentInterfaceDereference;
+     hfp.RegisterController=ParentHfpRegister;hfp.UnregisterController=ParentHfpUnregister;hfp.GetController=ParentHfpGet;
+     hfp.Acquire=ParentHfpAcquire;hfp.Live=ParentHfpLive;hfp.Pins=ParentHfpPins;hfp.Release=ParentHfpRelease;
+     /* No source-backed independent AFE DMA drain witness exists yet. NULL
+      * suppresses the HFP factory instead of advertising an unsafe provider. */
+     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&hfp,&A04SharedHfpInterfaceGuid,NULL);
+     status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;}
+#endif
     RtlZeroMemory(&usbIface,sizeof(usbIface));usbIface.Header.Size=sizeof(usbIface);usbIface.Header.Version=A04_SHARED_USB_INTERFACE_VERSION;
     usbIface.Header.Context=dev;usbIface.Header.InterfaceReference=ParentInterfaceReference;usbIface.Header.InterfaceDereference=ParentInterfaceDereference;
     usbIface.Acquire=ParentUsbAcquire;usbIface.SetVbus=ParentUsbVbus;usbIface.Health=ParentUsbHealth;usbIface.Release=ParentUsbRelease;
@@ -1563,7 +1610,11 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     if(!NT_SUCCESS(status))return status;
     /* The host MMIO range is a separate child resource. The optional MSDC2 interrupt descriptor still needs platform polarity and
      * translation verification; it does not describe the separate EINT5. */
+#if A04_SHARED_BT_PROFILE
+    status=ParentAddProbeChild(dev,L"A04BR3\\MT6630BGF",L"0",0x11170000u);
+#else
     status=ParentAddProbeChild(dev,L"A04BR3\\MT6630SDIO",L"0",0x11170000u);
+#endif
 #endif
 #endif
     return status;
