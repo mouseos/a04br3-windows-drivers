@@ -7,16 +7,19 @@
 #include "native_triangle_pds.h"
 static void put(uint8_t *p,unsigned n,uint32_t v)
 { for(unsigned j=0;j<4;j++)p[4*n+j]=(uint8_t)(v>>(8*j)); }
-int a04_m111_build_triangle_vertex_pds(struct a04_m111_triangle_vertex_pds *out,
-    uint64_t usc,uint64_t vertex,uint32_t components,uint32_t stride)
+static int build(struct a04_m111_triangle_vertex_pds *out,
+    uint64_t usc,uint64_t vertex,uint32_t components,uint32_t stride,uint32_t temps)
 {
     struct a04_m111_triangle_vertex_pds made={{0},{0}};
     const uint64_t ub=UINT64_C(0xba00000000);
     if(!out || usc<ub || usc-ub>=0x40000000u || (usc&3u) ||
        vertex<4096 || vertex>=(UINT64_C(1)<<40) || (vertex&3u) ||
-       (components!=2 && components!=3 && components!=4) || stride!=components*4u ||
+       (components!=2 && components!=3 && components!=4 && components!=8) ||
+       stride!=components*4u || temps>128u ||
        vertex>(UINT64_C(1)<<40)-3u*stride)return 1;
-    put(made.data,0,(uint32_t)(usc-ub)); /* task, zero temps */
+    put(made.data,0,(uint32_t)(usc-ub));
+    /* DOUTU TEMPS: bit35, allocation unit4 DWORD. */
+    put(made.data,1,((temps+3u)/4u)<<3);
     put(made.data,2,stride);
     put(made.data,4,(uint32_t)vertex);put(made.data,5,(uint32_t)(vertex>>32));
     put(made.data,6,(1u<<31)|components); /* last DMA, unified store */
@@ -25,3 +28,13 @@ int a04_m111_build_triangle_vertex_pds(struct a04_m111_triangle_vertex_pds *out,
     put(made.code,2,(0xdu<<28)|(3u<<24)); /* special opcode HALT */
     *out=made;return 0;
 }
+
+int a04_m111_build_triangle_vertex_pds(struct a04_m111_triangle_vertex_pds *out,
+    uint64_t usc,uint64_t vertex,uint32_t components,uint32_t stride)
+{
+    if(components!=2 && components!=3 && components!=4)return 1;
+    return build(out,usc,vertex,components,stride,0);
+}
+int a04_m111_build_linked_vertex_pds(struct a04_m111_triangle_vertex_pds *out,
+    uint64_t usc,uint64_t vertex,uint32_t temps)
+{ return build(out,usc,vertex,8,32,temps); }

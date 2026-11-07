@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include "../drivers/gpu/mt8167/vendor_m1_11/native_triangle_pds.h"
 #include "../drivers/gpu/mt8167/vendor_m1_11/native_varying_pds.h"
 int main(void)
 {
@@ -45,5 +46,10 @@ int main(void)
  assert(!a04_m111_build_varying_pds(&p,&r));
  assert(!(p.data[4]&(1u<<16)) && p.varying0==0x40000u);
  r.vs_f32_npc=3;assert(a04_m111_build_varying_pds(&p,&r)==GEO_INVALID);
+ struct a04_m111_triangle_vertex_pds vp;
+ assert(!a04_m111_build_linked_vertex_pds(&vp,UINT64_C(0xba00000080),UINT64_C(0x8200200000),5));
+ assert(vp.data[4]==16 && vp.data[8]==32 && vp.data[24]==8 && vp.data[27]==128);
+ assert(a04_m111_build_linked_vertex_pds(&vp,UINT64_C(0xba00000080),(UINT64_C(1)<<40)-95,0));
+ assert(a04_m111_build_linked_vertex_pds(&vp,UINT64_C(0xba00000080),UINT64_C(0x8200200000),129));
  puts("native varying PDS: Z/W partition, COLOR4, PPP, NPC and atomic rejection passed");return 0;
 }
