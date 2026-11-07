@@ -117,6 +117,11 @@ NTSTATUS a04_vendor_native_prepare_job_cold(struct a04_vendor_native_cold *n)
     input.hwrt_fw=n->addresses.hwrt[0];input.pr_fence_fw=0xc0084c00u;
     input.rgba[0]=17;input.rgba[1]=34;input.rgba[2]=51;input.rgba[3]=255;
     if(a04_m111_build_clear_job_800x600_cold(&c->job,&input))goto fail;
+#if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
+    if(a04_m111_build_triangle_suite(&c->triangle,&input,(uint8_t *)c+sizeof(*c),8192u))goto fail;
+    RtlCopyMemory(c->job.ta,c->triangle.record[0].ta,sizeof(c->job.ta));
+    RtlCopyMemory(c->job.three,c->triangle.record[0].three,sizeof(c->job.three));
+#endif
     p.ta_context=0xc0080000u+r->layout.context;
     p.three_d_context=p.ta_context+(uint32_t)offsetof(RGXFWIF_FWRENDERCONTEXT,s3DContext);
     p.hwrt=input.hwrt_fw;p.ta_sync=input.pr_fence_fw;p.three_d_sync=0xc0084c04u;
@@ -125,9 +130,16 @@ NTSTATUS a04_vendor_native_prepare_job_cold(struct a04_vendor_native_cold *n)
     three=(struct a04_m111_shadow_ring){c->rings+4096,0,0};
     if(a04_m111_prepare_shadow_pair(&ta,&three,&p,c->job.ta,c->job.three,
           (uint8_t *)c+sizeof(*c),8192u,&c->pair))goto fail;
-    if(verified(n->code[0].cpu,c->job.code.usc,sizeof(c->job.code.usc)) ||
+    if(
+#if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
+       verified(n->code[0].cpu,c->triangle.usc,sizeof(c->triangle.usc)) ||
+       verified(n->code[1].cpu,c->triangle.pds,sizeof(c->triangle.pds)) ||
+       verified(a04_vendor_native_storage_pointer(n,0,n->suffix_offset,sizeof(c->triangle.data)),c->triangle.data,sizeof(c->triangle.data)) ||
+#else
+       verified(n->code[0].cpu,c->job.code.usc,sizeof(c->job.code.usc)) ||
        verified(n->code[1].cpu,c->job.code.pds,sizeof(c->job.code.pds)) ||
        verified(a04_vendor_native_storage_pointer(n,0,n->suffix_offset,sizeof(c->job.data.bytes)),c->job.data.bytes,sizeof(c->job.data.bytes)) ||
+#endif
        verified((UCHAR *)r->buffer[0].cpu+r->layout.commands[0],c->rings,4096u) ||
        verified((UCHAR *)r->buffer[0].cpu+r->layout.commands[1],c->rings+4096,4096u)){
         /* Never free possibly staged DMA after an ambiguous write failure. */

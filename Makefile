@@ -912,3 +912,19 @@ test-gpu-native-owner-target: build/gpu_native_owner_target_test
 build/gpu_native_owner_target_test: tests/gpu_native_owner_target_test.c tests/gpu_vendor_windows_native_backing_test.c $(NATIVE_CLEAR_JOB_SRC) $(addprefix drivers/gpu/mt8167/vendor_m1_11/,windows_native_job.c windows_native_storage.c windows_native_cold.c windows_native_code.c windows_native_backing.c windows_native_target.c windows_native_execute.c windows_native_submit.c native_owner_mdl.c windows_uncached.c native_resources.c native_hwrt_profile.c render_resources.c) drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/dma_pages.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -DA04_TEST_DISPLAY_SCANOUT -DA04_GE8300_NATIVE_OWNER_MDL_TARGET=1 -DA04_GE8300_VENDOR_NATIVE_CLEAR_JOB=1 -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter-out tests/gpu_vendor_windows_native_backing_test.c,$(filter %.c,$^)) -o $@
+
+NATIVE_TRIANGLE_SRC := $(addprefix drivers/gpu/mt8167/vendor_m1_11/,native_triangle_ppp.c native_triangle_pds.c native_triangle_suite.c native_triangle_vdm.c native_triangle_texture.c)
+build/gpu_m111_native_triangle_suite_test: tests/gpu_m111_native_triangle_suite_test.c $(NATIVE_CLEAR_JOB_SRC) $(NATIVE_TRIANGLE_SRC) $(wildcard drivers/gpu/mt8167/vendor_m1_11/native_triangle*.h)
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
+.PHONY: test-gpu-native-triangle-suite
+test-gpu-native-triangle-suite: build/gpu_m111_native_triangle_suite_test
+	./build/gpu_m111_native_triangle_suite_test
+
+
+build/gpu_vendor_windows_native_triangle_execute_test: tests/gpu_vendor_windows_native_execute_test.c tests/gpu_vendor_windows_native_backing_test.c $(NATIVE_CLEAR_JOB_SRC) $(NATIVE_TRIANGLE_SRC) $(addprefix drivers/gpu/mt8167/vendor_m1_11/,windows_native_job.c windows_native_storage.c windows_native_cold.c windows_native_code.c windows_native_backing.c windows_native_execute.c windows_native_submit.c windows_uncached.c native_resources.c native_hwrt_profile.c render_resources.c) drivers/gpu/mt8167/gpu_mmu.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -DA04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE=1 -DA04_GE8300_VENDOR_NATIVE_CLEAR_JOB=1 -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter-out tests/gpu_vendor_windows_native_backing_test.c,$(filter %.c,$^)) -o $@
+.PHONY: test-gpu-native-triangle-execute-model
+test-gpu-native-triangle-execute-model: build/gpu_vendor_windows_native_triangle_execute_test
+	./build/gpu_vendor_windows_native_triangle_execute_test

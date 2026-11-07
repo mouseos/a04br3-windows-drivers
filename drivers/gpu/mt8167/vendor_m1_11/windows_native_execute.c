@@ -124,7 +124,12 @@ NTSTATUS a04_vendor_native_publish_candidate(struct a04_vendor_native_cold *n,
     for(i=0;i<a04_vendor_native_output_bytes(n)/4u;i+=64u){
         if(a04_vendor_native_storage_read(n,1,i*4u,pixels,sizeof(pixels)))goto poison;
         for(j=0;j<64u;j++)if(i+j<480000u){
-            if(pixels[j]==0xff332211u)out->matching_pixels++;else out->mismatched_pixels++;
+#if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
+            uint32_t expected=a04_m111_triangle_expected_pixel(c->completed_frames,i+j);
+#else
+            uint32_t expected=0xff332211u;
+#endif
+            if(pixels[j]==expected)out->matching_pixels++;else out->mismatched_pixels++;
         }else if(pixels[j]!=0xa5a5a5a5u)out->guard_errors++;
     }
     if(out->mismatched_pixels || out->guard_errors || out->matching_pixels!=480000u)goto poison;
@@ -186,6 +191,11 @@ static NTSTATUS rearm_clear(struct a04_vendor_native_cold *n,struct a04_vendor_s
     p.hwrt=n->addresses.hwrt[0];p.ta_sync=0xc0084c00u;p.three_d_sync=0xc0084c04u;
     p.ta_previous_value=c->completed_frames;p.three_d_update_value=c->completed_frames+1u;
     p.external_job=p.internal_job=c->completed_frames+1u;
+#if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
+    if(c->completed_frames!=1u)goto done;
+    RtlCopyMemory(c->job.ta,c->triangle.record[1].ta,sizeof(c->job.ta));
+    RtlCopyMemory(c->job.three,c->triangle.record[1].three,sizeof(c->job.three));
+#endif
     for(i=0;i<4;i++)c->job.ta[0x6cu+i]=(uint8_t)(p.ta_previous_value>>(8u*i));
     if(a04_m111_prepare_shadow_pair(&rings[0],&rings[1],&p,c->job.ta,c->job.three,
        (uint8_t *)c+sizeof(*c),8192u,&c->pair))goto done;
@@ -220,6 +230,9 @@ NTSTATUS a04_vendor_native_run_clear_frames(struct a04_vendor_native_cold *n,
     ULONG i;NTSTATUS status;
     if(!n || !s || !out || !count || count>16u || KeGetCurrentIrql()!=PASSIVE_LEVEL ||
        !n->candidate || n->candidate->attempted || n->candidate->completed_frames)return STATUS_INVALID_DEVICE_STATE;
+#if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
+    if(count!=2u)return STATUS_INVALID_PARAMETER;
+#endif
     for(i=0;i<count;i++){
         if(i){
             out->phase=0;out->matching_pixels=out->mismatched_pixels=out->guard_errors=0;

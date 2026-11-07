@@ -4,10 +4,19 @@
 #include "windows_native_cold_private.h"
 #include "native_clear_job.h"
 #include "native_pair.h"
+#ifndef A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
+#define A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE 0
+#endif
+#if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
+#include "native_triangle_suite.h"
+#endif
 struct a04_vendor_native_candidate {
     BOOLEAN attempted,verified,published;
     uint32_t completed_frames,start[2];
     struct a04_m111_clear_job job;
+#if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
+    struct a04_m111_triangle_suite triangle;
+#endif
     struct a04_m111_pair_result pair;
     uint8_t rings[8192];
 };

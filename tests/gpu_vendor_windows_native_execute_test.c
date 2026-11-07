@@ -26,7 +26,18 @@ void KeStallExecutionProcessor(unsigned us)
             cleanup=(void *)((UCHAR *)active->r.buffer[0].cpu+
                 cmd->uCmdData.sCmdKickData.apsCleanupCtl[0].ui32Addr-0xc0080000u);
             cleanup->ui32SubmittedCommands++;if(!(mode==3 && dm))cleanup->ui32ExecutedCommands++;
-            if(dm)for(i=0;i<480000;i++)*(uint32_t *)a04_vendor_native_storage_pointer(child_owner,1,i*4u,4u)=mode==2?0xff332210u:0xff332211u;
+            if(dm)for(i=0;i<480000;i++){
+#if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
+                /* Independent raster oracle for the lifetime model only;
+                 * no shader/packet execution is claimed by this host test. */
+                double x=((double)(i%800)+0.5)/800.0,y=((double)(i/800)+0.5)/600.0;
+                uint32_t value=x+y<1.0?(child_owner->candidate->completed_frames?0xffcc9933u:0xff6633ccu):0xff000000u;
+                if(mode==2)value^=1u;
+#else
+                uint32_t value=mode==2?0xff332210u:0xff332211u;
+#endif
+                *(uint32_t *)a04_vendor_native_storage_pointer(child_owner,1,i*4u,4u)=value;
+            }
         }else if(cmd->eCmdType==RGXFWIF_KCCB_CMD_SLCFLUSHINVAL){assert(commands%4==3);}
         else {assert(cmd->eCmdType==RGXFWIF_KCCB_CMD_SYNC && commands%4==0);
             *(uint32_t *)runtime.command_sync=cmd->uCmdData.sSyncData.uiUpdateVal;
@@ -69,11 +80,26 @@ static void run(unsigned fault,unsigned frames)
 }
 int main(void)
 {
-    unsigned fault;run(0,1);run(0,16);
+    unsigned fault;
+#if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
+    run(0,2);
+#else
+    run(0,1);run(0,16);
+#endif
     for(fault=1;fault<=5;fault++){
-        pid_t p=fork();int status;assert(p>=0);if(!p)run(fault,fault>=4?3:1);
+        pid_t p=fork();int status;assert(p>=0);if(!p)run(fault,
+#if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
+        2
+#else
+        fault>=4?3:1
+#endif
+        );
         assert(waitpid(p,&status,0)==p && WIFEXITED(status) && WEXITSTATUS(status)==0);
     }
+#if A04_GE8300_VENDOR_NATIVE_TRIANGLE_SUITE
+    puts("Triangle/texture source candidate: staged resource shadows, bounded 2-frame lifetime, poison/guard/fence model PASS; no GPU executed");
+#else
     puts("Native publisher host model: 1/16 frames, ring wrap, late timeout, corrupt cleanup, pixel mismatch, one-shot and DMA retention PASS; no GPU executed");
+#endif
     return 0;
 }
