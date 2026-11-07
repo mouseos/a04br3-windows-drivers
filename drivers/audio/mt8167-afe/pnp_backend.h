@@ -25,6 +25,10 @@ const Mt8167StreamBackend *Mt8167PnpBackendInterface(Mt8167PnpBackend *owner);
 #if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
 NTSTATUS Mt8167PnpBackendSnapshot(Mt8167PnpBackend *,struct a04_audio_snapshot *);
 #endif
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+struct Mt8167CaptureOwner;
+NTSTATUS Mt8167PnpBackendCreateCapture(Mt8167PnpBackend *,Mt8167CaptureOwner **);
+#endif
 void Mt8167PnpBackendRevoke(Mt8167PnpBackend *owner);
 void Mt8167PnpBackendRelease(Mt8167PnpBackend *owner);
 #endif

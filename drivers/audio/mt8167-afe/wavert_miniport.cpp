@@ -57,6 +57,17 @@ static PCCONNECTION_DESCRIPTOR Connections[] = {{PCFILTER_NODE,0,PCFILTER_NODE,1
 static PCFILTER_DESCRIPTOR Filter = {0,NULL,sizeof(PCPIN_DESCRIPTOR),2,Pins,
     sizeof(PCNODE_DESCRIPTOR),0,NULL,1,Connections,0,NULL};
 #endif
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+/* Real recording direction: analog bridge 1 -> ADC -> host stream 0. */
+static PCPIN_DESCRIPTOR CapturePins[] = {
+    {1,1,0,NULL,{0,NULL,0,NULL,1,Ranges,KSPIN_DATAFLOW_OUT,KSPIN_COMMUNICATION_SINK,&KSCATEGORY_AUDIO,NULL,0}},
+    {0,0,0,NULL,{0,NULL,0,NULL,1,AnalogRanges,KSPIN_DATAFLOW_IN,KSPIN_COMMUNICATION_NONE,&KSCATEGORY_AUDIO,NULL,0}}
+};
+static PCNODE_DESCRIPTOR CaptureNodes[]={{0,NULL,&KSNODETYPE_ADC,NULL}};
+static PCCONNECTION_DESCRIPTOR CaptureConnections[]={{PCFILTER_NODE,1,0,1},{0,0,PCFILTER_NODE,0}};
+static PCFILTER_DESCRIPTOR CaptureFilter={0,NULL,sizeof(PCPIN_DESCRIPTOR),2,CapturePins,
+    sizeof(PCNODE_DESCRIPTOR),1,CaptureNodes,2,CaptureConnections,0,NULL};
+#endif
 class Stream : public IMiniportWaveRTStream {
     volatile LONG refs;
     PPORTWAVERTSTREAM port;
@@ -253,7 +264,11 @@ public:
     }
     /* No measured codec/fabric latency is available. The inherited zero
      * values are placeholders, not a calibrated latency contract. */
-    STDMETHODIMP_(VOID) GetHWLatency(KSRTAUDIO_HWLATENCY *p) override { if(p) RtlZeroMemory(p,sizeof(*p)); }
+    STDMETHODIMP_(VOID) GetHWLatency(KSRTAUDIO_HWLATENCY *p) override { if(p){
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+        if(useBackend&&backend.capture){*p=backend.captureLatency;return;}
+#endif
+        RtlZeroMemory(p,sizeof(*p));} }
     STDMETHODIMP_(NTSTATUS) GetPositionRegister(KSRTAUDIO_HWREGISTER *) override { return STATUS_NOT_SUPPORTED; }
     STDMETHODIMP_(NTSTATUS) GetClockRegister(KSRTAUDIO_HWREGISTER *) override { return STATUS_NOT_SUPPORTED; }
 };
@@ -272,7 +287,13 @@ public:
     }
     STDMETHODIMP_(ULONG) AddRef() override { return InterlockedIncrement(&refs); }
     STDMETHODIMP_(ULONG) Release() override { LONG n=InterlockedDecrement(&refs);if(!n){this->~Miniport();ExFreePoolWithTag(this,AUDIO_TAG);}return (ULONG)n; }
-    STDMETHODIMP_(NTSTATUS) GetDescription(PPCFILTER_DESCRIPTOR *p) override { if(!p)return STATUS_INVALID_PARAMETER;*p=&Filter;return STATUS_SUCCESS; }
+    STDMETHODIMP_(NTSTATUS) GetDescription(PPCFILTER_DESCRIPTOR *p) override { if(!p)return STATUS_INVALID_PARAMETER;
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+        *p=useBackend&&backend.capture?&CaptureFilter:&Filter;
+#else
+        *p=&Filter;
+#endif
+        return STATUS_SUCCESS; }
     STDMETHODIMP_(NTSTATUS) DataRangeIntersection(ULONG pin, PKSDATARANGE requested,
         PKSDATARANGE matching, ULONG bytes, PVOID output, PULONG required) override {
         if (!required || !requested || !matching || pin != 0) return STATUS_INVALID_PARAMETER;
@@ -314,7 +335,12 @@ public:
     STDMETHODIMP_(NTSTATUS) Init(PUNKNOWN,PRESOURCELIST,PPORTWAVERT p) override { return p?STATUS_SUCCESS:STATUS_INVALID_PARAMETER; }
     STDMETHODIMP_(NTSTATUS) NewStream(PMINIPORTWAVERTSTREAM *out,PPORTWAVERTSTREAM port,ULONG pin,BOOLEAN capture,PKSDATAFORMAT format) override {
         if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;
-        if(!port || pin!=0 || capture || !ValidFormat(format))return STATUS_NO_MATCH;
+        if(!port || pin!=0 || !ValidFormat(format))return STATUS_NO_MATCH;
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+        if(!!capture!=!!(useBackend&&backend.capture))return STATUS_NO_MATCH;
+#else
+        if(capture)return STATUS_NO_MATCH;
+#endif
         void *mem=ExAllocatePoolWithTag(NonPagedPool,sizeof(Stream),AUDIO_TAG);if(!mem)return STATUS_INSUFFICIENT_RESOURCES;
         *out=new(mem) Stream(port,useBackend?&backend:NULL);return STATUS_SUCCESS;
     }
@@ -330,7 +356,11 @@ NTSTATUS Mt8167NewMiniportWithBackend(PMINIPORTWAVERT *out, const Mt8167StreamBa
     if(b && (!b->checkout || !b->checkin || !b->setState))return STATUS_INVALID_PARAMETER;
 #endif
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+    if(b && !b->capture && (!b->bindWaveBuffer || !b->unbindWaveBuffer)) return STATUS_INVALID_PARAMETER;
+#else
     if(b && (!b->bindWaveBuffer || !b->unbindWaveBuffer)) return STATUS_INVALID_PARAMETER;
+#endif
 #endif
     void *mem=ExAllocatePoolWithTag(NonPagedPool,sizeof(Miniport),AUDIO_TAG);if(!mem)return STATUS_INSUFFICIENT_RESOURCES;
     *out=new(mem) Miniport(b);return STATUS_SUCCESS;
