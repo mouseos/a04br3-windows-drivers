@@ -11,7 +11,7 @@ function Get-A04ParentRuntimeBlobs {
     foreach($line in $tree){
         if($line -notmatch '^100(?:644|755) blob ([0-9a-f]{40})\t(.+)$'){throw 'Unexpected parent source tree entry'}
         $id=$Matches[1];$path=$Matches[2]
-        if($path -match '\.[ch]$' -or $path -eq 'drivers/bus/mt8167-shared/prototype/shared-parent.inf' -or
+        if($path -match '\.[ch]$' -or
            $path -eq 'tools/ci/build-msdc-parent-probe.ps1'){$blobs[$path]=$id}
     }
     if(!$blobs.ContainsKey('drivers/bus/mt8167-shared/wdf_parent_probe.c')){throw 'Parent runtime source missing'}
@@ -34,7 +34,7 @@ function Get-A04ParentSourceCommit {
     return $resolved
 }
 function Write-A04ParentArtifact {
-    param([string]$Root,[string]$Directory,$Flags,[bool]$IntegratedUsb,[string]$ReuseDirectory)
+    param([string]$Root,[string]$Directory,$Flags,[bool]$IntegratedUsb,[string]$ReuseDirectory,[bool]$BluetoothProfile)
     $commit=Get-A04ParentSourceCommit $Root (& git -C $Root rev-parse HEAD)
     $runtime=Get-A04ParentRuntimeBlobs $Root $commit
     # Refuse source edits hidden behind HEAD, even for a wrapper-only build.
@@ -42,6 +42,17 @@ function Write-A04ParentArtifact {
         $working=(& git -C $Root hash-object -- $path)
         if($LASTEXITCODE -ne 0 -or $working -cne $runtime[$path]){throw "Parent working source differs from commit: $path"}
     }
+    if($Flags['A04_SHARED_BT_PROFILE'] -eq '1' -and !$BluetoothProfile){throw 'BT parent flags require explicit BluetoothProfile packaging'}
+    $infSource=if($BluetoothProfile){'drivers/bus/mt8167-shared/mt8167-shared-bluetooth.inf'}else{'drivers/bus/mt8167-shared/prototype/shared-parent.inf'}
+    $fixedInf=Join-Path $Root $infSource
+    $infBlob=(& git -C $Root rev-parse "$commit`:$infSource")
+    if($LASTEXITCODE -ne 0){throw 'Profile INF is not part of the fixed commit'}
+    $workingInf=(& git -C $Root hash-object -- $infSource)
+    if($LASTEXITCODE -ne 0 -or $workingInf -cne $infBlob){throw 'Profile INF differs from fixed source'}
+    $infText=Get-Content -LiteralPath $fixedInf -Raw
+    if($infText -notmatch '(?m)^DriverVer=([^\r\n]+)'){throw 'Profile INF DriverVer missing'}
+    $driverVer=$Matches[1]
+    if($BluetoothProfile -and ($Flags['A04_SHARED_BT_PROFILE'] -ne '1' -or $Flags['A04_SHARED_WIFI_RUNTIME'] -ne '1')){throw 'Bluetooth INF requires the exclusive Bluetooth parent flags'}
     $parentCommit=$commit;$reused=$false;$inputManifestHash=$null;$archive=$null
     if($ReuseDirectory){
         $source=[IO.Path]::GetFullPath($ReuseDirectory)
@@ -62,6 +73,14 @@ function Write-A04ParentArtifact {
         Assert-A04ParentBlobs $runtime (Get-A04ParentRuntimeBlobs $Root $parentCommit)
         if($m.runtime_blobs){
             $recorded=@{};foreach($property in $m.runtime_blobs.PSObject.Properties){$recorded[$property.Name]=$property.Value}
+            # format1 mixed the prototype INF into runtime_blobs. Validate its
+            # original Git identity separately, then compare only kernel inputs.
+            $legacy='drivers/bus/mt8167-shared/prototype/shared-parent.inf'
+            if($recorded.ContainsKey($legacy)){
+                $oldBlob=(& git -C $Root rev-parse "$parentCommit`:$legacy")
+                if($LASTEXITCODE -ne 0 -or $recorded[$legacy] -cne $oldBlob){throw 'Legacy INF blob provenance mismatch'}
+                $recorded.Remove($legacy)
+            }
             Assert-A04ParentBlobs $runtime $recorded
         }
         $expected=$m.sys_sha256
@@ -71,25 +90,36 @@ function Write-A04ParentArtifact {
             $expected=$entries[0].sha256
         }
         if($expected -notmatch '^[0-9a-fA-F]{64}$' -or (Get-A04ParentHash (Join-Path $source 'mt8167-shared.sys')) -ne $expected){throw 'Reused parent SYS hash mismatch'}
-        $inf=Join-Path $Root 'drivers\bus\mt8167-shared\prototype\shared-parent.inf'
-        if((Get-A04ParentHash (Join-Path $source 'shared-parent.inf')) -ne (Get-A04ParentHash $inf)){throw 'Reused parent INF differs from fixed source'}
+        $oldInfSource=if($m.inf_source_path){$m.inf_source_path}else{'drivers/bus/mt8167-shared/prototype/shared-parent.inf'}
+        if($oldInfSource -notin @('drivers/bus/mt8167-shared/prototype/shared-parent.inf','drivers/bus/mt8167-shared/mt8167-shared-bluetooth.inf')){throw 'Unknown input INF profile'}
+        $oldInfCommit=Get-A04ParentSourceCommit $Root $(if($m.inf_source_commit){$m.inf_source_commit}else{$m.source_commit})
+        $oldInfBlob=(& git -C $Root rev-parse "$oldInfCommit`:$oldInfSource")
+        if($LASTEXITCODE -ne 0){throw 'Original INF source is unavailable'}
+        $oldInfFile=Join-Path $source 'shared-parent.inf'
+        $actualInfBlob=(& git -C $Root hash-object "--path=$oldInfSource" -- $oldInfFile)
+        if($LASTEXITCODE -ne 0 -or $oldInfBlob -cne $actualInfBlob){throw 'Input INF differs from its recorded source'}
+        $oldInfHash=Get-A04ParentHash $oldInfFile
+        if($m.inf_sha256 -and $m.inf_sha256 -ne $oldInfHash){throw 'Input INF hash mismatch'}
         # All checks precede output. No fallback compile on an incomplete manifest.
         New-Item -ItemType Directory -Force $Directory|Out-Null
         $archive='source-manifest.'+$inputManifestHash+'.json'
         Copy-Item -LiteralPath $inputManifest -Destination (Join-Path $Directory $archive) -Force
         if((Get-A04ParentHash (Join-Path $Directory $archive)) -ne $inputManifestHash){throw 'Parent source manifest copy mismatch'}
+        Copy-Item -LiteralPath $oldInfFile -Destination (Join-Path $Directory ('source-inf.'+$oldInfHash+'.inf-source')) -Force
         if(!$sameDirectory){
             Copy-Item -LiteralPath (Join-Path $source 'mt8167-shared.sys') -Destination $Directory -Force
-            Copy-Item -LiteralPath (Join-Path $source 'shared-parent.inf') -Destination $Directory -Force
         }
         if((Get-A04ParentHash (Join-Path $Directory 'mt8167-shared.sys')) -ne $expected){throw 'Copied parent SYS hash mismatch'}
         $reused=$true
     }
+    Copy-Item -LiteralPath $fixedInf -Destination (Join-Path $Directory 'shared-parent.inf') -Force
     $sys=Join-Path $Directory 'mt8167-shared.sys';$inf=Join-Path $Directory 'shared-parent.inf'
     $dirty=@(& git -C $Root status --porcelain);if($LASTEXITCODE){throw 'Cannot inspect source state'}
-    $result=@{format=1;source_commit=$commit;source_dirty=($dirty.Count -ne 0);parent_source_commit=$parentCommit;
+    $result=@{format=2;source_commit=$commit;source_dirty=($dirty.Count -ne 0);parent_source_commit=$parentCommit;
       parent_only=$true;parent_reused=$reused;input_manifest_sha256=$inputManifestHash;input_manifest_archive=$archive;parent_flags=$Flags;
-      runtime_blobs=$runtime;diagnostic_interface=11;integrated_usb=$IntegratedUsb;shared_parent_count=1;
+      runtime_blobs=$runtime;inf_source_path=$infSource;inf_source_commit=$commit;inf_source_blob=$infBlob;inf_driver_ver=$driverVer;
+      parent_profile=$(if($BluetoothProfile){'mt6630-bluetooth-exclusive'}else{'prototype'});wifi_bluetooth_simultaneous=$false;catalog_requires_regeneration=$true;
+      diagnostic_interface=11;integrated_usb=$IntegratedUsb;shared_parent_count=1;
       audio_built=$false;client_built=$false;usb_built=$false;hardware_verified=$false;
       sys_sha256=(Get-A04ParentHash $sys);inf_sha256=(Get-A04ParentHash $inf);
       files=@(@{path='mt8167-shared.sys';sha256=(Get-A04ParentHash $sys)},@{path='shared-parent.inf';sha256=(Get-A04ParentHash $inf)})}

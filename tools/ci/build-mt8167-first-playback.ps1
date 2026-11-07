@@ -58,11 +58,12 @@ try {
     $parentFlags=@{};foreach($name in $names){if($name.StartsWith('A04_')){$parentFlags[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}}
     if(!$ReuseParentDirectory){
         & (Join-Path $PSScriptRoot 'build-msdc-parent-probe.ps1')
-        Copy-Item (Join-Path $root 'drivers\bus\mt8167-shared\prototype\shared-parent.inf') $parentDir -Force
+        $parentInfSource=if($ParentOnly -and $BluetoothProfile){'drivers\bus\mt8167-shared\mt8167-shared-bluetooth.inf'}else{'drivers\bus\mt8167-shared\prototype\shared-parent.inf'}
+        Copy-Item (Join-Path $root $parentInfSource) (Join-Path $parentDir 'shared-parent.inf') -Force
     }
     if($ParentOnly){
         $parentManifest=Write-A04ParentArtifact -Root $root -Directory $parentDir -Flags $parentFlags `
-          -IntegratedUsb ([bool]$IntegratedUsb) -ReuseDirectory $ReuseParentDirectory
+          -IntegratedUsb ([bool]$IntegratedUsb) -ReuseDirectory $ReuseParentDirectory -BluetoothProfile ([bool]$BluetoothProfile)
         $wrapper=@{};foreach($key in $parentManifest.Keys){$wrapper[$key]=$parentManifest[$key]}
         $wrapper.parent_artifact_directory='a04-msdc-parent-probe'
         $wrapper.files=@($parentManifest.files|ForEach-Object{@{path=('a04-msdc-parent-probe/'+$_.path);sha256=$_.sha256}})

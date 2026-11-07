@@ -154,3 +154,39 @@ BT最終manifestはBTの`source_commit`と別に`parent_source_commit`、親SYS�
 今回の変更はrecipeのみ。実WDK成功のユーザー申告は親／audio SYSまでであり、
 BT本体compile／link成功ではない。こちらではPowerShellのParentOnly再利用分岐・
 不一致拒否・構文をローカル確認し、runner／実機にはアクセスしていない。
+
+## 正式BT親INFへの更新（SYS再compileなし）
+
+BT ParentOnlyは固定source
+`drivers/bus/mt8167-shared/mt8167-shared-bluetooth.inf`を出力名`shared-parent.inf`へ配置する。
+hardware IDは既存`ACPI\BEN0001`、表示名は実ICの
+`MediaTek MT8167 Shared Resource Controller`、既存サービス`Mt8167Shared`／
+SYS名／KMDF1.13は維持する。DriverVerは固定
+`11/06/2026,2026.11.7.1002`。同日付のnormal `2026.11.6.1001`より版を上げる。
+Bluetooth用排他profileであり、WLANとの同時使用を意味しない。
+EnginePcm／audio v11の新cache親との組合せはRamanの後続source統合対象。
+
+7999b7bで成功した親を利用し、INFとmanifestだけを組み直すには、固定commitの
+clean checkoutで次を実行する。親SYS、BT SYS、audio、KS client、USBのcompilerを呼ばない。
+
+```powershell
+.\tools\bluetooth\prepare-mt6630-parent-profile.ps1 -ReuseParentDirectory `
+  'C:\mt6630-bluetooth-c715ad2\src\build\mt6630-bluetooth\audio-usb\a04-msdc-parent-probe'
+```
+
+既定出力はcheckout内`build/mt6630-parent-profile/a04-msdc-parent-probe/`。
+新INF、元とSHA-256が一致する親SYS、manifestを署名候補にする。
+元の7999b7b packageは既定では変更しない。新CATの生成／署名は主担当が行う。
+INFが変わるため旧CATは流用しない。SYSの再compileは不要だが、新packageのCATには
+既存SYSと新INFの両方を含める。コード署名／実機適用はこのscriptでは実行しない。
+
+manifest format2ではkernelの`parent_source_commit`／`runtime_blobs`と、
+`inf_source_commit`／`inf_source_path`／`inf_source_blob`／`inf_driver_ver`／`inf_sha256`を分離する。
+SYS hash、全flags、kernel runtime blob一致は引き続き必須。
+format1でruntime一覧に混在していたprototype INFのblobは、元commitと一致を確認してから
+別扱いへ移す。入力INFも元の固定source／記録hashと照合し、任意のINF改変を受け入れない。
+INF更新だけをkernel変更と誤認して再compileさせず、新kernelからbuildしたとも記録しない。
+出力は`parent_profile=mt6630-bluetooth-exclusive`、
+`wifi_bluetooth_simultaneous=false`、`catalog_requires_regeneration=true`を記録する。
+元manifest／元INFのhash名archiveは出自確認用で、署名packageへ混ぜない。
+元INF archiveは`.inf-source`拡張子とし、Inf2Catが別の旧INFとして拾うことを避ける。

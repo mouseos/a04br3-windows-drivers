@@ -18,7 +18,7 @@ if(Test-Path $manifest){Move-Item $manifest (Join-Path $out ('manifest.previous.
 try {
  $env:TEMP=Join-Path $out 'tmp';$env:TMP=$env:TEMP;$env:RUNNER_TEMP=$out
  $env:A04_WIFI_IRQ_DIAGNOSTIC='1';$env:A04_WIFI_SESSION_DIAGNOSTIC='0';$env:A04_WIFI_CALIBRATION_DIAGNOSTIC='0'
- $parentSource=$null;$parentHash=$null;$parentManifestHash=$null
+ $parentSource=$null;$parentHash=$null;$parentManifestHash=$null;$parentInf=$null
  if($BuildSharedParent -or $ReuseParentDirectory){
   # Reuse the full Audio v11 + USB + input parent, changing just its single
   # MSDC2 child profile. Never create a second physical host PDO.
@@ -30,6 +30,7 @@ try {
      $parentManifest.parent_flags.A04_SHARED_WIFI_RUNTIME -ne '1'){
     throw 'Bluetooth retained parent profile mismatch'
   }
+  $parentInf=@{source_commit=$parentManifest.inf_source_commit;source_path=$parentManifest.inf_source_path;driver_ver=$parentManifest.inf_driver_ver;sha256=$parentManifest.inf_sha256}
   $parentSource=$parentManifest.parent_source_commit;$parentHash=$parentManifest.sys_sha256
   $parentManifestHash=(Get-FileHash (Join-Path $out 'audio-usb\a04-msdc-parent-probe\manifest.json') -Algorithm SHA256).Hash
 
@@ -51,10 +52,10 @@ try {
  if($LASTEXITCODE){throw 'MT6630 Bluetooth SYS link failed'}
  Copy-Item "$root\drivers\bluetooth\mt6630\mt6630-bluetooth.inf" $out -Force
  @{source_commit=$commit;source_dirty=$false;required_parent_bt_profile=1;shared_parent_built=[bool]$BuildSharedParent;shared_parent_reused=[bool]$ReuseParentDirectory;
-   parent_source_commit=$parentSource;parent_sys_sha256=$parentHash;parent_manifest_sha256=$parentManifestHash;
+   parent_inf=$parentInf;parent_source_commit=$parentSource;parent_sys_sha256=$parentHash;parent_manifest_sha256=$parentManifestHash;
    physical_transport='MSDC2 SDIO function 2 / STP task 0';radio_profile='exclusive Bluetooth; WLAN PDO absent';
    firmware_embedded=$false;individual_nvram_embedded=$false;hardware_verified=$false;wdk_link_succeeded=$true;
    sco_support='None (unverified wiring; BthMini acceptance remains unverified)';
    sys_sha256=(Get-FileHash (Join-Path $out 'mt6630-bluetooth.sys') -Algorithm SHA256).Hash
- }|ConvertTo-Json|Set-Content -Encoding UTF8 $manifest
+ }|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 $manifest
 } finally {foreach($name in $saved.Keys){[Environment]::SetEnvironmentVariable($name,$saved[$name],'Process')}}
