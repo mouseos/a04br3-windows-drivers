@@ -1576,3 +1576,10 @@ test-mt8167-brightness-native: build/brightness_native_sequence_test
 build/brightness_native_sequence_test: tests/brightness_native_sequence_test.c tools/display/brightness_sequence.c tools/display/brightness_sequence.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(filter %.c,$^) -o $@
+
+build/gpu_domain_owner_test: tests/gpu_domain_owner_test.c drivers/bus/mt8167-shared/gpu_domain_owner.c drivers/bus/mt8167-shared/gpu_domain_owner.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared $(filter %.c,$^) -o $@
+.PHONY: test-gpu-domain-owner
+test-gpu-domain-owner: build/gpu_domain_owner_test
+	./build/gpu_domain_owner_test

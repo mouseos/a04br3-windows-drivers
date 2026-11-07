@@ -180,6 +180,19 @@
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
+#ifndef A04_SHARED_GPU_PLATFORM
+#define A04_SHARED_GPU_PLATFORM 0
+#endif
+#if A04_SHARED_GPU_PLATFORM != 0 && A04_SHARED_GPU_PLATFORM != 1
+#error A04_SHARED_GPU_PLATFORM must be zero or one
+#endif
+#if A04_SHARED_GPU_PLATFORM
+#if !A04_SHARED_QUERY_EXPERIMENTAL || !A04_SHARED_BUTTON_D0_EXPERIMENT
+#error GPU platform service requires the existing shared query and actual parent D0 profile
+#endif
+#include "gpu_domain_owner.h"
+#include "gpu_platform_interface.h"
+#endif
 typedef struct { PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; struct a04_usb_owner usb; ULONG wifiGeneration; int wifiActive;
 #if A04_SHARED_WIFI_RUNTIME
 struct a04_rtc32k_lease wifiRtc;
@@ -192,6 +205,9 @@ struct a04_codec_voice voice;
 #endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
 struct a04_shared_thermal_owner thermal;EX_RUNDOWN_REF thermalRundown;BOOLEAN thermalRundownClosed;
+#endif
+#if A04_SHARED_GPU_PLATFORM
+struct a04_gpu_domain_owner gpuDomain;
 #endif
 PVOID audioAfe;
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
@@ -858,6 +874,9 @@ static int ParentWifiWrite(PVOID c,ULONG g,unsigned b,unsigned o,ULONG v)
 {return ParentWifiOperation(c,g,b,o,0,v,0);}
 static VOID ParentInterfaceReference(PVOID context) { WdfObjectReference((WDFDEVICE)context); }
 static VOID ParentInterfaceDereference(PVOID context) { WdfObjectDereference((WDFDEVICE)context); }
+#if A04_SHARED_GPU_PLATFORM
+#include "gpu_parent_service.inc"
+#endif
 static NTSTATUS ParentReadButtons(PVOID context,USHORT *value) {
     A04_PARENT_CONTEXT *c;
     if(!context || !value || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
@@ -1082,6 +1101,9 @@ static void ParentStop(A04_PARENT_CONTEXT *c,int can_access)
     if(can_access && !c->removed && c->classd.active && c->pmic.online)
         (void)a04_mt6392_classd_mute(&c->classd);
 #endif
+#if A04_SHARED_GPU_PLATFORM
+    a04_gpu_domain_revoke(&c->gpuDomain);
+#endif
     c->wifiActive=0;
     c->regs.online=0;
     c->pmic.online=0;
@@ -1105,6 +1127,9 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
     /* Failed/partial audio ownership cannot be interpreted as quiescent.
      * Retain mappings; this is not proof PnP retains physical resources. */
     if(c->audio.poisoned || c->audio.leased || c->audioAfe || c->usb.leased)return STATUS_DEVICE_BUSY;
+#if A04_SHARED_GPU_PLATFORM
+    if(c->gpuDomain.held || c->gpuDomain.poisoned)return STATUS_DEVICE_BUSY;
+#endif
 #if defined(A04_MT6392_RTC32K_DIAGNOSTIC) && A04_MT6392_RTC32K_DIAGNOSTIC
     /* A retained or ambiguous RTC lease must outlive the PWRAP mapping. */
     if(c->pmic.rtc_lease)return STATUS_DEVICE_BUSY;
@@ -1248,6 +1273,9 @@ NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
         }
         A04_TRACE("A04AUD parent d0 TOP_CKPDN1=%04x; observation only\n",(unsigned)raw);
     }
+#endif
+#if A04_SHARED_GPU_PLATFORM
+    if(!c->gpuDomain.held && !c->gpuDomain.poisoned)c->gpuDomain.revoked=0;
 #endif
     c->pmic.online=1;
 #if A04_SHARED_FIRST_PLAYBACK
@@ -1503,6 +1531,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     if(!NT_SUCCESS(status))return status;
     RtlZeroMemory(&inputIface,sizeof(inputIface));
     inputIface.Size=sizeof(inputIface);inputIface.Version=A04_SHARED_INTERFACE_VERSION;
+#if A04_SHARED_GPU_PLATFORM
+    status=ParentGpuRegister(dev);if(!NT_SUCCESS(status))return status;
+#endif
     inputIface.Context=dev;inputIface.InterfaceReference=ParentInterfaceReference;
     inputIface.InterfaceDereference=ParentInterfaceDereference;
     inputIface.TouchUpdate=ParentTouchUpdate;inputIface.TouchWrite=ParentTouchWrite;
