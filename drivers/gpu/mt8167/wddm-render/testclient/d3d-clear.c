@@ -5,6 +5,9 @@
 #include <initguid.h>
 #include <d3d11.h>
 #include <dxgi.h>
+#include <d3d9.h>
+#include <winternl.h>
+#include <d3dkmthk.h>
 /* Freestanding fixed-operation probe; no private device IOCTL or payload. */
 static HANDLE disk;
 static int log_ok=1;
@@ -37,6 +40,45 @@ static int luid_arg(LUID *id) {
  if(!hex8(&p,&high)||*p++!=':'||!hex8(&p,&low))return 0;
  while(*p==' ')p++;if(*p)return 0;
  id->HighPart=(LONG)high;id->LowPart=low;return 1;
+}
+/* Observation only: a D3D9 ordinal cannot be manufactured from a DXGI LUID.
+ * Failure of optional inventory transport never replaces the actual D3D11
+ * CreateDevice result. No private escape or driver success is synthesized. */
+static void runtime_inventory(IDXGIAdapter *adapter,const LUID *wanted) {
+ IDirect3D9Ex *d9=NULL;IDXGIOutput *output=NULL;UINT i,matches=0,outputs=0;HRESULT hr;LUID id;
+ HMODULE gdi=NULL;D3DKMT_OPENADAPTERFROMLUID open={0};D3DKMT_QUERYADAPTERINFO query={0};D3DKMT_ADAPTERTYPE type={0};D3DKMT_CLOSEADAPTER close={0};NTSTATUS status;
+ PFND3DKMT_OPENADAPTERFROMLUID open_fn;PFND3DKMT_QUERYADAPTERINFO query_fn;PFND3DKMT_CLOSEADAPTER close_fn;
+ for(i=0;;i++){
+  hr=IDXGIAdapter_EnumOutputs(adapter,i,&output);if(hr==DXGI_ERROR_NOT_FOUND)break;
+  if(FAILED(hr)){line("DXGI_OUTPUT_ENUM_HRESULT",hr);break;}outputs++;IDXGIOutput_Release(output);output=NULL;
+ }
+ line("DXGI_OUTPUT_COUNT",outputs);
+ hr=Direct3DCreate9Ex(D3D_SDK_VERSION,&d9);line("D3D9_API_HRESULT",hr);
+ if(SUCCEEDED(hr)){
+  UINT count=IDirect3D9Ex_GetAdapterCount(d9);line("D3D9_ADAPTER_COUNT",count);
+  for(i=0;i<count;i++){
+   hr=IDirect3D9Ex_GetAdapterLUID(d9,i,&id);line("D3D9_LUID_HRESULT",hr);
+   if(FAILED(hr))continue;
+   line("D3D9_ORDINAL",i);line("D3D9_LUID_HIGH",(UINT)id.HighPart);line("D3D9_LUID_LOW",id.LowPart);
+   if(id.HighPart==wanted->HighPart&&id.LowPart==wanted->LowPart)matches++;
+  }
+  IDirect3D9Ex_Release(d9);
+ }
+ line("D3D9_SELECTED_LUID_MATCHES",matches);
+ gdi=LoadLibraryExW(L"gdi32.dll",NULL,LOAD_LIBRARY_SEARCH_SYSTEM32);
+ if(!gdi){line("KMT_GDI_LOAD_ERROR",GetLastError());return;}
+ open_fn=(PFND3DKMT_OPENADAPTERFROMLUID)GetProcAddress(gdi,"D3DKMTOpenAdapterFromLuid");
+ query_fn=(PFND3DKMT_QUERYADAPTERINFO)GetProcAddress(gdi,"D3DKMTQueryAdapterInfo");
+ close_fn=(PFND3DKMT_CLOSEADAPTER)GetProcAddress(gdi,"D3DKMTCloseAdapter");
+ if(!open_fn||!query_fn||!close_fn){line("KMT_API_AVAILABLE",0);FreeLibrary(gdi);return;}
+ line("KMT_API_AVAILABLE",1);open.AdapterLuid=*wanted;status=open_fn(&open);line("KMT_OPEN_STATUS",(UINT)status);
+ if(status>=0){
+  query.hAdapter=open.hAdapter;query.Type=KMTQAITYPE_ADAPTERTYPE;query.pPrivateDriverData=&type;query.PrivateDriverDataSize=sizeof(type);
+  status=query_fn(&query);line("KMT_ADAPTER_TYPE_STATUS",(UINT)status);
+  if(status>=0){line("KMT_ADAPTER_TYPE_RAW",type.Value);line("KMT_RENDER_SUPPORTED",type.RenderSupported);line("KMT_DISPLAY_SUPPORTED",type.DisplaySupported);line("KMT_SOFTWARE_DEVICE",type.SoftwareDevice);line("KMT_POST_DEVICE",type.PostDevice);}
+  close.hAdapter=open.hAdapter;status=close_fn(&close);line("KMT_CLOSE_STATUS",(UINT)status);
+ }
+ FreeLibrary(gdi);
 }
 static HRESULT probe(IDXGIAdapter *adapter) {
  ID3D11Device *device=NULL;ID3D11DeviceContext *ctx=NULL;ID3D11Texture2D *target=NULL,*staging=NULL;
@@ -95,7 +137,7 @@ void mainCRTStartup(void) {
  CreateDirectoryW(L"C:\\MT8167D3DClear",NULL);
  disk=CreateFileW(path,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,NULL);
  if(disk==INVALID_HANDLE_VALUE)ExitProcess(2);
- line("SCHEMA",1);line("EXPLICIT_LUID",selected);
+ line("SCHEMA",2);line("EXPLICIT_LUID",selected);
  hr=CreateDXGIFactory(&IID_IDXGIFactory,(void **)&factory);line("FACTORY_HRESULT",hr);if(FAILED(hr)||!log_ok)goto done;
  for(i=0;;i++) {
   hr=IDXGIFactory_EnumAdapters(factory,i,&a);
@@ -112,6 +154,8 @@ void mainCRTStartup(void) {
  }
  line("SELECTED_COUNT",count);
  if(count!=1||!log_ok){hr=E_INVALIDARG;goto done;}
+ runtime_inventory(chosen,&id);
+ if(!log_ok){hr=E_FAIL;goto done;}
  hr=probe(chosen);if(SUCCEEDED(hr)&&log_ok)result=0;
  done:
  line("FINAL_HRESULT",hr);line("API_READBACK_SUCCESS",result==0&&log_ok);
