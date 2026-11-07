@@ -221,3 +221,16 @@ Engine専用parent INFは11/06/2026,2026.11.7.1005として分離した。
 このprobe改良は、Code 10でKS interfaceもendpointも存在しない場合にも
 標準PnP propertyを取得するための最小追加で、PnP再bind、再起動、driver登録や
 独自kernel制御は行わない。propertyが未提供なら取得エラーを残すだけである。
+
+
+## run49後のbounded出力候補
+
+run49のd0ebは2 WASAPI pass/StopがS_OK、clock前進を記録した後、全snapshotの
+三重出力中にserviceの上限でterminateされた。正常終了・可聴出力は未確認。
+次clientは100ms read-only snapshotをcollect中に集約し、開始前/各passのfirst-last/
+最初のinvalid/終了後の最大7代表だけ出す。実running/実CUR/IRQ-event前進を確認し、
+未知値を0成功にしない。時計もfirst-lastに集約する。固定3sec×2のPCMとreopenは保持。
+出力は合計16KiB以内、stdout/private fileへbuffered write、既存file flushを保持する。
+per-row UART IOCTLは行わず、serviceのprocess start/endと保存ログ/nativeを使う。
+上限延長、kernel/parent再compile、任意path/argsや偽の可聴判定は追加しない。
+API Stopとterminal snapshotは別に記録し、bus drain/物理speaker音を証明しない。

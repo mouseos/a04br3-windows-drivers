@@ -30,18 +30,22 @@ try {
     if($LASTEXITCODE -ne 0){throw 'Audio engine probe PE inspection failed'}
     $inspection|Set-Content -Encoding UTF8 (Join-Path $out 'pe-imports.txt');$inspection|Write-Host
     Copy-Item (Join-Path $root 'tools\audio\README-mt8167-audio-engine-probe.md') $out
-    @{package_version='2026.11.7.3';source_commit=$commit;source_dirty=($dirty.Count -ne 0);
+    @{package_version='2026.11.7.4';source_commit=$commit;source_dirty=($dirty.Count -ne 0);
       source_sha256=(Get-FileHash $source -Algorithm SHA256).Hash;
       entry='mt8167-audio-engine-probe.exe (no arguments, no service wrapper)';
       api='shared-mode MMDevice/DeviceTopology/WASAPI; AudioEndpointBuilder and AudioSrv';
-      hardware='MediaTek MT8167 AFE / MT6392 Audio';driver_runtime_source_expected='de214c8b7495913d0716f149b24fd210ef42de8a';
-      audio_inf_source_expected='e4dff2b25cc164892dce1d534cb564218845c29c';audio_inf_driverver_expected='11/06/2026,2026.11.7.1004';
-      engine_bundle_expected='windows-rt-engine-pcm-de214c8-e4dff2b';
-      signed_audio_sys_sha256_expected='2f56e9a4cb742c2d09284117d9e781493d827a2800a7925238bdc352b2b346ef';
-      signed_parent_sys_sha256_expected='99338c1bbe30205b09af6c594a7c79cc4ef8a7c080a692330d36cdbb973f86ca';
+      hardware='MediaTek MT8167 AFE / MT6392 Audio';driver_runtime_source_expected='3d83f6fee554455434e2c03112c56bbf351e4c4b';
+      audio_inf_source_expected='3d83f6fee554455434e2c03112c56bbf351e4c4b';audio_inf_driverver_expected='11/06/2026,2026.11.7.1007';
+      engine_bundle_expected='windows-rt-audio-endpoint-3d83f6f; retained matched parent1010';
+      signed_audio_sys_sha256_expected='b917801c0f673aa5ab36be25c4133ad5d1370f1130936bbc4fda7086cf374edc';
+      signed_parent_sys_sha256_expected='4638ab23c614aa6537b54b321c2b3bea5e6c54ac02f3c61956a7b1102fac42a5';
       driver_sources_verified_by_probe=$false;diagnostic_interface=11;snapshot_version=1;
       program='two standard client lifetimes; each 48000 frames 1500Hz, 48000 silence, 48000 frames 750Hz; peak 1/256 FS';
-      evidence_required='disk log, successful writes and FlushFileBuffers';uart_transport='optional; open/send errors recorded separately, never an audio failure';
+      evidence_required='disk log, successful writes and FlushFileBuffers';uart_transport='disabled; owning fixed service reports process start/end; no per-row UART IOCTL';
+      output_limit_bytes=16384;output_io='bounded buffered stdout/private file, mandatory FlushFileBuffers';
+      snapshot_period_ms=100;snapshot_output='aggregate during capture; baseline, first/last valid each pass, first invalid, terminal snapshot only';
+      progress_requires='same-phase running DMA/CUR and IRQ-event changes, no observed faults';
+      terminal_snapshot='one read-only observation after API stop, not an independent bus-drain certificate';
       audible_verified=$false;deployment_performed=$false;
       files=@(@{name='mt8167-audio-engine-probe.exe';sha256=(Get-FileHash $exe -Algorithm SHA256).Hash},
               @{name='README-mt8167-audio-engine-probe.md';sha256=(Get-FileHash (Join-Path $out 'README-mt8167-audio-engine-probe.md') -Algorithm SHA256).Hash})

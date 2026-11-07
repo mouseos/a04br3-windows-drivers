@@ -38,7 +38,8 @@ static const PROPERTYKEY K_Name={{0xa45c254e,0xdf1c,0x4efd,{0x80,0x20,0x67,0xd1,
 void *memcpy(void *d,const void *s,size_t n){volatile BYTE *a=d;const volatile BYTE *b=s;while(n--)*a++=*b++;return d;}
 void *memset(void *d,int v,size_t n){volatile BYTE *a=d;while(n--)*a++=(BYTE)v;return d;}
 #define RELEASE(type,p) do{if(p){type##_Release(p);(p)=NULL;}}while(0)
-#define SAMPLE_MAX 512u
+#define SAMPLE_MAX 7u
+#define OUTPUT_CAPACITY 16384u
 #define TOTAL_FRAMES 144000u
 static HANDLE logfile=INVALID_HANDLE_VALUE,uart=INVALID_HANDLE_VALUE,filter=INVALID_HANDLE_VALUE;
 static HANDLE stop_event,ready_event;
@@ -48,8 +49,20 @@ static WCHAR instance[512];
 struct diag_record {DWORD tick,phase_begin,phase_end,error;struct a04_audio_snapshot s;};
 static struct diag_record records[SAMPLE_MAX];
 struct clock_record {DWORD pass,tick,padding;HRESULT hr;UINT64 position,qpc;};
-static struct clock_record clocks[SAMPLE_MAX];
-static DWORD clock_count;
+static struct clock_record clocks[4];
+static DWORD clock_seen[2],clock_valid[4];
+struct aggregate {DWORD observed,valid,changes,irq_changes,bad,last_pos,last_irq,first,last;};
+static struct aggregate progress[2];
+static BYTE pending_output[OUTPUT_CAPACITY];static DWORD pending_bytes,total_output;
+static void flush_output(void){DWORD got=0;BOOL ok;
+ if(!pending_bytes)return;
+ ok=WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),pending_output,pending_bytes,&got,NULL);
+ if((!ok||got!=pending_bytes)&&!log_error)log_error=ERROR_WRITE_FAULT;
+ if(logfile!=INVALID_HANDLE_VALUE){ok=WriteFile(logfile,pending_output,pending_bytes,&got,NULL);
+  if((!ok||got!=pending_bytes)&&!log_error)log_error=ERROR_WRITE_FAULT;
+ }
+ pending_bytes=0;
+}
 static char *text(char *p,const char *s){while(*s)*p++=*s++;return p;}
 static char *hex(char *p,DWORD n){static const char d[]="0123456789ABCDEF";unsigned i;for(i=0;i<8;i++)*p++=d[(n>>(28-4*i))&15];return p;}
 static int same(const void *a,const void *b,size_t n){const BYTE *x=a,*y=b;while(n--)if(*x++!=*y++)return 0;return 1;}
@@ -58,23 +71,18 @@ static int prefix(const WCHAR *s,const WCHAR *p){while(*p)if(upper(*s++)!=upper(
 static int equal(const WCHAR *a,const WCHAR *b){while(*a&&upper(*a)==upper(*b)){a++;b++;}return !*a&&!*b;}
 static int copy_wide(WCHAR *to,DWORD cap,const WCHAR *from){DWORD i;for(i=0;i<cap;i++){to[i]=from[i];if(!from[i])return 1;}to[cap-1]=0;return 0;}
 static void line(const char *tag,DWORD a,DWORD b,DWORD c){
- char row[96],*p=row;DWORD written=0,start;
+ char row[96],*p=row;DWORD count;
  p=text(p,"A04AUDENG r=");p=hex(p,runid);*p++=' ';p=text(p,tag);
  p=text(p," a=");p=hex(p,a);p=text(p," b=");p=hex(p,b);p=text(p," c=");p=hex(p,c);*p++='\n';
- WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),row,(DWORD)(p-row),&written,NULL);
- if(logfile!=INVALID_HANDLE_VALUE){
-  BOOL ok=WriteFile(logfile,row,(DWORD)(p-row),&written,NULL);
-  if(!ok&&!log_error){DWORD e=GetLastError();log_error=e?e:ERROR_WRITE_FAULT;}
-  else if(ok&&written!=(DWORD)(p-row)&&!log_error)log_error=ERROR_WRITE_FAULT;
- }
- if(uart_error||uart==INVALID_HANDLE_VALUE)return;
- start=GetTickCount();
- while(!DeviceIoControl(uart,A04_UART_SCREEN_SEND,row,(DWORD)(p-row),NULL,0,&written,NULL)){
-  DWORD e=GetLastError();if(e!=ERROR_BUSY||GetTickCount()-start>=2000){uart_error=e;break;}Sleep(10);
- }
+ count=(DWORD)(p-row);
+ /* Complete bounded stdout/private-file evidence, not thousands of sync
+  * UART IOCTLs and write-through writes. Keep room for final result rows. */
+ if(count>OUTPUT_CAPACITY-total_output){if(!log_error)log_error=ERROR_BUFFER_OVERFLOW;return;}
+ if(count>OUTPUT_CAPACITY-pending_bytes)flush_output();
+ memcpy(pending_output+pending_bytes,row,count);pending_bytes+=count;total_output+=count;
 }
 /* Exact UTF-16 identity, four code units per row, no locale/CRT conversion. */
-static void wide(const char *tag,const WCHAR *s){DWORD i=0,j,words[2];while(s[i]&&i<1024){words[0]=words[1]=0;for(j=0;j<4&&s[i+j];j++)words[j/2]|=(DWORD)s[i+j]<<(16*(j&1));line(tag,i,words[0],words[1]);i+=j;}line(i==1024&&s[i]?"text-trunc":"text-end",i,0,0);}
+static void wide(const char *tag,const WCHAR *s){DWORD i=0,j,words[2];while(s[i]&&i<128){words[0]=words[1]=0;for(j=0;j<4&&s[i+j];j++)words[j/2]|=(DWORD)s[i+j]<<(16*(j&1));line(tag,i,words[0],words[1]);i+=j;}line(i==128&&s[i]?"text-trunc":"text-end",i,0,0);}
 static void open_outputs(void){
  WCHAR path[MAX_PATH],*p;DWORD n=GetModuleFileNameW(NULL,path,MAX_PATH),i;char digits[8];
  runid=GetTickCount()^GetCurrentProcessId();
@@ -83,8 +91,9 @@ static void open_outputs(void){
   name=L".log";while(*name)*p++=*name++;*p=0;logfile=CreateFileW(path,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,NULL);
  }}
  if(logfile==INVALID_HANDLE_VALUE)log_error=GetLastError()?GetLastError():ERROR_INVALID_NAME;
- uart=CreateFileW(L"\\\\.\\A04BR3ScreenUart",GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,0,NULL);
- if(uart==INVALID_HANDLE_VALUE)uart_error=GetLastError();
+ /* Disk/stdout are authoritative. This bounded client does not submit UART
+  * requests; the owning fixed service already reports client start/end. */
+ uart_error=ERROR_NOT_SUPPORTED;
 }
 static DWORD ensure_service(SC_HANDLE scm,const WCHAR *name,DWORD index){
  SC_HANDLE service=OpenServiceW(scm,name,SERVICE_QUERY_STATUS);SERVICE_STATUS_PROCESS s;DWORD bytes,start=GetTickCount(),error=0;BOOL requested=FALSE;
@@ -189,21 +198,38 @@ static DWORD read_snapshot(struct a04_audio_snapshot *out){
  if(bytes!=sizeof(diag_buffer)||diag_buffer.size!=sizeof(diag_buffer)||diag_buffer.version!=A04_AUDIO_DIAG_VERSION)return ERROR_INVALID_DATA;
  *out=diag_buffer;return 0;
 }
+static int sample_valid(const struct a04_audio_snapshot *s);
 static DWORD WINAPI collect(LPVOID unused){
- (void)unused;for(;;){struct diag_record *r;if(sample_count==SAMPLE_MAX){diag_error=ERROR_BUFFER_OVERFLOW;SetEvent(ready_event);break;}
-  r=&records[sample_count];r->phase_begin=(DWORD)InterlockedCompareExchange(&phase,0,0);r->tick=GetTickCount();r->error=read_snapshot(&r->s);
-  r->phase_end=(DWORD)InterlockedCompareExchange(&phase,0,0);sample_count++;
-  if(r->error&&!(r->error==ERROR_OPERATION_ABORTED&&WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0)&&!diag_error)diag_error=r->error;SetEvent(ready_event);
-  if(r->error||WaitForSingleObject(stop_event,37)!=WAIT_TIMEOUT)break;
- }return 0;
+ DWORD initial=0;(void)unused;
+ for(;;){struct diag_record r;DWORD phase_now=(DWORD)InterlockedCompareExchange(&phase,0,0);
+  if(initial&&phase_now==0){if(WaitForSingleObject(stop_event,100)!=WAIT_TIMEOUT)break;continue;}
+  ZeroMemory(&r,sizeof(r));r.phase_begin=phase_now;r.tick=GetTickCount();r.error=read_snapshot(&r.s);
+  r.phase_end=(DWORD)InterlockedCompareExchange(&phase,0,0);
+  if(r.error&&!(r.error==ERROR_OPERATION_ABORTED&&WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0)&&!diag_error)diag_error=r.error;
+  if(!initial){records[0]=r;sample_count=1;initial=1;SetEvent(ready_event);}
+  if(r.error){if(!records[5].tick)records[5]=r;break;}
+  if(r.phase_begin>=1&&r.phase_begin<=2&&r.phase_end==r.phase_begin){
+   DWORD n=r.phase_begin-1;struct aggregate *g=&progress[n];g->observed++;
+   if(r.s.irq_faults||r.s.codec.poisoned||((r.s.codec.valid&A04_CODEC_VALID_TRIM_OC)&&(r.s.codec.overcurrent&(1u<<14))))g->bad++;
+   if(!sample_valid(&r.s)&&!records[5].tick)records[5]=r;
+   if(sample_valid(&r.s)){
+    if(g->valid){if(g->last_pos!=r.s.position_bytes)g->changes++;if(g->last_irq!=r.s.irq_events)g->irq_changes++;}
+    else {g->first=r.tick;records[1+n*2]=r;}
+    g->last=r.tick;g->last_pos=r.s.position_bytes;g->last_irq=r.s.irq_events;g->valid++;records[2+n*2]=r;
+   }
+  }
+  if(WaitForSingleObject(stop_event,100)!=WAIT_TIMEOUT)break;
+ }
+ return 0;
 }
 static int sample_valid(const struct a04_audio_snapshot *s){
  DWORD required=A04_AUDIO_VALID_PARENT|A04_AUDIO_VALID_AFE|A04_AUDIO_VALID_POSITION|A04_AUDIO_VALID_DMA;
  return (s->valid&required)==required&&s->online&&s->dma_exposed&&s->dma_bytes&&s->dma_bytes<=1048576&&s->dma_end>=s->dma_base&&
-  s->dma_end-s->dma_base==s->dma_bytes-1&&s->dl1_cur>=s->dma_base&&s->dl1_cur<=s->dma_end&&s->position_bytes==s->dl1_cur-s->dma_base&&!(s->position_bytes&3);
+  s->dma_end-s->dma_base==s->dma_bytes-1&&s->stage==A04_STAGE_RUNNING&&!s->last_status&&!s->failure_stage&&s->irq_active&&(s->dac0&2)&&s->dl1_cur>=s->dma_base&&s->dl1_cur<=s->dma_end&&s->position_bytes==s->dl1_cur-s->dma_base&&!(s->position_bytes&3);
 }
-static DWORD dump_diagnostics(void){DWORD i,valid[2]={0,0},changes[2]={0,0},last[2]={0,0},bad[2]={0,0},observed=0;
- for(i=0;i<sample_count;i++){struct diag_record *r=&records[i];struct a04_audio_snapshot *s=&r->s;DWORD p=r->phase_begin;
+static DWORD dump_diagnostics(void){DWORD i,observed=0;
+ for(i=0;i<SAMPLE_MAX;i++){struct diag_record *r=&records[i];struct a04_audio_snapshot *s=&r->s;DWORD p=r->phase_begin;
+  if(!r->tick)continue;
   line("sample",i,r->tick,p);line("sample-end",i,r->phase_end,r->error);if(r->error)continue;
   line("state",s->stage,s->last_status,s->failure_stage);line("valid",s->valid,s->codec.valid,s->online);
   line("dma",s->dma_base,s->dma_end,s->dma_bytes);line("cur",s->dl1_cur,s->position_bytes,s->dma_exposed);
@@ -211,12 +237,12 @@ static DWORD dump_diagnostics(void){DWORD i,valid[2]={0,0},changes[2]={0,0},last
   line("codec",s->codec.digital_prepared,s->codec.voice_active,s->codec.poisoned);
   line("speaker",s->codec.spk0,s->codec.spk9,s->codec.overcurrent);line("trim",s->codec.trim_captured,s->codec.trim_code,s->codec.trim_raw);
   line("rails",s->codec.vaud22,s->codec.vaud28,s->codec.power_pinned);line("lease",s->codec.online,s->codec.leased,s->shared_quarantined);
-  if(p>=1&&p<=2&&r->phase_end==p){DWORD n=p-1;
-   if(s->irq_faults||s->codec.poisoned||((s->codec.valid&A04_CODEC_VALID_TRIM_OC)&&(s->codec.overcurrent&(1u<<14))))bad[n]=1;
-   if(sample_valid(s)){if(valid[n]&&last[n]!=s->position_bytes)changes[n]++;last[n]=s->position_bytes;valid[n]++;}
-  }
  }
- for(i=0;i<2;i++){line("dma-progress",i,valid[i],changes[i]);line("dma-fault",i,bad[i],0);if(valid[i]>=2&&changes[i]&&!bad[i])observed|=1u<<i;}
+ for(i=0;i<2;i++){struct aggregate *g=&progress[i];
+  line("dma-progress",i,g->valid,g->changes);line("irq-progress",i,g->irq_changes,g->observed);
+  line("dma-fault",i,g->bad,0);line("sample-span",i,g->first,g->last);
+  if(g->valid>=2&&g->changes&&g->irq_changes&&!g->bad)observed|=1u<<i;
+ }
  return observed;
 }
 static int format_kind(const WAVEFORMATEX *w){
@@ -257,15 +283,14 @@ static HRESULT render_pass(IMMDevice *endpoint,DWORD pass){
  step=10;hr=IAudioRenderClient_GetBuffer(render,capacity,&data);if(FAILED(hr))goto done;fill(data,capacity,0,kind,&hash);
  step=11;hr=IAudioRenderClient_ReleaseBuffer(render,capacity,0);if(FAILED(hr))goto done;submitted=capacity;
  /* Disk evidence is mandatory before PCM; UART is an optional transport. */
- if(!log_error&&!FlushFileBuffers(logfile))log_error=GetLastError()?GetLastError():ERROR_WRITE_FAULT;
+ flush_output();if(!log_error&&!FlushFileBuffers(logfile))log_error=GetLastError()?GetLastError():ERROR_WRITE_FAULT;
  if(log_error){hr=HRESULT_FROM_WIN32(log_error);goto done;}
  step=12;InterlockedExchange(&phase,(LONG)pass+1);hr=IAudioClient_Start(client);if(FAILED(hr)){InterlockedExchange(&phase,0);goto done;}
  running=TRUE;start=lastSample=GetTickCount();
  while(GetTickCount()-start<10000){
   Sleep(waitMs);step=13;hr=IAudioClient_GetCurrentPadding(client,&padding);if(FAILED(hr))break;if(padding>capacity){hr=E_UNEXPECTED;break;}
   if(GetTickCount()-lastSample>=37){UINT64 pos=0;HRESULT clockHr;step=14;clockHr=IAudioClock_GetPosition(clock,&pos,&qpc);lastSample=GetTickCount();
-   if(clock_count==SAMPLE_MAX){hr=HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW);break;}
-   {struct clock_record *r=&clocks[clock_count++];r->pass=pass;r->tick=lastSample;r->padding=padding;r->hr=clockHr;r->position=pos;r->qpc=qpc;}
+   {DWORD k=pass*2+(clock_seen[pass]++?1:0);struct clock_record *r=&clocks[k];clock_valid[k]=1;r->pass=pass;r->tick=lastSample;r->padding=padding;r->hr=clockHr;r->position=pos;r->qpc=qpc;}
    if(clockHr!=S_OK){hr=FAILED(clockHr)?clockHr:E_UNEXPECTED;break;}
    if(haveClock&&pos<lastClock){hr=E_UNEXPECTED;break;}if(!haveClock){firstClock=pos;haveClock=TRUE;}lastClock=pos;
   }
@@ -286,10 +311,10 @@ static HRESULT render_pass(IMMDevice *endpoint,DWORD pass){
 void mainCRTStartup(void){
  SC_HANDLE scm=NULL;IMMDeviceEnumerator *enumerator=NULL;IMMDevice *endpoint=NULL;HANDLE worker=NULL,mutex=NULL;
  HRESULT hr=E_FAIL;DWORD result=1,error=0,i,api=0,dma=0,joined=0;BOOL com=FALSE;
- open_outputs();line("begin",1,GetTickCount(),A04_ENGINE_PROBE_SOURCE);line("expected-src",0x0de214c8u,0x0e4dff2bu,1004);
+ open_outputs();line("begin",1,GetTickCount(),A04_ENGINE_PROBE_SOURCE);line("expected-src",0x03d83f6fu,0x09e07f0au,1007);
  line("transport",log_error,uart_error,1); /* c=1: UART optional, disk mandatory */
  if(uart_error)line("uart-optional",uart_error,0,0);
- if(!log_error&&!FlushFileBuffers(logfile))log_error=GetLastError()?GetLastError():ERROR_WRITE_FAULT;
+ flush_output();if(!log_error&&!FlushFileBuffers(logfile))log_error=GetLastError()?GetLastError():ERROR_WRITE_FAULT;
  if(log_error){line("disk-required",log_error,0,0);goto done;}
  SetLastError(ERROR_SUCCESS);mutex=CreateMutexW(NULL,FALSE,L"A04BR3AudioEngineProbe");if(!mutex||GetLastError()==ERROR_ALREADY_EXISTS){line("singleton",GetLastError(),0,0);goto done;}
  report_devnode();
@@ -309,15 +334,21 @@ void mainCRTStartup(void){
  result=0;
  done:
  if(worker){SetEvent(stop_event);CancelIoEx(filter,&diag_io);joined=WaitForSingleObject(worker,2000)==WAIT_OBJECT_0;
-  if(joined){dma=dump_diagnostics();CloseHandle(worker);}else{line("diag-stuck",ERROR_TIMEOUT,0,0);result=4;}
+  if(joined){
+   /* One read-only terminal observation, not a stop/drain command. */
+   ResetEvent(stop_event);records[6].tick=GetTickCount();records[6].error=read_snapshot(&records[6].s);
+   line("stop-snapshot",records[6].error,records[6].s.stage,records[6].s.dac0);
+   if(records[6].error&&!diag_error)diag_error=records[6].error;
+   dma=dump_diagnostics();CloseHandle(worker);
+  }else{line("diag-stuck",ERROR_TIMEOUT,0,0);result=4;}
  }
- for(i=0;i<clock_count;i++){struct clock_record *r=&clocks[i];line("clock",r->pass,r->tick,r->hr);line("clock-pos",(DWORD)r->position,(DWORD)(r->position>>32),r->padding);line("clock-qpc",(DWORD)r->qpc,(DWORD)(r->qpc>>32),0);}
+ for(i=0;i<4;i++){struct clock_record *r=&clocks[i];if(!clock_valid[i])continue;line("clock",r->pass,r->tick,r->hr);line("clock-pos",(DWORD)r->position,(DWORD)(r->position>>32),r->padding);line("clock-qpc",(DWORD)r->qpc,(DWORD)(r->qpc>>32),0);}
  line("api-hr",hr,api,0);line("audible",0,0,0);
  RELEASE(IMMDevice,endpoint);RELEASE(IMMDeviceEnumerator,enumerator);if(com)CoUninitialize();if(scm)CloseServiceHandle(scm);if(mutex)CloseHandle(mutex);
  if(!worker||joined){if(filter!=INVALID_HANDLE_VALUE)CloseHandle(filter);if(stop_event)CloseHandle(stop_event);if(ready_event)CloseHandle(ready_event);if(diag_io.hEvent)CloseHandle(diag_io.hEvent);}
  if(!result&&(api!=3||dma!=3||diag_error))result=3;
  line("summary",api,dma,result);line("output-state",log_error,uart_error,diag_error);if(log_error)result=5;
  line("end",result,GetTickCount(),uart_error);if(log_error)result=5;
- if(logfile!=INVALID_HANDLE_VALUE){if(!FlushFileBuffers(logfile))result=5;CloseHandle(logfile);}if(uart!=INVALID_HANDLE_VALUE)CloseHandle(uart);
+ flush_output();if(logfile!=INVALID_HANDLE_VALUE){if(!FlushFileBuffers(logfile))result=5;CloseHandle(logfile);}if(uart!=INVALID_HANDLE_VALUE)CloseHandle(uart);
  ExitProcess(result);
 }
