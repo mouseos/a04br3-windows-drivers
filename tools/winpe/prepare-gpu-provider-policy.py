@@ -46,7 +46,8 @@ def driver_version(value):
 
 def load_package(root, directory, candidate=False):
     """Read fixed names only; verify final bytes and their source-committed INF."""
-    signed = read_json(directory, "signed-manifest.json")
+    signed_bytes = checked_file(directory, "signed-manifest.json").read_bytes()
+    signed = json.loads(signed_bytes.decode("utf-8-sig"))
     source = signed.get("source_commit", "")
     require(isinstance(source, str) and re.fullmatch("[0-9a-f]{40}", source), "full source commit required")
     entries = signed["files"]
@@ -55,6 +56,7 @@ def load_package(root, directory, candidate=False):
     for item in entries:
         require(sha(checked_file(directory, item["path"])) == item["sha256"].lower(),
                 "signed manifest file mismatch: " + item["path"])
+    verified_hashes = {item["path"]: item["sha256"].lower() for item in entries}
     manifest = read_json(directory, "provider-package-manifest.json")
     config = read_json(directory, "build-config.json")
     require(manifest.get("source_commit") == source == config.get("source_commit"), "package source mismatch")
@@ -95,9 +97,13 @@ def load_package(root, directory, candidate=False):
             re.search(r"(?im)^AddService\s*=\s*MT8167GE8300\s*,", inf), "fixed GPU hardware/service mismatch")
     require(not re.search(r"(?i)\b(CoInstallers32|RegisterDlls|UnregisterDlls|RunPreSetupCommands|RunPostSetupCommands)\b", inf),
             "executable coinstaller/command directives are not accepted")
+    require(all(sha(checked_file(directory, name)) == digest for name, digest in verified_hashes.items()) and
+            sha(directory / "signed-manifest.json") == hashlib.sha256(signed_bytes).hexdigest(),
+            "package changed during validation")
     return {"source": source, "manifest": manifest, "config": config, "hashes": hashes,
+            "verified_hashes": verified_hashes,
             "date": date, "parts": parts, "version": text, "driver_ver": manifest["driver_ver"],
-            "signed_sha256": sha(directory / "signed-manifest.json")}
+            "signed_sha256": hashlib.sha256(signed_bytes).hexdigest()}
 
 
 def validate_transition(baseline, candidate):
@@ -145,7 +151,7 @@ def main():
         suffix = "\\MT8167GpuUpdate-" + candidate["source"] + "-" + transition
         require(re.fullmatch(r"\\MT8167GpuUpdate-[0-9a-f]{40}-[0-9a-f]{64}", suffix), "invalid fixed directory suffix")
         names = ("provider-package-manifest.json",) + FILES
-        hashes = [sha(candidate_dir / name) for name in names]
+        hashes = [candidate["verified_hashes"][name] for name in names]
         out.mkdir(parents=True)
         package = out / "provider"
         package.mkdir()
@@ -160,7 +166,7 @@ def main():
                   "data_directory_suffix": suffix, "data_directory": "C:\\Windows\\System32" + suffix,
                   "files": dict(zip(names, hashes)), "policy_sha256": sha(out / "gpu-provider-candidate.h"),
                   "source_signed_manifest_sha256": candidate["signed_sha256"],
-                  "source_build_config_sha256": sha(candidate_dir / "build-config.json"),
+                  "source_build_config_sha256": candidate["verified_hashes"]["build-config.json"],
                   "authenticode_verified": False, "runtime_verified": False, "deployed": False}
         (out / "policy-manifest.json").write_text(json.dumps(result, indent=2) + "\n")
         print(json.dumps(result, indent=2))
