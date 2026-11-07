@@ -6,7 +6,7 @@
 #include "wavert_dma.h"
 #define CAP_TAG 'cAuM'
 struct Mt8167CaptureOwner {
- volatile LONG refs;FAST_MUTEX lock;EX_RUNDOWN_REF positions;Mt8167CaptureResources r;Mt8167StreamBackend api;
+ volatile LONG refs;KMUTEX lock;EX_RUNDOWN_REF positions;Mt8167CaptureResources r;Mt8167StreamBackend api;
  Mt8167WaveBuffer buffer;Mt8167WaveDma dma;mt8167_ul_engine engine;
  PKINTERRUPT interrupt;PPORTWAVERTSTREAM client;BOOLEAN leased,closed;
  NTSTATUS failure;KSSTATE state;ULONG position;
@@ -44,7 +44,7 @@ static BOOLEAN PositionSynchronized(PVOID c)
 static NTSTATUS Checkout(void *c,PPORTWAVERTSTREAM port,ULONG bytes,PMDL *mdl,PULONG actual)
 {
  Mt8167CaptureOwner *o=(Mt8167CaptureOwner *)c;if(!port||!mdl||!actual||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
- *mdl=NULL;*actual=0;ExAcquireFastMutex(&o->lock);NTSTATUS s=STATUS_SUCCESS;
+ *mdl=NULL;*actual=0;KeWaitForSingleObject(&o->lock,Executive,KernelMode,FALSE,NULL);NTSTATUS s=STATUS_SUCCESS;
  if(o->closed||o->failure)s=STATUS_DEVICE_NOT_READY;
  else if(o->client)s=STATUS_DEVICE_BUSY;
  else if(o->buffer.mdl){if(!bytes||bytes>o->buffer.bytes)s=STATUS_BUFFER_TOO_SMALL;}
@@ -57,21 +57,21 @@ static NTSTATUS Checkout(void *c,PPORTWAVERTSTREAM port,ULONG bytes,PMDL *mdl,PU
   if(!NT_SUCCESS(s))o->failure=s;
  }
  if(NT_SUCCESS(s)){o->client=port;port->AddRef();*mdl=o->buffer.mdl;*actual=o->buffer.bytes;}
- ExReleaseFastMutex(&o->lock);return s;
+ KeReleaseMutex(&o->lock,FALSE);return s;
 }
 static NTSTATUS Checkin(void *c,PPORTWAVERTSTREAM port,PMDL mdl)
 {
  Mt8167CaptureOwner *o=(Mt8167CaptureOwner *)c;if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
- ExAcquireFastMutex(&o->lock);NTSTATUS s=STATUS_SUCCESS;
+ KeWaitForSingleObject(&o->lock,Executive,KernelMode,FALSE,NULL);NTSTATUS s=STATUS_SUCCESS;
  if(o->client!=port||o->buffer.mdl!=mdl)s=STATUS_INVALID_PARAMETER;
  else if(o->engine.running||o->failure)s=STATUS_DEVICE_BUSY;
  else {o->client=NULL;port->Release();}
- ExReleaseFastMutex(&o->lock);return s;
+ KeReleaseMutex(&o->lock,FALSE);return s;
 }
 static NTSTATUS SetState(void *c,PPORTWAVERTSTREAM port,KSSTATE state)
 {
  Mt8167CaptureOwner *o=(Mt8167CaptureOwner *)c;if(KeGetCurrentIrql()!=PASSIVE_LEVEL||state>KSSTATE_RUN)return STATUS_INVALID_PARAMETER;
- ExAcquireFastMutex(&o->lock);NTSTATUS s=STATUS_SUCCESS;
+ KeWaitForSingleObject(&o->lock,Executive,KernelMode,FALSE,NULL);NTSTATUS s=STATUS_SUCCESS;
  if(o->closed||o->failure||o->client!=port||!o->dma.list)s=STATUS_DEVICE_NOT_READY;
  else if(state==KSSTATE_RUN&&!o->engine.running){
   if(!o->engine.prepared){
@@ -83,7 +83,7 @@ static NTSTATUS SetState(void *c,PPORTWAVERTSTREAM port,KSSTATE state)
  }else if(state!=KSSTATE_RUN&&o->engine.running)KeSynchronizeExecution(o->interrupt,StopSynchronized,o);
  if(!NT_SUCCESS(s))o->failure=s;if(o->failure)s=o->failure;
  if(NT_SUCCESS(s))o->state=state;
- ExReleaseFastMutex(&o->lock);return s;
+ KeReleaseMutex(&o->lock,FALSE);return s;
 }
 static NTSTATUS Position(void *c,PKSAUDIO_POSITION p)
 {
@@ -110,7 +110,7 @@ NTSTATUS Mt8167CaptureCreate(const Mt8167CaptureResources *r,Mt8167CaptureOwner 
  if(KeGetCurrentIrql()!=PASSIVE_LEVEL||!r||!r->pdo||!r->afe||!r->adapter||!r->vector||!r->affinity||
     !r->reference||!r->dereference||!r->queryLatency||!r->acquireInput||!r->releaseUnexposed)return STATUS_INVALID_PARAMETER;
  Mt8167CaptureOwner *o=(Mt8167CaptureOwner *)ExAllocatePoolWithTag(NonPagedPool,sizeof(*o),CAP_TAG);
- if(!o)return STATUS_INSUFFICIENT_RESOURCES;RtlZeroMemory(o,sizeof(*o));o->r=*r;o->refs=1;ExInitializeFastMutex(&o->lock);ExInitializeRundownProtection(&o->positions);r->reference(r->context);
+ if(!o)return STATUS_INSUFFICIENT_RESOURCES;RtlZeroMemory(o,sizeof(*o));o->r=*r;o->refs=1;KeInitializeMutex(&o->lock,0);ExInitializeRundownProtection(&o->positions);r->reference(r->context);
  NTSTATUS s=r->queryLatency(r->context,&o->api.captureLatency);
  if(!NT_SUCCESS(s)){r->dereference(r->context);ExFreePoolWithTag(o,CAP_TAG);return s;}
  s=r->acquireInput(r->context,48000);
@@ -126,12 +126,12 @@ const Mt8167StreamBackend *Mt8167CaptureBackend(Mt8167CaptureOwner *o){return o&
 NTSTATUS Mt8167CaptureRevoke(Mt8167CaptureOwner *o)
 {
  if(!o||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
- ExAcquireFastMutex(&o->lock);o->closed=TRUE;ExReleaseFastMutex(&o->lock);
- ExWaitForRundownProtectionRelease(&o->positions);ExAcquireFastMutex(&o->lock);
+ KeWaitForSingleObject(&o->lock,Executive,KernelMode,FALSE,NULL);o->closed=TRUE;KeReleaseMutex(&o->lock,FALSE);
+ ExWaitForRundownProtectionRelease(&o->positions);KeWaitForSingleObject(&o->lock,Executive,KernelMode,FALSE,NULL);
  if(o->interrupt){KeSynchronizeExecution(o->interrupt,StopSynchronized,o);
   if(!o->failure){IoDisconnectInterrupt(o->interrupt);o->interrupt=NULL;}
  }
  NTSTATUS s=o->failure?o->failure:(o->engine.exposed?STATUS_DEVICE_BUSY:STATUS_SUCCESS);
- ExReleaseFastMutex(&o->lock);return s;
+ KeReleaseMutex(&o->lock,FALSE);return s;
 }
 #endif
