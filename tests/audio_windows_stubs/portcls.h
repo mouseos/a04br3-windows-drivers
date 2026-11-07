@@ -9,6 +9,7 @@ typedef void VOID; typedef uint32_t ULONG; typedef int32_t LONG; typedef uint8_t
 #define TRUE 1
 #define STATUS_SUCCESS 0
 #define STATUS_INVALID_PARAMETER (-1)
+#define STATUS_IO_TIMEOUT (-7)
 #define STATUS_INSUFFICIENT_RESOURCES (-2)
 #define STATUS_DEVICE_CONFIGURATION_ERROR (-3)
 #define STATUS_DEVICE_BUSY (-4)
@@ -18,7 +19,7 @@ typedef struct { int64_t QuadPart; } PHYSICAL_ADDRESS;
 typedef struct _MDL { ULONG offset, bytes; } MDL, *PMDL;
 #define MmGetMdlByteOffset(p) ((p)->offset)
 #define MmGetMdlByteCount(p) ((p)->bytes)
-enum { MmNonCached };
+enum { MmNonCached, MmCached, MmWriteCombined };
 struct IPortWaveRTStream {
  virtual PMDL AllocateContiguousPagesForMdl(PHYSICAL_ADDRESS,PHYSICAL_ADDRESS,size_t)=0;
  virtual ULONG GetPhysicalPagesCount(PMDL)=0;
@@ -85,7 +86,15 @@ typedef struct {KSDATAFORMAT DataFormat;WAVEFORMATEX WaveFormatEx;} KSDATAFORMAT
 typedef struct {KSDATAFORMAT DataRange; ULONG MaximumChannels,MinimumBitsPerSample,MaximumBitsPerSample,MinimumSampleFrequency,MaximumSampleFrequency;} KSDATARANGE_AUDIO;
 struct TestPin { ULONG a; const void *b; ULONG c; const void*d; ULONG e; PKSDATARANGE *ranges; int flow,communication; const GUID *category,*name; ULONG reserved; };
 struct PCPIN_DESCRIPTOR { ULONG a,b,c; const void *automation; TestPin pin; };
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+typedef KSDATAFORMAT KSDATARANGE;
+extern const GUID KSDATAFORMAT_SUBTYPE_ANALOG,KSDATAFORMAT_SPECIFIER_NONE,KSNODETYPE_DAC;
+#define WAVE_FORMAT_EXTENSIBLE 0xfffe
+struct WAVEFORMATEXTENSIBLE {WAVEFORMATEX Format;union {unsigned short wValidBitsPerSample;} Samples;ULONG dwChannelMask;GUID SubFormat;};
+struct PCNODE_DESCRIPTOR {ULONG flags;const void *automation;const GUID *type,*name;};
+#else
 struct PCNODE_DESCRIPTOR { int dummy; };
+#endif
 struct PCCONNECTION_DESCRIPTOR { ULONG a,b,c,d; };
 struct PCFILTER_DESCRIPTOR {ULONG version;void *automation;ULONG pinSize,pinCount;PCPIN_DESCRIPTOR *pins;ULONG nodeSize,nodeCount;PCNODE_DESCRIPTOR *nodes;ULONG connectionCount;PCCONNECTION_DESCRIPTOR *connections;ULONG categories;void *category;};
 typedef PCFILTER_DESCRIPTOR *PPCFILTER_DESCRIPTOR;
@@ -107,5 +116,16 @@ struct IMiniportWaveRT {
  virtual NTSTATUS Init(PUNKNOWN,PRESOURCELIST,PPORTWAVERT)=0;virtual NTSTATUS NewStream(PMINIPORTWAVERTSTREAM*,PPORTWAVERTSTREAM,ULONG,BOOLEAN,PKSDATAFORMAT)=0;virtual NTSTATUS GetDeviceDescription(PDEVICE_DESCRIPTION)=0;
 };
 typedef IMiniportWaveRT *PMINIPORTWAVERT;
+#if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+extern const GUID KSNODETYPE_SPEAKER,IID_IMiniportTopology;
+typedef void *PPORTTOPOLOGY;
+struct IMiniportTopology {
+ virtual NTSTATUS QueryInterface(REFIID,PVOID*)=0;virtual ULONG AddRef()=0;virtual ULONG Release()=0;
+ virtual NTSTATUS GetDescription(PPCFILTER_DESCRIPTOR*)=0;
+ virtual NTSTATUS DataRangeIntersection(ULONG,PKSDATARANGE,PKSDATARANGE,ULONG,PVOID,PULONG)=0;
+ virtual NTSTATUS Init(PUNKNOWN,PRESOURCELIST,PPORTTOPOLOGY)=0;
+};
+typedef IMiniportTopology *PMINIPORTTOPOLOGY;
+#endif
 #endif
 #endif

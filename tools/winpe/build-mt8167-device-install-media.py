@@ -17,7 +17,8 @@ def main():
  hashes={n:sha(display/n) for n in names};hashes['MT8167DeviceInstall.exe']=sha(installer)
  inf=(display/names[0]).read_text()
  if '[Install.NTarm]' not in inf or '[Install.NTarm.Services]' not in inf:raise SystemExit('ARMインストール節が必要です')
- out.mkdir();stage=out/'stage';stage.mkdir();token=hashlib.sha256(json.dumps(hashes,sort_keys=True).encode()).hexdigest()[:16].upper()
+ here=Path(__file__).resolve().parent
+ out.mkdir();stage=out/'stage';stage.mkdir();token=hashlib.sha256((json.dumps(hashes,sort_keys=True)+sha(here/'run-mt8167-device-install-prepare.cmd.in')).encode()).hexdigest()[:16].upper()
  cert=(display/names[3]).read_bytes();thumb=hashlib.sha1(cert).hexdigest().upper();blob=struct.pack('<III',3,1,20)+hashlib.sha1(cert).digest()+struct.pack('<III',32,1,len(cert))+cert
  trust=[]
  for store in ('Root','TrustedPublisher'):

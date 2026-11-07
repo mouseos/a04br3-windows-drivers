@@ -17,15 +17,17 @@ void Mt8167PnpBackendRelease(Mt8167PnpBackend *){released++;}
 NTSTATUS Mt8167NewMiniportWithBackend(PMINIPORTWAVERT *out,const Mt8167StreamBackend *p){assert(p==&object.iface);*out=&mini;return 0;}
 NTSTATUS Mt8167RegisterWaveRt(PDEVICE_OBJECT,PIRP,PRESOURCELIST,PMINIPORTWAVERT){return registerStatus;}
 struct Resources : IResourceList {
- _CM_PARTIAL_RESOURCE_DESCRIPTOR mem[2]{},irq{};
- Resources(){mem[0].u.Memory.Start.QuadPart=0x11140000;mem[0].u.Memory.Length=0x1000;mem[1].u.Memory.Start.QuadPart=0x11141000;mem[1].u.Memory.Length=0x9000;}
+ _CM_PARTIAL_RESOURCE_DESCRIPTOR mem[2]{},raw[2]{},irq{};
+ Resources(){raw[0].u.Memory.Start.QuadPart=0x11140000;raw[0].u.Memory.Length=0x1000;raw[1].u.Memory.Start.QuadPart=0x11141000;raw[1].u.Memory.Length=0x9000;raw[0].ShareDisposition=raw[1].ShareDisposition=CmResourceShareDeviceExclusive;mem[0]=raw[0];mem[1]=raw[1];mem[0].u.Memory.Start.QuadPart=0x21140000;mem[1].u.Memory.Start.QuadPart=0x21141000;}
  ULONG NumberOfEntries() override {return 3;} ULONG NumberOfEntriesOfType(int t) override{return t==CmResourceTypeMemory?2:1;}
  PCM_PARTIAL_RESOURCE_DESCRIPTOR FindTranslatedEntry(int t,ULONG i) override{return t==CmResourceTypeMemory?&mem[i]:&irq;}
+ PCM_PARTIAL_RESOURCE_DESCRIPTOR FindUntranslatedEntry(int t,ULONG i) override{return t==CmResourceTypeMemory?&raw[i]:&irq;}
 };
 int main(){
  _DRIVER_OBJECT drv{};_UNICODE_STRING path{};_DEVICE_OBJECT dev{};_IRP irp{};ULONG_PTR ext[65]{};dev.DeviceExtension=ext;Resources res;
  assert(!DriverEntry(&drv,&path) && drv.MajorFunction[0]);assert(!Mt8167AddDevice(&drv,&dev) && startDevice);
  res.irq.Flags=CM_RESOURCE_INTERRUPT_LATCHED;assert(startDevice(&dev,&irp,&res)==STATUS_DEVICE_CONFIGURATION_ERROR && !created);res.irq.Flags=0;
+ res.mem[1].u.Memory.Start.QuadPart=res.mem[0].u.Memory.Start.QuadPart;assert(startDevice(&dev,&irp,&res)==STATUS_DEVICE_CONFIGURATION_ERROR && !created);res.mem[1].u.Memory.Start.QuadPart=0x21141000;
  registerStatus=-8;assert(startDevice(&dev,&irp,&res)==-8 && created==1 && revoked==1 && released==1 && miniReleased==1);
  registerStatus=0;assert(!startDevice(&dev,&irp,&res) && created==2 && miniReleased==2);
  assert(startDevice(&dev,&irp,&res)==STATUS_DEVICE_BUSY);

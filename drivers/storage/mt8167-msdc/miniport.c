@@ -233,6 +233,9 @@ static enum a04_dma_result A04DmaTransfer(struct a04_probe_extension *probe,
     if (blocks == 1)
         result = a04_msdc_dma_sector_timed(io, lba, probe->dma_bus,
                            probe->dma_alignment, 100000000u, write, 1, &clock);
+    else if (write)
+        result = a04_msdc_dma_write_blocks_timed(io, lba, probe->dma_bus,
+                           probe->dma_alignment, 100000000u, blocks, 1, &clock);
     else
         result = a04_msdc_dma_read_blocks_timed(io, lba, probe->dma_bus,
                            probe->dma_alignment, 100000000u, blocks, &clock);
@@ -981,9 +984,19 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 #ifdef A04_DMA_DISK_PROBE
                 enum a04_dma_result dr;
                 if (result.action == A04_SCSI_WRITE) {
+#if A04_DMA_WRITE_MULTIBLOCK_EXPERIMENT
+                    ULONG chunk = result.blocks.block_count - i;
+                    if (chunk > 8) chunk = 8;
+                    /* The complete SRB range was guarded above. Never combine
+                     * requests or acknowledge a partially completed chunk. */
+                    for (j = 0; j < chunk * 512; ++j) probe->dma_buffer[j] = data[i * 512 + j];
+                    dr = A04DmaTransfer(probe, &io, (ULONG)(result.blocks.lba + i), TRUE, chunk);
+                    if (dr == A04_DMA_OK) i += chunk - 1;
+#else
                     for (j = 0; j < 512; ++j) probe->dma_buffer[j] = data[i * 512 + j];
                     /* UEFI's card selection explicitly sets RCA 1. */
                     dr = A04DmaSector(probe, &io, result.blocks.lba + i, TRUE);
+#endif
                 } else {
 #if A04_ANY_MULTIBLOCK
                     ULONG chunk = result.blocks.block_count - i;

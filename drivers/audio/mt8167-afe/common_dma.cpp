@@ -39,7 +39,10 @@ NTSTATUS Mt8167CommonPrepareForDevice(Mt8167CommonDma *buffer)
 {
     if (!buffer || !buffer->cpu || !buffer->mdl || !buffer->adapter || buffer->exposed)
         return STATUS_INVALID_PARAMETER;
-    /* Device reads audio: ReadOperation=FALSE. No concurrent CPU writes. */
+    /* Device reads audio: ReadOperation=FALSE. This only prepares initial
+     * contents. Live engine PCM additionally requires both mappings to be
+     * MmWriteCombined/verified Normal-NC and the SG address to identify
+     * these exact PortCls MDL pages. No common buffer is mapped to AudioSrv. */
     KeFlushIoBuffers(buffer->mdl, FALSE, TRUE);
     Mt8167DmaBarrier();
     buffer->prepared = TRUE;

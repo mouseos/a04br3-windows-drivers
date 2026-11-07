@@ -1,0 +1,46 @@
+; First-playback binding only. Requires the matched shared parent and signing.
+[Version]
+Signature="$WINDOWS NT$"
+Class=MEDIA
+ClassGuid={4d36e96c-e325-11ce-bfc1-08002be10318}
+Provider=%Provider%
+DriverVer=11/06/2026,2026.11.6.1001
+CatalogFile=mt8167-afe-first-playback.cat
+
+[Manufacturer]
+%Provider%=Models,NTarm
+[Models.NTarm]
+%Device%=Install,MT8167\AFE
+[DestinationDirs]
+DriverCopy=12
+[SourceDisksNames]
+1=%Disk%,,,
+[SourceDisksFiles]
+mt8167-audio.sys=1
+[Install.NT]
+Include=ks.inf,wdmaudio.inf
+Needs=KS.Registration,WDMAUDIO.Registration
+CopyFiles=DriverCopy
+[DriverCopy]
+mt8167-audio.sys
+[Install.NT.Services]
+AddService=Mt8167Audio,0x00000002,Service
+[Service]
+DisplayName=%Device%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\mt8167-audio.sys
+[Install.NT.Interfaces]
+AddInterface={6994ad04-93ef-11d0-a3cc-00a0c9223196},Mt8167WaveRT,WaveRT.Interface
+AddInterface={65e8773e-8f56-11d0-a3b9-00a0c9223196},Mt8167WaveRT,WaveRT.Interface
+AddInterface={eb115ffc-10c8-4964-831d-6dcb02e6f23f},Mt8167WaveRT,WaveRT.Interface
+[WaveRT.Interface]
+AddReg=WaveRT.Interface.AddReg
+[WaveRT.Interface.AddReg]
+HKR,,CLSID,,{17cca71b-ecd7-11d0-b908-00a0c9223196}
+HKR,,FriendlyName,,%Device%
+[Strings]
+Provider="mouseos"
+Device="MediaTek MT8167 AFE / MT6392 Audio"
+Disk="MediaTek MT8167 AFE / MT6392 Audio Driver"

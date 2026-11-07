@@ -1,0 +1,16 @@
+rem Private clean SYSTEM was prepared and reloaded by native Windows, never RegLoad it in WinPE.
+if exist C:\Windows\System32\MT8167HardwareProbe\attempted.bin goto dismfail
+if not exist C:\Windows\System32\MT8167HardwareProbe mkdir C:\Windows\System32\MT8167HardwareProbe >> "%A04_REPORT%" 2>&1
+copy /y X:\a04br3\shared-io\clients\mt6630-wlan-probe.exe C:\Windows\System32\MT8167HardwareProbe\ >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /y X:\a04br3\shared-io\clients\mt8167-audio-first-playback.exe C:\Windows\System32\MT8167HardwareProbe\ >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /y X:\a04br3\MT8167HardwareProbe.exe C:\Windows\System32\MT8167HardwareProbe.exe >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+>> "%A04_REPORT%" echo SYSTEM_INPUT_SHA256=@SYSTEM_SHA@
+>> "%A04_REPORT%" echo SYSTEM_NATIVE_MANIFEST_SHA256=@SYSTEM_MANIFEST_SHA@
+copy /b /y X:\a04br3\private-system\SYSTEM.patched C:\Windows\System32\config\SYSTEM >> "%A04_REPORT%" 2>&1
+set "A04_SYSTEM_COPY_RC=%errorlevel%"
+>> "%A04_REPORT%" echo UPDATE_SYSTEM_COPY_EXIT=%A04_SYSTEM_COPY_RC%
+if not "%A04_SYSTEM_COPY_RC%"=="0" goto dismfail
+rem DISM runs after this copy, so its new driver registrations are preserved.

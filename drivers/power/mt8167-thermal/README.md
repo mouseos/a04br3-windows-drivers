@@ -1,8 +1,9 @@
-# MT8167 SoC温度：基盤実装（Windows未接続）
+# MT8167 SoC温度：Windows向け試作
 
 このディレクトリはWindows RT向けの実験的な温度処理です。起動時校正のKMDF診断は
-WDK 8.1でビルド済みですが、クロック・AUXADCの排他、温度監視と実際の停止・
-周波数制御の接続がなく、測温や1.3 GHz動作の熱保護にはなりません。
+WDK 8.1でビルド済みです。共有資源の調停、監視と停止要求の接続は試作段階で、
+ファームウェアからの所有引継ぎや実際の停止は未実証です。測温や1.3 GHz動作の
+熱保護にはなりません。
 
 `thermal.c`はLinux 4.4 MT8167の3センサーの校正式を使います。データは起動時の
 供給者からdevinfo index 60–62を都度取得し、未校正・欠落は拒否します。Linuxが
@@ -18,8 +19,8 @@ bootloaderの `atag,devinfo` プロパティの長さとindexを確認する読�
 APMIXED、infra reset、clockとファームウェア・全ドライバ間の排他を確立し、
 `qualified`で証明する必要があります。これは共有資源の所有権を自動的に
 確立しません。途中失敗後は状態が不定であり、再利用せず安全側へ移行します。
-Windows上の共有clock操作、MMIOの安全性、AUXADCの完了・鮮度、
-起動・スリープ・再開時の再初期化は未実装です。
+Windows上の共有clock操作は試作がありますが、MMIOの安全性、AUXADCの完了・鮮度、
+起動・スリープ・再開時の再初期化は未実証です。
 
 候補 `a04_thermal_hw_protect` は校正済み閾値からLinuxと同じ候補レジスタを設定します。
 SPMへの経路と停止動作は未確認で、実際の保護が働く証明ではありません。
@@ -27,7 +28,7 @@ SPMへの経路と停止動作は未確認で、実際の保護が働く証明�
 `manager.c`はfreshな3点の最高温度、任意の閾値、ヒステリシス、タイムアウトを
 扱います。未校正、I/O失敗、古い時刻、限界値超過ではHALTを要求します。
 LIMIT/HALTは呼出し側への要求であり、実際に周波数を下げたり電源を切ったりする
-バックエンドはまだありません。要求の失敗時はHALTを再要求しますが、それ自体が
+バックエンドは未実証です。要求の失敗時はHALTを再要求しますが、それ自体が
 停止の保証にはなりません。閾値は仮想のテスト入力で、製品の安全値ではありません。
 ソフトウェア監視が停止した場合の独立したハードウェア熱保護も必要です。
 
@@ -62,3 +63,171 @@ TOPRGUの `A04_TOPRGU_THERMAL_STOP=1` はkernel専用内部要求を受ける試
 watchdog/UEFI復帰は実機未検証。温度KMDFから内部照会・停止要求を送る関数とmanager用の適用コールバックを
 用意した。LIMITも暫定的にreset要求へ移すが、診断では監視自体を起動しない。
 監視開始・実機上の結果確認はまだない。
+
+## 共有資源・測定完了・停止の追加試作
+
+`A04_TOUCH_THERMAL_LEASE=1` のタッチ試作はkernel内部から単一所有者の
+リースを受け、TOPのthermal/AUXADCクロック開放とINFRAのthermal resetを
+限定操作で直列化する。通常のタッチ初期化とのTOP/INFRAアクセスも同じロックで
+保護し、D0退出・ファイルcleanup時にリースを破棄する。これはWindowsドライバ間の
+調停であり、UEFIやEL2/EL3の所有終了を証明しない。MMIO操作および割込み・
+スリープ中の動作は未実測。
+
+`A04_THERMAL_LEASE_DIAG=1` の校正診断は、上記リースの取得と解放を試みる。
+時計・reset・AUXADC・温度レジスタにはアクセスしない。ACPI資源とtouch leaseの
+両方があっても、firmwareの所有引継ぎが未証明なので監視開始を閉じたままにする。
+校正・リース診断だけの構成は取得後すぐ解放し、解放に失敗すると開始を拒否する。
+監視試作構成のリースは従来どおりで、D0寿命の競合は解消されていない。
+
+`completion.c` は既存初期化の疑似値が全センサーで観測された後、正常なADC
+アドレス設定、非停止、バス状態、各センサーの疑似値からの変化、期限を確認する
+候補判定。値が一致し続ける正常温度ではタイムアウトし得る。値の変化とバス状態は
+真の変換完了・測定の正しさの証明ではなく、ハードウェア仕様と実機での確認が
+必要。`monitor.c` は所有権、判定、温度変換とpolicy、異常時のHALT要求を繋ぐ
+移植可能な本体で、試作フラグを指定した場合にWindowsタイマーへ接続する。ただし
+所有引継ぎゲートにより開始は拒否される。HALT要求自体に失敗した
+場合は別の失敗を返し、停止完了とみなさない。
+
+ホスト検証: `make test-thermal`。WDK診断は２つの旗を明示した別ビルドで行う。
+これらの旗は実験用のコードを含めるだけで、実機のセンサーを有効にしない。
+監視や1.3 GHz熱保護として使用するには、firmware・AUXADC・clockの所有契約、
+サンプル完了と温度校正の実証、独立した安全停止経路の実機確認が必要。
+
+`A04_THERMAL_MONITOR_TEST=1` はWDFタイマーから候補monitorを呼ぶコードも
+ビルドし、`A04_THERMAL_LEASE_DIAG=1` を必要とする。touch leaseの生存を各回
+確認し、欠落・測定不成立・熱制限時には停止要求を使う。要求失敗時のbugcheckも
+試作であり、復帰の実証ではない。試験閾値（65/75/85 ℃）は安全動作の保証値
+ではない。firmware/EL3の所有引継ぎが未確認のため `firmware_handoff` は常に
+falseで、明示的にこの旗を指定しても監視開始を拒否する。確認を省いてこのゲートを
+外してはいけない。所有権、ADCサンプルの完了・鮮度、clock/reset、TOPRGUの停止と
+復帰を主担当が段階的に検証するまでは実機用の熱保護ではない。
+
+リース照会はその瞬間の状態であり、照会後のtouch側D0退出を防止する電源参照や
+クロスドライバ停止同期はまだない。ADC/clockのMMIO自体が停止してタイマーが戻らない
+場合、別CPUのTOPRGU給餌が続く可能性がある。試作TOPRGUには独立した3秒の
+heartbeat期限を追加し、期限切れまたは4 CPU喪失時に給餌停止・resetを要求する。
+timer・backup DPCの両方が停止した場合はハードウェアwatchdogに依存する。
+これらはホスト模擬・ビルドのみで、実機の時間・CPU停止・復帰は未検証である。
+この仕組みは未確認の引継ぎゲートを開く根拠にはならない。
+監視を実機で開始する前に、共有資源の電源生存期間と独立の監視期限を接続・検証する。
+
+## Windows向け温度読取り試作
+
+`A04_THERMAL_MONITOR_TEST=1` のみでdevice interface
+`{6b2c65ed-e2a7-4ddc-86ba-3842e2214e29}` とread-only IOCTL
+`A04_THERMAL_GET_READING` を作る。出力は `readout.h` のversion 1で、３点と
+最高温度（m°C）、連番、経過ミリ秒を返す。監視の測定・変換とwatchdog heartbeatが
+成功した後だけ公開し、失敗・D0退出・資源解放で無効にする。1秒を超える値、
+時計逆行、起動前、長さ不足、未対応要求は成功扱いしない。値はKMDF spin lockで
+保護する。公開APIはWindows sensor class接続や熱保護の実装ではない。
+
+現状firmware引継ぎが未確認でmonitor自体は開始を拒否するため、IOCTLの実温度取得は
+未実証であり、必ず値を得られるという意味ではない。電源寿命にわたるtouch lease、
+AUXADCの実測完了、実機での校正・測温の検証が必要。ホスト試験は無効・期限切れ・
+異常データ・時計逆行の分岐だけを検査し、実機の物理温度や署名受理を証明しない。
+
+## 一回限りの測温部品
+
+`oneshot.c` は所有側の明示的な許可の下で初期化、鮮度判定と校正済み変換を一度だけ
+行い、Linux MT8167 suspendを参考にAHB idle、測定pause、周期測定disable、AHB idleを
+確認してから報告コールバックを呼ぶ。共有clock・電源は停止しない。初期化途中の失敗は
+clock状態が不明なため追加MMIOをせず、また停止失敗時も `SHUTDOWN_FAILED` を返し、
+呼出し側はリースを隔離する。出力は温度測定の候補であり、恒久的な監視・熱保護ではない。
+
+現状のWindowsドライバやUART送信器には未接続である。成功報告コールバックはUARTの
+送信完了を意味しない。UEFI/EL3の所有状態、touchのD0生存と排他、変換完了の正確性は
+未確認であり、実機診断イメージではない。条件を偽ってfirmware引継ぎを証明済みと
+しない。テストは初期化・測定・AHB停留・出力失敗をホストで模擬する。
+
+PnP資源検査はrawとtranslatedの対応する4記述子について、ともにmemory・専有、
+長さ・アドレス一致・既定4領域の重複なしを要求する。この検査の成功は
+firmware/EL3からの引継ぎを意味せず、監視ゲートは閉じたままである。
+候補測定値が全ビット1の場合も異常として拒否し、変換や公開をしない。
+いずれもホスト模擬とWDKビルドであり、実機上の測温や引継ぎは未検証。
+
+測定開始後の初期化・測定・公開・watchdog応答の失敗時は所有状態をquarantineし、
+同じデバイスインスタンスではD0再遷移や再照会だけで再有効化しない。これは
+ソフトウェアの再利用禁止であり、PnPによる電源・資源の保持やハードウェア回復を
+保証しない。firmware引継ぎの未証明ゲートは従来どおり閉じたままである。
+
+## Windows一回測温の接続候補
+
+`A04_THERMAL_ONESHOT_TEST=1`（lease診断とmonitor試作も必要）は、既存の所有権
+ゲートを通過した後に一回測温、AHB停止確認、read-only温度IOCTLへの公開、
+touch lease解放を行う。公開値は通常のIOCTLと同様に1秒で期限切れとなる。
+初期化途中や停止確認に失敗した場合はleaseを正常返却できないためbugcheckを
+要求するが、これは物理reset、電源遮断、他の所有者の停止の保証ではない。
+失敗時・lease返却失敗時は温度を無効にする。システムスリープとD0退出との
+クロスドライバ同期は未確立であり、この構成を熱保護に使わない。
+
+現在のUEFIは校正値のみを提供し、firmware/EL3がAUXADCとthermalを解放した証拠を
+提供しないため、既存の `firmware_handoff` はfalseのまま。したがってこの旗を
+指定したビルドも実機で測温を開始できない。所有ゲートを迂回してはならない。
+合成値の変化はADC変換完了の証明ではない。実機温度・安全停止は未検証。
+
+## touch D0退出とのアクセス同期
+
+既定OFFのtouch thermal leaseにkernel専用guardを追加。温度側の各直接MMIOアクセスは
+guardを取得・返却し、touchのD0退出と資源解放は進行中アクセスの完了を待ってから
+leaseを失効させる。leaseの世代を照合し、旧guardや進行中アクセスがある状態での
+新規claimを拒否する。タイマー停止とguard返却を経て参照を解放する。
+これは単一アクセスの同期で、初期化シーケンス全体の原子性、MMIOが戻らない場合の
+D0終了、突然の物理取り外し、OS停止中の電源保持を保証しない。clock/resetは
+従来どおりtouch側のpower-managed要求でありguard保持中には呼ばない。
+ホスト模擬・WDKビルドのみで、Windows上の競合とPnP電源遷移は未検証。
+UEFIが報告する所有権は未確認で、firmware_handoffゲートは閉じたまま。
+
+## UART・共有親基点への統合
+
+`7e3c9b1` の共有親・UART・音声・USBを基点とし、温度とtouchの必要部分を統合した。
+`A04_TOUCH_THERMAL_LEASE=1` は旧来の直結資源を所有するtouch構成に限定する。
+共有親touchにはthermal clock/reset brokerがないため、`A04_TOUCH_SHARED_PARENT=1` と
+同時に有効化するとコンパイル時に拒否する。親の共有レジスタをtouchから直接mapしない。
+既存UART screenとthermal watchdog stopの同時有効化も既存の制約どおり拒否する。
+これらは別々のビルドを意味し、全機能の同時実機動作は未検証。
+
+## 共有親を経由するAUXADC診断候補
+
+`A04_SHARED_THERMAL_DIAGNOSTIC=1`、共有親touch、thermal leaseおよび
+`A04_THERMAL_SHARED_PARENT=1` の組合せでは、親が排他的なthermal/AUXADC子資源を
+割り当て、TOP clock、INFRA reset、APMIXEDの温度用レジスタを所有する。touchの
+leaseから親へ取得・停止・単一MMIO保護を転送する。親とtouchのD0退出は進行中
+MMIOのrundownを待つ。正常quiesceが報告されないclock使用後はleaseを返さず、
+途中失敗はpoisonする。Linuxはthermalと汎用AUXADCが同じADCおよびclockを使うため、
+親のleaseだけを全利用者の排他証明として扱わない。
+
+現在はfirmware/EL3の解放と全AUXADC利用者の排他を証明できず、親は取得を拒否し、
+温度側のfirmware_handoffもfalseのままである。よってビルド・自己署名済みでも
+実機測温できることを意味しない。UEFIの校正提供、親子PnP、ADC鮮度、clock/reset、
+突然の取り外し、D0停止、正常quiesceは実機未検証。署名はテスト用自己署名であり、
+OSの信頼・ロード成功や実機安全性を保証しない。
+
+The default-off `A04_THERMAL_CODEC_ADC_DIAGNOSTIC` requires the shared
+one-shot configuration. After the shared lease, guard, and thermal handoff
+admission it calls the bounded headphone ADC helper using the child's PnP ADC
+mapping. Each register operation is guarded through the touch/shared parent
+rundown. A poisoned partial transaction requests the existing fatal-stop path
+rather than claiming the lease is safe to release. The helper's independent
+headphone-route and physical-mute verifier in the shared parent currently rejects, so no
+ADC transaction or usable measurement is possible in this build. It does not
+produce AU_LOL calibration. Lease, handoff and route/mute rejection messages
+are submitted to the existing TOPRGU UART queue; queue acceptance is not
+transmission completion, and earlier startup failures can occur before this
+reporting path is available. If a future verified provider admits sampling,
+two `A04ADC HPL <tag> 0` and `A04ADC HPL <tag> 1` messages carry eleven 12-bit
+raw samples each. The low 32 bits of interrupt time form the tag and can wrap;
+it is not a globally unique identifier or a checksum. Submission has a bounded
+busy retry; the recipient must reject a missing, malformed or mismatched pair.
+Device operation and PnP failure handling are
+unverified on hardware.
+
+The one-shot session now performs route/mute preflight before acquiring the
+shared clocks, then captures the samples and checks ADC idle, cleared trigger,
+disabled thermal sampling and idle thermal AHB before requesting quiescence.
+Only then does it return the lease. A clock, sampling or quiescence failure is
+uncertain and follows the existing fatal-stop path; it is never a release
+proof. The preflight queries the version 3 shared-parent interface through the
+live lease; it rejects because no evidence-backed route and mute provider exists.
+The parent also rejects without an independently
+verified firmware/EL3 release. The successful sequence has only host-mock
+coverage; device behavior and the adequacy of these observations are unproven.

@@ -114,3 +114,61 @@ record側background triple、pixel event binding、PBE final emit wordsは本fac
 `native_clear_surface`は単一RT、single sample、linear layout3、packed8入力、output0、identity lane swizzle、norm/gamma/rotationなし、全extent clipの最終emit2wordとnative CSR2qwordを返す。同版GLES format helper 0x22c9c0（ev_a85befce74dbbd23327a59b658c855eab7b0ab00fce16487ae09aece873c2763）、format row0x22 at 0x26ac44（ev_76cf618c0315ebe655426b949e05d391fb66c064eb5dfe3b9ac336f9e1aab919）、layout table at0x265080（ev_f9776c4cf4ad0b451fd2c972655f47fa8e798d233dbc170979d57026a239cad7）を既存producer 0x20ff6cと照合。rowは1 plane、packmode0、norm0、swizzle0/1/2/3。API形式のRGBA float変換は行わない。
 
 output VA0x8000000000、pitch800の場合、emit={0,0x80020}、CSR0=0x0200063c68800000、CSR1=(799<<32)|(height-1)。800x600と800x1280を試験し、surface→EOT codespace連結をASan/UBSan、ARM32 COFFで検証。既存native22 wide-stateと同じCSR配置、modern 3qword形式は使わない。callerはemitをcodespaceへ渡し、CSR pairをRT0へ配置する。完全record・backing・publicationを本factoryは提供しない。
+
+
+## no-streamoutのVDM/PPP終端suffix
+
+`a04_m111_build_terminate_stream`は同版OutputTerminateState 0x1c1facのstreamout objectなし・context+0x7e30 bit5なしの分岐を実装。一次証拠ev_d2f9a3486f50a6cddb02212742471cd5a74f401fb3d6259aa2a8b7c95e74f417、count0条件はev_58565dc9429b268065a2c583e3d74008ac11e518cbcba640b928c30ec53a7cf2。General dataに追加4KiB pageをcold mapし、VDMをpage+0（12 bytes）、PPPをpage+64（12 bytes）へ置く。host有効shadowは76 bytes。VDM STREAM_TERMINATEが最終page末尾64 bytesに入らない配置。PDS/USC/FWbankの増量は不要。
+
+VDM={PPP address high|0x300,PPP address low&~3,0xc0000000}、PPP={0x02000000,screen_xy_max,0}。screen_xy_maxは同版native surface+0x150の完全wordを入力する。HWRT ppp_screenとは別registerであり、modern XMLの32-pixel単位へ変換しない。許容bitはX最大bits18..26、Y最大bits0..8。このsuffixだけで空のTA streamが描画可能であることは未証明。先頭state／clear trigger、TA register残部、data必須初期化の確定は引き続き必要。
+
+Windows選定例として、data arenaが[0x65c0200000,0x65c0400000)で現allocationが0x158000 bytesなら、直後0x65c0358000へこの1pageを追加できる（owner inventory照合必須）。この場合PPP VA=0x65c0358040、data backing合計0x159000 bytes。物理ページとPT mapping、barrier、GPU owner前のcopy完了はruntime担当。screen_xy_maxの最終取得／寸法profile照合は未完了なので推測値をpublishしない。
+
+
+clip入力の追加確定: `a04_m111_build_clear_terminate_stream(out,page_gpu,width,height)`はAddRTと同版getterを接続し、single sampleのceil(width/16)-1 / ceil(height/16)-1からclip wordを構築する。getter 0x1258b8、証拠ev_2a52e0ae5f4979e58962d3a101e91d124fc30380ece2c3640ad842414a2c4178はdataset+0x34/+0x38をそのまま返す。AddRT 0x124a34の既存証拠ev_f33018709a2c5a26acbe7e73ed517452c2a058a13e38b56f1fdac9c58fbc5752はceil(/16)-1を当該2fieldへ保存。StartFrame 0x15e9c8がX<<18|Yへ変換。800x600=0x00c40025、800x1280=0x00c4004f。直前の「寸法profile照合は未完了」はこの追加証拠で解決済み。空TA streamの成立・先頭state・完全recordは未確定のまま。
+
+## Windows coldコード用ページの予約
+
+`windows_native_code`はnative backing既定OFFフラグの内側で、USC0xba00010000/PDS0xa800010000に各4KiBのuncached DMA pageを予約する。既存PC/PD/PTの親と空PTEを確認し、自分の1entryだけを書き込む。USCはread-only、両方SLC bypass。既存TQの先頭64KiBとは非重複。コード・完全packetはまだ書かず実行しない。FW所有後はunmap/freeを拒否し、失敗途中のPTEも所有して保持する。完全producerと実ターゲットmappingが揃うまで、この予約を描画可能と扱わない。
+
+## private output・known code・termination suffixのcold接続
+
+`windows_native_backing.c` は既定OFFの既存native backing flagの範囲で、
+provider→`a04_vendor_native_allocate_cold`の実cold経路へ接続する。
+現在の実接続対象は800x1280のみ。800x600のfactory自体は変更しないが、このownerでは拒否する。
+
+- private output: 800x1280、pitch3200 bytes、4096000 bytes（1000 pages）。
+  GPU VAは`0x8200000000`、PC index520。既存screenの`0x8000000000`/index512、
+  Generalのindex407、PDS672、USC744と異なる。空PC entryを確認し、
+  専用PDと2枚のPTへ512+488 pagesをmapして、既存renderのcatalogueのこの1 entryだけを公開する。
+  別FWMEMCONTEXTは作らない。既存screen_surfaceを流用・書換えしない。
+- General arena末尾に終端専用4KiBを追加。800x1280ではoffset`0x158000`、
+  GPU VA`0x65c0358000`、arena全体`0x159000` bytes。PMページ・freelist配置は維持する。
+  追加pageはPM保護域外でSLC_BYPASS。VDM+0、PPP+64の既知76-byte suffixだけを書き込む。
+  これを完全TA streamの先頭とは扱わない。
+- `build_clear_surface`へpitch **pixels=800** を渡し、得たemitを`build_clear_codespace`へ渡す。
+  既存予約USC`0xba00010000`/PDS`0xa800010000`の各4KiBに有効32/0xa8 bytesをstageする。
+  packed colourは診断用raw値0。code/binding/surface/suffixは既知factoryのみを使い、
+  upload後の有効code/suffixとPC entryをDevice-safe 32-bitアクセスでreadbackする。
+- `build_clear_code_bindings`の結果とsurface CSRはprivate owner内のmetadataとして保存する。
+  未確定のPR/通常background recordへの選択・patchは行わない。TQ clear payloadと既存code bankは変更しない。
+  bank bindとknown backingのstage完了は、完全payloadの完成やTA/3D実行許可ではない。
+
+pixels/PD/PTを含む全DMAは既存FW/render/copy/screen、native data/PT/USC/PDS、
+互いのadapter logical spanとCPU spanとの非重複を確認してからDevice memoryへ書き込む。
+allocator aliasを検出した場合はnative owner全体をquarantineし、未証明のFreeCommonBufferを行わず、
+親render/FW/adapterの保持を継続する。この異常時の意図的retentionを正常動作の解放漏れとは扱わない。
+
+PC/PD/PTEの公開前に所有bitを立てる。cold cleanupは自分が所有したentry又は0だけを受け入れて
+個別に消去し、readback確認後に所有bitを落とす。他ownerのentryや全catalogueを上書きしない。
+cleanup失敗では全DMAとownerを返却・保持して再試行可能にする。
+`hardware_owned`後はreserve/stage/unmap/releaseを禁止し、FW所有済みDMAを解放しない。
+
+`a04_vendor_native_bytes`は従来どおりGeneral arena bytes（現在0x159000）であり、
+private outputやpage tablesを含む総DMA量ではない。追加codeを含むnative子の総DMAは0x547000 bytes。
+
+`make test-gpu-native-backing`（`test-gpu-m111-native`にも含む）は実owner関数を模擬DMA上で実行する。
+同catalogueの正しいPC entry/2leaf/1000page、suffix mappingとPM保護、factory出力一致、
+既存PC/TQ code/screen不変、8箇所のDMA確保失敗、5箇所のpool失敗、全DMA確保位置でのalias quarantine、
+外国PC/PTEのcleanup拒否、bank-zero失敗retention/再試行、FW所有後解放拒否を確認する。
+ホスト試験・ASan/UBSanとWindows WDK build/実機成功を区別する。完全packet/queue公開は引き続き未実装・禁止。

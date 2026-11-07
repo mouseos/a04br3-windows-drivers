@@ -10,6 +10,7 @@ $out = Join-Path $tempRoot 'mt8167-toprgu'
 New-Item -ItemType Directory -Force $out | Out-Null
 $dir = Join-Path $root 'drivers\system\mt8167-toprgu'
 $screen = if ($env:A04_TOPRGU_UART_SCREEN -eq '1') { '1' } else { '0' }
+$volume = if ($env:A04_TOPRGU_UART_VOLUME -eq '1') { '1' } else { '0' }
 $handoff = if ($env:A04_TOPRGU_CPU1_HANDOFF -eq '1') { '1' } else { '0' }
 $thermal = if ($env:A04_TOPRGU_THERMAL_STOP -eq '1') { '1' } else { '0' }
 $objects = @()
@@ -17,7 +18,7 @@ $deadline = if ($env:A04_TOPRGU_DEADLINE_SECONDS) { $env:A04_TOPRGU_DEADLINE_SEC
 if ($deadline -notmatch '^\d+$' -or [int]$deadline -gt 43200) { throw 'TOPRGU deadline must be 0..43200 seconds' }
 foreach ($name in @('wdf_toprgu','reset_command')) {
     $obj = Join-Path $out "$name.obj"
-    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_TOPRGU_UART_SCREEN=$screen" "-DA04_TOPRGU_CPU1_HANDOFF=$handoff" "-DA04_TOPRGU_DEADLINE_SECONDS=$deadline" "-DA04_TOPRGU_THERMAL_STOP=$thermal" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$dir" -c (Join-Path $dir "$name.c") -o $obj
+    & clang --target=thumbv7-pc-windows-msvc -w -fms-extensions -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 "-DA04_TOPRGU_UART_SCREEN=$screen" "-DA04_TOPRGU_UART_VOLUME=$volume" "-DA04_TOPRGU_CPU1_HANDOFF=$handoff" "-DA04_TOPRGU_DEADLINE_SECONDS=$deadline" "-DA04_TOPRGU_THERMAL_STOP=$thermal" "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$wdfInc" "-I$dir" -c (Join-Path $dir "$name.c") -o $obj
     if ($LASTEXITCODE -ne 0) { throw "ARM32 TOPRGU compilation failed: $name" }
     $objects += $obj
 }

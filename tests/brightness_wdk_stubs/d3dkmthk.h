@@ -1,0 +1,1 @@
+/* Host test types are supplied by ntddk.h and dispmprt.h. */
