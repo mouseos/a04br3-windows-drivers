@@ -1549,7 +1549,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     RtlZeroMemory(&hfpIface,sizeof(hfpIface));hfpIface.Header.Size=sizeof(hfpIface);hfpIface.Header.Version=A04_SHARED_HFP_VERSION;
     hfpIface.Header.Context=dev;hfpIface.Header.InterfaceReference=ParentInterfaceReference;hfpIface.Header.InterfaceDereference=ParentInterfaceDereference;
     hfpIface.RegisterController=ParentHfpRegister;hfpIface.UnregisterController=ParentHfpUnregister;hfpIface.GetController=ParentHfpGet;
-    hfpIface.Acquire=ParentHfpAcquire;hfpIface.Live=ParentHfpLive;hfpIface.Pins=ParentHfpPins;hfpIface.Release=ParentHfpRelease;
+    hfpIface.ControllerEpochLive=ParentHfpControllerEpochLive;hfpIface.Acquire=ParentHfpAcquire;hfpIface.Live=ParentHfpLive;hfpIface.Pins=ParentHfpPins;hfpIface.Release=ParentHfpRelease;
     /* No independently established AFE bus drain: NULL, never a success stub. */
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&hfpIface,&A04SharedHfpInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;

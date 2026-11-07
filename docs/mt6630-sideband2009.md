@@ -67,3 +67,20 @@ stock mt8167-afe-util.cのemi_clk_on/offはidle禁止vote/reference管理で、D
 AFE_MEMIF_MON/IRQ_CNT_MONの定義に停止完了/latencyの単位保証はなく、名前だけから証明にしない。
 同機LinuxのFC72は4byte転送まで。XNU WMT co_clockは共有発振器の設定であり、
 SCO PCM clock-master/word-formatを確定するfieldではない。
+
+## controller2010・最終Audio3002
+
+root controller到着をbounded通知queue/PASSIVE workerで受信し、実PDOのqueryから
+参照付きcontrollerを取得する。Audioは親v2へRegisterControllerし、実HFP停止後に解除する。
+未知のValidatePcm/CodecLatencyはNULL、VerifyDmaQuiescent欠落時も公開前に拒否する。
+参照不確定/解除失敗ではcontroller/Audio/D0/元物理epochを保持し、成功を返さない。
+
+scalar SCO_HOLD/RELEASEは同じbroker FileObjectと実NDIS workerで管理する。hold中の
+通常radio-off/reset/closeは拒否し、Halt/removalは従来のquarantineへ残す。
+元の親WiFi v2 LiveはPASSIVE専用。DISPATCH利用へ転用しない。既定offの親HFP拡張で
+元wifiActive/generation/admission/removedを非待機で確認するControllerEpochLiveを提供し、
+実NDIS PDOのQUERY_INTERFACEからだけ取得する。元親profile/SYSを更新した意味ではない。
+拡張未配置の親は実transportを共有できてもcontroller資格には進まない。
+
+provider1017/client2010/Audio3002の最終SYSを増分生成する。親HFPはcompile-only、
+RTC/WiFi/GPU/USBの既存profile/媒体は変更しない。None/0、実機未投入を維持する。

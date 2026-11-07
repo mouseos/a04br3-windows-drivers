@@ -7,5 +7,6 @@
  * Live checks the original shared-parent generation; no NDIS code pointer is
  * returned, so adapter removal cannot leave an exported adapter callback. */
 #define A04_BT_PHYSICAL_OWNER_VERSION 1u
-struct a04_bt_physical_owner {INTERFACE Header;ULONG generation;int (*Live)(PVOID,ULONG);};
+struct a04_bt_physical_owner {INTERFACE Header;ULONG generation;/* Optional parent nonblocking reader. WiFi v2 Live is PASSIVE-only. */
+ int (*Live)(PVOID,ULONG);};
 #endif

@@ -5,6 +5,7 @@
 #include "ndis_runtime.h"
 #include "windows_nvram_reader.h"
 #include "../../bluetooth/mt6630/physical_owner.h"
+#include "../../bus/mt8167-shared/hfp_interface.h"
 static NDIS_SPIN_LOCK registry_lock;
 static NDIS_HANDLE registration;
 static struct a04_ndis_runtime *registered;
@@ -51,6 +52,30 @@ int a04_combo_publish(struct a04_ndis_runtime *a)
 {int result=-1;NdisAcquireSpinLock(&registry_lock);if(!registered){registered=a;result=0;}NdisReleaseSpinLock(&registry_lock);return result;}
 void a04_combo_unpublish(struct a04_ndis_runtime *a)
 {NdisAcquireSpinLock(&registry_lock);if(registered==a)registered=NULL;NdisReleaseSpinLock(&registry_lock);}
+/* Query only the real NDIS PDO. Root client is independently enumerated and
+ * must never cast an opaque parent context to a WDF object to find hardware. */
+static NTSTATUS owner_query_complete(PDEVICE_OBJECT device,PIRP irp,PVOID event)
+{UNREFERENCED_PARAMETER(device);UNREFERENCED_PARAMETER(irp);KeSetEvent(event,IO_NO_INCREMENT,FALSE);return STATUS_MORE_PROCESSING_REQUIRED;}
+static NTSTATUS query_physical_owner(struct a04_ndis_runtime *a,struct a04_bt_physical_owner *owner)
+{
+ PDEVICE_OBJECT pdo=NULL;PIRP irp;PIO_STACK_LOCATION sp;KEVENT event;NTSTATUS status;struct A04_SHARED_HFP_INTERFACE hfp={0};
+ NdisMGetDeviceProperty(a->adapter,&pdo,NULL,NULL,NULL,NULL);if(!pdo)return STATUS_NO_SUCH_DEVICE;
+ KeInitializeEvent(&event,NotificationEvent,FALSE);irp=IoAllocateIrp(pdo->StackSize,FALSE);if(!irp)return STATUS_INSUFFICIENT_RESOURCES;
+ sp=IoGetNextIrpStackLocation(irp);sp->MajorFunction=IRP_MJ_PNP;sp->MinorFunction=IRP_MN_QUERY_INTERFACE;
+ sp->Parameters.QueryInterface.InterfaceType=&A04SharedHfpInterfaceGuid;sp->Parameters.QueryInterface.Size=sizeof(hfp);
+ sp->Parameters.QueryInterface.Version=A04_SHARED_HFP_VERSION;sp->Parameters.QueryInterface.Interface=(PINTERFACE)&hfp;
+ irp->IoStatus.Status=STATUS_NOT_SUPPORTED;IoSetCompletionRoutine(irp,owner_query_complete,&event,TRUE,TRUE,TRUE);
+ status=IoCallDriver(pdo,irp);if(status==STATUS_PENDING)KeWaitForSingleObject(&event,Executive,KernelMode,FALSE,NULL);
+ status=irp->IoStatus.Status;IoFreeIrp(irp);
+ if(NT_SUCCESS(status)){
+  if(hfp.Header.Size!=sizeof(hfp)||hfp.Header.Version!=A04_SHARED_HFP_VERSION||!hfp.Header.Context||
+     !hfp.Header.InterfaceReference||!hfp.Header.InterfaceDereference||!hfp.ControllerEpochLive||
+     hfp.ControllerEpochLive(hfp.Header.Context,a->session.generation)!=1)status=STATUS_NOT_SUPPORTED;
+  else {owner->Header=hfp.Header;owner->Header.Size=sizeof(*owner);owner->Header.Version=A04_BT_PHYSICAL_OWNER_VERSION;
+   owner->generation=a->session.generation;owner->Live=hfp.ControllerEpochLive;return STATUS_SUCCESS;}
+ }
+ if(hfp.Header.Context&&hfp.Header.InterfaceDereference)hfp.Header.InterfaceDereference(hfp.Header.Context);return status;
+}
 static uint64_t clock_us(void *p){UNREFERENCED_PARAMETER(p);return KeQueryInterruptTime()/10u;}
 static int receive(void *p,unsigned type,const uint8_t *data,unsigned n)
 {
@@ -130,9 +155,8 @@ void a04_combo_worker(struct a04_ndis_runtime *a)
      !a->session.generation||a->parent.Live(a->parent.Header.Context,a->session.generation)!=1){s=STATUS_DEVICE_NOT_READY;goto done;}
   /* Direct kernel output remains visible even if a late cancellation changes
    * completion status. Caller dereferences any returned interface on failure. */
-  RtlZeroMemory(owner,sizeof(*owner));a->parent.Header.InterfaceReference(a->parent.Header.Context);
-  owner->Header=a->parent.Header;owner->Header.Size=sizeof(*owner);owner->Header.Version=A04_BT_PHYSICAL_OWNER_VERSION;
-  owner->generation=a->session.generation;owner->Live=a->parent.Live;used=sizeof(*owner);s=STATUS_SUCCESS;
+  RtlZeroMemory(owner,sizeof(*owner));s=query_physical_owner(a,owner);
+  if(NT_SUCCESS(s))used=sizeof(*owner);
  }else if(code==A04_BT_BROKER_SCO_HOLD){
   struct a04_bt_broker_state *state=irp->AssociatedIrp.SystemBuffer;
   if(in||out!=sizeof(*state)||!state){s=STATUS_INVALID_PARAMETER;goto done;}

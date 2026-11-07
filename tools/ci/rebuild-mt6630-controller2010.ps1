@@ -31,7 +31,7 @@ $common=@($old.compiler_flags);$records=@();$reused=@();$provider=@();$final=@()
 $ndis=@("-I$sdk\ndis-overlay")+$common+@('-std=c11','-D_WINSOCK_DEPRECATED_NO_WARNINGS=1','-DNDIS_MINIPORT_DRIVER','-DNDIS630_MINIPORT','-DA04_WIFI_SESSION_DIAGNOSTIC=1','-DA04_WIFI_IRQ_DIAGNOSTIC=1','-DA04_WIFI_CALIBRATION_DIAGNOSTIC=1','-DA04_WIFI_BT_BROKER=1')
 $client=$common+@('-std=c11','-DKMDF_VERSION_MAJOR=1','-DKMDF_VERSION_MINOR=13',"-I$inc\wdf\kmdf\1.13")
 function Compile([string]$source,[string]$object,[object[]]$flags){
- if($resumeFiles.ContainsKey($object) -and $object -ne 'parent-hfp-compile-only.obj') {Copy-Item "$ResumeDirectory\$object" "$out\$object"}
+ if($resumeFiles.ContainsKey($object) -and $object -notin $resumeRedo -and $object -ne 'parent-hfp-compile-only.obj') {Copy-Item "$ResumeDirectory\$object" "$out\$object"}
  else {& "$tc\bin\clang.exe" @flags -c "$root\$source" -o "$out\$object";if($LASTEXITCODE){throw "Compile failed $source"}}
  $script:records+=@{source=$source;source_sha256=(Get-FileHash "$root\$source" -Algorithm SHA256).Hash;object=$object;sha256=(Get-FileHash "$out\$object" -Algorithm SHA256).Hash}
 }
@@ -42,12 +42,21 @@ function Reuse([string]$dir,$r,[string]$object){
  Copy-Item "$dir\$($r.object)" "$out\$object"
  $script:reused+=@{source=$r.source;source_sha256=$sourceHash;object=$object;sha256=(Get-FileHash "$out\$object" -Algorithm SHA256).Hash}
 }
-$resumeFiles=@{}
+$resumeFiles=@{};$resumeRedo=@()
 if($ResumeDirectory){
  if(!$ResumeManifestSha256 -or (Get-FileHash "$ResumeDirectory\..\..\..\resume-manifest.json" -Algorithm SHA256).Hash -ne $ResumeManifestSha256){throw 'Resume manifest pin mismatch'}
  $rm=Get-Content "$ResumeDirectory\..\..\..\resume-manifest.json" -Raw|ConvertFrom-Json
- if(!$rm.source_commit.StartsWith('7e351a90') -or $rm.source_dirty){throw 'Wrong resume source'}
- & git -C $root diff --quiet $rm.source_commit HEAD -- drivers;if($LASTEXITCODE){throw 'Resume driver sources changed'}
+ if($rm.source_dirty){throw 'Dirty resume source'}
+ if($rm.source_commit.StartsWith('7e351a90')){& git -C $root diff --quiet $rm.source_commit HEAD -- drivers;if($LASTEXITCODE){throw 'Resume driver sources changed'}}
+ elseif($rm.source_commit.StartsWith('3aaab780')){
+  $allowed=@('drivers/audio/mt8167-afe/hfp_power.cpp','drivers/bus/mt8167-shared/hfp_interface.h','drivers/bus/mt8167-shared/hfp_parent.inc','drivers/bus/mt8167-shared/wdf_parent_probe.c','drivers/network/mt6630/combo_broker.c','drivers/bluetooth/mt6630/physical_owner.h')
+  $delta=@(& git -C $root diff --name-only $rm.source_commit HEAD -- drivers)
+  if($LASTEXITCODE -or @($delta|Where-Object{$_ -notin $allowed}).Count){throw 'Unexpected resumed driver delta'}
+  # HFP interface gained only an optional parent epoch callback. Controller
+  # descriptor layout and NDIS nested layout are unchanged. Recompile every
+  # concrete user of the extended HFP interface, plus changed power owner.
+  $resumeRedo=@('ndis/combo_broker.obj','hfp/hfp_provider.cpp.obj','audio/hfp_power.obj')
+ }else{throw 'Wrong resume source'}
  foreach($f in $rm.files){if((Get-FileHash "$ResumeDirectory\$($f.path)" -Algorithm SHA256).Hash -ne $f.sha256){throw 'Resume object changed'};$resumeFiles[$f.path]=$f.sha256}
 }
 $saveTemp=$env:TEMP;$saveTmp=$env:TMP

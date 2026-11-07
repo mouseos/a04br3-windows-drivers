@@ -27,6 +27,9 @@ struct A04_SHARED_HFP_INTERFACE {
  NTSTATUS (*RegisterController)(PVOID,const struct A04_HFP_CONTROLLER *);
  NTSTATUS (*UnregisterController)(PVOID,PVOID controllerContext);
  NTSTATUS (*GetController)(PVOID,struct A04_HFP_CONTROLLER *);
+ /* Original WiFi v2 Live is PASSIVE-only. This optional parent-owned epoch
+  * reader is nonblocking at <=DISPATCH and never touches MMIO. */
+ int (*ControllerEpochLive)(PVOID,ULONG);
  NTSTATUS (*Acquire)(PVOID,PULONG);BOOLEAN (*Live)(PVOID,ULONG);
  NTSTATUS (*Pins)(PVOID,ULONG,BOOLEAN);NTSTATUS (*Release)(PVOID,ULONG);
  /* Independent platform proof for exposed AFE memory transactions, not a

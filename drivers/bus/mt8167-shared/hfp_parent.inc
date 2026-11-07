@@ -87,3 +87,18 @@ static NTSTATUS ParentHfpRelease(PVOID context,ULONG generation)
     a04_audio_top_clock_release(&c->regs,&c->hfpTopClock)){InterlockedExchange(&c->hfpActive,-1);ParentUnlock(c);return STATUS_IO_DEVICE_ERROR;}
  InterlockedExchange(&c->hfpActive,0);ParentUnlock(c);WdfDeviceResumeIdle((WDFDEVICE)context);return STATUS_SUCCESS;
 }
+
+/* Same original NDIS-owned epoch, not a cached Boolean or second lease.
+ * Holds prohibit ordinary reset; SurpriseRemoval revokes admission first.
+ * Only nonpaged owner storage is read here, never PWRAP/MMIO or a mutex. */
+static int ParentHfpControllerEpochLive(PVOID context,ULONG generation)
+{
+ A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)context);
+ if(!generation||KeGetCurrentIrql()>DISPATCH_LEVEL)return 0;
+ return !InterlockedCompareExchange(&c->removed,0,0)&&
+  !InterlockedCompareExchange(&c->admissionClosed,0,0)&&
+  InterlockedCompareExchange((volatile LONG *)&c->wifiActive,0,0)==1&&
+  InterlockedCompareExchange((volatile LONG *)&c->regs.online,0,0)==1&&
+  !InterlockedCompareExchange((volatile LONG *)&c->regs.poisoned,0,0)&&
+  generation==(ULONG)InterlockedCompareExchange((volatile LONG *)&c->wifiGeneration,0,0);
+}

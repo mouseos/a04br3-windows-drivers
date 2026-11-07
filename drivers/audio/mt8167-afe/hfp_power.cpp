@@ -39,6 +39,7 @@ struct Mt8167HfpPower : public IAdapterPowerManagement {
  void start(){
   if(hfp||!controller||stopping||poisoned||power!=PowerDeviceD0)return;
   NTSTATUS s=Mt8167PnpBackendHfpStartWithController(owner,fdo,resources,controller,&hfp);
+  if(!NT_SUCCESS(s)&&hfp)poisoned=TRUE;
   if(!NT_SUCCESS(s))DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"MT8167 HFP unavailable status=%08lx retained=%d\n",(ULONG)s,hfp!=NULL);
  }
  static NTSTATUS changed(PVOID context,const A04_HFP_CONTROLLER *next){
