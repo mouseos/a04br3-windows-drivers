@@ -104,3 +104,14 @@ factory公開前に親・controller・DMA adapterの全使用callback/ABIを検�
 これらはowner/commonの寿命管理修正であり、run42の親1008/Audio1006、map、plan、
 媒体には取り込まない。run42 NativeStartの結果待ち中に開始失敗の仮説を変更しない。
 独立DMA drain、BT登録順序、実latencyは引き続き未完了で、成功stubは追加しない。
+
+owner/commonだけを必要な外部moduleから分離して確認する場合：
+
+```powershell
+powershell -NoProfile -File drivers\audio\mt8167-afe\build-hfp-owner-modules.ps1 `
+ -OutputDirectory <checkout>\build\hfp-owner-common
+```
+
+実WDK8.1 ARM headersでmemif C＋provider/power C++の3TUをcompile/archiveする。
+BTの63固定sourceはABI headerとして参照し、Nashの実装を変更しない。
+このlibraryだけで最終SYS linkやendpoint登録が完了したとは扱わない。
