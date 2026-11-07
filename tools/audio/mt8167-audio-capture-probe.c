@@ -96,8 +96,8 @@ static DWORD identifiers(HANDLE filter,ULONG property,KSIDENTIFIER *chosen) {
 static DWORD state(HANDLE pin,KSSTATE value) {
  KSPROPERTY property;DWORD got=0;ZeroMemory(&property,sizeof(property));
  property.Set=KSPROPSETID_Connection;property.Id=KSPROPERTY_CONNECTION_STATE;property.Flags=KSPROPERTY_TYPE_SET;
- if(!control(pin,IOCTL_KS_PROPERTY,&property,sizeof(property),&value,sizeof(value),&got))return GetLastError();
- return 0;
+ DWORD error=control(pin,IOCTL_KS_PROPERTY,&property,sizeof(property),&value,sizeof(value),&got)?0:GetLastError();
+ line("state-set",value,error,got);return error;
 }
 static DWORD snapshot(HANDLE f,struct a04_capture_status*s){DWORD got=0;
  ZeroMemory(s,sizeof(*s));if(!control(f,A04_CAPTURE_READ_STATUS,NULL,0,s,sizeof(*s),&got))return GetLastError();
@@ -123,16 +123,22 @@ static DWORD run(void){
  request.format.WaveFormatEx.wFormatTag=WAVE_FORMAT_PCM;request.format.WaveFormatEx.nChannels=2;
  request.format.WaveFormatEx.nSamplesPerSec=48000;request.format.WaveFormatEx.wBitsPerSample=16;
  request.format.WaveFormatEx.nBlockAlign=4;request.format.WaveFormatEx.nAvgBytesPerSec=192000;
- result=create(f,&request.connect,GENERIC_READ,&pin);line("create-pin",result,0,0);if(result){pin=INVALID_HANDLE_VALUE;goto done;}
- result=state(pin,KSSTATE_ACQUIRE);if(result)goto done;
+ result=create(f,&request.connect,GENERIC_READ,&pin);line("create-pin",result,request.connect.Interface.Id,request.connect.Medium.Id);if(result){pin=INVALID_HANDLE_VALUE;goto done;}
  ZeroMemory(&buffer,sizeof(buffer));ZeroMemory(&mapping,sizeof(mapping));
  buffer.Property.Set=KSPROPSETID_RtAudio;buffer.Property.Id=KSPROPERTY_RTAUDIO_BUFFER;buffer.Property.Flags=KSPROPERTY_TYPE_GET;buffer.RequestedBufferSize=16384;
- if(!control(pin,IOCTL_KS_PROPERTY,&buffer,sizeof(buffer),&mapping,sizeof(mapping),&got)){result=GetLastError();goto done;}
+ /* WinBlue PortCls rejects every non-STOP state until RTAUDIO_BUFFER has
+  * allocated/mapped the cyclic buffer (pin+0x4c in the shipped RT8.1 binary).
+  * Request the buffer in initial STOP; ACQUIRE is not a buffer allocator. */
+ if(!control(pin,IOCTL_KS_PROPERTY,&buffer,sizeof(buffer),&mapping,sizeof(mapping),&got)){
+  result=GetLastError();line("buffer",result,got,buffer.RequestedBufferSize);goto done;
+ }
+ line("buffer",0,mapping.ActualBufferSize,mapping.CallMemoryBarrier);
  if(got!=sizeof(mapping)||!mapping.BufferAddress||mapping.ActualBufferSize<16384||mapping.ActualBufferSize>65536){result=ERROR_INVALID_DATA;goto done;}
  latency.Set=KSPROPSETID_RtAudio;latency.Id=KSPROPERTY_RTAUDIO_HWLATENCY;latency.Flags=KSPROPERTY_TYPE_GET;
  error=control(pin,IOCTL_KS_PROPERTY,&latency,sizeof(latency),&delay,sizeof(delay),&got)?0:GetLastError();
  line("latency-query-unqualified",error,0,0); /* not a recording success criterion */
  for(pass=0;pass<2;pass++){
+  result=state(pin,KSSTATE_ACQUIRE);if(result)goto done;
   result=state(pin,KSSTATE_PAUSE);if(result)goto done;
   result=state(pin,KSSTATE_RUN);if(result)goto done;started=1;last=MAXDWORD;changes=0;irqFirst=irqLast=0;
   for(i=0;i<20;i++){
@@ -162,7 +168,7 @@ void mainCRTStartup(void){DWORD result;HANDLE mutex;
  if(logfile==INVALID_HANDLE_VALUE)ExitProcess(GetLastError());
  SetLastError(0);mutex=CreateMutexW(NULL,FALSE,L"MT8167CaptureProbeOnce");
  if(!mutex||GetLastError()==ERROR_ALREADY_EXISTS){CloseHandle(logfile);ExitProcess(ERROR_ALREADY_EXISTS);}
- line("begin",1,48000,2);result=run();line("end",result,log_error,0);
+ line("begin",2,48000,2);result=run();line("end",result,log_error,0);
  if(!FlushFileBuffers(logfile)&&!log_error)log_error=GetLastError();
  CloseHandle(logfile);CloseHandle(mutex);ExitProcess(result?result:log_error);
 }
