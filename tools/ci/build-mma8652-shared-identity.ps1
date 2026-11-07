@@ -38,7 +38,7 @@ try {
  if($LASTEXITCODE){throw 'Camera modules archive failed'}
  # A library alone does not resolve imports. Link a non-installable native
  # no-entry verification image, preserving client/power exports for /opt:ref.
- & lld-link /dll /noentry /subsystem:native /machine:arm /nodefaultlib @camera "$km\ntoskrnl.lib" "$km\libcntpr.lib" /export:a04_hi556_owner_open /export:a04_hi556_owner_close /export:a04_hi556_owner_identify /export:a04_hi556_power_start "/out:$out\hi556-owner-linkcheck.dll"
+ & lld-link /dll /noentry /subsystem:native /machine:arm /nodefaultlib @camera "$km\ntoskrnl.lib" "$km\hal.lib" "$km\bufferoverflowfastfailk.lib" "$km\libcntpr.lib" /export:a04_hi556_owner_open /export:a04_hi556_owner_close /export:a04_hi556_owner_identify /export:a04_hi556_power_start "/out:$out\hi556-owner-linkcheck.dll"
  if($LASTEXITCODE){throw 'Camera kernel import link check failed'}
  Copy-Item "$root\drivers\sensors\mma8652\mma8652.inf" "$out\package"
  & "$kit\bin\x86\Inf2Cat.exe" "/driver:$out\package" /os:6_3_ARM /uselocaltime
