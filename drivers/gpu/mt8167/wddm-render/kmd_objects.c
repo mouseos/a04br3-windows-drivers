@@ -25,7 +25,10 @@ NTSTATUS APIENTRY GeoCreateContext(HANDLE handle,DXGKARG_CREATECONTEXT *p) {
  c=ExAllocatePoolWithTag(NonPagedPool,sizeof(*c),'xOeG');if(!c){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
  RtlZeroMemory(c,sizeof(*c));c->adapter=a;c->device=d;c->runtime=p->hContext;c->next=d->contexts;d->contexts=c;
  RtlZeroMemory(&p->ContextInfo,sizeof(p->ContextInfo));p->ContextInfo.DmaBufferSize=GEO_DRAW_LINK_COMMAND_MAX;
- p->ContextInfo.DmaBufferPrivateDataSize=sizeof(struct geo_dma_ticket);p->ContextInfo.AllocationListSize=2;p->ContextInfo.PatchLocationListSize=2;p->hContext=c;
+ p->ContextInfo.DmaBufferPrivateDataSize=sizeof(struct geo_dma_ticket);/* RT8.1 VidMm AddBuffer raises nonzero allocation-list capacities <4 to
+  * 3, then AcquireBuffer compares that actual capacity with this request.
+  * Request the stable minimum; Render/Patch still use only named entries. */
+ p->ContextInfo.AllocationListSize=3;p->ContextInfo.PatchLocationListSize=2;p->hContext=c;
  done:GeoSessionLeave(a,1);return status;
 }
 struct context_check {struct geo_kmd_context *context;NTSTATUS status;};
