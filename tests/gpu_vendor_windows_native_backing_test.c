@@ -11,7 +11,8 @@
 #include "native_terminate_stream.h"
 #include "gpu_mmu.h"
 static unsigned allocs,frees,pools,pool_calls,fail_at,fail_pool,alias_at;
-unsigned KeGetCurrentIrql(void){return PASSIVE_LEVEL;}
+static unsigned host_irql;
+unsigned KeGetCurrentIrql(void){return host_irql;}
 void a04_gpu_dma_barrier(void){}
 void *ExAllocatePoolWithTag(int type,size_t size,unsigned tag)
 {
@@ -40,7 +41,7 @@ struct fixture {
 static void init(struct fixture *x)
 {
     unsigned i;uint32_t *pc;uint64_t *pd,*pt;
-    memset(x,0,sizeof(*x));allocs=frees=pools=pool_calls=fail_at=fail_pool=alias_at=0;
+    memset(x,0,sizeof(*x));host_irql=PASSIVE_LEVEL;allocs=frees=pools=pool_calls=fail_at=fail_pool=alias_at=0;
     x->ops=(DMA_OPERATIONS){.Size=sizeof(x->ops),.AllocateCommonBufferEx=allocate,.FreeCommonBuffer=release};
     x->adapter.DmaOperations=&x->ops;
     for(i=0;i<5;i++) {

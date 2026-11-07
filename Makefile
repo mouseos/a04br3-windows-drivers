@@ -859,7 +859,7 @@ build/gpu_vendor_windows_native_job_test: tests/gpu_vendor_windows_native_job_te
 .PHONY: test-gpu-native-execute-model
 test-gpu-native-execute-model: build/gpu_vendor_windows_native_execute_test
 	./build/gpu_vendor_windows_native_execute_test
-build/gpu_vendor_windows_native_execute_test:  tests/gpu_vendor_windows_native_execute_test.c tests/gpu_vendor_windows_native_backing_test.c $(NATIVE_CLEAR_JOB_SRC) drivers/gpu/mt8167/vendor_m1_11/windows_native_job.c drivers/gpu/mt8167/vendor_m1_11/windows_native_job_private.h drivers/gpu/mt8167/vendor_m1_11/windows_native_storage.c drivers/gpu/mt8167/vendor_m1_11/windows_native_cold.c drivers/gpu/mt8167/vendor_m1_11/windows_native_code.c drivers/gpu/mt8167/vendor_m1_11/windows_native_backing.c drivers/gpu/mt8167/vendor_m1_11/windows_uncached.c drivers/gpu/mt8167/vendor_m1_11/native_resources.c drivers/gpu/mt8167/vendor_m1_11/native_hwrt_profile.c drivers/gpu/mt8167/vendor_m1_11/render_resources.c drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/vendor_m1_11/windows_native_execute.c
+build/gpu_vendor_windows_native_execute_test:  tests/gpu_vendor_windows_native_execute_test.c tests/gpu_vendor_windows_native_backing_test.c $(NATIVE_CLEAR_JOB_SRC) drivers/gpu/mt8167/vendor_m1_11/windows_native_job.c drivers/gpu/mt8167/vendor_m1_11/windows_native_job_private.h drivers/gpu/mt8167/vendor_m1_11/windows_native_storage.c drivers/gpu/mt8167/vendor_m1_11/windows_native_cold.c drivers/gpu/mt8167/vendor_m1_11/windows_native_code.c drivers/gpu/mt8167/vendor_m1_11/windows_native_backing.c drivers/gpu/mt8167/vendor_m1_11/windows_uncached.c drivers/gpu/mt8167/vendor_m1_11/native_resources.c drivers/gpu/mt8167/vendor_m1_11/native_hwrt_profile.c drivers/gpu/mt8167/vendor_m1_11/render_resources.c drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/vendor_m1_11/windows_native_execute.c drivers/gpu/mt8167/vendor_m1_11/windows_native_submit.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -DA04_GE8300_VENDOR_NATIVE_CLEAR_JOB=1 -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter-out tests/gpu_vendor_windows_native_backing_test.c,$(filter %.c,$^)) -o $@
 
@@ -884,3 +884,10 @@ test-gpu-native-triangle-texture: build/gpu_m111_native_triangle_texture_test
 build/gpu_m111_native_triangle_texture_test: tests/gpu_m111_native_triangle_texture_test.c drivers/gpu/mt8167/vendor_m1_11/native_triangle_texture.c drivers/gpu/mt8167/vendor_m1_11/native_triangle_texture.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
+
+.PHONY: test-gpu-native-submit
+test-gpu-native-submit: build/gpu_vendor_windows_native_submit_test
+	./build/gpu_vendor_windows_native_submit_test
+build/gpu_vendor_windows_native_submit_test: tests/gpu_vendor_windows_native_submit_test.c tests/gpu_vendor_windows_native_backing_test.c $(NATIVE_CLEAR_JOB_SRC) $(addprefix drivers/gpu/mt8167/vendor_m1_11/,windows_native_job.c windows_native_storage.c windows_native_cold.c windows_native_code.c windows_native_backing.c windows_native_submit.c windows_uncached.c native_resources.c native_hwrt_profile.c render_resources.c) drivers/gpu/mt8167/gpu_mmu.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -DA04_GE8300_VENDOR_NATIVE_CLEAR_JOB=1 -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter-out tests/gpu_vendor_windows_native_backing_test.c,$(filter %.c,$^)) -o $@

@@ -4,6 +4,7 @@
  * No IOCTL or service admits arbitrary GPU packet bytes.
  */
 #include "windows_native_job_private.h"
+#include "windows_native_submit.h"
 #include "windows_start.h"
 #include "A04BR3RogueRuntimeLayout.h"
 #include "A04BR3RogueDeviceWords.h"
@@ -78,10 +79,9 @@ NTSTATUS a04_vendor_native_publish_candidate(struct a04_vendor_native_cold *n,
     }
     if(a04_rgx_device_read_words(sync,bank+0x4c00u,sizeof(sync)) || sync[0]!=c->completed_frames || sync[1]!=c->completed_frames)goto done;
     c->attempted=TRUE;out->phase=1;
-    if(a04_rgx_device_write_words(&f->kcommands[k.ui32WriteOffset],&c->pair.ta_kick,sizeof(c->pair.ta_kick)) ||
-       a04_rgx_device_write_words(&f->kcommands[next],&c->pair.three_d_kick,sizeof(c->pair.three_d_kick)))goto poison;
-    r->client_write[0]=c->pair.ta_write;r->client_write[1]=c->pair.three_d_write;
-    publish(s,f,next);publish(s,f,second);out->phase=2;
+    status=a04_vendor_native_submit_prepared_pair(n,s,k.ui32WriteOffset);
+    if(!NT_SUCCESS(status))goto poison;
+    out->phase=2;
     status=wait_kernel(f,second);if(!NT_SUCCESS(status))goto poison;
     status=STATUS_IO_TIMEOUT;
     for(i=0;i<20000u;i++){
@@ -201,7 +201,7 @@ static NTSTATUS rearm_clear(struct a04_vendor_native_cold *n,struct a04_vendor_s
         }
         c->start[i]=ctl[i].ui32WriteOffset;
     }
-    c->attempted=FALSE;c->verified=FALSE;status=STATUS_SUCCESS;
+    c->attempted=FALSE;c->verified=FALSE;c->published=FALSE;status=STATUS_SUCCESS;
 done:
     InterlockedExchange(&s->command_busy,0);return status;
 }

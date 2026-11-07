@@ -5,7 +5,7 @@
 #include "native_clear_job.h"
 #include "native_pair.h"
 struct a04_vendor_native_candidate {
-    BOOLEAN attempted,verified;
+    BOOLEAN attempted,verified,published;
     uint32_t completed_frames,start[2];
     struct a04_m111_clear_job job;
     struct a04_m111_pair_result pair;
