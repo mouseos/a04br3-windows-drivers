@@ -14,18 +14,22 @@ static int span(ULONG total,ULONG offset,ULONG bytes,ULONG base,ULONG *needed)
 NDIS_STATUS a04_native_scan_parse(const void *buffer,ULONG length,struct a04_native_scan_request *out,ULONG *needed)
 {
  DOT11_SCAN_REQUEST_V2 h;DOT11_SSID ssid;struct a04_native_scan_request temp;
- const UCHAR *raw=buffer,*payload;ULONG base=(ULONG)offsetof(DOT11_SCAN_REQUEST_V2,ucBuffer),available,i,type;
+ const UCHAR *raw=buffer,*payload;ULONG base=(ULONG)offsetof(DOT11_SCAN_REQUEST_V2,ucBuffer),available,i,type,zero=0,ones=0;
  if(!out || !needed)return NDIS_STATUS_INVALID_DATA;
  *needed=base;
  if(!buffer || length<base)return NDIS_STATUS_INVALID_LENGTH;
  NdisZeroMemory(&h,sizeof(h));NdisMoveMemory(&h,buffer,base);NdisZeroMemory(&temp,sizeof(temp));
  payload=raw+base;available=length-base;
  if(h.dot11BSSType!=dot11_BSS_type_infrastructure && h.dot11BSSType!=dot11_BSS_type_any)return NDIS_STATUS_NOT_SUPPORTED;
- for(i=0;i<6;i++)if(h.dot11BSSID[i]!=0xff)return NDIS_STATUS_NOT_SUPPORTED;
+ /* Both zero and FF:FF:FF:FF:FF:FF request a wildcard scan. */
+ for(i=0;i<6;i++){zero|=h.dot11BSSID[i];ones|=h.dot11BSSID[i]^0xffu;}
+ if(zero&&ones)return NDIS_STATUS_NOT_SUPPORTED;
  type=(ULONG)h.dot11ScanType;temp.forced=!!(type&0x80000000u);type&=0x7fffffffu;
  if(type!=dot11_scan_type_active && type!=dot11_scan_type_passive && type!=dot11_scan_type_auto)return NDIS_STATUS_INVALID_DATA;
  temp.scan_type=type;
- if(h.bRestrictedScan || h.bUseRequestIE || h.uNumOfRequestIDs || h.uNumOfPhyTypeInfos)return NDIS_STATUS_NOT_SUPPORTED;
+ /* This runtime does not enable multi-domain/802.11d. The Request IE
+  * controls are ignored in that mode, as specified for SCAN_REQUEST_V2. */
+ if(h.bRestrictedScan || h.uNumOfPhyTypeInfos)return NDIS_STATUS_NOT_SUPPORTED;
  if(h.uNumOfdot11SSIDs>1)return NDIS_STATUS_INVALID_LENGTH;
  if(h.uNumOfdot11SSIDs){
   if(!span(available,h.udot11SSIDsOffset,sizeof(ssid),base,needed))return NDIS_STATUS_INVALID_LENGTH;

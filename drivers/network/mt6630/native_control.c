@@ -6,36 +6,69 @@ static const NDIS_OID oids[]={OID_GEN_SUPPORTED_LIST,OID_GEN_HARDWARE_STATUS,OID
  OID_DOT11_CIPHER_KEY_MAPPING_KEY,OID_DOT11_CIPHER_DEFAULT_KEY,OID_DOT11_CIPHER_DEFAULT_KEY_ID,OID_DOT11_PORT_STATE_NOTIFICATION,OID_DOT11_RESET_REQUEST,OID_DOT11_CURRENT_ADDRESS,OID_DOT11_PERMANENT_ADDRESS,OID_DOT11_OPERATION_MODE_CAPABILITY,OID_DOT11_CURRENT_OPERATION_MODE,OID_DOT11_SUPPORTED_PHY_TYPES,OID_DOT11_CURRENT_PHY_ID,OID_DOT11_DESIRED_PHY_LIST,OID_DOT11_HARDWARE_PHY_STATE,OID_DOT11_NIC_POWER_STATE,OID_DOT11_EXTSTA_CAPABILITY,OID_DOT11_AUTO_CONFIG_ENABLED,OID_DOT11_DESIRED_BSS_TYPE,OID_DOT11_DESIRED_SSID_LIST,OID_DOT11_DESIRED_BSSID_LIST,OID_DOT11_ENABLED_AUTHENTICATION_ALGORITHM,OID_DOT11_ENABLED_UNICAST_CIPHER_ALGORITHM,OID_DOT11_ENABLED_MULTICAST_CIPHER_ALGORITHM,OID_DOT11_SUPPORTED_UNICAST_ALGORITHM_PAIR,OID_DOT11_SUPPORTED_MULTICAST_ALGORITHM_PAIR,OID_DOT11_PRIVACY_EXEMPTION_LIST,OID_DOT11_EXCLUDE_UNENCRYPTED,OID_DOT11_SCAN_REQUEST,OID_DOT11_ENUM_BSS_LIST,OID_DOT11_FLUSH_BSS_LIST,OID_DOT11_CONNECT_REQUEST,OID_DOT11_DISCONNECT_REQUEST,OID_DOT11_CURRENT_CHANNEL,OID_DOT11_CURRENT_FREQUENCY,OID_DOT11_SUPPORTED_COUNTRY_OR_REGION_STRING,OID_DOT11_DESIRED_COUNTRY_OR_REGION_STRING};
 void a04_ndis_status(struct a04_ndis_runtime *a,NDIS_STATUS status,void *data,ULONG bytes)
 {NDIS_STATUS_INDICATION i;NdisZeroMemory(&i,sizeof(i));i.Header.Type=NDIS_OBJECT_TYPE_STATUS_INDICATION;i.Header.Revision=1;i.Header.Size=NDIS_SIZEOF_STATUS_INDICATION_REVISION_1;i.SourceHandle=a->adapter;i.StatusCode=status;i.StatusBuffer=data;i.StatusBufferSize=bytes;NdisMIndicateStatusEx(a->adapter,&i);}
+/* Native attributes and every referenced array belong to one allocation,
+ * as required by NdisMSetMiniportAttributes. NDIS copies them during the call. */
+struct a04_native_attributes {
+ NDIS_MINIPORT_ADAPTER_NATIVE_802_11_ATTRIBUTES native;
+ DOT11_PHY_ATTRIBUTES phy;
+ DOT11_EXTSTA_ATTRIBUTES sta;
+ DOT11_AUTH_CIPHER_PAIR pairs[2];
+ DOT11_COUNTRY_OR_REGION_STRING country;
+};
 NDIS_STATUS a04_ndis_attributes(struct a04_ndis_runtime *a)
 {
- NDIS_MINIPORT_ADAPTER_GENERAL_ATTRIBUTES g;NDIS_MINIPORT_ADAPTER_NATIVE_802_11_ATTRIBUTES n;DOT11_PHY_ATTRIBUTES phy;DOT11_EXTSTA_ATTRIBUTES sta;
- DOT11_AUTH_CIPHER_PAIR pair[2]={{DOT11_AUTH_ALGO_80211_OPEN,DOT11_CIPHER_ALGO_NONE},{DOT11_AUTH_ALGO_RSNA_PSK,DOT11_CIPHER_ALGO_CCMP}};DOT11_COUNTRY_OR_REGION_STRING country;NDIS_STATUS s;
+ NDIS_MINIPORT_ADAPTER_GENERAL_ATTRIBUTES g;NDIS_PM_CAPABILITIES pm;
+ struct a04_native_attributes *block;
+ NDIS_MINIPORT_ADAPTER_NATIVE_802_11_ATTRIBUTES *n;DOT11_PHY_ATTRIBUTES *phy;DOT11_EXTSTA_ATTRIBUTES *sta;
+ NDIS_STATUS s;
  static const UCHAR rates[12]={2,4,11,22,12,18,24,36,48,72,96,108};
- NdisZeroMemory(&g,sizeof(g));g.Header.Type=NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_GENERAL_ATTRIBUTES;g.Header.Revision=1;g.Header.Size=NDIS_SIZEOF_MINIPORT_ADAPTER_GENERAL_ATTRIBUTES_REVISION_1;
- g.MediaType=NdisMediumNative802_11;g.PhysicalMediumType=NdisPhysicalMediumNative802_11;g.MtuSize=1500;g.MaxXmitLinkSpeed=g.MaxRcvLinkSpeed=54000000;g.XmitLinkSpeed=g.RcvLinkSpeed=NDIS_LINK_SPEED_UNKNOWN;g.MediaConnectState=MediaConnectStateDisconnected;g.MediaDuplexState=MediaDuplexStateHalf;g.LookaheadSize=1500;g.MacOptions=NDIS_MAC_OPTION_TRANSFERS_NOT_PEND|NDIS_MAC_OPTION_NO_LOOPBACK;
+ NdisZeroMemory(&g,sizeof(g));g.Header.Type=NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_GENERAL_ATTRIBUTES;g.Header.Revision=NDIS_MINIPORT_ADAPTER_GENERAL_ATTRIBUTES_REVISION_2;g.Header.Size=NDIS_SIZEOF_MINIPORT_ADAPTER_GENERAL_ATTRIBUTES_REVISION_2;
+ g.MediaType=NdisMediumNative802_11;g.PhysicalMediumType=NdisPhysicalMediumNative802_11;g.MtuSize=1500;g.MaxXmitLinkSpeed=g.MaxRcvLinkSpeed=54000000;g.XmitLinkSpeed=g.RcvLinkSpeed=NDIS_LINK_SPEED_UNKNOWN;g.MediaConnectState=MediaConnectStateConnected;g.MediaDuplexState=MediaDuplexStateFull;g.LookaheadSize=1500;g.MacOptions=NDIS_MAC_OPTION_TRANSFERS_NOT_PEND|NDIS_MAC_OPTION_NO_LOOPBACK;
  g.SupportedPacketFilters=NDIS_PACKET_TYPE_DIRECTED|NDIS_PACKET_TYPE_BROADCAST|NDIS_PACKET_TYPE_MULTICAST;g.MaxMulticastListSize=0;g.MacAddressLength=6;NdisMoveMemory(g.PermanentMacAddress,a->radio.bridge->regulatory.mac,6);NdisMoveMemory(g.CurrentMacAddress,g.PermanentMacAddress,6);
  g.AccessType=NET_IF_ACCESS_BROADCAST;g.DirectionType=NET_IF_DIRECTION_SENDRECEIVE;g.ConnectionType=NET_IF_CONNECTION_DEDICATED;g.IfType=IF_TYPE_IEEE80211;g.IfConnectorPresent=TRUE;g.SupportedOidList=(PNDIS_OID)oids;g.SupportedOidListLength=sizeof(oids);
+ /* NDIS 6.20+ requires an explicit PM capability structure. Zero wake,
+  * offload and selective-suspend capabilities: none is implemented here. */
+ NdisZeroMemory(&pm,sizeof(pm));pm.Header.Type=NDIS_OBJECT_TYPE_DEFAULT;
+ pm.Header.Revision=NDIS_PM_CAPABILITIES_REVISION_2;pm.Header.Size=NDIS_SIZEOF_NDIS_PM_CAPABILITIES_REVISION_2;
+ pm.MinMagicPacketWakeUp=pm.MinPatternWakeUp=pm.MinLinkChangeWakeUp=NdisDeviceStateUnspecified;
+ g.PowerManagementCapabilitiesEx=&pm;
  s=NdisMSetMiniportAttributes(a->adapter,(PNDIS_MINIPORT_ADAPTER_ATTRIBUTES)&g);if(s!=NDIS_STATUS_SUCCESS)return s;
- NdisZeroMemory(&phy,sizeof(phy));HDR(phy,DOT11_PHY_ATTRIBUTES,1);phy.PhyType=dot11_phy_type_erp;phy.bHardwarePhyState=phy.bSoftwarePhyState=TRUE;phy.uMPDUMaxLength=2304;phy.TempType=dot11_temp_type_unknown;phy.DiversitySupport=dot11_diversity_support_unknown;
- phy.ERPAttributes.bShortPreambleOptionImplemented=TRUE;phy.ERPAttributes.bPBCCOptionImplemented=FALSE;phy.ERPAttributes.bShortSlotTimeOptionImplemented=TRUE;
- phy.uNumDataRateMappingEntries=12;
- for(ULONG i=0;i<12;i++){phy.DataRateMappingEntries[i].ucDataRateIndex=rates[i];phy.DataRateMappingEntries[i].usDataRateValue=(USHORT)rates[i];phy.SupportedDataRatesValue.ucSupportedTxDataRatesValue[i]=rates[i];phy.SupportedDataRatesValue.ucSupportedRxDataRatesValue[i]=rates[i];}
- NdisZeroMemory(&sta,sizeof(sta));HDR(sta,DOT11_EXTSTA_ATTRIBUTES,1);sta.uScanSSIDListSize=sta.uDesiredBSSIDListSize=sta.uDesiredSSIDListSize=1;sta.uKeyMappingTableSize=1;sta.uDefaultKeyTableSize=4;sta.uPrivacyExemptionListSize=4;sta.uInfraNumSupportedUcastAlgoPairs=sta.uInfraNumSupportedMcastAlgoPairs=2;sta.pInfraSupportedUcastAlgoPairs=sta.pInfraSupportedMcastAlgoPairs=pair;
- country[0]=a->radio.bridge->regulatory.country[0];country[1]=a->radio.bridge->regulatory.country[1];country[2]=' ';sta.uNumSupportedCountryOrRegionStrings=1;sta.pSupportedCountryOrRegionStrings=&country;
- NdisZeroMemory(&n,sizeof(n));n.Header.Type=NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_NATIVE_802_11_ATTRIBUTES;n.Header.Revision=1;n.Header.Size=NDIS_SIZEOF_MINIPORT_ADAPTER_NATIVE_802_11_ATTRIBUTES_REVISION_1;n.OpModeCapability=DOT11_OPERATION_MODE_EXTENSIBLE_STATION;n.NumOfTXBuffers=n.NumOfRXBuffers=1;n.NumSupportedPhys=1;n.SupportedPhyAttributes=&phy;n.ExtSTAAttributes=&sta;
- return NdisMSetMiniportAttributes(a->adapter,(PNDIS_MINIPORT_ADAPTER_ATTRIBUTES)&n);
+ block=NdisAllocateMemoryWithTagPriority(a->adapter,sizeof(*block),'a40A',NormalPoolPriority);
+ if(!block)return NDIS_STATUS_RESOURCES;
+ NdisZeroMemory(block,sizeof(*block));n=&block->native;phy=&block->phy;sta=&block->sta;
+ block->pairs[0].AuthAlgoId=DOT11_AUTH_ALGO_80211_OPEN;block->pairs[0].CipherAlgoId=DOT11_CIPHER_ALGO_NONE;
+ block->pairs[1].AuthAlgoId=DOT11_AUTH_ALGO_RSNA_PSK;block->pairs[1].CipherAlgoId=DOT11_CIPHER_ALGO_CCMP;
+ HDR(*phy,DOT11_PHY_ATTRIBUTES,DOT11_PHY_ATTRIBUTES_REVISION_1);phy->PhyType=dot11_phy_type_erp;phy->bHardwarePhyState=phy->bSoftwarePhyState=TRUE;phy->uMPDUMaxLength=2304;phy->TempType=dot11_temp_type_unknown;phy->DiversitySupport=dot11_diversity_support_unknown;
+ phy->ERPAttributes.bShortPreambleOptionImplemented=TRUE;phy->ERPAttributes.bPBCCOptionImplemented=FALSE;phy->ERPAttributes.bShortSlotTimeOptionImplemented=TRUE;
+ phy->uNumDataRateMappingEntries=12;
+ for(ULONG i=0;i<12;i++){phy->DataRateMappingEntries[i].ucDataRateIndex=rates[i];phy->DataRateMappingEntries[i].usDataRateValue=(USHORT)rates[i];phy->SupportedDataRatesValue.ucSupportedTxDataRatesValue[i]=rates[i];phy->SupportedDataRatesValue.ucSupportedRxDataRatesValue[i]=rates[i];}
+ HDR(*sta,DOT11_EXTSTA_ATTRIBUTES,DOT11_EXTSTA_ATTRIBUTES_REVISION_3);sta->uScanSSIDListSize=sta->uDesiredBSSIDListSize=sta->uDesiredSSIDListSize=1;sta->uKeyMappingTableSize=1;sta->uDefaultKeyTableSize=4;sta->uPrivacyExemptionListSize=4;sta->uInfraNumSupportedUcastAlgoPairs=sta->uInfraNumSupportedMcastAlgoPairs=2;sta->pInfraSupportedUcastAlgoPairs=sta->pInfraSupportedMcastAlgoPairs=block->pairs;
+ block->country[0]=a->radio.bridge->regulatory.country[0];block->country[1]=a->radio.bridge->regulatory.country[1];block->country[2]=' ';sta->uNumSupportedCountryOrRegionStrings=1;sta->pSupportedCountryOrRegionStrings=&block->country;
+ n->Header.Type=NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_NATIVE_802_11_ATTRIBUTES;n->Header.Revision=NDIS_MINIPORT_ADAPTER_802_11_ATTRIBUTES_REVISION_3;n->Header.Size=NDIS_SIZEOF_MINIPORT_ADAPTER_NATIVE_802_11_ATTRIBUTES_REVISION_3;n->OpModeCapability=DOT11_OPERATION_MODE_EXTENSIBLE_STATION;n->NumOfTXBuffers=n->NumOfRXBuffers=1;n->NumSupportedPhys=1;n->SupportedPhyAttributes=phy;n->ExtSTAAttributes=sta;
+ s=NdisMSetMiniportAttributes(a->adapter,(PNDIS_MINIPORT_ADAPTER_ATTRIBUTES)n);
+ NdisFreeMemory(block,0,0);return s;
 }
-static void link_state(struct a04_ndis_runtime *a,int connected)
+static void link_state(struct a04_ndis_runtime *a)
 {
  NDIS_LINK_STATE state;NdisZeroMemory(&state,sizeof(state));state.Header.Type=NDIS_OBJECT_TYPE_DEFAULT;state.Header.Revision=1;state.Header.Size=NDIS_SIZEOF_LINK_STATE_REVISION_1;
- state.MediaConnectState=connected?MediaConnectStateConnected:MediaConnectStateDisconnected;state.MediaDuplexState=MediaDuplexStateHalf;state.XmitLinkSpeed=state.RcvLinkSpeed=NDIS_LINK_SPEED_UNKNOWN;
+ /* Native 802.11 association is reported by DOT11 indications, not by
+  * disconnecting the NDIS media path before WLAN can bind to it. */
+ state.MediaConnectState=MediaConnectStateConnected;state.MediaDuplexState=MediaDuplexStateFull;state.XmitLinkSpeed=state.RcvLinkSpeed=NDIS_LINK_SPEED_UNKNOWN;
  a04_ndis_status(a,NDIS_STATUS_LINK_STATE,&state,sizeof(state));
 }
 void a04_ndis_peer_disconnect(struct a04_ndis_runtime *a,ULONG reason)
 {
  DOT11_DISASSOCIATION_PARAMETERS v;NdisZeroMemory(&v,sizeof(v));HDR(v,DOT11_DISASSOCIATION_PARAMETERS,1);NdisMoveMemory(v.MacAddr,a->radio.station.ap.mac,6);v.uReason=reason;
  a->os_security.port_open=0;a->radio.connected=0;a->radio.failed=-1;
- a04_os_security_clear(a);link_state(a,0);a04_ndis_status(a,NDIS_STATUS_DOT11_DISASSOCIATION,&v,sizeof(v));
+ a04_os_security_clear(a);link_state(a);a04_ndis_status(a,NDIS_STATUS_DOT11_DISASSOCIATION,&v,sizeof(v));
+}
+/* List setters accept the WDK 8.1 revision-1 wire structures only. */
+static int list_header(const void *p,ULONG bytes,USHORT size)
+{
+ NDIS_OBJECT_HEADER h;
+ if(bytes<sizeof(h))return 0;
+ NdisMoveMemory(&h,p,sizeof(h));
+ return h.Type==NDIS_OBJECT_TYPE_DEFAULT && h.Revision==1 && h.Size==size;
 }
 static NDIS_STATUS copy_query(PNDIS_OID_REQUEST q,const void *p,ULONG n)
 {
@@ -53,7 +86,8 @@ static NDIS_STATUS scan(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  if(s!=NDIS_STATUS_SUCCESS){q->DATA.SET_INFORMATION.BytesNeeded=needed;return s;}
  unsigned channels=parsed.scan_type==dot11_scan_type_active?b->regulatory.active:b->regulatory.permitted;
  for(unsigned ch=1;ch<=13;ch++)if(channels&(1u<<ch)){policy.channels[2*policy.channel_count]=1;policy.channels[2*policy.channel_count+1]=(UCHAR)ch;policy.channel_count++;}
- a->radio.bss_count=0;s=a04_native_scan_start(b,q->DATA.SET_INFORMATION.InformationBuffer,q->DATA.SET_INFORMATION.InformationBufferLength,&policy,&needed);
+ /* Retain the ExtSTA cache; only FLUSH_BSS_LIST clears an explicit scan cache. */
+ s=a04_native_scan_start(b,q->DATA.SET_INFORMATION.InformationBuffer,q->DATA.SET_INFORMATION.InformationBufferLength,&policy,&needed);
  q->DATA.SET_INFORMATION.BytesNeeded=needed;if(s!=NDIS_STATUS_SUCCESS)return s;
  q->DATA.SET_INFORMATION.BytesRead=q->DATA.SET_INFORMATION.InformationBufferLength;
  /* OID completes when scan is queued; confirmation follows the real event. */
@@ -99,7 +133,7 @@ static NDIS_STATUS connect(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
   ac->uBeaconOffset=offset;ac->uBeaconSize=a->radio.bss[index].frame_length-24;NdisMoveMemory(storage+offset,a->radio.bss[index].frame+24,ac->uBeaconSize);offset+=ac->uBeaconSize;
   ac->uActivePhyListOffset=offset;ac->uActivePhyListSize=sizeof(phy);NdisMoveMemory(storage+offset,&phy,sizeof(phy));offset+=sizeof(phy);
  }
- a04_ndis_status(a,NDIS_STATUS_DOT11_ASSOCIATION_COMPLETION,ac,offset);NdisZeroMemory(&done,sizeof(done));HDR(done,DOT11_CONNECTION_COMPLETION_PARAMETERS,1);done.uStatus=e?DOT11_CONNECTION_STATUS_FAILURE:DOT11_CONNECTION_STATUS_SUCCESS;link_state(a,!e);a04_ndis_status(a,NDIS_STATUS_DOT11_CONNECTION_COMPLETION,&done,sizeof(done));
+ a04_ndis_status(a,NDIS_STATUS_DOT11_ASSOCIATION_COMPLETION,ac,offset);NdisZeroMemory(&done,sizeof(done));HDR(done,DOT11_CONNECTION_COMPLETION_PARAMETERS,1);done.uStatus=e?DOT11_CONNECTION_STATUS_FAILURE:DOT11_CONNECTION_STATUS_SUCCESS;link_state(a);a04_ndis_status(a,NDIS_STATUS_DOT11_CONNECTION_COMPLETION,&done,sizeof(done));
  if(!e)a04_ndis_association_reported(a);
  return NDIS_STATUS_PENDING; /* association != OS handshake/authorization */
 }
@@ -118,7 +152,7 @@ static NDIS_STATUS reset_request(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  output.uStatusType=DOT11_STATUS_RESET_CONFIRM;output.ndisStatus=e?NDIS_STATUS_FAILURE:NDIS_STATUS_SUCCESS;
  NdisMoveMemory(q->DATA.METHOD_INFORMATION.InformationBuffer,&output,sizeof(output));
  q->DATA.METHOD_INFORMATION.BytesRead=sizeof(input);q->DATA.METHOD_INFORMATION.BytesWritten=sizeof(output);q->DATA.METHOD_INFORMATION.BytesNeeded=0;
- link_state(a,0);return e?NDIS_STATUS_FAILURE:NDIS_STATUS_SUCCESS;
+ link_state(a);return e?NDIS_STATUS_FAILURE:NDIS_STATUS_SUCCESS;
 }
 NDIS_STATUS a04_ndis_control(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
 {
@@ -132,12 +166,15 @@ NDIS_STATUS a04_ndis_control(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
   if(oid==OID_DOT11_CIPHER_DEFAULT_KEY_ID){if(n!=sizeof(ULONG))return NDIS_STATUS_INVALID_LENGTH;NdisMoveMemory(&value,p,4);if(value>3)return NDIS_STATUS_INVALID_DATA;a->os_security.default_id=value;q->DATA.SET_INFORMATION.BytesRead=4;return NDIS_STATUS_SUCCESS;}
   if(oid==OID_DOT11_SCAN_REQUEST)return scan(a,q);
   if(oid==OID_DOT11_CONNECT_REQUEST)return connect(a,q);
-  if(oid==OID_DOT11_DISCONNECT_REQUEST){DOT11_DISASSOCIATION_PARAMETERS v;NdisZeroMemory(&v,sizeof(v));HDR(v,DOT11_DISASSOCIATION_PARAMETERS,1);NdisMoveMemory(v.MacAddr,a->radio.station.ap.mac,6);v.uReason=DOT11_ASSOC_STATUS_DISASSOCIATED_BY_OS;int e=a04_ndis_radio_reset(a);link_state(a,0);a04_ndis_status(a,NDIS_STATUS_DOT11_DISASSOCIATION,&v,sizeof(v));return e?NDIS_STATUS_FAILURE:NDIS_STATUS_SUCCESS;}
+  if(oid==OID_DOT11_DISCONNECT_REQUEST){DOT11_DISASSOCIATION_PARAMETERS v;NdisZeroMemory(&v,sizeof(v));HDR(v,DOT11_DISASSOCIATION_PARAMETERS,1);NdisMoveMemory(v.MacAddr,a->radio.station.ap.mac,6);v.uReason=DOT11_ASSOC_STATUS_DISASSOCIATED_BY_OS;int e=a04_ndis_radio_reset(a);link_state(a);a04_ndis_status(a,NDIS_STATUS_DOT11_DISASSOCIATION,&v,sizeof(v));return e?NDIS_STATUS_FAILURE:NDIS_STATUS_SUCCESS;}
   if(oid==OID_DOT11_FLUSH_BSS_LIST){a->radio.bss_count=0;return NDIS_STATUS_SUCCESS;}
-  if(oid==OID_DOT11_DESIRED_SSID_LIST){DOT11_SSID_LIST *v=(void *)p;ULONG base=FIELD_OFFSET(DOT11_SSID_LIST,SSIDs);if(n<base+sizeof(DOT11_SSID))return NDIS_STATUS_INVALID_LENGTH;if(v->Header.Type!=NDIS_OBJECT_TYPE_DEFAULT||v->Header.Revision!=1||v->uNumOfEntries!=1||v->uTotalNumOfEntries!=1||v->SSIDs[0].uSSIDLength>32)return NDIS_STATUS_INVALID_DATA;a->desired=v->SSIDs[0];}
-  else if(oid==OID_DOT11_DESIRED_BSSID_LIST){DOT11_BSSID_LIST *v=(void *)p;if(n<FIELD_OFFSET(DOT11_BSSID_LIST,BSSIDs)+6||v->uNumOfEntries!=1)return NDIS_STATUS_INVALID_LENGTH;for(unsigned i=0;i<6;i++)if(v->BSSIDs[0][i]!=255)return NDIS_STATUS_NOT_SUPPORTED;}
+  if(oid==OID_DOT11_DESIRED_SSID_LIST){DOT11_SSID_LIST *v=(void *)p;ULONG base=FIELD_OFFSET(DOT11_SSID_LIST,SSIDs);if(n<base+sizeof(DOT11_SSID))return NDIS_STATUS_INVALID_LENGTH;if(!list_header(p,n,sizeof(DOT11_SSID_LIST))||v->uNumOfEntries!=1||v->uTotalNumOfEntries!=1||v->SSIDs[0].uSSIDLength>32)return NDIS_STATUS_INVALID_DATA;a->desired=v->SSIDs[0];}
+  else if(oid==OID_DOT11_DESIRED_BSSID_LIST){DOT11_BSSID_LIST *v=(void *)p;if(n<FIELD_OFFSET(DOT11_BSSID_LIST,BSSIDs)+6)return NDIS_STATUS_INVALID_LENGTH;if(!list_header(p,n,sizeof(DOT11_BSSID_LIST))||v->uNumOfEntries!=1||v->uTotalNumOfEntries!=1)return NDIS_STATUS_INVALID_DATA;for(unsigned i=0;i<6;i++)if(v->BSSIDs[0][i]!=255)return NDIS_STATUS_NOT_SUPPORTED;}
   else if(oid==OID_DOT11_ENABLED_AUTHENTICATION_ALGORITHM||oid==OID_DOT11_ENABLED_UNICAST_CIPHER_ALGORITHM||oid==OID_DOT11_ENABLED_MULTICAST_CIPHER_ALGORITHM||oid==OID_DOT11_DESIRED_PHY_LIST){
-   if(n<16)return NDIS_STATUS_INVALID_LENGTH;NdisMoveMemory(list,p,16);if(words[1]!=1||words[2]!=1)return NDIS_STATUS_INVALID_DATA;value=words[3];
+   if(n<16)return NDIS_STATUS_INVALID_LENGTH;
+   USHORT wire_size=(USHORT)(oid==OID_DOT11_DESIRED_PHY_LIST?sizeof(DOT11_PHY_ID_LIST):(oid==OID_DOT11_ENABLED_AUTHENTICATION_ALGORITHM?sizeof(DOT11_AUTH_ALGORITHM_LIST):sizeof(DOT11_CIPHER_ALGORITHM_LIST)));
+   if(!list_header(p,n,wire_size))return NDIS_STATUS_INVALID_DATA;
+   NdisMoveMemory(list,p,16);if(words[1]!=1||words[2]!=1)return NDIS_STATUS_INVALID_DATA;value=words[3];
    if(oid==OID_DOT11_DESIRED_PHY_LIST){if(value!=0&&value!=DOT11_PHY_ID_ANY)return NDIS_STATUS_NOT_SUPPORTED;}
    else{if(a->radio.connected)return NDIS_STATUS_DOT11_MEDIA_IN_USE;
     if(oid==OID_DOT11_ENABLED_AUTHENTICATION_ALGORITHM){if(value!=DOT11_AUTH_ALGO_80211_OPEN&&value!=DOT11_AUTH_ALGO_RSNA_PSK)return NDIS_STATUS_NOT_SUPPORTED;a->os_security.auth=value;}
@@ -147,7 +184,7 @@ NDIS_STATUS a04_ndis_control(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
   else if(oid==OID_DOT11_PRIVACY_EXEMPTION_LIST){
    DOT11_PRIVACY_EXEMPTION_LIST v;unsigned base=FIELD_OFFSET(DOT11_PRIVACY_EXEMPTION_LIST,PrivacyExemptionEntries);DOT11_PRIVACY_EXEMPTION entries[4];
    if(n<base)return NDIS_STATUS_INVALID_LENGTH;NdisZeroMemory(&v,sizeof(v));NdisMoveMemory(&v,p,base);
-   if(v.Header.Type!=NDIS_OBJECT_TYPE_DEFAULT||v.Header.Revision!=1||v.uNumOfEntries>4||v.uTotalNumOfEntries<v.uNumOfEntries||v.uNumOfEntries>(n-base)/sizeof(entries[0]))return NDIS_STATUS_INVALID_DATA;
+   if(!list_header(p,n,sizeof(DOT11_PRIVACY_EXEMPTION_LIST))||v.uNumOfEntries>4||v.uTotalNumOfEntries<v.uNumOfEntries||v.uNumOfEntries>(n-base)/sizeof(entries[0]))return NDIS_STATUS_INVALID_DATA;
    NdisMoveMemory(entries,p+base,v.uNumOfEntries*sizeof(entries[0]));
    for(unsigned i=0;i<v.uNumOfEntries;i++)if(entries[i].usEtherType!=0x888e||(entries[i].usExemptionActionType!=1&&entries[i].usExemptionActionType!=2)||entries[i].usExemptionPacketType<1||entries[i].usExemptionPacketType>3)return NDIS_STATUS_NOT_SUPPORTED;
    a->os_security.exemption_count=v.uNumOfEntries;NdisMoveMemory(a->os_security.exemptions,entries,v.uNumOfEntries*sizeof(entries[0]));
@@ -171,7 +208,7 @@ NDIS_STATUS a04_ndis_control(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  case OID_GEN_MEDIA_SUPPORTED:case OID_GEN_MEDIA_IN_USE:value=NdisMediumNative802_11;break;
  case OID_GEN_MAXIMUM_FRAME_SIZE:value=1500;break;case OID_GEN_MAXIMUM_TOTAL_SIZE:value=1532;break;
  case OID_GEN_LINK_SPEED:value=0xffffffffu;break;
- case OID_GEN_MEDIA_CONNECT_STATUS:value=a->radio.connected?NdisMediaStateConnected:NdisMediaStateDisconnected;break;
+ case OID_GEN_MEDIA_CONNECT_STATUS:value=NdisMediaStateConnected;break;
  case OID_GEN_CURRENT_LOOKAHEAD:value=a->lookahead;break;case OID_GEN_CURRENT_PACKET_FILTER:value=a->filter;break;
  case OID_DOT11_HARDWARE_PHY_STATE:case OID_DOT11_NIC_POWER_STATE:{BOOLEAN on=TRUE;return copy_query(q,&on,1);}
  case OID_DOT11_EXCLUDE_UNENCRYPTED:{BOOLEAN v=(BOOLEAN)a->os_security.exclude_unencrypted;return copy_query(q,&v,1);}

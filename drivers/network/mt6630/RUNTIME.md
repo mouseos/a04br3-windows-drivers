@@ -210,3 +210,8 @@ manifestにpackage source commit、binary source37a5bb1、INF版、全package ha
 実配置SYS hash=`77b53ac0...`の両方を回収して確認する。
 bind成功やDISM exit0だけで新SYS実適用としない。
 新SYS実適用確認後に初めてCode/CM problem/interface数を比較する。
+
+
+NDIS6.30初期化・標準WLAN列挙・scanの属性修正と、未実装必須OID/容量の一覧は
+[INITIALIZATION-CONTRACT.md](INITIALIZATION-CONTRACT.md) を参照。INF1002候補とは別のsource差分で、
+この修正だけで全面準拠や実WLAN列挙成功とは扱わない。

@@ -18,5 +18,13 @@ int main(void)
  p->udot11SSIDsOffset=1;p->uIEsOffset=0xfffffff0u;assert(a04_native_scan_parse(b.bytes,sizeof(b),&out,&needed)==NDIS_STATUS_INVALID_LENGTH);
  p->uIEsOffset=1+sizeof(id);b.bytes[base+p->uIEsOffset+1]=5;assert(a04_native_scan_parse(b.bytes,sizeof(b),&out,&needed)==NDIS_STATUS_INVALID_DATA);
  p->uNumOfdot11SSIDs=2;assert(a04_native_scan_parse(b.bytes,sizeof(b),&out,&needed)==NDIS_STATUS_INVALID_LENGTH);
+ /* Standard wildcard BSSID zero, and ignored Request IE fields when
+  * multi-domain support is disabled. No firmware request is sent here. */
+ p->uNumOfdot11SSIDs=0;p->uIEsLength=0;
+ memset(p->dot11BSSID,0,6);
+ p->bUseRequestIE=1;p->uNumOfRequestIDs=0xffffffffu;p->uRequestIDsOffset=0xffffffffu;
+ assert(a04_native_scan_parse(b.bytes,sizeof(b),&out,&needed)==NDIS_STATUS_SUCCESS);
+ p->dot11BSSID[0]=2;
+ assert(a04_native_scan_parse(b.bytes,sizeof(b),&out,&needed)==NDIS_STATUS_NOT_SUPPORTED);
  puts("Native 802.11 scan request bounds and snapshot: OK");return 0;
 }

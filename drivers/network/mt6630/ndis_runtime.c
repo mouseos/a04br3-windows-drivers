@@ -181,7 +181,7 @@ NDIS_STATUS RuntimeInitialize(NDIS_HANDLE adapter,NDIS_HANDLE context,PNDIS_MINI
  UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(params);
  a=NdisAllocateMemoryWithTagPriority(adapter,sizeof(*a),TAG,NormalPoolPriority);if(!a)return NDIS_STATUS_RESOURCES;NdisZeroMemory(a,sizeof(*a));a->adapter=adapter;a->paused=1;a->power=TRUE;a->lookahead=1500;
  NdisAllocateSpinLock(&a->lock);NdisInitializeEvent(&a->idle);NdisSetEvent(&a->idle);KeInitializeTimer(&a->timer);KeInitializeDpc(&a->dpc,poll_dpc,a);
- NdisZeroMemory(&attr,sizeof(attr));attr.Header.Type=NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES;attr.Header.Revision=1;attr.Header.Size=NDIS_SIZEOF_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES_REVISION_1;attr.MiniportAdapterContext=a;attr.InterfaceType=NdisInterfaceInternal;
+ NdisZeroMemory(&attr,sizeof(attr));attr.Header.Type=NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES;attr.Header.Revision=NDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES_REVISION_2;attr.Header.Size=NDIS_SIZEOF_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES_REVISION_2;attr.MiniportAdapterContext=a;attr.InterfaceType=NdisInterfaceInternal;
  s=NdisMSetMiniportAttributes(adapter,(PNDIS_MINIPORT_ADAPTER_ATTRIBUTES)&attr);if(s!=NDIS_STATUS_SUCCESS)goto failed;
  NdisZeroMemory(&pool,sizeof(pool));pool.Header.Type=NDIS_OBJECT_TYPE_DEFAULT;pool.Header.Revision=1;pool.Header.Size=sizeof(pool);pool.ProtocolId=NDIS_PROTOCOL_ID_DEFAULT;pool.fAllocateNetBuffer=TRUE;pool.PoolTag=TAG;
  a->rx_pool=NdisAllocateNetBufferListPool(adapter,&pool);a->rx_mdl=IoAllocateMdl(a->rx_bytes,sizeof(a->rx_bytes),FALSE,FALSE,NULL);
