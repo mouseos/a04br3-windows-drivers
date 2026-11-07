@@ -165,3 +165,9 @@ if($LASTEXITCODE){throw 'WDK ARM runtime relink failed'}
 scalar設定は全WiFi objへ影響するためNative/coreだけ再compileする。既存の検証済み
 shared parentは `-SharedParentDirectory` で再利用し、GPU/親/SDKを再buildしない。
 INFは1003を維持し、build/sign manifestのsource/flags/hashでb6b715f未link候補と区別する。
+
+## 後続の一次資料復元とINF1004
+
+署名済み1bd250c/1003を保持したまま、[NATIVE-1004.md](NATIVE-1004.md)に
+到達不能閾値の実装、24/中間値の正確な扱い、新たに確定した未接続PSPの
+RF停止要件と残件を記録した。上の「仕様未固定」は1003作成時点の履歴である。

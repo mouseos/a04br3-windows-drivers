@@ -36,6 +36,7 @@ static int exclude_bssid(void *context,const uint8_t *mac)
 int a04_ndis_poll(struct a04_ndis_runtime *a)
 {
  int result=a04_station_runtime_poll(&a->radio);
+ if(!result&&a04_ndis_unreachable_check(a))result=-1;
  /* A poll consumes at most64 actual HIF packets. All admitted RX frames
   * have independent nonpaged bytes/MDLs/NBLs until synchronous RESOURCES
   * indication returns. Pause/halt waits for this worker to finish them. */
@@ -95,9 +96,8 @@ static int firmware_event(void *p,const uint8_t *packet,unsigned bytes,uint64_t 
   * traffic alone is not proof of peer loss (firmware can filter beacons). */
  if(bytes>=8&&packet[4]==0x13){
   if(bytes!=12)return -1;
-  if(a->radio.connected&&packet[8]==a->radio.station.local.bss&&packet[9]!=8&&
-    time>=a->last_peer_rx&&time-a->last_peer_rx>=2000000u)
-   a04_ndis_peer_disconnect(a,DOT11_ASSOC_STATUS_UNREACHABLE);
+  if(a->radio.connected&&packet[8]==a->radio.station.local.bss&&packet[9]!=8)
+   a->peer_loss.suspected=1; /* evaluate after the complete RX poll batch */
   return 0;
  }
  if(a04_os_security_event(a,packet,bytes))return -1;
@@ -114,7 +114,10 @@ static int receive_data(void *p,const uint8_t *packet,unsigned bytes)
 {
  struct a04_ndis_runtime *a=p;struct a04_native_hif_rx rx;NDIS_STATUS status;struct a04_wlan_rx_frame management;
  if(!a04_wlan_rx_frame_parse(packet,bytes,&management)&&management.length>=24&&!(management.data[0]&0x0c)){
-  if(management.length>=36&&(management.data[0]==0x80||management.data[0]==0x50)&&a04_wlan_equal(management.data+10,a->radio.station.ap.mac,6))a->last_peer_rx=now(a);
+  if(a->radio.connected&&management.length>=36&&(management.data[0]==0x80||management.data[0]==0x50)&&
+    a04_wlan_equal(management.data+10,a->radio.station.ap.mac,6)&&a04_wlan_equal(management.data+16,a->radio.station.ap.mac,6)&&
+    a04_native_hif_rx_management(packet,bytes,a->radio.bridge->regulatory.permitted,a,a04_ndis_rate_lookup,&rx)==NDIS_STATUS_SUCCESS)
+   a04_peer_observed(&a->peer_loss,now(a));
   if(management.length>=26&&(management.data[0]==0xc0||management.data[0]==0xa0)){
    if(!a04_wlan_disconnect_rx(&a->radio.station,&a->security,management.data,management.length))a04_ndis_peer_disconnect(a,(management.data[0]==0xc0?DOT11_ASSOC_STATUS_PEER_DEAUTHENTICATED:DOT11_ASSOC_STATUS_PEER_DISASSOCIATED)|a04_wmt_le16(management.data+24));
    return 0;
@@ -139,6 +142,7 @@ static int receive_data(void *p,const uint8_t *packet,unsigned bytes)
   status=a04_os_security_receive(a,packet,bytes,&rx);
  }else status=a04_native_hif_rx_decode(packet,bytes,a->radio.bridge->regulatory.permitted,a->radio.station.local.mac,a->radio.station.ap.mac,a,a04_ndis_rate_lookup,&rx);
  if(status!=NDIS_STATUS_SUCCESS){NdisAcquireSpinLock(&a->lock);if(status==NDIS_STATUS_INVALID_DATA||status==NDIS_STATUS_INVALID_LENGTH)a->stats.rx_errors++;else a->stats.rx_discards++;NdisReleaseSpinLock(&a->lock);return 0;} /* never authorize a rejected frame */
+ if(a->radio.connected)a04_peer_observed(&a->peer_loss,now(a));
  {unsigned group=rx.mpdu[4]&1,broadcast=1,eapol=rx.length>=32&&a04_wlan_be16(rx.mpdu+30)==0x888e;for(unsigned i=0;i<6;i++)if(rx.mpdu[4+i]!=255)broadcast=0;
   if(!eapol){if(!a->radio.station.secured&&a->os_security.exclude_unencrypted)return 0;if(!group&&!(a->filter&NDIS_PACKET_TYPE_DIRECTED))return 0;if(group&&broadcast&&!(a->filter&NDIS_PACKET_TYPE_BROADCAST))return 0;if(group&&!broadcast){
    int found=0;for(ULONG k=0;k<a->multicast_count;k++){unsigned d=0;for(unsigned j=0;j<6;j++)d|=rx.mpdu[4+j]^a->multicast[k][j];if(!d)found=1;}
@@ -148,7 +152,7 @@ static int receive_data(void *p,const uint8_t *packet,unsigned bytes)
   NdisAcquireSpinLock(&a->lock);a->stats.rx_discards++;if(a->rx_count==A04_NATIVE_QUEUE)a->stats.rx_no_buffer++;NdisReleaseSpinLock(&a->lock);return 0;
  }
  struct a04_rx_slot *slot=&a->rx[a->rx_count++];
- NdisMoveMemory(slot->bytes,rx.mpdu,rx.length);slot->length=rx.length;slot->info=rx.info;slot->management=FALSE;slot->epoch=a->receive_epoch;a->last_peer_rx=now(a);
+ NdisMoveMemory(slot->bytes,rx.mpdu,rx.length);slot->length=rx.length;slot->info=rx.info;slot->management=FALSE;slot->epoch=a->receive_epoch;
  return 0;
 }
 void a04_ndis_association_reported(struct a04_ndis_runtime *a)
@@ -180,12 +184,8 @@ static int hardware_start(struct a04_ndis_runtime *a)
 int a04_ndis_power_profile(struct a04_ndis_runtime *a,ULONG request,BOOLEAN streaming,int force)
 {
  unsigned profile;
- switch(request){
- case DOT11_POWER_SAVING_NO_POWER_SAVING:profile=0;break;
- case DOT11_POWER_SAVING_FAST_PSP:profile=2;break;
- case DOT11_POWER_SAVING_MAX_PSP:profile=1;break;
- default:return -1;
- }
+ _Static_assert(DOT11_POWER_SAVING_NO_POWER_SAVING==0&&DOT11_POWER_SAVING_FAST_PSP==8&&DOT11_POWER_SAVING_MAX_PSP==16&&DOT11_POWER_SAVING_MAXIMUM_LEVEL==24,"Native power wire values");
+ if(a04_native_power_profile(request,&profile))return -1;
  if(streaming)profile=0;
  if((a->power||force)&&a->radio.initialized){
   uint8_t body[4]={(uint8_t)a->radio.station.local.bss,(uint8_t)profile,0,0};
@@ -214,6 +214,7 @@ static int disabled_identity(struct a04_ndis_runtime *a)
 int a04_ndis_radio_power(struct a04_ndis_runtime *a,int on)
 {
  if(!!a->power==!!on)return radio_setting(a,1);
+ a->peer_loss.suspected=0;
  if(!on){
   if(a04_windows_session_stop(&a->session)){a->uncertain=1;a->radio.failed=-1;return -1;}
   struct a04_os_security old=a->os_security;a04_os_security_clear(a);
@@ -228,6 +229,7 @@ int a04_ndis_radio_power(struct a04_ndis_runtime *a,int on)
 }
 int a04_ndis_radio_reset(struct a04_ndis_runtime *a)
 {
+ a->peer_loss.suspected=0;
  if(!a->power&&(a->session.state==A04_SESSION_OFF||a->session.state==A04_SESSION_STOPPED)){
   a04_os_security_clear(a);return 0; /* quiescent OFF epoch; do not turn RF on */
  }
@@ -238,6 +240,23 @@ int a04_ndis_radio_reset(struct a04_ndis_runtime *a)
  a->association_reported=a->early_length=0;RtlSecureZeroMemory(a->early_rx,sizeof(a->early_rx));
  RtlZeroMemory(&a->tx,sizeof(a->tx));a->tx.adapter=a->adapter;a->tx.completion_context=a;a->tx.completion=a04_ndis_tx_complete;
  if(hardware_start(a)){a->radio.failed=-1;return -1;}return 0;
+}
+/* Sole PASSIVE owner, after station polling has finished using its state.
+ * Perform real teardown/cold reset, with key epoch invalidation, before the
+ * disassociation indication. Do not reset from inside the packet callback. */
+int a04_ndis_unreachable_check(struct a04_ndis_runtime *a)
+{
+ DOT11_DISASSOCIATION_PARAMETERS d;int result;
+ if(!a->power||!a->radio.connected||!a04_peer_loss_expired(&a->peer_loss,now(a)))return 0;
+ NdisZeroMemory(&d,sizeof(d));d.Header.Type=NDIS_OBJECT_TYPE_DEFAULT;
+ d.Header.Revision=1;d.Header.Size=sizeof(d);NdisMoveMemory(d.MacAddr,a->radio.station.ap.mac,6);
+ d.uReason=DOT11_ASSOC_STATUS_UNREACHABLE;
+ if(a->tx.pending)(void)a04_native_nbl_abort(&a->tx,&a->session.diagnostic.bridge);
+ result=a04_ndis_radio_reset(a);
+ a->radio.connected=a->radio.connecting=0;a->peer_loss.suspected=0;
+ if(result){a04_os_security_clear(a);a->radio.failed=-1;}
+ a04_ndis_status(a,NDIS_STATUS_DOT11_DISASSOCIATION,&d,sizeof(d));
+ return result;
 }
 static void worker(PVOID p,NDIS_HANDLE work);
 static int queue_work(struct a04_ndis_runtime *a)
@@ -302,7 +321,7 @@ NDIS_STATUS RuntimeInitialize(NDIS_HANDLE adapter,NDIS_HANDLE context,PNDIS_MINI
 {
  struct a04_ndis_runtime *a;NDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES attr;NET_BUFFER_LIST_POOL_PARAMETERS pool;NDIS_STATUS s;LARGE_INTEGER due;
  UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(params);
- a=NdisAllocateMemoryWithTagPriority(adapter,sizeof(*a),TAG,NormalPoolPriority);if(!a)return NDIS_STATUS_RESOURCES;NdisZeroMemory(a,sizeof(*a));a->adapter=adapter;a->paused=1;a->power=TRUE;a->lookahead=A04_RUNTIME_MTU;
+ a=NdisAllocateMemoryWithTagPriority(adapter,sizeof(*a),TAG,NormalPoolPriority);if(!a)return NDIS_STATUS_RESOURCES;NdisZeroMemory(a,sizeof(*a));a->adapter=adapter;a->paused=1;a->power=TRUE;a->lookahead=A04_RUNTIME_MTU;a->peer_loss.threshold_ms=A04_UNREACHABLE_DEFAULT_MS;
  NdisAllocateSpinLock(&a->lock);NdisInitializeEvent(&a->idle);NdisSetEvent(&a->idle);KeInitializeTimer(&a->timer);KeInitializeDpc(&a->dpc,poll_dpc,a);
  NdisZeroMemory(&attr,sizeof(attr));attr.Header.Type=NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES;attr.Header.Revision=NDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES_REVISION_2;attr.Header.Size=NDIS_SIZEOF_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES_REVISION_2;attr.MiniportAdapterContext=a;attr.InterfaceType=NdisInterfaceInternal;
  s=NdisMSetMiniportAttributes(adapter,(PNDIS_MINIPORT_ADAPTER_ATTRIBUTES)&attr);if(s!=NDIS_STATUS_SUCCESS)goto failed;

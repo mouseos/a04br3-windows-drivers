@@ -30,7 +30,7 @@ int a04_os_security_event(struct a04_ndis_runtime *a,const uint8_t *p,unsigned n
 static NDIS_STATUS install(struct a04_ndis_runtime *a,unsigned pairwise,unsigned id,int remove,const uint8_t *key,const uint8_t rsc[6])
 {
  struct a04_os_security *s=&a->os_security;struct a04_os_key *slot=pairwise?&s->ptk:&s->gtk[id];
- struct a04_wmt_bridge *b=a->radio.bridge;uint8_t command[64],digest[32];uint64_t pn=0,deadline;unsigned wlan=slot->wlan;int e;NDIS_STATUS status=NDIS_STATUS_FAILURE;
+ struct a04_wmt_bridge *b=a->radio.bridge;uint8_t command[64],digest[32];uint64_t pn=0,deadline;unsigned wlan=slot->wlan,epoch=a->receive_epoch;int e;NDIS_STATUS status=NDIS_STATUS_FAILURE;
  if(!a->radio.connected||!cipher_active(a)||s->failed||a->tx.pending)return NDIS_STATUS_DOT11_MEDIA_IN_USE;
  if(remove&&!slot->valid)return NDIS_STATUS_SUCCESS;
  RtlZeroMemory(command,sizeof(command));RtlZeroMemory(digest,sizeof(digest));
@@ -53,16 +53,18 @@ static NDIS_STATUS install(struct a04_ndis_runtime *a,unsigned pairwise,unsigned
  command[10]=(uint8_t)a->radio.station.local.bss;command[11]=4;command[12]=(uint8_t)id;command[13]=(uint8_t)(remove?0:16);command[14]=(uint8_t)wlan;
  if(!remove){for(unsigned i=0;i<16;i++)command[16+i]=key[i];for(unsigned i=0;i<6;i++){command[48+i]=rsc[i];pn|=(uint64_t)rsc[i]<<(8*i);}}
  /* Drain old events before publishing a new key transaction under this owner. */
- if(a04_ndis_poll(a))goto uncertain;
+ if(a04_ndis_poll(a)){if(a->receive_epoch!=epoch)goto done;goto uncertain;}
+ if(a->receive_epoch!=epoch||!a->radio.connected)goto done;
  slot->valid=0;slot->wlan=wlan;if(!remove)for(unsigned i=0;i<16;i++)slot->pn[i]=pn;if(pairwise&&!remove)s->ptk_pending=1;
  e=a04_wlan_set(&b->wlan,7,command,64,NULL);
  RtlSecureZeroMemory(command,sizeof(command));RtlSecureZeroMemory(b->wlan.tx,sizeof(b->wlan.tx));
  if(e)goto uncertain;
  if(pairwise&&!remove){
   deadline=a->radio.now(a)+2000000u;
-  while(s->ptk_pending&&!a->closing&&!a->cancelled&&a->radio.now(a)<deadline){if(a04_ndis_poll(a))goto uncertain;a->radio.wait(a,1000);}
+  while(s->ptk_pending&&!a->closing&&!a->cancelled&&a->radio.now(a)<deadline){if(a04_ndis_poll(a)){if(a->receive_epoch!=epoch)goto done;goto uncertain;}if(a->receive_epoch!=epoch||!a->radio.connected)goto done;a->radio.wait(a,1000);}
   if(s->ptk_pending)goto uncertain;
  }
+ if(a->receive_epoch!=epoch||!a->radio.connected)goto done;
  if(remove){slot->valid=0;if(pairwise)s->port_open=0;status=NDIS_STATUS_SUCCESS;goto done;}
  /* Group-key completion follows gen3 noNeedResp/full HIF submission; this
   * is deliberately not reported as a fabricated firmware GTK ACK. */

@@ -1578,3 +1578,12 @@ build/mt6630_owned_queue_test: tests/mt6630_owned_queue_test.c drivers/network/m
 test-mt6630-owned-queue: build/mt6630_owned_queue_test
 	./build/mt6630_owned_queue_test
 test-mt6630: test-mt6630-owned-queue
+
+build/mt6630_native_policy_test: tests/mt6630_native_policy_test.c drivers/network/mt6630/native_policy.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/network/mt6630 $< -o $@
+
+.PHONY: test-mt6630-native-policy
+test-mt6630-native-policy: build/mt6630_native_policy_test
+	./build/mt6630_native_policy_test
+test-mt6630: test-mt6630-native-policy

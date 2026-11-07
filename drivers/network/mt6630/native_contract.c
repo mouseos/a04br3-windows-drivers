@@ -83,9 +83,14 @@ NDIS_STATUS a04_ndis_contract_oid(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q
       a04_ndis_status(a,NDIS_STATUS_DOT11_DISASSOCIATION,&d,sizeof(d));}
     }
    }break;
+  case OID_DOT11_UNREACHABLE_DETECTION_THRESHOLD:
+   if(n!=sizeof(value)){q->DATA.SET_INFORMATION.BytesNeeded=sizeof(value);return NDIS_STATUS_INVALID_LENGTH;}NdisMoveMemory(&value,p,sizeof(value));
+   a->peer_loss.threshold_ms=value;
+   status=a04_ndis_unreachable_check(a)?NDIS_STATUS_FAILURE:NDIS_STATUS_SUCCESS;break;
   case OID_DOT11_POWER_MGMT_REQUEST:
    if(n!=sizeof(value))return NDIS_STATUS_INVALID_LENGTH;NdisMoveMemory(&value,p,4);
-   if(value!=DOT11_POWER_SAVING_NO_POWER_SAVING&&value!=DOT11_POWER_SAVING_FAST_PSP&&value!=DOT11_POWER_SAVING_MAX_PSP)return NDIS_STATUS_NOT_SUPPORTED;
+   unsigned profile;int valid=a04_native_power_profile(value,&profile);
+   if(valid)return valid==-2?NDIS_STATUS_NOT_SUPPORTED:NDIS_STATUS_INVALID_DATA;
    if(a04_ndis_power_profile(a,value,a->media_streaming,0))return NDIS_STATUS_FAILURE;break;
   default:return NDIS_STATUS_INVALID_OID;
   }
@@ -100,6 +105,7 @@ NDIS_STATUS a04_ndis_contract_oid(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q
  case OID_DOT11_NIC_POWER_STATE:case OID_DOT11_HIDDEN_NETWORK_ENABLED:case OID_DOT11_MEDIA_STREAMING_ENABLED:case OID_DOT11_SAFE_MODE_ENABLED:{
   BOOLEAN v=oid==OID_DOT11_NIC_POWER_STATE?a->power:(oid==OID_DOT11_HIDDEN_NETWORK_ENABLED?a->hidden_network:(oid==OID_DOT11_MEDIA_STREAMING_ENABLED?a->media_streaming:a->safe_mode));return query(q,&v,sizeof(v));
  }
+ case OID_DOT11_UNREACHABLE_DETECTION_THRESHOLD:value=a->peer_loss.threshold_ms;break;
  case OID_DOT11_POWER_MGMT_REQUEST:value=a->power_request;break;
  case OID_DOT11_ACTIVE_PHY_LIST:{DOT11_PHY_ID_LIST v;NdisZeroMemory(&v,sizeof(v));HEAD(v,DOT11_PHY_ID_LIST);v.uNumOfEntries=v.uTotalNumOfEntries=a->power?1:0;v.dot11PhyId[0]=0;return query(q,&v,FIELD_OFFSET(DOT11_PHY_ID_LIST,dot11PhyId)+v.uNumOfEntries*sizeof(ULONG));}
  case OID_DOT11_EXCLUDED_MAC_ADDRESS_LIST:{
