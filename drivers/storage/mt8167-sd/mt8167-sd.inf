@@ -1,0 +1,38 @@
+; Removable SD socket only; never matches boot eMMC MOU0001 or MSDC2 SDIO.
+[Version]
+Signature="$WINDOWS NT$"
+Class=SCSIAdapter
+ClassGuid={4d36e97b-e325-11ce-bfc1-08002be10318}
+Provider=%Provider%
+DriverVer=11/07/2026,2026.11.7.1
+CatalogFile=mt8167-sd.cat
+[Manufacturer]
+%Provider%=Models,NTarm
+[Models.NTarm]
+%Host%=Host,ACPI\MOU0013
+[DestinationDirs]
+Files=12
+[SourceDisksNames]
+1=%Disk%,,,
+[SourceDisksFiles]
+mt8167-sd.sys=1
+[Host.NT]
+CopyFiles=Files
+[Files]
+mt8167-sd.sys
+[Host.NT.Services]
+AddService=Mt8167Sd,0x00000002,Service
+[Service]
+DisplayName=%Host%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\mt8167-sd.sys
+[Host.NT.Wdf]
+KmdfService=Mt8167Sd,Wdf
+[Wdf]
+KmdfLibraryVersion=1.13
+[Strings]
+Provider="mouseos"
+Host="MediaTek MT8167 MSDC1 microSD Host"
+Disk="MediaTek MT8167 MSDC1 microSD Driver"
