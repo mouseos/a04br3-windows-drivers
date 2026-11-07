@@ -180,3 +180,33 @@ SetupAPIのproblem値だけから `NDIS_STATUS_BAD_CHARACTERISTICS` 等を断定
 既存親packageを再利用する場合は `-SharedParentDirectory` のcapability/hash/commit確認を維持する。
 署名・配備・実機確認は主担当で行う。INF・親driver・firmware・通常OID・MMIO・Bluetoothは
 この登録修正では変更しない。
+
+
+## 旧DriverStore再利用を避ける1002 package
+
+run27後のrun28退避SYSは旧版 `d11e86bc728f0cd5d519becbd6bf7f328883a84672cc6c6678608a65742182af`。
+新署名37a5bb1 SYSは `77b53ac0b902d5d6c864247707e9f319585ebb64d3a17b8a14696c8153e1a821`。
+したがって旧SYSでのCode31/interfaces0は9d3a889修正の実行結果ではない。
+同一1001 INFでの旧DriverStore再利用は原因候補で、返却されたproblemだけで断定しない。
+
+source INFとbuild manifestのDriverVerを `11/06/2026,2026.11.6.1002` に更新。
+同日付1001よりversionを上げ、Inf2Catの未来日問題を避ける。SYSの機能は変更しない。
+既に署名済みの新SYSを再利用する最小手順（cleanな固定sourceで実行）：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\ci\package-mt6630-runtime-1002.ps1 `
+  -SignedSys .\build\wifi37a-signed\mt6630-runtime.sys `
+  -OutputDirectory .\build\wifi1002-package-01
+```
+
+この専用レシピは確認済み新SYS hashだけを受理し、新規dirへSYSとsourceの1002 INFだけをコピー、
+WDK8.1 Inf2Cat `/os:6_3_ARM /uselocaltime` でCATを新規生成し、既存開発鍵でCATを署名する。
+SYSは再署名も再buildもしない。公開CERとmanifestはpackage外へ保存し、
+manifestにpackage source commit、binary source37a5bb1、INF版、全package hash/lengthを記録する。
+旧CATや1001 INFを上書き流用しない。秘密鍵生成・配備・runner操作は行わない。
+別のSYSをbuildした場合はこの固定hashレシピの対象外で、出自確認後に別候補として扱う。
+
+主担当は1002 packageをstage/bind後、実選択oem INFのDriverVer=1002と、
+実配置SYS hash=`77b53ac0...`の両方を回収して確認する。
+bind成功やDISM exit0だけで新SYS実適用としない。
+新SYS実適用確認後に初めてCode/CM problem/interface数を比較する。
