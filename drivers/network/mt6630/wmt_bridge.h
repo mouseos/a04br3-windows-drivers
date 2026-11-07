@@ -26,6 +26,9 @@ struct a04_wmt_bridge {
  struct a04_wlan_scan_state scan;
  struct a04_regulatory regulatory;
  unsigned identity_ready,wmt_ready,wlan_ready,failed,calibration_submitted;uint32_t pending_wlan_status;
+ /* Optional same-worker fn2 service. Must not call WLAN polling/reenter.
+  * No second thread/IRQ consumer; NULL retains the WLAN-only behavior. */
+ void *service_context;int (*service_other)(void *);
 };
 int a04_wmt_bridge_open(struct a04_wmt_bridge *,struct a04_wifi_life *,unsigned functions,void *,void (*)(void *,unsigned));
 /* Data is a stable, owned snapshot with a provenance-verified SHA-256; input

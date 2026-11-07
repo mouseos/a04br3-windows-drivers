@@ -85,7 +85,13 @@ NTSTATUS a04_cp_begin(struct a04_checkpoint *c,ULONG channel,uint64_t parent)
   else {generation++;status=set(c->key,L"Generation",REG_QWORD,&generation,8);}
  }
  if(NT_SUCCESS(status)){
-  struct a04_cp_record *r=c->record;r->magic=A04_CP_MAGIC;r->version=A04_CP_VERSION;r->bytes=sizeof(*r);r->channel=channel;r->driver_build=1013;
+  struct a04_cp_record *r=c->record;r->magic=A04_CP_MAGIC;r->version=A04_CP_VERSION;r->bytes=sizeof(*r);r->channel=channel;
+#if defined(A04_WIFI_BT_BROKER) && A04_WIFI_BT_BROKER
+ r->driver_build=1014;
+#else
+ r->driver_build=1013;
+#endif
+
   r->generation=generation;r->parent_generation=parent;r->interrupt_time=KeQueryInterruptTime();KeQuerySystemTime(&time);r->system_time=(uint64_t)time.QuadPart;
   current_generation[channel]=generation;
   status=store(c);

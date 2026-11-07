@@ -199,6 +199,7 @@ int a04_wmt_bridge_poll_wlan_status(struct a04_wmt_bridge *b,uint32_t *status)
 {
  uint32_t observed;int e;
  if(!alive(b)||!b->wlan_ready||b->failed||!status||b->pending_wlan_status)return -1;
+ if(b->service_other&&b->service_other(b->service_context))return fault(b,-1);
  e=a04_wlan_interrupt_status(&b->wlan,&observed);if(e)return fault(b,e);
  b->pending_wlan_status=observed;*status=observed;return 0;
 }
