@@ -20,13 +20,13 @@ static nir_def *source(nir_builder *b,const struct geo_sm2_operand *s,nir_def **
  for(i=0;i<4;i++)swizzle[i]=(s->swizzle>>(2*i))&3;
  value=nir_swizzle(b,value,swizzle,4);return s->negate?nir_fneg(b,value):value;
 }
-static int32_t compile_sm2(void *context,uint32_t stage,const uint32_t *tokens,uint32_t bytes,struct geo_compiled_shader *out,struct geo_sm2_error *error) {
+static int32_t compile_program(void *context,uint32_t stage,const uint32_t *tokens,uint32_t bytes,const struct geo_sm4_signatures *signatures,struct geo_compiled_shader *out,struct geo_sm2_error *error) {
  pco_ctx *ctx=context;pco_shader *shader;struct geo_sm2_program *program;nir_builder b;
  nir_def *temp[32]={0},*constants[32]={0},*output,*value,*s[3]={0};
  pco_data data={0};unsigned i,j,shareds=0,vtxins=0;int32_t status;
  if(!ctx||!out)return GEO_INVALID;
  memset(out,0,sizeof(*out));program=rzalloc(ctx,struct geo_sm2_program);if(!program)return GEO_BUSY;
- status=geo_sm2_decode(program,stage,tokens,bytes,error);if(status!=GEO_OK){ralloc_free(program);return status;}
+ status=signatures?geo_sm4_decode(program,stage,tokens,bytes,signatures,error):geo_sm2_decode(program,stage,tokens,bytes,error);if(status!=GEO_OK){ralloc_free(program);return status;}
  b=nir_builder_init_simple_shader(stage==GEO_SM2_VERTEX?MESA_SHADER_VERTEX:MESA_SHADER_FRAGMENT,pco_nir_options(),"D3D9-SM2-source");
  output=nir_undef(&b,4,32);
  for(i=0;i<32;i++)if(program->constant_mask&(1u<<i)) {
@@ -78,6 +78,14 @@ static int32_t compile_sm2(void *context,uint32_t stage,const uint32_t *tokens,u
  ralloc_free(b.shader);ralloc_free(program);
  if(!out->code||!out->code_bytes){ralloc_free(shader);memset(out,0,sizeof(*out));return GEO_UNSUPPORTED;}
  return GEO_OK;
+}
+static int32_t compile_sm2(void *context,uint32_t stage,const uint32_t *tokens,uint32_t bytes,struct geo_compiled_shader *out,struct geo_sm2_error *error) {
+ return compile_program(context,stage,tokens,bytes,NULL,out,error);
+}
+int32_t geo_pco_compile_tokenized(void *context,uint32_t stage,const uint32_t *tokens,uint32_t bytes,
+ const struct geo_sm4_signatures *signatures,struct geo_compiled_shader *out,struct geo_sm2_error *error) {
+ if(!signatures)return GEO_INVALID;
+ return compile_program(context,stage,tokens,bytes,signatures,out,error);
 }
 static void release_sm2(void *context,struct geo_compiled_shader *p) {
  (void)context;if(p){ralloc_free(p->storage);memset(p,0,sizeof(*p));}

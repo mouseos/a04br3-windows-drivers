@@ -44,7 +44,7 @@ def main():
     env['LD_LIBRARY_PATH'] = str(root/'unixnu/UniXNU-a04br3/.cache/pvr-host-env/lib')
     commands, objects = [], []
     with (out/'build.log').open('w') as log:
-        for unit in ('sm2', 'pco_sm2', 'offline'):
+        for unit in ('sm2', 'sm4', 'pco_sm2', 'offline'):
             obj = out/(unit+'.o')
             command = base + ['-UNDEBUG', '-Werror', '-c', str(here/(unit+'.c')), '-o', str(obj)]
             commands.append(command)

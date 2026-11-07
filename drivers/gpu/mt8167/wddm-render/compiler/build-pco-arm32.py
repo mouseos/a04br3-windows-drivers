@@ -45,7 +45,7 @@ def main():
         reuse={r['source']:r for r in previous['units']}
     out.mkdir(parents=True,exist_ok=False)
     if a.component=='pco':
-        rows.extend(dict(rows[0],file=str(here/(unit+'.c')),output=unit+'_adapter') for unit in ('pco_sm2','sm2'))
+        rows.extend(dict(rows[0],file=str(here/(unit+'.c')),output=unit+'_adapter') for unit in ('pco_sm2','sm2','sm4'))
     platform_vfs=a.msvc_vfs
     if a.msvc_sdk:
         # Clang ARM supports real GCC atomics with acquire/release ordering.

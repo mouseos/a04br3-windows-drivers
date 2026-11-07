@@ -47,7 +47,7 @@ def main():
     out.mkdir(parents=True,exist_ok=False)
     env=os.environ.copy();env.update(TMPDIR=str(out),TEMP=str(out),TMP=str(out))
     cmd=['lld-link','/dll','/machine:arm','/subsystem:windows,6.03','/entry:_DllMainCRTStartup','/nodefaultlib',
-         '/export:geo_pco_compiler_init','/export:geo_pco_compiler_finish','/export:pco_ctx_create','/export:ralloc_free',
+         '/export:geo_pco_compile_tokenized','/export:geo_pco_compiler_init','/export:geo_pco_compiler_finish','/export:pco_ctx_create','/export:ralloc_free',
          *[i['path'] for i in inputs],'/out:'+str(out/'ge8300-pco.dll'),'/map:'+str(out/'ge8300-pco.map')]
     result=subprocess.run(cmd,env=env,capture_output=True,text=True)
     (out/'link.log').write_text(result.stdout+result.stderr)

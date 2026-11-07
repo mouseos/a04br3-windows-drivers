@@ -12,14 +12,14 @@ USCの安全性検証・pipeline対応・実job生成の成功ではない。
 | 実UMD入口 | 実際のshader入力 | 現Hとの整合 |
 | --- | --- | --- |
 | D3D9 `CreateVertexShaderFunc/CreatePixelShader` | version token＋SM2/3 instruction/operand列＋END。byte countはDDI引数 | 現decoderはSM2の限定arithmeticのみ。SM3/全SM2を広告しない |
-| D3D10/11 `CreateVertexShader/CreatePixelShader` | `pShaderCode[0]` version、`[1]` total DWORD count、tokenized instruction/operand列。入出力signatureは別DDI引数 | SM2 decoderへ渡せない。新SM4/5 decoder→NIRとsignature取得が必要 |
+| D3D10/11 `CreateVertexShader/CreatePixelShader` | `pShaderCode[0]` version、`[1]` total DWORD count、tokenized instruction/operand列。入出力signatureは別DDI引数 | SM2 decoderへ渡せない。SM4.0限定decoder→NIRとtyped signature取得を追加。SM4.1/5.0は未対応 |
 | アプリ `ID3D11Device::Create*Shader` | コンパイラ出力blob。runtimeがDDI入力へ処理する | API blob/DXBC containerをDDI token streamと同一視しない |
 
 WDK8.1 `d3d10umddi.h`のPFND3D11_1DDI_CREATEVERTEXSHADER、
 PFND3D10DDI_CREATEVERTEXSHADERと`d3d10TokenizedProgramFormat.hpp`が根拠。
 D3D10 token stageはVS=1/PS=0であり、H内stage VS=0/PS=1と逆。
 `draw_protocol.c`はこの変換、長さ、major4.0/4.1/5.0と上限を検査する。
-命令意味・署名の検証やSM4→PCO compileを実装済みと扱わない。
+このframing検証とは別に、compiler/sm4.cが限定命令意味・別signatureを検査し実NIRへ変換する。
 
 既存exportはD3D9 `OpenAdapter`であり、D3D10/11の
 `OpenAdapter10_2`/version negotiation/typed device tableは未実装。
@@ -65,11 +65,11 @@ unsupported shaderが通常入力となるpipeline-level capsの公開を先に�
 
 ARM32のPCO/NIR/compiler DLLは81c292bで実link成功、stock Microsoft CRTと
 NEON/FPを保持し、Windows CRT DLLの別配布依存はない。
-このDLLのcompile callbackは現SM2 subsetのみ。SM4 tokenを受理するよう偽装しない。
+この固定DLLはSM2 subsetのみ。後続実装で別geo_pco_compile_tokenized入口へSM4.0 subsetを追加した。
 `geo_draw_validate_capture`はARM32 no-FPでcompile済み、module helperの
 新TUとしてKMD/UMD archiveへ収容する。既存clear packetをdrawに解釈しない。
 
-残件はHのSM4/5 decode/signature→NIR、DDI10/11初期化/caps/state/resourcesと
+残件はHのSM4機能拡張、DDI10/11初期化/caps/state/resourcesと
 実allocationからのdraw capture、EのGetDrawOps/USC検証/実prepare/factory/control。
 本契約を先に双方で固定し、相互の未実装を前提とする成功stubを追加しない。
 
@@ -79,3 +79,22 @@ NEON/FPを保持し、Windows CRT DLLの別配布依存はない。
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3d10umddi/nc-d3d10umddi-pfnd3d10ddi_createvertexshader
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/display/software-requirements
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/display/shader-code-format
+
+## SM4.0の実compiler接続
+
+`compiler/sm4.c`は本物のtokenized version/lengthと別signatureを受け、
+MOV/ADD/MUL/MAD/DP3/DP4、temp、cb0即値index、全成分vertex0/output0、RETの
+限定straight-lineを共通IRから実NIR/PCOへ渡す。source modifiers、immediate32、
+flow、varying、texture、SM4.1/5.0はまだ非対応。signatureを推測して補わない。
+PS color outputのDDI system nameはD3D10_SB_NAME_UNDEFINED、VS positionはPOSITION。
+
+公式Windows d3dcompiler_47.dllで`vs_4_0`位置転送と`ps_4_0`cb0定数色を生成し、
+そのSHDR token列・ISGN/OSGNを実host PCOへ一括入力した。実出力は
+VS24bytes/input4/output4/temp0/shared0、PS64bytes/temp5/shared4。
+旧SM2 arithmetic経路も同じsourceで確認した。GPU実行・ARM上の実compileではない。
+
+`umd/tokenized_shader.c`は実D3D10/11.1 signature型からbounded captureを作り、
+元tokenとsignature、実compiled storageを所有する。compiler contextはfrontendが
+全shaderより長く保持しcompileを直列化する。後続Set/Deleteの参照retireと
+GetDrawOpsへのsnapshotは次工程。typed helperをvoid CreateShaderの成功stubと
+して登録せず、unsupported shaderを通常入力にするcapsも公開しない。
