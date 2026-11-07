@@ -14,6 +14,8 @@ struct a04_wmi_result_ops {
  void (*release_object)(void *,void *);
  void (*release_call)(void *,void *);
  void (*trace)(void *,const char *,unsigned,int);
+ /* Set only from successful GetMethod signature introspection. */
+ unsigned output_required;
 };
 int a04_brightness_method_result(const struct a04_wmi_result_ops *,unsigned *);
 #endif

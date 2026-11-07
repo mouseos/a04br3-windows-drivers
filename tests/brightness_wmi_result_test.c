@@ -10,12 +10,22 @@ static int value(void*v,void*o,unsigned*out){struct mock*m=v;assert(o==(void*)1|
 static void release(void*v,void*o){struct mock*m=v;assert(o==(void*)1||o==(void*)3);m->releases++;}
 static void release_call(void*v,void*c){struct mock*m=v;assert(c==(void*)2);m->releases++;}
 static void trace(void*v,const char*p,unsigned n,int hr){(void)v;(void)p;(void)n;(void)hr;}
-int main(void){struct mock m;struct a04_wmi_result_ops o={&m,exec,secure,completion,result,value,release,release_call,trace};unsigned ret;int hr;
+int main(void){struct mock m;struct a04_wmi_result_ops o={&m,exec,secure,completion,result,value,release,release_call,trace,1};unsigned ret;int hr;
  for(int mode=0;mode<10;mode++){
   memset(&m,0,sizeof(m));m.mode=mode;hr=a04_brightness_method_result(&o,&ret);assert(m.execs==1);
   if(mode<3){assert(!hr&&ret==0&&m.decoded==1);assert(m.releases==(mode==0?1:2));if(mode==2)assert(!m.calls&&m.completed==1);}
   else {assert(hr);if(mode==5)assert((unsigned)hr==0x8000ffffu);if(mode==7)assert((unsigned)hr==0x80041008u&&!m.calls&&!m.decoded);if(mode==6)assert(!m.calls&&!m.decoded);if(mode==8)assert((unsigned)hr==0x8004100fu&&!m.decoded);}
  }
  memset(&m,0,sizeof(m));m.method_value=5;assert(!a04_brightness_method_result(&o,&ret)&&ret==5);
+ /* Declared void: completion remains mandatory, ReturnValue stays absent. */
+ o.output_required=0;memset(&m,0,sizeof(m));m.mode=8;
+ assert(!a04_brightness_method_result(&o,&ret)&&ret==~0u&&m.completed==1&&!m.calls&&!m.decoded&&m.releases==1);
+ memset(&m,0,sizeof(m));m.mode=2;
+ assert(!a04_brightness_method_result(&o,&ret)&&ret==~0u&&m.completed==1&&!m.calls&&!m.decoded&&m.releases==2);
+ for(int mode=3;mode<=7;mode++){
+  memset(&m,0,sizeof(m));m.mode=mode;hr=a04_brightness_method_result(&o,&ret);
+  if(mode==4)assert(!hr&&ret==~0u&&!m.calls&&!m.decoded);
+  else assert(hr&&!m.decoded);
+ }
  return 0;
 }

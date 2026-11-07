@@ -20,7 +20,7 @@ void *memcpy(void *dst,const void *src,size_t length)
 #define LOG_PATH L"C:\\Windows\\System32\\MT8167EngineProbe\\logs\\brightness-native.log"
 struct probe {
  HANDLE file,stdout_handle;struct a04_brightness_log log;DWORD root_error,stdout_error;IWbemServices *services;IWbemClassObject *input;
- BSTR name,monitor_path,method_path,method_name;int log_failed;
+ BSTR name,monitor_path,method_path,method_name;int log_failed,method_has_output;
 };
 static HRESULT exact(HRESULT hr) {return hr==S_OK?S_OK:(FAILED(hr)?hr:HRESULT_FROM_WIN32(ERROR_TIMEOUT));}
 static HRESULT secure(IUnknown *p)
@@ -64,12 +64,13 @@ static HRESULT number(IWbemClassObject *obj,const WCHAR *key,CIMTYPE type,unsign
  }
  VariantClear(&v);return hr;
 }
-static HRESULT signature_type(IWbemClassObject *obj,const WCHAR *key,CIMTYPE expected)
+static HRESULT signature_type(struct probe *p,IWbemClassObject *obj,const WCHAR *key,CIMTYPE expected,const char *phase)
 {
- VARIANT v;CIMTYPE actual=0;HRESULT hr;
- if(!obj)return WBEM_E_INVALID_OBJECT;
+ VARIANT v;CIMTYPE actual=(CIMTYPE)~0u;HRESULT hr;
+ if(!obj){(void)record(p,phase,(unsigned)expected,(unsigned)actual,(int)WBEM_E_INVALID_OBJECT);return WBEM_E_INVALID_OBJECT;}
  VariantInit(&v);hr=IWbemClassObject_Get(obj,key,0,&v,&actual,NULL);
  if(hr==S_OK && actual!=expected)hr=WBEM_E_TYPE_MISMATCH;
+ (void)record(p,phase,(unsigned)expected,(unsigned)actual,(int)hr);
  VariantClear(&v);return hr;
 }
 static HRESULT string_value(IWbemClassObject *obj,const WCHAR *key,BSTR *out)
@@ -167,11 +168,15 @@ static int snapshot(void *context,unsigned *original)
  klass_name=SysAllocString(L"WmiMonitorBrightnessMethods");p->method_name=SysAllocString(L"WmiSetBrightness");
  if(!klass_name || !p->method_name){hr=E_OUTOFMEMORY;goto done;}
  hr=object(p,klass_name,&klass);
- if(SUCCEEDED(hr))hr=IWbemClassObject_GetMethod(klass,p->method_name,0,&definition,&output_definition);
- if(SUCCEEDED(hr))hr=signature_type(definition,L"Timeout",CIM_UINT32);
- if(SUCCEEDED(hr))hr=signature_type(definition,L"Brightness",CIM_UINT8);
- if(SUCCEEDED(hr))hr=signature_type(output_definition,L"ReturnValue",CIM_UINT32);
- (void)record(p,"wmi-method-signature",CIM_UINT32,CIM_UINT8,(int)hr);
+ if(hr==S_OK)hr=exact(IWbemClassObject_GetMethod(klass,p->method_name,0,&definition,&output_definition));
+ (void)record(p,"wmi-method-signatures-present",definition?1u:0u,output_definition?1u:0u,(int)hr);
+ if(SUCCEEDED(hr))hr=signature_type(p,definition,L"Timeout",CIM_UINT32,"wmi-signature-Timeout");
+ if(SUCCEEDED(hr))hr=signature_type(p,definition,L"Brightness",CIM_UINT8,"wmi-signature-Brightness");
+ /* GetMethod documents NULL output signature for methods with no output.
+  * WDK8.1 wmidata.h also defines WmiSetBrightness_IN only. Honor the actual
+  * provider declaration, never infer success from a missing result object. */
+ p->method_has_output=output_definition!=NULL;
+ if(SUCCEEDED(hr) && output_definition)hr=signature_type(p,output_definition,L"ReturnValue",CIM_UINT32,"wmi-signature-ReturnValue");
  if(SUCCEEDED(hr))hr=IWbemClassObject_SpawnInstance(definition,0,&p->input);
  if(SUCCEEDED(hr))hr=identity_log(p);
 done:
@@ -218,10 +223,10 @@ static int set(void *context,unsigned level)
  if(SUCCEEDED(hr))hr=IWbemClassObject_Put(p->input,L"Brightness",0,&v,0);
  if(record(p,"wmi-arguments",level,0,(int)hr))p->log_failed=1;
  ops.context=p;ops.exec=method_exec;ops.secure=method_secure;ops.completion=method_completion;ops.result=method_result;
- ops.value=method_value;ops.release_object=method_release_object;ops.release_call=method_release_call;ops.trace=method_trace;
+ ops.value=method_value;ops.release_object=method_release_object;ops.release_call=method_release_call;ops.trace=method_trace;ops.output_required=p->method_has_output?1u:0u;
  if(hr==S_OK)hr=(HRESULT)a04_brightness_method_result(&ops,&result);
  if(record(p,"wmi-method-output",level,result,(int)hr))p->log_failed=1;
- if(hr==S_OK && result)hr=WBEM_E_FAILED;
+ if(hr==S_OK && p->method_has_output && result)hr=WBEM_E_FAILED;
  return (int)hr;
 }
 static int read_level(void *context,unsigned *value)

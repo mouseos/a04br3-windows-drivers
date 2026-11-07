@@ -44,7 +44,7 @@ try {
   source_hashes=@($sources | ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $root "tools\display\$_.c") -Algorithm SHA256).Hash}});
   header_hashes=@(@('brightness_sequence.h','brightness_native.h','brightness_wmi_result.h','brightness_log.h') | ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $root "tools\display\$_") -Algorithm SHA256).Hash}});
   library_hashes=@($libraries | ForEach-Object {@{name=[IO.Path]::GetFileName($_);sha256=(Get-FileHash $_ -Algorithm SHA256).Hash}});
-  certificate_trust='must already be configured by main owner';sys_or_cat_modified=$false;wmi_completion='GetCallStatus-before-GetResultObject';method_return_type='CIM_UINT32/VT_I4';input_signature_checked=$true;missing_output_is_provider_success=$false
+  certificate_trust='must already be configured by main owner';sys_or_cat_modified=$false;wmi_completion='GetCallStatus-before-GetResultObject';method_return_type='actual GetMethod output signature: declared void or CIM_UINT32/VT_I4';input_signature_checked=$true;missing_output_is_provider_success=$false;declared_void_requires_completion_and_readback=$true
  } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $out 'manifest.json') -Encoding UTF8
  Write-Host "Native brightness client prepared: $exe; no deployment performed."
 } finally {$env:TEMP=$oldTemp;$env:TMP=$oldTmp}

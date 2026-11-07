@@ -1,0 +1,22 @@
+# run63 WMI method signature
+
+実client8a9354a0はCurrentBrightness49を取得後、aggregate signatureログ8004100Fで停止。
+このログのrequested13/observed11はCIM_UINT32/CIM_UINT8の定数で、観測型や引数個数ではない。
+30/70/restoreは実行されていない。実ReturnValue0の証拠もない。
+
+WDK8.1 km/wmidata.h 11159..11174はWmiSetBrightness_INとしてTimeout ULONG(ID1)、
+Brightness UCHAR(ID2)を定義し、直後に次のmethod定義が続く。対応OUT構造体はない。
+IWbemClassObject::GetMethodの契約は、outputのないmethodでppOutSignature=NULLを許可する。
+固定uint32 ReturnValueの要求は合法なvoid signatureをクライアント自身で
+WBEM_E_INVALID_OBJECTにしてしまう。aggregateログだけでは失敗propertyの断定はしない。
+
+新clientは実GetMethod S_OK、正しい名前のTimeout scalar UINT32、Brightness scalar UINT8を
+確認する。生CIMTYPEを名前別に記録し、array等の型修飾不一致を拒否する。引数は名前でPut。
+output signatureがある場合はReturnValue UINT32を従来通り厳密に要求する。
+実signatureがNULLの場合だけvoid modeとし、GetCallStatusのtransport/operation両方の
+成功を必要とする。ReturnValue0を合成せず未観測sentinelを保持する。
+return値を宣言しているのにoutputが欠落するケースは従来通り失敗。
+void modeでも30/70/元値の実WMI readback一致が揃わなければclientは失敗となる。
+no-outputを輝度変更成功とは扱わない。再dispatch、タイムアウト延長、DDC/MMIOは無し。
+
+実schemaのproperty別証拠と30/70/restoreは次の主担当試験まで未確認。
