@@ -6,7 +6,7 @@ from render_profile_policy import (SIGNER, BOOT, BASE_SYS, TARGETS, package,
                                   require, rooted, jsonfile, hexpin, sha, version, cbytes)
 from engine_io_package import require_armnt
 
-PROFILE = 'render-bound-update-v9'
+PROFILE = 'render-bound-update-v10'
 COLOR = '4f55794471a4008c1ceaa3a1da2679c0f3fefd2a'
 BASE_NAMES = {'parent':'mt8167-shared.sys', 'display':'mt8167-display.sys',
               'render':'mt8167-ge8300.sys'}
@@ -52,7 +52,8 @@ def load_map(path, root):
         baselines[role] = {'driver_version':selected['DriverVersion'], 'version_u64':num,
                            'date_filetime':date, 'service':row['Service'], 'class_guid':row['ClassGUID'],
                            'sys_name':sys_name, 'sys_sha256':e['sha256'], 'inf':selected['InfPath']}
-    known_render={'0.0.3.9':'226ba451782fe815b3bec79d07987824f0daa23f3631a80d6edc89920d4da27f',
+    known_render={'0.0.3.10':'e60e8b782e595cafa4a2a3ae044fa5a95293c2d30cf987847bb72a96877f6abb',
+                  '0.0.3.9':'226ba451782fe815b3bec79d07987824f0daa23f3631a80d6edc89920d4da27f',
                   '0.0.3.8':'4784de5269595c8c98e261793ffc4979c026f2d974ea6898317bf382ea11c245',
                   '0.0.3.7':'74fa75a21253129ee371b658f53c180af171b3cd46448718ba7a735d64d2d6f9',
                   '0.0.3.3':'51f92e0975a5274b620769e2c6b45628ae3effd5ef82da080b9af939dd1f4f55',
@@ -65,9 +66,10 @@ def load_map(path, root):
     require(set(spec['packages']) == set(TARGETS), 'Exactly three signed packages required')
     packages = {k: package(root, spec['packages'][k], k, repo, render_color=(k=='render')) for k in TARGETS}
     boot = rooted(root, spec['boot']); bm = jsonfile(boot)
-    require(bm.get('uefi_source_commit') == BOOT, 'Matched GPU-domain firmware required')
+    require(bm.get('uefi_source_commit') in (BOOT,'e3b18c0ff1e35dfae54f00c54b6ae2203313c4d3'), 'Matched GPU-domain firmware required')
     image = rooted(root, boot.parent / 'boot.img')
     require(sha(image) == bm['boot_img_sha256'], 'Matched firmware hash mismatch')
+    if bm['uefi_source_commit']!=BOOT:require(sha(image)=='9dc9f7f104280e8e9b9b51082de596035c173451c0b39229479a0196340882eb','Fixed POST framebuffer image required')
     cd = rooted(root, spec['client']['directory']); cm = cd/'signed-client-manifest.json'
     require(sha(cm) == hexpin(spec['client']['manifest_sha256']), 'Signed client manifest mismatch')
     cr = jsonfile(cm); build = cd/'client-build-manifest.json'
@@ -87,9 +89,9 @@ def load_map(path, root):
             'client':{'directory':cd.relative_to(root).as_posix(),'source_commit':COLOR,'sha256':sha(exe),
                       'manifest_sha256':sha(cm),'arguments':'--hardware=PowerVR','timeout_ms':120000},
             'comparator':{'directory':compdir.relative_to(root).as_posix(),'manifest_sha256':sha(compm),**cp},
-            'boot':{'source_commit':BOOT,'manifest_sha256':sha(boot),'sha256':sha(image),'path':image.relative_to(root).as_posix()},
+            'boot':{'source_commit':bm['uefi_source_commit'],'manifest_sha256':sha(boot),'sha256':sha(image),'path':image.relative_to(root).as_posix()},
             'normal_install_allowed':True,
-            'sequence':['WinPE stages fixed files and new GE8300RenderModel service only',
+            'sequence':['WinPE stages fixed files and new GE8300RenderBase service only',
                         'Normal OS selects exact signed INF via standard DIF, without live device restart',
                         'One planned reboot, then exact binding/file gates and one standard DXGI COLOR client']}
 

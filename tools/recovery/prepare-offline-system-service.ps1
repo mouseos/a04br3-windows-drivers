@@ -5,8 +5,9 @@ param(
     [string]$ExpectedSystemSha256,
     [string]$ExpectedLog1Sha256,
     [string]$ExpectedLog2Sha256,
-    [ValidateSet('MT8167DeviceInstall','MT8167HardwareProbe','MT8167EngineProbe','MT8167RenderProbe','MT8167RenderStage','GE8300RenderSetup','GE8300RenderModel')][string]$ServiceName='MT8167DeviceInstall',
+    [ValidateSet('MT8167DeviceInstall','MT8167HardwareProbe','MT8167EngineProbe','MT8167RenderProbe','MT8167RenderStage','GE8300RenderSetup','GE8300RenderBase')][string]$ServiceName='MT8167DeviceInstall',
     [switch]$IncludeHardwareProbe,
+    [switch]$DisableAutoAcpiPostFallback,
     [switch]$RearmFixedGpuDeviceInstall,
     [switch]$InspectFixedGpuDeviceInstall,
     [string]$GpuCandidateDirectory,
@@ -64,7 +65,7 @@ function Fixed-ServiceSpec([string]$Name) {
         'MT8167RenderProbe' { return [ordered]@{name='MT8167RenderProbe';display_name='PowerVR GE8300 Render Probe';image_path='"C:\Windows\System32\MT8167RenderProbe.exe"'} }
         'MT8167RenderStage' { return [ordered]@{name='MT8167RenderStage';display_name='PowerVR GE8300 Driver Update';image_path='"C:\Windows\System32\MT8167RenderStage.exe"'} }
         'GE8300RenderSetup' { return [ordered]@{name='GE8300RenderSetup';display_name='PowerVR GE8300 Driver Update';image_path='"C:\Windows\System32\GE8300RenderSetup.exe"'} }
-        'GE8300RenderModel' { return [ordered]@{name='GE8300RenderModel';display_name='PowerVR GE8300 Driver Update';image_path='"C:\Windows\System32\GE8300RenderModel.exe"'} }
+        'GE8300RenderBase' { return [ordered]@{name='GE8300RenderBase';display_name='PowerVR GE8300 Driver Update';image_path='"C:\Windows\System32\GE8300RenderBase.exe"'} }
         default { throw 'Unknown fixed one-shot service name' }
     }
 }
@@ -141,6 +142,31 @@ function Engine-DiagnosticFingerprint($ServiceKey,$Plan) {
     } finally { $parameters.Dispose() }
     $hash=[Security.Cryptography.SHA256]::Create()
     try { return ([BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes(($parts -join "`n"))))).Replace('-','').ToLowerInvariant() } finally { $hash.Dispose() }
+}
+# RT8.1 kernel uses the historical misspelling Deivce. This opt-in is only
+# paired with e3b18c0f firmware assigning the actual GOP memory to DIS0.
+function Set-FixedPostOwnership($Root,$Plan,[bool]$Patch) {
+    if(!$Plan.fixed_post_ownership) { return $null }
+    if($Plan.services.Count -ne 1 -or $Plan.services[0].name -cne 'GE8300RenderBase' -or
+       $Plan.fixed_post_ownership.boot_sha256 -cne '9dc9f7f104280e8e9b9b51082de596035c173451c0b39229479a0196340882eb') { throw 'Fixed display ownership pairing mismatch' }
+    $path=('ControlSet{0:D3}\Control\GraphicsDrivers' -f [int]$Plan.control_set)
+    $key=[MT8167OfflineHive.Native]::OpenPath($Root,$path,$Patch)
+    if(!$key) { throw 'Missing GraphicsDrivers key' }
+    try {
+        $name='DisableAutoAcpiPostDeivce'
+        $before=@{};foreach($n in $key.GetValueNames()) {
+            if($n -cne $name) { $before[$n]=@([string]$key.GetValueKind($n),$key.GetValue($n,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)) }
+        }
+        if($Patch) { $key.SetValue($name,1,[Microsoft.Win32.RegistryValueKind]::DWord);$key.Flush() }
+        Require-Dword $key $name 1
+        $afterNames=@($key.GetValueNames()|Where-Object {$_ -cne $name})
+        if($afterNames.Count -ne $before.Count) { throw 'Unrelated GraphicsDrivers values changed' }
+        foreach($n in $afterNames) {
+            $v=@([string]$key.GetValueKind($n),$key.GetValue($n,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames))
+            if((ConvertTo-Json -Compress -InputObject $v) -cne (ConvertTo-Json -Compress -InputObject $before[$n])) { throw 'Unrelated GraphicsDrivers value changed' }
+        }
+        return @{path=$path;name=$name;value=1;verified=$true;boot_sha256=$Plan.fixed_post_ownership.boot_sha256;unrelated_values_preserved=$true}
+    } finally { $key.Dispose() }
 }
 function Inspect-Services($Root,$Plan,[bool]$Patch) {
     $select=[MT8167OfflineHive.Native]::OpenPath($Root,'Select',$false)
@@ -375,6 +401,8 @@ if($InternalMode) {
                 $state.gpu_policy_sha256=$plan.gpu_candidate_binding.policy_sha256
             }
             $state.services=Inspect-Services $root $plan ($InternalMode -eq 'Patch')
+            $state.fixed_post_ownership=Set-FixedPostOwnership $root $plan ($InternalMode -eq 'Patch')
+            if($state.fixed_post_ownership) { $state.audit_scope+='; plus fixed GraphicsDrivers/DisableAutoAcpiPostDeivce and preservation of sibling values' }
             if($plan.engine_rearm) {
                 $state.engine_rearm_plan_sha256=$plan.engine_rearm_plan_sha256
                 if($InternalMode -eq 'Patch') { $state.disabled_service_fingerprint=$state.services[0].before_fingerprint }
@@ -471,6 +499,13 @@ if($IncludeHardwareProbe -and $selected[0].name -ne 'MT8167HardwareProbe') { $se
 $names=@($selected | ForEach-Object { $_.name })
 $report=[ordered]@{status='failed-do-not-deploy';whole_system_audit=$false;audit_scope='Select + DeviceInstall/RpcSs raw values + selected service seven values; Engine-only known bounded LastDiagnostic subtree fingerprint when explicitly rearming';source_files=[ordered]@{};timeout_seconds=$TimeoutSeconds;services=$names;errors=@();driver_files_modified=$false}
 $plan=[ordered]@{control_set=$ExpectedCurrentControlSet;related_fingerprints='';services=$selected}
+if($DisableAutoAcpiPostFallback) {
+    if($ServiceName -cne 'GE8300RenderBase' -or $IncludeHardwareProbe -or $RearmEngineProbe -or $RearmFixedGpuDeviceInstall -or $InspectFixedGpuDeviceInstall) { throw 'POST ownership is a fixed RenderBase-only pairing' }
+    $plan.fixed_post_ownership=@{source_commit='e3b18c0ff1e35dfae54f00c54b6ae2203313c4d3';boot_sha256='9dc9f7f104280e8e9b9b51082de596035c173451c0b39229479a0196340882eb'}
+    $report.fixed_post_ownership=$plan.fixed_post_ownership
+    $report.audit_scope+='; plus fixed GraphicsDrivers/DisableAutoAcpiPostDeivce and preservation of sibling values'
+}
+
 if($engineRearmPlan) {
     $plan.engine_rearm=$engineRearmPlan;$plan.engine_rearm_plan_sha256=$engineRearmPlanHash
     $report.engine_rearm_plan_sha256=$engineRearmPlanHash

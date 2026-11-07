@@ -42,7 +42,7 @@ def clean_header(path):
 
 
 def prepared_system_check(system, manifest, expected_sha256, root, backup, selected_service="MT8167HardwareProbe"):
-    names = {'MT8167HardwareProbe': 'MediaTek MT8167 Hardware Probe', 'MT8167EngineProbe': 'MediaTek MT8167 Engine Probe', 'MT8167RenderProbe': 'PowerVR GE8300 Render Probe', 'MT8167RenderStage': 'PowerVR GE8300 Driver Update', 'GE8300RenderSetup': 'PowerVR GE8300 Driver Update', 'GE8300RenderModel': 'PowerVR GE8300 Driver Update'}
+    names = {'MT8167HardwareProbe': 'MediaTek MT8167 Hardware Probe', 'MT8167EngineProbe': 'MediaTek MT8167 Engine Probe', 'MT8167RenderProbe': 'PowerVR GE8300 Render Probe', 'MT8167RenderStage': 'PowerVR GE8300 Driver Update', 'GE8300RenderSetup': 'PowerVR GE8300 Driver Update', 'GE8300RenderBase': 'PowerVR GE8300 Driver Update'}
     if selected_service not in names:
         raise ValueError('未対応の固定serviceです')
     system = private_path(system, root).resolve(strict=True)
@@ -107,13 +107,22 @@ def prepared_system_check(system, manifest, expected_sha256, root, backup, selec
         if (recorded['sha256'].lower() != original['sha256'].lower()
                 or recorded['bytes'] != original['bytes']):
             raise ValueError('native入力とRecovery backupの由来不一致: ' + name)
+    post=report.get('fixed_post_ownership')
+    if post:
+        if selected_service!='GE8300RenderBase' or post!={'source_commit':'e3b18c0ff1e35dfae54f00c54b6ae2203313c4d3','boot_sha256':'9dc9f7f104280e8e9b9b51082de596035c173451c0b39229479a0196340882eb'}:
+            raise ValueError('固定POST firmware/policy不一致')
+        for phase in ('patch','verify'):
+            record=report[phase]['state'].get('fixed_post_ownership',{})
+            if record!={'path':'ControlSet001\\Control\\GraphicsDrivers','name':'DisableAutoAcpiPostDeivce','value':1,'verified':True,'boot_sha256':post['boot_sha256'],'unrelated_values_preserved':True}:
+                raise ValueError('native POST設定とclean reloadの検証不足')
     return {'sha256': expected_sha256.lower(), 'manifest_sha256': sha(manifest),
             'root_relative_path': str(system.relative_to(root.resolve())), 'header': header,
             'native_candidate_path': native_path, 'relocated_after_native_preparation': system != declared,
             'status': report['status'], 'whole_system_audit': False,
             'audit_scope': report['audit_scope'], 'selected_service': selected_service, 'target_value_names': list(expected),
             'engine_rearm_plan_sha256': report.get('engine_rearm_plan_sha256'),
-            'disabled_service_fingerprint': report['patch']['state'].get('disabled_service_fingerprint')}
+            'disabled_service_fingerprint': report['patch']['state'].get('disabled_service_fingerprint'),
+            'fixed_post_ownership':post}
 
 
 def probe_check(executable, manifest, certificate, root, audio_mode="Tone"):
