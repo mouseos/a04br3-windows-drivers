@@ -307,6 +307,20 @@ static HRESULT probe(IDXGIAdapter *adapter) {
  if(device)ID3D11Device_Release(device);
  return hr;
 }
+/* An absent OpenAdapter trace cannot distinguish loader failure from runtime
+ * negotiation. Observe the fixed installed DLL through normal Windows APIs;
+ * never invoke a DDI manually or substitute this for the D3D pixel result. */
+static void driver_loader_observation(void) {
+ HMODULE module;DWORD error;
+ line("UMD_LOADER_ATTEMPTED",1);
+ module=LoadLibraryExW(L"ge8300-umd.dll",NULL,LOAD_LIBRARY_SEARCH_SYSTEM32);
+ error=module?0:GetLastError();line("UMD_LOAD_ERROR",error);
+ if(!module)return;
+ line("UMD_OPENADAPTER10_2_PRESENT",GetProcAddress(module,"OpenAdapter10_2")!=NULL);
+ line("UMD_OPENADAPTER10_PRESENT",GetProcAddress(module,"OpenAdapter10")!=NULL);
+ line("UMD_OPENADAPTER9_PRESENT",GetProcAddress(module,"OpenAdapter")!=NULL);
+ line("UMD_UNLOAD_SUCCESS",FreeLibrary(module)!=FALSE);
+}
 void mainCRTStartup(void) {
  IDXGIFactory *factory=NULL;IDXGIAdapter *a=NULL,*chosen=NULL;DXGI_ADAPTER_DESC desc;DXGI_ADAPTER_DESC1 desc1;IDXGIAdapter1 *a1=NULL;
  LUID id={0};UINT i,count=0,result=1;HRESULT hr;int selected=selection_arg(&id);HRESULT auto_hr=S_FALSE;UINT eligible;
@@ -318,7 +332,7 @@ void mainCRTStartup(void) {
  if(disk==INVALID_HANDLE_VALUE)ExitProcess(2);
 
 #ifdef GEO_COLOR_PAIR_CLIENT
- line("SCHEMA",5);line("COLOR_PAIR_PROFILE",1);
+ line("SCHEMA",6);line("COLOR_PAIR_PROFILE",1);
 #else
  line("SCHEMA",4);
 #endif
@@ -353,6 +367,7 @@ void mainCRTStartup(void) {
  /* reason1=explicit LUID; reason2=PnP HWID+service -> KMT LUID -> DXGI nonsoftware. */
  line("SELECTION_REASON",(UINT)selected);
  runtime_inventory(chosen,&id);
+ driver_loader_observation();
  if(!log_ok){hr=E_FAIL;goto done;}
  hr=probe(chosen);if(SUCCEEDED(hr)&&log_ok)result=0;
  done:
