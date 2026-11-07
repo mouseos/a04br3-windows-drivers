@@ -1,5 +1,10 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include <ntddk.h>
+/* WDK8.1 ARM kernel C wdm.h uses CDECL in DEFINE_GUIDEX but does not
+ * define it; match the kit calling convention without changing SDK headers. */
+#ifndef CDECL
+#define CDECL __cdecl
+#endif
 #include <ks.h>
 #include <ksmedia.h>
 /* Capture matched profile only. The old render also has no measured latency.
