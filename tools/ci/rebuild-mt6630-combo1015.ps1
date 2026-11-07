@@ -8,7 +8,7 @@ param([Parameter(Mandatory=$true)][string]$PreviousCacheDirectory,
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path;$out=[IO.Path]::GetFullPath($OutputDirectory)
 if(!$out.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase) -or (Test-Path $out)){throw 'Fresh source-local output required'}
-$commit=(& git -C $root rev-parse HEAD);if($LASTEXITCODE -or @(& git -C $root status --porcelain).Count){throw 'Clean fixed source required'}
+$commit=(& git -C $root rev-parse HEAD);if($LASTEXITCODE -or @(& git -C $root -c core.autocrlf=false status --porcelain).Count){throw 'Clean fixed source required'}
 $base='0a64c81ff872636221994c8fb5d200f6394367c1';$prior=[IO.Path]::GetFullPath($PreviousCacheDirectory)
 if((Get-FileHash "$prior\cache-manifest.json" -Algorithm SHA256).Hash -ne 'F53805D1E35C206260B0AE3280695EA044F6D2CB39E43EF681701F6EA7E2E413'){throw 'Frozen combo2008 cache pin mismatch'}
 $m=Get-Content "$prior\cache-manifest.json" -Raw|ConvertFrom-Json
