@@ -14,6 +14,7 @@ run101 source851219fc/package316/mediaには変更しない。ここで生成す
 必要な正規toolchainはWindows x64、Python3、LLVM clang/llvm-lib/lld-link/llvm-readobj、
 WDK8.1 ARM、ARM32を含むMicrosoft C++ tools（例VS2019 toolset14.29）、Windows10 SDKのUCRT。
 新しいMSVCがARM32を含まない場合は`-VcToolsDirectory`で既存の対応toolsetを明示する。
+ARM32のUCRTヘッダ・libが揃う既存SDKを自動選択する。`-WindowsKit10Version`で明示も可能。
 SDK再構築や自動再インストールはしない。MSVC/WDK/CRTはtoolchain前提であり、このrepoへ再配布しない。
 既存cache C:ディレクトリ、過去GPU SYS/DLL/lib/obj、private hive、端末固有入力を要求しない。
 

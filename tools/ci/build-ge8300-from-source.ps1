@@ -1,6 +1,6 @@
 # One checkout -> compiler/pair/native/KMD/UMD/client. No cached driver inputs.
 param([switch]$EnableCandidate,[string]$OutputDirectory,
- [string]$VcToolsDirectory,[string]$WindowsKit10Version='10.0.26100.0',
+ [string]$VcToolsDirectory,[string]$WindowsKit10Version,
  [ValidateRange(1,8)][int]$CompilerJobs=2)
 $ErrorActionPreference='Stop'
 if(!$EnableCandidate){throw 'Explicit limited development source build required'}
@@ -19,7 +19,17 @@ if(!$VcToolsDirectory){
 }
 if(!$VcToolsDirectory){throw 'Existing licensed MSVC ARM32 toolchain required; no SDK/toolchain installation is performed'}
 $scVc=[IO.Path]::GetFullPath($VcToolsDirectory);$scCl="$scVc\bin\Hostx64\arm\cl.exe"
-foreach($scRequired in @($scCl,"$scVc\include\vcruntime.h","$scVc\lib\arm\libcmt.lib","$scKit81\Lib\winv6.3\km\arm\displib.lib","$scKit10\Include\$WindowsKit10Version\ucrt\stdio.h")){if(!(Test-Path $scRequired)){throw "Required toolchain input missing: $scRequired"}}
+# Newest SDKs may omit ARM32 UCRT libraries despite installing the headers.
+# Select a complete preinstalled ARM32 pair; never install a replacement SDK.
+if(!$WindowsKit10Version){
+ $WindowsKit10Version=(Get-ChildItem "$scKit10\Lib" -Directory|Where-Object{
+  $_.Name -match '^10[.]0[.][0-9]+[.]0$' -and
+  (Test-Path "$($_.FullName)\ucrt\arm\libucrt.lib") -and
+  (Test-Path "$scKit10\Include\$($_.Name)\ucrt\stdio.h")
+ }|Sort-Object {[version]$_.Name} -Descending|Select-Object -First 1).Name
+}
+if(!$WindowsKit10Version){throw 'Existing Windows SDK with ARM32 UCRT headers/libraries required'}
+foreach($scRequired in @($scCl,"$scVc\include\vcruntime.h","$scVc\lib\arm\libcmt.lib","$scKit81\Lib\winv6.3\km\arm\displib.lib","$scKit10\Include\$WindowsKit10Version\ucrt\stdio.h","$scKit10\Lib\$WindowsKit10Version\ucrt\arm\libucrt.lib")){if(!(Test-Path $scRequired)){throw "Required toolchain input missing: $scRequired"}}
 New-Item -ItemType Directory $scOut,"$scOut\tmp"|Out-Null
 $scOldTemp=$env:TEMP;$scOldTmp=$env:TMP
 try{
@@ -31,6 +41,6 @@ try{
  if($LASTEXITCODE){throw 'Source compiler closure failed'}
  & "$scRoot\drivers\gpu\mt8167\wddm-render\build-native-development-wdk81.ps1" -EnableCandidate -EnableLimitedDevelopmentProfile -SourceCompiler -CompilerDirectory "$scOut\compiler" -CompilerManifestSha256 (Get-FileHash "$scOut\compiler\link-manifest.json" -Algorithm SHA256).Hash -PairDirectory "$scOut\compiler" -PairManifestSha256 (Get-FileHash "$scOut\compiler\pair-manifest.json" -Algorithm SHA256).Hash -OutputDirectory "$scOut\umd"
  Copy-Item "$scOut\umd\ge8300-umd.dll","$scOut\umd\ge8300-d3d-clear.exe" $scOut
- [ordered]@{schema='single-checkout-source-build-v1';source_commit=$scCommit;source_dirty=$false;native_source_map_sha256=(Get-FileHash "$PSScriptRoot\ge8300-native-source-map.json" -Algorithm SHA256).Hash;compiler_source_plan_sha256=(Get-FileHash "$scRoot\third_party\mesa-pco\source-plan.json" -Algorithm SHA256).Hash;previous_gpu_artifacts_used=$false;private_hives_used=$false;licensed_toolchain_directory=$scVc;msvc_arm_compiler_sha256=(Get-FileHash $scCl -Algorithm SHA256).Hash;driver_signed=$false;hardware_verified=$false;limited_development_profile=$true;standard_profile_qualified=$false;outputs=@('ge8300-render.sys','ge8300-umd.dll','ge8300-d3d-clear.exe')|ForEach-Object{@{name=$_;sha256=(Get-FileHash "$scOut\$_" -Algorithm SHA256).Hash.ToLowerInvariant()}}}|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 "$scOut\source-build-manifest.json"
+ [ordered]@{schema='single-checkout-source-build-v1';source_commit=$scCommit;source_dirty=$false;native_source_map_sha256=(Get-FileHash "$PSScriptRoot\ge8300-native-source-map.json" -Algorithm SHA256).Hash;compiler_source_plan_sha256=(Get-FileHash "$scRoot\third_party\mesa-pco\source-plan.json" -Algorithm SHA256).Hash;previous_gpu_artifacts_used=$false;private_hives_used=$false;licensed_toolchain_directory=$scVc;windows_ucrt_sdk_version=$WindowsKit10Version;msvc_arm_compiler_sha256=(Get-FileHash $scCl -Algorithm SHA256).Hash;driver_signed=$false;hardware_verified=$false;limited_development_profile=$true;standard_profile_qualified=$false;outputs=@('ge8300-render.sys','ge8300-umd.dll','ge8300-d3d-clear.exe')|ForEach-Object{@{name=$_;sha256=(Get-FileHash "$scOut\$_" -Algorithm SHA256).Hash.ToLowerInvariant()}}}|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 "$scOut\source-build-manifest.json"
  'GE8300_SINGLE_CHECKOUT_SOURCE_BUILD_COMPLETE'
 }finally{$env:TEMP=$scOldTemp;$env:TMP=$scOldTmp}
