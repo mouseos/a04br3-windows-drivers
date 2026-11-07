@@ -35,6 +35,20 @@ try{
  }
  $laGpu="$laNative\drivers\gpu\mt8167"
  $laNativeUnits=@('vendor_m1_11\native_owner_factory','vendor_m1_11\native_owner_factory_runtime','vendor_m1_11\native_owner_frontend_resolver','vendor_m1_11\windows_native_cold','vendor_m1_11\windows_native_target','vendor_m1_11\windows_native_backing','wddm-render\clear_protocol')
+ # Resolve actual include dependencies under the exact native build defines.
+ $laDeclared=Get-Content "$laNative\tools\ci\build-ge8300-native-owner-core.ps1" -Raw
+ $laAllNativeUnits=@();foreach($laArray in [regex]::Matches($laDeclared,'(?m)^\s*\$units(?:\+)?=@\(([^)]*)\)')){foreach($laQuoted in [regex]::Matches($laArray.Groups[1].Value,"'([^']+)'")){$laAllNativeUnits+=$laQuoted.Groups[1].Value}}
+ if(!$laAllNativeUnits.Count){throw 'Native canonical TU list not found'}
+ $laDepRows=@();$laDirect=$laNativeUnits;$laNativeUnits=@()
+ $laNativeFlags=@('-DA04_GE8300_VENDOR_NATIVE_CLEAR_JOB=1','-DA04_GE8300_NATIVE_OWNER_MDL_TARGET=1','-DA04_GE8300_NATIVE_OWNER_DRAW=1',"-I$laGpu","-I$laGpu\fwif","-I$laGpu\compat","-I$laGpu\vendor_m1_11")
+ foreach($laUnit in $laAllNativeUnits){
+  $laDeps=(& clang @laCommon @laNativeFlags -M -MT closure "$laGpu\$laUnit.c" 2>$null)|Out-String
+  if($LASTEXITCODE){throw "Native dependency scan failed: $laUnit"}
+  $laAffected=$laUnit -in $laDirect -or $laDeps -match '(native_owner_factory_private|windows_native_cold_private|windows_native_cold|native_owner_frontend_resolver|clear_protocol)[.]h'
+  $laDepRows+=@{unit=$laUnit;affected=[bool]$laAffected;dependencies=$laDeps}
+  if($laAffected){$laNativeUnits+=$laUnit}
+ }
+ $laDepRows|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 "$laOut\native-dependency-closure.json"
  foreach($laUnit in $laNativeUnits){
   $laName=$laUnit.Replace('\','-')+'.obj'
   if(!(Test-Path "$laOut\native\$laName")){throw "Expected native member absent: $laName"}
@@ -54,6 +68,6 @@ try{
  if($LASTEXITCODE){throw 'KMD/native Microsoft LINK failed'}
  $laUnsigned=Sha "$laOut\ge8300-render.sys";$laStatus='Unsigned';$laThumb='BCBF6C456C6F0DD0818434763B189488FBF13570'
  if($Sign){$laTool="${env:ProgramFiles(x86)}\Windows Kits\8.1\bin\x86\signtool.exe";& $laTool sign /fd SHA256 /sha1 $laThumb "$laOut\ge8300-render.sys";if($LASTEXITCODE){throw 'SYS sign failed'};& $laTool verify /pa "$laOut\ge8300-render.sys";if($LASTEXITCODE){throw 'SYS verify failed'};$laStatus='Valid'}
- [ordered]@{kmd_source_commit=(& git -C $laRoot rev-parse HEAD);native_source_commit=$NativeSourceCommit;kmd_baseline='b27164a1738fde39bae51eb32ebcde314216f210';native_baseline='4260e420272198237aa4c5650a24404a12d36494';kmd_cache_sha256=(Sha $BaselineKernelLibrary);native_cache_sha256=(Sha $BaselineNativeLibrary);kmd_units=$laKmdUnits;native_units=$laNativeUnits;unsigned_sys_sha256=$laUnsigned;signature_status=$laStatus;signer_thumbprint=$laThumb;umd_rebuilt=$false;abi_version_changed=$false;native_private_struct_append_only=$true;aperture_bytes=4194304;aperture_commit_limit=4194304;hardware_verified=$false;outputs=@('ge8300-render.sys','ge8300-pair-kmd.lib','ge8300-native-owner-core.lib','linker.json')|ForEach-Object{@{name=$_;sha256=(Sha "$laOut\$_")}}}|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 "$laOut\combined-manifest.json"
+ [ordered]@{kmd_source_commit=(& git -C $laRoot rev-parse HEAD);native_source_commit=$NativeSourceCommit;kmd_baseline='b27164a1738fde39bae51eb32ebcde314216f210';native_baseline='4260e420272198237aa4c5650a24404a12d36494';kmd_cache_sha256=(Sha $BaselineKernelLibrary);native_cache_sha256=(Sha $BaselineNativeLibrary);kmd_units=$laKmdUnits;native_units=$laNativeUnits;dependency_closure_sha256=(Sha "$laOut\native-dependency-closure.json");unsigned_sys_sha256=$laUnsigned;signature_status=$laStatus;signer_thumbprint=$laThumb;umd_rebuilt=$false;abi_version_changed=$false;native_private_struct_append_only=$true;aperture_bytes=4194304;aperture_commit_limit=4194304;hardware_verified=$false;outputs=@('ge8300-render.sys','ge8300-pair-kmd.lib','ge8300-native-owner-core.lib','linker.json')|ForEach-Object{@{name=$_;sha256=(Sha "$laOut\$_")}}}|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 "$laOut\combined-manifest.json"
  'LINEAR_STAGING_KMD_NATIVE_BUILT'
 }finally{$env:TEMP=$laOldTemp;$env:TMP=$laOldTmp}
