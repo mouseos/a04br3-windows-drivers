@@ -1,4 +1,4 @@
-# Fixed ecaa1008 matched parent profile + default-off GPU platform module.
+# Fixed SD-on1010 matched parent profile + default-off GPU platform module.
 param([switch]$EnableCandidate,[string]$ExpectedSourceCommit,[string]$OutputDirectory,[switch]$WithSpm)
 $ErrorActionPreference='Stop'
 if(!$EnableCandidate -or !$ExpectedSourceCommit){throw 'Explicit candidate flag and fixed commit required'}
@@ -7,11 +7,13 @@ $head=(& git -C $root rev-parse HEAD);$expected=(& git -C $root rev-parse --veri
 if($LASTEXITCODE -or $head -ne $expected -or @(& git -C $root status --porcelain).Count){throw 'Require clean fixed source'}
 & git -C $root merge-base --is-ancestor ecaa7b70248230dee2977e1d9057260f400287be $head
 if($LASTEXITCODE){throw 'Must retain ecaa1008 ancestry/AFE bus forwarding'}
+& git -C $root merge-base --is-ancestor 9e07f0a6cdf20f6efe9a4a75ed5f42fcd6ee583c $head
+if($LASTEXITCODE){throw 'Must retain SD-on1010 ancestry/hooks as well as ecaa Audio forwarding'}
 $profilePath=Join-Path $root 'drivers\bus\mt8167-shared\prototype\gpu-parent1014-profile.json'
 if($WithSpm){$profilePath=Join-Path $root 'drivers\bus\mt8167-shared\prototype\gpu-parent1014-spm-profile.json'}
 $profile=Get-Content $profilePath -Raw|ConvertFrom-Json
-$inf=Join-Path $root 'drivers\bus\mt8167-shared\prototype\shared-parent-engine-pcm.inf'
-if((Get-Content $inf -Raw) -notmatch 'DriverVer=11/06/2026,2026\.11\.7\.1014'){throw 'Parent1014 package identity required'}
+$inf=Join-Path $root 'drivers\bus\mt8167-shared\prototype\shared-parent-engine-pcm-gpu-sd.inf'
+if((Get-Content $inf -Raw) -notmatch 'DriverVer=11/07/2026,2026\.11\.7\.1014'){throw 'Parent1014 package identity required'}
 if(!$OutputDirectory){throw 'Dedicated OutputDirectory required'}
 $out=[IO.Path]::GetFullPath($OutputDirectory)
 if(!$out.StartsWith($root+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase) -or (Test-Path $out)){throw 'Output must be new and inside checkout'}

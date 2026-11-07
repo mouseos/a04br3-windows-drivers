@@ -90,3 +90,21 @@ not claim native FW/IRQ/cache/epoch rundown or advertise GEO proof by itself.
 This full vendor platform-off route is a conservative alternative while the
 GPU0-only external write-response contract is unresolved; it is not evidence
 that every possible powered-reset solution requires SPM collapse.
+
+## 現行SD-on1010を保持した最終候補（上記ecaa-only記載を更新）
+
+基点9e07f0a6cdf20f6efe9a4a75ed5f42fcd6ee583cをmergeし、実署名済み
+`windows-rt-sd-parent1010-sd3-9e07f0a-signed/parent/parent-manifest.json`の
+全flagsをprofileへ固定した。A04_SHARED_SD_POWER=1、全audio/WLAN/USB/button/touch flags、
+ecaaの実AFE DMA forwardingとSD power hook/sourceを保持する。GPU flagsだけを追加。
+
+専用INF `prototype/shared-parent-engine-pcm-gpu-sd.inf` は
+DriverVer=11/07/2026,2026.11.7.1014。通常EnginePcm1008/SD1010 INFを上書きしない。
+最終native factoryとの対は `build-gpu-parent1014.ps1 -WithSpm` のV2のみ。
+INFRA_ONLYのlibrary/link成功を最終候補として扱わない。
+機種UEFIは53d6 SD-onlyを保持する別GPUdomain branchでSPM第六resourceを正規割当する。
+共通EDK2、GPU0/MFG/IRQ割当、CPU4/watchdog共有bitは変更しない。
+
+同版正常DeviceDestroy→FW OFF/IRQ count→RGXStop→MTK platform-off→IRQ/MISR rundown→
+FW freeを所有GPU/leaseの運用条件とする。全SoC AXI形式証明は追加の無期限前提にしない。
+parent単独でnative GPU_DONE/NoDMA proofを返さず、native ownerで正常経路全体を結合する。

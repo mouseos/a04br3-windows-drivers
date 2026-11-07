@@ -1,9 +1,10 @@
 {
-  "source_commit": "ecaa7b70248230dee2977e1d9057260f400287be",
-  "driver_ver": "11/06/2026,2026.11.7.1008",
-  "sys_sha256": "A549BCF5518B70E791D07F186A63F60C82CD90C595CF7F9EDD733DF95ABBF441",
+  "source_commit": "9e07f0a6cdf20f6efe9a4a75ed5f42fcd6ee583c",
+  "driver_ver": "11/07/2026,2026.11.7.1010",
+  "sys_sha256": "559488DD672FB1995F78D6F4AC78A71B52CC6925E80D3587070827E32E8FF706",
   "kernel_runtime_sha256": "717E99050A9DF5E6AD20458029A9F95C5F5839540CB0E0F044B307DDA2F7822C",
   "flags": {
+    "A04_SHARED_SD_POWER": "1",
     "A04_SHARED_QUERY_EXPERIMENTAL": "1",
     "A04_SHARED_CHILD_PROBE": "1",
     "A04_SHARED_WIFI_RUNTIME": "1",
@@ -35,8 +36,10 @@
     "A04_SHARED_GPU_PLATFORM": "1",
     "A04_SHARED_GPU_DOMAIN_SPM": "0"
   },
-  "profile_kind": "parent1014 candidate, exact ecaa1008 feature flags plus GPU platform",
-  "target_driver_ver": "11/06/2026,2026.11.7.1014",
+  "profile_kind": "parent1014 candidate: every actual SD-on1010 flag plus GPU platform",
+  "target_driver_ver": "11/07/2026,2026.11.7.1014",
   "spm_assigned": false,
-  "platform_profile": "INFRA_ONLY; no DMA_STOPPED/GEO caps"
+  "platform_profile": "INFRA_ONLY; no DMA_STOPPED/GEO caps",
+  "baseline_manifest_sha256": "4a90fcf00e115aceeb53022ae3f21d0e9448679c6e76836bcc6a8b2d9138c405",
+  "sd_power_preserved": true
 }
