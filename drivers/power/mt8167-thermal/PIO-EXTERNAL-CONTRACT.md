@@ -1,3 +1,5 @@
+> この本文は1ac34c3/ba9ac80時点の履歴です。現在の親1018 branchでは、機種UEFIの実停止producer・LK校正HOB公開・親所有PIOを接続しました。現行候補の契約はPARENT1018-HANDOFF.mdを参照してください。secure firmware全体を解放したというclaimは追加していません。
+
 # AUXADC PIO実装と測温再開の外部境界
 
 ## 実装済みの範囲
