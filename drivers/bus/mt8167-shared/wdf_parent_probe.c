@@ -91,6 +91,24 @@
 #include "thermal_owner.h"
 #include "adc_observation.h"
 #endif
+#ifndef A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+#define A04_SHARED_THERMAL_NATIVE_EXPERIMENT 0
+#endif
+#ifndef A04_SHARED_SD_POWER
+#define A04_SHARED_SD_POWER 0
+#endif
+#ifndef A04_SHARED_GPU_THERMAL_PROFILE
+#define A04_SHARED_GPU_THERMAL_PROFILE 0
+#endif
+#if A04_SHARED_GPU_THERMAL_PROFILE && (!A04_SHARED_THERMAL_NATIVE_EXPERIMENT || !A04_SHARED_THERMAL_DIAGNOSTIC || !A04_SHARED_SD_POWER || !A04_SHARED_GPU_PLATFORM || !A04_SHARED_GPU_DOMAIN_SPM)
+#error Parent1022 requires native PIO thermal and the SD-on GPU SPM profile
+#endif
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT && !A04_SHARED_GPU_THERMAL_PROFILE
+#error Legacy parent1018 is frozen: use its source, or the matched1022 SD1 profile
+#endif
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+#include "thermal_native_interface.h"
+#endif
 #ifndef A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 #define A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC 0
 #endif
@@ -210,6 +228,25 @@
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
 #include "shared_interface.h"
 #endif
+#ifndef A04_SHARED_GPU_PLATFORM
+#define A04_SHARED_GPU_PLATFORM 0
+#endif
+#if A04_SHARED_GPU_PLATFORM != 0 && A04_SHARED_GPU_PLATFORM != 1
+#error A04_SHARED_GPU_PLATFORM must be zero or one
+#endif
+#if A04_SHARED_GPU_PLATFORM
+#if !A04_SHARED_QUERY_EXPERIMENTAL || !A04_SHARED_BUTTON_D0_EXPERIMENT
+#error GPU platform service requires the existing shared query and actual parent D0 profile
+#endif
+#include "gpu_domain_owner.h"
+#include "gpu_platform_interface.h"
+#endif
+#ifndef A04_SHARED_GPU_DOMAIN_SPM
+#define A04_SHARED_GPU_DOMAIN_SPM 0
+#endif
+#if A04_SHARED_GPU_DOMAIN_SPM && (!A04_SHARED_GPU_PLATFORM || !A04_SHARED_APMIXED_RESOURCE)
+#error SPM profile requires GPU platform and matched APMIXED parent
+#endif
 typedef struct {
 #if A04_SHARED_SD_POWER
  struct a04_sd_power sdPower;
@@ -228,7 +265,17 @@ struct a04_codec_voice voice;
 #endif
 #endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
-struct a04_shared_thermal_owner thermal;EX_RUNDOWN_REF thermalRundown;BOOLEAN thermalRundownClosed;
+struct a04_shared_thermal_owner thermal;
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+    PVOID thermalPioMappings[2];volatile LONG thermalPioUsed;ULONGLONG thermalPioDeadline;
+#endif
+EX_RUNDOWN_REF thermalRundown;BOOLEAN thermalRundownClosed;
+#endif
+#if A04_SHARED_GPU_PLATFORM
+struct a04_gpu_domain_owner gpuDomain;
+#if A04_SHARED_GPU_DOMAIN_SPM
+PVOID gpuSpm;
+#endif
 #endif
 PVOID audioAfe;
 #if A04_SHARED_HFP
@@ -922,6 +969,9 @@ static VOID ParentInterfaceDereference(PVOID context) { WdfObjectDereference((WD
 #if A04_SHARED_HFP
 #include "hfp_parent.inc"
 #endif
+#if A04_SHARED_GPU_PLATFORM
+#include "gpu_parent_service.inc"
+#endif
 #if A04_SHARED_SD_POWER
 #include "../../storage/mt8167-sd/power_parent.inc"
 #endif
@@ -1136,6 +1186,9 @@ static NTSTATUS ParentThermalRelease(PVOID p,ULONG generation)
  return result?STATUS_DEVICE_NOT_READY:STATUS_SUCCESS;
 }
 #endif
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+#include "thermal_native_parent.inc"
+#endif
 static void ParentStop(A04_PARENT_CONTEXT *c,int can_access)
 {
     /* Both owners share this mutex. Close admission in one critical section
@@ -1151,6 +1204,9 @@ static void ParentStop(A04_PARENT_CONTEXT *c,int can_access)
 #if A04_SHARED_FIRST_PLAYBACK
     if(can_access && !c->removed && c->classd.active && c->pmic.online)
         (void)a04_mt6392_classd_mute(&c->classd);
+#endif
+#if A04_SHARED_GPU_PLATFORM
+    a04_gpu_domain_revoke(&c->gpuDomain);
 #endif
     c->wifiActive=0;
     c->regs.online=0;
@@ -1181,6 +1237,9 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
 #if A04_SHARED_CAPTURE
     if(c->captureInput.reserved||c->captureInput.poisoned)return STATUS_DEVICE_BUSY;
 #endif
+#if A04_SHARED_GPU_PLATFORM
+    if(c->gpuDomain.held || c->gpuDomain.poisoned)return STATUS_DEVICE_BUSY;
+#endif
 #if A04_SHARED_SD_POWER
     if(c->sdPower.held || c->sdPower.poisoned)return STATUS_DEVICE_BUSY;
 #endif
@@ -1206,6 +1265,9 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
 #if A04_MT6392_CLK_ALIAS_EXPERIMENT
     if(c->speakerClock.held)return STATUS_DEVICE_BUSY;
 #endif
+#if A04_SHARED_GPU_DOMAIN_SPM
+    if(c->gpuSpm){MmUnmapIoSpace(c->gpuSpm,0x1000);c->gpuSpm=NULL;}
+#endif
     if(c->apmixed){MmUnmapIoSpace(c->apmixed,c->apmixedLength);c->apmixed=NULL;c->apmixedLength=0;}
     if(c->pwrap){MmUnmapIoSpace(c->pwrap,0x1000);c->pwrap=NULL;}
     if(c->gpio){MmUnmapIoSpace(c->gpio,0x1000);c->gpio=NULL;}
@@ -1215,10 +1277,16 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
 }
 NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
 {
-    A04_PARENT_CONTEXT *c=ParentContext(dev);struct a04_parent_resource r[5],t[5];
+    A04_PARENT_CONTEXT *c=ParentContext(dev);struct a04_parent_resource r[8],t[8];
     struct a04_parent_mapping mapping;ULONG i,n=0;PHYSICAL_ADDRESS pa;
 #if A04_SHARED_APMIXED_RESOURCE
     uint64_t apmixed=0;
+#if A04_SHARED_GPU_DOMAIN_SPM
+    uint64_t gpuSpm=0;
+#endif
+#endif
+#if A04_SHARED_GPU_DOMAIN_SPM
+    if(c->gpuSpm)return STATUS_INVALID_DEVICE_STATE;
 #endif
     if(c->topck||c->infra||c->gpio||c->pwrap||c->apmixed)return STATUS_INVALID_DEVICE_STATE;
     if(!raw || !translated || WdfCmResourceListGetCount(raw)!=WdfCmResourceListGetCount(translated))return STATUS_DEVICE_CONFIGURATION_ERROR;
@@ -1227,7 +1295,10 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
         PCM_PARTIAL_RESOURCE_DESCRIPTOR original=WdfCmResourceListGetDescriptor(raw,i);
         if(!d || !original || d->Type!=original->Type)return STATUS_DEVICE_CONFIGURATION_ERROR;
         if(d->Type!=CmResourceTypeMemory)continue;
-        if(n>=5)return STATUS_DEVICE_CONFIGURATION_ERROR;
+#if A04_SHARED_GPU_THERMAL_PROFILE
+        if((d->Flags|original->Flags)&CM_RESOURCE_MEMORY_READ_ONLY)return STATUS_DEVICE_CONFIGURATION_ERROR;
+#endif
+        if(n>=(A04_SHARED_GPU_THERMAL_PROFILE?8u:(A04_SHARED_GPU_DOMAIN_SPM?6u:5u)))return STATUS_DEVICE_CONFIGURATION_ERROR;
         if(d->u.Memory.Start.QuadPart<0 || original->u.Memory.Start.QuadPart<0)return STATUS_DEVICE_CONFIGURATION_ERROR;
         r[n].base=(uint64_t)original->u.Memory.Start.QuadPart;r[n].length=original->u.Memory.Length;
         r[n].exclusive=original->ShareDisposition==CmResourceShareDeviceExclusive ? 1u:0u;
@@ -1235,11 +1306,19 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
         t[n].exclusive=d->ShareDisposition==CmResourceShareDeviceExclusive ? 1u:0u;++n;
     }
 #if A04_SHARED_APMIXED_RESOURCE
+#if A04_SHARED_GPU_DOMAIN_SPM
+#if A04_SHARED_GPU_THERMAL_PROFILE
+    if(a04_parent_translate_gpu_thermal_resources(r,t,n,&mapping,&apmixed,&gpuSpm))return STATUS_DEVICE_CONFIGURATION_ERROR;
+#else
+    if(a04_parent_translate_gpu_domain_resources(r,t,n,&mapping,&apmixed,&gpuSpm))return STATUS_DEVICE_CONFIGURATION_ERROR;
+#endif
+#else
     /* Integrated parent keeps the platform's existing four/five windows.
      * Absence of APMIXED only withholds USB/audio admission, not input D0. */
     if(!A04_SHARED_USB_ONLY && n==4){
         if(a04_parent_translate_resources(r,t,n,&mapping))return STATUS_DEVICE_CONFIGURATION_ERROR;
     } else if(a04_parent_translate_audio_resources(r,t,n,&mapping,&apmixed))return STATUS_DEVICE_CONFIGURATION_ERROR;
+#endif
 #else
     if(a04_parent_translate_resources(r,t,n,&mapping))return STATUS_DEVICE_CONFIGURATION_ERROR;
 #endif
@@ -1259,6 +1338,10 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
         pa.QuadPart=(LONGLONG)apmixed;c->apmixed=MmMapIoSpace(pa,c->apmixedLength,MmNonCached);
         if(!c->apmixed)goto fail;
     }
+#endif
+#if A04_SHARED_GPU_DOMAIN_SPM
+    pa.QuadPart=(LONGLONG)gpuSpm;c->gpuSpm=MmMapIoSpace(pa,0x1000,MmNonCached);
+    if(!c->gpuSpm)goto fail;
 #endif
     /* Mapping alone does not admit clients; D0 must establish readiness. */
     return STATUS_SUCCESS;
@@ -1342,13 +1425,17 @@ NTSTATUS ParentD0(WDFDEVICE dev,WDF_POWER_DEVICE_STATE previous)
         A04_TRACE("A04AUD parent d0 TOP_CKPDN1=%04x; observation only\n",(unsigned)raw);
     }
 #endif
+#if A04_SHARED_GPU_PLATFORM
+    if(!c->gpuDomain.held && !c->gpuDomain.poisoned)c->gpuDomain.revoked=0;
+#endif
     c->pmic.online=1;
 #if A04_SHARED_FIRST_PLAYBACK
     c->audio.online=(c->apmixed && c->apmixedLength>=0x714 && !c->audio.poisoned && !c->audio.leased && !c->audioPowerPinned);
     c->regs.online=c->regs.poisoned?0:1;
 #endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
-    /* No known provider proves release by EL3 or every AUXADC consumer. */
+    /* Legacy generic ADC admission remains closed. Native Measure only opens
+     * its own lease after the real board record + live mode/reset check. */
     c->thermal.online=1;c->thermal.firmware_released=0;c->thermal.adc_exclusive=0;
 #endif
     c->usb.online=(c->apmixed && !c->usb.poisoned) ? 1 : 0;
@@ -1516,6 +1603,13 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedHfpInterfaceGuid,NULL);query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
 #endif
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+    if(base==0xfffffffeu) {
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedThermalNativeGuid,NULL);
+        query.SendQueryToParentStack=TRUE;status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    }
+#endif
     if(base==0xffffffffu) {
         /* AFE is a synthesized child, not an ACPI PDO. Preserve the real
          * parent-bus DMA/translation interface, including its ref callbacks;
@@ -1559,6 +1653,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     A04_SHARED_INTERFACE inputIface;
 #if A04_SHARED_THERMAL_DIAGNOSTIC
     A04_SHARED_THERMAL_INTERFACE thermalIface;
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+    A04_THERMAL_NATIVE_INTERFACE nativeIface;
+#endif
 #endif
     A04_SHARED_AUDIO_INTERFACE audioIface; A04_SHARED_USB_INTERFACE usbIface;
     A04_SHARED_WIFI_INTERFACE wifiIface;
@@ -1620,6 +1717,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     if(!NT_SUCCESS(status))return status;
     RtlZeroMemory(&inputIface,sizeof(inputIface));
     inputIface.Size=sizeof(inputIface);inputIface.Version=A04_SHARED_INTERFACE_VERSION;
+#if A04_SHARED_GPU_PLATFORM
+    status=ParentGpuRegister(dev);if(!NT_SUCCESS(status))return status;
+#endif
     inputIface.Context=dev;inputIface.InterfaceReference=ParentInterfaceReference;
     inputIface.InterfaceDereference=ParentInterfaceDereference;
     inputIface.TouchUpdate=ParentTouchUpdate;inputIface.TouchWrite=ParentTouchWrite;
@@ -1651,6 +1751,16 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
      WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&capture,&A04CaptureInterfaceGuid,NULL);
      status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;}
 #endif
+#if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+    RtlZeroMemory(&nativeIface,sizeof(nativeIface));
+    nativeIface.Header.Size=sizeof(nativeIface);nativeIface.Header.Version=A04_THERMAL_NATIVE_VERSION;
+    nativeIface.Header.Context=dev;nativeIface.Header.InterfaceReference=ParentInterfaceReference;nativeIface.Header.InterfaceDereference=ParentInterfaceDereference;
+    nativeIface.ParentBuild=A04_THERMAL_NATIVE_PARENT_BUILD;
+    nativeIface.Measure=ParentThermalPioMeasure;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&nativeIface,&A04SharedThermalNativeGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
+#endif
+
     RtlZeroMemory(&audioIface,sizeof(audioIface));
     audioIface.Header.Size=sizeof(audioIface);audioIface.Header.Version=A04_SHARED_AUDIO_INTERFACE_VERSION;
     audioIface.Header.Context=dev;audioIface.Header.InterfaceReference=ParentInterfaceReference;

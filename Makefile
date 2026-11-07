@@ -477,7 +477,9 @@ clean:
 	rm -rf build
 
 # Linux-derived MT8167 thermal components are separately GPL-2.0-only.
-test-thermal: build/thermal_test build/thermal_devinfo_test build/thermal_hardware_test build/thermal_freshness_test build/thermal_lease_test build/thermal_completion_test build/thermal_monitor_test build/thermal_ownership_test build/thermal_readout_test build/thermal_oneshot_test
+test-thermal: build/thermal_stop_test build/auxadc_pio_test build/thermal_test build/thermal_devinfo_test build/thermal_hardware_test build/thermal_freshness_test build/thermal_lease_test build/thermal_completion_test build/thermal_monitor_test build/thermal_ownership_test build/thermal_readout_test build/thermal_oneshot_test
+	./build/thermal_stop_test
+	./build/auxadc_pio_test
 	./build/thermal_test
 	./build/thermal_devinfo_test
 	./build/thermal_hardware_test
@@ -1576,3 +1578,32 @@ test-mt8167-brightness-native: build/brightness_native_sequence_test
 build/brightness_native_sequence_test: tests/brightness_native_sequence_test.c tools/display/brightness_sequence.c tools/display/brightness_sequence.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(filter %.c,$^) -o $@
+
+build/gpu_domain_owner_test: tests/gpu_domain_owner_test.c drivers/bus/mt8167-shared/gpu_domain_owner.c drivers/bus/mt8167-shared/gpu_domain_owner.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared $(filter %.c,$^) -o $@
+.PHONY: test-gpu-domain-owner
+test-gpu-domain-owner: build/gpu_domain_owner_test
+	./build/gpu_domain_owner_test
+
+build/gpu_parent_spm_resources_test: tests/gpu_parent_spm_resources_test.c drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/parent_resources.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared $(filter %.c,$^) -o $@
+.PHONY: test-gpu-parent-spm-resources
+test-gpu-parent-spm-resources: build/gpu_parent_spm_resources_test
+	./build/gpu_parent_spm_resources_test
+# Linux AUXADC channel11 PIO state machine; no hardware admission in this test.
+build/auxadc_pio_test: drivers/power/mt8167-thermal/auxadc_pio.c drivers/power/mt8167-thermal/auxadc_pio.h tests/auxadc_pio_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal drivers/power/mt8167-thermal/auxadc_pio.c tests/auxadc_pio_test.c -o $@
+
+build/thermal_stop_test: drivers/power/mt8167-thermal/stop.c drivers/power/mt8167-thermal/stop.h tests/thermal_stop_test.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/power/mt8167-thermal drivers/power/mt8167-thermal/stop.c tests/thermal_stop_test.c -o $@
+
+.PHONY: test-gpu-thermal-parent-resources
+test-gpu-thermal-parent-resources: build/gpu_thermal_parent_resources_test
+	./build/gpu_thermal_parent_resources_test
+build/gpu_thermal_parent_resources_test: tests/gpu_thermal_parent_resources_test.c drivers/bus/mt8167-shared/parent_resources.c drivers/bus/mt8167-shared/parent_resources.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/bus/mt8167-shared $(filter %.c,$^) -o $@
