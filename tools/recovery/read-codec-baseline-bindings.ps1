@@ -24,7 +24,7 @@ foreach($name in @('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')){
  $pins[$name]=@{sha256=$e.sha256;bytes=$e.bytes}
 }
 Add-Type -Path "$PSScriptRoot\OfflineSystemHiveNative.cs"
-$mount='MT8167CodecRead_'+[Guid]::NewGuid().ToString('N');$root=$null;$priv=$null;$loaded=$false
+$mount='MT8167OfflineSYSTEM_'+[Guid]::NewGuid().ToString('N');$root=$null;$priv=$null;$loaded=$false
 $result=[ordered]@{source_manifest_sha256=$ExpectedManifestSha256;source_files=$pins;scope='private native replay; seven fixed hardware selections, read only';nodes=@{};errors=@()}
 try {
  $priv=New-Object MT8167OfflineHive.Privileges
