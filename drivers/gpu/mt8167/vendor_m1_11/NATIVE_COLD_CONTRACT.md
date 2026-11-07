@@ -279,3 +279,16 @@ Android GPU-only runtime contentsが未観測という事実は維持する。so
 Windows実GPU検証と、review後のbounded activationは未完了。WDK/署名/実機は主担当占有のため未実行。
 新INFは11/07/2026,0.0.2.0。最終署名後SYS/INF hashとDriverVerをmanifestに固定し、
 選択中packageより新しい版であることと適用後の一致を必須とする。
+
+
+## 明示的one-shot activation
+
+`A04_GE8300_VENDOR_NATIVE_CLEAR_ACTIVATE`は既定0、NativeClearJobとは別flag。
+1の意図したbuildだけD0 PostInterruptsの既存vendor_lifetime内・GP fence成功後で
+`a04_vendor_native_run_once`を呼ぶ。PASSIVE、pinned copy owner一致、display lease/ownerなし、
+service未公開を検査し、provider-instanceのattemptedをcall前に記録する。
+失敗はpoison+quarantine+service admission closed。PnP callbackの成功returnと未取得DODの
+通常CPU path、UART resetを維持する。強制的なDMA解放や未証明のCPU ownership移管はしない。
+詳細/WDK recipe/署名後fingerprint/UART成功条件はtools/ci/README-native-clear-candidate.mdを参照。
+activation=0では上のcold-only契約を維持する。Android GPU-only dummy contents未観測と
+Windowsで採用したcold zero policyの区別は変えない。現段階はhost検証で、Windows 3D成功ではない。

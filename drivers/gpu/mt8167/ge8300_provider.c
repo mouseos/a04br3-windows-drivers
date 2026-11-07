@@ -190,6 +190,15 @@
 #if A04_GE8300_VENDOR_STAGE && A04_GE8300_BOOT_TEST
 #error Vendor firmware staging cannot be combined with modern firmware boot
 #endif
+#ifndef A04_GE8300_VENDOR_NATIVE_CLEAR_ACTIVATE
+#define A04_GE8300_VENDOR_NATIVE_CLEAR_ACTIVATE 0
+#endif
+#if A04_GE8300_VENDOR_NATIVE_CLEAR_ACTIVATE && (!A04_GE8300_VENDOR_NATIVE_CLEAR_JOB || !A04_GE8300_VENDOR_START_DIAGNOSTIC || !A04_GE8300_SHARED_LEASE)
+#error Native activation requires explicit cold job, matched startup, and shared lifetime ownership
+#endif
+#if A04_GE8300_VENDOR_NATIVE_CLEAR_ACTIVATE
+#include "vendor_m1_11/native_activation_policy.h"
+#endif
 #ifndef A04_GE8300_VENDOR_NATIVE_CLEAR_JOB
 #define A04_GE8300_VENDOR_NATIVE_CLEAR_JOB 0
 #endif
@@ -245,6 +254,9 @@ typedef struct {
     struct a04_vendor_render_cold vendor_render;
 #if A04_GE8300_VENDOR_NATIVE_BACKING
     struct a04_vendor_native_cold *vendor_native;
+#if A04_GE8300_VENDOR_NATIVE_CLEAR_ACTIVATE
+    BOOLEAN vendor_native_activation_attempted;
+#endif
 #endif
 #if A04_GE8300_VENDOR_COPY_DIAGNOSTIC
     struct a04_vendor_copy_scratch vendor_copy;
@@ -795,7 +807,11 @@ NTSTATUS GpuD0Entry(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
         GpuPrint(" BYTES=");GpuHex(a04_vendor_native_bytes(c->vendor_native));GpuPrint("\n");
 #if A04_GE8300_VENDOR_NATIVE_CLEAR_JOB
         GpuPrint("A04GPU NATIVE JOB STAGED=");GpuHex(a04_vendor_native_job_staged(c->vendor_native));
+        #if A04_GE8300_VENDOR_NATIVE_CLEAR_ACTIVATE
+        GpuPrint(" TA3D_GATE=ARMED_ONE_SHOT\n");
+#else
         GpuPrint(" TA3D_GATE=CLOSED\n");
+#endif
 #endif
 #endif
         /* Retain device context and adapter for the diagnostic boot.  A
@@ -1024,6 +1040,38 @@ NTSTATUS GpuPostInterrupts(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
          * acknowledgement is not fabric quiescence; DMA stays pinned. */
         c->status.health_status=a04_vendor_m1_11_windows_fence(&c->vendor_start,0,TRUE);
         GpuPrint("A04GPU NATIVE FENCE=");GpuHex(c->status.health_status);GpuPrint("\n");
+#if A04_GE8300_VENDOR_NATIVE_CLEAR_ACTIVATE
+        /* vendor_lifetime is held, GP has completed, service admission is
+         * still closed by online=FALSE. No display lease/token is invented. */
+        if(a04_native_activation_allowed(KeGetCurrentIrql()==PASSIVE_LEVEL,
+            c->vendor_native_activation_attempted,NT_SUCCESS(c->status.health_status),
+            c->vendor_copy_device_ref && c->vendor_copy.exposed && c->vendor_copy.prepared &&
+              c->vendor_copy.task_frozen && c->vendor_copy.render==&c->vendor_render &&
+              c->vendor_render.copy_owner==&c->vendor_copy,
+            c->vendor_service_online,InterlockedCompareExchange(&c->vendor_service_closed,0,0)!=0,
+            c->shared_lease.active!=0,c->shared_owner!=NULL
+#if A04_GE8300_SHARED_COMMON_PAGE
+                || c->shared_common_active
+#endif
+            )) {
+            struct a04_vendor_native_result native_result={0};NTSTATUS native_status;
+            c->vendor_native_activation_attempted=TRUE;
+            GpuPrint("A04GPU NATIVE CLEAR BEGIN PRIVATE=480000\n");
+            native_status=a04_vendor_native_run_once(c->vendor_native,&c->vendor_start,&native_result);
+            GpuPrint("A04GPU NATIVE CLEAR STATUS=");GpuHex((ULONG)native_status);
+            GpuPrint(" PHASE=");GpuHex(native_result.phase);
+            GpuPrint(" MATCH=");GpuHex(native_result.matching_pixels);
+            GpuPrint(" MISMATCH=");GpuHex(native_result.mismatched_pixels);
+            GpuPrint(" GUARD=");GpuHex(native_result.guard_errors);GpuPrint("\n");
+            if(!NT_SUCCESS(native_status)) {
+                c->status.health_status=native_status;c->vendor_service_online=FALSE;
+                InterlockedExchange(&c->vendor_service_closed,1);
+                GpuPrint("A04GPU NATIVE CLEAR POISON DMA_RETAINED CPU_ADMISSION_FALLBACK\n");
+            }
+        } else if(!c->vendor_native_activation_attempted) {
+            GpuPrint("A04GPU NATIVE CLEAR SKIP=ADMISSION\n");
+        }
+#endif
 #if A04_GE8300_VENDOR_RENDER_COLD
         if(NT_SUCCESS(c->status.health_status)) {
             unsigned index;

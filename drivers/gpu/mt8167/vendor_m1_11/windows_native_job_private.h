@@ -10,10 +10,9 @@ struct a04_vendor_native_candidate {
     struct a04_m111_pair_result pair;
     uint8_t rings[8192];
 };
-struct a04_vendor_native_result {uint32_t phase,matching_pixels,mismatched_pixels,guard_errors;};
 struct a04_vendor_start;
-/* Dormant validation implementation: NO provider/IOCTL/service caller exists.
- * A future activation must hold the provider lifetime lock and review gate. */
+/* Private publisher used only by the opaque activation wrapper.
+ * D0 activation is separately default-OFF; no arbitrary-packet IOCTL exists. */
 NTSTATUS a04_vendor_native_publish_candidate(struct a04_vendor_native_cold *,
     struct a04_vendor_start *,struct a04_vendor_native_result *);
 /* Private cold candidate only. No KCCB/UFO/cleanup counter publication.

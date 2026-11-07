@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT
- * Dormant bounded candidate publisher. There is deliberately NO provider,
- * IOCTL, service or D0 caller. Merely building NativeClearJob keeps its gate
- * closed. Caller integration/activation requires a separate validated change.
+ * Bounded private candidate publisher. NativeClearJob alone remains cold;
+ * only the separately default-OFF activation flag adds the D0 caller.
+ * No IOCTL or service admits arbitrary GPU packet bytes.
  */
 #include "windows_native_job_private.h"
 #include "windows_start.h"
@@ -126,4 +126,18 @@ poison:
     r->poisoned=TRUE;s->command_poisoned=TRUE;n->quarantined=TRUE;
 done:
     InterlockedExchange(&s->command_busy,0);return status;
+}
+
+NTSTATUS a04_vendor_native_run_once(struct a04_vendor_native_cold *n,
+    struct a04_vendor_start *s,struct a04_vendor_native_result *result)
+{
+    NTSTATUS status;
+    if(!n || !s || !result || !n->candidate || n->candidate->attempted)return STATUS_INVALID_DEVICE_STATE;
+    status=a04_vendor_native_publish_candidate(n,s,result);
+    if(!NT_SUCCESS(status)){
+        /* A failed admission is terminal for this diagnostic instance too. */
+        n->candidate->attempted=TRUE;n->quarantined=TRUE;s->command_poisoned=TRUE;
+        if(n->render)n->render->poisoned=TRUE;
+    }
+    return status;
 }
