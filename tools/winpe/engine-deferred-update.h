@@ -221,7 +221,7 @@ static DWORD deferred_selected_date(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev
 }
 static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const WCHAR *inf)
 {
- static SP_DEVINSTALL_PARAMS_W params;static SP_DRVINFO_DATA_W driver,extra;DWORD error=0,type=0,bytes=0;DWORD list_type=SPDIT_CLASSDRIVER;BOOL list=FALSE;WCHAR class_name[64];
+ static SP_DEVINSTALL_PARAMS_W params;static SP_DRVINFO_DATA_W driver,extra,chosen;DWORD error=0,type=0,bytes=0;DWORD list_type=SPDIT_CLASSDRIVER;BOOL list=FALSE;WCHAR class_name[64];
 #if DEFERRED_SD_UPDATE
  /* A hardware-initiated, previously classless SD node needs a compatible
   * driver list. BuildDriverInfoList updates SP_DEVINFO_DATA.ClassGuid for
@@ -239,8 +239,17 @@ static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const
  if(SetupDiEnumDriverInfoW(set,dev,list_type,1,&extra)||GetLastError()!=ERROR_NO_MORE_ITEMS){error=ERROR_DUP_NAME;goto done;}
  if(driver.DriverVersion!=deferred_pins[i].version||(((ULONGLONG)driver.DriverDate.dwHighDateTime<<32)|driver.DriverDate.dwLowDateTime)!=deferred_pins[i].date){error=ERROR_REVISION_MISMATCH;goto done;}
  deferred_current_step=2;
- if(!SetupDiSetSelectedDriverW(set,dev,&driver)){error=GetLastError();goto done;}
  if(list_type==SPDIT_COMPATDRIVER){
+  /* Device-install applications call the DIF dispatcher, not its default
+   * SetupDiSelectBestCompatDrv handler. Only one fixed signed node exists. */
+  if(!SetupDiCallClassInstaller(DIF_SELECTBESTCOMPATDRV,set,dev)){error=GetLastError();goto done;}
+  memset(&chosen,0,sizeof(chosen));chosen.cbSize=sizeof(chosen);
+  if(!SetupDiGetSelectedDriverW(set,dev,&chosen)){error=GetLastError();goto done;}
+  if(chosen.DriverType!=SPDIT_COMPATDRIVER||chosen.DriverVersion!=driver.DriverVersion||
+     chosen.DriverDate.dwHighDateTime!=driver.DriverDate.dwHighDateTime||chosen.DriverDate.dwLowDateTime!=driver.DriverDate.dwLowDateTime||
+     lstrcmpW(chosen.Description,driver.Description)||lstrcmpW(chosen.MfgName,driver.MfgName)||lstrcmpW(chosen.ProviderName,driver.ProviderName)){
+   error=ERROR_REVISION_MISMATCH;goto done;
+  }
   /* Never invent ClassGUID registry keys. Confirm the standard selection
    * established the fixed SCSIAdapter class before invoking class installers. */
   if(!SetupDiGetDeviceRegistryPropertyW(set,dev,SPDRP_CLASSGUID,&type,(BYTE *)class_name,sizeof(class_name),&bytes)){error=GetLastError();goto done;}
@@ -250,7 +259,7 @@ static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const
   if(!SetupDiCallClassInstaller(DIF_REGISTER_COINSTALLERS,set,dev)){error=GetLastError();goto done;}
   deferred_current_step=4;
   if(!SetupDiCallClassInstaller(DIF_INSTALLINTERFACES,set,dev)){error=GetLastError();goto done;}
- }
+ }else if(!SetupDiSetSelectedDriverW(set,dev,&driver)){error=GetLastError();goto done;}
  deferred_current_step=5;
  /* Keep no-live-reenumeration even if a preparatory default handler changed
   * its install parameters. No parent/child restart request is issued. */

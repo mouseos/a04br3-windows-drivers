@@ -92,7 +92,7 @@ ServiceResult3010で正規rebootした。診断phaseはarmされず、次bootの
 Audio1007はNativeStart stage14/result0だがclient未実行なのでendpoint成否は未観測。
 
 次serviceではSDだけSPDIT_COMPATDRIVERを使い、固定INF内の唯一nodeと版/dateを検査し、
-SetupDiSetSelectedDriver後の正確なSCSIAdapter ClassGUIDを確認する。
+DIF_SELECTBESTCOMPATDRV後の選択driver版/date/type/名称と正確なSCSIAdapter ClassGUIDを確認する。
 DIF_REGISTER_COINSTALLERS、DIF_INSTALLINTERFACESを一度ずつ呼び、
 DI_DONOTCALLCONFIGMG/DI_NEEDREBOOTを再設定してDIF_INSTALLDEVICEを一度だけ呼ぶ。
 他対象の既存class-list経路、CAT membership/hash、live親交換禁止は維持する。
@@ -124,3 +124,19 @@ USB次候補はsource `44899b9755cdb081954a8d4ccb6271b839b9dd0d`と
 `11/07/2026,2026.11.7.1005`の組だけ追加許可する。新署名manifest/hashが必要で、
 旧1004/既存親の再compile/再署名はしない。StartのWDF execution-level問題の修正は
 USB owner側であり、本protocolの初回SD処理とは独立する。
+
+
+### SD4を独立追加する次構成
+
+`sd_tuple`は従来の9e07親1010/SD3署名tupleのまま保持し、明示`sd_package`だけで
+Nash source `16ed4f853788f6810f5a4644f94c638fa6f8d2e7`、SD4版11/07/2026,2026.11.7.4、
+署名SYS f028660d…、checkpoint schema1/revision4を検査してSD componentだけ置換する。
+親1010/SYS4638ab23…は不変、nonboot MOU0013/Start3/PIO/SDpower interface1固定。
+新署名manifest/cert/hashとhash済みbuild metadataが必要。Code31根因解決は未確認。
+
+SD初回selectionは[公式DIF_SELECTBESTCOMPATDRV](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/dif-selectbestcompatdrv)
+をSetupDiCallClassInstallerから呼ぶ。default handlerの直接呼び出しはしない。
+[SetupDiSelectBestCompatDrv](https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdiselectbestcompatdrv)
+のclass移行契約と、run47第二bootのhardwarePnP selection順序に合わせる。
+SetupDiSetSelectedDriver自体にも管理者によるclass変更契約があるため、旧直呼びだけを
+E0000204唯一の原因と断定しない。固定唯一driverは選択前後に照合し、未知候補は拒否する。

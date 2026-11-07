@@ -146,7 +146,7 @@ try {
    parent_policy='DI_DONOTCALLCONFIGMG-deferred-reboot-only';reboot_required_stops_clients=$true;catalog_signature_required=$true;
    problem_status='CM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatus/DEVPROP_TYPE_NTSTATUS';
    phases=@('install-once','planned-reboot-once','verify-and-diagnose-once');live_parent_replacement=$false;
-   sd_first_class_selection='fixed INF compatible list; exact SCSIAdapter class; REGISTER_COINSTALLERS/INSTALLINTERFACES before INSTALLDEVICE'}}elseif($enginePcm){@{api='UpdateDriverForPlugAndPlayDevicesW';flags=5;
+   sd_first_class_selection='fixed INF compatible list; DIF_SELECTBESTCOMPATDRV; recheck exact selected node/SCSIAdapter class; REGISTER_COINSTALLERS/INSTALLINTERFACES before INSTALLDEVICE'}}elseif($enginePcm){@{api='UpdateDriverForPlugAndPlayDevicesW';flags=5;
    fixed_hardware_ids=@('MT8167\AFE','MT8167\USB20','A04BR3\MT6630SDIO');
    directory='System32\MT8167EngineProbe\drivers';maximum_calls_per_id=1;
    parent_updated=$false;observed_parent='ACPI\BEN0001';parent_policy='verify-selected-version-and-installed-bytes-only';problem_status='CM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatus/DEVPROP_TYPE_NTSTATUS';reboot_required_stops_clients=$true;catalog_signature_required=$true;

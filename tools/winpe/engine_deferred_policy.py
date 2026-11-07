@@ -34,7 +34,7 @@ def load_map(path, root):
     path=path.resolve(strict=True)
     if not path.is_relative_to(root.resolve()):raise ValueError('package mapは作業ルート内が必要です')
     spec=json.loads(path.read_text(encoding='utf-8-sig'))
-    if not {'schema','backup_manifest_sha256','packages','clients'}.issubset(spec) or set(spec)-{'schema','backup_manifest_sha256','packages','clients','gpu','sd_tuple','staging_profile'} or spec['schema'] != 1:
+    if not {'schema','backup_manifest_sha256','packages','clients'}.issubset(spec) or set(spec)-{'schema','backup_manifest_sha256','packages','clients','gpu','sd_tuple','sd_package','staging_profile'} or spec['schema'] != 1:
         raise ValueError('固定Engine policy map schema不一致')
     hexpin(spec['backup_manifest_sha256'])
     staging=spec.get('staging_profile','offline-all')
@@ -107,6 +107,16 @@ def load_map(path, root):
                 'version_u64':sum(v<<((3-i)*16) for i,v in enumerate(parts)),
                 'date_filetime':int((datetime.datetime.strptime(date,'%m/%d/%Y')-datetime.datetime(1601,1,1)).total_seconds())*10000000}
         policy['sd_tuple_manifest_sha256']=spec['sd_tuple']['manifest_sha256'].lower()
+    if 'sd_package' in spec:
+        if 'sd_tuple' not in spec:raise ValueError('SD4には固定親1010tupleが必要です')
+        from engine_sd_tuple import load_sd_checkpoint
+        sd_files,sd_components,sd_cert=load_sd_checkpoint(spec['sd_package'],root,components['parent'])
+        selected.update(sd_files);components.update(sd_components);certificates['sd_tuple']=sd_cert
+        item=sd_components['sd'];date,numbers=item['driver_ver'].split(',');parts=tuple(map(int,numbers.split('.')))
+        policy['packages']['sd']={**item,'source_commit':item['wrapper_source_commit'],
+            'version_u64':sum(v<<((3-i)*16) for i,v in enumerate(parts)),
+            'date_filetime':int((datetime.datetime.strptime(date,'%m/%d/%Y')-datetime.datetime(1601,1,1)).total_seconds())*10000000}
+        policy['sd_component_manifest_sha256']=spec['sd_package']['manifest_sha256'].lower()
     if 'gpu' in spec:
         from gpu_rollforward_package import load_package,validate_transition,FILES
         entry=spec['gpu']
