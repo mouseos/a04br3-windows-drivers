@@ -38,7 +38,7 @@ $common=@('--target=thumbv7-pc-windows-msvc','-std=c11','-O2','-fms-extensions',
  '-D_KERNEL_MODE','-D_ARM_','-DARM','-DNTDDI_VERSION=0x06030000','-D_WIN32_WINNT=0x0603','-DA04_GE8300_VENDOR_NATIVE_CLEAR_JOB=1',
  '-D__ldrexd=__geo_wdk81_ldrexd_declaration',"-I$resource\include","-I$inc\km","-I$inc\km\crt","-I$inc\shared","-I$gpu","-I$gpu\fwif","-I$gpu\compat","-I$gpu\vendor_m1_11")
 if($WithMdlTarget){
- $units+=@('vendor_m1_11\native_owner_dispatch','vendor_m1_11\windows_native_target','vendor_m1_11\windows_native_storage','vendor_m1_11\windows_native_cold','vendor_m1_11\windows_native_code','vendor_m1_11\windows_native_backing','vendor_m1_11\windows_native_job','vendor_m1_11\windows_native_execute','vendor_m1_11\windows_uncached','vendor_m1_11\native_resources','vendor_m1_11\native_hwrt_profile','vendor_m1_11\render_resources','vendor_m1_11\native_clear_job','vendor_m1_11\native_clear_data','vendor_m1_11\native_terminate_stream','vendor_m1_11\native_clear_surface','vendor_m1_11\native_clear_codespace','vendor_m1_11\native_clear_pds','vendor_m1_11\native_eot_program','vendor_m1_11\native_record_fields','vendor_m1_11\native_pair','vendor_m1_11\native_ccb')
+ $units+=@('gpu_mmu','vendor_m1_11\native_owner_dispatch','vendor_m1_11\windows_native_target','vendor_m1_11\windows_native_storage','vendor_m1_11\windows_native_cold','vendor_m1_11\windows_native_code','vendor_m1_11\windows_native_backing','vendor_m1_11\windows_native_job','vendor_m1_11\windows_native_execute','vendor_m1_11\windows_uncached','vendor_m1_11\native_resources','vendor_m1_11\native_hwrt_profile','vendor_m1_11\render_resources','vendor_m1_11\native_clear_job','vendor_m1_11\native_clear_data','vendor_m1_11\native_terminate_stream','vendor_m1_11\native_clear_surface','vendor_m1_11\native_clear_codespace','vendor_m1_11\native_clear_pds','vendor_m1_11\native_eot_program','vendor_m1_11\native_record_fields','vendor_m1_11\native_pair','vendor_m1_11\native_ccb')
  $common+='-DA04_GE8300_NATIVE_OWNER_MDL_TARGET=1'
 }
 $oldTemp=$env:TEMP;$oldTmp=$env:TMP;$transcript=$false
@@ -49,7 +49,9 @@ try {
  $commands=@();$objects=@();$reuse=@();$previous=$null
  if($ReuseVerifiedDirectory){
   $prior=[IO.Path]::GetFullPath($ReuseVerifiedDirectory)
-  $previous=Get-Content (Join-Path $prior 'build-manifest.json') -Raw|ConvertFrom-Json
+  $priorManifest=Join-Path $prior 'build-manifest.json'
+  if(!(Test-Path $priorManifest)){$priorManifest=Join-Path $prior 'compile-manifest.json'}
+  $previous=Get-Content $priorManifest -Raw|ConvertFrom-Json
   if($previous.target -ne 'thumbv7-pc-windows-msvc' -or !$previous.linkcheck_requested){throw 'Reuse requires prior successful ARM LinkCheck manifest'}
   foreach($inputHash in @($previous.tools)+@($previous.wdk_inputs)){
    if(!(Test-Path $inputHash.path) -or (Get-FileHash $inputHash.path -Algorithm SHA256).Hash -ne $inputHash.sha256){throw 'Prior tool/WDK input changed; refusing object reuse'}
@@ -101,6 +103,11 @@ try {
  $objectInfo|Set-Content "$out\objects.txt"
  if(@($objectInfo|Where-Object{$_ -match 'Machine:.*(ARMNT|0x1C4)'}).Count -ne $objects.Count){throw 'Every object must be real ARMNT COFF'}
  $outputs=@($objects)+@((Join-Path $out 'ge8300-native-owner-core.lib'))
+ $compileCheckpoint=@{source_commit=$commit;target='thumbv7-pc-windows-msvc';compile_complete=$true;linkcheck_requested=[bool]$LinkCheck;commands=$commands;
+  tools=@('clang','llvm-lib','llvm-readobj'|ForEach-Object{$path=(Get-Command $_).Source;@{name=$_;path=$path;sha256=(Get-FileHash $path -Algorithm SHA256).Hash}});
+  wdk_inputs=@('ntoskrnl.lib','hal.lib','libcntpr.lib','bufferoverflowfastfailk.lib'|ForEach-Object{$path=Join-Path $kmLib $_;@{path=$path;sha256=(Get-FileHash $path -Algorithm SHA256).Hash}});
+  outputs=@($outputs|ForEach-Object{@{path=$_.Substring($out.Length+1);sha256=(Get-FileHash $_ -Algorithm SHA256).Hash}})}
+ $compileCheckpoint|ConvertTo-Json -Depth 8|Set-Content "$out\compile-manifest.json"
  if($LinkCheck){
   # Export real functions from all objects so /opt:ref cannot hide unresolved
   # code. No DriverEntry, dummy callbacks or unresolved-symbol override.
