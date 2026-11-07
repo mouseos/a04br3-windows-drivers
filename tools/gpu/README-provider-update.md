@@ -142,3 +142,14 @@ GPU側は初期の宣言だけのCOFFに加え、回収済み実candidate policy
 - [WinVerifyTrust](https://learn.microsoft.com/en-us/windows/win32/api/wintrust/nf-wintrust-winverifytrust)
 - [CryptCATAdminCalcHashFromFileHandle2](https://learn.microsoft.com/en-us/windows/win32/api/mscat/nf-mscat-cryptcatadmincalchashfromfilehandle2)
 - [InitiateSystemShutdownExW](https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-initiatesystemshutdownexw)
+
+## 既存copy-only媒体への固定map追加
+
+`tools/winpe/build-private-system-apply-media.py --gpu-installer-package <署名済み専用installer出力>`
+で、上記6fileの配置とnative再arm済みSYSTEMのcopyを一つの保守transactionにする。
+GPU指定時は署名済みinstallerの固定source/実hash、policyと5file、native patchと
+clean reloadの7値、fresh Recovery backupへの由来を検査する。
+既存MT8167DeviceInstall.exeをjournalへ退避し、専用data directoryが既にあれば停止する。
+SYSTEMのreg loadやPnP更新をWinPEで実行せず、ファイル配置成功後だけclean SYSTEMをcopyする。
+既存volume guard、COMMITTED、flush/dismount、CRC UART報告を再利用する。
+媒体には個体SYSTEMが含まれるため非配布とし、source checkout/CI公開artifactへ置かない。

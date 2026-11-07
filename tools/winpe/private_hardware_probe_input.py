@@ -42,7 +42,7 @@ def clean_header(path):
 
 
 def prepared_system_check(system, manifest, expected_sha256, root, backup, selected_service="MT8167HardwareProbe"):
-    names = {'MT8167HardwareProbe': 'MediaTek MT8167 Hardware Probe', 'MT8167EngineProbe': 'MediaTek MT8167 Engine Probe'}
+    names = {'MT8167HardwareProbe': 'MediaTek MT8167 Hardware Probe', 'MT8167EngineProbe': 'MediaTek MT8167 Engine Probe', 'MT8167DeviceInstall': 'MediaTek MT8167 Device Installation'}
     if selected_service not in names:
         raise ValueError('未対応の固定serviceです')
     system = private_path(system, root).resolve(strict=True)
@@ -85,6 +85,8 @@ def prepared_system_check(system, manifest, expected_sha256, root, backup, selec
             raise ValueError('native patch/clean reload/unload成功の証拠が必要です')
         if report.get('engine_rearm_plan_sha256') and state.get('engine_rearm_plan_sha256') != report['engine_rearm_plan_sha256']:
             raise ValueError('native patch/verifyの再arm plan binding不一致')
+        if selected_service == 'MT8167DeviceInstall' and (not report.get('gpu_rearm_plan_sha256') or state.get('gpu_rearm_plan_sha256') != report['gpu_rearm_plan_sha256']):
+            raise ValueError('GPUの明示的1回再arm plan bindingが必要です')
         services = state['services']
         if len(services) != 1 or services[0]['name'] != selected_service:
             raise ValueError('native workerの対象service不一致')
