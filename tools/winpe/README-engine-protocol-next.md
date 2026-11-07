@@ -156,3 +156,14 @@ run49 ccefはEngine/logsへ書く契約だが旧serviceのrun_clientにroot log�
 scoped時だけEngine/logs/brightness-native.logをguardし、旧rootは検査/移動/削除しない。
 旧4f/8a sourceは従来root guardを維持。新log既存/reparse/予期しない属性errorは拒否し、
 CREATE_NEW/旧Engine state archive/明示再armは維持する。任意path指定は追加しない。
+
+
+## trial51固定候補
+
+source WiFi `8e5d01c748de275cd3560737c8897add05f0c2ab`、INF1008、署名SYS
+ff8bd2f035458974c15f035d1c62b5452d4789d5b615e995580bf3a7d8f88ed8と同sourceの
+checkpoint decoderを追加する。NUL-countryのsource既定domain修正であり、個体NVRAM/
+MAC/校正値を媒体へ埋め込まない。SD7 `9e52cc1c03d2ac17856f0c6ca98898adebd6cd47`、
+bounded Audio client `9bce14680011b4f208144905823e777057da2a22`、scoped brightness guardを
+fresh50/previous media49へ結ぶ。親1010/Audio1007/DOD1.5/ccef/GPU2.5/boot53d6は保持。
+Mic/HFP/BQ/storage変更は含めない。WDK・署名・host生成と実機成功は区別する。

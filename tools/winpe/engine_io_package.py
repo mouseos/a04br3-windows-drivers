@@ -73,11 +73,13 @@ class SignedPackage:
             r=self.record
             if ((r.get('source_commit'),r.get('status'),r.get('driver_ver')) not in (
                 ('bafafa9ea6d94fe6357616a3edfff66e568bfc7c','signed-native1006-not-device-validated','11/06/2026,2026.11.6.1006'),
-                ('2d726d42702831aedbcee136d901595f65b39eee','signed-native1007-not-device-validated','11/06/2026,2026.11.6.1007'))
+                ('2d726d42702831aedbcee136d901595f65b39eee','signed-native1007-not-device-validated','11/06/2026,2026.11.6.1007'),
+                ('8e5d01c748de275cd3560737c8897add05f0c2ab','signed-native1008-not-device-validated','11/06/2026,2026.11.6.1008'))
                 or r.get('catalog_regenerated') is not True
                 or r.get('build_manifest',{}).get('source_dirty') is not False):raise ValueError('未知の署名manifest layout')
+            if r.get('source_commit')=='8e5d01c748de275cd3560737c8897add05f0c2ab' and (r.get('expected_installed_sys_sha256')!='ff8bd2f035458974c15f035d1c62b5452d4789d5b615e995580bf3a7d8f88ed8' or r.get('build_manifest',{}).get('checkpoint_driver_build')!=1008):raise ValueError('固定WiFi1008 SYS/checkpoint出自不一致')
             entries=r.get('package_files',[])
-            if {x.get('path') for x in entries}!={'package/mt6630-runtime.'+e for e in ('sys','inf','cat')} or len(entries)!=3:raise ValueError('WiFi1006/1007 fixed package_files不一致')
+            if {x.get('path') for x in entries}!={'package/mt6630-runtime.'+e for e in ('sys','inf','cat')} or len(entries)!=3:raise ValueError('WiFi1006/1007/1008 fixed package_files不一致')
             entries=[{'path':x['path'].removeprefix('package/'),'sha256':x['sha256']} for x in entries]
             entries.append({'path':'build-manifest.json','sha256':r['build_manifest_sha256']})
             self.native_wifi_layout=True
@@ -103,7 +105,7 @@ class SignedPackage:
 
     def certificate(self, expected):
         if self.native_wifi_layout:
-            if self.record.get('certificate_thumbprint')!=expected:raise ValueError('WiFi1006/1007証明書metadata不一致')
+            if self.record.get('certificate_thumbprint')!=expected:raise ValueError('WiFi1006/1007/1008証明書metadata不一致')
             self.file('build-manifest.json')
             path=(self.directory/'mt8167-development.cer').resolve(strict=True)
             if not path.is_relative_to(self.directory):raise ValueError('証明書path逸脱')
