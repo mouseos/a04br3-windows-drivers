@@ -7,6 +7,7 @@
 static NDIS_SPIN_LOCK registry_lock;
 static NDIS_HANDLE registration;
 static struct a04_ndis_runtime *registered;
+static struct a04_combo_client_file client_file;
 static NTSTATUS finish(PIRP irp,NTSTATUS s,ULONG_PTR bytes)
 {irp->IoStatus.Status=s;irp->IoStatus.Information=bytes;IoCompleteRequest(irp,IO_NO_INCREMENT);return s;}
 static NTSTATUS dispatch(PDEVICE_OBJECT device,PIRP irp)
@@ -14,10 +15,19 @@ static NTSTATUS dispatch(PDEVICE_OBJECT device,PIRP irp)
  PIO_STACK_LOCATION sp=IoGetCurrentIrpStackLocation(irp);NTSTATUS s;
  UNREFERENCED_PARAMETER(device);
  if(irp->RequestorMode!=KernelMode)return finish(irp,STATUS_ACCESS_DENIED,0);
- if(sp->MajorFunction==IRP_MJ_CREATE||sp->MajorFunction==IRP_MJ_CLOSE)return finish(irp,STATUS_SUCCESS,0);
- if(sp->MajorFunction!=IRP_MJ_DEVICE_CONTROL&&sp->MajorFunction!=IRP_MJ_CLEANUP)return finish(irp,STATUS_INVALID_DEVICE_REQUEST,0);
+ if(sp->MajorFunction!=IRP_MJ_CREATE&&sp->MajorFunction!=IRP_MJ_CLOSE&&
+    sp->MajorFunction!=IRP_MJ_DEVICE_CONTROL&&sp->MajorFunction!=IRP_MJ_CLEANUP)return finish(irp,STATUS_INVALID_DEVICE_REQUEST,0);
  NdisAcquireSpinLock(&registry_lock);
- s=registered?a04_ndis_combo_enqueue(registered,irp):STATUS_DEVICE_NOT_READY;
+ if(sp->MajorFunction==IRP_MJ_CREATE)
+  s=a04_combo_client_create(&client_file,sp->FileObject)?STATUS_SHARING_VIOLATION:STATUS_SUCCESS;
+ else if(sp->MajorFunction==IRP_MJ_CLOSE){a04_combo_client_closed(&client_file,sp->FileObject);s=STATUS_SUCCESS;}
+ else if(sp->MajorFunction==IRP_MJ_CLEANUP){
+  int first=a04_combo_client_cleanup(&client_file,sp->FileObject);
+  /* Once unpublished, adapter Halt owns the joined physical teardown.
+   * File cleanup success here is software rundown, not a WMT OFF receipt. */
+  s=first<0?STATUS_INVALID_HANDLE:(!first||!registered?STATUS_SUCCESS:a04_ndis_combo_enqueue(registered,irp));
+ }else if(!a04_combo_client_controls(&client_file,sp->FileObject))s=STATUS_FILE_CLOSED;
+ else s=registered?a04_ndis_combo_enqueue(registered,irp):STATUS_DEVICE_NOT_READY;
  NdisReleaseSpinLock(&registry_lock);
  return s==STATUS_PENDING?s:finish(irp,s,0);
 }
@@ -59,7 +69,7 @@ int a04_combo_stop(struct a04_ndis_runtime *a,int removed)
  if(b->file){
   /* Before lifetime STOPPING. Never reset/PMU-off a combo from a BT close. */
   if(removed||a04_bt_disable(&b->bt))result=-1;
-  ObDereferenceObject(b->file);b->file=NULL;
+  {PFILE_OBJECT file=b->file;b->file=NULL;ObDereferenceObject(file);}
  }
  RtlSecureZeroMemory(b->rx,sizeof(b->rx));b->count=0;
  /* The caller is revoking the hardware epoch; no stale initialized channel
@@ -68,14 +78,16 @@ int a04_combo_stop(struct a04_ndis_runtime *a,int removed)
 }
 void a04_combo_worker(struct a04_ndis_runtime *a)
 {
- struct a04_combo_broker *b=&a->combo;PIRP irp;NTSTATUS s=STATUS_INVALID_DEVICE_REQUEST;ULONG_PTR used=0;
- NdisAcquireSpinLock(&a->lock);irp=b->request;b->request=NULL;NdisReleaseSpinLock(&a->lock);
+ struct a04_combo_broker *b=&a->combo;PIRP irp;unsigned cleanup;NTSTATUS s=STATUS_INVALID_DEVICE_REQUEST;ULONG_PTR used=0;
+ NdisAcquireSpinLock(&a->lock);irp=a04_combo_requests_take(&b->requests,&cleanup);NdisReleaseSpinLock(&a->lock);
  if(!irp)return;
  PIO_STACK_LOCATION sp=IoGetCurrentIrpStackLocation(irp);ULONG code=sp->Parameters.DeviceIoControl.IoControlCode;
  ULONG in=sp->Parameters.DeviceIoControl.InputBufferLength,out=sp->Parameters.DeviceIoControl.OutputBufferLength;
- if(sp->MajorFunction==IRP_MJ_CLEANUP){code=A04_BT_BROKER_CLOSE;in=out=0;}
+ if(cleanup){code=A04_BT_BROKER_CLOSE;in=out=0;}
  if(!sp->FileObject){finish(irp,STATUS_INVALID_HANDLE,0);return;}
- if(a->closing||irp->Cancel){finish(irp,STATUS_CANCELLED,0);return;}
+ if(a->closing){finish(irp,cleanup?STATUS_SUCCESS:STATUS_CANCELLED,0);return;}
+ /* CLEANUP is mandatory rundown, not a cancellable HCI operation. */
+ if(!cleanup&&irp->Cancel){finish(irp,STATUS_CANCELLED,0);return;}
  if(code==A04_BT_BROKER_OPEN){
   UCHAR record[36]={0};
   if(in||out){s=STATUS_INVALID_PARAMETER;goto done;}
@@ -88,14 +100,14 @@ void a04_combo_worker(struct a04_ndis_runtime *a)
     a->radio.bridge->service_context=a;a->radio.bridge->service_other=service;s=STATUS_SUCCESS;}
   }
   RtlSecureZeroMemory(record,sizeof(record));
- }else if(!b->file||b->file!=sp->FileObject){s=STATUS_DEVICE_NOT_READY;}
+ }else if(!b->file||b->file!=sp->FileObject){s=cleanup?STATUS_SUCCESS:STATUS_DEVICE_NOT_READY;}
  else if(code==A04_BT_BROKER_CLOSE){
   if(in||out){s=STATUS_INVALID_PARAMETER;goto done;}
   a->radio.bridge->service_other=NULL;a->radio.bridge->service_context=NULL;
   s=a04_bt_disable(&b->bt)?STATUS_IO_DEVICE_ERROR:STATUS_SUCCESS;
   /* Keep attachment metadata after a clean OFF for reopening this fn2 owner.
    * A failure keeps bt.failed/bridge.failed and cannot create a new lease. */
-  ObDereferenceObject(b->file);b->file=NULL;RtlSecureZeroMemory(b->rx,sizeof(b->rx));b->count=0;
+  {PFILE_OBJECT file=b->file;b->file=NULL;ObDereferenceObject(file);}RtlSecureZeroMemory(b->rx,sizeof(b->rx));b->count=0;
  }else if(code==A04_BT_BROKER_WRITE){
   struct a04_bt_broker_packet *packet=irp->AssociatedIrp.SystemBuffer;
   if(in!=sizeof(*packet)||out||!packet||packet->version!=1||packet->length>sizeof(packet->data)){s=STATUS_INVALID_PARAMETER;goto done;}
@@ -111,4 +123,21 @@ void a04_combo_worker(struct a04_ndis_runtime *a)
 done:
  if(b->bt.failed){a->radio.failed=-1;/* preserve the real combo fault, never report WLAN healthy */}
  (void)finish(irp,s,used);
+}
+
+/* Called after admission is revoked and timer/DPCs joined. If allocation of
+ * a new work item failed, pending CLEANUP is still owned by this adapter.
+ * With no worker active, finish software requests before Halt waits idle.
+ * The joined caller subsequently performs a04_combo_stop while I/O is live;
+ * no physical OFF success is invented by completing a file-cleanup IRP. */
+void a04_combo_finish_queued(struct a04_ndis_runtime *a)
+{
+ PIRP requests[2]={NULL,NULL};unsigned kinds[2]={0,0};
+ NdisAcquireSpinLock(&a->lock);
+ if(a->closing&&!a->busy){
+  for(unsigned i=0;i<2;i++)requests[i]=a04_combo_requests_take(&a->combo.requests,&kinds[i]);
+  if(!a->api_refs)NdisSetEvent(&a->idle);
+ }
+ NdisReleaseSpinLock(&a->lock);
+ for(unsigned i=0;i<2;i++)if(requests[i])finish(requests[i],kinds[i]?STATUS_SUCCESS:STATUS_CANCELLED,0);
 }

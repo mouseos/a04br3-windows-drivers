@@ -215,8 +215,16 @@ static int hardware_start(struct a04_ndis_runtime *a)
  CP(a,A04_CP_RESOURCES,A04_CP_RESULT,A04_CP_OBSERVATION,1,raw->List[0].PartialResourceList.Count);
  platform.context=a;platform.connect_masked_irq=connect_irq;platform.mask_and_drain_irq=mask_irq;platform.drain_io=drain;platform.quiesce_combo=quiesce;
  /* Board facts: fixed3.3V, SDIO transport, vendor mt6630_ant_m1.cfg,
-  * stp_uart_launcher default FM mode2; no shared26MHz/merge option. */
- {const struct a04_wmt_startup_options options={1,1,0,0,2,1};
+  * default FM mode2; no shared26MHz. Stock a04br3_defconfig enables
+  * MTK_MERGE_INTERFACE_SUPPORT. The combo-only profile reuses the existing
+  * ACK-checked MT6630 DAI_PAD startup step before FM/function1, as Linux
+  * mt6630_sw_init. It does not configure host AFE or qualify SCO bypass. */
+ {
+#if A04_WIFI_BT_BROKER
+ const struct a04_wmt_startup_options options={1,1,0,1,2,1};
+#else
+ const struct a04_wmt_startup_options options={1,1,0,0,2,1};
+#endif
  int result;CP(a,A04_CP_SESSION,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
  result=a04_windows_session_start_traced(&a->session,&a->parent,&platform,mem,mapped,0x00300000,a04_wifi_wdf_wmt_sha256,&options,a04_cp_trace,a->checkpoint);
  CP(a,A04_CP_SESSION,A04_CP_RESULT,A04_CP_BACKEND,result,(a->session.state&255)|((a->session.diagnostic.state&255)<<8));
@@ -389,7 +397,7 @@ again:
  NdisAcquireSpinLock(&a->lock);
  if(a->next_request){a->request=a->next_request;a->next_request=NULL;a->cancelled=a->next_cancelled;a->next_cancelled=0;NdisReleaseSpinLock(&a->lock);goto again;}
  #if A04_WIFI_BT_BROKER
- if(a->combo.request){NdisReleaseSpinLock(&a->lock);goto again;}
+ if(a04_combo_requests_pending(&a->combo.requests)){NdisReleaseSpinLock(&a->lock);goto again;}
 #endif
  if(a->send_queue.count){NdisReleaseSpinLock(&a->lock);goto again;}
  NdisFreeIoWorkItem(work);a->busy=0;a->cancelled=0;if(!a->api_refs)NdisSetEvent(&a->idle);NdisReleaseSpinLock(&a->lock);
@@ -398,13 +406,13 @@ static void poll_dpc(PKDPC dpc,PVOID context,PVOID x,PVOID y)
 {
  struct a04_ndis_runtime *a=context;UNREFERENCED_PARAMETER(dpc);UNREFERENCED_PARAMETER(x);UNREFERENCED_PARAMETER(y);
  NdisAcquireSpinLock(&a->lock);
- if(!a->closing&&(!a->paused
+ if(!a->closing&&!a->busy&&(!a->paused
 #if A04_WIFI_BT_BROKER
- ||a->combo.file
+ ||a->combo.file||a04_combo_requests_pending(&a->combo.requests)
 #endif
- )&&!a->busy&&(!a->session.diagnostic.bridge.wlan.fw_owned||a->rx_count||a->peer_reset_pending
+ )&&(!a->session.diagnostic.bridge.wlan.fw_owned||a->rx_count||a->peer_reset_pending
 #if A04_WIFI_BT_BROKER
- ||a->combo.file
+ ||a->combo.file||a04_combo_requests_pending(&a->combo.requests)
 #endif
  ))(void)queue_work(a);
  NdisReleaseSpinLock(&a->lock);
@@ -412,12 +420,17 @@ static void poll_dpc(PKDPC dpc,PVOID context,PVOID x,PVOID y)
 #if A04_WIFI_BT_BROKER
 NTSTATUS a04_ndis_combo_enqueue(struct a04_ndis_runtime *a,PIRP irp)
 {
+ unsigned cleanup=IoGetCurrentIrpStackLocation(irp)->MajorFunction==IRP_MJ_CLEANUP;
  NTSTATUS s=STATUS_DEVICE_BUSY;NdisAcquireSpinLock(&a->lock);
- if(a->closing)s=STATUS_DEVICE_NOT_READY;
- else if(!a->combo.request){
-  a->combo.request=irp;
-  if(!a->busy&&queue_work(a)){a->combo.request=NULL;s=STATUS_INSUFFICIENT_RESOURCES;}
-  else {IoMarkIrpPending(irp);s=STATUS_PENDING;}
+ if(a->closing)s=cleanup?STATUS_SUCCESS:STATUS_DEVICE_NOT_READY;
+ else if(!a04_combo_requests_put(&a->combo.requests,irp,cleanup)){
+  if(!a->busy&&queue_work(a)){
+   if(cleanup){
+    /* Never lose cleanup behind a full normal slot or work-item OOM.
+     * Existing poll DPC retries; Halt drains this slot after joining DPCs. */
+    NdisResetEvent(&a->idle);IoMarkIrpPending(irp);s=STATUS_PENDING;
+   }else {a->combo.requests.normal=NULL;s=STATUS_INSUFFICIENT_RESOURCES;}
+  }else {IoMarkIrpPending(irp);s=STATUS_PENDING;}
  }
  NdisReleaseSpinLock(&a->lock);return s;
 }
@@ -428,7 +441,11 @@ static void close_worker(struct a04_ndis_runtime *a)
  a04_combo_unpublish(a);
 #endif
  NdisAcquireSpinLock(&a->lock);a->closing=1;NdisReleaseSpinLock(&a->lock);
- (void)KeCancelTimer(&a->timer);KeFlushQueuedDpcs();while(!NdisWaitEvent(&a->idle,1000)){}
+ (void)KeCancelTimer(&a->timer);KeFlushQueuedDpcs();
+#if A04_WIFI_BT_BROKER
+ a04_combo_finish_queued(a);
+#endif
+ while(!NdisWaitEvent(&a->idle,1000)){}
  NdisAcquireSpinLock(&a->lock);NdisReleaseSpinLock(&a->lock);
 }
 static void cleanup(struct a04_ndis_runtime *a)
