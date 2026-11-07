@@ -20,7 +20,7 @@ void SdCheckpoint(PCWSTR value,ULONG stage,NTSTATUS status,BOOLEAN complete)
 {
  struct record r;UNICODE_STRING name;
  if(!key||KeGetCurrentIrql()!=PASSIVE_LEVEL)return;
- RtlZeroMemory(&r,sizeof(r));r.size=sizeof(r);r.schema=1;r.driver_revision=5;r.sequence=(ULONG)InterlockedIncrement(&sequence);
+ RtlZeroMemory(&r,sizeof(r));r.size=sizeof(r);r.schema=1;r.driver_revision=6;r.sequence=(ULONG)InterlockedIncrement(&sequence);
  r.stage=stage;r.status=(ULONG)status;r.complete=complete;r.time_100ns=KeQueryInterruptTime();RtlInitUnicodeString(&name,value);
  (void)ZwSetValueKey(key,&name,0,REG_BINARY,&r,sizeof(r));
 }

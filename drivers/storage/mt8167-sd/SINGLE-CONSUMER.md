@@ -1,6 +1,6 @@
-# SD5: 専用consumerと有界cancel-safe queue
+# SD6: 専用consumerと有界cancel-safe queue
 
-SD4 source16ed4f8と署名tupleは凍結。SD5は別branchの後続候補であり、trial47 Code31や
+SD4 source16ed4f8と署名tupleは凍結。SD6は別branchの後続候補であり、trial47 Code31や
 初回DIFのE0000204の原因修正とは主張しない。BT/USB/親1010/ACPI/eMMC/Audioは非編集。
 
 ## 実処理と所有権
@@ -47,7 +47,7 @@ D0Exit成功時だけ従来のカードbarrier/PIO reset/ReleaseQuiescentを行�
 
 ## 版とcheckpoint
 
-INFは2026.11.7.5。NativeCheckpointはSD4と同じ40byte/schema1、driver_revision=5。
+INFは2026.11.7.6。NativeCheckpointはSD4と同じ40byte/schema1、driver_revision=6。
 Add stage4=IoCsqInitializeExを追加。Device/TimerのPassive指定は許可済みのため維持する。
 consumer thread生成はAddでなくD0Entryであり、SD4のfirstAdd実結果と混同しない。
 新たなWDF work itemや明示WorkItem ExecutionLevelは追加しない。
@@ -65,3 +65,14 @@ consumer thread生成はAddでなくD0Entryであり、SD4のfirstAdd実結果�
 既存SD protocol fixtureをまとめてASan/UBSanで確認する。CSQ/電源競合の実Windows動作は
 WDK compile/linkでは証明しない。新しい大量のmock/test fileや単独実機試験を追加しない。
 実機はmainの一括tupleのみ。回収成功やfixture通過をSD列挙/RW成功と報告しない。
+
+
+## 起動とsupplier喪失の競合
+
+supplier喪失をFDO寿命中のsticky flagにし、ConsumerStartはthread生成の前後で
+surprise/supplier_lost/stopをgate下で検証する。thread生成中に届いた停止通知を
+closing=0で上書きして受付を再開しない。喪失後D0EntryもHW操作前に実失敗を返す。
+flagを消す自動retryは追加しない。
+
+初版INF5/sourcefdd8f3dは実WDK署名まで完了したが、この起動競合の修正でSYSが変わるため
+最終候補をINF6へ上げる。同名同版異SYSを作らない。SD4は変更しない。

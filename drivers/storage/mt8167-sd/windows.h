@@ -16,7 +16,7 @@ struct sd_host {
  IO_CSQ csq;KSPIN_LOCK queue_lock;LIST_ENTRY pending,completions;
  KEVENT consumer_wake,hardware_idle;HANDLE consumer_thread;PIO_WORKITEM completion_item;
  LONG hardware_users;BOOLEAN consumer_online,consumer_stop,completion_scheduled;
- volatile LONG closing,present,generation,attention,ejected,inflight,surprised,blocked,absent_seen,claimed,child_online;
+ volatile LONG closing,present,generation,attention,ejected,inflight,surprised,blocked,absent_seen,claimed,child_online,supplier_lost;
  FAST_MUTEX power_relations_lock;WDFIOTARGET power_target;PDEVICE_OBJECT supplier;struct a04_sd_power_interface power;ULONG power_token;BOOLEAN power_valid;
  BOOLEAN had_d0,quiescing;LONG card_generation,run_generation;
  PIRP active_irp;struct a04_sd_card card;struct a04_sd_ops ops;

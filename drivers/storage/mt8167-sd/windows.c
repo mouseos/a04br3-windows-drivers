@@ -104,6 +104,7 @@ NTSTATUS SdRelease(WDFDEVICE device,WDFCMRESLIST resources)
 static NTSTATUS d0_impl(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 {
  struct sd_host *h=SdHost(device);ULONG proof=0,present=0;UNREFERENCED_PARAMETER(previous);
+ if(h->surprised||h->supplier_lost)return STATUS_DEVICE_NOT_CONNECTED;
  NTSTATUS status=SdAcpi(h,"SDCF",&proof);if(!NT_SUCCESS(status))return status;
  if(proof!=1)return STATUS_DEVICE_CONFIGURATION_ERROR;
  status=SdAcpi(h,"SDCD",&present);if(!NT_SUCCESS(status)||present>1)return NT_SUCCESS(status)?STATUS_DEVICE_DATA_ERROR:status;

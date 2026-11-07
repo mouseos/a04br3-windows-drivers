@@ -109,14 +109,22 @@ NTSTATUS SdConsumerStart(struct sd_host *h)
  OBJECT_ATTRIBUTES a;NTSTATUS status;KIRQL irql;
  if(h->consumer_thread||h->hardware_users)return STATUS_INVALID_DEVICE_STATE;
  if(!h->completion_item){h->completion_item=IoAllocateWorkItem(WdfDeviceWdmGetDeviceObject(h->device));if(!h->completion_item)return STATUS_INSUFFICIENT_RESOURCES;}
- KeAcquireSpinLock(&h->queue_lock,&irql);h->consumer_stop=FALSE;KeReleaseSpinLock(&h->queue_lock,irql);
+ KeAcquireSpinLock(&h->queue_lock,&irql);
+ if(h->surprised||h->supplier_lost){KeReleaseSpinLock(&h->queue_lock,irql);return STATUS_DEVICE_NOT_CONNECTED;}
+ h->consumer_stop=FALSE;KeReleaseSpinLock(&h->queue_lock,irql);
  InitializeObjectAttributes(&a,NULL,OBJ_KERNEL_HANDLE,NULL,NULL);WdfObjectReference(h->device);
  status=PsCreateSystemThread(&h->consumer_thread,THREAD_ALL_ACCESS,&a,NULL,NULL,consumer,h);
  if(!NT_SUCCESS(status)){
   h->consumer_thread=NULL;WdfObjectDereference(h->device);
   KeAcquireSpinLock(&h->queue_lock,&irql);h->consumer_stop=TRUE;KeReleaseSpinLock(&h->queue_lock,irql);return status;
  }
- KeAcquireSpinLock(&h->queue_lock,&irql);h->consumer_online=TRUE;InterlockedExchange(&h->closing,0);KeReleaseSpinLock(&h->queue_lock,irql);
+ KeAcquireSpinLock(&h->queue_lock,&irql);
+ /* A removal/lost-supplier callback may have closed admission while the
+  * thread was being created. Never reopen over that terminal notification. */
+ if(h->consumer_stop||h->surprised||h->supplier_lost){
+  KeReleaseSpinLock(&h->queue_lock,irql);KeSetEvent(&h->consumer_wake,IO_NO_INCREMENT,FALSE);return STATUS_DEVICE_NOT_CONNECTED;
+ }
+ h->consumer_online=TRUE;InterlockedExchange(&h->closing,0);KeReleaseSpinLock(&h->queue_lock,irql);
  return STATUS_SUCCESS;
 }
 void SdStopAdmission(struct sd_host *h)
