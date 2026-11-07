@@ -4,7 +4,7 @@ $ErrorActionPreference='Stop'
 if(!$EnableCandidate){throw 'Explicit native factory checkpoint opt-in required'}
 $root=(& git -C $PSScriptRoot rev-parse --show-toplevel)
 if(@(& git -C $root status --porcelain).Count){throw 'Clean fixed source required'}
-$allowed=@('drivers/gpu/mt8167/wddm-render/miniport.c','drivers/gpu/mt8167/wddm-render/query_adapter.c','drivers/gpu/mt8167/wddm-render/ge8300-render.inf','drivers/gpu/mt8167/wddm-render/build-poststart-wdk81.ps1','drivers/gpu/mt8167/wddm-render/POSTSTART.md')
+$allowed=@('drivers/gpu/mt8167/vendor_m1_11/native_factory_checkpoint.h','drivers/gpu/mt8167/wddm-render/miniport.c','drivers/gpu/mt8167/wddm-render/query_adapter.c','drivers/gpu/mt8167/wddm-render/ge8300-render.inf','drivers/gpu/mt8167/wddm-render/build-poststart-wdk81.ps1','drivers/gpu/mt8167/wddm-render/POSTSTART.md')
 foreach($p in @(& git -C $root diff --name-only 470f121a8078ea92234c3778fbd2812a5c606b3e HEAD)){if($p -notin $allowed){throw 'Unreviewed post-start source change'}}
 function Verify($p,$h){if((Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant() -ne $h){throw 'Pinned build input mismatch'}}
 Verify "$KernelDirectory\ge8300-pair-kmd.lib" 'f9850487f2b634a23f6321f5e8689091630d3835878cc1bb3aa9a2d49e5817ac'
