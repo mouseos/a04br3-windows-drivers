@@ -11,6 +11,8 @@ $pioSource = Join-Path $PSScriptRoot '..\..\drivers\storage\mt8167-msdc\pio.c'
 $driver = Join-Path $output 'miniport.sys'
 $extraObjects = @()
 $probeDefines = @()
+if ($env:A04_MSDC_VERBOSE_IO_TRACE -and $env:A04_MSDC_VERBOSE_IO_TRACE -notin @('0','1')) { throw 'A04_MSDC_VERBOSE_IO_TRACE must be 0 or 1' }
+if ($env:A04_MSDC_VERBOSE_IO_TRACE -eq '1') { $probeDefines += '-DA04_MSDC_VERBOSE_IO_TRACE=1' }
 if ($env:A04_DMA_POLL_TRACE -eq '1') {
     if ($env:A04_DMA_PROBE -ne '1') { throw 'DMA poll tracing requires A04_DMA_PROBE=1' }
     $probeDefines += '-DA04_DMA_POLL_TRACE'

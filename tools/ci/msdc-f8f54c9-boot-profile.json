@@ -1,0 +1,24 @@
+{
+  "source_commit": "f8f54c9b162cc0b9cc342fb0dc94953c1f59cae5",
+  "signed_sys_sha256": "fb4d168baa3d8ec8297c1fe33b195a9e1af85a79bf4f4267103b677bbd24fa2a",
+  "driver_version": "0.0.1.7",
+  "flags": {
+    "A04_DMA_POLL_TRACE": "0",
+    "A04_DMA_PROBE": "1",
+    "A04_PASSIVE_IO": "1",
+    "A04_READONLY_DISK_PROBE": "1",
+    "A04_BOOT_EXPERIMENT": "1",
+    "A04_BOOT_PASSIVE_EXPERIMENT": "1",
+    "A04_ENABLE_WRITES": "1",
+    "A04_SCRATCH_IO": "0",
+    "A04_SCRATCH_LBA": "0",
+    "A04_SERIAL_QUEUE_EXPERIMENT": "1",
+    "A04_ISOLATED_REQUEST_EXPERIMENT": "1",
+    "A04_ISOLATED_RESET_TEST": "0",
+    "A04_DMA_DISK_PROBE": "1",
+    "A04_VIRTUAL_BOUNCE_EXPERIMENT": "1",
+    "A04_EMMC_IDENTITY_HANDOFF": "1",
+    "A04_DMA_WRITE_TEST": "0",
+    "A04_DMA_TEST_LBA": "0"
+  }
+}

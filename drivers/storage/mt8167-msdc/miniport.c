@@ -5,6 +5,7 @@
 #include <ntddscsi.h>
 #include "pio.h"
 #include "io_gate.h"
+#include "io_trace.h"
 #if defined(A04_PASSIVE_IO) && (!defined(A04_READONLY_DISK_PROBE) || (defined(A04_ENABLE_WRITES) && !defined(A04_SCRATCH_IO) && !defined(A04_BOOT_PASSIVE_EXPERIMENT)))
 #error A04_PASSIVE_IO requires a diagnostic disk and only allows bounded scratch writes
 #endif
@@ -710,8 +711,10 @@ static BOOLEAN A04BuildIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 {
     struct a04_request_extension *r = (struct a04_request_extension *)request->SrbExtension;
     struct a04_probe_extension *probe = (struct a04_probe_extension *)extension;
+#if A04_MSDC_VERBOSE_IO_TRACE
     A04Trace("A04WIN BuildIo fn="); A04TraceHex(request->Function);
     A04Trace(" opcode="); A04TraceHex(request->Cdb[0]); A04Trace("\n");
+#endif
     if (!r) {
         request->SrbStatus = SRB_STATUS_ERROR;
         StorPortNotification(RequestComplete, extension, request);
@@ -725,7 +728,9 @@ static BOOLEAN A04BuildIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         if (StorPortGetSystemAddress(extension, request, &r->read_buffer) != STOR_STATUS_SUCCESS)
             r->read_buffer = NULL;
     }
+#if A04_MSDC_VERBOSE_IO_TRACE
     A04Trace("A04WIN BuildIo ready\n");
+#endif
     return TRUE;
 }
 
@@ -753,6 +758,10 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
     ULONG available = request->DataTransferLength, i;
     UCHAR opcode = request->Cdb[0];
     BOOLEAN trace = ++probe->requests <= 96 || (probe->requests & 127u) == 0;
+#if !A04_MSDC_VERBOSE_IO_TRACE
+    /* Preserve the request counter even when routine UART output is off. */
+    trace = FALSE;
+#endif
     if (trace) { A04Trace("A04WIN StartIo fn="); A04TraceHex(request->Function);
         A04Trace(" opcode="); A04TraceHex(opcode); A04Trace("\n"); }
     request->SrbStatus = SRB_STATUS_SUCCESS;
@@ -824,10 +833,12 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
             struct a04_msdc_io io = {probe, A04Read32, A04Read8, A04Write32};
             ULONG interrupts = A04Read32(probe, 0x010), failure = 0, j;
 #ifdef A04_ENABLE_WRITES
+#if A04_MSDC_VERBOSE_IO_TRACE
             if (result.action == A04_SCSI_WRITE &&
                 a04_gpt_guard_range(probe->esp_first, probe->esp_last,
                                     result.blocks.lba, result.blocks.block_count))
                 { trace = TRUE; A04Trace("A04WIN ESP write\n"); }
+#endif
 #endif
             if (trace) { A04Trace("A04WIN blocks lba="); A04TraceHex((ULONG)result.blocks.lba);
                 A04Trace(" count="); A04TraceHex(result.blocks.block_count); A04Trace("\n"); }
