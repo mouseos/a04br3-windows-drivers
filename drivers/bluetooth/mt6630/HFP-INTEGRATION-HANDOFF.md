@@ -170,3 +170,25 @@ timer retryを足さない。通知link自体はruntimeにのみ保持し、ロ�
 f6b7258の初回WDK compileでIoGetDeviceAttachmentBaseRefの宣言header不足を検出したため、
 公式DDI指定どおりBT-private matcher headerをntifs.hへ修正した。SDKやDDI定義を自作せず、
 同commitからSYSは生成されていない。INF2004の最終buildは後続固定sourceを用いる。
+
+## 固定buildと回収結果
+
+raw driver source `f74413fc78d1ff4f446d752b60744e61b084f03c`、INF2004。
+実WDK8.1 ARM32で全BT/common TU compile、SYS link、HFP5TU archive、
+SYS/CAT SHA256署名とSYS/INF catalog membership検証を通過した。
+途中2回はcompileエラーで停止しており、2004の別SYS/署名tupleは生成していない。
+
+root内回収先:
+`port/xnu/out/windows-rt-bt-hfp-f74413f-signed/mt6630-bt-hfp-f74413f-signed.zip`
+
+ZIP SHA256: `3fdc70366b83a81b0d2b9030e7ab59885fc01a62d55000280244486e11c42b1d`
+
+署名SYS SHA256: `994c9579ce4a7d5e55925f5b5521a12527a9754bf96a4727bce7e267379a8127`
+
+回収manifest全11filesのhash一致を確認した。署名ZIPに親は含めず、Raman親v2受入れは
+未結合。標準stack列挙/HFP接続/PCM設定/DMA drain/実音声は未検証・未資格のまま。
+旧63c32固定Audio helperで新BTが結合済みとは扱わない。
+
+限定確認は既存transport regressionの時計入力更新と、下位SDIOの時間消費が所有権deadlineを
+超える一条件だけを追加してASan/UBSanで実行した。失敗-2がinit一般失敗に上書きされない
+ことを確認。新しい模擬test fileや多数の小試験を追加していない。

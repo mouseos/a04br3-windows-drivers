@@ -20,7 +20,7 @@ static int transfer(void *context,uint32_t arg,void *buffer,unsigned length)
  struct fixture *s=context;unsigned addr=(arg>>9)&0x1ffff;uint8_t *p=buffer;
  assert(((arg>>28)&7)==2);
  if(!(arg>>31)){
-  if(addr==4){a04_wmt_put32(p,0x100);return 0;}
+  if(addr==4){if(s->reject==3)s->now+=600001; a04_wmt_put32(p,0x100);return 0;}
   if(addr==0x10){a04_wmt_put32(p,s->length?(s->length<<16)|0x12:0);return 0;}
   assert(addr==0x1c&&s->length);memcpy(p,s->response,length);s->length=0;return 0;
  }
@@ -65,5 +65,6 @@ int main(void)
  assert(!a04_bt_disable(&bt)&&!bt.enabled&&!bt.ready&&bt.version_valid);
  init();f.reject=1;assert(a04_bt_initialize(&bt,f.nvram)&&!bt.ready&&bt.failed&&!bt.version_sent);
  init();f.reject=2;assert(a04_bt_initialize(&bt,f.nvram)&&!bt.version_valid&&bt.version_sent&&bt.version_complete&&bt.version_status==0x0c);
+ init();f.reject=3;assert(a04_bt_initialize(&bt,f.nvram)&&bt.failed==-2&&!bt.ready&&!bt.version_sent);
  puts("Synthetic MT6630 BT init, aggregate notification, fragmented H4 and failure propagation: OK");return 0;
 }
