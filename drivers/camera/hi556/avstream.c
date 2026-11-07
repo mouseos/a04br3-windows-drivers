@@ -5,6 +5,11 @@
 #define CINTERFACE
 #define COBJMACROS
 #include <ntddk.h>
+#include <windef.h>
+#define NOBITMAP
+#include <mmreg.h>
+#undef NOBITMAP
+#include <unknown.h>
 #include <ks.h>
 #include <ksmedia.h>
 #include "capture_wire.h"

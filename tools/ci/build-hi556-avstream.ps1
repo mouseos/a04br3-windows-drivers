@@ -39,7 +39,7 @@ try {
 } finally {$env:TEMP=$priorTemp;$env:TMP=$priorTmp;$env:RUNNER_TEMP=$priorRunner}
 [ordered]@{
  status='avstream-capture-candidate-not-hardware-validated';source_commit=$commit;source_dirty=$false
- version='0.0.1.0';recipe_sha256=(Hash $PSCommandPath);critical_flags=@{A04_HI556_AVSTREAM_EXPERIMENT=$flag}
+ version='0.0.1.0';source_files=@(foreach($name in @('avstream.c','frame_codec.c','frame_codec.h','capture_wire.h','capture.h','hi556-avstream.inf')){@{path=$name;sha256=(Hash "$root\drivers\camera\hi556\$name")}});recipe_sha256=(Hash $PSCommandPath);critical_flags=@{A04_HI556_AVSTREAM_EXPERIMENT=$flag}
  required_raw_owner_version='0.0.1.3';raw_status_schema=3;model='rear HI556 chip0556'
  avstream_api='WDK8.1 KsInitializeDriver and pin-centric PASSIVE processing'
  geometry=@{width=648;height=486;stride=1944;format='bottom-up RGB24';maximum_software_fps=1;hardware_fps_measured=$false}
