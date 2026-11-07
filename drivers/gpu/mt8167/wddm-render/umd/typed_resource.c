@@ -1,6 +1,35 @@
 /* SPDX-License-Identifier: MIT */
 #include "typed_device.h"
 #include "../memory.h"
+/* Internal development trace only; no resource/handle ABI change. Log the
+ * real runtime descriptor before validation so the staging failure is not
+ * confused with KMD allocation failure or a rejected Map operation. */
+void geo_typed_resource_trace(D3D10DDI_HDEVICE,const char *,UINT);
+static void trace_descriptor(D3D10DDI_HDEVICE h,UINT operation,const D3D11DDIARG_CREATERESOURCE *p) {
+ geo_typed_resource_trace(h,"RESOURCE_OPERATION",operation);
+ if(!p){geo_typed_resource_trace(h,"RESOURCE_NULL_DESCRIPTOR",1);return;}
+ geo_typed_resource_trace(h,"RESOURCE_DIMENSION",p->ResourceDimension);
+ geo_typed_resource_trace(h,"RESOURCE_USAGE",p->Usage);
+ geo_typed_resource_trace(h,"RESOURCE_BIND",p->BindFlags);
+ geo_typed_resource_trace(h,"RESOURCE_MAP_FLAGS",p->MapFlags);
+ geo_typed_resource_trace(h,"RESOURCE_MISC",p->MiscFlags);
+ geo_typed_resource_trace(h,"RESOURCE_FORMAT",p->Format);
+ geo_typed_resource_trace(h,"RESOURCE_BYTE_STRIDE",p->ByteStride);
+ geo_typed_resource_trace(h,"RESOURCE_DECODER_TYPE",p->DecoderBufferType);
+ geo_typed_resource_trace(h,"RESOURCE_MIP_LEVELS",p->MipLevels);
+ geo_typed_resource_trace(h,"RESOURCE_ARRAY_SIZE",p->ArraySize);
+ geo_typed_resource_trace(h,"RESOURCE_SAMPLES",p->SampleDesc.Count);
+ geo_typed_resource_trace(h,"RESOURCE_SAMPLE_QUALITY",p->SampleDesc.Quality);
+ if(p->pMipInfoList){
+  const D3D10DDI_MIPINFO *m=p->pMipInfoList;
+  geo_typed_resource_trace(h,"RESOURCE_TEXEL_WIDTH",m->TexelWidth);
+  geo_typed_resource_trace(h,"RESOURCE_TEXEL_HEIGHT",m->TexelHeight);
+  geo_typed_resource_trace(h,"RESOURCE_TEXEL_DEPTH",m->TexelDepth);
+  geo_typed_resource_trace(h,"RESOURCE_PHYSICAL_WIDTH",m->PhysicalWidth);
+  geo_typed_resource_trace(h,"RESOURCE_PHYSICAL_HEIGHT",m->PhysicalHeight);
+  geo_typed_resource_trace(h,"RESOURCE_PHYSICAL_DEPTH",m->PhysicalDepth);
+ }
+}
 static struct geo_typed_resource *resource_handle(D3D10DDI_HRESOURCE h) {
  return h.pDrvPrivate?((struct geo_typed_handle *)h.pDrvPrivate)->object:NULL;
 }
@@ -41,7 +70,9 @@ static HRESULT desc_valid(const D3D11DDIARG_CREATERESOURCE *p) {
  return S_OK;
 }
 static SIZE_T APIENTRY resource_size(D3D10DDI_HDEVICE h,const D3D11DDIARG_CREATERESOURCE *p) {
- HRESULT hr=desc_valid(p);if(!geo_typed_device(h))return 0;if(FAILED(hr)){geo_typed_error(h,hr);return 0;}return sizeof(struct geo_typed_handle);
+ HRESULT hr=desc_valid(p);if(!geo_typed_device(h))return 0;
+ trace_descriptor(h,1,p);geo_typed_resource_trace(h,"RESOURCE_SIZE_VALIDATION",(UINT)hr);
+ if(FAILED(hr)){geo_typed_error(h,hr);return 0;}return sizeof(struct geo_typed_handle);
 }
 static HRESULT map_backend(struct geo_typed_resource *r,D3D10_DDI_MAP mode,UINT flags,D3D10DDI_MAPPED_SUBRESOURCE *out) {
  D3DDDIARG_LOCK q;HRESULT hr;
@@ -60,6 +91,7 @@ static void APIENTRY create_resource(D3D10DDI_HDEVICE h,const D3D11DDIARG_CREATE
  struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_resource *r;D3DDDIARG_CREATERESOURCE q;D3DDDI_SURFACEINFO surf;HRESULT hr;
  if(!d||!handle.pDrvPrivate){geo_typed_error(h,E_INVALIDARG);return;}
  ((struct geo_typed_handle *)handle.pDrvPrivate)->object=NULL;
+ trace_descriptor(h,2,p);
  hr=desc_valid(p);if(FAILED(hr)){geo_typed_error(h,hr);return;}
  r=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*r));if(!r){geo_typed_error(h,E_OUTOFMEMORY);return;}
  r->magic=GEO_TYPED_RESOURCE_MAGIC;r->refs=1;r->device=d;r->usage=p->Usage;r->bind=p->BindFlags;r->map_flags=p->MapFlags;r->format=p->Format;r->dimension=p->ResourceDimension;
@@ -69,7 +101,10 @@ static void APIENTRY create_resource(D3D10DDI_HDEVICE h,const D3D11DDIARG_CREATE
  q.Pool=(p->BindFlags&D3D10_DDI_BIND_RENDER_TARGET)?D3DDDIPOOL_VIDEOMEMORY:D3DDDIPOOL_SYSTEMMEM;
  q.hResource=runtime.handle;q.pSurfList=&surf;q.SurfCount=q.MipLevels=1;q.Rotation=D3DDDI_ROTATION_IDENTITY;
  q.Flags.VertexBuffer=r->dimension==D3D10DDIRESOURCE_BUFFER;q.Flags.RenderTarget=(p->BindFlags&D3D10_DDI_BIND_RENDER_TARGET)!=0;
+ geo_typed_resource_trace(h,"RESOURCE_BACKEND_POOL",q.Pool);
+ geo_typed_resource_trace(h,"RESOURCE_RUNTIME_HANDLE_PRESENT",runtime.handle!=NULL);
  hr=d->memory.pfnCreateResource(&d->backend,&q);
+ geo_typed_resource_trace(h,"RESOURCE_BACKEND_CREATE_HRESULT",(UINT)hr);
  if(FAILED(hr)){HeapFree(GetProcessHeap(),0,r);geo_typed_error(h,hr);return;}
  r->backend=q.hResource;r->next=d->resources;d->resources=r;((struct geo_typed_handle *)handle.pDrvPrivate)->object=r;
  if(p->pInitialDataUP){
