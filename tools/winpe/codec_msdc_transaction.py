@@ -4,6 +4,7 @@ from pathlib import Path, PureWindowsPath
 from engine_io_package import SignedPackage, check_inf, require_armnt
 from private_hardware_probe_input import sha
 PROFILE='codec1026-msdc-quiet-render313-v3'
+OBSERVE='codec-render-observe-fresh92-v1'
 CERT='BCBF6C456C6F0DD0818434763B189488FBF13570'
 CAPTURE='2d6231727e8ed72b6d7dca4148debc101ac5aeef'
 MSDC='e2db926f1ddd12b4cae341a7df50f832e20c16e5'
@@ -45,7 +46,11 @@ def version(v):
 def datevalue(s):return int((datetime.datetime.strptime(s,'%m/%d/%Y')-datetime.datetime(1601,1,1)).total_seconds())*10000000
 def load(path,root,*,draft=False):
  spec=json.loads(path.read_text(encoding='utf-8-sig'))
- if set(spec)!={'schema','transaction','backup_manifest','backup_manifest_sha256','bindings','boot','gpu_client','packages'} or spec['schema']!=1 or spec['transaction']!=PROFILE:raise ValueError('codec/eMMC固定map schema不一致')
+ observe=spec.get('transaction')==OBSERVE
+ if observe:
+  from codec_observe import check_input,load_clients
+  check_input(spec,root)
+ if set(spec)!=({'schema','transaction','backup_manifest','backup_manifest_sha256','bindings','boot','gpu_client','packages'}|({'capture_client'} if observe else set())) or spec['schema']!=1 or spec['transaction'] not in (PROFILE,OBSERVE):raise ValueError('codec/eMMC固定map schema不一致')
  if set(spec['packages'])!={'capture','emmc','parent1015','render312','render313'}:raise ValueError('固定4署名inputが必要です')
  selected={};components={};certs={};packages={}
  for key,source in [('capture',CAPTURE),('emmc',MSDC),('parent1015',BASE_PARENT)]:
@@ -92,7 +97,10 @@ def load(path,root,*,draft=False):
   components[role]=item;components[role]['binary_source_commit']=p.record['source_commit'];packages[role]=item
  client=packages['capture'].file('client/'+CLIENT);selected['clients/'+CLIENT]=client
  from codec_render313_package import load_clear_client
- gpu_client,gpu_client_cert,gpu_client_manifest=load_clear_client(spec['gpu_client'],root)
+ gpu_client,gpu_client_cert,gpu_client_manifest=load_clear_client(spec['gpu_client'],root) if not observe else load_clients(spec,root)[1]
+ if observe:
+  client,client_cert,client_manifest=load_clients(spec,root)[0]
+  selected['clients/'+CLIENT]=client;selected['capture-client-development.cer']=client_cert;certs['capture_client']=client_cert.read_bytes()
  selected['clients/'+GPU_CLIENT]=gpu_client;selected['gpu-client-development.cer']=gpu_client_cert;certs['gpu_client']=gpu_client_cert.read_bytes()
 
  from codec_returned_baseline import load_boot
@@ -103,7 +111,8 @@ def load(path,root,*,draft=False):
  from codec_returned_baseline import load_returned
  backup,record,selection,retained_boot,bindings_sha=load_returned(spec,root,TARGETS,RETAINED)
  actual={f['source_path'].replace('\\','/').lower():f for f in record['files']}
- wanted={**{TARGETS[k][2]+'.sys':v[1] for k,v in BASELINES.items()},**RETAINED_FILES}
+ baselines=BASELINES if not observe else {r:(t[4],packages[r]['files'][r+'/'+t[2]+'.sys']) for r,t in TARGETS.items()}
+ wanted={**{TARGETS[k][2]+'.sys':v[1] for k,v in baselines.items()},**RETAINED_FILES}
  oldfiles={}
  for name,digest in wanted.items():
   item=actual.get(('windows/system32/' if name=='ge8300-umd.dll' else 'windows/system32/drivers/')+name)
@@ -111,13 +120,15 @@ def load(path,root,*,draft=False):
   if not item or item['sha256'].lower()!=digest:raise ValueError('返却fresh配置SYS/FW/DLL不一致: '+name)
   oldfiles[name]={'sha256':digest,'backup_path':item['backup_path'],'bytes':item['bytes']}
  # Read capture bytes already hash-checked by backup_check; never load SYSTEM.
- policy={'schema':1,'mode':'engine_fixed_deferred_v1','returned_selection':selection,'bindings_sha256':bindings_sha,'retained_boot':retained_boot,'transaction':PROFILE,'staging_profile':'normal-deferred','backup_manifest_sha256':sha(backup),'recovery_boot_id':record['recovery_boot_id'],'packages':{r:packages[r] for r in TARGETS},'clients':{CLIENT:sha(client),GPU_CLIENT:sha(gpu_client)},'gpu_client_manifest_sha256':gpu_client_manifest,'client_arguments':['','--hardware=PowerVR'],'baseline':{r:{'version_u64':selection[r]['version_u64'],'date_filetime':selection[r]['date_filetime'],'sys_sha256':h} for r,(v,h) in BASELINES.items()},'retained_gpu_source_commit':GPU_SOURCE,'retained_gpu_signed_manifest_sha256':sha(gm),'retained':{k:list(v) for k,v in RETAINED.items()},'retained_files':RETAINED_FILES,'installed_before':oldfiles,'existing_parent_flags':oldflags,'added_parent_flags':{'A04_SHARED_CAPTURE':'1'},'msdc_baseline_source_commit':BASE_MSDC,'msdc_baseline_sys_sha256':BASELINES['emmc'][1],'msdc_candidate_sys_sha256':packages['emmc']['files']['emmc/mt8167-msdc.sys'],'dma_poll_trace_changed':False,'physical_operations_authorized':False,'planned_reboot_count':1}
+ policy={'schema':1,'mode':'engine_fixed_deferred_v1','returned_selection':selection,'bindings_sha256':bindings_sha,'retained_boot':retained_boot,'transaction':PROFILE,'staging_profile':'normal-deferred','backup_manifest_sha256':sha(backup),'recovery_boot_id':record['recovery_boot_id'],'packages':{r:packages[r] for r in TARGETS},'clients':{CLIENT:sha(client),GPU_CLIENT:sha(gpu_client)},'gpu_client_manifest_sha256':gpu_client_manifest,'client_arguments':['','--hardware=PowerVR'],'baseline':{r:{'version_u64':selection[r]['version_u64'],'date_filetime':selection[r]['date_filetime'],'sys_sha256':h} for r,(v,h) in baselines.items()},'retained_gpu_source_commit':GPU_SOURCE,'retained_gpu_signed_manifest_sha256':sha(gm),'retained':{k:list(v) for k,v in RETAINED.items()},'retained_files':RETAINED_FILES,'installed_before':oldfiles,'existing_parent_flags':oldflags,'added_parent_flags':{'A04_SHARED_CAPTURE':'1'},'msdc_baseline_source_commit':BASE_MSDC,'msdc_baseline_sys_sha256':BASELINES['emmc'][1],'msdc_candidate_sys_sha256':packages['emmc']['files']['emmc/mt8167-msdc.sys'],'dma_poll_trace_changed':False,'physical_operations_authorized':False,'planned_reboot_count':1}
+ if observe:
+  policy.update(transaction=OBSERVE,mode='engine_fixed_observe_v1',staging_profile='observe-only',planned_reboot_count=0,pnp_install_count=0,capture_client_manifest_sha256=client_manifest)
  return selected,components,certs,policy
 
 def generate(policy):
- if policy.get('transaction')!=PROFILE or not policy.get('recovery_boot_id') or not policy.get('backup_manifest_sha256'):raise ValueError('返却fresh結合前に実行可能headerを生成してはいけません')
+ if policy.get('transaction') not in (PROFILE,OBSERVE) or not policy.get('recovery_boot_id') or not policy.get('backup_manifest_sha256'):raise ValueError('返却fresh結合前に実行可能headerを生成してはいけません')
  from engine_deferred_policy import cbytes
- lines=['/* MT8167 codec1026 + MSDC quiet1.8; explicit returned-fresh bound. */','#define DEFERRED_CODEC_MSDC 1','#define DEFERRED_TARGET_COUNT 4','#define DEFERRED_SD_UPDATE 0','#define DEFERRED_GPU_UPDATE 0','#define DEFERRED_BRIGHTNESS_SCOPED_LOG 0','static const struct deferred_pin deferred_pins[4]={']
+ lines=['#define DEFERRED_OBSERVE_ONLY '+str(int(policy['transaction']==OBSERVE)),'/* MT8167 codec1026 + MSDC quiet1.8; explicit returned-fresh bound. */','#define DEFERRED_CODEC_MSDC 1','#define DEFERRED_TARGET_COUNT 4','#define DEFERRED_SD_UPDATE 0','#define DEFERRED_GPU_UPDATE 0','#define DEFERRED_BRIGHTNESS_SCOPED_LOG 0','static const struct deferred_pin deferred_pins[4]={']
  for r in TARGETS:
   p=policy['packages'][r];lines.append('{'+str(p['version_u64'])+'ULL,'+str(p['date_filetime'])+'ULL,{'+','.join(cbytes(v) for v in p['files'].values())+'}},')
  lines+=['};','static const struct deferred_pin codec_baselines[4]={']

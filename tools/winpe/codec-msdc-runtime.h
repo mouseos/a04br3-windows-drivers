@@ -113,3 +113,21 @@ static DWORD codec_emmc_file_reads(void)
  diagnostic_dword(L"PhysicalEmmcThroughputMeasured",0);diagnostic_dword(L"UartErrorPathExercised",0);
  pnp_record(2,0x123,error);return error;
 }
+
+#if A04_ENGINE_OBSERVE_ONLY
+static DWORD codec_archive_capture_log(void)
+{
+ static const BYTE expected[32]={0x45,0xf3,0xa9,0x7c,0xb8,0x30,0x95,0x8e,0x60,0x5c,0xc9,0x70,0x93,0xe3,0xd9,0xb1,0x83,0x1c,0xe0,0x43,0x03,0x6f,0x1c,0x65,0x03,0xab,0x77,0xac,0x06,0xb2,0xba,0x55};
+ const WCHAR *source=L"C:\\Windows\\System32\\MT8167CaptureProbe\\capture.log";
+ HANDLE file=INVALID_HANDLE_VALUE,dir=INVALID_HANDLE_VALUE;WCHAR destination[MAX_PATH];DWORD error;
+ error=hold_directory(L"C:\\Windows\\System32\\MT8167CaptureProbe",&dir);
+ if(!error)error=deferred_file(source,expected,&file);
+ if(file!=INVALID_HANDLE_VALUE)CloseHandle(file);
+ if(!error)error=path(destination,log_directory,L"previous-run91-capture.log");
+ if(!error&&!MoveFileW(source,destination))error=GetLastError(); /* destination collision refuses */
+ if(!error)error=deferred_file(destination,expected,&file);else file=INVALID_HANDLE_VALUE;
+ if(file!=INVALID_HANDLE_VALUE)CloseHandle(file);
+ if(dir!=INVALID_HANDLE_VALUE)CloseHandle(dir);
+ return error;
+}
+#endif

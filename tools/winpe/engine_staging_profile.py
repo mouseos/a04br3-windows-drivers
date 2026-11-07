@@ -3,6 +3,9 @@ import re
 NONBOOT={'PARENT','AUDIO','USB','WIFI','DISPLAY','SD'}
 
 def apply_profile(cmd,policy,backup,previous,components):
+    if policy and policy.get('transaction')=='codec-render-observe-fresh92-v1':
+        from codec_observe import staging
+        return staging(cmd,policy,backup,previous)
     if policy and policy.get('transaction')=='codec1026-msdc-quiet-render313-v3':
         from codec_msdc_transaction import staging
         return staging(cmd,policy,backup,previous)

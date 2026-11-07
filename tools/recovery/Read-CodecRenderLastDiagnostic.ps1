@@ -19,12 +19,20 @@ function Read-Mt8167CodecRenderLastDiagnostic($Root,[string]$ControlSet,[string]
    if($schema -eq 2){$names+=@('SystemVolumeFlush','SystemVolumeFlushError','CompletionResult','PnpBatchResult','InstallFailureValid','InstallFailureTarget','InstallFailureStep','AllInstallStepsSucceeded','DiagnosticArmed','RebootPending','DeferredPendingStatus','DiagnosticAttemptedStatus','RebootAttemptedStatus')}
    for($i=0;$i -lt $count;$i++){$names+=@("Node${i}HardwareId","Node${i}Before","Node${i}After")}
    for($i=0;$i -lt $clients;$i++){$names+=@("Client$i","Client${i}Stdout","Client${i}Stderr","Client${i}StdoutInfo","Client${i}StderrInfo")}
+   $names+=@('Retained0HardwareId','Retained1HardwareId','Retained2HardwareId','Mt8167MsdcFileReadBytes','Mt8167MsdcFileReadDigest','Mt8167MsdcFileReadElapsedMs','Mt8167MsdcFileReadError','PhysicalEmmcThroughputMeasured','UartErrorPathExercised')
+   if($key.GetSubKeyNames().Count -or $key.GetValueNames().Count -gt 64 -or @($key.GetValueNames()|Where-Object{$_ -cnotin $names}).Count){throw 'Unknown/bounded receipt value'}
    $ids=@('ACPI\BEN0001','MT8167\AFE','ACPI\MOU0001','ACPI\MOU0006')
    for($i=0;$i -lt $count;$i++){if($key.GetValue("Node${i}HardwareId") -cne $ids[$i]){throw 'Fixed node identity mismatch'}}
    foreach($name in $names){
     $value=$key.GetValue($name,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
     if($null -eq $value){$values[$name]=@{available=$false};continue}
     $kind=[string]$key.GetValueKind($name)
+    if($name -cmatch '^Retained([0-2])HardwareId$'){
+     $retainIds=@('MT8167\USB20','A04BR3\MT6630SDIO','ACPI\MOU0007')
+     if($kind -cne 'String' -or $value -cne $retainIds[[int]$Matches[1]]){throw 'Retained identity/type mismatch'}
+    } elseif($name -cmatch '^(Mt8167MsdcFileReadBytes|Mt8167MsdcFileReadDigest|Mt8167MsdcFileReadElapsedMs|Mt8167MsdcFileReadError|PhysicalEmmcThroughputMeasured|UartErrorPathExercised)$'){
+     if($kind -cne 'DWord'){throw 'MSDC DWORD type mismatch'}
+    }
     if($value -is [byte[]]){
      $expected=if($name -match '^Node[0-3](Before|After)$'){44}elseif($name -match '^Client[0-1]$'){28}elseif($name -match '^Client[0-1](Stdout|Stderr)Info$'){20}elseif($name -ceq 'SystemVolumeFlush'){28}else{-1}
      if($value.Length -gt 65536 -or ($expected -ge 0 -and $value.Length -ne $expected)){throw 'Fixed binary receipt length mismatch'}

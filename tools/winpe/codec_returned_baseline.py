@@ -13,7 +13,7 @@ def pinned_file(entry,root):
  if not p.is_relative_to(root.resolve()) or not p.is_file() or sha(p)!=entry['sha256']:raise ValueError('返却input path/hash不一致')
  return p
 
-def validate_selection(receipt,record,manifest_sha,targets,retained):
+def validate_selection(receipt,record,manifest_sha,targets,retained,*,observe_only=False):
  from codec_msdc_transaction import version
  if (receipt.get('source_manifest_sha256')!=manifest_sha or receipt.get('errors')!=[]
      or any(type(receipt.get(k)) is not int or receipt[k]!=0 for k in ('load_rc','unload_rc','privilege_restore_error'))):raise ValueError('native選択metadataのmanifest/load/unload/privilege不一致')
@@ -37,9 +37,10 @@ def validate_selection(receipt,record,manifest_sha,targets,retained):
   if not re.fullmatch('[0-9a-fA-F]{16}',raw):raise ValueError('native FILETIMEの8byte実値が必要です')
   date=int.from_bytes(bytes.fromhex(raw),'little')
   if not date:raise ValueError('選択dateが不明です')
-  if role=='render' and p['DriverVersion']!='0.0.3.12':raise ValueError('renderer更新基点は実選択3.12だけです')
+  if not observe_only and role=='render' and p['DriverVersion']!='0.0.3.12':raise ValueError('renderer更新基点は実選択3.12だけです')
   if role in targets:
-   if v>=version(targets[role][4]):raise ValueError('更新対象は実選択より高版が必要です')
+   if observe_only and v!=version(targets[role][4]):raise ValueError('ObserveOnly current version mismatch')
+   if not observe_only and v>=version(targets[role][4]):raise ValueError('更新対象は実選択より高版が必要です')
   elif v!=version(retained[role][2]):raise ValueError('保持版不一致: '+hwid)
   selected[role]={'hardware_id':hwid,'service':service,'version_u64':v,'date_filetime':date,'selected':p,'class_guid':row['ClassGUID']}
  return selected
@@ -54,7 +55,7 @@ def load_returned(spec,root,targets,retained):
  record=module.backup_check(backup,root)
  if record.get('unmounted') is not True or record.get('read_only') is not True or record.get('errors')!=[]:raise ValueError('完了したread-only/unmounted captureだけ結合できます')
  bindings=pinned_file(spec['bindings'],root);receipt=json.loads(bindings.read_text(encoding='utf-8-sig'))
- selection=validate_selection(receipt,record,sha(backup),targets,retained)
+ selection=validate_selection(receipt,record,sha(backup),targets,retained,observe_only=spec.get('transaction')=='codec-render-observe-fresh92-v1')
  boot,bm=load_boot(spec['boot'],root)
  return backup,record,selection,{'manifest_sha256':sha(boot),'source_commit':BOOT_SOURCE,'image_sha256':BOOT_IMAGE,'action':'preserve; never flashed by codec transaction'},sha(bindings)
 

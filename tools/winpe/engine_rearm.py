@@ -132,9 +132,14 @@ def make_plan(previous_path, backup_path, backup, components, root, allow_missin
     if 'gpu' in after:
         actual={x['source_path'].replace('\\','/').lower():x['sha256'].lower() for x in backup['files']}
         if actual.get('windows/system32/drivers/mt8167-ge8300.sys')!=next(v for k,v in before['gpu']['files'].items() if k.endswith('.sys')):raise ValueError('GPU baselineとfreshbackup実SYS hash不一致')
+    observation=None
+    if codec_policy.get('transaction')=='codec-render-observe-fresh92-v1':
+        from codec_observe import rearm_binding
+        observation=rearm_binding(previous_path,previous,backup_path,backup,components,next_probe)
     repair=sd_protocol_repair(previous,backup,backup_path,components,next_probe,root) if allow_sd_protocol_repair else None
-    changed = require_progress(before, after, backup,permit_unchanged=bool(repair))
+    changed = require_progress(before, after, backup,permit_unchanged=bool(repair or observation))
     if repair:changed.append('engine_protocol')
+    if observation:changed.append('observe_clients')
     entries = {entry['source_path'].replace('\\', '/'): entry for entry in backup['files']}
     if not {MARKER, STATE_FILES[2]}.issubset(entries):
         raise ValueError('fresh backupへ--engine-probe-stateでmarker/service.log/EXEを回収してください')
@@ -173,6 +178,7 @@ def make_plan(previous_path, backup_path, backup, components, root, allow_missin
     if len(history)>16 or any(not re.fullmatch('[0-9a-f]{64}',x) for x in history):raise ValueError('既知診断policy世代の上限/hex不一致')
     plan['diagnostic_policies']=history
     if repair:plan['protocol_repair']=repair
+    if observation:plan['observe_only']=observation
     plan['previous_service_exe_sha256'] = old_service_hash.lower()
     if components.get('brightness_client',{}).get('log_path')==r'C:\Windows\System32\MT8167EngineProbe\logs\brightness-native.log':plan['brightness_log_mode']='engine-generation-preserve-legacy-root'
     if 'gpu' in components:
@@ -205,7 +211,13 @@ def check_plan(path, expected_sha, backup_path, backup, components, native, root
         if not previous_media_path or sha(previous_media_path)!=plan['previous_media_manifest_sha256']:raise ValueError('protocol repairには元媒体hashの再照合が必要です')
         previous=json.loads(previous_media_path.read_text())
         if sd_protocol_repair(previous,backup,backup_path,components,next_probe,root)!=plan['protocol_repair']:raise ValueError('protocol repairの実snapshot/service不一致')
-    require_progress(plan['previous_packages'], plan['next_packages'], backup,permit_unchanged=bool(plan.get('protocol_repair')))
+    observation=plan.get('observe_only')
+    if observation:
+        from codec_observe import rearm_binding
+        if not previous_media_path:raise ValueError('ObserveOnly元媒体pin必須')
+        previous=json.loads(previous_media_path.read_text())
+        if rearm_binding(previous_media_path,previous,backup_path,backup,components,next_probe)!=observation:raise ValueError('ObserveOnly再arm binding不一致')
+    require_progress(plan['previous_packages'], plan['next_packages'], backup,permit_unchanged=bool(plan.get('protocol_repair') or observation))
     entries = {x['source_path'].replace('\\', '/'): x for x in backup['files']}
     if plan['old_state_files'].get(MARKER,{}).get('sha256','').lower() != hashlib.sha256(b'MT8167EngineProbe attempted\n').hexdigest():
         raise ValueError('旧markerの既知fingerprint不一致')

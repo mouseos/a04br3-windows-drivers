@@ -65,11 +65,13 @@ $policyDirectory=Join-Path $out 'deferred-policy'
 $deferredPolicy=$null
 $brightnessDefine='0'
 $codecDefine='0'
+$observeDefine='0'
 $fixedClients=@('mt6630-wlan-probe.exe',$audioName)
 $deferredIds=@('ACPI\BEN0001','MT8167\AFE','MT8167\USB20','A04BR3\MT6630SDIO','ACPI\MOU0007')
 if($deferred){
  $map=Get-Content -Raw -LiteralPath $DeferredPackageMap|ConvertFrom-Json
- if($map.transaction -eq 'codec1026-msdc-quiet-render313-v3'){$codecDefine='1';$fixedClients=@('mt8167-capture-probe.exe','ge8300-d3d-clear.exe');$deferredIds=@('ACPI\BEN0001','MT8167\AFE','ACPI\MOU0001','ACPI\MOU0006')}
+ if($map.transaction -in @('codec1026-msdc-quiet-render313-v3','codec-render-observe-fresh92-v1')){$codecDefine='1';$fixedClients=@('mt8167-capture-probe.exe','ge8300-d3d-clear.exe');$deferredIds=@('ACPI\BEN0001','MT8167\AFE','ACPI\MOU0001','ACPI\MOU0006')}
+ if($map.transaction -eq 'codec-render-observe-fresh92-v1'){$observeDefine='1'}
  if($map.gpu){
   foreach($source in @($map.gpu.baseline_source_commit,$map.gpu.candidate_source_commit)){
    if($source -notmatch '^[0-9a-f]{40}$'){throw 'GPU source pin must be a full hexadecimal commit'}
@@ -95,7 +97,7 @@ try {
  $source=Join-Path $root 'tools\winpe\mt8167-hardware-probe.c'
  $object=Join-Path $out 'hardware-probe.obj';$exe=Join-Path $out ($serviceName+'.exe')
  & clang --target=thumbv7-pc-windows-msvc -O2 -fno-builtin -fno-stack-protector -w -fms-extensions -ffreestanding `
-  "-DA04_ENGINE_CODEC_MSDC=$codecDefine" "-DA04_ENGINE_BRIGHTNESS_CLIENT=$brightnessDefine" "-DA04_ENGINE_DEFERRED_UPDATE=$deferredDefine" "-I$policyDirectory" "-DA04_HARDWARE_PROBE_ENGINE_PCM=$engineDefine" -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DNTDDI_VERSION=0x06030000 "-I$inc\um" "-I$inc\shared" -c $source -o $object
+  "-DA04_ENGINE_OBSERVE_ONLY=$observeDefine" "-DA04_ENGINE_CODEC_MSDC=$codecDefine" "-DA04_ENGINE_BRIGHTNESS_CLIENT=$brightnessDefine" "-DA04_ENGINE_DEFERRED_UPDATE=$deferredDefine" "-I$policyDirectory" "-DA04_HARDWARE_PROBE_ENGINE_PCM=$engineDefine" -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DNTDDI_VERSION=0x06030000 "-I$inc\um" "-I$inc\shared" -c $source -o $object
  if($LASTEXITCODE){throw 'ARM32 hardware service compilation failed'}
  & lld-link /subsystem:console,6.3 /machine:arm /entry:mainCRTStartup /nodefaultlib /dynamicbase /nxcompat `
   $object (Join-Path $lib 'kernel32.lib') (Join-Path $lib 'advapi32.lib') $(if($deferred){@((Join-Path $lib 'setupapi.lib'),(Join-Path $lib 'wintrust.lib'),(Join-Path $lib 'bcrypt.lib'))}) "/out:$exe"
@@ -131,7 +133,7 @@ try {
   signing_thumbprint=$signingThumbprint;target_signature_trust_verified=$false;
   audio_mode=$modeName;engine_pcm_compatible=[bool]$enginePcm;engine_pcm_auto_registration_allowed=[bool]$enginePcm;
   fixed_clients=$fixedClients;client_signatures_preserved=[bool]$enginePcm;
-  build_defines=@{A04_ENGINE_CODEC_MSDC=$codecDefine;A04_HARDWARE_PROBE_ENGINE_PCM=$engineDefine;A04_ENGINE_DEFERRED_UPDATE=$deferredDefine;A04_ENGINE_BRIGHTNESS_CLIENT=$brightnessDefine};
+  build_defines=@{A04_ENGINE_OBSERVE_ONLY=$observeDefine;A04_ENGINE_CODEC_MSDC=$codecDefine;A04_HARDWARE_PROBE_ENGINE_PCM=$engineDefine;A04_ENGINE_DEFERRED_UPDATE=$deferredDefine;A04_ENGINE_BRIGHTNESS_CLIENT=$brightnessDefine};
   registry_diagnostics=$(if($deferred){@{schema=2;maximum_targets=7;volume_flush='fixed C: once before final registry flush; no lock/dismount';fixed_key='HKLM\SYSTEM\CurrentControlSet\Services\MT8167EngineProbe\Parameters\LastDiagnostic';
    generation='canonical-policy-SHA256/Install-or-Diagnostic; CREATE_NEW only';
    brightness_log_guard='compile-time signed-policy source/log mode; legacy root retained for ccef; selected log CREATE_NEW';
@@ -143,7 +145,7 @@ try {
   system_volume_flush_source_sha256=$(if($deferred){(Get-FileHash (Join-Path $root 'tools\winpe\engine-system-volume-flush.h') -Algorithm SHA256).Hash.ToLowerInvariant()}else{$null});
   deferred_runtime_source_sha256=$(if($deferred){(Get-FileHash (Join-Path $root 'tools\winpe\engine-deferred-update.h') -Algorithm SHA256).Hash.ToLowerInvariant()}else{$null});
   deferred_policy_manifest_sha256=$(if($deferred){(Get-FileHash (Join-Path $out 'deferred-policy-manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant()}else{$null});
-  pnp_rebind=$(if($deferred){@{api='SetupDiCallClassInstaller/DIF_INSTALLDEVICE';
+  pnp_rebind=$(if($observeDefine -eq '1'){@{api='none';fixed_hardware_ids=$deferredIds;directory='System32\MT8167EngineProbe\drivers';maximum_calls_per_id=0;parent_updated=$false;parent_policy='verify-selected-version-and-installed-bytes-only';reboot_required_stops_clients=$true;catalog_signature_required=$true;problem_status='CM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatus/DEVPROP_TYPE_NTSTATUS';phases=@('observe-once');live_parent_replacement=$false;planned_reboot_count=0}}elseif($deferred){@{api='SetupDiCallClassInstaller/DIF_INSTALLDEVICE';
    fixed_hardware_ids=$deferredIds;
    directory='System32\MT8167EngineProbe\drivers';maximum_calls_per_id=1;parent_updated=$true;
    parent_policy='DI_DONOTCALLCONFIGMG-deferred-reboot-only';reboot_required_stops_clients=$true;catalog_signature_required=$true;

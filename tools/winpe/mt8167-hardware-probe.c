@@ -23,8 +23,14 @@
 #ifndef A04_ENGINE_BRIGHTNESS_CLIENT
 #define A04_ENGINE_BRIGHTNESS_CLIENT 0
 #endif
+#ifndef A04_ENGINE_OBSERVE_ONLY
+#define A04_ENGINE_OBSERVE_ONLY 0
+#endif
 #ifndef A04_ENGINE_CODEC_MSDC
 #define A04_ENGINE_CODEC_MSDC 0
+#endif
+ #if A04_ENGINE_OBSERVE_ONLY && (!A04_ENGINE_DEFERRED_UPDATE || !A04_ENGINE_CODEC_MSDC)
+#error ObserveOnly requires fixed codec four-target mode
 #endif
 #if A04_ENGINE_CODEC_MSDC && (!A04_ENGINE_DEFERRED_UPDATE || A04_ENGINE_BRIGHTNESS_CLIENT)
 #error Codec/MSDC requires dedicated deferred mode without other clients
@@ -605,12 +611,15 @@ static DWORD once(void)
 #elif A04_HARDWARE_PROBE_ENGINE_PCM
  {int halt;result=pnp_once(&halt);if(halt)goto clear_power;}
 #endif
+#if A04_ENGINE_OBSERVE_ONLY
+ result=codec_archive_capture_log();if(result)goto clear_power;
+#endif
  for(i=0;i<A04_CLIENT_COUNT;i++){
   if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){if(!result)result=ERROR_CANCELLED;break;}
   error=run_client(i);if(error&&!result)result=error;if(child_uncertain)break;
  }
 #if A04_ENGINE_DEFERRED_UPDATE
-#if A04_ENGINE_CODEC_MSDC
+#if A04_ENGINE_CODEC_MSDC && !A04_ENGINE_OBSERVE_ONLY
  if(diagnostic){error=codec_emmc_file_reads();if(error&&!result)result=error;}
 #endif
  if(diagnostic){error=diagnostic_after_clients();if(error&&!result)result=error;}
@@ -647,7 +656,9 @@ static void WINAPI service_main(DWORD argc,WCHAR **argv)
  #if A04_ENGINE_DEFERRED_UPDATE
  if(log_error){(void)disable_self();error=log_error;}
  if(error&&error!=ERROR_SUCCESS_REBOOT_REQUIRED)(void)disable_self();
+ #if !A04_ENGINE_OBSERVE_ONLY
  if(error==ERROR_SUCCESS_REBOOT_REQUIRED){DWORD waiter=deferred_start_waiter();if(waiter){(void)disable_self();error=waiter;}}
+#endif
 #endif
  record(0,EV_END,error);
  #if !A04_HARDWARE_PROBE_ENGINE_PCM
@@ -705,7 +716,7 @@ void mainCRTStartup(void)
  DWORD error=0;const WCHAR *args=arguments();run_id=GetTickCount();SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOOPENFILEERRORBOX);
  if(!lstrcmpW(args,L"--install"))error=register_service();
  else if(!lstrcmpW(args,L"--start"))error=start_service();
- #if A04_ENGINE_DEFERRED_UPDATE
+ #if A04_ENGINE_DEFERRED_UPDATE && !A04_ENGINE_OBSERVE_ONLY
  else if(!lstrcmpW(args,L"--reboot-after-stop"))error=deferred_reboot_waiter();
 #endif
  else if(*args)error=ERROR_INVALID_PARAMETER;

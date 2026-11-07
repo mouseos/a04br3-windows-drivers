@@ -130,7 +130,8 @@ def probe_check(executable, manifest, certificate, root, audio_mode="Tone"):
         if codec:audio='mt8167-capture-probe.exe'
         brightness=report.get('build_defines',{}).get('A04_ENGINE_BRIGHTNESS_CLIENT')=='1'
         expected_clients=[audio,'ge8300-d3d-clear.exe'] if codec else ['mt6630-wlan-probe.exe',audio]+(['mt8167-brightness-native.exe'] if brightness else [])
-        if codec and (brightness or report.get('deferred_update',{}).get('transaction')!='codec1026-msdc-quiet-render313-v3'):raise ValueError('codec/eMMC専用profile不一致')
+        observe=report.get('build_defines',{}).get('A04_ENGINE_OBSERVE_ONLY')=='1'
+        if codec and (brightness or report.get('deferred_update',{}).get('transaction') not in ('codec1026-msdc-quiet-render313-v3','codec-render-observe-fresh92-v1')):raise ValueError('codec/eMMC専用profile不一致')
         if brightness and not report.get('deferred_update'):raise ValueError('brightness clientは明示延期batch専用です')
         if (report.get('audio_mode') != 'engine_pcm_retained' or report.get('engine_pcm_compatible') is not True
                 or report.get('fixed_clients') != expected_clients
@@ -151,7 +152,10 @@ def probe_check(executable, manifest, certificate, root, audio_mode="Tone"):
             has_gpu='gpu' in deferred.get('packages',{})
             has_sd='sd' in deferred.get('packages',{})
             expected_ids=[x[0] for x in TARGETS.values()]+(['ACPI\\MOU0006'] if has_gpu else [])+(['ACPI\\MOU0013'] if has_sd else [])
-            if (deferred.get('mode') != 'engine_fixed_deferred_v1' or deferred.get('schema') != 1
+            if observe:
+                from codec_observe import check_service
+                check_service(report)
+            elif (deferred.get('mode') != 'engine_fixed_deferred_v1' or deferred.get('schema') != 1
                     or set(deferred.get('packages', {})) != (set(TARGETS)|({'gpu'} if has_gpu else set())|({'sd'} if has_sd else set()))
                     or pnp.get('api') != 'SetupDiCallClassInstaller/DIF_INSTALLDEVICE'
                     or pnp.get('fixed_hardware_ids') != expected_ids

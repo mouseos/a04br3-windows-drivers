@@ -16,6 +16,12 @@ struct deferred_pin { ULONGLONG version,date; BYTE hash[5][32]; };
 #if DEFERRED_CODEC_MSDC != A04_ENGINE_CODEC_MSDC
 #error Codec transaction policy and service mode must match
 #endif
+#ifndef DEFERRED_OBSERVE_ONLY
+#define DEFERRED_OBSERVE_ONLY 0
+#endif
+#if DEFERRED_OBSERVE_ONLY != A04_ENGINE_OBSERVE_ONLY
+#error ObserveOnly policy and compile profile must match
+#endif
 static int deferred_reboot_needed;
 static DWORD deferred_diagnostic_status;
 /* Preserve the operation result independently of the transport reboot code. */
@@ -136,6 +142,7 @@ static DWORD deferred_boot_fence(int create)
  if(status==ERROR_FILE_NOT_FOUND)return 0;if(status==ERROR_SUCCESS)RegCloseKey(key);
  return status==ERROR_SUCCESS?ERROR_NOT_READY:(DWORD)status;
 }
+#if !A04_ENGINE_OBSERVE_ONLY
 static DWORD deferred_arm_diagnostics(void)
 {
  SC_HANDLE manager,service;DWORD error=0;
@@ -144,13 +151,20 @@ static DWORD deferred_arm_diagnostics(void)
  else {if(!ChangeServiceConfigW(service,SERVICE_NO_CHANGE,SERVICE_AUTO_START,SERVICE_NO_CHANGE,NULL,NULL,NULL,NULL,NULL,NULL,NULL))error=GetLastError();CloseServiceHandle(service);}
  CloseServiceHandle(manager);return error;
 }
+#endif
 static DWORD deferred_phase(int *diagnostic)
 {
+#if A04_ENGINE_OBSERVE_ONLY
+ DWORD error=consume_attempt();*diagnostic=1;
+ if(!error)error=deferred_marker(L"diagnostic-attempted.bin",1);
+ return error;
+#else
  DWORD error=deferred_marker(L"deferred-pending.bin",0);*diagnostic=0;
  if(error==ERROR_FILE_NOT_FOUND){error=consume_attempt();if(error)return error;return deferred_boot_fence(1);}
  if(error)return error;
  error=deferred_boot_fence(0);if(error)return error;
  error=deferred_marker(L"diagnostic-attempted.bin",1);if(!error)*diagnostic=1;return error;
+#endif
 }
 static DWORD deferred_installed_sys(unsigned index,const struct deferred_pin *pin)
 {
@@ -181,7 +195,8 @@ static DWORD deferred_observe(struct pnp_apis *a,unsigned i,DEVINST node)
  cr=a->devproperty(node,&problem_status_key,&type,(BYTE *)&nt,&bytes,0);
  pnp_record(i,0x108,cr);pnp_record(i,EV_PNP_NT_TYPE,type);pnp_record(i,EV_PNP_NT_BYTES,bytes);
  if(cr==CR_SUCCESS&&type==DEVPROP_TYPE_NTSTATUS&&bytes==sizeof(nt)){pnp_record(i,0x109,nt);if(nt)error=ERROR_NOT_READY;}
- else error=ERROR_NOT_READY;
+ else if(!(cr==CR_NO_SUCH_VALUE&&status_cr==CR_SUCCESS&&(status&DN_STARTED)&&!problem&&!(status&DN_HAS_PROBLEM)))error=ERROR_NOT_READY;
+ /* Missing optional property retains CR37 and nt_valid=0 in the snapshot. */
  diagnostic_node(i,status_cr,status,problem,cr,type,bytes,nt);
  pnp_bind_metadata(a,i,node,5,"INF");pnp_bind_metadata(a,i,node,3,"VERSION");
  return error;
@@ -239,6 +254,7 @@ static DWORD deferred_selected_date(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev
  if(type!=DEVPROP_TYPE_FILETIME||bytes!=sizeof(date)||(((ULONGLONG)date.dwHighDateTime<<32)|date.dwLowDateTime)!=pin->date)return ERROR_REVISION_MISMATCH;
  return 0;
 }
+#if !A04_ENGINE_OBSERVE_ONLY
 static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const WCHAR *inf)
 {
  static SP_DEVINSTALL_PARAMS_W params;static SP_DRVINFO_DATA_W driver,extra,chosen;DWORD error=0,type=0,bytes=0;DWORD list_type=SPDIT_CLASSDRIVER;BOOL list=FALSE;WCHAR class_name[64];
@@ -298,6 +314,7 @@ static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const
  if(error){deferred_failure_target=i;deferred_failure_step=deferred_current_step;}
  pnp_record(i,0x105,error);if(list)SetupDiDestroyDriverInfoList(set,dev,list_type);return error;
 }
+#endif
 #if DEFERRED_CODEC_MSDC
 #include "codec-msdc-runtime.h"
 #endif
@@ -338,7 +355,13 @@ static DWORD deferred_once(int diagnostic)
   }
 #endif
 #if DEFERRED_CODEC_MSDC
-  if(!diagnostic){
+  if(!diagnostic||A04_ENGINE_OBSERVE_ONLY){
+#if A04_ENGINE_OBSERVE_ONLY
+   static const WCHAR *services[4]={L"Mt8167Shared",L"Mt8167Audio",L"a04msdcboot",L"GE8300Render"};
+   WCHAR actual_service[128];DWORD service_bytes,service_type;
+   if(!SetupDiGetDeviceRegistryPropertyW(set,&devs[i],SPDRP_SERVICE,&service_type,(BYTE *)actual_service,sizeof(actual_service),&service_bytes)){error=GetLastError();goto done;}
+   if(service_type!=REG_SZ||service_bytes<2||service_bytes>sizeof(actual_service)||(service_bytes&1)||actual_service[service_bytes/2-1]||lstrcmpiW(actual_service,services[i])){error=ERROR_REVISION_MISMATCH;goto done;}
+#endif
    if(version!=codec_baselines[i].version){error=ERROR_REVISION_MISMATCH;goto done;}
    error=codec_selected_inf(set,&devs[i],codec_baseline_infs[i]);if(error)goto done;
    error=deferred_selected_date(i,set,&devs[i],&codec_baselines[i]);if(error)goto done;
@@ -351,10 +374,14 @@ static DWORD deferred_once(int diagnostic)
    error=deferred_installed_sys(i,&deferred_pins[i]);if(error)goto done;skip[i]=1;
   }
   if(diagnostic&&!skip[i]){error=ERROR_REVISION_MISMATCH;goto done;}
+#if A04_ENGINE_OBSERVE_ONLY
+  if(observed){error=observed;goto done;} /* No clients on unhealthy/mismatched target. */
+#endif
   if(diagnostic&&observed&&!deferred_diagnostic_status)deferred_diagnostic_status=observed;
   pnp_record(i,0x103,skip[i]);
  }
  if(diagnostic)goto done;
+#if !A04_ENGINE_OBSERVE_ONLY
 #if DEFERRED_CODEC_MSDC
  error=codec_save_before();if(error)goto done;
 #endif
@@ -370,6 +397,7 @@ static DWORD deferred_once(int diagnostic)
  deferred_reboot_needed=1;
  deferred_current_target=0xffffffffu;deferred_current_step=6;
  error=deferred_marker(L"deferred-pending.bin",1);if(!error){error=deferred_arm_diagnostics();if(!error){deferred_diagnostic_armed=1;deferred_all_install_succeeded=1;}}
+ #endif
  done:
  pnp_record(0,0x100,diagnostic?2:1);pnp_record(0,EV_PNP_RESULT,error);
  for(i=0;i<DEFERRED_TARGET_COUNT;i++){for(j=0;j<5;j++)if(files[i][j]!=INVALID_HANDLE_VALUE)CloseHandle(files[i][j]);if(dirs[i]!=INVALID_HANDLE_VALUE)CloseHandle(dirs[i]);}
@@ -389,7 +417,10 @@ static DWORD diagnostic_after_clients(void)
  if(!error){set=SetupDiGetClassDevsW(NULL,NULL,NULL,DIGCF_ALLCLASSES|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE)first=GetLastError();}
  for(i=0;i<DEFERRED_TARGET_COUNT;i++){
   error=first?first:deferred_find(i,set,&dev);
-  if(error)diagnostic_discovery(i,error);else (void)deferred_observe(&a,i,dev.DevInst);
+  if(error)diagnostic_discovery(i,error);else error=deferred_observe(&a,i,dev.DevInst);
+#if A04_ENGINE_OBSERVE_ONLY
+  if(error&&!first)first=error;
+#endif
  }
 #if DEFERRED_CODEC_MSDC
  if(set!=INVALID_HANDLE_VALUE){DWORD retain_error=codec_retained_check(set);if(retain_error&&!first)first=retain_error;}
@@ -398,6 +429,7 @@ static DWORD diagnostic_after_clients(void)
  if(a.cm)FreeLibrary(a.cm);if(a.newdev)FreeLibrary(a.newdev);
  return first;
 }
+#if !A04_ENGINE_OBSERVE_ONLY
 static DWORD deferred_reboot_waiter(void)
 {
  SC_HANDLE manager=NULL,service=NULL;SERVICE_STATUS_PROCESS state;DWORD error=local_system(),start=GetTickCount(),bytes;
@@ -444,3 +476,5 @@ static DWORD deferred_start_waiter(void)
  if(!CreateProcessW(executable,command,NULL,NULL,FALSE,CREATE_NO_WINDOW,NULL,base_directory,&startup,&process))error=GetLastError();
  else {CloseHandle(process.hThread);CloseHandle(process.hProcess);}CloseHandle(held);return error;
 }
+
+#endif

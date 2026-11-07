@@ -120,6 +120,11 @@ function Engine-DiagnosticFingerprint($ServiceKey,$Plan) {
                                 $kind=$leaf.GetValueKind($name);$v=$leaf.GetValue($name,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
                                 if($name -cmatch '^(Schema|Complete|RunId|Phase|TargetCount|ClientCount|ServiceResult|FileLogError|UartError|SnapshotWriteError)$' -or ($schema -eq 2 -and $name -cmatch '^(SystemVolumeFlushError|CompletionResult|PnpBatchResult|InstallFailureValid|InstallFailureTarget|InstallFailureStep|AllInstallStepsSucceeded|DiagnosticArmed|RebootPending|DeferredPendingStatus|DiagnosticAttemptedStatus|RebootAttemptedStatus)$')) {
                                     if($kind -ne [Microsoft.Win32.RegistryValueKind]::DWord) { throw 'Diagnostic DWORD type mismatch' }
+                                } elseif($codecRender -and $name -cmatch '^(Mt8167MsdcFileReadBytes|Mt8167MsdcFileReadDigest|Mt8167MsdcFileReadElapsedMs|Mt8167MsdcFileReadError|PhysicalEmmcThroughputMeasured|UartErrorPathExercised)$') {
+                                    if($kind -ne [Microsoft.Win32.RegistryValueKind]::DWord) { throw 'Codec MSDC DWORD type mismatch' }
+                                } elseif($codecRender -and $name -cmatch '^Retained([0-2])HardwareId$') {
+                                    $retainIds=@('MT8167\USB20','A04BR3\MT6630SDIO','ACPI\MOU0007')
+                                    if($kind -ne [Microsoft.Win32.RegistryValueKind]::String -or $v -cne $retainIds[[int]$Matches[1]]) { throw 'Fixed retained identity/type mismatch' }
                                 } elseif($name -ceq 'PolicyHash') {
                                     if($kind -ne [Microsoft.Win32.RegistryValueKind]::String -or $v -cne $policy) { throw 'Diagnostic policy value mismatch' }
                                 } elseif($name -cmatch '^Node([0-6])HardwareId$') {
