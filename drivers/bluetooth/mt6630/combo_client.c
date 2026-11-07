@@ -94,7 +94,7 @@ VOID Timer(WDFTIMER timer)
    RtlSecureZeroMemory(&c->scratch,sizeof(c->scratch));
   }
   if(NT_SUCCESS(s)||s==STATUS_NO_MORE_ENTRIES){deliver(c);WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(5));}
-  else {c->running=FALSE;WdfIoQueuePurge(c->reads[0],NULL,NULL);WdfIoQueuePurge(c->reads[1],NULL,NULL);}
+  else {InterlockedExchange(&c->controller.uncertain,1);c->running=FALSE;WdfIoQueuePurge(c->reads[0],NULL,NULL);WdfIoQueuePurge(c->reads[1],NULL,NULL);}
  }
  unlock(c);
 }

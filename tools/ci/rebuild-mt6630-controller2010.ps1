@@ -49,13 +49,13 @@ if($ResumeDirectory){
  if($rm.source_dirty){throw 'Dirty resume source'}
  if($rm.source_commit.StartsWith('7e351a90')){& git -C $root diff --quiet $rm.source_commit HEAD -- drivers;if($LASTEXITCODE){throw 'Resume driver sources changed'}}
  elseif($rm.source_commit.StartsWith('3aaab780')){
-  $allowed=@('drivers/audio/mt8167-afe/hfp_power.cpp','drivers/bus/mt8167-shared/hfp_interface.h','drivers/bus/mt8167-shared/hfp_parent.inc','drivers/bus/mt8167-shared/wdf_parent_probe.c','drivers/network/mt6630/combo_broker.c','drivers/bluetooth/mt6630/physical_owner.h')
+  $allowed=@('drivers/audio/mt8167-afe/hfp_power.cpp','drivers/bus/mt8167-shared/hfp_interface.h','drivers/bus/mt8167-shared/hfp_parent.inc','drivers/bus/mt8167-shared/wdf_parent_probe.c','drivers/network/mt6630/combo_broker.c','drivers/bluetooth/mt6630/physical_owner.h','drivers/bluetooth/mt6630/combo_client.c')
   $delta=@(& git -C $root diff --name-only $rm.source_commit HEAD -- drivers)
   if($LASTEXITCODE -or @($delta|Where-Object{$_ -notin $allowed}).Count){throw 'Unexpected resumed driver delta'}
   # HFP interface gained only an optional parent epoch callback. Controller
   # descriptor layout and NDIS nested layout are unchanged. Recompile every
   # concrete user of the extended HFP interface, plus changed power owner.
-  $resumeRedo=@('ndis/combo_broker.obj','hfp/hfp_provider.cpp.obj','audio/hfp_power.obj')
+  $resumeRedo=@('combo_client.obj','ndis/combo_broker.obj','hfp/hfp_provider.cpp.obj','audio/hfp_power.obj')
  }else{throw 'Wrong resume source'}
  foreach($f in $rm.files){if((Get-FileHash "$ResumeDirectory\$($f.path)" -Algorithm SHA256).Hash -ne $f.sha256){throw 'Resume object changed'};$resumeFiles[$f.path]=$f.sha256}
 }
