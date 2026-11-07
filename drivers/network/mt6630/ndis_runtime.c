@@ -9,6 +9,8 @@
 #include "windows_nvram_reader.h"
 #define TAG 'r40A'
 static NDIS_HANDLE driver_handle;
+static uint64_t checkpoint_driver_generation;
+#define CP(a,stage,phase,kind,raw,detail) (void)a04_cp_emit((a)->checkpoint,stage,phase,kind,(ULONG)(raw),(ULONG)(detail))
 static uint64_t now(void *p);
 static unsigned destination_kind(const UCHAR *p)
 {unsigned all=255;for(unsigned i=0;i<6;i++)all&=p[i];return all==255?2:(p[0]&1?1:0);}
@@ -71,7 +73,9 @@ static int connect_irq(void *p,struct a04_windows_msdc2 *host)
  WRITE_REGISTER_ULONG((volatile ULONG *)(host->base+0x10),0);
  if(READ_REGISTER_ULONG((volatile ULONG *)(host->base+0x10)))return -1;
  for(ULONG i=0;i<raw->List[0].PartialResourceList.Count;i++)if(raw->List[0].PartialResourceList.PartialDescriptors[i].Type==CmResourceTypeInterrupt)
-  return NT_SUCCESS(a04_windows_irq_connect(&a->irq,host->base,&raw->List[0].PartialResourceList.PartialDescriptors[i],&trans->List[0].PartialResourceList.PartialDescriptors[i],irq_notify,a))?0:-1;
+  {NTSTATUS status;CP(a,A04_CP_IRQ,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
+   status=a04_windows_irq_connect(&a->irq,host->base,&raw->List[0].PartialResourceList.PartialDescriptors[i],&trans->List[0].PartialResourceList.PartialDescriptors[i],irq_notify,a);
+   CP(a,A04_CP_IRQ,A04_CP_RESULT,A04_CP_NT,status,0);return NT_SUCCESS(status)?0:-1;}
  return -1;
 }
 static int mask_irq(void *p){struct a04_ndis_runtime *a=p;return a->irq.interrupt?a04_windows_irq_stop(&a->irq):0;}
@@ -169,19 +173,27 @@ void a04_ndis_association_reported(struct a04_ndis_runtime *a)
 static int hardware_start(struct a04_ndis_runtime *a)
 {
  PCM_RESOURCE_LIST raw,trans;CM_PARTIAL_RESOURCE_DESCRIPTOR *mem=NULL,*mapped=NULL;struct a04_windows_session_platform platform;
+ CP(a,A04_CP_RESOURCES,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
  NdisMGetDeviceProperty(a->adapter,NULL,NULL,NULL,&raw,&trans);
- if(!raw||!trans||raw->Count!=1||trans->Count!=1||raw->List[0].PartialResourceList.Count!=trans->List[0].PartialResourceList.Count)return -1;
- for(ULONG i=0;i<raw->List[0].PartialResourceList.Count;i++)if(raw->List[0].PartialResourceList.PartialDescriptors[i].Type==CmResourceTypeMemory){if(mem)return -1;mem=&raw->List[0].PartialResourceList.PartialDescriptors[i];mapped=&trans->List[0].PartialResourceList.PartialDescriptors[i];}
- if(!mem)return -1;
+ if(!raw||!trans||raw->Count!=1||trans->Count!=1||raw->List[0].PartialResourceList.Count!=trans->List[0].PartialResourceList.Count){CP(a,A04_CP_RESOURCES,A04_CP_RESULT,A04_CP_OBSERVATION,0,1);return -1;}
+ for(ULONG i=0;i<raw->List[0].PartialResourceList.Count;i++)if(raw->List[0].PartialResourceList.PartialDescriptors[i].Type==CmResourceTypeMemory){if(mem){CP(a,A04_CP_RESOURCES,A04_CP_RESULT,A04_CP_OBSERVATION,0,2);return -1;}mem=&raw->List[0].PartialResourceList.PartialDescriptors[i];mapped=&trans->List[0].PartialResourceList.PartialDescriptors[i];}
+ if(!mem){CP(a,A04_CP_RESOURCES,A04_CP_RESULT,A04_CP_OBSERVATION,0,3);return -1;}
+ CP(a,A04_CP_RESOURCES,A04_CP_RESULT,A04_CP_OBSERVATION,1,raw->List[0].PartialResourceList.Count);
  platform.context=a;platform.connect_masked_irq=connect_irq;platform.mask_and_drain_irq=mask_irq;platform.drain_io=drain;platform.quiesce_combo=quiesce;
  /* Board facts: fixed3.3V, SDIO transport, vendor mt6630_ant_m1.cfg,
   * stp_uart_launcher default FM mode2; no shared26MHz/merge option. */
  {const struct a04_wmt_startup_options options={1,1,0,0,2,1};
- if(a04_windows_session_start(&a->session,&a->parent,&platform,mem,mapped,0x00300000,a04_wifi_wdf_wmt_sha256,&options))return -1;}
+ int result;CP(a,A04_CP_SESSION,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
+ result=a04_windows_session_start_traced(&a->session,&a->parent,&platform,mem,mapped,0x00300000,a04_wifi_wdf_wmt_sha256,&options,a04_cp_trace,a->checkpoint);
+ CP(a,A04_CP_SESSION,A04_CP_RESULT,A04_CP_BACKEND,result,(a->session.state&255)|((a->session.diagnostic.state&255)<<8));
+ if(result)return -1;}
  a->radio.context=a;a->radio.now=now;a->radio.system_time=system_time;a->radio.wait=wait_us;a->radio.cancelled=cancelled;a->radio.event=firmware_event;a->radio.data=receive_data;a->radio.exclude_bssid=exclude_bssid;
- if(a04_wlan_native_be_enable(&a->session.diagnostic.bridge.wlan))return -1;
- if(a04_station_runtime_init(&a->radio,&a->session.diagnostic.bridge))return -1;
- return a04_ndis_power_profile(a,a->power_request,a->media_streaming,1);
+ int result;CP(a,A04_CP_TC1,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
+ result=a04_wlan_native_be_enable(&a->session.diagnostic.bridge.wlan);CP(a,A04_CP_TC1,A04_CP_RESULT,A04_CP_BACKEND,result,0);if(result)return -1;
+ CP(a,A04_CP_STATION,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
+ result=a04_station_runtime_init(&a->radio,&a->session.diagnostic.bridge);CP(a,A04_CP_STATION,A04_CP_RESULT,A04_CP_BACKEND,result,0);if(result)return -1;
+ CP(a,A04_CP_PROFILE,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
+ result=a04_ndis_power_profile(a,a->power_request,a->media_streaming,1);CP(a,A04_CP_PROFILE,A04_CP_RESULT,A04_CP_BACKEND,result,0);return result;
 }
 /* Only this PASSIVE owner can change BSS/LP state. Software NIC power,
  * cache, regulatory identity and the parent's combo lease remain unchanged. */
@@ -250,8 +262,10 @@ static int disabled_identity(struct a04_ndis_runtime *a)
 {
  /* Enumerate a retained radio-OFF adapter without powering the combo just
   * to obtain identity. The same checked NVRAM codec supplies MAC/domain. */
- UCHAR *raw=ExAllocatePoolWithTag(PagedPool,512,TAG);int result=-1;if(!raw)return -1;
- if(NT_SUCCESS(a04_windows_nvram_read(raw)))result=a04_regulatory_decode(raw,&a->session.diagnostic.bridge.regulatory);
+ UCHAR *raw=ExAllocatePoolWithTag(PagedPool,512,TAG);int result=-1;NTSTATUS status;if(!raw)return -1;
+ CP(a,A04_CP_DISABLED_IDENTITY,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
+ status=a04_windows_nvram_read(raw);CP(a,A04_CP_DISABLED_IDENTITY,A04_CP_RESULT,A04_CP_NT,status,0);
+ if(NT_SUCCESS(status)){result=a04_regulatory_decode(raw,&a->session.diagnostic.bridge.regulatory);CP(a,A04_CP_REGULATORY,A04_CP_RESULT,A04_CP_BACKEND,result,0);}
  RtlSecureZeroMemory(raw,512);ExFreePoolWithTag(raw,TAG);a->radio.bridge=&a->session.diagnostic.bridge;return result;
 }
 int a04_ndis_radio_power(struct a04_ndis_runtime *a,int on)
@@ -367,27 +381,55 @@ DRIVER_UNLOAD RuntimeUnload;
 NDIS_STATUS RuntimeInitialize(NDIS_HANDLE adapter,NDIS_HANDLE context,PNDIS_MINIPORT_INIT_PARAMETERS params)
 {
  struct a04_ndis_runtime *a;NDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES attr;NET_BUFFER_LIST_POOL_PARAMETERS pool;NDIS_STATUS s;LARGE_INTEGER due;
+ struct a04_checkpoint checkpoint;NTSTATUS parent_status;int backend;
  UNREFERENCED_PARAMETER(context);UNREFERENCED_PARAMETER(params);
- a=NdisAllocateMemoryWithTagPriority(adapter,sizeof(*a),TAG,NormalPoolPriority);if(!a)return NDIS_STATUS_RESOURCES;NdisZeroMemory(a,sizeof(*a));a->adapter=adapter;a->paused=1;a->power=TRUE;a->lookahead=A04_RUNTIME_MTU;a->peer_loss.threshold_ms=A04_UNREACHABLE_DEFAULT_MS;
+ (void)a04_cp_begin(&checkpoint,A04_CP_INITIALIZE,checkpoint_driver_generation);
+ (void)a04_cp_emit(&checkpoint,A04_CP_INIT_ENTRY,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
+ (void)a04_cp_emit(&checkpoint,A04_CP_CONTEXT,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
+ a=NdisAllocateMemoryWithTagPriority(adapter,sizeof(*a),TAG,NormalPoolPriority);if(!a){
+  (void)a04_cp_emit(&checkpoint,A04_CP_CONTEXT,A04_CP_RESULT,A04_CP_OBSERVATION,0,0);
+  (void)a04_cp_finish(&checkpoint,A04_CP_INIT_RETURN,A04_CP_NDIS,NDIS_STATUS_RESOURCES);return NDIS_STATUS_RESOURCES;
+ }NdisZeroMemory(a,sizeof(*a));a->checkpoint=&checkpoint;a->adapter=adapter;a->paused=1;a->power=TRUE;a->lookahead=A04_RUNTIME_MTU;a->peer_loss.threshold_ms=A04_UNREACHABLE_DEFAULT_MS;
+ CP(a,A04_CP_CONTEXT,A04_CP_RESULT,A04_CP_OBSERVATION,1,0);
  NdisAllocateSpinLock(&a->lock);NdisInitializeEvent(&a->idle);NdisSetEvent(&a->idle);KeInitializeTimer(&a->timer);KeInitializeDpc(&a->dpc,poll_dpc,a);
  NdisZeroMemory(&attr,sizeof(attr));attr.Header.Type=NDIS_OBJECT_TYPE_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES;attr.Header.Revision=NDIS_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES_REVISION_2;attr.Header.Size=NDIS_SIZEOF_MINIPORT_ADAPTER_REGISTRATION_ATTRIBUTES_REVISION_2;attr.MiniportAdapterContext=a;attr.InterfaceType=NdisInterfaceInternal;
- s=NdisMSetMiniportAttributes(adapter,(PNDIS_MINIPORT_ADAPTER_ATTRIBUTES)&attr);if(s!=NDIS_STATUS_SUCCESS)goto failed;
+ CP(a,A04_CP_REG_ATTR,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
+ s=NdisMSetMiniportAttributes(adapter,(PNDIS_MINIPORT_ADAPTER_ATTRIBUTES)&attr);CP(a,A04_CP_REG_ATTR,A04_CP_RESULT,A04_CP_NDIS,s,0);if(s!=NDIS_STATUS_SUCCESS)goto failed;
  NdisZeroMemory(&pool,sizeof(pool));pool.Header.Type=NDIS_OBJECT_TYPE_DEFAULT;pool.Header.Revision=1;pool.Header.Size=sizeof(pool);pool.ProtocolId=NDIS_PROTOCOL_ID_DEFAULT;pool.fAllocateNetBuffer=TRUE;pool.PoolTag=TAG;
+ CP(a,A04_CP_RX_POOL,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
  a->rx_pool=NdisAllocateNetBufferListPool(adapter,&pool);
+ CP(a,A04_CP_RX_POOL,A04_CP_RESULT,A04_CP_OBSERVATION,a->rx_pool?1:0,0);
  if(!a->rx_pool){s=NDIS_STATUS_RESOURCES;goto failed;}
+ CP(a,A04_CP_RX_SLOTS,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
  for(unsigned i=0;i<A04_NATIVE_QUEUE;i++){
   struct a04_rx_slot *slot=&a->rx[i];slot->mdl=IoAllocateMdl(slot->bytes,sizeof(slot->bytes),FALSE,FALSE,NULL);
-  if(!slot->mdl){s=NDIS_STATUS_RESOURCES;goto failed;}MmBuildMdlForNonPagedPool(slot->mdl);
+  if(!slot->mdl){CP(a,A04_CP_RX_SLOTS,A04_CP_RESULT,A04_CP_OBSERVATION,0,(i<<8)|1);s=NDIS_STATUS_RESOURCES;goto failed;}MmBuildMdlForNonPagedPool(slot->mdl);
   slot->nbl=NdisAllocateNetBufferAndNetBufferList(a->rx_pool,0,0,slot->mdl,0,sizeof(slot->bytes));
-  if(!slot->nbl){s=NDIS_STATUS_RESOURCES;goto failed;}
+  if(!slot->nbl){CP(a,A04_CP_RX_SLOTS,A04_CP_RESULT,A04_CP_OBSERVATION,0,(i<<8)|2);s=NDIS_STATUS_RESOURCES;goto failed;}
  }
+ CP(a,A04_CP_RX_SLOTS,A04_CP_RESULT,A04_CP_OBSERVATION,1,A04_NATIVE_QUEUE);
  NDIS_CONFIGURATION_OBJECT configuration;NdisZeroMemory(&configuration,sizeof(configuration));
  configuration.Header.Type=NDIS_OBJECT_TYPE_CONFIGURATION_OBJECT;configuration.Header.Revision=NDIS_CONFIGURATION_OBJECT_REVISION_1;configuration.Header.Size=NDIS_SIZEOF_CONFIGURATION_OBJECT_REVISION_1;configuration.NdisHandle=adapter;
- s=NdisOpenConfigurationEx(&configuration,&a->configuration);if(s!=NDIS_STATUS_SUCCESS)goto failed;
- if(radio_setting(a,0)||!NT_SUCCESS(query_parent(a))||(a->power?hardware_start(a):disabled_identity(a))){s=NDIS_STATUS_ADAPTER_NOT_READY;goto failed;}
+ CP(a,A04_CP_CONFIG_OPEN,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
+ s=NdisOpenConfigurationEx(&configuration,&a->configuration);CP(a,A04_CP_CONFIG_OPEN,A04_CP_RESULT,A04_CP_NDIS,s,0);if(s!=NDIS_STATUS_SUCCESS)goto failed;
+ CP(a,A04_CP_RADIO_SETTING,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
+ backend=radio_setting(a,0);CP(a,A04_CP_RADIO_SETTING,A04_CP_RESULT,A04_CP_BACKEND,backend,a->power);
+ if(backend){s=NDIS_STATUS_ADAPTER_NOT_READY;goto failed;}
+ CP(a,A04_CP_PARENT_QUERY,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
+ parent_status=query_parent(a);CP(a,A04_CP_PARENT_QUERY,A04_CP_RESULT,A04_CP_NT,parent_status,0);
+ if(!NT_SUCCESS(parent_status)){s=NDIS_STATUS_ADAPTER_NOT_READY;goto failed;}
+ backend=a->power?hardware_start(a):disabled_identity(a);
+ if(backend){s=NDIS_STATUS_ADAPTER_NOT_READY;goto failed;}
  a->tx.adapter=adapter;a->tx.completion_context=a;a->tx.completion=a04_ndis_tx_complete;a->os_security.auth=DOT11_AUTH_ALGO_80211_OPEN;s=a04_ndis_attributes(a);if(s!=NDIS_STATUS_SUCCESS)goto failed;
+ a->checkpoint=NULL;
+ (void)a04_cp_finish(&checkpoint,A04_CP_INIT_RETURN,A04_CP_NDIS,NDIS_STATUS_SUCCESS);
  due.QuadPart=-100000;KeSetTimerEx(&a->timer,due,10,&a->dpc);return NDIS_STATUS_SUCCESS;
-failed:cleanup(a);return s;
+failed:
+ CP(a,A04_CP_INIT_RETURN,A04_CP_RESULT,A04_CP_NDIS,s,0);
+ CP(a,A04_CP_CLEANUP,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
+ a->checkpoint=NULL;cleanup(a);
+ (void)a04_cp_emit(&checkpoint,A04_CP_CLEANUP,A04_CP_RESULT,A04_CP_OBSERVATION,1,0);
+ (void)a04_cp_finish(&checkpoint,A04_CP_INIT_RETURN,A04_CP_NDIS,s);return s;
 }
 VOID RuntimeHalt(NDIS_HANDLE p,NDIS_HALT_ACTION action){struct a04_ndis_runtime *a=p;UNREFERENCED_PARAMETER(action);close_worker(a);cleanup(a);}
 NDIS_STATUS RuntimePause(NDIS_HANDLE p,PNDIS_MINIPORT_PAUSE_PARAMETERS params)
@@ -457,8 +499,14 @@ VOID RuntimePnp(NDIS_HANDLE p,PNET_DEVICE_PNP_EVENT event)
 VOID RuntimeUnload(PDRIVER_OBJECT p){UNREFERENCED_PARAMETER(p);if(driver_handle)NdisMDeregisterMiniportDriver(driver_handle);}
 NTSTATUS DriverEntry(PDRIVER_OBJECT p,PUNICODE_STRING path)
 {
+ struct a04_checkpoint checkpoint;NDIS_STATUS status;
+ a04_cp_initialize();(void)a04_cp_begin(&checkpoint,A04_CP_DRIVER,0);
+ checkpoint_driver_generation=checkpoint.record?checkpoint.record->generation:0;
+ (void)a04_cp_emit(&checkpoint,A04_CP_REGISTER_DRIVER,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
  NDIS_MINIPORT_DRIVER_CHARACTERISTICS c;NdisZeroMemory(&c,sizeof(c));c.Header.Type=NDIS_OBJECT_TYPE_MINIPORT_DRIVER_CHARACTERISTICS;c.Header.Revision=NDIS_MINIPORT_DRIVER_CHARACTERISTICS_REVISION_2;c.Header.Size=NDIS_SIZEOF_MINIPORT_DRIVER_CHARACTERISTICS_REVISION_2;c.MajorNdisVersion=6;c.MinorNdisVersion=30;c.MajorDriverVersion=0;c.MinorDriverVersion=2;
  c.InitializeHandlerEx=RuntimeInitialize;c.HaltHandlerEx=RuntimeHalt;c.PauseHandler=RuntimePause;c.RestartHandler=RuntimeRestart;c.OidRequestHandler=RuntimeOid;c.CancelOidRequestHandler=RuntimeCancelOid;c.SendNetBufferListsHandler=RuntimeSend;c.ReturnNetBufferListsHandler=RuntimeReturn;c.CancelSendHandler=RuntimeCancelSend;c.ShutdownHandlerEx=RuntimeShutdown;c.UnloadHandler=RuntimeUnload;c.DevicePnPEventNotifyHandler=RuntimePnp;
  c.DirectOidRequestHandler=RuntimeDirectOid;c.CancelDirectOidRequestHandler=RuntimeCancelDirectOid;
- return NdisMRegisterMiniportDriver(p,path,NULL,&c,&driver_handle);
+ status=NdisMRegisterMiniportDriver(p,path,NULL,&c,&driver_handle);
+ (void)a04_cp_emit(&checkpoint,A04_CP_REGISTER_DRIVER,A04_CP_RESULT,A04_CP_NDIS,status,0);
+ (void)a04_cp_finish(&checkpoint,A04_CP_DRIVER_RETURN,A04_CP_NDIS,status);return status;
 }

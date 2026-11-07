@@ -151,3 +151,10 @@ peer切断はpacket callback内でradio stateを破壊せず、poll後のowner�
 INF1004、build/sign手順、既存親再利用条件は前掲のまま。署名済みruntime1003/1bd250cと
 旧1003 package scriptは保持する。build manifestは実idle経路と未測定状態を記録し、
 deployment_ready=falseを維持する。
+
+## 次試験用InitStage checkpoint
+
+実PASSIVE初期化の固定registry観測、schema/flush/世代/回収手順は
+[CHECKPOINT.md](CHECKPOINT.md) を参照。Raman serviceのLastDiagnosticと併用し、
+component raw statusとCM/client結果を区別する。run33の旧Code31や欠けたfilelogから
+初期化原因を推測した変更は行っていない。

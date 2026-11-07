@@ -1587,3 +1587,10 @@ build/mt6630_native_policy_test: tests/mt6630_native_policy_test.c drivers/netwo
 test-mt6630-native-policy: build/mt6630_native_policy_test
 	./build/mt6630_native_policy_test
 test-mt6630: test-mt6630-native-policy
+
+build/mt6630_checkpoint_test: tests/mt6630_checkpoint_test.c drivers/network/mt6630/checkpoint.c drivers/network/mt6630/checkpoint.h drivers/network/mt6630/checkpoint_wire.h tests/checkpoint_stubs/ntddk.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Wno-multichar -Itests/checkpoint_stubs -Idrivers/network/mt6630 tests/mt6630_checkpoint_test.c drivers/network/mt6630/checkpoint.c -o $@
+.PHONY: test-mt6630-checkpoint
+test-mt6630-checkpoint: build/mt6630_checkpoint_test
+	./build/mt6630_checkpoint_test

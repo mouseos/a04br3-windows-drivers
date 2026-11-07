@@ -32,6 +32,13 @@ int a04_windows_session_start(struct a04_windows_session *,A04_SHARED_WIFI_INTER
  const struct a04_windows_session_platform *,const CM_PARTIAL_RESOURCE_DESCRIPTOR *,
  const CM_PARTIAL_RESOURCE_DESCRIPTOR *,uint32_t,const uint8_t [32],
  const struct a04_wmt_startup_options *);
+/* Optional observation-only init tracing. The old entry keeps identical
+ * behavior and passes NULL; callback executes only on the checked PASSIVE path. */
+typedef void (*a04_session_trace_fn)(void *,unsigned,unsigned,unsigned,ULONG,ULONG);
+int a04_windows_session_start_traced(struct a04_windows_session *,A04_SHARED_WIFI_INTERFACE *,
+ const struct a04_windows_session_platform *,const CM_PARTIAL_RESOURCE_DESCRIPTOR *,
+ const CM_PARTIAL_RESOURCE_DESCRIPTOR *,uint32_t,const uint8_t [32],
+ const struct a04_wmt_startup_options *,a04_session_trace_fn,void *);
 int a04_windows_session_stop(struct a04_windows_session *);
 #endif
 #endif

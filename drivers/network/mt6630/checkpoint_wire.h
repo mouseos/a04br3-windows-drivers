@@ -1,0 +1,33 @@
+/* SPDX-License-Identifier: BSD-2-Clause-Patent */
+#ifndef A04_WIFI_CHECKPOINT_WIRE_H
+#define A04_WIFI_CHECKPOINT_WIRE_H
+#include <stdint.h>
+#define A04_CP_MAGIC 0x50433441u
+#define A04_CP_VERSION 1u
+#define A04_CP_CAPACITY 64u
+#define A04_CP_MAX_FLUSHES 10u
+/* All fields are little endian. Status is meaningful only when observed=1.
+ * No pointer, MAC/CID, path, calibration, SSID or key material is stored. */
+enum {A04_CP_DRIVER=0,A04_CP_INITIALIZE=1};
+enum {A04_CP_BEGIN=1,A04_CP_RESULT=2,A04_CP_RETURN_PREPARED=3};
+enum {A04_CP_UNKNOWN=0,A04_CP_NDIS=1,A04_CP_NT=2,A04_CP_BACKEND=3,A04_CP_OBSERVATION=4};
+enum {
+ A04_CP_REGISTER_DRIVER=1,A04_CP_INIT_ENTRY=2,A04_CP_CONTEXT=3,A04_CP_REG_ATTR=4,
+ A04_CP_RX_POOL=5,A04_CP_RX_SLOTS=6,A04_CP_CONFIG_OPEN=7,A04_CP_RADIO_SETTING=8,
+ A04_CP_PARENT_QUERY=9,A04_CP_RESOURCES=10,A04_CP_SESSION=11,A04_CP_IRQ=12,
+ A04_CP_TC1=13,A04_CP_STATION=14,A04_CP_PROFILE=15,A04_CP_GENERAL_ATTR=16,
+ A04_CP_ATTR_ALLOC=17,A04_CP_NATIVE_ATTR=18,A04_CP_INIT_RETURN=19,A04_CP_CLEANUP=20,
+ A04_CP_DRIVER_RETURN=21,A04_CP_DISABLED_IDENTITY=22,A04_CP_REGULATORY=23,A04_CP_SESSION_ACQUIRE=40,A04_CP_SESSION_MAP=41,
+ A04_CP_SESSION_ACTIVATE=42,A04_CP_SESSION_DIAG=43,A04_CP_SESSION_IRQ=44
+};
+struct a04_cp_event {uint32_t stage,phase,kind,observed,raw,detail;};
+struct a04_cp_record {
+ uint32_t magic,version,bytes,channel;
+ uint64_t generation,parent_generation,interrupt_time,system_time;
+ uint32_t count,overflow,diagnostic_error_observed,diagnostic_error;
+ uint32_t flush_calls,flush_observed,flush_status,tail_flush_known,return_prepared,driver_build;
+ struct a04_cp_event events[A04_CP_CAPACITY];
+};
+_Static_assert(sizeof(struct a04_cp_event)==24,"checkpoint event ABI");
+_Static_assert(sizeof(struct a04_cp_record)==1624,"checkpoint record ABI");
+#endif
