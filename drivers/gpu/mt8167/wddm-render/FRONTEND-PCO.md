@@ -45,3 +45,44 @@ python3 drivers/gpu/mt8167/wddm-render/compiler/build-host.py --reference-manife
 実確認はVS位置転送、PS定数色、PS MADのbytecode→NIR→実PCO USC生成を一括で実施。最初の固定入力ではVS24byte/input4/output4、PS定数64byte/temp5/shared4、PS MAD72byte/temp5/shared4を得た。これはhost実compilerの結果で、GPU pixel correctness、Windows ARM compiler DLL、FL9_1や標準D3D成功ではない。ログ/manifestはrootの`port/xnu/out/windows-rt-wddm-sm2-pco-source-v2`。UMD shader_state/既存layout依存TUとdecoderは実DDI headersでARM構文確認済み。実WDK追加TU/PCO ARM buildは未実施。
 
 一次資料はWDKの`d3dumddi.h` CreateVertexShaderFunc.Size／CreatePixelShader.CodeSizeと、`d3d9types.h` shader token fields。Microsoft [Shader code format](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/shader-code-format)、[CreateVertexShaderFunc](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dumddi/nc-d3dumddi-pfnd3dddi_createvertexshaderfunc)、[CreatePixelShader](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dumddi/nc-d3dumddi-pfnd3dddi_createpixelshader) を参照。PCO sourceはMesa base `0d94b3f397fb9cf8470bb5600ada8af79ff5361a`＋Eのhash固定patched archiveを使い、MesaやE sourceは編集しない。
+
+## Windows ARM compiler / CRTの実link
+
+ARM32 user-mode compilerをkernelのNoFP/NoNEON契約から分離した。
+`build-pco-arm32.py --msvc-sdk ... --msvc-vfs ...` は公式VC140 ARM Desktop
+headers/static CRTとSDK8.1 headers、SDK10 10240 static UCRTを使う。
+PCO/NIRのprivate packed IRはGNU C layout（sizeof assertionsを保持）、
+公開C境界はWindows ARM hard-float ABI、C++ util/TLS/stdioはMSVC ABI。
+`/kernel`、soft-float helper、kernel用shimをUMDへ持ち込まない。
+
+Mesa sourceは変更せずVFSでWindows debug io、Clang ARM atomic選択、
+Clangの実NEON headerを指定する。NEONを無効化せず実vld4/vst4を生成する。
+`strdup/stricmp`は実CRT `_strdup/_stricmp`へ接続する。
+GNU CのUCRT wrappersはextern GNU inlineを保持し、`crt_stdio.cpp`で
+stock UCRT headerからC++ COMDATを実生成する。printfやlibmの代替実装はない。
+
+依存閉包のlink（compiler部品、標準UMDではない）:
+
+```text
+python3 drivers/gpu/mt8167/wddm-render/compiler/link-pco-arm32.py --pco-directory <pco出力> --nir-directory <nir出力> --util-directory <util出力> --support-directory <support出力> --vc-arm-libraries <公式VC140/lib/arm> --sdk-arm-libraries <公式SDK/ARM-lib集約> --output <root内の新directory>
+```
+
+SDK集約にはlibucrt.lib、WDK8.1 kernel32.libとsynchronization.libが必要。
+全component manifest/object/archiveと実入力hashを照合し、`_DllMainCRTStartup`
+からCRT/TLSを初期化する。`/noentry`は使わない。Windows ARMNTの実DLL linkを
+確認した。importsはKERNEL32.dllとapi-ms-win-core-synch-l1-2-0.dllのみ。
+動的CRT配布や未解決softfloat/NEON helperはない。Windows上の実load/compile、
+GPUでの生成shader実行、一般dynamic D3D shader対応は未確認。
+
+最終`build-linked-wdk81.ps1`は`-CompilerLinkManifest <link-manifest.json>`と
+`-CompilerLinkManifestSha256 <sha256>`を必須とし、同じstatic archive/CRTを
+実frontendとUMDへlinkする。compiler DLLのruntime LoadLibraryは追加しない。
+別runnerへ固定libraryをflat copyする場合のみ`-CompilerLibraryDirectory`
+を指定できる。固定10ファイル名と元manifestの全hashは再照合するので、
+path移転で入力内容を変えない。native/kernel linkへuser-mode CRTは渡さない。
+
+f492756のMDL resolver moduleはMicrosoft ARM clの実SEH compileを含め生成し、
+回収4出力hashを照合済み。Eの501083bはそのleaseを実native MDL bindへ接続した。
+EのCreateV3/Delete/control全体およびNoDMA proofは未完。Hの
+`geo_ge8300_frontend`も未定義で、shader/state/draw/capsを埋める必要がある。
+compiler DLLを完成UMDやFL9_1達成と数えない。

@@ -29,6 +29,7 @@ def main():
     elif a.component=='support':
         template=pco_rows[0]
         rows=[dict(template,file=str(mesa/'src/util/blake3'/name),output=name) for name in ('blake3.c','blake3_dispatch.c','blake3_portable.c')]
+        if a.msvc_sdk:rows.append(dict(template,file=str(here/'crt_stdio.cpp'),output='crt_stdio'))
     else:
         rows=[x for x in all_rows if x.get('output','').startswith(('src/util/libmesa_util.a.p/','src/c11/impl/libmesa_util_c11.a.p/')) and x['file'].endswith('.c') and not x['file'].endswith('/threads_posix.c')]
         rows.append(dict(rows[-1],file=str(mesa/'src/c11/impl/threads_win32.c'),output='threads_win32'))
@@ -43,7 +44,38 @@ def main():
         if previous['reference_manifest_sha256']!=sha(a.reference_manifest):raise SystemExit('reuse reference mismatch')
         reuse={r['source']:r for r in previous['units']}
     out.mkdir(parents=True,exist_ok=False)
-    if a.component=='pco':rows.append(dict(rows[0],file=str(here/'pco_sm2.c'),output='pco_sm2_adapter'))
+    if a.component=='pco':
+        rows.extend(dict(rows[0],file=str(here/(unit+'.c')),output=unit+'_adapter') for unit in ('pco_sm2','sm2'))
+    platform_vfs=a.msvc_vfs
+    if a.msvc_sdk:
+        # Clang ARM supports real GCC atomics with acquire/release ordering.
+        # Mesa's stock MSVC path lacks ARM32 lower-case 64-bit helpers. Keep
+        # the source checkout intact and select the Clang path via a VFS copy.
+        original=mesa/'src/util/u_atomic.h';text=original.read_text()
+        old='#elif defined(_MSC_VER)\n#define PIPE_ATOMIC_MSVC_INTRINSIC\n#elif defined(__GNUC__)'
+        new='#elif defined(_MSC_VER) && !(defined(__clang__) && defined(_M_ARM))\n#define PIPE_ATOMIC_MSVC_INTRINSIC\n#elif defined(__GNUC__) || (defined(__clang__) && defined(_M_ARM))'
+        if text.count(old)!=1:raise SystemExit('Unreviewed Mesa atomic selector')
+        overlay=out/'u_atomic_arm32.h';overlay.write_text(text.replace(old,new))
+        vfs=json.loads(a.msvc_vfs.read_text()) if a.msvc_vfs else {'version':0,'case-sensitive':'false','roots':[]}
+        vfs['roots'].append({'type':'file','name':str(original),'external-contents':str(overlay)})
+        debug_source=mesa/'src/imagination/pco/pco_debug.c';debug=debug_source.read_text()
+        needle='#include <unistd.h>'
+        if debug.count(needle)!=1:raise SystemExit('Unreviewed PCO POSIX debug include')
+        debug=debug.replace(needle,'#ifdef _WIN32\n#include <io.h>\n#define isatty _isatty\n#define fileno _fileno\n#else\n#include <unistd.h>\n#endif')
+        debug_copy=out/'pco_debug_windows.c';debug_copy.write_text(debug)
+        vfs['roots'].append({'type':'file','name':str(debug_source),'external-contents':str(debug_copy)})
+        # Microsoft's arm_neon.h describes compiler-specific pseudo intrinsics.
+        # Remap only that header to the real Clang intrinsics, keeping the
+        # Microsoft intrin.h/CRT headers and user-mode hard-float ABI intact.
+        resource=Path(subprocess.check_output([shutil.which('clang'),'-print-resource-dir'],text=True).strip())
+        def remap_neon(entry):
+            if entry.get('type')=='file' and Path(entry['name']).name.lower()=='arm_neon.h':
+                entry['external-contents']=str(resource/'include/arm_neon.h')
+            for child in entry.get('contents',[]):remap_neon(child)
+        for entry in vfs['roots']:remap_neon(entry)
+        vfs['roots'].append({'type':'file','name':str(a.windows_headers.resolve()/'arm_neon.h'),
+                             'external-contents':str(resource/'include/arm_neon.h')})
+        platform_vfs=out/'platform-vfs.json';platform_vfs.write_text(json.dumps(vfs)+'\n')
     env=os.environ.copy();env.update(TMPDIR=str(out),CCACHE_DISABLE='1',XDG_CACHE_HOME=str(out/'cache'))
     clang=shutil.which('clang');ar=shutil.which('llvm-ar') or shutil.which('llvm-ar-18')
     if not clang or not ar:raise SystemExit('clang/llvm-ar required')
@@ -67,11 +99,23 @@ def main():
             actual_source=out/'pco_usclib_explicit.c'
             actual_source.write_text(prefix+'\nvoid geo_pco_usclib_initialize(void) {'+match[1]+'\n}\nvoid geo_pco_usclib_finalize(void) {'+match[2]+'\n}\n')
         platform=['-isystem',str(a.windows_headers.resolve())]
-        target='thumbv7-pc-windows-msvc' if a.msvc_sdk else 'armv7-w64-windows-gnu'
+        if a.msvc_sdk and a.component=='util':
+            # MSVC exports the underscored CRT names; preserve actual CRT calls.
+            platform+=['-Dstrdup=_strdup','-Dstricmp=_stricmp']
+        # C-only compiler IR uses GNU packed bitfields (asserted by Mesa).
+        # Public C calls keep the Windows ARM ABI. C++ lifetime helpers use
+        # the Microsoft ABI and only exchange plain C function arguments.
+        target='thumbv7-pc-windows-msvc' if a.msvc_sdk and cpp else 'armv7-w64-windows-gnu'
         if a.msvc_sdk:
-            platform+=['-fms-extensions','-fms-compatibility','-fms-compatibility-version=19.0','-D_ARM_','-DARM','-isystem',str(a.msvc_sdk/'ucrt'),'-isystem',str(a.msvc_sdk/'shared'),'-isystem',str(a.msvc_sdk/'um')]
-            if a.msvc_vfs:platform+=['-ivfsoverlay',str(a.msvc_vfs)]
-        cmd=[clang,'--target='+target,'-x','c++' if cpp else 'c','-std=c++14' if cpp else '-std=c11','-O2','-mno-ms-bitfields','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access',
+            platform+=['-fms-extensions','-fms-compatibility-version=19.0','-D_MSC_VER=1900','-D_M_ARM=7','-D_ARM_','-DARM','-D_ARM_WINAPI_PARTITION_DESKTOP_SDK_AVAILABLE=1','-DUSE_GCC_ATOMIC_BUILTINS','-D_CRT_SECURE_NO_WARNINGS','-DWIN32_LEAN_AND_MEAN','-D_MSC_EXTENSIONS=1','-D_MT','-U__STDC__','-D__STDC__=0','-isystem',str(a.msvc_sdk/'ucrt'),'-isystem',str(a.msvc_sdk/'shared'),'-isystem',str(a.msvc_sdk/'um')]
+            if platform_vfs:platform+=['-ivfsoverlay',str(platform_vfs)]
+            if not cpp:
+                # Preserve UCRT inline bodies under GNU C inline semantics.
+                # crt_stdio.cpp emits one real out-of-line copy for varargs
+                # and address-taken functions; CRT option state stays shared.
+                platform+=['-Dstatic_assert=_Static_assert',
+                           '-D_CRT_STDIO_INLINE=extern __inline __attribute__((gnu_inline))']
+        cmd=[clang,'--target='+target,'-x','c++' if cpp else 'c','-std=c++14' if cpp else '-std=c11','-O2','-mno-ms-bitfields','-ffreestanding','-fno-builtin','-fno-stack-protector','-ffunction-sections','-fdata-sections','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access',
              '-D_WIN32_WINNT=0x0603','-DNTDDI_VERSION=0x06030000','-DGEO_PCO_EXPLICIT_USCLIB_LIFETIME=1','-DHAVE_STRUCT_TIMESPEC','-DHAVE_FUNC_ATTRIBUTE_PACKED','-D_USE_MATH_DEFINES','-DPACKAGE_VERSION="27.0.0-devel"',
              *platform,*includes,'-c',str(actual_source),'-o',str(obj)]
         source_hash=sha((build/row['file']).resolve());old=reuse.get(row['file'])
@@ -88,7 +132,7 @@ def main():
             dependencies={n:sha(Path(n)) for n in shlex.split(deptext.replace('\\\n',' '))[1:]}
         return {'source':row['file'],'source_sha256':sha(source),'compiled_source_sha256':sha(actual_source),'command':cmd,'object':str(obj),'exit_code':result.returncode,'object_sha256':sha(obj) if result.returncode==0 else None,'dependencies':dependencies}
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:results=list(pool.map(compile_one,rows))
-    report={'reference_manifest_sha256':sha(a.reference_manifest),'component':a.component,'target':'thumbv7-pc-windows-msvc' if a.msvc_sdk else 'armv7-w64-windows-gnu','units':results,
+    report={'reference_manifest_sha256':sha(a.reference_manifest),'component':a.component,'target':'Windows ARM C ABI / GNU packed private IR / MSVC C++ lifetime' if a.msvc_sdk else 'armv7-w64-windows-gnu','units':results,
             'host_platform_flags_reused':False,'runtime_verified':False,'msvc_wdk_linked':False,'nir_util_dependencies_linked':False,'builder_sha256':sha(Path(__file__)),
             'compiler_version':subprocess.check_output([clang,'--version'],text=True),'private_bitfield_abi':'-mno-ms-bitfields; size assertions retained; does not apply to Windows DDI objects'}
     failed=[r for r in results if r['exit_code']]

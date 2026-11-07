@@ -113,7 +113,7 @@ b29be98の実WDK成果物を保持し、次のmodule buildでは`-ReuseDirectory
 # 新固定commitのclean checkout上。出力先を分離する。
 powershell -NoProfile -File drivers\gpu\mt8167\wddm-render\build-wdk81.ps1 -EnableCandidate -OutputDirectory build\ge8300-wddm-next -ReuseDirectory build\ge8300-wddm-b29
 # 実factoryと実frontendが揃った後のみ。module再compileなし。
-powershell -NoProfile -File drivers\gpu\mt8167\wddm-render\build-linked-wdk81.ps1 -EnableCandidate -ModuleDirectory build\ge8300-wddm-next -NativeOwnerLibrary build\fixed-native\owner.lib -NativeOwnerSha256 <64hex> -FrontendLibrary build\fixed-frontend\frontend.lib -FrontendSha256 <64hex> -OutputDirectory build\ge8300-wddm-linked
+powershell -NoProfile -File drivers\gpu\mt8167\wddm-render\build-linked-wdk81.ps1 -EnableCandidate -ModuleDirectory build\ge8300-wddm-next -NativeOwnerLibrary build\fixed-native\owner.lib -NativeOwnerSha256 <64hex> -FrontendLibrary build\fixed-frontend\frontend.lib -FrontendSha256 <64hex> -CompilerLinkManifest <compiler-link-manifest.json> -CompilerLinkManifestSha256 <64hex> -CompilerLibraryDirectory <fixed-flat-compiler-libraries> -OutputDirectory build\ge8300-wddm-linked
 ```
 
 link recipeは同commit/clean/source/output hash、ARMNT、KMDF import不在を検証し、map/import/export/manifestを保存します。署名/INF/配置は行いません。実owner/frontend未提供ならlink失敗のままとし、代替libraryを生成しません。今回のhost確認は既存単一state test、KMDのx64実header構文、UMDのARM構文のみ。hostにPowerShellがないためPS AST parse/実WDK追加TU buildは主担当側で未実施です。
