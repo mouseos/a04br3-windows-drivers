@@ -25,3 +25,13 @@ Sources:
 The missing DDI and wrong capability claim are source-contract defects.
 The exact runtime validation branch responsible for Code43 remains under REA
 investigation. Build/host checks are not device drawing evidence.
+
+## RT8.1 ARM version field
+
+REA of the actual dxgkrnl.sys (SHA256 2f0fe1db882ba83862a6ece3c2de0cf08c2b20767e6640dc4de5b97255b6d941)
+shows FUN_000862d4 querying DRIVERCAPS and rejecting WDDMVersion except
+0x1000,0x1200,0x1300 for the new DDI. The reported zero therefore cannot pass.
+Use DXGKDDI_WDDMv1_3 and compile-time assertions for the actual WDK8.1 ARM
+field offset0x148 and enum0x1300. Current documentation describing the field
+as reserved is retained as a conflicting newer contract, not silently applied
+to this shipped RT binary. Evidence ev_6607dcaa56c726ae672f608b800609f97d07c1042238ed5e6f1e22e425767f06.

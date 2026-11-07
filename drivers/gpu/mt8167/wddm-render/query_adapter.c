@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "query_adapter.h"
 #include "adapter_info.h"
+_Static_assert(FIELD_OFFSET(DXGK_DRIVERCAPS,WDDMVersion)==0x148,"RT8.1 ARM driver caps WDDMVersion offset");
+_Static_assert(DXGKDDI_WDDMv1_3==0x1300,"RT8.1 ARM WDDM1.3 version value");
 NTSTATUS GeoConfigureAperture(struct geo_kmd_adapter *a,const struct geo_aperture_config *p) {
  if(!a||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL||a->aperture_ready||p->size!=sizeof(*p)||p->version!=1||
     !p->bytes||p->bytes>UINT32_MAX||!p->commit_limit||p->commit_limit>p->bytes||
@@ -75,8 +77,11 @@ NTSTATUS GeoBuildRequiredDriverCaps(struct geo_kmd_adapter *a,DXGK_DRIVERCAPS *c
   * it does not mean that this is a non-VGA render adapter. This device owns
   * no POST scanout and exposes no such display DDI. */
  caps->SupportNonVGA=FALSE;
- /* WDDMVersion is RESERVED and zero for Win7+ DDIs (Microsoft contract).
-  * Target API version is DRIVER_INITIALIZATION_DATA.Version=0x4002. Display,
-  * overlays, flips, runtime F-states and per-engine TDR stay unadvertised. */
+ /* The actual RT8.1 ARM post-start validator reads this WDK8.1 field at
+  * offset 0x148 and accepts only 0x1000/0x1200/0x1300 for Win8+ DDIs.
+  * Modern documentation calling it reserved does not match that binary.
+  * REA: dxgkrnl 2f0fe1db..., FUN_000862d4 after QueryAdapterInfo(DRIVERCAPS).
+  * This is the DDI model version, not a claim of a complete feature level. */
+ caps->WDDMVersion=DXGKDDI_WDDMv1_3;
  return STATUS_SUCCESS;
 }
