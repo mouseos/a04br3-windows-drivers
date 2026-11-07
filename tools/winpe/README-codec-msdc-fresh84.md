@@ -48,3 +48,16 @@ OS cacheを迂回しないので物理eMMC throughputや速度改善の測定で
 capture/DMA/IRQ aggregate gate、普通のfile read結果、全SYS/保持file hashを個別に出力する。
 実機を操作せず、未回収・未検証を成功扱いしない。capture optionalログの回収は既存
 `capture-windows-prebackup.py --engine-probe-state`の固定候補に追加した。
+
+## run85失敗後の訂正
+
+WinPE準備の保持DODコピー参照が未stage fileを指したため、新service/SYSTEMコピー前に中止した。
+通常OSと3件の延期installは未実行。保持DODコピーを除外し、全package copy参照実体の検査を追加した。
+旧Engine記録を保存hashで復元し、partial stageを別directoryに保存。fresh86を回収し、
+通常EFIへ復旧してRecovery/unmountedで実機所有をmainへ返却した。boot/両GPT hashは前後一致。
+
+fresh86 SYSTEMのnative replay（load/unload/privilege restore全0）で確認したMSDC選択は
+`oem32.inf / 0.0.1.0 / 11-2-2026`。配置SYSはsource f8f54c9の候補0.0.1.7/hash fb4d168b…であり、
+選択版と配置SYSの出自を混同しない。baseline pinは選択版/dateをこの観測へ訂正した。
+旧署名サービスd612c1abのMSDC baseline metadataは旧仮定であり、次回に流用してはいけない。
+次回はmainの実状態に合うnew freshへ明示結合し、修正sourceからサービス再生成が必要。

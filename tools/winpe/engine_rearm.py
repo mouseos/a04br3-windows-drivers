@@ -20,7 +20,7 @@ SYS_NAMES = {'parent': 'mt8167-shared.sys', 'audio': 'mt8167-audio.sys',
 
 def version(value, gpu=False, display=False, sd=False, parent=False, usb=False):
     date, numbers = value.split(',')
-    codec_date=value in ('11/07/2026,2026.11.7.1026','11/07/2026,0.0.1.8','11/03/2026,0.0.1.7')
+    codec_date=value in ('11/07/2026,2026.11.7.1026','11/07/2026,0.0.1.8','11/02/2026,0.0.1.0')
     display_run33=(display and value in ('11/07/2026,0.0.1.5','11/07/2026,0.0.1.6')) or (sd and value in ('11/07/2026,2026.11.7.3','11/07/2026,2026.11.7.4','11/07/2026,2026.11.7.7')) or (parent and value in ('11/07/2026,2026.11.7.1010','11/07/2026,2026.11.7.1014','11/07/2026,2026.11.7.1015')) or (usb and value in ('11/07/2026,2026.11.7.1004','11/07/2026,2026.11.7.1005'))
     if (not gpu and not display_run33 and not codec_date and date != '11/06/2026') or not re.fullmatch(r'\d+\.\d+\.\d+\.\d+', numbers):
         raise ValueError('再arm INFは固定dateと4要素versionが必要です')

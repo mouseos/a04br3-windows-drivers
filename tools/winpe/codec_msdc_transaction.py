@@ -16,8 +16,8 @@ TARGETS={
 BASELINES={
  'parent':('2026.11.7.1015','e7df942265a8216ba393152f1fe781e47d48ebe09b6da02f235dd8c2ba7d9752'),
  'audio':('2026.11.7.1007','b917801c0f673aa5ab36be25c4133ad5d1370f1130936bbc4fda7086cf374edc'),
- 'emmc':('0.0.1.7','fb4d168baa3d8ec8297c1fe33b195a9e1af85a79bf4f4267103b677bbd24fa2a')}
-BASELINE_DATES={'parent':'11/07/2026','audio':'11/06/2026','emmc':'11/03/2026'}
+ 'emmc':('0.0.1.0','fb4d168baa3d8ec8297c1fe33b195a9e1af85a79bf4f4267103b677bbd24fa2a')}
+BASELINE_DATES={'parent':'11/07/2026','audio':'11/06/2026','emmc':'11/02/2026'}
 # Actual installed USB1005 is 44899b9, not the re-signed audit build.
 RETAINED={
  'usb':('MT8167\\USB20','A04Usb20Keyboard','2026.11.7.1005','mt8167-usb20.sys','db1e26ebb856d197022e284f42da5669128e3bf58b25b3080563c4288ffc9fdf'),
