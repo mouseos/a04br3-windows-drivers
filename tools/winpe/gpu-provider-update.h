@@ -43,7 +43,7 @@ static DWORD gpu_check_disk_baseline(void)
     if(file==INVALID_HANDLE_VALUE)return GetLastError();
     error=gpu_hash(file,hash);CloseHandle(file);if(error)return error;
     for(j=0;j<32;j++)if(hash[j]!=gpu_baseline_hash[j])return ERROR_REVISION_MISMATCH;
-    record("DISK_BASELINE_9C3_MATCH=1\r\nLOADED_IMAGE_HASH_VERIFIED=0\r\n");
+    record("DISK_BASELINE_POLICY_MATCH=1\r\nLOADED_IMAGE_HASH_VERIFIED=0\r\n");
     return NO_ERROR;
 }
 static LONG gpu_trust(WINTRUST_DATA *data)
@@ -116,7 +116,7 @@ static DWORD gpu_deferred_install(void)
         if(!SetupDiGetDevicePropertyW(set,&dev,&versionKey,&type,(BYTE *)value,sizeof(value),&bytes,0)){
             error=GetLastError();goto done;
         }
-        if(type!=DEVPROP_TYPE_STRING||bytes!=sizeof(L"0.0.1.3")||value[bytes/2-1]||lstrcmpW(value,L"0.0.1.3")){
+        if(type!=DEVPROP_TYPE_STRING||bytes!=sizeof(GPU_BASELINE_DRIVER_VERSION)||value[bytes/2-1]||lstrcmpW(value,GPU_BASELINE_DRIVER_VERSION)){
             error=ERROR_REVISION_MISMATCH;goto done;
         }
         if(!SetupDiGetDevicePropertyW(set,&dev,&infKey,&type,(BYTE *)value,sizeof(value),&bytes,0)){
@@ -126,7 +126,7 @@ static DWORD gpu_deferred_install(void)
             error=ERROR_INVALID_DATA;goto done;
         }
         for(j=0;j<bytes/2-1;j++)number("SELECTED_INF_UTF16",value[j]);
-        record("SELECTED_DRIVER_VERSION_0_0_1_3=1\r\n");
+        record("SELECTED_BASELINE_DRIVER_VERSION_MATCH=1\r\n");
     }
     memset(&params,0,sizeof(params));params.cbSize=sizeof(params);
     if(!SetupDiGetDeviceInstallParamsW(set,&dev,&params)){error=GetLastError();goto done;}
@@ -172,6 +172,7 @@ static DWORD install_once(void)
     error=gpu_check_disk_baseline();number("GPU_DISK_BASELINE_ERROR",error);if(error)goto done;
     error=gpu_verify(files);number("GPU_PACKAGE_ERROR",error);if(error)goto done;
     record("CANDIDATE_SOURCE=" GPU_SOURCE_COMMIT "\r\n");
+    record("BASELINE_SOURCE=" GPU_BASELINE_SOURCE_COMMIT "\r\nBASELINE_DRIVER_VER=" GPU_BASELINE_DRIVER_VER "\r\n");
     if(!log_ok){error=ERROR_WRITE_FAULT;goto done;}
     if(!SetupCopyOEMInfW(inf_path,package_dir,SPOST_PATH,0,NULL,0,NULL,NULL)){
         error=GetLastError();number("PACKAGE_STAGE_ERROR",error);goto done;

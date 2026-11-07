@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate one real GPU package and generate the policy for its signed installer."""
+"""Pin one signed GPU roll-forward transition into its separately signed installer."""
 import argparse
 import datetime
 import hashlib
@@ -10,14 +10,8 @@ import shutil
 import subprocess
 
 FILES = ("mt8167-ge8300.inf", "mt8167-ge8300.sys", "mt8167-ge8300.cat", "ge8300-mips.fw")
-SOURCE = "04d0e573bd1bee7b619d25441f8ac05d28d5ccd5"
-OLD_SYS = "9c3c7d846565c0e5e73c2afe1d4d9900089f74bbe92d97ff8d1627729321265e"
-FIXED_HASHES = {
-    "mt8167-ge8300.inf": "a49c79d2b765470cbf82001195d0aec43a175eacae77a48a3f5daac5e7c21444",
-    "mt8167-ge8300.sys": "13c8a9ca6b6d7fef921afd38d60cf84ea8e37b599b51af82d6e90342d8b9da07",
-    "mt8167-ge8300.cat": "5d4cfad2d2b0e1758777c0d531aae92e172a1b4d53b206649b5f7f2b08c4d828",
-    "ge8300-mips.fw": "5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1",
-}
+INPUTS = (*FILES, "build-config.json", "provider-package-manifest.json", "mt8167-development.cer")
+SIGNER = "BCBF6C456C6F0DD0818434763B189488FBF13570"
 FIRMWARE = "5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1"
 
 
@@ -25,120 +19,153 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def require(condition, message):
+    if not condition:
+        raise ValueError(message)
+
+
+def checked_file(directory, name):
+    path = directory / name
+    require(not path.is_symlink() and path.is_file() and 0 < path.stat().st_size <= 16 * 1024 * 1024,
+            "missing, reparse/symlink or invalid package file: " + name)
+    return path
+
+
+def read_json(directory, name):
+    return json.loads(checked_file(directory, name).read_text(encoding="utf-8-sig"))
+
+
+def driver_version(value):
+    require(isinstance(value, str) and re.fullmatch(r"\d{2}/\d{2}/\d{4},\d+\.\d+\.\d+\.\d+", value),
+            "invalid complete DriverVer")
+    date, text = value.split(",")
+    parts = tuple(int(x) for x in text.split("."))
+    require(all(0 <= x <= 65535 for x in parts), "DriverVersion component exceeds 16 bits")
+    return datetime.datetime.strptime(date, "%m/%d/%Y").date(), parts, text
+
+
+def load_package(root, directory, candidate=False):
+    """Read fixed names only; verify final bytes and their source-committed INF."""
+    signed = read_json(directory, "signed-manifest.json")
+    source = signed.get("source_commit", "")
+    require(isinstance(source, str) and re.fullmatch("[0-9a-f]{40}", source), "full source commit required")
+    entries = signed["files"]
+    require(isinstance(entries, list) and len(entries) == len(INPUTS) and
+            {item["path"] for item in entries} == set(INPUTS), "unexpected/duplicate/incomplete signed file list")
+    for item in entries:
+        require(sha(checked_file(directory, item["path"])) == item["sha256"].lower(),
+                "signed manifest file mismatch: " + item["path"])
+    manifest = read_json(directory, "provider-package-manifest.json")
+    config = read_json(directory, "build-config.json")
+    require(manifest.get("source_commit") == source == config.get("source_commit"), "package source mismatch")
+    require(manifest.get("fingerprint_state") == "final-signed-package" and manifest.get("signature_status") == "Valid",
+            "final signed package manifest required")
+    require(signed.get("signing_thumbprint") == manifest.get("signer_thumbprint") == SIGNER and
+            hashlib.sha1(checked_file(directory, "mt8167-development.cer").read_bytes()).hexdigest().upper() == SIGNER,
+            "unexpected signer/certificate identity")
+    if candidate:
+        require(signed.get("native_clear_activate") is True, "explicit activation opt-in required")
+        for part in (manifest, config):
+            require(str(part.get("native_clear_activate")) == "1" and str(part.get("native_clear_job")) == "1" and
+                    part.get("native_ta3d_publish_gate") == "armed-one-shot-private-480000", "activation/job/publish gate mismatch")
+        require(str(config.get("native_backing")) == "1", "native backing not enabled")
+    require(set(manifest.get("files", {})) == set(FILES), "only the four fixed provider files are accepted")
+    hashes = {}
+    for name in FILES:
+        path = checked_file(directory, name)
+        digest = sha(path)
+        require(digest == manifest["files"][name]["sha256"] and path.stat().st_size == manifest["files"][name]["bytes"],
+                "final package hash/size mismatch: " + name)
+        hashes[name] = digest
+    require(hashes["ge8300-mips.fw"] == FIRMWARE, "unexpected GPU firmware")
+    pe = checked_file(directory, FILES[1]).read_bytes()
+    require(len(pe) >= 64 and pe[:2] == b"MZ", "provider is not a PE image")
+    offset = int.from_bytes(pe[60:64], "little")
+    require(pe[offset:offset + 6] == b"PE\0\0\xc4\x01", "provider is not ARMNT")
+    inf_bytes = checked_file(directory, FILES[0]).read_bytes()
+    inf = inf_bytes.decode("utf-16" if inf_bytes[:2] in (b"\xff\xfe", b"\xfe\xff") else "utf-8-sig")
+    source_inf = subprocess.check_output(["git", "-C", str(root), "show", source + ":drivers/gpu/mt8167/mt8167-ge8300.inf"]).decode("utf-8-sig")
+    require(inf.replace("\r\n", "\n") == source_inf.replace("\r\n", "\n"), "INF differs from committed source")
+    version = re.search(r"(?im)^DriverVer\s*=\s*([^\r\n;]+)", inf)
+    require(version and version.group(1).strip() == manifest.get("driver_ver") == config.get("driver_ver"), "INF/manifest DriverVer mismatch")
+    date, parts, text = driver_version(manifest["driver_ver"])
+    require(config.get("inf_sha256", "").lower() == hashes[FILES[0]], "build-config INF hash mismatch")
+    require(re.search(r"(?im)^%Device%\s*=\s*Install\s*,\s*ACPI\\MOU0006\s*$", inf) and
+            re.search(r"(?im)^ServiceBinary\s*=\s*%12%\\mt8167-ge8300\.sys\s*$", inf) and
+            re.search(r"(?im)^AddService\s*=\s*MT8167GE8300\s*,", inf), "fixed GPU hardware/service mismatch")
+    require(not re.search(r"(?i)\b(CoInstallers32|RegisterDlls|UnregisterDlls|RunPreSetupCommands|RunPostSetupCommands)\b", inf),
+            "executable coinstaller/command directives are not accepted")
+    return {"source": source, "manifest": manifest, "config": config, "hashes": hashes,
+            "date": date, "parts": parts, "version": text, "driver_ver": manifest["driver_ver"],
+            "signed_sha256": sha(directory / "signed-manifest.json")}
+
+
+def validate_transition(baseline, candidate):
+    require(candidate["date"] >= baseline["date"] and candidate["parts"] > baseline["parts"],
+            "candidate must have a nondecreasing DriverDate and strictly newer DriverVersion")
+    require(candidate["hashes"][FILES[1]] != baseline["hashes"][FILES[1]], "candidate SYS equals the baseline")
+    require(candidate["manifest"].get("selected_installed_sys_sha256") == baseline["hashes"][FILES[1]] and
+            candidate["manifest"].get("selected_installed_driver_ver") == baseline["driver_ver"] and
+            candidate["config"].get("installed_sys_sha256", "").lower() == baseline["hashes"][FILES[1]] and
+            candidate["config"].get("installed_driver_ver") == baseline["driver_ver"], "candidate was not built/verified for this baseline")
+
+
+def render_header(baseline, candidate, hashes, suffix):
+    encoded = sum(value << shift for value, shift in zip(candidate["parts"], (48, 32, 16, 0)))
+    header = "/* Generated for one validated signed roll-forward transition only. */\n#ifndef GPU_PROVIDER_CANDIDATE_H\n#define GPU_PROVIDER_CANDIDATE_H\n"
+    header += '#define GPU_SOURCE_COMMIT "' + candidate["source"] + '"\n'
+    header += '#define GPU_BASELINE_SOURCE_COMMIT "' + baseline["source"] + '"\n'
+    header += "#define GPU_BASELINE_DRIVER_VER " + json.dumps(baseline["driver_ver"]) + "\n"
+    header += "#define GPU_BASELINE_DRIVER_VERSION L" + json.dumps(baseline["version"]) + "\n"
+    header += "#define GPU_UPDATE_DIRECTORY L" + json.dumps(suffix) + "\n"
+    header += f"#define GPU_DRIVER_VERSION 0x{encoded:016x}ULL\n"
+    header += "static const unsigned char gpu_baseline_hash[32]={" + ",".join("0x" + x for x in re.findall("..", baseline["hashes"][FILES[1]])) + "};\n"
+    header += "static const unsigned char gpu_expected_hashes[5][32]={\n"
+    header += ",\n".join("{" + ",".join("0x" + x for x in re.findall("..", h)) + "}" for h in hashes)
+    return header + "\n};\n#endif\n"
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--candidate", type=Path, required=True)
+    ap.add_argument("--baseline", type=Path, required=True)
     ap.add_argument("--output", type=Path, required=True)
     a = ap.parse_args()
     root = Path(__file__).resolve().parents[2]
-    if not a.candidate.is_dir():
-        ap.error("real GPU candidate package has not been received")
-    candidate = a.candidate.resolve(strict=True)
     out = a.output.resolve()
-    if root not in out.parents or out.exists():
-        ap.error("output must be a new directory inside this checkout")
-    signed = json.loads((candidate / "signed-manifest.json").read_text(encoding="utf-8-sig"))
-    if signed.get("source_commit") != SOURCE or signed.get("native_clear_activate") is not True:
-        ap.error("signed manifest does not describe the fixed activation candidate")
-    for item in signed["files"]:
-        if item["path"] not in (*FILES, "build-config.json", "provider-package-manifest.json", "mt8167-development.cer"):
-            ap.error("unexpected signed manifest path")
-        if sha(candidate / item["path"]) != item["sha256"].lower():
-            ap.error("signed manifest file mismatch: " + item["path"])
-    if {item["path"] for item in signed["files"]} != {*FILES, "build-config.json", "provider-package-manifest.json", "mt8167-development.cer"}:
-        ap.error("incomplete signed manifest")
-    raw = candidate / "provider-package-manifest.json"
-    manifest = json.loads(raw.read_text(encoding="utf-8-sig"))
-    config = json.loads((candidate / "build-config.json").read_text(encoding="utf-8-sig"))
-    if manifest.get("source_commit") != SOURCE or config.get("source_commit") != SOURCE:
-        ap.error("requires the fixed 04d0e57 source package")
-    for part in (manifest, config):
-        if str(part.get("native_clear_activate")) != "1" or str(part.get("native_clear_job")) != "1":
-            ap.error("explicit private-clear activation/job is not enabled")
-        if part.get("native_ta3d_publish_gate") != "armed-one-shot-private-480000":
-            ap.error("unexpected native publish gate")
-    if str(config.get("native_backing")) != "1":
-        ap.error("native backing was not selected")
-    if manifest.get("fingerprint_state") != "final-signed-package" or manifest.get("signature_status") != "Valid":
-        ap.error("final signed package manifest is required")
-    if signed.get("signing_thumbprint") != manifest.get("signer_thumbprint") or signed.get("signing_thumbprint") != "BCBF6C456C6F0DD0818434763B189488FBF13570":
-        ap.error("unexpected candidate signer identity")
-    if manifest.get("selected_installed_sys_sha256") != OLD_SYS:
-        ap.error("manifest baseline SYS differs from the confirmed 9c3 baseline")
-    if manifest.get("selected_installed_driver_ver") != "11/06/2026,0.0.1.3":
-        ap.error("manifest baseline INF differs from the supplied 0.0.1.3 baseline")
-    commit = SOURCE
-    subprocess.run(["git", "-C", str(root), "cat-file", "-e", commit + "^{commit}"], check=True)
-    if set(manifest.get("files", {})) != set(FILES):
-        ap.error("manifest must name exactly the four fixed package files")
-    hashes = [sha(raw)]
-    for name in FILES:
-        path = candidate / name
-        if path.is_symlink() or not path.is_file() or not 0 < path.stat().st_size <= 16 * 1024 * 1024:
-            ap.error("invalid package file: " + name)
-        digest = sha(path)
-        if digest != FIXED_HASHES[name]:
-            ap.error("file differs from the recovered fixed signed GPU candidate: " + name)
-        if digest != manifest["files"][name]["sha256"] or path.stat().st_size != manifest["files"][name]["bytes"]:
-            ap.error("candidate hash mismatch: " + name)
-        hashes.append(digest)
-    if hashes[2] == OLD_SYS or hashes[4] != FIRMWARE:
-        ap.error("old provider or unexpected GPU firmware")
-    pe = (candidate / FILES[1]).read_bytes()
-    if len(pe) < 64 or pe[:2] != b"MZ":
-        ap.error("candidate is not an ARM32 PE image")
-    offset = int.from_bytes(pe[60:64], "little")
-    if pe[offset:offset+6] != b"PE\0\0\xc4\x01":
-        ap.error("candidate must be ARMNT, not a host image")
-    inf_bytes = (candidate / FILES[0]).read_bytes()
-    inf = inf_bytes.decode("utf-16" if inf_bytes[:2] in (b"\xff\xfe", b"\xfe\xff") else "utf-8-sig")
-    source_inf = subprocess.check_output(["git", "-C", str(root), "show", SOURCE + ":drivers/gpu/mt8167/mt8167-ge8300.inf"]).decode("utf-8-sig")
-    if inf.replace("\r\n", "\n") != source_inf.replace("\r\n", "\n"):
-        ap.error("package INF differs from the fixed candidate source")
-    version = re.search(r"(?im)^DriverVer\s*=\s*([^\r\n;]+)", inf)
-    if not version or version.group(1).strip() != manifest.get("driver_ver"):
-        ap.error("manifest/INF DriverVer mismatch")
-    if manifest["driver_ver"] != "11/07/2026,0.0.2.1":
-        ap.error("requires the source-committed 04d0e57 INF 11/07/2026,0.0.2.1")
-    if config.get("driver_ver") != manifest["driver_ver"] or config.get("inf_sha256", "").lower() != hashes[1]:
-        ap.error("build config and signed INF differ")
-    date, text = manifest["driver_ver"].split(",")
-    parts = tuple(int(x) for x in text.split("."))
-    if len(parts) != 4 or any(x > 65535 or x < 0 for x in parts) or parts <= (0, 0, 1, 3):
-        ap.error("GPU DriverVersion must exceed 0.0.1.3")
-    if datetime.datetime.strptime(date, "%m/%d/%Y").date() < datetime.date(2026, 11, 6):
-        ap.error("GPU DriverDate must not precede 11/06/2026")
-    if not re.search(r"(?im)^%Device%\s*=\s*Install\s*,\s*ACPI\\MOU0006\s*$", inf):
-        ap.error("INF must target the single fixed GPU hardware ID")
-    if not re.search(r"(?im)^ServiceBinary\s*=\s*%12%\\mt8167-ge8300\.sys\s*$", inf):
-        ap.error("INF service binary differs from the fixed provider")
-    if not re.search(r"(?im)^AddService\s*=\s*MT8167GE8300\s*,", inf):
-        ap.error("INF service name mismatch")
-    if re.search(r"(?i)\b(CoInstallers32|RegisterDlls|UnregisterDlls|RunPreSetupCommands|RunPostSetupCommands)\b", inf):
-        ap.error("no executable coinstaller or command directives are accepted")
-    out.mkdir(parents=True)
-    package = out / "provider"
-    package.mkdir()
-    for index, name in enumerate(("provider-package-manifest.json",) + FILES):
-        shutil.copyfile(candidate / name, package / name)
-        if sha(package / name) != hashes[index]:
-            ap.error("package changed during staging: " + name)
-    # Pin the manifest's exact bytes too; no runtime JSON parser or input paths.
-    header = "/* Generated only from the supplied real candidate. */\n"
-    header += '#define GPU_SOURCE_COMMIT "' + commit + '"\n'
-    encoded = sum(value << shift for value, shift in zip(parts, (48, 32, 16, 0)))
-    header += f"#define GPU_DRIVER_VERSION 0x{encoded:016x}ULL\n"
-    header += "static const unsigned char gpu_baseline_hash[32]={" + ",".join("0x" + OLD_SYS[i:i+2] for i in range(0,64,2)) + "};\n"
-    header += "static const unsigned char gpu_expected_hashes[5][32]={\n"
-    header += ",\n".join("{" + ",".join("0x" + h[i:i+2] for i in range(0, 64, 2)) + "}" for h in hashes)
-    header += "\n};\n"
-    (out / "gpu-provider-candidate.h").write_text(header)
-    result = {"state": "policy-prepared-not-trust-verified", "candidate_source_commit": commit,
-              "driver_ver": manifest["driver_ver"], "files": dict(zip(("provider-package-manifest.json",) + FILES, hashes)),
-              "policy_sha256": sha(out / "gpu-provider-candidate.h"), "source_signed_manifest_sha256": sha(candidate / "signed-manifest.json"), "source_build_config_sha256": sha(candidate / "build-config.json"), "authenticode_verified": False,
-              "runtime_verified": False, "deployed": False}
-    (out / "policy-manifest.json").write_text(json.dumps(result, indent=2) + "\n")
-    print(json.dumps(result, indent=2))
+    try:
+        require(root in out.parents and not out.exists(), "output must be new and inside this checkout")
+        baseline = load_package(root, a.baseline.resolve(strict=True))
+        candidate_dir = a.candidate.resolve(strict=True)
+        candidate = load_package(root, candidate_dir, candidate=True)
+        validate_transition(baseline, candidate)
+        # Whitespace-only manifest changes cannot create a fresh attempt directory.
+        transition = hashlib.sha256((candidate["source"] + baseline["hashes"][FILES[1]] +
+                                     candidate["hashes"][FILES[1]] + candidate["hashes"][FILES[0]]).encode("ascii")).hexdigest()
+        suffix = "\\MT8167GpuUpdate-" + candidate["source"] + "-" + transition
+        require(re.fullmatch(r"\\MT8167GpuUpdate-[0-9a-f]{40}-[0-9a-f]{64}", suffix), "invalid fixed directory suffix")
+        names = ("provider-package-manifest.json",) + FILES
+        hashes = [sha(candidate_dir / name) for name in names]
+        out.mkdir(parents=True)
+        package = out / "provider"
+        package.mkdir()
+        for name, digest in zip(names, hashes):
+            shutil.copyfile(candidate_dir / name, package / name)
+            require(sha(package / name) == digest, "package changed during staging: " + name)
+        (out / "gpu-provider-candidate.h").write_text(render_header(baseline, candidate, hashes, suffix))
+        result = {"schema_version": 2, "state": "policy-prepared-not-trust-verified", "transition_id": transition,
+                  "candidate_source_commit": candidate["source"], "driver_ver": candidate["driver_ver"],
+                  "baseline_source_commit": baseline["source"], "baseline_driver_ver": baseline["driver_ver"],
+                  "baseline_sys_sha256": baseline["hashes"][FILES[1]], "baseline_signed_manifest_sha256": baseline["signed_sha256"],
+                  "data_directory_suffix": suffix, "data_directory": "C:\\Windows\\System32" + suffix,
+                  "files": dict(zip(names, hashes)), "policy_sha256": sha(out / "gpu-provider-candidate.h"),
+                  "source_signed_manifest_sha256": candidate["signed_sha256"],
+                  "source_build_config_sha256": sha(candidate_dir / "build-config.json"),
+                  "authenticode_verified": False, "runtime_verified": False, "deployed": False}
+        (out / "policy-manifest.json").write_text(json.dumps(result, indent=2) + "\n")
+        print(json.dumps(result, indent=2))
+    except (ValueError, KeyError, TypeError, OSError, subprocess.CalledProcessError) as error:
+        ap.error(str(error))
 
 
 if __name__ == "__main__":

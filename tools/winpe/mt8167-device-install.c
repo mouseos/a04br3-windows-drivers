@@ -7,6 +7,9 @@
 #include <cfgmgr32.h>
 #include <newdev.h>
 #include "../../drivers/system/mt8167-toprgu/uart_screen.h"
+#if defined(A04_GPU_PROVIDER_UPDATE) && A04_GPU_PROVIDER_UPDATE
+#include "gpu-provider-candidate.h"
+#endif
 
 static const WCHAR service_name[] = L"MT8167DeviceInstall";
 #if defined(A04_GPU_PROVIDER_UPDATE) && A04_GPU_PROVIDER_UPDATE
@@ -87,10 +90,15 @@ static DWORD paths(void)
 {
     DWORD n = GetSystemDirectoryW(system_dir, MAX_PATH), error;
     BY_HANDLE_FILE_INFORMATION info;
+#if defined(A04_GPU_PROVIDER_UPDATE) && A04_GPU_PROVIDER_UPDATE
+    if (!n || n >= MAX_PATH || n+(sizeof(GPU_UPDATE_DIRECTORY)/sizeof(WCHAR)-1)+48 >= MAX_PATH)
+        return ERROR_INSUFFICIENT_BUFFER;
+#else
     if (!n || n >= MAX_PATH - 85) return ERROR_INSUFFICIENT_BUFFER;
+#endif
     lstrcpyW(directory, system_dir); lstrcatW(directory,
 #if defined(A04_GPU_PROVIDER_UPDATE) && A04_GPU_PROVIDER_UPDATE
-        L"\\MT8167GpuUpdate"
+        GPU_UPDATE_DIRECTORY
 #else
         L"\\MT8167DeviceInstall"
 #endif
