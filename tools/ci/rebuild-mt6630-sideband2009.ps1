@@ -24,7 +24,7 @@ foreach($p in @(@{root=$tc;hash='3A0870CB8D233686223206E52E9F88F5A6553FD09D77DA1
 New-Item -ItemType Directory $out,"$out\core","$out\ndis","$out\provider","$out\bluetooth","$out\hfp","$out\tmp"|Out-Null
 $inc="$sdk\wdk\Include";$km="$tc\wdk\Lib\winv6.3\km\arm";$wdf="$tc\wdk\Lib\wdf\kmdf\arm\1.13"
 $common=@('--target=thumbv7-pc-windows-msvc','-resource-dir',"$sdk\clang-resource",'-nostdinc','-isystem',"$sdk\clang-resource\include",'-isystem',"$crt\msvc-include",'-isystem',"$crt\atlmfc-include",'-isystem',"$crt\ucrt",'-fms-compatibility-version=19.44.35229','-w','-ffunction-sections','-fdata-sections','-fms-extensions','-ffreestanding','-O2','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-mfpu=none','-fno-stack-protector','-D__ldrexd=__combo_wdk81_ldrexd','-D_KERNEL_MODE','-D_ARM_','-DARM','-DNTDDI_VERSION=0x06030000','-D_WIN32_WINNT=0x0603',"-I$inc\km","-I$inc\shared","-I$inc\um")
-$ndis=$common+@('-std=c11','-D_WINSOCK_DEPRECATED_NO_WARNINGS=1','-DNDIS_MINIPORT_DRIVER','-DNDIS630_MINIPORT','-DA04_WIFI_SESSION_DIAGNOSTIC=1','-DA04_WIFI_IRQ_DIAGNOSTIC=1','-DA04_WIFI_CALIBRATION_DIAGNOSTIC=1','-DA04_WIFI_BT_BROKER=1',"-I$sdk\ndis-overlay")
+$ndis=@("-I$sdk\ndis-overlay")+$common+@('-std=c11','-D_WINSOCK_DEPRECATED_NO_WARNINGS=1','-DNDIS_MINIPORT_DRIVER','-DNDIS630_MINIPORT','-DA04_WIFI_SESSION_DIAGNOSTIC=1','-DA04_WIFI_IRQ_DIAGNOSTIC=1','-DA04_WIFI_CALIBRATION_DIAGNOSTIC=1','-DA04_WIFI_BT_BROKER=1',"-I$sdk\ndis-overlay")
 $reused=@();$objects=@();$compiled=@();$hfpObjects=@()
 foreach($r in @($old.reused_objects)+@($old.compiled_units)){
  if($r.object -in @('ndis/checkpoint.obj','ndis/combo_broker.obj')){continue}
