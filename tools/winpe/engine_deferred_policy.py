@@ -21,7 +21,9 @@ CLIENTS = ('mt6630-wlan-probe.exe', 'mt8167-audio-engine-probe.exe')
 BRIGHTNESS_CLIENT='mt8167-brightness-native.exe'
 BRIGHTNESS_SOURCE='4fafe9a76271531c36a6071b3926e3ce2dd77a8e'
 BRIGHTNESS_RUN33_SOURCE='8a79f2735c27cf783b4d1d703b155dd80178f9b3'
-BRIGHTNESS_CLIENT_SOURCES=(BRIGHTNESS_SOURCE,BRIGHTNESS_RUN33_SOURCE)
+BRIGHTNESS_SCOPED_SOURCE='ccef15ae47ebae71577ba266bfa88bcae6476ca8'
+BRIGHTNESS_SCOPED_LOG=r'C:\Windows\System32\MT8167EngineProbe\logs\brightness-native.log'
+BRIGHTNESS_CLIENT_SOURCES=(BRIGHTNESS_SOURCE,BRIGHTNESS_RUN33_SOURCE,BRIGHTNESS_SCOPED_SOURCE)
 
 def hexpin(value, n=64):
     if not isinstance(value,str) or not re.fullmatch('[0-9a-fA-F]{'+str(n)+'}', value):
@@ -32,9 +34,11 @@ def load_map(path, root):
     path=path.resolve(strict=True)
     if not path.is_relative_to(root.resolve()):raise ValueError('package mapは作業ルート内が必要です')
     spec=json.loads(path.read_text(encoding='utf-8-sig'))
-    if set(spec) not in ({'schema','backup_manifest_sha256','packages','clients'}, {'schema','backup_manifest_sha256','packages','clients','gpu'}) or spec['schema'] != 1:
+    if not {'schema','backup_manifest_sha256','packages','clients'}.issubset(spec) or set(spec)-{'schema','backup_manifest_sha256','packages','clients','gpu','sd_tuple','staging_profile'} or spec['schema'] != 1:
         raise ValueError('固定Engine policy map schema不一致')
     hexpin(spec['backup_manifest_sha256'])
+    staging=spec.get('staging_profile','offline-all')
+    if staging not in ('offline-all','normal-deferred'):raise ValueError('明示staging profile不一致')
     if set(spec['packages']) != set(TARGETS) or set(spec['clients']) not in (set(CLIENTS),set((*CLIENTS,BRIGHTNESS_CLIENT))):
         raise ValueError('固定5targetと固定2clientをすべて明示してください')
     selected={};components={};certificates={};policy={'schema':1,'mode':'engine_fixed_deferred_v1',
@@ -59,7 +63,8 @@ def load_map(path, root):
                 raise ValueError('既存touch/buttons/Engine/USB/WiFi保持parent profileが必要です')
         version=entry['driver_ver'];date,numbers=version.split(',');parts=tuple(map(int,numbers.split('.')))
         run33_display=(role=='display' and source==BRIGHTNESS_RUN33_SOURCE and version=='11/07/2026,0.0.1.5')
-        if len(parts)!=4 or min(parts)<0 or max(parts)>65535 or parts<minimum or (date!='11/06/2026' and not run33_display):
+        usb1004=(role=='usb' and source=='c04c795caf5b722628174fda86608ab38049b93f' and version=='11/07/2026,2026.11.7.1004')
+        if len(parts)!=4 or min(parts)<0 or max(parts)>65535 or parts<minimum or (date!='11/06/2026' and not run33_display and not usb1004):
             raise ValueError('固定target INF最低新版/date不一致: '+role)
         if role=='display' and source==BRIGHTNESS_RUN33_SOURCE and not run33_display:
             raise ValueError('8a79f27 displayは11/07/2026,0.0.1.5だけ許可します')
@@ -89,6 +94,19 @@ def load_map(path, root):
         policy['packages'][role]={**components[role],'source_commit':source,
             'version_u64':sum(v << ((3-i)*16) for i,v in enumerate(parts)),
             'date_filetime':int((datetime.datetime.strptime(date,'%m/%d/%Y')-datetime.datetime(1601,1,1)).total_seconds())*10000000}
+    if 'staging_profile' in spec:
+        policy['staging_profile']=staging
+        if 'gpu' not in spec:policy['retained_gpu']={'source_commit':'860f697b296558c30ee59d26d2a040dd5af87e0b','driver_version':'0.0.2.5','sys_sha256':'a8f226b33fa11915e88b3424c5ad3ed3aaa62ff35deb7f91902b04e7df4bf090','updated':False}
+    if 'sd_tuple' in spec:
+        from engine_sd_tuple import load_sd_tuple
+        sd_files,sd_components,sd_cert=load_sd_tuple(spec['sd_tuple'],root)
+        selected.update(sd_files);components.update(sd_components);certificates['sd_tuple']=sd_cert
+        for role in ('parent','sd'):
+            item=sd_components[role];date,numbers=item['driver_ver'].split(',');parts=tuple(map(int,numbers.split('.')))
+            policy['packages'][role]={**item,'source_commit':item['wrapper_source_commit'],
+                'version_u64':sum(v<<((3-i)*16) for i,v in enumerate(parts)),
+                'date_filetime':int((datetime.datetime.strptime(date,'%m/%d/%Y')-datetime.datetime(1601,1,1)).total_seconds())*10000000}
+        policy['sd_tuple_manifest_sha256']=spec['sd_tuple']['manifest_sha256'].lower()
     if 'gpu' in spec:
         from gpu_rollforward_package import load_package,validate_transition,FILES
         entry=spec['gpu']
@@ -162,7 +180,8 @@ def load_map(path, root):
         certpath,der=package.certificate(cert);image=package.file(BRIGHTNESS_CLIENT);metadata=package.json('manifest.json')
         if (metadata.get('commit')!=brightness_source or metadata.get('dirty') is not False
             or metadata.get('signed') is not True or metadata.get('arguments')!='none'
-            or metadata.get('log_path')!=r'C:\MT8167EngineProbe\brightness-native.log'
+            or metadata.get('log_path')!=(BRIGHTNESS_SCOPED_LOG if brightness_source==BRIGHTNESS_SCOPED_SOURCE else r'C:\MT8167EngineProbe\brightness-native.log')
+            or (brightness_source==BRIGHTNESS_SCOPED_SOURCE and (metadata.get('stdout_tee') is not True or metadata.get('stdout_max_bytes')!=16384 or metadata.get('legacy_root_log_modified') is not False or metadata.get('log_generation')!='Engine-state-archive'))
             or metadata.get('sys_or_cat_modified') is not False or metadata.get('machine')!='ARMNT'
             or metadata.get('exe_sha256','').lower()!=sha(image)):
             raise ValueError('固定brightness client build/log/no-argument契約不一致')
@@ -176,10 +195,11 @@ def load_map(path, root):
 def cbytes(digest):return '{'+','.join('0x'+digest[i:i+2] for i in range(0,64,2))+'}'
 
 def generate(policy):
+    if not 5<=len(policy['packages'])<=7:raise ValueError('固定target数は5..7だけです')
     lines=['/* Generated fixed-target policy; compile into the signed Engine service. */',
-           '#define DEFERRED_TARGET_COUNT '+str(len(policy['packages'])), '#define DEFERRED_GPU_UPDATE '+('1' if 'gpu' in policy['packages'] else '0'),
+           '#define DEFERRED_TARGET_COUNT '+str(len(policy['packages'])), '#define DEFERRED_SD_UPDATE '+('1' if 'sd' in policy['packages'] else '0'), '#define DEFERRED_GPU_UPDATE '+('1' if 'gpu' in policy['packages'] else '0'),
            'static const struct deferred_pin deferred_pins[DEFERRED_TARGET_COUNT]={']
-    for role in (*TARGETS,'gpu'):
+    for role in (*TARGETS,'gpu','sd'):
         if role not in policy['packages']:continue
         p=policy['packages'][role]
         names=list(p['files'])

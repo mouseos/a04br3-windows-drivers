@@ -21,6 +21,9 @@ static const struct {const WCHAR *id,*folder,*inf,*sys,*cat,*firmware;} deferred
 #if DEFERRED_GPU_UPDATE
  ,{L"ACPI\\MOU0006",L"gpu",L"mt8167-ge8300.inf",L"mt8167-ge8300.sys",L"mt8167-ge8300.cat",L"ge8300-mips.fw"}
 #endif
+#if DEFERRED_SD_UPDATE
+ ,{L"ACPI\\MOU0013",L"sd",L"mt8167-sd.inf",L"mt8167-sd.sys",L"mt8167-sd.cat"}
+#endif
 };
 #include "engine-registry-diagnostic.h"
 /* Extra events are disk-only, with the fixed target index (10..14).

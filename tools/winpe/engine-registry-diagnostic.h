@@ -3,6 +3,7 @@
  * RegFlushKey contract: https://learn.microsoft.com/windows/win32/api/winreg/nf-winreg-regflushkey
  * A completed snapshot describes observations, never driver/client success.
  */
+#include "engine-system-volume-flush.h"
 static HKEY diagnostic_key;
 static DWORD diagnostic_io_error,diagnostic_phase;
 /* REG_BINARY little-endian DWORD records, schema 1. Unqueried values are
@@ -49,7 +50,7 @@ static DWORD diagnostic_begin(int phase)
   diagnostic_nodes[i][0].nt_valid=diagnostic_nodes[i][1].nt_valid=0;
  }
  for(i=0;i<A04_CLIENT_COUNT;i++){diagnostic_clients[i].observed=0;diagnostic_clients[i].exit_valid=0;}
- diagnostic_dword(L"Schema",1);diagnostic_dword(L"Complete",0);
+ diagnostic_dword(L"Schema",2);diagnostic_dword(L"Complete",0);
  diagnostic_dword(L"RunId",run_id);diagnostic_dword(L"Phase",diagnostic_phase);
  diagnostic_dword(L"TargetCount",DEFERRED_TARGET_COUNT);diagnostic_dword(L"ClientCount",A04_CLIENT_COUNT);
  diagnostic_write(L"PolicyHash",REG_SZ,policy,sizeof(policy));
@@ -120,11 +121,30 @@ static DWORD diagnostic_finish(DWORD result)
   diagnostic_write(client,REG_BINARY,&diagnostic_clients[i],sizeof(diagnostic_clients[i]));
  }
  diagnostic_dword(L"ServiceResult",result);diagnostic_dword(L"FileLogError",log_error);diagnostic_dword(L"UartError",uart_error);
+ /* All client/service files have been flushed and closed by service_main.
+  * Flush the fixed system volume once, then persist its actual result in
+  * this same generation with the existing single RegFlushKey. Registry
+  * writes after the volume boundary are covered by RegFlushKey, not falsely
+  * described as part of the preceding volume flush. */
+ {DWORD volume_error=flush_fixed_system_volume();
+  diagnostic_write(L"SystemVolumeFlush",REG_BINARY,&volume_flush,sizeof(volume_flush));
+  diagnostic_dword(L"SystemVolumeFlushError",volume_error);
+  emit_record(0,0x111,volume_error,0);
+  if(volume_error&&!result)result=volume_error;
+  diagnostic_dword(L"CompletionResult",result);
+ }
  diagnostic_dword(L"SnapshotWriteError",diagnostic_io_error);
  if(!diagnostic_io_error)diagnostic_dword(L"Complete",1);
  /* Exactly one flush after all writes, before SCM STOPPED; costly API is not
   * called per event. Flush/close errors go to SCM/UART, not fabricated here. */
- error=diagnostic_io_error;rc=RegFlushKey(diagnostic_key);if(rc&&!error)error=rc;
+ error=diagnostic_io_error;
+ if(!error && volume_flush.attempted==1){
+  if(volume_flush.identity_error)error=volume_flush.identity_error;
+  else if(volume_flush.open_error)error=volume_flush.open_error;
+  else if(volume_flush.flush_error)error=volume_flush.flush_error;
+  else if(volume_flush.close_error)error=volume_flush.close_error;
+ }
+ rc=RegFlushKey(diagnostic_key);if(rc&&!error)error=rc;
  rc=RegCloseKey(diagnostic_key);diagnostic_key=NULL;if(rc&&!error)error=rc;
  return error;
 }

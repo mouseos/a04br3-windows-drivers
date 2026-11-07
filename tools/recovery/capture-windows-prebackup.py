@@ -29,7 +29,8 @@ DRIVERS = 'Windows/System32/Drivers/'
 ENGINE_STATE = ('Windows/System32/MT8167EngineProbe/attempted.bin',
                 'Windows/System32/MT8167EngineProbe/logs/service.log',
                 'Windows/System32/MT8167EngineProbe.exe')
-ENGINE_OPTIONAL_STATE = ('MT8167EngineProbe/brightness-native.log',)
+ENGINE_OPTIONAL_STATE = ('MT8167EngineProbe/brightness-native.log',
+                         'Windows/System32/MT8167EngineProbe/logs/brightness-native.log',)
 HIVES = ('SYSTEM', 'SOFTWARE', 'DRIVERS')
 UUID = re.compile(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}')
 SHA256 = re.compile(r'[0-9a-f]{64}')
@@ -216,7 +217,7 @@ class Recovery:
         return result
 
 
-def file_specs(sys_names, allow_missing_sys, engine_state=False, allow_missing_engine_log=False):
+def file_specs(sys_names, allow_missing_sys, engine_state=False, allow_missing_engine_log=False, sd_component_state=False):
     if allow_missing_engine_log and not engine_state:
         raise BackupError("Missing Engine log capture requires explicit --engine-probe-state")
     names = []
@@ -226,6 +227,7 @@ def file_specs(sys_names, allow_missing_sys, engine_state=False, allow_missing_e
         names.append(name)
     specs = [(CONFIG + hive, True) for hive in HIVES]
     specs += [(CONFIG + hive + suffix, True) for hive in HIVES for suffix in ('.LOG1', '.LOG2')]
+    if sd_component_state and 'mt8167-sd.sys' not in [n.casefold() for n in names]:specs.append((DRIVERS+'mt8167-sd.sys',False))
     return specs + [(DRIVERS + name, not allow_missing_sys) for name in names] + ([(name, not (allow_missing_engine_log and name == ENGINE_STATE[1])) for name in ENGINE_STATE]+[(name,False) for name in ENGINE_OPTIONAL_STATE] if engine_state else [])
 
 
@@ -246,7 +248,7 @@ def capture(args, recovery=None):
     compare_media=getattr(args,'compare_engine_media',None)
     compare_sha=getattr(args,'compare_engine_media_sha256',None)
     if bool(compare_media)!=bool(compare_sha):raise BackupError('Engine media comparison requires both manifest and SHA256')
-    specs = file_specs(args.target_sys, args.allow_missing_sys, getattr(args, 'engine_probe_state', False), getattr(args, 'allow_missing_engine_service_log', False))
+    specs = file_specs(args.target_sys, args.allow_missing_sys, getattr(args, 'engine_probe_state', False), getattr(args, 'allow_missing_engine_service_log', False), getattr(args,'sd_component_state',False))
     recovery = recovery or Recovery(args.serial)
     out.mkdir(mode=0o700)
     os.chmod(out, 0o700)
@@ -254,6 +256,7 @@ def capture(args, recovery=None):
     manifest = {'schema_version': 1, 'status': 'capture-failed', 'files': [], 'missing_files': [],
                 'captured_at_utc': datetime.now(timezone.utc).isoformat(),
                 'capture_tool_sha256': sha(Path(__file__).resolve()),
+                'sd_component_state': bool(getattr(args,'sd_component_state',False)),
                 'engine_missing_service_log_opt_in': bool(getattr(args, 'allow_missing_engine_service_log', False)),
                 'validity': 'same Recovery boot only; no intervening Windows boot or Windows mutation',
                 'read_only': True, 'unmounted': False, 'errors': [],
@@ -394,6 +397,7 @@ def main():
     capture_parser.add_argument('--compare-engine-media',type=Path)
     capture_parser.add_argument('--compare-engine-media-sha256')
     capture_parser.add_argument('--allow-missing-engine-service-log', action='store_true', help='explicit missing-log snapshot only; Engine marker and EXE remain required')
+    capture_parser.add_argument('--sd-component-state', action='store_true', help='snapshot only the fixed optional mt8167-sd.sys, with explicit ENOENT; other required SYS remain required')
     capture_parser.add_argument('--engine-probe-state', action='store_true', help='capture fixed Engine marker/log/EXE plus optional fixed brightness root log for explicit rearm')
     capture_parser.add_argument('--mount-driver', choices=('kernel-ntfs', 'ntfs-3g'), default='kernel-ntfs')
     capture_parser.add_argument('--ntfs3g-remote', default='/sbin/ntfs-3g', help='resident binary only; never pushed')

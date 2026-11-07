@@ -33,11 +33,12 @@ NORMAL_RUNTIME_BLOBS = {
 }
 
 
-def check_inf(path, version):
+def check_inf(path, version, install='Install'):
+    if install not in ('Install','Host'):raise ValueError('固定INF section不一致')
     text = path.read_text()
     actual = re.search(r'(?m)^DriverVer\s*=\s*([^\r\n]+)', text)
-    section = re.search(r'(?im)^\[Install\.(NT(?:ARM)?)\]\s*$', text)
-    services = section and re.search(r'(?im)^\[Install\.' + section[1] + r'\.Services\]\s*$', text)
+    section = re.search(r'(?im)^\['+install+r'\.(NT(?:ARM)?)\]\s*$', text)
+    services = section and re.search(r'(?im)^\['+install+r'\.' + section[1] + r'\.Services\]\s*$', text)
     if not actual or actual[1].strip() != version or not section or not services:
         raise ValueError('component INF date/version/NT decoration不一致: ' + path.name)
 
@@ -57,14 +58,27 @@ def require_armnt(path):
 
 
 class SignedPackage:
-    def __init__(self, directory, root):
+    def __init__(self, directory, root, manifest_name='signed-manifest.json'):
+        if manifest_name not in ('signed-manifest.json','tuple-manifest.json'):raise ValueError('固定署名manifest名だけ許可します')
         self.directory = directory.resolve(strict=True)
         if not self.directory.is_relative_to(root.resolve()):
             raise ValueError('署名packageは作業ルート内が必要です')
-        self.manifest = self.directory / 'signed-manifest.json'
+        self.manifest = self.directory / manifest_name
         self.record = json.loads(self.manifest.read_text(encoding='utf-8-sig'))
         self.files = {}
-        for entry in self.record['files']:
+        self.native1006_layout = False
+        entries=self.record.get('files')
+        if entries is None:
+            r=self.record
+            if (r.get('source_commit')!='bafafa9ea6d94fe6357616a3edfff66e568bfc7c' or r.get('status')!='signed-native1006-not-device-validated'
+                or r.get('driver_ver')!='11/06/2026,2026.11.6.1006' or r.get('catalog_regenerated') is not True
+                or r.get('build_manifest',{}).get('source_dirty') is not False):raise ValueError('未知の署名manifest layout')
+            entries=r.get('package_files',[])
+            if {x.get('path') for x in entries}!={'package/mt6630-runtime.'+e for e in ('sys','inf','cat')} or len(entries)!=3:raise ValueError('WiFi1006 fixed package_files不一致')
+            entries=[{'path':x['path'].removeprefix('package/'),'sha256':x['sha256']} for x in entries]
+            entries.append({'path':'build-manifest.json','sha256':r['build_manifest_sha256']})
+            self.native1006_layout=True
+        for entry in entries:
             name = entry['path'].replace('\\', '/')
             rel = PurePosixPath(name)
             if rel.is_absolute() or '..' in rel.parts or name in self.files:
@@ -85,7 +99,12 @@ class SignedPackage:
         return json.loads(self.file(name).read_text(encoding='utf-8-sig'))
 
     def certificate(self, expected):
-        path = self.file('mt8167-development.cer')
+        if self.native1006_layout:
+            if self.record.get('certificate_thumbprint')!=expected:raise ValueError('WiFi1006証明書metadata不一致')
+            self.file('build-manifest.json')
+            path=(self.directory/'mt8167-development.cer').resolve(strict=True)
+            if not path.is_relative_to(self.directory):raise ValueError('証明書path逸脱')
+        else:path = self.file('mt8167-development.cer')
         data = path.read_bytes()
         if not data.startswith(b'\x30') or hashlib.sha1(data).hexdigest().upper() != expected:
             raise ValueError('componentの署名cert thumbprint不一致')

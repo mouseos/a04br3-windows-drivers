@@ -60,7 +60,7 @@ def main():
  if a.allow_missing_engine_service_log and not plan_only:raise SystemExit('missing log opt-inは明示再arm plan生成専用です')
  if (plan_only or rearming or a.rearm_previous_media) and not engine:raise SystemExit('再armはEngine mode専用です')
  if plan_only and (not a.rearm_previous_media or rearming):raise SystemExit('plan生成は旧媒体manifestを明示し既存planと併用しないでください')
- if a.rearm_previous_media and not plan_only:raise SystemExit('旧媒体指定はplan生成専用です')
+ if a.rearm_previous_media and not (plan_only or rearming):raise SystemExit('旧媒体指定は明示再armだけです')
  if a.brightness_manifest_sha256 and not a.brightness_package:raise SystemExit('brightness manifest hashにはpackage指定も必要です')
  if bool(a.parent_package)!=bool(a.parent_manifest_sha256):raise SystemExit('親overrideにはpackageとmanifest hash両方が必要です')
  if bool(a.engine_rearm_plan)!=bool(a.engine_rearm_plan_sha256):raise SystemExit('再arm planとhash両方が必要です')
@@ -107,6 +107,7 @@ def main():
      if rel.startswith(role+'/'):del sources[rel]
     components[role]=component
    sources.update(deferred_sources);certificates.update({'deferred_'+k:v for k,v in deferred_certificates.items()})
+   if 'sd' in deferred_policy['packages']:optional_drivers+=['call :adddriver SD X:\\a04br3\\shared-io\\sd\\mt8167-sd.inf','if errorlevel 1 goto dismfail']
    optional_drivers+=['call :adddriver DISPLAY X:\\a04br3\\shared-io\\display\\mt8167-display.inf','if errorlevel 1 goto dismfail']
   elif probe_info and probe_info.get('deferred_update'):raise SystemExit('延期serviceには一致する明示package mapが必要です')
   files={rel:sha(path) for rel,path in sources.items()}
@@ -193,16 +194,24 @@ def main():
    extra=['if not exist C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\display mkdir C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\display >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
    for extension in ('inf','sys','cat'):
     extra+=['copy /b /y X:\\a04br3\\shared-io\\display\\mt8167-display.'+extension+' C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\display\\mt8167-display.'+extension+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
+   if 'sd' in deferred_policy['packages']:
+    extra+=['if not exist C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\sd mkdir C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\sd >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
+    for name in ('mt8167-sd.inf','mt8167-sd.sys','mt8167-sd.cat'):
+     extra+=['copy /b /y X:\\a04br3\\shared-io\\sd\\'+name+' C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\sd\\'+name+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
    if 'gpu' in deferred_policy['packages']:
     extra+=['if not exist C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\gpu mkdir C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\gpu >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
     for name in ('mt8167-ge8300.inf','mt8167-ge8300.sys','mt8167-ge8300.cat','ge8300-mips.fw'):
      extra+=['copy /b /y X:\\a04br3\\shared-io\\gpu\\'+name+' C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\gpu\\'+name+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
    if 'mt8167-brightness-native.exe' in deferred_policy['clients']:
     extra+=['copy /b /y X:\\a04br3\\shared-io\\clients\\mt8167-brightness-native.exe C:\\Windows\\System32\\MT8167EngineProbe\\clients\\mt8167-brightness-native.exe >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail',
-            'if exist C:\\MT8167EngineProbe\\brightness-native.log goto dismfail']
+            'if exist '+(r'C:\Windows\System32\MT8167EngineProbe\logs\brightness-native.log' if deferred_policy.get('brightness_client',{}).get('log_path')==r'C:\Windows\System32\MT8167EngineProbe\logs\brightness-native.log' else r'C:\MT8167EngineProbe\brightness-native.log')+' goto dismfail']
    prepare=prepare.replace('copy /y X:\\a04br3\\MT8167EngineProbe.exe','\n'.join(extra)+'\ncopy /y X:\\a04br3\\MT8167EngineProbe.exe')
   cmd=cmd.replace('@PROBE_PREPARE@',prepare)
  else:cmd=cmd.replace('@PROBE_PREPARE@','rem Hardware probe service not included; PnP only.')
+ from engine_staging_profile import apply_profile
+ if a.rearm_previous_media and rearming and sha(a.rearm_previous_media)!=rearm_plan['previous_media_manifest_sha256']:raise SystemExit('staging旧媒体はnative再arm planのhashと一致が必要です')
+ previous_for_staging=json.loads(a.rearm_previous_media.read_text()) if a.rearm_previous_media else None
+ cmd,staging_info=apply_profile(cmd,deferred_policy if a.deferred_package_map else None,b,previous_for_staging,components)
  if re.search('@[A-Z_]+@',cmd):raise SystemExit('未置換変数')
  if re.search(r'(?im)^reg(?:\.exe)?\s+(?:load|unload)\s+.*(?:config\\SYSTEM|Mt8167InstallSystem)',cmd):raise SystemExit('WinPE SYSTEM RegLoadは禁止です')
  (stage/'run-update-once.cmd').write_bytes(cmd.replace('\r','').replace('\n','\r\n').encode())
@@ -216,7 +225,7 @@ def main():
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'update',str(image),'1'],input=commands,text=True,env=env,check=True)
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'verify',str(image)],env=env,check=True)
  subprocess.run(['python3',str(here/'replace-esp-wim.py'),'--template',str(base/'maintenance-staged-esp.img'),'--wim',str(image),'--output',str(out/'update-esp.img'),'--template-bcd-sha256','65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d','--template-wim-sha256','0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4'],env=env,check=True)
- (out/'manifest.json').write_text(json.dumps({'private_do_not_distribute':bool(a.private_media),'audio_mode':'engine_pcm_retained' if engine else 'private_fixed_tone_diagnostic','selected_service':service_name,'shared_parent_count':1,'engine_rearm_plan':rearm_plan,'expected_installed_sys':{name.rsplit('/',1)[-1]:digest for component in components.values() for name,digest in component.get('files',{}).items() if name.endswith('.sys')},'installed_sys_hashes_verified':False,'components':components,'fixed_clients':list(deferred_policy['clients']) if a.deferred_package_map else ['mt6630-wlan-probe.exe',audio_client],'prepared_system':native,'probe':probe_info,'trusted_certificates':{role:hashlib.sha1(der).hexdigest().upper() for role,der in certificates.items()},'source_commit':a.source_commit,'token':token,'files':files,'host_backup_manifest_sha256':sha(backup),'recovery_boot_id':b['recovery_boot_id'],'input_validator_sha256':sha(here/'private_hardware_probe_input.py'),'engine_selector_sha256':sha(here/'engine_io_package.py'),'builder_sha256':sha(Path(__file__).resolve()),'command_sha256':sha(stage/'run-update-once.cmd'),'esp_sha256':sha(out/'update-esp.img'),'signature_verification':'hash/source/certificate pins here; clients and Engine CAT WinVerifyTrust at runtime; INF/SYS catalog membership by Windows servicing/PnP','status':'generated; hardware operation unverified'},indent=2)+'\n')
+ (out/'manifest.json').write_text(json.dumps({'private_do_not_distribute':bool(a.private_media),'audio_mode':'engine_pcm_retained' if engine else 'private_fixed_tone_diagnostic','selected_service':service_name,'shared_parent_count':1,'engine_rearm_plan':rearm_plan,'expected_installed_sys':{name.rsplit('/',1)[-1]:digest for component in components.values() for name,digest in component.get('files',{}).items() if name.endswith('.sys')},'installed_sys_hashes_verified':False,'components':components,'fixed_clients':list(deferred_policy['clients']) if a.deferred_package_map else ['mt6630-wlan-probe.exe',audio_client],'prepared_system':native,'probe':probe_info,'trusted_certificates':{role:hashlib.sha1(der).hexdigest().upper() for role,der in certificates.items()},'staging':staging_info,'source_commit':a.source_commit,'token':token,'files':files,'host_backup_manifest_sha256':sha(backup),'recovery_boot_id':b['recovery_boot_id'],'input_validator_sha256':sha(here/'private_hardware_probe_input.py'),'engine_selector_sha256':sha(here/'engine_io_package.py'),'builder_sha256':sha(Path(__file__).resolve()),'command_sha256':sha(stage/'run-update-once.cmd'),'esp_sha256':sha(out/'update-esp.img'),'signature_verification':'hash/source/certificate pins here; clients and Engine CAT WinVerifyTrust at runtime; INF/SYS catalog membership by Windows servicing/PnP','status':'generated; hardware operation unverified'},indent=2)+'\n')
  if a.private_media:
   for p in out.rglob('*'):p.chmod(0o700 if p.is_dir() else 0o600)
 if __name__=='__main__':main()

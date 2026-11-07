@@ -1,0 +1,32 @@
+"""Explicit normal-installer staging for an already bootstrapped fixed Engine OS."""
+import re
+NONBOOT={'PARENT','AUDIO','USB','WIFI','DISPLAY','SD'}
+
+def apply_profile(cmd,policy,backup,previous,components):
+    profile=policy.get('staging_profile','offline-all') if policy else 'offline-all'
+    if profile=='offline-all':return cmd,{'profile':profile,'offline_driver_policy':'legacy-all'}
+    if profile!='normal-deferred' or not previous or previous.get('audio_mode')!='engine_pcm_retained':
+        raise ValueError('normal-deferredは既存Engine媒体/freshbackup再arm専用です')
+    actual={x['source_path'].replace('\\','/').lower():x['sha256'].lower() for x in backup['files']}
+    expected=dict(previous.get('expected_installed_sys',{}))
+    expected['mt8167-ge8300.sys']=policy.get('gpu_transition',{}).get('baseline_sys_sha256','a8f226b33fa11915e88b3424c5ad3ed3aaa62ff35deb7f91902b04e7df4bf090')
+    for name in ('mt8167-shared.sys','mt8167-toprgu.sys','mt8167-ge8300.sys'):
+        if not expected.get(name) or actual.get('windows/system32/drivers/'+name)!=expected[name].lower():
+            raise ValueError('normal stagingの既存parent/TOPRGU/GPU bootstrap実SYS不一致: '+name)
+    # The old service itself and consumed marker/log are checked by Engine
+    # rearm separately. Files/trust/firmware/native SYSTEM remain untouched.
+    skip=set(NONBOOT);top=components.get('toprgu');oldtop=previous.get('components',{}).get('toprgu')
+    if top and oldtop and top.get('files')==oldtop.get('files') and top.get('driver_ver')==oldtop.get('driver_ver'):
+        skip.add('TOPRGU')
+    lines=cmd.splitlines();out=[];removed=[];i=0
+    while i<len(lines):
+        match=re.fullmatch(r'call :adddriver ([A-Z]+) .+',lines[i])
+        if match and match[1] in skip:
+            if i+1>=len(lines) or lines[i+1]!='if errorlevel 1 goto dismfail':raise ValueError('固定DISM template形状不一致')
+            removed.append(match[1]);i+=2;continue
+        out.append(lines[i]);i+=1
+    if not {'PARENT','AUDIO','USB','WIFI','DISPLAY'}.issubset(removed):raise ValueError('normal staging固定5DISM対象欠落')
+    return '\n'.join(out)+'\n',{'profile':profile,'removed_offline_driver_calls':removed,
+        'bootstrap_verified_sys':{n:expected[n] for n in ('mt8167-shared.sys','mt8167-toprgu.sys','mt8167-ge8300.sys')},
+        'normal_install':'fixed signed packages, DIF_INSTALLDEVICE + DI_DONOTCALLCONFIGMG, one planned reboot',
+        'bootcritical_policy':'unchanged TOPRGU may skip; changed TOPRGU stays offline; eMMC/bootstrap never modified'}
