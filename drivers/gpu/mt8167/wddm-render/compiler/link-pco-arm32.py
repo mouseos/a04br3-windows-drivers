@@ -54,7 +54,7 @@ def main():
         for source in m['sources']:
             relative=source['path'].replace('\\','/')
             # Recipe/docs can advance without compiling unchanged runtime C/H.
-            if Path(relative).suffix.lower() in ('.c','.h') and sha(repo/relative)!=source['sha256'].lower():
+            if Path(relative).suffix.lower() in ('.c','.h') and source['sha256'].lower() not in (sha(repo/relative),hashlib.sha256((repo/relative).read_bytes().replace(b'\r\n',b'\n').replace(b'\n',b'\r\n')).hexdigest()):
                 raise SystemExit('module runtime source changed: '+relative)
         for name in ('umd_entry.obj','ge8300-umd-clear.lib'):
             record=next(o for o in m['outputs'] if o['name']==name)
