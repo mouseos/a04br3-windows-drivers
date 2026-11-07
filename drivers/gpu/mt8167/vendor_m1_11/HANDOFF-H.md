@@ -237,3 +237,14 @@ Hは自身の実pair outputを比較してからV2へ接続すること。
 任意USC admission、caps拡大、偽completion、準備時publishは追加しない。
 同じMDL/SG、既存FW power/platform stop/rundown、poison保持を使用。
 first typed flatは30b71470のV1 opsで先に進められる。
+
+
+### 次のviewport producer（同800x600 backing内）
+
+format2は整数の非負TopLeftX/Y、正Width/Height、矩形全体が800x600内、
+MinDepth0/MaxDepth1を実PPPへ変換できる。半整数scale/offsetも正確に生成する。
+カーネル側は整数命令のみ使用する。format1旧TLはfull800x600のまま。
+Hは既存typed_draw.cのfull viewport制限をこの範囲に限って緩和し、
+request.state.viewportへ実runtime値をcopyできる。前処理でvertexを変換しない。
+これは任意サイズHWRT/target allocationやdepth bufferの実装とは区別する。
+未対応fractional viewport/矩形外/depth rangeはエラーで返す。

@@ -27,6 +27,16 @@ int main(int argc,char **argv)
   assert(get(out->pds,0x388,8)==(0x8000000000000000ULL|(1ULL<<54)|0x030d0202)); /* COLOR -> coeff4 */
   assert(get(out->pds,0x390,4)==0xf0000004u && get(out->pds,0x394,4)==0xf4000104u);
   assert((get(out->pds,0x180,8)&0xffffffffu)==in.usc_page_gpu+0x100-0xba00000000ULL);
+  r.base.state.viewport[0]=0x41880000u; /* 17 */
+  r.base.state.viewport[1]=0x41b80000u; /* 23 */
+  r.base.state.viewport[2]=0x42040000u; /* 33 */
+  r.base.state.viewport[3]=0x41f80000u; /* 31 */
+  assert(!a04_m111_build_draw_job_v2(out,&in,vertex,&r,blob,sizeof(blob),scratch,A04_M111_DRAW_SCRATCH));
+  assert(get(out->data,0x274,4)==0x41840000u && get(out->data,0x278,4)==0x42060000u); /*16.5,33.5*/
+  assert(get(out->data,0x27c,4)==0xc1780000u && get(out->data,0x280,4)==0x421a0000u); /*-15.5,38.5*/
+  r.base.state.viewport[0]=r.base.state.viewport[1]=0;
+  r.base.state.viewport[2]=0x44480000u;r.base.state.viewport[3]=0x44160000u;
+  assert(!a04_m111_build_draw_job_v2(out,&in,vertex,&r,blob,sizeof(blob),scratch,A04_M111_DRAW_SCRATCH));
   memcpy(old,out,sizeof(*out));
   r.link.fs_coeffs=16;assert(a04_m111_build_draw_job_v2(out,&in,vertex,&r,blob,sizeof(blob),scratch,A04_M111_DRAW_SCRATCH)==GEO_UNSUPPORTED);r.link.fs_coeffs=20;
   blob[112]^=1;assert(a04_m111_build_draw_job_v2(out,&in,vertex,&r,blob,sizeof(blob),scratch,A04_M111_DRAW_SCRATCH)==GEO_UNSUPPORTED);blob[112]^=1;

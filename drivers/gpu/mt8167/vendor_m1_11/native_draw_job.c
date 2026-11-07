@@ -10,6 +10,7 @@
 #include "native_load_usc_generated.h"
 #include "native_color_usc_generated.h"
 #include "native_varying_pds.h"
+#include "native_d3d_viewport.h"
 static void put(uint8_t *p,unsigned at,uint64_t v,unsigned n)
 {for(unsigned i=0;i<n;i++)p[at+i]=(uint8_t)(v>>(i*8));}
 static void copy(void *to,const void *from,size_t n)
@@ -48,7 +49,7 @@ static int32_t build(struct a04_m111_draw_job *out,
  static const uint32_t viewport[6]={0,0,0x44480000u,0x44160000u,0,0x3f800000u};
  const uint8_t *vc=linked?a04_native_color_vs:vs,*pc=linked?a04_native_color_fs:ps;
  uint32_t vn=linked?sizeof(a04_native_color_vs):sizeof(vs),pn=linked?sizeof(a04_native_color_fs):sizeof(ps);
- uint32_t ps_at=linked?0x100u:0xc0u,vertex_bytes=linked?96u:48u;
+ uint32_t ps_at=linked?0x100u:0xc0u,vertex_bytes=linked?96u:48u,vp_words[6];
  struct a04_m111_draw_job *m=scratch;struct a04_m111_triangle_suite *base;
  struct a04_m111_triangle_vertex_pds vp;uint32_t po;uint64_t bg[3];const uint8_t *b=blob;
  if(!out || !in || !scratch || ((uintptr_t)scratch&7) || scratch_bytes<A04_M111_DRAW_SCRATCH ||
@@ -65,8 +66,11 @@ static int32_t build(struct a04_m111_draw_job *out,
      linked->link.vs_f32_smooth!=4 || linked->link.vs_f32_npc || linked->link.vs_entry_offset || linked->link.fs_entry_offset ||
      r->vs.format!=GEO_SHADER_D3D10_TOKENS || r->ps.format!=GEO_SHADER_D3D10_TOKENS)return GEO_UNSUPPORTED;
  }
+ if(r->vs.format==GEO_SHADER_D3D10_TOKENS) {
+  status=a04_m111_build_d3d_viewport(vp_words,r->state.viewport);if(status)return status;
+ } else if(!same(r->state.viewport,viewport,sizeof(viewport)))return GEO_UNSUPPORTED;
  if(r->target_desc.width!=800 || r->target_desc.height!=600 || r->target_desc.pitch!=3200 ||
-    r->state.vertex_count!=3 || !same(r->state.viewport,viewport,sizeof(viewport)) ||
+    r->state.vertex_count!=3 ||
     r->vs.temps || r->vs.shareds || r->vs.vtxins!=(linked?8u:4u) || r->vs.vtxouts!=(linked?8u:4u) || r->vs.input_mask!=(linked?3u:1u) || r->vs.constant_mask ||
     r->ps.temps!=5 || r->ps.shareds!=(linked?0u:4u) || r->ps.vtxins || r->ps.vtxouts || r->ps.input_mask!=(linked?1u:0u) || r->ps.constant_mask!=(linked?0u:1u) ||
     r->vs.usc.bytes!=vn || r->ps.usc.bytes!=pn ||
@@ -108,9 +112,7 @@ static int32_t build(struct a04_m111_draw_job *out,
   * D3D Y is the negative-height viewport equivalent. Keep format1 unchanged.
   * No CPU input-coordinate rewrite can preserve arbitrary VS semantics. */
  if(r->vs.format==GEO_SHADER_D3D10_TOKENS) {
-  put(m->data,0x27c,0xc3960000u,4); /* Y scale -300 */
-  put(m->data,0x284,0x3f800000u,4); /* Z scale1 */
-  put(m->data,0x288,0,4); /* Z offset0 */
+  for(unsigned i=0;i<6;i++)put(m->data,0x274+4*i,vp_words[i],4);
  }
  put(m->data,0x500,(UINT64_C(1)<<49)|(UINT64_C(2)<<44)|(UINT64_C(2)<<41)|(UINT64_C(1)<<23)|0xfffu,8);
  put(m->data,0x510,(UINT64_C(599)<<48)|(UINT64_C(799)<<34)|(UINT64_C(12)<<27)|(UINT64_C(1)<<11)|(UINT64_C(2)<<8)|(UINT64_C(3)<<5)|4u,8);

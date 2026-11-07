@@ -7,7 +7,7 @@ cd "$(dirname "$0")/../.."
 mkdir -p build
 vendor=drivers/gpu/mt8167/vendor_m1_11
 sources=""
-for unit in native_clear_job native_clear_data native_terminate_stream native_clear_surface native_clear_codespace native_clear_pds native_eot_program native_record_fields native_pair native_ccb native_triangle_ppp native_triangle_pds native_triangle_suite native_triangle_vdm native_triangle_texture native_draw_job native_varying_pds; do
+for unit in native_clear_job native_clear_data native_terminate_stream native_clear_surface native_clear_codespace native_clear_pds native_eot_program native_record_fields native_pair native_ccb native_triangle_ppp native_triangle_pds native_triangle_suite native_triangle_vdm native_triangle_texture native_draw_job native_varying_pds native_d3d_viewport; do
  sources="$sources $vendor/$unit.c"
 done
 ${CC:-cc} -O2 -std=c11 -Wall -Wextra -Werror -I"$vendor" tests/gpu_native_draw_v2_test.c $sources \
