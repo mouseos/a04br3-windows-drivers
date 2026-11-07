@@ -310,3 +310,104 @@ CAT生成/署名する。ホスト確認はmake test-mt8167-usb-keyboard-batch
  test-mt8167-usb-integrated。read-only preflight、待機理由、未知値拒否、lease/poison/
 MMIO副作用なし、host再取得、単一USB/audio親の既存試験を確認する。
 WDK compile/link・新CAT・実PnP D0・電圧・入力・抜差しは未確認。
+
+## USB1003開始失敗の切り分けと1004候補
+
+run33の回収済み`service.log`（RUN F6F2）では、親1006のProblem=0に対し、
+USB1003はCode10・ProblemStatus=`C000009C`（`STATUS_DEVICE_DATA_ERROR`）。
+親正常・SYS hash一致だけでは、USBのPrepare/D0やHID初期化成功を証明しない。
+`KbPrepare`/`KbD0`の資源・電源失敗の直接戻り値はこの値と異なるため、
+この観測だけでLinux由来PHY/VBUS手順を変更する根拠はない。
+
+1004候補はMicrosoft公式
+[vhidmini2](https://github.com/microsoft/Windows-driver-samples/blob/main/hid/vhidmini2/driver/vhidmini.c)
+の`RequestCopyFromBuffer`と`GetString`に沿い、HID出力を
+`WdfRequestRetrieveOutputMemory`/`WdfMemoryCopyFromBuffer`で処理する。
+取得・copy失敗statusはそのまま返し、成功時だけ転送byte数を設定する。
+`IOCTL_HID_GET_STRING`には本transportの固定メーカー・実IC製品名と空のserialを返す。
+接続キーボードの識別子・入力内容を記録したり、serialを捏造したりしない。
+またadmission再試行の終端失敗とport faultは、元statusを記録した上で
+`WdfDeviceSetFailed(WdfDeviceFailedNoRestart)`を通知し、自動restartを繰り返さない。
+これらは実装上の契約修正であり、旧Code10の原因確定・解消実測ではない。
+
+### 自サービスParametersの固定checkpoint
+
+保存先は`HKLM\SYSTEM\CurrentControlSet\Services\A04Usb20Keyboard\Parameters`のみ。
+各値はREG_BINARY、little-endianの32-bit整数8個（32byte）:
+`version=1, stage, status(NTSTATUS), detail0, detail1, prior_write_status,
+start_low, start_high`。最後の2整数は本device作成時の`KeQuerySystemTime`。
+`InitAdd`と同じstartの値だけを今回の記録として扱う。古いbootの残存値・未記録の
+checkpointを到達成功と解釈しない。保存失敗は次の記録の`prior_write_status`に残り、
+本来のPnP/IOCTL statusを上書きしない。強制registry flushは行わないので、
+reset後の記録欠落は未到達の断定材料にしない。
+
+| stage | 値名 | detail0 / detail1 |
+|---:|---|---|
+| 0 | InitAdd | source line / HID-control有効値 |
+| 1 | InitResources | raw / translated resource件数 |
+| 2 | InitParent | interface size / version |
+| 3 | InitPower | Acquire実戻り値 / 0 |
+| 4 | InitPio | DMA停止確認実戻り値 / 0 |
+| 5 | InitBoardPrepare | admission実戻り値 / prepare実戻り値 |
+| 6 | InitArm | 0 / 0 |
+| 7 | InitRun | run実戻り値 / 0 |
+| 8 | InitD0 | admission実戻り値 / board-owned |
+| 9 | InitAdmissionWait | admission実戻り値 / 0 |
+| 10 | InitHidDescriptor | HID descriptor byte数 / report byte数 |
+| 11 | InitHidAttributes | attributes byte数 / output byte数 |
+| 12 | InitHidReport | report descriptor byte数 / output byte数 |
+| 13 | InitHidString | string ID / output byte数 |
+| 14 | InitFault | port stage / enumeration stage |
+| 15 | InitRetryFailure | admission実戻り値 / 0 |
+| 16 | InitHidOther | 最初の未対応IOCTL code / output byte数 |
+
+各stageはdevice lifetimeで最初の1回だけ記録（最大17値）。poll/report毎の書込みや
+ISR/DPCからのregistry操作はない。admission待ちでは実activation失敗statusを残し、
+意図したケーブル待機のPnP受付と実host開始を区別する。D0再入時や後続の全IOCTLを
+網羅するtraceではない。実hardware開始の根拠は`InitPower/Pio/BoardPrepare/Arm/Run`と
+実列挙・入力結果を併せて判断する。HID checkpointがすべて成功でもOS側parse成功や
+キーボード動作の証拠とは扱わない。
+
+変更scopeはUSB専用source/INF/helperのみ。親1006・既存eMMC・EDK2は変更しない。
+helperの既存NoFP/NEON flagsと正規WDK ARM runtime linkを維持する。
+固定commitで`A04_MUSB_HOST_CORE_EXPERIMENT=1`と
+`A04_MUSB_HID_CONTROL_EXPERIMENT=1`を指定して
+`tools/ci/build-mt8167-usb20.ps1 -OutputDirectory <checkout内の専用出力>`を実行する。
+実WDK build・署名・Windows再起動/実機確認はこのsource変更では未実施。
+
+## WDF work-item creation
+
+The 1004 runtime checkpoint returned STATUS_WDF_EXECUTION_LEVEL_INVALID
+(0xC0200211) from controller creation, before hardware preparation or HID IOCTLs.
+WdfWorkItemCreate validates attributes without allowing an ExecutionLevel override.
+Keep its initialized InheritFromParent value; EvtWorkItem already runs at PASSIVE_LEVEL.
+Keep AutomaticSerialization disabled and the existing explicit controller lock,
+IRQ/DPC handoff, work-item flush, and device execution level unchanged.
+This corrects object creation; host power, enumeration, and keyboard input still
+require hardware verification.
+
+Sources: Microsoft Windows-Driver-Frameworks shared/core/fxworkitemapi.cpp and
+shared/object/fxvalidatefunctions.cpp; WDK 8.1 KMDF 1.13 wdfstatus.h;
+https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdfworkitem/nf-wdfworkitem-wdfworkitemcreate
+
+## USB1006: device-role待機とD0実戻り値の分離
+
+run83の同一start記録ではInitParentの32/1はinterface Size/Versionであり、
+flags/lease数ではない。InitAdmissionWaitとInitD0のdetail0=1は親Acquireの
+A04_USB_WAIT_DEVICE_ROLE。親がGPIO DIN2(0x220)のID41 bit9 highを観測した
+というソース上の経路で、Power/Pio/PHY/Arm/Run到達ではない。GPIO34 lowによる
+外部VBUS待機は別の理由2。Linux usb20_host.cもID highをdevice-roleと判定する。
+この記録から親のRTC/PLL/PMIC失敗、lease取得成功、host給電成功を推論しない。
+
+USB1005はhost admission待機時のKbD0がSTATUS_SUCCESSを返す一方、
+InitD0へ内部activationのSTATUS_DEVICE_POWER_FAILUREを保存していた。
+USB1006は待機をSTATUS_PENDINGとして表し、InitActivation(stage17)へactivation
+実status/admission/board-owned、InitD0へD0の実戻りstatusを分けて保存する。
+既知理由1/2だけが無lease待機であり、未知理由・負値・実電源/PHY/IRQ/Run失敗は
+従来どおり失敗する。host開始やVBUS成功を合成せず、500ms既存timer再admissionを
+維持。schema1/32byte/start一致・一stage一記録を維持し、レジスタ操作は追加しない。
+
+親1026(capture+RTCborrow)のsourceを基点に、実USB1005の既存HID出力/開始checkpoint/
+workitem修正を保持したleaf候補。親コード・flags・資源・interface ABIは1026から
+変更せず、親SYSはbuild/署名/置換しない。Linux/XNU根拠と未解決の境界は
+[ADMISSION-1006.md](ADMISSION-1006.md)を参照。実機未投入、host給電改善は未確認。
