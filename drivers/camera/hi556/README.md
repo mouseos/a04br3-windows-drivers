@@ -68,3 +68,9 @@ WDK8.1 ARM/clang/lldの既存Windows環境で固定clean sourceから実行す�
 manifestへsource/recipe/header/object/archiveのhash、実モデルとblockerを記録する。
 今回のhost確認は既存形式の単一fixtureでdefault-off無操作、正しいID transaction、
 short-read、lease失効、finish失敗を確認する。ARM32 COFF/scalar compileは実I2C測定の代替ではない。
+
+## 後続の共有owner実装
+
+実績MMAを基点にした実kernel query-interface/STOP transport/電源順序moduleとWDK packageは
+[SHARED-OWNER.md](SHARED-OWNER.md)を参照。旧source-only coreに加え、唯一のMMIO provider側へ
+共有経路を実装している。power providerが未接続の現構成ではcamera bind不可を維持する。
