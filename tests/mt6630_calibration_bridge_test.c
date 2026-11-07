@@ -11,6 +11,12 @@ static int bus_io(void *ctx,uint32_t arg,unsigned write,uint8_t *p,size_t n)
 static int direct_io(void *ctx,uint32_t arg,uint32_t *v){(void)ctx;(void)arg;*v=0;return 0;}
 static int done(void *p){(void)p;return 0;}
 static void wait_us(void *p,unsigned us){(void)p;(void)us;}
+struct observation {unsigned count,stage[3],detail[3];int raw[3];};
+static void observe(void *p,unsigned stage,int raw,unsigned detail)
+{
+ struct observation *o=p;assert(o->count<3);unsigned i=o->count++;
+ o->stage[i]=stage;o->raw[i]=raw;o->detail[i]=detail;
+}
 int main(void)
 {
  static struct a04_wmt_bridge b;static struct a04_nvram_work work;
@@ -18,6 +24,7 @@ int main(void)
  struct a04_wifi_owner owner={0,1,1,1,1,1,0,0};struct a04_wifi_life life={0};struct fake f={0};
  struct a04_sdio_direct d={&owner,&f,direct_io,0,0};struct a04_sdio_bus bus={&f,bus_io};
  struct a04_wifi_life_ops ops={&f,done,done,done,done};
+ struct observation seen={0};
  uint8_t cis[]={0x20,4,0x7a,3,0x30,0x66,0xff},data[512];
  make_fixture();assert(!a04_mt6630_calibration_read(&r,&work,data));
  assert(!a04_nvram_sector_init(&sectors,&sr,0,readsector,8,sizeof(disk)/512,8+sizeof(disk)/512));
@@ -29,14 +36,19 @@ int main(void)
  b.wlan.transport=&b.transport;b.wlan.ready=b.wlan.initialized=1;
  data[4]|=1;assert(a04_wmt_bridge_load_calibration(&b,data)&&!f.reads&&!f.writes);data[4]&=~1u;
  data[196]=0;assert(a04_wmt_bridge_load_calibration(&b,data)&&!f.reads&&!f.writes);data[196]=1;
- assert(!a04_wmt_bridge_load_calibration(&b,data));
+ assert(!a04_wmt_bridge_load_calibration_traced(&b,data,observe,&seen));
+ assert(seen.count==3&&seen.stage[0]==A04_CP_CAL_DECODE&&seen.raw[0]==0);
+ assert(seen.stage[1]==A04_CP_CAL_RUNTIME&&seen.raw[1]==0);
+ assert(seen.stage[2]==A04_CP_CAL_SUBMIT&&seen.raw[2]==0&&seen.detail[2]==0x48);
  assert(b.calibration_submitted&&b.wlan.runtime&&f.reads==8&&f.writes==4);
  assert(a04_wmt_le16(f.packet)==520&&f.packet[4]==0x48&&f.packet[5]==0xa0&&f.packet[6]==1);
  assert(!memcmp(f.packet+8,data,512));for(unsigned i=520;i<1024;i++)assert(!f.packet[i]);
  for(unsigned i=8;i<520;i++)assert(!b.wlan.tx[i]);
  assert(a04_wmt_bridge_load_calibration(&b,data)&&f.writes==4);
  b.calibration_submitted=0;f.fail=1;
- assert(a04_wmt_bridge_load_calibration(&b,data)&&b.failed&&!b.calibration_submitted&&owner.poisoned);
+ memset(&seen,0,sizeof(seen));
+ assert(a04_wmt_bridge_load_calibration_traced(&b,data,observe,&seen)&&b.failed&&!b.calibration_submitted&&owner.poisoned);
+ assert(seen.count==2&&seen.stage[1]==A04_CP_CAL_SUBMIT&&seen.raw[1]!=0&&seen.detail[1]==0x24);
  for(unsigned i=8;i<520;i++)assert(!b.wlan.tx[i]);
  assert(a04_wmt_bridge_load_calibration(&b,data)&&f.writes==5);
  puts("NVRAM -> TX power/domain/country limit/original record; wipe and poison: OK");return 0;

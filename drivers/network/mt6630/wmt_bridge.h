@@ -38,6 +38,8 @@ int a04_wmt_bridge_boot_wlan(struct a04_wmt_bridge *,const void *,unsigned,int (
  * submission of CMD_ID_SET_NVRAM_SETTINGS (no firmware ACK), not RF readiness.
  * Does not configure regulatory domain, TX power commands or NDIS attributes. */
 int a04_wmt_bridge_load_calibration(struct a04_wmt_bridge *,const uint8_t [512]);
+typedef void (*a04_calibration_progress)(void *,unsigned stage,int raw,unsigned detail);
+int a04_wmt_bridge_load_calibration_traced(struct a04_wmt_bridge *,const uint8_t [512],a04_calibration_progress,void *);
 /* Scan policy (channels, timing and calibration) must come from an actual
  * configured regulatory/runtime owner. Completion follows a real event. */
 int a04_wmt_bridge_scan_begin(struct a04_wmt_bridge *,const struct a04_wlan_scan *);

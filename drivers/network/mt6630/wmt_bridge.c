@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
+#include "checkpoint_wire.h"
 #include "wmt_bridge.h"
 #include "native_tx.h"
 static int alive(const struct a04_wmt_bridge *b)
@@ -74,21 +75,26 @@ int a04_wmt_bridge_boot_wlan(struct a04_wmt_bridge *b,const void *data,unsigned 
  b->wlan_ready=b->wlan_state.ready;return b->wlan_ready?0:fault(b,-1);
 }
 
+struct manufacture_context {struct a04_wmt_bridge *bridge;unsigned last_cid;};
 static int manufacture_set(void *context,unsigned cid,const uint8_t *data,unsigned length)
 {
- struct a04_wmt_bridge *b=context;int e=a04_wlan_set(&b->wlan,cid,data,length,NULL);
+ struct manufacture_context *m=context;struct a04_wmt_bridge *b=m->bridge;int e;m->last_cid=cid;e=a04_wlan_set(&b->wlan,cid,data,length,NULL);
  volatile uint8_t *p=b->wlan.tx+8;for(unsigned i=0;i<length;i++)p[i]=0;
  return e;
 }
-int a04_wmt_bridge_load_calibration(struct a04_wmt_bridge *b,const uint8_t data[512])
+int a04_wmt_bridge_load_calibration_traced(struct a04_wmt_bridge *b,const uint8_t data[512],a04_calibration_progress observe,void *context)
 {
- struct a04_regulatory r;int e;
- if(!alive(b)||!b->wlan_ready||b->failed||!data||b->calibration_submitted||
-    b->scan.pending||b->pending_wlan_status||a04_regulatory_decode(data,&r))return -1;
- if(!b->wlan.runtime){e=a04_wlan_runtime_begin(&b->wlan);if(e)return fault(b,e);}
- e=a04_manufacture_submit(data,&r,b,manufacture_set);if(e)return fault(b,e);
+ struct a04_regulatory r;int e;struct manufacture_context m;
+ if(!alive(b)||!b->wlan_ready||b->failed||!data||b->calibration_submitted||b->scan.pending||b->pending_wlan_status)return -1;
+ e=a04_regulatory_decode(data,&r);if(observe)observe(context,A04_CP_CAL_DECODE,e,0);if(e)return -1;
+ if(!b->wlan.runtime){e=a04_wlan_runtime_begin(&b->wlan);if(observe)observe(context,A04_CP_CAL_RUNTIME,e,0);if(e)return fault(b,e);}
+ m.bridge=b;m.last_cid=0;e=a04_manufacture_submit(data,&r,&m,manufacture_set);
+ if(observe)observe(context,A04_CP_CAL_SUBMIT,e,m.last_cid);
+ if(e)return fault(b,e);
  b->regulatory=r;b->calibration_submitted=1;return 0;
 }
+int a04_wmt_bridge_load_calibration(struct a04_wmt_bridge *b,const uint8_t data[512])
+{return a04_wmt_bridge_load_calibration_traced(b,data,NULL,NULL);}
 
 int a04_wmt_bridge_scan_begin(struct a04_wmt_bridge *b,const struct a04_wlan_scan *request)
 {

@@ -3,7 +3,7 @@
 #include <string.h>
 #include "windows_diagnostic.h"
 static int calibration_result,calibration_calls;
-int a04_windows_calibration_load(struct a04_wmt_bridge *b){(void)b;calibration_calls++;return calibration_result;}
+int a04_windows_calibration_load_traced(struct a04_wmt_bridge *b,a04_session_trace_fn trace,void *ctx){(void)trace;(void)ctx;(void)b;calibration_calls++;return calibration_result;}
 static int init_result,open_result,boot_result,stop_result,init_calls,open_calls,boot_calls,stop_calls,prepare_result,prepare_calls,releases;
 int a04_windows_wifi_board_init(struct a04_windows_wifi_board *b,A04_SHARED_WIFI_INTERFACE *p,struct a04_windows_msdc2 *h,struct a04_wifi_owner *o,ULONG g)
 { (void)b;(void)p;(void)h;(void)o;(void)g;init_calls++;return init_result; }

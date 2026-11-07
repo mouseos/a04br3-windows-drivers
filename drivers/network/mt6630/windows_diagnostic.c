@@ -21,7 +21,7 @@ int a04_windows_diagnostic_start_traced(struct a04_windows_diagnostic *d,A04_SHA
  d->state=A04_DIAG_CONTROL;
  if(a04_windows_firmware_boot_prepared_traced(&d->bridge,&snapshot,expected,options,observe,observation)){d->state=A04_DIAG_FAILED;goto failed;}
 #if defined(A04_WIFI_CALIBRATION_DIAGNOSTIC) && A04_WIFI_CALIBRATION_DIAGNOSTIC
- result=a04_windows_calibration_load(&d->bridge);
+ result=a04_windows_calibration_load_traced(&d->bridge,observe,observation);
  A04_INIT_RESULT(A04_CP_DIAG_CALIBRATION,A04_CP_BACKEND,result,0);
  if(result){d->state=A04_DIAG_FAILED;goto failed;}
 #endif
