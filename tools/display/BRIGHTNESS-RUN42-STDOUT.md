@@ -1,0 +1,22 @@
+# run42後のnative client checkpoint
+
+8a79f27基点。既定の固定ログ先を
+C:\Windows\System32\MT8167EngineProbe\logs\brightness-native.log
+へ変更。Engineが旧stateを丸ごとarchiveして新logsをprovisionする契約が必要。
+clientはdirectoryを作成・消去・archiveせず、引数なしCREATE_NEWで既存証拠を保持する。
+旧C:\MT8167EngineProbe\brightness-native.logは一切触らない。RO absentを世代更新の証明にしない。
+
+同じheader/record bytesをrootへwrite+flushし、継承stdoutへも複写。stdout全体16KiB、
+各fragment1024bytes上限。root失敗でも同じrecordのstdoutを試み、stdout失敗でもrootを省略しない。
+どちらかの失敗は既存log failure value4を保持し、成功へ変えない。synchronous WriteFileは
+hard-timeout APIではなく、親側が出力を受理/drainする必要がある。
+COM失敗時には具体的COM API phaseとHRESULTも同じ経路へ出す。Winmgmt開始待ちは追加しない。
+8はCOM失敗又はWMI snapshot preflight（原値範囲外含む）であり限定しない。
+CreateFile失敗16は継承stdoutへlog-create-failed HRESULTを出し、WMIを開始しない。
+
+builderは4 TU: brightness_native/brightness_sequence/brightness_wmi_result/brightness_log。
+manifest schema1に新log_path、stdout_tee=true/stdout_max_bytes=16384、generation契約を追加。
+このcheckpointだけを旧Engine guard/builder allowlistと組み合わせて投入しない。
+Raman側engine_deferred_policy.pyのsource/log-path allowlistとEngine serviceの新logs guard、
+旧state全体archive＋新logs作成を合わせて更新する必要がある。任意CLIpathは追加しない。
+実WMI/実機の反復はしていない。物理PWM/光学輝度成功の証拠ではない。

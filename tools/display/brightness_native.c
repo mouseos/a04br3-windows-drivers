@@ -10,24 +10,39 @@
 #include "brightness_sequence.h"
 #include "brightness_native.h"
 #include "brightness_wmi_result.h"
+#include "brightness_log.h"
 #define WAIT_MS 3000
 /* Freestanding ARM32 entry: do not depend on an MSVC CRT installation. */
 void *memset(void *dst,int value,size_t length)
 {volatile unsigned char *p=dst;while(length--)*p++=(unsigned char)value;return dst;}
 void *memcpy(void *dst,const void *src,size_t length)
 {volatile unsigned char *p=dst;const volatile unsigned char *q=src;while(length--)*p++=*q++;return dst;}
-#define LOG_PATH L"C:\\MT8167EngineProbe\\brightness-native.log"
+#define LOG_PATH L"C:\\Windows\\System32\\MT8167EngineProbe\\logs\\brightness-native.log"
 struct probe {
- HANDLE file;IWbemServices *services;IWbemClassObject *input;
+ HANDLE file,stdout_handle;struct a04_brightness_log log;DWORD root_error,stdout_error;IWbemServices *services;IWbemClassObject *input;
  BSTR name,monitor_path,method_path,method_name;int log_failed;
 };
 static HRESULT exact(HRESULT hr) {return hr==S_OK?S_OK:(FAILED(hr)?hr:HRESULT_FROM_WIN32(ERROR_TIMEOUT));}
 static HRESULT secure(IUnknown *p)
 {return CoSetProxyBlanket(p,RPC_C_AUTHN_WINNT,RPC_C_AUTHZ_NONE,NULL,RPC_C_AUTHN_LEVEL_CALL,RPC_C_IMP_LEVEL_IMPERSONATE,NULL,EOAC_NONE);}
+static int root_bytes(void *context,const char *s,unsigned n)
+{
+ struct probe *p=context;DWORD written=0;
+ if(!WriteFile(p->file,s,n,&written,NULL)){p->root_error=GetLastError();return -1;}
+ if(written!=n){p->root_error=ERROR_WRITE_FAULT;return -1;}
+ if(!FlushFileBuffers(p->file)){p->root_error=GetLastError();return -1;}return 0;
+}
+static int stdout_bytes(void *context,const char *s,unsigned n)
+{
+ struct probe *p=context;DWORD written=0;
+ if(!p->stdout_handle || p->stdout_handle==INVALID_HANDLE_VALUE){p->stdout_error=ERROR_INVALID_HANDLE;return -1;}
+ if(!WriteFile(p->stdout_handle,s,n,&written,NULL)){p->stdout_error=GetLastError();return -1;}
+ if(written!=n){p->stdout_error=ERROR_WRITE_FAULT;return -1;}return 0;
+}
 static int bytes(struct probe *p,const char *s,DWORD n)
 {
- DWORD written=0;
- if(!WriteFile(p->file,s,n,&written,NULL) || written!=n || !FlushFileBuffers(p->file)){p->log_failed=1;return -1;}return p->log_failed?-1:0;
+ int result=a04_brightness_log_write(&p->log,s,n);
+ if(result)p->log_failed=1;return result;
 }
 static char *text(char *p,const char *s){while(*s)*p++=*s++;return p;}
 static char *hex(char *p,unsigned v){unsigned i;for(i=0;i<8;i++)*p++="0123456789abcdef"[(v>>(28-4*i))&15];return p;}
@@ -199,22 +214,30 @@ static int read_level(void *context,unsigned *value)
 static void pause_read(void *context){(void)context;Sleep(250);}
 DWORD A04RunBrightnessNativeProbe(void)
 {
- struct probe p={0};struct a04_brightness_ops ops;IWbemLocator *locator=NULL;BSTR ns=NULL;HRESULT hr;unsigned result=8;BOOL initialized=FALSE;
- CreateDirectoryW(L"C:\\MT8167EngineProbe",NULL);
+ struct probe p={0};struct a04_brightness_ops ops;IWbemLocator *locator=NULL;BSTR ns=NULL;HRESULT hr;unsigned result=8;BOOL initialized=FALSE;const char *com_phase="co-initialize";
+ /* Engine owns provisioning/archive of the entire state generation. Never
+  * create directories, erase an old log, or consult the legacy root guard. */
+ p.stdout_handle=GetStdHandle(STD_OUTPUT_HANDLE);
+ p.log.context=&p;p.log.root=root_bytes;p.log.stdout_write=stdout_bytes;
  /* Existing log means this one-shot already ran; never truncate its evidence. */
  p.file=CreateFileW(LOG_PATH,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,NULL);
- if(p.file==INVALID_HANDLE_VALUE)return 16;
+ if(p.file==INVALID_HANDLE_VALUE){
+  DWORD error=GetLastError();char line[160],*end=line;
+  end=text(end,"phase=log-create-failed status_hex=");end=hex(end,(unsigned)HRESULT_FROM_WIN32(error));end=text(end,"\r\n");
+  (void)stdout_bytes(&p,line,(unsigned)(end-line));return 16;
+ }
  {static const char header[]="schema=1 api=local-Monitor.sys-WMI raw_pwm_observed=0 restore_scope=standard-percent\r\n";
   if(bytes(&p,header,sizeof(header)-1)){result|=4;goto done;}}
  hr=CoInitializeEx(NULL,COINIT_MULTITHREADED);if(FAILED(hr))goto failed;initialized=TRUE;
- hr=CoInitializeSecurity(NULL,-1,NULL,NULL,RPC_C_AUTHN_LEVEL_DEFAULT,RPC_C_IMP_LEVEL_IMPERSONATE,NULL,EOAC_NONE,NULL);if(FAILED(hr))goto failed;
- hr=CoCreateInstance(&CLSID_WbemLocator,NULL,CLSCTX_INPROC_SERVER,&IID_IWbemLocator,(void **)&locator);if(FAILED(hr))goto failed;
- ns=SysAllocString(L"ROOT\\WMI");if(!ns){hr=E_OUTOFMEMORY;goto failed;}
- hr=IWbemLocator_ConnectServer(locator,ns,NULL,NULL,NULL,WBEM_FLAG_CONNECT_USE_MAX_WAIT,NULL,NULL,&p.services);if(FAILED(hr))goto failed;
- hr=secure((IUnknown *)p.services);if(FAILED(hr))goto failed;
+ com_phase="co-security";hr=CoInitializeSecurity(NULL,-1,NULL,NULL,RPC_C_AUTHN_LEVEL_DEFAULT,RPC_C_IMP_LEVEL_IMPERSONATE,NULL,EOAC_NONE,NULL);if(FAILED(hr))goto failed;
+ com_phase="co-create-locator";hr=CoCreateInstance(&CLSID_WbemLocator,NULL,CLSCTX_INPROC_SERVER,&IID_IWbemLocator,(void **)&locator);if(FAILED(hr))goto failed;
+ com_phase="wmi-namespace";ns=SysAllocString(L"ROOT\\WMI");if(!ns){hr=E_OUTOFMEMORY;goto failed;}
+ com_phase="wmi-connect";hr=IWbemLocator_ConnectServer(locator,ns,NULL,NULL,NULL,WBEM_FLAG_CONNECT_USE_MAX_WAIT,NULL,NULL,&p.services);if(FAILED(hr))goto failed;
+ com_phase="wmi-proxy";hr=secure((IUnknown *)p.services);if(FAILED(hr))goto failed;
  ops.context=&p;ops.snapshot=snapshot;ops.set=set;ops.read=read_level;ops.record=record;ops.pause=pause_read;
  result=a04_brightness_once(&ops);goto done;
 failed:
+ if(record(&p,com_phase,0,0,(int)hr))result|=4;
  if(record(&p,"com-preflight-failed",0,0,(int)hr))result|=4;
 done:
  if(p.input)IWbemClassObject_Release(p.input);if(p.services)IWbemServices_Release(p.services);if(locator)IWbemLocator_Release(locator);
