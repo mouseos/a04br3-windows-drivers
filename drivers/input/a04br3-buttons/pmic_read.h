@@ -67,4 +67,9 @@ int a04_pmic_spk_clock_release(struct a04_pmic_read *,struct a04_pmic_spk_clock 
  * owner lock used by every PWRAP transaction. A failed write poisons bus. */
 int a04_pmic_vusb_get(struct a04_pmic_read *, uint16_t *);
 int a04_pmic_vusb_set(struct a04_pmic_read *, int);
+#if defined(MT6392_RTC_CALENDAR) && MT6392_RTC_CALENDAR
+#include "../../system/mt6392-rtc/calendar.h"
+/* Entire snapshot/retry sequence requires the existing owner's WACS2 lock. */
+int mt6392_pmic_read_calendar(struct a04_pmic_read *,struct mt6392_rtc_raw *);
+#endif
 #endif

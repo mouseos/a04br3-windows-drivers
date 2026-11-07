@@ -39,4 +39,7 @@ int a04_pwrap_owner_read_audio(struct a04_pwrap_owner *,struct a04_mt6392_audio_
 int a04_pwrap_owner_rtc32k_acquire(struct a04_pwrap_owner *,struct a04_rtc32k_lease *);
 int a04_pwrap_owner_rtc32k_release(struct a04_pwrap_owner *,struct a04_rtc32k_lease *);
 #endif
+#if defined(MT6392_RTC_CALENDAR) && MT6392_RTC_CALENDAR
+int mt6392_pwrap_read_calendar(struct a04_pwrap_owner *,struct mt6392_rtc_raw *);
+#endif
 #endif

@@ -9,6 +9,15 @@
 #include "parent_resources.h"
 #include "usb_admission.h"
 #include "pwrap_owner.h"
+#ifndef MT6392_RTC_CALENDAR
+#define MT6392_RTC_CALENDAR 0
+#endif
+#if MT6392_RTC_CALENDAR
+#include "../../system/mt6392-rtc/rtc_interface.h"
+#if !A04_SHARED_QUERY_EXPERIMENTAL || !A04_SHARED_CHILD_PROBE || !A04_SHARED_BUTTON_D0_EXPERIMENT
+#error RTC calendar requires the existing shared owner and child topology
+#endif
+#endif
 #include "register_owner.h"
 #include "client_interface.h"
 #include "audio_interface.h"
@@ -933,6 +942,16 @@ static VOID ParentInterfaceDereference(PVOID context) { WdfObjectDereference((WD
 #if A04_SHARED_SD_POWER
 #include "../../storage/mt8167-sd/power_parent.inc"
 #endif
+#if MT6392_RTC_CALENDAR
+static NTSTATUS Mt6392ReadCalendar(PVOID context,struct mt6392_rtc_raw *out)
+{
+    int result;
+    if(!context || !out || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+    result=mt6392_pwrap_read_calendar(&ParentContext((WDFDEVICE)context)->pmic,out);
+    if(result==MT6392_RTC_UNSTABLE)return STATUS_RETRY;
+    return result==0?STATUS_SUCCESS:STATUS_DEVICE_NOT_READY;
+}
+#endif
 static NTSTATUS ParentReadButtons(PVOID context,USHORT *value) {
     A04_PARENT_CONTEXT *c;
     if(!context || !value || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
@@ -1407,6 +1426,10 @@ NTSTATUS ChildRequirements(WDFDEVICE child,WDFIORESREQLIST requirements)
 {
     A04_CHILD_CONTEXT *c=ChildContext(child); WDFIORESLIST list;
     IO_RESOURCE_DESCRIPTOR descriptor; NTSTATUS status;
+#if MT6392_RTC_CALENDAR
+    /* Register access stays in the parent: this child claims no MMIO/IRQ. */
+    if(c->base==0xfffffffdu)return STATUS_SUCCESS;
+#endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
     if(c->base==0xfffffffeu) {
         static const ULONG thermalBase[2]={0x1100d000u,0x11003000u};unsigned i;
@@ -1513,6 +1536,14 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     status=WdfDeviceCreate(&init,&attr,&child);
     if(!NT_SUCCESS(status))goto fail;
     ChildContext(child)->base=base;
+#if MT6392_RTC_CALENDAR
+    if(base==0xfffffffdu) {
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&Mt6392RtcInterfaceGuid,NULL);
+        query.SendQueryToParentStack=TRUE;
+        status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    }
+#endif
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedInterfaceGuid,NULL);
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
@@ -1567,6 +1598,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
     A04_LEGACY_SHARED_INTERFACE iface;WDF_QUERY_INTERFACE_CONFIG query;
     A04_SHARED_INTERFACE inputIface;
+#if MT6392_RTC_CALENDAR
+    MT6392_RTC_INTERFACE rtcIface;
+#endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
     A04_SHARED_THERMAL_INTERFACE thermalIface;
 #endif
@@ -1703,6 +1737,17 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #if defined(A04_SHARED_CHILD_PROBE) && A04_SHARED_CHILD_PROBE
     if(!NT_SUCCESS(status))return status;
 #if !A04_SHARED_USB_ONLY
+#if MT6392_RTC_CALENDAR
+    RtlZeroMemory(&rtcIface,sizeof(rtcIface));
+    rtcIface.Header.Size=sizeof(rtcIface);rtcIface.Header.Version=MT6392_RTC_INTERFACE_VERSION;
+    rtcIface.Header.Context=dev;rtcIface.Header.InterfaceReference=ParentInterfaceReference;
+    rtcIface.Header.InterfaceDereference=ParentInterfaceDereference;
+    rtcIface.ReadCalendar=Mt6392ReadCalendar;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&rtcIface,&Mt6392RtcInterfaceGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
+    status=ParentAddProbeChild(dev,L"MT6392\\RTC",L"0",0xfffffffdu);
+    if(!NT_SUCCESS(status))return status;
+#endif
     status=ParentAddProbeChild(dev,L"MT6392\\Buttons",L"0",0x10002000u);
     if(!NT_SUCCESS(status))return status;
     status=ParentAddProbeChild(dev,L"MT8167\\BU21025",L"0",0x11009000u);

@@ -88,3 +88,14 @@ int a04_pwrap_owner_rtc32k_release(struct a04_pwrap_owner *o,struct a04_rtc32k_l
     o->unlock(o->lock_context);return result;
 }
 #endif
+
+#if defined(MT6392_RTC_CALENDAR) && MT6392_RTC_CALENDAR
+int mt6392_pwrap_read_calendar(struct a04_pwrap_owner *o,struct mt6392_rtc_raw *out)
+{
+    int result=MT6392_RTC_IO_ERROR;
+    if(!out)return MT6392_RTC_INVALID;
+    if(enter(o))return result;
+    if(o->online)result=mt6392_pmic_read_calendar(&o->bus,out);
+    o->unlock(o->lock_context);return result;
+}
+#endif

@@ -1,0 +1,37 @@
+[Version]
+Signature="$WINDOWS NT$"
+Class=System
+ClassGuid={4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider=%Provider%
+DriverVer=11/08/2026,0.0.1.0
+CatalogFile=mt6392-rtc.cat
+[Manufacturer]
+%Provider%=Models,NTARM
+[Models.NTARM]
+%Device%=Install,MT6392\RTC
+[DestinationDirs]
+DriverCopy=12
+[SourceDisksNames]
+1=%Disk%,,,
+[SourceDisksFiles]
+mt6392-rtc.sys=1
+[Install.NT]
+CopyFiles=DriverCopy
+[DriverCopy]
+mt6392-rtc.sys
+[Install.NT.Services]
+AddService=Mt6392Rtc,0x00000002,Service
+[Service]
+DisplayName=%Device%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\mt6392-rtc.sys
+[Install.NT.Wdf]
+KmdfService=Mt6392Rtc,Wdf
+[Wdf]
+KmdfLibraryVersion=1.13
+[Strings]
+Provider="mouseos"
+Device="MediaTek MT6392 Real-Time Clock"
+Disk="MediaTek MT6392 Real-Time Clock Driver"
