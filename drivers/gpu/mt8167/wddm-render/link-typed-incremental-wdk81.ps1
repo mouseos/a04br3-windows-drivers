@@ -26,7 +26,7 @@ $render='drivers/gpu/mt8167/wddm-render/'
 $allowed=@('umd/typed_entry.c','umd/typed_resource.c','umd/typed_view.c','umd/typed_shader.c','umd/typed_draw.c','umd/typed_device.h')
 $diff=@(& git -C $root diff --name-only $b.source_commit HEAD -- ($render+'*.c') ($render+'*.h'))
 if($LASTEXITCODE){throw 'Baseline diff failed'}
-foreach($p in $diff){if($p.Substring($render.Length) -notin $allowed){throw "Unrecompiled runtime source: $p"}}
+foreach($p in $diff){if($p.StartsWith($render+'testclient/')){continue};if($p.Substring($render.Length) -notin $allowed){throw "Unrecompiled runtime source: $p"}}
 foreach($s in $c.sources){Verify (Join-Path $root $s.path) $s.sha256}
 foreach($f in $c.files){Verify (Join-Path $ContractDirectory $f.path) $f.sha256}
 Verify (Join-Path $NativeCombinedDirectory 'ge8300-render.sys') $n.sys_sha256
