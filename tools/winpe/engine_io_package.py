@@ -99,9 +99,23 @@ def wifi_override_check(directory, root):
     """
     package = SignedPackage(directory, root)
     if (package.record.get('source_commit') != WIFI_REGISTRATION_SOURCE
-            or package.record.get('signed') is not True
             or package.record.get('signing_thumbprint') != ENGINE_CERT):
         raise ValueError('37a5bb1/BCBF署名Wi-Fi packageのmanifestが必要です')
+    if package.record.get('signed') is not True:
+        # The recovered 37a5bb1 signing manifest omits the optional `signed`
+        # boolean. Accept its fixed schema only with the hashed WDK metadata.
+        if ('signed' in package.record
+                or package.record.get('driver_source_commit') != WIFI_DIRECT_OID_SOURCE
+                or package.record.get('parent_rebuilt') is not False):
+            raise ValueError('Wi-Fi署名manifestの固定回収schema不一致')
+        build = package.json('manifest.json')
+        if (build.get('source_commit') != WIFI_REGISTRATION_SOURCE
+                or build.get('driver_ver') != BASE_VERSION
+                or build.get('wdk_link_succeeded') != 1 or build.get('native_runtime') != 1
+                or build.get('shared_parent_reused') is not True
+                or build.get('shared_parent_source_commit') != ENGINE_RUNTIME
+                or build.get('shared_parent_interface_blob') != '8d1ad9e6221e673a94afdf96af2f099baacb906c'):
+            raise ValueError('回収Wi-Fi packageのhash済みbuild/親interface metadata不一致')
     cert_path, certificate = package.certificate(ENGINE_CERT)
     names = ['mt6630-runtime.' + extension for extension in ('inf', 'sys', 'cat')]
     selected = {'wifi/' + name: package.file(name) for name in names}

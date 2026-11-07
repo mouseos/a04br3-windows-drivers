@@ -272,6 +272,10 @@
     "rt_export_presence_reported_by_owner": 65,
     "signed_artifact_verified_here": false,
     "wdk_built_here": false,
-    "device_verified_here": false
+    "device_verified_here": false,
+    "recovered_manifest_schema": "source_commit + driver_source_commit + parent_rebuilt=false + signing_thumbprint + hashed build manifest; signed boolean absent",
+    "artifact_hashes_verified_here": true,
+    "signature_chain_verified_here": false,
+    "signed_sys_sha256": "77b53ac0b902d5d6c864247707e9f319585ebb64d3a17b8a14696c8153e1a821"
   }
 }

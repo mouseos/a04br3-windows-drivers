@@ -152,11 +152,16 @@ EnginePcmだけで `--wifi-package` を指定できる。未指定時は旧f17b7
 - signed-manifest.json
 
 signed-manifest.jsonは `source_commit=37a5bb1cc0d34b95d065bbe7bcb3e3a467e93f81`、
-`signed=true`、`signing_thumbprint=BCBF6C456C6F0DD0818434763B189488FBF13570`、
+`signing_thumbprint=BCBF6C456C6F0DD0818434763B189488FBF13570`、
 `files=[{path,sha256}, ...]` を持ち、上のINF/SYS/CAT/certの4fileすべてを列挙する。
+署名宣言は `signed=true`、または今回回収済み37a5bb1の固定schemaを受理する。
+今回schemaはsigned項目なし、driver_source_commit=9d3a88907b1ac9286d730b1efc8a58b21072462c、
+parent_rebuilt=falseを要求し、filesに含まれるmanifest.json自体のhashも照合する。
+そのbuild source/DriverVer/WDK link/native runtime/Engine親reuse/source/interface blobの一致も必須。
+明示signed=falseは拒否する。signed項目省略を一般的な署名成功とは扱わない。
 SYSのhashは署名後の値を使い、unsigned build manifestのsys_sha256を代用しない。
 実file hash、ARMNT、INF DriverVer=11/06/2026,2026.11.6.1001とNT装飾、cert thumbprintを検査する。
-別source、未署名宣言、異なるcert、hash不一致は拒否する。ホストでのhash/manifest照合を
+別source、明示未署名宣言、異なるcert、hash不一致は拒否する。ホストでのhash/manifest照合を
 Authenticode chain検証済みとは扱わず、通常OSのCAT/標準PnP検証も維持する。
 
 Wi-FiだけをBCBF署名へ切り替え、旧USBと旧WLAN clientは2655署名のまま保持する。
