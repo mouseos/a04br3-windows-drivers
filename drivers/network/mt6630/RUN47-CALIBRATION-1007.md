@@ -70,3 +70,28 @@ DDI一次資料:
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-iogetdiskdeviceobject
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/nf-ntddk-iogetdeviceattachmentbaseref
 - https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwdeviceiocontrolfile
+
+## 追加照合：GPT、READ制約、形式の根拠と限界
+
+- 既存のWindows用GPT生成layoutと2026-11-06の検証済み保存snapshotは、nvramを
+  5 MiB（40×0x20000）として保持している。Windows化で削除したlayoutではない。
+  ただしrun47現在のGPTを新たに実機採取した確認ではない。driverはその保存offsetを
+  固定使用せず、現在のdisk stackからGPT名/長さを取得して判定する。
+- mainのSCSI codecは本branchと同一blob
+  `29ead65ac56d4b226b77fc6db1c7f96d37ddf482`。
+  READ(10/16)は容量内か、最大8sectorか、buffer長かを検証する。
+  main miniport blob `a2d78d4e343551b5db0ebbc23429654e051982c1`でも
+  Windows/ESP partition guardの条件はA04_SCSI_WRITEだけ。
+  NVRAMの1sector READをWindows領域外という理由で拒否する条件はない。
+  OS disk stackでの実read可否までsource確認で成功扱いしない。
+- Linux gen3 `os/linux/platform.c`の`kalCfgDataRead16`は
+  `/data/nvram/APCFG/APRDEB/WIFI`をfilesystemから読む。これはraw nvram GPT領域を
+  ext4としてmountする処理ではない。Android側のlibnvramによる復元とは役割が異なる。
+- Windows parserは既存XNU `package/wifi/a04br3_wlan_nvram.h`と同じ
+  AllMap/AllFile container形式を扱う。0x20000 block/triple bitmap/0xaabbccdd、
+  12+52byte header、140byte entry、WIFI LID7/514byte、全体/record checksumを照合。
+  parserはext4 filesystem parserではない。異なる形式を推測で受理しない。
+- 既存XNU runtime candidateの記録もhardware_verified=falseで、合成fixtureの成功と
+  実機のraw container適合は別。今回も実個体NVRAMの全量抽出/公開は行わず、適合は
+  Stage65の実read NTSTATUS/parser resultとStage66..68の実結果で判別する。
+  raw read成功・parser不適合ならSTATUS_DATA_ERRORを保持して拒否し、defaultへ逃げない。
