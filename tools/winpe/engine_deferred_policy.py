@@ -37,7 +37,7 @@ def load_map(path, root):
     path=path.resolve(strict=True)
     if not path.is_relative_to(root.resolve()):raise ValueError('package mapは作業ルート内が必要です')
     spec=json.loads(path.read_text(encoding='utf-8-sig'))
-    if spec.get('transaction')=='codec1026-msdc-quiet-explicit-fresh-v2':
+    if spec.get('transaction')=='codec1026-msdc-quiet-render313-v3':
         from codec_msdc_transaction import load
         return load(path,root)
     if not {'schema','backup_manifest_sha256','packages','clients'}.issubset(spec) or set(spec)-{'schema','backup_manifest_sha256','packages','clients','gpu','sd_tuple','sd_package','staging_profile'} or spec['schema'] != 1:
@@ -215,7 +215,7 @@ def load_map(path, root):
 def cbytes(digest):return '{'+','.join('0x'+digest[i:i+2] for i in range(0,64,2))+'}'
 
 def generate(policy):
-    if policy.get('transaction')=='codec1026-msdc-quiet-explicit-fresh-v2':
+    if policy.get('transaction')=='codec1026-msdc-quiet-render313-v3':
         from codec_msdc_transaction import generate as codec_generate
         return codec_generate(policy)
     if not 5<=len(policy['packages'])<=7:raise ValueError('固定target数は5..7だけです')

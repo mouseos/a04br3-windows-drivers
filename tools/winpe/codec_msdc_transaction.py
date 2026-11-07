@@ -3,7 +3,7 @@ import datetime, hashlib, json, re
 from pathlib import Path, PureWindowsPath
 from engine_io_package import SignedPackage, check_inf, require_armnt
 from private_hardware_probe_input import sha
-PROFILE='codec1026-msdc-quiet-explicit-fresh-v2'
+PROFILE='codec1026-msdc-quiet-render313-v3'
 CERT='BCBF6C456C6F0DD0818434763B189488FBF13570'
 CAPTURE='2d6231727e8ed72b6d7dca4148debc101ac5aeef'
 MSDC='e2db926f1ddd12b4cae341a7df50f832e20c16e5'
@@ -12,24 +12,29 @@ BASE_MSDC='f8f54c9b162cc0b9cc342fb0dc94953c1f59cae5'
 TARGETS={
  'parent':('ACPI\\BEN0001','shared-parent','mt8167-shared','Mt8167Shared','2026.11.7.1026'),
  'audio':('MT8167\\AFE','mt8167-afe-engine-capture','mt8167-audio','Mt8167Audio','2026.11.7.1026'),
- 'emmc':('ACPI\\MOU0001','mt8167-msdc','mt8167-msdc','a04msdcboot','0.0.1.8')}
+ 'emmc':('ACPI\\MOU0001','mt8167-msdc','mt8167-msdc','a04msdcboot','0.0.1.8'),
+ 'render':('ACPI\\MOU0006','ge8300-render','ge8300-render','GE8300Render','0.0.3.13')}
 BASELINES={
  'parent':('2026.11.7.1015','e7df942265a8216ba393152f1fe781e47d48ebe09b6da02f235dd8c2ba7d9752'),
  'audio':('2026.11.7.1007','b917801c0f673aa5ab36be25c4133ad5d1370f1130936bbc4fda7086cf374edc'),
- 'emmc':('0.0.1.0','fb4d168baa3d8ec8297c1fe33b195a9e1af85a79bf4f4267103b677bbd24fa2a')}
+ 'emmc':('0.0.1.0','fb4d168baa3d8ec8297c1fe33b195a9e1af85a79bf4f4267103b677bbd24fa2a'),
+ 'render':('0.0.3.12','adf92be2b28f2b353eb0a247620cc23e8d9051841bea9aacbd2522ae08525d4b')}
 BASELINE_DATES={'parent':'11/07/2026','audio':'11/06/2026','emmc':'11/02/2026'}
 # Actual installed USB1005 is 44899b9, not the re-signed audit build.
 RETAINED={
  'usb':('MT8167\\USB20','mshidkmdf','2026.11.7.1005','mt8167-usb20.sys','db1e26ebb856d197022e284f42da5669128e3bf58b25b3080563c4288ffc9fdf'),
  'wifi':('A04BR3\\MT6630SDIO','MT6630Runtime','2026.11.6.1012','mt6630-runtime.sys','5044f8b47b5e89383923c36af8c5a29e21bf1224885b42ede55155a59fce4351'),
  'display':('ACPI\\MOU0007','MT8167Display','0.0.1.6','mt8167-display.sys','8a2cf298b782acad669cf95b6dd81ced062761e1e9ecd5d095316dedfff3a4b0'),
- 'render':('ACPI\\MOU0006','GE8300Render','0.0.3.12','ge8300-render.sys','adf92be2b28f2b353eb0a247620cc23e8d9051841bea9aacbd2522ae08525d4b')}
-RETAINED_FILES={x[3]:x[4] for x in RETAINED.values()}
-RETAINED_FILES.update({
+}
+RETAINED_FILES={
+ 'mt8167-usb20.sys':'db1e26ebb856d197022e284f42da5669128e3bf58b25b3080563c4288ffc9fdf',
+ 'mt6630-runtime.sys':'5044f8b47b5e89383923c36af8c5a29e21bf1224885b42ede55155a59fce4351',
+ 'mt8167-display.sys':'8a2cf298b782acad669cf95b6dd81ced062761e1e9ecd5d095316dedfff3a4b0',
+ 'ge8300-render.sys':'adf92be2b28f2b353eb0a247620cc23e8d9051841bea9aacbd2522ae08525d4b',
  'mt8167-ge8300.sys':'a8f226b33fa11915e88b3424c5ad3ed3aaa62ff35deb7f91902b04e7df4bf090',
  'mt8167-toprgu.sys':'8caa8d85dc27251f0f00bf5f60e05657e30c6c3ff4140147f121d3467518c554',
  'ge8300-mips.fw':'5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1',
- 'ge8300-umd.dll':'f8a711915e878e7aeb58ef996db8abbeee15351bd10bf8e0fdcabe12009f922b'})
+ 'ge8300-umd.dll':'f8a711915e878e7aeb58ef996db8abbeee15351bd10bf8e0fdcabe12009f922b'}
 GPU_SOURCE='9f31ddcf89fbe6d5c3a7b5abcceadb223212d378'
 CLIENT='mt8167-capture-probe.exe'
 def version(v):
@@ -40,7 +45,7 @@ def datevalue(s):return int((datetime.datetime.strptime(s,'%m/%d/%Y')-datetime.d
 def load(path,root,*,draft=False):
  spec=json.loads(path.read_text(encoding='utf-8-sig'))
  if set(spec)!={'schema','transaction','backup_manifest','backup_manifest_sha256','bindings','boot','packages'} or spec['schema']!=1 or spec['transaction']!=PROFILE:raise ValueError('codec/eMMC固定map schema不一致')
- if set(spec['packages'])!={'capture','emmc','parent1015','render312'}:raise ValueError('固定4署名inputが必要です')
+ if set(spec['packages'])!={'capture','emmc','parent1015','render312','render313'}:raise ValueError('固定4署名inputが必要です')
  selected={};components={};certs={};packages={}
  for key,source in [('capture',CAPTURE),('emmc',MSDC),('parent1015',BASE_PARENT)]:
   e=spec['packages'][key]
@@ -68,7 +73,12 @@ def load(path,root,*,draft=False):
  if newflags!={**oldflags,'A04_SHARED_CAPTURE':'1'} or oldflags.get('A04_SHARED_WIFI_RTC_BORROW')!='1':raise ValueError('1015 flags/RTC borrow保持不一致')
  msdc=packages['emmc'].record
  if (msdc.get('baseline_source_commit')!=BASE_MSDC or msdc.get('baseline_signed_sys_sha256')!=BASELINES['emmc'][1] or msdc.get('logs_only_change') is not True or msdc.get('flags',{}).get('A04_MSDC_VERBOSE_IO_TRACE')!='0'):raise ValueError('boot-critical MSDC source/quiet出自不一致')
+ from codec_render313_package import load_render313
+ render=load_render313(spec['packages']['render313'],root,RETAINED_FILES)
  for role,(hwid,inf,sys,service,v) in TARGETS.items():
+  if role=='render':
+   item=render['component'];components[role]=item;packages[role]=item
+   selected.update(render['selected']);certs['render313']=render['certificate'];continue
   p=packages['emmc' if role=='emmc' else 'capture'];prefix='' if role=='emmc' else role+'/'
   names=[inf+'.inf',sys+'.sys',inf+'.cat'];paths=[p.file(prefix+n) for n in names]
   ver='11/07/2026,'+v;check_inf(paths[0],ver)
@@ -102,13 +112,14 @@ def load(path,root,*,draft=False):
 def generate(policy):
  if policy.get('transaction')!=PROFILE or not policy.get('recovery_boot_id') or not policy.get('backup_manifest_sha256'):raise ValueError('返却fresh結合前に実行可能headerを生成してはいけません')
  from engine_deferred_policy import cbytes
- lines=['/* MT8167 codec1026 + MSDC quiet1.8; explicit returned-fresh bound. */','#define DEFERRED_CODEC_MSDC 1','#define DEFERRED_TARGET_COUNT 3','#define DEFERRED_SD_UPDATE 0','#define DEFERRED_GPU_UPDATE 0','#define DEFERRED_BRIGHTNESS_SCOPED_LOG 0','static const struct deferred_pin deferred_pins[3]={']
+ lines=['/* MT8167 codec1026 + MSDC quiet1.8; explicit returned-fresh bound. */','#define DEFERRED_CODEC_MSDC 1','#define DEFERRED_TARGET_COUNT 4','#define DEFERRED_SD_UPDATE 0','#define DEFERRED_GPU_UPDATE 0','#define DEFERRED_BRIGHTNESS_SCOPED_LOG 0','static const struct deferred_pin deferred_pins[4]={']
  for r in TARGETS:
   p=policy['packages'][r];lines.append('{'+str(p['version_u64'])+'ULL,'+str(p['date_filetime'])+'ULL,{'+','.join(cbytes(v) for v in p['files'].values())+'}},')
- lines+=['};','static const struct deferred_pin codec_baselines[3]={']
+ lines+=['};','static const struct deferred_pin codec_baselines[4]={']
  for r in TARGETS:
-  p=policy['baseline'][r];lines.append('{'+str(p['version_u64'])+'ULL,'+str(p['date_filetime'])+'ULL,{{0},'+cbytes(p['sys_sha256'])+'}},')
- lines+=['};','static const WCHAR *const codec_baseline_infs[3]={'+','.join('L"'+policy['returned_selection'][r]['selected']['InfPath']+'"' for r in TARGETS)+'};','static const WCHAR *const codec_retained_infs[4]={'+','.join('L"'+policy['returned_selection'][r]['selected']['InfPath']+'"' for r in RETAINED)+'};','static const ULONGLONG codec_retained_dates[4]={'+','.join(str(policy['returned_selection'][r]['date_filetime'])+'ULL' for r in RETAINED)+'};','static const ULONGLONG codec_retained_versions[4]={'+','.join(str(version(x[2]))+'ULL' for x in RETAINED.values())+'};','static const BYTE codec_retained_hashes[][32]={'+','.join(cbytes(h) for h in RETAINED_FILES.values())+'};','static const BYTE deferred_client_hashes[1][32]={'+cbytes(policy['clients'][CLIENT])+'};','static const char deferred_token[]="'+hashlib.sha256(json.dumps(policy,sort_keys=True,separators=(',',':')).encode()).hexdigest()+'";']
+  p=policy['baseline'][r];extra=','+cbytes(RETAINED_FILES['ge8300-mips.fw'])+','+cbytes(RETAINED_FILES['ge8300-umd.dll']) if r=='render' else ''
+  lines.append('{'+str(p['version_u64'])+'ULL,'+str(p['date_filetime'])+'ULL,{{0},'+cbytes(p['sys_sha256'])+',{0}'+extra+'}},')
+ lines+=['};','static const WCHAR *const codec_baseline_infs[4]={'+','.join('L"'+policy['returned_selection'][r]['selected']['InfPath']+'"' for r in TARGETS)+'};','static const WCHAR *const codec_retained_infs[3]={'+','.join('L"'+policy['returned_selection'][r]['selected']['InfPath']+'"' for r in RETAINED)+'};','static const ULONGLONG codec_retained_dates[3]={'+','.join(str(policy['returned_selection'][r]['date_filetime'])+'ULL' for r in RETAINED)+'};','static const ULONGLONG codec_retained_versions[3]={'+','.join(str(version(x[2]))+'ULL' for x in RETAINED.values())+'};','static const BYTE codec_retained_hashes[][32]={'+','.join(cbytes(h) for h in RETAINED_FILES.values())+'};','static const BYTE deferred_client_hashes[1][32]={'+cbytes(policy['clients'][CLIENT])+'};','static const char deferred_token[]="'+hashlib.sha256(json.dumps(policy,sort_keys=True,separators=(',',':')).encode()).hexdigest()+'";']
  return '\n'.join(lines)+'\n'
 
 def staging(cmd,policy,backup,previous):

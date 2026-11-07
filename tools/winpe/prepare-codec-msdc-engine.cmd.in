@@ -33,6 +33,18 @@ copy /b X:\a04br3\shared-io\emmc\mt8167-msdc.sys C:\Windows\System32\MT8167Engin
 if errorlevel 1 goto dismfail
 copy /b X:\a04br3\shared-io\emmc\mt8167-msdc.cat C:\Windows\System32\MT8167EngineProbe\drivers\emmc\mt8167-msdc.cat >> "%A04_REPORT%" 2>&1
 if errorlevel 1 goto dismfail
+if not exist C:\Windows\System32\MT8167EngineProbe\drivers\render mkdir C:\Windows\System32\MT8167EngineProbe\drivers\render >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /b X:\a04br3\shared-io\render\ge8300-render.inf C:\Windows\System32\MT8167EngineProbe\drivers\render\ge8300-render.inf >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /b X:\a04br3\shared-io\render\ge8300-render.sys C:\Windows\System32\MT8167EngineProbe\drivers\render\ge8300-render.sys >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /b X:\a04br3\shared-io\render\ge8300-render.cat C:\Windows\System32\MT8167EngineProbe\drivers\render\ge8300-render.cat >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /b X:\a04br3\shared-io\render\ge8300-mips.fw C:\Windows\System32\MT8167EngineProbe\drivers\render\ge8300-mips.fw >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
+copy /b X:\a04br3\shared-io\render\ge8300-umd.dll C:\Windows\System32\MT8167EngineProbe\drivers\render\ge8300-umd.dll >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
 copy /y X:\a04br3\MT8167EngineProbe.exe C:\Windows\System32\MT8167EngineProbe.exe >> "%A04_REPORT%" 2>&1
 if errorlevel 1 goto dismfail
 >> "%A04_REPORT%" echo SYSTEM_INPUT_SHA256=@SYSTEM_SHA@

@@ -8,7 +8,7 @@
 #include <bcrypt.h>
 #include <mscat.h>
 #include <reason.h>
-struct deferred_pin { ULONGLONG version,date; BYTE hash[4][32]; };
+struct deferred_pin { ULONGLONG version,date; BYTE hash[5][32]; };
 #include "engine-deferred-policy.h"
 #ifndef DEFERRED_CODEC_MSDC
 #define DEFERRED_CODEC_MSDC 0
@@ -23,11 +23,12 @@ static DWORD deferred_batch_error,deferred_failure_target=0xffffffffu,deferred_f
 static DWORD deferred_current_step,deferred_current_target=0xffffffffu;
 static int deferred_all_install_succeeded,deferred_diagnostic_armed;
 static DWORD deferred_marker(const WCHAR *,int);
-static const struct {const WCHAR *id,*folder,*inf,*sys,*cat,*firmware;} deferred_targets[DEFERRED_TARGET_COUNT]={
+static const struct {const WCHAR *id,*folder,*inf,*sys,*cat,*firmware,*userdll;} deferred_targets[DEFERRED_TARGET_COUNT]={
 #if DEFERRED_CODEC_MSDC
  {L"ACPI\\BEN0001",L"parent",L"shared-parent.inf",L"mt8167-shared.sys",L"shared-parent.cat"},
  {L"MT8167\\AFE",L"audio",L"mt8167-afe-engine-capture.inf",L"mt8167-audio.sys",L"mt8167-afe-engine-capture.cat"},
- {L"ACPI\\MOU0001",L"emmc",L"mt8167-msdc.inf",L"mt8167-msdc.sys",L"mt8167-msdc.cat"}
+ {L"ACPI\\MOU0001",L"emmc",L"mt8167-msdc.inf",L"mt8167-msdc.sys",L"mt8167-msdc.cat"},
+ {L"ACPI\\MOU0006",L"render",L"ge8300-render.inf",L"ge8300-render.sys",L"ge8300-render.cat",L"ge8300-mips.fw",L"ge8300-umd.dll"}
 #else
  {L"ACPI\\BEN0001",L"parent",L"shared-parent.inf",L"mt8167-shared.sys",L"shared-parent.cat"},
  {L"MT8167\\AFE",L"audio",L"mt8167-afe-engine-pcm.inf",L"mt8167-audio.sys",L"mt8167-afe-engine-pcm.cat"},
@@ -80,7 +81,7 @@ static LONG deferred_trust(WINTRUST_DATA *data)
  data->dwProvFlags=WTD_CACHE_ONLY_URL_RETRIEVAL;data->dwStateAction=WTD_STATEACTION_VERIFY;
  status=WinVerifyTrust(NULL,&action,data);data->dwStateAction=WTD_STATEACTION_CLOSE;WinVerifyTrust(NULL,&action,data);return status;
 }
-static DWORD deferred_members(unsigned index,const WCHAR *cat,const WCHAR *paths[4],HANDLE files[4])
+static DWORD deferred_members(unsigned index,const WCHAR *cat,const WCHAR *paths[5],HANDLE files[5])
 {
  HCATADMIN admin=NULL;DWORD i,j,error=0,bytes;BYTE hash[64];WCHAR tag[129];LONG status;
  WINTRUST_FILE_INFO file;WINTRUST_CATALOG_INFO member;WINTRUST_DATA data;LARGE_INTEGER zero={0};
@@ -89,7 +90,7 @@ static DWORD deferred_members(unsigned index,const WCHAR *cat,const WCHAR *paths
  memset(&data,0,sizeof(data));data.dwUnionChoice=WTD_CHOICE_FILE;data.pFile=&file;
  status=deferred_trust(&data);pnp_record(index,0x102,(DWORD)status);if(status)return ERROR_TRUST_FAILURE;
  if(!CryptCATAdminAcquireContext2(&admin,NULL,BCRYPT_SHA256_ALGORITHM,NULL,0))return GetLastError();
- for(i=0;i<4;i++){
+ for(i=0;i<5;i++){
   if(i==2||!paths[i])continue;
   bytes=sizeof(hash);
   if(!SetFilePointerEx(files[i],zero,NULL,FILE_BEGIN)||!CryptCATAdminCalcHashFromFileHandle2(admin,files[i],&bytes,hash,0)){
@@ -163,6 +164,11 @@ static DWORD deferred_installed_sys(unsigned index,const struct deferred_pin *pi
   error=path(full,drivers,deferred_targets[index].firmware);
   if(!error)error=deferred_file(full,pin->hash[3],&file);
  }
+ if(file!=INVALID_HANDLE_VALUE){CloseHandle(file);file=INVALID_HANDLE_VALUE;}
+ if(!error&&deferred_targets[index].userdll){
+  error=path(full,system,deferred_targets[index].userdll);
+  if(!error)error=deferred_file(full,pin->hash[4],&file);
+ }
  if(file!=INVALID_HANDLE_VALUE)CloseHandle(file);if(dir!=INVALID_HANDLE_VALUE)CloseHandle(dir);
  pnp_record(index,0x101,error);return error;
 }
@@ -215,7 +221,7 @@ static DWORD deferred_selected_version(HDEVINFO set,SP_DEVINFO_DATA *dev,ULONGLO
  WCHAR value[128];DWORD bytes,n=0,i;DEVPROPTYPE type;ULONGLONG result=0;
  if(!SetupDiGetDevicePropertyW(set,dev,&key,&type,(BYTE *)value,sizeof(value),&bytes,0))return GetLastError();
  if(type!=DEVPROP_TYPE_STRING||bytes<2||bytes>sizeof(value)||(bytes&1)||value[bytes/2-1])return ERROR_INVALID_DATA;
- for(i=0;i<4;i++){
+ for(i=0;i<5;i++){
   DWORD part=0,digits=0;
   while(n<bytes/2-1&&value[n]>=L'0'&&value[n]<=L'9'){part=part*10+value[n++]-L'0';if(++digits>5||part>65535)return ERROR_INVALID_DATA;}
   if(!digits)return ERROR_INVALID_DATA;result=(result<<16)|part;
@@ -295,11 +301,11 @@ static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const
 #endif
 static DWORD deferred_once(int diagnostic)
 {
- static WCHAR drivers[MAX_PATH],folders[DEFERRED_TARGET_COUNT][MAX_PATH],full[DEFERRED_TARGET_COUNT][4][MAX_PATH];
- HANDLE root=INVALID_HANDLE_VALUE;static HANDLE dirs[DEFERRED_TARGET_COUNT],files[DEFERRED_TARGET_COUNT][4];
+ static WCHAR drivers[MAX_PATH],folders[DEFERRED_TARGET_COUNT][MAX_PATH],full[DEFERRED_TARGET_COUNT][5][MAX_PATH];
+ HANDLE root=INVALID_HANDLE_VALUE;static HANDLE dirs[DEFERRED_TARGET_COUNT],files[DEFERRED_TARGET_COUNT][5];
  HDEVINFO set=INVALID_HANDLE_VALUE;SP_DEVINFO_DATA devs[DEFERRED_TARGET_COUNT];struct pnp_apis apis;
  DWORD i,j,error=0,observed;ULONGLONG version;int skip[DEFERRED_TARGET_COUNT];
- memset(&apis,0,sizeof(apis));for(i=0;i<DEFERRED_TARGET_COUNT;i++){dirs[i]=INVALID_HANDLE_VALUE;skip[i]=0;for(j=0;j<4;j++)files[i][j]=INVALID_HANDLE_VALUE;}
+ memset(&apis,0,sizeof(apis));for(i=0;i<DEFERRED_TARGET_COUNT;i++){dirs[i]=INVALID_HANDLE_VALUE;skip[i]=0;for(j=0;j<5;j++)files[i][j]=INVALID_HANDLE_VALUE;}
  error=pnp_load(&apis);if(error)goto done;
  error=path(drivers,base_directory,L"drivers");if(!error)error=hold_directory(drivers,&root);if(error)goto done;
  /* Preflight ALL files, CAT trust + INF/SYS membership, exact one present node,
@@ -312,9 +318,9 @@ static DWORD deferred_once(int diagnostic)
 #endif
  for(i=0;i<DEFERRED_TARGET_COUNT;i++){
   deferred_current_target=i;deferred_current_step=0;
-  const WCHAR *names[4]={deferred_targets[i].inf,deferred_targets[i].sys,deferred_targets[i].cat,deferred_targets[i].firmware};const WCHAR *paths[4]={NULL,NULL,NULL,NULL};
+  const WCHAR *names[5]={deferred_targets[i].inf,deferred_targets[i].sys,deferred_targets[i].cat,deferred_targets[i].firmware,deferred_targets[i].userdll};const WCHAR *paths[5]={NULL,NULL,NULL,NULL,NULL};
   error=path(folders[i],drivers,deferred_targets[i].folder);if(!error)error=hold_directory(folders[i],&dirs[i]);if(error)goto done;
-  for(j=0;j<4;j++){if(!names[j])continue;error=path(full[i][j],folders[i],names[j]);if(!error)error=deferred_file(full[i][j],deferred_pins[i].hash[j],&files[i][j]);if(error)goto done;paths[j]=full[i][j];}
+  for(j=0;j<5;j++){if(!names[j])continue;error=path(full[i][j],folders[i],names[j]);if(!error)error=deferred_file(full[i][j],deferred_pins[i].hash[j],&files[i][j]);if(error)goto done;paths[j]=full[i][j];}
   error=deferred_members(i,full[i][2],paths,files[i]);if(error)goto done;
   error=deferred_find(i,set,&devs[i]);if(error){diagnostic_discovery(i,error);goto done;}
   observed=deferred_observe(&apis,i,devs[i].DevInst);
@@ -364,7 +370,7 @@ static DWORD deferred_once(int diagnostic)
  error=deferred_marker(L"deferred-pending.bin",1);if(!error){error=deferred_arm_diagnostics();if(!error){deferred_diagnostic_armed=1;deferred_all_install_succeeded=1;}}
  done:
  pnp_record(0,0x100,diagnostic?2:1);pnp_record(0,EV_PNP_RESULT,error);
- for(i=0;i<DEFERRED_TARGET_COUNT;i++){for(j=0;j<4;j++)if(files[i][j]!=INVALID_HANDLE_VALUE)CloseHandle(files[i][j]);if(dirs[i]!=INVALID_HANDLE_VALUE)CloseHandle(dirs[i]);}
+ for(i=0;i<DEFERRED_TARGET_COUNT;i++){for(j=0;j<5;j++)if(files[i][j]!=INVALID_HANDLE_VALUE)CloseHandle(files[i][j]);if(dirs[i]!=INVALID_HANDLE_VALUE)CloseHandle(dirs[i]);}
  if(root!=INVALID_HANDLE_VALUE)CloseHandle(root);if(set!=INVALID_HANDLE_VALUE)SetupDiDestroyDeviceInfoList(set);
  if(apis.cm)FreeLibrary(apis.cm);if(apis.newdev)FreeLibrary(apis.newdev);
  if(log_error&&!error)error=log_error;

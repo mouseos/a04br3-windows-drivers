@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent
  * Fixed TAB-A04-BR3 identities. No device restart, raw disk write or error injection.
  * Called only by the existing one-shot deferred Engine transaction. */
-static const WCHAR *const codec_retained_ids[4]={L"MT8167\\USB20",L"A04BR3\\MT6630SDIO",L"ACPI\\MOU0007",L"ACPI\\MOU0006"};
-static const WCHAR *const codec_retained_services[4]={L"mshidkmdf",L"MT6630Runtime",L"MT8167Display",L"GE8300Render"};
+static const WCHAR *const codec_retained_ids[3]={L"MT8167\\USB20",L"A04BR3\\MT6630SDIO",L"ACPI\\MOU0007"};
+static const WCHAR *const codec_retained_services[3]={L"mshidkmdf",L"MT6630Runtime",L"MT8167Display"};
 static const WCHAR *const codec_retained_files[8]={L"mt8167-usb20.sys",L"mt6630-runtime.sys",L"mt8167-display.sys",L"ge8300-render.sys",L"mt8167-ge8300.sys",L"mt8167-toprgu.sys",L"ge8300-mips.fw",L"ge8300-umd.dll"};
 static DWORD codec_selected_inf(HDEVINFO set,SP_DEVINFO_DATA *dev,const WCHAR *expected)
 {
@@ -16,7 +16,7 @@ static DWORD codec_retained_check(HDEVINFO set)
 {
  DWORD k,i,matches,type,bytes,error;ULONGLONG version;SP_DEVINFO_DATA dev,found;
  static WCHAR ids[1024],service[128],system[MAX_PATH],drivers[MAX_PATH],full[MAX_PATH];HANDLE held;
- for(k=0;k<4;k++){
+ for(k=0;k<3;k++){
   matches=0;
   for(i=0;;i++){
    unsigned n;memset(&dev,0,sizeof(dev));dev.cbSize=sizeof(dev);

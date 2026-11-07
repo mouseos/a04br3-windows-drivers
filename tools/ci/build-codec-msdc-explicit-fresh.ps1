@@ -9,7 +9,7 @@ param([Parameter(Mandatory=$true)][string]$PackageMap,
 $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $spec=Get-Content $PackageMap -Raw|ConvertFrom-Json
-if($spec.transaction -ne 'codec1026-msdc-quiet-explicit-fresh-v2' -or !$spec.backup_manifest -or !$spec.backup_manifest_sha256){throw 'Explicit returned fresh binding required; draft is not buildable'}
+if($spec.transaction -ne 'codec1026-msdc-quiet-render313-v3' -or !$spec.backup_manifest -or !$spec.backup_manifest_sha256){throw 'Explicit returned fresh binding required; draft is not buildable'}
 if([IO.Path]::GetFullPath($FreshManifest) -ine [IO.Path]::GetFullPath($spec.backup_manifest) -or $ExpectedFreshManifestSha256 -cne $spec.backup_manifest_sha256 -or [IO.Path]::GetFullPath($BindingReceipt) -ine [IO.Path]::GetFullPath($spec.bindings.path) -or $ExpectedBindingReceiptSha256 -cne $spec.bindings.sha256){throw 'Explicit returned manifest/receipt arguments must match pinned map'}
 foreach($pin in @(@{path=$FreshManifest;hash=$ExpectedFreshManifestSha256},@{path=$BindingReceipt;hash=$ExpectedBindingReceiptSha256})){if($pin.hash -cnotmatch '^[0-9a-f]{64}$' -or (Get-FileHash $pin.path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $pin.hash){throw 'Returned file hash mismatch'}}
 if(@(& git -C $root status --porcelain).Count){throw 'Committed clean service source required'}
@@ -24,8 +24,8 @@ $sign=Join-Path $kit 'bin\x86\signtool.exe'
 if($LASTEXITCODE){throw 'Service signature verify failed'}
 # Existing signed SYS and INF membership are rechecked before packaging any service.
 $policy=Get-Content (Join-Path $out 'deferred-policy-manifest.json') -Raw|ConvertFrom-Json
-foreach($role in @('parent','audio','emmc')){
- $source=if($role -eq 'emmc'){$spec.packages.emmc.directory}else{Join-Path $spec.packages.capture.directory $role}
+foreach($role in @('parent','audio','emmc','render')){
+ $source=if($role -eq 'render'){$spec.packages.render313.directory}elseif($role -eq 'emmc'){$spec.packages.emmc.directory}else{Join-Path $spec.packages.capture.directory $role}
  $names=@($policy.packages.$role.files.PSObject.Properties.Name|ForEach-Object{Split-Path $_ -Leaf})
  $catalog=@($names|Where-Object{$_.EndsWith('.cat')})
  foreach($name in @($names|Where-Object{!$_.EndsWith('.cat')})){

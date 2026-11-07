@@ -15,12 +15,12 @@ BRIGHTNESS_LOG='MT8167EngineProbe/brightness-native.log'
 BRIGHTNESS_ENGINE_LOG='Windows/System32/MT8167EngineProbe/logs/brightness-native.log'
 SYS_NAMES = {'parent': 'mt8167-shared.sys', 'audio': 'mt8167-audio.sys',
              'usb': 'mt8167-usb20.sys', 'wifi': 'mt6630-runtime.sys',
-             'gpu':'mt8167-ge8300.sys', 'display': 'mt8167-display.sys', 'toprgu': 'mt8167-toprgu.sys', 'sd':'mt8167-sd.sys','emmc':'mt8167-msdc.sys'}
+             'gpu':'mt8167-ge8300.sys', 'display': 'mt8167-display.sys', 'toprgu': 'mt8167-toprgu.sys', 'sd':'mt8167-sd.sys','emmc':'mt8167-msdc.sys','render':'ge8300-render.sys'}
 
 
 def version(value, gpu=False, display=False, sd=False, parent=False, usb=False):
     date, numbers = value.split(',')
-    codec_date=value in ('11/07/2026,2026.11.7.1026','11/07/2026,0.0.1.8','11/02/2026,0.0.1.0')
+    codec_date=value in ('11/07/2026,0.0.3.12','11/07/2026,0.0.3.13','11/07/2026,2026.11.7.1026','11/07/2026,0.0.1.8','11/02/2026,0.0.1.0')
     display_run33=(display and value in ('11/07/2026,0.0.1.5','11/07/2026,0.0.1.6')) or (sd and value in ('11/07/2026,2026.11.7.3','11/07/2026,2026.11.7.4','11/07/2026,2026.11.7.7')) or (parent and value in ('11/07/2026,2026.11.7.1010','11/07/2026,2026.11.7.1014','11/07/2026,2026.11.7.1015')) or (usb and value in ('11/07/2026,2026.11.7.1004','11/07/2026,2026.11.7.1005'))
     if (not gpu and not display_run33 and not codec_date and date != '11/06/2026') or not re.fullmatch(r'\d+\.\d+\.\d+\.\d+', numbers):
         raise ValueError('再arm INFは固定dateと4要素versionが必要です')
@@ -30,7 +30,7 @@ def version(value, gpu=False, display=False, sd=False, parent=False, usb=False):
 
 def package_state(components):
     return {kind: {'driver_ver': components[kind]['driver_ver'],
-                   'files': components[kind]['files']} for kind in (*KINDS, 'display', 'toprgu', 'gpu', 'sd', 'emmc') if kind in components}
+                   'files': components[kind]['files']} for kind in (*KINDS, 'display', 'toprgu', 'gpu', 'sd', 'emmc', 'render') if kind in components}
 
 
 def require_progress(previous, following, backup, permit_unchanged=False):
@@ -124,7 +124,7 @@ def make_plan(previous_path, backup_path, backup, components, root, allow_missin
         raise ValueError('使用済み媒体と同じbackupは再armに使えません')
     before, after = package_state(previous['components']), package_state(components)
     codec_policy=(next_probe or {}).get('deferred_update',{})
-    if codec_policy.get('transaction')=='codec1026-msdc-quiet-explicit-fresh-v2':
+    if codec_policy.get('transaction')=='codec1026-msdc-quiet-render313-v3':
         from codec_msdc_transaction import BASELINES,BASELINE_DATES,TARGETS
         before={r:{'driver_ver':(datetime.datetime(1601,1,1)+datetime.timedelta(microseconds=codec_policy['returned_selection'][r]['date_filetime']//10)).strftime('%m/%d/%Y')+','+codec_policy['returned_selection'][r]['selected']['DriverVersion'],'files':{r+'/'+TARGETS[r][2]+'.sys':h}} for r,(v,h) in BASELINES.items()}
     if 'gpu' in after and 'gpu' not in before:
@@ -162,7 +162,7 @@ def make_plan(previous_path, backup_path, backup, components, root, allow_missin
             'old_state_files': {name: {'sha256': entries[name]['sha256'], 'bytes': entries[name]['bytes']}
                                 for name in old_state_names},
             'expected_installed_sys': {SYS_NAMES[kind]: next(digest.lower() for name, digest in after[kind]['files'].items()
-                                                            if name.endswith('.sys')) for kind in (*KINDS, 'display', 'toprgu', 'gpu', 'sd', 'emmc') if kind in components}}
+                                                            if name.endswith('.sys')) for kind in (*KINDS, 'display', 'toprgu', 'gpu', 'sd', 'emmc', 'render') if kind in components}}
     if missing_log:
         plan['missing_service_log'] = missing_log
     history=list(previous.get('engine_rearm_plan',{}).get('diagnostic_policies',[]))

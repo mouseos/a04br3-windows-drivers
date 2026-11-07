@@ -37,6 +37,7 @@ def validate_selection(receipt,record,manifest_sha,targets,retained):
   if not re.fullmatch('[0-9a-fA-F]{16}',raw):raise ValueError('native FILETIMEの8byte実値が必要です')
   date=int.from_bytes(bytes.fromhex(raw),'little')
   if not date:raise ValueError('選択dateが不明です')
+  if role=='render' and p['DriverVersion']!='0.0.3.12':raise ValueError('renderer更新基点は実選択3.12だけです')
   if role in targets:
    if v>=version(targets[role][4]):raise ValueError('更新対象は実選択より高版が必要です')
   elif v!=version(retained[role][2]):raise ValueError('保持版不一致: '+hwid)
