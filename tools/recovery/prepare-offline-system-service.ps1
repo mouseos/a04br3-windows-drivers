@@ -439,7 +439,7 @@ if($ServiceName -ceq 'MT8167RenderSingleGpu') {
     if($IncludeHardwareProbe -or $RearmEngineProbe -or $RearmFixedGpuDeviceInstall -or $InspectFixedGpuDeviceInstall -or !$EnginePreservationPlanPath -or $ExpectedEnginePreservationPlanSha256 -cnotmatch '^[0-9a-f]{64}$'){throw 'Single GPU requires explicit Engine-preservation-only plan'}
     if((Hash-File $EnginePreservationPlanPath) -cne $ExpectedEnginePreservationPlanSha256){throw 'Engine preservation plan hash mismatch'}
     $enginePreservePlan=Get-Content $EnginePreservationPlanPath -Raw|ConvertFrom-Json
-    if($enginePreservePlan.schema -ne 1 -or $enginePreservePlan.profile -cne 'render-single-gpu314-run95-v1' -or $enginePreservePlan.backup_manifest_sha256 -cne '4ff327d3fba781c377dc98615424daa1d90d0df305fac375ae639342589d817c'){throw 'Fixed fresh94 native preservation required'}
+    if($enginePreservePlan.schema -ne 1 -or $enginePreservePlan.profile -cne 'render-single-gpu314-run97-v1' -or $enginePreservePlan.backup_manifest_sha256 -cne 'f0fab046a19c5cd5cacf16e3dbad324f0cfadcbb24b5acf48839a3fee591e0df'){throw 'Fixed fresh94 native preservation required'}
 } elseif($EnginePreservationPlanPath -or $ExpectedEnginePreservationPlanSha256){throw 'Engine preserve plan is single-GPU only'}
 $engineRearmPlan=$null;$engineRearmPlanHash=$null
 if($RearmEngineProbe) {

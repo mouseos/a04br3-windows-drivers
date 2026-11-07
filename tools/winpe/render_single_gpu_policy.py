@@ -6,8 +6,8 @@ from render_profile_policy import require,rooted,jsonfile,hexpin,sha,cbytes,SIGN
 from codec_msdc_transaction import TARGETS,RETAINED,RETAINED_FILES,version,datevalue
 from codec_returned_baseline import validate_selection,load_boot
 from engine_io_package import require_armnt
-PROFILE='render-single-gpu314-run95-v1'
-FRESH='4ff327d3fba781c377dc98615424daa1d90d0df305fac375ae639342589d817c'
+PROFILE='render-single-gpu314-run97-v1'
+FRESH='f0fab046a19c5cd5cacf16e3dbad324f0cfadcbb24b5acf48839a3fee591e0df'
 SOURCE='f4f1b4f94ade6f59efef042f680c2c3e363442f8'
 PACKAGE='9ef5d9bfe307f977902b2233bea83c28f92a2971110b4efed1fa1492a55eaab7'
 NATIVE='f19d1d1d4f483791eaec494abcecf1964594093c82eca999a35b7a3a249adf95'
@@ -20,7 +20,7 @@ def outputs(directory,m,wanted):
  return {n:sha(directory/n) for n in wanted}
 def load_map(path,root):
  root=root.resolve(strict=True);s=jsonfile(rooted(root,path))
- require(set(s)=={'schema','profile','backup','backup_sha256','bindings','packages','native','boot','comparator','previous_engine_media'},'singleGPU専用input fields必須')
+ require(set(s)=={'schema','profile','backup','backup_sha256','bindings','packages','native','boot','comparator','previous_engine_media','native_reuse'},'singleGPU専用input fields必須')
  require(s['schema']==1 and s['profile']==PROFILE and s['backup_sha256']==FRESH,'固定run95/fresh94必須')
  backup=rooted(root,s['backup']);require(sha(backup)==FRESH,'fresh94実hash不一致');b=jsonfile(backup)
  require(b.get('status')=='captured-unmounted' and b.get('unmounted') is True and b.get('errors')==[],'fresh94完了原本必須')
@@ -28,7 +28,12 @@ def load_map(path,root):
  for e in b['files']:
   f=rooted(root,backup.parent/e['backup_path']);require(f.is_relative_to(backup.parent) and sha(f)==e['sha256'] and f.stat().st_size==e['bytes'],'fresh94実file不一致');files[e['source_path'].replace('\\','/').lower()]=e
  receipt=rooted(root,s['bindings']['path']);require(sha(receipt)==hexpin(s['bindings']['sha256']),'native seven-node pin不一致')
- selection=validate_selection(jsonfile(receipt),b,FRESH,TARGETS,RETAINED,observe_only=True)
+ binding=jsonfile(receipt);derivation=binding.get('binding_derivation',{})
+ require(derivation.get('actual_native_read_manifest_sha256')=='4ff327d3fba781c377dc98615424daa1d90d0df305fac375ae639342589d817c' and derivation.get('identical_system_trio') is True and derivation.get('native_load_repeated') is False,'派生native receiptの由来必須')
+ from single_gpu_native_reuse import pinned as reuse_pinned,read as reuse_read
+ original_binding=reuse_read(reuse_pinned(root,derivation['original_receipt']))
+ require(original_binding['nodes']==binding['nodes'] and original_binding['source_files']==binding['source_files'] and all(original_binding.get(k)==binding.get(k) for k in ('load_rc','unload_rc','privilege_restore_error','errors')),'元native観測値の変更を拒否')
+ selection=validate_selection(binding,b,FRESH,TARGETS,RETAINED,observe_only=True)
  for role,expected in BASE_SYS.items():require(files['windows/system32/drivers/'+TARGETS[role][2]+'.sys']['sha256']==expected,'現在SYS不一致')
  for role,t in RETAINED.items():require(files['windows/system32/drivers/'+t[3]]['sha256']==t[4],'保持SYS不一致')
  require(set(s['packages'])=={'render'},'更新packageはrender1件だけ')
@@ -53,10 +58,12 @@ def load_map(path,root):
  if token not in history:history.append(token)
  require(len(history)<=16 and all(re.fullmatch('[0-9a-f]{64}',x) for x in history),'Engine履歴allowlist不一致')
  preservation={'schema':1,'profile':PROFILE,'backup_manifest_sha256':FRESH,'diagnostic_policies':history,'source_files':{n:{k:files['windows/system32/config/'+n.lower()][k] for k in ('sha256','bytes')} for n in ('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')},'engine_rearm':False}
+ from single_gpu_native_reuse import verify
+ reuse=verify(root,s['native_reuse'],preservation)
  base=selection['render'];base.update(driver_version='0.0.3.13',sys_name='ge8300-render.sys',sys_sha256=SYS,inf=base['selected']['InfPath'])
  retained={k:v for k,v in selection.items() if k!='render'}
  retainedfiles={**RETAINED_FILES,**{TARGETS[k][2]+'.sys':v for k,v in BASE_SYS.items() if k!='render'}};retainedfiles.pop('ge8300-umd.dll')
- return {'schema':1,'profile':PROFILE,'default_off':True,'backup_path':backup.relative_to(root).as_posix(),'backup_manifest_sha256':FRESH,'binding_receipt_sha256':sha(receipt),'baselines':{'render':base},'packages':{'render':{'directory':pkg.relative_to(root).as_posix(),'files':{n:hashes[n] for n in names},'version_u64':version('0.0.3.14'),'date_filetime':datevalue('11/07/2026'),'source_commit':SOURCE,'signed_manifest_sha256':PACKAGE}},'client':{'directory':nd.relative_to(root).as_posix(),'source_commit':SOURCE,'sha256':nh['ge8300-d3d-clear.exe'],'manifest_sha256':NATIVE,'arguments':'--hardware=PowerVR','timeout_ms':120000,'retry_count':0,'pipeline':'10_0','limited_development_profile':True,'standard_profile_qualified':False},'comparator':{'directory':compdir.relative_to(root).as_posix(),'manifest_sha256':sha(cm),**cp},'retained_selection':retained,'retained_files':retainedfiles,'baseline_umd_sha256':RETAINED_FILES['ge8300-umd.dll'],'engine_preservation':preservation,'boot':{'source_commit':bm['uefi_source_commit'],'sha256':bm['boot_img_sha256'],'manifest_sha256':sha(boot),'action':'preserve; no boot or GPT writes'},'pnp_install_count':1,'maximum_planned_reboot_count':1,'client_count':1,'audio_retest':False,'normal_install_allowed':True,'sequence':['stage exact render candidate and dedicated single-GPU service','one render DIF_INSTALLDEVICE; no live device restart','maximum one planned reboot','exact render/retained verification and one GPU client; stop']}
+ return {'schema':1,'profile':PROFILE,'default_off':True,'native_reuse':reuse,'software_trust_policy':'preserve-existing; require WinVerifyTrust/CAT membership before single-GPU install; no SOFTWARE writes','backup_path':backup.relative_to(root).as_posix(),'backup_manifest_sha256':FRESH,'binding_receipt_sha256':sha(receipt),'baselines':{'render':base},'packages':{'render':{'directory':pkg.relative_to(root).as_posix(),'files':{n:hashes[n] for n in names},'version_u64':version('0.0.3.14'),'date_filetime':datevalue('11/07/2026'),'source_commit':SOURCE,'signed_manifest_sha256':PACKAGE}},'client':{'directory':nd.relative_to(root).as_posix(),'source_commit':SOURCE,'sha256':nh['ge8300-d3d-clear.exe'],'manifest_sha256':NATIVE,'arguments':'--hardware=PowerVR','timeout_ms':120000,'retry_count':0,'pipeline':'10_0','limited_development_profile':True,'standard_profile_qualified':False},'comparator':{'directory':compdir.relative_to(root).as_posix(),'manifest_sha256':sha(cm),**cp},'retained_selection':retained,'retained_files':retainedfiles,'baseline_umd_sha256':RETAINED_FILES['ge8300-umd.dll'],'engine_preservation':preservation,'boot':{'source_commit':bm['uefi_source_commit'],'sha256':bm['boot_img_sha256'],'manifest_sha256':sha(boot),'action':'preserve; no boot or GPT writes'},'pnp_install_count':1,'maximum_planned_reboot_count':1,'client_count':1,'audio_retest':False,'normal_install_allowed':True,'sequence':['stage exact render candidate and dedicated single-GPU service','one render DIF_INSTALLDEVICE; no live device restart','maximum one planned reboot','exact render/retained verification and one GPU client; stop']}
 def generate(p):
  require(p.get('profile')==PROFILE and set(p['packages'])=={'render'},'single GPU profile only')
  v=p['packages']['render'];base=p['baselines']['render']
