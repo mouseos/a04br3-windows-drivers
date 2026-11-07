@@ -191,3 +191,25 @@ READY中の実IRQもempty FWCCBを検査してrearmするが、job完了は返�
 本sourceはWithFactory時のimplementationフラグを実入力に合わせて訂正する。
 geo_full_control_ready=falseはmatched hardware qualification未完を意味し、常時拒否stubでない。
 既存immutable manifestは改竄せず、新build manifest/supplementで区別する。
+
+## 2026-11-07: typed SM4 profile と linked ABI2
+
+- `2fd0f47a`: 実ownerの既存prepare_drawはformat2の実official SM4token列と
+  VS24/PS64の全USC・metadataを照合する。既存ABI1 request/control-v2のまま
+  呼べる。bounded instruction framingを追加し、未知token列/USCは拒否する。
+- 一次入力はH63bbe0bのofficial-token-inputs.json
+  SHA256 ede14dec409def27d79cb3f3e8021e8195dec38ce3e3193a4a2377dda8d167d4。
+  VS DXBC52fbd84a2223899d0a1fb931679d49e8227d8632c48a4fd33ca912eab46a39f5、
+  PS5035681297565a29167e2721f3e4ffcf81ca4c913614908cf40723c8785366fc。
+  framing-only RET fixtureは実compiler tokenに交換した。実cold prepare modelも通過。
+- ABI2は別request。`frontend/draw_link_abi.h` と `NATIVE_VARYING_ABI2.md` を参照。
+  ABI1をversion2として読み替えない。1COLOR4/F32のsemantic snapshotを固定した。
+- `a04_m111_build_varying_pds`: 実linked Z/W/COLOR係数DOUTIとPPP scalar。
+  `a04_m111_build_linked_triangle_ppp`: 全800x600 PPPへ上記を接続。
+  `a04_m111_build_linked_vertex_pds`: position4/color4のstride32 fetchと実temp割当。
+- Hが次に渡す入力は、最終pair-linked POSITION4/COLOR4 VS/FSの実USC bytesと
+  common temps/shareds/vtxins、VS vtxouts/ranges/counts、FS coeffs/ranges/uses.z/w、
+  entry_offsetを記録した固定artifact。GPUVAや手書きPPPは不要。
+- Eはその実生成コードを検査してowner prepare-v2と完全producerへ接続する。
+  現ABI2 builder単体で実GPU成功/FL9_1 qualificationとは扱わない。
+  Eの親1014停止契約、実MDL lease、actual IRQ/visibility/rundownは維持する。

@@ -77,3 +77,28 @@ int32_t a04_m111_build_varying_pds(struct a04_m111_varying_pds *out,
  m.usc_varying_size=(r->fs_coeffs+15)/16;
  *out=m;return GEO_OK;
 }
+
+static void put32(uint8_t *p,uint32_t word,uint32_t value)
+{for(uint32_t j=0;j<4;j++)p[4*word+j]=(uint8_t)(value>>(8*j));}
+int32_t a04_m111_build_linked_triangle_ppp(void *out,size_t bytes,
+ const struct a04_m111_triangle_ppp_input *in,const struct geo_draw_pair_link *link,
+ uint32_t uniforms,uint32_t temps,uint32_t shareds)
+{
+ uint8_t made[A04_M111_TRIANGLE_SOLID_PPP_BYTES];
+ struct a04_m111_varying_pds coeff;
+ int32_t status;
+ if(!out || !in || bytes!=sizeof(made) || in->textured || uniforms>2044 ||
+    temps>60 || shareds>128)return GEO_INVALID;
+ status=a04_m111_build_varying_pds(&coeff,link);if(status)return status;
+ if(a04_m111_build_triangle_ppp(made,sizeof(made),in))return GEO_INVALID;
+ /* Coefficient program uses one temp. Allocate the maximum of the real
+  * fragment program and that coeff requirement (units4 DWORD). */
+ if(temps<coeff.temps)temps=coeff.temps;
+ put32(made,7,(((uniforms+3)/4)<<23)|(coeff.pds_varying_size<<10)|
+       (coeff.usc_varying_size<<4)|((temps+3)/4));
+ put32(made,8,(((shareds+15)/16)<<23)|(1u<<14));
+ put32(made,20,coeff.output_select);put32(made,21,coeff.varying0);
+ put32(made,22,coeff.varying1);
+ for(unsigned i=0;i<sizeof(made);i++)((uint8_t *)out)[i]=made[i];
+ return GEO_OK;
+}

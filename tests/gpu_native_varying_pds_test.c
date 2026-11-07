@@ -51,5 +51,13 @@ int main(void)
  assert(vp.data[4]==16 && vp.data[8]==32 && vp.data[24]==8 && vp.data[27]==128);
  assert(a04_m111_build_linked_vertex_pds(&vp,UINT64_C(0xba00000080),(UINT64_C(1)<<40)-95,0));
  assert(a04_m111_build_linked_vertex_pds(&vp,UINT64_C(0xba00000080),UINT64_C(0x8200200000),129));
+ r.vs_f32_npc=4;
+ uint8_t ppp[104];struct a04_m111_triangle_ppp_input pp={0};
+ pp.fragment_pds=0x180;pp.varying_pds=0x400;
+ assert(!a04_m111_build_linked_triangle_ppp(ppp,sizeof(ppp),&pp,&r,0,0,0));
+ assert(ppp[7*4]==0x21 && ppp[7*4+1]==8 && !ppp[7*4+2] && !ppp[7*4+3]);
+ assert(ppp[8*4]==0 && ppp[8*4+1]==0x40 && !ppp[8*4+2]);
+ assert(ppp[20*4+2]==0x21 && ppp[20*4+3]==8);
+ assert(ppp[21*4+2]==4 && ppp[9*4+1]==4);
  puts("native varying PDS: Z/W partition, COLOR4, PPP, NPC and atomic rejection passed");return 0;
 }

@@ -59,3 +59,14 @@ H: 上記snapshotと実linked VS/FS USC outputを生成し、Eへ固定hash/meta
 E: USC profile検査、VS8 input fetch、係数領域、PPP header/size/state、
 owner prepare-v2を接続する。既存ABI1 ISA allowlistを任意ISA許可へ緩和しない。
 新LOAD背景およびABI2は実GPU未検証。標準FL9_1 capsは別qualificationが必要。
+
+実PPPへの接続は `a04_m111_build_linked_triangle_ppp`。
+実uniform PDS data extent、fragment PDS temps、FS common.sharedsを別入力とし、
+SIZEINFO1/2とOUTPUT_SEL/VARYINGをsource unitsで合成する。
+係数PDSが1 temp使うためfragmentが0でもPDS temp割当は1単位。
+未使用uniformはサイズ0で停止する。固定背景LOADはこれと独立した既存program。
+VSの実fetchは `a04_m111_build_linked_vertex_pds` で入力8DWORD/stride32、
+DOUTU tempを4DWORD単位で切上げる。既存2/3/4成分fixture builderの出力は維持。
+
+再現検査: project root内TMPDIRを指定して
+`sh tools/gpu/test-native-varying-pds.sh`。
