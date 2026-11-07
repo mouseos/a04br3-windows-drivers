@@ -165,9 +165,10 @@ static DWORD paths(void)
 static DWORD open_log(void)
 {
  WCHAR name[MAX_PATH];BY_HANDLE_FILE_INFORMATION info;DWORD error=path(name,log_directory,L"service.log");if(error)return error;
- logfile=CreateFileW(name,FILE_APPEND_DATA,FILE_SHARE_READ,NULL,OPEN_ALWAYS,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_WRITE_THROUGH,NULL);
+ logfile=CreateFileW(name,GENERIC_WRITE,FILE_SHARE_READ,NULL,OPEN_ALWAYS,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_WRITE_THROUGH,NULL);
  if(logfile==INVALID_HANDLE_VALUE)return GetLastError();
  if(!GetFileInformationByHandle(logfile,&info)||(info.dwFileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT))){CloseHandle(logfile);logfile=INVALID_HANDLE_VALUE;return ERROR_ACCESS_DENIED;}
+ {LARGE_INTEGER zero={0};if(!SetFilePointerEx(logfile,zero,NULL,FILE_END))return GetLastError();}
  return 0;
 }
 static DWORD consume_attempt(void)
@@ -447,7 +448,13 @@ static DWORD pnp_once(int *halt)
 static HANDLE child_log(const WCHAR *name,SECURITY_ATTRIBUTES *sa)
 {
  WCHAR full[MAX_PATH];if(path(full,log_directory,name)){SetLastError(ERROR_INSUFFICIENT_BUFFER);return INVALID_HANDLE_VALUE;}
- return CreateFileW(full,GENERIC_WRITE,FILE_SHARE_READ,sa,CREATE_NEW,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_WRITE_THROUGH,NULL);
+ return CreateFileW(full,
+#if A04_ENGINE_DEFERRED_UPDATE
+ GENERIC_READ|GENERIC_WRITE,
+#else
+ GENERIC_WRITE,
+#endif
+ FILE_SHARE_READ,sa,CREATE_NEW,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_WRITE_THROUGH,NULL);
 }
 static DWORD run_client(unsigned index)
 {
@@ -455,7 +462,7 @@ static DWORD run_client(unsigned index)
  HANDLE output=INVALID_HANDLE_VALUE,error_output=INVALID_HANDLE_VALUE,input=INVALID_HANDLE_VALUE,job=NULL;
  SECURITY_ATTRIBUTES sa;STARTUPINFOEXW startup;PROCESS_INFORMATION child;JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit;
  LPPROC_THREAD_ATTRIBUTE_LIST attributes=NULL;SIZE_T bytes=0;HANDLE inherit[3],waits[2];DWORD error=0,wait,exit_code=0,got;unsigned n;
- int created=0,resumed=0,finished=0;
+ int created=0,resumed=0,finished=0,exit_valid=0;
 #if A04_ENGINE_BRIGHTNESS_CLIENT
  HANDLE brightness_directory=INVALID_HANDLE_VALUE;
 #endif
@@ -501,7 +508,7 @@ static DWORD run_client(unsigned index)
  if(ResumeThread(child.hThread)==(DWORD)-1){error=GetLastError();goto done;}resumed=1;
  record(index+1,EV_START,0);waits[0]=child.hProcess;waits[1]=stop_event;
  wait=WaitForMultipleObjects(2,waits,FALSE,limits[index]);
- if(wait==WAIT_OBJECT_0){finished=1;if(!GetExitCodeProcess(child.hProcess,&exit_code))error=GetLastError();else error=exit_code;record(index+1,EV_EXIT,error);}
+ if(wait==WAIT_OBJECT_0){finished=1;if(!GetExitCodeProcess(child.hProcess,&exit_code))error=GetLastError();else {exit_valid=1;error=exit_code;}record(index+1,EV_EXIT,error);}
  else {error=wait==WAIT_TIMEOUT?ERROR_TIMEOUT:wait==WAIT_OBJECT_0+1?ERROR_CANCELLED:GetLastError();record(index+1,wait==WAIT_TIMEOUT?EV_TIMEOUT:EV_CANCEL,error);}
 done:
  if(created&&!finished){
@@ -514,11 +521,17 @@ done:
  if(attributes){DeleteProcThreadAttributeList(attributes);HeapFree(GetProcessHeap(),0,attributes);}
  if(job)CloseHandle(job);
  if(input!=INVALID_HANDLE_VALUE)CloseHandle(input);
+#if A04_ENGINE_DEFERRED_UPDATE
+ diagnostic_stream(index,0,output,child_uncertain);diagnostic_stream(index,1,error_output,child_uncertain);
+#endif
  if(output!=INVALID_HANDLE_VALUE){if(!FlushFileBuffers(output)){record(index+1,EV_LOG_ERROR,GetLastError());if(!error)error=ERROR_WRITE_FAULT;}CloseHandle(output);}
  if(error_output!=INVALID_HANDLE_VALUE){if(!FlushFileBuffers(error_output)){record(index+1,EV_LOG_ERROR,GetLastError());if(!error)error=ERROR_WRITE_FAULT;}CloseHandle(error_output);}
  if(image_lock!=INVALID_HANDLE_VALUE)CloseHandle(image_lock);
 #if A04_ENGINE_BRIGHTNESS_CLIENT
  if(brightness_directory!=INVALID_HANDLE_VALUE)CloseHandle(brightness_directory);
+#endif
+#if A04_ENGINE_DEFERRED_UPDATE
+ diagnostic_client(index,created,resumed,finished,exit_valid,exit_code,error);
 #endif
  if(!created||!resumed)record(index+1,EV_ERROR,error);
  return error;
@@ -542,6 +555,9 @@ static DWORD once(void)
 #endif
  record(0,EV_ATTEMPTED,error);
  if(error||log_error)return error?error:log_error;
+#if A04_ENGINE_DEFERRED_UPDATE
+ error=diagnostic_begin(diagnostic);if(error)return error;
+#endif
  /* Windows 7+ desktop API, also used by this native RT8.1 service.
   * SystemRequired only: explicit user Sleep is still honored by Windows. */
  memset(&reason,0,sizeof(reason));reason.Version=POWER_REQUEST_CONTEXT_VERSION;
@@ -563,6 +579,9 @@ static DWORD once(void)
   if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){if(!result)result=ERROR_CANCELLED;break;}
   error=run_client(i);if(error&&!result)result=error;if(child_uncertain)break;
  }
+#if A04_ENGINE_DEFERRED_UPDATE
+ if(diagnostic){error=diagnostic_after_clients();if(error&&!result)result=error;}
+#endif
  /* Normal completion, timeout, signature/start failure and SCM STOP all
   * converge here. Never reassert a request after explicit user Sleep. */
 #if A04_HARDWARE_PROBE_ENGINE_PCM
@@ -603,6 +622,15 @@ static void WINAPI service_main(DWORD argc,WCHAR **argv)
 #endif
  if(!error&&log_error)error=log_error;emit_record(0,EV_FINAL,error,0);
  if(!error&&log_error)error=log_error;
+ /* Close file logs before publishing STOPPED to the reboot waiter. */
+ if(logfile!=INVALID_HANDLE_VALUE){
+  DWORD e=0;if(!FlushFileBuffers(logfile))e=GetLastError();
+  if(!CloseHandle(logfile)&&!e)e=GetLastError();logfile=INVALID_HANDLE_VALUE;
+  if(e){log_error=e;if(!error)error=e;record(0,EV_LOG_ERROR,e);}
+ }
+#if A04_ENGINE_DEFERRED_UPDATE
+ {DWORD e=diagnostic_finish(error);record(0,0x110,e);if(e){(void)disable_self();error=e;}}
+#endif
  service_status.dwCurrentState=SERVICE_STOPPED;service_status.dwControlsAccepted=0;
  if(error){service_status.dwWin32ExitCode=ERROR_SERVICE_SPECIFIC_ERROR;service_status.dwServiceSpecificExitCode=error;}
  SetServiceStatus(status_handle,&service_status);

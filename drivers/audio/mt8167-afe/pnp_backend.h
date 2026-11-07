@@ -3,6 +3,7 @@
 #include "stream_backend.h"
 #include "shared_audio.h"
 #include "diagnostic.h"
+#include "start_record.h"
 #if defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
 /* Internal prototype. The caller owns one reference, must revoke at PnP stop,
  * and release it after deregistration. No code currently calls the factory. */
@@ -10,6 +11,9 @@ struct Mt8167PnpBackend;
 struct Mt8167Transport;
 struct Mt8167PnpInterrupt { ULONG vector; KIRQL level; KAFFINITY affinity; KINTERRUPT_MODE mode; };
 NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo, PRESOURCELIST resources, Mt8167PnpBackend **owner);
+#if A04_AUDIO_START_PERSIST
+NTSTATUS Mt8167PnpBackendCreateWithRecord(PDEVICE_OBJECT,PRESOURCELIST,Mt8167PnpBackend **,Mt8167AudioStartRecord *);
+#endif
 NTSTATUS Mt8167PnpBackendInterrupt(Mt8167PnpBackend *owner, Mt8167PnpInterrupt *interrupt);
 /* Copies only validated translated IRQ coordinates. Does not connect an IRQ;
  * caller excludes concurrent transport use and holds the backend reference. */

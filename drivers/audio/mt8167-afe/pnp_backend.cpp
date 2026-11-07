@@ -688,7 +688,11 @@ static NTSTATUS OwnerConnectMaskedIrq(Mt8167PnpBackend *o)
     return status;
 }
 #endif
-NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt8167PnpBackend **out)
+static NTSTATUS CreateBackend(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt8167PnpBackend **out
+#if A04_AUDIO_START_PERSIST
+ ,Mt8167AudioStartRecord *record
+#endif
+ )
 {
     ULONG mapRegisters=0;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR irq,rawIrq;
@@ -710,23 +714,47 @@ NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt816
     /* IoConnectInterrupt uses a group-zero KAFFINITY; never discard a group. */
     if (irq->u.Interrupt.Group != 0) return STATUS_DEVICE_CONFIGURATION_ERROR;
 #endif
+
+#if A04_AUDIO_START_PERSIST
+    if(record)record->stage=A04_START_OWNER_POOL;
+#endif
     o=static_cast<Mt8167PnpBackend *>(ExAllocatePoolWithTag(NonPagedPool,sizeof(*o),OWNER_TAG));
     if (!o) return STATUS_INSUFFICIENT_RESOURCES;
     RtlZeroMemory(o,sizeof(*o));
     KeInitializeMutex(&o->mutex,0);
     ExInitializeRundownProtection(&o->positions);
     ExInitializeRundownProtection(&o->livePositions);
+
+#if A04_AUDIO_START_PERSIST
+    if(record)record->stage=A04_START_DMA;
+#endif
+#if A04_AUDIO_START_PERSIST
+    status=Mt8167GetDmaAdapterWithRecord(pdo,&o->adapter,&mapRegisters,record);
+#else
     status=Mt8167GetDmaAdapter(pdo,&o->adapter,&mapRegisters);
+#endif
     if (!NT_SUCCESS(status)) { ExFreePoolWithTag(o,OWNER_TAG);return status; }
 #if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
     {
         A04_SHARED_AUDIO_INTERFACE queried;
+
+#if A04_AUDIO_START_PERSIST
+    if(record)record->stage=A04_START_PARENT_QUERY;
+#endif
         status=Mt8167QueryAudioParent(pdo,&queried);
         if (!NT_SUCCESS(status)) { o->adapter->DmaOperations->PutDmaAdapter(o->adapter);ExFreePoolWithTag(o,OWNER_TAG);return status; }
+
+#if A04_AUDIO_START_PERSIST
+    if(record)record->stage=A04_START_PARENT_BIND;
+#endif
         if (Mt8167AudioParentBind(&o->parentClient,&queried)) {
             if (queried.Header.InterfaceDereference) queried.Header.InterfaceDereference(queried.Header.Context);
             o->adapter->DmaOperations->PutDmaAdapter(o->adapter);ExFreePoolWithTag(o,OWNER_TAG);return STATUS_DEVICE_CONFIGURATION_ERROR;
         }
+
+#if A04_AUDIO_START_PERSIST
+    if(record)record->stage=A04_START_SHARED_ATTACH;
+#endif
         if (mt8167_audio_shared_attach(&o->shared,Mt8167AudioParentService(&o->parentClient))) {
             (void)Mt8167AudioParentClose(&o->parentClient);
             o->adapter->DmaOperations->PutDmaAdapter(o->adapter);ExFreePoolWithTag(o,OWNER_TAG);return STATUS_DEVICE_NOT_READY;
@@ -734,6 +762,10 @@ NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt816
     }
 #endif
 #if defined(A04_AUDIO_MAP_AFE) && A04_AUDIO_MAP_AFE
+
+#if A04_AUDIO_START_PERSIST
+    if(record)record->stage=A04_START_AFE_MAP;
+#endif
     status=Mt8167MapAssignedAfe(resources,&o->afe);
     if (!NT_SUCCESS(status)) {
         (void)mt8167_audio_shared_detach(&o->shared);
@@ -763,11 +795,19 @@ NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt816
 #endif
     o->iface.start=OwnerStart;o->iface.stop=OwnerStop;o->iface.position=OwnerPosition;o->iface.getDeviceDescription=OwnerDescription;
 #if defined(A04_AUDIO_IRQ_DIAGNOSTIC) && A04_AUDIO_IRQ_DIAGNOSTIC
+
+#if A04_AUDIO_START_PERSIST
+    if(record)record->stage=A04_START_AFE_BIND;
+#endif
     if (o->parentClient.parent.BindAfe(o->parentClient.parent.Header.Context,o->afe.base,0x1000)) {
         o->online=FALSE;OwnerDereference(o);return STATUS_DEVICE_NOT_READY;
     }
     o->afeBound=TRUE;
 #if !defined(A04_AUDIO_HFP_PROVIDER) || !A04_AUDIO_HFP_PROVIDER
+
+#if A04_AUDIO_START_PERSIST
+    if(record)record->stage=A04_START_IRQ;
+#endif
     status=OwnerConnectMaskedIrq(o);
     if (!NT_SUCCESS(status)) { o->online=FALSE;OwnerDereference(o);return status; }
 #endif
@@ -777,6 +817,17 @@ NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt816
 #endif
     *out=o;return STATUS_SUCCESS;
 }
+NTSTATUS Mt8167PnpBackendCreate(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt8167PnpBackend **out)
+{return CreateBackend(pdo,resources,out
+#if A04_AUDIO_START_PERSIST
+ ,NULL
+#endif
+ );}
+#if A04_AUDIO_START_PERSIST
+NTSTATUS Mt8167PnpBackendCreateWithRecord(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt8167PnpBackend **out,Mt8167AudioStartRecord *record)
+{return CreateBackend(pdo,resources,out,record);}
+#endif
+
 NTSTATUS Mt8167PnpBackendInterrupt(Mt8167PnpBackend *o,Mt8167PnpInterrupt *interrupt)
 {
     NTSTATUS status;

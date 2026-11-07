@@ -129,6 +129,9 @@ try {
   audio_mode=$modeName;engine_pcm_compatible=[bool]$enginePcm;engine_pcm_auto_registration_allowed=[bool]$enginePcm;
   fixed_clients=$fixedClients;client_signatures_preserved=[bool]$enginePcm;
   build_defines=@{A04_HARDWARE_PROBE_ENGINE_PCM=$engineDefine;A04_ENGINE_DEFERRED_UPDATE=$deferredDefine;A04_ENGINE_BRIGHTNESS_CLIENT=$brightnessDefine};
+  registry_diagnostics=$(if($deferred){@{schema=1;fixed_key='HKLM\SYSTEM\CurrentControlSet\Services\MT8167EngineProbe\Parameters\LastDiagnostic';
+   generation='canonical-policy-SHA256/Install-or-Diagnostic; CREATE_NEW only';flush='one RegFlushKey before SCM STOPPED';
+   stdout_stderr_limit_per_stream=65536;source_sha256=(Get-FileHash (Join-Path $root 'tools\winpe\engine-registry-diagnostic.h') -Algorithm SHA256).Hash.ToLowerInvariant()}}else{$null});
   deferred_update=$deferredPolicy;
   deferred_header_sha256=$(if($deferred){(Get-FileHash (Join-Path $policyDirectory 'engine-deferred-policy.h') -Algorithm SHA256).Hash.ToLowerInvariant()}else{$null});
   deferred_runtime_source_sha256=$(if($deferred){(Get-FileHash (Join-Path $root 'tools\winpe\engine-deferred-update.h') -Algorithm SHA256).Hash.ToLowerInvariant()}else{$null});

@@ -13,5 +13,5 @@ int main(){
  test_dma_adapter=&adapter;ops.FreeCommonBuffer=nullptr;
  assert(Mt8167GetDmaAdapter(&adapter,&got,&maps)==STATUS_NOT_SUPPORTED && !got && released==1);
  ops.FreeCommonBuffer=freebuf;assert(!Mt8167GetDmaAdapter(&adapter,&got,&maps));
- assert(got==&adapter && maps==4 && test_dma_description.Master && test_dma_description.Dma32BitAddresses && !test_dma_description.ScatterGather && test_dma_description.MaximumLength==1048576);
+ assert(got==&adapter && maps==4 && test_dma_description.Master && test_dma_description.Version==DEVICE_DESCRIPTION_VERSION3 && test_dma_description.DmaAddressWidth==32 && !test_dma_description.Dma32BitAddresses && !test_dma_description.ScatterGather && test_dma_description.MaximumLength==1048576);
 }

@@ -80,7 +80,7 @@ try {
     $inc=Join-Path $kit 'Include';$lib=Join-Path $kit 'Lib\winv6.3\km\arm'
     $audio=Join-Path $root 'drivers\audio\mt8167-afe';$obj=Join-Path $out 'audio'
     $common=@('--target=thumbv7-pc-windows-msvc','-fms-extensions','-ffreestanding','-fno-stack-protector',
-      '-D_KERNEL_MODE','-D_ARM_','-DARM','-DNTDDI_VERSION=0x06030000','-D_WIN32_WINNT=0x0603',
+      '-fno-builtin','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-mfpu=none','-D_KERNEL_MODE','-D_ARM_','-DARM','-DNTDDI_VERSION=0x06030000','-D_WIN32_WINNT=0x0603',
       "-I$inc\km","-I$inc\shared")
     $flags=@('-DA04_MT8167_WAVERT_EXPERIMENTAL=1','-DA04_MT8167_WAVERT_DIAGNOSTIC=1',
       '-DA04_MT8167_OWNER_DIAGNOSTIC=1','-DA04_AUDIO_QUERY_SHARED=1','-DA04_AUDIO_MAP_AFE=1',
@@ -90,7 +90,7 @@ try {
     $audioInf='mt8167-afe-first-playback.inf'
     if($EnginePcm){
         $flags=@($flags|Where-Object {$_ -notmatch 'A04_AUDIO_(SILENT_DMA_DIAGNOSTIC|PCM_PATTERN_DIAGNOSTIC|UNMUTE_DIAGNOSTIC|FIRST_PLAYBACK|VOICE_PCM_DIAGNOSTIC)='})
-        $flags+=@('-DA04_AUDIO_ENGINE_PCM=1','-DA04_AUDIO_VOICE_PCM_DIAGNOSTIC=1','-DA04_AUDIO_WAVE_DMA_RETAINED=1')
+        $flags+=@('-DA04_AUDIO_ENGINE_PCM=1','-DA04_AUDIO_VOICE_PCM_DIAGNOSTIC=1','-DA04_AUDIO_WAVE_DMA_RETAINED=1','-DA04_AUDIO_START_PERSIST=1')
         $audioInf='mt8167-afe-engine-pcm.inf'
     }
     $objects=@()
@@ -104,7 +104,7 @@ try {
     if($LASTEXITCODE -ne 0){throw 'Clock owner compilation failed'}
     $cpp=@('adapter','wavert_miniport','wavert_registration','wavert_dma',
       'common_dma','dma_adapter','stream_transport','pnp_backend','afe_mapping','irq_windows')
-    if($EnginePcm){$cpp+=@('wave_dma_live','topology_miniport')}
+    if($EnginePcm){$cpp+=@('wave_dma_live','topology_miniport','start_record')}
     foreach($name in $cpp){
         $file=Join-Path $obj "$name.obj";$objects+=$file
         & clang++ @common @flags -fms-compatibility -fno-exceptions -fno-rtti -c (Join-Path $audio "$name.cpp") -o $file
@@ -113,7 +113,7 @@ try {
     $binary=Join-Path $obj 'mt8167-audio.sys'
     & lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib @objects `
       (Join-Path $lib 'portcls.lib') (Join-Path $lib 'ntoskrnl.lib') (Join-Path $lib 'hal.lib') `
-      (Join-Path $lib 'bufferoverflowfastfailk.lib') "/out:$binary"
+      (Join-Path $lib 'bufferoverflowfastfailk.lib') (Join-Path $lib 'libcntpr.lib') "/out:$binary"
     if($LASTEXITCODE -ne 0){throw 'First playback PortCls link failed'}
     & llvm-readobj --file-headers --coff-imports $binary
     if($LASTEXITCODE -ne 0){throw 'Audio PE inspection failed'}
@@ -121,6 +121,7 @@ try {
     $parentInfName=if($EnginePcm){'shared-parent-engine-pcm.inf'}else{'shared-parent.inf'}
     Copy-Item (Join-Path $root ('drivers\bus\mt8167-shared\prototype\'+$parentInfName)) (Join-Path $out 'a04-msdc-parent-probe\shared-parent.inf')
     # Reused runtime provenance stays intact; packaging provenance is separate.
+    $audioPackageVer=[regex]::Match([IO.File]::ReadAllText((Join-Path $obj $audioInf)),'(?im)^DriverVer\s*=\s*([^\r\n]+)').Groups[1].Value.Trim()
     $parentPackageVer=[regex]::Match([IO.File]::ReadAllText((Join-Path $out 'a04-msdc-parent-probe\shared-parent.inf')),'(?im)^DriverVer\s*=\s*([^\r\n]+)').Groups[1].Value.Trim()
     if(!$EnginePcm){& (Join-Path $PSScriptRoot 'build-mt8167-audio-ks-client.ps1') -OutputDirectory (Join-Path $out 'client')}
     $files=@((Join-Path $out 'a04-msdc-parent-probe\mt8167-shared.sys'),
@@ -154,8 +155,8 @@ try {
       calibration='MT6392 hardware trim; Linux cold-start DC profile, no measured AU_LOL ADC calibration';
       installable=$false;note='Unsigned pair and INF only; primary owner must sign/package and validate on target';
       peripheral_binaries_included=(!$SkipPeripheralBuild);integrated_usb=[bool]$IntegratedUsb;integrated_wifi=[bool]$IntegratedWifi;shared_parent_count=$parents.Count;namespace='Reuse existing parent/touch/buttons/battery; no ACPI replacement';
-      driver_date='11/06/2026';driver_version=$(if($EnginePcm){'2026.11.7.1004'}else{'2026.11.6.1001'});
-      driver_ver=$(if($EnginePcm){'11/06/2026,2026.11.7.1004'}else{'11/06/2026,2026.11.6.1001'});
+      driver_date='11/06/2026';driver_version=$audioPackageVer.Split(',')[1];
+      driver_ver=$audioPackageVer;
       parent_package_driver_ver=$parentPackageVer;parent_flags=$parentFlags;audio_flags=$flags;diagnostic_interface=11;parent_reused=[bool]$ReuseParent;engine_pcm=[bool]$EnginePcm;client=$(if($EnginePcm){'AudioEndpointBuilder/AudioSrv; polling WaveRT, retained STOP/RUN and reopen; not the private-tone client'}else{'direct KS, AudioSrv not required; dynamic ksuser.dll'});files=$hashes}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 (Join-Path $out 'manifest.json')
 } finally {
     if($transcript){Stop-Transcript|Out-Null}

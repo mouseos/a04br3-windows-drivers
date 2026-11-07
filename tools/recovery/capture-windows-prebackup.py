@@ -203,7 +203,9 @@ class Recovery:
         return result
 
 
-def file_specs(sys_names, allow_missing_sys, engine_state=False):
+def file_specs(sys_names, allow_missing_sys, engine_state=False, allow_missing_engine_log=False):
+    if allow_missing_engine_log and not engine_state:
+        raise BackupError("Missing Engine log capture requires explicit --engine-probe-state")
     names = []
     for name in sys_names:
         if not SYS_NAME.fullmatch(name) or name.casefold() in [x.casefold() for x in names]:
@@ -211,7 +213,7 @@ def file_specs(sys_names, allow_missing_sys, engine_state=False):
         names.append(name)
     specs = [(CONFIG + hive, True) for hive in HIVES]
     specs += [(CONFIG + hive + suffix, True) for hive in HIVES for suffix in ('.LOG1', '.LOG2')]
-    return specs + [(DRIVERS + name, not allow_missing_sys) for name in names] + ([(name, True) for name in ENGINE_STATE]+[(name,False) for name in ENGINE_OPTIONAL_STATE] if engine_state else [])
+    return specs + [(DRIVERS + name, not allow_missing_sys) for name in names] + ([(name, not (allow_missing_engine_log and name == ENGINE_STATE[1])) for name in ENGINE_STATE]+[(name,False) for name in ENGINE_OPTIONAL_STATE] if engine_state else [])
 
 
 def write_manifest(out, manifest):
@@ -231,7 +233,7 @@ def capture(args, recovery=None):
     compare_media=getattr(args,'compare_engine_media',None)
     compare_sha=getattr(args,'compare_engine_media_sha256',None)
     if bool(compare_media)!=bool(compare_sha):raise BackupError('Engine media comparison requires both manifest and SHA256')
-    specs = file_specs(args.target_sys, args.allow_missing_sys, getattr(args, 'engine_probe_state', False))
+    specs = file_specs(args.target_sys, args.allow_missing_sys, getattr(args, 'engine_probe_state', False), getattr(args, 'allow_missing_engine_service_log', False))
     recovery = recovery or Recovery(args.serial)
     out.mkdir(mode=0o700)
     os.chmod(out, 0o700)
@@ -239,6 +241,7 @@ def capture(args, recovery=None):
     manifest = {'schema_version': 1, 'status': 'capture-failed', 'files': [], 'missing_files': [],
                 'captured_at_utc': datetime.now(timezone.utc).isoformat(),
                 'capture_tool_sha256': sha(Path(__file__).resolve()),
+                'engine_missing_service_log_opt_in': bool(getattr(args, 'allow_missing_engine_service_log', False)),
                 'validity': 'same Recovery boot only; no intervening Windows boot or Windows mutation',
                 'read_only': True, 'unmounted': False, 'errors': []}
     mount_attempted = False
@@ -376,6 +379,7 @@ def main():
     capture_parser.add_argument('--allow-missing-sys', action='store_true')
     capture_parser.add_argument('--compare-engine-media',type=Path)
     capture_parser.add_argument('--compare-engine-media-sha256')
+    capture_parser.add_argument('--allow-missing-engine-service-log', action='store_true', help='explicit missing-log snapshot only; Engine marker and EXE remain required')
     capture_parser.add_argument('--engine-probe-state', action='store_true', help='capture fixed Engine marker/log/EXE plus optional fixed brightness root log for explicit rearm')
     capture_parser.add_argument('--mount-driver', choices=('kernel-ntfs', 'ntfs-3g'), default='kernel-ntfs')
     capture_parser.add_argument('--ntfs3g-remote', default='/sbin/ntfs-3g', help='resident binary only; never pushed')
