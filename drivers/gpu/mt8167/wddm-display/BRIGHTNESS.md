@@ -130,3 +130,8 @@ scriptは固定SYS hash・埋込署名の存在、source INF新版、空の新�
 CAT生成/署名後も入力/出力SYSが同一hashであることを確認する。環境時計・証明書storeは変更しない。
 OS側の既存証明書信頼とPnP適用は主担当の既存transaction方式で別途扱う。
 recipeは今回Windows/runnerで未実行。新INF/CAT作成と、適用後の実SYS hash確認を区別する。
+
+PS1を起動できない通常Windows RT向けには、独立EXEの固定COM版を追加した。
+source helper/固定log/one-shot接続/WDK recipeは`tools/display/BRIGHTNESS-NATIVE.md`を参照。
+既存署名済みDODを変更せず、主担当の既存起動/回収経路へ接続する準備だけである。
+
