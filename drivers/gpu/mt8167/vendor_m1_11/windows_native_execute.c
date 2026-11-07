@@ -7,6 +7,7 @@
 #include "windows_native_submit.h"
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
 #include "native_owner_mdl.h"
+#include "native_owner_irq.h"
 #endif
 #include "windows_start.h"
 #include "A04BR3RogueRuntimeLayout.h"
@@ -260,6 +261,82 @@ NTSTATUS a04_vendor_native_owner_finish_passive(struct a04_vendor_native_cold *n
     if(NT_SUCCESS(status))c->owner_pending=FALSE;
     return status;
 }
+/* No render task is added. A fresh GP fence after cache/readback supplies a
+ * new hardware-notification opportunity. Lack of a real source stays pending. */
+NTSTATUS a04_vendor_native_owner_arm_visibility(struct a04_vendor_native_cold *n,
+    struct a04_vendor_start *s,struct a04_native_irq_core *q,uint64_t epoch,
+    uint64_t job,uint32_t generation)
+{
+    struct a04_vendor_native_candidate *c;struct a04_rgx_fw_runtime *f;
+    RGXFWIF_CCB_CTL k;RGXFWIF_KCCB_CMD cmd={0};NTSTATUS status;uint32_t seq,next;
+    if(!n || !s || !q || KeGetCurrentIrql()<DISPATCH_LEVEL || !epoch || !job || !generation ||
+       !(c=n->candidate) || !n->registered_target || !n->render ||
+       n->render->native_owner!=n || n->quarantined || n->render->poisoned ||
+       !c->verified || !c->attempted || !c->published || c->owner_pending ||
+       c->visibility_armed || c->visibility_delivered ||
+       s->memory!=n->render->firmware || !s->memory || !s->memory->hardware_owned ||
+       !s->memory->uncached || !(f=s->memory->runtime) ||
+       !f->command_sync || !s->online || s->command_poisoned || s->shutdown_started ||
+       q->core!=s->core || q->runtime!=f || q->epoch!=epoch || !q->powered ||
+       !q->masked || q->closed || q->faulted || q->serial==UINT64_MAX ||
+       s->command_sequence>=0xfffffffeu)return STATUS_INVALID_DEVICE_STATE;
+    if(InterlockedCompareExchange(&s->command_busy,1,0))return STATUS_DEVICE_BUSY;
+    status=STATUS_DEVICE_BUSY;
+    if(read_queue(f,&k) || k.ui32ReadOffset!=k.ui32WriteOffset ||
+       *(volatile uint32_t *)f->command_sync!=s->command_sequence)goto done;
+    seq=s->command_sequence+1u;next=(k.ui32WriteOffset+1u)&127u;
+    status=a04_native_irq_rearm(q,epoch,q->serial);
+    if(!NT_SUCCESS(status)){if(q->faulted)goto poison;goto done;}
+    c->owner_irq=q;c->owner_epoch=epoch;c->owner_job=job;c->owner_generation=generation;
+    c->visibility_serial=q->serial;c->visibility_fence=seq;c->visibility_armed=TRUE;
+    s->command_sequence=seq;*(volatile uint32_t *)f->command_sync=0;
+    cmd.eCmdType=RGXFWIF_KCCB_CMD_SYNC;cmd.eDM=0;
+    cmd.uCmdData.sSyncData.sSyncObjDevVAddr=f->command_sync_addr;
+    cmd.uCmdData.sSyncData.uiUpdateVal=seq;
+    if(a04_rgx_device_write_words(&f->kcommands[k.ui32WriteOffset],&cmd,sizeof(cmd))){
+        status=STATUS_IO_DEVICE_ERROR;goto poison;
+    }
+    publish(s,f,next);status=STATUS_SUCCESS;goto done;
+poison:
+    n->quarantined=TRUE;n->render->poisoned=TRUE;s->command_poisoned=TRUE;
+    (void)a04_native_irq_mask_close(q,epoch); /* masking is NOT DMA stop */
+done:
+    InterlockedExchange(&s->command_busy,0);return status;
+}
+BOOLEAN a04_vendor_native_owner_interrupt_event(struct a04_vendor_native_cold *n,
+    struct a04_vendor_start *s,struct a04_native_irq_core *q,struct a04_native_owner_event *out)
+{
+    struct a04_native_irq_receipt receipt;struct a04_vendor_native_candidate *c;
+    struct a04_rgx_fw_runtime *f;RGXFWIF_CCB_CTL k;NTSTATUS status;
+    if(!out)return FALSE;
+    RtlZeroMemory(out,sizeof(*out));
+    if(!n || !s || !q || KeGetCurrentIrql()<DISPATCH_LEVEL || !(c=n->candidate) ||
+       !n->render || s->memory!=n->render->firmware || !s->memory ||
+       !(f=s->memory->runtime) || q->runtime!=f || q->core!=s->core)return FALSE;
+    if(!a04_native_irq_claim(q,&receipt))return FALSE;
+    out->claimed=TRUE;out->irq_serial=receipt.serial;out->status=receipt.fault;
+    if(!NT_SUCCESS(receipt.fault))goto poison;
+    /* Pending receipts deliberately have job=epoch=generation=0. The outer
+     * ISR may queue actual deferred service, never a DMA completion. */
+    if(!c->visibility_armed || c->visibility_delivered || c->owner_irq!=q ||
+       c->owner_epoch!=receipt.epoch || receipt.serial<=c->visibility_serial ||
+       !c->verified || c->owner_pending || !n->registered_target ||
+       n->quarantined || n->render->poisoned || s->command_poisoned ||
+       s->shutdown_started || !s->online || !s->memory->hardware_owned ||
+       !s->memory->uncached || s->command_busy)return TRUE;
+    a04_gpu_dma_barrier();
+    if(*(volatile uint32_t *)f->command_sync!=c->visibility_fence ||
+       read_queue(f,&k) || k.ui32ReadOffset!=k.ui32WriteOffset)return TRUE;
+    status=a04_native_irq_rearm(q,receipt.epoch,receipt.serial);
+    if(!NT_SUCCESS(status)){out->status=status;if(q->faulted)goto poison;return TRUE;}
+    c->visibility_armed=FALSE;c->visibility_delivered=TRUE;
+    out->epoch=c->owner_epoch;out->job=c->owner_job;out->generation=c->owner_generation;
+    out->completed=TRUE;out->status=STATUS_SUCCESS;return TRUE;
+poison:
+    n->quarantined=TRUE;n->render->poisoned=TRUE;s->command_poisoned=TRUE;
+    return TRUE;
+}
+
 #endif
 
 BOOLEAN a04_vendor_native_failed_scan(const struct a04_vendor_native_cold *n,

@@ -80,8 +80,15 @@ void ExFreePoolWithTag(void *,unsigned);
 #define RtlZeroMemory(p,n) memset((p),0,(n))
 #define RtlCopyMemory(d,s,n) memcpy((d),(s),(n))
 #define RtlFillMemory(p,n,v) memset((p),(v),(n))
+#ifdef A04_TEST_REGISTER_IO
+ULONG a04_test_read_register(volatile ULONG *);
+void a04_test_write_register(volatile ULONG *,ULONG);
+#define READ_REGISTER_ULONG(p) a04_test_read_register(p)
+#define WRITE_REGISTER_ULONG(p,v) a04_test_write_register(p,v)
+#else
 #define READ_REGISTER_ULONG(p) (*(p))
 #define WRITE_REGISTER_ULONG(p,v) (*(p)=(v))
+#endif
 #define KeMemoryBarrier() ((void)0)
 #ifdef A04_TEST_INTERLOCK_HOOK
 void a04_test_interlock_hook(volatile LONG *p,LONG value,LONG expected);

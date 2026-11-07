@@ -1,7 +1,12 @@
 # native triangle / texture 2job candidate
 
-Windowsで検証済みの基準はnative clear4framesであり、このtriangle候補は未実機。
-元vendor capture06の4frame成功と混同しない。WDDM/D3D capabilityは追加しない。
+run40で固定candidate860f697/DriverVer0.0.2.5のWindows native
+solid→texture2jobがSTATUS0/PHASE4/MATCH480000/MISMATCH0/GUARD0/
+COMPLETED_FRAMES2に到達。主担当報告とhostで回収済UART/resultを照合した。
+旧baseline2.3の4frameから正規BOOT_REASON9を挟み、新TRIANGLE_TEXTURE BEGIN/STATUS
+へ至る順序を区別した。元vendor capture06だけの成功ではない。
+ただしprivate native producerの実証であり、一般WDDM/D3D capabilityは追加しない。
+fresh41による実SYS/選択packageのhash照合は主担当側の別証拠として扱う。
 
 ## 完成したCPU producerとruntime接続
 
@@ -79,7 +84,7 @@ host：capture全量比較、全active referenceのresource範囲照合、全hea
 invalid inputでout不変、source shader metadata/IR/再現性、2frame lifetime/fault/
 poison/guardモデル、baseline1/16frameとMDL target回帰に合格。
 5 producer TUはlocal ARM32 COFF compileに合格。これらはGPU実行ではない。
-Windows triangle/texture、一般D3D/WDDM owner、実IRQ visibility/quiesceは未検証/未完成。
+Windows private triangle/textureはrun40で成功。一般D3D/WDDM owner、実IRQ visibility/quiesceは未検証/未完成。
 
 
 ## 失敗時のbounded scan診断

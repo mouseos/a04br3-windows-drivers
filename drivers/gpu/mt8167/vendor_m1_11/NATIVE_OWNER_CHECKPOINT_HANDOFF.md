@@ -90,3 +90,42 @@ timeout/pixel mismatchのpoison、SG/MDL保持を確認。IRQ通知は作って�
 現APIはone cold-prepared surface/jobを動かす実coreである。
 一般live prepare/discard、後続IRQ visibility、platform/fabric quiesce、
 frontend実MDL lease口を結合するまでGEO table/63capsは公開しない。
+
+
+## 後続実IRQのvisibility receipt実装
+
+`a04_vendor_native_owner_arm_visibility(n,start,irq,epoch,job,generation)`を追加。
+PASSIVE finish成功後、実Dxgk interrupt同期lock内からだけ呼ぶ。
+実runtime/MMIO/epoch、同MDL、cache/readback済candidate、空KCCB/FWCCBを確認し、
+masked sourceをrearm後、fresh GP SYNCを発行する。追加render jobではない。
+epoch/job/generationをsource-linked owner側で保持し、publish失敗はpoison+保持。
+
+実Dxgk ISRから`a04_vendor_native_owner_interrupt_event`を呼ぶ。
+内部で実MIPS IRQ statusをclaim/mask/ackし、fresh GP fence更新・queue drain・
+epoch/serial一致・先行MDL cache完了を確認した場合だけcompleted=TRUEを返す。
+sourceなし、fence前、古いepoch、duplicateではcompletedを返さない。
+pendingはjob/epoch/generation=0。関数内にKeRaiseIrqlやDxgk通知callbackはない。
+
+H側control-v2への対応：
+- `interrupt_event`：claimed=false→STATUS_NOT_FOUND、
+  claimed=true/completed=false→STATUS_PENDING(job=visibility=0)として実DPC/serviceへ。
+  completed=trueだけをGEOのGPU_DONE|CPU_VISIBLEへ変換して実ISRから通知する。
+- `service`：submitted jobはfinish_passive→成功後に実Dxgk同期callbackで
+  arm_visibility。startup/非job FW requestsは別stateで実handlerへ。
+- IRQ rearm/FWCCB pendingやdevice faultを成功に丸めない。hardwareがfresh GPの
+  通知sourceを出さなければpending/timeoutであり、passive pollから完了を捏造しない。
+- event deliveryでもexposed MDL/SG/DMAは解放しない。quiescence proofとは独立。
+
+host W1C MMIO/FW doubleで、sourceなしは未完了、先行IRQ/fence未更新はpending、
+その後のfresh source+GP更新で正しいepoch/job/generationを一度だけ返すこと、
+duplicate sourceでは再完了しないことを確認した。real IRQ/WDKの実測ではない。
+helper-WithMdlTarget-LinkCheckに両entryをexportした。
+
+run40のWindows private triangle/texture成功はproducerの実証。
+現GEO owner_ops.prepareはpacked clearのみなので、triangle/textureをstandard DDIへ
+運ぶにはH側の明示的なdraw/shader/resource semantic契約も必要。
+clear packetをtriangleとして解釈したり、固定profileを任意D3D成功として返さない。
+resource生成はnative_triangle_suiteの実VA入力と同じ4KiB heap3枚を再利用する。
+
+run40 baseline-retireはCLEANUP0xF/FAILED4/DMA RETAINED後、正規BOOT_REASON9に到達した。
+shutdown進行の実測であり、同一OS内のWDDM quiesce/fabric停止成功とは扱わない。

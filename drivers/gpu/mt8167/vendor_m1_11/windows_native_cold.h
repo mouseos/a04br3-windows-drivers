@@ -78,6 +78,21 @@ NTSTATUS a04_vendor_native_owner_submit(struct a04_vendor_native_cold *,
     struct a04_vendor_start *,uint32_t expected_kernel_write);
 NTSTATUS a04_vendor_native_owner_finish_passive(struct a04_vendor_native_cold *,
     struct a04_vendor_start *,struct a04_vendor_native_result *);
+struct a04_native_irq_core;
+struct a04_native_owner_event {
+    uint64_t epoch,job,irq_serial;
+    uint32_t generation;NTSTATUS status;BOOLEAN claimed,completed;
+};
+/* Both calls only under the REAL Dxgk IRQ synchronization/ISR lock.
+ * arm runs AFTER successful PASSIVE finish/cache and queues a fresh GP SYNC.
+ * observer reads and claims a real MIPS IRQ source and requires that fresh
+ * fence, queue drain and matching epoch before setting completed. A passive
+ * poll/raised IRQL is never a completion notification. No callback here. */
+NTSTATUS a04_vendor_native_owner_arm_visibility(struct a04_vendor_native_cold *,
+    struct a04_vendor_start *,struct a04_native_irq_core *,uint64_t epoch,
+    uint64_t job,uint32_t generation);
+BOOLEAN a04_vendor_native_owner_interrupt_event(struct a04_vendor_native_cold *,
+    struct a04_vendor_start *,struct a04_native_irq_core *,struct a04_native_owner_event *);
 /* Optional source-linked miniport profile: never started firmware, same
  * validated800x600 job, full rounded locked-MDL extent. No IRQ/cap publish. */
 NTSTATUS a04_vendor_native_attach_mdl_target_cold(struct a04_vendor_native_cold *,struct a04_native_mdl_binding *);

@@ -6,12 +6,22 @@
 #undef main
 #include "windows_native_job_private.h"
 #include "native_owner_mdl.h"
+#include "native_owner_irq.h"
 #include "windows_start.h"
 #include "A04BR3RogueRuntimeLayout.h"
 static unsigned holds,sg_gets,sg_puts,cpu_flushes,commands,fault;
 static struct fixture *active;
 static struct a04_vendor_native_cold *owner;
 static struct a04_rgx_fw_runtime fw;
+static UCHAR *register_base;
+ULONG a04_test_read_register(volatile ULONG *p){return *p;}
+void a04_test_write_register(volatile ULONG *p,ULONG value)
+{
+    *p=value;
+    if(register_base && (UCHAR *)p==register_base+0x8b0 && value==1)
+        *(ULONG *)(void *)(register_base+0x8a8)=0; /* hardware W1C double */
+}
+
 static NTSTATUS retain(void *ctx,PMDL m){assert(ctx==m && !holds);holds++;return STATUS_SUCCESS;}
 static void drop(void *ctx,PMDL m){assert(ctx==m && holds);holds--;}
 void *MmGetSystemAddressForMdlSafe(PMDL m,int p){(void)p;return m->va;}
@@ -59,6 +69,7 @@ static void check(unsigned mode)
     struct a04_native_mdl_binding *binding=NULL;struct fake_mdl mdl={0};
     PFN_NUMBER pfns[469];struct a04_native_mdl_lease lease={&mdl,retain,drop};
     struct a04_vendor_start s={0};struct a04_vendor_native_result result;
+    struct a04_native_irq_core irq={0};struct a04_native_owner_event event;
     RGXFWIF_CCB_CTL k={127,127,127,sizeof(RGXFWIF_KCCB_CMD)},q={0,0,31,sizeof(RGXFWIF_FWCCB_CMD)};
     RGXFWIF_KCCB_CMD queue[128];uint32_t sync=0;UCHAR core[0xc00]={0};
     init(&x);holds=sg_gets=sg_puts=cpu_flushes=commands=0;fault=mode;
@@ -75,7 +86,9 @@ static void check(unsigned mode)
     memset(&fw,0,sizeof(fw));memset(queue,0,sizeof(queue));
     fw.kctl=&k;fw.fctl=&q;fw.kcommands=queue;fw.command_sync=&sync;fw.command_sync_addr.ui32Addr=0xc0010000u;
     x.fw.runtime=&fw;x.fw.hardware_owned=TRUE;s.memory=&x.fw;s.core=core;s.online=TRUE;s.attempted=TRUE;
-    active=&x;owner=n;unsigned a=allocs,p=pool_calls,flushes=cpu_flushes;
+    active=&x;owner=n;register_base=core;
+    assert(a04_native_irq_bind(&irq,core,sizeof(core),&fw,10)==STATUS_SUCCESS);
+    unsigned a=allocs,p=pool_calls,flushes=cpu_flushes;
     assert(a04_vendor_native_owner_submit(n,&s,127)==STATUS_INVALID_DEVICE_STATE); /* wrong IRQL */
     host_irql=5;fail_at=allocs+1;fail_pool=pool_calls+1;
     assert(a04_vendor_native_owner_submit(n,&s,126)==STATUS_DEVICE_BUSY && !s.command_busy && !n->candidate->attempted);
@@ -93,6 +106,27 @@ static void check(unsigned mode)
             !result.guard_errors && result.completed_frames==1 && commands==4 && cpu_flushes==flushes+1);
         assert(!n->candidate->owner_pending && n->candidate->verified && !n->quarantined);
         assert(a04_vendor_native_owner_finish_passive(n,&s,&result)==STATUS_INVALID_DEVICE_STATE);
+        /* CPU finish or a manually raised model IRQL alone cannot notify.
+         * A new source, matching epoch and post-cache GP fence are required. */
+        assert(a04_vendor_native_owner_arm_visibility(n,&s,&irq,10,99,7)==STATUS_INVALID_DEVICE_STATE);
+        host_irql=5;
+        assert(a04_vendor_native_owner_arm_visibility(n,&s,&irq,11,99,7)==STATUS_INVALID_DEVICE_STATE);
+        assert(a04_vendor_native_owner_arm_visibility(n,&s,&irq,10,99,7)==STATUS_SUCCESS);
+        assert(commands==4 && !a04_vendor_native_owner_interrupt_event(n,&s,&irq,&event) && !event.completed);
+        *(ULONG *)(void *)(core+0x8a8)=1; /* earlier real-source model, fence still pending */
+        assert(a04_vendor_native_owner_interrupt_event(n,&s,&irq,&event) && event.claimed &&
+               !event.completed && !event.job && !event.epoch && !event.generation);
+        host_irql=PASSIVE_LEVEL;KeStallExecutionProcessor(50);host_irql=5;
+        assert(commands==5 && sync==s.command_sequence);
+        assert(a04_native_irq_rearm(&irq,10,irq.serial)==STATUS_SUCCESS);
+        assert(!a04_vendor_native_owner_interrupt_event(n,&s,&irq,&event)); /* no source, no notification */
+        *(ULONG *)(void *)(core+0x8a8)=1;
+        assert(a04_vendor_native_owner_interrupt_event(n,&s,&irq,&event) && event.completed &&
+               event.job==99 && event.epoch==10 && event.generation==7 && event.status==STATUS_SUCCESS);
+        assert(cpu_flushes==flushes+1 && allocs==a && pool_calls==p);
+        *(ULONG *)(void *)(core+0x8a8)=1;
+        assert(a04_vendor_native_owner_interrupt_event(n,&s,&irq,&event) && !event.completed && !event.job);
+        host_irql=PASSIVE_LEVEL;
     }else{
         assert(!NT_SUCCESS(status) && n->quarantined && s.command_poisoned && x.r.poisoned);
         assert(cpu_flushes==flushes+(mode==2));
