@@ -16,7 +16,7 @@ foreach($f in $m.files){if((Get-FileHash "$prior\$($f.path)" -Algorithm SHA256).
 $old=Get-Content "$prior\build-manifest.json" -Raw|ConvertFrom-Json
 if($old.source_commit -ne $base -or $m.source_commit -ne $base){throw 'Wrong source generation'}
 $changed=@(& git -C $root diff --name-only $base HEAD -- drivers)
-$allowed=@('drivers/bluetooth/mt6630/broker_lifetime.h','drivers/network/mt6630/checkpoint.c','drivers/network/mt6630/combo_broker.c','drivers/network/mt6630/combo_broker.h','drivers/network/mt6630/ndis_runtime.c','drivers/network/mt6630/mt6630-combo-runtime.inf')
+$allowed=@('drivers/bluetooth/mt6630/CLEANUP-1015.md','drivers/bluetooth/mt6630/broker_lifetime.h','drivers/network/mt6630/checkpoint.c','drivers/network/mt6630/combo_broker.c','drivers/network/mt6630/combo_broker.h','drivers/network/mt6630/ndis_runtime.c','drivers/network/mt6630/mt6630-combo-runtime.inf')
 if($LASTEXITCODE -or @($changed|Where-Object{$_ -notin $allowed}).Count){throw 'Reused core/client source dependency changed'}
 foreach($p in @(@{root=$ToolchainDirectory;hash='3A0870CB8D233686223206E52E9F88F5A6553FD09D77DA1A9160B96F32859EA2'},@{root=$SdkHeadersDirectory;hash='78ED33B4C112A16053572DB34E8DB4F3CF077F9CA0AB38ED8D49117B4911BC3F'},@{root=$CrtHeadersDirectory;hash='B75AE4E718976E5DB3CE535D9DE730249D19490AB49C48F46467FE98547A379C'})){
  if((Get-FileHash "$($p.root)\files-manifest.json" -Algorithm SHA256).Hash -ne $p.hash){throw 'Private SDK/compiler manifest mismatch'}
