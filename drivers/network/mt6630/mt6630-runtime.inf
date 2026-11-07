@@ -4,7 +4,7 @@ Signature="$WINDOWS NT$"
 Class=Net
 ClassGuid={4d36e972-e325-11ce-bfc1-08002be10318}
 Provider=%Provider%
-DriverVer=11/06/2026,2026.11.6.1004
+DriverVer=11/06/2026,2026.11.6.1005
 CatalogFile=mt6630-runtime.cat
 
 [Manufacturer]
@@ -26,6 +26,10 @@ mt6630-runtime.sys=1
 CopyFiles=DriverCopy
 Characteristics=0x84
 BusType=0x0f
+; Mandatory NDIS connectionless keywords belong to DDInstall itself.
+*IfType=71
+*MediaType=16
+*PhysicalMediaType=9
 AddReg=NetworkConfig
 
 [DriverCopy]
@@ -41,14 +45,6 @@ StartType=3
 Dependencies=a04msdcboot
 ErrorControl=1
 ServiceBinary=%12%\mt6630-runtime.sys
-
-[Install.NT.HW]
-AddReg=NetHardware
-
-[NetHardware]
-HKR,,*IfType,0x00010001,71
-HKR,,*MediaType,0x00010001,16
-HKR,,*PhysicalMediaType,0x00010001,9
 
 [Install.NT.CoInstallers]
 

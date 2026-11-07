@@ -93,3 +93,9 @@ SDK上のrevision/size定義をARM32 compileで照合し、既存scan parserと�
 027f31d以後の未接続PSP・実BSS停止/LP ownership・scan復帰の実装と現在の
 source/実機残件は [NATIVE-1004.md](NATIVE-1004.md) の「現在の残件一覧」を参照。
 68a6f16当時の上表を現行実装の未反映項目として再試験しない。
+
+## NDIS起動前のINF欠落（1005）
+
+1003/1004のDDInstall必須keyword配置に未反映の欠落を確認し、INF1005で修正した。
+原ProblemStatusの正しい定義、一次根拠、既存署名1004 SYSを保持するrepackageと確認条件は
+[INF-1005.md](INF-1005.md) を参照。C側属性だけでNDIS起動前の必須INF設定を代替しない。
