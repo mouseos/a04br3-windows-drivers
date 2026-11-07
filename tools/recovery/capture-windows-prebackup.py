@@ -153,50 +153,63 @@ class Recovery:
                 entry['fs'] not in ('ntfs', 'fuseblk', 'fuse.ntfs-3g')):
             raise BackupError('The Windows mount is not verified read-only NTFS')
 
+    def source_stat(self, mount, source, optional=False):
+        # test -e/-f collapse EIO/EACCES into false. Only stat's explicit
+        # ENOENT diagnostic in the C locale authorizes an optional absence.
+        # Capture rc in-band so adb transport failures still fail separately.
+        path = shlex.quote(mount + '/' + source)
+        output = self.shell("LC_ALL=C; export LC_ALL; stat -c '%f %s' -- " + path +
+                            ' 2>&1; rc=$?; printf "\\nA04_STAT_RC=%s\\n" "$rc"',
+                            label='source path stat')
+        body, separator, status = output.rpartition('\nA04_STAT_RC=')
+        if not separator or not status.isdigit():
+            raise BackupError('Invalid source stat protocol: ' + source)
+        body = body.strip()
+        if int(status):
+            if (optional and len(body.splitlines()) == 1 and
+                    body.startswith('stat: ') and body.endswith(': No such file or directory')):
+                return None
+            reason = 'I/O error' if body.endswith(': Input/output error') else 'stat error (not absence)'
+            raise BackupError('Source ' + reason + ': ' + source)
+        if not re.fullmatch(r'[0-9a-fA-F]+ [0-9]+', body):
+            raise BackupError('Invalid source stat metadata: ' + source)
+        mode, size = body.split()
+        return int(mode, 16) & 0xf000, int(size)
+
     def snapshot(self, mount, specs):
         directories={'Windows', 'Windows/System32', CONFIG.rstrip('/'), DRIVERS.rstrip('/')}
         for source, required in specs:
-            if not required:continue
-            directories.update(str(parent) for parent in PurePosixPath(source).parents if str(parent) != '.')
-        for directory in sorted(directories):
-            path = shlex.quote(mount + '/' + directory)
-            self.shell('test -d ' + path + ' && test ! -L ' + path, label='source directory check')
-        absent_directories=set()
+            if required:
+                directories.update(str(parent) for parent in PurePosixPath(source).parents if str(parent) != '.')
         optional_parents={str(parent) for source,required in specs if not required
                           for parent in PurePosixPath(source).parents if str(parent)!='.'}
-        for directory in sorted(optional_parents-directories,key=lambda p:(len(PurePosixPath(p).parts),p)):
-            if any(str(parent) in absent_directories for parent in PurePosixPath(directory).parents):
-                absent_directories.add(directory);continue
-            path=shlex.quote(mount+'/'+directory)
-            state=self.shell('if test -L '+path+'; then exit 1; elif test -d '+path+
-                             '; then echo PRESENT; elif test ! -e '+path+
-                             '; then echo ABSENT; else exit 1; fi',label='optional source directory check')
-            if state=='ABSENT':absent_directories.add(directory)
-            elif state!='PRESENT':raise BackupError('Invalid optional directory state')
-        listings = {folder: set(self.shell('ls -1A ' + shlex.quote(mount + '/' + folder),
-                                           label='source directory listing').splitlines())
-                    for folder in sorted({source.rsplit('/', 1)[0] + '/' for source, required in specs})
-                    if folder.rstrip('/') not in absent_directories}
+        # Validate each ancestor itself, without listing unrelated siblings.
+        # A dangling symlink is rejected by mode, not treated as ENOENT.
+        for directory in sorted(directories | optional_parents,
+                                key=lambda p:(len(PurePosixPath(p).parts),p)):
+            metadata = self.source_stat(mount, directory, directory not in directories)
+            if metadata is not None and metadata[0] != 0x4000:
+                raise BackupError('Source parent is not a real directory: ' + directory)
         result = {}
         for source, required in specs:
-            folder, name = source.rsplit('/', 1)
-            if folder in absent_directories or name not in listings[folder + '/']:
-                if required:
-                    raise BackupError('A required backup file is absent')
+            metadata = self.source_stat(mount, source, not required)
+            if metadata is None:
                 result[source] = None
                 continue
-            path = shlex.quote(mount + '/' + source)
-            data = self.shell('test -f ' + path + ' && test ! -L ' + path +
-                              ' && stat -c %s ' + path + ' && sha256sum ' + path,
-                              label='source file metadata').splitlines()
-            if len(data) != 2 or not data[0].isdigit():
-                raise BackupError('Invalid source size output')
-            digest = data[1].split()[0].lower()
-            size = int(data[0])
-            if not SHA256.fullmatch(digest) or size > MAX_FILE_BYTES:
-                raise BackupError('Source hash or bounded size check failed')
+            mode, size = metadata
+            if mode != 0x8000:
+                raise BackupError('Source is not a regular non-symlink file: ' + source)
+            if size > MAX_FILE_BYTES:
+                raise BackupError('Source bounded size check failed')
             if source in {CONFIG + hive for hive in HIVES} and size == 0:
                 raise BackupError('A required hive is empty')
+            path = shlex.quote(mount + '/' + source)
+            data = self.shell('sha256sum ' + path, label='source file hash').splitlines()
+            if len(data) != 1 or not data[0].split():
+                raise BackupError('Invalid source hash output')
+            digest = data[0].split()[0].lower()
+            if not SHA256.fullmatch(digest):
+                raise BackupError('Source hash check failed')
             result[source] = {'bytes': size, 'sha256': digest}
         if sum(x['bytes'] for x in result.values() if x) > MAX_TOTAL_BYTES:
             raise BackupError('Backup size limit exceeded')
@@ -243,7 +256,8 @@ def capture(args, recovery=None):
                 'capture_tool_sha256': sha(Path(__file__).resolve()),
                 'engine_missing_service_log_opt_in': bool(getattr(args, 'allow_missing_engine_service_log', False)),
                 'validity': 'same Recovery boot only; no intervening Windows boot or Windows mutation',
-                'read_only': True, 'unmounted': False, 'errors': []}
+                'read_only': True, 'unmounted': False, 'errors': [],
+                'source_probe_scope': 'requested files and ancestors only; siblings not enumerated or verified'}
     mount_attempted = False
     made_mount_directory = False
     before = None

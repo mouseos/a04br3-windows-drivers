@@ -103,3 +103,16 @@ read-only回収成功と新package実配置一致は別statusとして保持す�
 `MT8167EngineProbe/brightness-native.log`もoptionalとして回収する。
 存在時はhash/bytesを保存し、不存在時もmissing_filesへ記録する。旧必須3stateは維持する。
 Engine再armはこの固定root logをbackupに結び付けて退避し、削除・上書きをしない。
+
+## 対象ファイル単位のcapture
+
+source snapshotは対象と祖先だけをstatし、対象だけをSHA256照合する。
+兄弟の`ls -1A`は行わない。run42では対象外brightness.stdout.txtのinode EIOが
+service.log取得を巻き込んでいたためであり、そのEIOが解消したという意味ではない。
+旧失敗backupとEIO診断記録は保持する。成功manifestのsource_probe_scopeも限定範囲を示す。
+
+optional不在はC localeのstatが明示したENOENTだけ。対象または祖先のEIO、
+権限拒否、未識別エラー、symlink、非regular fileは拒否する。requiredのENOENTも拒否。
+既存の前後snapshot一致、host copy hash/size、同Recovery boot、read-only mount、
+必須9hiveと要求SYS/Engine state、unmount成功の条件は維持する。
+これはNTFS/eMMC全体の健全性検査ではなく、対象外inodeの正常性は証明しない。
