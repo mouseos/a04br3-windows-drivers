@@ -85,10 +85,10 @@ static NTSTATUS ParentThermalPioMeasure(PVOID p,PVOID thermal,PVOID adc,ULONG *a
  value=(value&~0x3fu)|(original&0x3fu);
  WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x604),value);
  if(READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x604))!=value)goto retain;
+ if(READ_REGISTER_USHORT((volatile USHORT *)((volatile UCHAR *)adc+4))||
+    (READ_REGISTER_USHORT((volatile USHORT *)((volatile UCHAR *)adc+0x10))&1))goto retain;
  value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->infra+0x128));
- if(value==MAXULONG||!(value&1)||READ_REGISTER_USHORT((volatile USHORT *)((volatile UCHAR *)adc+4))||
-    (READ_REGISTER_USHORT((volatile USHORT *)((volatile UCHAR *)adc+0x10))&1)||
-    !(READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->infra+0x128))&1))goto retain;
+ if(value==MAXULONG||!(value&1))goto retain;
  *stage=10;c->thermal.quiescent=1;c->thermal.leased=0;c->thermal.native_claim=0;
  MmUnmapIoSpace(c->thermalPioMappings[0],0x1000);MmUnmapIoSpace(c->thermalPioMappings[1],0x1000);
  c->thermalPioMappings[0]=c->thermalPioMappings[1]=NULL;
@@ -98,7 +98,7 @@ retain:
  /* Only this owner is poisoned. No clock/analog rollback, unmap, ResumeIdle,
   * retry or bugcheck. ParentStop/ParentUnmap already retain this lease. */
  c->thermal.poisoned=1;status=STATUS_DEVICE_HARDWARE_ERROR;
- DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"A04THM PIO RETAIN parent1016 no-free\n");
+ DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"A04THM PIO RETAIN parent1018 no-free\n");
  ParentUnlock(c);ExReleaseRundownProtection(&c->thermalRundown);return status;
 unlock:
  ParentUnlock(c);

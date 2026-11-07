@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only
- * Parent1016 owns the complete synchronous PIO transaction and quarantine.
+ * Parent1018 owns the complete synchronous PIO transaction and quarantine.
  * The child maps its exclusive resources and explicitly transfers ownership;
  * it never accesses a thermal/ADC register or frees adopted mappings. */
 #include <ntddk.h>
@@ -57,12 +57,12 @@ NTSTATUS PioD0(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous) {
  if(!c->mapped[0]||!c->mapped[1])return STATUS_DEVICE_NOT_READY;
  {DECLARE_CONST_UNICODE_STRING(path,A04_UART_SCREEN_DEVICE);WDF_IO_TARGET_OPEN_PARAMS open;
   WDF_IO_TARGET_OPEN_PARAMS_INIT_OPEN_BY_NAME(&open,&path,GENERIC_READ|GENERIC_WRITE);(VOID)WdfIoTargetOpen(c->uart,&open);}
- MARK(c,"A04THM PIO START parent1016\n");
+ MARK(c,"A04THM PIO START parent1018\n");
  RtlZeroMemory(&v,sizeof(v));status=ExGetFirmwareEnvironmentVariable(&name,&guid,&v,&bytes,&attrs);
  if(!NT_SUCCESS(status)||a04_thermal_boot_calibration(&cal,&v,bytes,attrs)){MARK(c,"A04THM PIO CAL REJECT\n");status=STATUS_DEVICE_NOT_READY;goto done;}
  RtlZeroMemory(&iface,sizeof(iface));status=WdfFdoQueryForInterface(device,&A04SharedThermalNativeGuid,(PINTERFACE)&iface,sizeof(iface),A04_THERMAL_NATIVE_VERSION,NULL);
  if(!NT_SUCCESS(status)){MARK(c,"A04THM PIO TUPLE REJECT\n");goto done;}
- if(iface.Header.Size!=sizeof(iface)||iface.Header.Version!=2||iface.ParentBuild!=1016||!iface.Header.Context||!iface.Measure||!iface.Header.InterfaceDereference) {
+ if(iface.Header.Size!=sizeof(iface)||iface.Header.Version!=2||iface.ParentBuild!=1018||!iface.Header.Context||!iface.Measure||!iface.Header.InterfaceDereference) {
   if(iface.Header.InterfaceDereference)iface.Header.InterfaceDereference(iface.Header.Context);status=STATUS_REVISION_MISMATCH;goto done;}
  status=iface.Measure(iface.Header.Context,c->mapped[0],c->mapped[1],&adopted,raw,&stage);
  if(adopted==1)c->mapped[0]=c->mapped[1]=NULL; /* supplier has the sole lifetime */
@@ -76,7 +76,7 @@ NTSTATUS PioD0(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous) {
  if(publish){status=STATUS_DEVICE_HARDWARE_ERROR;goto done;}
  {char line[96]="A04THM PIO mc=";ULONG n=sizeof("A04THM PIO mc=")-1;unsigned i;
   for(i=0;i<3;i++){number(line,&n,sample.mc[i]);line[n++]=i==2?'\n':'/';}mark(c,line,n);}
- MARK(c,"A04THM PIO IDLE restored parent1016\n");
+ MARK(c,"A04THM PIO IDLE restored parent1018\n");
 done:
  WdfIoTargetClose(c->uart);return status;
 }

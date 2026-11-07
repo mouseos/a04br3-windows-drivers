@@ -8,7 +8,7 @@
  * Only the actual thermal PDO with the checked exclusive two ranges may bind. */
 static const GUID A04SharedThermalNativeGuid={0x481fa133,0x4946,0x43ee,{0xa8,0x14,0x94,0x88,0x70,0xa4,0x10,0x09}};
 #define A04_THERMAL_NATIVE_VERSION 2
-#define A04_THERMAL_NATIVE_PARENT_BUILD 1016u
+#define A04_THERMAL_NATIVE_PARENT_BUILD 1018u
 typedef struct _A04_THERMAL_NATIVE_INTERFACE {
  INTERFACE Header;ULONG ParentBuild;
  NTSTATUS (*Measure)(PVOID,PVOID,PVOID,ULONG *,ULONG raw[3],ULONG *stage);
