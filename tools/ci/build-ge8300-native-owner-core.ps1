@@ -42,7 +42,7 @@ try {
  Start-Transcript -Path (Join-Path $out 'build.log')|Out-Null;$transcript=$true
  $commands=@();$objects=@()
  foreach($unit in $units){
-  $source=Join-Path $gpu "$unit.c";$obj=Join-Path $out (($unit -replace '\\','-')+'.obj')
+  $source=Join-Path $gpu "$unit.c";$obj=Join-Path $out ($unit.Replace('\','-')+'.obj')
   $compileArgs=@($common)+@('-c',$source,'-o',$obj)
   & clang @compileArgs
   if($LASTEXITCODE -ne 0){throw "ARM32 native core compile failed: $unit"}
