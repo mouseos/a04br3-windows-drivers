@@ -32,7 +32,9 @@ static void description(const WCHAR *name) {
  if(!WriteFile(disk,b,i,&written,NULL)||written!=i||!FlushFileBuffers(disk))log_ok=0;
 }
 static void text_line(const char *key,const WCHAR *value) {
- char b[8192];UINT i=0;int n;DWORD written;
+ /* Fixed single-thread client: bounded inventory storage lives in .bss,
+  * avoiding a freestanding ARM stack-probe dependency. */
+ static char b[8192];UINT i=0;int n;DWORD written;
  while(*key&&i<100)b[i++]=*key++;b[i++]='=';
  n=WideCharToMultiByte(CP_UTF8,0,value,-1,b+i,(int)sizeof(b)-(int)i-2,NULL,NULL);
  if(n<=0){log_ok=0;return;}i+=(UINT)n-1;b[i++]='\r';b[i++]='\n';
@@ -61,7 +63,7 @@ static int selection_arg(LUID *id) {
 static HRESULT hardware_luid(LUID *wanted) {
  HDEVINFO set;SP_DEVICE_INTERFACE_DATA device_interface;SP_DEVINFO_DATA node;
  PSP_DEVICE_INTERFACE_DETAIL_DATA_W detail=NULL;DWORD index,needed,type,bytes,error;UINT count=0;HRESULT result=S_OK;
- WCHAR hardware[4096],service[256],instance[512];HMODULE gdi=NULL;
+ static WCHAR hardware[4096],service[256],instance[512];HMODULE gdi=NULL;
  PFND3DKMT_OPENADAPTERFROMDEVICENAME open_fn;PFND3DKMT_QUERYADAPTERINFO query_fn;PFND3DKMT_CLOSEADAPTER close_fn;
  gdi=LoadLibraryExW(L"gdi32.dll",NULL,LOAD_LIBRARY_SEARCH_SYSTEM32);
  if(!gdi){error=GetLastError();line("AUTO_GDI_ERROR",error);return HRESULT_FROM_WIN32(error);}
