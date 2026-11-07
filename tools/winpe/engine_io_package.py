@@ -409,7 +409,7 @@ def parent_override_check(directory, manifest_sha256, root, selected, components
 
 
 def check_final_audio_client(sources, components):
-    """旧clientの作成時hashを保持し、既知1014親だけを互換候補に追加する。"""
+    """旧clientの作成時hashを保持し、既知1014/1015親だけを互換候補に追加する。"""
     client = components.get('audio_client', {})
     for rel, expected in client.get('expected_driver_sys', {}).items():
         if rel not in sources:
@@ -424,10 +424,10 @@ def check_final_audio_client(sources, components):
         compatible = (
             rel == 'parent/mt8167-shared.sys'
             and expected == '4638ab23c614aa6537b54b321c2b3bea5e6c54ac02f3c61956a7b1102fac42a5'
-            and actual == '0498bd9f5cadb0e064e42fb80f4717d3cd04729d61a0e2763a77d45487bf8343'
+            and (parent.get('wrapper_source_commit'),parent.get('driver_ver'),actual) in (
+                ('287241c37fa0eae538e5e2d136dea5df42de7e43','11/07/2026,2026.11.7.1014','0498bd9f5cadb0e064e42fb80f4717d3cd04729d61a0e2763a77d45487bf8343'),
+                ('13ae9f85c37331a3dd7324278e932956b9a840ef','11/07/2026,2026.11.7.1015','e7df942265a8216ba393152f1fe781e47d48ebe09b6da02f235dd8c2ba7d9752'))
             and client.get('binary_source_commit') == BOUNDED_ENGINE_CLIENT
-            and parent.get('wrapper_source_commit') == '287241c37fa0eae538e5e2d136dea5df42de7e43'
-            and parent.get('driver_ver') == '11/07/2026,2026.11.7.1014'
             and parent.get('certificate_thumbprint') == ENGINE_CERT
             and parent.get('files', {}).get(rel) == actual
         )
@@ -437,6 +437,6 @@ def check_final_audio_client(sources, components):
             'source_commit': parent['wrapper_source_commit'],
             'sys_sha256': actual,
             'audio_interface_git_blob': '806057e1a82e34e9197581be136edee9bd1d10ae',
-            'basis': 'fixed signed parent1014; identical audio interface; unchanged WASAPI client',
+            'basis': 'fixed signed parent1014/1015; identical audio interface; unchanged WASAPI client',
             'hardware_verified_here': False,
         }

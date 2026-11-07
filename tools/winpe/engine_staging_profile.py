@@ -19,6 +19,13 @@ def apply_profile(cmd,policy,backup,previous,components):
         if digest!='0498bd9f5cadb0e064e42fb80f4717d3cd04729d61a0e2763a77d45487bf8343':
             raise ValueError('GPU1014 parent signature tuple mismatch')
         expected['mt8167-shared.sys']=digest
+    if (parent.get('wrapper_source_commit')=='13ae9f85c37331a3dd7324278e932956b9a840ef'
+        and parent.get('driver_ver')=='11/07/2026,2026.11.7.1015'):
+        candidate='e7df942265a8216ba393152f1fe781e47d48ebe09b6da02f235dd8c2ba7d9752'
+        if parent.get('files',{}).get('parent/mt8167-shared.sys')!=candidate:raise ValueError('親1015固定署名SYS不一致')
+        installed=actual.get('windows/system32/drivers/mt8167-shared.sys')
+        if installed not in (candidate,'0498bd9f5cadb0e064e42fb80f4717d3cd04729d61a0e2763a77d45487bf8343'):raise ValueError('親1015の移行基点は既知1014/1015だけです')
+        expected['mt8167-shared.sys']=installed
     expected['mt8167-ge8300.sys']=policy.get('gpu_transition',{}).get('baseline_sys_sha256','a8f226b33fa11915e88b3424c5ad3ed3aaa62ff35deb7f91902b04e7df4bf090')
     for name in ('mt8167-shared.sys','mt8167-toprgu.sys','mt8167-ge8300.sys'):
         if not expected.get(name) or actual.get('windows/system32/drivers/'+name)!=expected[name].lower():

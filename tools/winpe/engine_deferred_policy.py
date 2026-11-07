@@ -23,7 +23,8 @@ BRIGHTNESS_SOURCE='4fafe9a76271531c36a6071b3926e3ce2dd77a8e'
 BRIGHTNESS_RUN33_SOURCE='8a79f2735c27cf783b4d1d703b155dd80178f9b3'
 BRIGHTNESS_SCOPED_SOURCE='ccef15ae47ebae71577ba266bfa88bcae6476ca8'
 BRIGHTNESS_COMPLETION_SOURCE='8a9354a0f49788b45f72a7b512ce73e36da8e3bc'
-BRIGHTNESS_SCOPED_SOURCES=(BRIGHTNESS_SCOPED_SOURCE,BRIGHTNESS_COMPLETION_SOURCE)
+BRIGHTNESS_SCHEMA_SOURCE='fef604e25a357fa18f46245f566cc4d94c72f712'
+BRIGHTNESS_SCOPED_SOURCES=(BRIGHTNESS_SCOPED_SOURCE,BRIGHTNESS_COMPLETION_SOURCE,BRIGHTNESS_SCHEMA_SOURCE)
 BRIGHTNESS_SCOPED_LOG=r'C:\Windows\System32\MT8167EngineProbe\logs\brightness-native.log'
 BRIGHTNESS_CLIENT_SOURCES=(BRIGHTNESS_SOURCE,BRIGHTNESS_RUN33_SOURCE,*BRIGHTNESS_SCOPED_SOURCES)
 
@@ -66,7 +67,7 @@ def load_map(path, root):
         version=entry['driver_ver'];date,numbers=version.split(',');parts=tuple(map(int,numbers.split('.')))
         run33_display=(role=='display' and source==BRIGHTNESS_RUN33_SOURCE and version=='11/07/2026,0.0.1.5')
         gpu_companion=(role=='display' and source=='6a99ec7d444180e150208d508dfaf203eb734d77' and version=='11/07/2026,0.0.1.6')
-        gpu_parent=(role=='parent' and source=='287241c37fa0eae538e5e2d136dea5df42de7e43' and version=='11/07/2026,2026.11.7.1014')
+        gpu_parent=(role=='parent' and (source,version) in (('287241c37fa0eae538e5e2d136dea5df42de7e43','11/07/2026,2026.11.7.1014'),('13ae9f85c37331a3dd7324278e932956b9a840ef','11/07/2026,2026.11.7.1015')))
         usb1004=(role=='usb' and (source,version) in (('c04c795caf5b722628174fda86608ab38049b93f','11/07/2026,2026.11.7.1004'),('44899b9755cdb081954a8d4ccb6271b839b9dd0d','11/07/2026,2026.11.7.1005')))
         if len(parts)!=4 or min(parts)<0 or max(parts)>65535 or parts<minimum or (date!='11/06/2026' and not run33_display and not usb1004 and not gpu_companion and not gpu_parent):
             raise ValueError('固定target INF最低新版/date不一致: '+role)
@@ -89,6 +90,7 @@ def load_map(path, root):
         expected=[('Include','ks.inf,wdmaudio.inf'),('Needs','KS.Registration,WDMAUDIO.Registration')] if role=='audio' else []
         if includes!=expected:raise ValueError('固定INF Include/Needs不一致: '+role)
         files={role+'/'+name:sha(p) for name,p in zip(names,chosen)}
+        if role=='parent' and source=='13ae9f85c37331a3dd7324278e932956b9a840ef' and (files['parent/mt8167-shared.sys']!='e7df942265a8216ba393152f1fe781e47d48ebe09b6da02f235dd8c2ba7d9752' or flags.get('A04_SHARED_WIFI_RTC_BORROW')!='1'):raise ValueError('親1015 RTC借用の署名SYS/flag固定pin不一致')
         selected.update({role+'/'+name:p for name,p in zip(names,chosen)})
         selected['deferred-'+role+'-development.cer']=certpath
         components[role]={'wrapper_source_commit':source,
@@ -203,6 +205,7 @@ def load_map(path, root):
         certificates['brightness_client']=der;policy['clients'][BRIGHTNESS_CLIENT]=sha(image)
         binding={'source_commit':brightness_source,'signed_manifest_sha256':sha(package.manifest),
                  'certificate_thumbprint':cert,'exe_sha256':sha(image),'log_path':metadata['log_path']}
+        if brightness_source==BRIGHTNESS_SCHEMA_SOURCE and metadata.get('declared_void_requires_completion_and_readback') is not True:raise ValueError('void signatureは完了とreadback契約が必要です')
         policy['brightness_client']=binding;components['brightness_client']=binding
     return selected,components,certificates,policy
 
