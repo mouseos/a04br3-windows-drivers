@@ -18,6 +18,7 @@
 #define E_JOB_COMPLETE 3u
 struct e_native_resource {
     struct e_native_resource *next;uint64_t id;struct geo_surface_desc desc;
+    struct a04_native_mdl_binding *linear;uint64_t linear_offset;
 };
 struct e_native_owner {
     struct e_native_resource *resources;

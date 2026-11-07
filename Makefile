@@ -986,3 +986,10 @@ test-gpu-native-d3d-viewport: build/gpu_native_d3d_viewport_test
 build/gpu_native_d3d_viewport_test: tests/gpu_native_d3d_viewport_test.c drivers/gpu/mt8167/vendor_m1_11/native_d3d_viewport.c drivers/gpu/mt8167/vendor_m1_11/native_d3d_viewport.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(filter %.c,$^) -o $@
+
+build/gpu_native_owner_linear_test: tests/gpu_native_owner_linear_test.c tests/gpu_vendor_windows_native_backing_test.c $(NATIVE_CLEAR_JOB_SRC) $(addprefix drivers/gpu/mt8167/vendor_m1_11/,windows_native_job.c windows_native_storage.c windows_native_cold.c windows_native_code.c windows_native_backing.c windows_native_target.c windows_native_execute.c windows_native_submit.c native_owner_irq.c native_owner_mdl.c windows_uncached.c native_resources.c native_hwrt_profile.c render_resources.c) drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/dma_pages.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -DA04_TEST_DISPLAY_SCANOUT -DA04_GE8300_NATIVE_OWNER_MDL_TARGET=1 -DA04_GE8300_VENDOR_NATIVE_CLEAR_JOB=1 -Itests/gpu_windows_stubs -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter-out tests/gpu_vendor_windows_native_backing_test.c,$(filter %.c,$^)) -o $@
+
+test-gpu-native-owner-linear: build/gpu_native_owner_linear_test
+	./build/gpu_native_owner_linear_test

@@ -85,6 +85,9 @@ NTSTATUS e_native_retire_graph_locked(struct e_native_owner *c)
         /* This marker transition is reachable only through the complete
          * normal owned-GPU retirement path above, never from a user flag. */
         a->firmware.hardware_owned=FALSE;
+        for(struct e_native_resource *linear=c->resources;linear;linear=linear->next)if(linear->linear){
+            status=a04_native_mdl_retire_after_gpu_off(linear->linear);if(!NT_SUCCESS(status))return status;
+        }
         if(a->vertex){status=a04_native_mdl_retire_after_gpu_off(a->vertex);if(!NT_SUCCESS(status))return status;}
         if(a->binding){status=a04_native_mdl_retire_after_gpu_off(a->binding);if(!NT_SUCCESS(status))return status;}
         a->start.online=FALSE;
@@ -110,7 +113,10 @@ NTSTATUS e_native_build_graph_locked(struct e_native_owner *c)
     status=a04_vendor_native_allocate_cold_ex(&a->native,&a->render,a->adapter,a->map_registers,800,600,&a->diagnostic);
     if(!NT_SUCCESS(status))return status;
     if(a->binding){status=a04_vendor_native_attach_mdl_target_preserve_cold(a->native,a->binding,c->aperture_offset,c->colour);if(!NT_SUCCESS(status))return status;}
-    if(a->vertex)return a04_vendor_native_attach_vertex_cold(a->native,a->vertex,c->vertex_aperture_offset);
+    if(a->vertex){status=a04_vendor_native_attach_vertex_cold(a->native,a->vertex,c->vertex_aperture_offset);if(!NT_SUCCESS(status))return status;}
+    for(struct e_native_resource *linear=c->resources;linear;linear=linear->next)if(linear->linear){
+        status=a04_vendor_native_attach_linear_cold(a->native,linear->linear,linear->linear_offset);if(!NT_SUCCESS(status))return status;
+    }
     return STATUS_SUCCESS;
 }
 static BOOLEAN boot_enable(void *p)

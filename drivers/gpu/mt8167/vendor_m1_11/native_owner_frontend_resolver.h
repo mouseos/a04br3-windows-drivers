@@ -13,4 +13,5 @@ NTSTATUS a04_native_allocation_bind_frontend_cold(struct a04_native_owner_alloca
     uint64_t aperture_byte_offset,uint32_t packed_argb);
 NTSTATUS a04_native_allocation_bind_frontend_vertex_cold(struct a04_native_owner_allocation *,
  const struct geo_frontend_memory *,PMDL,ULONG,uint64_t);
+NTSTATUS a04_native_allocation_bind_frontend_linear_cold(struct a04_native_owner_allocation *,const struct geo_frontend_memory *,PMDL,ULONG,BOOLEAN,struct a04_native_mdl_binding **);
 #endif

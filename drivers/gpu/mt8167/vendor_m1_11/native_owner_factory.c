@@ -98,6 +98,9 @@ static int32_t create(void *p,const struct geo_surface_desc *d,uint64_t *id)
     struct e_native_owner *c=p;struct e_native_resource *r;NTSTATUS s;
     if(!id)return STATUS_INVALID_PARAMETER;*id=0;
     BOOLEAN vertex=d && d->format==100u && d->usage==3u;
+    BOOLEAN linear=d && (d->usage==GEO_USAGE_STAGING || d->usage==GEO_USAGE_INDEX_BUFFER);
+    if(linear){if(!geo_desc_valid(d))return STATUS_INVALID_PARAMETER;}
+    else
     if(vertex){
         if(d->size!=sizeof(*d) || d->version!=1 || d->width<4 || d->width>65536 ||
            d->height!=1 || d->pitch!=d->width || d->reserved)return STATUS_INVALID_PARAMETER;
@@ -147,6 +150,15 @@ static int32_t bind(void *p,uint64_t surface,void *mdl,uint32_t offset,uint32_t 
 {
     struct e_native_owner *c=p;struct e_native_resource *r;NTSTATUS s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     r=resource(c,surface);if(!r || offset)return leave(c,STATUS_INVALID_PARAMETER);
+    if(r->desc.usage==GEO_USAGE_STAGING || r->desc.usage==GEO_USAGE_INDEX_BUFFER){
+        if(r->linear || bytes!=(uint64_t)r->desc.pitch*r->desc.height)return leave(c,STATUS_INVALID_PARAMETER);
+        s=cold_for_bind(c);if(!NT_SUCCESS(s))return leave(c,s);
+        s=e_native_build_graph_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
+        s=a04_native_allocation_bind_frontend_linear_cold(c->allocation,&c->memory,mdl,bytes,r->desc.usage==GEO_USAGE_INDEX_BUFFER,&r->linear);
+        if(NT_SUCCESS(s)){r->linear_offset=aperture;s=a04_vendor_native_attach_linear_cold(c->allocation->native,r->linear,aperture);}
+        if(!NT_SUCCESS(s) && (r->linear || c->allocation->frontend_orphan))c->state=E_OWNER_FAILED;
+        return leave(c,s);
+    }
     BOOLEAN vertex=r->desc.usage==3u;
     if(vertex){
         if(bytes!=r->desc.width || c->allocation->vertex)return leave(c,STATUS_DEVICE_BUSY);
@@ -174,6 +186,14 @@ static int32_t bind(void *p,uint64_t surface,void *mdl,uint32_t offset,uint32_t 
 static int32_t unbind(void *p,uint64_t surface)
 {
     struct e_native_owner *c=p;NTSTATUS s=enter(c,TRUE);if(!NT_SUCCESS(s))return s;
+    struct e_native_resource *linear=resource(c,surface);
+    if(linear && linear->linear){
+        if(c->job_state==E_JOB_PREPARED || c->job_state==E_JOB_SUBMITTED)return leave(c,STATUS_DEVICE_BUSY);
+        s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
+        if(NT_SUCCESS(s))s=a04_native_mdl_release_cold(&linear->linear);
+        if(NT_SUCCESS(s)){linear->linear_offset=0;c->job=0;c->job_state=E_JOB_NONE;}else c->state=E_OWNER_FAILED;
+        return leave(c,s);
+    }
     BOOLEAN vertex=surface && surface==c->vertex;
     if(!surface || (!vertex && surface!=c->surface))return leave(c,STATUS_INVALID_PARAMETER);
     if(c->job_state==E_JOB_PREPARED || c->job_state==E_JOB_SUBMITTED)return leave(c,STATUS_DEVICE_BUSY);
@@ -192,6 +212,7 @@ static int32_t destroy(void *p,uint64_t surface)
     NTSTATUS s=enter(c,TRUE);if(!NT_SUCCESS(s))return s;
     for(link=&c->resources;*link && (*link)->id!=surface;link=&(*link)->next){}
     if(!*link)return leave(c,STATUS_INVALID_PARAMETER);r=*link;
+    if(r->linear)return leave(c,STATUS_DEVICE_BUSY);
     if((surface==c->vertex && c->allocation->vertex) || (surface==c->surface && c->allocation->binding))return leave(c,STATUS_DEVICE_BUSY);
     *link=r->next;ExFreePoolWithTag(r,E_FACTORY_TAG);return leave(c,STATUS_SUCCESS);
 }

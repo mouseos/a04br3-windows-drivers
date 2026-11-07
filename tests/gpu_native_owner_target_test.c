@@ -6,7 +6,7 @@
 #include "windows_native_job_private.h"
 static unsigned holds,sg_gets,sg_puts;
 void KeStallExecutionProcessor(unsigned us){(void)us;assert(!"cold target test must not execute GPU");}
-static NTSTATUS retain_mdl(void *ctx,PMDL mdl){assert(ctx==mdl && holds<2);holds++;return STATUS_SUCCESS;}
+static NTSTATUS retain_mdl(void *ctx,PMDL mdl){assert(ctx==mdl && holds<16);holds++;return STATUS_SUCCESS;}
 static void drop_mdl(void *ctx,PMDL mdl){assert(ctx==mdl && holds);holds--;}
 void *MmGetSystemAddressForMdlSafe(PMDL m,int p){(void)p;return m->va;}
 void KeInitializeEvent(KEVENT *e,int type,BOOLEAN b){(void)type;e->signaled=b;}
@@ -43,7 +43,7 @@ static void run(int exposed,uint64_t aperture_offset,uint32_t color)
     struct a04_native_target_aperture aperture;
     assert(a04_vendor_native_target_aperture(n,&aperture)==STATUS_SUCCESS);
     assert(aperture.gpu_base==A04_NATIVE_OUTPUT_VA && aperture.bytes==1024u*4096u &&
-        aperture.commit_limit==485u*4096u && aperture.highest_dma_address==0xffffffffu);
+        aperture.commit_limit==1024u*4096u && aperture.highest_dma_address==0xffffffffu);
     assert(a04_vendor_native_attach_mdl_target_at_cold(n,b,1,color)==STATUS_INVALID_PARAMETER);
     assert(a04_vendor_native_attach_mdl_target_at_cold(n,b,556u*4096u,color)==STATUS_INVALID_PARAMETER);
     assert(a04_vendor_native_attach_mdl_target_at_cold(n,b,UINT64_MAX-4095u,color)==STATUS_INVALID_PARAMETER);

@@ -65,6 +65,7 @@ struct a04_native_mdl_binding;
  * GPU aperture, never a guessed CPU BAR or physical identity mapping. Current
  * owner admits one800x600 full-MDL cold binding; no live mapping capability. */
 struct a04_native_target_aperture {uint64_t gpu_base,bytes,commit_limit,highest_dma_address;};
+NTSTATUS a04_vendor_native_attach_linear_cold(struct a04_vendor_native_cold *,struct a04_native_mdl_binding *,uint64_t);
 NTSTATUS a04_vendor_native_target_aperture(const struct a04_vendor_native_cold *,
     struct a04_native_target_aperture *);
 NTSTATUS a04_vendor_native_attach_mdl_target_at_cold(struct a04_vendor_native_cold *,

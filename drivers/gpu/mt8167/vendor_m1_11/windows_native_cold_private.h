@@ -47,6 +47,8 @@ struct a04_vendor_native_cold {
     uint64_t pm_pages[296]; /* local 40 + global 256, adapter logical addresses */
     ULONG width,height,pm_offset[2],list_offset[2],used;
     BOOLEAN mapped,prepared,bank_prepared,bank_touched;
+    struct {struct a04_native_mdl_binding *binding;uint64_t offset;} linear[8];
+    ULONG linear_count;
 };
 
 ULONG a04_vendor_native_output_bytes(const struct a04_vendor_native_cold *);

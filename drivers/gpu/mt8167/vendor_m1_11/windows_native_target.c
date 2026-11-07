@@ -47,7 +47,7 @@ static int binding_clash(struct a04_native_mdl_binding *a,uint64_t ao,
 NTSTATUS a04_vendor_native_target_aperture(const struct a04_vendor_native_cold *n,
     struct a04_native_target_aperture *out)
 {
-    struct a04_native_target_aperture made={A04_NATIVE_OUTPUT_VA,1024u*4096u,485u*4096u,UINT64_C(0xffffffff)};
+    struct a04_native_target_aperture made={A04_NATIVE_OUTPUT_VA,1024u*4096u,1024u*4096u,UINT64_C(0xffffffff)};
     if(!n || !out || KeGetCurrentIrql()!=PASSIVE_LEVEL || !n->render ||
        !n->render->firmware || n->render->native_owner!=n || !n->prepared ||
        !n->output_mapped || n->quarantined || n->render->poisoned ||
@@ -80,12 +80,19 @@ static NTSTATUS attach_target(struct a04_vendor_native_cold *n,
 #endif
     status=isolated(n,target);if(!NT_SUCCESS(status))return status;
     if(n->registered_vertex && binding_clash(target,aperture_offset,n->registered_vertex,n->vertex_offset))return STATUS_DEVICE_CONFIGURATION_ERROR;
+    for(ULONG linear=0;linear<n->linear_count;linear++)
+        if(binding_clash(target,aperture_offset,n->linear[linear].binding,n->linear[linear].offset))return STATUS_DEVICE_CONFIGURATION_ERROR;
     pt=ExAllocatePoolWithTag(NonPagedPoolNx,8192,TAG);if(!pt)return STATUS_INSUFFICIENT_RESOURCES;
     status=STATUS_DEVICE_CONFIGURATION_ERROR;
     if(a04_rgx_device_read_words(pt,n->output[2].cpu,4096) ||
        a04_rgx_device_read_words(pt+512,n->output[3].cpu,4096))goto done;
     for(i=0;i<1024;i++){
         uint64_t expected=i<1000?(a04_vendor_native_storage_dma(n,1,i*4096u)|A04_GPU_MMU_SLC_BYPASS|1u):0;
+        for(ULONG linear=0;linear<n->linear_count;linear++){
+            ULONG extent;const uint64_t *linear_pages=a04_native_mdl_pages(n->linear[linear].binding,&extent);
+            ULONG start=(ULONG)(n->linear[linear].offset/4096u);
+            if(i>=start && i-start<extent)expected=linear_pages[i-start]|A04_GPU_MMU_SLC_BYPASS|1u;
+        }
         if(pt[i]!=expected)goto done;
     }
     status=a04_native_mdl_hold_cold(target);if(!NT_SUCCESS(status))goto done;
@@ -95,6 +102,11 @@ static NTSTATUS attach_target(struct a04_vendor_native_cold *n,
     if(n->registered_vertex){
         ULONG vertex_count;const uint64_t *vertex_pages=a04_native_mdl_pages(n->registered_vertex,&vertex_count);
         for(i=0;i<vertex_count;i++)pt[n->vertex_offset/4096u+i]=vertex_pages[i]|A04_GPU_MMU_SLC_BYPASS|1u;
+    }
+    for(ULONG linear=0;linear<n->linear_count;linear++){
+        ULONG extent;const uint64_t *linear_pages=a04_native_mdl_pages(n->linear[linear].binding,&extent);
+        ULONG start=(ULONG)(n->linear[linear].offset/4096u);
+        for(i=0;i<extent;i++)pt[start+i]=linear_pages[i]|A04_GPU_MMU_SLC_BYPASS|1u;
     }
     if(preserve_active)RtlFillMemory((UCHAR *)cpu+1920000u,bytes-1920000u,0xa5);
     else RtlFillMemory(cpu,bytes,0xa5);
@@ -144,8 +156,12 @@ NTSTATUS a04_vendor_native_attach_mdl_target_cold(struct a04_vendor_native_cold 
 NTSTATUS a04_vendor_native_target_before_fw_start(struct a04_vendor_native_cold *n)
 {
     if(!n || !n->render || !n->render->firmware || n->render->firmware->hardware_owned ||
-       n->quarantined || !n->candidate || (n->registered_vertex && !n->registered_target) || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+       n->quarantined || !n->candidate || ((n->registered_vertex || n->linear_count) && !n->registered_target) || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
     NTSTATUS status;
+    for(ULONG linear=0;linear<n->linear_count;linear++){
+        status=a04_native_mdl_sync_for_gpu(n->linear[linear].binding);if(!NT_SUCCESS(status))return status;
+        status=a04_native_mdl_mark_exposed(n->linear[linear].binding);if(!NT_SUCCESS(status))return status;
+    }
     if(n->registered_vertex){status=a04_native_mdl_sync_for_gpu(n->registered_vertex);if(!NT_SUCCESS(status))return status;
         status=a04_native_mdl_mark_exposed(n->registered_vertex);if(!NT_SUCCESS(status))return status;}
     return n->registered_target?a04_native_mdl_mark_exposed(n->registered_target):STATUS_SUCCESS;
@@ -163,6 +179,8 @@ NTSTATUS a04_vendor_native_attach_vertex_cold(struct a04_vendor_native_cold *n,
        offset>4194304u || bytes>4194304u-offset)return STATUS_INVALID_PARAMETER;
     status=isolated(n,v);if(!NT_SUCCESS(status))return status;
     if(n->registered_target && binding_clash(n->registered_target,n->target_offset,v,offset))return STATUS_DEVICE_CONFIGURATION_ERROR;
+    for(ULONG linear=0;linear<n->linear_count;linear++)
+        if(binding_clash(v,offset,n->linear[linear].binding,n->linear[linear].offset))return STATUS_DEVICE_CONFIGURATION_ERROR;
     /* Vertex-first is retained cold; no root can be published until the real
      * target attach replaces private output with the complete union PT. */
     if(!n->registered_target){
@@ -187,4 +205,42 @@ NTSTATUS a04_vendor_native_attach_vertex_cold(struct a04_vendor_native_cold *n,
     status=STATUS_SUCCESS;goto done;
 poison:n->quarantined=TRUE;n->render->poisoned=TRUE;status=STATUS_IO_DEVICE_ERROR;
 done:ExFreePoolWithTag(pt,TAG);return status;
+}
+
+/* Real linear mapping of retained VidMm pages, never a target/shader token. */
+NTSTATUS a04_vendor_native_attach_linear_cold(struct a04_vendor_native_cold *n,
+ struct a04_native_mdl_binding *binding,uint64_t offset)
+{
+ ULONG count,bytes,i,at;uint64_t *pt;const uint64_t *pages;NTSTATUS status;
+ if(!n||!binding||!n->render||!n->render->firmware||n->render->firmware->hardware_owned||
+    n->quarantined||n->render->poisoned||!n->output_mapped||n->linear_count>=8||
+    a04_native_mdl_adapter(binding)!=n->render->firmware->adapter||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+ pages=a04_native_mdl_pages(binding,&count);bytes=a04_native_mdl_extent(binding);
+ if(!pages||!count||count>1024||bytes!=count*4096u||(offset&4095u)||offset>4194304u||bytes>4194304u-offset)return STATUS_INVALID_PARAMETER;
+ status=isolated(n,binding);if(!NT_SUCCESS(status))return status;
+ if(n->registered_target&&binding_clash(binding,offset,n->registered_target,n->target_offset))return STATUS_DEVICE_CONFIGURATION_ERROR;
+ if(n->registered_vertex&&binding_clash(binding,offset,n->registered_vertex,n->vertex_offset))return STATUS_DEVICE_CONFIGURATION_ERROR;
+ for(i=0;i<n->linear_count;i++)if(binding_clash(binding,offset,n->linear[i].binding,n->linear[i].offset))return STATUS_DEVICE_CONFIGURATION_ERROR;
+ pt=ExAllocatePoolWithTag(NonPagedPoolNx,8192,TAG);if(!pt)return STATUS_INSUFFICIENT_RESOURCES;
+ status=STATUS_IO_DEVICE_ERROR;
+ if(a04_rgx_device_read_words(pt,n->output[2].cpu,4096)||a04_rgx_device_read_words(pt+512,n->output[3].cpu,4096))goto done_linear;
+ for(i=0;i<count;i++){
+  at=(ULONG)(offset/4096u)+i;
+  uint64_t expected=!n->registered_target&&at<1000?(a04_vendor_native_storage_dma(n,1,at*4096u)|A04_GPU_MMU_SLC_BYPASS|1u):0;
+  if(pt[at]!=expected){status=STATUS_DEVICE_CONFIGURATION_ERROR;goto done_linear;}
+ }
+ status=a04_native_mdl_hold_cold(binding);if(!NT_SUCCESS(status))goto done_linear;
+ /* Preserve the lease before the first potentially partial PTE update. */
+ n->linear[n->linear_count].binding=binding;n->linear[n->linear_count++].offset=offset;
+ for(i=0;i<count;i++)pt[offset/4096u+i]=pages[i]|A04_GPU_MMU_SLC_BYPASS|1u;
+ status=a04_native_mdl_sync_for_gpu(binding);
+ if(!NT_SUCCESS(status)||a04_rgx_device_write_words(n->output[2].cpu,pt,4096)||a04_rgx_device_write_words(n->output[3].cpu,pt+512,4096))goto poison_linear;
+ a04_gpu_dma_barrier();
+ for(i=0;i<1024;i++){
+  uint64_t actual;
+  if(a04_rgx_device_read_words(&actual,(UCHAR *)n->output[2+i/512].cpu+(i%512)*8,8)||actual!=pt[i])goto poison_linear;
+ }
+ status=STATUS_SUCCESS;goto done_linear;
+ poison_linear:n->quarantined=TRUE;n->render->poisoned=TRUE;status=STATUS_IO_DEVICE_ERROR;
+ done_linear:ExFreePoolWithTag(pt,TAG);return status;
 }
