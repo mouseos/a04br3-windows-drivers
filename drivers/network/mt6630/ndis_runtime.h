@@ -17,7 +17,7 @@
 struct a04_rx_slot {PMDL mdl;PNET_BUFFER_LIST nbl;ULONG length,epoch;BOOLEAN management;struct a04_native_rx_info info;UCHAR bytes[A04_NATIVE_MPDU_MAX];};
 struct a04_runtime_stats {ULONGLONG tx_packets[3],tx_bytes[3],rx_packets[3],rx_bytes[3];ULONGLONG tx_errors,tx_discards,rx_errors,rx_discards,rx_no_buffer;};
 struct a04_ndis_runtime {
- struct a04_checkpoint *checkpoint;
+ struct a04_checkpoint *checkpoint;uint64_t initialize_generation;unsigned runtime_failure_recorded,scan_records;ULONG runtime_last_oid,runtime_last_oid_status;
  NDIS_HANDLE adapter,rx_pool,configuration;struct a04_rx_slot rx[A04_NATIVE_QUEUE];unsigned rx_count;ULONG receive_epoch;UCHAR rx_bytes[A04_NATIVE_MPDU_MAX];
  A04_SHARED_WIFI_INTERFACE parent;int referenced,uncertain,paused;
  struct a04_windows_session session;struct a04_windows_irq irq;
@@ -35,6 +35,7 @@ struct a04_ndis_runtime {
 };
 void a04_ndis_tx_complete(void *,PNET_BUFFER_LIST,NDIS_STATUS);
 int a04_ndis_unreachable_check(struct a04_ndis_runtime *);
+void a04_ndis_runtime_snapshot(struct a04_ndis_runtime *,ULONG,ULONG,ULONG);
 int a04_ndis_poll(struct a04_ndis_runtime *);
 int a04_ndis_excluded(const struct a04_ndis_runtime *,const UCHAR *);
 NDIS_STATUS a04_ndis_contract_oid(struct a04_ndis_runtime *,PNDIS_OID_REQUEST);

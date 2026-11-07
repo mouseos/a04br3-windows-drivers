@@ -194,7 +194,7 @@ static NDIS_STATUS reset_request(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  q->DATA.METHOD_INFORMATION.BytesRead=sizeof(input);q->DATA.METHOD_INFORMATION.BytesWritten=sizeof(output);q->DATA.METHOD_INFORMATION.BytesNeeded=0;
  link_state(a);return e?NDIS_STATUS_FAILURE:NDIS_STATUS_SUCCESS;
 }
-NDIS_STATUS a04_ndis_control(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
+static NDIS_STATUS control_impl(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
 {
  ULONG value=0,oid=q->DATA.QUERY_INFORMATION.Oid;ULONG list_words[32];uint8_t *list=(uint8_t *)list_words;ULONG *words=list_words;
  NDIS_STATUS contract=a04_ndis_contract_oid(a,q);if(contract!=NDIS_STATUS_INVALID_OID)return contract;
@@ -279,4 +279,18 @@ NDIS_STATUS a04_ndis_control(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
  default:return NDIS_STATUS_NOT_SUPPORTED;
  }
  return copy_query(q,&value,sizeof(value));
+}
+
+/* Capture the actual OID gate and final dispatch result, including a rejected
+ * scan before HIF submission. Completion semantics remain unchanged. */
+NDIS_STATUS a04_ndis_control(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
+{
+ int scan_oid=q->RequestType==NdisRequestSetInformation&&q->DATA.SET_INFORMATION.Oid==OID_DOT11_SCAN_REQUEST;
+ NDIS_STATUS status;
+ if(scan_oid)a04_ndis_runtime_snapshot(a,A04_CP_SCAN,0,1);
+ a->runtime_last_oid=q->DATA.QUERY_INFORMATION.Oid;
+ status=control_impl(a,q);a->runtime_last_oid_status=status;
+ if(a->radio.failed)a04_ndis_runtime_snapshot(a,A04_CP_RUNTIME_FAILURE,status,4);
+ if(scan_oid)a04_ndis_runtime_snapshot(a,A04_CP_SCAN,status,2);
+ return status;
 }

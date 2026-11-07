@@ -35,6 +35,32 @@ int a04_ndis_excluded(const struct a04_ndis_runtime *a,const UCHAR *mac)
 static int exclude_bssid(void *context,const uint8_t *mac)
 {return a04_ndis_excluded(context,mac);}
 
+/* Snapshot software observations only; never read HIF/RTC or change state.
+ * First runtime fault is immutable for this adapter; scan history max4. */
+void a04_ndis_runtime_snapshot(struct a04_ndis_runtime *a,ULONG channel,ULONG result,ULONG phase)
+{
+ struct a04_checkpoint c;struct a04_wmt_bridge *b=a->radio.bridge;
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL||!b)return;
+ if(channel==A04_CP_RUNTIME_FAILURE){if(a->runtime_failure_recorded)return;a->runtime_failure_recorded=1;}
+ else if(channel==A04_CP_SCAN){if(a->scan_records>=4)return;a->scan_records++;}
+ else return;
+ (void)a04_cp_begin(&c,channel,a->initialize_generation);
+ (void)a04_cp_emit(&c,A04_CP_RUNTIME_STATE,A04_CP_RESULT,A04_CP_OBSERVATION,
+   (!!a->power)|((!!a->paused)<<1)|((!!a->closing)<<2)|((!!a->idle_bss)<<3)|((!!a->ps_activity)<<4), (ULONG)a->radio.failed);
+ (void)a04_cp_emit(&c,A04_CP_HOST_STATE,A04_CP_RESULT,A04_CP_BACKEND,b->wlan.failed,
+   (!!b->wlan.fw_owned)|((!!b->wlan.initialized)<<1)|((!!b->wlan.runtime)<<2)|((!!a->radio.initialized)<<3)|((!!b->failed)<<4)|((!!b->transport.failed)<<5));
+ (void)a04_cp_emit(&c,A04_CP_CREDITS,A04_CP_RESULT,A04_CP_OBSERVATION,
+   (b->wlan.cpu_used&0xffff)|((b->wlan.tc0_used&0xffff)<<16),(b->wlan.tc1_used&0xffff)|((b->wlan.ffa&0xffff)<<16));
+ (void)a04_cp_emit(&c,A04_CP_WHISR,A04_CP_RESULT,A04_CP_OBSERVATION,b->wlan.status,b->pending_wlan_status);
+ (void)a04_cp_emit(&c,A04_CP_WASR,A04_CP_RESULT,A04_CP_BACKEND,b->wlan.wasr_error,b->wlan.wasr);
+ (void)a04_cp_emit(&c,A04_CP_LAST_COMMAND,A04_CP_RESULT,A04_CP_OBSERVATION,
+   b->wlan.last_cid,(b->wlan.last_cmd_sequence&255)|((b->wlan.last_cmd_type&255)<<8)|((b->wlan.last_cmd_set&255)<<16));
+ (void)a04_cp_emit(&c,A04_CP_LAST_OID,A04_CP_RESULT,A04_CP_NDIS,a->runtime_last_oid_status,a->runtime_last_oid);
+ (void)a04_cp_emit(&c,A04_CP_SCAN_STATE,A04_CP_RESULT,A04_CP_OBSERVATION,
+   (!!b->scan.pending)|((!!b->scan.complete)<<1),b->scan.failed);
+ (void)a04_cp_emit(&c,A04_CP_RUNTIME_RESULT,A04_CP_RESULT,A04_CP_BACKEND,result,phase);
+ (void)a04_cp_finish(&c,A04_CP_RUNTIME_RESULT,A04_CP_BACKEND,result);
+}
 int a04_ndis_poll(struct a04_ndis_runtime *a)
 {
  int result=0;
@@ -44,6 +70,7 @@ int a04_ndis_poll(struct a04_ndis_runtime *a)
   result=a04_ndis_radio_reset(a);
  }
  if(!result&&a04_ndis_unreachable_check(a))result=-1;
+ if(result)a04_ndis_runtime_snapshot(a,A04_CP_RUNTIME_FAILURE,(ULONG)result,1);
  /* A poll consumes at most64 actual HIF packets. All admitted RX frames
   * have independent nonpaged bytes/MDLs/NBLs until synchronous RESOURCES
   * indication returns. Pause/halt waits for this worker to finish them. */
@@ -207,7 +234,7 @@ int a04_ndis_rf_wake(struct a04_ndis_runtime *a)
   a->idle_bss=0;
  }
  return 0;
-failed:a->radio.failed=-1;return -1;
+failed:a->radio.failed=-1;a04_ndis_runtime_snapshot(a,A04_CP_RUNTIME_FAILURE,(ULONG)-1,2);return -1;
 }
 int a04_ndis_idle_reconcile(struct a04_ndis_runtime *a)
 {
@@ -229,7 +256,7 @@ int a04_ndis_idle_reconcile(struct a04_ndis_runtime *a)
   }
   wait_us(a,1000);
  }
-failed:a->radio.failed=-1;return -1;
+failed:a->radio.failed=-1;a04_ndis_runtime_snapshot(a,A04_CP_RUNTIME_FAILURE,(ULONG)-1,3);return -1;
 }
 /* gen3 CMD_ID_POWER_SAVE_MODE/CMD_PS_PROFILE_T, nicConfigPowerSaveProfile:
  * set, no response. Success means complete HIF submission, never a FW ACK.
@@ -421,7 +448,7 @@ NDIS_STATUS RuntimeInitialize(NDIS_HANDLE adapter,NDIS_HANDLE context,PNDIS_MINI
  backend=a->power?hardware_start(a):disabled_identity(a);
  if(backend){s=NDIS_STATUS_ADAPTER_NOT_READY;goto failed;}
  a->tx.adapter=adapter;a->tx.completion_context=a;a->tx.completion=a04_ndis_tx_complete;a->os_security.auth=DOT11_AUTH_ALGO_80211_OPEN;s=a04_ndis_attributes(a);if(s!=NDIS_STATUS_SUCCESS)goto failed;
- a->checkpoint=NULL;
+ a->initialize_generation=checkpoint.record?checkpoint.record->generation:0;a->checkpoint=NULL;
  (void)a04_cp_finish(&checkpoint,A04_CP_INIT_RETURN,A04_CP_NDIS,NDIS_STATUS_SUCCESS);
  due.QuadPart=-100000;KeSetTimerEx(&a->timer,due,10,&a->dpc);return NDIS_STATUS_SUCCESS;
 failed:

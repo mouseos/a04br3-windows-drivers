@@ -9,6 +9,7 @@ HEADER = struct.Struct('<4I4Q10I')
 EVENT = struct.Struct('<6I')
 CAPACITY = 64
 STAGES = {
+    88:'LAST_OID',80:'RUNTIME_STATE',81:'HOST_STATE',82:'CREDITS',83:'WHISR',84:'WASR',85:'LAST_COMMAND',86:'SCAN_STATE',87:'RUNTIME_RESULT',
     1: 'REGISTER_DRIVER', 2: 'INIT_ENTRY', 3: 'CONTEXT_ALLOCATION',
     4: 'REGISTRATION_ATTRIBUTES', 5: 'RX_POOL', 6: 'RX_SLOTS',
     7: 'CONFIGURATION_OPEN', 8: 'RADIO_SETTING', 9: 'PARENT_QUERY',
@@ -37,7 +38,7 @@ def decode(data, after_generation=None):
     h = HEADER.unpack_from(data)
     magic, version, size, channel, generation, parent, ticks, system_time = h[:8]
     count, overflow, diag_known, diag_status, flush_calls, flush_known, flush_status, tail_known, prepared, build = h[8:]
-    if magic != 0x50433441 or version != 1 or size != len(data) or channel not in (0, 1):
+    if magic != 0x50433441 or version != 1 or size != len(data) or channel not in (0, 1, 2, 3):
         raise ValueError('Unknown checkpoint schema/channel')
     if not generation or count > CAPACITY or tail_known != 0 or flush_calls > 10:
         raise ValueError('Invalid checkpoint bounds or unsupported tail-flush claim')
@@ -67,7 +68,7 @@ def decode(data, after_generation=None):
                 tx_done_observed=bool(mask & 4), completed=(receipt & 255) == 5)
             if stage == 68:
                 events[-1]['last_manufacture_cid'] = detail & 255
-    return dict(schema=version, driver_build=build, channel=('DriverEntry', 'Initialize')[channel],
+    return dict(schema=version, driver_build=build, channel=('DriverEntry', 'Initialize', 'Scan', 'RuntimeFailure')[channel],
                 generation=generation, parent_generation=parent, interrupt_time=ticks,
                 system_time=system_time,
                 freshness=('unknown' if after_generation is None else

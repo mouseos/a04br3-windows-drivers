@@ -6,7 +6,7 @@
 #include "checkpoint.h"
 #define IO_ERROR ((NTSTATUS)0xc0000185u)
 static int irql;static unsigned registry_calls,flushes,fail_flush_at,has_generation;
-static uint64_t generation;static struct a04_cp_record persisted[2];
+static uint64_t generation;static struct a04_cp_record persisted[4];
 static void registry(void){assert(irql==PASSIVE_LEVEL);registry_calls++;}
 int KeGetCurrentIrql(void){return irql;}
 void KeInitializeMutex(KMUTEX *m,ULONG level){assert(!level);m->held=0;}
@@ -31,7 +31,7 @@ NTSTATUS ZwSetValueKey(HANDLE h,UNICODE_STRING *n,ULONG title,ULONG type,PVOID p
 {
  registry();assert(h==(HANDLE)3&&!title);
  if(!wcscmp(n->text,L"Generation")){assert(type==REG_QWORD&&size==8);memcpy(&generation,p,8);has_generation=1;}
- else {unsigned channel=!wcscmp(n->text,L"Initialize");assert(channel||!wcscmp(n->text,L"DriverEntry"));assert(type==REG_BINARY&&size==sizeof(struct a04_cp_record));memcpy(&persisted[channel],p,size);}
+ else {unsigned channel=!wcscmp(n->text,L"Initialize")?1:!wcscmp(n->text,L"Scan")?2:!wcscmp(n->text,L"RuntimeFailure")?3:0;assert(channel||!wcscmp(n->text,L"DriverEntry"));assert(type==REG_BINARY&&size==sizeof(struct a04_cp_record));memcpy(&persisted[channel],p,size);}
  return 0;
 }
 NTSTATUS ZwQueryValueKey(HANDLE h,UNICODE_STRING *n,ULONG kind,PVOID p,ULONG size,ULONG *returned)
@@ -73,5 +73,9 @@ int main(void)
  before=registry_calls;assert(a04_cp_emit(&a,A04_CP_CONTEXT,A04_CP_RESULT,A04_CP_OBSERVATION,1,0)==STATUS_RETRY&&registry_calls==before);
  assert(a04_cp_finish(&a,A04_CP_INIT_RETURN,A04_CP_NDIS,0)==STATUS_RETRY);
  assert(!a04_cp_finish(&b,A04_CP_INIT_RETURN,A04_CP_NDIS,0));
+ assert(!a04_cp_begin(&a,A04_CP_SCAN,2));assert(!a04_cp_emit(&a,A04_CP_RUNTIME_STATE,A04_CP_RESULT,A04_CP_OBSERVATION,1,83));
+ assert(!a04_cp_begin(&b,A04_CP_RUNTIME_FAILURE,2));assert(!a04_cp_emit(&b,A04_CP_HOST_STATE,A04_CP_RESULT,A04_CP_BACKEND,83,4));
+ assert(!a04_cp_finish(&a,A04_CP_RUNTIME_RESULT,A04_CP_NDIS,0xc0010011u));assert(!a04_cp_finish(&b,A04_CP_RUNTIME_RESULT,A04_CP_BACKEND,83));
+ assert(persisted[2].channel==2&&persisted[3].channel==3&&persisted[2].driver_build==1010&&persisted[3].parent_generation==2);
  puts("Fixed registry checkpoint: real writer status/phase, generation, IRQL, flush failure and bounds: OK");return 0;
 }

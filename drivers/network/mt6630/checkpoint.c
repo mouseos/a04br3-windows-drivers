@@ -6,7 +6,7 @@
 #define CP_TAG 'p40A'
 static KMUTEX registry_lock;
 static int initialized;
-static uint64_t current_generation[2];
+static uint64_t current_generation[4];
 static NTSTATUS lock(void)
 {
  if(KeGetCurrentIrql()!=PASSIVE_LEVEL||!initialized)return STATUS_INVALID_DEVICE_STATE;
@@ -26,7 +26,7 @@ static NTSTATUS set(HANDLE key,PCWSTR name,ULONG type,const void *data,ULONG siz
 }
 static NTSTATUS store(struct a04_checkpoint *c)
 {
- NTSTATUS status=set(c->key,c->channel==A04_CP_DRIVER?L"DriverEntry":L"Initialize",REG_BINARY,c->record,sizeof(*c->record));
+ NTSTATUS status=set(c->key,c->channel==A04_CP_DRIVER?L"DriverEntry":c->channel==A04_CP_INITIALIZE?L"Initialize":c->channel==A04_CP_SCAN?L"Scan":L"RuntimeFailure",REG_BINARY,c->record,sizeof(*c->record));
  error(c,status);return status;
 }
 static NTSTATUS flush(struct a04_checkpoint *c)
@@ -43,7 +43,7 @@ static NTSTATUS flush(struct a04_checkpoint *c)
 void a04_cp_initialize(void)
 {
  if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return;
- KeInitializeMutex(&registry_lock,0);current_generation[0]=current_generation[1]=0;initialized=1;
+ KeInitializeMutex(&registry_lock,0);RtlZeroMemory(current_generation,sizeof(current_generation));initialized=1;
 }
 static NTSTATUS open_key(HANDLE *out)
 {
@@ -67,7 +67,7 @@ NTSTATUS a04_cp_begin(struct a04_checkpoint *c,ULONG channel,uint64_t parent)
  KEY_VALUE_PARTIAL_INFORMATION *value=(void *)buffer.bytes;UNICODE_STRING n;ULONG returned=0;
  uint64_t generation=0;NTSTATUS status;LARGE_INTEGER time;
  RtlZeroMemory(c,sizeof(*c));
- if(channel>1||KeGetCurrentIrql()!=PASSIVE_LEVEL||!initialized)return STATUS_INVALID_DEVICE_STATE;
+ if(channel>3||KeGetCurrentIrql()!=PASSIVE_LEVEL||!initialized)return STATUS_INVALID_DEVICE_STATE;
  c->record=ExAllocatePoolWithTag(PagedPool,sizeof(*c->record),CP_TAG);
  if(!c->record)return STATUS_INSUFFICIENT_RESOURCES;
  RtlZeroMemory(c->record,sizeof(*c->record));c->channel=channel;
@@ -85,7 +85,7 @@ NTSTATUS a04_cp_begin(struct a04_checkpoint *c,ULONG channel,uint64_t parent)
   else {generation++;status=set(c->key,L"Generation",REG_QWORD,&generation,8);}
  }
  if(NT_SUCCESS(status)){
-  struct a04_cp_record *r=c->record;r->magic=A04_CP_MAGIC;r->version=A04_CP_VERSION;r->bytes=sizeof(*r);r->channel=channel;r->driver_build=1009;
+  struct a04_cp_record *r=c->record;r->magic=A04_CP_MAGIC;r->version=A04_CP_VERSION;r->bytes=sizeof(*r);r->channel=channel;r->driver_build=1010;
   r->generation=generation;r->parent_generation=parent;r->interrupt_time=KeQueryInterruptTime();KeQuerySystemTime(&time);r->system_time=(uint64_t)time.QuadPart;
   current_generation[channel]=generation;
   status=store(c);
