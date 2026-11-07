@@ -195,3 +195,12 @@ Noneでの受理を単に「未検証なので成功の可能性あり」とは�
 [SCO enumの意味と必須Bypass](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/bthxddi/ne-bthxddi-_bthx_sco_support)、
 [Windows 8.1 transport DDI不変](https://learn.microsoft.com/en-us/windows-hardware/drivers/bluetooth/transport-bus-driver-for-bluetooth-power-control-handling-guidelines)、
 [Microsoft sample Fdo.c](https://github.com/microsoft/Windows-driver-samples/blob/main/bluetooth/serialhcibus/Fdo.c)。
+
+## BT MRG sidebandのsource実装
+
+[SIDEBAND.md](SIDEBAND.md) に機種DTSのGPIO36～39/function1、stock merge選択、
+BTCVSD SRAM経路との違い、BT固有host core実装とAudio/Herschelへの依存契約を記載。
+BTのWMT startup optionsのmerge_interfaceを1にし、既存DAI_PAD command/実ACKを実経路へ接続。
+8k mono S16_LE host MRG engineは実owner callbacksを使う実装だが、既存Audio v11にproviderを
+追加・接続したものではない。capabilities None/0と標準stack契約不適合の判定は維持する。
+02e raw HCI署名候補、親/Audio共有source、実機/runner/REAは非操作。診断だけの再buildなし。

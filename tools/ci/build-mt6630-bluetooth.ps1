@@ -39,7 +39,7 @@ try {
  $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1";$inc=Join-Path $kit 'Include'
  $km=Join-Path $kit 'Lib\winv6.3\km\arm';$wdf=Join-Path $kit 'Lib\wdf\kmdf\arm\1.13'
  $objects=@()
- foreach($name in @('transport','status','windows_driver')){
+ foreach($name in @('transport','sideband','status','windows_driver')){
   $obj=Join-Path $out "$name.obj";$objects+=$obj
   & clang --target=thumbv7-pc-windows-msvc -std=c11 -w -ffunction-sections -fdata-sections -fms-extensions -ffreestanding -O2 -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 -DA04_WIFI_IRQ_DIAGNOSTIC=1 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$inc\wdf\kmdf\1.13" -c "$root\drivers\bluetooth\mt6630\$name.c" -o $obj
   if($LASTEXITCODE){throw "Bluetooth $name compile failed"}
@@ -62,6 +62,7 @@ try {
    firmware_embedded=$false;individual_nvram_embedded=$false;hardware_verified=$false;wdk_link_succeeded=$true;
    sco_support='None; documented Windows 8/8.1 BTHX load contract not satisfied';
    advertised_sco=0;advertised_max_sco_channels=0;required_sco='HCIBypass';required_max_sco_channels=1;
+   wmt_merge_interface=1;sideband_core='MRG narrowband CVSD 8k mono S16; owner integration pending';sideband_audio_provider_connected=$false;
    standard_stack_contract_satisfied=$false;standard_stack_load_candidate=$false;bthx_contract_query_abi=1;
    sys_sha256=(Get-FileHash (Join-Path $out 'mt6630-bluetooth.sys') -Algorithm SHA256).Hash
  }|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 $manifest

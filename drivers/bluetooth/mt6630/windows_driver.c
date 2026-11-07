@@ -206,7 +206,10 @@ NTSTATUS BtPrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated)
 NTSTATUS BtStart(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
 {
  BT_DEVICE *c=BtContext(device);struct a04_windows_fw_snapshot fw={0};UCHAR nvram[36]={0};NTSTATUS status=STATUS_DEVICE_NOT_READY;
- unsigned stage=0;const struct a04_wmt_startup_options options={1,1,0,0,2,0};
+ /* a04br3_defconfig CONFIG_MTK_MERGE_INTERFACE_SUPPORT=y, and stock
+  * mt6630_sw_init DAI_PAD after coex/before FM strap. This only initializes
+  * chip pads via real WMT ACK; it is not proof of an active SCO audio route. */
+ unsigned stage=0;const struct a04_wmt_startup_options options={1,1,0,1,2,0};
  UNREFERENCED_PARAMETER(previous);lock(c);
  if(!c->referenced||c->uncertain||c->leased||c->removed)goto done;
  c->observation.attempts++;c->observation.stage=0;c->observation.start_status=(ULONG)STATUS_PENDING;
