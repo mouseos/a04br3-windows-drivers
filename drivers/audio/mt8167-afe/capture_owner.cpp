@@ -9,7 +9,7 @@ struct Mt8167CaptureOwner {
  volatile LONG refs;KMUTEX lock;EX_RUNDOWN_REF positions;Mt8167CaptureResources r;Mt8167StreamBackend api;
  Mt8167WaveBuffer buffer;Mt8167WaveDma dma;mt8167_ul_engine engine;
  PKINTERRUPT interrupt;PPORTWAVERTSTREAM client;BOOLEAN leased,closed;
- NTSTATUS failure;KSSTATE state;ULONG position;
+ volatile LONG irqEvents;NTSTATUS latencyStatus;NTSTATUS failure;KSSTATE state;ULONG position;
 };
 static int Read(void *c,uint32_t off,uint32_t *v)
 {Mt8167CaptureOwner *o=(Mt8167CaptureOwner *)c;if(!o->leased||!v||(off&3)||off>=0x1000)return -1;*v=READ_REGISTER_ULONG((volatile ULONG *)((PUCHAR)o->r.afe+off));return 0;}
@@ -33,7 +33,7 @@ static BOOLEAN Isr(PKINTERRUPT,PVOID c)
  Mt8167CaptureOwner *o=(Mt8167CaptureOwner *)c;uint32_t notify;
  int rc=mt8167_ul_interrupt(&o->engine,&notify);if(rc<0)o->failure=STATUS_DEVICE_HARDWARE_ERROR;
  /* WaveRT polling reads real CUR; no fabricated event period/position. */
- return rc>0;
+ if(rc>0)InterlockedIncrement(&o->irqEvents);return rc>0;
 }
 static BOOLEAN StartSynchronized(PVOID c)
 {Mt8167CaptureOwner *o=(Mt8167CaptureOwner *)c;if(mt8167_ul_start(&o->engine))o->failure=STATUS_DEVICE_HARDWARE_ERROR;return TRUE;}
@@ -50,6 +50,8 @@ static NTSTATUS Checkout(void *c,PPORTWAVERTSTREAM port,ULONG bytes,PMDL *mdl,PU
  else if(o->buffer.mdl){if(!bytes||bytes>o->buffer.bytes)s=STATUS_BUFFER_TOO_SMALL;}
  else {
   if(bytes<8192||bytes>65536)s=STATUS_INVALID_BUFFER_SIZE;
+  if(NT_SUCCESS(s)&&!o->leased){s=o->r.acquireInput(o->r.context,48000);if(NT_SUCCESS(s))o->leased=TRUE;else o->failure=s;}
+  if(NT_SUCCESS(s)&&(bytes<8192||bytes>65536))s=STATUS_INVALID_BUFFER_SIZE;
   if(NT_SUCCESS(s))s=Mt8167AllocateBuffer(port,bytes,&o->buffer);
   if(NT_SUCCESS(s))s=Mt8167WaveDmaMapCapture(o->r.adapter,o->r.pdo,o->buffer.mdl,o->buffer.bytes,&o->dma);
   /* A timeout may leave a pending callback owning the adapter/MDL. Retain
@@ -111,11 +113,15 @@ NTSTATUS Mt8167CaptureCreate(const Mt8167CaptureResources *r,Mt8167CaptureOwner 
     !r->reference||!r->dereference||!r->queryLatency||!r->acquireInput||!r->releaseUnexposed)return STATUS_INVALID_PARAMETER;
  Mt8167CaptureOwner *o=(Mt8167CaptureOwner *)ExAllocatePoolWithTag(NonPagedPool,sizeof(*o),CAP_TAG);
  if(!o)return STATUS_INSUFFICIENT_RESOURCES;RtlZeroMemory(o,sizeof(*o));o->r=*r;o->refs=1;KeInitializeMutex(&o->lock,0);ExInitializeRundownProtection(&o->positions);r->reference(r->context);
- NTSTATUS s=r->queryLatency(r->context,&o->api.captureLatency);
- if(!NT_SUCCESS(s)){r->dereference(r->context);ExFreePoolWithTag(o,CAP_TAG);return s;}
- s=r->acquireInput(r->context,48000);
- /* Failed acquisition may have changed analog hardware; retain provider. */
- if(!NT_SUCCESS(s)){o->failure=s;return s;}o->leased=TRUE;
+ NTSTATUS s=r->queryLatency(r->context,&o->api.captureLatency);o->latencyStatus=s;
+ if(s==STATUS_NOT_SUPPORTED){
+  /* Explicitly unknown: adapter rejects standard HWLATENCY requests. This
+   * sentinel is not exported as valid delay, and never gates real RX DMA. */
+  o->api.captureLatency.FifoSize=MAXULONG;o->api.captureLatency.ChipsetDelay=MAXULONG;
+  o->api.captureLatency.CodecDelay=MAXULONG;
+ }else if(!NT_SUCCESS(s)){r->dereference(r->context);ExFreePoolWithTag(o,CAP_TAG);return s;}
+ /* Acquisition is deferred until the first capture buffer checkout, so mere
+  * endpoint publication cannot seize the playback/HFP hardware owner. */
  o->engine.io.context=o;o->engine.io.read=Read;o->engine.io.write=Write;
  o->api.capture=TRUE;o->api.context=o;o->api.reference=Reference;o->api.dereference=Dereference;
  o->api.allocate=Allocate;o->api.freeBuffer=Free;o->api.start=Start;o->api.stop=Stop;
@@ -123,6 +129,19 @@ NTSTATUS Mt8167CaptureCreate(const Mt8167CaptureResources *r,Mt8167CaptureOwner 
  *out=o;return STATUS_SUCCESS;
 }
 const Mt8167StreamBackend *Mt8167CaptureBackend(Mt8167CaptureOwner *o){return o&&!o->closed&&!o->failure?&o->api:NULL;}
+NTSTATUS Mt8167CaptureSnapshot(Mt8167CaptureOwner*o,struct a04_capture_status*p) {
+ if(!o||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ RtlZeroMemory(p,sizeof(*p));p->bytes=sizeof(*p);p->schema=1;
+ KeWaitForSingleObject(&o->lock,Executive,KernelMode,FALSE,NULL);
+ p->online=!o->closed;p->leased=o->leased;p->running=o->engine.running;
+ p->fault=o->failure;p->irq_events=(ULONG)InterlockedCompareExchange(&o->irqEvents,0,0);
+ p->dma_base=o->engine.base;p->dma_bytes=o->engine.bytes;p->latency_status=o->latencyStatus;p->valid=1;
+ if(o->interrupt&&o->engine.running&&!o->failure){
+  KeSynchronizeExecution(o->interrupt,PositionSynchronized,o);
+  if(!o->failure){p->position_bytes=o->position;p->valid|=2;}else p->fault=o->failure;
+ }
+ KeReleaseMutex(&o->lock,FALSE);return STATUS_SUCCESS;
+}
 NTSTATUS Mt8167CaptureRevoke(Mt8167CaptureOwner *o)
 {
  if(!o||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;

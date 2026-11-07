@@ -29,6 +29,10 @@ NTSTATUS Mt8167PnpBackendSnapshot(Mt8167PnpBackend *,struct a04_audio_snapshot *
 #include "hfp_provider.h"
 NTSTATUS Mt8167PnpBackendHfpStart(Mt8167PnpBackend *,PDEVICE_OBJECT,PRESOURCELIST,Mt8167HfpOwner **);
 #endif
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+struct Mt8167CaptureOwner;
+NTSTATUS Mt8167PnpBackendCreateCapture(Mt8167PnpBackend *,Mt8167CaptureOwner **);
+#endif
 void Mt8167PnpBackendRevoke(Mt8167PnpBackend *owner);
 void Mt8167PnpBackendReference(Mt8167PnpBackend *);
 void Mt8167PnpBackendRelease(Mt8167PnpBackend *owner);

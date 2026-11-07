@@ -1,4 +1,9 @@
 #include "pnp_backend.h"
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+#include "capture_owner.h"
+#include "../../bus/mt8167-shared/capture_interface.h"
+extern "C" NTSTATUS Mt8167QueryCaptureParent(PDEVICE_OBJECT,A04_CAPTURE_INTERFACE *);
+#endif
 #if defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
 #include "common_dma.h"
 #include "dma_adapter.h"
@@ -79,6 +84,9 @@ extern "C" int Mt8167SilentDmaMiniportEnabled(void);
 #define OWNER_TAG 'OwnA'
 struct Mt8167PnpBackend {
     Mt8167StreamBackend iface;
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+    A04_CAPTURE_INTERFACE captureParent;
+#endif
     volatile LONG refs;
     KMUTEX mutex;
     EX_RUNDOWN_REF positions;
@@ -188,6 +196,10 @@ static void OwnerDereference(void *ctx)
 #if defined(A04_AUDIO_QUERY_SHARED) && A04_AUDIO_QUERY_SHARED
     if (o->parentClient.bound && Mt8167AudioParentClose(&o->parentClient)) return;
 #endif
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+    if(o->captureParent.Header.InterfaceDereference)
+        o->captureParent.Header.InterfaceDereference(o->captureParent.Header.Context);
+#endif
     o->adapter->DmaOperations->PutDmaAdapter(o->adapter);
     ObDereferenceObject(o->pdo);
     ExFreePoolWithTag(o,OWNER_TAG);
@@ -284,7 +296,7 @@ static NTSTATUS OwnerUnbindWave(void *ctx,PMDL mdl) {
 }
 #endif
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
-#if defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
+#if (defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER) || (defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE)
 static NTSTATUS OwnerConnectMaskedIrq(Mt8167PnpBackend *);
 #endif
 static NTSTATUS OwnerCheckout(void *ctx,PPORTWAVERTSTREAM port,ULONG bytes,PMDL *mdl,PULONG actual)
@@ -293,7 +305,7 @@ static NTSTATUS OwnerCheckout(void *ctx,PPORTWAVERTSTREAM port,ULONG bytes,PMDL 
     if(!o || !port || !mdl || !actual || !bytes || bytes>1048576 ||
        KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
     *mdl=NULL;*actual=0;OwnerLock(o);NTSTATUS result=STATUS_DEVICE_NOT_READY;
-#if defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
+#if (defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER) || (defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE)
     if(o->online&&!o->shared.leased){result=OwnerConnectMaskedIrq(o);if(!NT_SUCCESS(result)){OwnerUnlock(o);return result;}}
 #endif
     if(o->online && !o->enginePoison && !o->waveProbePending &&
@@ -803,7 +815,7 @@ static NTSTATUS CreateBackend(PDEVICE_OBJECT pdo,PRESOURCELIST resources,Mt8167P
         o->online=FALSE;OwnerDereference(o);return STATUS_DEVICE_NOT_READY;
     }
     o->afeBound=TRUE;
-#if !defined(A04_AUDIO_HFP_PROVIDER) || !A04_AUDIO_HFP_PROVIDER
+#if (!defined(A04_AUDIO_HFP_PROVIDER) || !A04_AUDIO_HFP_PROVIDER) && (!defined(A04_AUDIO_CAPTURE) || !A04_AUDIO_CAPTURE)
 
 #if A04_AUDIO_START_PERSIST
     if(record)record->stage=A04_START_IRQ;
@@ -828,6 +840,42 @@ NTSTATUS Mt8167PnpBackendCreateWithRecord(PDEVICE_OBJECT pdo,PRESOURCELIST resou
 {return CreateBackend(pdo,resources,out,record);}
 #endif
 
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+static NTSTATUS CaptureAcquire(PVOID ctx,ULONG rate) {
+ Mt8167PnpBackend*o=static_cast<Mt8167PnpBackend*>(ctx);int rc;
+ if(!o->online)return STATUS_DEVICE_NOT_READY;
+ rc=o->captureParent.AcquireInput(o->captureParent.Header.Context,rate);
+ if(rc)return rc==-1?STATUS_DEVICE_BUSY:STATUS_DEVICE_HARDWARE_ERROR;
+ if(o->captureParent.PrepareMaskedIrq(o->captureParent.Header.Context,o->afe.base,0x1000))
+  return STATUS_DEVICE_HARDWARE_ERROR;
+ return STATUS_SUCCESS;
+}
+static NTSTATUS CaptureRelease(PVOID ctx) {
+ Mt8167PnpBackend*o=static_cast<Mt8167PnpBackend*>(ctx);
+ return o->captureParent.ReleaseUnexposed(o->captureParent.Header.Context)?STATUS_DEVICE_BUSY:STATUS_SUCCESS;
+}
+static NTSTATUS CaptureLatency(PVOID ctx,KSRTAUDIO_HWLATENCY*p) {
+ Mt8167PnpBackend*o=static_cast<Mt8167PnpBackend*>(ctx);
+ return o->captureParent.QueryLatency(o->captureParent.Header.Context,&p->FifoSize,&p->ChipsetDelay,&p->CodecDelay);
+}
+NTSTATUS Mt8167PnpBackendCreateCapture(Mt8167PnpBackend*o,Mt8167CaptureOwner**out) {
+ if(!o||!out||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ *out=NULL;OwnerLock(o);
+ NTSTATUS s=o->online?Mt8167QueryCaptureParent(o->pdo,&o->captureParent):STATUS_DEVICE_NOT_READY;
+ if(NT_SUCCESS(s)){
+  if(!o->captureParent.AcquireInput||!o->captureParent.PrepareMaskedIrq||
+     !o->captureParent.ReleaseUnexposed||!o->captureParent.QueryLatency)s=STATUS_DEVICE_CONFIGURATION_ERROR;
+  else {
+   Mt8167CaptureResources r={};r.pdo=o->pdo;r.afe=o->afe.base;r.adapter=o->adapter;
+   r.vector=o->interrupt.vector;r.level=o->interrupt.level;r.affinity=o->interrupt.affinity;r.mode=o->interrupt.mode;
+   r.context=o;r.reference=OwnerReference;r.dereference=OwnerDereference;
+   r.queryLatency=CaptureLatency;r.acquireInput=CaptureAcquire;r.releaseUnexposed=CaptureRelease;
+   s=Mt8167CaptureCreate(&r,out);
+  }
+ }
+ OwnerUnlock(o);return s;
+}
+#endif
 NTSTATUS Mt8167PnpBackendInterrupt(Mt8167PnpBackend *o,Mt8167PnpInterrupt *interrupt)
 {
     NTSTATUS status;

@@ -72,3 +72,14 @@ statusから再latchしてからcodec clockを戻す。STOPレジスタだけで
 このstate machineは親WDF callbackへ未接続。実resource予約/電源/drain callbackと
 実FIFO/codec latencyの根拠が揃うまでcapture endpointの生成は行わない。
 親版未予約、既存1010/Audio1007およびtrial51のbytesは変更しない。
+
+## 親1020接続作業の中断checkpoint
+
+親1020予約（main指示）。1010/SD1をmergeした基点7dccbd87へ、独立capture
+QUERY_INTERFACE、親clock/VAUD/ADC callback、lazy取得、PortCls録音pairのPnP接続、
+固定KS録音client草稿を追加。GPU媒体優先への担当切替で中断した。
+このcheckpointはcompile未実施・build recipe未接続で、署名候補ではない。
+親/playbackとcaptureは最初のstreamが排他取得してresetまで保持する。
+GetHWLatencyはvoidで未対応statusを返せないためKS queryの未対応gate草稿を含む。
+WaveRT一般互換/latency仕様適合は未検証。未測定ゼロlatencyは公開しない。
+51mediaと配置済み親1010/Audio1007は不変。

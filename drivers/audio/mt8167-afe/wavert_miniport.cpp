@@ -356,7 +356,7 @@ NTSTATUS Mt8167NewMiniportWithBackend(PMINIPORTWAVERT *out, const Mt8167StreamBa
     if(b && (!b->checkout || !b->checkin || !b->setState))return STATUS_INVALID_PARAMETER;
 #endif
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
-    if(b && (!b->bindWaveBuffer || !b->unbindWaveBuffer)) return STATUS_INVALID_PARAMETER;
+    if(b && !b->capture && (!b->bindWaveBuffer || !b->unbindWaveBuffer)) return STATUS_INVALID_PARAMETER;
 #endif
     void *mem=ExAllocatePoolWithTag(NonPagedPool,sizeof(Miniport),AUDIO_TAG);if(!mem)return STATUS_INSUFFICIENT_RESOURCES;
     *out=new(mem) Miniport(b);return STATUS_SUCCESS;

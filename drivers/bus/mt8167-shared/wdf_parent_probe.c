@@ -59,6 +59,16 @@
 #endif
 #include "wifi_interface.h"
 #include "audio_owner.h"
+#ifndef A04_SHARED_CAPTURE
+#define A04_SHARED_CAPTURE 0
+#endif
+#if A04_SHARED_CAPTURE
+#include "capture_input_owner.h"
+#include "capture_interface.h"
+#if !A04_SHARED_ENGINE_PCM || !A04_SHARED_FIRST_PLAYBACK
+#error Capture requires the matched retained Engine parent profile
+#endif
+#endif
 #include "usb_interface.h"
 #include "usb_owner.h"
 #ifndef A04_SHARED_USB_ONLY
@@ -204,7 +214,10 @@ typedef struct {
 #if A04_SHARED_SD_POWER
  struct a04_sd_power sdPower;
 #endif
- PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio; struct a04_usb_owner usb; ULONG wifiGeneration; int wifiActive;
+ PVOID topck,infra,gpio,pwrap,apmixed; ULONG apmixedLength; FAST_MUTEX pwrapLock; volatile LONG admissionClosed,removed; struct a04_pwrap_owner pmic; struct a04_register_owner regs; struct a04_audio_owner audio;
+#if A04_SHARED_CAPTURE
+struct a04_capture_input_owner captureInput;
+#endif struct a04_usb_owner usb; ULONG wifiGeneration; int wifiActive;
 #if A04_SHARED_WIFI_RUNTIME
 struct a04_rtc32k_lease wifiRtc;
 #endif
@@ -665,6 +678,9 @@ static int ParentFirstUnmuteReady(void *context) {
     return 0;
 }
 #endif
+#if A04_SHARED_CAPTURE
+#include "capture_parent.inc"
+#endif
 static int ParentAudioAcquire(PVOID context,ULONG rate) {
     A04_PARENT_CONTEXT *c;int result;
 #if A04_SHARED_FIRST_PLAYBACK
@@ -683,6 +699,9 @@ static int ParentAudioAcquire(PVOID context,ULONG rate) {
     }
 #if A04_SHARED_HFP
     if(c->hfpActive){ParentUnlock(c);WdfDeviceResumeIdle((WDFDEVICE)context);return -1;}
+#endif
+    #if A04_SHARED_CAPTURE
+    if(c->captureInput.reserved){ParentUnlock(c);WdfDeviceResumeIdle((WDFDEVICE)context);return -1;}
 #endif
     result=a04_audio_owner_acquire(&c->audio,rate);
 #if A04_SHARED_FIRST_PLAYBACK
@@ -783,7 +802,12 @@ static int ParentAudioPrepareIrq(PVOID context,PVOID afe,ULONG length) {
     A04_PARENT_CONTEXT *c;volatile UCHAR *base;ULONG dac,irq,irq2,status;int result=-1;
     if(!context || !afe || length!=0x1000 || KeGetCurrentIrql()!=PASSIVE_LEVEL)return -1;
     c=ParentContext((WDFDEVICE)context);if(ParentLock(c))return -1;
-    if(afe!=c->audioAfe || !c->audio.online || !c->audio.leased || c->audio.poisoned ||
+    if(afe!=c->audioAfe || !c->audio.online || c->audio.poisoned ||
+#if A04_SHARED_CAPTURE
+       (!c->audio.leased && (!c->captureInput.ready || c->captureInput.poisoned)) ||
+#else
+       !c->audio.leased ||
+#endif
        !c->pmic.online || !c->audioTopClock.held || c->audioTopClock.poisoned ||
        !c->afeClockHeld || c->afeClockPoisoned)goto done;
     base=(volatile UCHAR *)afe;
@@ -1154,6 +1178,9 @@ static NTSTATUS ParentUnmap(A04_PARENT_CONTEXT *c)
     if(c->hfpActive||c->hfpController.context)return STATUS_DEVICE_BUSY;
 #endif
     if(c->audio.poisoned || c->audio.leased || c->audioAfe || c->usb.leased)return STATUS_DEVICE_BUSY;
+#if A04_SHARED_CAPTURE
+    if(c->captureInput.reserved||c->captureInput.poisoned)return STATUS_DEVICE_BUSY;
+#endif
 #if A04_SHARED_SD_POWER
     if(c->sdPower.held || c->sdPower.poisoned)return STATUS_DEVICE_BUSY;
 #endif
@@ -1461,6 +1488,12 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     if(base==0xffffffffu) {
         /* AFE synthesized PDO forwards only the real parent-bus DMA interface,
          * exactly as Engine1006; no fabricated translation/provider methods. */
+        #if A04_SHARED_CAPTURE
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04CaptureInterfaceGuid,NULL);
+        query.SendQueryToParentStack=TRUE;
+        status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+#endif
         WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&GUID_BUS_INTERFACE_STANDARD,NULL);
         query.SendQueryToParentStack=TRUE;
         status=WdfDeviceAddQueryInterface(child,&query);
@@ -1489,6 +1522,12 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
          * never return fabricated bus methods or an identity-translation stub.
          * WDF_QUERY_INTERFACE_CONFIG.SendQueryToParentStack is the documented
          * PDO forwarding path. Existing touch/USB/WiFi interfaces are unchanged. */
+        #if A04_SHARED_CAPTURE
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04CaptureInterfaceGuid,NULL);
+        query.SendQueryToParentStack=TRUE;
+        status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+#endif
         WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&GUID_BUS_INTERFACE_STANDARD,NULL);
         query.SendQueryToParentStack=TRUE;
         status=WdfDeviceAddQueryInterface(child,&query);
@@ -1600,6 +1639,17 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     thermalIface.VerifyOwnership=ParentThermalVerifyOwnership;
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&thermalIface,&A04SharedThermalInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
+#endif
+#if A04_SHARED_CAPTURE
+    {A04_CAPTURE_INTERFACE capture;RtlZeroMemory(&capture,sizeof(capture));
+     ParentCaptureInitialize(ParentContext(dev));
+     capture.Header.Size=sizeof(capture);capture.Header.Version=A04_CAPTURE_INTERFACE_VERSION;
+     capture.Header.Context=dev;capture.Header.InterfaceReference=ParentInterfaceReference;
+     capture.Header.InterfaceDereference=ParentInterfaceDereference;
+     capture.AcquireInput=ParentCaptureAcquire;capture.PrepareMaskedIrq=ParentAudioPrepareIrq;
+     capture.ReleaseUnexposed=ParentCaptureRelease;capture.QueryLatency=ParentCaptureLatency;
+     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&capture,&A04CaptureInterfaceGuid,NULL);
+     status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;}
 #endif
     RtlZeroMemory(&audioIface,sizeof(audioIface));
     audioIface.Header.Size=sizeof(audioIface);audioIface.Header.Version=A04_SHARED_AUDIO_INTERFACE_VERSION;

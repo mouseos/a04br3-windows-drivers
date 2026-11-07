@@ -5,11 +5,18 @@
 #include "start_record.h"
 #if defined(A04_MT8167_OWNER_DIAGNOSTIC) && A04_MT8167_OWNER_DIAGNOSTIC && defined(A04_MT8167_WAVERT_DIAGNOSTIC) && A04_MT8167_WAVERT_DIAGNOSTIC && defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
 #include "pnp_backend.h"
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+#include "capture_owner.h"
+extern "C" NTSTATUS Mt8167LatencyPropertyGate(PIRP,BOOLEAN *);
+#endif
 #if defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
 #include "hfp_power.h"
 #endif
 struct Mt8167DeviceExtension {
     ULONG_PTR portclsReserved[PORT_CLASS_DEVICE_EXTENSION_SIZE / sizeof(ULONG_PTR)]; Mt8167PnpBackend *owner;
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+    Mt8167CaptureOwner *capture;
+#endif
 #if defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
     Mt8167HfpPower *hfpPower;
 #endif
@@ -20,6 +27,23 @@ struct Mt8167DeviceExtension {
 #if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
 static NTSTATUS Mt8167ControlDispatch(PDEVICE_OBJECT device,PIRP irp) {
     PIO_STACK_LOCATION stack=IoGetCurrentIrpStackLocation(irp);
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+    {BOOLEAN handled=FALSE;NTSTATUS gated=Mt8167LatencyPropertyGate(irp,&handled);
+     if(handled){irp->IoStatus.Status=gated;irp->IoStatus.Information=0;IoCompleteRequest(irp,IO_NO_INCREMENT);return gated;}}
+#endif
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+    if(stack->Parameters.DeviceIoControl.IoControlCode==A04_CAPTURE_READ_STATUS){
+     Mt8167DeviceExtension*ext=static_cast<Mt8167DeviceExtension*>(device->DeviceExtension);
+     NTSTATUS s=STATUS_DEVICE_NOT_READY;ULONG_PTR bytes=0;
+     if(stack->Parameters.DeviceIoControl.InputBufferLength||!irp->AssociatedIrp.SystemBuffer||
+        stack->Parameters.DeviceIoControl.OutputBufferLength<sizeof(a04_capture_status))s=STATUS_INVALID_PARAMETER;
+     else if(InterlockedCompareExchange(&ext->diagReady,0,0)&&ExAcquireRundownProtection(&ext->diagRundown)){
+      if(ext->capture)s=Mt8167CaptureSnapshot(ext->capture,static_cast<a04_capture_status*>(irp->AssociatedIrp.SystemBuffer));
+      if(NT_SUCCESS(s))bytes=sizeof(a04_capture_status);ExReleaseRundownProtection(&ext->diagRundown);
+     }
+     irp->IoStatus.Status=s;irp->IoStatus.Information=bytes;IoCompleteRequest(irp,IO_NO_INCREMENT);return s;
+    }
+#endif
     if(stack->Parameters.DeviceIoControl.IoControlCode!=A04_AUDIO_READ_STATUS)return PcDispatchIrp(device,irp);
     Mt8167DeviceExtension *ext=static_cast<Mt8167DeviceExtension *>(device->DeviceExtension);
     NTSTATUS status=STATUS_DEVICE_NOT_READY;ULONG_PTR bytes=0;
@@ -48,6 +72,10 @@ static NTSTATUS Mt8167PnpDispatch(PDEVICE_OBJECT device,PIRP irp)
         if(ext->hfpPower){NTSTATUS stop=Mt8167HfpPowerStop(ext->hfpPower);if(!NT_SUCCESS(stop)){
             irp->IoStatus.Status=stop;irp->IoStatus.Information=0;IoCompleteRequest(irp,IO_NO_INCREMENT);return stop;}
             Mt8167HfpPowerRelease(ext->hfpPower);ext->hfpPower=NULL;}
+#endif
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+        if(ext->capture){NTSTATUS s=Mt8167CaptureRevoke(ext->capture);if(!NT_SUCCESS(s)){
+          irp->IoStatus.Status=s;irp->IoStatus.Information=0;IoCompleteRequest(irp,IO_NO_INCREMENT);return s;}}
 #endif
         Mt8167PnpBackend *owner=static_cast<Mt8167PnpBackend *>(InterlockedExchangePointer(reinterpret_cast<PVOID volatile *>(&ext->owner),NULL));
         if (owner) { Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner); }
@@ -125,6 +153,12 @@ static NTSTATUS StartDeviceBody(PDEVICE_OBJECT device,PIRP irp,PRESOURCELIST res
         status=Mt8167RegisterWaveRt(device,irp,resources,miniport);miniport->Release(); }
     if (!NT_SUCCESS(status)) { Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);return status; }
     ext->owner=owner;
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+    status=Mt8167PnpBackendCreateCapture(owner,&ext->capture);
+    if(NT_SUCCESS(status))status=Mt8167NewMiniportWithBackend(&miniport,Mt8167CaptureBackend(ext->capture));
+    if(NT_SUCCESS(status)){status=Mt8167RegisterCaptureWaveRt(device,irp,resources,miniport);miniport->Release();}
+    if(!NT_SUCCESS(status))return status;
+#endif
 #if defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
     NTSTATUS hfpStatus=Mt8167HfpPowerCreate(device,owner,resources,&ext->hfpPower);
     if(!NT_SUCCESS(hfpStatus))return hfpStatus;
@@ -153,7 +187,7 @@ static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device,PIRP irp,PRESOURCELIST r
 #if A04_AUDIO_START_PERSIST
  Mt8167AudioStartRecord record;RtlZeroMemory(&record,sizeof(record));
  LARGE_INTEGER time;KeQuerySystemTime(&time);record.system_time_low=time.LowPart;record.system_time_high=(ULONG)time.HighPart;
- record.schema=1;record.bytes=sizeof(record);record.inf_revision=1006;record.stage=A04_START_RESOURCES;
+ record.schema=1;record.bytes=sizeof(record);record.inf_revision=1020;record.stage=A04_START_RESOURCES;
  NTSTATUS result=StartDeviceBody(device,irp,resources,&record);record.result=result;
  if(NT_SUCCESS(result))record.stage=A04_START_READY;
  NTSTATUS saved=Mt8167PersistStartRecord(&record);
@@ -168,7 +202,9 @@ NTSTATUS Mt8167AddDevice(PDRIVER_OBJECT driver, PDEVICE_OBJECT pdo)
 {
 #if defined(A04_MT8167_OWNER_DIAGNOSTIC) && A04_MT8167_OWNER_DIAGNOSTIC && defined(A04_MT8167_WAVERT_DIAGNOSTIC) && A04_MT8167_WAVERT_DIAGNOSTIC && defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
     return PcAddAdapterDevice(driver,pdo,PCPFNSTARTDEVICE(Mt8167StartDevice),
-#if defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+        4, /* Existing render pair plus actual capture pair; HFP profile separate. */
+#elif defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
         6, /* Preserve the existing 2 Engine slots plus 4 HFP slots. */
 #elif defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
         2,
@@ -178,7 +214,9 @@ NTSTATUS Mt8167AddDevice(PDRIVER_OBJECT driver, PDEVICE_OBJECT pdo)
         sizeof(Mt8167DeviceExtension));
 #else
     return PcAddAdapterDevice(driver, pdo, PCPFNSTARTDEVICE(Mt8167StartDevice),
-#if defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+        4, /* Existing render pair plus actual capture pair; HFP profile separate. */
+#elif defined(A04_AUDIO_HFP_PROVIDER) && A04_AUDIO_HFP_PROVIDER
         6, /* Preserve the existing 2 Engine slots plus 4 HFP slots. */
 #elif defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
         2,
