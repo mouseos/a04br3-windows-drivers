@@ -454,9 +454,9 @@ if($ServiceName -ceq 'MT8167RenderSingleGpu') {
     if($IncludeHardwareProbe -or $RearmEngineProbe -or $RearmFixedGpuDeviceInstall -or $InspectFixedGpuDeviceInstall -or !$EnginePreservationPlanPath -or $ExpectedEnginePreservationPlanSha256 -cnotmatch '^[0-9a-f]{64}$'){throw 'Single GPU requires explicit Engine-preservation-only plan'}
     if((Hash-File $EnginePreservationPlanPath) -cne $ExpectedEnginePreservationPlanSha256){throw 'Engine preservation plan hash mismatch'}
     $enginePreservePlan=Get-Content $EnginePreservationPlanPath -Raw|ConvertFrom-Json
-    if($enginePreservePlan.schema -ne 1 -or $enginePreservePlan.profile -cne 'render-single-gpu315-run99-v1' -or $enginePreservePlan.backup_manifest_sha256 -cne '04ceac86368f5e8da14c84f62bb12637cb971cc0aa3dd9f38a86869459e1d5a3'){throw 'Fixed fresh94 native preservation required'}
+    if($enginePreservePlan.schema -ne 1 -or $enginePreservePlan.profile -cne 'render-single-gpu316-run101-v1' -or $enginePreservePlan.backup_manifest_sha256 -cne '77f30a01319777e107b2d2bb0762be9815df0a18bd7785020837a4cf62c8ba25'){throw 'Fixed fresh94 native preservation required'}
     $sgPlan=$enginePreservePlan.single_gpu_rearm
-    if($sgPlan.schema -ne 1 -or $sgPlan.service -cne 'MT8167RenderSingleGpu' -or $sgPlan.maximum_rearms -ne 1 -or $sgPlan.data_directory -cne 'MT8167RenderSingleGpuRun99' -or @($sgPlan.diagnostic_policies).Count -ne 1 -or $sgPlan.diagnostic_policies[0] -cne 'd64c9165297bb602ac04be1d9053998c2f6f8da3581545b6be8b005d237fcdb5'){throw 'Fixed run97 to run99 rearm context required'}
+    if($sgPlan.schema -ne 1 -or $sgPlan.service -cne 'MT8167RenderSingleGpu' -or $sgPlan.maximum_rearms -ne 1 -or $sgPlan.data_directory -cne 'MT8167RenderSingleGpuRun101' -or @($sgPlan.diagnostic_policies).Count -ne 2 -or $sgPlan.diagnostic_policies[0] -cne 'd64c9165297bb602ac04be1d9053998c2f6f8da3581545b6be8b005d237fcdb5' -or $sgPlan.diagnostic_policies[1] -cne '6b00fa9f57696f19ad10ecdace497d0a3b1b4bcb861e98d7a8571e0ce23f19c3'){throw 'Fixed run97/run99 to run101 rearm context required'}
 } elseif($EnginePreservationPlanPath -or $ExpectedEnginePreservationPlanSha256){throw 'Engine preserve plan is single-GPU only'}
 $engineRearmPlan=$null;$engineRearmPlanHash=$null
 if($RearmEngineProbe) {
