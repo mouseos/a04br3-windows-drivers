@@ -69,7 +69,7 @@ $env:A04_MT8167_DISPLAY_BRIGHTNESS='1'
 
 scriptはcompile/link確認用で、`mt8167_brightness.cxx`を含めflagを全DOD TUへ渡す。
 生成build-check SYSをそのまま配布せず、主担当の正式package buildへ同じTU/flagを反映する。
-INF DriverVerは`11/06/2026,0.0.1.3`。既存0.0.1.2より新版で、環境時計の変更は不要。
+INF DriverVerは`11/06/2026,0.0.1.4`。既存0.0.1.2より新版で、環境時計の変更は不要。
 SYS/CAT署名とPnP package配置は既存の主担当transaction方式を使用する。
 
 UEFI正本の機種package用独立branch `work/mt8167-display-brightness` も必要。
@@ -107,3 +107,26 @@ GPIO enableを伴う0/OFF、CLK未初期化状態からの起動、ALS/自動輝
 - `Makefile`、`tests/mt8167_brightness_test.cpp`、`tests/brightness_wdk_stubs/*.h`: ホスト検証入口と型stub。
 - UEFI機種packageの`WindowsArm32/Acpi/DisplayProvider.asl`、`WindowsArm32/scripts/build-diagnostic.sh`、
   `Tests/check_display_brightness.py`、`WindowsArm32/DISPLAY-BRIGHTNESS.md`: 専有資源、flag/manifest、iasl検証。
+
+## 既署名SYSを再利用する修正版package
+
+run28では実SYS hashが候補と異なり、候補INFが0.0.1.2の同版だったとの主担当報告。
+source 0c73f27のINFは0.0.1.3だったが、包装されたINFをsourceと同一とみなしてはならない。
+現在のsource INFを0.0.1.4へ上げ、旧候補INFを入力にせずこのsource INFを必ず使う。
+
+既署名brightness候補SYSの期待SHA256は
+`71f4ddaec639045a8b7dc1aaa7bc4c341e3f5955e2bec3b00f7a1a91528c7dce`。
+このSYSは再compile・再署名しない。新CATは新INFと既署名SYSからInf2Catで生成し、CATだけを既存証明書で署名する。
+`sign-ge8300-display-test.ps1`はSYSも再署名するため、この再包装には使用しない。
+
+```powershell
+& .\tools\ci\repackage-signed-mt8167-display.ps1 `
+  -SignedSys <既署名brightness候補のmt8167-display.sys> `
+  -OutputDirectory (Join-Path (Get-Location) 'build\brightness-inf-1.4') `
+  -CatalogCertificateThumbprint <既存の署名証明書thumbprint>
+```
+
+scriptは固定SYS hash・埋込署名の存在、source INF新版、空の新出力directoryを要求し、
+CAT生成/署名後も入力/出力SYSが同一hashであることを確認する。環境時計・証明書storeは変更しない。
+OS側の既存証明書信頼とPnP適用は主担当の既存transaction方式で別途扱う。
+recipeは今回Windows/runnerで未実行。新INF/CAT作成と、適用後の実SYS hash確認を区別する。
