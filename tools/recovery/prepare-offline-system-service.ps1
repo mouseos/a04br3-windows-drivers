@@ -106,7 +106,16 @@ function Engine-DiagnosticFingerprint($ServiceKey,$Plan) {
                         try {
                             if($leaf.GetSubKeyNames().Count -or $leaf.GetValueNames().Count -gt 64) { throw 'Diagnostic leaf bound exceeded' }
                             $schema=[int]$leaf.GetValue('Schema',-1);$count=[int]$leaf.GetValue('TargetCount',-1);$clients=[int]$leaf.GetValue('ClientCount',-1)
-                            if($schema -notin @(1,2) -or $count -lt 5 -or $count -gt $(if($schema -eq 1){6}else{7}) -or $clients -notin @(2,3) -or $leaf.GetValue('PolicyHash') -cne $policy) { throw 'Diagnostic schema/count/policy mismatch' }
+                            $codecRender=$schema -eq 2 -and $count -eq 4 -and $clients -eq 2
+                            $legacyEngine=$schema -in @(1,2) -and $count -ge 5 -and $count -le $(if($schema -eq 1){6}else{7}) -and $clients -in @(2,3)
+                            if((!$codecRender -and !$legacyEngine) -or $leaf.GetValue('PolicyHash') -cne $policy) { throw 'Diagnostic schema/count/policy mismatch' }
+                            if($codecRender) {
+                                $codecIds=@('ACPI\BEN0001','MT8167\AFE','ACPI\MOU0001','ACPI\MOU0006')
+                                for($codecIndex=0;$codecIndex -lt 4;$codecIndex++) {
+                                    $codecName="Node${codecIndex}HardwareId"
+                                    if($leaf.GetValueKind($codecName) -ne [Microsoft.Win32.RegistryValueKind]::String -or $leaf.GetValue($codecName) -cne $codecIds[$codecIndex]) { throw 'Diagnostic fixed codec/render node mismatch' }
+                                }
+                            }
                             foreach($name in $leaf.GetValueNames()) {
                                 $kind=$leaf.GetValueKind($name);$v=$leaf.GetValue($name,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
                                 if($name -cmatch '^(Schema|Complete|RunId|Phase|TargetCount|ClientCount|ServiceResult|FileLogError|UartError|SnapshotWriteError)$' -or ($schema -eq 2 -and $name -cmatch '^(SystemVolumeFlushError|CompletionResult|PnpBatchResult|InstallFailureValid|InstallFailureTarget|InstallFailureStep|AllInstallStepsSucceeded|DiagnosticArmed|RebootPending|DeferredPendingStatus|DiagnosticAttemptedStatus|RebootAttemptedStatus)$')) {
@@ -117,7 +126,8 @@ function Engine-DiagnosticFingerprint($ServiceKey,$Plan) {
                                     $index=[int]$Matches[1]
                                     if($index -ge $count -or $kind -ne [Microsoft.Win32.RegistryValueKind]::String) { throw 'Diagnostic node ID bound/type mismatch' }
                                     $ids=@('ACPI\BEN0001','MT8167\AFE','MT8167\USB20','A04BR3\MT6630SDIO','ACPI\MOU0007')
-                                    if($index -lt 5) { if($v -cne $ids[$index]) { throw 'Diagnostic fixed node mismatch' } }
+                                    if($codecRender) { if($v -cne $codecIds[$index]) { throw 'Diagnostic fixed codec/render node mismatch' } }
+                                    elseif($index -lt 5) { if($v -cne $ids[$index]) { throw 'Diagnostic fixed node mismatch' } }
                                     elseif($index -eq 5) { if($v -cnotin @('ACPI\MOU0006','ACPI\MOU0013') -or ($schema -eq 1 -and $v -cne 'ACPI\MOU0006')) { throw 'Diagnostic optional node mismatch' } }
                                     elseif($v -cne 'ACPI\MOU0013' -or $leaf.GetValue('Node5HardwareId') -cne 'ACPI\MOU0006') { throw 'Diagnostic GPU/SD order mismatch' }
                                 } else {
