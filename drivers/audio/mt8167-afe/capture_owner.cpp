@@ -94,7 +94,8 @@ static NTSTATUS Position(void *c,PKSAUDIO_POSITION p)
  NTSTATUS s=STATUS_DEVICE_NOT_READY;
  if(!o->closed&&!o->failure&&o->interrupt&&o->engine.running){
   KeSynchronizeExecution(o->interrupt,PositionSynchronized,o);s=o->failure;
-  if(NT_SUCCESS(s)){KeMemoryBarrier();p->PlayOffset=o->position;p->WriteOffset=o->position;}
+  if(NT_SUCCESS(s)){/* Compiler + architectural fence; no WDK _ReadWriteBarrier runtime import. */
+  __atomic_thread_fence(__ATOMIC_SEQ_CST);p->PlayOffset=o->position;p->WriteOffset=o->position;}
  }
  ExReleaseRundownProtection(&o->positions);return s;
 }

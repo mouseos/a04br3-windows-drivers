@@ -148,7 +148,7 @@ static DWORD run(void){
  }
  /* Read only aggregate bytes after stop; no microphone samples written to
   * disk/stdout, and no audible/acoustic quality assertion. */
- MemoryBarrier();for(i=0;i<mapping.ActualBufferSize;i++){
+ __atomic_thread_fence(__ATOMIC_SEQ_CST);for(i=0;i<mapping.ActualBufferSize;i++){
   BYTE b=((volatile BYTE*)mapping.BufferAddress)[i];hash=(hash^b)*16777619u;if(b)nonzero++;
  }
  line("pcm-aggregate",mapping.ActualBufferSize,hash,nonzero);
