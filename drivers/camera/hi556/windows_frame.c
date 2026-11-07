@@ -64,7 +64,7 @@ NTSTATUS a04_cam_frame(A04_CAM_CONTEXT *c,WDFREQUEST request,void *out,size_t ou
  status=allocate(c);if(!NT_SUCCESS(status)){a04_cam_free_dma(c);goto release;}
  status=a04_cam_identify(c);if(!NT_SUCCESS(status))goto release;
  sensor_touched=TRUE;status=tables(c);c->status.sensor_status=status;if(!NT_SUCCESS(status))goto stop;
- RtlFillMemory(c->common,A04_CAM_ALLOC_BYTES,0xa5);filled=TRUE;KeMemoryBarrier();
+ RtlFillMemory(c->common,A04_CAM_ALLOC_BYTES,0xa5);filled=TRUE;__atomic_thread_fence(__ATOMIC_SEQ_CST);
  if(a04_hi556_receiver_arm(&o,&c->status.receiver,(uint64_t)c->logical.QuadPart+4096,A04_HI556_FRAME_BYTES)){status=STATUS_DEVICE_NOT_READY;goto stop;}
  status=reg(c,0x0114,0x0100);c->status.sensor_status=status;if(!NT_SUCCESS(status))goto stop;
  /* A monotonic 3s deadline AND a finite iteration cap. Polling does not
@@ -84,7 +84,7 @@ stop:
  c->status.stop_status=stopped;
  if(done&&(uint32_t)(c->status.receiver.sof_end-c->status.receiver.sof_start)!=1&&NT_SUCCESS(status))status=STATUS_DATA_ERROR;
  if(!NT_SUCCESS(a04_cam_qualified(c))){if(NT_SUCCESS(status))status=STATUS_DEVICE_NOT_READY;}
- KeMemoryBarrier();
+ __atomic_thread_fence(__ATOMIC_SEQ_CST);
  if(c->common&&filled){
   UCHAR *p=c->common;
   for(unsigned i=0;i<4096;i++)if(p[i]!=0xa5)c->status.receiver.guard_errors++;
