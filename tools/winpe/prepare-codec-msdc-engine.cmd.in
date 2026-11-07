@@ -9,6 +9,8 @@ if not exist C:\Windows\System32\MT8167EngineProbe\logs mkdir C:\Windows\System3
 if errorlevel 1 goto dismfail
 copy /b X:\a04br3\shared-io\clients\mt8167-capture-probe.exe C:\Windows\System32\MT8167EngineProbe\clients\ >> "%A04_REPORT%" 2>&1
 if errorlevel 1 goto dismfail
+copy /b X:\a04br3\shared-io\clients\ge8300-d3d-clear.exe C:\Windows\System32\MT8167EngineProbe\clients\ >> "%A04_REPORT%" 2>&1
+if errorlevel 1 goto dismfail
 if not exist C:\Windows\System32\MT8167EngineProbe\drivers\parent mkdir C:\Windows\System32\MT8167EngineProbe\drivers\parent >> "%A04_REPORT%" 2>&1
 if errorlevel 1 goto dismfail
 copy /b X:\a04br3\shared-io\parent\shared-parent.inf C:\Windows\System32\MT8167EngineProbe\drivers\parent\shared-parent.inf >> "%A04_REPORT%" 2>&1

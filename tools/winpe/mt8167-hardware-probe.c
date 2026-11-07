@@ -33,7 +33,7 @@
 #error Fixed brightness client requires explicit deferred Engine mode
 #endif
 #if A04_ENGINE_CODEC_MSDC
-#define A04_CLIENT_COUNT 1
+#define A04_CLIENT_COUNT 2
 #elif A04_ENGINE_BRIGHTNESS_CLIENT
 #define A04_CLIENT_COUNT 3
 #else
@@ -49,7 +49,7 @@
 static const WCHAR service_name[]=L"MT8167EngineProbe";
 static const WCHAR service_exe[]=L"MT8167EngineProbe.exe";
 #if A04_ENGINE_CODEC_MSDC
-static const WCHAR *const clients[A04_CLIENT_COUNT]={L"mt8167-capture-probe.exe"};
+static const WCHAR *const clients[A04_CLIENT_COUNT]={L"mt8167-capture-probe.exe",L"ge8300-d3d-clear.exe"};
 #else
 static const WCHAR *const clients[A04_CLIENT_COUNT]={L"mt6630-wlan-probe.exe",L"mt8167-audio-engine-probe.exe"
 #if A04_ENGINE_BRIGHTNESS_CLIENT
@@ -63,9 +63,9 @@ static const WCHAR service_exe[]=L"MT8167HardwareProbe.exe";
 static const WCHAR *const clients[2]={L"mt6630-wlan-probe.exe",L"mt8167-audio-first-playback.exe"};
 #endif
 #if A04_ENGINE_CODEC_MSDC
-static const WCHAR *const stdout_names[1]={L"capture.stdout.txt"};
-static const WCHAR *const stderr_names[1]={L"capture.stderr.txt"};
-static const DWORD limits[1]={120000u};
+static const WCHAR *const stdout_names[2]={L"capture.stdout.txt",L"gpu.stdout.txt"};
+static const WCHAR *const stderr_names[2]={L"capture.stderr.txt",L"gpu.stderr.txt"};
+static const DWORD limits[2]={120000u,120000u};
 #else
 static const WCHAR *const stdout_names[3]={L"wlan.stdout.txt",L"audio.stdout.txt",L"brightness.stdout.txt"};
 static const WCHAR *const stderr_names[3]={L"wlan.stderr.txt",L"audio.stderr.txt",L"brightness.stderr.txt"};
@@ -476,7 +476,7 @@ static HANDLE child_log(const WCHAR *name,SECURITY_ATTRIBUTES *sa)
 }
 static DWORD run_client(unsigned index)
 {
- WCHAR image[MAX_PATH],command[MAX_PATH+3];HANDLE image_lock=INVALID_HANDLE_VALUE;
+ WCHAR image[MAX_PATH],command[MAX_PATH+64];HANDLE image_lock=INVALID_HANDLE_VALUE;
  HANDLE output=INVALID_HANDLE_VALUE,error_output=INVALID_HANDLE_VALUE,input=INVALID_HANDLE_VALUE,job=NULL;
  SECURITY_ATTRIBUTES sa;STARTUPINFOEXW startup;PROCESS_INFORMATION child;JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit;
  LPPROC_THREAD_ATTRIBUTE_LIST attributes=NULL;SIZE_T bytes=0;HANDLE inherit[3],waits[2];DWORD error=0,wait,exit_code=0,got;unsigned n;
@@ -524,6 +524,9 @@ static DWORD run_client(unsigned index)
  memset(&startup,0,sizeof(startup));startup.StartupInfo.cb=sizeof(startup);startup.StartupInfo.dwFlags=STARTF_USESTDHANDLES;
  startup.StartupInfo.hStdInput=input;startup.StartupInfo.hStdOutput=output;startup.StartupInfo.hStdError=error_output;startup.lpAttributeList=attributes;
  command[0]=L'"';for(n=0;image[n];n++)command[n+1]=image[n];command[n+1]=L'"';command[n+2]=0;
+#if A04_ENGINE_CODEC_MSDC
+ if(index==1)lstrcatW(command,L" --hardware=PowerVR");
+#endif
  memset(&child,0,sizeof(child));
  if(log_error){error=log_error;goto done;}
  if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){error=ERROR_CANCELLED;goto done;}
@@ -668,7 +671,7 @@ static void WINAPI service_main(DWORD argc,WCHAR **argv)
 }
 static DWORD register_service(void)
 {
- SC_HANDLE manager,service;DWORD error;WCHAR command[MAX_PATH+3];unsigned n;
+ SC_HANDLE manager,service;DWORD error;WCHAR command[MAX_PATH+64];unsigned n;
  SERVICE_FAILURE_ACTIONSW actions;
  error=paths();if(error)return error;
  if(GetFileAttributesW(marker)!=INVALID_FILE_ATTRIBUTES)return ERROR_ALREADY_EXISTS;
