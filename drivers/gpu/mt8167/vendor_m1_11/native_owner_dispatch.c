@@ -61,7 +61,7 @@ static BOOLEAN begin_service(void *argument)
     if(!d->irq->masked || !d->irq->serial)return TRUE; /* real claim required */
     if(d->state==A04_NATIVE_DISPATCH_SUBMITTED){
         d->state=A04_NATIVE_DISPATCH_FINISHING;c->finish=TRUE;c->status=STATUS_SUCCESS;
-    }else if(d->state==A04_NATIVE_DISPATCH_ARMED || d->state==A04_NATIVE_DISPATCH_COMPLETE){
+    }else if(d->state==A04_NATIVE_DISPATCH_READY || d->state==A04_NATIVE_DISPATCH_ARMED || d->state==A04_NATIVE_DISPATCH_COMPLETE){
         c->status=a04_native_irq_rearm(d->irq,d->epoch,d->irq->serial);
     }
     return TRUE;

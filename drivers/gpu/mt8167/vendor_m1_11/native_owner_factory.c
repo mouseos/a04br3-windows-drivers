@@ -112,9 +112,27 @@ static int32_t create(void *p,const struct geo_surface_desc *d,uint64_t *id)
     RtlZeroMemory(r,sizeof(*r));r->desc=*d;r->id=++c->next_id;
     r->next=c->resources;c->resources=r;*id=r->id;return leave(c,STATUS_SUCCESS);
 }
+static NTSTATUS wait_boundary_locked(struct e_native_owner *c)
+{
+    ULONGLONG began=KeQueryInterruptTime();LARGE_INTEGER delay;
+    delay.QuadPart=-10000; /* PASSIVE 1ms wait, not a stall or fake ISR. */
+    for(;;){
+        if(c->closing || c->state!=E_OWNER_ACTIVE)return STATUS_DEVICE_BUSY;
+        if(c->allocation->irq.faulted || c->allocation->dispatch.state==A04_NATIVE_DISPATCH_FAULT)return STATUS_IO_DEVICE_ERROR;
+        if(c->job_state==E_JOB_NONE || c->job_state==E_JOB_COMPLETE)return STATUS_SUCCESS;
+        if(c->job_state!=E_JOB_PREPARED && c->job_state!=E_JOB_SUBMITTED)return STATUS_INVALID_DEVICE_STATE;
+        if(KeQueryInterruptTime()-began>=20000000u)return STATUS_IO_TIMEOUT;
+        /* The actual worker needs this mutex for SLC/GP/cache + fresh IRQ
+         * arming. Keep our rundown ref, but release mutex while it progresses.
+         * Submit/ISR use their real Dxgk lock and do not wait for this mutex. */
+        KeReleaseMutex(&c->mutex,FALSE);
+        (void)KeDelayExecutionThread(KernelMode,FALSE,&delay);
+        KeWaitForSingleObject(&c->mutex,Executive,KernelMode,FALSE,NULL);
+    }
+}
 static NTSTATUS cold_for_bind(struct e_native_owner *c)
 {
-    NTSTATUS s;
+    NTSTATUS s=wait_boundary_locked(c);if(!NT_SUCCESS(s))return s;
     if(c->job_state==E_JOB_NONE)return STATUS_SUCCESS;
     if(c->job_state!=E_JOB_COMPLETE)return STATUS_DEVICE_BUSY;
     /* Clear's retained target remains bound while the first real converted
@@ -180,8 +198,8 @@ static int32_t prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
 {
     struct e_native_owner *c=p;RGXFWIF_CCB_CTL k;NTSTATUS s;
     if(!job)return STATUS_INVALID_PARAMETER;*job=0;s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
-    if(!surface || surface!=c->surface || !c->allocation->binding || c->next_id==UINT64_MAX ||
-       (c->job_state!=E_JOB_NONE && c->job_state!=E_JOB_COMPLETE))return leave(c,STATUS_DEVICE_BUSY);
+    if(!surface || surface!=c->surface || !c->allocation->binding || c->next_id==UINT64_MAX)return leave(c,STATUS_DEVICE_BUSY);
+    s=wait_boundary_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
     /* No live rewrite of USC/PDS. Rebuild under the same adapter/retained MDL
      * after real normal retirement; subsequent boot has a new hardware epoch. */
     s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
@@ -332,8 +350,8 @@ static int32_t prepare_draw(void *p,const struct geo_draw_request *request,
     s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     if(request->target!=c->surface || request->vertex!=c->vertex || !c->vertex ||
        !c->allocation->binding || !c->allocation->vertex || c->next_id==UINT64_MAX ||
-       RtlCompareMemory(&c->description,&request->target_desc,sizeof(c->description))!=sizeof(c->description) ||
-       (c->job_state!=E_JOB_NONE && c->job_state!=E_JOB_COMPLETE))return leave(c,STATUS_INVALID_DEVICE_STATE);
+       RtlCompareMemory(&c->description,&request->target_desc,sizeof(c->description))!=sizeof(c->description))return leave(c,STATUS_INVALID_DEVICE_STATE);
+    s=wait_boundary_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
     offset=(uint64_t)request->state.first_vertex*16u+request->state.vertex_offset;
     end=offset+(uint64_t)request->state.vertex_count*16u;
     if(request->state.vertex_count!=3 || end>c->vertex_description.width)return leave(c,STATUS_INVALID_PARAMETER);

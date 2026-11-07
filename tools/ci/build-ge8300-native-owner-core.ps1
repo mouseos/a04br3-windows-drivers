@@ -152,7 +152,9 @@ try {
  @{source_commit=$commit;source_dirty=$false;candidate_default_off=$true;wdk_root=$WdkRoot;target='thumbv7-pc-windows-msvc';kmdf_dependency=$false;units=$units;compile_flags=$common;commands=$commands;reused_objects=$reuse;tools=$toolHashes;wdk_inputs=$wdkHashes;
   intrinsic_compat='obsolete WDK __ldrexd declaration-only alias, matching H c1a4a81; no replacement intrinsic implementation';
   linkcheck_requested=[bool]$LinkCheck;mdl_target_requested=[bool]$WithMdlTarget;owner_allocation_requested=[bool]$WithOwnerAllocation;kind='COFF objects/static library; optional native DLL solely for API link validation, not an installable driver';
-  owner_create_delete_implemented=$false;geo_full_control_ready=$false;runtime_verified=$false;sources=$sources;outputs=$productHashes}|ConvertTo-Json -Depth 8|Set-Content "$out\build-manifest.json"
+  owner_create_delete_implemented=[bool]$WithFactory;owner_control_v2_implemented=[bool]$WithFactory;draw_prepare_implemented=[bool]$WithFactory;factory_requested=[bool]$WithFactory;
+  geo_full_control_ready=$false;hardware_qualification_complete=$false;runtime_verified=$false;
+  qualification_note='Factory/control/draw implementation is compiled when requested; full_control_ready remains false until the matched parent/ACPI normal stop and dynamic draw are hardware qualified. It is not a source always-reject gate';sources=$sources;outputs=$productHashes}|ConvertTo-Json -Depth 8|Set-Content "$out\build-manifest.json"
 } finally {
  if($transcript){Stop-Transcript|Out-Null}
  $env:TEMP=$oldTemp;$env:TMP=$oldTmp

@@ -166,3 +166,28 @@ prepared discardはactual Dxgk lockで当該tokenのsubmitを先に閉じてか�
 
 H731のflat SM2 tokensはhostで実PCO実行し、Eのallowlist VS24/PS64と全bytes/metadataが
 一致した。source生成ログは指定ログ保存先 `windows-rt-native-h731-flat-pco-check.log`。
+
+
+## WDDM preemption / resetの保証範囲
+
+1 SubmitCommandはnative TA/3D pair1個。DMA-buffer boundaryはこのpairの実完了境界であり、
+triangle途中/instruction boundary/単独TA↔3D途中のpreemptは提供しない。H preempt_pendingで
+次publishを止め、現在jobがUFO/CCB/cleanup→SLC/GP→MDL cache→fresh実IRQで完了した後だけ
+DMA_PREEMPTEDを通知する。未publish prepared tokenは保持し、cancelは実discard経路。
+単なるFW IRQ/idle/pollをGPU_DONE/PREEMPTEDへ変換しない。
+
+resetは全所有GPUの正常FW idle/OFF→RGXStop/reset保持→parent domain-off→IRQ/worker rundownを
+要し、全TA/3D contextを退役し元MDL/SGを保持、外側epochを更新する。論理Node0/Engine0
+単一なら対象範囲は同node全体であり、別TA/3D engineの独立resetとは広告しない。
+現経路はFW hung/ACK不能/poison時に正常offを成功と偽らず保持するため、無応答からの
+per-engine TDR recovery成功を保証しない。PreemptionCapsだけの書換えでWDDM1.2適合としない。
+
+Clear/Renderは非同期。新bind/prepareは実PREPARED/SUBMITTEDが残る間、PASSIVEで最大2秒の
+actual boundary待ちを行いmutexを解放して実worker/IRQを進める。rundown refは保持し、
+closing/poison/timeoutならerrorで退役しない。Clear完了後だけcold rebootstrapする。
+READY中の実IRQもempty FWCCBを検査してrearmするが、job完了は返さない。
+
+旧d13 build helperのowner_create_delete_implemented=falseは旧stageの固定表記だった。
+本sourceはWithFactory時のimplementationフラグを実入力に合わせて訂正する。
+geo_full_control_ready=falseはmatched hardware qualification未完を意味し、常時拒否stubでない。
+既存immutable manifestは改竄せず、新build manifest/supplementで区別する。
