@@ -7,6 +7,10 @@ param(
     [string]$ExpectedLog2Sha256,
     [ValidateSet('MT8167DeviceInstall','MT8167HardwareProbe','MT8167EngineProbe')][string]$ServiceName='MT8167DeviceInstall',
     [switch]$IncludeHardwareProbe,
+    [switch]$RearmFixedGpuDeviceInstall,
+    [switch]$InspectFixedGpuDeviceInstall,
+    [string]$GpuRearmPlanPath,
+    [string]$ExpectedGpuRearmPlanSha256,
     [switch]$RearmEngineProbe,
     [string]$EngineRearmPlanPath,
     [string]$ExpectedEngineRearmPlanSha256,
@@ -87,6 +91,17 @@ function Inspect-Services($Root,$Plan,[bool]$Patch) {
             $values=Service-Values $spec
             $key=[MT8167OfflineHive.Native]::OpenPath($Root,($control+'\'+$spec.name),$true)
             $beforeFingerprint=$null
+            $gpuInspect=[bool]$Plan.gpu_inspect
+            if($gpuInspect) {
+                if($Patch -or $spec.name -cne 'MT8167DeviceInstall' -or !$key -or $key.GetValueNames().Count -ne 7) {
+                    if($key) { $key.Dispose() };throw 'GPU inspection requires exactly the existing disabled DeviceInstall registration'
+                }
+                $values['Start']=@('DWord',4)
+                $beforeFingerprint=[MT8167OfflineHive.Native]::ValueFingerprint($key)
+                if($Plan.gpu_inspect_fingerprint -and $beforeFingerprint -cne $Plan.gpu_inspect_fingerprint) {
+                    $key.Dispose();throw 'DeviceInstall raw fingerprint changed on clean reload'
+                }
+            }
             $rearm=$Patch -and $null -ne $Plan.engine_rearm
             if($rearm) {
                 if($spec.name -cne 'MT8167EngineProbe' -or !$key) { throw 'Rearm requires the existing fixed Engine service' }
@@ -96,17 +111,25 @@ function Inspect-Services($Root,$Plan,[bool]$Patch) {
                     $key.Dispose();throw 'Disabled Engine service raw fingerprint differs from the known exact seven-value registration'
                 }
             }
+            $gpuRearm=$Patch -and $null -ne $Plan.gpu_rearm
+            if($gpuRearm) {
+                if($rearm -or $spec.name -cne 'MT8167DeviceInstall' -or !$key) { throw 'GPU rearm requires only the existing fixed DeviceInstall service' }
+                $beforeFingerprint=[MT8167OfflineHive.Native]::ValueFingerprint($key)
+                if($beforeFingerprint -cne $Plan.gpu_rearm.disabled_service_fingerprint -or $key.GetValueNames().Count -ne 7) {
+                    $key.Dispose();throw 'Disabled DeviceInstall fingerprint differs from the pinned native GPU plan'
+                }
+            }
             if($key) {
                 # Accept an absent or compatible partial registration only; do not rearm disabled services.
                 foreach($name in $key.GetValueNames()) {
                     if(!$values.Contains($name)) { $key.Dispose();throw 'Unexpected existing one-shot service value' }
-                    $expected=$values[$name];if($rearm -and $name -eq 'Start') { $expected=@('DWord',4) };$kind=[Microsoft.Win32.RegistryValueKind]$expected[0]
+                    $expected=$values[$name];if(($rearm -or $gpuRearm) -and $name -eq 'Start') { $expected=@('DWord',4) };$kind=[Microsoft.Win32.RegistryValueKind]$expected[0]
                     $actual=$key.GetValue($name,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
                     $compatible=$key.GetValueKind($name) -eq $kind
                     if($kind -eq [Microsoft.Win32.RegistryValueKind]::MultiString) {
                         $compatible=$compatible -and (($actual -join "`0") -ceq ($expected[1] -join "`0"))
                     } elseif($name -eq 'ImagePath') {
-                        $compatible=$compatible -and (($actual -ceq $expected[1]) -or ($Patch -and $actual -ceq ([string]$expected[1]).Trim('"')))
+                        $compatible=$compatible -and (($actual -ceq $expected[1]) -or (($Patch -or $gpuInspect) -and $actual -ceq ([string]$expected[1]).Trim('"')))
                     } else { $compatible=$compatible -and ($actual -ceq $expected[1]) }
                     if(!$compatible) { $key.Dispose();throw ('Conflicting existing service value: '+$spec.name+'/'+$name) }
                 }
@@ -121,6 +144,9 @@ function Inspect-Services($Root,$Plan,[bool]$Patch) {
                     $expected=$values[$name];$actual=$key.GetValue($name,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
                     if($key.GetValueKind($name) -ne [Microsoft.Win32.RegistryValueKind]$expected[0]) { throw ('Service value type mismatch: '+$name) }
                     if($name -eq 'DependOnService') { if(($actual -join "`0") -cne ($expected[1] -join "`0")) { throw 'Dependency MULTI_SZ mismatch' } }
+                    elseif($gpuInspect -and $name -eq 'ImagePath') {
+                        if($actual -cne $expected[1] -and $actual -cne ([string]$expected[1]).Trim('"')) { throw 'GPU inspection ImagePath mismatch' }
+                    }
                     elseif($actual -cne $expected[1]) { throw ('Service value mismatch: '+$name) }
                     $actualValues[$name]=@{kind=[string]$key.GetValueKind($name);value=$actual}
                 }
@@ -174,6 +200,11 @@ if($InternalMode) {
                 $state.engine_rearm_plan_sha256=$plan.engine_rearm_plan_sha256
                 if($InternalMode -eq 'Patch') { $state.disabled_service_fingerprint=$state.services[0].before_fingerprint }
             }
+            if($plan.gpu_inspect) { $state.gpu_inspected_service_fingerprint=$state.services[0].before_fingerprint;$state.service_values_written=$false }
+            if($plan.gpu_rearm) {
+                $state.gpu_rearm_plan_sha256=$plan.gpu_rearm_plan_sha256
+                if($InternalMode -eq 'Patch') { $state.disabled_service_fingerprint=$state.services[0].before_fingerprint }
+            }
             $after=Related-Fingerprints $root $plan
             Check-RelatedFingerprints $after $before
             if($plan.related_fingerprints) { Check-RelatedFingerprints $after $plan.related_fingerprints }
@@ -207,6 +238,24 @@ if($RearmEngineProbe) {
     if($engineRearmPlan.schema -ne 1 -or $engineRearmPlan.service -cne 'MT8167EngineProbe' -or $engineRearmPlan.maximum_rearms -ne 1 -or
        $engineRearmPlan.disabled_service_fingerprint -cne 'dbbe363d2401dfc022606aba010c0e4888c5feab67c748ea5030b0eb3ba484c1') { throw 'Only the known disabled Engine registration can be rearmed' }
 } elseif($EngineRearmPlanPath -or $ExpectedEngineRearmPlanSha256) { throw 'Rearm plan requires explicit RearmEngineProbe opt-in' }
+$gpuRearmPlan=$null;$gpuRearmPlanHash=$null
+if($RearmFixedGpuDeviceInstall) {
+    if($RearmEngineProbe -or $ServiceName -cne 'MT8167DeviceInstall' -or $IncludeHardwareProbe -or !$GpuRearmPlanPath -or
+       $ExpectedGpuRearmPlanSha256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'GPU-only rearm requires a pinned native plan' }
+    $gpuRearmPlanHash=Hash-File $GpuRearmPlanPath
+    if($gpuRearmPlanHash -cne $ExpectedGpuRearmPlanSha256.ToLowerInvariant()) { throw 'GPU rearm plan SHA256 mismatch' }
+    $gpuRearmPlan=Get-Content -Raw -LiteralPath $GpuRearmPlanPath | ConvertFrom-Json
+    if($gpuRearmPlan.schema -ne 1 -or $gpuRearmPlan.service -cne 'MT8167DeviceInstall' -or $gpuRearmPlan.maximum_rearms -ne 1 -or
+       $gpuRearmPlan.candidate_source_commit -cne '04d0e573bd1bee7b619d25441f8ac05d28d5ccd5' -or
+       $gpuRearmPlan.disabled_service_fingerprint -cnotmatch '^[0-9a-f]{64}$') { throw 'Invalid fixed GPU rearm plan' }
+} elseif($GpuRearmPlanPath -or $ExpectedGpuRearmPlanSha256) { throw 'GPU plan requires explicit fixed GPU rearm opt-in' }
+if($InspectFixedGpuDeviceInstall) {
+    if($ServiceName -cne 'MT8167DeviceInstall' -or $IncludeHardwareProbe -or $RearmFixedGpuDeviceInstall -or $RearmEngineProbe -or
+       $GpuRearmPlanPath -or $ExpectedGpuRearmPlanSha256 -or $EngineRearmPlanPath -or $ExpectedEngineRearmPlanSha256) { throw 'GPU inspection cannot register, rearm or inspect another service' }
+    foreach($pin in @($ExpectedSystemSha256,$ExpectedLog1Sha256,$ExpectedLog2Sha256)) {
+        if($pin -notmatch '^[0-9a-fA-F]{64}$') { throw 'GPU inspection requires explicit fresh SYSTEM/LOG1/LOG2 SHA256 pins' }
+    }
+}
 if(!$SourceDirectory -or !$OutputDirectory) { throw 'SourceDirectory and a new OutputDirectory are required' }
 $source=(Resolve-Path -LiteralPath $SourceDirectory).Path
 $out=[IO.Path]::GetFullPath($OutputDirectory)
@@ -226,6 +275,11 @@ if($engineRearmPlan) {
     $plan.engine_rearm=$engineRearmPlan;$plan.engine_rearm_plan_sha256=$engineRearmPlanHash
     $report.engine_rearm_plan_sha256=$engineRearmPlanHash
 }
+if($gpuRearmPlan) {
+    $plan.gpu_rearm=$gpuRearmPlan;$plan.gpu_rearm_plan_sha256=$gpuRearmPlanHash
+    $report.gpu_rearm_plan_sha256=$gpuRearmPlanHash
+}
+if($InspectFixedGpuDeviceInstall) { $plan.gpu_inspect=$true;$report.service_values_written=$false }
 $planFile=Join-Path $out 'plan.json';Save-Json $planFile $plan
 $expected=@{SYSTEM=$ExpectedSystemSha256;'SYSTEM.LOG1'=$ExpectedLog1Sha256;'SYSTEM.LOG2'=$ExpectedLog2Sha256}
 function Invoke-BoundedWorker($Mode,$Directory,$Name,[int]$Seconds) {
@@ -264,8 +318,15 @@ try {
             if(!$pin -or $pin.sha256.ToLowerInvariant() -cne $report.source_files[$name].sha256 -or $pin.bytes -ne $report.source_files[$name].bytes) { throw 'Rearm plan and fresh native input differ' }
         }
     }
+    if($gpuRearmPlan) {
+        foreach($name in @('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')) {
+            $pin=$gpuRearmPlan.source_files.$name
+            if(!$pin -or $pin.sha256.ToLowerInvariant() -cne $report.source_files[$name].sha256 -or $pin.bytes -ne $report.source_files[$name].bytes) { throw 'GPU plan and fresh native input differ' }
+        }
+    }
     $report.input_header=Hive-Header (Join-Path $work 'SYSTEM')
-    $patch=Invoke-BoundedWorker 'Patch' $work 'patch-state' $TimeoutSeconds;$report.patch=$patch
+    $firstMode=if($InspectFixedGpuDeviceInstall){'Verify'}else{'Patch'}
+    $patch=Invoke-BoundedWorker $firstMode $work 'patch-state' $TimeoutSeconds;$report.patch=$patch
     if(!$patch.finished -or $patch.exit_code -ne 0 -or !$patch.state -or $patch.state.status -ne 'success') {
         $report.cleanup=Invoke-BoundedWorker 'Cleanup' $patch.mount 'cleanup-state' 5
         throw 'Native replay/patch/unload failed or timed out; do not deploy any workcopy'
@@ -275,7 +336,13 @@ try {
     $report.patched_header=$header;$patchedHash=Hash-File (Join-Path $work 'SYSTEM')
     # Reload a separate clean copy WITHOUT logs, proving that the candidate is self-contained.
     [IO.File]::Copy((Join-Path $work 'SYSTEM'),(Join-Path $verify 'SYSTEM'),$false)
-    $plan.related_fingerprints=$patch.state.related_fingerprints_after;Save-Json $planFile $plan
+    $plan.related_fingerprints=$patch.state.related_fingerprints_after
+    if($InspectFixedGpuDeviceInstall) {
+        $fingerprint=[string]$patch.state.gpu_inspected_service_fingerprint
+        if($fingerprint -cnotmatch '^[0-9a-f]{64}$') { throw 'Native GPU inspection did not return a real raw fingerprint' }
+        $plan.gpu_inspect_fingerprint=$fingerprint
+    }
+    Save-Json $planFile $plan
     $check=Invoke-BoundedWorker 'Verify' $verify 'verify-state' $TimeoutSeconds;$report.verify=$check
     if(!$check.finished -or $check.exit_code -ne 0 -or !$check.state -or $check.state.status -ne 'success') {
         $report.cleanup=Invoke-BoundedWorker 'Cleanup' $check.mount 'verify-cleanup-state' 5
@@ -284,16 +351,31 @@ try {
     $verifyHeader=Hive-Header (Join-Path $verify 'SYSTEM');if(!$verifyHeader.clean) { throw 'Verification unload left dirty sequence' }
     if((Hash-File (Join-Path $work 'SYSTEM')) -cne $patchedHash) { throw 'Patched workcopy changed during verification' }
     foreach($name in $report.source_files.Keys) { if((Hash-File (Join-Path $source $name)) -cne $report.source_files[$name].sha256) { throw 'Original input changed' } }
+    if($InspectFixedGpuDeviceInstall) {
+        if($check.state.gpu_inspected_service_fingerprint -cne $fingerprint) { throw 'Native clean reload GPU fingerprint differs' }
+        $gpuPlan=[ordered]@{schema=1;service='MT8167DeviceInstall';maximum_rearms=1;
+            candidate_source_commit='04d0e573bd1bee7b619d25441f8ac05d28d5ccd5';
+            candidate_sys_sha256='13c8a9ca6b6d7fef921afd38d60cf84ea8e37b599b51af82d6e90342d8b9da07';
+            candidate_cat_sha256='5d4cfad2d2b0e1758777c0d531aae92e172a1b4d53b206649b5f7f2b08c4d828';
+            disabled_service_fingerprint=$fingerprint;source_files=$report.source_files;
+            native_inspection_recipe_sha256=(Hash-File $PSCommandPath);native_source_sha256=(Hash-File $nativeSource);
+            whole_system_audit=$false;service_values_written=$false}
+        $gpuPlanPath=Join-Path $out 'gpu-rearm-plan.json';Save-Json $gpuPlanPath $gpuPlan
+        $report.gpu_rearm_plan=@{path='gpu-rearm-plan.json';sha256=(Hash-File $gpuPlanPath);disabled_service_fingerprint=$fingerprint}
+        $report.status='verified-disabled-deviceinstall-gpu-plan'
+    } else {
     New-Item -ItemType Directory -Path $candidate | Out-Null
     [IO.File]::Copy((Join-Path $work 'SYSTEM'),(Join-Path $candidate 'SYSTEM'),$false)
     $report.candidate=@{path='candidate/SYSTEM';sha256=(Hash-File (Join-Path $candidate 'SYSTEM'));header=(Hive-Header (Join-Path $candidate 'SYSTEM'))}
     if($report.candidate.sha256 -cne $patchedHash) { throw 'Final clean SYSTEM copy hash mismatch' }
     $report.status='verified-clean-system-services-only'
+    }
 } catch { $report.errors+=@($_.Exception.Message) }
 finally {
     $report.recipe_sha256=Hash-File $PSCommandPath;$report.native_source_sha256=Hash-File $nativeSource
     Save-Json (Join-Path $out 'result.json') $report
 }
 Write-Host ('STATUS='+$report.status)
-if($report.status -ne 'verified-clean-system-services-only') { throw 'Offline SYSTEM preparation failed; inspect private result.json, do not deploy work/verify copies' }
-Write-Host ('CANDIDATE_SHA256='+$report.candidate.sha256)
+if($report.status -notin @('verified-clean-system-services-only','verified-disabled-deviceinstall-gpu-plan')) { throw 'Offline SYSTEM preparation failed; inspect private result.json, do not deploy work/verify copies' }
+if($InspectFixedGpuDeviceInstall) { Write-Host ('GPU_REARM_PLAN_SHA256='+$report.gpu_rearm_plan.sha256) }
+else { Write-Host ('CANDIDATE_SHA256='+$report.candidate.sha256) }
