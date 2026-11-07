@@ -140,7 +140,7 @@ static NTSTATUS child(CLIENT *c)
  RtlInitUnicodeString(&id,L"MS_BTHX_BTHMINI");s=WdfPdoInitAddCompatibleID(init,&id);if(!NT_SUCCESS(s))goto fail;
  RtlInitUnicodeString(&id,L"0");s=WdfPdoInitAssignInstanceID(init,&id);if(!NT_SUCCESS(s))goto fail;
  WDF_OBJECT_ATTRIBUTES_INIT(&a);a.ExecutionLevel=WdfExecutionLevelPassive;s=WdfDeviceCreate(&init,&a,&c->child);if(!NT_SUCCESS(s))goto fail;
- WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel);q.PowerManaged=WdfFalse;q.EvtIoDeviceControl=Forward;q.EvtIoComboInternalDeviceControl=Forward;
+ WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel);q.PowerManaged=WdfFalse;q.EvtIoDeviceControl=Forward;q.EvtIoInternalDeviceControl=Forward;
  s=WdfIoQueueCreate(c->child,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);if(NT_SUCCESS(s))s=WdfFdoAddStaticChild(c->device,c->child);return s;
 fail:WdfDeviceInitFree(init);return s;
 }
@@ -155,7 +155,7 @@ NTSTATUS Add(WDFDRIVER driver,PWDFDEVICE_INIT init)
  WDF_TIMER_CONFIG_INIT(&timer,Timer);timer.AutomaticSerialization=FALSE;a.ExecutionLevel=WdfExecutionLevelPassive;
  s=WdfTimerCreate(&timer,&a,&c->timer);if(!NT_SUCCESS(s))return s;
  for(unsigned i=0;i<2;i++){WDF_IO_QUEUE_CONFIG_INIT(&q,WdfIoQueueDispatchManual);q.PowerManaged=WdfFalse;s=WdfIoQueueCreate(d,&q,WDF_NO_OBJECT_ATTRIBUTES,&c->reads[i]);if(!NT_SUCCESS(s))return s;}
- WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel);q.PowerManaged=WdfFalse;q.EvtIoDeviceControl=ComboInternal;q.EvtIoComboInternalDeviceControl=ComboInternal;
+ WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(&q,WdfIoQueueDispatchParallel);q.PowerManaged=WdfFalse;q.EvtIoDeviceControl=ComboInternal;q.EvtIoInternalDeviceControl=ComboInternal;
  s=WdfIoQueueCreate(d,&q,WDF_NO_OBJECT_ATTRIBUTES,WDF_NO_HANDLE);return NT_SUCCESS(s)?child(c):s;
 }
 NTSTATUS DriverEntry(PDRIVER_OBJECT object,PUNICODE_STRING path)
