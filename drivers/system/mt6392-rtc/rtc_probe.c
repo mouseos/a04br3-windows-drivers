@@ -2,6 +2,13 @@
 #include <windows.h>
 #include <winioctl.h>
 #include "rtc_ioctl.h"
+/* Standalone /nodefaultlib client: provide the byte-fill used by ZeroMemory. */
+void *memset(void *destination,int value,size_t count)
+{
+    volatile unsigned char *bytes=(volatile unsigned char *)destination;
+    while(count--)*bytes++=(unsigned char)value;
+    return destination;
+}
 static HANDLE output;
 static void text(const char *s) { DWORD n=0,len=0;while(s[len])len++;WriteFile(output,s,len,&n,NULL); }
 static void number(DWORD n) { char b[11];unsigned k=0;do {b[k++]=(char)('0'+n%10);n/=10;}while(n);while(k){char c=b[--k];DWORD w;WriteFile(output,&c,1,&w,NULL);} }
