@@ -870,3 +870,10 @@ test-gpu-native-activation: build/gpu_native_activation_policy_test
 build/gpu_native_activation_policy_test: tests/gpu_native_activation_policy_test.c drivers/gpu/mt8167/vendor_m1_11/native_activation_policy.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $< -o $@
+
+.PHONY: test-gpu-native-triangle-vdm
+test-gpu-native-triangle-vdm: build/gpu_m111_native_triangle_vdm_test
+	./build/gpu_m111_native_triangle_vdm_test
+build/gpu_m111_native_triangle_vdm_test: tests/gpu_m111_native_triangle_vdm_test.c drivers/gpu/mt8167/vendor_m1_11/native_triangle_vdm.c drivers/gpu/mt8167/vendor_m1_11/native_triangle_vdm.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@

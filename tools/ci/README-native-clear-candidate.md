@@ -96,3 +96,9 @@ $env:A04_GE8300_VENDOR_NATIVE_CLEAR_FRAMES='4'
 未指定は1のまま。activation無しで複数frameや1..16外の指定はbuildで拒否する。build-config/署名後manifestへnative_clear_framesを保存する。UARTはBEGIN FRAMESと最終COMPLETED_FRAMESを出す。4frame試験の成功条件はSTATUS0/PHASE4/MATCH75300/MISMATCH0/GUARD0/COMPLETED_FRAMES4。new SYSを既存packageと同版INFで配布しない。
 
 hostでは実producer/mapper/publisherを使い1frameと16frames（3D ring wrap）、2frame目timeout、前回cleanup破損、画素不一致、one-run制限と保持を検証した。実providerの準備/admission/caller blockをactivation0/1とframes1/4でcompile/runした。WDKとWindows warm clearは主担当の次試験であり未確認。triangle/textureのWindows producerはまだ未完成で、今回のwarm flagからは投入できない。
+
+## triangle VDM外側streamの確定実装
+
+`native_triangle_vdm`はcapture05のsolid/texture双方で共通の84bytes=21wordsをsourceのROGUE VDM field定義から生成する。PPP prefix/draw/terminateの40bit VA、PDS実行heap内data/code offsetを引数として再生成し、捕捉VAやraw task templateを埋め込まない。捕捉した両jobと全21wordsが一致した。CPU constructorのみであり、Windows publish gateやWDK source列には接続しない。
+
+prefix PPP48bytes、draw PPP104/108bytes、terminate PPP12bytes、PDS/USC/vertex/texture backingの完全性は別の契約。prefix PPPはcapture05のGPU VA0x65c0001000にrange/PMRはあるがCPU mapping無しで未取得。VDMに含まれる最初の2-index LINE_LIST taskのshader役割も未確定。これらをzeroや仮shaderで埋めた完全packetは作らない。取得済みdraw PPPのpresence bitsとPDS shader/texture/uniform pointersを追い、prefix生成元のGLES init functionをREAで確認してから完全producerへ進める。
