@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Incremental typed WinBlue closure. No installation, signing or hardware access.
-param([switch]$EnableCandidate,[switch]$EnableLimitedDevelopmentProfile,
+param([switch]$EnableCandidate,[switch]$EnableLimitedDevelopmentProfile,[switch]$EnableNativeDevelopmentPipeline10,
  [Parameter(Mandatory=$true)][string]$ModuleDirectory,
  [Parameter(Mandatory=$true)][string]$ModuleManifestSha256,
  [Parameter(Mandatory=$true)][string]$StateDirectory,
@@ -12,6 +12,7 @@ param([switch]$EnableCandidate,[switch]$EnableLimitedDevelopmentProfile,
  [Parameter(Mandatory=$true)][string]$OutputDirectory)
 $ErrorActionPreference='Stop'
 if(!$EnableCandidate){throw 'Typed UMD candidate is default off'}
+if($EnableNativeDevelopmentPipeline10 -and !$EnableLimitedDevelopmentProfile){throw 'Native pipeline10 requires the limited development profile'}
 $root=(& git -C $PSScriptRoot rev-parse --show-toplevel)
 if($LASTEXITCODE -or @(& git -C $root status --porcelain).Count){throw 'Fixed clean source required'}
 function Verify-Hash([string]$path,[string]$hash){if($hash -notmatch '^[0-9a-fA-F]{64}$' -or !(Test-Path $path) -or (Get-FileHash $path -Algorithm SHA256).Hash -ne $hash){throw "Fixed input hash mismatch: $path"}}
@@ -60,6 +61,7 @@ try {
  # must not emit duplicate external definitions. No SDK bytes are patched.
  $common=@('--target=thumbv7-pc-windows-msvc','-std=c11','-fms-extensions','-ffreestanding','-fno-builtin','-fno-stack-protector','-O2','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-D_ARM_','-DARM','-D_D3D10_CONSTANTS','-D_D3D10_1_CONSTANTS','-D__ldrexd=__geo_typed_wdk81_ldrexd_declaration','-D_WIN32_WINNT=0x0603','-DNTDDI_VERSION=0x06030000','-DD3D_UMD_INTERFACE_VERSION=0x4002','-DDXGKDDI_INTERFACE_VERSION=0x4002',"-I$inc\shared","-I$inc\um","-I$inc\km")
  if($EnableLimitedDevelopmentProfile){$common+='-DGEO_TYPED_LIMITED_DEVELOPMENT=1'}
+ if($EnableNativeDevelopmentPipeline10){$common+='-DGEO_TYPED_NATIVE_PIPELINE10=1'}
  $units=@('frontend/draw_protocol','umd/tokenized_shader','umd/typed_entry','umd/typed_resource','umd/typed_view','umd/typed_shader','umd/typed_draw','umd/typed_runtime','umd/typed_dxgi')
  foreach($unit in $units){
   $name=($unit -replace '/','_')+'.obj';$flags=@($common)
@@ -87,7 +89,7 @@ try {
  }
  @{source_commit=(& git -C $root rev-parse HEAD);source_dirty=$false;compile_units=$units;reused_source_commit=$m.source_commit;
   module_manifest_sha256=$ModuleManifestSha256;state_source_commit=$sm.source_commit;state_manifest_sha256=$StateManifestSha256;compiler_manifest_sha256=$CompilerManifestSha256;
-  native_owner_sha256=$NativeOwnerSha256;default_off=$true;limited_development_profile=[bool]$EnableLimitedDevelopmentProfile;development_negotiation_pipeline='9_1';standard_profile_qualified=$false;runtime_verified=$false;signed=$false;
+  native_owner_sha256=$NativeOwnerSha256;default_off=$true;limited_development_profile=[bool]$EnableLimitedDevelopmentProfile;development_negotiation_pipeline=$(if($EnableNativeDevelopmentPipeline10){'10_0'}else{'9_1'});standard_profile_qualified=$false;runtime_verified=$false;signed=$false;
   linker=(Get-Content -Raw "$out\linker.json"|ConvertFrom-Json);
   outputs=@('ge8300-typed-kmd.lib','ge8300-typed-umd.lib','ge8300-umd.dll','ge8300-render.sys')|ForEach-Object {@{name=$_;sha256=(Get-FileHash (Join-Path $out $_) -Algorithm SHA256).Hash}}
  }|ConvertTo-Json -Depth 6|Set-Content "$out\build-manifest.json"

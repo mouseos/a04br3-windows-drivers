@@ -24,6 +24,22 @@ SM4 token/signatureを実PCOへ渡すためD3D9 ordinalの列挙は前提とし�
 成功にせず、全互換matrix完成を最初の実GPU確認の一律門にしない。
 通常buildではversions/pipelineを広告しない。registryで製品capsを上書きする経路は無い。
 
+### RT8.1のnative DDI経路
+
+搭載RT8.1のd3d11.dllをREAで確認したところ、明示adapterでのFL9_1要求は
+`D3D10Level9.dll!D3D11CreateDeviceExternalImplementation`を経由する。
+同DLLはlegacy `OpenAdapter`を呼ぶため、`OpenAdapter10_2`だけを実装しても
+この要求ではtyped DDIへ到達するとは限らない。根拠はREAの
+`FUN_10050528`と`D3D10Level9!FUN_10023f74`。
+
+`build-typed-wdk81.ps1 -EnableNativeDevelopmentPipeline10`は、
+`-EnableLimitedDevelopmentProfile`との組合せでのみnative FL10経路の
+開発用交渉を有効にする。clientにも同名switchを指定し、明示adapterで
+FL10_0を1回だけ要求する。手動DDI呼出し、WARP fallback、OS DLL改変はしない。
+既定の交渉は変更しない。FL10全機能の互換性を示すものではなく、上表の
+未実装は残り、未対応要求は実ErrorCbで失敗する。描画成功はclientの実画素と
+配置DLLの照合で別途判定する。
+
 一次資料は固定WDK8.1 d3d10umddi.h/dxgiddi.h、
 [OpenAdapter10_2](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3d10umddi/nc-d3d10umddi-pfnd3d10ddi_openadapter)、
 [Win8 D3D software requirements](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/software-requirements)、

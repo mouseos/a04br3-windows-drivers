@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Incremental standard client only; never recompile SYS, UMD or PCO.
-param([switch]$EnableColorPair,[Parameter(Mandatory=$true)][string]$VerifiedModuleDirectory,
+param([switch]$EnableColorPair,[switch]$EnableNativeDevelopmentPipeline10,[Parameter(Mandatory=$true)][string]$VerifiedModuleDirectory,
  [Parameter(Mandatory=$true)][string]$ModuleManifestSha256,
  [Parameter(Mandatory=$true)][string]$OutputDirectory)
 $ErrorActionPreference='Stop'
@@ -31,6 +31,7 @@ try {
  if($LASTEXITCODE){throw 'Memory member extraction failed'}
  $source=Join-Path $PSScriptRoot 'testclient\d3d-clear.c'
  $extra=@();if($EnableColorPair){$extra+='-DGEO_COLOR_PAIR_CLIENT=1'}
+ if($EnableNativeDevelopmentPipeline10){$extra+='-DGEO_NATIVE_PIPELINE10_CLIENT=1'}
  & clang @extra --target=thumbv7-pc-windows-msvc -std=c11 -fms-extensions -ffreestanding -fno-builtin -fno-stack-protector -O2 -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DNTDDI_VERSION=0x06030000 "-I$inc\shared" "-I$inc\um" "-I$inc\km" -c $source -o "$out\d3d-clear.obj"
  if($LASTEXITCODE){throw 'Standard client compile failed'}
  & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\d3d-clear.obj" "$out\testclient_memory.obj" "$lib\kernel32.lib" "$lib\setupapi.lib" "$lib\dxgi.lib" "$lib\d3d11.lib" "/out:$out\ge8300-d3d-clear.exe"
@@ -40,7 +41,7 @@ try {
  $pe|Set-Content "$out\pe.txt"
  @{source_commit=(& git -C $root rev-parse HEAD);source_sha256=(Get-FileHash $source -Algorithm SHA256).Hash;shader_header_sha256=(Get-FileHash (Join-Path $PSScriptRoot 'testclient\fixed_shaders.h') -Algorithm SHA256).Hash;module_source_commit=$m.source_commit;
   memory_archive_sha256=$record[0].sha256;memory_object_sha256=(Get-FileHash "$out\testclient_memory.obj" -Algorithm SHA256).Hash;
-  module_manifest_sha256=$ModuleManifestSha256;runtime_verified=$false;color_pair_profile=[bool]$EnableColorPair;standard_api_only=$true;private_payload=$false;
+  module_manifest_sha256=$ModuleManifestSha256;runtime_verified=$false;color_pair_profile=[bool]$EnableColorPair;native_development_pipeline10=[bool]$EnableNativeDevelopmentPipeline10;standard_api_only=$true;private_payload=$false;
   outputs=@(@{name='ge8300-d3d-clear.exe';sha256=(Get-FileHash "$out\ge8300-d3d-clear.exe" -Algorithm SHA256).Hash})
  }|ConvertTo-Json -Depth 5|Set-Content "$out\build-manifest.json"
 } finally {$env:TEMP=$oldTemp;$env:TMP=$oldTmp}

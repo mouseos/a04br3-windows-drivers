@@ -261,9 +261,14 @@ static HRESULT probe(IDXGIAdapter *adapter) {
  D3D11_TEXTURE2D_DESC desc={0};D3D11_MAPPED_SUBRESOURCE map;HRESULT hr;UINT pass,x,y,match,mismatch;
  const FLOAT colors[2][4]={{1,0,1,1},{0,1,0,1}};
  const UINT expected[2]={0xffff00ffu,0xff00ff00u};
+#ifdef GEO_NATIVE_PIPELINE10_CLIENT
+ wanted=D3D_FEATURE_LEVEL_10_0;
+#endif
+ line("REQUESTED_FEATURE_LEVEL",wanted);
  hr=D3D11CreateDevice(adapter,D3D_DRIVER_TYPE_UNKNOWN,NULL,0,&wanted,1,D3D11_SDK_VERSION,&device,&level,&ctx);
  line("CREATE_DEVICE_HRESULT",hr);if(FAILED(hr))goto done;
  line("FEATURE_LEVEL",level);
+ if(level!=wanted){hr=E_UNEXPECTED;goto done;}
  desc.Width=800;desc.Height=600;desc.MipLevels=1;desc.ArraySize=1;desc.Format=DXGI_FORMAT_B8G8R8A8_UNORM;
  desc.SampleDesc.Count=1;desc.Usage=D3D11_USAGE_DEFAULT;desc.BindFlags=D3D11_BIND_RENDER_TARGET;
  hr=ID3D11Device_CreateTexture2D(device,&desc,NULL,&target);line("TARGET_HRESULT",hr);if(FAILED(hr))goto done;

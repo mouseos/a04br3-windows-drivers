@@ -11,6 +11,20 @@
 #define GEO_NEED_NATIVE_STATE 16u
 #define GEO_NEED_REQUIRED_DDI 32u
 #define GEO_NEED_KMD_RECOVERY 64u
+#if defined(GEO_TYPED_NATIVE_PIPELINE10) && !defined(GEO_TYPED_LIMITED_DEVELOPMENT)
+#error Native pipeline bring-up requires the explicit limited development build
+#endif
+/* RT8.1 routes FL9 requests through D3D10Level9's legacy OpenAdapter.
+ * This optional development configuration exercises our actual typed DDI
+ * through the native FL10 path. It is not full feature-level qualification;
+ * unsupported operations still fail through the real runtime ErrorCb. */
+static D3D11DDI_3DPIPELINELEVEL development_pipeline(void) {
+#ifdef GEO_TYPED_NATIVE_PIPELINE10
+ return D3D11DDI_3DPIPELINELEVEL_10_0;
+#else
+ return D3D11_1DDI_3DPIPELINELEVEL_9_1;
+#endif
+}
 UINT geo_typed_profile_missing(void) {
  /* See TYPED-COMPATIBILITY.md. Remove a bit only with the real corresponding
   * implementation and native contract, never because the smoke client omits it. */
@@ -119,7 +133,7 @@ static HRESULT APIENTRY create_device(D3D10DDI_HADAPTER h,D3D10DDIARG_CREATEDEVI
     !p->pKTCallbacks->pfnCreateContextCb||!p->pKTCallbacks->pfnDestroyContextCb)return E_INVALIDARG;
  ((struct geo_typed_handle *)p->hDrvDevice.pDrvPrivate)->object=NULL;
  trace_value(a,"CREATE_DEVICE_FLAGS",p->Flags);trace_value(a,"CREATE_DEVICE_INTERFACE",p->Interface);
- if(D3D11DDI_EXTRACT_3DPIPELINELEVEL_FROM_FLAGS(p->Flags)!=D3D11_1DDI_3DPIPELINELEVEL_9_1||(!development_enabled()&&geo_typed_profile_missing()))return DXGI_ERROR_UNSUPPORTED;
+ if(D3D11DDI_EXTRACT_3DPIPELINELEVEL_FROM_FLAGS(p->Flags)!=development_pipeline()||(!development_enabled()&&geo_typed_profile_missing()))return DXGI_ERROR_UNSUPPORTED;
  d=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*d));if(!d)return E_OUTOFMEMORY;
  d->magic=GEO_TYPED_DEVICE_MAGIC;d->adapter=a;d->core=p->hRTCoreLayer;d->callbacks=*p->p11UMCallbacks;
  ((struct geo_typed_handle *)p->hDrvDevice.pDrvPrivate)->object=d;
@@ -157,7 +171,7 @@ static HRESULT APIENTRY caps_impl(D3D10DDI_HADAPTER h,const D3D10_2DDIARG_GETCAP
  if(p->Type==D3D11_1DDICAPS_SHADER_MIN_PRECISION_SUPPORT){if(p->DataSize!=sizeof(D3D11_DDI_SHADER_MIN_PRECISION_SUPPORT_DATA))return E_INVALIDARG;memset(p->pData,0,p->DataSize);return S_OK;}
  if(p->DataSize!=sizeof(UINT))return E_INVALIDARG;
  switch(p->Type){
- case D3D11DDICAPS_3DPIPELINESUPPORT:*(UINT *)p->pData=(!development_enabled()&&geo_typed_profile_missing())?0:D3D11DDI_ENCODE_3DPIPELINESUPPORT_CAP(D3D11_1DDI_3DPIPELINELEVEL_9_1);return S_OK;
+ case D3D11DDICAPS_3DPIPELINESUPPORT:*(UINT *)p->pData=(!development_enabled()&&geo_typed_profile_missing())?0:D3D11DDI_ENCODE_3DPIPELINESUPPORT_CAP(development_pipeline());return S_OK;
  case D3D11DDICAPS_THREADING:case D3D11DDICAPS_SHADER:*(UINT *)p->pData=0;return S_OK;
  default:return E_NOTIMPL;
  }
