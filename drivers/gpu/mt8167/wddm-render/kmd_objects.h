@@ -14,5 +14,6 @@ DXGKDDI_DESCRIBEALLOCATION GeoDescribeAllocation;
 DXGKDDI_GETSTANDARDALLOCATIONDRIVERDATA GeoGetStandardAllocationDriverData;
 DXGKDDI_COLLECTDBGINFO GeoCollectDbgInfo;
 /* Called only while the adapter PASSIVE lock/rundown is held. */
+struct geo_allocation *GeoResolveReadAllocation(struct geo_kmd_context *,HANDLE);
 struct geo_allocation *GeoResolveWriteAllocation(struct geo_kmd_context *,HANDLE);
 #endif

@@ -9,6 +9,7 @@
 #include "clear_engine.h"
 #include "aperture.h"
 #include "frontend_memory.h"
+#include "frontend/draw_abi.h"
 struct geo_mdl_record;
 /* These are DDI implementation modules, not a DriverEntry that registers an
  * incomplete WDDM adapter. The full miniport owns synchronization/rundown,
@@ -23,6 +24,7 @@ struct geo_kmd_adapter {
  UINT aperture_ready;
  DXGKCB_GETHANDLEDATA get_handle_data;
  struct geo_engine engine;
+ struct geo_native_draw_ops_v1 draw;
  /* Must use the provider's real interrupt synchronization object. No manual
   * fabricated DIRQL and no sleeping callback at interrupt IRQL. */
  BOOLEAN (*synchronize)(void *owner,PKSYNCHRONIZE_ROUTINE routine,void *argument);

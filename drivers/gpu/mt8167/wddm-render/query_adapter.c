@@ -43,10 +43,10 @@ NTSTATUS APIENTRY GeoQueryAdapterInfo(HANDLE handle,const DXGKARG_QUERYADAPTERIN
  case DXGKQAITYPE_QUERYSEGMENT3:status=query_segment3(a,p);break;
  case DXGKQAITYPE_UMDRIVERPRIVATE:
   if(p->OutputDataSize<sizeof(info)){status=STATUS_BUFFER_TOO_SMALL;break;}
-  RtlZeroMemory(&info,sizeof(info));info.size=sizeof(info);info.version=1;info.magic=GEO_ADAPTER_INFO_MAGIC;
+  RtlZeroMemory(&info,sizeof(info));info.size=sizeof(info);info.version=2;info.magic=GEO_ADAPTER_INFO_MAGIC;
   info.owner_ops_version=GEO_OWNER_OPS_VERSION;info.control_version=2;info.format=GEO_FORMAT_A8R8G8B8;
   info.max_allocation_bytes=(UINT)(a->aperture.commit_limit<4194304?a->aperture.commit_limit:4194304);
-  info.aperture=a->aperture;RtlCopyMemory(p->pOutputData,&info,sizeof(info));status=STATUS_SUCCESS;break;
+  info.aperture=a->aperture;info.compiler_bvnc=GEO_COMPILER_BVNC;info.draw_version=a->draw.version;info.vertex_max_bytes=GEO_VERTEX_MAX_BYTES;RtlCopyMemory(p->pOutputData,&info,sizeof(info));status=STATUS_SUCCESS;break;
  case DXGKQAITYPE_DRIVERCAPS:
   if(p->OutputDataSize<sizeof(caps)){status=STATUS_BUFFER_TOO_SMALL;break;}
   RtlZeroMemory(&caps,sizeof(caps));status=GeoBuildRequiredDriverCaps(a,&caps);
@@ -66,7 +66,7 @@ NTSTATUS APIENTRY GeoQueryAdapterInfo(HANDLE handle,const DXGKARG_QUERYADAPTERIN
 NTSTATUS GeoBuildRequiredDriverCaps(struct geo_kmd_adapter *a,DXGK_DRIVERCAPS *caps) {
  if(!a||!caps||!a->aperture_ready)return STATUS_INVALID_DEVICE_STATE;
  RtlZeroMemory(caps,sizeof(*caps));caps->HighestAcceptableAddress.QuadPart=(LONGLONG)a->aperture.highest_dma_address;
- caps->MaxAllocationListSlotId=1;caps->ApertureSegmentCommitLimit=(SIZE_T)a->aperture.commit_limit;
+ caps->MaxAllocationListSlotId=2;caps->ApertureSegmentCommitLimit=(SIZE_T)a->aperture.commit_limit;
  caps->SchedulingCaps.MultiEngineAware=1;caps->SchedulingCaps.CancelCommandAware=1;
  /* Actual packet-boundary preemption uses the documented Windows 7 policy.
   * Do not claim Win8 mid-packet/context-save support or NoDmaPatching. */

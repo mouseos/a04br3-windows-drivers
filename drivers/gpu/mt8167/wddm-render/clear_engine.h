@@ -6,13 +6,15 @@
 struct geo_allocation {
  struct geo_allocation *next;
  struct geo_surface_desc desc;
+ uint32_t logical_width,logical_height;
  uint64_t surface;
- uint32_t references,bound,poisoned,open_count;
+ uint32_t references,bound,poisoned,open_count,cpu_only;
  uint64_t aperture_offset;uint32_t aperture_pages;
 };
 struct geo_job {
- struct geo_allocation *allocation;
- void *context,*open_handle;
+ struct geo_allocation *allocation,*vertex;
+ void *context,*open_handle,*vertex_open_handle;
+ uint32_t kind;
  uint64_t owner_job;
  uint32_t generation,state,fence,retired_generation;
 };
@@ -37,6 +39,7 @@ int32_t geo_bind(struct geo_engine *,struct geo_allocation *,void *mdl,uint32_t 
 int32_t geo_unbind(struct geo_engine *,struct geo_allocation *);
 int32_t geo_destroy(struct geo_engine *,struct geo_allocation *);
 int32_t geo_prepare_begin(struct geo_engine *,struct geo_allocation *,const struct geo_clear_packet *,struct geo_dma_ticket *);
+int32_t geo_prepare_draw_begin(struct geo_engine *,struct geo_allocation *target,struct geo_allocation *vertex,struct geo_dma_ticket *);
 int32_t geo_prepare_finish(struct geo_engine *,const struct geo_dma_ticket *,int32_t status,uint64_t owner_job);
 int32_t geo_cancel_begin(struct geo_engine *,const struct geo_dma_ticket *,uint64_t *owner_job);
 int32_t geo_cancel_finish(struct geo_engine *,const struct geo_dma_ticket *,int32_t status);

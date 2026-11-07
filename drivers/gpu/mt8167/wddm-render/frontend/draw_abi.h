@@ -6,6 +6,7 @@
  * Kernel source-linked only. No user pointers, physical/GPU addresses, opaque
  * arbitrary command buffers, or fixture-selector values in this descriptor. */
 #define GEO_DRAW_ABI_VERSION 1u
+#define GEO_DRAW_MAGIC 0x31444f47u
 #define GEO_SHADER_D3D9_SM2 1u
 #define GEO_SHADER_D3D10_TOKENS 2u
 #define GEO_DRAW_TRIANGLE_LIST 1u
@@ -35,6 +36,14 @@ struct geo_draw_request {
  struct geo_draw_state state;
  struct geo_draw_shader vs,ps;
 };
+/* User wire representation: IDs MUST be zero; KMD substitutes private owner
+ * IDs only after resolving both real VidMm allocation-list handles. */
+struct geo_draw_packet {
+ uint32_t magic,size,version,target_index,vertex_index,reserved;
+ struct geo_draw_request request;
+ /* request.blob_bytes bytes immediately follow this fixed header. */
+};
+#define GEO_DRAW_COMMAND_MAX (GEO_DRAW_MAX_BLOB+sizeof(struct geo_draw_packet))
 /* Validate framing/state/ranges only. Success does NOT validate USC ISA,
  * pipeline support, residency or create a native job/capability claim.
  * Call on an H-owned immutable kernel capture, never directly on user memory. */

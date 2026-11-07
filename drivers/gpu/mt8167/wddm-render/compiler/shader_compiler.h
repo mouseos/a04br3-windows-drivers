@@ -16,6 +16,8 @@ struct geo_shader_compiler {
 };
 /* Caller provides an actual PCO context and initialized fixed BVNC device
  * info. No host compile executable, arbitrary DLL or shader blob broker. */
+int32_t geo_pco_device_create(uint64_t compiler_bvnc,struct geo_shader_compiler *,void **owned_device);
+void geo_pco_device_destroy(struct geo_shader_compiler *,void *owned_device);
 int32_t geo_pco_compiler_init(struct geo_shader_compiler *,void *pco_context);
 int32_t geo_pco_compile_tokenized(void *,uint32_t stage,const uint32_t *,uint32_t bytes,
  const struct geo_sm4_signatures *,struct geo_compiled_shader *,struct geo_sm2_error *);

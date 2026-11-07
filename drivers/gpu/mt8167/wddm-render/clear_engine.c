@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "clear_engine.h"
 #include "memory.h"
+#include "frontend/draw_abi.h"
 static int serial_after(uint32_t a,uint32_t b) {
  uint32_t delta=a-b;return delta&&delta<0x80000000u;
 }
@@ -11,14 +12,16 @@ int32_t geo_engine_init(struct geo_engine *e,const struct geo_owner_ops *o) {
  memset(e,0,sizeof(*e));e->owner=*o;return GEO_OK;
 }
 int32_t geo_create(struct geo_engine *e,struct geo_allocation *a,const struct geo_surface_desc *d) {
- uint64_t token=0;int32_t s;
+ uint64_t token=0;int32_t s;struct geo_allocation *scan;
  if(!e||!a||!geo_desc_valid(d)||a->surface)return GEO_INVALID;
  if(e->poisoned)return GEO_POISONED;
  if(e->allocation_count==UINT32_MAX)return GEO_BUSY;
+ if(d->usage==GEO_USAGE_INDEX_BUFFER||d->usage==GEO_USAGE_STAGING){memset(a,0,sizeof(*a));a->desc=*d;a->logical_width=d->width;a->logical_height=d->height;a->cpu_only=1;a->next=e->allocations;e->allocations=a;e->allocation_count++;return GEO_OK;}
  s=e->owner.create(e->owner.context,d,&token);
  if(s!=GEO_OK)return s;
  if(!token){e->poisoned=1;return GEO_POISONED;}
- memset(a,0,sizeof(*a));a->desc=*d;a->surface=token;
+ for(scan=e->allocations;scan;scan=scan->next)if(scan->surface==token){e->poisoned=1;return GEO_POISONED;}
+ memset(a,0,sizeof(*a));a->desc=*d;a->logical_width=d->width;a->logical_height=d->height;a->surface=token;
  a->next=e->allocations;e->allocations=a;e->allocation_count++;return GEO_OK;
 }
 int32_t geo_bind(struct geo_engine *e,struct geo_allocation *a,void *mdl,uint32_t off,uint32_t bytes,uint64_t aperture_offset) {
@@ -42,12 +45,12 @@ int32_t geo_unbind(struct geo_engine *e,struct geo_allocation *a) {
 }
 int32_t geo_destroy(struct geo_engine *e,struct geo_allocation *a) {
  int32_t s;struct geo_allocation **link;
- if(!e||!a||!a->surface)return GEO_INVALID;
+ if(!e||!a||(!a->surface&&!a->cpu_only))return GEO_INVALID;
  for(link=&e->allocations;*link&&*link!=a;link=&(*link)->next){}
  if(!*link||!e->allocation_count)return GEO_INVALID;
  if(e->poisoned||a->poisoned)return GEO_POISONED;
  if(a->bound||a->references||a->open_count)return GEO_BUSY;
- s=e->owner.destroy(e->owner.context,a->surface);
+ s=a->cpu_only?GEO_OK:e->owner.destroy(e->owner.context,a->surface);
  if(s!=GEO_OK){a->poisoned=1;e->poisoned=1;return s;}
  *link=a->next;e->allocation_count--;memset(a,0,sizeof(*a));return GEO_OK;
 }
@@ -63,8 +66,25 @@ int32_t geo_prepare_begin(struct geo_engine *e,struct geo_allocation *a,const st
  if(!a->surface||!a->bound)return GEO_NOT_READY;
  for(i=0;i<GEO_MAX_JOBS;i++)if(!e->jobs[i].state&&e->jobs[i].generation!=UINT32_MAX)break;
  if(i==GEO_MAX_JOBS||a->references==UINT32_MAX)return GEO_BUSY;
- j=&e->jobs[i];j->generation++;j->allocation=a;j->context=0;j->open_handle=0;j->owner_job=0;j->state=4;a->references++;
+ j=&e->jobs[i];j->generation++;j->allocation=a;j->vertex=0;j->vertex_open_handle=0;j->kind=GEO_CLEAR_MAGIC;j->context=0;j->open_handle=0;j->owner_job=0;j->state=4;a->references++;
  t->magic=GEO_TICKET_MAGIC;t->slot=i;t->generation=j->generation;t->reserved=0;return GEO_OK;
+}
+int32_t geo_prepare_draw_begin(struct geo_engine *e,struct geo_allocation *a,struct geo_allocation *v,struct geo_dma_ticket *t) {
+ uint32_t i;struct geo_job *j;
+ if(!e||!a||!v||a==v||!t||a->desc.usage!=GEO_USAGE_RENDER_TARGET||v->desc.usage!=GEO_USAGE_VERTEX_BUFFER)return GEO_INVALID;
+ if(e->poisoned||a->poisoned||v->poisoned)return GEO_POISONED;
+ if(!a->surface||!v->surface||!a->bound||!v->bound)return GEO_NOT_READY;
+ for(i=0;i<GEO_MAX_JOBS;i++)if(!e->jobs[i].state&&e->jobs[i].generation!=UINT32_MAX)break;
+ if(i==GEO_MAX_JOBS||a->references==UINT32_MAX||v->references==UINT32_MAX)return GEO_BUSY;
+ j=&e->jobs[i];j->generation++;j->allocation=a;j->vertex=v;j->kind=GEO_DRAW_MAGIC;
+ j->context=0;j->open_handle=0;j->vertex_open_handle=0;j->owner_job=0;j->state=4;
+ a->references++;v->references++;
+ t->magic=GEO_TICKET_MAGIC;t->slot=i;t->generation=j->generation;t->reserved=0;return GEO_OK;
+}
+static void retire_job(struct geo_job *j) {
+ j->allocation->references--;if(j->vertex)j->vertex->references--;
+ j->retired_generation=j->generation;j->state=0;j->allocation=0;j->vertex=0;
+ j->context=0;j->open_handle=0;j->vertex_open_handle=0;j->owner_job=0;j->kind=0;
 }
 int32_t geo_prepare_finish(struct geo_engine *e,const struct geo_dma_ticket *t,int32_t status,uint64_t token) {
  struct geo_job *j=job(e,t);
@@ -82,7 +102,7 @@ int32_t geo_cancel_prepared(struct geo_engine *e,const struct geo_dma_ticket *t)
  if(j->state!=1)return GEO_BUSY;
  s=e->owner.discard_prepared(e->owner.context,j->owner_job);
  if(s!=GEO_OK){j->allocation->poisoned=1;e->poisoned=1;return s;}
- j->allocation->references--;j->retired_generation=j->generation;j->state=0;j->allocation=0;j->context=0;j->open_handle=0;j->owner_job=0;return GEO_OK;
+ retire_job(j);return GEO_OK;
 }
 static int active(const struct geo_engine *e) {
  uint32_t i;for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state==2)return 1;return 0;
@@ -137,7 +157,7 @@ int32_t geo_cancel_finish(struct geo_engine *e,const struct geo_dma_ticket *t,in
  struct geo_job *j=job(e,t);
  if(!j||j->state!=6)return GEO_NOT_FOUND;
  if(status!=GEO_OK){j->state=3;j->allocation->poisoned=1;e->poisoned=1;return status;}
- j->allocation->references--;j->retired_generation=j->generation;j->state=0;j->allocation=0;j->context=0;j->open_handle=0;j->owner_job=0;return GEO_OK;
+ retire_job(j);return GEO_OK;
 }
 int32_t geo_complete(struct geo_engine *e,uint64_t token,uint32_t generation,int32_t status,uint32_t visibility,uint32_t *fence) {
  uint32_t i;struct geo_job *j;
@@ -154,7 +174,7 @@ int32_t geo_complete(struct geo_engine *e,uint64_t token,uint32_t generation,int
   j->allocation->poisoned=1;j->state=3;e->poisoned=1;return GEO_POISONED;
  }
  *fence=j->fence;e->last_completed=j->fence;e->completed_ever=1;
- j->allocation->references--;j->retired_generation=j->generation;j->state=0;j->allocation=0;j->context=0;j->open_handle=0;j->owner_job=0;
+ retire_job(j);
  if(e->preempt_pending)e->preempt_ready=1;else publish_next(e);
  return GEO_OK;
 }
@@ -165,12 +185,12 @@ int32_t geo_retire_after_owner_drain(struct geo_engine *e) {
  /* Validate all reference counts before changing any. External caller has
   * closed operation rundown and obtained real IRQ/DMA/token drain proof. */
  for(a=e->allocations;a;a=a->next) {
-  count=0;for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state&&e->jobs[i].allocation==a)count++;
+  count=0;for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state&&(e->jobs[i].allocation==a||e->jobs[i].vertex==a))count++;
   if(a->references!=count){e->poisoned=1;return GEO_POISONED;}
  }
  for(i=0;i<GEO_MAX_JOBS;i++) {
   if(e->jobs[i].state)e->jobs[i].retired_generation=e->jobs[i].generation;
-  e->jobs[i].state=0;e->jobs[i].owner_job=0;e->jobs[i].allocation=0;e->jobs[i].context=0;e->jobs[i].open_handle=0;
+  e->jobs[i].vertex=0;e->jobs[i].vertex_open_handle=0;e->jobs[i].kind=0;e->jobs[i].state=0;e->jobs[i].owner_job=0;e->jobs[i].allocation=0;e->jobs[i].context=0;e->jobs[i].open_handle=0;
   /* Keep generation: a delayed old token must never match a new job. */
  }
  for(a=e->allocations;a;a=a->next){a->references=0;a->poisoned=0;}

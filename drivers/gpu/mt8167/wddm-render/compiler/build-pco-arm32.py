@@ -46,6 +46,7 @@ def main():
     out.mkdir(parents=True,exist_ok=False)
     if a.component=='pco':
         rows.extend(dict(rows[0],file=str(here/(unit+'.c')),output=unit+'_adapter') for unit in ('pco_sm2','sm2','sm4'))
+        rows.append(next(x for x in all_rows if x['file'].endswith('/pvr_device_info.c')))
     platform_vfs=a.msvc_vfs
     if a.msvc_sdk:
         # Clang ARM supports real GCC atomics with acquire/release ordering.
@@ -58,6 +59,11 @@ def main():
         overlay=out/'u_atomic_arm32.h';overlay.write_text(text.replace(old,new))
         vfs=json.loads(a.msvc_vfs.read_text()) if a.msvc_vfs else {'version':0,'case-sensitive':'false','roots':[]}
         vfs['roots'].append({'type':'file','name':str(original),'external-contents':str(overlay)})
+        ctx_source=mesa/'src/imagination/pco/pco.c';ctx_text=ctx_source.read_text()
+        ctx_needle='pco_ctx *ctx = rzalloc_size(mem_ctx, sizeof(*ctx));'
+        if ctx_text.count(ctx_needle)!=1:raise SystemExit('Unreviewed PCO context constructor')
+        ctx_copy=out/'pco_context_windows.c';ctx_copy.write_text(ctx_text.replace(ctx_needle,ctx_needle+'\n   if (!ctx) return NULL;'))
+        vfs['roots'].append({'type':'file','name':str(ctx_source),'external-contents':str(ctx_copy)})
         debug_source=mesa/'src/imagination/pco/pco_debug.c';debug=debug_source.read_text()
         needle='#include <unistd.h>'
         if debug.count(needle)!=1:raise SystemExit('Unreviewed PCO POSIX debug include')

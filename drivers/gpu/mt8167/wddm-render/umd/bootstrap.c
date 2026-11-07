@@ -31,7 +31,7 @@ static int required_frontend(const D3DDDI_DEVICEFUNCS *f) {
 static HRESULT APIENTRY destroy_device(HANDLE handle) {
  struct geo_umd_device *d=handle,**link;struct geo_umd_adapter *a;D3DDDICB_DESTROYCONTEXT q;HRESULT hr;
  if(!d||!(a=d->adapter))return E_INVALIDARG;
- if(d->resources)return E_FAIL; /* Never hide a live runtime allocation. */
+ if(geo_umd_has_external_resources(d))return E_FAIL; /* Never hide a live runtime allocation. */
  hr=a->frontend->quiesce_device(d);if(FAILED(hr))return hr;
  if(d->shaders)return E_UNEXPECTED; /* Real frontend must release its shader state first. */
  memset(&q,0,sizeof(q));q.hContext=d->context;

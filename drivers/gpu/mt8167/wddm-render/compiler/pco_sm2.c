@@ -8,6 +8,8 @@
 #include "pco/pco_internal.h"
 #include "util/ralloc.h"
 #include <string.h>
+#include <stdlib.h>
+#include "common/pvr_device_info.h"
 #ifdef GEO_PCO_EXPLICIT_USCLIB_LIFETIME
 void geo_pco_usclib_initialize(void);
 void geo_pco_usclib_finalize(void);
@@ -107,4 +109,25 @@ void geo_pco_compiler_finish(struct geo_shader_compiler *compiler) {
  geo_pco_usclib_finalize();
 #endif
  memset(compiler,0,sizeof(*compiler));
+}
+
+struct geo_pco_owned_device {struct pvr_device_info info;struct pvr_device_runtime_info runtime;pco_ctx *context;};
+int32_t geo_pco_device_create(uint64_t bvnc,struct geo_shader_compiler *compiler,void **out) {
+ struct geo_pco_owned_device *d;int32_t status;
+ if(!compiler||!out||bvnc!=PVR_BVNC_PACK(22,40,54,30))return GEO_UNSUPPORTED;
+ *out=NULL;memset(compiler,0,sizeof(*compiler));
+ d=calloc(1,sizeof(*d));if(!d)return GEO_BUSY;
+ if(pvr_device_info_init(&d->info,bvnc)){free(d);return GEO_UNSUPPORTED;}
+ /* Retain these real compiler feature structures for the entire PCO lifetime;
+  * pco_ctx_create borrows their addresses rather than copying stack values. */
+ d->context=pco_ctx_create(&d->info,&d->runtime,NULL);
+ if(!d->context){free(d);return GEO_BUSY;}
+ status=geo_pco_compiler_init(compiler,d->context);
+ if(status!=GEO_OK){ralloc_free(d->context);free(d);return status;}
+ *out=d;return GEO_OK;
+}
+void geo_pco_device_destroy(struct geo_shader_compiler *compiler,void *owned) {
+ struct geo_pco_owned_device *d=owned;
+ if(!d||!compiler||compiler->context!=d->context)return;
+ geo_pco_compiler_finish(compiler);ralloc_free(d->context);free(d);
 }

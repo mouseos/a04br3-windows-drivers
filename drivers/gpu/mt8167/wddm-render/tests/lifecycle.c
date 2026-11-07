@@ -3,8 +3,8 @@
 #include <assert.h>
 #include <string.h>
 #include "../clear_engine.h"
-static unsigned publishes;
-static int32_t create(void *c,const struct geo_surface_desc *d,uint64_t *s){(void)c;(void)d;*s=1;return GEO_OK;}
+static unsigned publishes,objects;
+static int32_t create(void *c,const struct geo_surface_desc *d,uint64_t *s){(void)c;(void)d;*s=++objects;return GEO_OK;}
 static int32_t bind(void *c,uint64_t s,void *m,uint32_t o,uint32_t n,uint64_t aperture){(void)c;(void)s;(void)m;(void)o;(void)n;(void)aperture;return GEO_OK;}
 static int32_t release(void *c,uint64_t s){(void)c;(void)s;return GEO_OK;}
 static int32_t prepare(void *c,uint64_t s,uint32_t color,uint64_t *job){(void)c;(void)s;(void)color;*job=7;return GEO_OK;}
@@ -52,6 +52,19 @@ int main(void) {
  assert(geo_cancel_begin(&e,&t,&cancel_token)==GEO_OK&&cancel_token==9);
  assert(geo_submit(&e,&t,14)==GEO_BUSY);assert(release(&e,cancel_token)==GEO_OK);
  assert(geo_cancel_finish(&e,&t,GEO_OK)==GEO_OK);assert(a.references==0&&e.last_completed==11);
+ /* One shared scheduler generation retains both actual allocation roles. */
+ {
+  struct geo_allocation v={0};struct geo_surface_desc vd={sizeof(vd),1,48,1,48,GEO_FORMAT_VERTEXDATA,GEO_USAGE_VERTEX_BUFFER,0};
+  assert(geo_create(&e,&v,&vd)==GEO_OK);assert(geo_bind(&e,&v,&v,0,48,0x40000)==GEO_OK);
+  assert(geo_prepare_draw_begin(&e,&a,&v,&t)==GEO_OK);assert(a.references==1&&v.references==1);
+  assert(geo_prepare_finish(&e,&t,GEO_OK,10)==GEO_OK);assert(geo_submit(&e,&t,14)==GEO_OK);
+  assert(geo_complete(&e,10,t.generation+1,GEO_OK,3,&fence)==GEO_NOT_FOUND);assert(a.references==1&&v.references==1);
+  assert(geo_complete(&e,10,t.generation,GEO_OK,3,&fence)==GEO_OK);assert(a.references==0&&v.references==0&&fence==14);
+  assert(geo_prepare_draw_begin(&e,&a,&v,&t)==GEO_OK);
+  assert(geo_prepare_finish(&e,&t,GEO_BUSY,11)==GEO_BUSY);assert(a.references==1&&v.references==1&&e.poisoned);
+  assert(geo_retire_after_owner_drain(&e)==GEO_OK);assert(a.references==0&&v.references==0);
+  assert(geo_unbind(&e,&v)==GEO_OK);assert(geo_destroy(&e,&v)==GEO_OK);
+ }
  assert(geo_unbind(&e,&a)==GEO_OK);assert(geo_destroy(&e,&a)==GEO_OK);
  assert(e.allocation_count==0&&e.allocations==0);
  return 0;

@@ -39,6 +39,10 @@ static NTSTATUS start_device(void *context,DXGK_START_INFO *start,DXGKRNL_INTERF
  status=GeoConfigureAperture(&d->adapter,&d->native.aperture);if(status!=STATUS_SUCCESS)return status;
  status=GeoStartInProcessOwnerSession(&d->session,&d->adapter,&d->native.control,dxgk);
  if(status!=STATUS_SUCCESS)return status; /* Ambiguous resources remain pinned. */
+ status=GeoNativeOwnerGetDrawOpsV1(&d->native,&d->adapter.draw);
+ if(status!=STATUS_SUCCESS)return status;
+ if(d->adapter.draw.size!=sizeof(d->adapter.draw)||d->adapter.draw.version!=GEO_DRAW_ABI_VERSION||
+    !d->adapter.draw.context||!d->adapter.draw.prepare_draw)return STATUS_INVALID_DEVICE_STATE;
  *sources=0;*children=0;d->started=1;return STATUS_SUCCESS;
 }
 static NTSTATUS stop_device(void *context) {

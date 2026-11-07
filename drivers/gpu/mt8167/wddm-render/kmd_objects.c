@@ -24,8 +24,8 @@ NTSTATUS APIENTRY GeoCreateContext(HANDLE handle,DXGKARG_CREATECONTEXT *p) {
  a=d->adapter;if(!GeoSessionEnter(a,1))return STATUS_DEVICE_NOT_READY;
  c=ExAllocatePoolWithTag(NonPagedPool,sizeof(*c),'xOeG');if(!c){status=STATUS_INSUFFICIENT_RESOURCES;goto done;}
  RtlZeroMemory(c,sizeof(*c));c->adapter=a;c->device=d;c->runtime=p->hContext;c->next=d->contexts;d->contexts=c;
- RtlZeroMemory(&p->ContextInfo,sizeof(p->ContextInfo));p->ContextInfo.DmaBufferSize=sizeof(struct geo_dma_ticket);
- p->ContextInfo.DmaBufferPrivateDataSize=sizeof(struct geo_dma_ticket);p->ContextInfo.AllocationListSize=1;p->ContextInfo.PatchLocationListSize=1;p->hContext=c;
+ RtlZeroMemory(&p->ContextInfo,sizeof(p->ContextInfo));p->ContextInfo.DmaBufferSize=GEO_DRAW_COMMAND_MAX;
+ p->ContextInfo.DmaBufferPrivateDataSize=sizeof(struct geo_dma_ticket);p->ContextInfo.AllocationListSize=2;p->ContextInfo.PatchLocationListSize=2;p->hContext=c;
  done:GeoSessionLeave(a,1);return status;
 }
 struct context_check {struct geo_kmd_context *context;NTSTATUS status;};
@@ -67,6 +67,12 @@ NTSTATUS APIENTRY GeoCloseAllocation(HANDLE handle,const DXGKARG_CLOSEALLOCATION
  open=*link;*link=open->next;open->allocation->open_count--;ExFreePoolWithTag(open,'oOeG');
  done:GeoSessionLeave(a,2);return status;
 }
+struct geo_allocation *GeoResolveReadAllocation(struct geo_kmd_context *c,HANDLE handle) {
+ struct geo_open_allocation *open;
+ if(!c||!c->device)return NULL;
+ for(open=c->device->opens;open;open=open->next)if(open==handle)return open->allocation;
+ return NULL;
+}
 struct geo_allocation *GeoResolveWriteAllocation(struct geo_kmd_context *c,HANDLE handle) {
  struct geo_open_allocation *open;
  if(!c||!c->device)return NULL;
@@ -79,14 +85,14 @@ NTSTATUS APIENTRY GeoDescribeAllocation(HANDLE handle,DXGKARG_DESCRIBEALLOCATION
  if(!GeoSessionEnter(a,2))return STATUS_DEVICE_NOT_READY;
  for(allocation=a->engine.allocations;allocation&&allocation!=p->hAllocation;allocation=allocation->next){}
  if(!allocation){status=STATUS_INVALID_PARAMETER;goto done;}
- p->Width=allocation->desc.width;p->Height=allocation->desc.height;p->Format=D3DDDIFMT_A8R8G8B8;
+ p->Width=allocation->logical_width;p->Height=allocation->logical_height;p->Format=(D3DDDIFORMAT)allocation->desc.format;
  p->MultisampleMethod.NumSamples=1;p->MultisampleMethod.NumQualityLevels=1;
  p->RefreshRate.Numerator=0;p->RefreshRate.Denominator=1;p->PrivateDriverFormatAttribute=0;
  p->Flags.Value=0;p->Rotation=D3DDDI_ROTATION_IDENTITY;
  done:GeoSessionLeave(a,2);return status;
 }
 NTSTATUS APIENTRY GeoGetStandardAllocationDriverData(HANDLE handle,DXGKARG_GETSTANDARDALLOCATIONDRIVERDATA *p) {
- struct geo_kmd_adapter *a=handle;struct geo_surface_desc d;NTSTATUS status=STATUS_SUCCESS;
+ struct geo_kmd_adapter *a=handle;struct geo_surface_desc d;struct geo_allocation_data data;NTSTATUS status=STATUS_SUCCESS;
  if(!p)return STATUS_INVALID_PARAMETER;
  /* No primary/GDI/present path on this render-only adapter. The standard
   * staging format is X8R8G8B8, which this A8R8G8B8-only candidate cannot claim.
@@ -99,10 +105,11 @@ NTSTATUS APIENTRY GeoGetStandardAllocationDriverData(HANDLE handle,DXGKARG_GETST
  if(d.width>1024){status=STATUS_NOT_SUPPORTED;goto done;}
  d.pitch=d.width*4;d.format=GEO_FORMAT_A8R8G8B8;d.usage=GEO_USAGE_STAGING;
  if(!geo_desc_valid(&d)){status=STATUS_NOT_SUPPORTED;goto done;}
- p->AllocationPrivateDriverDataSize=sizeof(d);p->ResourcePrivateDriverDataSize=0;
+ RtlZeroMemory(&data,sizeof(data));data.size=sizeof(data);data.version=1;data.logical_width=d.width;data.logical_height=d.height;data.storage=d;
+ p->AllocationPrivateDriverDataSize=sizeof(data);p->ResourcePrivateDriverDataSize=0;
  p->pCreateShadowSurfaceData->Pitch=d.pitch;
  if(p->pAllocationPrivateDriverData) {
-  RtlCopyMemory(p->pAllocationPrivateDriverData,&d,sizeof(d));
+  RtlCopyMemory(p->pAllocationPrivateDriverData,&data,sizeof(data));
  }
  done:GeoSessionLeave(a,1);return status;
 }

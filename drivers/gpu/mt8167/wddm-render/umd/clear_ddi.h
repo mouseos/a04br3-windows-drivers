@@ -33,6 +33,13 @@ struct geo_umd_device {
 extern "C" {
 #endif
 HRESULT geo_umd_clear_init(struct geo_umd_device *,HANDLE,const D3DDDI_DEVICECALLBACKS *,const D3DDDICB_CREATECONTEXT *);
+HRESULT geo_umd_read_buffer(struct geo_umd_device *,HANDLE,UINT offset,UINT bytes,void *);
+HRESULT geo_umd_write_private_vertex(struct geo_umd_device *,HANDLE *,const void *,UINT bytes,D3DKMT_HANDLE *);
+HRESULT geo_umd_destroy_private_vertex(struct geo_umd_device *,HANDLE *);
+int geo_umd_has_external_resources(struct geo_umd_device *);
+HRESULT geo_umd_resource_info(struct geo_umd_device *,HANDLE,UINT usage,struct geo_surface_desc *,D3DKMT_HANDLE *);
+HRESULT geo_umd_target_extent(struct geo_umd_device *,UINT *,UINT *);
+HRESULT geo_umd_target_info(struct geo_umd_device *,struct geo_surface_desc *,D3DKMT_HANDLE *);
 void geo_umd_install_clear_ddis(D3DDDI_DEVICEFUNCS *);
 #ifdef __cplusplus
 }

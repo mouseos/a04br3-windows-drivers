@@ -123,3 +123,38 @@ link recipeは同commit/clean/source/output hash、ARMNT、KMDF import不在を�
 ## D3D shader → PCO接続の追加
 
 実SM2 bytecode検証→NIR→PCO USC変換とUMD shader/float constant寿命管理を追加。対応命令はstraight-line subsetであり、ShaderModel2/FL9_1 capsを広告しない。実host PCOでVS/PS/演算のcode生成を確認。Windows ARM32 PCO library、varying/texture/render state/draw KMD経路は未完成で、geo_ge8300_frontendは引き続き未定義です。固定NIRのnative triangle成功から一般D3D成功へ飛躍しません。実装・E向け接続条件・増分recipeは[FRONTEND-PCO.md](FRONTEND-PCO.md)を参照。最新の再利用既定commitは5a26a0d（b29を使う場合はReuseSourceCommitを明示）です。
+
+## 最初の標準描画profile: D3D9 TL/flat
+
+後続の`umd/frontend.c`は実`geo_ge8300_frontend`を定義し、実QueryAdapterInfo、
+GetCaps、compiler context、state/declaration/resource、DrawPrimitive/Indexedおよび
+SWVP用DrawPrimitive2/Indexed2からRenderCbへ接続する。ShaderVersionは0のまま。
+SM2/SM4の一部compileだけをFL9_1/full shader capabilityとして広告しない。
+Gouraud、texture、depth/stencil、一般blend、presentation/FL9_1は未qualified。
+標準D3D9 runtimeがこのlegacy cap setを受理するかと実GPU画素はmain実機で確認する。
+
+TL flatのprovoking colorはDirect3D9仕様の最初の頂点。CPUは頂点変換・clip・
+primitive assemblyだけを行い、色のrasterization/target clearをCPUで生成しない。
+実PCOのpass-through VSとconstant FSをownerへ渡し、実VidMm vertex/targetを
+Render allocation listで参照する。native sourceの+400/+300/.5 viewportと
+pixel-centre expected式に従いhalf-pixel補正する。DOD/TQ/providerは編集しない。
+
+論理RTは最大800x600、同じVidMm allocation内の正規800x600/pitch3200 backingに
+配置する。小さいRTはCPU clipで論理領域に制限し、Lock/Bltは論理extentと真の
+Pitchで同じGPU出力RAMを読む。別のprivate outputや固定fixtureによる成功代替は無い。
+index/stagingはCPUだけが使うCached system allocation、DMAへ送るvertex/targetは
+実Shadow MDL leaseであり、job世代とpatchが双方のhandlesを照合する。
+NoDMAなしのunbind/deleteは成功にしない。
+
+追加標準API clientは`ge8300-d3d9-flat.exe --luid=HHHHHHHH:LLLLLLLL`。
+LUID一致のHALだけを使い、hidden window/標準CreateDeviceEx(SWVP)、800x600 target、
+Clear→DrawPrimitiveUP(flat triangle)→GetRenderTargetData/LockRectを一度行う。
+`C:\MT8167D3D9Probe\flat-<tick>.log`を必須とし全段階の実HRESULT、cap、実画素数/hash、
+上下のsample一致をFlushする。UART/camera/user gesture/私的IOCTL/WARP/REFは使わない。
+旧D3D11 clientは変更せず、FL9_1未qualifiedの構成と区別する。
+
+一次資料:
+- https://learn.microsoft.com/en-us/windows/win32/direct3d9/triangle-interpolation
+- https://learn.microsoft.com/en-us/windows/win32/direct3d9/processing-vertex-data
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dumddi/nc-d3dumddi-pfnd3dddi_drawprimitive
+- https://learn.microsoft.com/en-us/windows-hardware/drivers/display/required-direct3d-9-capabilities

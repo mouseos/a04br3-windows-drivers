@@ -17,3 +17,17 @@ NTSTATUS GeoCaptureClearPacket(struct geo_clear_packet *output,const void *user_
  else if(status==STATUS_SUCCESS)status=STATUS_PARTIAL_COPY;
  ExFreePoolWithTag(snapshot,'cOeG');return status;
 }
+
+NTSTATUS GeoCaptureDrawPacket(struct geo_draw_packet **output,const void *user_source,UINT bytes) {
+ struct geo_draw_packet *snapshot;MM_COPY_ADDRESS source;SIZE_T copied=0;
+ ULONG_PTR start=(ULONG_PTR)user_source,limit=(ULONG_PTR)MmUserProbeAddress;NTSTATUS status;
+ if(!output)return STATUS_INVALID_PARAMETER;
+ *output=NULL;
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL||bytes<sizeof(*snapshot)||bytes>GEO_DRAW_COMMAND_MAX||!start||start>=limit||bytes>limit-start)return STATUS_INVALID_PARAMETER;
+ snapshot=ExAllocatePoolWithTag(NonPagedPool,bytes,'dCeG');if(!snapshot)return STATUS_INSUFFICIENT_RESOURCES;
+ RtlZeroMemory(&source,sizeof(source));source.VirtualAddress=(void *)user_source;
+ status=MmCopyMemory(snapshot,source,bytes,MM_COPY_MEMORY_VIRTUAL,&copied);
+ if(status==STATUS_SUCCESS&&copied==bytes){*output=snapshot;return status;}
+ ExFreePoolWithTag(snapshot,'dCeG');return status==STATUS_SUCCESS?STATUS_PARTIAL_COPY:status;
+}
+void GeoReleaseDrawCapture(struct geo_draw_packet *p){if(p)ExFreePoolWithTag(p,'dCeG');}
