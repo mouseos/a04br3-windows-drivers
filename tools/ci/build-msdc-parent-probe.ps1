@@ -24,6 +24,11 @@ $alias=if($env:A04_MT6392_CLK_ALIAS_EXPERIMENT -eq '1'){'1'}else{'0'}
 $thermal=if($env:A04_SHARED_THERMAL_DIAGNOSTIC -eq '1'){'1'}else{'0'}
 $voicePcm=if($env:A04_SHARED_VOICE_PCM_DIAGNOSTIC -eq '1'){'1'}else{'0'}
 $enginePcm=if($env:A04_SHARED_ENGINE_PCM -eq '1'){'1'}else{'0'}
+# Engine and fixed-tone parents must not share a DriverStore package version.
+$parentInf=Join-Path $src $(if($enginePcm -eq '1'){'prototype\shared-parent-engine-pcm.inf'}else{'prototype\shared-parent.inf'})
+$parentDriverVer=[regex]::Match([IO.File]::ReadAllText($parentInf),'(?im)^DriverVer\s*=\s*([^\r\n]+)').Groups[1].Value.Trim()
+$parentVersionParts=$parentDriverVer.Split(',')
+if($parentVersionParts.Count -ne 2){throw 'Invalid parent INF DriverVer'}
 $firstPlayback=if($env:A04_SHARED_FIRST_PLAYBACK -eq '1'){'1'}else{'0'}
 $digitalPlayback=if($env:A04_SHARED_DIGITAL_PLAYBACK -eq '1'){'1'}else{'0'}
 $codecDomain=if($env:A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC -eq '1'){'1'}else{'0'}
@@ -85,6 +90,6 @@ $parentFlags=[ordered]@{
  A04_AUDIO_PMIC_TRACE=$pmicTrace
 }
 [ordered]@{source_commit=(& git -C $root rev-parse HEAD);source_dirty=(@(& git -C $root status --porcelain).Count -ne 0);
-    driver_date='11/06/2026';driver_version='2026.11.6.1001';driver_ver='11/06/2026,2026.11.6.1001';
+    driver_date=$parentVersionParts[0];driver_version=$parentVersionParts[1];driver_ver=$parentDriverVer;
     flags=$parentFlags;sys_sha256=(Get-FileHash (Join-Path $out 'mt8167-shared.sys') -Algorithm SHA256).Hash;
     hardware_verified=$false}|ConvertTo-Json -Depth 5|Set-Content -Encoding UTF8 (Join-Path $out 'parent-manifest.json')
