@@ -5,18 +5,20 @@
 #include "transport.h"
 #include <string.h>
 static int fail(struct a04_bt_transport *b,int e)
-{b->failed=e;b->ready=0;b->bridge->failed=1;return e;}
+{if(!b->failed)b->failed=e;b->ready=0;b->bridge->failed=1;return b->failed;}
 static int valid(struct a04_bt_transport *b)
 {return b&&b->bridge&&b->bridge->wmt_ready&&!b->bridge->failed&&!b->failed;}
 static int own(struct a04_bt_transport *b)
 {
- uint32_t v;uint8_t request=2;
+ uint32_t v;uint8_t request=2;uint64_t started=b->now_us(b->context);
  if(a04_sdio_read32(&b->bridge->transport,2,4,&v))return fail(b,-1);
+ if(b->now_us(b->context)-started>=600000)return fail(b,-2);
  if(v&0x100)return 0;
  /* CHLPCR upper byte via CMD52: vendor COHEC_00006052 workaround. */
  if(a04_sdio_direct(&b->bridge->io,2,5,1,&request))return fail(b,-1);
  for(unsigned i=0;i<1200;i++){
   if(a04_sdio_read32(&b->bridge->transport,2,4,&v))return fail(b,-1);
+  if(b->now_us(b->context)-started>=600000)return fail(b,-2);
   if(v&0x100)return 0;
   b->bridge->io.delay(b->bridge->io.ctx,500);
  }
@@ -96,8 +98,10 @@ int a04_bt_poll(struct a04_bt_transport *b)
 }
 static int idle(struct a04_bt_transport *b)
 {
+ uint64_t started=b->now_us(b->context);
  for(unsigned i=0;i<1000;i++){
   if(a04_bt_poll(b))return b->failed;
+  if(b->now_us(b->context)-started>=1000000)return fail(b,-2);
   if(!b->pending)return 0;
   b->bridge->io.delay(b->bridge->io.ctx,1000);
  }
@@ -129,12 +133,13 @@ int a04_bt_write(struct a04_bt_transport *b,unsigned type,const uint8_t *p,unsig
 }
 static int function(struct a04_bt_transport *b,unsigned on)
 {
- uint8_t cmd[6]={1,6,2,0,0,(uint8_t)on};
+ uint8_t cmd[6]={1,6,2,0,0,(uint8_t)on};uint64_t started;
  b->func_wait=0;b->func_complete=0;
  if(send(b,4,cmd,sizeof(cmd)))return b->failed;
- b->func_wait=1;
+ b->func_wait=1;started=b->now_us(b->context);
  for(unsigned i=0;i<2000;i++){
   if(a04_bt_poll(b))return b->failed;
+  if(b->now_us(b->context)-started>=2000000)return fail(b,-2);
   if(b->func_complete&&!b->pending){b->func_wait=0;b->enabled=on;return 0;}
   b->bridge->io.delay(b->bridge->io.ctx,1000);
  }
@@ -142,7 +147,7 @@ static int function(struct a04_bt_transport *b,unsigned on)
 }
 static int command(struct a04_bt_transport *b,unsigned op,const uint8_t *p,unsigned n)
 {
- uint8_t cmd[10];int e;
+ uint8_t cmd[10];int e;uint64_t started;
  if(n>7)return -1;
  /* Drain old traffic before arming the opcode match. */
  if(idle(b))return b->failed;
@@ -151,19 +156,20 @@ static int command(struct a04_bt_transport *b,unsigned op,const uint8_t *p,unsig
  for(volatile unsigned char *v=cmd;v<cmd+sizeof(cmd);v++)*v=0;
  if(e)return e;
  if(op==0x1001)b->version_sent=1;
- b->awaiting=op;
+ b->awaiting=op;started=b->now_us(b->context);
  for(unsigned i=0;i<2000;i++){
   if(a04_bt_poll(b))return b->failed;
+  if(b->now_us(b->context)-started>=2000000)return fail(b,-2);
   if(b->complete&&!b->pending){b->awaiting=0;return 0;}
   b->bridge->io.delay(b->bridge->io.ctx,1000);
  }
  return fail(b,-2);
 }
-int a04_bt_open(struct a04_bt_transport *b,struct a04_wmt_bridge *bridge,void *p,int (*rx)(void *,unsigned,const uint8_t *,unsigned))
+int a04_bt_open(struct a04_bt_transport *b,struct a04_wmt_bridge *bridge,void *p,int (*rx)(void *,unsigned,const uint8_t *,unsigned),uint64_t (*now_us)(void *))
 {
- if(!b||!bridge||!bridge->wmt_ready||bridge->failed||bridge->wlan_ready||
+ if(!b||!bridge||!rx||!now_us||!bridge->io.delay||!bridge->wmt_ready||bridge->failed||bridge->wlan_ready||
     !bridge->channel.initialized||bridge->channel.pending_cost||bridge->channel.free_bytes!=2080)return -1;
- memset(b,0,sizeof(*b));b->version_status=0xffffffffu;b->bridge=bridge;b->context=p;b->receive=rx;
+ memset(b,0,sizeof(*b));b->version_status=0xffffffffu;b->bridge=bridge;b->context=p;b->receive=rx;b->now_us=now_us;
  /* Bootstrap channel must never read CHISR again after this handoff. */
  bridge->channel.initialized=0;return 0;
 }

@@ -112,6 +112,18 @@ NTSTATUS a04_bt_hfp_connection(struct a04_bt_hfp_session *s,BOOLEAN *connected)
  if(NT_SUCCESS(status))status=request(s,IOCTL_BTHHFP_DEVICE_GET_CONNECTION_STATUS_UPDATE,sizeof(BOOL),sizeof(BOOL),TRUE,&value);
  if(NT_SUCCESS(status))*connected=!!value;unlock(s);return status;
 }
+NTSTATUS a04_bt_hfp_request_connection(struct a04_bt_hfp_session *s,BOOLEAN connect)
+{
+ NTSTATUS status;
+ if(!s||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ lock(s);status=a04_bt_hfp_status(s);
+ /* Sysvad SetBthHfpConnect/Disconnect: zero input/output, no device ID,
+  * no implicit STREAM_OPEN, no wait for SLC and no synthetic jack event.
+  * The existing notification chain publishes actual target state changes. */
+ if(NT_SUCCESS(status))status=request(s,connect?IOCTL_BTHHFP_DEVICE_REQUEST_CONNECT:
+  IOCTL_BTHHFP_DEVICE_REQUEST_DISCONNECT,0,0,0,NULL);
+ unlock(s);return status;
+}
 static const GUID volume_type_general={STATIC_KSPROPTYPESETID_General};
 /* Bounds and steps are returned by HFP, never a guessed 0..15/dB mapping. */
 static int in_output(struct hfp_call *c,ULONG_PTR bytes,const void *p,SIZE_T length)

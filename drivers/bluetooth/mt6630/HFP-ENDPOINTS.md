@@ -220,3 +220,37 @@ Raman HFP checkpointの親1007は歴史的source profileであり、現行tuple�
 新HFP SYS/親/Audioの署名tupleを作る際はmainの新予約と全flags/sourceを固定する必要がある。
 本BT library/source作業では親INFを変更・予約せず、1007/1008/1009/1010/1012/1014の
 別SYS再包装を行わない。SD/USB署名ZIPは凍結したまま。
+
+
+## HFP service-level 接続要求と今回の候補
+
+両topology filterへ `KSPROPSETID_BtAudio` の
+`KSPROPERTY_ONESHOT_RECONNECT` / `KSPROPERTY_ONESHOT_DISCONNECT` を追加した。
+Microsoft Sysvad の `PropertyHandler_BthHfpOneShotReconnect` /
+`PropertyHandler_BthHfpOneDisconnect` と同じ GET action であり、SETではない。
+BASICSUPPORTだけではI/Oを発行しない。実GETでは、すでにproviderが物理照合済みの
+session targetへ、入力・出力0の固定 `IOCTL_BTHHFP_DEVICE_REQUEST_CONNECT` /
+`IOCTL_BTHHFP_DEVICE_REQUEST_DISCONNECT` を一回発行する。
+任意opcode/path/addressは受けない。返却statusは要求受付であり、SLC確立ではない。
+実接続は既存 `GET_CONNECTION_STATUS_UPDATE` とjackイベントで判定する。
+自動再試行・接続成功cache・合成通知・暗黙STREAM_OPENは行わない。
+
+一次source:
+- [Sysvad topology handler](https://github.com/microsoft/Windows-driver-samples/blob/main/audio/sysvad/EndpointsCommon/bthhfptopo.cpp)
+- [Sysvad topology property table](https://github.com/microsoft/Windows-driver-samples/blob/main/audio/sysvad/EndpointsCommon/bthhfpspeakertoptable.h)
+- [Sysvad SetBthHfpConnect/SetBthHfpDisconnect](https://github.com/microsoft/Windows-driver-samples/blob/main/audio/sysvad/BthhfpDevice.cpp)
+- WDK8.1 `km/bthhfpddi.h`, `shared/ksmedia.h` を実buildで確認する。
+
+raw HCI transportは実monotonic時計（Windows `KeQueryInterruptTime`）を必須入力とした。
+CHLPCR所有権600ms / TX drain1s / WMT・HCI応答2sは、poll回数だけでなく
+SDIO処理中の経過時間も確認する。下位SDIO request自身の有限timeoutはそのまま維持する。
+これは単一D0全体のdeadlineではない。最初のtransport failureを初期化失敗番号で
+上書きせず、実timeoutは `STATUS_IO_TIMEOUT` でD0Entryへ返す。
+
+raw transport INFは `11/06/2026,2026.11.7.2003`。旧2002の別SYSを生成しない。
+全BT/common TUはNoFP/NEON flags、stack protector無効、WDK8.1宣言aliasを揃え、
+正規WDK `libcntpr.lib` をlinkする。WiFiの共通helperは非編集。
+HFP coreは別archiveであり、このraw SYSへendpointを二重linkしない。
+HCIBypass None/0は維持。raw候補を標準stack/HFP動作候補とは呼ばない。
+
+Raman/main向けの残依存と固定build手順は [HFP-INTEGRATION-HANDOFF.md](HFP-INTEGRATION-HANDOFF.md)。

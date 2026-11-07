@@ -50,6 +50,7 @@ static void observe(BT_DEVICE *c,unsigned state)
   s->lmp_version=c->bt.version.lmp_version;s->manufacturer=c->bt.version.manufacturer;s->lmp_subversion=c->bt.version.lmp_subversion;}
  a04_bt_status_publish(s);
 }
+static uint64_t bt_now_us(void *p){UNREFERENCED_PARAMETER(p);return KeQueryInterruptTime()/10u;}
 static void notify(void *p){UNREFERENCED_PARAMETER(p);} /* polling, INTEN=0 */
 static int mask(void *p){BT_DEVICE *c=p;return c->irq.interrupt?a04_windows_irq_stop(&c->irq):0;}
 static int drain(void *p)
@@ -238,13 +239,15 @@ NTSTATUS BtStart(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous)
  stage=6;
  if(a04_wmt_bridge_boot_wmt(&c->bridge,fw.wmt,fw.wmt_length,a04_wifi_wdf_wmt_sha256,a04_sha256,&options))goto fail;
  stage=7;
- if(a04_bt_open(&c->bt,&c->bridge,c,receive)||a04_bt_initialize(&c->bt,nvram))goto fail;
+ if(a04_bt_open(&c->bt,&c->bridge,c,receive,bt_now_us)||a04_bt_initialize(&c->bt,nvram))goto fail;
  c->running=1;WdfIoQueueStart(c->reads[0]);WdfIoQueueStart(c->reads[1]);
  DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_INFO_LEVEL,
   "MT6630BT: ReadLocalVersion complete hci=%u revision=%u lmp=%u manufacturer=%u subversion=%u\n",
   c->bt.version.hci_version,c->bt.version.hci_revision,c->bt.version.lmp_version,c->bt.version.manufacturer,c->bt.version.lmp_subversion);
  WdfTimerStart(c->timer,WDF_REL_TIMEOUT_IN_MS(5));status=STATUS_SUCCESS;goto done;
 fail:
+ /* Preserve a concrete timeout rather than the last successful parent call. */
+ status=c->bt.failed==-2?STATUS_IO_TIMEOUT:STATUS_IO_DEVICE_ERROR;
  c->uncertain=1; /* no lease release on ambiguous initialization or failed PIO */
  if(c->irq.interrupt)(void)a04_windows_irq_remove(&c->irq);
  if(c->host.base)a04_windows_msdc2_unmap(&c->host);

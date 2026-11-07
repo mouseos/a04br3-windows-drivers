@@ -35,26 +35,37 @@ try {
   $parentManifestHash=(Get-FileHash (Join-Path $out 'audio-usb\a04-msdc-parent-probe\manifest.json') -Algorithm SHA256).Hash
 
  }
- & "$PSScriptRoot\build-mt6630-core.ps1"
  $kit="${env:ProgramFiles(x86)}\Windows Kits\8.1";$inc=Join-Path $kit 'Include'
  $km=Join-Path $kit 'Lib\winv6.3\km\arm';$wdf=Join-Path $kit 'Lib\wdf\kmdf\arm\1.13'
- $objects=@()
+ $kernelCodegenFlags=@('-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-mfpu=none')
+ $common=@('--target=thumbv7-pc-windows-msvc','-std=c11','-w','-ffunction-sections','-fdata-sections','-fms-extensions','-ffreestanding','-O2','-fno-stack-protector',
+  '-D__ldrexd=__bt_wdk81_ldrexd_declaration','-D_KERNEL_MODE','-D_ARM_','-DARM','-DKMDF_VERSION_MAJOR=1','-DKMDF_VERSION_MINOR=13','-DNTDDI_VERSION=0x06030000','-D_WIN32_WINNT=0x0603',
+  '-DA04_WIFI_IRQ_DIAGNOSTIC=1','-DA04_WIFI_SESSION_DIAGNOSTIC=0','-DA04_WIFI_CALIBRATION_DIAGNOSTIC=0',
+  "-I$inc\km","-I$inc\shared","-I$inc\um","-I$inc\wdf\kmdf\1.13")+$kernelCodegenFlags
+ $objects=@();$sources=@()
  foreach($name in @('transport','sideband','status','windows_driver')){
   $obj=Join-Path $out "$name.obj";$objects+=$obj
-  & clang --target=thumbv7-pc-windows-msvc -std=c11 -w -ffunction-sections -fdata-sections -fms-extensions -ffreestanding -O2 -fno-stack-protector -D_KERNEL_MODE -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DNTDDI_VERSION=0x06030000 -D_WIN32_WINNT=0x0603 -DA04_WIFI_IRQ_DIAGNOSTIC=1 "-I$inc\km" "-I$inc\shared" "-I$inc\um" "-I$inc\wdf\kmdf\1.13" -c "$root\drivers\bluetooth\mt6630\$name.c" -o $obj
+  $source="$root\drivers\bluetooth\mt6630\$name.c"
+  & clang @common -c $source -o $obj
+  $sources+=@{path="drivers/bluetooth/mt6630/$name.c";sha256=(Get-FileHash $source -Algorithm SHA256).Hash}
   if($LASTEXITCODE){throw "Bluetooth $name compile failed"}
  }
  # An explicit set; do not link stale objects from another driver invocation.
  foreach($name in @('windows_irq','windows_nvram_reader','windows_firmware','sha256','windows_board','resource_lease','bringup','board_sequence','msdc2_pio','power_bridge','power_plan','transport','direct','calibration','nvram_sector','wlan_firmware','windows_msdc2','lifetime','identity','enumerate','control_start','native_tx','regulatory','wmt_bridge')){
-  $objects+=Join-Path (Join-Path $env:TEMP 'a04br3-mt6630-core') "$name.obj"
+  $obj=Join-Path $out ("common-$name.obj");$objects+=$obj
+  $source="$root\drivers\network\mt6630\$name.c"
+  & clang @common -c $source -o $obj
+  if($LASTEXITCODE){throw "Bluetooth common $name compile failed"}
+  $sources+=@{path="drivers/network/mt6630/$name.c";sha256=(Get-FileHash $source -Algorithm SHA256).Hash}
  }
- & lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib /opt:ref $objects "$wdf\wdfdriverentry.lib" "$wdf\wdfldr.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\bufferoverflowfastfailk.lib" "/out:$out\mt6630-bluetooth.sys"
+ & lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib /opt:ref $objects "$wdf\wdfdriverentry.lib" "$wdf\wdfldr.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\libcntpr.lib" "$km\bufferoverflowfastfailk.lib" "/out:$out\mt6630-bluetooth.sys"
  if($LASTEXITCODE){throw 'MT6630 Bluetooth SYS link failed'}
  Copy-Item "$root\drivers\bluetooth\mt6630\mt6630-bluetooth.inf" $out -Force
  $transportInf=Get-Content (Join-Path $out 'mt6630-bluetooth.inf') -Raw
  if($transportInf -notmatch '(?m)^DriverVer=([^\r\n]+)'){throw 'Transport INF DriverVer missing'}
  $transportDriverVer=$Matches[1]
- @{source_commit=$commit;source_dirty=$false;required_parent_bt_profile=1;shared_parent_built=[bool]$BuildSharedParent;shared_parent_reused=[bool]$ReuseParentDirectory;
+ @{source_commit=$commit;source_dirty=$false;sources=$sources;kernel_compile_flags=$common;kernel_codegen_flags=$kernelCodegenFlags;
+   crt_library_sha256=(Get-FileHash "$km\libcntpr.lib" -Algorithm SHA256).Hash;transport_monotonic_deadlines=$true;required_parent_bt_profile=1;shared_parent_built=[bool]$BuildSharedParent;shared_parent_reused=[bool]$ReuseParentDirectory;
    parent_inf=$parentInf;parent_source_commit=$parentSource;parent_sys_sha256=$parentHash;parent_manifest_sha256=$parentManifestHash;
    transport_driver_ver=$transportDriverVer;transport_inf_sha256=(Get-FileHash (Join-Path $out 'mt6630-bluetooth.inf') -Algorithm SHA256).Hash;
    bthx_device_control=$true;bthx_parent_queue_forwarding=$true;standard_bluetooth_verified=$false;

@@ -63,6 +63,10 @@ struct a04_bt_hfp_session;
 /* Runtime metadata only: no name/address is returned or logged. */
 NTSTATUS a04_bt_hfp_metadata(struct a04_bt_hfp_session *,struct a04_bt_hfp_metadata *);
 NTSTATUS a04_bt_hfp_connection(struct a04_bt_hfp_session *,BOOLEAN *);
+/* Fixed HFP service-level operation on the already matched target only.
+ * Completion is request acceptance, NOT a connected/disconnected indication.
+ * Real connection state continues to come from the status update IOCTL. */
+NTSTATUS a04_bt_hfp_request_connection(struct a04_bt_hfp_session *,BOOLEAN connect);
 /* BT-private control/event ABI; provider v2 layout stays unchanged.
  * Changes are real HFP completion values. Callback is PASSIVE, nonblocking,
  * and must not call this session or synchronously run provider teardown. */

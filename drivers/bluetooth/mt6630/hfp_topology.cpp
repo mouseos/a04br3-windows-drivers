@@ -20,7 +20,7 @@ class HfpTopology : public IMiniportTopology {
  static void changed(PVOID,ULONG);
  static NTSTATUS event(PPCEVENT_REQUEST);
  static NTSTATUS property(PPCPROPERTY_REQUEST);
- static const PCPROPERTY_ITEM properties[3],volumeProperty[1];
+ static const PCPROPERTY_ITEM properties[5],volumeProperty[1];
  static const PCEVENT_ITEM jackEvent[1],volumeEvent[1];
  static const PCAUTOMATION_TABLE automation,volumeAutomation;
 public:
@@ -76,12 +76,14 @@ public:
 const PCPROPERTY_ITEM HfpTopology::properties[]={
  {&KSPROPSETID_Jack,KSPROPERTY_JACK_DESCRIPTION,KSPROPERTY_TYPE_GET|KSPROPERTY_TYPE_BASICSUPPORT,property},
  {&KSPROPSETID_Jack,KSPROPERTY_JACK_CONTAINERID,KSPROPERTY_TYPE_GET|KSPROPERTY_TYPE_BASICSUPPORT,property},
- {&KSPROPSETID_Jack,KSPROPERTY_JACK_DESCRIPTION2,KSPROPERTY_TYPE_GET|KSPROPERTY_TYPE_BASICSUPPORT,property}};
+ {&KSPROPSETID_Jack,KSPROPERTY_JACK_DESCRIPTION2,KSPROPERTY_TYPE_GET|KSPROPERTY_TYPE_BASICSUPPORT,property},
+ {&KSPROPSETID_BtAudio,KSPROPERTY_ONESHOT_RECONNECT,KSPROPERTY_TYPE_GET|KSPROPERTY_TYPE_BASICSUPPORT,property},
+ {&KSPROPSETID_BtAudio,KSPROPERTY_ONESHOT_DISCONNECT,KSPROPERTY_TYPE_GET|KSPROPERTY_TYPE_BASICSUPPORT,property}};
 const PCPROPERTY_ITEM HfpTopology::volumeProperty[]={
  {&KSPROPSETID_Audio,KSPROPERTY_AUDIO_VOLUMELEVEL,KSPROPERTY_TYPE_GET|KSPROPERTY_TYPE_SET|KSPROPERTY_TYPE_BASICSUPPORT,property}};
 const PCEVENT_ITEM HfpTopology::jackEvent[]={{&KSEVENTSETID_PinCapsChange,KSEVENT_PINCAPS_JACKINFOCHANGE,KSEVENT_TYPE_ENABLE|KSEVENT_TYPE_BASICSUPPORT,event}};
 const PCEVENT_ITEM HfpTopology::volumeEvent[]={{&KSEVENTSETID_AudioControlChange,KSEVENT_CONTROL_CHANGE,KSEVENT_TYPE_ENABLE|KSEVENT_TYPE_BASICSUPPORT,event}};
-const PCAUTOMATION_TABLE HfpTopology::automation={sizeof(PCPROPERTY_ITEM),3,properties,0,0,NULL,sizeof(PCEVENT_ITEM),1,jackEvent,0};
+const PCAUTOMATION_TABLE HfpTopology::automation={sizeof(PCPROPERTY_ITEM),5,properties,0,0,NULL,sizeof(PCEVENT_ITEM),1,jackEvent,0};
 const PCAUTOMATION_TABLE HfpTopology::volumeAutomation={sizeof(PCPROPERTY_ITEM),1,volumeProperty,0,0,NULL,sizeof(PCEVENT_ITEM),1,volumeEvent,0};
 void HfpTopology::changed(PVOID context,ULONG kind)
 {
@@ -115,6 +117,23 @@ NTSTATUS HfpTopology::property(PPCPROPERTY_REQUEST r)
 {
  if(!r||!r->MajorTarget||!r->PropertyItem||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  HfpTopology *self=static_cast<HfpTopology *>(static_cast<IMiniportTopology *>(r->MajorTarget));
+ if(IsEqualGUIDAligned(*r->PropertyItem->Set,KSPROPSETID_BtAudio)){
+  if(r->PropertyItem->Id!=KSPROPERTY_ONESHOT_RECONNECT&&r->PropertyItem->Id!=KSPROPERTY_ONESHOT_DISCONNECT)return STATUS_INVALID_DEVICE_REQUEST;
+  const ULONG flags=KSPROPERTY_TYPE_GET|KSPROPERTY_TYPE_BASICSUPPORT;
+  if(r->Verb&KSPROPERTY_TYPE_BASICSUPPORT){
+   if(r->Value&&r->ValueSize>=sizeof(KSPROPERTY_DESCRIPTION)){
+    KSPROPERTY_DESCRIPTION *d=(KSPROPERTY_DESCRIPTION *)r->Value;RtlZeroMemory(d,sizeof(*d));
+    d->AccessFlags=flags;d->DescriptionSize=sizeof(*d);
+    /* Sysvad VT_ILLEGAL: an action with no typed result payload. */
+    /* No typed value: leave the property type GUID/ID zero. */
+    r->ValueSize=sizeof(*d);return STATUS_SUCCESS;
+   }
+   NTSTATUS status=value_size(r,sizeof(flags));if(NT_SUCCESS(status))*(PULONG)r->Value=flags;return status;
+  }
+  if(r->Verb!=KSPROPERTY_TYPE_GET)return STATUS_INVALID_DEVICE_REQUEST;
+  r->ValueSize=0;
+  return a04_bt_hfp_request_connection(self->session,r->PropertyItem->Id==KSPROPERTY_ONESHOT_RECONNECT);
+ }
  if(IsEqualGUIDAligned(*r->PropertyItem->Set,KSPROPSETID_Audio)){
   if(!self->metadata.volume||r->Node!=0||r->PropertyItem->Id!=KSPROPERTY_AUDIO_VOLUMELEVEL)return STATUS_INVALID_DEVICE_REQUEST;
   const ULONG flags=KSPROPERTY_TYPE_GET|KSPROPERTY_TYPE_SET|KSPROPERTY_TYPE_BASICSUPPORT;
