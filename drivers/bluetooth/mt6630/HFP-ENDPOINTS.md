@@ -198,3 +198,25 @@ Ramanの`build-hfp-portcls.ps1`は現在BT依存を63c32へ固定している。
 実codec/FIFO latency。`4b2a461`はVerifyDmaQuiescent不在でfactory公開前に拒否しており、
 本BT変更はその資格を証明しない。登録やlatencyを常時成功/ゼロstubで補わない。
 標準Bluetooth列挙、SCO duplex、音声、電源遷移の実機成功は依然未確認。
+
+
+### 切断後の既存KS handle
+
+PnP detachでsessionが停止してもPortClsが保持するstream objectの最終Releaseは後発する。
+その間に同じRUNを要求された場合も、`state==RUN`だけで成功せずsession status、
+readableな実buffer、providerの実generationを確認する。STOP/PAUSEはcleanupを試みられる
+経路を残し、実suspend/drain失敗を伝播する。切断後の新SetFormatも成功化しない。
+これはhost sourceの受付契約修正であり、BT controller登録やSCO音声の成功ではない。
+
+### 版予約の訂正（main central表）
+
+作業ルート`port/gsi/logs/ios-feasibility/windows-rt-parent-version-reservations.json`を参照。
+1008はecaa固定署名親、1009は廃止された旧thermal予約で新規署名tuple作成禁止。
+1010は凍結SD署名tuple、1012はCarver thermal/BQ、1014はGPU stop/power owner予約。
+旧署名package内BUILD-HANDOFFの1009表記を現行予約と解釈せず、この訂正とcentral表を優先。
+凍結ZIP/同梱文書は書き換えない。CarverのSD-only ACPI/boot作業も別工程、RTCを混ぜない。
+
+Raman HFP checkpointの親1007は歴史的source profileであり、現行tupleの版予約ではない。
+新HFP SYS/親/Audioの署名tupleを作る際はmainの新予約と全flags/sourceを固定する必要がある。
+本BT library/source作業では親INFを変更・予約せず、1007/1008/1009/1010/1012/1014の
+別SYS再包装を行わない。SD/USB署名ZIPは凍結したまま。

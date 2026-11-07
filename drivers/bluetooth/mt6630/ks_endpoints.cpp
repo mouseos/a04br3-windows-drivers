@@ -75,14 +75,27 @@ public:
   }
   this->~HfpStream();ExFreePoolWithTag(this,TAG);return 0;
  }
- STDMETHODIMP_(NTSTATUS) SetFormat(PKSDATAFORMAT f) override {return state==KSSTATE_STOP&&format_ok(f)?STATUS_SUCCESS:STATUS_NO_MATCH;}
+ STDMETHODIMP_(NTSTATUS) SetFormat(PKSDATAFORMAT f) override {
+  NTSTATUS status=a04_bt_hfp_status(session);if(!NT_SUCCESS(status))return status;
+  return state==KSSTATE_STOP&&format_ok(f)?STATUS_SUCCESS:STATUS_NO_MATCH;
+ }
  STDMETHODIMP_(NTSTATUS) SetState(KSSTATE next) override {
   if(KeGetCurrentIrql()!=PASSIVE_LEVEL||next<KSSTATE_STOP||next>KSSTATE_RUN)return STATUS_INVALID_PARAMETER;
-  if(next==state)return STATUS_SUCCESS;
   if(next==KSSTATE_RUN){
-   if(!buffer.mdl||!p()->buffer_live(p()->context,direction,buffer.generation))return STATUS_DEVICE_NOT_READY;
-   NTSTATUS status=a04_bt_hfp_run(session,direction);if(!NT_SUCCESS(status))return status;
-  }else if(state==KSSTATE_RUN){NTSTATUS status=a04_bt_hfp_suspend(session,direction);if(!NT_SUCCESS(status))return status;}
+   /* PnP detach/fault can stop the shared session while an old KS handle
+    * still retains state==RUN. Equality is not proof that this ring is live. */
+   NTSTATUS status=a04_bt_hfp_status(session);if(!NT_SUCCESS(status))return status;
+   KIRQL irql;KeAcquireSpinLock(&bufferLock,&irql);
+   BOOLEAN live=readable&&buffer.mdl&&p()->buffer_live(p()->context,direction,buffer.generation);
+   KeReleaseSpinLock(&bufferLock,irql);if(!live)return STATUS_DEVICE_NOT_READY;
+   if(next==state)return STATUS_SUCCESS;
+   status=a04_bt_hfp_run(session,direction);if(!NT_SUCCESS(status))return status;
+  }else {
+   /* Cleanup remains available after detach/fault; do not gate STOP/PAUSE
+    * on the new-RUN admission check or turn a failed drain into success. */
+   if(next==state)return STATUS_SUCCESS;
+   if(state==KSSTATE_RUN){NTSTATUS status=a04_bt_hfp_suspend(session,direction);if(!NT_SUCCESS(status))return status;}
+  }
   state=next;return STATUS_SUCCESS;
  }
  STDMETHODIMP_(NTSTATUS) GetPosition(PKSAUDIO_POSITION out) override {
