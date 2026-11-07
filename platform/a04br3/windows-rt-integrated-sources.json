@@ -438,6 +438,29 @@
     "actual_five_driver_three_client_host_selector_verified": true,
     "actual_five_driver_three_client_media_generated_here": false,
     "brightness_native_authenticode_verified_here": false,
-    "brightness_native_hardware_verified_here": false
+    "brightness_native_hardware_verified_here": false,
+    "optional_gpu": {
+      "hardware_id": "ACPI\\MOU0006",
+      "class_guid": "{4D36E97D-E325-11CE-BFC1-08002BE10318}",
+      "service": "MT8167GE8300",
+      "validation_reference": "f0d0c64",
+      "candidate_source": "07285ac017852fcb0863d7d5cfef767eda6167a2",
+      "baseline_sys_sha256": "3a5b1a0553dae7e09852432f838c3de255487a4b63d4c95f0a7be960eedeeaef",
+      "policy_hash_semantics": "SHA256(policy-manifest.json bytes), distinct from internal generated-header policy_sha256",
+      "gpu_offline_dism": false,
+      "gpu_direct_installed_sys_copy": false,
+      "maximum_batch_reboots": 1,
+      "source_repo_separate_from_workspace": true,
+      "missing_source_object_fetch": "explicit baseline/candidate source40 only",
+      "hash_comparison_bytes": 32,
+      "package_slots": 4,
+      "target_slots": [
+        5,
+        6
+      ],
+      "actual_six_target_host_inputs_verified": true,
+      "wdk_link_verified_here": false,
+      "hardware_verified_here": false
+    }
   }
 }

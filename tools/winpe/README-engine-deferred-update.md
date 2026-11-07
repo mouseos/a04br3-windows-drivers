@@ -162,3 +162,57 @@ brightness DOD `6c665d43bf4a123605f83f6436562dffce25722f`（1.4）、
 音声SYS `2f56e9a4cb742c2d09284117d9e781493d827a2800a7925238bdc352b2b346ef`を保持。
 WLANは旧f17固定client、音声clientはd0eb、輝度clientは4fafe9aを保持。
 これらはhostのmanifest/hash/cert照合結果で、hostでAuthenticodeや実機動作を確認した意味ではない。
+
+## Optional GPUを同じ一回の延期rebootへまとめる
+
+mapのtop-levelに`gpu`を明示した場合だけ、6番目の固定target `ACPI\MOU0006` /
+System class `{4D36E97D-E325-11CE-BFC1-08002BE10318}` / `MT8167GE8300`を追加する。
+既存GPU専用serviceの再armや標準D3D sidecarは追加しない。
+
+```json
+"gpu": {
+  "baseline_directory": "<root内の署名済みf1 baseline>",
+  "baseline_source_commit": "<baseline signed-manifest source40>",
+  "baseline_manifest_sha256": "<baseline signed-manifest実SHA256>",
+  "candidate_directory": "<root内の署名済みwarm072 candidate>",
+  "candidate_source_commit": "07285ac017852fcb0863d7d5cfef767eda6167a2",
+  "candidate_manifest_sha256": "<candidate signed-manifest実SHA256>",
+  "policy_manifest": "<正式schema2 policy-manifest.json実path>",
+  "policy_manifest_sha256": "<その実file SHA256（内部policy_sha256 headerhashとは別）>"
+}
+```
+
+Herschel f0d0c64の`load_package/validate_transition`を独立module
+`gpu_rollforward_package.py`へ再利用し、source-committed INF、新旧manifest/hash、
+高版・新SYS・baseline一致・固定FW・署名metadataを検査する。
+workspaceはpackage containment用、module所在repoは`git show`用に分離している。
+remote checkoutには新旧source objectも必要。正式policyが既にある場合はその実fileを使う。
+新規生成する場合は次を使える（標準schema2と同じ生成処理）。
+
+```powershell
+# source40は最終署名manifestから取得。branch HEADの推測値を使わない。
+git fetch --no-tags origin $BaselineSource40 $CandidateSource40
+python -B tools/winpe/gpu_rollforward_package.py --baseline $BaselinePackage `
+  --candidate $WarmPackage --output build/warm-batch-policy
+# 上記policyの実SHAとfresh34 backupの実SHAをmapへ反映してから:
+powershell -File tools/ci/build-mt8167-hardware-probe.ps1 -AudioMode EnginePcm `
+  -DeferredPackageMap $Fresh34Map -WorkspaceRoot $TaskRoot `
+  -OutputDirectory build/engine-batch-gpu -Sign -CertificateThumbprint $DevelopmentThumbprint
+```
+
+CI helperもmapの固定source40 objectが無い場合だけfetchする。runner/実機を起動する処理は無い。
+正式policyのcandidate source/files、新旧manifest、baseline SYS/version、transitionをmapへcrosslinkし、
+Engine再arm planにもcandidate source/SYS/CAT、policy実file SHA、transitionを保持する。
+最初にGPUを含めるときの旧metadataはこの検証済みbaselineから取得し、freshbackup実SYSとも照合する。
+GPUだけは新旧正式INFの日付を使い、周辺機器の11/06固定dateと混同しない。
+
+GPU packageはEngine専用`drivers\gpu`へINF/SYS/CAT/FWをコピーする。
+WinPEでGPUへDISM AddDriverやinstalled SYS直接copyは行わず、初回通常OSで標準延期installする。
+runtimeは全対象preflightでGPUの実baseline版/date/SYS/FWと固定class/serviceを照合し、
+CAT信頼とINF/SYS/FWのCATmembershipを確認。6targetを延期installして正規rebootは1回だけ。
+次bootは全targetの候補版/date/実SYS、GPU FW hashを確認してから固定client診断へ進む。
+hash比較は32byte `sizeof(digest)`、file slotsは4、target slotsは生成policyの5/6で別々に有界。
+GPU描画や標準D3D対応の成功判定はこのupdaterでは行わない。
+
+実署名f1 2.2（SYS `3a5b1a05…`）→warm072 2.3と正式schema2 policyのhost照合は確認済み。
+新updaterのWDK link/署名、fresh34媒体生成、実機適用は未確認。fresh32/失敗run33は使用しない。

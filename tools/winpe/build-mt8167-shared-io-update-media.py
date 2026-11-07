@@ -94,6 +94,9 @@ def main():
    deferred_sources,deferred_components,deferred_certificates,deferred_policy=load_map(a.deferred_package_map,root)
    if (deferred_policy['backup_manifest_sha256']!=sha(backup)
        or not probe_info or probe_info.get('deferred_update')!=deferred_policy):raise SystemExit('延期policy/署名service/freshbackup不一致')
+   if 'gpu' in deferred_components:
+    installed={x['source_path'].replace('\\','/').lower():x['sha256'].lower() for x in b['files']}
+    if installed.get('windows/system32/drivers/mt8167-ge8300.sys')!=deferred_components['gpu']['baseline']['files']['gpu/mt8167-ge8300.sys']:raise SystemExit('freshbackupのGPU SYSが標準policy baselineと不一致')
    for name in ('mt6630-wlan-probe.exe','mt8167-audio-engine-probe.exe'):
     if sha(deferred_sources['clients/'+name])!=sha(sources['clients/'+name]):raise SystemExit('延期policy clientは既存固定WLAN/d0eb署名clientと一致が必要です')
    # Replace only the exact five targets and fixed clients, preserving TOPRGU and firmware.
@@ -188,6 +191,10 @@ def main():
    extra=['if not exist C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\display mkdir C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\display >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
    for extension in ('inf','sys','cat'):
     extra+=['copy /b /y X:\\a04br3\\shared-io\\display\\mt8167-display.'+extension+' C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\display\\mt8167-display.'+extension+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
+   if 'gpu' in deferred_policy['packages']:
+    extra+=['if not exist C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\gpu mkdir C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\gpu >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
+    for name in ('mt8167-ge8300.inf','mt8167-ge8300.sys','mt8167-ge8300.cat','ge8300-mips.fw'):
+     extra+=['copy /b /y X:\\a04br3\\shared-io\\gpu\\'+name+' C:\\Windows\\System32\\MT8167EngineProbe\\drivers\\gpu\\'+name+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
    if 'mt8167-brightness-native.exe' in deferred_policy['clients']:
     extra+=['copy /b /y X:\\a04br3\\shared-io\\clients\\mt8167-brightness-native.exe C:\\Windows\\System32\\MT8167EngineProbe\\clients\\mt8167-brightness-native.exe >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail',
             'if exist C:\\MT8167EngineProbe\\brightness-native.log goto dismfail']

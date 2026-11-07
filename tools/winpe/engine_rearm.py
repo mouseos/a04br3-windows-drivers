@@ -1,4 +1,5 @@
 """Explicit private Engine rearm contract. No device access and no hive editing."""
+import datetime
 import hashlib
 import json
 import re
@@ -13,19 +14,20 @@ STATE_FILES = (MARKER, 'Windows/System32/MT8167EngineProbe/logs/service.log',
 BRIGHTNESS_LOG='MT8167EngineProbe/brightness-native.log'
 SYS_NAMES = {'parent': 'mt8167-shared.sys', 'audio': 'mt8167-audio.sys',
              'usb': 'mt8167-usb20.sys', 'wifi': 'mt6630-runtime.sys',
-             'display': 'mt8167-display.sys', 'toprgu': 'mt8167-toprgu.sys'}
+             'gpu':'mt8167-ge8300.sys', 'display': 'mt8167-display.sys', 'toprgu': 'mt8167-toprgu.sys'}
 
 
-def version(value):
+def version(value, gpu=False):
     date, numbers = value.split(',')
-    if date != '11/06/2026' or not re.fullmatch(r'\d+\.\d+\.\d+\.\d+', numbers):
+    if (not gpu and date != '11/06/2026') or not re.fullmatch(r'\d+\.\d+\.\d+\.\d+', numbers):
         raise ValueError('再arm INFは固定dateと4要素versionが必要です')
+    if gpu:datetime.datetime.strptime(date,'%m/%d/%Y')
     return tuple(map(int, numbers.split('.')))
 
 
 def package_state(components):
     return {kind: {'driver_ver': components[kind]['driver_ver'],
-                   'files': components[kind]['files']} for kind in (*KINDS, 'display', 'toprgu') if kind in components}
+                   'files': components[kind]['files']} for kind in (*KINDS, 'display', 'toprgu', 'gpu') if kind in components}
 
 
 def require_progress(previous, following, backup):
@@ -39,12 +41,12 @@ def require_progress(previous, following, backup):
             raise ValueError('旧版のcomponent/version metadataが必要です: ' + kind)
         before, after = previous[kind], following[kind]
         if before['files'] != after['files']:
-            if version(after['driver_ver']) <= version(before['driver_ver']):
+            if version(after['driver_ver'],kind=='gpu') <= version(before['driver_ver'],kind=='gpu'):
                 raise ValueError('修正packageには旧版より高いDriverVerが必要です: ' + kind)
             changed.append(kind)
         path = 'windows/system32/drivers/' + SYS_NAMES[kind]
         expected = next(digest.lower() for name, digest in after['files'].items() if name.endswith('.sys'))
-        if actual.get(path) != expected and version(after['driver_ver']) <= version(before['driver_ver']):
+        if actual.get(path) != expected and version(after['driver_ver'],kind=='gpu') <= version(before['driver_ver'],kind=='gpu'):
             raise ValueError('実SYS未適用/不存在の対象はINF昇版が必要です: ' + kind)
     if not changed:
         raise ValueError('修正package hashが無い同一構成の再armは拒否します')
@@ -62,6 +64,11 @@ def make_plan(previous_path, backup_path, backup, components, root):
             or previous.get('host_backup_manifest_sha256') == sha(backup_path)):
         raise ValueError('使用済み媒体と同じbackupは再armに使えません')
     before, after = package_state(previous['components']), package_state(components)
+    if 'gpu' in after and 'gpu' not in before:
+        before['gpu']={k:components['gpu']['baseline'][k] for k in ('driver_ver','files')}
+    if 'gpu' in after:
+        actual={x['source_path'].replace('\\','/').lower():x['sha256'].lower() for x in backup['files']}
+        if actual.get('windows/system32/drivers/mt8167-ge8300.sys')!=next(v for k,v in before['gpu']['files'].items() if k.endswith('.sys')):raise ValueError('GPU baselineとfreshbackup実SYS hash不一致')
     changed = require_progress(before, after, backup)
     entries = {entry['source_path'].replace('\\', '/'): entry for entry in backup['files']}
     if not set(STATE_FILES).issubset(entries):
@@ -79,7 +86,7 @@ def make_plan(previous_path, backup_path, backup, components, root):
     elif 'mt8167-brightness-native.exe' in previous.get('fixed_clients',[]):
         if BRIGHTNESS_LOG not in {x['source_path'].replace('\\','/') for x in backup.get('missing_files',[])}:
             raise ValueError('旧固定brightness logの回収または明示absent記録が必要です')
-    return {'schema': 1, 'service': 'MT8167EngineProbe', 'maximum_rearms': 1,
+    plan={'schema': 1, 'service': 'MT8167EngineProbe', 'maximum_rearms': 1,
             'disabled_service_fingerprint': DISABLED_FINGERPRINT,
             'backup_manifest_sha256': sha(backup_path), 'recovery_boot_id': backup['recovery_boot_id'],
             'previous_media_manifest_sha256': sha(previous_path),
@@ -90,7 +97,11 @@ def make_plan(previous_path, backup_path, backup, components, root):
             'old_state_files': {name: {'sha256': entries[name]['sha256'], 'bytes': entries[name]['bytes']}
                                 for name in old_state_names},
             'expected_installed_sys': {SYS_NAMES[kind]: next(digest.lower() for name, digest in after[kind]['files'].items()
-                                                            if name.endswith('.sys')) for kind in (*KINDS, 'display', 'toprgu') if kind in components}}
+                                                            if name.endswith('.sys')) for kind in (*KINDS, 'display', 'toprgu', 'gpu') if kind in components}}
+    if 'gpu' in components:
+        gpu=components['gpu'];plan['gpu_transition']={k:gpu[k] for k in ('source_commit','policy_manifest_sha256','transition_id')}
+        plan['gpu_transition'].update(candidate_source_commit=gpu['source_commit'],candidate_sys_sha256=gpu['files']['gpu/mt8167-ge8300.sys'],candidate_cat_sha256=gpu['files']['gpu/mt8167-ge8300.cat'])
+    return plan
 
 
 def check_plan(path, expected_sha, backup_path, backup, components, native, root):
@@ -106,6 +117,11 @@ def check_plan(path, expected_sha, backup_path, backup, components, native, root
             or native.get('engine_rearm_plan_sha256') != expected_sha.lower()
             or native.get('disabled_service_fingerprint') != DISABLED_FINGERPRINT):
         raise ValueError('再arm plan/修正package/freshbackup/nativeのbinding不一致')
+    if 'gpu' in components:
+        gpu=components['gpu'];binding={k:gpu[k] for k in ('source_commit','policy_manifest_sha256','transition_id')}
+        binding.update(candidate_source_commit=gpu['source_commit'],candidate_sys_sha256=gpu['files']['gpu/mt8167-ge8300.sys'],candidate_cat_sha256=gpu['files']['gpu/mt8167-ge8300.cat'])
+        if plan.get('gpu_transition')!=binding:raise ValueError('再arm GPU transition/policy/hash不一致')
+    if 'gpu' in components and plan['previous_packages'].get('gpu')!={k:components['gpu']['baseline'][k] for k in ('driver_ver','files')}:raise ValueError('再arm GPU baseline metadata不一致')
     require_progress(plan['previous_packages'], plan['next_packages'], backup)
     entries = {x['source_path'].replace('\\', '/'): x for x in backup['files']}
     if plan['old_state_files'].get(MARKER,{}).get('sha256','').lower() != hashlib.sha256(b'MT8167EngineProbe attempted\n').hexdigest():

@@ -142,10 +142,12 @@ def probe_check(executable, manifest, certificate, root, audio_mode="Tone"):
         deferred = report.get('deferred_update')
         if deferred is not None:
             from engine_deferred_policy import TARGETS
+            has_gpu='gpu' in deferred.get('packages',{})
+            expected_ids=[x[0] for x in TARGETS.values()]+(['ACPI\\MOU0006'] if has_gpu else [])
             if (deferred.get('mode') != 'engine_fixed_deferred_v1' or deferred.get('schema') != 1
-                    or set(deferred.get('packages', {})) != set(TARGETS)
+                    or set(deferred.get('packages', {})) != (set(TARGETS)|({'gpu'} if has_gpu else set()))
                     or pnp.get('api') != 'SetupDiCallClassInstaller/DIF_INSTALLDEVICE'
-                    or pnp.get('fixed_hardware_ids') != [x[0] for x in TARGETS.values()]
+                    or pnp.get('fixed_hardware_ids') != expected_ids
                     or pnp.get('parent_policy') != 'DI_DONOTCALLCONFIGMG-deferred-reboot-only'
                     or pnp.get('live_parent_replacement') is not False
                     or pnp.get('parent_updated') is not True

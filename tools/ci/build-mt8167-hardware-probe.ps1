@@ -65,10 +65,23 @@ $policyDirectory=Join-Path $out 'deferred-policy'
 $deferredPolicy=$null
 $brightnessDefine='0'
 $fixedClients=@('mt6630-wlan-probe.exe',$audioName)
+$deferredIds=@('ACPI\BEN0001','MT8167\AFE','MT8167\USB20','A04BR3\MT6630SDIO','ACPI\MOU0007')
 if($deferred){
+ $map=Get-Content -Raw -LiteralPath $DeferredPackageMap|ConvertFrom-Json
+ if($map.gpu){
+  foreach($source in @($map.gpu.baseline_source_commit,$map.gpu.candidate_source_commit)){
+   if($source -notmatch '^[0-9a-f]{40}$'){throw 'GPU source pin must be a full hexadecimal commit'}
+   & git -C $root cat-file -e ($source+'^{commit}') 2>$null
+   if($LASTEXITCODE){
+    & git -C $root fetch --no-tags origin $source
+    if($LASTEXITCODE){throw 'Required GPU source object fetch failed'}
+   }
+  }
+ }
  & python -B (Join-Path $root 'tools\winpe\engine_deferred_policy.py') --package-map $DeferredPackageMap --workspace $WorkspaceRoot --output $policyDirectory
  if($LASTEXITCODE){throw 'Fixed deferred package policy generation failed'}
  $deferredPolicy=Get-Content -Raw (Join-Path $policyDirectory 'deferred-policy-manifest.json')|ConvertFrom-Json
+ if($deferredPolicy.packages.PSObject.Properties.Name -contains 'gpu'){$deferredIds+='ACPI\MOU0006'}
  if($deferredPolicy.clients.PSObject.Properties.Name -contains 'mt8167-brightness-native.exe'){$brightnessDefine='1';$fixedClients+='mt8167-brightness-native.exe'}
  Copy-Item (Join-Path $policyDirectory 'deferred-policy-manifest.json') (Join-Path $out 'deferred-policy-manifest.json')
 }
@@ -121,7 +134,7 @@ try {
   deferred_runtime_source_sha256=$(if($deferred){(Get-FileHash (Join-Path $root 'tools\winpe\engine-deferred-update.h') -Algorithm SHA256).Hash.ToLowerInvariant()}else{$null});
   deferred_policy_manifest_sha256=$(if($deferred){(Get-FileHash (Join-Path $out 'deferred-policy-manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant()}else{$null});
   pnp_rebind=$(if($deferred){@{api='SetupDiCallClassInstaller/DIF_INSTALLDEVICE';
-   fixed_hardware_ids=@('ACPI\BEN0001','MT8167\AFE','MT8167\USB20','A04BR3\MT6630SDIO','ACPI\MOU0007');
+   fixed_hardware_ids=$deferredIds;
    directory='System32\MT8167EngineProbe\drivers';maximum_calls_per_id=1;parent_updated=$true;
    parent_policy='DI_DONOTCALLCONFIGMG-deferred-reboot-only';reboot_required_stops_clients=$true;catalog_signature_required=$true;
    problem_status='CM_Get_DevNode_PropertyW/DEVPKEY_Device_ProblemStatus/DEVPROP_TYPE_NTSTATUS';

@@ -30,7 +30,7 @@ def load_map(path, root):
     path=path.resolve(strict=True)
     if not path.is_relative_to(root.resolve()):raise ValueError('package mapは作業ルート内が必要です')
     spec=json.loads(path.read_text(encoding='utf-8-sig'))
-    if set(spec) != {'schema','backup_manifest_sha256','packages','clients'} or spec['schema'] != 1:
+    if set(spec) not in ({'schema','backup_manifest_sha256','packages','clients'}, {'schema','backup_manifest_sha256','packages','clients','gpu'}) or spec['schema'] != 1:
         raise ValueError('固定Engine policy map schema不一致')
     hexpin(spec['backup_manifest_sha256'])
     if set(spec['packages']) != set(TARGETS) or set(spec['clients']) not in (set(CLIENTS),set((*CLIENTS,BRIGHTNESS_CLIENT))):
@@ -84,6 +84,58 @@ def load_map(path, root):
         policy['packages'][role]={**components[role],'source_commit':source,
             'version_u64':sum(v << ((3-i)*16) for i,v in enumerate(parts)),
             'date_filetime':int((datetime.datetime.strptime(date,'%m/%d/%Y')-datetime.datetime(1601,1,1)).total_seconds())*10000000}
+    if 'gpu' in spec:
+        from gpu_rollforward_package import load_package,validate_transition,FILES
+        entry=spec['gpu']
+        required={'baseline_directory','baseline_source_commit','baseline_manifest_sha256','candidate_directory',
+                  'candidate_source_commit','candidate_manifest_sha256','policy_manifest','policy_manifest_sha256'}
+        if set(entry)!=required:raise ValueError('GPU固定新旧package/policy pinsを全て明示してください')
+        directories=[Path(entry[n+'_directory']).resolve(strict=True) for n in ('baseline','candidate')]
+        if any(not p.is_relative_to(root.resolve()) for p in directories):raise ValueError('GPU inputはroot内が必要です')
+        repo=Path(__file__).resolve().parents[2]
+        baseline=load_package(repo,directories[0]);candidate=load_package(repo,directories[1],candidate=True)
+        validate_transition(baseline,candidate)
+        for kind,pkg in (('baseline',baseline),('candidate',candidate)):
+            if pkg['source']!=hexpin(entry[kind+'_source_commit'],40) or pkg['signed_sha256']!=hexpin(entry[kind+'_manifest_sha256']):
+                raise ValueError('GPU新旧署名manifest/source pin不一致')
+        inf=(directories[1]/FILES[0]).read_text(encoding='utf-8-sig')
+        if not re.search(r'(?im)^ClassGuid\s*=\s*\{4d36e97d-e325-11ce-bfc1-08002be10318\}\s*$',inf):
+            raise ValueError('GPUは固定System classだけです')
+        policy_path=Path(entry['policy_manifest']).resolve(strict=True)
+        if not policy_path.is_relative_to(root.resolve()) or sha(policy_path)!=hexpin(entry['policy_manifest_sha256']):
+            raise ValueError('GPU policy-manifest実file SHA pin不一致')
+        gpu_policy=json.loads(policy_path.read_text(encoding='utf-8-sig'))
+        transition=hashlib.sha256((candidate['source']+baseline['hashes'][FILES[1]]+candidate['hashes'][FILES[1]]+candidate['hashes'][FILES[0]]).encode('ascii')).hexdigest()
+        expected_files={n:candidate['verified_hashes'][n] for n in ('provider-package-manifest.json',*FILES)}
+        if (gpu_policy.get('schema_version')!=2 or gpu_policy.get('transition_id')!=transition
+            or gpu_policy.get('candidate_source_commit')!=candidate['source']
+            or gpu_policy.get('baseline_source_commit')!=baseline['source']
+            or gpu_policy.get('baseline_driver_ver')!=baseline['driver_ver'] or gpu_policy.get('driver_ver')!=candidate['driver_ver']
+            or gpu_policy.get('baseline_sys_sha256')!=baseline['hashes'][FILES[1]]
+            or gpu_policy.get('baseline_signed_manifest_sha256')!=baseline['signed_sha256']
+            or gpu_policy.get('source_signed_manifest_sha256')!=candidate['signed_sha256']
+            or gpu_policy.get('files')!=expected_files):raise ValueError('標準GPU schema2 policy/new/old crosslink不一致')
+        def gpu_component(pkg):
+            return {'driver_ver':pkg['driver_ver'],'source_commit':pkg['source'],'signed_manifest_sha256':pkg['signed_sha256'],
+                    'files':{'gpu/'+n:pkg['hashes'][n] for n in FILES}}
+        component=gpu_component(candidate);component['baseline']=gpu_component(baseline)
+        component['certificate_thumbprint']='BCBF6C456C6F0DD0818434763B189488FBF13570'
+        component['policy_manifest_sha256']=sha(policy_path);component['transition_id']=transition
+        components['gpu']=component
+        date,numbers=candidate['driver_ver'].split(',')
+        def encode_version(pkg):return sum(v << ((3-i)*16) for i,v in enumerate(pkg['parts']))
+        policy['packages']['gpu']={**component,'version_u64':encode_version(candidate),
+            'date_filetime':int((datetime.datetime.strptime(date,'%m/%d/%Y')-datetime.datetime(1601,1,1)).total_seconds())*10000000}
+        base_date=baseline['driver_ver'].split(',')[0]
+        policy['gpu_transition']={'candidate_source_commit':candidate['source'],'candidate_sys_sha256':candidate['hashes'][FILES[1]],
+            'candidate_cat_sha256':candidate['hashes'][FILES[2]],'policy_sha256':sha(policy_path),'transition_id':transition,
+            'baseline_version_u64':encode_version(baseline),
+            'baseline_date_filetime':int((datetime.datetime.strptime(base_date,'%m/%d/%Y')-datetime.datetime(1601,1,1)).total_seconds())*10000000,
+            'baseline_sys_sha256':baseline['hashes'][FILES[1]],'baseline_firmware_sha256':baseline['hashes'][FILES[3]]}
+        for name in FILES:selected['gpu/'+name]=directories[1]/name
+        selected['gpu-policy-manifest.json']=policy_path
+        selected['gpu-development.cer']=directories[1]/'mt8167-development.cer'
+        certificates['gpu']=(directories[1]/'mt8167-development.cer').read_bytes()
     for name in CLIENTS:
         entry=spec['clients'][name]
         if set(entry)!={'path','sha256'}:raise ValueError('固定client入力fields不一致')
@@ -119,12 +171,17 @@ def cbytes(digest):return '{'+','.join('0x'+digest[i:i+2] for i in range(0,64,2)
 
 def generate(policy):
     lines=['/* Generated fixed-target policy; compile into the signed Engine service. */',
-           'static const struct deferred_pin deferred_pins[5]={']
-    for role in TARGETS:
+           '#define DEFERRED_TARGET_COUNT '+str(len(policy['packages'])), '#define DEFERRED_GPU_UPDATE '+('1' if 'gpu' in policy['packages'] else '0'),
+           'static const struct deferred_pin deferred_pins[DEFERRED_TARGET_COUNT]={']
+    for role in (*TARGETS,'gpu'):
+        if role not in policy['packages']:continue
         p=policy['packages'][role]
         names=list(p['files'])
         lines.append('{'+str(p['version_u64'])+'ULL,'+str(p['date_filetime'])+'ULL,{'+','.join(cbytes(p['files'][n]) for n in names)+'}},')
-    lines+=['};','static const char deferred_token[]="'+hashlib.sha256(json.dumps(policy,sort_keys=True,separators=(',',':')).encode()).hexdigest()+'";','static const BYTE deferred_client_hashes['+str(len(policy['clients']))+'][32]={'+','.join(cbytes(policy['clients'][n]) for n in (*CLIENTS,BRIGHTNESS_CLIENT) if n in policy['clients'])+'};']
+    lines+=['};']
+    if 'gpu_transition' in policy:
+        g=policy['gpu_transition'];lines+=['static const struct deferred_pin deferred_gpu_baseline={'+str(g['baseline_version_u64'])+'ULL,'+str(g['baseline_date_filetime'])+'ULL,{{0},'+cbytes(g['baseline_sys_sha256'])+',{0},'+cbytes(g['baseline_firmware_sha256'])+'}};']
+    lines+=['static const char deferred_token[]="'+hashlib.sha256(json.dumps(policy,sort_keys=True,separators=(',',':')).encode()).hexdigest()+'";','static const BYTE deferred_client_hashes['+str(len(policy['clients']))+'][32]={'+','.join(cbytes(policy['clients'][n]) for n in (*CLIENTS,BRIGHTNESS_CLIENT) if n in policy['clients'])+'};']
     return '\n'.join(lines)+'\n'
 
 def main():
