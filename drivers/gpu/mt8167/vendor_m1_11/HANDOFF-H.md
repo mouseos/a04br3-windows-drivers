@@ -265,3 +265,16 @@ EのV2 entryは`frontend/draw_link_protocol.c`の独立objectに分離。
 共通のframing/state実装はTU-private `draw_validation_private.h`。
 V1 symbolを差し替えたりduplicate/unresolvedを無視するlink flagは使わない。
 E factory helperのLinkCheckはGetDrawOpsV1/V2双方をexportして実参照を検査する。
+
+### COLOR v3: 実official SM4からのdecoder/NIR/link生成
+
+`tools/gpu/shaders/native-color-sm4.h`、`native-color-pair.c`、
+`build-native-color-pair.py`で、Hの公式FL9_1 color DXBCの実tokenからNIRを生成。
+実source/宣言/interpolation/長さを検査し、VS MOVのsource registerを使う。
+PCO pair-link後VS88/FS80とtokensはe837の有限allowlistへ全byte一致。
+artifact: ROOT/port/xnu/out/windows-rt-native-color-pair-sm4-v3/。
+初回e837 SYSは変更なし。Hの汎用SM4 decoderは依然別scope。
+有限経路をH compilerへ組み込む場合も実signature/input-layoutを検証し、
+最終pco_data snapshotをGetDrawOpsV2のrequestへ渡す。
+現typed frontendの1element/48byte vertexとV1 capture transportは
+2elements/96byte＋V2 requestへ別途拡張する必要がある。

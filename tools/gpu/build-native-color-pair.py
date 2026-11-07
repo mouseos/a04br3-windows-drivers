@@ -30,7 +30,9 @@ def main():
  with (o/'build.log').open('w') as log:
   subprocess.run(c,cwd=b,env=env,stdout=log,stderr=subprocess.STDOUT,check=True)
   subprocess.run(link,cwd=b,env=env,stdout=log,stderr=subprocess.STDOUT,check=True)
- runs=[subprocess.check_output([str(o/'pair-compiler')],cwd=o,env=env) for _ in range(2)]
+ for stage,name in [('vs','color-vs'),('fs','color-ps')]:
+  (o/(stage+'.tokens.bin')).write_bytes(tokens(a.official_inputs/(name+'.dxbc')))
+ runs=[subprocess.check_output([str(o/'pair-compiler'),str(o/'vs.tokens.bin'),str(o/'fs.tokens.bin')],cwd=o,env=env) for _ in range(2)]
  assert runs[0]==runs[1];(o/'compiler-output.log').write_bytes(runs[0])
  header='/* SPDX-License-Identifier: MIT\n * Source-generated linked POSITION4/COLOR4. No GPU addresses.\n * tools/gpu/shaders/native-color-pair.c SHA256 '+sha(source)+' */\n'
  meta={}
@@ -48,6 +50,6 @@ def main():
   meta[stage]['official_dxbc_sha256']=sha(path);meta[stage]['tokens_sha256']=sha(o/(stage+'.tokens.bin'))
   header+='static const uint32_t a04_native_color_'+stage+'_tokens[]={\n '+','.join(hex(v)+'u' for v in struct.unpack('<'+'I'*(len(t)//4),t))+'\n};\n'
  a.header.write_text(header)
- meta.update(two_processes_equal=True,source_sha256=sha(source),header_sha256=sha(a.header),reference_manifest_sha256=sha(a.reference_manifest),reference_linked_objects=ref['reference_linked_objects'],compile=c,link=link,gpu_executed=False)
+ meta.update(two_processes_equal=True,source_sha256=sha(source),decoder_sha256=sha(source.with_name("native-color-sm4.h")),actual_sm4_tokens_decoded=True,header_sha256=sha(a.header),reference_manifest_sha256=sha(a.reference_manifest),reference_linked_objects=ref['reference_linked_objects'],compile=c,link=link,gpu_executed=False)
  (o/'manifest.json').write_text(json.dumps(meta,indent=2)+'\n')
 if __name__=='__main__':main()

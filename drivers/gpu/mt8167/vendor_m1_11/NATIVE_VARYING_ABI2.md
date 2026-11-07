@@ -126,3 +126,24 @@ request_v2のspanとshader fields、link snapshotを渡す。
 検査: `sh tools/gpu/test-native-draw-v2.sh <explicit-source-pair-artifact-dir>`。
 実cold MDL/SG/PT/resource/ring write/readbackはhost doublesで検査済み。
 実FW start・GPU draw・標準runtime成功をこの検査結果から主張しない。
+
+## 実SM4入力からのsource pair（v3）
+
+`tools/gpu/shaders/native-color-sm4.h` の有限decoderを追加。
+実公式FL9_1 VS/FSの宣言とMOV/RET、入力出力register、PS LINEAR補間、
+完全float4 mask/identity swizzle、長さとterminalを検査する。
+resource/定数/制御flow/未対応opはエラー。Hの汎用decoderを置換するものではない。
+実runtime signature/input-layoutの照合はHが別途行う。
+
+`build-native-color-pair.py` は実DXBC SHDR token→上記decode→NIR構築→
+preprocess/link/reverse-link/lower/postprocess/encodeを実行する。
+VS位置/colorは実MOVのsource registerから生成し、tokenを検査せず固定NIRを返さない。
+2process一致、全USC/token byteがe837 admission profileと一致した。
+新artifactはROOT/port/xnu/out/windows-rt-native-color-pair-sm4-v3/。
+実SM4入力はHのwindows-rt-wddm-fixed-shaders-69385809、4 DXBC hashとも独立生成と一致。
+
+e837に含まれる生成headerは31905d08時点のsource hashを保持している。
+v3生成headerはartifact内だけに保存し、USC/token配列が同一であることを比較した。
+初回flat実機候補のSYS/署名をこの作業で変更・再buildしない。
+Hはこの有限COLOR経路を再利用可能。Hの最終compilerに統合した後のmetadata snapshotと
+V2 frontend transport接続が残る。標準COLOR drawや実GPU成功は未確認。

@@ -11,6 +11,12 @@
 #include "pco/pco_internal.h"
 #include "common/pvr_device_info.h"
 #include "util/ralloc.h"
+#include "native-color-sm4.h"
+static unsigned read_tokens(const char *path,uint32_t out[64])
+{
+ FILE *f=fopen(path,"rb");assert(f);unsigned n=(unsigned)fread(out,1,256,f);
+ assert(!ferror(f)&&feof(f));fclose(f);return n;
+}
 static nir_variable *io(nir_shader *s,nir_variable_mode mode,int loc,const char *name)
 {
  nir_variable *v=nir_variable_create(s,mode,glsl_vec4_type(),name);
@@ -30,8 +36,14 @@ static void dump(pco_ctx *ctx,nir_shader *nir,pco_data *data,const char *name)
  puts("");
  pco_print_shader(shader,stdout,name);ralloc_free(shader);
 }
-int main(void)
+int main(int argc,char **argv)
 {
+ assert(argc==3);uint32_t vertex_tokens[64],fragment_tokens[64];
+ struct a04_color_moves moves,fragment;
+ unsigned vn=read_tokens(argv[1],vertex_tokens),fn=read_tokens(argv[2],fragment_tokens);
+ assert(!a04_decode_color_sm4(&moves,0,vertex_tokens,vn));
+ assert(!a04_decode_color_sm4(&fragment,1,fragment_tokens,fn));
+ printf("DECODE official SM4 VS_POSITION=input%u VS_COLOR=input%u FS_COLOR=input0\n",moves.position_input,moves.color_input);
  struct pvr_device_info info;struct pvr_device_runtime_info runtime={0};pco_data vd={0},fd={0};
  assert(!pvr_device_info_init(&info,PVR_BVNC_PACK(22,40,54,30)));
  pco_ctx *ctx=pco_ctx_create(&info,&runtime,NULL);assert(ctx);
@@ -39,8 +51,8 @@ int main(void)
  nir_builder f=nir_builder_init_simple_shader(MESA_SHADER_FRAGMENT,pco_nir_options(),"position-color-pair-fs");
  nir_variable *position=io(v.shader,nir_var_shader_out,VARYING_SLOT_POS,"position");
  nir_variable *color=io(v.shader,nir_var_shader_out,VARYING_SLOT_VAR0,"color");
- nir_store_var(&v,position,nir_load_vtxin_pco(&v,4,nir_imm_int(&v,0)),15);
- nir_store_var(&v,color,nir_load_vtxin_pco(&v,4,nir_imm_int(&v,4)),15);
+ nir_store_var(&v,position,nir_load_vtxin_pco(&v,4,nir_imm_int(&v,moves.position_input*4)),15);
+ nir_store_var(&v,color,nir_load_vtxin_pco(&v,4,nir_imm_int(&v,moves.color_input*4)),15);
  nir_jump(&v,nir_jump_return);vd.common.vtxins=8;
  nir_variable *input=io(f.shader,nir_var_shader_in,VARYING_SLOT_VAR0,"color");
  unsigned bgra[4]={2,1,0,3};
