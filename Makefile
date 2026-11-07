@@ -4,7 +4,8 @@ CFLAGS ?= -O2 -Wall -Wextra -Werror -std=c11
 SRC := drivers/storage/mt8167-msdc
 
 .PHONY: test-gpu-m111-native
-test-gpu-m111-native: build/gpu_m111_native_terminate_stream_test build/gpu_m111_native_clear_surface_test build/gpu_m111_native_clear_codespace_test build/gpu_m111_native_eot_program_test build/gpu_m111_native_hwrt_profile_test build/gpu_m111_native_clear_pds_test build/gpu_m111_native_resources_test build/gpu_m111_native_fields_test build/gpu_m111_native_ccb_test build/gpu_m111_native_pair_test
+test-gpu-m111-native: build/gpu_m111_native_clear_job_test build/gpu_m111_native_terminate_stream_test build/gpu_m111_native_clear_surface_test build/gpu_m111_native_clear_codespace_test build/gpu_m111_native_eot_program_test build/gpu_m111_native_hwrt_profile_test build/gpu_m111_native_clear_pds_test build/gpu_m111_native_resources_test build/gpu_m111_native_fields_test build/gpu_m111_native_ccb_test build/gpu_m111_native_pair_test
+	./build/gpu_m111_native_clear_job_test
 	./build/gpu_m111_native_terminate_stream_test
 	./build/gpu_m111_native_clear_surface_test
 	./build/gpu_m111_native_clear_codespace_test
@@ -824,3 +825,8 @@ test-ge8300-wide-frame: build/gpu_wide_frame_test
 build/gpu_wide_frame_test: tests/gpu_wide_frame_test.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.c drivers/gpu/mt8167/vendor_m1_11/clear_image.c drivers/gpu/mt8167/gpu_mmu.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.h drivers/gpu/mt8167/gpu_mmu.h
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167 -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
+
+NATIVE_CLEAR_JOB_SRC := $(addprefix drivers/gpu/mt8167/vendor_m1_11/,native_clear_job.c native_clear_data.c native_terminate_stream.c native_clear_surface.c native_clear_codespace.c native_clear_pds.c native_eot_program.c native_record_fields.c native_pair.c native_ccb.c)
+build/gpu_m111_native_clear_job_test: tests/gpu_m111_native_clear_job_test.c $(NATIVE_CLEAR_JOB_SRC) $(wildcard drivers/gpu/mt8167/vendor_m1_11/native*.h)
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@

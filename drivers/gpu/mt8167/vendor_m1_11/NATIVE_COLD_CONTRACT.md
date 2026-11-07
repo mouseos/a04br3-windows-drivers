@@ -155,3 +155,57 @@ FPUを使わず、入力は既に量子化済みのRGBA8。+0のcontrolや他形
 GPU-only dummy region/stencilの初期状態、残りregisterを含む生成順の網羅である。
 取得済みPDS/USCは各programを個別に照合し、Windowsが所有するheap相対VAへ明示relocateする。
 未取得をzeroにせず、完全producer提供までTA/3D publishを開けない。
+
+
+## capture04に基づく初回800x600 clear CPU producer
+
+`native_clear_job.h`の`a04_m111_build_clear_job_800x600_cold`はTA0x88/3D0x150の全bytes、
+USC40 bytes/PDS0xe4 bytes、VDM/PPP/scissor/depth-biasのdata160 bytesを生成する。
+常時拒否stubやcaller任せの未知word入力ではない。scalarは同一BVNC/同版の成功した
+初回800x600 RGBA8、pitch800、1RT、MSAA/Z/S/query/streamoutなしのprofileに限定する。
+初回frame0、PR fence初値0。繰返しframe、800x1280、任意drawへの一般化はしていない。
+
+runtime一次証拠はev_23a2611a79b90fdc1374766579b6795f0c473575fdd08b59e53b719d77707fc6。
+元vendorで全480000画素一致、kick1回。疎PMRの実indexとCPU VMAから取得したVDMは
+PPP参照2wordとSTREAM_TERMINATE1wordのみ。PPPは既存terminate factoryと完全一致。
+3D+0x38はCBUF type8 SCISSOR、+0x40はtype9 DEPTHBIAS。DoKickTAがcontextの
+CBUF baseから各fieldへ設定し、name table0x282028のindex8/9はSCISSOR/DEPTHBIAS。
+scissor2組は各{800,600}、depth-biasの最初12 bytesは実取得値0。
+このdataは未取得のzero補完ではない。scissor storeの0x164ed4とRogue IPF sourceを照合。
+
+新しいdata allocationは従来terminate用4KiBのまま。host選定配置はVDM+0、PPP+64、
+scissor+128（16 bytes）、depth-bias+144（12 bytes）、有効160 bytes。
+USC/PDSも従来各4KiBのまま、FWbank追加offset/容量に変更なし。
+ownerの実data/USC/PDS page、output、dummy region/stencil、HWRT FW、PR fence FWを入力する。
+GPU VAはWindows ownerのinventoryに照合した実map値を使う。capture VAはコードに含めない。
+
+background/EOTは既存のsource-generated programへ置換する。captureのtexture-reading
+backgroundや即値EOTをそのままコピーしない。生成した背景はpacked色をoutput0へ、
+EOTは共有regから単一PBE emit。従ってevent infoは生成したprogramに対応する0x202
+（captureの即値EOTは0x201）。PDS/USC tasks、背景triple、event code/data、TA PPP base、
+VDM/PPP、table VA、output emit、FW/UFO addressを全て再生成する。
+この代替program一式をWindowsやRecoveryで実行したとは主張しない。
+
+CPU検証はcaptureの全record bytesに対して、明示した再配置とprogram binding変更だけを
+適用して一致を確認。実取得VDM/PPP/scissor/depth-biasとも照合した。
+別VA配置で再生成、失敗時output保持、既存shadow pairへの接続（TA224/3D472 bytes、
+cleanup HWRT+0xd0/+0xd8）をASan/UBSanで検証。ARM32 Windows COFF compileも通過。
+これらはWDK link・Windows実GPU描画の成功ではない。
+
+### ownerへの接続順と残る実行条件
+
+既存cold HWRT/freelist ownerを800x600で作り、その実addressで本producerを呼ぶ。
+code.usc / code.pdsを各owned code pageへ、data.bytesだけをGeneral pageへcopyする。
+`data` struct末尾の4 addressはhost metadataなのでGPUへcopyしない。
+output2D mapとの共有、code heap、HWRT/auxiliary/PM dataとの非重複はownerが照合する。
+既存native_pairへta/threeを渡し、PR/3D syncとcleanup lifetimeは従来契約を維持する。
+
+GPU-only dummy region/stencilは今回もCPU snapshot無し。同版RGXCreateGlobalPB0x12454c
+（ev_df8635ad497a611e1425a6febbb3719080341d6e1bfda8c1ebde555af01856c0）と
+RGXCreateRenderContext0x1276fcはflags3でallocate/map後に戻る。DevmemSubAllocate0x112a80
+（ev_5577c6ea749b8567880aca64f35df36f8e39cc0c0cebe6fd5ec8edffd1457c22）はflags3では
+CPU zero/poison branchへ入らない。KM sourceのPVR_LINUX_PHYSMEM_ZERO_ALL_PAGESと
+fresh PMR __GFP_ZEROはcold zero policyを支持するが、未取得のruntime内容を観測済みzeroへ
+変更しない。本producerはauxiliaryやHWRT依存dataの内容を証明・補完しない。
+owner側のcold初期化条件と実行ゲートの最終確認、source-generated代替programの実GPU検証は残る。
+CPU return0だけでTA/3D publishを有効にしない。Windows D3D UMD/WDDM render miniport対応とも別。
