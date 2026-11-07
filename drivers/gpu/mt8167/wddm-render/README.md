@@ -15,7 +15,7 @@ Windows RT 8.1 / ARM32 / WDDM 1.3向けの新規DDI実装部品です。run31の
 1. miniportのDriverEntry/StartDevice/StopDevice、device/context/allocation rundown、segment/query-adapter/caps、paging、preemption/TDR/resetとPnP/D0所有権。PASSIVE資源操作はadapter寿命と直列化し、ISRのjob参照との二段階状態遷移が必要です。現DDI部品単独でこれを提供しません。DestroyAllocationエラーだけを根拠にVidMmやPnP removal後のページ寿命が保証されるとは扱いません。
 2. UMD OpenAdapter/GetCaps/CreateDevice/DestroyDevice/CloseAdapter、実context作成/破棄と必須DDI（CreateResource2等を含むruntime経路）、必須shader/caps。ClearだけではFL9_1を満たせません。shader担当と実能力を揃えるまでfeature levelを広告しません。Microsoft RenderOnlySampleが示すhardware FL9.xのD3D9 DDI経由を参考にしていますが、WDDM版番号だけでD3D11 DDI対応を意味しません。
 3. GPU ownerによる同一VidMm locked MDL/PFN backingの実登録。別の固定private outputに書いて成功とはしません。CPU側はNormal RAM mapping、GPU側は同じページへの正式mappingと実cache処理が必要です。Cached flagは属性の実証ではありません。Device memory共通バッファを一般のuser PCM/SIMD/unalignedアクセスへ公開しません。非page-aligned MDLと部分mapは現候補では扱いません。
-4. ownerのPASSIVE prepareと、実interrupt同期IRQLで待たないsubmit。既存private同期poll APIをそのまま呼べません。実DxgkDdiInterruptRoutineに統合して、実GPU完了＋CPU可視性確認後にgeo_complete→DxgkCbNotifyInterrupt(DMA_COMPLETED)、DxgkCbQueueDpc→DxgkCbNotifyDpcを実装する必要があります。IRQLを手動で上げるだけではISRの代替になりません。owner submit中の再入完了は禁止、tokenは未完了job間で一意、世代を完了へそのまま返す契約です。
+4. ownerのPASSIVE prepareと、実interrupt同期IRQLで待たないsubmit。既存private同期poll APIをそのまま呼べません。新しいGeoInitializeClearNotifications/GeoCompleteFromInterrupt/GeoClearDpcが、実GPU完了＋CPU可視性確認後のgeo_complete→DxgkCbNotifyInterrupt(DMA_COMPLETED)、DxgkCbQueueDpc→DxgkCbNotifyDpcを実装しています。StartDeviceで実DXGKRNL interfaceと実割込IRQLを一度だけ渡し、GeoCompleteFromInterruptは本物のDxgkDdiInterruptRoutineからowner割込lock下で呼び、登録DPC wrapperからGeoClearDpcを呼ぶ接続が必要です。通知初期化前のRender/Submit/fence queryは拒否します。古い世代・障害・CPU可視性不足はscheduler完了へ変換しません。IRQL一致検査だけでは実ISR由来の証明にならず、手動で上げるだけではISRの代替になりません。DPC pendingはInterlockedで管理し、QueueDpcが既存queueを理由にFALSEを返すMicrosoft契約に従います。fault時のscheduler fault/TDR通知とadapter stop/resetはまだ未実装です。owner submit中の再入完了は禁止、tokenは未完了job間で一意、世代を完了へそのまま返す契約です。
 5. 取消/未submit prepared jobの破棄経路とowner rundown。`geo_cancel_prepared`は実ISR/callback rundown後のPASSIVE teardownへ接続する必要があります。割込を動かしたままPASSIVE関数とISRの参照更新を並行させてはいけません。未証明の停止・ドレインではreleaseせず保持します。現状でsleep/removal/recovery対応を広告できません。
 
 このため現provider/DODへINFでbindしません。ABIはEinsteinへの調整依頼をRamanへ送付していますが、provider側実装や合意済みとの報告はまだありません。
@@ -44,11 +44,12 @@ ge8300-d3d-clear.exe --luid=hhhhhhhh:llllllll
 
 ## 確認の範囲と一次資料
 
-hostの単一`tests/lifecycle.c`でpending解放拒否、古い世代拒否、実完了flags不足時のpoison/pinをまとめて確認。Win32/DDI実headerによるUMDとclientのARM32構文確認・ARMNT COFF生成は通過。clientの未解決参照は標準Win32/DXGI/D3D11 APIと付属memory.cのmemcpy/memsetのみ。参照headerはWindows 10初期SDK mirror＋WinBlue version guardで、実WDK8.1ビルドの代用ではありません。host KMD構文確認はMinGW DDKのARM header armddk.h欠落で停止し、架空headerを補って成功扱いしていません。WDK8.1 compile/link、ARM mapping、実IRQ、標準D3D実機成功はいずれも未確認です。
+hostの単一`tests/lifecycle.c`でpending解放拒否、古い世代拒否、実完了flags不足時のpoison/pinをまとめて確認。Win32/DDI実headerによるUMDとclientのARM32構文確認・ARMNT COFF生成は通過。clientの未解決参照は標準Win32/DXGI/D3D11 APIと付属memory.cのmemcpy/memsetのみ。参照headerはWindows 10初期SDK mirror＋WinBlue version guardで、実WDK8.1ビルドの代用ではありません。host KMDのARM構文確認はMinGW DDKのarmddk.h欠落で停止。追加でx64 targetの実DDI/DDK header構文確認は-Wall/-Wextra/-Werrorで通過しました（MinGWにないSAL注記_Pre_opt_bytecap_だけを無効化、DDI型/field/関数signatureは改変なし）。このx64確認をARM32/WDK8.1成功とは扱いません。WDK8.1 compile/link、ARM mapping、実IRQ、標準D3D実機成功はいずれも未確認です。
 
 - Microsoft [graphics-driver-samples RenderOnlySample](https://github.com/microsoft/graphics-driver-samples/tree/de4a2161991eda254013da6c18226f5ea06e4a9c/render-only-sample): ros UMD resource/context/DDIとFL9.x経路。参考読み取りのみ、sampleコードは複写していません。
 - Microsoft [DXGKARG_BUILDPAGINGBUFFER](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/ns-d3dkmddi-_dxgkarg_buildpagingbuffer): MdlOffsetはページ単位。
 - Microsoft [DXGKCB_NOTIFY_INTERRUPT](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkcb_notify_interrupt): 実DIRQL通知の契約。
+- Microsoft [DXGKCB_QUEUE_DPC](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/dispmprt/nc-dispmprt-dxgkcb_queue_dpc): 同一deviceのDPCが既にqueue済みならFALSEを返し追加queueしない。
 - Microsoft [D3D11CreateDevice](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-d3d11createdevice)、[Map](https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-map)。
 
 ソースはBSD-2-Clause-Patent。一次資料・生ログはソースへ混ぜず作業ルートのport/gsi/logs/ios-feasibility/windows-rt-wddm-render-source-20261107/へ保存しています。

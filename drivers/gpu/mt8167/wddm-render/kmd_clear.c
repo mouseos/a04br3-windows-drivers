@@ -61,7 +61,7 @@ static BOOLEAN finish_prepare(void *ctx) {
 NTSTATUS APIENTRY GeoRender(HANDLE context,DXGKARG_RENDER *r) {
  struct geo_kmd_context *c=context;struct prepare_call call;struct geo_clear_packet p;struct geo_dma_ticket t;
  struct geo_allocation *a;
- if(!c||!c->adapter||!c->adapter->synchronize||!r||KeGetCurrentIrql()!=PASSIVE_LEVEL||!r->pCommand||r->CommandLength!=sizeof(p)||
+ if(!c||!c->adapter||!c->adapter->notifications_ready||!c->adapter->synchronize||!r||KeGetCurrentIrql()!=PASSIVE_LEVEL||!r->pCommand||r->CommandLength!=sizeof(p)||
     r->DmaBufferSegmentId||r->MultipassOffset||r->AllocationListSize!=1||!r->pAllocationList||r->PatchLocationListInSize||
     !r->pDmaBuffer||r->DmaSize<sizeof(t)||!r->pDmaBufferPrivateData||r->DmaBufferPrivateDataSize<sizeof(t))return STATUS_INVALID_PARAMETER;
  __try { RtlCopyMemory(&p,r->pCommand,sizeof(p)); }
@@ -100,7 +100,7 @@ static BOOLEAN submit_locked(void *ctx) {
 }
 NTSTATUS APIENTRY GeoSubmitCommand(HANDLE adapter,const DXGKARG_SUBMITCOMMAND *p) {
  struct geo_kmd_adapter *a=adapter;struct geo_dma_ticket t;struct submit_call call;
- if(!a||!a->synchronize||!p||KeGetCurrentIrql()>DISPATCH_LEVEL||p->EngineOrdinal||p->NodeOrdinal||p->DmaBufferSegmentId||
+ if(!a||!a->notifications_ready||!a->synchronize||!p||KeGetCurrentIrql()>DISPATCH_LEVEL||p->EngineOrdinal||p->NodeOrdinal||p->DmaBufferSegmentId||
     p->Flags.Value||!p->pDmaBufferPrivateData||
     !ticket_range(p->DmaBufferPrivateDataSize,p->DmaBufferPrivateDataSubmissionStartOffset,p->DmaBufferPrivateDataSubmissionEndOffset))return STATUS_NOT_SUPPORTED;
  RtlCopyMemory(&t,(UCHAR *)p->pDmaBufferPrivateData+p->DmaBufferPrivateDataSubmissionStartOffset,sizeof(t));
@@ -116,8 +116,38 @@ static BOOLEAN query_fence_locked(void *ctx) {
 }
 NTSTATUS APIENTRY GeoQueryCurrentFence(HANDLE adapter,DXGKARG_QUERYCURRENTFENCE *p) {
  struct geo_kmd_adapter *a=adapter;struct fence_call call;
- if(!a||!a->synchronize||!p||p->NodeOrdinal||p->EngineOrdinal||KeGetCurrentIrql()>DISPATCH_LEVEL)return STATUS_INVALID_PARAMETER;
+ if(!a||!a->notifications_ready||!a->synchronize||!p||p->NodeOrdinal||p->EngineOrdinal||KeGetCurrentIrql()>DISPATCH_LEVEL)return STATUS_INVALID_PARAMETER;
  RtlZeroMemory(&call,sizeof(call));call.adapter=a;
  if(!a->synchronize(a->sync_context,query_fence_locked,&call))return STATUS_DEVICE_NOT_READY;
  if(call.status==STATUS_SUCCESS)p->CurrentFence=call.fence;return call.status;
+}
+
+/* These helpers supply the scheduler half of completion forwarding; they do
+ * not create an interrupt, poll hardware or fabricate a provider event. */
+NTSTATUS GeoInitializeClearNotifications(struct geo_kmd_adapter *a,const DXGKRNL_INTERFACE *dxgk,KIRQL owner_irql) {
+ if(!a||!dxgk||KeGetCurrentIrql()!=PASSIVE_LEVEL||a->notifications_ready||
+    owner_irql<=DISPATCH_LEVEL||owner_irql>HIGH_LEVEL||dxgk->Size<sizeof(*dxgk)||
+    !dxgk->DeviceHandle||!dxgk->DxgkCbNotifyInterrupt||!dxgk->DxgkCbQueueDpc||!dxgk->DxgkCbNotifyDpc)return STATUS_INVALID_PARAMETER;
+ /* Caller owns a zeroed, not-yet-published adapter and live StartDevice/D0
+  * interface. Publication to the actual ISR occurs only after this returns. */
+ a->dxgk_device=dxgk->DeviceHandle;a->notify_interrupt=dxgk->DxgkCbNotifyInterrupt;
+ a->queue_dpc=dxgk->DxgkCbQueueDpc;a->notify_dpc=dxgk->DxgkCbNotifyDpc;
+ a->owner_irql=owner_irql;a->dpc_pending=0;a->notifications_ready=1;return STATUS_SUCCESS;
+}
+NTSTATUS GeoCompleteFromInterrupt(struct geo_kmd_adapter *a,uint64_t token,uint32_t generation,int32_t status,uint32_t visibility) {
+ DXGKARGCB_NOTIFY_INTERRUPT_DATA data;uint32_t fence;NTSTATUS s;
+ if(!a||!a->notifications_ready||KeGetCurrentIrql()!=a->owner_irql||a->owner_irql<=DISPATCH_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+ s=geo_complete(&a->engine,token,generation,status,visibility,&fence);
+ if(s!=STATUS_SUCCESS)return s; /* No stale/fault/visibility failure becomes a completed fence. */
+ RtlZeroMemory(&data,sizeof(data));data.InterruptType=DXGK_INTERRUPT_DMA_COMPLETED;
+ data.DmaCompleted.SubmissionFenceId=fence;data.DmaCompleted.NodeOrdinal=0;data.DmaCompleted.EngineOrdinal=0;
+ a->notify_interrupt(a->dxgk_device,&data);
+ InterlockedExchange(&a->dpc_pending,1);
+ /* QueueDpc may return FALSE when a DPC is already queued. The registered
+  * DPC wrapper must always call GeoClearDpc; no timer substitutes for it. */
+ a->queue_dpc(a->dxgk_device);return STATUS_SUCCESS;
+}
+void GeoClearDpc(struct geo_kmd_adapter *a) {
+ if(!a||!a->notifications_ready||KeGetCurrentIrql()!=DISPATCH_LEVEL)return;
+ if(InterlockedExchange(&a->dpc_pending,0))a->notify_dpc(a->dxgk_device);
 }

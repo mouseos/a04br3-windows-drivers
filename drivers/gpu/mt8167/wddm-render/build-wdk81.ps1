@@ -18,7 +18,7 @@ try {
  $common=@('--target=thumbv7-pc-windows-msvc','-std=c11','-fms-extensions','-ffreestanding','-fno-builtin','-fno-stack-protector','-O2','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-mfpu=none','-D_ARM_','-DARM','-D_WIN32_WINNT=0x0603','-DNTDDI_VERSION=0x06030000','-DDXGKDDI_INTERFACE_VERSION=0x4002','-DD3D_UMD_INTERFACE_VERSION=0x4002',"-I$inc\shared")
  foreach($unit in @('clear_protocol','clear_engine','kmd_clear','umd/clear_ddi','testclient/d3d-clear','testclient/memory')) {
   $name=($unit -replace '/','_');$includes=@("-I$inc\um")
-  if($unit -eq 'kmd_clear'){$includes=@("-I$inc\km","-I$inc\km\crt")}
+  if($unit -eq 'kmd_clear'){$includes=@("-D_KERNEL_MODE","-I$inc\km","-I$inc\km\crt")}
   & clang @common @includes -c (Join-Path $PSScriptRoot "$unit.c") -o (Join-Path $out "$name.obj")
   if($LASTEXITCODE -ne 0){throw "ARM32 compile failed: $unit"}
  }
