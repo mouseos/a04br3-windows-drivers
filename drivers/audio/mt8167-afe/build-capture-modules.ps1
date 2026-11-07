@@ -15,14 +15,14 @@ try {
  '-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-mfpu=none','-fms-extensions',
  '-D__ldrexd=__capture_wdk81_ldrexd_declaration','-D_KERNEL_MODE','-D_ARM_','-DARM','-DNTDDI_VERSION=0x06030000','-D_WIN32_WINNT=0x0603',
  '-DA04_MT8167_WAVERT_EXPERIMENTAL=1','-DA04_AUDIO_ENGINE_PCM=1','-DA04_AUDIO_CAPTURE=1',"-I$inc\km","-I$inc\shared","-I$inc\um")
- $units=@('ul_engine.c','capture_owner.cpp','wave_dma_live.cpp','wavert_dma.cpp','dma_adapter.cpp','wavert_miniport.cpp','topology_miniport.cpp','wavert_registration.cpp')
+ $units=@('ul_engine.c','capture_owner.cpp','wave_dma_live.cpp','wavert_dma.cpp','dma_adapter.cpp','wavert_miniport.cpp','topology_miniport.cpp','wavert_registration.cpp','../../bus/mt8167-shared/codec_capture.c')
  $objects=@();$sources=@()
  foreach($name in $units){
-  $source=Join-Path $PSScriptRoot $name;$obj=Join-Path $out ($name+'.obj');$objects+=$obj
+  $source=Join-Path $PSScriptRoot $name;$obj=Join-Path $out ([IO.Path]::GetFileName($name)+'.obj');$objects+=$obj
   if($name.EndsWith('.cpp')){& clang++ @flags -std=c++14 -fno-exceptions -fno-rtti -c $source -o $obj}
   else{& clang @flags -std=c11 -c $source -o $obj}
   if($LASTEXITCODE){throw "Capture module compile failed: $name"}
-  $sources+=@{path=('drivers/audio/mt8167-afe/'+$name);sha256=(Get-FileHash $source -Algorithm SHA256).Hash.ToLowerInvariant()}
+  $sources+=@{path=$(if($name.StartsWith('../../bus/')){'drivers/'+$name.Substring(6)}else{'drivers/audio/mt8167-afe/'+$name});sha256=(Get-FileHash $source -Algorithm SHA256).Hash.ToLowerInvariant()}
  }
  $lib=Join-Path $out 'mt8167-capture-candidate.lib'
  & lld-link /lib /machine:arm @objects "/out:$lib";if($LASTEXITCODE){throw 'Capture archive failed'}

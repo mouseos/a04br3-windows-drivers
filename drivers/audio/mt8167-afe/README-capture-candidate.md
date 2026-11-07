@@ -36,6 +36,12 @@ ADC powerdown/analog codec設定をこのmemif engineの成功で代替しない
 - GetHWLatencyはcapture専用providerが実値を返したものだけ。未知FIFO/codec delayを
   0として登録しない。古いrenderの診断契約とは分ける。
 
+親側portable module `codec_capture.c`は、実APMIXED UL clock/Vcm/Vref/micbias0/
+CH0 PGA/ADC、AFE UL rate latch/AD_CLK/TXをreadback付きで実装する。
+codec fs=1、ADDA fs=3、VUL/IRQ fs=10を混同しない。
+既存VAUD rails/audio clock ownerを前提にし、PMIC/GPIOを勝手に追加操作しない。
+このmoduleを親callbackへ結ぶには独立新版の予約とmatched-parent flags保持が必要。
+
 ## 未接続の親契約（既存親へ偽装接続しない）
 
 Mt8167CaptureResourcesのacquireInputは既存AcquireMutedとは別物である。
