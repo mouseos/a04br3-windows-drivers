@@ -51,7 +51,7 @@ struct geo_typed_device {
  HRESULT error;
 };
 struct geo_typed_adapter {
- D3D10DDI_HRTADAPTER runtime;struct geo_adapter_memory_info info;UINT devices;
+ D3D10DDI_HRTADAPTER runtime;struct geo_adapter_memory_info info;UINT devices;HANDLE trace;
 };
 struct geo_typed_device *geo_typed_device(D3D10DDI_HDEVICE);
 struct geo_typed_state *geo_typed_state_from_device(D3D10DDI_HDEVICE);

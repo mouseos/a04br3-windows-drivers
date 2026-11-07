@@ -114,9 +114,17 @@ static void APIENTRY copy_resource(D3D10DDI_HDEVICE h,D3D10DDI_HRESOURCE dst,D3D
  memset(&q,0,sizeof(q));q.hSrcResource=a->backend;q.hDstResource=b->backend;q.SrcRect.right=q.DstRect.right=a->width;q.SrcRect.bottom=q.DstRect.bottom=a->height;
  hr=d->memory.pfnBlt(&d->backend,&q);if(FAILED(hr))geo_typed_error(h,hr);
 }
+static BOOL APIENTRY staging_busy(D3D10DDI_HDEVICE h,D3D10DDI_HRESOURCE handle) {
+ struct geo_typed_resource *r=geo_typed_resource(h,handle);D3D10DDI_MAPPED_SUBRESOURCE map;HRESULT hr;
+ if(!r){geo_typed_error(h,E_INVALIDARG);return TRUE;}
+ hr=map_backend(r,D3D10_DDI_MAP_READ,D3D10_DDI_MAP_FLAG_DONOTWAIT,&map);
+ if(hr==D3DDDIERR_WASSTILLDRAWING||hr==DXGI_ERROR_WAS_STILL_DRAWING)return TRUE;
+ if(FAILED(hr)){geo_typed_error(h,hr);return TRUE;}
+ hr=unmap_backend(r);if(FAILED(hr)){geo_typed_error(h,hr);return TRUE;}return FALSE;
+}
 void geo_typed_resources_install(D3D11_1DDI_DEVICEFUNCS *f) {
  f->pfnCalcPrivateResourceSize=resource_size;f->pfnCreateResource=create_resource;f->pfnDestroyResource=destroy_resource;
- f->pfnResourceMap=map_resource;f->pfnResourceUnmap=unmap_resource;f->pfnStagingResourceMap=map_resource;f->pfnStagingResourceUnmap=unmap_resource;
+ f->pfnResourceIsStagingBusy=staging_busy;f->pfnResourceMap=map_resource;f->pfnResourceUnmap=unmap_resource;f->pfnStagingResourceMap=map_resource;f->pfnStagingResourceUnmap=unmap_resource;
  f->pfnDynamicIABufferMapDiscard=map_resource;f->pfnDynamicIABufferMapNoOverwrite=map_resource;f->pfnDynamicIABufferUnmap=unmap_resource;
  f->pfnDynamicConstantBufferMapDiscard=map_resource;f->pfnDynamicConstantBufferUnmap=unmap_resource;f->pfnDynamicConstantBufferMapNoOverwrite=map_resource;
  f->pfnDynamicResourceMapDiscard=map_resource;f->pfnResourceCopy=copy_resource;

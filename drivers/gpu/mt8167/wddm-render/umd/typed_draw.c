@@ -69,6 +69,7 @@ HRESULT geo_typed_submit_draw(D3D10DDI_HDEVICE h,const FLOAT vertices[3][4]) {
  struct geo_typed_device *d=geo_typed_device(h);struct geo_draw_packet *p;struct geo_surface_desc target;D3DKMT_HANDLE ta,va;D3DDDICB_RENDER q;
  UINT constants[2][128],total=1024,at=0,stage,i;BYTE *blob;HRESULT hr;
  if(!d||!d->target||!d->bound_shader[0]||!d->bound_shader[1])return E_INVALIDARG;
+ if(d->target->resource->width!=800||d->target->resource->height!=600)return E_NOTIMPL;
  hr=geo_typed_validate_native_state(h);if(FAILED(hr))return hr;
  if(!d->viewport_set||d->viewport.TopLeftX||d->viewport.TopLeftY||d->viewport.Width!=800.0f||d->viewport.Height!=600.0f||d->viewport.MinDepth||d->viewport.MaxDepth!=1.0f)return E_NOTIMPL;
  hr=geo_umd_target_info(&d->backend,&target,&ta);if(FAILED(hr))return hr;

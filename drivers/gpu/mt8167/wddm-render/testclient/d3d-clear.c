@@ -8,6 +8,7 @@
 #include <d3d9.h>
 #include <winternl.h>
 #include <d3dkmthk.h>
+#include "fixed_shaders.h"
 /* Freestanding fixed-operation probe; no private device IOCTL or payload. */
 static HANDLE disk;
 static int log_ok=1;
@@ -46,14 +47,17 @@ static int luid_arg(LUID *id) {
  * CreateDevice result. No private escape or driver success is synthesized. */
 static void runtime_inventory(IDXGIAdapter *adapter,const LUID *wanted) {
  IDirect3D9Ex *d9=NULL;IDXGIOutput *output=NULL;UINT i,matches=0,outputs=0;HRESULT hr;LUID id;
- HMODULE gdi=NULL;D3DKMT_OPENADAPTERFROMLUID open={0};D3DKMT_QUERYADAPTERINFO query={0};D3DKMT_ADAPTERTYPE type={0};D3DKMT_CLOSEADAPTER close={0};NTSTATUS status;
+ HMODULE d9module=NULL,gdi=NULL;HRESULT (WINAPI *create9)(UINT,IDirect3D9Ex **)=NULL;D3DKMT_OPENADAPTERFROMLUID open={0};D3DKMT_QUERYADAPTERINFO query={0};D3DKMT_ADAPTERTYPE type={0};D3DKMT_CLOSEADAPTER close={0};NTSTATUS status;
  PFND3DKMT_OPENADAPTERFROMLUID open_fn;PFND3DKMT_QUERYADAPTERINFO query_fn;PFND3DKMT_CLOSEADAPTER close_fn;
  for(i=0;;i++){
   hr=IDXGIAdapter_EnumOutputs(adapter,i,&output);if(hr==DXGI_ERROR_NOT_FOUND)break;
   if(FAILED(hr)){line("DXGI_OUTPUT_ENUM_HRESULT",hr);break;}outputs++;IDXGIOutput_Release(output);output=NULL;
  }
  line("DXGI_OUTPUT_COUNT",outputs);
- hr=Direct3DCreate9Ex(D3D_SDK_VERSION,&d9);line("D3D9_API_HRESULT",hr);
+ d9module=LoadLibraryExW(L"d3d9.dll",NULL,LOAD_LIBRARY_SEARCH_SYSTEM32);
+ if(d9module)create9=(HRESULT (WINAPI *)(UINT,IDirect3D9Ex **))GetProcAddress(d9module,"Direct3DCreate9Ex");
+ if(!create9)line("D3D9_INVENTORY_LOADER_ERROR",GetLastError());
+ hr=create9?create9(D3D_SDK_VERSION,&d9):HRESULT_FROM_WIN32(ERROR_PROC_NOT_FOUND);line("D3D9_API_HRESULT",hr);
  if(SUCCEEDED(hr)){
   UINT count=IDirect3D9Ex_GetAdapterCount(d9);line("D3D9_ADAPTER_COUNT",count);
   for(i=0;i<count;i++){
@@ -64,6 +68,7 @@ static void runtime_inventory(IDXGIAdapter *adapter,const LUID *wanted) {
   }
   IDirect3D9Ex_Release(d9);
  }
+ if(d9module)FreeLibrary(d9module);
  line("D3D9_SELECTED_LUID_MATCHES",matches);
  gdi=LoadLibraryExW(L"gdi32.dll",NULL,LOAD_LIBRARY_SEARCH_SYSTEM32);
  if(!gdi){line("KMT_GDI_LOAD_ERROR",GetLastError());return;}
@@ -80,6 +85,47 @@ static void runtime_inventory(IDXGIAdapter *adapter,const LUID *wanted) {
  }
  FreeLibrary(gdi);
 }
+static HRESULT triangle_probe(ID3D11Device *device,ID3D11DeviceContext *ctx,ID3D11RenderTargetView *view,ID3D11Texture2D *target,ID3D11Texture2D *staging) {
+ ID3D11VertexShader *vs=NULL;ID3D11PixelShader *ps=NULL;ID3D11InputLayout *layout=NULL;ID3D11Buffer *vertices=NULL,*constants=NULL;ID3D11RasterizerState *raster=NULL;
+ D3D11_INPUT_ELEMENT_DESC element={"POSITION",0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,0,D3D11_INPUT_PER_VERTEX_DATA,0};
+ D3D11_BUFFER_DESC b={0};D3D11_SUBRESOURCE_DATA initial={0};D3D11_RASTERIZER_DESC rs={0};D3D11_VIEWPORT viewport={0};D3D11_MAPPED_SUBRESOURCE map;
+ static const FLOAT v[3][4]={{-0.8f,0.8f,0.5f,1},{0.8f,0.8f,0.5f,1},{0,-0.8f,0.5f,1}};
+ static const FLOAT red[4]={1,0,0,1},black[4]={0,0,0,1};UINT stride=16,offset=0,x,y,reds=0,blacks=0,other=0,hash=2166136261u,samples=0;HRESULT hr;
+ hr=ID3D11Device_CreateVertexShader(device,geo_position_vs,sizeof(geo_position_vs),NULL,&vs);line("TRIANGLE_VS_HRESULT",hr);if(FAILED(hr))goto done;
+ hr=ID3D11Device_CreatePixelShader(device,geo_constant_ps,sizeof(geo_constant_ps),NULL,&ps);line("TRIANGLE_PS_HRESULT",hr);if(FAILED(hr))goto done;
+ hr=ID3D11Device_CreateInputLayout(device,&element,1,geo_position_vs,sizeof(geo_position_vs),&layout);line("TRIANGLE_LAYOUT_HRESULT",hr);if(FAILED(hr))goto done;
+ b.ByteWidth=sizeof(v);b.Usage=D3D11_USAGE_IMMUTABLE;b.BindFlags=D3D11_BIND_VERTEX_BUFFER;initial.pSysMem=v;
+ hr=ID3D11Device_CreateBuffer(device,&b,&initial,&vertices);line("TRIANGLE_VERTEX_HRESULT",hr);if(FAILED(hr))goto done;
+ b.ByteWidth=sizeof(red);b.BindFlags=D3D11_BIND_CONSTANT_BUFFER;initial.pSysMem=red;
+ hr=ID3D11Device_CreateBuffer(device,&b,&initial,&constants);line("TRIANGLE_CONSTANT_HRESULT",hr);if(FAILED(hr))goto done;
+ rs.FillMode=D3D11_FILL_SOLID;rs.CullMode=D3D11_CULL_NONE;rs.DepthClipEnable=TRUE;
+ hr=ID3D11Device_CreateRasterizerState(device,&rs,&raster);line("TRIANGLE_RASTER_HRESULT",hr);if(FAILED(hr))goto done;
+ viewport.Width=800;viewport.Height=600;viewport.MaxDepth=1;
+ ID3D11DeviceContext_OMSetRenderTargets(ctx,1,&view,NULL);ID3D11DeviceContext_RSSetViewports(ctx,1,&viewport);ID3D11DeviceContext_RSSetState(ctx,raster);
+ ID3D11DeviceContext_IASetInputLayout(ctx,layout);ID3D11DeviceContext_IASetPrimitiveTopology(ctx,D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);ID3D11DeviceContext_IASetVertexBuffers(ctx,0,1,&vertices,&stride,&offset);
+ ID3D11DeviceContext_VSSetShader(ctx,vs,NULL,0);ID3D11DeviceContext_PSSetShader(ctx,ps,NULL,0);ID3D11DeviceContext_PSSetConstantBuffers(ctx,0,1,&constants);
+ if(!log_ok){hr=E_FAIL;goto done;}
+ ID3D11DeviceContext_ClearRenderTargetView(ctx,view,black);line("TRIANGLE_CLEAR_ISSUED",1);
+ ID3D11DeviceContext_Draw(ctx,3,0);line("TRIANGLE_DRAW_ISSUED",1);
+ hr=ID3D11Device_GetDeviceRemovedReason(device);line("TRIANGLE_DEVICE_REASON",hr);if(FAILED(hr)||!log_ok)goto done;
+ ID3D11DeviceContext_CopyResource(ctx,(ID3D11Resource *)staging,(ID3D11Resource *)target);ID3D11DeviceContext_Flush(ctx);
+ line("TRIANGLE_MAP_BEGIN",1);if(!log_ok){hr=E_FAIL;goto done;}
+ hr=ID3D11DeviceContext_Map(ctx,(ID3D11Resource *)staging,0,D3D11_MAP_READ,0,&map);line("TRIANGLE_MAP_HRESULT",hr);if(FAILED(hr))goto done;
+ if(!map.pData||map.RowPitch<3200){ID3D11DeviceContext_Unmap(ctx,(ID3D11Resource *)staging,0);hr=E_UNEXPECTED;goto done;}
+ for(y=0;y<600;y++)for(x=0;x<800;x++){
+  const BYTE *p=(const BYTE *)map.pData+y*map.RowPitch+x*4;UINT pixel=p[0]|((UINT)p[1]<<8)|((UINT)p[2]<<16)|((UINT)p[3]<<24);
+  if(pixel==0xffff0000u)reds++;else if(pixel==0xff000000u)blacks++;else other++;hash=(hash^pixel)*16777619u;
+ }
+ {const BYTE *p=(const BYTE *)map.pData+100u*map.RowPitch+160u*4u;UINT value=p[0]|((UINT)p[1]<<8)|((UINT)p[2]<<16)|((UINT)p[3]<<24);line("TRIANGLE_UPPER_INTERIOR",value);if(value!=0xffff0000u)samples++;}
+ {const BYTE *p=(const BYTE *)map.pData+500u*map.RowPitch+160u*4u;UINT value=p[0]|((UINT)p[1]<<8)|((UINT)p[2]<<16)|((UINT)p[3]<<24);line("TRIANGLE_LOWER_EXTERIOR",value);if(value!=0xff000000u)samples++;}
+ line("TRIANGLE_RED_PIXELS",reds);line("TRIANGLE_BLACK_PIXELS",blacks);line("TRIANGLE_OTHER_PIXELS",other);line("TRIANGLE_HASH",hash);line("TRIANGLE_SAMPLE_MISMATCH",samples);
+ ID3D11DeviceContext_Unmap(ctx,(ID3D11Resource *)staging,0);hr=(!reds||!blacks||other||samples)?E_FAIL:S_OK;
+ done:
+ line("TRIANGLE_HRESULT",hr);
+ ID3D11DeviceContext_OMSetRenderTargets(ctx,0,NULL,NULL);ID3D11DeviceContext_IASetInputLayout(ctx,NULL);ID3D11DeviceContext_IASetVertexBuffers(ctx,0,1,(ID3D11Buffer *const[]){NULL},&stride,&offset);
+ ID3D11DeviceContext_VSSetShader(ctx,NULL,NULL,0);ID3D11DeviceContext_PSSetShader(ctx,NULL,NULL,0);ID3D11DeviceContext_PSSetConstantBuffers(ctx,0,1,(ID3D11Buffer *const[]){NULL});ID3D11DeviceContext_RSSetState(ctx,NULL);
+ if(raster)ID3D11RasterizerState_Release(raster);if(constants)ID3D11Buffer_Release(constants);if(vertices)ID3D11Buffer_Release(vertices);if(layout)ID3D11InputLayout_Release(layout);if(ps)ID3D11PixelShader_Release(ps);if(vs)ID3D11VertexShader_Release(vs);return hr;
+}
 static HRESULT probe(IDXGIAdapter *adapter) {
  ID3D11Device *device=NULL;ID3D11DeviceContext *ctx=NULL;ID3D11Texture2D *target=NULL,*staging=NULL;
  ID3D11RenderTargetView *view=NULL;D3D_FEATURE_LEVEL level,wanted=D3D_FEATURE_LEVEL_9_1;
@@ -89,7 +135,7 @@ static HRESULT probe(IDXGIAdapter *adapter) {
  hr=D3D11CreateDevice(adapter,D3D_DRIVER_TYPE_UNKNOWN,NULL,0,&wanted,1,D3D11_SDK_VERSION,&device,&level,&ctx);
  line("CREATE_DEVICE_HRESULT",hr);if(FAILED(hr))goto done;
  line("FEATURE_LEVEL",level);
- desc.Width=256;desc.Height=256;desc.MipLevels=1;desc.ArraySize=1;desc.Format=DXGI_FORMAT_B8G8R8A8_UNORM;
+ desc.Width=800;desc.Height=600;desc.MipLevels=1;desc.ArraySize=1;desc.Format=DXGI_FORMAT_B8G8R8A8_UNORM;
  desc.SampleDesc.Count=1;desc.Usage=D3D11_USAGE_DEFAULT;desc.BindFlags=D3D11_BIND_RENDER_TARGET;
  hr=ID3D11Device_CreateTexture2D(device,&desc,NULL,&target);line("TARGET_HRESULT",hr);if(FAILED(hr))goto done;
  hr=ID3D11Device_CreateRenderTargetView(device,(ID3D11Resource *)target,NULL,&view);line("VIEW_HRESULT",hr);if(FAILED(hr))goto done;
@@ -106,10 +152,10 @@ static HRESULT probe(IDXGIAdapter *adapter) {
   hr=ID3D11DeviceContext_Map(ctx,(ID3D11Resource *)staging,0,D3D11_MAP_READ,0,&map);
   line("MAP_HRESULT",hr);if(FAILED(hr))goto done;
   match=0;mismatch=0;
-  if(!map.pData||map.RowPitch<256*4) {
+  if(!map.pData||map.RowPitch<800*4) {
    ID3D11DeviceContext_Unmap(ctx,(ID3D11Resource *)staging,0);hr=E_UNEXPECTED;goto done;
   }
-  for(y=0;y<256;y++)for(x=0;x<256;x++) {
+  for(y=0;y<600;y++)for(x=0;x<800;x++) {
    const BYTE *b=(const BYTE *)map.pData+y*map.RowPitch+x*4;
    UINT v=(UINT)b[0]|((UINT)b[1]<<8)|((UINT)b[2]<<16)|((UINT)b[3]<<24);
    if(v==expected[pass])match++;else mismatch++;
@@ -120,6 +166,7 @@ static HRESULT probe(IDXGIAdapter *adapter) {
   hr=ID3D11Device_GetDeviceRemovedReason(device);line("REMOVED_REASON",hr);if(FAILED(hr))goto done;
  }
  hr=S_OK;
+ hr=triangle_probe(device,ctx,view,target,staging);
  done:
  if(view)ID3D11RenderTargetView_Release(view);
  if(staging)ID3D11Texture2D_Release(staging);
@@ -137,7 +184,7 @@ void mainCRTStartup(void) {
  CreateDirectoryW(L"C:\\MT8167D3DClear",NULL);
  disk=CreateFileW(path,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_WRITE_THROUGH,NULL);
  if(disk==INVALID_HANDLE_VALUE)ExitProcess(2);
- line("SCHEMA",2);line("EXPLICIT_LUID",selected);
+ line("SCHEMA",3);line("EXPLICIT_LUID",selected);
  hr=CreateDXGIFactory(&IID_IDXGIFactory,(void **)&factory);line("FACTORY_HRESULT",hr);if(FAILED(hr)||!log_ok)goto done;
  for(i=0;;i++) {
   hr=IDXGIFactory_EnumAdapters(factory,i,&a);

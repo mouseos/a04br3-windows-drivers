@@ -86,7 +86,7 @@ try {
  & llvm-lib /machine:arm "/out:$out\ge8300-umd-clear.lib" "$out\clear_protocol.obj" "$out\frontend_draw_protocol.obj" "$out\umd_clear_ddi.obj" "$out\umd_bootstrap.obj" "$out\umd_frontend.obj" "$out\umd_shader_state.obj" "$out\umd_tokenized_shader.obj" "$out\compiler_sm2.obj" "$out\testclient_memory.obj"
  if($LASTEXITCODE -ne 0){throw 'UMD module archive failed'}
  if($reuseClient){Copy-Item $reuseExe "$out\ge8300-d3d-clear.exe"}else{
- & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\testclient_d3d-clear.obj" "$out\testclient_memory.obj" "$lib\kernel32.lib" "$lib\dxgi.lib" "$lib\d3d11.lib" "$lib\d3d9.lib" "/out:$out\ge8300-d3d-clear.exe"
+ & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\testclient_d3d-clear.obj" "$out\testclient_memory.obj" "$lib\kernel32.lib" "$lib\dxgi.lib" "$lib\d3d11.lib" "/out:$out\ge8300-d3d-clear.exe"
  if($LASTEXITCODE -ne 0){throw 'D3D client link failed'}
  }
  & llvm-readobj --file-headers --coff-imports "$out\ge8300-d3d-clear.exe" | Set-Content "$out\pe-imports.txt"

@@ -57,9 +57,16 @@ static void APIENTRY clear_rtv(D3D10DDI_HDEVICE h,D3D10DDI_HRENDERTARGETVIEW han
  q.hRenderTarget=d->target?d->target->resource->backend:NULL;restore=d->memory.pfnSetRenderTarget(&d->backend,&q);
  if(SUCCEEDED(hr)&&FAILED(restore))hr=restore;if(FAILED(hr))geo_typed_error(h,hr);
 }
+static void APIENTRY clear_view(D3D10DDI_HDEVICE h,D3D11DDI_HANDLETYPE type,void *opaque,const FLOAT color[4],const D3D10_DDI_RECT *rects,UINT count) {
+ D3D10DDI_HRENDERTARGETVIEW handle;struct geo_typed_rtv *v;FLOAT copy[4];
+ if(type!=D3D10DDI_HT_RENDERTARGETVIEW||!color||count>1||(count&&!rects)){geo_typed_error(h,E_NOTIMPL);return;}
+ handle.pDrvPrivate=opaque;v=view(h,handle);if(!v){geo_typed_error(h,E_INVALIDARG);return;}
+ if(count&&(rects[0].left||rects[0].top||rects[0].right!=(LONG)v->resource->width||rects[0].bottom!=(LONG)v->resource->height)){geo_typed_error(h,E_NOTIMPL);return;}
+ memcpy(copy,color,sizeof(copy));clear_rtv(h,handle,copy);
+}
 void geo_typed_views_install(D3D11_1DDI_DEVICEFUNCS *f) {
  f->pfnCalcPrivateRenderTargetViewSize=rtv_size;f->pfnCreateRenderTargetView=create_rtv;f->pfnDestroyRenderTargetView=destroy_rtv;
- f->pfnSetRenderTargets=set_targets;f->pfnClearRenderTargetView=clear_rtv;
+ f->pfnClearView=clear_view;f->pfnSetRenderTargets=set_targets;f->pfnClearRenderTargetView=clear_rtv;
 }
 HRESULT geo_typed_views_unbind(D3D10DDI_HDEVICE h) {
  struct geo_typed_device *d=geo_typed_device(h);D3DDDIARG_SETRENDERTARGET q;struct geo_typed_rtv *old;HRESULT hr;

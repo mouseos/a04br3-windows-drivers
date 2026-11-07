@@ -28,12 +28,12 @@ try {
  $source=Join-Path $PSScriptRoot 'testclient\d3d-clear.c'
  & clang --target=thumbv7-pc-windows-msvc -std=c11 -fms-extensions -ffreestanding -fno-builtin -fno-stack-protector -O2 -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -DNTDDI_VERSION=0x06030000 "-I$inc\shared" "-I$inc\um" "-I$inc\km" -c $source -o "$out\d3d-clear.obj"
  if($LASTEXITCODE){throw 'Standard client compile failed'}
- & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\d3d-clear.obj" "$out\testclient_memory.obj" "$lib\kernel32.lib" "$lib\dxgi.lib" "$lib\d3d11.lib" "$lib\d3d9.lib" "/out:$out\ge8300-d3d-clear.exe"
+ & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\d3d-clear.obj" "$out\testclient_memory.obj" "$lib\kernel32.lib" "$lib\dxgi.lib" "$lib\d3d11.lib" "/out:$out\ge8300-d3d-clear.exe"
  if($LASTEXITCODE){throw 'Standard client link failed'}
  $pe=@(& llvm-readobj --file-headers --coff-imports "$out\ge8300-d3d-clear.exe")
  if($LASTEXITCODE -or !($pe -match 'IMAGE_FILE_MACHINE_ARMNT')){throw 'Client is not ARMNT'}
  $pe|Set-Content "$out\pe.txt"
- @{source_commit=(& git -C $root rev-parse HEAD);source_sha256=(Get-FileHash $source -Algorithm SHA256).Hash;module_source_commit=$m.source_commit;
+ @{source_commit=(& git -C $root rev-parse HEAD);source_sha256=(Get-FileHash $source -Algorithm SHA256).Hash;shader_header_sha256=(Get-FileHash (Join-Path $PSScriptRoot 'testclient\fixed_shaders.h') -Algorithm SHA256).Hash;module_source_commit=$m.source_commit;
   memory_archive_sha256=$record[0].sha256;memory_object_sha256=(Get-FileHash "$out\testclient_memory.obj" -Algorithm SHA256).Hash;
   module_manifest_sha256=$ModuleManifestSha256;runtime_verified=$false;standard_api_only=$true;private_payload=$false;
   outputs=@(@{name='ge8300-d3d-clear.exe';sha256=(Get-FileHash "$out\ge8300-d3d-clear.exe" -Algorithm SHA256).Hash})
