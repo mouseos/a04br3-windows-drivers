@@ -232,7 +232,7 @@ static int rtc_commit(struct a04_pmic_read *bus)
 int a04_pmic_rtc32k_acquire(struct a04_pmic_read *bus,struct a04_rtc32k_lease *lease)
 {
     uint16_t pdn,con,check;
-    if(!bus||!lease||lease->held||lease->uncertain||bus->poisoned)return -1;
+    if(!bus||!lease||lease->held||lease->uncertain||lease->inherited||bus->poisoned)return -1;
     if(read_register(bus,0x802cu,&pdn)||read_register(bus,0x803eu,&con))return -1;
     /* A pre-existing user bit belongs to an unknown owner. */
     if(pdn&0x0100u)return -1;
@@ -244,11 +244,27 @@ int a04_pmic_rtc32k_acquire(struct a04_pmic_read *bus,struct a04_rtc32k_lease *l
     lease->held=1;lease->uncertain=0;return 0;
 fail: bus->poisoned=1;return -1;
 }
+int a04_pmic_rtc32k_acquire_shared(struct a04_pmic_read *bus,struct a04_rtc32k_lease *lease)
+{
+    uint16_t pdn,con;
+    if(!bus||!lease||lease->held||lease->uncertain||lease->inherited||bus->poisoned)return -1;
+    if(read_register(bus,0x802cu,&pdn)||read_register(bus,0x803eu,&con))return -1;
+    if(!(pdn&0x0100u))return a04_pmic_rtc32k_acquire(bus,lease);
+    /* Linux's per-user bitmap is idempotent, not an exclusive lock. A warm
+     * reboot retains PDN1. Borrow the live output without taking its bit. */
+    if(con&0x0020u)return -1;
+    lease->inherited=1;lease->held=1;return 0;
+}
 int a04_pmic_rtc32k_release(struct a04_pmic_read *bus,struct a04_rtc32k_lease *lease)
 {
     uint16_t pdn,check;
     if(!bus||!lease||!lease->held||lease->uncertain||bus->poisoned)return -1;
     if(read_register(bus,0x802cu,&pdn) || !(pdn&0x0100u))return -1;
+    if(lease->inherited) {
+        uint16_t con;
+        if(read_register(bus,0x803eu,&con)||(con&0x0020u))return -1;
+        lease->held=0;lease->inherited=0;return 0;
+    }
     lease->uncertain=1;
     /* Never switch off CON: unknown firmware/other consumers may use it. */
     if(rtc_write_raw(bus,0x802cu,(uint16_t)(pdn&~0x0100u))||rtc_commit(bus)||

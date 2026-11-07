@@ -823,7 +823,12 @@ static NTSTATUS ParentWifiAcquire(PVOID context,ULONG *generation)
  if(c->wifiActive||c->wifiRtc.held||c->wifiRtc.uncertain||!c->pmic.online||c->pmic.bus.poisoned||
     !c->regs.online||c->regs.poisoned||!c->topck||!c->gpio||!c->pwrap){ParentUnlock(c);return STATUS_DEVICE_BUSY;}
  if(c->wifiGeneration==0xffffffffu){ParentUnlock(c);return STATUS_DEVICE_NOT_READY;}
+#if A04_SHARED_WIFI_RTC_BORROW
+ e=a04_pmic_rtc32k_acquire_shared(&c->pmic.bus,&c->wifiRtc);
+ A04_TRACE("A04WIFI RTC lease result=%d held=%d inherited=%d uncertain=%d\n",e,c->wifiRtc.held,c->wifiRtc.inherited,c->wifiRtc.uncertain);
+#else
  e=a04_pmic_rtc32k_acquire(&c->pmic.bus,&c->wifiRtc);
+#endif
  if(e&&!c->wifiRtc.held&&!c->wifiRtc.uncertain){ParentUnlock(c);return STATUS_DEVICE_NOT_READY;}
  /* A partially changed RTC is a retained lease, never a clean rejection. */
  c->pmic.rtc_lease=&c->wifiRtc;c->wifiGeneration++;c->wifiActive=e?-1:1;

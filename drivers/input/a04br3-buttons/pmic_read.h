@@ -31,8 +31,11 @@ int a04_pmic_rtc32k(struct a04_pmic_read *, struct a04_rtc32k_raw *);
 #if defined(A04_MT6392_RTC32K_DIAGNOSTIC) && A04_MT6392_RTC32K_DIAGNOSTIC
 /* Caller owns RTC against all other writers and holds WACS2 throughout.
  * Release clears only our bit and deliberately leaves clock output enabled. */
-struct a04_rtc32k_lease { int held, uncertain; };
+struct a04_rtc32k_lease { int held, uncertain, inherited; };
 int a04_pmic_rtc32k_acquire(struct a04_pmic_read *,struct a04_rtc32k_lease *);
+/* Explicit shared-clock admission: borrow only an already-enabled Wi-Fi bit.
+ * Release preserves a borrowed bit; it is not proof of combo ownership. */
+int a04_pmic_rtc32k_acquire_shared(struct a04_pmic_read *,struct a04_rtc32k_lease *);
 int a04_pmic_rtc32k_release(struct a04_pmic_read *,struct a04_rtc32k_lease *);
 #endif
 int a04_pmic_chrstatus(struct a04_pmic_read *bus, uint16_t *value);
