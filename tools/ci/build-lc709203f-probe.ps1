@@ -64,11 +64,8 @@ if ($bqhr -eq '1' -or $brokerOwner -eq '1') {
         $objects += $obj
     }
 }
-$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-$vs = & $vswhere -latest -products '*' -property installationPath
-$vc = Get-ChildItem (Join-Path $vs 'VC\Tools\MSVC') -Directory | Sort-Object Name -Descending | Where-Object { Test-Path (Join-Path $_.FullName 'bin\Hostx64\arm\cl.exe') } | Select-Object -First 1
-if (!$vc) { throw 'ARM32 MSVC tools not found' }
-$link = Join-Path $vc.FullName 'bin\Hostx64\x64\link.exe'
+# LLVM links ARM COFF directly; no unrelated ARM cl.exe installation needed.
+$link = 'lld-link'
 $package = Join-Path $out 'package'
 New-Item -ItemType Directory -Force $package | Out-Null
 & $link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib @objects (Join-Path $wdfLib 'wdfdriverentry.lib') (Join-Path $wdfLib 'wdfldr.lib') (Join-Path $kmLib 'ntoskrnl.lib') (Join-Path $kmLib 'hal.lib') (Join-Path $kmLib 'battc.lib') (Join-Path $kmLib 'bufferoverflowfastfailk.lib') (Join-Path $kmLib 'libcntpr.lib') "/out:$package\lc709203f.sys"
