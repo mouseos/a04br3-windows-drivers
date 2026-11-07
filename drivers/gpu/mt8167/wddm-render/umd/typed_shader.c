@@ -41,9 +41,13 @@ static void APIENTRY destroy_shader(D3D10DDI_HDEVICE h,D3D10DDI_HSHADER handle) 
  s->deleted=1;((struct geo_typed_handle *)handle.pDrvPrivate)->object=NULL;shader_unref(s);
 }
 static void constants(D3D10DDI_HDEVICE h,UINT start,UINT count,const D3D10DDI_HRESOURCE *handles,const UINT *first,const UINT *length,UINT stage) {
- struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_resource *r=NULL,*old;HRESULT hr;UINT at=count&&first?first[0]:0,n=count&&length?length[0]:0;
- if(!d||start||count>1u||(count&&!handles)){geo_typed_error(h,E_NOTIMPL);return;}
- if(count&&handles[0].pDrvPrivate){
+ struct geo_typed_device *d=geo_typed_device(h);struct geo_typed_resource *r=NULL,*old;HRESULT hr;UINT i,at=0,n=0;
+ if(!d||start>14u||count>14u-start||(count&&!handles)){geo_typed_error(h,E_INVALIDARG);return;}
+ if(!count)return; /* zero updates must preserve the existing slot0 ref/range */
+ for(i=0;i<count;i++)if(start+i&&handles[i].pDrvPrivate){geo_typed_error(h,E_NOTIMPL);return;}
+ if(start)return; /* valid NULL updates outside the only supported CB slot */
+ if(handles[0].pDrvPrivate){
+  at=first?first[0]:0;n=length?length[0]:0;
   r=geo_typed_resource(h,handles[0]);
   if(r&&!length)n=r->bytes/16u<32u?r->bytes/16u:32u;
   if(!r||!(r->bind&D3D10_DDI_BIND_CONSTANT_BUFFER)||at>4096u||n>32u||at>r->bytes/16u||n>r->bytes/16u-at){geo_typed_error(h,E_INVALIDARG);return;}
