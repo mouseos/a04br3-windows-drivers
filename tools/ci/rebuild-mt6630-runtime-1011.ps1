@@ -15,7 +15,8 @@ $allowed=@('drivers/network/mt6630/checkpoint.c','drivers/network/mt6630/station
 if($LASTEXITCODE -or @($changed|Where-Object{$_ -notin $allowed}).Count){throw 'Unexpected source changes: cannot reuse objects'}
 New-Item -ItemType Directory $out,"$out\a04br3-mt6630-core"|Out-Null
 $reused=@()
-foreach($f in @((Get-ChildItem "$prior\*.obj" -File),(Get-ChildItem "$prior\a04br3-mt6630-core\*.obj" -File))){
+$priorObjects=@(Get-ChildItem "$prior\*.obj" -File)+@(Get-ChildItem "$prior\a04br3-mt6630-core\*.obj" -File)
+foreach($f in $priorObjects){
  $rel=$f.FullName.Substring($prior.Length+1);Copy-Item $f.FullName "$out\$rel"
  if((Get-FileHash "$out\$rel" -Algorithm SHA256).Hash -ne (Get-FileHash $f.FullName -Algorithm SHA256).Hash){throw 'Object copy mismatch'}
  if($f.BaseName -notin @('checkpoint','station_runtime')){$reused+=@{path=$rel;sha256=(Get-FileHash $f.FullName -Algorithm SHA256).Hash}}
