@@ -27,3 +27,7 @@ CPU数/timeout/cacheflush/DDK packet ABIの回避変更なし。専用probeboot�
 hardware/cache/IRQ/firmwareだけmock。実silicon動作・画素保持・reset解消は未証明。
 
 owner private構造変更によりplatform consumerも依存再compile対象（native5TU+miniport1TU）。
+
+再現recipeはbaseline/copy.usc152B（SHA5c68917f…）を検証し専用generated headerを生成。
+実署名source03f35eacのbuildは既337generated headerを再利用した。後続tools変更は
+同asset/header byte一致を確認して依存を明示しただけでruntime C変更はない。

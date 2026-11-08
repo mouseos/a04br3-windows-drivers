@@ -12,6 +12,7 @@ def run(cmd):subprocess.run([str(x) for x in cmd],check=True)
 def capture(cmd):return subprocess.check_output([str(x) for x in cmd],text=True).strip()
 def relocate(x):
  x=str(x).replace(chr(92)*2,chr(92))
+ x=x.replace('C:/mt8167-copy-integration/source/build/copy336/generated'.replace('/',chr(92)),str(out/'generated'))
  for prefix in ['C:/mt8167-copy-integration/source/drivers','C:/mt8167-moduleidentity339/source/drivers']:
   x=x.replace(prefix.replace('/',chr(92)),str(root/'drivers'))
  return x
@@ -22,6 +23,11 @@ for x in m['outputs']+m['retained_provenance']:pin(pkgbase/x['name'],x['sha256']
 for x in m['archives']:
  if x['role'] in ['kmd','native']:pin(base/x['file'],x['sha256'])
 out.mkdir();pkg.mkdir();(out/'objects-before').mkdir();(out/'objects').mkdir()
+(out/'generated').mkdir()
+pin(base/'copy.usc','5c68917faa051238b23674b64c6b137ef7ff75425dbde9dbc5e1e5a36e02c4a3')
+asset=(base/'copy.usc').read_bytes()
+if len(asset)!=152:raise ValueError('Exact copy USC152 required')
+(out/'generated/a04_copy_usc_asset.h').write_text('static const unsigned char a04_copy_usc_asset[152]={'+','.join(hex(b) for b in asset)+'};\n')
 llvm=Path('C:/Program Files/LLVM/bin');clang=llvm/'clang.exe';ar=llvm/'llvm-ar.exe'
 kmd=next(x for x in m['archives'] if x['role']=='kmd');native=next(x for x in m['archives'] if x['role']=='native')
 names=[ntpath.basename(n) for n in capture([ar,'t',base/kmd['file']]).splitlines()]
