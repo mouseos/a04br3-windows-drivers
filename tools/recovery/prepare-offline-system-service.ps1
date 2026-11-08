@@ -84,11 +84,16 @@ function Service-Values($Spec) {
 # Raw value fingerprints include names/types/data; directory shape is bounded.
 function Engine-DiagnosticFingerprint($ServiceKey,$Plan,[bool]$SingleGpu=$false) {
     $context=if($SingleGpu){$Plan.engine_preserve.single_gpu_rearm}elseif($Plan.engine_rearm){$Plan.engine_rearm}elseif($Plan.engine_preserve){$Plan.engine_preserve}else{throw 'Explicit Engine preservation context required'}
-    $partialPolicy=if($SingleGpu){[string]$context.partial_diagnostic_policy}else{''}
-    if($partialPolicy -and $partialPolicy -cne '10f8ec77e44a42c25a01c17434adb9c4bc80f180c142173725846d7735015c64'){throw 'Unknown partial diagnostic policy'}
     $allowed=@($context.diagnostic_policies)
-    if($partialPolicy -and $partialPolicy -cnotin $allowed){throw 'Partial diagnostic policy must also be pinned in diagnostic_policies'}
-    if($allowed.Count -gt 16 -or @($allowed|Where-Object {$_ -cnotmatch '^[0-9a-f]{64}$'}).Count) { throw 'Invalid known diagnostic policy list' }
+    $partialPolicies=@()
+    if($SingleGpu){
+        if($context.partial_diagnostic_policy){throw 'Use explicit partial_diagnostic_policies array instead of singular policy'}
+        if($null -ne $context.partial_diagnostic_policies){
+            if($context.partial_diagnostic_policies -isnot [Array]){throw 'Partial diagnostic policy pins must be an array'}
+            $partialPolicies=@($context.partial_diagnostic_policies)
+        }
+    }
+    Assert-Mt8167SingleGpuPartialPolicies $partialPolicies $allowed
     $parts=New-Object 'Collections.Generic.List[string]'
     $serviceChildren=@($ServiceKey.GetSubKeyNames())
     if($serviceChildren.Count -eq 0) { return 'absent' }
@@ -113,7 +118,7 @@ function Engine-DiagnosticFingerprint($ServiceKey,$Plan,[bool]$SingleGpu=$false)
                         try {
                             if($leaf.GetSubKeyNames().Count -or $leaf.GetValueNames().Count -gt 64) { throw 'Diagnostic leaf bound exceeded' }
                             if($SingleGpu) {
-                                $partial=Read-Mt8167SingleGpuPartialHeader $leaf $phase $policy $partialPolicy
+                                $partial=Read-Mt8167SingleGpuPartialHeader $leaf $phase $policy $partialPolicies $allowed
                                 if($null -ne $partial) {
                                     $parts.Add($policy+'/'+$phase+'='+$partial.raw_fingerprint)
                                     continue
