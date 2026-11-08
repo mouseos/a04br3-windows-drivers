@@ -2,7 +2,7 @@
 [Version]
 Signature="$WINDOWS NT$"
 Class=MEDIA
-ClassGuid={4d36e96c-e325-11ce-bfc1-08002be10338}
+ClassGuid={4d36e96c-e325-11ce-bfc1-08002be10318}
 Provider=%Provider%
 DriverVer=11/08/2026,2026.11.8.1033
 CatalogFile=mt8167-afe-hp1033.cat
