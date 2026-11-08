@@ -48,3 +48,21 @@ int a04_gauge_read_sample(const struct a04_gauge_bus *bus,
     *sample = candidate;
     return 0;
 }
+
+int a04_gauge_read_temperature(const struct a04_gauge_bus *bus, uint32_t *kelvin10)
+{
+    uint16_t power, method, raw, after_method, after_power;
+    if (!bus || !bus->read_word_pec || !kelvin10) return A04_GAUGE_INVALID;
+    if (read_word(bus, 0x15, &power)) return A04_GAUGE_IO;
+    if (power != 1) return A04_GAUGE_UNSUPPORTED;
+    if (read_word(bus, 0x16, &method)) return A04_GAUGE_IO;
+    /* I2C mode contains host-supplied data, including the default 25 C.
+     * Never expose that value as a thermistor measurement. */
+    if (method != 1) return A04_GAUGE_UNSUPPORTED;
+    if (read_word(bus, 0x08, &raw) || read_word(bus, 0x16, &after_method) ||
+        read_word(bus, 0x15, &after_power)) return A04_GAUGE_IO;
+    if (after_method != method || after_power != power) return A04_GAUGE_UNSUPPORTED;
+    /* LC709203F/D Rev17 p10 measurement range, not a charging limit. */
+    if (raw < 0x09e4u || raw > 0x0d04u) return A04_GAUGE_INVALID;
+    *kelvin10 = raw; return A04_GAUGE_OK;
+}

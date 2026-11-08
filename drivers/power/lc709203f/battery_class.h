@@ -15,6 +15,10 @@ struct a04_battery_class {
     ULONG tag;
     BOOLEAN valid;
     ULONG power_state;
+    /* Immutable callback/context set at AddDevice, only on the local read-only
+     * owner path. QueryInformation must release class lock before calling. */
+    PVOID temperature_context;
+    NTSTATUS (*read_temperature)(PVOID context, PULONG kelvin10);
 };
 BOOLEAN a04_battery_publish(struct a04_battery_class *context,
                             const struct a04_gauge_sample *sample);

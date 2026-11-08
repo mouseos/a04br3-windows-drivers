@@ -1,0 +1,76 @@
+# SPDX-License-Identifier: MIT
+param([switch]$EnableCandidate,
+ [Parameter(Mandatory=$true)][string]$KitHeaderRoot,
+ [Parameter(Mandatory=$true)][string]$KmLibraryRoot,
+ [Parameter(Mandatory=$true)][string]$WdfLibraryRoot,
+ [Parameter(Mandatory=$true)][string]$BatteryClassLibrary,
+ [Parameter(Mandatory=$true)][string]$UmLibraryRoot,
+ [Parameter(Mandatory=$true)][string]$VcInclude,
+ [Parameter(Mandatory=$true)][string]$UcrtInclude,
+ [Parameter(Mandatory=$true)][string]$ClangPath,
+ [Parameter(Mandatory=$true)][string]$LinkPath,
+ [Parameter(Mandatory=$true)][string]$SignToolPath,
+ [Parameter(Mandatory=$true)][string]$Inf2CatPath,
+ [Parameter(Mandatory=$true)][string]$OutputDirectory)
+$ErrorActionPreference='Stop'
+if(!$EnableCandidate){throw 'Explicit read-only battery-temperature candidate required'}
+$root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'));$commit=(& git -C $root rev-parse HEAD)
+if($LASTEXITCODE -or @(& git -C $root status --porcelain).Count){throw 'Clean fixed source required'}
+$out=[IO.Path]::GetFullPath($OutputDirectory)
+if(!$out.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase) -or (Test-Path $out)){throw 'Fresh checkout-local output required'}
+function Sha($p){(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()}
+New-Item -ItemType Directory $out,"$out\package","$out\tmp"|Out-Null
+$oldTemp=$env:TEMP;$oldTmp=$env:TMP
+try {
+ $env:TEMP="$out\tmp";$env:TMP=$env:TEMP;$src="$root\drivers\power\lc709203f"
+ # Every existing charger/broker/trace profile is explicitly off, independent of env.
+ $flags=@{};$defs=@()
+ foreach($m in [regex]::Matches([IO.File]::ReadAllText("$src\wdf_gauge.c"),'(?m)^#ifndef (A04_[A-Z0-9_]+)')){$flags[$m.Groups[1].Value]=0}
+ foreach($key in @($flags.Keys|Sort-Object)){$defs+="-D$key=0"}
+ $common=@('--target=thumbv7-pc-windows-msvc','-O1','-fms-extensions','-ffreestanding','-fno-builtin','-fno-stack-protector','-D_ARM_','-DARM','-DNTDDI_VERSION=0x06030000','-D_WIN32_WINNT=0x0603',"-I$KitHeaderRoot\shared","-I$KitHeaderRoot\um","-I$VcInclude","-I$UcrtInclude")
+ $objects=@();$tu=@()
+ foreach($name in @('gauge','mt8167_i2c','battery_class','wdf_gauge')){
+  $obj="$out\$name.obj";$args=$common+@('-D_KERNEL_MODE','-DKMDF_VERSION_MAJOR=1','-DKMDF_VERSION_MINOR=13',"-I$KitHeaderRoot\km","-I$KitHeaderRoot\wdf\kmdf\1.13")+$defs+@('-c',"$src\$name.c",'-o',$obj)
+  & $ClangPath @args;if($LASTEXITCODE){throw "Temperature driver TU failed: $name"}
+  $objects+=$obj;$tu+=@{name=$name;source_sha256=(Sha "$src\$name.c");object_sha256=(Sha $obj);arguments=$args}
+ }
+ $libs=@("$WdfLibraryRoot\wdfdriverentry.lib","$WdfLibraryRoot\wdfldr.lib","$KmLibraryRoot\ntoskrnl.lib","$KmLibraryRoot\hal.lib",$BatteryClassLibrary,"$KmLibraryRoot\bufferoverflowfastfailk.lib","$KmLibraryRoot\libcntpr.lib")
+ & $LinkPath /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib @objects @libs "/out:$out\package\lc709203f.sys"
+ if($LASTEXITCODE){throw 'Temperature SYS link failed'}
+ Copy-Item "$src\lc709203f.inf" "$out\package"
+ & $ClangPath @common -c "$root\tools\winpe\lc709203f-temperature.c" -o "$out\lc709203f-temperature.obj"
+ if($LASTEXITCODE){throw 'Standard temperature consumer compile failed'}
+ & $LinkPath /subsystem:console,6.03 /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\lc709203f-temperature.obj" "$UmLibraryRoot\kernel32.lib" "$UmLibraryRoot\cfgmgr32.lib" "/out:$out\package\lc709203f-temperature.exe"
+ if($LASTEXITCODE){throw 'Temperature consumer link failed'}
+ $thumb='BCBF6C456C6F0DD0818434763B189488FBF13570';$store=@();if(Test-Path "Cert:\LocalMachine\My\$thumb"){$store=@('/sm')}
+ $unsigned=@{}
+ foreach($name in @('lc709203f.sys','lc709203f-temperature.exe')){
+  $unsigned[$name]=Sha "$out\package\$name"
+  & $SignToolPath sign /fd SHA256 /sha1 $thumb /s My @store "$out\package\$name";if($LASTEXITCODE){throw 'Sign failed'}
+ }
+ & $Inf2CatPath "/driver:$out\package" /os:6_3_ARM /uselocaltime
+ if($LASTEXITCODE){throw 'CAT generation failed'}
+ & $SignToolPath sign /fd SHA256 /sha1 $thumb /s My @store "$out\package\lc709203f.cat"
+ if($LASTEXITCODE){throw 'CAT signing failed'}
+ foreach($name in @('lc709203f.sys','lc709203f.cat','lc709203f-temperature.exe')){
+  $sig=Get-AuthenticodeSignature "$out\package\$name"
+  if($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Thumbprint -cne $thumb){throw 'Invalid signature/identity'}
+ }
+ foreach($name in @('lc709203f.sys','lc709203f.inf')){
+  & $SignToolPath verify /pa /c "$out\package\lc709203f.cat" "$out\package\$name"
+  if($LASTEXITCODE){throw 'CAT membership failed'}
+ }
+ [ordered]@{schema='lc709203f-temperature-observe-v1';source_commit=$commit;baseline_source='1a45b25eae0793ce130f0827ba2329dd3232d187';
+ profile='TemperatureObserveReadOnly';driver_version='11/08/2026,0.0.1.6';effective_flags=$flags;
+ charger_register_write=$false;gauge_register_write=$false;new_resource_owner=$false;hardware_tested=$false;
+ standard_interface='IOCTL_BATTERY_QUERY_INFORMATION/BatteryTemperature/ULONG tenths Kelvin';
+ certificate_thumbprint=$thumb;signature_status='Valid';catalog_membership_verified=$true;unsigned=$unsigned;
+ compiler_sha256=(Sha $ClangPath);linker_sha256=(Sha $LinkPath);translation_units=$tu;
+ libraries=@($libs|ForEach-Object{@{name=[IO.Path]::GetFileName($_);sha256=(Sha $_)}});
+ files=@(Get-ChildItem "$out\package" -File|ForEach-Object{@{name=$_.Name;sha256=(Sha $_.FullName)}})
+ }|ConvertTo-Json -Depth 10|Set-Content -Encoding UTF8 "$out\package\signed-manifest.json"
+ Compress-Archive "$out\package\*" "$out\package.zip"
+ Compress-Archive "$out\*.obj" "$out\objects.zip"
+ Get-FileHash "$out\package.zip","$out\objects.zip" -Algorithm SHA256
+ Write-Output 'LC709203F_TEMPERATURE_SIGNED_NOT_DEVICE_TESTED'
+}finally{$env:TEMP=$oldTemp;$env:TMP=$oldTmp}

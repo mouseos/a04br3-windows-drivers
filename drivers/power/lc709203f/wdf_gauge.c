@@ -549,6 +549,32 @@ static void poll(GAUGE_CONTEXT *c)
     WdfWaitLockRelease(c->bus_lock);
     if (changed) notify(c);
 }
+/* Local Observe path only. The existing resource owner/lock bounds every read.
+ * BQ broker profiles keep their existing ABI and need their own admission. */
+#if !A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL && !A04_BROKER_OWNER_EXPERIMENTAL
+static NTSTATUS GaugeTemperature(PVOID context, PULONG kelvin10)
+{
+    GAUGE_CONTEXT *c = context;
+    uint32_t value = 0; int result; NTSTATUS status;
+    WdfWaitLockAcquire(c->bus_lock, NULL);
+    if (!c->online || c->faulted || c->adapter.faulted) status = STATUS_DEVICE_NOT_READY;
+    else {
+        result = a04_gauge_read_temperature(&c->bus, &value);
+        if (c->adapter.faulted) {
+            /* No reset/recovery/charger action. Close the same admission used
+             * by normal polling; D0Exit retains its existing timer drain. */
+            c->faulted = TRUE; InterlockedExchange(&c->online, 0);
+            a04_battery_invalidate(&c->battery); status = STATUS_DEVICE_NOT_READY;
+        } else if (!c->online) status = STATUS_DEVICE_NOT_READY;
+        else if (result == A04_GAUGE_UNSUPPORTED) status = STATUS_INVALID_DEVICE_REQUEST;
+        else if (result != A04_GAUGE_OK) status = STATUS_DATA_ERROR;
+        else { *kelvin10 = value; status = STATUS_SUCCESS; }
+    }
+    WdfWaitLockRelease(c->bus_lock);
+    return status;
+}
+#endif
+
 NTSTATUS GaugePrepare(WDFDEVICE device, WDFCMRESLIST raw, WDFCMRESLIST translated)
 {
     GAUGE_CONTEXT *c = GaugeContext(device);
@@ -902,6 +928,7 @@ NTSTATUS GaugeAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
     status = WdfDeviceCreate(&init, &attributes, &device);
     if (!NT_SUCCESS(status)) return status;
     c = GaugeContext(device); c->device = device;
+    c->battery.read_temperature = NULL; c->battery.temperature_context = NULL;
     WDF_OBJECT_ATTRIBUTES_INIT(&child); child.ParentObject = device;
     status = WdfWaitLockCreate(&child, &c->class_lock);
     if (!NT_SUCCESS(status)) return status;
@@ -913,6 +940,10 @@ NTSTATUS GaugeAdd(WDFDRIVER driver, PWDFDEVICE_INIT init)
 #endif
     status = WdfWaitLockCreate(&child, &c->battery.lock);
     if (!NT_SUCCESS(status)) return status;
+#if !A04_BQ24160_EXPERIMENTAL && !A04_BROKER_CLIENT_EXPERIMENTAL && !A04_BROKER_OWNER_EXPERIMENTAL
+    c->battery.temperature_context = c;
+    c->battery.read_temperature = GaugeTemperature;
+#endif
     /* KMDF passive-level timers cannot be periodic. */
     WDF_TIMER_CONFIG_INIT(&timer, GaugePoll);
     /* D0Exit synchronously stops this timer; do not serialize it under a

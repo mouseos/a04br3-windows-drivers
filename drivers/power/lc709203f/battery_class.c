@@ -55,6 +55,29 @@ NTSTATUS a04_battery_query_information(PVOID context, ULONG tag,
     NTSTATUS status = STATUS_SUCCESS;
     static const WCHAR name[] = L"LC709203F";
     UNREFERENCED_PARAMETER(rate);
+    if (level == BatteryTemperature) {
+        ULONG kelvin10 = 0;
+        PVOID reader_context = NULL;
+        NTSTATUS (*reader)(PVOID, PULONG) = NULL;
+        /* Poll acquires bus -> class. Do not invert that lock order. */
+        WdfWaitLockAcquire(c->lock, NULL);
+        *returned = 0;
+        if (!c->valid || tag != c->tag) status = STATUS_NO_SUCH_DEVICE;
+        else if (!c->read_temperature) status = STATUS_INVALID_DEVICE_REQUEST;
+        else if (!buffer || length < sizeof(kelvin10)) {
+            *returned = sizeof(kelvin10); status = STATUS_BUFFER_TOO_SMALL;
+        } else { reader = c->read_temperature; reader_context = c->temperature_context; }
+        WdfWaitLockRelease(c->lock);
+        if (!NT_SUCCESS(status)) return status;
+        status = reader(reader_context, &kelvin10);
+        if (!NT_SUCCESS(status)) return status;
+        WdfWaitLockAcquire(c->lock, NULL);
+        /* D0 exit/re-entry and changed battery tags invalidate in-flight reads. */
+        if (!c->valid || tag != c->tag) status = STATUS_NO_SUCH_DEVICE;
+        else { RtlCopyMemory(buffer, &kelvin10, sizeof(kelvin10)); *returned = sizeof(kelvin10); }
+        WdfWaitLockRelease(c->lock);
+        return status;
+    }
     WdfWaitLockAcquire(c->lock, NULL);
     *returned = 0;
     if (!c->valid || tag != c->tag) status = STATUS_NO_SUCH_DEVICE;

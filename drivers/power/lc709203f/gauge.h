@@ -15,8 +15,12 @@ struct a04_gauge_sample {
     uint16_t indicator_tenths_percent;
     uint8_t percent;
 };
-enum a04_gauge_result { A04_GAUGE_OK = 0, A04_GAUGE_IO = -1, A04_GAUGE_INVALID = -2 };
+enum a04_gauge_result { A04_GAUGE_OK = 0, A04_GAUGE_IO = -1, A04_GAUGE_INVALID = -2, A04_GAUGE_UNSUPPORTED = -3 };
 /* Outputs are left untouched on transaction, PEC, or range failure. */
 int a04_gauge_read_sample(const struct a04_gauge_bus *bus,
                           struct a04_gauge_sample *sample);
+/* Optional current IC thermistor register, in Windows 0.1 Kelvin units.
+ * Same bus lock/owner as RSOC. No settings, temperature-mode or B writes.
+ * Output is untouched unless both operational/thermistor checks pass. */
+int a04_gauge_read_temperature(const struct a04_gauge_bus *bus, uint32_t *kelvin10);
 #endif
