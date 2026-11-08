@@ -8,19 +8,23 @@ TAB-A04-BR3のWindows RT 8.1 ARM32向けドライバをまとめるリポジト�
 
 Windows RT本体の起動、タッチ、４CPU、電池表示、加速度センサーの回転検出を実機で確認しています。回転方向の補正と、各デバイスの電源遷移・安定性は継続作業です。
 
-PowerVR GE8300は、標準Direct3Dで異なる２色の描画・stagingへのコピー・Map読戻しが連続で成功し、各800×600の480,000画素一致・不一致0を確認しました。今回の処理ではブルースクリーンなし。3.23では三角形用VS/PS・入力レイアウト・頂点/定数バッファの作成まで実機で成功しましたが、描画結果は全面黒でした。GPUジョブ完了と同じ起動の画素読戻しを照合し、PPP viewportのoffset/scale順序逆転を一次ソースと生成処理で特定しました。3.25署名候補は準備済みで、修正後の実機描画は未確認です。一般のDirect3Dアプリ、全３D機能、Windows UI全体へのGPU適用が完成したという意味ではありません。
+PowerVR GE8300は、標準Direct3Dで異なる２色の描画・stagingへのコピー・Map読戻しが連続で成功し、各800×600の480,000画素一致・不一致0を確認しました。今回の処理ではブルースクリーンなし。3.23では三角形用VS/PS・入力レイアウト・頂点/定数バッファの作成まで実機で成功しましたが、描画結果は全面黒でした。GPUジョブ完了と同じ起動の画素読戻しを照合し、PPP viewportのoffset/scale順序逆転を一次ソースと生成処理で特定しました。3.25を実機適用し、２色readbackと三角形用資源の作成成功を再確認しましたが、その後に予定外再起動が起き、三角形の画素結果は未確認です。3.27は標準SRV/SAMPLEと実texture allocation・sampler・MDL寿命を接続し、非一様2×2画像でPOINT/LINEAR等を検査する新clientまで署名回収しました。実機samplingと再起動原因の解決は未確認です。一般のDirect3Dアプリ、全３D機能、Windows UI全体へのGPU適用が完成したという意味ではありません。
 
 |対象|ソース・手順|状態|
 |---|---|---|
-|GE8300の単一checkoutビルド|[work/ge8300-single-checkout323](https://github.com/mouseos/a04br3-windows-drivers/tree/work/ge8300-single-checkout323)|公開ソースからKMD/native/UMD/compilerを構築。対応範囲は同ブランチの説明を参照|
+|GE8300の単一checkoutビルド・texture候補|[work/ge8300-texture-filter327](https://github.com/mouseos/a04br3-windows-drivers/tree/work/ge8300-texture-filter327)|3.27 source recipeへoverlayを統合。通常shallow checkoutのsource gateを検査済み。署名候補は既存compilerを使う増分ビルドで作成し、全compilerの再ビルドとは区別。標準texture clientの実機結果は未確認|
 |GE8300のreset修正|[work/ge8300-implemented-reset322](https://github.com/mouseos/a04br3-windows-drivers/tree/work/ge8300-implemented-reset322)|固定BVNCの実装済みreset controlを検査する3.22。全idle/FW OFF/IRQ drain/platform OFF条件を保持し、標準Direct3Dの２色連続readbackを実機確認|
 |GE8300のRT8.1シェーダー署名修正|[work/ge8300-rt-shader-signature323](https://github.com/mouseos/a04br3-windows-drivers/tree/work/ge8300-rt-shader-signature323)|実ランタイムとWDKの契約に基づく3.23署名候補。VS/PS作成・２色readbackを実機確認。三角形は全面黒で、後続viewport修正が必要|
-|GE8300のviewport順序修正|[work/ge8300-blacktriangle119](https://github.com/mouseos/a04br3-windows-drivers/tree/work/ge8300-blacktriangle119)|offset/scaleをPPP契約へ合わせた3.25署名候補。native1TUと初回入力観測のみ変更。実機修正成功は未確認|
-|MT6630 Wi-Fi接続・QoS統合|[work/mt6630-connect-qos1020-20261108](https://github.com/mouseos/a04br3-windows-drivers/tree/work/mt6630-connect-qos1020-20261108)|1012のscan成功を基点に接続処理とQoS対応を統合。署名候補を作成、接続・通信は未確認|
-|Samsung AJTD4R eMMC / MT8167 MSDC0|[work/msdc-ajtd4r-request-mdl](https://github.com/mouseos/a04br3-windows-drivers/tree/work/msdc-ajtd4r-request-mdl)|要求単位のMDL再利用と実ハード名を反映した1.9署名候補。実速度は未確認|
-|MT8167 USB 2.0|[work/mt8167-usb-host-convergence](https://github.com/mouseos/a04br3-windows-drivers/tree/work/mt8167-usb-host-convergence)|host開始・session喪失処理とboot keyboard/mouseの1009候補。実host給電・列挙・入力は未確認|
+|GE8300のviewport順序修正|[work/ge8300-blacktriangle119](https://github.com/mouseos/a04br3-windows-drivers/tree/work/ge8300-blacktriangle119)|offset/scaleをPPP契約へ合わせた3.25を実機適用。２色readback後に予定外再起動し、三角形の修正成功は未確認|
+|MT6630 Wi-Fi接続・QoS統合|[work/mt6630-connect-qos1020-20261108](https://github.com/mouseos/a04br3-windows-drivers/tree/work/mt6630-connect-qos1020-20261108)|1012のscan成功を基点に接続処理とQoS対応を統合。1020を実機適用して開始を確認。接続・通信は未確認|
+|Samsung AJTD4R eMMC / MT8167 MSDC0|[work/msdc-ajtd4r-request-mdl](https://github.com/mouseos/a04br3-windows-drivers/tree/work/msdc-ajtd4r-request-mdl)|要求単位のMDL再利用と実ハード名を反映した1.9を実機適用。実速度は未確認|
+|MT8167 USB 2.0|[work/peripheral-next-usb1010-wifi1020-sd8](https://github.com/mouseos/a04br3-windows-drivers/tree/work/peripheral-next-usb1010-wifi1020-sd8)|boot HID controller 1010を実機適用し開始を確認。実host給電・列挙・入力と標準USB host全機能は未確認|
 |MT6392 RTC / MT8167温度|[work/mt8167-thermal-rtc1101-20261108](https://github.com/mouseos/a04br3-windows-drivers/tree/work/mt8167-thermal-rtc1101-20261108)|単一親1101とRTC/thermal子を実機適用。MT6392 RTCの日時取得を確認。温度取得は未成功|
 |RTC/thermalに対応する機種UEFI|[work/rt-thermal-rtc1101-post-20261108](https://github.com/mouseos/uefi-a04br3/tree/work/rt-thermal-rtc1101-post-20261108)|POST表示を保持した8range構成。共通EDKコードは変更しない|
+|MT8167 keypad / MT6392 keys|[work/mt8167-keypad-windows-home](https://github.com/mouseos/a04br3-windows-drivers/tree/work/mt8167-keypad-windows-home)|Volume Up/Homeを実board入力へ接続する1.2署名候補。Homeは標準Keyboard Left GUI。実キー入力とStart動作は未確認|
+|LC709203F 電池温度・通知|[work/lc709203f-status-notify-20261108](https://github.com/mouseos/a04br3-windows-drivers/tree/work/lc709203f-status-notify-20261108)|1.7署名候補。実thermistor mode時だけ標準温度queryへ返し、status通知criteriaを実装。実温度・通知成功は未確認|
+|MT8167 AFE / ACCDET|[work/mt8167-afe-jack-sense](https://github.com/mouseos/a04br3-windows-drivers/tree/work/mt8167-afe-jack-sense)|AFE1027は標準jack propertyへ資格付きsenseを接続。実機の親1102は開始するがsenseはERROR21。1103理由診断候補を用意。headphone音声routeの完成とは別|
+|MT8167 thermal資源競合修正|[work/mt8167-thermal-parent1103-20261108](https://github.com/mouseos/a04br3-windows-drivers/tree/work/mt8167-thermal-parent1103-20261108)|実機Problem12の親子二重resource要求を除去した候補。ACCDETの別1103候補とは同版のまま混載せず、後段で親1104へ統合する。UEFI reset assert読戻し0も未解決|
 |MT6630 Bluetooth側band|[work/mt6630-sideband-provider](https://github.com/mouseos/a04br3-windows-drivers/tree/work/mt6630-sideband-provider)|本機stock初期化を反映中。clock/drain/latencyが未確定で、Bluetooth動作成功とは扱わない|
 
 以下の2026-11-04の説明は当時の記録です。現在のビルド対象は上記ブランチと、その中の手順を参照してください。
