@@ -212,7 +212,15 @@ static void Tick(PDEVICE_OBJECT device,PVOID context)
   }
   if(!result&&root){result=RootAction(r,root,&o);if(result)fault=TRUE;else if(root==A04_HUB_POWER_OFF)connected=0;}
   if(!result&&claim){
-   RtlZeroMemory(&r->ep0,sizeof(r->ep0));RtlZeroMemory(&r->pio,sizeof(r->pio));r->hardware_job=TRUE;if(Begin(r)){result=-1;proven=Flush(r)==0;}
+   /* Cancel/Stop may win while Observe waits at PASSIVE. Recheck immediately
+    * at the first command write, under the same lock as DISPATCH cancellation. */
+   KeAcquireSpinLock(&r->lock,&irql);
+   if(r->closing||r->job.state!=MT_JOB_RUNNING||mt_musb_expired(&r->job,KeQueryInterruptTime()))result=-1;
+   else {
+    RtlZeroMemory(&r->ep0,sizeof(r->ep0));RtlZeroMemory(&r->pio,sizeof(r->pio));
+    r->hardware_job=TRUE;if(Begin(r)){result=-1;proven=Flush(r)==0;}
+   }
+   KeReleaseSpinLock(&r->lock,irql);
   }
   KeAcquireSpinLock(&r->lock,&irql);state=r->job.state;
   if(mt_musb_expired(&r->job,KeQueryInterruptTime()))result=-1;

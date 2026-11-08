@@ -45,6 +45,7 @@ int main(void)
  test_qualified=1;CHECK(NT_SUCCESS(MtMusbOpen((PDEVICE_OBJECT)1,&r)));CHECK(r&&test_acquires==1&&test_maps==2);
  Work();CHECK(!r->fault);CHECK(!MtMusbRootQueue(r,A04_HUB_POWER_ON));Work();
  CHECK(!MtMusbObserve(r,&observation,&c,&done,&result)&&done==A04_HUB_POWER_ON&&!result&&observation.vbus_verified);
+ test_mac[0xa]=0x10;TimerDpc(NULL,r,NULL,NULL);Work();CHECK(r->connected);
  e.address=1;e.endpoint=1;e.packet=8;e.speed=1;e.type=2;e.direction=1;p.bytes=3;
  CHECK(!MtMusbSubmit(r,1,&e,0,&p,data));data[0]=0;
  CHECK(r->shadow[0]==0x61);Work();CHECK(r->hardware_job);
