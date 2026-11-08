@@ -29,7 +29,8 @@ DRIVERS = 'Windows/System32/Drivers/'
 ENGINE_STATE = ('Windows/System32/MT8167EngineProbe/attempted.bin',
                 'Windows/System32/MT8167EngineProbe/logs/service.log',
                 'Windows/System32/MT8167EngineProbe.exe')
-ENGINE_OPTIONAL_STATE = ('Windows/System32/MT8167CombinedFollowup132.exe',
+ENGINE_OPTIONAL_STATE = ('Windows/System32/MT8167CombinedFollowup134.exe',
+'Windows/System32/MT8167CombinedFollowup132.exe',
 'Windows/System32/MT8167CombinedFollowup130.exe',
 'Windows/System32/MT8167CombinedFollowup128.exe',
 'Windows/System32/MT8167CombinedFollowup126.exe',

@@ -13,3 +13,11 @@ RTC560cf boot4b67b67aedc4beb9863bfe1791de8713f925d8eedc6dfc702ea66df82895927bは
 47log baseline aacf10f27fc52ac9b773afba39a32c861dc7873b33c0e2a276c6b6dfb9586008はfresh134と結合。旧44保持、同RUNclear拡張と新UMD2を区別した元baselineを使い、45/44へ戻さない。次collector136はmain担当。元媒体/policy/署名/sourceは非変更。
 
 受領ゲート: package正本path/source/binarysource/manifestと全member SHA、署名BCBF/CAT所属、main-independent-seal、private契約整合、current134 actual327 SYS/UMD/client witnessを揃えてからSCM1TU署名→新clone native arm→stage/WIM/ESP検証→contract-input/pins/HANDOFF。未確定pinをplaceholder成功へ変換しない。
+
+## 正式332採用（main seal受領後）
+
+正式profile combined-gpu332-fresh134-v1 / service-data MT8167CombinedFollowup134。runtime package/binary source7c6ef6a83197b655f0f3fb27d4749102e8127940、後続docs/decoder sourcee41c7321db10cb796635c17aadabb1c473439139を分離。signedmanifest55a4d2e6、実buildmanifestf4885121、adapter7/wire5/shaderdraw4/texture3/sampler4、kernel/native/UMD changedを実manifestどおり保存。client_source_commit f4f1は保持旧clear clientの出自であり新client7c6とは別。main independent seal36outputs/retainedと同BCBFを必須にする。
+
+clear-boundary-*.logはGPR1/version1/4096byteのbinaryであり通常cleartextとしてdecodeしない。GPU前に4096byte実確保とvolume flush/precommit、stage*64の40byte/DWORD10、PID word2、FNV1a32 checksumを固定。基点47name+hash、新RUN/servicePID/clientPIDと実332/SYS/UMD/clienthashを結合し、専用read-ge8300-boundary332.pyへ渡す。末尾/slot不在だけで未実行を断定しない。新clientの上限900s/診断1500s/install900sを保持、実terminal/crash/resetを早期判定するmain observerと一致させる。
+
+retained readonly4clientはphase0、boundaryGPUはphase1で最後。renderだけstage/DIF→3010/予定restart1、他10SYSはexactbytes/selected保持。RTC4b67適用済み保持、bootwrite不要。SCMにGPR1解釈やpixel成功stubを追加しない。
