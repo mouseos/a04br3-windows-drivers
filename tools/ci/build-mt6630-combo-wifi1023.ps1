@@ -13,13 +13,14 @@ if($plan.Count -ne 43){throw 'Expected43 provider objects'}
 New-Item -ItemType Directory "$out\obj","$out\tmp","$out\package\provider","$out\package\client"|Out-Null;$env:TEMP="$out\tmp";$env:TMP=$env:TEMP
 $kit='C:\mt8167-public-fullsource323\wdk81\Include';$wdk="$ClosureDirectory\wdk";$km="$wdk\Lib\winv6.3\km\arm"
 $flags=@('--target=thumbv7-pc-windows-msvc','-std=c11','-fms-extensions','-ffreestanding','-O2','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-mfpu=none','-fno-stack-protector','-ffunction-sections','-fdata-sections','-w','-D__ldrexd=__combo_wdk81_ldrexd','-D_KERNEL_MODE','-D_ARM_','-DARM','-DNTDDI_VERSION=0x06030000','-D_WIN32_WINNT=0x0603','-DKMDF_VERSION_MAJOR=1','-DKMDF_VERSION_MINOR=13','-isystem',"$kit\km",'-isystem',"$kit\shared",'-isystem',"$kit\um",'-isystem',"$wdk\Include\wdf\kmdf\1.13")
+$core=$flags+@('-DA04_WIFI_SESSION_DIAGNOSTIC=1','-DA04_WIFI_IRQ_DIAGNOSTIC=1','-DA04_WIFI_CALIBRATION_DIAGNOSTIC=1')
 $ndis=@('-I'+"$ClosureDirectory\overlay")+$flags+@('-D_WINSOCK_DEPRECATED_NO_WARNINGS=1','-DNDIS_MINIPORT_DRIVER','-DNDIS630_MINIPORT','-DA04_WIFI_SESSION_DIAGNOSTIC=1','-DA04_WIFI_IRQ_DIAGNOSTIC=1','-DA04_WIFI_CALIBRATION_DIAGNOSTIC=1','-DA04_WIFI_BT_BROKER=1')
 $objects=@();$compiled=@();$reused=@();$records=@()
 foreach($x in $plan){
  foreach($f in $x.closure.PSObject.Properties){if((Sha (Join-Path $root $f.Name)) -cne $f.Value){throw 'Current source include closure changed'}}
  if($x.compile){
   $obj=Join-Path "$out\obj" $x.object;New-Item -Force -ItemType Directory (Split-Path $obj)|Out-Null
-  $args=if($x.flags -eq 'ndis'){$ndis}else{$flags}
+  $args=if($x.flags -eq 'ndis'){$ndis}else{$core}
   & clang @args -c "$root\$($x.source)" -o $obj;if($LASTEXITCODE){throw "Compile failed $($x.source)"};$compiled+=$x.source
  }else{
   $prior=@($m.objects|Where-Object{$_.object -ceq $x.object});if($prior.Count -ne 1){throw 'Cached object identity missing'}
@@ -43,7 +44,7 @@ $thumb='BCBF6C456C6F0DD0818434763B189488FBF13570';$sign='C:\mt8167-minimal-servi
 foreach($p in @($sys,$cat)){& $sign verify /pa /v $p;if($LASTEXITCODE -or (Get-AuthenticodeSignature $p).SignerCertificate.Thumbprint -cne $thumb){throw 'Signer mismatch'}}
 foreach($p in @($sys,"$dir\mt6630-combo-runtime.inf")){& $sign verify /pa /v /c $cat $p;if($LASTEXITCODE){throw 'Provider CAT membership failed'}}
 $pe=& llvm-readobj --file-headers --coff-imports $sys;if($LASTEXITCODE -or ($pe -join "`n") -notmatch 'IMAGE_FILE_MACHINE_ARMNT'){throw 'ARMNT required'};$pe|Set-Content -Encoding UTF8 "$out\provider-pe.txt"
-@{schema='mt6630-combo-wifi1023';source_commit=$commit;wifi_baseline='0ea7a7a91d1097ce90383516469617d44ebb6fee';transport_source='f27cbdd700cd22b2923a0e7780329d83be562ed9';version='2026.11.8.1023';checkpoint=1023;compiled=$compiled;reused=$reused;objects=$records;flags=$flags;ndis_flags=$ndis;unsigned_sys_sha256=$unsigned;signer_thumbprint=$thumb;client2013_byte_unchanged=$true;parent_rebuilt=$false;audio_rebuilt=$false;sdk_rebuilt=$false;hardware_verified=$false;files=@(Get-ChildItem "$out\package" -Recurse -File|ForEach-Object{@{path=$_.FullName.Substring(("$out\package\").Length).Replace('\','/');sha256=(Sha $_.FullName)}})}|ConvertTo-Json -Depth 16|Set-Content -Encoding UTF8 "$out\package\signed-manifest.json"
+@{schema='mt6630-combo-wifi1023';source_commit=$commit;wifi_baseline='0ea7a7a91d1097ce90383516469617d44ebb6fee';transport_source='f27cbdd700cd22b2923a0e7780329d83be562ed9';version='2026.11.8.1023';checkpoint=1023;compiled=$compiled;reused=$reused;objects=$records;flags=$core;ndis_flags=$ndis;unsigned_sys_sha256=$unsigned;signer_thumbprint=$thumb;client2013_byte_unchanged=$true;parent_rebuilt=$false;audio_rebuilt=$false;sdk_rebuilt=$false;hardware_verified=$false;files=@(Get-ChildItem "$out\package" -Recurse -File|ForEach-Object{@{path=$_.FullName.Substring(("$out\package\").Length).Replace('\','/');sha256=(Sha $_.FullName)}})}|ConvertTo-Json -Depth 16|Set-Content -Encoding UTF8 "$out\package\signed-manifest.json"
 Compress-Archive "$out\package\*" "$out\wifi1023-signed.zip"
 Compress-Archive "$out\obj\*","$out\provider-pe.txt" "$out\wifi1023-objects.zip"
 Get-FileHash "$out\wifi1023-signed.zip","$out\wifi1023-objects.zip" -Algorithm SHA256
