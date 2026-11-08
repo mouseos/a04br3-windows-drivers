@@ -6,8 +6,8 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'winpe'))
 from peripheral_batch_policy import rooted,sha,read,require,cstr,cbytes,inftext
 from codec_msdc_transaction import version,datevalue
 from peripheral_next_policy import TARGETS as OLD_TARGETS
-COMBINED_GPU_ADAPTER_READY=True # signed338 and frozen main independent seal required
-CLIENT_NAMES=()
+COMBINED_GPU_ADAPTER_READY=True # signed340 and final pixel client seals required
+CLIENT_NAMES=('gpu_suite',)
 PROFILE='combined-features-fresh144-v1';SERVICE='MT8167CombinedFollowup144'
 FRESH='0faa9fd09cce293d411ad025e64e54c27d5975948b54935c00e25a3feff15a60';BOOT='c35ceece-d15b-4e07-98f9-5f1d2accd64f'
 ROLES=('rtc','thermal','usb','wifi','sd','display','parent','keypad','battery','audio','render')
@@ -78,13 +78,14 @@ def validate(root,path):
  for role in ('parent','audio','wifi'):
   e=m['packages'][role];require(e.get('producer_pins') is not None,'Changed role needs completed producer pins');pin(e['producer_pins']);pin(e['main_seal'])
  gpu=m['candidate_gpu_suite'];mp=rooted(root,gpu['manifest']);pm=read(mp)
- require(sha(mp)==gpu['manifest_sha256']=='f3d3ce288dbc8b453fea220276eee5577344c0704c0895930853f151fd01dfcf' and pm['package_source_commit']==pm['kernel_binary_source_commit']=='acc343370cca6fbda412ebf3a535c0a583e37cbd' and pm['module_identity_evidence_only'] and not pm['root_reset_fix_proven'] and not pm['client_changed'] and not pm['umd_changed'],'Exact observation-only339 required')
- for e in pm['outputs']+pm['retained_provenance']:require(sha(rooted(root,Path(gpu['directory'])/e['name']))==e['sha256'],'339 output/provenance mismatch')
- require(sha(rooted(root,Path(gpu['directory'])/pm['build_manifest_file']))==pm['build_manifest_sha256'],'339 build provenance mismatch')
- _,seal=pin(gpu['main_seal']);pin(gpu['producer_pins']);require(seal['status']=='main-independent-artifact-seal' and seal['source']==pm['package_source_commit'] and seal['moduleidentity_evidence_only'] and seal['GPU_client_unchanged_repeat_allowed'] is False,'339 main seal required')
+ require(sha(mp)==gpu['manifest_sha256']=='504247e51d88d04a050b6689b9e3c7d758124dabd663e9b2d72822c8b276f803' and pm['package_source_commit']==pm['kernel_binary_source_commit']=='03f35eacd064ec7876147bb74c87f8a39fb2444e' and not pm['root_reset_fix_proven'] and not pm['client_changed'] and not pm['umd_changed'],'Exact persistent-copy340 required')
+ for e in pm['outputs']+pm['retained_provenance']:require(sha(rooted(root,Path(gpu['directory'])/e['name']))==e['sha256'],'340 output/provenance mismatch')
+ require(sha(rooted(root,Path(gpu['directory'])/pm['build_manifest_file']))==pm['build_manifest_sha256'],'340 build provenance mismatch')
+ _,seal=pin(gpu['main_seal']);pin(gpu['producer_pins']);require(seal['status']=='main-independent-final-GPU340-artifact-seal' and seal['package_source']==pm['package_source_commit'] and seal['manifest_sha256']==sha(mp) and seal['SYS_sha256']=='b7dfedcc95ec8eba4ce46c48879a6c21f66e605f0588f526e93c849e1031c0ab' and seal['compiled_TUs_verified']==6 and seal['BCBF_valid_signatures']==6,'340 main seal required')
  for role,status,source in [('thermal','main-independent-artifact-seal','b4ef62e16afd8d9adfb18313cfb634d26de31b75'),('wifi','main-independent-combo-artifact-seal','701182c18999e45dbf26704c3feffb51f72b5c19')]:
   _,s=pin(m['packages'][role]['main_seal']);require(s['status']==status and s['source']==source,'Fixed thermal/combo seal required')
  bt=m['bt_first_install'];_,br=pin(bt['native_baseline']);require(br['source_manifest_sha256']==FRESH and not br['errors'] and br['originals_unchanged'] and all(br[k]==0 for k in ('load_rc','unload_rc','privilege_restore_error')),'BT actual native baseline required')
+ _,scan=pin(bt['root_hardware_scan']);require(scan['source_manifest_sha256']==FRESH and scan['root_hardware_matches']==[] and not scan['errors'] and scan['originals_unchanged'],'All ROOT hardware-ID matches must be absent at exact144 baseline')
  for key in ('ControlSet001\\Enum\\ROOT\\MT6630COMBO','ControlSet001\\Enum\\A04BR3\\MT6630HCI','ControlSet001\\Services\\Mt6630ComboBluetooth'):require(br['paths'][key]['present'] is False,'BT must be exact known first install; unknown/existing never ignored')
  require(bt['first_install'] and bt['driver_version']=='2026.11.8.2013' and bt['hardware_id']=='ROOT\\MT6630COMBO','Exact BT root2013 only')
  for f in bt['files']:require(sha(rooted(root,Path(bt['directory'])/f['name']))==f['sha256'],'BT2013 bytes mismatch')
@@ -97,8 +98,10 @@ def validate(root,path):
  mb=validate_boot_adoption(root,m,pin);rp,rs=pin(m['rtc_adoption_seal']);require(rs['current_device_loader_pin_verified'] and rs['installed_loader_sha256']=='219464f17d75b3bf4322804590394fc817f5afe8efc576086f0afb32832d4fe2' and sha(rooted(root,rs['installed_loader_path']))==rs['installed_loader_sha256'],'Actual loader pin required')
  bp,bm=pin(m['gpu_client_log_baseline']);require(bm['source_fresh_manifest_sha256']==FRESH and len(bm['files'])==57,'Current44 log baseline required')
  for name,h in bm['files'].items():require(re.fullmatch(r'(clear|umd)-[A-Za-z0-9_.-]+\.log',name) and sha(rooted(root,Path(bm['source_directory'])/name))==h,'Baseline44 actual file mismatch')
- ex=m['unified_execution'];require(ex['install_phase_timeout_seconds']==900 and ex['postreboot_diagnostic_total_timeout_seconds']==1500 and ex['gpu_client_timeout_seconds']==0 and ex['rotation_client_timeout_seconds']==300,'Explicit final phase budgets required')
- require(m['gpu_client_execute'] is False and m['gpu_client_count']==0 and not m['diagnostics'],'No repeated audio/peripheral/GPU client; built-in bounded readonly diagnostics only')
+ ex=m['unified_execution'];require(ex['install_phase_timeout_seconds']==900 and ex['postreboot_diagnostic_total_timeout_seconds']==1500 and ex['gpu_client_timeout_seconds']==900 and ex['rotation_client_timeout_seconds']==300,'Explicit final phase budgets required')
+ require(m['gpu_client_execute'] is True and m['gpu_client_count']==1 and set(m['diagnostics'])=={'gpu_suite'},'One final new pixel client with actual rootfix340 required')
+ v=m['diagnostics']['gpu_suite'];require(v['exe']=='ge8300-d3d-texture-pixel-boundary.exe' and v['sha256']=='9934ba6bf9741630a544bf096ea3261c717d45873f91b899cc7e3eae62466add' and v['phase']==1 and v['timeout_ms']==900000 and v['one_shot'] and v['arguments']==['--hardware=PowerVR'],'Exact pixel client/timeout/args')
+ _,cs=pin(m['pixel_client_seal']);require(cs['source']=='c0909fcf61c7f2ff1225c9ef8f2d0805472c209a' and cs['client_sha256']==v['sha256'] and cs['only_with_new_GPU_rootfix_trial'],'Independent new pixel client seal required')
  require(m['rotation_execute'] is False and m['wlan_scan_execute'] is False and m['planned_reboots']==1 and m['install_targets']==['thermal','wifi','render'],'No repeated scan/rotation/DIF/reboot')
  companion=m['companion_packages']['hcd1016'];_,hseal=pin(companion['main_seal']);pin(companion['producer_pins']);require(hseal['status']=='main-independent-artifact-seal' and hseal['source']=='17263318b44b81d2f9a8b27edb477b1e414324af','Main HCD1016 leaf seal required');require(companion['stage_only'] and not companion['DIF'] and not companion['rebuilt'],'HCD1016 import-only contract required')
  cp=rooted(root,companion['manifest']);cm=read(cp);require(sha(cp)==companion['manifest_sha256'] and cm['signed'] and cm['source_commit']=='17263318b44b81d2f9a8b27edb477b1e414324af','Retained signed1015 provenance required')
@@ -108,7 +111,7 @@ def validate(root,path):
  return m,packages,baselines,blockers
 
 def header(packages,baselines,policy=None):
- lines=['/* Fixed fresh144 profile; preview remains non-armable. */','#define A04_PERIPHERAL_INSTALL_MASK '+hex(sum(1<<ROLES.index(k) for k in CURRENT_INSTALL))+'u','#define A04_DIAGNOSTIC_ONLY 0','#define A04_READONLY_PERIPHERAL_STATUS 1','#define A04_FEATURE144 1','#define A04_DIAGNOSTIC_CLIENT_COUNT 0u','#define A04_PERIPHERAL_FIRST_INSTALL_MASK 0x0u','#define A04_PERIPHERAL_DEFERRED_UNBOUND_MASK 0x0u','#define A04_UNBOUND_KEYPAD_CONFIG 0x60u','static const char deferred_token[]="'+(hashlib.sha256(json.dumps(policy,sort_keys=True,separators=(',',':')).encode()).hexdigest() if policy is not None else 'DRAFT-NOT-ARMED')+'";','static const struct peripheral_target targets[11]={']
+ lines=['/* Fixed fresh144 profile; preview remains non-armable. */','#define A04_PERIPHERAL_INSTALL_MASK '+hex(sum(1<<ROLES.index(k) for k in CURRENT_INSTALL))+'u','#define A04_DIAGNOSTIC_ONLY 0','#define A04_READONLY_PERIPHERAL_STATUS 1','#define A04_FEATURE144 1','#define A04_DIAGNOSTIC_CLIENT_COUNT 1u','#define A04_PERIPHERAL_FIRST_INSTALL_MASK 0x0u','#define A04_PERIPHERAL_DEFERRED_UNBOUND_MASK 0x0u','#define A04_UNBOUND_KEYPAD_CONFIG 0x60u','static const char deferred_token[]="'+(hashlib.sha256(json.dumps(policy,sort_keys=True,separators=(',',':')).encode()).hexdigest() if policy is not None else 'DRAFT-NOT-ARMED')+'";','static const struct peripheral_target targets[11]={']
  for role in ROLES:
   t=TARGETS[role];p=packages[role];b=baselines[role];lines.append('{'+','.join(cstr(x) for x in (t[0],t[1],t[2],role,p['names']['inf'],t[3],p['names']['cat']))+','+str(p['version_u64'])+'ULL,'+str(p['date_filetime'])+'ULL,{'+','.join(cbytes(p['hashes'][k]) for k in ('inf','sys','cat'))+'},'+str(b['version_u64'])+'ULL,'+str(b['date_filetime'])+'ULL,'+cbytes(b['sys_sha256'])+','+cstr(b['inf'])+'},')
  lines+=['};','#define A04_CANDIDATE_EXTRA_COUNT 2u','static const struct candidate_extra_file candidate_extras[2]={']
@@ -119,8 +122,9 @@ def header(packages,baselines,policy=None):
  for name,h in CURRENT_PRESERVED.items():lines.append('{'+cstr(name[len('Windows/System32/'):].replace('/','\\'))+','+cbytes(h)+'},')
  lines+=['};','static const struct preserved_service preserved_services[]={']
  for name,v in CURRENT_OLD_SERVICES.items():lines.append('{'+cstr(name)+','+str(int(v['present']))+','+cbytes(v['root_sha256'] if v['present'] else '0'*64)+'},')
- lines+=['};','static const struct diagnostic_client diagnostic_clients[1]={{0}};']
+ lines+=['};','static const struct diagnostic_client diagnostic_clients[]={']
  for v in CURRENT_CLIENTS:lines.append('{'+cstr(v['exe'])+','+cstr(' '.join(v['arguments']))+','+cstr(v['name'])+','+cstr(v.get('relative_directory',SERVICE+'\\clients'))+','+cbytes(v['sha256'])+','+str(v.get('timeout_ms',10000))+'u,'+str(v.get('phase',0))+'u},')
+ lines+=['};']
  bt=policy['bt_first_install'] if policy else CURRENT_BT
  lines+=['static const struct preserved_file aux_bt_files[3]={']
  for f in bt['files']:lines.append('{'+cstr(f['name'])+','+cbytes(f['sha256'])+'},')
@@ -158,12 +162,12 @@ def build_policy(root,path,finalize=False):
   require(sha(rooted(root,Path(baseline['source_directory'])/leaf))==h,'Exact saved GPU log baseline changed')
  clients=[{**v,'relative_directory':v.get('relative_directory',SERVICE+'\\clients'),'dependencies':v.get('dependencies',[])} for v in CURRENT_CLIENTS]
  policy={'schema':1,'profile':PROFILE,'service':SERVICE,'data_directory':SERVICE,'draft':not finalize,'normal_install_allowed':bool(finalize),'backup_manifest':m['fresh']['path'],'backup_manifest_sha256':FRESH,'recovery_boot_id':BOOT,'capture_selection':{'schema':1,'profile':PROFILE,'capture_number':144,'manifest_sha256':FRESH,'recovery_boot_id':BOOT,'gpu_policy_sha256':m['gpu']['policy_sha256'],'unchanged_since_capture':True},'source_files':{n:{k:next(e for e in fm['files'] if e['source_path']=='Windows/System32/config/'+n)[k] for k in ('bytes','sha256')} for n in ('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')},'packages':pkgs,'baselines':base,'service_preservation':CURRENT_OLD_SERVICES,'preserved_files':CURRENT_PRESERVED,'preserved_sources':preserved_sources,'planned_reboots':1,'install_targets':m['install_targets'],'stage_order':list(ROLES),'first_install_mask':0,'deferred_unbound_mask':0,'battery_baseline_sys_sha256':base['battery']['sys_sha256'],'diagnostic_clients':clients,'gpu_install':True,'diagnostic_only':False,'engine_retest':False,'device_verified':False,'boot_transition':{'mode':'retain-current-mmio-fixed-boot1fef','boot_path':m['matched_boot']['path'],'boot_sha256':m['matched_boot']['sha256'],'main_handoff_required':True,'boot_write_required':False,'gpt_written':False}}
- policy['observer_contract']=m['unified_execution'];policy['gpu_client_log_baseline']=m['gpu_client_log_baseline'];policy['gpu_new_log_contract']=m['gpu_new_log_contract'];policy['gpu_candidate']=m['candidate_gpu_suite'];policy['gpu_client_execute']=False;policy['gpu_client_count']=0;policy['rtc_adoption_seal']=m['rtc_adoption_seal'];policy['prior_rotation_log']=None;policy['reuse_rotation_directory_without_prior_active_log']=False;policy['wlan_fixed_log_directory']='MT8167CombinedFollowup124';policy['keypad_deferred_unbound']=False
- policy['boot_adoption_contract']=boot_adoption_contract();policy['companion_packages']=m['companion_packages'];policy['usb_pc_role_legacy_absence_separate_result']=True;policy['parent_tuple']=m['parent_tuple'];policy['parent_tuple_pins']=m['parent_tuple_pins'];policy['prior_rotation_executables']=[];policy['gpu_delayed_log_collection']={'source_run':143,'baseline_count':57,'execute_new_client':False,'same_normal_mount':True,'preserve_prior_file_changes':baseline.get('prior_file_changes',{}),'binary_boundary_logs_require_GPR1_decoder':True};policy['normal_function_expectations']=m['normal_function_expectations']
+ policy['observer_contract']=m['unified_execution'];policy['gpu_client_log_baseline']=m['gpu_client_log_baseline'];policy['gpu_new_log_contract']=m['gpu_new_log_contract'];policy['gpu_candidate']=m['candidate_gpu_suite'];policy['gpu_client_execute']=True;policy['gpu_client_count']=1;policy['rtc_adoption_seal']=m['rtc_adoption_seal'];policy['prior_rotation_log']=None;policy['reuse_rotation_directory_without_prior_active_log']=False;policy['wlan_fixed_log_directory']='MT8167CombinedFollowup124';policy['keypad_deferred_unbound']=False
+ policy['boot_adoption_contract']=boot_adoption_contract();policy['companion_packages']=m['companion_packages'];policy['usb_pc_role_legacy_absence_separate_result']=True;policy['parent_tuple']=m['parent_tuple'];policy['parent_tuple_pins']=m['parent_tuple_pins'];policy['prior_rotation_executables']=[];policy['gpu_delayed_log_collection']={'source_run':143,'baseline_count':57,'execute_new_client':True,'same_normal_mount':True,'preserve_prior_file_changes':baseline.get('prior_file_changes',{}),'binary_boundary_logs_require_GPR1_decoder':True};policy['normal_function_expectations']=m['normal_function_expectations']
  policy['baseline_witnesses']={'Windows/System32/ge8300-umd.dll':m['current_render_witnesses']['umd'],'Windows/System32/Drivers/ge8300-render.sys':m['current_render_witnesses']['sys']};require(sha(rooted(root,m['current_render_witnesses']['sys']['path']))==m['current_render_witnesses']['sys']['sha256']==base['render']['sys_sha256'],'Actual oldSYS witness required');require(sha(rooted(root,m['current_render_witnesses']['umd']['path']))==m['current_render_witnesses']['umd']['sha256']=='3bd57ffe4e5310b14ab00ebff3ab5b1a95f029d41bb1533e00bda42b6950eb3c','Exact installed335 UMD witness required')
  files_lc=next(e for e in fm['files'] if e['source_path']=='Windows/System32/Drivers/lc709203f.sys')
  policy['baseline_witnesses']['Windows/System32/Drivers/lc709203f.sys']={'path':(Path(m['fresh']['path']).parent/files_lc['backup_path']).as_posix(),'sha256':base['battery']['sys_sha256']}
- require(clients==[],'No standalone clients in feature144');policy['bt_first_install']=m['bt_first_install'];policy['module_identity_collection']=m['module_identity_collection']
+ require(len(clients)==1 and clients[0]['name']=='gpu_suite' and clients[0]['phase']==1,'One final pixel client only');policy['bt_first_install']=m['bt_first_install'];policy['module_identity_collection']=m['module_identity_collection']
  return policy,m,blocks
 
 def load_map(path,root):return build_policy(root,path,True)[0]
@@ -175,7 +179,7 @@ def generate(p):
 def assert_paths(image,capture=False):
  b=Path(image).read_bytes();require((SERVICE+'.exe').encode('utf-16le') in b and SERVICE.encode('utf-16le') in b,'Compiled service/data UTF16 identity missing')
  require('thermal-readonly.bin'.encode('utf-16le') in b,'Required thermal readonly proof missing')
- require((chr(0)+'ge8300-d3d-texture-boundary.exe'+chr(0)).encode('utf-16le') not in b,'GPU execution leaf forbidden');require('MT8167CombinedFollowup136'.encode('utf-16le') in b,'Old136 service preservation missing')
+ require('ge8300-d3d-texture-pixel-boundary.exe'.encode('utf-16le') in b,'Pinned pixel client leaf missing');require('MT8167CombinedFollowup136'.encode('utf-16le') in b,'Old136 service preservation missing')
 
 def main():
  a=argparse.ArgumentParser();a.add_argument('--workspace',type=Path,required=True);a.add_argument('--map',type=Path,required=True);a.add_argument('--out',type=Path,required=True);a.add_argument('--finalize',action='store_true');x=a.parse_args();root=x.workspace.resolve(strict=True);p,m,blocks=build_policy(root,x.map,x.finalize);out=x.out.resolve();require(out.is_relative_to(root) and not out.exists(),'New root output required');out.mkdir(mode=0o700)
