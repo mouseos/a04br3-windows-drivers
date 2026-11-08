@@ -31,7 +31,7 @@ def main():
  require(sha(service/'compare-files.exe')==sm.get('comparator',{}).get('exe_sha256') and sm['comparator'].get('signature_status')=='Valid' and sm['comparator'].get('signer_thumbprint')==SIGNER,'同梱native comparator署名/hash不一致')
  require(hashlib.sha1((service/'mt8167-development.cer').read_bytes()).hexdigest().upper()==SIGNER,'service cert不一致')
  system=rooted(root,a.prepared_system);result=rooted(root,a.prepared_system_manifest)
- native=prepared_system_check(system,result,a.prepared_system_sha256,root,b,'MT8167RenderSingleGpu');require(not native.get('engine_rearm_plan_sha256'),'Engine再arm不可');nr=json.loads(result.read_text(encoding='utf-8-sig'));require(nr.get('single_gpu_rearm')==policy['engine_preservation']['single_gpu_rearm'] and nr.get('engine_preservation_plan_sha256')==sha(service/'engine-preservation-plan.json'),'fresh118 native rearm chain mismatch')
+ native=prepared_system_check(system,result,a.prepared_system_sha256,root,b,'MT8167RenderSingleGpu');require(not native.get('engine_rearm_plan_sha256'),'Engine再arm不可');nr=json.loads(result.read_text(encoding='utf-8-sig'));require(nr.get('single_gpu_rearm')==policy['engine_preservation']['single_gpu_rearm'] and nr.get('engine_preservation_plan_sha256')==sha(service/'engine-preservation-plan.json'),'fresh120 native rearm chain mismatch')
  out.mkdir(mode=0o700);stage=out/'stage';stage.mkdir(mode=0o700);files={}
  def copy(src,dest):
   target=stage/dest;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(src,target);files[dest]=sha(target)

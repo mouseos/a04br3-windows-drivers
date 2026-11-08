@@ -38,7 +38,7 @@ try {
   $dir=Join-Path $Workspace $policy.packages.$role.directory
   foreach($name in @('ge8300-render.inf','ge8300-render.sys','ge8300-mips.fw','ge8300-umd.dll')){
    & $signTool verify /pa /c "$dir\ge8300-render.cat" "$dir\$name"
-   if($LASTEXITCODE){throw 'Fixed 3.23 CAT membership failed'}
+   if($LASTEXITCODE){throw 'Fixed 3.25 CAT membership failed'}
   }
  }
  $compareSource=Join-Path (Join-Path $Workspace $policy.comparator.directory) 'compare-files.exe'
