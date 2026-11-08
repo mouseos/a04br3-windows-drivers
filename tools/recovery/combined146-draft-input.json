@@ -7,8 +7,16 @@
   "normal_install_allowed": false,
   "arm_allowed": false,
   "media_generation_allowed": false,
-  "fresh": null,
-  "gpu_client_log_baseline": null,
+  "fresh": {
+    "path": "port/xnu/out/private-windows-rt-prebackup-run146/manifest.json",
+    "sha256": "7759162af34e8c440f28155d8d24acd77469f8f3911528eb62ee382b95c15392",
+    "recovery_boot_id": "f5fd8256-eba5-463c-8f34-0951330c4ee9"
+  },
+  "gpu_client_log_baseline": {
+    "path": "port/gsi/logs/ios-feasibility/windows-rt-fresh146-baseline-client-files.json",
+    "sha256": "b47f6872bb675e2a45e2cd30dc01d9b54392e092c4066f84996db91b627ee26e",
+    "file_count": 61
+  },
   "hardware_owner": "main",
   "install_targets": [
     "audio"
@@ -93,9 +101,8 @@
     "same-directory mt8167-silent-pcm-<runid>.log; bounded16KiB and Flush"
   ],
   "blockers": [
-    "fresh146 capture manifest/raw originals/native actual versions and baseline not yet received",
-    "run145 outcome pending; do not assume adoption/retention from intended policy",
-    "Final147 scope and actual preserved tuples not fixed"
+    "Actual installed combo1023 SYS witness missing: Windows/System32/Drivers/mt6630-combo-runtime.sys",
+    "Final147 scope may supersede only with completed sourcefix seal; current GPUclient0"
   ],
   "BT145_source_review": {
     "path": "port/gsi/logs/ios-feasibility/windows-rt-combined146-audio-draft/bt145-source-review.json",
@@ -109,5 +116,62 @@
     "147_BT_scope_requires_actual_receipt": true
   },
   "BT_payload_generator_fix_implemented": true,
-  "BT_root_install_mode": "pending-fresh146-actual; absence/partial/exact-existing not assumed"
+  "BT_root_install_mode": "pending-fresh146-actual; absence/partial/exact-existing not assumed",
+  "BT145_runtime_receipt": {
+    "bytes": 552,
+    "schema": 1,
+    "result": 2,
+    "imported": 0,
+    "registered": 0,
+    "installed": 0,
+    "reboot_required": 0,
+    "no_live_restart": 1,
+    "BT_SYS_absent": true,
+    "radio_result": 1168,
+    "root_count": 0,
+    "child_count": 0
+  },
+  "thermal145_actual": {
+    "started": true,
+    "problem": 0,
+    "readonly_error": 87,
+    "temperature_success": false
+  },
+  "GPU145_actual": {
+    "bugcheck": "0x119",
+    "P1": 3,
+    "GPR2_pixels": [],
+    "root_reset_fix_proven": false
+  },
+  "source_tree": "windows-rt/a04br3-windows-combined146-peripheral",
+  "native_baseline": {
+    "path": "port/xnu/out/windows-rt-combined146-peripheral/native-baseline.json",
+    "sha256": "da9b759e98d78a194be30171adf815a81fc1a3acd85485404a14bf421138cf66"
+  },
+  "BT_root_actual": {
+    "path": "port/xnu/out/windows-rt-combined146-peripheral/bt-root-native-baseline.json",
+    "sha256": "fa1985f1ea5059355cb73242e7ef4f089f1d2b463cfc9538bbd72fed92c49e9a"
+  },
+  "bindings": {
+    "path": "port/xnu/out/windows-rt-combined146-peripheral/bindings-thirteen.json",
+    "sha256": "2525618fb94e13fb41d8076b03508d5cf4177baeb9635ee9cb37507156736de2"
+  },
+  "GPU341_pending": {
+    "status": "nativecold-live-and-KMD-idempotence-integration-pending",
+    "main_reported_rootcause": {
+      "actual_Patch_status": "0xC00000BB",
+      "linear_bind_after_cold_stop_retire": "TQ not created and firmware offline",
+      "prepare_copy_contract": "online-only rejects first cold arm"
+    },
+    "adopt_only_after_completed_signed_artifact_and_main_seal": true,
+    "if_ready": "render DIF plus one final new pixel client900s in same batch",
+    "if_not_ready": "retain actualGPU340; GPUclient0",
+    "unfinished_source_arm_allowed": false
+  },
+  "new_candidate_MSDC110": {
+    "selected": false,
+    "source": "47f6e233610d6f8d1a5858d441aa1b80f8611743",
+    "same_batch_change_authorized": false,
+    "runtime_speed_unverified": true
+  }
 }

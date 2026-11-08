@@ -60,6 +60,9 @@ struct diagnostic_client {const WCHAR *exe,*arguments,*name,*relative_directory;
 #ifndef A04_AUX_HCD_PROOF_NAME
 #define A04_AUX_HCD_PROOF_NAME L"hcd1014-import.bin"
 #endif
+#ifndef A04_RUN_THERMAL_READ
+#define A04_RUN_THERMAL_READ 1
+#endif
 #ifndef A04_FEATURE144
 #define A04_FEATURE144 0
 #endif
@@ -455,7 +458,7 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
 #endif
  if(PERIPHERAL_TARGET_COUNT==11&&i==10){combined_gpu_node_ready=e?0:1;}else if(e&&!first)first=e;}e=installed_gpu_extras(1);record(10,0x285,e);if(e)combined_gpu_node_ready=0;
 #if !A04_DIAGNOSTIC_ONLY || A04_READONLY_PERIPHERAL_STATUS
- e=readonly_status();if(e&&!first)first=e;
+ if(A04_RUN_THERMAL_READ){e=readonly_status();if(e&&!first)first=e;}
 #endif
 
 #if A04_PERIPHERAL_NEXT_PROFILE

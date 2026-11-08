@@ -37,8 +37,11 @@ def main():
  ap=argparse.ArgumentParser()
  for n in ('workspace','map','service-package','prepared-system','prepared-result','comparator','base','tools','out'):ap.add_argument('--'+n,type=Path,required=True)
  for n in ('prepared-sha256','comparator-manifest-sha256','source-commit'):ap.add_argument('--'+n,required=True)
- ap.add_argument('--combined144-profile',action='store_true');ap.add_argument('--combined142-profile',action='store_true');ap.add_argument('--combined140-profile',action='store_true');ap.add_argument('--combined138-profile',action='store_true');ap.add_argument('--combined136-profile',action='store_true');ap.add_argument('--next-profile',action='store_true');ap.add_argument('--service-source-commit');ap.add_argument('--enable-peripheral-batch',action='store_true');a=ap.parse_args();root=a.workspace.resolve(strict=True);here=Path(__file__).resolve().parent;repo=here.parents[1]
- if a.combined144_profile:
+ ap.add_argument('--combined146-profile',action='store_true');ap.add_argument('--combined144-profile',action='store_true');ap.add_argument('--combined142-profile',action='store_true');ap.add_argument('--combined140-profile',action='store_true');ap.add_argument('--combined138-profile',action='store_true');ap.add_argument('--combined136-profile',action='store_true');ap.add_argument('--next-profile',action='store_true');ap.add_argument('--service-source-commit');ap.add_argument('--enable-peripheral-batch',action='store_true');a=ap.parse_args();root=a.workspace.resolve(strict=True);here=Path(__file__).resolve().parent;repo=here.parents[1]
+ if a.combined146_profile:
+  require(not any([a.next_profile,a.combined136_profile,a.combined138_profile,a.combined140_profile,a.combined142_profile,a.combined144_profile]),'Profiles mutually exclusive')
+  from combined146_policy import load_map,generate,PROFILE,SERVICE,DIRECTORY,generate_paths,assert_paths
+ elif a.combined144_profile:
   require(not any([a.next_profile,a.combined136_profile,a.combined138_profile,a.combined140_profile,a.combined142_profile]),'Profiles mutually exclusive')
   from combined144_policy import load_map,generate,PROFILE,SERVICE,DIRECTORY,generate_paths,assert_paths
  elif a.combined142_profile:
@@ -68,7 +71,7 @@ def main():
   require(changed and changed<={'tools/ci/read-ge8300-boundary332.py','tools/winpe/build-private-peripheral-batch-media.py','tools/winpe/private_hardware_probe_input.py','docs/peripheral-batch.md','tools/recovery/prepare-offline-system-service.ps1','tools/ci/build-combined136-service.ps1','tools/ci/build-combined138-service.ps1','tools/recovery/prepare-peripheral-followup136.py','tools/recovery/verify-combined138-preservation.ps1','tests/combined138_contract_test.py'},'署名後の差分は明示media toolingだけを許可')
  require(sm.get('source_commit')==signed_source and sm.get('source_dirty') is False and sm.get('profile')==PROFILE and sm.get('service')==SERVICE and sm.get('signature_status')=='Valid' and sm.get('signer_thumbprint')==SIGNER,'同sourceの専用署名service必須')
  require(sm['policy']==p and sha(service/'peripheral-policy.json')==sm['policy_manifest_sha256'] and sha(service/(SERVICE+'.exe'))==sm['exe_sha256'] and (service/'peripheral-batch-policy.h').read_text()==generate(p),'signed policy/header/EXE不一致')
- if a.next_profile or a.combined136_profile or a.combined138_profile or a.combined140_profile or a.combined142_profile or a.combined144_profile:
+ if a.next_profile or a.combined136_profile or a.combined138_profile or a.combined140_profile or a.combined142_profile or a.combined144_profile or a.combined146_profile:
   require((service/'peripheral-service-path-policy.h').read_text()==generate_paths(),'Signed service path header mismatch');assert_paths(service/(SERVICE+'.exe'))
  backup=rooted(root,p['backup_manifest']);b=json.loads(backup.read_text());result=rooted(root,a.prepared_result);system=rooted(root,a.prepared_system)
  native=prepared_system_check(system,result,a.prepared_sha256,root,b,SERVICE);nr=json.loads(result.read_text(encoding='utf-8-sig'))
@@ -84,9 +87,9 @@ def main():
  for role,v in p['packages'].items():
   for name in list(v['names'].values())+[e['name'] for e in v.get('extra_members',[])]:copy(root/v['directory']/name,'payload/'+role+'/'+name)
  for key,v in p.get('companion_packages',{}).items():
-  require((a.combined138_profile or a.combined140_profile or a.combined142_profile or a.combined144_profile) and key in ('hcd1014','hcd1015','hcd1016') and v['stage_only'] and not v['DIF'],'Fixed import-only companion')
+  require((a.combined138_profile or a.combined140_profile or a.combined142_profile or a.combined144_profile or a.combined146_profile) and key in ('hcd1014','hcd1015','hcd1016') and v['stage_only'] and not v['DIF'],'Fixed import-only companion')
   for f in v['files']:copy(root/v['directory']/f['name'],'payload/'+key+'/'+f['name'])
- if a.combined144_profile:
+ if a.combined144_profile or a.combined146_profile:
   for f in p['bt_first_install']['files']:copy(root/p['bt_first_install']['directory']/f['name'],'payload/bt2013/'+f['name'])
  for client in p.get('diagnostic_clients',[]):
   copy(root/client['directory']/client['exe'],'payload/clients/'+client['exe'])
