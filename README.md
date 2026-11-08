@@ -1,5 +1,17 @@
 # TAB-A04-BR3 Windows ドライバ
 
+## 行列VS＋SAMPLEの後続331（実GPU未検証）
+
+[ABI5の実装範囲](docs/ge8300-matrix-texture331.md)。330の実生成行列VSと327の実生成SAMPLE PSを、実texture backing/lifetimeを保った同じnative jobへ結合する。CB由来UVのみであり、補間varying UV・Present・通常Windows全描画の完成ではない。327resetを修正した候補とも扱わない。
+
+```powershell
+git clone --depth 1 --single-branch --branch work/ge8300-matrix-texture331 https://github.com/mouseos/a04br3-windows-drivers.git
+Set-Location a04br3-windows-drivers
+./tools/ci/build-ge8300-from-source.ps1 -EnableCandidate -RunHostTests
+```
+
+通常source closureはnative61/compiler375TUを保持。最新の実検証はhostの実PCO→ABI5→native/PDSと拒否境界、必要TUのWindows増分buildであり、375TU全build/CI成功や実GPU資格を意味しない。旧327/329/330署名候補・現媒体は凍結する。
+
 ## VS定数バッファ・行列shader後続330（実機未検証）
 
 [330の実装と一次source](docs/ge8300-vs-uniform330.md)。VS/PS CB0先頭4vectorを実captureし、VSはPDS DOUTDでcommon storeへ転送する。実生成4行DP4 VS368byteを受理し、各stage512byteを既存owned USC page内で分離する。CPUによる頂点変換・固定USC置換は行わない。

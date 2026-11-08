@@ -1,3 +1,10 @@
+# 現行331 source build
+
+branch `work/ge8300-matrix-texture331`で通常wrapperを使用する。330の61native/375compiler TUへABI5の行列VS＋CB由来UVのSAMPLE PSを結合。実sourceとorigin/hashを同時検査する。
+新ops5/adapter contract7のSYS/UMDを一組として扱い、旧peerへ混載しない。
+通常fullbuild/CI全実行や実GPUは未検証。PCO/SDK再構築なしの増分署名候補と区別する。
+以下は過去の出自/手順。
+
 # 現行330 source build
 
 公開branchは`work/ge8300-vs-uniform330`。ルートREADMEのcloneと通常wrapperを使用する。
