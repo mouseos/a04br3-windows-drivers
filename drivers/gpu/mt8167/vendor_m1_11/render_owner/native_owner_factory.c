@@ -234,7 +234,6 @@ static int32_t prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
     struct e_native_owner *c=p;RGXFWIF_CCB_CTL k;NTSTATUS s;
     if(!job)return STATUS_INVALID_PARAMETER;*job=0;s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     if(!surface || surface!=c->surface || !c->allocation->binding || c->next_id==UINT64_MAX)return leave(c,STATUS_DEVICE_BUSY);
-    if(sampled){texture=resource(c,sampled->texture);if(!texture||!texture->linear||texture->desc.usage!=GEO_USAGE_TEXTURE2D||RtlCompareMemory(&texture->desc,&sampled->texture_desc,sizeof(texture->desc))!=sizeof(texture->desc))return leave(c,STATUS_INVALID_PARAMETER);}
     s=wait_boundary_locked(c);native_progress(c,34,s);if(!NT_SUCCESS(s))return leave(c,s);
     /* No live rewrite of USC/PDS. Rebuild under the same adapter/retained MDL
      * after real normal retirement; subsequent boot has a new hardware epoch. */

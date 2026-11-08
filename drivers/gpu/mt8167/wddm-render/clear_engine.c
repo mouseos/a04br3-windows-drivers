@@ -102,7 +102,7 @@ int32_t geo_prepare_texture_begin(struct geo_engine *e,struct geo_allocation *a,
 static void retire_job(struct geo_job *j) {
  j->allocation->references--;if(j->vertex)j->vertex->references--;if(j->texture)j->texture->references--;
  j->retired_generation=j->generation;j->state=0;j->allocation=0;j->vertex=0;j->texture=0;j->texture_open_handle=0;
- j->context=0;j->open_handle=0;j->vertex_open_handle=0;j->texture=0;j->texture_open_handle=0;j->owner_job=0;j->kind=0;
+ j->context=0;j->open_handle=0;j->vertex_open_handle=0;j->owner_job=0;j->kind=0;
 }
 int32_t geo_prepare_finish(struct geo_engine *e,const struct geo_dma_ticket *t,int32_t status,uint64_t token) {
  struct geo_job *j=job(e,t);

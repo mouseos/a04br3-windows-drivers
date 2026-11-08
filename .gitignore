@@ -17,3 +17,6 @@ DRIVERS.LOG*
 *.img
 *.wim
 /private-recovery/
+
+# Source-only bounded host validation outputs.
+/out/
