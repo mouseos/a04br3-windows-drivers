@@ -2,6 +2,7 @@
 #include "typed_device.h"
 void geo_typed_device_trace(struct geo_typed_device *,const char *,UINT);
 #include "../memory.h"
+#include "../frontend/texture_draw_abi.h"
 struct geo_typed_layout {struct geo_typed_layout *next;struct geo_typed_device *device;UINT refs,deleted,offset[2],elements;};
 static UINT bits(FLOAT f){UINT v;memcpy(&v,&f,4);return v;}
 static void layout_unref(struct geo_typed_layout *v) {
@@ -94,9 +95,11 @@ static void shader_packet(BYTE *blob,UINT *at,struct geo_draw_shader *s,const st
  span(blob,at,&s->tokens,p->tokens,p->token_bytes);span(blob,at,&s->usc,p->compiled.code,p->compiled.code_bytes);span(blob,at,&s->constants,constants,512);
 }
 HRESULT geo_typed_submit_draw(D3D10DDI_HDEVICE h,const FLOAT vertices[3][4]) {
- struct geo_typed_device *d=geo_typed_device(h);struct geo_draw_packet *p;struct geo_surface_desc target;D3DKMT_HANDLE ta,va;D3DDDICB_RENDER q;
- UINT constants[2][128],total=1024,at=0,stage,i;BYTE *blob;HRESULT hr;
+ struct geo_typed_device *d=geo_typed_device(h);struct geo_draw_packet *p;struct geo_surface_desc target;D3DKMT_HANDLE ta,va,xa=0;struct geo_surface_desc texture_desc;D3DDDICB_RENDER q;
+ UINT constants[2][128],total=1024,at=0,stage,i,header,sampled;BYTE *blob;HRESULT hr;
  if(!d||!d->target||!d->bound_shader[0]||!d->bound_shader[1])return E_INVALIDARG;
+ sampled=d->bound_shader[1]->code->texture_profile;header=sampled?sizeof(struct geo_draw_packet_v3):sizeof(*p);
+ if(sampled){hr=geo_typed_texture_allocation(d,&texture_desc,&xa);if(FAILED(hr))return hr;}
  if(d->target->resource->width!=800||d->target->resource->height!=600)return E_NOTIMPL;
  hr=geo_typed_validate_native_state(h);if(FAILED(hr))return hr;
  if(!d->viewport_set||d->viewport.TopLeftX||d->viewport.TopLeftY||d->viewport.Width!=800.0f||d->viewport.Height!=600.0f||d->viewport.MinDepth||d->viewport.MaxDepth!=1.0f)return E_NOTIMPL;
@@ -107,17 +110,20 @@ HRESULT geo_typed_submit_draw(D3D10DDI_HDEVICE h,const FLOAT vertices[3][4]) {
   total+=s->token_bytes+s->compiled.code_bytes;hr=geo_typed_shader_constants(d,stage,constants[stage]);if(FAILED(hr))return hr;
  }
  for(i=0;i<12u;i++){UINT b;memcpy(&b,(const BYTE *)vertices+i*4,4);if((b&0x7f800000u)==0x7f800000u)return E_INVALIDARG;}
- if(total>GEO_DRAW_MAX_BLOB||d->backend.command_bytes<sizeof(*p)+total||d->backend.allocation_count<2)return E_OUTOFMEMORY;
+ if(total>GEO_DRAW_MAX_BLOB||d->backend.command_bytes<header+total||d->backend.allocation_count<(sampled?3u:2u))return E_OUTOFMEMORY;
  trace_draw_inputs(d,vertices,constants[1]);
  hr=geo_umd_write_private_vertex(&d->backend,&d->converted,vertices,48,&va);if(FAILED(hr))return hr;
- p=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*p)+total);if(!p)return E_OUTOFMEMORY;blob=(BYTE *)(p+1);
- p->magic=GEO_DRAW_MAGIC;p->size=sizeof(*p)+total;p->version=1;p->vertex_index=1;p->request.size=sizeof(p->request);p->request.version=1;p->request.blob_bytes=total;p->request.target_desc=target;
+ p=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,header+total);if(!p)return E_OUTOFMEMORY;blob=(BYTE *)p+header;
+ p->magic=GEO_DRAW_MAGIC;p->size=header+total;p->version=1;p->vertex_index=1;p->request.size=sizeof(p->request);p->request.version=1;p->request.blob_bytes=total;p->request.target_desc=target;
  p->request.state.topology=GEO_DRAW_TRIANGLE_LIST;p->request.state.vertex_count=3;p->request.state.vertex_stride=16;p->request.state.viewport[2]=bits(800.0f);p->request.state.viewport[3]=bits(600.0f);p->request.state.viewport[5]=bits(1.0f);p->request.state.color_write_mask=15;
  for(stage=0;stage<2;stage++)shader_packet(blob,&at,stage?&p->request.ps:&p->request.vs,d->bound_shader[stage]->code,constants[stage]);
- p->request.target=1;p->request.vertex=2;hr=geo_draw_validate_capture(&p->request,blob,total)==GEO_OK?S_OK:E_INVALIDARG;p->request.target=p->request.vertex=0;
+ p->request.target=1;p->request.vertex=2;
+ if(sampled){struct geo_draw_packet_v3 *v3=(struct geo_draw_packet_v3 *)p;p->version=3;p->request.version=3;p->request.size=sizeof(v3->request);v3->request.texture=3;v3->request.texture_desc=texture_desc;v3->request.sampler_profile=GEO_TEXTURE_POINT_CLAMP;v3->texture_index=2;hr=geo_draw_validate_capture_v3(&v3->request,blob,total)==GEO_OK?S_OK:E_INVALIDARG;v3->request.texture=0;}
+ else hr=geo_draw_validate_capture(&p->request,blob,total)==GEO_OK?S_OK:E_INVALIDARG;
+ p->request.target=p->request.vertex=0;
  if(FAILED(hr)){HeapFree(GetProcessHeap(),0,p);return hr;}
- memcpy(d->backend.commands,p,p->size);memset(d->backend.allocations,0,2*sizeof(*d->backend.allocations));d->backend.allocations[0].hAllocation=ta;d->backend.allocations[0].WriteOperation=1;d->backend.allocations[1].hAllocation=va;
- memset(&q,0,sizeof(q));q.hContext=d->backend.context;q.CommandLength=p->size;q.NumAllocations=2;hr=d->backend.cb.pfnRenderCb(d->backend.runtime,&q);geo_typed_device_trace(d,"DRAW_RENDER_HRESULT",(UINT)hr);HeapFree(GetProcessHeap(),0,p);
+ memcpy(d->backend.commands,p,p->size);memset(d->backend.allocations,0,(sampled?3u:2u)*sizeof(*d->backend.allocations));d->backend.allocations[0].hAllocation=ta;d->backend.allocations[0].WriteOperation=1;d->backend.allocations[1].hAllocation=va;if(sampled)d->backend.allocations[2].hAllocation=xa;
+ memset(&q,0,sizeof(q));q.hContext=d->backend.context;q.CommandLength=p->size;q.NumAllocations=sampled?3u:2u;hr=d->backend.cb.pfnRenderCb(d->backend.runtime,&q);geo_typed_device_trace(d,"DRAW_RENDER_HRESULT",(UINT)hr);HeapFree(GetProcessHeap(),0,p);
  if(SUCCEEDED(hr)){d->pending=1;d->backend.commands=q.pNewCommandBuffer;d->backend.command_bytes=q.NewCommandBufferSize;d->backend.allocations=q.pNewAllocationList;d->backend.allocation_count=q.NewAllocationListSize;d->backend.patches=q.pNewPatchLocationList;d->backend.patch_count=q.NewPatchLocationListSize;}
  return hr;
 }

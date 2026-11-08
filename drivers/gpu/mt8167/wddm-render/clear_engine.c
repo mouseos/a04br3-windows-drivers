@@ -20,15 +20,16 @@ int32_t geo_create(struct geo_engine *e,struct geo_allocation *a,const struct ge
  if(s!=GEO_OK)return s;
  if(!token){e->poisoned=1;return GEO_POISONED;}
  for(scan=e->allocations;scan;scan=scan->next)if(scan->surface==token){e->poisoned=1;return GEO_POISONED;}
- memset(a,0,sizeof(*a));a->desc=*d;a->logical_width=d->width;a->logical_height=d->height;a->surface=token;a->cpu_only=d->usage==GEO_USAGE_INDEX_BUFFER||d->usage==GEO_USAGE_STAGING;
+ memset(a,0,sizeof(*a));a->desc=*d;a->logical_width=d->width;a->logical_height=d->height;a->surface=token;a->cpu_only=d->usage==GEO_USAGE_INDEX_BUFFER||d->usage==GEO_USAGE_STAGING||d->usage==GEO_USAGE_TEXTURE2D;
  a->next=e->allocations;e->allocations=a;e->allocation_count++;return GEO_OK;
 }
 /* Pending Render packets retain allocation objects, not physical residency.
  * Only packets with no native preparation may coexist with a bind/unbind. */
 static int pending_only(const struct geo_engine *e,const struct geo_allocation *a) {
  uint32_t i,count=0;
- for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state&&(e->jobs[i].allocation==a||e->jobs[i].vertex==a)) {
-  if(e->jobs[i].state!=4)return 0;count++;
+ for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state&&(e->jobs[i].allocation==a||e->jobs[i].vertex==a||e->jobs[i].texture==a)) {
+  if(e->jobs[i].state!=4)return 0;
+  count++;
  }
  return count==a->references;
 }
@@ -74,7 +75,7 @@ int32_t geo_prepare_begin(struct geo_engine *e,struct geo_allocation *a,const st
  if(!a->surface)return GEO_NOT_READY;
  for(i=0;i<GEO_MAX_JOBS;i++)if(!e->jobs[i].state&&e->jobs[i].generation!=UINT32_MAX)break;
  if(i==GEO_MAX_JOBS||a->references==UINT32_MAX)return GEO_BUSY;
- j=&e->jobs[i];j->generation++;j->allocation=a;j->vertex=0;j->vertex_open_handle=0;j->kind=GEO_CLEAR_MAGIC;j->context=0;j->open_handle=0;j->owner_job=0;j->state=4;a->references++;
+ j=&e->jobs[i];j->generation++;j->allocation=a;j->vertex=0;j->vertex_open_handle=0;j->texture=0;j->texture_open_handle=0;j->kind=GEO_CLEAR_MAGIC;j->context=0;j->open_handle=0;j->owner_job=0;j->state=4;a->references++;
  t->magic=GEO_TICKET_MAGIC;t->slot=i;t->generation=j->generation;t->reserved=0;return GEO_OK;
 }
 int32_t geo_prepare_draw_begin(struct geo_engine *e,struct geo_allocation *a,struct geo_allocation *v,struct geo_dma_ticket *t) {
@@ -85,14 +86,23 @@ int32_t geo_prepare_draw_begin(struct geo_engine *e,struct geo_allocation *a,str
  for(i=0;i<GEO_MAX_JOBS;i++)if(!e->jobs[i].state&&e->jobs[i].generation!=UINT32_MAX)break;
  if(i==GEO_MAX_JOBS||a->references==UINT32_MAX||v->references==UINT32_MAX)return GEO_BUSY;
  j=&e->jobs[i];j->generation++;j->allocation=a;j->vertex=v;j->kind=GEO_DRAW_MAGIC;
- j->context=0;j->open_handle=0;j->vertex_open_handle=0;j->owner_job=0;j->state=4;
+ j->context=0;j->open_handle=0;j->vertex_open_handle=0;j->texture=0;j->texture_open_handle=0;j->owner_job=0;j->state=4;
  a->references++;v->references++;
  t->magic=GEO_TICKET_MAGIC;t->slot=i;t->generation=j->generation;t->reserved=0;return GEO_OK;
 }
+int32_t geo_prepare_texture_begin(struct geo_engine *e,struct geo_allocation *a,struct geo_allocation *v,struct geo_allocation *x,struct geo_dma_ticket *t) {
+ int32_t status;
+ if(!e||!a||!v||!x||x==a||x==v||x->desc.usage!=GEO_USAGE_TEXTURE2D)return GEO_INVALID;
+ if(x->poisoned||e->poisoned)return GEO_POISONED;
+ if(!x->surface)return GEO_NOT_READY;
+ if(x->references==UINT32_MAX)return GEO_BUSY;
+ status=geo_prepare_draw_begin(e,a,v,t);if(status)return status;
+ struct geo_job *j=job(e,t);j->texture=x;x->references++;return GEO_OK;
+}
 static void retire_job(struct geo_job *j) {
- j->allocation->references--;if(j->vertex)j->vertex->references--;
- j->retired_generation=j->generation;j->state=0;j->allocation=0;j->vertex=0;
- j->context=0;j->open_handle=0;j->vertex_open_handle=0;j->owner_job=0;j->kind=0;
+ j->allocation->references--;if(j->vertex)j->vertex->references--;if(j->texture)j->texture->references--;
+ j->retired_generation=j->generation;j->state=0;j->allocation=0;j->vertex=0;j->texture=0;j->texture_open_handle=0;
+ j->context=0;j->open_handle=0;j->vertex_open_handle=0;j->texture=0;j->texture_open_handle=0;j->owner_job=0;j->kind=0;
 }
 int32_t geo_prepare_finish(struct geo_engine *e,const struct geo_dma_ticket *t,int32_t status,uint64_t token) {
  struct geo_job *j=job(e,t);
@@ -200,12 +210,12 @@ int32_t geo_retire_after_owner_drain(struct geo_engine *e) {
  /* Validate all reference counts before changing any. External caller has
   * closed operation rundown and obtained real IRQ/DMA/token drain proof. */
  for(a=e->allocations;a;a=a->next) {
-  count=0;for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state&&(e->jobs[i].allocation==a||e->jobs[i].vertex==a))count++;
+  count=0;for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state&&(e->jobs[i].allocation==a||e->jobs[i].vertex==a||e->jobs[i].texture==a))count++;
   if(a->references!=count){e->poisoned=1;return GEO_POISONED;}
  }
  for(i=0;i<GEO_MAX_JOBS;i++) {
   if(e->jobs[i].state)e->jobs[i].retired_generation=e->jobs[i].generation;
-  e->jobs[i].vertex=0;e->jobs[i].vertex_open_handle=0;e->jobs[i].kind=0;e->jobs[i].state=0;e->jobs[i].owner_job=0;e->jobs[i].allocation=0;e->jobs[i].context=0;e->jobs[i].open_handle=0;
+  e->jobs[i].vertex=0;e->jobs[i].vertex_open_handle=0;e->jobs[i].texture=0;e->jobs[i].texture_open_handle=0;e->jobs[i].kind=0;e->jobs[i].state=0;e->jobs[i].owner_job=0;e->jobs[i].allocation=0;e->jobs[i].context=0;e->jobs[i].open_handle=0;
   /* Keep generation: a delayed old token must never match a new job. */
  }
  for(a=e->allocations;a;a=a->next){a->references=0;a->poisoned=0;}

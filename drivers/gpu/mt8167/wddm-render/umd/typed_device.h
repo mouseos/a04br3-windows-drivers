@@ -14,6 +14,7 @@ struct geo_typed_shader;
 struct geo_typed_rtv;
 struct geo_typed_layout;
 struct geo_typed_query;
+struct geo_typed_srv;
 struct geo_typed_state;
 /* Runtime owns the handle storage; referenced implementation objects live on
  * the heap and may outlive Destroy* when still bound or ambiguously pinned. */
@@ -50,6 +51,7 @@ struct geo_typed_device {
  UINT viewport_set,scissor_set;HANDLE converted;
  HRESULT error;
  HANDLE converted_color;
+ struct geo_typed_srv *texture_views,*texture;
 };
 struct geo_typed_adapter {
  D3D10DDI_HRTADAPTER runtime;struct geo_adapter_memory_info info;UINT devices;HANDLE trace;
@@ -76,4 +78,7 @@ HRESULT geo_typed_draw_unbind(D3D10DDI_HDEVICE);
 HRESULT geo_typed_validate_native_state(D3D10DDI_HDEVICE);
 HRESULT geo_typed_submit_draw(D3D10DDI_HDEVICE,const FLOAT [3][4]);
 HRESULT geo_typed_submit_pair(D3D10DDI_HDEVICE,const FLOAT [3][8]);
+void geo_typed_texture_install(D3D11_1DDI_DEVICEFUNCS *);
+HRESULT geo_typed_texture_unbind(D3D10DDI_HDEVICE);
+HRESULT geo_typed_texture_allocation(struct geo_typed_device *,struct geo_surface_desc *,D3DKMT_HANDLE *);
 #endif

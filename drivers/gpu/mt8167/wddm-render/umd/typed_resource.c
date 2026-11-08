@@ -62,7 +62,8 @@ static HRESULT desc_valid(const D3D11DDIARG_CREATERESOURCE *p) {
      (p->BindFlags&~(D3D10_DDI_BIND_VERTEX_BUFFER|D3D10_DDI_BIND_INDEX_BUFFER|D3D10_DDI_BIND_CONSTANT_BUFFER)))return E_NOTIMPL;
  } else if(p->ResourceDimension==D3D10DDIRESOURCE_TEXTURE2D){
   if(p->Format!=DXGI_FORMAT_B8G8R8A8_UNORM||m->TexelWidth>800u||m->TexelHeight>600u||
-     p->SampleDesc.Count!=1||p->SampleDesc.Quality||(p->BindFlags&~D3D10_DDI_BIND_RENDER_TARGET))return E_NOTIMPL;
+     p->SampleDesc.Count!=1||p->SampleDesc.Quality||(p->BindFlags&~(D3D10_DDI_BIND_RENDER_TARGET|D3D10_DDI_BIND_SHADER_RESOURCE)))return E_NOTIMPL;
+  if(p->BindFlags&D3D10_DDI_BIND_SHADER_RESOURCE){if(p->BindFlags!=D3D10_DDI_BIND_SHADER_RESOURCE||m->TexelWidth>128||m->TexelHeight>128)return E_NOTIMPL;}
  } else return E_NOTIMPL;
  if(p->Usage==D3D10_DDI_USAGE_STAGING&&(p->BindFlags||!p->MapFlags))return E_INVALIDARG;
  if(p->Usage==D3D10_DDI_USAGE_IMMUTABLE&&(!p->pInitialDataUP||p->MapFlags))return E_INVALIDARG;
@@ -103,6 +104,7 @@ static void APIENTRY create_resource(D3D10DDI_HDEVICE h,const D3D11DDIARG_CREATE
  q.Format=r->dimension==D3D10DDIRESOURCE_BUFFER?D3DDDIFMT_VERTEXDATA:D3DDDIFMT_A8R8G8B8;
  q.Pool=(p->BindFlags&D3D10_DDI_BIND_RENDER_TARGET)?D3DDDIPOOL_VIDEOMEMORY:D3DDDIPOOL_SYSTEMMEM;
  q.hResource=runtime.handle;q.pSurfList=&surf;q.SurfCount=q.MipLevels=1;q.Rotation=D3DDDI_ROTATION_IDENTITY;
+ q.Flags.Texture=(p->BindFlags&D3D10_DDI_BIND_SHADER_RESOURCE)!=0;
  q.Flags.VertexBuffer=r->dimension==D3D10DDIRESOURCE_BUFFER;q.Flags.RenderTarget=(p->BindFlags&D3D10_DDI_BIND_RENDER_TARGET)!=0;
  geo_typed_resource_trace(h,"RESOURCE_BACKEND_POOL",q.Pool);
  geo_typed_resource_trace(h,"RESOURCE_RUNTIME_HANDLE_PRESENT",runtime.handle!=NULL);
@@ -173,6 +175,6 @@ HRESULT geo_typed_wait_resource(struct geo_typed_resource *r) {
 }
 HRESULT geo_typed_allocation(struct geo_typed_resource *r,D3DKMT_HANDLE *out) {
  struct geo_surface_desc desc;UINT usage;if(!r||!out)return E_INVALIDARG;
- usage=(r->bind&D3D10_DDI_BIND_RENDER_TARGET)?GEO_USAGE_RENDER_TARGET:(r->dimension==D3D10DDIRESOURCE_BUFFER?GEO_USAGE_VERTEX_BUFFER:GEO_USAGE_STAGING);
+ usage=(r->bind&D3D10_DDI_BIND_RENDER_TARGET)?GEO_USAGE_RENDER_TARGET:(r->dimension==D3D10DDIRESOURCE_BUFFER?GEO_USAGE_VERTEX_BUFFER:((r->bind&D3D10_DDI_BIND_SHADER_RESOURCE)?GEO_USAGE_TEXTURE2D:GEO_USAGE_STAGING));
  return geo_umd_resource_info(&r->device->backend,r->backend,usage,&desc,out);
 }

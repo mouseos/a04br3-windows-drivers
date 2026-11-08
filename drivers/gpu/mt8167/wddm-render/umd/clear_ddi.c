@@ -36,7 +36,8 @@ static HRESULT APIENTRY create_resource(HANDLE h,D3DDDIARG_CREATERESOURCE *p) {
  if(r->desc.width>1024&&p->Format==D3DDDIFMT_A8R8G8B8){HeapFree(GetProcessHeap(),0,r);return E_NOTIMPL;}
  r->desc.pitch=p->Format==D3DDDIFMT_A8R8G8B8?r->desc.width*4u:r->desc.width;r->desc.format=(UINT)p->Format;
  r->desc.usage=p->Format==D3DDDIFMT_VERTEXDATA?GEO_USAGE_VERTEX_BUFFER:
-  ((p->Format==D3DDDIFMT_INDEX16||p->Format==D3DDDIFMT_INDEX32)?GEO_USAGE_INDEX_BUFFER:(p->Flags.RenderTarget?GEO_USAGE_RENDER_TARGET:GEO_USAGE_STAGING));
+  ((p->Format==D3DDDIFMT_INDEX16||p->Format==D3DDDIFMT_INDEX32)?GEO_USAGE_INDEX_BUFFER:(p->Flags.RenderTarget?GEO_USAGE_RENDER_TARGET:p->Flags.Texture?GEO_USAGE_TEXTURE2D:GEO_USAGE_STAGING));
+ if(r->desc.usage==GEO_USAGE_TEXTURE2D)r->desc.version=GEO_TEXTURE_STORAGE_VERSION;
  r->logical_width=r->desc.width;r->logical_height=r->desc.height;
  if(r->desc.usage==GEO_USAGE_RENDER_TARGET){
   if(r->logical_width>800u||r->logical_height>600u){HeapFree(GetProcessHeap(),0,r);return E_NOTIMPL;}

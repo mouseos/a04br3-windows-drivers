@@ -98,7 +98,7 @@ static int32_t create(void *p,const struct geo_surface_desc *d,uint64_t *id)
     struct e_native_owner *c=p;struct e_native_resource *r;NTSTATUS s;
     if(!id)return STATUS_INVALID_PARAMETER;*id=0;
     BOOLEAN vertex=d && d->format==100u && d->usage==3u;
-    BOOLEAN linear=d && (d->usage==GEO_USAGE_STAGING || d->usage==GEO_USAGE_INDEX_BUFFER);
+    BOOLEAN linear=d && (d->usage==GEO_USAGE_STAGING || d->usage==GEO_USAGE_INDEX_BUFFER || d->usage==GEO_USAGE_TEXTURE2D);
     if(linear){if(!geo_desc_valid(d))return STATUS_INVALID_PARAMETER;}
     else
     if(vertex){
@@ -163,11 +163,11 @@ static int32_t bind(void *p,uint64_t surface,void *mdl,uint32_t offset,uint32_t 
 {
     struct e_native_owner *c=p;struct e_native_resource *r;NTSTATUS s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     r=resource(c,surface);if(!r || offset)return leave(c,STATUS_INVALID_PARAMETER);
-    if(r->desc.usage==GEO_USAGE_STAGING || r->desc.usage==GEO_USAGE_INDEX_BUFFER){
+    if(r->desc.usage==GEO_USAGE_STAGING || r->desc.usage==GEO_USAGE_INDEX_BUFFER || r->desc.usage==GEO_USAGE_TEXTURE2D){
         if(r->linear || bytes!=(uint64_t)r->desc.pitch*r->desc.height)return leave(c,STATUS_INVALID_PARAMETER);
         s=cold_for_bind(c);if(!NT_SUCCESS(s))return leave(c,s);
         s=e_native_build_graph_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
-        s=a04_native_allocation_bind_frontend_linear_cold(c->allocation,&c->memory,mdl,bytes,r->desc.usage==GEO_USAGE_INDEX_BUFFER,&r->linear);
+        s=a04_native_allocation_bind_frontend_linear_cold(c->allocation,&c->memory,mdl,bytes,r->desc.usage!=GEO_USAGE_STAGING,&r->linear);
         if(NT_SUCCESS(s)){r->linear_offset=aperture;s=a04_vendor_native_attach_linear_cold(c->allocation->native,r->linear,aperture);}
         if(!NT_SUCCESS(s) && (r->linear || c->allocation->frontend_orphan))c->state=E_OWNER_FAILED;
         return leave(c,s);
@@ -234,6 +234,7 @@ static int32_t prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
     struct e_native_owner *c=p;RGXFWIF_CCB_CTL k;NTSTATUS s;
     if(!job)return STATUS_INVALID_PARAMETER;*job=0;s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     if(!surface || surface!=c->surface || !c->allocation->binding || c->next_id==UINT64_MAX)return leave(c,STATUS_DEVICE_BUSY);
+    if(sampled){texture=resource(c,sampled->texture);if(!texture||!texture->linear||texture->desc.usage!=GEO_USAGE_TEXTURE2D||RtlCompareMemory(&texture->desc,&sampled->texture_desc,sizeof(texture->desc))!=sizeof(texture->desc))return leave(c,STATUS_INVALID_PARAMETER);}
     s=wait_boundary_locked(c);native_progress(c,34,s);if(!NT_SUCCESS(s))return leave(c,s);
     /* No live rewrite of USC/PDS. Rebuild under the same adapter/retained MDL
      * after real normal retirement; subsequent boot has a new hardware epoch. */
@@ -377,16 +378,18 @@ NTSTATUS GeoNativeOwnerDelete(struct geo_native_binding *out)
 #if A04_GE8300_NATIVE_OWNER_DRAW
 #include "windows_native_cold_private.h"
 #include "../../wddm-render/frontend/draw_link_abi.h"
+#include "../../wddm-render/frontend/texture_draw_abi.h"
 static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
- const void *blob,uint32_t bytes,uint64_t *job,const struct geo_draw_request_v2 *linked)
+ const void *blob,uint32_t bytes,uint64_t *job,const struct geo_draw_request_v2 *linked,const struct geo_draw_request_v3 *sampled)
 {
-    struct e_native_owner *c=p;RGXFWIF_CCB_CTL k;NTSTATUS s;uint64_t end,offset;
+    struct e_native_owner *c=p;RGXFWIF_CCB_CTL k;NTSTATUS s;uint64_t end,offset;struct e_native_resource *texture=NULL;
     if(!job)return STATUS_INVALID_PARAMETER;*job=0;
-    s=linked?geo_draw_validate_capture_v2(linked,blob,bytes):geo_draw_validate_capture(request,blob,bytes);if(!NT_SUCCESS(s))return s;
+    s=sampled?geo_draw_validate_capture_v3(sampled,blob,bytes):linked?geo_draw_validate_capture_v2(linked,blob,bytes):geo_draw_validate_capture(request,blob,bytes);if(!NT_SUCCESS(s))return s;
     s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     if(request->target!=c->surface || request->vertex!=c->vertex || !c->vertex ||
        !c->allocation->binding || !c->allocation->vertex || c->next_id==UINT64_MAX ||
        RtlCompareMemory(&c->description,&request->target_desc,sizeof(c->description))!=sizeof(c->description))return leave(c,STATUS_INVALID_DEVICE_STATE);
+    if(sampled){texture=resource(c,sampled->texture);if(!texture||!texture->linear||texture->desc.usage!=GEO_USAGE_TEXTURE2D||RtlCompareMemory(&texture->desc,&sampled->texture_desc,sizeof(texture->desc))!=sizeof(texture->desc))return leave(c,STATUS_INVALID_PARAMETER);}
     s=wait_boundary_locked(c);native_progress(c,34,s);if(!NT_SUCCESS(s))return leave(c,s);
     offset=(uint64_t)request->state.first_vertex*request->state.vertex_stride+request->state.vertex_offset;
     end=offset+(uint64_t)request->state.vertex_count*request->state.vertex_stride;
@@ -397,7 +400,7 @@ static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
     for(unsigned i=0;i<(end-offset)/4;i++)if((vertices[i]&0x7f800000u)==0x7f800000u)return leave(c,STATUS_INVALID_PARAMETER);
     s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
     if(NT_SUCCESS(s))s=e_native_build_graph_locked(c);
-    if(NT_SUCCESS(s))s=linked?a04_vendor_native_prepare_draw_v2_cold(c->allocation->native,linked,blob,bytes,
+    if(NT_SUCCESS(s))s=sampled?a04_vendor_native_prepare_draw_v3_cold(c->allocation->native,sampled,blob,bytes,A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset,A04_NATIVE_OUTPUT_VA+texture->linear_offset):linked?a04_vendor_native_prepare_draw_v2_cold(c->allocation->native,linked,blob,bytes,
         A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset):
         a04_vendor_native_prepare_draw_cold(c->allocation->native,request,blob,bytes,
         A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset);
@@ -417,11 +420,11 @@ static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
     return leave(c,s);
 }
 static int32_t prepare_draw(void *p,const struct geo_draw_request *r,const void *blob,uint32_t bytes,uint64_t *job)
-{ return prepare_draw_impl(p,r,blob,bytes,job,NULL); }
+{ return prepare_draw_impl(p,r,blob,bytes,job,NULL,NULL); }
 static int32_t prepare_draw_v2(void *p,const struct geo_draw_request_v2 *r,const void *blob,uint32_t bytes,uint64_t *job)
 {
  if(!r){if(job)*job=0;return GEO_INVALID;}
- return prepare_draw_impl(p,&r->base,blob,bytes,job,r);
+ return prepare_draw_impl(p,&r->base,blob,bytes,job,r,NULL);
 }
 int32_t GeoNativeOwnerGetDrawOpsV1(struct geo_native_binding *binding,struct geo_native_draw_ops_v1 *out)
 {
@@ -440,6 +443,14 @@ int32_t GeoNativeOwnerGetDrawOpsV2(struct geo_native_binding *binding,struct geo
  status=GeoNativeOwnerGetDrawOpsV1(binding,&v1);if(status)return status;
  out->size=sizeof(*out);out->version=2;out->context=v1.context;out->prepare_draw=prepare_draw_v2;
  return GEO_OK;
+}
+
+static int32_t prepare_draw_v3(void *p,const struct geo_draw_request_v3 *r,const void *blob,uint32_t bytes,uint64_t *job) {
+ if(!r){if(job)*job=0;return GEO_INVALID;}return prepare_draw_impl(p,&r->base,blob,bytes,job,NULL,r);
+}
+int32_t GeoNativeOwnerGetDrawOpsV3(struct geo_native_binding *b,struct geo_native_draw_ops_v3 *out) {
+ struct geo_native_draw_ops_v1 v;int32_t s;if(!out)return GEO_INVALID;RtlZeroMemory(out,sizeof(*out));s=GeoNativeOwnerGetDrawOpsV1(b,&v);if(s)return s;
+ out->size=sizeof(*out);out->version=3;out->context=v.context;out->prepare_draw=prepare_draw_v3;return GEO_OK;
 }
 
 #endif

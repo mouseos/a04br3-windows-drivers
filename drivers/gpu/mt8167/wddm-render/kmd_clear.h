@@ -10,6 +10,7 @@
 #include "aperture.h"
 #include "frontend_memory.h"
 #include "frontend/draw_link_abi.h"
+#include "frontend/texture_draw_abi.h"
 struct geo_mdl_record;
 struct geo_pending_payload {struct geo_clear_packet clear;struct geo_draw_packet *draw;UINT generation;};
 /* These are DDI implementation modules, not a DriverEntry that registers an
@@ -44,6 +45,7 @@ struct geo_kmd_adapter {
  KMUTEX memory_lock;
  LONG memory_record_count,memory_fault;
  UINT memory_ready;
+ struct geo_native_draw_ops_v3 draw_v3;
  struct geo_native_draw_ops_v2 draw_v2; /* append: preserve original field offsets */
  struct geo_pending_payload pending[GEO_MAX_JOBS];
 };

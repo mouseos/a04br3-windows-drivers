@@ -119,8 +119,8 @@ static void APIENTRY check_samples(D3D10DDI_HDEVICE h,DXGI_FORMAT format,UINT sa
 static void APIENTRY destroy_device(D3D10DDI_HDEVICE h) {
  struct geo_typed_device *d=geo_typed_device(h);D3DDDICB_DESTROYCONTEXT q;HRESULT hr;
  if(!d)return;
- hr=geo_typed_views_unbind(h);if(SUCCEEDED(hr))hr=geo_typed_shaders_unbind(h);if(SUCCEEDED(hr))hr=geo_typed_draw_unbind(h);
- if(FAILED(hr)||d->resources||d->views||d->shaders||d->layouts||d->queries){geo_typed_error(h,FAILED(hr)?hr:E_FAIL);return;}
+ hr=geo_typed_texture_unbind(h);if(SUCCEEDED(hr))hr=geo_typed_views_unbind(h);if(SUCCEEDED(hr))hr=geo_typed_shaders_unbind(h);if(SUCCEEDED(hr))hr=geo_typed_draw_unbind(h);
+ if(FAILED(hr)||d->resources||d->views||d->shaders||d->layouts||d->queries||d->texture_views){geo_typed_error(h,FAILED(hr)?hr:E_FAIL);return;}
  memset(&q,0,sizeof(q));q.hContext=d->backend.context;hr=d->backend.cb.pfnDestroyContextCb(d->backend.runtime,&q);
  if(FAILED(hr)){geo_typed_error(h,hr);return;}
  geo_typed_state_delete(d->state);geo_pco_device_destroy(&d->compiler,d->compiler_device);d->adapter->devices--;d->magic=0;
@@ -157,7 +157,7 @@ static HRESULT APIENTRY create_device(D3D10DDI_HADAPTER h,D3D10DDIARG_CREATEDEVI
   goto failed;
  }
  geo_typed_resources_install(&d->functions);geo_typed_views_install(&d->functions);geo_typed_shaders_install(&d->functions);geo_typed_draw_install(&d->functions);geo_typed_state_install(&d->functions);
- geo_typed_runtime_install(&d->functions);geo_typed_dxgi_install(p->DXGIBaseDDI.pDXGIDDIBaseFunctions3);
+ geo_typed_runtime_install(&d->functions);geo_typed_texture_install(&d->functions);geo_typed_dxgi_install(p->DXGIBaseDDI.pDXGIDDIBaseFunctions3);
  d->functions.pfnFlush=flush;d->functions.pfnRelocateDeviceFuncs=relocate;d->functions.pfnDestroyDevice=destroy_device;d->functions.pfnCheckFormatSupport=check_format;d->functions.pfnCheckMultisampleQualityLevels=check_samples;
  *p->p11_1DeviceFuncs=d->functions;a->devices++;trace_value(a,"DEVICE_READY",1);return S_OK;
  failed:
@@ -192,7 +192,7 @@ __declspec(dllexport) HRESULT APIENTRY OpenAdapter10_2(D3D10DDIARG_OPENADAPTER *
  a=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*a));if(!a)return E_OUTOFMEMORY;a->runtime=p->hRTAdapter;a->trace=trace_open();trace_value(a,"OPEN_INTERFACE",p->Interface);trace_value(a,"OPEN_VERSION",p->Version);trace_value(a,"DEVELOPMENT_PROFILE",development_enabled());
  memset(&q,0,sizeof(q));q.pPrivateDriverData=&a->info;q.PrivateDriverDataSize=sizeof(a->info);hr=p->pAdapterCallbacks->pfnQueryAdapterInfoCb(p->hRTAdapter.handle,&q);trace_value(a,"QUERY_ADAPTER_HRESULT",(UINT)hr);
  if(FAILED(hr)){if(a->trace&&a->trace!=INVALID_HANDLE_VALUE)CloseHandle(a->trace);HeapFree(GetProcessHeap(),0,a);return hr;}
- if(a->info.size!=sizeof(a->info)||a->info.version!=2||a->info.magic!=GEO_ADAPTER_INFO_MAGIC||a->info.compiler_bvnc!=GEO_COMPILER_BVNC||a->info.draw_version!=1){trace_value(a,"ADAPTER_CONTRACT_FAILURE",1);if(a->trace&&a->trace!=INVALID_HANDLE_VALUE)CloseHandle(a->trace);HeapFree(GetProcessHeap(),0,a);return E_UNEXPECTED;}
+ if(a->info.size!=sizeof(a->info)||a->info.version!=3||a->info.texture_draw_version!=3||a->info.magic!=GEO_ADAPTER_INFO_MAGIC||a->info.compiler_bvnc!=GEO_COMPILER_BVNC||a->info.draw_version!=1){trace_value(a,"ADAPTER_CONTRACT_FAILURE",1);if(a->trace&&a->trace!=INVALID_HANDLE_VALUE)CloseHandle(a->trace);HeapFree(GetProcessHeap(),0,a);return E_UNEXPECTED;}
  memset(&table,0,sizeof(table));table.pfnCalcPrivateDeviceSize=device_size;table.pfnCreateDevice=create_device;table.pfnCloseAdapter=close_adapter;table.pfnGetSupportedVersions=versions;table.pfnGetCaps=caps;
  *p->pAdapterFuncs_2=table;p->hAdapter.pDrvPrivate=a;return S_OK;
 }

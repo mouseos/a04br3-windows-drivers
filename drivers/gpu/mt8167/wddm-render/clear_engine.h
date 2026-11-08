@@ -17,6 +17,7 @@ struct geo_job {
  uint32_t kind;
  uint64_t owner_job;
  uint32_t generation,state,fence,retired_generation;
+ struct geo_allocation *texture;void *texture_open_handle;
 };
 struct geo_engine {
  struct geo_owner_ops owner;
@@ -40,6 +41,7 @@ int32_t geo_unbind(struct geo_engine *,struct geo_allocation *);
 int32_t geo_destroy(struct geo_engine *,struct geo_allocation *);
 int32_t geo_prepare_begin(struct geo_engine *,struct geo_allocation *,const struct geo_clear_packet *,struct geo_dma_ticket *);
 int32_t geo_prepare_draw_begin(struct geo_engine *,struct geo_allocation *target,struct geo_allocation *vertex,struct geo_dma_ticket *);
+int32_t geo_prepare_texture_begin(struct geo_engine *,struct geo_allocation *,struct geo_allocation *,struct geo_allocation *,struct geo_dma_ticket *);
 int32_t geo_prepare_finish(struct geo_engine *,const struct geo_dma_ticket *,int32_t status,uint64_t owner_job);
 int32_t geo_cancel_begin(struct geo_engine *,const struct geo_dma_ticket *,uint64_t *owner_job);
 int32_t geo_reprepare_finish(struct geo_engine *,const struct geo_dma_ticket *,int32_t status);

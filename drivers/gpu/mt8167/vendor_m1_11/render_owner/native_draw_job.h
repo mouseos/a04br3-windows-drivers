@@ -3,6 +3,7 @@
 #define A04_M111_NATIVE_DRAW_JOB_H
 #include "native_triangle_suite.h"
 #include "../../wddm-render/frontend/draw_link_abi.h"
+#include "../../wddm-render/frontend/texture_draw_abi.h"
 struct a04_m111_draw_job {
  uint8_t ta[A04_M111_TA_BYTES],three[A04_M111_3D_BYTES];
  uint8_t data[0x540],usc[0x300],pds[0x400];
@@ -19,4 +20,5 @@ int32_t a04_m111_build_draw_job(struct a04_m111_draw_job *,
 int32_t a04_m111_build_draw_job_v2(struct a04_m111_draw_job *,
  const struct a04_m111_clear_job_input *,uint64_t vertex_gpu,
  const struct geo_draw_request_v2 *,const void *blob,uint32_t bytes,void *scratch,size_t);
+int32_t a04_m111_build_draw_job_v3(struct a04_m111_draw_job *,const struct a04_m111_clear_job_input *,uint64_t,uint64_t,const struct geo_draw_request_v3 *,const void *,uint32_t,void *,size_t);
 #endif

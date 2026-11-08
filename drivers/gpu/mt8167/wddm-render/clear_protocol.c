@@ -2,6 +2,9 @@
 #include "clear_protocol.h"
 int geo_desc_valid(const struct geo_surface_desc *d) {
  uint64_t bytes;
+ if(d&&d->size==sizeof(*d)&&d->version==GEO_TEXTURE_STORAGE_VERSION&&!d->reserved&&d->usage==GEO_USAGE_TEXTURE2D)
+  return d->format==GEO_FORMAT_A8R8G8B8&&d->width&&d->width<=128&&d->height&&d->height<=128&&
+   !(d->pitch&3u)&&d->pitch>=d->width*4u&&(uint64_t)d->pitch*d->height<=65536u;
  if(d&&d->size==sizeof(*d)&&d->version==GEO_ABI_VERSION&&!d->reserved&&d->usage==GEO_USAGE_VERTEX_BUFFER)
   return d->format==GEO_FORMAT_VERTEXDATA&&d->height==1u&&d->width==d->pitch&&
    d->width>=4u&&d->width<=GEO_VERTEX_MAX_BYTES;
