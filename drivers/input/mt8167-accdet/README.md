@@ -18,4 +18,4 @@ WDF sequential power-managed queue/PASSIVE callbackから既存ParentLockを使�
 
 この変更を既存parent1101のINF/署名へ混ぜて再包装しない。検証はcompile-onlyとし、最終profileで採用する場合は他の親差分と合わせ新source/上位INF版/SYS/CATを1回build/signする。親1026/旧6rangeへ戻さない。既定OFFではqueue/interface/readは追加されない。
 
-Bluetoothは既存docs/mt6630-rt81-bthx-contract.mdとsideband sourceを参照する。採取RT8.1 BthMiniはMaxAcl>=0x103/ScoSupportHCIBypass/MaxScoChannels1を必須にする。最新1019/2011/3003もPCM bit/clock、方向別latency、独立DMA drainが未確定のためNone/0を保持し、OS radio開始を成功化していない。Linuxのnative HCI_SDIOが動くことだけからBTHXの能力要件を満たしたとは扱わない。
+Bluetoothは別branchの[採取RT8.1契約](https://github.com/mouseos/a04br3-windows-drivers/blob/f7a1208b/docs/mt6630-rt81-bthx-contract.md)とsideband sourceを参照する。採取RT8.1 BthMiniはMaxAcl>=0x103/ScoSupportHCIBypass/MaxScoChannels1を必須にする。最新1019/2011/3003もPCM bit/clock、方向別latency、独立DMA drainが未確定のためNone/0を保持し、OS radio開始を成功化していない。Linuxのnative HCI_SDIOが動くことだけからBTHXの能力要件を満たしたとは扱わない。
