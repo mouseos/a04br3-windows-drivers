@@ -1,0 +1,15 @@
+# run135 / fresh134 / GPU332 受領待ちdraft
+
+現時点は正式332package未受領。profile/header/native candidate/mediaをfinalizeせず、旧327/未署名332/未seal332で代用しない。
+
+独立worktree a04br3-windows-combined134-gpu332 / branch work/combined134-gpu332、base0ce3c837（正式132RTC/AFE branch＋加算post観測）。Huygens331/332 sourceを並行編集しない。
+
+次入力はfresh134 manifest9d4b078f989a589166ad7ef53a211251628e6d32a93c8c66fe4858233f29bee2、Recovery3d353a0c-b6e9-4697-957d-aa2b8b82cbe7、原35fileのexacthash/size、同SYSTEMtrioの新private replay、13node実選択。保存は旧Followup132を増分し現在のMt6392Keys/WDF時刻を含む新完全fingerprintへ固定する。旧132→134 full差分失敗receiptは消さない。static9value/構造の保持とruntimeQWORD時刻の変化を別観測として保持する。
+
+RTC560cf boot4b67b67aedc4beb9863bfe1791de8713f925d8eedc6dfc702ea66df82895927bは既適用済みとして保持、boot書込不要/GPT非変更。renderだけ新332へDIFし予定restart1、他10roleはactualSYS/selectedのexact比較で保持。DriverStore stageも生成installmask対象だけにする（旧コードはDIFmask外までSetupCopyOEMInfしていたため、このbranchでそのstageループもmask限定）。旧327GPU clientを再実行しない。
+
+診断は既存readonly短診断を先に各結果/flushを残し、新署名GPU1clientを最後に1回。旧engine/HP/thermal未資格候補は採用しない。新clientdurable log schema/timeout/args/新SYS/UMD/FW/private契約は**332実manifest/sourceを受領してから**厳密固定する。900GPU/1500診断/900installを仮の既存boundとするが、332側の必須boundがこれより大きい場合mainへ根拠とともに揃える。phaseごとのfinalization0とterminalを区別し、rootfix成功を先取りしない。
+
+47log baseline aacf10f27fc52ac9b773afba39a32c861dc7873b33c0e2a276c6b6dfb9586008はfresh134と結合。旧44保持、同RUNclear拡張と新UMD2を区別した元baselineを使い、45/44へ戻さない。次collector136はmain担当。元媒体/policy/署名/sourceは非変更。
+
+受領ゲート: package正本path/source/binarysource/manifestと全member SHA、署名BCBF/CAT所属、main-independent-seal、private契約整合、current134 actual327 SYS/UMD/client witnessを揃えてからSCM1TU署名→新clone native arm→stage/WIM/ESP検証→contract-input/pins/HANDOFF。未確定pinをplaceholder成功へ変換しない。
