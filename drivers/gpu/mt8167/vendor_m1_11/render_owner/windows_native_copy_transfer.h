@@ -18,6 +18,9 @@ NTSTATUS a04_native_tq_transfer_prepare(struct a04_native_tq_transfer **,
  * TQ task/UFO group from live empty CCB offsets, with a new job/epoch. */
 NTSTATUS a04_native_tq_transfer_rearm(struct a04_native_tq_transfer *,
  struct a04_vendor_start *,uint64_t epoch,uint64_t job);
+/* Same real TQ/UFO/SLC/GP/fresh IRQ transport; clear colour is CCB data only. */
+NTSTATUS a04_native_tq_transfer_rearm_clear(struct a04_native_tq_transfer *,
+ struct a04_vendor_start *,uint64_t epoch,uint64_t job,ULONG colour);
 BOOLEAN a04_native_tq_transfer_identity(struct a04_native_tq_transfer *,uint64_t epoch,uint64_t job,uint32_t generation);
 NTSTATUS a04_native_tq_transfer_submit(struct a04_native_tq_transfer *,
  struct a04_vendor_start *,struct a04_native_irq_core *,ULONG expected_kernel_write,uint64_t job,uint32_t generation);

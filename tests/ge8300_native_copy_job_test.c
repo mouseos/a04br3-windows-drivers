@@ -48,5 +48,20 @@ int main(void)
  PUT(0x38,k.raw38);PUT(0x40,k.raw40);PUT(0x48,k.raw48);PUT(0x50,k.raw50);PUT(0x58,k.raw58);PUT(0x60,3u);
  #undef PUT
  memcpy(task+32,eot.payload+32,16);assert(!memcmp(task,image.task,sizeof(task)));
- assert(memcmp(old.task,image.task,sizeof(task)));return 0;
+ assert(memcmp(old.task,image.task,sizeof(task)));
+ /* Fast-fill golden packet, then the same nonsquare resident RT geometry
+  * used by the production Clear -> Copy -> Clear sequence. */
+ _Alignas(8) struct a04_native_clear_job_input fill={A04_VENDOR_RENDER_SCRATCH_VA,
+  4096,A04_VENDOR_RENDER_SCRATCH_VA,4096,32,32,32,0,0xffff00ffu};
+ assert(!a04_native_clear_job_build(&image,&fill));
+ assert(!a04_vendor_clear_image_build(&eot,A04_VENDOR_RENDER_SCRATCH_VA,fill.colour));
+ assert(!memcmp(image.task,eot.payload,sizeof(eot.payload)));
+ assert(!memcmp(image.eot_pds,eot.pds,sizeof(eot.pds)));
+ fill.aperture_base=fill.target_va=UINT64_C(0x8200000000);fill.aperture_bytes=4194304;
+ fill.target_bytes=1921024;fill.width=800;fill.height=600;fill.pitch_pixels=800;
+ fill.colour=0xa5a5a5a5u;assert(!a04_native_clear_job_build(&image,&fill));
+ assert(image.task[2]==fill.colour&&image.task[6]==((50u<<16)|38u));
+ assert(image.task[34]==599u&&image.task[35]==799u);
+ old=image;fill.target_bytes=1919999;assert(a04_native_clear_job_build(&image,&fill));
+ assert(!memcmp(&old,&image,sizeof(old)));return 0;
 }

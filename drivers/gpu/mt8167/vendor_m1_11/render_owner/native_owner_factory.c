@@ -239,6 +239,23 @@ static int32_t prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
     if(!job)return STATUS_INVALID_PARAMETER;*job=0;s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     if(!surface || surface!=c->surface || !c->allocation->binding || c->next_id==UINT64_MAX)return leave(c,STATUS_DEVICE_BUSY);
     s=wait_boundary_locked(c);native_progress(c,34,s);if(!NT_SUCCESS(s))return leave(c,s);
+    /* A completed Copy leaves a live TQ context and both resident MDLs.
+     * Fast clear uses its cold-installed RT EOT, with colour in CCB data.
+     * Do not stop/rebuild the FW root just to change that colour. The real
+     * transfer completion path still returns cache ownership and a fresh IRQ. */
+    if(c->allocation->start.online && c->copy_storage && c->copy_transfer){
+        s=a04_native_tq_transfer_rearm_clear(c->copy_transfer,&c->allocation->start,
+            c->hardware_epoch,c->next_id+1u,colour);
+        if(NT_SUCCESS(s)){
+            if(a04_rgx_device_read_words(&k,c->allocation->firmware.runtime->kctl,sizeof(k)) ||
+               k.ui32WrapMask!=127 || k.ui32ReadOffset>127 || k.ui32ReadOffset!=k.ui32WriteOffset)s=STATUS_DEVICE_BUSY;
+            else{c->kick_write=k.ui32WriteOffset;c->colour=colour;c->job=++c->next_id;
+                c->job_is_copy=TRUE; /* existing common TQ submit/finish route */
+                c->job_state=E_JOB_PREPARED;*job=c->job;}
+        }
+        if(!NT_SUCCESS(s)){GeoFactoryCheckpoint(47,s,1,0,0,0);c->state=E_OWNER_FAILED;}
+        return leave(c,s);
+    }
     /* No live rewrite of USC/PDS. Rebuild under the same adapter/retained MDL
      * after real normal retirement; subsequent boot has a new hardware epoch. */
     s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);

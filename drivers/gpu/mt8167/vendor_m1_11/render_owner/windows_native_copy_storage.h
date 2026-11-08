@@ -20,6 +20,8 @@ NTSTATUS a04_native_copy_storage_release_cold(struct a04_native_copy_storage **)
  * cache ownership for both MDLs and keep this storage pinned through retirement. */
 const struct a04_native_copy_job_image *a04_native_copy_storage_image(
  const struct a04_native_copy_storage *);
+const struct a04_native_copy_job_image *a04_native_copy_storage_clear_image(
+ const struct a04_native_copy_storage *);
 struct a04_vendor_native_cold *a04_native_copy_storage_parent(const struct a04_native_copy_storage *);
 /* Internal transfer-only ownership half, not a scheduler completion API. */
 NTSTATUS a04_native_copy_storage_cpu_complete(struct a04_native_copy_storage *);

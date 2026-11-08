@@ -17,7 +17,7 @@ struct a04_native_copy_storage {
  struct a04_vendor_native_cold *native;
  struct a04_native_mdl_binding *source,*destination;
  struct a04_vendor_uncached code[2];
- struct a04_native_copy_job_image image;
+ struct a04_native_copy_job_image image,clear_image;
  ULONG mapped;BOOLEAN prepared,quarantined;
 };
 static int intersects(uint64_t a,uint64_t n,uint64_t b,uint64_t m)
@@ -79,6 +79,7 @@ NTSTATUS a04_native_copy_storage_create(struct a04_native_copy_storage **out,
 {
  struct a04_vendor_render_cold *r;struct a04_native_copy_storage *c;
  struct a04_native_copy_job_input in={0};ULONG i,j;uint64_t offset=0,entry,pd;
+ struct a04_native_clear_job_input clear_in={0};
  uint32_t pc;NTSTATUS status=STATUS_INVALID_DEVICE_STATE;
  _Alignas(8) struct a04_vendor_clear_image eot;
  if(!out||*out||!n||!destination||!description||description->size!=sizeof(*description)||
@@ -106,6 +107,14 @@ NTSTATUS a04_native_copy_storage_create(struct a04_native_copy_storage **out,
  in.fragment_pds_offset=192;in.secondary_data_offset=256;in.secondary_code_offset=272;
  in.eot_pds_offset=64;in.fragment_usc_offset=128;
  if(a04_native_copy_job_build(&c->image,&in)||a04_vendor_clear_image_build(&eot,A04_VENDOR_RENDER_SCRATCH_VA,0)){
+  status=STATUS_INVALID_PARAMETER;goto fail;
+ }
+ clear_in.aperture_base=in.aperture_base;clear_in.aperture_bytes=in.aperture_bytes;
+ clear_in.target_va=in.source_va;clear_in.target_bytes=in.source_bytes;
+ clear_in.width=in.width;clear_in.height=in.height;clear_in.pitch_pixels=in.pitch_pixels;
+ /* EOT clear slot0 is disjoint from copy EOT64/fragment192/data256/code272/shared512.
+  * Both destinations are fixed from verified resident PTEs before FW starts. */
+ if(a04_native_clear_job_build(&c->clear_image,&clear_in)){
   status=STATUS_INVALID_PARAMETER;goto fail;
  }
  for(i=0;i<2;i++){
@@ -137,6 +146,7 @@ NTSTATUS a04_native_copy_storage_create(struct a04_native_copy_storage **out,
   for(j=0;j<4096;j+=sizeof(zero))if(verified((UCHAR*)c->code[i].cpu+j,zero,sizeof(zero))){status=STATUS_IO_DEVICE_ERROR;goto fail;}
  }
  if(verified(c->code[0].cpu,eot.usc,sizeof(eot.usc))||verified((UCHAR*)c->code[0].cpu+128,usc,usc_bytes)||
+    verified(c->code[1].cpu,c->clear_image.eot_pds,sizeof(c->clear_image.eot_pds))||
     verified((UCHAR*)c->code[1].cpu+64,c->image.eot_pds,sizeof(c->image.eot_pds))||
     verified((UCHAR*)c->code[1].cpu+192,c->image.fragment_pds,sizeof(c->image.fragment_pds))||
     verified((UCHAR*)c->code[1].cpu+256,c->image.secondary_data,sizeof(c->image.secondary_data))||
@@ -153,6 +163,8 @@ fail:
 }
 const struct a04_native_copy_job_image *a04_native_copy_storage_image(const struct a04_native_copy_storage *c)
 {return c&&c->prepared&&!c->quarantined?&c->image:NULL;}
+const struct a04_native_copy_job_image *a04_native_copy_storage_clear_image(const struct a04_native_copy_storage *c)
+{return c&&c->prepared&&!c->quarantined?&c->clear_image:NULL;}
 
 struct a04_vendor_native_cold *a04_native_copy_storage_parent(const struct a04_native_copy_storage *c)
 {return c&&c->prepared&&!c->quarantined?c->native:NULL;}

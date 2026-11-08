@@ -2,7 +2,7 @@
 """Execute actual transfer state machine + actual CCB producer, mocked hardware/WDK."""
 import argparse, subprocess,json,hashlib
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);a=p.parse_args();root=Path(__file__).resolve().parents[2];out=a.output.resolve()
+p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--clear-cycle',action='store_true');a=p.parse_args();root=Path(__file__).resolve().parents[2];out=a.output.resolve()
 if not out.is_relative_to(root) or out.exists():raise ValueError('New checkout-local output required')
 out.mkdir(parents=True);d=root/'drivers/gpu/mt8167/vendor_m1_11/render_owner';src=d/'windows_native_copy_transfer.c'
 actual='\n'.join(x for x in src.read_text().splitlines() if not x.startswith('#include'))
@@ -54,6 +54,7 @@ struct a04_native_copy_storage{struct a04_vendor_native_cold*n;struct a04_native
 struct a04_native_copy_gpu_result{ULONG phase,task_sequence,flush_sequence,client_write;};
 static struct a04_vendor_native_cold*a04_native_copy_storage_parent(struct a04_native_copy_storage*s){return s->n;}
 static const struct a04_native_copy_job_image*a04_native_copy_storage_image(struct a04_native_copy_storage*s){return &s->image;}
+static const struct a04_native_copy_job_image*a04_native_copy_storage_clear_image(struct a04_native_copy_storage*s){return &s->image;}
 static NTSTATUS a04_native_copy_storage_gpu_prepare(struct a04_native_copy_storage*s){assert(irql==0);cache_gpu++;s->owned=1;return 0;}
 static NTSTATUS a04_native_copy_storage_cpu_complete(struct a04_native_copy_storage*s){assert(irql==0);cache_cpu++;s->owned=0;return 0;}
 static BOOLEAN a04_native_copy_storage_gpu_owned(struct a04_native_copy_storage*s){return s->owned;}
@@ -128,8 +129,28 @@ int main(void){
  printf("persistent copy: 64 complete transactions, %u negative gates; actual CCB/transfer code; hardware/cache mocked\n",negative);return 0;
 }
 '''
+
+if a.clear_cycle:
+ full=(d/'native_owner_factory.c').read_text();factory=full[full.index('static int32_t prepare(void *p,'):full.index('struct discard_call')]
+ pre=pre.replace('struct a04_native_copy_job_image image;BOOLEAN owned;','struct a04_native_copy_job_image image;BOOLEAN owned;struct a04_native_copy_job_image clear_image;').replace('a04_native_copy_storage_clear_image(struct a04_native_copy_storage*s){return &s->image;}','a04_native_copy_storage_clear_image(struct a04_native_copy_storage*s){return &s->clear_image;}')
+ factory_mocks=factory_mocks.replace('void*binding;','void*binding;void*native;').replace('ULONG kick_write,job_state,state;','ULONG kick_write,job_state,state,colour;struct a04_native_copy_storage*copy_storage;')
+ factory_mocks+=r"""
+#define native_progress(...) ((void)0)
+static NTSTATUS e_native_stop_locked(struct e_native_owner*c){(void)c;assert(!"Live Clear must not stop firmware");return -1;}
+static NTSTATUS e_native_retire_graph_locked(struct e_native_owner*c){(void)c;assert(!"Live Clear must not retire graph");return -1;}
+static NTSTATUS e_native_build_graph_locked(struct e_native_owner*c){(void)c;assert(!"Live Clear must not rebuild graph");return -1;}
+static NTSTATUS a04_vendor_native_recolour_bound_cold(void*n,ULONG colour){(void)n;(void)colour;assert(!"Live Clear must not rewrite USC/PDS");return -1;}
+"""
+ post=post.replace('struct a04_native_copy_storage storage={&n,{0},0};','struct a04_native_copy_storage storage={0};storage.n=&n;\n _Alignas(8) struct a04_native_clear_job_input fill={UINT64_C(0x8200000000),4194304,UINT64_C(0x8200000000),1921024,800,600,800,0,0};assert(!a04_native_clear_job_build(&storage.clear_image,&fill));')
+ post=post.replace('struct test_allocation allocation={s,mem,(void*)1};','struct test_allocation allocation={s,mem,(void*)1,NULL};')
+ post=post.replace('owner.copy_transfer=c;','owner.copy_storage=&storage;owner.copy_transfer=c;').replace('j<=64','j<=4')
+ post=post.replace('assert(!prepare_copy(&owner,1,2,&job)&&job==j&&owner.job_is_copy);','assert(!(j%2?prepare_copy(&owner,1,2,&job):prepare(&owner,1,j==2?0xa5a5a5a5u:0xff00ff00u,&job))&&job==j&&owner.job_is_copy);')
+ post=post.replace('s=allocation.start;assert(c->input.write==last_write);','s=allocation.start;assert(c->input.write==last_write);if(!(j%2)){struct a04_native_copy_job_image expected=storage.clear_image;expected.task[2]=owner.colour;assert(!memcmp(c->ring+c->queue.task_offset+40,expected.task,208));}')
+ post=post.replace('cache_gpu==64&&cache_cpu==64&&doorbells==256','cache_gpu==4&&cache_cpu==4&&doorbells==16').replace('persistent copy: 64 complete transactions','Copy/Clear alternating: 4 complete transactions')
+
 f=out/'actual-transfer.c';f.write_text(pre+actual+factory_mocks+factory+post)
 cmd=['clang','-std=c11','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-g','-I'+str(d),str(f),str(d/'native_copy_queue.c'),str(d/'native_ccb.c'),'-o',str(out/'test')]
+if a.clear_cycle:cmd[cmd.index('-o'):cmd.index('-o')]=[str(d/'native_copy_job.c'),str(d/'native_copy_state.c'),str(d.parent/'clear_image.c')]
 x=subprocess.run(cmd,capture_output=True,text=True);(out/'compile.log').write_text(x.stdout+x.stderr);x.check_returncode()
 x=subprocess.run([str(out/'test')],capture_output=True,text=True);(out/'test.log').write_text(x.stdout+x.stderr);print(x.stdout+x.stderr,end='');x.check_returncode()
-(out/'receipt.json').write_text(json.dumps({'actual_transfer_source_sha256':hashlib.sha256(src.read_bytes()).hexdigest(),'complete_transactions':64,'negative_gates':578,'ASAN_UBSAN':True,'hardware_cache_irq_mocked':True,'hardware_verified':False},indent=2)+'\n')
+(out/'receipt.json').write_text(json.dumps({'actual_transfer_source_sha256':hashlib.sha256(src.read_bytes()).hexdigest(),'complete_transactions':4 if a.clear_cycle else 64,'clear_copy_alternation':a.clear_cycle,'ASAN_UBSAN':True,'hardware_cache_irq_mocked':True,'hardware_verified':False},indent=2)+'\n')

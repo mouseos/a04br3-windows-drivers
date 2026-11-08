@@ -65,9 +65,11 @@ NTSTATUS a04_native_tq_transfer_prepare(struct a04_native_tq_transfer **out,
 /* PASSIVE factory mutex + completed previous scheduler token exclude a
  * competing submit. IRQ state is inspected only by submit under Dxgk lock.
  * This builds a new transaction, never replays a consumed one-shot image. */
-NTSTATUS a04_native_tq_transfer_rearm(struct a04_native_tq_transfer *c,
- struct a04_vendor_start *s,uint64_t epoch,uint64_t job)
+static NTSTATUS rearm_task(struct a04_native_tq_transfer *c,
+ struct a04_vendor_start *s,uint64_t epoch,uint64_t job,BOOLEAN clear,ULONG colour)
 {
+ struct a04_native_copy_job_image clear_image;
+ const struct a04_native_copy_job_image *image;
  struct a04_vendor_render_cold *r;RGXFWIF_CCCB_CTL ctl;RGXFWIF_CCB_CTL k;
  ULONG value;NTSTATUS status;LONG phase;
  if(!c||!s||KeGetCurrentIrql()!=PASSIVE_LEVEL||!epoch||!job||job<=c->job||
@@ -86,14 +88,23 @@ NTSTATUS a04_native_tq_transfer_rearm(struct a04_native_tq_transfer *c,
   return STATUS_DEVICE_BUSY;
  c->input=(struct a04_native_copy_queue_input){0xc0080000u+r->layout.tq,
   0xc0080000u+r->layout.sync,value,ctl.ui32ReadOffset,ctl.ui32WriteOffset,ctl.ui32DepOffset,0,(ULONG)job};
+ image=clear?a04_native_copy_storage_clear_image(c->storage):a04_native_copy_storage_image(c->storage);
+ if(!image)return STATUS_INVALID_DEVICE_STATE;
+ if(clear){clear_image=*image;clear_image.task[2]=colour;image=&clear_image;}
  if(!(ULONG)job || a04_rgx_device_read_words(c->ring,(UCHAR*)r->buffer[0].cpu+r->layout.commands[3],4096u)||
-    a04_native_copy_queue_build(c->ring,c->workspace,&c->input,a04_native_copy_storage_image(c->storage),&c->queue))
+    a04_native_copy_queue_build(c->ring,c->workspace,&c->input,image,&c->queue))
   return STATUS_INVALID_DEVICE_STATE;
  status=a04_native_copy_storage_gpu_prepare(c->storage);if(!NT_SUCCESS(status))return status;
  c->armed_epoch=epoch;c->job=job;c->generation=0;c->claimed_serial=0;
  c->visibility_fence=0;c->visibility_serial=0;
  InterlockedExchange(&c->state,1);return STATUS_SUCCESS;
 }
+NTSTATUS a04_native_tq_transfer_rearm(struct a04_native_tq_transfer *c,
+ struct a04_vendor_start *s,uint64_t epoch,uint64_t job)
+{return rearm_task(c,s,epoch,job,FALSE,0);}
+NTSTATUS a04_native_tq_transfer_rearm_clear(struct a04_native_tq_transfer *c,
+ struct a04_vendor_start *s,uint64_t epoch,uint64_t job,ULONG colour)
+{return rearm_task(c,s,epoch,job,TRUE,colour);}
 BOOLEAN a04_native_tq_transfer_identity(struct a04_native_tq_transfer *c,uint64_t epoch,uint64_t job,uint32_t generation)
 {return c&&epoch&&job&&generation&&c->epoch==epoch&&c->job==job&&c->generation==generation;}
 NTSTATUS a04_native_tq_transfer_submit(struct a04_native_tq_transfer *c,

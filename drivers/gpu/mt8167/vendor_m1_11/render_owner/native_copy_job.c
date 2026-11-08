@@ -4,6 +4,42 @@
 #include "clear_image.h"
 #include "render_resources.h"
 #include <string.h>
+int a04_native_clear_job_build(struct a04_native_copy_job_image *out,
+ const struct a04_native_clear_job_input *request)
+{
+ struct a04_native_copy_job_image image={0};
+ struct a04_native_clear_job_input q;
+ struct a04_vendor_wide_state wide;
+ _Alignas(8) struct a04_vendor_clear_image fill;
+ uint64_t extent;uintptr_t a=(uintptr_t)out,b=(uintptr_t)request;
+ if(!out||!request||(a&3u)||(b&7u)||a>UINTPTR_MAX-sizeof(*out)||
+    b>UINTPTR_MAX-sizeof(*request)||(a<b+sizeof(*request)&&b<a+sizeof(*out)))return 1;
+ q=*request;
+ if(!q.width||!q.height||q.width>800u||q.height>600u||q.pitch_pixels<q.width||
+    q.pitch_pixels>1024u||(q.pitch_pixels&31u)||!q.aperture_bytes||
+    q.aperture_bytes>4194304u||(q.aperture_base&4095u)||(q.aperture_bytes&4095u)||
+    q.aperture_base>=(UINT64_C(1)<<40)||q.aperture_bytes>(UINT64_C(1)<<40)-q.aperture_base||
+    (q.target_va&127u)||q.target_va<q.aperture_base||
+    q.target_va-q.aperture_base>q.aperture_bytes||
+    q.target_bytes>q.aperture_bytes-(q.target_va-q.aperture_base)||
+    (q.pds_offset&63u)||q.pds_offset>65536u-64u)return 1;
+ extent=(uint64_t)q.pitch_pixels*q.height*4u;
+ if(q.target_bytes<extent||
+    a04_vendor_copy_wide_state_build(&wide,q.target_va,q.width,q.height,q.pitch_pixels)||
+    a04_vendor_clear_image_build(&fill,A04_VENDOR_RENDER_SCRATCH_VA,0))return 1;
+ /* Same native22 transfer-fill packet and EOT as clear_tile. General
+  * pitch, clipping and tile counts come from the proven DOD wide producer.
+  * Colour lives in command data; even the diagnostic sentinel is a valid
+  * D3D clear value. No executable/PTE or destination pixel is modified. */
+ memcpy(image.task,fill.payload,sizeof(fill.payload));
+ image.task[2]=q.colour;image.task[6]=wide.tile_size;
+ image.task[11]+=q.pds_offset;image.task[12]+=q.pds_offset;
+ memcpy(image.task+32,wide.csr,sizeof(wide.csr));
+ memcpy(image.eot_pds,fill.pds,sizeof(fill.pds));
+ image.eot_pds[2]=(uint32_t)(q.target_va>>2);
+ image.eot_pds[3]=(uint32_t)(q.target_va>>34)|(1u<<19);
+ *out=image;return 0;
+}
 static int overlap(uint64_t a,uint64_t an,uint64_t b,uint64_t bn)
 {return a<=b?b-a<an:a-b<bn;}
 static int span(uint64_t base,uint64_t bytes,uint64_t at,uint64_t n)

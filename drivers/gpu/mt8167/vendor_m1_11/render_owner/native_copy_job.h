@@ -23,4 +23,12 @@ struct a04_native_copy_job_image {
  * No GPU command is submitted, resource mapped, or completion manufactured. */
 int a04_native_copy_job_build(struct a04_native_copy_job_image *,
  const struct a04_native_copy_job_input *);
+struct a04_native_clear_job_input {
+ uint64_t aperture_base,aperture_bytes,target_va,target_bytes;
+ uint32_t width,height,pitch_pixels,pds_offset,colour;
+};
+/* Native22 fast fill uses its CCB colour word, not a rewritten USC/PDS
+ * program. The consumer stages the returned EOT PDS only while cold. */
+int a04_native_clear_job_build(struct a04_native_copy_job_image *,
+ const struct a04_native_clear_job_input *);
 #endif
