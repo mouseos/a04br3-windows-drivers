@@ -101,6 +101,9 @@ int main(void)
  CHECK(MtMusbOpen((PDEVICE_OBJECT)1,&r)==STATUS_NOT_SUPPORTED&&test_maps==maps&&test_acquires==acquires&&test_writes==writes);}
  Fixture();test_mac[0x204]=1;{ULONG writes=test_writes;
  CHECK(!NT_SUCCESS(MtMusbOpen((PDEVICE_OBJECT)1,&r))&&test_writes==writes);}
+ /* Stop observes unknown engine state before its first PIO write too. */
+ Fixture();CHECK(NT_SUCCESS(MtMusbOpen((PDEVICE_OBJECT)1,&r)));Work();
+ test_mac[0x204]=1;{ULONG writes=test_writes;CHECK(MtMusbClose(r)&&test_writes==writes);}
  /* A DMA channel unexpectedly becoming active seals PIO writes. */
  Fixture();CHECK(NT_SUCCESS(MtMusbOpen((PDEVICE_OBJECT)1,&r)));Work();
  test_mac[0x204]=1;{ULONG writes=test_writes;TimerDpc(NULL,r,NULL,NULL);Work();

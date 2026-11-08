@@ -110,6 +110,7 @@ static int StopPhysical(struct mt_musb_runtime *r)
  if(!r->lease)return 0;
  /* DMA was never enabled by this driver. Only our established PIO ownership
   * permits these mask/flush writes. Parent isolation is the fallback proof. */
+ if(r->started&&!r->io_unsafe&&(EnginesIdle(r)||IrqOff(r)))r->io_unsafe=TRUE;
  if(r->started&&!r->io_unsafe){
   Wr32(r,0xa4,Rd32(r,0xa4)&~7u);Wr16(r,6,0);Wr16(r,8,0);Wr8(r,0xb,0);
   local=Flush(r);Wr8(r,0x60,(UCHAR)(Rd8(r,0x60)&~1u));
@@ -257,7 +258,7 @@ static void Tick(PDEVICE_OBJECT device,PVOID context)
  }
  KeAcquireSpinLock(&r->lock,&irql);
  r->fault=fault;r->connected=connected;r->frame=cached_frame;
- if(root){r->root_running=FALSE;r->root_done=root;r->root_result=result?1:0;r->observation=o;}
+ if(root){r->root_running=FALSE;r->root_done=root;r->root_result=result?1:0;if(!fault)r->observation=o;}
  if(result&&(r->job.state==MT_JOB_RUNNING||r->job.state==MT_JOB_CANCEL)){
   (void)mt_musb_finish(&r->job,ticket,actual,result==1?USBD_STATUS_SUCCESS:
    result==A04_PIO_STALL?USBD_STATUS_STALL_PID:USBD_STATUS_XACT_ERROR,toggle,proven);
