@@ -68,7 +68,7 @@ def compile_one(source,obj,flags,role):
  (out/'compiled-checkpoint.json').write_text(json.dumps(records,indent=2)+'\n')
 
 def pp(source,flags,path,checkout):
- f=[str(s).replace(str(root),str(checkout)).replace(str(root).replace(chr(92),'/'),str(checkout).replace(chr(92),'/')) for s in flags]
+ f=[str(s) if str(s)=='-I'+str(out/'generated') else str(s).replace(str(root),str(checkout)).replace(str(root).replace(chr(92),'/'),str(checkout).replace(chr(92),'/')) for s in flags]
  if source.endswith('/mdl_pin.c'):f+=['-U__clang__']
  run(['clang',*f,'-E','-P',checkout/source,'-o',path],stdout=subprocess.DEVNULL)
  return path.read_bytes().replace(str(checkout).encode(),b'${REPO}').replace(str(checkout).replace('\\','/').encode(),b'${REPO}')
