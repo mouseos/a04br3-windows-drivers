@@ -10,13 +10,13 @@ CT3 GPL `7c4782127d4ea11965be00ce1343056be9bfb769` の一次sourceを根拠と�
 
 I/O bank0=親APMIXED、bank1=親がbind済みのAFE。start後の失敗はpoison/heldを残し、blind rollbackしない。stopは独立のDMA/IRQ drain証明を必須とし、active bit消失だけでdrainとみなさない。既存capture/共通reference bitsはmask外として保存する。DC制御はhandshakeであり、古いcontrol raw値を書き戻さず保存coefficientsを再latchする。ownerがleaseを解除するのは正常stop後だけ。
 
-`headphone_endpoint.{h,cpp}` は実HP backendが渡された場合だけ使える標準PortCls factory。別名Mt8167HeadphoneWaveRT/Topology、48kHz S16 stereo既存miniport、WaveRT pin1→topology pin0→KSNODETYPE_HEADPHONES pin1の接続。既存speaker/captureやsense-only pin2を改名/接続しない。DESCRIPTION/DESCRIPTION2はqualify済の実senseだけを返す。未知状態をConnectedにせず、イベント/動的format/不明latencyは追加しない。
+`headphone_endpoint.{h,cpp}` は実HP backendが渡された場合だけ使える標準PortCls factory。別名Mt8167HeadphoneWaveRT/Topology、実HP WaveRT miniportを提供する必須factory callback、WaveRT pin1→topology pin0→KSNODETYPE_HEADPHONES pin1の接続。既存speaker/captureやsense-only pin2を改名/接続しない。DESCRIPTION/DESCRIPTION2はqualify済の実senseだけを返す。未知状態をConnectedにせず、イベント/動的format/不明latencyは追加しない。
 
-backendのreference/dereference、再生stream制御、既存DL1のspeaker/HP排他、route選択、PnP/power revoke、DMA保持/restore契約を実ownerが実装してからStartDeviceでfactoryを呼ぶ。部分登録後のfailureはPortClsの通常StartDevice unwindを要求する。providerが無いのに成功するstub、synthetic backend、固定Connectedは無い。
+backendのreference/dereference、真のHP WaveRT format/DMA/latency、再生stream制御、既存DL1のspeaker/HP排他、route選択、PnP/power revoke、DMA保持/restore契約を実ownerが実装してからStartDeviceでfactoryを呼ぶ。部分登録後のfailureはPortClsの通常StartDevice unwindを要求する。providerが無いのに成功するstub、synthetic backend、固定Connectedは無い。
 
 ## 現在の阻害条件（未解決）
 
-現親1103にはHP A/B/C測定を供給する共有AUXADC lease/clock/deadlineとmeasurement routeが無い。既存AUXADC channel11はthermal ownerの資源/寿命契約で、HP channel7/8として流用/再mapしない。既存audio v11はspeaker/voiceを前提とし、HPのmode切替・drain/restore providerでもない。HP DC OffsetsはLinuxで実A/B/C変換とgain別測定を行う。cold zero配列や保存係数を測定値へ偽装しない。
+現親1103にはHP A/B/C測定を供給する共有AUXADC lease/clock/deadlineとmeasurement routeが無い。既存AUXADC channel11はthermal ownerの資源/寿命契約で、HP channel7/8として流用/再mapしない。既存speaker WaveRTのzero latencyをHPの実測値へ流用しない。実HP WaveRT factoryも未供給。既存audio v11はspeaker/voiceを前提とし、HPのmode切替・drain/restore providerでもない。HP DC OffsetsはLinuxで実A/B/C変換とgain別測定を行う。cold zero配列や保存係数を測定値へ偽装しない。
 
 したがって現adapterからHP factoryを呼んでいない。HP endpointは未登録、analog transactionも未接続。Audio1028の署名物は部品のARM link/署名証拠であり、HP使用目的で配備する候補ではない。実標準stackのHP再生、音量/抜挿し/restore成功は未確認。
 
