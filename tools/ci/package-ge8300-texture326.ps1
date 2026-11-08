@@ -8,7 +8,15 @@ function Pin($p,$h){if((Sha $p) -cne $h.ToLowerInvariant()){throw "Pin mismatch 
 Pin "$BaselinePackageDirectory\signed-manifest.json" '8e595170ddec23335e9fb2f7031f45e9eba5f393adae32df01c10b93cc896ca0'
 $base=Get-Content "$BaselinePackageDirectory\signed-manifest.json" -Raw|ConvertFrom-Json
 $b=Get-Content "$BuildDirectory\build-manifest.json" -Raw|ConvertFrom-Json
-if($b.schema -cne 'texture326-dependency-closure-build-v1' -or $b.source_commit -cne $source -or $b.driver_wire_version -ne 3 -or $b.adapter_contract_version -ne 3 -or $b.SDK_rebuilt -or $b.PCO_rebuilt -or $b.client_rebuilt){throw 'Exact texture build closure required'}
+if($b.schema -cne 'texture326-dependency-closure-build-v1' -or $b.driver_wire_version -ne 3 -or $b.adapter_contract_version -ne 3 -or $b.SDK_rebuilt -or $b.PCO_rebuilt -or $b.client_rebuilt){throw 'Exact texture build closure required'}
+# Packaging-only follow-ups may reuse these exact binaries; source changes
+# outside the explicit seal/docs/tests list must have their own new build.
+if($b.source_commit -cne $source){
+ foreach($f in @(& git -C $root diff --name-only $b.source_commit $source)){
+  if($f -notin @('tools/ci/package-ge8300-texture326.ps1','docs/ge8300-texture2d-contract.md','tests/ge8300_texture_ddi_test.c','tools/ci/test-ge8300-texture-ddi.ps1','tools/ci/test-ge8300-texture-codegen.py')){throw "Binary source changed after build: $f"}
+ }
+ if($LASTEXITCODE){throw 'Build-source comparison failed'}
+}
 foreach($e in $base.outputs){Pin "$BaselinePackageDirectory\$($e.name)" $e.sha256}
 foreach($e in $base.retained_provenance){Pin "$BaselinePackageDirectory\$($e.name)" $e.sha256}
 foreach($e in $b.outputs){Pin "$BuildDirectory\$($e.name)" $e.sha256}
@@ -35,13 +43,13 @@ foreach($n in @('ge8300-render.sys','ge8300-umd.dll','ge8300-render.cat','ge8300
 foreach($n in @('ge8300-mips.fw','ge8300-d3d-clear.exe','mt8167-development.cer')){Pin "$out\$n" (Sha "$BaselinePackageDirectory\$n")}
 [ordered]@{schema='texture326-native-closure-v1';source_commit=$source;baseline325_signed_manifest_file='baseline325-signed-manifest.json';baseline325_signed_manifest_sha256=(Sha "$out\baseline325-signed-manifest.json");build_manifest_file='texture326-build-manifest.json';build_manifest_sha256=(Sha "$out\texture326-build-manifest.json");native_archive=@($b.archives|Where-Object{$_.role -ceq 'native'});kernel_archive=@($b.archives|Where-Object{$_.role -ceq 'kmd'});native_resolve_ABI_version=1;driver_wire_version=3}|ConvertTo-Json -Depth 16|Set-Content -Encoding UTF8 "$out\texture326-native-dependency-closure.json"
 $m=@{};foreach($e in $base.PSObject.Properties){$m[$e.Name]=$e.Value}
-$m.schema='texture326-independent-sources-v1';$m.package_source_commit=$source;$m.kernel_binary_source_commit=$source;$m.native_owner_source_commit=$source;$m.umd_source_commit=$source
+$m.schema='texture326-independent-sources-v1';$m.package_source_commit=$source;$m.kernel_binary_source_commit=$b.source_commit;$m.native_owner_source_commit=$b.source_commit;$m.umd_source_commit=$b.source_commit;$m.umd_delta_build_source_commit=$b.source_commit
 $m.kernel_object_baseline_source_commit=$base.kernel_binary_source_commit;$m.native_owner_baseline_source_commit=$base.native_owner_source_commit;$m.umd_object_baseline_source_commit=$base.umd_source_commit
 $m.baseline_manifest_sha256=(Sha "$out\baseline325-signed-manifest.json");$m.baseline_manifest_file='baseline325-signed-manifest.json'
 $m.inf_driverver='11/07/2026,0.0.3.26';$m.build_manifest_file='texture326-build-manifest.json';$m.build_manifest_sha256=(Sha "$out\texture326-build-manifest.json");$m.kernel_build_manifest_sha256=$m.build_manifest_sha256;$m.umd_build_manifest_sha256=$m.build_manifest_sha256
 $m.native_dependency_closure_file='texture326-native-dependency-closure.json';$m.native_dependency_closure_sha256=(Sha "$out\texture326-native-dependency-closure.json")
 $m.kernel_changed=$true;$m.kmd_objects_changed=$true;$m.native_owner_changed=$true;$m.umd_changed=$true;$m.compiler_adapter_changed=$true;$m.compiler_changed=$false;$m.firmware_changed=$false;$m.client_changed=$false
 $m.driver_wire_version=3;$m.texture_storage_version=2;$m.adapter_contract_version=3;$m.native_resolve_ABI_version=1;$m.texture_profile='BGRA8-128x128-1mip-POINT-CLAMP-CB0xy-t0-s0';$m.changed_wire_abi=$true;$m.changed_caps=$false;$m.standard_profile_qualified=$false;$m.runtime_verified=$false
-$m.compiled_units=$b.compiled_units;$m.archives=$b.archives;$m.retained_provenance=$retained
+$m.compiled_units=$b.compiled_units;$m.native_compiled_units=@($b.compiled_units|Where-Object{$_.role -ceq 'native'}|ForEach-Object{$_.source});$m.kmd_compiled_units=@($b.compiled_units|Where-Object{$_.role -ceq 'KMD-dependent-closure'}|ForEach-Object{$_.source});$m.umd_compiled_units=@($b.compiled_units|Where-Object{$_.role -in @('UMD-dependent-closure','source-compiled-SAMPLE-adapter')}|ForEach-Object{$_.source});$m.archives=$b.archives;$m.retained_provenance=$retained
 $m.outputs=@($base.outputs|ForEach-Object{@{name=$_.name;sha256=(Sha "$out\$($_.name)")}})
 $m|ConvertTo-Json -Depth 20|Set-Content -Encoding UTF8 "$out\signed-manifest.json"

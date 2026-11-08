@@ -15,7 +15,7 @@ while i<len(original):
  if a=='-MD':i+=1;continue
  if a.startswith('-I'):
   args.append('-I'+str((build/a[2:]).resolve()))
- elif a not in ['-DNDEBUG','-Werror=missing-prototypes']:args.append(a)
+ elif a not in ['-Werror=missing-prototypes']:args.append(a)
  i+=1
 units=['drivers/gpu/mt8167/wddm-render/compiler/'+n+'.c' for n in ['sm2','sm4','pco_sm2','texture2d_sm4','pco_texture2d']]+['drivers/gpu/mt8167/vendor_m1_11/render_owner/native_texture2d_program.c','tests/ge8300_texture2d_codegen_host.c'];objs=[]
 native_units=['native_draw_job','native_triangle_suite','native_triangle_pds','native_triangle_vdm','native_triangle_ppp','native_triangle_texture','native_clear_job','native_clear_surface','native_clear_data','native_clear_codespace','native_clear_pds','native_record_fields','native_hwrt_profile','native_varying_pds','native_d3d_viewport','native_texture2d_state','native_eot_program','clear_tile','clear_image','native_terminate_stream']
