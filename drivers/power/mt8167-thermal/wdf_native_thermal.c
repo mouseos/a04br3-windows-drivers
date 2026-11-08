@@ -46,27 +46,30 @@ static int32_t PioCollect(void *opaque) {
  WdfSpinLockAcquire(c->lock);a04_readout_invalidate(&c->reading);WdfSpinLockRelease(c->lock);
  {DECLARE_CONST_UNICODE_STRING(path,A04_UART_SCREEN_DEVICE);WDF_IO_TARGET_OPEN_PARAMS open;
   WDF_IO_TARGET_OPEN_PARAMS_INIT_OPEN_BY_NAME(&open,&path,GENERIC_READ|GENERIC_WRITE);(VOID)WdfIoTargetOpen(c->uart,&open);}
- MARK(c,"A04THM PIO COLLECT parent1104\n");
+ MARK(c,"MT8167 THERMAL READ BEGIN\n");
+ MARK(c,"MT8167 THERMAL CAL READ BEGIN\n");
  RtlZeroMemory(&v,sizeof(v));status=ExGetFirmwareEnvironmentVariable(&name,&guid,&v,&bytes,&attrs);
- if(!NT_SUCCESS(status)||a04_thermal_boot_calibration(&cal,&v,bytes,attrs)){MARK(c,"A04THM PIO CAL REJECT\n");status=STATUS_DEVICE_NOT_READY;goto done;}
+ if(!NT_SUCCESS(status)||a04_thermal_boot_calibration(&cal,&v,bytes,attrs)){MARK(c,"MT8167 THERMAL CAL REJECT\n");status=STATUS_DEVICE_NOT_READY;goto done;}
+ MARK(c,"MT8167 THERMAL CAL READY; PARENT QUERY BEGIN\n");
  RtlZeroMemory(&iface,sizeof(iface));status=WdfFdoQueryForInterface(device,&Mt8167ThermalParentPioGuid,(PINTERFACE)&iface,sizeof(iface),MT8167_THERMAL_PARENT_PIO_VERSION,NULL);
- if(!NT_SUCCESS(status)){MARK(c,"A04THM PIO TUPLE REJECT\n");goto done;}
+ if(!NT_SUCCESS(status)){MARK(c,"MT8167 THERMAL TUPLE REJECT\n");goto done;}
  if(iface.Header.Size!=sizeof(iface)||iface.Header.Version!=MT8167_THERMAL_PARENT_PIO_VERSION||iface.ParentBuild!=MT8167_THERMAL_PARENT_PIO_BUILD||!iface.Header.Context||!iface.Measure||!iface.Header.InterfaceReference||!iface.Header.InterfaceDereference) {
   if(iface.Header.InterfaceDereference)iface.Header.InterfaceDereference(iface.Header.Context);status=STATUS_REVISION_MISMATCH;goto done;}
+ MARK(c,"MT8167 THERMAL PARENT QUERY READY; ADC MEASURE BEGIN\n");
  status=iface.Measure(iface.Header.Context,&adopted,raw,&stage);
  iface.Header.InterfaceDereference(iface.Header.Context);
  if(!NT_SUCCESS(status)){
-  static const char hex[]="0123456789ABCDEF";char line[80]="A04THM PIO FAILED status=";ULONG n=sizeof("A04THM PIO FAILED status=")-1;unsigned i;
+  static const char hex[]="0123456789ABCDEF";char line[80]="MT8167 THERMAL FAILED status=";ULONG n=sizeof("MT8167 THERMAL FAILED status=")-1;unsigned i;
   for(i=0;i<8;i++)line[n++]=hex[((ULONG)status>>(28-4*i))&15];
   line[n++]=' ';number(line,&n,(LONG)stage);line[n++]='/';number(line,&n,(LONG)adopted);line[n++]='\n';mark(c,line,n);goto done;}
  if(adopted!=1||a04_thermal_sample(&cal,raw,KeQueryInterruptTime()/10000u,1,&sample)){status=STATUS_DEVICE_HARDWARE_ERROR;goto done;}
  WdfSpinLockAcquire(c->lock);int publish=a04_readout_publish(&c->reading,&sample);WdfSpinLockRelease(c->lock);
  if(publish){status=STATUS_DEVICE_HARDWARE_ERROR;goto done;}
- {char line[96]="A04THM PIO mc=";ULONG n=sizeof("A04THM PIO mc=")-1;unsigned i;
+ {char line[96]="MT8167 THERMAL mc=";ULONG n=sizeof("MT8167 THERMAL mc=")-1;unsigned i;
   for(i=0;i<3;i++){number(line,&n,sample.mc[i]);line[n++]=i==2?'\n':'/';}mark(c,line,n);}
- MARK(c,"A04THM PIO IDLE restored parent1104\n");
+ MARK(c,"MT8167 THERMAL PARENT ADC RELEASED\n");
 done:
- {static const char hex[]="0123456789ABCDEF";char line[64]="A04THM PIO COLLECT END status=";ULONG n=sizeof("A04THM PIO COLLECT END status=")-1;
+ {static const char hex[]="0123456789ABCDEF";char line[64]="MT8167 THERMAL COLLECT END status=";ULONG n=sizeof("MT8167 THERMAL COLLECT END status=")-1;
   for(unsigned i=0;i<8;i++)line[n++]=hex[((ULONG)status>>(28-4*i))&15];line[n++]='\n';mark(c,line,n);}
  WdfIoTargetClose(c->uart);return status;
 }
@@ -78,7 +81,7 @@ NTSTATUS PioD0(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous) {
   * Never reset first.attempted on D0/restart: parent remains boot one-shot. */
  {DECLARE_CONST_UNICODE_STRING(path,A04_UART_SCREEN_DEVICE);WDF_IO_TARGET_OPEN_PARAMS open;
   WDF_IO_TARGET_OPEN_PARAMS_INIT_OPEN_BY_NAME(&open,&path,GENERIC_READ|GENERIC_WRITE);(VOID)WdfIoTargetOpen(c->uart,&open);}
- MARK(c,"A04THM PIO D0 waiting first readonly IOCTL parent1104\n");WdfIoTargetClose(c->uart);
+ MARK(c,"MT8167 THERMAL INTERFACE D0 READY; FIRST READ PENDING\n");WdfIoTargetClose(c->uart);
  return STATUS_SUCCESS;
 }
 NTSTATUS PioExit(WDFDEVICE device,WDF_POWER_DEVICE_STATE next) {
