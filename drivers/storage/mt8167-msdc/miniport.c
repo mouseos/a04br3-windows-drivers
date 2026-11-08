@@ -148,8 +148,14 @@ static void A04ClockObserve(void *context, uint32_t polls)
 #ifndef A04_MSDC_REQUEST_MDL_REUSE
 #define A04_MSDC_REQUEST_MDL_REUSE 0
 #endif
-static enum a04_dma_result A04DmaSectorMdl(struct a04_probe_extension *probe,
-        struct a04_msdc_io *io, ULONG lba, BOOLEAN write, PMDL *mapping)
+#ifndef A04_MSDC_REQUEST_QPC_REUSE
+#define A04_MSDC_REQUEST_QPC_REUSE 0
+#endif
+#ifndef A04_MSDC_REQUEST_COPY_OPT
+#define A04_MSDC_REQUEST_COPY_OPT 0
+#endif
+static enum a04_dma_result A04DmaSectorMdlClock(struct a04_probe_extension *probe,
+        struct a04_msdc_io *io, ULONG lba, BOOLEAN write, PMDL *mapping, LARGE_INTEGER *requestFrequency)
 {
     PMDL mdl = *mapping;
     enum a04_dma_result result;
@@ -164,8 +170,15 @@ static enum a04_dma_result A04DmaSectorMdl(struct a04_probe_extension *probe,
         *mapping = mdl;
     }
     KeFlushIoBuffers(mdl, write ? FALSE : TRUE, TRUE);
-    KeQueryPerformanceCounter(&frequency);
-    if (frequency.QuadPart <= 0) return A04_DMA_INVALID;
+    /* QPC frequency is fixed at system boot and identical on all CPUs.
+     * Cache only within this serialized request, never the running counter
+     * or the per-sector timeout start. No MMC clock state is involved. */
+    if (requestFrequency && requestFrequency->QuadPart > 0) frequency = *requestFrequency;
+    else {
+        KeQueryPerformanceCounter(&frequency);
+        if (frequency.QuadPart <= 0) return A04_DMA_INVALID;
+        if (requestFrequency) *requestFrequency = frequency;
+    }
     clockContext.probe=probe;
 #ifdef A04_DMA_POLL_TRACE
     clockContext.four=KeQueryActiveProcessorCount(NULL)>=4;
@@ -193,6 +206,22 @@ static enum a04_dma_result A04DmaSectorMdl(struct a04_probe_extension *probe,
         A04Trace(" dma="); A04TraceHex(A04Read32(probe, 0x09c)); A04Trace("\n");
     }
     return result;
+}
+static enum a04_dma_result A04DmaSectorMdl(struct a04_probe_extension *probe,
+        struct a04_msdc_io *io, ULONG lba, BOOLEAN write, PMDL *mapping)
+{ return A04DmaSectorMdlClock(probe, io, lba, write, mapping, NULL); }
+static void A04CopyDmaSector(UCHAR *destination, const UCHAR *source)
+{
+    ULONG j;
+#if A04_MSDC_REQUEST_COPY_OPT
+    ULONG_PTR d=(ULONG_PTR)destination, s=(ULONG_PTR)source;
+    /* Driver bounce and mapped SRB are separate buffers. Preserve the old
+     * forward-copy semantics for any overlapping fixture/input anyway. */
+    if ((d<s && s-d>=512) || (d>s && d-s>=512)) {
+        RtlCopyMemory(destination,source,512);return;
+    }
+#endif
+    for(j=0;j<512;j++)destination[j]=source[j];
 }
 static enum a04_dma_result A04DmaSector(struct a04_probe_extension *probe,
         struct a04_msdc_io *io, ULONG lba, BOOLEAN write)
@@ -847,9 +876,12 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 #endif
         } else {
             struct a04_msdc_io io = {probe, A04Read32, A04Read8, A04Write32};
-            ULONG interrupts = A04Read32(probe, 0x010), failure = 0, j;
+            ULONG interrupts = A04Read32(probe, 0x010), failure = 0;
 #if defined(A04_DMA_DISK_PROBE) && A04_MSDC_REQUEST_MDL_REUSE
             PMDL requestMdl = NULL; /* Owned only by this synchronous RunIo. */
+#if A04_MSDC_REQUEST_QPC_REUSE
+            LARGE_INTEGER requestFrequency = {0};
+#endif
 #endif
 #ifdef A04_ENABLE_WRITES
 #if A04_MSDC_VERBOSE_IO_TRACE
@@ -869,26 +901,33 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
 #ifdef A04_DMA_DISK_PROBE
                 enum a04_dma_result dr;
                 if (result.action == A04_SCSI_WRITE) {
-                    for (j = 0; j < 512; ++j) probe->dma_buffer[j] = data[i * 512 + j];
+                    A04CopyDmaSector(probe->dma_buffer,data+i*512);
                     /* UEFI's card selection explicitly sets RCA 1. */
 #if A04_MSDC_REQUEST_MDL_REUSE
+#if A04_MSDC_REQUEST_QPC_REUSE
+                    dr = A04DmaSectorMdlClock(probe, &io, result.blocks.lba + i, TRUE, &requestMdl, &requestFrequency);
+#else
                     dr = A04DmaSectorMdl(probe, &io, result.blocks.lba + i, TRUE, &requestMdl);
+#endif
 #else
                     dr = A04DmaSector(probe, &io, result.blocks.lba + i, TRUE);
 #endif
                 } else {
 #if A04_MSDC_REQUEST_MDL_REUSE
+#if A04_MSDC_REQUEST_QPC_REUSE
+                    dr = A04DmaSectorMdlClock(probe, &io, result.blocks.lba + i, FALSE, &requestMdl, &requestFrequency);
+#else
                     dr = A04DmaSectorMdl(probe, &io, result.blocks.lba + i, FALSE, &requestMdl);
+#endif
 #else
                     dr = A04DmaSector(probe, &io, result.blocks.lba + i, FALSE);
 #endif
                     if (dr == A04_DMA_OK)
-                        for (j = 0; j < 512; ++j) data[i * 512 + j] = probe->dma_buffer[j];
+                        A04CopyDmaSector(data+i*512,probe->dma_buffer);
                 }
                 if (dr != A04_DMA_OK) { failure = (ULONG)dr; break; }
 #else
                 enum a04_msdc_result pr;
-                UNREFERENCED_PARAMETER(j);
                 if (result.action == A04_SCSI_WRITE) { failure = 1; break; }
                 pr = a04_msdc_read_sector(&io, result.blocks.lba + i, data + i * 512, 512, 200000);
                 if (pr != A04_MSDC_OK) { failure = (ULONG)pr; break; }
