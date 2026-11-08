@@ -328,14 +328,19 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/umd/clear_ddi.c",
-      "source_commit": "729d296b1f4710e9b162a85dca60560d0c22c8ee",
-      "role": "332 bounded readback, retention and durable boundary",
-      "sha256": "a250c2685267ad8ed025e3331f65ede1437e40894d7b81ae4885b4f1bbbf3ae3",
+      "source_commit": "adbd3e5c631bc548f8a402aee40b31a2fd3fa1ef",
+      "role": "332 same-source readback retry input preservation",
+      "sha256": "56b8bfd08b3347e822f85fc9086c235ce38e11403a9b0377fd4fada3ab98f25c",
       "previous_origins": [
         {
           "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
           "sha256": "f06fbe97e6f08001681d5bd2f34cb347e07cbe3e0ac9dfbcb967c95923e9cfe4",
           "role": "Texture326/327 explicit source overlay"
+        },
+        {
+          "source_commit": "729d296b1f4710e9b162a85dca60560d0c22c8ee",
+          "sha256": "a250c2685267ad8ed025e3331f65ede1437e40894d7b81ae4885b4f1bbbf3ae3",
+          "role": "332 bounded readback, retention and durable boundary"
         }
       ]
     },
@@ -1498,6 +1503,13 @@
           "role": "Texture326 binding + source filter327"
         }
       }
+    },
+    {
+      "source_commit": "9d43d5a072a7b2adf8ae027c4039262b26aab5d7",
+      "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_mdl.c",
+      "sha256": "f36e2acb513b2c8e2ced4908655be8105fe18f8073bed1dfa126593564ccf9fc",
+      "baseline_destination_sha256": "fccd79e10942ba155e483c588a849c3943b851f081b04f1703bd4f12c30d54b8",
+      "role": "332 reviewed legacy SG DMA DISPATCH call / PASSIVE wait boundary"
     },
     {
       "source_commit": "9aa8386cf967e8348e0130a23d419cc9b627d0e6",

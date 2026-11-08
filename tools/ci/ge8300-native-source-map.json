@@ -1054,7 +1054,7 @@
       "destination": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_mdl.c",
       "source_commit": "f96948533601f9fdcdcc22b9700aacd96dbf7204",
       "source_sha256": "68080dc39323cb772ea726c90b21c1166ff39a50de6ac821f5a273728e61d21b",
-      "sha256": "fccd79e10942ba155e483c588a849c3943b851f081b04f1703bd4f12c30d54b8",
+      "sha256": "f36e2acb513b2c8e2ced4908655be8105fe18f8073bed1dfa126593564ccf9fc",
       "include_rewrites": [
         [
           "native_owner_mdl.h",
@@ -1069,7 +1069,14 @@
           "../../windows_hw.h"
         ]
       ],
-      "rewrite_includes_only": true
+      "rewrite_includes_only": true,
+      "reviewed_delta": {
+        "source_commit": "9d43d5a072a7b2adf8ae027c4039262b26aab5d7",
+        "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_owner_mdl.c",
+        "sha256": "f36e2acb513b2c8e2ced4908655be8105fe18f8073bed1dfa126593564ccf9fc",
+        "baseline_destination_sha256": "fccd79e10942ba155e483c588a849c3943b851f081b04f1703bd4f12c30d54b8",
+        "role": "332 reviewed legacy SG DMA DISPATCH call / PASSIVE wait boundary"
+      }
     },
     {
       "source": "drivers/gpu/mt8167/vendor_m1_11/native_owner_mdl.h",
