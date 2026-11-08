@@ -183,7 +183,7 @@ static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device,PIRP irp,PRESOURCELIST r
  record.schema=1;record.bytes=sizeof(record);record.inf_revision=
 #if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
 #if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
- 1030;
+ 1031;
 #elif defined(A04_AUDIO_HP_COMPONENT) && A04_AUDIO_HP_COMPONENT
  1028;
 #elif defined(A04_AUDIO_ACCDET_JACK) && A04_AUDIO_ACCDET_JACK
@@ -209,7 +209,9 @@ NTSTATUS Mt8167AddDevice(PDRIVER_OBJECT driver, PDEVICE_OBJECT pdo)
 {
 #if defined(A04_MT8167_OWNER_DIAGNOSTIC) && A04_MT8167_OWNER_DIAGNOSTIC && defined(A04_MT8167_WAVERT_DIAGNOSTIC) && A04_MT8167_WAVERT_DIAGNOSTIC && defined(A04_MT8167_WAVERT_EXPERIMENTAL) && A04_MT8167_WAVERT_EXPERIMENTAL
     return PcAddAdapterDevice(driver,pdo,PCPFNSTARTDEVICE(Mt8167StartDevice),
-#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+        6, /* Render/capture/optional HP pairs share one KS device-header table. */
+#elif defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
         4, /* Existing render pair plus actual capture pair; HFP profile separate. */
 #elif defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
         2,
@@ -219,7 +221,9 @@ NTSTATUS Mt8167AddDevice(PDRIVER_OBJECT driver, PDEVICE_OBJECT pdo)
         sizeof(Mt8167DeviceExtension));
 #else
     return PcAddAdapterDevice(driver, pdo, PCPFNSTARTDEVICE(Mt8167StartDevice),
-#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+        6, /* Render/capture/optional HP pairs share one KS device-header table. */
+#elif defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
         4, /* Existing render pair plus actual capture pair; HFP profile separate. */
 #elif defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
         2,

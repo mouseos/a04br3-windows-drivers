@@ -1,5 +1,9 @@
 #include <initguid.h>
 #include "wavert_registration.h"
+/* PcRegisterSubdevice retains Name for KS create lookup for device lifetime.
+ * Never place these strings on StartDevice's stack (RT8.1 PortCls included). */
+static WCHAR WaveName[]=L"Mt8167WaveRT";
+static WCHAR TopologyName[]=L"Mt8167Topology";
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
 #include "topology_miniport.h"
 #endif
@@ -14,8 +18,7 @@ NTSTATUS Mt8167RegisterWaveRt(PDEVICE_OBJECT device, PIRP irp,
     if (!NT_SUCCESS(status)) return status;
     status = port->Init(device, irp, static_cast<PUNKNOWN>(miniport), NULL, resources);
     if (NT_SUCCESS(status)) {
-        WCHAR name[] = L"Mt8167WaveRT";
-        status = PcRegisterSubdevice(device, name, static_cast<PUNKNOWN>(port));
+        status = PcRegisterSubdevice(device, WaveName, static_cast<PUNKNOWN>(port));
     }
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
     if(NT_SUCCESS(status)) {
@@ -25,8 +28,7 @@ NTSTATUS Mt8167RegisterWaveRt(PDEVICE_OBJECT device, PIRP irp,
         if(NT_SUCCESS(status))
             status=topoPort->Init(device,irp,static_cast<PUNKNOWN>(topology),NULL,resources);
         if(NT_SUCCESS(status)) {
-            WCHAR name[]=L"Mt8167Topology";
-            status=PcRegisterSubdevice(device,name,static_cast<PUNKNOWN>(topoPort));
+            status=PcRegisterSubdevice(device,TopologyName,static_cast<PUNKNOWN>(topoPort));
         }
         if(NT_SUCCESS(status))
             status=PcRegisterPhysicalConnection(device,static_cast<PUNKNOWN>(port),1,

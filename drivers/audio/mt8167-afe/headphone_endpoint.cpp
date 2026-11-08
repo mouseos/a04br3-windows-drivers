@@ -87,7 +87,8 @@ extern "C" NTSTATUS Mt8167RegisterHeadphoneWaveRt(PDEVICE_OBJECT device,PIRP irp
  if(NT_SUCCESS(status))status=PcNewPort(&topo,CLSID_PortTopology);
  if(NT_SUCCESS(status))status=wave->Init(device,irp,static_cast<PUNKNOWN>(miniport),NULL,resources);
  if(NT_SUCCESS(status))status=topo->Init(device,irp,static_cast<PUNKNOWN>(topology),NULL,resources);
- WCHAR waveName[]=L"Mt8167HeadphoneWaveRT",topoName[]=L"Mt8167HeadphoneTopology";
+ /* PortCls retains these names until device teardown, including failed-start unwind. */
+ static WCHAR waveName[]=L"Mt8167HeadphoneWaveRT",topoName[]=L"Mt8167HeadphoneTopology";
  if(NT_SUCCESS(status))status=PcRegisterSubdevice(device,waveName,static_cast<PUNKNOWN>(wave));
  if(NT_SUCCESS(status))status=PcRegisterSubdevice(device,topoName,static_cast<PUNKNOWN>(topo));
  if(NT_SUCCESS(status))status=PcRegisterPhysicalConnection(device,static_cast<PUNKNOWN>(wave),1,static_cast<PUNKNOWN>(topo),0);
