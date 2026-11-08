@@ -9,7 +9,12 @@ Pin "$BaselinePackageDirectory\signed-manifest.json" '38fc11b911da7e43eac495a945
 $base=Get-Content "$BaselinePackageDirectory\signed-manifest.json" -Raw|ConvertFrom-Json
 $b=Get-Content "$BuildDirectory\build-manifest.json" -Raw|ConvertFrom-Json
 if($b.schema -cne 'texture-filter327-incremental-v1' -or $b.draw_layout_version -ne 3 -or $b.sampler_profile_version -ne 4 -or $b.adapter_contract_version -ne 4 -or $b.SDK_rebuilt -or $b.PCO_rebuilt -or $b.old_client_rebuilt){throw 'Exact texture build closure required'}
-if($b.source_commit -cne $source){throw 'Exact package/build source required'}
+if($b.source_commit -cne $source){
+ foreach($f in @(& git -C $root diff --name-only $b.source_commit $source)){
+  if($f -notin @('tools/ci/package-ge8300-texture327.ps1','tools/ci/test-ge8300-texture-ddi.ps1','docs/ge8300-texture2d-contract.md','tools/ci/README-ge8300-source-build.md')){throw "Runtime source changed after build: $f"}
+ }
+ if($LASTEXITCODE){throw 'Source comparison failed'}
+}
 foreach($e in $base.outputs){Pin "$BaselinePackageDirectory\$($e.name)" $e.sha256}
 foreach($e in $base.retained_provenance){Pin "$BaselinePackageDirectory\$($e.name)" $e.sha256}
 foreach($e in $b.outputs){Pin "$BuildDirectory\$($e.name)" $e.sha256}

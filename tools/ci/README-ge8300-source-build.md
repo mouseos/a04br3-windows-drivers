@@ -1,3 +1,12 @@
+# 現行327 source build
+
+公開branchは`work/ge8300-texture-filter327`。ルートREADMEのshallow clone手順から
+通常`build-ge8300-from-source.ps1 -EnableCandidate -RunHostTests`を使う。
+326 texture overlay＋327 regular filter＋独立standard clientまでsource gateへ固定済み。
+native58/compiler372TUを全sourceからbuildする経路と、既存依存からの増分署名は区別する。
+現hostは増分検証のみで、通常fullbuild/CI全実行済みとは主張しない。
+以下は以前の手順の履歴として保持する。
+
 > 3.25追記: work/ge8300-single-checkout325 はnative322+viewport325、KMD320、UMDshader323+bounded input witnessを保持。
 > origins/map/validatorは、元native出自を残した固定2file overlayだけを許可する。324 laneは含まない。
 > source buildは旧cache無し。既存署名package325のbyte再現・実機成功は未主張。以下の323手順を同branchで使う。

@@ -1,3 +1,39 @@
+# 後続327：format/filter契約と標準readback client（実機未検証）
+
+325/326凍結。独立branch `work/ge8300-texture-filter327`。
+一次DDI: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3d10umddi/nc-d3d10umddi-pfnd3d10ddi_checkformatsupport
+はSHADER_SAMPLEを「any filter」と規定する。POINT限定326でこのbitを立てなかった判断を維持する。
+327では通常min/mag/mip POINT/LINEAR全8組合せとanisotropicを実descriptorへ結合した。
+Mesa `pvr_arch_sampler.c` と `rogue/texstate.xml` のMINFILTER38/MAGFILTER36/MIPFILTER40/
+ANISOCTL33..35に従い、anisotropyはMesa同様2/4/8/16以下の比率へ選択する。
+比較・reduction・mono-textには別資格があり、関連format bitは追加しない。
+
+adapter private contract4で新peerを交渉。drawのlayout3は変更せず、sampler_profileに
+明示semantic version4(0x04000000)、filter byte、MaxAnisotropy byteを格納する。
+全consumerがreserved/enum/versionを検査。326 peerは新profileを拒否する。
+CLAMPのみ、bias0、LOD範囲がlevel0を含む、single-mipの有限resource制限は継続。
+NULL samplerは既存typed_stateの正当な既定LINEARを使用し、POINT代替しない。
+この実装範囲に基づきBGRA8の非比較SHADER_SAMPLE bitを追加。通常FL10の全資格は未達。
+
+新`ge8300-d3d-texture.exe`は旧f3afとは別ファイル。旧clientはbyte保持。
+既存2色clear→triangle→colorが通った後のみ、標準D3D11 CreateTexture2D/SRV/Sampler/PSSet/
+Draw/CopyResource/Mapで非一様2x2(red/green/blue/white)を実samplingする。
+POINT4隅、LINEAR中心/半境界/CLAMP外側、NULL既定LINEARの8pass。
+各UVは実immutable constant bufferを経由し、HLSL SAMPLEを本物D3DCompileが生成したDXBCから
+NIR/PCOへ変換する。固定USCやCPU-generated sampling結果をtargetへ書かない。
+全480000pixelを独立triangle幾何・期待色で検査、2pixel程度のedge bandを除外、
+UNORM許容差2、非zero interior/exteriorを要求。失敗/未完はsuccessにしない。
+121遅延logに対応する標準state-bind前後だけ新clientへbounded記録を追加した。
+電源抑止、IRQ、CPU profile、reset根拠のない機能patchは無し。
+
+通常clone→`build-ge8300-from-source.ps1`へ326 overlay込みを統合。
+reviewed native overlay11、native58TU、compiler372TU、前段legacy source114fileを厳密保持。
+全overlay source/hashとnative mappingを固定し、任意vendor置換やsource gate緩和をしない。
+新HLSL/incもLF固定。通常fullbuildはcache/private hive不要、SDK/PCOは既存正規toolchainが前提。
+現hostでPCO/SDK全buildは行わず、11TU増分＋保持依存を検証する。
+
+---
+
 # Texture2Dの限定実装候補（326、実機未検証）
 
 実装基点はnative322＋viewport325、KMD320、UMD shader323。324 lane修正を混ぜていない。
