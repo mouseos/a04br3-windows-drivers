@@ -1012,5 +1012,7 @@
       "native_reference_source_sha256": "814e814018661078b2f0f62901afa88b656590c0b1a3c2a1b9f2eabd61aec33d",
       "selection": "Shared wire framing and KMD-internal declarations use KMD320, not the older private native checkout copy"
     }
-  ]
+  ],
+  "native_unit_count": 54,
+  "native_unit_sources_sha256": "e901ed65337a7f2d40a046ebd8883597c1a3d61af401e0869759337ae7592a91"
 }

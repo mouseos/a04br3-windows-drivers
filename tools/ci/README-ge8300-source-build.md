@@ -34,13 +34,13 @@ python -B tools/ci/verify-ge8300-fullsource.py
 
 nativeは`vendor_m1_11/render_owner`の必要113fileだけを固定native322から取り込み、相対includeのみ補正した。package側treeに残る旧vendor実装をnative322の正本と誤認しない。元vendor/DOD114fileは保持し、全面置換しない。共有parent実装/EDK共通の変更はない。
 
-`ge8300-native-source-map.json`がnative元commit/hash/include補正を記録し、`ge8300-fullsource-origins.json`がKMD/UMD/client/legacyのsource hashを固定する。source verifierはGit履歴を読まず、shallow checkout内だけで全sourceとcompiler snapshot597fileを照合する。Windows checkoutの改行は.gitattributesで固定する。
+`ge8300-native-source-map.json`がnative元commit/hash/include補正を記録し、`ge8300-fullsource-origins.json`がKMD/UMD/client/legacyのsource hashを固定する。source verifierはGit履歴を読まず、shallow checkout内だけで全sourceとcompiler snapshot597fileを照合する。native54TUのmap自体も固定し、scope内sourceが正しくてもcompile先だけ旧vendorへ戻す誤結合やreset helper欠落を拒否する。Windows checkoutの改行は.gitattributesで固定する。
 
 `third_party/mesa-pco`はMesa `0d94b3f397fb9cf8470bb5600ada8af79ff5361a`由来の消費source、target中立生成C/header、Windows ARM portのsnapshot。370TUをsource compileし、prebuilt compiler archiveを入力にしない。生成済みC/headerがあるので別machineのMeson cacheは不要。license、port patch、元hashはsource-planに保持する。旧fullsource320とcompiler snapshotは同byteである。
 
 ## 回帰とCI
 
-`-RunHostTests`はactual clear engine回帰と、実WDK構造体/production tokenized wrapper/SM4 decoder回帰を実行する。旧wrapperの未設定type拒否を再現し、修正版では00/A5/FFのtype storageでも固定client VS/PSを受理、MinPrecision/unsupported opcodeを拒否する。旧source fixtureはtree内に固定し、過去commitへgit-showしない。PCO code生成はこのwrapper回帰ではstub化されるが、driver DLLには本物のsource-built PCO/pairがlinkされる。
+`-RunHostTests`は隔離source fixtureでの旧vendor誤結合/単位欠落/別TU alias拒否、actual clear engine回帰と、実WDK構造体/production tokenized wrapper/SM4 decoder回帰を実行する。旧wrapperの未設定type拒否を再現し、修正版では00/A5/FFのtype storageでも固定client VS/PSを受理、MinPrecision/unsupported opcodeを拒否する。旧source fixtureはtree内に固定し、過去commitへgit-showしない。PCO code生成はこのwrapper回帰ではstub化されるが、driver DLLには本物のsource-built PCO/pairがlinkされる。
 
 `.github/workflows/ge8300-source-build.yml`はworkflow_dispatchのみ、contents:read、self-hosted `[Windows,X64,wdk81-arm32]`で同じ公開wrapperを使う。checkoutはdepth1。SDKのinstall、private input、署名、実機操作はしない。SYS/DLL/clientとcomponent manifests/host receipt/source originsを回収する。
 

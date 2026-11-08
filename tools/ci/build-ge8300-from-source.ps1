@@ -38,6 +38,8 @@ $scOldTemp=$env:TEMP;$scOldTmp=$env:TMP
 try{
  $env:TEMP="$scOut\tmp";$env:TMP=$env:TEMP
  if($RunHostTests){
+  & python -B "$PSScriptRoot\test-ge8300-fullsource-gate.py" --output "$scOut\source-gate-tests"
+  if($LASTEXITCODE){throw 'Wrong-source native compilation map regression failed'}
   & "$PSScriptRoot\test-ge8300-render-residency.ps1" -OutputDirectory "$scOut\host-tests" -VcToolsDirectory $scVc -WindowsKit10Version $WindowsKit10Version
   & "$PSScriptRoot\test-ge8300-rt-signature323.ps1" -OutputDirectory "$scOut\host-tests\signature323" -VcToolsDirectory $scVc -WindowsKit10Version $WindowsKit10Version
  }
