@@ -40,14 +40,14 @@
     "f7f997105c11eb60142e1992867533f20dd009ff1dc2cd8f3b49c50e005bf53e"
   ],
   "state_rebind_proof": {
-    "path": "port/xnu/out/private-windows-rt-combined-run141-registry-post/receipt.json",
+    "path": "port/xnu/out/windows-rt-combined142-audio-classfix/fresh142-nativepost-main.json",
     "sha256": "d22256e824d83fcdac5741dee01e49bf84dc47e5a52360987bc0c1dd9759cf75"
   },
   "fresh_manifest_sha256": "f5ee192fd738b6db129064e71e43bc0a80bf35c6341e0177d468e3bbd6283e37",
   "fresh_recovery_boot_id": "1eb91bc2-cb82-4433-85f1-a70b3570529e",
   "baseline_state": "fresh142 actual parent1115 installed on disk; AFE1027 selected; current boot1fef retained",
   "current_boot_proof": {
-    "path": "port/gsi/logs/ios-feasibility/windows-rt-combined-run141/result.json",
+    "path": "port/xnu/out/windows-rt-combined142-audio-classfix/run141-main-state-proof.json",
     "sha256": "095e8db714b9211b71de26dc2e5f17786a0a4ccec20ecc04a5baad702ebe9af2"
   }
 }
