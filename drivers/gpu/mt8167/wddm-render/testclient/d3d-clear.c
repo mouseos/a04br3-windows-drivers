@@ -17,6 +17,15 @@
 #ifdef GEO_COLOR_PAIR_CLIENT
 #include "color_shaders.h"
 #endif
+#ifdef GEO_PIXEL_RESULT_CLIENT
+#include "pixel_progress.h"
+#define GEO_PIXEL_RESULT(kind,pass,match,mismatch,a,b,c,hash,passed) do { \
+ if(!geo_pixel_result(kind,pass,match,mismatch,a,b,c,hash,passed)){ \
+  ID3D11DeviceContext_Unmap(ctx,(ID3D11Resource *)staging,0);hr=E_FAIL;goto done;} \
+} while(0)
+#else
+#define GEO_PIXEL_RESULT(kind,pass,match,mismatch,a,b,c,hash,passed) ((void)0)
+#endif
 /* Freestanding fixed-operation probe; no private device IOCTL or payload. */
 static HANDLE disk;
 static int log_ok=1;
@@ -184,7 +193,7 @@ static HRESULT triangle_probe(ID3D11Device *device,ID3D11DeviceContext *ctx,ID3D
  D3D11_INPUT_ELEMENT_DESC element={"POSITION",0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,0,D3D11_INPUT_PER_VERTEX_DATA,0};
  D3D11_BUFFER_DESC b={0};D3D11_SUBRESOURCE_DATA initial={0};D3D11_RASTERIZER_DESC rs={0};D3D11_VIEWPORT viewport={0};D3D11_MAPPED_SUBRESOURCE map;
  static const FLOAT v[3][4]={{-0.8f,0.8f,0.5f,1},{0.8f,0.8f,0.5f,1},{0,-0.8f,0.5f,1}};
- static const FLOAT red[4]={1,0,0,1},black[4]={0,0,0,1};UINT stride=16,offset=0,x,y,reds=0,blacks=0,other=0,hash=2166136261u,samples=0;HRESULT hr;
+ static const FLOAT red[4]={1,0,0,1},black[4]={0,0,0,1};UINT stride=16,offset=0,x,y,reds=0,blacks=0,other=0,hash=2166136261u,samples=0,upper=0,lower=0;HRESULT hr;
  hr=ID3D11Device_CreateVertexShader(device,geo_position_vs,sizeof(geo_position_vs),NULL,&vs);line("TRIANGLE_VS_HRESULT",hr);if(FAILED(hr))goto done;
  hr=ID3D11Device_CreatePixelShader(device,geo_constant_ps,sizeof(geo_constant_ps),NULL,&ps);line("TRIANGLE_PS_HRESULT",hr);if(FAILED(hr))goto done;
  hr=ID3D11Device_CreateInputLayout(device,&element,1,geo_position_vs,sizeof(geo_position_vs),&layout);line("TRIANGLE_LAYOUT_HRESULT",hr);if(FAILED(hr))goto done;
@@ -286,8 +295,10 @@ static HRESULT triangle_probe(ID3D11Device *device,ID3D11DeviceContext *ctx,ID3D
   const BYTE *p=(const BYTE *)map.pData+y*map.RowPitch+x*4;UINT pixel=p[0]|((UINT)p[1]<<8)|((UINT)p[2]<<16)|((UINT)p[3]<<24);
   if(pixel==0xffff0000u)reds++;else if(pixel==0xff000000u)blacks++;else other++;hash=(hash^pixel)*16777619u;
  }
- {const BYTE *p=(const BYTE *)map.pData+100u*map.RowPitch+160u*4u;UINT value=p[0]|((UINT)p[1]<<8)|((UINT)p[2]<<16)|((UINT)p[3]<<24);line("TRIANGLE_UPPER_INTERIOR",value);if(value!=0xffff0000u)samples++;}
- {const BYTE *p=(const BYTE *)map.pData+500u*map.RowPitch+160u*4u;UINT value=p[0]|((UINT)p[1]<<8)|((UINT)p[2]<<16)|((UINT)p[3]<<24);line("TRIANGLE_LOWER_EXTERIOR",value);if(value!=0xff000000u)samples++;}
+ {const BYTE *p=(const BYTE *)map.pData+100u*map.RowPitch+160u*4u;UINT value=p[0]|((UINT)p[1]<<8)|((UINT)p[2]<<16)|((UINT)p[3]<<24);upper=value;if(value!=0xffff0000u)samples++;}
+ {const BYTE *p=(const BYTE *)map.pData+500u*map.RowPitch+160u*4u;UINT value=p[0]|((UINT)p[1]<<8)|((UINT)p[2]<<16)|((UINT)p[3]<<24);lower=value;if(value!=0xff000000u)samples++;}
+ GEO_PIXEL_RESULT(2,0,reds+blacks,other,reds,blacks,samples,hash,reds&&blacks&&!other&&!samples);
+ line("TRIANGLE_UPPER_INTERIOR",upper);line("TRIANGLE_LOWER_EXTERIOR",lower);
  line("TRIANGLE_RED_PIXELS",reds);line("TRIANGLE_BLACK_PIXELS",blacks);line("TRIANGLE_OTHER_PIXELS",other);line("TRIANGLE_HASH",hash);line("TRIANGLE_SAMPLE_MISMATCH",samples);
  ID3D11DeviceContext_Unmap(ctx,(ID3D11Resource *)staging,0);hr=(!reds||!blacks||other||samples)?E_FAIL:S_OK;
  done:
@@ -336,6 +347,7 @@ static HRESULT color_probe(ID3D11Device *device,ID3D11DeviceContext *ctx,ID3D11R
   }else if(w[0]<-16||w[1]<-16||w[2]<-16){exterior++;if(value!=0xff000000u)mismatch++;}
   else edge++;
  }
+ GEO_PIXEL_RESULT(3,0,interior+exterior-mismatch,mismatch,interior,exterior,edge,hash,interior>140000&&exterior>300000&&!mismatch);
  ID3D11DeviceContext_Unmap(ctx,(ID3D11Resource *)staging,0);
  line("COLOR_INTERIOR",interior);line("COLOR_EXTERIOR",exterior);line("COLOR_EDGE_EXCLUDED",edge);line("COLOR_TOLERANCE_UNORM8",2);line("COLOR_MISMATCH",mismatch);line("COLOR_HASH",hash);
  hr=interior>140000&&exterior>300000&&!mismatch?S_OK:E_FAIL;
@@ -406,6 +418,7 @@ static HRESULT probe(IDXGIAdapter *adapter) {
    UINT v=(UINT)b[0]|((UINT)b[1]<<8)|((UINT)b[2]<<16)|((UINT)b[3]<<24);
    if(v==expected[pass])match++;else mismatch++;
   }
+  GEO_PIXEL_RESULT(1,pass,match,mismatch,expected[pass],480000,0,0,!mismatch);
   ID3D11DeviceContext_Unmap(ctx,(ID3D11Resource *)staging,0);
   line("MATCH",match);line("MISMATCH",mismatch);
   if(mismatch){hr=E_FAIL;goto done;}
