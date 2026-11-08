@@ -41,7 +41,7 @@ def main():
  if signed_source!=a.source_commit:
   subprocess.run(['git','-C',str(repo),'merge-base','--is-ancestor',signed_source,a.source_commit],check=True)
   changed=set(subprocess.check_output(['git','-C',str(repo),'diff','--name-only',signed_source,a.source_commit],text=True).splitlines())
-  require(changed and changed<={'tools/winpe/build-private-peripheral-batch-media.py','tools/winpe/private_hardware_probe_input.py','docs/peripheral-batch.md','tools/recovery/prepare-offline-system-service.ps1','tools/ci/build-combined124-service.ps1'},'署名後の差分は明示media toolingだけを許可')
+  require(changed and changed<={'tools/winpe/build-private-peripheral-batch-media.py','tools/winpe/private_hardware_probe_input.py','docs/peripheral-batch.md','tools/recovery/prepare-offline-system-service.ps1','tools/ci/build-combined124-service.ps1','tools/recovery/prepare-peripheral-followup124.py'},'署名後の差分は明示media toolingだけを許可')
  require(sm.get('source_commit')==signed_source and sm.get('source_dirty') is False and sm.get('profile')==PROFILE and sm.get('service')==SERVICE and sm.get('signature_status')=='Valid' and sm.get('signer_thumbprint')==SIGNER,'同sourceの専用署名service必須')
  require(sm['policy']==p and sha(service/'peripheral-policy.json')==sm['policy_manifest_sha256'] and sha(service/(SERVICE+'.exe'))==sm['exe_sha256'] and (service/'peripheral-batch-policy.h').read_text()==generate(p),'signed policy/header/EXE不一致')
  if a.next_profile or a.combined124_profile:

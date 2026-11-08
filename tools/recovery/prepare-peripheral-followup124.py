@@ -92,7 +92,9 @@ def build_policy(root,path,finalize=False):
  ne=m['native_baseline'];np=rooted(root,ne['path']);require(sha(np)==ne['sha256'],'Old service snapshot pin mismatch');n=read(np);require(n['source_manifest_sha256']==FRESH and n['errors']==[] and n['originals_unchanged'] and set(n['old_services'])==set(m['old_services']),'Seven old service snapshot source mismatch');CURRENT_OLD_SERVICES=n['old_services']
  CURRENT_CLIENTS=[]
  for name in ('battery_temperature','accdet_status','afe_jack','rotation','wlan_scan','gpu_suite'):
-  v=m['diagnostics'][name];require(sha(rooted(root,v['directory'])/v['exe'])==v['sha256'],'Signed client byte pin mismatch');CURRENT_CLIENTS.append({**v,'name':name})
+  v=m['diagnostics'][name];require(sha(rooted(root,v['directory'])/v['exe'])==v['sha256'],'Signed client byte pin mismatch')
+  for dep in v.get('dependencies',[]):require(sha(rooted(root,v['directory'])/dep['exe'])==dep['sha256'],'Signed client dependency byte pin mismatch')
+  CURRENT_CLIENTS.append({**v,'name':name})
  preserved_sources={e['source_path']:(Path(m['fresh']['path']).parent/e['backup_path']).as_posix() for e in fm['files'] if e['source_path'] in CURRENT_PRESERVED}
  for name in CURRENT_PRESERVED:
   if name not in preserved_sources:preserved_sources[name]='port/xnu/out/private-windows-rt-peripheral-run123-diagnostics/fixed/'+name
