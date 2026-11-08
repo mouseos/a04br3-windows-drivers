@@ -11,7 +11,7 @@ static DWORD bt_find(HDEVINFO set,const WCHAR *id,SP_DEVINFO_DATA *found,DWORD *
 }
 static DWORD bt_first_install(void){
  struct {DWORD schema,bytes,result,imported,registered,installed,reboot_required,no_live_restart;WCHAR published_inf[260];} proof={1,552,0,0,0,0,0,1,{0}};
- WCHAR dir[MAX_PATH],p[3][MAX_PATH],sys[MAX_PATH],drivers[MAX_PATH],installed[MAX_PATH];HANDLE held[5]={INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE},directory=INVALID_HANDLE_VALUE;const WCHAR *members[5]={NULL,NULL,NULL,NULL,NULL};HDEVINFO set=INVALID_HANDLE_VALUE;SP_DEVINFO_DATA dev;SP_DEVINSTALL_PARAMS_W params;SP_DRVINFO_DATA_W driver,extra;DWORD e=0,n,i,matches=0,saved;int list=0;SC_HANDLE scm=NULL,svc=NULL;
+ static WCHAR dir[MAX_PATH],p[3][MAX_PATH],sys[MAX_PATH],drivers[MAX_PATH],installed[MAX_PATH];HANDLE held[5]={INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE},directory=INVALID_HANDLE_VALUE;const WCHAR *members[5]={NULL,NULL,NULL,NULL,NULL};HDEVINFO set=INVALID_HANDLE_VALUE;SP_DEVINFO_DATA dev;static SP_DEVINSTALL_PARAMS_W params;static SP_DRVINFO_DATA_W driver,extra;DWORD e=0,n,i,matches=0,saved;int list=0;SC_HANDLE scm=NULL,svc=NULL;
  e=path(dir,base_directory,L"bt2013");if(!e)e=hold_directory(dir,&directory);
  /* generated order INF,SYS,CAT */
  for(i=0;!e&&i<3;i++){e=path(p[i],dir,aux_bt_files[i].name);members[i]=p[i];if(!e)e=deferred_file(p[i],aux_bt_files[i].hash,&held[i]);}
