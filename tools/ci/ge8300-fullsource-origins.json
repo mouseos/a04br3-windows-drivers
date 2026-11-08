@@ -683,13 +683,17 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/compiler/witness_codec.c",
-      "source_commit": "6a3e94a9eb4dbe90ffbefdb297c489c2e9d8d3cf",
-      "sha256": "114ad3f03106260609caec0d1fb94159650410433710dbc2eca134d90d2f81f6",
+      "source_commit": "f0a950c1f8ed31a3f5a75fd4798d219c18f8bc60",
+      "sha256": "a0f617541f5c6037bf56f4deed12182cd1a37254b0a49f5fdeee674a31ab433f",
       "role": "New ABI4 witness source329",
       "previous_origins": [
         {
           "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
           "sha256": "63bac4c512515435308bf6c873f4598b73d69ba27d0bcbbb421340e8072cc6c5"
+        },
+        {
+          "source_commit": "6a3e94a9eb4dbe90ffbefdb297c489c2e9d8d3cf",
+          "sha256": "114ad3f03106260609caec0d1fb94159650410433710dbc2eca134d90d2f81f6"
         }
       ]
     },
@@ -1194,7 +1198,7 @@
       "sha256": "4c991fe32b1b5a6ffe47b01f2b1dac3f1afa1547e8a2ab93702d06808d5099f1"
     }
   ],
-  "compiler_source_plan_sha256": "20b5c3d2b96b144bfc5a06ebad0011cac7e7fbcb7cefaf83c59ff3f16dca3a49",
+  "compiler_source_plan_sha256": "0914e239481a2a82badc70e8b2dd805c26c60da54332f52a5b2a2ce1af131afb",
   "old_driver_cache_required": false,
   "git_history_required": false,
   "hardware_verified": false,

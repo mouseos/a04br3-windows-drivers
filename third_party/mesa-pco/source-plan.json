@@ -31112,9 +31112,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/compiler/witness_codec.c",
-      "sha256": "114ad3f03106260609caec0d1fb94159650410433710dbc2eca134d90d2f81f6",
-      "origin": "Isolated witness source329:6a3e94a9eb4dbe90ffbefdb297c489c2e9d8d3cf",
-      "previous_sha256": "63bac4c512515435308bf6c873f4598b73d69ba27d0bcbbb421340e8072cc6c5"
+      "sha256": "a0f617541f5c6037bf56f4deed12182cd1a37254b0a49f5fdeee674a31ab433f",
+      "origin": "Freestanding witness bit-scan:f0a950c1f8ed31a3f5a75fd4798d219c18f8bc60",
+      "previous_sha256": "114ad3f03106260609caec0d1fb94159650410433710dbc2eca134d90d2f81f6"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/compiler/witness_info.c",

@@ -27,7 +27,7 @@ for r in bm['existing_compiler_libraries']:pin(compiler/r['name'],r['sha256'])
 if a.resume_source:
  if not out.exists() or len(a.resume_source)!=40:raise ValueError('Existing output and full previous source pin required')
  changed=capture(['git','-C',root,'diff','--name-only',a.resume_source,commit]).splitlines()
- if any(n not in ['tools/ci/build-ge8300-native-shader329.py','README.md'] for n in changed):raise ValueError('Resume source changed outside the reviewed helper')
+ if any(n not in ['tools/ci/build-ge8300-native-shader329.py','README.md','drivers/gpu/mt8167/wddm-render/compiler/witness_codec.c','tests/ge8300_witness_codegen.c','third_party/mesa-pco/source-plan.json','tools/ci/ge8300-fullsource-origins.json'] for n in changed):raise ValueError('Resume source changed outside the reviewed helper')
 out.mkdir(parents=True,exist_ok=bool(a.resume_source));(out/'tmp').mkdir(exist_ok=bool(a.resume_source));os.environ.update(TEMP=str(out/'tmp'),TMP=str(out/'tmp'),TMPDIR=str(out/'tmp'))
 # baseline is source/build/filter327
 oldroot=base.parent.parent
@@ -44,6 +44,7 @@ nf=next(r['arguments'] for r in bm['compiled_units'] if r['role']=='native')
 uf=next(r['arguments'] for r in bm['compiled_units'] if r['role']=='UMD')
 kf=next(r['arguments'] for r in bm['compiled_units'] if r['role']=='KMD')
 nf=[str(s).replace(str(oldroot),str(root)) for s in nf]
+saved={ (r['role'],r['object']):r for r in load(out/'compiled-checkpoint.json')} if a.resume_source and (out/'compiled-checkpoint.json').exists() else {}
 records=[];archives=[];newmap=load(root/'tools/ci/ge8300-native-source-map.json')['native_unit_sources']
 oldmap=load(oldroot/'tools/ci/ge8300-native-source-map.json')['native_unit_sources']
 # Compiler adapters are changed; 31 existing PCO core archive members survive.
@@ -57,7 +58,8 @@ def extract(path,tag):
  return members,before,after
 
 def compile_one(source,obj,flags,role):
- recovered=bool(a.resume_source and obj.exists())
+ prior=saved.get((role,obj.name))
+ recovered=bool(a.resume_source and obj.exists() and prior and prior['source_sha256']==sha(root/source) and prior['arguments']==flags and prior['object_sha256']==sha(obj))
  # The prior immutable invocation stopped before its next source read; existing
  # objects were produced by successful checked calls under the same C/H tree.
  if not recovered:run(['clang',*flags,'-c',root/source,'-o',obj])
