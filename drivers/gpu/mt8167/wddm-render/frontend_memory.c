@@ -3,7 +3,8 @@
 #include "frontend_memory.h"
 struct geo_mdl_record {
  struct geo_mdl_record *next;struct geo_kmd_adapter *adapter;
- struct geo_allocation *allocation;PMDL source,pinned;
+ struct geo_allocation *allocation;PMDL source,identity,view,pinned;
+ ULONG mdl_offset_pages;
  ULONG active_bytes,page_bytes,native_refs;UINT map_ref,fault;
 };
 static void lock(struct geo_kmd_adapter *a){KeWaitForSingleObject(&a->memory_lock,Executive,KernelMode,FALSE,NULL);}
@@ -19,7 +20,7 @@ static BOOLEAN unlink_unused(struct geo_mdl_record *r) {
  if(!*link){InterlockedExchange(&a->memory_fault,1);return FALSE;}
  *link=r->next;InterlockedDecrement(&a->memory_record_count);return TRUE;
 }
-static void free_record(struct geo_mdl_record *r){GeoUnpinVidMmPages(r->pinned);ExFreePoolWithTag(r,'rMeG');}
+static void free_record(struct geo_mdl_record *r){GeoUnpinVidMmSpan(r->view,r->pinned);ExFreePoolWithTag(r,'rMeG');}
 static NTSTATUS acquire(void *context,PMDL mdl) {
  struct geo_mdl_record *r=context;struct geo_kmd_adapter *a;NTSTATUS status=STATUS_INVALID_PARAMETER;
  if(!r||!(a=r->adapter)||KeGetCurrentIrql()!=PASSIVE_LEVEL)return status;
@@ -42,7 +43,7 @@ static NTSTATUS resolve(void *context,PMDL source,ULONG active,struct geo_fronte
  struct geo_kmd_adapter *a=context;struct geo_mdl_record *r;NTSTATUS status=STATUS_NOT_FOUND;
  if(!a||!source||!out||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  lock(a);
- for(r=a->memory_records;r;r=r->next)if(r->map_ref&&r->source==source&&r->active_bytes==active) {
+ for(r=a->memory_records;r;r=r->next)if(r->map_ref&&r->identity==source&&r->active_bytes==active) {
   if(r->fault||InterlockedCompareExchange(&a->memory_fault,0,0)){status=STATUS_DEVICE_NOT_READY;break;}
   RtlZeroMemory(out,sizeof(*out));out->size=sizeof(*out);out->version=1;out->origin=GEO_MDL_VIDMM_CACHED_SHADOW;
   out->active_bytes=active;out->page_bytes=r->page_bytes;out->mdl=r->pinned;out->context=r;
@@ -56,21 +57,42 @@ void GeoInitializeFrontendMemory(struct geo_kmd_adapter *a) {
  KeInitializeMutex(&a->memory_lock,0);a->memory_api.size=sizeof(a->memory_api);a->memory_api.version=1;
  a->memory_api.context=a;a->memory_api.resolve=resolve;a->memory_ready=1;
 }
-NTSTATUS GeoBeginVidMmMap(struct geo_kmd_adapter *a,struct geo_allocation *allocation,PMDL source,ULONG active) {
+static NTSTATUS begin_span(struct geo_kmd_adapter *a,struct geo_allocation *allocation,PMDL source,
+ ULONG offset_pages,SIZE_T mapped_pages,ULONG active,PMDL *selected) {
  struct geo_mdl_record *r;struct geo_allocation *scan;NTSTATUS status;
+ if(selected)*selected=NULL;
  if(!a||!a->memory_ready||!allocation||!source||KeGetCurrentIrql()!=PASSIVE_LEVEL||
-    !active||active>4194304||a->engine.poisoned||allocation->bound)return STATUS_INVALID_PARAMETER;
- /* Actual VidMm MAP_APERTURE caller and a live allocation created by our
-  * CreateAllocation path (always Cached/CpuVisible system backing). */
+    !active||active>4194304||a->engine.poisoned||allocation->bound||
+    mapped_pages!=(SIZE_T)BYTES_TO_PAGES(active))return STATUS_INVALID_PARAMETER;
+ /* Caller serializes allocation lifetime with the session PASSIVE lock.
+  * Physical source span validation/pin is independent of source MDL size. */
  for(scan=a->engine.allocations;scan&&scan!=allocation;scan=scan->next){}
- if(!scan||active!=(ULONG)((uint64_t)allocation->desc.pitch*allocation->desc.height))return STATUS_INVALID_PARAMETER;
- r=ExAllocatePoolWithTag(NonPagedPool,sizeof(*r),'rMeG');if(!r)return STATUS_INSUFFICIENT_RESOURCES;
- RtlZeroMemory(r,sizeof(*r));r->adapter=a;r->allocation=allocation;r->source=source;r->active_bytes=active;r->page_bytes=ROUND_TO_PAGES(active);
+ if(!scan||(uint64_t)active!=(uint64_t)allocation->desc.pitch*allocation->desc.height)return STATUS_INVALID_PARAMETER;
  lock(a);
- if(mapped(a,allocation)||InterlockedCompareExchange(&a->memory_fault,0,0)){unlock(a);ExFreePoolWithTag(r,'rMeG');return STATUS_DEVICE_BUSY;}
- status=GeoPinVidMmPages(source,r->page_bytes,&r->pinned);
- if(NT_SUCCESS(status)){r->map_ref=1;r->next=a->memory_records;a->memory_records=r;InterlockedIncrement(&a->memory_record_count);}
- unlock(a);if(!NT_SUCCESS(status))ExFreePoolWithTag(r,'rMeG');return status;
+ if(mapped(a,allocation)||InterlockedCompareExchange(&a->memory_fault,0,0)){unlock(a);return STATUS_DEVICE_BUSY;}
+ unlock(a);
+ r=ExAllocatePoolWithTag(NonPagedPool,sizeof(*r),'rMeG');if(!r)return STATUS_INSUFFICIENT_RESOURCES;
+ RtlZeroMemory(r,sizeof(*r));r->adapter=a;r->allocation=allocation;r->source=source;
+ r->mdl_offset_pages=offset_pages;r->active_bytes=active;r->page_bytes=ROUND_TO_PAGES(active);
+ /* Probe can fault/sleep. Do not hold memory_lock across the WDM pin. */
+ status=GeoPinVidMmSpan(source,offset_pages,r->page_bytes,&r->view,&r->pinned);
+ if(!NT_SUCCESS(status)){ExFreePoolWithTag(r,'rMeG');return status;}
+ r->identity=selected?r->view:source; /* Legacy zero-offset ABI remains usable. */
+ lock(a);
+ if(mapped(a,allocation)||InterlockedCompareExchange(&a->memory_fault,0,0)){
+  unlock(a);free_record(r);return STATUS_DEVICE_BUSY;
+ }
+ r->map_ref=1;r->next=a->memory_records;a->memory_records=r;InterlockedIncrement(&a->memory_record_count);
+ if(selected)*selected=r->view;
+ unlock(a);return STATUS_SUCCESS;
+}
+NTSTATUS GeoBeginVidMmMapSpan(struct geo_kmd_adapter *a,struct geo_allocation *allocation,PMDL source,
+ ULONG offset_pages,SIZE_T mapped_pages,ULONG active,PMDL *selected) {
+ if(!selected)return STATUS_INVALID_PARAMETER;
+ return begin_span(a,allocation,source,offset_pages,mapped_pages,active,selected);
+}
+NTSTATUS GeoBeginVidMmMap(struct geo_kmd_adapter *a,struct geo_allocation *allocation,PMDL source,ULONG active) {
+ return begin_span(a,allocation,source,0,(SIZE_T)BYTES_TO_PAGES(active),active,NULL);
 }
 NTSTATUS GeoConfirmVidMmBind(struct geo_kmd_adapter *a,struct geo_allocation *allocation) {
  struct geo_mdl_record *r;NTSTATUS status=STATUS_INVALID_DEVICE_STATE;
