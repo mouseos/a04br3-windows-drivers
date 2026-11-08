@@ -255,9 +255,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/miniport.c",
-      "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
-      "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition",
-      "sha256": "448fcb2cf92f946dab1119b04f5bfbe595d742c692df76b1bfa6d8b8d078b5d3",
+      "source_commit": "fbabbedde025052337a5659f21882d3ff4ca28b2",
+      "role": "Moduleidentity339 evidence-only DriverObject load record, initialization PASSIVE only",
+      "sha256": "effc326bb21e2b18388776a9f74fe5c9dc0217cb243f809c3e9adc745022f4ca",
       "previous_origins": [
         {
           "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
@@ -268,6 +268,11 @@
           "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
           "sha256": "8324f91b5b5edfa8db9ccd021b6d02c3d2194f73cae28f446958184033c34612",
           "role": "Reviewed ABI4 shader/native runtime source329"
+        },
+        {
+          "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
+          "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition",
+          "sha256": "448fcb2cf92f946dab1119b04f5bfbe595d742c692df76b1bfa6d8b8d078b5d3"
         }
       ]
     },
