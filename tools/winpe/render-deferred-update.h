@@ -192,11 +192,37 @@ static DWORD deferred_find(unsigned index,HDEVINFO set,SP_DEVINFO_DATA *found)
 
  return 0;
 }
+#if A04_RENDER_SINGLE_GPU
+/* Query the software key belonging to the exact matched devnode. This is
+ * SetupAPI's selected driver key, not a guessed class path or a write.
+ * RT8.1 can omit DEVPKEY driver metadata after DIF installation. Only an
+ * absent property may use this source; a present mismatch is still fatal. */
+static DWORD deferred_driver_value(HDEVINFO set,SP_DEVINFO_DATA *dev,const WCHAR *name,
+ DWORD kind,BYTE *value,DWORD capacity,DWORD *bytes)
+{
+ HKEY key=SetupDiOpenDevRegKey(set,dev,DICS_FLAG_GLOBAL,0,DIREG_DRV,KEY_QUERY_VALUE);
+ DWORD type=0,error;
+ if(key==INVALID_HANDLE_VALUE)return GetLastError();
+ *bytes=capacity;error=RegQueryValueExW(key,name,NULL,&type,value,bytes);RegCloseKey(key);
+ if(error)return error;
+ if(type!=kind||!*bytes||*bytes>capacity)return ERROR_INVALID_DATA;
+ return 0;
+}
+#endif
 static DWORD deferred_selected_version(HDEVINFO set,SP_DEVINFO_DATA *dev,ULONGLONG *version)
 {
  static const DEVPROPKEY key={{0xa8b865dd,0x2e3d,0x4094,{0xad,0x97,0xe5,0x93,0xa7,0x0c,0x75,0xd6}},3};
  WCHAR value[128];DWORD bytes,n=0,i;DEVPROPTYPE type;ULONGLONG result=0;
- if(!SetupDiGetDevicePropertyW(set,dev,&key,&type,(BYTE *)value,sizeof(value),&bytes,0))return GetLastError();
+ if(!SetupDiGetDevicePropertyW(set,dev,&key,&type,(BYTE *)value,sizeof(value),&bytes,0)){
+  DWORD error=GetLastError();
+#if A04_RENDER_SINGLE_GPU
+  pnp_record(0,0x141,error);if(error!=ERROR_NOT_FOUND)return error;
+  error=deferred_driver_value(set,dev,L"DriverVersion",REG_SZ,(BYTE *)value,sizeof(value),&bytes);
+  pnp_record(0,0x142,error);if(error)return error;type=DEVPROP_TYPE_STRING;
+#else
+  return error;
+#endif
+ }
  if(type!=DEVPROP_TYPE_STRING||bytes<2||bytes>sizeof(value)||(bytes&1)||value[bytes/2-1])return ERROR_INVALID_DATA;
  for(i=0;i<4;i++){
   DWORD part=0,digits=0;
@@ -210,7 +236,16 @@ static DWORD deferred_selected_date(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev
 {
  static const DEVPROPKEY key={{0xa8b865dd,0x2e3d,0x4094,{0xad,0x97,0xe5,0x93,0xa7,0x0c,0x75,0xd6}},2};
  FILETIME date;DWORD bytes;DEVPROPTYPE type;
- if(!SetupDiGetDevicePropertyW(set,dev,&key,&type,(BYTE *)&date,sizeof(date),&bytes,0))return GetLastError();
+ if(!SetupDiGetDevicePropertyW(set,dev,&key,&type,(BYTE *)&date,sizeof(date),&bytes,0)){
+  DWORD error=GetLastError();
+#if A04_RENDER_SINGLE_GPU
+  pnp_record(i,0x143,error);if(error!=ERROR_NOT_FOUND)return error;
+  error=deferred_driver_value(set,dev,L"DriverDateData",REG_BINARY,(BYTE *)&date,sizeof(date),&bytes);
+  pnp_record(i,0x144,error);if(error)return error;type=DEVPROP_TYPE_FILETIME;
+#else
+  return error;
+#endif
+ }
  if(type!=DEVPROP_TYPE_FILETIME||bytes!=sizeof(date)||(((ULONGLONG)date.dwHighDateTime<<32)|date.dwLowDateTime)!=pin->date)return ERROR_REVISION_MISMATCH;
  return 0;
 }
