@@ -19,3 +19,14 @@ drivers/gpu/mt8167/vendor_m1_11/*.[ch] -text
 drivers/gpu/mt8167/wddm-display/*.[ch] -text
 drivers/gpu/mt8167/wddm-display/*.cxx -text
 drivers/gpu/mt8167/wddm-display/*.hxx -text
+
+# External native source bytes are also part of the fixed source gate.
+drivers/gpu/mt8167/gpu_mmu.c -text
+drivers/gpu/mt8167/gpu_mmu.h -text
+drivers/gpu/mt8167/windows_hw.c -text
+drivers/gpu/mt8167/windows_hw.h -text
+drivers/gpu/mt8167/firmware.h -text
+drivers/gpu/mt8167/dma_pages.c -text
+drivers/gpu/mt8167/dma_pages.h -text
+drivers/gpu/mt8167/rogue_power.h -text
+drivers/gpu/mt8167/fwif/pvr_rogue_cr_defs.h -text
