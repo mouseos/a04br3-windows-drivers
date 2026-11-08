@@ -117,7 +117,8 @@ NTSTATUS Mt8167CaptureCreate(const Mt8167CaptureResources *r,Mt8167CaptureOwner 
  NTSTATUS s=r->queryLatency(r->context,&o->api.captureLatency);o->latencyStatus=s;
  if(s==STATUS_NOT_SUPPORTED){
   /* Explicitly unknown: adapter rejects standard HWLATENCY requests. This
-   * sentinel is not exported as valid delay, and never gates real RX DMA. */
+   * sentinel is not exported as valid delay. Direct KS DMA is separate;
+   * RT8.1 AudioKSE WASAPI initialization requires the rejected property. */
   o->api.captureLatency.FifoSize=MAXULONG;o->api.captureLatency.ChipsetDelay=MAXULONG;
   o->api.captureLatency.CodecDelay=MAXULONG;
  }else if(!NT_SUCCESS(s)){r->dereference(r->context);ExFreePoolWithTag(o,CAP_TAG);return s;}

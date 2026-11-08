@@ -15,9 +15,10 @@ typedef int32_t NTSTATUS;typedef unsigned char BOOLEAN;typedef size_t SIZE_T;
 #define NT_SUCCESS(s) ((s)>=0)
 #define MM_COPY_MEMORY_VIRTUAL 1
 #define IOCTL_KS_PROPERTY 0x002f0003u
-#define KSPROPERTY_RTAUDIO_HWLATENCY 3
+#define KSPROPERTY_RTAUDIO_HWLATENCY 2
+#define KSPROPERTY_RTAUDIO_POSITIONREGISTER 3
 struct GUID {uint32_t a;uint16_t b,c;unsigned char d[8];};
-static const GUID KSPROPSETID_RtAudio={1,2,3,{4}};
+static const GUID KSPROPSETID_RtAudio={0xa855a48c,0x2f78,0x4729,{0x90,0x51,0x19,0x68,0x74,0x6b,0x9e,0xef}};
 static inline bool IsEqualGUIDAligned(const GUID&a,const GUID&b){return !memcmp(&a,&b,sizeof(a));}
 struct KSPROPERTY{GUID Set;uint32_t Id,Flags;};
 struct MM_COPY_ADDRESS {void *VirtualAddress;};

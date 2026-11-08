@@ -9,6 +9,10 @@ NTSTATUS MmCopyMemory(void*d,MM_COPY_ADDRESS s,SIZE_T n,unsigned flags,SIZE_T*co
  *copied=0;if(result<0)return result;assert(s.VirtualAddress);
  *copied=limit<n?limit:n;memcpy(d,s.VirtualAddress,*copied);return result;
 }
+/* WDK8.1 IDs: HWLATENCY=2, POSITIONREGISTER=3. Never conflate the
+ * required AudioKSE latency query with optional position-register fallback. */
+static_assert(KSPROPERTY_RTAUDIO_HWLATENCY==2,"WDK HWLATENCY ID");
+static_assert(KSPROPERTY_RTAUDIO_POSITIONREGISTER==3,"WDK POSITIONREGISTER ID");
 int main(){IRP irp={};BOOLEAN handled=TRUE;KSPROPERTY p={KSPROPSETID_RtAudio,KSPROPERTY_RTAUDIO_HWLATENCY,1};
  irp.stack.Parameters.DeviceIoControl.Type3InputBuffer=&p;
  assert(Mt8167LatencyPropertyGate(&irp,&handled)==0&&!handled&&!calls);
@@ -23,7 +27,7 @@ int main(){IRP irp={};BOOLEAN handled=TRUE;KSPROPERTY p={KSPROPSETID_RtAudio,KSP
  result=0;irp.stack.Parameters.DeviceIoControl.Type3InputBuffer=&p;limit=sizeof(p)-1;
  assert(Mt8167LatencyPropertyGate(&irp,&handled)==STATUS_INVALID_USER_BUFFER&&handled);limit=sizeof(p);
  assert(Mt8167LatencyPropertyGate(&irp,&handled)==STATUS_NOT_SUPPORTED&&handled);
- p.Id++;assert(Mt8167LatencyPropertyGate(&irp,&handled)==0&&!handled);
- p.Id--;p.Set.a++;assert(Mt8167LatencyPropertyGate(&irp,&handled)==0&&!handled);
+ p.Id=KSPROPERTY_RTAUDIO_POSITIONREGISTER;assert(Mt8167LatencyPropertyGate(&irp,&handled)==0&&!handled);
+ p.Id=KSPROPERTY_RTAUDIO_HWLATENCY;p.Set.a++;assert(Mt8167LatencyPropertyGate(&irp,&handled)==0&&!handled);
  return 0;
 }

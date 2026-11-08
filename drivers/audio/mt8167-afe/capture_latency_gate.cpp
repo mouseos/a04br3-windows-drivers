@@ -1,9 +1,13 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include <ntddk.h>
 #include <portcls.h>
-/* Capture matched profile only. The old render also has no measured latency.
- * WaveRT's void GetHWLatency cannot return an unsupported status. Reject the
- * exact optional KS query before PortCls instead of exporting guessed zeros.
+/* Unknown latency must not become a successful zero-valued response through
+ * WaveRT's void GetHWLatency. This gate currently blocks ALL WaveRT WASAPI
+ * initialization, including speaker: RT8.1 AudioKSE 0x1000a3ac propagates the
+ * mandatory HWLATENCY (property2) failure after buffer allocation. Only the
+ * subsequent POSITIONREGISTER (property3) has an ERROR_NOT_SUPPORTED fallback.
+ * Keep rejection until a qualified FIFO/chipset/codec latency producer exists;
+ * removing it is not a playback fix. See RUN143-LATENCY-CONTRACT.md.
  * Other standard KS properties and actual DMA streaming remain PortCls-owned.
  */
 extern "C" NTSTATUS Mt8167LatencyPropertyGate(PIRP irp,BOOLEAN *handled) {

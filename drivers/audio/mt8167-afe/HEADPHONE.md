@@ -1,3 +1,7 @@
+## run143で判明した訂正
+
+後述の「HWLATENCYは任意／PCMを妨げない」は実RT8.1で否定された。標準AudioKSEはId2の成功を初期化に要求する。詳細と実binary根拠はRUN143-LATENCY-CONTRACT.md。過去の実装記録を成功根拠にせず、未知latencyのgateは正規producer不足のまま維持する。
+
 ## 後段親1107 / audio1030：一回の実測producerと同一ring handoff
 
 前段1105/1106で不足していた実行経路を追加。標準NewStreamでは実senseとownerのみを確認し、校正前にbuffer取得へ到達できる。PortClsへMDLを返す前のprivate checkoutで最小48KiBの同一Normal-NC/WC identity-mapped PCM ringをゼロ化し、初回だけ44.1kHz無音DMAを実startする。親は同じthermal V3 ownerのAUXADC leaseを取得し、CT3 codec-utilsのdepop設定／A待機50ms／DAC enableと22uFのsettle20ms／gain0のC待機50msを実行。左右各phase22sampleを実読してtrimmeanと係数を生成する。CUR進行、BASE/END、DL1/IRQと期限を実検査し、caller係数やphaseは受け付けない。

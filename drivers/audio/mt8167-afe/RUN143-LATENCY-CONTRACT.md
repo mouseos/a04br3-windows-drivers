@@ -1,0 +1,28 @@
+# run143：標準WaveRT初期化を阻むHWLATENCY契約
+
+実機run143/fresh144でAFE1033はStarted/Problem0、filter-open0、KSJACK3sample ERROR0。speaker-silenceのendpoint/Activate/GetMixFormat/GetDevicePeriodは成功、Initializeは80070032（step4）、PCM_EXECUTED0、submitted0、CUR/IRQ進行0。音出し成功ではない。観測されたInitialize HRESULTだけではpropertyを識別しない。
+
+## RT8.1実binaryの根拠
+
+公式install.wim内ARM AUDIOKSE.dll SHA256 b298608605356b6a7726b3d93dbc519aa57fc08976182a1b508b86dec4cf1424。REAのみで解析。
+
+- 0x1000a3ac: cyclic buffer取得0x1000a4acの成功後、HWLATENCY取得0x10009480を必須呼出し。失敗はそのままcleanup/return。ev_a92ab714c04ebb0d7779e1f45a64dfb5b0036a228592b135f74de269c194d8a2。
+- 0x10009480: KSPROPSETID_RtAudio/Id2/GET/出力12B。FIFO bytes＋chipset/codec100ns値をstream処理へ換算。ev_ffb0e424dd1243f319ab5074886fe05f16d92e2825bdb15ffb65a41febb4c5ee。
+- 後続0x100093c0はPOSITIONREGISTER/Id3/GET。こちらだけ低16bit32ならfallback。HWLATENCYと混同しない。ev_45f0c6b442ce59da47b69548f135c7499c95436a707603dee635fa86254a7b68。
+- 0x1000bb10: DeviceIoControl失敗のWin32 error32及びSTATUS_NOT_SUPPORTED C00000BBを80070032へ変換。ev_6933fd4b2f5ceeeeaa0d0bc72c2fab8006f110f7f74b843fe05cc08ac27aed04。
+
+現adapterのMt8167LatencyPropertyGateは実WDK定義Id2を全経路共通でSTATUS_NOT_SUPPORTED拒否する。従来の「標準latencyは任意、PCMを妨げない」は誤り。run143のbuffer割当済み/未RUNとエラーに整合する具体的source欠陥であり、位置レジスタ非対応を先に直す根拠ではない。
+
+## 真の修正に不足する値
+
+KSRTAUDIO_HWLATENCYはFIFOの物理byte数・chipset最大100ns遅延・codecのsample通過100ns遅延を要求する。未知を表す標準フラグはない。GetHWLatencyの継承zeroやHPのMAXULONGを成功として流さない。
+
+CT3 GPL7c478212のmt8167-afe-pcm.c:73 `.fifo_size=0`はALSAの宣言であり物理FIFO測定証明でない。codec-utils.c:437 AFIFO_SIZE48KiBはDMA backingでありFifoSizeではない。codec.c:703以降のTIMESTAMP_INFOはdepopのDAC電源→amp電源経過時間、codec-utils.c:800以降はsettle sleep＋AUXADC平均取得時間。いずれもPCM sampleの定常codec遅延ではなく流用不可。既存HP A/B/C raw/校正timestampも同様。XNU由来実装に独立したcodec/fabric遅延producerは確認できない。
+
+従ってgateを外す・unknownをzero/MAXULONG・48KiB DMA・起動settle時刻で置き換える修正は禁止。現sourceだけで正しい三値を供給できず、WASAPI再生修正版は未完成。必要なのは対象rate/format/routeに対応したチップ一次仕様のFIFO/codec pipeline遅延根拠又はそれを測る正規producer。未校正HPやspeakerの成功を合成しない。媒体/親/署名物は固定、同候補反復や新SYS版/署名は作らない。
+
+## このbranchの実変更と検証
+
+既存host fixtureの誤定義HWLATENCY3をWDK正本の2、POSITIONREGISTER3、実GUIDへ修正。既存production safe-copy gate試験をASan/UBSanで再検証し、Id2の拒否/Id3の非介入/不正user memory/short copy/IRQLを確認。runtime C/C++はコメント訂正だけで実行code変更なし。これは再生修正済み候補ではなく、未解決の実契約を誤って任意と扱わないためのsource修正。
+
+[Microsoft KSRTAUDIO_HWLATENCY](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ksmedia/ns-ksmedia-ksrtaudio_hwlatency) / [KSPROPERTY_RTAUDIO](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ksmedia/ne-ksmedia-ksproperty_rtaudio)。root成果windows-rt-afe-run143-initializeのREA evidence/raw observationへ対応する。実機owner main、端末/UART/媒体非接触。
