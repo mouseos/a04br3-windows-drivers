@@ -15,6 +15,9 @@ try{
  & clang @args -c $source -o "$out\native_texture2d_state.obj";if($LASTEXITCODE){throw 'ARM descriptor TU compile'}
  $metadata=@(& llvm-readobj --file-headers "$out\native_texture2d_state.obj");if($LASTEXITCODE -or !($metadata -match 'IMAGE_FILE_MACHINE_ARMNT')){throw 'ARMNT required'}
  $metadata|Set-Content "$out\coff-metadata.txt"
+ $nativeProgram="$root\drivers\gpu\mt8167\vendor_m1_11\render_owner\native_texture2d_program.c"
+ & clang @args -c $nativeProgram -o "$out\native_texture2d_program.obj";if($LASTEXITCODE){throw 'Native sample admission TU compile'}
+
  # Compiler extension uses the existing PCO/NIR headers and port flags, but
  # does not rebuild or replace their libraries. No default compiler changes.
  $plan=Get-Content "$root\third_party\mesa-pco\source-plan.json" -Raw|ConvertFrom-Json
@@ -29,5 +32,5 @@ try{
   $compilerOutputs+=@{unit=$unit;source_sha256=(Get-FileHash $code -Algorithm SHA256).Hash.ToLowerInvariant();object_sha256=(Get-FileHash "$out\$unit.obj" -Algorithm SHA256).Hash.ToLowerInvariant()}
  }
 
- [ordered]@{schema='texture2d-source-state-arm-v1';source_commit=(& git -C $root rev-parse HEAD);compiled_units=@('native_texture2d_state');compiler_extension_units=$compilerOutputs;compiler_arguments=$compilerArgs;source_sha256=(Get-FileHash $source -Algorithm SHA256).Hash.ToLowerInvariant();compile_arguments=$args;SDK_rebuilt=$false;PCO_rebuilt=$false;existing_runtime_affected=$false;standard_texture_complete=$false;driver_linked=$false;signed=$false;hardware_verified=$false;object_sha256=(Get-FileHash "$out\native_texture2d_state.obj" -Algorithm SHA256).Hash.ToLowerInvariant()}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 "$out\build-manifest.json"
+ [ordered]@{schema='texture2d-source-state-arm-v1';source_commit=(& git -C $root rev-parse HEAD);compiled_units=@('native_texture2d_state','native_texture2d_program');native_program_source_sha256=(Get-FileHash $nativeProgram -Algorithm SHA256).Hash.ToLowerInvariant();native_program_object_sha256=(Get-FileHash "$out\native_texture2d_program.obj" -Algorithm SHA256).Hash.ToLowerInvariant();compiler_extension_units=$compilerOutputs;compiler_arguments=$compilerArgs;source_sha256=(Get-FileHash $source -Algorithm SHA256).Hash.ToLowerInvariant();compile_arguments=$args;SDK_rebuilt=$false;PCO_rebuilt=$false;existing_runtime_affected=$false;standard_texture_complete=$false;driver_linked=$false;signed=$false;hardware_verified=$false;object_sha256=(Get-FileHash "$out\native_texture2d_state.obj" -Algorithm SHA256).Hash.ToLowerInvariant()}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 "$out\build-manifest.json"
 }finally{$env:TEMP=$oldTemp;$env:TMP=$oldTmp}

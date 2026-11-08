@@ -32,3 +32,16 @@ preloaded sampler sh0..3/image sh4..7、CB vectorはsh8以降。texture GPU VA�
 実SMP結果をBGRA8へpackし、shaderを置換しない。旧compiler ABI構造体は変更しない。
 このproducerはARM compile検証対象であり、PCO codegen実行/標準DDI/実GPU samplingは未検証。
 全consumerを新owned texture jobへ結合するまではruntime/capsを開放しない。
+
+## codegenとnative admission
+
+既存Linux host compiler（Mesa0d94b3f3）を読み取り専用で再利用し、消費する主要PCO/NIR/headerが
+Windows source snapshotと同byteであることを確認。library再build無し、新adapter6TUだけで
+実codegenに成功（USC88byte、temps0、shareds12、CB0mask1）。ARM3TU compileと既存実PCO/NIRへの
+linkcheckも成功。ただしARM上のcodegen実行/実GPU samplingは未検証。
+
+native_texture2d_program.cは、その出力を**比較専用の検証witness**として保持する。
+実tokenを再decodeし、初期範囲CB0.xy/t0/s0、metadataと実USC一致を確認する。
+別shaderの命令をこのwitnessに差し替えて描画してはならない。将来のsubmitでは一致検査した
+入力USC自身をcopyする。arbitrary USCや未実装memory opcodeをnativeへ通さないための有限admission。
+現在のABI1/2 prepareには未接続であり、標準Texture対応を宣言するものではない。
