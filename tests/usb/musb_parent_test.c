@@ -58,7 +58,7 @@ int main(void){A04_PARENT_CONTEXT c;struct a04_pmic_read bus;MT_MUSB_OBSERVATION
  CHECK(!NT_SUCCESS(ParentMusbAcquire((PVOID)&c,7))&&!c.usb.leased&&writes==old);
  gp[0x220/4]=1u<<2;CHECK(NT_SUCCESS(ParentMusbQuery((PVOID)&c,&o))&&(o.evidence&MT_MUSB_QUERY_READY));
  CHECK(!NT_SUCCESS(ParentMusbAcquire((PVOID)&c,6))&&!c.usb.leased);
- CHECK(NT_SUCCESS(ParentMusbAcquire((PVOID)&c,7))&&c.musb.held&&c.usb.leased);
+ if(!NT_SUCCESS(ParentMusbAcquire((PVOID)&c,7)))return 100+c.musb.stage;CHECK(c.musb.held&&c.usb.leased);
  CHECK(NT_SUCCESS(ParentMusbObserve((PVOID)&c,&o))&&o.oc_clear&&(o.valid&MT_MUSB_STOP_PROOF)==MT_MUSB_STOP_PROOF);
  CHECK(NT_SUCCESS(ParentMusbVbus((PVOID)&c,TRUE))&&c.musb.powered);
  CHECK(NT_SUCCESS(ParentMusbObserve((PVOID)&c,&o))&&o.vbus_on&&(o.evidence&MT_MUSB_NO_FORCED_VBUS));

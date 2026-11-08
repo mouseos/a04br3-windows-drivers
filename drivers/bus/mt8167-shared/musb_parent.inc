@@ -75,16 +75,16 @@ static NTSTATUS ParentMusbAcquire(PVOID p,ULONGLONG generation)
  MusbSnapshot(c,&o);
  if(!c->musb.bound||!c->musb.accessible||c->musb.poisoned||c->usb.leased||generation!=c->musb.generation||
     !(o.evidence&MT_MUSB_QUERY_READY)||!c->usb.online)goto done;
- if(a04_usb_owner_acquire_locked(&c->usb))goto done;
- c->musb.held=1;c->musb.stop_ok=0;i=MusbIo(c);
+ c->musb.stage=1;if(a04_usb_owner_acquire_locked(&c->usb))goto done;
+ c->musb.stage=2;c->musb.held=1;c->musb.stop_ok=0;i=MusbIo(c);
  c->musb.mac=MmMapIoSpace(c->musb.mac_pa,0x10000,MmNonCached);
  c->musb.phy=MmMapIoSpace(c->musb.phy_pa,0x10000,MmNonCached);
- if(!c->musb.mac||!c->musb.phy||mt_musb_oc_prepare(&i))goto fault;
+ c->musb.stage=3;if(!c->musb.mac||!c->musb.phy||mt_musb_oc_prepare(&i))goto fault;
  /* Assigned resources, clock/rail readback and a live HWVERS distinguish a
   * readable controller from a fabricated all-zero MMIO observation. */
- {unsigned v=MusbMac(c,0x6c,2);if(!v||v==0xffff||v!=MusbMac(c,0x6c,2))goto fault;}
- if(MusbStopLocked(c))goto fault;
- result=STATUS_SUCCESS;goto done;
+ c->musb.stage=4;{unsigned v=MusbMac(c,0x6c,2);if(!v||v==0xffff||v!=MusbMac(c,0x6c,2))goto fault;}
+ c->musb.stage=5;if(MusbStopLocked(c))goto fault;
+ c->musb.stage=6;result=STATUS_SUCCESS;goto done;
 fault:
  c->musb.poisoned=1;c->usb.poisoned=1;
  if(c->gpio)(void)A04Gpio22Vbus(&c->usb.gpio,0);
