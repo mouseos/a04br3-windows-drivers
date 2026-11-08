@@ -30,7 +30,7 @@ BOOLEAN a04_vendor_native_output_ready(const struct a04_vendor_native_cold *n)
 {
     if(!n)return FALSE;
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
-    if(n->registered_target)return a04_native_mdl_cpu(n->registered_target)!=NULL;
+    if(n->registered_target){ULONG count;return a04_native_mdl_cpu(n->registered_target)!=NULL || a04_native_mdl_pages(n->registered_target,&count)!=NULL;}
 #endif
     return n->output[0].cpu && n->pixel_blocks==(A04_NATIVE_OUTPUT_BYTES+A04_NATIVE_BLOCK_BYTES-1u)/A04_NATIVE_BLOCK_BYTES;
 }
@@ -77,7 +77,7 @@ void *a04_vendor_native_storage_pointer(struct a04_vendor_native_cold *n,int pix
     if(n && pixels && n->registered_target){
         ULONG limit=a04_native_mdl_extent(n->registered_target);
         if(at>limit || bytes>limit-at)return NULL;
-        return (UCHAR *)a04_native_mdl_cpu(n->registered_target)+at;
+        void *cpu=a04_native_mdl_cpu(n->registered_target);return cpu?(UCHAR *)cpu+at:NULL;
     }
 #endif
     if(!n || index>=(pixels?n->pixel_blocks:n->data_blocks) ||
@@ -104,7 +104,8 @@ static int transfer(struct a04_vendor_native_cold *n,int pixels,ULONG at,void *c
     if(!cpu || !bytes || ((at|bytes|(uintptr_t)cpu)&3u) || at>limit || bytes>limit-at)return 1;
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
     if(pixels && n->registered_target){
-        void *target=(UCHAR *)a04_native_mdl_cpu(n->registered_target)+at;
+        void *base=a04_native_mdl_cpu(n->registered_target);if(!base)return 1;
+        void *target=(UCHAR *)base+at;
         if(write)RtlCopyMemory(target,cpu,bytes);else RtlCopyMemory(cpu,target,bytes);
         return 0;
     }

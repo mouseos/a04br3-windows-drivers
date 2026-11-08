@@ -396,7 +396,9 @@ static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
     if(request->state.vertex_count!=3 || end>c->vertex_description.width)return leave(c,STATUS_INVALID_PARAMETER);
     /* Immutable transformed input is a distinct H-owned VidMm allocation;
      * its independent MDL/SG is pinned through actual fence/retirement. */
-    const uint32_t *vertices=(const uint32_t *)((const UCHAR *)a04_native_mdl_cpu(c->allocation->vertex)+(size_t)offset);
+    const void *vertex_cpu=a04_native_mdl_cpu(c->allocation->vertex);
+    if(!vertex_cpu)return leave(c,STATUS_INVALID_DEVICE_STATE);
+    const uint32_t *vertices=(const uint32_t *)((const UCHAR *)vertex_cpu+(size_t)offset);
     for(unsigned i=0;i<(end-offset)/4;i++)if((vertices[i]&0x7f800000u)==0x7f800000u)return leave(c,STATUS_INVALID_PARAMETER);
     s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
     if(NT_SUCCESS(s))s=e_native_build_graph_locked(c);
