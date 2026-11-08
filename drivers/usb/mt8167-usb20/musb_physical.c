@@ -298,7 +298,7 @@ static void Tick(PDEVICE_OBJECT device,PVOID context)
    usb=Rd8(r,0xa)&0xb0;if(usb)Wr8(r,0xa,(UCHAR)usb);
    if(usb&0x10)connected=1;if(usb&0x20)connected=0;
    if(usb&0x80)fault=TRUE;
-   if(!connected&&!AllIdle(r))fault=TRUE;
+   if(!connected){KeAcquireSpinLock(&r->lock,&k);if(!AllIdle(r))fault=TRUE;r->connected=0;KeReleaseSpinLock(&r->lock,k);}
   }
   KeAcquireSpinLock(&r->lock,&k);r->connected=connected;KeReleaseSpinLock(&r->lock,k);
   if(!fault&&root){root_result=RootAction(r,root,&o);if(root_result)fault=TRUE;else if(root==A04_HUB_POWER_OFF)connected=0;}
@@ -417,7 +417,7 @@ ULONG MtMusbSubmitDeadline(struct mt_musb_runtime *r,ULONG cookie,const struct a
   }
   for(n=first;n<last;n++){
    struct mt_musb_lane *l=&r->lanes[n];
-   if(l->hardware_job||mt_musb_admit(&l->job,cookie,now,span))continue;
+   if(mt_musb_admit(&l->job,cookie,now,span))continue; /* IDLE is published only after drain */
    l->retired=FALSE;l->properties=*e;l->properties.common_va=NULL;l->properties.common_pa=0;l->properties.common_bytes=0;l->parameters=*p;l->job.toggle=toggle;RtlZeroMemory(l->shadow,p->bytes);
    if(p->bytes&&(e->type==1?!(p->setup[0]&0x80):e->direction!=0))RtlCopyMemory(l->shadow,buffer,p->bytes);
    QueueLocked(r);result=0;break;
