@@ -1,17 +1,21 @@
 {
   "schema": 1,
-  "adoption_status": "blocked-await-fixed-boot-main-seal",
+  "adoption_status": "main-artifacts-and-recovery-state-verified",
   "matched_boot": {
-    "path": "port/xnu/out/mt8167-thermal-stock-stop-v3-20261108/firmware/boot-final/boot.img",
-    "sha256": "f7f997105c11eb60142e1992867533f20dd009ff1dc2cd8f3b49c50e005bf53e",
-    "write_required": true,
+    "path": "port/xnu/out/mt8167-thermal-mmio-map-run139/firmware/boot-final/boot.img",
+    "sha256": "1fef20aa28be71ae0bd826ec91619df3b492abd23631632d5b0d679e38ca560a",
     "producer_pins": {
-      "path": "port/xnu/out/windows-rt-parent1115-run139/tuple-binding.json",
-      "sha256": "2375e2c4c6cb498ad49f4f30a4aad34b438df68f29675cf5ad2d4db5d0179c0e"
+      "path": "port/xnu/out/mt8167-thermal-mmio-map-run139/pins.json",
+      "sha256": "e7bf135237f6d6bbbaeb2d99723dca43b4b8aed6db191f80f3f9d099c541be68"
     },
+    "producer_compatibility": {
+      "path": "port/xnu/out/mt8167-thermal-mmio-map-run139/firmware/baseline-compatibility.json",
+      "sha256": "fa18c7176ee2f0f657359fd7308beedbae32bb51128a9bbfbad2d4612cc5c387"
+    },
+    "write_required": true,
     "main_seal": {
-      "path": "port/xnu/out/mt8167-thermal-stock-stop-v3-20261108/main-artifact-seal.json",
-      "sha256": "8ddaef0ed61014112ac243a52ea1a2a019477dd665abe75777dba7bf0cd26aa8"
+      "path": "port/xnu/out/mt8167-thermal-mmio-map-run139/main-independent-seal.json",
+      "sha256": "3566111344d6460fc3565d6e184a19920bb2180f6363b668078e737e1571ff3c"
     }
   },
   "compatibility_checks": 47,
