@@ -5,8 +5,9 @@ from pathlib import Path
 root=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser()
 for key in ['baseline-build','baseline-package','dependency','kernel-kit','vc-include','ucrt-include','link-exe','sign-tool','inf2cat','output']:p.add_argument('--'+key,type=Path,required=True)
+p.add_argument('--resume-source')
 a=p.parse_args();out=a.output.resolve();base=a.baseline_build.resolve();package=a.baseline_package.resolve();dep=a.dependency.resolve()
-if not out.is_relative_to(root) or out.exists():raise ValueError('Fresh checkout-local output required')
+if not out.is_relative_to(root) or (out.exists() and not a.resume_source):raise ValueError('Fresh checkout-local output or explicit source-pinned resume required')
 def run(cmd,**kw):return subprocess.run(list(map(str,cmd)),check=True,**kw)
 def capture(cmd):return subprocess.check_output(list(map(str,cmd)),text=True).strip()
 def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
@@ -23,7 +24,11 @@ for parent,m in [(base,bm),(package,pm)]:
  for r in m['outputs']:pin(parent/r['name'],r['sha256'])
 compiler=dep/'compiler';pair=dep/'pair';pin(compiler/'link-manifest.json','3d5c6feec663ffdc88919f44d2adf31ddb177205623df5e6eb279b87fe47d26b');pin(pair/'manifest.json','c05e327474cb91c260b341e9c6de91f7074d8f749ea68f35a77ca2ccc1858e8a');pin(pair/'pco_pair.obj',load(pair/'manifest.json')['object_sha256'])
 for r in bm['existing_compiler_libraries']:pin(compiler/r['name'],r['sha256'])
-out.mkdir(parents=True);(out/'tmp').mkdir();os.environ.update(TEMP=str(out/'tmp'),TMP=str(out/'tmp'),TMPDIR=str(out/'tmp'))
+if a.resume_source:
+ if not out.exists() or len(a.resume_source)!=40:raise ValueError('Existing output and full previous source pin required')
+ changed=capture(['git','-C',root,'diff','--name-only',a.resume_source,commit]).splitlines()
+ if any(n not in ['tools/ci/build-ge8300-native-shader329.py','README.md'] for n in changed):raise ValueError('Resume source changed outside the reviewed helper')
+out.mkdir(parents=True,exist_ok=bool(a.resume_source));(out/'tmp').mkdir(exist_ok=bool(a.resume_source));os.environ.update(TEMP=str(out/'tmp'),TMP=str(out/'tmp'),TMPDIR=str(out/'tmp'))
 # baseline is source/build/filter327
 oldroot=base.parent.parent
 plan=load(root/'third_party/mesa-pco/source-plan.json');recipe=next(r for r in plan['units'] if r['source'].endswith('/pco_sm2.c'))
@@ -43,16 +48,21 @@ records=[];archives=[];newmap=load(root/'tools/ci/ge8300-native-source-map.json'
 oldmap=load(oldroot/'tools/ci/ge8300-native-source-map.json')['native_unit_sources']
 # Compiler adapters are changed; 31 existing PCO core archive members survive.
 def extract(path,tag):
- before=out/(tag+'-before');after=out/tag;before.mkdir();after.mkdir()
+ before=out/(tag+'-before');after=out/tag;before.mkdir(exist_ok=bool(a.resume_source));after.mkdir(exist_ok=bool(a.resume_source))
  members=[ntpath.basename(n) for n in capture(['llvm-ar','t',path]).splitlines()]
  if len(members)!=len(set(members)):raise ValueError('Duplicate archive member')
  run(['llvm-ar','x','--output='+str(before),path])
- for m in members:shutil.copyfile(before/m,after/m)
+ for m in members:
+  if not (a.resume_source and (after/m).exists()):shutil.copyfile(before/m,after/m)
  return members,before,after
 
 def compile_one(source,obj,flags,role):
- run(['clang',*flags,'-c',root/source,'-o',obj])
- records.append({'source':source,'source_sha256':sha(root/source),'object':obj.name,'object_sha256':sha(obj),'arguments':flags,'role':role})
+ recovered=bool(a.resume_source and obj.exists())
+ # The prior immutable invocation stopped before its next source read; existing
+ # objects were produced by successful checked calls under the same C/H tree.
+ if not recovered:run(['clang',*flags,'-c',root/source,'-o',obj])
+ records.append({'source':source,'source_sha256':sha(root/source),'object':obj.name,'object_sha256':sha(obj),'arguments':flags,'role':role,'recovered_same_source':recovered,'prior_build_source_commit':a.resume_source if recovered else None})
+ (out/'compiled-checkpoint.json').write_text(json.dumps(records,indent=2)+'\n')
 
 def pp(source,flags,path,checkout):
  f=[str(s).replace(str(root),str(checkout)) for s in flags]
@@ -76,6 +86,7 @@ def closure(tag,leaf,source_for,flags_for,extra):
   old=pp(source,flags,out/(tag+'-old.i'),oldroot);new=pp(source,flags,out/(tag+'-new.i'),root)
   if old!=new:
    if source.endswith('/mdl_pin.c'):raise ValueError('Changed SEH closure requires explicit MSVC build')
+   if a.resume_source and (after/n).exists() and sha(after/n)==sha(before/n): (after/n).unlink()
    compile_one(source,after/n,flags,tag)
  for n,source,flags in extra:
   if n in members:raise ValueError('Unexpected preexisting member')
@@ -85,7 +96,7 @@ def closure(tag,leaf,source_for,flags_for,extra):
 native_names={unit.replace('\\','-')+'.obj':path for unit,path in oldmap.items()}
 closure('native','ge8300-native-owner-core.lib',lambda n:native_names[n],lambda s:nf,[('wddm-render-frontend-shader_draw_protocol.obj','drivers/gpu/mt8167/wddm-render/frontend/shader_draw_protocol.c',nf),('wddm-render-compiler-witness_codec.obj','drivers/gpu/mt8167/wddm-render/compiler/witness_codec.c',cf+['-mfpu=none']),('wddm-render-compiler-witness_info.obj','drivers/gpu/mt8167/wddm-render/compiler/witness_info.c',cf+['-mfpu=none'])])
 def ksource(n):
- stem=n[:-4];return 'drivers/gpu/mt8167/wddm-render/'+('frontend/'+stem[9:] if stem.startswith('frontend_') else stem)+'.c'
+ stem=n[:-4];return 'drivers/gpu/mt8167/wddm-render/'+('frontend/'+stem[9:] if stem.startswith('frontend_') and stem!='frontend_memory' else stem)+'.c'
 closure('kmd','ge8300-pair-kmd.lib',ksource,lambda s:kf,[])
 def usource(n):
  stem=n[:-4]
