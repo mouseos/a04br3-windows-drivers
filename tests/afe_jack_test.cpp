@@ -92,7 +92,7 @@ static NTSTATUS IoGetDeviceObjectPointer(UNICODE_STRING*,ULONG access,PFILE_OBJE
  assert(access==FILE_READ_DATA);++opens;if(failure==2)return STATUS_DEVICE_NOT_READY;++files;*f=&file;*d=&target;return 0;
 }
 static void KeInitializeEvent(KEVENT*e,int,bool b){e->signal=b;}
-static PIRP IoAllocateIrp(SCHAR,bool){if(failure==4)return nullptr;++irps;return new IRP{};}
+static PIRP IoAllocateIrp(SCHAR,bool){if(failure==4)return nullptr;++irps;PIRP p=new IRP{};memset(&p->stack,0xa5,sizeof(p->stack));return p;}
 static void IoFreeIrp(PIRP p){--irps;delete p;}
 static PIO_STACK_LOCATION IoGetNextIrpStackLocation(PIRP p){return &p->stack;}
 static NTSTATUS IoSetCompletionRoutineEx(PDEVICE_OBJECT d,PIRP p,COMPLETE fn,PVOID c,bool,bool,bool){assert(d==&owner);if(failure==5)return STATUS_INSUFFICIENT_RESOURCES;p->complete=fn;p->context=c;return 0;}
