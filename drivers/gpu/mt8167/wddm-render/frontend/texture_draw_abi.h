@@ -5,6 +5,10 @@
 #define GEO_DRAW_TEXTURE_ABI_VERSION 3u
 /* New private storage kind/version; old owner/UMD peers must reject it. */
 #define GEO_TEXTURE_POINT_CLAMP 1u
+/* Layout3 remains stable; this explicit sampler semantic version cannot be
+ * accepted by a POINT-only326 peer. Adapter contract4 negotiates it. */
+#define GEO_TEXTURE_FILTER_PROFILE4 0x04000000u
+int geo_texture_sampler_profile_valid(uint32_t);
 struct geo_draw_request_v3 {
  struct geo_draw_request base;
  uint64_t texture; /* H resolves the third VidMm handle to an owned ID */

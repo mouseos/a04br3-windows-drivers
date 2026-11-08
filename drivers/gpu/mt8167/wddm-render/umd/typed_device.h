@@ -81,4 +81,5 @@ HRESULT geo_typed_submit_pair(D3D10DDI_HDEVICE,const FLOAT [3][8]);
 void geo_typed_texture_install(D3D11_1DDI_DEVICEFUNCS *);
 HRESULT geo_typed_texture_unbind(D3D10DDI_HDEVICE);
 HRESULT geo_typed_texture_allocation(struct geo_typed_device *,struct geo_surface_desc *,D3DKMT_HANDLE *);
+HRESULT geo_typed_texture_profile(struct geo_typed_device *,UINT *);
 #endif

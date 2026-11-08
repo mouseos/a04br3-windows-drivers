@@ -5,6 +5,7 @@
 #include "typed_device.h"
 #include "typed_state.h"
 #include "../memory.h"
+#include "../frontend/texture_draw_abi.h"
 struct geo_typed_srv {
  struct geo_typed_srv *next;struct geo_typed_device *device;
  struct geo_typed_resource *resource;UINT refs,deleted;
@@ -53,16 +54,22 @@ static void APIENTRY hazard(D3D10DDI_HDEVICE h,D3D10DDI_HSHADERRESOURCEVIEW hand
  struct geo_typed_srv *v=find(h,handle);struct geo_typed_resource *r=geo_typed_resource(h,resource);HRESULT hr;
  if(!v||r!=v->resource){geo_typed_error(h,E_INVALIDARG);return;}hr=geo_typed_wait_resource(r);if(FAILED(hr))geo_typed_error(h,hr);
 }
-HRESULT geo_typed_texture_allocation(struct geo_typed_device *d,struct geo_surface_desc *desc,D3DKMT_HANDLE *a) {
- struct geo_typed_state_snapshot snapshot;const D3D10_DDI_SAMPLER_DESC *s;HRESULT hr;
- if(!d||!d->texture||!desc||!a)return E_INVALIDARG;
+HRESULT geo_typed_texture_profile(struct geo_typed_device *d,UINT *profile) {
+ struct geo_typed_state_snapshot snapshot;const D3D10_DDI_SAMPLER_DESC *s;HRESULT hr;UINT f,a;
+ if(!d||!profile)return E_INVALIDARG;
  hr=geo_typed_state_snapshot(d->state,&snapshot);if(FAILED(hr))return hr;s=&snapshot.sampler[GEO_TYPED_PS][0];
- /* One image/mip means implicit LOD is clamped to0. Accept no bias/filter or
-  * addressing we cannot encode. A NULL sampler uses D3D linear defaults and
-  * is rejected; it must never silently become POINT. */
- if(!(snapshot.sampler_bound_mask[GEO_TYPED_PS]&1u)||s->Filter!=D3D10_DDI_FILTER_MIN_MAG_MIP_POINT||
-    s->AddressU!=D3D10_DDI_TEXTURE_ADDRESS_CLAMP||s->AddressV!=D3D10_DDI_TEXTURE_ADDRESS_CLAMP||s->AddressW!=D3D10_DDI_TEXTURE_ADDRESS_CLAMP||
+ /* NULL sampler is a real standard LINEAR+CLAMP default snapshot, not a
+  * POINT substitution. All regular point/linear combinations + anisotropic
+  * filtering have an actual SMP/native descriptor implementation. */
+ f=(UINT)s->Filter;a=f==0x55u?s->MaxAnisotropy:1;
+ if(s->AddressU!=D3D10_DDI_TEXTURE_ADDRESS_CLAMP||s->AddressV!=D3D10_DDI_TEXTURE_ADDRESS_CLAMP||s->AddressW!=D3D10_DDI_TEXTURE_ADDRESS_CLAMP||
     s->MipLODBias||s->MinLOD>0||s->MaxLOD<0)return E_NOTIMPL;
+ *profile=GEO_TEXTURE_FILTER_PROFILE4|(f<<8)|a;
+ if(!geo_texture_sampler_profile_valid(*profile)){*profile=0;return E_NOTIMPL;}return S_OK;
+}
+HRESULT geo_typed_texture_allocation(struct geo_typed_device *d,struct geo_surface_desc *desc,D3DKMT_HANDLE *a) {
+ UINT profile;HRESULT hr;if(!d||!d->texture||!desc||!a)return E_INVALIDARG;
+ hr=geo_typed_texture_profile(d,&profile);if(FAILED(hr))return hr;
  return geo_umd_resource_info(&d->backend,d->texture->resource->backend,GEO_USAGE_TEXTURE2D,desc,a);
 }
 HRESULT geo_typed_texture_unbind(D3D10DDI_HDEVICE h) {

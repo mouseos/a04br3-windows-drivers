@@ -96,10 +96,10 @@ static void shader_packet(BYTE *blob,UINT *at,struct geo_draw_shader *s,const st
 }
 HRESULT geo_typed_submit_draw(D3D10DDI_HDEVICE h,const FLOAT vertices[3][4]) {
  struct geo_typed_device *d=geo_typed_device(h);struct geo_draw_packet *p;struct geo_surface_desc target;D3DKMT_HANDLE ta,va,xa=0;struct geo_surface_desc texture_desc;D3DDDICB_RENDER q;
- UINT constants[2][128],total=1024,at=0,stage,i,header,sampled;BYTE *blob;HRESULT hr;
+ UINT constants[2][128],total=1024,at=0,stage,i,header,sampled,sampler_profile=0;BYTE *blob;HRESULT hr;
  if(!d||!d->target||!d->bound_shader[0]||!d->bound_shader[1])return E_INVALIDARG;
  sampled=d->bound_shader[1]->code->texture_profile;header=sampled?sizeof(struct geo_draw_packet_v3):sizeof(*p);
- if(sampled){hr=geo_typed_texture_allocation(d,&texture_desc,&xa);if(FAILED(hr))return hr;}
+ if(sampled){hr=geo_typed_texture_profile(d,&sampler_profile);if(FAILED(hr))return hr;hr=geo_typed_texture_allocation(d,&texture_desc,&xa);if(FAILED(hr))return hr;}
  if(d->target->resource->width!=800||d->target->resource->height!=600)return E_NOTIMPL;
  hr=geo_typed_validate_native_state(h);if(FAILED(hr))return hr;
  if(!d->viewport_set||d->viewport.TopLeftX||d->viewport.TopLeftY||d->viewport.Width!=800.0f||d->viewport.Height!=600.0f||d->viewport.MinDepth||d->viewport.MaxDepth!=1.0f)return E_NOTIMPL;
@@ -118,7 +118,7 @@ HRESULT geo_typed_submit_draw(D3D10DDI_HDEVICE h,const FLOAT vertices[3][4]) {
  p->request.state.topology=GEO_DRAW_TRIANGLE_LIST;p->request.state.vertex_count=3;p->request.state.vertex_stride=16;p->request.state.viewport[2]=bits(800.0f);p->request.state.viewport[3]=bits(600.0f);p->request.state.viewport[5]=bits(1.0f);p->request.state.color_write_mask=15;
  for(stage=0;stage<2;stage++)shader_packet(blob,&at,stage?&p->request.ps:&p->request.vs,d->bound_shader[stage]->code,constants[stage]);
  p->request.target=1;p->request.vertex=2;
- if(sampled){struct geo_draw_packet_v3 *v3=(struct geo_draw_packet_v3 *)p;p->version=3;p->request.version=3;p->request.size=sizeof(v3->request);v3->request.texture=3;v3->request.texture_desc=texture_desc;v3->request.sampler_profile=GEO_TEXTURE_POINT_CLAMP;v3->texture_index=2;hr=geo_draw_validate_capture_v3(&v3->request,blob,total)==GEO_OK?S_OK:E_INVALIDARG;v3->request.texture=0;}
+ if(sampled){struct geo_draw_packet_v3 *v3=(struct geo_draw_packet_v3 *)p;p->version=3;p->request.version=3;p->request.size=sizeof(v3->request);v3->request.texture=3;v3->request.texture_desc=texture_desc;v3->request.sampler_profile=sampler_profile;v3->texture_index=2;hr=geo_draw_validate_capture_v3(&v3->request,blob,total)==GEO_OK?S_OK:E_INVALIDARG;v3->request.texture=0;}
  else hr=geo_draw_validate_capture(&p->request,blob,total)==GEO_OK?S_OK:E_INVALIDARG;
  p->request.target=p->request.vertex=0;
  if(FAILED(hr)){HeapFree(GetProcessHeap(),0,p);return hr;}

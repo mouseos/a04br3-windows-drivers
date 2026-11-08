@@ -19,4 +19,5 @@ struct a04_texture2d_state {uint32_t sampler[4],image[4];};
 /* Error leaves output unchanged. This proves descriptor layout/bounds only;
  * it does not acquire a backing lease or submit GPU work. */
 int32_t a04_m111_texture2d_state(struct a04_texture2d_state *,const struct a04_texture2d_storage *);
+int32_t a04_m111_texture2d_state_filtered(struct a04_texture2d_state *,const struct a04_texture2d_storage *,uint32_t filter,uint32_t max_anisotropy);
 #endif

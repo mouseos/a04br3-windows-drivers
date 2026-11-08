@@ -11,6 +11,9 @@
 #include <winternl.h>
 #include <d3dkmthk.h>
 #include "fixed_shaders.h"
+#ifdef GEO_TEXTURE_CLIENT
+#include "texture_shaders.h"
+#endif
 #ifdef GEO_COLOR_PAIR_CLIENT
 #include "color_shaders.h"
 #endif
@@ -255,6 +258,9 @@ static HRESULT color_probe(ID3D11Device *device,ID3D11DeviceContext *ctx,ID3D11R
  if(raster)ID3D11RasterizerState_Release(raster);if(vertices)ID3D11Buffer_Release(vertices);if(layout)ID3D11InputLayout_Release(layout);if(ps)ID3D11PixelShader_Release(ps);if(vs)ID3D11VertexShader_Release(vs);return hr;
 }
 #endif
+#ifdef GEO_TEXTURE_CLIENT
+#include "texture_probe.inc"
+#endif
 static HRESULT probe(IDXGIAdapter *adapter) {
  ID3D11Device *device=NULL;ID3D11DeviceContext *ctx=NULL;ID3D11Texture2D *target=NULL,*staging=NULL;
  ID3D11RenderTargetView *view=NULL;D3D_FEATURE_LEVEL level,wanted=D3D_FEATURE_LEVEL_9_1;
@@ -304,6 +310,9 @@ static HRESULT probe(IDXGIAdapter *adapter) {
 #ifdef GEO_COLOR_PAIR_CLIENT
  if(SUCCEEDED(hr))hr=color_probe(device,ctx,view,target,staging);
 #endif
+#ifdef GEO_TEXTURE_CLIENT
+ if(SUCCEEDED(hr))hr=texture_probe(device,ctx,view,target,staging);
+#endif
  done:
  if(view)ID3D11RenderTargetView_Release(view);
  if(staging)ID3D11Texture2D_Release(staging);
@@ -338,6 +347,9 @@ void mainCRTStartup(void) {
 
 #ifdef GEO_COLOR_PAIR_CLIENT
  line("SCHEMA",6);line("COLOR_PAIR_PROFILE",1);
+#ifdef GEO_TEXTURE_CLIENT
+ line("TEXTURE_PROFILE_VERSION",4);
+#endif
 #else
  line("SCHEMA",4);
 #endif

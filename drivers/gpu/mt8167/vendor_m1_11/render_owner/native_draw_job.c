@@ -64,7 +64,7 @@ static int32_t build(struct a04_m111_draw_job *out,
  if(sampled){
   struct a04_texture2d_storage t={sizeof(t),1,sampled->texture_desc.width,sampled->texture_desc.height,sampled->texture_desc.pitch,sampled->texture_desc.pitch*sampled->texture_desc.height,A04_TEXTURE2D_BGRA8,1,1,1,0,texture};
   status=a04_m111_texture2d_program(&r->ps,blob,bytes);if(status)return status;
-  status=a04_m111_texture2d_state(&texstate,&t);if(status)return status;
+  status=a04_m111_texture2d_state_filtered(&texstate,&t,sampled->sampler_profile==1?0:(sampled->sampler_profile>>8)&255u,sampled->sampler_profile==1?1:sampled->sampler_profile&255u);if(status)return status;
   if(texture<vertex+vertex_bytes&&vertex<texture+t.bytes)return GEO_INVALID;
   if((texture<in->output_gpu+1920000u&&in->output_gpu<texture+t.bytes)||
      (texture<in->data_page_gpu+4096&&in->data_page_gpu<texture+t.bytes)||
