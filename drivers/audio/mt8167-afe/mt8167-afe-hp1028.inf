@@ -1,0 +1,98 @@
+; Engine PCM with retained STOP/RUN and reopen; exposed resources pinned until reset.
+[Version]
+Signature="$WINDOWS NT$"
+Class=MEDIA
+ClassGuid={4d36e96c-e325-11ce-bfc1-08002be10318}
+Provider=%Provider%
+DriverVer=11/08/2026,2026.11.8.1028
+CatalogFile=mt8167-afe-hp1028.cat
+
+[Manufacturer]
+%Provider%=Models,NTarm
+[Models.NTarm]
+%Device%=Install,MT8167\AFE
+[DestinationDirs]
+DriverCopy=12
+[SourceDisksNames]
+1=%Disk%,,,
+[SourceDisksFiles]
+mt8167-audio.sys=1
+[Install.NT]
+Include=ks.inf,wdmaudio.inf
+Needs=KS.Registration,WDMAUDIO.Registration
+CopyFiles=DriverCopy
+[DriverCopy]
+mt8167-audio.sys
+[Install.NT.Services]
+AddService=Mt8167Audio,0x00000002,Service
+[Service]
+DisplayName=%Device%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\mt8167-audio.sys
+[Install.NT.Interfaces]
+AddInterface={6994ad04-93ef-11d0-a3cc-00a0c9223196},Mt8167CaptureWaveRT,CaptureWave.Interface
+AddInterface={65e8773d-8f56-11d0-a3b9-00a0c9223196},Mt8167CaptureWaveRT,CaptureWave.Interface
+AddInterface={6994ad04-93ef-11d0-a3cc-00a0c9223196},Mt8167CaptureTopology,CaptureTopology.Interface
+AddInterface={dda54a40-1e4c-11d1-a050-405705c10000},Mt8167CaptureTopology,CaptureTopology.Interface
+AddInterface={6994ad04-93ef-11d0-a3cc-00a0c9223196},Mt8167WaveRT,WaveRT.Interface
+AddInterface={65e8773e-8f56-11d0-a3b9-00a0c9223196},Mt8167WaveRT,WaveRT.Interface
+AddInterface={eb115ffc-10c8-4964-831d-6dcb02e6f23f},Mt8167WaveRT,WaveRT.Interface
+AddInterface={6994ad04-93ef-11d0-a3cc-00a0c9223196},Mt8167Topology,Topology.Interface
+AddInterface={dda54a40-1e4c-11d1-a050-405705c10000},Mt8167Topology,Topology.Interface
+AddInterface={6994ad04-93ef-11d0-a3cc-00a0c9223196},Mt8167HeadphoneWaveRT,HeadphoneWave.Interface
+AddInterface={65e8773e-8f56-11d0-a3b9-00a0c9223196},Mt8167HeadphoneWaveRT,HeadphoneWave.Interface
+AddInterface={eb115ffc-10c8-4964-831d-6dcb02e6f23f},Mt8167HeadphoneWaveRT,HeadphoneWave.Interface
+AddInterface={6994ad04-93ef-11d0-a3cc-00a0c9223196},Mt8167HeadphoneTopology,HeadphoneTopology.Interface
+AddInterface={dda54a40-1e4c-11d1-a050-405705c10000},Mt8167HeadphoneTopology,HeadphoneTopology.Interface
+[WaveRT.Interface]
+AddReg=WaveRT.Interface.AddReg
+[WaveRT.Interface.AddReg]
+HKR,,CLSID,,{17cca71b-ecd7-11d0-b908-00a0c9223196}
+HKR,,FriendlyName,,%Device%
+[Topology.Interface]
+AddReg=Topology.Interface.AddReg
+[Topology.Interface.AddReg]
+HKR,,CLSID,,{17cca71b-ecd7-11d0-b908-00a0c9223196}
+HKR,,FriendlyName,,%Device%
+; Microsoft PKEY_AudioEngine_OEMFormat example: serialized VT_BLOB,
+; WAVEFORMATEXTENSIBLE PCM, 48 kHz / 16 bit / stereo FL|FR.
+HKR,"EP\0",%PKEY_Association%,,%SpeakerCategory%
+HKR,"EP\0",%PKEY_OEMFormat%,0x00000001,41,00,00,00,28,00,00,00,FE,FF,02,00,80,BB,00,00,00,EE,02,00,04,00,10,00,16,00,10,00,03,00,00,00,01,00,00,00,00,00,10,00,80,00,00,AA,00,38,9B,71
+[Strings]
+PKEY_Association="{1DA5D803-D492-4EDD-8C23-E0C0FFEE7F0E},2"
+PKEY_OEMFormat="{E4870E26-3CC5-4CD2-BA46-CA0A9A70ED04},3"
+SpeakerCategory="{DFF21CE1-F70F-11D0-B917-00A0C9223196}"
+Provider="mouseos"
+Device="MediaTek MT8167 AFE / MT6392 Audio"
+Disk="MediaTek MT8167 AFE / MT6392 Audio Driver"
+
+[CaptureWave.Interface]
+AddReg=CaptureWave.AddReg
+[CaptureWave.AddReg]
+HKR,,CLSID,,{17cca71b-ecd7-11d0-b908-00a0c9223196}
+HKR,,FriendlyName,,"MediaTek MT8167 Microphone"
+[CaptureTopology.Interface]
+AddReg=CaptureTopology.AddReg
+[CaptureTopology.AddReg]
+HKR,,CLSID,,{17cca71b-ecd7-11d0-b908-00a0c9223196}
+HKR,,FriendlyName,,"MediaTek MT8167 Microphone"
+HKR,"EP\0","{1DA5D803-D492-4EDD-8C23-E0C0FFEE7F0E},2",,"{DFF21BE1-F70F-11D0-B917-00A0C9223196}"
+; Fixed stereo S16/48k PCM KS contract; this is not a physical mic-count claim.
+HKR,"EP\0","{E4870E26-3CC5-4CD2-BA46-CA0A9A70ED04},3",0x00000001,41,00,00,00,28,00,00,00,FE,FF,02,00,80,BB,00,00,00,EE,02,00,04,00,10,00,16,00,10,00,03,00,00,00,01,00,00,00,00,00,10,00,80,00,00,AA,00,38,9B,71
+
+; Factory is NOT invoked without a real measured HP provider. INF interface
+; registration alone does not create a headphone subdevice or prove a route.
+[HeadphoneWave.Interface]
+AddReg=HeadphoneWave.AddReg
+[HeadphoneWave.AddReg]
+HKR,,CLSID,,{17cca71b-ecd7-11d0-b908-00a0c9223196}
+HKR,,FriendlyName,,"MediaTek MT8167 Headphone PCM"
+[HeadphoneTopology.Interface]
+AddReg=HeadphoneTopology.AddReg
+[HeadphoneTopology.AddReg]
+HKR,,CLSID,,{17cca71b-ecd7-11d0-b908-00a0c9223196}
+HKR,,FriendlyName,,"MediaTek MT8167 Headphone"
+HKR,"EP\0",%PKEY_Association%,,"{DFF21CE2-F70F-11D0-B917-00A0C9223196}"
+HKR,"EP\0",%PKEY_OEMFormat%,0x00000001,41,00,00,00,28,00,00,00,FE,FF,02,00,80,BB,00,00,00,EE,02,00,04,00,10,00,16,00,10,00,03,00,00,00,01,00,00,00,00,00,10,00,80,00,00,AA,00,38,9B,71

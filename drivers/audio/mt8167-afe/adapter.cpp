@@ -175,7 +175,9 @@ static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device,PIRP irp,PRESOURCELIST r
  LARGE_INTEGER time;KeQuerySystemTime(&time);record.system_time_low=time.LowPart;record.system_time_high=(ULONG)time.HighPart;
  record.schema=1;record.bytes=sizeof(record);record.inf_revision=
 #if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
-#if defined(A04_AUDIO_ACCDET_JACK) && A04_AUDIO_ACCDET_JACK
+#if defined(A04_AUDIO_HP_COMPONENT) && A04_AUDIO_HP_COMPONENT
+ 1028;
+#elif defined(A04_AUDIO_ACCDET_JACK) && A04_AUDIO_ACCDET_JACK
  1027;
 #else
  1026;
