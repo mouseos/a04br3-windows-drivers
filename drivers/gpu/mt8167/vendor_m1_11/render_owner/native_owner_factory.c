@@ -170,6 +170,7 @@ static int32_t bind(void *p,uint64_t surface,void *mdl,uint32_t offset,uint32_t 
         s=e_native_build_graph_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
         s=a04_native_allocation_bind_frontend_linear_cold(c->allocation,&c->memory,mdl,bytes,r->desc.usage!=GEO_USAGE_STAGING,&r->linear);
         if(NT_SUCCESS(s)){r->linear_offset=aperture;s=a04_vendor_native_attach_linear_cold(c->allocation->native,r->linear,aperture);}
+        if(NT_SUCCESS(s))s=e_native_prepare_copy_storage_locked(c);
         if(!NT_SUCCESS(s) && (r->linear || c->allocation->frontend_orphan))c->state=E_OWNER_FAILED;
         return leave(c,s);
     }
@@ -191,6 +192,7 @@ static int32_t bind(void *p,uint64_t surface,void *mdl,uint32_t offset,uint32_t 
     c->surface=surface;c->description=r->desc;c->aperture_offset=aperture;
     s=e_native_build_graph_locked(c);
     if(NT_SUCCESS(s))s=a04_native_allocation_bind_frontend_cold(c->allocation,&c->memory,mdl,bytes,aperture,c->colour);
+    if(NT_SUCCESS(s))s=e_native_prepare_copy_storage_locked(c);
     if(!NT_SUCCESS(s)){
         if(c->allocation->binding || c->allocation->frontend_orphan)c->state=E_OWNER_FAILED;
         else c->surface=0;
@@ -261,8 +263,14 @@ static int32_t prepare_copy(void *p,uint64_t source,uint64_t destination,uint64_
  s=wait_boundary_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
  /* Copy is an idle-to-submit transition on the current FW root. No stop,
   * power cycle, PTE edit, resource release or bootstrap occurs here. */
- if(!c->copy_transfer || c->copy_destination!=destination ||
-    !c->allocation->start.online)return leave(c,STATUS_NOT_SUPPORTED);
+ if(!c->copy_transfer || c->copy_destination!=destination)return leave(c,STATUS_NOT_SUPPORTED);
+ /* A last dependent MAP can leave a new graph genuinely cold. The KMD
+  * residency/Render preparation boundary starts it before Patch; a live
+  * graph is never stopped/rebuilt by Copy. */
+ if(!c->allocation->start.online){
+  if(c->allocation->firmware.hardware_owned || c->allocation->start.attempted)return leave(c,STATUS_INVALID_DEVICE_STATE);
+  s=e_native_boot_locked(c);if(!NT_SUCCESS(s)){c->state=E_OWNER_FAILED;return leave(c,s);}
+ }
  s=a04_native_tq_transfer_rearm(c->copy_transfer,&c->allocation->start,c->hardware_epoch,c->next_id+1u);
  if(NT_SUCCESS(s)){RGXFWIF_CCB_CTL k;
   if(a04_rgx_device_read_words(&k,c->allocation->firmware.runtime->kctl,sizeof(k))||k.ui32WrapMask!=127||k.ui32ReadOffset!=k.ui32WriteOffset)s=STATUS_DEVICE_BUSY;

@@ -10,6 +10,7 @@ static int ticket_range(UINT size,UINT begin,UINT end) {
 }
 static NTSTATUS discard_allocation_prepares(struct geo_kmd_adapter *,struct geo_allocation *);
 static NTSTATUS prepare_pending(struct geo_kmd_adapter *,const struct geo_dma_ticket *);
+static NTSTATUS prepare_resident_dependents(struct geo_kmd_adapter *,struct geo_allocation *);
 static NTSTATUS GeoCreateAllocationImpl(HANDLE adapter,DXGKARG_CREATEALLOCATION *p) {
  struct geo_kmd_adapter *a=adapter;struct geo_allocation *allocation;struct geo_surface_desc desc;struct geo_allocation_data data;DXGK_ALLOCATIONINFO *info;NTSTATUS s;
  if(!a||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL||p->NumAllocations!=1||!p->pAllocationInfo||p->PrivateDriverDataSize)return STATUS_INVALID_PARAMETER;
@@ -84,7 +85,12 @@ static NTSTATUS GeoBuildPagingBufferImpl(HANDLE adapter,DXGKARG_BUILDPAGINGBUFFE
    if(status!=STATUS_SUCCESS){allocation->poisoned=1;a->engine.poisoned=1;return status;}
   }
   /* Failed/ambiguous native bind keeps the independent physical lock. */
-  if(status==STATUS_SUCCESS){allocation->aperture_offset=p->MapApertureSegment.OffsetInPages;allocation->aperture_pages=(uint32_t)p->MapApertureSegment.NumberOfPages;}
+  if(status==STATUS_SUCCESS){
+   allocation->aperture_offset=p->MapApertureSegment.OffsetInPages;allocation->aperture_pages=(uint32_t)p->MapApertureSegment.NumberOfPages;
+   /* MAP and native/PFN leases are real and confirmed. Complete pending
+    * Render preparation here, not in the scheduler's fatal-on-error Patch. */
+   status=prepare_resident_dependents(a,allocation);
+  }
   return status;
  }
  if(p->Operation==DXGK_OPERATION_UNMAP_APERTURE_SEGMENT) {
@@ -161,6 +167,21 @@ static NTSTATUS prepare_pending(struct geo_kmd_adapter *a,const struct geo_dma_t
  }else return STATUS_INVALID_PARAMETER;
  if(!a->synchronize(a->sync_context,finish_prepare,&call))return STATUS_DEVICE_NOT_READY;
  GeoFactoryCheckpoint(23,call.status,j->kind,t->slot,t->generation,0);return call.status;
+}
+/* Called only under the serialized PASSIVE paging/Render session. An
+ * unbound dependency remains pending; last MAP prepares exactly once. */
+static NTSTATUS prepare_resident_dependents(struct geo_kmd_adapter *a,struct geo_allocation *allocation)
+{
+ UINT i;struct geo_job *j;struct geo_dma_ticket t;NTSTATUS status;
+ if(!a||!allocation||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ for(i=0;i<GEO_MAX_JOBS;i++){
+  j=&a->engine.jobs[i];
+  if(j->state!=4 || (j->allocation!=allocation&&j->vertex!=allocation&&j->texture!=allocation))continue;
+  if(!j->allocation||!j->allocation->bound||(j->vertex&&!j->vertex->bound)||(j->texture&&!j->texture->bound))continue;
+  t=(struct geo_dma_ticket){GEO_TICKET_MAGIC,i,j->generation,0};
+  status=prepare_pending(a,&t);if(status!=STATUS_SUCCESS)return status;
+ }
+ return STATUS_SUCCESS;
 }
 static NTSTATUS GeoRenderDrawImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r) {
  struct geo_draw_packet *packet=NULL;struct prepare_call call;struct geo_allocation *a,*v,*x=NULL;
@@ -321,7 +342,9 @@ static NTSTATUS GeoPatchImpl(HANDLE adapter,const DXGKARG_PATCH *p) {
     GeoReadTicket((UCHAR *)p->pDmaBufferPrivateData+p->DmaBufferPrivateDataSubmissionStartOffset,&private_ticket)!=STATUS_SUCCESS)return STATUS_INVALID_PARAMETER;
  if(t.magic!=GEO_TICKET_MAGIC||t.reserved||t.slot>=GEO_MAX_JOBS||
     t.magic!=private_ticket.magic||t.slot!=private_ticket.slot||t.generation!=private_ticket.generation||t.reserved!=private_ticket.reserved)return STATUS_INVALID_PARAMETER;
- {NTSTATUS prepared=prepare_pending(a,&t);if(prepared!=STATUS_SUCCESS)return prepared;}
+ /* Render or final dependent MAP established resources and owner token.
+  * Patch/repatch validates identity only: no FW bootstrap, allocation,
+  * residency mutation, or second preparation with fallible GPU work. */
  RtlZeroMemory(&inspect,sizeof(inspect));inspect.adapter=a;inspect.ticket=t;inspect.context=p->hContext;inspect.kind=kind;inspect.count=count;
  inspect.open_handle=p->pAllocationList[0].hDeviceSpecificAllocation;
  if(count>=2u)inspect.vertex_open_handle=p->pAllocationList[1].hDeviceSpecificAllocation;

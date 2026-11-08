@@ -138,11 +138,14 @@ static BOOLEAN boot_enable(void *p)
     if(NT_SUCCESS(x->status))InterlockedExchange(&c->irq_gate,1);
     return TRUE;
 }
-NTSTATUS e_native_boot_locked(struct e_native_owner *c)
+/* Map-time cold readiness. No FW start or ownership publication occurs here.
+ * Last dependent MAP prepares the immutable child before any Patch call. */
+NTSTATUS e_native_prepare_copy_storage_locked(struct e_native_owner *c)
 {
-    struct a04_native_owner_allocation *a=c->allocation;struct a04_gpu_domain_snapshot p;
-    struct a04_vendor_power_snapshot power;struct irq_call call={c,STATUS_UNSUCCESSFUL};NTSTATUS status;
-    if(!a || !a->binding || !a->native || c->hardware_epoch==UINT64_MAX)return STATUS_INVALID_DEVICE_STATE;
+    struct a04_native_owner_allocation *a=c->allocation;NTSTATUS status;
+    if(!a || !a->native || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+    if(!a->binding || c->copy_storage)return STATUS_SUCCESS;
+    if(a->firmware.hardware_owned)return STATUS_INVALID_DEVICE_STATE;
     /* Install the immutable TQ program/PTEs while this graph is genuinely
      * cold, before publishing its root. Render and copy share this FW root.
      * One resident staging target is the bounded factory contract; a different
@@ -157,6 +160,14 @@ NTSTATUS e_native_boot_locked(struct e_native_owner *c)
                 c->copy_destination=r->id;break;
             }
     }
+    return STATUS_SUCCESS;
+}
+NTSTATUS e_native_boot_locked(struct e_native_owner *c)
+{
+    struct a04_native_owner_allocation *a=c->allocation;struct a04_gpu_domain_snapshot p;
+    struct a04_vendor_power_snapshot power;struct irq_call call={c,STATUS_UNSUCCESSFUL};NTSTATUS status;
+    if(!a || !a->binding || !a->native || c->hardware_epoch==UINT64_MAX)return STATUS_INVALID_DEVICE_STATE;
+    status=e_native_prepare_copy_storage_locked(c);if(!NT_SUCCESS(status))return status;
     status=e_native_platform_on(c);if(!NT_SUCCESS(status))return status;
     status=e_native_platform_observe(c,&p);if(!NT_SUCCESS(status))return status;
     /* MFG range belongs exclusively to this GPU0 miniport, not the parent. */

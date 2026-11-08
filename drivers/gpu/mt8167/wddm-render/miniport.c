@@ -202,8 +202,8 @@ struct geo_module_identity_v1 {
 C_ASSERT(sizeof(struct geo_module_identity_v1)==144);
 static void module_identity(PDRIVER_OBJECT driver)
 {
- static const CHAR source[]="acc343370cca6fbda412ebf3a535c0a583e37cbd";
- static const CHAR build[]="GPU340-persistent-copy-v1";
+ static const CHAR source[]="eb2bc820c3b67168b16f50dbe3fbf27f513ddfae";
+ static const CHAR build[]="GPU341-resident-copy-v1";
  struct geo_module_identity_v1 r={0};HANDLE key=NULL;UNICODE_STRING path,name;
  OBJECT_ATTRIBUTES oa;ULONG disposition;NTSTATUS status;
  if(!driver||KeGetCurrentIrql()!=PASSIVE_LEVEL||!driver->DriverStart||!driver->DriverSize)return;

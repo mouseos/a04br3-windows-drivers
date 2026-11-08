@@ -53,5 +53,6 @@ BOOLEAN e_native_synchronize(void *,PKSYNCHRONIZE_ROUTINE,void *);
 NTSTATUS e_native_stop_locked(struct e_native_owner *);
 NTSTATUS e_native_retire_graph_locked(struct e_native_owner *);
 NTSTATUS e_native_build_graph_locked(struct e_native_owner *);
+NTSTATUS e_native_prepare_copy_storage_locked(struct e_native_owner *);
 NTSTATUS e_native_boot_locked(struct e_native_owner *);
 #endif
