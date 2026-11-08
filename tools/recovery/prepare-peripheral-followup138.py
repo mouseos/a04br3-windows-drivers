@@ -143,7 +143,7 @@ def generate(p):
 def assert_paths(image,capture=False):
  b=Path(image).read_bytes();require((SERVICE+'.exe').encode('utf-16le') in b and SERVICE.encode('utf-16le') in b,'Compiled service/data UTF16 identity missing')
  require('mt6392-clock-compare.exe'.encode('utf-16le') in b and 'mt8167-afe-jack-read.exe'.encode('utf-16le') in b,'Required RTC/AFE clients missing')
- require('ge8300-d3d-texture-boundary.exe'.encode('utf-16le') not in b,'GPU client executable path forbidden');require('MT8167CombinedFollowup136'.encode('utf-16le') in b,'Old136 service preservation missing')
+ require((chr(0)+'ge8300-d3d-texture-boundary.exe'+chr(0)).encode('utf-16le') not in b,'Standalone GPU execution leaf forbidden; old preservation path remains valid');require('MT8167CombinedFollowup136'.encode('utf-16le') in b,'Old136 service preservation missing')
 
 def main():
  a=argparse.ArgumentParser();a.add_argument('--workspace',type=Path,required=True);a.add_argument('--map',type=Path,required=True);a.add_argument('--out',type=Path,required=True);a.add_argument('--finalize',action='store_true');x=a.parse_args();root=x.workspace.resolve(strict=True);p,m,blocks=build_policy(root,x.map,x.finalize);out=x.out.resolve();require(out.is_relative_to(root) and not out.exists(),'New root output required');out.mkdir(mode=0o700)
