@@ -1,5 +1,14 @@
 # TAB-A04-BR3 Windows ドライバ
 
+## run109 receiptと後続試験の区別（2026-11-08追記）
+
+主担当返却receiptではGPU320のR22 Patch=0、R29 private used16を確認した。
+続いてR20/R23はC00000B5（clear slot0/generation2）となり、10E/0B/C00000A3で停止した。
+first submit/IRQ/stopの通過位置は未記録であり、標準描画/readbackの成功とはしない。
+mainはnative e0614136/package33853e9c/runtime0f24ca1fのrun111境界版を試験中。
+公開single-checkoutのfull build sourceはe5816a86の320のままで、この321差分は未統合。
+以下の開始時点・回収待ちの記述は履歴として保持する。
+
 ## 最新の実機結果（2026-11-08、run109停止後）
 
 主担当から返却されたGPU320の実観測は、Install3010/flush0、計画reboot1回、
