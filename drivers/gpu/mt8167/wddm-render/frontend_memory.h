@@ -28,10 +28,25 @@ struct geo_frontend_memory {
  * the original VidMm MDL or frees VidMm backing. It is NOT a drain proof. */
 void GeoInitializeFrontendMemory(struct geo_kmd_adapter *);
 NTSTATUS GeoBeginVidMmMap(struct geo_kmd_adapter *,struct geo_allocation *,PMDL,ULONG active_bytes);
+/* Select mapped_pages from borrowed source at a PAGE-based MdlOffset.
+ * This currently covers the full allocation (roundup(active_bytes)), not
+ * disconnected partial-allocation residency. selected_view is an owned
+ * partial MDL identity backed by our independently locked full MDL. Pass
+ * selected_view to geo_bind/native with offset=0; never apply MdlOffset twice.
+ * The returned view is BORROWED by the caller until GeoEndVidMmMap plus final
+ * native lease release. Do not free/probe/unlock it or send it to DMA helpers. */
+NTSTATUS GeoBeginVidMmMapSpan(struct geo_kmd_adapter *,struct geo_allocation *,PMDL source,
+ ULONG mdl_offset_pages,SIZE_T mapped_pages,ULONG active_bytes,PMDL *selected_view);
 NTSTATUS GeoConfirmVidMmBind(struct geo_kmd_adapter *,struct geo_allocation *);
 void GeoEndVidMmMap(struct geo_kmd_adapter *,struct geo_allocation *);
 /* SEH TU MUST use the real Microsoft ARM compiler, not unsafe dereference or
  * a Clang SEH substitute. The rest of the miniport remains Clang-built. */
 NTSTATUS GeoPinVidMmPages(PMDL,ULONG page_bytes,PMDL *retained);
 void GeoUnpinVidMmPages(PMDL);
+/* Real selected PFNs: pinned is independently probe-locked; view is a true
+ * IoBuildPartialMdl identity of pinned, not a partial MDL relabeled as full.
+ * Neither owns/unlocks the original WDDM MDL. Destroy view before pinned. */
+NTSTATUS GeoPinVidMmSpan(PMDL source,ULONG mdl_offset_pages,ULONG page_bytes,
+ PMDL *selected_view,PMDL *retained);
+void GeoUnpinVidMmSpan(PMDL selected_view,PMDL retained);
 #endif
