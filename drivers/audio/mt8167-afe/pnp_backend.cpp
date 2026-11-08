@@ -310,6 +310,9 @@ static NTSTATUS OwnerUnbindWave(void *ctx,PMDL mdl) {
 #if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
 static NTSTATUS OwnerConnectMaskedIrq(Mt8167PnpBackend *);
 #endif
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+static NTSTATUS HpCalibrateLocked(Mt8167PnpBackend*);
+#endif
 static NTSTATUS OwnerCheckoutRoute(void *ctx,PPORTWAVERTSTREAM port,ULONG bytes,PMDL *mdl,PULONG actual,BOOLEAN headphone)
 {
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
@@ -350,11 +353,22 @@ static NTSTATUS OwnerCheckoutRoute(void *ctx,PPORTWAVERTSTREAM port,ULONG bytes,
             /* PortCls retires its client mapping on FreeAudioBuffer. The
              * allocating port reference and MDL remain in this owner. */
             RtlZeroMemory(o->retainedBuffer.mapping,o->retainedBuffer.bytes);
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+            if(headphone){
+                o->hpSelected=TRUE;
+                result=HpCalibrateLocked(o);
+                if(!NT_SUCCESS(result)){OwnerUnlock(o);return result;}
+            }
+#endif
             o->engineClient=port;o->engineState=KSSTATE_STOP;
 #if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
             o->hpSelected=headphone;
 #endif
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+            o->resetOnRun=headphone?FALSE:TRUE;
+#else
             o->resetOnRun=TRUE;
+#endif
             InterlockedExchange(&o->stoppedOffset,0);InterlockedExchange(&o->positionPaused,1);
             *mdl=o->retainedBuffer.mdl;*actual=o->retainedBuffer.bytes;
         }

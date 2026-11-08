@@ -13,6 +13,7 @@ struct parent{
  PVOID topck,infra,apmixed,gpio,audioAfe;ULONG apmixedLength;PHYSICAL_ADDRESS thermalAssigned[2];
  struct a04_shared_thermal_owner thermal;PVOID thermalPioMappings[2];ULONGLONG thermalPioDeadline;int thermalRundown;
  int adcProofValid;A04_THERMAL_PIO_RECORD adcProof;
+ struct a04_hp_calibration_report hpCali;ULONG hpCaliSaved[4];
  struct a04_hp_route hpRoute;struct a04_hp_measurements hpMeasured;struct a04_hp_calibration hpCalibration;
  ULONG hpPhaseMask[2];int hpCalibrationValid,hpRetainedMute;ULONGLONG hpRouteDeadline;
  struct{int leased,poisoned;}audio;struct{int active,poisoned;}voice;struct{int held,poisoned;}codecDomain;
@@ -21,13 +22,17 @@ struct parent{
 };typedef struct parent A04_PARENT_CONTEXT;
 struct request{PVOID buffer;size_t size,information;NTSTATUS status;};
 static ULONG th[1024],adc[1024],top[1024],infra[1024],analog[1024],afe[1024];
+static int calibrationMock;
 static int power,refs,maps,locks,mapCalls,failMap,ready=1,getProof,setProof,sampleTimeout,jackInserted,drained;
 static ULONGLONG now;
-static ULONG READ_REGISTER_ULONG(volatile ULONG*p){return *p;}
+static ULONG READ_REGISTER_ULONG(volatile ULONG*p){
+ if(calibrationMock&&p==afe+0x44/4&&(afe[0x10/4]&2))return afe[0x40/4]+(ULONG)((now/10*1764/10000)%49152)&~3u;
+ return *p;
+}
 static void WRITE_REGISTER_ULONG(volatile ULONG*p,ULONG v){*p=v;}
 static USHORT READ_REGISTER_USHORT(volatile USHORT*p){
  uintptr_t off=(uintptr_t)p-(uintptr_t)adc;
- if(off==0x30||off==0x34||off==0x40){unsigned ch=off==0x30?7:off==0x34?8:11;USHORT trigger=*(USHORT*)((UCHAR*)adc+4);return trigger&(1u<<ch)?sampleTimeout?0:(USHORT)(0x1000+2000+(ch-7)*100):0;}
+ if(off==0x30||off==0x34||off==0x40){unsigned ch=off==0x30?7:off==0x34?8:11;USHORT trigger=*(USHORT*)((UCHAR*)adc+4);return trigger&(1u<<ch)?sampleTimeout?0:(USHORT)(0x1000+2000+(ch-7)*100+(calibrationMock?((analog[0x704/4]&((3u<<11)|(3u<<14)))?((analog[0x708/4]&(1u<<28))?20:10):0):0)):0;}
  return *p;
 }
 static void WRITE_REGISTER_USHORT(volatile USHORT*p,USHORT v){*p=v;}
@@ -82,6 +87,26 @@ int main(void){
  assert(ParentHpAdcEnd(&c,generation)==STATUS_DEVICE_NOT_READY&&maps==2&&power==1&&refs==1);
  c.admissionClosed=1;a04_shared_thermal_stop(&c.thermal);
  assert(ParentHpAdcRead(&c,generation,7,&sample)==STATUS_DEVICE_NOT_READY&&!c.thermalRundown&&maps==2&&power==1&&refs==1);
+ /* One actual producer invocation, MMIO/ADC/timer model only. */
+ maps=power=refs=0;c=initial();c.audio.leased=c.codecDomain.held=c.afeClockHeld=c.audioTopClock.held=1;
+ analog[0x704/4]=1u<<13;analog[0x708/4]=(1u<<16)|(1u<<17)|(1u<<27);
+ calibrationMock=1;assert(ParentHpCalibratePrepare(&c,0x100000,49152,&generation)==0&&generation&&!c.hpCalibrationValid&&c.hpCali.state==1);
+ afe[0x40/4]=0x100000;afe[0x48/4]=0x10bfff;afe[0x10/4]|=2;afe[0x3a0/4]=1;
+ assert(ParentHpCalibrateMeasure(&c,generation)==0&&c.hpCali.state==3&&c.hpCali.phase_mask==7&&!c.hpCalibrationValid);
+ assert(c.hpCali.uv[0][0]!=c.hpCali.uv[0][1]&&c.hpCali.uv[0][1]!=c.hpCali.uv[0][2]);
+ assert(ParentHpCalibrateFinish(&c,generation)==STATUS_DEVICE_HARDWARE_ERROR&&!c.hpCalibrationValid&&c.audio.poisoned&&c.thermal.leased);
+ maps=power=refs=0;c=initial();c.audio.leased=c.codecDomain.held=c.afeClockHeld=c.audioTopClock.held=1;
+ analog[0x704/4]=1u<<13;analog[0x708/4]=(1u<<16)|(1u<<17)|(1u<<27);
+ assert(ParentHpCalibratePrepare(&c,0x100000,49152,&generation)==0);
+ afe[0x40/4]=0x100000;afe[0x48/4]=0x10bfff;afe[0x10/4]|=2;afe[0x3a0/4]=1;
+ assert(ParentHpCalibrateMeasure(&c,generation)==0);
+ afe[0x10/4]&=~2u;afe[0x3a0/4]=0;
+ assert(ParentHpCalibrateFinish(&c,generation)==0&&c.hpCalibrationValid&&c.hpCali.state==6&&c.hpCali.same_buffer&&c.hpCali.stop_observed&&!maps&&!power&&!refs);
+ assert(c.digitalPlayback.prepared&&c.digitalPlayback.retained&&afe[0x40/4]==0x100000&&afe[0x48/4]==0x10bfff);
+ assert((afe[0xf04/4]&15)==8&&((afe[0x34/4]>>8)&15)==10);
+ assert(ParentHpCalibratePrepare(&c,0x100000,49152,&stage)==STATUS_DEVICE_BUSY);
+ puts("HP producer: same-ring44100 actual A/B/C capture+conversion, stop refusal while DMA runs, retained48000 handoff and no repeat PASS (mock values only)");
+ calibrationMock=0;
  /* Fresh simulated boot after intentionally retained cases (no real maps). */
  for(unsigned fault=0;fault<6;fault++){
   maps=power=refs=0;c=initial();assert(ParentHpAdcBegin(&c,&generation)==0);

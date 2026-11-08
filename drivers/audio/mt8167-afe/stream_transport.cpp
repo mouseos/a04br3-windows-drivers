@@ -35,8 +35,8 @@ static int Start(Mt8167Transport *t, uint32_t periodBytes, struct mt8167_audio_s
 int Mt8167TransportStart(Mt8167Transport *t,uint32_t periodBytes) { return Start(t,periodBytes,NULL); }
 int Mt8167TransportStartParentOwned(Mt8167Transport *t,uint32_t periodBytes,struct mt8167_audio_shared_client *shared)
 { return shared ? Start(t,periodBytes,shared) : -1; }
-int Mt8167TransportStartMaskedParent(Mt8167Transport *t,uint32_t periodBytes,
-                                     struct mt8167_audio_shared_client *shared)
+static int StartMaskedRate(Mt8167Transport *t,uint32_t periodBytes,
+                                     struct mt8167_audio_shared_client *shared,ULONG rate)
 {
     struct mt8167_dl1_plan plan;
     /* Caller serializes with revoke and disconnect and owns a parent lease
@@ -48,7 +48,7 @@ int Mt8167TransportStartMaskedParent(Mt8167Transport *t,uint32_t periodBytes,
         InterlockedCompareExchange(&t->irq->fault,0,0) || t->engine->state!=MT8167_DL1_IDLE ||
         !t->dma->mdl || t->dma->exposed || t->dma->logical.QuadPart<=0 ||
         t->dma->logical.QuadPart>0xffffffffLL ||
-        !mt8167_dl1_plan((uint64_t)t->dma->logical.QuadPart,t->dma->size,periodBytes,48000,&plan)) return -1;
+        !mt8167_dl1_plan((uint64_t)t->dma->logical.QuadPart,t->dma->size,periodBytes,rate,&plan)) return -1;
     if (!NT_SUCCESS(Mt8167CommonPrepareForDevice(t->dma))) {t->state=AUDIO_FAILED;return -1;}
     /* Once DMA can be exposed, keep the parent, mapping and buffer even on
      * failure. IRQ was already connected while the parent kept it masked. */
@@ -58,6 +58,24 @@ int Mt8167TransportStartMaskedParent(Mt8167Transport *t,uint32_t periodBytes,
     if (Mt8167SynchronizedStart(t->irq,&t->plan)) {t->state=AUDIO_QUARANTINED;return -1;}
     t->state=AUDIO_RUNNING;return 0;
 }
+int Mt8167TransportStartMaskedParent(Mt8167Transport*t,uint32_t period,struct mt8167_audio_shared_client*shared)
+{return StartMaskedRate(t,period,shared,48000);}
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+int Mt8167TransportStartHpCalibration(Mt8167Transport*t,uint32_t period,struct mt8167_audio_shared_client*shared)
+{return StartMaskedRate(t,period,shared,44100);}
+int Mt8167TransportHpRetainedPcmPlan(Mt8167Transport*t)
+{
+ struct mt8167_dl1_plan plan;
+ if(!t||t->state!=AUDIO_STOPPED_RETAINED||!t->dma||!t->dma->exposed||!t->irq||!t->engine||
+    t->engine->state!=MT8167_DL1_STOPPED||t->plan.rate_code!=9||
+    (uint64_t)t->dma->logical.QuadPart!=t->plan.base||
+    (uint64_t)t->plan.end+1!=(uint64_t)t->plan.base+t->dma->size||
+    !mt8167_dl1_plan(t->plan.base,t->dma->size,t->dma->size/2,48000,&plan))return -1;
+ /* Change ONLY the pending sample-rate plan. Restart checks unchanged live
+  * BASE/END; no new allocation, no free or fabricated fabric-drain result. */
+ t->plan=plan;return 0;
+}
+#endif
 int Mt8167TransportPosition(Mt8167Transport *t,uint32_t *offset)
 {
     if (!t || !offset || t->state!=AUDIO_RUNNING || !t->irq) return -1;

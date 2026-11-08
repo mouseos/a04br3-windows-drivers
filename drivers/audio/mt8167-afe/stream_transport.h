@@ -41,6 +41,10 @@ int Mt8167TransportStartMaskedParent(Mt8167Transport *, uint32_t,
 /* Returns ring offset, not a count of elapsed periods. Caller excludes stop,
  * disconnect and PnP removal and keeps the owner and mapping referenced. */
 int Mt8167TransportPosition(Mt8167Transport *t,uint32_t *offset);
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+int Mt8167TransportStartHpCalibration(Mt8167Transport*,uint32_t,struct mt8167_audio_shared_client*);
+int Mt8167TransportHpRetainedPcmPlan(Mt8167Transport*);
+#endif
 /* Engine PCM: disable/readback, retire and flush IRQ/DPC work, retain the
  * connection and allocation for restart. Other profiles disconnect the IRQ.
  * Neither path certifies DMA bus drain or permits freeing exposed memory. */

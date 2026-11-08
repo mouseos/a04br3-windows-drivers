@@ -31,18 +31,50 @@ static NTSTATUS HpReadJack(void*p,struct mt8167_accdet_socket*out)
 {Mt8167PnpBackend*o=(Mt8167PnpBackend*)p;OwnerLock(o);NTSTATUS status=o->online?o->hpParent.ReadJack(o->hpParent.Header.Context,out):STATUS_DEVICE_NOT_READY;OwnerUnlock(o);return status;}
 static NTSTATUS HpPrepareStream(void*p,KSRTAUDIO_HWLATENCY *latency)
 {
- Mt8167PnpBackend*o=(Mt8167PnpBackend*)p;ULONG flags=0;NTSTATUS status;
+ Mt8167PnpBackend*o=(Mt8167PnpBackend*)p;ULONG flags=0;NTSTATUS s;
  if(!latency)return STATUS_INVALID_PARAMETER;OwnerLock(o);
- status=o->online&&!o->enginePoison?o->hpParent.Readiness(o->hpParent.Header.Context,&flags):STATUS_DEVICE_NOT_READY;
- if(NT_SUCCESS(status)&&(flags&(A04_HP_READY_MEASURED|A04_HP_READY_SENSE))!=(A04_HP_READY_MEASURED|A04_HP_READY_SENSE))status=STATUS_DEVICE_NOT_READY;
- if(NT_SUCCESS(status))status=o->hpParent.Latency(o->hpParent.Header.Context,&latency->FifoSize,&latency->ChipsetDelay,&latency->CodecDelay);
- OwnerUnlock(o);return status;
+ s=o->online&&!o->enginePoison?o->hpParent.Readiness(o->hpParent.Header.Context,&flags):STATUS_DEVICE_NOT_READY;
+ /* Standard optional HWLATENCY is explicitly rejected by the adapter gate.
+  * Unknown sentinels are never reported as measured zero latency. Calibration
+  * runs later at checkout, before the private ring is returned to PortCls. */
+ if(NT_SUCCESS(s)&&!(flags&A04_HP_READY_SENSE))s=STATUS_DEVICE_NOT_READY;
+ if(NT_SUCCESS(s)){latency->FifoSize=MAXULONG;latency->ChipsetDelay=MAXULONG;latency->CodecDelay=MAXULONG;}
+ OwnerUnlock(o);return s;
+}
+static NTSTATUS HpCalibrateLocked(Mt8167PnpBackend*o)
+{
+ struct a04_hp_calibration_report report;ULONG generation=0;NTSTATUS s;
+ if(!o->online||o->enginePoison||!o->hpParent.Header.Context)return STATUS_DEVICE_NOT_READY;
+ s=o->hpParent.CalibrationStatus(o->hpParent.Header.Context,&report);if(!NT_SUCCESS(s))return s;
+ if(report.attempted)return report.state==6&&report.status==STATUS_SUCCESS&&report.dma_base==(ULONG)o->buffer.logical.QuadPart&&report.dma_bytes==o->buffer.size?STATUS_SUCCESS:STATUS_DEVICE_NOT_READY;
+ if(o->transport.state!=AUDIO_READY||o->digitalRetained||!o->waveDma.list||!OwnerLiveDmaVerified(o))return STATUS_DEVICE_NOT_READY;
+ /* Still private: neither MDL nor CPU mapping has been returned to PortCls.
+  * The allocator zeroed this SAME Normal-NC/WC identity-mapped ring. */
+ s=o->hpParent.CalibratePrepare(o->hpParent.Header.Context,(ULONG)o->buffer.logical.QuadPart,o->buffer.size,&generation);
+ if(generation){o->digitalRetained=TRUE;o->hpPinned=TRUE;}
+ if(!NT_SUCCESS(s))goto fail;
+ o->waveDma.exposed=TRUE;o->retainedBuffer.handedToDevice=TRUE;
+ if(Mt8167TransportStartHpCalibration(&o->transport,o->buffer.size/2,&o->shared)){s=STATUS_DEVICE_HARDWARE_ERROR;goto fail;}
+ s=o->hpParent.CalibrateMeasure(o->hpParent.Header.Context,generation);
+ /* Always stop the real DL1/IRQ before any analog/rate transition, including
+  * failed ADC. No address replacement or allocation release follows failure. */
+ if(Mt8167TransportStop(&o->transport)){s=STATUS_DEVICE_HARDWARE_ERROR;goto fail;}
+ if(!NT_SUCCESS(s))goto fail;
+ s=o->hpParent.CalibrateFinish(o->hpParent.Header.Context,generation);if(!NT_SUCCESS(s))goto fail;
+ if(Mt8167TransportHpRetainedPcmPlan(&o->transport)){s=STATUS_DEVICE_HARDWARE_ERROR;goto fail;}
+ o->resetOnRun=FALSE;return STATUS_SUCCESS;
+fail:
+ if(generation||o->buffer.exposed||o->shared.quarantined){
+  InterlockedExchange(&o->enginePoison,1);
+  if(!o->shared.quarantined)(void)mt8167_audio_shared_quarantine(&o->shared);
+ }
+ return s;
 }
 static NTSTATUS HpCheckout(void*p,PPORTWAVERTSTREAM port,ULONG bytes,PMDL*mdl,PULONG actual)
 {
- Mt8167PnpBackend*o=(Mt8167PnpBackend*)p;KSRTAUDIO_HWLATENCY latency;NTSTATUS status=HpPrepareStream(o,&latency);
- if(!NT_SUCCESS(status))return status;
- return OwnerCheckoutRoute(o,port,bytes,mdl,actual,TRUE);
+ /* CT3 silent ring is48KiB. Keep the client's exact allocation forever;
+  * rounding up here occurs before any DMA publication or user mapping. */
+ return OwnerCheckoutRoute(p,port,bytes<49152?49152:bytes,mdl,actual,TRUE);
 }
 static NTSTATUS HpStart(void*p,BOOLEAN*exposed)
 {
@@ -60,10 +92,10 @@ NTSTATUS Mt8167PnpBackendHeadphone(Mt8167PnpBackend*o,const Mt8167HeadphoneProvi
  if(!o->hpParent.Header.Context){
   s=HpQueryParent(o->pdo,&o->hpParent);
   if(NT_SUCCESS(s)&&
-   (o->hpParent.Header.Size!=sizeof(o->hpParent)||o->hpParent.Header.Version!=A04_HP_PARENT_VERSION||o->hpParent.ParentBuild!=1105||
+   (o->hpParent.Header.Size!=sizeof(o->hpParent)||o->hpParent.Header.Version!=A04_HP_PARENT_VERSION||o->hpParent.ParentBuild!=1107||
     !o->hpParent.Header.Context||!o->hpParent.Header.InterfaceReference||!o->hpParent.Header.InterfaceDereference||
     !o->hpParent.BeginAdc||!o->hpParent.ReadAdc||!o->hpParent.EndAdc||!o->hpParent.Readiness||!o->hpParent.ReadJack||
-    !o->hpParent.Start||!o->hpParent.MuteRetained||!o->hpParent.ResumeRetained||!o->hpParent.Stop||!o->hpParent.Latency))s=STATUS_DEVICE_CONFIGURATION_ERROR;
+    !o->hpParent.Start||!o->hpParent.MuteRetained||!o->hpParent.ResumeRetained||!o->hpParent.Stop||!o->hpParent.Latency||!o->hpParent.CalibratePrepare||!o->hpParent.CalibrateMeasure||!o->hpParent.CalibrateFinish||!o->hpParent.CalibrationStatus))s=STATUS_DEVICE_CONFIGURATION_ERROR;
   if(!NT_SUCCESS(s)){
    if(o->hpParent.Header.InterfaceDereference)o->hpParent.Header.InterfaceDereference(o->hpParent.Header.Context);
    RtlZeroMemory(&o->hpParent,sizeof(o->hpParent));

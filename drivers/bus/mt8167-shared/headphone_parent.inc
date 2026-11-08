@@ -36,7 +36,7 @@ static NTSTATUS ParentHpAdcBegin(PVOID p,ULONG *generation)
  if(!ExAcquireRundownProtection(&c->thermalRundown)){status=STATUS_DEVICE_NOT_READY;goto power;}
  status=ParentAdcProof(c,&proof);if(!NT_SUCCESS(status))goto rundown;
  if(ParentLock(c)){status=STATUS_DEVICE_NOT_READY;goto rundown;}
- if(!c->topck||!c->infra||!c->apmixed||c->apmixedLength<0x70c||c->hpRoute.held||c->hpRoute.poisoned||c->thermal.leased||c->thermal.poisoned||!c->thermal.online||c->thermal.generation==MAXULONG||
+ if(!c->topck||!c->infra||!c->apmixed||c->apmixedLength<0x70c||c->hpRoute.held||c->hpRoute.poisoned||c->hpCalibrationValid||c->thermal.leased||c->thermal.poisoned||!c->thermal.online||c->thermal.generation==MAXULONG||
     c->thermalPioMappings[0]||c->thermalPioMappings[1]||!c->thermalAssigned[0].QuadPart||!c->thermalAssigned[1].QuadPart){status=STATUS_DEVICE_BUSY;goto unlock;}
  value=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->topck+0x24));
  if(value==MAXULONG||(value&0x40000002u)){status=STATUS_DEVICE_NOT_READY;goto unlock;}
@@ -256,3 +256,5 @@ static VOID ParentHpRawIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outBytes,s
   * are mandatory; raw data are never relabelled calibrated HP playback. */
  WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(*pair));
 }
+
+#include "headphone_calibration_parent.inc"

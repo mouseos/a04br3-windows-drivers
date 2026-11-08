@@ -1,3 +1,19 @@
+## 後段親1107 / audio1030：一回の実測producerと同一ring handoff
+
+前段1105/1106で不足していた実行経路を追加。標準NewStreamでは実senseとownerのみを確認し、校正前にbuffer取得へ到達できる。PortClsへMDLを返す前のprivate checkoutで最小48KiBの同一Normal-NC/WC identity-mapped PCM ringをゼロ化し、初回だけ44.1kHz無音DMAを実startする。親は同じthermal V3 ownerのAUXADC leaseを取得し、CT3 codec-utilsのdepop設定／A待機50ms／DAC enableと22uFのsettle20ms／gain0のC待機50msを実行。左右各phase22sampleを実読してtrimmeanと係数を生成する。CUR進行、BASE/END、DL1/IRQと期限を実検査し、caller係数やphaseは受け付けない。
+
+子の実DL1 stop・IRQ/DPC rundown→親のstop実観測→analog所有mask復元→48kHz digital rateへの変更→AUXADC終了→校正validという順序。MDL/SG/BASE/END/clockは変更・解放しない。bufferを標準PCM clientへ返し、次RUNは同じringでHP start-muted→retained DMA restart→resumeへ進む。校正失敗や停止不確実はownerをpoison/retainし、その起動で再校正しない。speaker/captureが先にexposeしたringは奪わない。
+
+親HP ABIはversion2/build1107。thermal V3 build1104、audio v11は維持。既存1104/媒体/EDKに変更なし。親INF1107とaudio INF/NativeStart1030は一致させる。校正中はanalog操作が新規に行われるため、署名物だけを実機再生成功とは扱わない。
+
+**latencyとdrainの意味を限定する。** 実測producerは7個のKeQueryInterruptTime時刻とraw/係数/同一ring/stopを400byte診断へ返す。これは起動・校正stageの経過時間で、標準KSRTAUDIO_HWLATENCYのFIFO/ChipsetDelay/CodecDelayではない。既存captureと同じadapter gateが標準HWLATENCY queryをNOT_SUPPORTEDで拒否し、未知sentinelでPCMを妨げない。標準latency値を合成しない。fabric outstandingの完全drain証明は依然無いので、同一ringをpinしたretained handoffだけを許可し、free/clock gate/別backingへの変更へは使わない。
+
+`mt8167-hp-adc-read.exe --calibration-status` は既存ACCDET interfaceの固定read-only IOCTL0x00226560でreportを1回返す。`--raw` は既存単発ADC観測でphase UNKNOWNのまま。statusを読むだけでは校正は実行されず、通常の標準HP buffer checkoutがproducerを実行する。依存未充足時の同じProbe反復を指示しない。
+
+source根拠: CT3 GPL7c478212 `mt8167-codec-utils.c` のcali_setup/enable/disable/get_hp_cali_val、`mt8167-codec.c` hp_depop_setupとHP DC Offsets、`mt8167-afe-pcm.c` trigger STOP。共通codec_domainの供給bitを保存しLinuxcleanupのglobal clock/power offやdma_free_coherentをコピーしない。XNU側に同じMT8167 codecの独立実装は確認できず、XNUの動作を根拠に遅延やdrainを認定しない。
+
+再現script `build-mt8167-hp-calibrate1107.ps1` は親1TUとABI依存C++16TU/client1TUをcompileし、変わらない親13helper/AFE C8をcache照合して再利用。新しいmockを細分化せず既存production parent統合fixtureへ一回のA/B/C→STOP→48k同一ring遷移と稼働中finish拒否を追加した。mock ADC値は実測証拠ではない。
+
 ## 後段親1106: STOP時の親側観測
 
 1105/audio1029のbackend ABIを維持したまま、親STOPでDL1 (`AFE_DAC_CON0` bit1) とIRQ1 (`IRQ_MCU_CON` bit0 / `IRQ_STATUS` bit0) の無効・未pendingを二度実読確認する。根拠はCT3 `mt8167_afe_dais_trigger` STOPと既存Windows `mt8167_dl1_stop`。親は追加のDMA/IRQ register writeを行わず、子のISR/DPC rundown責務も引き取らない。全1読取りや有効bit観測時はHP clamp/lease保持とエラーを返し、typed RETAINED STOP成功を合成しない。これはfabric drain証明ではない。

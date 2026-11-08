@@ -183,7 +183,7 @@ static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device,PIRP irp,PRESOURCELIST r
  record.schema=1;record.bytes=sizeof(record);record.inf_revision=
 #if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
 #if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
- 1029;
+ 1030;
 #elif defined(A04_AUDIO_HP_COMPONENT) && A04_AUDIO_HP_COMPONENT
  1028;
 #elif defined(A04_AUDIO_ACCDET_JACK) && A04_AUDIO_ACCDET_JACK

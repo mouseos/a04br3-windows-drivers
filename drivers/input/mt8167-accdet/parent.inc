@@ -2,6 +2,7 @@
 #include "ioctl.h"
 #if A04_SHARED_HP_PCM
 static VOID ParentHpRawIoctl(WDFQUEUE,WDFREQUEST,size_t,size_t);
+static VOID ParentHpCalibrationIoctl(WDFQUEUE,WDFREQUEST,size_t,size_t);
 #endif
 static int ParentAccdetRead32(void *context,unsigned off,uint32_t *value)
 {return ParentRegRead(context,A04_SHARED_GPIO,off,value);}
@@ -29,6 +30,7 @@ static VOID ParentAccdetControl(WDFQUEUE queue,WDFREQUEST request,size_t outByte
  NTSTATUS status;enum mt8167_accdet_result result;struct mt8167_accdet_io io={c,ParentAccdetRead32};
  UNREFERENCED_PARAMETER(outBytes);
 #if A04_SHARED_HP_PCM
+ if(code==IOCTL_MT8167_HP_CALIBRATION_STATUS){ParentHpCalibrationIoctl(queue,request,outBytes,inBytes);return;}
  if(code==IOCTL_MT8167_HP_RAW){ParentHpRawIoctl(queue,request,outBytes,inBytes);return;}
 #endif
  if(!inBytes&&code==IOCTL_MT8167_ACCDET_QUERY_STATUS){ParentAccdetStatus(c,request);return;}

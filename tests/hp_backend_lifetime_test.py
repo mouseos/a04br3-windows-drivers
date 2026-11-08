@@ -42,7 +42,8 @@ using PVOID=void*;using PPORTWAVERTSTREAM=void*;using PMDL=void*;using PULONG=un
 #define A04_AUDIO_ENGINE_PCM 1
 #define A04_AUDIO_RUN_DIAGNOSTIC 1
 #define A04_AUDIO_VOICE_PCM_DIAGNOSTIC 1
-static int sideEffects,locks;static std::vector<int> events;static unsigned drainState=1;static int hpError;
+static int sideEffects,locks;
+static int HpCalibrateLocked(struct Mt8167PnpBackend*);static std::vector<int> events;static unsigned drainState=1;static int hpError;
 enum{AUDIO_READY,AUDIO_RUNNING,AUDIO_STOPPED_RETAINED};enum{KSSTATE_STOP};
 struct Buffer{PMDL mdl;void*mapping;unsigned bytes;uint64_t physicalAddress;};
 struct Transport{int state;int plan;};
@@ -75,6 +76,7 @@ static int speaker(void*){events.push_back(99);return 0;}
 for name in ['OwnerCheckoutRoute','OwnerRouteStart','OwnerRouteMute','OwnerRouteUnmute','OwnerStopRunning']:
     code+='\n'+function(name)+'\n'
 code+=r'''
+static int HpCalibrateLocked(Mt8167PnpBackend*){return STATUS_DEVICE_NOT_READY;}
 int main(){
  char backing[8192];Mt8167PnpBackend o{};o.online=true;o.transport.state=AUDIO_STOPPED_RETAINED;
  o.retainedBuffer={(void*)1,backing,sizeof(backing),0x100000};

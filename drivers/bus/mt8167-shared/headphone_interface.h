@@ -7,7 +7,7 @@
  * byte-compatible. No caller mappings, callbacks, physical addresses or
  * supplied coefficients cross this interface. */
 static const GUID A04HeadphoneParentGuid={0xd39057d6,0x722d,0x4c82,{0x9a,0xc4,0x6a,0x94,0xe2,0x98,0x75,0x28}};
-#define A04_HP_PARENT_VERSION 1
+#define A04_HP_PARENT_VERSION 2
 #define A04_HP_RAW_BYTES 72
 #define A04_HP_PHASE_UNKNOWN 0u
 #define A04_HP_PHASE_A 1u
@@ -21,6 +21,7 @@ static const GUID A04HeadphoneParentGuid={0xd39057d6,0x722d,0x4c82,{0x9a,0xc4,0x
 #define A04_HP_DRAIN_RETAINED 1u
 #define A04_HP_DRAIN_RELEASED 2u
 #include "headphone_observation.h"
+#include "headphone_calibration.h"
 typedef struct _A04_HEADPHONE_INTERFACE {
  INTERFACE Header;ULONG ParentBuild;
  NTSTATUS (*BeginAdc)(PVOID,ULONG *generation);
@@ -33,5 +34,11 @@ typedef struct _A04_HEADPHONE_INTERFACE {
  NTSTATUS (*ResumeRetained)(PVOID);
  NTSTATUS (*Stop)(PVOID,ULONG *drain_state);
  NTSTATUS (*Latency)(PVOID,ULONG *,ULONG *,ULONG *);
+ /* Kernel peer only: verify the existing bound PCM ring, never allocate or
+  * publish a replacement. Finish accepts only that same stopped ring. */
+ NTSTATUS (*CalibratePrepare)(PVOID,ULONG base,ULONG bytes,ULONG *generation);
+ NTSTATUS (*CalibrateMeasure)(PVOID,ULONG generation);
+ NTSTATUS (*CalibrateFinish)(PVOID,ULONG generation);
+ NTSTATUS (*CalibrationStatus)(PVOID,struct a04_hp_calibration_report *);
 } A04_HEADPHONE_INTERFACE;
 #endif

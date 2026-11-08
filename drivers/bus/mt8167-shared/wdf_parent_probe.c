@@ -295,6 +295,7 @@ volatile LONG adcPurpose;int adcProofValid;A04_THERMAL_PIO_RECORD adcProof;
 struct a04_hp_route hpRoute;struct a04_hp_measurements hpMeasured;
 struct a04_hp_calibration hpCalibration;ULONG hpPhaseMask[2];
 int hpCalibrationValid,hpRetainedMute;ULONGLONG hpRouteDeadline;
+struct a04_hp_calibration_report hpCali;ULONG hpCaliSaved[4];
 #endif
 PVOID audioAfe;
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
@@ -1836,9 +1837,11 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     {A04_HEADPHONE_INTERFACE hp;WDF_QUERY_INTERFACE_CONFIG query;
      RtlZeroMemory(&hp,sizeof(hp));hp.Header.Size=sizeof(hp);hp.Header.Version=A04_HP_PARENT_VERSION;
      hp.Header.Context=dev;hp.Header.InterfaceReference=ParentInterfaceReference;hp.Header.InterfaceDereference=ParentInterfaceDereference;
-     hp.ParentBuild=1105;hp.BeginAdc=ParentHpAdcBegin;hp.ReadAdc=ParentHpAdcRead;hp.EndAdc=ParentHpAdcEnd;
+     hp.ParentBuild=1107;hp.BeginAdc=ParentHpAdcBegin;hp.ReadAdc=ParentHpAdcRead;hp.EndAdc=ParentHpAdcEnd;
      hp.Readiness=ParentHpReadiness;hp.ReadJack=ParentHpJack;hp.Start=ParentHpStart;
      hp.MuteRetained=ParentHpMute;hp.ResumeRetained=ParentHpResume;hp.Stop=ParentHpStop;hp.Latency=ParentHpLatency;
+     hp.CalibratePrepare=ParentHpCalibratePrepare;hp.CalibrateMeasure=ParentHpCalibrateMeasure;
+     hp.CalibrateFinish=ParentHpCalibrateFinish;hp.CalibrationStatus=ParentHpCalibrationStatus;
      WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&hp,&A04HeadphoneParentGuid,NULL);
      status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;}
 #endif
