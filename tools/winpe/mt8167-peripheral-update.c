@@ -148,9 +148,43 @@ static DWORD selected(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int candidate
 static DWORD installed_sys(unsigned i,int candidate){WCHAR s[MAX_PATH],d[MAX_PATH],p[MAX_PATH];HANDLE h=INVALID_HANDLE_VALUE;DWORD e;if(!GetSystemDirectoryW(s,MAX_PATH))return GetLastError();e=path(d,s,L"drivers");if(!e)e=path(p,d,targets[i].sys);if(!e&&!candidate&&((A04_PERIPHERAL_FIRST_INSTALL_MASK|A04_PERIPHERAL_DEFERRED_UNBOUND_MASK)&(1u<<i))){h=CreateFileW(p,FILE_READ_ATTRIBUTES,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,NULL);if(h!=INVALID_HANDLE_VALUE){CloseHandle(h);return ERROR_ALREADY_EXISTS;}e=GetLastError();return e==ERROR_FILE_NOT_FOUND?0:e;}if(!e)e=deferred_file(p,candidate?targets[i].hash[1]:targets[i].base_sys,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);return e;}
 /* DIF may store the original INF basename in the selected class key while
  * SetupCopyOEMInf publishes only oemNNN.inf in Windows\INF. Resolve that exact
- * hash-pinned staged package through SetupAPI; never scan the INF directory,
+ * installed package through SetupAPI; never scan the INF directory,
  * accept a missing file, skip CAT checks, or reinterpret a mismatched version. */
 static int published_inf_leaf(const WCHAR *s){unsigned i=3;if(lstrlenW(s)<8)return 0;if((s[0]!=L'o'&&s[0]!=L'O')||(s[1]!=L'e'&&s[1]!=L'E')||(s[2]!=L'm'&&s[2]!=L'M'))return 0;if(s[i]<L'0'||s[i]>L'9')return 0;while(s[i]>=L'0'&&s[i]<=L'9'){if(++i>12)return 0;}return !lstrcmpiW(s+i,L".inf");}
+/* SetupGetInfDriverStoreLocation does not inspect arbitrary staged INF bytes.
+ * Ask SetupAPI for the installed driver's INF on a private information set.
+ * DI_FLAGSEX_INSTALLEDDRIVER prevents best-driver selection or other packages.
+ * No DIF, registry write, or change to the caller's driver list is performed. */
+static DWORD installed_inf_name(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,WCHAR *out){
+ static WCHAR instance[MAX_DEVICE_ID_LEN];static SP_DRVINFO_DETAIL_DATA_W detail;
+ SP_DEVINFO_DATA node;SP_DEVINSTALL_PARAMS_W params;SP_DRVINFO_DATA_W driver,extra;
+ HDEVINFO own=INVALID_HANDLE_VALUE;DWORD e=0,n=0;int built=0;
+ if(!SetupDiGetDeviceInstanceIdW(set,dev,instance,MAX_DEVICE_ID_LEN,NULL))return GetLastError();
+ own=SetupDiCreateDeviceInfoList(NULL,NULL);if(own==INVALID_HANDLE_VALUE)return GetLastError();
+ ZeroMemory(&node,sizeof(node));node.cbSize=sizeof(node);
+ if(!SetupDiOpenDeviceInfoW(own,instance,NULL,0,&node)){e=GetLastError();goto done;}
+ ZeroMemory(&params,sizeof(params));params.cbSize=sizeof(params);
+ if(!SetupDiGetDeviceInstallParamsW(own,&node,&params)){e=GetLastError();goto done;}
+ params.FlagsEx|=DI_FLAGSEX_INSTALLEDDRIVER;
+ if(!SetupDiSetDeviceInstallParamsW(own,&node,&params)){e=GetLastError();goto done;}
+ if(!SetupDiBuildDriverInfoList(own,&node,SPDIT_COMPATDRIVER)){e=GetLastError();goto done;}built=1;
+ ZeroMemory(&driver,sizeof(driver));driver.cbSize=sizeof(driver);
+ if(!SetupDiEnumDriverInfoW(own,&node,SPDIT_COMPATDRIVER,0,&driver)){e=GetLastError();goto done;}
+ ZeroMemory(&extra,sizeof(extra));extra.cbSize=sizeof(extra);
+ if(SetupDiEnumDriverInfoW(own,&node,SPDIT_COMPATDRIVER,1,&extra)){e=ERROR_INVALID_DATA;goto done;}
+ e=GetLastError();if(e!=ERROR_NO_MORE_ITEMS)goto done;e=0;
+ if(driver.DriverVersion!=targets[i].version||(((ULONGLONG)driver.DriverDate.dwHighDateTime<<32)|driver.DriverDate.dwLowDateTime)!=targets[i].date){e=ERROR_REVISION_MISMATCH;goto done;}
+ ZeroMemory(&detail,sizeof(detail));detail.cbSize=sizeof(detail);
+ if(!SetupDiGetDriverInfoDetailW(own,&node,&driver,&detail,sizeof(detail),&n)){
+  e=GetLastError();if(e!=ERROR_INSUFFICIENT_BUFFER)goto done;e=0;
+ }
+ /* The fixed fields are valid even when the trailing HardwareID list does not fit. */
+ for(n=0;n<MAX_PATH&&detail.InfFileName[n];n++);if(!n||n==MAX_PATH){e=ERROR_INVALID_DATA;goto done;}
+ lstrcpyW(out,detail.InfFileName);
+done:
+ if(built&&!SetupDiDestroyDriverInfoList(own,&node,SPDIT_COMPATDRIVER)&&!e)e=GetLastError();
+ if(!SetupDiDestroyDeviceInfoList(own)&&!e)e=GetLastError();return e;
+}
 static DWORD installed_inf(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int candidate){
  /* Service transaction is serial; keep bounded path scratch off the ARM stack. */
  HKEY key;static WCHAR inf[128],win[MAX_PATH],dir[MAX_PATH],full[MAX_PATH],folder[MAX_PATH],staged[MAX_PATH],store[MAX_PATH],published[MAX_PATH],parent[MAX_PATH];DWORD type,n=sizeof(inf),j,e,needed=0,last=0;HANDLE held=INVALID_HANDLE_VALUE;
@@ -167,7 +201,8 @@ static DWORD installed_inf(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int cand
  }else{
   e=path(folder,base_directory,targets[i].folder);if(!e)e=path(staged,folder,targets[i].inf);
   if(!e)e=deferred_file(staged,targets[i].hash[0],&held);if(held!=INVALID_HANDLE_VALUE){CloseHandle(held);held=INVALID_HANDLE_VALUE;}if(e)return e;
-  if(!SetupGetInfDriverStoreLocationW(staged,NULL,NULL,store,MAX_PATH,&needed))e=GetLastError();record(i,0x250,e);if(e){if(e==ERROR_NOT_FOUND)selected_inf_locator_unverified=1;return e;}
+  e=installed_inf_name(i,set,dev,full);record(i,0x254,e);if(e)return e;
+  if(!SetupGetInfDriverStoreLocationW(full,NULL,NULL,store,MAX_PATH,&needed))e=GetLastError();record(i,0x250,e);if(e){if(e==ERROR_NOT_FOUND)selected_inf_locator_unverified=1;return e;}
   if(!needed||needed>MAX_PATH)return ERROR_INVALID_DATA;
   e=deferred_file(store,targets[i].hash[0],&held);if(held!=INVALID_HANDLE_VALUE){CloseHandle(held);held=INVALID_HANDLE_VALUE;}if(e)return e;
   if(!SetupGetInfPublishedNameW(store,published,MAX_PATH,&needed))e=GetLastError();record(i,0x251,e);if(e){if(e==ERROR_NOT_FOUND)selected_inf_locator_unverified=1;return e;}
