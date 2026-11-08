@@ -14,7 +14,7 @@
 struct mt_musb_runtime {
  KSPIN_LOCK lock;KTIMER timer;KDPC dpc;KEVENT idle;
  PIO_WORKITEM work,cleanup;PDEVICE_OBJECT fdo;
- BOOLEAN queued,closing,lease,fault,started,root_running;
+ BOOLEAN queued,closing,lease,fault,started,root_running,io_unsafe;
  volatile UCHAR *mac,*phy;
  MT_MUSB_OWNER_INTERFACE owner;MT_MUSB_OBSERVATION proof;
  MT8167_USB20_CONTROLLER controller;A04_USB_BOARD board;
@@ -110,7 +110,7 @@ static int StopPhysical(struct mt_musb_runtime *r)
  if(!r->lease)return 0;
  /* DMA was never enabled by this driver. Only our established PIO ownership
   * permits these mask/flush writes. Parent isolation is the fallback proof. */
- if(r->started){
+ if(r->started&&!r->io_unsafe){
   Wr32(r,0xa4,Rd32(r,0xa4)&~7u);Wr16(r,6,0);Wr16(r,8,0);Wr8(r,0xb,0);
   local=Flush(r);Wr8(r,0x60,(UCHAR)(Rd8(r,0x60)&~1u));
  }
@@ -209,7 +209,11 @@ static void Tick(PDEVICE_OBJECT device,PVOID context)
  }
  connected=r->connected;closing=r->closing;fault=r->fault;cached_frame=r->frame;KeReleaseSpinLock(&r->lock,irql);
  if(!closing&&!fault){
-  if(Observe(r,r->proof.vbus_on!=0)||EnginesIdle(r)||IrqOff(r)){result=-1;proven=Flush(r)==0;fault=TRUE;}
+  if(EnginesIdle(r)||IrqOff(r)){
+   /* An unexpected engine/IRQ invalidates our PIO write authority. Only the
+    * parent's known isolation path may touch it; do not flush unknown DMA. */
+   r->io_unsafe=TRUE;result=-1;proven=0;fault=TRUE;
+  }else if(Observe(r,r->proof.vbus_on!=0)){result=-1;proven=Flush(r)==0;fault=TRUE;}
   else {
    usb=Rd8(r,0xa)&0xb0;if(usb)Wr8(r,0xa,(UCHAR)usb);
    if(usb&0x10)connected=1;if(usb&0x20)connected=0;
@@ -231,7 +235,7 @@ static void Tick(PDEVICE_OBJECT device,PVOID context)
   KeAcquireSpinLock(&r->lock,&irql);state=r->job.state;
   if(mt_musb_expired(&r->job,KeQueryInterruptTime()))result=-1;
   KeReleaseSpinLock(&r->lock,irql);
-  if(r->hardware_job){
+  if(r->hardware_job&&!r->io_unsafe){
    if(state==MT_JOB_CANCEL||result){result=-1;proven=Flush(r)==0;}
    else result=DataEvent(r);
    actual=r->properties.type==1?r->ep0.transfer.actual:r->pio.actual;
