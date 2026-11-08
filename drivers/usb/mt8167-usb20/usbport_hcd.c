@@ -181,6 +181,7 @@ static ULONG Open(PVOID p,struct a04_mp_properties *v,PVOID endpoint)
   }
   if(slot==24)for(i=0;i<24;i++)if(!h->open_ep[i]){slot=i;break;}
   if(slot==24||(v->type!=1&&count>=MT_MUSB_DATA_LANES)){HUNLOCK(h,k);return A04_MP_RESOURCES;}
+  if(h->open_ep[slot]==e)MtMusbRetire(h->runtime,e->cookie);
   h->open_ep[slot]=e;
  }
  RtlZeroMemory(e,sizeof(*e));e->p=*v;e->state=A04_EP_PAUSED;
@@ -202,7 +203,7 @@ static void Detach(struct a04_hcd *h,struct a04_mp_endpoint *e)
 {unsigned i;for(i=0;i<A04_HCD_PENDING;i++)if(h->active[i].ep==e)DetachSlot(h,i);}
 static VOID Close(PVOID p,PVOID endpoint,BOOLEAN removed)
 {struct a04_hcd *h=CTX(p);struct a04_mp_endpoint *e=endpoint;KIRQL k;UNREFERENCED_PARAMETER(removed);
- HLOCK(h,k);Detach(h,e);{unsigned i;for(i=0;i<24;i++)if(h->open_ep[i]==e)h->open_ep[i]=NULL;}e->state=A04_EP_CLOSED;HUNLOCK(h,k);}
+ HLOCK(h,k);Detach(h,e);MtMusbRetire(h->runtime,e->cookie);{unsigned i;for(i=0;i<24;i++)if(h->open_ep[i]==e)h->open_ep[i]=NULL;}e->state=A04_EP_CLOSED;HUNLOCK(h,k);}
 static ULONG State(PVOID p,PVOID endpoint)
 {struct a04_hcd *h=CTX(p);KIRQL k;ULONG s;HLOCK(h,k);s=((struct a04_mp_endpoint *)endpoint)->state;HUNLOCK(h,k);return s;}
 static VOID SetState(PVOID p,PVOID endpoint,ULONG state)
@@ -214,7 +215,7 @@ static VOID SetState(PVOID p,PVOID endpoint,ULONG state)
   * in the worker. USBPORT keeps its transfer until the following Abort. */
  if(ActiveSlot(h,e)>=0&&h->active[ActiveSlot(h,e)].transfer->state==3&&state!=A04_EP_ACTIVE){MtMusbCancel(h->runtime,e->cookie);e->toggle_unknown=1;}
  if(ActiveSlot(h,e)>=0&&h->active[ActiveSlot(h,e)].transfer->state==3&&state==A04_EP_ACTIVE&&e->state!=A04_EP_ACTIVE)h->fault=1;
- if(state==A04_EP_REMOVE)Detach(h,e);e->state=state;HUNLOCK(h,k);
+ if(state==A04_EP_REMOVE){Detach(h,e);MtMusbRetire(h->runtime,e->cookie);}e->state=state;HUNLOCK(h,k);
 }
 static ULONG EpStatus(PVOID p,PVOID endpoint)
 {struct a04_hcd *h=CTX(p);KIRQL k;ULONG s;HLOCK(h,k);s=((struct a04_mp_endpoint *)endpoint)->status;HUNLOCK(h,k);return s;}

@@ -61,6 +61,11 @@ int main(void){
  AckIn(2,3,0x71);Pulse(r);CHECK(!MtMusbTake(r,101,data,sizeof(data),&n,&s,&t)&&n==3&&!s&&data[2]==0x71);
  for(i=3;i<8;i++){AckIn(i,1,(UCHAR)i);}Pulse(r);
  for(i=3;i<8;i++)CHECK(!MtMusbTake(r,110+i,data,sizeof(data),&n,&s,&t)&&n==1&&!s&&data[0]==i);
- CHECK(!MtMusbRecoverToggle(r,100,&t)&&t==1);CHECK(MtMusbClose(r));test_banked=0;
+ CHECK(!MtMusbRecoverToggle(r,100,&t)&&t==1);
+ CHECK(MtMusbRecoverToggle(r,100,&t)); /* recovery consumed exactly once */
+ e.address=5;e.endpoint=0x81;e.type=3;e.packet=8;e.speed=2;e.direction=0;e.period=1;e.hub=0xffff;p.bytes=8;
+ CHECK(!MtMusbSubmit(r,300,&e,0,&p,data));Work();MtMusbCancel(r,300);MtMusbRetire(r,300);Pulse(r);
+ CHECK(MtMusbRecoverToggle(r,300,&t)); /* closed cookie can never evict a live recovery */
+ CHECK(MtMusbClose(r));test_banked=0;
  return 0;
 }

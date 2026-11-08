@@ -16,7 +16,7 @@
 struct mt_musb_lane {
  struct mt_musb_async job;struct a04_mp_properties properties;
  struct a04_mp_parameters parameters;UCHAR shadow[MT_MUSB_SHADOW_BYTES];
- struct a04_pio_transfer pio;MT8167_USB20_EP0 ep0;BOOLEAN hardware_job;
+ struct a04_pio_transfer pio;MT8167_USB20_EP0 ep0;BOOLEAN hardware_job,retired;
 };
 struct mt_musb_runtime {
  KSPIN_LOCK lock;KTIMER timer;KDPC dpc;KEVENT idle;
@@ -131,6 +131,7 @@ static int AllIdle(struct mt_musb_runtime *r)
  * its old endpoint, so recover toggle by cookie independently of FIFO reuse. */
 static void RecoverRecord(struct mt_musb_runtime *r,ULONG cookie,ULONG toggle)
 {unsigned i;if(!cookie)return;for(i=0;i<32;i++)if(r->recovered[i].cookie==cookie)break;
+ if(i==32){for(i=0;i<32;i++)if(!r->recovered[i].cookie)break;}
  if(i==32)i=r->recovery_next++%32;r->recovered[i].cookie=cookie;r->recovered[i].toggle=toggle;}
 static int StopPhysical(struct mt_musb_runtime *r)
 {
@@ -246,7 +247,7 @@ static int ServiceLane(struct mt_musb_runtime *r,unsigned n)
  if(state==MT_JOB_QUEUED){claim=!mt_musb_claim(&l->job,&ticket);if(mt_musb_expired(&l->job,KeQueryInterruptTime()))result=-1;}
  else if(state==MT_JOB_CANCEL&&!l->hardware_job){
   (void)mt_musb_finish(&l->job,ticket,0,USBD_STATUS_CANCELED,l->job.toggle,1);
-  RecoverRecord(r,l->job.last_cookie,l->job.last_toggle);
+  if(!l->retired)RecoverRecord(r,l->job.last_cookie,l->job.last_toggle);
  }
  KeReleaseSpinLock(&r->lock,k);
  if(claim&&!result){
@@ -278,7 +279,7 @@ static int ServiceLane(struct mt_musb_runtime *r,unsigned n)
  if(result&&(l->job.state==MT_JOB_RUNNING||l->job.state==MT_JOB_CANCEL)){
   (void)mt_musb_finish(&l->job,ticket,actual,result==1?USBD_STATUS_SUCCESS:
    result==A04_PIO_STALL?USBD_STATUS_STALL_PID:USBD_STATUS_XACT_ERROR,toggle,proven);
-  if(proven)RecoverRecord(r,l->job.last_cookie,l->job.last_toggle);
+  if(proven&&l->job.state==MT_JOB_IDLE&&!l->retired)RecoverRecord(r,l->job.last_cookie,l->job.last_toggle);
  }
  KeReleaseSpinLock(&r->lock,k);return proven?0:-1;
 }
@@ -316,7 +317,7 @@ static void Tick(PDEVICE_OBJECT device,PVOID context)
     if(proven&&l->job.state==MT_JOB_FAULT)l->job.state=MT_JOB_RUNNING; /* independent isolation now proved */
     if(l->job.state==MT_JOB_RUNNING||l->job.state==MT_JOB_CANCEL){
      (void)mt_musb_finish(&l->job,ticket,l->job.actual,USBD_STATUS_XACT_ERROR,l->job.toggle,proven);
-     if(proven)RecoverRecord(r,l->job.last_cookie,l->job.last_toggle);
+     if(proven&&l->job.state==MT_JOB_IDLE&&!l->retired)RecoverRecord(r,l->job.last_cookie,l->job.last_toggle);
     }
    }
    KeReleaseSpinLock(&r->lock,k);
@@ -417,7 +418,7 @@ ULONG MtMusbSubmitDeadline(struct mt_musb_runtime *r,ULONG cookie,const struct a
   for(n=first;n<last;n++){
    struct mt_musb_lane *l=&r->lanes[n];
    if(l->hardware_job||mt_musb_admit(&l->job,cookie,now,span))continue;
-   l->properties=*e;l->properties.common_va=NULL;l->properties.common_pa=0;l->properties.common_bytes=0;l->parameters=*p;l->job.toggle=toggle;RtlZeroMemory(l->shadow,p->bytes);
+   l->retired=FALSE;l->properties=*e;l->properties.common_va=NULL;l->properties.common_pa=0;l->properties.common_bytes=0;l->parameters=*p;l->job.toggle=toggle;RtlZeroMemory(l->shadow,p->bytes);
    if(p->bytes&&(e->type==1?!(p->setup[0]&0x80):e->direction!=0))RtlCopyMemory(l->shadow,buffer,p->bytes);
    QueueLocked(r);result=0;break;
   }
@@ -433,7 +434,7 @@ VOID MtMusbCancel(struct mt_musb_runtime *r,ULONG cookie)
  for(n=0;n<MT_MUSB_LANES;n++){
   struct mt_musb_lane *l=&r->lanes[n];
   if(l->job.cookie!=cookie)continue;
-  if(l->job.state==MT_JOB_DONE)RecoverRecord(r,l->job.cookie,l->job.toggle);
+  if(l->job.state==MT_JOB_DONE&&!l->retired)RecoverRecord(r,l->job.cookie,l->job.toggle);
   mt_musb_cancel(&l->job,cookie);
  }
  QueueLocked(r);KeReleaseSpinLock(&r->lock,k);
@@ -455,8 +456,15 @@ ULONG MtMusbRecoverToggle(struct mt_musb_runtime *r,ULONG cookie,PULONG toggle)
 {
  KIRQL k;ULONG result=1;unsigned n;if(!r)return 1;KeAcquireSpinLock(&r->lock,&k);
  for(n=0;n<MT_MUSB_LANES;n++)if(r->lanes[n].job.cookie==cookie&&r->lanes[n].job.state!=MT_JOB_IDLE)goto out;
- if(!r->fault)for(n=0;n<32;n++)if(r->recovered[n].cookie==cookie){*toggle=r->recovered[n].toggle;result=0;break;}
+ if(!r->fault)for(n=0;n<32;n++)if(r->recovered[n].cookie==cookie){*toggle=r->recovered[n].toggle;r->recovered[n].cookie=0;result=0;break;}
 out:KeReleaseSpinLock(&r->lock,k);return result;
+}
+VOID MtMusbRetire(struct mt_musb_runtime *r,ULONG cookie)
+{
+ KIRQL k;unsigned n;if(!r)return;KeAcquireSpinLock(&r->lock,&k);
+ for(n=0;n<MT_MUSB_LANES;n++)if(r->lanes[n].job.cookie==cookie)r->lanes[n].retired=TRUE;
+ for(n=0;n<32;n++)if(r->recovered[n].cookie==cookie)r->recovered[n].cookie=0;
+ KeReleaseSpinLock(&r->lock,k);
 }
 ULONG MtMusbRootQueue(struct mt_musb_runtime *r,ULONG kind)
 {

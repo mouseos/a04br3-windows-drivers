@@ -19,6 +19,7 @@ ULONG MtMusbSubmitDeadline(struct mt_musb_runtime *,ULONG,const struct a04_mp_pr
 VOID MtMusbCancel(struct mt_musb_runtime *,ULONG);
 ULONG MtMusbTake(struct mt_musb_runtime *,ULONG,PVOID,ULONG,PULONG,PULONG,PULONG);
 ULONG MtMusbRecoverToggle(struct mt_musb_runtime *,ULONG,PULONG);
+VOID MtMusbRetire(struct mt_musb_runtime *,ULONG);
 ULONG MtMusbRootQueue(struct mt_musb_runtime *,ULONG);
 ULONG MtMusbObserve(struct mt_musb_runtime *,struct a04_hub_observation *,PULONG,PULONG,PULONG);
 ULONG MtMusbFrame(struct mt_musb_runtime *);
