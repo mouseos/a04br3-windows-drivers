@@ -9,6 +9,7 @@
 #include "radio_binding.h"
 #include "combo_controller.h"
 #include "rx_drain.h"
+#include "transport_caps.h"
 #define CONTEXT_BYTES FIELD_OFFSET(BTHX_HCI_READ_WRITE_CONTEXT,Data)
 C_ASSERT(sizeof(BTHX_VERSION)==4);
 C_ASSERT(sizeof(BTHX_CAPABILITIES)==16);
@@ -53,18 +54,16 @@ static NTSTATUS UnbindSideband(PVOID p,ULONG generation)
  CLIENT *c=p;NTSTATUS s=a04_mt6630_binding_unbind(&c->sideband,generation);
  if(NT_SUCCESS(s)){lock(c);c->binding_active=FALSE;unlock(c);WdfDeviceResumeIdle(c->device);}return s;
 }
-static BOOLEAN SidebandCapable(CLIENT *c)
+static BOOLEAN TransportBypassCapable(CLIENT *c)
 {
- struct a04_bt_broker_state state={0};WDF_MEMORY_DESCRIPTOR buffer;ULONG_PTR used=0;NTSTATUS s;
+ struct a04_bt_transport_caps state={0};WDF_MEMORY_DESCRIPTOR buffer;ULONG_PTR used=0;NTSTATUS s;BOOLEAN capable;
  WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&buffer,&state,sizeof(state));lock(c);
  if(!c->running||!c->open){unlock(c);return FALSE;}
- s=WdfIoTargetSendIoctlSynchronously(c->target,WDF_NO_HANDLE,A04_BT_BROKER_GET_STATE,NULL,&buffer,NULL,&used);
- unlock(c);
- if(!NT_SUCCESS(s)||used!=sizeof(state)||state.version!=2||!state.ready||!state.pcm_command_applied)return FALSE;
- /* Actual provider callbacks execute outside the transport lock: controller
-  * ownership validation may itself acquire that lock. No active peer gate. */
- if(!a04_mt6630_binding_capable(&c->sideband))return FALSE;
- lock(c);BOOLEAN ready=c->running&&c->open;unlock(c);return ready;
+ s=WdfIoTargetSendIoctlSynchronously(c->target,WDF_NO_HANDLE,A04_BT_BROKER_TRANSPORT_CAPS,NULL,&buffer,NULL,&used);
+ capable=NT_SUCCESS(s)&&used==sizeof(state)&&a04_mt6630_transport_bypass(&state);
+ /* No audio callback or active peer is needed for the real HCI bypass route.
+  * Audio Bind/endpoint creation keeps its own PCM/latency/drain checks. */
+ unlock(c);return capable;
 }
 static void deliver(CLIENT *c)
 {
@@ -117,7 +116,7 @@ VOID ComboInternal(WDFQUEUE q,WDFREQUEST r,size_t outlen,size_t inlen,ULONG code
   s=WdfRequestRetrieveOutputBuffer(r,sizeof(BTHX_CAPABILITIES),&out,&bytes);
   if(NT_SUCCESS(s)){PBTHX_CAPABILITIES caps=out;RtlZeroMemory(caps,sizeof(*caps));
    caps->MaxAclTransferInSize=A04_BT_BROKER_MAX_HCI;
-   if(SidebandCapable(c)){caps->ScoSupport=ScoSupportHCIBypass;caps->MaxScoChannels=1;}
+   if(TransportBypassCapable(c)){caps->ScoSupport=ScoSupportHCIBypass;caps->MaxScoChannels=1;}
    else caps->ScoSupport=ScoSupportNone;
    used=sizeof(*caps);
   }

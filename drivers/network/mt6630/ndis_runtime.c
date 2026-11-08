@@ -221,7 +221,7 @@ static int hardware_start(struct a04_ndis_runtime *a)
   * mt6630_sw_init. It does not configure host AFE or qualify SCO bypass. */
  {
 #if A04_WIFI_BT_BROKER
- const struct a04_wmt_startup_options options={1,1,0,1,2,1};
+ const struct a04_wmt_startup_options options={1,1,0,A04_BT_COMBO_MERGE_REQUIRED,2,1};
 #else
  const struct a04_wmt_startup_options options={1,1,0,0,2,1};
 #endif

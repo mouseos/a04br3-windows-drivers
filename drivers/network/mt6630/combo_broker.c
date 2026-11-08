@@ -6,6 +6,7 @@
 #include "windows_nvram_reader.h"
 #include "../../bluetooth/mt6630/physical_owner.h"
 #include "../../bus/mt8167-shared/hfp_interface.h"
+#include "../../bluetooth/mt6630/transport_caps.h"
 static NDIS_SPIN_LOCK registry_lock;
 static NDIS_HANDLE registration;
 static struct a04_ndis_runtime *registered;
@@ -148,6 +149,28 @@ void a04_combo_worker(struct a04_ndis_runtime *a)
   state->pcm_command_applied=state->ready&&b->bt.pcm_command_applied;
   state->generation=a->session.generation;
   used=sizeof(*state);s=STATUS_SUCCESS;
+ }else if(code==A04_BT_BROKER_TRANSPORT_CAPS){
+  struct a04_bt_transport_caps *caps=irp->AssociatedIrp.SystemBuffer;
+  struct a04_wmt_bridge *bridge=a->radio.bridge;
+  if(in||out!=sizeof(*caps)||!caps){s=STATUS_INVALID_PARAMETER;goto done;}
+  RtlZeroMemory(caps,sizeof(*caps));caps->version=1;
+  /* Same profile passes MERGE_REQUIRED to the real startup command sequence.
+   * READY is reached only after its ACK and identity checks. FC72 ACK is a
+   * routing/configuration fact, not decoded sample format/latency proof. */
+  struct a04_mt6630_route_facts facts={0};
+  if(bridge){
+   facts.merge=A04_BT_COMBO_MERGE_REQUIRED;facts.firmware_ready=bridge->wmt_ready;
+   facts.firmware_fault=bridge->failed||bridge->wmt_state.failed;
+   facts.stp_ready=bridge->wmt_state.stp_ready;facts.phase_ready=bridge->wmt_state.phase==A04_WMT_DL_READY;
+   facts.commands=bridge->wmt_state.commands;facts.acked=bridge->wmt_state.acked;
+   facts.radio_ready=a->power&&a->radio.initialized&&!a->radio.failed&&!a->uncertain&&b->bt.ready&&!b->bt.failed;
+   facts.version_valid=b->bt.version_valid;facts.pcm_ack=b->bt.pcm_command_applied;
+   facts.epoch_live=a->session.generation&&a->parent.Live(a->parent.Header.Context,a->session.generation)==1;
+  }
+  if(a04_mt6630_route_ready(&facts)){
+   caps->ready=1;caps->generation=a->session.generation;caps->routes=A04_BT_ROUTE_HCI_BYPASS;
+  }
+  used=sizeof(*caps);s=STATUS_SUCCESS;
  }else if(code==A04_BT_BROKER_GET_PHYSICAL_OWNER){
   struct a04_bt_physical_owner *owner=irp->UserBuffer;
   if(in||out!=sizeof(*owner)||!owner){s=STATUS_INVALID_PARAMETER;goto done;}

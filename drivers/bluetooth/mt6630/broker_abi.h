@@ -15,6 +15,12 @@
 #define A04_BT_BROKER_GET_PHYSICAL_OWNER CTL_CODE(FILE_DEVICE_UNKNOWN,0x945,METHOD_NEITHER,FILE_READ_DATA|FILE_WRITE_DATA)
 #define A04_BT_BROKER_SCO_HOLD CTL_CODE(FILE_DEVICE_UNKNOWN,0x946,METHOD_BUFFERED,FILE_READ_DATA|FILE_WRITE_DATA)
 #define A04_BT_BROKER_SCO_RELEASE CTL_CODE(FILE_DEVICE_UNKNOWN,0x947,METHOD_BUFFERED,FILE_READ_DATA|FILE_WRITE_DATA)
+/* Transport routing, not HFP audio quality/readiness. New query preserves v2.
+ * Only the MT6630 combo profile with ACK-checked Merge startup can publish it. */
+#define A04_BT_BROKER_TRANSPORT_CAPS CTL_CODE(FILE_DEVICE_UNKNOWN,0x948,METHOD_BUFFERED,FILE_READ_DATA|FILE_WRITE_DATA)
+#define A04_BT_COMBO_MERGE_REQUIRED 1u
+#define A04_BT_ROUTE_HCI_BYPASS 1u
+struct a04_bt_transport_caps {ULONG version,ready,generation,routes;};
 struct a04_bt_broker_state {ULONG version,ready,pcm_command_applied,generation;};
 #define A04_BT_BROKER_VERSION 1u
 #define A04_BT_BROKER_MAX_HCI 1998u
