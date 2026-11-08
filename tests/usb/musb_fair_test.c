@@ -38,6 +38,10 @@ int main(void){
  *(USHORT*)&test_bank[0][0x12]=0;*(USHORT*)(test_mac+2)|=1;Pulse(r);
  CHECK(r->lanes[0].ep0.transfer.stage==EP0_STATUS);*(USHORT*)&test_bank[0][0x12]=0;*(USHORT*)(test_mac+2)|=1;Pulse(r);
  CHECK(!MtMusbTake(r,104,NULL,0,&n,&s,&t)&&!n&&!s);
+ /* Idle interrupt requests are normal pending URBs, not five-second
+  * transfer failures. Fresh single-worker sweeps keep their watchdog live. */
+ for(i=0;i<6000;i++)Pulse(r);
+ CHECK(r->lanes[1].job.state==MT_JOB_RUNNING&&r->lanes[2].job.state==MT_JOB_RUNNING&&!r->fault);
  /* Every lane owns nonoverlapping TX/RX512; exhaustion is side-effect free. */
  e.type=3;e.endpoint=0x81;e.packet=8;e.direction=0;p.bytes=8;
  for(i=3;i<8;i++){e.address=(USHORT)(i+10);CHECK(!MtMusbSubmit(r,110+i,&e,0,&p,data));}

@@ -31,7 +31,9 @@ int main(void){
  Packet.abort(&h,&ep[2],&t[2],&actual);CHECK(!actual&&ActiveSlot(&h,&ep[2])>=0&&ActiveSlot(&h,&ep[3])>=0);
  RtlZeroMemory(&t[2],sizeof(t[2]));RtlZeroMemory(&p[2],sizeof(p[2]));Packet.poll_endpoint(&h,&ep[2]);CHECK(completed==base+1);
  Packet.close(&h,&ep[3],FALSE);CHECK(ActiveSlot(&h,&ep[3])<0&&ActiveSlot(&h,&ep[4])>=0);
- complete_cookie=ep[4].cookie;done=1;Packet.poll_endpoint(&h,&ep[4]);CHECK(completed==base+2&&completed_parameters==&p[4]);
+ complete_cookie=ep[4].cookie;completion_status=USBD_STATUS_STALL_PID;done=1;Packet.poll_endpoint(&h,&ep[4]);CHECK(completed==base+2&&completed_parameters==&p[4]);
+ CHECK(ep[4].dispatch_blocked&&h.active[ActiveSlot(&h,&ep[4])].transfer==&t[12]&&t[12].state==1);
+ Packet.toggle(&h,&ep[4],0);Packet.check(&h);CHECK(!ep[4].dispatch_blocked&&t[12].state==3);completion_status=0;
  Packet.stop(&h,FALSE);CHECK(!AnyActive(&h)&&!h.runtime);
  return 0;
 }
