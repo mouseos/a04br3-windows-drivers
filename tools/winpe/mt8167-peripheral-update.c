@@ -60,6 +60,12 @@ struct diagnostic_client {const WCHAR *exe,*arguments,*name,*relative_directory;
 #ifndef A04_AUX_HCD_PROOF_NAME
 #define A04_AUX_HCD_PROOF_NAME L"hcd1014-import.bin"
 #endif
+#ifndef A04_FEATURE144
+#define A04_FEATURE144 0
+#endif
+#ifndef A04_DIAGNOSTIC_CLIENT_COUNT
+#define A04_DIAGNOSTIC_CLIENT_COUNT (sizeof(diagnostic_clients)/sizeof(diagnostic_clients[0]))
+#endif
 #define PERIPHERAL_TARGET_COUNT (sizeof(targets)/sizeof(targets[0]))
 typedef char bounded_gpu_extras[(A04_CANDIDATE_EXTRA_COUNT<=2)?1:-1];
 typedef char bounded_target_count[(PERIPHERAL_TARGET_COUNT>0 && PERIPHERAL_TARGET_COUNT<=11)?1:-1];
@@ -76,6 +82,7 @@ typedef char bounded_target_count[(PERIPHERAL_TARGET_COUNT>0 && PERIPHERAL_TARGE
 #define deferred_pins targets
 #define EV_PNP_API_BEGIN 30
 #define EV_PNP_MATCHES 25
+int memcmp(const void *a,const void *b,size_t n){const BYTE *x=a,*y=b;while(n--){if(*x!=*y)return *x-*y;x++;y++;}return 0;}
 void *memset(void *p,int v,size_t n){volatile BYTE *b=p;while(n--)*b++=(BYTE)v;return p;}
 void *memcpy(void *p,const void *q,size_t n){volatile BYTE *b=p;const volatile BYTE *a=q;while(n--)*b++=*a++;return p;}
 static DWORD path(WCHAR out[MAX_PATH],const WCHAR *base,const WCHAR *name){unsigned i=0,n=0;while(base[n]){if(n>=MAX_PATH-2)return ERROR_INSUFFICIENT_BUFFER;out[n]=base[n];n++;}out[n++]=L'\\';while(name[i]){if(n>=MAX_PATH-1)return ERROR_INSUFFICIENT_BUFFER;out[n++]=name[i++];}out[n]=0;return 0;}
@@ -166,7 +173,7 @@ static DWORD selected_identity(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int 
  error=deferred_driver_value(set,dev,L"DriverDateData",REG_BINARY,(BYTE *)&d,sizeof(d),&n);record(i,0x216,error);if(error)return error;type=DEVPROP_TYPE_FILETIME;
  }record(i,0x217,type);record(i,0x218,n);if(type!=DEVPROP_TYPE_FILETIME||n!=8||(((ULONGLONG)d.dwHighDateTime<<32)|d.dwLowDateTime)!=(candidate?targets[i].date:targets[i].base_date))return ERROR_REVISION_MISMATCH;e=property(set,dev,SPDRP_SERVICE,targets[i].service);if(e)return e;e=property(set,dev,SPDRP_CLASSGUID,targets[i].cls);return e;}
 static DWORD selected(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int candidate){DWORD e=selected_identity(i,set,dev,candidate);return e?e:installed_inf(i,set,dev,candidate);}
-static DWORD installed_sys(unsigned i,int candidate){WCHAR s[MAX_PATH],d[MAX_PATH],p[MAX_PATH];HANDLE h=INVALID_HANDLE_VALUE;DWORD e;if(!GetSystemDirectoryW(s,MAX_PATH))return GetLastError();e=path(d,s,L"drivers");if(!e)e=path(p,d,targets[i].sys);if(!e&&!candidate&&((A04_PERIPHERAL_FIRST_INSTALL_MASK|A04_PERIPHERAL_DEFERRED_UNBOUND_MASK)&(1u<<i))){h=CreateFileW(p,FILE_READ_ATTRIBUTES,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,NULL);if(h!=INVALID_HANDLE_VALUE){CloseHandle(h);return ERROR_ALREADY_EXISTS;}e=GetLastError();return e==ERROR_FILE_NOT_FOUND?0:e;}if(!e)e=deferred_file(p,candidate?targets[i].hash[1]:targets[i].base_sys,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);return e;}
+static DWORD installed_sys(unsigned i,int candidate){WCHAR s[MAX_PATH],d[MAX_PATH],p[MAX_PATH];HANDLE h=INVALID_HANDLE_VALUE;DWORD e;if(!GetSystemDirectoryW(s,MAX_PATH))return GetLastError();e=path(d,s,L"drivers");if(!e)e=path(p,d,(!candidate&&A04_FEATURE144&&i==3)?L"mt6630-runtime.sys":targets[i].sys);if(!e&&!candidate&&((A04_PERIPHERAL_FIRST_INSTALL_MASK|A04_PERIPHERAL_DEFERRED_UNBOUND_MASK)&(1u<<i))){h=CreateFileW(p,FILE_READ_ATTRIBUTES,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,NULL);if(h!=INVALID_HANDLE_VALUE){CloseHandle(h);return ERROR_ALREADY_EXISTS;}e=GetLastError();return e==ERROR_FILE_NOT_FOUND?0:e;}if(!e)e=deferred_file(p,candidate?targets[i].hash[1]:targets[i].base_sys,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);return e;}
 /* DIF may store the original INF basename in the selected class key while
  * SetupCopyOEMInf publishes only oemNNN.inf in Windows\INF. Resolve that exact
  * installed package through SetupAPI; never scan the INF directory,
@@ -264,7 +271,7 @@ static DWORD save_blob(const WCHAR *name,const void *data,DWORD bytes){WCHAR p[M
  * No set-calendar, calibration, trigger, or thermal-write request exists here. */
 static int readonly_uncertain;
 static DWORD readonly_one(const WCHAR *device,DWORD ioctl,DWORD expected,const WCHAR *output,int rtc){static DWORD aligned_buffer[16];BYTE *buffer=(BYTE *)aligned_buffer;static OVERLAPPED ov;HANDLE h;DWORD n=0,e=0,w;if(readonly_uncertain)return ERROR_BUSY;memset(buffer,0,sizeof(aligned_buffer));memset(&ov,0,sizeof(ov));ov.hEvent=CreateEventW(NULL,TRUE,FALSE,NULL);if(!ov.hEvent)return GetLastError();h=CreateFileW(device,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_OVERLAPPED,NULL);if(h==INVALID_HANDLE_VALUE){e=GetLastError();CloseHandle(ov.hEvent);return e;}if(!DeviceIoControl(h,ioctl,NULL,0,buffer,expected,&n,&ov)){e=GetLastError();if(!e)e=ERROR_GEN_FAILURE;if(e==ERROR_IO_PENDING){w=WaitForSingleObject(ov.hEvent,2000);if(w==WAIT_OBJECT_0)e=GetOverlappedResult(h,&ov,&n,FALSE)?0:GetLastError();else{e=ERROR_TIMEOUT;CancelIoEx(h,&ov);if(WaitForSingleObject(ov.hEvent,1000)!=WAIT_OBJECT_0){readonly_uncertain=1;return e;}}}}if(!e){if(n!=expected||((DWORD *)buffer)[rtc?0:0]!=(rtc?36u:1u)||(rtc&&((DWORD *)buffer)[1]!=1u))e=ERROR_INVALID_DATA;else if(!rtc&&(!((DWORD *)buffer)[1]||((DWORD *)buffer)[6]>1000u))e=ERROR_NOT_READY;if(!e)e=save_blob(output,buffer,n);}CloseHandle(h);CloseHandle(ov.hEvent);return e;}
-static DWORD readonly_status(void){static const GUID guid={0x6b2c65ed,0xe2a7,0x4ddc,{0x86,0xba,0x38,0x42,0xe2,0x21,0x4e,0x29}};HDEVINFO set;SP_DEVICE_INTERFACE_DATA iface,extra;DWORD detailbuf[256];SP_DEVICE_INTERFACE_DETAIL_DATA_W *detail=(SP_DEVICE_INTERFACE_DETAIL_DATA_W *)detailbuf;SP_DEVINFO_DATA dev;DWORD first,e,n;first=readonly_one(L"\\\\.\\MT6392Rtc",CTL_CODE(FILE_DEVICE_UNKNOWN,0x800,METHOD_BUFFERED,FILE_READ_ACCESS),36,L"rtc-readonly.bin",1);record(0,0x201,first);set=SetupDiGetClassDevsW(&guid,NULL,NULL,DIGCF_DEVICEINTERFACE|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE)return first?first:GetLastError();memset(&iface,0,sizeof(iface));iface.cbSize=sizeof(iface);e=0;if(!SetupDiEnumDeviceInterfaces(set,NULL,&guid,0,&iface))e=GetLastError();memset(&extra,0,sizeof(extra));extra.cbSize=sizeof(extra);if(!e&&SetupDiEnumDeviceInterfaces(set,NULL,&guid,1,&extra))e=ERROR_DUP_NAME;if(!e&&GetLastError()!=ERROR_NO_MORE_ITEMS)e=GetLastError();if(!e){memset(detailbuf,0,sizeof(detailbuf));detail->cbSize=sizeof(*detail);memset(&dev,0,sizeof(dev));dev.cbSize=sizeof(dev);if(!SetupDiGetDeviceInterfaceDetailW(set,&iface,detail,sizeof(detailbuf),&n,&dev))e=GetLastError();else{e=property(set,&dev,SPDRP_SERVICE,L"Mt8167Thermal");if(!e)e=readonly_one(detail->DevicePath,CTL_CODE(FILE_DEVICE_UNKNOWN,0xa04,METHOD_BUFFERED,FILE_READ_DATA),28,L"thermal-readonly.bin",0);}}record(1,0x201,e);SetupDiDestroyDeviceInfoList(set);return first?first:e;}
+static DWORD readonly_status(void){static const GUID guid={0x6b2c65ed,0xe2a7,0x4ddc,{0x86,0xba,0x38,0x42,0xe2,0x21,0x4e,0x29}};HDEVINFO set;SP_DEVICE_INTERFACE_DATA iface,extra;DWORD detailbuf[256];SP_DEVICE_INTERFACE_DETAIL_DATA_W *detail=(SP_DEVICE_INTERFACE_DETAIL_DATA_W *)detailbuf;SP_DEVINFO_DATA dev;DWORD first,e,n;first= A04_FEATURE144?0:readonly_one(L"\\\\.\\MT6392Rtc",CTL_CODE(FILE_DEVICE_UNKNOWN,0x800,METHOD_BUFFERED,FILE_READ_ACCESS),36,L"rtc-readonly.bin",1);record(0,0x201,first);set=SetupDiGetClassDevsW(&guid,NULL,NULL,DIGCF_DEVICEINTERFACE|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE)return first?first:GetLastError();memset(&iface,0,sizeof(iface));iface.cbSize=sizeof(iface);e=0;if(!SetupDiEnumDeviceInterfaces(set,NULL,&guid,0,&iface))e=GetLastError();memset(&extra,0,sizeof(extra));extra.cbSize=sizeof(extra);if(!e&&SetupDiEnumDeviceInterfaces(set,NULL,&guid,1,&extra))e=ERROR_DUP_NAME;if(!e&&GetLastError()!=ERROR_NO_MORE_ITEMS)e=GetLastError();if(!e){memset(detailbuf,0,sizeof(detailbuf));detail->cbSize=sizeof(*detail);memset(&dev,0,sizeof(dev));dev.cbSize=sizeof(dev);if(!SetupDiGetDeviceInterfaceDetailW(set,&iface,detail,sizeof(detailbuf),&n,&dev))e=GetLastError();else{e=property(set,&dev,SPDRP_SERVICE,L"Mt8167Thermal");if(!e)e=readonly_one(detail->DevicePath,CTL_CODE(FILE_DEVICE_UNKNOWN,0xa04,METHOD_BUFFERED,FILE_READ_DATA),28,L"thermal-readonly.bin",0);}}record(1,0x201,e);SetupDiDestroyDeviceInfoList(set);return first?first:e;}
 
 #if A04_PERIPHERAL_NEXT_PROFILE
 /* Observe OS auto-connection only; never scan/connect/create/export a profile.
@@ -275,7 +282,7 @@ static DWORD wlan_readonly_status(void){
  typedef DWORD (WINAPI *Query)(HANDLE,const GUID*,WLAN_INTF_OPCODE,PVOID,PDWORD,PVOID*,PWLAN_OPCODE_VALUE_TYPE);
  typedef DWORD (WINAPI *Profiles)(HANDLE,const GUID*,PVOID,PWLAN_PROFILE_INFO_LIST*);
  typedef VOID (WINAPI *Free)(PVOID);typedef DWORD (WINAPI *Close)(HANDLE,PVOID);
- HMODULE mod=LoadLibraryW(L"wlanapi.dll");HANDLE h=NULL;DWORD e=0,v=0,i,count=0,connected=0;PWLAN_INTERFACE_INFO_LIST list=NULL;
+ HMODULE mod=LoadLibraryW(L"wlanapi.dll");HANDLE h=NULL;DWORD e=0,v=0,i,count=0,connected=0,profile_count=0;PWLAN_INTERFACE_INFO_LIST list=NULL;
  Open op;Enum en;Query qu;Profiles pr;Free fr;Close cl;
  if(!mod){e=GetLastError();record(3,0x230,e);return e;}
  op=(Open)GetProcAddress(mod,"WlanOpenHandle");en=(Enum)GetProcAddress(mod,"WlanEnumInterfaces");qu=(Query)GetProcAddress(mod,"WlanQueryInterface");pr=(Profiles)GetProcAddress(mod,"WlanGetProfileList");fr=(Free)GetProcAddress(mod,"WlanFreeMemory");cl=(Close)GetProcAddress(mod,"WlanCloseHandle");
@@ -284,12 +291,16 @@ static DWORD wlan_readonly_status(void){
  if(!e){count=list->dwNumberOfItems;record(3,0x232,count);if(count>8)e=ERROR_INVALID_DATA;else for(i=0;i<count;i++){
  PWLAN_PROFILE_INFO_LIST profiles=NULL;PVOID data=NULL;DWORD bytes=0,q;WLAN_OPCODE_VALUE_TYPE type;
  record(i,0x233,list->InterfaceInfo[i].isState);
- q=pr(h,&list->InterfaceInfo[i].InterfaceGuid,NULL,&profiles);record(i,0x234,q);if(!q){record(i,0x235,profiles->dwNumberOfItems);fr(profiles);}else if(!e)e=q;
+ q=pr(h,&list->InterfaceInfo[i].InterfaceGuid,NULL,&profiles);record(i,0x234,q);if(!q){record(i,0x235,profiles->dwNumberOfItems);profile_count+=profiles->dwNumberOfItems;fr(profiles);}else if(!e)e=q;
  q=qu(h,&list->InterfaceInfo[i].InterfaceGuid,wlan_intf_opcode_current_connection,NULL,&bytes,&data,&type);record(i,0x236,q);
  if(!q){if(bytes<sizeof(WLAN_CONNECTION_ATTRIBUTES)){if(!e)e=ERROR_INVALID_DATA;}else{WLAN_CONNECTION_ATTRIBUTES *a=(WLAN_CONNECTION_ATTRIBUTES*)data;record(i,0x237,a->isState);record(i,0x238,a->strProfileName[0]!=0);record(i,0x239,a->wlanSecurityAttributes.bSecurityEnabled);if(a->isState==wlan_interface_state_connected)connected++;}fr(data);}
  else if(!e)e=q;
  }}
- if(list)fr(list);if(h){DWORD c=cl(h,NULL);record(3,0x23a,c);if(!e)e=c;}FreeLibrary(mod);record(3,0x23b,connected);return e?e:(connected?0:ERROR_NOT_CONNECTED);
+ if(list)fr(list);if(h){DWORD c=cl(h,NULL);record(3,0x23a,c);if(!e)e=c;}FreeLibrary(mod);record(3,0x23b,connected);
+#if A04_FEATURE144
+ {struct {DWORD schema,bytes,result,interface_count,profile_count,connected_count;} proof={1,24,e?e:(connected?0:ERROR_NOT_CONNECTED),count,profile_count,connected};DWORD saved=save_blob(L"wlan-readonly.bin",&proof,sizeof(proof));if(saved)return saved;}
+#endif
+ return e?e:(connected?0:ERROR_NOT_CONNECTED);
 }
 /* Read-only PnP disk presence under the exact SD host. No block reads/writes,
  * rescan, power request, card insertion or card-content/identity logging. */
@@ -339,7 +350,7 @@ static struct combined_node_record combined_nodes[11];
 static struct combined_client_result combined_clients[8];
 static DWORD combined_gpu_node_ready,combined_diagnostic;
 static DWORD combined_snapshot(const WCHAR *phase,DWORD result,int include_volume){
- HKEY key=NULL;WCHAR name[256],policy_hash[65];DWORD at;DWORD e=0,nodes=PERIPHERAL_TARGET_COUNT,clients=(DWORD)(sizeof(diagnostic_clients)/sizeof(diagnostic_clients[0])),schema=2,complete=0;
+ HKEY key=NULL;WCHAR name[256],policy_hash[65];DWORD at;DWORD e=0,nodes=PERIPHERAL_TARGET_COUNT,clients=(DWORD)A04_DIAGNOSTIC_CLIENT_COUNT,schema=2,complete=0;
  if(clients>8)return ERROR_INVALID_DATA;
  for(at=0;at<64&&deferred_token[at];at++)policy_hash[at]=(WCHAR)(BYTE)deferred_token[at];if(at!=64||deferred_token[64])return ERROR_INVALID_DATA;policy_hash[64]=0;
  lstrcpyW(name,L"SYSTEM\\CurrentControlSet\\Services\\");lstrcatW(name,service_name);lstrcatW(name,L"\\Parameters\\CombinedResult\\");lstrcatW(name,phase);
@@ -360,7 +371,7 @@ static DWORD combined_finalize(DWORD result){
  if(!e)e=flush_fixed_system_volume();record(0,0x288,e);return e;
 }
 static DWORD persist_before_gpu(DWORD peripheral_result){
- struct {DWORD schema,bytes,observed_result,node_count,client_count;} h={1,20,peripheral_result,PERIPHERAL_TARGET_COUNT,(DWORD)(sizeof(diagnostic_clients)/sizeof(diagnostic_clients[0]))};DWORD e;
+ struct {DWORD schema,bytes,observed_result,node_count,client_count;} h={1,20,peripheral_result,PERIPHERAL_TARGET_COUNT,(DWORD)A04_DIAGNOSTIC_CLIENT_COUNT};DWORD e;
  e=save_blob(L"peripheral-result.bin",&h,sizeof(h));if(!e&&logfile!=INVALID_HANDLE_VALUE&&!FlushFileBuffers(logfile))e=GetLastError();
  if(!e)e=combined_snapshot(L"Peripheral",peripheral_result,0);record(0,0x280,e);if(e)return e;
  e=flush_fixed_system_volume();record(0,0x281,e);if(e)return e;
@@ -370,11 +381,11 @@ static DWORD persist_before_gpu(DWORD peripheral_result){
 static DWORD run_clients(DWORD peripheral_result)
 {
  unsigned i;DWORD first=peripheral_result;
- for(i=0;i<sizeof(diagnostic_clients)/sizeof(diagnostic_clients[0]);i++){
+ for(i=0;i<A04_DIAGNOSTIC_CLIENT_COUNT;i++){
   const struct diagnostic_client *c=&diagnostic_clients[i];WCHAR sys[MAX_PATH],dir[MAX_PATH],exe[MAX_PATH],out[MAX_PATH],name[64],cmd[2*MAX_PATH+64];HANDLE held=INVALID_HANDLE_VALUE,stdout_=INVALID_HANDLE_VALUE,stderr_=INVALID_HANDLE_VALUE,nul=INVALID_HANDLE_VALUE,job=NULL;JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit;SECURITY_ATTRIBUTES sa;STARTUPINFOW start;PROCESS_INFORMATION process;DWORD e=0,exit=0xffffffffu,wait=0xffffffffu,exit_valid=0;
   if(i>=8||c->phase>1)return ERROR_INVALID_DATA;
   if(c->phase==1){
-   DWORD boundary;if(i+1!=sizeof(diagnostic_clients)/sizeof(diagnostic_clients[0])||PERIPHERAL_TARGET_COUNT!=11||A04_CANDIDATE_EXTRA_COUNT!=2||!combined_gpu_node_ready)return ERROR_NOT_READY;
+   DWORD boundary;if(i+1!=A04_DIAGNOSTIC_CLIENT_COUNT||PERIPHERAL_TARGET_COUNT!=11||A04_CANDIDATE_EXTRA_COUNT!=2||!combined_gpu_node_ready)return ERROR_NOT_READY;
    boundary=persist_before_gpu(first);if(boundary)return boundary;
   }
   combined_clients[i].observed=1;combined_clients[i].phase=c->phase;combined_clients[i].client_id=i;combined_clients[i].created=0;combined_clients[i].exit_valid=0;
@@ -425,6 +436,7 @@ static DWORD legacy_usb_node_observation(DWORD discovery){
  e=installed_sys(2,0);proof.retained_sys_result=e;saved=save_blob(L"usb-pc-role.bin",&proof,sizeof(proof));record(2,0x28b,discovery);return e?e:saved;
 }
 #endif
+#include "combined144-bt.h"
 static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_COUNT][5],directory_holds[PERIPHERAL_TARGET_COUNT];static WCHAR paths_[PERIPHERAL_TARGET_COUNT][3][MAX_PATH],extra_paths[2][MAX_PATH],folders[PERIPHERAL_TARGET_COUNT][MAX_PATH];SP_DEVINFO_DATA devs[PERIPHERAL_TARGET_COUNT];HDEVINFO set=INVALID_HANDLE_VALUE;DWORD i,j,e=0,first=0;const WCHAR *members[5];for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){directory_holds[i]=INVALID_HANDLE_VALUE;for(j=0;j<5;j++)held[i][j]=INVALID_HANDLE_VALUE;}
  /* Every candidate trio is held, byte-checked and CAT-verified before staging. */
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){e=path(folders[i],base_directory,targets[i].folder);if(!e)e=hold_directory(folders[i],&directory_holds[i]);if(e)goto done;for(j=0;j<3;j++){const WCHAR *n=j==0?targets[i].inf:(j==1?targets[i].sys:targets[i].cat);e=path(paths_[i][j],folders[i],n);if(!e)e=deferred_file(paths_[i][j],targets[i].hash[j],&held[i][j]);if(e)goto done;members[j]=paths_[i][j];}members[3]=members[4]=NULL;
@@ -449,8 +461,11 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
 #if A04_PERIPHERAL_NEXT_PROFILE
 #if !A04_DIAGNOSTIC_ONLY || A04_READONLY_PERIPHERAL_STATUS
  e=wlan_readonly_status();if(e&&!first)first=e;
- {SP_DEVINFO_DATA sd;DWORD find=deferred_find(4,set,&sd);e=find?find:sd_readonly_presence(sd.DevInst);record(4,0x245,e);if(e&&!first)first=e;}
- if(A04_PERIPHERAL_FIRST_INSTALL_MASK || A04_READONLY_PERIPHERAL_STATUS){SP_DEVINFO_DATA keypad;DWORD find=deferred_find(7,set,&keypad);e=find?find:keypad_hid_bindings(keypad.DevInst);record(7,0x267,e);if(e&&!first)first=e;}
+ if(!A04_FEATURE144){SP_DEVINFO_DATA sd;DWORD find=deferred_find(4,set,&sd);e=find?find:sd_readonly_presence(sd.DevInst);record(4,0x245,e);if(e&&!first)first=e;}
+ if(!A04_FEATURE144&&(A04_PERIPHERAL_FIRST_INSTALL_MASK || A04_READONLY_PERIPHERAL_STATUS)){SP_DEVINFO_DATA keypad;DWORD find=deferred_find(7,set,&keypad);e=find?find:keypad_hid_bindings(keypad.DevInst);record(7,0x267,e);if(e&&!first)first=e;}
+#endif
+ #if A04_FEATURE144
+ e=bt_readonly_status();if(e&&!first)first=e;
 #endif
  e=run_clients(first);if(e&&!first)first=e;
 #endif
@@ -464,6 +479,9 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
 #endif
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){if(!(A04_PERIPHERAL_INSTALL_MASK&(1u<<i)))continue;if(A04_PERIPHERAL_DEFERRED_UNBOUND_MASK&(1u<<i))continue;if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){e=ERROR_CANCELLED;goto done;}if(!SetupCopyOEMInfW(paths_[i][0],folders[i],SPOST_PATH,0,NULL,0,NULL,NULL)){e=GetLastError();goto done;}record(i,0x205,0);}
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){if(!(A04_PERIPHERAL_INSTALL_MASK&(1u<<i)))continue;if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){e=ERROR_CANCELLED;goto done;}e=deferred_install(i,set,&devs[i],paths_[i][0]);if(e)goto done;}
+#if A04_FEATURE144
+ e=bt_first_install();if(e)goto done;
+#endif
  e=preserved();if(e)goto done;e=deferred_marker(L"deferred-pending.bin",1);if(!e)e=deferred_arm_diagnostics();if(!e)e=ERROR_SUCCESS_REBOOT_REQUIRED;
  done:record(0,0x206,e);if(set!=INVALID_HANDLE_VALUE)SetupDiDestroyDeviceInfoList(set);for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){for(j=0;j<5;j++)if(held[i][j]!=INVALID_HANDLE_VALUE)CloseHandle(held[i][j]);if(directory_holds[i]!=INVALID_HANDLE_VALUE)CloseHandle(directory_holds[i]);}return e;}
 static DWORD batch_once(void){DWORD e;int diagnostic=0;e=local_system();if(e)return e;e=disable_self();if(e)return e;e=paths();if(e)return e;{WCHAR p[MAX_PATH];e=path(p,log_directory,L"service.log");if(e)return e;logfile=CreateFileW(p,GENERIC_WRITE,FILE_SHARE_READ,NULL,OPEN_ALWAYS,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_WRITE_THROUGH,NULL);if(logfile==INVALID_HANDLE_VALUE)return GetLastError();SetFilePointer(logfile,0,NULL,FILE_END);record(0,0x286,combined_run_id);record(0,0x287,combined_service_pid);}

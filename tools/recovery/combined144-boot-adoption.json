@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "adoption_status": "main-artifacts-and-recovery-state-verified",
+  "matched_boot": {
+    "path": "port/xnu/out/mt8167-thermal-mmio-map-run139/firmware/boot-final/boot.img",
+    "sha256": "1fef20aa28be71ae0bd826ec91619df3b492abd23631632d5b0d679e38ca560a",
+    "producer_pins": {
+      "path": "port/xnu/out/mt8167-thermal-mmio-map-run139/pins.json",
+      "sha256": "e7bf135237f6d6bbbaeb2d99723dca43b4b8aed6db191f80f3f9d099c541be68"
+    },
+    "producer_compatibility": {
+      "path": "port/xnu/out/mt8167-thermal-mmio-map-run139/firmware/baseline-compatibility.json",
+      "sha256": "fa18c7176ee2f0f657359fd7308beedbae32bb51128a9bbfbad2d4612cc5c387"
+    },
+    "write_required": false,
+    "main_seal": {
+      "path": "port/xnu/out/mt8167-thermal-mmio-map-run139/main-independent-seal.json",
+      "sha256": "3566111344d6460fc3565d6e184a19920bb2180f6363b668078e737e1571ff3c"
+    }
+  },
+  "compatibility_checks": 47,
+  "required_parent_source_commit": "df7892ef316e8ce7ffdf01d9f2fbbbbf3840cf2d",
+  "required_parent_sys_sha256": "a4d86dfcdaa6243619a7d4ca413995e3505b559afb3b9e9bf2a5269ef054046b",
+  "required_firmware_record_version": 3,
+  "required_thermal_interface_version": 3,
+  "required_thermal_parent_build": 1104,
+  "required_headphone_interface_version": 2,
+  "required_headphone_parent_build": 1107,
+  "failure": {
+    "transaction": "combined-run139",
+    "phase": "ThermalHandoffDxe ExitBootServices callback",
+    "fault_address": "0x1100D00C",
+    "fault": "translation fault",
+    "WinPE_audit_count": 0,
+    "Windows_install_observed": false,
+    "Windows_unapplied": "inference only; main fresh140 state comparison required"
+  },
+  "runtime_success_claimed": false,
+  "rejected_boot_sha256": [
+    "f7f997105c11eb60142e1992867533f20dd009ff1dc2cd8f3b49c50e005bf53e"
+  ],
+  "state_rebind_proof": {
+    "path": "port/xnu/out/windows-rt-combined144-peripheral/native-baseline.json",
+    "sha256": "af929f889259b8427eeeb9d0677405c1b819ffbe6c92fceff4329a8bd026e886"
+  },
+  "fresh_manifest_sha256": "0faa9fd09cce293d411ad025e64e54c27d5975948b54935c00e25a3feff15a60",
+  "fresh_recovery_boot_id": "c35ceece-d15b-4e07-98f9-5f1d2accd64f",
+  "baseline_state": "fresh144 actual parent1115/AFE1033/WiFi1021/GPU338 installed; current boot1fef retained",
+  "current_boot_proof": {
+    "path": "port/xnu/out/windows-rt-combined144-peripheral/run143-main-state-proof.json",
+    "sha256": "956b79cb33a6cdd2cb2ef6260e3cfd7520f927e6274238262a34b00d73fe327b"
+  }
+}
