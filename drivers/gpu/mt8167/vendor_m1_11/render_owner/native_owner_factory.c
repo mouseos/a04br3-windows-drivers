@@ -345,6 +345,7 @@ static NTSTATUS service(void *p,uint64_t epoch)
     if(c->copy_transfer&&c->job_state==E_JOB_SUBMITTED){
         struct a04_native_copy_gpu_result result;struct copy_arm arm={c,STATUS_SUCCESS};LONG phase=a04_native_tq_transfer_state(c->copy_transfer);
         if(phase==2||phase==6)return leave(c,STATUS_SUCCESS); /* wait for actual registered IRQ */
+        if(phase==8){s=a04_native_tq_transfer_wait_visibility_retry(c->copy_transfer,&c->allocation->start);if(s!=STATUS_SUCCESS)return leave(c,s);}
         if(phase==3){s=a04_native_tq_transfer_finish_gpu(c->copy_transfer,&c->allocation->start,&result);if(s!=STATUS_SUCCESS)return leave(c,s);}
         if(a04_native_tq_transfer_state(c->copy_transfer)!=4)return leave(c,STATUS_INVALID_DEVICE_STATE);
         if(!e_native_synchronize(c,copy_arm_visibility,&arm))return leave(c,STATUS_IO_DEVICE_ERROR);

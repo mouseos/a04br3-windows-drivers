@@ -202,7 +202,7 @@ NTSTATUS a04_native_tq_transfer_visibility_receipt(struct a04_native_tq_transfer
  if(!c||!s||!q||!receipt||KeGetCurrentIrql()<=DISPATCH_LEVEL||c->state!=6||c->irq!=q||
     q->epoch!=c->epoch||receipt->epoch!=c->epoch||receipt->serial<=c->visibility_serial||receipt->serial!=q->serial||
     !q->masked||q->faulted||q->closed||q->draining||!q->powered||!NT_SUCCESS(receipt->fault)||s->command_busy||s->command_poisoned||!s->online)return STATUS_INVALID_DEVICE_STATE;
- f=s->memory->runtime;a04_gpu_dma_barrier();if(*(volatile ULONG*)f->command_sync!=c->visibility_fence||queues(f,&k)||k.ui32ReadOffset!=k.ui32WriteOffset)return STATUS_PENDING;
+ f=s->memory->runtime;a04_gpu_dma_barrier();if(*(volatile ULONG*)f->command_sync!=c->visibility_fence||queues(f,&k)||k.ui32ReadOffset!=k.ui32WriteOffset){InterlockedExchange(&c->state,8);return STATUS_PENDING;}
  NTSTATUS status=a04_native_irq_rearm(q,c->epoch,q->serial);if(!NT_SUCCESS(status))return status;
  InterlockedExchange(&c->state,7);return STATUS_SUCCESS;
 }
@@ -211,4 +211,17 @@ NTSTATUS a04_native_tq_transfer_release_retired(struct a04_native_tq_transfer **
    !c->native->render->firmware||c->native->render->firmware->hardware_owned||
    (c->irq&&(c->irq->core||c->irq->powered)))return STATUS_DEVICE_BUSY;
  ExFreePoolWithTag(c,TAG);*out=NULL;return STATUS_SUCCESS;
+}
+
+NTSTATUS a04_native_tq_transfer_wait_visibility_retry(struct a04_native_tq_transfer *c,struct a04_vendor_start *s) {
+ ULONGLONG began;LARGE_INTEGER delay;RGXFWIF_CCB_CTL k;struct a04_rgx_fw_runtime *f;
+ if(!c||!s||KeGetCurrentIrql()!=PASSIVE_LEVEL||a04_native_tq_transfer_state(c)!=8||!s->online||s->command_poisoned)return STATUS_INVALID_DEVICE_STATE;
+ f=s->memory->runtime;began=KeQueryInterruptTime();delay.QuadPart=-10000;
+ for(;;){
+  a04_gpu_dma_barrier();if(queues(f,&k))return poison(c,s,STATUS_IO_DEVICE_ERROR);
+  if(k.ui32ReadOffset==k.ui32WriteOffset&&*(volatile ULONG*)f->command_sync==c->visibility_fence){InterlockedExchange(&c->state,4);return STATUS_SUCCESS;}
+  if(KeQueryInterruptTime()-began>=20000000u)return poison(c,s,STATUS_IO_TIMEOUT);
+  (void)KeDelayExecutionThread(KernelMode,FALSE,&delay);
+ }
+ /* No scheduler completion here: caller must arm ANOTHER real GP IRQ. */
 }

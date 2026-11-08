@@ -246,7 +246,7 @@ static NTSTATUS GeoRenderImpl(HANDLE context,DXGKARG_RENDER *r) {
     !r->pDmaBuffer||((ULONG_PTR)r->pDmaBuffer&3)||r->DmaSize<sizeof(t)||!r->pDmaBufferPrivateData||((ULONG_PTR)r->pDmaBufferPrivateData&3)||r->DmaBufferPrivateDataSize<sizeof(t))return STATUS_INVALID_PARAMETER;
  capture_status=GeoCaptureClearPacket(&p,r->pCommand);
  if(capture_status!=STATUS_SUCCESS)return capture_status;
- if(p.magic==GEO_COPY_MAGIC)return GeoRenderCopyImpl(c,r,(const struct geo_copy_packet*)&p);
+ if(p.magic==GEO_COPY_MAGIC){struct geo_copy_packet copy;RtlCopyMemory(&copy,&p,sizeof(copy));return GeoRenderCopyImpl(c,r,&copy);}
  if(!geo_packet_valid(&p,1)||!r->pAllocationList[0].WriteOperation)return STATUS_INVALID_PARAMETER;
  a=GeoResolveWriteAllocation(c,r->pAllocationList[0].hDeviceSpecificAllocation);
  /* Full CreateAllocation/DestroyAllocation owns and validates this handle.

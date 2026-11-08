@@ -31,4 +31,5 @@ LONG a04_native_tq_transfer_state(struct a04_native_tq_transfer *);
 NTSTATUS a04_native_tq_transfer_arm_visibility(struct a04_native_tq_transfer *,struct a04_vendor_start *,struct a04_native_irq_core *);
 NTSTATUS a04_native_tq_transfer_visibility_receipt(struct a04_native_tq_transfer *,struct a04_vendor_start *,struct a04_native_irq_core *,const struct a04_native_irq_receipt *);
 NTSTATUS a04_native_tq_transfer_release_retired(struct a04_native_tq_transfer **);
+NTSTATUS a04_native_tq_transfer_wait_visibility_retry(struct a04_native_tq_transfer *,struct a04_vendor_start *);
 #endif
