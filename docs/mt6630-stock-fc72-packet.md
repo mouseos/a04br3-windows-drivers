@@ -1,0 +1,26 @@
+# MT6630 本機stock OTAのFC72 payload規則
+
+本機保存済みOTA02.00.000のvendor/lib/libbluetooth_mtk.soを独立REAで解析した。
+入力SHA256は79517f757f5a8fccbd9a8f54b942dd3407635f0e8bc805687232eb41a19d24d3。
+通常運用のmtk_fw_cfg(0x11374)は、NVRAM読取り成功後もchip_id=0x6630なら
+record offset8を0x63へ置換する（0x117f8/0x117fa、strb）。残りoffset9..11を変更しない。
+BT_InitDevice(0x11d48)はrecordをコピーし、GORMcmd_HCC_Set_PCM(0x12634)がその
+4byteをFC72 length4で送る。pure版の工程試験経路にも同じ規則を別途確認した。
+
+以前のWindows transportはrecord[8..11]を無加工で送っていた。本機MT6630専用transportで
+4byteの一時payloadの先頭だけ0x63へ正規化し、後続3byteは動的読取り値を保持する。
+元record/NVRAMを変更・書込みせず、一時bufferは送信後に消去する。個体値をsourceやログへ出さない。
+
+これは本機stockの送信byte契約であって、0x63のbit単位の意味、PCM clock/master、実latency、
+独立bus-drainやSCO資格を解明したという意味ではない。ValidatePcm/CodecLatencyの成功stubを
+追加せず、None/0を保持する。stock同様packetへの修正だけで実接続成功と扱わない。
+
+REA Evidence（調査結果/binaryはprivateログ・成果側に保持しrepoへ入れない）:
+- ev_31f2da30575514c3c7053acb9867373773af58b4d34564dee67b7054c5b4ec92: 通常mtk_fw_cfgと成功読取り分岐/0x63 byte store。
+- ev_28589b10d598c24b31349eca09223c2c34b3b8719ff3ef23d16b15ea825d85eb: BT_InitDeviceのrecord copy。
+- ev_36bd8c8aea3c8472177a0055adc1c79e9891d0d0de5e2d3f70957eae19a7001a: FC72 length4のpacket生成。
+- ev_f29538b64d7f14a7fa31577073a316d8e9ad6711920289b785132f6eb97f5af0 / ev_cca4006cfb4160f627f99bbd4aeef7b4a9b531f7758335cdaae4bddc8be06247: pure版の別経路照合。
+
+既存transport回帰の期待packetをこの新しいstock規則へ更新。旧transportは先頭byte照合で失敗し、
+修正版は通過。入力record不変も検査する。これは新たなbyte規則の回帰であり、None/0やRF/clockを
+合成して再試験するものではない。provider1019だけを2TU増分compile、client2011/Audio3003/親は保持。

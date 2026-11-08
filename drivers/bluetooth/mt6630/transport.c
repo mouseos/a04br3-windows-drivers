@@ -217,7 +217,7 @@ int a04_bt_open_combo(struct a04_bt_transport *b,struct a04_wmt_bridge *bridge,v
 {return open_transport(b,bridge,p,rx,now_us,1);}
 int a04_bt_initialize(struct a04_bt_transport *b,const uint8_t nv[36])
 {
- uint8_t addr[6];unsigned any=0,all=255;int e;
+ uint8_t addr[6],pcm[4];unsigned any=0,all=255;int e;
  if(!valid(b)||!nv||b->enabled)return -1;
  for(unsigned i=0;i<6;i++){addr[i]=nv[5-i];any|=nv[i];all&=nv[i];}
  /* NVRAM uses human address order. Never invent a fallback address. */
@@ -225,9 +225,16 @@ int a04_bt_initialize(struct a04_bt_transport *b,const uint8_t nv[36])
  e=function(b,1);
  if(!e)e=command(b,0xfc1a,addr,6);
  for(volatile unsigned char *v=addr;v<addr+6;v++)*v=0;
- if(e||command(b,0xfc72,nv+8,4))return fail(b,-10);
- /* Vendor0c756f4 GORMcmd_HCC_Set_PCM copies exactly these dynamic four
-  * bytes. Its code defines no MT6630 bit semantics or codec latency. */
+ if(e)return fail(b,-10);
+ /* Stock A04BR3 OTA 02.00 libbluetooth_mtk mtk_fw_cfg forces record[8]
+  * to 0x63 for chip 0x6630 even after a successful NVRAM read. Its FC72
+  * generator then copies record[8..11]. Preserve the other three dynamic
+  * bytes and the caller's record. This exact packet rule is not a decoded
+  * PCM clock/format/latency qualification; no bit meanings are inferred. */
+ pcm[0]=0x63;for(unsigned i=1;i<4;i++)pcm[i]=nv[8+i];
+ e=command(b,0xfc72,pcm,sizeof(pcm));
+ for(volatile unsigned char *v=pcm;v<pcm+sizeof(pcm);v++)*v=0;
+ if(e)return fail(b,-10);
  b->pcm_command_applied=1;
  if(command(b,0xfc79,nv+12,6)||
     command(b,0xfc93,nv+27,3)||command(b,0xfc7a,nv+18,7)||command(b,0xfc22,nv+30,6)||

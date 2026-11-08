@@ -37,7 +37,10 @@ static int transfer(void *context,uint32_t arg,void *buffer,unsigned length)
   static const unsigned offsets[]={0,8,12,27,18,30,0,0},sizes[]={6,4,6,3,7,6,0,0};
   const uint8_t *h=stp.payload.data;unsigned op=a04_wmt_le16(h+1),step=s->step++;
   assert(stp.task==0&&h[0]==1&&step<8&&op==ops[step]&&h[3]==sizes[step]);
-  for(unsigned i=0;i<sizes[step];i++)assert(h[4+i]==s->nvram[step?offsets[step]+i:5-i]);
+  for(unsigned i=0;i<sizes[step];i++){
+   unsigned expected=(step==1&&i==0)?0x63:s->nvram[step?offsets[step]+i:5-i];
+   assert(h[4+i]==expected);
+  }
   uint8_t reply[15]={4,0x0e,4,1,(uint8_t)op,(uint8_t)(op>>8),0};unsigned n=7;
   if(s->reject==1||(s->reject==2&&op==0x1001))reply[6]=0x0c;
   if(op==0x1001){const uint8_t version[]={6,0x34,0x12,6,0x46,0,0x78,0x56};memcpy(reply+7,version,8);reply[2]=12;n=15;}
@@ -75,6 +78,8 @@ int main(void)
  assert(bt.version_sent&&bt.version_complete&&bt.version_status==0&&bt.version_length==9&&bt.version_valid);
  assert(bt.version.hci_revision==0x1234&&bt.version.manufacturer==0x46&&bt.version.lmp_subversion==0x5678);
  assert(bt.pcm_command_applied&&!bt.queue_stopped);
+ /* Packet-only stock override: input record stays private and unchanged. */
+ for(unsigned i=0;i<36;i++)assert(f.nvram[i]==(uint8_t)(i+2));
  for(unsigned i=0;i<sizeof(bt.reply);i++)assert(!bt.reply[i]);
  assert(!bt.reply_length);
  /* Request acceptance is not a connection; only actual matching HCI events
