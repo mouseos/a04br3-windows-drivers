@@ -27,7 +27,7 @@ clock/pinmuxの制御値は推測しない。readbackは設定一致を示すだ
 | 1 | Generic Desktop/System Power Down | 既存Power、OS設定による電源動作の可能性あり |
 | 2 | Consumer/Volume Decrement | 既存Volume Down |
 | 3 | Consumer/Volume Increment | Volume Up |
-| 4 | Consumer/AC Home (0x223) | 物理Homeの割当方針。Windows Start/hardware-button契約の実証ではない |
+| 4 | Keyboard/Left GUI (0x07/0xe3) | 標準Windowsキー。実キー・Start画面の動作は未検証 |
 
 保持状態だけを公開し、toggle injection、synthetic repeat、偽姿勢、ユーザー操作の生成はしない。短い押下やqueue滞留中の変化はcoalesceされうる。
 
@@ -45,6 +45,12 @@ Windows既存署名hostでは `tools/ci/sign-mt8167-keypad.ps1`を使う。署�
 
 ## 後段採用
 
-INF0.0.1.1は同じHWID、同じLowerFilters/service `Mt6392Keys`を維持し、ServiceBinaryだけ実ハード名`mt8167-keypad.sys`へ置換する。旧mt6392-keys.sysと同時loadしない。既存媒体への適合・service停止/driver選択はmain担当。今回のfreeze済batchを更新しない。親再build不要。現親が既存buttons子を公開しexclusive rangeを与えることが必要。
+INF0.0.1.2は同じHWID、同じLowerFilters/service `Mt6392Keys`を維持し、ServiceBinaryだけ実ハード名`mt8167-keypad.sys`へ置換する。旧mt6392-keys.sysと同時loadしない。既存媒体への適合・service停止/driver選択はmain担当。今回のfreeze済batchを更新しない。親再build不要。現親が既存buttons子を公開しexclusive rangeを与えることが必要。
 
 host decode/debounce試験と署名buildは実キー入力の成功証拠ではない。実機試験はmain所有の次の通常更新で行う。
+
+## Windowsキーへの修正（0.0.1.2）
+
+旧候補のConsumer AC Homeはブラウザ系のHomeであり、Windowsキーのusageではない。第4reportだけGeneric Desktop Keyboard collection内のKeyboard Left GUIへ変更する。report ID4、1bit状態＋7bit padding、全2byte、既存Power/Volumeの3reportとdebounce/PMIC/MMIO/停止処理は保持する。
+
+一次資料：[Microsoft Keyboard Input Overview](https://learn.microsoft.com/en-us/windows/win32/inputdev/about-keyboard-input)はKeyboard Left GUIをpage0x07/usage0xe3、Scan1 E05Bへ対応させる。[ACPI button device](https://learn.microsoft.com/en-us/windows-hardware/drivers/hid/acpi-button-device)もWindows/Homeに同usageを使用するが、後者はWindows10用ACPI例であり、RT8.1へACPI0011やHidinterrupt.sysを持ち込む根拠にはしない。既存mshidkmdfと標準kbdhidへ通常のkeyboard HID collectionを公開する。実機のkbdhid結合/キー入力/Startの動作確認までは未検証。
