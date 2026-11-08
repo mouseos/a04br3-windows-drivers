@@ -41,7 +41,10 @@ struct preserved_service {const WCHAR *name;DWORD present;BYTE hash[32];};
 struct diagnostic_client {const WCHAR *exe,*arguments,*name,*relative_directory;BYTE hash[32];DWORD timeout_ms;};
 #include "peripheral-batch-policy.h"
 #define PERIPHERAL_TARGET_COUNT (sizeof(targets)/sizeof(targets[0]))
-typedef char bounded_target_count[(PERIPHERAL_TARGET_COUNT>0 && PERIPHERAL_TARGET_COUNT<=9)?1:-1];
+typedef char bounded_target_count[(PERIPHERAL_TARGET_COUNT>0 && PERIPHERAL_TARGET_COUNT<=10)?1:-1];
+#ifndef A04_PERIPHERAL_FIRST_INSTALL_MASK
+#define A04_PERIPHERAL_FIRST_INSTALL_MASK 0u
+#endif
 #define deferred_targets targets
 #define deferred_pins targets
 #define EV_PNP_API_BEGIN 30
@@ -106,11 +109,26 @@ static DWORD old_services(void){static struct value {WCHAR name[256];DWORD type,
 static DWORD preserved(void){WCHAR sys[MAX_PATH],full[MAX_PATH];HANDLE h;DWORD i,e;if(!GetSystemDirectoryW(sys,MAX_PATH))return GetLastError();for(i=0;i<sizeof(preserved_files)/sizeof(preserved_files[0]);i++){h=INVALID_HANDLE_VALUE;e=path(full,sys,preserved_files[i].name);if(!e)e=deferred_file(full,preserved_files[i].hash,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);if(e)return e;}return old_services();}
 static DWORD property(HDEVINFO set,SP_DEVINFO_DATA *dev,DWORD code,const WCHAR *expected){WCHAR b[256];DWORD t,n;if(!SetupDiGetDeviceRegistryPropertyW(set,dev,code,&t,(BYTE *)b,sizeof(b),&n))return GetLastError();if(t!=REG_SZ||n<2||n>sizeof(b)||(n&1)||b[n/2-1]||lstrcmpiW(b,expected))return ERROR_REVISION_MISMATCH;return 0;}
 static DWORD installed_inf(unsigned,HDEVINFO,SP_DEVINFO_DATA *,int);
-static DWORD selected(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int candidate){static const DEVPROPKEY dk={{0xa8b865dd,0x2e3d,0x4094,{0xad,0x97,0xe5,0x93,0xa7,0x0c,0x75,0xd6}},2};ULONGLONG v;FILETIME d;DWORD n,e;DEVPROPTYPE type;e=deferred_selected_version(i,set,dev,&v);if(e)return e;if(v!=(candidate?targets[i].version:targets[i].base_version))return ERROR_REVISION_MISMATCH;if(!SetupDiGetDevicePropertyW(set,dev,&dk,&type,(BYTE *)&d,sizeof(d),&n,0)){
+/* Opt-in only for the pinned fresh124 failed-install Buttons child. Unknown
+ * identity/configuration or an already installed service is never a baseline. */
+static DWORD first_keypad_baseline(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev){
+ static const DWORD absent_props[3]={SPDRP_SERVICE,SPDRP_CLASSGUID,SPDRP_DRIVER};WCHAR value[256];DWORD n,type,flags,j,e;SC_HANDLE manager,service;
+ if(PERIPHERAL_TARGET_COUNT!=10||i!=7||lstrcmpW(targets[i].id,L"MT6392\\Buttons")||lstrcmpW(targets[i].sys,L"mt8167-keypad.sys"))return ERROR_INVALID_PARAMETER;
+ if(!SetupDiGetDeviceRegistryPropertyW(set,dev,SPDRP_CONFIGFLAGS,&type,(BYTE *)&flags,sizeof(flags),&n))return GetLastError();
+ if(type!=REG_DWORD||n!=4||flags!=0x40u)return ERROR_REVISION_MISMATCH;
+ for(j=0;j<3;j++){
+  if(SetupDiGetDeviceRegistryPropertyW(set,dev,absent_props[j],&type,(BYTE *)value,sizeof(value),&n))return ERROR_ALREADY_EXISTS;
+  e=GetLastError();if(e!=ERROR_INVALID_DATA)return e;
+ }
+ manager=OpenSCManagerW(NULL,NULL,SC_MANAGER_CONNECT);if(!manager)return GetLastError();
+ service=OpenServiceW(manager,L"Mt6392Keys",SERVICE_QUERY_STATUS);e=service?ERROR_ALREADY_EXISTS:GetLastError();if(service)CloseServiceHandle(service);CloseServiceHandle(manager);
+ return e==ERROR_SERVICE_DOES_NOT_EXIST?0:e;
+}
+static DWORD selected(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int candidate){static const DEVPROPKEY dk={{0xa8b865dd,0x2e3d,0x4094,{0xad,0x97,0xe5,0x93,0xa7,0x0c,0x75,0xd6}},2};ULONGLONG v;FILETIME d;DWORD n,e;DEVPROPTYPE type;if(!candidate&&(A04_PERIPHERAL_FIRST_INSTALL_MASK&(1u<<i)))return first_keypad_baseline(i,set,dev);e=deferred_selected_version(i,set,dev,&v);if(e)return e;if(v!=(candidate?targets[i].version:targets[i].base_version))return ERROR_REVISION_MISMATCH;if(!SetupDiGetDevicePropertyW(set,dev,&dk,&type,(BYTE *)&d,sizeof(d),&n,0)){
  DWORD error=GetLastError();record(i,0x215,error);if(error!=ERROR_NOT_FOUND)return error;
  error=deferred_driver_value(set,dev,L"DriverDateData",REG_BINARY,(BYTE *)&d,sizeof(d),&n);record(i,0x216,error);if(error)return error;type=DEVPROP_TYPE_FILETIME;
  }record(i,0x217,type);record(i,0x218,n);if(type!=DEVPROP_TYPE_FILETIME||n!=8||(((ULONGLONG)d.dwHighDateTime<<32)|d.dwLowDateTime)!=(candidate?targets[i].date:targets[i].base_date))return ERROR_REVISION_MISMATCH;e=property(set,dev,SPDRP_SERVICE,targets[i].service);if(e)return e;e=property(set,dev,SPDRP_CLASSGUID,targets[i].cls);if(e)return e;return installed_inf(i,set,dev,candidate);}
-static DWORD installed_sys(unsigned i,int candidate){WCHAR s[MAX_PATH],d[MAX_PATH],p[MAX_PATH];HANDLE h=INVALID_HANDLE_VALUE;DWORD e;if(!GetSystemDirectoryW(s,MAX_PATH))return GetLastError();e=path(d,s,L"drivers");if(!e)e=path(p,d,targets[i].sys);if(!e)e=deferred_file(p,candidate?targets[i].hash[1]:targets[i].base_sys,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);return e;}
+static DWORD installed_sys(unsigned i,int candidate){WCHAR s[MAX_PATH],d[MAX_PATH],p[MAX_PATH];HANDLE h=INVALID_HANDLE_VALUE;DWORD e;if(!GetSystemDirectoryW(s,MAX_PATH))return GetLastError();e=path(d,s,L"drivers");if(!e)e=path(p,d,targets[i].sys);if(!e&&!candidate&&(A04_PERIPHERAL_FIRST_INSTALL_MASK&(1u<<i))){h=CreateFileW(p,FILE_READ_ATTRIBUTES,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,NULL);if(h!=INVALID_HANDLE_VALUE){CloseHandle(h);return ERROR_ALREADY_EXISTS;}e=GetLastError();return e==ERROR_FILE_NOT_FOUND?0:e;}if(!e)e=deferred_file(p,candidate?targets[i].hash[1]:targets[i].base_sys,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);return e;}
 /* DIF may store the original INF basename in the selected class key while
  * SetupCopyOEMInf publishes only oemNNN.inf in Windows\INF. Resolve that exact
  * hash-pinned staged package through SetupAPI; never scan the INF directory,
@@ -189,6 +207,33 @@ static DWORD sd_readonly_presence(DEVINST host){
  cur=dev.DevInst;for(depth=0;depth<16;depth++){if(cur==host){count++;cr=CM_Get_DevNode_Status(&status,&problem,dev.DevInst,0);record(4,0x242,cr);record(4,0x243,status);record(4,0x244,problem);break;}cr=CM_Get_Parent(&parent,cur,0);if(cr!=CR_SUCCESS)break;cur=parent;}
  }if(i==64)e=ERROR_MORE_DATA;SetupDiDestroyDeviceInfoList(set);record(4,0x240,e);record(4,0x241,count);return e?e:(count?0:ERROR_NOT_READY);
 }
+/* Read-only HID topology after first Buttons installation. Enumerate only
+ * interface devnodes whose CM ancestry reaches the fixed keypad host; no
+ * report reads, key injection, device restart, registry writes or user input. */
+static DWORD keypad_hid_bindings(DEVINST host){
+ static const GUID hid={0x4d1e55b2,0xf16f,0x11cf,{0x88,0xcb,0x00,0x11,0x11,0x00,0x00,0x30}};
+ static DWORD detailbuf[512];static WCHAR ids[1024];DEVINST seen[64],cur,parent;HDEVINFO set;SP_DEVICE_INTERFACE_DATA iface;SP_DEVINFO_DATA dev;DWORD i,j,n,type,depth,count=0,keyboard=0,col04=0,e=0;CONFIGRET cr;
+ if(PERIPHERAL_TARGET_COUNT!=10)return ERROR_INVALID_PARAMETER;
+ set=SetupDiGetClassDevsW(&hid,NULL,NULL,DIGCF_DEVICEINTERFACE|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE)return GetLastError();
+ for(i=0;i<64;i++){
+  SP_DEVICE_INTERFACE_DETAIL_DATA_W *detail=(SP_DEVICE_INTERFACE_DETAIL_DATA_W*)detailbuf;
+  memset(&iface,0,sizeof(iface));iface.cbSize=sizeof(iface);if(!SetupDiEnumDeviceInterfaces(set,NULL,&hid,i,&iface)){e=GetLastError();if(e==ERROR_NO_MORE_ITEMS)e=0;break;}
+  memset(detailbuf,0,sizeof(detailbuf));detail->cbSize=sizeof(*detail);memset(&dev,0,sizeof(dev));dev.cbSize=sizeof(dev);
+  if(!SetupDiGetDeviceInterfaceDetailW(set,&iface,detail,sizeof(detailbuf),&n,&dev)){e=GetLastError();break;}
+  cur=dev.DevInst;for(depth=0;depth<16&&cur!=host;depth++){cr=CM_Get_Parent(&parent,cur,0);if(cr!=CR_SUCCESS)break;cur=parent;}if(cur!=host)continue;
+  for(j=0;j<count&&seen[j]!=dev.DevInst;j++);if(j<count)continue;seen[count++]=dev.DevInst;
+  {ULONG status=0,problem=0;cr=CM_Get_DevNode_Status(&status,&problem,dev.DevInst,0);record(7,0x264,cr);record(7,0x265,status);record(7,0x266,problem);if(cr!=CR_SUCCESS||!(status&DN_STARTED)||problem){e=ERROR_NOT_READY;break;}}
+  if(!property(set,&dev,SPDRP_SERVICE,L"kbdhid")&&!property(set,&dev,SPDRP_CLASSGUID,L"{4D36E96B-E325-11CE-BFC1-08002BE10318}")){
+   int fourth=0;keyboard++;
+   if(!SetupDiGetDeviceRegistryPropertyW(set,&dev,SPDRP_HARDWAREID,&type,(BYTE*)ids,sizeof(ids),&n)){e=GetLastError();break;}
+   if(type!=REG_MULTI_SZ||n<4||n>sizeof(ids)||(n&1)||ids[n/2-1]||ids[n/2-2]){e=ERROR_INVALID_DATA;break;}
+   for(j=0;j+6<n/2;j++)if(ids[j]==L'&'&&(ids[j+1]==L'C'||ids[j+1]==L'c')&&(ids[j+2]==L'O'||ids[j+2]==L'o')&&(ids[j+3]==L'L'||ids[j+3]==L'l')&&ids[j+4]==L'0'&&ids[j+5]==L'4'&&(!ids[j+6]||ids[j+6]==L'&'))fourth=1;
+   if(fourth)col04++;
+  }
+ }
+ if(i==64)e=ERROR_MORE_DATA;SetupDiDestroyDeviceInfoList(set);record(7,0x260,e);record(7,0x261,count);record(7,0x262,keyboard);record(7,0x263,col04);
+ return e?e:((count==4&&keyboard==1&&col04==1)?0:ERROR_NOT_READY);
+}
 /* Exactly the two pinned signed clients; one process each, no shell/retry. */
 static DWORD run_clients(void)
 {
@@ -223,6 +268,7 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
 #if A04_PERIPHERAL_NEXT_PROFILE
  e=wlan_readonly_status();if(e&&!first)first=e;
  {SP_DEVINFO_DATA sd;DWORD find=deferred_find(4,set,&sd);e=find?find:sd_readonly_presence(sd.DevInst);record(4,0x245,e);if(e&&!first)first=e;}
+ if(A04_PERIPHERAL_FIRST_INSTALL_MASK){SP_DEVINFO_DATA keypad;DWORD find=deferred_find(7,set,&keypad);e=find?find:keypad_hid_bindings(keypad.DevInst);record(7,0x267,e);if(e&&!first)first=e;}
  e=run_clients();if(e&&!first)first=e;
 #endif
  e=preserved();if(e&&!first)first=e;e=first;goto done;}
