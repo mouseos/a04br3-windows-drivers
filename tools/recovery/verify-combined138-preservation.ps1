@@ -1,5 +1,6 @@
+param([Parameter(Mandatory=$true)][string]$WorkspaceRoot)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
-$base='C:\mt8167-combined138';$w=$base;$src="$base\windows-rt\a04br3-windows-combined138-peripheral";$out="$base\post-preservation"
+$base=[IO.Path]::GetFullPath($WorkspaceRoot);$w=$base;$src="$base\windows-rt\a04br3-windows-combined138-peripheral";$out="$base\post-preservation"
 if(Test-Path $out){throw 'New comparison output required'}
 New-Item -ItemType Directory "$out\baseline","$out\candidate"|Out-Null
 $input="$base\port\xnu\out\private-windows-rt-prebackup-run138\files\Windows\System32\config"
