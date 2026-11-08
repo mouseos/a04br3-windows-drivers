@@ -61,7 +61,10 @@ static NTSTATUS ParentAdcProof(A04_PARENT_CONTEXT *c,A04_THERMAL_PIO_RECORD *rec
  RtlZeroMemory(record,sizeof(*record));
  status=ExGetFirmwareEnvironmentVariable(&name,&guid,record,&bytes,&attrs);
  if(!NT_SUCCESS(status)||!ThermalPioRecordValid(record,bytes,attrs))return STATUS_DEVICE_NOT_READY;
- status=ExSetFirmwareEnvironmentVariable(&name,&guid,NULL,0,0);
+ /* Windows8.1 HAL requires NON_VOLATILE on the OS API. For length0 it
+  * issues a UEFI deletion with attributes0 and does not recreate a variable.
+  * This does not change the existing volatile proof's attributes6. */
+ status=ExSetFirmwareEnvironmentVariable(&name,&guid,NULL,0,1u /* VARIABLE_ATTRIBUTE_NON_VOLATILE */);
  if(!NT_SUCCESS(status))return status;
  if(InterlockedCompareExchange(&c->admissionClosed,0,0)||InterlockedCompareExchange(&c->removed,0,0))return STATUS_DEVICE_NOT_READY;
  c->adcProof=*record;c->adcProofValid=1;return STATUS_SUCCESS;
@@ -100,7 +103,7 @@ static NTSTATUS ParentThermalPioMeasure(PVOID p,ULONG *adopted,ULONG raw[3],ULON
  if(!NT_SUCCESS(status)||!ThermalPioRecordValid(&record,bytes,attrs)){status=STATUS_DEVICE_NOT_READY;goto outside;}
  /* Consume once for this boot. A recreated PDO/parent cannot reuse the record
   * after an uncertain operation. Failure to consume never opens admission. */
- *stage=3;status=ExSetFirmwareEnvironmentVariable(&name,&guid,NULL,0,0);
+ *stage=3;status=ExSetFirmwareEnvironmentVariable(&name,&guid,NULL,0,1u /* VARIABLE_ATTRIBUTE_NON_VOLATILE */);
  if(!NT_SUCCESS(status))goto outside;
 #endif
  *stage=4;if(ParentLock(c)){status=STATUS_DEVICE_NOT_READY;goto outside;}
