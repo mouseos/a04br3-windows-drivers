@@ -30,6 +30,8 @@ jobs:
             build/ge8300-source/umd/*.pe.txt
             build/ge8300-source/host-tests/host-tests.json
             build/ge8300-source/host-tests/stdout.txt
+            build/ge8300-source/host-tests/viewport325/host-tests.json
+            build/ge8300-source/host-tests/viewport325/stdout.txt
             build/ge8300-source/host-tests/signature323/host-manifest.json
             build/ge8300-source/source-origins.json
             build/ge8300-source/source-gate-tests/receipt.json
