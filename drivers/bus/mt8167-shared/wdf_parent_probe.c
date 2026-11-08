@@ -1,3 +1,4 @@
+#include "usbport_child.h"
 /* SPDX-License-Identifier: BSD-2-Clause-Patent
  * Experimental PnP parent. D0 rejects by default; the opt-in button D0
  * experiment checks WACS2 readiness and admits the fixed button transaction.
@@ -1509,6 +1510,12 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     WDF_PDO_EVENT_CALLBACKS_INIT(&callbacks);
     callbacks.EvtDeviceResourceRequirementsQuery=ChildRequirements;
     WdfPdoInitSetEventCallbacks(init,&callbacks);
+#if A04_SHARED_USBPORT_CHILD
+    if(base==0x11100000u){
+        status=WdfDeviceInitAssignWdmIrpPreprocessCallback(init,A04UsbPortChildIoctl,IRP_MJ_DEVICE_CONTROL,NULL,0);
+        if(!NT_SUCCESS(status))goto fail;
+    }
+#endif
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attr,A04_CHILD_CONTEXT);
     status=WdfDeviceCreate(&init,&attr,&child);
     if(!NT_SUCCESS(status))goto fail;
@@ -1526,6 +1533,14 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     query.SendQueryToParentStack=TRUE;
     status=WdfDeviceAddQueryInterface(child,&query);
     if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+#if A04_SHARED_USBPORT_CHILD
+    if(base==0x11100000u){
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&GUID_BUS_INTERFACE_STANDARD,NULL);
+        query.SendQueryToParentStack=TRUE;
+        status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
+    }
+#endif
     if(base==0xffffffffu) {
         /* AFE is a synthesized child, not an ACPI PDO. Preserve the real
          * parent-bus DMA/translation interface, including its ref callbacks;

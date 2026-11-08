@@ -1,0 +1,89 @@
+# 実RT8.1 USBPORT miniportとroot hub
+
+USB1011のhelperから独立したWDM miniport `usbport_hcd.c` を追加した。
+`DriverEntry`が実USBPORTのGetHciMnを確認してRegisterUSBPortDriverを呼ぶ。
+root hub PDOとそのPnP/USBDI処理はinbox USBPORTへ委ねる。
+物理backendは未接続。標準hubの実起動や周辺機器の実機動作は未検証。
+HID経路のSYS/INFを変更せず、別SYS/INFにしている。同じUSB20に同時bindしない。
+
+## 原本と解析の区別
+
+実usbport.sys SHA256:
+`c668b894e7733206f987d85296f5e2d5fb4cf5b06c12ee43ea5afef85d4c31fe`。
+実usbehci.sys SHA256:
+`958d78c56ed991a34d60d28457e0470c158d89646b9597dde600e06840d8b57c`。
+
+原本REAが間接callbackの一部を関数認識しないため、解析用コピーに、
+確認済みcallbackアドレスをPE entry/exportとして追加した。元の全section bytesは
+変更していない。コピーの署名宣言は除去し、成果・配備用には使わない。
+そのコピーのEvidenceは解析用コピーに対する静的観測であり、原本を実行した
+観測ではない。再生成スクリプト、原本/コピーSHA、全section照合manifestは
+プロジェクトのログ/成果物側に残す。ソースrepoへバイナリを持ち込まない。
+
+公開ReactOSのusbmport.hは用語・契約候補の対照に参照したが、そのまま
+RT81 ABIとしてコピーしていない。特に同公開宣言はRegisterの引数が3個だが、
+実RT81は第4引数RegistryPathを消費する。実呼出し側で確認して4引数を定義した。
+
+## 確認した登録・PDO経路
+
+|項目|実RT81の根拠|実装|
+|---|---|---|
+|Register第4引数|Register→0x274b4でUNICODE_STRING長さ/Bufferを参照。ev_342ddbe98e9f165334c78c784e7c3e8e377acf2eb3c361acabc78145ec43a221 / ev_889a6945e4a4ee491194ab59804a4c421da90b19e543ed474dcd1d01ca34427e|WDK DriverEntryのRegistryPathを渡す|
+|packetサイズ|Registerはversion200で0x13c、version310で0x224をコピー|確認できたlegacy200の0x13cのみ使用、ARM C_ASSERT|
+|AddDevice|0x1b384でUSBPORTがHCD FDOを作成・attach。miniport拡張はFDO拡張+0x1500|miniportがFDO/PDOを重複作成しない|
+|BusRelations|ev_4495bef50a19195196e5b651353568a4ae6adaee4be50121f0c9283cb2b64870、minor7/type0で0x1be28を呼びroot PDOを返す|inbox USBPORTへ任せる|
+|root PDO|ev_c35e5198d60ae9cef692b88cb0f17904c4ad7133ef1666fe28980951793228a0、IoCreateDevice type0x2a、GetRootHubDataでdescriptor生成|root_dataが1port/独立給電/過電流報告を返す|
+|root DeviceID|ev_42c6baaca4a6b180dede5e5d3781e31a5186abac3bf7a5bc72f916d36459fce7、USB2 flag0x10でUSB\ROOT_HUB20|Class=USBの別INF、USBPORT root生成経路|
+|非PCI|ev_6c24f0d86ddacb596fcfe0d7516a05a437c7be7abd913e962dfabb6917220a52、flag0x2000でplatform IOCTLへ分岐|platformフラグ、子PDOの明示的platform情報|
+|resource|ev_6baf29af4a64d8d6c75b7fb5421cef673585033c7122d4e8583d1f8537e16e11、0x90bytes、FDO+0x7c/PDO+0x80|対応構造体offsetをARM C_ASSERT|
+|Start|ev_a5ec2820dfb6b53bc1fc0054e6e03f8faadd25170df3f417ed7a2468cd395c25、r0=miniport/r1=resources、packet+0x38|同型callback。ソフトウェアrootのみ開始|
+|Open/Query|ev_ab8c53af3cb7f74b1ea4ad7457e9a1ca546673ef046442c62ad548cefdecc6e8 / ev_9e3c834e17176733695062aa443faefc5488417096a802c7a3bc9539ee0ec940。ext,properties,endpoint/requirements、spinlock内|公開互換宣言と実引数を照合、sleepしない|
+|properties|ev_6bde946025169a1ab0f744e1c1f00a685a045b4cc4d1a80f96719e861522efa0、USBPORTがendpoint+0x128へ0x40bytesを作る|0x40とtype offset0x14をARM照合|
+|RootData|解析用EHCI ev_16109d428380cdeb440989bf99ca830bf3e3bb736c042be3716f167cf897898c。ports/characteristics/powergood/currentの16bytes|同型callback|
+|RhGetStatus|原本EHCI ev_d5835217e7b8242b66e7aa38233d1dd3d9940e937ad7677fac8f5a057fdebad6、USHORTへ1を返す|port change bitmapと誤解しない|
+|Complete|解析用USBPORT ev_d7b782215044bb1e725485b2e9b3764262f78d093592c16581d61046d6e7ea02 / asm ev_b606e5aa2e336b7e585d62ebffa6d4430434bd78cc920d3f185c733917e699df。r0ext/r1endpoint/r2transfer/r3USBD/status、stack actual|同型service、abortと二重完了しない|
+
+全callback slot順は既存原本EHCI登録Evidence
+`ev_78a67be54a48cb57faa230c88bc39023a94ee051620d10c677b54021602a5290`
+と突き合わせた。追加サービス領域0xe4以降はUSBPORTが埋め、登録後のComplete等を使う。
+version200を超える任意のtail callbackやUCX契約を推測していない。
+
+## 安全境界と物理backend
+
+HCD Startはメモリ上のport/root状態を開始するだけ。MMIO、clock、PHY、DMA、
+GPIO22、VBUSに触れない。物理backendがなければPORT_POWER/RESETは失敗し、
+port statusはoff/disconnected、transferは拒否する。root PDOの存在はUSB稼働の証明ではない。
+物理backendの契約はUSBPORT ABIと分離しており、ユーザーIOCTL/registryから
+関数ポインタや証明を注入する経路はない。
+
+POWER ONの完了には既存root_hubと同じ資格、ID host、過電流clear、VBUS確認、
+endpoint quiesceを要求する。既存親v1 HealthはID/source観測を含むが、
+物理5V・実過電流測定の完全な証明ではないため、そのまま証明へ昇格しない。
+USBPORTはOpen/Queryをspinlock内で呼ぶ。物理backendはcallback IRQLと寿命を
+守る実装が必要で、PASSIVE_LEVEL専用の親v1をそのままcallbackから呼んではならない。
+物理backendの起動/非同期owner橋渡しは未接続であり、配備可能な汎用USBとはしない。
+
+bulk/interruptのPIOはdirect root-portに限定し、単一hardware EP1を直列使用。
+TX/RX各64byte FIFO、PIO、NAK再試行、短いIN、STALL、停止確認とtoggle継承を持つ。
+TT/split、isochronous、high-bandwidth、512byte HS bulkは拒否し、packetを黙って縮めない。
+full-speed bulkと<=64byte interruptを扱う。DMAを開始・停止するコードは追加しない。
+
+## 親側のopt-in
+
+`A04_SHARED_USBPORT_CHILD=1` は既定オフ。既存USB子PDOに、USBPORTの
+IOCTL_ACPI_GET_DEVICE_INFORMATIONに対する合成bus自身の識別情報を追加する。
+firmware ACPIの観測結果を装わず、silicon revisionも報告しない。
+実際の親busのGUID_BUS_INTERFACE_STANDARDを転送する。DMA/translateメソッドを
+捏造しない。WDFのQueryCapabilitiesは既存実装を使用する。
+現main親や媒体をこのbranchの古い親で巻き戻さず、mainの新しい親sourceへこの差分を
+合流してから固定manifest付きで再ビルドする必要がある。
+
+## 検証と未達
+
+`make test-mt8167-usb-generic-pio` がproduction PIOをASan/UBSanで実行する。
+`tools/ci/build-mt8167-usbport-hcd-incremental.ps1` は既存WDK81 cacheで
+4TU ARM compile/link、実WDK型x64 callback試験、opt-in親TU compile、SYS/CAT署名を行う。
+親TUはcompileだけで、現親の置換・配備をしていない。
+
+標準hubへの実binding、実RT81登録成功、PnP start/stop、physical backend、
+control/汎用転送の実機成功は未確認。回収manifestはこれらをfalseのまま記録する。
