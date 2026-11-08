@@ -63,3 +63,9 @@ nativeは`vendor_m1_11/render_owner`の必要113fileだけを固定native322か�
 旧fullsource320 `e5816a86`は新規公開cloneからnative54/module24/compiler370/UMD-client21TUをsource compile/linkして回収済み。本323 treeはその手順を再利用したsource候補で、既存署名package323と同一binaryという主張ではない。新版の検証範囲は引渡しHANDOFFに記録する。GitHub workflowのdispatchや本treeのfullbuildを未実施なら、旧320の成功を新版の実行成功に読み替えない。
 
 実3.22では主担当から標準D3Dの2色連続Clear/readback各480000画素一致・不一致0・bugcheck無しが返却され、その次のTRIANGLE_VS作成が失敗した。3.23 shader修正を含むこの公開fullsource buildは実機未検証。一般shader/三角形/UI全描画・全device・長期安定の完成ではない。
+
+## 独立compiler後続328
+
+通常source recipeは[SM4即値差分328](../../docs/ge8300-sm4-literals328.md)を含む。native/UMDの327 texture契約を保持。通常fullsource gateのsm4出自/hashも同時更新し、cache専用差分だけを再現条件にしない。一般shaderのnative受理は未実装であり、compiler候補DLLを媒体へ自動混載しない。
+
+327 suiteのservice/client時間予算は[専用説明](../../docs/ge8300-texture-suite-time-budget.md)を参照。

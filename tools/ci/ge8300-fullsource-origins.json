@@ -410,9 +410,11 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/compiler/sm4.c",
-      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
-      "role": "UMD-base3f829",
-      "sha256": "d64e11415a59389a56bf1027c531b88f932b940318f241ed4887b28b5a6a0072"
+      "source_commit": "727bb320ecf652f994e180d39b45c69b3fcb0de0",
+      "role": "Bounded scalar/vector immediate32 compiler overlay328; native admission unchanged",
+      "sha256": "5be8be524809ce2aa2646c683804c275c8d93b5e40ffa4dfd3feae4c903ef3bb",
+      "baseline_source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
+      "baseline_sha256": "d64e11415a59389a56bf1027c531b88f932b940318f241ed4887b28b5a6a0072"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/compiler/sm4.h",
