@@ -1,0 +1,47 @@
+[Version]
+Signature="$WINDOWS NT$"
+Class=HIDClass
+ClassGuid={745a17a0-74d3-11d0-b6fe-00a0c90f57da}
+Provider=%Provider%
+DriverVer=11/08/2026,0.0.1.1
+CatalogFile=mt8167-keypad.cat
+[Manufacturer]
+%Provider%=Models,NTARM
+[Models.NTARM]
+%Device%=Install,MT6392\Buttons
+[DestinationDirs]
+DriverCopy=12
+[SourceDisksNames]
+1=%Disk%,,,
+[SourceDisksFiles]
+mt8167-keypad.sys=1
+[Install.NT]
+CopyFiles=DriverCopy
+[DriverCopy]
+mt8167-keypad.sys
+[Install.NT.HW]
+AddReg=Filter
+[Filter]
+HKR,,LowerFilters,0x00010000,"Mt6392Keys"
+[Install.NT.Services]
+AddService=mshidkmdf,0x00000002,HidService
+AddService=Mt6392Keys,0,KeysService
+[HidService]
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\mshidkmdf.sys
+[KeysService]
+DisplayName=%Device%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\mt8167-keypad.sys
+[Install.NT.Wdf]
+KmdfService=Mt6392Keys,Wdf
+[Wdf]
+KmdfLibraryVersion=1.13
+[Strings]
+Provider="mouseos"
+Device="MediaTek MT8167 Keypad and MT6392 Keys"
+Disk="MediaTek MT8167 Keypad Driver"
