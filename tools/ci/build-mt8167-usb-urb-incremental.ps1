@@ -21,7 +21,7 @@ $reused=@();foreach($name in $all|Where-Object{$_ -notin $compile}){$p="$cache\m
 $oldTemp=$env:TEMP;$oldTmp=$env:TMP
 try{
  $env:TEMP=$out;$env:TMP=$out
- $common=@('-fms-extensions','-fno-stack-protector','-fno-builtin','-D_KERNEL_MODE','-DNTDDI_VERSION=0x06030000','-D_WIN32_WINNT=0x0603','-DA04_MUSB_HOST_CORE_EXPERIMENT=1',"-I$inc\km","-I$inc\km\crt","-I$inc\shared","-I$inc\um","-I$inc\wdf\kmdf\1.13",'-include','ntddk.h')
+ $common=@('-fms-extensions','-fno-stack-protector','-fno-builtin','-D_KERNEL_MODE','-DNTDDI_VERSION=0x06030000','-D_WIN32_WINNT=0x0603','-DA04_MUSB_HOST_CORE_EXPERIMENT=1',"-I$inc\km","-I$inc\shared","-I$inc\um","-I$inc\wdf\kmdf\1.13",'-include','ntddk.h')
  foreach($name in $compile){
   & clang --target=thumbv7-pc-windows-msvc -fno-vectorize -fno-slp-vectorize -mno-unaligned-access -mfpu=none -w @common -D_ARM_ -DARM -DKMDF_VERSION_MAJOR=1 -DKMDF_VERSION_MINOR=13 -DA04_MUSB_HID_CONTROL_EXPERIMENT=1 -DA04_MUSB_BOOT_MOUSE_EXPERIMENT=1 -DA04_MUSB_BOOT_COMPOSITE_EXPERIMENT=1 -c "$root\drivers\usb\mt8167-usb20\$name.c" -o "$out\mt8167-usb20-$name.obj"
   if($LASTEXITCODE){throw "ARM compile failed: $name"}

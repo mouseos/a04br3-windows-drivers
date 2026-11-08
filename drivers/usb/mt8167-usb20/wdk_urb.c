@@ -1,6 +1,13 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "wdk_urb.h"
 #if A04_MUSB_HOST_CORE_EXPERIMENT
+/* Verify the common published prefixes used below on both ARM32 and x64. */
+C_ASSERT(FIELD_OFFSET(struct _URB_CONTROL_TRANSFER,SetupPacket)==FIELD_OFFSET(struct _URB_CONTROL_TRANSFER_EX,SetupPacket));
+C_ASSERT(FIELD_OFFSET(struct _URB_CONTROL_TRANSFER,TransferBufferLength)==FIELD_OFFSET(struct _URB_CONTROL_TRANSFER_EX,TransferBufferLength));
+C_ASSERT(FIELD_OFFSET(struct _URB_CONTROL_TRANSFER,TransferBufferLength)==FIELD_OFFSET(struct _URB_CONTROL_DESCRIPTOR_REQUEST,TransferBufferLength));
+C_ASSERT(FIELD_OFFSET(struct _URB_CONTROL_TRANSFER,TransferBufferMDL)==FIELD_OFFSET(struct _URB_CONTROL_DESCRIPTOR_REQUEST,TransferBufferMDL));
+C_ASSERT(FIELD_OFFSET(struct _URB_CONTROL_TRANSFER,TransferBufferMDL)==FIELD_OFFSET(struct _URB_CONTROL_VENDOR_OR_CLASS_REQUEST,TransferBufferMDL));
+C_ASSERT(FIELD_OFFSET(struct _URB_CONTROL_TRANSFER,TransferBufferMDL)==FIELD_OFFSET(struct _URB_CONTROL_GET_STATUS_REQUEST,TransferBufferMDL));
 static unsigned get16(const unsigned char *p){return p[0]|((unsigned)p[1]<<8);}
 static void put16(unsigned char *p,unsigned v){p[0]=(UCHAR)v;p[1]=(UCHAR)(v>>8);}
 static NTSTATUS reject(PURB u,USBD_STATUS s,NTSTATUS n){u->UrbHeader.Status=s;return n;}
