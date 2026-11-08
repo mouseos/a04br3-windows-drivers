@@ -136,7 +136,14 @@ def build_policy(root,spec):
  'module_identity_collection':old['module_identity_collection'],'rotation_execute':False,'wlan_scan_execute':False,'normal_function_expectations':{'audible_output_verified':False,'physical_latency_measurement_performed':False,'bt_radio_success':False},'input_pins':adoption['pinned_files'],'thermal_tuple_main_seal':seal}
  # Keep the BT2013 package as a retained identity/signature input; no import/install call.
  for f in policy['bt_first_install']['files']:require(sha(rooted(root,Path(policy['bt_first_install']['directory'])/f['name']))==f['sha256'],'BT2013 retained package mismatch')
- return policy
+ # Workspace artifact references use one serialization on Linux and Windows.
+ # Registry paths, hardware IDs and normal-OS paths retain their Win32 spelling.
+ def canonical(v):
+  if isinstance(v,str) and v.startswith(('port\\','windows-rt\\')):return v.replace('\\','/')
+  if isinstance(v,dict):return {k:canonical(x) for k,x in v.items()}
+  if isinstance(v,list):return [canonical(x) for x in v]
+  return v
+ return canonical(policy)
 
 def generate(p):
  require(p['profile']==PROFILE and p['stage_order']==list(ROLES) and p['install_targets']==INSTALL and p['gpu_client_execute'] is False and p['gpu_client_count']==0 and p['bt_first_install_execute'] is False,'Final149 contract only')
