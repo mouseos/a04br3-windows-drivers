@@ -69,7 +69,10 @@ void a04_ndis_runtime_snapshot(struct a04_ndis_runtime *a,ULONG channel,ULONG re
 int a04_ndis_poll(struct a04_ndis_runtime *a)
 {
  int result=0;
- if(!a->radio.bridge->wlan.fw_owned)result=a04_station_runtime_poll(&a->radio);
+#if A04_WIFI_BT_BROKER
+ if(a04_combo_poll(a))result=-1;
+#endif
+ if(!result&&!a->radio.bridge->wlan.fw_owned)result=a04_station_runtime_poll(&a->radio);
  if(a->peer_reset_pending){a->peer_reset_pending=0;
   if(a->tx.pending)(void)a04_native_nbl_abort(&a->tx,&a->session.diagnostic.bridge);
   result=a04_ndis_radio_reset(a);
@@ -217,8 +220,16 @@ static int hardware_start(struct a04_ndis_runtime *a)
  CP(a,A04_CP_RESOURCES,A04_CP_RESULT,A04_CP_OBSERVATION,1,raw->List[0].PartialResourceList.Count);
  platform.context=a;platform.connect_masked_irq=connect_irq;platform.mask_and_drain_irq=mask_irq;platform.drain_io=drain;platform.quiesce_combo=quiesce;
  /* Board facts: fixed3.3V, SDIO transport, vendor mt6630_ant_m1.cfg,
-  * stp_uart_launcher default FM mode2; no shared26MHz/merge option. */
- {const struct a04_wmt_startup_options options={1,1,0,0,2,1};
+  * default FM mode2; no shared26MHz. Stock a04br3_defconfig enables
+  * MTK_MERGE_INTERFACE_SUPPORT. The combo-only profile reuses the existing
+  * ACK-checked MT6630 DAI_PAD startup step before FM/function1, as Linux
+  * mt6630_sw_init. It does not configure host AFE or qualify SCO bypass. */
+ {
+#if A04_WIFI_BT_BROKER
+ const struct a04_wmt_startup_options options={1,1,0,A04_BT_COMBO_MERGE_REQUIRED,2,1};
+#else
+ const struct a04_wmt_startup_options options={1,1,0,0,2,1};
+#endif
  int result;CP(a,A04_CP_SESSION,A04_CP_BEGIN,A04_CP_UNKNOWN,0,0);
  result=a04_windows_session_start_traced(&a->session,&a->parent,&platform,mem,mapped,0x00300000,a04_wifi_wdf_wmt_sha256,&options,a04_cp_trace,a->checkpoint);
  CP(a,A04_CP_SESSION,A04_CP_RESULT,A04_CP_BACKEND,result,(a->session.state&255)|((a->session.diagnostic.state&255)<<8));
@@ -309,7 +320,11 @@ int a04_ndis_radio_power(struct a04_ndis_runtime *a,int on)
  if(!!a->power==!!on)return radio_setting(a,1);
  a->peer_loss.suspected=0;
  if(!on){
-  if(a04_windows_session_stop(&a->session)){a->uncertain=1;a->radio.failed=-1;return -1;}
+  #if A04_WIFI_BT_BROKER
+ if(a04_combo_held(a))return -1; /* active SCO retains the existing epoch */
+ if(a04_combo_stop(a,0)){a->uncertain=1;a->radio.failed=-1;return -1;}
+#endif
+ if(a04_windows_session_stop(&a->session)){a->uncertain=1;a->radio.failed=-1;return -1;}
   struct a04_os_security old=a->os_security;a04_os_security_clear(a);
   a->os_security.auth=old.auth;a->os_security.unicast=old.unicast;a->os_security.multicast=old.multicast;
   a->os_security.default_id=old.default_id;a->os_security.exclude_unencrypted=old.exclude_unencrypted;
@@ -327,6 +342,10 @@ int a04_ndis_radio_reset(struct a04_ndis_runtime *a)
  if(!a->power&&(a->session.state==A04_SESSION_OFF||a->session.state==A04_SESSION_STOPPED)){
   a04_os_security_clear(a);return 0; /* quiescent OFF epoch; do not turn RF on */
  }
+ #if A04_WIFI_BT_BROKER
+ if(a04_combo_held(a))return -1; /* active SCO retains the existing epoch */
+ if(a04_combo_stop(a,0)){a->uncertain=1;a->radio.failed=-1;return -1;}
+#endif
  if(a04_windows_session_stop(&a->session)){a->uncertain=1;a->radio.failed=-1;return -1;}
  a->idle_bss=0;
  RtlZeroMemory(&a->session,sizeof(a->session));RtlZeroMemory(&a->irq,sizeof(a->irq));
@@ -367,6 +386,10 @@ again:
  NdisAcquireSpinLock(&a->lock);request=a->request;
  if(!request&&!a->send)a->send=a04_queue_take(&a->send_queue);
  send=a->send;NdisReleaseSpinLock(&a->lock);
+#if A04_WIFI_BT_BROKER
+ a04_combo_worker(a);
+ if(!a->closing)(void)a04_combo_poll(a);
+#endif
  if(request){s=a->cancelled||a->closing?NDIS_STATUS_REQUEST_ABORTED:a04_ndis_control(a,request);NdisAcquireSpinLock(&a->lock);a->request=NULL;NdisReleaseSpinLock(&a->lock);if(s!=NDIS_STATUS_PENDING)NdisMOidRequestComplete(a->adapter,request,s);}
  else if(send){
   s=a->closing?NDIS_STATUS_REQUEST_ABORTED:(a->paused?NDIS_STATUS_PAUSED:NDIS_STATUS_ADAPTER_NOT_READY);
@@ -380,6 +403,9 @@ again:
  }else if(!a->closing&&!a->paused&&a->power)(void)a04_ndis_poll(a);
  NdisAcquireSpinLock(&a->lock);
  if(a->next_request){a->request=a->next_request;a->next_request=NULL;a->cancelled=a->next_cancelled;a->next_cancelled=0;NdisReleaseSpinLock(&a->lock);goto again;}
+ #if A04_WIFI_BT_BROKER
+ if(a04_combo_requests_pending(&a->combo.requests)){NdisReleaseSpinLock(&a->lock);goto again;}
+#endif
  if(a->send_queue.count){NdisReleaseSpinLock(&a->lock);goto again;}
  NdisFreeIoWorkItem(work);a->busy=0;a->cancelled=0;if(!a->api_refs)NdisSetEvent(&a->idle);NdisReleaseSpinLock(&a->lock);
 }
@@ -387,19 +413,59 @@ static void poll_dpc(PKDPC dpc,PVOID context,PVOID x,PVOID y)
 {
  struct a04_ndis_runtime *a=context;UNREFERENCED_PARAMETER(dpc);UNREFERENCED_PARAMETER(x);UNREFERENCED_PARAMETER(y);
  NdisAcquireSpinLock(&a->lock);
- if(!a->closing&&!a->paused&&!a->busy&&(!a->session.diagnostic.bridge.wlan.fw_owned||a->rx_count||a->peer_reset_pending))(void)queue_work(a);
+ if(!a->closing&&!a->busy&&(!a->paused
+#if A04_WIFI_BT_BROKER
+ ||a->combo.file||a04_combo_requests_pending(&a->combo.requests)
+#endif
+ )&&(!a->session.diagnostic.bridge.wlan.fw_owned||a->rx_count||a->peer_reset_pending
+#if A04_WIFI_BT_BROKER
+ ||a->combo.file||a04_combo_requests_pending(&a->combo.requests)
+#endif
+ ))(void)queue_work(a);
  NdisReleaseSpinLock(&a->lock);
 }
+#if A04_WIFI_BT_BROKER
+NTSTATUS a04_ndis_combo_enqueue(struct a04_ndis_runtime *a,PIRP irp)
+{
+ unsigned cleanup=IoGetCurrentIrpStackLocation(irp)->MajorFunction==IRP_MJ_CLEANUP;
+ NTSTATUS s=STATUS_DEVICE_BUSY;NdisAcquireSpinLock(&a->lock);
+ if(a->closing)s=cleanup?STATUS_SUCCESS:STATUS_DEVICE_NOT_READY;
+ else if(!a04_combo_requests_put(&a->combo.requests,irp,cleanup)){
+  if(!a->busy&&queue_work(a)){
+   if(cleanup){
+    /* Never lose cleanup behind a full normal slot or work-item OOM.
+     * Existing poll DPC retries; Halt drains this slot after joining DPCs. */
+    NdisResetEvent(&a->idle);IoMarkIrpPending(irp);s=STATUS_PENDING;
+   }else {a->combo.requests.normal=NULL;s=STATUS_INSUFFICIENT_RESOURCES;}
+  }else {IoMarkIrpPending(irp);s=STATUS_PENDING;}
+ }
+ NdisReleaseSpinLock(&a->lock);return s;
+}
+#endif
 static void close_worker(struct a04_ndis_runtime *a)
 {
+#if A04_WIFI_BT_BROKER
+ a04_combo_unpublish(a);
+#endif
  NdisAcquireSpinLock(&a->lock);a->closing=1;NdisReleaseSpinLock(&a->lock);
- (void)KeCancelTimer(&a->timer);KeFlushQueuedDpcs();while(!NdisWaitEvent(&a->idle,1000)){}
+ (void)KeCancelTimer(&a->timer);KeFlushQueuedDpcs();
+#if A04_WIFI_BT_BROKER
+ a04_combo_finish_queued(a);
+#endif
+ while(!NdisWaitEvent(&a->idle,1000)){}
  NdisAcquireSpinLock(&a->lock);NdisReleaseSpinLock(&a->lock);
 }
 static void cleanup(struct a04_ndis_runtime *a)
 {
+#if A04_WIFI_BT_BROKER
+ a04_combo_unpublish(a);
+ if(a04_combo_stop(a,a->uncertain))a->uncertain=1;
+#endif
  if(a->configuration){NdisCloseConfiguration(a->configuration);a->configuration=NULL;}
  a04_os_security_clear(a);RtlSecureZeroMemory(a->early_rx,sizeof(a->early_rx));RtlSecureZeroMemory(a->mpdu,sizeof(a->mpdu));RtlSecureZeroMemory(a->ethernet,sizeof(a->ethernet));RtlSecureZeroMemory(a->rx_bytes,sizeof(a->rx_bytes));
+ #if A04_WIFI_BT_BROKER
+ if(!a->uncertain)
+#endif
  if(a->session.state==A04_SESSION_READY||a->session.state==A04_SESSION_QUARANTINED){if(a04_windows_session_stop(&a->session))a->uncertain=1;}
  if(a->irq.interrupt)(void)a04_windows_irq_remove(&a->irq);
  /* Do not free objects whose live MMIO/lease cannot be released. */
@@ -457,6 +523,9 @@ NDIS_STATUS RuntimeInitialize(NDIS_HANDLE adapter,NDIS_HANDLE context,PNDIS_MINI
  backend=a->power?hardware_start(a):disabled_identity(a);
  if(backend){s=NDIS_STATUS_ADAPTER_NOT_READY;goto failed;}
  a->tx.adapter=adapter;a->tx.completion_context=a;a->tx.completion=a04_ndis_tx_complete;a->os_security.auth=DOT11_AUTH_ALGO_80211_OPEN;s=a04_ndis_attributes(a);if(s!=NDIS_STATUS_SUCCESS)goto failed;
+ #if A04_WIFI_BT_BROKER
+ if(a04_combo_publish(a)){s=NDIS_STATUS_RESOURCES;goto failed;}
+#endif
  a->initialize_generation=checkpoint.record?checkpoint.record->generation:0;a->checkpoint=NULL;
  (void)a04_cp_finish(&checkpoint,A04_CP_INIT_RETURN,A04_CP_NDIS,NDIS_STATUS_SUCCESS);
  due.QuadPart=-100000;KeSetTimerEx(&a->timer,due,10,&a->dpc);return NDIS_STATUS_SUCCESS;
@@ -532,7 +601,11 @@ VOID RuntimePnp(NDIS_HANDLE p,PNET_DEVICE_PNP_EVENT event)
   a->uncertain=1;a->radio.failed=-1;
  }
 }
-VOID RuntimeUnload(PDRIVER_OBJECT p){UNREFERENCED_PARAMETER(p);if(driver_handle)NdisMDeregisterMiniportDriver(driver_handle);}
+VOID RuntimeUnload(PDRIVER_OBJECT p){UNREFERENCED_PARAMETER(p);if(driver_handle)NdisMDeregisterMiniportDriver(driver_handle);
+#if A04_WIFI_BT_BROKER
+ a04_combo_delete();
+#endif
+}
 NTSTATUS DriverEntry(PDRIVER_OBJECT p,PUNICODE_STRING path)
 {
  struct a04_checkpoint checkpoint;NDIS_STATUS status;
@@ -543,6 +616,10 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT p,PUNICODE_STRING path)
  c.InitializeHandlerEx=RuntimeInitialize;c.HaltHandlerEx=RuntimeHalt;c.PauseHandler=RuntimePause;c.RestartHandler=RuntimeRestart;c.OidRequestHandler=RuntimeOid;c.CancelOidRequestHandler=RuntimeCancelOid;c.SendNetBufferListsHandler=RuntimeSend;c.ReturnNetBufferListsHandler=RuntimeReturn;c.CancelSendHandler=RuntimeCancelSend;c.ShutdownHandlerEx=RuntimeShutdown;c.UnloadHandler=RuntimeUnload;c.DevicePnPEventNotifyHandler=RuntimePnp;
  c.DirectOidRequestHandler=RuntimeDirectOid;c.CancelDirectOidRequestHandler=RuntimeCancelDirectOid;
  status=NdisMRegisterMiniportDriver(p,path,NULL,&c,&driver_handle);
+#if A04_WIFI_BT_BROKER
+ if(status==NDIS_STATUS_SUCCESS){NTSTATUS s=a04_combo_create(driver_handle);
+  if(!NT_SUCCESS(s)){NdisMDeregisterMiniportDriver(driver_handle);driver_handle=NULL;status=NDIS_STATUS_RESOURCES;}}
+#endif
  (void)a04_cp_emit(&checkpoint,A04_CP_REGISTER_DRIVER,A04_CP_RESULT,A04_CP_NDIS,status,0);
  (void)a04_cp_finish(&checkpoint,A04_CP_DRIVER_RETURN,A04_CP_NDIS,status);return status;
 }

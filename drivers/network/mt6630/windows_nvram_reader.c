@@ -74,7 +74,7 @@ static int a04_read_sector(void *ctx,uint64_t lba,uint8_t out[512])
  if(!NT_SUCCESS(s)){if(NT_SUCCESS(r->first_error))r->first_error=s;return 1;}
  RtlCopyMemory(out,r->buffer,512);return 0;
 }
-static NTSTATUS read_calibration(UCHAR result[512],a04_session_trace_fn observe,void *observation)
+static NTSTATUS read_record(UCHAR *result,int bluetooth,a04_session_trace_fn observe,void *observation)
 {
  HANDLE disk=NULL,match=NULL;PWSTR links=NULL,p;ULONG_PTR used=0;NTSTATUS status;ULONG phase=0,skipped=0;int parser=0;unsigned attempted=0;
  VOLUME_DISK_EXTENTS ext;STORAGE_DEVICE_NUMBER number;ULONG matches=0,i,count;
@@ -131,7 +131,7 @@ matched:
   disk_sectors=(uint64_t)len.Length.QuadPart/512;
   phase=7;parser=a04_nvram_sector_init(sector,&reader,&disk_reader,a04_read_sector,first,sectors,disk_sectors);
   if(parser){status=STATUS_DATA_ERROR;goto done;}
-  phase=8;parser=a04_mt6630_calibration_read(&reader,work,result);
+  phase=8;parser=(bluetooth?a04_nvram_bt_prefix(&reader,work,result):a04_mt6630_calibration_read(&reader,work,result));
   if(parser){status=NT_SUCCESS(disk_reader.first_error)?STATUS_DATA_ERROR:disk_reader.first_error;goto done;}
  }
  status=STATUS_SUCCESS;
@@ -150,10 +150,17 @@ NTSTATUS a04_windows_nvram_read_traced(UCHAR result[512],a04_session_trace_fn ob
  if(!result)return STATUS_INVALID_PARAMETER;
  RtlSecureZeroMemory(result,512);
  if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
- status=read_calibration(result,observe,observation);
+ status=read_record(result,0,observe,observation);
  if(!NT_SUCCESS(status))RtlSecureZeroMemory(result,512);
  return status;
 }
 
 NTSTATUS a04_windows_nvram_read(UCHAR result[512])
 {return a04_windows_nvram_read_traced(result,NULL,NULL);}
+
+NTSTATUS a04_windows_bt_nvram_read(UCHAR result[36])
+{
+ NTSTATUS s;if(!result)return STATUS_INVALID_PARAMETER;RtlSecureZeroMemory(result,36);
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+ s=read_record(result,1,NULL,NULL);if(!NT_SUCCESS(s))RtlSecureZeroMemory(result,36);return s;
+}

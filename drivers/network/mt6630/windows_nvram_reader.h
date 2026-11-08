@@ -7,4 +7,5 @@
  * caller files or disk numbers. Output is erased on failure. */
 NTSTATUS a04_windows_nvram_read(UCHAR result[512]);
 NTSTATUS a04_windows_nvram_read_traced(UCHAR result[512],a04_session_trace_fn,void *);
+NTSTATUS a04_windows_bt_nvram_read(UCHAR result[36]);
 #endif
