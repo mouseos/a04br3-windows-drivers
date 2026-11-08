@@ -36,7 +36,7 @@ Copy-Item "$root\drivers\audio\mt8167-afe\mt8167-afe-hp1033.inf" "$out\package\a
 & lld-link /lib /machine:arm "/def:$root\tools\ci\mt8167-silent-ole32.def" "/out:$out\obj\ole32.lib"
 if($LASTEXITCODE){throw 'COM import library failed'}
 $client="$out\package\clients\mt8167-silent-pcm-consumer.exe"
-$user=@('-D__ldrexd=__a04_silent_pcm_wdk81_ldrexd_declaration','-D_ARM_','-DARM','-D_WIN32_WINNT=0x0603','-nostdlibinc','-isystem',"$ClientKit\km\crt",'-isystem',"$ClientKit\um",'-isystem',"$ClientKit\shared")
+$user=@('-D__ldrexd=__a04_silent_pcm_wdk81_ldrexd_declaration','-D_ARM_','-DARM','-D_WIN32_WINNT=0x0603','-nostdlibinc','-isystem',"$ClientKit\km\crt",'-isystem',"$ClientKit\um",'-isystem',"$ClientKit\shared",'-isystem','C:\mt8167-minimal-service-host\cache\kit81\Include\um','-isystem','C:\mt8167-minimal-service-host\cache\kit81\Include\shared')
 & clang @common @user -std=c11 -w "-DA04_ENGINE_PROBE_SOURCE=0x$($commit.Substring(0,8))u" -c "$root\tools\audio\mt8167-silent-pcm-consumer.c" -o "$out\obj\silent-consumer.obj"
 if($LASTEXITCODE){throw 'Silent consumer compile failed'}
 & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\obj\silent-consumer.obj" "$out\obj\ole32.lib" "$UmLib\kernel32.lib" "$UmLib\setupapi.lib" "$UmLib\cfgmgr32.lib" "$UmLib\advapi32.lib" "/out:$client"

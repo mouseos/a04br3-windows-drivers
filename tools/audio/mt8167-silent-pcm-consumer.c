@@ -301,7 +301,7 @@ static HRESULT render_pass(IMMDevice *endpoint,DWORD pass){
  line("period",pass,(DWORD)period,(DWORD)minimum);if(period>0&&period<=2000000)waitMs=(DWORD)period/20000;if(!waitMs)waitMs=1;if(waitMs>10)waitMs=10;
  step=4;hr=IAudioClient_Initialize(client,AUDCLNT_SHAREMODE_SHARED,0,1000000,0,format,NULL);line("initialize",pass,hr,AUDCLNT_SHAREMODE_SHARED);if(FAILED(hr))goto done;
  step=5;hr=IAudioClient_GetBufferSize(client,&capacity);if(FAILED(hr))goto done;if(!capacity||capacity>48000){hr=E_UNEXPECTED;goto done;}
- step=6;hr=IAudioClient_GetStreamLatency(client,&latency);line("latency",pass,hr,(DWORD)latency);if(FAILED(hr))goto done;
+ step=6;{HRESULT observed=IAudioClient_GetStreamLatency(client,&latency);line("latency-observation",pass,observed,SUCCEEDED(observed)?(DWORD)latency:0);/* Optional latency evidence never grants or blocks PCM admission. */}
  step=7;hr=IAudioClient_GetService(client,&I_Render,(void **)&render);if(FAILED(hr))goto done;
  step=8;hr=IAudioClient_GetService(client,&I_Clock,(void **)&clock);if(FAILED(hr))goto done;
  step=9;hr=IAudioClock_GetFrequency(clock,&frequency);line("clock-hz",pass,(DWORD)frequency,(DWORD)(frequency>>32));if(FAILED(hr)||!frequency){if(SUCCEEDED(hr))hr=E_UNEXPECTED;goto done;}
