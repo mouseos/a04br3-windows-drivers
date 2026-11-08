@@ -198,7 +198,8 @@ static NTSTATUS GeoRenderDrawImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r) {
   status=prepare_pending(c->adapter,&t);if(status!=STATUS_SUCCESS)goto done;
  }else status=STATUS_SUCCESS;
  if(GeoWriteTicket(r->pDmaBuffer,&t)!=STATUS_SUCCESS||GeoWriteTicket(r->pDmaBufferPrivateData,&t)!=STATUS_SUCCESS){status=STATUS_INVALID_PARAMETER;goto done;}
- r->pDmaBuffer=(UCHAR *)r->pDmaBuffer+sizeof(t);/* pDmaBufferPrivateData is an input pointer, not a consumption cursor. */
+ r->pDmaBuffer=(UCHAR *)r->pDmaBuffer+sizeof(t);
+ r->pDmaBufferPrivateData=(UCHAR *)r->pDmaBufferPrivateData+sizeof(t);
  for(i=0;i<2u;i++){
   RtlZeroMemory(r->pPatchLocationListOut,sizeof(*r->pPatchLocationListOut));
   r->pPatchLocationListOut->AllocationIndex=i;r->pPatchLocationListOut->DriverId=GEO_DRAW_MAGIC;r->pPatchLocationListOut++;
@@ -228,7 +229,9 @@ static NTSTATUS GeoRenderImpl(HANDLE context,DXGKARG_RENDER *r) {
  }
  if(GeoWriteTicket(r->pDmaBuffer,&t)!=STATUS_SUCCESS||GeoWriteTicket(r->pDmaBufferPrivateData,&t)!=STATUS_SUCCESS)return STATUS_INVALID_PARAMETER;
  r->pDmaBuffer=(UCHAR *)r->pDmaBuffer+sizeof(t);
- /* pDmaBufferPrivateData is an input pointer, not a consumption cursor. */
+ /* RT 8.1 computes private submission length from this returned cursor.
+  * Both ticket copies must consume the same bytes; capacity fields stay input. */
+ r->pDmaBufferPrivateData=(UCHAR *)r->pDmaBufferPrivateData+sizeof(t);
  /* Semantic residency reference. No physical address is stored in a ticket,
   * but VidMm must retain/track the actual referenced allocation. */
  RtlZeroMemory(r->pPatchLocationListOut,sizeof(*r->pPatchLocationListOut));
@@ -249,6 +252,10 @@ static BOOLEAN inspect_prepared(void *arg) {
 static NTSTATUS GeoPatchImpl(HANDLE adapter,const DXGKARG_PATCH *p) {
  struct geo_dma_ticket t,private_ticket;struct geo_kmd_adapter *a=adapter;struct inspect_ticket inspect;
  const D3DDDI_PATCHLOCATIONLIST *location;UINT count,i,kind;
+ if(p) {
+  GeoFactoryCheckpoint(28,STATUS_SUCCESS,p->Flags.Value,p->DmaBufferSize,p->DmaBufferSubmissionStartOffset,p->DmaBufferSubmissionEndOffset);
+  GeoFactoryCheckpoint(29,STATUS_SUCCESS,p->hContext!=NULL,p->DmaBufferPrivateDataSize,p->DmaBufferPrivateDataSubmissionStartOffset,p->DmaBufferPrivateDataSubmissionEndOffset);
+ }
  if(!p||!p->hContext||!a||!a->synchronize||p->EngineOrdinal||p->DmaBufferSegmentId||p->Flags.Value||
     !p->pPatchLocationList||!p->pAllocationList||!p->pDmaBuffer||!p->pDmaBufferPrivateData||
     p->PatchLocationListSubmissionStart>p->PatchLocationListSize||
