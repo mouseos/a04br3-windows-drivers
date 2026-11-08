@@ -6,6 +6,7 @@
 #include "A04BR3RogueDeviceWords.h"
 #include "../../gpu_mmu.h"
 #include "../../windows_hw.h"
+#include "../../wddm-render/clear_protocol.h"
 #include <string.h>
 #define TAG 0x63434741u
 /* Existing DOD heap bases. The native TA/3D code occupies leaf16 instead.
@@ -73,13 +74,17 @@ NTSTATUS a04_native_copy_storage_release_cold(struct a04_native_copy_storage **o
 quarantine:c->quarantined=TRUE;n->quarantined=TRUE;return STATUS_IO_DEVICE_ERROR;
 }
 NTSTATUS a04_native_copy_storage_create(struct a04_native_copy_storage **out,
- struct a04_vendor_native_cold *n,struct a04_native_mdl_binding *destination,const void *usc,ULONG usc_bytes)
+ struct a04_vendor_native_cold *n,struct a04_native_mdl_binding *destination,
+ const struct geo_surface_desc *description,const void *usc,ULONG usc_bytes)
 {
  struct a04_vendor_render_cold *r;struct a04_native_copy_storage *c;
  struct a04_native_copy_job_input in={0};ULONG i,j;uint64_t offset=0,entry,pd;
  uint32_t pc;NTSTATUS status=STATUS_INVALID_DEVICE_STATE;
  _Alignas(8) struct a04_vendor_clear_image eot;
- if(!out||*out||!n||!destination||!usc||KeGetCurrentIrql()!=PASSIVE_LEVEL||
+ if(!out||*out||!n||!destination||!description||description->size!=sizeof(*description)||
+    description->version!=1u||description->width!=800u||description->height!=600u||
+    description->pitch!=3200u||description->format!=GEO_FORMAT_A8R8G8B8||
+    description->usage!=GEO_USAGE_STAGING||description->reserved||!usc||KeGetCurrentIrql()!=PASSIVE_LEVEL||
     !(r=n->render)||r->native_owner!=n||!r->firmware||r->firmware->hardware_owned||
     n->quarantined||r->poisoned||!n->registered_target||!n->output_mapped||n->code_mapped!=3u||
     !r->buffer[1].cpu||!n->output[2].cpu||!n->output[3].cpu||
@@ -148,3 +153,6 @@ fail:
 }
 const struct a04_native_copy_job_image *a04_native_copy_storage_image(const struct a04_native_copy_storage *c)
 {return c&&c->prepared&&!c->quarantined?&c->image:NULL;}
+
+struct a04_vendor_native_cold *a04_native_copy_storage_parent(const struct a04_native_copy_storage *c)
+{return c&&c->prepared&&!c->quarantined?c->native:NULL;}

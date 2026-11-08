@@ -14,7 +14,7 @@ if sha(manifest)!='55a4d2e6c918275aeccb0364c8af823c1c4f25defd54cf1f3df9753748d75
 m=json.loads(manifest.read_text(encoding='utf-8-sig'));oldroot=base.parent.parent
 f=next(x['arguments'] for x in m['compiled_units'] if x['role']=='native' and '/compiler/' not in x['source'])
 f=[str(s).replace(str(oldroot),str(root)) for s in f];out.mkdir(parents=True)
-units=['render_owner/native_copy_job.c','render_owner/native_copy_queue.c','render_owner/windows_native_copy_storage.c','native_copy_state.c','native_copy_usc.c','native_ccb.c']
+units=['render_owner/native_copy_job.c','render_owner/native_copy_queue.c','render_owner/windows_native_copy_storage.c','render_owner/windows_native_copy_transfer.c','native_copy_state.c','native_copy_usc.c','native_ccb.c']
 rows=[]
 for unit in units:
  rel='drivers/gpu/mt8167/vendor_m1_11/'+unit;obj=out/(unit.replace('/','-')[:-2]+'.obj')
