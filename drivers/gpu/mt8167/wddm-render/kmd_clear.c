@@ -4,9 +4,12 @@
 #include "lifecycle.h"
 #include "kmd_objects.h"
 #include "ticket_io.h"
+#include "../vendor_m1_11/native_factory_checkpoint.h"
 static int ticket_range(UINT size,UINT begin,UINT end) {
  return begin<=size&&end>=begin&&end-begin==sizeof(struct geo_dma_ticket)&&end<=size;
 }
+static NTSTATUS discard_allocation_prepares(struct geo_kmd_adapter *,struct geo_allocation *);
+static NTSTATUS prepare_pending(struct geo_kmd_adapter *,const struct geo_dma_ticket *);
 static NTSTATUS GeoCreateAllocationImpl(HANDLE adapter,DXGKARG_CREATEALLOCATION *p) {
  struct geo_kmd_adapter *a=adapter;struct geo_allocation *allocation;struct geo_surface_desc desc;struct geo_allocation_data data;DXGK_ALLOCATIONINFO *info;NTSTATUS s;
  if(!a||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL||p->NumAllocations!=1||!p->pAllocationInfo||p->PrivateDriverDataSize)return STATUS_INVALID_PARAMETER;
@@ -75,7 +78,8 @@ static NTSTATUS GeoBuildPagingBufferImpl(HANDLE adapter,DXGKARG_BUILDPAGINGBUFFE
   if(!allocation||p->UnmapApertureSegment.SegmentId!=1||
      p->UnmapApertureSegment.OffsetInPages!=allocation->aperture_offset||
      p->UnmapApertureSegment.NumberOfPages!=allocation->aperture_pages)return STATUS_INVALID_PARAMETER;
-  status=geo_unbind(&a->engine,allocation);
+  status=discard_allocation_prepares(a,allocation);
+  if(status==STATUS_SUCCESS)status=geo_unbind(&a->engine,allocation);
   if(status==STATUS_SUCCESS)GeoEndVidMmMap(a,allocation);return status;
  }
  /* Fill/transfer/discard are not silently accepted without implementing them. */
@@ -88,6 +92,60 @@ static BOOLEAN begin_prepare(void *ctx) {
 }
 static BOOLEAN finish_prepare(void *ctx) {
  struct prepare_call *c=ctx;c->status=geo_prepare_finish(&c->adapter->engine,&c->ticket,c->status,c->token);return TRUE;
+}
+struct payload_collect {struct geo_kmd_adapter *a;struct geo_draw_packet *packets[GEO_MAX_JOBS];};
+static BOOLEAN collect_payloads_locked(void *arg) {
+ struct payload_collect *c=arg;UINT i;
+ for(i=0;i<GEO_MAX_JOBS;i++)if(!c->a->engine.jobs[i].state) {
+  c->packets[i]=c->a->pending[i].draw;RtlZeroMemory(&c->a->pending[i],sizeof(c->a->pending[i]));
+ }
+ return TRUE;
+}
+void GeoCollectPendingPayloads(struct geo_kmd_adapter *a) {
+ struct payload_collect c;UINT i;
+ if(!a||!a->synchronize||KeGetCurrentIrql()!=PASSIVE_LEVEL)return;
+ RtlZeroMemory(&c,sizeof(c));c.a=a;
+ if(!a->synchronize(a->sync_context,collect_payloads_locked,&c))return;
+ for(i=0;i<GEO_MAX_JOBS;i++)GeoReleaseDrawCapture(c.packets[i]);
+}
+struct pending_change {struct geo_kmd_adapter *a;struct geo_dma_ticket ticket;NTSTATUS status;uint64_t token;UINT restore;};
+static BOOLEAN pending_change_locked(void *arg) {
+ struct pending_change *c=arg;
+ c->status=c->restore?geo_reprepare_finish(&c->a->engine,&c->ticket,c->status):geo_cancel_begin(&c->a->engine,&c->ticket,&c->token);return TRUE;
+}
+static NTSTATUS discard_allocation_prepares(struct geo_kmd_adapter *a,struct geo_allocation *allocation) {
+ UINT i;struct geo_job *j;struct pending_change c;
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+ for(i=0;i<GEO_MAX_JOBS;i++) {
+  j=&a->engine.jobs[i];
+  if(!j->state||(j->allocation!=allocation&&j->vertex!=allocation))continue;
+  if(j->state==4)continue;
+  RtlZeroMemory(&c,sizeof(c));c.a=a;c.ticket.magic=GEO_TICKET_MAGIC;c.ticket.slot=i;c.ticket.generation=j->generation;
+  if(!a->synchronize(a->sync_context,pending_change_locked,&c))return STATUS_DEVICE_NOT_READY;
+  if(c.status!=STATUS_SUCCESS)return c.status; /* Queued/submitted/faulted packets cannot lose residency. */
+  c.status=a->engine.owner.discard_prepared(a->engine.owner.context,c.token);c.restore=1;
+  if(!a->synchronize(a->sync_context,pending_change_locked,&c))return STATUS_DEVICE_NOT_READY;
+  if(c.status!=STATUS_SUCCESS)return c.status;
+ }
+ return STATUS_SUCCESS;
+}
+static NTSTATUS prepare_pending(struct geo_kmd_adapter *a,const struct geo_dma_ticket *t) {
+ struct geo_job *j;struct geo_pending_payload *payload;struct geo_draw_packet *p;struct geo_draw_packet_v2 *v2;
+ struct prepare_call call;UINT header;void *blob;
+ if(!a||!t||t->slot>=GEO_MAX_JOBS||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ j=&a->engine.jobs[t->slot];payload=&a->pending[t->slot];
+ if(j->generation!=t->generation||payload->generation!=t->generation)return STATUS_INVALID_PARAMETER;
+ if(j->state==1)return STATUS_SUCCESS;
+ if(j->state!=4||!j->allocation||!j->allocation->bound||(j->vertex&&!j->vertex->bound))return STATUS_DEVICE_NOT_READY;
+ RtlZeroMemory(&call,sizeof(call));call.adapter=a;call.ticket=*t;
+ if(j->kind==GEO_CLEAR_MAGIC)call.status=a->engine.owner.prepare(a->engine.owner.context,j->allocation->surface,payload->clear.color,&call.token);
+ else if(j->kind==GEO_DRAW_MAGIC&&(p=payload->draw)!=NULL) {
+  header=p->version==2?sizeof(struct geo_draw_packet_v2):sizeof(*p);blob=(UCHAR *)p+header;v2=(struct geo_draw_packet_v2 *)p;
+  call.status=p->version==2?a->draw_v2.prepare_draw(a->draw_v2.context,&v2->request,blob,p->request.blob_bytes,&call.token):
+    a->draw.prepare_draw(a->draw.context,&p->request,blob,p->request.blob_bytes,&call.token);
+ }else return STATUS_INVALID_PARAMETER;
+ if(!a->synchronize(a->sync_context,finish_prepare,&call))return STATUS_DEVICE_NOT_READY;
+ GeoFactoryCheckpoint(23,call.status,j->kind,t->slot,t->generation,0);return call.status;
 }
 static NTSTATUS GeoRenderDrawImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r) {
  struct geo_draw_packet *packet=NULL;struct prepare_call call;struct geo_allocation *a,*v;
@@ -120,11 +178,11 @@ static NTSTATUS GeoRenderDrawImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r) {
  call.open_handle=r->pAllocationList[0].hDeviceSpecificAllocation;call.vertex_open_handle=r->pAllocationList[1].hDeviceSpecificAllocation;
  if(!c->adapter->synchronize(c->adapter->sync_context,begin_prepare,&call)){status=STATUS_DEVICE_NOT_READY;goto done;}
  if(call.status!=STATUS_SUCCESS){status=call.status;goto done;}
- call.status=packet->version==2?
-  c->adapter->draw_v2.prepare_draw(c->adapter->draw_v2.context,&v2->request,blob,packet->request.blob_bytes,&call.token):
-  c->adapter->draw.prepare_draw(c->adapter->draw.context,&packet->request,blob,packet->request.blob_bytes,&call.token);
- if(!c->adapter->synchronize(c->adapter->sync_context,finish_prepare,&call)){status=STATUS_DEVICE_NOT_READY;goto done;}
- status=call.status;if(status!=STATUS_SUCCESS)goto done;t=call.ticket;
+ t=call.ticket;c->adapter->pending[t.slot].generation=t.generation;c->adapter->pending[t.slot].draw=packet;packet=NULL;
+ /* Render may run before VidMm residency. Prepatch only when all addresses are valid. */
+ if(r->pAllocationList[0].SegmentId&&r->pAllocationList[1].SegmentId) {
+  status=prepare_pending(c->adapter,&t);if(status!=STATUS_SUCCESS)goto done;
+ }else status=STATUS_SUCCESS;
  if(GeoWriteTicket(r->pDmaBuffer,&t)!=STATUS_SUCCESS||GeoWriteTicket(r->pDmaBufferPrivateData,&t)!=STATUS_SUCCESS){status=STATUS_INVALID_PARAMETER;goto done;}
  r->pDmaBuffer=(UCHAR *)r->pDmaBuffer+sizeof(t);/* pDmaBufferPrivateData is an input pointer, not a consumption cursor. */
  for(i=0;i<2u;i++){
@@ -150,9 +208,10 @@ static NTSTATUS GeoRenderImpl(HANDLE context,DXGKARG_RENDER *r) {
  RtlZeroMemory(&call,sizeof(call));call.adapter=c->adapter;call.allocation=a;call.packet=p;call.context=c;call.open_handle=r->pAllocationList[0].hDeviceSpecificAllocation;
  if(!c->adapter->synchronize(c->adapter->sync_context,begin_prepare,&call))return STATUS_DEVICE_NOT_READY;
  if(call.status!=STATUS_SUCCESS)return call.status;
- call.status=c->adapter->engine.owner.prepare(c->adapter->engine.owner.context,a->surface,p.color,&call.token);
- if(!c->adapter->synchronize(c->adapter->sync_context,finish_prepare,&call))return STATUS_DEVICE_NOT_READY;
- if(call.status!=STATUS_SUCCESS)return call.status;t=call.ticket;
+ t=call.ticket;c->adapter->pending[t.slot].generation=t.generation;c->adapter->pending[t.slot].clear=p;
+ if(r->pAllocationList[0].SegmentId) {
+  call.status=prepare_pending(c->adapter,&t);if(call.status!=STATUS_SUCCESS)return call.status;
+ }
  if(GeoWriteTicket(r->pDmaBuffer,&t)!=STATUS_SUCCESS||GeoWriteTicket(r->pDmaBufferPrivateData,&t)!=STATUS_SUCCESS)return STATUS_INVALID_PARAMETER;
  r->pDmaBuffer=(UCHAR *)r->pDmaBuffer+sizeof(t);
  /* pDmaBufferPrivateData is an input pointer, not a consumption cursor. */
@@ -194,6 +253,7 @@ static NTSTATUS GeoPatchImpl(HANDLE adapter,const DXGKARG_PATCH *p) {
     GeoReadTicket((UCHAR *)p->pDmaBufferPrivateData+p->DmaBufferPrivateDataSubmissionStartOffset,&private_ticket)!=STATUS_SUCCESS)return STATUS_INVALID_PARAMETER;
  if(t.magic!=GEO_TICKET_MAGIC||t.reserved||t.slot>=GEO_MAX_JOBS||
     t.magic!=private_ticket.magic||t.slot!=private_ticket.slot||t.generation!=private_ticket.generation||t.reserved!=private_ticket.reserved)return STATUS_INVALID_PARAMETER;
+ {NTSTATUS prepared=prepare_pending(a,&t);if(prepared!=STATUS_SUCCESS)return prepared;}
  RtlZeroMemory(&inspect,sizeof(inspect));inspect.adapter=a;inspect.ticket=t;inspect.context=p->hContext;inspect.kind=kind;
  inspect.open_handle=p->pAllocationList[0].hDeviceSpecificAllocation;
  if(count==2u)inspect.vertex_open_handle=p->pAllocationList[1].hDeviceSpecificAllocation;
@@ -277,12 +337,12 @@ NTSTATUS APIENTRY GeoBuildPagingBuffer(HANDLE handle,DXGKARG_BUILDPAGINGBUFFER *
  if(!p)return STATUS_INVALID_PARAMETER;
  mode=p->Operation==DXGK_OPERATION_UNMAP_APERTURE_SEGMENT?2:1;
  if(!GeoSessionEnter(a,mode))return STATUS_DEVICE_NOT_READY;
- status=GeoBuildPagingBufferImpl(a,p);GeoSessionLeave(a,mode);return status;
+ status=GeoBuildPagingBufferImpl(a,p);GeoFactoryCheckpoint(21,status,(ULONG)p->Operation,0,0,0);GeoSessionLeave(a,mode);return status;
 }
 NTSTATUS APIENTRY GeoRender(HANDLE handle,DXGKARG_RENDER *p) {
  struct geo_kmd_context *c=handle;NTSTATUS status;
  if(!c||!GeoSessionEnter(c->adapter,1))return STATUS_DEVICE_NOT_READY;
- status=GeoRenderImpl(c,p);GeoSessionLeave(c->adapter,1);return status;
+ GeoCollectPendingPayloads(c->adapter);status=GeoRenderImpl(c,p);GeoFactoryCheckpoint(20,status,p?p->CommandLength:0,p?p->AllocationListSize:0,p&&p->pAllocationList&&p->AllocationListSize?p->pAllocationList[0].SegmentId:0,0);GeoSessionLeave(c->adapter,1);return status;
 }
 NTSTATUS APIENTRY GeoSubmitCommand(HANDLE handle,const DXGKARG_SUBMITCOMMAND *p) {
  struct geo_kmd_adapter *a=handle;NTSTATUS status;
@@ -297,6 +357,6 @@ NTSTATUS APIENTRY GeoQueryCurrentFence(HANDLE handle,DXGKARG_QUERYCURRENTFENCE *
 
 NTSTATUS APIENTRY GeoPatch(HANDLE handle,const DXGKARG_PATCH *p) {
  struct geo_kmd_adapter *a=handle;NTSTATUS status;
- if(!GeoSessionEnter(a,0))return STATUS_DEVICE_NOT_READY;
- status=GeoPatchImpl(a,p);GeoSessionLeave(a,0);return status;
+ if(!GeoSessionEnter(a,1))return STATUS_DEVICE_NOT_READY;
+ GeoCollectPendingPayloads(a);status=GeoPatchImpl(a,p);GeoFactoryCheckpoint(22,status,p?p->AllocationListSize:0,p?p->PatchLocationListSubmissionLength:0,0,0);GeoSessionLeave(a,1);return status;
 }

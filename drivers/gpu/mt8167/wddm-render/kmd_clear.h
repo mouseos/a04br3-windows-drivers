@@ -11,6 +11,7 @@
 #include "frontend_memory.h"
 #include "frontend/draw_link_abi.h"
 struct geo_mdl_record;
+struct geo_pending_payload {struct geo_clear_packet clear;struct geo_draw_packet *draw;UINT generation;};
 /* These are DDI implementation modules, not a DriverEntry that registers an
  * incomplete WDDM adapter. The full miniport owns synchronization/rundown,
  * querycaps, paging and real DIRQL ISR/DPC routing. */
@@ -44,6 +45,7 @@ struct geo_kmd_adapter {
  LONG memory_record_count,memory_fault;
  UINT memory_ready;
  struct geo_native_draw_ops_v2 draw_v2; /* append: preserve original field offsets */
+ struct geo_pending_payload pending[GEO_MAX_JOBS];
 };
 struct geo_kmd_context { struct geo_kmd_adapter *adapter;struct geo_kmd_device *device;struct geo_kmd_context *next;HANDLE runtime; };
 /* Full miniport must call completion only from its real registered ISR,
@@ -51,6 +53,7 @@ struct geo_kmd_context { struct geo_kmd_adapter *adapter;struct geo_kmd_device *
  * additional check, not a proof that the caller really came from that ISR. */
 NTSTATUS GeoInitializeClearNotifications(struct geo_kmd_adapter *,const DXGKRNL_INTERFACE *,KIRQL actual_owner_irql);
 NTSTATUS GeoCompleteFromInterrupt(struct geo_kmd_adapter *,uint64_t job,uint32_t generation,int32_t status,uint32_t visibility);
+void GeoCollectPendingPayloads(struct geo_kmd_adapter *);
 void GeoClearDpc(struct geo_kmd_adapter *);
 DXGKDDI_CREATEALLOCATION GeoCreateAllocation;
 DXGKDDI_DESTROYALLOCATION GeoDestroyAllocation;

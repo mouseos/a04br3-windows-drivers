@@ -23,10 +23,19 @@ int32_t geo_create(struct geo_engine *e,struct geo_allocation *a,const struct ge
  memset(a,0,sizeof(*a));a->desc=*d;a->logical_width=d->width;a->logical_height=d->height;a->surface=token;a->cpu_only=d->usage==GEO_USAGE_INDEX_BUFFER||d->usage==GEO_USAGE_STAGING;
  a->next=e->allocations;e->allocations=a;e->allocation_count++;return GEO_OK;
 }
+/* Pending Render packets retain allocation objects, not physical residency.
+ * Only packets with no native preparation may coexist with a bind/unbind. */
+static int pending_only(const struct geo_engine *e,const struct geo_allocation *a) {
+ uint32_t i,count=0;
+ for(i=0;i<GEO_MAX_JOBS;i++)if(e->jobs[i].state&&(e->jobs[i].allocation==a||e->jobs[i].vertex==a)) {
+  if(e->jobs[i].state!=4)return 0;count++;
+ }
+ return count==a->references;
+}
 int32_t geo_bind(struct geo_engine *e,struct geo_allocation *a,void *mdl,uint32_t off,uint32_t bytes,uint64_t aperture_offset) {
  int32_t s;
  if((aperture_offset&4095u)||aperture_offset>UINT64_MAX-(((uint64_t)bytes+4095u)&~UINT64_C(4095)))return GEO_INVALID;
- if(!e||!a||!a->surface||!mdl||a->bound||a->references||off>UINT32_MAX-bytes||bytes!=(uint64_t)a->desc.pitch*a->desc.height)return GEO_INVALID;
+ if(!e||!a||!a->surface||!mdl||a->bound||!pending_only(e,a)||off>UINT32_MAX-bytes||bytes!=(uint64_t)a->desc.pitch*a->desc.height)return GEO_INVALID;
  if(e->poisoned||a->poisoned)return GEO_POISONED;
  s=e->owner.bind(e->owner.context,a->surface,mdl,off,bytes,aperture_offset);
  if(s!=GEO_OK){a->poisoned=1;e->poisoned=1;return s;}
@@ -36,7 +45,7 @@ int32_t geo_unbind(struct geo_engine *e,struct geo_allocation *a) {
  int32_t s;
  if(!e||!a||!a->surface)return GEO_INVALID;
  if(e->poisoned||a->poisoned)return GEO_POISONED;
- if(a->references)return GEO_BUSY;
+ if(a->references&&!pending_only(e,a))return GEO_BUSY;
  if(!a->bound)return GEO_INVALID;
  s=e->owner.unbind(e->owner.context,a->surface);
  if(s!=GEO_OK){a->poisoned=1;e->poisoned=1;return s;}
@@ -62,7 +71,7 @@ int32_t geo_prepare_begin(struct geo_engine *e,struct geo_allocation *a,const st
  uint32_t i;struct geo_job *j;
  if(!e||!a||!t||!geo_packet_valid(p,1)||p->allocation_index||a->desc.usage!=GEO_USAGE_RENDER_TARGET)return GEO_INVALID;
  if(e->poisoned||a->poisoned)return GEO_POISONED;
- if(!a->surface||!a->bound)return GEO_NOT_READY;
+ if(!a->surface)return GEO_NOT_READY;
  for(i=0;i<GEO_MAX_JOBS;i++)if(!e->jobs[i].state&&e->jobs[i].generation!=UINT32_MAX)break;
  if(i==GEO_MAX_JOBS||a->references==UINT32_MAX)return GEO_BUSY;
  j=&e->jobs[i];j->generation++;j->allocation=a;j->vertex=0;j->vertex_open_handle=0;j->kind=GEO_CLEAR_MAGIC;j->context=0;j->open_handle=0;j->owner_job=0;j->state=4;a->references++;
@@ -72,7 +81,7 @@ int32_t geo_prepare_draw_begin(struct geo_engine *e,struct geo_allocation *a,str
  uint32_t i;struct geo_job *j;
  if(!e||!a||!v||a==v||!t||a->desc.usage!=GEO_USAGE_RENDER_TARGET||v->desc.usage!=GEO_USAGE_VERTEX_BUFFER)return GEO_INVALID;
  if(e->poisoned||a->poisoned||v->poisoned)return GEO_POISONED;
- if(!a->surface||!v->surface||!a->bound||!v->bound)return GEO_NOT_READY;
+ if(!a->surface||!v->surface)return GEO_NOT_READY;
  for(i=0;i<GEO_MAX_JOBS;i++)if(!e->jobs[i].state&&e->jobs[i].generation!=UINT32_MAX)break;
  if(i==GEO_MAX_JOBS||a->references==UINT32_MAX||v->references==UINT32_MAX)return GEO_BUSY;
  j=&e->jobs[i];j->generation++;j->allocation=a;j->vertex=v;j->kind=GEO_DRAW_MAGIC;
@@ -149,8 +158,15 @@ int32_t geo_cancel_begin(struct geo_engine *e,const struct geo_dma_ticket *t,uin
  struct geo_job *j=job(e,t);
  if(!j||!token)return GEO_NOT_FOUND;
  if(e->poisoned)return GEO_POISONED;
+ if(j->state==4){*token=0;retire_job(j);return GEO_OK;} /* No native resources exist yet. */
  if(j->state!=1)return GEO_BUSY;
  j->state=6;*token=j->owner_job;return GEO_OK;
+}
+int32_t geo_reprepare_finish(struct geo_engine *e,const struct geo_dma_ticket *t,int32_t status) {
+ struct geo_job *j=job(e,t);
+ if(!j||j->state!=6)return GEO_NOT_FOUND;
+ if(status!=GEO_OK){j->state=3;j->allocation->poisoned=1;e->poisoned=1;return status;}
+ j->owner_job=0;j->state=4;return GEO_OK;
 }
 int32_t geo_cancel_finish(struct geo_engine *e,const struct geo_dma_ticket *t,int32_t status) {
  struct geo_job *j=job(e,t);

@@ -58,5 +58,5 @@ NTSTATUS APIENTRY GeoCancelCommand(HANDLE handle,const DXGKARG_CANCELCOMMAND *p)
  call.status=a->engine.owner.discard_prepared(a->engine.owner.context,call.token);
  if(!a->synchronize(a->sync_context,finish_cancel,&call)){status=STATUS_DEVICE_NOT_READY;goto done;}
  status=call.status;
- done:GeoSessionLeave(a,2);return status;
+ done:GeoCollectPendingPayloads(a);GeoSessionLeave(a,2);return status;
 }
