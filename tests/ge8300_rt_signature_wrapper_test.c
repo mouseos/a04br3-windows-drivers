@@ -52,7 +52,7 @@ int main(void)
  assert(FAILED(geo_umd_compile_shader11(&compiler,0,vs,&signature,&shader)) && !shader && decoder_calls==before);
  input.MinPrecision=0;output.MinPrecision=1;
  assert(FAILED(geo_umd_compile_shader11(&compiler,0,vs,&signature,&shader)) && !shader && decoder_calls==before);
- output.MinPrecision=0;memcpy(bad,vs,sizeof(bad));bad[9]=0x05000026u; /* IMAD unsupported, preserve length */
+ output.MinPrecision=0;memcpy(bad,vs,sizeof(bad));bad[9]=0x05000026u; /* IMUL unsupported, preserve length */
 #ifdef GEO_EXPECT_OLD_TYPE_REJECTION
  assert(FAILED(geo_umd_compile_shader11(&compiler,0,bad,&signature,&shader)) && !shader && decoder_calls==before);
 #else
@@ -70,7 +70,7 @@ int main(void)
 #ifdef GEO_EXPECT_OLD_TYPE_REJECTION
  puts("Old wrapper reproduced unwritten type rejection for VS/PS; MODEL ONLY PASS");
 #else
- puts("RT signature wrapper PASS: unwritten type poison0/A5/FF VS + PS accepted; both MinPrecision and unsupported IMAD rejected; real SM4 decoder exercised; PCO generation not tested");
+ puts("RT signature wrapper PASS: unwritten type poison0/A5/FF VS + PS accepted; both MinPrecision and unsupported IMUL rejected; real SM4 decoder exercised; PCO generation not tested");
 #endif
  return 0;
 }

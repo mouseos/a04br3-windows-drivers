@@ -16,7 +16,7 @@ try {
  [IO.File]::WriteAllLines("$out\old-tokenized.c",$oldSource,[Text.UTF8Encoding]::new($false))
  $base="$root\drivers\gpu\mt8167\wddm-render";$records=@()
  foreach($mode in @('old','fixed')){
-  $flags=@('/nologo','/std:c11','/TC','/O2','/GS-','/D_WIN32_WINNT=0x0603','/DNTDDI_VERSION=0x06030000','/DD3D_UMD_INTERFACE_VERSION=0x4002','/D_D3D10_CONSTANTS','/D_D3D10_1_CONSTANTS',"/I$vc\include","/I$kit\Include\$version\ucrt","/I$inc\shared","/I$inc\um","/I$inc\km","/I$base\umd")
+  $flags=@('/nologo','/std:c11','/Zc:preprocessor-','/TC','/O2','/GS-','/D_WIN32_WINNT=0x0603','/DNTDDI_VERSION=0x06030000','/DD3D_UMD_INTERFACE_VERSION=0x4002','/D_D3D10_CONSTANTS','/D_D3D10_1_CONSTANTS',"/I$vc\include","/I$kit\Include\$version\ucrt","/I$inc\shared","/I$inc\um","/I$inc\km","/I$base\umd")
   $source="$base\umd\tokenized_shader.c";if($mode -eq 'old'){$source="$out\old-tokenized.c";$flags+='/DGEO_EXPECT_OLD_TYPE_REJECTION=1'}
   & $cl @flags "$root\tests\ge8300_rt_signature_wrapper_test.c" $source "$base\compiler\sm4.c" "$base\compiler\sm2.c" "/Fo$out\\" "/Fe$out\$mode.exe" /link "/LIBPATH:$vc\lib\x64" "/LIBPATH:$kit\Lib\$version\ucrt\x64" "/LIBPATH:${env:ProgramFiles(x86)}\Windows Kits\8.1\Lib\winv6.3\um\x64" kernel32.lib
   if($LASTEXITCODE){throw "Wrapper compile $mode"}
