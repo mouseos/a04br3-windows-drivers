@@ -17,18 +17,18 @@ run145の実R23/R22と一致する具体的な経路。全エラー原因の一�
 
 修正:
 - RTとstagingが両residentになったnative bind時にcold TQ資産を準備。起動/任意PTE更新なし。
-- KMD MAPの正規PFN lease/geo_bind/GeoConfirmVidMmBind完了後、関連するpending jobの
-  全allocationがboundならprepare_pendingを1回行う。別順MAPでも最後の依存MAPが担当。
-- Copy native準備は本当にcold（hardwareownedfalse/startattemptedfalse）のgraphのみ初起動。
-  onlinegraphは340の長寿命再arm継承。Copyごとのstop/rebuildは復活させない。
+- KMDはHuygens e24a5001を正本として合流。ticket/両openhandle/context/kind/count/residencyを
+  nativeprepareより前に検証する。state1の再Patchは同owner tokenを保持し無副作用。
+- nativecopyはcoldで正規資産準備→初boot→firstarmを実行。liveは前実完了後の同graph再arm。
+- Mencius途中2b8e3474のBuildPagingBufferへ準備を移す案は不採用として履歴保持。
+  pagingcommandのfatal失敗へ移すだけの修正にはしない。
 - 全residencyが既存なら従来どおりRenderで準備。
-- Patch/repatchは同context/slot/generation/openhandles/kind/refsの準備済ticketを検証のみ。
-  Patch内のnative allocation/bootstrap/prepare_pendingを除去。未知ticket/flags等は拒否のまま。
-  catch-allSUCCESS、偽completion、参照解放、Stop証明の緩和はない。
-- 準備失敗はMAP/Renderの実失敗として伝播して参照保持。未知エラーを成功にしない。
+- Patch/repatchはHuygens事前検証とprepare_pending(state1idempotence)を採用。
+  未知ticket/flags等は拒否、catch-allSUCCESS・偽completion・参照解放・Stop証明緩和なし。
+- 未知の準備失敗は実失敗として伝播して参照保持。未知エラーを成功にしない。
 
-実関数テスト: Patch36case（両MAP順、8回ずつrepatch、未準備/別context/別handle/別generation/
-poison/owner準備失敗の拒否）、copy64transaction+578negativegates+初coldboot1回。
+実関数テストはHuygens Patchテストとproduction caller sequenceを正式receiptへ記録。
+途中不採用36caseは履歴のみ。copy64transaction+578negativegates+初coldboot1回も実行済み。
 ASan/UBSan通過、WDK/owner/IRQ/FW/cacheはmock。ARM/sign/実機結果は別receipt。
 
 根拠: https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmddi/nc-d3dkmddi-dxgkddi_patch
