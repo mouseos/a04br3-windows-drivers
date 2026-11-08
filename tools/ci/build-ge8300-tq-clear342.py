@@ -88,7 +88,7 @@ thumb='BCBF6C456C6F0DD0818434763B189488FBF13570';run([sign,'sign','/fd','SHA256'
 for f in pkgbase.iterdir():
  if f.is_file() and f.name not in ['ge8300-render.cat','ge8300-render.sys','ge8300-render.inf','signed-manifest.json']:shutil.copyfile(f,pkg/f.name)
 shutil.copyfile(pkgbase/'signed-manifest.json',pkg/'baseline341-signed-manifest.json');shutil.copyfile(out/'ge8300-render.sys',pkg/'ge8300-render.sys')
-b=(pkgbase/'ge8300-render.inf').read_bytes();encoding='utf-16' if b[:2] in [b'\xff\xfe',b'\xfe\xff'] else 'utf-8-sig';inf=b.decode(encoding);old='DriverVer=11/07/2026,0.0.3.41';new='DriverVer=11/09/2026,0.0.3.42'
+b=(pkgbase/'ge8300-render.inf').read_bytes();encoding='utf-16' if b[:2] in [b'\xff\xfe',b'\xfe\xff'] else 'utf-8-sig';inf=b.decode(encoding);old='DriverVer=11/07/2026,0.0.3.41';new='DriverVer=11/08/2026,0.0.3.42'
 if inf.count(old)!=1:raise ValueError('Exact337 INF DriverVer required')
 (pkg/'ge8300-render.inf').write_text(inf.replace(old,new),encoding=encoding)
 run([cat,'/driver:'+str(pkg),'/os:6_3_ARM','/uselocaltime']);run([sign,'sign','/fd','SHA256','/sha1',thumb,pkg/'ge8300-render.cat'])
@@ -101,7 +101,7 @@ for x in m['archives']:
  if x['role']=='kmd':y.update(sha256=sha(out/kmd['file']),members=rows)
  if x['role']=='native':y.update(sha256=sha(out/native['file']),members=native_rows)
  archives.append(y)
-newm=dict(m);newm.update(schema='tq-clear342-independent-sources-v1',module_identity_evidence_only=False,module_identity_record_bytes=144,module_identity_key='Parameters/NativeCheckpoint/ModuleIdentityV1',module_identity_runtime_source_base='eb2bc820c3b67168b16f50dbe3fbf27f513ddfae',package_source_commit=a.source_commit,kernel_binary_source_commit=a.source_commit,native_owner_source_commit=a.source_commit,native_owner_changed=True,umd_changed=False,compiler_changed=False,PCO_core_rebuilt=False,SDK_rebuilt=False,baseline_manifest_file='baseline341-signed-manifest.json',baseline_manifest_sha256=sha(pkg/'baseline341-signed-manifest.json'),compiled_units=units,archives=archives,inf_driverver='11/09/2026,0.0.3.42',build_manifest_file='tq-clear342-build-manifest.json',copy_failure_gate=True,failed_Render_refs_retained=True,hardware_verified=False,runtime_verified=False,root_reset_fix_proven=False)
+newm=dict(m);newm.update(schema='tq-clear342-independent-sources-v1',module_identity_evidence_only=False,module_identity_record_bytes=144,module_identity_key='Parameters/NativeCheckpoint/ModuleIdentityV1',module_identity_runtime_source_base='eb2bc820c3b67168b16f50dbe3fbf27f513ddfae',package_source_commit=a.source_commit,kernel_binary_source_commit=a.source_commit,native_owner_source_commit=a.source_commit,native_owner_changed=True,umd_changed=False,compiler_changed=False,PCO_core_rebuilt=False,SDK_rebuilt=False,baseline_manifest_file='baseline341-signed-manifest.json',baseline_manifest_sha256=sha(pkg/'baseline341-signed-manifest.json'),compiled_units=units,archives=archives,inf_driverver='11/08/2026,0.0.3.42',build_manifest_file='tq-clear342-build-manifest.json',copy_failure_gate=True,failed_Render_refs_retained=True,hardware_verified=False,runtime_verified=False,root_reset_fix_proven=False)
 newm['outputs']=[{'name':x['name'],'sha256':sha(pkg/x['name'])} for x in m['outputs']]
 newm['retained_provenance']=[{'name':f.name,'sha256':sha(f)} for f in pkg.iterdir() if f.is_file() and f.name not in {x['name'] for x in newm['outputs']}]
 # Build receipt before the signed manifest avoids recursive manifest hashing.
