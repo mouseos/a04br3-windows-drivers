@@ -83,7 +83,11 @@ static DWORD observed(const SNAPSHOT*s,const DEVMODEW*expected,BOOL restore){DEV
  lognum("ENUM_ORIENTATION",got.dmDisplayOrientation);lognum("ENUM_WIDTH",got.dmPelsWidth);lognum("ENUM_HEIGHT",got.dmPelsHeight);
  if(got.dmDisplayOrientation!=expected->dmDisplayOrientation||got.dmPelsWidth!=expected->dmPelsWidth||got.dmPelsHeight!=expected->dmPelsHeight||(restore&&!same_mode(&got,expected)))return ERROR_INVALID_DATA;
  rc=query(s,NULL,&w,&h,&rotation,NULL);lognum("QDC_RC",rc);if(rc)return rc;lognum("QDC_WIDTH",w);lognum("QDC_HEIGHT",h);lognum("QDC_ROTATION",rotation);
- if(w!=expected->dmPelsWidth||h!=expected->dmPelsHeight||rotation<1||rotation>4||(restore&&rotation!=s->rotation))return ERROR_INVALID_DATA;return 0;}
+ lognum("QDC_TARGET_WIDTH",gModes[gPaths[0].targetInfo.modeInfoIdx].targetMode.targetVideoSignalInfo.activeSize.cx);
+ lognum("QDC_TARGET_HEIGHT",gModes[gPaths[0].targetInfo.modeInfoIdx].targetMode.targetVideoSignalInfo.activeSize.cy);
+ if(w!=expected->dmPelsWidth||h!=expected->dmPelsHeight||rotation<1||rotation>4||(restore&&rotation!=s->rotation)||
+ gModes[gPaths[0].targetInfo.modeInfoIdx].targetMode.targetVideoSignalInfo.activeSize.cx!=s->target_width||
+ gModes[gPaths[0].targetInfo.modeInfoIdx].targetMode.targetVideoSignalInfo.activeSize.cy!=s->target_height)return ERROR_INVALID_DATA;return 0;}
 static DWORD restore(const SNAPSHOT*s){DEVMODEW now,original=s->original;LONG rc;DWORD e;
  if(!s->ready)return ERROR_INVALID_DATA;
  if(!console_session(s->session)){lognum("RESTORE_SESSION_RC",ERROR_ACCESS_DENIED);return ERROR_ACCESS_DENIED;}
