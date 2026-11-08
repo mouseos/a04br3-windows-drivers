@@ -1,5 +1,20 @@
 # TAB-A04-BR3 Windows ドライバ
 
+## 実生成ALU shaderのnative後続329（実機未検証）
+
+327/328は凍結し、このbranchで[ABI4 native shader契約](docs/ge8300-native-shader329.md)を実装する。固定token/USC列との一致に代え、実post-RA IRから一次source encoderでUSC全byte・physical register・終了・resource境界を検証する。固定shaderへの差替えや任意USCの無検証受理はしない。
+
+```sh
+git clone --depth 1 --single-branch --branch work/ge8300-native-shader329 https://github.com/mouseos/a04br3-windows-drivers.git
+```
+
+新規MUL VS/CB演算PSの実NIR/PCO→ABI4→native構築とmalformed入力をASAN/UBSANで検証済み。adapter contract5、texture ABI3/profile4保持。memoryless ALU、VS POSITION4（CB無し）、PS先頭4CB vector、USC各192byteの範囲であり、一般shader/常用描画の全機能や実GPU成功を宣言しない。
+
+[通常source recipe](tools/ci/README-ge8300-source-build.md)はnative61TU/compiler375TUのsource closureを保持する。署名候補の増分buildと375TU全build/CI実行は区別する。
+
+以下は過去の独立候補の履歴。
+
+
 ## 独立compiler後続328（実機未検証）
 
 このbranchは327の通常source closureに[SM4 scalar/vector即値](docs/ge8300-sm4-literals328.md)を統合する。1TUの実ARM link/署名とhost NIR/PCO生成を確認済み。nativeの有限shader受理は残り、一般shader描画完成・媒体適用可能とは扱わない。327署名packageは変更しない。

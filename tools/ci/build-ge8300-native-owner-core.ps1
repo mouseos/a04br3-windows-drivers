@@ -8,7 +8,8 @@ param(
  [switch]$WithMdlTarget,
  [string]$ReuseVerifiedDirectory,
  [switch]$WithOwnerAllocation,
- [switch]$WithFactory
+ [switch]$WithFactory,
+ [string[]]$ShaderCodecArguments
 )
 $ErrorActionPreference='Stop'
 if(!$EnableCandidate){throw 'Native owner module build is default off; pass -EnableCandidate'}
@@ -52,6 +53,7 @@ if($WithFactory){
  if(!$WithOwnerAllocation){throw 'Factory requires -WithOwnerAllocation'}
  $common+='-DA04_GE8300_NATIVE_OWNER_DRAW=1'
  $units+=@('vendor_m1_11\native_d3d_viewport','vendor_m1_11\native_varying_pds','vendor_m1_11\native_draw_job','vendor_m1_11\native_triangle_suite','vendor_m1_11\native_triangle_vdm','vendor_m1_11\native_triangle_pds','vendor_m1_11\native_triangle_ppp','vendor_m1_11\native_triangle_texture','wddm-render\clear_protocol','wddm-render\frontend\draw_protocol','wddm-render\frontend\draw_link_protocol')
+ $units+=@('wddm-render\frontend\shader_draw_protocol','wddm-render\compiler\witness_codec','wddm-render\compiler\witness_info')
  $units+=@('vendor_m1_11\native_texture2d_state','vendor_m1_11\native_texture2d_program','wddm-render\frontend\texture_draw_protocol','wddm-render\compiler\texture2d_sm4')
  $units+=@('vendor_m1_11\native_owner_factory','vendor_m1_11\native_owner_factory_platform','vendor_m1_11\native_owner_factory_runtime','vendor_m1_11\windows_start','vendor_m1_11\windows_command','vendor_m1_11\windows_render_context')
 }
@@ -73,7 +75,9 @@ try {
  }
  foreach($unit in $units){
   $source=Join-Path $root $sourceMap.native_unit_sources.$unit;$obj=Join-Path $out ($unit.Replace('\','-')+'.obj')
-  $compileArgs=@($common)+@('-c',$source,'-o',$obj)
+  $unitFlags=@($common)
+  if($unit -in @('wddm-render\compiler\witness_codec','wddm-render\compiler\witness_info')){if(!$ShaderCodecArguments){throw 'Explicit source-plan compiler headers required for kernel witness codec'};$unitFlags=@($ShaderCodecArguments)+@('-DNDEBUG','-mfpu=none')}
+  $compileArgs=@($unitFlags)+@('-c',$source,'-o',$obj)
   $reused=$false
   if($previous){
    $old=@($previous.commands|Where-Object{$_.tool -eq 'clang' -and $_.arguments[-1].EndsWith([IO.Path]::GetFileName($obj))})
@@ -92,7 +96,7 @@ try {
      $oldPPArgs=@($oldArgs[0..($oldArgs.Count-5)])+@('-E','-P',$oldArgs[-3],'-o',$oldPP)
      & clang @oldPPArgs
      if($LASTEXITCODE -ne 0){throw 'Prior preprocessing failed; no object reuse'}
-     $newPPArgs=@($common)+@('-E','-P',$source,'-o',$newPP)
+     $newPPArgs=@($unitFlags)+@('-E','-P',$source,'-o',$newPP)
      & clang @newPPArgs
      if($LASTEXITCODE -ne 0){throw 'Current preprocessing failed'}
      $ppHash=(Get-FileHash $newPP -Algorithm SHA256).Hash

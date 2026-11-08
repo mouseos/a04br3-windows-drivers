@@ -69,3 +69,7 @@ nativeは`vendor_m1_11/render_owner`の必要113fileだけを固定native322か�
 通常source recipeは[SM4即値差分328](../../docs/ge8300-sm4-literals328.md)を含む。native/UMDの327 texture契約を保持。通常fullsource gateのsm4出自/hashも同時更新し、cache専用差分だけを再現条件にしない。一般shaderのnative受理は未実装であり、compiler候補DLLを媒体へ自動混載しない。
 
 327 suiteのservice/client時間予算は[専用説明](../../docs/ge8300-texture-suite-time-budget.md)を参照。
+
+## Native shader329
+
+[ABI4](../../docs/ge8300-native-shader329.md)は327 sourceに統合済み。normal compiler planは既存372TUへwitness producer/codec/専用metadataの3TUを加えた375TU。native61TUは独立codec/metadataとABI4 protocolを含む。kernel codec/metadataはsource-planのheader引数を使用し、PCO/NIR/CRT本体をkernelへlinkしない。旧cacheが無いcloneでも通常recipeで同じsourceを構成する。実機未検証。

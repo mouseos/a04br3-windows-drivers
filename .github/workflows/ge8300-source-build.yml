@@ -1,4 +1,4 @@
-name: GE8300 327 single-checkout source build
+name: GE8300 ABI4 single-checkout source build
 on:
   workflow_dispatch:
 permissions:
