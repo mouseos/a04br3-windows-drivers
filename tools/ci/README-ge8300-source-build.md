@@ -46,12 +46,12 @@ Mesa全体の再現や一般PCO機能対応を広告しない。対応範囲は�
 SDK installerやsecret署名鍵、device操作、過去driver cacheをCIへ埋め込まない。
 ビルド成功と実機描画成功は別。source-build-manifestのhardware_verifiedはfalseを維持する。
 
-## 現在の検証範囲
+## 317統合時点の検証範囲
 
 初回full buildの5cf3898eは機能修正前のsource-build基点として成果物を保持した。
-現在はユーザーの明示指示で固定317 source f77f4b07をa4b59606としてcherry-pick済み。
-KMDのkmd_clear.c/kmd_objects.cは317正本と全byte一致、native fb217359/UMD3f8291d0の実装は保持する。
-318のdeferred prepare実装はmain所有で、確定commitを後続cherry-pickする。現317署名package/現媒体は変更しない。
+317統合時点では、ユーザーの明示指示で固定317 source f77f4b07をa4b59606としてcherry-pickした。
+その時点のKMDのkmd_clear.c/kmd_objects.cは317正本と全byte一致。native fb217359/UMD3f8291d0の実装を保持した。
+318の後続統合は末尾の318 runtime統合節を参照。317検証済み出力・署名package・現媒体は変更しない。
 source-build生成物は未署名・未実機であり、配布・媒体化には最新機能修正との明示統合・署名・検証が必要。
 
 現行ARM32 CRTへ名前が残らない旧stricmp呼出しは、pvr_device_info TUだけで同じ契約の_stricmpへ対応する。
