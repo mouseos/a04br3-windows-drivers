@@ -147,7 +147,7 @@ def main():
   for f in v['files']:
    name=f['name'];src='X:\\a04br3\\payload\\'+key+'\\'+name
    prepare+=['copy /b '+src+' '+dst+'\\'+name+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe '+src+' '+dst+'\\'+name+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
- if p.get('bt_first_install'):
+ if p.get('bt_first_install') and p.get('bt_first_install_execute',True):
   prepare+=bt_payload_prepare(DIRECTORY,p['bt_first_install'])
  if p.get('diagnostic_clients'):
   sep=chr(92);system=sep.join(('C:','Windows','System32'))+sep
