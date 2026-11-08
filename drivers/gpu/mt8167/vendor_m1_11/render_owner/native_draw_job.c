@@ -51,7 +51,7 @@ static int32_t build(struct a04_m111_draw_job *out,
  static const uint32_t viewport[6]={0,0,0x44480000u,0x44160000u,0,0x3f800000u};
  const uint8_t *vc=linked?a04_native_color_vs:vs,*pc=linked?a04_native_color_fs:ps;
  uint32_t vn=linked?sizeof(a04_native_color_vs):sizeof(vs),pn=linked?sizeof(a04_native_color_fs):sizeof(ps);
- uint32_t ps_at=general?0x140u:linked?0x100u:0xc0u,vertex_bytes=linked?96u:48u,vp_words[6];
+ uint32_t vs_at=general?0x400u:0x80u,ps_at=general?0x800u:linked?0x100u:0xc0u,vertex_bytes=linked?96u:48u,vp_words[6];
  struct a04_m111_draw_job *m=scratch;struct a04_m111_triangle_suite *base;
  struct a04_m111_triangle_vertex_pds vp;uint32_t po;uint64_t bg[3];const uint8_t *b=blob;
  struct a04_texture2d_state texstate;
@@ -100,11 +100,23 @@ static int32_t build(struct a04_m111_draw_job *out,
  for(unsigned i=0;i<sizeof(*m);i++)((uint8_t *)m)[i]=0;
  copy(m->ta,base->record[0].ta,sizeof(m->ta));copy(m->three,base->record[0].three,sizeof(m->three));
  copy(m->data,base->data,sizeof(base->data));copy(m->usc,base->usc,sizeof(base->usc));copy(m->pds,base->pds,sizeof(base->pds));
- copy(m->usc+0x80,vc,vn);copy(m->usc+ps_at,pc,pn);
+ copy(m->usc+vs_at,vc,vn);copy(m->usc+ps_at,pc,pn);
  copy(m->usc+0x200,a04_native_load_usc,sizeof(a04_native_load_usc));
- if(general?a04_m111_build_program_vertex_pds(&vp,in->usc_page_gpu+0x80,vertex,r->vs.temps):linked?a04_m111_build_linked_vertex_pds(&vp,in->usc_page_gpu+0x80,vertex,r->vs.temps):
+ if(general?a04_m111_build_program_vertex_pds(&vp,in->usc_page_gpu+vs_at,vertex,r->vs.temps):linked?a04_m111_build_linked_vertex_pds(&vp,in->usc_page_gpu+0x80,vertex,r->vs.temps):
     a04_m111_build_triangle_vertex_pds(&vp,in->usc_page_gpu+0x80,vertex,4,16))return GEO_INVALID;
  copy(m->pds+0x140,vp.data,32);copy(m->pds+0x160,vp.code,12);
+ if(general&&r->vs.shareds){
+  struct a04_m111_uniform_vertex_pds uvp;
+  if(a04_m111_build_uniform_vertex_pds(&uvp,in->usc_page_gpu+vs_at,vertex,r->vs.temps,in->data_page_gpu+0x540,r->vs.shareds))return GEO_INVALID;
+  /* Independent immutable VS constant copy, after all RT/EOT descriptors. */
+  copy(m->data+0x540,b+r->vs.constants.offset,64);
+  copy(m->pds+0x280,uvp.data,sizeof(uvp.data));copy(m->pds+0x2c0,uvp.code,sizeof(uvp.code));
+  po=(uint32_t)(in->pds_page_gpu-UINT64_C(0xa800000000));
+  put(m->data,10*4,po+0x280,4);put(m->data,11*4,po+0x2c0,4);
+  /* vdm.xml: common64B, unified16B, temp16B, data48B, maxInstances16. */
+  put(m->data,13*4,(16u<<25)|(1u<<16)|(1u<<10)|(1u<<6)|3u,4);
+ }
+
  if(a04_m111_patch_background_pds(m->pds+0x180,36,in->usc_page_gpu+ps_at,r->ps.temps) ||
     a04_m111_patch_background_pds(m->pds+0x300,36,in->usc_page_gpu+0x200,A04_NATIVE_LOAD_TEMPS))return GEO_INVALID;
  if(general){copy(m->data+0x4a0,b+r->ps.constants.offset,64);put(m->pds,0x208,0x90000000u|(r->ps.shareds?r->ps.shareds:4u),4);}

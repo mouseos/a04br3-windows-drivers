@@ -59,7 +59,7 @@ static int reg_valid(pco_ref r,unsigned width,int dst,const struct geo_shader_me
   return 1;
  case PCO_REG_CLASS_VTXIN:return !dst&&!m->stage&&(m->input_mask&1u)&&r.val+width<=m->vtxins;
  case PCO_REG_CLASS_SHARED:
-  if(dst||!m->stage||r.val+width>m->shareds)return 0;
+  if(dst||r.val+width>m->shareds)return 0;
   for(n=r.val;n<r.val+width;n++)*constants|=1u<<(n/4);
   return 1;
  case PCO_REG_CLASS_CONST:
@@ -170,7 +170,7 @@ int32_t geo_shader_witness_measure(const void *data,uint32_t bytes,uint32_t *tem
 }
 int32_t geo_shader_witness_validate(const void *data,uint32_t bytes,const void *code,uint32_t codebytes,const struct geo_shader_metadata *m) {
  const struct geo_shader_witness *w=data;const struct geo_shader_insn *ins;uint32_t defined[4]={0},constants=0,outputs=0;unsigned total=0,lastlen=0,penpad=0,lastpad=0,at=0;
- if(!w||!code||!m||((uintptr_t)w&3)||bytes<sizeof(*w)||!codebytes||codebytes>GEO_SHADER_WITNESS_MAX_CODE||(codebytes&7)||m->stage>1||m->temps>128||m->shareds>16||(!m->stage&&m->shareds)||m->vtxins>(m->stage?0u:4u)||m->vtxouts!=(m->stage?0u:4u)||(m->input_mask&~(m->stage?0u:1u))||(m->constant_mask&~(m->stage?15u:0u))||m->shareds!=4*count_bits(m->constant_mask))return GEO_INVALID;
+ if(!w||!code||!m||((uintptr_t)w&3)||bytes<sizeof(*w)||!codebytes||codebytes>GEO_SHADER_WITNESS_MAX_CODE||(codebytes&7)||m->stage>1||m->temps>128||m->shareds>16||m->vtxins>(m->stage?0u:4u)||m->vtxouts!=(m->stage?0u:4u)||(m->input_mask&~(m->stage?0u:1u))||(m->constant_mask&~15u)||m->shareds!=4*count_bits(m->constant_mask))return GEO_INVALID;
  if(w->magic!=GEO_SHADER_WITNESS_MAGIC||w->version!=1||w->isa!=GEO_SHADER_WITNESS_ISA||w->stage!=m->stage||w->reserved||!w->count||w->count>128||bytes!=sizeof(*w)+w->count*sizeof(*ins))return GEO_INVALID;
  ins=(const void *)(w+1);
  for(unsigned n=0;n<w->count;n++){pco_igrp g;struct local_scope scope;if(!make_group(&g,&scope,ins+n,m,defined,&constants,&outputs,n+1==w->count))return GEO_UNSUPPORTED;total+=g.enc.len.total;lastlen=g.enc.len.total;}

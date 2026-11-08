@@ -6,7 +6,15 @@
 #include <string.h>
 #include "../drivers/gpu/mt8167/wddm-render/compiler/shader_compiler.h"
 #include "../drivers/gpu/mt8167/vendor_m1_11/render_owner/native_draw_job.h"
-static uint32_t vs[]={0x10040,20,0x300005f,0x1010f2,0,0x4000067,0x1020f2,0,1,0xa000038,0x1020f2,0,0x101e46,0,0x4002,0x3f000000,0x3f000000,0x3f800000,0x3f800000,0x100003e};
+static uint32_t vs[]={
+ 0x10040,46,0x4000059,0x208e46,0,4,
+ 0x300005f,0x1010f2,0,0x4000067,0x1020f2,0,1,
+ 0x8000011,0x102012,0,0x101e46,0,0x208e46,0,0,
+ 0x8000011,0x102022,0,0x101e46,0,0x208e46,0,1,
+ 0x8000011,0x102042,0,0x101e46,0,0x208e46,0,2,
+ 0x8000011,0x102082,0,0x101e46,0,0x208e46,0,3,
+ 0x100003e};
+
 static uint32_t ps[]={0x40,21,0x4000059,0x208e46,0,1,0x3000065,0x1020f2,0,0xb000038,0x1020f2,0,0x208e46,0,0,0x4002,0x3ec00000,0x3f200000,0x3f400000,0x3f800000,0x100003e};
 static void packet_shader(struct geo_draw_shader *s,const struct geo_compiled_shader *c,uint32_t *t,uint32_t bytes,const void *w,uint32_t wb,struct geo_draw_span *proof,unsigned char *blob,uint32_t *at){
  s->format=2;s->stage=c->stage;s->temps=c->temps;s->shareds=c->shareds;s->vtxins=c->vtxins;s->vtxouts=c->vtxouts;s->input_mask=c->input_mask;s->constant_mask=c->constant_mask;
@@ -28,6 +36,10 @@ int main(void){
  unsigned char *blob=calloc(1,65536);assert(blob);uint32_t at=0;struct geo_draw_request_v4 request={0};
  packet_shader(&request.base.vs,&v,vs,sizeof(vs),vproof,vbytes,&request.witness[0],blob,&at);
  packet_shader(&request.base.ps,&p,ps,sizeof(ps),pproof,pbytes,&request.witness[1],blob,&at);
+ /* Identity/nonuniform transform rows are actual captured CB bytes. */
+ uint32_t matrix[16]={0x3f000000,0,0,0,0,0x3f400000,0,0,0,0,0x3f800000,0,0,0,0,0x3f800000};
+ memcpy(blob+request.base.vs.constants.offset,matrix,sizeof(matrix));
+ assert(v.constant_mask==15&&v.shareds==16);
  request.base.size=sizeof(request);request.base.version=4;request.base.blob_bytes=at;request.base.target=1;request.base.vertex=2;request.isa=GEO_SHADER_WITNESS_ISA;
  request.base.target_desc=(struct geo_surface_desc){sizeof(struct geo_surface_desc),1,800,600,3200,GEO_FORMAT_A8R8G8B8,GEO_USAGE_RENDER_TARGET,0};
  request.base.state.topology=GEO_DRAW_TRIANGLE_LIST;request.base.state.vertex_count=3;request.base.state.vertex_stride=16;request.base.state.color_write_mask=15;
@@ -36,7 +48,11 @@ int main(void){
  struct a04_m111_clear_job_input input={0};input.output_gpu=0x7000000000ULL;input.data_page_gpu=0x65c0010000ULL;input.usc_page_gpu=0xba00000000ULL;input.pds_page_gpu=0xa800000000ULL;input.dummy_region_gpu=0x65c0020000ULL;input.dummy_stencil_gpu=0x65c0021000ULL;input.hwrt_fw=0xc0088000;input.pr_fence_fw=0xc0084c00;
  struct a04_m111_draw_job *job=malloc(sizeof(*job)),*prior=malloc(sizeof(*job));void *scratch=malloc(A04_M111_DRAW_SCRATCH);assert(job&&prior&&scratch);
  assert(!a04_m111_build_draw_job_v4(job,&input,0x7000200000ULL,&request,blob,at,scratch,A04_M111_DRAW_SCRATCH));
- assert(!memcmp(job->usc+0x80,v.code,v.code_bytes)&&!memcmp(job->usc+0x140,p.code,p.code_bytes));*prior=*job;
+ assert(!memcmp(job->data+0x540,matrix,64));
+ assert(job->pds[0x2c0]==0&&job->pds[0x2c1]==4&&job->pds[0x2c2]==10&&job->pds[0x2c3]==0xf0);
+ assert(job->pds[0x2a8]==16&&job->pds[0x2ab]==0x10); /* no LAST on CB; vertex LAST retained */
+ assert(job->pds[0x298]==4&&job->pds[0x29b]==0x80);
+ assert(!memcmp(job->usc+0x400,v.code,v.code_bytes)&&!memcmp(job->usc+0x800,p.code,p.code_bytes));*prior=*job;
  /* These genuine MUL programs differ from every old passthrough profile. */
  assert(a04_m111_build_draw_job(job,&input,0x7000200000ULL,&request.base,blob,at,scratch,A04_M111_DRAW_SCRATCH));
  for(unsigned stage=0;stage<2;stage++){
@@ -57,6 +73,6 @@ int main(void){
   *byte^=(unsigned char)(1u<<(n%8));if(geo_draw_validate_capture_v4(&request,blob,at))rejected++;*byte=save;
  }
  assert(rejected>5700);printf("bounded witness mutations rejected %u/6000 (no GPU)\n",rejected);
- printf("REAL ALU VS%u/PS%u USC bytes -> ABI4 -> native byte-exact copy/PDS; changed USC, forbidden op, undersized temp, ISA and alias rejected\n",v.code_bytes,p.code_bytes);
+ printf("REAL CB MATRIX VS%u/PS%u USC bytes -> ABI4 -> native byte-exact copy/PDS; changed USC, forbidden op, undersized temp, ISA and alias rejected\n",v.code_bytes,p.code_bytes);
  free(job);free(prior);free(scratch);free(blob);compiler.release(compiler.context,&v);compiler.release(compiler.context,&p);geo_pco_device_destroy(&compiler,owner);return 0;
 }

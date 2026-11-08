@@ -45,7 +45,7 @@ NTSTATUS APIENTRY GeoQueryAdapterInfo(HANDLE handle,const DXGKARG_QUERYADAPTERIN
  case DXGKQAITYPE_QUERYSEGMENT3:status=query_segment3(a,p);break;
  case DXGKQAITYPE_UMDRIVERPRIVATE:
   if(p->OutputDataSize<sizeof(info)){status=STATUS_BUFFER_TOO_SMALL;break;}
-  RtlZeroMemory(&info,sizeof(info));info.size=sizeof(info);info.version=5;info.texture_draw_version=a->draw_v3.version;info.magic=GEO_ADAPTER_INFO_MAGIC;
+  RtlZeroMemory(&info,sizeof(info));info.size=sizeof(info);info.version=6;info.texture_draw_version=a->draw_v3.version;info.magic=GEO_ADAPTER_INFO_MAGIC;
   info.owner_ops_version=GEO_OWNER_OPS_VERSION;info.control_version=2;info.format=GEO_FORMAT_A8R8G8B8;
   info.max_allocation_bytes=(UINT)(a->aperture.commit_limit<4194304?a->aperture.commit_limit:4194304);
   info.aperture=a->aperture;info.compiler_bvnc=GEO_COMPILER_BVNC;info.draw_version=a->draw.version;info.shader_draw_version=a->draw_v4.version;info.vertex_max_bytes=GEO_VERTEX_MAX_BYTES;RtlCopyMemory(p->pOutputData,&info,sizeof(info));status=STATUS_SUCCESS;break;

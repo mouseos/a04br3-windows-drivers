@@ -13,4 +13,9 @@ int a04_m111_build_triangle_vertex_pds(struct a04_m111_triangle_vertex_pds *out,
 int a04_m111_build_linked_vertex_pds(struct a04_m111_triangle_vertex_pds *out,
     uint64_t usc_gpu,uint64_t vertex_gpu,uint32_t usc_temps);
 int a04_m111_build_program_vertex_pds(struct a04_m111_triangle_vertex_pds *,uint64_t,uint64_t,uint32_t);
+
+/* Independent330 common-store DMA + real vertex DMA, then the same USC task. */
+struct a04_m111_uniform_vertex_pds {uint8_t data[48],code[16];};
+int a04_m111_build_uniform_vertex_pds(struct a04_m111_uniform_vertex_pds *,uint64_t,uint64_t,uint32_t,uint64_t,uint32_t);
+
 #endif

@@ -4,9 +4,9 @@
 #include <stdint.h>
 #define GEO_SHADER_WITNESS_MAGIC 0x31575347u
 #define GEO_SHADER_WITNESS_VERSION 1u
-#define GEO_SHADER_WITNESS_ISA 0x00032901u
+#define GEO_SHADER_WITNESS_ISA 0x00033001u
 #define GEO_SHADER_WITNESS_MAX_INSNS 128u
-#define GEO_SHADER_WITNESS_MAX_CODE 192u
+#define GEO_SHADER_WITNESS_MAX_CODE 512u
 /* Canonical scalar fields; no PCO pointers, C bitfield layout, GPU addresses,
  * resource selectors, code-signing keys, or compiler process addresses. */
 struct geo_shader_ref {uint32_t value,type,bank,channels,bits,dtype,modifiers;};

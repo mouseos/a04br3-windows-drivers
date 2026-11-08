@@ -42,3 +42,25 @@ int a04_m111_build_linked_vertex_pds(struct a04_m111_triangle_vertex_pds *out,
 /* ABI4: actual validated compiler temp allocation, same bounded real VB fetch. */
 int a04_m111_build_program_vertex_pds(struct a04_m111_triangle_vertex_pds *out,uint64_t usc,uint64_t vertex,uint32_t temps)
 {return build(out,usc,vertex,4,16,temps);}
+
+/* Source: pvr_pds_inst_encode_dout / DOUTD common-store fields and the
+ * vertex-program contract in pvr_rogue_pds_defs.h. The CB DMA has no LAST:
+ * the following real vertex DDMAD is the final DMA before USC dispatch. */
+int a04_m111_build_uniform_vertex_pds(struct a04_m111_uniform_vertex_pds *out,
+ uint64_t usc,uint64_t vertex,uint32_t temps,uint64_t constants,uint32_t shareds)
+{
+ struct a04_m111_uniform_vertex_pds made={{0},{0}};
+ struct a04_m111_triangle_vertex_pds base;
+ if(!out||!shareds||shareds>16||(shareds&3u)||constants<4096||
+    constants>=(UINT64_C(1)<<40)||(constants&15u)||
+    constants>(UINT64_C(1)<<40)-shareds*4u||
+    (constants<vertex+48&&vertex<constants+shareds*4u)||
+    build(&base,usc,vertex,4,16,temps))return 1;
+ for(unsigned i=0;i<32;i++)made.data[i]=base.data[i];
+ put(made.data,8,(uint32_t)constants);put(made.data,9,(uint32_t)(constants>>32));
+ put(made.data,10,(1u<<28)|shareds); /* AO0, common-store, 32bit, no LAST */
+ /* DOUTD src0=C64[4], src1=C32[10], no END. No guessed register bits. */
+ put(made.code,0,(0xfu<<28)|(10u<<16)|(4u<<8));
+ for(unsigned i=0;i<12;i++)made.code[4+i]=base.code[i];
+ *out=made;return 0;
+}

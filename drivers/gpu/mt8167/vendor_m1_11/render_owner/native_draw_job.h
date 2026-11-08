@@ -7,7 +7,7 @@
 #include "../../wddm-render/frontend/shader_draw_abi.h"
 struct a04_m111_draw_job {
  uint8_t ta[A04_M111_TA_BYTES],three[A04_M111_3D_BYTES];
- uint8_t data[0x540],usc[0x300],pds[0x400];
+ uint8_t data[0x580],usc[0xa00],pds[0x400];
 };
 #define A04_M111_DRAW_SCRATCH (sizeof(struct a04_m111_draw_job)+2u*sizeof(struct a04_m111_triangle_suite)+16u)
 /* Finite profile: full800x600 viewport, one float4 clip-space triangle,
