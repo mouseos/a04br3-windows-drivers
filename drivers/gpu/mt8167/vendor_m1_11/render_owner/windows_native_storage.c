@@ -30,7 +30,7 @@ BOOLEAN a04_vendor_native_output_ready(const struct a04_vendor_native_cold *n)
 {
     if(!n)return FALSE;
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
-    if(n->registered_target){ULONG count;return a04_native_mdl_cpu(n->registered_target)!=NULL || a04_native_mdl_pages(n->registered_target,&count)!=NULL;}
+    if(n->registered_target)return a04_native_mdl_cpu_identity(n->registered_target)!=NULL;
 #endif
     return n->output[0].cpu && n->pixel_blocks==(A04_NATIVE_OUTPUT_BYTES+A04_NATIVE_BLOCK_BYTES-1u)/A04_NATIVE_BLOCK_BYTES;
 }

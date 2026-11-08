@@ -38,51 +38,6 @@ static NTSTATUS wait_kernel(struct a04_rgx_fw_runtime *f,uint32_t next)
     }
     return STATUS_IO_TIMEOUT;
 }
-/* Typed m1.11 MMUCACHE transaction for the retained render memory context.
- * The same 0x1f PT/PD/PC/TLB flags are defined by stock rgxmem.c for the
- * existing non-SLC_VIVT BVNC. Real sync acknowledgement is mandatory. */
-static NTSTATUS target_handoff(struct a04_vendor_native_cold *n,struct a04_vendor_start *s,BOOLEAN cpu)
-{
-#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
-    struct a04_rgx_fw_runtime *f=s->memory->runtime;RGXFWIF_CCB_CTL k;
-    RGXFWIF_KCCB_CMD cmd={0};NTSTATUS status;uint32_t sequence,next;unsigned i;
-    if(!n->registered_target)return STATUS_SUCCESS;
-    if(KeGetCurrentIrql()!=PASSIVE_LEVEL || s->command_busy!=1 || s->command_sequence>=65534u ||
-       read_queue(f,&k) || k.ui32ReadOffset!=k.ui32WriteOffset ||
-       *(volatile uint32_t *)f->command_sync!=s->command_sequence)return STATUS_INVALID_DEVICE_STATE;
-    status=cpu?a04_vendor_native_target_remove_pt(n):a04_vendor_native_target_acquire_pt_quiescent(n);
-    if(!NT_SUCCESS(status))return status;
-    sequence=++s->command_sequence;
-    cmd.eCmdType=RGXFWIF_KCCB_CMD_MMUCACHE;cmd.eDM=0;
-    cmd.uCmdData.sMMUCacheData.sMemoryContext.ui32Addr=0xc0080000u+n->render->layout.memory;
-    cmd.uCmdData.sMMUCacheData.ui32Flags=0x1fu;
-    cmd.uCmdData.sMMUCacheData.sMMUCacheSync=f->command_sync_addr;
-    cmd.uCmdData.sMMUCacheData.ui16MMUCacheSyncUpdateValue=(uint16_t)sequence;
-    *(volatile uint32_t *)f->command_sync=0;
-    if(a04_rgx_device_write_words(&f->kcommands[k.ui32WriteOffset],&cmd,sizeof(cmd)))return STATUS_IO_DEVICE_ERROR;
-    next=(k.ui32WriteOffset+1u)&127u;publish(s,f,next);
-    status=wait_kernel(f,next);if(!NT_SUCCESS(status))return status;
-    for(i=0;i<20000u;i++){
-        a04_gpu_dma_barrier();
-        if(*(volatile uint32_t *)f->command_sync==sequence)
-            return cpu?a04_vendor_native_target_cpu_after_mmu_ack(n):STATUS_SUCCESS;
-        KeStallExecutionProcessor(50);
-    }
-    return STATUS_IO_TIMEOUT; /* retain all mappings on uncertain invalidate */
-#else
-    (void)n;(void)s;(void)cpu;return STATUS_SUCCESS;
-#endif
-}
-#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
-static BOOLEAN target_dma_ready(struct a04_vendor_native_cold *n)
-{
-    ULONG count;
-    if(!n || !n->registered_target || !a04_native_mdl_pages(n->registered_target,&count))return FALSE;
-    if(n->registered_vertex && !a04_native_mdl_pages(n->registered_vertex,&count))return FALSE;
-    for(ULONG i=0;i<n->linear_count;i++)if(!a04_native_mdl_pages(n->linear[i].binding,&count))return FALSE;
-    return TRUE;
-}
-#endif
 /* Shared PASSIVE finish: actual TA/3D/UFO/cleanup -> SLC/GP -> MDL cache
  * -> pixel/guard proof. This returns CPU-side state only; it NEVER emits a
  * Dxgk completion or invents a subsequent hardware interrupt. */
@@ -131,7 +86,7 @@ static NTSTATUS finish_published(struct a04_vendor_native_cold *n,
     }
     if(!NT_SUCCESS(status))goto poison;
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
-    status=target_handoff(n,s,TRUE);if(!NT_SUCCESS(status))goto poison;
+    status=a04_vendor_native_mdl_cpu_complete(n);if(!NT_SUCCESS(status))goto poison;
 #endif
     c->scan.started=1;c->scan.frame_index=c->completed_frames;
     for(i=0;i<a04_vendor_native_output_bytes(n)/4u;i+=64u){
@@ -268,7 +223,7 @@ NTSTATUS a04_vendor_native_owner_submit(struct a04_vendor_native_cold *n,
     RGXFWIF_CLEANUP_CTL clean;uint32_t sync[2];NTSTATUS status=STATUS_DEVICE_BUSY;
     if(!n || !s || KeGetCurrentIrql()<DISPATCH_LEVEL || expected_kernel_write>127u ||
        !(r=n->render) || r->native_owner!=n || !(c=n->candidate) ||
-       !n->registered_target || !target_dma_ready(n) || !a04_vendor_native_output_ready(n) ||
+       !n->registered_target || !a04_vendor_native_output_ready(n) ||
        !n->mapped || !n->prepared || !n->bank_prepared || !n->backing_staged ||
        !n->output_mapped || n->code_mapped!=3u || n->quarantined || r->poisoned ||
        r->cleanup_started || c->attempted || c->published || c->verified || c->owner_pending ||
@@ -475,7 +430,7 @@ static NTSTATUS rearm_clear(struct a04_vendor_native_cold *n,struct a04_vendor_s
         for(j=0;j<64;j++)if(seen[j]!=words[j])goto done;
     }
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
-    if(n->registered_target){status=target_handoff(n,s,FALSE);if(!NT_SUCCESS(status)){n->quarantined=TRUE;r->poisoned=TRUE;s->command_poisoned=TRUE;goto done;}}
+    if(n->registered_target){status=a04_native_mdl_sync_for_gpu(n->registered_target);if(!NT_SUCCESS(status))goto done;}
 #endif
     for(i=0;i<2;i++){
         if(a04_rgx_device_write_words((UCHAR *)r->buffer[0].cpu+r->layout.commands[i],c->rings+i*4096u,4096u))goto done;

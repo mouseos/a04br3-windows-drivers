@@ -1,3 +1,5 @@
+> Historical packet-DMA experiment only. Current preferred source: gpu332-wddm-aperture.md.
+
 # Explicit DMA resource ownership for the native MDL target
 
 This independent change starts at the exact332 runtime (7c6ef6a8; docsHEAD e41c7321).
