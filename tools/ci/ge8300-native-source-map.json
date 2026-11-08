@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "main_source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
-  "kmd_source_commit": "646925e188e777a0b32e56819adbd3c930591a68",
+  "kmd_source_commit": "2f29acee09822fbc35938ffe9569b262fe1b62d2",
   "native_owner_source_commit": "fb2173597de9acc12af8f06fd771037e02093360",
   "legacy_vendor_files_unchanged": true,
   "native_unit_sources": {
@@ -1973,6 +1973,11 @@
     "kmd_clear.c",
     "kmd_clear.h",
     "lifecycle.c",
-    "preempt.c"
-  ]
+    "preempt.c",
+    "frontend_memory.c",
+    "frontend_memory.h",
+    "mdl_pin.c"
+  ],
+  "kmd_residency_source_commit": "646925e188e777a0b32e56819adbd3c930591a68",
+  "selected_mdl_span_source_commit": "21eec1f9bcd866942d9d61a22b8ec3b4a9a51675"
 }

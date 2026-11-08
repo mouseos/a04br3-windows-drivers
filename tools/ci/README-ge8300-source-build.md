@@ -70,3 +70,17 @@ CIでは同flagを有効化しreceipt/stdoutをartifactへ含める。端末やd
 318646925e1で報告済みの「Render冒頭payload回収後のIRQ完了→同slot再予約による旧draw payload pointer上書き」は
 このsource-pin統合では修正しない。host testはこの競合まで検査するものではなく、修正済み/全機能成功とは扱わない。
 修正は主担当の後続commitを明示取り込みする。公開build生成物は実機候補として使用しない。
+
+## 319 caller / 選択MDL span統合
+
+21eec1f9のfrontend_memory.c/.hとmdl_pin.cを独立cherry-pickし、main2f29aceeのkmd_clear.c callerを統合する。
+owned選択viewをnative resolve identityとして使い、独立full pinned MDLとは別物を保持する。
+MdlOffsetをspan選択に一度だけ適用し、owner.bindにはoffset0を渡す。native ABI v1は保持。
+source-mapにruntime/caller/spanの独立出自を記録する。native fb21/UMD3f829のsourceとDOD/legacyは保持。
+
+公開buildは既存fullsource wrapperを使う。318/319のcache専用incremental/package helperを新たな必須入力にしない。
+sidecarのreal-MSVC-SEH host modelは2span/境界/PFN/失敗/leaseをexit0で確認済み。
+同modelのreceiptはプロジェクト成果物領域に保存し、publicのRunHostTestsは既存engine回帰のまま。
+main319の実ARM compile/LINK/SYS-CAT署名結果を採用し、同一ARM compile試験を反復しない。
+319統合commitでの新規fullsource buildはまだ実行していない。直近full build検証済み出力は317/318として保持する。
+318の既報payload slot競合はこのspan/caller統合で修正したものではない。実機結果はmainのrun107以降で別判定する。

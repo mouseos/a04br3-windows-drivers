@@ -45,12 +45,21 @@ static NTSTATUS GeoDestroyAllocationImpl(HANDLE adapter,const DXGKARG_DESTROYALL
  ExFreePoolWithTag(allocation,'rOeG');return STATUS_SUCCESS;
 }
 static NTSTATUS GeoBuildPagingBufferImpl(HANDLE adapter,DXGKARG_BUILDPAGINGBUFFER *p) {
- struct geo_kmd_adapter *a=adapter;struct geo_allocation *allocation,*scan;uint32_t bytes;uint64_t begin,extent,other;NTSTATUS status;
+ struct geo_kmd_adapter *a=adapter;struct geo_allocation *allocation,*scan;uint32_t bytes;uint64_t begin,extent,other;NTSTATUS status;PMDL selected_view=NULL;
  if(!a||!p||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  if(p->Operation==DXGK_OPERATION_MAP_APERTURE_SEGMENT) {
   allocation=p->MapApertureSegment.hAllocation;
-  if(!allocation||p->MapApertureSegment.SegmentId!=1||p->MapApertureSegment.Flags.Value||
-     !p->MapApertureSegment.pMdl||MmGetMdlByteOffset(p->MapApertureSegment.pMdl)||p->MapApertureSegment.MdlOffset)return STATUS_NOT_SUPPORTED;
+  GeoFactoryCheckpoint(24,STATUS_SUCCESS,p->MapApertureSegment.Flags.Value,p->MapApertureSegment.MdlOffset,p->MapApertureSegment.NumberOfPages,allocation!=NULL);
+  GeoFactoryCheckpoint(25,STATUS_SUCCESS,p->MapApertureSegment.SegmentId,p->MapApertureSegment.OffsetInPages,
+    p->MapApertureSegment.pMdl?MmGetMdlByteCount(p->MapApertureSegment.pMdl):0,
+    p->MapApertureSegment.pMdl?MmGetMdlByteOffset(p->MapApertureSegment.pMdl):0);
+  /* CacheCoherent requests a coherency guarantee, not hardware snooping.
+   * This allocation path always leases the actual cached VidMm PFNs. The
+   * native owner flushes for GPU before publish, then CPU only after real
+   * GPU/SLC completion, before advertising CPU_VISIBLE/IRQ completion.
+   * Reserved bits remain invalid; no segment hardware-coherent cap is set. */
+  if(!allocation||p->MapApertureSegment.SegmentId!=1||(p->MapApertureSegment.Flags.Value&~1u)||
+     !p->MapApertureSegment.pMdl)return STATUS_NOT_SUPPORTED;
   bytes=allocation->desc.pitch*allocation->desc.height;
   if(p->MapApertureSegment.NumberOfPages!=BYTES_TO_PAGES(bytes))return STATUS_NOT_SUPPORTED;
   if(!a->aperture_ready)return STATUS_DEVICE_NOT_READY;
@@ -62,9 +71,14 @@ static NTSTATUS GeoBuildPagingBufferImpl(HANDLE adapter,DXGKARG_BUILDPAGINGBUFFE
   }
   /* Microsoft DDI defines MdlOffset in PAGES, not bytes. The provider must
    * retain this actual MDL/PFN backing and perform real CPU/GPU maintenance. */
-  if(ROUND_TO_PAGES(bytes)!=MmGetMdlByteCount(p->MapApertureSegment.pMdl))return STATUS_INVALID_PARAMETER;
-  status=GeoBeginVidMmMap(a,allocation,p->MapApertureSegment.pMdl,bytes);if(status!=STATUS_SUCCESS)return status;
-  status=geo_bind(&a->engine,allocation,p->MapApertureSegment.pMdl,p->MapApertureSegment.MdlOffset*PAGE_SIZE,bytes,(uint64_t)p->MapApertureSegment.OffsetInPages*PAGE_SIZE);
+  status=GeoBeginVidMmMapSpan(a,allocation,p->MapApertureSegment.pMdl,p->MapApertureSegment.MdlOffset,
+    p->MapApertureSegment.NumberOfPages,bytes,&selected_view);
+  GeoFactoryCheckpoint(26,status,p->MapApertureSegment.MdlOffset,p->MapApertureSegment.NumberOfPages,bytes,selected_view!=NULL);
+  if(status!=STATUS_SUCCESS)return status;
+  /* The view identifies this exact PFN slice. Its page offset is already
+   * applied by the independently locked span; native receives offset ZERO. */
+  status=geo_bind(&a->engine,allocation,selected_view,0,bytes,(uint64_t)p->MapApertureSegment.OffsetInPages*PAGE_SIZE);
+  GeoFactoryCheckpoint(27,status,p->MapApertureSegment.OffsetInPages,p->MapApertureSegment.NumberOfPages,bytes,0);
   if(status==STATUS_SUCCESS) {
    status=GeoConfirmVidMmBind(a,allocation);
    if(status!=STATUS_SUCCESS){allocation->poisoned=1;a->engine.poisoned=1;return status;}
