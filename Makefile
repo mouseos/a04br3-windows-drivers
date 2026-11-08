@@ -1568,3 +1568,16 @@ test-mt8167-brightness: build/mt8167_brightness_test
 build/mt8167_brightness_test: tests/mt8167_brightness_test.cpp drivers/gpu/mt8167/wddm-display/mt8167_brightness.cxx drivers/gpu/mt8167/wddm-display/mt8167_brightness.hxx $(wildcard tests/brightness_wdk_stubs/*.h)
 	@mkdir -p build
 	$(CXX) -std=c++11 -O2 -Wall -Wextra -Werror -Itests/brightness_wdk_stubs -Idrivers/gpu/mt8167/wddm-display $(filter %.cpp %.cxx,$^) -o $@
+
+.PHONY: test-ge8300-native-copy334
+test-ge8300-native-copy334: build/ge8300_native_copy_job_test build/ge8300_native_copy_queue_test
+	./build/ge8300_native_copy_job_test
+	./build/ge8300_native_copy_queue_test
+
+build/ge8300_native_copy_job_test: tests/ge8300_native_copy_job_test.c drivers/gpu/mt8167/vendor_m1_11/render_owner/native_copy_job.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.c drivers/gpu/mt8167/vendor_m1_11/clear_image.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11/render_owner $(filter %.c,$^) -o $@
+
+build/ge8300_native_copy_queue_test: tests/ge8300_native_copy_queue_test.c drivers/gpu/mt8167/vendor_m1_11/render_owner/native_copy_queue.c drivers/gpu/mt8167/vendor_m1_11/native_ccb.c
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11/render_owner -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@
