@@ -29,7 +29,54 @@
     "wifi": "2026.11.8.1021",
     "render": "0.0.3.38"
   },
-  "candidate_packages": {},
+  "candidate_packages": {
+    "thermal": {
+      "status": "main-sealed-candidate-ready-for-final-profile",
+      "role": "thermal",
+      "DIF": true,
+      "directory": "port/xnu/out/mt8167-thermal-first-read/final-signed",
+      "manifest": {
+        "path": "port/xnu/out/mt8167-thermal-first-read/final-signed/signed-manifest.json",
+        "sha256": "42a1caddc8360c7f9fd08b00c53782b6b7c9367e00fa24e66663de122673cdae"
+      },
+      "producer_pins": {
+        "path": "port/xnu/out/mt8167-thermal-first-read/pins.json",
+        "sha256": "50bf7984273801c8f3d178e8959241170f343905cca849b3b16293c75f6400cf"
+      },
+      "main_seal": {
+        "path": "port/xnu/out/mt8167-thermal-first-read/main-independent-seal.json",
+        "sha256": "bb527f2e6adb50f45eb5f75b22d1e5ad448d744f632f7c0f0a02eef7290fac8c"
+      },
+      "source_commit": "b4ef62e16afd8d9adfb18313cfb634d26de31b75",
+      "driver_version": "0.0.1.9",
+      "files": [
+        {
+          "sha256": "264b7a025e76714a917239261298c1200228034033e764c6eb1a395f396cdca6",
+          "path": "mt8167-thermal.cat"
+        },
+        {
+          "sha256": "f2a943494ffb85cee64cd4b0ef37c89820659ca7c5a159480b852fd024d3a0ff",
+          "path": "mt8167-thermal.inf"
+        },
+        {
+          "sha256": "b193ad6f639f720acd28d1614c807f1d9dcba60f85e01669f3291b89d1c40685",
+          "path": "mt8167-thermal.sys"
+        }
+      ],
+      "parent_delta_required": false,
+      "boot_delta_required": false,
+      "driver_rebuild_required": false,
+      "hardware_verified": false,
+      "measurement_contract": {
+        "D0_measurement": false,
+        "first_valid_readonly_GET_measures_once": true,
+        "backend_failure_retained_no_retry": true,
+        "success_stub_allowed": false,
+        "existing_readonly_client_only": true,
+        "interface_ready_is_not_temperature_success": true
+      }
+    }
+  },
   "install_targets": null,
   "diagnostic_clients": null,
   "gpu_client_execute": false,
@@ -38,8 +85,8 @@
   "blockers": [
     "GPUCopy entry terminal/reset source fix and signed package/main seal pending",
     "audio 0x80070032 source fix and signed candidate/main seal pending",
-    "thermal interface259 source fix and signed candidate/main seal pending",
-    "Final145 scope/pins/client policy not fixed; no arm from draft"
+    "Final145 scope/pins/client policy not fixed; no arm from draft",
+    "BT provider f27cb delta integration into latest WiFi1022 and main seal pending; no arm"
   ],
   "prior_run143": {
     "install_success": true,
@@ -77,17 +124,18 @@
     "functional_fixes_ready_first": {
       "requires": [
         "completed audio functional fix package and main independent seal",
-        "completed thermal functional fix package and main independent seal",
         "completed WiFi1022 package and main independent seal",
         "completed HCD1016 package and main independent seal",
-        "fresh144 native preservation and final profile validation"
+        "fresh144 native preservation and final profile validation",
+        "BT provider delta integrated WiFi1022 final package and main independent seal"
       ],
       "render_action": "retain actual GPU338; no render DIF",
       "gpu_client_execute": false,
       "gpu_client_count": 0,
       "planned_windows_reboots": 1,
       "normal_mount_collection": "Collect run143 delayed GPU text/UMD logs on the same normal mount; preserve 57-file baseline and extensions",
-      "not_a_GPU338_diagnostic_retest": true
+      "not_a_GPU338_diagnostic_retest": true,
+      "thermal_DIF": true
     },
     "GPU_root_fix_ready_first": {
       "requires": [
@@ -98,9 +146,21 @@
       "gpu_client_execute": true,
       "gpu_client_count": 1,
       "gpu_client_position": "last",
-      "planned_windows_reboots": 1
+      "planned_windows_reboots": 1,
+      "thermal_DIF": true
     },
     "unknown_input_final_arm_allowed": false,
     "current_draft_does_not_select_either_path": true
-  }
+  },
+  "proposed_install_targets": [
+    "thermal"
+  ],
+  "proposed_install_targets_complete": false,
+  "thermal_runtime_evaluation": [
+    "device CM problem/status",
+    "interface enumeration",
+    "CreateFile",
+    "readonly IOCTL status/returned bytes",
+    "real measured temperature; never infer from D0/interface success"
+  ]
 }
