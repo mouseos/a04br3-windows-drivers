@@ -21,19 +21,20 @@ static NTSTATUS HpQueryParent(PDEVICE_OBJECT target,A04_HEADPHONE_INTERFACE *out
 static NTSTATUS HpQualified(void*p)
 {
  Mt8167PnpBackend*o=(Mt8167PnpBackend*)p;ULONG flags=0;
- if(!o->online||o->enginePoison||!o->hpParent.Header.Context)return STATUS_DEVICE_NOT_READY;
+ OwnerLock(o);
+ if(!o->online||o->enginePoison||!o->hpParent.Header.Context){OwnerUnlock(o);return STATUS_DEVICE_NOT_READY;}
  /* Transport existence is not calibration/latency success. Property returns
   * actual jack status; creating a PCM stream has the stronger admission below. */
- return o->hpParent.Readiness(o->hpParent.Header.Context,&flags);
+ NTSTATUS status=o->hpParent.Readiness(o->hpParent.Header.Context,&flags);OwnerUnlock(o);return status;
 }
 static NTSTATUS HpReadJack(void*p,struct mt8167_accdet_socket*out)
-{Mt8167PnpBackend*o=(Mt8167PnpBackend*)p;return o->hpParent.ReadJack(o->hpParent.Header.Context,out);}
+{Mt8167PnpBackend*o=(Mt8167PnpBackend*)p;OwnerLock(o);NTSTATUS status=o->online?o->hpParent.ReadJack(o->hpParent.Header.Context,out):STATUS_DEVICE_NOT_READY;OwnerUnlock(o);return status;}
 static NTSTATUS HpPrepareStream(void*p,KSRTAUDIO_HWLATENCY *latency)
 {
  Mt8167PnpBackend*o=(Mt8167PnpBackend*)p;ULONG flags=0;NTSTATUS status;
  if(!latency)return STATUS_INVALID_PARAMETER;OwnerLock(o);
  status=o->online&&!o->enginePoison?o->hpParent.Readiness(o->hpParent.Header.Context,&flags):STATUS_DEVICE_NOT_READY;
- if(NT_SUCCESS(status)&&(flags&(A04_HP_READY_MEASURED|A04_HP_READY_SENSE|A04_HP_READY_ANALOG))!=(A04_HP_READY_MEASURED|A04_HP_READY_SENSE|A04_HP_READY_ANALOG))status=STATUS_DEVICE_NOT_READY;
+ if(NT_SUCCESS(status)&&(flags&(A04_HP_READY_MEASURED|A04_HP_READY_SENSE))!=(A04_HP_READY_MEASURED|A04_HP_READY_SENSE))status=STATUS_DEVICE_NOT_READY;
  if(NT_SUCCESS(status))status=o->hpParent.Latency(o->hpParent.Header.Context,&latency->FifoSize,&latency->ChipsetDelay,&latency->CodecDelay);
  OwnerUnlock(o);return status;
 }

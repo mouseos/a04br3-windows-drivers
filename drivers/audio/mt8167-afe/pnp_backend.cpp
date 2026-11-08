@@ -316,6 +316,13 @@ static NTSTATUS OwnerCheckoutRoute(void *ctx,PPORTWAVERTSTREAM port,ULONG bytes,
     if(!o || !port || !mdl || !actual || !bytes || bytes>1048576 ||
        KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
     *mdl=NULL;*actual=0;OwnerLock(o);NTSTATUS result=STATUS_DEVICE_NOT_READY;
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+    /* The first exposed route pins the single engine until certified drain.
+     * Reject BEFORE IRQ connect, allocation, binding, zeroing or selection. */
+    if((o->digitalRetained || o->hpPinned) && o->hpSelected!=headphone) {
+        OwnerUnlock(o);return STATUS_DEVICE_BUSY;
+    }
+#endif
 #if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
     if(o->online&&!o->shared.leased){result=OwnerConnectMaskedIrq(o);if(!NT_SUCCESS(result)){OwnerUnlock(o);return result;}}
 #endif

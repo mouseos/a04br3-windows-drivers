@@ -55,9 +55,11 @@ static NTSTATUS ParentThermalPioMeasure(PVOID p,ULONG *adopted,ULONG raw[3],ULON
  struct a04_auxadc_pio_state sample={0};struct a04_auxadc_pio_io io={c,ThermalPioQualified,ThermalPioRead16,ThermalPioWrite16,ThermalPioWait};
  if(!adopted||!raw||!stage)return STATUS_INVALID_PARAMETER;*adopted=0;*stage=1;
  if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
- if(InterlockedCompareExchange(&c->thermalPioUsed,1,0))return STATUS_DEVICE_NOT_READY;
- #if A04_SHARED_HP_PCM
+#if A04_SHARED_HP_PCM
  if(InterlockedCompareExchange(&c->adcPurpose,1,0))return STATUS_DEVICE_BUSY;
+ if(InterlockedCompareExchange(&c->thermalPioUsed,1,0)){InterlockedExchange(&c->adcPurpose,0);return STATUS_DEVICE_NOT_READY;}
+#else
+ if(InterlockedCompareExchange(&c->thermalPioUsed,1,0))return STATUS_DEVICE_NOT_READY;
 #endif
  status=WdfDeviceStopIdle(dev,TRUE);if(!NT_SUCCESS(status)){
 #if A04_SHARED_HP_PCM

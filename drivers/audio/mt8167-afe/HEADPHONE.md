@@ -1,3 +1,33 @@
+# MT8167 headphone shared-owner backend（後段1105 / audio1029）
+
+親1104 `97b87a4b0d226eb093507cd5b886acfdbf2c0391` を基点に、AFE1027とHP部品d54fを合流した後段候補。freeze中の親1104/thermal1.8 package、共通EDK、実機は変更しない。以下はsource実装であり、実測校正・実HP再生成功は未確認。
+
+## 今回接続した実経路
+
+- 既存親 `c->thermal` / `thermalPioMappings` / V3 boot proofを共有するAUXADC lease。thermalとHPは同じadmission gateで排他。別owner、別ADC resource、子mappingなし。consume済みboot proofは親内だけでcacheし、取得・終了時はlive clock/reset/master/ADC idleを検証する。timeout・不確実状態・removeはmapping/D0/objectを保持する。
+- AUXADC7/8を各22sampleだけ取得する固定IOCTL `0x0022655c`。既存ACCDET interface/queueを利用し、72byte sample / 160byte pairでgeneration、parent NTSTATUS、valid、raw12、nominal averageを返す。`mt8167-hp-adc-read.exe --raw` の1回だけで、phase/係数/任意register指定を受け付けない。
+- 既存 `Mt8167PnpBackend` の同一mutex/DL1/MDL/SG/rundownへ標準HP providerを接続。別名WaveRT/topologyを実factoryで登録し、開始時は親analog start-muted→既存DMA開始→実親resume、停止時はposition rundown→clamp→既存DL1/IRQ停止→親typed drainへ接続する。
+- speaker/HP切替えは既存exposed retained routeを保持中なら、IRQ接続・allocation・buffer zero・route変更より前にBUSY。未証明drainではpages/SG/D0も解放しない。captureと既存audio v11は維持。
+- GPIO19資格が成立した実senseのみKS jack propertyへ返す。不明をConnected固定にしない。GPIO writeは追加しない。
+
+## 残る実機／source条件
+
+raw observationはCT3の44.1k無音DMAと制御されたA/B/C測定sequenceの実行証明ではない。レジスタ形だけでphaseを認定せず、現APIは常にphase UNKNOWNを返す。係数を入力・合成するAPIは無く、`hpCalibrationValid` は取得できていない。無音calibration producer、測定に基づくHP latencyは未接続。HP stream生成はこの不足を明示して拒否する。既存speakerのzero latencyをHPへ流用しない。
+
+既存 `ParentVerifyDmaDrained` はfabricのoutstandingを証明できず拒否する。その実callbackを使い、retained STOPとfull RELEASEDを区別する。DL1 disableだけをfreeの証拠にしない。無音calibration DMAから別PCM bufferへの安全な切替えもこの停止保証を必要とするため、bufferの差替え/freeやdrain値を合成して迂回しない。
+
+したがって、今回の署名物も通常一括配備／HP再生用の完成候補ではない。親共有ADC返却と標準backendの接続を持つ後段候補であり、実機ownerがfreeze後に依存を評価する。実HW未検証。
+
+## 互換性・再現・検証
+
+親INFは1105、AFE INF/NativeStartは1029、HP extension version1/build1105。thermal V3のGUID/size/build1104は維持し、thermal1.8を再buildしない。
+
+`tools/ci/build-mt8167-hp-shared1105.ps1` は固定親helper cache1d248a71の13objectとAFE1027 cache81f20c78のC8objectをsource/quoted include closureとhash照合して再利用する。private C++ backend layoutの変更により16 C++ TU、親1TU、固定raw client1TUだけ再compile。同BCBF identityでSYS/EXE/CATを署名し、ARMNT/CAT所属/署名hashを固定する。SDKの再構築はしない。
+
+新しい寿命境界だけを `tests/hp_parent_lifetime_test.c` と `tests/hp_backend_lifetime_test.py` で検証する。前者はproduction parent include/ADC captureそのもの、後者はproduction backend関数を抽出してOS/DMAのみmockする。ASan/UBSanでclock/reset/master喪失時retain、排他、stale generation、raw UNKNOWN、start-muted、retained STOP、route切替え拒否を確認。校正fixtureはmock専用で、実測／実機成功とは報告しない。旧815 fault反復は実行しない。
+
+## 以前の部品d54fの記録（当時の状態）
+
 # MT8167 headphone route components (not deployment-ready)
 
 CT3 GPL `7c4782127d4ea11965be00ce1343056be9bfb769` の一次sourceを根拠とする独立実装。MT6392は内蔵Class-D speakerであり、HP出力はMT8167内蔵codec。`mt8167-codec.c` のAIF RX→Left/Right DAC→Left/Right Audio Amp→HP Depop VCM→HPOUT Mux→AU_HPL/AU_HPRと、AU_LOL→MT6392 Int Spk Ampを混同しない。

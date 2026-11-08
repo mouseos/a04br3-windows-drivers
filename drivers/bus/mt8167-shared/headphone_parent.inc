@@ -64,57 +64,28 @@ rundown:ExReleaseRundownProtection(&c->thermalRundown);
 power:WdfDeviceResumeIdle(dev);
 gate:if(c->admissionClosed)c->adcProofValid=0;InterlockedExchange(&c->adcPurpose,0);return status;
 }
-/* Derive phase from live registers, never from a caller phase label. Reject
- * the Linux44.1k calibration identity if the observed path is merely48k PCM. */
-static ULONG ParentHpObservedPhase(A04_PARENT_CONTEXT*c,ULONG channel,ULONG *gain)
-{
- ULONG con1,con2,rate,digital;
- if(!c->audioAfe||!c->apmixed||!c->audio.leased||c->audio.poisoned)return 0;
- con1=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->apmixed+0x704));
- con2=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->apmixed+0x708));
- rate=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->audioAfe+0xf04));
- digital=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->audioAfe+0x14));
- if(con1==MAXULONG||con2==MAXULONG||rate==MAXULONG||digital==MAXULONG||
-    ((con2>>19)&3u)!=c->hpMeasured.cap_index||!(con2&(channel==7?1u<<15:1u<<14))||(rate&15)!=9||(digital&15)!=9)return 0;
- *gain=channel==7?(con1&7u):((con1>>3)&7u);
- if(!(con1&((3u<<14)|(3u<<11))))return A04_HP_PHASE_A;
- if((con1&((3u<<14)|(3u<<11)))!=((3u<<14)|(3u<<11)))return 0;
- if((con2&((1u<<28)|(1u<<25)|(1u<<22)))==((1u<<25)|(1u<<22)))return A04_HP_PHASE_B;
- if((con2&((1u<<28)|(1u<<25)|(1u<<22)))==(1u<<28))return A04_HP_PHASE_C;
- return 0;
-}
+/* Raw observation is not a calibration producer. CT3 additionally requires
+ * a controlled silent44.1k DMA sequence and A/B/C stage provenance. Register
+ * shape alone cannot establish that contract, so this API reports UNKNOWN. */
 static NTSTATUS ParentHpAdcRead(PVOID p,ULONG generation,ULONG channel,struct a04_hp_raw_sample *out)
 {
  WDFDEVICE dev=(WDFDEVICE)p;A04_PARENT_CONTEXT*c=ParentContext(dev);NTSTATUS status=STATUS_DEVICE_NOT_READY;
  struct a04_codec_adc_probe probe={0};struct a04_codec_adc_samples sample;
  struct a04_codec_adc_io io={c,ParentHpAdcQualified,ParentHpAdcRead16,ParentHpAdcWrite16,ParentHpWait};
- ULONG first,phase,gain=0,gain2=0;unsigned i;
+ unsigned i;
  if(!out||(channel!=7&&channel!=8)||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  RtlZeroMemory(out,sizeof(*out));out->size=sizeof(*out);out->version=1;out->channel=channel;out->generation=generation;
  if(!ExAcquireRundownProtection(&c->thermalRundown))return status;
  if(ParentLock(c))goto done;
  if(!generation||generation!=c->thermal.generation||!ParentHpAdcQualified(c))goto unlock;
- first=ParentHpObservedPhase(c,channel,&gain);c->thermal.inflight++;
+ c->thermal.inflight++;
  if(a04_codec_adc_capture(&probe,&io,channel,&sample)){
   c->thermal.poisoned=1;c->adcProofValid=0;status=STATUS_DEVICE_HARDWARE_ERROR;
  }else{
-  phase=ParentHpObservedPhase(c,channel,&gain2);
-  if(phase!=first||gain!=gain2)phase=0;
-  out->phase=phase;out->valid=1;out->average_uv=sample.average_uv;
+  out->phase=0;out->valid=1;out->average_uv=sample.average_uv;
   for(i=0;i<22;i++)out->raw[i]=sample.raw[i];status=STATUS_SUCCESS;
-  if(!phase){c->hpCalibrationValid=0;c->hpPhaseMask[0]=c->hpPhaseMask[1]=0;}
-  if(phase){unsigned n=channel-7;
-   if(phase==A04_HP_PHASE_A)c->hpPhaseMask[n]=0;
-   else if(c->hpPhaseMask[n]!=(phase==A04_HP_PHASE_B?1u:3u)){c->hpCalibrationValid=0;c->hpPhaseMask[n]=0;phase=0;out->phase=0;}
-   if(!phase)goto observed;
-c->hpMeasured.uv[n][phase-1]=sample.average_uv;
-   if(phase==A04_HP_PHASE_C)c->hpMeasured.gain[n]=gain;
-   c->hpPhaseMask[n]|=1u<<(phase-1);
-   if(c->hpPhaseMask[n]==7)c->hpMeasured.measured_channels|=1u<<n;
-   if(c->hpMeasured.measured_channels==3&&!a04_codec_headphone_calibration(&c->hpMeasured,&c->hpCalibration))c->hpCalibrationValid=1;
-  }
+  c->hpCalibrationValid=0;c->hpPhaseMask[0]=c->hpPhaseMask[1]=0;
  }
-observed:
  c->thermal.inflight--;
 unlock:ParentUnlock(c);
 done:ExReleaseRundownProtection(&c->thermalRundown);return status;
@@ -126,7 +97,19 @@ static NTSTATUS ParentHpAdcEnd(PVOID p,ULONG generation)
  if(!ExAcquireRundownProtection(&c->thermalRundown))return status;
  if(ParentLock(c))goto done;
  if(c->adcPurpose!=2||generation!=c->thermal.generation||!c->thermal.leased||c->thermal.poisoned)goto unlock;
- if(READ_REGISTER_USHORT((volatile USHORT*)((volatile UCHAR*)c->thermalPioMappings[1]+4))||
+ /* Recheck the V3 live admission at release. Never unmap after loss of
+  * clock/reset authority or evidence that the old bus master is active. */
+ if(!c->thermalPioMappings[0]||!c->thermalPioMappings[1]||!c->topck||!c->infra||
+    READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->topck+0x24))==MAXULONG||
+    (READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->topck+0x24))&0x40000002u)||
+    READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->infra+0x128))==MAXULONG||
+    !(READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->infra+0x128))&1)||
+    READ_REGISTER_ULONG((volatile ULONG*)c->thermalPioMappings[0])||
+    READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->thermalPioMappings[0]+0xc))||
+    READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->thermalPioMappings[0]+0x10))||
+    (READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->thermalPioMappings[0]+0x418))>>16)||
+    READ_REGISTER_USHORT((volatile USHORT*)c->thermalPioMappings[1])||
+    READ_REGISTER_USHORT((volatile USHORT*)((volatile UCHAR*)c->thermalPioMappings[1]+4))||
     (READ_REGISTER_USHORT((volatile USHORT*)((volatile UCHAR*)c->thermalPioMappings[1]+0x10))&1)){
   c->thermal.poisoned=1;c->adcProofValid=0;status=STATUS_DEVICE_HARDWARE_ERROR;goto unlock;
  }
