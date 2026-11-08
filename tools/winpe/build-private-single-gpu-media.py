@@ -31,7 +31,7 @@ def main():
  out.mkdir(mode=0o700);stage=out/'stage';stage.mkdir(mode=0o700);files={}
  def copy(src,dest):
   target=stage/dest;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(src,target);files[dest]=sha(target)
- copy(root/'port/xnu/out/windows-rt-run111-single-gpu/service/MT8167RenderSingleGpu.exe','previous-single-service.exe');require(files['previous-single-service.exe']=='e5dff3ab321efdda9c7d9064e7a356325cfc59f70b0e31b4f57613488b8ef489','prior dedicated service pin mismatch');copy(service/'compare-files.exe','compare-files.exe');copy(system,'private-system/SYSTEM.patched');copy(service/'MT8167RenderSingleGpu.exe','MT8167RenderSingleGpu.exe');copy(service/'mt8167-development.cer','render-development.cer')
+ copy(root/'port/xnu/out/windows-rt-run113-single-gpu/service/MT8167RenderSingleGpu.exe','previous-single-service.exe');require(files['previous-single-service.exe']=='80825f5dd2753280e84bfd6ededcf0cad42e5eda66563eb5f7c33578775c4dad','prior dedicated service pin mismatch');copy(service/'compare-files.exe','compare-files.exe');copy(system,'private-system/SYSTEM.patched');copy(service/'MT8167RenderSingleGpu.exe','MT8167RenderSingleGpu.exe');copy(service/'mt8167-development.cer','render-development.cer')
  copy((root/policy['client']['directory'])/'ge8300-d3d-clear.exe','render-io/clients/ge8300-d3d-clear.exe')
  for role,p in policy['packages'].items():
   for name in p['files']:copy((root/p['directory'])/name,'render-io/'+role+'/'+name)
