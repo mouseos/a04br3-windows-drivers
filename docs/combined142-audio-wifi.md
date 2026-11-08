@@ -1,0 +1,11 @@
+# fresh142 / run143 AFE class修正＋WiFi1021
+
+fresh142 manifest f5ee192fd738b6db129064e71e43bc0a80bf35c6341e0177d468e3bbd6283e37 / Recovery1eb91bc2-cb82-4433-85f1-a70b3570529e。raw38とnative16旧SCM/13nodeを基点にする。親1115が選択されAFE1027が残るactual stateから、audio修正1033とWiFi1021だけDIF、予定restart1。親1115/boot1fef/GPU335/KMD332は保持。GPUclient0。HCD1015は固定署名trioのSetupCopyOEMInf補助importのみで不在childへのDIFなし。旧1014artifactは不変。
+
+service/data MT8167CombinedFollowup142、DisplayName MediaTek combined audio142、profile combined-audio-classfix-fresh142-v1、専用reader read-combined142-post.ps1。diagnostic schema2/target11/client5/最大8recordは保持。clock_compare/battery_temperature/accdet_status/afe_jack/audio_consumerと既read-only WLANを同bootで観測。WLAN profileなしはRF通信未確認でありAP情報を要求しない。wholebundle ObservedResultを各機能の成否に一括変換しない。無音speaker1秒だけ、未HP/未OTG成功を作らない。
+
+141で正しく拒否した1033 INF ClassGuid…10338を…10318へ直したmain-sealed候補を使用。SYS1408e608と既clientのbytes/ABIを保持、runtime guardを緩めずstep2選択predicateのtelemetryを追加。生成時にもINF Version/ClassGuid1個literalとtargetを照合する。親/audio/GPUruntime再buildはせず、SCM1TUだけを新policyで生成する。
+
+55GPUlogsはfresh142の新baselineを全件保持。旧137text append/遅延UMD2本を原情報のまま扱い、新GPUclientは実行しない。更新audio/WiFiのruntime出力は旧subtree byte保持へ入れず、静的設定/未更新旧SCM/GPUledgerを保持。原hiveはcloneでのみnative read/arm、SOFTWARE/userdata巻戻しなし。
+
+mainが独立sealし実機を所有する。workerは実機操作せず、既host入力closureをhash/size照合して小deltaだけ転送する。SDK/WDK/PCO全setupなし。署名・source・媒体完成と実機機能成功は別。

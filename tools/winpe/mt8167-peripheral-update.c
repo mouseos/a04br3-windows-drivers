@@ -54,6 +54,12 @@ struct diagnostic_client {const WCHAR *exe,*arguments,*name,*relative_directory;
 #ifndef A04_USB_PC_ROLE_OPTIONAL_LEGACY_NODE
 #define A04_USB_PC_ROLE_OPTIONAL_LEGACY_NODE 0
 #endif
+#ifndef A04_AUX_HCD_DIRECTORY
+#define A04_AUX_HCD_DIRECTORY L"hcd1014"
+#endif
+#ifndef A04_AUX_HCD_PROOF_NAME
+#define A04_AUX_HCD_PROOF_NAME L"hcd1014-import.bin"
+#endif
 #define PERIPHERAL_TARGET_COUNT (sizeof(targets)/sizeof(targets[0]))
 typedef char bounded_gpu_extras[(A04_CANDIDATE_EXTRA_COUNT<=2)?1:-1];
 typedef char bounded_target_count[(PERIPHERAL_TARGET_COUNT>0 && PERIPHERAL_TARGET_COUNT<=11)?1:-1];
@@ -402,13 +408,13 @@ static DWORD import_aux_hcd1014(void){
  WCHAR dir[MAX_PATH],paths_[3][MAX_PATH];const WCHAR *members[5];HANDLE files[5]={INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE},directory=INVALID_HANDLE_VALUE;
  struct {DWORD schema,bytes,result,imported,no_dif;WCHAR published_inf[MAX_PATH];} proof;
  DWORD e=0,i,saved;memset(&proof,0,sizeof(proof));proof.schema=1;proof.bytes=sizeof(proof);proof.no_dif=1;
- e=path(dir,base_directory,L"hcd1014");if(!e)e=hold_directory(dir,&directory);
+ e=path(dir,base_directory,A04_AUX_HCD_DIRECTORY);if(!e)e=hold_directory(dir,&directory);
  /* aux_hcd_files order is SYS, INF, CAT; membership helper expects INF, SYS, CAT. */
  members[3]=members[4]=NULL;
  for(i=0;!e&&i<3;i++){unsigned src=i==0?1:(i==1?0:2);e=path(paths_[i],dir,aux_hcd_files[src].name);members[i]=paths_[i];if(!e)e=deferred_file(paths_[i],aux_hcd_files[src].hash,&files[i]);}
  if(!e)e=fixed_signer(paths_[2],files[2]);if(!e)e=deferred_members(2,paths_[2],members,files);
  if(!e){if(!SetupCopyOEMInfW(paths_[0],dir,SPOST_PATH,0,proof.published_inf,MAX_PATH,NULL,NULL))e=GetLastError();else proof.imported=1;}
- proof.result=e;saved=save_blob(L"hcd1014-import.bin",&proof,sizeof(proof));record(2,0x28a,e);if(saved&&!e)e=saved;
+ proof.result=e;saved=save_blob(A04_AUX_HCD_PROOF_NAME,&proof,sizeof(proof));record(2,0x28a,e);if(saved&&!e)e=saved;
  for(i=0;i<5;i++)if(files[i]!=INVALID_HANDLE_VALUE)CloseHandle(files[i]);if(directory!=INVALID_HANDLE_VALUE)CloseHandle(directory);return e;
 }
 #endif
