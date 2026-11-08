@@ -283,21 +283,33 @@ static NTSTATUS GeoRenderImpl(HANDLE context,DXGKARG_RENDER *r) {
  r->pPatchLocationListOut->AllocationIndex=0;r->pPatchLocationListOut->DriverId=GEO_CLEAR_MAGIC;
  r->pPatchLocationListOut++;return STATUS_SUCCESS;
 }
-struct inspect_ticket { struct geo_kmd_adapter *adapter;struct geo_dma_ticket ticket;HANDLE context,open_handle,vertex_open_handle,texture_open_handle;UINT kind,count;NTSTATUS status; };
+struct inspect_ticket { struct geo_kmd_adapter *adapter;struct geo_dma_ticket ticket;HANDLE context,open_handle,vertex_open_handle,texture_open_handle;UINT kind,count;NTSTATUS status;UINT allow_pending; };
 static BOOLEAN inspect_prepared(void *arg) {
  struct inspect_ticket *c=arg;struct geo_job *j;
  c->status=STATUS_INVALID_PARAMETER;
  if(c->ticket.magic!=GEO_TICKET_MAGIC||c->ticket.reserved||c->ticket.slot>=GEO_MAX_JOBS)return TRUE;
  j=&c->adapter->engine.jobs[c->ticket.slot];
- if(!c->adapter->engine.poisoned&&j->state==1&&j->generation==c->ticket.generation&&
+ if(!c->adapter->engine.poisoned&&(j->state==1||(c->allow_pending&&j->state==4))&&
+    (j->state!=1||j->owner_job)&&j->generation==c->ticket.generation&&
+    j->allocation&&j->allocation->bound&&j->allocation->surface&&
+    (!j->vertex||(j->vertex->bound&&j->vertex->surface))&&(!j->texture||(j->texture->bound&&j->texture->surface))&&
     j->context==c->context&&(!c->kind||j->kind==c->kind)&&(!c->open_handle||j->open_handle==c->open_handle)&&
     (!c->vertex_open_handle||j->vertex_open_handle==c->vertex_open_handle)&&
     (!c->texture_open_handle||j->texture_open_handle==c->texture_open_handle)&&(!c->count||c->count==(j->texture?3u:j->vertex?2u:1u)))c->status=STATUS_SUCCESS;
  return TRUE;
 }
+/* R18 is reserved for a failing Patch: fixed phase + semantic kind/ticket.
+ * GeoFactoryCheckpoint flushes all failing NTSTATUS records at PASSIVE.
+ * R19 is reserved for native exact-stage failure (owner implementation).
+ * No pointers, MMIO reads, success suppression, or successful-path flush. */
+static NTSTATUS patch_failure(NTSTATUS status,UINT phase,UINT kind,const struct geo_dma_ticket *t) {
+ GeoFactoryCheckpoint(18,status,phase,kind,t?t->slot:UINT32_MAX,t?t->generation:0);
+ return status;
+}
 static NTSTATUS GeoPatchImpl(HANDLE adapter,const DXGKARG_PATCH *p) {
  struct geo_dma_ticket t,private_ticket;struct geo_kmd_adapter *a=adapter;struct inspect_ticket inspect;
- const D3DDDI_PATCHLOCATIONLIST *location;UINT count,i,kind;
+ const D3DDDI_PATCHLOCATIONLIST *location;UINT count=0,i,kind=0,phase=1;NTSTATUS status;
+ RtlZeroMemory(&t,sizeof(t));
  if(p) {
   GeoFactoryCheckpoint(28,STATUS_SUCCESS,p->Flags.Value,p->DmaBufferSize,p->DmaBufferSubmissionStartOffset,p->DmaBufferSubmissionEndOffset);
   GeoFactoryCheckpoint(29,STATUS_SUCCESS,p->hContext!=NULL,p->DmaBufferPrivateDataSize,p->DmaBufferPrivateDataSubmissionStartOffset,p->DmaBufferPrivateDataSubmissionEndOffset);
@@ -307,27 +319,37 @@ static NTSTATUS GeoPatchImpl(HANDLE adapter,const DXGKARG_PATCH *p) {
     p->PatchLocationListSubmissionStart>p->PatchLocationListSize||
     p->PatchLocationListSubmissionLength>p->PatchLocationListSize-p->PatchLocationListSubmissionStart||
     !ticket_range(p->DmaBufferSize,p->DmaBufferSubmissionStartOffset,p->DmaBufferSubmissionEndOffset)||
-    !ticket_range(p->DmaBufferPrivateDataSize,p->DmaBufferPrivateDataSubmissionStartOffset,p->DmaBufferPrivateDataSubmissionEndOffset))return STATUS_NOT_SUPPORTED;
- count=p->PatchLocationListSubmissionLength;
- if((count!=1u&&count!=2u&&count!=3u)||p->AllocationListSize<count)return STATUS_INVALID_PARAMETER;
+    !ticket_range(p->DmaBufferPrivateDataSize,p->DmaBufferPrivateDataSubmissionStartOffset,p->DmaBufferPrivateDataSubmissionEndOffset))return patch_failure(STATUS_NOT_SUPPORTED,phase,kind,&t);
+ phase=2;count=p->PatchLocationListSubmissionLength;
+ if((count!=1u&&count!=2u&&count!=3u)||p->AllocationListSize<count)return patch_failure(STATUS_INVALID_PARAMETER,phase,kind,&t);
  kind=p->pPatchLocationList[p->PatchLocationListSubmissionStart].DriverId;
- if((count==1&&kind!=GEO_CLEAR_MAGIC)||(count==2&&kind!=GEO_DRAW_MAGIC&&kind!=GEO_COPY_MAGIC)||(count==3&&kind!=GEO_DRAW_MAGIC))return STATUS_INVALID_PARAMETER;
- for(i=0;i<count;i++) {
+ if((count==1&&kind!=GEO_CLEAR_MAGIC)||(count==2&&kind!=GEO_DRAW_MAGIC&&kind!=GEO_COPY_MAGIC)||(count==3&&kind!=GEO_DRAW_MAGIC))return patch_failure(STATUS_INVALID_PARAMETER,phase,kind,&t);
+ phase=3;for(i=0;i<count;i++) {
   location=&p->pPatchLocationList[p->PatchLocationListSubmissionStart+i];
   if(location->AllocationIndex!=i||location->Value||location->DriverId!=kind||location->AllocationOffset||location->PatchOffset||location->SplitOffset||
-     !p->pAllocationList[i].hDeviceSpecificAllocation||((p->pAllocationList[i].WriteOperation!=0)!=(i==0u)))return STATUS_INVALID_PARAMETER;
+     !p->pAllocationList[i].hDeviceSpecificAllocation||((p->pAllocationList[i].WriteOperation!=0)!=(i==0u)))return patch_failure(STATUS_INVALID_PARAMETER,phase,kind,&t);
  }
- if(GeoReadTicket((UCHAR *)p->pDmaBuffer+p->DmaBufferSubmissionStartOffset,&t)!=STATUS_SUCCESS||
-    GeoReadTicket((UCHAR *)p->pDmaBufferPrivateData+p->DmaBufferPrivateDataSubmissionStartOffset,&private_ticket)!=STATUS_SUCCESS)return STATUS_INVALID_PARAMETER;
+ phase=4;if(GeoReadTicket((UCHAR *)p->pDmaBuffer+p->DmaBufferSubmissionStartOffset,&t)!=STATUS_SUCCESS||
+    GeoReadTicket((UCHAR *)p->pDmaBufferPrivateData+p->DmaBufferPrivateDataSubmissionStartOffset,&private_ticket)!=STATUS_SUCCESS)return patch_failure(STATUS_INVALID_PARAMETER,phase,kind,&t);
  if(t.magic!=GEO_TICKET_MAGIC||t.reserved||t.slot>=GEO_MAX_JOBS||
-    t.magic!=private_ticket.magic||t.slot!=private_ticket.slot||t.generation!=private_ticket.generation||t.reserved!=private_ticket.reserved)return STATUS_INVALID_PARAMETER;
- {NTSTATUS prepared=prepare_pending(a,&t);if(prepared!=STATUS_SUCCESS)return prepared;}
+    t.magic!=private_ticket.magic||t.slot!=private_ticket.slot||t.generation!=private_ticket.generation||t.reserved!=private_ticket.reserved)return patch_failure(STATUS_INVALID_PARAMETER,phase,kind,&t);
  RtlZeroMemory(&inspect,sizeof(inspect));inspect.adapter=a;inspect.ticket=t;inspect.context=p->hContext;inspect.kind=kind;inspect.count=count;
  inspect.open_handle=p->pAllocationList[0].hDeviceSpecificAllocation;
  if(count>=2u)inspect.vertex_open_handle=p->pAllocationList[1].hDeviceSpecificAllocation;
  if(count==3u)inspect.texture_open_handle=p->pAllocationList[2].hDeviceSpecificAllocation;
- if(!a->synchronize(a->sync_context,inspect_prepared,&inspect))return STATUS_DEVICE_NOT_READY;
- return inspect.status;
+ /* The OS will bugcheck on any Patch error. A malformed context/list must
+  * not first arm real firmware work. Validate both endpoints and residency
+  * under the same IRQ lock before touching the native prepare API. */
+ phase=5;inspect.allow_pending=1;
+ if(!a->synchronize(a->sync_context,inspect_prepared,&inspect))return patch_failure(STATUS_DEVICE_NOT_READY,phase,kind,&t);
+ if(inspect.status!=STATUS_SUCCESS)return patch_failure(inspect.status,phase,kind,&t);
+ phase=6;status=prepare_pending(a,&t);
+ if(status!=STATUS_SUCCESS)return patch_failure(status,phase,kind,&t);
+ /* A repeated Patch of state1 returns the same owner token: prepare_pending
+  * is idempotent and must not rearm a prepared native transfer a second time. */
+ phase=7;inspect.allow_pending=0;
+ if(!a->synchronize(a->sync_context,inspect_prepared,&inspect))return patch_failure(STATUS_DEVICE_NOT_READY,phase,kind,&t);
+ return inspect.status==STATUS_SUCCESS?STATUS_SUCCESS:patch_failure(inspect.status,phase,kind,&t);
 }
 struct submit_call { struct geo_kmd_adapter *adapter;struct geo_dma_ticket ticket;uint32_t fence;HANDLE context;NTSTATUS status; };
 static BOOLEAN submit_locked(void *ctx) {
@@ -426,6 +448,6 @@ NTSTATUS APIENTRY GeoQueryCurrentFence(HANDLE handle,DXGKARG_QUERYCURRENTFENCE *
 
 NTSTATUS APIENTRY GeoPatch(HANDLE handle,const DXGKARG_PATCH *p) {
  struct geo_kmd_adapter *a=handle;NTSTATUS status;
- if(!GeoSessionEnter(a,1))return STATUS_DEVICE_NOT_READY;
+ if(!GeoSessionEnter(a,1))return patch_failure(STATUS_DEVICE_NOT_READY,0,0,NULL);
  GeoCollectPendingPayloads(a);status=GeoPatchImpl(a,p);GeoFactoryCheckpoint(22,status,p?p->AllocationListSize:0,p?p->PatchLocationListSubmissionLength:0,0,0);GeoSessionLeave(a,1);return status;
 }
