@@ -76,6 +76,7 @@ static int Observe(struct mt_musb_runtime *r,int powered)
  if(!NT_SUCCESS(r->owner.Observe(r->owner.Header.Context,&o))||!Fresh(&o,r->proof.generation,powered))return -1;
  /* A lease cannot silently move mappings underneath the MMIO owner. */
  if(o.mac.QuadPart!=r->proof.mac.QuadPart||o.phy.QuadPart!=r->proof.phy.QuadPart||
+    o.raw_mac.QuadPart!=r->proof.raw_mac.QuadPart||o.raw_phy.QuadPart!=r->proof.raw_phy.QuadPart||
     o.mac_bytes!=MT_WINDOW||o.phy_bytes!=MT_WINDOW)return -1;
  KeAcquireSpinLock(&r->lock,&irql);r->proof=o;KeReleaseSpinLock(&r->lock,irql);return 0;
 }
@@ -122,7 +123,12 @@ static int StopPhysical(struct mt_musb_runtime *r)
     (proof.valid&(MT_MUSB_STOP_PROOF|MT_MUSB_VBUS))!=(MT_MUSB_STOP_PROOF|MT_MUSB_VBUS)||proof.vbus_on)return -1;
  UNREFERENCED_PARAMETER(local);
  if(!NT_SUCCESS(r->owner.Release(r->owner.Header.Context)))return -1;
- r->lease=FALSE;r->started=FALSE;return 0;
+ r->lease=FALSE;r->started=FALSE;
+ {KIRQL irql;KeAcquireSpinLock(&r->lock,&irql);r->proof=proof;
+  RtlZeroMemory(&r->observation,sizeof(r->observation));
+  r->observation.vbus_off_verified=1;r->observation.endpoints_quiesced=1;
+  KeReleaseSpinLock(&r->lock,irql);}
+ return 0;
 }
 static void Destroy(struct mt_musb_runtime *r)
 {
@@ -235,7 +241,15 @@ static void Tick(PDEVICE_OBJECT device,PVOID context)
   cached_frame=Rd16(r,0xc);
   /* Role/OC/health loss is an immediate shutdown request, not just a flag.
    * No MMIO read is performed after a successful parent isolation/release. */
-  if(fault||!proven){fault=TRUE;connected=0;if(StopPhysical(r))proven=0;else proven=1;}
+  if(fault||!proven){
+   fault=TRUE;connected=0;
+   KeAcquireSpinLock(&r->lock,&irql);r->fault=TRUE;
+   /* Seal admission before calling the parent. A queued transfer which raced
+    * with the failing observation is completed with error, never started. */
+   if(r->job.state==MT_JOB_QUEUED)(void)mt_musb_claim(&r->job,&ticket);
+   KeReleaseSpinLock(&r->lock,irql);
+   if(StopPhysical(r))proven=0;else proven=1;
+  }
  }
  KeAcquireSpinLock(&r->lock,&irql);
  r->fault=fault;r->connected=connected;r->frame=cached_frame;

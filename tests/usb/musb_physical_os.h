@@ -14,7 +14,7 @@ static VOID TestWrite8(volatile UCHAR *p,UCHAR v){test_writes++;*p=v;}
 static VOID TestWrite16(volatile USHORT *p,USHORT v){
  test_writes++;ULONG_PTR off=(ULONG_PTR)p-(ULONG_PTR)test_mac;
  if(off==2||off==4){*p&=~v;return;}
- if(!test_stuck&&((off==0x12&&(v&0x108))||(off==0x16&&(v&0x10))))v=0;
+ if((off==0x12&&(v&0x108))||(off==0x16&&(v&0x10)))v=test_stuck?1:0;
  *p=v;
 }
 static VOID TestWrite32(volatile ULONG *p,ULONG v){test_writes++;*p=v;}

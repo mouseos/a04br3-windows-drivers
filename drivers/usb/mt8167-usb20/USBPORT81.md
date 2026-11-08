@@ -3,7 +3,7 @@
 USB1011のhelperから独立したWDM miniport `usbport_hcd.c` を追加した。
 `DriverEntry`が実USBPORTのGetHciMnを確認してRegisterUSBPortDriverを呼ぶ。
 root hub PDOとそのPnP/USBDI処理はinbox USBPORTへ委ねる。
-物理backendは未接続。標準hubの実起動や周辺機器の実機動作は未検証。
+HCD1013では物理backend consumerと非同期橋渡しを接続した。実5V・過電流・確定停止を証明する親producerは未資格で、標準hubの実起動や実機転送は未検証。
 HID経路のSYS/INFを変更せず、別SYS/INFにしている。opt-in親はUSBPORT20という別devnodeを生成し、旧HID LowerFiltersを継承しない。
 
 ## 原本と解析の区別
@@ -36,7 +36,7 @@ RT81 ABIとしてコピーしていない。特に同公開宣言はRegisterの�
 |root DeviceID|ev_42c6baaca4a6b180dede5e5d3781e31a5186abac3bf7a5bc72f916d36459fce7、USB2 flag0x10でUSB\ROOT_HUB20|Class=USBの別INF、USBPORT root生成経路|
 |非PCI|ev_6c24f0d86ddacb596fcfe0d7516a05a437c7be7abd913e962dfabb6917220a52、flag0x2000でplatform IOCTLへ分岐|platformフラグ、子PDOの明示的platform情報|
 |resource|ev_6baf29af4a64d8d6c75b7fb5421cef673585033c7122d4e8583d1f8537e16e11、0x90bytes、FDO+0x7c/PDO+0x80|対応構造体offsetをARM C_ASSERT|
-|Start|ev_a5ec2820dfb6b53bc1fc0054e6e03f8faadd25170df3f417ed7a2468cd395c25、r0=miniport/r1=resources、packet+0x38|同型callback。ソフトウェアrootのみ開始|
+|Start|ev_a5ec2820dfb6b53bc1fc0054e6e03f8faadd25170df3f417ed7a2468cd395c25、r0=miniport/r1=resources、packet+0x38|同型callback。資格Queryに失敗した場合はStart拒否、Acquire/MMIOなし|
 |Open/Query|ev_ab8c53af3cb7f74b1ea4ad7457e9a1ca546673ef046442c62ad548cefdecc6e8 / ev_9e3c834e17176733695062aa443faefc5488417096a802c7a3bc9539ee0ec940。ext,properties,endpoint/requirements、spinlock内|公開互換宣言と実引数を照合、sleepしない|
 |properties|ev_6bde946025169a1ab0f744e1c1f00a685a045b4cc4d1a80f96719e861522efa0、USBPORTがendpoint+0x128へ0x40bytesを作る|0x40とtype offset0x14をARM照合|
 |RootData|解析用EHCI ev_16109d428380cdeb440989bf99ca830bf3e3bb736c042be3716f167cf897898c。ports/characteristics/powergood/currentの16bytes|同型callback|
@@ -48,27 +48,71 @@ RT81 ABIとしてコピーしていない。特に同公開宣言はRegisterの�
 と突き合わせた。追加サービス領域0xe4以降はUSBPORTが埋め、登録後のComplete等を使う。
 version200を超える任意のtail callbackやUCX契約を推測していない。
 
-## 安全境界と物理backend
+## HCD1013の実装と安全境界
 
-HCD Startはメモリ上のport/root状態を開始するだけ。MMIO、clock、PHY、DMA、
-GPIO22、VBUSに触れない。物理backendがなければPORT_POWER/RESETは失敗し、
-port statusはoff/disconnected、transferは拒否する。root PDOの存在はUSB稼働の証明ではない。
-物理backendの契約はUSBPORT ABIと分離しており、ユーザーIOCTL/registryから
-関数ポインタや証明を注入する経路はない。
+serviceは実ハード名の `MT8167MUSBHcd`、SYS/INF/CATは `mt8167-musb-hcd.*`。
+StartはPASSIVE_LEVELを確認し、下位stackへ新しい親owner interfaceをQueryする。
+親v1を上位資格へ読み替えない。Queryの資格・実OC clear・host role・VBUS off・
+停止能力・独占権・PnP割当memory pair・世代・観測鮮度100msを検査し、すべて成立してから
+Acquire、MAC/PHY map、8DMA channel/QMU/L1 maskの観測へ進む。
+既存 `pnp_resources.h` でraw MAC=0x11100000/raw PHY=0x11110000と実translated pairを検証する。
+アドレスの同一変換を仮定せず、parent producerは実割当resourceから報告する契約。
+未知のactive DMA/QMU/IRQを初期化で上書きしない。資格がなければroot-only Start成功にはしない。
 
-POWER ONの完了には既存root_hubと同じ資格、ID host、過電流clear、VBUS確認、
-endpoint quiesceを要求する。既存親v1 HealthはID/source観測を含むが、
-物理5V・実過電流測定の完全な証明ではないため、そのまま証明へ昇格しない。
-USBPORTはOpen/Queryをspinlock内で呼ぶ。物理backendはcallback IRQLと寿命を
-守る実装が必要で、PASSIVE_LEVEL専用の親v1をそのままcallbackから呼んではならない。
-物理backendの起動/非同期owner橋渡しは未接続であり、配備可能な汎用USBとはしない。
-ControlのSubmit/Poll/Abortは既存MUSB EP0 PIOへ直接接続した。生のendpoint interruptを確認してからstageを進め、完了は元USBPORT parametersを返す。bulk/interruptもIRQ statusなしに完了させない。
-Abort/Close/StopはUSBPORTの同期void契約なので、未停止のまま戻ればOS側がbuffer/contextを解放しうる。停止不能・activeなClose/Stopは0xE2 MANUALLY_INITIATED_CRASHで停止する。未知のprivate状態を改変して転送をretainしたことにはしない。この経路は実機未検証であり、通常配備の安全性を主張しない。
+`musb_physical.c` がboard_host/EP0/PIO/controllerへ接続する実consumer。
+Query/Acquire/Observe/VBUS/StopAndProve/Release、PHY校正、SESSION、POWER、50ms以上の
+reset、MAC status、Control/FS bulk/64byte以下interruptをPASSIVE owner経由で実行する。
+IRQは有効にせず、専有controllerのraw interrupt statusをworkerがpollする。
+全端点を直列化し、hardware EP1のTX/RX FIFO各64byte、EP0用64byteを使用。
+TT/split、isochronous、512byte HS bulk、高帯域転送は拒否。最大転送16KiB、期限5秒。
 
-bulk/interruptのPIOはdirect root-portに限定し、単一hardware EP1を直列使用。
-TX/RX各64byte FIFO、PIO、NAK再試行、短いIN、STALL、停止確認とtoggle継承を持つ。
-TT/split、isochronous、high-bandwidth、512byte HS bulkは拒否し、packetを黙って縮めない。
-full-speed bulkと<=64byte interruptを扱う。DMAを開始・停止するコードは追加しない。
+USBPORT callbackは待機せず、独立nonpaged runtimeへproperties/setup/OUTデータをコピーする。
+workerはHCD拡張・endpoint・parameters・SG・URB bufferのポインタを保持しない。
+INはshadowで受け、USBPORT自身のPollEndpoint内でだけ元bufferへコピーしてCompleteする。
+16KiBのshadow、単一slot、spinlock、ticket、cookie、epoch、closing、timer/work idle eventが
+転送の資格・競合・寿命をつなぐ。Cancel/Close/Stopは外部参照を切り離し、実flush確認まで
+新規slotを許可しない。取消し後のtoggleは同cookieの確認結果でのみ回復する。
+停止不能を0xE2/fastfailで扱う旧実装は削除した。
+
+Stopはclosingを公開→timer取消し→DPC drain→worker idle join→IRQ mask/PIO flush→
+実親StopAndProve→停止/IRQ off/DMA off/実VBUS offの同世代・鮮度検査→Release→unmap。
+DISPATCH Stopは独立cleanup work itemへ渡し、その戻りを停止成功とは扱わない。
+local flush失敗時も、親の実隔離証明だけを停止の代替根拠として認める。
+親隔離も未証明ならFAULT_RETAINEDでlease/mapping/shadow/FDO参照を保持する。
+再開・新規admission・unloadを許可せず、停止成功の状態を返さない。
+role/OC/health失効は直ちにadmissionを閉じ、確定停止を要求する。
+VBUS offが実証された場合だけroot POWERを落とす。失敗時はoffを捏造しない。
+
+## 実RT81の非同期通知契約
+
+USBPORTの `invalidate_endpoint` は実binaryでsignature確認後にreturnするだけだった
+（ev_a0be19b3698397edbb689e5052b88b1bdb1b88d12fcc171d8d016fce8df4bef2、
+asm ev_571645a591734e73c277e684a7c963798095e17fe9a6fadd65f107930b0fc60f）。
+これをworkerの完了通知として推測使用しない。
+
+legacy async slot+0x10cは実Registerが0x3b901を設定し、
+`(miniport, delay_ms, payload, payload_bytes, callback)` を0x25c7cへ渡す。
+payloadは同期コピーされ、callbackは `(miniport, copied_payload)` でDISPATCH呼出し。
+取消し時にもcallbackが呼ばれるのでstarted/epochを毎回照合する。
+根拠: ev_f0321ea744103669cfc0dfe9536cc1c100946fd8a486bd817ade7e13724ed477、
+ev_e487f20b3893a2d4af234025d7b57327f9783c599c25fe3191bfcc4effdacdbf、
+ev_b6778e7a05f14c9a6b28f8a0704d7b3ddb753ec6fbaa72ed95e64b75341fb985。
+停止中のasync取消し呼出しもev_f5d84968b1ac69bc911dbf8f727a578e7b35fd6cf1b0cdc3ebaaa3e819320dd8で確認。
+
+invalidate_controller slot+0x118の理由3は実0x1fa64→0x1fa90→0x26435で
+疑似割込みDPCをqueueする。理由0はno-opであり使用しない。
+根拠: ev_b5435fd8ff6c02bf8058cd65653ea98137679da0cb9d3f458a6ae5b053da8884、
+ev_cf6e73d6af1b89b3c7631f79f51bb5849814b81dc78102accc07b425883632bf、
+ev_7305222a039459f5ad8d5e2de4a9fa9c0400fe6da41573933b98c9ad5741efc7。
+10ms async通知はこの経路でUSBPORT自身にpollを要求する。
+workerがOSの拡張寿命へ勝手に参照を伸ばす設計にはしない。
+
+PollControllerは実0x13858がFDO+0xd54 spinlock内、PollEndpointは実0x15650のevent0xeが
+FDO+0xd50 spinlock内で呼ぶ。ev_c82ebb5a6e5dc78d0b97930b31dac212a28dc644cc6b4938a364bbd67d03f96a、
+ev_29f0b21d6af389d62a5c1a6e75eb951d7cc2095a1a6aa54c2ae03b404deaee1f。
+0x13904は疑似割込みを通常の転送DPCへ渡し、0x1f934が0x15079を転送DPC処理として登録、
+0x15078がevent0xeを経由してPollEndpointへ到達する。生ポインタをPollControllerから持ち出さない。
+これらは静的解析であり、実RT81上での登録・実行成功を観測した証拠ではない。
 
 ## 親側のopt-in
 
@@ -77,17 +121,22 @@ IOCTL_ACPI_GET_DEVICE_INFORMATIONに対する合成bus自身の識別情報を�
 firmware ACPIの観測結果を装わず、silicon revisionも報告しない。
 実際の親busのGUID_BUS_INTERFACE_STANDARDを転送する。DMA/translateメソッドを
 捏造しない。WDFのQueryCapabilitiesは既存実装を使用する。
+新owner GUIDはopt-in子から親へ転送する。親側は現在、資格を一切発行せず
+Query/Acquire/VBUS/Stop/ReleaseをSTATUS_NOT_SUPPORTEDで拒否する。
+GPIO21をOCと推定せず、GPIO22/source healthやBQ24160のno-opを5V証明にしない。
+親producerの実5V/OC/独占・resource/隔離実装が未達であり、現親へ配備しても物理USBは起動しない。
+
 現main親や媒体をこのbranchの古い親で巻き戻さず、mainの新しい親sourceへこの差分を
 合流してから固定manifest付きで再ビルドする必要がある。
 
 ## 検証と未達
 
-`make test-mt8167-usb-generic-pio` がproduction PIOをASan/UBSanで実行する。
+`make test-mt8167-musb-async test-mt8167-usb-root-hub test-mt8167-usb-generic-pio` がproduction PIOをASan/UBSanで実行する。
 `tools/ci/build-mt8167-usbport-hcd-incremental.ps1` は既存WDK81 cacheで
-6TU ARM compile/link、実WDK型x64 callback試験、opt-in親TU compile、SYS/CAT署名を行う。
+10TU ARM compile/link、実WDK型x64 callback/物理backend合成試験、opt-in親TU compile、SYS/CAT署名を行う。
 親TUはcompileだけで、現親の置換・配備をしていない。
 
-標準hubへの実binding、実RT81登録成功、PnP start/stop、physical backend、
+consumerの全配線は実装済み。資格producer、標準hubへの実binding、実RT81登録成功、PnP start/stop、
 control/汎用転送の実機成功は未確認。回収manifestはこれらをfalseのまま記録する。
 
 実RT81媒体のWindows/inf/usbport.infでROOT_HUB20→ROOTHUB.Dev→usbhubサービス、ServiceBinary=usbhub.sysを確認した。usb.infのStandardHub.Devも同じセクションを参照する。root ID生成だけで標準hub起動成功とは扱わない。

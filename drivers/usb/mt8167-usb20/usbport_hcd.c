@@ -29,7 +29,8 @@ static void HarvestRoot(struct a04_hcd *h)
  struct a04_hub_observation o;ULONG connected=0,done=0,result=0;
  if(!h->runtime)return;
  if(MtMusbObserve(h->runtime,&o,&connected,&done,&result)){
-  h->fault=1;a04_hub_invalidate(&h->hub);(void)a04_port_connect(&h->port,0);return;
+  h->fault=1;a04_hub_invalidate(&h->hub);(void)a04_port_connect(&h->port,0);
+  if(o.vbus_off_verified)(void)a04_port_power(&h->port,0,0);return;
  }
  if(done){
   if(done!=h->root_action.kind||a04_hub_action_done(&h->hub,&h->root_action,!result,&o))h->fault=1;
@@ -55,7 +56,7 @@ static ULONG RhFeature(struct a04_hcd *h,USHORT port,unsigned set,unsigned featu
  struct a04_hub_action a;struct a04_hub_observation o;
  if(port!=1)return A04_MP_ERROR;
  HLOCK(h,k);HarvestRoot(h);
- if(!h->started||h->fault||!h->runtime){HUNLOCK(h,k);return A04_MP_HARDWARE;}
+ if(!h->started||(!set&&feature>=16?0:h->fault)||!h->runtime){HUNLOCK(h,k);return A04_MP_HARDWARE;}
  setup[1]=(UCHAR)(set?3:1);setup[2]=(UCHAR)feature;
  r=a04_hub_control(&h->hub,setup,0,0,&actual,&a);
  if(r==A04_HUB_PENDING){
@@ -164,8 +165,10 @@ static VOID SetState(PVOID p,PVOID endpoint,ULONG state)
  struct a04_hcd *h=CTX(p);struct a04_mp_endpoint *e=endpoint;KIRQL k;
  if(state!=A04_EP_ACTIVE&&state!=A04_EP_PAUSED&&state!=A04_EP_REMOVE)return;
  HLOCK(h,k);
- /* PAUSED leaves the raw transfer owned by USBPORT for its following Abort;
-  * it prevents Poll completion without initiating an unrequested completion. */
+ /* Pause requests physical cancellation without retaining external pointers
+  * in the worker. USBPORT keeps its transfer until the following Abort. */
+ if(h->active_ep==e&&state!=A04_EP_ACTIVE){MtMusbCancel(h->runtime,e->cookie);e->toggle_unknown=1;}
+ if(h->active_ep==e&&state==A04_EP_ACTIVE&&e->state!=A04_EP_ACTIVE)h->fault=1;
  if(state==A04_EP_REMOVE)Detach(h,e);e->state=state;HUNLOCK(h,k);
 }
 static ULONG EpStatus(PVOID p,PVOID endpoint)

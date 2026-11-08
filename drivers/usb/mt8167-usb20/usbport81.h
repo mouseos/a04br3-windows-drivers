@@ -90,5 +90,7 @@ C_ASSERT(FIELD_OFFSET(struct a04_mp_packet,start)==0x38);
 C_ASSERT(FIELD_OFFSET(struct a04_mp_packet,root_data)==0x90);
 C_ASSERT(FIELD_OFFSET(struct a04_mp_packet,complete)==0xfc);
 C_ASSERT(FIELD_OFFSET(struct a04_mp_packet,invalidate_root)==0xf4);
+C_ASSERT(FIELD_OFFSET(struct a04_mp_packet,async_callback)==0x10c);
+C_ASSERT(FIELD_OFFSET(struct a04_mp_packet,invalidate_controller)==0x118);
 #endif
 #endif
