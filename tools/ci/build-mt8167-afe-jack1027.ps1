@@ -12,7 +12,7 @@ if(!$out.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase) -or (Test-P
 $commit=(& git -C $root rev-parse HEAD).Trim()
 if($LASTEXITCODE -or @(& git -C $root status --porcelain).Count){throw 'Clean source required'}
 $baseline='2d6231727e8ed72b6d7dca4148debc101ac5aeef'
-$allowed=@('drivers/audio/mt8167-afe/jack_property.h','drivers/audio/mt8167-afe/jack_sense.h','drivers/audio/mt8167-afe/topology_miniport.cpp','drivers/audio/mt8167-afe/topology_miniport.h','drivers/audio/mt8167-afe/wavert_registration.cpp','drivers/audio/mt8167-afe/mt8167-afe-jack1027.inf','drivers/audio/mt8167-afe/JACK-SENSE.md')
+$allowed=@('drivers/audio/mt8167-afe/adapter.cpp','drivers/audio/mt8167-afe/jack_property.h','drivers/audio/mt8167-afe/jack_sense.h','drivers/audio/mt8167-afe/topology_miniport.cpp','drivers/audio/mt8167-afe/topology_miniport.h','drivers/audio/mt8167-afe/wavert_registration.cpp','drivers/audio/mt8167-afe/mt8167-afe-jack1027.inf','drivers/audio/mt8167-afe/JACK-SENSE.md')
 $changed=@(& git -C $root diff --name-only $baseline HEAD -- drivers/audio)
 if($LASTEXITCODE -or @($changed|Where-Object{$_ -notin $allowed}).Count){throw 'Unrelated audio1026 changes forbidden'}
 New-Item -ItemType Directory "$out\obj","$out\package\audio","$out\package\client","$out\tmp"|Out-Null
@@ -29,21 +29,21 @@ $flags=@('-DA04_MT8167_WAVERT_EXPERIMENTAL=1','-DA04_MT8167_WAVERT_DIAGNOSTIC=1'
  '-DA04_AUDIO_ENGINE_PCM=1','-DA04_AUDIO_VOICE_PCM_DIAGNOSTIC=1','-DA04_AUDIO_WAVE_DMA_RETAINED=1',
  '-DA04_AUDIO_START_PERSIST=1','-DA04_AUDIO_DIAGNOSTIC_TRACE=1','-DA04_AUDIO_CAPTURE=1')
 # First build: only the small audio closure; later header fixes rebuild topology
-# only, using the same dedicated source-pinned object directory.
+# and the version-record adapter TU, using the same source-pinned object directory.
 $reuse=$null
 if($ReuseAudioDirectory){
  $reuse=[IO.Path]::GetFullPath($ReuseAudioDirectory)
  if(!$reuse.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Checkout-local audio cache required'}
  $previous=Get-Content "$reuse\package\signed-manifest.json" -Raw|ConvertFrom-Json
  if($previous.source_commit -ne 'b9cde04a7c48df3b478d9a7e6cbc0842c3d0c3e5' -or !$previous.signed){throw 'Fixed initial jack1027 cache required'}
- $allowedReuse=@('drivers/audio/mt8167-afe/jack_sense.h')
+ $allowedReuse=@('drivers/audio/mt8167-afe/jack_sense.h','drivers/audio/mt8167-afe/adapter.cpp')
  $drift=@(& git -C $root diff --name-only $previous.source_commit HEAD -- drivers/audio drivers/bus/mt8167-shared/clock_owner.c)
  if($LASTEXITCODE -or @($drift|Where-Object{$_ -notin $allowedReuse}).Count){throw 'Unrelated audio cache dependency drift'}
  foreach($f in $previous.files){if((Get-FileHash (Join-Path "$reuse\package" $f.path) -Algorithm SHA256).Hash -ne $f.sha256){throw 'Initial signed cache package changed'}}
 }
 $script:reusedObjects=@();$script:compiledObjects=@()
 function Build-JackObject($name,$source,$obj,$arguments){
- if($reuse -and $name -ne 'topology_miniport'){
+ if($reuse -and $name -notin @('topology_miniport','adapter')){
   $prior="$reuse\obj\$name.obj";Copy-Item $prior $obj
   $script:reusedObjects+=@{name=$name;sha256=(Get-FileHash $obj -Algorithm SHA256).Hash;source_commit=$previous.source_commit}
  }else{
