@@ -339,6 +339,12 @@ static int ParentRegWrite(void *context,enum a04_shared_bank bank,unsigned offse
     if(!base)return -1;
     WRITE_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)base+offset),value);return 0;
 }
+#ifndef A04_SHARED_ACCDET_READ
+#define A04_SHARED_ACCDET_READ 0
+#endif
+#if A04_SHARED_ACCDET_READ
+#include "../../input/mt8167-accdet/parent.inc"
+#endif
 static int ParentRegLock(void *context) { return ParentLock(context); }
 static void ParentRegUnlock(void *context) { ParentUnlock(context); }
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
@@ -1823,6 +1829,10 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
      * translation verification; it does not describe the separate EINT5. */
     status=ParentAddProbeChild(dev,L"A04BR3\\MT6630SDIO",L"0",0x11170000u);
 #endif
+#endif
+#if A04_SHARED_ACCDET_READ
+    if(!NT_SUCCESS(status))return status;
+    status=ParentAccdetPublish(dev);
 #endif
     return status;
 }
