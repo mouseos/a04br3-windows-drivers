@@ -34,9 +34,9 @@ static NTSTATUS HpPrepareStream(void*p,KSRTAUDIO_HWLATENCY *latency)
  Mt8167PnpBackend*o=(Mt8167PnpBackend*)p;ULONG flags=0;NTSTATUS s;
  if(!latency)return STATUS_INVALID_PARAMETER;OwnerLock(o);
  s=o->online&&!o->enginePoison?o->hpParent.Readiness(o->hpParent.Header.Context,&flags):STATUS_DEVICE_NOT_READY;
- /* Standard HWLATENCY is explicitly rejected by the adapter gate; RT8.1
-  * AudioKSE requires it for WASAPI initialization (run143), not optional.
-  * Unknown sentinels are never reported as measured zero latency. Calibration
+ /* HP has no nominal timing model yet; NewStream rejects these private
+  * unknown sentinels instead of exporting them. The speaker-only nominal
+  * factory cannot be used for this backend. Calibration
   * runs later at checkout, before the private ring is returned to PortCls. */
  if(NT_SUCCESS(s)&&!(flags&A04_HP_READY_SENSE))s=STATUS_DEVICE_NOT_READY;
  if(NT_SUCCESS(s)){latency->FifoSize=MAXULONG;latency->ChipsetDelay=MAXULONG;latency->CodecDelay=MAXULONG;}

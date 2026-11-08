@@ -1,3 +1,7 @@
+## speaker1034での訂正
+
+後述の「校正実測producerなしでは標準応答不可」は過剰な独自要件だった。MicrosoftはCodecDelayをbest estimateとしている。実vendor `.fifo_size=0`とASoC delay callbackなしのnominal報告をspeaker専用へ移植した。SPEAKER-NOMINAL1034.md参照。過去の調査を精度資格の要件として基本PCMへ再適用しない。HP/captureの未知値は別に保持。
+
 # run143：標準WaveRT初期化を阻むHWLATENCY契約
 
 実機run143/fresh144でAFE1033はStarted/Problem0、filter-open0、KSJACK3sample ERROR0。speaker-silenceのendpoint/Activate/GetMixFormat/GetDevicePeriodは成功、Initializeは80070032（step4）、PCM_EXECUTED0、submitted0、CUR/IRQ進行0。音出し成功ではない。観測されたInitialize HRESULTだけではpropertyを識別しない。

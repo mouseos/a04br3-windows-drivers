@@ -3,10 +3,12 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+typedef void *PDEVICE_OBJECT;
 typedef void VOID; typedef uint32_t ULONG; typedef int32_t LONG; typedef uint8_t BOOLEAN; typedef void *PVOID; typedef int32_t NTSTATUS;
 #define PAGE_SIZE 4096u
 #define FALSE 0
 #define TRUE 1
+#define MAXULONG 0xffffffffu
 #define STATUS_SUCCESS 0
 #define STATUS_INVALID_PARAMETER (-1)
 #define STATUS_IO_TIMEOUT (-7)
@@ -88,6 +90,7 @@ struct TestPin { ULONG a; const void *b; ULONG c; const void*d; ULONG e; PKSDATA
 struct PCPIN_DESCRIPTOR { ULONG a,b,c; const void *automation; TestPin pin; };
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
 typedef KSDATAFORMAT KSDATARANGE;
+extern const GUID KSNODETYPE_ADC,KSNODETYPE_MICROPHONE;
 extern const GUID KSDATAFORMAT_SUBTYPE_ANALOG,KSDATAFORMAT_SPECIFIER_NONE,KSNODETYPE_DAC;
 #define WAVE_FORMAT_EXTENSIBLE 0xfffe
 struct WAVEFORMATEXTENSIBLE {WAVEFORMATEX Format;union {unsigned short wValidBitsPerSample;} Samples;ULONG dwChannelMask;GUID SubFormat;};
@@ -99,7 +102,8 @@ struct PCCONNECTION_DESCRIPTOR { ULONG a,b,c,d; };
 struct PCFILTER_DESCRIPTOR {ULONG version;void *automation;ULONG pinSize,pinCount;PCPIN_DESCRIPTOR *pins;ULONG nodeSize,nodeCount;PCNODE_DESCRIPTOR *nodes;ULONG connectionCount;PCCONNECTION_DESCRIPTOR *connections;ULONG categories;void *category;};
 typedef PCFILTER_DESCRIPTOR *PPCFILTER_DESCRIPTOR;
 typedef struct {uint64_t PlayOffset,WriteOffset;} KSAUDIO_POSITION,*PKSAUDIO_POSITION;
-typedef struct {ULONG a,b,c;} KSRTAUDIO_HWLATENCY,KSRTAUDIO_HWREGISTER;
+typedef struct {ULONG FifoSize,ChipsetDelay,CodecDelay;} KSRTAUDIO_HWLATENCY;
+typedef struct {ULONG a,b,c;} KSRTAUDIO_HWREGISTER;
 typedef enum {KSSTATE_STOP,KSSTATE_ACQUIRE,KSSTATE_PAUSE,KSSTATE_RUN} KSSTATE;
 typedef int MEMORY_CACHING_TYPE;
 typedef void *PUNKNOWN,*PRESOURCELIST,*PPORTWAVERT,*PDEVICE_DESCRIPTION;

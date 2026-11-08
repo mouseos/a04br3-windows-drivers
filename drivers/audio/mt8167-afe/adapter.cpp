@@ -7,7 +7,6 @@
 #include "pnp_backend.h"
 #if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
 #include "capture_owner.h"
-extern "C" NTSTATUS Mt8167LatencyPropertyGate(PIRP,BOOLEAN *);
 #endif
 struct Mt8167DeviceExtension {
     ULONG_PTR portclsReserved[PORT_CLASS_DEVICE_EXTENSION_SIZE / sizeof(ULONG_PTR)]; Mt8167PnpBackend *owner;
@@ -21,10 +20,8 @@ struct Mt8167DeviceExtension {
 #if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
 static NTSTATUS Mt8167ControlDispatch(PDEVICE_OBJECT device,PIRP irp) {
     PIO_STACK_LOCATION stack=IoGetCurrentIrpStackLocation(irp);
-#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
-    {BOOLEAN handled=FALSE;NTSTATUS gated=Mt8167LatencyPropertyGate(irp,&handled);
-     if(handled){irp->IoStatus.Status=gated;irp->IoStatus.Information=0;IoCompleteRequest(irp,IO_NO_INCREMENT);return gated;}}
-#endif
+    /* Standard KS properties stay PortCls-owned. Nominal latency is selected
+     * per miniport; no adapter-wide denial of every HWLATENCY request. */
 #if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
     if(stack->Parameters.DeviceIoControl.IoControlCode==A04_CAPTURE_READ_STATUS){
      Mt8167DeviceExtension*ext=static_cast<Mt8167DeviceExtension*>(device->DeviceExtension);
@@ -135,7 +132,7 @@ static NTSTATUS StartDeviceBody(PDEVICE_OBJECT device,PIRP irp,PRESOURCELIST res
 #if A04_AUDIO_START_PERSIST
     record->stage=A04_START_MINIPORT;
 #endif
-    status=Mt8167NewMiniportWithBackend(&miniport,Mt8167PnpBackendInterface(owner));
+    status=Mt8167NewSpeakerMiniportWithBackend(&miniport,Mt8167PnpBackendInterface(owner));
     if (NT_SUCCESS(status)) {
 #if A04_AUDIO_START_PERSIST
         record->stage=A04_START_REGISTER;
@@ -183,7 +180,7 @@ static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device,PIRP irp,PRESOURCELIST r
  record.schema=1;record.bytes=sizeof(record);record.inf_revision=
 #if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
 #if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
- 1033;
+ 1034;
 #elif defined(A04_AUDIO_HP_COMPONENT) && A04_AUDIO_HP_COMPONENT
  1028;
 #elif defined(A04_AUDIO_ACCDET_JACK) && A04_AUDIO_ACCDET_JACK

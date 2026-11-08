@@ -1,6 +1,9 @@
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
 #include "wavert_miniport.h"
 #include "topology_miniport.h"
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+const GUID KSNODETYPE_ADC={25},KSNODETYPE_MICROPHONE={26};
+#endif
 const GUID KSNODETYPE_SPEAKER={23},IID_IMiniportTopology={24};
 const GUID KSDATAFORMAT_SUBTYPE_ANALOG={20},KSDATAFORMAT_SPECIFIER_NONE={21},KSNODETYPE_DAC={22};
 #endif
@@ -65,6 +68,9 @@ static NTSTATUS state(void *c,PPORTWAVERTSTREAM,KSSTATE s) {
  b->state=s;return STATUS_SUCCESS;
 }
 #endif
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+static NTSTATUS unknownHp(void*,KSRTAUDIO_HWLATENCY *p){p->FifoSize=p->ChipsetDelay=p->CodecDelay=MAXULONG;return STATUS_SUCCESS;}
+#endif
 int main(){
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
  PMINIPORTTOPOLOGY topo=nullptr;PPCFILTER_DESCRIPTOR topology=nullptr;
@@ -97,6 +103,28 @@ int main(){
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
  backend.bindWaveBuffer=bindwave;backend.unbindWaveBuffer=unbindwave;
 #endif
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+ backend.capture=TRUE;backend.captureLatency.FifoSize=MAXULONG;
+ assert(Mt8167NewSpeakerMiniportWithBackend(&m,&backend)==STATUS_INVALID_PARAMETER&&!m);
+ assert(!Mt8167NewMiniportWithBackend(&m,&backend));
+ assert(m->NewStream(&st,&p,0,TRUE,&fmt.DataFormat)==STATUS_NOT_SUPPORTED&&!st);
+ m->Release();backend.capture=FALSE;backend.captureLatency.FifoSize=0;
+#endif
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+ backend.prepareRenderStream=unknownHp;
+ assert(Mt8167NewSpeakerMiniportWithBackend(&m,&backend)==STATUS_INVALID_PARAMETER&&!m);
+ assert(!Mt8167NewMiniportWithBackend(&m,&backend));
+ assert(m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat)==STATUS_NOT_SUPPORTED&&!st);
+ m->Release();backend.prepareRenderStream=nullptr;
+#endif
+ /* Real speaker factory selects vendor nominal model per instance; generic
+  * factory and HP/capture must not inherit a device-wide latency exemption. */
+ assert(Mt8167NewSpeakerMiniportWithBackend(&m,nullptr)==STATUS_INVALID_PARAMETER);
+ assert(!Mt8167NewSpeakerMiniportWithBackend(&m,&backend));
+ assert(!m->NewStream(&st,&p,0,FALSE,&fmt.DataFormat));
+ KSRTAUDIO_HWLATENCY nominal;memset(&nominal,0xff,sizeof(nominal));
+ st->GetHWLatency(&nominal);assert(nominal.FifoSize==0&&nominal.ChipsetDelay==0&&nominal.CodecDelay==0);
+ st->Release();m->Release();assert(!b.refs);
  assert(!Mt8167NewMiniportWithBackend(&m,&backend) && b.refs==1);assert(!m->GetDeviceDescription(&b));
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
  struct ExtFormat { KSDATAFORMAT data;WAVEFORMATEXTENSIBLE wave; } ext{};

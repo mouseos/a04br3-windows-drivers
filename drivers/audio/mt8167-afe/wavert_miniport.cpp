@@ -5,6 +5,7 @@
 #if defined(A04_AUDIO_SILENT_DMA_DIAGNOSTIC) && A04_AUDIO_SILENT_DMA_DIAGNOSTIC
 extern "C" int Mt8167SilentDmaMiniportEnabled(void) { return 1; }
 #endif
+#include "speaker_nominal_latency.h"
 #define AUDIO_TAG '7auM'
 void *operator new(size_t, void *p) { return p; }
 static bool ValidFormat(PKSDATAFORMAT f)
@@ -69,6 +70,7 @@ static PCFILTER_DESCRIPTOR CaptureFilter={0,NULL,sizeof(PCPIN_DESCRIPTOR),2,Capt
     sizeof(PCNODE_DESCRIPTOR),1,CaptureNodes,2,CaptureConnections,0,NULL};
 #endif
 class Stream : public IMiniportWaveRTStream {
+    bool speakerNominal;
     volatile LONG refs;
     PPORTWAVERTSTREAM port;
     Mt8167WaveBuffer buffer;
@@ -83,7 +85,7 @@ class Stream : public IMiniportWaveRTStream {
     bool drained;
 #endif
 public:
-    explicit Stream(PPORTWAVERTSTREAM p, const Mt8167StreamBackend *b): refs(1),port(p),buffer{},backend{},useBackend(b!=NULL),backendMdl(NULL),backendBytes(0),started(false),everStarted(false),stopUncertain(false)
+    explicit Stream(PPORTWAVERTSTREAM p, const Mt8167StreamBackend *b,bool nominal): speakerNominal(nominal),refs(1),port(p),buffer{},backend{},useBackend(b!=NULL),backendMdl(NULL),backendBytes(0),started(false),everStarted(false),stopUncertain(false)
 #if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED && (!defined(A04_AUDIO_ENGINE_PCM) || !A04_AUDIO_ENGINE_PCM)
     ,drained(false)
 #endif
@@ -265,6 +267,7 @@ public:
     /* No measured codec/fabric latency is available. The inherited zero
      * values are placeholders, not a calibrated latency contract. */
     STDMETHODIMP_(VOID) GetHWLatency(KSRTAUDIO_HWLATENCY *p) override { if(p){
+        if(speakerNominal){Mt8167SpeakerNominalHwLatency(p);return;}
 #if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
         if(useBackend&&backend.renderLatencyValid){*p=backend.renderLatency;return;}
 #endif
@@ -276,11 +279,12 @@ public:
     STDMETHODIMP_(NTSTATUS) GetClockRegister(KSRTAUDIO_HWREGISTER *) override { return STATUS_NOT_SUPPORTED; }
 };
 class Miniport : public IMiniportWaveRT {
+    bool speakerNominal;
     volatile LONG refs;
     Mt8167StreamBackend backend;
     bool useBackend;
 public:
-    explicit Miniport(const Mt8167StreamBackend *b):refs(1),backend{},useBackend(b!=NULL) { if(b) { backend=*b;backend.reference(backend.context); } }
+    explicit Miniport(const Mt8167StreamBackend *b,bool nominal):speakerNominal(nominal),refs(1),backend{},useBackend(b!=NULL) { if(b) { backend=*b;backend.reference(backend.context); } }
     ~Miniport() { if(useBackend) backend.dereference(backend.context); }
     STDMETHODIMP_(NTSTATUS) QueryInterface(REFIID id, PVOID *out) override {
         if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;
@@ -344,20 +348,27 @@ public:
 #else
         if(capture)return STATUS_NO_MATCH;
 #endif
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+        /* Unknown latency is not a measured zero. A non-speaker stream must
+         * supply its own nominal data; do not globally intercept KS queries. */
+        if(useBackend&&backend.capture&&
+           (backend.captureLatency.FifoSize==MAXULONG||backend.captureLatency.ChipsetDelay==MAXULONG||backend.captureLatency.CodecDelay==MAXULONG))return STATUS_NOT_SUPPORTED;
+#endif
 #if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
         Mt8167StreamBackend current=backend;
         if(useBackend&&current.prepareRenderStream){
             KSRTAUDIO_HWLATENCY latency;RtlZeroMemory(&latency,sizeof(latency));
             NTSTATUS status=current.prepareRenderStream(current.context,&latency);
             if(status!=STATUS_SUCCESS)return NT_SUCCESS(status)?STATUS_DEVICE_NOT_READY:status;
+            if(latency.FifoSize==MAXULONG||latency.ChipsetDelay==MAXULONG||latency.CodecDelay==MAXULONG)return STATUS_NOT_SUPPORTED;
             current.renderLatency=latency;current.renderLatencyValid=TRUE;
         }
 #endif
         void *mem=ExAllocatePoolWithTag(NonPagedPool,sizeof(Stream),AUDIO_TAG);if(!mem)return STATUS_INSUFFICIENT_RESOURCES;
 #if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
-        *out=new(mem) Stream(port,useBackend?&current:NULL);
+        *out=new(mem) Stream(port,useBackend?&current:NULL,speakerNominal);
 #else
-        *out=new(mem) Stream(port,useBackend?&backend:NULL);
+        *out=new(mem) Stream(port,useBackend?&backend:NULL,speakerNominal);
 #endif
         return STATUS_SUCCESS;
     }
@@ -366,7 +377,7 @@ public:
         return useBackend ? backend.getDeviceDescription(backend.context,d) : STATUS_DEVICE_NOT_READY;
     }
 };
-NTSTATUS Mt8167NewMiniportWithBackend(PMINIPORTWAVERT *out, const Mt8167StreamBackend *b) {
+static NTSTATUS NewMiniport(PMINIPORTWAVERT *out, const Mt8167StreamBackend *b,bool nominal) {
     if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;
     if(b && (!b->reference || !b->dereference || !b->allocate || !b->freeBuffer || !b->start || !b->stop || !b->position || !b->getDeviceDescription)) return STATUS_INVALID_PARAMETER;
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
@@ -380,7 +391,18 @@ NTSTATUS Mt8167NewMiniportWithBackend(PMINIPORTWAVERT *out, const Mt8167StreamBa
 #endif
 #endif
     void *mem=ExAllocatePoolWithTag(NonPagedPool,sizeof(Miniport),AUDIO_TAG);if(!mem)return STATUS_INSUFFICIENT_RESOURCES;
-    *out=new(mem) Miniport(b);return STATUS_SUCCESS;
+    *out=new(mem) Miniport(b,nominal);return STATUS_SUCCESS;
 }
-NTSTATUS Mt8167NewMiniport(PMINIPORTWAVERT *out) { return Mt8167NewMiniportWithBackend(out,NULL); }
+NTSTATUS Mt8167NewMiniportWithBackend(PMINIPORTWAVERT *out,const Mt8167StreamBackend *b) { return NewMiniport(out,b,false); }
+NTSTATUS Mt8167NewSpeakerMiniportWithBackend(PMINIPORTWAVERT *out,const Mt8167StreamBackend *b) {
+    if(!out)return STATUS_INVALID_PARAMETER;*out=NULL;if(!b)return STATUS_INVALID_PARAMETER;
+#if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
+    if(b->capture)return STATUS_INVALID_PARAMETER;
+#endif
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+    if(b->prepareRenderStream)return STATUS_INVALID_PARAMETER;
+#endif
+    return NewMiniport(out,b,true);
+}
+NTSTATUS Mt8167NewMiniport(PMINIPORTWAVERT *out) { return NewMiniport(out,NULL,false); }
 #endif

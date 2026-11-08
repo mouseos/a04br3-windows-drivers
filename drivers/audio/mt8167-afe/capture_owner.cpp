@@ -116,9 +116,9 @@ NTSTATUS Mt8167CaptureCreate(const Mt8167CaptureResources *r,Mt8167CaptureOwner 
  if(!o)return STATUS_INSUFFICIENT_RESOURCES;RtlZeroMemory(o,sizeof(*o));o->r=*r;o->refs=1;KeInitializeMutex(&o->lock,0);ExInitializeRundownProtection(&o->positions);r->reference(r->context);
  NTSTATUS s=r->queryLatency(r->context,&o->api.captureLatency);o->latencyStatus=s;
  if(s==STATUS_NOT_SUPPORTED){
-  /* Explicitly unknown: adapter rejects standard HWLATENCY requests. This
-   * sentinel is not exported as valid delay. Direct KS DMA is separate;
-   * RT8.1 AudioKSE WASAPI initialization requires the rejected property. */
+  /* Explicitly unknown private data: NewStream rejects this capture route
+   * until it has its own nominal timing model; the speaker-only vendor model
+   * is not applied to ADC/UL. Never export MAXULONG as valid delay. */
   o->api.captureLatency.FifoSize=MAXULONG;o->api.captureLatency.ChipsetDelay=MAXULONG;
   o->api.captureLatency.CodecDelay=MAXULONG;
  }else if(!NT_SUCCESS(s)){r->dereference(r->context);ExFreePoolWithTag(o,CAP_TAG);return s;}
