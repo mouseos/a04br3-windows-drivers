@@ -18,6 +18,10 @@ $cl="$VcToolsRoot\bin\Hostx64\arm\cl.exe";$link="$VcToolsRoot\bin\Hostx64\x64\li
 $names=@('mt8167-display-rotation-probe','mt8167-display-rotation-session','mt8167-display-rotation-user')
 $libs=@('kernel32.lib','user32.lib','advapi32.lib','wtsapi32.lib','ntdll.lib')|ForEach-Object{Join-Path $LibraryRoot $_}
 New-Item -ItemType Directory $out,"$out\package","$out\tmp"|Out-Null
+$importLib="$out\rt81-seh-import.lib"
+& "$VcToolsRoot\bin\Hostx64\x64\lib.exe" /nologo /machine:arm "/def:$root\tools\display\rt81-seh.def" "/out:$importLib"
+if($LASTEXITCODE){throw 'Real RT81 SEH export import library failed'}
+$libs+=@($importLib)
 $oldTemp=$env:TEMP;$oldTmp=$env:TMP
 try{
  $env:TEMP="$out\tmp";$env:TMP=$env:TEMP

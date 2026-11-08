@@ -1,0 +1,4 @@
+; Standard import thunk for the real ARM RT8.1 ntdll export, not an implementation.
+LIBRARY ntdll.dll
+EXPORTS
+    __C_specific_handler
