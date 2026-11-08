@@ -51,6 +51,7 @@ def validate(root,path):
  def pin(e):
   p=rooted(root,e['path']);require(sha(p)==e['sha256'],'Pinned input mismatch');return p,read(p)
  f,fm=pin(m['fresh']);require(sha(f)==FRESH and fm['recovery_boot_id']==m['fresh']['recovery_boot_id']==BOOT and fm['status']=='captured-unmounted' and fm['unmounted'] and fm['read_only'] and fm['errors']==[],'Only current fresh146 eligible')
+ require(m.get('retained_wifi_actual',{}).get('pending') is not True,'Actual installed combo1023 SYS witness is required; signed package is not an actual-state witness')
  files={x['source_path']:x for x in fm['files']};require(len(files)==39,'Exact fresh14638 files required')
  for x in files.values():p=rooted(root,f.parent/x['backup_path']);require(sha(p)==x['sha256'] and p.stat().st_size==x['bytes'],'Original fresh146 changed')
  _,raw=pin(m['native_two']);require(raw['source_manifest_sha256']==FRESH and raw['errors']==[] and raw['originals_unchanged'] and all(raw[k]==0 for k in ('load_rc','unload_rc','privilege_restore_error')),'Native cleanup/source failure')
