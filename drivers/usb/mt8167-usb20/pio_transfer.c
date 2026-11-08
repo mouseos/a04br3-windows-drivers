@@ -20,26 +20,37 @@ int a04_pio_configure(const MT8167_USB20_IO *io,struct a04_pio_transfer *t,
 {
  unsigned type;
  if(!valid(io)||!t||!e||!e->address||e->address>127||!e->endpoint||e->endpoint>15||
-  !e->packet||e->packet>64||e->direction>1||e->toggle>1||
+  !e->packet||e->packet>512||e->direction>1||e->toggle>1||
   (e->speed!=0x40&&e->speed!=0x80&&e->speed!=0xc0)||
   (e->type!=2&&e->type!=3)||(e->speed==0xc0&&(e->type!=3||e->packet>8))||
   (e->type==3&&(!e->period||e->period>255))||(bytes&&!buffer))return -1;
- /* Low/high-speed nonconforming bulk sizes are rejected rather than silently
-  * shrinking the device's endpoint packet size. 512-byte HS bulk is not yet
-  * provisioned by this deliberately bounded 192-byte FIFO profile. */
- if(e->type==2&&(e->speed!=0x80||(e->packet!=8&&e->packet!=16&&e->packet!=32&&e->packet!=64)))return -1;
+ /* Direct root-port bulk: FS legal maxpacket values or HS exactly 512.
+  * No TT/split, ISO, high-bandwidth interrupt or DMA is introduced. */
+ if(e->type==3&&e->packet>64)return -1;
+ if(e->type==2&&!((e->speed==0x40&&e->packet==512)||
+   (e->speed==0x80&&(e->packet==8||e->packet==16||e->packet==32||e->packet==64))))return -1;
+ /* CT3 fifo_setup_for_host uses log2(bytes)-3 and offset>>3.
+  * EP0 [0,64), EP1 TX [64,576), RX [576,1088), single buffered.
+  * Both banks stay disjoint across HS/FS and TX/RX switches. The sole
+  * PASSIVE owner has flushed the previous job before this reprogramming. */
+ io->write8(io->context,INDEX,1);
+ if((io->read16(io->context,TXCSR)&3)||(io->read16(io->context,RXCSR)&0x21))return -1;
+ io->write8(io->context,0x62,6);io->write8(io->context,0x63,6);
+ io->write16(io->context,0x64,8);io->write16(io->context,0x66,72);
+ /* Never issue a packet when bank writes did not latch. Caller must use
+  * its ordinary flush/StopAndProve path, not report a successful transfer. */
+ if(io->read8(io->context,0x62)!=6||io->read8(io->context,0x63)!=6||
+   io->read16(io->context,0x64)!=8||io->read16(io->context,0x66)!=72)return -1;
  t->ep=*e;t->buffer=buffer;t->bytes=bytes;t->actual=0;t->pending=0;t->zlp=bytes==0;t->active=1;
  io->write8(io->context,INDEX,1);type=e->speed|(e->type<<4)|e->endpoint;
  if(e->direction){
   io->write8(io->context,0x488,(unsigned char)e->address);io->write16(io->context,0x48a,0);
-  io->write8(io->context,0x62,3);io->write16(io->context,0x64,8);
   io->write16(io->context,0x10,(unsigned short)e->packet);io->write8(io->context,0x1a,(unsigned char)type);
   io->write8(io->context,0x1b,(unsigned char)(e->type==3?e->period:0));
   io->write16(io->context,TXCSR,(unsigned short)(0x2208|(e->toggle?0x100:0)));
   io->write16(io->context,TXCSR,(unsigned short)(0x2200|(e->toggle?0x100:0)));
  }else{
   io->write8(io->context,0x48c,(unsigned char)e->address);io->write16(io->context,0x48e,0);
-  io->write8(io->context,0x63,3);io->write16(io->context,0x66,16);
   io->write16(io->context,0x14,(unsigned short)e->packet);io->write8(io->context,0x1c,(unsigned char)type);
   io->write8(io->context,0x1d,(unsigned char)(e->type==3?e->period:0));
   io->write16(io->context,RXCSR,(unsigned short)(0x410|(e->toggle?0x200:0)));

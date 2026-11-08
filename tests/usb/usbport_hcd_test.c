@@ -39,7 +39,18 @@ int main(void)
  connected=1;Packet.port_status(&h,1,&status);CHECK(h.port.status&A04_PORT_CONNECTION);
  CHECK(!(h.port.status&A04_PORT_ENABLE));CHECK(!Packet.port_reset(&h,1));
  observation.reset_asserted_ms=50;Packet.port_status(&h,1,&status);CHECK(h.port.status&A04_PORT_ENABLE);
- e.address=1;e.endpoint=0x81;e.type=3;e.packet=8;e.speed=1;e.period=1;
+ /* HS bulk is admitted only at 512; unsupported profiles reject before
+  * constructing an endpoint. USBPORT callback contracts are unchanged. */
+ e.address=1;e.endpoint=1;e.type=2;e.direction=1;e.speed=2;e.packet=512;
+ CHECK(!Packet.open(&h,&e,&ep));Packet.close(&h,&ep,FALSE);
+ e.packet=64;CHECK(Packet.open(&h,&e,&ep)==A04_MP_UNSUPPORTED);
+ e.packet=513;CHECK(Packet.open(&h,&e,&ep)==A04_MP_UNSUPPORTED);
+ e.packet=512;e.speed=1;CHECK(Packet.open(&h,&e,&ep)==A04_MP_UNSUPPORTED);
+ e.packet=12;CHECK(Packet.open(&h,&e,&ep)==A04_MP_UNSUPPORTED);
+ e.packet=512;e.speed=2;e.type=3;CHECK(Packet.open(&h,&e,&ep)==A04_MP_UNSUPPORTED);
+ e.type=2;e.hub=1;CHECK(Packet.open(&h,&e,&ep)==A04_MP_UNSUPPORTED);e.hub=0;
+ e.transactions=2;CHECK(Packet.open(&h,&e,&ep)==A04_MP_UNSUPPORTED);e.transactions=0;
+ e.address=1;e.endpoint=0x81;e.type=3;e.packet=8;e.speed=1;e.period=1;e.direction=0;
  CHECK(!Packet.open(&h,&e,&ep));Packet.set_state(&h,&ep,A04_EP_ACTIVE);p.bytes=8;sg.mapped_va=data;
  CHECK(!Packet.submit(&h,&ep,&p,&t,&sg));done=1;Packet.poll_endpoint(&h,&ep);
  CHECK(completed==1&&completed_parameters==&p&&t.actual==3&&ep.toggle==1);

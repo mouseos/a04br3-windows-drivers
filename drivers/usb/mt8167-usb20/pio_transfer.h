@@ -2,8 +2,9 @@
 #ifndef A04_MUSB_PIO_TRANSFER_H
 #define A04_MUSB_PIO_TRANSFER_H
 #include "ep0_pio.h"
-/* Single serialized hardware EP1, TX/RX 64-byte banks. Direct root-port
- * devices only: no TT/split, isochronous or >64-byte packets are advertised. */
+/* Single serialized hardware EP1, TX/RX 512-byte banks. Direct root-port
+ * devices only: FS bulk <=64 or HS bulk 512; interrupt <=64.
+ * No TT/split, isochronous or high-bandwidth transactions are advertised. */
 struct a04_pio_endpoint {unsigned address,endpoint,packet,speed,type,direction,period,toggle;};
 struct a04_pio_transfer {struct a04_pio_endpoint ep;unsigned char *buffer;unsigned bytes,actual,pending,zlp,active;};
 #define A04_PIO_PENDING 0

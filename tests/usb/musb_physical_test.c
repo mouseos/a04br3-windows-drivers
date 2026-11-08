@@ -55,6 +55,32 @@ int main(void)
  CHECK(r->shadow[0]==0x61);Work();CHECK(r->hardware_job);
  test_mac[0x12]=test_mac[0x13]=0;test_mac[2]=2;TimerDpc(NULL,r,NULL,NULL);Work();
  CHECK(!MtMusbTake(r,1,data,sizeof(data),&n,&s,&t)&&n==3&&s==USBD_STATUS_SUCCESS);
+ /* 512-byte HS bulk traverses the same shadow/worker/completion path. */
+ {UCHAR bulk[1025];ULONG i;
+ for(i=0;i<sizeof(bulk);i++)bulk[i]=(UCHAR)i;
+ e.packet=512;e.speed=2;p.bytes=sizeof(bulk);
+ CHECK(!MtMusbSubmit(r,20,&e,0,&p,bulk));bulk[0]=0xee;Work();
+ CHECK(r->shadow[0]==0&&r->pio.pending==512&&test_mac[0x62]==6&&test_mac[0x66]==72);
+ for(i=0;i<3;i++){
+  test_mac[0x12]=0;test_mac[0x13]=(UCHAR)((i&1)?0:1);test_mac[2]=2;
+  TimerDpc(NULL,r,NULL,NULL);Work();
+ }
+ CHECK(!MtMusbTake(r,20,bulk,sizeof(bulk),&n,&s,&t)&&n==1025&&!s);
+ /* HS IN full packet then short packet, copied only by Take. */
+ e.endpoint=0x81;e.direction=0;p.bytes=sizeof(bulk);
+ CHECK(!MtMusbSubmit(r,21,&e,0,&p,bulk));Work();
+ test_mac[0x16]=1;test_mac[0x18]=0;test_mac[0x19]=2;test_mac[0x24]=0x5a;test_mac[4]=2;
+ TimerDpc(NULL,r,NULL,NULL);Work();CHECK(r->pio.actual==512&&r->job.state!=MT_JOB_DONE);
+ test_mac[0x16]=1;test_mac[0x18]=1;test_mac[0x19]=0;test_mac[0x24]=0x6b;test_mac[4]=2;
+ TimerDpc(NULL,r,NULL,NULL);Work();CHECK(!MtMusbTake(r,21,bulk,sizeof(bulk),&n,&s,&t)&&n==513&&!s);
+ CHECK(bulk[0]==0x5a&&bulk[511]==0x5a&&bulk[512]==0x6b);
+ /* Cancel an active HS OUT: no caller memory retained, next job waits for flush. */
+ e.endpoint=1;e.direction=1;
+ CHECK(!MtMusbSubmit(r,22,&e,0,&p,bulk));Work();MtMusbCancel(r,22);
+ CHECK(MtMusbSubmit(r,23,&e,0,&p,bulk));TimerDpc(NULL,r,NULL,NULL);Work();
+ CHECK(r->job.state==MT_JOB_IDLE&&!r->hardware_job);
+ e.packet=8;e.speed=1;p.bytes=3;
+ }
  /* EP0 uses shadow and completes only after the status stage. */
  e.type=1;e.endpoint=0;p.bytes=8;p.setup[0]=0x80;p.setup[1]=6;p.setup[6]=8;
  CHECK(!MtMusbSubmit(r,10,&e,0,&p,data));Work();CHECK(r->ep0.transfer.stage==EP0_SETUP);

@@ -137,12 +137,14 @@ static VOID Query(PVOID p,struct a04_mp_properties *e,struct a04_mp_requirements
 static ULONG Open(PVOID p,struct a04_mp_properties *v,PVOID endpoint)
 {
  struct a04_hcd *h=CTX(p);struct a04_mp_endpoint *e=endpoint;KIRQL k;
- if(!v||!e||v->address>127||(v->endpoint&~0x8fu)||(v->hub!=0&&v->hub!=0xffff)||v->speed>2||!v->packet||v->packet>64||
+ if(!v||!e||v->address>127||(v->endpoint&~0x8fu)||(v->hub!=0&&v->hub!=0xffff)||v->speed>2||!v->packet||v->packet>512||
   (v->type!=1&&v->type!=2&&v->type!=3)||v->direction>1||v->transactions>1)return A04_MP_UNSUPPORTED;
  if(v->type==1&&(v->endpoint&15))return A04_MP_UNSUPPORTED;
  if(v->type!=1&&((v->endpoint&0x80)?0u:1u)!=v->direction)return A04_MP_UNSUPPORTED;
  if(v->speed==0&&(v->type==2||v->packet>8))return A04_MP_UNSUPPORTED;
- if(v->type==2&&v->speed!=1)return A04_MP_UNSUPPORTED;
+ if(v->type!=2&&v->packet>64)return A04_MP_UNSUPPORTED;
+ if(v->type==2&&!((v->speed==2&&v->packet==512)||
+   (v->speed==1&&(v->packet==8||v->packet==16||v->packet==32||v->packet==64))))return A04_MP_UNSUPPORTED;
  HLOCK(h,k);RtlZeroMemory(e,sizeof(*e));e->p=*v;e->state=A04_EP_PAUSED;
  if(++h->next_cookie==0)++h->next_cookie;e->cookie=h->next_cookie;HUNLOCK(h,k);return 0;
 }
