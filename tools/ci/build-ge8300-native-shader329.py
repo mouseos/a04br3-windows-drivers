@@ -23,7 +23,7 @@ for parent,m in [(base,bm),(package,pm)]:
  for r in m['outputs']:pin(parent/r['name'],r['sha256'])
 compiler=dep/'compiler';pair=dep/'pair';pin(compiler/'link-manifest.json','3d5c6feec663ffdc88919f44d2adf31ddb177205623df5e6eb279b87fe47d26b');pin(pair/'manifest.json','c05e327474cb91c260b341e9c6de91f7074d8f749ea68f35a77ca2ccc1858e8a');pin(pair/'pco_pair.obj',load(pair/'manifest.json')['object_sha256'])
 for r in bm['existing_compiler_libraries']:pin(compiler/r['name'],r['sha256'])
-out.mkdir();(out/'tmp').mkdir();os.environ.update(TEMP=str(out/'tmp'),TMP=str(out/'tmp'),TMPDIR=str(out/'tmp'))
+out.mkdir(parents=True);(out/'tmp').mkdir();os.environ.update(TEMP=str(out/'tmp'),TMP=str(out/'tmp'),TMPDIR=str(out/'tmp'))
 # baseline is source/build/filter327
 oldroot=base.parent.parent
 plan=load(root/'third_party/mesa-pco/source-plan.json');recipe=next(r for r in plan['units'] if r['source'].endswith('/pco_sm2.c'))
