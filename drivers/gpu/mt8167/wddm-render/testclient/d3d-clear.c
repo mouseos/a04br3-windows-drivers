@@ -187,9 +187,81 @@ static HRESULT triangle_probe(ID3D11Device *device,ID3D11DeviceContext *ctx,ID3D
  rs.FillMode=D3D11_FILL_SOLID;rs.CullMode=D3D11_CULL_NONE;rs.DepthClipEnable=TRUE;
  hr=ID3D11Device_CreateRasterizerState(device,&rs,&raster);line("TRIANGLE_RASTER_HRESULT",hr);if(FAILED(hr))goto done;
  viewport.Width=800;viewport.Height=600;viewport.MaxDepth=1;
- ID3D11DeviceContext_OMSetRenderTargets(ctx,1,&view,NULL);ID3D11DeviceContext_RSSetViewports(ctx,1,&viewport);ID3D11DeviceContext_RSSetState(ctx,raster);
- ID3D11DeviceContext_IASetInputLayout(ctx,layout);ID3D11DeviceContext_IASetPrimitiveTopology(ctx,D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);ID3D11DeviceContext_IASetVertexBuffers(ctx,0,1,&vertices,&stride,&offset);
- ID3D11DeviceContext_VSSetShader(ctx,vs,NULL,0);ID3D11DeviceContext_PSSetShader(ctx,ps,NULL,0);ID3D11DeviceContext_PSSetConstantBuffers(ctx,0,1,&constants);
+ 
+#ifdef GEO_TEXTURE_CLIENT
+ line("TRIANGLE_BIND_OM_BEFORE",1);
+#endif
+ ID3D11DeviceContext_OMSetRenderTargets(ctx,1,&view,NULL);
+#ifdef GEO_TEXTURE_CLIENT
+ line("TRIANGLE_BIND_OM_AFTER",1);
+#endif
+
+#ifdef GEO_TEXTURE_CLIENT
+ line("TRIANGLE_BIND_VIEWPORT_BEFORE",1);
+#endif
+ ID3D11DeviceContext_RSSetViewports(ctx,1,&viewport);
+#ifdef GEO_TEXTURE_CLIENT
+ line("TRIANGLE_BIND_VIEWPORT_AFTER",1);
+#endif
+
+#ifdef GEO_TEXTURE_CLIENT
+ line("TRIANGLE_BIND_RASTER_BEFORE",1);
+#endif
+ ID3D11DeviceContext_RSSetState(ctx,raster);
+#ifdef GEO_TEXTURE_CLIENT
+ line("TRIANGLE_BIND_RASTER_AFTER",1);
+#endif
+
+ 
+#ifdef GEO_TEXTURE_CLIENT
+ line("TRIANGLE_BIND_LAYOUT_BEFORE",1);
+#endif
+ ID3D11DeviceContext_IASetInputLayout(ctx,layout);
+#ifdef GEO_TEXTURE_CLIENT
+ line("TRIANGLE_BIND_LAYOUT_AFTER",1);
+#endif
+
+#ifdef GEO_TEXTURE_CLIENT
+ line("TRIANGLE_BIND_TOPOLOGY_BEFORE",1);
+#endif
+ ID3D11DeviceContext_IASetPrimitiveTopology(ctx,D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+#ifdef GEO_TEXTURE_CLIENT
+ line("TRIANGLE_BIND_TOPOLOGY_AFTER",1);
+#endif
+
+#ifdef GEO_TEXTURE_CLIENT
+ line("TRIANGLE_BIND_VB_BEFORE",1);
+#endif
+ ID3D11DeviceContext_IASetVertexBuffers(ctx,0,1,&vertices,&stride,&offset);
+#ifdef GEO_TEXTURE_CLIENT
+ line("TRIANGLE_BIND_VB_AFTER",1);
+#endif
+
+ 
+#ifdef GEO_TEXTURE_CLIENT
+ line("TRIANGLE_BIND_VS_BEFORE",1);
+#endif
+ ID3D11DeviceContext_VSSetShader(ctx,vs,NULL,0);
+#ifdef GEO_TEXTURE_CLIENT
+ line("TRIANGLE_BIND_VS_AFTER",1);
+#endif
+
+#ifdef GEO_TEXTURE_CLIENT
+ line("TRIANGLE_BIND_PS_BEFORE",1);
+#endif
+ ID3D11DeviceContext_PSSetShader(ctx,ps,NULL,0);
+#ifdef GEO_TEXTURE_CLIENT
+ line("TRIANGLE_BIND_PS_AFTER",1);
+#endif
+
+#ifdef GEO_TEXTURE_CLIENT
+ line("TRIANGLE_BIND_CB_BEFORE",1);
+#endif
+ ID3D11DeviceContext_PSSetConstantBuffers(ctx,0,1,&constants);
+#ifdef GEO_TEXTURE_CLIENT
+ line("TRIANGLE_BIND_CB_AFTER",1);
+#endif
+
  if(!log_ok){hr=E_FAIL;goto done;}
  ID3D11DeviceContext_ClearRenderTargetView(ctx,view,black);line("TRIANGLE_CLEAR_ISSUED",1);
  ID3D11DeviceContext_Draw(ctx,3,0);line("TRIANGLE_DRAW_ISSUED",1);
