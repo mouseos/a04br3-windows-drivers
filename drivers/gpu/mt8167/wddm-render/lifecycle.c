@@ -52,7 +52,7 @@ static NTSTATUS apply_proof(struct geo_owner_session *s,const struct geo_owner_p
   * queued scheduler DPCs before retiring software tokens or lease state. */
  KeFlushQueuedDpcs();c.session=s;c.status=STATUS_UNSUCCESSFUL;c.epoch=p->epoch;c.reset=reset!=0;
  if(!s->adapter->synchronize(s->lease.cookie,retire,&c)||c.status!=STATUS_SUCCESS)return failed(s,c.status);
- return STATUS_SUCCESS;
+ GeoCollectPendingPayloads(s->adapter);return STATUS_SUCCESS;
 }
 NTSTATUS GeoStartInProcessOwnerSession(struct geo_owner_session *s,struct geo_kmd_adapter *a,const struct geo_owner_control_v2 *control,const DXGKRNL_INTERFACE *dxgk) {
  NTSTATUS status;

@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "main_source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
-  "kmd_source_commit": "f77f4b0787b6158a31f992f2a95881aa6c0825dc",
+  "kmd_source_commit": "646925e188e777a0b32e56819adbd3c930591a68",
   "native_owner_source_commit": "fb2173597de9acc12af8f06fd771037e02093360",
   "legacy_vendor_files_unchanged": true,
   "native_unit_sources": {
@@ -1965,5 +1965,14 @@
     }
   ],
   "kmd_base_source_commit": "78ca65653d4c9452b50e0ca455bd9c96a27fe2fb",
-  "kmd_contract_cherry_pick": "a4b59606"
+  "kmd_contract_cherry_pick": "a4b59606",
+  "kmd_contract_source_commit": "f77f4b0787b6158a31f992f2a95881aa6c0825dc",
+  "kmd_runtime_files_from_source": [
+    "clear_engine.c",
+    "clear_engine.h",
+    "kmd_clear.c",
+    "kmd_clear.h",
+    "lifecycle.c",
+    "preempt.c"
+  ]
 }

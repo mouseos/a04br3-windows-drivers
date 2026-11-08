@@ -42,6 +42,7 @@ int32_t geo_prepare_begin(struct geo_engine *,struct geo_allocation *,const stru
 int32_t geo_prepare_draw_begin(struct geo_engine *,struct geo_allocation *target,struct geo_allocation *vertex,struct geo_dma_ticket *);
 int32_t geo_prepare_finish(struct geo_engine *,const struct geo_dma_ticket *,int32_t status,uint64_t owner_job);
 int32_t geo_cancel_begin(struct geo_engine *,const struct geo_dma_ticket *,uint64_t *owner_job);
+int32_t geo_reprepare_finish(struct geo_engine *,const struct geo_dma_ticket *,int32_t status);
 int32_t geo_cancel_finish(struct geo_engine *,const struct geo_dma_ticket *,int32_t status);
 int32_t geo_request_preempt(struct geo_engine *,uint32_t fence);
 int32_t geo_take_preemption(struct geo_engine *,uint32_t *preempt_fence,uint32_t *last_completed);

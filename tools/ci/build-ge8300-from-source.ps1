@@ -1,5 +1,5 @@
 # One checkout -> compiler/pair/native/KMD/UMD/client. No cached driver inputs.
-param([switch]$EnableCandidate,[string]$OutputDirectory,
+param([switch]$EnableCandidate,[switch]$RunHostTests,[string]$OutputDirectory,
  [string]$VcToolsDirectory,[string]$WindowsKit10Version,
  [ValidateRange(1,8)][int]$CompilerJobs=2)
 $ErrorActionPreference='Stop'
@@ -34,6 +34,9 @@ New-Item -ItemType Directory $scOut,"$scOut\tmp"|Out-Null
 $scOldTemp=$env:TEMP;$scOldTmp=$env:TMP
 try{
  $env:TEMP="$scOut\tmp";$env:TMP=$env:TEMP
+ if($RunHostTests){
+  & "$PSScriptRoot\test-ge8300-render-residency.ps1" -OutputDirectory "$scOut\host-tests" -VcToolsDirectory $scVc -WindowsKit10Version $WindowsKit10Version
+ }
  & "$PSScriptRoot\build-ge8300-native-owner-core.ps1" -EnableCandidate -ExpectedSourceCommit $scCommit -OutputDirectory "$scOut\native" -WithMdlTarget -WithOwnerAllocation -WithFactory
  & "$scRoot\drivers\gpu\mt8167\wddm-render\build-wdk81.ps1" -EnableCandidate -OutputDirectory "$scOut\modules" -MicrosoftArmCompiler $scCl -MicrosoftArmCompilerSha256 (Get-FileHash $scCl -Algorithm SHA256).Hash -MicrosoftCrtInclude "$scVc\include"
  & "$scRoot\drivers\gpu\mt8167\wddm-render\link-kmd-msvc-wdk81.ps1" -KernelLibrary "$scOut\modules\ge8300-kmd-clear.lib" -NativeLibrary "$scOut\native\ge8300-native-owner-core.lib" -OutputFile "$scOut\ge8300-render.sys" -MapFile "$scOut\ge8300-render.map" -MetadataFile "$scOut\kernel-link.json"
@@ -41,6 +44,6 @@ try{
  if($LASTEXITCODE){throw 'Source compiler closure failed'}
  & "$scRoot\drivers\gpu\mt8167\wddm-render\build-native-development-wdk81.ps1" -EnableCandidate -EnableLimitedDevelopmentProfile -SourceCompiler -CompilerDirectory "$scOut\compiler" -CompilerManifestSha256 (Get-FileHash "$scOut\compiler\link-manifest.json" -Algorithm SHA256).Hash -PairDirectory "$scOut\compiler" -PairManifestSha256 (Get-FileHash "$scOut\compiler\pair-manifest.json" -Algorithm SHA256).Hash -OutputDirectory "$scOut\umd"
  Copy-Item "$scOut\umd\ge8300-umd.dll","$scOut\umd\ge8300-d3d-clear.exe" $scOut
- [ordered]@{schema='single-checkout-source-build-v1';source_commit=$scCommit;source_dirty=$false;native_source_map_sha256=(Get-FileHash "$PSScriptRoot\ge8300-native-source-map.json" -Algorithm SHA256).Hash;compiler_source_plan_sha256=(Get-FileHash "$scRoot\third_party\mesa-pco\source-plan.json" -Algorithm SHA256).Hash;previous_gpu_artifacts_used=$false;private_hives_used=$false;licensed_toolchain_directory=$scVc;windows_ucrt_sdk_version=$WindowsKit10Version;msvc_arm_compiler_sha256=(Get-FileHash $scCl -Algorithm SHA256).Hash;driver_signed=$false;hardware_verified=$false;limited_development_profile=$true;standard_profile_qualified=$false;outputs=@('ge8300-render.sys','ge8300-umd.dll','ge8300-d3d-clear.exe')|ForEach-Object{@{name=$_;sha256=(Get-FileHash "$scOut\$_" -Algorithm SHA256).Hash.ToLowerInvariant()}}}|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 "$scOut\source-build-manifest.json"
+ [ordered]@{schema='single-checkout-source-build-v1';source_commit=$scCommit;source_dirty=$false;native_source_map_sha256=(Get-FileHash "$PSScriptRoot\ge8300-native-source-map.json" -Algorithm SHA256).Hash;compiler_source_plan_sha256=(Get-FileHash "$scRoot\third_party\mesa-pco\source-plan.json" -Algorithm SHA256).Hash;previous_gpu_artifacts_used=$false;private_hives_used=$false;licensed_toolchain_directory=$scVc;windows_ucrt_sdk_version=$WindowsKit10Version;msvc_arm_compiler_sha256=(Get-FileHash $scCl -Algorithm SHA256).Hash;driver_signed=$false;host_tests_requested=[bool]$RunHostTests;host_tests_manifest_sha256=$(if($RunHostTests){(Get-FileHash "$scOut\host-tests\host-tests.json" -Algorithm SHA256).Hash.ToLowerInvariant()}else{$null});hardware_verified=$false;limited_development_profile=$true;standard_profile_qualified=$false;outputs=@('ge8300-render.sys','ge8300-umd.dll','ge8300-d3d-clear.exe')|ForEach-Object{@{name=$_;sha256=(Get-FileHash "$scOut\$_" -Algorithm SHA256).Hash.ToLowerInvariant()}}}|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 "$scOut\source-build-manifest.json"
  'GE8300_SINGLE_CHECKOUT_SOURCE_BUILD_COMPLETE'
 }finally{$env:TEMP=$scOldTemp;$env:TMP=$scOldTmp}

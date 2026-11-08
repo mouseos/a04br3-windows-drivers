@@ -57,3 +57,16 @@ source-build生成物は未署名・未実機であり、配布・媒体化に�
 現行ARM32 CRTへ名前が残らない旧stricmp呼出しは、pvr_device_info TUだけで同じ契約の_stricmpへ対応する。
 生成NIRのfloat16_tローカル別名変更と合わせ、source-planにport設定を記録する。
 CI artifactには全componentのbuild/compile/link manifestとPE imports/exportsを含める。
+
+## 318 runtime統合
+
+固定317のfull build出力を保持した後、ユーザー指定の318 source646925e1からruntime6file
+（clear_engine.c/.h、kmd_clear.c/.h、lifecycle.c、preempt.c）とhost testだけを取り込む。
+cache専用build-ge8300-residency318/package helperやWinPE serviceはこの統合へ持ち込まない。
+公開手順は既存fullsource wrapperを維持し、native/KMD/UMDのlayout依存はすべてsource compileする。
+
+`-RunHostTests`を付けると同sourceの実engineをx64 MSVCでcompileしhost-only回帰を実行する。
+CIでは同flagを有効化しreceipt/stdoutをartifactへ含める。端末やdriver loadは不要。
+318646925e1で報告済みの「Render冒頭payload回収後のIRQ完了→同slot再予約による旧draw payload pointer上書き」は
+このsource-pin統合では修正しない。host testはこの競合まで検査するものではなく、修正済み/全機能成功とは扱わない。
+修正は主担当の後続commitを明示取り込みする。公開build生成物は実機候補として使用しない。

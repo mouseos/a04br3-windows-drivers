@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build KMD, native owner, compiler, UMD and client from source
         shell: powershell
-        run: ./tools/ci/build-ge8300-from-source.ps1 -EnableCandidate
+        run: ./tools/ci/build-ge8300-from-source.ps1 -EnableCandidate -RunHostTests
       - uses: actions/upload-artifact@v4
         with:
           name: ge8300-source-build-${{ github.sha }}
@@ -26,4 +26,6 @@ jobs:
             build/ge8300-source/modules/build-manifest.json
             build/ge8300-source/umd/build-manifest.json
             build/ge8300-source/umd/*.pe.txt
+            build/ge8300-source/host-tests/host-tests.json
+            build/ge8300-source/host-tests/stdout.txt
           if-no-files-found: error
