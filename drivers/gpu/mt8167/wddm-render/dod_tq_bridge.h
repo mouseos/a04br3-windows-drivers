@@ -2,6 +2,10 @@
 #ifndef GEO_DOD_TQ_BRIDGE_H
 #define GEO_DOD_TQ_BRIDGE_H
 #include "../dod_tq_interface.h"
+#ifndef DXGKDDI_INTERFACE_VERSION
+#define DXGKDDI_INTERFACE_VERSION 0x4002
+#endif
+#include <dispmprt.h>
 /* Embedded in the single render miniport. No new PDO/IRQ/MMIO/DMA owner.
  * Backend must enter the SAME native owner's D0/rundown/serialization, refuse
  * active render work and retain failed DMA. Publishing without it is forbidden.
