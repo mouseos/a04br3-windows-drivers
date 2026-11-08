@@ -74,7 +74,7 @@ static DWORD uart_record(const char *line,DWORD length)
  if(!pending){CloseHandle(packet->operation.hEvent);HeapFree(GetProcessHeap(),0,packet);}
  return error;
 }
-static void record(unsigned id,unsigned event,DWORD code){char line[40],*p=line;DWORD n;*p++='P';*p++='B';*p++=' ';p=hex(p,id);*p++=' ';p=hex(p,event);*p++=' ';p=hex(p,code);*p++='\r';*p++='\n';if(logfile==INVALID_HANDLE_VALUE||!WriteFile(logfile,line,(DWORD)(p-line),&n,NULL)||n!=(DWORD)(p-line)||!FlushFileBuffers(logfile))log_error=ERROR_WRITE_FAULT;{DWORD u=uart_record(line,(DWORD)(p-line));if(u)uart_error=u;}}
+static void record(unsigned id,unsigned event,DWORD code){char line[40],*p=line;DWORD n;*p++='P';*p++='B';*p++=' ';p=hex(p,id);*p++=' ';p=hex(p,event);*p++=' ';p=hex(p,code);*p++='\n';if(logfile==INVALID_HANDLE_VALUE||!WriteFile(logfile,line,(DWORD)(p-line),&n,NULL)||n!=(DWORD)(p-line)||!FlushFileBuffers(logfile))log_error=ERROR_WRITE_FAULT;{DWORD u=uart_record(line,(DWORD)(p-line));if(u)uart_error=u;}}
 #define pnp_record record
 static void emit_record(unsigned i,unsigned e,DWORD c,int uart){(void)uart;record(i,e,c);}
 static DWORD local_system(void){HANDLE t;BYTE b[256];DWORD n,e=0;if(!OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY,&t))return GetLastError();if(!GetTokenInformation(t,TokenUser,b,sizeof(b),&n))e=GetLastError();else if(!IsWellKnownSid(((TOKEN_USER *)b)->User.Sid,WinLocalSystemSid))e=ERROR_ACCESS_DENIED;CloseHandle(t);return e;}

@@ -73,3 +73,5 @@ RTC/thermal status取得はread-only IOCTLだけ。stale、not-ready、unsupport
 原manifest hashは変更しない。固定Render service EXE/UMD/FWの不足時だけ、同Recovery bootで原capture全fileの前後hashを確認したread-only補足manifestを`fresh.supplement`と`supplement_sha256`に結合できる。補足schemaは固定3file以外を拒否し、manifest hash/boot IDを原captureへ結合する。最終media stageでは保持file全件の実capture witnessを現Windows bytesと比較してからSYSTEMをarmする。
 
 署名後にmedia toolingだけを修正した場合は、`--service-source-commit`で実署名sourceを別pinする。祖先関係とmedia builder/input verifier/本手順だけの差分を検査し、C/header/native/policyの変更は拒否する。専用serviceを不要に再compile/signしない。
+
+UART screen送信の既存driverはASCII printableとLFだけを受理する。PB行はLFで終端しCRを送信しない。送信API失敗をdriver機能失敗やdisk未完了へ読み替えず、marker/SCM phase/実fileと独立に扱う。
