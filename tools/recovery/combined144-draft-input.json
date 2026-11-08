@@ -61,5 +61,14 @@
     "Preserve latest fresh144 raw originals; never substitute fresh142/138",
     "Retain old SCM/static configuration/GPU ledger; updated runtime output is evaluated by version/run",
     "No SOFTWARE/userdata rollback; no SDK/WDK/PCO setup or device operations"
-  ]
+  ],
+  "planned_windows_reboots": 1,
+  "native_baseline_reader": "tools/recovery/read-fresh144-baseline.ps1",
+  "native_baseline_expected_old_services": 17,
+  "native_baseline_expected_node_keys": 13,
+  "unselected_candidate_versions": {
+    "wifi": "1022",
+    "hcd": "1016"
+  },
+  "unselected_candidates_are_not_approved_inputs": true
 }
