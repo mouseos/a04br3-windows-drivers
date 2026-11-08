@@ -346,7 +346,8 @@ static NTSTATUS OwnerCheckoutRoute(void *ctx,PPORTWAVERTSTREAM port,ULONG bytes,
             o->engineClient=port;o->engineState=KSSTATE_STOP;
 #if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
             o->hpSelected=headphone;
-#endifo->resetOnRun=TRUE;
+#endif
+            o->resetOnRun=TRUE;
             InterlockedExchange(&o->stoppedOffset,0);InterlockedExchange(&o->positionPaused,1);
             *mdl=o->retainedBuffer.mdl;*actual=o->retainedBuffer.bytes;
         }

@@ -20,12 +20,7 @@ static const GUID A04HeadphoneParentGuid={0xd39057d6,0x722d,0x4c82,{0x9a,0xc4,0x
 #define A04_HP_DRAIN_UNKNOWN 0u
 #define A04_HP_DRAIN_RETAINED 1u
 #define A04_HP_DRAIN_RELEASED 2u
-struct a04_hp_raw_sample {
- ULONG size,version,generation,channel,valid,phase;LONG average_uv;
- USHORT raw[22];
-};
-struct a04_hp_raw_pair {ULONG size,version,generation;NTSTATUS result;struct a04_hp_raw_sample samples[2];};
-#define IOCTL_MT8167_HP_RAW CTL_CODE(FILE_DEVICE_UNKNOWN,0x957,METHOD_BUFFERED,FILE_READ_DATA)
+#include "headphone_observation.h"
 typedef struct _A04_HEADPHONE_INTERFACE {
  INTERFACE Header;ULONG ParentBuild;
  NTSTATUS (*BeginAdc)(PVOID,ULONG *generation);
