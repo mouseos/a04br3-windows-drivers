@@ -331,7 +331,9 @@ function Related-Fingerprints($Root,$Plan) {
     }
     if($Plan.peripheral_preserve){
         $old=[ordered]@{}
-        foreach($n in @('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs')){
+        $oldNames=@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs')
+        if($Plan.peripheral_preserve.service -ceq 'MT8167PeripheralNext122'){$oldNames+='MT8167PeripheralBatch'}
+        foreach($n in $oldNames){
             $snapshot=Peripheral-ServiceSnapshot $Root ($control+$n)
             $expected=$Plan.peripheral_preserve.service_preservation.$n
             if($snapshot.present -ne $expected.present -or $snapshot.root_sha256 -cne $expected.root_sha256 -or $snapshot.subtree_sha256 -cne $expected.subtree_sha256){throw 'Old service snapshot differs from explicitly pinned fresh input'}
