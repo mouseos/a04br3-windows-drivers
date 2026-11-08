@@ -58,7 +58,7 @@ foreach($name in @('dl1','dl1_engine','shared_audio','audio_parent_client','audi
  $source=if($name -eq 'clock_owner'){"$root\drivers\bus\mt8167-shared\clock_owner.c"}else{"$audioRoot\$name.$(if($cpp){'cpp'}else{'c'})"}
  $base=if($cpp){$hp.source_commit}else{$ac.source_commit}
  $cached=if($cpp){"$HpCache\obj\$name.obj"}else{"$AudioCache\obj\$name.obj"}
- if(!$cpp){$x=@($ac.objects|Where-Object{$_.name -ceq "$name.obj"});if($x.Count -ne 1 -or (Sha $cached) -cne $x[0].sha256){throw 'Audio helper cache mismatch'}}
+ if(!$cpp){$x=@($ac.objects|Where-Object{$_.name -ceq "$name.obj"});if($x.Count -ne 1 -or (Sha $cached) -cne $x[0].sha256.ToLowerInvariant()){throw 'Audio helper cache mismatch'}}
  if(Closure-Same $source $base){$objects+=$cached;$reused+=@{name=$name;source_commit=$base;sha256=(Sha $cached)};continue}
  $obj="$out\obj\$name.obj";$lang=if($cpp){@('-std=c++14','-fms-compatibility','-fno-exceptions','-fno-rtti')}else{@('-std=c11')}
  & clang @common @kernel @flags @lang -w -c $source -o $obj
