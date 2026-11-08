@@ -76,6 +76,6 @@ int main(void)
  assert(!a04_cp_begin(&a,A04_CP_SCAN,2));assert(!a04_cp_emit(&a,A04_CP_RUNTIME_STATE,A04_CP_RESULT,A04_CP_OBSERVATION,1,83));
  assert(!a04_cp_begin(&b,A04_CP_RUNTIME_FAILURE,2));assert(!a04_cp_emit(&b,A04_CP_HOST_STATE,A04_CP_RESULT,A04_CP_BACKEND,83,4));
  assert(!a04_cp_finish(&a,A04_CP_RUNTIME_RESULT,A04_CP_NDIS,0xc0010011u));assert(!a04_cp_finish(&b,A04_CP_RUNTIME_RESULT,A04_CP_BACKEND,83));
- assert(persisted[2].channel==2&&persisted[3].channel==3&&persisted[2].driver_build==1012&&persisted[3].parent_generation==2);
+ assert(persisted[2].channel==2&&persisted[3].channel==3&&persisted[2].driver_build==1020&&persisted[3].parent_generation==2);
  puts("Fixed registry checkpoint: real writer status/phase, generation, IRQL, flush failure and bounds: OK");return 0;
 }

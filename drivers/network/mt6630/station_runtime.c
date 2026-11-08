@@ -20,7 +20,13 @@ static int packet(struct a04_station_runtime *r,const uint8_t *p,unsigned n)
  r->rx_bytes=n;r->rx_descriptor=n>=4?a04_wmt_le16(p+2):0;r->rx_error=0;r->rx_phase=1;
  if(n>=8&&a04_wmt_le16(p+2)==0xe000){
   struct a04_wlan_event v;e=a04_wlan_event_parse(p,n,&v);if(e){r->rx_error=e;return fail(r,e);}
-  if(v.id==0x0d&&b->scan.pending){e=a04_wmt_bridge_scan_event(b,p,n);if(e)return fail(r,e);}
+  if(v.id==0x0d&&b->scan.pending){
+   e=a04_wmt_bridge_scan_event(b,p,n);if(e)return fail(r,e);
+   /* Native scan confirmation consumes bridge.complete, not the observed
+    * BSS cache. Retain this actual matching firmware completion for the
+    * station selector; never manufacture scan success at connect time. */
+   r->station.scan=b->scan;
+  }
   else if(r->connecting){e=a04_wmt_bridge_station_event(b,&r->station,p,n,now);if(e&&e!=A04_WLAN_UNSUPPORTED)return fail(r,e);}
   if(r->event&&r->event(r->context,p,n,now))return fail(r,-1);
   return 0;
@@ -100,9 +106,7 @@ int a04_station_runtime_connect(struct a04_station_runtime *r,const uint8_t *ssi
  if(!r||!r->initialized||r->failed||r->connected||r->connecting||!ssid||!length||length>32||r->bridge->scan.pending)return -1;
  for(i=0;i<r->bss_count;i++)if(!(r->exclude_bssid&&r->exclude_bssid(r->context,r->bss[i].ap.mac))&&(!r->selected_bssid_set||a04_wlan_equal(r->selected_bssid,r->bss[i].ap.mac,6))&&r->bss[i].ap.ssid_length==length&&a04_wlan_equal(r->bss[i].ap.ssid,ssid,length))break;
  if(i==r->bss_count)return A04_WLAN_UNSUPPORTED;
- if(!(r->station.local.active_channels&(1u<<r->bss[i].ap.channel)))return A04_WLAN_UNSUPPORTED;
- if(!!(r->bss[i].ap.capability&16u)!=!!r->desired_secured)return A04_WLAN_SECURITY;
- if(r->desired_secured&&a04_os_rsn_policy(r->bss[i].ap.rsn,r->bss[i].ap.rsn_length))return A04_WLAN_SECURITY;
+ e=a04_os_candidate_policy(&r->bss[i].ap,r->station.local.active_channels,r->desired_secured);if(e)return e;
  now=r->now(r->context);deadline=now+5000000u;
  e=a04_wmt_bridge_station_select(r->bridge,&r->station,&r->bss[i].ap,r->desired_secured,1,5000,now,deadline);if(e)return fail(r,e);
  r->connecting=1;r->phase=0;
