@@ -36,7 +36,12 @@ $libs+=@($importLib)
   if($role -gt 1){
    $pre=@('/nologo','/TC','/EP','/O1','/GS-','/Gs65536','/Zl','/Oi-','/D_ARM_','/DARM',"/DROTATION_PROBE_ROLE=$role","/I$KitHeaderRoot\shared","/I$KitHeaderRoot\um","/I$VcToolsRoot\include","/I$UcrtInclude")
    $old=(& $cl @pre $BaselineSource)-join "`n";if($LASTEXITCODE){throw 'Baseline preprocess failed'}
-   $new=(& $cl @pre "$root\tools\display\rotation_probe.c")-join "`n";if($LASTEXITCODE -or $old -cne $new){throw 'Unchanged-role preprocessing mismatch'}
+   $new=(& $cl @pre "$root\tools\display\rotation_probe.c")-join "`n";if($LASTEXITCODE){throw 'Current role preprocess failed'}
+   # /EP retains blank lines for excluded role blocks. Remove only empty
+   # lines/trailing whitespace, never merge/split nonempty token lines.
+   $old=($old -split "`n"|Where-Object {$_.Trim().Length}|ForEach-Object {$_.TrimEnd()})-join "`n"
+   $new=($new -split "`n"|Where-Object {$_.Trim().Length}|ForEach-Object {$_.TrimEnd()})-join "`n"
+   if($old -cne $new){throw 'Unchanged-role preprocessing mismatch'}
    $prior=@($baseline.files|Where-Object {$_.role -eq $role});if($prior.Count -ne 1){throw 'Baseline role record'}
    if($prior[0].sha256 -cne (Sha "$BaselineDirectory\package\$name.exe")){throw 'Reused EXE pin'}
    Copy-Item "$BaselineDirectory\package\$name.exe" $exe
