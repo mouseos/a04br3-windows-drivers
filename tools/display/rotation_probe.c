@@ -120,11 +120,13 @@ static DWORD role(void){HANDLE map=GetStdHandle(STD_INPUT_HANDLE);SNAPSHOT*s;DWO
  UnmapViewOfFile(s);return rr?rr:rc;}
 #endif
 #if ROTATION_PROBE_ROLE==2
-static BOOL trusted_pipe(HANDLE pipe){ULONG pid;HANDLE process=NULL,token=NULL;BOOL ok=FALSE;
- if(!GetNamedPipeServerProcessId(pipe,&pid))return FALSE;
- process=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,FALSE,pid);
- if(process&&OpenProcessToken(process,TOKEN_QUERY,&token))ok=system_token(token);
- if(token)CloseHandle(token);if(process)CloseHandle(process);return ok;}
+/* Authenticate the kernel-protected SYSTEM owner without opening another
+ * process token from a standard user. The client has READ_CONTROL only. */
+static BOOL trusted_pipe(HANDLE pipe){__declspec(align(8)) BYTE sd[256],sid[SECURITY_MAX_SID_SIZE];DWORD n=0,bytes=sizeof(sid);PSID owner=NULL;BOOL defaulted=FALSE;
+ return GetKernelObjectSecurity(pipe,OWNER_SECURITY_INFORMATION,(PSECURITY_DESCRIPTOR)sd,sizeof(sd),&n)&&
+ GetSecurityDescriptorOwner((PSECURITY_DESCRIPTOR)sd,&owner,&defaulted)&&owner&&
+ CreateWellKnownSid(WinLocalSystemSid,NULL,sid,&bytes)&&EqualSid(owner,sid);
+}
 static DWORD run_worker(const WCHAR*child,const WCHAR*dir,HANDLE map,BOOL*live){STARTUPINFOEXW si;PROCESS_INFORMATION pi;HANDLE handles[2];SIZE_T bytes=0;DWORD rc=ERROR_GEN_FAILURE,wait;LPPROC_THREAD_ATTRIBUTE_LIST attrs=NULL;
  memset(&si,0,sizeof(si));memset(&pi,0,sizeof(pi));handles[0]=gLog;handles[1]=map;
  if(!SetHandleInformation(gLog,HANDLE_FLAG_INHERIT,HANDLE_FLAG_INHERIT)||!SetHandleInformation(map,HANDLE_FLAG_INHERIT,HANDLE_FLAG_INHERIT))return GetLastError();
@@ -143,7 +145,7 @@ static DWORD run_worker(const WCHAR*child,const WCHAR*dir,HANDLE map,BOOL*live){
 static DWORD role(void){WCHAR dir[MAX_PATH],child[MAX_PATH];HANDLE pipe=INVALID_HANDLE_VALUE;BRIDGE bridge;DWORD got=0,rc=ERROR_GEN_FAILURE,rr=ERROR_GEN_FAILURE;SNAPSHOT*s=NULL;BOOL live=FALSE;
  if(!fixed_paths(dir,child,WORKER))return ERROR_ACCESS_DENIED;
  if(!WaitNamedPipeW(PIPE,10000))return GetLastError();
- pipe=CreateFileW(PIPE,GENERIC_READ|GENERIC_WRITE,0,NULL,OPEN_EXISTING,SECURITY_SQOS_PRESENT|SECURITY_IDENTIFICATION,NULL);
+ pipe=CreateFileW(PIPE,GENERIC_READ|READ_CONTROL,0,NULL,OPEN_EXISTING,SECURITY_SQOS_PRESENT|SECURITY_IDENTIFICATION,NULL);
  if(pipe==INVALID_HANDLE_VALUE)return GetLastError();
  if(!trusted_pipe(pipe)||!ReadFile(pipe,&bridge,sizeof(bridge),&got,NULL)||got!=sizeof(bridge)||bridge.magic!=MAGIC||bridge.bytes!=sizeof(bridge)){CloseHandle(pipe);return ERROR_ACCESS_DENIED;}
  CloseHandle(pipe);gLog=bridge.log;
@@ -182,8 +184,8 @@ static DWORD launch(HANDLE user,HANDLE map,SNAPSHOT*s,const WCHAR*child,const WC
  *drained=TRUE;memset(&ov,0,sizeof(ov));memset(&si,0,sizeof(si));memset(&pi,0,sizeof(pi));memset(&packet,0,sizeof(packet));memset(&limit,0,sizeof(limit));
  if(WTSGetActiveConsoleSessionId()!=s->session)return ERROR_ACCESS_DENIED;
  if(!GetTokenInformation(user,TokenUser,userbuf,sizeof(userbuf),&n)||!CreateWellKnownSid(WinLocalSystemSid,NULL,systemSid,&ss)||!InitializeAcl(acl,sizeof(aclbuf),ACL_REVISION)||
- !AddAccessAllowedAceEx(acl,ACL_REVISION,0,FILE_ALL_ACCESS,systemSid)||!AddAccessAllowedAceEx(acl,ACL_REVISION,0,FILE_GENERIC_READ|FILE_GENERIC_WRITE|SYNCHRONIZE,tu->User.Sid)||
- !InitializeSecurityDescriptor(&sd,SECURITY_DESCRIPTOR_REVISION)||!SetSecurityDescriptorDacl(&sd,TRUE,acl,FALSE))return GetLastError();
+ !AddAccessAllowedAceEx(acl,ACL_REVISION,0,FILE_ALL_ACCESS,systemSid)||!AddAccessAllowedAceEx(acl,ACL_REVISION,0,FILE_GENERIC_READ,tu->User.Sid)||
+ !InitializeSecurityDescriptor(&sd,SECURITY_DESCRIPTOR_REVISION)||!SetSecurityDescriptorOwner(&sd,systemSid,FALSE)||!SetSecurityDescriptorDacl(&sd,TRUE,acl,FALSE))return GetLastError();
  sa.nLength=sizeof(sa);sa.lpSecurityDescriptor=&sd;sa.bInheritHandle=FALSE;
  __try{
  pipe=CreateNamedPipeW(PIPE,PIPE_ACCESS_DUPLEX|FILE_FLAG_FIRST_PIPE_INSTANCE|FILE_FLAG_OVERLAPPED,PIPE_TYPE_MESSAGE|PIPE_READMODE_MESSAGE|PIPE_WAIT|PIPE_REJECT_REMOTE_CLIENTS,1,sizeof(packet),sizeof(packet),0,&sa);
