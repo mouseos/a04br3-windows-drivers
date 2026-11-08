@@ -40,6 +40,7 @@ struct preserved_file {const WCHAR *name;BYTE hash[32];};
 struct preserved_service {const WCHAR *name;DWORD present;BYTE hash[32];};
 struct diagnostic_client {const WCHAR *exe,*arguments,*name,*relative_directory;BYTE hash[32];DWORD timeout_ms;};
 #include "peripheral-batch-policy.h"
+#include "rotation-job-contract.h"
 #define PERIPHERAL_TARGET_COUNT (sizeof(targets)/sizeof(targets[0]))
 typedef char bounded_target_count[(PERIPHERAL_TARGET_COUNT>0 && PERIPHERAL_TARGET_COUNT<=9)?1:-1];
 #define deferred_targets targets
@@ -201,7 +202,7 @@ static DWORD run_clients(void)
   if(!e){lstrcpyW(name,c->name);lstrcatW(name,L".stdout.txt");e=path(out,log_directory,name);if(!e){stdout_=CreateFileW(out,GENERIC_WRITE,FILE_SHARE_READ,&sa,CREATE_NEW,FILE_FLAG_WRITE_THROUGH,NULL);if(stdout_==INVALID_HANDLE_VALUE)e=GetLastError();}}
   if(!e){lstrcpyW(name,c->name);lstrcatW(name,L".stderr.txt");e=path(out,log_directory,name);if(!e){stderr_=CreateFileW(out,GENERIC_WRITE,FILE_SHARE_READ,&sa,CREATE_NEW,FILE_FLAG_WRITE_THROUGH,NULL);if(stderr_==INVALID_HANDLE_VALUE)e=GetLastError();}}
   if(!e){nul=CreateFileW(L"NUL",GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,&sa,OPEN_EXISTING,0,NULL);if(nul==INVALID_HANDLE_VALUE)e=GetLastError();}
-  if(!e){job=CreateJobObjectW(NULL,NULL);memset(&limit,0,sizeof(limit));limit.BasicLimitInformation.LimitFlags=JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;if(!job)e=GetLastError();else if(!SetInformationJobObject(job,JobObjectExtendedLimitInformation,&limit,sizeof(limit)))e=GetLastError();}
+  if(!e){job=CreateJobObjectW(NULL,NULL);memset(&limit,0,sizeof(limit));limit.BasicLimitInformation.LimitFlags=mt8167_rotation_job_flags(c->relative_directory,c->exe,c->arguments);if(!job)e=GetLastError();else if(!SetInformationJobObject(job,JobObjectExtendedLimitInformation,&limit,sizeof(limit)))e=GetLastError();}
   if(!e){lstrcpyW(cmd,L"\"");lstrcatW(cmd,exe);lstrcatW(cmd,L"\" ");lstrcatW(cmd,c->arguments);start.dwFlags=STARTF_USESTDHANDLES;start.hStdInput=nul;start.hStdOutput=stdout_;start.hStdError=stderr_;
    if(!CreateProcessW(exe,cmd,NULL,NULL,TRUE,CREATE_NO_WINDOW|CREATE_SUSPENDED,NULL,base_directory,&start,&process))e=GetLastError();
    else{if(!AssignProcessToJobObject(job,process.hProcess)||ResumeThread(process.hThread)==(DWORD)-1){e=GetLastError();TerminateProcess(process.hProcess,e);CloseHandle(process.hThread);CloseHandle(process.hProcess);process.hProcess=NULL;}else{CloseHandle(process.hThread);record(i,0x220,process.dwProcessId);wait=WaitForSingleObject(process.hProcess,c->timeout_ms);if(wait!=WAIT_OBJECT_0){e=wait==WAIT_TIMEOUT?ERROR_TIMEOUT:GetLastError();if(!TerminateProcess(process.hProcess,ERROR_TIMEOUT)&&!e)e=GetLastError();(void)WaitForSingleObject(process.hProcess,5000);}else if(!GetExitCodeProcess(process.hProcess,&exit))e=GetLastError();else e=exit;CloseHandle(process.hProcess);}}
