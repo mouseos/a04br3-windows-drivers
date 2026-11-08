@@ -72,6 +72,16 @@ struct diagnostic_client {const WCHAR *exe,*arguments,*name,*relative_directory;
 #ifndef A04_FEATURE148
 #define A04_FEATURE148 0
 #endif
+/* New profiles must opt in explicitly; frozen151 remains GPUclient0. */
+#ifndef A04_GPU_PHASE1_ENABLED
+#define A04_GPU_PHASE1_ENABLED 0
+#endif
+#ifndef A04_RUN_WLAN_READ
+#define A04_RUN_WLAN_READ 1
+#endif
+#ifndef A04_RUN_BT_READ
+#define A04_RUN_BT_READ 1
+#endif
 #ifndef A04_RENDER_TARGET_INDEX
 #define A04_RENDER_TARGET_INDEX 10u
 #endif
@@ -416,7 +426,7 @@ static DWORD run_clients(DWORD peripheral_result)
   const struct diagnostic_client *c=&diagnostic_clients[i];WCHAR sys[MAX_PATH],dir[MAX_PATH],exe[MAX_PATH],out[MAX_PATH],name[64],cmd[2*MAX_PATH+64];HANDLE held=INVALID_HANDLE_VALUE,stdout_=INVALID_HANDLE_VALUE,stderr_=INVALID_HANDLE_VALUE,nul=INVALID_HANDLE_VALUE,job=NULL;JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit;SECURITY_ATTRIBUTES sa;STARTUPINFOW start;PROCESS_INFORMATION process;DWORD e=0,exit=0xffffffffu,wait=0xffffffffu,exit_valid=0;
   if(i>=8||c->phase>1)return ERROR_INVALID_DATA;
   if(c->phase==1){
-   if(A04_FEATURE148)return ERROR_INVALID_PARAMETER;
+   if(A04_FEATURE148&&!A04_GPU_PHASE1_ENABLED)return ERROR_INVALID_PARAMETER;
    DWORD boundary;if(i+1!=A04_DIAGNOSTIC_CLIENT_COUNT||(PERIPHERAL_TARGET_COUNT!=11&&!(A04_FEATURE148&&PERIPHERAL_TARGET_COUNT==12))||A04_CANDIDATE_EXTRA_COUNT!=2||!combined_gpu_node_ready)return ERROR_NOT_READY;
    boundary=persist_before_gpu(first);if(boundary)return boundary;
   }
@@ -439,7 +449,7 @@ static DWORD run_clients(DWORD peripheral_result)
   if(nul!=INVALID_HANDLE_VALUE)CloseHandle(nul);
   combined_clients[i].wait_status=wait;combined_clients[i].exit_valid=exit_valid;combined_clients[i].exit_code=exit;combined_clients[i].result=e;
   if(c->phase==1){
-   if(A04_FEATURE148)return ERROR_INVALID_PARAMETER;struct {DWORD schema,bytes,result,exit_valid,exit_code;} g={1,20,e,exit_valid,exit};DWORD saved=save_blob(L"gpu-result.bin",&g,sizeof(g));record(i,0x284,saved);if(saved&&!e)e=saved;}
+   if(A04_FEATURE148&&!A04_GPU_PHASE1_ENABLED)return ERROR_INVALID_PARAMETER;struct {DWORD schema,bytes,result,exit_valid,exit_code;} g={1,20,e,exit_valid,exit};DWORD saved=save_blob(L"gpu-result.bin",&g,sizeof(g));record(i,0x284,saved);if(saved&&!e)e=saved;}
   record(i,0x221,e);if(e&&!first)first=e;
  }
  {DWORD e=combined_snapshot(L"Final",first,0);if(e&&!first)first=e;}
@@ -493,12 +503,12 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
 
 #if A04_PERIPHERAL_NEXT_PROFILE
 #if !A04_DIAGNOSTIC_ONLY || A04_READONLY_PERIPHERAL_STATUS
- e=wlan_readonly_status();if(e&&!first)first=e;
+ if(A04_RUN_WLAN_READ){e=wlan_readonly_status();if(e&&!first)first=e;}
  if(!A04_FEATURE144){SP_DEVINFO_DATA sd;DWORD find=deferred_find(4,set,&sd);e=find?find:sd_readonly_presence(sd.DevInst);record(4,0x245,e);if(e&&!first)first=e;}
  if(!A04_FEATURE144&&(A04_PERIPHERAL_FIRST_INSTALL_MASK || A04_READONLY_PERIPHERAL_STATUS)){SP_DEVINFO_DATA keypad;DWORD find=deferred_find(7,set,&keypad);e=find?find:keypad_hid_bindings(keypad.DevInst);record(7,0x267,e);if(e&&!first)first=e;}
 #endif
  #if A04_FEATURE144
- e=bt_readonly_status();if(e&&!first)first=e;
+ if(A04_RUN_BT_READ){e=bt_readonly_status();if(e&&!first)first=e;}
 #endif
  e=run_clients(first);if(e&&!first)first=e;
 #endif
