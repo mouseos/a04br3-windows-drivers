@@ -1574,10 +1574,10 @@ test-ge8300-native-copy334: build/ge8300_native_copy_job_test build/ge8300_nativ
 	./build/ge8300_native_copy_job_test
 	./build/ge8300_native_copy_queue_test
 
-build/ge8300_native_copy_job_test: tests/ge8300_native_copy_job_test.c drivers/gpu/mt8167/vendor_m1_11/render_owner/native_copy_job.c drivers/gpu/mt8167/vendor_m1_11/native_copy_state.c drivers/gpu/mt8167/vendor_m1_11/clear_image.c
+build/ge8300_native_copy_job_test: tests/ge8300_native_copy_job_test.c drivers/gpu/mt8167/vendor_m1_11/render_owner/native_copy_job.c drivers/gpu/mt8167/vendor_m1_11/render_owner/native_copy_state.c drivers/gpu/mt8167/vendor_m1_11/clear_image.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11/render_owner $(filter %.c,$^) -o $@
 
-build/ge8300_native_copy_queue_test: tests/ge8300_native_copy_queue_test.c drivers/gpu/mt8167/vendor_m1_11/render_owner/native_copy_queue.c drivers/gpu/mt8167/vendor_m1_11/native_ccb.c
+build/ge8300_native_copy_queue_test: tests/ge8300_native_copy_queue_test.c drivers/gpu/mt8167/vendor_m1_11/render_owner/native_copy_queue.c drivers/gpu/mt8167/vendor_m1_11/render_owner/native_ccb.c
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/gpu/mt8167/vendor_m1_11/render_owner -Idrivers/gpu/mt8167/vendor_m1_11 $(filter %.c,$^) -o $@

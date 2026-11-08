@@ -5,6 +5,7 @@
 enum a04_m111_client_type {
     A04_M111_CLIENT_TA=0x2abc80c9u,
     A04_M111_CLIENT_3D=0x2abc80cau,
+    A04_M111_CLIENT_TQ=0x2abc80ccu,
     A04_M111_CLIENT_PR=0x2abc80ceu,
     A04_M111_CLIENT_FENCE=0x2abc00d5u,
     A04_M111_CLIENT_UPDATE=0x2abc00d6u,

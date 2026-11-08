@@ -3,6 +3,7 @@
 #define GEO_CLEAR_PROTOCOL_H
 #include <stdint.h>
 #define GEO_ABI_VERSION 1u
+#define GEO_COPY_MAGIC 0x31504f47u /* GOP1: real GPU RT -> staging transfer */
 #define GEO_CLEAR_MAGIC 0x31434f47u
 #define GEO_FORMAT_A8R8G8B8 21u /* D3DDDIFMT_A8R8G8B8, BGRA bytes on ARM LE. */
 #define GEO_FORMAT_X8R8G8B8 22u /* Standard lockable staging only; never a GPU render target. */
@@ -27,6 +28,7 @@ struct geo_allocation_data {
 /* Semantic command only. Allocation index is resolved through VidMm's list.
  * No user VA, PA, GPU VA, firmware command, shader or arbitrary payload. */
 struct geo_clear_packet { uint32_t magic,size,version,allocation_index,color,flags,reserved[2]; };
+struct geo_copy_packet { uint32_t magic,size,version,destination_index,source_index,width,height,reserved; };
 struct geo_dma_ticket { uint32_t magic,slot,generation,reserved; };
 #define GEO_TICKET_MAGIC 0x31544f47u
 #define GEO_OK ((int32_t)0)

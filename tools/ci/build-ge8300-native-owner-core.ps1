@@ -52,7 +52,6 @@ if($WithOwnerAllocation){
 if($WithFactory){
  if(!$WithOwnerAllocation){throw 'Factory requires -WithOwnerAllocation'}
  $common+='-DA04_GE8300_NATIVE_OWNER_DRAW=1'
- $units+=@('vendor_m1_11\native_copy_job','vendor_m1_11\native_copy_queue','vendor_m1_11\windows_native_copy_storage','vendor_m1_11\windows_native_copy_transfer','vendor_m1_11\native_copy_state','vendor_m1_11\native_copy_usc')
  $units+=@('vendor_m1_11\native_d3d_viewport','vendor_m1_11\native_varying_pds','vendor_m1_11\native_draw_job','vendor_m1_11\native_triangle_suite','vendor_m1_11\native_triangle_vdm','vendor_m1_11\native_triangle_pds','vendor_m1_11\native_triangle_ppp','vendor_m1_11\native_triangle_texture','wddm-render\clear_protocol','wddm-render\frontend\draw_protocol','wddm-render\frontend\draw_link_protocol')
  $units+=@('wddm-render\frontend\shader_draw_protocol','wddm-render\compiler\witness_codec','wddm-render\compiler\witness_info')
  $units+=@('vendor_m1_11\native_texture2d_state','vendor_m1_11\native_texture2d_program','wddm-render\frontend\texture_draw_protocol','wddm-render\compiler\texture2d_sm4')

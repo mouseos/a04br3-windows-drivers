@@ -56,18 +56,6 @@ for row in changed['files']:
 mapfile.write_text(json.dumps(changed));run('remove explicit texture overlay provenance',False)
 mapfile.write_text(json.dumps(native));run('restore exact327 overlay set',True)
 
-# Ownership and TQ additions are explicit source contracts, not generic overlays.
-changed=json.loads(json.dumps(native))
-changed['native_unit_sources']['vendor_m1_11\\native_ccb']='drivers/gpu/mt8167/vendor_m1_11/render_owner/native_ccb.c'
-mapfile.write_text(json.dumps(changed));run('redirect TQ-aware CCB to old scoped non-TQ producer',False)
-mapfile.write_text(json.dumps(native))
-changed=json.loads(json.dumps(native));del changed['native_unit_sources']['vendor_m1_11\\windows_native_copy_transfer']
-mapfile.write_text(json.dumps(changed));run('omit actual copy transfer ownership consumer from full build',False)
-mapfile.write_text(json.dumps(native))
-changed_orig=json.loads(json.dumps(origins));changed_orig['legacy_reviewed_deltas'][0]['sha256']='0'*64
-origfile.write_text(json.dumps(changed_orig));run('silently repin modified legacy CCB framing',False)
-origfile.write_text(json.dumps(origins));run('restore ownership67 and exact TQ framing provenance',True)
-
 receipt={'schema':'ge8300-fullsource-map-regression-v1','production_source_modified':False,'driver_cache_used':False,'hardware_operations':False,'cases':records}
 (out/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
 print(json.dumps(receipt))

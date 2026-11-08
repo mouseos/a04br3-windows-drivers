@@ -11,11 +11,12 @@ static int32_t destroy(void*c,uint64_t t){(void)c;(void)t;return 0;}
 static int32_t prepare(void*c,uint64_t t,uint32_t color,uint64_t*j){(void)c;(void)t;(void)color;*j=99;return 0;}
 static int32_t discard(void*c,uint64_t t){(void)c;assert(t==99||t==100);discards++;return 0;}
 static int32_t submit(void*c,uint64_t t,uint32_t f,uint32_t g){(void)c;assert(t==100&&f==7&&g);submits++;return 0;}
+static int32_t prepare_copy_unused(void *c,uint64_t s,uint64_t d,uint64_t *j){(void)c;(void)s;(void)d;(void)j;return GEO_UNSUPPORTED;}
 int main(void){
  struct geo_engine e;struct geo_allocation a={0};struct geo_dma_ticket t,t2;uint64_t token;uint32_t fence;
  struct geo_surface_desc d={sizeof(d),1,800,600,3200,GEO_FORMAT_A8R8G8B8,GEO_USAGE_RENDER_TARGET,0};
  struct geo_clear_packet p={GEO_CLEAR_MAGIC,sizeof(p),1,0,0xffff00ff,0,{0,0}};
- struct geo_owner_ops o={sizeof(o),2,GEO_OWNER_REQUIRED,0,&e,create,bind,unbind,destroy,prepare,discard,submit};
+ struct geo_owner_ops o={sizeof(o),GEO_OWNER_OPS_VERSION,GEO_OWNER_REQUIRED,0,&e,create,bind,unbind,destroy,prepare,discard,submit,prepare_copy_unused};
  assert(geo_engine_init(&e,&o)==0&&geo_create(&e,&a,&d)==0);
  /* A real Render reservation may precede the initial VidMm map. */
  assert(geo_prepare_begin(&e,&a,&p,&t)==0&&!a.bound&&a.references==1);

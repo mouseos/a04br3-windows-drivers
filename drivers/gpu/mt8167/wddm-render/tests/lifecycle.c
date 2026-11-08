@@ -9,11 +9,12 @@ static int32_t bind(void *c,uint64_t s,void *m,uint32_t o,uint32_t n,uint64_t ap
 static int32_t release(void *c,uint64_t s){(void)c;(void)s;return GEO_OK;}
 static int32_t prepare(void *c,uint64_t s,uint32_t color,uint64_t *job){(void)c;(void)s;(void)color;*job=7;return GEO_OK;}
 static int32_t submit(void *c,uint64_t j,uint32_t f,uint32_t g){(void)c;(void)j;(void)f;(void)g;publishes++;return GEO_OK;}
+static int32_t prepare_copy_unused(void *c,uint64_t s,uint64_t d,uint64_t *j){(void)c;(void)s;(void)d;(void)j;return GEO_UNSUPPORTED;}
 int main(void) {
  struct geo_engine e;struct geo_allocation a={0};struct geo_dma_ticket t,old,queued;
  struct geo_surface_desc d={sizeof(d),1,256,256,1024,GEO_FORMAT_A8R8G8B8,GEO_USAGE_RENDER_TARGET,0};
  struct geo_clear_packet p={GEO_CLEAR_MAGIC,sizeof(p),1,0,0xff00ff00,0,{0,0}};
- struct geo_owner_ops ops={sizeof(ops),GEO_OWNER_OPS_VERSION,GEO_OWNER_REQUIRED,0,&e,create,bind,release,release,prepare,release,submit};
+ struct geo_owner_ops ops={sizeof(ops),GEO_OWNER_OPS_VERSION,GEO_OWNER_REQUIRED,0,&e,create,bind,release,release,prepare,release,submit,prepare_copy_unused};
  uint32_t fence=0,preempt=0,last=0;uint64_t token=0,cancel_token=0;
  assert(geo_engine_init(&e,&ops)==GEO_OK);assert(geo_create(&e,&a,&d)==GEO_OK);
  assert(geo_bind(&e,&a,&a,0,256*1024,0)==GEO_OK);

@@ -17,6 +17,7 @@ struct a04_native_tq_transfer {
  struct a04_native_copy_queue_result queue;
  volatile LONG state;ULONG kernel_next;uint64_t epoch,irq_serial,claimed_serial;
  struct a04_native_irq_core *irq;
+ ULONG visibility_fence;uint64_t visibility_serial;
  _Alignas(8) UCHAR ring[4096],workspace[4096];
 };
 static int queues(struct a04_rgx_fw_runtime *f,RGXFWIF_CCB_CTL *k)
@@ -69,10 +70,10 @@ NTSTATUS a04_native_tq_transfer_submit(struct a04_native_tq_transfer *c,
  if(!c||!s||!irq||KeGetCurrentIrql()<=DISPATCH_LEVEL||c->state!=1||expected>127u||
     !(r=c->native->render)||r->native_owner!=c->native||r->poisoned||c->native->quarantined||
     !s->online||!s->core||s->command_poisoned||s->shutdown_started||
-    !a04_native_copy_storage_gpu_owned(c->storage)||
     !s->memory||s->memory!=r->firmware||!s->memory->hardware_owned||!s->memory->uncached||
     !(f=s->memory->runtime)||irq->core!=s->core||irq->runtime!=f||!irq->epoch||
     !irq->powered||irq->masked||irq->closed||irq->faulted||irq->draining)return STATUS_INVALID_DEVICE_STATE;
+ if(!a04_native_copy_storage_gpu_owned(c->storage))return STATUS_INVALID_DEVICE_STATE;
  if(InterlockedCompareExchange(&s->command_busy,1,0))return STATUS_DEVICE_BUSY;
  if(queues(f,&k)||k.ui32ReadOffset!=expected||k.ui32WriteOffset!=expected||
     r->sequence!=c->input.previous_value||r->client_write[3]!=c->input.write||
@@ -169,10 +170,7 @@ NTSTATUS a04_native_tq_transfer_finish_gpu(struct a04_native_tq_transfer *c,
  a04_gpu_dma_barrier();out->phase=3;out->flush_sequence=s->command_sequence;
  status=a04_native_copy_storage_cpu_complete(c->storage);if(!NT_SUCCESS(status))goto fail;
  out->phase=4;InterlockedExchange(&c->state,4);
- /* Exact source/destination CPU cache ownership returned. command_busy is
-  * retained: fresh real visibility IRQ/fence + WDDM integration is separate.
-  * This function never notifies a scheduler fence or permits resubmission. */
- return STATUS_SUCCESS;
+ return STATUS_SUCCESS; /* CPU ownership established; scheduler still waits for fresh real IRQ. */
 fail:return poison(c,s,status);
 }
 NTSTATUS a04_native_tq_transfer_release_unsubmitted(struct a04_native_tq_transfer **out)
@@ -181,4 +179,71 @@ NTSTATUS a04_native_tq_transfer_release_unsubmitted(struct a04_native_tq_transfe
  if(!out||!(c=*out)||KeGetCurrentIrql()!=PASSIVE_LEVEL||c->state!=1||
     !c->native->render->firmware||c->native->render->firmware->hardware_owned)return STATUS_DEVICE_BUSY;
  ExFreePoolWithTag(c,TAG);*out=NULL;return STATUS_SUCCESS;
+}
+
+LONG a04_native_tq_transfer_state(struct a04_native_tq_transfer *c){return c?InterlockedCompareExchange(&c->state,0,0):0;}
+NTSTATUS a04_native_tq_transfer_arm_visibility(struct a04_native_tq_transfer *c,struct a04_vendor_start *s,struct a04_native_irq_core *q) {
+ RGXFWIF_CCB_CTL k;RGXFWIF_KCCB_CMD cmd={0};struct a04_rgx_fw_runtime *f;ULONG next;NTSTATUS status;
+ if(!c||!s||!q||KeGetCurrentIrql()<=DISPATCH_LEVEL||c->state!=4||c->irq!=q||q->epoch!=c->epoch||
+    !q->masked||q->faulted||q->closed||q->draining||!q->powered||s->command_poisoned||!s->online||s->command_sequence>=0xfffffffeu)return STATUS_INVALID_DEVICE_STATE;
+ f=s->memory->runtime;if(s->command_busy!=1)return STATUS_INVALID_DEVICE_STATE;
+ if(queues(f,&k)||k.ui32ReadOffset!=k.ui32WriteOffset||*(volatile ULONG*)f->command_sync!=s->command_sequence){return STATUS_DEVICE_BUSY;}
+ status=a04_native_irq_rearm(q,c->epoch,q->serial);if(!NT_SUCCESS(status))return status;
+ c->visibility_serial=q->serial;c->visibility_fence=++s->command_sequence;
+ cmd.eCmdType=RGXFWIF_KCCB_CMD_SYNC;cmd.eDM=0;cmd.uCmdData.sSyncData.sSyncObjDevVAddr=f->command_sync_addr;cmd.uCmdData.sSyncData.uiUpdateVal=c->visibility_fence;
+ *(volatile ULONG*)f->command_sync=0;InterlockedExchange(&c->state,6);
+ if(a04_rgx_device_write_words(&f->kcommands[k.ui32WriteOffset],&cmd,sizeof(cmd)))return poison(c,s,STATUS_IO_DEVICE_ERROR);
+ next=(k.ui32WriteOffset+1)&127;a04_gpu_dma_barrier();((volatile RGXFWIF_CCB_CTL*)f->kctl)->ui32WriteOffset=next;
+ a04_gpu_dma_barrier();WRITE_REGISTER_ULONG((volatile ULONG*)(void*)(s->core+0xb00),0x10);return STATUS_SUCCESS;
+}
+NTSTATUS a04_native_tq_transfer_visibility_receipt(struct a04_native_tq_transfer *c,struct a04_vendor_start *s,struct a04_native_irq_core *q,const struct a04_native_irq_receipt *receipt) {
+ RGXFWIF_CCB_CTL k;struct a04_rgx_fw_runtime *f;
+ if(!c||!s||!q||!receipt||KeGetCurrentIrql()<=DISPATCH_LEVEL||c->state!=6||c->irq!=q||
+    q->epoch!=c->epoch||receipt->epoch!=c->epoch||receipt->serial<=c->visibility_serial||receipt->serial!=q->serial||
+    !q->masked||q->faulted||q->closed||q->draining||!q->powered||!NT_SUCCESS(receipt->fault)||s->command_busy!=1||s->command_poisoned||!s->online)return STATUS_INVALID_DEVICE_STATE;
+ f=s->memory->runtime;a04_gpu_dma_barrier();if(*(volatile ULONG*)f->command_sync!=c->visibility_fence||queues(f,&k)||k.ui32ReadOffset!=k.ui32WriteOffset){InterlockedExchange(&c->state,8);return STATUS_PENDING;}
+ NTSTATUS status=a04_native_irq_rearm(q,c->epoch,q->serial);if(!NT_SUCCESS(status))return status;
+ InterlockedExchange(&c->state,7);InterlockedExchange(&s->command_busy,0);return STATUS_SUCCESS;
+}
+NTSTATUS a04_native_tq_transfer_release_retired(struct a04_native_tq_transfer **out) {
+ struct a04_native_tq_transfer *c;if(!out||!(c=*out)||KeGetCurrentIrql()!=PASSIVE_LEVEL||
+   !c->native->render->firmware||c->native->render->firmware->hardware_owned||
+   (c->irq&&(c->irq->core||c->irq->powered)))return STATUS_DEVICE_BUSY;
+ ExFreePoolWithTag(c,TAG);*out=NULL;return STATUS_SUCCESS;
+}
+
+NTSTATUS a04_native_tq_transfer_wait_visibility_retry(struct a04_native_tq_transfer *c,struct a04_vendor_start *s) {
+ ULONGLONG began;LARGE_INTEGER delay;RGXFWIF_CCB_CTL k;struct a04_rgx_fw_runtime *f;
+ if(!c||!s||KeGetCurrentIrql()!=PASSIVE_LEVEL||a04_native_tq_transfer_state(c)!=8||!s->online||s->command_poisoned)return STATUS_INVALID_DEVICE_STATE;
+ f=s->memory->runtime;began=KeQueryInterruptTime();delay.QuadPart=-10000;
+ for(;;){
+  a04_gpu_dma_barrier();if(queues(f,&k))return poison(c,s,STATUS_IO_DEVICE_ERROR);
+  if(k.ui32ReadOffset==k.ui32WriteOffset&&*(volatile ULONG*)f->command_sync==c->visibility_fence){InterlockedExchange(&c->state,4);return STATUS_SUCCESS;}
+  if(KeQueryInterruptTime()-began>=20000000u)return poison(c,s,STATUS_IO_TIMEOUT);
+  (void)KeDelayExecutionThread(KernelMode,FALSE,&delay);
+ }
+ /* No scheduler completion here: caller must arm ANOTHER real GP IRQ. */
+}
+
+NTSTATUS a04_native_tq_transfer_drain_for_stop(struct a04_native_tq_transfer *c,struct a04_vendor_start *s) {
+ NTSTATUS status;LONG phase;struct a04_native_copy_gpu_result result;
+ if(!c||!s||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+ phase=a04_native_tq_transfer_state(c);
+ if(phase==1||phase==7)return STATUS_SUCCESS;
+ /* A genuine ISR receipt may have arrived after admission closed. Completing
+  * its bounded TQ/SLC/GP/cache work is stop progress, never a scheduler fence. */
+ if(phase==3){status=a04_native_tq_transfer_finish_gpu(c,s,&result);if(!NT_SUCCESS(status))return status;phase=4;}
+ if(phase==8){status=a04_native_tq_transfer_wait_visibility_retry(c,s);if(!NT_SUCCESS(status))return status;phase=4;}
+ if(phase==6){
+  ULONGLONG began=KeQueryInterruptTime();LARGE_INTEGER delay;RGXFWIF_CCB_CTL k;struct a04_rgx_fw_runtime *f=s->memory->runtime;delay.QuadPart=-10000;
+  for(;;){a04_gpu_dma_barrier();if(queues(f,&k))return poison(c,s,STATUS_IO_DEVICE_ERROR);
+   if(k.ui32ReadOffset==k.ui32WriteOffset&&*(volatile ULONG*)f->command_sync==c->visibility_fence)break;
+   if(KeQueryInterruptTime()-began>=20000000u)return poison(c,s,STATUS_IO_TIMEOUT);
+   (void)KeDelayExecutionThread(KernelMode,FALSE,&delay);
+  }phase=4;
+ }
+ if(phase!=4)return STATUS_DEVICE_BUSY; /* submitted/no-IRQ or fault: retain */
+ /* Parent still must perform cleanup/FWoff/reset/IRQdrain/VerifyOff. Only
+  * release the command gate after real DMA/GP/cache work, not its resources. */
+ InterlockedExchange(&s->command_busy,0);return STATUS_SUCCESS;
 }

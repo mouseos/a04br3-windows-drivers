@@ -7,6 +7,7 @@
 #include "native_owner_frontend_resolver.h"
 #include "windows_command.h"
 #include "windows_stop.h"
+#include "windows_native_copy_transfer.h"
 #define E_FACTORY_TAG 0x664e4741u
 #define E_FIRMWARE_TAG 0x704e4741u
 #define E_OWNER_ACTIVE 1u
@@ -22,6 +23,7 @@ struct e_native_resource {
 };
 struct e_native_owner {
     struct e_native_resource *resources;
+    struct a04_native_copy_storage *copy_storage;struct a04_native_tq_transfer *copy_transfer;
     DXGKRNL_INTERFACE dxgk;struct geo_frontend_memory memory;
     struct a04_native_owner_allocation *allocation;
     volatile UCHAR *core,*mfg;ULONG irq_level;

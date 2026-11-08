@@ -50,6 +50,7 @@ NTSTATUS e_native_stop_locked(struct e_native_owner *c)
         c->receipt_valid=TRUE;c->job_state=E_JOB_NONE;return STATUS_SUCCESS;
     }
     if(!a->start.online || a->start.command_poisoned || a->render.poisoned)return STATUS_DEVICE_BUSY;
+    if(c->copy_transfer){status=a04_native_tq_transfer_drain_for_stop(c->copy_transfer,&a->start);if(!NT_SUCCESS(status))return status;}
     if(c->job_state==E_JOB_SUBMITTED && a->dispatch.state==A04_NATIVE_DISPATCH_SUBMITTED){
         status=a04_vendor_native_owner_finish_passive(a->native,&a->start,&a->dispatch.result);
         if(!NT_SUCCESS(status))return status;
@@ -70,7 +71,13 @@ NTSTATUS e_native_stop_locked(struct e_native_owner *c)
     status=c->platform.Off(c->platform.Header.Context,c->platform_token);GeoFactoryCheckpoint(35,status,6,0,0,0);if(!NT_SUCCESS(status))return status;
     c->hardware_off=TRUE;
     status=c->platform.VerifyOff(c->platform.Header.Context,c->platform_token);if(!NT_SUCCESS(status))return status;
-    if(a->binding){status=a04_native_mdl_sync_for_cpu(a->binding);if(!NT_SUCCESS(status))return status;}
+    /* Parent VerifyOff and closed IRQ prove that no old PTE can be used.
+     * Return every backing through adapter flush before any CPU access. */
+    for(struct e_native_resource *linear=c->resources;linear;linear=linear->next)if(linear->linear){
+        status=a04_native_mdl_retire_after_gpu_off(linear->linear);if(!NT_SUCCESS(status))return status;
+    }
+    if(a->vertex){status=a04_native_mdl_retire_after_gpu_off(a->vertex);if(!NT_SUCCESS(status))return status;}
+    if(a->binding){status=a04_native_mdl_retire_after_gpu_off(a->binding);if(!NT_SUCCESS(status))return status;}
     c->receipt_valid=TRUE;c->job_state=E_JOB_NONE;
     return STATUS_SUCCESS;
 }
@@ -99,6 +106,8 @@ NTSTATUS e_native_retire_graph_locked(struct e_native_owner *c)
         a->irq.core=NULL;a->irq.runtime=NULL;a->irq.bytes=0;
         RtlZeroMemory(&a->dispatch,sizeof(a->dispatch));
     }
+    if(c->copy_transfer){status=a04_native_tq_transfer_release_retired(&c->copy_transfer);if(!NT_SUCCESS(status))return status;}
+    if(c->copy_storage){status=a04_native_copy_storage_release_cold(&c->copy_storage);if(!NT_SUCCESS(status))return status;}
     if(a->native){status=a04_vendor_native_release_cold(&a->native);GeoFactoryCheckpoint(36,status,1,0,0,0);if(!NT_SUCCESS(status))return status;}
     if(a->render.firmware){status=a04_vendor_render_release_cold(&a->render);GeoFactoryCheckpoint(36,status,2,0,0,0);if(!NT_SUCCESS(status))return status;}
     status=a04_vendor_m1_11_windows_free(&a->firmware);GeoFactoryCheckpoint(36,status,3,0,0,0);if(!NT_SUCCESS(status))return status;
