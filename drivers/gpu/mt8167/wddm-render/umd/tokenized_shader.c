@@ -48,9 +48,14 @@ HRESULT geo_umd_compile_shader11(struct geo_shader_compiler *compiler,uint32_t s
  if(!in||in->NumInputSignatureEntries>16u||in->NumOutputSignatureEntries>16u||
     (in->NumInputSignatureEntries&&!in->pInputSignature)||(in->NumOutputSignatureEntries&&!in->pOutputSignature))return E_INVALIDARG;
  memset(&sig,0,sizeof(sig));sig.input_count=in->NumInputSignatureEntries;sig.output_count=in->NumOutputSignatureEntries;
+ /* RT8.1 d3d11!CDevice::BuildDriverSignatures writes SystemValue, Register,
+  * Mask and MinPrecision, but leaves RegisterComponentType untouched.
+  * Do not read that unwritten field as a prerequisite to compilation. The
+  * bounded token decoder still admits only the implemented float opcodes;
+  * this does not add integer shader or minimum-precision support. */
  for(i=0;i<sig.input_count;i++){sig.inputs[i].reg=in->pInputSignature[i].Register;sig.inputs[i].mask=in->pInputSignature[i].Mask;sig.inputs[i].system_value=in->pInputSignature[i].SystemValue;
-  if(in->pInputSignature[i].MinPrecision||in->pInputSignature[i].RegisterComponentType!=D3D10_SB_REGISTER_COMPONENT_FLOAT32)return E_INVALIDARG;}
+  if(in->pInputSignature[i].MinPrecision)return E_INVALIDARG;}
  for(i=0;i<sig.output_count;i++){sig.outputs[i].reg=in->pOutputSignature[i].Register;sig.outputs[i].mask=in->pOutputSignature[i].Mask;sig.outputs[i].system_value=in->pOutputSignature[i].SystemValue;
-  if(in->pOutputSignature[i].MinPrecision||in->pOutputSignature[i].RegisterComponentType!=D3D10_SB_REGISTER_COMPONENT_FLOAT32)return E_INVALIDARG;}
+  if(in->pOutputSignature[i].MinPrecision)return E_INVALIDARG;}
  return compile(compiler,stage,code,&sig,out);
 }
