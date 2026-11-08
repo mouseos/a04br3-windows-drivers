@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only
- * Parent1103 owns the complete synchronous PIO transaction and quarantine.
+ * Parent1104 owns the complete synchronous PIO transaction and quarantine.
  * Resource-less child never maps, owns or frees thermal/ADC register ranges. */
 #include <ntddk.h>
 #include <wdf.h>
@@ -44,7 +44,7 @@ NTSTATUS PioD0(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous) {
  WdfSpinLockAcquire(c->lock);a04_readout_invalidate(&c->reading);WdfSpinLockRelease(c->lock);
  {DECLARE_CONST_UNICODE_STRING(path,A04_UART_SCREEN_DEVICE);WDF_IO_TARGET_OPEN_PARAMS open;
   WDF_IO_TARGET_OPEN_PARAMS_INIT_OPEN_BY_NAME(&open,&path,GENERIC_READ|GENERIC_WRITE);(VOID)WdfIoTargetOpen(c->uart,&open);}
- MARK(c,"A04THM PIO START parent1103\n");
+ MARK(c,"A04THM PIO START parent1104\n");
  RtlZeroMemory(&v,sizeof(v));status=ExGetFirmwareEnvironmentVariable(&name,&guid,&v,&bytes,&attrs);
  if(!NT_SUCCESS(status)||a04_thermal_boot_calibration(&cal,&v,bytes,attrs)){MARK(c,"A04THM PIO CAL REJECT\n");status=STATUS_DEVICE_NOT_READY;goto done;}
  RtlZeroMemory(&iface,sizeof(iface));status=WdfFdoQueryForInterface(device,&Mt8167ThermalParentPioGuid,(PINTERFACE)&iface,sizeof(iface),MT8167_THERMAL_PARENT_PIO_VERSION,NULL);
@@ -62,7 +62,7 @@ NTSTATUS PioD0(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous) {
  if(publish){status=STATUS_DEVICE_HARDWARE_ERROR;goto done;}
  {char line[96]="A04THM PIO mc=";ULONG n=sizeof("A04THM PIO mc=")-1;unsigned i;
   for(i=0;i<3;i++){number(line,&n,sample.mc[i]);line[n++]=i==2?'\n':'/';}mark(c,line,n);}
- MARK(c,"A04THM PIO IDLE restored parent1103\n");
+ MARK(c,"A04THM PIO IDLE restored parent1104\n");
 done:
  WdfIoTargetClose(c->uart);return status;
 }

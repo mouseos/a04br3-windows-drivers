@@ -1,0 +1,40 @@
+; MT6392 calendar opt-in; baseline 1026 flags and interfaces retained.
+; Explicit GPU-domain+SD-power1014 tuple only; ecaa1008 Audio ABI retained. Never package as parent1008.
+; EnginePcm package identity; MediaTek MT8167 shared parent. Requires matched profile and signed catalog.
+[Version]
+Signature="$WINDOWS NT$"
+Class=System
+ClassGuid={4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider=%Provider%
+DriverVer=11/08/2026,2026.11.8.1104
+CatalogFile=mt8167-shared-thermal1104.cat
+[Manufacturer]
+%Provider%=Models,NTARM
+[Models.NTARM]
+%Device%=Install,ACPI\BEN0001
+[DestinationDirs]
+DriverCopy=12
+[SourceDisksNames]
+1=%Disk%,,,
+[SourceDisksFiles]
+mt8167-shared.sys=1
+[Install.NT]
+CopyFiles=DriverCopy
+[DriverCopy]
+mt8167-shared.sys
+[Install.NT.Services]
+AddService=Mt8167Shared,0x00000002,Service
+[Service]
+DisplayName=%Device%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\mt8167-shared.sys
+[Install.NT.Wdf]
+KmdfService=Mt8167Shared,Wdf
+[Wdf]
+KmdfLibraryVersion=1.13
+[Strings]
+Provider="mouseos"
+Device="MediaTek MT8167 Shared Resource Controller"
+Disk="MediaTek MT8167 Shared Resource Controller Driver"
