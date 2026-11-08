@@ -1,0 +1,13 @@
+# failed139後のboot再採用
+
+失敗したba70 source・既媒体・217pinsは別worktreeでfreezeし、このbranchは未配備の後続generator準備だけを行う。実機owner main、worker実機操作なし。
+
+bootの唯一の採用設定はtools/recovery/combined138-boot-adoption.json。現在はfailed139を明示してblocked。f7f997/4451のThermalHandoffDxe EBS callback translation fault at0x1100D00Cを保存し、同じbootの再試験は許可しない。
+
+Carsonの機種MMIO/EBS寿命修正を含む新bootを受領後、このJSONだけでmatched_boot.path/sha256/producer_pins/main_seal・互換check数・adoption_statusを切替える。親source/SYSとfirmware record.v3/thermal QI V3build1104/HPv2build1107は明示照合する。機種MMIO source修正や実機復旧をこのbranchで行わない。
+
+mainのRecovery確認とfresh140原証拠が出るまで、旧138を新captureとして扱わない。JSONのstate_rebind_proofにはmain作成のroot内receipt path/SHA256を設定し、hardware_owner main/status fresh-state-identical-rebind-verified又はactual-state-baseline-verified/recovery_confirmed true/fresh_manifest_sha256/recovery_boot_idを検証する。原37/SYSTEMtrio/SYS不変が実証できた場合だけrebind、未知writeがあればactual stateから次世代profileを作る。現fresh138専用profileや旧rawを自動書換えする機能は追加しない。
+
+新adoption_status main-artifacts-and-recovery-state-verifiedへ変更するのは、修正版bootのmain sealとstate proofを受領後だけ。build_policyは両方不足時にfail closed。旧package-mapのmatched_bootはJSONのmatched_bootをそのまま使い、producerへ散在したboot hashの手更新をしない。generated policyにadoption contractも含むため、canonical policy変更時はSCM/native候補のhashを再固定する。親/audio/HCD/GPU再build・SDK setup・巨大input再転送は不要。追加receipt/bootだけの小closureを利用する。
+
+更新driverのruntime出力は旧subtree byte保持へ入れず、新version/同起動証拠で評価。静的設定・旧SCM・GPUledger・原資料は保持する。Windowsへparent/audioが未適用という現判断は推定であり、無出力を未書込みの証明にしない。
