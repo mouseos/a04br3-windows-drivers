@@ -18,6 +18,9 @@
 #include <mscat.h>
 #include <bcrypt.h>
 #include <reason.h>
+#if A04_PERIPHERAL_NEXT_PROFILE
+#include <wlanapi.h>
+#endif
 #include "../../drivers/system/mt8167-toprgu/uart_screen.h"
 #if A04_PERIPHERAL_NEXT_PROFILE
 #include "peripheral-service-path-policy.h"
@@ -117,6 +120,43 @@ static DWORD readonly_one(const WCHAR *device,DWORD ioctl,DWORD expected,const W
 static DWORD readonly_status(void){static const GUID guid={0x6b2c65ed,0xe2a7,0x4ddc,{0x86,0xba,0x38,0x42,0xe2,0x21,0x4e,0x29}};HDEVINFO set;SP_DEVICE_INTERFACE_DATA iface,extra;DWORD detailbuf[256];SP_DEVICE_INTERFACE_DETAIL_DATA_W *detail=(SP_DEVICE_INTERFACE_DETAIL_DATA_W *)detailbuf;SP_DEVINFO_DATA dev;DWORD first,e,n;first=readonly_one(L"\\\\.\\MT6392Rtc",CTL_CODE(FILE_DEVICE_UNKNOWN,0x800,METHOD_BUFFERED,FILE_READ_ACCESS),36,L"rtc-readonly.bin",1);record(0,0x201,first);set=SetupDiGetClassDevsW(&guid,NULL,NULL,DIGCF_DEVICEINTERFACE|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE)return first?first:GetLastError();memset(&iface,0,sizeof(iface));iface.cbSize=sizeof(iface);e=0;if(!SetupDiEnumDeviceInterfaces(set,NULL,&guid,0,&iface))e=GetLastError();memset(&extra,0,sizeof(extra));extra.cbSize=sizeof(extra);if(!e&&SetupDiEnumDeviceInterfaces(set,NULL,&guid,1,&extra))e=ERROR_DUP_NAME;if(!e&&GetLastError()!=ERROR_NO_MORE_ITEMS)e=GetLastError();if(!e){memset(detailbuf,0,sizeof(detailbuf));detail->cbSize=sizeof(*detail);memset(&dev,0,sizeof(dev));dev.cbSize=sizeof(dev);if(!SetupDiGetDeviceInterfaceDetailW(set,&iface,detail,sizeof(detailbuf),&n,&dev))e=GetLastError();else{e=property(set,&dev,SPDRP_SERVICE,L"Mt8167Thermal");if(!e)e=readonly_one(detail->DevicePath,CTL_CODE(FILE_DEVICE_UNKNOWN,0xa04,METHOD_BUFFERED,FILE_READ_DATA),28,L"thermal-readonly.bin",0);}}record(1,0x201,e);SetupDiDestroyDeviceInfoList(set);return first?first:e;}
 
 #if A04_PERIPHERAL_NEXT_PROFILE
+/* Observe OS auto-connection only; never scan/connect/create/export a profile.
+ * Interface GUID/profile/SSID/BSSID stay in API-owned memory, never in logs. */
+static DWORD wlan_readonly_status(void){
+ typedef DWORD (WINAPI *Open)(DWORD,PVOID,PDWORD,PHANDLE);
+ typedef DWORD (WINAPI *Enum)(HANDLE,PVOID,PWLAN_INTERFACE_INFO_LIST*);
+ typedef DWORD (WINAPI *Query)(HANDLE,const GUID*,WLAN_INTF_OPCODE,PVOID,PDWORD,PVOID*,PWLAN_OPCODE_VALUE_TYPE);
+ typedef DWORD (WINAPI *Profiles)(HANDLE,const GUID*,PVOID,PWLAN_PROFILE_INFO_LIST*);
+ typedef VOID (WINAPI *Free)(PVOID);typedef DWORD (WINAPI *Close)(HANDLE,PVOID);
+ HMODULE mod=LoadLibraryW(L"wlanapi.dll");HANDLE h=NULL;DWORD e=0,v=0,i,count=0,connected=0;PWLAN_INTERFACE_INFO_LIST list=NULL;
+ Open op;Enum en;Query qu;Profiles pr;Free fr;Close cl;
+ if(!mod){e=GetLastError();record(3,0x230,e);return e;}
+ op=(Open)GetProcAddress(mod,"WlanOpenHandle");en=(Enum)GetProcAddress(mod,"WlanEnumInterfaces");qu=(Query)GetProcAddress(mod,"WlanQueryInterface");pr=(Profiles)GetProcAddress(mod,"WlanGetProfileList");fr=(Free)GetProcAddress(mod,"WlanFreeMemory");cl=(Close)GetProcAddress(mod,"WlanCloseHandle");
+ if(!op||!en||!qu||!pr||!fr||!cl){FreeLibrary(mod);record(3,0x230,ERROR_PROC_NOT_FOUND);return ERROR_PROC_NOT_FOUND;}
+ e=op(2,NULL,&v,&h);record(3,0x230,e);if(!e){e=en(h,NULL,&list);record(3,0x231,e);}
+ if(!e){count=list->dwNumberOfItems;record(3,0x232,count);if(count>8)e=ERROR_INVALID_DATA;else for(i=0;i<count;i++){
+ PWLAN_PROFILE_INFO_LIST profiles=NULL;PVOID data=NULL;DWORD bytes=0,q;WLAN_OPCODE_VALUE_TYPE type;
+ record(i,0x233,list->InterfaceInfo[i].isState);
+ q=pr(h,&list->InterfaceInfo[i].InterfaceGuid,NULL,&profiles);record(i,0x234,q);if(!q){record(i,0x235,profiles->dwNumberOfItems);fr(profiles);}else if(!e)e=q;
+ q=qu(h,&list->InterfaceInfo[i].InterfaceGuid,wlan_intf_opcode_current_connection,NULL,&bytes,&data,&type);record(i,0x236,q);
+ if(!q){if(bytes<sizeof(WLAN_CONNECTION_ATTRIBUTES)){if(!e)e=ERROR_INVALID_DATA;}else{WLAN_CONNECTION_ATTRIBUTES *a=(WLAN_CONNECTION_ATTRIBUTES*)data;record(i,0x237,a->isState);record(i,0x238,a->strProfileName[0]!=0);record(i,0x239,a->wlanSecurityAttributes.bSecurityEnabled);if(a->isState==wlan_interface_state_connected)connected++;}fr(data);}
+ else if(!e)e=q;
+ }}
+ if(list)fr(list);if(h){DWORD c=cl(h,NULL);record(3,0x23a,c);if(!e)e=c;}FreeLibrary(mod);record(3,0x23b,connected);return e?e:(connected?0:ERROR_NOT_CONNECTED);
+}
+/* Read-only PnP disk presence under the exact SD host. No block reads/writes,
+ * rescan, power request, card insertion or card-content/identity logging. */
+static DWORD sd_readonly_presence(DEVINST host){
+ static const GUID disk={0x53f56307,0xb6bf,0x11d0,{0x94,0xf2,0x00,0xa0,0xc9,0x1e,0xfb,0x8b}};
+ HDEVINFO set;SP_DEVICE_INTERFACE_DATA iface;SP_DEVINFO_DATA dev;DWORD detailbuf[512],i,n,count=0,e=0;CONFIGRET cr;
+ set=SetupDiGetClassDevsW(&disk,NULL,NULL,DIGCF_DEVICEINTERFACE|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE){e=GetLastError();record(4,0x240,e);return e;}
+ for(i=0;i<64;i++){SP_DEVICE_INTERFACE_DETAIL_DATA_W *detail=(SP_DEVICE_INTERFACE_DETAIL_DATA_W*)detailbuf;DEVINST cur,parent;DWORD depth;ULONG status=0,problem=0;
+ memset(&iface,0,sizeof(iface));iface.cbSize=sizeof(iface);if(!SetupDiEnumDeviceInterfaces(set,NULL,&disk,i,&iface)){e=GetLastError();if(e==ERROR_NO_MORE_ITEMS)e=0;break;}
+ memset(detailbuf,0,sizeof(detailbuf));detail->cbSize=sizeof(*detail);memset(&dev,0,sizeof(dev));dev.cbSize=sizeof(dev);
+ if(!SetupDiGetDeviceInterfaceDetailW(set,&iface,detail,sizeof(detailbuf),&n,&dev)){e=GetLastError();break;}
+ cur=dev.DevInst;for(depth=0;depth<16;depth++){if(cur==host){count++;cr=CM_Get_DevNode_Status(&status,&problem,dev.DevInst,0);record(4,0x242,cr);record(4,0x243,status);record(4,0x244,problem);break;}cr=CM_Get_Parent(&parent,cur,0);if(cr!=CR_SUCCESS)break;cur=parent;}
+ }if(i==64)e=ERROR_MORE_DATA;SetupDiDestroyDeviceInfoList(set);record(4,0x240,e);record(4,0x241,count);return e?e:(count?0:ERROR_NOT_READY);
+}
 /* Exactly the two pinned signed clients; one process each, no shell/retry. */
 static DWORD run_clients(void)
 {
@@ -149,6 +189,8 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
  e=metadata?metadata:sys;if(!e&&(cr!=CR_SUCCESS||!(status&DN_STARTED)||problem))e=ERROR_NOT_READY;
 }if(e&&!first)first=e;}e=readonly_status();if(e&&!first)first=e;
 #if A04_PERIPHERAL_NEXT_PROFILE
+ e=wlan_readonly_status();if(e&&!first)first=e;
+ {SP_DEVINFO_DATA sd;DWORD find=deferred_find(4,set,&sd);e=find?find:sd_readonly_presence(sd.DevInst);record(4,0x245,e);if(e&&!first)first=e;}
  e=run_clients();if(e&&!first)first=e;
 #endif
  e=preserved();if(e&&!first)first=e;e=first;goto done;}
