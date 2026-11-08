@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 /* WDK-native deterministic OS seams. No real kernel API is executed. */
 static ULONGLONG test_now=10000000;static ULONG test_maps,test_unmaps,test_acquires,test_releases,test_stops,test_refs,test_free;
-static BOOLEAN test_qualified,test_stop_fail,test_health_fail,test_stuck,test_vbus;
+static KIRQL test_irql;static ULONG test_writes;static PVOID test_cancel_context;static ULONG test_cancel_cookie;
+static BOOLEAN test_stale,test_generation_change,test_proof_incomplete,test_qualified,test_stop_fail,test_health_fail,test_stuck,test_vbus;
 static UCHAR test_mac[0x10000],test_phy[0x10000],test_pool[0x20000];
 static PIO_WORKITEM_ROUTINE test_work,test_cleanup;
 static PVOID test_work_context,test_cleanup_context;static ULONG test_work_id;
@@ -9,14 +10,14 @@ static NTSTATUS MtTestQueryOwner(PDEVICE_OBJECT,MT_MUSB_OWNER_INTERFACE *);
 static UCHAR TestRead8(volatile UCHAR *p){return *p;}
 static USHORT TestRead16(volatile USHORT *p){return *p;}
 static ULONG TestRead32(volatile ULONG *p){return *p;}
-static VOID TestWrite8(volatile UCHAR *p,UCHAR v){*p=v;}
+static VOID TestWrite8(volatile UCHAR *p,UCHAR v){test_writes++;*p=v;}
 static VOID TestWrite16(volatile USHORT *p,USHORT v){
- ULONG_PTR off=(ULONG_PTR)p-(ULONG_PTR)test_mac;
+ test_writes++;ULONG_PTR off=(ULONG_PTR)p-(ULONG_PTR)test_mac;
  if(off==2||off==4){*p&=~v;return;}
  if(!test_stuck&&((off==0x12&&(v&0x108))||(off==0x16&&(v&0x10))))v=0;
  *p=v;
 }
-static VOID TestWrite32(volatile ULONG *p,ULONG v){*p=v;}
+static VOID TestWrite32(volatile ULONG *p,ULONG v){test_writes++;*p=v;}
 #define READ_REGISTER_UCHAR TestRead8
 #define READ_REGISTER_USHORT TestRead16
 #define READ_REGISTER_ULONG TestRead32
@@ -37,7 +38,7 @@ static VOID TestWrite32(volatile ULONG *p,ULONG v){*p=v;}
 #define KeRemoveQueueDpc(d) ((void)(d))
 #define KeFlushQueuedDpcs() ((void)0)
 #define KeWaitForSingleObject(e,r,m,a,t) ((void)(e),(void)(r),(void)(m),(void)(a),(void)(t))
-#define KeGetCurrentIrql() PASSIVE_LEVEL
+#define KeGetCurrentIrql() test_irql
 static VOID TestDelay(KPROCESSOR_MODE mode,BOOLEAN alert,PLARGE_INTEGER interval){(void)mode;(void)alert;test_now-=(ULONGLONG)interval->QuadPart;}
 #define KeDelayExecutionThread TestDelay
 static PVOID TestAllocate(POOL_TYPE type,SIZE_T bytes,ULONG tag){(void)type;(void)tag;return bytes<=sizeof(test_pool)?test_pool:NULL;}
