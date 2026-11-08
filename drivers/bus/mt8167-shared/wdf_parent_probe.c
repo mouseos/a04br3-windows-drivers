@@ -61,6 +61,7 @@
 #endif
 #endif
 #include "usb_interface.h"
+#include "musb_owner_interface.h"
 #include "usb_owner.h"
 #ifndef A04_SHARED_USB_ONLY
 #define A04_SHARED_USB_ONLY 0
@@ -1011,6 +1012,19 @@ static int ParentUsbVerify(void *p) {
  return ((ParentUsbTopRead(c,4)>>20)&7u)==2u ? 0:-1;
 }
 #if defined(A04_SHARED_QUERY_EXPERIMENTAL) && A04_SHARED_QUERY_EXPERIMENTAL
+#if A04_SHARED_USBPORT_CHILD
+/* Explicitly unqualified producer. v1 Health only observes role/source and
+ * cannot assert actual OC, measured 5V, assigned child translations or a
+ * deterministic isolation proof. Do not wrap v1 as a qualified owner. */
+static NTSTATUS ParentMusbUnknown(PVOID p,MT_MUSB_OBSERVATION *o)
+{UNREFERENCED_PARAMETER(p);if(o){RtlZeroMemory(o,sizeof(*o));o->bytes=sizeof(*o);}return STATUS_NOT_SUPPORTED;}
+static NTSTATUS ParentMusbDeny(PVOID p,ULONGLONG generation)
+{UNREFERENCED_PARAMETER(p);UNREFERENCED_PARAMETER(generation);return STATUS_NOT_SUPPORTED;}
+static NTSTATUS ParentMusbDenyVbus(PVOID p,BOOLEAN on)
+{UNREFERENCED_PARAMETER(p);UNREFERENCED_PARAMETER(on);return STATUS_NOT_SUPPORTED;}
+static NTSTATUS ParentMusbDenyRelease(PVOID p)
+{UNREFERENCED_PARAMETER(p);return STATUS_NOT_SUPPORTED;}
+#endif
 static int ParentUsbAcquire(PVOID p) { return a04_usb_owner_acquire(&ParentContext((WDFDEVICE)p)->usb); }
 static int ParentUsbVbus(PVOID p,int on) { return a04_usb_owner_vbus(&ParentContext((WDFDEVICE)p)->usb,on); }
 static int ParentUsbHealth(PVOID p) { return a04_usb_owner_health(&ParentContext((WDFDEVICE)p)->usb); }
@@ -1540,6 +1554,10 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
 #if A04_SHARED_USBPORT_CHILD
     if(base==0x11100000u){
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&MT8167MusbOwnerInterfaceGuid,NULL);
+        query.SendQueryToParentStack=TRUE;
+        status=WdfDeviceAddQueryInterface(child,&query);
+        if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
         WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&GUID_BUS_INTERFACE_STANDARD,NULL);
         query.SendQueryToParentStack=TRUE;
         status=WdfDeviceAddQueryInterface(child,&query);
@@ -1591,6 +1609,9 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     A04_SHARED_THERMAL_INTERFACE thermalIface;
 #endif
     A04_SHARED_AUDIO_INTERFACE audioIface; A04_SHARED_USB_INTERFACE usbIface;
+#if A04_SHARED_USBPORT_CHILD
+    MT_MUSB_OWNER_INTERFACE musbIface;
+#endif
     A04_SHARED_WIFI_INTERFACE wifiIface;
 #endif
     UNREFERENCED_PARAMETER(driver);
@@ -1701,6 +1722,15 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&audioIface,&A04SharedAudioInterfaceGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);
     if(!NT_SUCCESS(status))return status;
+#if A04_SHARED_USBPORT_CHILD
+    RtlZeroMemory(&musbIface,sizeof(musbIface));musbIface.Header.Size=sizeof(musbIface);
+    musbIface.Header.Version=MT_MUSB_OWNER_VERSION;musbIface.Header.Context=dev;
+    musbIface.Header.InterfaceReference=ParentInterfaceReference;musbIface.Header.InterfaceDereference=ParentInterfaceDereference;
+    musbIface.Query=ParentMusbUnknown;musbIface.Observe=ParentMusbUnknown;musbIface.StopAndProve=ParentMusbUnknown;
+    musbIface.Acquire=ParentMusbDeny;musbIface.SetVbus=ParentMusbDenyVbus;musbIface.Release=ParentMusbDenyRelease;
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&musbIface,&MT8167MusbOwnerInterfaceGuid,NULL);
+    status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
+#endif
     RtlZeroMemory(&usbIface,sizeof(usbIface));usbIface.Header.Size=sizeof(usbIface);usbIface.Header.Version=A04_SHARED_USB_INTERFACE_VERSION;
     usbIface.Header.Context=dev;usbIface.Header.InterfaceReference=ParentInterfaceReference;usbIface.Header.InterfaceDereference=ParentInterfaceDereference;
     usbIface.Acquire=ParentUsbAcquire;usbIface.SetVbus=ParentUsbVbus;usbIface.Health=ParentUsbHealth;usbIface.Release=ParentUsbRelease;
