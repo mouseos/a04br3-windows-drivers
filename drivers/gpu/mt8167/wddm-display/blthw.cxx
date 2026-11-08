@@ -283,9 +283,13 @@ BDD_HWBLT::ExecutePresentDisplayOnly(
 
     const CURRENT_BDD_MODE* pModeCur = m_DevExt->GetCurrentMode(m_SourceId);
     size_t allocationSize = 0;
-    uint32_t sizeToMap = 0;
+    uint32_t sizeToMap = 0,sourceWidth,sourceHeight;unsigned pathTurns,copyTurns;
+    if(a04_present_turns((unsigned)pModeCur->Rotation,&pathTurns) || a04_present_turns((unsigned)Rotation,&copyTurns) ||
+       a04_present_source_shape(pModeCur->SrcModeWidth,pModeCur->SrcModeHeight,pathTurns,copyTurns,&sourceWidth,&sourceHeight))return STATUS_INVALID_PARAMETER;
+    RECT fullRect={0,0,(LONG)sourceWidth,(LONG)sourceHeight};
+    if(pModeCur->Flags.FullscreenPresent){NumMoves=0;Moves=NULL;NumDirtyRects=1;DirtyRect=&fullRect;}
     if (!SrcAddr || SrcBytesPerPixel != 4 || (NumMoves && !Moves) || (NumDirtyRects && !DirtyRect) ||
-        a04_present_bounds(pModeCur->SrcModeWidth,pModeCur->SrcModeHeight,SrcBytesPerPixel,
+        a04_present_bounds(sourceWidth,sourceHeight,SrcBytesPerPixel,
                            SrcPitch,NumMoves,sizeof(D3DKMT_MOVE_RECT),NumDirtyRects,sizeof(RECT),
                            sizeof(DoPresentMemory),&allocationSize,&sizeToMap))
     {
@@ -312,8 +316,8 @@ BDD_HWBLT::ExecutePresentDisplayOnly(
     ctx->DstAddr          = DstAddr;
     ctx->DstBitPerPixel   = DstBitPerPixel;
     ctx->DstStride        = pModeCur->DispInfo.Pitch;
-    ctx->SrcWidth         = pModeCur->SrcModeWidth;
-    ctx->SrcHeight        = pModeCur->SrcModeHeight;
+    ctx->SrcWidth         = sourceWidth;
+    ctx->SrcHeight        = sourceHeight;
     ctx->SrcAddr          = NULL;
     ctx->SrcPitch         = SrcPitch;
     ctx->Rotation         = Rotation;
@@ -352,13 +356,13 @@ BDD_HWBLT::ExecutePresentDisplayOnly(
         {
             const D3DKMT_MOVE_RECT& m=ctx->Moves[i];
             if (a04_present_move(m.DestRect.left,m.DestRect.top,m.DestRect.right,m.DestRect.bottom,
-                                 m.SourcePoint.x,m.SourcePoint.y,pModeCur->SrcModeWidth,pModeCur->SrcModeHeight))
+                                 m.SourcePoint.x,m.SourcePoint.y,sourceWidth,sourceHeight))
             { Status=STATUS_INVALID_PARAMETER; break; }
         }
         for (ULONG i=0;NT_SUCCESS(Status) && i<NumDirtyRects;++i)
         {
             const RECT& r=ctx->DirtyRect[i];
-            if (a04_present_rect(r.left,r.top,r.right,r.bottom,pModeCur->SrcModeWidth,pModeCur->SrcModeHeight))
+            if (a04_present_rect(r.left,r.top,r.right,r.bottom,sourceWidth,sourceHeight))
             { Status=STATUS_INVALID_PARAMETER; break; }
         }
     }

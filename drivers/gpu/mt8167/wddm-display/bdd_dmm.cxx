@@ -8,6 +8,7 @@
 \**************************************************************************/
 
 #include "BDD.hxx"
+#include "present_bounds.h"
 
 #pragma code_seg("PAGE")
 
@@ -18,6 +19,15 @@ public:
     ~A04DmmGuard() { KeReleaseMutex(m_Mutex,FALSE); }
 };
 
+static bool A04PathFits(const CURRENT_BDD_MODE& mode,UINT width,UINT height,
+    D3DKMDT_VIDPN_PRESENT_PATH_ROTATION rotation,D3DKMDT_VIDPN_PRESENT_PATH_SCALING scaling)
+{
+    unsigned turns;uint32_t pw,ph,offset;
+    return !a04_present_turns((unsigned)rotation,&turns) &&
+        !a04_present_layout(width,height,mode.DispInfo.Width,mode.DispInfo.Height,
+            mode.DispInfo.Pitch,turns,scaling==D3DKMDT_VPPS_CENTERED,&pw,&ph,&offset);
+}
+
 // Display-Only Devices can only return display modes of D3DDDIFMT_A8R8G8B8.
 // Color conversion takes place if the app's fullscreen backbuffer has different format.
 // Full display drivers can add more if the hardware supports them.
@@ -25,7 +35,7 @@ D3DDDIFORMAT gBddPixelFormats[] = {
     D3DDDIFMT_A8R8G8B8
 };
 
-// TODO: Need to also check pinned modes and the path parameters, not just topology
+// Check pinned source geometry against each concrete present path as well as topology.
 NTSTATUS BASIC_DISPLAY_DRIVER::IsSupportedVidPn(_Inout_ DXGKARG_ISSUPPORTEDVIDPN* pIsSupportedVidPn)
 {
     PAGED_CODE();
@@ -79,6 +89,40 @@ NTSTATUS BASIC_DISPLAY_DRIVER::IsSupportedVidPn(_Inout_ DXGKARG_ISSUPPORTEDVIDPN
             // This VidPn is not supported, which has already been set as the default
             return STATUS_SUCCESS;
         }
+    }
+
+    // An unpinned rotation/scaling can still be resolved by EnumCofunc. A
+    // concrete tuple must fit the fixed POST surface before DMM accepts it.
+    CONST D3DKMDT_VIDPN_PRESENT_PATH* path=NULL;
+    Status=pVidPnTopologyInterface->pfnAcquireFirstPathInfo(hVidPnTopology,&path);
+    while(Status!=STATUS_GRAPHICS_NO_MORE_ELEMENTS_IN_DATASET)
+    {
+        if(!NT_SUCCESS(Status))return Status;
+        bool supported=path->VidPnSourceId<MAX_VIEWS && path->VidPnTargetId<MAX_CHILDREN;
+        D3DKMDT_HVIDPNSOURCEMODESET set=0;
+        CONST DXGK_VIDPNSOURCEMODESET_INTERFACE* api=NULL;
+        CONST D3DKMDT_VIDPN_SOURCE_MODE* source=NULL;
+        if(supported) {
+            Status=pVidPnInterface->pfnAcquireSourceModeSet(pIsSupportedVidPn->hDesiredVidPn,path->VidPnSourceId,&set,&api);
+            if(NT_SUCCESS(Status))Status=api->pfnAcquirePinnedModeInfo(set,&source);
+            if(NT_SUCCESS(Status) && source) {
+                supported=NT_SUCCESS(IsVidPnSourceModeFieldsValid(source));
+                if(supported && path->ContentTransformation.Rotation!=D3DKMDT_VPPR_UNPINNED &&
+                   path->ContentTransformation.Scaling!=D3DKMDT_VPPS_UNPINNED)
+                    supported=NT_SUCCESS(IsVidPnPathFieldsValid(path)) &&
+                        A04PathFits(m_CurrentModes[path->VidPnSourceId],source->Format.Graphics.PrimSurfSize.cx,
+                            source->Format.Graphics.PrimSurfSize.cy,path->ContentTransformation.Rotation,path->ContentTransformation.Scaling);
+            }
+            if(source)api->pfnReleaseModeInfo(set,source);
+            if(set)pVidPnInterface->pfnReleaseSourceModeSet(pIsSupportedVidPn->hDesiredVidPn,set);
+        }
+        CONST D3DKMDT_VIDPN_PRESENT_PATH* next=NULL;
+        NTSTATUS nextStatus=STATUS_SUCCESS;
+        if(NT_SUCCESS(Status) && supported)nextStatus=pVidPnTopologyInterface->pfnAcquireNextPathInfo(hVidPnTopology,path,&next);
+        pVidPnTopologyInterface->pfnReleasePathInfo(hVidPnTopology,path);
+        if(!NT_SUCCESS(Status))return Status;
+        if(!supported)return STATUS_SUCCESS;
+        path=next;Status=nextStatus;
     }
 
     // All sources succeeded so this VidPn is supported
@@ -320,6 +364,8 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
             }
         }// End: TARGET MODES
 
+        UINT pinnedWidth=pVidPnPinnedSourceModeInfo ? pVidPnPinnedSourceModeInfo->Format.Graphics.PrimSurfSize.cx:0;
+        UINT pinnedHeight=pVidPnPinnedSourceModeInfo ? pVidPnPinnedSourceModeInfo->Format.Graphics.PrimSurfSize.cy:0;
         // Nothing else needs the pinned source mode so release it
         if (pVidPnPinnedSourceModeInfo != NULL)
         {
@@ -374,11 +420,17 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
             // If the rotation is unpinned, then modify the rotation support field
             if (pVidPnPresentPath->ContentTransformation.Rotation == D3DKMDT_VPPR_UNPINNED)
             {
-                LocalVidPnPresentPath.ContentTransformation.RotationSupport.Identity = 1;
-                // Sample supports only Rotate90
-                LocalVidPnPresentPath.ContentTransformation.RotationSupport.Rotate90 = 1;
-                LocalVidPnPresentPath.ContentTransformation.RotationSupport.Rotate180 = 0;
-                LocalVidPnPresentPath.ContentTransformation.RotationSupport.Rotate270 = 0;
+                const CURRENT_BDD_MODE& mode=m_CurrentModes[pVidPnPresentPath->VidPnSourceId];
+                D3DKMDT_VIDPN_PRESENT_PATH_SCALING scaling=pVidPnPresentPath->ContentTransformation.Scaling;
+                if(scaling==D3DKMDT_VPPS_UNPINNED)scaling=D3DKMDT_VPPS_CENTERED;
+                LocalVidPnPresentPath.ContentTransformation.RotationSupport.Identity =
+                    !pinnedWidth || A04PathFits(mode,pinnedWidth,pinnedHeight,D3DKMDT_VPPR_IDENTITY,scaling);
+                LocalVidPnPresentPath.ContentTransformation.RotationSupport.Rotate90 =
+                    !pinnedWidth || A04PathFits(mode,pinnedWidth,pinnedHeight,D3DKMDT_VPPR_ROTATE90,scaling);
+                LocalVidPnPresentPath.ContentTransformation.RotationSupport.Rotate180 =
+                    !pinnedWidth || A04PathFits(mode,pinnedWidth,pinnedHeight,D3DKMDT_VPPR_ROTATE180,scaling);
+                LocalVidPnPresentPath.ContentTransformation.RotationSupport.Rotate270 =
+                    !pinnedWidth || A04PathFits(mode,pinnedWidth,pinnedHeight,D3DKMDT_VPPR_ROTATE270,scaling);
 
                 // Since clone is not supported, should not support path-independent rotations
 #if NTDDI_VERSION >= 0x0A000000
@@ -618,6 +670,11 @@ NTSTATUS BASIC_DISPLAY_DRIVER::CommitVidPn(_In_ CONST DXGKARG_COMMITVIDPN* CONST
         A04DmmGuard guard(&m_PresentMutex);
         if (!m_Flags.DriverStarted) { Status=STATUS_DEVICE_NOT_READY; goto CommitVidPnExit; }
         CURRENT_BDD_MODE *mode=&m_CurrentModes[pCommitVidPn->AffectedVidPnSourceId];
+        if(pVidPnPresentPath && !A04PathFits(*mode,pPinnedVidPnSourceModeInfo->Format.Graphics.PrimSurfSize.cx,
+            pPinnedVidPnSourceModeInfo->Format.Graphics.PrimSurfSize.cy,pVidPnPresentPath->ContentTransformation.Rotation,
+            pVidPnPresentPath->ContentTransformation.Scaling)) {
+            Status=STATUS_GRAPHICS_VIDPN_MODALITY_NOT_SUPPORTED;goto CommitVidPnExit;
+        }
         if (mode->FrameBuffer.Ptr && !mode->Flags.DoNotMapOrUnmap)
         {
             Status=UnmapFrameBuffer(mode->FrameBuffer.Ptr,mode->DispInfo.Pitch*mode->DispInfo.Height);
@@ -675,12 +732,15 @@ NTSTATUS BASIC_DISPLAY_DRIVER::UpdateActiveVidPnPresentPath(_In_ CONST DXGKARG_U
     A04DmmGuard guard(&m_PresentMutex);
     if (!m_Flags.DriverStarted) return STATUS_DEVICE_NOT_READY;
 
-    // Mark the next present as fullscreen to make sure the full rotation comes through
-    m_CurrentModes[pUpdateActiveVidPnPresentPath->VidPnPresentPathInfo.VidPnSourceId].Flags.FullscreenPresent = TRUE;
-
-    m_CurrentModes[pUpdateActiveVidPnPresentPath->VidPnPresentPathInfo.VidPnSourceId].Rotation = pUpdateActiveVidPnPresentPath->VidPnPresentPathInfo.ContentTransformation.Rotation;
-
-    return STATUS_SUCCESS;
+    CURRENT_BDD_MODE& mode=m_CurrentModes[pUpdateActiveVidPnPresentPath->VidPnPresentPathInfo.VidPnSourceId];
+    const D3DKMDT_VIDPN_PRESENT_PATH& path=pUpdateActiveVidPnPresentPath->VidPnPresentPathInfo;
+    unsigned turns;
+    if(!A04PathFits(mode,mode.SrcModeWidth,mode.SrcModeHeight,path.ContentTransformation.Rotation,path.ContentTransformation.Scaling) ||
+       a04_present_turns((unsigned)path.ContentTransformation.Rotation,&turns))return STATUS_GRAPHICS_VIDPN_MODALITY_NOT_SUPPORTED;
+    mode.Rotation=(D3DKMDT_VIDPN_PRESENT_PATH_ROTATION)(turns+1u);
+    mode.Scaling=path.ContentTransformation.Scaling;
+    mode.Flags.FullscreenPresent=TRUE;
+    return BlackOutScreen(path.VidPnSourceId);
 }
 
 //
@@ -694,11 +754,14 @@ NTSTATUS BASIC_DISPLAY_DRIVER::SetSourceModeAndPath(CONST D3DKMDT_VIDPN_SOURCE_M
 
     CURRENT_BDD_MODE* pCurrentBddMode = &m_CurrentModes[pPath->VidPnSourceId];
 
-    NTSTATUS Status = STATUS_SUCCESS;
+    NTSTATUS Status = STATUS_SUCCESS;unsigned turns;
+    if(!A04PathFits(*pCurrentBddMode,pSourceMode->Format.Graphics.PrimSurfSize.cx,pSourceMode->Format.Graphics.PrimSurfSize.cy,
+        pPath->ContentTransformation.Rotation,pPath->ContentTransformation.Scaling) ||
+       a04_present_turns((unsigned)pPath->ContentTransformation.Rotation,&turns))return STATUS_GRAPHICS_VIDPN_MODALITY_NOT_SUPPORTED;
     pCurrentBddMode->Scaling = pPath->ContentTransformation.Scaling;
     pCurrentBddMode->SrcModeWidth = pSourceMode->Format.Graphics.PrimSurfSize.cx;
     pCurrentBddMode->SrcModeHeight = pSourceMode->Format.Graphics.PrimSurfSize.cy;
-    pCurrentBddMode->Rotation = pPath->ContentTransformation.Rotation;
+    pCurrentBddMode->Rotation = (D3DKMDT_VIDPN_PRESENT_PATH_ROTATION)(turns+1u);
 
 
     if (!pCurrentBddMode->Flags.DoNotMapOrUnmap)
@@ -756,6 +819,8 @@ NTSTATUS BASIC_DISPLAY_DRIVER::IsVidPnPathFieldsValid(CONST D3DKMDT_VIDPN_PRESEN
     }
     else if ((pPath->ContentTransformation.Rotation != D3DKMDT_VPPR_IDENTITY) &&
              (pPath->ContentTransformation.Rotation != D3DKMDT_VPPR_ROTATE90) &&
+             (pPath->ContentTransformation.Rotation != D3DKMDT_VPPR_ROTATE180) &&
+             (pPath->ContentTransformation.Rotation != D3DKMDT_VPPR_ROTATE270) &&
              (pPath->ContentTransformation.Rotation != D3DKMDT_VPPR_NOTSPECIFIED) &&
              (pPath->ContentTransformation.Rotation != D3DKMDT_VPPR_UNINITIALIZED))
     {
@@ -796,6 +861,9 @@ NTSTATUS BASIC_DISPLAY_DRIVER::IsVidPnSourceModeFieldsValid(CONST D3DKMDT_VIDPN_
     }
     else
     {
+        size_t allocation;uint32_t span;
+        if(a04_present_bounds(pSourceMode->Format.Graphics.PrimSurfSize.cx,pSourceMode->Format.Graphics.PrimSurfSize.cy,4,
+            (int32_t)pSourceMode->Format.Graphics.Stride,0,0,0,0,0,&allocation,&span))return STATUS_GRAPHICS_INVALID_VIDEO_PRESENT_SOURCE_MODE;
         for (UINT PelFmtIdx = 0; PelFmtIdx < ARRAYSIZE(gBddPixelFormats); ++PelFmtIdx)
         {
             if (pSourceMode->Format.Graphics.PixelFormat == gBddPixelFormats[PelFmtIdx])
@@ -830,6 +898,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::AddSingleSourceMode(_In_ CONST DXGK_VIDPNSOURCEMO
 
     // There is only one source format supported by display-only drivers, but more can be added in a
     // full WDDM driver if the hardware supports them
+    for (UINT transpose=0;transpose<(m_CurrentModes[SourceId].DispInfo.Width==m_CurrentModes[SourceId].DispInfo.Height ? 1u:2u);++transpose)
     for (UINT PelFmtIdx = 0; PelFmtIdx < ARRAYSIZE(gBddPixelFormats); ++PelFmtIdx)
     {
         // Create new mode info that will be populated
@@ -845,10 +914,10 @@ NTSTATUS BASIC_DISPLAY_DRIVER::AddSingleSourceMode(_In_ CONST DXGK_VIDPNSOURCEMO
         // Populate mode info with values from current mode and hard-coded values
         // Always report 32 bpp format, this will be color converted during the present if the mode is < 32bpp
         pVidPnSourceModeInfo->Type = D3DKMDT_RMT_GRAPHICS;
-        pVidPnSourceModeInfo->Format.Graphics.PrimSurfSize.cx = m_CurrentModes[SourceId].DispInfo.Width;
-        pVidPnSourceModeInfo->Format.Graphics.PrimSurfSize.cy = m_CurrentModes[SourceId].DispInfo.Height;
+        pVidPnSourceModeInfo->Format.Graphics.PrimSurfSize.cx = transpose ? m_CurrentModes[SourceId].DispInfo.Height:m_CurrentModes[SourceId].DispInfo.Width;
+        pVidPnSourceModeInfo->Format.Graphics.PrimSurfSize.cy = transpose ? m_CurrentModes[SourceId].DispInfo.Width:m_CurrentModes[SourceId].DispInfo.Height;
         pVidPnSourceModeInfo->Format.Graphics.VisibleRegionSize = pVidPnSourceModeInfo->Format.Graphics.PrimSurfSize;
-        pVidPnSourceModeInfo->Format.Graphics.Stride = m_CurrentModes[SourceId].DispInfo.Pitch;
+        pVidPnSourceModeInfo->Format.Graphics.Stride = 4*pVidPnSourceModeInfo->Format.Graphics.PrimSurfSize.cx;
         pVidPnSourceModeInfo->Format.Graphics.PixelFormat = gBddPixelFormats[PelFmtIdx];
         pVidPnSourceModeInfo->Format.Graphics.ColorBasis = D3DKMDT_CB_SCRGB;
         pVidPnSourceModeInfo->Format.Graphics.PixelValueAccessMode = D3DKMDT_PVAM_DIRECT;

@@ -1,25 +1,30 @@
 # Compile the Microsoft-derived display-only code with the Windows 8.1 ABI.
 # This build check is not an installable device driver or GPU acceleration.
+param([string]$KitRoot,[string]$VcToolsRoot,[string]$UcrtIncludeRoot,[string]$BuildDirectory)
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 $src = Join-Path $root 'drivers\gpu\mt8167\wddm-display'
-$kit = "${env:ProgramFiles(x86)}\Windows Kits\8.1"
+$kit = if($KitRoot){$KitRoot}else{"${env:ProgramFiles(x86)}\Windows Kits\8.1"}
 $inc = Join-Path $kit 'Include'
 $lib = Join-Path $kit 'Lib\winv6.3\km\arm'
+if($VcToolsRoot){$vc=Get-Item $VcToolsRoot}else{
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 $vs = & $vswhere -latest -products '*' -property installationPath
 if (-not $vs) { throw 'Visual Studio with ARM32 MSVC is required' }
 $tools = Join-Path $vs 'VC\Tools\MSVC'
 $vc = Get-ChildItem $tools -Directory | Sort-Object Name -Descending | Where-Object { Test-Path (Join-Path $_.FullName 'bin\Hostx64\arm\cl.exe') } | Select-Object -First 1
 if (-not $vc) { throw 'ARM32 MSVC compiler not found' }
+ }
 $cl = Join-Path $vc.FullName 'bin\Hostx64\arm\cl.exe'
 $link = Join-Path $vc.FullName 'bin\Hostx64\x64\link.exe'
 if (-not (Test-Path $link)) { throw 'MSVC linker not found' }
+if($UcrtIncludeRoot){$ucrt=Get-Item $UcrtIncludeRoot}else{
 $ucrtRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Include'
 $ucrt = Get-ChildItem $ucrtRoot -Directory | Sort-Object Name -Descending | Where-Object { Test-Path (Join-Path $_.FullName 'ucrt\stddef.h') } | Select-Object -First 1
 if (-not $ucrt) { throw 'Windows UCRT headers not found' }
+ }
 $tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
-$out = Join-Path $tempRoot 'a04br3-wddm-display-build-check'
+$out = if($BuildDirectory){$BuildDirectory}else{Join-Path $tempRoot 'a04br3-wddm-display-build-check'}
 New-Item -ItemType Directory -Force $out | Out-Null
 $objects = @()
 $brightness = if ($env:A04_MT8167_DISPLAY_BRIGHTNESS -eq '1') { '1' } else { '0' }

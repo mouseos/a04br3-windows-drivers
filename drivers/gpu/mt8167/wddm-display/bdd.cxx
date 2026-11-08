@@ -843,7 +843,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DIS
             BYTE* pDst = (BYTE*)m_CurrentModes[pPresentDisplayOnly->VidPnSourceId].FrameBuffer.Ptr;
             UINT DstBitPerPixel = BPPFromPixelFormat(m_CurrentModes[pPresentDisplayOnly->VidPnSourceId].DispInfo.ColorFormat);
             const CURRENT_BDD_MODE* mode=&m_CurrentModes[pPresentDisplayOnly->VidPnSourceId];
-            uint32_t physicalWidth,physicalHeight,offset; unsigned turns;
+            uint32_t physicalWidth,physicalHeight,offset,sourceWidth,sourceHeight; unsigned turns,pathTurns;
             switch (RotationNeededByFb) {
             case D3DKMDT_VPPR_IDENTITY: turns=0; break;
             case D3DKMDT_VPPR_ROTATE90: turns=1; break;
@@ -851,8 +851,9 @@ NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DIS
             case D3DKMDT_VPPR_ROTATE270: turns=3; break;
             default: return STATUS_INVALID_PARAMETER;
             }
-            if (!pDst || DstBitPerPixel!=32 ||
-                a04_present_layout(mode->SrcModeWidth,mode->SrcModeHeight,mode->DispInfo.Width,
+            if (!pDst || DstBitPerPixel!=32 || a04_present_turns((unsigned)mode->Rotation,&pathTurns) ||
+                a04_present_source_shape(mode->SrcModeWidth,mode->SrcModeHeight,pathTurns,turns,&sourceWidth,&sourceHeight) ||
+                a04_present_layout(sourceWidth,sourceHeight,mode->DispInfo.Width,
                     mode->DispInfo.Height,mode->DispInfo.Pitch,turns,
                     mode->Scaling==D3DKMDT_VPPS_CENTERED,&physicalWidth,&physicalHeight,&offset) ||
                 (uintptr_t)pDst>UINTPTR_MAX-(uint64_t)mode->DispInfo.Pitch*mode->DispInfo.Height)
@@ -868,6 +869,7 @@ NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DIS
                                                                     pPresentDisplayOnly->NumDirtyRects,
                                                                     pPresentDisplayOnly->pDirtyRect,
                                                                     RotationNeededByFb);
+            if(NT_SUCCESS(presentStatus))m_CurrentModes[pPresentDisplayOnly->VidPnSourceId].Flags.FullscreenPresent=FALSE;
 #if A04_GE8300_WDDM_PRESENT_CAPTURE
             /* A snapshot of the completed POST image incorporates move and
              * dirty rectangles. This is staging for GPU copy, not scanout. */
@@ -1240,6 +1242,16 @@ VOID BASIC_DISPLAY_DRIVER::SystemDisplayWrite(_In_reads_bytes_(SourceHeight * So
                                               _In_ INT PositionY)
 {
 
+    if(m_SystemDisplaySourceId>=MAX_VIEWS)return;
+    const CURRENT_BDD_MODE& mode=m_CurrentModes[m_SystemDisplaySourceId];
+    unsigned turns;uint32_t width,height;size_t allocation;uint32_t span;
+    if(!pSource || !mode.FrameBuffer.Ptr || a04_present_turns((unsigned)mode.Rotation,&turns))return;
+    width=(turns&1u)?mode.DispInfo.Height:mode.DispInfo.Width;
+    height=(turns&1u)?mode.DispInfo.Width:mode.DispInfo.Height;
+    if(PositionX<0 || PositionY<0 || !SourceWidth || !SourceHeight ||
+       (uint64_t)(UINT)PositionX+SourceWidth>width || (uint64_t)(UINT)PositionY+SourceHeight>height ||
+       a04_present_bounds(SourceWidth,SourceHeight,4,(int32_t)SourceStride,0,0,0,0,0,&allocation,&span) ||
+       (uintptr_t)pSource>UINTPTR_MAX-span)return;
     // Rect will be Offset by PositionX/Y in the src to reset it back to 0
     RECT Rect;
     Rect.left = PositionX;
