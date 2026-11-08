@@ -173,3 +173,22 @@ BOOLEAN a04_native_copy_storage_gpu_owned(const struct a04_native_copy_storage *
  return c&&c->prepared&&!c->quarantined&&
   a04_native_mdl_gpu_owned(c->source)&&a04_native_mdl_gpu_owned(c->destination);
 }
+
+/* Factory has fenced the preceding job. Keep the resident WDDM/PTE lease;
+ * cache ownership is reacquired at PASSIVE before each TQ publication. No
+ * cache operation is issued while already GPU-owned. Ambiguous partial
+ * handoff is retained by the caller until the normal Stop/TDR proof. */
+NTSTATUS a04_native_copy_storage_gpu_prepare(struct a04_native_copy_storage *c)
+{
+ NTSTATUS status;
+ if(!c||!c->prepared||c->quarantined||!c->native||c->native->quarantined||
+    !c->native->render||c->native->render->poisoned||KeGetCurrentIrql()!=PASSIVE_LEVEL)
+  return STATUS_INVALID_DEVICE_STATE;
+ if(!a04_native_mdl_gpu_owned(c->source)){
+  status=a04_native_mdl_sync_for_gpu(c->source);if(!NT_SUCCESS(status))return status;
+ }
+ if(!a04_native_mdl_gpu_owned(c->destination)){
+  status=a04_native_mdl_sync_for_gpu(c->destination);if(!NT_SUCCESS(status))return status;
+ }
+ return a04_native_copy_storage_gpu_owned(c)?STATUS_SUCCESS:STATUS_INVALID_DEVICE_STATE;
+}

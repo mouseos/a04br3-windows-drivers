@@ -23,5 +23,6 @@ const struct a04_native_copy_job_image *a04_native_copy_storage_image(
 struct a04_vendor_native_cold *a04_native_copy_storage_parent(const struct a04_native_copy_storage *);
 /* Internal transfer-only ownership half, not a scheduler completion API. */
 NTSTATUS a04_native_copy_storage_cpu_complete(struct a04_native_copy_storage *);
+NTSTATUS a04_native_copy_storage_gpu_prepare(struct a04_native_copy_storage *);
 BOOLEAN a04_native_copy_storage_gpu_owned(const struct a04_native_copy_storage *);
 #endif

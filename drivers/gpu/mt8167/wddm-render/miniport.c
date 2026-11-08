@@ -189,9 +189,40 @@ static int render_contract_valid(const DRIVER_INITIALIZATION_DATA *p) {
   !p->DxgkDdiSetVidPnSourceAddress&&!p->DxgkDdiCommitVidPn&&!p->DxgkDdiPresent&&
   !p->DxgkDdiSetPointerShape&&!p->DxgkDdiSetPointerPosition&&!p->DxgkDdiGetScanLine;
 }
+/* Evidence only: load-time identity from the actual DriverObject, not a
+ * preferred base or a guessed module page. No render/ISR path calls this.
+ * FILETIME + interrupt-time pair identifies this load within its boot when
+ * correlated with the same boot's collector/event evidence, not old runs. */
+struct geo_module_identity_v1 {
+ ULONG schema,bytes,pointer_bits,reserved;
+ ULONGLONG driver_start;ULONG driver_size,flags;
+ LARGE_INTEGER system_time;ULONGLONG interrupt_time;
+ CHAR runtime_source_base[48],build_id[48];
+};
+C_ASSERT(sizeof(struct geo_module_identity_v1)==144);
+static void module_identity(PDRIVER_OBJECT driver)
+{
+ static const CHAR source[]="acc343370cca6fbda412ebf3a535c0a583e37cbd";
+ static const CHAR build[]="GPU340-persistent-copy-v1";
+ struct geo_module_identity_v1 r={0};HANDLE key=NULL;UNICODE_STRING path,name;
+ OBJECT_ATTRIBUTES oa;ULONG disposition;NTSTATUS status;
+ if(!driver||KeGetCurrentIrql()!=PASSIVE_LEVEL||!driver->DriverStart||!driver->DriverSize)return;
+ r.schema=1;r.bytes=sizeof(r);r.pointer_bits=sizeof(PVOID)*8;
+ r.driver_start=(ULONGLONG)(ULONG_PTR)driver->DriverStart;r.driver_size=driver->DriverSize;r.flags=1;
+ KeQuerySystemTime(&r.system_time);r.interrupt_time=KeQueryInterruptTime();
+ RtlCopyMemory(r.runtime_source_base,source,sizeof(source));RtlCopyMemory(r.build_id,build,sizeof(build));
+ RtlInitUnicodeString(&path,L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\GE8300Render\\Parameters\\NativeCheckpoint");
+ InitializeObjectAttributes(&oa,&path,OBJ_KERNEL_HANDLE|OBJ_CASE_INSENSITIVE,NULL,NULL);
+ status=ZwCreateKey(&key,KEY_SET_VALUE,&oa,0,NULL,REG_OPTION_NON_VOLATILE,&disposition);
+ if(!NT_SUCCESS(status))return;
+ RtlInitUnicodeString(&name,L"ModuleIdentityV1");
+ status=ZwSetValueKey(key,&name,0,REG_BINARY,&r,sizeof(r));
+ if(NT_SUCCESS(status))(void)ZwFlushKey(key);
+ ZwClose(key);
+}
 NTSTATUS DriverEntry(PDRIVER_OBJECT driver,PUNICODE_STRING registry) {
  DRIVER_INITIALIZATION_DATA table=geo_ge8300_render_contract;NTSTATUS status;
- GeoInitCheckpointPath(registry);GeoInitCheckpoint(0,STATUS_SUCCESS);
+ GeoInitCheckpointPath(registry);GeoInitCheckpoint(0,STATUS_SUCCESS);module_identity(driver);
  if(!driver||!registry||!render_contract_valid(&table)){GeoInitCheckpoint(1,STATUS_INVALID_PARAMETER);return STATUS_INVALID_PARAMETER;}
  GeoInitCheckpoint(1,STATUS_SUCCESS);
  table.DxgkDdiAddDevice=add_device;table.DxgkDdiStartDevice=start_device;

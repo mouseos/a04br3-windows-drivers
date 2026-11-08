@@ -6,6 +6,7 @@
 #include "native_factory_checkpoint.h"
 #include "windows_native_cold_private.h"
 #include "../../windows_hw.h"
+#include "a04_copy_usc_asset.h"
 #include "A04BR3RogueRuntimeLayout.h"
 #include "A04BR3RogueDeviceWords.h"
 static BOOLEAN gate_closed(void *p)
@@ -108,6 +109,7 @@ NTSTATUS e_native_retire_graph_locked(struct e_native_owner *c)
     }
     if(c->copy_transfer){status=a04_native_tq_transfer_release_retired(&c->copy_transfer);if(!NT_SUCCESS(status))return status;}
     if(c->copy_storage){status=a04_native_copy_storage_release_cold(&c->copy_storage);if(!NT_SUCCESS(status))return status;}
+    c->copy_destination=0;c->job_is_copy=FALSE;
     if(a->native){status=a04_vendor_native_release_cold(&a->native);GeoFactoryCheckpoint(36,status,1,0,0,0);if(!NT_SUCCESS(status))return status;}
     if(a->render.firmware){status=a04_vendor_render_release_cold(&a->render);GeoFactoryCheckpoint(36,status,2,0,0,0);if(!NT_SUCCESS(status))return status;}
     status=a04_vendor_m1_11_windows_free(&a->firmware);GeoFactoryCheckpoint(36,status,3,0,0,0);if(!NT_SUCCESS(status))return status;
@@ -141,6 +143,20 @@ NTSTATUS e_native_boot_locked(struct e_native_owner *c)
     struct a04_native_owner_allocation *a=c->allocation;struct a04_gpu_domain_snapshot p;
     struct a04_vendor_power_snapshot power;struct irq_call call={c,STATUS_UNSUCCESSFUL};NTSTATUS status;
     if(!a || !a->binding || !a->native || c->hardware_epoch==UINT64_MAX)return STATUS_INVALID_DEVICE_STATE;
+    /* Install the immutable TQ program/PTEs while this graph is genuinely
+     * cold, before publishing its root. Render and copy share this FW root.
+     * One resident staging target is the bounded factory contract; a different
+     * target is rejected by prepare_copy rather than live-remapping a PTE. */
+    if(!c->copy_storage){
+        for(struct e_native_resource *r=c->resources;r;r=r->next)
+            if(r->linear && r->desc.usage==GEO_USAGE_STAGING){
+                status=a04_native_copy_storage_create(&c->copy_storage,a->native,r->linear,&r->desc,a04_copy_usc_asset,sizeof(a04_copy_usc_asset));
+                if(!NT_SUCCESS(status))return status;
+                status=a04_native_tq_transfer_prepare(&c->copy_transfer,c->copy_storage);
+                if(!NT_SUCCESS(status))return status;
+                c->copy_destination=r->id;break;
+            }
+    }
     status=e_native_platform_on(c);if(!NT_SUCCESS(status))return status;
     status=e_native_platform_observe(c,&p);if(!NT_SUCCESS(status))return status;
     /* MFG range belongs exclusively to this GPU0 miniport, not the parent. */

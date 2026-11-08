@@ -17,7 +17,7 @@ struct a04_native_tq_transfer {
  struct a04_native_copy_queue_result queue;
  volatile LONG state;ULONG kernel_next;uint64_t epoch,irq_serial,claimed_serial;
  struct a04_native_irq_core *irq;
- ULONG visibility_fence;uint64_t visibility_serial;
+ ULONG visibility_fence,generation;uint64_t visibility_serial,armed_epoch,job;
  _Alignas(8) UCHAR ring[4096],workspace[4096];
 };
 static int queues(struct a04_rgx_fw_runtime *f,RGXFWIF_CCB_CTL *k)
@@ -62,12 +62,47 @@ NTSTATUS a04_native_tq_transfer_prepare(struct a04_native_tq_transfer **out,
  }
  c->state=1;*out=c;return STATUS_SUCCESS;
 }
+/* PASSIVE factory mutex + completed previous scheduler token exclude a
+ * competing submit. IRQ state is inspected only by submit under Dxgk lock.
+ * This builds a new transaction, never replays a consumed one-shot image. */
+NTSTATUS a04_native_tq_transfer_rearm(struct a04_native_tq_transfer *c,
+ struct a04_vendor_start *s,uint64_t epoch,uint64_t job)
+{
+ struct a04_vendor_render_cold *r;RGXFWIF_CCCB_CTL ctl;RGXFWIF_CCB_CTL k;
+ ULONG value;NTSTATUS status;LONG phase;
+ if(!c||!s||KeGetCurrentIrql()!=PASSIVE_LEVEL||!epoch||!job||job<=c->job||
+    !(r=c->native->render)||r->poisoned||c->native->quarantined||!s->memory||
+    s->memory!=r->firmware||!s->memory->hardware_owned||!s->online||
+    s->command_poisoned||s->shutdown_started||s->command_busy||r->cleanup_started)
+  return STATUS_INVALID_DEVICE_STATE;
+ phase=InterlockedCompareExchange(&c->state,0,0);
+ if((phase!=1&&phase!=7)||(phase==1&&c->job)||(c->epoch&&c->epoch!=epoch))return STATUS_INVALID_DEVICE_STATE;
+ if(queues(s->memory->runtime,&k)||k.ui32ReadOffset!=k.ui32WriteOffset||
+    r->sequence==UINT32_MAX||
+    a04_rgx_device_read_words(&ctl,(UCHAR*)r->buffer[0].cpu+r->layout.control[3],sizeof(ctl))||
+    ctl.ui32WrapMask!=4095u||ctl.ui32ReadOffset!=r->client_write[3]||
+    ctl.ui32WriteOffset!=ctl.ui32ReadOffset||ctl.ui32DepOffset!=ctl.ui32ReadOffset||
+    a04_rgx_device_read_words(&value,(UCHAR*)r->buffer[0].cpu+r->layout.sync,4u)||value!=r->sequence)
+  return STATUS_DEVICE_BUSY;
+ c->input=(struct a04_native_copy_queue_input){0xc0080000u+r->layout.tq,
+  0xc0080000u+r->layout.sync,value,ctl.ui32ReadOffset,ctl.ui32WriteOffset,ctl.ui32DepOffset,0,(ULONG)job};
+ if(!(ULONG)job || a04_rgx_device_read_words(c->ring,(UCHAR*)r->buffer[0].cpu+r->layout.commands[3],4096u)||
+    a04_native_copy_queue_build(c->ring,c->workspace,&c->input,a04_native_copy_storage_image(c->storage),&c->queue))
+  return STATUS_INVALID_DEVICE_STATE;
+ status=a04_native_copy_storage_gpu_prepare(c->storage);if(!NT_SUCCESS(status))return status;
+ c->armed_epoch=epoch;c->job=job;c->generation=0;c->claimed_serial=0;
+ c->visibility_fence=0;c->visibility_serial=0;
+ InterlockedExchange(&c->state,1);return STATUS_SUCCESS;
+}
+BOOLEAN a04_native_tq_transfer_identity(struct a04_native_tq_transfer *c,uint64_t epoch,uint64_t job,uint32_t generation)
+{return c&&epoch&&job&&generation&&c->epoch==epoch&&c->job==job&&c->generation==generation;}
 NTSTATUS a04_native_tq_transfer_submit(struct a04_native_tq_transfer *c,
- struct a04_vendor_start *s,struct a04_native_irq_core *irq,ULONG expected)
+ struct a04_vendor_start *s,struct a04_native_irq_core *irq,ULONG expected,uint64_t job,uint32_t generation)
 {
  struct a04_vendor_render_cold *r;struct a04_rgx_fw_runtime *f;
  RGXFWIF_CCB_CTL k;RGXFWIF_CCCB_CTL ctl;ULONG sync;
  if(!c||!s||!irq||KeGetCurrentIrql()<=DISPATCH_LEVEL||c->state!=1||expected>127u||
+    !job||job!=c->job||!generation||!c->armed_epoch||irq->epoch!=c->armed_epoch||
     !(r=c->native->render)||r->native_owner!=c->native||r->poisoned||c->native->quarantined||
     !s->online||!s->core||s->command_poisoned||s->shutdown_started||
     !s->memory||s->memory!=r->firmware||!s->memory->hardware_owned||!s->memory->uncached||
@@ -85,7 +120,7 @@ NTSTATUS a04_native_tq_transfer_submit(struct a04_native_tq_transfer *c,
  }
  /* From here ambiguity retains ownership, including command_busy. No wait,
   * allocation, CPU buffer access or fabricated completion at DIRQL. */
- c->epoch=irq->epoch;c->irq_serial=irq->serial;c->irq=irq;c->kernel_next=(expected+1u)&127u;
+ c->generation=generation;c->epoch=irq->epoch;c->irq_serial=irq->serial;c->irq=irq;c->kernel_next=(expected+1u)&127u;
  InterlockedExchange(&c->state,2);
  if(c->queue.padding_bytes&&a04_rgx_device_write_words(
     (UCHAR*)r->buffer[0].cpu+r->layout.commands[3]+c->input.write,
