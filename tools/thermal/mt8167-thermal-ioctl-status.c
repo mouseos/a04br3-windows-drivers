@@ -26,7 +26,7 @@ void mainCRTStartup(void){
  memset(aligned,0,sizeof(aligned));path->cbSize=sizeof(*path);info.cbSize=sizeof(info);
  if(!SetupDiGetDeviceInterfaceDetailW(set,&first,path,sizeof(aligned),&needed,&info)){error=GetLastError();goto done;}
  if(!SetupDiGetDeviceRegistryPropertyW(set,&info,SPDRP_SERVICE,&type,(BYTE *)service,sizeof(service),&needed)){error=GetLastError();goto done;}
- if(type!=REG_SZ||needed>sizeof(service)||needed<sizeof(WCHAR)||service[needed/sizeof(WCHAR)-1]||lstrcmpiW(service,L"Mt8167Thermal")){error=ERROR_INVALID_DATA;goto done;}
+ if(type!=REG_SZ||needed%sizeof(WCHAR)||needed>sizeof(service)||needed<sizeof(WCHAR)||service[needed/sizeof(WCHAR)-1]||lstrcmpiW(service,L"Mt8167Thermal")){error=ERROR_INVALID_DATA;goto done;}
  dev=CreateFileW(path->DevicePath,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_FLAG_OVERLAPPED,NULL);
  if(dev==INVALID_HANDLE_VALUE){error=GetLastError();goto done;}
  op.hEvent=CreateEventW(NULL,TRUE,FALSE,NULL);if(!op.hEvent){error=GetLastError();goto done;}
