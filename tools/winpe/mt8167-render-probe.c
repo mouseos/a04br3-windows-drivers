@@ -163,7 +163,7 @@ static DWORD paths(void)
  WCHAR system[MAX_PATH],module[MAX_PATH];DWORD n,error;
  n=GetSystemDirectoryW(system,MAX_PATH);if(!n||n>=MAX_PATH)return ERROR_INSUFFICIENT_BUFFER;
  #if A04_RENDER_SINGLE_GPU
- error=path(base_directory,system,L"MT8167RenderSingleGpuRun103");
+ error=path(base_directory,system,L"MT8167RenderSingleGpuRun105");
 #else
  error=path(base_directory,system,service_name);
 #endif
@@ -534,7 +534,7 @@ static DWORD run_client(unsigned index)
  /* Both probes currently take NO arguments (ae1c716 and Native WLAN source).
   * Never use cmd.exe, a path parameter, PATH lookup or service-start args. */
  if(!CreateProcessW(image,command,NULL,NULL,TRUE,CREATE_SUSPENDED|CREATE_NO_WINDOW|EXTENDED_STARTUPINFO_PRESENT,NULL,directory,&startup.StartupInfo,&child)){error=GetLastError();goto done;}
- created=1;
+ created=1;record(index+1,0x13,child.dwProcessId); /* Correlate immutable client log PID with this service run. */
  if(!AssignProcessToJobObject(job,child.hProcess)){error=GetLastError();goto done;}
  if(ResumeThread(child.hThread)==(DWORD)-1){error=GetLastError();goto done;}resumed=1;
  record(index+1,EV_START,0);waits[0]=child.hProcess;waits[1]=stop_event;
