@@ -31101,9 +31101,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/frontend/shader_witness.h",
-      "sha256": "f83acf1b83c157ded6f266c3a4a4e043c03f759cf7a52ec7e420484da01f3691",
-      "origin": "Isolated witness source329:6a3e94a9eb4dbe90ffbefdb297c489c2e9d8d3cf",
-      "previous_sha256": "83d9a2d44ed6e4da14215e47c311e0d260495424ddbb8bde662b5ffdf344fd78"
+      "sha256": "afeb1e95a605ec7b73d7f4cb5926349e070772289ece5bbd61460a72e44e36ed",
+      "origin": "VS common-store330:9aa8386cf967e8348e0130a23d419cc9b627d0e6",
+      "previous_sha256": "f83acf1b83c157ded6f266c3a4a4e043c03f759cf7a52ec7e420484da01f3691"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/compiler/witness_producer.c",
@@ -31112,9 +31112,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/compiler/witness_codec.c",
-      "sha256": "a0f617541f5c6037bf56f4deed12182cd1a37254b0a49f5fdeee674a31ab433f",
-      "origin": "Freestanding witness bit-scan:f0a950c1f8ed31a3f5a75fd4798d219c18f8bc60",
-      "previous_sha256": "114ad3f03106260609caec0d1fb94159650410433710dbc2eca134d90d2f81f6"
+      "sha256": "c9881b30edcb03fb80f5f2a6d537c3b4805460a365a26928bb74533358dfa721",
+      "origin": "VS common-store330:9aa8386cf967e8348e0130a23d419cc9b627d0e6",
+      "previous_sha256": "a0f617541f5c6037bf56f4deed12182cd1a37254b0a49f5fdeee674a31ab433f"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/compiler/witness_info.c",

@@ -238,14 +238,18 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/query_adapter.c",
-      "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
-      "role": "Reviewed ABI4 shader/native runtime source329",
-      "sha256": "c96de24c6643c8c0b48168a88a13b8994e0b7b3106b58339579a7a6a2b067483",
+      "source_commit": "9aa8386cf967e8348e0130a23d419cc9b627d0e6",
+      "role": "Explicit VS uniform330 source overlay",
+      "sha256": "4d248de7d3744686843b0cd2989706dbe18c1e40551206075e719b2c13926fdc",
       "previous_origins": [
         {
           "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
           "sha256": "782bb191c138e8a4d090e088802a3dace58c54293fe3b99da3e7b10a4253416b",
           "role": "Texture326/327 explicit source overlay"
+        },
+        {
+          "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
+          "sha256": "c96de24c6643c8c0b48168a88a13b8994e0b7b3106b58339579a7a6a2b067483"
         }
       ]
     },
@@ -305,14 +309,18 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/umd/frontend.c",
-      "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
-      "role": "Reviewed ABI4 shader/native runtime source329",
-      "sha256": "e07ec5883de18adb01804c39d3ddd71531b76397dff1679cde054f63477b9ff1",
+      "source_commit": "9aa8386cf967e8348e0130a23d419cc9b627d0e6",
+      "role": "Explicit VS uniform330 source overlay",
+      "sha256": "f3bde0b240dbbf59f1de1854dadd68464c4174399dc431aac42f988f58765f47",
       "previous_origins": [
         {
           "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
           "sha256": "a6affd8a3b8b63feb00348a0fc0532ab4dc214e1f9204be2fd394c557e216dc9",
           "role": "Texture326/327 explicit source overlay"
+        },
+        {
+          "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
+          "sha256": "e07ec5883de18adb01804c39d3ddd71531b76397dff1679cde054f63477b9ff1"
         }
       ]
     },
@@ -386,14 +394,18 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/umd/typed_entry.c",
-      "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
-      "role": "Reviewed ABI4 shader/native runtime source329",
-      "sha256": "14663eddf6f59e47c9b93cbe33ed5de305fc405dc8268ecd768cbe38f10d3020",
+      "source_commit": "9aa8386cf967e8348e0130a23d419cc9b627d0e6",
+      "role": "Explicit VS uniform330 source overlay",
+      "sha256": "c2e0b14f4be9c48f63fe9faefed77da04e311ae38641a01486beaa488beb5861",
       "previous_origins": [
         {
           "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
           "sha256": "b939a02c49d56633184772af5fd2a9abc509d0221c7fa79c0d7aa98fa7754b4a",
           "role": "Texture326/327 explicit source overlay"
+        },
+        {
+          "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
+          "sha256": "14663eddf6f59e47c9b93cbe33ed5de305fc405dc8268ecd768cbe38f10d3020"
         }
       ]
     },
@@ -683,9 +695,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/compiler/witness_codec.c",
-      "source_commit": "f0a950c1f8ed31a3f5a75fd4798d219c18f8bc60",
-      "sha256": "a0f617541f5c6037bf56f4deed12182cd1a37254b0a49f5fdeee674a31ab433f",
-      "role": "New ABI4 witness source329",
+      "source_commit": "9aa8386cf967e8348e0130a23d419cc9b627d0e6",
+      "sha256": "c9881b30edcb03fb80f5f2a6d537c3b4805460a365a26928bb74533358dfa721",
+      "role": "Explicit VS uniform330 source overlay",
       "previous_origins": [
         {
           "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
@@ -694,6 +706,10 @@
         {
           "source_commit": "6a3e94a9eb4dbe90ffbefdb297c489c2e9d8d3cf",
           "sha256": "114ad3f03106260609caec0d1fb94159650410433710dbc2eca134d90d2f81f6"
+        },
+        {
+          "source_commit": "f0a950c1f8ed31a3f5a75fd4798d219c18f8bc60",
+          "sha256": "a0f617541f5c6037bf56f4deed12182cd1a37254b0a49f5fdeee674a31ab433f"
         }
       ]
     },
@@ -717,13 +733,17 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/frontend/shader_witness.h",
-      "source_commit": "6a3e94a9eb4dbe90ffbefdb297c489c2e9d8d3cf",
-      "sha256": "f83acf1b83c157ded6f266c3a4a4e043c03f759cf7a52ec7e420484da01f3691",
-      "role": "New ABI4 witness source329",
+      "source_commit": "9aa8386cf967e8348e0130a23d419cc9b627d0e6",
+      "sha256": "afeb1e95a605ec7b73d7f4cb5926349e070772289ece5bbd61460a72e44e36ed",
+      "role": "Explicit VS uniform330 source overlay",
       "previous_origins": [
         {
           "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
           "sha256": "83d9a2d44ed6e4da14215e47c311e0d260495424ddbb8bde662b5ffdf344fd78"
+        },
+        {
+          "source_commit": "6a3e94a9eb4dbe90ffbefdb297c489c2e9d8d3cf",
+          "sha256": "f83acf1b83c157ded6f266c3a4a4e043c03f759cf7a52ec7e420484da01f3691"
         }
       ]
     },
@@ -1198,7 +1218,7 @@
       "sha256": "4c991fe32b1b5a6ffe47b01f2b1dac3f1afa1547e8a2ab93702d06808d5099f1"
     }
   ],
-  "compiler_source_plan_sha256": "0914e239481a2a82badc70e8b2dd805c26c60da54332f52a5b2a2ce1af131afb",
+  "compiler_source_plan_sha256": "d0de81280cdac3bafc856111f29a22f3bd4b1969fd6779a02fe5e34a107b19c1",
   "old_driver_cache_required": false,
   "git_history_required": false,
   "hardware_verified": false,
@@ -1265,31 +1285,45 @@
       "role": "PPP offset-scale order325"
     },
     {
-      "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
+      "source_commit": "9aa8386cf967e8348e0130a23d419cc9b627d0e6",
       "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_draw_job.c",
-      "sha256": "87b92790b8f0b28622a8f62363cb9aeac4fe525016ec23b436fbefebd6b5f563",
+      "sha256": "9fe1d09ee143a6f8b6a2be5f6e2d9305d5bea9bc180e79217985df51169cabf1",
       "baseline_destination_sha256": "e51bc1bfde053d806cf9af1652e08197f2067b30d0b6696501efa7d3bf4c6251",
-      "role": "ABI4 real ALU shader witness / ownership-preserving native overlay329",
+      "role": "VS CB330 / bounded owned code and uniform spans",
       "previous_reviewed_delta": {
-        "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+        "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
         "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_draw_job.c",
-        "sha256": "04843a5ac72c3ba668cf570663ce55ef1dad1c8b9fbc147572d2a003dbd4fda3",
+        "sha256": "87b92790b8f0b28622a8f62363cb9aeac4fe525016ec23b436fbefebd6b5f563",
         "baseline_destination_sha256": "e51bc1bfde053d806cf9af1652e08197f2067b30d0b6696501efa7d3bf4c6251",
-        "role": "Texture326 binding + source filter327"
+        "role": "ABI4 real ALU shader witness / ownership-preserving native overlay329",
+        "previous_reviewed_delta": {
+          "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+          "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_draw_job.c",
+          "sha256": "04843a5ac72c3ba668cf570663ce55ef1dad1c8b9fbc147572d2a003dbd4fda3",
+          "baseline_destination_sha256": "e51bc1bfde053d806cf9af1652e08197f2067b30d0b6696501efa7d3bf4c6251",
+          "role": "Texture326 binding + source filter327"
+        }
       }
     },
     {
-      "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
+      "source_commit": "9aa8386cf967e8348e0130a23d419cc9b627d0e6",
       "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_draw_job.h",
-      "sha256": "0c305dd9edd839eebaa7e377166fc81fc587e877446da3bb1d2e6c9e91a893e0",
+      "sha256": "3122ee09b95023f2d7cd23d4d17001c671785ca92ccd4e426b07692c5da89557",
       "baseline_destination_sha256": "d9c11d66989d5b755d1ee53fc1319b1c3ffa0318308b9eb0f9a76afd41c1f8fa",
-      "role": "ABI4 real ALU shader witness / ownership-preserving native overlay329",
+      "role": "VS CB330 / bounded owned code and uniform spans",
       "previous_reviewed_delta": {
-        "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+        "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
         "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_draw_job.h",
-        "sha256": "fa64d2171297c0631615291b111f5320a95ad8489123409d1b6d8d944b3ae91a",
+        "sha256": "0c305dd9edd839eebaa7e377166fc81fc587e877446da3bb1d2e6c9e91a893e0",
         "baseline_destination_sha256": "d9c11d66989d5b755d1ee53fc1319b1c3ffa0318308b9eb0f9a76afd41c1f8fa",
-        "role": "Texture326 binding + source filter327"
+        "role": "ABI4 real ALU shader witness / ownership-preserving native overlay329",
+        "previous_reviewed_delta": {
+          "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
+          "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_draw_job.h",
+          "sha256": "fa64d2171297c0631615291b111f5320a95ad8489123409d1b6d8d944b3ae91a",
+          "baseline_destination_sha256": "d9c11d66989d5b755d1ee53fc1319b1c3ffa0318308b9eb0f9a76afd41c1f8fa",
+          "role": "Texture326 binding + source filter327"
+        }
       }
     },
     {
@@ -1367,18 +1401,32 @@
       "new_source": true
     },
     {
-      "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
+      "source_commit": "9aa8386cf967e8348e0130a23d419cc9b627d0e6",
       "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_pds.c",
-      "sha256": "0f579103d61c77cafa029d15c469d0355f4b3462f426abb3bb41c1d693957177",
+      "sha256": "97e9147b656b5acd40c857732131c1403b4209c3b841d800063f1c394a50f452",
       "baseline_destination_sha256": "7e2b9f90eb13b8001cc473f5e6dfb46e32b74dfb469cdb1fa7ba62ed533197a0",
-      "role": "ABI4 real ALU shader witness / ownership-preserving native overlay329"
+      "role": "VS CB330 / bounded owned code and uniform spans",
+      "previous_reviewed_delta": {
+        "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
+        "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_pds.c",
+        "sha256": "0f579103d61c77cafa029d15c469d0355f4b3462f426abb3bb41c1d693957177",
+        "baseline_destination_sha256": "7e2b9f90eb13b8001cc473f5e6dfb46e32b74dfb469cdb1fa7ba62ed533197a0",
+        "role": "ABI4 real ALU shader witness / ownership-preserving native overlay329"
+      }
     },
     {
-      "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
+      "source_commit": "9aa8386cf967e8348e0130a23d419cc9b627d0e6",
       "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_pds.h",
-      "sha256": "44b2e3df3bd4788b2ea1711f0a7bac8a7f1e8db96ffea23a24ac2d7863d38cbd",
+      "sha256": "3ffe8d0a258a055ef3334299bdc9d73a2a9e9140c676454250a4b4e1fa70a204",
       "baseline_destination_sha256": "21039204bde1139391498e10dfce57fc67d331d72b7ad5f371c126038deae708",
-      "role": "ABI4 real ALU shader witness / ownership-preserving native overlay329"
+      "role": "VS CB330 / bounded owned code and uniform spans",
+      "previous_reviewed_delta": {
+        "source_commit": "b85565ef77ed8fbba6c6479d9c9d7d6d619f76ff",
+        "source_path": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_triangle_pds.h",
+        "sha256": "44b2e3df3bd4788b2ea1711f0a7bac8a7f1e8db96ffea23a24ac2d7863d38cbd",
+        "baseline_destination_sha256": "21039204bde1139391498e10dfce57fc67d331d72b7ad5f371c126038deae708",
+        "role": "ABI4 real ALU shader witness / ownership-preserving native overlay329"
+      }
     }
   ],
   "viewport_source_commit": "1e4ca5d11701a809653c518e07b75aa6c8cfb409",
