@@ -77,7 +77,8 @@ extern "C" NTSTATUS Mt8167RegisterHeadphoneWaveRt(PDEVICE_OBJECT device,PIRP irp
  NTSTATUS status=provider->qualified(provider->stream.context);if(status!=STATUS_SUCCESS)return NT_SUCCESS(status)?STATUS_DEVICE_NOT_READY:status;
  PMINIPORTWAVERT miniport=NULL;PPORT wave=NULL,topo=NULL;Mt8167HeadphoneTopology *topology=NULL;
  status=provider->newWaveMiniport(provider->stream.context,&miniport);
- if(NT_SUCCESS(status)&&!miniport)status=STATUS_INVALID_DEVICE_STATE;
+ if(status!=STATUS_SUCCESS&&NT_SUCCESS(status))status=STATUS_DEVICE_NOT_READY;
+ if(status==STATUS_SUCCESS&&!miniport)status=STATUS_INVALID_DEVICE_STATE;
  if(NT_SUCCESS(status)){
   void *memory=ExAllocatePoolWithTag(NonPagedPool,sizeof(Mt8167HeadphoneTopology),HP_TAG);
   if(!memory)status=STATUS_INSUFFICIENT_RESOURCES;else topology=new(memory)Mt8167HeadphoneTopology(provider);

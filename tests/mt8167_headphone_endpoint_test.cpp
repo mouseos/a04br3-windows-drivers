@@ -40,6 +40,9 @@ int main(){
  auto run=[&](){return Mt8167RegisterHeadphoneWaveRt(&owner,&owner,&owner,&p);};
  qualifiedResult=STATUS_DEVICE_NOT_READY;assert(run()==STATUS_DEVICE_NOT_READY&&!calls&&!providerRefs);qualifiedResult=1;assert(run()==STATUS_DEVICE_NOT_READY&&!calls);qualifiedResult=0;
  p.readJack=nullptr;assert(run()==STATUS_DEVICE_NOT_READY&&!calls);p.readJack=jack;p.stream.capture=TRUE;assert(run()==STATUS_INVALID_PARAMETER&&!calls);p.stream.capture=FALSE;
+ p.newWaveMiniport=nullptr;assert(run()==STATUS_DEVICE_NOT_READY&&!calls);
+ p.newWaveMiniport=[](void*,PMINIPORTWAVERT*out)->NTSTATUS{*out=nullptr;return 0;};assert(run()==STATUS_INVALID_DEVICE_STATE&&!calls&&!providerRefs);
+ p.newWaveMiniport=makeWave;
  assert(run()==0&&registered.size()==2&&providerRefs==1);int total=calls;
  PPCFILTER_DESCRIPTOR descriptor=nullptr;assert(topoObject->GetDescription(&descriptor)==0&&descriptor->pinCount==2&&descriptor->connectionCount==1&&descriptor->pins[1].pin.category==&KSNODETYPE_HEADPHONES);
  alignas(8) unsigned char output[128];ULONG pin=1;PCPROPERTY_REQUEST r={topoObject,&Properties[0],1,sizeof(pin),&pin,sizeof(output),output};
