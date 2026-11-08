@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""run117: RT8.1 shader署名修正3.23。最新の周辺更新後captureを結合するまで発火不可。"""
+"""run119: RT8.1 shader署名修正3.23。最新の周辺更新後captureを結合するまで発火不可。"""
 import argparse,hashlib,json,re,struct,subprocess
 from pathlib import Path
-from render_profile_policy import require,rooted,jsonfile,hexpin,sha,cbytes,SIGNER
+from render_profile_policy import require,rooted as checked_rooted,jsonfile,hexpin,sha,cbytes,SIGNER
 from codec_msdc_transaction import TARGETS,RETAINED,RETAINED_FILES,version,datevalue
 from codec_returned_baseline import validate_selection,pinned_file
 from engine_io_package import require_armnt
-PROFILE='render-single-gpu323-run117-v1'
-FRESH='23bd8c5a2b2db021b24b7ef81c48f2ff6478b8ee21955db23dd329839c21e51d'
+PROFILE='render-single-gpu323-run119-v1'
+DATA_DIRECTORY='MT8167RenderSingleGpuRun119'
+FRESH='0e7a62bcbad84de80c28d7ea8394ea0dbd50537e752fadb5f2414506b0c4f95a'
 SOURCE='50974a3cd35336c57d151020feef20471968ab13'
 PACKAGE='fd1c90d35fde04663a17285cbb69e91b3545ddf54af1e030a77aacd3813626bf'
 NATIVE='6bc00603aea90762a04b125667645979c1887d40e4632e0105d44a51e449a9a3'
@@ -19,6 +20,9 @@ BASE_SYS={'parent':'398fd007079ab4710404d67a60dc7db46b84dd149ce3ae69e3bbc730264e
 RETAINED=dict(RETAINED);RETAINED['usb']=('MT8167\\USB20','mshidkmdf','2026.11.8.1009','mt8167-usb20.sys','9f8d3e49d13efe6fa0b84d71c061c3829482c7352ed8f409ac8914d586320a7a')
 RETAINED_FILES=dict(RETAINED_FILES);RETAINED_FILES['mt8167-usb20.sys']=RETAINED['usb'][4]
 RETAINED_FILES.update({'mma8652.sys':'998329ec0541a7738c893c3185b591439e433ec55489aee657670a5b89f52388','mt6392-rtc.sys':'3da6c7dd7cc5279fccc45581ce2b20405e08291b42ebf1fbf45e2a7a2e49d7eb','mt8167-thermal.sys':'ca211e366704380966ef639c24a1d49b71425b39cd7272ebdeeb03c3b412408b'})
+def rooted(root,path):
+ p=Path(path);return checked_rooted(root,p if p.is_absolute() else root/p)
+
 def outputs(directory,m,wanted):
  rows=m['outputs'];require(len(rows)==len(wanted) and {x['name'] for x in rows}==set(wanted),'固定outputs schema不一致')
  for x in rows:require(sha(directory/x['name'])==hexpin(x['sha256']),'署名output byte不一致')
@@ -35,8 +39,8 @@ def load_boot(entry,root):
 def load_map(path,root):
  require(re.fullmatch('[0-9a-f]{64}',FRESH),'run115後の最新capture未結合: draft発火不可')
  root=root.resolve(strict=True);s=jsonfile(rooted(root,path))
- require(set(s)=={'schema','profile','backup','backup_sha256','bindings','packages','native','boot','comparator','previous_engine_media'},'singleGPU専用input fields必須')
- require(s['schema']==1 and s['profile']==PROFILE and s['backup_sha256']==FRESH,'固定run117/返却後fresh必須')
+ require(set(s)=={'schema','profile','backup','backup_sha256','bindings','packages','native','boot','comparator','previous_engine_media','previous_service'},'singleGPU専用input fields必須')
+ require(s['schema']==1 and s['profile']==PROFILE and s['backup_sha256']==FRESH,'固定run119/返却後fresh必須')
  backup=rooted(root,s['backup']);require(sha(backup)==FRESH,'返却後fresh実hash不一致');b=jsonfile(backup)
  require(b.get('status')=='captured-unmounted' and b.get('unmounted') is True and b.get('errors')==[],'返却後fresh完了原本必須')
  files={}
@@ -88,18 +92,38 @@ def load_map(path,root):
  require(cp.get('signature_status')=='Valid' and cp.get('signer_thumbprint')==SIGNER and sha(compdir/'compare-files.exe')==cp['exe_sha256'],'署名済comparator不一致')
  previous=rooted(root,s['previous_engine_media']['path']);require(sha(previous)==hexpin(s['previous_engine_media']['sha256']),'ObserveOnly元媒体pin不一致');old=jsonfile(previous)
  require(old.get('source_commit')=='66996e88297ed6f7883d036c78eecff9530788b4' and old.get('transaction')=='codec-render-observe-fresh92-v1','run93元媒体のみ許可')
+ prev=s['previous_service'];require(set(prev)=={'path','sha256','manifest','manifest_sha256','source_commit'},'Previous actual SCM EXE/manifest pins required')
+ previous_exe=rooted(root,prev['path']);previous_manifest=rooted(root,prev['manifest']);pm=jsonfile(previous_manifest)
+ require(prev['sha256']=='c57e845e979af797872450a7eba0b41070320cfac4cbafded8d211648a101f8d' and sha(previous_exe)==prev['sha256'] and sha(previous_manifest)==hexpin(prev['manifest_sha256']),'Actual installed117 SCM bytes/manifest mismatch')
+ require(prev['source_commit']==pm.get('source_commit')=='23cf73650bb01e78b8d982d298295c40f24800f1' and pm.get('exe_sha256')==prev['sha256'] and pm.get('signature_status')=='Valid' and pm.get('signing_thumbprint')==SIGNER and pm.get('profile')=='render-single-gpu323-run117-v1' and pm.get('policy',{}).get('data_directory')=='MT8167RenderSingleGpuRun117','Previous SCM source/profile provenance mismatch')
+ previous_service={'path':previous_exe.relative_to(root).as_posix(),'sha256':prev['sha256'],'manifest_sha256':sha(previous_manifest),'source_commit':prev['source_commit'],'declared_data_directory':pm['policy']['data_directory'],'known_failed_path_before_diagnostic_begin':True}
  history=list(old['engine_rearm_plan']['diagnostic_policies']);token=hashlib.sha256(json.dumps(old['probe']['deferred_update'],sort_keys=True,separators=(',',':')).encode()).hexdigest()
  if token not in history:history.append(token)
  require(len(history)<=16 and all(re.fullmatch('[0-9a-f]{64}',x) for x in history),'Engine履歴allowlist不一致')
  preservation={'schema':1,'profile':PROFILE,'backup_manifest_sha256':FRESH,'diagnostic_policies':history,'source_files':{n:{k:files['windows/system32/config/'+n.lower()][k] for k in ('sha256','bytes')} for n in ('SYSTEM','SYSTEM.LOG1','SYSTEM.LOG2')},'engine_rearm':False}
- preservation['single_gpu_rearm']={'schema':1,'service':'MT8167RenderSingleGpu','maximum_rearms':1,'diagnostic_policies':['d64c9165297bb602ac04be1d9053998c2f6f8da3581545b6be8b005d237fcdb5','6b00fa9f57696f19ad10ecdace497d0a3b1b4bcb861e98d7a8571e0ce23f19c3','10f8ec77e44a42c25a01c17434adb9c4bc80f180c142173725846d7735015c64','b6273b09f165e3e5fcc61d49bc8b874008f9350d30592737c71e31a2999e905f','bf84654ab50707ca2d660f685663cf4dd8b1c216921e862a7289340c5056ebe0','9947ede87028cd2d8100e443006cf516ed2c5e17e06229bb688943e2746dbc4b','a66ac828fe1c6838f4de2a8ce766313b53a9d48682463a456727166c5bb39bea','71440bc09ce1caced543d8bf1a67a05db0f6f5b45363f60aa58fc9fdfbe0c6d2','4f585721d5ab2e7bedbf61b75e4d76d88ba1f0f549281de6b418a50dfe120643'],'data_directory':'MT8167RenderSingleGpuRun117','partial_diagnostic_policies':['10f8ec77e44a42c25a01c17434adb9c4bc80f180c142173725846d7735015c64','bf84654ab50707ca2d660f685663cf4dd8b1c216921e862a7289340c5056ebe0','9947ede87028cd2d8100e443006cf516ed2c5e17e06229bb688943e2746dbc4b','a66ac828fe1c6838f4de2a8ce766313b53a9d48682463a456727166c5bb39bea','71440bc09ce1caced543d8bf1a67a05db0f6f5b45363f60aa58fc9fdfbe0c6d2']}
+ preservation['single_gpu_rearm']={'schema':1,'service':'MT8167RenderSingleGpu','maximum_rearms':1,'diagnostic_policies':['d64c9165297bb602ac04be1d9053998c2f6f8da3581545b6be8b005d237fcdb5','6b00fa9f57696f19ad10ecdace497d0a3b1b4bcb861e98d7a8571e0ce23f19c3','10f8ec77e44a42c25a01c17434adb9c4bc80f180c142173725846d7735015c64','b6273b09f165e3e5fcc61d49bc8b874008f9350d30592737c71e31a2999e905f','bf84654ab50707ca2d660f685663cf4dd8b1c216921e862a7289340c5056ebe0','9947ede87028cd2d8100e443006cf516ed2c5e17e06229bb688943e2746dbc4b','a66ac828fe1c6838f4de2a8ce766313b53a9d48682463a456727166c5bb39bea','71440bc09ce1caced543d8bf1a67a05db0f6f5b45363f60aa58fc9fdfbe0c6d2','4f585721d5ab2e7bedbf61b75e4d76d88ba1f0f549281de6b418a50dfe120643'],'data_directory':DATA_DIRECTORY,'partial_diagnostic_policies':['10f8ec77e44a42c25a01c17434adb9c4bc80f180c142173725846d7735015c64','bf84654ab50707ca2d660f685663cf4dd8b1c216921e862a7289340c5056ebe0','9947ede87028cd2d8100e443006cf516ed2c5e17e06229bb688943e2746dbc4b','a66ac828fe1c6838f4de2a8ce766313b53a9d48682463a456727166c5bb39bea','71440bc09ce1caced543d8bf1a67a05db0f6f5b45363f60aa58fc9fdfbe0c6d2']}
+ preservation['single_gpu_rearm'].update(previous_service_start=2,previous_service_fingerprint='c87d3cfa4ef28d0ea7ed3c1468311dcba15c5a043c0b68f931e9c5362a9e1555',previous_ledger_fingerprint='00449eacb4196f5f54cb3b2b7b9e9ece379c5aac6ce3df006720cca572dd2fb8',absent_policy='f9319e78a8439dccd16cdee0e668a56bfc52bbe1a68caf465c1c709f0a028227')
  base=selection['render'];base.update(driver_version='0.0.3.22',sys_name='ge8300-render.sys',sys_sha256=BASE_RENDER_SYS,inf=base['selected']['InfPath'])
  retained={k:v for k,v in selection.items() if k!='render'}
  retainedfiles={**RETAINED_FILES,**{TARGETS[k][2]+'.sys':v for k,v in BASE_SYS.items() if k!='render'}};retainedfiles.pop('ge8300-umd.dll');retainedfiles.pop('ge8300-render.sys')
- return {'schema':1,'profile':PROFILE,'default_off':True,'data_directory':'MT8167RenderSingleGpuRun117','software_trust_policy':'preserve-existing; require WinVerifyTrust/CAT membership before single-GPU install; no SOFTWARE writes','backup_path':backup.relative_to(root).as_posix(),'backup_manifest_sha256':FRESH,'binding_receipt_sha256':sha(receipt),'baselines':{'render':base},'packages':{'render':{'directory':pkg.relative_to(root).as_posix(),'files':{n:hashes[n] for n in names},'version_u64':version('0.0.3.23'),'date_filetime':datevalue('11/07/2026'),'source_commit':SOURCE,'signed_manifest_sha256':PACKAGE}},'client':{'directory':nd.relative_to(root).as_posix(),'source_commit':n['client_source_commit'],'sha256':nh['ge8300-d3d-clear.exe'],'manifest_sha256':NATIVE,'arguments':'--hardware=PowerVR','timeout_ms':120000,'retry_count':0,'pipeline':'10_0','limited_development_profile':True,'standard_profile_qualified':False},'comparator':{'directory':compdir.relative_to(root).as_posix(),'manifest_sha256':sha(cm),**cp},'retained_selection':retained,'retained_files':retainedfiles,'baseline_umd_sha256':BASE_UMD,'engine_preservation':preservation,'boot':{'source_commit':bm['uefi_source_commit'],'sha256':bm['boot_img_sha256'],'manifest_sha256':sha(boot),'action':'preserve; no boot or GPT writes'},'pnp_install_count':1,'maximum_planned_reboot_count':1,'client_count':1,'audio_retest':False,'normal_install_allowed':True,'sequence':['stage exact render candidate and dedicated single-GPU service','one render DIF_INSTALLDEVICE; no live device restart','maximum one planned reboot','exact render/retained verification and one GPU client; stop']}
+ return {'schema':1,'profile':PROFILE,'default_off':True,'data_directory':DATA_DIRECTORY,'software_trust_policy':'preserve-existing; require WinVerifyTrust/CAT membership before single-GPU install; no SOFTWARE writes','backup_path':backup.relative_to(root).as_posix(),'backup_manifest_sha256':FRESH,'binding_receipt_sha256':sha(receipt),'baselines':{'render':base},'packages':{'render':{'directory':pkg.relative_to(root).as_posix(),'files':{n:hashes[n] for n in names},'version_u64':version('0.0.3.23'),'date_filetime':datevalue('11/07/2026'),'source_commit':SOURCE,'signed_manifest_sha256':PACKAGE}},'client':{'directory':nd.relative_to(root).as_posix(),'source_commit':n['client_source_commit'],'sha256':nh['ge8300-d3d-clear.exe'],'manifest_sha256':NATIVE,'arguments':'--hardware=PowerVR','timeout_ms':120000,'retry_count':0,'pipeline':'10_0','limited_development_profile':True,'standard_profile_qualified':False},'comparator':{'directory':compdir.relative_to(root).as_posix(),'manifest_sha256':sha(cm),**cp},'previous_service':previous_service,'retained_selection':retained,'retained_files':retainedfiles,'baseline_umd_sha256':BASE_UMD,'engine_preservation':preservation,'boot':{'source_commit':bm['uefi_source_commit'],'sha256':bm['boot_img_sha256'],'manifest_sha256':sha(boot),'action':'preserve; no boot or GPT writes'},'pnp_install_count':1,'maximum_planned_reboot_count':1,'client_count':1,'audio_retest':False,'normal_install_allowed':True,'sequence':['stage exact render candidate and dedicated single-GPU service','one render DIF_INSTALLDEVICE; no live device restart','maximum one planned reboot','exact render/retained verification and one GPU client; stop']}
+def generate_paths(p):
+ require(p.get('profile')==PROFILE and p.get('data_directory')==DATA_DIRECTORY,'Exact generated service profile/directory required')
+ require(p.get('engine_preservation',{}).get('single_gpu_rearm',{}).get('data_directory')==DATA_DIRECTORY,'Native rearm directory differs from runtime')
+ return '#ifndef A04_RENDER_SERVICE_PATH_POLICY_H\n#define A04_RENDER_SERVICE_PATH_POLICY_H\n#define A04_RENDER_DATA_DIRECTORY L"'+DATA_DIRECTORY+'"\n#define A04_RENDER_POLICY_PROFILE "'+PROFILE+'"\n#endif\n'
+def assert_service_paths(image,p):
+ generate_paths(p);require_armnt(Path(image));b=Path(image).read_bytes();want=p['data_directory'].encode('utf-16le')+b'\0\0'
+ token=hashlib.sha256(json.dumps(p,sort_keys=True,separators=(',',':')).encode()).hexdigest().encode()+b'\0'
+ require(token in b,'SCM compiled policy token mismatch')
+ require(want in b,'SCM EXE does not contain exact generated UTF16 data directory')
+ old=set(re.findall(rb'M\x00T\x008\x001\x006\x007\x00R\x00e\x00n\x00d\x00e\x00r\x00S\x00i\x00n\x00g\x00l\x00e\x00G\x00p\x00u\x00R\x00u\x00n\x00(?:[0-9]\x00)+',b))
+ require(old=={p['data_directory'].encode('utf-16le')},'SCM contains an old generation directory')
+ return {'data_directory':p['data_directory'],'profile':p['profile'],'utf16_directory_verified':True,'old_generation_directory_absent':True}
+
 def generate(p):
  require(re.fullmatch('[0-9a-f]{64}',FRESH),'run115後の最新capture未結合: draft header発行不可')
  require(p.get('profile')==PROFILE and set(p['packages'])=={'render'},'single GPU profile only')
+ generate_paths(p)
  v=p['packages']['render'];base=p['baselines']['render']
  lines=['#define DEFERRED_TARGET_COUNT 1','#define DEFERRED_GPU_UPDATE 0','#define DEFERRED_SD_UPDATE 0','#define DEFERRED_BRIGHTNESS_SCOPED_LOG 0','#define RENDER_OFFLINE_DIAGNOSTIC 0','#if !A04_RENDER_SINGLE_GPU || !A04_RENDER_BIND_UPDATE\n#error Use the explicit single-GPU compile profile\n#endif','static const struct deferred_pin deferred_pins[1]={{'+str(v['version_u64'])+'ULL,'+str(v['date_filetime'])+'ULL,{'+','.join(cbytes(x) for x in v['files'].values())+'}}};','static const struct deferred_pin deferred_baselines[1]={{'+str(base['version_u64'])+'ULL,'+str(base['date_filetime'])+'ULL,{{0},'+cbytes(base['sys_sha256'])+'}}};']
  for field,cname in [('sys_name','sysnames'),('class_guid','classes'),('service','services')]:lines.append('static const WCHAR *const deferred_baseline_'+cname+'[1]={L"'+base[field]+'"};')
@@ -112,5 +136,5 @@ def main():
  ap=argparse.ArgumentParser();ap.add_argument('--enable-render-profile',action='store_true')
  for n in ('workspace','package-map','output'):ap.add_argument('--'+n,type=Path,required=True)
  a=ap.parse_args();require(a.enable_render_profile,'明示singleGPU opt-in必須');p=load_map(a.package_map,a.workspace);out=a.output.resolve();require(out.is_relative_to(a.workspace.resolve()) and not out.exists(),'root内新出力必須');out.mkdir(parents=True)
- (out/'render-deferred-policy.h').write_text(generate(p));(out/'render-policy-manifest.json').write_text(json.dumps(p,indent=2)+'\n');(out/'engine-preservation-plan.json').write_text(json.dumps(p['engine_preservation'],indent=2)+'\n')
+ (out/'render-service-path-policy.h').write_text(generate_paths(p));(out/'render-deferred-policy.h').write_text(generate(p));(out/'render-policy-manifest.json').write_text(json.dumps(p,indent=2)+'\n');(out/'engine-preservation-plan.json').write_text(json.dumps(p['engine_preservation'],indent=2)+'\n')
 if __name__=='__main__':main()

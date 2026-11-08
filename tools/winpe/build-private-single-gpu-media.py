@@ -2,7 +2,7 @@
 """fresh-input専用・offline三package→matched boot→normal診断only。非配布媒体。"""
 import argparse, hashlib, importlib.util, json, os, re, shutil, subprocess
 from pathlib import Path
-from render_single_gpu_policy import load_map, generate, rooted, sha, require, SIGNER
+from render_single_gpu_policy import load_map, generate, generate_paths, assert_service_paths, rooted, sha, require, SIGNER
 from private_hardware_probe_input import prepared_system_check, certificate_trust_commands, private_path
 
 def main():
@@ -16,7 +16,7 @@ def main():
  policy=load_map(a.package_map,root);fresh=policy['backup_manifest_sha256'];backup=root/policy['backup_path'];b=json.loads(backup.read_text());base=rooted(root,a.base);tools=rooted(root,a.tools);service=rooted(root,a.service_package)
  out=a.out.resolve();private_path(out,root);require(not out.exists(),'既存出力を変更しません')
  require(sha(base/'maintenance-staged.wim')=='0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4' and sha(base/'maintenance-staged-esp.img')=='22ac309921bd9ae405bd48e65d8cb8a70506c90f0c08e6edda4f0150fb4993ce','既知base不一致')
- sm=json.loads((service/'render-service-manifest.json').read_text(encoding='utf-8-sig'));require(sm.get('profile')=='render-single-gpu323-run117-v1' and sm.get('service')=='MT8167RenderSingleGpu' and sm.get('signed') is True and sm.get('signature_status')=='Valid' and sm.get('signing_thumbprint')==SIGNER and sm.get('source_dirty') is False,'固定署名service不一致')
+ sm=json.loads((service/'render-service-manifest.json').read_text(encoding='utf-8-sig'));require(sm.get('profile')==policy['profile'] and sm.get('service')=='MT8167RenderSingleGpu' and sm.get('signed') is True and sm.get('signature_status')=='Valid' and sm.get('signing_thumbprint')==SIGNER and sm.get('source_dirty') is False,'固定署名service不一致')
  service_source=sm.get('source_commit','');require(re.fullmatch('[0-9a-f]{40}',service_source),'固定signed runtime source必須')
  require(subprocess.run(['git','-C',str(repo),'merge-base','--is-ancestor',service_source,a.source_commit],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0,'signed runtime source ancestry不一致')
  tooling_changes=subprocess.check_output(['git','-C',str(repo),'diff','--name-only',service_source,a.source_commit],text=True).splitlines()
@@ -24,14 +24,18 @@ def main():
  if 'tools/recovery/prepare-offline-system-service.ps1' in tooling_changes:require(sha(here.parent/'recovery/prepare-offline-system-service.ps1')=='c75c8a98ea3ee6761fa65fa14e2c5d05e4cb3b583e5c3705999dc5bcd6ecc305','承認済み9generation guard修正以外のnative差分は拒否')
  require(sm.get('policy')==policy and sha(service/'render-policy-manifest.json')==sm['policy_manifest_sha256'] and sha(service/'MT8167RenderSingleGpu.exe')==sm['exe_sha256'],'service/policy/EXE pin不一致')
  require((service/'render-deferred-policy.h').read_text()==generate(policy),'compile policy不一致')
+ require((service/'render-service-path-policy.h').read_text()==generate_paths(policy) and sha(service/'render-service-path-policy.h')==sm.get('path_header_sha256') and sm.get('data_directory')==policy['data_directory'] and sm.get('runtime_utf16_path_verified') is True,'signed runtime/header/manifest directory mismatch')
+ path_proof=assert_service_paths(service/'MT8167RenderSingleGpu.exe',policy)
+ stage_base='C:\\Windows\\System32\\'+policy['data_directory']
+ require(policy['engine_preservation']['single_gpu_rearm']['data_directory']==policy['data_directory'],'native/stage directory mismatch')
  require(sha(service/'compare-files.exe')==sm.get('comparator',{}).get('exe_sha256') and sm['comparator'].get('signature_status')=='Valid' and sm['comparator'].get('signer_thumbprint')==SIGNER,'同梱native comparator署名/hash不一致')
  require(hashlib.sha1((service/'mt8167-development.cer').read_bytes()).hexdigest().upper()==SIGNER,'service cert不一致')
  system=rooted(root,a.prepared_system);result=rooted(root,a.prepared_system_manifest)
- native=prepared_system_check(system,result,a.prepared_system_sha256,root,b,'MT8167RenderSingleGpu');require(not native.get('engine_rearm_plan_sha256'),'Engine再arm不可');nr=json.loads(result.read_text(encoding='utf-8-sig'));require(nr.get('single_gpu_rearm')==policy['engine_preservation']['single_gpu_rearm'] and nr.get('engine_preservation_plan_sha256')==sha(service/'engine-preservation-plan.json'),'fresh116 native rearm chain mismatch')
+ native=prepared_system_check(system,result,a.prepared_system_sha256,root,b,'MT8167RenderSingleGpu');require(not native.get('engine_rearm_plan_sha256'),'Engine再arm不可');nr=json.loads(result.read_text(encoding='utf-8-sig'));require(nr.get('single_gpu_rearm')==policy['engine_preservation']['single_gpu_rearm'] and nr.get('engine_preservation_plan_sha256')==sha(service/'engine-preservation-plan.json'),'fresh118 native rearm chain mismatch')
  out.mkdir(mode=0o700);stage=out/'stage';stage.mkdir(mode=0o700);files={}
  def copy(src,dest):
   target=stage/dest;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(src,target);files[dest]=sha(target)
- copy(root/'port/xnu/out/windows-rt-run113-single-gpu/service/MT8167RenderSingleGpu.exe','previous-single-service.exe');require(files['previous-single-service.exe']=='80825f5dd2753280e84bfd6ededcf0cad42e5eda66563eb5f7c33578775c4dad','prior dedicated service pin mismatch');copy(service/'compare-files.exe','compare-files.exe');copy(system,'private-system/SYSTEM.patched');copy(service/'MT8167RenderSingleGpu.exe','MT8167RenderSingleGpu.exe');copy(service/'mt8167-development.cer','render-development.cer')
+ previous=policy['previous_service'];copy(rooted(root,previous['path']),'previous-single-service.exe');require(files['previous-single-service.exe']==previous['sha256'],'previous installed SCM EXE mismatch');copy(service/'compare-files.exe','compare-files.exe');copy(system,'private-system/SYSTEM.patched');copy(service/'MT8167RenderSingleGpu.exe','MT8167RenderSingleGpu.exe');copy(service/'mt8167-development.cer','render-development.cer')
  copy((root/policy['client']['directory'])/'ge8300-d3d-clear.exe','render-io/clients/ge8300-d3d-clear.exe')
  for role,p in policy['packages'].items():
   for name in p['files']:copy((root/p['directory'])/name,'render-io/'+role+'/'+name)
@@ -49,11 +53,11 @@ def main():
  require({'Windows/System32/MT8167EngineProbe.exe','Windows/System32/MT8167EngineProbe/attempted.bin','Windows/System32/MT8167EngineProbe/logs/service.log'}.issubset({x['source_path'] for x in b['files']}),'既存Engine固定3fileのcapture必須')
  require(hives==6,'SYSTEM/DRIVERSの各trio必須。未書込みSOFTWAREは既知LOG縮小証拠により比較しない')
  checks+=['X:\\a04br3\\compare-files.exe X:\\a04br3\\previous-single-service.exe C:\\Windows\\System32\\MT8167RenderSingleGpu.exe >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto baselinefail']
- prepare=checks+['if exist C:\\Windows\\System32\\MT8167RenderSingleGpuRun117 goto baselinefail','set \"A04_CANDIDATE_STARTED=1\"','> \"%A04_BK%\\JOURNAL.txt\" echo STATE=CANDIDATE_WRITE_STARTED','>> \"%A04_REPORT%\" echo CANDIDATE_WRITES_STARTED=1', 'mkdir C:\\Windows\\System32\\MT8167RenderSingleGpuRun117\\logs >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail','mkdir C:\\Windows\\System32\\MT8167RenderSingleGpuRun117\\clients >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
+ prepare=checks+['if exist '+stage_base+' goto baselinefail','set "A04_CANDIDATE_STARTED=1"','> "%A04_BK%\\JOURNAL.txt" echo STATE=CANDIDATE_WRITE_STARTED','>> "%A04_REPORT%" echo CANDIDATE_WRITES_STARTED=1','mkdir '+stage_base+'\\logs >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail','mkdir '+stage_base+'\\clients >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
  for role,p in policy['packages'].items():
-  dst='C:\\Windows\\System32\\MT8167RenderSingleGpuRun117\\drivers\\'+role;prepare+=['mkdir '+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
+  dst=stage_base+'\\drivers\\'+role;prepare+=['mkdir '+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
   for name in p['files']:prepare+=['copy /b /y X:\\a04br3\\render-io\\'+role+'\\'+name+' '+dst+'\\'+name+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
- prepare+=['copy /b /y X:\\a04br3\\render-io\\clients\\ge8300-d3d-clear.exe C:\\Windows\\System32\\MT8167RenderSingleGpuRun117\\clients\\ >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail','copy /b /y X:\\a04br3\\MT8167RenderSingleGpu.exe C:\\Windows\\System32\\MT8167RenderSingleGpu.exe >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail','copy /b /y X:\\a04br3\\private-system\\SYSTEM.patched C:\\Windows\\System32\\config\\SYSTEM >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
+ prepare+=['copy /b /y X:\\a04br3\\render-io\\clients\\ge8300-d3d-clear.exe '+stage_base+'\\clients\\ >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail','copy /b /y X:\\a04br3\\MT8167RenderSingleGpu.exe C:\\Windows\\System32\\MT8167RenderSingleGpu.exe >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail','X:\\a04br3\\compare-files.exe X:\\a04br3\\MT8167RenderSingleGpu.exe C:\\Windows\\System32\\MT8167RenderSingleGpu.exe >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail','copy /b /y X:\\a04br3\\private-system\\SYSTEM.patched C:\\Windows\\System32\\config\\SYSTEM >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto dismfail']
  # Source template retains tested map/guard/journal/DISM/release/report framing.
  cmd=(here/'run-mt8167-shared-io-update.cmd.in').read_text();start=cmd.index('if not exist C:\\Windows\\System32\\drivers\\a04br3');end=cmd.index('copy /y X:\\a04br3\\dism-*.txt',start)
  driverlines=[]
@@ -76,6 +80,7 @@ def main():
  require('goto baselinefail' in cmd and 'STATE=PRECHECK' in cmd and 'STATE=CANDIDATE_WRITE_STARTED' in cmd,'preflight/write区分template不一致')
  require(not re.search(r'(?im)^reg(?:[.]exe)?\s+(load|unload|add)\s',cmd),'SOFTWARE/trustを含むreg書込みstage禁止')
  require(not re.search('@[A-Z_]+@',cmd),'未置換template');require(not re.search(r'(?im)^reg(?:\.exe)?\s+load\s+.*config\\SYSTEM',cmd),'WinPE SYSTEM RegLoad禁止')
+ require(set(re.findall(r'MT8167RenderSingleGpuRun[0-9]+',cmd))=={policy['data_directory']},'stage contains missing/old generation directory')
  (stage/'run-update-once.cmd').write_bytes(cmd.replace('\r','').replace('\n','\r\n').encode());files['run-update-once.cmd']=sha(stage/'run-update-once.cmd')
  (stage/'startnet.cmd').write_bytes(b'@echo off\r\nmountvol /N\r\nwpeinit\r\nif errorlevel 1 exit /b 2\r\nmountvol /N\r\ncall X:\\a04br3\\run-update-once.cmd\r\n')
  image=out/'update.wim';shutil.copyfile(base/'maintenance-staged.wim',image);env=os.environ.copy();env.update(TMPDIR=str(stage),LD_LIBRARY_PATH=str(tools/'wimtools'),PYTHONPATH=str(tools/'python-fat'),PYTHONDONTWRITEBYTECODE='1')
@@ -86,7 +91,7 @@ def main():
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'verify',str(image)],env=env,check=True)
  subprocess.run(['python3','-B',str(here/'replace-esp-wim.py'),'--template',str(base/'maintenance-staged-esp.img'),'--wim',str(image),'--output',str(out/'update-esp.img'),'--template-bcd-sha256','65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d','--template-wim-sha256','0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4'],env=env,check=True)
  expected={n:h for role in policy['packages'].values() for n,h in role['files'].items() if n.endswith(('.sys','.dll','.fw'))}
- manifest={'private_do_not_distribute':True,'source_commit':a.source_commit,'service_source_commit':service_source,'tooling_only_changes_since_signed_service':tooling_changes,'preflight_journal_state':'PRECHECK','baseline_rejection_state':'BASELINE_REJECTED_NO_CHANGE','candidate_failure_state':'CANDIDATE_WRITE_FAILED','profile':policy['profile'],'selected_service':'MT8167RenderSingleGpu','host_backup_manifest_sha256':fresh,'recovery_boot_id':b['recovery_boot_id'],'token':token,'policy':policy,'policy_manifest_sha256':sha(service/'render-policy-manifest.json'),'service_exe_sha256':sha(service/'MT8167RenderSingleGpu.exe'),'backup_comparator':sm['comparator'],'probe':sm,'expected_installed_sys':{k:v for k,v in expected.items() if k.endswith('.sys')},'prepared_system':native,'files':files,'esp_sha256':sha(out/'update-esp.img'),'wim_sha256':sha(image),'expected_installed_files':expected,'offline_dism_packages':[],'software_or_trust_written':False,'native_candidate_reuse':False,'single_gpu_rearm':policy['engine_preservation']['single_gpu_rearm'],'normal_install_allowed':True,'boot_sequence':policy['sequence'],'required_next_boot':policy['boot'],'hardware_verified':False,'status':'generated-host-verified-runtime-unverified'}
+ manifest={'private_do_not_distribute':True,'source_commit':a.source_commit,'service_source_commit':service_source,'tooling_only_changes_since_signed_service':tooling_changes,'preflight_journal_state':'PRECHECK','baseline_rejection_state':'BASELINE_REJECTED_NO_CHANGE','candidate_failure_state':'CANDIDATE_WRITE_FAILED','profile':policy['profile'],'selected_service':'MT8167RenderSingleGpu','data_directory_contract':{'policy':policy['data_directory'],'stage':policy['data_directory'],'native':policy['engine_preservation']['single_gpu_rearm']['data_directory'],'runtime':path_proof,'previous_service':policy['previous_service']},'host_backup_manifest_sha256':fresh,'recovery_boot_id':b['recovery_boot_id'],'token':token,'policy':policy,'policy_manifest_sha256':sha(service/'render-policy-manifest.json'),'service_exe_sha256':sha(service/'MT8167RenderSingleGpu.exe'),'backup_comparator':sm['comparator'],'probe':sm,'expected_installed_sys':{k:v for k,v in expected.items() if k.endswith('.sys')},'prepared_system':native,'files':files,'esp_sha256':sha(out/'update-esp.img'),'wim_sha256':sha(image),'expected_installed_files':expected,'offline_dism_packages':[],'software_or_trust_written':False,'native_candidate_reuse':False,'single_gpu_rearm':policy['engine_preservation']['single_gpu_rearm'],'normal_install_allowed':True,'boot_sequence':policy['sequence'],'required_next_boot':policy['boot'],'hardware_verified':False,'status':'generated-host-verified-runtime-unverified'}
  (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
  for p in out.rglob('*'):
   if p.is_file():p.chmod(0o600)

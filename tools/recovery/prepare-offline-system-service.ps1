@@ -203,6 +203,10 @@ function Inspect-Services($Root,$Plan,[bool]$Patch) {
             $beforeFingerprint=$null;$diagnosticFingerprint=$null
             $singleRearm=$Patch -and $spec.name -ceq 'MT8167RenderSingleGpu'
             if($singleRearm -and $key.GetValueNames().Count -ne 7){$key.Dispose();throw 'Single GPU exact seven values required'}
+            if($singleRearm){
+                $beforeFingerprint=[MT8167OfflineHive.Native]::ValueFingerprint($key)
+                if($beforeFingerprint -cne $Plan.engine_preserve.single_gpu_rearm.previous_service_fingerprint){$key.Dispose();throw 'Pinned previous Single GPU registration changed'}
+            }
             $gpuInspect=[bool]$Plan.gpu_inspect
             if($gpuInspect) {
                 if($Patch -or $spec.name -cne 'MT8167DeviceInstall' -or !$key -or $key.GetValueNames().Count -ne 7) {
@@ -235,7 +239,7 @@ function Inspect-Services($Root,$Plan,[bool]$Patch) {
                 # Accept an absent or compatible partial registration only; do not rearm disabled services.
                 foreach($name in $key.GetValueNames()) {
                     if(!$values.Contains($name)) { $key.Dispose();throw 'Unexpected existing one-shot service value' }
-                    $expected=$values[$name];if(($rearm -or $gpuRearm -or $singleRearm) -and $name -eq 'Start') { $expected=@('DWord',4) };$kind=[Microsoft.Win32.RegistryValueKind]$expected[0]
+                    $expected=$values[$name];if(($rearm -or $gpuRearm) -and $name -eq 'Start') { $expected=@('DWord',4) };if($singleRearm -and $name -eq 'Start'){$expected=@('DWord',[int]$Plan.engine_preserve.single_gpu_rearm.previous_service_start)};$kind=[Microsoft.Win32.RegistryValueKind]$expected[0]
                     $actual=$key.GetValue($name,$null,[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
                     $compatible=$key.GetValueKind($name) -eq $kind
                     if($kind -eq [Microsoft.Win32.RegistryValueKind]::MultiString) {
@@ -295,7 +299,12 @@ function Related-Fingerprints($Root,$Plan) {
     if($Plan.engine_preserve.single_gpu_rearm){
         $sg=[MT8167OfflineHive.Native]::OpenPath($Root,($control+'MT8167RenderSingleGpu'),$false)
         if(!$sg){throw 'Single GPU registration missing'}
-        try {$result.single_gpu_ledger=Engine-DiagnosticFingerprint $sg $Plan $true}finally{$sg.Dispose()}
+        try {
+            $result.single_gpu_ledger=Engine-DiagnosticFingerprint $sg $Plan $true
+            if($result.single_gpu_ledger -cne $Plan.engine_preserve.single_gpu_rearm.previous_ledger_fingerprint){throw 'Pinned nine-generation ledger changed'}
+            $absent=$sg.OpenSubKey(('Parameters\LastDiagnostic\'+$Plan.engine_preserve.single_gpu_rearm.absent_policy))
+            if($absent){$absent.Dispose();throw 'Failed pre-diagnostic generation unexpectedly exists'}
+        }finally{$sg.Dispose()}
     }
     return $result
 }
@@ -470,9 +479,10 @@ if($ServiceName -ceq 'MT8167RenderSingleGpu') {
     if($IncludeHardwareProbe -or $RearmEngineProbe -or $RearmFixedGpuDeviceInstall -or $InspectFixedGpuDeviceInstall -or !$EnginePreservationPlanPath -or $ExpectedEnginePreservationPlanSha256 -cnotmatch '^[0-9a-f]{64}$'){throw 'Single GPU requires explicit Engine-preservation-only plan'}
     if((Hash-File $EnginePreservationPlanPath) -cne $ExpectedEnginePreservationPlanSha256){throw 'Engine preservation plan hash mismatch'}
     $enginePreservePlan=Get-Content $EnginePreservationPlanPath -Raw|ConvertFrom-Json
-    if($enginePreservePlan.schema -ne 1 -or $enginePreservePlan.profile -cne 'render-single-gpu323-run117-v1' -or $enginePreservePlan.backup_manifest_sha256 -cne '23bd8c5a2b2db021b24b7ef81c48f2ff6478b8ee21955db23dd329839c21e51d'){throw 'Fixed fresh116 native preservation required'}
+    if($enginePreservePlan.schema -ne 1 -or $enginePreservePlan.profile -cne 'render-single-gpu323-run119-v1' -or $enginePreservePlan.backup_manifest_sha256 -cne '0e7a62bcbad84de80c28d7ea8394ea0dbd50537e752fadb5f2414506b0c4f95a'){throw 'Fixed fresh118 native preservation required'}
     $sgPlan=$enginePreservePlan.single_gpu_rearm
-    if($sgPlan.schema -ne 1 -or $sgPlan.service -cne 'MT8167RenderSingleGpu' -or $sgPlan.maximum_rearms -ne 1 -or $sgPlan.data_directory -cne 'MT8167RenderSingleGpuRun117' -or @($sgPlan.diagnostic_policies).Count -ne 9 -or $sgPlan.diagnostic_policies[0] -cne 'd64c9165297bb602ac04be1d9053998c2f6f8da3581545b6be8b005d237fcdb5' -or $sgPlan.diagnostic_policies[1] -cne '6b00fa9f57696f19ad10ecdace497d0a3b1b4bcb861e98d7a8571e0ce23f19c3' -or $sgPlan.diagnostic_policies[2] -cne '10f8ec77e44a42c25a01c17434adb9c4bc80f180c142173725846d7735015c64' -or $sgPlan.diagnostic_policies[3] -cne 'b6273b09f165e3e5fcc61d49bc8b874008f9350d30592737c71e31a2999e905f' -or $sgPlan.diagnostic_policies[4] -cne 'bf84654ab50707ca2d660f685663cf4dd8b1c216921e862a7289340c5056ebe0' -or $sgPlan.diagnostic_policies[5] -cne '9947ede87028cd2d8100e443006cf516ed2c5e17e06229bb688943e2746dbc4b' -or $sgPlan.diagnostic_policies[6] -cne 'a66ac828fe1c6838f4de2a8ce766313b53a9d48682463a456727166c5bb39bea' -or $sgPlan.diagnostic_policies[7] -cne '71440bc09ce1caced543d8bf1a67a05db0f6f5b45363f60aa58fc9fdfbe0c6d2' -or $sgPlan.diagnostic_policies[8] -cne '4f585721d5ab2e7bedbf61b75e4d76d88ba1f0f549281de6b418a50dfe120643' -or @($sgPlan.partial_diagnostic_policies).Count -ne 5 -or $sgPlan.partial_diagnostic_policies[0] -cne '10f8ec77e44a42c25a01c17434adb9c4bc80f180c142173725846d7735015c64' -or $sgPlan.partial_diagnostic_policies[1] -cne 'bf84654ab50707ca2d660f685663cf4dd8b1c216921e862a7289340c5056ebe0' -or $sgPlan.partial_diagnostic_policies[2] -cne '9947ede87028cd2d8100e443006cf516ed2c5e17e06229bb688943e2746dbc4b' -or $sgPlan.partial_diagnostic_policies[3] -cne 'a66ac828fe1c6838f4de2a8ce766313b53a9d48682463a456727166c5bb39bea' -or $sgPlan.partial_diagnostic_policies[4] -cne '71440bc09ce1caced543d8bf1a67a05db0f6f5b45363f60aa58fc9fdfbe0c6d2'){throw 'Fixed run97/run99/run101 to run117 rearm context required'}
+    if($sgPlan.previous_service_start -ne 2 -or $sgPlan.previous_service_fingerprint -cne 'c87d3cfa4ef28d0ea7ed3c1468311dcba15c5a043c0b68f931e9c5362a9e1555' -or $sgPlan.previous_ledger_fingerprint -cne '00449eacb4196f5f54cb3b2b7b9e9ece379c5aac6ce3df006720cca572dd2fb8' -or $sgPlan.absent_policy -cne 'f9319e78a8439dccd16cdee0e668a56bfc52bbe1a68caf465c1c709f0a028227'){throw 'Exact fresh118 failed-before-diagnostic registration required'}
+    if($sgPlan.schema -ne 1 -or $sgPlan.service -cne 'MT8167RenderSingleGpu' -or $sgPlan.maximum_rearms -ne 1 -or $sgPlan.data_directory -cne 'MT8167RenderSingleGpuRun119' -or @($sgPlan.diagnostic_policies).Count -ne 9 -or $sgPlan.diagnostic_policies[0] -cne 'd64c9165297bb602ac04be1d9053998c2f6f8da3581545b6be8b005d237fcdb5' -or $sgPlan.diagnostic_policies[1] -cne '6b00fa9f57696f19ad10ecdace497d0a3b1b4bcb861e98d7a8571e0ce23f19c3' -or $sgPlan.diagnostic_policies[2] -cne '10f8ec77e44a42c25a01c17434adb9c4bc80f180c142173725846d7735015c64' -or $sgPlan.diagnostic_policies[3] -cne 'b6273b09f165e3e5fcc61d49bc8b874008f9350d30592737c71e31a2999e905f' -or $sgPlan.diagnostic_policies[4] -cne 'bf84654ab50707ca2d660f685663cf4dd8b1c216921e862a7289340c5056ebe0' -or $sgPlan.diagnostic_policies[5] -cne '9947ede87028cd2d8100e443006cf516ed2c5e17e06229bb688943e2746dbc4b' -or $sgPlan.diagnostic_policies[6] -cne 'a66ac828fe1c6838f4de2a8ce766313b53a9d48682463a456727166c5bb39bea' -or $sgPlan.diagnostic_policies[7] -cne '71440bc09ce1caced543d8bf1a67a05db0f6f5b45363f60aa58fc9fdfbe0c6d2' -or $sgPlan.diagnostic_policies[8] -cne '4f585721d5ab2e7bedbf61b75e4d76d88ba1f0f549281de6b418a50dfe120643' -or @($sgPlan.partial_diagnostic_policies).Count -ne 5 -or $sgPlan.partial_diagnostic_policies[0] -cne '10f8ec77e44a42c25a01c17434adb9c4bc80f180c142173725846d7735015c64' -or $sgPlan.partial_diagnostic_policies[1] -cne 'bf84654ab50707ca2d660f685663cf4dd8b1c216921e862a7289340c5056ebe0' -or $sgPlan.partial_diagnostic_policies[2] -cne '9947ede87028cd2d8100e443006cf516ed2c5e17e06229bb688943e2746dbc4b' -or $sgPlan.partial_diagnostic_policies[3] -cne 'a66ac828fe1c6838f4de2a8ce766313b53a9d48682463a456727166c5bb39bea' -or $sgPlan.partial_diagnostic_policies[4] -cne '71440bc09ce1caced543d8bf1a67a05db0f6f5b45363f60aa58fc9fdfbe0c6d2'){throw 'Fixed run97/run99/run101 to run119 rearm context required'}
 } elseif($EnginePreservationPlanPath -or $ExpectedEnginePreservationPlanSha256){throw 'Engine preserve plan is single-GPU only'}
 $engineRearmPlan=$null;$engineRearmPlanHash=$null
 if($RearmEngineProbe) {

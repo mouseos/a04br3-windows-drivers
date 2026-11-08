@@ -19,6 +19,10 @@
 #include "../../drivers/system/mt8167-toprgu/uart_screen.h"
 #if A04_RENDER_SINGLE_GPU
 #include "thermal-firmware-readonly.h"
+#include "render-service-path-policy.h"
+#ifndef A04_RENDER_DATA_DIRECTORY
+#error Generated single GPU data directory is required
+#endif
 #endif
 
 #ifndef A04_HARDWARE_PROBE_ENGINE_PCM
@@ -166,7 +170,7 @@ static DWORD paths(void)
  WCHAR system[MAX_PATH],module[MAX_PATH];DWORD n,error;
  n=GetSystemDirectoryW(system,MAX_PATH);if(!n||n>=MAX_PATH)return ERROR_INSUFFICIENT_BUFFER;
  #if A04_RENDER_SINGLE_GPU
- error=path(base_directory,system,L"MT8167RenderSingleGpuRun113");
+ error=path(base_directory,system,A04_RENDER_DATA_DIRECTORY);
 #else
  error=path(base_directory,system,service_name);
 #endif
