@@ -9,7 +9,8 @@ int32_t geo_sm4_texture2d_decode(const uint32_t *t,uint32_t bytes,const struct g
  if(s->input_count||s->output_count!=1||s->outputs[0].reg||s->outputs[0].mask!=15||s->outputs[0].system_value)return GEO_UNSUPPORTED;
  while(at<bytes/4){
   uint32_t begin=at,v=t[at++],op=v&2047u,len=(v>>24)&127u,end;
-  if(!len||len>bytes/4-begin)return GEO_INVALID;end=begin+len;
+  if(!len||len>bytes/4-begin)return GEO_INVALID;
+  end=begin+len;
   if(v&0x80000000u)return GEO_UNSUPPORTED;
   if(op==62u){if(v!=0x0100003eu||end!=bytes/4||!sampled||flags!=15)return GEO_INVALID;*out=made;return GEO_OK;}
   if(sampled)return GEO_UNSUPPORTED;
@@ -36,7 +37,8 @@ int32_t geo_sm4_texture2d_decode(const uint32_t *t,uint32_t bytes,const struct g
    made.coordinate_constant=t[at++];if(made.coordinate_constant>=cb)return GEO_INVALID;
    swizzle=(coord>>4)&255u;made.coordinate_x=swizzle&3u;made.coordinate_y=(swizzle>>2)&3u;
    if(t[at++]!=0x00107e46u||t[at++]||t[at++]!=0x00106000u||t[at++])return GEO_UNSUPPORTED;
-   if(at!=end)return GEO_INVALID;sampled=1;continue;
+   if(at!=end)return GEO_INVALID;
+   sampled=1;continue;
   }
   return GEO_UNSUPPORTED;
  }
