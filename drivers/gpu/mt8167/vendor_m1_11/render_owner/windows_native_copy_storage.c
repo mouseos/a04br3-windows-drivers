@@ -70,7 +70,7 @@ NTSTATUS a04_native_copy_storage_release_cold(struct a04_native_copy_storage **o
  }
  for(i=0;i<2;i++)a04_vendor_uncached_free(&c->code[i]);
  ExFreePoolWithTag(c,TAG);*owner=NULL;return STATUS_SUCCESS;
-quarantine:c->quarantined=TRUE;return STATUS_IO_DEVICE_ERROR;
+quarantine:c->quarantined=TRUE;n->quarantined=TRUE;return STATUS_IO_DEVICE_ERROR;
 }
 NTSTATUS a04_native_copy_storage_create(struct a04_native_copy_storage **out,
  struct a04_vendor_native_cold *n,struct a04_native_mdl_binding *destination,const void *usc,ULONG usc_bytes)
@@ -113,18 +113,19 @@ NTSTATUS a04_native_copy_storage_create(struct a04_native_copy_storage **out,
      pd!=((uint64_t)r->buffer[leaf[i]].logical.QuadPart|1u)||
      a04_rgx_device_read_words(&entry,r->buffer[leaf[i]].cpu,8u)||entry){status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;}
   status=a04_vendor_uncached_allocate(&c->code[i],r->firmware->adapter,4096u);if(!NT_SUCCESS(status))goto fail;
-  status=a04_vendor_native_validate_allocation_cold(n,&c->code[i]);if(!NT_SUCCESS(status))goto fail;
+  status=a04_vendor_native_validate_allocation_cold(n,&c->code[i]);if(!NT_SUCCESS(status)){c->quarantined=TRUE;goto fail;}
   if(allocation_clashes(&c->code[i],c->source)||allocation_clashes(&c->code[i],c->destination)){
-   status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;
+   c->quarantined=TRUE;n->quarantined=TRUE;status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;
   }
   if(n->registered_vertex&&allocation_clashes(&c->code[i],n->registered_vertex)){
-   status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;
+   c->quarantined=TRUE;n->quarantined=TRUE;status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;
   }
   for(j=0;j<n->linear_count;j++)if(allocation_clashes(&c->code[i],n->linear[j].binding)){
-   status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;
+   c->quarantined=TRUE;n->quarantined=TRUE;status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;
   }
-  if(i&&a04_rgx_fw_overlap((uint64_t)c->code[0].logical.QuadPart,4096,(uint64_t)c->code[1].logical.QuadPart,4096)){
-   status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;
+  if(i&&(a04_rgx_fw_overlap((uint64_t)c->code[0].logical.QuadPart,4096,(uint64_t)c->code[1].logical.QuadPart,4096)||
+    a04_rgx_fw_alias(c->code[0].cpu,4096,c->code[1].cpu,4096))){
+   c->quarantined=TRUE;n->quarantined=TRUE;status=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;
   }
   /* Newly owned uncached code/data page, never source/destination pixels. */
   _Alignas(8) ULONG zero[16]={0};
@@ -139,7 +140,7 @@ NTSTATUS a04_native_copy_storage_create(struct a04_native_copy_storage **out,
  for(i=0;i<2;i++){
   entry=(uint64_t)c->code[i].logical.QuadPart|A04_GPU_MMU_SLC_BYPASS|1u|(i?0u:A04_GPU_MMU_READ_ONLY);
   c->mapped|=1u<<i; /* Retain child before a potentially partial write. */
-  if(verified(r->buffer[leaf[i]].cpu,&entry,8u)){c->quarantined=TRUE;return STATUS_IO_DEVICE_ERROR;}
+  if(verified(r->buffer[leaf[i]].cpu,&entry,8u)){c->quarantined=TRUE;n->quarantined=TRUE;return STATUS_IO_DEVICE_ERROR;}
  }
  c->prepared=TRUE;return STATUS_SUCCESS;
 fail:
