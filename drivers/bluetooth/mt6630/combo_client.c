@@ -8,6 +8,7 @@
 #include "broker_abi.h"
 #include "radio_binding.h"
 #include "combo_controller.h"
+#include "rx_drain.h"
 #define CONTEXT_BYTES FIELD_OFFSET(BTHX_HCI_READ_WRITE_CONTEXT,Data)
 C_ASSERT(sizeof(BTHX_VERSION)==4);
 C_ASSERT(sizeof(BTHX_CAPABILITIES)==16);
@@ -78,22 +79,31 @@ static void deliver(CLIENT *c)
   RtlSecureZeroMemory(&c->packets[--c->count],sizeof(*p));
  }
 }
+struct RX_DRAIN {CLIENT *client;NTSTATUS status;};
+static void RxDeliver(void *p){deliver(((struct RX_DRAIN*)p)->client);}
+static int RxRoom(void *p){return ((struct RX_DRAIN*)p)->client->count<32;}
+static int RxPull(void *p)
+{
+ struct RX_DRAIN *drain=p;CLIENT *c=drain->client;
+ drain->status=call(c,A04_BT_BROKER_READ,&c->scratch);
+ if(NT_SUCCESS(drain->status)){
+  if(c->scratch.version!=1||(c->scratch.type!=2&&c->scratch.type!=4)||
+     !c->scratch.length||c->scratch.length>sizeof(c->scratch.data))drain->status=STATUS_DATA_ERROR;
+  else c->packets[c->count++]=c->scratch;
+ }
+ RtlSecureZeroMemory(&c->scratch,sizeof(c->scratch));
+ return NT_SUCCESS(drain->status)?1:drain->status==STATUS_NO_MORE_ENTRIES?0:-1;
+}
 VOID Timer(WDFTIMER timer)
 {
  CLIENT *c=Context(WdfTimerGetParentObject(timer));lock(c);
  if(c->running){
-  NTSTATUS s=STATUS_SUCCESS;
-  /* Do not destructively read from the broker when our bounded queue is full.
-   * The broker retains its own bounded queue, with overflow a real fault. */
-  if(c->count<32){
-   s=call(c,A04_BT_BROKER_READ,&c->scratch);
-   if(NT_SUCCESS(s)){
-    if(c->scratch.version!=1||(c->scratch.type!=2&&c->scratch.type!=4)||!c->scratch.length||c->scratch.length>sizeof(c->scratch.data))s=STATUS_DATA_ERROR;
-    else c->packets[c->count++]=c->scratch;
-   }
-   RtlSecureZeroMemory(&c->scratch,sizeof(c->scratch));
-  }
-  if(NT_SUCCESS(s)||s==STATUS_NO_MORE_ENTRIES){deliver(c);WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(5));}
+  struct RX_DRAIN state={c,STATUS_SUCCESS};
+  const struct mt6630_rx_drain_io io={&state,RxDeliver,RxRoom,RxPull};
+  /* CT3 STP worker drains pending RX. Keep the existing single SDIO worker
+   * and finite queues: at most32 packets, stop on empty/full/real error.
+   * No destructive broker read when pending BTHX requests cannot make room. */
+  if(mt6630_rx_drain(&io)!=MT6630_RX_FAULT)WdfTimerStart(timer,WDF_REL_TIMEOUT_IN_MS(5));
   else {InterlockedExchange(&c->controller.uncertain,1);c->running=FALSE;WdfIoQueuePurge(c->reads[0],NULL,NULL);WdfIoQueuePurge(c->reads[1],NULL,NULL);}
  }
  unlock(c);
