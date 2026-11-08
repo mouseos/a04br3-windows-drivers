@@ -100,6 +100,10 @@ static HRESULT APIENTRY lock_resource(HANDLE h,D3DDDIARG_LOCK *p) {
  if(p->Flags.Value&~(1u|0x20u|0x200u))return E_NOTIMPL;
  if(p->Flags.AreaValid&&(p->Area.left||p->Area.top||p->Area.right!=(LONG)r->logical_width||p->Area.bottom!=(LONG)r->logical_height))return E_NOTIMPL;
  memset(&q,0,sizeof(q));q.hAllocation=r->allocation;q.Flags.ReadOnly=p->Flags.ReadOnly;q.Flags.DonotWait=p->Flags.DoNotWait;
+ /* No subregion/page list is supplied: the runtime must lock the full
+  * allocation (D3DDDICB_LOCKFLAGS.LockEntire), including rounded padding.
+  * This changes neither synchronization nor GPU ownership. */
+ q.Flags.LockEntire=1;
  {
   struct read_lock_attempt attempt={d,&q,{0}};struct geo_readback_wait_ops ops={&attempt,read_lock_once,read_lock_clock,read_lock_pause};
   /* Microsoft D3DDDICB_LOCKFLAGS.DonotWait: return WASSTILLDRAWING while

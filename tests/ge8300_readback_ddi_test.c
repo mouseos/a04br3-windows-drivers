@@ -9,7 +9,7 @@ static UINT allocs,locks,unlocks,fail_dest,busy,free_calls;
 static BYTE src[800*600*4],dst[800*600*4];
 static HRESULT APIENTRY allocate(HANDLE h,D3DDDICB_ALLOCATE *q){(void)h;q->pAllocationInfo[0].hAllocation=++allocs;return S_OK;}
 static HRESULT APIENTRY deallocate(HANDLE h,const D3DDDICB_DEALLOCATE *q){(void)h;(void)q;free_calls++;return S_OK;}
-static HRESULT APIENTRY lock_cb(HANDLE h,D3DDDICB_LOCK *q){(void)h;locks++;assert(q->Flags.DonotWait&&!q->Flags.IgnoreSync&&!q->Flags.Discard);if(q->hAllocation==1&&busy){busy--;q->hAllocation=0xfedc;q->pData=(void *)(UINT_PTR)0xdeadbeef;return D3DDDIERR_WASSTILLDRAWING;}if(q->hAllocation==2&&fail_dest)return DXGI_ERROR_DEVICE_HUNG;q->pData=q->hAllocation==1?src:dst;return S_OK;}
+static HRESULT APIENTRY lock_cb(HANDLE h,D3DDDICB_LOCK *q){(void)h;locks++;assert(q->Flags.DonotWait&&!q->Flags.IgnoreSync&&!q->Flags.Discard);assert(q->Flags.LockEntire&&q->NumPages==0&&q->pPages==NULL);if(q->hAllocation==1&&busy){busy--;q->hAllocation=0xfedc;q->pData=(void *)(UINT_PTR)0xdeadbeef;return D3DDDIERR_WASSTILLDRAWING;}if(q->hAllocation==2&&fail_dest)return DXGI_ERROR_DEVICE_HUNG;q->pData=q->hAllocation==1?src:dst;return S_OK;}
 static HRESULT APIENTRY unlock_cb(HANDLE h,const D3DDDICB_UNLOCK *q){(void)h;assert(q->NumAllocations==1);unlocks++;return S_OK;}
 int main(void){
  struct geo_umd_device d={0};D3DDDI_DEVICEFUNCS f={0};D3DDDIARG_CREATERESOURCE a={0},b;D3DDDI_SURFACEINFO s={0};D3DDDIARG_BLT q={0};D3DDDIARG_LOCK l={0};D3DDDIARG_UNLOCK u={0};
