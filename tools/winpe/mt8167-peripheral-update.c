@@ -154,7 +154,7 @@ static DWORD old_services(void){static struct value {WCHAR name[256];DWORD type,
 #if A04_FEATURE148
 /* Only captured named values are asserted here. This is not a root/subtree hash. */
 static DWORD captured_registry_values(void){
- BYTE data[4096];HKEY key;DWORD i,type,bytes,e;
+ static BYTE data[4096];HKEY key;DWORD i,type,bytes,e;
  for(i=0;i<sizeof(captured_values)/sizeof(captured_values[0]);i++){
   e=RegOpenKeyExW(HKEY_LOCAL_MACHINE,captured_values[i].key,REG_OPTION_OPEN_LINK,KEY_READ,&key);if(e)return e;
   bytes=sizeof(data);e=RegQueryValueExW(key,captured_values[i].name,NULL,&type,data,&bytes);RegCloseKey(key);
