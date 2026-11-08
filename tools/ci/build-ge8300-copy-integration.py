@@ -5,9 +5,10 @@ from pathlib import Path
 root=Path(__file__).resolve().parents[2]
 p=argparse.ArgumentParser()
 for key in ['baseline-build','old-source','dependency','kernel-kit','vc-include','ucrt-include','link-exe','sign-tool','inf2cat','output']:p.add_argument('--'+key,type=Path,required=True)
-a=p.parse_args();a.resume_source=None
+p.add_argument('--resume-source');p.add_argument('--cached-source',type=Path)
+a=p.parse_args()
 out=a.output.resolve();base=a.baseline_build.resolve();package=base/'package332';dep=a.dependency.resolve()
-if not out.is_relative_to(root) or out.exists():raise ValueError('New checkout output required')
+if not out.is_relative_to(root) or (out.exists() and not a.resume_source):raise ValueError('New output or explicit cached-source resume required')
 def run(cmd,**kw):return subprocess.run(list(map(str,cmd)),check=True,**kw)
 def capture(cmd):return subprocess.check_output(list(map(str,cmd)),text=True).strip()
 def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
@@ -29,7 +30,7 @@ pin(pair/'manifest.json','c05e327474cb91c260b341e9c6de91f7074d8f749ea68f35a77ca2
 baseline327={'existing_compiler_libraries':load(base/'compiler-library-pins.json')}
 for r in baseline327['existing_compiler_libraries']:
  if r['name']!='ge8300-pco-arm32.lib':pin(compiler/r['name'],r['sha256'])
-oldroot=a.old_source.resolve();out.mkdir(parents=True);(out/'tmp').mkdir();(out/'generated').mkdir()
+oldroot=a.old_source.resolve();out.mkdir(parents=True,exist_ok=bool(a.resume_source));(out/'tmp').mkdir(exist_ok=True);(out/'generated').mkdir(exist_ok=True)
 os.environ.update(TEMP=str(out/'tmp'),TMP=str(out/'tmp'),TMPDIR=str(out/'tmp'))
 pin(base/'copy.usc','5c68917faa051238b23674b64c6b137ef7ff75425dbde9dbc5e1e5a36e02c4a3')
 (out/'generated/a04_copy_usc_asset.h').write_text('static const unsigned char a04_copy_usc_asset[152]={'+','.join(hex(b) for b in (base/'copy.usc').read_bytes())+'};\n')
@@ -44,7 +45,7 @@ nf=next(r['arguments'] for r in bm['compiled_units'] if r['role']=='native' and 
 uf=next(r['arguments'] for r in bm['compiled_units'] if r['role']=='umd');kf=next(r['arguments'] for r in bm['compiled_units'] if r['role']=='kmd')
 # Original332 source paths are stable recorded flags, remapped only to this checkout.
 nf=[str(s).replace('\\\\','\\').replace('C:\\mt8167-readback-safety332\\source',str(root)) for s in nf]+['-I'+str(out/'generated')]
-records=[];archives=[];saved={};oldmap=load(base/'old-source-map.json')['native_unit_sources'];newmap=load(root/'tools/ci/ge8300-native-source-map.json')['native_unit_sources']
+records=[];archives=[];saved={(r['role'],r['object']):r for r in load(out/'compiled-checkpoint.json')} if a.resume_source else {};oldmap=load(base/'old-source-map.json')['native_unit_sources'];newmap=load(root/'tools/ci/ge8300-native-source-map.json')['native_unit_sources']
 def extract(path,tag):
  before=out/(tag+'-before');after=out/tag;before.mkdir(exist_ok=bool(a.resume_source));after.mkdir(exist_ok=bool(a.resume_source))
  members=[ntpath.basename(n) for n in capture(['llvm-ar','t',path]).splitlines()]
@@ -57,6 +58,9 @@ def extract(path,tag):
 def compile_one(source,obj,flags,role):
  prior=saved.get((role,obj.name))
  recovered=bool(a.resume_source and obj.exists() and prior and prior['source_sha256']==sha(root/source) and prior['arguments']==flags and prior['object_sha256']==sha(obj))
+ if recovered:
+  if not a.cached_source or capture(['git','-C',a.cached_source,'rev-parse','HEAD'])!=a.resume_source:raise ValueError('Exact prior source checkout required')
+  recovered=pp(source,flags,out/'resume-prior.i',a.cached_source)==pp(source,flags,out/'resume-current.i',root)
  # The prior immutable invocation stopped before its next source read; existing
  # objects were produced by successful checked calls under the same C/H tree.
  if not recovered:run(['clang',*flags,'-c',root/source,'-o',obj])
