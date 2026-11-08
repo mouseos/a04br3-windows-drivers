@@ -6,7 +6,7 @@ param([switch]$EnableCandidate,
  [Parameter(Mandatory=$true)][string]$UcrtIncludeRoot,
  [Parameter(Mandatory=$true)][string]$Inf2CatPath,
  [Parameter(Mandatory=$true)][string]$SignToolPath,
- [Parameter(Mandatory=$true)][string]$OutputDirectory)
+ [Parameter(Mandatory=$true)][string]$OutputDirectory,[string]$ReuseReceipt,[string]$ReuseReceiptSha256)
 $ErrorActionPreference='Stop'
 if(!$EnableCandidate){throw 'Explicit DOD rotation candidate switch required'}
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
@@ -26,7 +26,7 @@ try {
  foreach($n in $flagNames){[Environment]::SetEnvironmentVariable($n,'0','Process');$flags[$n]=0}
  $env:A04_MT8167_DISPLAY_BRIGHTNESS='1';$flags['A04_MT8167_DISPLAY_BRIGHTNESS']=1
  $env:TEMP="$out\tmp";$env:TMP=$env:TEMP;$env:RUNNER_TEMP=$out
- & $builder -KitRoot $KitRoot -VcToolsRoot $VcToolsRoot -UcrtIncludeRoot $UcrtIncludeRoot -BuildDirectory "$out\objects"
+ & $builder -KitRoot $KitRoot -VcToolsRoot $VcToolsRoot -UcrtIncludeRoot $UcrtIncludeRoot -BuildDirectory "$out\objects" -ReuseReceipt $ReuseReceipt -ReuseReceiptSha256 $ReuseReceiptSha256
  if($LASTEXITCODE){throw 'DOD compile/link failed'}
  $pkg="$out\package"
  Copy-Item "$out\objects\wddm-display-build-check.sys" "$pkg\mt8167-display.sys"
@@ -63,7 +63,8 @@ try {
  certificate_thumbprint=$thumb;signature_status='Valid';catalog_membership_verified=$true;machine='ARMNT';
  hardware_verified=$false;unsigned_sys_sha256=$unsigned;sdk_installed=$false;pco_rebuilt=$false;
  kit_root=$KitRoot;vc_tools_root=$VcToolsRoot;ucrt_include_root=$UcrtIncludeRoot;
- baseline_source_commit='6a99ec7d444180e150208d508dfaf203eb734d77';baseline_objects_available=$false;
+ baseline_source_commit='6a99ec7d444180e150208d508dfaf203eb734d77';baseline_objects_available=[bool]$ReuseReceipt;object_reuse_receipt_sha256=$ReuseReceiptSha256;
+ object_provenance=(Get-Content "$out\objects\object-receipt.json" -Raw|ConvertFrom-Json);
  objects=@(Get-ChildItem "$out\objects" -Filter '*.obj'|ForEach-Object{@{name=$_.Name;sha256=(Sha $_.FullName)}});
  build_inputs=@($inputs|ForEach-Object{@{path=$_;sha256=(Sha $_)}});
  files=@(Get-ChildItem $pkg -File|ForEach-Object{@{path=$_.Name;sha256=(Sha $_.FullName)}})

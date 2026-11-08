@@ -1,6 +1,6 @@
 # Compile the Microsoft-derived display-only code with the Windows 8.1 ABI.
 # This build check is not an installable device driver or GPU acceleration.
-param([string]$KitRoot,[string]$VcToolsRoot,[string]$UcrtIncludeRoot,[string]$BuildDirectory)
+param([string]$KitRoot,[string]$VcToolsRoot,[string]$UcrtIncludeRoot,[string]$BuildDirectory,[string]$ReuseReceipt,[string]$ReuseReceiptSha256)
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 $src = Join-Path $root 'drivers\gpu\mt8167\wddm-display'
@@ -62,12 +62,54 @@ if ($sharedLease -eq '1' -and $direct -ne '1') { throw 'Shared lease requires di
 $vendorTile = if ($env:A04_GE8300_WDDM_VENDOR_TILE -eq '1') { '1' } else { '0' }
 if ($fencedTile -eq '1' -and $vendorTile -ne '1') { throw 'Fenced tile requires vendor tile' }
 $gpuCopy = if ($env:A04_GE8300_WDDM_COPY -eq '1') { '1' } else { '0' }
+# The receipt pins actual objects plus all external/project header inputs.
+function A04Sha($p){(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()}
+function A04HeaderDigest {
+    $files=@()
+    foreach($dir in @($inc,(Join-Path $vc.FullName 'include'),(Join-Path $ucrt.FullName 'ucrt'),(Join-Path $root 'drivers'))){
+        $files+=@(Get-ChildItem $dir -Recurse -File|Where-Object{$_.Extension -in @('.h','.hxx','.hpp','.inc')})
+    }
+    $lines=@($files|Sort-Object FullName|ForEach-Object{$_.FullName.ToLowerInvariant()+' '+(A04Sha $_.FullName)})
+    $sha=[Security.Cryptography.SHA256]::Create()
+    try{([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes(($lines -join "`n"))))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
+}
+$compileId='msvc-arm-kernel-gs0-zl-rt81-display-v1'
+$headerDigest=A04HeaderDigest
+$compilerDigest=A04Sha $cl
+$effectiveFlags=@{}
+foreach($match in [regex]::Matches([IO.File]::ReadAllText($PSCommandPath),'\$env:(A04_(?:GE8300_[A-Z0-9_]+|MT8167_DISPLAY_BRIGHTNESS))')){
+    $key=$match.Groups[1].Value;$effectiveFlags[$key]=[int]([Environment]::GetEnvironmentVariable($key,'Process') -eq '1')
+}
+$baseline=$null;$objectRecords=@()
+if($ReuseReceipt){
+    if($ReuseReceiptSha256 -notmatch '^[a-f0-9]{64}$' -or (A04Sha $ReuseReceipt) -cne $ReuseReceiptSha256){throw 'Object receipt pin mismatch'}
+    $baseline=Get-Content $ReuseReceipt -Raw|ConvertFrom-Json
+    if($baseline.compile_id -cne $compileId -or $baseline.compiler_sha256 -cne $compilerDigest -or $baseline.header_digest -cne $headerDigest){throw 'Object compile/header inputs changed'}
+    foreach($key in $effectiveFlags.Keys){if($baseline.effective_flags.$key -ne $effectiveFlags[$key]){throw "Object feature flags changed: $key"}}
+    if($baseline.source_commit -notmatch '^[a-f0-9]{40}$'){throw 'Invalid baseline source'}
+}
 foreach ($name in @('bdd','bdd_ddi','bdd_dmm','bdd_util','bltfuncs','blthw','memory','ge8300_present','ge8300_trace','ge8300_display_resources','mt8167_brightness')) {
     $obj = Join-Path $out "$name.obj"
+    $retained=$false
+    $input=Join-Path $src "$name.cxx"
+    if($baseline){
+        $entry=@($baseline.objects|Where-Object{$_.name -ceq "$name.obj"})
+        if($entry.Count -ne 1){throw 'Incomplete baseline object receipt'}
+        if($entry[0].source_sha256 -ceq (A04Sha $input)){
+            $old=Join-Path (Split-Path $ReuseReceipt) "$name.obj"
+            if((A04Sha $old) -cne $entry[0].sha256){throw 'Retained object hash mismatch'}
+            Copy-Item $old $obj;$retained=$true
+        }
+    }
+    if(!$retained){
     & $cl /nologo /c /kernel /GS- /Zl /D_KERNEL_MODE /D_ARM_ /DARM /DNTDDI_VERSION=0x06030000 /D_WIN32_WINNT=0x0603 "/DA04_MT8167_DISPLAY_BRIGHTNESS=$brightness" "/DA04_GE8300_WDDM_PRESENT_CAPTURE=$presentCapture" "/DA04_GE8300_WDDM_EXPLICIT_GPU_FLUSH=$explicitGpuFlush" "/DA04_GE8300_WDDM_OVL_OBSERVE=$ovlObserve" "/DA04_GE8300_WDDM_GPU_POST_DIAGNOSTIC=$gpuPost" "/DA04_GE8300_WDDM_GPU_DIRECT_POST=$gpuDirectPost" "/DA04_GE8300_WDDM_GCE_LEASE=$gceLease" "/DA04_GE8300_WDDM_COMMON_FRAME_DIAGNOSTIC=$commonFrame" "/DA04_GE8300_WDDM_WIDE_FRAME=$wideFrame" "/DA04_GE8300_WDDM_WIDE_REPEAT=$wideRepeat" "/DA04_GE8300_WDDM_LIVE_FULL_PRESENT=$liveFull" "/DA04_GE8300_PRESENT_TRACE_ALL=$presentTraceAll" "/DA04_GE8300_IDLE_TRANSITION_DIAGNOSTIC=$idleDiagnostic" "/DA04_GE8300_SHARED_DISPLAY_COMMON=$sharedDisplayCommon" "/DA04_GE8300_WDDM_SHARED_DIAGNOSTIC=$sharedDiagnostic" "/DA04_GE8300_WDDM_SHARED_AUTOSTART=$sharedAutostart" "/DA04_GE8300_WDDM_SHARED_PRESENT=$sharedPresent" "/DA04_GE8300_WDDM_SHARED_COMMON_PAGE=$sharedCommonPage" "/DA04_GE8300_WDDM_SHARED_FULL_COMMON=$sharedFullCommon" "/DA04_GE8300_WDDM_SHARED_LEASE=$sharedLease" "/DA04_GE8300_WDDM_DIRECT_EXPERIMENT=$direct" "/DA04_GE8300_WDDM_FENCED_TILE=$fencedTile" "/DA04_GE8300_WDDM_COPY=$gpuCopy" "/DA04_GE8300_WDDM_VENDOR_TILE=$vendorTile" "/I$inc\km" "/I$inc\shared" "/I$inc\um" "/I$($vc.FullName)\include" "/I$($ucrt.FullName)\ucrt" "/I$src" "/Fo$obj" (Join-Path $src "$name.cxx")
     if ($LASTEXITCODE -ne 0) { throw "ARM32 display source compilation failed: $name" }
+    }
     $objects += $obj
+    $objectRecords+=@{name="$name.obj";source_sha256=(A04Sha $input);sha256=(A04Sha $obj);retained=$retained;origin_source_commit=$(if($retained){$baseline.source_commit}else{(& git -C $root rev-parse HEAD)})}
 }
+@{source_commit=(& git -C $root rev-parse HEAD);compile_id=$compileId;compiler_sha256=$compilerDigest;header_digest=$headerDigest;effective_flags=$effectiveFlags;objects=$objectRecords}|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 "$out\object-receipt.json"
+
 if ($direct -eq '1') {
     foreach ($name in @('vendor_m1_11\windows_shared_scanout','vendor_m1_11\windows_shared_ovl','dma_pages','gpu_mmu')) {
         $obj = Join-Path $out "$($name.Replace('\','-')).obj"

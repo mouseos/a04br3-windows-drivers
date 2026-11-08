@@ -413,13 +413,15 @@ NTSTATUS BASIC_DISPLAY_DRIVER::EnumVidPnCofuncModality(_In_ CONST DXGKARG_ENUMVI
         } // End: SCALING
 
         // ROTATION: If this path's rotation isn't the pivot point, do work on the rotation support
-        if (!((pEnumCofuncModality->EnumPivotType != D3DKMDT_EPT_ROTATION) &&
+        if (!((pEnumCofuncModality->EnumPivotType == D3DKMDT_EPT_ROTATION) &&
               (pEnumCofuncModality->EnumPivot.VidPnSourceId == pVidPnPresentPath->VidPnSourceId) &&
               (pEnumCofuncModality->EnumPivot.VidPnTargetId == pVidPnPresentPath->VidPnTargetId)))
         {
             // If the rotation is unpinned, then modify the rotation support field
             if (pVidPnPresentPath->ContentTransformation.Rotation == D3DKMDT_VPPR_UNPINNED)
             {
+                RtlZeroMemory(&LocalVidPnPresentPath.ContentTransformation.RotationSupport,
+                    sizeof(LocalVidPnPresentPath.ContentTransformation.RotationSupport));
                 const CURRENT_BDD_MODE& mode=m_CurrentModes[pVidPnPresentPath->VidPnSourceId];
                 D3DKMDT_VIDPN_PRESENT_PATH_SCALING scaling=pVidPnPresentPath->ContentTransformation.Scaling;
                 if(scaling==D3DKMDT_VPPS_UNPINNED)scaling=D3DKMDT_VPPS_CENTERED;
@@ -737,10 +739,12 @@ NTSTATUS BASIC_DISPLAY_DRIVER::UpdateActiveVidPnPresentPath(_In_ CONST DXGKARG_U
     unsigned turns;
     if(!A04PathFits(mode,mode.SrcModeWidth,mode.SrcModeHeight,path.ContentTransformation.Rotation,path.ContentTransformation.Scaling) ||
        a04_present_turns((unsigned)path.ContentTransformation.Rotation,&turns))return STATUS_GRAPHICS_VIDPN_MODALITY_NOT_SUPPORTED;
+    Status=BlackOutScreen(path.VidPnSourceId);
+    if(!NT_SUCCESS(Status))return Status;
     mode.Rotation=(D3DKMDT_VIDPN_PRESENT_PATH_ROTATION)(turns+1u);
     mode.Scaling=path.ContentTransformation.Scaling;
     mode.Flags.FullscreenPresent=TRUE;
-    return BlackOutScreen(path.VidPnSourceId);
+    return STATUS_SUCCESS;
 }
 
 //

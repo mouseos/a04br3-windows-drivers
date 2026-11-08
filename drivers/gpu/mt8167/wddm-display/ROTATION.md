@@ -27,3 +27,7 @@ Windows ARMビルド・署名:
 既存小closureだけを読み、専用出力へDOD11TUをcompile/linkする。全GPU実験flagは0、brightnessは1。SYS/CAT署名・署名者・CAT membership・ARMNTを検証し、objectsも回収可能にする。cloneした固定sourceと既存Windows SDK/WDK/MSVC、既存BCBF署名identityが必要。SDK/PCOの自動install/buildはしない。
 
 実機4方向表示、OSのmode切替・touch/pointer、長期動作はmainの次周辺一括採用時の確認項目。ビルド候補を実機動作成功とは扱わない。
+
+EnumCofuncではrotationがpivotの場合だけそのsupportを保持する。旧コードの `EnumPivotType != D3DKMDT_EPT_ROTATION` を `==` に修正し、その他の場合に4方向supportを更新する。path更新時はblackoutに成功してから新しいrotation/scalingを反映する。
+
+同じcheckout位置・同じcompiler/header/flagsのobject receiptを回収してある場合は、ビルド引数へ `-ReuseReceipt <object-receipt.json> -ReuseReceiptSha256 <sha256>` を追加できる。receiptそのもののhash、全project/kit/VC/UCRT header群、compiler、feature flags、各source/object hashを照合し、sourceが変わったTUだけ再compileする。入力が異なるreceiptは拒否する。過去sourceのobjectと最終sourceの関係はsigned manifestのobject_provenanceに記録する。
