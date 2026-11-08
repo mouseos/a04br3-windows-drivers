@@ -1311,7 +1311,9 @@ static void ParentStop(A04_PARENT_CONTEXT *c,int can_access)
      * remove VBUS while mappings remain valid; revoke the lease in either case. */
 #if A04_SHARED_USBPORT_CHILD
     if(c->musb.held){
-        if(can_access&&!c->removed)(void)MusbStopLocked(c);
+        if(can_access&&!c->removed&&c->gpio){
+            (void)a04_usb_owner_vbus_locked(&c->usb,0);c->musb.powered=0;
+        }
         else c->musb.accessible=0;
         c->musb.poisoned=1; /* retain until child's independent shutdown/release */
     } else

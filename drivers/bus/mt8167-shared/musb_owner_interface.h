@@ -3,7 +3,7 @@
 #define MT8167_MUSB_OWNER_INTERFACE_H
 #include <ntddk.h>
 /* Our versioned parent/child ABI, NOT a guessed Microsoft callback ABI.
- * All methods PASSIVE, serialized by consumer. Query/Observe are read-only.
+ * All methods PASSIVE, serialized by consumer. Query is read-only; Observe may cut the source on a live hazard.
  * GPIO21 is a digital OC input observation; DEVCTL VBUSVALID is a comparator
  * band, not measured connector 5 V. Unknown protection capability is not asserted.
  * A producer must have real observations before setting their valid bits. */

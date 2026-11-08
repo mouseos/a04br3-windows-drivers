@@ -97,7 +97,15 @@ static NTSTATUS ParentMusbObserve(PVOID p,MT_MUSB_OBSERVATION *o)
 {
  A04_PARENT_CONTEXT *c=ParentContext((WDFDEVICE)p);NTSTATUS status=STATUS_DEVICE_NOT_READY;
  if(!o||KeGetCurrentIrql()!=PASSIVE_LEVEL||ParentLock(c))return status;
- if(c->musb.held&&c->musb.accessible){MusbSnapshot(c,o);status=STATUS_SUCCESS;}
+ if(c->musb.held&&c->musb.accessible){
+  MusbSnapshot(c,o);
+  if(c->musb.powered&&(!o->host_role||!o->oc_clear||!(o->valid&MT_MUSB_OC)||
+     (o->intrusb&0x80)||((o->evidence&MT_MUSB_NO_FORCED_VBUS)&&(o->devctl&0x18)!=0x18))){
+   (void)a04_usb_owner_vbus_locked(&c->usb,0);c->musb.powered=0;c->musb.poisoned=1;
+   MusbSnapshot(c,o); /* real off/role/OC snapshot, never an invented voltage */
+  }
+  status=STATUS_SUCCESS;
+ }
  ParentUnlock(c);return status;
 }
 static NTSTATUS ParentMusbVbus(PVOID p,BOOLEAN on)

@@ -34,7 +34,13 @@ static void Wr32(void *p,unsigned o,unsigned v){WRITE_REGISTER_ULONG((volatile U
 static UCHAR PhyRead(void *p,unsigned o){return READ_REGISTER_UCHAR(((struct mt_musb_runtime *)p)->phy+0x800+o);}
 static unsigned PhyRead32(void *p,unsigned o){return READ_REGISTER_ULONG((volatile ULONG *)(((struct mt_musb_runtime *)p)->phy+0x800+o));}
 static void PhyWrite(void *p,unsigned o,UCHAR v){WRITE_REGISTER_UCHAR(((struct mt_musb_runtime *)p)->phy+0x800+o,v);}
-static void Delay(void *p,unsigned ms){LARGE_INTEGER t;UNREFERENCED_PARAMETER(p);t.QuadPart=-(LONGLONG)ms*10000;KeDelayExecutionThread(KernelMode,FALSE,&t);}
+static void Delay(void *p,unsigned ms){LARGE_INTEGER t;UNREFERENCED_PARAMETER(p);t.QuadPart=-(LONGLONG)ms*10000;KeDelayExecutionThread(KernelMode,FALSE,&t);
+ /* Board calibration/session waits never suppress source safety sampling.
+  * Observe can cut GPIO22 on role/OC/VBUS fault; no new source is enabled. */
+ if(p){struct mt_musb_runtime *r=p;MT_MUSB_OBSERVATION o;
+  if(r->lease&&r->owner.Observe){RtlZeroMemory(&o,sizeof(o));o.bytes=sizeof(o);
+   (void)r->owner.Observe(r->owner.Header.Context,&o);}}
+}
 /* Lease was acquired before PHY use. Board helper must never release it on an
  * internal failure; only Close may release after the definitive stop proof. */
 static int BoardPower(void *p,int on){struct mt_musb_runtime *r=p;return on&&r->lease?0:-1;}
