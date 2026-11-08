@@ -66,13 +66,11 @@ int a04_pio_abort(const MT8167_USB20_IO *io,struct a04_pio_transfer *t)
  if(!valid(io)||!t)return -1;
  io->write8(io->context,INDEX,t->lane);
  if(t->ep.direction){
-  csr=io->read16(io->context,TXCSR);t->ep.toggle=!!(csr&0x100);
   io->write16(io->context,TXCSR,0x2008);io->write16(io->context,TXCSR,0x2008);
-  if(io->read16(io->context,TXCSR)&3)return -1;
+  csr=io->read16(io->context,TXCSR);if(csr&3)return -1;t->ep.toggle=!!(csr&0x100);
  }else{
-  csr=io->read16(io->context,RXCSR);t->ep.toggle=!!(csr&0x200);
   io->write16(io->context,RXCSR,0x10);io->write16(io->context,RXCSR,0x10);
-  if(io->read16(io->context,RXCSR)&0x21)return -1;
+  csr=io->read16(io->context,RXCSR);if(csr&0x21)return -1;t->ep.toggle=!!(csr&0x200);
  }
  t->active=0;return 0;
 }

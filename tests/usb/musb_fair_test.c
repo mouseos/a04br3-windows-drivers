@@ -51,6 +51,9 @@ int main(void){
   CHECK(*(USHORT*)&test_bank[i][0x66]==(MT_MUSB_FIFO_BASE(i)+512)/8);
   CHECK(test_bank[i][0x62]==6&&test_bank[i][0x63]==6);
  }
+ /* Final toggle is sampled after flush, not before a racing last ACK.
+  * In the banked seam an acknowledged RX exposes its final next toggle. */
+ *(USHORT*)&test_bank[1][0x16]=0x220;
  /* Cancel one resident lane, then immediately discard all caller input.
   * The other resident packets are not flushed or reset for this abort. */
  {USHORT before=*(USHORT*)&test_bank[2][0x16];MtMusbCancel(r,100);RtlZeroMemory(&e,sizeof(e));RtlZeroMemory(&p,sizeof(p));Pulse(r);
@@ -58,6 +61,6 @@ int main(void){
  AckIn(2,3,0x71);Pulse(r);CHECK(!MtMusbTake(r,101,data,sizeof(data),&n,&s,&t)&&n==3&&!s&&data[2]==0x71);
  for(i=3;i<8;i++){AckIn(i,1,(UCHAR)i);}Pulse(r);
  for(i=3;i<8;i++)CHECK(!MtMusbTake(r,110+i,data,sizeof(data),&n,&s,&t)&&n==1&&!s&&data[0]==i);
- CHECK(!MtMusbRecoverToggle(r,100,&t));CHECK(MtMusbClose(r));test_banked=0;
+ CHECK(!MtMusbRecoverToggle(r,100,&t)&&t==1);CHECK(MtMusbClose(r));test_banked=0;
  return 0;
 }

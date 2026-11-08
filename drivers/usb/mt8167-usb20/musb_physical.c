@@ -115,10 +115,10 @@ static int FlushLane(struct mt_musb_runtime *r,unsigned n)
  Wr8(r,0xe,(UCHAR)n);
  if(!n){Wr16(r,0x12,0x100);Wr16(r,0x12,0x100);if(Rd16(r,0x12)&0x23)failed=1;}
  else {
-  v=Rd16(r,0x12);if(l->properties.direction)l->pio.ep.toggle=!!(v&0x100);
-  Wr16(r,0x12,0x2008);Wr16(r,0x12,0x2008);if(Rd16(r,0x12)&3)failed=1;
-  v=Rd16(r,0x16);if(!l->properties.direction)l->pio.ep.toggle=!!(v&0x200);
-  Wr16(r,0x16,0x10);Wr16(r,0x16,0x10);if(Rd16(r,0x16)&0x21)failed=1;
+  Wr16(r,0x12,0x2008);Wr16(r,0x12,0x2008);v=Rd16(r,0x12);
+  if(v&3)failed=1;if(l->properties.direction)l->pio.ep.toggle=!!(v&0x100);
+  Wr16(r,0x16,0x10);Wr16(r,0x16,0x10);v=Rd16(r,0x16);
+  if(v&0x21)failed=1;if(!l->properties.direction)l->pio.ep.toggle=!!(v&0x200);
  }
  l->hardware_job=FALSE;
  return failed||EnginesIdle(r)||IrqOff(r)?-1:0;

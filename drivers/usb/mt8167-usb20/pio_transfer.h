@@ -3,7 +3,7 @@
 #define A04_MUSB_PIO_TRANSFER_H
 #include "ep0_pio.h"
 #include "musb_lanes.h"
-/* Single serialized hardware EP1, TX/RX 512-byte banks. Direct root-port
+/* Resident hardware EP1..7, TX/RX 512-byte banks; legacy wrapper uses EP1. Native
  * devices only: FS bulk <=64 or HS bulk 512; interrupt <=64.
  * No TT/split, isochronous or high-bandwidth transactions are advertised. */
 struct a04_pio_endpoint {unsigned address,endpoint,packet,speed,type,direction,period,toggle;};
