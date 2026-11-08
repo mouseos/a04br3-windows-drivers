@@ -53,8 +53,14 @@ static void set_presence(struct sd_host *h,LONG state)
  }else if(state==1&&InterlockedExchange(&h->absent_seen,0)){
   InterlockedExchange(&h->blocked,0);InterlockedIncrement(&h->generation);InterlockedExchange(&h->attention,1);InterlockedExchange(&h->ejected,0);
  }
- /* An unknown/failed ACPI read aborts the current transaction via live(),
-  * but recovery of that read is NOT proof of physical card reinsertion. */
+ else if(state<0&&old==1){
+  /* A transient unknown can disappear between two live() checks. Invalidate
+   * old work permanently, and retain quarantine until actual absence is seen.
+   * Do not clear an ambiguous write/poison on a mere ACPI read recovery. */
+  InterlockedExchange(&h->blocked,1);InterlockedIncrement(&h->generation);
+  InterlockedExchange(&h->attention,1);
+ }
+ /* Unknown is not physical absence: absent_seen/ejected remain unchanged. */
 }
 VOID SdTimer(WDFTIMER timer)
 {
