@@ -13,5 +13,5 @@ for name in names:
 try:m.bt_payload_prepare('MT8167CombinedFollowup146',{'files':[{'name':'unknown.sys'}]})
 except ValueError:pass
 else:raise AssertionError('Unknown package must be rejected')
-s=(S/'tools/winpe/build-private-peripheral-batch-media.py').read_text();assert s.index("prepare+=bt_payload_prepare(DIRECTORY,p['bt_first_install'])")<s.index("copy /b /y X:")
+s=(S/'tools/winpe/build-private-peripheral-batch-media.py').read_text(encoding='utf-8');assert s.index("prepare+=bt_payload_prepare(DIRECTORY,p['bt_first_install'])")<s.index("copy /b /y X:")
 print('BT2013 normal-OS mkdir/copy/byte comparison before native arm: OK')
