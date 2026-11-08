@@ -1,0 +1,9 @@
+# run117：RT8.1シェーダー署名修正
+
+run115後のcaptured-unmounted fresh116を明示結合する。GPUは実選択3.22から3.23へ更新し、parent1101、USB1009、MMA1.10、AJTD4R eMMC1.9、RTC1.0、thermal1.7と対応8range POST bootを保持する。RTC以外の新周辺機能の完成を意味しない。GPU更新に伴うUEFI/GPT書込みは行わない。
+
+新UMDのsourceはeb4dca0e、署名package/helperは50974a3c。3f8291d0のUMD archiveをsourceから再構成した基点へtokenized_shader1TUの差分を適用しており、過去archiveの全byte一致とは区別する。KMD320/native322/FW/固定clientは3.22からbyte保持する。旧6TU manifestは旧clientの出自、新UMD manifestは今回DLLの出自としてそれぞれ検証する。
+
+標準D3D11で2色Clear/readback、三角形、色補間を1clientでまとめて確認する。clientの再試行は0。既存Engine/旧GPUの履歴、Graphics設定、既存data directoryと新しいRun117 directoryを分離する。媒体生成、署名、実機shader成功、全GPU機能完成を区別する。
+
+このprofileは固定のprivate captureと署名済み候補を要する実機更新用であり、一般配布用Windows媒体ではない。driverのsource buildはshader323-buildおよびsingle-checkoutの手順を参照する。
