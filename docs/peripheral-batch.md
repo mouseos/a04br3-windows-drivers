@@ -22,7 +22,7 @@
 
 114より後でも明示した番号をそのまま使う。間にWindows起動やWindows変更があれば選択を破棄し、新captureを結合する。番号だけの変更では、manifest、native snapshot、trio、policy、boot IDの照合を通らない。
 
-collectorにはSYSTEM/DRIVERS各trio、4更新対象SYS、MMAのEnum選択、旧サービスsnapshot用SYSTEM、保持対象Engine/render EXE、audio/WiFi/display/render/toprgu SYSを含める。capture内の全fileをhash/size照合するため、不足・差分はcaptureの再指定が必要。既搭載基点は親1026/USB1005/MMA1.8/eMMC1.8の固定SYS hashのまま。ここに差があれば停止し、勝手にbaselineを更新しない。
+collectorにはSYSTEM/DRIVERS各trio、4更新対象SYS、MMAのEnum選択、旧サービスsnapshot用SYSTEM、保持対象Engine/render EXE、audio/WiFi/display/render/toprgu SYSを含める。capture内の全fileをhash/size照合するため、不足・差分はcaptureの再指定が必要。既搭載基点は親1026/USB1005/MMA1.8 bytes（選択INF版はfresh114実値0.0.1.0）/eMMC1.8の固定SYS hashのまま。ここに差があれば停止し、勝手にbaselineを更新しない。
 
 `tools/recovery/read-peripheral-preservation.ps1` はWindows host上で新規private出力だけにtrioを複製し、native replayする。原trioはloadしない。必須引数は `-Workspace -Manifest -ExpectedManifestSha256 -CaptureNumber -ExpectedRecoveryBootId -ExpectedGpuPolicySha256 -SourceDirectory -OutputDirectory`。最新policyのLastDiagnostic generation/PolicyHashが同じreplayに存在することを確認し、4nodeの選択と旧5serviceのbounded subtree fingerprintを返す。Completeや機能成功の判定はしない。原trio hash不変・load/unload/privilege restore全0以外は失敗。
 
