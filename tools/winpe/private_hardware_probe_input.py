@@ -106,16 +106,16 @@ def prepared_system_check(system, manifest, expected_sha256, root, backup, selec
             if report.get('single_gpu_rearm'):
                 if not re.fullmatch('[0-9a-f]{64}',before.get('single_gpu_ledger','')) or services[0].get('diagnostic_fingerprint')!=before['single_gpu_ledger']:raise ValueError('single GPU ledger preservation missing')
                 related_names.add('single_gpu_ledger')
-        if selected_service in ('MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124'):
+        if selected_service in ('MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126'):
             if (not re.fullmatch('[0-9a-f]{64}',report.get('peripheral_preservation_plan_sha256',''))
                     or report.get('peripheral_old_services_preserved') is not True
                     or report.get('engine_rearm_plan_sha256')):
                 raise ValueError('peripheral専用plan/旧service保持証拠が必要です')
             old=json.loads(before.get('peripheral_old_services','{}'))
-            if set(old)!=({'MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs'}|({'MT8167PeripheralBatch','MT8167PeripheralNext122'} if selected_service=='MT8167CombinedFollowup124' else ({'MT8167PeripheralBatch'} if selected_service=='MT8167PeripheralNext122' else set()))):
+            if set(old)!=({'MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs'}|({'MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124'} if selected_service=='MT8167CombinedFollowup126' else ({'MT8167PeripheralBatch','MT8167PeripheralNext122'} if selected_service=='MT8167CombinedFollowup124' else ({'MT8167PeripheralBatch'} if selected_service=='MT8167PeripheralNext122' else set())))):
                 raise ValueError('peripheral旧5service snapshot不一致')
             related_names.add('peripheral_old_services')
-            if selected_service=='MT8167CombinedFollowup124':
+            if selected_service in ('MT8167CombinedFollowup124','MT8167CombinedFollowup126'):
                 if not re.fullmatch('[0-9a-f]{64}',before.get('followup_keypad','')):raise ValueError('Pinned unbound keypad fingerprint required')
                 related_names.add('followup_keypad')
         if set(before) != related_names or before != after:
