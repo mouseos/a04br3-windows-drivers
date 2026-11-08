@@ -28,9 +28,9 @@ int32_t a04_m111_build_d3d_viewport(uint32_t out[6],const uint32_t f[6])
  if(!integral(f[0],799,&x) || !integral(f[1],599,&y) ||
     !integral(f[2],800,&w) || !integral(f[3],600,&h) || !w || !h ||
     x>800-w || y>600-h || f[4] || f[5]!=0x3f800000u)return GEO_UNSUPPORTED;
- made[0]=half(w);made[1]=half(2*x+w);
- made[2]=half(h)|0x80000000u;made[3]=half(2*y+h);
- made[4]=0x3f800000u;made[5]=0;
+ made[0]=half(2*x+w);made[1]=half(w);
+ made[2]=half(2*y+h);made[3]=half(h)|0x80000000u;
+ made[4]=0;made[5]=0x3f800000u;
  for(unsigned i=0;i<6;i++)out[i]=made[i];
  return GEO_OK;
 }

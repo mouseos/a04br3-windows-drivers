@@ -74,6 +74,20 @@ static void APIENTRY set_scissors(D3D10DDI_HDEVICE h,UINT count,UINT clear,const
  if(!d||count>1||(count&&!v)){geo_typed_error(h,E_NOTIMPL);return;}
  if(count){if(v->left>v->right||v->top>v->bottom){geo_typed_error(h,E_INVALIDARG);return;}d->scissor=*v;}d->scissor_set=count;
 }
+/* First flat draw only, per module: bounded real inputs, never a raster oracle.
+ * No pointers, PMRs, or device-specific calibration data are recorded. */
+static void trace_draw_inputs(struct geo_typed_device *d,const FLOAT vertices[3][4],const UINT ps[128]) {
+ static LONG recorded;
+ static const char *vertex_keys[12]={"DRAW_V0_X","DRAW_V0_Y","DRAW_V0_Z","DRAW_V0_W","DRAW_V1_X","DRAW_V1_Y","DRAW_V1_Z","DRAW_V1_W","DRAW_V2_X","DRAW_V2_Y","DRAW_V2_Z","DRAW_V2_W"};
+ static const char *constant_keys[4]={"DRAW_PS_C0_X","DRAW_PS_C0_Y","DRAW_PS_C0_Z","DRAW_PS_C0_W"};
+ static const char *viewport_keys[6]={"DRAW_VP_X","DRAW_VP_Y","DRAW_VP_W","DRAW_VP_H","DRAW_VP_MINZ","DRAW_VP_MAXZ"};
+ UINT i,v;
+ if(InterlockedCompareExchange(&recorded,1,0))return;
+ for(i=0;i<12;i++){memcpy(&v,(const BYTE *)vertices+4*i,4);geo_typed_device_trace(d,vertex_keys[i],v);}
+ for(i=0;i<4;i++)geo_typed_device_trace(d,constant_keys[i],ps[i]);
+ for(i=0;i<6;i++){memcpy(&v,(const BYTE *)&d->viewport+4*i,4);geo_typed_device_trace(d,viewport_keys[i],v);}
+ geo_typed_device_trace(d,"DRAW_PS_CONSTANT_MASK",d->bound_shader[1]->code->compiled.constant_mask);
+}
 static void span(BYTE *blob,UINT *at,struct geo_draw_span *s,const void *data,UINT bytes){s->offset=*at;s->bytes=bytes;memcpy(blob+*at,data,bytes);*at+=bytes;}
 static void shader_packet(BYTE *blob,UINT *at,struct geo_draw_shader *s,const struct geo_umd_tokenized_shader *p,const UINT constants[128]) {
  s->format=GEO_SHADER_D3D10_TOKENS;s->stage=p->compiled.stage;s->temps=p->compiled.temps;s->shareds=p->compiled.shareds;s->vtxins=p->compiled.vtxins;s->vtxouts=p->compiled.vtxouts;s->input_mask=p->compiled.input_mask;s->constant_mask=p->compiled.constant_mask;
@@ -94,6 +108,7 @@ HRESULT geo_typed_submit_draw(D3D10DDI_HDEVICE h,const FLOAT vertices[3][4]) {
  }
  for(i=0;i<12u;i++){UINT b;memcpy(&b,(const BYTE *)vertices+i*4,4);if((b&0x7f800000u)==0x7f800000u)return E_INVALIDARG;}
  if(total>GEO_DRAW_MAX_BLOB||d->backend.command_bytes<sizeof(*p)+total||d->backend.allocation_count<2)return E_OUTOFMEMORY;
+ trace_draw_inputs(d,vertices,constants[1]);
  hr=geo_umd_write_private_vertex(&d->backend,&d->converted,vertices,48,&va);if(FAILED(hr))return hr;
  p=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,sizeof(*p)+total);if(!p)return E_OUTOFMEMORY;blob=(BYTE *)(p+1);
  p->magic=GEO_DRAW_MAGIC;p->size=sizeof(*p)+total;p->version=1;p->vertex_index=1;p->request.size=sizeof(p->request);p->request.version=1;p->request.blob_bytes=total;p->request.target_desc=target;
