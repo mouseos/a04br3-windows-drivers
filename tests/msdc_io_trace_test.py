@@ -2,7 +2,7 @@
 """Compare real baseline/current request handlers with identical synthetic I/O.
 
 No tablet/device access. All generated files and compiler temps stay in --out.
-The source whitelist proves only logging gates were inserted into miniport.c.
+Unchanged-source checks exclude the independently tested request MDL path.
 """
 import argparse, hashlib, json, os, re, subprocess
 from pathlib import Path
@@ -30,7 +30,16 @@ negative = '''#if !A04_MSDC_VERBOSE_IO_TRACE
 '''
 assert restored.count(negative)==1
 restored = restored.replace(negative,'')
-assert restored==old, 'Unexpected non-logging source change'
+def outside_mdl_request(s):
+    i=s.index('/* Diagnostic synchronization')
+    j=s.index('\n#endif\n\n#ifdef A04_ENABLE_WRITES',i)
+    s=s[:i]+s[j:]
+    i=s.index('static BOOLEAN A04RunIo(')
+    j=s.index('\n#if defined(A04_PASSIVE_IO) && defined(A04_ISOLATED_REQUEST_EXPERIMENT)',i)
+    return s[:i]+s[j:]
+# DMA wrapper and RunIo changes have a separate real-wrapper lifetime test.
+# Everything else, including worker/reset/stop/init, must still be identical.
+assert outside_mdl_request(restored)==outside_mdl_request(old)
 def extract(s, start, end):
     i=s.index(start); j=s.index(end,i); return s[i:j]
 struct = extract(old,'struct a04_probe_extension {','\nstatic void A04Trace')
@@ -175,9 +184,9 @@ exe=out/'handlers'
 cmd=['cc','-std=c11','-Wall','-Wextra','-Werror','-Wno-unused-function','-Wno-misleading-indentation','-fsanitize=address,undefined','-I'+str(core),'-I'+str(out),str(out/'main.c')]+[str(out/(x+'.c')) for x in ('base','verbose','quiet')]+[str(core/(x+'.c')) for x in ('scsi','cdb','scsi_capacity','gpt_guard')]+['-o',str(exe)]
 subprocess.run(cmd,check=True,env=env)
 result=subprocess.check_output([str(exe)],text=True,env=env)
-report=json.loads(result);report['baseline_commit']=BASE;report['source_whitelist_exact']=True;report['harness_only_legacy_log_shift_cast']=True
+report=json.loads(result);report['baseline_commit']=BASE;report['outside_dma_wrapper_and_runio_source_equal']=True;report['harness_only_legacy_log_shift_cast']=True
 report['baseline_miniport_sha256']=hashlib.sha256(old.encode()).hexdigest()
 report['candidate_miniport_sha256']=hashlib.sha256(new.encode()).hexdigest()
-# DMA poll/failure, reset/worker/init/checkpoint bodies are covered by exact
-# whole-file restoration; no synthetic stall can stand in for actual hardware.
+# Worker/reset/stop/init source equality is checked above. The DMA wrapper
+# has its own lifetime regression; mocks do not replace hardware validation.
 (out/'result.json').write_text(json.dumps(report,indent=2)+'\n');print(result,end='')
