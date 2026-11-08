@@ -12,6 +12,8 @@ nativeはrecordのopcode/operand/modifier/register/終了を検査し、同じ�
 
 metadataはpost-RAの実physical refsとrepeat幅からtemps/vtxinsを導出する。runtime CBのmask/範囲に基づいてshared領域を設定し、nativeも独立に各accessが宣言内にあることを確認する。PDS DOUTUのtemp allocationは4DWORD単位へ丸め、PS uniform DMAは実shared数（未使用時も安全な4DWORD、最大16）を使う。
 
+opcode/modifier metadataは専用symbol名へ分離し、NDEBUG有無でsizeofが変わる既存PCO libraryのpco_op_infoへbindしない。kernelとUMDのwitness encoderは同一のsource tableを使用する。
+
 kernel encoderは固定stack scopeだけを使う。Mesa mapのIR list/arena bookkeepingをlocal scratchに置換し、instruction/field encodingを変更しない。許可したmappingはscratch instructionを最大2個作る。ralloc/free/再帰/浮動小数演算/GPUアクセス/UMD callbackは呼ばない。
 
 任意USCがSM4 tokenと意味的に等価であることをkernelが再compileして証明する契約ではない。UMDがshader意味を保持する責任を持ち、nativeはmemoryless executableとregister/resource境界を独立に検査する。USC改変は元witnessと不一致なら拒否する。攻撃者が新しいwitnessも生成しても、許可された安全な算術と出力以外は実行できない。

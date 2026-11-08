@@ -102,17 +102,9 @@ int32_t geo_pco_compile_tokenized_witness(void *context,uint32_t stage,const uin
  if(!status){
   /* Physical lowered references are the authoritative bound for the new
    * contract; native independently checks the same immutable witness. */
-  const struct geo_shader_witness *w=*witness;const struct geo_shader_insn *rows=(const void *)(w+1);
   uint32_t temps=0,vtxins=0,shareds=0;
-  for(uint32_t n=0;n<w->count;n++)for(uint32_t j=0;j<5;j++){
-   const struct geo_shader_ref *r=j<2?&rows[n].dest[j]:&rows[n].src[j-2];
-   if(r->type!=PCO_REF_TYPE_REG)continue;
-   uint32_t width=r->channels+1u;const struct pco_op_info *info=&pco_op_info[rows[n].opcode];
-   if(info->mods&(UINT64_C(1)<<PCO_OP_MOD_RPT)){uint32_t repeat=rows[n].modifiers[info->mod_map[PCO_OP_MOD_RPT]-1];if(repeat>width)width=repeat;}
-   uint32_t end=r->value+width;
-   if(r->bank==PCO_REG_CLASS_TEMP&&end>temps)temps=end;
-   if(r->bank==PCO_REG_CLASS_VTXIN&&end>vtxins)vtxins=end;
-  }
+  status=geo_shader_witness_measure(*witness,*witness_bytes,&temps,&vtxins);
+  if(status){ralloc_free(out->storage);memset(out,0,sizeof(*out));*witness=NULL;*witness_bytes=0;return status;}
   for(uint32_t mask=out->constant_mask;mask;mask>>=1)shareds+=4;
   out->temps=temps;out->vtxins=vtxins;out->shareds=shareds;
   struct geo_shader_metadata m={stage,out->temps,out->shareds,out->vtxins,out->vtxouts,out->input_mask,out->constant_mask};

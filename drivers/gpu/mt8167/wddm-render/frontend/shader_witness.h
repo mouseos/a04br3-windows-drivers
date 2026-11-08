@@ -24,5 +24,6 @@ struct geo_shader_metadata {uint32_t stage,temps,shareds,vtxins,vtxouts,input_ma
  * Admits no memory op, texture, branch, predication, indirect register or spill.
  * The shader's arithmetic semantics are compiler responsibility; native checks
  * executable safety/register/resource bounds, not an exact-program allowlist. */
+int32_t geo_shader_witness_measure(const void *,uint32_t,uint32_t *,uint32_t *);
 int32_t geo_shader_witness_validate(const void *,uint32_t,const void *,uint32_t,const struct geo_shader_metadata *);
 #endif

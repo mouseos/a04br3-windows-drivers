@@ -1,6 +1,14 @@
 /* SPDX-License-Identifier: MIT
  * Canonical re-encoding from Mesa PCO map/ISA source, not a shader whitelist.
  * No allocator, locks, user callbacks or device accesses in this validator. */
+/* Isolated metadata ABI: never bind against an opaque cached PCO build's
+ * debug-dependent pco_op_info layout. */
+#ifndef NDEBUG
+#define NDEBUG 1
+#endif
+#define pco_op_info geo_witness_op_info
+#define pco_op_mod_info geo_witness_op_mod_info
+#define pco_ref_mod_info geo_witness_ref_mod_info
 #include "../frontend/shader_witness.h"
 #include "../clear_protocol.h"
 #include "pco/pco_internal.h"
@@ -129,6 +137,26 @@ static unsigned encode(uint8_t out[40],pco_igrp *g,unsigned align) {
  if(g->enc.len.word_padding)out[at++]=255;
  if(align){out[at++]=0xf0u|align/2;for(unsigned n=1;n<align;n++)out[at++]=255;}
  return at;
+}
+int32_t geo_shader_witness_measure(const void *data,uint32_t bytes,uint32_t *temps,uint32_t *vtxins) {
+ const struct geo_shader_witness *w=data;const struct geo_shader_insn *rows;
+ if(!w||((uintptr_t)w&3)||!temps||!vtxins||bytes<sizeof(*w)||w->count>128||bytes!=sizeof(*w)+w->count*sizeof(*rows))return GEO_INVALID;
+ *temps=*vtxins=0;rows=(const void *)(w+1);
+ for(unsigned n=0;n<w->count;n++){
+  if(rows[n].opcode>=_PCO_OP_COUNT)return GEO_INVALID;
+  const struct pco_op_info *info=&pco_op_info[rows[n].opcode];unsigned repeat=1;
+  if(info->mods&(UINT64_C(1)<<PCO_OP_MOD_RPT)){unsigned index=info->mod_map[PCO_OP_MOD_RPT];if(!index||index>19)return GEO_INVALID;repeat=rows[n].modifiers[index-1];if(repeat<1||repeat>4)return GEO_INVALID;}
+  for(unsigned j=0;j<5;j++){
+   const struct geo_shader_ref *r=j<2?&rows[n].dest[j]:&rows[n].src[j-2];
+   if(r->type!=PCO_REF_TYPE_REG)continue;
+   unsigned width=r->channels+1;if(width<repeat)width=repeat;
+   if(width>4||r->value>256-width)return GEO_INVALID;
+   unsigned end=r->value+width;
+   if(r->bank==PCO_REG_CLASS_TEMP&&end>*temps)*temps=end;
+   if(r->bank==PCO_REG_CLASS_VTXIN&&end>*vtxins)*vtxins=end;
+  }
+ }
+ return GEO_OK;
 }
 int32_t geo_shader_witness_validate(const void *data,uint32_t bytes,const void *code,uint32_t codebytes,const struct geo_shader_metadata *m) {
  const struct geo_shader_witness *w=data;const struct geo_shader_insn *ins;uint32_t defined[4]={0},constants=0,outputs=0;unsigned total=0,lastlen=0,penpad=0,lastpad=0,at=0;

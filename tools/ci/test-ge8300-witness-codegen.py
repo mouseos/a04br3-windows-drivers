@@ -15,7 +15,7 @@ while i<len(argv):
     if v.startswith('-I'):args.append('-I'+str((build/v[2:]).resolve()))
     elif v!='-Werror=missing-prototypes':args.append(v)
     i+=1
-units=['drivers/gpu/mt8167/wddm-render/compiler/'+n+'.c' for n in ('sm2','sm4','pco_sm2','witness_producer','witness_codec')]+['tests/ge8300_witness_codegen.c'];objects=[]
+units=['drivers/gpu/mt8167/wddm-render/compiler/'+n+'.c' for n in ('sm2','sm4','pco_sm2','witness_producer','witness_codec','witness_info')]+['tests/ge8300_witness_codegen.c'];objects=[]
 native=['native_draw_job','native_triangle_suite','native_triangle_pds','native_triangle_vdm','native_triangle_ppp','native_triangle_texture','native_clear_job','native_clear_surface','native_clear_data','native_clear_codespace','native_clear_pds','native_record_fields','native_hwrt_profile','native_varying_pds','native_d3d_viewport','native_texture2d_state','native_texture2d_program','native_eot_program','clear_tile','clear_image','native_terminate_stream']
 units += ['drivers/gpu/mt8167/vendor_m1_11/render_owner/'+n+'.c' for n in native]
 units += ['drivers/gpu/mt8167/wddm-render/compiler/texture2d_sm4.c']
