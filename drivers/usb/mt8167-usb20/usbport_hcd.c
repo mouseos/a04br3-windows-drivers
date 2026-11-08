@@ -26,10 +26,34 @@ struct a04_hcd {
  struct a04_root_port port;struct a04_hub hub;
  struct a04_hcd_backend backend;struct a04_mp_resources resources;MT8167_USB20_IO io;
  struct a04_mp_endpoint *active_ep;struct a04_mp_transfer *active;
- struct a04_pio_transfer pio;
+ struct a04_pio_transfer pio;MT8167_USB20_EP0 ep0;
 };
 static struct a04_mp_packet Packet;
 #define CTX(p) ((struct a04_hcd *)(p))
+static VOID OwnershipFailure(struct a04_hcd *h)
+{
+ h->fault=1;
+#if defined(A04_HCD_CONTRACT_TEST)
+ /* Deliberate trap if a synthetic test unexpectedly violates ownership. */
+ __fastfail(7);
+#else
+ /* Abort/Close/Stop are synchronous void callbacks: returning with a live
+  * endpoint would let USBPORT free its buffer/context. Stop the OS instead.
+  * 0xE2 is documented MANUALLY_INITIATED_CRASH, not a guessed USBPORT code. */
+ KeBugCheckEx(0xe2,0xa04b1012,(ULONG_PTR)h,(ULONG_PTR)h->active_ep,(ULONG_PTR)h->active);
+#endif
+}
+static int Quiesce(struct a04_hcd *h)
+{
+ unsigned csr;
+ if(!h->active)return 0;
+ if(h->active_ep->p.type!=1)return a04_pio_abort(&h->io,&h->pio);
+ h->io.write8(h->io.context,0x0e,0);
+ h->io.write16(h->io.context,0x12,0x100);h->io.write16(h->io.context,0x12,0x100);
+ csr=h->io.read16(h->io.context,0x12);
+ if(csr&0x23)return -1;
+ h->io.write16(h->io.context,2,1);return 0;
+}
 static VOID RhData(PVOID p,struct a04_mp_root *d)
 {UNREFERENCED_PARAMETER(p);d->ports=1;d->characteristics=9;d->pad=0;d->power_good=50;d->current=0;}
 static ULONG RhStatus(PVOID p,PUSHORT s)
@@ -80,8 +104,8 @@ static VOID Stop(PVOID p,BOOLEAN removed)
 {
  struct a04_hcd *h=CTX(p);UNREFERENCED_PARAMETER(removed);
  h->irq_enabled=h->root_irq=0;a04_hub_invalidate(&h->hub);
- if(h->active){h->fault=1;return;} /* Never free DMA/endpoint ownership on a guessed drain. */
- if(h->backend.stop&&h->backend.stop(h->backend.context)){h->fault=1;return;}
+ if(h->active){OwnershipFailure(h);return;}
+ if(h->backend.stop&&h->backend.stop(h->backend.context)){OwnershipFailure(h);return;}
  (void)a04_port_power(&h->port,0,0);h->started=0;
 }
 static VOID Suspend(PVOID p){Stop(p,FALSE);}
@@ -99,8 +123,9 @@ static VOID Query(PVOID p,struct a04_mp_properties *e,struct a04_mp_requirements
 static ULONG Open(PVOID p,struct a04_mp_properties *v,PVOID endpoint)
 {
  struct a04_mp_endpoint *e=endpoint;UNREFERENCED_PARAMETER(p);
- if(!v||!e||v->address>127||v->endpoint>15||v->hub||v->port||v->speed>2||!v->packet||v->packet>64||
+ if(!v||!e||v->address>127||(v->endpoint&~0x8fu)||(v->hub!=0&&v->hub!=0xffff)||v->speed>2||!v->packet||v->packet>64||
   (v->type!=1&&v->type!=2&&v->type!=3)||v->direction>1||v->transactions>1)return A04_MP_UNSUPPORTED;
+ if(v->type!=1&&((v->endpoint&0x80)?0u:1u)!=v->direction)return A04_MP_UNSUPPORTED;
  if(v->speed==0&&(v->type==2||v->packet>8))return A04_MP_UNSUPPORTED;
  if(v->type==2&&v->speed!=1)return A04_MP_UNSUPPORTED;
  RtlZeroMemory(e,sizeof(*e));e->p=*v;e->state=A04_EP_PAUSED;return 0;
@@ -109,7 +134,7 @@ static ULONG Reopen(PVOID p,struct a04_mp_properties *v,PVOID endpoint)
 {if(CTX(p)->active_ep==endpoint)return A04_MP_ERROR;return Open(p,v,endpoint);}
 static VOID Close(PVOID p,PVOID endpoint,BOOLEAN removed)
 {struct a04_hcd *h=CTX(p);struct a04_mp_endpoint *e=endpoint;UNREFERENCED_PARAMETER(removed);
- if(h->active_ep==e){h->fault=1;return;}e->state=A04_EP_CLOSED;}
+ if(h->active_ep==e){OwnershipFailure(h);return;}e->state=A04_EP_CLOSED;}
 static ULONG State(PVOID p,PVOID endpoint){UNREFERENCED_PARAMETER(p);return ((struct a04_mp_endpoint*)endpoint)->state;}
 static VOID SetState(PVOID p,PVOID endpoint,ULONG state)
 {struct a04_mp_endpoint *e=endpoint;struct a04_hcd *h=CTX(p);
@@ -129,14 +154,20 @@ static ULONG Submit(PVOID p,PVOID endpoint,struct a04_mp_parameters *v,PVOID tra
   (h->port.status&(A04_PORT_POWER|A04_PORT_CONNECTION|A04_PORT_ENABLE|A04_PORT_OVERCURRENT))!=
    (A04_PORT_POWER|A04_PORT_CONNECTION|A04_PORT_ENABLE))return A04_MP_ERROR;
  RtlZeroMemory(t,sizeof(*t));t->parameters=v;t->bytes=v->bytes;t->state=1;
+ if(v->bytes&&(!sg||!sg->mapped_va))return A04_MP_ERROR;
  if(e->p.type==1){
-  if(!h->backend.control)return A04_MP_UNSUPPORTED;
-  if(h->backend.control(h->backend.context,e,v,t))return A04_MP_ERROR;
+  unsigned requested=v->setup[6]|((unsigned)v->setup[7]<<8);
+  if(requested!=v->bytes)return A04_MP_ERROR;
+  h->io.write8(h->io.context,0x0e,0);
+  h->io.write16(h->io.context,0x480,(USHORT)e->p.address);h->io.write16(h->io.context,0x482,0);
+  h->io.write8(h->io.context,0x1a,(UCHAR)(e->p.speed==2?0x40:e->p.speed==1?0x80:0xc0));
+  h->io.write8(h->io.context,0x1b,0);h->io.write16(h->io.context,2,1);
+  if(Mt8167Ep0Start(&h->ep0,&h->io,v->setup,sg?(unsigned char*)sg->mapped_va:0,v->bytes,e->p.packet)!=EP0_SEND_SETUP)return A04_MP_ERROR;
  }else{
   /* Mapped VA is valid only for the owner-held transfer lifetime; endpoint
    * common-buffer mapping services must not be used to map URB data. */
   if(v->bytes&&(!sg||!sg->mapped_va))return A04_MP_ERROR;
-  pe.address=e->p.address;pe.endpoint=e->p.endpoint;pe.packet=e->p.packet;
+  pe.address=e->p.address;pe.endpoint=e->p.endpoint&15u;pe.packet=e->p.packet;
   pe.speed=e->p.speed==2?0x40:e->p.speed==1?0x80:0xc0;
   pe.type=e->p.type;pe.direction=e->p.direction;pe.period=e->p.period;pe.toggle=e->toggle;
   if(a04_pio_configure(&h->io,&h->pio,&pe,sg?(unsigned char*)sg->mapped_va:0,v->bytes))return A04_MP_UNSUPPORTED;
@@ -150,12 +181,9 @@ static VOID Abort(PVOID p,PVOID endpoint,PVOID transfer,PULONG actual)
  struct a04_hcd *h=CTX(p);struct a04_mp_endpoint *e=endpoint;struct a04_mp_transfer *t=transfer;
  if(!actual)return;*actual=0;
  if(h->active!=t||h->active_ep!=e){h->fault=1;return;}
- if(e->p.type==1){
-  if(!h->backend.abort||h->backend.abort(h->backend.context,e,t,actual)){h->fault=1;return;}
- }else{
-  if(a04_pio_abort(&h->io,&h->pio)){h->fault=1;return;}
-  *actual=h->pio.actual;e->toggle=h->pio.ep.toggle;
- }
+ if(Quiesce(h)){OwnershipFailure(h);return;}
+ if(e->p.type==1)*actual=h->ep0.transfer.actual;
+ else {*actual=h->pio.actual;e->toggle=h->pio.ep.toggle;}
  /* USBPORT owns abort completion; do not also call CompleteTransfer. */
  t->state=3;h->active=0;h->active_ep=0;
 }
@@ -164,11 +192,21 @@ static VOID Poll(PVOID p,PVOID endpoint)
  struct a04_hcd *h=CTX(p);struct a04_mp_endpoint *e=endpoint;struct a04_mp_transfer *t=h->active;
  USBD_STATUS status;ULONG actual;int r;
  if(!t||h->active_ep!=e||h->fault)return;
- if(e->p.type==1){if(h->backend.poll)h->backend.poll(h->backend.context);return;}
- r=a04_pio_event(&h->io,&h->pio);if(!r)return;
- actual=h->pio.actual;status=r==1?USBD_STATUS_SUCCESS:r==A04_PIO_STALL?USBD_STATUS_STALL_PID:USBD_STATUS_XACT_ERROR;
- if(r<0&&a04_pio_abort(&h->io,&h->pio)){h->fault=1;return;}
- e->toggle=h->pio.ep.toggle;t->actual=actual;t->state=2;
+ if(e->p.type==1){
+  EP0_ACTION action;
+  if(!(h->io.read16(h->io.context,2)&1))return;
+  h->io.write16(h->io.context,2,1);action=Mt8167Ep0Interrupt(&h->ep0);
+  if(action!=EP0_COMPLETE&&action!=EP0_ABORT)return;
+  r=action==EP0_COMPLETE?1:A04_PIO_ERROR;actual=h->ep0.transfer.actual;
+ }else{
+  unsigned source=e->p.direction?2:4;
+  if(!(h->io.read16(h->io.context,source)&2))return;
+  h->io.write16(h->io.context,source,2);
+  r=a04_pio_event(&h->io,&h->pio);if(!r)return;actual=h->pio.actual;
+ }
+ status=r==1?USBD_STATUS_SUCCESS:r==A04_PIO_STALL?USBD_STATUS_STALL_PID:USBD_STATUS_XACT_ERROR;
+ if(r<0&&Quiesce(h)){OwnershipFailure(h);return;}
+ if(e->p.type!=1)e->toggle=h->pio.ep.toggle;t->actual=actual;t->state=2;
  h->active=0;h->active_ep=0;
  /* RT81 service signature confirmed from r0/r1/r2/r3 plus stack actual. */
  Packet.complete(h,e,t->parameters,status,actual);
@@ -179,7 +217,7 @@ static VOID PollController(PVOID p){struct a04_hcd *h=CTX(p);if(h->active_ep)Pol
 ULONG A04HcdSetBackend(PVOID p,const struct a04_hcd_backend *b)
 {
  struct a04_hcd *h=CTX(p);if(!b||b->version!=1||b->bytes!=sizeof(*b)||!b->start||!b->stop||
-  !b->power||!b->reset||!b->control||!b->abort||!b->poll||!b->frame||h->active||h->fault)return 1;
+  !b->power||!b->reset||!b->poll||!b->frame||h->active||h->fault)return 1;
  if(!h->started||h->backend.version)return 1;
  if(b->start(b->context,&h->resources,&h->io)){h->fault=1;return 1;}
  if(!h->io.read8||!h->io.read16||!h->io.write8||!h->io.write16){
@@ -191,7 +229,7 @@ ULONG A04HcdSetBackend(PVOID p,const struct a04_hcd_backend *b)
 ULONG A04HcdControlComplete(PVOID p,PVOID endpoint,PVOID transfer,USBD_STATUS status,ULONG actual)
 {
  struct a04_hcd *h=CTX(p);struct a04_mp_transfer *t=transfer;
- if(!h->active||h->active!=t||h->active_ep!=endpoint||h->active_ep->p.type!=1||actual>t->bytes||!Packet.complete)return 1;
+ if(!h->active||h->active!=t||h->active_ep!=endpoint||h->active_ep->p.type!=1||h->ep0.transfer.stage!=EP0_DONE||actual!=h->ep0.transfer.actual||actual>t->bytes||!Packet.complete)return 1;
  h->active=0;h->active_ep=0;t->actual=actual;t->state=2;
  Packet.complete(h,endpoint,t->parameters,status,actual);return 0;
 }

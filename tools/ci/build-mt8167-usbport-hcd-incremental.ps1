@@ -9,7 +9,7 @@ function Hash([string]$p){(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvari
 try{
  $env:TEMP=$out;$env:TMP=$out;$kit=[IO.Path]::GetFullPath($KitRoot);$inc="$kit\Include";$km="$kit\Lib\winv6.3\km\arm";$sign="$kit\bin\x86\signtool.exe"
  $common=@('-w','-fms-extensions','-fno-stack-protector','-fno-builtin','-ffunction-sections','-D_KERNEL_MODE','-DNTDDI_VERSION=0x06030000','-D_WIN32_WINNT=0x0603','-DA04_MUSB_HOST_CORE_EXPERIMENT=1',"-I$inc\km","-I$inc\shared","-I$inc\um","-I$inc\wdf\kmdf\1.13",'-include','ntddk.h',"-I$root\drivers\usb\mt8167-usb20")
- $names=@('usbport_hcd','root_hub','host_core','pio_transfer');$objs=@()
+ $names=@('usbport_hcd','root_hub','host_core','pio_transfer','ep0','ep0_pio');$objs=@()
  foreach($name in $names){
   $obj="$out\$name.obj";$objs+=$obj
   & clang --target=thumbv7-pc-windows-msvc -D_ARM_ -DARM -mfpu=none -mno-unaligned-access @common -c "$root\drivers\usb\mt8167-usb20\$name.c" -o $obj
@@ -20,7 +20,7 @@ try{
  & lld-link /driver /subsystem:native /machine:arm /entry:GsDriverEntry /nodefaultlib /opt:noref @objs "$out\usbport81.lib" "$km\ntoskrnl.lib" "$km\hal.lib" "$km\bufferoverflowfastfailk.lib" "$km\libcntpr.lib" "/map:$out\mt8167-usbport-hcd.map" "/out:$out\mt8167-usbport-hcd.sys"
  if($LASTEXITCODE){throw 'ARM USBPORT HCD link failed'}
  # Real WDK-native callback and power-failure contract tests (no kernel run).
- $testobjs=@();foreach($name in @('root_hub','host_core','pio_transfer')){
+ $testobjs=@();foreach($name in @('root_hub','host_core','pio_transfer','ep0','ep0_pio')){
   $obj="$out\host-$name.obj";$testobjs+=$obj
   & clang --target=x86_64-pc-windows-msvc -D_AMD64_ -DAMD64 @common -c "$root\drivers\usb\mt8167-usb20\$name.c" -o $obj
   if($LASTEXITCODE){throw 'Host dependency compile failed'}

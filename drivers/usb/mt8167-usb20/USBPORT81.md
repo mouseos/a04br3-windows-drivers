@@ -62,6 +62,8 @@ endpoint quiesceを要求する。既存親v1 HealthはID/source観測を含む�
 USBPORTはOpen/Queryをspinlock内で呼ぶ。物理backendはcallback IRQLと寿命を
 守る実装が必要で、PASSIVE_LEVEL専用の親v1をそのままcallbackから呼んではならない。
 物理backendの起動/非同期owner橋渡しは未接続であり、配備可能な汎用USBとはしない。
+ControlのSubmit/Poll/Abortは既存MUSB EP0 PIOへ直接接続した。生のendpoint interruptを確認してからstageを進め、完了は元USBPORT parametersを返す。bulk/interruptもIRQ statusなしに完了させない。
+Abort/Close/StopはUSBPORTの同期void契約なので、未停止のまま戻ればOS側がbuffer/contextを解放しうる。停止不能・activeなClose/Stopは0xE2 MANUALLY_INITIATED_CRASHで停止する。未知のprivate状態を改変して転送をretainしたことにはしない。この経路は実機未検証であり、通常配備の安全性を主張しない。
 
 bulk/interruptのPIOはdirect root-portに限定し、単一hardware EP1を直列使用。
 TX/RX各64byte FIFO、PIO、NAK再試行、短いIN、STALL、停止確認とtoggle継承を持つ。
@@ -82,7 +84,7 @@ firmware ACPIの観測結果を装わず、silicon revisionも報告しない。
 
 `make test-mt8167-usb-generic-pio` がproduction PIOをASan/UBSanで実行する。
 `tools/ci/build-mt8167-usbport-hcd-incremental.ps1` は既存WDK81 cacheで
-4TU ARM compile/link、実WDK型x64 callback試験、opt-in親TU compile、SYS/CAT署名を行う。
+6TU ARM compile/link、実WDK型x64 callback試験、opt-in親TU compile、SYS/CAT署名を行う。
 親TUはcompileだけで、現親の置換・配備をしていない。
 
 標準hubへの実binding、実RT81登録成功、PnP start/stop、physical backend、
