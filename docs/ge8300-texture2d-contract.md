@@ -21,3 +21,14 @@ ASAN/UBSAN hostで16384 extent・padding・BGRA swizzle・無変更拒否を検�
 既存default geo_sm4_decodeはSAMPLEを拒否し、UMDもSRVを受理しない。これをsilent successにしない。
 SAMPLEのcompiler接続、typed SRV/resource/sampler保持、descriptor shared配置、新versionを全消費側へ
 同時検証するowned job contractが未完。単体descriptor成功を標準Texture描画成功と扱わない。
+
+## 別入口のSM4 SAMPLE / PCO producer
+
+texture2d_sm4.cは、PS4.0・CB0からUV・t0 float2D・s0通常sampler・SAMPLE→o0→RETの
+明示subsetだけをdecodeする。LOD/comparison/offset/array/MSAA/flow/relative index/入力varyingは拒否。
+旧geo_sm4_decodeは一切変えず、324 laneも混ぜない。default UMDはこの入口を呼ばない。
+pco_texture2d.cはその実tokenからNIRを作り、PCOのpco_emit_nir_smpへ渡す。
+preloaded sampler sh0..3/image sh4..7、CB vectorはsh8以降。texture GPU VAをUSCへ埋め込まない。
+実SMP結果をBGRA8へpackし、shaderを置換しない。旧compiler ABI構造体は変更しない。
+このproducerはARM compile検証対象であり、PCO codegen実行/標準DDI/実GPU samplingは未検証。
+全consumerを新owned texture jobへ結合するまではruntime/capsを開放しない。
