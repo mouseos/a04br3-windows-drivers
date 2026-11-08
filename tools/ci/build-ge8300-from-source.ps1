@@ -41,6 +41,7 @@ try{
   & python -B "$PSScriptRoot\test-ge8300-fullsource-gate.py" --output "$scOut\source-gate-tests"
   if($LASTEXITCODE){throw 'Wrong-source native compilation map regression failed'}
   & "$PSScriptRoot\test-ge8300-render-residency.ps1" -OutputDirectory "$scOut\host-tests" -VcToolsDirectory $scVc -WindowsKit10Version $WindowsKit10Version
+  & "$PSScriptRoot\test-ge8300-ppp-viewport.ps1" -OutputDirectory "$scOut\host-tests\viewport325" -VcToolsDirectory $scVc -WindowsKit10Version $WindowsKit10Version
   & "$PSScriptRoot\test-ge8300-rt-signature323.ps1" -OutputDirectory "$scOut\host-tests\signature323" -VcToolsDirectory $scVc -WindowsKit10Version $WindowsKit10Version
  }
  & "$PSScriptRoot\build-ge8300-native-owner-core.ps1" -EnableCandidate -ExpectedSourceCommit $scCommit -OutputDirectory "$scOut\native" -WithMdlTarget -WithOwnerAllocation -WithFactory

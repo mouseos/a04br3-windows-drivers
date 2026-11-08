@@ -45,7 +45,7 @@ nativeは`vendor_m1_11/render_owner`の必要113fileだけを固定native322か�
 
 ## 回帰とCI
 
-`-RunHostTests`は隔離source fixtureでの旧vendor誤結合/単位欠落/別TU alias拒否と325 overlay欠落/旧origin誤帰属拒否、actual clear engine回帰と、実WDK構造体/production tokenized wrapper/SM4 decoder回帰を実行する。旧wrapperの未設定type拒否を再現し、修正版では00/A5/FFのtype storageでも固定client VS/PSを受理、MinPrecision/unsupported opcodeを拒否する。旧source fixtureはtree内に固定し、過去commitへgit-showしない。PCO code生成はこのwrapper回帰ではstub化されるが、driver DLLには本物のsource-built PCO/pairがlinkされる。
+`-RunHostTests`は隔離source fixtureでの旧vendor誤結合/単位欠落/別TU alias拒否と325 overlay欠落/旧origin誤帰属拒否、actual clear engine回帰、production viewport325の4096矩形/119頂点projection回帰と、実WDK構造体/production tokenized wrapper/SM4 decoder回帰を実行する。旧wrapperの未設定type拒否を再現し、修正版では00/A5/FFのtype storageでも固定client VS/PSを受理、MinPrecision/unsupported opcodeを拒否する。旧source fixtureはtree内に固定し、過去commitへgit-showしない。PCO code生成はこのwrapper回帰ではstub化されるが、driver DLLには本物のsource-built PCO/pairがlinkされる。
 
 `.github/workflows/ge8300-source-build.yml`はworkflow_dispatchのみ、contents:read、self-hosted `[Windows,X64,wdk81-arm32]`で同じ公開wrapperを使う。checkoutはdepth1。SDKのinstall、private input、署名、実機操作はしない。SYS/DLL/clientとcomponent manifests/host receipt/source originsを回収する。
 
