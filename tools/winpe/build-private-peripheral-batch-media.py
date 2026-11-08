@@ -25,7 +25,11 @@ def main():
  ap=argparse.ArgumentParser()
  for n in ('workspace','map','service-package','prepared-system','prepared-result','comparator','base','tools','out'):ap.add_argument('--'+n,type=Path,required=True)
  for n in ('prepared-sha256','comparator-manifest-sha256','source-commit'):ap.add_argument('--'+n,required=True)
- ap.add_argument('--service-source-commit');ap.add_argument('--enable-peripheral-batch',action='store_true');a=ap.parse_args();root=a.workspace.resolve(strict=True);here=Path(__file__).resolve().parent;repo=here.parents[1]
+ ap.add_argument('--next-profile',action='store_true');ap.add_argument('--service-source-commit');ap.add_argument('--enable-peripheral-batch',action='store_true');a=ap.parse_args();root=a.workspace.resolve(strict=True);here=Path(__file__).resolve().parent;repo=here.parents[1]
+ if a.next_profile:
+  from peripheral_next_policy import load_map,generate,PROFILE,SERVICE,DIRECTORY,generate_paths,assert_paths
+ else:
+  from peripheral_batch_policy import load_map,generate,PROFILE,SERVICE,DIRECTORY
  require(a.enable_peripheral_batch,'専用profile明示opt-inが必要');require(re.fullmatch('[0-9a-f]{40}',a.source_commit),'固定source必須')
  require(subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip()==a.source_commit and not subprocess.check_output(['git','-C',str(repo),'status','--porcelain'],text=True).strip(),'clean固定source必須')
  p=load_map(a.map,root);service=rooted(root,a.service_package);sm=json.loads((service/'peripheral-service-manifest.json').read_text(encoding='utf-8-sig'))
@@ -37,6 +41,8 @@ def main():
   require(changed and changed<={'tools/winpe/build-private-peripheral-batch-media.py','tools/winpe/private_hardware_probe_input.py','docs/peripheral-batch.md'},'署名後の差分は明示media toolingだけを許可')
  require(sm.get('source_commit')==signed_source and sm.get('source_dirty') is False and sm.get('profile')==PROFILE and sm.get('service')==SERVICE and sm.get('signature_status')=='Valid' and sm.get('signer_thumbprint')==SIGNER,'同sourceの専用署名service必須')
  require(sm['policy']==p and sha(service/'peripheral-policy.json')==sm['policy_manifest_sha256'] and sha(service/(SERVICE+'.exe'))==sm['exe_sha256'] and (service/'peripheral-batch-policy.h').read_text()==generate(p),'signed policy/header/EXE不一致')
+ if a.next_profile:
+  require((service/'peripheral-service-path-policy.h').read_text()==generate_paths(),'Signed service path header mismatch');assert_paths(service/(SERVICE+'.exe'))
  backup=rooted(root,p['backup_manifest']);b=json.loads(backup.read_text());result=rooted(root,a.prepared_result);system=rooted(root,a.prepared_system)
  native=prepared_system_check(system,result,a.prepared_sha256,root,b,SERVICE);nr=json.loads(result.read_text(encoding='utf-8-sig'))
  for phase in ('patch','verify'):
@@ -50,6 +56,9 @@ def main():
  copy(comp/'compare-files.exe','compare-files.exe');copy(service/(SERVICE+'.exe'),'payload/'+SERVICE+'.exe');copy(system,'payload/SYSTEM.patched')
  for role,v in p['packages'].items():
   for kind in ('inf','sys','cat'):copy(root/v['directory']/v['names'][kind],'payload/'+role+'/'+v['names'][kind])
+ for client in p.get('diagnostic_clients',[]):
+  copy(root/client['directory']/client['exe'],'payload/clients/'+client['exe'])
+  for dep in client['dependencies']:copy(root/client['directory']/dep['exe'],'payload/clients/'+dep['exe'])
  token=hashlib.sha256(json.dumps(p,sort_keys=True,separators=(',',':')).encode()).hexdigest();(stage/'payload/boot-transition-authorized.bin').write_bytes(token.encode()+b'\0');files['payload/boot-transition-authorized.bin']=sha(stage/'payload/boot-transition-authorized.bin')
  prepare=[]
  for i,e in enumerate(x for x in b['files'] if x['source_path'] in {'Windows/System32/config/'+n+s for n in ('SYSTEM','DRIVERS') for s in ('','.LOG1','.LOG2')}):
@@ -66,11 +75,18 @@ def main():
  payload=dict(files)
  for i,(n,h) in enumerate(sorted(payload.items())):
   copy(stage/n,'stage-proof/'+str(i)+'.bin');prepare+=['X:\\a04br3\\compare-files.exe "X:\\a04br3\\'+n.replace('/','\\')+'" X:\\a04br3\\stage-proof\\'+str(i)+'.bin >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto baselinefail']
+ for directory in sorted({c['relative_directory'] for c in p.get('diagnostic_clients',[]) if not c['relative_directory'].startswith(DIRECTORY+'\\')}):prepare+=['if exist C:\\Windows\\System32\\'+directory+' goto baselinefail']
  prepare+=['if exist C:\\Windows\\System32\\'+DIRECTORY+' goto baselinefail','if exist C:\\Windows\\System32\\'+SERVICE+'.exe goto baselinefail','set "A04_CANDIDATE_STARTED=1"','> "%A04_BK%\\JOURNAL.txt" echo STATE=CANDIDATE_WRITE_STARTED','mkdir C:\\Windows\\System32\\'+DIRECTORY+'\\logs >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  for role,v in p['packages'].items():
   dst='C:\\Windows\\System32\\'+DIRECTORY+'\\'+role;prepare+=['mkdir '+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
   for kind in ('inf','sys','cat'):
    name=v['names'][kind];prepare+=['copy /b X:\\a04br3\\payload\\'+role+'\\'+name+' '+dst+'\\'+name+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe X:\\a04br3\\payload\\'+role+'\\'+name+' '+dst+'\\'+name+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
+ if p.get('diagnostic_clients'):
+  for directory in sorted({c['relative_directory'] for c in p['diagnostic_clients']}):
+   prepare+=['mkdir C:\\Windows\\System32\\'+directory+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
+  for client in p['diagnostic_clients']:
+   for name in [client['exe']]+[d['exe'] for d in client['dependencies']]:
+    src='X:\\a04br3\\payload\\clients\\'+name;dst='C:\\Windows\\System32\\'+client['relative_directory']+'\\'+name;prepare+=['copy /b '+src+' '+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe '+src+' '+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  for name,dst in [('boot-transition-authorized.bin',DIRECTORY+'\\boot-transition-authorized.bin'),(SERVICE+'.exe',SERVICE+'.exe')]:
   prepare+=['copy /b X:\\a04br3\\payload\\'+name+' C:\\Windows\\System32\\'+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe X:\\a04br3\\payload\\'+name+' C:\\Windows\\System32\\'+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  # Last mutation only: main-selected capture-derived clean SYSTEM containing the one new service.

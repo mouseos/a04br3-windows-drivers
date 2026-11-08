@@ -1,36 +1,26 @@
-# 次の周辺batch（fresh120待ち）
+# 次の周辺一括profile（main承認fresh122以降）
 
-`prepare-peripheral-next-draft.py` は固定署名USB1010/WiFi1020/SD8と、
-既知capture ERROR22のbuffer-first修正clientを一つに集約する。
-新しいfresh120/main manifest hash/current GPU policy/Recovery boot id/native
-selectionが未結合であり、出力は常にdraft/normal_install_allowed=false。
-service/header/hive/媒体は生成しない。119媒体を変更しない。
+profile `peripheral-usb1010-wifi1020-sd8-dod17-parent1102-next-v1`、専用service/data directory `MT8167PeripheralNext122`。
+旧MT8167PeripheralBatch/RenderSingleGpu/Engineサービスと全ledgerはbounded native snapshotの前後一致で保持し、既存serviceを再armしない。
 
-今回のruntime source準備:
-- 固定6を生成target数（上限9）へ。DIF対象は生成INSTALL_MASKだけ。
-  現行旧6target profileは従来の0x3c（子2件store-only）を保持。
-- run115でmetadata先行guardがCM観測まで中断した点を修正。
-  devnode発見後はCM rc/status/problemを先に独立記録し、その後のmetadataと
-  SYS hashの成否を別イベントに記録する。metadata失敗をstarted成功にしない。
-- version/date DEVPKEYのERROR_NOT_FOUNDだけ同じdevnodeのDIREG_DRVへfallback。
-  型、長さ、厳密version/date/INF/service/class/SYS/CAT比較は保持。
-  ERROR_ACCESS_DENIEDや存在する値の不一致ではfallbackしない。
-- Raman source52e71519のnative reader IncludeWifiSdを同byteで取り込む。
-  private新clone限定、main指定capture/hash/policy/boot idと原trio不変を要求。
+stage順RTC/thermal→USB1010→WiFi1020→SD8→DOD1.7→親ACCDET1102。
+RTC/thermalはstore-only、5対象だけDIF_INSTALLDEVICE、live restartなし、計画reboot最大1回。
+新親は1101の全53資格と8range/既存Audio/capture等を保持する署名済み1102。
+eMMC AJTD4R1.9/MMA1.10/GPU/UMD/FW/client/Engine/旧logs/旧SOFTWARE/userfs/GPTは保持し、同候補の再投入/再benchmarkをしない。
+thermal観測boot125f42b5 / FD bf2c5f37は機種source8e2597c3の完成artifactを再利用し、main管理のmatched8range handoffを要求する。共通EDK変更/専用追加boot試験はしない。
 
-旧initial batchのMT8167PeripheralBatch registrationは現在既存であり、
-初回arm guardへ無理に再投入しない。次の専用service identity/既存service保持、
-最終3target policyとmask、media/stage/native契約はfresh120実snapshotに結合後に
-確定する。旧親/MMA/eMMC/RTC/thermalを再installしない。
-Carson DOD回転候補は署名artifact pins到着後だけ追加検討、ACCDET GPIO19は
-optionalで親1101の既存flags/資格を保持できる場合のみ。既存parentを退行させない。
-現在のmatched8range boot/GPU/UMD/FW/client/Engine/旧logs/SOFTWARE/userfs保持。
+source準備:
+- generated target数は上限9、明示install mask0x7cだけDIF。従来6target profileは0x3cを保持。
+- CM rc/started/Problemをmetadata guardより先に独立記録。選択版/date/SYSの失敗も別記録し、metadata失敗をstarted成功へ変換しない。
+- DEVPKEY version/dateがERROR_NOT_FOUNDの時だけ同devnodeのDIREG_DRVへfallback。型/byte数/値/INF/service/class/SYS/CAT比較を緩和しない。
+- native readerのIncludeWifiSd/IncludePreviousBatchは固定6target/旧6serviceだけを追加。原trioはloadせず新cloneでreplayし、main指定manifest/policy/boot、原trio不変、unload/権限復元0を要求。
+- 明示main approval receiptのhash、capture122+のmanifest/hash/boot/GPU policy、同capture native/seven/current GPU independent sealを一体検証。fresh120は参考資料のみ。sourceに未確定fresh hashを埋めず、未結合draftからservice/header/hive/mediaを生成しない。
 
-USB1010はdirect boot keyboard+mouseの複合interface欠落修正であり、physical5Vや
-標準USB host controller/root hubの完成ではない。power変更を根拠なく追加しない。
-録音ERROR22は既存source61106acfのSTOP-buffer→ACQUIRE修正を再利用し、
-旧clientを再実行しない。搭載audio4facb36eはcapture owner/ADC/VUL/IRQ2配線済み。
-latency/drain未資格、standard Audio Engine/実録音/可聴出力は未成立として保持。
-このsourceを音声driver修正や音声機能完成とは報告しない。
+音声:
+搭載audio4facb36e/source2d623172の保存NativeStartはrevision1026/READY(14)/status0、DMAadapter/operations=1、map registers64。保持capture.logはbuffer16KiB、STOP-buffer→ACQUIRE/PAUSE/RUN/STOPの2pass、各CUR変化19/IRQ増分7、end0/aggregate非0を記録している。過去の限定capture実観測であり、fresh122/currentbootや標準Audio Engine・物理マイク・可聴再生の成功とはしない。
+よってDMAadapter欠如を補う架空adapter/MDL代替や、同capture再build/再実行は行わない。旧capture.logは保存し、capture_clientは既定None。sourceのログ分離helperは未採用・未buildのdefault-off候補として保持する。
+同bootでは署名ACCDET --readを1process、DOD4mode wrapperを1processだけ実行する。wrapper/session/user3EXEを固定MT8167DisplayRotationProbeV1へstageし、外側timeout300秒。元mode復元は既存Carson clientのfinally/監督契約へ任せ、非0/unsupported/資格不足を成功化しない。SCO/BT能力やlatency/drain/校正/analog routeは変更しない。実姿勢/物理タッチ/物理表示成功とAPI/DDI受理を分離する。
 
-実機/UART禁止。最終service compile/sign/媒体生成はfresh120結合後に一度だけ行う。
+`prepare-peripheral-next-draft.py` は既存署名7packageを一つのdraftに集約する。
+`peripheral_next_policy.py` / `build-peripheral-next.ps1` / media --next-profileが最終入口。
+現時点で最終SCM/native arm/媒体は未生成。実機owner main、workerは実機/UART操作なし。

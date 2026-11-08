@@ -19,7 +19,13 @@
 #include <bcrypt.h>
 #include <reason.h>
 #include "../../drivers/system/mt8167-toprgu/uart_screen.h"
-static const WCHAR service_name[]=L"MT8167PeripheralBatch";
+#if A04_PERIPHERAL_NEXT_PROFILE
+#include "peripheral-service-path-policy.h"
+#else
+#define A04_PERIPHERAL_SERVICE L"MT8167PeripheralBatch"
+#define A04_PERIPHERAL_DIRECTORY L"MT8167PeripheralBatch"
+#endif
+static const WCHAR service_name[]=A04_PERIPHERAL_SERVICE;
 static WCHAR base_directory[MAX_PATH],log_directory[MAX_PATH],executable[MAX_PATH];
 static HANDLE logfile=INVALID_HANDLE_VALUE,stop_event;
 static SERVICE_STATUS_HANDLE status_handle;static SERVICE_STATUS service_status;
@@ -29,6 +35,7 @@ static DWORD uart_error;
 struct peripheral_target {const WCHAR *id,*service,*cls,*folder,*inf,*sys,*cat;ULONGLONG version,date;BYTE hash[3][32];ULONGLONG base_version,base_date;BYTE base_sys[32];const WCHAR *base_inf;};
 struct preserved_file {const WCHAR *name;BYTE hash[32];};
 struct preserved_service {const WCHAR *name;DWORD present;BYTE hash[32];};
+struct diagnostic_client {const WCHAR *exe,*arguments,*name,*relative_directory;BYTE hash[32];DWORD timeout_ms;};
 #include "peripheral-batch-policy.h"
 #define PERIPHERAL_TARGET_COUNT (sizeof(targets)/sizeof(targets[0]))
 typedef char bounded_target_count[(PERIPHERAL_TARGET_COUNT>0 && PERIPHERAL_TARGET_COUNT<=9)?1:-1];
@@ -82,7 +89,7 @@ static void emit_record(unsigned i,unsigned e,DWORD c,int uart){(void)uart;recor
 static DWORD local_system(void){HANDLE t;BYTE b[256];DWORD n,e=0;if(!OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY,&t))return GetLastError();if(!GetTokenInformation(t,TokenUser,b,sizeof(b),&n))e=GetLastError();else if(!IsWellKnownSid(((TOKEN_USER *)b)->User.Sid,WinLocalSystemSid))e=ERROR_ACCESS_DENIED;CloseHandle(t);return e;}
 static DWORD disable_self(void){SC_HANDLE m,s;DWORD e=0;m=OpenSCManagerW(NULL,NULL,SC_MANAGER_CONNECT);if(!m)return GetLastError();s=OpenServiceW(m,service_name,SERVICE_CHANGE_CONFIG);if(!s)e=GetLastError();else{if(!ChangeServiceConfigW(s,SERVICE_NO_CHANGE,SERVICE_DISABLED,SERVICE_NO_CHANGE,NULL,NULL,NULL,NULL,NULL,NULL,NULL))e=GetLastError();CloseServiceHandle(s);}CloseServiceHandle(m);return e;}
 static DWORD hold_directory(const WCHAR *p,HANDLE *h){BY_HANDLE_FILE_INFORMATION i;*h=CreateFileW(p,FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,NULL);if(*h==INVALID_HANDLE_VALUE)return GetLastError();if(!GetFileInformationByHandle(*h,&i)||!(i.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)||(i.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT))return ERROR_ACCESS_DENIED;return 0;}
-static DWORD paths(void){WCHAR sys[MAX_PATH],module[MAX_PATH];DWORD n,e;HANDLE h=INVALID_HANDLE_VALUE;n=GetSystemDirectoryW(sys,MAX_PATH);if(!n||n>=MAX_PATH)return ERROR_BAD_PATHNAME;e=path(base_directory,sys,L"MT8167PeripheralBatch");if(!e)e=path(log_directory,base_directory,L"logs");if(!e)e=path(executable,sys,L"MT8167PeripheralBatch.exe");if(e)return e;n=GetModuleFileNameW(NULL,module,MAX_PATH);if(!n||n>=MAX_PATH||lstrcmpiW(module,executable))return ERROR_BAD_PATHNAME;e=hold_directory(base_directory,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);if(e)return e;e=hold_directory(log_directory,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);return e;}
+static DWORD paths(void){WCHAR sys[MAX_PATH],module[MAX_PATH];DWORD n,e;HANDLE h=INVALID_HANDLE_VALUE;n=GetSystemDirectoryW(sys,MAX_PATH);if(!n||n>=MAX_PATH)return ERROR_BAD_PATHNAME;e=path(base_directory,sys,A04_PERIPHERAL_DIRECTORY);if(!e)e=path(log_directory,base_directory,L"logs");if(!e)e=path(executable,sys,A04_PERIPHERAL_SERVICE L".exe");if(e)return e;n=GetModuleFileNameW(NULL,module,MAX_PATH);if(!n||n>=MAX_PATH||lstrcmpiW(module,executable))return ERROR_BAD_PATHNAME;e=hold_directory(base_directory,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);if(e)return e;e=hold_directory(log_directory,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);return e;}
 static DWORD signed_image(const WCHAR *p,HANDLE *held){WINTRUST_FILE_INFO f;WINTRUST_DATA d;GUID action=WINTRUST_ACTION_GENERIC_VERIFY_V2;LONG e;*held=CreateFileW(p,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,NULL);if(*held==INVALID_HANDLE_VALUE)return GetLastError();memset(&f,0,sizeof(f));f.cbStruct=sizeof(f);f.pcwszFilePath=p;f.hFile=*held;memset(&d,0,sizeof(d));d.cbStruct=sizeof(d);d.dwUIChoice=WTD_UI_NONE;d.fdwRevocationChecks=WTD_REVOKE_NONE;d.dwUnionChoice=WTD_CHOICE_FILE;d.pFile=&f;d.dwProvFlags=WTD_CACHE_ONLY_URL_RETRIEVAL;d.dwStateAction=WTD_STATEACTION_VERIFY;e=WinVerifyTrust(NULL,&action,&d);d.dwStateAction=WTD_STATEACTION_CLOSE;WinVerifyTrust(NULL,&action,&d);return e?ERROR_TRUST_FAILURE:0;}
 static DWORD fixed_signer(const WCHAR *,HANDLE);
 #include "peripheral-batch-reused.h"
@@ -108,6 +115,30 @@ static DWORD save_blob(const WCHAR *name,const void *data,DWORD bytes){WCHAR p[M
 static int readonly_uncertain;
 static DWORD readonly_one(const WCHAR *device,DWORD ioctl,DWORD expected,const WCHAR *output,int rtc){static DWORD aligned_buffer[16];BYTE *buffer=(BYTE *)aligned_buffer;static OVERLAPPED ov;HANDLE h;DWORD n=0,e=0,w;if(readonly_uncertain)return ERROR_BUSY;memset(buffer,0,sizeof(aligned_buffer));memset(&ov,0,sizeof(ov));ov.hEvent=CreateEventW(NULL,TRUE,FALSE,NULL);if(!ov.hEvent)return GetLastError();h=CreateFileW(device,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_OVERLAPPED,NULL);if(h==INVALID_HANDLE_VALUE){e=GetLastError();CloseHandle(ov.hEvent);return e;}if(!DeviceIoControl(h,ioctl,NULL,0,buffer,expected,&n,&ov)){e=GetLastError();if(!e)e=ERROR_GEN_FAILURE;if(e==ERROR_IO_PENDING){w=WaitForSingleObject(ov.hEvent,2000);if(w==WAIT_OBJECT_0)e=GetOverlappedResult(h,&ov,&n,FALSE)?0:GetLastError();else{e=ERROR_TIMEOUT;CancelIoEx(h,&ov);if(WaitForSingleObject(ov.hEvent,1000)!=WAIT_OBJECT_0){readonly_uncertain=1;return e;}}}}if(!e){if(n!=expected||((DWORD *)buffer)[rtc?0:0]!=(rtc?36u:1u)||(rtc&&((DWORD *)buffer)[1]!=1u))e=ERROR_INVALID_DATA;else if(!rtc&&(!((DWORD *)buffer)[1]||((DWORD *)buffer)[PERIPHERAL_TARGET_COUNT]>1000u))e=ERROR_NOT_READY;if(!e)e=save_blob(output,buffer,n);}CloseHandle(h);CloseHandle(ov.hEvent);return e;}
 static DWORD readonly_status(void){static const GUID guid={0x6b2c65ed,0xe2a7,0x4ddc,{0x86,0xba,0x38,0x42,0xe2,0x21,0x4e,0x29}};HDEVINFO set;SP_DEVICE_INTERFACE_DATA iface,extra;DWORD detailbuf[256];SP_DEVICE_INTERFACE_DETAIL_DATA_W *detail=(SP_DEVICE_INTERFACE_DETAIL_DATA_W *)detailbuf;SP_DEVINFO_DATA dev;DWORD first,e,n;first=readonly_one(L"\\\\.\\MT6392Rtc",CTL_CODE(FILE_DEVICE_UNKNOWN,0x800,METHOD_BUFFERED,FILE_READ_ACCESS),36,L"rtc-readonly.bin",1);record(0,0x201,first);set=SetupDiGetClassDevsW(&guid,NULL,NULL,DIGCF_DEVICEINTERFACE|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE)return first?first:GetLastError();memset(&iface,0,sizeof(iface));iface.cbSize=sizeof(iface);e=0;if(!SetupDiEnumDeviceInterfaces(set,NULL,&guid,0,&iface))e=GetLastError();memset(&extra,0,sizeof(extra));extra.cbSize=sizeof(extra);if(!e&&SetupDiEnumDeviceInterfaces(set,NULL,&guid,1,&extra))e=ERROR_DUP_NAME;if(!e&&GetLastError()!=ERROR_NO_MORE_ITEMS)e=GetLastError();if(!e){memset(detailbuf,0,sizeof(detailbuf));detail->cbSize=sizeof(*detail);memset(&dev,0,sizeof(dev));dev.cbSize=sizeof(dev);if(!SetupDiGetDeviceInterfaceDetailW(set,&iface,detail,sizeof(detailbuf),&n,&dev))e=GetLastError();else{e=property(set,&dev,SPDRP_SERVICE,L"Mt8167Thermal");if(!e)e=readonly_one(detail->DevicePath,CTL_CODE(FILE_DEVICE_UNKNOWN,0xa04,METHOD_BUFFERED,FILE_READ_DATA),28,L"thermal-readonly.bin",0);}}record(1,0x201,e);SetupDiDestroyDeviceInfoList(set);return first?first:e;}
+
+#if A04_PERIPHERAL_NEXT_PROFILE
+/* Exactly the two pinned signed clients; one process each, no shell/retry. */
+static DWORD run_clients(void)
+{
+ unsigned i;DWORD first=0;
+ for(i=0;i<sizeof(diagnostic_clients)/sizeof(diagnostic_clients[0]);i++){
+  const struct diagnostic_client *c=&diagnostic_clients[i];WCHAR sys[MAX_PATH],dir[MAX_PATH],exe[MAX_PATH],out[MAX_PATH],name[64],cmd[2*MAX_PATH+64];HANDLE held=INVALID_HANDLE_VALUE,stdout_=INVALID_HANDLE_VALUE,stderr_=INVALID_HANDLE_VALUE,nul=INVALID_HANDLE_VALUE,job=NULL;JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit;SECURITY_ATTRIBUTES sa;STARTUPINFOW start;PROCESS_INFORMATION process;DWORD e=0,exit=0,wait;
+  memset(&sa,0,sizeof(sa));sa.nLength=sizeof(sa);sa.bInheritHandle=TRUE;memset(&start,0,sizeof(start));memset(&process,0,sizeof(process));start.cb=sizeof(start);
+  if(!GetSystemDirectoryW(sys,MAX_PATH))e=GetLastError();if(!e)e=path(dir,sys,c->relative_directory);if(!e)e=path(exe,dir,c->exe);if(!e)e=deferred_file(exe,c->hash,&held);
+  if(!e){LONG result;WINTRUST_FILE_INFO f;WINTRUST_DATA d;GUID action=WINTRUST_ACTION_GENERIC_VERIFY_V2;memset(&f,0,sizeof(f));f.cbStruct=sizeof(f);f.pcwszFilePath=exe;f.hFile=held;memset(&d,0,sizeof(d));d.cbStruct=sizeof(d);d.dwUIChoice=WTD_UI_NONE;d.dwUnionChoice=WTD_CHOICE_FILE;d.pFile=&f;d.dwProvFlags=WTD_CACHE_ONLY_URL_RETRIEVAL;d.dwStateAction=WTD_STATEACTION_VERIFY;result=WinVerifyTrust(NULL,&action,&d);if(result)e=ERROR_TRUST_FAILURE;d.dwStateAction=WTD_STATEACTION_CLOSE;WinVerifyTrust(NULL,&action,&d);}
+  if(!e){lstrcpyW(name,c->name);lstrcatW(name,L".stdout.txt");e=path(out,log_directory,name);if(!e){stdout_=CreateFileW(out,GENERIC_WRITE,FILE_SHARE_READ,&sa,CREATE_NEW,FILE_FLAG_WRITE_THROUGH,NULL);if(stdout_==INVALID_HANDLE_VALUE)e=GetLastError();}}
+  if(!e){lstrcpyW(name,c->name);lstrcatW(name,L".stderr.txt");e=path(out,log_directory,name);if(!e){stderr_=CreateFileW(out,GENERIC_WRITE,FILE_SHARE_READ,&sa,CREATE_NEW,FILE_FLAG_WRITE_THROUGH,NULL);if(stderr_==INVALID_HANDLE_VALUE)e=GetLastError();}}
+  if(!e){nul=CreateFileW(L"NUL",GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,&sa,OPEN_EXISTING,0,NULL);if(nul==INVALID_HANDLE_VALUE)e=GetLastError();}
+  if(!e){job=CreateJobObjectW(NULL,NULL);memset(&limit,0,sizeof(limit));limit.BasicLimitInformation.LimitFlags=JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;if(!job)e=GetLastError();else if(!SetInformationJobObject(job,JobObjectExtendedLimitInformation,&limit,sizeof(limit)))e=GetLastError();}
+  if(!e){lstrcpyW(cmd,L"\"");lstrcatW(cmd,exe);lstrcatW(cmd,L"\" ");lstrcatW(cmd,c->arguments);start.dwFlags=STARTF_USESTDHANDLES;start.hStdInput=nul;start.hStdOutput=stdout_;start.hStdError=stderr_;
+   if(!CreateProcessW(exe,cmd,NULL,NULL,TRUE,CREATE_NO_WINDOW|CREATE_SUSPENDED,NULL,base_directory,&start,&process))e=GetLastError();
+   else{if(!AssignProcessToJobObject(job,process.hProcess)||ResumeThread(process.hThread)==(DWORD)-1){e=GetLastError();TerminateProcess(process.hProcess,e);CloseHandle(process.hThread);CloseHandle(process.hProcess);process.hProcess=NULL;}else{CloseHandle(process.hThread);record(i,0x220,process.dwProcessId);wait=WaitForSingleObject(process.hProcess,c->timeout_ms);if(wait!=WAIT_OBJECT_0){e=wait==WAIT_TIMEOUT?ERROR_TIMEOUT:GetLastError();if(!TerminateProcess(process.hProcess,ERROR_TIMEOUT)&&!e)e=GetLastError();(void)WaitForSingleObject(process.hProcess,5000);}else if(!GetExitCodeProcess(process.hProcess,&exit))e=GetLastError();else e=exit;CloseHandle(process.hProcess);}}
+  }
+  if(job)CloseHandle(job);record(i,0x221,e);if(held!=INVALID_HANDLE_VALUE)CloseHandle(held);if(stdout_!=INVALID_HANDLE_VALUE){FlushFileBuffers(stdout_);CloseHandle(stdout_);}if(stderr_!=INVALID_HANDLE_VALUE){FlushFileBuffers(stderr_);CloseHandle(stderr_);}if(nul!=INVALID_HANDLE_VALUE)CloseHandle(nul);if(e&&!first)first=e;
+ }
+ return first;
+}
+#endif
 static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_COUNT][5],directory_holds[PERIPHERAL_TARGET_COUNT];static WCHAR paths_[PERIPHERAL_TARGET_COUNT][3][MAX_PATH],folders[PERIPHERAL_TARGET_COUNT][MAX_PATH];SP_DEVINFO_DATA devs[PERIPHERAL_TARGET_COUNT];HDEVINFO set=INVALID_HANDLE_VALUE;DWORD i,j,e=0,first=0;const WCHAR *members[5];for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){directory_holds[i]=INVALID_HANDLE_VALUE;for(j=0;j<5;j++)held[i][j]=INVALID_HANDLE_VALUE;}
  /* Every candidate trio is held, byte-checked and CAT-verified before staging. */
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){e=path(folders[i],base_directory,targets[i].folder);if(!e)e=hold_directory(folders[i],&directory_holds[i]);if(e)goto done;for(j=0;j<3;j++){const WCHAR *n=j==0?targets[i].inf:(j==1?targets[i].sys:targets[i].cat);e=path(paths_[i][j],folders[i],n);if(!e)e=deferred_file(paths_[i][j],targets[i].hash[j],&held[i][j]);if(e)goto done;members[j]=paths_[i][j];}members[3]=members[4]=NULL;e=fixed_signer(paths_[i][2],held[i][2]);if(!e)e=deferred_members(i,paths_[i][2],members,held[i]);if(e)goto done;}
@@ -116,7 +147,11 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
  DWORD metadata,sys;cr=CM_Get_DevNode_Status(&status,&problem,devs[i].DevInst,0);record(i,0x202,(DWORD)cr);record(i,0x203,status);record(i,0x204,problem);
  metadata=selected(i,set,&devs[i],1);record(i,0x219,metadata);sys=installed_sys(i,1);record(i,0x21a,sys);
  e=metadata?metadata:sys;if(!e&&(cr!=CR_SUCCESS||!(status&DN_STARTED)||problem))e=ERROR_NOT_READY;
-}if(e&&!first)first=e;}e=readonly_status();if(e&&!first)first=e;e=preserved();if(e&&!first)first=e;e=first;goto done;}
+}if(e&&!first)first=e;}e=readonly_status();if(e&&!first)first=e;
+#if A04_PERIPHERAL_NEXT_PROFILE
+ e=run_clients();if(e&&!first)first=e;
+#endif
+ e=preserved();if(e&&!first)first=e;e=first;goto done;}
  /* Only generated explicit install bits receive DIF; retained nodes are never reinstalled. */
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){if(!(A04_PERIPHERAL_INSTALL_MASK&(1u<<i)))continue;e=deferred_find(i,set,&devs[i]);if(!e)e=selected(i,set,&devs[i],0);if(!e)e=installed_sys(i,0);if(e)goto done;}
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){e=ERROR_CANCELLED;goto done;}if(!SetupCopyOEMInfW(paths_[i][0],folders[i],SPOST_PATH,0,NULL,0,NULL,NULL)){e=GetLastError();goto done;}record(i,0x205,0);}

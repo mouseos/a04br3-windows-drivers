@@ -5,7 +5,7 @@ param(
     [string]$ExpectedSystemSha256,
     [string]$ExpectedLog1Sha256,
     [string]$ExpectedLog2Sha256,
-    [ValidateSet('MT8167DeviceInstall','MT8167HardwareProbe','MT8167EngineProbe','MT8167RenderProbe','MT8167RenderStage','MT8167RenderSingleGpu','MT8167PeripheralBatch')][string]$ServiceName='MT8167DeviceInstall',
+    [ValidateSet('MT8167DeviceInstall','MT8167HardwareProbe','MT8167EngineProbe','MT8167RenderProbe','MT8167RenderStage','MT8167RenderSingleGpu','MT8167PeripheralBatch','MT8167PeripheralNext122')][string]$ServiceName='MT8167DeviceInstall',
     [switch]$IncludeHardwareProbe,
     [switch]$RearmFixedGpuDeviceInstall,
     [switch]$InspectFixedGpuDeviceInstall,
@@ -68,6 +68,7 @@ function Fixed-ServiceSpec([string]$Name) {
         'MT8167EngineProbe' { return [ordered]@{name='MT8167EngineProbe';display_name='MediaTek MT8167 Engine Probe';image_path='"C:\Windows\System32\MT8167EngineProbe.exe"'} }
         'MT8167RenderProbe' { return [ordered]@{name='MT8167RenderProbe';display_name='PowerVR GE8300 Render Probe';image_path='"C:\Windows\System32\MT8167RenderProbe.exe"'} }
         'MT8167RenderStage' { return [ordered]@{name='MT8167RenderStage';display_name='PowerVR GE8300 Driver Update';image_path='"C:\Windows\System32\MT8167RenderStage.exe"'} }
+        'MT8167PeripheralNext122' { return [ordered]@{name='MT8167PeripheralNext122';display_name='MediaTek next peripheral batch';image_path='"C:\Windows\System32\MT8167PeripheralNext122.exe"'} }
         'MT8167PeripheralBatch' { return [ordered]@{name='MT8167PeripheralBatch';display_name='MediaTek fixed peripheral batch';image_path='"C:\Windows\System32\MT8167PeripheralBatch.exe"'} }
         'MT8167RenderSingleGpu' { return [ordered]@{name='MT8167RenderSingleGpu';display_name='PowerVR GE8300 Single GPU Update';image_path='"C:\Windows\System32\MT8167RenderSingleGpu.exe"'} }
         default { throw 'Unknown fixed one-shot service name' }
@@ -202,7 +203,7 @@ function Inspect-Services($Root,$Plan,[bool]$Patch) {
         foreach($spec in $Plan.services) {
             $values=Service-Values $spec
             $key=[MT8167OfflineHive.Native]::OpenPath($Root,($control+'\'+$spec.name),$true)
-            if($spec.name -ceq 'MT8167PeripheralBatch' -and $Patch -and $key){$key.Dispose();throw 'Dedicated peripheral service must be absent before initial arm'}
+            if($spec.name -cin @('MT8167PeripheralBatch','MT8167PeripheralNext122') -and $Patch -and $key){$key.Dispose();throw 'Dedicated peripheral service must be absent before initial arm'}
             if($spec.name -ceq 'MT8167RenderSingleGpu' -and (!$key -or !$Plan.engine_preserve.single_gpu_rearm)){if($key){$key.Dispose()};throw 'Pinned existing single GPU registration required'}
             $beforeFingerprint=$null;$diagnosticFingerprint=$null
             $singleRearm=$Patch -and $spec.name -ceq 'MT8167RenderSingleGpu'
@@ -509,11 +510,17 @@ if($InternalMode) {
 }
 if($ServiceName -eq 'MT8167EngineProbe' -and $IncludeHardwareProbe) { throw 'EngineProbe cannot register or rearm the legacy HardwareProbe service' }
 $peripheralPreserve=$null
-if($ServiceName -ceq 'MT8167PeripheralBatch'){
+if($ServiceName -cin @('MT8167PeripheralBatch','MT8167PeripheralNext122')){
     if($IncludeHardwareProbe -or $RearmEngineProbe -or $RearmFixedGpuDeviceInstall -or $InspectFixedGpuDeviceInstall -or $EnginePreservationPlanPath -or !$PeripheralPreservationPlanPath -or $ExpectedPeripheralPreservationPlanSha256 -cnotmatch '^[0-9a-f]{64}$'){throw 'Peripheral-only explicit preservation plan required'}
     if((Hash-File $PeripheralPreservationPlanPath) -cne $ExpectedPeripheralPreservationPlanSha256){throw 'Peripheral preservation plan pin mismatch'}
     $peripheralPreserve=Get-Content $PeripheralPreservationPlanPath -Raw|ConvertFrom-Json
+    if($ServiceName -ceq 'MT8167PeripheralNext122'){
+        if($peripheralPreserve.profile -cne 'peripheral-usb1010-wifi1020-sd8-dod17-parent1102-next-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.planned_reboots -ne 1 -or $peripheralPreserve.capture_selection.capture_number -lt 122 -or $peripheralPreserve.main_approval_sha256 -cnotmatch '^[0-9a-f]{64}$'){throw 'Explicit approved capture122+ next peripheral contract required'}
+        $names=@($peripheralPreserve.service_preservation.PSObject.Properties.Name|Sort-Object)
+        if(($names -join ',') -cne ((@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs','MT8167PeripheralBatch')|Sort-Object) -join ',')){throw 'All six old service snapshots required'}
+    } else {
     if($peripheralPreserve.profile -cne 'peripheral-usb1009-mma110-emmc19-parent1101-v1' -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.service -cne 'MT8167PeripheralBatch' -or $peripheralPreserve.data_directory -cne 'MT8167PeripheralBatch' -or $peripheralPreserve.planned_reboots -ne 1){throw 'Final main-selected peripheral-only profile required'}
+    }
     $selection=$peripheralPreserve.capture_selection
     if($selection.schema -ne 1 -or $selection.profile -cne $peripheralPreserve.profile -or $selection.capture_number -isnot [int] -or $selection.capture_number -lt 114 -or $selection.manifest_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $selection.manifest_sha256 -cne $peripheralPreserve.backup_manifest_sha256 -or $selection.recovery_boot_id -cnotmatch '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' -or $selection.recovery_boot_id -cne $peripheralPreserve.recovery_boot_id -or $selection.gpu_policy_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $selection.unchanged_since_capture -ne $true -or $peripheralPreserve.backup_manifest -notmatch ('private-windows-rt-prebackup-run'+$selection.capture_number+'/manifest.json$')){throw 'Explicit capture114+ manifest/policy/boot binding required'}
     if($peripheralPreserve.source_files.SYSTEM.sha256 -cne $ExpectedSystemSha256 -or $peripheralPreserve.source_files.'SYSTEM.LOG1'.sha256 -cne $ExpectedLog1Sha256 -or $peripheralPreserve.source_files.'SYSTEM.LOG2'.sha256 -cne $ExpectedLog2Sha256){throw 'Selected capture trio pins required'}

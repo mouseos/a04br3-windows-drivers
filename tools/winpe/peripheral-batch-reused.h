@@ -82,7 +82,7 @@ static DWORD deferred_marker(const WCHAR *name,int create)
 static DWORD deferred_boot_fence(int create)
 {
  HKEY key;DWORD disposition;LONG status;
- const WCHAR *name=L"SYSTEM\\CurrentControlSet\\Services\\" L"MT8167PeripheralBatch" L"\\DeferredInstallBoot";
+ const WCHAR *name=L"SYSTEM\\CurrentControlSet\\Services\\" A04_PERIPHERAL_SERVICE L"\\DeferredInstallBoot";
  if(create){
   status=RegCreateKeyExW(HKEY_LOCAL_MACHINE,name,0,NULL,REG_OPTION_VOLATILE,KEY_QUERY_VALUE,NULL,&key,&disposition);
   if(status)return status;RegCloseKey(key);return disposition==REG_CREATED_NEW_KEY?0:ERROR_ALREADY_EXISTS;
