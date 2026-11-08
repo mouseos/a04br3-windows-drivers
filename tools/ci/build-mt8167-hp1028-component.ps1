@@ -31,7 +31,7 @@ if($ComponentCache){
  if($old.source_commit -ne '3242e0237dc1fafc489e948e71e646037219dff7' -or !$old.component_build_only){throw 'Fixed initial HP component cache required'}
  foreach($f in $old.files){if((Get-FileHash (Join-Path "$ComponentCache\package" $f.path) -Algorithm SHA256).Hash -ne $f.sha256){throw 'Component cache package changed'}}
  $changes=@(& git -C $root diff --name-only $old.source_commit HEAD -- drivers)
- if($LASTEXITCODE -or @($changes|Where-Object{$_ -notin @('drivers/bus/mt8167-shared/codec_headphone.c','drivers/audio/mt8167-afe/headphone_endpoint.cpp','drivers/audio/mt8167-afe/headphone_endpoint.h')}).Count){throw 'Unrelated component cache dependency drift'}
+ if($LASTEXITCODE -or @($changes|Where-Object{$_ -notin @('drivers/bus/mt8167-shared/codec_headphone.c','drivers/audio/mt8167-afe/headphone_endpoint.cpp','drivers/audio/mt8167-afe/headphone_endpoint.h','drivers/audio/mt8167-afe/HEADPHONE.md')}).Count){throw 'Unrelated component cache dependency drift'}
 }
 foreach($name in @('adapter','headphone_endpoint')){
  $obj="$out\obj\$name.obj";$source="$root\drivers\audio\mt8167-afe\$name.cpp"
