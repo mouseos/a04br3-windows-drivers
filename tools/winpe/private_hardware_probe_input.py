@@ -106,6 +106,15 @@ def prepared_system_check(system, manifest, expected_sha256, root, backup, selec
             if report.get('single_gpu_rearm'):
                 if not re.fullmatch('[0-9a-f]{64}',before.get('single_gpu_ledger','')) or services[0].get('diagnostic_fingerprint')!=before['single_gpu_ledger']:raise ValueError('single GPU ledger preservation missing')
                 related_names.add('single_gpu_ledger')
+        if selected_service=='MT8167PeripheralBatch':
+            if (not re.fullmatch('[0-9a-f]{64}',report.get('peripheral_preservation_plan_sha256',''))
+                    or report.get('peripheral_old_services_preserved') is not True
+                    or report.get('engine_rearm_plan_sha256')):
+                raise ValueError('peripheral専用plan/旧service保持証拠が必要です')
+            old=json.loads(before.get('peripheral_old_services','{}'))
+            if set(old)!={'MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs'}:
+                raise ValueError('peripheral旧5service snapshot不一致')
+            related_names.add('peripheral_old_services')
         if set(before) != related_names or before != after:
             raise ValueError('関連既存設定の限定fingerprint不一致')
         if baseline is not None and before != baseline:
