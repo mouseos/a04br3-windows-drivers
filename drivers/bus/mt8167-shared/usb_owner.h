@@ -25,5 +25,10 @@ int a04_usb_owner_acquire(struct a04_usb_owner *);
 int a04_usb_owner_vbus(struct a04_usb_owner *,int);
 int a04_usb_owner_health(struct a04_usb_owner *);
 int a04_usb_owner_release(struct a04_usb_owner *);
+/* Internal parent-only primitives: caller holds the SAME owner mutex. */
+int a04_usb_owner_acquire_locked(struct a04_usb_owner *);
+int a04_usb_owner_vbus_locked(struct a04_usb_owner *,int);
+int a04_usb_owner_release_locked(struct a04_usb_owner *);
+int a04_usb_owner_health_locked(struct a04_usb_owner *);
 int a04_usb_owner_stop(struct a04_usb_owner *);
 #endif

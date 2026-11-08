@@ -1,0 +1,40 @@
+; RT8.1 USBPORT miniport; opt-in synthesized USB PDO support required in parent.
+; Root-hub PDO/USB\ROOT_HUB20 binding belongs to inbox USBPORT and usbhub.
+[Version]
+Signature="$WINDOWS NT$"
+Class=USB
+ClassGuid={36fc9e60-c465-11cf-8056-444553540000}
+Provider=%Provider%
+DriverVer=11/08/2026,2026.11.8.1014
+CatalogFile=mt8167-musb-hcd.cat
+[Manufacturer]
+%Provider%=Models,NTARM
+[Models.NTARM]
+%Device%=Install,MT8167\USBPORT20
+[DestinationDirs]
+DriverCopy=12
+[SourceDisksNames]
+1=%Disk%,,,
+[SourceDisksFiles]
+mt8167-musb-hcd.sys=1
+[Install.NT]
+CopyFiles=DriverCopy
+[DriverCopy]
+mt8167-musb-hcd.sys
+[Install.NT.HW]
+AddReg=Platform
+[Platform]
+; Explicit synthesized platform function; this does not claim PCI config space.
+HKR,,DsPciConfigSpace,0x00010001,1
+[Install.NT.Services]
+AddService=MT8167MUSBHcd,0x00000002,Service
+[Service]
+DisplayName=%Device%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%12%\mt8167-musb-hcd.sys
+[Strings]
+Provider="mouseos"
+Device="MT8167 MUSB HCD development (board observation owner)"
+Disk="MT8167 USBPORT HCD development"
