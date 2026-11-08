@@ -171,6 +171,5 @@ NTSTATUS a04_native_copy_storage_cpu_complete(struct a04_native_copy_storage *c)
 BOOLEAN a04_native_copy_storage_gpu_owned(const struct a04_native_copy_storage *c)
 {
  return c&&c->prepared&&!c->quarantined&&
-  a04_native_mdl_cpu_identity(c->source)&&a04_native_mdl_cpu_identity(c->destination)&&
-  !a04_native_mdl_cpu(c->source)&&!a04_native_mdl_cpu(c->destination);
+  a04_native_mdl_gpu_owned(c->source)&&a04_native_mdl_gpu_owned(c->destination);
 }

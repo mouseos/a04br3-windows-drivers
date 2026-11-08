@@ -29,6 +29,9 @@ PDMA_ADAPTER a04_native_mdl_adapter(const struct a04_native_mdl_binding *);
 NTSTATUS a04_native_mdl_hold_cold(struct a04_native_mdl_binding *);
 NTSTATUS a04_native_mdl_drop_cold(struct a04_native_mdl_binding *);
 const uint64_t *a04_native_mdl_pages(const struct a04_native_mdl_binding *,ULONG *count);
+/* Metadata-only ownership check; caller holds the native owner serialization.
+ * TRUE requires retained physical backing, live exposure and GPU cache owner. */
+BOOLEAN a04_native_mdl_gpu_owned(const struct a04_native_mdl_binding *);
 void *a04_native_mdl_cpu(const struct a04_native_mdl_binding *);
 PMDL a04_native_mdl_original(const struct a04_native_mdl_binding *);
 /* Exact locked-MDL CPU clean before GPU publication; invalidate only after

@@ -48,6 +48,9 @@ static NTSTATUS bind_pages(struct a04_native_mdl_binding **out,PDMA_ADAPTER a,
 NTSTATUS a04_native_mdl_sync_for_gpu(struct a04_native_mdl_binding *b)
 {
     if(!b || !b->retained || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+    /* Never clean CPU cache over an in-flight GPU owner's contents. A caller
+     * must first prove the previous fence and return CPU ownership. */
+    if(b->gpu_owned)return STATUS_DEVICE_BUSY;
     /* CPU writes must reach RAM before the GPU can fetch the supplied PFNs.
      * Physical-page retention is independent of cache ownership. */
     KeFlushIoBuffers(b->mdl,FALSE,TRUE);a04_gpu_dma_barrier();
@@ -69,6 +72,8 @@ const uint64_t *a04_native_mdl_pages(const struct a04_native_mdl_binding *b,ULON
 {if(!b || !count || !b->retained)return NULL;*count=b->pages;return b->physical;}
 const uint64_t *a04_native_mdl_physical_identity(const struct a04_native_mdl_binding *b,ULONG *count)
 {if(!b || !count)return NULL;*count=b->pages;return b->physical;}
+BOOLEAN a04_native_mdl_gpu_owned(const struct a04_native_mdl_binding *b)
+{return b && b->retained && b->exposed && b->pte_live && b->gpu_owned;}
 void *a04_native_mdl_cpu(const struct a04_native_mdl_binding *b)
 {return b && !b->gpu_owned?b->cpu:NULL;}
 const void *a04_native_mdl_cpu_identity(const struct a04_native_mdl_binding *b){return b?b->cpu:NULL;}
