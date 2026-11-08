@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "native_owner_dispatch.h"
+#include "windows_start.h"
 static BOOLEAN valid(const struct a04_native_owner_dispatch *d)
 {
     return d && d->native && d->start && d->irq && d->synchronize &&
