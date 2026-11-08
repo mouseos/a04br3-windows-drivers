@@ -25,7 +25,7 @@ $retained=@();foreach($f in Get-ChildItem $BaselinePackageDirectory -File){
 }
 Copy-Item "$BuildDirectory\build-manifest.json" "$out\texture327-build-manifest.json"
 foreach($n in @('ge8300-render.sys','ge8300-umd.dll','ge8300-d3d-texture.exe')){Copy-Item "$BuildDirectory\$n" $out}
-$inf=Get-Content "$BaselinePackageDirectory\ge8300-render.inf" -Raw;$old='DriverVer=11/07/2026,0.0.3.25';$new='DriverVer=11/07/2026,0.0.3.26'
+$inf=Get-Content "$BaselinePackageDirectory\ge8300-render.inf" -Raw;$old='DriverVer=11/07/2026,0.0.3.26';$new='DriverVer=11/07/2026,0.0.3.27'
 if(([regex]::Matches($inf,[regex]::Escape($old))).Count -ne 1){throw 'Exact326 INF required'}
 [IO.File]::WriteAllText("$out\ge8300-render.inf",$inf.Replace($old,$new),[Text.Encoding]::Unicode)
 & $Inf2CatPath "/driver:$out" /os:6_3_ARM /uselocaltime;if($LASTEXITCODE){throw 'Inf2Cat failed'}
