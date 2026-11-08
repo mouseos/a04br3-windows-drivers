@@ -27638,8 +27638,8 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/compiler/sm4.c",
-      "sha256": "d64e11415a59389a56bf1027c531b88f932b940318f241ed4887b28b5a6a0072",
-      "origin": "driver-port:sm4.c"
+      "sha256": "292daac112dd32cdc433277e65128a82a859e878baca2781d0c8aca27b60ea3a",
+      "origin": "driver-port:sm4.c + source-lane validation1b4e0695"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/compiler/sm4.h",

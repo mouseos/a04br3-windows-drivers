@@ -405,9 +405,10 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/compiler/sm4.c",
-      "source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823",
-      "role": "UMD-base3f829",
-      "sha256": "d64e11415a59389a56bf1027c531b88f932b940318f241ed4887b28b5a6a0072"
+      "source_commit": "1b4e06958d00f703fa3649648a2c2e7b18f92a0a",
+      "role": "SM4-source-lane-validation",
+      "sha256": "292daac112dd32cdc433277e65128a82a859e878baca2781d0c8aca27b60ea3a",
+      "base_source_commit": "3f8291d094c01206dfaa0a22d1fdccd6eecc5823"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/compiler/sm4.h",
@@ -964,7 +965,7 @@
       "sha256": "4c991fe32b1b5a6ffe47b01f2b1dac3f1afa1547e8a2ab93702d06808d5099f1"
     }
   ],
-  "compiler_source_plan_sha256": "d6af6d75a632429d207c6093bc4c0a819c25031aa3e8493aac3ba8819164c3e7",
+  "compiler_source_plan_sha256": "3a873100819d8506f4da0c24e3f4b9c0c4b517190a9930c36dc4cfb3d013c702",
   "old_driver_cache_required": false,
   "git_history_required": false,
   "hardware_verified": false,
@@ -1014,5 +1015,7 @@
     }
   ],
   "native_unit_count": 54,
-  "native_unit_sources_sha256": "e901ed65337a7f2d40a046ebd8883597c1a3d61af401e0869759337ae7592a91"
+  "native_unit_sources_sha256": "e901ed65337a7f2d40a046ebd8883597c1a3d61af401e0869759337ae7592a91",
+  "compiler_source_plan_base_sha256": "d6af6d75a632429d207c6093bc4c0a819c25031aa3e8493aac3ba8819164c3e7",
+  "additional_shader_source_commit": "1b4e06958d00f703fa3649648a2c2e7b18f92a0a"
 }
