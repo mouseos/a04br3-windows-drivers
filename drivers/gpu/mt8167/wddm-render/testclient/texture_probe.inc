@@ -51,7 +51,7 @@ static HRESULT texture_probe(ID3D11Device *device,ID3D11DeviceContext *ctx,ID3D1
   }
   ID3D11DeviceContext_Unmap(ctx,(ID3D11Resource *)staging,0);
   line("TEXTURE_EXPECTED",expected[pass]);line("TEXTURE_INTERIOR",interior);line("TEXTURE_EXTERIOR",exterior);line("TEXTURE_EDGE_EXCLUDED",edges);line("TEXTURE_MISMATCH",mismatch);line("TEXTURE_HASH",hash);
-  ID3D11DeviceContext_PSSetConstantBuffers(ctx,0,0,NULL);ID3D11Buffer_Release(cb);cb=NULL;
+  {ID3D11Buffer *nil=NULL;ID3D11DeviceContext_PSSetConstantBuffers(ctx,0,1,&nil);}ID3D11Buffer_Release(cb);cb=NULL;
   if(!interior||!exterior||mismatch){hr=E_FAIL;goto done;}
  }
  hr=S_OK;

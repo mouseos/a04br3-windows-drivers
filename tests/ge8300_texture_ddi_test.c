@@ -24,7 +24,7 @@ int main(void){
  SIZE_T bytes=device.functions.pfnCalcPrivateShaderResourceViewSize(h,&desc);assert(bytes==sizeof(struct geo_typed_handle));srv.pDrvPrivate=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,bytes);
  device.functions.pfnCreateShaderResourceView(h,&desc,srv,rt);assert(!error&&resource.refs==2);
  device.functions.pfnPsSetShaderResources(h,0,1,&srv);assert(device.texture);
- assert(FAILED(geo_typed_texture_allocation(&device,&storage,&allocation))); /* NULL sampler is LINEAR */
+ assert(SUCCEEDED(geo_typed_texture_allocation(&device,&storage,&allocation))); /* real NULL default LINEAR */
  sd.Filter=D3D10_DDI_FILTER_MIN_MAG_MIP_POINT;sd.AddressU=sd.AddressV=sd.AddressW=D3D10_DDI_TEXTURE_ADDRESS_CLAMP;sd.MinLOD=-3.0f;sd.MaxLOD=3.0f;
  bytes=device.functions.pfnCalcPrivateSamplerSize(h,&sd);sampler.pDrvPrivate=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,bytes);assert(sampler.pDrvPrivate);
  device.functions.pfnCreateSampler(h,&sd,sampler,srt);assert(!error);device.functions.pfnPsSetSamplers(h,0,1,&sampler);assert(!error);
@@ -38,5 +38,5 @@ int main(void){
  device.functions.pfnPsSetShaderResources(h,0,1,&nil);assert(!device.texture&&!device.texture_views&&resource.refs==1&&releases==1);
  assert(FAILED(geo_typed_texture_allocation(&device,&storage,&allocation)));
  desc.Tex2D.MipLevels=2;assert(!device.functions.pfnCalcPrivateShaderResourceViewSize(h,&desc)&&error==E_NOTIMPL);
- geo_typed_state_delete(device.state);puts("production SRV + sampler snapshot: reject null/nonzero-slot/multi-mip, preserve zero-count and destroyed-bound lifetimes");return 0;
+ geo_typed_state_delete(device.state);puts("production SRV + sampler snapshot: accept real NULL-LINEAR, reject nonzero-slot/multi-mip, preserve zero-count and destroyed-bound lifetimes");return 0;
 }

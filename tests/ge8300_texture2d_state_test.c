@@ -21,5 +21,16 @@ int main(void){
   s.width=w;s.height=h;s.row_pitch=w*4;s.bytes=s.row_pitch*h;assert(!a04_m111_texture2d_state(&out,&s));
   a=qw(out.image);b=qw(out.image+2);assert(((a>>48)&16383)==h-1&&((a>>34)&16383)==w-1&&(b&32767)==w-1);
  }
+ const uint32_t filters[]={0,1,4,5,16,17,20,21,85};
+ for(unsigned k=0;k<9;k++)for(unsigned anis=1;anis<=16;anis++){
+  uint32_t f=filters[k],n=f==85?anis:1,ratio=n>=16?4:n>=8?3:n>=4?2:n>=2?1:0;
+  assert(!a04_m111_texture2d_state_filtered(&out,&s,f,n));a=qw(out.sampler);
+  assert(((a>>38)&3)==((f>>4)&1)&&((a>>36)&3)==((f>>2)&1)&&((a>>40)&1)==(f&1));
+  assert(((a>>33)&7)==(f==85?ratio:0)&&((a>>41)&7)==2&&((a>>44)&7)==2&&((a>>56)&7)==2);
+ }
+ struct a04_texture2d_state saved=out;
+ assert(a04_m111_texture2d_state_filtered(&out,&s,0x80,1)&&!memcmp(&out,&saved,sizeof(out)));
+ assert(a04_m111_texture2d_state_filtered(&out,&s,0x55,17)&&!memcmp(&out,&saved,sizeof(out)));
+ assert(a04_m111_texture2d_state_filtered(&out,&s,0x55,0)&&!memcmp(&out,&saved,sizeof(out)));
  puts("BGRA8 linear2D POINT+CLAMP descriptor:16384 extents/padded pitch/swizzle/atomic invalid rejection PASS; not a texture draw");return 0;
 }

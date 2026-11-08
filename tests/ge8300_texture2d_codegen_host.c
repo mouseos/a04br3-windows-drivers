@@ -6,7 +6,7 @@
 #include "../drivers/gpu/mt8167/vendor_m1_11/render_owner/native_texture2d_program.h"
 #include "../drivers/gpu/mt8167/wddm-render/compiler/texture2d_sm4.h"
 int main(void){
- const uint32_t t[]={0x40,27,0x04000059,0x00208e46,0,1,0x04001858,0x00107000,0,0x5555,0x0300005a,0x00106000,0,0x03000065,0x001020f2,0,0x0a000045,0x001020f2,0,0x00208046,0,0,0x00107e46,0,0x00106000,0,0x0100003e};
+ const uint32_t t[]={0x40u,0x1bu,0x4000059u,0x208e46u,0x0u,0x1u,0x300005au,0x106000u,0x0u,0x4001858u,0x107000u,0x0u,0x5555u,0x3000065u,0x1020f2u,0x0u,0xa000045u,0x1020f2u,0x0u,0x208046u,0x0u,0x0u,0x107e46u,0x0u,0x106000u,0x0u,0x100003eu};
  struct geo_sm4_signatures s={0};struct geo_shader_compiler c;struct geo_compiled_shader out;struct geo_texture2d_program p;void *owned=NULL;
  s.output_count=1;s.outputs[0].mask=15;
  int status=geo_pco_device_create(UINT64_C(0x001600280036001e),&c,&owned);if(status){fprintf(stderr,"device_create %d\n",status);return 1;}
