@@ -1,0 +1,11 @@
+# fresh140 / run141 通常bundle準備
+
+failed139はThermalHandoffDxe EBS callback/0x1100D00C translation fault。WinPEaudit0、Windows通常install前。mainは旧RTC4b67bootでRecovery復旧し、fresh140原37を前138原37と全hash/size照合して同一を確定。new_windows_drivers_applied=falseはmainのcontroller/result.jsonと新capture証拠に基づく。旧139媒体・失敗receipt・原138を保持し、再実行しない。
+
+fresh140 manifest af6df53daf6b70248e88007bd23642a43b09e28ca240bee526bf00674a194bc3 / Recovery0fb71a3a-9ab6-491a-be62-ff3f46f5843d。53GPUlogも同byteでfresh140専用bindingを使用。旧hiveとbyteが同じでも新manifest/bootIDへ更新する。
+
+service/data MT8167CombinedFollowup140、profile combined-peripherals-fresh140-v1、DisplayName MediaTek combined peripherals140。次run141/fresh142、GPU0、親1115/audio1033だけDIF、HCD1014補助import-only、予定restart1、speaker silence1秒。11roles/schema2/5clients/8record上限はそのまま。未HP接続/PCroleをHP再生/OTG成功にしない。
+
+boot採用pinsの唯一の設定はtools/recovery/combined140-boot-adoption.json。現在blocked-await-fixed-boot-main-seal。Carson修正版のpath/hash/producer/main seal/compatibility check数をこのJSONへ固定するまで生成不可。旧f7f997は拒否listで再採用禁止。mainのRecovery/no-install37byte一致receiptもpinし、原140と結合する。親thermalQI3build1104/HPQI2build1107/record3の区別を保持。
+
+旧139source/媒体/pinsはfreezeのまま、新独立branchでgenerator準備のみ。親/audio/HCD/GPU再buildやSDK全setupなし。新hostの既入力closureを利用し、新manifest/reader/必要小deltaだけ転送。実機はmainのみ、worker非接触。修正版bootの実動作はmainの次試験まで未確認。

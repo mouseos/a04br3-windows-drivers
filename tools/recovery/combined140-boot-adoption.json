@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "adoption_status": "blocked-await-fixed-boot-main-seal",
+  "matched_boot": {
+    "path": "port/xnu/out/mt8167-thermal-stock-stop-v3-20261108/firmware/boot-final/boot.img",
+    "sha256": "f7f997105c11eb60142e1992867533f20dd009ff1dc2cd8f3b49c50e005bf53e",
+    "write_required": true,
+    "producer_pins": {
+      "path": "port/xnu/out/windows-rt-parent1115-run139/tuple-binding.json",
+      "sha256": "2375e2c4c6cb498ad49f4f30a4aad34b438df68f29675cf5ad2d4db5d0179c0e"
+    },
+    "main_seal": {
+      "path": "port/xnu/out/mt8167-thermal-stock-stop-v3-20261108/main-artifact-seal.json",
+      "sha256": "8ddaef0ed61014112ac243a52ea1a2a019477dd665abe75777dba7bf0cd26aa8"
+    }
+  },
+  "compatibility_checks": 47,
+  "required_parent_source_commit": "df7892ef316e8ce7ffdf01d9f2fbbbbf3840cf2d",
+  "required_parent_sys_sha256": "a4d86dfcdaa6243619a7d4ca413995e3505b559afb3b9e9bf2a5269ef054046b",
+  "required_firmware_record_version": 3,
+  "required_thermal_interface_version": 3,
+  "required_thermal_parent_build": 1104,
+  "required_headphone_interface_version": 2,
+  "required_headphone_parent_build": 1107,
+  "failure": {
+    "transaction": "combined-run139",
+    "phase": "ThermalHandoffDxe ExitBootServices callback",
+    "fault_address": "0x1100D00C",
+    "fault": "translation fault",
+    "WinPE_audit_count": 0,
+    "Windows_install_observed": false,
+    "Windows_unapplied": "inference only; main fresh140 state comparison required"
+  },
+  "runtime_success_claimed": false,
+  "rejected_boot_sha256": [
+    "f7f997105c11eb60142e1992867533f20dd009ff1dc2cd8f3b49c50e005bf53e"
+  ],
+  "state_rebind_proof": {
+    "path": "port/gsi/logs/ios-feasibility/windows-rt-combined-run139/result.json",
+    "sha256": "9124531654bca4e30d0d594a2ae0cb3481aaa606d5b683251647588d7c6a8287"
+  },
+  "fresh_manifest_sha256": "af6df53daf6b70248e88007bd23642a43b09e28ca240bee526bf00674a194bc3",
+  "fresh_recovery_boot_id": "0fb71a3a-9ab6-491a-be62-ff3f46f5843d",
+  "baseline_state": "main confirmed original37 identical; parent/audio/HCD not applied; fallback4b67 restored"
+}
