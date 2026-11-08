@@ -78,7 +78,7 @@ struct geo_typed_state *geo_typed_state_from_device(D3D10DDI_HDEVICE h){struct g
 void geo_typed_error(D3D10DDI_HDEVICE h,HRESULT hr) {
  struct geo_typed_device *d=geo_typed_device(h);if(!d||hr==S_OK)return;
  trace_value(d->adapter,"DDI_ERROR_HRESULT",(UINT)hr);
- if(FAILED(hr)&&SUCCEEDED(d->error))d->error=hr;
+ if(FAILED(hr)&&hr!=D3DDDIERR_WASSTILLDRAWING&&hr!=DXGI_ERROR_WAS_STILL_DRAWING&&SUCCEEDED(d->error))d->error=hr;
  if(d->callbacks.pfnSetErrorCb)d->callbacks.pfnSetErrorCb(d->core,hr);
 }
 HRESULT geo_typed_validate_native_state(D3D10DDI_HDEVICE h) {
