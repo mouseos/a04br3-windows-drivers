@@ -17,3 +17,9 @@ C実装には明示opt-in `A04_GPU_PHASE1_ENABLED`（既定0）を追加した�
 immutable hive/driver admissionとmutable diagnostic snapshot/prefix観測を分離した151契約、failure-only baseline REPORT、旧サービス停止/BT ROOT保持/所有者・restore契約、boot1fef/UEFI8range/GPT、既存SystemRequiredの取得と解放を保持する。
 
 fresh152実結果が出てから、152 validator/native preparation/postreader・正式scope・header/serviceを一組で完成させる。元151用の「service148不存在」等を、新152 actualへ無条件で持ち込まない。
+
+## main最終342 tupleの結合
+
+GPU342正式manifest d167f2e5、SYS431c06ad、main-independent-final-GPU342-artifact-sealを結合した。runtime/package sourceは59ded879、UTC INF日付修正recipe e395c3a6。native67/KMD13 members、8TU、6BCBF署名、actual341と同一RT8.1imports、83linkedfiles再利用sign-onlyというmain証拠を保持し、再compile/linkは行わない。
+client9934/--hardware=PowerVR/900000ms/phase1/one-shotと既存main sealを検証。153 source scopeはrender更新だけ、non-GPU clients空、温度/音声/WLAN/BT/回転/benchmark再試験なし。新source flagsはGPU phase1だけ有効にする予定、readonly既成功再試験のflagsは0。
+ただしfresh152・151実結果・native actual/同Recovery資格は全て未結合であり、armed GPU execute=false/count0のまま。主の153 observerへ、boot180→最初PB286からpre-GPU180→最初client PB220からGPU900を各一度だけ更新する候補を明記し、正式実装への結合は未完と区別する。

@@ -29,21 +29,44 @@ def inspect_candidate(root):
          'reported_provenance':{k:m.get(k) for k in ('schema','package_source_commit','kernel_binary_source_commit','native_owner_source_commit','inf_driverver','build_manifest_file','build_manifest_sha256','hardware_verified','root_reset_fix_proven')},
          'build_manifest':None if not m.get('build_manifest_file') else {'path':(PACKAGE/m['build_manifest_file']).as_posix(),'sha256':sha(rooted(root,PACKAGE/m['build_manifest_file']))}}
 
+def sealed342(root):
+ candidate=inspect_candidate(root)
+ require(candidate['manifest'] is not None and candidate['manifest']['sha256']=='d167f2e56ae363341c778fa3ddde4a48200d62284132b7eea2caffe30056fb7b','Exact completed342 manifest required')
+ m=read(rooted(root,PACKAGE/'signed-manifest.json'))
+ require(m['package_source_commit']==m['kernel_binary_source_commit']==m['native_owner_source_commit']==RUNTIME_SOURCE and m['inf_driverver']=='11/08/2026,0.0.3.42','Actual runtime/date provenance required')
+ require(sha(rooted(root,PACKAGE/'ge8300-render.sys'))=='431c06ade452b0ca00a920419bb39fe5261080469750a0bdf9f61670cccbec52','Exact342 SYS required')
+ require(candidate['build_manifest']['sha256']==m['build_manifest_sha256'],'Build receipt byte pin mismatch')
+ sealpath=Path('port/xnu/out/windows-rt-tq-clear342/main-independent-seal.json');sp=rooted(root,sealpath);seal=read(sp)
+ require(seal['status']=='main-independent-final-GPU342-artifact-seal' and seal['manifest_sha256']==candidate['manifest']['sha256'] and seal['SYS_sha256']=='431c06ade452b0ca00a920419bb39fe5261080469750a0bdf9f61670cccbec52' and seal['runtime_source_commit']==RUNTIME_SOURCE and seal['package_recipe_commit']==PACKAGE_SOURCE[:8] and seal['compiled_TUs_verified']==8 and seal['archive_members_verified']=={'native':67,'kmd':13} and seal['BCBF_valid_signatures']==6 and seal['RT81_imports_equal_actual341'] and seal['linked_objects_reused_without_recompile'],'Main342 artifact seal mismatch')
+ require(seal['hardware_verified'] is False and seal['root_reset_fix_proven'] is False,'Build seal must not claim hardware result')
+ candidate.update(status='main-sealed342-artifact-not-adopted-awaiting-fresh152',main_seal={'path':sealpath.as_posix(),'sha256':sha(sp)})
+ return candidate
+
+def fixed_client(root):
+ prior=read(rooted(root,Path('port/xnu/out/windows-rt-combined146-peripheral/package-map.json')))
+ client=prior['diagnostics']['gpu_suite'].copy()
+ require(client['sha256']=='9934ba6bf9741630a544bf096ea3261c717d45873f91b899cc7e3eae62466add' and client['arguments']==['--hardware=PowerVR'] and client['one_shot'] and client['phase']==1 and client['timeout_ms']==900000,'Exact one-shot GPR2 client required')
+ require(sha(rooted(root,Path(client['directory'])/client['exe']))==client['sha256'] and sha(rooted(root,Path(client['manifest'])))==client['manifest_sha256'],'Signed client member/manifest mismatch')
+ sealref=prior['pixel_client_seal'];require(sha(rooted(root,Path(sealref['path'])))==sealref['sha256'],'Existing main client seal mismatch')
+ seal=read(rooted(root,Path(sealref['path'])));require(seal['client_sha256']==client['sha256'],'Client seal identity mismatch')
+ client.update(relative_directory='MT8167CombinedFollowup152\\clients',main_seal=sealref)
+ return client
+
 def make_draft(root):
  prior=Path('port/xnu/out/windows-rt-combined151-fresh150/main-deployment-contract.json');p=rooted(root,prior);c=read(p)
  require(c['transaction']=='combined-run151' and c['gpu_client_execute'] is False,'Exact frozen151 reference required')
  return {'schema':1,'profile':'combined-features-fresh152-DRAFT','transaction':'combined-run153',
- 'status':'awaiting-151-result-fresh152-native-actual-final342-seal-and-main-scope',
+ 'status':'GPU342-client9934-sealed-scope-fixed-awaiting151-result-fresh152-native-actual',
  'draft':True,'normal_install_allowed':False,'arm_allowed':False,'media_generation_allowed':False,
  'hardware_owner':'main','hardware_operations_allowed':False,
  'source_basis':'frozen151 source; not a claim of installed152 actual',
  'prior151_reference_only':{'contract':{'path':prior.as_posix(),'sha256':sha(p)},'source_commit':c['source_commit'],'fresh_capture_number':150,'actual_state_must_not_be_inferred_from_planned_tuple':True},
  'capture_selection':{'required_capture_number':152,'fresh':None,'recovery_boot_id':None,'same_recovery_unchanged_proof':None,'native_actual':None,'actual_selected_versions':None,'original_files':None},
- 'prior151_result':None,'approved_scope':None,
+ 'prior151_result':None,'approved_scope':{'status':'main-source-scope-confirmed-actual152-binding-pending','install_targets':['render'],'GPU_client_last_once':True,'non_GPU_clients':[],'prior151_success_not_inferred':True},
  'service_template':{'service':'MT8167CombinedFollowup152','data_directory':'MT8167CombinedFollowup152','profile':'combined-features-fresh152-v1','targets':12,'render_target':{'role':'render','hardware_id':'ACPI\\MOU0006','sys':'ge8300-render.sys','index':10},'native_arm':None,'signed_service':None},
- 'candidate_GPU342':{'selected':False,'directory':PACKAGE.as_posix(),'requested_package_recipe_source':PACKAGE_SOURCE,'reported_runtime_source':RUNTIME_SOURCE,'sign_only_date_fix_must_not_be_described_as_new_runtime_compile':True,**inspect_candidate(root)},
- 'execution_template':{'armed_GPU_client_execute':False,'armed_GPU_client_count':0,'planned_GPU_client_count_after_approval':1,'GPU_client_must_be_last':True,'GPU_phase':1,'client':None,'non_GPU_clients':None,'temperature_retest':None,'audio_retest':None,'WLAN_retest':None,'BT_retest':None,'rotation_retest':False,'benchmark_execute':False,'BT_first_install_execute':False,'successful_unchanged_functions_should_not_be_repeated':True,'planned_reboots':1,'timeouts':{'install_seconds':None,'boot_wait_seconds':None,'service_phase_seconds':None,'GPU_client_seconds':None,'deadline_start_events':None}},
- 'runtime_opt_in_template':{'A04_GPU_PHASE1_ENABLED':1,'A04_RUN_THERMAL_READ':None,'A04_RUN_WLAN_READ':None,'A04_RUN_BT_READ':None,'values_require_final_main_scope':True,'legacy_and_frozen151_defaults_unchanged':True},
+ 'candidate_GPU342':{'selected':False,'directory':PACKAGE.as_posix(),'requested_package_recipe_source':PACKAGE_SOURCE,'reported_runtime_source':RUNTIME_SOURCE,'sign_only_date_fix_must_not_be_described_as_new_runtime_compile':True,**sealed342(root)},
+ 'execution_template':{'armed_GPU_client_execute':False,'armed_GPU_client_count':0,'planned_GPU_client_count_after_approval':1,'GPU_client_must_be_last':True,'GPU_phase':1,'client':fixed_client(root),'non_GPU_clients':[],'temperature_retest':False,'audio_retest':False,'WLAN_retest':False,'BT_retest':False,'rotation_retest':False,'benchmark_execute':False,'BT_first_install_execute':False,'successful_unchanged_functions_should_not_be_repeated':True,'planned_reboots':1,'timeouts':{'install_seconds':900,'boot_wait_seconds':180,'service_phase_seconds':180,'GPU_client_seconds':900,'deadline_start_events':{'service':'first phase1 PB target0/event0x286; once','GPU_client':'first current client PB target0/event0x220; once','repeated_events_extend':False,'observer_binding_pending':True}}},
+ 'runtime_opt_in_template':{'A04_GPU_PHASE1_ENABLED':1,'A04_RUN_THERMAL_READ':0,'A04_RUN_WLAN_READ':0,'A04_RUN_BT_READ':0,'values_require_final_main_scope':True,'legacy_and_frozen151_defaults_unchanged':True},
  'mutable_diagnostics':{'fresh152_baseline':None,'count':None,'source_correlation':None,'live_log_full_equality_is_install_gate':False,'archived_prefixes_hash_pinned':True,'live_overwrite_or_delete':False,'comparison':'saved exact prefix/append/truncation/replacement/missing observation only','tool':'tools/recovery/compare-mutable-diagnostic-logs.py'},
  'preservation_template':{'boot_required_sha256':'1fef20aa28be71ae0bd826ec91619df3b492abd23631632d5b0d679e38ca560a','boot_write_required':False,'gpt_written':False,'current_UEFI8range_retained':True,'service_fingerprints':None,'named_values':None,'prior_combined150_stopped_values':None,'failed149_service148_absence_requires_actual_evidence':True,'BT_existing_ROOT_retained':True,'driver_versions_and_SYS_require_actual152':True,'SystemRequired_existing_implementation_retained':True},
  'post_capture_number':154,
