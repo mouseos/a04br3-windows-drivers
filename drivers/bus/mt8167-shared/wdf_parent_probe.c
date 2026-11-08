@@ -109,7 +109,7 @@
 #error Parent1101 requires the retained RTC calendar and capture1026
 #endif
 #if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
-#include "thermal_native_interface.h"
+#include "thermal_parent_pio_interface.h"
 #endif
 #ifndef A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC
 #define A04_SHARED_MT8167_CODEC_DOMAIN_DIAGNOSTIC 0
@@ -266,6 +266,7 @@ struct a04_codec_voice voice;
 #if A04_SHARED_THERMAL_DIAGNOSTIC
 struct a04_shared_thermal_owner thermal;
 #if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
+    PHYSICAL_ADDRESS thermalAssigned[2];
     PVOID thermalPioMappings[2];volatile LONG thermalPioUsed;ULONGLONG thermalPioDeadline;
 #endif
 EX_RUNDOWN_REF thermalRundown;BOOLEAN thermalRundownClosed;
@@ -1314,6 +1315,12 @@ NTSTATUS ParentPrepare(WDFDEVICE dev,WDFCMRESLIST raw,WDFCMRESLIST translated)
 #if A04_SHARED_GPU_DOMAIN_SPM
 #if A04_SHARED_GPU_THERMAL_PROFILE
     if(a04_parent_translate_gpu_thermal_resources(r,t,n,&mapping,&apmixed,&gpuSpm))return STATUS_DEVICE_CONFIGURATION_ERROR;
+    c->thermalAssigned[0].QuadPart=c->thermalAssigned[1].QuadPart=0;
+    for(i=0;i<n;++i){
+        if(r[i].base==0x1100d000u)c->thermalAssigned[0].QuadPart=(LONGLONG)t[i].base;
+        if(r[i].base==0x11003000u)c->thermalAssigned[1].QuadPart=(LONGLONG)t[i].base;
+    }
+    if(!c->thermalAssigned[0].QuadPart||!c->thermalAssigned[1].QuadPart)return STATUS_DEVICE_CONFIGURATION_ERROR;
 #else
     if(a04_parent_translate_gpu_domain_resources(r,t,n,&mapping,&apmixed,&gpuSpm))return STATUS_DEVICE_CONFIGURATION_ERROR;
 #endif
@@ -1473,21 +1480,9 @@ NTSTATUS ChildRequirements(WDFDEVICE child,WDFIORESREQLIST requirements)
     if(c->base==0xfffffffdu)return STATUS_SUCCESS;
 #endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
-    if(c->base==0xfffffffeu) {
-        static const ULONG thermalBase[2]={0x1100d000u,0x11003000u};unsigned i;
-        status=WdfIoResourceListCreate(requirements,WDF_NO_OBJECT_ATTRIBUTES,&list);
-        if(!NT_SUCCESS(status))return status;
-        for(i=0;i<2;i++) {
-            RtlZeroMemory(&descriptor,sizeof(descriptor));descriptor.Type=CmResourceTypeMemory;
-            descriptor.ShareDisposition=CmResourceShareDeviceExclusive;descriptor.Flags=CM_RESOURCE_MEMORY_READ_WRITE;
-            descriptor.u.Memory.Length=0x1000;descriptor.u.Memory.Alignment=1;
-            descriptor.u.Memory.MinimumAddress.QuadPart=thermalBase[i];descriptor.u.Memory.MaximumAddress.QuadPart=thermalBase[i]+0xfff;
-            status=WdfIoResourceListAppendDescriptor(list,&descriptor);
-            if(!NT_SUCCESS(status)){WdfObjectDelete(list);return status;}
-        }
-        status=WdfIoResourceRequirementsListAppendIoResList(requirements,list);
-        if(!NT_SUCCESS(status))WdfObjectDelete(list);return status;
-    }
+    /* These ranges are already assigned to the eight-range parent. A child
+     * must not submit a second exclusive claim to the system arbiter. */
+    if(c->base==0xfffffffeu)return STATUS_SUCCESS;
 #endif
 #if defined(A04_AUDIO_CHILD_RESOURCES) && A04_AUDIO_CHILD_RESOURCES
     if(c->base==0xffffffffu) {
@@ -1601,7 +1596,7 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
     if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
 #if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
     if(base==0xfffffffeu) {
-        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&A04SharedThermalNativeGuid,NULL);
+        WDF_QUERY_INTERFACE_CONFIG_INIT(&query,NULL,&Mt8167ThermalParentPioGuid,NULL);
         query.SendQueryToParentStack=TRUE;status=WdfDeviceAddQueryInterface(child,&query);
         if(!NT_SUCCESS(status)){WdfObjectDelete(child);return status;}
     }
@@ -1653,7 +1648,7 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #if A04_SHARED_THERMAL_DIAGNOSTIC
     A04_SHARED_THERMAL_INTERFACE thermalIface;
 #if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
-    A04_THERMAL_NATIVE_INTERFACE nativeIface;
+    MT8167_THERMAL_PARENT_PIO_INTERFACE nativeIface;
 #endif
 #endif
     A04_SHARED_AUDIO_INTERFACE audioIface; A04_SHARED_USB_INTERFACE usbIface;
@@ -1752,11 +1747,11 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #endif
 #if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
     RtlZeroMemory(&nativeIface,sizeof(nativeIface));
-    nativeIface.Header.Size=sizeof(nativeIface);nativeIface.Header.Version=A04_THERMAL_NATIVE_VERSION;
+    nativeIface.Header.Size=sizeof(nativeIface);nativeIface.Header.Version=MT8167_THERMAL_PARENT_PIO_VERSION;
     nativeIface.Header.Context=dev;nativeIface.Header.InterfaceReference=ParentInterfaceReference;nativeIface.Header.InterfaceDereference=ParentInterfaceDereference;
-    nativeIface.ParentBuild=A04_THERMAL_NATIVE_PARENT_BUILD;
+    nativeIface.ParentBuild=MT8167_THERMAL_PARENT_PIO_BUILD;
     nativeIface.Measure=ParentThermalPioMeasure;
-    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&nativeIface,&A04SharedThermalNativeGuid,NULL);
+    WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&nativeIface,&Mt8167ThermalParentPioGuid,NULL);
     status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;
 #endif
 
