@@ -42,7 +42,7 @@ function Archive($members,$tag,$leaf,$changed){
   if($before -cne $after -and $m -notin $changed){throw "Unexpected member change $tag/$m"}
   $rows+=@{name=$m;before_sha256=$before;sha256=$after;compiled=($m -in $changed)}
  }
- $paths=@($members|ForEach-Object{"$out\$tag\$_"});& llvm-lib /machine:arm "/out:$out\$leaf" @paths;if($LASTEXITCODE){throw 'Archive link'}
+ $paths=@($members|ForEach-Object{"$out\$tag\$_"});[array]::Reverse($paths);& llvm-lib /machine:arm "/out:$out\$leaf" @paths;if($LASTEXITCODE){throw 'Archive link'}
  $made=@(& llvm-ar t "$out\$leaf"|ForEach-Object{[IO.Path]::GetFileName($_)})
  if(($made -join "`n") -cne ($members -join "`n")){throw 'Archive order/member count'}
  $script:archives+=@{role=$tag;file=$leaf;sha256=(Sha "$out\$leaf");members=$rows}
