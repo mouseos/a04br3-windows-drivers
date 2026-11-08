@@ -7,3 +7,7 @@ run115後のcaptured-unmounted fresh116を明示結合する。GPUは実選択3.
 標準D3D11で2色Clear/readback、三角形、色補間を1clientでまとめて確認する。clientの再試行は0。既存Engine/旧GPUの履歴、Graphics設定、既存data directoryと新しいRun117 directoryを分離する。媒体生成、署名、実機shader成功、全GPU機能完成を区別する。
 
 このprofileは固定のprivate captureと署名済み候補を要する実機更新用であり、一般配布用Windows媒体ではない。driverのsource buildはshader323-buildおよびsingle-checkoutの手順を参照する。
+
+保持nodeのメタデータ観測では、CM status/problemを先行して独立記録する。DevicePropertyのDriverInfPath/DriverVersion/DriverDateがERROR_NOT_FOUNDの場合だけ、同じHWID/service/classへ一意に一致したdevnodeのSetupDiOpenDevRegKey(DIREG_DRV, KEY_QUERY_VALUE)からInfPath/DriverVersion/DriverDateDataを読む。型・サイズ・期待値の検査は維持し、元APIの値不一致・型不正・アクセス拒否は代替経路へ逃がさない。レジストリへの書込みはない。run115のどのAPIが490を返したかは未確定なので、この経路利用と元API結果を別eventで記録する。
+
+MicrosoftのAPI契約: https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdiopendevregkey 。DIREG_DRVは対象deviceのsoftware keyを開く。native選択metadataも同じdriver class keyの値を読み、fresh116で各候補版・date・SYS hash一致を確認済み。API欠損を成功へ置換せず、同じ選択ドライバの別の公式読取り経路で固定値を検証する。

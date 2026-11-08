@@ -1,3 +1,42 @@
+/* Query the software key belonging to the exact matched devnode. This is
+ * SetupAPI's selected driver key, not a guessed class path or a write.
+ * RT8.1 can omit DEVPKEY driver metadata after DIF installation. Only an
+ * absent property may use this source; a present mismatch is still fatal. */
+static DWORD single_driver_value(HDEVINFO set,SP_DEVINFO_DATA *dev,const WCHAR *name,
+ DWORD kind,BYTE *value,DWORD capacity,DWORD *bytes)
+{
+ HKEY key=SetupDiOpenDevRegKey(set,dev,DICS_FLAG_GLOBAL,0,DIREG_DRV,KEY_QUERY_VALUE);
+ DWORD type=0,error;
+ if(key==INVALID_HANDLE_VALUE)return GetLastError();
+ *bytes=capacity;error=RegQueryValueExW(key,name,NULL,&type,value,bytes);RegCloseKey(key);
+ if(error)return error;
+ if(type!=kind||!*bytes||*bytes>capacity)return ERROR_INVALID_DATA;
+ return 0;
+}
+static DWORD single_version(HDEVINFO set,SP_DEVINFO_DATA *dev,ULONGLONG *version)
+{
+ DWORD error=deferred_selected_version(set,dev,version),bytes,n=0,i;WCHAR value[128];ULONGLONG result=0;
+ pnp_record(0,0x141,error);if(error!=ERROR_NOT_FOUND)return error;
+ error=single_driver_value(set,dev,L"DriverVersion",REG_SZ,(BYTE *)value,sizeof(value),&bytes);
+ pnp_record(0,0x142,error);if(error)return error;
+ if(bytes<2||(bytes&1)||value[bytes/2-1])return ERROR_INVALID_DATA;
+ for(i=0;i<4;i++){
+  DWORD part=0,digits=0;
+  while(n<bytes/2-1&&value[n]>=L'0'&&value[n]<=L'9'){part=part*10+value[n++]-L'0';if(++digits>5||part>65535)return ERROR_INVALID_DATA;}
+  if(!digits)return ERROR_INVALID_DATA;result=(result<<16)|part;
+  if(i<3){if(value[n++]!=L'.')return ERROR_INVALID_DATA;}else if(value[n])return ERROR_INVALID_DATA;
+ }
+ *version=result;return 0;
+}
+static DWORD single_date(HDEVINFO set,SP_DEVINFO_DATA *dev,const struct deferred_pin *pin)
+{
+ DWORD error=deferred_selected_date(0,set,dev,pin),bytes;FILETIME date;
+ pnp_record(0,0x143,error);if(error!=ERROR_NOT_FOUND)return error;
+ error=single_driver_value(set,dev,L"DriverDateData",REG_BINARY,(BYTE *)&date,sizeof(date),&bytes);
+ pnp_record(0,0x144,error);if(error)return error;
+ if(bytes!=sizeof(date)||(((ULONGLONG)date.dwHighDateTime<<32)|date.dwLowDateTime)!=pin->date)return ERROR_REVISION_MISMATCH;
+ return 0;
+}
 /* Fixed read-only retention: no class installer or selected-driver mutation. */
 static DWORD single_string(HDEVINFO set,SP_DEVINFO_DATA *dev,DWORD property,const WCHAR *want)
 {
@@ -10,7 +49,11 @@ static DWORD single_inf(HDEVINFO set,SP_DEVINFO_DATA *dev,const WCHAR *want)
 {
  static const DEVPROPKEY key={{0xa8b865dd,0x2e3d,0x4094,{0xad,0x97,0xe5,0x93,0xa7,0x0c,0x75,0xd6}},5};
  WCHAR value[128];DWORD bytes;DEVPROPTYPE type;
- if(!SetupDiGetDevicePropertyW(set,dev,&key,&type,(BYTE *)value,sizeof(value),&bytes,0))return GetLastError();
+ if(!SetupDiGetDevicePropertyW(set,dev,&key,&type,(BYTE *)value,sizeof(value),&bytes,0)){
+  DWORD error=GetLastError();pnp_record(0,0x145,error);if(error!=ERROR_NOT_FOUND)return error;
+  error=single_driver_value(set,dev,L"InfPath",REG_SZ,(BYTE *)value,sizeof(value),&bytes);
+  pnp_record(0,0x146,error);if(error)return error;type=DEVPROP_TYPE_STRING;
+ }
  if(type!=DEVPROP_TYPE_STRING||bytes<2||bytes>sizeof(value)||(bytes&1)||value[bytes/2-1]||lstrcmpiW(value,want))return ERROR_REVISION_MISMATCH;
  return 0;
 }
@@ -30,13 +73,15 @@ static DWORD render_single_retained(HDEVINFO set)
    for(n=0;n<bytes/2&&ids[n];){if(!lstrcmpiW(ids+n,single_retained[k].id)){matches++;found=dev;break;}while(n<bytes/2&&ids[n])n++;n++;}
   }
   if(matches!=1)return ERROR_NOT_FOUND;
+  {ULONG status=0,problem=0;CONFIGRET cr=CM_Get_DevNode_Status(&status,&problem,found.DevInst,0);
+   pnp_record(k,0x147,(DWORD)cr);if(cr==CR_SUCCESS){pnp_record(k,0x148,status);pnp_record(k,0x149,problem);}}
   error=single_string(set,&found,SPDRP_SERVICE,single_retained[k].service);if(error)return error;
   error=single_string(set,&found,SPDRP_CLASSGUID,single_retained[k].cls);if(error)return error;
   error=single_inf(set,&found,single_retained[k].inf);if(error)return error;
-  error=deferred_selected_version(set,&found,&version);if(error)return error;
+  error=single_version(set,&found,&version);if(error)return error;
   if(version!=single_retained[k].version)return ERROR_REVISION_MISMATCH;
   memset(&pin,0,sizeof(pin));pin.date=single_retained[k].date;
-  error=deferred_selected_date(0,set,&found,&pin);if(error)return error;
+  error=single_date(set,&found,&pin);if(error)return error;
  }
  n=GetSystemDirectoryW(system,MAX_PATH);if(!n||n>=MAX_PATH)return ERROR_BAD_PATHNAME;
  error=path(drivers,system,L"drivers");if(error)return error;
