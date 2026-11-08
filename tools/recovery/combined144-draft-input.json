@@ -70,5 +70,37 @@
     "wifi": "1022",
     "hcd": "1016"
   },
-  "unselected_candidates_are_not_approved_inputs": true
+  "unselected_candidates_are_not_approved_inputs": true,
+  "execution_strategy": {
+    "status": "conditional-plan-only-not-final-input",
+    "selection_rule": "Proceed with the first complete eligible sealed input set; do not wait solely for GPU root fix when functional update set is complete",
+    "functional_fixes_ready_first": {
+      "requires": [
+        "completed audio functional fix package and main independent seal",
+        "completed thermal functional fix package and main independent seal",
+        "completed WiFi1022 package and main independent seal",
+        "completed HCD1016 package and main independent seal",
+        "fresh144 native preservation and final profile validation"
+      ],
+      "render_action": "retain actual GPU338; no render DIF",
+      "gpu_client_execute": false,
+      "gpu_client_count": 0,
+      "planned_windows_reboots": 1,
+      "normal_mount_collection": "Collect run143 delayed GPU text/UMD logs on the same normal mount; preserve 57-file baseline and extensions",
+      "not_a_GPU338_diagnostic_retest": true
+    },
+    "GPU_root_fix_ready_first": {
+      "requires": [
+        "completed evidence-backed GPU root fix signed package and main independent seal",
+        "final agreed companion feature scope and complete sealed inputs",
+        "fresh144 native preservation and final profile validation"
+      ],
+      "gpu_client_execute": true,
+      "gpu_client_count": 1,
+      "gpu_client_position": "last",
+      "planned_windows_reboots": 1
+    },
+    "unknown_input_final_arm_allowed": false,
+    "current_draft_does_not_select_either_path": true
+  }
 }
