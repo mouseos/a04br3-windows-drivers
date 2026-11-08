@@ -222,6 +222,19 @@ struct copy_begin {struct geo_kmd_context *context;struct geo_allocation *destin
 static BOOLEAN begin_copy(void *arg){struct copy_begin *c=arg;struct geo_job *j;
  c->status=geo_prepare_copy_begin(&c->context->adapter->engine,c->destination,c->source,&c->ticket);
  if(c->status==STATUS_SUCCESS){j=&c->context->adapter->engine.jobs[c->ticket.slot];j->context=c->context;j->open_handle=c->dh;j->vertex_open_handle=c->sh;}return TRUE;}
+/* A failed Render has no published ticket for scheduler cancellation.
+ * Keep both refs and any possibly prepared native token, close normal work,
+ * and retire only through lifecycle apply_proof after real owner drain.
+ * Do not free an ambiguous native prepare or pretend it never existed. */
+static BOOLEAN poison_copy_render(void *arg) {
+ struct geo_kmd_adapter *a=arg;a->engine.poisoned=1;return TRUE;
+}
+static NTSTATUS fail_copy_render(struct geo_kmd_adapter *a,NTSTATUS status) {
+ (void)a->synchronize(a->sync_context,poison_copy_render,a);
+ /* Even a failed synchronize must not allow more normal session work. */
+ if(a->session)InterlockedExchange(&a->session->state,GEO_SESSION_FAILED);
+ return status;
+}
 static NTSTATUS GeoRenderCopyImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r,const struct geo_copy_packet *p) {
  struct copy_begin x;UINT i;NTSTATUS status;
  if(p->magic!=GEO_COPY_MAGIC||p->size!=sizeof(*p)||p->version!=1||p->destination_index||p->source_index!=1||p->width!=800||p->height!=600||p->reserved||
@@ -229,11 +242,11 @@ static NTSTATUS GeoRenderCopyImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r,co
  RtlZeroMemory(&x,sizeof(x));x.context=c;x.dh=r->pAllocationList[0].hDeviceSpecificAllocation;x.sh=r->pAllocationList[1].hDeviceSpecificAllocation;
  x.destination=GeoResolveWriteAllocation(c,x.dh);x.source=GeoResolveReadAllocation(c,x.sh);
  if(!x.destination||!x.source||!c->adapter->engine.owner.prepare_copy)return STATUS_INVALID_PARAMETER;
- if(!c->adapter->synchronize(c->adapter->sync_context,begin_copy,&x))return STATUS_DEVICE_NOT_READY;
+ if(!c->adapter->synchronize(c->adapter->sync_context,begin_copy,&x))return fail_copy_render(c->adapter,STATUS_DEVICE_NOT_READY);
  if(x.status!=STATUS_SUCCESS)return x.status;
  c->adapter->pending[x.ticket.slot].generation=x.ticket.generation;
- if(r->pAllocationList[0].SegmentId&&r->pAllocationList[1].SegmentId){status=prepare_pending(c->adapter,&x.ticket);if(status!=STATUS_SUCCESS)return status;}
- if(GeoWriteTicket(r->pDmaBuffer,&x.ticket)!=STATUS_SUCCESS||GeoWriteTicket(r->pDmaBufferPrivateData,&x.ticket)!=STATUS_SUCCESS)return STATUS_INVALID_PARAMETER;
+ if(r->pAllocationList[0].SegmentId&&r->pAllocationList[1].SegmentId){status=prepare_pending(c->adapter,&x.ticket);if(status!=STATUS_SUCCESS)return fail_copy_render(c->adapter,status);}
+ if(GeoWriteTicket(r->pDmaBuffer,&x.ticket)!=STATUS_SUCCESS||GeoWriteTicket(r->pDmaBufferPrivateData,&x.ticket)!=STATUS_SUCCESS)return fail_copy_render(c->adapter,STATUS_INVALID_PARAMETER);
  r->pDmaBuffer=(UCHAR*)r->pDmaBuffer+sizeof(x.ticket);r->pDmaBufferPrivateData=(UCHAR*)r->pDmaBufferPrivateData+sizeof(x.ticket);
  for(i=0;i<2;i++){RtlZeroMemory(r->pPatchLocationListOut,sizeof(*r->pPatchLocationListOut));r->pPatchLocationListOut->AllocationIndex=i;r->pPatchLocationListOut->DriverId=GEO_COPY_MAGIC;r->pPatchLocationListOut++;}return STATUS_SUCCESS;
 }
