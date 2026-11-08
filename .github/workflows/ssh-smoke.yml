@@ -4,11 +4,11 @@ on:
 jobs:
   ssh:
     runs-on: windows-2022
-    timeout-minutes: 10
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - name: Open restricted SSH for intervention
         uses: ./.github/actions/open-ssh
         with:
           authorized-key: ${{ secrets.A04BR3_RUNNER_SSH_PUBLIC_KEY }}
-          keep-minutes: 6
+          keep-minutes: 90
