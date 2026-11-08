@@ -1,5 +1,18 @@
 # TAB-A04-BR3 Windows ドライバ
 
+## 独立compiler後続328（実機未検証）
+
+このbranchは327の通常source closureに[SM4 scalar/vector即値](docs/ge8300-sm4-literals328.md)を統合する。1TUの実ARM link/署名とhost NIR/PCO生成を確認済み。nativeの有限shader受理は残り、一般shader描画完成・媒体適用可能とは扱わない。327署名packageは変更しない。
+
+```sh
+git clone --depth 1 --single-branch --branch work/ge8300-shader-literals328 https://github.com/mouseos/a04br3-windows-drivers.git
+```
+
+[通常source build手順](tools/ci/README-ge8300-source-build.md)とsource-origin/compiler-planは328差分を含む。372TUの通常fullbuild実行は今回未実施。[327 suite時間予算](docs/ge8300-texture-suite-time-budget.md)はclient900秒/diagnostic phase1200秒の未実測保守値。
+
+以下はこれまでの統合履歴と327以前の実証範囲。
+
+
 ## 現行独立source候補3.27（実機未検証）
 
 326のTexture2D/SRV/SAMPLE/native lifetimeに、通常POINT/LINEAR組合せ・anisotropic descriptorと
