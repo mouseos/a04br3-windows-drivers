@@ -1,0 +1,7 @@
+# MT8167 標準無音PCM consumer
+
+既存bounded WASAPI consumer source9bce1468を再利用し、payloadを常時zeroへ置換した。`--speaker-silence`または`--headphone-silence`だけを受け、48kHz stereo PCM16/float32で1秒/1回、既存AudioSrv/MMDevice/WASAPI経路を使う。音出し/latency/drain成功を報告しない。任意path/外部PCM/繰返し/既定deviceへのfallbackなし。
+
+endpointのDeviceTopologyが接続する実adapter reference末尾Mt8167TopologyまたはMt8167HeadphoneTopologyと、MT8167\\AFEの実instanceを照合する。HP時は最初に親の資格付きREAD_SOCKETを1回取得し、insertedでなければHP_NOT_EXECUTED/PCM_EXECUTED0でERROR_NOT_READY。endpoint不在も未実行であり成功ではない。
+
+snapshot ABI1/v11、実DMA CUR/IRQ進行とfaultを100ms間隔で集約、WASAPI padding0・clock進行・Stopを確認する。1秒のpayload後最大10秒で打切り。出力16KiB上限、同directoryの新規log作成/Flush必須、UARTなし。HPは実未接続なら試さず通常speakerだけを実行する。後段校正producerの実測や実音声は、このhost buildでは未確認。
