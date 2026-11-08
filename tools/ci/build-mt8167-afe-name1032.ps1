@@ -15,7 +15,7 @@ $ac=Get-Content "$AudioCache\object-cache-manifest.json" -Raw|ConvertFrom-Json
 $base='81f20c785cebf7e7a65778a3b3a10687bb6bcb54'
 if($old.source_commit -cne $base -or $ac.source_commit -cne $base){throw 'Fixed final1027 audio cache required'}
 if(((& clang --version)[0]) -cne (($parent.compiler -split "`n")[0])){throw 'Compiler drift'}
-foreach($f in $old.files){if((Sha (Join-Path "$AudioCache\package" $f.path)) -cne $f.sha256){throw 'HP package drift'}}
+foreach($f in $old.files){if((Sha (Join-Path "$AudioCache\package" $f.path)) -cne $f.sha256.ToLowerInvariant()){throw 'HP package drift'}}
 function Closure-Same($source,$base){
  $todo=[Collections.Generic.Queue[string]]::new();$todo.Enqueue([IO.Path]::GetFullPath($source));$seen=@{}
  while($todo.Count){$p=$todo.Dequeue();if($seen.ContainsKey($p)){continue};$seen[$p]=$true
@@ -47,7 +47,7 @@ foreach($name in @('dl1','dl1_engine','shared_audio','audio_parent_client','audi
  $source=if($name -eq 'clock_owner'){"$root\drivers\bus\mt8167-shared\clock_owner.c"}else{"$audioRoot\$name.$(if($cpp){'cpp'}else{'c'})"}
  $base=$ac.source_commit
  $cached="$AudioCache\obj\$name.obj"
- {$x=@($ac.objects|Where-Object{$_.name -ceq "$name.obj"});if($x.Count -ne 1 -or (Sha $cached) -cne $x[0].sha256.ToLowerInvariant()){throw 'Audio helper cache mismatch'}}
+ $x=@($ac.objects|Where-Object{$_.name -ceq "$name.obj"});if($x.Count -ne 1 -or (Sha $cached) -cne $x[0].sha256.ToLowerInvariant()){throw 'Audio helper cache mismatch'}
  if(Closure-Same $source $base){$objects+=$cached;$reused+=@{name=$name;source_commit=$base;sha256=(Sha $cached)};continue}
  $obj="$out\obj\$name.obj";$lang=if($cpp){@('-std=c++14','-fms-compatibility','-fno-exceptions','-fno-rtti')}else{@('-std=c11')}
  & clang @common @kernel @flags @lang -w -c $source -o $obj
