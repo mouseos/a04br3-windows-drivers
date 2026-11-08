@@ -1501,6 +1501,11 @@ static NTSTATUS ParentAddProbeChild(WDFDEVICE parent, PCWSTR id, PCWSTR instance
 {
     PWDFDEVICE_INIT init; WDFDEVICE child; WDF_QUERY_INTERFACE_CONFIG query;
     UNICODE_STRING name; NTSTATUS status; WDF_OBJECT_ATTRIBUTES attr; WDF_PDO_EVENT_CALLBACKS callbacks;
+#if A04_SHARED_USBPORT_CHILD
+    /* A distinct devnode prevents the old HID transport's LowerFilters from
+     * being inherited by the standalone USBPORT function driver. */
+    if(base==0x11100000u)id=L"MT8167\\USBPORT20";
+#endif
     init=WdfPdoInitAllocate(parent);if(!init)return STATUS_INSUFFICIENT_RESOURCES;
     RtlInitUnicodeString(&name,id);status=WdfPdoInitAssignDeviceID(init,&name);
     if(!NT_SUCCESS(status))goto fail;

@@ -4,7 +4,7 @@ USB1011のhelperから独立したWDM miniport `usbport_hcd.c` を追加した�
 `DriverEntry`が実USBPORTのGetHciMnを確認してRegisterUSBPortDriverを呼ぶ。
 root hub PDOとそのPnP/USBDI処理はinbox USBPORTへ委ねる。
 物理backendは未接続。標準hubの実起動や周辺機器の実機動作は未検証。
-HID経路のSYS/INFを変更せず、別SYS/INFにしている。同じUSB20に同時bindしない。
+HID経路のSYS/INFを変更せず、別SYS/INFにしている。opt-in親はUSBPORT20という別devnodeを生成し、旧HID LowerFiltersを継承しない。
 
 ## 原本と解析の区別
 
@@ -41,7 +41,7 @@ RT81 ABIとしてコピーしていない。特に同公開宣言はRegisterの�
 |properties|ev_6bde946025169a1ab0f744e1c1f00a685a045b4cc4d1a80f96719e861522efa0、USBPORTがendpoint+0x128へ0x40bytesを作る|0x40とtype offset0x14をARM照合|
 |RootData|解析用EHCI ev_16109d428380cdeb440989bf99ca830bf3e3bb736c042be3716f167cf897898c。ports/characteristics/powergood/currentの16bytes|同型callback|
 |RhGetStatus|原本EHCI ev_d5835217e7b8242b66e7aa38233d1dd3d9940e937ad7677fac8f5a057fdebad6、USHORTへ1を返す|port change bitmapと誤解しない|
-|Complete|解析用USBPORT ev_d7b782215044bb1e725485b2e9b3764262f78d093592c16581d61046d6e7ea02 / asm ev_b606e5aa2e336b7e585d62ebffa6d4430434bd78cc920d3f185c733917e699df。r0ext/r1endpoint/r2transfer/r3USBD/status、stack actual|同型service、abortと二重完了しない|
+|Complete|解析用USBPORT ev_d7b782215044bb1e725485b2e9b3764262f78d093592c16581d61046d6e7ea02 / asm ev_b606e5aa2e336b7e585d62ebffa6d4430434bd78cc920d3f185c733917e699df。r0ext/r1endpoint/r2元transfer-parameters/r3USBD/status、stack actual|同型service、private transfer contextを第3引数に渡さず元parametersを渡す。abortと二重完了しない|
 
 全callback slot順は既存原本EHCI登録Evidence
 `ev_78a67be54a48cb57faa230c88bc39023a94ee051620d10c677b54021602a5290`
@@ -70,7 +70,7 @@ full-speed bulkと<=64byte interruptを扱う。DMAを開始・停止するコ�
 
 ## 親側のopt-in
 
-`A04_SHARED_USBPORT_CHILD=1` は既定オフ。既存USB子PDOに、USBPORTの
+`A04_SHARED_USBPORT_CHILD=1` は既定オフ。opt-in時だけUSBPORT20子PDOを生成し、USBPORTの
 IOCTL_ACPI_GET_DEVICE_INFORMATIONに対する合成bus自身の識別情報を追加する。
 firmware ACPIの観測結果を装わず、silicon revisionも報告しない。
 実際の親busのGUID_BUS_INTERFACE_STANDARDを転送する。DMA/translateメソッドを
@@ -87,3 +87,5 @@ firmware ACPIの観測結果を装わず、silicon revisionも報告しない。
 
 標準hubへの実binding、実RT81登録成功、PnP start/stop、physical backend、
 control/汎用転送の実機成功は未確認。回収manifestはこれらをfalseのまま記録する。
+
+実RT81媒体のWindows/inf/usbport.infでROOT_HUB20→ROOTHUB.Dev→usbhubサービス、ServiceBinary=usbhub.sysを確認した。usb.infのStandardHub.Devも同じセクションを参照する。root ID生成だけで標準hub起動成功とは扱わない。

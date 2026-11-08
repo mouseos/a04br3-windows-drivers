@@ -52,7 +52,9 @@ typedef ULONG (*A04_MP_HUB_STATUS)(PVOID,PULONG);
 typedef ULONG (*A04_MP_PORT_FEATURE)(PVOID,USHORT);
 typedef VOID (*A04_PORT_INVALIDATE_RH)(PVOID);
 typedef VOID (*A04_PORT_INVALIDATE_EP)(PVOID,PVOID);
-typedef VOID (*A04_PORT_COMPLETE)(PVOID,PVOID,PVOID,USBD_STATUS,ULONG);
+/* Third argument is the original USBPORT transfer-parameters pointer, not
+ * the miniport-private transfer context passed as Submit's fourth argument. */
+typedef VOID (*A04_PORT_COMPLETE)(PVOID,PVOID,struct a04_mp_parameters *,USBD_STATUS,ULONG);
 struct a04_mp_packet {
  ULONG version,flags,bandwidth,reserved;SIZE_T extension_bytes,endpoint_bytes,transfer_bytes;
  UCHAR name[8];ULONG common_bytes;

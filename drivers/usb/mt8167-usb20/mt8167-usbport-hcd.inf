@@ -10,7 +10,7 @@ CatalogFile=mt8167-usbport-hcd.cat
 [Manufacturer]
 %Provider%=Models,NTARM
 [Models.NTARM]
-%Device%=Install,MT8167\USB20
+%Device%=Install,MT8167\USBPORT20
 [DestinationDirs]
 DriverCopy=12
 [SourceDisksNames]

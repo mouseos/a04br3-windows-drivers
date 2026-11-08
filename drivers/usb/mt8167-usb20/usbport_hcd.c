@@ -171,9 +171,9 @@ static VOID Poll(PVOID p,PVOID endpoint)
  e->toggle=h->pio.ep.toggle;t->actual=actual;t->state=2;
  h->active=0;h->active_ep=0;
  /* RT81 service signature confirmed from r0/r1/r2/r3 plus stack actual. */
- Packet.complete(h,e,t,status,actual);
+ Packet.complete(h,e,t->parameters,status,actual);
 }
-static VOID PollController(PVOID p){if(CTX(p)->backend.poll)CTX(p)->backend.poll(CTX(p)->backend.context);}
+static VOID PollController(PVOID p){struct a04_hcd *h=CTX(p);if(h->active_ep)Poll(p,h->active_ep);else if(h->backend.poll)h->backend.poll(h->backend.context);}
 /* Exported test seam consumes an already verified backend, never raw request
  * data. Production has no unguarded physical backend or IOCTL to install one. */
 ULONG A04HcdSetBackend(PVOID p,const struct a04_hcd_backend *b)
@@ -193,7 +193,7 @@ ULONG A04HcdControlComplete(PVOID p,PVOID endpoint,PVOID transfer,USBD_STATUS st
  struct a04_hcd *h=CTX(p);struct a04_mp_transfer *t=transfer;
  if(!h->active||h->active!=t||h->active_ep!=endpoint||h->active_ep->p.type!=1||actual>t->bytes||!Packet.complete)return 1;
  h->active=0;h->active_ep=0;t->actual=actual;t->state=2;
- Packet.complete(h,endpoint,t,status,actual);return 0;
+ Packet.complete(h,endpoint,t->parameters,status,actual);return 0;
 }
 ULONG A04HcdPortObservation(PVOID p,int connected,const struct a04_hub_observation *o)
 {
