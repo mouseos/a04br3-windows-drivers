@@ -1,3 +1,12 @@
+# 現行330 source build
+
+公開branchは`work/ge8300-vs-uniform330`。ルートREADMEのcloneと通常wrapperを使用する。
+329のABI4 witness検証に330のVS CB/PDS DMAと既存owned page内512byte/stageを統合。
+source gateはnative61TU/compiler375TUと最新origin/hashを照合する。過去cache/private hive不要の通常fullbuild入口は変更しない。
+現行の実検証は15TU増分compile/link/署名と実PCO→native構築・ASAN/UBSAN・ABI3後方互換まで。
+375TU全build/CIと実GPUは未実施。adapter contract6/ISA0x33001は329 peerと混載禁止。
+詳細は[330契約](../../docs/ge8300-vs-uniform330.md)。以下は従来手順・出自の履歴。
+
 # 現行327 source build
 
 公開branchは`work/ge8300-texture-filter327`。ルートREADMEのshallow clone手順から

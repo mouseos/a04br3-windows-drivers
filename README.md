@@ -1,5 +1,21 @@
 # TAB-A04-BR3 Windows ドライバ
 
+## VS定数バッファ・行列shader後続330（実機未検証）
+
+[330の実装と一次source](docs/ge8300-vs-uniform330.md)。VS/PS CB0先頭4vectorを実captureし、VSはPDS DOUTDでcommon storeへ転送する。実生成4行DP4 VS368byteを受理し、各stage512byteを既存owned USC page内で分離する。CPUによる頂点変換・固定USC置換は行わない。
+
+```powershell
+git clone --depth 1 --single-branch --branch work/ge8300-vs-uniform330 https://github.com/mouseos/a04br3-windows-drivers.git
+Set-Location a04br3-windows-drivers
+./tools/ci/build-ge8300-from-source.ps1 -EnableCandidate -RunHostTests
+```
+
+[通常source build手順](tools/ci/README-ge8300-source-build.md)はnative61/compiler375TUの最新closureを検査し、過去driver cache/private hiveを入力にしない。署名候補では必要15TUだけを再compileし、既存SDK/PCO coreを保持した。通常375TU全build/CI実行済みとは扱わない。
+
+adapter contract6/ISA0x33001は329と混載禁止。texture ABI3/profile4は保持するが、行列VSとSAMPLE PSの一般合成、一般varying、depth/blend/scissor/Present/通常Windows全描画は未対応。標準API資格・実GPU描画成功は未検証。327/329の署名候補・現媒体は凍結保持する。
+
+以下は以前の独立候補の履歴。
+
 ## 実生成ALU shaderのnative後続329（実機未検証）
 
 327/328は凍結し、このbranchで[ABI4 native shader契約](docs/ge8300-native-shader329.md)を実装する。固定token/USC列との一致に代え、実post-RA IRから一次source encoderでUSC全byte・physical register・終了・resource境界を検証する。固定shaderへの差替えや任意USCの無検証受理はしない。
