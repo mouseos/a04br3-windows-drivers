@@ -1,0 +1,31 @@
+{
+  "schema": "completed-staging-consumer-source-v1",
+  "base_commit": "dded2702098248c601944bbe0a674ef3bb28427d",
+  "native_shared_files_changed": false,
+  "files": [
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/bdd.cxx",
+      "source_base_commit": "dded2702098248c601944bbe0a674ef3bb28427d",
+      "baseline_sha256": "d433d3e6233a6c57880850d58336845c35deb84f8b22c55c7cdfb121ddf19094",
+      "sha256": "4c74ec39257eca377794fdcbb4e4b7b42b9183b75a619e7b9bdfa6e25b2017eb"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/bdd.hxx",
+      "source_base_commit": "dded2702098248c601944bbe0a674ef3bb28427d",
+      "baseline_sha256": "526107b6424f4c46768416393af34d427b167bf6b817f1c146dae7bd74b2b73a",
+      "sha256": "071f424eadb5d91b0df0096e8fcf034b6c2036a961661c5b246831091359f8fd"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/unified_display.cxx",
+      "source_base_commit": "dded2702098248c601944bbe0a674ef3bb28427d",
+      "baseline_sha256": "313b98037c10c09745c3daf2768c4f74be3df2e917a880c24e17d54a52be9829",
+      "sha256": "512a1afa8250d6724248e6fec6cad221b0cd9b97e6ee571692cd27dd276077c6"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/unified_display.h",
+      "source_base_commit": "dded2702098248c601944bbe0a674ef3bb28427d",
+      "baseline_sha256": "60725276dfec1e1230cad905c0abcb4d4512ee4d92b8a998f3c4fea125bb766f",
+      "sha256": "127902f8b463128acc44fc1fe7be907b99b6f06a08e696d0837efe880ccc1b71"
+    }
+  ]
+}

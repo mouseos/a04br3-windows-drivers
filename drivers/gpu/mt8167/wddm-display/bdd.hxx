@@ -297,6 +297,11 @@ public:
     NTSTATUS SetPointerShape(_In_ CONST DXGKARG_SETPOINTERSHAPE* pSetPointerShape);
 
     NTSTATUS PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DISPLAYONLY* pPresentDisplayOnly);
+    // Only the source-linked owner completion consumer calls this. The caller
+    // holds a CPU-owned, independently pinned staging lease until return.
+    NTSTATUS PresentCompletedStaging(PMDL mdl,UINT width,UINT height,UINT pitch);
+    NTSTATUS PresentDisplayOnlyLocked(CONST DXGKARG_PRESENT_DISPLAYONLY* present);
+
 
     NTSTATUS IsSupportedVidPn(_Inout_ DXGKARG_ISSUPPORTEDVIDPN* pIsSupportedVidPn);
 

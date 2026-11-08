@@ -28,6 +28,18 @@ void *GeoUnifiedDisplayContext(HANDLE adapter);
  * modify caps, report sources, or supply Present/SetSourceAddress. */
 NTSTATUS GeoDisplayFillVidPnCallbacks(DRIVER_INITIALIZATION_DATA *table);
 NTSTATUS GeoDisplayPower(void *,ULONG,DEVICE_POWER_STATE,POWER_ACTION);
+/* Separate source-linked consumer ABI; no change to old native owner ops.
+ * acquire must validate actual epoch/job/generation AND completed CPU-owned
+ * staging, retain its full independent pinned MDL, and never wait for GPU.
+ * No "GPU finished" boolean supplied by a user can satisfy this contract. */
+struct geo_present_read_lease_v1 {UINT size,version,width,height,pitch,reserved;PMDL mdl;void *cookie;};
+struct geo_present_read_ops_v1 {
+ UINT size,version;void *context;
+ NTSTATUS (*acquire)(void *,ULONGLONG epoch,ULONGLONG job,UINT generation,struct geo_present_read_lease_v1 *);
+ NTSTATUS (*release)(void *,void *cookie);
+};
+NTSTATUS GeoDisplayPresentCompleted(void *,const struct geo_present_read_ops_v1 *,ULONGLONG epoch,ULONGLONG job,UINT generation);
+
 #ifdef __cplusplus
 }
 #endif

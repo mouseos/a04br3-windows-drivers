@@ -804,7 +804,39 @@ NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnly(_In_ CONST DXGKARG_PRESENT_DIS
     NTSTATUS waitStatus=KeWaitForSingleObject(&m_PresentMutex,Executive,KernelMode,FALSE,NULL);
     if (!NT_SUCCESS(waitStatus)) return waitStatus;
     A04PresentGuard guard(&m_PresentMutex);
+    return PresentDisplayOnlyLocked(pPresentDisplayOnly);
+}
 
+NTSTATUS BASIC_DISPLAY_DRIVER::PresentCompletedStaging(PMDL mdl,UINT width,UINT height,UINT pitch)
+{
+    PAGED_CODE();
+    // No allocation or copying until the native owner has returned this
+    // immutable MDL lease after actual GPU completion/cache invalidation.
+    if(KeGetCurrentIrql()!=PASSIVE_LEVEL||!mdl||width!=800u||height!=600u||pitch!=3200u||
+       (mdl->MdlFlags&MDL_PARTIAL)||!(mdl->MdlFlags&(MDL_PAGES_LOCKED|MDL_SOURCE_IS_NONPAGED_POOL))||
+       MmGetMdlByteCount(mdl)<(ULONGLONG)(height-1u)*pitch+(ULONGLONG)width*4u)
+        return STATUS_INVALID_PARAMETER;
+    NTSTATUS status=KeWaitForSingleObject(&m_PresentMutex,Executive,KernelMode,FALSE,NULL);
+    if(!NT_SUCCESS(status))return status;
+    A04PresentGuard guard(&m_PresentMutex);
+    if(!m_Flags.DriverStarted||!m_CurrentModes[0].Flags.FrameBufferIsActive||
+       m_CurrentModes[0].SrcModeWidth!=width||m_CurrentModes[0].SrcModeHeight!=height)
+        return STATUS_DEVICE_NOT_READY;
+    void *cpu=MmGetSystemAddressForMdlSafe(mdl,NormalPagePriority|MdlMappingNoExecute|MdlMappingNoWrite);
+    if(!cpu||(uintptr_t)cpu>UINTPTR_MAX-(ULONGLONG)pitch*height)return STATUS_INSUFFICIENT_RESOURCES;
+    RECT full={0,0,(LONG)width,(LONG)height};DXGKARG_PRESENT_DISPLAYONLY present={0};
+    present.VidPnSourceId=0;present.pSource=cpu;present.BytesPerPixel=4;present.Pitch=pitch;
+    present.NumDirtyRects=1;present.pDirtyRect=&full;present.Flags.Rotate=1;
+    // The same validated CPU blitter handles POST pitch/rotation/centering.
+    // It never creates a second native GPU owner or signals a scheduler fence.
+    return PresentDisplayOnlyLocked(&present);
+}
+
+NTSTATUS BASIC_DISPLAY_DRIVER::PresentDisplayOnlyLocked(CONST DXGKARG_PRESENT_DISPLAYONLY* pPresentDisplayOnly)
+{
+    PAGED_CODE();
+    // Caller holds m_PresentMutex: mode/span validation and blit are atomic
+    // with respect to VidPn changes, power and POST release.
     if (!pPresentDisplayOnly || pPresentDisplayOnly->VidPnSourceId >= MAX_VIEWS)
         return STATUS_INVALID_PARAMETER;
     if (!m_Flags.DriverStarted) return STATUS_DEVICE_NOT_READY;

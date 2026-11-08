@@ -14,14 +14,20 @@ for row in origins['files']+origins['legacy_files_preserved']:
  if sha(file(row['path']))!=row['sha256']:raise ValueError('Source changed: '+row['path'])
 for row in origins.get('reviewed_present_transport',[]):
  if row['source_commit']!='5fb15bcebc54b8e54434a49676998d7600319d50' or row['path'] not in ['drivers/gpu/mt8167/wddm-render/kmd_clear.c','drivers/gpu/mt8167/wddm-render/kmd_clear.h'] or sha(file(row['path']))!=row['sha256']:raise ValueError('Present transport overlay')
+completed=json.loads(file('tools/ci/ge8300-display-consumer-origins.json'))
+if completed['base_commit']!='dded2702098248c601944bbe0a674ef3bb28427d' or completed['native_shared_files_changed']:raise ValueError('Completed staging consumer scope')
+consumer={r['path']:r for r in completed['files']}
+if set(consumer)!={ 'drivers/gpu/mt8167/wddm-display/'+n for n in ['bdd.cxx','bdd.hxx','unified_display.cxx','unified_display.h']}:raise ValueError('Consumer closure escaped display')
+for row in consumer.values():
+ if sha(file(row['path']))!=row['sha256']:raise ValueError('Completed staging consumer source')
 display17=json.loads(file('tools/ci/ge8300-display17-origins.json'))
 if display17['source_commit']!='2d94bcc89b08773624d105b6e5b24e2eea21de64' or display17['native_changed'] or display17['GPU_shader_changed']:raise ValueError('Display17 scope')
 for row in display17['files']:
- if not row['path'].startswith(('drivers/gpu/mt8167/wddm-display/','tests/dod_rotation4_test.py','tools/ci/build-mt8167-display-rotation4.ps1')) or sha(file(row['path']))!=row['sha256']:raise ValueError('Display17 origin mismatch')
+ if not row['path'].startswith(('drivers/gpu/mt8167/wddm-display/','tests/dod_rotation4_test.py','tools/ci/build-mt8167-display-rotation4.ps1')) or (consumer[row['path']]['baseline_sha256']!=row['sha256'] if row['path'] in consumer else sha(file(row['path']))!=row['sha256']):raise ValueError('Display17 origin mismatch')
 for row in origins['legacy_files_preserved']:
  if 'reviewed_display_source_commit' in row:
   declared=next((x for x in display17['files'] if x['path']==row['path']),None)
-  if not declared or row['preserved_before_display17_sha256']!=declared['baseline_sha256'] or row['sha256']!=declared['sha256']:raise ValueError('Display17 historical origin mismatch')
+  if not declared or row['preserved_before_display17_sha256']!=declared['baseline_sha256'] or (consumer[row['path']]['baseline_sha256'] if row['path'] in consumer else row['sha256'])!=declared['sha256']:raise ValueError('Display17 historical origin mismatch')
 native=json.loads(file('tools/ci/ge8300-native-source-map.json'))
 if native['native_owner_source_commit']!=origins['native_source_commit']:raise ValueError('Native provenance mismatch')
 # Exactly reviewed325 overlays, with immutable baseline origin retained.

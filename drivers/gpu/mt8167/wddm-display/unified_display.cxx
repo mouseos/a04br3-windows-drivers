@@ -9,7 +9,7 @@
 #if A04_GE8300_WDDM_DIRECT_EXPERIMENT || A04_GE8300_WDDM_SHARED_AUTOSTART || A04_GE8300_WDDM_VENDOR_TILE || A04_GE8300_WDDM_COPY
 #error Disable legacy DOD GPU-provider experiments for unified display
 #endif
-struct geo_display { BASIC_DISPLAY_DRIVER *bdd;BOOLEAN started; };
+struct geo_display { BASIC_DISPLAY_DRIVER *bdd;BOOLEAN started;UINT read_rundown_closed;EX_RUNDOWN_REF read_operations; };
 static geo_display *state(void *p){return static_cast<geo_display *>(p);}
 static BASIC_DISPLAY_DRIVER *bdd(void *p){geo_display *s=state(p);return s&&s->started?s->bdd:NULL;}
 static BASIC_DISPLAY_DRIVER *from_adapter(HANDLE p){return bdd(GeoUnifiedDisplayContext(p));}
@@ -17,7 +17,7 @@ extern "C" NTSTATUS GeoDisplayCreate(PDEVICE_OBJECT pdo,void **out) {
  if(!pdo||!out||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  *out=NULL;geo_display *s=static_cast<geo_display *>(ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*s),'uDgG'));
  if(!s)return STATUS_INSUFFICIENT_RESOURCES;
- RtlZeroMemory(s,sizeof(*s));s->bdd=new(BDD_POOL_TYPE::NonPaged) BASIC_DISPLAY_DRIVER(pdo);
+ RtlZeroMemory(s,sizeof(*s));ExInitializeRundownProtection(&s->read_operations);s->bdd=new(BDD_POOL_TYPE::NonPaged) BASIC_DISPLAY_DRIVER(pdo);
  if(!s->bdd){ExFreePoolWithTag(s,'uDgG');return STATUS_INSUFFICIENT_RESOURCES;}
  *out=s;return STATUS_SUCCESS;
 }
@@ -27,6 +27,7 @@ extern "C" NTSTATUS GeoDisplayStart(void *handle,DXGK_START_INFO *start,DXGKRNL_
  *sources=0;*children=0;
  status=s->bdd->StartDevice(start,dxgk,&v,&c);
  if(!NT_SUCCESS(status))return status;
+ if(s->read_rundown_closed){ExReInitializeRundownProtection(&s->read_operations);s->read_rundown_closed=0;}
  s->started=TRUE;
  /* BDD acquired the actual POST owner and validated its framebuffer layout.
   * Counts are published only after that succeeds, never synthesised here. */
@@ -35,6 +36,7 @@ extern "C" NTSTATUS GeoDisplayStart(void *handle,DXGK_START_INFO *start,DXGKRNL_
 extern "C" NTSTATUS GeoDisplayStop(void *handle) {
  geo_display *s=state(handle);NTSTATUS status;
  if(!s||!s->started||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;
+ if(!s->read_rundown_closed){ExWaitForRundownProtectionRelease(&s->read_operations);s->read_rundown_closed=1;}
  status=s->bdd->StopDevice();if(NT_SUCCESS(status))s->started=FALSE;return status;
 }
 extern "C" NTSTATUS GeoDisplayDelete(void *handle) {
@@ -68,6 +70,25 @@ extern "C" NTSTATUS GeoDisplayValidatePostAddress(void *h,const DXGKARG_SETVIDPN
   * Returning success here does not claim a new scanout allocation or vblank. */
  return p->PrimaryAddress.QuadPart==info.PhysicAddress.QuadPart?STATUS_SUCCESS:STATUS_NOT_SUPPORTED;
 }
+extern "C" NTSTATUS GeoDisplayPresentCompleted(void *h,const struct geo_present_read_ops_v1 *ops,ULONGLONG epoch,ULONGLONG job,UINT generation) {
+ geo_display *s=state(h);struct geo_present_read_lease_v1 view={};NTSTATUS status,released;
+ if(!s||KeGetCurrentIrql()!=PASSIVE_LEVEL||!epoch||!job||!generation||!ops||
+    ops->size!=sizeof(*ops)||ops->version!=1||!ops->context||!ops->acquire||!ops->release)return STATUS_INVALID_PARAMETER;
+ if(!ExAcquireRundownProtection(&s->read_operations))return STATUS_DEVICE_NOT_READY;
+ if(!s->started){ExReleaseRundownProtection(&s->read_operations);return STATUS_DEVICE_NOT_READY;}
+ view.size=sizeof(view);view.version=1;
+ status=ops->acquire(ops->context,epoch,job,generation,&view);
+ if(status==STATUS_SUCCESS){
+  if(view.size!=sizeof(view)||view.version!=1||view.reserved||!view.cookie||!view.mdl)status=STATUS_INVALID_DEVICE_STATE;
+  else status=s->bdd->PresentCompletedStaging(view.mdl,view.width,view.height,view.pitch);
+ }else if(NT_SUCCESS(status))status=STATUS_DEVICE_NOT_READY; // PENDING is not completed CPU ownership.
+ // Even a malformed provider failure must not strand a returned read lease.
+ if(view.cookie){
+  released=ops->release(ops->context,view.cookie);
+  if(status==STATUS_SUCCESS&&released!=STATUS_SUCCESS)status=NT_SUCCESS(released)?STATUS_INVALID_DEVICE_STATE:released;
+ }
+ ExReleaseRundownProtection(&s->read_operations);return status;
+}
 extern "C" NTSTATUS GeoDisplayPower(void *h,ULONG id,DEVICE_POWER_STATE p,POWER_ACTION a) {
  BASIC_DISPLAY_DRIVER *d=bdd(h);return d?d->SetPowerState(id,p,a):STATUS_DEVICE_NOT_READY;
 }
@@ -90,6 +111,7 @@ static NTSTATUS dispatch(HANDLE h,ULONG source,PVIDEO_REQUEST_PACKET p){BASIC_DI
 static NTSTATUS release_post(HANDLE h,D3DDDI_VIDEO_PRESENT_TARGET_ID target,DXGK_DISPLAY_INFORMATION *p){
  geo_display *s=state(GeoUnifiedDisplayContext(h));BASIC_DISPLAY_DRIVER *d=bdd(s);
  if(!d)return STATUS_DEVICE_NOT_READY;
+ if(!s->read_rundown_closed){ExWaitForRundownProtectionRelease(&s->read_operations);s->read_rundown_closed=1;}
  NTSTATUS status=d->StopDeviceAndReleasePostDisplayOwnership(target,p);
  if(NT_SUCCESS(status))s->started=FALSE; /* POST already stopped; no double Stop. */
  return status;
