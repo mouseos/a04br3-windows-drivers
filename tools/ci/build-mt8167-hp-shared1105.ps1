@@ -54,7 +54,7 @@ $parentObjects=@()
 foreach($x in $cache.objects){
  if($x.name -eq 'parent'){continue};$p="$ParentInputDirectory\cache\obj\$($x.name).obj"
  if((Sha $p) -cne $x.sha256.ToLowerInvariant()){throw 'Parent helper hash mismatch'}
- $source=if($x.name -eq 'pmic_read'){"$root\drivers\input\a04br3-buttons\pmic_read.c"}elseif($x.name -eq 'gpio22'){"$root\drivers\usb\mt8167-usb20\gpio22.c"}else{"$root\drivers\bus\mt8167-shared\$($x.name).c"}
+ $source=if($x.name -eq 'pmic_read'){"$root\drivers\input\a04br3-buttons\pmic_read.c"}elseif($x.name -eq 'gpio22'){"$root\drivers\usb\mt8167-usb20\gpio22.c"}elseif($x.name -eq 'sd_power_owner'){"$root\drivers\storage\mt8167-sd\power_owner.c"}else{"$root\drivers\bus\mt8167-shared\$($x.name).c"}
  $deps=Check-Closure $source $cache.source_commit
  $parentObjects+=$p;$reused+=@{kind='parent';name=$x.name;sha256=(Sha $p);dependencies=$deps;source_commit=$cache.source_commit}
 }
