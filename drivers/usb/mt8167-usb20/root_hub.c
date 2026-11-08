@@ -42,6 +42,8 @@ int a04_hub_control(struct a04_hub *h,const unsigned char s[8],unsigned char *b,
    if(v==20)mask=A04_CHANGE_RESET;
    if(mask)return a04_port_clear_change(h->port,mask)?A04_HUB_STALL:A04_HUB_OK;
    if(v==8)return action(h,A04_HUB_POWER_OFF,a);
+   if(v==1)return action(h,A04_HUB_DISABLE,a);
+   if(v==18)return A04_HUB_OK; /* no suspend change can be generated */
    /* Enable/suspend need verified hardware operations, not software bit flips. */
   }else if(s[1]==3){
    if(v==8)return action(h,A04_HUB_POWER_ON,a);
@@ -66,6 +68,11 @@ int a04_hub_action_done(struct a04_hub *h,const struct a04_hub_action *a,int suc
  if(!success||!o||!o->endpoints_quiesced)return -1;
  if(kind==A04_HUB_POWER_OFF)return (o->vbus_off_verified||o->source_off_verified)?a04_port_power(h->port,0,0):-1;
  if(!o->qualified||!o->id_host||!o->overcurrent_clear||!o->vbus_verified)return -1;
+ if(kind==A04_HUB_DISABLE){
+  /* No new change bit: this was an explicit host clear request, not an
+   * unsolicited disable event. Only acknowledged after worker idle proof. */
+  h->port->status&=~A04_PORT_ENABLE;return 0;
+ }
  if(kind==A04_HUB_POWER_ON)return a04_port_power(h->port,1,1);
  if(kind!=A04_HUB_RESET||o->reset_asserted_ms<50||
   (o->speed!=0&&o->speed!=A04_PORT_LOW_SPEED&&o->speed!=A04_PORT_HIGH_SPEED))return -1;

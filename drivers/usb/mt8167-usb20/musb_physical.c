@@ -1,3 +1,4 @@
+#include "usbport_profile.h"
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "musb_physical.h"
 #include "board_host.h"
@@ -165,7 +166,8 @@ static void TimerDpc(PKDPC dpc,PVOID context,PVOID a,PVOID b)
 }
 static int Begin(struct mt_musb_runtime *r)
 {
- struct a04_mp_properties *e=&r->properties;struct a04_pio_endpoint p;
+ struct a04_mp_properties *e=&r->properties;struct a04_pio_endpoint p;unsigned interval;
+ if(!a04_usbport_native_route(e->hub)||a04_usbport_interval(e->speed,e->type,e->period,&interval))return -1;
  if(e->type==1){
   Wr8(r,0xe,0);Wr16(r,0x480,e->address);Wr16(r,0x482,0);
   Wr8(r,0x1a,(UCHAR)(e->speed==2?0x40:e->speed==1?0x80:0xc0));Wr8(r,0x1b,0);Wr16(r,2,1);
@@ -173,7 +175,7 @@ static int Begin(struct mt_musb_runtime *r)
  }
  p.address=e->address;p.endpoint=e->endpoint&15;p.packet=e->packet;
  p.speed=e->speed==2?0x40:e->speed==1?0x80:0xc0;p.type=e->type;p.direction=e->direction;
- p.period=e->period;p.toggle=r->job.toggle;
+ p.period=interval;p.toggle=r->job.toggle;
  return a04_pio_configure(&r->controller.io,&r->pio,&p,r->shadow,r->parameters.bytes);
 }
 static int DataEvent(struct mt_musb_runtime *r)
@@ -204,7 +206,11 @@ static int RootAction(struct mt_musb_runtime *r,ULONG kind,struct a04_hub_observ
    o->endpoints_quiesced=1;return 0;
   }
  }
- if(kind==A04_HUB_POWER_ON){if(A04UsbHostRun(&r->board)||ReleaseForces(r)||Observe(r,1))return -1;}
+ if(kind==A04_HUB_DISABLE){
+  /* MUSB has no independent ENABLE latch. Linux musb_virthub clears the
+   * logical bit. First prove FIFO/REQ idle and health; keep SESSION/VBUS. */
+  if(Observe(r,1))return -1;
+ }else if(kind==A04_HUB_POWER_ON){if(A04UsbHostRun(&r->board)||ReleaseForces(r)||Observe(r,1))return -1;}
  else if(kind==A04_HUB_RESET){
   if(Observe(r,1))return -1;
   power=Rd8(r,1);Wr8(r,1,(UCHAR)((power&~4u)|8u));if(!(Rd8(r,1)&8))return -1;
@@ -365,7 +371,7 @@ fail:
 ULONG MtMusbSubmit(struct mt_musb_runtime *r,ULONG cookie,const struct a04_mp_properties *e,ULONG toggle,
  const struct a04_mp_parameters *p,PVOID buffer)
 {
- KIRQL irql;ULONG status=1;if(!r||!p||!e||p->bytes>MT_MUSB_SHADOW_BYTES||(p->bytes&&!buffer))return 1;
+ KIRQL irql;ULONG status=1;unsigned interval;if(!r||!p||!e||!a04_usbport_native_route(e->hub)||a04_usbport_interval(e->speed,e->type,e->period,&interval)||p->bytes>MT_MUSB_SHADOW_BYTES||(p->bytes&&!buffer))return 1;
  KeAcquireSpinLock(&r->lock,&irql);
  if(!r->closing&&!r->fault&&!r->root_pending&&!r->root_running&&!r->root_done&&r->proof.vbus_on&&
     !mt_musb_admit(&r->job,cookie,KeQueryInterruptTime(),50000000ull)){
@@ -396,7 +402,7 @@ ULONG MtMusbRecoverToggle(struct mt_musb_runtime *r,ULONG cookie,PULONG toggle)
 }
 ULONG MtMusbRootQueue(struct mt_musb_runtime *r,ULONG kind)
 {
- KIRQL irql;ULONG result=1;if(!r)return 1;KeAcquireSpinLock(&r->lock,&irql);
+ KIRQL irql;ULONG result=1;if(!r||kind<A04_HUB_POWER_ON||kind>A04_HUB_DISABLE)return 1;KeAcquireSpinLock(&r->lock,&irql);
  if(!r->closing&&!r->fault&&!r->root_pending&&!r->root_running&&!r->root_done&&r->job.state==MT_JOB_IDLE){r->root_pending=kind;QueueLocked(r);result=0;}
  KeReleaseSpinLock(&r->lock,irql);return result;
 }

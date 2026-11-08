@@ -89,6 +89,13 @@ int main(void)
  TimerDpc(NULL,r,NULL,NULL);Work();CHECK(r->ep0.transfer.stage==EP0_STATUS&&r->job.state!=MT_JOB_DONE);
  test_mac[0x12]=test_mac[0x13]=0;test_mac[2]=1;TimerDpc(NULL,r,NULL,NULL);Work();
  CHECK(!MtMusbTake(r,10,data,sizeof(data),&n,&s,&t)&&n==3&&!s&&data[0]==0x71);
+ /* USBPORT HS period32 becomes MUSB logarithmic6, not raw32. */
+ e.type=3;e.endpoint=0x81;e.direction=0;e.period=32;e.speed=2;e.hub=0xffff;e.port=7;p.bytes=8;
+ CHECK(!MtMusbSubmit(r,30,&e,0,&p,data));Work();CHECK(test_mac[0x1d]==6);
+ MtMusbCancel(r,30);TimerDpc(NULL,r,NULL,NULL);Work();CHECK(r->job.state==MT_JOB_IDLE);
+ {ULONG writes=test_writes;e.hub=2;e.type=1;e.endpoint=0;
+ CHECK(MtMusbSubmit(r,31,&e,0,&p,data)&&test_writes==writes&&r->job.state==MT_JOB_IDLE);}
+ e.hub=0;e.port=0;e.speed=1;
  /* Generic interrupt IN takes its data from RX1, independently of EP0. */
  e.type=3;e.endpoint=0x81;e.direction=0;e.period=1;p.bytes=8;
  CHECK(!MtMusbSubmit(r,11,&e,0,&p,data));Work();test_mac[0x16]=1;test_mac[0x18]=3;test_mac[0x24]=0x72;test_mac[4]=2;
@@ -104,6 +111,8 @@ int main(void)
  /* Observe may block: cancellation there must win before Begin's first write. */
  CHECK(!MtMusbSubmit(r,12,&e,0,&p,data));test_cancel_context=r;test_cancel_cookie=12;Work();
  CHECK(r->job.state==MT_JOB_IDLE&&!r->hardware_job);
+ CHECK(!MtMusbRootQueue(r,A04_HUB_DISABLE));Work();
+ CHECK(!MtMusbObserve(r,&observation,&c,&done,&result)&&done==A04_HUB_DISABLE&&!result&&observation.endpoints_quiesced&&test_vbus);
  CHECK(!MtMusbRootQueue(r,A04_HUB_POWER_OFF));Work();
  CHECK(!MtMusbObserve(r,&observation,&c,&done,&result)&&!result&&observation.source_off_verified);
  CHECK(MtMusbClose(r)&&test_releases==1&&test_unmaps==2&&test_refs==0);

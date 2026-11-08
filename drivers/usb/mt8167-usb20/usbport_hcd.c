@@ -2,6 +2,7 @@
 #include "usbport81.h"
 #include "root_hub.h"
 #include "musb_physical.h"
+#include "usbport_profile.h"
 /* USBPORT owns the FDO/root PDO, addresses/pipes and completion serialization.
  * Worker never sees these extension pointers. Lock order: HCD -> runtime;
  * PASSIVE worker uses runtime only and never calls back into USBPORT. */
@@ -95,7 +96,7 @@ static VOID AsyncPoll(PVOID p,PVOID copied_epoch)
 static ULONG Start(PVOID p,struct a04_mp_resources *r)
 {
  struct a04_hcd *h=CTX(p);NTSTATUS s;
- if(!r||!r->fdo||!r->pdo||!Packet.async_callback||!Packet.invalidate_controller)return A04_MP_ERROR;
+ if(!r||!r->fdo||!r->pdo||!Packet.async_callback||!Packet.invalidate_controller||!Packet.invalidate_root)return A04_MP_ERROR;
  RtlZeroMemory(h,sizeof(*h));HINIT(h);h->signature=0x34484344;
  a04_port_init(&h->port);if(a04_hub_init(&h->hub,&h->port,50))return A04_MP_ERROR;
  s=MtMusbOpen(r->fdo,&h->runtime);
@@ -136,10 +137,11 @@ static VOID Query(PVOID p,struct a04_mp_properties *e,struct a04_mp_requirements
 {UNREFERENCED_PARAMETER(p);UNREFERENCED_PARAMETER(e);q->common_bytes=0;q->max_transfer=MT_MUSB_SHADOW_BYTES;}
 static ULONG Open(PVOID p,struct a04_mp_properties *v,PVOID endpoint)
 {
- struct a04_hcd *h=CTX(p);struct a04_mp_endpoint *e=endpoint;KIRQL k;
- if(!v||!e||v->address>127||(v->endpoint&~0x8fu)||(v->hub!=0&&v->hub!=0xffff)||v->speed>2||!v->packet||v->packet>512||
+ struct a04_hcd *h=CTX(p);struct a04_mp_endpoint *e=endpoint;KIRQL k;unsigned interval;
+ if(!v||!e||v->address>127||(v->endpoint&~0x8fu)||!a04_usbport_native_route(v->hub)||v->speed>2||!v->packet||v->packet>512||
   (v->type!=1&&v->type!=2&&v->type!=3)||v->direction>1||v->transactions>1)return A04_MP_UNSUPPORTED;
- if(v->type==1&&(v->endpoint&15))return A04_MP_UNSUPPORTED;
+ if(a04_usbport_interval(v->speed,v->type,v->period,&interval))return A04_MP_UNSUPPORTED;
+ if((v->type==1&&(v->endpoint&15))||(v->type!=1&&!(v->endpoint&15)))return A04_MP_UNSUPPORTED;
  if(v->type!=1&&((v->endpoint&0x80)?0u:1u)!=v->direction)return A04_MP_UNSUPPORTED;
  if(v->speed==0&&(v->type==2||v->packet>8))return A04_MP_UNSUPPORTED;
  if(v->type!=2&&v->packet>64)return A04_MP_UNSUPPORTED;
