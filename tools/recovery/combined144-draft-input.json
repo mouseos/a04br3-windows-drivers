@@ -129,7 +129,7 @@
         "fresh144 native preservation and final profile validation",
         "BT provider delta integrated WiFi1022 final package and main independent seal"
       ],
-      "render_action": "retain actual GPU338; no render DIF",
+      "render_action": "Retain actual GPU338, or adopt completed sealed observation-only339 by same-batch render DIF; GPUclient must remain0",
       "gpu_client_execute": false,
       "gpu_client_count": 0,
       "planned_windows_reboots": 1,
@@ -141,7 +141,8 @@
       "requires": [
         "completed evidence-backed GPU root fix signed package and main independent seal",
         "final agreed companion feature scope and complete sealed inputs",
-        "fresh144 native preservation and final profile validation"
+        "fresh144 native preservation and final profile validation",
+        "Root fix must be functional source change, not observation-only339; inherit339 module identity for the single final GPU client"
       ],
       "gpu_client_execute": true,
       "gpu_client_count": 1,
@@ -162,5 +163,18 @@
     "CreateFile",
     "readonly IOCTL status/returned bytes",
     "real measured temperature; never infer from D0/interface success"
-  ]
+  ],
+  "module_identity339_policy": {
+    "version": 339,
+    "status": "artifact-pending-observation-only-not-root-fix",
+    "rootfix": false,
+    "adopted": false,
+    "render_DIF_with_feature_batch_permitted_after_sealed_inputs": true,
+    "gpu_client_execute": false,
+    "gpu_client_count": 0,
+    "drawing_logic_equivalent_to_338": true,
+    "identity_evidence_does_not_authorize_drawing_retest": true,
+    "future_rootfix_candidate": "340 or later evidence-backed root fix",
+    "future_rootfix_single_client_must_inherit_339_identity": true
+  }
 }
