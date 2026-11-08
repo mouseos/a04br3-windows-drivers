@@ -7,6 +7,14 @@
 #define A04BR3_ROGUE_CORE_RESET_HOLD_H
 #include "A04BR3RogueStop.h"
 #define A04_RGX_CORE_RESET_ALL UINT64_C(0x00e7fffffffffc1d)
+/* Fixed 22.40.54.30 / m1.11 config: MIPS, one cluster -> one DUST,
+ * one private SLC bank. These implemented top-level reset controls must read
+ * asserted: MMU, GARTEN(MIPS), RASCAL, DUST_A and SLC. MASKFULL is a family
+ * write mask, not a readback capability mask for absent DUSTs/other units.
+ * Vendor RGXStart uses the SOFT_RESET read as the SOCIF posted-write fence. */
+#define A04_RGX_CORE_RESET_REQUIRED (UINT64_C(0x0000000400000000) | \
+    UINT64_C(0x0000000100000000) | UINT64_C(0x0000000080000000) | \
+    UINT64_C(0x0000000020000000) | UINT64_C(0x0000000008000000))
 struct a04_rgx_core_reset_observation {
     uint32_t phase,reset_held,failed_register;
     uint64_t observed_reset,failed_value;
@@ -35,7 +43,7 @@ static inline int a04_rgx_core_stop_hold_reset(const struct a04_rgx_exec_io *io,
     io->write64(io->context,0x100,A04_RGX_CORE_RESET_ALL);
     out->observed_reset=io->read64(io->context,0x100); /* source SOCIF fence */
     if(out->observed_reset==UINT64_MAX){e=A04_EXEC_BUS;f.offset=0x100;f.value=out->observed_reset;goto failed;}
-    if((out->observed_reset&A04_RGX_CORE_RESET_ALL)!=A04_RGX_CORE_RESET_ALL){
+    if((out->observed_reset&A04_RGX_CORE_RESET_REQUIRED)!=A04_RGX_CORE_RESET_REQUIRED){
         e=A04_EXEC_TIMEOUT;f.offset=0x100;f.value=out->observed_reset;goto failed;
     }
     out->phase=4;
