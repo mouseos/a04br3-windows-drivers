@@ -1,3 +1,9 @@
+# 現行ownership/copy334統合source recipe
+
+`integrate/copy334-wddm-aperture`はWDDM physical MDL所有移行51cbe2d4、copy334低層TQ/IRQ、335 LockEntireを保持。通常wrapperはnative67/compiler375TUをsourceから構成する。copy WDDM入口/visibility IRQ/retireの最終消費側結合は未完であり、署名SYSだけでCopyResource実動作を保証しない。既存12TU増分compile/署名済みと全67TU/source build実行済みは別。現hostでSDK/PCO全再構築は行わない。最新Huygens delta到着後、shared caller差分を前方mergeしてsource map/originsを再pinする。
+
+通常source入口は `tools/ci/build-ge8300-from-source.ps1 -EnableCandidate`、使用する既存WDK/LLVM/MSVCは以下の従来手順どおり。FW共通bufferのDMAadapterは保持、apertureに旧packetSG/Ex APIを要求しない。物理address任意bypassはない。
+
 # 現行332 source build
 
 branch `work/ge8300-readback-safety332`の通常wrapperは331 ABI5機能と332 DMA IRQL/readback/新boundaryclientをsource buildする。native61/compiler375 TU、過去driver cache/private hive不要。必要TUの増分署名と通常fullbuild/CI全実行は区別する。reset解消・実GPU成功は未検証。
