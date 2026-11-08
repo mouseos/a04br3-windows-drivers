@@ -19,3 +19,5 @@ assert "else if(e==ERROR_NOT_FOUND)e=0" in c and "proof.otg_functional_success=1
 assert "PERIPHERAL_TARGET_COUNT<=11" in c and "i>=8" in c
 
 assert "preserved_sources['Windows/System32/ge8300-umd.dll']=m['current_render_witnesses']['umd']['path']" in (R/"tools/recovery/prepare-peripheral-followup138.py").read_text()
+
+assert "foreach($name in @('mt8167-musb-hcd.inf'" not in (R/"tools/ci/build-combined138-service.ps1").read_text()
