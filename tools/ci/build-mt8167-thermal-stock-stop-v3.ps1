@@ -10,6 +10,7 @@ if(!$out.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase) -or (Test-P
 $commit=(& git -C $root rev-parse HEAD).Trim();if($LASTEXITCODE -or @(& git -C $root status --porcelain).Count){throw 'Clean fixed source required'}
 function Sha($p){(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()}
 $cache=Get-Content "$ParentInputDirectory\cache\parent-cache.json" -Raw|ConvertFrom-Json
+if($cache.source_commit -cne '1d248a71a95360966ff867e4b063504ac764e074'){throw 'Fixed parent cache required'}
 if(((& clang --version)[0]) -cne (($cache.compiler -split "`n")[0])){throw 'Compiler version drift'}
 # Walk all repo-local quoted includes of reused C objects. Header/source
 # identity against their recorded source commit is required, not filename reuse.
@@ -52,13 +53,9 @@ foreach($x in $cache.objects){
  $parentObjects+=$p;$reused+=@{kind='parent';name=$x.name;sha256=(Sha $p);dependencies=$deps;source_commit=$cache.source_commit}
 }
 if($parentObjects.Count -ne 13){throw 'Exactly13 parent helpers required'}
-function Resume-Kernel($name,$obj){return $false}
-if($KernelCacheDirectory){throw 'Calibration ABI changed; no C++ layout cache reuse'}
 $parentObj="$out\obj\parent.obj"
-if(!(Resume-Kernel 'parent' $parentObj)){
 & clang @($cache.common) @kernel @parentFlags -w -c "$root\drivers\bus\mt8167-shared\wdf_parent_probe.c" -o $parentObj
 if($LASTEXITCODE){throw 'HP parent compile failed'};$compiled+='parent'
-}
 $parentObjects=@($parentObj)+$parentObjects
 $libs=@("$km\ntoskrnl.lib","$km\hal.lib","$km\bufferoverflowfastfailk.lib","$km\libcntpr.lib")
 & lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib @parentObjects "$wdf\wdfdriverentry.lib" "$wdf\wdfldr.lib" @libs "/out:$out\package\parent\mt8167-shared.sys"

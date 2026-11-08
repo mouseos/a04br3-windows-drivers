@@ -76,6 +76,10 @@ int main(int argc,char **argv){
  if(argc>1){assert(argv[1][0]=='3');proofVersion=3;}
  struct parent c=initial();ULONG generation=0,stage=0,adopted=0,raw[3]={0};struct a04_hp_raw_sample sample;
  assert(sizeof(sample)==72&&sizeof(struct a04_hp_raw_pair)==160);
+ A04_THERMAL_PIO_RECORD proof={0};proof.version=proofVersion;proof.bytes=72;proof.ready=1;proof.stage=6;proof.pause_after=0x10e;proof.reset_after=proofVersion==2?1:0;
+ assert(ThermalPioRecordValid(&proof,72,6));assert(!ThermalPioRecordValid(&proof,72,7));
+ proof.version=99;assert(!ThermalPioRecordValid(&proof,72,6));
+ if(proofVersion==3){th[0x3c/4]=0;assert(ParentHpAdcBegin(&c,&generation)==STATUS_DEVICE_NOT_READY&&!maps&&!power&&!refs);c=initial();}
  ready=0;assert(ParentHpAdcBegin(&c,&generation)==STATUS_DEVICE_NOT_READY&&!generation&&!maps&&!refs&&!power&&!c.adcPurpose&&!c.thermalRundown);ready=1;
  for(int fail=1;fail<=2;fail++){c=initial();failMap=fail;assert(!NT_SUCCESS(ParentHpAdcBegin(&c,&generation))&&!maps&&!refs&&!power&&!c.adcPurpose&&!c.thermal.leased&&!c.thermalRundown);}
  c=initial();getProof=setProof=0;assert(ParentHpAdcBegin(&c,&generation)==0&&generation==1&&maps==2&&power==1&&refs==1&&!c.thermalRundown&&c.thermal.leased);
