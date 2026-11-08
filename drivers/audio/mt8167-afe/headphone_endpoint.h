@@ -13,6 +13,10 @@ struct Mt8167HeadphoneProvider {
  Mt8167StreamBackend stream;
  NTSTATUS (*qualified)(void *);
  NTSTATUS (*readJack)(void *,struct mt8167_accdet_socket *);
+ /* Must create an actual HP WaveRT miniport with verified format, DMA,
+  * stop/revoke and hardware-latency behavior. Do not reuse a speaker's zero
+  * latency as a measurement or set capture=TRUE to smuggle HP latency. */
+ NTSTATUS (*newWaveMiniport)(void *,PMINIPORTWAVERT *);
 };
 /* Call during StartDevice only. Requires a real HP backend before any
  * subdevice registration. NOT_READY is not a fabricated successful endpoint.

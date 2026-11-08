@@ -12,6 +12,7 @@ const int CLSID_PortWaveRT=1,CLSID_PortTopology=2;
 static int calls=0,fail=0,providerRefs=0,qualifiedResult=0,jackResult=0;
 static ULONG inserted=1,jackVersion=1;static std::vector<PPORT> registered;
 static Mt8167HeadphoneTopology *topoObject;
+static const Mt8167HeadphoneProvider *currentProvider;
 int KeGetCurrentIrql(){return 0;}
 static void ref(void*){++providerRefs;}static void deref(void*){--providerRefs;}
 static NTSTATUS ready(void*){return qualifiedResult;}
@@ -23,6 +24,7 @@ struct Mini:IMiniportWaveRT{
  NTSTATUS Init(PUNKNOWN,PRESOURCELIST,PPORTWAVERT)override{return 0;}NTSTATUS NewStream(PMINIPORTWAVERTSTREAM*,PPORTWAVERTSTREAM,ULONG,BOOLEAN,PKSDATAFORMAT)override{return 0;}NTSTATUS GetDeviceDescription(PDEVICE_DESCRIPTION)override{return 0;}
 };
 NTSTATUS Mt8167NewMiniportWithBackend(PMINIPORTWAVERT*out,const Mt8167StreamBackend*b){assert(b->context&&b->reference&&b->dereference&&!b->capture);*out=nullptr;if(fault())return STATUS_INSUFFICIENT_RESOURCES;*out=new Mini;return 0;}
+static NTSTATUS makeWave(void *context,PMINIPORTWAVERT *out){assert(context==currentProvider->stream.context);return Mt8167NewMiniportWithBackend(out,&currentProvider->stream);}
 struct Port:IPort{
  int type;LONG refs=1;PUNKNOWN mini=nullptr;
  explicit Port(int t):type(t){}
@@ -34,7 +36,7 @@ NTSTATUS PcRegisterSubdevice(PDEVICE_OBJECT,WCHAR*name,PUNKNOWN p){assert(name);
 NTSTATUS PcRegisterPhysicalConnection(PDEVICE_OBJECT,PUNKNOWN,ULONG wavePin,PUNKNOWN,ULONG topoPin){assert(wavePin==1&&topoPin==0);return fault()?-50:0;}
 static void unwind(){for(auto p:registered)p->Release();registered.clear();topoObject=nullptr;assert(!providerRefs);}
 int main(){
- Mt8167HeadphoneProvider p={};int owner=0;p.stream.context=&owner;p.stream.reference=ref;p.stream.dereference=deref;p.qualified=ready;p.readJack=jack;
+ Mt8167HeadphoneProvider p={};int owner=0;p.stream.context=&owner;p.stream.reference=ref;p.stream.dereference=deref;p.qualified=ready;p.readJack=jack;p.newWaveMiniport=makeWave;currentProvider=&p;
  auto run=[&](){return Mt8167RegisterHeadphoneWaveRt(&owner,&owner,&owner,&p);};
  qualifiedResult=STATUS_DEVICE_NOT_READY;assert(run()==STATUS_DEVICE_NOT_READY&&!calls&&!providerRefs);qualifiedResult=1;assert(run()==STATUS_DEVICE_NOT_READY&&!calls);qualifiedResult=0;
  p.readJack=nullptr;assert(run()==STATUS_DEVICE_NOT_READY&&!calls);p.readJack=jack;p.stream.capture=TRUE;assert(run()==STATUS_INVALID_PARAMETER&&!calls);p.stream.capture=FALSE;

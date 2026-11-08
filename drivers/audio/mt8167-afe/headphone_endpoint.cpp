@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "headphone_endpoint.h"
-#include "wavert_miniport.h"
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
 #define HP_TAG 'hAuM'
 void *operator new(size_t,void *);
@@ -71,13 +70,14 @@ static NTSTATUS HeadphoneProperty(PPCPROPERTY_REQUEST r){if(!r||!r->MajorTarget)
 extern "C" NTSTATUS Mt8167RegisterHeadphoneWaveRt(PDEVICE_OBJECT device,PIRP irp,PRESOURCELIST resources,const Mt8167HeadphoneProvider *provider)
 {
  if(!device||!irp||!resources||!provider||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
- if(!provider->qualified||!provider->readJack||!provider->stream.context||!provider->stream.reference||!provider->stream.dereference)return STATUS_DEVICE_NOT_READY;
+ if(!provider->qualified||!provider->readJack||!provider->newWaveMiniport||!provider->stream.context||!provider->stream.reference||!provider->stream.dereference)return STATUS_DEVICE_NOT_READY;
 #if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
  if(provider->stream.capture)return STATUS_INVALID_PARAMETER;
 #endif
  NTSTATUS status=provider->qualified(provider->stream.context);if(status!=STATUS_SUCCESS)return NT_SUCCESS(status)?STATUS_DEVICE_NOT_READY:status;
  PMINIPORTWAVERT miniport=NULL;PPORT wave=NULL,topo=NULL;Mt8167HeadphoneTopology *topology=NULL;
- status=Mt8167NewMiniportWithBackend(&miniport,&provider->stream);
+ status=provider->newWaveMiniport(provider->stream.context,&miniport);
+ if(NT_SUCCESS(status)&&!miniport)status=STATUS_INVALID_DEVICE_STATE;
  if(NT_SUCCESS(status)){
   void *memory=ExAllocatePoolWithTag(NonPagedPool,sizeof(Mt8167HeadphoneTopology),HP_TAG);
   if(!memory)status=STATUS_INSUFFICIENT_RESOURCES;else topology=new(memory)Mt8167HeadphoneTopology(provider);
