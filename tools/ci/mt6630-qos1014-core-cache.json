@@ -1,0 +1,1502 @@
+{
+  "cache_source": "6f1ba222f2d959d01c51fc7dc35ff51d60ebb52d",
+  "cache_manifest_sha256": "04d77f0fd663c5f5853b916bb350dd6b14d3f647256be6a2a9bdaf862e1e8f7a",
+  "units": [
+    {
+      "source": "drivers/network/mt6630/board_sequence.c",
+      "object": "core/board_sequence.obj",
+      "sha256": "9C52FF9D7E36C371C1F2C8F2512633DE9BA52EBF46C1673B80075C9DD17C4D93",
+      "reuse": true,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/board_sequence.c",
+          "sha256": "0bc9f33279cc7e4ecdbc6992097a470f24645dfddfab62218095a38743489dd4"
+        },
+        {
+          "path": "drivers/network/mt6630/board_sequence.h",
+          "sha256": "30bf9b4d8cdb4b3a2f3878cdb6c3f26179ae4ff333a8a53d99deedeb77dddb50"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/bringup.c",
+      "object": "core/bringup.obj",
+      "sha256": "08EF3B694AAD8BA6CE949C2A4A08B5CEFCA4B5A77C9F4D9D953442708306A925",
+      "reuse": true,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/board_sequence.h",
+          "sha256": "30bf9b4d8cdb4b3a2f3878cdb6c3f26179ae4ff333a8a53d99deedeb77dddb50"
+        },
+        {
+          "path": "drivers/network/mt6630/bringup.c",
+          "sha256": "dd42301ce800463030913cab56318445a20f3444ba30f13f795197c6e136713f"
+        },
+        {
+          "path": "drivers/network/mt6630/bringup.h",
+          "sha256": "be2f470d7af9acb4b9dab1f5eb6e56e1fdbecd85ffded485022e844392715a4f"
+        },
+        {
+          "path": "drivers/network/mt6630/control_start.h",
+          "sha256": "fd2c4ad22001101e2bbbfc12d9f5b7ab90c1697917115f400b0f1464b054ad1f"
+        },
+        {
+          "path": "drivers/network/mt6630/direct.h",
+          "sha256": "362d7fd9f9d774234611e956212422c7385df8e2952654f2f7229113b38d6c97"
+        },
+        {
+          "path": "drivers/network/mt6630/enumerate.h",
+          "sha256": "71aabe478bd061e37618affc8a3fea939a0fda0f61543d1737308ff9175c2cb8"
+        },
+        {
+          "path": "drivers/network/mt6630/lifetime.h",
+          "sha256": "fe4e1e458dd2f99d7a3f5388baeec93e38f6c6ee338dfcfcea1e5c321a53ae4b"
+        },
+        {
+          "path": "drivers/network/mt6630/msdc2_pio.h",
+          "sha256": "09a123d6d35dd8975585570e4fe2277ce7440a8f593d778d21490975e7307640"
+        },
+        {
+          "path": "drivers/network/mt6630/ownership.h",
+          "sha256": "f65fa20bfb00b443f03f4b1bb41c5f7c4db1769b11c5beec9357188101049c4a"
+        },
+        {
+          "path": "drivers/network/mt6630/transport.h",
+          "sha256": "ff28649b6bfc526ee3a90c11353a04bf24dd9b11558f7573a890684a1b191380"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/calibration.c",
+      "object": "core/calibration.obj",
+      "sha256": "19D08D5150C348BBA2C8BA23620CAB4BA513572CE253A6A2B0BAB5DE6625CD3F",
+      "reuse": false,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/calibration.c",
+          "sha256": "941b2810ca42bc6149beb30b2eb15bd19da871ab1b2e4125288617f30550556e"
+        },
+        {
+          "path": "drivers/network/mt6630/nvram.h",
+          "sha256": "f2d2c6b304b52f9bf76a74879daadd572fedc432623459fce0b61d1772c1b0e5"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/control_start.c",
+      "object": "core/control_start.obj",
+      "sha256": "4ED209B014BD3D190CC3DC0881B1504B45F9D433A9D8BA5219ED97EEA74A1268",
+      "reuse": true,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/control_start.c",
+          "sha256": "3787d82a282efde20ba20e9ad9effda090c6abb89a6ce4b1c4a8e87f4454fa11"
+        },
+        {
+          "path": "drivers/network/mt6630/control_start.h",
+          "sha256": "fd2c4ad22001101e2bbbfc12d9f5b7ab90c1697917115f400b0f1464b054ad1f"
+        },
+        {
+          "path": "drivers/network/mt6630/direct.h",
+          "sha256": "362d7fd9f9d774234611e956212422c7385df8e2952654f2f7229113b38d6c97"
+        },
+        {
+          "path": "drivers/network/mt6630/enumerate.h",
+          "sha256": "71aabe478bd061e37618affc8a3fea939a0fda0f61543d1737308ff9175c2cb8"
+        },
+        {
+          "path": "drivers/network/mt6630/lifetime.h",
+          "sha256": "fe4e1e458dd2f99d7a3f5388baeec93e38f6c6ee338dfcfcea1e5c321a53ae4b"
+        },
+        {
+          "path": "drivers/network/mt6630/msdc2_pio.h",
+          "sha256": "09a123d6d35dd8975585570e4fe2277ce7440a8f593d778d21490975e7307640"
+        },
+        {
+          "path": "drivers/network/mt6630/ownership.h",
+          "sha256": "f65fa20bfb00b443f03f4b1bb41c5f7c4db1769b11c5beec9357188101049c4a"
+        },
+        {
+          "path": "drivers/network/mt6630/transport.h",
+          "sha256": "ff28649b6bfc526ee3a90c11353a04bf24dd9b11558f7573a890684a1b191380"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/direct.c",
+      "object": "core/direct.obj",
+      "sha256": "02777EBCAB133C11D1797D1B35F712B735E1A053056292834DD44F83C5BDB0C4",
+      "reuse": true,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/direct.c",
+          "sha256": "29686e75cfdaa5d6d503ea10b21653ef661bdffe57418e4a6de85570758d883a"
+        },
+        {
+          "path": "drivers/network/mt6630/direct.h",
+          "sha256": "362d7fd9f9d774234611e956212422c7385df8e2952654f2f7229113b38d6c97"
+        },
+        {
+          "path": "drivers/network/mt6630/ownership.h",
+          "sha256": "f65fa20bfb00b443f03f4b1bb41c5f7c4db1769b11c5beec9357188101049c4a"
+        },
+        {
+          "path": "drivers/network/mt6630/sdio_args.h",
+          "sha256": "a6c8d7ba7ae10ffa4bd5361df28fa5fa99dc10b31ab4319b0f34c9dd43f18fe3"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/enumerate.c",
+      "object": "core/enumerate.obj",
+      "sha256": "AA03720CE6F66E4AF60B4447DD754BC30693E55FF00E096B3B081D81634E39F6",
+      "reuse": true,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/enumerate.c",
+          "sha256": "97c8587298054ce99ef5fd7082710efc94784ea09c1eebc24804f735e374fb37"
+        },
+        {
+          "path": "drivers/network/mt6630/enumerate.h",
+          "sha256": "71aabe478bd061e37618affc8a3fea939a0fda0f61543d1737308ff9175c2cb8"
+        },
+        {
+          "path": "drivers/network/mt6630/identity.h",
+          "sha256": "c0c385167644f91d5231e8b267a32a913c66b68ef9f8ffd579a8b40f75c3fb26"
+        },
+        {
+          "path": "drivers/network/mt6630/ownership.h",
+          "sha256": "f65fa20bfb00b443f03f4b1bb41c5f7c4db1769b11c5beec9357188101049c4a"
+        },
+        {
+          "path": "drivers/network/mt6630/sdio_args.h",
+          "sha256": "a6c8d7ba7ae10ffa4bd5361df28fa5fa99dc10b31ab4319b0f34c9dd43f18fe3"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/identity.c",
+      "object": "core/identity.obj",
+      "sha256": "3031C2F22C275198548DFC0A2CE6AB7DB044B860879027373FAE5CB5C3119B9C",
+      "reuse": true,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/identity.c",
+          "sha256": "18b8e8f805150099ae4cc8e09cac27aa24d10c22e998b864cc79572bf2f1ec59"
+        },
+        {
+          "path": "drivers/network/mt6630/identity.h",
+          "sha256": "c0c385167644f91d5231e8b267a32a913c66b68ef9f8ffd579a8b40f75c3fb26"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/lifetime.c",
+      "object": "core/lifetime.obj",
+      "sha256": "66626DECA97AFB41A34F80F00F7464084A632C44C3B7507A0B9B4BB75B03BE0F",
+      "reuse": true,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/direct.h",
+          "sha256": "362d7fd9f9d774234611e956212422c7385df8e2952654f2f7229113b38d6c97"
+        },
+        {
+          "path": "drivers/network/mt6630/identity.h",
+          "sha256": "c0c385167644f91d5231e8b267a32a913c66b68ef9f8ffd579a8b40f75c3fb26"
+        },
+        {
+          "path": "drivers/network/mt6630/lifetime.c",
+          "sha256": "1d60a981736709040f53b56bdb385000a48c5d6aa3ba941fbb8c8925c82b1f66"
+        },
+        {
+          "path": "drivers/network/mt6630/lifetime.h",
+          "sha256": "fe4e1e458dd2f99d7a3f5388baeec93e38f6c6ee338dfcfcea1e5c321a53ae4b"
+        },
+        {
+          "path": "drivers/network/mt6630/ownership.h",
+          "sha256": "f65fa20bfb00b443f03f4b1bb41c5f7c4db1769b11c5beec9357188101049c4a"
+        },
+        {
+          "path": "drivers/network/mt6630/transport.h",
+          "sha256": "ff28649b6bfc526ee3a90c11353a04bf24dd9b11558f7573a890684a1b191380"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/msdc2_pio.c",
+      "object": "core/msdc2_pio.obj",
+      "sha256": "AEED1429758F75465F40283C2457BFFC8B01D0EC5F80E6E317CE471034F9B1CE",
+      "reuse": true,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/msdc2_pio.c",
+          "sha256": "def84dc8680eb6c68f7d36380f82464f7b8029091169f53bac289b0f3bfcbf98"
+        },
+        {
+          "path": "drivers/network/mt6630/msdc2_pio.h",
+          "sha256": "09a123d6d35dd8975585570e4fe2277ce7440a8f593d778d21490975e7307640"
+        },
+        {
+          "path": "drivers/network/mt6630/ownership.h",
+          "sha256": "f65fa20bfb00b443f03f4b1bb41c5f7c4db1769b11c5beec9357188101049c4a"
+        },
+        {
+          "path": "drivers/network/mt6630/sdio_args.h",
+          "sha256": "a6c8d7ba7ae10ffa4bd5361df28fa5fa99dc10b31ab4319b0f34c9dd43f18fe3"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/nvram_sector.c",
+      "object": "core/nvram_sector.obj",
+      "sha256": "7CD840C0D9E95CF3F49CC9F91FDE8C276BD669B398C8FE1FDB7E54CE951AF288",
+      "reuse": false,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/nvram.h",
+          "sha256": "f2d2c6b304b52f9bf76a74879daadd572fedc432623459fce0b61d1772c1b0e5"
+        },
+        {
+          "path": "drivers/network/mt6630/nvram_sector.c",
+          "sha256": "0771eccc600ecf8ba2abe5273cbf038232d6e3417262e721088c2f2a0688fefc"
+        },
+        {
+          "path": "drivers/network/mt6630/nvram_sector.h",
+          "sha256": "4a3c1ca704a2dd52bb7c9a51f49426431311d8b33a650e4d087080baf445d973"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/power_bridge.c",
+      "object": "core/power_bridge.obj",
+      "sha256": "86BA3709337ABBA7CB0F1611CBCA104228F76CEB7062D9166A292109D5131300",
+      "reuse": true,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/ownership.h",
+          "sha256": "f65fa20bfb00b443f03f4b1bb41c5f7c4db1769b11c5beec9357188101049c4a"
+        },
+        {
+          "path": "drivers/network/mt6630/power_bridge.c",
+          "sha256": "85e2de30b88431aec121e70781589f549cb86ebfc564d1018ea6963151afb40c"
+        },
+        {
+          "path": "drivers/network/mt6630/power_bridge.h",
+          "sha256": "b725651df4c0ca8e062bcd22e0ff8d336d8b0152622f840b0f3c3d35fde550f5"
+        },
+        {
+          "path": "drivers/network/mt6630/power_plan.h",
+          "sha256": "22b425097fb299822a44ce87579f983afc57e1a90200a0d71702750b9882a07b"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/power_plan.c",
+      "object": "core/power_plan.obj",
+      "sha256": "1DCD5BF7819BC4F31F208C11AD88BE6AF3CDE5AA87BB5106EC3BF7009E30F5A1",
+      "reuse": true,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/power_plan.c",
+          "sha256": "96bf10327cdee98eecb4a75294e3fe194501f4ba1bf5c080fdeca2600fb747c8"
+        },
+        {
+          "path": "drivers/network/mt6630/power_plan.h",
+          "sha256": "22b425097fb299822a44ce87579f983afc57e1a90200a0d71702750b9882a07b"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/regulatory.c",
+      "object": "core/regulatory.obj",
+      "sha256": "1A0B805C61D7DC68002570CDCFBB7D8291C5AC8B8304790FFF713D8BBB9FA89F",
+      "reuse": true,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/regulatory.c",
+          "sha256": "49be7b5751e3c8b378ed34d63f7c06c6b08800a8ef2359cc5afce189e451c288"
+        },
+        {
+          "path": "drivers/network/mt6630/regulatory.h",
+          "sha256": "c17ba3d9efef381327231012d219e0d41873190bf6bd7026d632553cdfc14bb2"
+        },
+        {
+          "path": "drivers/network/mt6630/regulatory_data.h",
+          "sha256": "6b3cf46f9417e3b5f5e26a7a49849ba4b52069c2de5f93b6255e0603d13382f7"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/resource_lease.c",
+      "object": "core/resource_lease.obj",
+      "sha256": "269E183BC0006EF223DB4630909538D221A4B3A0638F6A952D4D7D1FA6846342",
+      "reuse": true,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/ownership.h",
+          "sha256": "f65fa20bfb00b443f03f4b1bb41c5f7c4db1769b11c5beec9357188101049c4a"
+        },
+        {
+          "path": "drivers/network/mt6630/resource_lease.c",
+          "sha256": "f0d63cf5b068de8ea0f18c2ff8e88a251e226ea7bc0c18023c9dd4d14e97fb79"
+        },
+        {
+          "path": "drivers/network/mt6630/resource_lease.h",
+          "sha256": "4f4f905783360b0bde70f09c52e5885f646766aafc04b88fbc2841e7909a8a0c"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/sha256.c",
+      "object": "core/sha256.obj",
+      "sha256": "3DBC13D1F0F1B8CE1A5BE137D990F250AB7ACC8055E320C0FE20CEA817276415",
+      "reuse": true,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/sha256.c",
+          "sha256": "540647a74738f033c6dcdb4afd43a3cff65cdaf18caaadd891587eef2b77a589"
+        },
+        {
+          "path": "drivers/network/mt6630/sha256.h",
+          "sha256": "13d1a80973e290c141044bcd221e0f9ae3ce57f5b27933fa38e8fed74e0aa693"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/transport.c",
+      "object": "core/transport.obj",
+      "sha256": "88BE4ECE5717DD9F43F012DFF47743D0D84B78839B2142E3A0627C45BC29D988",
+      "reuse": true,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/sdio_args.h",
+          "sha256": "a6c8d7ba7ae10ffa4bd5361df28fa5fa99dc10b31ab4319b0f34c9dd43f18fe3"
+        },
+        {
+          "path": "drivers/network/mt6630/transport.c",
+          "sha256": "08630e26a66e4ed25769037f0b8a33476acbe2ba1238cc2bb7006811349814ef"
+        },
+        {
+          "path": "drivers/network/mt6630/transport.h",
+          "sha256": "ff28649b6bfc526ee3a90c11353a04bf24dd9b11558f7573a890684a1b191380"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/windows_board.c",
+      "object": "core/windows_board.obj",
+      "sha256": "65C8BFE0871761398D3C0A0933D083E742A38EA8B02FB2F40BB991702316D161",
+      "reuse": false,
+      "dependencies": [
+        {
+          "path": "drivers/bus/mt8167-shared/wifi_interface.h",
+          "sha256": "9e5557a38a696298b544333444982d2b5230239f34145563bed611aeb65e210b"
+        },
+        {
+          "path": "drivers/network/mt6630/board_sequence.h",
+          "sha256": "30bf9b4d8cdb4b3a2f3878cdb6c3f26179ae4ff333a8a53d99deedeb77dddb50"
+        },
+        {
+          "path": "drivers/network/mt6630/bringup.h",
+          "sha256": "be2f470d7af9acb4b9dab1f5eb6e56e1fdbecd85ffded485022e844392715a4f"
+        },
+        {
+          "path": "drivers/network/mt6630/control_start.h",
+          "sha256": "fd2c4ad22001101e2bbbfc12d9f5b7ab90c1697917115f400b0f1464b054ad1f"
+        },
+        {
+          "path": "drivers/network/mt6630/direct.h",
+          "sha256": "362d7fd9f9d774234611e956212422c7385df8e2952654f2f7229113b38d6c97"
+        },
+        {
+          "path": "drivers/network/mt6630/enumerate.h",
+          "sha256": "71aabe478bd061e37618affc8a3fea939a0fda0f61543d1737308ff9175c2cb8"
+        },
+        {
+          "path": "drivers/network/mt6630/lifetime.h",
+          "sha256": "fe4e1e458dd2f99d7a3f5388baeec93e38f6c6ee338dfcfcea1e5c321a53ae4b"
+        },
+        {
+          "path": "drivers/network/mt6630/msdc2_pio.h",
+          "sha256": "09a123d6d35dd8975585570e4fe2277ce7440a8f593d778d21490975e7307640"
+        },
+        {
+          "path": "drivers/network/mt6630/native_limits.h",
+          "sha256": "db0695974383758d65195b0d95c868659f7c51aebea22796c2afdf701c2893bb"
+        },
+        {
+          "path": "drivers/network/mt6630/ownership.h",
+          "sha256": "f65fa20bfb00b443f03f4b1bb41c5f7c4db1769b11c5beec9357188101049c4a"
+        },
+        {
+          "path": "drivers/network/mt6630/regulatory.h",
+          "sha256": "c17ba3d9efef381327231012d219e0d41873190bf6bd7026d632553cdfc14bb2"
+        },
+        {
+          "path": "drivers/network/mt6630/transport.h",
+          "sha256": "ff28649b6bfc526ee3a90c11353a04bf24dd9b11558f7573a890684a1b191380"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3SDIOProtocol.h",
+          "sha256": "52d2644220ce73d626f6d84557bf589b436d85b872b664e32206a953cafbd9b9"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3SDIOTransport.h",
+          "sha256": "2389ab0f4520de4e97687125d484fc9c840f9ffa523ac5b6aa392a270781269f"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANData.h",
+          "sha256": "166a454c921a301ec538c67e46744b723ef600f337979ba30806bc9a3d02a5b4"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANFirmware.h",
+          "sha256": "1614329953e25e9aa7cb17408c242cafa4b69489282e43f7a23e536abdb864ea"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANHost.h",
+          "sha256": "d91d6866ac5136afd3bc217c9254535cee30ddc56fefa08ed930a23f36d67106"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANProtocol.h",
+          "sha256": "0eeb3f8eb4aa987c02abd3cb6e78e63d30a0ae1572f4b6a8c232363894459595"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANSecurity.h",
+          "sha256": "d321dc8b83308185cbd0f4adcc74996f3c2c05eebc4551a23791530d337853b0"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANStation.h",
+          "sha256": "5dd574e710598a87144508761ed219f7a3f62a2d6d29c95d9798b482a6809e46"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTDownload.h",
+          "sha256": "f3a2e0a045664cb984a5f1be32289030f5ae9777fbeab77002cd1a2f96b21762"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTFirmware.h",
+          "sha256": "0e6b0f8beefc9bf587e4db7222c8618e754a3af7a2068e6458b8d6d152ccc2ed"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTProtocol.h",
+          "sha256": "d448a4a0866e88ae6567fc97e1b3aadf12fc8e7d9b48ce578fb1380c165d2b11"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTRoundtrip.h",
+          "sha256": "b0a2dfab1147e9e37a4a7d942bd92ccd1a25bcf6e0fb9c4b70a006bd29a56a35"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_board.c",
+          "sha256": "5f64fc3befa85780476c8b667d1ed120bc7fd4396075ace88b04f80a2bed60af"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_board.h",
+          "sha256": "efe84c87cd1321a7939506d52fa8030498dff8dfaaa60bdb3de85f4209979276"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_msdc2.h",
+          "sha256": "7c30d711b8d4bdc40f162de4c4709657c42f89e022c6ef14a96a1a5a62706826"
+        },
+        {
+          "path": "drivers/network/mt6630/wmt_bridge.h",
+          "sha256": "631a4a3bfbfc14b88ca9e828062c52803d5d757628ccb38cfea6a56083faea16"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/windows_calibration.c",
+      "object": "core/windows_calibration.obj",
+      "sha256": "51DDDF7FD975025BCF3723539DCB923B50559B517F8460334FDD3EBCD7B4772F",
+      "reuse": false,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/checkpoint_wire.h",
+          "sha256": "9ed349f2a3ef1f33c5d3ce8f76776a5816bf71eedd0ee3f6735f7cb894c71713"
+        },
+        {
+          "path": "drivers/network/mt6630/direct.h",
+          "sha256": "362d7fd9f9d774234611e956212422c7385df8e2952654f2f7229113b38d6c97"
+        },
+        {
+          "path": "drivers/network/mt6630/lifetime.h",
+          "sha256": "fe4e1e458dd2f99d7a3f5388baeec93e38f6c6ee338dfcfcea1e5c321a53ae4b"
+        },
+        {
+          "path": "drivers/network/mt6630/native_limits.h",
+          "sha256": "db0695974383758d65195b0d95c868659f7c51aebea22796c2afdf701c2893bb"
+        },
+        {
+          "path": "drivers/network/mt6630/ownership.h",
+          "sha256": "f65fa20bfb00b443f03f4b1bb41c5f7c4db1769b11c5beec9357188101049c4a"
+        },
+        {
+          "path": "drivers/network/mt6630/regulatory.h",
+          "sha256": "c17ba3d9efef381327231012d219e0d41873190bf6bd7026d632553cdfc14bb2"
+        },
+        {
+          "path": "drivers/network/mt6630/transport.h",
+          "sha256": "ff28649b6bfc526ee3a90c11353a04bf24dd9b11558f7573a890684a1b191380"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3SDIOProtocol.h",
+          "sha256": "52d2644220ce73d626f6d84557bf589b436d85b872b664e32206a953cafbd9b9"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3SDIOTransport.h",
+          "sha256": "2389ab0f4520de4e97687125d484fc9c840f9ffa523ac5b6aa392a270781269f"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANData.h",
+          "sha256": "166a454c921a301ec538c67e46744b723ef600f337979ba30806bc9a3d02a5b4"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANFirmware.h",
+          "sha256": "1614329953e25e9aa7cb17408c242cafa4b69489282e43f7a23e536abdb864ea"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANHost.h",
+          "sha256": "d91d6866ac5136afd3bc217c9254535cee30ddc56fefa08ed930a23f36d67106"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANProtocol.h",
+          "sha256": "0eeb3f8eb4aa987c02abd3cb6e78e63d30a0ae1572f4b6a8c232363894459595"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANSecurity.h",
+          "sha256": "d321dc8b83308185cbd0f4adcc74996f3c2c05eebc4551a23791530d337853b0"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANStation.h",
+          "sha256": "5dd574e710598a87144508761ed219f7a3f62a2d6d29c95d9798b482a6809e46"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTDownload.h",
+          "sha256": "f3a2e0a045664cb984a5f1be32289030f5ae9777fbeab77002cd1a2f96b21762"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTFirmware.h",
+          "sha256": "0e6b0f8beefc9bf587e4db7222c8618e754a3af7a2068e6458b8d6d152ccc2ed"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTProtocol.h",
+          "sha256": "d448a4a0866e88ae6567fc97e1b3aadf12fc8e7d9b48ce578fb1380c165d2b11"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTRoundtrip.h",
+          "sha256": "b0a2dfab1147e9e37a4a7d942bd92ccd1a25bcf6e0fb9c4b70a006bd29a56a35"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_calibration.c",
+          "sha256": "c4a36bfd8a9f2962eafc8a6b082c362e0b47053192ab1875fdf1099f1c7411b1"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_calibration.h",
+          "sha256": "238dbea69df4316ec6f1f3788daa3e64a7d1df9540661fe2465bb4e376a88324"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_firmware.h",
+          "sha256": "3b12ee22372822d03b58eff802b401d4b3e54e520a2c75e7336a3399ba7463e8"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_init_trace.h",
+          "sha256": "b802a065e4a649f25a78acdb6672d6674a6cfb9a31e6c5e98a5398c02a8d4103"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_nvram_reader.h",
+          "sha256": "382b9dedaedcf7cebbf0a090604db8b0051633953476e2e0dd6ebe3e802bbee4"
+        },
+        {
+          "path": "drivers/network/mt6630/wmt_bridge.h",
+          "sha256": "631a4a3bfbfc14b88ca9e828062c52803d5d757628ccb38cfea6a56083faea16"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/windows_diagnostic.c",
+      "object": "core/windows_diagnostic.obj",
+      "sha256": "0B3CD522B59434601AF18A012C52BA847B1EA6CDDC8F0138ACC48315DA465ED2",
+      "reuse": false,
+      "dependencies": [
+        {
+          "path": "drivers/bus/mt8167-shared/wifi_interface.h",
+          "sha256": "9e5557a38a696298b544333444982d2b5230239f34145563bed611aeb65e210b"
+        },
+        {
+          "path": "drivers/network/mt6630/board_sequence.h",
+          "sha256": "30bf9b4d8cdb4b3a2f3878cdb6c3f26179ae4ff333a8a53d99deedeb77dddb50"
+        },
+        {
+          "path": "drivers/network/mt6630/bringup.h",
+          "sha256": "be2f470d7af9acb4b9dab1f5eb6e56e1fdbecd85ffded485022e844392715a4f"
+        },
+        {
+          "path": "drivers/network/mt6630/checkpoint_wire.h",
+          "sha256": "9ed349f2a3ef1f33c5d3ce8f76776a5816bf71eedd0ee3f6735f7cb894c71713"
+        },
+        {
+          "path": "drivers/network/mt6630/control_start.h",
+          "sha256": "fd2c4ad22001101e2bbbfc12d9f5b7ab90c1697917115f400b0f1464b054ad1f"
+        },
+        {
+          "path": "drivers/network/mt6630/direct.h",
+          "sha256": "362d7fd9f9d774234611e956212422c7385df8e2952654f2f7229113b38d6c97"
+        },
+        {
+          "path": "drivers/network/mt6630/enumerate.h",
+          "sha256": "71aabe478bd061e37618affc8a3fea939a0fda0f61543d1737308ff9175c2cb8"
+        },
+        {
+          "path": "drivers/network/mt6630/lifetime.h",
+          "sha256": "fe4e1e458dd2f99d7a3f5388baeec93e38f6c6ee338dfcfcea1e5c321a53ae4b"
+        },
+        {
+          "path": "drivers/network/mt6630/msdc2_pio.h",
+          "sha256": "09a123d6d35dd8975585570e4fe2277ce7440a8f593d778d21490975e7307640"
+        },
+        {
+          "path": "drivers/network/mt6630/native_limits.h",
+          "sha256": "db0695974383758d65195b0d95c868659f7c51aebea22796c2afdf701c2893bb"
+        },
+        {
+          "path": "drivers/network/mt6630/ownership.h",
+          "sha256": "f65fa20bfb00b443f03f4b1bb41c5f7c4db1769b11c5beec9357188101049c4a"
+        },
+        {
+          "path": "drivers/network/mt6630/regulatory.h",
+          "sha256": "c17ba3d9efef381327231012d219e0d41873190bf6bd7026d632553cdfc14bb2"
+        },
+        {
+          "path": "drivers/network/mt6630/transport.h",
+          "sha256": "ff28649b6bfc526ee3a90c11353a04bf24dd9b11558f7573a890684a1b191380"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3SDIOProtocol.h",
+          "sha256": "52d2644220ce73d626f6d84557bf589b436d85b872b664e32206a953cafbd9b9"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3SDIOTransport.h",
+          "sha256": "2389ab0f4520de4e97687125d484fc9c840f9ffa523ac5b6aa392a270781269f"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANData.h",
+          "sha256": "166a454c921a301ec538c67e46744b723ef600f337979ba30806bc9a3d02a5b4"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANFirmware.h",
+          "sha256": "1614329953e25e9aa7cb17408c242cafa4b69489282e43f7a23e536abdb864ea"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANHost.h",
+          "sha256": "d91d6866ac5136afd3bc217c9254535cee30ddc56fefa08ed930a23f36d67106"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANProtocol.h",
+          "sha256": "0eeb3f8eb4aa987c02abd3cb6e78e63d30a0ae1572f4b6a8c232363894459595"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANSecurity.h",
+          "sha256": "d321dc8b83308185cbd0f4adcc74996f3c2c05eebc4551a23791530d337853b0"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANStation.h",
+          "sha256": "5dd574e710598a87144508761ed219f7a3f62a2d6d29c95d9798b482a6809e46"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTDownload.h",
+          "sha256": "f3a2e0a045664cb984a5f1be32289030f5ae9777fbeab77002cd1a2f96b21762"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTFirmware.h",
+          "sha256": "0e6b0f8beefc9bf587e4db7222c8618e754a3af7a2068e6458b8d6d152ccc2ed"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTProtocol.h",
+          "sha256": "d448a4a0866e88ae6567fc97e1b3aadf12fc8e7d9b48ce578fb1380c165d2b11"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTRoundtrip.h",
+          "sha256": "b0a2dfab1147e9e37a4a7d942bd92ccd1a25bcf6e0fb9c4b70a006bd29a56a35"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_board.h",
+          "sha256": "efe84c87cd1321a7939506d52fa8030498dff8dfaaa60bdb3de85f4209979276"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_calibration.h",
+          "sha256": "238dbea69df4316ec6f1f3788daa3e64a7d1df9540661fe2465bb4e376a88324"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_diagnostic.c",
+          "sha256": "8f12ea7350c5ee7e7167897e7030ce511da5a06a85e5b85d3e097cd2129b1798"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_diagnostic.h",
+          "sha256": "e0aac8a3afdd8f02c81b1f0713dd0fddbd5247e70d2c0ed22ab5255d3327271a"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_firmware.h",
+          "sha256": "3b12ee22372822d03b58eff802b401d4b3e54e520a2c75e7336a3399ba7463e8"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_init_trace.h",
+          "sha256": "b802a065e4a649f25a78acdb6672d6674a6cfb9a31e6c5e98a5398c02a8d4103"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_msdc2.h",
+          "sha256": "7c30d711b8d4bdc40f162de4c4709657c42f89e022c6ef14a96a1a5a62706826"
+        },
+        {
+          "path": "drivers/network/mt6630/wmt_bridge.h",
+          "sha256": "631a4a3bfbfc14b88ca9e828062c52803d5d757628ccb38cfea6a56083faea16"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/windows_firmware.c",
+      "object": "core/windows_firmware.obj",
+      "sha256": "1F8EB40EB220DA4F95AE483E7E992574AA01B090B77000374C34EA4423AC4AF9",
+      "reuse": false,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/checkpoint_wire.h",
+          "sha256": "9ed349f2a3ef1f33c5d3ce8f76776a5816bf71eedd0ee3f6735f7cb894c71713"
+        },
+        {
+          "path": "drivers/network/mt6630/direct.h",
+          "sha256": "362d7fd9f9d774234611e956212422c7385df8e2952654f2f7229113b38d6c97"
+        },
+        {
+          "path": "drivers/network/mt6630/lifetime.h",
+          "sha256": "fe4e1e458dd2f99d7a3f5388baeec93e38f6c6ee338dfcfcea1e5c321a53ae4b"
+        },
+        {
+          "path": "drivers/network/mt6630/native_limits.h",
+          "sha256": "db0695974383758d65195b0d95c868659f7c51aebea22796c2afdf701c2893bb"
+        },
+        {
+          "path": "drivers/network/mt6630/ownership.h",
+          "sha256": "f65fa20bfb00b443f03f4b1bb41c5f7c4db1769b11c5beec9357188101049c4a"
+        },
+        {
+          "path": "drivers/network/mt6630/regulatory.h",
+          "sha256": "c17ba3d9efef381327231012d219e0d41873190bf6bd7026d632553cdfc14bb2"
+        },
+        {
+          "path": "drivers/network/mt6630/sha256.h",
+          "sha256": "13d1a80973e290c141044bcd221e0f9ae3ce57f5b27933fa38e8fed74e0aa693"
+        },
+        {
+          "path": "drivers/network/mt6630/transport.h",
+          "sha256": "ff28649b6bfc526ee3a90c11353a04bf24dd9b11558f7573a890684a1b191380"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3SDIOProtocol.h",
+          "sha256": "52d2644220ce73d626f6d84557bf589b436d85b872b664e32206a953cafbd9b9"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3SDIOTransport.h",
+          "sha256": "2389ab0f4520de4e97687125d484fc9c840f9ffa523ac5b6aa392a270781269f"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANData.h",
+          "sha256": "166a454c921a301ec538c67e46744b723ef600f337979ba30806bc9a3d02a5b4"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANFirmware.h",
+          "sha256": "1614329953e25e9aa7cb17408c242cafa4b69489282e43f7a23e536abdb864ea"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANHost.h",
+          "sha256": "d91d6866ac5136afd3bc217c9254535cee30ddc56fefa08ed930a23f36d67106"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANProtocol.h",
+          "sha256": "0eeb3f8eb4aa987c02abd3cb6e78e63d30a0ae1572f4b6a8c232363894459595"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANSecurity.h",
+          "sha256": "d321dc8b83308185cbd0f4adcc74996f3c2c05eebc4551a23791530d337853b0"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANStation.h",
+          "sha256": "5dd574e710598a87144508761ed219f7a3f62a2d6d29c95d9798b482a6809e46"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTDownload.h",
+          "sha256": "f3a2e0a045664cb984a5f1be32289030f5ae9777fbeab77002cd1a2f96b21762"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTFirmware.h",
+          "sha256": "0e6b0f8beefc9bf587e4db7222c8618e754a3af7a2068e6458b8d6d152ccc2ed"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTProtocol.h",
+          "sha256": "d448a4a0866e88ae6567fc97e1b3aadf12fc8e7d9b48ce578fb1380c165d2b11"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTRoundtrip.h",
+          "sha256": "b0a2dfab1147e9e37a4a7d942bd92ccd1a25bcf6e0fb9c4b70a006bd29a56a35"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_firmware.c",
+          "sha256": "b0d0ce7f6157bd9a9385992048216ae8dbabf8813c5e1e90367fe40268ed6948"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_firmware.h",
+          "sha256": "3b12ee22372822d03b58eff802b401d4b3e54e520a2c75e7336a3399ba7463e8"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_init_trace.h",
+          "sha256": "b802a065e4a649f25a78acdb6672d6674a6cfb9a31e6c5e98a5398c02a8d4103"
+        },
+        {
+          "path": "drivers/network/mt6630/wmt_bridge.h",
+          "sha256": "631a4a3bfbfc14b88ca9e828062c52803d5d757628ccb38cfea6a56083faea16"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/windows_irq.c",
+      "object": "core/windows_irq.obj",
+      "sha256": "73A35FAD9F8FA314C9731A92F834F606C10470232E1D8754BD1091034114F345",
+      "reuse": true,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/windows_irq.c",
+          "sha256": "6578c78f3341a41e277c346cad740b14c74a3db62bb99e448c3e0cc58fd24a44"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_irq.h",
+          "sha256": "b7246ec93fcd50493df73b79c82ac14716db25999f122674b70ed83d77d1dd58"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/windows_irq_firmware.c",
+      "object": "core/windows_irq_firmware.obj",
+      "sha256": "07A4596B311EB9F008582BF4AEF179724270581473A0E237C4335C12EDA50E4C",
+      "reuse": false,
+      "dependencies": [
+        {
+          "path": "drivers/bus/mt8167-shared/wifi_interface.h",
+          "sha256": "9e5557a38a696298b544333444982d2b5230239f34145563bed611aeb65e210b"
+        },
+        {
+          "path": "drivers/network/mt6630/board_sequence.h",
+          "sha256": "30bf9b4d8cdb4b3a2f3878cdb6c3f26179ae4ff333a8a53d99deedeb77dddb50"
+        },
+        {
+          "path": "drivers/network/mt6630/bringup.h",
+          "sha256": "be2f470d7af9acb4b9dab1f5eb6e56e1fdbecd85ffded485022e844392715a4f"
+        },
+        {
+          "path": "drivers/network/mt6630/checkpoint_wire.h",
+          "sha256": "9ed349f2a3ef1f33c5d3ce8f76776a5816bf71eedd0ee3f6735f7cb894c71713"
+        },
+        {
+          "path": "drivers/network/mt6630/control_start.h",
+          "sha256": "fd2c4ad22001101e2bbbfc12d9f5b7ab90c1697917115f400b0f1464b054ad1f"
+        },
+        {
+          "path": "drivers/network/mt6630/direct.h",
+          "sha256": "362d7fd9f9d774234611e956212422c7385df8e2952654f2f7229113b38d6c97"
+        },
+        {
+          "path": "drivers/network/mt6630/enumerate.h",
+          "sha256": "71aabe478bd061e37618affc8a3fea939a0fda0f61543d1737308ff9175c2cb8"
+        },
+        {
+          "path": "drivers/network/mt6630/lifetime.h",
+          "sha256": "fe4e1e458dd2f99d7a3f5388baeec93e38f6c6ee338dfcfcea1e5c321a53ae4b"
+        },
+        {
+          "path": "drivers/network/mt6630/msdc2_pio.h",
+          "sha256": "09a123d6d35dd8975585570e4fe2277ce7440a8f593d778d21490975e7307640"
+        },
+        {
+          "path": "drivers/network/mt6630/native_limits.h",
+          "sha256": "db0695974383758d65195b0d95c868659f7c51aebea22796c2afdf701c2893bb"
+        },
+        {
+          "path": "drivers/network/mt6630/ownership.h",
+          "sha256": "f65fa20bfb00b443f03f4b1bb41c5f7c4db1769b11c5beec9357188101049c4a"
+        },
+        {
+          "path": "drivers/network/mt6630/regulatory.h",
+          "sha256": "c17ba3d9efef381327231012d219e0d41873190bf6bd7026d632553cdfc14bb2"
+        },
+        {
+          "path": "drivers/network/mt6630/transport.h",
+          "sha256": "ff28649b6bfc526ee3a90c11353a04bf24dd9b11558f7573a890684a1b191380"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3SDIOProtocol.h",
+          "sha256": "52d2644220ce73d626f6d84557bf589b436d85b872b664e32206a953cafbd9b9"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3SDIOTransport.h",
+          "sha256": "2389ab0f4520de4e97687125d484fc9c840f9ffa523ac5b6aa392a270781269f"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANData.h",
+          "sha256": "166a454c921a301ec538c67e46744b723ef600f337979ba30806bc9a3d02a5b4"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANFirmware.h",
+          "sha256": "1614329953e25e9aa7cb17408c242cafa4b69489282e43f7a23e536abdb864ea"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANHost.h",
+          "sha256": "d91d6866ac5136afd3bc217c9254535cee30ddc56fefa08ed930a23f36d67106"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANProtocol.h",
+          "sha256": "0eeb3f8eb4aa987c02abd3cb6e78e63d30a0ae1572f4b6a8c232363894459595"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANSecurity.h",
+          "sha256": "d321dc8b83308185cbd0f4adcc74996f3c2c05eebc4551a23791530d337853b0"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANStation.h",
+          "sha256": "5dd574e710598a87144508761ed219f7a3f62a2d6d29c95d9798b482a6809e46"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTDownload.h",
+          "sha256": "f3a2e0a045664cb984a5f1be32289030f5ae9777fbeab77002cd1a2f96b21762"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTFirmware.h",
+          "sha256": "0e6b0f8beefc9bf587e4db7222c8618e754a3af7a2068e6458b8d6d152ccc2ed"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTProtocol.h",
+          "sha256": "d448a4a0866e88ae6567fc97e1b3aadf12fc8e7d9b48ce578fb1380c165d2b11"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTRoundtrip.h",
+          "sha256": "b0a2dfab1147e9e37a4a7d942bd92ccd1a25bcf6e0fb9c4b70a006bd29a56a35"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_board.h",
+          "sha256": "efe84c87cd1321a7939506d52fa8030498dff8dfaaa60bdb3de85f4209979276"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_diagnostic.h",
+          "sha256": "e0aac8a3afdd8f02c81b1f0713dd0fddbd5247e70d2c0ed22ab5255d3327271a"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_firmware.h",
+          "sha256": "3b12ee22372822d03b58eff802b401d4b3e54e520a2c75e7336a3399ba7463e8"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_init_trace.h",
+          "sha256": "b802a065e4a649f25a78acdb6672d6674a6cfb9a31e6c5e98a5398c02a8d4103"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_irq_firmware.c",
+          "sha256": "51c440de3677d5cd9dcce1049968f6cc0a4b2134edd44d2f0876009bfb385c61"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_irq_firmware.h",
+          "sha256": "3563c2955f7e8919ae99fb57fc132f798a8dd84a8ddbb7666fe07973e455ca0b"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_irq_work.h",
+          "sha256": "2683f79650e41aebd96687f252aca77ead49e3f3796b02c57c23ecb4fbb47281"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_msdc2.h",
+          "sha256": "7c30d711b8d4bdc40f162de4c4709657c42f89e022c6ef14a96a1a5a62706826"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_session.h",
+          "sha256": "27f1d9a0f22f4090750cbc73a5029bd73805a05556365b79db426181442638a2"
+        },
+        {
+          "path": "drivers/network/mt6630/wmt_bridge.h",
+          "sha256": "631a4a3bfbfc14b88ca9e828062c52803d5d757628ccb38cfea6a56083faea16"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/windows_irq_work.c",
+      "object": "core/windows_irq_work.obj",
+      "sha256": "ABE47D65A82814EEE9C046FFDB03ABB72FCD064107CFBB19901C712C90781437",
+      "reuse": true,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/windows_irq_work.c",
+          "sha256": "3b71f665185615584a8d04015234dc73228a260c2c02be7699b517514cf682b7"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_irq_work.h",
+          "sha256": "2683f79650e41aebd96687f252aca77ead49e3f3796b02c57c23ecb4fbb47281"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/windows_msdc2.c",
+      "object": "core/windows_msdc2.obj",
+      "sha256": "FDA4E98819221675FB8E44C14222581B6C911E67E9619817B80C536FC8CC9189",
+      "reuse": true,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/msdc2_pio.h",
+          "sha256": "09a123d6d35dd8975585570e4fe2277ce7440a8f593d778d21490975e7307640"
+        },
+        {
+          "path": "drivers/network/mt6630/ownership.h",
+          "sha256": "f65fa20bfb00b443f03f4b1bb41c5f7c4db1769b11c5beec9357188101049c4a"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_msdc2.c",
+          "sha256": "3bc884e6d9c8f678667f1c3a5f485b2e3ef45b5f734c508c29d13988df8fae5c"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_msdc2.h",
+          "sha256": "7c30d711b8d4bdc40f162de4c4709657c42f89e022c6ef14a96a1a5a62706826"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/windows_nvram_reader.c",
+      "object": "core/windows_nvram_reader.obj",
+      "sha256": "55EED97C7B9E4A4A03E3F9EC5E887EDD9B22BF611E3B69DA885735224EF578D6",
+      "reuse": false,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/checkpoint_wire.h",
+          "sha256": "9ed349f2a3ef1f33c5d3ce8f76776a5816bf71eedd0ee3f6735f7cb894c71713"
+        },
+        {
+          "path": "drivers/network/mt6630/nvram.h",
+          "sha256": "f2d2c6b304b52f9bf76a74879daadd572fedc432623459fce0b61d1772c1b0e5"
+        },
+        {
+          "path": "drivers/network/mt6630/nvram_sector.h",
+          "sha256": "4a3c1ca704a2dd52bb7c9a51f49426431311d8b33a650e4d087080baf445d973"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_init_trace.h",
+          "sha256": "b802a065e4a649f25a78acdb6672d6674a6cfb9a31e6c5e98a5398c02a8d4103"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_nvram_reader.c",
+          "sha256": "38e4f9822ff1cd041266153758ad1dfa9c0f95037caae28ee3734d18919fa27d"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_nvram_reader.h",
+          "sha256": "382b9dedaedcf7cebbf0a090604db8b0051633953476e2e0dd6ebe3e802bbee4"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/windows_session.c",
+      "object": "core/windows_session.obj",
+      "sha256": "B669983DD5A1E5D5677EF5B29721D4B1F2B3D6641065CFA031633927CC0C5FD9",
+      "reuse": false,
+      "dependencies": [
+        {
+          "path": "drivers/bus/mt8167-shared/wifi_interface.h",
+          "sha256": "9e5557a38a696298b544333444982d2b5230239f34145563bed611aeb65e210b"
+        },
+        {
+          "path": "drivers/network/mt6630/board_sequence.h",
+          "sha256": "30bf9b4d8cdb4b3a2f3878cdb6c3f26179ae4ff333a8a53d99deedeb77dddb50"
+        },
+        {
+          "path": "drivers/network/mt6630/bringup.h",
+          "sha256": "be2f470d7af9acb4b9dab1f5eb6e56e1fdbecd85ffded485022e844392715a4f"
+        },
+        {
+          "path": "drivers/network/mt6630/checkpoint_wire.h",
+          "sha256": "9ed349f2a3ef1f33c5d3ce8f76776a5816bf71eedd0ee3f6735f7cb894c71713"
+        },
+        {
+          "path": "drivers/network/mt6630/control_start.h",
+          "sha256": "fd2c4ad22001101e2bbbfc12d9f5b7ab90c1697917115f400b0f1464b054ad1f"
+        },
+        {
+          "path": "drivers/network/mt6630/direct.h",
+          "sha256": "362d7fd9f9d774234611e956212422c7385df8e2952654f2f7229113b38d6c97"
+        },
+        {
+          "path": "drivers/network/mt6630/enumerate.h",
+          "sha256": "71aabe478bd061e37618affc8a3fea939a0fda0f61543d1737308ff9175c2cb8"
+        },
+        {
+          "path": "drivers/network/mt6630/lifetime.h",
+          "sha256": "fe4e1e458dd2f99d7a3f5388baeec93e38f6c6ee338dfcfcea1e5c321a53ae4b"
+        },
+        {
+          "path": "drivers/network/mt6630/msdc2_pio.h",
+          "sha256": "09a123d6d35dd8975585570e4fe2277ce7440a8f593d778d21490975e7307640"
+        },
+        {
+          "path": "drivers/network/mt6630/native_limits.h",
+          "sha256": "db0695974383758d65195b0d95c868659f7c51aebea22796c2afdf701c2893bb"
+        },
+        {
+          "path": "drivers/network/mt6630/ownership.h",
+          "sha256": "f65fa20bfb00b443f03f4b1bb41c5f7c4db1769b11c5beec9357188101049c4a"
+        },
+        {
+          "path": "drivers/network/mt6630/regulatory.h",
+          "sha256": "c17ba3d9efef381327231012d219e0d41873190bf6bd7026d632553cdfc14bb2"
+        },
+        {
+          "path": "drivers/network/mt6630/transport.h",
+          "sha256": "ff28649b6bfc526ee3a90c11353a04bf24dd9b11558f7573a890684a1b191380"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3SDIOProtocol.h",
+          "sha256": "52d2644220ce73d626f6d84557bf589b436d85b872b664e32206a953cafbd9b9"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3SDIOTransport.h",
+          "sha256": "2389ab0f4520de4e97687125d484fc9c840f9ffa523ac5b6aa392a270781269f"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANData.h",
+          "sha256": "166a454c921a301ec538c67e46744b723ef600f337979ba30806bc9a3d02a5b4"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANFirmware.h",
+          "sha256": "1614329953e25e9aa7cb17408c242cafa4b69489282e43f7a23e536abdb864ea"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANHost.h",
+          "sha256": "d91d6866ac5136afd3bc217c9254535cee30ddc56fefa08ed930a23f36d67106"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANProtocol.h",
+          "sha256": "0eeb3f8eb4aa987c02abd3cb6e78e63d30a0ae1572f4b6a8c232363894459595"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANSecurity.h",
+          "sha256": "d321dc8b83308185cbd0f4adcc74996f3c2c05eebc4551a23791530d337853b0"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANStation.h",
+          "sha256": "5dd574e710598a87144508761ed219f7a3f62a2d6d29c95d9798b482a6809e46"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTDownload.h",
+          "sha256": "f3a2e0a045664cb984a5f1be32289030f5ae9777fbeab77002cd1a2f96b21762"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTFirmware.h",
+          "sha256": "0e6b0f8beefc9bf587e4db7222c8618e754a3af7a2068e6458b8d6d152ccc2ed"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTProtocol.h",
+          "sha256": "d448a4a0866e88ae6567fc97e1b3aadf12fc8e7d9b48ce578fb1380c165d2b11"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTRoundtrip.h",
+          "sha256": "b0a2dfab1147e9e37a4a7d942bd92ccd1a25bcf6e0fb9c4b70a006bd29a56a35"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_board.h",
+          "sha256": "efe84c87cd1321a7939506d52fa8030498dff8dfaaa60bdb3de85f4209979276"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_diagnostic.h",
+          "sha256": "e0aac8a3afdd8f02c81b1f0713dd0fddbd5247e70d2c0ed22ab5255d3327271a"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_firmware.h",
+          "sha256": "3b12ee22372822d03b58eff802b401d4b3e54e520a2c75e7336a3399ba7463e8"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_init_trace.h",
+          "sha256": "b802a065e4a649f25a78acdb6672d6674a6cfb9a31e6c5e98a5398c02a8d4103"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_msdc2.h",
+          "sha256": "7c30d711b8d4bdc40f162de4c4709657c42f89e022c6ef14a96a1a5a62706826"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_session.c",
+          "sha256": "decde16dff51e9ded0d579dd95265f66e0228af6b89ac13fdf66d67af010d45f"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_session.h",
+          "sha256": "27f1d9a0f22f4090750cbc73a5029bd73805a05556365b79db426181442638a2"
+        },
+        {
+          "path": "drivers/network/mt6630/wmt_bridge.h",
+          "sha256": "631a4a3bfbfc14b88ca9e828062c52803d5d757628ccb38cfea6a56083faea16"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/windows_session_irq.c",
+      "object": "core/windows_session_irq.obj",
+      "sha256": "ED9409D27196CFFA977966A35C8E6031CA8E89CFDD91D6ECFBFE3F8CB1071A2D",
+      "reuse": false,
+      "dependencies": [
+        {
+          "path": "drivers/bus/mt8167-shared/wifi_interface.h",
+          "sha256": "9e5557a38a696298b544333444982d2b5230239f34145563bed611aeb65e210b"
+        },
+        {
+          "path": "drivers/network/mt6630/board_sequence.h",
+          "sha256": "30bf9b4d8cdb4b3a2f3878cdb6c3f26179ae4ff333a8a53d99deedeb77dddb50"
+        },
+        {
+          "path": "drivers/network/mt6630/bringup.h",
+          "sha256": "be2f470d7af9acb4b9dab1f5eb6e56e1fdbecd85ffded485022e844392715a4f"
+        },
+        {
+          "path": "drivers/network/mt6630/checkpoint_wire.h",
+          "sha256": "9ed349f2a3ef1f33c5d3ce8f76776a5816bf71eedd0ee3f6735f7cb894c71713"
+        },
+        {
+          "path": "drivers/network/mt6630/control_start.h",
+          "sha256": "fd2c4ad22001101e2bbbfc12d9f5b7ab90c1697917115f400b0f1464b054ad1f"
+        },
+        {
+          "path": "drivers/network/mt6630/direct.h",
+          "sha256": "362d7fd9f9d774234611e956212422c7385df8e2952654f2f7229113b38d6c97"
+        },
+        {
+          "path": "drivers/network/mt6630/enumerate.h",
+          "sha256": "71aabe478bd061e37618affc8a3fea939a0fda0f61543d1737308ff9175c2cb8"
+        },
+        {
+          "path": "drivers/network/mt6630/lifetime.h",
+          "sha256": "fe4e1e458dd2f99d7a3f5388baeec93e38f6c6ee338dfcfcea1e5c321a53ae4b"
+        },
+        {
+          "path": "drivers/network/mt6630/msdc2_pio.h",
+          "sha256": "09a123d6d35dd8975585570e4fe2277ce7440a8f593d778d21490975e7307640"
+        },
+        {
+          "path": "drivers/network/mt6630/native_limits.h",
+          "sha256": "db0695974383758d65195b0d95c868659f7c51aebea22796c2afdf701c2893bb"
+        },
+        {
+          "path": "drivers/network/mt6630/ownership.h",
+          "sha256": "f65fa20bfb00b443f03f4b1bb41c5f7c4db1769b11c5beec9357188101049c4a"
+        },
+        {
+          "path": "drivers/network/mt6630/regulatory.h",
+          "sha256": "c17ba3d9efef381327231012d219e0d41873190bf6bd7026d632553cdfc14bb2"
+        },
+        {
+          "path": "drivers/network/mt6630/transport.h",
+          "sha256": "ff28649b6bfc526ee3a90c11353a04bf24dd9b11558f7573a890684a1b191380"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3SDIOProtocol.h",
+          "sha256": "52d2644220ce73d626f6d84557bf589b436d85b872b664e32206a953cafbd9b9"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3SDIOTransport.h",
+          "sha256": "2389ab0f4520de4e97687125d484fc9c840f9ffa523ac5b6aa392a270781269f"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANData.h",
+          "sha256": "166a454c921a301ec538c67e46744b723ef600f337979ba30806bc9a3d02a5b4"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANFirmware.h",
+          "sha256": "1614329953e25e9aa7cb17408c242cafa4b69489282e43f7a23e536abdb864ea"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANHost.h",
+          "sha256": "d91d6866ac5136afd3bc217c9254535cee30ddc56fefa08ed930a23f36d67106"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANProtocol.h",
+          "sha256": "0eeb3f8eb4aa987c02abd3cb6e78e63d30a0ae1572f4b6a8c232363894459595"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANSecurity.h",
+          "sha256": "d321dc8b83308185cbd0f4adcc74996f3c2c05eebc4551a23791530d337853b0"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANStation.h",
+          "sha256": "5dd574e710598a87144508761ed219f7a3f62a2d6d29c95d9798b482a6809e46"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTDownload.h",
+          "sha256": "f3a2e0a045664cb984a5f1be32289030f5ae9777fbeab77002cd1a2f96b21762"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTFirmware.h",
+          "sha256": "0e6b0f8beefc9bf587e4db7222c8618e754a3af7a2068e6458b8d6d152ccc2ed"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTProtocol.h",
+          "sha256": "d448a4a0866e88ae6567fc97e1b3aadf12fc8e7d9b48ce578fb1380c165d2b11"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTRoundtrip.h",
+          "sha256": "b0a2dfab1147e9e37a4a7d942bd92ccd1a25bcf6e0fb9c4b70a006bd29a56a35"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_board.h",
+          "sha256": "efe84c87cd1321a7939506d52fa8030498dff8dfaaa60bdb3de85f4209979276"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_diagnostic.h",
+          "sha256": "e0aac8a3afdd8f02c81b1f0713dd0fddbd5247e70d2c0ed22ab5255d3327271a"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_firmware.h",
+          "sha256": "3b12ee22372822d03b58eff802b401d4b3e54e520a2c75e7336a3399ba7463e8"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_init_trace.h",
+          "sha256": "b802a065e4a649f25a78acdb6672d6674a6cfb9a31e6c5e98a5398c02a8d4103"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_irq.h",
+          "sha256": "b7246ec93fcd50493df73b79c82ac14716db25999f122674b70ed83d77d1dd58"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_irq_work.h",
+          "sha256": "2683f79650e41aebd96687f252aca77ead49e3f3796b02c57c23ecb4fbb47281"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_msdc2.h",
+          "sha256": "7c30d711b8d4bdc40f162de4c4709657c42f89e022c6ef14a96a1a5a62706826"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_session.h",
+          "sha256": "27f1d9a0f22f4090750cbc73a5029bd73805a05556365b79db426181442638a2"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_session_irq.c",
+          "sha256": "a24ea32dc590e2864c3cb73b03e4d147fff4d86579300c0cd318de6ca387b795"
+        },
+        {
+          "path": "drivers/network/mt6630/windows_session_irq.h",
+          "sha256": "a0df255e428d1c45b254533a5d7c658dbed1e413d13ca2a488767a4c6cb695fc"
+        },
+        {
+          "path": "drivers/network/mt6630/wmt_bridge.h",
+          "sha256": "631a4a3bfbfc14b88ca9e828062c52803d5d757628ccb38cfea6a56083faea16"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/wlan_firmware.c",
+      "object": "core/wlan_firmware.obj",
+      "sha256": "98DBF08D9BEBB1DC32CBEE75485948EAEAC84D39745FAF5312BE592FC8C9149A",
+      "reuse": true,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/wlan_firmware.c",
+          "sha256": "d51e7a5edae85d97521bfca9443a0058fd5b91497f4f671397b4c8175551a1e8"
+        },
+        {
+          "path": "drivers/network/mt6630/wlan_firmware.h",
+          "sha256": "3ff00556bd39f8822d50d1afd73857b4cfe28a97ba44169a65da2275c5ed94d9"
+        }
+      ]
+    },
+    {
+      "source": "drivers/network/mt6630/wmt_bridge.c",
+      "object": "core/wmt_bridge.obj",
+      "sha256": "9E93AE33647372D2A28DEB1E478364AA1D16B782367AD206CA80AFBD25694CBC",
+      "reuse": false,
+      "dependencies": [
+        {
+          "path": "drivers/network/mt6630/checkpoint_wire.h",
+          "sha256": "9ed349f2a3ef1f33c5d3ce8f76776a5816bf71eedd0ee3f6735f7cb894c71713"
+        },
+        {
+          "path": "drivers/network/mt6630/direct.h",
+          "sha256": "362d7fd9f9d774234611e956212422c7385df8e2952654f2f7229113b38d6c97"
+        },
+        {
+          "path": "drivers/network/mt6630/lifetime.h",
+          "sha256": "fe4e1e458dd2f99d7a3f5388baeec93e38f6c6ee338dfcfcea1e5c321a53ae4b"
+        },
+        {
+          "path": "drivers/network/mt6630/native_frame.h",
+          "sha256": "e195efeaf242bbbcaef1f1c12978dcb1ac58a81ae602ab2eabbd7b96e38a56c8"
+        },
+        {
+          "path": "drivers/network/mt6630/native_limits.h",
+          "sha256": "db0695974383758d65195b0d95c868659f7c51aebea22796c2afdf701c2893bb"
+        },
+        {
+          "path": "drivers/network/mt6630/native_tx.h",
+          "sha256": "7fa8a810ed3fceb7480a3a7b38f46028d0a574b1be9f218461cb2e5ce7462068"
+        },
+        {
+          "path": "drivers/network/mt6630/ownership.h",
+          "sha256": "f65fa20bfb00b443f03f4b1bb41c5f7c4db1769b11c5beec9357188101049c4a"
+        },
+        {
+          "path": "drivers/network/mt6630/regulatory.h",
+          "sha256": "c17ba3d9efef381327231012d219e0d41873190bf6bd7026d632553cdfc14bb2"
+        },
+        {
+          "path": "drivers/network/mt6630/transport.h",
+          "sha256": "ff28649b6bfc526ee3a90c11353a04bf24dd9b11558f7573a890684a1b191380"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3SDIOProtocol.h",
+          "sha256": "52d2644220ce73d626f6d84557bf589b436d85b872b664e32206a953cafbd9b9"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3SDIOTransport.h",
+          "sha256": "2389ab0f4520de4e97687125d484fc9c840f9ffa523ac5b6aa392a270781269f"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANData.h",
+          "sha256": "166a454c921a301ec538c67e46744b723ef600f337979ba30806bc9a3d02a5b4"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANFirmware.h",
+          "sha256": "1614329953e25e9aa7cb17408c242cafa4b69489282e43f7a23e536abdb864ea"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANHost.h",
+          "sha256": "d91d6866ac5136afd3bc217c9254535cee30ddc56fefa08ed930a23f36d67106"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANProtocol.h",
+          "sha256": "0eeb3f8eb4aa987c02abd3cb6e78e63d30a0ae1572f4b6a8c232363894459595"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANSecurity.h",
+          "sha256": "d321dc8b83308185cbd0f4adcc74996f3c2c05eebc4551a23791530d337853b0"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WLANStation.h",
+          "sha256": "5dd574e710598a87144508761ed219f7a3f62a2d6d29c95d9798b482a6809e46"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTDownload.h",
+          "sha256": "f3a2e0a045664cb984a5f1be32289030f5ae9777fbeab77002cd1a2f96b21762"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTFirmware.h",
+          "sha256": "0e6b0f8beefc9bf587e4db7222c8618e754a3af7a2068e6458b8d6d152ccc2ed"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTProtocol.h",
+          "sha256": "d448a4a0866e88ae6567fc97e1b3aadf12fc8e7d9b48ce578fb1380c165d2b11"
+        },
+        {
+          "path": "drivers/network/mt6630/vendor_xnu/A04BR3WMTRoundtrip.h",
+          "sha256": "b0a2dfab1147e9e37a4a7d942bd92ccd1a25bcf6e0fb9c4b70a006bd29a56a35"
+        },
+        {
+          "path": "drivers/network/mt6630/wmt_bridge.c",
+          "sha256": "44a7424b5443304c104a9a10da5063b1f922e32f2ee20e2cbeebc4b4e3ab19b0"
+        },
+        {
+          "path": "drivers/network/mt6630/wmt_bridge.h",
+          "sha256": "631a4a3bfbfc14b88ca9e828062c52803d5d757628ccb38cfea6a56083faea16"
+        }
+      ]
+    }
+  ]
+}

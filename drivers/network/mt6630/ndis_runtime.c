@@ -3,6 +3,7 @@
  * sole PASSIVE_LEVEL SDIO consumer (OID, polling RX and queued TX).
  * Device removal revokes admission before worker/interrupt rundown. */
 #include "ndis_runtime.h"
+#include "native_frame.h"
 #include "windows_calibration.h"
 #include "wdf_hardware_config.h"
 #include "arm_clock.h"
@@ -183,7 +184,7 @@ static int receive_data(void *p,const uint8_t *packet,unsigned bytes)
  }else status=a04_native_hif_rx_decode(packet,bytes,a->radio.bridge->regulatory.permitted,a->radio.station.local.mac,a->radio.station.ap.mac,a,a04_ndis_rate_lookup,&rx);
  if(status!=NDIS_STATUS_SUCCESS){NdisAcquireSpinLock(&a->lock);if(status==NDIS_STATUS_INVALID_DATA||status==NDIS_STATUS_INVALID_LENGTH)a->stats.rx_errors++;else a->stats.rx_discards++;NdisReleaseSpinLock(&a->lock);return 0;} /* never authorize a rejected frame */
  if(a->radio.connected)a04_peer_observed(&a->peer_loss,now(a));
- {unsigned group=rx.mpdu[4]&1,broadcast=1,eapol=rx.length>=32&&a04_wlan_be16(rx.mpdu+30)==0x888e;for(unsigned i=0;i<6;i++)if(rx.mpdu[4+i]!=255)broadcast=0;
+ {unsigned group=rx.mpdu[4]&1,broadcast=1,eapol=rx.length>=rx.header+8&&a04_wlan_be16(rx.mpdu+rx.header+6)==0x888e;for(unsigned i=0;i<6;i++)if(rx.mpdu[4+i]!=255)broadcast=0;
   if(!eapol){if(!a->radio.station.secured&&a->os_security.exclude_unencrypted)return 0;if(!group&&!(a->filter&NDIS_PACKET_TYPE_DIRECTED))return 0;if(group&&broadcast&&!(a->filter&NDIS_PACKET_TYPE_BROADCAST))return 0;if(group&&!broadcast){
    int found=0;for(ULONG k=0;k<a->multicast_count;k++){unsigned d=0;for(unsigned j=0;j<6;j++)d|=rx.mpdu[4+j]^a->multicast[k][j];if(!d)found=1;}
    if(!(a->filter&NDIS_PACKET_TYPE_ALL_MULTICAST)&&(!(a->filter&NDIS_PACKET_TYPE_MULTICAST)||!found))return 0;
@@ -192,7 +193,7 @@ static int receive_data(void *p,const uint8_t *packet,unsigned bytes)
   NdisAcquireSpinLock(&a->lock);a->stats.rx_discards++;if(a->rx_count==A04_NATIVE_QUEUE)a->stats.rx_no_buffer++;NdisReleaseSpinLock(&a->lock);return 0;
  }
  struct a04_rx_slot *slot=&a->rx[a->rx_count++];
- NdisMoveMemory(slot->bytes,rx.mpdu,rx.length);slot->length=rx.length;slot->info=rx.info;slot->management=FALSE;slot->epoch=a->receive_epoch;
+ slot->length=(ULONG)a04_native_frame_copy(slot->bytes,rx.mpdu,rx.length,rx.header);slot->info=rx.info;slot->management=FALSE;slot->epoch=a->receive_epoch;
  return 0;
 }
 void a04_ndis_association_reported(struct a04_ndis_runtime *a)

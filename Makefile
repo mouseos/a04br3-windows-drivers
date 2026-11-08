@@ -1272,7 +1272,7 @@ test-mt6630: build/mt6630_native_oid_async_test
 
 build/mt6630_native_hif_rx_test: drivers/network/mt6630/native_hif_rx.c drivers/network/mt6630/native_hif_rx.h drivers/network/mt6630/native_receive.h tests/mt6630_native_hif_rx_test.c
 	@mkdir -p build
-	$(CC) $(CFLAGS) -Itests/native_scan_stubs -Idrivers/network/mt6630 drivers/network/mt6630/native_hif_rx.c tests/mt6630_native_hif_rx_test.c -o $@
+	$(CC) $(CFLAGS) -Itests/native_scan_stubs -Idrivers/network/mt6630 drivers/network/mt6630/native_hif_rx.c drivers/network/mt6630/native_tx.c tests/mt6630_native_hif_rx_test.c -o $@
 
 test-mt6630: build/mt6630_native_hif_rx_test
 
@@ -1606,3 +1606,7 @@ test-mt6630-scan-candidate:
 	mkdir -p build
 	$(CC) $(CFLAGS) -Wno-unused-parameter -Wno-misleading-indentation -ffunction-sections -fdata-sections tests/mt6630_scan_candidate_test.c -Wl,--gc-sections -o build/mt6630_scan_candidate_test
 	./build/mt6630_scan_candidate_test
+
+# QoS parser/layout changes invalidate these focused host checks.
+build/mt6630_native_hif_rx_test build/mt6630_native_nbl_test: drivers/network/mt6630/native_frame.h drivers/network/mt6630/native_limits.h
+build/mt6630_native_receive_test: drivers/network/mt6630/native_receive.h

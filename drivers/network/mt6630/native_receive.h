@@ -11,7 +11,7 @@
 #define A04_RX_OBS_RSSI 8u
 #define A04_RX_OBS_RATE 16u
 #define A04_RX_OBS_REQUIRED 31u
-struct a04_native_rx_info { ULONG observed,phy,frequency;USHORT fragments;LONG rssi;UCHAR rate; };
+struct a04_native_rx_info { ULONG observed,phy,frequency;USHORT fragments;LONG rssi;UCHAR rate,priority; };
 /* PASSIVE_LEVEL, one caller-owned NBL with one contiguous writable NET_BUFFER.
  * NBL and metadata stay live through synchronous RESOURCES indication.
  * Caller supplies an actual validated 802.11 MPDU; Ethernet is not accepted

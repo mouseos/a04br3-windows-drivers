@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "native_nbl.h"
 #include "native_tx.h"
+#include "native_frame.h"
 #include "native_limits.h"
 static void complete(struct a04_native_tx *tx,NDIS_STATUS result)
 {
@@ -14,7 +15,7 @@ NDIS_STATUS a04_native_nbl_send(struct a04_native_tx *tx,struct a04_wmt_bridge *
  uint8_t *mpdu,size_t mpdu_capacity,uint8_t *ethernet,size_t ethernet_capacity,
  a04_wlan_mic_verify verify,void *context,uint64_t now,uint64_t deadline)
 {
- PNET_BUFFER nb;PVOID view;ULONG length;size_t converted;int e;
+ PNET_BUFFER nb;PVOID view;ULONG length;size_t converted;int e;struct a04_native_frame frame;
  if(!tx||!tx->adapter||tx->pending||!b||!station||!security||!nbl||!mpdu||!ethernet)return NDIS_STATUS_INVALID_DATA;
  if(NET_BUFFER_LIST_NEXT_NBL(nbl))return NDIS_STATUS_NOT_SUPPORTED;
  nb=NET_BUFFER_LIST_FIRST_NB(nbl);if(!nb||NET_BUFFER_NEXT_NB(nb))return NDIS_STATUS_NOT_SUPPORTED;
@@ -23,6 +24,10 @@ NDIS_STATUS a04_native_nbl_send(struct a04_native_tx *tx,struct a04_wmt_bridge *
  view=NdisGetDataBuffer(nb,length,mpdu,1,0);if(!view)return NDIS_STATUS_RESOURCES;
  if(view!=mpdu)NdisMoveMemory(mpdu,view,length);
  if(a04_native_tx_to_ethernet(mpdu,length,station->ap.mac,station->local.mac,ethernet,ethernet_capacity,&converted))return NDIS_STATUS_INVALID_DATA;
+ if(a04_native_frame_parse(mpdu,length,1,&frame))return NDIS_STATUS_INVALID_DATA;
+ NDIS_NET_BUFFER_LIST_8021Q_INFO priority;priority.Value=NET_BUFFER_LIST_INFO(nbl,Ieee8021QNetBufferListInfo);
+ if(frame.qos&&priority.TagHeader.UserPriority&&priority.TagHeader.UserPriority!=frame.tid)return NDIS_STATUS_INVALID_DATA;
+ tx->state.tid=frame.qos?frame.tid:(unsigned)priority.TagHeader.UserPriority;
  e=a04_wmt_bridge_tx_ethernet(b,station,security,&tx->state,ethernet,(unsigned)converted,verify,context,now,deadline);
  if(e)return NDIS_STATUS_FAILURE;
  tx->pending=nbl;return NDIS_STATUS_PENDING;

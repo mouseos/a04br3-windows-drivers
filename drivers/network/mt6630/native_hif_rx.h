@@ -5,7 +5,7 @@
 /* The caller provides the actual advertised PHY/rate table mapping; no rate
  * index is guessed. `allowed_channels` is a verified 2.4 GHz channel mask. */
 typedef int (*a04_native_rate_lookup)(void *,unsigned hw_mode,unsigned hw_rate,ULONG *phy,UCHAR *rate);
-struct a04_native_hif_rx {const uint8_t *mpdu;ULONG length;struct a04_native_rx_info info;unsigned cipher,key,wlan,tid;uint64_t pn;};
+struct a04_native_hif_rx {const uint8_t *mpdu;ULONG length;struct a04_native_rx_info info;unsigned cipher,key,wlan,tid,header;uint64_t pn;};
 /* Strict open, directed/broadcast/multicast, unfragmented, non-QoS FromDS MPDU subset. No Ethernet header
  * translation, protected data, aggregated frames or unobserved metadata. */
 NDIS_STATUS a04_native_hif_rx_management(const uint8_t *,ULONG,unsigned,void *,a04_native_rate_lookup,struct a04_native_hif_rx *);

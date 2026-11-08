@@ -5,6 +5,7 @@
 #include "ndis_runtime.h"
 #include "sha256.h"
 #include "native_tx.h"
+#include "native_frame.h"
 static int same(const uint8_t *a,const uint8_t *b,unsigned n){unsigned d=0;for(unsigned i=0;i<n;i++)d|=a[i]^b[i];return !d;}
 static int fail(struct a04_ndis_runtime *a){a->os_security.failed=1;a->os_security.port_open=0;return -1;}
 void a04_os_security_clear(struct a04_ndis_runtime *a)
@@ -115,13 +116,16 @@ NDIS_STATUS a04_os_security_oid(struct a04_ndis_runtime *a,PNDIS_OID_REQUEST q)
 }
 NDIS_STATUS a04_os_security_send(struct a04_ndis_runtime *a,PNET_BUFFER_LIST nbl,uint64_t now,uint64_t deadline)
 {
- PNET_BUFFER nb;void *view;ULONG length;size_t bytes=0;struct a04_wlan_host *h=&a->radio.bridge->wlan;struct a04_os_security *s=&a->os_security;NDIS_STATUS result=NDIS_STATUS_INVALID_DATA;unsigned eapol,exempt,protect,pid;int e;
+ PNET_BUFFER nb;void *view;ULONG length;size_t bytes=0;struct a04_wlan_host *h=&a->radio.bridge->wlan;struct a04_os_security *s=&a->os_security;NDIS_STATUS result=NDIS_STATUS_INVALID_DATA;unsigned eapol,exempt,protect,pid,tid;int e;struct a04_native_frame f;
  if(!cipher_active(a)||s->failed||a->tx.pending||NET_BUFFER_LIST_NEXT_NBL(nbl))return result;
  nb=NET_BUFFER_LIST_FIRST_NB(nbl);if(!nb||NET_BUFFER_NEXT_NB(nb))return result;length=NET_BUFFER_DATA_LENGTH(nb);
  if(length<32||length>sizeof(a->mpdu))return NDIS_STATUS_INVALID_LENGTH;
  view=NdisGetDataBuffer(nb,length,a->mpdu,1,0);if(!view)return NDIS_STATUS_RESOURCES;if(view!=a->mpdu)NdisMoveMemory(a->mpdu,view,length);
- if(a->mpdu[1]!=1&&a->mpdu[1]!=0x41)goto done;a->mpdu[1]&=~0x40u;
+ if(a04_native_frame_parse(a->mpdu,length,1,&f)||(a->mpdu[1]&0x3c))goto done;a->mpdu[1]&=~0x40u;
  if(a04_native_tx_to_ethernet(a->mpdu,length,a->radio.station.ap.mac,a->radio.station.local.mac,a->ethernet,sizeof(a->ethernet),&bytes))goto done;
+ NDIS_NET_BUFFER_LIST_8021Q_INFO priority;priority.Value=NET_BUFFER_LIST_INFO(nbl,Ieee8021QNetBufferListInfo);
+ if(f.qos&&priority.TagHeader.UserPriority&&priority.TagHeader.UserPriority!=f.tid)goto done;
+ tid=f.qos?f.tid:(unsigned)priority.TagHeader.UserPriority;
  eapol=a04_wlan_be16(a->ethernet+12)==0x888e;
  if(eapol){static const uint8_t pae[6]={1,0x80,0xc2,0,0,3};if(!same(a->ethernet,a->radio.station.ap.mac,6)&&!same(a->ethernet,pae,6))goto done;}
  {PDOT11_EXTSTA_SEND_CONTEXT oob=NET_BUFFER_LIST_INFO(nbl,MediaSpecificInformation);
@@ -141,7 +145,7 @@ NDIS_STATUS a04_os_security_send(struct a04_ndis_runtime *a,PNET_BUFFER_LIST nbl
   if(*free_pages<pages)a->radio.wait(a,1000);
  }
  pid=a->tx.state.next_pid%127+1;
- a04_wlan_zero(h->tx,28);a04_wmt_put16(h->tx,(unsigned)bytes+28);h->tx[2]=20;h->tx[3]=(uint8_t)(eapol?0x88:(h->native_be?8:0));h->tx[4]=(uint8_t)a->radio.station.local.wlan;h->tx[5]=0x90;h->tx[6]=(uint8_t)(protect?0x80:0);h->tx[7]=(uint8_t)(a->radio.station.local.own<<2);a04_wmt_put16(h->tx+12,1u<<11);
+ a04_wlan_zero(h->tx,28);a04_wmt_put16(h->tx,(unsigned)bytes+28);h->tx[2]=20;h->tx[3]=(uint8_t)(eapol?0x88:(h->native_be?8:0));h->tx[4]=(uint8_t)a->radio.station.local.wlan;h->tx[5]=0x90;h->tx[6]=(uint8_t)((protect?0x80:0)|(tid<<4));h->tx[7]=(uint8_t)(a->radio.station.local.own<<2);a04_wmt_put16(h->tx+12,1u<<11);
  if(eapol){unsigned all,basic;if(a04_wlan_rate_mask(&a->radio.station.ap,&all,&basic))goto done;h->tx[11]=0x80;a04_wmt_put16(h->tx+26,a04_wlan_basic_rate_code(basic)<<2);}
  h->tx[20]=(uint8_t)pid;h->tx[21]=2;for(unsigned i=0;i<bytes;i++)h->tx[28+i]=a->ethernet[i];
  e=a04_wlan_send(h,(unsigned)bytes+28,eapol?1:(h->native_be?3:0));if(e){fail(a);result=NDIS_STATUS_FAILURE;goto done;}
@@ -154,7 +158,7 @@ NDIS_STATUS a04_os_security_receive(struct a04_ndis_runtime *a,const uint8_t *p,
  status=a04_native_hif_rx_decode_security(p,n,a->radio.bridge->regulatory.permitted,a->radio.station.local.mac,a->radio.station.ap.mac,a,a04_ndis_rate_lookup,rx);
  if(status!=NDIS_STATUS_SUCCESS)return status;
  if(!cipher_active(a))return NDIS_STATUS_NOT_SUPPORTED;
- group=rx->mpdu[4]&1;ethertype=a04_wlan_be16(rx->mpdu+30);exempt=exemption(s,ethertype,group);
+ group=rx->mpdu[4]&1;ethertype=a04_wlan_be16(rx->mpdu+rx->header+6);exempt=exemption(s,ethertype,group);
  if(ethertype==0x888e&&(group||!same(rx->mpdu+16,a->radio.station.ap.mac,6)))return NDIS_STATUS_NOT_SUPPORTED;
  if(rx->cipher==4){
   key=group?&s->gtk[rx->key]:&s->ptk;
@@ -168,7 +172,7 @@ NDIS_STATUS a04_os_security_receive(struct a04_ndis_runtime *a,const uint8_t *p,
  if(rx->length>sizeof(a->rx_bytes))return NDIS_STATUS_INVALID_LENGTH;
  /* Accept only HW-verified, already stripped raw LLC/SNAP MPDUs. Do not
   * guess IV/MIC lengths or perform software crypto without actual metadata. */
- NdisMoveMemory(a->rx_bytes,rx->mpdu,rx->length);a->rx_bytes[1]&=~0x40u;rx->mpdu=a->rx_bytes;
+ /* Borrow HIF until the final owned RX slot copies/normalizes it once. */
  if(key)key->pn[rx->tid]=rx->pn;
  return NDIS_STATUS_SUCCESS;
 }

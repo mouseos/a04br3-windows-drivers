@@ -28,13 +28,15 @@ void NdisQueueIoWorkItem(NDIS_HANDLE,NDIS_IO_WORKITEM_FUNCTION *,PVOID);
 typedef struct {int RequestType;PVOID RequestId;union {struct {ULONG Oid;void *InformationBuffer;ULONG InformationBufferLength,BytesRead,BytesNeeded;} SET_INFORMATION;} DATA;} NDIS_OID_REQUEST,*PNDIS_OID_REQUEST;
 void NdisMOidRequestComplete(NDIS_HANDLE,PNDIS_OID_REQUEST,NDIS_STATUS);
 typedef struct _NET_BUFFER {struct _NET_BUFFER *next;ULONG length;UCHAR *data;int fragmented;} NET_BUFFER,*PNET_BUFFER;
-typedef struct _NET_BUFFER_LIST {struct _NET_BUFFER_LIST *next;PNET_BUFFER first;NDIS_STATUS status;void *info;} NET_BUFFER_LIST,*PNET_BUFFER_LIST;
+typedef struct _NET_BUFFER_LIST {struct _NET_BUFFER_LIST *next;PNET_BUFFER first;NDIS_STATUS status;void *info,*priority;} NET_BUFFER_LIST,*PNET_BUFFER_LIST;
 #define NET_BUFFER_LIST_NEXT_NBL(x) ((x)->next)
 #define NET_BUFFER_LIST_FIRST_NB(x) ((x)->first)
 #define NET_BUFFER_NEXT_NB(x) ((x)->next)
 #define NET_BUFFER_DATA_LENGTH(x) ((x)->length)
 #define NET_BUFFER_LIST_STATUS(x) ((x)->status)
-#define NET_BUFFER_LIST_INFO(x,id) ((x)->info)
+#define NET_BUFFER_LIST_INFO(x,id) (*((id)==0?&(x)->info:&(x)->priority))
+#define Ieee8021QNetBufferListInfo 1
+typedef union {void *Value;struct {uintptr_t UserPriority:3,CanonicalFormatId:1,VlanId:12,Reserved:16;} TagHeader;} NDIS_NET_BUFFER_LIST_8021Q_INFO;
 #define MediaSpecificInformation 0
 #define DOT11_MAX_NUM_OF_FRAGMENTS 16
 #define DOT11_EXTSTA_RECV_CONTEXT_REVISION_1 1

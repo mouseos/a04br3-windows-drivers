@@ -7,7 +7,7 @@
 #define A04BR3_WLAN_DATA_H
 #include "A04BR3WLANSecurity.h"
 #include "../native_limits.h"
-struct a04_wlan_data_state {unsigned pending,pid,next_pid,eapol_kind,confirmed;uint64_t deadline_us;int failed;};
+struct a04_wlan_data_state {unsigned pending,pid,next_pid,eapol_kind,confirmed,tid;uint64_t deadline_us;int failed;};
 struct a04_wlan_ethernet {const uint8_t *data;unsigned length,eapol,wlan,cipher;};
 static inline int a04_wlan_port_allowed(const struct a04_wlan_station *s,const struct a04_wlan_security *sec,unsigned eapol){
  if(!s || s->failed || !s->sta_active || s->join.phase!=4 || !sec || sec->failed || s->secured!=sec->enabled)return 0;
@@ -58,7 +58,7 @@ static inline int a04_wlan_ethernet_send(struct a04_wlan_host *h,const struct a0
  struct a04_wlan_security *sec,struct a04_wlan_data_state *d,const uint8_t *eth,unsigned n,
  a04_wlan_mic_verify verify,void *ctx,uint64_t now,uint64_t deadline){
  if(!h || !s || !sec || !d || !eth || !h->runtime || h->failed || d->failed || d->pending ||
-  n<14 || n>A04_NATIVE_ETH_MAX || deadline<=now || deadline-now>1000000)return A04_WLAN_STATE;
+  d->tid>7 || n<14 || n>A04_NATIVE_ETH_MAX || deadline<=now || deadline-now>1000000)return A04_WLAN_STATE;
  unsigned eapol=a04_wlan_be16(eth+12)==0x888e,kind=0;
  if(!a04_wlan_port_allowed(s,sec,eapol) || !a04_wlan_equal(eth+6,s->local.mac,6))return A04_WLAN_SECURITY;
  if(eapol){
@@ -76,7 +76,7 @@ static inline int a04_wlan_ethernet_send(struct a04_wlan_host *h,const struct a0
   * is the AP (ToDS), not our BMC receive entry. HW ACK remains enabled. */
  unsigned pid=d->next_pid%127+1;
  a04_wlan_zero(h->tx,28);a04_wmt_put16(h->tx,n+28);h->tx[2]=20;h->tx[3]=(uint8_t)(eapol?0x88:(h->native_be?8:0));h->tx[4]=(uint8_t)s->local.wlan;
- h->tx[5]=0x90;h->tx[6]=(uint8_t)(sec->enabled && (!eapol || sec->ptk_confirmed)?0x80:0);
+ h->tx[5]=0x90;h->tx[6]=(uint8_t)((sec->enabled && (!eapol || sec->ptk_confirmed)?0x80:0)|(d->tid<<4));
  h->tx[7]=(uint8_t)(s->local.own<<2);a04_wmt_put16(h->tx+12,1u<<11);
  if(eapol){
   unsigned all=0,basic=0;int rate=a04_wlan_rate_mask(&s->ap,&all,&basic);if(rate)return rate;
