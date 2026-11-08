@@ -24,8 +24,14 @@ foreach($dpN in @('ge8300-mips.fw','mt8167-development.cer','ge8300-umd.dll','na
 Copy-Item "$KernelDirectory\ge8300-render.sys" $dpOut
 Copy-Item $ClientFile "$dpOut\ge8300-d3d-clear.exe"
 Copy-Item "$dpOut\native-dependency-closure.json" "$dpOut\baseline-native-dependency-closure.json"
+$dpAncestorClosures=@()
+foreach($dpClosure in @(Get-ChildItem $BaselineDirectory -File -Filter '*native-dependency-closure*.json')){
+ $dpClosureHash=Sha $dpClosure.FullName;$dpClosureName='ancestor-native-dependency-closure-'+$dpClosureHash+'.json'
+ Copy-Item $dpClosure.FullName (Join-Path $dpOut $dpClosureName)
+ $dpAncestorClosures+=@{name=$dpClosureName;sha256=$dpClosureHash}
+}
 Copy-Item "$KernelDirectory\native-reset-manifest.json" $dpOut
-[ordered]@{schema='implemented-reset322-incremental-closure-v1';baseline_native_source_commit='e0614136f88262f52d60f6458b5e3811de04fdb6';baseline_dependency_closure_sha256=(Sha "$dpOut\baseline-native-dependency-closure.json");native_source_commit=$dpKernel.native_source_commit;native_progress_manifest_sha256=(Sha "$dpOut\native-reset-manifest.json");changed_units=@('windows_stop');changed_abi=$false;runtime_verified=$false}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 "$dpOut\native-dependency-closure.json"
+[ordered]@{schema='implemented-reset322-incremental-closure-v1';ancestor_closure_files=$dpAncestorClosures;baseline_native_source_commit='e0614136f88262f52d60f6458b5e3811de04fdb6';baseline_dependency_closure_sha256=(Sha "$dpOut\baseline-native-dependency-closure.json");native_source_commit=$dpKernel.native_source_commit;native_progress_manifest_sha256=(Sha "$dpOut\native-reset-manifest.json");changed_units=@('windows_stop');changed_abi=$false;runtime_verified=$false}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 "$dpOut\native-dependency-closure.json"
 $dpInf=[IO.File]::ReadAllText("$BaselineDirectory\ge8300-render.inf")
 if(([regex]::Matches($dpInf,[regex]::Escape('DriverVer=11/07/2026,0.0.3.21'))).Count -ne 1){throw 'Exact baseline319 INF required'}
 [IO.File]::WriteAllText("$dpOut\ge8300-render.inf",$dpInf.Replace('DriverVer=11/07/2026,0.0.3.21','DriverVer=11/07/2026,0.0.3.22'),[Text.Encoding]::Unicode)
