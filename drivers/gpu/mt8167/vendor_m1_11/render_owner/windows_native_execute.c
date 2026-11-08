@@ -41,7 +41,7 @@ static NTSTATUS wait_kernel(struct a04_rgx_fw_runtime *f,uint32_t next)
 /* Typed m1.11 MMUCACHE transaction for the retained render memory context.
  * The same 0x1f PT/PD/PC/TLB flags are defined by stock rgxmem.c for the
  * existing non-SLC_VIVT BVNC. Real sync acknowledgement is mandatory. */
-static NTSTATUS target_handoff(struct a04_vendor_native_cold *n,struct a04_vendor_start *s,BOOLEAN cpu)
+NTSTATUS a04_vendor_native_target_handoff(struct a04_vendor_native_cold *n,struct a04_vendor_start *s,BOOLEAN cpu)
 {
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
     struct a04_rgx_fw_runtime *f=s->memory->runtime;RGXFWIF_CCB_CTL k;
@@ -131,7 +131,7 @@ static NTSTATUS finish_published(struct a04_vendor_native_cold *n,
     }
     if(!NT_SUCCESS(status))goto poison;
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
-    status=target_handoff(n,s,TRUE);if(!NT_SUCCESS(status))goto poison;
+    status=a04_vendor_native_target_handoff(n,s,TRUE);if(!NT_SUCCESS(status))goto poison;
 #endif
     c->scan.started=1;c->scan.frame_index=c->completed_frames;
     for(i=0;i<a04_vendor_native_output_bytes(n)/4u;i+=64u){
@@ -475,7 +475,7 @@ static NTSTATUS rearm_clear(struct a04_vendor_native_cold *n,struct a04_vendor_s
         for(j=0;j<64;j++)if(seen[j]!=words[j])goto done;
     }
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
-    if(n->registered_target){status=target_handoff(n,s,FALSE);if(!NT_SUCCESS(status)){n->quarantined=TRUE;r->poisoned=TRUE;s->command_poisoned=TRUE;goto done;}}
+    if(n->registered_target){status=a04_vendor_native_target_handoff(n,s,FALSE);if(!NT_SUCCESS(status)){n->quarantined=TRUE;r->poisoned=TRUE;s->command_poisoned=TRUE;goto done;}}
 #endif
     for(i=0;i<2;i++){
         if(a04_rgx_device_write_words((UCHAR *)r->buffer[0].cpu+r->layout.commands[i],c->rings+i*4096u,4096u))goto done;

@@ -11,12 +11,13 @@ static int32_t destroy(void*c,uint64_t t){(void)c;(void)t;return 0;}
 static int32_t prepare(void*c,uint64_t t,uint32_t color,uint64_t*j){(void)c;(void)t;(void)color;*j=99;return 0;}
 static int32_t discard(void*c,uint64_t t){(void)c;assert(t==99||t==100);discards++;return 0;}
 static int32_t submit(void*c,uint64_t t,uint32_t f,uint32_t g){(void)c;assert(t==100&&f==7&&g);submits++;return 0;}
+static int32_t prepare_copy_unused(void *c,uint64_t s,uint64_t d,uint64_t *j){(void)c;(void)s;(void)d;(void)j;return GEO_UNSUPPORTED;}
 int main(void){
  struct geo_engine e;struct geo_allocation a={0},v={0},x={0};struct geo_dma_ticket t;uint64_t token;uint32_t fence;
  struct geo_surface_desc rt={sizeof(rt),1,800,600,3200,GEO_FORMAT_A8R8G8B8,GEO_USAGE_RENDER_TARGET,0};
  struct geo_surface_desc vb={sizeof(vb),1,48,1,48,GEO_FORMAT_VERTEXDATA,GEO_USAGE_VERTEX_BUFFER,0};
  struct geo_surface_desc tx={sizeof(tx),2,4,4,16,GEO_FORMAT_A8R8G8B8,GEO_USAGE_TEXTURE2D,0};
- struct geo_owner_ops o={sizeof(o),2,GEO_OWNER_REQUIRED,0,&e,create,bind,unbind,destroy,prepare,discard,submit};
+ struct geo_owner_ops o={sizeof(o),GEO_OWNER_OPS_VERSION,GEO_OWNER_REQUIRED,0,&e,create,bind,unbind,destroy,prepare,discard,submit,prepare_copy_unused};
  assert(!geo_engine_init(&e,&o)&&!geo_create(&e,&a,&rt)&&!geo_create(&e,&v,&vb)&&!geo_create(&e,&x,&tx));
  assert(!geo_prepare_texture_begin(&e,&a,&v,&x,&t));
  assert(a.references==1&&v.references==1&&x.references==1&&geo_destroy(&e,&x)==GEO_BUSY);

@@ -159,3 +159,6 @@ NTSTATUS a04_native_mdl_bind(struct a04_native_mdl_binding **out,PDMA_ADAPTER a,
 {return bind_pages(out,a,pdo,mdl,bytes,lease,FALSE);}
 NTSTATUS a04_native_mdl_bind_input(struct a04_native_mdl_binding **out,PDMA_ADAPTER a,PDEVICE_OBJECT pdo,PMDL mdl,ULONG bytes,const struct a04_native_mdl_lease *lease)
 {return bind_pages(out,a,pdo,mdl,bytes,lease,TRUE);}
+
+NTSTATUS a04_native_mdl_set_direction_cpu(struct a04_native_mdl_binding *b,BOOLEAN to_device)
+{if(!b||!b->retained||b->fault||b->dma_owned||b->maps||b->pte_live||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_DEVICE_STATE;b->to_device=to_device;return STATUS_SUCCESS;}

@@ -64,6 +64,7 @@ int a04_vendor_native_storage_read(struct a04_vendor_native_cold *,int,ULONG,voi
 /* Only after actual task/queue/SLC/GP completion, under command_busy, or
  * before a never-published cold FW root. Caller must invalidate live MMU. */
 NTSTATUS a04_vendor_native_target_acquire_pt_quiescent(struct a04_vendor_native_cold *);
+NTSTATUS a04_vendor_native_target_handoff(struct a04_vendor_native_cold *,struct a04_vendor_start *,BOOLEAN);
 NTSTATUS a04_vendor_native_target_remove_pt(struct a04_vendor_native_cold *);
 NTSTATUS a04_vendor_native_target_cpu_after_mmu_ack(struct a04_vendor_native_cold *);
 void a04_vendor_native_diagnose(struct a04_vendor_native_cold *,ULONG,ULONG,ULONG);

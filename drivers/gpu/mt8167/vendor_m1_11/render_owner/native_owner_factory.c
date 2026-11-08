@@ -4,6 +4,7 @@
 #include "native_factory_checkpoint.h"
 #include "A04BR3RogueRuntimeLayout.h"
 #include "A04BR3RogueDeviceWords.h"
+#include "a04_copy_usc_asset.h"
 static void reference(void *p){struct e_native_owner *c=p;InterlockedIncrement(&c->references);}
 static void dereference(void *p){struct e_native_owner *c=p;InterlockedDecrement(&c->references);}
 static NTSTATUS enter(struct e_native_owner *c,BOOLEAN cleanup)
@@ -251,6 +252,26 @@ static int32_t prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
     if(!NT_SUCCESS(s))c->state=E_OWNER_FAILED;
     return leave(c,s);
 }
+static int32_t prepare_copy(void *p,uint64_t source,uint64_t destination,uint64_t *job) {
+ struct e_native_owner *c=p;struct e_native_resource *src,*dst;NTSTATUS s;
+ if(!job)return STATUS_INVALID_PARAMETER;*job=0;s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
+ src=resource(c,source);dst=resource(c,destination);
+ if(!src||!dst||src==dst||source!=c->surface||src->desc.usage!=GEO_USAGE_RENDER_TARGET||
+    dst->desc.usage!=GEO_USAGE_STAGING||!dst->linear||!c->allocation->binding||c->next_id==UINT64_MAX)return leave(c,STATUS_INVALID_PARAMETER);
+ s=wait_boundary_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
+ s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
+ if(NT_SUCCESS(s))s=e_native_build_graph_locked(c);
+ if(NT_SUCCESS(s))s=a04_native_mdl_set_direction_cpu(c->allocation->binding,TRUE);
+ if(NT_SUCCESS(s))s=a04_native_mdl_set_direction_cpu(dst->linear,FALSE);
+ if(NT_SUCCESS(s))s=a04_native_copy_storage_create(&c->copy_storage,c->allocation->native,dst->linear,&dst->desc,a04_copy_usc_asset,sizeof(a04_copy_usc_asset));
+ if(NT_SUCCESS(s))s=a04_native_tq_transfer_prepare(&c->copy_transfer,c->copy_storage);
+ if(NT_SUCCESS(s))s=e_native_boot_locked(c);
+ if(NT_SUCCESS(s))s=a04_native_copy_storage_validate_dma(c->copy_storage);
+ if(NT_SUCCESS(s)){RGXFWIF_CCB_CTL k;
+  if(a04_rgx_device_read_words(&k,c->allocation->firmware.runtime->kctl,sizeof(k))||k.ui32WrapMask!=127||k.ui32ReadOffset!=k.ui32WriteOffset)s=STATUS_DEVICE_BUSY;
+  else{c->kick_write=k.ui32WriteOffset;c->job=++c->next_id;c->job_state=E_JOB_PREPARED;*job=c->job;}}
+ if(!NT_SUCCESS(s))c->state=E_OWNER_FAILED;return leave(c,s);
+}
 struct discard_call {struct e_native_owner *c;uint64_t job;NTSTATUS status;};
 static BOOLEAN discard_close(void *p)
 {
@@ -276,7 +297,7 @@ static int32_t submit(void *p,uint64_t job,uint32_t fence,uint32_t generation)
     if(!c || KeGetCurrentIrql()!=c->irq_level || c->closing || !c->leased || !c->irq_gate ||
        c->state!=E_OWNER_ACTIVE || c->power!=PowerDeviceD0 || !job || job!=c->job ||
        c->job_state!=E_JOB_PREPARED || !generation)return STATUS_INVALID_DEVICE_STATE;
-    s=a04_native_dispatch_submit(&c->allocation->dispatch,job,generation,c->kick_write);
+    s=c->copy_transfer?a04_native_tq_transfer_submit(c->copy_transfer,&c->allocation->start,&c->allocation->irq,c->kick_write):a04_native_dispatch_submit(&c->allocation->dispatch,job,generation,c->kick_write);
     if(NT_SUCCESS(s)){c->generation=generation;c->job_state=E_JOB_SUBMITTED;}
     else{c->state=E_OWNER_FAILED;InterlockedExchange(&c->closing,1);}
     return s;
@@ -291,6 +312,17 @@ static NTSTATUS interrupt_event(void *p,ULONG message,struct geo_owner_irq_event
         if(!a04_native_irq_claim(&c->allocation->irq,&drain))return STATUS_NOT_FOUND;
         out->status=drain.fault;return NT_SUCCESS(drain.fault)?STATUS_PENDING:drain.fault;
     }
+    if(c->copy_transfer && c->job_state==E_JOB_SUBMITTED){
+        NTSTATUS status;LONG phase=a04_native_tq_transfer_state(c->copy_transfer);
+        if(!a04_native_irq_claim(&c->allocation->irq,&drain))return STATUS_NOT_FOUND;
+        if(!NT_SUCCESS(drain.fault))return drain.fault;
+        if(phase==2){status=a04_native_tq_transfer_begin_finish(c->copy_transfer,&c->allocation->irq,&drain);return NT_SUCCESS(status)?STATUS_PENDING:status;}
+        if(phase!=6)return STATUS_INVALID_DEVICE_STATE;
+        status=a04_native_tq_transfer_visibility_receipt(c->copy_transfer,&c->allocation->start,&c->allocation->irq,&drain);
+        if(status!=STATUS_SUCCESS)return status;
+        c->job_state=E_JOB_COMPLETE;out->job=c->job;out->generation=c->generation;
+        out->visibility=GEO_COMPLETION_GPU_DONE|GEO_COMPLETION_CPU_VISIBLE;return STATUS_SUCCESS;
+    }
     if(!a04_native_dispatch_interrupt(&c->allocation->dispatch,&event))return STATUS_NOT_FOUND;
     if(!NT_SUCCESS(event.status)){out->status=event.status;return event.status;}
     if(!event.completed)return STATUS_PENDING;
@@ -299,6 +331,8 @@ static NTSTATUS interrupt_event(void *p,ULONG message,struct geo_owner_irq_event
     c->job_state=E_JOB_COMPLETE;out->job=c->job;out->generation=c->generation;
     out->visibility=GEO_COMPLETION_GPU_DONE|GEO_COMPLETION_CPU_VISIBLE;return STATUS_SUCCESS;
 }
+struct copy_arm {struct e_native_owner *c;NTSTATUS status;};
+static BOOLEAN copy_arm_visibility(void *p){struct copy_arm *x=p;x->status=a04_native_tq_transfer_arm_visibility(x->c->copy_transfer,&x->c->allocation->start,&x->c->allocation->irq);return TRUE;}
 static NTSTATUS service(void *p,uint64_t epoch)
 {
     struct e_native_owner *c=p;NTSTATUS s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
@@ -308,6 +342,14 @@ static NTSTATUS service(void *p,uint64_t epoch)
      * this retires only the work request, never a GPU completion. */
     if(!c->irq_gate && c->job_state==E_JOB_NONE)return leave(c,STATUS_SUCCESS);
     if(!c->irq_gate)return leave(c,STATUS_INVALID_DEVICE_STATE);
+    if(c->copy_transfer&&c->job_state==E_JOB_SUBMITTED){
+        struct a04_native_copy_gpu_result result;struct copy_arm arm={c,STATUS_SUCCESS};LONG phase=a04_native_tq_transfer_state(c->copy_transfer);
+        if(phase==2||phase==6)return leave(c,STATUS_SUCCESS); /* wait for actual registered IRQ */
+        if(phase==3){s=a04_native_tq_transfer_finish_gpu(c->copy_transfer,&c->allocation->start,&result);if(s!=STATUS_SUCCESS)return leave(c,s);}
+        if(a04_native_tq_transfer_state(c->copy_transfer)!=4)return leave(c,STATUS_INVALID_DEVICE_STATE);
+        if(!e_native_synchronize(c,copy_arm_visibility,&arm))return leave(c,STATUS_IO_DEVICE_ERROR);
+        return leave(c,arm.status);
+    }
     s=a04_native_dispatch_service(&c->allocation->dispatch);native_progress(c,39,s);return leave(c,s);
 }
 static NTSTATUS acquire(void *p,struct geo_owner_lease *out)
@@ -318,7 +360,7 @@ static NTSTATUS acquire(void *p,struct geo_owner_lease *out)
     if(c->leased || c->state==E_OWNER_FAILED){KeReleaseMutex(&c->mutex,FALSE);return STATUS_DEVICE_BUSY;}
     c->leased=TRUE;reference(c);out->size=sizeof(*out);out->version=2;out->cookie=c;out->epoch=c->epoch;
     out->irq_route=GEO_IRQ_DXGK_REGISTERED;out->irq_level=c->irq_level;
-    out->ops=(struct geo_owner_ops){sizeof(out->ops),2,GEO_OWNER_REQUIRED,0,c,create,bind,unbind,destroy,prepare,discard,submit};
+    out->ops=(struct geo_owner_ops){sizeof(out->ops),GEO_OWNER_OPS_VERSION,GEO_OWNER_REQUIRED,0,c,create,bind,unbind,destroy,prepare,discard,submit,prepare_copy};
     KeReleaseMutex(&c->mutex,FALSE);return STATUS_SUCCESS;
 }
 static NTSTATUS release(void *p,uint64_t epoch)

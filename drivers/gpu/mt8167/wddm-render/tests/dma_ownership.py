@@ -116,7 +116,7 @@ static NTSTATUS wait_kernel(struct a04_rgx_fw_runtime*f,uint32_t next){(void)f;(
 static void KeStallExecutionProcessor(unsigned n){(void)n;}
 static NTSTATUS a04_vendor_native_target_acquire_pt_quiescent(struct a04_vendor_native_cold*n){(void)n;assert(!"GPU reacquire not used by these CPU-handoff cases");return STATUS_NOT_SUPPORTED;}
 '''
-extra+='\n'+function(r/'vendor_m1_11/render_owner/windows_native_target.c','binding_set')+'\n'+function(r/'vendor_m1_11/render_owner/windows_native_target.c','a04_vendor_native_target_remove_pt')+'\n'+function(r/'vendor_m1_11/render_owner/windows_native_target.c','a04_vendor_native_target_cpu_after_mmu_ack')+'\n'+function(r/'vendor_m1_11/render_owner/windows_native_execute.c','target_handoff')
+extra+='\n'+function(r/'vendor_m1_11/render_owner/windows_native_target.c','binding_set')+'\n'+function(r/'vendor_m1_11/render_owner/windows_native_target.c','a04_vendor_native_target_remove_pt')+'\n'+function(r/'vendor_m1_11/render_owner/windows_native_target.c','a04_vendor_native_target_cpu_after_mmu_ack')+'\n'+function(r/'vendor_m1_11/render_owner/windows_native_execute.c','a04_vendor_native_target_handoff')
 extra+=r'''
 
 static void test_pt_ack(PMDL mdl,PDMA_ADAPTER a,PDEVICE_OBJECT p,const struct a04_native_mdl_lease*l){
@@ -125,7 +125,7 @@ static void test_pt_ack(PMDL mdl,PDMA_ADAPTER a,PDEVICE_OBJECT p,const struct a0
   struct a04_rgx_fw_runtime fw={&sync,{123},commands};struct test_firmware mem={1,&fw};struct a04_vendor_render_cold render={&mem,{0x120}};struct a04_vendor_native_cold n={0};struct a04_vendor_start start={&mem,0,1};
   reset();direction=FALSE;assert(a04_native_mdl_bind(&b,a,p,mdl,mdl->bytes,l)==0&&a04_native_mdl_sync_for_gpu(b)==0&&a04_native_mdl_mark_exposed(b)==0);
   n.render=&render;n.registered_target=b;n.output[2].cpu=pt;n.output[3].cpu=pt+512;active=&n;for(unsigned i=0;i<1024;i++)pt[i]=1;
-  NTSTATUS got=target_handoff(&n,&start,TRUE);
+  NTSTATUS got=a04_vendor_native_target_handoff(&n,&start,TRUE);
   if(timeout_mode){assert(got==STATUS_IO_TIMEOUT&&flushed==0&&freed==0&&!a04_native_mdl_cpu(b));assert(a04_native_mdl_release_cold(&b)==STATUS_DEVICE_BUSY);}
   else{assert(got==0&&flushed==2&&freed==2&&a04_native_mdl_cpu(b));assert(commands[0].eCmdType==RGXFWIF_KCCB_CMD_MMUCACHE&&commands[0].uCmdData.sMMUCacheData.ui32Flags==0x1f&&commands[0].uCmdData.sMMUCacheData.ui16MMUCacheSyncUpdateValue==1);assert(a04_native_mdl_retire_after_gpu_off(b)==0&&a04_native_mdl_release_cold(&b)==0);}
  }

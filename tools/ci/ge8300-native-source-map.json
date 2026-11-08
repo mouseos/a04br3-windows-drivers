@@ -65,7 +65,13 @@
     "wddm-render\\compiler\\texture2d_sm4": "drivers/gpu/mt8167/wddm-render/compiler/texture2d_sm4.c",
     "wddm-render\\compiler\\witness_codec": "drivers/gpu/mt8167/wddm-render/compiler/witness_codec.c",
     "wddm-render\\compiler\\witness_info": "drivers/gpu/mt8167/wddm-render/compiler/witness_info.c",
-    "wddm-render\\frontend\\shader_draw_protocol": "drivers/gpu/mt8167/wddm-render/frontend/shader_draw_protocol.c"
+    "wddm-render\\frontend\\shader_draw_protocol": "drivers/gpu/mt8167/wddm-render/frontend/shader_draw_protocol.c",
+    "vendor_m1_11\\native_copy_job": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_copy_job.c",
+    "vendor_m1_11\\native_copy_queue": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_copy_queue.c",
+    "vendor_m1_11\\windows_native_copy_storage": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_copy_storage.c",
+    "vendor_m1_11\\windows_native_copy_transfer": "drivers/gpu/mt8167/vendor_m1_11/render_owner/windows_native_copy_transfer.c",
+    "vendor_m1_11\\native_copy_state": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_copy_state.c",
+    "vendor_m1_11\\native_copy_usc": "drivers/gpu/mt8167/vendor_m1_11/render_owner/native_copy_usc.c"
   },
   "files": [
     {

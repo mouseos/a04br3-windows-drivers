@@ -23,6 +23,7 @@ int a04_m111_ccb_append(void *ring,size_t bytes,uint32_t read,uint32_t write,
        overlap(out,sizeof(*out),payload,n))return 1;
     switch(type) {
     case A04_M111_CLIENT_TA: if(n!=A04_M111_TA_BYTES)return 1;break;
+    case A04_M111_CLIENT_TQ: if(n!=208u)return 1;break;
     case A04_M111_CLIENT_3D: case A04_M111_CLIENT_PR:
         if(n!=A04_M111_3D_BYTES)return 1;
         break;

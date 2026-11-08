@@ -27,4 +27,8 @@ NTSTATUS a04_native_tq_transfer_finish_gpu(struct a04_native_tq_transfer *,
  * real IRQ/fence integration (or proven owner DMA-off retirement) is added.
  * GPU_RESULT is NOT CPU_VISIBLE and cannot complete a WDDM fence. */
 NTSTATUS a04_native_tq_transfer_release_unsubmitted(struct a04_native_tq_transfer **);
+LONG a04_native_tq_transfer_state(struct a04_native_tq_transfer *);
+NTSTATUS a04_native_tq_transfer_arm_visibility(struct a04_native_tq_transfer *,struct a04_vendor_start *,struct a04_native_irq_core *);
+NTSTATUS a04_native_tq_transfer_visibility_receipt(struct a04_native_tq_transfer *,struct a04_vendor_start *,struct a04_native_irq_core *,const struct a04_native_irq_receipt *);
+NTSTATUS a04_native_tq_transfer_release_retired(struct a04_native_tq_transfer **);
 #endif

@@ -2,7 +2,7 @@
 #ifndef A04_NATIVE_COPY_QUEUE_H
 #define A04_NATIVE_COPY_QUEUE_H
 #include "native_copy_job.h"
-#include "../native_ccb.h"
+#include "native_ccb.h"
 struct a04_native_copy_queue_input {
  uint32_t context_fw,sync_fw,previous_value;
  uint32_t read,write,dependency,external_job,internal_job;

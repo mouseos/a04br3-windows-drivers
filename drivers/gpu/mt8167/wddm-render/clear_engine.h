@@ -40,6 +40,7 @@ int32_t geo_bind(struct geo_engine *,struct geo_allocation *,void *mdl,uint32_t 
 int32_t geo_unbind(struct geo_engine *,struct geo_allocation *);
 int32_t geo_destroy(struct geo_engine *,struct geo_allocation *);
 int32_t geo_prepare_begin(struct geo_engine *,struct geo_allocation *,const struct geo_clear_packet *,struct geo_dma_ticket *);
+int32_t geo_prepare_copy_begin(struct geo_engine *,struct geo_allocation *destination,struct geo_allocation *source,struct geo_dma_ticket *);
 int32_t geo_prepare_draw_begin(struct geo_engine *,struct geo_allocation *target,struct geo_allocation *vertex,struct geo_dma_ticket *);
 int32_t geo_prepare_texture_begin(struct geo_engine *,struct geo_allocation *,struct geo_allocation *,struct geo_allocation *,struct geo_dma_ticket *);
 int32_t geo_prepare_finish(struct geo_engine *,const struct geo_dma_ticket *,int32_t status,uint64_t owner_job);

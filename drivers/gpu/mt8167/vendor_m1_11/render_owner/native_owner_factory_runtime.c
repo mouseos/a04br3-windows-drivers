@@ -105,6 +105,8 @@ NTSTATUS e_native_retire_graph_locked(struct e_native_owner *c)
         a->irq.core=NULL;a->irq.runtime=NULL;a->irq.bytes=0;
         RtlZeroMemory(&a->dispatch,sizeof(a->dispatch));
     }
+    if(c->copy_transfer){status=a04_native_tq_transfer_release_retired(&c->copy_transfer);if(!NT_SUCCESS(status))return status;}
+    if(c->copy_storage){status=a04_native_copy_storage_release_cold(&c->copy_storage);if(!NT_SUCCESS(status))return status;}
     if(a->native){status=a04_vendor_native_release_cold(&a->native);GeoFactoryCheckpoint(36,status,1,0,0,0);if(!NT_SUCCESS(status))return status;}
     if(a->render.firmware){status=a04_vendor_render_release_cold(&a->render);GeoFactoryCheckpoint(36,status,2,0,0,0);if(!NT_SUCCESS(status))return status;}
     status=a04_vendor_m1_11_windows_free(&a->firmware);GeoFactoryCheckpoint(36,status,3,0,0,0);if(!NT_SUCCESS(status))return status;
@@ -147,6 +149,7 @@ NTSTATUS e_native_boot_locked(struct e_native_owner *c)
     if(!a04_vendor_m1_11_power_valid(&power))return STATUS_DEVICE_NOT_READY;
     uint64_t bvnc=(uint64_t)READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x24))<<32 |
         READ_REGISTER_ULONG((volatile ULONG *)(void *)(c->core+0x20));
+    if(!c->copy_transfer){status=a04_native_mdl_set_direction_cpu(a->binding,FALSE);if(!NT_SUCCESS(status))return status;}
     status=a04_vendor_m1_11_windows_start(&a->start,&a->firmware,c->core,0x80000,bvnc,&power,A04_VENDOR_IRQ_MASKED);GeoFactoryCheckpoint(37,status,1,a->start.online,a->start.attempted,a->start.command_poisoned);
     if(!NT_SUCCESS(status))return status;
     status=a04_vendor_m1_11_windows_fence(&a->start,0,TRUE);GeoFactoryCheckpoint(37,status,2,0,0,0);if(!NT_SUCCESS(status))return status;

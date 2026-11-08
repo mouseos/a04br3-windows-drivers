@@ -21,4 +21,7 @@ NTSTATUS a04_native_copy_storage_release_cold(struct a04_native_copy_storage **)
 const struct a04_native_copy_job_image *a04_native_copy_storage_image(
  const struct a04_native_copy_storage *);
 struct a04_vendor_native_cold *a04_native_copy_storage_parent(const struct a04_native_copy_storage *);
+NTSTATUS a04_native_copy_storage_validate_dma(struct a04_native_copy_storage *);
+BOOLEAN a04_native_copy_storage_cpu_owned(const struct a04_native_copy_storage *);
+BOOLEAN a04_native_copy_storage_dma_ready(const struct a04_native_copy_storage *);
 #endif

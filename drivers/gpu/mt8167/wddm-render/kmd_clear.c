@@ -152,7 +152,8 @@ static NTSTATUS prepare_pending(struct geo_kmd_adapter *a,const struct geo_dma_t
  if(j->state==1)return STATUS_SUCCESS;
  if(j->state!=4||!j->allocation||!j->allocation->bound||(j->vertex&&!j->vertex->bound)||(j->texture&&!j->texture->bound))return STATUS_DEVICE_NOT_READY;
  RtlZeroMemory(&call,sizeof(call));call.adapter=a;call.ticket=*t;
- if(j->kind==GEO_CLEAR_MAGIC)call.status=a->engine.owner.prepare(a->engine.owner.context,j->allocation->surface,payload->clear.color,&call.token);
+ if(j->kind==GEO_COPY_MAGIC)call.status=a->engine.owner.prepare_copy?a->engine.owner.prepare_copy(a->engine.owner.context,j->vertex->surface,j->allocation->surface,&call.token):STATUS_NOT_SUPPORTED;
+ else if(j->kind==GEO_CLEAR_MAGIC)call.status=a->engine.owner.prepare(a->engine.owner.context,j->allocation->surface,payload->clear.color,&call.token);
  else if(j->kind==GEO_DRAW_MAGIC&&(p=payload->draw)!=NULL) {
   header=p->version==5?sizeof(struct geo_draw_packet_v5):p->version==4?sizeof(struct geo_draw_packet_v4):p->version==3?sizeof(struct geo_draw_packet_v3):p->version==2?sizeof(struct geo_draw_packet_v2):sizeof(*p);blob=(UCHAR *)p+header;v2=(struct geo_draw_packet_v2 *)p;
   call.status=p->version==5?a->draw_v5.prepare_draw(a->draw_v5.context,&((struct geo_draw_packet_v5 *)p)->request,blob,p->request.blob_bytes,&call.token):p->version==4?a->draw_v4.prepare_draw(a->draw_v4.context,&((struct geo_draw_packet_v4 *)p)->request,blob,p->request.blob_bytes,&call.token):p->version==3?a->draw_v3.prepare_draw(a->draw_v3.context,&((struct geo_draw_packet_v3 *)p)->request,blob,p->request.blob_bytes,&call.token):p->version==2?a->draw_v2.prepare_draw(a->draw_v2.context,&v2->request,blob,p->request.blob_bytes,&call.token):
@@ -217,6 +218,25 @@ static NTSTATUS GeoRenderDrawImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r) {
  }
  done:GeoReleaseDrawCapture(packet);return status;
 }
+struct copy_begin {struct geo_kmd_context *context;struct geo_allocation *destination,*source;HANDLE dh,sh;struct geo_dma_ticket ticket;NTSTATUS status;};
+static BOOLEAN begin_copy(void *arg){struct copy_begin *c=arg;struct geo_job *j;
+ c->status=geo_prepare_copy_begin(&c->context->adapter->engine,c->destination,c->source,&c->ticket);
+ if(c->status==STATUS_SUCCESS){j=&c->context->adapter->engine.jobs[c->ticket.slot];j->context=c->context;j->open_handle=c->dh;j->vertex_open_handle=c->sh;}return TRUE;}
+static NTSTATUS GeoRenderCopyImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r,const struct geo_copy_packet *p) {
+ struct copy_begin x;UINT i;NTSTATUS status;
+ if(p->magic!=GEO_COPY_MAGIC||p->size!=sizeof(*p)||p->version!=1||p->destination_index||p->source_index!=1||p->width!=800||p->height!=600||p->reserved||
+    r->AllocationListSize<2||r->PatchLocationListOutSize<2||!r->pAllocationList[0].WriteOperation||r->pAllocationList[1].WriteOperation)return STATUS_INVALID_PARAMETER;
+ RtlZeroMemory(&x,sizeof(x));x.context=c;x.dh=r->pAllocationList[0].hDeviceSpecificAllocation;x.sh=r->pAllocationList[1].hDeviceSpecificAllocation;
+ x.destination=GeoResolveWriteAllocation(c,x.dh);x.source=GeoResolveReadAllocation(c,x.sh);
+ if(!x.destination||!x.source||!c->adapter->engine.owner.prepare_copy)return STATUS_INVALID_PARAMETER;
+ if(!c->adapter->synchronize(c->adapter->sync_context,begin_copy,&x))return STATUS_DEVICE_NOT_READY;
+ if(x.status!=STATUS_SUCCESS)return x.status;
+ c->adapter->pending[x.ticket.slot].generation=x.ticket.generation;
+ if(r->pAllocationList[0].SegmentId&&r->pAllocationList[1].SegmentId){status=prepare_pending(c->adapter,&x.ticket);if(status!=STATUS_SUCCESS)return status;}
+ if(GeoWriteTicket(r->pDmaBuffer,&x.ticket)!=STATUS_SUCCESS||GeoWriteTicket(r->pDmaBufferPrivateData,&x.ticket)!=STATUS_SUCCESS)return STATUS_INVALID_PARAMETER;
+ r->pDmaBuffer=(UCHAR*)r->pDmaBuffer+sizeof(x.ticket);r->pDmaBufferPrivateData=(UCHAR*)r->pDmaBufferPrivateData+sizeof(x.ticket);
+ for(i=0;i<2;i++){RtlZeroMemory(r->pPatchLocationListOut,sizeof(*r->pPatchLocationListOut));r->pPatchLocationListOut->AllocationIndex=i;r->pPatchLocationListOut->DriverId=GEO_COPY_MAGIC;r->pPatchLocationListOut++;}return STATUS_SUCCESS;
+}
 static NTSTATUS GeoRenderImpl(HANDLE context,DXGKARG_RENDER *r) {
  struct geo_kmd_context *c=context;struct prepare_call call;struct geo_clear_packet p;struct geo_dma_ticket t;
  struct geo_allocation *a;NTSTATUS capture_status;
@@ -226,6 +246,7 @@ static NTSTATUS GeoRenderImpl(HANDLE context,DXGKARG_RENDER *r) {
     !r->pDmaBuffer||((ULONG_PTR)r->pDmaBuffer&3)||r->DmaSize<sizeof(t)||!r->pDmaBufferPrivateData||((ULONG_PTR)r->pDmaBufferPrivateData&3)||r->DmaBufferPrivateDataSize<sizeof(t))return STATUS_INVALID_PARAMETER;
  capture_status=GeoCaptureClearPacket(&p,r->pCommand);
  if(capture_status!=STATUS_SUCCESS)return capture_status;
+ if(p.magic==GEO_COPY_MAGIC)return GeoRenderCopyImpl(c,r,(const struct geo_copy_packet*)&p);
  if(!geo_packet_valid(&p,1)||!r->pAllocationList[0].WriteOperation)return STATUS_INVALID_PARAMETER;
  a=GeoResolveWriteAllocation(c,r->pAllocationList[0].hDeviceSpecificAllocation);
  /* Full CreateAllocation/DestroyAllocation owns and validates this handle.
@@ -276,7 +297,8 @@ static NTSTATUS GeoPatchImpl(HANDLE adapter,const DXGKARG_PATCH *p) {
     !ticket_range(p->DmaBufferPrivateDataSize,p->DmaBufferPrivateDataSubmissionStartOffset,p->DmaBufferPrivateDataSubmissionEndOffset))return STATUS_NOT_SUPPORTED;
  count=p->PatchLocationListSubmissionLength;
  if((count!=1u&&count!=2u&&count!=3u)||p->AllocationListSize<count)return STATUS_INVALID_PARAMETER;
- kind=count>=2u?GEO_DRAW_MAGIC:GEO_CLEAR_MAGIC;
+ kind=p->pPatchLocationList[p->PatchLocationListSubmissionStart].DriverId;
+ if((count==1&&kind!=GEO_CLEAR_MAGIC)||(count==2&&kind!=GEO_DRAW_MAGIC&&kind!=GEO_COPY_MAGIC)||(count==3&&kind!=GEO_DRAW_MAGIC))return STATUS_INVALID_PARAMETER;
  for(i=0;i<count;i++) {
   location=&p->pPatchLocationList[p->PatchLocationListSubmissionStart+i];
   if(location->AllocationIndex!=i||location->Value||location->DriverId!=kind||location->AllocationOffset||location->PatchOffset||location->SplitOffset||

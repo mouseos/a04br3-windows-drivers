@@ -51,4 +51,6 @@ const uint64_t *a04_native_mdl_physical_identity(const struct a04_native_mdl_bin
 const void *a04_native_mdl_cpu_identity(const struct a04_native_mdl_binding *);
 /* Native target transaction only, after zero-PTE write and real MMU ack. */
 NTSTATUS a04_native_mdl_detach_after_mmu_ack(struct a04_native_mdl_binding *);
+/* CPU-owned only; select actual transfer direction before next acquire. */
+NTSTATUS a04_native_mdl_set_direction_cpu(struct a04_native_mdl_binding *,BOOLEAN to_device);
 #endif

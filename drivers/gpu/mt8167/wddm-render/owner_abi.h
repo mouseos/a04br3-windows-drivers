@@ -6,7 +6,7 @@
  * sidecar does not implement registers, firmware, shader or triangle runtime.
  * Reference/dereference, D0 and revoke/rundown are supplied by the binding.
  * All tokens are private kernel handles, never supplied by a user process. */
-#define GEO_OWNER_OPS_VERSION 2u
+#define GEO_OWNER_OPS_VERSION 3u
 #define GEO_OWNER_REGISTERED_MDL 1u
 #define GEO_OWNER_PACKED_CLEAR 2u
 #define GEO_OWNER_PREPARE_PASSIVE 4u
@@ -38,6 +38,7 @@ struct geo_owner_ops {
   * Success means accepted, never GPU completion. Completion must not reenter
   * the consumer while this call is in progress. */
  int32_t (*submit)(void *,uint64_t job,uint32_t scheduler_fence,uint32_t consumer_generation);
+ int32_t (*prepare_copy)(void *,uint64_t source,uint64_t destination,uint64_t *job);
 };
 /* Completion delivery must be coordinated with DxgkDdiInterruptRoutine at
  * the real DIRQL; DxgkCbNotifyInterrupt must not be called from a polling DPC.

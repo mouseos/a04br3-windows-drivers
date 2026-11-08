@@ -18,28 +18,24 @@ struct a04_native_copy_storage {
  struct a04_native_mdl_binding *source,*destination;
  struct a04_vendor_uncached code[2];
  struct a04_native_copy_job_image image;
- ULONG mapped;BOOLEAN prepared,quarantined;
+ ULONG mapped;BOOLEAN prepared,quarantined,gpu_validated;
 };
 static int intersects(uint64_t a,uint64_t n,uint64_t b,uint64_t m)
 {return a<=b?b-a<n:a-b<m;}
 static NTSTATUS check_binding(struct a04_vendor_native_cold *n,
  struct a04_native_mdl_binding *b,uint64_t offset)
 {
- ULONG count,i;const uint64_t *pages=a04_native_mdl_pages(b,&count);uint64_t entry;
+ ULONG count,i;const uint64_t *pages=a04_native_mdl_physical_identity(b,&count);uint64_t entry;
  if(!pages||count!=469u||a04_native_mdl_extent(b)!=469u*4096u||
     a04_native_mdl_adapter(b)!=n->render->firmware->adapter||(offset&4095u)||
     offset>4194304u-469u*4096u)return STATUS_INVALID_PARAMETER;
- for(i=0;i<count;i++){
-  ULONG index=(ULONG)(offset/4096u)+i;
-  if(a04_rgx_device_read_words(&entry,(UCHAR*)n->output[2+index/512].cpu+(index%512)*8u,8u)||
-     entry!=(pages[i]|A04_GPU_MMU_SLC_BYPASS|1u))return STATUS_DEVICE_CONFIGURATION_ERROR;
- }
+ (void)i;(void)entry; /* PTEs are checked from real DMA only at submit. */
  return STATUS_SUCCESS;
 }
 static int allocation_clashes(struct a04_vendor_uncached *a,struct a04_native_mdl_binding *b)
 {
- ULONG n,i;const uint64_t *p=a04_native_mdl_pages(b,&n);
- if(!p||a04_rgx_fw_alias(a->cpu,a->bytes,a04_native_mdl_cpu(b),a04_native_mdl_extent(b)))return 1;
+ ULONG n,i;const uint64_t *p=a04_native_mdl_physical_identity(b,&n);
+ if(!p||a04_rgx_fw_alias(a->cpu,a->bytes,a04_native_mdl_cpu_identity(b),a04_native_mdl_extent(b)))return 1;
  for(i=0;i<n;i++)if(intersects((uint64_t)a->logical.QuadPart,a->bytes,p[i],4096))return 1;
  return 0;
 }
@@ -156,3 +152,20 @@ const struct a04_native_copy_job_image *a04_native_copy_storage_image(const stru
 
 struct a04_vendor_native_cold *a04_native_copy_storage_parent(const struct a04_native_copy_storage *c)
 {return c&&c->prepared&&!c->quarantined?c->native:NULL;}
+
+NTSTATUS a04_native_copy_storage_validate_dma(struct a04_native_copy_storage *c) {
+ struct a04_vendor_native_cold *n;struct a04_native_mdl_binding *binding[2];uint64_t offsets[2],value;ULONG count,i,j;
+ if(!c||!c->prepared||c->quarantined||KeGetCurrentIrql()!=PASSIVE_LEVEL||!(n=c->native)||!n->render->firmware->hardware_owned)return STATUS_INVALID_DEVICE_STATE;
+ binding[0]=c->source;binding[1]=c->destination;offsets[0]=n->target_offset;
+ for(i=0;i<n->linear_count;i++)if(n->linear[i].binding==c->destination)break;
+ if(i==n->linear_count)return STATUS_INVALID_DEVICE_STATE;offsets[1]=n->linear[i].offset;
+ for(i=0;i<2;i++){const uint64_t *pages=a04_native_mdl_pages(binding[i],&count);if(!pages||count!=469)return STATUS_INVALID_DEVICE_STATE;
+  for(j=0;j<count;j++){ULONG at=(ULONG)(offsets[i]/4096)+j;
+   if(a04_rgx_device_read_words(&value,(UCHAR*)n->output[2+at/512].cpu+(at%512)*8,8)||value!=(pages[j]|A04_GPU_MMU_SLC_BYPASS|1u))return STATUS_IO_DEVICE_ERROR;}}
+ c->gpu_validated=TRUE;return STATUS_SUCCESS;
+}
+BOOLEAN a04_native_copy_storage_cpu_owned(const struct a04_native_copy_storage *c)
+{return c&&c->prepared&&!c->quarantined&&a04_native_mdl_cpu(c->source)&&a04_native_mdl_cpu(c->destination);}
+
+BOOLEAN a04_native_copy_storage_dma_ready(const struct a04_native_copy_storage *c)
+{ULONG count;return c&&c->gpu_validated&&!c->quarantined&&a04_native_mdl_pages(c->source,&count)&&a04_native_mdl_pages(c->destination,&count);}
