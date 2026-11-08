@@ -1,8 +1,8 @@
-# Logs-only candidate of the fixed f8f54c9 passive boot profile. No deployment.
+# Fixed boot-profile candidate. No deployment.
 [CmdletBinding()]
 param([Parameter(Mandatory=$true)][string]$OutputDirectory,
  [Parameter(Mandatory=$true)][string]$CertificateThumbprint,
- [switch]$DetailedIoTrace,[switch]$DmaPollTrace)
+ [switch]$DetailedIoTrace,[switch]$DmaPollTrace,[switch]$ReuseRequestMdl)
 $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $out=[IO.Path]::GetFullPath($OutputDirectory)
@@ -15,6 +15,7 @@ if($LASTEXITCODE){throw 'Fixed installed boot source ancestry required'}
 $values=@{TEMP="$out\tmp";TMP="$out\tmp";RUNNER_TEMP=$out;A04_MSDC_VERBOSE_IO_TRACE=$(if($DetailedIoTrace){'1'}else{'0'})}
 foreach($p in $baseline.flags.PSObject.Properties){$values[$p.Name]=[string]$p.Value}
 if($DmaPollTrace){$values.A04_DMA_POLL_TRACE='1'}
+$values.A04_MSDC_REQUEST_MDL_REUSE=$(if($ReuseRequestMdl){'1'}else{'0'})
 $previous=@{};foreach($k in $values.Keys){$previous[$k]=[Environment]::GetEnvironmentVariable($k,'Process')}
 New-Item -ItemType Directory "$out\tmp"|Out-Null
 try {
@@ -46,13 +47,13 @@ try {
  Export-Certificate -Cert $cert -FilePath "$pkg\development.cer"|Out-Null
  $sources=@('miniport.c','io_trace.h','pio.c','cdb.c','scsi_capacity.c','scsi.c','dma.c','gpt_guard.c','io_gate.h')
  [ordered]@{source_commit=$commit;source_dirty=$false;baseline_source_commit=$baseline.source_commit;baseline_signed_sys_sha256=$baseline.signed_sys_sha256;
-  driver_version='0.0.1.8';flags=$values;normal_io_trace_enabled=[bool]$DetailedIoTrace;dma_poll_trace_enabled=($values.A04_DMA_POLL_TRACE -eq '1');
-  logs_only_change=$true;hardware_verified=$false;boot_speed_change_measured=$false;deployment_performed=$false;
+  driver_version='0.0.1.9';flags=$values;normal_io_trace_enabled=[bool]$DetailedIoTrace;dma_poll_trace_enabled=($values.A04_DMA_POLL_TRACE -eq '1');
+  logs_only_change=$false;request_mdl_reuse=[bool]$ReuseRequestMdl;parent1026_unchanged=$true;hardware_verified=$false;boot_speed_change_measured=$false;deployment_performed=$false;
   compiler=((& clang --version)-join "`n");linker=((& lld-link --version)-join "`n");
   unsigned_sys_sha256=$unsigned;signer=$cert.Thumbprint;
   sources=@($sources|ForEach-Object{@{path="drivers/storage/mt8167-msdc/$_";sha256=(Get-FileHash (Join-Path $root "drivers\storage\mt8167-msdc\$_") -Algorithm SHA256).Hash}});
   files=@(Get-ChildItem $pkg -File|ForEach-Object{@{path=$_.Name;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash}})
  }|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 "$pkg\signed-manifest.json"
- Compress-Archive -Path "$pkg\*" -DestinationPath "$out\mt8167-msdc-quiet-signed.zip"
+ Compress-Archive -Path "$pkg\*" -DestinationPath "$out\mt8167-msdc-ajtd4r-signed.zip"
  'MSDC_QUIET_SIGNED_COMPLETE'
 }finally{foreach($k in $previous.Keys){[Environment]::SetEnvironmentVariable($k,$previous[$k],'Process')}}

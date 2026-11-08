@@ -5,7 +5,7 @@ Class = SCSIAdapter
 ClassGuid = {4d36e97b-e325-11ce-bfc1-08002be10318}
 Provider = %Provider%
 CatalogFile = mt8167-msdc.cat
-DriverVer = 11/07/2026,0.0.1.8
+DriverVer = 11/08/2026,0.0.1.9
 
 [Manufacturer]
 %Provider% = Models,NTarm
@@ -40,7 +40,7 @@ LoadOrderGroup = SCSI Miniport
 mt8167-msdc.sys = 1
 
 [Strings]
-Provider = "TAB-A04-BR3 development"
-DeviceDescription = "MediaTek MT8167 MSDC eMMC Host Controller"
-ServiceDescription = "MediaTek MT8167 MSDC eMMC Host Controller"
-DiskName = "MediaTek MT8167 MSDC eMMC Driver"
+Provider = "mouseos"
+DeviceDescription = "MediaTek MT8167 MSDC0 / Samsung AJTD4R eMMC"
+ServiceDescription = "MediaTek MT8167 MSDC0 / Samsung AJTD4R eMMC"
+DiskName = "MediaTek MT8167 MSDC0 / Samsung AJTD4R eMMC"

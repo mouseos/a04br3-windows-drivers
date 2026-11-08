@@ -143,20 +143,29 @@ static void A04ClockObserve(void *context, uint32_t polls)
 #endif
 /* Diagnostic synchronization for the resident common buffer. This does not
  * resolve the unexpected cacheability of the Windows mapping. */
-static enum a04_dma_result A04DmaSector(struct a04_probe_extension *probe,
-        struct a04_msdc_io *io, ULONG lba, BOOLEAN write)
+/* Request-local reuse never extends the bounce buffer lifetime. Every sector
+ * still flushes the same 512-byte mapping and executes the same DMA/STOP path. */
+#ifndef A04_MSDC_REQUEST_MDL_REUSE
+#define A04_MSDC_REQUEST_MDL_REUSE 0
+#endif
+static enum a04_dma_result A04DmaSectorMdl(struct a04_probe_extension *probe,
+        struct a04_msdc_io *io, ULONG lba, BOOLEAN write, PMDL *mapping)
 {
-    PMDL mdl = IoAllocateMdl(probe->dma_buffer, 512, FALSE, FALSE, NULL);
+    PMDL mdl = *mapping;
     enum a04_dma_result result;
     uint64_t start;
     LARGE_INTEGER frequency;
     struct a04_clock_context clockContext = {0};
     struct a04_dma_clock clock;
-    if (!mdl) return A04_DMA_INVALID;
-    MmBuildMdlForNonPagedPool(mdl);
+    if (!mdl) {
+        mdl = IoAllocateMdl(probe->dma_buffer, 512, FALSE, FALSE, NULL);
+        if (!mdl) return A04_DMA_INVALID;
+        MmBuildMdlForNonPagedPool(mdl);
+        *mapping = mdl;
+    }
     KeFlushIoBuffers(mdl, write ? FALSE : TRUE, TRUE);
     KeQueryPerformanceCounter(&frequency);
-    if (frequency.QuadPart <= 0) { IoFreeMdl(mdl); return A04_DMA_INVALID; }
+    if (frequency.QuadPart <= 0) return A04_DMA_INVALID;
     clockContext.probe=probe;
 #ifdef A04_DMA_POLL_TRACE
     clockContext.four=KeQueryActiveProcessorCount(NULL)>=4;
@@ -183,7 +192,14 @@ static enum a04_dma_result A04DmaSector(struct a04_probe_extension *probe,
         A04Trace(" status="); A04TraceHex(A04Read32(probe, 0x03c));
         A04Trace(" dma="); A04TraceHex(A04Read32(probe, 0x09c)); A04Trace("\n");
     }
-    IoFreeMdl(mdl);
+    return result;
+}
+static enum a04_dma_result A04DmaSector(struct a04_probe_extension *probe,
+        struct a04_msdc_io *io, ULONG lba, BOOLEAN write)
+{
+    PMDL mdl = NULL;
+    enum a04_dma_result result = A04DmaSectorMdl(probe, io, lba, write, &mdl);
+    if (mdl) IoFreeMdl(mdl);
     return result;
 }
 #endif
@@ -832,6 +848,9 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
         } else {
             struct a04_msdc_io io = {probe, A04Read32, A04Read8, A04Write32};
             ULONG interrupts = A04Read32(probe, 0x010), failure = 0, j;
+#if defined(A04_DMA_DISK_PROBE) && A04_MSDC_REQUEST_MDL_REUSE
+            PMDL requestMdl = NULL; /* Owned only by this synchronous RunIo. */
+#endif
 #ifdef A04_ENABLE_WRITES
 #if A04_MSDC_VERBOSE_IO_TRACE
             if (result.action == A04_SCSI_WRITE &&
@@ -852,9 +871,17 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
                 if (result.action == A04_SCSI_WRITE) {
                     for (j = 0; j < 512; ++j) probe->dma_buffer[j] = data[i * 512 + j];
                     /* UEFI's card selection explicitly sets RCA 1. */
+#if A04_MSDC_REQUEST_MDL_REUSE
+                    dr = A04DmaSectorMdl(probe, &io, result.blocks.lba + i, TRUE, &requestMdl);
+#else
                     dr = A04DmaSector(probe, &io, result.blocks.lba + i, TRUE);
+#endif
                 } else {
+#if A04_MSDC_REQUEST_MDL_REUSE
+                    dr = A04DmaSectorMdl(probe, &io, result.blocks.lba + i, FALSE, &requestMdl);
+#else
                     dr = A04DmaSector(probe, &io, result.blocks.lba + i, FALSE);
+#endif
                     if (dr == A04_DMA_OK)
                         for (j = 0; j < 512; ++j) data[i * 512 + j] = probe->dma_buffer[j];
                 }
@@ -867,6 +894,9 @@ static BOOLEAN A04RunIo(PVOID extension, PSCSI_REQUEST_BLOCK request)
                 if (pr != A04_MSDC_OK) { failure = (ULONG)pr; break; }
 #endif
             }
+#if defined(A04_DMA_DISK_PROBE) && A04_MSDC_REQUEST_MDL_REUSE
+            if (requestMdl) IoFreeMdl(requestMdl);
+#endif
             A04Write32(probe, 0x010, interrupts);
             if (!failure && result.action == A04_SCSI_READ && result.blocks.lba == 1 &&
                 result.blocks.block_count && data) {
