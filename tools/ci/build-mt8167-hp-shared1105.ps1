@@ -6,7 +6,8 @@ param([Parameter(Mandatory=$true)][string]$ParentInputDirectory,
  [Parameter(Mandatory=$true)][string]$ArmUserLibraryDirectory,
  [Parameter(Mandatory=$true)][string]$SignTool,
  [Parameter(Mandatory=$true)][string]$Inf2Cat,
- [Parameter(Mandatory=$true)][string]$OutputDirectory)
+ [Parameter(Mandatory=$true)][string]$OutputDirectory,
+ [string]$ClientIncludeDirectory,[string]$KernelCacheDirectory)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'));$out=[IO.Path]::GetFullPath($OutputDirectory)
 if(!$out.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase) -or (Test-Path $out)){throw 'New checkout-local output required'}
@@ -59,9 +60,26 @@ foreach($x in $cache.objects){
  $parentObjects+=$p;$reused+=@{kind='parent';name=$x.name;sha256=(Sha $p);dependencies=$deps;source_commit=$cache.source_commit}
 }
 if($parentObjects.Count -ne 13){throw 'Exactly13 parent helpers required'}
+$resume=$null
+if($KernelCacheDirectory){
+ $resume=Get-Content "$KernelCacheDirectory\kernel-cache.json" -Raw|ConvertFrom-Json
+ if($resume.source_commit -cne 'fc468483619d44d0c9b27ab67c3f6c36b62202d7' -or @($resume.objects).Count -ne 17){throw 'Known completed kernel compile required'}
+ & git -C $root diff --quiet $resume.source_commit HEAD -- drivers
+ if($LASTEXITCODE){throw 'Resume kernel source/layout changed'}
+ foreach($x in $resume.objects){if((Sha "$KernelCacheDirectory\obj\$($x.name).obj") -cne $x.sha256){throw 'Resume object hash mismatch'}}
+}
+function Resume-Kernel($name,$obj){
+ if(!$resume){return $false}
+ $x=@($resume.objects|Where-Object{$_.name -ceq $name});if($x.Count -ne 1){throw 'Resume object missing'}
+ Copy-Item "$KernelCacheDirectory\obj\$name.obj" $obj
+ $script:reused+=@{kind='resumed-kernel';name=$name;source_commit=$resume.source_commit;sha256=(Sha $obj)}
+ return $true
+}
 $parentObj="$out\obj\parent.obj"
+if(!(Resume-Kernel 'parent' $parentObj)){
 & clang @($cache.common) @kernel @parentFlags -w -c "$root\drivers\bus\mt8167-shared\wdf_parent_probe.c" -o $parentObj
 if($LASTEXITCODE){throw 'HP parent compile failed'};$compiled+='parent'
+}
 $parentObjects=@($parentObj)+$parentObjects
 $audioObjects=@();$audioRoot="$root\drivers\audio\mt8167-afe"
 foreach($name in @('dl1','dl1_engine','shared_audio','audio_parent_client','audio_parent_query','capture_parent_query','ul_engine','clock_owner')){
@@ -74,8 +92,10 @@ foreach($name in @('dl1','dl1_engine','shared_audio','audio_parent_client','audi
 $common=@($cache.common|Where-Object{$_ -ne '-std=c11'})
 foreach($name in @('adapter','wavert_miniport','wavert_registration','wavert_dma','common_dma','dma_adapter','capture_latency_gate','stream_transport','pnp_backend','afe_mapping','irq_windows','wave_dma_live','topology_miniport','start_record','capture_owner','headphone_endpoint')){
  $obj="$out\obj\$name.obj"
+ if(!(Resume-Kernel $name $obj)){
  & clang @common @kernel @audioFlags -std=c++14 -fms-compatibility -fno-exceptions -fno-rtti -w -c "$audioRoot\$name.cpp" -o $obj
- if($LASTEXITCODE){throw "HP audio compile failed $name"};$audioObjects+=$obj;$compiled+=$name
+ if($LASTEXITCODE){throw "HP audio compile failed $name"};$compiled+=$name
+ };$audioObjects+=$obj
 }
 $libs=@("$km\ntoskrnl.lib","$km\hal.lib","$km\bufferoverflowfastfailk.lib","$km\libcntpr.lib")
 & lld-link /driver /subsystem:native /machine:arm /entry:FxDriverEntry /nodefaultlib @parentObjects "$wdf\wdfdriverentry.lib" "$wdf\wdfldr.lib" @libs "/out:$out\package\parent\mt8167-shared.sys"
@@ -83,7 +103,12 @@ if($LASTEXITCODE){throw 'HP parent link failed'}
 & lld-link /driver /subsystem:native /machine:arm /entry:DriverEntry /nodefaultlib @audioObjects $PortclsLibrary @libs "/out:$out\package\audio\mt8167-audio.sys"
 if($LASTEXITCODE){throw 'HP audio link failed'}
 $obj="$out\obj\hp-adc-client.obj";$exe="$out\package\client\mt8167-hp-adc-read.exe"
-& clang @common -w -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 "-I$inc\um" "-I$inc\shared" -c "$root\tools\input\mt8167-hp-adc-read.c" -o $obj
+$userInc=if($ClientIncludeDirectory){$ClientIncludeDirectory}else{$inc}
+$userHeaders=@('-isystem',"$userInc\km\crt",'-isystem',"$userInc\um",'-isystem',"$userInc\shared")
+if($ClientIncludeDirectory){
+ foreach($x in Get-Content "$ClientIncludeDirectory\header-manifest.json" -Raw|ConvertFrom-Json){if((Sha (Join-Path $ClientIncludeDirectory $x.path)) -cne $x.sha256){throw 'Fixed client header changed'}}
+}
+& clang @common @userHeaders -nostdlibinc -w -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -c "$root\tools\input\mt8167-hp-adc-read.c" -o $obj
 if($LASTEXITCODE){throw 'HP raw client compile failed'};$compiled+='hp-adc-client'
 & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib $obj "$ArmUserLibraryDirectory\kernel32.lib" "$ArmUserLibraryDirectory\setupapi.lib" "/out:$exe"
 if($LASTEXITCODE){throw 'HP raw client link failed'}
