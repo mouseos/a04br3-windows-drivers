@@ -41,12 +41,13 @@ $inc=$KitIncludeDirectory;$wdk="$ParentInputDirectory\wdk";$km="$wdk\Lib\winv6.3
 $kernel=@('-D__ldrexd=__a04_thermal1101_wdk81_ldrexd_declaration','-D_KERNEL_MODE','-D_ARM_','-DARM','-DKMDF_VERSION_MAJOR=1','-DKMDF_VERSION_MINOR=13','-DNTDDI_VERSION=0x06030000','-D_WIN32_WINNT=0x0603','-isystem',"$inc\km",'-isystem',"$inc\shared",'-isystem',"$inc\um",'-isystem',"$wdk\Include\wdf\kmdf\1.13")
 $parentFlags=@($cache.flags)+@('-DA04_SHARED_ACCDET_READ=1','-DA04_SHARED_HP_PCM=1')
 $audioFlags=@($audio.baseline_audio_flags)+@('-DA04_AUDIO_ACCDET_JACK=1','-DA04_AUDIO_HP_COMPONENT=1','-DA04_AUDIO_HP_SHARED=1')
-$reused=@();$compiled=@();$sdk=@()
+$reused=@();$compiled=@();$sdk=@();$sdkAbsent=@()
 foreach($prop in $cache.sdk.PSObject.Properties){
  $old=$prop.Name;$p=$null
  if($old -match '\\Include\\(.+)$'){
   $tail=$Matches[1];$p=if($tail.StartsWith('wdf\')){"$wdk\Include\$tail"}else{"$inc\$tail"}
  }elseif($old -match '\\Lib\\(.+)$'){$p="$wdk\Lib\$($Matches[1])"}
+ if($p -and !(Test-Path $p)){$sdkAbsent+=$p;continue}
  if($p){if((Sha $p) -cne $prop.Value.ToLowerInvariant()){throw 'WDK cache identity mismatch'};$sdk+=@{path=$p;sha256=(Sha $p)}}
 }
 $parentObjects=@()
@@ -111,7 +112,7 @@ foreach($kind in @('parent','audio')){
  }
 }
 Export-Certificate -Cert $cert -FilePath "$out\package\development.cer"|Out-Null
-@{schema='mt8167-hp-shared1105';source_commit=$commit;parent_version='2026.11.8.1105';audio_version='2026.11.8.1029';signed=$true;deployment_ready=$false;hardware_verified=$false;calibration_producer_present=$false;calibration_raw_phase='UNKNOWN';latency_known=$false;fabric_drain_proved=$false;hp_stream_admission='closed pending calibration and latency';single_adc_owner_preserved=$true;thermal_v3_parent_build=1104;thermal_rebuilt=$false;firmware_changed=$false;adc_ioctl='0x0022655c';adc_sample_bytes=72;adc_pair_bytes=160;signer_thumbprint=$thumb;compiled=$compiled;reused=$reused;sdk=$sdk;portcls_sha256=(Sha $PortclsLibrary);unsigned=$unsigned;files=@(Get-ChildItem "$out\package" -Recurse -File|ForEach-Object{@{path=$_.FullName.Substring(("$out\package\").Length).Replace('\','/');sha256=(Sha $_.FullName)}})}|ConvertTo-Json -Depth 10|Set-Content -Encoding UTF8 "$out\package\signed-manifest.json"
+@{schema='mt8167-hp-shared1105';source_commit=$commit;parent_version='2026.11.8.1105';audio_version='2026.11.8.1029';signed=$true;deployment_ready=$false;hardware_verified=$false;calibration_producer_present=$false;calibration_raw_phase='UNKNOWN';latency_known=$false;fabric_drain_proved=$false;hp_stream_admission='closed pending calibration and latency';single_adc_owner_preserved=$true;thermal_v3_parent_build=1104;thermal_rebuilt=$false;firmware_changed=$false;adc_ioctl='0x0022655c';adc_sample_bytes=72;adc_pair_bytes=160;signer_thumbprint=$thumb;compiled=$compiled;reused=$reused;sdk=$sdk;sdk_cache_paths_absent_unreferenced=$sdkAbsent;portcls_sha256=(Sha $PortclsLibrary);unsigned=$unsigned;files=@(Get-ChildItem "$out\package" -Recurse -File|ForEach-Object{@{path=$_.FullName.Substring(("$out\package\").Length).Replace('\','/');sha256=(Sha $_.FullName)}})}|ConvertTo-Json -Depth 10|Set-Content -Encoding UTF8 "$out\package\signed-manifest.json"
 Compress-Archive "$out\package\*" "$out\hp-shared1105-signed.zip"
 Compress-Archive "$out\obj\*" "$out\hp-shared1105-objects.zip"
 Get-FileHash "$out\hp-shared1105-signed.zip","$out\hp-shared1105-objects.zip" -Algorithm SHA256
