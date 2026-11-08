@@ -69,7 +69,7 @@ function Fixed-ServiceSpec([string]$Name) {
         'MT8167RenderProbe' { return [ordered]@{name='MT8167RenderProbe';display_name='PowerVR GE8300 Render Probe';image_path='"C:\Windows\System32\MT8167RenderProbe.exe"'} }
         'MT8167RenderStage' { return [ordered]@{name='MT8167RenderStage';display_name='PowerVR GE8300 Driver Update';image_path='"C:\Windows\System32\MT8167RenderStage.exe"'} }
         'MT8167PeripheralNext122' { return [ordered]@{name='MT8167PeripheralNext122';display_name='MediaTek next peripheral batch';image_path='"C:\Windows\System32\MT8167PeripheralNext122.exe"'} }
-        'MT8167CombinedFollowup136' { return [ordered]@{name='MT8167CombinedFollowup136';display_name='MediaTek GPU332 combined update';image_path='"C:\Windows\System32\MT8167CombinedFollowup136.exe"'} }
+        'MT8167CombinedFollowup136' { return [ordered]@{name='MT8167CombinedFollowup136';display_name='MediaTek GPU335 UMD update';image_path='"C:\Windows\System32\MT8167CombinedFollowup136.exe"'} }
         'MT8167CombinedFollowup134' { return [ordered]@{name='MT8167CombinedFollowup134';display_name='MediaTek GPU332 combined update';image_path='"C:\Windows\System32\MT8167CombinedFollowup134.exe"'} }
         'MT8167CombinedFollowup132' { return [ordered]@{name='MT8167CombinedFollowup132';display_name='MediaTek RTC AFE readonly followup';image_path='"C:\Windows\System32\MT8167CombinedFollowup132.exe"'} }
         'MT8167CombinedFollowup130' { return [ordered]@{name='MT8167CombinedFollowup130';display_name='MediaTek combined followup batch';image_path='"C:\Windows\System32\MT8167CombinedFollowup130.exe"'} }
