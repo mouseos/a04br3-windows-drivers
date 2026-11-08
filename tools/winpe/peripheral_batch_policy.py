@@ -140,7 +140,7 @@ def generate(p):
  validate_selection(p.get('capture_selection',{}),p.get('backup_manifest',''),p.get('backup_manifest_sha256'),p.get('recovery_boot_id'))
  require(list(p.get('packages',{}))==list(TARGETS) and p.get('planned_reboots')==1 and p.get('install_targets')==['usb','mma','emmc','parent'] and p.get('boot_transition',{}).get('next_windows_boot_blocked_until_matched_boot') is True,'固定stage/DIF/boot契約が必要')
  token=hashlib.sha256(json.dumps(p,sort_keys=True,separators=(',',':')).encode()).hexdigest()
- lines=['/* Generated fixed peripheral contract; no GPU/Engine client. */','static const char deferred_token[]="'+token+'";','static const struct peripheral_target targets[6]={']
+ lines=['/* Generated fixed peripheral contract; no GPU/Engine client. */','#define A04_PERIPHERAL_INSTALL_MASK 0x3cu','static const char deferred_token[]="'+token+'";','static const struct peripheral_target targets[6]={']
  for role,t in TARGETS.items():
   v=p['packages'][role];base=p['baselines'].get(role,{'version_u64':0,'date_filetime':0,'sys_sha256':'0'*64,'inf':''})
   lines.append('{'+','.join(cstr(x) for x in (t[0],t[1],t[2],role,v['names']['inf'],t[4],t[5]))+','+str(v['version_u64'])+'ULL,'+str(v['date_filetime'])+'ULL,{'+','.join(cbytes(v['hashes'][k]) for k in ('inf','sys','cat'))+'},'+str(base['version_u64'])+'ULL,'+str(base['date_filetime'])+'ULL,'+cbytes(base['sys_sha256'])+','+cstr(base['inf'])+'},')

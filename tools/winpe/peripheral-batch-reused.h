@@ -121,11 +121,26 @@ static DWORD deferred_find(unsigned index,HDEVINFO set,SP_DEVINFO_DATA *found)
  return 0;
 }
 
-static DWORD deferred_selected_version(HDEVINFO set,SP_DEVINFO_DATA *dev,ULONGLONG *version)
+/* Missing DEVPKEY metadata may use only this exact devnode's selected
+ * driver key. A present type/value mismatch never falls back. */
+static DWORD deferred_driver_value(HDEVINFO set,SP_DEVINFO_DATA *dev,const WCHAR *name,DWORD kind,BYTE *value,DWORD capacity,DWORD *bytes)
+{
+ HKEY key=SetupDiOpenDevRegKey(set,dev,DICS_FLAG_GLOBAL,0,DIREG_DRV,KEY_QUERY_VALUE);DWORD type=0,error;
+ if(key==INVALID_HANDLE_VALUE)return GetLastError();
+ *bytes=capacity;error=RegQueryValueExW(key,name,NULL,&type,value,bytes);RegCloseKey(key);
+ if(error)return error;if(type!=kind||!*bytes||*bytes>capacity)return ERROR_INVALID_DATA;
+ return 0;
+}
+static DWORD deferred_selected_version(unsigned id,HDEVINFO set,SP_DEVINFO_DATA *dev,ULONGLONG *version)
 {
  static const DEVPROPKEY key={{0xa8b865dd,0x2e3d,0x4094,{0xad,0x97,0xe5,0x93,0xa7,0x0c,0x75,0xd6}},3};
  WCHAR value[128];DWORD bytes,n=0,i;DEVPROPTYPE type;ULONGLONG result=0;
- if(!SetupDiGetDevicePropertyW(set,dev,&key,&type,(BYTE *)value,sizeof(value),&bytes,0))return GetLastError();
+ if(!SetupDiGetDevicePropertyW(set,dev,&key,&type,(BYTE *)value,sizeof(value),&bytes,0)){
+  DWORD error=GetLastError();record(id,0x211,error);if(error!=ERROR_NOT_FOUND)return error;
+  error=deferred_driver_value(set,dev,L"DriverVersion",REG_SZ,(BYTE *)value,sizeof(value),&bytes);
+  record(id,0x212,error);if(error)return error;type=DEVPROP_TYPE_STRING;
+ }
+ record(id,0x213,type);record(id,0x214,bytes);
  if(type!=DEVPROP_TYPE_STRING||bytes<2||bytes>sizeof(value)||(bytes&1)||value[bytes/2-1])return ERROR_INVALID_DATA;
  for(i=0;i<4;i++){
   DWORD part=0,digits=0;

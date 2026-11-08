@@ -3,7 +3,8 @@ param([Parameter(Mandatory=$true)][string]$Workspace,
  [Parameter(Mandatory=$true)][string]$Manifest,[Parameter(Mandatory=$true)][string]$ExpectedManifestSha256,
  [Parameter(Mandatory=$true)][int]$CaptureNumber,[Parameter(Mandatory=$true)][string]$ExpectedRecoveryBootId,
  [Parameter(Mandatory=$true)][string]$ExpectedGpuPolicySha256,
- [Parameter(Mandatory=$true)][string]$SourceDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory)
+ [Parameter(Mandatory=$true)][string]$SourceDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,
+ [switch]$IncludeWifiSd)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 $w=[IO.Path]::GetFullPath($Workspace).TrimEnd('\')
 foreach($p in @($Manifest,$SourceDirectory,$OutputDirectory)){if(![IO.Path]::GetFullPath($p).StartsWith($w+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Workspace-local paths required'}}
@@ -42,7 +43,9 @@ try{
    try{if($leaf.GetSubKeyNames().Count -or $leaf.GetValueNames().Count -gt 64 -or $leaf.GetValueKind('PolicyHash') -ne [Microsoft.Win32.RegistryValueKind]::String -or $leaf.GetValue('PolicyHash') -cne $ExpectedGpuPolicySha256){throw 'Pinned GPU policy identity mismatch'}}finally{$leaf.Dispose()}
   }
  }finally{$generation.Dispose()}
- foreach($id in @('MT8167\USB20','ACPI\MOU0010','ACPI\MOU0001','ACPI\BEN0001')){
+ $targetIds=@('MT8167\USB20','ACPI\MOU0010','ACPI\MOU0001','ACPI\BEN0001')
+ if($IncludeWifiSd){$targetIds+=@('A04BR3\MT6630SDIO','ACPI\MOU0013')}
+ foreach($id in $targetIds){
   $key=[MT8167OfflineHive.Native]::OpenPath($root,("ControlSet001\Enum\$id"),$false);if(!$key){throw 'Required existing batch target missing'}
   try{
    $instances=@($key.GetSubKeyNames());if($instances.Count -ne 1){throw 'Exactly one fixed target instance required'}
