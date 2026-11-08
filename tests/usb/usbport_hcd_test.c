@@ -69,7 +69,9 @@ int main(void)
  CHECK(!Packet.submit(&h,&ep,&tx,&transfer,&sg));fifo[0]=0x31;fifo[1]=0x32;fifo[2]=0x33;
  registers[0x16]=1;registers[0x18]=3;registers[4]=2;Packet.poll_controller(&h);
  CHECK(completed==1&&completion_status==USBD_STATUS_SUCCESS&&last_parameters==&tx&&data[2]==0x33&&transfer.actual==3);
- CHECK(!Packet.submit(&h,&ep,&tx,&transfer,&sg));Packet.abort(&h,&ep,&transfer,&status);
+ CHECK(!Packet.submit(&h,&ep,&tx,&transfer,&sg));
+ Packet.set_state(&h,&ep,A04_EP_PAUSED);CHECK(ep.state==A04_EP_PAUSED&&!h.fault);
+ Packet.abort(&h,&ep,&transfer,&status);
  CHECK(!h.active&&completed==1&&status==0); /* abort doesn't double-complete */
  v.type=1;v.endpoint=0;CHECK(!Packet.open(&h,&v,&ep));Packet.set_state(&h,&ep,A04_EP_ACTIVE);
  tx.setup[0]=0x80;tx.setup[1]=6;tx.setup[6]=8;

@@ -139,7 +139,13 @@ static ULONG State(PVOID p,PVOID endpoint){UNREFERENCED_PARAMETER(p);return ((st
 static VOID SetState(PVOID p,PVOID endpoint,ULONG state)
 {struct a04_mp_endpoint *e=endpoint;struct a04_hcd *h=CTX(p);
  if(state!=A04_EP_ACTIVE&&state!=A04_EP_PAUSED&&state!=A04_EP_REMOVE)return;
- if(h->active_ep==e&&state!=A04_EP_ACTIVE){h->fault=1;return;}e->state=state;}
+ if(h->active_ep==e&&state!=A04_EP_ACTIVE){
+  if(Quiesce(h)){OwnershipFailure(h);return;}
+  h->active->actual=e->p.type==1?h->ep0.transfer.actual:h->pio.actual;
+  if(e->p.type!=1)e->toggle=h->pio.ep.toggle;
+ }
+ if(h->active_ep==e&&state==A04_EP_ACTIVE&&e->state!=A04_EP_ACTIVE){h->fault=1;return;}
+ e->state=state;}
 static ULONG EpStatus(PVOID p,PVOID endpoint){UNREFERENCED_PARAMETER(p);return ((struct a04_mp_endpoint*)endpoint)->status;}
 static VOID SetStatus(PVOID p,PVOID endpoint,ULONG status)
 {UNREFERENCED_PARAMETER(p);((struct a04_mp_endpoint*)endpoint)->status=status;}
@@ -191,7 +197,7 @@ static VOID Poll(PVOID p,PVOID endpoint)
 {
  struct a04_hcd *h=CTX(p);struct a04_mp_endpoint *e=endpoint;struct a04_mp_transfer *t=h->active;
  USBD_STATUS status;ULONG actual;int r;
- if(!t||h->active_ep!=e||h->fault)return;
+ if(!t||h->active_ep!=e||e->state!=A04_EP_ACTIVE||h->fault)return;
  if(e->p.type==1){
   EP0_ACTION action;
   if(!(h->io.read16(h->io.context,2)&1))return;
