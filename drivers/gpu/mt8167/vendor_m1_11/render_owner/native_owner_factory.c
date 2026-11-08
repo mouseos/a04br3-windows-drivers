@@ -4,7 +4,7 @@
 #include "native_factory_checkpoint.h"
 #include "A04BR3RogueRuntimeLayout.h"
 #include "A04BR3RogueDeviceWords.h"
-#include "a04_copy_usc_asset.h"
+
 static void reference(void *p){struct e_native_owner *c=p;InterlockedIncrement(&c->references);}
 static void dereference(void *p){struct e_native_owner *c=p;InterlockedDecrement(&c->references);}
 static NTSTATUS enter(struct e_native_owner *c,BOOLEAN cleanup)
@@ -246,7 +246,7 @@ static int32_t prepare(void *p,uint64_t surface,uint32_t colour,uint64_t *job)
     if(NT_SUCCESS(s)){
         if(a04_rgx_device_read_words(&k,c->allocation->firmware.runtime->kctl,sizeof(k)) ||
            k.ui32WrapMask!=127 || k.ui32ReadOffset>127 || k.ui32ReadOffset!=k.ui32WriteOffset)s=STATUS_DEVICE_BUSY;
-        else{c->kick_write=k.ui32WriteOffset;c->job=++c->next_id;c->job_state=E_JOB_PREPARED;*job=c->job;}
+        else{c->kick_write=k.ui32WriteOffset;c->job=++c->next_id;c->job_is_copy=FALSE;c->job_state=E_JOB_PREPARED;*job=c->job;}
     }
     native_progress(c,38,s);
     if(!NT_SUCCESS(s))c->state=E_OWNER_FAILED;
@@ -259,14 +259,14 @@ static int32_t prepare_copy(void *p,uint64_t source,uint64_t destination,uint64_
  if(!src||!dst||src==dst||source!=c->surface||src->desc.usage!=GEO_USAGE_RENDER_TARGET||
     dst->desc.usage!=GEO_USAGE_STAGING||!dst->linear||!c->allocation->binding||c->next_id==UINT64_MAX)return leave(c,STATUS_INVALID_PARAMETER);
  s=wait_boundary_locked(c);if(!NT_SUCCESS(s))return leave(c,s);
- s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
- if(NT_SUCCESS(s))s=e_native_build_graph_locked(c);
- if(NT_SUCCESS(s))s=a04_native_copy_storage_create(&c->copy_storage,c->allocation->native,dst->linear,&dst->desc,a04_copy_usc_asset,sizeof(a04_copy_usc_asset));
- if(NT_SUCCESS(s))s=a04_native_tq_transfer_prepare(&c->copy_transfer,c->copy_storage);
- if(NT_SUCCESS(s))s=e_native_boot_locked(c);
+ /* Copy is an idle-to-submit transition on the current FW root. No stop,
+  * power cycle, PTE edit, resource release or bootstrap occurs here. */
+ if(!c->copy_transfer || c->copy_destination!=destination ||
+    !c->allocation->start.online)return leave(c,STATUS_NOT_SUPPORTED);
+ s=a04_native_tq_transfer_rearm(c->copy_transfer,&c->allocation->start,c->hardware_epoch,c->next_id+1u);
  if(NT_SUCCESS(s)){RGXFWIF_CCB_CTL k;
   if(a04_rgx_device_read_words(&k,c->allocation->firmware.runtime->kctl,sizeof(k))||k.ui32WrapMask!=127||k.ui32ReadOffset!=k.ui32WriteOffset)s=STATUS_DEVICE_BUSY;
-  else{c->kick_write=k.ui32WriteOffset;c->job=++c->next_id;c->job_state=E_JOB_PREPARED;*job=c->job;}}
+  else{c->kick_write=k.ui32WriteOffset;c->job=++c->next_id;c->job_is_copy=TRUE;c->job_state=E_JOB_PREPARED;*job=c->job;}}
  if(!NT_SUCCESS(s))c->state=E_OWNER_FAILED;return leave(c,s);
 }
 struct discard_call {struct e_native_owner *c;uint64_t job;NTSTATUS status;};
@@ -294,7 +294,7 @@ static int32_t submit(void *p,uint64_t job,uint32_t fence,uint32_t generation)
     if(!c || KeGetCurrentIrql()!=c->irq_level || c->closing || !c->leased || !c->irq_gate ||
        c->state!=E_OWNER_ACTIVE || c->power!=PowerDeviceD0 || !job || job!=c->job ||
        c->job_state!=E_JOB_PREPARED || !generation)return STATUS_INVALID_DEVICE_STATE;
-    s=c->copy_transfer?a04_native_tq_transfer_submit(c->copy_transfer,&c->allocation->start,&c->allocation->irq,c->kick_write):a04_native_dispatch_submit(&c->allocation->dispatch,job,generation,c->kick_write);
+    s=c->job_is_copy?a04_native_tq_transfer_submit(c->copy_transfer,&c->allocation->start,&c->allocation->irq,c->kick_write,job,generation):a04_native_dispatch_submit(&c->allocation->dispatch,job,generation,c->kick_write);
     if(NT_SUCCESS(s)){c->generation=generation;c->job_state=E_JOB_SUBMITTED;}
     else{c->state=E_OWNER_FAILED;InterlockedExchange(&c->closing,1);}
     return s;
@@ -309,12 +309,12 @@ static NTSTATUS interrupt_event(void *p,ULONG message,struct geo_owner_irq_event
         if(!a04_native_irq_claim(&c->allocation->irq,&drain))return STATUS_NOT_FOUND;
         out->status=drain.fault;return NT_SUCCESS(drain.fault)?STATUS_PENDING:drain.fault;
     }
-    if(c->copy_transfer && c->job_state==E_JOB_SUBMITTED){
+    if(c->job_is_copy && c->job_state==E_JOB_SUBMITTED){
         NTSTATUS status;LONG phase=a04_native_tq_transfer_state(c->copy_transfer);
         if(!a04_native_irq_claim(&c->allocation->irq,&drain))return STATUS_NOT_FOUND;
         if(!NT_SUCCESS(drain.fault))return drain.fault;
         if(phase==2){status=a04_native_tq_transfer_begin_finish(c->copy_transfer,&c->allocation->irq,&drain);return NT_SUCCESS(status)?STATUS_PENDING:status;}
-        if(phase!=6)return STATUS_INVALID_DEVICE_STATE;
+        if(phase!=6 || !a04_native_tq_transfer_identity(c->copy_transfer,c->hardware_epoch,c->job,c->generation))return STATUS_INVALID_DEVICE_STATE;
         status=a04_native_tq_transfer_visibility_receipt(c->copy_transfer,&c->allocation->start,&c->allocation->irq,&drain);
         if(status!=STATUS_SUCCESS)return status;
         c->job_state=E_JOB_COMPLETE;out->job=c->job;out->generation=c->generation;
@@ -339,7 +339,7 @@ static NTSTATUS service(void *p,uint64_t epoch)
      * this retires only the work request, never a GPU completion. */
     if(!c->irq_gate && c->job_state==E_JOB_NONE)return leave(c,STATUS_SUCCESS);
     if(!c->irq_gate)return leave(c,STATUS_INVALID_DEVICE_STATE);
-    if(c->copy_transfer&&c->job_state==E_JOB_SUBMITTED){
+    if(c->job_is_copy&&c->job_state==E_JOB_SUBMITTED){
         struct a04_native_copy_gpu_result result;struct copy_arm arm={c,STATUS_SUCCESS};LONG phase=a04_native_tq_transfer_state(c->copy_transfer);
         if(phase==2||phase==6)return leave(c,STATUS_SUCCESS); /* wait for actual registered IRQ */
         if(phase==8){s=a04_native_tq_transfer_wait_visibility_retry(c->copy_transfer,&c->allocation->start);if(s!=STATUS_SUCCESS)return leave(c,s);}
@@ -456,7 +456,7 @@ static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
     if(NT_SUCCESS(s)){
         if(a04_rgx_device_read_words(&k,c->allocation->firmware.runtime->kctl,sizeof(k)) ||
            k.ui32WrapMask!=127 || k.ui32ReadOffset>127 || k.ui32ReadOffset!=k.ui32WriteOffset)s=STATUS_DEVICE_BUSY;
-        else{c->kick_write=k.ui32WriteOffset;c->job=++c->next_id;c->job_state=E_JOB_PREPARED;*job=c->job;}
+        else{c->kick_write=k.ui32WriteOffset;c->job=++c->next_id;c->job_is_copy=FALSE;c->job_state=E_JOB_PREPARED;*job=c->job;}
     }
     if(!NT_SUCCESS(s))c->state=E_OWNER_FAILED;
     return leave(c,s);

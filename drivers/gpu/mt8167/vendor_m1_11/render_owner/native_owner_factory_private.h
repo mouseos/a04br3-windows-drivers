@@ -33,6 +33,7 @@ struct e_native_owner {
     KMUTEX mutex;EX_RUNDOWN_REF operations;
     volatile LONG references,closing,irq_gate;BOOLEAN rundown_closed,leased;
     volatile uint32_t state,power,job_state;
+    BOOLEAN job_is_copy;uint64_t copy_destination;
     uint32_t colour,kick_write,generation;
     uint64_t epoch,hardware_epoch,next_id,surface,job,aperture_offset;
     struct geo_surface_desc description,vertex_description;

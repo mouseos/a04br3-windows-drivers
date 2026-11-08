@@ -8,14 +8,19 @@ struct a04_native_irq_core;
 struct a04_native_irq_receipt;
 struct a04_native_copy_gpu_result {ULONG phase,task_sequence,flush_sequence,client_write;};
 /* Internal low-level TQ half. Factory serializes and retains the graph,
- * storage and BOTH real GPU SG leases. This API is NOT wired to WDDM yet.
+ * storage and both resident WDDM MDL leases. The factory wires this to WDDM.
  * Prepare before FW starts; submit under actual registered Dxgk IRQ lock.
  * Existing single IRQ claims source; PASSIVE finish requires that claim.
  * No second IRQ, CPU pixel read, LockCb, or scheduler notification occurs. */
 NTSTATUS a04_native_tq_transfer_prepare(struct a04_native_tq_transfer **,
  struct a04_native_copy_storage *);
+/* Rearm only at an actual completed owner boundary. Rebuild the complete
+ * TQ task/UFO group from live empty CCB offsets, with a new job/epoch. */
+NTSTATUS a04_native_tq_transfer_rearm(struct a04_native_tq_transfer *,
+ struct a04_vendor_start *,uint64_t epoch,uint64_t job);
+BOOLEAN a04_native_tq_transfer_identity(struct a04_native_tq_transfer *,uint64_t epoch,uint64_t job,uint32_t generation);
 NTSTATUS a04_native_tq_transfer_submit(struct a04_native_tq_transfer *,
- struct a04_vendor_start *,struct a04_native_irq_core *,ULONG expected_kernel_write);
+ struct a04_vendor_start *,struct a04_native_irq_core *,ULONG expected_kernel_write,uint64_t job,uint32_t generation);
 /* Capture only an actual ISR receipt under the existing Dxgk IRQ lock.
  * No q->serial/64-bit state is sampled by the PASSIVE worker. */
 NTSTATUS a04_native_tq_transfer_begin_finish(struct a04_native_tq_transfer *,
