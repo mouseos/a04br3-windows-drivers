@@ -102,7 +102,9 @@ def usource(n):
  stem=n[:-4]
  if stem.startswith(('umd_','frontend_','compiler_')):stem=stem.replace('_','/',1)
  return 'drivers/gpu/mt8167/wddm-render/'+stem+'.c'
-def uflags(s):return [f for f in uf if not (s.endswith('/typed_state.c') and f in ['-D_D3D10_CONSTANTS','-D_D3D10_1_CONSTANTS'])]
+def uflags(s):
+ if s.endswith('/compiler/pco_texture2d.c'):return cf
+ return [f for f in uf if not (s.endswith('/typed_state.c') and f in ['-D_D3D10_CONSTANTS','-D_D3D10_1_CONSTANTS'])]
 closure('umd','ge8300-native-umd.lib',usource,uflags,[('frontend_shader_draw_protocol.obj','drivers/gpu/mt8167/wddm-render/frontend/shader_draw_protocol.c',uf)])
 for n in ['umd_entry.obj','umd_typed_entry.obj']:
  flags=uf+(['-DGEO_LINKED_REAL_FRONTEND=1'] if n=='umd_entry.obj' else ['-DGEO_TYPED_LIMITED_DEVELOPMENT=1','-DGEO_TYPED_NATIVE_PIPELINE10=1'])
