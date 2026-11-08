@@ -178,11 +178,10 @@ static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const
      lstrcmpW(chosen.Description,driver.Description)||lstrcmpW(chosen.MfgName,driver.MfgName)||lstrcmpW(chosen.ProviderName,driver.ProviderName)){
    error=ERROR_REVISION_MISMATCH;goto done;
   }
-  /* Never invent ClassGUID registry keys. Confirm the standard selection
-   * established the fixed Display class before invoking class installers. */
-  if(!SetupDiGetDeviceRegistryPropertyW(set,dev,SPDRP_CLASSGUID,&type,(BYTE *)class_name,sizeof(class_name),&bytes)){error=GetLastError();goto done;}
-  if(type!=REG_SZ||bytes<2||bytes>sizeof(class_name)||(bytes&1)||class_name[bytes/2-1]||
-     lstrcmpiW(class_name,targets[i].cls)){error=ERROR_REVISION_MISMATCH;goto done;}
+  /* Selection updates SP_DEVINFO_DATA.ClassGuid before first installation;
+   * SPDRP_CLASSGUID reads persisted devnode state and can still be absent.
+   * Compare SetupAPI's selected GUID; never write class registry keys. */
+  {WCHAR guid[39];static const WCHAR hx[]=L"0123456789abcdef";const BYTE *v=(const BYTE *)&dev->ClassGuid;static const BYTE order[16]={3,2,1,0,5,4,7,6,8,9,10,11,12,13,14,15};unsigned k,n=0;guid[n++]=L'{';for(k=0;k<16;k++){BYTE c=v[order[k]];if(k==4||k==6||k==8||k==10)guid[n++]=L'-';guid[n++]=hx[c>>4];guid[n++]=hx[c&15];}guid[n++]=L'}';guid[n]=0;if(lstrcmpiW(guid,targets[i].cls)){error=ERROR_REVISION_MISMATCH;goto done;}}
   deferred_current_step=3;
   if(!SetupDiCallClassInstaller(DIF_REGISTER_COINSTALLERS,set,dev)){error=GetLastError();goto done;}
   deferred_current_step=4;
@@ -204,7 +203,7 @@ static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const
  if(!(params.Flags&DI_NEEDREBOOT))error=ERROR_INVALID_DATA;
  done:
  if(error){deferred_failure_target=i;deferred_failure_step=deferred_current_step;}
- pnp_record(i,0x105,error);if(list)SetupDiDestroyDriverInfoList(set,dev,list_type);return error;
+ pnp_record(i,0x106,deferred_current_step);pnp_record(i,0x105,error);if(list)SetupDiDestroyDriverInfoList(set,dev,list_type);return error;
 }
 
 static DWORD deferred_reboot_waiter(void)

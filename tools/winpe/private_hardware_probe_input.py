@@ -42,7 +42,7 @@ def clean_header(path):
 
 
 def prepared_system_check(system, manifest, expected_sha256, root, backup, selected_service="MT8167HardwareProbe"):
-    names = {'MT8167CombinedFollowup124':'MediaTek combined followup batch', 'MT8167PeripheralNext122':'MediaTek next peripheral batch', 'MT8167PeripheralBatch':'MediaTek fixed peripheral batch', 'MT8167HardwareProbe': 'MediaTek MT8167 Hardware Probe', 'MT8167EngineProbe': 'MediaTek MT8167 Engine Probe', 'MT8167RenderProbe': 'PowerVR GE8300 Render Probe', 'MT8167RenderStage': 'PowerVR GE8300 Driver Update', 'MT8167RenderSingleGpu': 'PowerVR GE8300 Single GPU Update'}
+    names = {'MT8167CombinedFollowup126':'MediaTek combined followup batch', 'MT8167CombinedFollowup124':'MediaTek combined followup batch', 'MT8167PeripheralNext122':'MediaTek next peripheral batch', 'MT8167PeripheralBatch':'MediaTek fixed peripheral batch', 'MT8167HardwareProbe': 'MediaTek MT8167 Hardware Probe', 'MT8167EngineProbe': 'MediaTek MT8167 Engine Probe', 'MT8167RenderProbe': 'PowerVR GE8300 Render Probe', 'MT8167RenderStage': 'PowerVR GE8300 Driver Update', 'MT8167RenderSingleGpu': 'PowerVR GE8300 Single GPU Update'}
     if selected_service not in names:
         raise ValueError('未対応の固定serviceです')
     system = private_path(system, root).resolve(strict=True)
