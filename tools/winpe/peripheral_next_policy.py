@@ -27,12 +27,12 @@ PINS={
  'display':('88264ad474d7cc16d8633b448357a07043f0d6a449382ba57c9741bb4e0cbd41','ad78a231d881811efb7bd53422ac0879cb64eb50046f0c609964474c547c32ca'),
  'parent':('db77ed5fdfb5343d061441e09158bf4f0f3883ba8c075751ef2fa2dba2e05e3f','0b98648791827433a252f2787b97ab326aa90f4e4707dce27e42aa628e5bb502')}
 def generate_paths():
- base='C:\\Windows\\System32\\'+DIRECTORY
- return '\n'.join(['#define A04_PERIPHERAL_SERVICE '+cstr(SERVICE),'#define A04_PERIPHERAL_DIRECTORY '+cstr(DIRECTORY),'#define A04_CAPTURE_DIRECTORY '+cstr(base+'\\capture'),'#define A04_CAPTURE_LOG_PATH '+cstr(base+'\\capture\\capture.log'),'#define A04_CAPTURE_MUTEX '+cstr(SERVICE+'CaptureOnce')])+'\n'
+ sep=chr(92);base=sep.join(('C:','Windows','System32',DIRECTORY))
+ return '\n'.join(['#define A04_PERIPHERAL_SERVICE '+cstr(SERVICE),'#define A04_PERIPHERAL_DIRECTORY '+cstr(DIRECTORY),'#define A04_CAPTURE_DIRECTORY '+cstr(base+sep+'capture'),'#define A04_CAPTURE_LOG_PATH '+cstr(base+sep+'capture'+sep+'capture.log'),'#define A04_CAPTURE_MUTEX '+cstr(SERVICE+'CaptureOnce')])+'\n'
 def assert_paths(image,capture=False):
- b=Path(image).read_bytes();expected=('C:\\Windows\\System32\\'+DIRECTORY+'\\capture\\capture.log') if capture else DIRECTORY
+ b=Path(image).read_bytes();sep=chr(92);expected=sep.join(('C:','Windows','System32',DIRECTORY,'capture','capture.log')) if capture else DIRECTORY
  require(expected.encode('utf-16le')+b'\0\0' in b,'Compiled UTF16 runtime path missing')
- require('C:\\Windows\\System32\\MT8167CaptureProbe\\capture.log'.encode('utf-16le') not in b,'Old capture output path retained')
+ require(sep.join(('C:','Windows','System32','MT8167CaptureProbe','capture.log')).encode('utf-16le') not in b,'Old capture output path retained')
  if not capture:require('MT8167PeripheralBatch.exe'.encode('utf-16le') not in b,'Old batch exe path retained')
 def load_map(path,root):
  root=root.resolve(strict=True);s=read(rooted(root,path));require(set(s)=={'schema','profile','draft','fresh','native','seven','packages','capture_client','accdet_client','rotation_client','runtime_retained','boot','approved_capture','gpu_seal','gpu_media'},'Exact next input schema required')

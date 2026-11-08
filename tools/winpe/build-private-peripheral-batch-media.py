@@ -75,18 +75,20 @@ def main():
  payload=dict(files)
  for i,(n,h) in enumerate(sorted(payload.items())):
   copy(stage/n,'stage-proof/'+str(i)+'.bin');prepare+=['X:\\a04br3\\compare-files.exe "X:\\a04br3\\'+n.replace('/','\\')+'" X:\\a04br3\\stage-proof\\'+str(i)+'.bin >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto baselinefail']
- for directory in sorted({c['relative_directory'] for c in p.get('diagnostic_clients',[]) if not c['relative_directory'].startswith(DIRECTORY+'\\')}):prepare+=['if exist C:\\Windows\\System32\\'+directory+' goto baselinefail']
+ for directory in sorted({c['relative_directory'] for c in p.get('diagnostic_clients',[]) if not c['relative_directory'].startswith(DIRECTORY+chr(92))}):prepare+=['if exist '+chr(92).join(('C:','Windows','System32',directory))+' goto baselinefail']
  prepare+=['if exist C:\\Windows\\System32\\'+DIRECTORY+' goto baselinefail','if exist C:\\Windows\\System32\\'+SERVICE+'.exe goto baselinefail','set "A04_CANDIDATE_STARTED=1"','> "%A04_BK%\\JOURNAL.txt" echo STATE=CANDIDATE_WRITE_STARTED','mkdir C:\\Windows\\System32\\'+DIRECTORY+'\\logs >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  for role,v in p['packages'].items():
   dst='C:\\Windows\\System32\\'+DIRECTORY+'\\'+role;prepare+=['mkdir '+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
   for kind in ('inf','sys','cat'):
    name=v['names'][kind];prepare+=['copy /b X:\\a04br3\\payload\\'+role+'\\'+name+' '+dst+'\\'+name+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe X:\\a04br3\\payload\\'+role+'\\'+name+' '+dst+'\\'+name+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  if p.get('diagnostic_clients'):
+  sep=chr(92);system=sep.join(('C:','Windows','System32'))+sep
   for directory in sorted({c['relative_directory'] for c in p['diagnostic_clients']}):
-   prepare+=['mkdir C:\\Windows\\System32\\'+directory+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
+   prepare+=['mkdir '+system+directory+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
   for client in p['diagnostic_clients']:
    for name in [client['exe']]+[d['exe'] for d in client['dependencies']]:
-    src='X:\\a04br3\\payload\\clients\\'+name;dst='C:\\Windows\\System32\\'+client['relative_directory']+'\\'+name;prepare+=['copy /b '+src+' '+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe '+src+' '+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
+    src=sep.join(('X:','a04br3','payload','clients',name));dst=system+client['relative_directory']+sep+name
+    prepare+=['copy /b '+src+' '+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail',sep.join(('X:','a04br3','compare-files.exe'))+' '+src+' '+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  for name,dst in [('boot-transition-authorized.bin',DIRECTORY+'\\boot-transition-authorized.bin'),(SERVICE+'.exe',SERVICE+'.exe')]:
   prepare+=['copy /b X:\\a04br3\\payload\\'+name+' C:\\Windows\\System32\\'+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe X:\\a04br3\\payload\\'+name+' C:\\Windows\\System32\\'+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
  # Last mutation only: main-selected capture-derived clean SYSTEM containing the one new service.
