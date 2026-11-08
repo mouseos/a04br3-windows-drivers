@@ -7,11 +7,14 @@
  * Worker never sees these extension pointers. Lock order: HCD -> runtime;
  * PASSIVE worker uses runtime only and never calls back into USBPORT. */
 struct a04_mp_endpoint {struct a04_mp_properties p;ULONG state,status,toggle,cookie,toggle_unknown;};
-struct a04_mp_transfer {struct a04_mp_parameters *parameters;PVOID mapped;ULONG bytes,actual,state;};
+#define A04_HCD_PENDING 16u
+struct a04_mp_transfer {struct a04_mp_parameters *parameters;PVOID mapped;ULONG bytes,actual,state;
+ struct a04_mp_parameters request;ULONGLONG admitted,order;};
 struct a04_hcd {
  KSPIN_LOCK lock;ULONG signature,started,irq_enabled,root_irq,fault,next_cookie,epoch;
  struct a04_root_port port;struct a04_hub hub;struct a04_hub_action root_action;
- struct mt_musb_runtime *runtime;struct a04_mp_endpoint *active_ep;struct a04_mp_transfer *active;
+ struct mt_musb_runtime *runtime;struct a04_mp_endpoint *open_ep[24];
+ struct {struct a04_mp_endpoint *ep;struct a04_mp_transfer *transfer;} active[A04_HCD_PENDING];ULONGLONG order;ULONG dispatch_cursor;
 };
 static struct a04_mp_packet Packet;
 static LONG EpochSeed;
@@ -25,6 +28,29 @@ static LONG EpochSeed;
 #define HLOCK(h,k) KeAcquireSpinLock(&(h)->lock,&(k))
 #define HUNLOCK(h,k) KeReleaseSpinLock(&(h)->lock,k)
 #endif
+/* USBPORT retains queued transfer/endpoint storage until Complete or Abort.
+ * Those references stay ONLY in the HCD callback domain, never in the worker. */
+static int ActiveSlot(struct a04_hcd *h,struct a04_mp_endpoint *e)
+{unsigned i;int head=-1;for(i=0;i<A04_HCD_PENDING;i++)if(h->active[i].ep==e&&h->active[i].transfer&&
+ (head<0||h->active[i].transfer->order<h->active[head].transfer->order))head=(int)i;return head;}
+static int AnyActive(struct a04_hcd *h)
+{unsigned i;for(i=0;i<A04_HCD_PENDING;i++)if(h->active[i].transfer)return 1;return 0;}
+static int PortReady(struct a04_hcd *h)
+{return (h->port.status&(A04_PORT_POWER|A04_PORT_CONNECTION|A04_PORT_ENABLE|A04_PORT_OVERCURRENT))==
+ (A04_PORT_POWER|A04_PORT_CONNECTION|A04_PORT_ENABLE);}
+static void Kick(struct a04_hcd *h)
+{
+ unsigned off,i,start=h->dispatch_cursor;h->dispatch_cursor=(start+1)%A04_HCD_PENDING;
+ if(!h->started||h->fault||!h->runtime||h->root_action.kind||!PortReady(h))return;
+ for(off=0;off<A04_HCD_PENDING;off++){
+  struct a04_mp_endpoint *e;struct a04_mp_transfer *t;i=(start+off)%A04_HCD_PENDING;
+  e=h->active[i].ep;t=h->active[i].transfer;
+  if(!t||t->state!=1||e->state!=A04_EP_ACTIVE||e->status||ActiveSlot(h,e)!=(int)i)continue;
+  if(e->p.type!=3&&KeQueryInterruptTime()-t->admitted>=50000000ull)continue;
+  if(e->toggle_unknown&&!MtMusbRecoverToggle(h->runtime,e->cookie,&e->toggle))e->toggle_unknown=0;
+  if(!e->toggle_unknown&&!MtMusbSubmitDeadline(h->runtime,e->cookie,&e->p,e->toggle,&t->request,t->mapped,e->p.type==3?0:t->admitted+50000000ull))t->state=3;
+ }
+}
 static void HarvestRoot(struct a04_hcd *h)
 {
  struct a04_hub_observation o;ULONG connected=0,done=0,result=0;
@@ -61,7 +87,7 @@ static ULONG RhFeature(struct a04_hcd *h,USHORT port,unsigned set,unsigned featu
  setup[1]=(UCHAR)(set?3:1);setup[2]=(UCHAR)feature;
  r=a04_hub_control(&h->hub,setup,0,0,&actual,&a);
  if(r==A04_HUB_PENDING){
-  if(h->active||MtMusbRootQueue(h->runtime,a.kind)){
+  if(AnyActive(h)||MtMusbRootQueue(h->runtime,a.kind)){
    RtlZeroMemory(&o,sizeof(o));(void)a04_hub_action_done(&h->hub,&a,0,&o);r=A04_HUB_STALL;
   }else {h->root_action=a;r=0;}
  }
@@ -120,7 +146,7 @@ static VOID Stop(PVOID p,BOOLEAN removed)
  runtime=h->runtime;h->runtime=NULL;
  /* USBPORT may release every external object on return. Only the independent
   * shadow job survives until the PASSIVE drain/definitive stop proof. */
- h->active=NULL;h->active_ep=NULL;HUNLOCK(h,k);
+ RtlZeroMemory(h->active,sizeof(h->active));RtlZeroMemory(h->open_ep,sizeof(h->open_ep));HUNLOCK(h,k);
  if(!MtMusbClose(runtime)){HLOCK(h,k);h->fault=1;HUNLOCK(h,k);}
 }
 static VOID Suspend(PVOID p){Stop(p,FALSE);}
@@ -129,7 +155,7 @@ static BOOLEAN Isr(PVOID p){UNREFERENCED_PARAMETER(p);return FALSE;}
 static VOID Dpc(PVOID p,BOOLEAN enabled){UNREFERENCED_PARAMETER(p);UNREFERENCED_PARAMETER(enabled);}
 static VOID Enable(PVOID p){struct a04_hcd *h=CTX(p);KIRQL k;HLOCK(h,k);h->irq_enabled=1;HUNLOCK(h,k);}
 static VOID Disable(PVOID p){struct a04_hcd *h=CTX(p);KIRQL k;HLOCK(h,k);h->irq_enabled=0;HUNLOCK(h,k);}
-static VOID Check(PVOID p){struct a04_hcd *h=CTX(p);KIRQL k;HLOCK(h,k);HarvestRoot(h);HUNLOCK(h,k);}
+static VOID Check(PVOID p){struct a04_hcd *h=CTX(p);KIRQL k;HLOCK(h,k);HarvestRoot(h);Kick(h);HUNLOCK(h,k);}
 static ULONG Frame(PVOID p){struct a04_hcd *h=CTX(p);KIRQL k;ULONG n;HLOCK(h,k);n=MtMusbFrame(h->runtime);HUNLOCK(h,k);return n;}
 static VOID NextSof(PVOID p){UNREFERENCED_PARAMETER(p);}
 static VOID Reset(PVOID p){Stop(p,FALSE);}
@@ -147,21 +173,36 @@ static ULONG Open(PVOID p,struct a04_mp_properties *v,PVOID endpoint)
  if(v->type!=2&&v->packet>64)return A04_MP_UNSUPPORTED;
  if(v->type==2&&!((v->speed==2&&v->packet==512)||
    (v->speed==1&&(v->packet==8||v->packet==16||v->packet==32||v->packet==64))))return A04_MP_UNSUPPORTED;
- HLOCK(h,k);RtlZeroMemory(e,sizeof(*e));e->p=*v;e->state=A04_EP_PAUSED;
+ HLOCK(h,k);if(ActiveSlot(h,e)>=0){HUNLOCK(h,k);return A04_MP_RESOURCES;}
+ {unsigned i,slot=24,count=0;
+  for(i=0;i<24;i++){
+   if(h->open_ep[i]==e){slot=i;continue;}
+   if(h->open_ep[i]&&h->open_ep[i]->p.type!=1)count++;
+  }
+  if(slot==24)for(i=0;i<24;i++)if(!h->open_ep[i]){slot=i;break;}
+  if(slot==24||(v->type!=1&&count>=MT_MUSB_DATA_LANES)){HUNLOCK(h,k);return A04_MP_RESOURCES;}
+  h->open_ep[slot]=e;
+ }
+ RtlZeroMemory(e,sizeof(*e));e->p=*v;e->state=A04_EP_PAUSED;
  if(++h->next_cookie==0)++h->next_cookie;e->cookie=h->next_cookie;HUNLOCK(h,k);return 0;
 }
 static ULONG Reopen(PVOID p,struct a04_mp_properties *v,PVOID endpoint)
 {
- struct a04_hcd *h=CTX(p);KIRQL k;ULONG busy;HLOCK(h,k);busy=h->active_ep==endpoint;HUNLOCK(h,k);
+ struct a04_hcd *h=CTX(p);KIRQL k;ULONG busy;HLOCK(h,k);busy=ActiveSlot(h,endpoint)>=0;HUNLOCK(h,k);
  return busy?A04_MP_ERROR:Open(p,v,endpoint);
 }
-static void Detach(struct a04_hcd *h,struct a04_mp_endpoint *e)
+static void DetachSlot(struct a04_hcd *h,unsigned i)
 {
- if(h->active_ep==e){MtMusbCancel(h->runtime,e->cookie);h->active_ep=NULL;h->active=NULL;e->toggle_unknown=1;}
+ struct a04_mp_endpoint *e=h->active[i].ep;struct a04_mp_transfer *t=h->active[i].transfer;
+ if(!t)return;
+ if(t->state==3){MtMusbCancel(h->runtime,e->cookie);e->toggle_unknown=1;}
+ h->active[i].ep=NULL;h->active[i].transfer=NULL;
 }
+static void Detach(struct a04_hcd *h,struct a04_mp_endpoint *e)
+{unsigned i;for(i=0;i<A04_HCD_PENDING;i++)if(h->active[i].ep==e)DetachSlot(h,i);}
 static VOID Close(PVOID p,PVOID endpoint,BOOLEAN removed)
 {struct a04_hcd *h=CTX(p);struct a04_mp_endpoint *e=endpoint;KIRQL k;UNREFERENCED_PARAMETER(removed);
- HLOCK(h,k);Detach(h,e);e->state=A04_EP_CLOSED;HUNLOCK(h,k);}
+ HLOCK(h,k);Detach(h,e);{unsigned i;for(i=0;i<24;i++)if(h->open_ep[i]==e)h->open_ep[i]=NULL;}e->state=A04_EP_CLOSED;HUNLOCK(h,k);}
 static ULONG State(PVOID p,PVOID endpoint)
 {struct a04_hcd *h=CTX(p);KIRQL k;ULONG s;HLOCK(h,k);s=((struct a04_mp_endpoint *)endpoint)->state;HUNLOCK(h,k);return s;}
 static VOID SetState(PVOID p,PVOID endpoint,ULONG state)
@@ -171,8 +212,8 @@ static VOID SetState(PVOID p,PVOID endpoint,ULONG state)
  HLOCK(h,k);
  /* Pause requests physical cancellation without retaining external pointers
   * in the worker. USBPORT keeps its transfer until the following Abort. */
- if(h->active_ep==e&&state!=A04_EP_ACTIVE){MtMusbCancel(h->runtime,e->cookie);e->toggle_unknown=1;}
- if(h->active_ep==e&&state==A04_EP_ACTIVE&&e->state!=A04_EP_ACTIVE)h->fault=1;
+ if(ActiveSlot(h,e)>=0&&h->active[ActiveSlot(h,e)].transfer->state==3&&state!=A04_EP_ACTIVE){MtMusbCancel(h->runtime,e->cookie);e->toggle_unknown=1;}
+ if(ActiveSlot(h,e)>=0&&h->active[ActiveSlot(h,e)].transfer->state==3&&state==A04_EP_ACTIVE&&e->state!=A04_EP_ACTIVE)h->fault=1;
  if(state==A04_EP_REMOVE)Detach(h,e);e->state=state;HUNLOCK(h,k);
 }
 static ULONG EpStatus(PVOID p,PVOID endpoint)
@@ -182,25 +223,28 @@ static VOID SetStatus(PVOID p,PVOID endpoint,ULONG status)
 static VOID Toggle(PVOID p,PVOID endpoint,ULONG toggle)
 {
  struct a04_hcd *h=CTX(p);struct a04_mp_endpoint *e=endpoint;KIRQL k;HLOCK(h,k);
- if(toggle<=1&&h->active_ep!=e){e->toggle=toggle;e->toggle_unknown=0;}else h->fault=1;
+ if(toggle<=1&&(ActiveSlot(h,e)<0||h->active[ActiveSlot(h,e)].transfer->state!=3)){e->toggle=toggle;e->toggle_unknown=0;}else h->fault=1;
  HUNLOCK(h,k);
 }
 static ULONG Submit(PVOID p,PVOID endpoint,struct a04_mp_parameters *v,PVOID transfer,struct a04_mp_sg *sg)
 {
- struct a04_hcd *h=CTX(p);struct a04_mp_endpoint *e=endpoint;struct a04_mp_transfer *t=transfer;KIRQL k;ULONG result=A04_MP_ERROR;
+ struct a04_hcd *h=CTX(p);struct a04_mp_endpoint *e=endpoint;struct a04_mp_transfer *t=transfer;
+ KIRQL k;ULONG result=A04_MP_ERROR,i;
  if(!v||!t||!e||v->bytes>MT_MUSB_SHADOW_BYTES||(v->bytes&&(!sg||!sg->mapped_va)))return A04_MP_ERROR;
  if(e->p.type==1&&(v->setup[6]|((unsigned)v->setup[7]<<8))!=v->bytes)return A04_MP_ERROR;
  HLOCK(h,k);HarvestRoot(h);
- if(!h->fault&&h->started&&h->runtime&&Packet.complete&&!h->active&&e->state==A04_EP_ACTIVE&&!e->status&&
+ if(!h->fault&&h->started&&h->runtime&&Packet.complete&&e->state==A04_EP_ACTIVE&&!e->status&&
   (h->port.status&(A04_PORT_POWER|A04_PORT_CONNECTION|A04_PORT_ENABLE|A04_PORT_OVERCURRENT))==
   (A04_PORT_POWER|A04_PORT_CONNECTION|A04_PORT_ENABLE)){
-  if(e->toggle_unknown&&!MtMusbRecoverToggle(h->runtime,e->cookie,&e->toggle))e->toggle_unknown=0;
-  if(!e->toggle_unknown&&!MtMusbSubmit(h->runtime,e->cookie,&e->p,e->toggle,v,sg?sg->mapped_va:NULL)){
-   RtlZeroMemory(t,sizeof(*t));t->parameters=v;t->mapped=sg?sg->mapped_va:NULL;t->bytes=v->bytes;t->state=1;
-   h->active_ep=e;h->active=t;result=0;
-  }
+  result=A04_MP_RESOURCES;
+  for(i=0;i<A04_HCD_PENDING;i++)if(h->active[i].transfer==t)goto out;
+  for(i=0;i<A04_HCD_PENDING;i++)if(!h->active[i].transfer)break;
+  if(i==A04_HCD_PENDING)goto out;
+  RtlZeroMemory(t,sizeof(*t));t->parameters=v;t->request=*v;t->mapped=sg?sg->mapped_va:NULL;
+  t->bytes=v->bytes;t->state=1;t->admitted=KeQueryInterruptTime();t->order=++h->order;
+  h->active[i].ep=e;h->active[i].transfer=t;Kick(h);result=0;
  }
- HUNLOCK(h,k);return result;
+out:HUNLOCK(h,k);return result;
 }
 static ULONG SubmitIso(PVOID p,PVOID e,struct a04_mp_parameters *v,PVOID t,struct a04_mp_sg *sg)
 {UNREFERENCED_PARAMETER(p);UNREFERENCED_PARAMETER(e);UNREFERENCED_PARAMETER(v);UNREFERENCED_PARAMETER(t);UNREFERENCED_PARAMETER(sg);return A04_MP_UNSUPPORTED;}
@@ -208,7 +252,8 @@ static VOID Abort(PVOID p,PVOID endpoint,PVOID transfer,PULONG actual)
 {
  struct a04_hcd *h=CTX(p);struct a04_mp_endpoint *e=endpoint;KIRQL k;
  if(actual)*actual=0;HLOCK(h,k);
- if(h->active==transfer&&h->active_ep==e)Detach(h,e);
+ {unsigned i;for(i=0;i<A04_HCD_PENDING;i++)if(h->active[i].ep==e&&h->active[i].transfer==transfer){DetachSlot(h,i);break;}}
+ Kick(h);
  /* No inbound data was copied from shadow. USBPORT owns abort completion.
   * Detach releases all external pointers immediately, independent of HW drain. */
  HUNLOCK(h,k);
@@ -216,16 +261,21 @@ static VOID Abort(PVOID p,PVOID endpoint,PVOID transfer,PULONG actual)
 static VOID Poll(PVOID p,PVOID endpoint)
 {
  struct a04_hcd *h=CTX(p);struct a04_mp_endpoint *e=endpoint;struct a04_mp_transfer *t;
- KIRQL k;ULONG actual=0,status=0,toggle=0;struct a04_mp_parameters *parameters=NULL;
- HLOCK(h,k);HarvestRoot(h);t=h->active;
- if(t&&h->active_ep==e&&e->state==A04_EP_ACTIVE&&h->runtime&&
-    !MtMusbTake(h->runtime,e->cookie,t->mapped,t->bytes,&actual,&status,&toggle)){
-  t->actual=actual;t->state=2;e->toggle=toggle;parameters=t->parameters;
-  h->active=NULL;h->active_ep=NULL;
+ KIRQL k;int i;ULONG actual=0,status=0,toggle=0;struct a04_mp_parameters *parameters=NULL;
+ HLOCK(h,k);HarvestRoot(h);Kick(h);i=ActiveSlot(h,e);t=i>=0?h->active[i].transfer:NULL;
+ if(t&&e->state==A04_EP_ACTIVE&&h->runtime){
+  ULONG ready=0;
+  if(t->state==1&&(h->fault||!PortReady(h)||(e->p.type!=3&&KeQueryInterruptTime()-t->admitted>=50000000ull))){
+   ready=1;status=USBD_STATUS_XACT_ERROR;toggle=e->toggle;
+  }else if(t->state==3&&!MtMusbTake(h->runtime,e->cookie,t->mapped,t->bytes,&actual,&status,&toggle))ready=1;
+  if(ready){
+   t->actual=actual;t->state=2;e->toggle=toggle;parameters=t->parameters;
+   h->active[i].ep=NULL;h->active[i].transfer=NULL;Kick(h);
+  }
  }
  HUNLOCK(h,k);
- /* USBPORT calls PollEndpoint under its endpoint serialization. Do not call
-  * Complete while holding our lock: completion may reenter miniport methods. */
+ /* Only this endpoint's USBPORT-owned poll may complete its transfer.
+  * Do not walk other endpoints or hold our lock across reentrant Complete. */
  if(parameters)Packet.complete(h,e,parameters,status,actual);
 }
 static VOID PollController(PVOID p)
@@ -233,7 +283,7 @@ static VOID PollController(PVOID p)
  /* No cached endpoint pointer escapes the HCD lock. Completion stays in the
   * USBPORT-owned PollEndpoint path; no unproved invalidate_endpoint ABI. */
  struct a04_hcd *h=CTX(p);KIRQL k;ULONG notify;
- HLOCK(h,k);HarvestRoot(h);notify=h->root_irq&&h->port.change;HUNLOCK(h,k);
+ HLOCK(h,k);HarvestRoot(h);Kick(h);notify=h->root_irq&&h->port.change;HUNLOCK(h,k);
  if(notify&&Packet.invalidate_root)Packet.invalidate_root(h);
 }
 static VOID FillPacket(void)
