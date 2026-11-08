@@ -73,6 +73,16 @@ static NTSTATUS target_handoff(struct a04_vendor_native_cold *n,struct a04_vendo
     (void)n;(void)s;(void)cpu;return STATUS_SUCCESS;
 #endif
 }
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+static BOOLEAN target_dma_ready(struct a04_vendor_native_cold *n)
+{
+    ULONG count;
+    if(!n || !n->registered_target || !a04_native_mdl_pages(n->registered_target,&count))return FALSE;
+    if(n->registered_vertex && !a04_native_mdl_pages(n->registered_vertex,&count))return FALSE;
+    for(ULONG i=0;i<n->linear_count;i++)if(!a04_native_mdl_pages(n->linear[i].binding,&count))return FALSE;
+    return TRUE;
+}
+#endif
 /* Shared PASSIVE finish: actual TA/3D/UFO/cleanup -> SLC/GP -> MDL cache
  * -> pixel/guard proof. This returns CPU-side state only; it NEVER emits a
  * Dxgk completion or invents a subsequent hardware interrupt. */
@@ -258,7 +268,7 @@ NTSTATUS a04_vendor_native_owner_submit(struct a04_vendor_native_cold *n,
     RGXFWIF_CLEANUP_CTL clean;uint32_t sync[2];NTSTATUS status=STATUS_DEVICE_BUSY;
     if(!n || !s || KeGetCurrentIrql()<DISPATCH_LEVEL || expected_kernel_write>127u ||
        !(r=n->render) || r->native_owner!=n || !(c=n->candidate) ||
-       !n->registered_target || !a04_vendor_native_output_ready(n) ||
+       !n->registered_target || !target_dma_ready(n) || !a04_vendor_native_output_ready(n) ||
        !n->mapped || !n->prepared || !n->bank_prepared || !n->backing_staged ||
        !n->output_mapped || n->code_mapped!=3u || n->quarantined || r->poisoned ||
        r->cleanup_started || c->attempted || c->published || c->verified || c->owner_pending ||

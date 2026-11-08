@@ -91,6 +91,7 @@ NTSTATUS a04_native_mdl_sync_for_gpu(struct a04_native_mdl_binding *b)
          * MapRegisterBase for FlushAdapterBuffersEx. No opaque SG.Reserved. */
         s=ops->AllocateAdapterChannelEx(b->adapter,b->pdo,m->context,m->register_count,DMA_SYNCHRONOUS_CALLBACK,NULL,NULL,&m->registers);
         if(s!=STATUS_SUCCESS)goto fail;
+        if(!m->registers){ops->FreeAdapterObject(b->adapter,DeallocateObject);s=STATUS_DEVICE_CONFIGURATION_ERROR;goto fail;}
         m->allocated=TRUE;
         s=ops->MapTransferEx(b->adapter,b->mdl,m->registers,at,0,&length,b->to_device,m->sg,info.V1.ScatterGatherListSize,NULL,NULL);
         /* The channel is no longer held while another chunk is requested.
