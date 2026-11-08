@@ -1,6 +1,25 @@
 # TAB-A04-BR3 Windows ドライバ
 
-## 現行source候補3.25（2026-11-08）
+## 現行独立source候補3.27（実機未検証）
+
+326のTexture2D/SRV/SAMPLE/native lifetimeに、通常POINT/LINEAR組合せ・anisotropic descriptorと
+独立標準D3D11 texture clientを追加。native IRQ/reset/CPU profileは変更していない。
+325/326の署名packageは凍結し、この後続branchでsource/helper/CIを統合する。
+
+```powershell
+git clone --depth 1 --single-branch --branch work/ge8300-texture-filter327 https://github.com/mouseos/a04br3-windows-drivers.git
+Set-Location a04br3-windows-drivers
+./tools/ci/build-ge8300-from-source.ps1 -EnableCandidate -RunHostTests
+```
+
+この通常fullsource経路はnative58TU・compiler372TUをchecked-in sourceから生成し、過去cache/private hive不要。
+現hostでの検証は既存依存を保持した必要TUの増分buildとsource gateであり、PCO/SDK全再構築や新実機試験をしたとは扱わない。
+新`ge8300-d3d-texture.exe`はclear→triangle→color→非一様2x2画像の複数UV readbackを1processで検査する。
+旧f3af clientを置換せず、通常feature-level全資格や一般UI完成は未達。
+
+[Texture契約と一次source](docs/ge8300-texture2d-contract.md)を参照。
+
+## 以前のsource候補3.25（履歴）
 
 native322/KMD320/UMDshader323の単一checkoutへ、PPP viewportのoffset/scale順序修正325を統合。
 [通常fullbuild手順](tools/ci/README-ge8300-source-build.md)は過去driver cache/private hive不要。

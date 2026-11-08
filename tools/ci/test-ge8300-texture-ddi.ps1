@@ -1,8 +1,8 @@
-param([Parameter(Mandatory=$true)][string]$OutputDirectory,[Parameter(Mandatory=$true)][string]$VcToolsDirectory,[Parameter(Mandatory=$true)][string]$UmHeaderRoot,[Parameter(Mandatory=$true)][string]$KernelHeaderRoot)
+param([Parameter(Mandatory=$true)][string]$OutputDirectory,[Parameter(Mandatory=$true)][string]$VcToolsDirectory,[Parameter(Mandatory=$true)][string]$UmHeaderRoot,[Parameter(Mandatory=$true)][string]$KernelHeaderRoot,[string]$WindowsKit10Version='10.0.17763.0')
 $ErrorActionPreference='Stop';$root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'));$out=[IO.Path]::GetFullPath($OutputDirectory)
 if(!(Test-Path "$root\tests\ge8300_texture_ddi_test.c") -or !$out.StartsWith($root+'\') -or (Test-Path $out)){throw 'New checkout-local test directory required'}
 New-Item -ItemType Directory $out|Out-Null
-$kit="${env:ProgramFiles(x86)}\Windows Kits\10";$version='10.0.17763.0';$vc=$VcToolsDirectory;$cl="$vc\bin\Hostx64\x64\cl.exe";$old=$env:PATH;$env:PATH="$vc\bin\Hostx64\x64;$env:PATH"
+$kit="${env:ProgramFiles(x86)}\Windows Kits\10";$version=$WindowsKit10Version;$vc=$VcToolsDirectory;$cl="$vc\bin\Hostx64\x64\cl.exe";$old=$env:PATH;$env:PATH="$vc\bin\Hostx64\x64;$env:PATH"
 try{
  $flags=@('/nologo','/std:c11','/Zc:preprocessor-','/TC','/O2','/GS-','/D_WIN32_WINNT=0x0603','/DNTDDI_VERSION=0x06030000','/DD3D_UMD_INTERFACE_VERSION=0x4002','/DDXGKDDI_INTERFACE_VERSION=0x4002','/D_D3D10_CONSTANTS','/D_D3D10_1_CONSTANTS',"/I$vc\include","/I$kit\Include\$version\ucrt","/I$UmHeaderRoot\shared","/I$UmHeaderRoot\um","/I$KernelHeaderRoot\km")
  & $cl @flags "$root\tests\ge8300_texture_ddi_test.c" "$root\drivers\gpu\mt8167\wddm-render\umd\typed_texture.c" "$root\drivers\gpu\mt8167\wddm-render\umd\typed_state.c" "/Fo$out\\" "/Fe$out\texture-ddi.exe" /link "/LIBPATH:$vc\lib\x64" "/LIBPATH:$kit\Lib\$version\ucrt\x64" "/LIBPATH:$kit\Lib\$version\um\x64" kernel32.lib

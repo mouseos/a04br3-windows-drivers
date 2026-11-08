@@ -14,7 +14,7 @@ function Verify($path,$sha){if($sha -notmatch '^[a-fA-F0-9]{64}$' -or (Get-FileH
 $cp=Join-Path $CompilerDirectory 'link-manifest.json';Verify $cp $CompilerManifestSha256
 $cm=Get-Content -Raw $cp|ConvertFrom-Json
 if($SourceCompiler){
- if($cm.schema -cne 'compiler-source-closure-v1' -or $cm.source_dirty -or !$cm.source_built -or !$cm.all_compile_exit_codes_zero -or $cm.source_commit -cne (& git -C $root rev-parse HEAD) -or $cm.compiled_units -ne 370 -or $cm.source_plan_sha256 -cne (Get-FileHash "$root\third_party\mesa-pco\source-plan.json" -Algorithm SHA256).Hash.ToLowerInvariant()){throw 'Source-built compiler closure mismatch'}
+ if($cm.schema -cne 'compiler-source-closure-v1' -or $cm.source_dirty -or !$cm.source_built -or !$cm.all_compile_exit_codes_zero -or $cm.source_commit -cne (& git -C $root rev-parse HEAD) -or $cm.compiled_units -ne 372 -or $cm.source_plan_sha256 -cne (Get-FileHash "$root\third_party\mesa-pco\source-plan.json" -Algorithm SHA256).Hash.ToLowerInvariant()){throw 'Source-built compiler closure mismatch'}
 }else{if($cm.source_dirty -or $cm.exit_code -ne 0 -or $cm.crt_entry -ne '_DllMainCRTStartup'){throw 'Incomplete compiler/CRT provenance'}}
 $libs=@()
 foreach($l in $cm.inputs){
@@ -38,7 +38,7 @@ try {
  $env:TEMP="$out\tmp";$env:TMP=$env:TEMP
  $inc="${env:ProgramFiles(x86)}\Windows Kits\8.1\Include";$lib="${env:ProgramFiles(x86)}\Windows Kits\8.1\Lib\winv6.3\um\arm"
  $common=@('--target=thumbv7-pc-windows-msvc','-std=c11','-fms-extensions','-ffreestanding','-fno-builtin','-fno-stack-protector','-O2','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access','-D_ARM_','-DARM','-D_WIN32_WINNT=0x0603','-DNTDDI_VERSION=0x06030000','-DD3D_UMD_INTERFACE_VERSION=0x4002','-DDXGKDDI_INTERFACE_VERSION=0x4002',"-I$inc\shared","-I$inc\um","-I$inc\km",'-D__ldrexd=__geo_typed_wdk81_ldrexd_declaration')
- $units=@('clear_protocol','frontend/draw_protocol','frontend/draw_link_protocol','umd/clear_ddi','umd/bootstrap','umd/frontend','umd/shader_state','umd/tokenized_shader','compiler/sm2','umd/typed_state','umd/typed_resource','umd/typed_view','umd/typed_shader','umd/typed_draw','umd/typed_pair','umd/typed_runtime','umd/typed_dxgi','umd/typed_entry','umd/entry','testclient/memory','testclient/d3d-clear')
+ $units=@('clear_protocol','frontend/draw_protocol','frontend/draw_link_protocol','frontend/texture_draw_protocol','umd/clear_ddi','umd/bootstrap','umd/frontend','umd/shader_state','umd/tokenized_shader','compiler/sm2','umd/typed_state','umd/typed_texture','umd/typed_resource','umd/typed_view','umd/typed_shader','umd/typed_draw','umd/typed_pair','umd/typed_runtime','umd/typed_dxgi','umd/typed_entry','umd/entry','testclient/memory','testclient/d3d-clear','testclient/d3d-texture')
  $objects=@();$compiled=@()
  foreach($u in $units){
   $flags=@($common);$obj=($u -replace '/','_')+'.obj'
@@ -49,7 +49,7 @@ try {
   & clang @flags -Werror=implicit-function-declaration -Werror=incompatible-pointer-types -c (Join-Path $PSScriptRoot ($u+'.c')) -o (Join-Path $out $obj)
   if($LASTEXITCODE){throw "ARM32 compile failed: $u"}
   $compiled+=@{unit=$u;source_sha256=(Get-FileHash (Join-Path $PSScriptRoot ($u+'.c')) -Algorithm SHA256).Hash;object_sha256=(Get-FileHash (Join-Path $out $obj) -Algorithm SHA256).Hash}
-  if($u -notin @('umd/typed_entry','umd/entry','testclient/memory','testclient/d3d-clear')){$objects+=Join-Path $out $obj}
+  if($u -notin @('umd/typed_entry','umd/entry','testclient/memory','testclient/d3d-clear','testclient/d3d-texture')){$objects+=Join-Path $out $obj}
  }
  & llvm-lib /machine:arm "/out:$out\ge8300-native-umd.lib" @objects
  if($LASTEXITCODE){throw 'UMD archive failed'}
@@ -57,11 +57,13 @@ try {
  if($LASTEXITCODE){throw 'Native UMD link failed'}
  & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\testclient_d3d-clear.obj" "$out\testclient_memory.obj" "$lib\kernel32.lib" "$lib\setupapi.lib" "$lib\dxgi.lib" "$lib\d3d11.lib" "/out:$out\ge8300-d3d-clear.exe"
  if($LASTEXITCODE){throw 'Native client link failed'}
- foreach($name in @('ge8300-umd.dll','ge8300-d3d-clear.exe')){
+ & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib "$out\testclient_d3d-texture.obj" "$out\testclient_memory.obj" "$lib\kernel32.lib" "$lib\setupapi.lib" "$lib\dxgi.lib" "$lib\d3d11.lib" "/out:$out\ge8300-d3d-texture.exe"
+ if($LASTEXITCODE){throw 'Standard texture client link failed'}
+ foreach($name in @('ge8300-umd.dll','ge8300-d3d-clear.exe','ge8300-d3d-texture.exe')){
   $pe=@(& llvm-readobj --file-headers --coff-exports --coff-imports "$out\$name")
   if($LASTEXITCODE -or !($pe -match 'IMAGE_FILE_MACHINE_ARMNT')){throw 'Not ARMNT'}
   if($name -eq 'ge8300-umd.dll' -and !($pe -match 'Name: OpenAdapter10_2')){throw 'Missing runtime export'}
   $pe|Set-Content "$out\$name.pe.txt"
  }
- @{source_commit=(& git -C $root rev-parse HEAD);source_dirty=$false;compiled=$compiled;compiler_manifest_sha256=$CompilerManifestSha256;pair_manifest_sha256=$PairManifestSha256;default_off=$true;limited_development_profile=$true;development_negotiation_pipeline='10_0';standard_profile_qualified=$false;runtime_verified=$false;kernel_changed=$false;private_payload=$false;signed=$false;outputs=@('ge8300-umd.dll','ge8300-d3d-clear.exe','ge8300-native-umd.lib')|ForEach-Object {@{name=$_;sha256=(Get-FileHash "$out\$_" -Algorithm SHA256).Hash}}}|ConvertTo-Json -Depth 8|Set-Content "$out\build-manifest.json"
+ @{source_commit=(& git -C $root rev-parse HEAD);source_dirty=$false;compiled=$compiled;compiler_manifest_sha256=$CompilerManifestSha256;pair_manifest_sha256=$PairManifestSha256;default_off=$true;limited_development_profile=$true;development_negotiation_pipeline='10_0';standard_profile_qualified=$false;runtime_verified=$false;kernel_changed=$false;private_payload=$false;signed=$false;outputs=@('ge8300-umd.dll','ge8300-d3d-clear.exe','ge8300-d3d-texture.exe','ge8300-native-umd.lib')|ForEach-Object {@{name=$_;sha256=(Get-FileHash "$out\$_" -Algorithm SHA256).Hash}}}|ConvertTo-Json -Depth 8|Set-Content "$out\build-manifest.json"
 }finally{$env:TEMP=$oldTemp;$env:TMP=$oldTmp}

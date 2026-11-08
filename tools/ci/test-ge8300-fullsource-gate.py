@@ -50,6 +50,11 @@ for row in changed['files']:
   del row['reviewed_delta']
 mapfile.write_text(json.dumps(changed));run('remove reviewed viewport overlay while retaining changed source',False)
 mapfile.write_text(json.dumps(native));run('restored exact325 origin and map',True)
+changed=json.loads(json.dumps(native))
+for row in changed['files']:
+ if row['destination'].endswith('/native_texture2d_state.c'):del row['reviewed_delta']
+mapfile.write_text(json.dumps(changed));run('remove explicit texture overlay provenance',False)
+mapfile.write_text(json.dumps(native));run('restore exact327 overlay set',True)
 
 receipt={'schema':'ge8300-fullsource-map-regression-v1','production_source_modified':False,'driver_cache_used':False,'hardware_operations':False,'cases':records}
 (out/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')

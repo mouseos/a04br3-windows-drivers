@@ -74,3 +74,8 @@ int main(void)
 #endif
  return 0;
 }
+
+/* Existing signature regression mocks codegen only; texture compiler stays
+ * unsupported in this mock and is tested by its separate real PCO test. */
+struct geo_texture2d_program;
+int32_t geo_pco_compile_texture2d(void *c,const uint32_t *t,uint32_t bytes,const struct geo_sm4_signatures *s,struct geo_compiled_shader *o,struct geo_texture2d_program *p){(void)c;(void)t;(void)bytes;(void)s;(void)o;(void)p;return GEO_UNSUPPORTED;}
