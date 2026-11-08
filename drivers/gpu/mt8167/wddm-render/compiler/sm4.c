@@ -79,9 +79,14 @@ int32_t geo_sm4_decode(struct geo_sm2_program *p,uint32_t stage,const uint32_t *
   else if(ins->dst.file==8u){if(ins->dst.index)return GEO_UNSUPPORTED;ins->dst.file=stage?8u:4u;}
   else return GEO_UNSUPPORTED;
   for(i=0;i<srcs;i++) {
-   struct geo_sm2_operand *s=&ins->src[i];uint32_t reads=0u;
+   struct geo_sm2_operand *s=&ins->src[i];uint32_t reads=0u,lanes=ins->dst.mask;
    if(!operand(s,t,&at,end,0))return GEO_UNSUPPORTED;
-   for(k=0;k<4u;k++)reads|=1u<<((s->swizzle>>(2u*k))&3u);
+   /* Component-wise float ops consume only written destination lanes.
+    * Dot products consume XYZ/XYZW independently of the output mask. The
+    * NIR lowerer inserts only dst.mask lanes, so unused swizzle lanes do not
+    * make an otherwise valid partial temporary read undefined. */
+   if(lower==8u)lanes=7u;else if(lower==9u)lanes=15u;
+   for(k=0;k<4u;k++)if(lanes&(1u<<k))reads|=1u<<((s->swizzle>>(2u*k))&3u);
    if(s->file==0u){if(s->index>=temps||(defined[s->index]&reads)!=reads)return GEO_INVALID;}
    else if(s->file==1u){if(stage||s->index||!declared)return GEO_UNSUPPORTED;p->input_mask|=1u;}
    else if(s->file==2u){if(s->index>=cb_count)return GEO_INVALID;p->constant_mask|=1u<<s->index;}
