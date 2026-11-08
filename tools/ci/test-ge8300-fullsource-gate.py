@@ -28,7 +28,10 @@ def run(name,expected):
 run('canonical source-only closure',True)
 mapfile=fixture/'tools/ci/ge8300-native-source-map.json'
 changed=json.loads(json.dumps(native));unit='vendor_m1_11\\native_owner_factory_runtime'
-changed['native_unit_sources'][unit]='drivers/gpu/mt8167/vendor_m1_11/native_owner_factory_runtime.c'
+legacy_unit='vendor_m1_11\\windows_stop'
+legacy_path='drivers/gpu/mt8167/vendor_m1_11/windows_stop.c'
+if not (fixture/legacy_path).is_file():raise AssertionError('Legacy source must exist: exercise redirection, not a missing-file rejection')
+changed['native_unit_sources'][legacy_unit]=legacy_path
 mapfile.write_text(json.dumps(changed))
 run('redirect a native TU to the old legacy vendor file while every source hash stays valid',False)
 changed=json.loads(json.dumps(native));del changed['native_unit_sources']['vendor_m1_11\\windows_stop']
