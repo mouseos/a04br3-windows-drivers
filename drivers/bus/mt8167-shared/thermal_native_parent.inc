@@ -2,8 +2,45 @@
  * V3 board-stopped producer -> one synchronous parent PIO owner.
  * GPIO/PMIC/audio/USB state is not changed on thermal failure. */
 #include "thermal_pio_record.h"
+#include <acpiioct.h>
 /* GPL-2.0-only ADC algorithm retained with its source license. */
 #include "../../power/mt8167-thermal/auxadc_pio.c"
+/* The volatile runtime record is read-only after ExitBootServices. The
+ * board's serialized ACPI latch instead survives FDO/PDO re-creation and
+ * resets only with the OS ACPI namespace. No variable attributes change. */
+static NTSTATUS ParentAdcAcpiInteger(WDFDEVICE device,ULONG method,ULONG *value)
+{
+ ACPI_EVAL_INPUT_BUFFER input;ACPI_EVAL_OUTPUT_BUFFER output;
+ WDF_MEMORY_DESCRIPTOR in,out;WDF_REQUEST_SEND_OPTIONS options;
+ ULONG_PTR bytes=0;NTSTATUS status;
+ ULONG end=FIELD_OFFSET(ACPI_EVAL_OUTPUT_BUFFER,Argument)+
+  FIELD_OFFSET(ACPI_METHOD_ARGUMENT,Data)+sizeof(ULONG);
+ if(!device||!value||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ *value=0;RtlZeroMemory(&input,sizeof(input));RtlZeroMemory(&output,sizeof(output));
+ input.Signature=ACPI_EVAL_INPUT_BUFFER_SIGNATURE;input.MethodNameAsUlong=method;
+ WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&in,&input,sizeof(input));
+ WDF_MEMORY_DESCRIPTOR_INIT_BUFFER(&out,&output,sizeof(output));
+ WDF_REQUEST_SEND_OPTIONS_INIT(&options,WDF_REQUEST_SEND_OPTION_TIMEOUT);
+ WDF_REQUEST_SEND_OPTIONS_SET_TIMEOUT(&options,WDF_REL_TIMEOUT_IN_MS(2000));
+ status=WdfIoTargetSendIoctlSynchronously(WdfDeviceGetIoTarget(device),NULL,
+  IOCTL_ACPI_EVAL_METHOD,&in,&out,&options,&bytes);
+ if(!NT_SUCCESS(status))return status;
+ if(bytes<end||bytes>sizeof(output)||output.Signature!=ACPI_EVAL_OUTPUT_BUFFER_SIGNATURE||
+    output.Count!=1||output.Length<end||output.Length>bytes||
+    output.Argument[0].Type!=ACPI_METHOD_ARGUMENT_INTEGER||
+    output.Argument[0].DataLength!=sizeof(ULONG))return STATUS_DATA_ERROR;
+ *value=output.Argument[0].Argument;return STATUS_SUCCESS;
+}
+static NTSTATUS ParentAdcConsumeProof(A04_PARENT_CONTEXT *c)
+{
+ WDFDEVICE device=(WDFDEVICE)WdfObjectContextGetObject(c);ULONG value;NTSTATUS status;
+ status=ParentAdcAcpiInteger(device,0x56435441u,&value); /* ATCV */
+ if(!NT_SUCCESS(status))return status;
+ if(value!=1u)return STATUS_REVISION_MISMATCH;
+ status=ParentAdcAcpiInteger(device,0x4f435441u,&value); /* ATCO */
+ if(!NT_SUCCESS(status))return status; /* uncertain consumption stays closed */
+ return value==1u?STATUS_SUCCESS:STATUS_ACCESS_DENIED;
+}
 static int ThermalPioQualified(void *p)
 {
  A04_PARENT_CONTEXT *c=p;
@@ -61,10 +98,7 @@ static NTSTATUS ParentAdcProof(A04_PARENT_CONTEXT *c,A04_THERMAL_PIO_RECORD *rec
  RtlZeroMemory(record,sizeof(*record));
  status=ExGetFirmwareEnvironmentVariable(&name,&guid,record,&bytes,&attrs);
  if(!NT_SUCCESS(status)||!ThermalPioRecordValid(record,bytes,attrs))return STATUS_DEVICE_NOT_READY;
- /* Windows8.1 HAL requires NON_VOLATILE on the OS API. For length0 it
-  * issues a UEFI deletion with attributes0 and does not recreate a variable.
-  * This does not change the existing volatile proof's attributes6. */
- status=ExSetFirmwareEnvironmentVariable(&name,&guid,NULL,0,1u /* VARIABLE_ATTRIBUTE_NON_VOLATILE */);
+ status=ParentAdcConsumeProof(c);
  if(!NT_SUCCESS(status))return status;
  if(InterlockedCompareExchange(&c->admissionClosed,0,0)||InterlockedCompareExchange(&c->removed,0,0))return STATUS_DEVICE_NOT_READY;
  c->adcProof=*record;c->adcProofValid=1;return STATUS_SUCCESS;
@@ -103,7 +137,7 @@ static NTSTATUS ParentThermalPioMeasure(PVOID p,ULONG *adopted,ULONG raw[3],ULON
  if(!NT_SUCCESS(status)||!ThermalPioRecordValid(&record,bytes,attrs)){status=STATUS_DEVICE_NOT_READY;goto outside;}
  /* Consume once for this boot. A recreated PDO/parent cannot reuse the record
   * after an uncertain operation. Failure to consume never opens admission. */
- *stage=3;status=ExSetFirmwareEnvironmentVariable(&name,&guid,NULL,0,1u /* VARIABLE_ATTRIBUTE_NON_VOLATILE */);
+ *stage=3;status=ParentAdcConsumeProof(c);
  if(!NT_SUCCESS(status))goto outside;
 #endif
  *stage=4;if(ParentLock(c)){status=STATUS_DEVICE_NOT_READY;goto outside;}
