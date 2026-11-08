@@ -16,6 +16,7 @@ struct parent{
  struct a04_hp_route hpRoute;struct a04_hp_measurements hpMeasured;struct a04_hp_calibration hpCalibration;
  ULONG hpPhaseMask[2];int hpCalibrationValid,hpRetainedMute;ULONGLONG hpRouteDeadline;
  struct{int leased,poisoned;}audio;struct{int active,poisoned;}voice;struct{int held,poisoned;}codecDomain;
+ struct{int retained,prepared,poisoned;}digitalPlayback;struct{int held,poisoned;}audioTopClock;int afeClockHeld,afeClockPoisoned;
  struct{int online,poisoned;}regs;int classd;
 };typedef struct parent A04_PARENT_CONTEXT;
 struct request{PVOID buffer;size_t size,information;NTSTATUS status;};
@@ -92,12 +93,13 @@ int main(void){
  maps=power=refs=0;c=initial();
  /* Deliberately synthetic calibration fixture exercises ONLY lifetimes.
   * No production API accepts coefficients or promotes raw to this state. */
- c.audio.leased=c.codecDomain.held=c.hpCalibrationValid=1;
+ c.audio.leased=c.codecDomain.held=c.hpCalibrationValid=c.digitalPlayback.prepared=c.digitalPlayback.retained=c.afeClockHeld=c.audioTopClock.held=1;
  c.hpCalibration.generation=77;c.hpCalibration.measured_channels=3;c.hpCalibration.cap_index=1;
  analog[0x704/4]=1u<<13;analog[0x708/4]=(1u<<16)|(1u<<17)|(1u<<27);
  ULONG state=99;
  assert(ParentHpStart(&c)==STATUS_DEVICE_NOT_READY&&!c.hpRoute.held);
- jackInserted=1;assert(ParentHpStart(&c)==0&&c.hpRoute.held&&c.hpRetainedMute);
+ jackInserted=1;c.digitalPlayback.prepared=0;assert(ParentHpStart(&c)==STATUS_DEVICE_NOT_READY&&!c.hpRoute.held);
+ c.digitalPlayback.prepared=1;assert(ParentHpStart(&c)==0&&c.hpRoute.held&&c.hpRetainedMute);
  assert((analog[0x708/4]&((1u<<25)|(1u<<22)))==((1u<<25)|(1u<<22)));
  assert(ParentHpResume(&c)==0&&!c.hpRetainedMute);
  assert(!(analog[0x708/4]&((1u<<25)|(1u<<22))));
@@ -106,6 +108,16 @@ int main(void){
  c.admissionClosed=1;assert(ParentHpStop(&c,&state)==STATUS_DEVICE_NOT_READY&&state==A04_HP_DRAIN_UNKNOWN&&c.hpRoute.held);
  c.admissionClosed=0;drained=1;
  assert(ParentHpStop(&c,&state)==0&&state==A04_HP_DRAIN_RELEASED&&!c.hpRoute.held&&!c.hpRoute.active);
+ /* Recreate the explicit mock route for each failed STOP observation. */
+ for(unsigned fault=0;fault<5;fault++){
+  c=initial();c.audio.leased=c.codecDomain.held=c.hpCalibrationValid=c.digitalPlayback.prepared=c.digitalPlayback.retained=c.afeClockHeld=c.audioTopClock.held=1;
+  c.hpCalibration.generation=77;c.hpCalibration.measured_channels=3;c.hpCalibration.cap_index=1;
+  analog[0x704/4]=1u<<13;analog[0x708/4]=(1u<<16)|(1u<<17)|(1u<<27);jackInserted=1;
+  assert(ParentHpStart(&c)==0);assert(ParentHpResume(&c)==0);
+  switch(fault){case 0:afe[0x10/4]=2;break;case 1:afe[0x3a0/4]=1;break;case 2:afe[0x3a4/4]=1;break;case 3:afe[0x10/4]=MAXULONG;break;case 4:afe[0x3a4/4]=MAXULONG;break;}
+  assert(ParentHpStop(&c,&state)==STATUS_DEVICE_HARDWARE_ERROR&&state==A04_HP_DRAIN_UNKNOWN&&c.hpRetainedMute&&c.hpRoute.held&&c.audio.poisoned);
+ }
+ puts("HP STOP parent observation: running DL1, enabled IRQ, pending IRQ and inaccessible MMIO clamp/retain without successful STOP PASS (mock only)");
  puts("HP ADC lifetime: V3 rejection, one-owner exclusion, generation/raw-unknown, clean restore, timeout/remove/reset/clock/master retain PASS");
  puts("HP parent: start-muted, resume, clamp-retained, closed-admission no-free, certified full-stop PASS (mock only)");
 }

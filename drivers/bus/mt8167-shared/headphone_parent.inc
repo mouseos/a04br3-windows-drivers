@@ -126,6 +126,8 @@ static int ParentHpRouteQualified(void*p,uint32_t generation)
  return !c->admissionClosed&&!c->removed&&c->hpCalibrationValid&&generation==c->hpCalibration.generation&&
   c->audio.leased&&!c->audio.poisoned&&!c->voice.active&&!c->voice.poisoned&&
   c->codecDomain.held&&!c->codecDomain.poisoned&&c->audioAfe&&!c->adcPurpose&&
+  c->digitalPlayback.prepared&&c->digitalPlayback.retained&&!c->digitalPlayback.poisoned&&
+  c->afeClockHeld&&!c->afeClockPoisoned&&c->audioTopClock.held&&!c->audioTopClock.poisoned&&
   KeQueryInterruptTime()<c->hpRouteDeadline&&!a04_mt6392_classd_verify_muted(&c->classd)?0:-1;
 }
 static int ParentHpRouteRead(void*p,unsigned bank,unsigned offset,uint32_t*out)
@@ -176,6 +178,25 @@ static NTSTATUS ParentHpJack(PVOID p,struct mt8167_accdet_socket*out)
  r=mt8167_accdet_read_socket(&io,out);ParentUnlock(c);
  return r==MT8167_ACCDET_OK?STATUS_SUCCESS:r==MT8167_ACCDET_CHANGED?STATUS_DEVICE_BUSY:STATUS_DEVICE_NOT_READY;
 }
+/* CT3 mt8167_afe_dais_trigger STOP disables the DL1 memif and IRQ1.
+ * Read ONLY these known status/enable registers through the bound parent AFE.
+ * Two matching observations exclude a visible restart/change in this call;
+ * they do NOT establish absence of outstanding fabric transactions. The
+ * child still owns ISR/DPC rundown and retains the SAME pages/SG/D0. */
+static int ParentHpDl1Stopped(A04_PARENT_CONTEXT*c)
+{
+ ULONG dac,irq,pending,dac2,irq2,pending2;
+ if(!c->audioAfe)return -1;
+ dac=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->audioAfe+0x10));
+ irq=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->audioAfe+0x3a0));
+ pending=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->audioAfe+0x3a4));
+ dac2=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->audioAfe+0x10));
+ irq2=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->audioAfe+0x3a0));
+ pending2=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->audioAfe+0x3a4));
+ if(dac==MAXULONG||irq==MAXULONG||pending==MAXULONG||dac2==MAXULONG||irq2==MAXULONG||pending2==MAXULONG||
+    ((dac|dac2)&2u)||((irq|irq2)&1u)||((pending|pending2)&1u))return -1;
+ return 0;
+}
 static NTSTATUS ParentHpOperate(PVOID p,int op,ULONG *drain_state)
 {
  A04_PARENT_CONTEXT*c=ParentContext((WDFDEVICE)p);struct a04_hp_io io=ParentHpIo(c);int result=-1;struct mt8167_accdet_socket jack;ULONGLONG now;
@@ -189,14 +210,18 @@ static NTSTATUS ParentHpOperate(PVOID p,int op,ULONG *drain_state)
  else if(op==1){result=a04_codec_headphone_mute_retained(&c->hpRoute,&io);if(!result)c->hpRetainedMute=1;}
  else if(op==2){if(c->hpRetainedMute){result=a04_codec_headphone_resume_retained(&c->hpRoute,&io);if(!result)c->hpRetainedMute=0;}}
  else if(op==3){
-  /* Connect the existing v11 drain callback rather than assuming DL1 off.
-   * When it cannot certify fabric drain, clamp and retain the same owner. */
-  if(ParentHpDrain(c)){
-   result=a04_codec_headphone_mute_retained(&c->hpRoute,&io);
-   if(!result){c->hpRetainedMute=1;if(drain_state)*drain_state=A04_HP_DRAIN_RETAINED;}
-  }else{
-   result=a04_codec_headphone_stop(&c->hpRoute,&io);
-   if(!result){c->hpRetainedMute=0;if(drain_state)*drain_state=A04_HP_DRAIN_RELEASED;}
+  /* Clamp even when STOP qualification fails, but never return a typed
+   * successful retained STOP until the parent observes DL1/IRQ disabled. */
+  result=a04_codec_headphone_mute_retained(&c->hpRoute,&io);
+  if(!result){
+   c->hpRetainedMute=1;
+   if(ParentHpDl1Stopped(c)){c->audio.poisoned=1;result=-2;}
+   else if(ParentHpDrain(c)){
+    if(drain_state)*drain_state=A04_HP_DRAIN_RETAINED;
+   }else{
+    result=a04_codec_headphone_stop(&c->hpRoute,&io);
+    if(!result){c->hpRetainedMute=0;if(drain_state)*drain_state=A04_HP_DRAIN_RELEASED;}
+   }
   }
  }
  if(c->hpRoute.poisoned)c->audio.poisoned=1;

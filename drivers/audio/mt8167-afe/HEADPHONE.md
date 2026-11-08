@@ -1,3 +1,9 @@
+## 後段親1106: STOP時の親側観測
+
+1105/audio1029のbackend ABIを維持したまま、親STOPでDL1 (`AFE_DAC_CON0` bit1) とIRQ1 (`IRQ_MCU_CON` bit0 / `IRQ_STATUS` bit0) の無効・未pendingを二度実読確認する。根拠はCT3 `mt8167_afe_dais_trigger` STOPと既存Windows `mt8167_dl1_stop`。親は追加のDMA/IRQ register writeを行わず、子のISR/DPC rundown責務も引き取らない。全1読取りや有効bit観測時はHP clamp/lease保持とエラーを返し、typed RETAINED STOP成功を合成しない。これはfabric drain証明ではない。
+
+HP analog callbackは既存digitalPlayback prepared/retainedと共通TOP/AFE clock leaseも要求する。HP extension ABI build1105、thermal V3 build1104、audio1029は不変。新INF1106のみ。`build-mt8167-hp-stop1106.ps1` で親1TUだけbuild/signし、13helperを固定cacheから検証再利用する。既存1105署名物・1104/freeze・thermal・audioは再buildしない。校正producer/latency不足によるHP PCM拒否は継続。
+
 # MT8167 headphone shared-owner backend（後段1105 / audio1029）
 
 親1104 `97b87a4b0d226eb093507cd5b886acfdbf2c0391` を基点に、AFE1027とHP部品d54fを合流した後段候補。freeze中の親1104/thermal1.8 package、共通EDK、実機は変更しない。以下はsource実装であり、実測校正・実HP再生成功は未確認。
