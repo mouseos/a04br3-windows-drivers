@@ -153,26 +153,38 @@ static DWORD deferred_selected_version(unsigned id,HDEVINFO set,SP_DEVINFO_DATA 
 
 static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const WCHAR *inf)
 {
- static SP_DEVINSTALL_PARAMS_W params;static SP_DRVINFO_DATA_W driver,extra,chosen;DWORD error=0,type=0,bytes=0;DWORD list_type=SPDIT_CLASSDRIVER;BOOL list=FALSE;WCHAR class_name[64];
+ static SP_DEVINSTALL_PARAMS_W params;static SP_DRVINFO_DATA_W driver,extra,chosen;DWORD error=0;DWORD list_type=SPDIT_COMPATDRIVER;BOOL list=FALSE;
  /* Fixed compatible list; no live re-enumeration. */
  list_type=SPDIT_COMPATDRIVER;
  deferred_current_target=i;deferred_current_step=1;
+ /* Explicit first-install opt-in requires the exact unbound baseline before
+  * SetupAPI may build/select anything. Never reuse a pre-existing selection. */
+ if(A04_PERIPHERAL_FIRST_INSTALL_MASK&(1u<<i)){error=first_keypad_baseline(i,set,dev);if(error)goto done;}
  memset(&params,0,sizeof(params));params.cbSize=sizeof(params);
+ deferred_current_step=2;
  if(!SetupDiGetDeviceInstallParamsW(set,dev,&params)){error=GetLastError();goto done;}
  params.Flags|=DI_ENUMSINGLEINF|DI_DONOTCALLCONFIGMG|DI_QUIETINSTALL|DI_NEEDREBOOT;
  params.FlagsEx|=DI_FLAGSEX_ALLOWEXCLUDEDDRVS;lstrcpyW(params.DriverPath,inf);
- if(!SetupDiSetDeviceInstallParamsW(set,dev,&params)||!SetupDiBuildDriverInfoList(set,dev,list_type)){error=GetLastError();goto done;}
+ deferred_current_step=3;
+ if(!SetupDiSetDeviceInstallParamsW(set,dev,&params)){error=GetLastError();goto done;}
+ deferred_current_step=4;
+ if(!SetupDiBuildDriverInfoList(set,dev,list_type)){error=GetLastError();goto done;}
  list=TRUE;memset(&driver,0,sizeof(driver));driver.cbSize=sizeof(driver);memset(&extra,0,sizeof(extra));extra.cbSize=sizeof(extra);
+ deferred_current_step=5;
  if(!SetupDiEnumDriverInfoW(set,dev,list_type,0,&driver)){error=GetLastError();goto done;}
+ deferred_current_step=6;
  if(SetupDiEnumDriverInfoW(set,dev,list_type,1,&extra)||GetLastError()!=ERROR_NO_MORE_ITEMS){error=ERROR_DUP_NAME;goto done;}
+ deferred_current_step=7;
  if(driver.DriverVersion!=deferred_pins[i].version||(((ULONGLONG)driver.DriverDate.dwHighDateTime<<32)|driver.DriverDate.dwLowDateTime)!=deferred_pins[i].date){error=ERROR_REVISION_MISMATCH;goto done;}
- deferred_current_step=2;
- if(list_type==SPDIT_COMPATDRIVER){
+ {
   /* Device-install applications call the DIF dispatcher, not its default
    * SetupDiSelectBestCompatDrv handler. Only one fixed signed node exists. */
+  deferred_current_step=8;
   if(!SetupDiCallClassInstaller(DIF_SELECTBESTCOMPATDRV,set,dev)){error=GetLastError();goto done;}
   memset(&chosen,0,sizeof(chosen));chosen.cbSize=sizeof(chosen);
+  deferred_current_step=9;
   if(!SetupDiGetSelectedDriverW(set,dev,&chosen)){error=GetLastError();goto done;}
+  deferred_current_step=10;
   if(chosen.DriverType!=SPDIT_COMPATDRIVER||chosen.DriverVersion!=driver.DriverVersion||
      chosen.DriverDate.dwHighDateTime!=driver.DriverDate.dwHighDateTime||chosen.DriverDate.dwLowDateTime!=driver.DriverDate.dwLowDateTime||
      lstrcmpW(chosen.Description,driver.Description)||lstrcmpW(chosen.MfgName,driver.MfgName)||lstrcmpW(chosen.ProviderName,driver.ProviderName)){
@@ -181,25 +193,31 @@ static DWORD deferred_install(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,const
   /* Selection updates SP_DEVINFO_DATA.ClassGuid before first installation;
    * SPDRP_CLASSGUID reads persisted devnode state and can still be absent.
    * Compare SetupAPI's selected GUID; never write class registry keys. */
+  deferred_current_step=11;
   {WCHAR guid[39];static const WCHAR hx[]=L"0123456789abcdef";const BYTE *v=(const BYTE *)&dev->ClassGuid;static const BYTE order[16]={3,2,1,0,5,4,7,6,8,9,10,11,12,13,14,15};unsigned k,n=0;guid[n++]=L'{';for(k=0;k<16;k++){BYTE c=v[order[k]];if(k==4||k==6||k==8||k==10)guid[n++]=L'-';guid[n++]=hx[c>>4];guid[n++]=hx[c&15];}guid[n++]=L'}';guid[n]=0;if(lstrcmpiW(guid,targets[i].cls)){error=ERROR_REVISION_MISMATCH;goto done;}}
-  deferred_current_step=3;
+  deferred_current_step=12;
   if(!SetupDiCallClassInstaller(DIF_REGISTER_COINSTALLERS,set,dev)){error=GetLastError();goto done;}
-  deferred_current_step=4;
+  deferred_current_step=13;
   if(!SetupDiCallClassInstaller(DIF_INSTALLINTERFACES,set,dev)){error=GetLastError();goto done;}
- }else if(!SetupDiSetSelectedDriverW(set,dev,&driver)){error=GetLastError();goto done;}
- deferred_current_step=5;
+ }
+ deferred_current_step=14;
  /* Keep no-live-reenumeration even if a preparatory default handler changed
   * its install parameters. No parent/child restart request is issued. */
  memset(&params,0,sizeof(params));params.cbSize=sizeof(params);
  if(!SetupDiGetDeviceInstallParamsW(set,dev,&params)){error=GetLastError();goto done;}
  params.Flags|=DI_DONOTCALLCONFIGMG|DI_NEEDREBOOT|DI_QUIETINSTALL;
+ deferred_current_step=15;
  if(!SetupDiSetDeviceInstallParamsW(set,dev,&params)){error=GetLastError();goto done;}
+ deferred_current_step=16;
  pnp_record(i,EV_PNP_API_BEGIN,params.Flags);if(log_error){error=log_error;goto done;}
+ deferred_current_step=17;
  if(!SetupDiCallClassInstaller(DIF_INSTALLDEVICE,set,dev)){error=GetLastError();goto done;}
  deferred_reboot_needed=1; /* Includes partial-batch failure: never diagnose it. */
+ deferred_current_step=18;
  memset(&params,0,sizeof(params));params.cbSize=sizeof(params);
  if(!SetupDiGetDeviceInstallParamsW(set,dev,&params)){error=GetLastError();goto done;}
  pnp_record(i,0x104,params.Flags);
+ deferred_current_step=19;
  if(!(params.Flags&DI_NEEDREBOOT))error=ERROR_INVALID_DATA;
  done:
  if(error){deferred_failure_target=i;deferred_failure_step=deferred_current_step;}
