@@ -302,10 +302,10 @@ function Related-Fingerprints($Root,$Plan) {
         try {
             $result.single_gpu_ledger=Engine-DiagnosticFingerprint $sg $Plan $true
             if($result.single_gpu_ledger -cne $Plan.engine_preserve.single_gpu_rearm.previous_ledger_fingerprint){throw 'Pinned ten-generation ledger changed'}
-            $previous=$sg.OpenSubKey(('Parameters\LastDiagnostic\'+$Plan.engine_preserve.single_gpu_rearm.previous_policy))
+            $previous=[MT8167OfflineHive.Native]::OpenPath($sg,('Parameters\LastDiagnostic\'+$Plan.engine_preserve.single_gpu_rearm.previous_policy),$false)
             if(!$previous){throw 'Pinned previous119 generation absent'}
             try {foreach($phase in @('Install','Diagnostic')){
-                $leaf=$previous.OpenSubKey($phase);if(!$leaf){throw 'Previous119 phase absent'}
+                $leaf=[MT8167OfflineHive.Native]::OpenPath($previous,$phase,$false);if(!$leaf){throw 'Previous119 phase absent'}
                 try {if($leaf.GetValueKind('Complete') -ne [Microsoft.Win32.RegistryValueKind]::DWord -or $leaf.GetValue('Complete') -ne 1){throw 'Previous119 phase incomplete'}}finally{$leaf.Dispose()}
             }}finally{$previous.Dispose()}
         }finally{$sg.Dispose()}

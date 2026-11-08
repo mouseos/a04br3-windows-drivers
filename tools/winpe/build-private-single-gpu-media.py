@@ -21,7 +21,7 @@ def main():
  require(subprocess.run(['git','-C',str(repo),'merge-base','--is-ancestor',service_source,a.source_commit],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0,'signed runtime source ancestry不一致')
  tooling_changes=subprocess.check_output(['git','-C',str(repo),'diff','--name-only',service_source,a.source_commit],text=True).splitlines()
  require(set(tooling_changes).issubset({'tools/winpe/build-private-single-gpu-media.py','tools/winpe/README-run97-preflight.md','tools/recovery/prepare-offline-system-service.ps1'}),'runtime/policy/native source差分がある場合は再署名が必要')
- if 'tools/recovery/prepare-offline-system-service.ps1' in tooling_changes:require(sha(here.parent/'recovery/prepare-offline-system-service.ps1')=='16501eb1259eb072a6b03a4bd3bd2d1e859831e59bf34b20176ecf0955fcbe63','固定10generation native path修正以外のnative差分は拒否')
+ if 'tools/recovery/prepare-offline-system-service.ps1' in tooling_changes:require(sha(here.parent/'recovery/prepare-offline-system-service.ps1')=='3a684419b49bd511bb59d5d6ed03a8d7d1d6705531b83a30db4f6e8728e36887','固定10generation native OpenPath修正以外のnative差分は拒否')
  require(sm.get('policy')==policy and sha(service/'render-policy-manifest.json')==sm['policy_manifest_sha256'] and sha(service/'MT8167RenderSingleGpu.exe')==sm['exe_sha256'],'service/policy/EXE pin不一致')
  require((service/'render-deferred-policy.h').read_text()==generate(policy),'compile policy不一致')
  require((service/'render-service-path-policy.h').read_text()==generate_paths(policy) and sha(service/'render-service-path-policy.h')==sm.get('path_header_sha256') and sm.get('data_directory')==policy['data_directory'] and sm.get('runtime_utf16_path_verified') is True,'signed runtime/header/manifest directory mismatch')
