@@ -41,6 +41,9 @@ struct preserved_service {const WCHAR *name;DWORD present;BYTE hash[32];};
 struct candidate_extra_file {const WCHAR *name,*installed;BYTE hash[32],baseline_hash[32];};
 struct diagnostic_client {const WCHAR *exe,*arguments,*name,*relative_directory;BYTE hash[32];DWORD timeout_ms,phase;};
 #include "peripheral-batch-policy.h"
+#ifndef A04_DIAGNOSTIC_ONLY
+#define A04_DIAGNOSTIC_ONLY 0
+#endif
 #include "rotation-job-contract.h"
 #ifndef A04_CANDIDATE_EXTRA_COUNT
 #define A04_CANDIDATE_EXTRA_COUNT 0u
@@ -121,6 +124,7 @@ static DWORD old_services(void){static struct value {WCHAR name[256];DWORD type,
 static DWORD preserved(void){WCHAR sys[MAX_PATH],full[MAX_PATH];HANDLE h;DWORD i,e;if(!GetSystemDirectoryW(sys,MAX_PATH))return GetLastError();for(i=0;i<sizeof(preserved_files)/sizeof(preserved_files[0]);i++){h=INVALID_HANDLE_VALUE;e=path(full,sys,preserved_files[i].name);if(!e)e=deferred_file(full,preserved_files[i].hash,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);if(e)return e;}return old_services();}
 static DWORD property(HDEVINFO set,SP_DEVINFO_DATA *dev,DWORD code,const WCHAR *expected){WCHAR b[256];DWORD t,n;if(!SetupDiGetDeviceRegistryPropertyW(set,dev,code,&t,(BYTE *)b,sizeof(b),&n))return GetLastError();if(t!=REG_SZ||n<2||n>sizeof(b)||(n&1)||b[n/2-1]||lstrcmpiW(b,expected))return ERROR_REVISION_MISMATCH;return 0;}
 static DWORD installed_inf(unsigned,HDEVINFO,SP_DEVINFO_DATA *,int);
+static DWORD selected_inf_locator_unverified;
 /* Opt-in only for the pinned fresh124 failed-install Buttons child. Unknown
  * identity/configuration or an already installed service is never a baseline. */
 static DWORD first_keypad_baseline(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev){
@@ -136,10 +140,11 @@ static DWORD first_keypad_baseline(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev)
  service=OpenServiceW(manager,L"Mt6392Keys",SERVICE_QUERY_STATUS);e=service?ERROR_ALREADY_EXISTS:GetLastError();if(service)CloseServiceHandle(service);CloseServiceHandle(manager);
  return e==ERROR_SERVICE_DOES_NOT_EXIST?0:e;
 }
-static DWORD selected(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int candidate){static const DEVPROPKEY dk={{0xa8b865dd,0x2e3d,0x4094,{0xad,0x97,0xe5,0x93,0xa7,0x0c,0x75,0xd6}},2};ULONGLONG v;FILETIME d;DWORD n,e;DEVPROPTYPE type;if(!candidate&&((A04_PERIPHERAL_FIRST_INSTALL_MASK|A04_PERIPHERAL_DEFERRED_UNBOUND_MASK)&(1u<<i)))return first_keypad_baseline(i,set,dev);e=deferred_selected_version(i,set,dev,&v);if(e)return e;if(v!=(candidate?targets[i].version:targets[i].base_version))return ERROR_REVISION_MISMATCH;if(!SetupDiGetDevicePropertyW(set,dev,&dk,&type,(BYTE *)&d,sizeof(d),&n,0)){
+static DWORD selected_identity(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int candidate){static const DEVPROPKEY dk={{0xa8b865dd,0x2e3d,0x4094,{0xad,0x97,0xe5,0x93,0xa7,0x0c,0x75,0xd6}},2};ULONGLONG v;FILETIME d;DWORD n,e;DEVPROPTYPE type;if(!candidate&&((A04_PERIPHERAL_FIRST_INSTALL_MASK|A04_PERIPHERAL_DEFERRED_UNBOUND_MASK)&(1u<<i)))return first_keypad_baseline(i,set,dev);e=deferred_selected_version(i,set,dev,&v);if(e)return e;if(v!=(candidate?targets[i].version:targets[i].base_version))return ERROR_REVISION_MISMATCH;if(!SetupDiGetDevicePropertyW(set,dev,&dk,&type,(BYTE *)&d,sizeof(d),&n,0)){
  DWORD error=GetLastError();record(i,0x215,error);if(error!=ERROR_NOT_FOUND)return error;
  error=deferred_driver_value(set,dev,L"DriverDateData",REG_BINARY,(BYTE *)&d,sizeof(d),&n);record(i,0x216,error);if(error)return error;type=DEVPROP_TYPE_FILETIME;
- }record(i,0x217,type);record(i,0x218,n);if(type!=DEVPROP_TYPE_FILETIME||n!=8||(((ULONGLONG)d.dwHighDateTime<<32)|d.dwLowDateTime)!=(candidate?targets[i].date:targets[i].base_date))return ERROR_REVISION_MISMATCH;e=property(set,dev,SPDRP_SERVICE,targets[i].service);if(e)return e;e=property(set,dev,SPDRP_CLASSGUID,targets[i].cls);if(e)return e;return installed_inf(i,set,dev,candidate);}
+ }record(i,0x217,type);record(i,0x218,n);if(type!=DEVPROP_TYPE_FILETIME||n!=8||(((ULONGLONG)d.dwHighDateTime<<32)|d.dwLowDateTime)!=(candidate?targets[i].date:targets[i].base_date))return ERROR_REVISION_MISMATCH;e=property(set,dev,SPDRP_SERVICE,targets[i].service);if(e)return e;e=property(set,dev,SPDRP_CLASSGUID,targets[i].cls);return e;}
+static DWORD selected(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int candidate){DWORD e=selected_identity(i,set,dev,candidate);return e?e:installed_inf(i,set,dev,candidate);}
 static DWORD installed_sys(unsigned i,int candidate){WCHAR s[MAX_PATH],d[MAX_PATH],p[MAX_PATH];HANDLE h=INVALID_HANDLE_VALUE;DWORD e;if(!GetSystemDirectoryW(s,MAX_PATH))return GetLastError();e=path(d,s,L"drivers");if(!e)e=path(p,d,targets[i].sys);if(!e&&!candidate&&((A04_PERIPHERAL_FIRST_INSTALL_MASK|A04_PERIPHERAL_DEFERRED_UNBOUND_MASK)&(1u<<i))){h=CreateFileW(p,FILE_READ_ATTRIBUTES,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,NULL);if(h!=INVALID_HANDLE_VALUE){CloseHandle(h);return ERROR_ALREADY_EXISTS;}e=GetLastError();return e==ERROR_FILE_NOT_FOUND?0:e;}if(!e)e=deferred_file(p,candidate?targets[i].hash[1]:targets[i].base_sys,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);return e;}
 /* DIF may store the original INF basename in the selected class key while
  * SetupCopyOEMInf publishes only oemNNN.inf in Windows\INF. Resolve that exact
@@ -149,7 +154,7 @@ static int published_inf_leaf(const WCHAR *s){unsigned i=3;if(lstrlenW(s)<8)retu
 static DWORD installed_inf(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int candidate){
  /* Service transaction is serial; keep bounded path scratch off the ARM stack. */
  HKEY key;static WCHAR inf[128],win[MAX_PATH],dir[MAX_PATH],full[MAX_PATH],folder[MAX_PATH],staged[MAX_PATH],store[MAX_PATH],published[MAX_PATH],parent[MAX_PATH];DWORD type,n=sizeof(inf),j,e,needed=0,last=0;HANDLE held=INVALID_HANDLE_VALUE;
- key=SetupDiOpenDevRegKey(set,dev,DICS_FLAG_GLOBAL,0,DIREG_DRV,KEY_QUERY_VALUE);if(key==INVALID_HANDLE_VALUE)return GetLastError();
+ selected_inf_locator_unverified=0;key=SetupDiOpenDevRegKey(set,dev,DICS_FLAG_GLOBAL,0,DIREG_DRV,KEY_QUERY_VALUE);if(key==INVALID_HANDLE_VALUE)return GetLastError();
  e=RegQueryValueExW(key,L"InfPath",NULL,&type,(BYTE *)inf,&n);RegCloseKey(key);if(e)return e;
  if(type!=REG_SZ||n<2||n>sizeof(inf)||(n&1)||inf[n/2-1])return ERROR_INVALID_DATA;
  for(j=0;inf[j];j++)if(!((inf[j]>='a'&&inf[j]<='z')||(inf[j]>='A'&&inf[j]<='Z')||(inf[j]>='0'&&inf[j]<='9')||inf[j]=='.'||inf[j]=='-'||inf[j]=='_'))return ERROR_INVALID_DATA;
@@ -162,10 +167,10 @@ static DWORD installed_inf(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int cand
  }else{
   e=path(folder,base_directory,targets[i].folder);if(!e)e=path(staged,folder,targets[i].inf);
   if(!e)e=deferred_file(staged,targets[i].hash[0],&held);if(held!=INVALID_HANDLE_VALUE){CloseHandle(held);held=INVALID_HANDLE_VALUE;}if(e)return e;
-  if(!SetupGetInfDriverStoreLocationW(staged,NULL,NULL,store,MAX_PATH,&needed))e=GetLastError();record(i,0x250,e);if(e)return e;
+  if(!SetupGetInfDriverStoreLocationW(staged,NULL,NULL,store,MAX_PATH,&needed))e=GetLastError();record(i,0x250,e);if(e){if(e==ERROR_NOT_FOUND)selected_inf_locator_unverified=1;return e;}
   if(!needed||needed>MAX_PATH)return ERROR_INVALID_DATA;
   e=deferred_file(store,targets[i].hash[0],&held);if(held!=INVALID_HANDLE_VALUE){CloseHandle(held);held=INVALID_HANDLE_VALUE;}if(e)return e;
-  if(!SetupGetInfPublishedNameW(store,published,MAX_PATH,&needed))e=GetLastError();record(i,0x251,e);if(e)return e;
+  if(!SetupGetInfPublishedNameW(store,published,MAX_PATH,&needed))e=GetLastError();record(i,0x251,e);if(e){if(e==ERROR_NOT_FOUND)selected_inf_locator_unverified=1;return e;}
   if(!needed||needed>MAX_PATH)return ERROR_INVALID_DATA;
   for(j=0;published[j];j++)if(published[j]==L'\\')last=j;
   if(!last||!published_inf_leaf(published+last+1))return ERROR_INVALID_DATA;
@@ -173,6 +178,14 @@ static DWORD installed_inf(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int cand
   lstrcpyW(full,published);
  }
  if(!e)e=deferred_file(full,targets[i].hash[0],&held);if(held!=INVALID_HANDLE_VALUE)CloseHandle(held);record(i,0x252,e);return e;
+}
+/* A missing optional package locator is not missing selected identity.
+ * Only ERROR_NOT_FOUND from the two locator APIs may be recorded separately;
+ * type/identity/INF hash/trust/file failures remain execution failures. */
+static DWORD selected_runtime(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,DWORD *location_error){
+ DWORD e;*location_error=ERROR_NOT_READY;e=selected_identity(i,set,dev,1);if(e)return e;
+ e=installed_inf(i,set,dev,1);*location_error=e;
+ return e==ERROR_NOT_FOUND&&selected_inf_locator_unverified?0:e;
 }
 static DWORD installed_gpu_extras(int candidate){
 #if A04_CANDIDATE_EXTRA_COUNT
@@ -258,13 +271,13 @@ static DWORD keypad_hid_bindings(DEVINST host){
 }
 #include "engine-system-volume-flush.h"
 /* Completed snapshot is an observation boundary, not peripheral success. */
-struct combined_node_record {DWORD observed,discovery_error,cr,status,problem,metadata_error,sys_error;};
+struct combined_node_record {DWORD observed,discovery_error,cr,status,problem,metadata_error,sys_error,inf_location_error;};
 struct combined_client_result {DWORD observed,phase,client_id,pid,created,wait_status,exit_valid,exit_code,result;};
 static struct combined_node_record combined_nodes[11];
 static struct combined_client_result combined_clients[8];
 static DWORD combined_gpu_node_ready,combined_diagnostic;
 static DWORD combined_snapshot(const WCHAR *phase,DWORD result,int include_volume){
- HKEY key=NULL;WCHAR name[256],policy_hash[65];DWORD at;DWORD e=0,nodes=PERIPHERAL_TARGET_COUNT,clients=(DWORD)(sizeof(diagnostic_clients)/sizeof(diagnostic_clients[0])),schema=1,complete=0;
+ HKEY key=NULL;WCHAR name[256],policy_hash[65];DWORD at;DWORD e=0,nodes=PERIPHERAL_TARGET_COUNT,clients=(DWORD)(sizeof(diagnostic_clients)/sizeof(diagnostic_clients[0])),schema=2,complete=0;
  if(clients>8)return ERROR_INVALID_DATA;
  for(at=0;at<64&&deferred_token[at];at++)policy_hash[at]=(WCHAR)(BYTE)deferred_token[at];if(at!=64||deferred_token[64])return ERROR_INVALID_DATA;policy_hash[64]=0;
  lstrcpyW(name,L"SYSTEM\\CurrentControlSet\\Services\\");lstrcatW(name,service_name);lstrcatW(name,L"\\Parameters\\CombinedResult\\");lstrcatW(name,phase);
@@ -336,14 +349,20 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
  e=fixed_signer(paths_[i][2],held[i][2]);if(!e)e=deferred_members(i,paths_[i][2],members,held[i]);if(e)goto done;}
  if(log_error){e=log_error;goto done;}e=deferred_marker(L"boot-transition-authorized.bin",0);if(!e)e=preserved();if(e)goto done;set=SetupDiGetClassDevsW(NULL,NULL,NULL,DIGCF_ALLCLASSES|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE){e=GetLastError();goto done;}
  if(diagnostic){memset(combined_nodes,0xff,sizeof(combined_nodes));memset(combined_clients,0xff,sizeof(combined_clients));for(i=0;i<11;i++)combined_nodes[i].observed=0;for(i=0;i<8;i++)combined_clients[i].observed=0;combined_gpu_node_ready=0;for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){ULONG status=0,problem=0;CONFIGRET cr;if(A04_PERIPHERAL_DEFERRED_UNBOUND_MASK&(1u<<i)){e=deferred_find(i,set,&devs[i]);if(!e)e=first_keypad_baseline(i,set,&devs[i]);if(!e)e=installed_sys(i,0);record(i,0x269,e);if(e&&!first)first=e;continue;}e=deferred_find(i,set,&devs[i]);if(!e){
- DWORD metadata,sys;combined_nodes[i].observed=1;combined_nodes[i].discovery_error=0;cr=CM_Get_DevNode_Status(&status,&problem,devs[i].DevInst,0);record(i,0x202,(DWORD)cr);record(i,0x203,status);record(i,0x204,problem);
- metadata=selected(i,set,&devs[i],1);record(i,0x219,metadata);sys=installed_sys(i,1);record(i,0x21a,sys);combined_nodes[i].cr=cr;combined_nodes[i].status=status;combined_nodes[i].problem=problem;combined_nodes[i].metadata_error=metadata;combined_nodes[i].sys_error=sys;
+ DWORD metadata,sys,inf_error=ERROR_NOT_READY;combined_nodes[i].observed=1;combined_nodes[i].discovery_error=0;cr=CM_Get_DevNode_Status(&status,&problem,devs[i].DevInst,0);record(i,0x202,(DWORD)cr);record(i,0x203,status);record(i,0x204,problem);
+ metadata=selected_runtime(i,set,&devs[i],&inf_error);record(i,0x253,inf_error);record(i,0x219,metadata);sys=installed_sys(i,1);record(i,0x21a,sys);combined_nodes[i].cr=cr;combined_nodes[i].status=status;combined_nodes[i].problem=problem;combined_nodes[i].metadata_error=metadata;combined_nodes[i].sys_error=sys;combined_nodes[i].inf_location_error=inf_error;
  e=metadata?metadata:sys;if(!e&&(cr!=CR_SUCCESS||!(status&DN_STARTED)||problem))e=ERROR_NOT_READY;
-}else{combined_nodes[i].observed=1;combined_nodes[i].discovery_error=e;}if(PERIPHERAL_TARGET_COUNT==11&&i==10){combined_gpu_node_ready=e?0:1;}else if(e&&!first)first=e;}e=installed_gpu_extras(1);record(10,0x285,e);if(e)combined_gpu_node_ready=0;e=readonly_status();if(e&&!first)first=e;
+}else{combined_nodes[i].observed=1;combined_nodes[i].discovery_error=e;}if(PERIPHERAL_TARGET_COUNT==11&&i==10){combined_gpu_node_ready=e?0:1;}else if(e&&!first)first=e;}e=installed_gpu_extras(1);record(10,0x285,e);if(e)combined_gpu_node_ready=0;
+#if !A04_DIAGNOSTIC_ONLY
+ e=readonly_status();if(e&&!first)first=e;
+#endif
+
 #if A04_PERIPHERAL_NEXT_PROFILE
+#if !A04_DIAGNOSTIC_ONLY
  e=wlan_readonly_status();if(e&&!first)first=e;
  {SP_DEVINFO_DATA sd;DWORD find=deferred_find(4,set,&sd);e=find?find:sd_readonly_presence(sd.DevInst);record(4,0x245,e);if(e&&!first)first=e;}
  if(A04_PERIPHERAL_FIRST_INSTALL_MASK){SP_DEVINFO_DATA keypad;DWORD find=deferred_find(7,set,&keypad);e=find?find:keypad_hid_bindings(keypad.DevInst);record(7,0x267,e);if(e&&!first)first=e;}
+#endif
  e=run_clients(first);if(e&&!first)first=e;
 #endif
  e=preserved();if(e&&!first)first=e;e=first;goto done;}
@@ -355,8 +374,14 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
  for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){if(!(A04_PERIPHERAL_INSTALL_MASK&(1u<<i)))continue;if(WaitForSingleObject(stop_event,0)==WAIT_OBJECT_0){e=ERROR_CANCELLED;goto done;}e=deferred_install(i,set,&devs[i],paths_[i][0]);if(e)goto done;}
  e=preserved();if(e)goto done;e=deferred_marker(L"deferred-pending.bin",1);if(!e)e=deferred_arm_diagnostics();if(!e)e=ERROR_SUCCESS_REBOOT_REQUIRED;
  done:record(0,0x206,e);if(set!=INVALID_HANDLE_VALUE)SetupDiDestroyDeviceInfoList(set);for(i=0;i<PERIPHERAL_TARGET_COUNT;i++){for(j=0;j<5;j++)if(held[i][j]!=INVALID_HANDLE_VALUE)CloseHandle(held[i][j]);if(directory_holds[i]!=INVALID_HANDLE_VALUE)CloseHandle(directory_holds[i]);}return e;}
-static DWORD batch_once(void){DWORD e;int diagnostic=0;e=local_system();if(e)return e;e=disable_self();if(e)return e;e=paths();if(e)return e;{WCHAR p[MAX_PATH];e=path(p,log_directory,L"service.log");if(e)return e;logfile=CreateFileW(p,GENERIC_WRITE,FILE_SHARE_READ,NULL,OPEN_ALWAYS,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_WRITE_THROUGH,NULL);if(logfile==INVALID_HANDLE_VALUE)return GetLastError();SetFilePointer(logfile,0,NULL,FILE_END);record(0,0x286,combined_run_id);record(0,0x287,combined_service_pid);}e=deferred_marker(L"deferred-pending.bin",0);if(e==ERROR_FILE_NOT_FOUND){e=deferred_marker(L"install-attempted.bin",1);if(!e)e=deferred_boot_fence(1);}else if(!e){e=deferred_boot_fence(0);if(!e)e=deferred_marker(L"diagnostic-attempted.bin",1);diagnostic=1;combined_diagnostic=1;}record(0,0x200,e);if(e)return e;return transaction(diagnostic);}
+static DWORD batch_once(void){DWORD e;int diagnostic=0;e=local_system();if(e)return e;e=disable_self();if(e)return e;e=paths();if(e)return e;{WCHAR p[MAX_PATH];e=path(p,log_directory,L"service.log");if(e)return e;logfile=CreateFileW(p,GENERIC_WRITE,FILE_SHARE_READ,NULL,OPEN_ALWAYS,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_WRITE_THROUGH,NULL);if(logfile==INVALID_HANDLE_VALUE)return GetLastError();SetFilePointer(logfile,0,NULL,FILE_END);record(0,0x286,combined_run_id);record(0,0x287,combined_service_pid);}
+#if A04_DIAGNOSTIC_ONLY
+ combined_diagnostic=1;e=deferred_marker(L"diagnostic-attempted.bin",1);if(!e)e=deferred_boot_fence(1);record(0,0x200,e);if(e)return e;return transaction(1);
+#else
+ e=deferred_marker(L"deferred-pending.bin",0);if(e==ERROR_FILE_NOT_FOUND){e=deferred_marker(L"install-attempted.bin",1);if(!e)e=deferred_boot_fence(1);}else if(!e){e=deferred_boot_fence(0);if(!e)e=deferred_marker(L"diagnostic-attempted.bin",1);diagnostic=1;combined_diagnostic=1;}record(0,0x200,e);if(e)return e;return transaction(diagnostic);
+#endif
+}
 static DWORD once(void){REASON_CONTEXT r;HANDLE power;DWORD e=local_system(),cleanup=0;if(e)return e;memset(&r,0,sizeof(r));r.Version=POWER_REQUEST_CONTEXT_VERSION;r.Flags=POWER_REQUEST_CONTEXT_SIMPLE_STRING;r.Reason.SimpleReasonString=L"Fixed peripheral deferred update";power=PowerCreateRequest(&r);if(power==INVALID_HANDLE_VALUE)return GetLastError();if(!PowerSetRequest(power,PowerRequestSystemRequired)){e=GetLastError();CloseHandle(power);return e;}e=batch_once();if(!PowerClearRequest(power,PowerRequestSystemRequired))cleanup=GetLastError();if(!CloseHandle(power)&&!cleanup)cleanup=GetLastError();if(cleanup&&(e==0||e==ERROR_SUCCESS_REBOOT_REQUIRED))e=cleanup;return e;}
 static void WINAPI control(DWORD c){if(c==SERVICE_CONTROL_STOP&&stop_event)SetEvent(stop_event);}
-static void WINAPI service_main(DWORD argc,WCHAR **argv){DWORD e,event_error;(void)argc;(void)argv;stop_event=CreateEventW(NULL,TRUE,FALSE,NULL);event_error=stop_event?0:GetLastError();status_handle=RegisterServiceCtrlHandlerW(service_name,control);if(!status_handle)return;memset(&service_status,0,sizeof(service_status));service_status.dwServiceType=SERVICE_WIN32_OWN_PROCESS;service_status.dwCurrentState=SERVICE_RUNNING;service_status.dwControlsAccepted=SERVICE_ACCEPT_STOP;SetServiceStatus(status_handle,&service_status);e=event_error?event_error:once();{DWORD final=combined_finalize(e);if(final&&(e==0||e==ERROR_SUCCESS_REBOOT_REQUIRED))e=final;}if(e==ERROR_SUCCESS_REBOOT_REQUIRED){DWORD w=deferred_start_waiter();if(w){(void)disable_self();e=w;}}if(e&&e!=ERROR_SUCCESS_REBOOT_REQUIRED)(void)disable_self();record(0,0x207,e);if(logfile!=INVALID_HANDLE_VALUE){if(!FlushFileBuffers(logfile)&&!e)e=ERROR_WRITE_FAULT;CloseHandle(logfile);logfile=INVALID_HANDLE_VALUE;}service_status.dwCurrentState=SERVICE_STOPPED;service_status.dwControlsAccepted=0;if(e){service_status.dwWin32ExitCode=ERROR_SERVICE_SPECIFIC_ERROR;service_status.dwServiceSpecificExitCode=e;}SetServiceStatus(status_handle,&service_status);if(stop_event)CloseHandle(stop_event);}
+static void WINAPI service_main(DWORD argc,WCHAR **argv){DWORD e,event_error;(void)argc;(void)argv;stop_event=CreateEventW(NULL,TRUE,FALSE,NULL);event_error=stop_event?0:GetLastError();status_handle=RegisterServiceCtrlHandlerW(service_name,control);if(!status_handle)return;memset(&service_status,0,sizeof(service_status));service_status.dwServiceType=SERVICE_WIN32_OWN_PROCESS;service_status.dwCurrentState=SERVICE_RUNNING;service_status.dwControlsAccepted=SERVICE_ACCEPT_STOP;SetServiceStatus(status_handle,&service_status);e=event_error?event_error:once();{DWORD final=combined_finalize(e);if(final&&(e==0||e==ERROR_SUCCESS_REBOOT_REQUIRED))e=final;}if(!A04_DIAGNOSTIC_ONLY&&e==ERROR_SUCCESS_REBOOT_REQUIRED){DWORD w=deferred_start_waiter();if(w){(void)disable_self();e=w;}}if(e&&e!=ERROR_SUCCESS_REBOOT_REQUIRED)(void)disable_self();record(0,0x207,e);if(logfile!=INVALID_HANDLE_VALUE){if(!FlushFileBuffers(logfile)&&!e)e=ERROR_WRITE_FAULT;CloseHandle(logfile);logfile=INVALID_HANDLE_VALUE;}service_status.dwCurrentState=SERVICE_STOPPED;service_status.dwControlsAccepted=0;if(e){service_status.dwWin32ExitCode=ERROR_SERVICE_SPECIFIC_ERROR;service_status.dwServiceSpecificExitCode=e;}SetServiceStatus(status_handle,&service_status);if(stop_event)CloseHandle(stop_event);}
 void mainCRTStartup(void){const WCHAR *cmd=GetCommandLineW();DWORD e,i;combined_service_pid=GetCurrentProcessId();combined_run_id=GetTickCount()^combined_service_pid;memset(combined_nodes,0xff,sizeof(combined_nodes));memset(combined_clients,0xff,sizeof(combined_clients));for(i=0;i<11;i++)combined_nodes[i].observed=0;for(i=0;i<8;i++)combined_clients[i].observed=0;SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOOPENFILEERRORBOX);if(*cmd=='"'){cmd++;while(*cmd&&*cmd!='"')cmd++;if(*cmd)cmd++;}else while(*cmd&&*cmd!=' '&&*cmd!='\t')cmd++;while(*cmd==' '||*cmd=='\t')cmd++;if(!lstrcmpW(cmd,L"--reboot-after-stop"))e=deferred_reboot_waiter();else if(*cmd)e=ERROR_INVALID_PARAMETER;else{SERVICE_TABLE_ENTRYW t[2]={{(LPWSTR)service_name,service_main},{NULL,NULL}};e=StartServiceCtrlDispatcherW(t)?0:GetLastError();}if(logfile!=INVALID_HANDLE_VALUE)CloseHandle(logfile);ExitProcess(e);}

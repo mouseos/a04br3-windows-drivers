@@ -25,10 +25,10 @@ def main():
  ap=argparse.ArgumentParser()
  for n in ('workspace','map','service-package','prepared-system','prepared-result','comparator','base','tools','out'):ap.add_argument('--'+n,type=Path,required=True)
  for n in ('prepared-sha256','comparator-manifest-sha256','source-commit'):ap.add_argument('--'+n,required=True)
- ap.add_argument('--combined128-profile',action='store_true');ap.add_argument('--next-profile',action='store_true');ap.add_argument('--service-source-commit');ap.add_argument('--enable-peripheral-batch',action='store_true');a=ap.parse_args();root=a.workspace.resolve(strict=True);here=Path(__file__).resolve().parent;repo=here.parents[1]
- if a.combined128_profile:
+ ap.add_argument('--combined130-profile',action='store_true');ap.add_argument('--next-profile',action='store_true');ap.add_argument('--service-source-commit');ap.add_argument('--enable-peripheral-batch',action='store_true');a=ap.parse_args();root=a.workspace.resolve(strict=True);here=Path(__file__).resolve().parent;repo=here.parents[1]
+ if a.combined130_profile:
   require(not a.next_profile,'Profiles mutually exclusive')
-  from combined128_policy import load_map,generate,PROFILE,SERVICE,DIRECTORY,generate_paths,assert_paths
+  from combined130_policy import load_map,generate,PROFILE,SERVICE,DIRECTORY,generate_paths,assert_paths
  elif a.next_profile:
   from peripheral_next_policy import load_map,generate,PROFILE,SERVICE,DIRECTORY,generate_paths,assert_paths
  else:
@@ -41,10 +41,10 @@ def main():
  if signed_source!=a.source_commit:
   subprocess.run(['git','-C',str(repo),'merge-base','--is-ancestor',signed_source,a.source_commit],check=True)
   changed=set(subprocess.check_output(['git','-C',str(repo),'diff','--name-only',signed_source,a.source_commit],text=True).splitlines())
-  require(changed and changed<={'tools/winpe/build-private-peripheral-batch-media.py','tools/winpe/private_hardware_probe_input.py','docs/peripheral-batch.md','tools/recovery/prepare-offline-system-service.ps1','tools/ci/build-combined128-service.ps1','tools/recovery/prepare-peripheral-followup128.py'},'署名後の差分は明示media toolingだけを許可')
+  require(changed and changed<={'tools/winpe/build-private-peripheral-batch-media.py','tools/winpe/private_hardware_probe_input.py','docs/peripheral-batch.md','tools/recovery/prepare-offline-system-service.ps1','tools/ci/build-combined130-service.ps1','tools/recovery/prepare-peripheral-followup130.py'},'署名後の差分は明示media toolingだけを許可')
  require(sm.get('source_commit')==signed_source and sm.get('source_dirty') is False and sm.get('profile')==PROFILE and sm.get('service')==SERVICE and sm.get('signature_status')=='Valid' and sm.get('signer_thumbprint')==SIGNER,'同sourceの専用署名service必須')
  require(sm['policy']==p and sha(service/'peripheral-policy.json')==sm['policy_manifest_sha256'] and sha(service/(SERVICE+'.exe'))==sm['exe_sha256'] and (service/'peripheral-batch-policy.h').read_text()==generate(p),'signed policy/header/EXE不一致')
- if a.next_profile or a.combined128_profile:
+ if a.next_profile or a.combined130_profile:
   require((service/'peripheral-service-path-policy.h').read_text()==generate_paths(),'Signed service path header mismatch');assert_paths(service/(SERVICE+'.exe'))
  backup=rooted(root,p['backup_manifest']);b=json.loads(backup.read_text());result=rooted(root,a.prepared_result);system=rooted(root,a.prepared_system)
  native=prepared_system_check(system,result,a.prepared_sha256,root,b,SERVICE);nr=json.loads(result.read_text(encoding='utf-8-sig'))
@@ -79,7 +79,7 @@ def main():
   prepare+=['X:\\a04br3\\compare-files.exe X:\\a04br3\\baseline-proof\\'+str(i)+'.bin "C:\\'+name.replace('/','\\')+'" >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto baselinefail']
  rotation=p.get('prior_rotation_log');reuse_rotation=p.get('reuse_rotation_directory_without_prior_active_log',False)
  if rotation:
-  require(a.combined128_profile and rotation['overwrite_or_delete'] is False,'Explicit immutable old rotation archive required')
+  require(a.combined130_profile and rotation['overwrite_or_delete'] is False,'Explicit immutable old rotation archive required')
   witness=rooted(root,rotation['witness']);require(sha(witness)==rotation['sha256'],'Old rotation log witness mismatch');copy(witness,'rotation-proof/log.bin')
   old='C:\\'+rotation['source'].replace('/','\\');archive=old.rsplit('\\',1)[0]+'\\'+rotation['archive_name']
   prepare+=['if exist "'+archive+'" goto baselinefail','X:\\a04br3\\compare-files.exe X:\\a04br3\\rotation-proof\\log.bin "'+old+'" >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto baselinefail']
@@ -88,7 +88,7 @@ def main():
    witness=rooted(root,e['witness']);require(sha(witness)==e['sha256'],'Old rotation EXE witness mismatch');copy(witness,'rotation-proof/'+str(i)+'.bin')
    prepare+=['X:\\a04br3\\compare-files.exe X:\\a04br3\\rotation-proof\\'+str(i)+'.bin "C:\\'+e['source'].replace('/','\\')+'" >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto baselinefail']
  if reuse_rotation:
-  require(a.combined128_profile and not rotation,'Explicit no-rerun rotation reuse contract required')
+  require(a.combined130_profile and not rotation,'Explicit no-rerun rotation reuse contract required')
   rotation_client=next(c for c in p['diagnostic_clients'] if c['name']=='rotation')
   prepare+=['if exist C:\\Windows\\System32\\MT8167DisplayRotationProbeV1\\logs\\display-rotation-probe-v1.log goto baselinefail','if exist C:\\Windows\\System32\\MT8167CombinedFollowup124\\logs\\wlan-scan.txt goto baselinefail']
   for i,e in enumerate(p['prior_rotation_executables']):
@@ -128,6 +128,6 @@ def main():
   if f.is_file() and f.name!='startnet.cmd':commands+='add "'+str(f)+'" /a04br3/'+str(f.relative_to(stage))+'\n'
  subprocess.run([str(tools/'wimtools/wimlib-imagex'),'update',str(image),'1'],input=commands,text=True,env=env,check=True);subprocess.run([str(tools/'wimtools/wimlib-imagex'),'verify',str(image)],env=env,check=True)
  subprocess.run(['python3','-B',str(here/'replace-esp-wim.py'),'--template',str(base/'maintenance-staged-esp.img'),'--wim',str(image),'--output',str(out/'update-esp.img'),'--template-bcd-sha256','65376227bc92e7342017fafb8de291db348ed6f70edd1a7e9fa1f1c05f111c0d','--template-wim-sha256','0df19de6c783068b24c466a1d7afaa900cd99a0aef24841a319bbd566cbbedf4'],env=env,check=True)
- manifest={'profile':PROFILE,'source_commit':a.source_commit,'service_source_commit':signed_source,'tooling_only_changes_since_signed_service':signed_source!=a.source_commit,'service':SERVICE,'policy':p,'native_prepared':native,'files':files,'esp_sha256':sha(out/'update-esp.img'),'wim_sha256':sha(image),'required_main_boot_transition':p['boot_transition'],'planned_windows_reboots':1,'no_gpu_or_engine_client':not a.combined128_profile,'engine_client_execute':False,'old_gpu_client_execute':False,'new_gpu_client_count':int(a.combined128_profile),'software_or_userfs_rollback':False,'device_verified':False}
+ manifest={'profile':PROFILE,'source_commit':a.source_commit,'service_source_commit':signed_source,'tooling_only_changes_since_signed_service':signed_source!=a.source_commit,'service':SERVICE,'policy':p,'native_prepared':native,'files':files,'esp_sha256':sha(out/'update-esp.img'),'wim_sha256':sha(image),'required_main_boot_transition':p['boot_transition'],'planned_windows_reboots':p['planned_reboots'],'no_gpu_or_engine_client':not a.combined130_profile,'engine_client_execute':False,'old_gpu_client_execute':False,'new_gpu_client_count':int(a.combined130_profile),'software_or_userfs_rollback':False,'device_verified':False}
  (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 if __name__=='__main__':main()
