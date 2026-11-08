@@ -65,6 +65,7 @@ static void write_doorbell(volatile ULONG*p,ULONG v);
 pre=pre.replace('RGXFWIF_DEV_VIRTADDR command_sync_addr','RGXFWIF_DEV_VIRTADDR command_sync_addr')
 factory=(d/'native_owner_factory.c').read_text();begin=factory.index('static int32_t prepare_copy(');end=factory.index('struct discard_call',begin);factory=factory[begin:end]
 factory_mocks=r'''
+#define GeoFactoryCheckpoint(...) ((void)0)
 #define GEO_USAGE_RENDER_TARGET 1
 #define GEO_USAGE_STAGING 2
 #define E_JOB_PREPARED 1
