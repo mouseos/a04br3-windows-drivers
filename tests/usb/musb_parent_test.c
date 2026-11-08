@@ -10,7 +10,7 @@ void *memcpy(void *p,const void*s,SIZE_T n){volatile UCHAR*d=p;const volatile UC
 typedef struct {struct mt_musb_parent musb;struct a04_usb_owner usb;PVOID gpio;ULONG removed;FAST_MUTEX pwrapLock;} A04_PARENT_CONTEXT;
 #define ParentContext(p) ((A04_PARENT_CONTEXT *)(p))
 static UCHAR macmem[0x10000],phymem[0x10000];static ULONG gp[1024],csr[16][2],top[64],pmic,pmicstage,depth,writes;
-static ULONGLONG now=10000000;static ULONG stuck,voltage=1,external_voltage,oc_trip;
+static ULONGLONG now=10000000;static ULONG stuck,voltage=1,external_voltage,oc_trip,off_stuck,verify_fail;
 static int ParentLock(void *p){(void)p;if(depth)return -1;depth=1;return 0;}
 static void ParentUnlock(void *p){(void)p;depth=0;}
 #define KeGetCurrentIrql() PASSIVE_LEVEL
@@ -35,11 +35,11 @@ static PVOID Map(PHYSICAL_ADDRESS a,SIZE_T n,MEMORY_CACHING_TYPE t){(void)n;(voi
 #define MmMapIoSpace Map
 #define MmUnmapIoSpace(p,n) ((void)(p),(void)(n))
 static unsigned ParentUsbGpioRead(void*p,unsigned o){(void)p;return gp[o/4];}
-static void ParentUsbGpioWrite(void*p,unsigned o,unsigned v){unsigned k;(void)p;writes++;k=o/4;if((o&15)==4)gp[k-1]|=v;else if((o&15)==8)gp[k-2]&=~v;else gp[k]=v;
+static void ParentUsbGpioWrite(void*p,unsigned o,unsigned v){unsigned k;(void)p;writes++;k=o/4;if((o&15)==4)gp[k-1]|=v;else if((o&15)==8){if(!(o==0x118&&off_stuck))gp[k-2]&=~v;}else gp[k]=v;
  if(o==0x114||o==0x118){if((gp[0x110/4]&(1u<<6))&&voltage){macmem[0x60]=(UCHAR)((macmem[0x60]&~0x18)|0x18);gp[0x220/4]&=~4u;}
  else if(!external_voltage){macmem[0x60]&=~0x18u;gp[0x220/4]|=4u;}}}
 #include "../../drivers/bus/mt8167-shared/musb_parent.inc"
-static int Verify(void*p){A04_PARENT_CONTEXT*c=p;return A04UsbPinsPrepare(&c->usb.gpio);}
+static int Verify(void*p){A04_PARENT_CONTEXT*c=p;return verify_fail?-1:A04UsbPinsPrepare(&c->usb.gpio);}
 static int Oc(void*p){(void)p;return (gp[0x210/4]&(1u<<5))?0:-1;}
 static int Source(void*p){(void)p;return 0;}
 static unsigned TopRead(void*p,unsigned o){(void)p;return top[o/4];}
@@ -47,7 +47,7 @@ static void TopWrite(void*p,unsigned o,unsigned v){(void)p;if(o==0x84)top[0x24/4
 static uint32_t PmicRead(void*p,unsigned o){(void)p;if(o==0x9c)return 1;return pmicstage?(6u<<16)|pmic:0;}
 static void PmicWrite(void*p,unsigned o,uint32_t v){(void)p;if(o==0xa8){pmicstage=0;return;}if(v>>31)pmic=v&0xffff;else pmicstage=1;}
 static void PmicDelay(void*p){(void)p;}
-static void Setup(A04_PARENT_CONTEXT*c,struct a04_pmic_read *bus){RtlZeroMemory(c,sizeof(*c));RtlZeroMemory(gp,sizeof(gp));RtlZeroMemory(macmem,sizeof(macmem));RtlZeroMemory(phymem,sizeof(phymem));RtlZeroMemory(csr,sizeof(csr));depth=stuck=external_voltage=oc_trip=0;voltage=1;
+static void Setup(A04_PARENT_CONTEXT*c,struct a04_pmic_read *bus){RtlZeroMemory(c,sizeof(*c));RtlZeroMemory(gp,sizeof(gp));RtlZeroMemory(macmem,sizeof(macmem));RtlZeroMemory(phymem,sizeof(phymem));RtlZeroMemory(csr,sizeof(csr));depth=stuck=external_voltage=oc_trip=off_stuck=verify_fail=0;voltage=1;
  c->gpio=gp;c->musb.bound=c->musb.accessible=1;c->musb.generation=7;c->musb.mac_pa.QuadPart=0x21100000;c->musb.phy_pa.QuadPart=0x21110000;
  c->usb.online=1;c->usb.context=c;c->usb.lock=ParentLock;c->usb.unlock=ParentUnlock;c->usb.verify_upstream=Verify;c->usb.verify_overcurrent=Oc;c->usb.otg_acquire=Source;c->usb.otg_release=Source;c->usb.top_read=TopRead;c->usb.top_write=TopWrite;c->usb.gpio.context=c;c->usb.gpio.read32=ParentUsbGpioRead;c->usb.gpio.write32=ParentUsbGpioWrite;
  bus->context=c;bus->read32=PmicRead;bus->write32=PmicWrite;bus->delay=PmicDelay;bus->attempts=4;bus->poisoned=0;c->usb.pmic=bus;
@@ -76,4 +76,13 @@ int main(void){A04_PARENT_CONTEXT c;struct a04_pmic_read bus;MT_MUSB_OBSERVATION
  CHECK(NT_SUCCESS(ParentMusbStopAndProve((PVOID)&c,&o)));CHECK(NT_SUCCESS(ParentMusbRelease((PVOID)&c)));
  Setup(&c,&bus);CHECK(NT_SUCCESS(ParentMusbAcquire((PVOID)&c,7)));external_voltage=1;gp[0x220/4]=1u<<9;macmem[0x60]=0x98;
  CHECK(NT_SUCCESS(ParentMusbStopAndProve((PVOID)&c,&o))&&o.source_off&&o.vbus_on); /* PC voltage not fabricated off */
- CHECK(NT_SUCCESS(ParentMusbRelease((PVOID)&c)));return 0;}
+ CHECK(NT_SUCCESS(ParentMusbRelease((PVOID)&c)));
+ Setup(&c,&bus);verify_fail=1;
+ CHECK(!NT_SUCCESS(ParentMusbAcquire((PVOID)&c,7))&&c.musb.held&&c.usb.leased&&c.musb.poisoned&&!c.musb.mac);
+ Setup(&c,&bus);CHECK(NT_SUCCESS(ParentMusbAcquire((PVOID)&c,7)));oc_trip=1;
+ CHECK(!NT_SUCCESS(ParentMusbVbus((PVOID)&c,TRUE))&&!(gp[0x110/4]&(1u<<6)));
+ oc_trip=0;CHECK(NT_SUCCESS(ParentMusbStopAndProve((PVOID)&c,&o)));CHECK(NT_SUCCESS(ParentMusbRelease((PVOID)&c)));
+ Setup(&c,&bus);CHECK(NT_SUCCESS(ParentMusbAcquire((PVOID)&c,7)));CHECK(NT_SUCCESS(ParentMusbVbus((PVOID)&c,TRUE)));
+ off_stuck=1;CHECK(!NT_SUCCESS(ParentMusbStopAndProve((PVOID)&c,&o))&&c.musb.held&&c.usb.leased);
+ CHECK(!NT_SUCCESS(ParentMusbRelease((PVOID)&c)));off_stuck=0;
+ CHECK(NT_SUCCESS(ParentMusbStopAndProve((PVOID)&c,&o)));CHECK(NT_SUCCESS(ParentMusbRelease((PVOID)&c)));return 0;}

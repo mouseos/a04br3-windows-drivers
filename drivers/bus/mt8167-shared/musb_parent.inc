@@ -75,7 +75,11 @@ static NTSTATUS ParentMusbAcquire(PVOID p,ULONGLONG generation)
  MusbSnapshot(c,&o);
  if(!c->musb.bound||!c->musb.accessible||c->musb.poisoned||c->usb.leased||generation!=c->musb.generation||
     !(o.evidence&MT_MUSB_QUERY_READY)||!c->usb.online)goto done;
- c->musb.stage=1;if(a04_usb_owner_acquire_locked(&c->usb))goto done;
+ c->musb.stage=1;
+ if(a04_usb_owner_acquire_locked(&c->usb)){
+  if(c->usb.poisoned){c->musb.held=1;c->usb.leased=1;c->musb.poisoned=1;result=STATUS_DEVICE_HARDWARE_ERROR;}
+  goto done;
+ }
  c->musb.stage=2;c->musb.held=1;c->musb.stop_ok=0;i=MusbIo(c);
  c->musb.mac=MmMapIoSpace(c->musb.mac_pa,0x10000,MmNonCached);
  c->musb.phy=MmMapIoSpace(c->musb.phy_pa,0x10000,MmNonCached);
