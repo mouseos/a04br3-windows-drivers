@@ -25,7 +25,7 @@ foreach($x in $plan){
   $obj=if($x.location -eq 'audio1033'){"$Audio1033\obj\$($x.name).obj"}else{"$Inputs\obj\$($x.name).obj"}
   if((Sha $obj) -cne $x.cached_sha256){throw 'Cached object hash changed'}
   foreach($f in $x.closure.PSObject.Properties){
-   $blob=& git -C $root rev-parse "$($x.baseline_commit):$($f.Name)";if($LASTEXITCODE){throw 'Baseline source absent'}
+   $blob=$x.baseline_blobs.($f.Name);if(!$blob){throw 'Pinned baseline blob absent'}
    $current=& git -C $root rev-parse "HEAD:$($f.Name)";if($LASTEXITCODE -or $blob -cne $current){throw 'Reused source closure differs'}
   };$reused+=$x.name
  }
