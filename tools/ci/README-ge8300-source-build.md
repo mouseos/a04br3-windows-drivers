@@ -14,7 +14,7 @@ branch `work/ge8300-matrix-texture331`で通常wrapperを使用する。330の61
 
 公開branchは`work/ge8300-vs-uniform330`。ルートREADMEのcloneと通常wrapperを使用する。
 329のABI4 witness検証に330のVS CB/PDS DMAと既存owned page内512byte/stageを統合。
-source gateはnative61TU/compiler375TUと最新origin/hashを照合する。過去cache/private hive不要の通常fullbuild入口は変更しない。
+source gateはnative67TU/compiler375TUと最新origin/hashを照合する。過去cache/private hive不要の通常fullbuild入口は変更しない。
 現行の実検証は15TU増分compile/link/署名と実PCO→native構築・ASAN/UBSAN・ABI3後方互換まで。
 375TU全build/CIと実GPUは未実施。adapter contract6/ISA0x33001は329 peerと混載禁止。
 詳細は[330契約](../../docs/ge8300-vs-uniform330.md)。以下は従来手順・出自の履歴。
@@ -94,3 +94,5 @@ nativeは`vendor_m1_11/render_owner`の必要113fileだけを固定native322か�
 ## Native shader329
 
 [ABI4](../../docs/ge8300-native-shader329.md)は327 sourceに統合済み。normal compiler planは既存372TUへwitness producer/codec/専用metadataの3TUを加えた375TU。native61TUは独立codec/metadataとABI4 protocolを含む。kernel codec/metadataはsource-planのheader引数を使用し、PCO/NIR/CRT本体をkernelへlinkしない。旧cacheが無いcloneでも通常recipeで同じsourceを構成する。実機未検証。
+
+342の公開branchはcold/live初回arm341、同一immutable Draw再利用、TQ Clearを通常source gateへ固定しています。単一checkoutのfull buildは過去driver cacheを要求しません。署名済み342の8 TU増分ビルドとは別の経路で、full buildとの署名・compiler由来のbyte同一性は主張しません。
