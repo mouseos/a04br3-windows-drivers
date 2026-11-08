@@ -1,0 +1,46 @@
+; Experimental test-mode boot driver. Not a production package.
+[Version]
+Signature = "$WINDOWS NT$"
+Class = SCSIAdapter
+ClassGuid = {4d36e97b-e325-11ce-bfc1-08002be10318}
+Provider = %Provider%
+CatalogFile = mt8167-msdc.cat
+DriverVer = 11/08/2026,0.0.1.11
+
+[Manufacturer]
+%Provider% = Models,NTarm
+
+[Models.NTarm]
+%DeviceDescription% = Install, ACPI\MOU0001
+
+[Install.NT]
+CopyFiles = DriverCopy
+
+[Install.NT.Services]
+AddService = a04msdcboot,0x00000002,Service
+
+[DestinationDirs]
+DriverCopy = 12
+
+[DriverCopy]
+mt8167-msdc.sys
+
+[Service]
+DisplayName = %ServiceDescription%
+ServiceType = 1
+StartType = 0
+ErrorControl = 1
+ServiceBinary = %12%\mt8167-msdc.sys
+LoadOrderGroup = SCSI Miniport
+
+[SourceDisksNames]
+1 = %DiskName%,,,
+
+[SourceDisksFiles]
+mt8167-msdc.sys = 1
+
+[Strings]
+Provider = "mouseos"
+DeviceDescription = "MediaTek MT8167 MSDC0 / Samsung AJTD4R eMMC"
+ServiceDescription = "MediaTek MT8167 MSDC0 / Samsung AJTD4R eMMC"
+DiskName = "MediaTek MT8167 MSDC0 / Samsung AJTD4R eMMC"
