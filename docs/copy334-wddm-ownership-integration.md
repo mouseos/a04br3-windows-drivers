@@ -1,6 +1,6 @@
 # copy334 WDDM physical backing ownership integration
 
-copy334 `0bfc91cf9a87c98b0ca1d540d00726159614072d` is the base; its real TQ/IRQ receipts and quarantine remain. The physical aperture ownership implementation is merged from `cea8a350d2d42b9de23a407bb6c4a8d146693f95`. The Ex packet-DMA experiment is not merged. UMD335 stays unchanged and is not rebuilt here.
+copy334 `0bfc91cf9a87c98b0ca1d540d00726159614072d` is the base; its real TQ/IRQ receipts and quarantine remain. The physical aperture ownership implementation is merged from `cea8a350d2d42b9de23a407bb6c4a8d146693f95`. The Ex packet-DMA experiment is not merged. The exact UMD335 LockEntire source delta from 26b7c8ef is retained in this integration branch; its already signed binary is reused, not rebuilt here.
 
 `pages()` describes resident WDDM physical pages; alias-only comparison uses `cpu_identity()` even during GPU ownership. CPU data access uses `cpu()` and is closed while GPU owned. Real completion returns RT/VB/linear CPU cache ownership; the next native render rearm now cleans/transfers **all** those bindings, not just RT. Physical PTE/lease retention is unchanged. Stop/destruction requires proven parent-off and IRQ rundown, not idle or a successful CPU mapping.
 
