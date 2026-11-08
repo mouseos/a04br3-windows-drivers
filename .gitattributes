@@ -30,3 +30,6 @@ drivers/gpu/mt8167/dma_pages.c -text
 drivers/gpu/mt8167/dma_pages.h -text
 drivers/gpu/mt8167/rogue_power.h -text
 drivers/gpu/mt8167/fwif/pvr_rogue_cr_defs.h -text
+# The normal texture source gate pins these additional source bytes too.
+drivers/gpu/mt8167/wddm-render/testclient/*.hlsl text eol=lf
+drivers/gpu/mt8167/wddm-render/testclient/*.inc text eol=lf
