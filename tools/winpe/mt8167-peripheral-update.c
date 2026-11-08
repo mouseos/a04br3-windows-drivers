@@ -388,15 +388,15 @@ static DWORD transaction(int diagnostic){static HANDLE held[PERIPHERAL_TARGET_CO
  metadata=selected_runtime(i,set,&devs[i],&inf_error);record(i,0x253,inf_error);record(i,0x219,metadata);sys=installed_sys(i,1);record(i,0x21a,sys);combined_nodes[i].cr=cr;combined_nodes[i].status=status;combined_nodes[i].problem=problem;combined_nodes[i].metadata_error=metadata;combined_nodes[i].sys_error=sys;combined_nodes[i].inf_location_error=inf_error;
  e=metadata?metadata:sys;if(!e&&(cr!=CR_SUCCESS||!(status&DN_STARTED)||problem))e=ERROR_NOT_READY;
 }else{combined_nodes[i].observed=1;combined_nodes[i].discovery_error=e;}if(PERIPHERAL_TARGET_COUNT==11&&i==10){combined_gpu_node_ready=e?0:1;}else if(e&&!first)first=e;}e=installed_gpu_extras(1);record(10,0x285,e);if(e)combined_gpu_node_ready=0;
-#if !A04_DIAGNOSTIC_ONLY
+#if !A04_DIAGNOSTIC_ONLY || A04_READONLY_PERIPHERAL_STATUS
  e=readonly_status();if(e&&!first)first=e;
 #endif
 
 #if A04_PERIPHERAL_NEXT_PROFILE
-#if !A04_DIAGNOSTIC_ONLY
+#if !A04_DIAGNOSTIC_ONLY || A04_READONLY_PERIPHERAL_STATUS
  e=wlan_readonly_status();if(e&&!first)first=e;
  {SP_DEVINFO_DATA sd;DWORD find=deferred_find(4,set,&sd);e=find?find:sd_readonly_presence(sd.DevInst);record(4,0x245,e);if(e&&!first)first=e;}
- if(A04_PERIPHERAL_FIRST_INSTALL_MASK){SP_DEVINFO_DATA keypad;DWORD find=deferred_find(7,set,&keypad);e=find?find:keypad_hid_bindings(keypad.DevInst);record(7,0x267,e);if(e&&!first)first=e;}
+ if(A04_PERIPHERAL_FIRST_INSTALL_MASK || A04_READONLY_PERIPHERAL_STATUS){SP_DEVINFO_DATA keypad;DWORD find=deferred_find(7,set,&keypad);e=find?find:keypad_hid_bindings(keypad.DevInst);record(7,0x267,e);if(e&&!first)first=e;}
 #endif
  e=run_clients(first);if(e&&!first)first=e;
 #endif

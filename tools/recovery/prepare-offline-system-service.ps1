@@ -5,7 +5,7 @@ param(
     [string]$ExpectedSystemSha256,
     [string]$ExpectedLog1Sha256,
     [string]$ExpectedLog2Sha256,
-    [ValidateSet('MT8167DeviceInstall','MT8167HardwareProbe','MT8167EngineProbe','MT8167RenderProbe','MT8167RenderStage','MT8167RenderSingleGpu','MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130')][string]$ServiceName='MT8167DeviceInstall',
+    [ValidateSet('MT8167DeviceInstall','MT8167HardwareProbe','MT8167EngineProbe','MT8167RenderProbe','MT8167RenderStage','MT8167RenderSingleGpu','MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132')][string]$ServiceName='MT8167DeviceInstall',
     [switch]$IncludeHardwareProbe,
     [switch]$RearmFixedGpuDeviceInstall,
     [switch]$InspectFixedGpuDeviceInstall,
@@ -69,6 +69,7 @@ function Fixed-ServiceSpec([string]$Name) {
         'MT8167RenderProbe' { return [ordered]@{name='MT8167RenderProbe';display_name='PowerVR GE8300 Render Probe';image_path='"C:\Windows\System32\MT8167RenderProbe.exe"'} }
         'MT8167RenderStage' { return [ordered]@{name='MT8167RenderStage';display_name='PowerVR GE8300 Driver Update';image_path='"C:\Windows\System32\MT8167RenderStage.exe"'} }
         'MT8167PeripheralNext122' { return [ordered]@{name='MT8167PeripheralNext122';display_name='MediaTek next peripheral batch';image_path='"C:\Windows\System32\MT8167PeripheralNext122.exe"'} }
+        'MT8167CombinedFollowup132' { return [ordered]@{name='MT8167CombinedFollowup132';display_name='MediaTek RTC AFE readonly followup';image_path='"C:\Windows\System32\MT8167CombinedFollowup132.exe"'} }
         'MT8167CombinedFollowup130' { return [ordered]@{name='MT8167CombinedFollowup130';display_name='MediaTek combined followup batch';image_path='"C:\Windows\System32\MT8167CombinedFollowup130.exe"'} }
         'MT8167CombinedFollowup128' { return [ordered]@{name='MT8167CombinedFollowup128';display_name='MediaTek combined followup batch';image_path='"C:\Windows\System32\MT8167CombinedFollowup128.exe"'} }
         'MT8167CombinedFollowup126' { return [ordered]@{name='MT8167CombinedFollowup126';display_name='MediaTek combined followup batch';image_path='"C:\Windows\System32\MT8167CombinedFollowup126.exe"'} }
@@ -207,7 +208,7 @@ function Inspect-Services($Root,$Plan,[bool]$Patch) {
         foreach($spec in $Plan.services) {
             $values=Service-Values $spec
             $key=[MT8167OfflineHive.Native]::OpenPath($Root,($control+'\'+$spec.name),$true)
-            if($spec.name -cin @('MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130') -and $Patch -and $key){$key.Dispose();throw 'Dedicated peripheral service must be absent before initial arm'}
+            if($spec.name -cin @('MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132') -and $Patch -and $key){$key.Dispose();throw 'Dedicated peripheral service must be absent before initial arm'}
             if($spec.name -ceq 'MT8167RenderSingleGpu' -and (!$key -or !$Plan.engine_preserve.single_gpu_rearm)){if($key){$key.Dispose()};throw 'Pinned existing single GPU registration required'}
             $beforeFingerprint=$null;$diagnosticFingerprint=$null
             $singleRearm=$Patch -and $spec.name -ceq 'MT8167RenderSingleGpu'
@@ -336,11 +337,12 @@ function Related-Fingerprints($Root,$Plan) {
     if($Plan.peripheral_preserve){
         $old=[ordered]@{}
         $oldNames=@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs')
-        if($Plan.peripheral_preserve.service -cin @('MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130')){$oldNames+='MT8167PeripheralBatch'}
-        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130')){$oldNames+='MT8167PeripheralNext122'}
-        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130')){$oldNames+='MT8167CombinedFollowup124'}
-        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup128','MT8167CombinedFollowup130')){$oldNames+=@('MT8167CombinedFollowup126','Mt6392Keys')}
-        if($Plan.peripheral_preserve.service -ceq 'MT8167CombinedFollowup130'){$oldNames+='MT8167CombinedFollowup128'}
+        if($Plan.peripheral_preserve.service -cin @('MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132')){$oldNames+='MT8167PeripheralBatch'}
+        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132')){$oldNames+='MT8167PeripheralNext122'}
+        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132')){$oldNames+='MT8167CombinedFollowup124'}
+        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132')){$oldNames+=@('MT8167CombinedFollowup126','Mt6392Keys')}
+        if($Plan.peripheral_preserve.service -cin @('MT8167CombinedFollowup130','MT8167CombinedFollowup132')){$oldNames+='MT8167CombinedFollowup128'}
+        if($Plan.peripheral_preserve.service -ceq 'MT8167CombinedFollowup132'){$oldNames+='MT8167CombinedFollowup130'}
         foreach($n in $oldNames){
             $snapshot=Peripheral-ServiceSnapshot $Root ($control+$n)
             $expected=$Plan.peripheral_preserve.service_preservation.$n
@@ -533,11 +535,17 @@ if($InternalMode) {
 }
 if($ServiceName -eq 'MT8167EngineProbe' -and $IncludeHardwareProbe) { throw 'EngineProbe cannot register or rearm the legacy HardwareProbe service' }
 $peripheralPreserve=$null
-if($ServiceName -cin @('MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130')){
+if($ServiceName -cin @('MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','MT8167CombinedFollowup132')){
     if($IncludeHardwareProbe -or $RearmEngineProbe -or $RearmFixedGpuDeviceInstall -or $InspectFixedGpuDeviceInstall -or $EnginePreservationPlanPath -or !$PeripheralPreservationPlanPath -or $ExpectedPeripheralPreservationPlanSha256 -cnotmatch '^[0-9a-f]{64}$'){throw 'Peripheral-only explicit preservation plan required'}
     if((Hash-File $PeripheralPreservationPlanPath) -cne $ExpectedPeripheralPreservationPlanSha256){throw 'Peripheral preservation plan pin mismatch'}
     $peripheralPreserve=Get-Content $PeripheralPreservationPlanPath -Raw|ConvertFrom-Json
-    if($ServiceName -ceq 'MT8167CombinedFollowup130'){
+    if($ServiceName -ceq 'MT8167CombinedFollowup132'){
+        if($peripheralPreserve.profile -cne 'combined-rtc-afe-fresh132-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne '3bb3a33715675aa1382f91f13e328eb6f5690a0da66b77996ae81da153b18159' -or $peripheralPreserve.recovery_boot_id -cne '0623766b-23c8-4c54-b256-e874278087e3' -or $peripheralPreserve.capture_selection.capture_number -ne 132 -or $peripheralPreserve.planned_reboots -ne 0 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.battery_baseline_sys_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $peripheralPreserve.battery_baseline_sys_sha256 -ceq ('0'*64)){throw 'Final sealed exact fresh132 followup contract required; draft cannot arm'}
+        $names=@($peripheralPreserve.service_preservation.PSObject.Properties.Name|Sort-Object)
+        if(($names -join ',') -cne ((@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs','MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','MT8167CombinedFollowup130','Mt6392Keys')|Sort-Object) -join ',')){throw 'All seven old services must be pinned'}
+
+        if(@($peripheralPreserve.install_targets).Count -ne 0 -or !$peripheralPreserve.diagnostic_only -or $peripheralPreserve.gpu_client_execute -ne $false -or @($peripheralPreserve.diagnostic_clients).Count -ne 4 -or @($peripheralPreserve.diagnostic_clients|Where-Object {$_.phase -ne 0}).Count){throw 'Readonly132 no-DIF/no-GPU exact four-client contract required'}
+    }elseif($ServiceName -ceq 'MT8167CombinedFollowup130'){
         if($peripheralPreserve.profile -cne 'combined-peripheral-gpu327-fresh130-v1' -or $peripheralPreserve.service -cne $ServiceName -or $peripheralPreserve.data_directory -cne $ServiceName -or $peripheralPreserve.draft -ne $false -or $peripheralPreserve.normal_install_allowed -ne $true -or $peripheralPreserve.backup_manifest_sha256 -cne '9f4e3602192cd79cd1d389e864b5745ba169e60b1c52643af9f7dfe1bc2f0447' -or $peripheralPreserve.recovery_boot_id -cne '216e0c46-af74-4015-b9f3-3f2271d81ec0' -or $peripheralPreserve.capture_selection.capture_number -ne 130 -or $peripheralPreserve.planned_reboots -ne 0 -or $peripheralPreserve.first_install_mask -ne 0 -or $peripheralPreserve.battery_baseline_sys_sha256 -cnotmatch '^[0-9a-f]{64}$' -or $peripheralPreserve.battery_baseline_sys_sha256 -ceq ('0'*64)){throw 'Final sealed exact fresh130 followup contract required; draft cannot arm'}
         $names=@($peripheralPreserve.service_preservation.PSObject.Properties.Name|Sort-Object)
         if(($names -join ',') -cne ((@('MT8167EngineProbe','MT8167RenderSingleGpu','MT8167RenderStage','MT8167DeviceInstall','RpcSs','MT8167PeripheralBatch','MT8167PeripheralNext122','MT8167CombinedFollowup124','MT8167CombinedFollowup126','MT8167CombinedFollowup128','Mt6392Keys')|Sort-Object) -join ',')){throw 'All seven old services must be pinned'}
