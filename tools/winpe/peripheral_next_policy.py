@@ -116,7 +116,7 @@ def generate(p):
  lines+=['};','static const struct preserved_service preserved_services[]={']
  for name,v in p['service_preservation'].items():lines.append('{'+cstr(name)+','+str(int(v['present']))+','+cbytes(v['root_sha256'] if v['present'] else '0'*64)+'},')
  lines+=['};','static const struct diagnostic_client diagnostic_clients[]={']
- for v in p['diagnostic_clients']:lines.append('{'+cstr(v['exe'])+','+cstr(v['arguments'])+','+cstr(v['name'])+','+cbytes(v['sha256'])+','+str(v['timeout_ms'])+'u},')
+ for v in p['diagnostic_clients']:lines.append('{'+cstr(v['exe'])+','+cstr(v['arguments'])+','+cstr(v['name'])+','+cstr(v['relative_directory'])+','+cbytes(v['sha256'])+','+str(v['timeout_ms'])+'u},')
  return '\n'.join(lines+['};'])+'\n'
 def main():
  a=argparse.ArgumentParser();a.add_argument('--workspace',type=Path,required=True);a.add_argument('--map',type=Path,required=True);a.add_argument('--out',type=Path,required=True);a.add_argument('--enable-final-main-capture',action='store_true');x=a.parse_args();require(x.enable_final_main_capture,'Explicit main-capture opt-in required');p=load_map(x.map,x.workspace);out=x.out.resolve();require(out.is_relative_to(x.workspace.resolve()) and not out.exists(),'New root output required');out.mkdir(parents=True)
