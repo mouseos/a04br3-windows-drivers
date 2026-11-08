@@ -27,6 +27,7 @@ struct a04_native_owner_dispatch {
 /* PASSIVE with exclusive lifecycle ownership, only on zeroed fresh storage.
  * Caller already owns real D0, exact MDL lease, mappings and sole Dxgk IRQ.
  * This retains nothing itself; it must not outlive those references. */
+NTSTATUS a04_native_dispatch_rearm_completed(struct a04_native_owner_dispatch *);
 NTSTATUS a04_native_dispatch_initialize(struct a04_native_owner_dispatch *,
     struct a04_vendor_native_cold *,struct a04_vendor_start *,
     struct a04_native_irq_core *,uint64_t,void *,a04_native_synchronize);

@@ -208,6 +208,42 @@ static NTSTATUS prepare_draw_cold(struct a04_vendor_native_cold *n,
     c->draw_job=TRUE;status=STATUS_SUCCESS;
 done:ExFreePoolWithTag(job,JOB_TAG);return status;
 }
+/* Recompile only into ordinary CPU scratch, then compare the complete
+ * immutable program/state image. No live USC/PDS/data/PTE write is admitted.
+ * This supports new VB/texture contents on the same resident typed backing. */
+NTSTATUS a04_vendor_native_match_draw_live(struct a04_vendor_native_cold *n,
+ const struct geo_draw_request *request,const void *blob,uint32_t bytes,uint64_t vertex,
+ const struct geo_draw_request_v2 *linked,const struct geo_draw_request_v3 *sampled,uint64_t texture,
+ const struct geo_draw_request_v4 *general,const struct geo_draw_request_v5 *combined)
+{
+ struct a04_vendor_native_candidate *c;struct a04_vendor_render_cold *r;
+ struct a04_m111_clear_job_input in={0};struct a04_m111_draw_job *job;void *scratch;NTSTATUS status;
+ if(!n||!(r=n->render)||!r->firmware||!r->firmware->hardware_owned||
+    r->poisoned||r->cleanup_started||n->quarantined||!n->registered_target||!n->registered_vertex||
+    !(c=n->candidate)||!c->draw_job||!c->verified||!c->visibility_delivered||c->owner_pending||
+    c->visibility_armed||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_NOT_SUPPORTED;
+    job=ExAllocatePoolWithTag(NonPagedPoolNx,sizeof(*job)+A04_M111_DRAW_SCRATCH+8192u,JOB_TAG);
+    if(!job)return STATUS_INSUFFICIENT_RESOURCES;
+    scratch=(uint8_t *)job+((sizeof(*job)+7u)&~7u);
+    in.output_gpu=a04_vendor_native_output_gpu(n);in.data_page_gpu=A04_NATIVE_DATA_VA+n->suffix_offset;
+    in.usc_page_gpu=A04_NATIVE_USC_VA;in.pds_page_gpu=A04_NATIVE_PDS_VA;
+    in.dummy_region_gpu=n->auxiliary.dummy_region_gpu;in.dummy_stencil_gpu=n->auxiliary.dummy_stencil_gpu;
+    in.hwrt_fw=n->addresses.hwrt[0];in.pr_fence_fw=0xc0084c00u;
+    status=combined?a04_m111_build_draw_job_v5(job,&in,vertex,texture,combined,blob,bytes,scratch,A04_M111_DRAW_SCRATCH):general?a04_m111_build_draw_job_v4(job,&in,vertex,general,blob,bytes,scratch,A04_M111_DRAW_SCRATCH):sampled?a04_m111_build_draw_job_v3(job,&in,vertex,texture,sampled,blob,bytes,scratch,A04_M111_DRAW_SCRATCH):linked?a04_m111_build_draw_job_v2(job,&in,vertex,linked,blob,bytes,scratch,A04_M111_DRAW_SCRATCH):
+        a04_m111_build_draw_job(job,&in,vertex,request,blob,bytes,scratch,A04_M111_DRAW_SCRATCH);
+    if(!NT_SUCCESS(status))goto match_done;
+    /* Only this prior-frame dependency word changes between identical jobs.
+     * All other TA/3D bytes must describe the exact same immutable state. */
+    RtlCopyMemory(job->ta+0x6c,c->job.ta+0x6c,4);
+    if(RtlCompareMemory(job->ta,c->job.ta,sizeof(c->job.ta))!=sizeof(c->job.ta)||
+       RtlCompareMemory(job->three,c->job.three,sizeof(c->job.three))!=sizeof(c->job.three)||
+       matches(n->code[0].cpu,job->usc,sizeof(job->usc))||
+       matches(n->code[1].cpu,job->pds,sizeof(job->pds))||
+       matches(a04_vendor_native_storage_pointer(n,0,n->suffix_offset,sizeof(job->data)),job->data,sizeof(job->data)))
+        status=STATUS_NOT_SUPPORTED;
+    else status=STATUS_SUCCESS;
+match_done:ExFreePoolWithTag(job,JOB_TAG);return status;
+}
 NTSTATUS a04_vendor_native_prepare_draw_cold(struct a04_vendor_native_cold *n,
  const struct geo_draw_request *r,const void *blob,uint32_t bytes,uint64_t vertex)
 { return prepare_draw_cold(n,r,blob,bytes,vertex,NULL,NULL,0,NULL,NULL); }

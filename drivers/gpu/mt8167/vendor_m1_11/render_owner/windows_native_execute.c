@@ -380,14 +380,19 @@ NTSTATUS a04_vendor_native_run_once(struct a04_vendor_native_cold *n,
  * values. capture05 observed A/B/A/B HWRT reuse after completed frames. This
  * serial candidate reuses its owned A only after full TA/3D+flush/GP proof.
  * It never resets FW-owned HWRT, PM freelists, or cleanup counters. */
-static NTSTATUS rearm_clear(struct a04_vendor_native_cold *n,struct a04_vendor_start *s)
+static NTSTATUS rearm_clear(struct a04_vendor_native_cold *n,struct a04_vendor_start *s,BOOLEAN owner_draw)
 {
     struct a04_vendor_native_candidate *c=n->candidate;struct a04_vendor_render_cold *r=n->render;
     struct a04_rgx_fw_runtime *f=s->memory->runtime;RGXFWIF_CCB_CTL k;RGXFWIF_CCCB_CTL ctl[2];
     RGXFWIF_CLEANUP_CTL clean;uint32_t sync[2];struct a04_m111_pair_input p={0};
     struct a04_m111_shadow_ring rings[2];_Alignas(8) uint32_t words[64],seen[64];
     unsigned i,j;NTSTATUS status=STATUS_INVALID_DEVICE_STATE;
-    if(!c->verified || !c->attempted || !c->completed_frames || c->completed_frames>=16u ||
+    if(!c->verified || !c->attempted || !c->completed_frames || (owner_draw?c->completed_frames>=UINT32_MAX-1u:c->completed_frames>=16u) ||
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+       (owner_draw&&(!c->draw_job||!c->visibility_delivered||c->visibility_armed||c->owner_pending)) ||
+#else
+       owner_draw ||
+#endif
        n->quarantined || r->poisoned || r->cleanup_started || s->command_poisoned ||
        s->shutdown_started || !s->online || !s->memory->hardware_owned)return status;
     if(InterlockedCompareExchange(&s->command_busy,1,0))return STATUS_DEVICE_BUSY;
@@ -422,6 +427,7 @@ static NTSTATUS rearm_clear(struct a04_vendor_native_cold *n,struct a04_vendor_s
        (uint8_t *)c+sizeof(*c),8192u,&c->pair))goto done;
     /* Prove each frame changed the full owned target, even for equal colours.
      * No previous frame may satisfy the next frame's pixel check. */
+    if(!owner_draw){
     for(i=0;i<64;i++)words[i]=0xa5a5a5a5u;
     for(i=0;i<a04_vendor_native_output_bytes(n);i+=sizeof(words)){
         if(a04_vendor_native_storage_write(n,1,i,words,sizeof(words)))goto done;
@@ -429,6 +435,7 @@ static NTSTATUS rearm_clear(struct a04_vendor_native_cold *n,struct a04_vendor_s
         if(a04_vendor_native_storage_read(n,1,i,seen,sizeof(seen)))goto done;
         for(j=0;j<64;j++)if(seen[j]!=words[j])goto done;
     }
+    } /* Production Draw preserves all active RT pixels and blending history. */
 #if A04_GE8300_NATIVE_OWNER_MDL_TARGET
     status=a04_vendor_native_mdl_gpu_prepare(n);if(!NT_SUCCESS(status))goto done;
 #endif
@@ -441,10 +448,27 @@ static NTSTATUS rearm_clear(struct a04_vendor_native_cold *n,struct a04_vendor_s
         }
         c->start[i]=ctl[i].ui32WriteOffset;
     }
-    c->attempted=FALSE;c->verified=FALSE;c->published=FALSE;status=STATUS_SUCCESS;
+    c->attempted=FALSE;c->verified=FALSE;c->published=FALSE;
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+    if(owner_draw){c->visibility_delivered=FALSE;c->owner_irq=NULL;c->owner_epoch=0;c->owner_job=0;c->owner_generation=0;}
+#endif
+    status=STATUS_SUCCESS;
 done:
     InterlockedExchange(&s->command_busy,0);return status;
 }
+/* Factory established exact immutable state match and prior fresh IRQ.
+ * No FW restart, HWRT zeroing, live PTE/program edit or RT sentinel occurs. */
+#if A04_GE8300_NATIVE_OWNER_MDL_TARGET
+NTSTATUS a04_vendor_native_owner_rearm_draw(struct a04_vendor_native_cold *n,struct a04_vendor_start *s)
+{
+ NTSTATUS status;
+ if(!n||!s||!n->candidate||!n->render||!s->memory||s->memory!=n->render->firmware||
+    KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ status=rearm_clear(n,s,TRUE);
+ if(!NT_SUCCESS(status)){n->quarantined=TRUE;n->render->poisoned=TRUE;s->command_poisoned=TRUE;}
+ return status;
+}
+#endif
 NTSTATUS a04_vendor_native_run_clear_frames(struct a04_vendor_native_cold *n,
     struct a04_vendor_start *s,ULONG count,struct a04_vendor_native_result *out)
 {
@@ -457,7 +481,7 @@ NTSTATUS a04_vendor_native_run_clear_frames(struct a04_vendor_native_cold *n,
     for(i=0;i<count;i++){
         if(i){
             out->phase=0;out->matching_pixels=out->mismatched_pixels=out->guard_errors=0;
-            status=rearm_clear(n,s);
+            status=rearm_clear(n,s,FALSE);
             if(!NT_SUCCESS(status)){
                 n->quarantined=TRUE;n->candidate->attempted=TRUE;s->command_poisoned=TRUE;
                 n->render->poisoned=TRUE;return status;

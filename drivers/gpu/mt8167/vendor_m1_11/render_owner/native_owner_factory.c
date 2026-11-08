@@ -453,6 +453,26 @@ static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
     if(!vertex_cpu)return leave(c,STATUS_INVALID_DEVICE_STATE);
     const uint32_t *vertices=(const uint32_t *)((const UCHAR *)vertex_cpu+(size_t)offset);
     for(unsigned i=0;i<(end-offset)/4;i++)if((vertices[i]&0x7f800000u)==0x7f800000u)return leave(c,STATUS_INVALID_PARAMETER);
+    /* Preserve the live context only for an exact existing immutable image.
+     * A changed image takes the established cold path; no shader/data/PTE
+     * is edited live and no previous frame's sentinel proof is reused. */
+    if(c->job_state==E_JOB_COMPLETE && c->allocation->start.online){
+        s=a04_vendor_native_match_draw_live(c->allocation->native,request,blob,bytes,
+            A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset,linked,sampled,
+            texture?A04_NATIVE_OUTPUT_VA+texture->linear_offset:0,general,combined);
+        if(s==STATUS_SUCCESS){
+            s=a04_vendor_native_owner_rearm_draw(c->allocation->native,&c->allocation->start);
+            if(NT_SUCCESS(s))s=a04_native_dispatch_rearm_completed(&c->allocation->dispatch);
+            if(NT_SUCCESS(s)){
+                if(a04_rgx_device_read_words(&k,c->allocation->firmware.runtime->kctl,sizeof(k))||
+                   k.ui32WrapMask!=127||k.ui32ReadOffset>127||k.ui32ReadOffset!=k.ui32WriteOffset)s=STATUS_DEVICE_BUSY;
+                else{c->kick_write=k.ui32WriteOffset;c->job=++c->next_id;c->job_is_copy=FALSE;c->job_state=E_JOB_PREPARED;*job=c->job;}
+            }
+            if(!NT_SUCCESS(s))c->state=E_OWNER_FAILED;
+            return leave(c,s);
+        }
+        if(s!=STATUS_NOT_SUPPORTED){c->state=E_OWNER_FAILED;return leave(c,s);}
+    }
     s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
     if(NT_SUCCESS(s))s=e_native_build_graph_locked(c);
     if(NT_SUCCESS(s))s=combined?a04_vendor_native_prepare_draw_v5_cold(c->allocation->native,combined,blob,bytes,A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset,A04_NATIVE_OUTPUT_VA+texture->linear_offset):general?a04_vendor_native_prepare_draw_v4_cold(c->allocation->native,general,blob,bytes,A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset):sampled?a04_vendor_native_prepare_draw_v3_cold(c->allocation->native,sampled,blob,bytes,A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset,A04_NATIVE_OUTPUT_VA+texture->linear_offset):linked?a04_vendor_native_prepare_draw_v2_cold(c->allocation->native,linked,blob,bytes,

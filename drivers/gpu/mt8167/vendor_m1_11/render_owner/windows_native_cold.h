@@ -79,6 +79,14 @@ struct geo_draw_request_v2;
 struct geo_draw_request_v3;
 struct geo_draw_request_v4;
 struct geo_draw_request_v5;
+struct geo_draw_request;struct a04_vendor_start;
+/* Only exact existing USC/PDS/state images may use the completed live root.
+ * NOT_SUPPORTED means no mutation and the normal cold producer is required. */
+NTSTATUS a04_vendor_native_match_draw_live(struct a04_vendor_native_cold *,
+ const struct geo_draw_request *,const void *,uint32_t,uint64_t,
+ const struct geo_draw_request_v2 *,const struct geo_draw_request_v3 *,uint64_t,
+ const struct geo_draw_request_v4 *,const struct geo_draw_request_v5 *);
+NTSTATUS a04_vendor_native_owner_rearm_draw(struct a04_vendor_native_cold *,struct a04_vendor_start *);
 NTSTATUS a04_vendor_native_prepare_draw_v5_cold(struct a04_vendor_native_cold *,const struct geo_draw_request_v5 *,const void *,uint32_t,uint64_t,uint64_t);
 NTSTATUS a04_vendor_native_prepare_draw_v4_cold(struct a04_vendor_native_cold *,const struct geo_draw_request_v4 *,const void *,uint32_t,uint64_t);
 NTSTATUS a04_vendor_native_prepare_draw_v3_cold(struct a04_vendor_native_cold *,const struct geo_draw_request_v3 *,const void *,uint32_t,uint64_t,uint64_t);

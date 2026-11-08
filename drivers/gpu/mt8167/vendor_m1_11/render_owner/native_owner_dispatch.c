@@ -99,3 +99,21 @@ NTSTATUS a04_native_dispatch_service(struct a04_native_owner_dispatch *d)
     if(!d->synchronize(d->sync_context,arm_service,&c) || !c.invoked)return STATUS_IO_DEVICE_ERROR;
     return c.status;
 }
+
+struct rearm_call {struct a04_native_owner_dispatch *d;NTSTATUS status;};
+static BOOLEAN rearm_completed_locked(void *argument)
+{
+ struct rearm_call *c=argument;struct a04_native_owner_dispatch *d=c->d;
+ c->status=STATUS_INVALID_DEVICE_STATE;
+ if(!valid(d)||d->state!=A04_NATIVE_DISPATCH_COMPLETE||d->irq->masked||d->irq->draining||
+    !d->start->online||d->start->command_busy||d->start->command_poisoned)return TRUE;
+ d->job=0;d->generation=0;d->failure=STATUS_SUCCESS;
+ RtlZeroMemory(&d->result,sizeof(d->result));d->state=A04_NATIVE_DISPATCH_READY;c->status=STATUS_SUCCESS;return TRUE;
+}
+NTSTATUS a04_native_dispatch_rearm_completed(struct a04_native_owner_dispatch *d)
+{
+ struct rearm_call c={d,STATUS_INVALID_DEVICE_STATE};
+ if(!d||!d->synchronize||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ if(!d->synchronize(d->sync_context,rearm_completed_locked,&c))return STATUS_IO_DEVICE_ERROR;
+ return c.status;
+}
