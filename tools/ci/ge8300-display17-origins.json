@@ -1,0 +1,75 @@
+{
+  "schema": "unified-display17-source-origin-v1",
+  "source_commit": "2d94bcc89b08773624d105b6e5b24e2eea21de64",
+  "display_driverver": "11/08/2026,0.0.1.7",
+  "files": [
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/BRIGHTNESS.md",
+      "sha256": "97798b69781bdf9e7699ec4952b1206f45705614d0135ee3e34a97473381e057",
+      "baseline_sha256": "2225a5ce27f67eaaf8cdd1bb17758bc87f275c06f7bd5d828e1739805751a28d",
+      "source_commit": "2d94bcc89b08773624d105b6e5b24e2eea21de64"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/ROTATION.md",
+      "sha256": "3466894e7ef574453b2193377c45bad92f8ca21eca36ed4372ddfa4d3684b1e6",
+      "baseline_sha256": null,
+      "source_commit": "2d94bcc89b08773624d105b6e5b24e2eea21de64"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/bdd.cxx",
+      "sha256": "d433d3e6233a6c57880850d58336845c35deb84f8b22c55c7cdfb121ddf19094",
+      "baseline_sha256": "68f919b9af09c708e8bb3ae7e3e41d16141dcf50b3233bec75a14942a2723684",
+      "source_commit": "2d94bcc89b08773624d105b6e5b24e2eea21de64"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/bdd_dmm.cxx",
+      "sha256": "a12e67ca0c733f76a6b68a501f576a771f7f1981dbfc86b8e85d7bbc6799ebfb",
+      "baseline_sha256": "e515c1849314b5eeff2a525c945d8cecc56963a30ce21294e2f01f480cf28517",
+      "source_commit": "2d94bcc89b08773624d105b6e5b24e2eea21de64"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/bltfuncs.cxx",
+      "sha256": "d76a769b7b709faf7ea8b2b1f8964ab80ae479ba28cee2d4e923c81dcfc8454f",
+      "baseline_sha256": "60639c64a73bef5c94ef2e66cf3fb561ced296cf93b6722c989a2ae4b19f8feb",
+      "source_commit": "2d94bcc89b08773624d105b6e5b24e2eea21de64"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/blthw.cxx",
+      "sha256": "0584f5864ba8940a921dccec73a362751a0ba8ebcc9099fd6c90af9accd826b1",
+      "baseline_sha256": "c485a17aaec426fabbd8ed3e9692ec8a3dfd2198d5a46cbc342387e58999f84d",
+      "source_commit": "2d94bcc89b08773624d105b6e5b24e2eea21de64"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/mt8167-display.inf",
+      "sha256": "eed1d29be5eaa09df0a6292d3c4b85fc95595dafd10a8da9682a48d4a29f76ea",
+      "baseline_sha256": "3c7e7582fd862b2f2f8615b830f7286cba19551ab3903ad206dc62c657602c72",
+      "source_commit": "2d94bcc89b08773624d105b6e5b24e2eea21de64"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/mt8167_brightness.cxx",
+      "sha256": "a8828886da07207f5021e04123b957e7972850e585c94532c67f1b0f51bdf2cf",
+      "baseline_sha256": "be54d7ec012a45de782634f0070f68b575df92bf71f1a1fc06604069c2352ea6",
+      "source_commit": "2d94bcc89b08773624d105b6e5b24e2eea21de64"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-display/present_bounds.h",
+      "sha256": "2f04cd04c7699e0299affae27786f840fc469b045c66c3123cd2fdbbab568f61",
+      "baseline_sha256": "20b14a6d83f89ef783615740d3ce003cd2f90f4292c0db0af8a60707883f2ce0",
+      "source_commit": "2d94bcc89b08773624d105b6e5b24e2eea21de64"
+    },
+    {
+      "path": "tests/dod_rotation4_test.py",
+      "sha256": "42a78ef4e5b6a6d9f4f0525d94e63a192e23df6be5f96afab75b1557272ae002",
+      "baseline_sha256": null,
+      "source_commit": "2d94bcc89b08773624d105b6e5b24e2eea21de64"
+    },
+    {
+      "path": "tools/ci/build-mt8167-display-rotation4.ps1",
+      "sha256": "7346d225fb2a949afea8cc68bea002a60fee226da700b3bbf58493fb739bedf0",
+      "baseline_sha256": null,
+      "source_commit": "2d94bcc89b08773624d105b6e5b24e2eea21de64"
+    }
+  ],
+  "native_changed": false,
+  "GPU_shader_changed": false
+}

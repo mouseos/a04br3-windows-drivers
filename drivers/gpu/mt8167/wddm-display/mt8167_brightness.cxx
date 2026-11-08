@@ -8,7 +8,8 @@ struct PwmContext {
     volatile LONG refs;
     KMUTEX lock;
     volatile ULONG *regs;
-    ULONG con0;
+    ULONG con0,set_calls;
+    UCHAR firmware_level;
     BOOLEAN active,poisoned;
 };
 static const GUID brightnessGuid={0xfde5bba4,0xb3f9,0x46fb,{0xbd,0xaa,0x07,0x28,0xce,0x31,0x00,0xb4}};
@@ -40,10 +41,13 @@ static NTSTATUS GetPossible(PVOID context,ULONG bytes,PUCHAR count,PUCHAR levels
     if(!context || !count || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
     PwmContext *c=(PwmContext *)context;PwmLock lock(c);ULONG con1;
     NTSTATUS status=ready(c,&con1);*count=0;if(!NT_SUCCESS(status))return status;
-    *count=100; /* Nonzero levels leave the shared GPIO enable owner alone. */
-    if(bytes<100)return STATUS_BUFFER_TOO_SMALL;
+    *count=102; /* Nonzero levels leave the shared GPIO enable owner alone. */
+    if(bytes<102)return STATUS_BUFFER_TOO_SMALL;
     if(!levels)return STATUS_INVALID_PARAMETER;
-    for(ULONG i=0;i<100;i++)levels[i]=(UCHAR)(i+1u);
+    /* WDDM v1: AC default, DC default, then supported hardware levels.
+     * This firmware provides one inherited PWM level, not separate AC/DC policy. */
+    levels[0]=c->firmware_level;levels[1]=c->firmware_level;
+    for(ULONG i=0;i<100;i++)levels[i+2]=(UCHAR)(i+1u);
     return STATUS_SUCCESS;
 }
 static NTSTATUS Get(PVOID context,PUCHAR level)
@@ -58,14 +62,17 @@ static NTSTATUS Set(PVOID context,UCHAR level)
 {
     if(!context || !level || level>100 || KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
     PwmContext *c=(PwmContext *)context;PwmLock lock(c);ULONG con1;
-    NTSTATUS status=ready(c,&con1);if(!NT_SUCCESS(status))return status;
+    NTSTATUS status=ready(c,&con1);if(!NT_SUCCESS(status)){
+        DbgPrint("A04 brightness set level=%u status=%08lx active=%u poison=%u\n",(ULONG)level,(ULONG)status,(ULONG)c->active,(ULONG)c->poisoned);return status;
+    }
     ULONG duty=((ULONG)level*1023u+50u)/100u;
     ULONG next=(con1&~(0x1fffu<<16))|(duty<<16);
     wr(c,0x14,next);KeMemoryBarrier();wr(c,8,1u);wr(c,8,0u);KeMemoryBarrier();
     if(rd(c,0x14)!=next || rd(c,0x10)!=c->con0 || !(rd(c,0)&1u) || rd(c,8)) {
-        c->poisoned=TRUE;return STATUS_IO_DEVICE_ERROR;
+        c->poisoned=TRUE;status=STATUS_IO_DEVICE_ERROR;
     }
-    return STATUS_SUCCESS;
+    if(++c->set_calls<=3 || !NT_SUCCESS(status))DbgPrint("A04 brightness set level=%u status=%08lx before=%08lx after=%08lx\n",(ULONG)level,(ULONG)status,con1,rd(c,0x14));
+    return status;
 }
 NTSTATUS A04Mt8167Brightness::Start(PCM_RESOURCE_LIST resources)
 {
@@ -94,6 +101,8 @@ NTSTATUS A04Mt8167Brightness::Start(PCM_RESOURCE_LIST resources)
     c->active=TRUE;c->con0=rd(c,0x10);ULONG con1;
     NTSTATUS status=ready(c,&con1);
     if(!NT_SUCCESS(status)) {MmUnmapIoSpace((PVOID)c->regs,4096u);c->regs=NULL;Dereference(c);return status;}
+    ULONG inherited=((((con1>>16)&0x1fffu)*100u)+511u)/1023u;
+    c->firmware_level=(UCHAR)(inherited?inherited:1u);
     m_Context=c;return STATUS_SUCCESS;
 }
 void A04Mt8167Brightness::Stop()

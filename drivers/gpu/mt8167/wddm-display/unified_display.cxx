@@ -1,4 +1,7 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
+#if !defined(A04_MT8167_DISPLAY_BRIGHTNESS) || A04_MT8167_DISPLAY_BRIGHTNESS != 1
+#error Compile the unified bridge and all DOD1.7 units with brightness=1
+#endif
 #include "bdd.hxx"
 #include "unified_display.h"
 /* These legacy paths create a second provider/native owner. A unified
@@ -44,6 +47,27 @@ extern "C" NTSTATUS GeoDisplayPostInfo(void *handle,DXGK_DISPLAY_INFORMATION *in
  mode=d->GetCurrentMode(0);if(!mode||!mode->DispInfo.Width||!mode->DispInfo.Height)return STATUS_DEVICE_NOT_READY;
  *info=mode->DispInfo;return STATUS_SUCCESS;
 }
+extern "C" NTSTATUS GeoDisplaySharedPrimaryLayout(void *h,const D3DKMDT_SHAREDPRIMARYSURFACEDATA *request,struct geo_post_primary_layout_v1 *out) {
+ DXGK_DISPLAY_INFORMATION info;NTSTATUS status;
+ if(!request||!out||request->VidPnSourceId!=0||request->Format!=D3DDDIFMT_A8R8G8B8)return STATUS_NOT_SUPPORTED;
+ RtlZeroMemory(out,sizeof(*out));status=GeoDisplayPostInfo(h,&info);if(!NT_SUCCESS(status))return status;
+ /* Native primary rendering at rotated dimensions is a separate contract.
+  * Preserve DOD1.7 rotation, but never widen native caps from a mode list. */
+ if(info.ColorFormat!=request->Format||request->Width!=info.Width||request->Height!=info.Height||
+    info.Width>MAXULONG/4u||info.Pitch<info.Width*4u||(info.Pitch&3u)||
+    (ULONGLONG)info.Height*info.Pitch>MAXULONG||
+    (ULONGLONG)info.PhysicAddress.QuadPart>MAXULONGLONG-(ULONGLONG)info.Height*info.Pitch)return STATUS_NOT_SUPPORTED;
+ out->size=sizeof(*out);out->version=1;out->source_id=0;out->width=info.Width;out->height=info.Height;
+ out->pitch=info.Pitch;out->format=(UINT)info.ColorFormat;return STATUS_SUCCESS;
+}
+extern "C" NTSTATUS GeoDisplayValidatePostAddress(void *h,const DXGKARG_SETVIDPNSOURCEADDRESS *p) {
+ DXGK_DISPLAY_INFORMATION info;NTSTATUS status;
+ if(!p||p->VidPnSourceId||p->PrimarySegment||p->hAllocation||p->ContextCount||p->Flags.Value!=1u)return STATUS_NOT_SUPPORTED;
+ status=GeoDisplayPostInfo(h,&info);if(!NT_SUCCESS(status))return status;
+ /* Only a physical, no-flip mode reassertion of the real POST address.
+  * Returning success here does not claim a new scanout allocation or vblank. */
+ return p->PrimaryAddress.QuadPart==info.PhysicAddress.QuadPart?STATUS_SUCCESS:STATUS_NOT_SUPPORTED;
+}
 extern "C" NTSTATUS GeoDisplayPower(void *h,ULONG id,DEVICE_POWER_STATE p,POWER_ACTION a) {
  BASIC_DISPLAY_DRIVER *d=bdd(h);return d?d->SetPowerState(id,p,a):STATUS_DEVICE_NOT_READY;
 }
@@ -63,7 +87,13 @@ static NTSTATUS child_relations(HANDLE h,DXGK_CHILD_DESCRIPTOR *p,ULONG bytes){B
 static NTSTATUS child_status(HANDLE h,DXGK_CHILD_STATUS *p,BOOLEAN nondestructive){BASIC_DISPLAY_DRIVER *d=from_adapter(h);return d?d->QueryChildStatus(p,nondestructive):STATUS_DEVICE_NOT_READY;}
 static NTSTATUS descriptor(HANDLE h,ULONG id,DXGK_DEVICE_DESCRIPTOR *p){BASIC_DISPLAY_DRIVER *d=from_adapter(h);return d?d->QueryDeviceDescriptor(id,p):STATUS_DEVICE_NOT_READY;}
 static NTSTATUS dispatch(HANDLE h,ULONG source,PVIDEO_REQUEST_PACKET p){BASIC_DISPLAY_DRIVER *d=from_adapter(h);return d?d->DispatchIoRequest(source,p):STATUS_DEVICE_NOT_READY;}
-static NTSTATUS release_post(HANDLE h,D3DDDI_VIDEO_PRESENT_TARGET_ID target,DXGK_DISPLAY_INFORMATION *p){BASIC_DISPLAY_DRIVER *d=from_adapter(h);return d?d->StopDeviceAndReleasePostDisplayOwnership(target,p):STATUS_DEVICE_NOT_READY;}
+static NTSTATUS release_post(HANDLE h,D3DDDI_VIDEO_PRESENT_TARGET_ID target,DXGK_DISPLAY_INFORMATION *p){
+ geo_display *s=state(GeoUnifiedDisplayContext(h));BASIC_DISPLAY_DRIVER *d=bdd(s);
+ if(!d)return STATUS_DEVICE_NOT_READY;
+ NTSTATUS status=d->StopDeviceAndReleasePostDisplayOwnership(target,p);
+ if(NT_SUCCESS(status))s->started=FALSE; /* POST already stopped; no double Stop. */
+ return status;
+}
 static void reset_display(HANDLE h){BASIC_DISPLAY_DRIVER *d=from_adapter(h);if(d)d->ResetDevice();}
 static NTSTATUS system_enable(HANDLE h,D3DDDI_VIDEO_PRESENT_TARGET_ID target,PDXGKARG_SYSTEM_DISPLAY_ENABLE_FLAGS flags,UINT *w,UINT *height,D3DDDIFORMAT *format){BASIC_DISPLAY_DRIVER *d=from_adapter(h);return d?d->SystemDisplayEnable(target,flags,w,height,format):STATUS_DEVICE_NOT_READY;}
 static void system_write(HANDLE h,void *source,UINT w,UINT height,UINT stride,UINT x,UINT y){BASIC_DISPLAY_DRIVER *d=from_adapter(h);if(d)d->SystemDisplayWrite(source,w,height,stride,x,y);}

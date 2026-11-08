@@ -27,3 +27,13 @@
 ## 検証範囲
 
 既Windows toolchainでunified_display.cxxをMSVC ARM1TU compile成功（object CD7A8B712C2363A2887D841D32D2E840208D5DDDBCE1F062F4E8540E58719FC5）。SYS link/署名/実機は未実施。shader/PCO/SDK再build無し。新Present transportは別ARM1TU compile結果をHANDOFFへ記録。compileをdesktop動作成功に読み替えない。
+
+## DOD1.7保持の追加
+
+別正本2d94bcc89b08773624d105b6e5b24e2eea21de64のDOD1.7を取り込んだ。旧337にある1.4を現在DODと誤認しない。実4回転blitter、pivot、padded/centered/full/dirty/move/touch inverse既存試験を一回PASS。brightness1をbridgeと全BDD consumerに必須としてclass layout不一致を防ぐ。旧legacy baseline hashはsource-originのpreserved_before_display17_sha256に保持し、1.7の新hash/出自を別manifestで検証する。native/shader/compiler closureを変更しない。
+
+GeoDisplaySharedPrimaryLayoutは実Acquire済みPOSTのformat/寸法/pitch/overflowを照合して、物理アドレスを含まないprivate layout32Bを記述する。実VidMm primary storageの割当を代行したとは扱わない。GeoDisplayValidatePostAddressはsegment0/ModeChange/NULLallocation/ContextCount0/実POST同一アドレスだけに限定した既存scanoutのno-op再確認。aperture VA、別backingやflip/vsyncを成功扱いしない。DDI tableにはまだ登録しない。POST release成功時にはbridgeのstartedを落としてdouble Stopを防ぐ。
+
+標準primaryの実backingが最大の残件。現POST800x1280は1面4,096,000B/1000pagesで、既native800x600/469pagesと同じものではない。targetとcopy用linear2面を同時residentにすると、既4MB commit/1024PTEを超えるため単なるWidth/Height上限緩和では不正。native340固定物はそのままとし、別native versionでPT/storage/format/viewport/所有/fenceを一組に拡張するか、正規な固定scanout segment＋Present転送backingの契約が必要。GOP保持やsource数1だけをdesktop GPU化と呼ばない。
+
+正規bridge compile再現: tools/ci/build-ge8300-unified-display-check.ps1。既WDK81/MSVC/UM/UCRT pathsを明示し1TUだけcompile。shader/USCを生成し直さず、installable packageを作らない。145/340/pixel9934署名物と媒体は不変。将来統合時も同一ownerのStop/Reset proofを取得してからPOST releaseを呼ぶwrapper orderingが必要。

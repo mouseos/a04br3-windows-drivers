@@ -154,7 +154,7 @@
       "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.c",
       "source_commit": "2c0cbca4373f93644423b97428cb8d86dbbf3ebe",
       "role": "Copy338 post-reservation failure session/engine gate; refs/token retained",
-      "sha256": "0c8a477eb4ee9b20fd1dd76d13a3764d76894d00cdd2524459010436bfb84b46",
+      "sha256": "1c87e8d494eb9be4715d108cb1d1e8815e57e1fc99363d5a2b3ee5e9232e4fe3",
       "previous_origins": [
         {
           "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
@@ -178,13 +178,15 @@
           "role": "Integrated real Copy336 all-consumer/ownership contract",
           "sha256": "a079fd0595afbc1c4f7a6f9cf6287348a6582e09feddc8890c930ba84ff6ecd5"
         }
-      ]
+      ],
+      "preserved_before_present_sha256": "0c8a477eb4ee9b20fd1dd76d13a3764d76894d00cdd2524459010436bfb84b46",
+      "reviewed_present_source_commit": "5fb15bcebc54b8e54434a49676998d7600319d50"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.h",
       "source_commit": "9ca92a6238ed5ceeb0aea6d5923f972a1b0c0f2b",
       "role": "Matrix VS + sampled PS331 / explicit owned ABI5 composition",
-      "sha256": "b48f996567865925b9b3c22dfd5f748b182c57e4b25b70c42a39f2c948725381",
+      "sha256": "bbc406a0bb31aa9e6dcdb9b456f30e823d6575104f26582cf6b0c39ff8686170",
       "previous_origins": [
         {
           "source_commit": "f118dfdce3a58f85b22230526e0154c044270813",
@@ -196,7 +198,9 @@
           "sha256": "96897a7e62d75e129c3f88c8507412e3d58dc3d430f5381aefd43d55404c55cd",
           "role": "Reviewed ABI4 shader/native runtime source329"
         }
-      ]
+      ],
+      "preserved_before_present_sha256": "b48f996567865925b9b3c22dfd5f748b182c57e4b25b70c42a39f2c948725381",
+      "reviewed_present_source_commit": "5fb15bcebc54b8e54434a49676998d7600319d50"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-render/kmd_objects.c",
@@ -1335,7 +1339,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/bdd.cxx",
-      "sha256": "68f919b9af09c708e8bb3ae7e3e41d16141dcf50b3233bec75a14942a2723684"
+      "sha256": "d433d3e6233a6c57880850d58336845c35deb84f8b22c55c7cdfb121ddf19094",
+      "preserved_before_display17_sha256": "68f919b9af09c708e8bb3ae7e3e41d16141dcf50b3233bec75a14942a2723684",
+      "reviewed_display_source_commit": "2d94bcc89b08773624d105b6e5b24e2eea21de64"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/bdd.hxx",
@@ -1347,7 +1353,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/bdd_dmm.cxx",
-      "sha256": "e515c1849314b5eeff2a525c945d8cecc56963a30ce21294e2f01f480cf28517"
+      "sha256": "a12e67ca0c733f76a6b68a501f576a771f7f1981dbfc86b8e85d7bbc6799ebfb",
+      "preserved_before_display17_sha256": "e515c1849314b5eeff2a525c945d8cecc56963a30ce21294e2f01f480cf28517",
+      "reviewed_display_source_commit": "2d94bcc89b08773624d105b6e5b24e2eea21de64"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/bdd_errorlog.hxx",
@@ -1359,11 +1367,15 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/bltfuncs.cxx",
-      "sha256": "60639c64a73bef5c94ef2e66cf3fb561ced296cf93b6722c989a2ae4b19f8feb"
+      "sha256": "d76a769b7b709faf7ea8b2b1f8964ab80ae479ba28cee2d4e923c81dcfc8454f",
+      "preserved_before_display17_sha256": "60639c64a73bef5c94ef2e66cf3fb561ced296cf93b6722c989a2ae4b19f8feb",
+      "reviewed_display_source_commit": "2d94bcc89b08773624d105b6e5b24e2eea21de64"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/blthw.cxx",
-      "sha256": "c485a17aaec426fabbd8ed3e9692ec8a3dfd2198d5a46cbc342387e58999f84d"
+      "sha256": "0584f5864ba8940a921dccec73a362751a0ba8ebcc9099fd6c90af9accd826b1",
+      "preserved_before_display17_sha256": "c485a17aaec426fabbd8ed3e9692ec8a3dfd2198d5a46cbc342387e58999f84d",
+      "reviewed_display_source_commit": "2d94bcc89b08773624d105b6e5b24e2eea21de64"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/ge8300_display_resource_check.h",
@@ -1403,7 +1415,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/mt8167_brightness.cxx",
-      "sha256": "be54d7ec012a45de782634f0070f68b575df92bf71f1a1fc06604069c2352ea6"
+      "sha256": "a8828886da07207f5021e04123b957e7972850e585c94532c67f1b0f51bdf2cf",
+      "preserved_before_display17_sha256": "be54d7ec012a45de782634f0070f68b575df92bf71f1a1fc06604069c2352ea6",
+      "reviewed_display_source_commit": "2d94bcc89b08773624d105b6e5b24e2eea21de64"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/mt8167_brightness.hxx",
@@ -1419,7 +1433,9 @@
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/present_bounds.h",
-      "sha256": "20b14a6d83f89ef783615740d3ce003cd2f90f4292c0db0af8a60707883f2ce0"
+      "sha256": "2f04cd04c7699e0299affae27786f840fc469b045c66c3123cd2fdbbab568f61",
+      "preserved_before_display17_sha256": "20b14a6d83f89ef783615740d3ce003cd2f90f4292c0db0af8a60707883f2ce0",
+      "reviewed_display_source_commit": "2d94bcc89b08773624d105b6e5b24e2eea21de64"
     },
     {
       "path": "drivers/gpu/mt8167/wddm-display/present_copy_fence.h",
@@ -1939,5 +1955,19 @@
   "copy_integration_source_commit": "363c302433da839c1102a3bc356b06cb74126314",
   "SG_source_commit": "51cbe2d47df4bef5e915cf7f5bff1d51fd94bec8",
   "copy_usc_input_sha256": "5c68917faa051238b23674b64c6b137ef7ff75425dbde9dbc5e1e5a36e02c4a3",
-  "HAL_packet_DMA_operations": 0
+  "HAL_packet_DMA_operations": 0,
+  "reviewed_present_transport": [
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.c",
+      "sha256": "1c87e8d494eb9be4715d108cb1d1e8815e57e1fc99363d5a2b3ee5e9232e4fe3",
+      "baseline_sha256": "0c8a477eb4ee9b20fd1dd76d13a3764d76894d00cdd2524459010436bfb84b46",
+      "source_commit": "5fb15bcebc54b8e54434a49676998d7600319d50"
+    },
+    {
+      "path": "drivers/gpu/mt8167/wddm-render/kmd_clear.h",
+      "sha256": "bbc406a0bb31aa9e6dcdb9b456f30e823d6575104f26582cf6b0c39ff8686170",
+      "baseline_sha256": "b48f996567865925b9b3c22dfd5f748b182c57e4b25b70c42a39f2c948725381",
+      "source_commit": "5fb15bcebc54b8e54434a49676998d7600319d50"
+    }
+  ]
 }
