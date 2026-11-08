@@ -4,15 +4,24 @@
 #ifndef A04_MUSB_BOOT_MOUSE_EXPERIMENT
 #define A04_MUSB_BOOT_MOUSE_EXPERIMENT 0
 #endif
+#ifndef A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+#define A04_MUSB_BOOT_COMPOSITE_EXPERIMENT 0
+#endif
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT && !A04_MUSB_BOOT_MOUSE_EXPERIMENT
+#error Composite boot input requires the existing two-TLC mouse profile
+#endif
 #define A04_BOOT_KEYBOARD 1u
 #define A04_BOOT_MOUSE 2u
-/* One directly attached boot interface: keyboard, or opt-in mouse. No hubs
- * or concurrent interrupt-IN interfaces. Fields come from device descriptors. */
+/* Direct boot keyboard/mouse. Composite opt-in admits one of each on
+ * independent RX channels; no hubs or arbitrary HID protocols. */
 typedef enum { KB_DEVICE8, KB_ADDRESS, KB_DEVICE18, KB_CONFIG9, KB_CONFIG,
- KB_SET_CONFIG, KB_PROTOCOL, KB_READY, KB_ERROR } KB_STAGE;
+ KB_SET_CONFIG, KB_PROTOCOL, KB_READY, KB_ERROR, KB_PROTOCOL_SECONDARY } KB_STAGE;
 typedef struct {
  KB_STAGE stage; unsigned max_packet0, config_length, configuration, interface_number;
  unsigned endpoint, endpoint_packet, interval, vid, pid, protocol;
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+ unsigned secondary_interface, secondary_endpoint, secondary_packet, secondary_interval;
+#endif
 } KB_ENUM;
 typedef struct { unsigned char setup[8]; unsigned length, address, max_packet0; } KB_CONTROL;
 void KbEnumStart(KB_ENUM *);

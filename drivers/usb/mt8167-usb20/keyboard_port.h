@@ -8,6 +8,9 @@ typedef enum { KB_PORT_WAIT, KB_PORT_DEBOUNCE, KB_PORT_RESET,
 typedef struct {
  KB_SESSION *session; MT8167_USB20_IO io; KB_PORT_STAGE stage;
  unsigned deadline, next_poll, rx_deadline; int rx_pending;
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+ unsigned secondary_next_poll;int secondary_rx_pending;
+#endif
  void *client; void (*delay)(void *,unsigned);
  int (*report)(void *,const unsigned char *); void (*release)(void *);
 } KB_PORT;
@@ -23,4 +26,11 @@ int KbPortTick(KB_PORT *,unsigned now);
 /* Stop requests and clear owned PIO FIFO state after disconnect/reset.
  * No DMA cancellation is implied. Must never run with an active DMA engine. */
 int KbPortFlush(KB_PORT *);
+static inline void KbPortCancelPending(KB_PORT *p)
+{
+ p->rx_pending=0;
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+ p->secondary_rx_pending=0;
+#endif
+}
 #endif

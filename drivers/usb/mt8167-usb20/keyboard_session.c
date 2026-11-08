@@ -41,6 +41,10 @@ int KbSessionEp0Interrupt(KB_SESSION *s)
  if(prior==KB_ADDRESS)s->delay_ms(s->client,2);
  if(s->enumeration.stage!=KB_READY)return submit(s);
  if(KbRxConfigureBoot(&s->io,1,s->enumeration.endpoint,s->enumeration.endpoint_packet,s->enumeration.interval,s->speed,s->enumeration.protocol))return failed(s);
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+ s->report_protocol=s->enumeration.protocol;
+ if(s->enumeration.secondary_endpoint && KbRxConfigureChannel(&s->io,2,1,s->enumeration.secondary_endpoint,s->enumeration.secondary_packet,s->enumeration.secondary_interval,s->speed,A04_BOOT_MOUSE))return failed(s);
+#endif
  return 1;
 }
 int KbSessionRequestReport(KB_SESSION *s)
@@ -49,6 +53,34 @@ int KbSessionRxInterrupt(KB_SESSION *s)
 {
  unsigned char report[8]; int result;
  if(!s || s->enumeration.stage!=KB_READY)return -1;
- result=KbRxCompleteBoot(&s->io,report,s->enumeration.protocol,s->enumeration.endpoint_packet); if(result<0)return failed(s);if(result!=1)return result;
+ result=KbRxCompleteBoot(&s->io,report,s->enumeration.protocol,s->enumeration.endpoint_packet); if(result<0)return failed(s);
+ if(result!=1)return result;
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+ s->report_protocol=s->enumeration.protocol;
+#endif
  return s->report(s->client,report)?failed(s):1;
+}
+
+int KbSessionRequestSecondary(KB_SESSION *s)
+{
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+ if(!s || s->enumeration.stage!=KB_READY || !s->enumeration.secondary_endpoint)return -1;
+ return KbRxRequestChannel(&s->io,2)?failed(s):0;
+#else
+ (void)s;return -1;
+#endif
+}
+int KbSessionRxSecondary(KB_SESSION *s)
+{
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+ unsigned char report[8];int result;
+ if(!s || s->enumeration.stage!=KB_READY || !s->enumeration.secondary_endpoint)return -1;
+ result=KbRxCompleteChannel(&s->io,2,report,A04_BOOT_MOUSE,s->enumeration.secondary_packet);
+ if(result<0)return failed(s);
+ if(result!=1)return result;
+ s->report_protocol=A04_BOOT_MOUSE;
+ return s->report(s->client,report)?failed(s):1;
+#else
+ (void)s;return -1;
+#endif
 }

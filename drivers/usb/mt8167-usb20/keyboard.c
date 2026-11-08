@@ -13,6 +13,9 @@ int KbNextControl(const KB_ENUM *k, KB_CONTROL *c)
  case KB_CONFIG: type=0x80; request=6; value=0x200; length=k->config_length; break;
  case KB_SET_CONFIG: request=9; value=k->configuration; break;
  case KB_PROTOCOL: type=0x21; request=11; index=k->interface_number; break;
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+ case KB_PROTOCOL_SECONDARY: type=0x21;request=11;index=k->secondary_interface;break;
+#endif
  default: return -1;
  }
  for(i=0;i<8;++i)c->setup[i]=0;
@@ -27,11 +30,18 @@ static int parse_config(KB_ENUM *k, const unsigned char *p, unsigned n)
 {
  KB_ENUM candidate=*k;
  unsigned i=0, selected=0, iface=0,found=0,protocol=0;
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+ KB_ENUM keyboard={0},mouse={0};unsigned have_keyboard=0,have_mouse=0;
+ unsigned char seen_interface[256]={0};unsigned interface_count=0;
+#endif
  if (n<9 || p[0]<9 || p[1]!=2 || le16(p+2)!=n || !p[5]) return -1;
  while(i<n) {
   unsigned len; if(n-i<2) return -1; len=p[i]; if(len<2 || len>n-i) return -1;
   if(p[i+1]==4) {
    if(len<9) return -1;
+   #if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+   if(p[i+3]==0){if(seen_interface[p[i+2]])return -1;seen_interface[p[i+2]]=1;++interface_count;}
+#endif
    protocol=p[i+7];
    selected=(p[i+3]==0 && p[i+5]==3 && p[i+6]==1 &&
      (protocol==A04_BOOT_KEYBOARD || (A04_MUSB_BOOT_MOUSE_EXPERIMENT && protocol==A04_BOOT_MOUSE)));
@@ -42,6 +52,13 @@ static int parse_config(KB_ENUM *k, const unsigned char *p, unsigned n)
    ep=p[i+2]; maxp=le16(p+i+4);
    if((ep&0x80) && (ep&15) && !(ep&0x70) && (p[i+3]&3)==3 &&
       maxp>=(protocol==A04_BOOT_MOUSE?3u:8u) && maxp<=64 && p[i+6]) {
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+    KB_ENUM *chosen=protocol==A04_BOOT_KEYBOARD?&keyboard:&mouse;
+    unsigned *have=protocol==A04_BOOT_KEYBOARD?&have_keyboard:&have_mouse;
+    /* One IN endpoint for each boot protocol; reject ambiguous routing. */
+    if(*have)return -1;
+    chosen->interface_number=iface;chosen->endpoint=ep&15;chosen->endpoint_packet=maxp;chosen->interval=p[i+6];chosen->protocol=protocol;*have=1;
+#endif
     if(!found || (candidate.protocol==A04_BOOT_MOUSE && protocol==A04_BOOT_KEYBOARD)){
      candidate.configuration=p[5];candidate.interface_number=iface;candidate.endpoint=ep&15;
      candidate.endpoint_packet=maxp;candidate.interval=p[i+6];candidate.protocol=protocol;found=1;
@@ -51,6 +68,15 @@ static int parse_config(KB_ENUM *k, const unsigned char *p, unsigned n)
   i+=len;
  }
  if(!found)return -1;
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+ if(interface_count!=p[4])return -1;
+ candidate.secondary_endpoint=0;
+ if(have_keyboard && have_mouse){
+  if(keyboard.endpoint==mouse.endpoint || keyboard.interface_number==mouse.interface_number)return -1;
+  candidate.secondary_interface=mouse.interface_number;candidate.secondary_endpoint=mouse.endpoint;
+  candidate.secondary_packet=mouse.endpoint_packet;candidate.secondary_interval=mouse.interval;
+ }
+#endif
  *k=candidate;return 0;
 }
 int KbControlComplete(KB_ENUM *k,const unsigned char *p,unsigned n)
@@ -71,7 +97,14 @@ int KbControlComplete(KB_ENUM *k,const unsigned char *p,unsigned n)
   if(n!=k->config_length || parse_config(k,p,n)) break;
   k->stage=KB_SET_CONFIG; return 0;
  case KB_SET_CONFIG: if(n) break; k->stage=KB_PROTOCOL; return 0;
- case KB_PROTOCOL: if(n) break; k->stage=KB_READY; return 0;
+ case KB_PROTOCOL: if(n) break;
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+  if(k->secondary_endpoint){k->stage=KB_PROTOCOL_SECONDARY;return 0;}
+#endif
+  k->stage=KB_READY;return 0;
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+ case KB_PROTOCOL_SECONDARY:if(n)break;k->stage=KB_READY;return 0;
+#endif
  default: break;
  }
  k->stage=KB_ERROR; return -1;

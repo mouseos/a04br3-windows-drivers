@@ -11,4 +11,8 @@ int KbRxCompleteBoot(const MT8167_USB20_IO *,unsigned char report[8],unsigned pr
 int KbRxRequest(const MT8167_USB20_IO *);
 /* 1=8-byte boot report, 2=NAK, 0=still pending, -1=error; reset endpoint on error. */
 int KbRxComplete(const MT8167_USB20_IO *, unsigned char report[8]);
+/* Hardware channel routing is bounded to RX1/RX2; no hub or DMA transport. */
+int KbRxConfigureChannel(const MT8167_USB20_IO *,unsigned channel,unsigned address,unsigned endpoint,unsigned max_packet,unsigned interval,unsigned speed,unsigned protocol);
+int KbRxRequestChannel(const MT8167_USB20_IO *,unsigned channel);
+int KbRxCompleteChannel(const MT8167_USB20_IO *,unsigned channel,unsigned char report[8],unsigned protocol,unsigned max_packet);
 #endif

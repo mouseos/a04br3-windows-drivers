@@ -26,7 +26,11 @@ C_ASSERT(sizeof(HID_DESCRIPTOR)==9);
 typedef struct {
  WDFWAITLOCK lock; WDFQUEUE reads; UCHAR reports[REPORT_SLOTS][A04_HID_INPUT_BYTES];
  volatile LONG trace_seen,trace_write_status; LARGE_INTEGER trace_started;
- unsigned head,count,input_reports,mouse_buttons; BOOLEAN connected,overflow,draining; KB_SESSION session; KB_PORT port; A04_USB_WDF *usb; WDFWAITLOCK controller_lock; WDFTIMER poll; BOOLEAN board_owned, board_fault; int admission, last_admission; A04_USB_BOARD board; A04_SHARED_USB_INTERFACE shared; BOOLEAN shared_valid;
+ unsigned head,count,input_reports,mouse_buttons;
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+ BOOLEAN mouse_received;
+#endif
+ BOOLEAN connected,overflow,draining; KB_SESSION session; KB_PORT port; A04_USB_WDF *usb; WDFWAITLOCK controller_lock; WDFTIMER poll; BOOLEAN board_owned, board_fault; int admission, last_admission; A04_USB_BOARD board; A04_SHARED_USB_INTERFACE shared; BOOLEAN shared_valid;
 #if A04_MUSB_HID_CONTROL_EXPERIMENT
  WDFQUEUE controls; struct a04_control_host control; struct a04_control_request control_request;
  UCHAR control_data[8]; BOOLEAN control_ready,control_busy,control_poisoned,control_output; ULONGLONG control_deadline;
@@ -109,7 +113,7 @@ NTSTATUS KbHidReport(WDFDEVICE dev,const UCHAR report[8])
  KB_HID_CONTEXT *c=KbHidContext(dev); unsigned slot;
 #if A04_MUSB_BOOT_MOUSE_EXPERIMENT
  UCHAR encoded[A04_HID_INPUT_BYTES];
- if(A04BootHidEncode(c->session.enumeration.protocol,report,encoded))return STATUS_INVALID_PARAMETER;
+ if(A04BootHidEncode(KbSessionReportProtocol(&c->session),report,encoded))return STATUS_INVALID_PARAMETER;
 #else
  if(!report)return STATUS_INVALID_PARAMETER;
 #endif
@@ -120,7 +124,11 @@ NTSTATUS KbHidReport(WDFDEVICE dev,const UCHAR report[8])
  slot=(c->head+c->count)%REPORT_SLOTS;
 #if A04_MUSB_BOOT_MOUSE_EXPERIMENT
  RtlCopyMemory(c->reports[slot],encoded,A04_HID_INPUT_BYTES);
- if(c->session.enumeration.protocol==A04_BOOT_MOUSE)c->mouse_buttons=encoded[1];
+ if(KbSessionReportProtocol(&c->session)==A04_BOOT_MOUSE){c->mouse_buttons=encoded[1];
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+ c->mouse_received=TRUE;
+#endif
+ }
 #else
  RtlCopyMemory(c->reports[slot],report,8);
 #endif
@@ -133,6 +141,9 @@ void KbHidDisconnected(WDFDEVICE dev)
  KB_HID_CONTEXT *c=KbHidContext(dev); static const UCHAR release[8]={0};
  WdfWaitLockAcquire(c->lock,NULL); c->head=0; c->count=0; c->input_reports=0; c->overflow=FALSE; c->connected=FALSE;
  c->mouse_buttons=0;
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+ c->mouse_received=FALSE;
+#endif
 #if A04_MUSB_BOOT_MOUSE_EXPERIMENT
  (void)A04BootHidEncode(A04_BOOT_KEYBOARD,release,c->reports[0]);
  (void)A04BootHidEncode(A04_BOOT_MOUSE,release,c->reports[1]);c->count=2;
@@ -189,11 +200,15 @@ static NTSTATUS ControlSubmit(WDFDEVICE dev,WDFREQUEST request,BOOLEAN output)
   UCHAR snapshot[A04_HID_INPUT_BYTES];
   if(packet->reportBufferLen!=A04_HID_INPUT_BYTES)return STATUS_INVALID_PARAMETER;
   WdfWaitLockAcquire(c->controller_lock,NULL);
-  if(!c->board_owned || c->board_fault || c->session.enumeration.stage!=KB_READY || c->session.enumeration.protocol!=A04_BOOT_MOUSE) {
+  if(!c->board_owned || c->board_fault || c->session.enumeration.stage!=KB_READY || !KbSessionHasMouse(&c->session)) {
    WdfWaitLockRelease(c->controller_lock);return STATUS_DEVICE_NOT_READY;
   }
   WdfWaitLockAcquire(c->lock,NULL);
-  if(!c->connected){WdfWaitLockRelease(c->lock);WdfWaitLockRelease(c->controller_lock);return STATUS_DEVICE_NOT_READY;}
+  if(!c->connected
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+   || !c->mouse_received
+#endif
+  ){WdfWaitLockRelease(c->lock);WdfWaitLockRelease(c->controller_lock);return STATUS_DEVICE_NOT_READY;}
   (void)A04BootHidMouseSnapshot(c->mouse_buttons,snapshot);
   WdfWaitLockRelease(c->lock);WdfWaitLockRelease(c->controller_lock);
   RtlCopyMemory(packet->reportBuffer,snapshot,sizeof(snapshot));WdfRequestSetInformation(request,sizeof(snapshot));return STATUS_SUCCESS;
@@ -246,7 +261,7 @@ static void PortFault(WDFDEVICE dev,NTSTATUS status)
  DbgPrint("MT8167 USB20 port fault state=%u enum=%u status=%08lx\n",(unsigned)c->port.stage,(unsigned)c->session.enumeration.stage,(ULONG)status);
  InitCheckpoint(dev,TraceFault,status,(ULONG)c->port.stage,(ULONG)c->session.enumeration.stage);
  c->board_fault=TRUE;c->port.stage=KB_PORT_FAULT;
- c->session.enumeration.stage=KB_ERROR;c->port.rx_pending=FALSE;
+ c->session.enumeration.stage=KB_ERROR;KbPortCancelPending(&c->port);
  A04UsbWdfMask(c->usb);
 #if A04_MUSB_HID_CONTROL_EXPERIMENT
  if(c->control_busy) {
@@ -408,7 +423,7 @@ void KbHidDeactivate(WDFDEVICE dev)
  if(c->control_busy)c->control_poisoned=TRUE;
  c->control_busy=FALSE;c->control_ready=FALSE;
 #endif
- c->session.enumeration.stage=KB_ERROR; c->port.rx_pending=FALSE;
+ c->session.enumeration.stage=KB_ERROR; KbPortCancelPending(&c->port);
  KbHidDisconnected(dev);
  if(c->board_owned) { A04UsbHostStop(&c->board); c->board_owned=FALSE; }
  WdfWaitLockRelease(c->controller_lock);

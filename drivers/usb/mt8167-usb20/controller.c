@@ -1,4 +1,6 @@
 #include "controller.h"
+#include "keyboard.h"
+#define RX_EVENTS (A04_MUSB_BOOT_COMPOSITE_EXPERIMENT?6u:2u)
 #define INDEX 0x0e
 #define TXFIFOSZ 0x62
 #define RXFIFOSZ 0x63
@@ -28,11 +30,15 @@ int Mt8167UsbPioReady(const MT8167_USB20_CONTROLLER *c)
 }
 int Mt8167UsbFifoInit(const MT8167_USB20_CONTROLLER *c,unsigned bytes)
 {
- void *p; if(!valid(c)||bytes<128) return -1; p=c->io.context;
+ void *p; if(!valid(c)||bytes<(A04_MUSB_BOOT_COMPOSITE_EXPERIMENT?192u:128u)) return -1; p=c->io.context;
  /* 64-byte shared EP0 at offset 0, 64-byte EP1 receive at offset 64. */
  c->io.write8(p,INDEX,0); c->io.write8(p,TXFIFOSZ,3); c->io.write16(p,TXFIFOADD,0);
  c->io.write8(p,RXFIFOSZ,3); c->io.write16(p,RXFIFOADD,0);
  c->io.write8(p,INDEX,1); c->io.write8(p,RXFIFOSZ,3); c->io.write16(p,RXFIFOADD,8);
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+ /* Distinct single-buffer 64-byte RX2 at byte128, after RX1 at byte64. */
+ c->io.write8(p,INDEX,2);c->io.write8(p,RXFIFOSZ,3);c->io.write16(p,RXFIFOADD,16);
+#endif
  c->io.write8(p,INDEX,0); return 0;
 }
 int Mt8167UsbInterruptEnable(const MT8167_USB20_CONTROLLER *c)
@@ -44,10 +50,10 @@ int Mt8167UsbInterruptEnable(const MT8167_USB20_CONTROLLER *c)
  c->io.write16(p,INTRTXE,0);c->io.write16(p,INTRRXE,0);c->io.write8(p,INTRUSBE,0);
  if((c->read32(p,L1_MASK)&L1_USB) || c->io.read16(p,INTRTXE) ||
     c->io.read16(p,INTRRXE) || c->io.read8(p,INTRUSBE))return -1;
- c->io.write16(p,INTRTX,1);c->io.write16(p,INTRRX,2);c->io.write8(p,INTRUSB,USB_EVENTS);
- c->io.write16(p,INTRTXE,1);c->io.write16(p,INTRRXE,2);c->io.write8(p,INTRUSBE,USB_EVENTS);
+ c->io.write16(p,INTRTX,1);c->io.write16(p,INTRRX,RX_EVENTS);c->io.write8(p,INTRUSB,USB_EVENTS);
+ c->io.write16(p,INTRTXE,1);c->io.write16(p,INTRRXE,RX_EVENTS);c->io.write8(p,INTRUSBE,USB_EVENTS);
  c->write32(p,L1_MASK,m|L1_USB);
- if((c->io.read16(p,INTRTXE)!=1) || (c->io.read16(p,INTRRXE)!=2) ||
+ if((c->io.read16(p,INTRTXE)!=1) || (c->io.read16(p,INTRRXE)!=RX_EVENTS) ||
     c->io.read8(p,INTRUSBE)!=USB_EVENTS || (c->read32(p,L1_MASK)&L1_USB)!=L1_USB) {
     Mt8167UsbInterruptDisable(c);return -1;
  }
@@ -58,7 +64,7 @@ void Mt8167UsbInterruptDisable(const MT8167_USB20_CONTROLLER *c)
  void *p; unsigned m; if(!valid(c))return; p=c->io.context;
  m=c->read32(p,L1_MASK); c->write32(p,L1_MASK,m&~L1_USB);
  c->io.write16(p,INTRTXE,0); c->io.write16(p,INTRRXE,0); c->io.write8(p,INTRUSBE,0);
- c->io.write16(p,INTRTX,1);c->io.write16(p,INTRRX,2);c->io.write8(p,INTRUSB,USB_EVENTS);
+ c->io.write16(p,INTRTX,1);c->io.write16(p,INTRRX,RX_EVENTS);c->io.write8(p,INTRUSB,USB_EVENTS);
 }
 int Mt8167UsbInterruptCapture(const MT8167_USB20_CONTROLLER *c,MT8167_USB20_EVENTS *e)
 {

@@ -23,7 +23,7 @@ unsigned KbPortMilliseconds(unsigned high,unsigned low)
 static int due(unsigned now,unsigned deadline){return (unsigned)(now-deadline)<0x80000000u;}
 static int fail(KB_PORT *p)
 {
- p->stage=KB_PORT_FAULT;p->session->enumeration.stage=KB_ERROR;p->rx_pending=0;
+ p->stage=KB_PORT_FAULT;p->session->enumeration.stage=KB_ERROR;KbPortCancelPending(p);
  p->release(p->client);return -1;
 }
 int KbPortInit(KB_PORT *p,KB_SESSION *s,const MT8167_USB20_IO *io,void *client,
@@ -36,7 +36,7 @@ int KbPortInit(KB_PORT *p,KB_SESSION *s,const MT8167_USB20_IO *io,void *client,
 }
 int KbPortFlush(KB_PORT *p)
 {
- unsigned i;unsigned short csr;
+ unsigned i,channel;unsigned short csr;
  if(!p || !p->session)return -1;
  /* MT8167 vendor musb_host.c: musb_h_ep0_flush_fifo (5 retries).
   * First stop REQPKT, then flush ready data, finally reset CSR0. */
@@ -49,7 +49,8 @@ int KbPortFlush(KB_PORT *p)
  }
  if(p->io.read16(p->io.context,CSR0)&3u)return -1;
  p->io.write16(p->io.context,CSR0,0);
- p->io.write8(p->io.context,INDEX,1);
+ for(channel=1;channel<=(A04_MUSB_BOOT_COMPOSITE_EXPERIMENT?2u:1u);++channel){
+ p->io.write8(p->io.context,INDEX,(unsigned char)channel);
  /* Same source musb_h_flush_rxfifo: stop REQPKT/AUTOREQ/AUTOCLEAR,
   * FLUSHFIFO twice. Our RX1 is single-buffer PIO, no DMA. */
  csr=p->io.read16(p->io.context,RXCSR);
@@ -58,6 +59,7 @@ int KbPortFlush(KB_PORT *p)
  p->io.write16(p->io.context,RXCSR,csr);p->io.write16(p->io.context,RXCSR,csr);
  p->io.write16(p->io.context,RXCSR,0x80); /* CLRDATATOG */
  if(p->io.read16(p->io.context,RXCSR)&0x21u)return -1;
+ }
  p->io.write8(p->io.context,INDEX,0);return 0;
 }
 static unsigned interval(const KB_SESSION *s)
@@ -73,25 +75,35 @@ int KbPortEvents(KB_PORT *p,MT8167_USB20_EVENTS e,unsigned now)
  if(e.usb&0x80u)return fail(p);
  if(e.usb&0x20u){
   p->io.write8(p->io.context,POWER,(unsigned char)(p->io.read8(p->io.context,POWER)&~8u));
-  p->session->enumeration.stage=KB_ERROR;p->rx_pending=0;p->release(p->client);
+  p->session->enumeration.stage=KB_ERROR;KbPortCancelPending(p);p->release(p->client);
   if(KbPortFlush(p))return fail(p);
   p->stage=KB_PORT_WAIT;return 0;
  }
  if(e.usb&0x10u){
   /* Debounce before resetting. Ignore endpoint causes from the old device. */
-  p->session->enumeration.stage=KB_ERROR;p->rx_pending=0;p->release(p->client);
+  p->session->enumeration.stage=KB_ERROR;KbPortCancelPending(p);p->release(p->client);
   p->stage=KB_PORT_DEBOUNCE;p->deadline=now+100u;return 0;
  }
  if(p->stage==KB_PORT_ENUM && (e.tx&1u)){
   old_stage=p->session->ep0.transfer.stage;old_actual=p->session->ep0.transfer.actual;old_enum=p->session->enumeration.stage;
   r=KbSessionEp0Interrupt(p->session);if(r<0)return fail(p);
-  if(r==1){p->stage=KB_PORT_READY;p->next_poll=now;return 1;}
+  if(r==1){p->stage=KB_PORT_READY;p->next_poll=now;
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+   p->secondary_next_poll=now;
+#endif
+   return 1;}
   if(old_stage!=p->session->ep0.transfer.stage || old_actual!=p->session->ep0.transfer.actual || old_enum!=p->session->enumeration.stage)p->deadline=now+2000u;
  }
  if(p->stage==KB_PORT_READY && p->rx_pending && (e.rx&2u)){
   r=KbSessionRxInterrupt(p->session);if(r<0)return fail(p);
   if(r==1 || r==2)p->rx_pending=0;
  }
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+ if(p->stage==KB_PORT_READY && p->secondary_rx_pending && (e.rx&4u)){
+  r=KbSessionRxSecondary(p->session);if(r<0)return fail(p);
+  if(r==1 || r==2)p->secondary_rx_pending=0;
+ }
+#endif
  return 0;
 }
 int KbPortTick(KB_PORT *p,unsigned now)
@@ -123,7 +135,16 @@ int KbPortTick(KB_PORT *p,unsigned now)
   if(!p->rx_pending && due(now,p->next_poll)){
    if(KbSessionRequestReport(p->session))return fail(p);
    p->rx_pending=1;p->next_poll=now+interval(p->session);
-  }break;
+  }
+#if A04_MUSB_BOOT_COMPOSITE_EXPERIMENT
+  if(p->session->enumeration.secondary_endpoint && !p->secondary_rx_pending && due(now,p->secondary_next_poll)){
+   unsigned delay=p->session->enumeration.secondary_interval;
+   if(KbSessionRequestSecondary(p->session))return fail(p);
+   if(p->session->speed==0x40)delay=((1u<<(delay-1))+7u)/8u;
+   p->secondary_rx_pending=1;p->secondary_next_poll=now+delay;
+  }
+#endif
+  break;
  default:break;
  }
  return 0;
