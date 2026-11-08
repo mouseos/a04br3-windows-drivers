@@ -14,6 +14,6 @@ static void GeoFactoryCheckpoint(ULONG stage,NTSTATUS status,ULONG a,ULONG b,ULO
  InitializeObjectAttributes(&oa,&path,OBJ_KERNEL_HANDLE|OBJ_CASE_INSENSITIVE,NULL,NULL);
  if(!NT_SUCCESS(ZwCreateKey(&key,KEY_SET_VALUE,&oa,0,NULL,REG_OPTION_NON_VOLATILE,&disposition)))return;
  (void)ZwSetValueKey(key,&name,0,REG_BINARY,&r,sizeof(r));
- if(!NT_SUCCESS(status)||stage==5||stage==6||stage==7||stage==8)(void)ZwFlushKey(key);ZwClose(key);
+ if(!NT_SUCCESS(status)||stage==5)(void)ZwFlushKey(key);ZwClose(key);
 }
 #endif

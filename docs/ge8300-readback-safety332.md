@@ -15,3 +15,5 @@ TDRは既存ResetFromTimeout→通常quiesceで、FW完了/forcedoffACK/IRQclose
 DonotWaitでもpaging内部やkernel/ISRが応答しない場合、user期限でkernelを中断できない。UMDのDeviceHung通知はscheduler TDR回復証明ではなくOS再起動を必ず防ぐとは言わない。今回reset根因は未確定。新候補＋最小証拠を一括評価し、旧327を同条件で反復しない。
 
 次媒体基点はfresh134/RTCboot4b67/133回収47file。旧132candidate/bootへ戻さない。原44不変＋同RUN72316/PIDAEC clearのexactprefix拡張＋新UMD2件を正式遅延更新として分類する。
+
+TDR flushはlifecycle専用wrapperが既存FactoryCheckpointを記録後に同keyをZwOpenKey/FlushKeyする。旧vendor/native checkpoint headerはbyte保持する。通常native reset/stop/workerや全体traceのflush頻度は変更しない。

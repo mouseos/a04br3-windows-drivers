@@ -1,6 +1,15 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "lifecycle.h"
 #include "../vendor_m1_11/native_factory_checkpoint.h"
+/* TDR boundary only: existing schema2 records, flushed without changing
+ * stop status/proof. PASSIVE only; no MMIO or completion notification. */
+static void tdr_checkpoint(ULONG stage,NTSTATUS status,ULONG a,ULONG b,ULONG c,ULONG d) {
+ UNICODE_STRING path=RTL_CONSTANT_STRING(L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\GE8300Render\\Parameters\\FactoryCheckpoint");
+ OBJECT_ATTRIBUTES oa;HANDLE key=NULL;
+ GeoFactoryCheckpoint(stage,status,a,b,c,d);
+ InitializeObjectAttributes(&oa,&path,OBJ_KERNEL_HANDLE|OBJ_CASE_INSENSITIVE,NULL,NULL);
+ if(NT_SUCCESS(ZwOpenKey(&key,KEY_SET_VALUE,&oa))){(void)ZwFlushKey(key);ZwClose(key);}
+}
 static LONG state(struct geo_owner_session *s){return InterlockedCompareExchange(&s->state,0,0);}
 static void set_state(struct geo_owner_session *s,LONG value){InterlockedExchange(&s->state,value);}
 static BOOLEAN allowed(struct geo_owner_session *s,UINT mode) {
@@ -126,13 +135,13 @@ NTSTATUS GeoPowerOwnerSession(struct geo_owner_session *s,DEVICE_POWER_STATE pow
 NTSTATUS GeoResetOwnerSession(struct geo_owner_session *s) {
  NTSTATUS status;struct geo_owner_proof p;
  if(!s||!s->initialized||!s->lease.cookie||!s->adapter->notifications_ready||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
- GeoFactoryCheckpoint(6,STATUS_PENDING,s->adapter->engine.last_submitted,s->adapter->engine.last_completed,s->adapter->engine.poisoned,(ULONG)state(s));
+ tdr_checkpoint(6,STATUS_PENDING,s->adapter->engine.last_submitted,s->adapter->engine.last_completed,s->adapter->engine.poisoned,(ULONG)state(s));
  KeWaitForSingleObject(&s->control_lock,Executive,KernelMode,FALSE,NULL);close_operations(s);
  RtlZeroMemory(&p,sizeof(p));p.size=sizeof(p);p.version=2;
  status=s->control.reset(s->lease.cookie,s->lease.epoch,&p);
  if(status==STATUS_SUCCESS)status=apply_proof(s,&p,1);else status=failed(s,status);
  if(status==STATUS_SUCCESS)set_state(s,GEO_SESSION_RESET);
- GeoFactoryCheckpoint(7,status,p.flags,(ULONG)p.epoch,s->adapter->engine.last_completed,(ULONG)state(s));
+ tdr_checkpoint(7,status,p.flags,(ULONG)p.epoch,s->adapter->engine.last_completed,(ULONG)state(s));
  KeReleaseMutex(&s->control_lock,FALSE);return status;
 }
 NTSTATUS GeoRestartOwnerSession(struct geo_owner_session *s) {
@@ -143,7 +152,7 @@ NTSTATUS GeoRestartOwnerSession(struct geo_owner_session *s) {
   status=s->control.restart(s->lease.cookie,s->lease.epoch);
   if(status==STATUS_SUCCESS)reopen(s,GEO_SESSION_ACTIVE);else status=failed(s,status);
  }
- GeoFactoryCheckpoint(8,status,(ULONG)s->lease.epoch,(ULONG)state(s),s->adapter->engine.poisoned,0);
+ tdr_checkpoint(8,status,(ULONG)s->lease.epoch,(ULONG)state(s),s->adapter->engine.poisoned,0);
  KeReleaseMutex(&s->control_lock,FALSE);return status;
 }
 BOOLEAN GeoOwnerInterrupt(struct geo_owner_session *s,ULONG message) {
