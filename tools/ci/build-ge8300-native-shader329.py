@@ -111,6 +111,7 @@ for n in ['umd_entry.obj','umd_typed_entry.obj']:
  else:shutil.copyfile(base/'umd'/n,out/'umd'/n)
 members,before,after=extract(compiler/'ge8300-pco-arm32.lib','pco')
 for name,unit in [('sm4_adapter.obj','sm4'),('pco_sm2_adapter.obj','pco_sm2'),('witness_producer.obj','witness_producer'),('witness_codec.obj','witness_codec'),('witness_info.obj','witness_info')]:
+ if a.resume_source and (after/name).exists() and (before/name).exists() and sha(after/name)==sha(before/name):(after/name).unlink()
  compile_one('drivers/gpu/mt8167/wddm-render/compiler/'+unit+'.c',after/name,cf,'pco')
  if name not in members:members.append(name)
 archive('pco','ge8300-pco-arm32.lib',members,before,after)
