@@ -29,20 +29,21 @@ static int signed16(const uint8_t *p)
 int main(void)
 {
     /* Independent raw -> Linux direction-7 board -> Windows panel fixtures.
-     * The four in-plane basis vectors catch the 180-degree regression in
-     * 0.0.1.7; +/- Z must retain the existing face-up/down convention.
-     * These are axis fixtures, not new measurements of physical poses. */
+     * Current 1.10 contract: B=(-ry,-rx,-rz), H=(-by,bx,bz), hence
+     * H=(rx,-ry,-rz). The two proper rotations preserve handedness and Z.
+     * These fixtures check the released candidate's mathematical contract;
+     * they do not certify which physical panel edge the user calls upright. */
     static const struct {
         int raw[3], board[3], hid[3];
     } cases[] = {
-        {{ 1024,0,0}, {0,-1024,0}, {-100,0,0}},
-        {{-1024,0,0}, {0, 1024,0}, { 100,0,0}},
-        {{0, 1024,0}, {-1024,0,0}, {0, 100,0}},
-        {{0,-1024,0}, { 1024,0,0}, {0,-100,0}},
+        {{ 1024,0,0}, {0,-1024,0}, { 100,0,0}},
+        {{-1024,0,0}, {0, 1024,0}, {-100,0,0}},
+        {{0, 1024,0}, {-1024,0,0}, {0,-100,0}},
+        {{0,-1024,0}, { 1024,0,0}, {0, 100,0}},
         {{0,0, 1024}, {0,0,-1024}, {0,0,-100}},
         {{0,0,-1024}, {0,0, 1024}, {0,0, 100}},
-        {{-2048,2047,-1024}, {-2047,2048,1024}, {200,200,100}},
-        {{2047,-2048,0}, {2048,-2047,0}, {-200,-200,0}},
+        {{-2048,2047,-1024}, {-2047,2048,1024}, {-200,-200,100}},
+        {{2047,-2048,0}, {2048,-2047,0}, {200,200,0}},
     };
     unsigned i;
     for (i = 0; i < sizeof(cases)/sizeof(cases[0]); ++i) {
@@ -63,6 +64,6 @@ int main(void)
         assert(signed16(report+5) == cases[i].hid[1]);
         assert(signed16(report+7) == cases[i].hid[2]);
     }
-    puts("MMA8652 raw/board/panel orientation tests passed");
+    puts("MMA8652 1.10 raw/board/HID matrix contract passed; physical upright unverified");
     return 0;
 }
