@@ -9,6 +9,10 @@
 #define pco_op_info geo_witness_op_info
 #define pco_op_mod_info geo_witness_op_mod_info
 #define pco_ref_mod_info geo_witness_ref_mod_info
+/* freestanding equivalent of the CRT first-set-bit helper used by Mesa.
+ * Source-only integer implementation; kernel has no user CRT import. */
+int geo_witness_ffsll(long long);
+#define ffsll geo_witness_ffsll
 #include "../frontend/shader_witness.h"
 #include "../clear_protocol.h"
 #include "pco/pco_internal.h"
@@ -30,6 +34,12 @@ static pco_instr *local_create(pco_func *f,unsigned nd,unsigned ns) {
 #undef pco_instr_delete
 #undef ralloc_steal
 
+int geo_witness_ffsll(long long bits) {
+ unsigned long long value=(unsigned long long)bits;int index=1;
+ if(!value)return 0;
+ while(!(value&1u)){value>>=1;index++;}
+ return index;
+}
 static unsigned count_bits(uint32_t m){unsigned n=0;while(m){n++;m>>=1;}return n;}
 static int ref_read(pco_ref *to,const struct geo_shader_ref *s) {
  if(s->type>=_PCO_REF_TYPE_COUNT||s->bank>=_PCO_REG_CLASS_COUNT||s->channels>1023||s->bits>=_PCO_BITS_COUNT||s->dtype>=_PCO_DTYPE_COUNT||(s->modifiers&~511u))return 0;

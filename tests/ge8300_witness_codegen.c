@@ -15,7 +15,10 @@ static void packet_shader(struct geo_draw_shader *s,const struct geo_compiled_sh
  s->constants=(struct geo_draw_span){*at,512};memset(blob+*at,0,512);*at+=512;
  *proof=(struct geo_draw_span){*at,wb};memcpy(blob+*at,w,wb);*at+=wb;
 }
+int geo_witness_ffsll(long long);
 int main(void){
+ assert(!geo_witness_ffsll(0));for(unsigned bit=0;bit<64;bit++)assert(geo_witness_ffsll((long long)(UINT64_C(1)<<bit))==(int)bit+1);
+ assert(geo_witness_ffsll(-1)==1);
  struct geo_shader_compiler compiler;void *owner=NULL,*vproof=NULL,*pproof=NULL;uint32_t vbytes=0,pbytes=0;struct geo_compiled_shader v,p;struct geo_sm2_error e;struct geo_sm4_signatures sig={0};int32_t status;
  assert(!geo_pco_device_create(UINT64_C(0x001600280036001e),&compiler,&owner));
  sig.input_count=sig.output_count=1;sig.inputs[0].mask=sig.outputs[0].mask=15;sig.outputs[0].system_value=1;
