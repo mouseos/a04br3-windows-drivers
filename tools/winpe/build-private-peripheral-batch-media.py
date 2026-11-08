@@ -21,6 +21,18 @@ def stage_script(template,prepare,token,fresh):
  require('/ForceUnsigned' not in cmd and 'RESTORE_FROM' not in cmd,'fallback/rollback禁止')
  return cmd
 
+def bt_payload_prepare(directory,bt):
+ # WIM staging alone does not deploy a normal-OS service input directory.
+ names=[f['name'] for f in bt['files']]
+ require(names==['mt6630-combo-bluetooth.inf','mt6630-combo-bluetooth.sys','mt6630-combo-bluetooth.cat'],'Exact signed BT2013 trio only')
+ require(re.fullmatch(r'MT8167CombinedFollowup[0-9]+',directory),'Fixed service directory required')
+ sep=chr(92);dst=sep.join(('C:','Windows','System32',directory,'bt2013'))
+ commands=['mkdir '+dst+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
+ for name in names:
+  src=sep.join(('X:','a04br3','payload','bt2013',name));target=dst+sep+name
+  commands+=['copy /b '+src+' '+target+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail',sep.join(('X:','a04br3','compare-files.exe'))+' '+src+' '+target+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
+ return commands
+
 def main():
  ap=argparse.ArgumentParser()
  for n in ('workspace','map','service-package','prepared-system','prepared-result','comparator','base','tools','out'):ap.add_argument('--'+n,type=Path,required=True)
@@ -129,6 +141,8 @@ def main():
   for f in v['files']:
    name=f['name'];src='X:\\a04br3\\payload\\'+key+'\\'+name
    prepare+=['copy /b '+src+' '+dst+'\\'+name+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail','X:\\a04br3\\compare-files.exe '+src+' '+dst+'\\'+name+' >> "%A04_REPORT%" 2>&1','if errorlevel 1 goto candidatefail']
+ if p.get('bt_first_install'):
+  prepare+=bt_payload_prepare(DIRECTORY,p['bt_first_install'])
  if p.get('diagnostic_clients'):
   sep=chr(92);system=sep.join(('C:','Windows','System32'))+sep
   for directory in sorted({c['relative_directory'] for c in p['diagnostic_clients']}):

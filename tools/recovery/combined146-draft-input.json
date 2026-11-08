@@ -1,0 +1,113 @@
+{
+  "schema": 1,
+  "status": "draft-only-awaiting-fresh146-and-run145-outcome",
+  "transaction": "combined-run147",
+  "post_capture_number": 148,
+  "draft": true,
+  "normal_install_allowed": false,
+  "arm_allowed": false,
+  "media_generation_allowed": false,
+  "fresh": null,
+  "gpu_client_log_baseline": null,
+  "hardware_owner": "main",
+  "install_targets": [
+    "audio"
+  ],
+  "planned_windows_reboots": 1,
+  "retain_other_roles_from_actual_fresh146": true,
+  "candidate_audio": {
+    "directory": "port/xnu/out/windows-rt-afe-speaker1034/signed/audio",
+    "manifest": {
+      "path": "port/xnu/out/windows-rt-afe-speaker1034/signed/signed-manifest.json",
+      "sha256": "a4dafac3073447c0220e6ea989e9c6f0e2d074fa26864426305bce88c54dedd7"
+    },
+    "main_seal": {
+      "path": "port/xnu/out/windows-rt-afe-speaker1034/main-independent-seal.json",
+      "sha256": "6fde9bec9c4a6e00e8474aec58f9fe0af0aff853c72a65cb249c29947753b857"
+    },
+    "producer_pins": {
+      "path": "port/xnu/out/windows-rt-afe-speaker1034/pins.json",
+      "sha256": "13d02697960f22e664d7507d3e19202aa4b41e2f49686bdd8db50643e1c24401"
+    },
+    "source_commit": "29b4b106ae0c91caf55f73cbb75b4c1d92a438b3",
+    "object_source_commit": "5418520874e079b826f6e9ced05fe91701556c33",
+    "SYS_sha256": "b6d2592a618723b808a4fc55e002637c57ae91afab47e6a60343b0714d229ed7",
+    "driver_version": "2026.11.8.1034",
+    "rebuild_required": false
+  },
+  "diagnostic_clients": [
+    {
+      "name": "audio_consumer",
+      "directory": "port/xnu/out/windows-rt-afe-speaker1034/signed/clients",
+      "exe": "mt8167-silent-pcm-consumer.exe",
+      "sha256": "886bb9f62aebf8286157f3dd0a3e745217936b8bf0bceac79ef0dd5106487770",
+      "arguments": [
+        "--speaker-silence"
+      ],
+      "one_shot": true,
+      "timeout_ms": 60000,
+      "silent_PCM_seconds": 1,
+      "PCM_buffer_all_zero": true,
+      "rebuild_required": false
+    }
+  ],
+  "GPU_client_execute": false,
+  "GPU_client_count": 0,
+  "same_GPU340_retest_allowed": false,
+  "new_GPU_rootfix_requires_main_scope_decision": true,
+  "optional_store_only_candidates": {
+    "HCD1017": {
+      "selected": false,
+      "DIF": false,
+      "main_scope_and_sealed_inputs_required": true
+    }
+  },
+  "latency_interpretation": {
+    "FifoSize": 0,
+    "ChipsetDelay": 0,
+    "CodecDelay": 0,
+    "meaning": "vendor nominal additional-delay corrections; not a measured physical zero",
+    "physical_latency_measurement_performed": false,
+    "physical_latency_is_zero_proven": false,
+    "official_unknown_sentinel": false,
+    "high_precision_HLK_qualification": false
+  },
+  "evaluation_sequence": [
+    "Initialize",
+    "GetBuffer/RenderService/Clock",
+    "Start",
+    "actual CUR/IRQ progress",
+    "padding0",
+    "Stop"
+  ],
+  "result_classification": {
+    "exit0": "API/CUR/IRQ conditions only; no audible or latency qualification",
+    "exit1": "API/endpoint failure",
+    "exit3": "DMA/IRQ evidence insufficient",
+    "exit4": "join timeout",
+    "exit5": "log/flush failure",
+    "PCM_EXECUTED0": "not success"
+  },
+  "collect": [
+    "stdout/stderr",
+    "same-directory mt8167-silent-pcm-<runid>.log; bounded16KiB and Flush"
+  ],
+  "blockers": [
+    "fresh146 capture manifest/raw originals/native actual versions and baseline not yet received",
+    "run145 outcome pending; do not assume adoption/retention from intended policy",
+    "Final147 scope and actual preserved tuples not fixed"
+  ],
+  "BT145_source_review": {
+    "path": "port/gsi/logs/ios-feasibility/windows-rt-combined146-audio-draft/bt145-source-review.json",
+    "sha256": "306aac05f3ea0342245ee99520914d8597824e3a22b272c548381e162d8af8af"
+  },
+  "BT146_actual_state_required": {
+    "must_scan_all_ROOT_HardwareID_matches_including_hidden": true,
+    "do_not_assume_first_install_absence": true,
+    "partial_node_registration_possible": true,
+    "next_generator_requires_bt2013_target_copy_and_byte_compare": true,
+    "147_BT_scope_requires_actual_receipt": true
+  },
+  "BT_payload_generator_fix_implemented": true,
+  "BT_root_install_mode": "pending-fresh146-actual; absence/partial/exact-existing not assumed"
+}
