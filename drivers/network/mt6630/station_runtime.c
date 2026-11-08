@@ -3,6 +3,7 @@
  * synthesize scan completion, association response or STA activation. */
 #include "station_runtime.h"
 #include "rsn_policy.h"
+#include "assoc_capability.h"
 static int fail(struct a04_station_runtime *r,int e)
 {r->failed=e?e:-1;r->connecting=r->connected=0;return r->failed;}
 int a04_station_runtime_init(struct a04_station_runtime *r,struct a04_wmt_bridge *b)
@@ -61,7 +62,9 @@ static int packet(struct a04_station_runtime *r,const uint8_t *p,unsigned n)
  if(r->connecting&&frame.length>=24&&a04_wlan_equal(frame.data+10,r->station.ap.mac,6)){
   if(frame.data[0]==0xb0&&r->phase==1){
    e=a04_wmt_bridge_station_auth_rx(b,&r->station,frame.data,frame.length,now);
-   if(!e){unsigned count=0;const uint8_t *ie=NULL;if(r->station.secured)ie=a04_wlan_rsn_selected(&count);e=a04_wmt_bridge_station_assoc(b,&r->station,r->station.ap.capability,10,ie,count,now);}
+   if(!e){unsigned count=0,capability=0;const uint8_t *ie=NULL;if(r->station.secured)ie=a04_wlan_rsn_selected(&count);
+    e=a04_mt6630_assoc_capability(r->station.ap.capability,r->station.secured,&capability);
+    if(!e)e=a04_wmt_bridge_station_assoc(b,&r->station,capability,10,ie,count,now);}
    if(e)return fail(r,e);r->assoc_request_length=a04_wmt_le16(b->wlan.tx)-28;
    if(r->assoc_request_length>sizeof(r->assoc_request))return fail(r,-1);
    for(unsigned i=0;i<r->assoc_request_length;i++)r->assoc_request[i]=b->wlan.tx[28+i];r->phase=2;

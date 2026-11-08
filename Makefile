@@ -1623,3 +1623,10 @@ test-mt6630-rx-retry: build/mt6630_native_retry_test build/mt6630_native_hif_rx_
 build/mt6630_native_retry_test: tests/mt6630_native_retry_test.c drivers/network/mt6630/native_retry.h drivers/network/mt6630/native_frame.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) tests/mt6630_native_retry_test.c -o $@
+
+.PHONY: test-mt6630-assoc-capability
+test-mt6630-assoc-capability: build/mt6630_assoc_capability_test
+	./build/mt6630_assoc_capability_test
+build/mt6630_assoc_capability_test: tests/mt6630_assoc_capability_test.c drivers/network/mt6630/assoc_capability.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) tests/mt6630_assoc_capability_test.c -o $@
