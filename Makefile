@@ -1615,3 +1615,11 @@ test-mt6630-scan-connect:
 	mkdir -p build
 	$(CC) $(CFLAGS) -Wno-misleading-indentation -ffunction-sections -fdata-sections -Itests/native_scan_stubs -Idrivers/network/mt6630 tests/mt6630_scan_connect_test.c drivers/network/mt6630/native_scan.c drivers/network/mt6630/native_scan_bridge.c drivers/network/mt6630/lifetime.c drivers/network/mt6630/direct.c drivers/network/mt6630/transport.c drivers/network/mt6630/identity.c drivers/network/mt6630/regulatory.c -Wl,--gc-sections -o build/mt6630_scan_connect_test
 	./build/mt6630_scan_connect_test
+
+.PHONY: test-mt6630-rx-retry
+test-mt6630-rx-retry: build/mt6630_native_retry_test build/mt6630_native_hif_rx_test
+	./build/mt6630_native_retry_test
+	./build/mt6630_native_hif_rx_test
+build/mt6630_native_retry_test: tests/mt6630_native_retry_test.c drivers/network/mt6630/native_retry.h drivers/network/mt6630/native_frame.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) tests/mt6630_native_retry_test.c -o $@

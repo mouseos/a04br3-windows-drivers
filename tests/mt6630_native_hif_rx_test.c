@@ -4,6 +4,7 @@
 #include <string.h>
 #include "native_hif_rx.h"
 #include "native_frame.h"
+#include "native_retry.h"
 #include "native_tx.h"
 NDIS_STATUS a04_native_indicate_mpdu(NDIS_HANDLE a,PNET_BUFFER_LIST n,const uint8_t *p,ULONG l,const struct a04_native_rx_info *i)
 {(void)a;(void)n;(void)p;(void)l;(void)i;return NDIS_STATUS_SUCCESS;}
@@ -23,9 +24,15 @@ int main(void)
   assert(!a04_native_hif_rx_decode(p,n,1u<<6,local,ap,NULL,rate,&rx));
   assert(rx.header==h&&rx.tid==(h==24?0:tid)&&rx.info.priority==rx.tid);
   assert(rx.mpdu==p+40&&rx.length==h+8+A04_NATIVE_MTU&&rx.info.rssi==-48);
+  {struct a04_native_retry owner={0};struct a04_native_retry_ticket ticket;p[41]|=8;
+   assert(!a04_native_hif_rx_decode(p,n,1u<<6,local,ap,NULL,rate,&rx));
+   assert(!a04_native_retry_check(&owner,1,rx.mpdu,rx.length,&ticket));
+   a04_native_retry_commit(&owner,&ticket);assert(a04_native_retry_check(&owner,1,rx.mpdu,rx.length,&ticket)==1);
+   p[41]&=~8u;}
+
   size_t normalized=a04_native_frame_copy(out,rx.mpdu,rx.length,h);
   assert(normalized==A04_NATIVE_MTU+32&&out[0]==8&&out[1]==2&&out[normalized-1]==0xf5&&!memcmp(p,before,n));
-  for(unsigned bit=0;bit<4;bit++){unsigned flag=(unsigned[]){4,8,0x40,0x80}[bit];p[41]^=flag;assert(a04_native_hif_rx_decode(p,n,1u<<6,local,ap,NULL,rate,&rx));p[41]^=flag;}
+  for(unsigned bit=0;bit<3;bit++){unsigned flag=(unsigned[]){4,0x40,0x80}[bit];p[41]^=flag;assert(a04_native_hif_rx_decode(p,n,1u<<6,local,ap,NULL,rate,&rx));p[41]^=flag;}
   p[6]=h-1;assert(a04_native_hif_rx_decode(p,n,1u<<6,local,ap,NULL,rate,&rx));p[6]=h;
   if(h!=24){p[9]=tid^1;assert(a04_native_hif_rx_decode(p,n,1u<<6,local,ap,NULL,rate,&rx));p[9]=tid;
    p[64]|=0x80;assert(a04_native_hif_rx_decode(p,n,1u<<6,local,ap,NULL,rate,&rx));p[64]=tid;}
@@ -43,6 +50,6 @@ int main(void)
  assert(!a04_native_hif_rx_decode_security(p,n,1u<<6,local,ap,NULL,rate,&rx));assert(rx.pn==7&&rx.tid==6&&rx.header==26);
  p[80]=5;assert(a04_native_hif_rx_decode_security(p,n,1u<<6,local,ap,NULL,rate,&rx));p[80]=6;
  p[10]=0x10;assert(a04_native_hif_rx_decode_security(p,n,1u<<6,local,ap,NULL,rate,&rx));p[10]=0;
- p[57]|=8;assert(a04_native_hif_rx_decode_security(p,n,1u<<6,local,ap,NULL,rate,&rx));
+ p[57]|=8;assert(!a04_native_hif_rx_decode_security(p,n,1u<<6,local,ap,NULL,rate,&rx)); /* Parsing a retry does not authorize its indication. */
  puts("24/26/30 MAC, TID0..7, HIF/LLC/CCMP bounds and immutable ownership: OK");return 0;
 }

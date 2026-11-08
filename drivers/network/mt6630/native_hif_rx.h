@@ -12,7 +12,8 @@ NDIS_STATUS a04_native_hif_rx_management(const uint8_t *,ULONG,unsigned,void *,a
 NDIS_STATUS a04_native_hif_rx_decode(const uint8_t *,ULONG,unsigned allowed_channels,
  const uint8_t local[6],const uint8_t ap[6],void *,a04_native_rate_lookup,struct a04_native_hif_rx *);
 /* Raw plaintext LLC/SNAP from verified CCMP hardware metadata; caller must
- * enforce installed key/controlled-port/PN and normalize the MAC header. */
+ * enforce installed key/controlled-port/PN, association retry ownership and
+ * normalize the MAC header. Decode alone never indicates a packet. */
 NDIS_STATUS a04_native_hif_rx_decode_security(const uint8_t *,ULONG,unsigned,
  const uint8_t [6],const uint8_t [6],void *,a04_native_rate_lookup,struct a04_native_hif_rx *);
 NDIS_STATUS a04_native_hif_rx_indicate(NDIS_HANDLE,PNET_BUFFER_LIST,const uint8_t *,ULONG,unsigned,

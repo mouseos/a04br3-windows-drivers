@@ -57,6 +57,9 @@ NDIS_STATUS a04_native_hif_rx_indicate(NDIS_HANDLE adapter,PNET_BUFFER_LIST nbl,
  struct a04_native_hif_rx rx;NDIS_STATUS status;uint8_t normalized[A04_NATIVE_MPDU_MAX];
  status=a04_native_hif_rx_decode(p,n,allowed,local,ap,context,lookup,&rx);
  if(status!=NDIS_STATUS_SUCCESS)return status;
+ /* Standalone helper has no association-scoped retry owner. Runtime uses
+  * decode+native_retry+owned slot instead; do not bypass that boundary. */
+ if(rx.mpdu[1]&8)return NDIS_STATUS_NOT_SUPPORTED;
  ULONG length=(ULONG)a04_native_frame_copy(normalized,rx.mpdu,rx.length,rx.header);
  if(!nbl||!NET_BUFFER_LIST_FIRST_NB(nbl))return NDIS_STATUS_INVALID_DATA;
  PNET_BUFFER nb=NET_BUFFER_LIST_FIRST_NB(nbl);ULONG previous=NET_BUFFER_DATA_LENGTH(nb);

@@ -153,7 +153,7 @@ int a04_ndis_rate_lookup(void *p,unsigned mode,unsigned code,ULONG *phy,UCHAR *r
 }
 static int receive_data(void *p,const uint8_t *packet,unsigned bytes)
 {
- struct a04_ndis_runtime *a=p;struct a04_native_hif_rx rx;NDIS_STATUS status;struct a04_wlan_rx_frame management;
+ struct a04_ndis_runtime *a=p;struct a04_native_hif_rx rx;NDIS_STATUS status;struct a04_wlan_rx_frame management;struct a04_native_retry_ticket retry;
  if(!a04_wlan_rx_frame_parse(packet,bytes,&management)&&management.length>=24&&!(management.data[0]&0x0c)){
   if(a->radio.connected&&management.length>=36&&(management.data[0]==0x80||management.data[0]==0x50)&&
     a04_wlan_equal(management.data+10,a->radio.station.ap.mac,6)&&a04_wlan_equal(management.data+16,a->radio.station.ap.mac,6)&&
@@ -183,6 +183,9 @@ static int receive_data(void *p,const uint8_t *packet,unsigned bytes)
   status=a04_os_security_receive(a,packet,bytes,&rx);
  }else status=a04_native_hif_rx_decode(packet,bytes,a->radio.bridge->regulatory.permitted,a->radio.station.local.mac,a->radio.station.ap.mac,a,a04_ndis_rate_lookup,&rx);
  if(status!=NDIS_STATUS_SUCCESS){NdisAcquireSpinLock(&a->lock);if(status==NDIS_STATUS_INVALID_DATA||status==NDIS_STATUS_INVALID_LENGTH)a->stats.rx_errors++;else a->stats.rx_discards++;NdisReleaseSpinLock(&a->lock);return 0;} /* never authorize a rejected frame */
+ if(a04_native_retry_check(&a->rx_retry,a->receive_epoch,rx.mpdu,rx.length,&retry)){
+  NdisAcquireSpinLock(&a->lock);a->stats.rx_discards++;NdisReleaseSpinLock(&a->lock);return 0;
+ }
  if(a->radio.connected)a04_peer_observed(&a->peer_loss,now(a));
  {unsigned group=rx.mpdu[4]&1,broadcast=1,eapol=rx.length>=rx.header+8&&a04_wlan_be16(rx.mpdu+rx.header+6)==0x888e;for(unsigned i=0;i<6;i++)if(rx.mpdu[4+i]!=255)broadcast=0;
   if(!eapol){if(!a->radio.station.secured&&a->os_security.exclude_unencrypted)return 0;if(!group&&!(a->filter&NDIS_PACKET_TYPE_DIRECTED))return 0;if(group&&broadcast&&!(a->filter&NDIS_PACKET_TYPE_BROADCAST))return 0;if(group&&!broadcast){
@@ -194,6 +197,7 @@ static int receive_data(void *p,const uint8_t *packet,unsigned bytes)
  }
  struct a04_rx_slot *slot=&a->rx[a->rx_count++];
  slot->length=(ULONG)a04_native_frame_copy(slot->bytes,rx.mpdu,rx.length,rx.header);slot->info=rx.info;slot->management=FALSE;slot->epoch=a->receive_epoch;
+ a04_native_retry_commit(&a->rx_retry,&retry);
  return 0;
 }
 void a04_ndis_association_reported(struct a04_ndis_runtime *a)
