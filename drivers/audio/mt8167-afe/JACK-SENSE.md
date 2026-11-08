@@ -35,3 +35,9 @@ host fixture: `g++ -std=c++14 -fsanitize=address,undefined tests/afe_jack_test.c
 - 実GPIO19資格/極性は既存 `drivers/input/mt8167-accdet/README.md` と固定CT3 GPL7c478212のa04br3.dts/accdet_eint_func/pinctrl。ABI/資格を本consumerで変更しない。
 
 この候補の物理動作・Windows実ロード・抜挿し・headphone audioは未検証。主担当の実機確認まで完了扱いしない。
+
+## run133後段：KS登録名の寿命修正1032
+
+Started/problem0/fixed-filter1後のCreateFileW ERROR2はaccess deniedではない。PcRegisterSubdeviceのNameはdevice全寿命の有効性が必要（Microsoft一次仕様 https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/portcls/nf-portcls-pcregistersubdevice ）。実RT8.1 PortCls REAでも同じName pointerがKsAddObjectCreateItemToDeviceHeaderのObjectClassへ渡る。speaker WaveRT/Topologyのautomatic WCHAR配列をdriver常駐staticへ変更する。capture名は既にstatic。文字列・suffix・AddInterface GUID・既存client・access maskは変えず、KSNAME等を推測appendしない。元productionコードでは関数return後の保持pointer参照がASan stack-use-after-returnとなり、修正版はPASS。run133実kernel内の破損値は未採取なので、実機open成功は未確認。
+
+本候補は搭載1027正本source81f20c785cebf7e7a65778a3b3a10687bb6bcb54へ、この寿命修正とNativeStart/INF版1032のみを適用する。HP1031の追加経路・6枠拡張・親1108/RTC/thermalを含めず、既存speaker/capture単一ownerと4枠・GPIO資格・開始停止を保持する。親と媒体は変更しない。main通常batchで既存署名Mencius client --readを1回、同じCreateFile/accessで観測する。
