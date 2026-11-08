@@ -75,6 +75,71 @@
         "existing_readonly_client_only": true,
         "interface_ready_is_not_temperature_success": true
       }
+    },
+    "render": {
+      "status": "main-sealed-observation-only-candidate",
+      "role": "render",
+      "DIF": true,
+      "directory": "port/xnu/out/windows-rt-moduleidentity339/build/package339",
+      "manifest": {
+        "path": "port/xnu/out/windows-rt-moduleidentity339/build/package339/signed-manifest.json",
+        "sha256": "f3d3ce288dbc8b453fea220276eee5577344c0704c0895930853f151fd01dfcf"
+      },
+      "producer_pins": {
+        "path": "port/xnu/out/windows-rt-moduleidentity339/pins.json",
+        "sha256": "094d02c9df27fa0e9dfbb93e7247ba9401f8de3dfcac41e8e18e8161d4b504a2"
+      },
+      "main_seal": {
+        "path": "port/xnu/out/windows-rt-moduleidentity339/main-independent-seal.json",
+        "sha256": "00be5cb77912278f4c05f2bd6f536aeb19d5626c4fe050c16abcb40d09761aac"
+      },
+      "source_commit": "acc343370cca6fbda412ebf3a535c0a583e37cbd",
+      "driver_version": "0.0.3.39",
+      "SYS_sha256": "6efa8a9d4f8ba790a9be589e0b1125fc5b6c4a09b24a318d2f419fb4e4f68803",
+      "UMD_sha256": "3bd57ffe4e5310b14ab00ebff3ab5b1a95f029d41bb1533e00bda42b6950eb3c",
+      "files": [
+        {
+          "name": "ge8300-render.inf",
+          "sha256": "13f68f535f704c7543be942d2cd3d0a18476008e8d4903af8c984f6d22c0628f"
+        },
+        {
+          "name": "ge8300-render.cat",
+          "sha256": "eb6519672fdf4c863977457550988ef77db6e8321d0b6298d26d9b1c93f57bb2"
+        },
+        {
+          "name": "ge8300-render.sys",
+          "sha256": "6efa8a9d4f8ba790a9be589e0b1125fc5b6c4a09b24a318d2f419fb4e4f68803"
+        },
+        {
+          "name": "ge8300-umd.dll",
+          "sha256": "3bd57ffe4e5310b14ab00ebff3ab5b1a95f029d41bb1533e00bda42b6950eb3c"
+        },
+        {
+          "name": "ge8300-mips.fw",
+          "sha256": "5c1fdff55e8e57f8be0c6c36b94f2167ea53ece84308068bc79c6b9c37cd7fe1"
+        },
+        {
+          "name": "ge8300-d3d-clear.exe",
+          "sha256": "f3af58c14f7a3efdee119dac971d59b5e92c069bd649a6499006242d37698597"
+        },
+        {
+          "name": "ge8300-d3d-texture.exe",
+          "sha256": "2727328f3072d9cfcacc4758acf3701c7795471c76860eeac70206c82d759206"
+        },
+        {
+          "name": "mt8167-development.cer",
+          "sha256": "33680a69f647193e7f7adcecf137db525262019c3a8f971ab3095d40f894d72a"
+        },
+        {
+          "name": "ge8300-d3d-texture-boundary.exe",
+          "sha256": "055bbff39b5e28a8e64f5a1b358b6084f68e03bfcdcebf7425d2e1b60fae6789"
+        }
+      ],
+      "rootfix": false,
+      "gpu_client_execute": false,
+      "gpu_client_count": 0,
+      "hardware_verified": false,
+      "driver_rebuild_required": false
     }
   },
   "install_targets": null,
@@ -154,7 +219,8 @@
     "current_draft_does_not_select_either_path": true
   },
   "proposed_install_targets": [
-    "thermal"
+    "thermal",
+    "render"
   ],
   "proposed_install_targets_complete": false,
   "thermal_runtime_evaluation": [
@@ -166,9 +232,9 @@
   ],
   "module_identity339_policy": {
     "version": 339,
-    "status": "artifact-pending-observation-only-not-root-fix",
+    "status": "main-sealed-observation-only-candidate",
     "rootfix": false,
-    "adopted": false,
+    "adopted": true,
     "render_DIF_with_feature_batch_permitted_after_sealed_inputs": true,
     "gpu_client_execute": false,
     "gpu_client_count": 0,
@@ -176,5 +242,33 @@
     "identity_evidence_does_not_authorize_drawing_retest": true,
     "future_rootfix_candidate": "340 or later evidence-backed root fix",
     "future_rootfix_single_client_must_inherit_339_identity": true
+  },
+  "module_identity_collection": {
+    "status": "required-for-final-reader-implementation",
+    "registry_key": "ControlSet001/Services/GE8300Render/Parameters/NativeCheckpoint",
+    "registry_value": "ModuleIdentityV1",
+    "registry_type": "REG_BINARY",
+    "exact_bytes": 144,
+    "schema": 1,
+    "pointer_bits": 32,
+    "reserved": 0,
+    "raw_binary_required": true,
+    "decode_as_text": false,
+    "decoder_source_commit": "acc343370cca6fbda412ebf3a535c0a583e37cbd",
+    "decoder_path": "tools/ci/read-ge8300-module-identity.py",
+    "expected_sourcebase": "3aaaef10e60c8e551e2a2aa8e0ea9ab21af7ca9a",
+    "expected_buildid": "GPU338-module-identity-v1",
+    "fields_to_correlate": [
+      "moduleStart",
+      "moduleSize",
+      "buildid",
+      "FILETIME",
+      "interrupttime",
+      "same-boot collector evidence",
+      "actual installed SYS hash"
+    ],
+    "FILETIME_minus_uptime_is_boot_time_estimate_not_boot_GUID": true,
+    "old_run143_PC_to_new_ASLRbase_allowed": false,
+    "module_identity_is_not_rootfix_or_drawing_success": true
   }
 }
