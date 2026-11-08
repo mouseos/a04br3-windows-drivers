@@ -1,16 +1,14 @@
 /* SPDX-License-Identifier: GPL-2.0-only
- * Parent1101 owns the complete synchronous PIO transaction and quarantine.
- * The child maps its exclusive resources and explicitly transfers ownership;
- * it never accesses a thermal/ADC register or frees adopted mappings. */
+ * Parent1103 owns the complete synchronous PIO transaction and quarantine.
+ * Resource-less child never maps, owns or frees thermal/ADC register ranges. */
 #include <ntddk.h>
 #include <wdf.h>
-#include "resources.h"
 #include "boot_record.h"
 #include "readout.h"
 #include "readout_ioctl.h"
-#include "../../bus/mt8167-shared/thermal_native_interface.h"
+#include "../../bus/mt8167-shared/thermal_parent_pio_interface.h"
 #include "../../system/mt8167-toprgu/uart_screen.h"
-typedef struct {PVOID mapped[2];WDFSPINLOCK lock;WDFIOTARGET uart;struct a04_thermal_readout_state reading;} PIO_THERMAL;
+typedef struct {WDFSPINLOCK lock;WDFIOTARGET uart;struct a04_thermal_readout_state reading;} PIO_THERMAL;
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(PIO_THERMAL,Pio)
 EVT_WDF_DRIVER_DEVICE_ADD PioAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE PioPrepare;
@@ -32,40 +30,28 @@ static void number(char *s,ULONG *n,LONG value) {
  do{digits[count++]=(char)('0'+u%10);u/=10;}while(u);while(count)s[(*n)++]=digits[--count];
 }
 NTSTATUS PioPrepare(WDFDEVICE device,WDFCMRESLIST raw,WDFCMRESLIST translated) {
- PIO_THERMAL *c=Pio(device);struct a04_thermal_resource r[2];unsigned i;PHYSICAL_ADDRESS a;
- if(c->mapped[0]||c->mapped[1]||WdfCmResourceListGetCount(raw)!=2||WdfCmResourceListGetCount(translated)!=2)return STATUS_DEVICE_CONFIGURATION_ERROR;
- RtlZeroMemory(r,sizeof(r));
- for(i=0;i<2;i++) {PCM_PARTIAL_RESOURCE_DESCRIPTOR x=WdfCmResourceListGetDescriptor(raw,i),y=WdfCmResourceListGetDescriptor(translated,i);
-  if(!x||!y||x->Type!=CmResourceTypeMemory||y->Type!=CmResourceTypeMemory)return STATUS_DEVICE_CONFIGURATION_ERROR;
-  r[i].raw_memory=r[i].memory=1;r[i].raw_exclusive=x->ShareDisposition==CmResourceShareDeviceExclusive;r[i].exclusive=y->ShareDisposition==CmResourceShareDeviceExclusive;
-  r[i].raw=x->u.Memory.Start.QuadPart;r[i].translated=y->u.Memory.Start.QuadPart;r[i].raw_size=x->u.Memory.Length;r[i].size=y->u.Memory.Length;}
- if(a04_thermal_resources_validate_shared(r,2))return STATUS_DEVICE_CONFIGURATION_ERROR;
- for(i=0;i<2;i++) {a.QuadPart=i?0x11003000:0x1100d000;c->mapped[i]=MmMapIoSpace(a,0x1000,MmNonCached);
-  if(!c->mapped[i]){while(i){--i;MmUnmapIoSpace(c->mapped[i],0x1000);c->mapped[i]=NULL;}return STATUS_INSUFFICIENT_RESOURCES;}}
- return STATUS_SUCCESS;
+ UNREFERENCED_PARAMETER(device);
+ return WdfCmResourceListGetCount(raw)==0&&WdfCmResourceListGetCount(translated)==0?STATUS_SUCCESS:STATUS_DEVICE_CONFIGURATION_ERROR;
 }
 NTSTATUS PioRelease(WDFDEVICE device,WDFCMRESLIST translated) {
- PIO_THERMAL *c=Pio(device);unsigned i;UNREFERENCED_PARAMETER(translated);
- for(i=0;i<2;i++)if(c->mapped[i]){MmUnmapIoSpace(c->mapped[i],0x1000);c->mapped[i]=NULL;}
- return STATUS_SUCCESS; /* Only mappings never adopted by hardware owner. */
+ UNREFERENCED_PARAMETER(device);UNREFERENCED_PARAMETER(translated);return STATUS_SUCCESS;
 }
+
 NTSTATUS PioD0(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous) {
  PIO_THERMAL *c=Pio(device);struct a04_thermal_boot_cal v;struct a04_thermal_cal cal;struct a04_thermal_sample sample;
- A04_THERMAL_NATIVE_INTERFACE iface;ULONG raw[3],adopted=0,stage=0,bytes=sizeof(v),attrs=0;GUID guid=calGuid;NTSTATUS status;
+ MT8167_THERMAL_PARENT_PIO_INTERFACE iface;ULONG raw[3],adopted=0,stage=0,bytes=sizeof(v),attrs=0;GUID guid=calGuid;NTSTATUS status;
  UNICODE_STRING name=RTL_CONSTANT_STRING(L"A04BR3ThermalCalibration");UNREFERENCED_PARAMETER(previous);
  WdfSpinLockAcquire(c->lock);a04_readout_invalidate(&c->reading);WdfSpinLockRelease(c->lock);
- if(!c->mapped[0]||!c->mapped[1])return STATUS_DEVICE_NOT_READY;
  {DECLARE_CONST_UNICODE_STRING(path,A04_UART_SCREEN_DEVICE);WDF_IO_TARGET_OPEN_PARAMS open;
   WDF_IO_TARGET_OPEN_PARAMS_INIT_OPEN_BY_NAME(&open,&path,GENERIC_READ|GENERIC_WRITE);(VOID)WdfIoTargetOpen(c->uart,&open);}
- MARK(c,"A04THM PIO START parent1101\n");
+ MARK(c,"A04THM PIO START parent1103\n");
  RtlZeroMemory(&v,sizeof(v));status=ExGetFirmwareEnvironmentVariable(&name,&guid,&v,&bytes,&attrs);
  if(!NT_SUCCESS(status)||a04_thermal_boot_calibration(&cal,&v,bytes,attrs)){MARK(c,"A04THM PIO CAL REJECT\n");status=STATUS_DEVICE_NOT_READY;goto done;}
- RtlZeroMemory(&iface,sizeof(iface));status=WdfFdoQueryForInterface(device,&A04SharedThermalNativeGuid,(PINTERFACE)&iface,sizeof(iface),A04_THERMAL_NATIVE_VERSION,NULL);
+ RtlZeroMemory(&iface,sizeof(iface));status=WdfFdoQueryForInterface(device,&Mt8167ThermalParentPioGuid,(PINTERFACE)&iface,sizeof(iface),MT8167_THERMAL_PARENT_PIO_VERSION,NULL);
  if(!NT_SUCCESS(status)){MARK(c,"A04THM PIO TUPLE REJECT\n");goto done;}
- if(iface.Header.Size!=sizeof(iface)||iface.Header.Version!=2||iface.ParentBuild!=A04_THERMAL_NATIVE_PARENT_BUILD||!iface.Header.Context||!iface.Measure||!iface.Header.InterfaceDereference) {
+ if(iface.Header.Size!=sizeof(iface)||iface.Header.Version!=MT8167_THERMAL_PARENT_PIO_VERSION||iface.ParentBuild!=MT8167_THERMAL_PARENT_PIO_BUILD||!iface.Header.Context||!iface.Measure||!iface.Header.InterfaceReference||!iface.Header.InterfaceDereference) {
   if(iface.Header.InterfaceDereference)iface.Header.InterfaceDereference(iface.Header.Context);status=STATUS_REVISION_MISMATCH;goto done;}
- status=iface.Measure(iface.Header.Context,c->mapped[0],c->mapped[1],&adopted,raw,&stage);
- if(adopted==1)c->mapped[0]=c->mapped[1]=NULL; /* supplier has the sole lifetime */
+ status=iface.Measure(iface.Header.Context,&adopted,raw,&stage);
  iface.Header.InterfaceDereference(iface.Header.Context);
  if(!NT_SUCCESS(status)){
   static const char hex[]="0123456789ABCDEF";char line[80]="A04THM PIO FAILED status=";ULONG n=sizeof("A04THM PIO FAILED status=")-1;unsigned i;
@@ -76,7 +62,7 @@ NTSTATUS PioD0(WDFDEVICE device,WDF_POWER_DEVICE_STATE previous) {
  if(publish){status=STATUS_DEVICE_HARDWARE_ERROR;goto done;}
  {char line[96]="A04THM PIO mc=";ULONG n=sizeof("A04THM PIO mc=")-1;unsigned i;
   for(i=0;i<3;i++){number(line,&n,sample.mc[i]);line[n++]=i==2?'\n':'/';}mark(c,line,n);}
- MARK(c,"A04THM PIO IDLE restored parent1101\n");
+ MARK(c,"A04THM PIO IDLE restored parent1103\n");
 done:
  WdfIoTargetClose(c->uart);return status;
 }

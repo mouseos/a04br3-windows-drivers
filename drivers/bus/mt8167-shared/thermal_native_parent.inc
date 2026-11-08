@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent
- * V2 board-stopped producer -> one synchronous parent PIO owner.
+ * V3 board-stopped producer -> one synchronous parent PIO owner.
  * GPIO/PMIC/audio/USB state is not changed on thermal failure. */
 #include "thermal_pio_record.h"
 /* GPL-2.0-only ADC algorithm retained with its source license. */
@@ -30,14 +30,14 @@ static int ThermalPioRecordValid(const A04_THERMAL_PIO_RECORD *r,ULONG bytes,ULO
   !r->irq_after&&!(r->ahb_after>>16)&&!r->mon_after&&(r->pause_after&0x10eu)==0x10eu&&
   !r->adc_mode&&!r->adc_trigger&&r->adc_busy!=0xffffu&&!(r->adc_busy&1)&&!r->irq_pending;
 }
-static NTSTATUS ParentThermalPioMeasure(PVOID p,PVOID thermal,PVOID adc,ULONG *adopted,ULONG raw[3],ULONG *stage)
+static NTSTATUS ParentThermalPioMeasure(PVOID p,ULONG *adopted,ULONG raw[3],ULONG *stage)
 {
- WDFDEVICE dev=(WDFDEVICE)p;A04_PARENT_CONTEXT *c=ParentContext(dev);NTSTATUS status;
+ WDFDEVICE dev=(WDFDEVICE)p;A04_PARENT_CONTEXT *c=ParentContext(dev);NTSTATUS status;PVOID thermal=NULL,adc=NULL;
  A04_THERMAL_PIO_RECORD record;ULONG bytes=sizeof(record),attrs=0;GUID guid=A04_THERMAL_PIO_GUID;
  UNICODE_STRING name=RTL_CONSTANT_STRING(A04_THERMAL_PIO_NAME);ULONG original=0,value,result[3];ULONGLONG budgetBegin;unsigned i;int measured=1;
  struct a04_auxadc_pio_state sample={0};struct a04_auxadc_pio_io io={c,ThermalPioQualified,ThermalPioRead16,ThermalPioWrite16,ThermalPioWait};
  if(!adopted||!raw||!stage)return STATUS_INVALID_PARAMETER;*adopted=0;*stage=1;
- if(!thermal||!adc||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  if(InterlockedCompareExchange(&c->thermalPioUsed,1,0))return STATUS_DEVICE_NOT_READY;
  status=WdfDeviceStopIdle(dev,TRUE);if(!NT_SUCCESS(status))return status;
  if(!ExAcquireRundownProtection(&c->thermalRundown)){WdfDeviceResumeIdle(dev);return STATUS_DEVICE_NOT_READY;}
@@ -55,6 +55,14 @@ static NTSTATUS ParentThermalPioMeasure(PVOID p,PVOID thermal,PVOID adc,ULONG *a
  if(value==MAXULONG||(value&0x40000002u)){status=STATUS_DEVICE_NOT_READY;goto unlock;}
  value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->infra+0x128));
  if(value==MAXULONG||!(value&1)){status=STATUS_DEVICE_NOT_READY;goto unlock;}
+ /* ParentPrepare checked the complete exclusive eight-range assignment.
+  * No child-supplied physical address or pointer can reach this owner. Map
+  * only after strict firmware/clock/reset admission, before the first use. */
+ if(c->thermalPioMappings[0]||c->thermalPioMappings[1]||!c->thermalAssigned[0].QuadPart||!c->thermalAssigned[1].QuadPart){status=STATUS_DEVICE_NOT_READY;goto unlock;}
+ thermal=MmMapIoSpace(c->thermalAssigned[0],0x1000,MmNonCached);
+ if(!thermal){status=STATUS_INSUFFICIENT_RESOURCES;goto unlock;}
+ adc=MmMapIoSpace(c->thermalAssigned[1],0x1000,MmNonCached);
+ if(!adc){status=STATUS_INSUFFICIENT_RESOURCES;goto unlock;}
  /* Firmware left the old bus master in reset; no IRQ/ISR/DPC is created. */
  if(READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)thermal+0xc))||
     READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)thermal+0x10))||
@@ -69,8 +77,8 @@ static NTSTATUS ParentThermalPioMeasure(PVOID p,PVOID thermal,PVOID adc,ULONG *a
  c->thermalPioDeadline=budgetBegin+5000000ULL;
  *stage=5;c->thermal.firmware_released=1;c->thermal.adc_exclusive=1;c->thermal.leased=1;c->thermal.native_claim=1;c->thermal.clocks_ready=1;
  c->thermalPioMappings[0]=thermal;c->thermalPioMappings[1]=adc;*adopted=1;
- /* Supplier owns mappings and power/object references from this boundary.
-  * No pointer to child context/code is retained, and no DMA backing exists. */
+ /* Parent retains its own mappings and power/object references from this
+  * boundary. No caller mapping transfer, child code pointer or DMA backing. */
  WdfObjectReference(dev);
  original=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->apmixed+0x604));
  if(original==MAXULONG)goto retain;
@@ -103,9 +111,12 @@ retain:
  /* Only this owner is poisoned. No clock/analog rollback, unmap, ResumeIdle,
   * retry or bugcheck. ParentStop/ParentUnmap already retain this lease. */
  c->thermal.poisoned=1;status=STATUS_DEVICE_HARDWARE_ERROR;
- DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"A04THM PIO RETAIN parent1101 no-free\n");
+ DbgPrintEx(DPFLTR_IHVDRIVER_ID,DPFLTR_ERROR_LEVEL,"A04THM PIO RETAIN parent1103 no-free\n");
  ParentUnlock(c);ExReleaseRundownProtection(&c->thermalRundown);return status;
 unlock:
+ /* Before lease/touch, these are unused parent-owned mappings. All uncertain
+  * post-touch exits go through retain instead, so never unmap those here. */
+ if(adc)MmUnmapIoSpace(adc,0x1000);if(thermal)MmUnmapIoSpace(thermal,0x1000);
  ParentUnlock(c);
 outside:
  ExReleaseRundownProtection(&c->thermalRundown);WdfDeviceResumeIdle(dev);return status;
