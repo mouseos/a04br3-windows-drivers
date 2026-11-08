@@ -1,5 +1,18 @@
 # MT8167 PowerVR power sequencing foundation
 
+## first standard clearの実証範囲（run109、run111でログ回収）
+
+主担当のPID対応付け済み証拠で、GPU320の限定FL10_0開発profileにおける最初の
+`ClearRenderTargetView(magenta) → CopyResource(staging) → Flush → Map(READ) → Unmap`
+は800×600の480,000画素一致・不一致0、直後のGetDeviceRemovedReason=0を確認した。
+これは実標準D3D APIによる単色1回のCPU readback成功である。
+2回目はMap887a0005、その後10E/0B/C00000A3で停止し、全client/連続描画/UI全体は未成功。
+以下の「標準API未成功」はこの後出しログ回収前の判断として保持する。
+証拠識別はtrial109/PID0000084C/Diagnostic00011AF5、clear log SHA256
+`d7fdf3caf9e6464404b556cac77e1c7e1ed81bb257a7e509986beef604f20e99`。
+公開fullbuild source e5816a86と、実署名KMD f73da1e3/UMD3f8291d0/nativefb217359の出自は区別する。
+
+
 ## 最新の実機結果（2026-11-08、run109停止後）
 
 主担当から返却されたGPU320の実観測は、Install3010/flush0、計画reboot1回、
