@@ -59,8 +59,11 @@ freePaths:
     request->irp->AssociatedIrp.SystemBuffer=&request->sample;
     request->irp->Flags=IRP_BUFFERED_IO;
     request->irp->IoStatus.Status=STATUS_NOT_SUPPORTED;
+    request->irp->IoStatus.Information=0;
     {
         PIO_STACK_LOCATION stack=IoGetNextIrpStackLocation(request->irp);
+        /* IoAllocateIrp does not promise zeroed/recycled stack storage. */
+        RtlZeroMemory(stack,sizeof(*stack));
         stack->MajorFunction=IRP_MJ_DEVICE_CONTROL;stack->FileObject=file;
         stack->Parameters.DeviceIoControl.IoControlCode=IOCTL_MT8167_ACCDET_READ_SOCKET;
         stack->Parameters.DeviceIoControl.OutputBufferLength=sizeof(request->sample);
