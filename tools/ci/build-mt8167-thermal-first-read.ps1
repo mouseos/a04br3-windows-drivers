@@ -4,6 +4,7 @@ param([Parameter(Mandatory=$true)][string]$ClosureDirectory,
  [Parameter(Mandatory=$true)][string]$DependencyDirectory,
  [Parameter(Mandatory=$true)][string]$SignTool,
  [Parameter(Mandatory=$true)][string]$OutputDirectory,
+ [string]$UserIncludeDirectory='C:\mt8167-minimal-service-host\cache\kit81\Include\um',
  [string]$UserLibraryDirectory='C:\Program Files (x86)\Windows Kits\10\Lib\10.0.17763.0\um\arm')
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'));$out=[IO.Path]::GetFullPath($OutputDirectory)
@@ -30,7 +31,7 @@ Copy-Item "$root\drivers\power\mt8167-thermal\mt8167-thermal-native.inf" "$out\p
 $thumb='BCBF6C456C6F0DD0818434763B189488FBF13570';$cert=Get-Item "Cert:\CurrentUser\My\$thumb"
 if(!$cert.HasPrivateKey -or $cert.NotAfter -le (Get-Date)){throw 'Existing signer required'}
 New-Item -ItemType Directory "$out\client"|Out-Null
-$umflags=@('--target=thumbv7-pc-windows-msvc','-std=c11','-O2','-ffreestanding','-fno-builtin','-fms-extensions','-fno-stack-protector','-D_ARM_','-DARM','-D_WIN32_WINNT=0x0603','-isystem',"$KitIncludeDirectory\um",'-isystem',"$KitIncludeDirectory\shared")
+$umflags=@('-nostdlibinc','--target=thumbv7-pc-windows-msvc','-std=c11','-O2','-ffreestanding','-fno-builtin','-fms-extensions','-fno-stack-protector','-D_ARM_','-DARM','-D_WIN32_WINNT=0x0603','-isystem',"$UserIncludeDirectory",'-isystem',"$KitIncludeDirectory\shared")
 & clang @umflags -c "$root\tools\thermal\mt8167-thermal-ioctl-status.c" -o "$out\obj\ioctl_status_client.obj"
 if($LASTEXITCODE){throw 'Fixed status client compile failed'}
 $client="$out\client\mt8167-thermal-ioctl-status.exe"
