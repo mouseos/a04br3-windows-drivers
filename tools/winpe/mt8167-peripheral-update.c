@@ -111,7 +111,38 @@ static DWORD selected(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int candidate
  error=deferred_driver_value(set,dev,L"DriverDateData",REG_BINARY,(BYTE *)&d,sizeof(d),&n);record(i,0x216,error);if(error)return error;type=DEVPROP_TYPE_FILETIME;
  }record(i,0x217,type);record(i,0x218,n);if(type!=DEVPROP_TYPE_FILETIME||n!=8||(((ULONGLONG)d.dwHighDateTime<<32)|d.dwLowDateTime)!=(candidate?targets[i].date:targets[i].base_date))return ERROR_REVISION_MISMATCH;e=property(set,dev,SPDRP_SERVICE,targets[i].service);if(e)return e;e=property(set,dev,SPDRP_CLASSGUID,targets[i].cls);if(e)return e;return installed_inf(i,set,dev,candidate);}
 static DWORD installed_sys(unsigned i,int candidate){WCHAR s[MAX_PATH],d[MAX_PATH],p[MAX_PATH];HANDLE h=INVALID_HANDLE_VALUE;DWORD e;if(!GetSystemDirectoryW(s,MAX_PATH))return GetLastError();e=path(d,s,L"drivers");if(!e)e=path(p,d,targets[i].sys);if(!e)e=deferred_file(p,candidate?targets[i].hash[1]:targets[i].base_sys,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);return e;}
-static DWORD installed_inf(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int candidate){HKEY key;WCHAR inf[128],win[MAX_PATH],dir[MAX_PATH],full[MAX_PATH];DWORD type,n=sizeof(inf),j,e;HANDLE held=INVALID_HANDLE_VALUE;key=SetupDiOpenDevRegKey(set,dev,DICS_FLAG_GLOBAL,0,DIREG_DRV,KEY_QUERY_VALUE);if(key==INVALID_HANDLE_VALUE)return GetLastError();e=RegQueryValueExW(key,L"InfPath",NULL,&type,(BYTE *)inf,&n);RegCloseKey(key);if(e)return e;if(type!=REG_SZ||n<2||n>sizeof(inf)||(n&1)||inf[n/2-1])return ERROR_INVALID_DATA;for(j=0;inf[j];j++)if(!((inf[j]>='a'&&inf[j]<='z')||(inf[j]>='A'&&inf[j]<='Z')||(inf[j]>='0'&&inf[j]<='9')||inf[j]=='.'||inf[j]=='-'||inf[j]=='_'))return ERROR_INVALID_DATA;if(!candidate)return lstrcmpiW(inf,targets[i].base_inf)?ERROR_REVISION_MISMATCH:0;if(!GetWindowsDirectoryW(win,MAX_PATH))return GetLastError();e=path(dir,win,L"INF");if(!e)e=path(full,dir,inf);if(!e)e=deferred_file(full,targets[i].hash[0],&held);if(held!=INVALID_HANDLE_VALUE)CloseHandle(held);return e;}
+/* DIF may store the original INF basename in the selected class key while
+ * SetupCopyOEMInf publishes only oemNNN.inf in Windows\INF. Resolve that exact
+ * hash-pinned staged package through SetupAPI; never scan the INF directory,
+ * accept a missing file, skip CAT checks, or reinterpret a mismatched version. */
+static int published_inf_leaf(const WCHAR *s){unsigned i=3;if((s[0]!=L'o'&&s[0]!=L'O')||(s[1]!=L'e'&&s[1]!=L'E')||(s[2]!=L'm'&&s[2]!=L'M'))return 0;if(s[i]<L'0'||s[i]>L'9')return 0;while(s[i]>=L'0'&&s[i]<=L'9'){if(++i>12)return 0;}return !lstrcmpiW(s+i,L".inf");}
+static DWORD installed_inf(unsigned i,HDEVINFO set,SP_DEVINFO_DATA *dev,int candidate){
+ HKEY key;WCHAR inf[128],win[MAX_PATH],dir[MAX_PATH],full[MAX_PATH],folder[MAX_PATH],staged[MAX_PATH],store[MAX_PATH],published[MAX_PATH],parent[MAX_PATH];DWORD type,n=sizeof(inf),j,e,needed=0,last=0;HANDLE held=INVALID_HANDLE_VALUE;
+ key=SetupDiOpenDevRegKey(set,dev,DICS_FLAG_GLOBAL,0,DIREG_DRV,KEY_QUERY_VALUE);if(key==INVALID_HANDLE_VALUE)return GetLastError();
+ e=RegQueryValueExW(key,L"InfPath",NULL,&type,(BYTE *)inf,&n);RegCloseKey(key);if(e)return e;
+ if(type!=REG_SZ||n<2||n>sizeof(inf)||(n&1)||inf[n/2-1])return ERROR_INVALID_DATA;
+ for(j=0;inf[j];j++)if(!((inf[j]>='a'&&inf[j]<='z')||(inf[j]>='A'&&inf[j]<='Z')||(inf[j]>='0'&&inf[j]<='9')||inf[j]=='.'||inf[j]=='-'||inf[j]=='_'))return ERROR_INVALID_DATA;
+ if(!candidate)return lstrcmpiW(inf,targets[i].base_inf)?ERROR_REVISION_MISMATCH:0;
+ n=GetWindowsDirectoryW(win,MAX_PATH);if(!n||n>=MAX_PATH)return ERROR_BAD_PATHNAME;
+ e=path(dir,win,L"INF");if(e)return e;
+ if(lstrcmpiW(inf,targets[i].inf)){
+  if(!published_inf_leaf(inf))return ERROR_REVISION_MISMATCH;
+  e=path(full,dir,inf);
+ }else{
+  e=path(folder,base_directory,targets[i].folder);if(!e)e=path(staged,folder,targets[i].inf);
+  if(!e)e=deferred_file(staged,targets[i].hash[0],&held);if(held!=INVALID_HANDLE_VALUE){CloseHandle(held);held=INVALID_HANDLE_VALUE;}if(e)return e;
+  if(!SetupGetInfDriverStoreLocationW(staged,NULL,NULL,store,MAX_PATH,&needed))e=GetLastError();record(i,0x250,e);if(e)return e;
+  if(!needed||needed>MAX_PATH)return ERROR_INVALID_DATA;
+  e=deferred_file(store,targets[i].hash[0],&held);if(held!=INVALID_HANDLE_VALUE){CloseHandle(held);held=INVALID_HANDLE_VALUE;}if(e)return e;
+  if(!SetupGetInfPublishedNameW(store,published,MAX_PATH,&needed))e=GetLastError();record(i,0x251,e);if(e)return e;
+  if(!needed||needed>MAX_PATH)return ERROR_INVALID_DATA;
+  for(j=0;published[j];j++)if(published[j]==L'\\')last=j;
+  if(!last||!published_inf_leaf(published+last+1))return ERROR_INVALID_DATA;
+  lstrcpyW(parent,published);parent[last]=0;if(lstrcmpiW(parent,dir))return ERROR_REVISION_MISMATCH;
+  lstrcpyW(full,published);
+ }
+ if(!e)e=deferred_file(full,targets[i].hash[0],&held);if(held!=INVALID_HANDLE_VALUE)CloseHandle(held);record(i,0x252,e);return e;
+}
 static DWORD save_blob(const WCHAR *name,const void *data,DWORD bytes){WCHAR p[MAX_PATH];HANDLE h;DWORD e,n;e=path(p,log_directory,name);if(e)return e;h=CreateFileW(p,GENERIC_WRITE,FILE_SHARE_READ,NULL,CREATE_NEW,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_WRITE_THROUGH,NULL);if(h==INVALID_HANDLE_VALUE)return GetLastError();e=(!WriteFile(h,data,bytes,&n,NULL)||n!=bytes||!FlushFileBuffers(h))?ERROR_WRITE_FAULT:0;CloseHandle(h);return e;}
 /* Read-only ABI copied from RTC5 rtc_ioctl.h and thermal17 readout{,_ioctl}.h.
  * No set-calendar, calibration, trigger, or thermal-write request exists here. */
