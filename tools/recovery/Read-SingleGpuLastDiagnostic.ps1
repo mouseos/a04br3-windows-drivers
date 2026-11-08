@@ -1,11 +1,17 @@
 # Dot-source after loading OfflineSystemHiveNative.cs. No hive load/write/device IO.
 # Root is the caller's already-open private replay root, never a command/path broker.
-# No default exception. Only the captured run101 Diagnostic header can be preserved.
+# No default exception: every incomplete generation needs an explicit allowlisted pin.
 # This is an incomplete raw snapshot, never a verified node identity or success receipt.
-function Read-Mt8167SingleGpuPartialHeader($Key,[string]$Phase,[string]$PolicyHash,[string]$PartialDiagnosticPolicy='') {
- $known='10f8ec77e44a42c25a01c17434adb9c4bc80f180c142173725846d7735015c64'
- if($PartialDiagnosticPolicy -and $PartialDiagnosticPolicy -cne $known){throw 'Unknown partial diagnostic policy'}
- if(!$PartialDiagnosticPolicy -or $Phase -cne 'Diagnostic' -or $PolicyHash -cne $PartialDiagnosticPolicy){return $null}
+function Assert-Mt8167SingleGpuPartialPolicies([string[]]$Policies,[string[]]$AllowedPolicies) {
+ foreach($list in @(@{items=@($Policies)},@{items=@($AllowedPolicies)})){
+  $items=$list.items
+  if($items.Count -gt 16 -or @($items|Where-Object{$_ -cnotmatch '^[0-9a-f]{64}$'}).Count -or @($items|Select-Object -Unique).Count -ne $items.Count){throw 'Invalid or duplicate diagnostic policy pins'}
+ }
+ if(@($Policies|Where-Object{$_ -cnotin $AllowedPolicies}).Count){throw 'Partial diagnostic policies must be a subset of allowed diagnostic policies'}
+}
+function Read-Mt8167SingleGpuPartialHeader($Key,[string]$Phase,[string]$PolicyHash,[string[]]$PartialDiagnosticPolicies=@(),[string[]]$AllowedDiagnosticPolicies=@()) {
+ Assert-Mt8167SingleGpuPartialPolicies $PartialDiagnosticPolicies $AllowedDiagnosticPolicies
+ if($Phase -cne 'Diagnostic' -or $PolicyHash -cnotin $PartialDiagnosticPolicies){return $null}
  if($Key.GetValueKind('Complete') -ne [Microsoft.Win32.RegistryValueKind]::DWord){throw 'Partial diagnostic Complete type mismatch'}
  $complete=[int]$Key.GetValue('Complete')
  if($complete -eq 1){return $null}
@@ -27,15 +33,15 @@ function Read-Mt8167SingleGpuPartialHeader($Key,[string]$Phase,[string]$PolicyHa
  if($values.PolicyHash.value -cne $PolicyHash -or $values.PolicyHash.raw_hex -cne $expectedRaw){throw 'Partial diagnostic policy mismatch'}
  return @{present=$true;partial=$true;identity_verified=$false;identity_status='unverified';complete=$false;values=$values;raw_fingerprint=[MT8167OfflineHive.Native]::ValueFingerprint($Key)}
 }
-function Read-Mt8167SingleGpuLastDiagnostic($Root,[string]$ControlSet,[string]$PolicyHash,[string]$PartialDiagnosticPolicy='') {
+function Read-Mt8167SingleGpuLastDiagnostic($Root,[string]$ControlSet,[string]$PolicyHash,[string[]]$PartialDiagnosticPolicies=@(),[string[]]$AllowedDiagnosticPolicies=@()) {
  if($ControlSet -cnotmatch '^ControlSet[0-9]{3}$' -or $PolicyHash -cnotmatch '^[0-9a-f]{64}$'){throw 'Fixed receipt controlset/policy pin invalid'}
- if($PartialDiagnosticPolicy -and $PartialDiagnosticPolicy -cne '10f8ec77e44a42c25a01c17434adb9c4bc80f180c142173725846d7735015c64'){throw 'Unknown partial diagnostic policy'}
+ Assert-Mt8167SingleGpuPartialPolicies $PartialDiagnosticPolicies $AllowedDiagnosticPolicies
  $result=[ordered]@{}
  foreach($phase in @('Install','Diagnostic')){
   $key=[MT8167OfflineHive.Native]::OpenPath($Root,"$ControlSet\Services\MT8167RenderSingleGpu\Parameters\LastDiagnostic\$PolicyHash\$phase",$false)
   if(!$key){$result[$phase]=@{present=$false};continue}
   try {
-   $partial=Read-Mt8167SingleGpuPartialHeader $key $phase $PolicyHash $PartialDiagnosticPolicy
+   $partial=Read-Mt8167SingleGpuPartialHeader $key $phase $PolicyHash $PartialDiagnosticPolicies $AllowedDiagnosticPolicies
    if($null -ne $partial){$result[$phase]=$partial;continue}
    function Dword($name){
     if($key.GetValueKind($name) -ne [Microsoft.Win32.RegistryValueKind]::DWord){throw 'Fixed receipt DWORD type mismatch'}
