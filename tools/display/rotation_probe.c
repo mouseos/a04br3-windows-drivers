@@ -41,7 +41,7 @@ static void lognum(const char*key,LONG value){char b[128],d[16];DWORD n=0,j=0,w;
 static BOOL no_args(void){const WCHAR*p=GetCommandLineW();if(*p==L'"'){++p;while(*p&&*p!=L'"')++p;if(*p!=L'"')return FALSE;++p;}else while(*p&&*p!=L' '&&*p!=L'\t')++p;while(*p==L' '||*p==L'\t')++p;return !*p;}
 static BOOL regular(const WCHAR*p,BOOL dir){DWORD a=GetFileAttributesW(p);return a!=INVALID_FILE_ATTRIBUTES&&!(a&FILE_ATTRIBUTE_REPARSE_POINT)&&!!(a&FILE_ATTRIBUTE_DIRECTORY)==dir;}
 /* Enforce the protected fixed staging directory; never search PATH or accept a command. */
-static BOOL fixed_paths(WCHAR*dir,WCHAR*child,const WCHAR*name){WCHAR sys[MAX_PATH],me[MAX_PATH],expected[MAX_PATH];const WCHAR*own;
+static BOOL fixed_paths(WCHAR*dir,WCHAR*child,const WCHAR*name){WCHAR sys[MAX_PATH],me[MAX_PATH],expected[MAX_PATH];const WCHAR*own;UINT n;
 #if ROTATION_PROBE_ROLE==1
  own=WRAPPER;
 #elif ROTATION_PROBE_ROLE==2
@@ -49,8 +49,10 @@ static BOOL fixed_paths(WCHAR*dir,WCHAR*child,const WCHAR*name){WCHAR sys[MAX_PA
 #else
  own=WORKER;
 #endif
- if(!GetSystemDirectoryW(sys,MAX_PATH)||!join(dir,MAX_PATH,sys,FIXED_DIR)||!regular(dir,TRUE)||
- !join(expected,MAX_PATH,dir,own)||!GetModuleFileNameW(NULL,me,MAX_PATH)||!equal(me,expected)||!regular(me,FALSE)||
+ n=GetSystemDirectoryW(sys,MAX_PATH);if(!n||n>=MAX_PATH)return FALSE;
+ n=GetModuleFileNameW(NULL,me,MAX_PATH);if(!n||n>=MAX_PATH)return FALSE;
+ if(!join(dir,MAX_PATH,sys,FIXED_DIR)||!regular(dir,TRUE)||
+ !join(expected,MAX_PATH,dir,own)||!equal(me,expected)||!regular(me,FALSE)||
  !join(child,MAX_PATH,dir,name)||!regular(child,FALSE))return FALSE;return TRUE;}
 static BOOL same_luid(LUID a,LUID b){return a.LowPart==b.LowPart&&a.HighPart==b.HighPart;}
 static BOOL console_session(DWORD expected){DWORD session;return ProcessIdToSessionId(GetCurrentProcessId(),&session)&&session==expected&&session==WTSGetActiveConsoleSessionId()&&session!=0&&session!=0xffffffffUL;}
@@ -69,7 +71,7 @@ static DWORD query(const SNAPSHOT*original,WCHAR*device,UINT32*w,UINT32*h,UINT32
  if(original&&!equal(original->device,name.viewGdiDeviceName))return ERROR_INVALID_DATA;
  if(device)memcpy(device,name.viewGdiDeviceName,sizeof(name.viewGdiDeviceName));
  *w=mode->sourceMode.width;*h=mode->sourceMode.height;*rotation=(UINT32)p->targetInfo.rotation;if(pathOut)*pathOut=*p;return 0;}
-static DWORD current(const SNAPSHOT*s,DEVMODEW*m){memset(m,0,sizeof(*m));m->dmSize=sizeof(*m);if(!EnumDisplaySettingsExW(s->device,ENUM_CURRENT_SETTINGS,m,0))return GetLastError()?GetLastError():ERROR_GEN_FAILURE;return 0;}
+static DWORD current(const SNAPSHOT*s,DEVMODEW*m){DWORD e;memset(m,0,sizeof(*m));m->dmSize=sizeof(*m);SetLastError(0);if(!EnumDisplaySettingsExW(s->device,ENUM_CURRENT_SETTINGS,m,0)){e=GetLastError();return e?e:ERROR_GEN_FAILURE;}return 0;}
 static BOOL same_mode(const DEVMODEW*a,const DEVMODEW*b){return a->dmDisplayOrientation==b->dmDisplayOrientation&&a->dmPelsWidth==b->dmPelsWidth&&a->dmPelsHeight==b->dmPelsHeight&&a->dmBitsPerPel==b->dmBitsPerPel&&a->dmDisplayFrequency==b->dmDisplayFrequency&&a->dmPosition.x==b->dmPosition.x&&a->dmPosition.y==b->dmPosition.y&&a->dmDisplayFlags==b->dmDisplayFlags&&a->dmDisplayFixedOutput==b->dmDisplayFixedOutput;}
 static DWORD capture(SNAPSHOT*s){UINT32 w,h,rot;DWORD rc;DISPLAYCONFIG_PATH_INFO path;DEVMODEW mode;
  if(!console_session(s->session))return ERROR_ACCESS_DENIED;
@@ -231,7 +233,7 @@ static DWORD role(void){WCHAR dir[MAX_PATH],child[MAX_PATH],logs[MAX_PATH],path[
  lognum("PROBE_VERSION",1);lognum("SENSOR_ATTITUDE_VERIFIED",0);lognum("PHYSICAL_DISPLAY_VERIFIED",0);lognum("TOUCH_VERIFIED",0);
  __try{__try{
  rc=enable_privileges(&p);lognum("PRIVILEGE_ENABLE_RC",rc);if(rc)__leave;
- session=WTSGetActiveConsoleSessionId();if(session==0||session==0xffffffffUL){rc=ERROR_NO_LOGON_SESSION;__leave;}
+ session=WTSGetActiveConsoleSessionId();if(session==0||session==0xffffffffUL){rc=ERROR_NO_SUCH_LOGON_SESSION;__leave;}
  if(!WTSQueryUserToken(session,&user)){rc=GetLastError();__leave;}
  if(!GetTokenInformation(user,TokenSessionId,&own,sizeof(own),&n)||own!=session||!GetTokenInformation(user,TokenType,&type,sizeof(type),&n)||type!=TokenPrimary){rc=ERROR_ACCESS_DENIED;__leave;}
  map=CreateFileMappingW(INVALID_HANDLE_VALUE,NULL,PAGE_READWRITE,0,sizeof(SNAPSHOT),NULL);if(!map){rc=GetLastError();__leave;}
