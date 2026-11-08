@@ -1,15 +1,17 @@
 # GPU CopyResource統合候補
 
-入力sourceは335 whole-allocation Lock、3340bfc91cf実TQとIRQreceipt、SG ef0d1dfb。独立branchで結合し、旧候補と実機媒体は変更しない。
+入力sourceは335 whole-allocation Lock、3340bfc91cf実TQとIRQreceipt、SG最終51cbe2d4（ef0d Ex版は不採用）。独立branchで結合し、旧候補と実機媒体は変更しない。
 
 UMD/KMD adapter契約8、kernel owner ops3、Copy command GOP1/version1を同時に必須化。destination書込みindex0/source読取りindex1を実runtime allocation listで登録する。RTをCPU Lockしてmemcpyする経路へ逃がさない。800x600 BGRA8/single-mip/single-sample/全extentコピーだけ。通常SRV shaderを固定copy USCで置換しない。copy専用152B DOD assetはSHA5c68917f...を検証して専用heapへcold配置。
 
 Renderはresidency前に2allocationへのrefを予約し、Patchで実handle/権限/residencyを検査してnativeprepareする。転送元RTはCPU所有時だけdevice-readへ、stagingはdevice-writeへ方向を選ぶ。全bindingの実DMA mapからPTEを作り、submit前のPASSIVEで双方469PTEを照合。DIRQL submitは保存済みimageのpublishのみ。
 
-単一render owner/登録IRQを使い、TQ/UFO完了→SLCflush→GP→全MDLPTEゼロ/readback→実MMUCACHE exactack→SG flush/free→CPU所有権返却を確認。さらに新GP SYNCをpublishし、その新しい実ISR receiptだけでGPU_DONE|CPU_VISIBLEとscheduler fenceを通知する。旧/早期IRQは完了扱いせず、必要ならPASSIVEで旧SYNCを待ってから別の新SYNC/IRQへ再arm。timerや単なるIRQLraiseで通知しない。
+単一render owner/登録IRQを使い、TQ/UFO完了→SLCflush→GP→residentなWDDM MDL全体の正規cache invalidate→CPU所有権返却（PTEとpage leaseはUNMAP/正常退役まで保持）を確認。さらに新GP SYNCをpublishし、その新しい実ISR receiptだけでGPU_DONE|CPU_VISIBLEとscheduler fenceを通知する。旧/早期IRQは完了扱いせず、必要ならPASSIVEで旧SYNCを待ってから別の新SYNC/IRQへ再arm。timerや単なるIRQLraiseで通知しない。
 
 Stop/TDRは新規operationsを閉じ、owner rundown/worker終了を待つ。copy子transfer/codeは親firmware-off/reset/IRQclosed/VerifyOffの既存実proof後にだけ退役する。prepared未送信は正常停止でdiscard。submitted/timeoutやflush/ack曖昧時に参照、SG、MDL、codeを解放せずretainし、成功NoDMAに変換しない。実GPUが回復不能ならTDR失敗を返し、OS再起動防止を保証しない。reset根因と解消は実機未証明。
 
-host回帰：新copy-residencyで2ref、Render-before-map、read/write endpoint、unmap/free拒否と実completion後解放、旧ownerABI拒否。既存clear再residency/texture3ref回帰を更新、production Copy/Map回帰はRT Lockを呼ばずRenderCbへ2allocationを渡すことを検証。SGの実source抽出MMUCACHE/flush/failure-retain9caseとTQ全512ring offsetsも検証する。
+host回帰：新copy-residencyで2ref、Render-before-map、read/write endpoint、unmap/free拒否と実completion後解放、旧ownerABI拒否。既存clear再residency/texture3ref回帰を更新、production Copy/Map回帰はRT Lockを呼ばずRenderCbへ2allocationを渡すことを検証。最終WDDM aperture12caseとTQ ownership10caseとTQ全512ring offsetsも検証する。
 
 全依存TUは前処理C/H差分から選び、SDK/PCOcoreは再buildしない。新C6TUをnative mapへ追加、legacy DOD側のnative_ccbは元byteに戻し、TQ追加はrender_owner専用に分離した。署名候補完成と実機成功は別で、主担当の次回一括検証までは未実機。
+
+最終337は旧336のExベースSYSを使用しない。51cbeのWDDM physical aperture/cache contractを採用し、全pathでHAL packet-DMA operations0を検査。PTEを変えないCPU所有権遷移で架空MMUackを作らない。UMDはcontract8/owner3の署名済み336と全archive/entry objを照合してDLL bytesを保持し、native/KMD/CATだけ更新する。Copyのcommand_busyは実visibilityIRQまで保持。TDR/Stopでは実TQ/SLC/GP/cache終了後にcommand gateだけを解放し、資源退役は親の実FWoff/IRQdrain/VerifyOff後に限る。未claim GPU仕事やtimeoutはretain/failureで、偽成功停止しない。

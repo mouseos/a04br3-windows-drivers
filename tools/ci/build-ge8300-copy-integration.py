@@ -123,27 +123,38 @@ for name,unit in pco_sources.items():
 archive('pco','ge8300-pco-arm32.lib',members,before,after)
 kernel=[a.kernel_kit/'Lib/winv6.3/km/arm'/n for n in ['displib.lib','ntoskrnl.lib','hal.lib','libcntpr.lib','bufferoverflowfastfailk.lib']]
 run([a.link_exe,'/nologo','/driver','/subsystem:native,6.03','/machine:arm','/entry:DriverEntry','/nodefaultlib','/incremental:no','/base:0x400000',out/'ge8300-pair-kmd.lib',out/'ge8300-native-owner-core.lib',*kernel,'/out:'+str(out/'ge8300-render.sys'),'/map:'+str(out/'ge8300-render.map')])
-libs=[out/r['name'] if r['name']=='ge8300-pco-arm32.lib' else compiler/r['name'] for r in baseline327['existing_compiler_libraries']]
-run(['lld-link','/dll','/machine:arm','/subsystem:windows,6.03','/entry:_DllMainCRTStartup','/nodefaultlib',out/'umd/umd_entry.obj',out/'umd/umd_typed_entry.obj',out/'ge8300-native-umd.lib',pair/'pco_pair.obj',*libs,'/out:'+str(out/'ge8300-umd.dll'),'/map:'+str(out/'ge8300-umd.map')])
+# Preserve the already-signed Copy336 UMD: peer ABI8/owner3 and every UM
+# object/archive remain exact. Only native/KMD ownership changed here.
+prior_pkg=out/'package336';prior_manifest=load(prior_pkg/'signed-manifest.json')
+pin(prior_pkg/'signed-manifest.json','e42f7e4d26de5cc33add600ac73e355a1458f45b3bc59a4a2e0a5390bb783644')
+for role in ['umd','pco']:
+ prior_archive=next(x for x in prior_manifest['archives'] if x['role']==role)
+ pin(out/prior_archive['file'],prior_archive['sha256'])
+for name in ['umd_entry.obj','umd_typed_entry.obj']:
+ old=next(x for x in prior_manifest['compiled_units'] if x['object']==name)
+ pin(out/'umd'/name,old['object_sha256'])
+shutil.copyfile(prior_pkg/'ge8300-umd.dll',out/'ge8300-umd.dll')
+pin(out/'ge8300-umd.dll','3bd57ffe4e5310b14ab00ebff3ab5b1a95f029d41bb1533e00bda42b6950eb3c')
 thumb='BCBF6C456C6F0DD0818434763B189488FBF13570'
-for name in ['ge8300-render.sys','ge8300-umd.dll']:
- run([a.sign_tool,'sign','/fd','SHA256','/sha1',thumb,out/name]);run([a.sign_tool,'verify','/pa',out/name])
-pkg=out/'package336';pkg.mkdir()
+run([a.sign_tool,'sign','/fd','SHA256','/sha1',thumb,out/'ge8300-render.sys']);run([a.sign_tool,'verify','/pa',out/'ge8300-render.sys'])
+pkg=out/'package337';pkg.mkdir()
 for f in package.iterdir():
  if f.is_file() and f.name not in ['ge8300-render.sys','ge8300-umd.dll','ge8300-render.inf','ge8300-render.cat']:
   shutil.copyfile(f,pkg/('baseline332-signed-manifest.json' if f.name=='signed-manifest.json' else f.name))
 for n in ['ge8300-render.sys','ge8300-umd.dll']:shutil.copyfile(out/n,pkg/n)
+shutil.copyfile(prior_pkg/'signed-manifest.json',pkg/'retained-copy336-signed-manifest.json')
 s=(package/'ge8300-render.inf').read_text(encoding='utf-16');old='DriverVer=11/07/2026,0.0.3.32'
 if s.count(old)!=1:raise ValueError('Exact332 INF')
-(pkg/'ge8300-render.inf').write_text(s.replace(old,'DriverVer=11/07/2026,0.0.3.36'),encoding='utf-16')
+(pkg/'ge8300-render.inf').write_text(s.replace(old,'DriverVer=11/07/2026,0.0.3.37'),encoding='utf-16')
 run([a.inf2cat,'/driver:'+str(pkg),'/os:6_3_ARM','/uselocaltime']);run([a.sign_tool,'sign','/fd','SHA256','/sha1',thumb,pkg/'ge8300-render.cat'])
 for n in ['ge8300-render.inf','ge8300-render.sys','ge8300-umd.dll','ge8300-mips.fw']:run([a.sign_tool,'verify','/pa','/c',pkg/'ge8300-render.cat',pkg/n])
-m=dict(pm);m.update(schema='real-tq-copy336-independent-sources-v1',package_source_commit=commit,kernel_binary_source_commit=commit,native_owner_source_commit=commit,umd_source_commit=commit,baseline_manifest_file='baseline332-signed-manifest.json',baseline_manifest_sha256=sha(package/'signed-manifest.json'),compiled_units=records,archives=archives,adapter_contract_version=8,owner_ops_version=3,copy_wire_version=1,copy_transport='actual TQ task + client UFO + SLC/GP + exact MMUCACHE ack + CPU SG return + fresh real IRQ + scheduler fence',client_changed=False,existing_clients_changed=False,inf_driverver='11/07/2026,0.0.3.36',root_reset_fix_proven=False,runtime_verified=False,hardware_verified=False,SG_source_commit='ef0d1dfb',Copy334_source_commit='0bfc91cf9a87c98b0ca1d540d00726159614072d',LockEntire335_source_commit='26b7c8ef2034bb41265dbd4347d952b7a838d7a8')
+m=dict(pm);m.update(schema='wddm-aperture-copy337-independent-sources-v1',package_source_commit=commit,kernel_binary_source_commit=commit,native_owner_source_commit=commit,umd_source_commit=prior_manifest['umd_source_commit'],umd_changed=False,retained_umd_manifest_file='retained-copy336-signed-manifest.json',retained_umd_manifest_sha256=sha(prior_pkg/'signed-manifest.json'),HAL_packet_DMA_operations=0,physical_WDDM_frontend_lease=True,baseline_manifest_file='baseline332-signed-manifest.json',baseline_manifest_sha256=sha(package/'signed-manifest.json'),compiled_units=records,archives=archives,adapter_contract_version=8,owner_ops_version=3,copy_wire_version=1,copy_transport='actual TQ task + client UFO + SLC/GP + exact resident WDDM MDL cache ownership return + fresh real IRQ + scheduler fence',client_changed=False,existing_clients_changed=False,inf_driverver='11/07/2026,0.0.3.37',root_reset_fix_proven=False,runtime_verified=False,hardware_verified=False,SG_source_commit='51cbe2d47df4bef5e915cf7f5bff1d51fd94bec8',Copy334_source_commit='0bfc91cf9a87c98b0ca1d540d00726159614072d',LockEntire335_source_commit='26b7c8ef2034bb41265dbd4347d952b7a838d7a8')
 m['retained_outputs']=[r for r in pm['outputs'] if r['name'] not in ['ge8300-render.sys','ge8300-umd.dll','ge8300-render.inf','ge8300-render.cat']]
+m['retained_outputs'] += [r for r in prior_manifest['outputs'] if r['name']=='ge8300-umd.dll']
 for r in m['retained_outputs']:pin(pkg/r['name'],r['sha256'])
 m['outputs']=[{'name':r['name'],'sha256':sha(pkg/r['name'])} for r in pm['outputs']]
 m['retained_provenance']=[{'name':f.name,'sha256':sha(f)} for f in pkg.iterdir() if f.is_file() and f.name not in [r['name'] for r in m['outputs']]]
 m.pop('build_manifest_file',None);m.pop('build_manifest_sha256',None)
-(pkg/'copy336-build-manifest.json').write_text(json.dumps(m,indent=2)+'\n');m.update(build_manifest_file='copy336-build-manifest.json',build_manifest_sha256=sha(pkg/'copy336-build-manifest.json'))
+(pkg/'copy337-build-manifest.json').write_text(json.dumps(m,indent=2)+'\n');m.update(build_manifest_file='copy337-build-manifest.json',build_manifest_sha256=sha(pkg/'copy337-build-manifest.json'))
 (pkg/'signed-manifest.json').write_text(json.dumps(m,indent=2)+'\n');(out/'build-manifest.json').write_text(json.dumps(m,indent=2)+'\n')
-print('COPY336_SIGNED_PACKAGE_COMPLETE',commit,len(records))
+print('COPY337_SIGNED_PACKAGE_COMPLETE',commit,len(records))
