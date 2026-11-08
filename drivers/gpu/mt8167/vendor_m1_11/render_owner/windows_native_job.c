@@ -170,7 +170,7 @@ void a04_vendor_native_free_job_cold(struct a04_vendor_native_cold *n)
 #if A04_GE8300_NATIVE_OWNER_DRAW
 #include "native_draw_job.h"
 static NTSTATUS prepare_draw_cold(struct a04_vendor_native_cold *n,
- const struct geo_draw_request *request,const void *blob,uint32_t bytes,uint64_t vertex,const struct geo_draw_request_v2 *linked,const struct geo_draw_request_v3 *sampled,uint64_t texture,const struct geo_draw_request_v4 *general)
+ const struct geo_draw_request *request,const void *blob,uint32_t bytes,uint64_t vertex,const struct geo_draw_request_v2 *linked,const struct geo_draw_request_v3 *sampled,uint64_t texture,const struct geo_draw_request_v4 *general,const struct geo_draw_request_v5 *combined)
 {
     struct a04_vendor_native_candidate *c;struct a04_vendor_render_cold *r;
     struct a04_m111_clear_job_input in={0};struct a04_m111_draw_job *job;
@@ -187,7 +187,7 @@ static NTSTATUS prepare_draw_cold(struct a04_vendor_native_cold *n,
     in.usc_page_gpu=A04_NATIVE_USC_VA;in.pds_page_gpu=A04_NATIVE_PDS_VA;
     in.dummy_region_gpu=n->auxiliary.dummy_region_gpu;in.dummy_stencil_gpu=n->auxiliary.dummy_stencil_gpu;
     in.hwrt_fw=n->addresses.hwrt[0];in.pr_fence_fw=0xc0084c00u;
-    status=general?a04_m111_build_draw_job_v4(job,&in,vertex,general,blob,bytes,scratch,A04_M111_DRAW_SCRATCH):sampled?a04_m111_build_draw_job_v3(job,&in,vertex,texture,sampled,blob,bytes,scratch,A04_M111_DRAW_SCRATCH):linked?a04_m111_build_draw_job_v2(job,&in,vertex,linked,blob,bytes,scratch,A04_M111_DRAW_SCRATCH):
+    status=combined?a04_m111_build_draw_job_v5(job,&in,vertex,texture,combined,blob,bytes,scratch,A04_M111_DRAW_SCRATCH):general?a04_m111_build_draw_job_v4(job,&in,vertex,general,blob,bytes,scratch,A04_M111_DRAW_SCRATCH):sampled?a04_m111_build_draw_job_v3(job,&in,vertex,texture,sampled,blob,bytes,scratch,A04_M111_DRAW_SCRATCH):linked?a04_m111_build_draw_job_v2(job,&in,vertex,linked,blob,bytes,scratch,A04_M111_DRAW_SCRATCH):
         a04_m111_build_draw_job(job,&in,vertex,request,blob,bytes,scratch,A04_M111_DRAW_SCRATCH);
     if(!NT_SUCCESS(status))goto done;
     p.ta_context=0xc0080000u+r->layout.context;
@@ -210,22 +210,24 @@ done:ExFreePoolWithTag(job,JOB_TAG);return status;
 }
 NTSTATUS a04_vendor_native_prepare_draw_cold(struct a04_vendor_native_cold *n,
  const struct geo_draw_request *r,const void *blob,uint32_t bytes,uint64_t vertex)
-{ return prepare_draw_cold(n,r,blob,bytes,vertex,NULL,NULL,0,NULL); }
+{ return prepare_draw_cold(n,r,blob,bytes,vertex,NULL,NULL,0,NULL,NULL); }
 NTSTATUS a04_vendor_native_prepare_draw_v2_cold(struct a04_vendor_native_cold *n,
  const struct geo_draw_request_v2 *r,const void *blob,uint32_t bytes,uint64_t vertex)
 {
  if(!r)return STATUS_INVALID_PARAMETER;
- return prepare_draw_cold(n,&r->base,blob,bytes,vertex,r,NULL,0,NULL);
+ return prepare_draw_cold(n,&r->base,blob,bytes,vertex,r,NULL,0,NULL,NULL);
 }
 
 NTSTATUS a04_vendor_native_prepare_draw_v3_cold(struct a04_vendor_native_cold *n,const struct geo_draw_request_v3 *r,const void *blob,uint32_t bytes,uint64_t vertex,uint64_t texture) {
  if(!r)return STATUS_INVALID_PARAMETER;
- return prepare_draw_cold(n,&r->base,blob,bytes,vertex,NULL,r,texture,NULL);
+ return prepare_draw_cold(n,&r->base,blob,bytes,vertex,NULL,r,texture,NULL,NULL);
 }
 
 #endif
 
 #if A04_GE8300_NATIVE_OWNER_DRAW
 NTSTATUS a04_vendor_native_prepare_draw_v4_cold(struct a04_vendor_native_cold *n,const struct geo_draw_request_v4 *r,const void *blob,uint32_t bytes,uint64_t vertex)
-{if(!r)return STATUS_INVALID_PARAMETER;return prepare_draw_cold(n,&r->base,blob,bytes,vertex,NULL,NULL,0,r);}
+{if(!r)return STATUS_INVALID_PARAMETER;return prepare_draw_cold(n,&r->base,blob,bytes,vertex,NULL,NULL,0,r,NULL);}
+NTSTATUS a04_vendor_native_prepare_draw_v5_cold(struct a04_vendor_native_cold *n,const struct geo_draw_request_v5 *r,const void *blob,uint32_t bytes,uint64_t vertex,uint64_t texture)
+{if(!r)return STATUS_INVALID_PARAMETER;return prepare_draw_cold(n,&r->sampled.base,blob,bytes,vertex,NULL,&r->sampled,texture,NULL,r);}
 #endif

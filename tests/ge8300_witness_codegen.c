@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT. Real source compiler -> native immutable capture.
  * No GPU, driver load, fixed USC fixture, or substituted shader is used. */
 #include <assert.h>
+#include "../drivers/gpu/mt8167/wddm-render/compiler/texture2d_sm4.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,7 +22,7 @@ static void packet_shader(struct geo_draw_shader *s,const struct geo_compiled_sh
  s->tokens=(struct geo_draw_span){*at,bytes};memcpy(blob+*at,t,bytes);*at+=bytes;
  s->usc=(struct geo_draw_span){*at,c->code_bytes};memcpy(blob+*at,c->code,c->code_bytes);*at+=c->code_bytes;
  s->constants=(struct geo_draw_span){*at,512};memset(blob+*at,0,512);*at+=512;
- *proof=(struct geo_draw_span){*at,wb};memcpy(blob+*at,w,wb);*at+=wb;
+ *proof=(struct geo_draw_span){*at,wb};if(wb)memcpy(blob+*at,w,wb);*at+=wb;
 }
 int geo_witness_ffsll(long long);
 int main(void){
@@ -74,5 +75,28 @@ int main(void){
  }
  assert(rejected>5700);printf("bounded witness mutations rejected %u/6000 (no GPU)\n",rejected);
  printf("REAL CB MATRIX VS%u/PS%u USC bytes -> ABI4 -> native byte-exact copy/PDS; changed USC, forbidden op, undersized temp, ISA and alias rejected\n",v.code_bytes,p.code_bytes);
+ /* ABI5: the same real matrix VS plus a source-compiled SAMPLE PS. */
+ const uint32_t tex_tokens[]={0x40,27,0x4000059,0x208e46,0,1,0x300005a,0x106000,0,0x4001858,0x107000,0,0x5555,0x3000065,0x1020f2,0,0xa000045,0x1020f2,0,0x208046,0,0,0x107e46,0,0x106000,0,0x100003e};
+ struct geo_texture2d_program texture_program;struct geo_compiled_shader tex_ps;
+ assert(!geo_pco_compile_texture2d(compiler.context,tex_tokens,sizeof(tex_tokens),&sig,&tex_ps,&texture_program));
+ struct geo_draw_request_v5 combined={0};combined.sampled.base=request.base;combined.vertex_witness=request.witness[0];combined.isa=GEO_SHADER_WITNESS_ISA;
+ combined.sampled.base.size=sizeof(combined);combined.sampled.base.version=5;
+ struct geo_draw_span unused;
+ packet_shader(&combined.sampled.base.ps,&tex_ps,(uint32_t *)tex_tokens,sizeof(tex_tokens),NULL,0,&unused,blob,&at);
+ combined.sampled.base.blob_bytes=at;combined.sampled.texture=3;
+ combined.sampled.texture_desc=(struct geo_surface_desc){sizeof(struct geo_surface_desc),2,2,2,8,GEO_FORMAT_A8R8G8B8,GEO_USAGE_TEXTURE2D,0};combined.sampled.sampler_profile=GEO_TEXTURE_FILTER_PROFILE4|(0x15u<<8)|1u;
+ assert(!geo_draw_validate_capture_v5(&combined,blob,at));
+ assert(!a04_m111_build_draw_job_v5(job,&input,0x7000200000ULL,0x7000210000ULL,&combined,blob,at,scratch,A04_M111_DRAW_SCRATCH));
+ assert(!memcmp(job->data+0x540,matrix,64)&&!memcmp(job->usc+0x400,v.code,v.code_bytes)&&!memcmp(job->usc+0x800,tex_ps.code,tex_ps.code_bytes));
+ assert(job->pds[0x208]==12&&job->pds[0x20b]==0x90&&job->pds[0x2ab]==0x10);*prior=*job;
+ combined.isa++;assert(a04_m111_build_draw_job_v5(job,&input,0x7000200000ULL,0x7000210000ULL,&combined,blob,at,scratch,A04_M111_DRAW_SCRATCH)&&!memcmp(prior,job,sizeof(*job)));combined.isa--;
+ combined.sampled.texture=combined.sampled.base.target;assert(geo_draw_validate_capture_v5(&combined,blob,at));combined.sampled.texture=3;
+ for(unsigned i=0;i<tex_ps.code_bytes;i++) {blob[combined.sampled.base.ps.usc.offset+i]^=1;assert(a04_m111_build_draw_job_v5(job,&input,0x7000200000ULL,0x7000210000ULL,&combined,blob,at,scratch,A04_M111_DRAW_SCRATCH));assert(!memcmp(prior,job,sizeof(*job)));blob[combined.sampled.base.ps.usc.offset+i]^=1;}
+ combined.reserved=1;assert(geo_draw_validate_capture_v5(&combined,blob,at));combined.reserved=0;
+ combined.vertex_witness.bytes--;assert(geo_draw_validate_capture_v5(&combined,blob,at));combined.vertex_witness.bytes++;
+ combined.sampled.base.version=4;assert(geo_draw_validate_capture_v5(&combined,blob,at));combined.sampled.base.version=5;
+ assert(!a04_m111_build_draw_job_v5(job,&input,0x7000200000ULL,0x7000210000ULL,&combined,blob,at,scratch,A04_M111_DRAW_SCRATCH));
+ printf("ABI5 real matrix VS%u + SAMPLE PS%u -> native real USC/VS CB/texture descriptor/PDS; alias/version/ISA/all changed PS bytes rejected atomically\n",v.code_bytes,tex_ps.code_bytes);
+ compiler.release(compiler.context,&tex_ps);
  free(job);free(prior);free(scratch);free(blob);compiler.release(compiler.context,&v);compiler.release(compiler.context,&p);geo_pco_device_destroy(&compiler,owner);return 0;
 }

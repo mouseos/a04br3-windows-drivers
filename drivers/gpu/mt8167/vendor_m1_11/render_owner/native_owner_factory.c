@@ -380,11 +380,11 @@ NTSTATUS GeoNativeOwnerDelete(struct geo_native_binding *out)
 #include "../../wddm-render/frontend/texture_draw_abi.h"
 #include "../../wddm-render/frontend/shader_draw_abi.h"
 static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
- const void *blob,uint32_t bytes,uint64_t *job,const struct geo_draw_request_v2 *linked,const struct geo_draw_request_v3 *sampled,const struct geo_draw_request_v4 *general)
+ const void *blob,uint32_t bytes,uint64_t *job,const struct geo_draw_request_v2 *linked,const struct geo_draw_request_v3 *sampled,const struct geo_draw_request_v4 *general,const struct geo_draw_request_v5 *combined)
 {
     struct e_native_owner *c=p;RGXFWIF_CCB_CTL k;NTSTATUS s;uint64_t end,offset;struct e_native_resource *texture=NULL;
     if(!job)return STATUS_INVALID_PARAMETER;*job=0;
-    s=general?geo_draw_validate_capture_v4(general,blob,bytes):sampled?geo_draw_validate_capture_v3(sampled,blob,bytes):linked?geo_draw_validate_capture_v2(linked,blob,bytes):geo_draw_validate_capture(request,blob,bytes);if(!NT_SUCCESS(s))return s;
+    s=combined?geo_draw_validate_capture_v5(combined,blob,bytes):general?geo_draw_validate_capture_v4(general,blob,bytes):sampled?geo_draw_validate_capture_v3(sampled,blob,bytes):linked?geo_draw_validate_capture_v2(linked,blob,bytes):geo_draw_validate_capture(request,blob,bytes);if(!NT_SUCCESS(s))return s;
     s=enter(c,FALSE);if(!NT_SUCCESS(s))return s;
     if(request->target!=c->surface || request->vertex!=c->vertex || !c->vertex ||
        !c->allocation->binding || !c->allocation->vertex || c->next_id==UINT64_MAX ||
@@ -400,7 +400,7 @@ static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
     for(unsigned i=0;i<(end-offset)/4;i++)if((vertices[i]&0x7f800000u)==0x7f800000u)return leave(c,STATUS_INVALID_PARAMETER);
     s=e_native_stop_locked(c);if(NT_SUCCESS(s))s=e_native_retire_graph_locked(c);
     if(NT_SUCCESS(s))s=e_native_build_graph_locked(c);
-    if(NT_SUCCESS(s))s=general?a04_vendor_native_prepare_draw_v4_cold(c->allocation->native,general,blob,bytes,A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset):sampled?a04_vendor_native_prepare_draw_v3_cold(c->allocation->native,sampled,blob,bytes,A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset,A04_NATIVE_OUTPUT_VA+texture->linear_offset):linked?a04_vendor_native_prepare_draw_v2_cold(c->allocation->native,linked,blob,bytes,
+    if(NT_SUCCESS(s))s=combined?a04_vendor_native_prepare_draw_v5_cold(c->allocation->native,combined,blob,bytes,A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset,A04_NATIVE_OUTPUT_VA+texture->linear_offset):general?a04_vendor_native_prepare_draw_v4_cold(c->allocation->native,general,blob,bytes,A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset):sampled?a04_vendor_native_prepare_draw_v3_cold(c->allocation->native,sampled,blob,bytes,A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset,A04_NATIVE_OUTPUT_VA+texture->linear_offset):linked?a04_vendor_native_prepare_draw_v2_cold(c->allocation->native,linked,blob,bytes,
         A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset):
         a04_vendor_native_prepare_draw_cold(c->allocation->native,request,blob,bytes,
         A04_NATIVE_OUTPUT_VA+c->vertex_aperture_offset+offset);
@@ -420,11 +420,11 @@ static int32_t prepare_draw_impl(void *p,const struct geo_draw_request *request,
     return leave(c,s);
 }
 static int32_t prepare_draw(void *p,const struct geo_draw_request *r,const void *blob,uint32_t bytes,uint64_t *job)
-{ return prepare_draw_impl(p,r,blob,bytes,job,NULL,NULL,NULL); }
+{ return prepare_draw_impl(p,r,blob,bytes,job,NULL,NULL,NULL,NULL); }
 static int32_t prepare_draw_v2(void *p,const struct geo_draw_request_v2 *r,const void *blob,uint32_t bytes,uint64_t *job)
 {
  if(!r){if(job)*job=0;return GEO_INVALID;}
- return prepare_draw_impl(p,&r->base,blob,bytes,job,r,NULL,NULL);
+ return prepare_draw_impl(p,&r->base,blob,bytes,job,r,NULL,NULL,NULL);
 }
 int32_t GeoNativeOwnerGetDrawOpsV1(struct geo_native_binding *binding,struct geo_native_draw_ops_v1 *out)
 {
@@ -446,7 +446,7 @@ int32_t GeoNativeOwnerGetDrawOpsV2(struct geo_native_binding *binding,struct geo
 }
 
 static int32_t prepare_draw_v3(void *p,const struct geo_draw_request_v3 *r,const void *blob,uint32_t bytes,uint64_t *job) {
- if(!r){if(job)*job=0;return GEO_INVALID;}return prepare_draw_impl(p,&r->base,blob,bytes,job,NULL,r,NULL);
+ if(!r){if(job)*job=0;return GEO_INVALID;}return prepare_draw_impl(p,&r->base,blob,bytes,job,NULL,r,NULL,NULL);
 }
 int32_t GeoNativeOwnerGetDrawOpsV3(struct geo_native_binding *b,struct geo_native_draw_ops_v3 *out) {
  struct geo_native_draw_ops_v1 v;int32_t s;if(!out)return GEO_INVALID;RtlZeroMemory(out,sizeof(*out));s=GeoNativeOwnerGetDrawOpsV1(b,&v);if(s)return s;
@@ -454,11 +454,17 @@ int32_t GeoNativeOwnerGetDrawOpsV3(struct geo_native_binding *b,struct geo_nativ
 }
 
 static int32_t prepare_draw_v4(void *p,const struct geo_draw_request_v4 *r,const void *blob,uint32_t bytes,uint64_t *job)
-{if(!r){if(job)*job=0;return GEO_INVALID;}return prepare_draw_impl(p,&r->base,blob,bytes,job,NULL,NULL,r);}
+{if(!r){if(job)*job=0;return GEO_INVALID;}return prepare_draw_impl(p,&r->base,blob,bytes,job,NULL,NULL,r,NULL);}
 int32_t GeoNativeOwnerGetDrawOpsV4(struct geo_native_binding *b,struct geo_native_draw_ops_v4 *out) {
  struct geo_native_draw_ops_v1 v;int32_t s;if(!out)return GEO_INVALID;RtlZeroMemory(out,sizeof(*out));
  s=GeoNativeOwnerGetDrawOpsV1(b,&v);if(s)return s;
  out->size=sizeof(*out);out->version=4;out->context=v.context;out->prepare_draw=prepare_draw_v4;return GEO_OK;
 }
 
+static int32_t prepare_draw_v5(void *p,const struct geo_draw_request_v5 *r,const void *blob,uint32_t bytes,uint64_t *job)
+{if(!r){if(job)*job=0;return GEO_INVALID;}return prepare_draw_impl(p,&r->sampled.base,blob,bytes,job,NULL,&r->sampled,NULL,r);}
+int32_t GeoNativeOwnerGetDrawOpsV5(struct geo_native_binding *b,struct geo_native_draw_ops_v5 *out) {
+ struct geo_native_draw_ops_v1 v;int32_t s;if(!out)return GEO_INVALID;RtlZeroMemory(out,sizeof(*out));s=GeoNativeOwnerGetDrawOpsV1(b,&v);if(s)return s;
+ out->size=sizeof(*out);out->version=5;out->context=v.context;out->prepare_draw=prepare_draw_v5;return GEO_OK;
+}
 #endif

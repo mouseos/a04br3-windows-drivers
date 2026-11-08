@@ -154,8 +154,8 @@ static NTSTATUS prepare_pending(struct geo_kmd_adapter *a,const struct geo_dma_t
  RtlZeroMemory(&call,sizeof(call));call.adapter=a;call.ticket=*t;
  if(j->kind==GEO_CLEAR_MAGIC)call.status=a->engine.owner.prepare(a->engine.owner.context,j->allocation->surface,payload->clear.color,&call.token);
  else if(j->kind==GEO_DRAW_MAGIC&&(p=payload->draw)!=NULL) {
-  header=p->version==4?sizeof(struct geo_draw_packet_v4):p->version==3?sizeof(struct geo_draw_packet_v3):p->version==2?sizeof(struct geo_draw_packet_v2):sizeof(*p);blob=(UCHAR *)p+header;v2=(struct geo_draw_packet_v2 *)p;
-  call.status=p->version==4?a->draw_v4.prepare_draw(a->draw_v4.context,&((struct geo_draw_packet_v4 *)p)->request,blob,p->request.blob_bytes,&call.token):p->version==3?a->draw_v3.prepare_draw(a->draw_v3.context,&((struct geo_draw_packet_v3 *)p)->request,blob,p->request.blob_bytes,&call.token):p->version==2?a->draw_v2.prepare_draw(a->draw_v2.context,&v2->request,blob,p->request.blob_bytes,&call.token):
+  header=p->version==5?sizeof(struct geo_draw_packet_v5):p->version==4?sizeof(struct geo_draw_packet_v4):p->version==3?sizeof(struct geo_draw_packet_v3):p->version==2?sizeof(struct geo_draw_packet_v2):sizeof(*p);blob=(UCHAR *)p+header;v2=(struct geo_draw_packet_v2 *)p;
+  call.status=p->version==5?a->draw_v5.prepare_draw(a->draw_v5.context,&((struct geo_draw_packet_v5 *)p)->request,blob,p->request.blob_bytes,&call.token):p->version==4?a->draw_v4.prepare_draw(a->draw_v4.context,&((struct geo_draw_packet_v4 *)p)->request,blob,p->request.blob_bytes,&call.token):p->version==3?a->draw_v3.prepare_draw(a->draw_v3.context,&((struct geo_draw_packet_v3 *)p)->request,blob,p->request.blob_bytes,&call.token):p->version==2?a->draw_v2.prepare_draw(a->draw_v2.context,&v2->request,blob,p->request.blob_bytes,&call.token):
     a->draw.prepare_draw(a->draw.context,&p->request,blob,p->request.blob_bytes,&call.token);
  }else return STATUS_INVALID_PARAMETER;
  if(!a->synchronize(a->sync_context,finish_prepare,&call))return STATUS_DEVICE_NOT_READY;
@@ -171,29 +171,31 @@ static NTSTATUS GeoRenderDrawImpl(struct geo_kmd_context *c,DXGKARG_RENDER *r) {
     !r->pDmaBufferPrivateData||((ULONG_PTR)r->pDmaBufferPrivateData&3u)||r->DmaBufferPrivateDataSize<sizeof(t)||
     !c->adapter->draw.prepare_draw)return STATUS_INVALID_PARAMETER;
  status=GeoCaptureDrawPacket(&packet,r->pCommand,r->CommandLength);if(status!=STATUS_SUCCESS)return status;
- header=packet->version==4?sizeof(struct geo_draw_packet_v4):packet->version==3?sizeof(struct geo_draw_packet_v3):packet->version==2?sizeof(struct geo_draw_packet_v2):sizeof(*packet);
- count=packet->version==3?3:2;
+ header=packet->version==5?sizeof(struct geo_draw_packet_v5):packet->version==4?sizeof(struct geo_draw_packet_v4):packet->version==3?sizeof(struct geo_draw_packet_v3):packet->version==2?sizeof(struct geo_draw_packet_v2):sizeof(*packet);
+ count=(packet->version==3||packet->version==5)?3:2;
  v2=(struct geo_draw_packet_v2 *)packet;
  if(r->CommandLength<header){status=STATUS_INVALID_PARAMETER;goto done;}
  blob=(UCHAR *)packet+header;
- if((packet->version==4&&!c->adapter->draw_v4.prepare_draw)||(packet->version==3&&!c->adapter->draw_v3.prepare_draw)||(packet->version==2&&!c->adapter->draw_v2.prepare_draw)){status=STATUS_NOT_SUPPORTED;goto done;}
- if(packet->magic!=GEO_DRAW_MAGIC||packet->size!=r->CommandLength||(packet->version!=GEO_DRAW_ABI_VERSION&&packet->version!=2&&packet->version!=3&&packet->version!=4)||
+ if((packet->version==5&&!c->adapter->draw_v5.prepare_draw)||(packet->version==4&&!c->adapter->draw_v4.prepare_draw)||(packet->version==3&&!c->adapter->draw_v3.prepare_draw)||(packet->version==2&&!c->adapter->draw_v2.prepare_draw)){status=STATUS_NOT_SUPPORTED;goto done;}
+ if(packet->magic!=GEO_DRAW_MAGIC||packet->size!=r->CommandLength||(packet->version!=GEO_DRAW_ABI_VERSION&&packet->version!=2&&packet->version!=3&&packet->version!=4&&packet->version!=5)||
     packet->reserved||packet->target_index||packet->vertex_index!=1u||packet->request.target||packet->request.vertex||
     packet->request.blob_bytes!=r->CommandLength-header||
     !r->pAllocationList[0].WriteOperation||r->pAllocationList[1].WriteOperation){status=STATUS_INVALID_PARAMETER;goto done;}
  if(r->AllocationListSize<count||r->PatchLocationListOutSize<count){status=STATUS_INVALID_PARAMETER;goto done;}
- if(packet->version==3){struct geo_draw_packet_v3 *v3=(struct geo_draw_packet_v3 *)packet;
-  if(v3->texture_index!=2||v3->reserved_texture||v3->request.texture||r->pAllocationList[2].WriteOperation){status=STATUS_INVALID_PARAMETER;goto done;}
+ if(packet->version==3||packet->version==5){struct geo_draw_request_v3 *sampled=packet->version==5?&((struct geo_draw_packet_v5 *)packet)->request.sampled:&((struct geo_draw_packet_v3 *)packet)->request;
+  UINT texture_index=packet->version==5?((struct geo_draw_packet_v5 *)packet)->texture_index:((struct geo_draw_packet_v3 *)packet)->texture_index;
+  UINT reserved_texture=packet->version==5?((struct geo_draw_packet_v5 *)packet)->reserved_texture:((struct geo_draw_packet_v3 *)packet)->reserved_texture;
+  if(texture_index!=2||reserved_texture||sampled->texture||r->pAllocationList[2].WriteOperation){status=STATUS_INVALID_PARAMETER;goto done;}
   x=GeoResolveReadAllocation(c,r->pAllocationList[2].hDeviceSpecificAllocation);
-  if(!x||x->desc.version!=GEO_TEXTURE_STORAGE_VERSION||x->desc.usage!=GEO_USAGE_TEXTURE2D||RtlCompareMemory(&x->desc,&v3->request.texture_desc,sizeof(x->desc))!=sizeof(x->desc)){status=STATUS_INVALID_PARAMETER;goto done;}
-  v3->request.texture=x->surface;
+  if(!x||x->desc.version!=GEO_TEXTURE_STORAGE_VERSION||x->desc.usage!=GEO_USAGE_TEXTURE2D||RtlCompareMemory(&x->desc,&sampled->texture_desc,sizeof(x->desc))!=sizeof(x->desc)){status=STATUS_INVALID_PARAMETER;goto done;}
+  sampled->texture=x->surface;
  }
  a=GeoResolveWriteAllocation(c,r->pAllocationList[0].hDeviceSpecificAllocation);
  v=GeoResolveReadAllocation(c,r->pAllocationList[1].hDeviceSpecificAllocation);
  if(!a||!v||a==v||(x&&(x==a||x==v))||v->desc.usage!=GEO_USAGE_VERTEX_BUFFER||
     RtlCompareMemory(&a->desc,&packet->request.target_desc,sizeof(a->desc))!=sizeof(a->desc)){status=STATUS_INVALID_PARAMETER;goto done;}
  packet->request.target=a->surface;packet->request.vertex=v->surface;
- status=packet->version==4?geo_draw_validate_capture_v4(&((struct geo_draw_packet_v4 *)packet)->request,blob,packet->request.blob_bytes):packet->version==3?geo_draw_validate_capture_v3(&((struct geo_draw_packet_v3 *)packet)->request,blob,packet->request.blob_bytes):packet->version==2?geo_draw_validate_capture_v2(&v2->request,blob,packet->request.blob_bytes):geo_draw_validate_capture(&packet->request,blob,packet->request.blob_bytes);if(status!=STATUS_SUCCESS)goto done;
+ status=packet->version==5?geo_draw_validate_capture_v5(&((struct geo_draw_packet_v5 *)packet)->request,blob,packet->request.blob_bytes):packet->version==4?geo_draw_validate_capture_v4(&((struct geo_draw_packet_v4 *)packet)->request,blob,packet->request.blob_bytes):packet->version==3?geo_draw_validate_capture_v3(&((struct geo_draw_packet_v3 *)packet)->request,blob,packet->request.blob_bytes):packet->version==2?geo_draw_validate_capture_v2(&v2->request,blob,packet->request.blob_bytes):geo_draw_validate_capture(&packet->request,blob,packet->request.blob_bytes);if(status!=STATUS_SUCCESS)goto done;
  if((uint64_t)packet->request.state.vertex_offset+((uint64_t)packet->request.state.first_vertex+packet->request.state.vertex_count)*packet->request.state.vertex_stride>
     (uint64_t)v->desc.pitch*v->desc.height){status=STATUS_INVALID_PARAMETER;goto done;}
  RtlZeroMemory(&call,sizeof(call));call.adapter=c->adapter;call.allocation=a;call.vertex=v;call.texture=x;call.context=c;

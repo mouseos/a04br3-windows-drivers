@@ -48,6 +48,7 @@ struct geo_kmd_adapter {
  UINT memory_ready;
  struct geo_native_draw_ops_v3 draw_v3;
  struct geo_native_draw_ops_v4 draw_v4;
+ struct geo_native_draw_ops_v5 draw_v5;
  struct geo_native_draw_ops_v2 draw_v2; /* append: preserve original field offsets */
  struct geo_pending_payload pending[GEO_MAX_JOBS];
 };

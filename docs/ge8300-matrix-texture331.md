@@ -1,0 +1,9 @@
+# 行列VSとTexture2D SAMPLEの結合331
+
+330は一般ALU VS/PSをABI4で検証できるが、SAMPLE PSでは旧ABI3のpassthrough VSだけが受理される。331はABI5を追加し、330の実生成VS witnessと327の実生成SAMPLE PS検証を一つのjobへ結合する。CPU頂点変換・固定USCへの置換・caps追加はしない。
+
+ABI5の先頭はtexture ABI3 requestと同じ配置。末尾にVS witness span/ISA/reservedを持ち、KMD Renderは3つの実allocationを検証しreadonlytextureもowned payloadへretainする。native ownerは同じtexture bindingを確認し、既存prepare→paging→Patch→Submit→IRQ/fence/retireを使用する。新ops5とadapter contract7で片側旧peerを拒否する。ALU ABI4、texture ABI3/profile4、witness ISA0x33001は意味変更しない。
+
+VS368byteの行列USCとPS88byteのSAMPLE USCはPCOが入力sourceから実生成する。nativeはVSをwitnessから全byte再encodeし、PSを既存一次sourceのtexture encoder/descriptor contractで全byte検証する。330と同じUSC page内VS0x400/PS0x800、VS CB0x540、PS texture/sampler descriptor0x4a0と座標CB0x4c0を使用する。VSのDOUTD共通store転送とPSの12DWORD転送を独立に構成する。sourceの根拠は330のPDS/VDMおよび327のMesa texture encoder契約を継承する。
+
+実装範囲はPOSITION4の行列VSとCB0からUVを与えるSAMPLE PSの合成。補間varying由来UV、任意resource/sampler数、depth/blend/Presentは未実装。行列VSのCB0先頭4vector、800x600/1triangleの範囲も維持する。実GPU未検証で、327reset修正版とは扱わない。

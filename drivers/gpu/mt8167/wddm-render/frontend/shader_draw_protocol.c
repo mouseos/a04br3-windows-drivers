@@ -14,3 +14,14 @@ int32_t geo_draw_validate_capture_v4(const struct geo_draw_request_v4 *r,const v
  }
  return GEO_OK;
 }
+
+int32_t geo_draw_validate_capture_v5(const struct geo_draw_request_v5 *r,const void *blob,uint32_t bytes) {
+ struct geo_draw_request_v3 sampled;const unsigned char *b=blob;const struct geo_draw_shader *s;const struct geo_draw_span *p;
+ if(!r||!b||((uintptr_t)b&3)||r->sampled.base.size!=sizeof(*r)||r->sampled.base.version!=5||r->isa!=GEO_SHADER_WITNESS_ISA||r->reserved)return GEO_INVALID;
+ sampled=r->sampled;sampled.base.size=sizeof(sampled);sampled.base.version=3;
+ int32_t status=geo_draw_validate_capture_v3(&sampled,blob,bytes);if(status)return status;
+ s=&r->sampled.base.vs;p=&r->vertex_witness;
+ if(!p->bytes||(p->offset&3)||p->offset>bytes||p->bytes>bytes-p->offset||s->format!=GEO_SHADER_D3D10_TOKENS)return GEO_INVALID;
+ struct geo_shader_metadata m={0,s->temps,s->shareds,s->vtxins,s->vtxouts,s->input_mask,s->constant_mask};
+ return geo_shader_witness_validate(b+p->offset,p->bytes,b+s->usc.offset,s->usc.bytes,&m);
+}

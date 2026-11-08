@@ -53,6 +53,8 @@ static NTSTATUS start_device(void *context,DXGK_START_INFO *start,DXGKRNL_INTERF
  if(status!=STATUS_SUCCESS||d->adapter.draw_v3.size!=sizeof(d->adapter.draw_v3)||d->adapter.draw_v3.version!=3||!d->adapter.draw_v3.context||!d->adapter.draw_v3.prepare_draw)return STATUS_INVALID_DEVICE_STATE;
  status=GeoNativeOwnerGetDrawOpsV4(&d->native,&d->adapter.draw_v4);
  if(status!=STATUS_SUCCESS||d->adapter.draw_v4.size!=sizeof(d->adapter.draw_v4)||d->adapter.draw_v4.version!=4||!d->adapter.draw_v4.context||!d->adapter.draw_v4.prepare_draw)return STATUS_INVALID_DEVICE_STATE;
+ status=GeoNativeOwnerGetDrawOpsV5(&d->native,&d->adapter.draw_v5);
+ if(status!=STATUS_SUCCESS||d->adapter.draw_v5.size!=sizeof(d->adapter.draw_v5)||d->adapter.draw_v5.version!=5||!d->adapter.draw_v5.context||!d->adapter.draw_v5.prepare_draw)return STATUS_INVALID_DEVICE_STATE;
  *sources=0;*children=0;d->started=1;GeoInitCheckpoint(10,STATUS_SUCCESS);return STATUS_SUCCESS;
 }
 static NTSTATUS stop_device(void *context) {

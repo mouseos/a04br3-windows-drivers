@@ -78,6 +78,8 @@ NTSTATUS a04_vendor_native_attach_mdl_target_preserve_cold(struct a04_vendor_nat
 struct geo_draw_request_v2;
 struct geo_draw_request_v3;
 struct geo_draw_request_v4;
+struct geo_draw_request_v5;
+NTSTATUS a04_vendor_native_prepare_draw_v5_cold(struct a04_vendor_native_cold *,const struct geo_draw_request_v5 *,const void *,uint32_t,uint64_t,uint64_t);
 NTSTATUS a04_vendor_native_prepare_draw_v4_cold(struct a04_vendor_native_cold *,const struct geo_draw_request_v4 *,const void *,uint32_t,uint64_t);
 NTSTATUS a04_vendor_native_prepare_draw_v3_cold(struct a04_vendor_native_cold *,const struct geo_draw_request_v3 *,const void *,uint32_t,uint64_t,uint64_t);
 NTSTATUS a04_vendor_native_prepare_draw_v2_cold(struct a04_vendor_native_cold *,

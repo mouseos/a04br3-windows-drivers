@@ -23,4 +23,5 @@ int32_t a04_m111_build_draw_job_v2(struct a04_m111_draw_job *,
  const struct geo_draw_request_v2 *,const void *blob,uint32_t bytes,void *scratch,size_t);
 int32_t a04_m111_build_draw_job_v3(struct a04_m111_draw_job *,const struct a04_m111_clear_job_input *,uint64_t,uint64_t,const struct geo_draw_request_v3 *,const void *,uint32_t,void *,size_t);
 int32_t a04_m111_build_draw_job_v4(struct a04_m111_draw_job *,const struct a04_m111_clear_job_input *,uint64_t,const struct geo_draw_request_v4 *,const void *,uint32_t,void *,size_t);
+int32_t a04_m111_build_draw_job_v5(struct a04_m111_draw_job *,const struct a04_m111_clear_job_input *,uint64_t,uint64_t,const struct geo_draw_request_v5 *,const void *,uint32_t,void *,size_t);
 #endif
