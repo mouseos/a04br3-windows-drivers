@@ -81,9 +81,17 @@ extern "C" int Mt8167SilentDmaMiniportEnabled(void);
 #error engine PCM requires retained direct WaveRT DMA and excludes private tone
 #endif
 #endif
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+#include "headphone_endpoint.h"
+#include "../../bus/mt8167-shared/headphone_interface.h"
+#endif
 #define OWNER_TAG 'OwnA'
 struct Mt8167PnpBackend {
     Mt8167StreamBackend iface;
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+    A04_HEADPHONE_INTERFACE hpParent;Mt8167HeadphoneProvider hpProvider;
+    BOOLEAN hpSelected,hpPinned,hpAnalogStarted;
+#endif
 #if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
     A04_CAPTURE_INTERFACE captureParent;
 #endif
@@ -202,6 +210,9 @@ static void OwnerDereference(void *ctx)
 #endif
     o->adapter->DmaOperations->PutDmaAdapter(o->adapter);
     ObDereferenceObject(o->pdo);
+    #if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+    if(o->hpParent.Header.InterfaceDereference)o->hpParent.Header.InterfaceDereference(o->hpParent.Header.Context);
+#endif
     ExFreePoolWithTag(o,OWNER_TAG);
 }
 static NTSTATUS OwnerAllocate(void *ctx,ULONG bytes,PMDL *mdl,PULONG actual,PULONG offset,MEMORY_CACHING_TYPE *cache)
@@ -299,7 +310,7 @@ static NTSTATUS OwnerUnbindWave(void *ctx,PMDL mdl) {
 #if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
 static NTSTATUS OwnerConnectMaskedIrq(Mt8167PnpBackend *);
 #endif
-static NTSTATUS OwnerCheckout(void *ctx,PPORTWAVERTSTREAM port,ULONG bytes,PMDL *mdl,PULONG actual)
+static NTSTATUS OwnerCheckoutRoute(void *ctx,PPORTWAVERTSTREAM port,ULONG bytes,PMDL *mdl,PULONG actual,BOOLEAN headphone)
 {
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
     if(!o || !port || !mdl || !actual || !bytes || bytes>1048576 ||
@@ -332,13 +343,18 @@ static NTSTATUS OwnerCheckout(void *ctx,PPORTWAVERTSTREAM port,ULONG bytes,PMDL 
             /* PortCls retires its client mapping on FreeAudioBuffer. The
              * allocating port reference and MDL remain in this owner. */
             RtlZeroMemory(o->retainedBuffer.mapping,o->retainedBuffer.bytes);
-            o->engineClient=port;o->engineState=KSSTATE_STOP;o->resetOnRun=TRUE;
+            o->engineClient=port;o->engineState=KSSTATE_STOP;
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+            o->hpSelected=headphone;
+#endifo->resetOnRun=TRUE;
             InterlockedExchange(&o->stoppedOffset,0);InterlockedExchange(&o->positionPaused,1);
             *mdl=o->retainedBuffer.mdl;*actual=o->retainedBuffer.bytes;
         }
     }
     OwnerUnlock(o);return result;
 }
+static NTSTATUS OwnerCheckout(void *ctx,PPORTWAVERTSTREAM port,ULONG bytes,PMDL *mdl,PULONG actual)
+{return OwnerCheckoutRoute(ctx,port,bytes,mdl,actual,FALSE);}
 static NTSTATUS OwnerCheckin(void *ctx,PPORTWAVERTSTREAM port,PMDL mdl)
 {
     Mt8167PnpBackend *o=static_cast<Mt8167PnpBackend *>(ctx);
@@ -388,6 +404,24 @@ static BOOLEAN OwnerLiveDmaVerified(Mt8167PnpBackend *o)
 #if defined(A04_AUDIO_RUN_DIAGNOSTIC) && A04_AUDIO_RUN_DIAGNOSTIC
 static NTSTATUS OwnerStopRunning(Mt8167PnpBackend *o);
 #endif
+static int OwnerRouteStart(Mt8167PnpBackend *o){
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+ if(o->hpSelected){if(o->hpAnalogStarted)return 0;NTSTATUS s=o->hpParent.Start(o->hpParent.Header.Context);if(NT_SUCCESS(s)){o->hpAnalogStarted=TRUE;o->hpPinned=TRUE;}return NT_SUCCESS(s)?0:-1;}
+#endif
+ return o->parentClient.parent.StartVoice(o->parentClient.parent.Header.Context);
+}
+static int OwnerRouteMute(Mt8167PnpBackend *o){
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+ if(o->hpSelected){if(!o->hpAnalogStarted&&OwnerRouteStart(o))return -1;return NT_SUCCESS(o->hpParent.MuteRetained(o->hpParent.Header.Context))?0:-1;}
+#endif
+ return o->parentClient.parent.Mute(o->parentClient.parent.Header.Context);
+}
+static int OwnerRouteUnmute(Mt8167PnpBackend *o){
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+ if(o->hpSelected)return NT_SUCCESS(o->hpParent.ResumeRetained(o->hpParent.Header.Context))?0:-1;
+#endif
+ return o->parentClient.parent.UnmuteMin(o->parentClient.parent.Header.Context);
+}
 static NTSTATUS OwnerStartLocked(void *ctx,BOOLEAN *possiblyExposed) {
     if (!ctx || !possiblyExposed) return STATUS_INVALID_PARAMETER;
     *possiblyExposed=FALSE;
@@ -400,10 +434,10 @@ static NTSTATUS OwnerStartLocked(void *ctx,BOOLEAN *possiblyExposed) {
     if(o->online && o->engineClient && o->shared.leased && o->shared.quarantined &&
        o->digitalRetained && o->transport.state==AUDIO_STOPPED_RETAINED) {
         *possiblyExposed=TRUE;o->diagStage=A04_STAGE_DMA;
-        if(!o->parentClient.parent.Mute(o->parentClient.parent.Header.Context) &&
+        if(!OwnerRouteMute(o) &&
            !Mt8167TransportRestartRetained(&o->transport,o->resetOnRun)) {
             o->diagStage=A04_STAGE_UNMUTE;
-            if(!o->parentClient.parent.UnmuteMin(o->parentClient.parent.Header.Context)) {
+            if(!OwnerRouteUnmute(o)) {
                 result=STATUS_SUCCESS;
                 if(o->livePositionsClosed) {
                     ExReInitializeRundownProtection(&o->livePositions);o->livePositionsClosed=FALSE;
@@ -446,7 +480,7 @@ static NTSTATUS OwnerStartLocked(void *ctx,BOOLEAN *possiblyExposed) {
          * no CPU writes occur afterward. No cyclic-client coherency claim. */
         o->diagStage=A04_STAGE_VOICE;
         if(!o->parentClient.parent.StartVoice ||
-           o->parentClient.parent.StartVoice(o->parentClient.parent.Header.Context)) {
+           OwnerRouteStart(o)) {
             (void)mt8167_audio_shared_quarantine(&o->shared);
             o->diagFailedStage=o->diagStage;
             *possiblyExposed=TRUE;return result;
@@ -460,7 +494,7 @@ static NTSTATUS OwnerStartLocked(void *ctx,BOOLEAN *possiblyExposed) {
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
         o->diagStage=A04_STAGE_VOICE;
 #endif
-        if (!o->parentClient.parent.StartVoice(o->parentClient.parent.Header.Context)) {
+        if (!OwnerRouteStart(o)) {
 #if defined(A04_AUDIO_WAVE_DMA_RETAINED) && A04_AUDIO_WAVE_DMA_RETAINED
             /* Exposure precedes any synchronized DL1 register writes. */
             o->waveDma.exposed=TRUE;
@@ -472,7 +506,7 @@ static NTSTATUS OwnerStartLocked(void *ctx,BOOLEAN *possiblyExposed) {
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
                 o->diagStage=A04_STAGE_UNMUTE;
 #endif
-                if(o->parentClient.parent.UnmuteMin(o->parentClient.parent.Header.Context)) {
+                if(OwnerRouteUnmute(o)) {
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
                     o->diagFailedStage=A04_STAGE_UNMUTE;
 #endif
@@ -491,7 +525,7 @@ static NTSTATUS OwnerStartLocked(void *ctx,BOOLEAN *possiblyExposed) {
             o->diagStage=A04_STAGE_UNMUTE;
 #endif
             /* Failed/ambiguous unmute still stops DMA and retains the lease. */
-            if(o->parentClient.parent.UnmuteMin(o->parentClient.parent.Header.Context)) {
+            if(OwnerRouteUnmute(o)) {
 #if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
                 o->diagFailedStage=A04_STAGE_UNMUTE;
 #endif
@@ -546,7 +580,7 @@ static NTSTATUS OwnerStopRunning(Mt8167PnpBackend *o)
 #if (defined(A04_AUDIO_FIRST_PLAYBACK) && A04_AUDIO_FIRST_PLAYBACK) || (defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM)
     o->diagStage=A04_STAGE_STOP;
 #endif
-    int mute=o->parentClient.parent.Mute(o->parentClient.parent.Header.Context);
+    int mute=OwnerRouteMute(o);
     int stop=Mt8167TransportStop(&o->transport);
 #if defined(A04_AUDIO_VOICE_PCM_DIAGNOSTIC) && A04_AUDIO_VOICE_PCM_DIAGNOSTIC
     if(mute || stop || !o->parentClient.parent.StopVoice) {
@@ -556,6 +590,15 @@ static NTSTATUS OwnerStopRunning(Mt8167PnpBackend *o)
         return STATUS_DEVICE_NOT_READY;
     }
 #if defined(A04_AUDIO_ENGINE_PCM) && A04_AUDIO_ENGINE_PCM
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+    if(o->hpSelected){ULONG drain=A04_HP_DRAIN_UNKNOWN;
+      NTSTATUS hp=o->hpParent.Stop(o->hpParent.Header.Context,&drain);
+      if(!NT_SUCCESS(hp)||(drain!=A04_HP_DRAIN_RETAINED&&drain!=A04_HP_DRAIN_RELEASED)){InterlockedExchange(&o->enginePoison,1);return STATUS_DEVICE_NOT_READY;}
+      if(drain==A04_HP_DRAIN_RELEASED)o->hpAnalogStarted=FALSE;
+      /* Both results retain the existing pages/SG/D0; only RELEASED certifies
+       * hardware drain. RETAINED never permits freeing or endpoint switching. */
+    }
+#endif
     /* Software IRQ work drained and DL1 disabled. Same pages/SG/voice/D0
      * stay pinned; never use this as a DMA bus-drain/free certificate. */
     uint32_t offset=0;
@@ -971,4 +1014,8 @@ void Mt8167PnpBackendRevoke(Mt8167PnpBackend *o) {
     OwnerUnlock(o);
 }
 void Mt8167PnpBackendRelease(Mt8167PnpBackend *o) { if(o)OwnerDereference(o); }
+#endif
+
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+#include "headphone_backend.inc"
 #endif

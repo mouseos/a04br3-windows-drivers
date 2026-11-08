@@ -30,6 +30,23 @@ static int ThermalPioRecordValid(const A04_THERMAL_PIO_RECORD *r,ULONG bytes,ULO
   !r->irq_after&&!(r->ahb_after>>16)&&!r->mon_after&&(r->pause_after&0x10eu)==0x10eu&&
   !r->adc_mode&&!r->adc_trigger&&r->adc_busy!=0xffffu&&!(r->adc_busy&1)&&!r->irq_pending;
 }
+#if A04_SHARED_HP_PCM
+/* Serialized by adcPurpose, not an additional AUXADC owner. Cache only the
+ * consumed boot handoff proof; every use rechecks live clock/reset/idle. */
+static NTSTATUS ParentAdcProof(A04_PARENT_CONTEXT *c,A04_THERMAL_PIO_RECORD *record)
+{
+ ULONG bytes=sizeof(*record),attrs=0;NTSTATUS status;GUID guid=A04_THERMAL_PIO_GUID;
+ UNICODE_STRING name=RTL_CONSTANT_STRING(A04_THERMAL_PIO_NAME);
+ if(c->adcProofValid){*record=c->adcProof;return STATUS_SUCCESS;}
+ RtlZeroMemory(record,sizeof(*record));
+ status=ExGetFirmwareEnvironmentVariable(&name,&guid,record,&bytes,&attrs);
+ if(!NT_SUCCESS(status)||!ThermalPioRecordValid(record,bytes,attrs))return STATUS_DEVICE_NOT_READY;
+ status=ExSetFirmwareEnvironmentVariable(&name,&guid,NULL,0,0);
+ if(!NT_SUCCESS(status))return status;
+ if(InterlockedCompareExchange(&c->admissionClosed,0,0)||InterlockedCompareExchange(&c->removed,0,0))return STATUS_DEVICE_NOT_READY;
+ c->adcProof=*record;c->adcProofValid=1;return STATUS_SUCCESS;
+}
+#endif
 static NTSTATUS ParentThermalPioMeasure(PVOID p,ULONG *adopted,ULONG raw[3],ULONG *stage)
 {
  WDFDEVICE dev=(WDFDEVICE)p;A04_PARENT_CONTEXT *c=ParentContext(dev);NTSTATUS status;PVOID thermal=NULL,adc=NULL;
@@ -39,16 +56,31 @@ static NTSTATUS ParentThermalPioMeasure(PVOID p,ULONG *adopted,ULONG raw[3],ULON
  if(!adopted||!raw||!stage)return STATUS_INVALID_PARAMETER;*adopted=0;*stage=1;
  if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
  if(InterlockedCompareExchange(&c->thermalPioUsed,1,0))return STATUS_DEVICE_NOT_READY;
- status=WdfDeviceStopIdle(dev,TRUE);if(!NT_SUCCESS(status))return status;
- if(!ExAcquireRundownProtection(&c->thermalRundown)){WdfDeviceResumeIdle(dev);return STATUS_DEVICE_NOT_READY;}
+ #if A04_SHARED_HP_PCM
+ if(InterlockedCompareExchange(&c->adcPurpose,1,0))return STATUS_DEVICE_BUSY;
+#endif
+ status=WdfDeviceStopIdle(dev,TRUE);if(!NT_SUCCESS(status)){
+#if A04_SHARED_HP_PCM
+ InterlockedExchange(&c->adcPurpose,0);
+#endif
+ return status;}
+ if(!ExAcquireRundownProtection(&c->thermalRundown)){
+#if A04_SHARED_HP_PCM
+ InterlockedExchange(&c->adcPurpose,0);
+#endif
+ WdfDeviceResumeIdle(dev);return STATUS_DEVICE_NOT_READY;}
  RtlZeroMemory(&record,sizeof(record));
  /* Runtime variable calls need PASSIVE_LEVEL, before taking the parent mutex. */
+#if A04_SHARED_HP_PCM
+ *stage=2;status=ParentAdcProof(c,&record);if(!NT_SUCCESS(status))goto outside;
+#else
  *stage=2;status=ExGetFirmwareEnvironmentVariable(&name,&guid,&record,&bytes,&attrs);
  if(!NT_SUCCESS(status)||!ThermalPioRecordValid(&record,bytes,attrs)){status=STATUS_DEVICE_NOT_READY;goto outside;}
  /* Consume once for this boot. A recreated PDO/parent cannot reuse the record
   * after an uncertain operation. Failure to consume never opens admission. */
  *stage=3;status=ExSetFirmwareEnvironmentVariable(&name,&guid,NULL,0,0);
  if(!NT_SUCCESS(status))goto outside;
+#endif
  *stage=4;if(ParentLock(c)){status=STATUS_DEVICE_NOT_READY;goto outside;}
  if(c->thermal.poisoned||c->thermal.leased||!c->topck||!c->infra||!c->apmixed||c->apmixedLength<0x608){status=STATUS_DEVICE_NOT_READY;goto unlock;}
  value=READ_REGISTER_ULONG((volatile ULONG *)((volatile UCHAR *)c->topck+0x24));
@@ -105,6 +137,9 @@ static NTSTATUS ParentThermalPioMeasure(PVOID p,ULONG *adopted,ULONG raw[3],ULON
  *stage=10;c->thermal.quiescent=1;c->thermal.leased=0;c->thermal.native_claim=0;c->thermal.firmware_released=0;c->thermal.adc_exclusive=0;
  MmUnmapIoSpace(c->thermalPioMappings[0],0x1000);MmUnmapIoSpace(c->thermalPioMappings[1],0x1000);
  c->thermalPioMappings[0]=c->thermalPioMappings[1]=NULL;
+ #if A04_SHARED_HP_PCM
+ InterlockedExchange(&c->adcPurpose,0);
+#endif
  if(measured){for(i=0;i<3;i++)raw[i]=result[i];status=STATUS_SUCCESS;}else status=STATUS_IO_TIMEOUT;
  ParentUnlock(c);WdfObjectDereference(dev);ExReleaseRundownProtection(&c->thermalRundown);WdfDeviceResumeIdle(dev);return status;
 retain:
@@ -119,5 +154,9 @@ unlock:
  if(adc)MmUnmapIoSpace(adc,0x1000);if(thermal)MmUnmapIoSpace(thermal,0x1000);
  ParentUnlock(c);
 outside:
+#if A04_SHARED_HP_PCM
+ if(InterlockedCompareExchange(&c->admissionClosed,0,0))c->adcProofValid=0;
+ InterlockedExchange(&c->adcPurpose,0);
+#endif
  ExReleaseRundownProtection(&c->thermalRundown);WdfDeviceResumeIdle(dev);return status;
 }

@@ -249,6 +249,18 @@
 #if A04_SHARED_GPU_DOMAIN_SPM && (!A04_SHARED_GPU_PLATFORM || !A04_SHARED_APMIXED_RESOURCE)
 #error SPM profile requires GPU platform and matched APMIXED parent
 #endif
+#ifndef A04_SHARED_HP_PCM
+#define A04_SHARED_HP_PCM 0
+#endif
+#if A04_SHARED_HP_PCM
+#if !A04_SHARED_THERMAL_NATIVE_EXPERIMENT || !A04_SHARED_VOICE_PCM_DIAGNOSTIC || !A04_SHARED_ACCDET_READ
+#error HP requires the matched single-owner thermal V3/audio/ACCDET profile
+#endif
+#include "headphone_interface.h"
+#include "thermal_pio_record.h"
+#include "codec_headphone.h"
+#include "codec_adc_probe.h"
+#endif
 typedef struct {
 #if A04_SHARED_SD_POWER
  struct a04_sd_power sdPower;
@@ -276,6 +288,13 @@ struct a04_gpu_domain_owner gpuDomain;
 #if A04_SHARED_GPU_DOMAIN_SPM
 PVOID gpuSpm;
 #endif
+#endif
+#if A04_SHARED_HP_PCM
+/* Purpose/admission and cached boot proof of the SAME thermal/AUXADC owner. */
+volatile LONG adcPurpose;int adcProofValid;A04_THERMAL_PIO_RECORD adcProof;
+struct a04_hp_route hpRoute;struct a04_hp_measurements hpMeasured;
+struct a04_hp_calibration hpCalibration;ULONG hpPhaseMask[2];
+int hpCalibrationValid,hpRetainedMute;ULONGLONG hpRouteDeadline;
 #endif
 PVOID audioAfe;
 #if A04_SHARED_AUDIO_AFE_CLOCK_DIAGNOSTIC
@@ -1198,11 +1217,17 @@ static NTSTATUS ParentThermalRelease(PVOID p,ULONG generation)
 #if A04_SHARED_THERMAL_NATIVE_EXPERIMENT
 #include "thermal_native_parent.inc"
 #endif
+#if A04_SHARED_HP_PCM
+#include "headphone_parent.inc"
+#endif
 static void ParentStop(A04_PARENT_CONTEXT *c,int can_access)
 {
     /* Both owners share this mutex. Close admission in one critical section
      * before any mapping is released; neither client can enter in between. */
     InterlockedExchange(&c->admissionClosed,1);
+#if A04_SHARED_HP_PCM
+    c->adcProofValid=0;
+#endif
 #if A04_SHARED_THERMAL_DIAGNOSTIC
     if(!c->thermalRundownClosed){ExWaitForRundownProtectionRelease(&c->thermalRundown);c->thermalRundownClosed=TRUE;}
 #endif
@@ -1807,6 +1832,16 @@ NTSTATUS ParentAdd(WDFDRIVER driver,PWDFDEVICE_INIT init)
 #endif
     status=ParentAddProbeChild(dev,L"MT6392\\Buttons",L"0",0x10002000u);
     if(!NT_SUCCESS(status))return status;
+#if A04_SHARED_HP_PCM
+    {A04_HEADPHONE_INTERFACE hp;WDF_QUERY_INTERFACE_CONFIG query;
+     RtlZeroMemory(&hp,sizeof(hp));hp.Header.Size=sizeof(hp);hp.Header.Version=A04_HP_PARENT_VERSION;
+     hp.Header.Context=dev;hp.Header.InterfaceReference=ParentInterfaceReference;hp.Header.InterfaceDereference=ParentInterfaceDereference;
+     hp.ParentBuild=1105;hp.BeginAdc=ParentHpAdcBegin;hp.ReadAdc=ParentHpAdcRead;hp.EndAdc=ParentHpAdcEnd;
+     hp.Readiness=ParentHpReadiness;hp.ReadJack=ParentHpJack;hp.Start=ParentHpStart;
+     hp.MuteRetained=ParentHpMute;hp.ResumeRetained=ParentHpResume;hp.Stop=ParentHpStop;hp.Latency=ParentHpLatency;
+     WDF_QUERY_INTERFACE_CONFIG_INIT(&query,(PINTERFACE)&hp,&A04HeadphoneParentGuid,NULL);
+     status=WdfDeviceAddQueryInterface(dev,&query);if(!NT_SUCCESS(status))return status;}
+#endif
     status=ParentAddProbeChild(dev,L"MT8167\\BU21025",L"0",0x11009000u);
     if(!NT_SUCCESS(status))return status;
 #if A04_SHARED_THERMAL_DIAGNOSTIC

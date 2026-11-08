@@ -55,7 +55,7 @@ static int ramp(struct a04_hp_route *s,const struct a04_hp_io *io,
 }
 static int valid_io(const struct a04_hp_io *io)
 {return io&&io->qualified&&io->read&&io->write&&io->delay_us&&io->verify_dma_irq_drained;}
-int a04_codec_headphone_start(struct a04_hp_route *s,const struct a04_hp_io *io,const struct a04_hp_calibration *c)
+static int start_route(struct a04_hp_route *s,const struct a04_hp_io *io,const struct a04_hp_calibration *c,int release_output)
 {
  uint32_t con1,con2,afe;unsigned i;
  if(!s||!valid_io(io)||!c||s->held||s->poisoned||!c->generation||c->measured_channels!=3||
@@ -84,11 +84,13 @@ int a04_codec_headphone_start(struct a04_hp_route *s,const struct a04_hp_io *io,
     update(s,io,0,3u<<11,3u<<11)||
     update(s,io,0,0x3fu,c->gain[0]|(c->gain[1]<<3))||
     update(s,io,1,1u<<28,1u<<28)||ramp(s,io,c->dac,c->op,1)||
-    update(s,io,1,1u<<25,0)||update(s,io,1,1u<<22,0)){
+    (release_output&&(update(s,io,1,1u<<25,0)||update(s,io,1,1u<<22,0)))){
   s->poisoned=1;return -2;
  }
  s->active=1;return 0;
 }
+int a04_codec_headphone_start(struct a04_hp_route*s,const struct a04_hp_io*io,const struct a04_hp_calibration*c){return start_route(s,io,c,1);}
+int a04_codec_headphone_start_muted(struct a04_hp_route*s,const struct a04_hp_io*io,const struct a04_hp_calibration*c){return start_route(s,io,c,0);}
 int a04_codec_headphone_stop(struct a04_hp_route *s,const struct a04_hp_io *io)
 {
  unsigned i;
@@ -122,4 +124,19 @@ int a04_codec_headphone_calibration(const struct a04_hp_measurements *m,struct a
      a04_codec_calculate_comp(m->uv[channel][0],m->uv[channel][2],m->gain[channel],&c.op[channel]))return -1;
  }
  *out=c;return 0;
+}
+
+/* CT3 hp_depop_enable/disable clamp, without dismantling DAC, clocks or DMA.
+ * Retained STOP is not a fabric-drain or resource-release certificate. */
+int a04_codec_headphone_mute_retained(struct a04_hp_route *s,const struct a04_hp_io *io)
+{
+ if(!s||!valid_io(io)||!s->held||!s->active||s->poisoned)return -1;
+ if(update(s,io,1,1u<<22,1u<<22)||update(s,io,1,1u<<25,1u<<25)){s->poisoned=1;return -2;}
+ return 0;
+}
+int a04_codec_headphone_resume_retained(struct a04_hp_route *s,const struct a04_hp_io *io)
+{
+ if(!s||!valid_io(io)||!s->held||!s->active||s->poisoned)return -1;
+ if(update(s,io,1,1u<<25,0)||update(s,io,1,1u<<22,0)){s->poisoned=1;return -2;}
+ return 0;
 }

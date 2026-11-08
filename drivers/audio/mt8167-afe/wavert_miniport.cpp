@@ -265,6 +265,9 @@ public:
     /* No measured codec/fabric latency is available. The inherited zero
      * values are placeholders, not a calibrated latency contract. */
     STDMETHODIMP_(VOID) GetHWLatency(KSRTAUDIO_HWLATENCY *p) override { if(p){
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+        if(useBackend&&backend.renderLatencyValid){*p=backend.renderLatency;return;}
+#endif
 #if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
         if(useBackend&&backend.capture){*p=backend.captureLatency;return;}
 #endif
@@ -341,8 +344,22 @@ public:
 #else
         if(capture)return STATUS_NO_MATCH;
 #endif
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+        Mt8167StreamBackend current=backend;
+        if(useBackend&&current.prepareRenderStream){
+            KSRTAUDIO_HWLATENCY latency;RtlZeroMemory(&latency,sizeof(latency));
+            NTSTATUS status=current.prepareRenderStream(current.context,&latency);
+            if(status!=STATUS_SUCCESS)return NT_SUCCESS(status)?STATUS_DEVICE_NOT_READY:status;
+            current.renderLatency=latency;current.renderLatencyValid=TRUE;
+        }
+#endif
         void *mem=ExAllocatePoolWithTag(NonPagedPool,sizeof(Stream),AUDIO_TAG);if(!mem)return STATUS_INSUFFICIENT_RESOURCES;
-        *out=new(mem) Stream(port,useBackend?&backend:NULL);return STATUS_SUCCESS;
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+        *out=new(mem) Stream(port,useBackend?&current:NULL);
+#else
+        *out=new(mem) Stream(port,useBackend?&backend:NULL);
+#endif
+        return STATUS_SUCCESS;
     }
     STDMETHODIMP_(NTSTATUS) GetDeviceDescription(PDEVICE_DESCRIPTION d) override {
         if (!d) return STATUS_INVALID_PARAMETER;

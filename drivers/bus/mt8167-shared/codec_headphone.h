@@ -33,6 +33,9 @@ struct a04_hp_route {
 };
 /* 0=complete, -1=reject before writes, -2=uncertain; retain owner on -2.
  * Caller acquires/releases common domain and DMA owner, never this module. */
+int a04_codec_headphone_start_muted(struct a04_hp_route *,const struct a04_hp_io *,const struct a04_hp_calibration *);
 int a04_codec_headphone_start(struct a04_hp_route *,const struct a04_hp_io *,const struct a04_hp_calibration *);
+int a04_codec_headphone_mute_retained(struct a04_hp_route *,const struct a04_hp_io *);
+int a04_codec_headphone_resume_retained(struct a04_hp_route *,const struct a04_hp_io *);
 int a04_codec_headphone_stop(struct a04_hp_route *,const struct a04_hp_io *);
 #endif

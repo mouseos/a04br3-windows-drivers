@@ -1,0 +1,250 @@
+/* SPDX-License-Identifier: BSD-2-Clause-Patent
+ * Same parent and SAME c->thermal owner/mappings as thermal V3. */
+#include "codec_adc_probe.h"
+#include "codec_headphone.c"
+static int ParentHpAdcQualified(void *p)
+{
+ A04_PARENT_CONTEXT*c=p;
+ return c->adcPurpose==2&&ThermalPioQualified(c);
+}
+static int ParentHpAdcRead16(void *p,uint32_t offset,uint16_t *out)
+{
+ A04_PARENT_CONTEXT*c=p;
+ if(!out||!ParentHpAdcQualified(c)||(offset!=0&&offset!=4&&offset!=0x10&&offset!=0x30&&offset!=0x34))return -1;
+ *out=READ_REGISTER_USHORT((volatile USHORT*)((volatile UCHAR*)c->thermalPioMappings[1]+offset));return 0;
+}
+static int ParentHpAdcWrite16(void *p,uint32_t offset,uint16_t value)
+{
+ A04_PARENT_CONTEXT*c=p;
+ if(!ParentHpAdcQualified(c)||offset!=4||(value!=0&&value!=0x80&&value!=0x100))return -1;
+ WRITE_REGISTER_USHORT((volatile USHORT*)((volatile UCHAR*)c->thermalPioMappings[1]+offset),value);return 0;
+}
+static int ParentHpWait(void *p,unsigned us)
+{
+ A04_PARENT_CONTEXT*c=p;LARGE_INTEGER wait;
+ if(!ParentHpAdcQualified(c)||!us||us>20000||KeGetCurrentIrql()>APC_LEVEL)return -1;
+ if(us<1000){KeStallExecutionProcessor(us);return 0;}
+ wait.QuadPart=-(LONGLONG)us*10;return KeDelayExecutionThread(KernelMode,FALSE,&wait)==STATUS_SUCCESS?0:-1;
+}
+static NTSTATUS ParentHpAdcBegin(PVOID p,ULONG *generation)
+{
+ WDFDEVICE dev=(WDFDEVICE)p;A04_PARENT_CONTEXT*c=ParentContext(dev);NTSTATUS status;
+ A04_THERMAL_PIO_RECORD proof;PVOID th=NULL,adc=NULL;ULONG value;ULONGLONG now;
+ if(!generation||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;*generation=0;
+ if(InterlockedCompareExchange(&c->adcPurpose,2,0))return STATUS_DEVICE_BUSY;
+ status=WdfDeviceStopIdle(dev,TRUE);if(!NT_SUCCESS(status))goto gate;
+ if(!ExAcquireRundownProtection(&c->thermalRundown)){status=STATUS_DEVICE_NOT_READY;goto power;}
+ status=ParentAdcProof(c,&proof);if(!NT_SUCCESS(status))goto rundown;
+ if(ParentLock(c)){status=STATUS_DEVICE_NOT_READY;goto rundown;}
+ if(!c->topck||!c->infra||!c->apmixed||c->apmixedLength<0x70c||c->hpRoute.held||c->hpRoute.poisoned||c->thermal.leased||c->thermal.poisoned||!c->thermal.online||c->thermal.generation==MAXULONG||
+    c->thermalPioMappings[0]||c->thermalPioMappings[1]||!c->thermalAssigned[0].QuadPart||!c->thermalAssigned[1].QuadPart){status=STATUS_DEVICE_BUSY;goto unlock;}
+ value=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->topck+0x24));
+ if(value==MAXULONG||(value&0x40000002u)){status=STATUS_DEVICE_NOT_READY;goto unlock;}
+ value=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->infra+0x128));
+ if(value==MAXULONG||!(value&1)){status=STATUS_DEVICE_NOT_READY;goto unlock;}
+ th=MmMapIoSpace(c->thermalAssigned[0],0x1000,MmNonCached);if(!th){status=STATUS_INSUFFICIENT_RESOURCES;goto unlock;}
+ adc=MmMapIoSpace(c->thermalAssigned[1],0x1000,MmNonCached);if(!adc){status=STATUS_INSUFFICIENT_RESOURCES;goto unlock;}
+ if(READ_REGISTER_ULONG((volatile ULONG*)th)||READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)th+0xc))||
+    READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)th+0x10))||
+    (READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)th+0x418))>>16)||
+    READ_REGISTER_USHORT((volatile USHORT*)adc)||READ_REGISTER_USHORT((volatile USHORT*)((volatile UCHAR*)adc+4))||
+    (READ_REGISTER_USHORT((volatile USHORT*)((volatile UCHAR*)adc+0x10))&1)){status=STATUS_DEVICE_NOT_READY;goto unlock;}
+ now=KeQueryInterruptTime();if(now>UINT64_MAX-100000000ULL){status=STATUS_DEVICE_NOT_READY;goto unlock;}
+ c->thermalPioDeadline=now+100000000ULL;c->thermal.generation++;
+ c->thermal.firmware_released=1;c->thermal.adc_exclusive=1;c->thermal.leased=1;
+ c->thermal.native_claim=1;c->thermal.clocks_ready=1;c->thermal.quiescent=0;
+ c->thermalPioMappings[0]=th;c->thermalPioMappings[1]=adc;th=adc=NULL;
+ RtlZeroMemory(&c->hpMeasured,sizeof(c->hpMeasured));c->hpMeasured.generation=c->thermal.generation;
+ c->hpMeasured.cap_index=1; /* CT3 default22uF; this is a source board setting, not a measured coefficient. */
+ c->hpCalibrationValid=0;c->hpPhaseMask[0]=c->hpPhaseMask[1]=0;*generation=c->thermal.generation;WdfObjectReference(dev);
+ ParentUnlock(c);ExReleaseRundownProtection(&c->thermalRundown);return STATUS_SUCCESS;
+unlock:
+ if(adc)MmUnmapIoSpace(adc,0x1000);if(th)MmUnmapIoSpace(th,0x1000);ParentUnlock(c);
+rundown:ExReleaseRundownProtection(&c->thermalRundown);
+power:WdfDeviceResumeIdle(dev);
+gate:if(c->admissionClosed)c->adcProofValid=0;InterlockedExchange(&c->adcPurpose,0);return status;
+}
+/* Derive phase from live registers, never from a caller phase label. Reject
+ * the Linux44.1k calibration identity if the observed path is merely48k PCM. */
+static ULONG ParentHpObservedPhase(A04_PARENT_CONTEXT*c,ULONG channel,ULONG *gain)
+{
+ ULONG con1,con2,rate,digital;
+ if(!c->audioAfe||!c->apmixed||!c->audio.leased||c->audio.poisoned)return 0;
+ con1=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->apmixed+0x704));
+ con2=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->apmixed+0x708));
+ rate=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->audioAfe+0xf04));
+ digital=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->audioAfe+0x14));
+ if(con1==MAXULONG||con2==MAXULONG||rate==MAXULONG||digital==MAXULONG||
+    ((con2>>19)&3u)!=c->hpMeasured.cap_index||!(con2&(channel==7?1u<<15:1u<<14))||(rate&15)!=9||(digital&15)!=9)return 0;
+ *gain=channel==7?(con1&7u):((con1>>3)&7u);
+ if(!(con1&((3u<<14)|(3u<<11))))return A04_HP_PHASE_A;
+ if((con1&((3u<<14)|(3u<<11)))!=((3u<<14)|(3u<<11)))return 0;
+ if((con2&((1u<<28)|(1u<<25)|(1u<<22)))==((1u<<25)|(1u<<22)))return A04_HP_PHASE_B;
+ if((con2&((1u<<28)|(1u<<25)|(1u<<22)))==(1u<<28))return A04_HP_PHASE_C;
+ return 0;
+}
+static NTSTATUS ParentHpAdcRead(PVOID p,ULONG generation,ULONG channel,struct a04_hp_raw_sample *out)
+{
+ WDFDEVICE dev=(WDFDEVICE)p;A04_PARENT_CONTEXT*c=ParentContext(dev);NTSTATUS status=STATUS_DEVICE_NOT_READY;
+ struct a04_codec_adc_probe probe={0};struct a04_codec_adc_samples sample;
+ struct a04_codec_adc_io io={c,ParentHpAdcQualified,ParentHpAdcRead16,ParentHpAdcWrite16,ParentHpWait};
+ ULONG first,phase,gain=0,gain2=0;unsigned i;
+ if(!out||(channel!=7&&channel!=8)||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ RtlZeroMemory(out,sizeof(*out));out->size=sizeof(*out);out->version=1;out->channel=channel;out->generation=generation;
+ if(!ExAcquireRundownProtection(&c->thermalRundown))return status;
+ if(ParentLock(c))goto done;
+ if(!generation||generation!=c->thermal.generation||!ParentHpAdcQualified(c))goto unlock;
+ first=ParentHpObservedPhase(c,channel,&gain);c->thermal.inflight++;
+ if(a04_codec_adc_capture(&probe,&io,channel,&sample)){
+  c->thermal.poisoned=1;c->adcProofValid=0;status=STATUS_DEVICE_HARDWARE_ERROR;
+ }else{
+  phase=ParentHpObservedPhase(c,channel,&gain2);
+  if(phase!=first||gain!=gain2)phase=0;
+  out->phase=phase;out->valid=1;out->average_uv=sample.average_uv;
+  for(i=0;i<22;i++)out->raw[i]=sample.raw[i];status=STATUS_SUCCESS;
+  if(!phase){c->hpCalibrationValid=0;c->hpPhaseMask[0]=c->hpPhaseMask[1]=0;}
+  if(phase){unsigned n=channel-7;
+   if(phase==A04_HP_PHASE_A)c->hpPhaseMask[n]=0;
+   else if(c->hpPhaseMask[n]!=(phase==A04_HP_PHASE_B?1u:3u)){c->hpCalibrationValid=0;c->hpPhaseMask[n]=0;phase=0;out->phase=0;}
+   if(!phase)goto observed;
+c->hpMeasured.uv[n][phase-1]=sample.average_uv;
+   if(phase==A04_HP_PHASE_C)c->hpMeasured.gain[n]=gain;
+   c->hpPhaseMask[n]|=1u<<(phase-1);
+   if(c->hpPhaseMask[n]==7)c->hpMeasured.measured_channels|=1u<<n;
+   if(c->hpMeasured.measured_channels==3&&!a04_codec_headphone_calibration(&c->hpMeasured,&c->hpCalibration))c->hpCalibrationValid=1;
+  }
+ }
+observed:
+ c->thermal.inflight--;
+unlock:ParentUnlock(c);
+done:ExReleaseRundownProtection(&c->thermalRundown);return status;
+}
+static NTSTATUS ParentHpAdcEnd(PVOID p,ULONG generation)
+{
+ WDFDEVICE dev=(WDFDEVICE)p;A04_PARENT_CONTEXT*c=ParentContext(dev);NTSTATUS status=STATUS_DEVICE_NOT_READY;
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ if(!ExAcquireRundownProtection(&c->thermalRundown))return status;
+ if(ParentLock(c))goto done;
+ if(c->adcPurpose!=2||generation!=c->thermal.generation||!c->thermal.leased||c->thermal.poisoned)goto unlock;
+ if(READ_REGISTER_USHORT((volatile USHORT*)((volatile UCHAR*)c->thermalPioMappings[1]+4))||
+    (READ_REGISTER_USHORT((volatile USHORT*)((volatile UCHAR*)c->thermalPioMappings[1]+0x10))&1)){
+  c->thermal.poisoned=1;c->adcProofValid=0;status=STATUS_DEVICE_HARDWARE_ERROR;goto unlock;
+ }
+ c->thermal.quiescent=1;c->thermal.leased=0;c->thermal.native_claim=0;c->thermal.adc_exclusive=0;c->thermal.firmware_released=0;
+ MmUnmapIoSpace(c->thermalPioMappings[0],0x1000);MmUnmapIoSpace(c->thermalPioMappings[1],0x1000);
+ c->thermalPioMappings[0]=c->thermalPioMappings[1]=NULL;InterlockedExchange(&c->adcPurpose,0);status=STATUS_SUCCESS;
+unlock:ParentUnlock(c);
+done:ExReleaseRundownProtection(&c->thermalRundown);
+ if(NT_SUCCESS(status)){WdfObjectDereference(dev);WdfDeviceResumeIdle(dev);}return status;
+}
+static int ParentHpRouteQualified(void*p,uint32_t generation)
+{
+ A04_PARENT_CONTEXT*c=p;
+ return !c->admissionClosed&&!c->removed&&c->hpCalibrationValid&&generation==c->hpCalibration.generation&&
+  c->audio.leased&&!c->audio.poisoned&&!c->voice.active&&!c->voice.poisoned&&
+  c->codecDomain.held&&!c->codecDomain.poisoned&&c->audioAfe&&!c->adcPurpose&&
+  KeQueryInterruptTime()<c->hpRouteDeadline&&!a04_mt6392_classd_verify_muted(&c->classd)?0:-1;
+}
+static int ParentHpRouteRead(void*p,unsigned bank,unsigned offset,uint32_t*out)
+{
+ A04_PARENT_CONTEXT*c=p;
+ if(bank==0&&(offset==0x704||offset==0x708))return ParentDomainRead(p,offset,out);
+ if(bank!=1||!c->audioAfe||!out||(offset!=0xf00&&offset!=0xf0c&&offset!=0xf10&&offset!=0xf2c))return -1;
+ *out=READ_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->audioAfe+offset));return 0;
+}
+static int ParentHpRouteWrite(void*p,unsigned bank,unsigned offset,uint32_t value)
+{
+ A04_PARENT_CONTEXT*c=p;
+ if(ParentHpRouteQualified(p,c->hpCalibration.generation))return -1;
+ if(bank==0&&(offset==0x704||offset==0x708))return ParentDomainWrite(p,offset,value);
+ if(bank!=1||!c->audioAfe||(offset!=0xf00&&offset!=0xf0c&&offset!=0xf10&&offset!=0xf2c))return -1;
+ WRITE_REGISTER_ULONG((volatile ULONG*)((volatile UCHAR*)c->audioAfe+offset),value);return 0;
+}
+static int ParentHpRouteWait(void*p,unsigned us)
+{
+ A04_PARENT_CONTEXT*c=p;LARGE_INTEGER wait;
+ if(ParentHpRouteQualified(p,c->hpCalibration.generation)||(us!=75&&us!=125&&us!=400&&us!=2000))return -1;
+ if(us<1000){KeStallExecutionProcessor(us);return 0;}
+ wait.QuadPart=-(LONGLONG)us*10;return KeDelayExecutionThread(KernelMode,FALSE,&wait)==STATUS_SUCCESS?0:-1;
+}
+static int ParentHpDrain(void *c)
+{return ParentVerifyDmaDrained((PVOID)WdfObjectContextGetObject(c));}
+static struct a04_hp_io ParentHpIo(A04_PARENT_CONTEXT*c)
+{
+ struct a04_hp_io io={c,ParentHpRouteQualified,ParentHpRouteRead,ParentHpRouteWrite,ParentHpRouteWait,ParentHpDrain};return io;
+}
+static NTSTATUS ParentHpReadiness(PVOID p,ULONG *flags)
+{
+ A04_PARENT_CONTEXT*c=ParentContext((WDFDEVICE)p);struct mt8167_accdet_io io={c,ParentAccdetRead32};struct mt8167_accdet_socket jack;
+ if(!flags||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;*flags=0;
+ if(ParentLock(c))return STATUS_DEVICE_NOT_READY;
+ if(c->hpCalibrationValid)*flags|=A04_HP_READY_MEASURED;
+ if(!c->regs.poisoned&&c->regs.online&&c->gpio&&mt8167_accdet_read_socket(&io,&jack)==MT8167_ACCDET_OK)*flags|=A04_HP_READY_SENSE;
+ if(c->audio.leased&&!c->audio.poisoned&&!c->voice.active&&!c->voice.poisoned&&c->codecDomain.held&&!c->codecDomain.poisoned)*flags|=A04_HP_READY_ANALOG;
+ /* No measured HP latency in this boot: do not synthesize LATENCY bit. */
+ ParentUnlock(c);return STATUS_SUCCESS;
+}
+static NTSTATUS ParentHpJack(PVOID p,struct mt8167_accdet_socket*out)
+{
+ A04_PARENT_CONTEXT*c=ParentContext((WDFDEVICE)p);struct mt8167_accdet_io io={c,ParentAccdetRead32};enum mt8167_accdet_result r;
+ if(!out||KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;RtlZeroMemory(out,sizeof(*out));
+ if(ParentLock(c))return STATUS_DEVICE_NOT_READY;
+ if(!c->gpio||!c->regs.online||c->regs.poisoned){ParentUnlock(c);return STATUS_DEVICE_NOT_READY;}
+ r=mt8167_accdet_read_socket(&io,out);ParentUnlock(c);
+ return r==MT8167_ACCDET_OK?STATUS_SUCCESS:r==MT8167_ACCDET_CHANGED?STATUS_DEVICE_BUSY:STATUS_DEVICE_NOT_READY;
+}
+static NTSTATUS ParentHpOperate(PVOID p,int op,ULONG *drain_state)
+{
+ A04_PARENT_CONTEXT*c=ParentContext((WDFDEVICE)p);struct a04_hp_io io=ParentHpIo(c);int result=-1;struct mt8167_accdet_socket jack;ULONGLONG now;
+ if(drain_state)*drain_state=A04_HP_DRAIN_UNKNOWN;
+ if(KeGetCurrentIrql()!=PASSIVE_LEVEL)return STATUS_INVALID_PARAMETER;
+ if(op==0&&(!NT_SUCCESS(ParentHpJack(p,&jack))||!jack.inserted))return STATUS_DEVICE_NOT_READY;
+ if(ParentLock(c))return STATUS_DEVICE_NOT_READY;
+ now=KeQueryInterruptTime();if(now>UINT64_MAX-100000000ULL)goto done;c->hpRouteDeadline=now+100000000ULL;
+ if(ParentHpRouteQualified(c,c->hpCalibration.generation))goto done;
+ if(op==0){result=a04_codec_headphone_start_muted(&c->hpRoute,&io,&c->hpCalibration);if(!result)c->hpRetainedMute=1;}
+ else if(op==1){result=a04_codec_headphone_mute_retained(&c->hpRoute,&io);if(!result)c->hpRetainedMute=1;}
+ else if(op==2){if(c->hpRetainedMute){result=a04_codec_headphone_resume_retained(&c->hpRoute,&io);if(!result)c->hpRetainedMute=0;}}
+ else if(op==3){
+  /* Connect the existing v11 drain callback rather than assuming DL1 off.
+   * When it cannot certify fabric drain, clamp and retain the same owner. */
+  if(ParentHpDrain(c)){
+   result=a04_codec_headphone_mute_retained(&c->hpRoute,&io);
+   if(!result){c->hpRetainedMute=1;if(drain_state)*drain_state=A04_HP_DRAIN_RETAINED;}
+  }else{
+   result=a04_codec_headphone_stop(&c->hpRoute,&io);
+   if(!result){c->hpRetainedMute=0;if(drain_state)*drain_state=A04_HP_DRAIN_RELEASED;}
+  }
+ }
+ if(c->hpRoute.poisoned)c->audio.poisoned=1;
+done:ParentUnlock(c);return result?result==-1?STATUS_DEVICE_NOT_READY:STATUS_DEVICE_HARDWARE_ERROR:STATUS_SUCCESS;
+}
+static NTSTATUS ParentHpStart(PVOID p){return ParentHpOperate(p,0,NULL);}
+static NTSTATUS ParentHpMute(PVOID p){return ParentHpOperate(p,1,NULL);}
+static NTSTATUS ParentHpResume(PVOID p){return ParentHpOperate(p,2,NULL);}
+static NTSTATUS ParentHpStop(PVOID p,ULONG *state){if(!state)return STATUS_INVALID_PARAMETER;return ParentHpOperate(p,3,state);}
+static NTSTATUS ParentHpLatency(PVOID p,ULONG*fifo,ULONG*chipset,ULONG*codec)
+{
+ UNREFERENCED_PARAMETER(p);if(!fifo||!chipset||!codec)return STATUS_INVALID_PARAMETER;
+ /* The caller must not publish unknown output values as valid latency. */
+ return STATUS_NOT_SUPPORTED;
+}
+static VOID ParentHpRawIoctl(WDFQUEUE queue,WDFREQUEST request,size_t outBytes,size_t inBytes)
+{
+ WDFDEVICE device=WdfIoQueueGetDevice(queue);struct a04_hp_raw_pair *pair;ULONG generation=0;NTSTATUS status,end;
+ UNREFERENCED_PARAMETER(outBytes);
+ if(inBytes){WdfRequestComplete(request,STATUS_INVALID_PARAMETER);return;}
+ status=WdfRequestRetrieveOutputBuffer(request,sizeof(*pair),(PVOID*)&pair,NULL);
+ if(!NT_SUCCESS(status)){WdfRequestComplete(request,status);return;}
+ RtlZeroMemory(pair,sizeof(*pair));pair->size=sizeof(*pair);pair->version=1;
+ status=ParentHpAdcBegin(device,&generation);pair->generation=generation;
+ if(NT_SUCCESS(status)){
+  status=ParentHpAdcRead(device,generation,7,&pair->samples[0]);
+  if(NT_SUCCESS(status))status=ParentHpAdcRead(device,generation,8,&pair->samples[1]);
+  end=ParentHpAdcEnd(device,generation);if(!NT_SUCCESS(end)&&NT_SUCCESS(status))status=end;
+ }
+ pair->result=status;
+ /* Only an envelope succeeds. The per-pair result and per-sample valid bits
+  * are mandatory; raw data are never relabelled calibrated HP playback. */
+ WdfRequestCompleteWithInformation(request,STATUS_SUCCESS,sizeof(*pair));
+}

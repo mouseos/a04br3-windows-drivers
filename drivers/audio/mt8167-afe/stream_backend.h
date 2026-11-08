@@ -40,5 +40,10 @@ struct Mt8167StreamBackend {
     BOOLEAN capture;
     KSRTAUDIO_HWLATENCY captureLatency;
 #endif
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+    NTSTATUS (*prepareRenderStream)(void *,KSRTAUDIO_HWLATENCY *);
+    BOOLEAN renderLatencyValid;
+    KSRTAUDIO_HWLATENCY renderLatency;
+#endif
 };
 #endif

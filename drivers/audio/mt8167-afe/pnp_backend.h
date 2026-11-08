@@ -33,3 +33,8 @@ void Mt8167PnpBackendRevoke(Mt8167PnpBackend *owner);
 void Mt8167PnpBackendRelease(Mt8167PnpBackend *owner);
 #endif
 #endif
+
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+#include "headphone_endpoint.h"
+NTSTATUS Mt8167PnpBackendHeadphone(Mt8167PnpBackend *,const Mt8167HeadphoneProvider **);
+#endif

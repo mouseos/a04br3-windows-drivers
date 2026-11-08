@@ -1,5 +1,8 @@
 /* SPDX-License-Identifier: BSD-2-Clause-Patent */
 #include "ioctl.h"
+#if A04_SHARED_HP_PCM
+static VOID ParentHpRawIoctl(WDFQUEUE,WDFREQUEST,size_t,size_t);
+#endif
 static int ParentAccdetRead32(void *context,unsigned off,uint32_t *value)
 {return ParentRegRead(context,A04_SHARED_GPIO,off,value);}
 static VOID ParentAccdetStatus(A04_PARENT_CONTEXT *c,WDFREQUEST request)
@@ -25,6 +28,9 @@ static VOID ParentAccdetControl(WDFQUEUE queue,WDFREQUEST request,size_t outByte
  A04_PARENT_CONTEXT *c=ParentContext(WdfIoQueueGetDevice(queue));struct mt8167_accdet_socket *s=NULL;
  NTSTATUS status;enum mt8167_accdet_result result;struct mt8167_accdet_io io={c,ParentAccdetRead32};
  UNREFERENCED_PARAMETER(outBytes);
+#if A04_SHARED_HP_PCM
+ if(code==IOCTL_MT8167_HP_RAW){ParentHpRawIoctl(queue,request,outBytes,inBytes);return;}
+#endif
  if(!inBytes&&code==IOCTL_MT8167_ACCDET_QUERY_STATUS){ParentAccdetStatus(c,request);return;}
  if(code!=IOCTL_MT8167_ACCDET_READ_SOCKET||inBytes){WdfRequestComplete(request,STATUS_INVALID_DEVICE_REQUEST);return;}
  status=WdfRequestRetrieveOutputBuffer(request,sizeof(*s),(PVOID *)&s,NULL);

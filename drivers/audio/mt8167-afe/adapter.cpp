@@ -143,6 +143,13 @@ static NTSTATUS StartDeviceBody(PDEVICE_OBJECT device,PIRP irp,PRESOURCELIST res
         status=Mt8167RegisterWaveRt(device,irp,resources,miniport);miniport->Release(); }
     if (!NT_SUCCESS(status)) { Mt8167PnpBackendRevoke(owner);Mt8167PnpBackendRelease(owner);return status; }
     ext->owner=owner;
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+    {const Mt8167HeadphoneProvider *hp=NULL;
+     NTSTATUS probe=Mt8167PnpBackendHeadphone(owner,&hp);
+     /* An older parent without this optional interface keeps speaker/capture.
+      * Once registration begins, a failure must unwind the StartDevice. */
+     if(NT_SUCCESS(probe)){status=Mt8167RegisterHeadphoneWaveRt(device,irp,resources,hp);if(!NT_SUCCESS(status))return status;}}
+#endif
 #if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
     status=Mt8167PnpBackendCreateCapture(owner,&ext->capture);
     if(NT_SUCCESS(status))status=Mt8167NewMiniportWithBackend(&miniport,Mt8167CaptureBackend(ext->capture));
@@ -175,7 +182,9 @@ static NTSTATUS Mt8167StartDevice(PDEVICE_OBJECT device,PIRP irp,PRESOURCELIST r
  LARGE_INTEGER time;KeQuerySystemTime(&time);record.system_time_low=time.LowPart;record.system_time_high=(ULONG)time.HighPart;
  record.schema=1;record.bytes=sizeof(record);record.inf_revision=
 #if defined(A04_AUDIO_CAPTURE) && A04_AUDIO_CAPTURE
-#if defined(A04_AUDIO_HP_COMPONENT) && A04_AUDIO_HP_COMPONENT
+#if defined(A04_AUDIO_HP_SHARED) && A04_AUDIO_HP_SHARED
+ 1029;
+#elif defined(A04_AUDIO_HP_COMPONENT) && A04_AUDIO_HP_COMPONENT
  1028;
 #elif defined(A04_AUDIO_ACCDET_JACK) && A04_AUDIO_ACCDET_JACK
  1027;
