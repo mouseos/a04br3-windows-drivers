@@ -1,0 +1,11 @@
+# 3.20 private DMA cursor契約の訂正
+
+実RT dxgkrnl FUN5079cのmain REA解析で、DXGKARG_RENDERの返却private cursorから元baseを引いた差分をsubmissionへ渡す経路が確定した。local7f4がRender引数、offset0x10のlocal7e4がprivate pointer、before getter114保存→DDI53988→line420のdelta→line459 local208へ渡す。元pointerのままではused0となる。
+
+317でMicrosoft Learnの[in]注釈からprivate pointerを固定した判断を撤回し、clear/Draw両Render pathでticketを両bufferへ書いた後、両cursorをsizeof(ticket)進める。DmaSize/private capacity/list capacityは入力値として変更しない。allocation capacity3、patch capacity2、DMA401A0、native ABI v1と319の選択MDL/Map成功経路を保持する。guardを緩めてused0を正常扱いする修正ではない。
+
+R28はPatch flags/DMA total/start/end、R29はcontext有無/private total/start/endをguard直前に記録するcheckpoint。status0はcheckpoint記録であり、Patch検証通過の意味ではない。実結果はR22/R23や実submissionで判定する。
+
+build helperは署名319正本を固定hashで検証しkmd_clear1TUのみcompile。残archive12memberとnative libraryは全byte保持し、再LINK/SYS署名。UMD/FW/clientはbyte保持してINF3.20とCATだけ再包装する。metadataはprivate_pointer_input_preserved=false/private_dma_cursor_consumed=true、expected_used_bytes=16として実測と期待値を分ける。
+
+既存317記録は当時の履歴として保持する。現在の実装契約はこの訂正と実RT根拠を優先する。host testは実CreateContext compileとcursor/guard source回帰。build/sign成功とrun109実機解消は別。既報payload slot再利用raceはこのcursor変更では修正していない。

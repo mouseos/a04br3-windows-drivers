@@ -57,7 +57,7 @@ for obj,field,required in [('r','AllocationListSize',1),('r','AllocationListSize
  pattern=rf'{obj}->{field}\s*(==|!=|<=|>=|<|>)\s*{value}{suffix}(?![a-zA-Z0-9_])'
  guards=re.findall(pattern,clear)
  assert guards and all(op=='<' for op in guards),(pattern,guards)
-# Check both render paths leave the input private pointer intact.
-assert not re.search(r'r->pDmaBufferPrivateData\s*=(?!=)',clear)
+# Both returned cursors contribute to RT 8.1 submission lengths.
+assert clear.count('r->pDmaBufferPrivateData=(UCHAR *)r->pDmaBufferPrivateData+sizeof(t)')==2
 assert clear.count('r->pDmaBuffer=(UCHAR *)r->pDmaBuffer+sizeof(t)')==2
-print('PASS: actual CreateContext matches RT pool; capacity guards accept surplus; private pointer preserved')
+print('PASS: actual CreateContext matches RT pool; capacity guards accept surplus; both DMA cursors consumed')

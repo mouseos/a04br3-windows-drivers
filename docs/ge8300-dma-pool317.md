@@ -16,3 +16,9 @@ runtime差分はkmd_objects.c/kmd_clear.cのみ。native owner、MDL/PTE、FW、
 - 実RT dxgmms1 AddBuffer RVA3e2a8、AcquireBuffer RVA3e7dc（main解析）。調査ログは指定ログ領域に保存しrepoへ含めない。
 
 ホスト回帰は実CreateContext関数をコンパイルし、DMA/private/patch保持と実RT容量補正後の等値条件を検査する。署名ビルドはWDK8.1。実機での解消と標準D3D成功は別途mainの試験で確認する。
+
+## 後続320による訂正（原記録保持）
+
+上記private pointerを固定する判断は、実RT FUN5079cの返却cursor差分→submission private used経路により撤回した。
+現在は両Render cursorを16bytes進める。容量3への修正と余剰allocation-list受入れは保持する。
+詳細はge8300-private-cursor320.md。過去の署名317成果物を再生成した記録ではない。
