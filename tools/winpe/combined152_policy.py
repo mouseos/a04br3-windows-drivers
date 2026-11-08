@@ -1,7 +1,9 @@
-"""153 draft: current media builder must not treat this as a finalized policy."""
-PROFILE='combined-features-fresh152-DRAFT'
-SERVICE=DIRECTORY='MT8167CombinedFollowup152'
-def load_map(path,root):
- raise ValueError('153 is non-armable: fresh152,151 result,final342 seal and exact main scope required')
-def generate(policy):
- raise ValueError('No executable header may be generated from the153 draft')
+"""run149 fresh148/12target final contract facade."""
+import sys
+from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'recovery'))
+import importlib.util
+_spec=importlib.util.spec_from_file_location("combined152_impl",Path(__file__).resolve().parents[1]/"recovery/prepare-peripheral-followup152.py")
+_impl=importlib.util.module_from_spec(_spec);_spec.loader.exec_module(_impl)
+PROFILE=_impl.PROFILE;SERVICE=_impl.SERVICE;DIRECTORY=SERVICE
+load_map=_impl.load_map;generate=_impl.generate;generate_paths=_impl.paths;assert_paths=_impl.assert_paths
