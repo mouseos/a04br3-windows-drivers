@@ -24,9 +24,10 @@ int main(void){
  }
  CHECK(AnyActive(&h));CHECK(Packet.submit(&h,&ep[0],&p[0],&t[16],&sg)==A04_MP_RESOURCES);
  /* Completing endpoint7 never completes or changes endpoints0..6. */
- base=completed;complete_cookie=ep[7].cookie;done=1;
+ base=completed;complete_cookie=ep[7].cookie;completion_status=USBD_STATUS_STALL_PID;done=1;
  Packet.poll_endpoint(&h,&ep[0]);CHECK(completed==base);
  Packet.poll_endpoint(&h,&ep[7]);CHECK(completed==base+1&&completed_parameters==&p[7]&&ActiveSlot(&h,&ep[0])>=0);
+ CHECK(!ep[7].dispatch_blocked&&t[15].state==3);completion_status=0;
  /* A queued/active abort detaches just that caller-owned context. */
  Packet.abort(&h,&ep[2],&t[2],&actual);CHECK(!actual&&ActiveSlot(&h,&ep[2])>=0&&ActiveSlot(&h,&ep[3])>=0);
  RtlZeroMemory(&t[2],sizeof(t[2]));RtlZeroMemory(&p[2],sizeof(p[2]));Packet.poll_endpoint(&h,&ep[2]);CHECK(completed==base+1);

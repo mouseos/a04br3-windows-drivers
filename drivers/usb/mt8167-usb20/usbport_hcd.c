@@ -272,7 +272,7 @@ static VOID Poll(PVOID p,PVOID endpoint)
    ready=1;status=USBD_STATUS_XACT_ERROR;toggle=e->toggle;
   }else if(t->state==3&&!MtMusbTake(h->runtime,e->cookie,t->mapped,t->bytes,&actual,&status,&toggle))ready=1;
   if(ready){
-   t->actual=actual;t->state=2;e->toggle=toggle;if(status!=USBD_STATUS_SUCCESS)e->dispatch_blocked=1;parameters=t->parameters;
+   t->actual=actual;t->state=2;e->toggle=toggle;if(status!=USBD_STATUS_SUCCESS&&e->p.type!=1)e->dispatch_blocked=1; /* next SETUP recovers EP0 */parameters=t->parameters;
    h->active[i].ep=NULL;h->active[i].transfer=NULL;Kick(h);
   }
  }

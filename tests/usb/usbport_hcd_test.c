@@ -26,7 +26,7 @@ ULONG MtMusbSubmitDeadline(struct mt_musb_runtime *r,ULONG c,const struct a04_mp
 {(void)deadline;return MtMusbSubmit(r,c,e,t,p,b);}
 VOID MtMusbCancel(struct mt_musb_runtime *r,ULONG c){(void)r;(void)c;cancels++;done=0;}
 ULONG MtMusbTake(struct mt_musb_runtime *r,ULONG c,PVOID b,ULONG n,PULONG actual,PULONG status,PULONG toggle)
-{(void)r;(void)c;(void)b;(void)n;if(!done||(complete_cookie&&c!=complete_cookie))return 1;done=0;*actual=3;*status=completion_status;*toggle=1;return 0;}
+{(void)r;(void)c;(void)b;(void)n;if(!done||(complete_cookie&&c!=complete_cookie))return 1;done=0;*actual=n<3?n:3;*status=completion_status;*toggle=1;return 0;}
 ULONG MtMusbRecoverToggle(struct mt_musb_runtime *r,ULONG c,PULONG t){(void)r;(void)c;*t=1;return 0;}
 ULONG MtMusbRootQueue(struct mt_musb_runtime *r,ULONG kind){(void)r;root_kind=kind;return 0;}
 ULONG MtMusbObserve(struct mt_musb_runtime *r,struct a04_hub_observation *o,PULONG c,PULONG kind,PULONG result)
