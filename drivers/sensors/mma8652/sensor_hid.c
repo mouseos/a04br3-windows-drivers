@@ -46,10 +46,11 @@ static int to_hundredths(int v)
 void a04_mma_hid_input(const struct a04_mma8652_sample *s,uint8_t out[A04_MMA_HID_INPUT_SIZE])
 {
  out[0]=1; out[1]=A04_MMA_HID_STATE_READY; out[2]=A04_MMA_HID_EVENT_DATA_UPDATED;
- /* Stock board direction 7 is in the landscape board frame. Windows uses
-  * the native portrait panel frame. Rotate the reported basis 90 degrees
-  * clockwise; the opposite rotation was observed upside down on hardware. */
- put16(out+3,to_hundredths(s->y)); put16(out+5,to_hundredths(-(int)s->x)); put16(out+7,to_hundredths(s->z));
+ /* Version 1.10 is the candidate for the latest upside-down observation
+  * with the captured 1.8 binary: negate only its in-plane X/Y outputs.
+  * This matches the existing 1.7 transform, without changing board axes,
+  * Z, HID contracts, power handling, or calibration. Device-unverified. */
+ put16(out+3,to_hundredths(-(int)s->y)); put16(out+5,to_hundredths(s->x)); put16(out+7,to_hundredths(s->z));
 }
 void a04_mma_hid_get_feature(const struct a04_mma_hid_features *f,uint8_t out[A04_MMA_HID_FEATURE_SIZE])
 {

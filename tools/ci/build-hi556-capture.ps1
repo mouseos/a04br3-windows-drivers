@@ -34,7 +34,7 @@ try {
    $shared=[IO.Path]::GetFullPath($SharedOwnerDirectory)
    if(!$shared.StartsWith($root+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'Shared owner input must be within checkout'}
    $m=Get-Content -Raw (Join-Path $shared 'manifest.json')|ConvertFrom-Json
-   if($m.source_dirty -ne $false -or $m.source_commit -notmatch '^[0-9a-f]{40}$' -or $m.version -ne '0.0.2.1' -or !$m.signed -or !$m.axis_hid_identity_core_blobs_preserved){throw 'Require fixed signed shared MMA2.1'}
+   if($m.source_dirty -ne $false -or $m.source_commit -notmatch '^[0-9a-f]{40}$' -or $m.version -ne '0.0.2.2' -or !$m.signed -or !$m.axis_hid_identity_core_blobs_preserved){throw 'Require fixed signed shared MMA2.2'}
    if($m.critical_flags.MMA8652_UART_TRACE -ne 0){throw 'Require matching silent MMA UART policy'}
    foreach($flag in @('-mfpu=none','-fno-vectorize','-fno-slp-vectorize','-mno-unaligned-access')){if($m.kernel_codegen_flags -notcontains $flag){throw 'Shared owner ARM codegen differs'}}
    foreach($flag in @('A04_MMA_SHARED_IDENTITY','A04_MMA_SHARED_CAMERA_STREAM')){if($m.critical_flags.$flag -ne 1){throw "Missing shared owner flag: $flag"}}
@@ -78,7 +78,7 @@ try {
 } finally {$env:TEMP=$priorTemp;$env:TMP=$priorTmp;$env:RUNNER_TEMP=$priorRunner}
 [ordered]@{
  status='integrated-raw-capture-candidate-not-hardware-validated';source_commit=$commit;source_dirty=$false
- recipe_sha256=(Hash $PSCommandPath);camera_version='0.0.1.3';status_schema=3;power_stop_rundown='EvtIoStop atomic request; sole original owner completes after hardware quiesce';total_servicing_deadline_seconds=32;mma_version=$(if($CaptureExperiment){'0.0.2.1'}else{$null})
+ recipe_sha256=(Hash $PSCommandPath);camera_version='0.0.1.3';status_schema=3;power_stop_rundown='EvtIoStop atomic request; sole original owner completes after hardware quiesce';total_servicing_deadline_seconds=32;mma_version=$(if($CaptureExperiment){'0.0.2.2'}else{$null})
  critical_flags=@{A04_HI556_CAPTURE_EXPERIMENT=$flag;A04_MMA_SHARED_IDENTITY=$flag;A04_MMA_SHARED_CAMERA_STREAM=$flag}
  shared_owner_reused=[bool]$SharedOwnerDirectory;camera_default_enabled=$false;required_firmware='uefi-a04br3 work/windows-camera-handoff, including ISP quiesce ACK before publishing NVS'
  model='rear Hynix HI556 chip0556 I2C1 addr28';front_camera_bound=$false

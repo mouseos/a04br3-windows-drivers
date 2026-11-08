@@ -81,3 +81,24 @@ Carver thermal1022とのIMG lifetime条件はSHARED-SPM-CONTRACT.md末尾をmain
 次に標準KSのformat intersection/ACQUIRE/RUN/STOP/再開始、実非固定画像・MMA退行無しを確認する。
 WinRTアプリが列挙・形式受理するかは実結果で判断し、SYS署名/KS登録をその成功としない。
 主担当の追加根拠が来るまでレジスタ総当たりや同一失敗の単独再試験をしない。
+
+## 現行MMA1.10を保持する後続共有owner2.2
+
+カメラのRAW1.3/AVStream1.0は同じ実装を再利用する。共有owner2.1の
+sensor_hid.cは現搭載MMA1.10より古いため、後続の2.2では既存1.10のcore6fileを
+固定commit9ad5ef0afff9712399f86e429787464e6bf710cdとgit blob一致検証する。
+X/Yの180補正を取り戻すだけで、新しい校正・姿勢推測は加えない。
+既存共有QI/STOP/lock/quarantineと既定OFFを保持し、I2C1 ownerを増やさない。
+試験は8b614ddfの既存方向契約へ整合。数学的検証であり物理姿勢の確認ではない。
+
+`build-mma8652-shared-identity.ps1`は既存のWDK8.1から必要Include/Libだけを
+`-KitDirectory`/`-ClosureDirectory`で指定できる。SignTool/CatalogToolも既存pathを指定する。
+SDK再導入は不要。6coreと固定sourceの検査は省略しない。
+`build-hi556-capture.ps1 -SharedOwnerDirectory`も2.2を要求し、旧2.1への巻戻しを拒否する。
+旧packageのMMA2.1を単純に現端末へ上書きしない。camera側SYSの再buildはこの軸統合に不要。
+
+UART traceは旧camera共有候補と同じ0。現行MMA1.10のtrace1との差はログ出力であり、
+軸/I2C/HID descriptor/サンプル処理の差ではない。共有owner2.2自体は実機未検証。
+現通常firmwareにcamera opt-in NVS/HSTAがない限りcameraを開始できない。
+IMGのruntime寿命はSHARED-SPM-CONTRACT.mdに従い既存親ownerとの調整が必要。
+親1115/GPU/UEFI/現freezeには変更を加えない。
