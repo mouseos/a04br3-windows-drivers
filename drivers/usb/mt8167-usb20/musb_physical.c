@@ -38,6 +38,10 @@ static void Delay(void *p,unsigned ms){LARGE_INTEGER t;UNREFERENCED_PARAMETER(p)
  * internal failure; only Close may release after the definitive stop proof. */
 static int BoardPower(void *p,int on){struct mt_musb_runtime *r=p;return on&&r->lease?0:-1;}
 static int Vbus(void *p,int on){struct mt_musb_runtime *r=p;return NT_SUCCESS(r->owner.SetVbus(r->owner.Header.Context,(BOOLEAN)on))?0:-1;}
+/* WDK81 ntifs.h exposes this reference-returning stack traversal API. Keep
+ * its exact public declaration without importing filesystem-only typedefs. */
+NTKERNELAPI PDEVICE_OBJECT IoGetLowerDeviceObject(PDEVICE_OBJECT DeviceObject);
+#if !defined(MT_MUSB_PHYSICAL_TEST)
 static NTSTATUS QueryDone(PDEVICE_OBJECT device,PIRP irp,PVOID context)
 {UNREFERENCED_PARAMETER(device);UNREFERENCED_PARAMETER(irp);KeSetEvent((PKEVENT)context,IO_NO_INCREMENT,FALSE);return STATUS_MORE_PROCESSING_REQUIRED;}
 static NTSTATUS QueryOwner(PDEVICE_OBJECT fdo,MT_MUSB_OWNER_INTERFACE *owner)
@@ -55,6 +59,9 @@ static NTSTATUS QueryOwner(PDEVICE_OBJECT fdo,MT_MUSB_OWNER_INTERFACE *owner)
  if(status==STATUS_PENDING)KeWaitForSingleObject(&event,Executive,KernelMode,FALSE,NULL);
  status=irp->IoStatus.Status;IoFreeIrp(irp);ObDereferenceObject(lower);return status;
 }
+#else
+#define QueryOwner MtTestQueryOwner
+#endif
 static int Fresh(const MT_MUSB_OBSERVATION *o,ULONGLONG generation,int powered)
 {
  ULONGLONG now=KeQueryInterruptTime();
