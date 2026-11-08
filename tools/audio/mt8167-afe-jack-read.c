@@ -23,12 +23,12 @@ static void line(const char*tag,DWORD a,DWORD b,DWORD c){
 static int prefix(const WCHAR*s,const WCHAR*p){while(*p){WCHAR a=*s++,b=*p++;if(a>=L'a'&&a<=L'z')a-=32;if(b>=L'a'&&b<=L'z')b-=32;if(a!=b)return 0;}return 1;}
 static int contains(const WCHAR*s,const WCHAR*p){for(;*s;s++)if(prefix(s,p))return 1;return 0;}
 static int equal_guid(const GUID*a,const GUID*b){unsigned i;for(i=0;i<sizeof(*a);i++)if(((const BYTE*)a)[i]!=((const BYTE*)b)[i])return 0;return 1;}
-static HANDLE find_filter(void){
+static HANDLE find_filter(DWORD *error){
  HDEVINFO set;SP_DEVICE_INTERFACE_DATA iface;SP_DEVINFO_DATA dev;DWORD i,need,matches=0;
  static union {ULONGLONG align;BYTE bytes[4096];}detail;static WCHAR id[512],path[1024];
- HANDLE result=INVALID_HANDLE_VALUE;
+ HANDLE result=INVALID_HANDLE_VALUE;*error=ERROR_NOT_FOUND;
  set=SetupDiGetClassDevsW(&KSCATEGORY_TOPOLOGY,NULL,NULL,DIGCF_PRESENT|DIGCF_DEVICEINTERFACE);
- if(set==INVALID_HANDLE_VALUE)return result;
+ if(set==INVALID_HANDLE_VALUE){*error=GetLastError();line("interface-set",*error,0,0);return result;}
  for(i=0;i<128;i++){
   ZeroMemory(&iface,sizeof(iface));iface.cbSize=sizeof(iface);
   if(!SetupDiEnumDeviceInterfaces(set,NULL,&KSCATEGORY_TOPOLOGY,i,&iface))break;
@@ -45,7 +45,11 @@ static HANDLE find_filter(void){
  }
  if(i==128)matches=2;
  SetupDiDestroyDeviceInfoList(set);line("fixed-filter",matches,0,0);
- if(matches==1)result=CreateFileW(path,GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_FLAG_OVERLAPPED,NULL);
+ if(matches==1){
+  result=CreateFileW(path,GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_FLAG_OVERLAPPED,NULL);
+  *error=result==INVALID_HANDLE_VALUE?GetLastError():ERROR_SUCCESS;
+  line("filter-open",*error,GENERIC_READ|GENERIC_WRITE,FILE_FLAG_OVERLAPPED);
+ }else if(matches>1)*error=ERROR_DUP_NAME;
  return result;
 }
 static BOOL control(HANDLE handle,DWORD code,void *in,DWORD inbytes,void *out,DWORD outbytes,DWORD *got) {
@@ -80,7 +84,7 @@ void mainCRTStartup(void){
  if(*p=='"'){p++;while(*p&&*p!='"')p++;if(*p)p++;}else while(*p&&*p!=' '&&*p!='\t')p++;
  while(*p==' '||*p=='\t')p++;
  if(lstrcmpW(p,L"--read")){error=ERROR_INVALID_PARAMETER;goto finish;}
- filter=find_filter();if(filter==INVALID_HANDLE_VALUE){error=ERROR_NOT_FOUND;goto finish;}
+ filter=find_filter(&error);if(filter==INVALID_HANDLE_VALUE)goto finish;
  ZeroMemory(&description,sizeof(description));ZeroMemory(&capabilities,sizeof(capabilities));
  error=query(filter,KSPROPERTY_JACK_DESCRIPTION,&description,sizeof(description));if(error)goto finish;
  error=query(filter,KSPROPERTY_JACK_DESCRIPTION2,&capabilities,sizeof(capabilities));if(error)goto finish;

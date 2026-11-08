@@ -35,3 +35,9 @@ host fixture: `g++ -std=c++14 -fsanitize=address,undefined tests/afe_jack_test.c
 - 実GPIO19資格/極性は既存 `drivers/input/mt8167-accdet/README.md` と固定CT3 GPL7c478212のa04br3.dts/accdet_eint_func/pinctrl。ABI/資格を本consumerで変更しない。
 
 この候補の物理動作・Windows実ロード・抜挿し・headphone audioは未検証。主担当の実機確認まで完了扱いしない。
+
+## filter open失敗の記録修正
+
+run129は`fixed-filter 1`後にERROR0x490を記録した。これはfilter列挙不在の証拠ではない。旧clientはCreateFileW失敗の実GetLastErrorを捨て、全失敗をERROR_NOT_FOUNDへ置換していた。新clientはfilter-openに実error/access/flagsを記録して同errorで終了する。interface set生成失敗も元errorを保持し、複数filterはERROR_DUP_NAMEで拒否する。固定AFE instance/pnp Started/唯一のMt8167Topology/アクセス権/overlapped/KS pin2/schema/親資格は変更しない。
+
+実openの根因は保存ログから確定不能。アクセス権を緩めたり別filterへfallbackしたりしない。この修正は失敗記録の修正であり、jack取得成功や親ERROR21の修正を示さない。次の主担当一括起動で採用する場合だけ実errorを評価する。
