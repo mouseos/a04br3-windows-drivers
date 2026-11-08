@@ -109,7 +109,7 @@ if($ClientIncludeDirectory){
  $clientHeaderManifest=Get-Content "$ClientIncludeDirectory\header-manifest.json" -Raw|ConvertFrom-Json
  foreach($x in $clientHeaderManifest){if((Sha (Join-Path $ClientIncludeDirectory $x.path)) -cne $x.sha256){throw 'Fixed client header changed'}}
 }
-& clang @common @userHeaders -nostdlibinc -w -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -c "$root\tools\input\mt8167-hp-adc-read.c" -o $obj
+& clang @common @userHeaders -nostdlibinc -D__ldrexd=__a04_hp_raw_wdk81_ldrexd_declaration -w -D_ARM_ -DARM -D_WIN32_WINNT=0x0603 -c "$root\tools\input\mt8167-hp-adc-read.c" -o $obj
 if($LASTEXITCODE){throw 'HP raw client compile failed'};$compiled+='hp-adc-client'
 & lld-link /subsystem:console /machine:arm /entry:mainCRTStartup /nodefaultlib $obj "$ArmUserLibraryDirectory\kernel32.lib" "$ArmUserLibraryDirectory\setupapi.lib" "/out:$exe"
 if($LASTEXITCODE){throw 'HP raw client link failed'}
