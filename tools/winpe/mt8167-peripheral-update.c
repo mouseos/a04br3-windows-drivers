@@ -159,7 +159,12 @@ static DWORD captured_registry_values(void){
   e=RegOpenKeyExW(HKEY_LOCAL_MACHINE,captured_values[i].key,REG_OPTION_OPEN_LINK,KEY_READ,&key);if(e)return e;
   bytes=sizeof(data);e=RegQueryValueExW(key,captured_values[i].name,NULL,&type,data,&bytes);RegCloseKey(key);
   if(e)return e;if(type!=captured_values[i].type||bytes!=captured_values[i].bytes||memcmp(data,captured_values[i].data,bytes))return ERROR_REVISION_MISMATCH;
- }return 0;
+ }
+#if defined(A04_FEATURE150) && A04_FEATURE150
+ e=RegOpenKeyExW(HKEY_LOCAL_MACHINE,L"SYSTEM\\CurrentControlSet\\Services\\MT8167CombinedFollowup148",REG_OPTION_OPEN_LINK,KEY_READ,&key);
+ if(!e){RegCloseKey(key);return ERROR_ALREADY_EXISTS;}if(e!=ERROR_FILE_NOT_FOUND)return e;
+#endif
+ return 0;
 }
 #endif
 static DWORD preserved(void){WCHAR sys[MAX_PATH],full[MAX_PATH];HANDLE h;DWORD i,e;if(!GetSystemDirectoryW(sys,MAX_PATH))return GetLastError();for(i=0;i<sizeof(preserved_files)/sizeof(preserved_files[0]);i++){h=INVALID_HANDLE_VALUE;if(A04_FEATURE148&&preserved_files[i].name[0]==L'\\'){full[0]=sys[0];full[1]=L':';lstrcpyW(full+2,preserved_files[i].name);e=0;}else e=path(full,sys,preserved_files[i].name);if(!e)e=deferred_file(full,preserved_files[i].hash,&h);if(h!=INVALID_HANDLE_VALUE)CloseHandle(h);if(e)return e;}e=old_services();

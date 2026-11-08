@@ -1,0 +1,17 @@
+# run151：fresh150とmutable診断ログ
+
+run149はWinPEのbaseline比較で拒否され、候補のSYSTEM/3DIF/normal bootは未実行。
+mainのCRC付き拒否記録とfresh148→150の同一SYSTEM trio、元native armのbefore_fingerprint absentを一組にして、service148未armの出自を検査する。次serviceはMT8167CombinedFollowup150、回収152。
+
+親1116/thermal1.10/MSDC110ほか署名driverとboot1fefは保持。新serviceだけ1TU。
+旧18サービスfull fingerprint＋旧146/BT ROOT10 named valuesの検査は維持し、旧service148不存在を別に検査する。
+
+導入前提はSYSTEM/DRIVERSのtrio・実SYS/EXE/UMD/FWのimmutable bytes。
+C:\MT8167D3DClearの診断ログをこの集合へ含めない。live診断ログの全file完全一致を導入資格とする分類が、149の遅延追記を誤拒否した原因である。
+ログの保存済みsnapshotはroot内の別archiveとしてhash固定する。実機ログは上書き・削除・truncateしない。
+`compare-mutable-diagnostic-logs.py`でmain回収後の正規archiveだけを読み、保存prefix一致/追記/短縮/置換/不在を別観測として出力する。これはinstall admissionでもGPU再実行許可でもない。
+
+次builderは比較失敗時だけKIND/RELATIVEPATH/COMPARISONをREPORTへ記録する。comparatorの引数・順序・不一致時の拒否は変更しない。
+失敗149媒体とsource623dea34は不変。古い候補の再試験ではなく、最新150に結合したpolicyとnative clone・媒体を生成する。
+
+既存once()のPowerCreateRequest/PowerSetRequest(SystemRequired)/PowerClearRequest/CloseHandleは保持する。明示ユーザーSleepをブロックする要求を追加せず、今回GPU停止をSleep原因とも主張しない。
