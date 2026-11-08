@@ -51,7 +51,7 @@ def validate(root,path):
  def pin(e):
   p=rooted(root,e['path']);require(sha(p)==e['sha256'],'Pinned input mismatch');return p,read(p)
  f,fm=pin(m['fresh']);require(sha(f)==FRESH and fm['recovery_boot_id']==m['fresh']['recovery_boot_id']==BOOT and fm['status']=='captured-unmounted' and fm['unmounted'] and fm['read_only'] and fm['errors']==[],'Only current fresh142 eligible')
- files={x['source_path']:x for x in fm['files']};require(len(files)==38,'Exact fresh14237 files required')
+ files={x['source_path']:x for x in fm['files']};require(len(files)==38,'Exact fresh14238 files required')
  for x in files.values():p=rooted(root,f.parent/x['backup_path']);require(sha(p)==x['sha256'] and p.stat().st_size==x['bytes'],'Original fresh142 changed')
  _,raw=pin(m['native_two']);require(raw['source_manifest_sha256']==FRESH and raw['errors']==[] and raw['originals_unchanged'] and all(raw[k]==0 for k in ('load_rc','unload_rc','privilege_restore_error')),'Native cleanup/source failure')
  keypad=raw['nodes']['MT6392\\Buttons'];require(keypad['present'] and len(keypad['instances'])==1,'One actual Buttons node required');k=keypad['instances'][0];v=k['values'];sel=k.get('selected',{})
@@ -162,7 +162,7 @@ def build_policy(root,path,finalize=False):
  policy['baseline_witnesses']={'Windows/System32/ge8300-umd.dll':m['current_render_witnesses']['umd'],'Windows/System32/Drivers/ge8300-render.sys':m['current_render_witnesses']['sys']};require(sha(rooted(root,m['current_render_witnesses']['sys']['path']))==m['current_render_witnesses']['sys']['sha256']==base['render']['sys_sha256'],'Actual oldSYS witness required');require(sha(rooted(root,m['current_render_witnesses']['umd']['path']))==m['current_render_witnesses']['umd']['sha256']=='8982f9248cd2295ed77c326d41a08f798f5ff994f0eab090a4f4f55edfba84d9','Exact installed335 UMD witness required')
  files_lc=next(e for e in fm['files'] if e['source_path']=='Windows/System32/Drivers/lc709203f.sys')
  policy['baseline_witnesses']['Windows/System32/Drivers/lc709203f.sys']={'path':(Path(m['fresh']['path']).parent/files_lc['backup_path']).as_posix(),'sha256':base['battery']['sys_sha256']}
- require([c.get('phase',0) for c in clients]==[0,0,0,0,0,1],'Five bounded normal clients only; no GPU phase')
+ require([c.get('phase',0) for c in clients]==[0,0,0,0,0,1],'Five peripheral clients followed by one final GPU client')
  return policy,m,blocks
 
 def load_map(path,root):return build_policy(root,path,True)[0]
@@ -180,5 +180,5 @@ def main():
  a=argparse.ArgumentParser();a.add_argument('--workspace',type=Path,required=True);a.add_argument('--map',type=Path,required=True);a.add_argument('--out',type=Path,required=True);a.add_argument('--finalize',action='store_true');x=a.parse_args();root=x.workspace.resolve(strict=True);p,m,blocks=build_policy(root,x.map,x.finalize);out=x.out.resolve();require(out.is_relative_to(root) and not out.exists(),'New root output required');out.mkdir(mode=0o700)
  (out/'peripheral-service-path-policy.h').write_text(paths());(out/'peripheral-batch-policy.h').write_text(header(p['packages'],p['baselines'],p if x.finalize else None))
  for n in ('peripheral-policy.json','peripheral-preservation-plan.json'):(out/n).write_text(json.dumps(p,indent=2)+'\n')
- (out/'validation.json').write_text(json.dumps({'schema':1,'profile':PROFILE,'draft':not x.finalize,'normal_install_allowed':x.finalize,'blockers':blocks,'device_verified':False},indent=2)+'\n');print('COMBINED140_FINAL_INPUT_VALIDATED' if x.finalize else 'COMBINED140_DRAFT_VALIDATED_NOT_ARMABLE')
+ (out/'validation.json').write_text(json.dumps({'schema':1,'profile':PROFILE,'draft':not x.finalize,'normal_install_allowed':x.finalize,'blockers':blocks,'device_verified':False},indent=2)+'\n');print('COMBINED142_FINAL_INPUT_VALIDATED' if x.finalize else 'COMBINED142_DRAFT_VALIDATED_NOT_ARMABLE')
 if __name__=='__main__':main()
