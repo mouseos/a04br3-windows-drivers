@@ -1604,3 +1604,9 @@ test-mt8167-usb-host-convergence:
 	mkdir -p build
 	$(CC) $(CFLAGS) -Idrivers/usb/mt8167-usb20 tests/usb/host_convergence_test.c drivers/usb/mt8167-usb20/board_host.c -o build/mt8167_usb_host_convergence_test
 	./build/mt8167_usb_host_convergence_test
+
+.PHONY: test-mt8167-usb-root-hub
+test-mt8167-usb-root-hub:
+	mkdir -p build
+	$(CC) $(CFLAGS) -DA04_MUSB_HOST_CORE_EXPERIMENT=1 -Idrivers/usb/mt8167-usb20 tests/usb/root_hub_test.c drivers/usb/mt8167-usb20/root_hub.c drivers/usb/mt8167-usb20/host_core.c -o build/mt8167_usb_root_hub_test
+	./build/mt8167_usb_root_hub_test

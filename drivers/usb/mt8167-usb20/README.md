@@ -462,3 +462,5 @@ BDEVICE/SESSIONの期限付き確認と、稼働中MAC role/session喪失時の�
 候補。詳細は[HOST-CONVERGENCE.md](HOST-CONVERGENCE.md)。USB1007/1008の正本を
 保持する。PC接続中のdevice-role待機は解除せず、5V給電・実列挙成功とは扱わない。
 親1026・GPIO/PMIC/PLL/PHY書込み列・資源・EDK2・GPUは変更しない。
+
+USB1011のroot hub/実WDK URBアダプタと未接続の境界は[STANDARD-HCD.md](STANDARD-HCD.md)を参照。
