@@ -4,7 +4,7 @@ param([Parameter(Mandatory=$true)][string]$AudioCache,
  [Parameter(Mandatory=$true)][string]$PortclsLibrary,
  [Parameter(Mandatory=$true)][string]$SigntoolPath,
  [Parameter(Mandatory=$true)][string]$Inf2CatPath,
- [Parameter(Mandatory=$true)][string]$OutputDirectory)
+ [Parameter(Mandatory=$true)][string]$OutputDirectory,[string]$ComponentCache)
 $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'));$out=[IO.Path]::GetFullPath($OutputDirectory)
 if(!$out.StartsWith($root+'\',[StringComparison]::OrdinalIgnoreCase) -or (Test-Path $out)){throw 'New checkout-local output required'}
@@ -25,10 +25,23 @@ foreach($prior in Get-ChildItem "$AudioCache\obj" -Filter '*.obj'|Where-Object{$
  $obj="$out\obj\$($prior.Name)";Copy-Item $prior.FullName $obj;$objects+=$obj;$reuse+=@{name=$prior.Name;sha256=(Get-FileHash $obj -Algorithm SHA256).Hash}
 }
 if($reuse.Count -ne 22){throw 'Exactly22 fixed AFE objects required'}
+$componentReused=@();$compiled=1
+if($ComponentCache){
+ $old=Get-Content "$ComponentCache\package\signed-manifest.json" -Raw|ConvertFrom-Json
+ if($old.source_commit -ne '3242e0237dc1fafc489e948e71e646037219dff7' -or !$old.component_build_only){throw 'Fixed initial HP component cache required'}
+ foreach($f in $old.files){if((Get-FileHash (Join-Path "$ComponentCache\package" $f.path) -Algorithm SHA256).Hash -ne $f.sha256){throw 'Component cache package changed'}}
+ $changes=@(& git -C $root diff --name-only $old.source_commit HEAD -- drivers)
+ if($LASTEXITCODE -or @($changes|Where-Object{$_ -ne 'drivers/bus/mt8167-shared/codec_headphone.c'}).Count){throw 'Unrelated component cache dependency drift'}
+}
 foreach($name in @('adapter','headphone_endpoint')){
  $obj="$out\obj\$name.obj";$source="$root\drivers\audio\mt8167-afe\$name.cpp"
- & clang @common @flags -std=c++14 -fms-compatibility -fno-exceptions -fno-rtti -c $source -o $obj
- if($LASTEXITCODE){throw "HP component C++ compile failed $name"};$objects+=$obj
+ if($ComponentCache){
+  Copy-Item "$ComponentCache\obj\$name.obj" $obj
+  $componentReused+=@{name=$name;sha256=(Get-FileHash $obj -Algorithm SHA256).Hash;source_commit=$old.source_commit}
+ }else{
+  & clang @common @flags -std=c++14 -fms-compatibility -fno-exceptions -fno-rtti -c $source -o $obj
+  if($LASTEXITCODE){throw "HP component C++ compile failed $name"};$compiled++
+ };$objects+=$obj
 }
 $obj="$out\obj\codec_headphone.obj"
 & clang @common -c "$root\drivers\bus\mt8167-shared\codec_headphone.c" -o $obj
@@ -54,6 +67,6 @@ $pe=& llvm-readobj --file-headers --coff-imports $sys
 if($LASTEXITCODE -or ($pe -join "`n") -notmatch 'IMAGE_FILE_MACHINE_ARMNT'){throw 'ARMNT required'}
 $pe|Set-Content -Encoding UTF8 ($sys+'.pe.txt')
 $files=@(Get-ChildItem "$out\package" -Recurse -File|ForEach-Object{@{path=$_.FullName.Substring(("$out\package\").Length).Replace('\','/');sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash}})
-@{source_commit=$commit;driver_version='2026.11.8.1028';signed=$true;component_build_only=$true;deployment_ready=$false;headphone_provider_present=$false;headphone_registered=$false;runtime_calibration_acquired=$false;hardware_verified=$false;parent_built=$false;owner_changed=$false;signer_thumbprint=$thumb;audio1027_baseline=$m.source_commit;compiled_tus=3;reused_objects=$reuse;files=$files}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 "$out\package\signed-manifest.json"
+@{source_commit=$commit;driver_version='2026.11.8.1028';signed=$true;component_build_only=$true;deployment_ready=$false;headphone_provider_present=$false;headphone_registered=$false;runtime_calibration_acquired=$false;hardware_verified=$false;parent_built=$false;owner_changed=$false;signer_thumbprint=$thumb;audio1027_baseline=$m.source_commit;compiled_tus=$compiled;reused_objects=$reuse;reused_component_objects=$componentReused;files=$files}|ConvertTo-Json -Depth 6|Set-Content -Encoding UTF8 "$out\package\signed-manifest.json"
 Compress-Archive -Path "$out\package\*" -DestinationPath "$out\mt8167-afe-hp1028-component-signed.zip"
 'MT8167_HP1028_COMPONENT_SIGNED_NOT_DEPLOYABLE'
