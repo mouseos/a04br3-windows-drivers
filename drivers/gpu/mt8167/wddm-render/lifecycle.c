@@ -162,14 +162,17 @@ BOOLEAN GeoOwnerInterrupt(struct geo_owner_session *s,ULONG message) {
   RtlZeroMemory(&event,sizeof(event));event.size=sizeof(event);event.version=2;
   status=s->control.interrupt_event(s->lease.cookie,message,&event);
   if(status==STATUS_NOT_FOUND)break;
+  /* The in-process provider returns NOT_FOUND before claiming a source.
+   * Every other result follows a real claim, including a failed receipt or
+   * completion identity check. A fault is still our IRQ: retain/poison the
+   * job, but never tell Dxgkrnl this was an unowned shared interrupt. */
+  handled=TRUE;
   if(status==STATUS_PENDING) {
-   handled=TRUE;
    if(event.size!=sizeof(event)||event.version!=2||event.reserved||event.job||event.visibility){poison(s);break;}
    if(event.epoch==s->lease.epoch){InterlockedExchange(&s->adapter->service_pending,1);s->adapter->queue_dpc(s->adapter->dxgk_device);}
    break;
   }
   if(status!=STATUS_SUCCESS){poison(s);break;}
-  handled=TRUE;
   if(event.size!=sizeof(event)||event.version!=2||event.reserved){poison(s);break;}
   if(event.epoch!=s->lease.epoch)continue; /* stale epoch cannot release a current job */
   status=GeoCompleteFromInterrupt(s->adapter,event.job,event.generation,event.status,event.visibility);
