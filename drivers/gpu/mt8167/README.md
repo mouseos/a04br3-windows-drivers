@@ -1,5 +1,16 @@
 # MT8167 PowerVR power sequencing foundation
 
+## 現行GE8300の状態（2026-11-08、run109開始時点）
+
+現在は実native factory/controlとVidMmの独立MDL lease、実aperture/PTE bindをKMDへ結合している。
+run107でSpanPin/NativeBind/Mapは実成功、Render予約も成功。その後Patch119/3で停止し、private DMA cursorを訂正した320をmainがrun109で試験中。
+通常の標準D3D描画完遂は未成功。旧固定clear/表示コピー試験、限定開発profile、一部API成功、一般D3D対応は別の実証範囲である。
+
+[render README](wddm-render/README.md)を現行状態の入口とし、以下のpower/firmware/未接続部品の記録は追加時点の履歴として読む。
+署名binaryのnative source fb217359/UMD3f8291d0/client f4f1b4f9を、[単一checkout build](../../../tools/ci/README-ge8300-source-build.md)のbuild commitへ置き換えた出自として扱わない。
+
+## 初期power/firmwareと各試行の記録（原文を保持）
+
 ## 実機試験の状況（2026-11-04）
 
 WinPEで試験版KMDF providerの読込み、GPU firmwareの起動フラグ、および

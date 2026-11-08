@@ -1,5 +1,15 @@
 # WinBlue ARM32 runtime entry qualification
 
+## 現行への補足（2026-11-08、原記録保持）
+
+以下はFL9/D3D9 entryを調べた時点の結論である。現clientは限定native10_0開発profileで、署名client source f4f1b4f9、UMD3f8291d0/native fb217359を用いる。
+DXGI選択やCreateDevice等の部分到達と、通常の標準D3D描画/readback完遂は区別する。後者は未成功。
+run107はMap成功後Patch119/3。320 private cursor訂正をmainがrun109で試験中で、結果は未確定。
+現在の結合状態/source出自は[README冒頭](README.md)、source buildは[公開手順](../../../../tools/ci/README-ge8300-source-build.md)を参照する。
+公開single-checkoutの未署名再buildと署名packageのbinary出自を混同しない。
+
+## 初期entry調査の記録（原文を保持）
+
 ## 現結論（実機適用の前提にしない）
 
 `miniport.c` は StartDevice で NumVidPnSources/children=0、display-specific

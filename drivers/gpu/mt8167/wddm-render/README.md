@@ -1,5 +1,32 @@
 # PowerVR GE8300 WDDM render sidecar（既定無効）
 
+## 現行320の状態とsource出自（2026-11-08、run109開始時点）
+
+現在のKMDは実native factory/controlを最終SYSへ結合済みで、単なる未結合moduleではない。
+run107の実ログはR20Render0、R26SpanPin0、R27NativeBind0、R21Map0を示した。Mapはflags1/MDLoff0/pages469、source MDL1921024bytes/byteoff0。
+続くPatchは119/3・R22C00000BB、R23無し。GPU描画完遂・通常の標準API readback成功は未達。
+
+mainが実RT FUN5079cでprivate DMA usedが返却cursor差分から計算されることを確認し、320で両Render private cursorを16bytes進める修正とR28/R29を追加した。
+320はrun109実機試験中で、Patch/Submit/IRQ/client/画素結果はまだ未確定。R28/R29の記録status0だけを成功扱いしない。
+現clientは限定10_0開発profile（limited=true/standard_profile_qualified=false）。FL9系の初期説明や固定clear成果を現在の一般D3D対応として引用しない。
+
+|対象|署名正本のsource/役割|
+|---|---|
+|KMD320|f73da1e31755e08727958ac6f9160a0d5ccdff6b。319 caller/21eec1f9 spanを保持しprivate cursorを訂正|
+|native owner binary|fb2173597de9acc12af8f06fd771037e02093360。320でlibrary byte保持|
+|UMD binary|3f8291d094c01206dfaa0a22d1fdccd6eecc5823。b4085342…の署名DLLを保持|
+|client binary|f4f1b4f94ade6f59efef042f680c2c3e363442f8。f3af58c1…の署名EXEを保持|
+|公開single-checkout|e5816a86で320 runtime/testを統合。上記sourceをsource-mapで区別して一つのcheckoutからcompileする。署名packageのbinaryとbyte同一とは主張しない|
+
+[公開fullsource手順](../../../../tools/ci/README-ge8300-source-build.md)は既存GPU cache/private hive不要、未署名SYS/UMD/clientを別出力へ生成する。
+317/318のfull build検証済み出力は保持し、320のfresh clone full buildは独立manifestで結果を記録する。ビルド/署名/実機描画成功を混同しない。
+DOD/legacy sourceを保持し、EDK共通は変更しない。native ABI v1、owned選択viewと独立full pinを分離する。
+既報のpayload slot再利用raceは320 cursor訂正では未修正であり、host engine回帰も当該KMD競合の検証ではない。
+
+以下の3.1/FL9/「factory未接続」等は当時の設計・検証記録として保持する。現在の状態はこの節を優先する。
+
+## 3.1期からの設計・検証記録（原文を保持）
+
 Windows RT 8.1 / ARM32向けの既定オフrender candidateです。H c1e21caのKMD/UMDとE d13ce50の実native factoryを最終SYS/DLLへリンクし、8472244のpackage recipeでINF 0.0.3.1、既存FW5c1、CATと合わせ署名Valid・3件CAT membershipを確認しました。これは**source結合と署名の成果物**です。標準D3D runtimeでの列挙・CreateDevice・描画、WDDM必須caps、NoDMA停止は未qualifiedで、既存KMDF baselineを置換する実機候補にはまだ不適格です。過去の経過記録よりこの段落と[RUNTIME-ENTRY.md](RUNTIME-ENTRY.md)を優先します。
 
 標準entryは出力なしadapterの列挙を公式に保証するDXGIを基準とします。D3D9 flat clientのordinal/LUID一致はrender-only選択を保証しません。現在の有限flat profileはFL9_1に必要なPS2.0、Gouraud、texture/filter/depth等を実装していないため、clientだけD3D11 FL9_1へ切り替えても完成にはなりません。未対応capsを成功として広告しません。DOD/GPU provider/vendor_m1_11/main媒体4fileには変更を加えていません。
